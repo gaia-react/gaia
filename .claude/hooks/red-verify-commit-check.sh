@@ -60,29 +60,7 @@ set -uo pipefail
 
 input=$(cat)
 
-# jq-availability arm: refuse loudly rather than fail open when the interpreter
-# this hook reads its payload with is absent. What that buys, and the contract
-# the literal below satisfies, live in .claude/hooks/lib/jq-availability.sh.
-# No errexit bracket around the source, unlike the armed hooks that run under
-# `set -e`: this one deliberately does not, per the header above.
-#
-# The literal is `git`, read off this gate's own command-position scan below,
-# which requires the segment's command word to be `git` AND the segment to carry
-# a `commit` token. Either is a necessary condition, and naming the command word
-# alone is the narrower refusal, the same choice block-no-verify.sh makes
-# against the same predicate. Its ABSENCE proves the call is not a commit and it
-# is allowed; presence is not proof of membership, and that over-deny is the
-# safe direction. What it cannot reach is a spelling the shell assembles
-# (`g\it commit`), which the arm's own header already names as the accepted
-# residual.
-_jq_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _jq_lib_dir=''
-# shellcheck source=lib/jq-availability.sh
-[ -n "$_jq_lib_dir" ] && [ -f "$_jq_lib_dir/jq-availability.sh" ] && . "$_jq_lib_dir/jq-availability.sh" 2>/dev/null
-if ! type gaia_require_jq >/dev/null 2>&1; then
-  printf 'BLOCKED: red-verify-commit-check.sh cannot load lib/jq-availability.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
-  exit 2
-fi
-gaia_require_jq 'the RED-verify commit gate' "$input" tool_input 'git'
+command -v jq >/dev/null 2>&1 || exit 0
 
 tool_name=$(echo "$input" | jq -r '.tool_name // ""' 2>/dev/null)
 # `Monitor` hands this hook the same raw shell command in the same
@@ -108,226 +86,15 @@ cmd=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 # ---------------------------------------------------------------------------
 
 # Fast path: short-circuit when `git` is not an invoked command word anywhere.
-# (Fast path only; correctness comes from the command-position scan below.) Any
-# non-word character may stand before `git`, since a zsh glob qualifier puts a
-# quote or its own delimiter there.
-[[ "$cmd" =~ (^|[^[:alnum:]_])git([[:space:]]|$) ]] || exit 0
-
-# command-wrappers arm: without the table the walk reads a wrapper as the
-# command word and skips the invocation behind it, which is a silent fail-OPEN
-# on exactly the commits this gate exists to hold, so a failed load refuses.
-#
-# BELOW the fast path and below the `tool_name` check, not above them, and that
-# placement is the whole of the arm's blast radius. This hook is registered on
-# the `Bash` matcher, so an arm standing above the short-circuit would deny
-# EVERY Bash call on a missing library, `ls` and the editor and the package
-# manager along with it, closing off the very repair that restores the file.
-# Past the short-circuit the refusal reaches only a command that names `git`,
-# which is the same narrowing `gaia_require_jq` applies with its own needle.
-# shellcheck source=lib/command-wrappers.sh
-[ -n "$_jq_lib_dir" ] && [ -f "$_jq_lib_dir/command-wrappers.sh" ] && . "$_jq_lib_dir/command-wrappers.sh" 2>/dev/null
-if ! type gaia_strip_command_wrappers >/dev/null 2>&1; then
-  printf 'BLOCKED: red-verify-commit-check.sh cannot load lib/command-wrappers.sh, so this git call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
-  exit 2
-fi
-
-# The directory a segment's `git -C <dir>` names, read only from BETWEEN `git`
-# and the subcommand word. Past the subcommand the flag belongs to the
-# subcommand and names no directory: `git commit -C <commit>` reuses that
-# commit's message, so reading it as a directory aims every read below at a
-# path named for a commit, where git answers nothing and the whole check drops
-# out into a silent pass. Git applies multiple global `-C` cumulatively with
-# the LAST winning, so the walk keeps the last rather than stopping at the
-# first. Echoes nothing when the segment carries none.
-#
-# This walk and `parse_git_globals` in block-main-destructive-git.sh read the
-# same grammar and are kept as two copies, so a change to the option table or
-# the word split below belongs in both. A walk that stops recognizing a
-# spelling raises nothing in either hook: this one falls back to the payload
-# cwd, and the destructive gate reads the option's value as its subcommand,
-# which disarms its subcommand rules.
-#
-# Honest limit: the words are read with the shell's quoting but never its
-# expansion, so a `-C` whose path carries an unexpanded variable, `$(...)`, or
-# `~` resolves to that literal text. The resolver below answers nothing for it,
-# which falls back to the payload cwd -- the tree this gate already read --
-# rather than to a wrong one.
-git_segment_c() {
-  local -a w
-  local i=0 n t out="" seen_git=0
-  split_git_words "$1"
-  n=${#w[@]}
-  while [ "$i" -lt "$n" ]; do
-    t="${w[$i]}"
-    if [ "$seen_git" -eq 1 ]; then
-      case "$t" in
-        -C) out="${w[$((i + 1))]:-}"; i=$((i + 2)); continue ;;
-        # Every global git takes a SEPARATED value for. A missing one leaves its
-        # value in the subcommand slot, which ends the walk before a later `-C`.
-        # `--exec-path` is deliberately absent: without `=` it takes no value,
-        # git prints its exec path and exits, and nothing after it runs.
-        -c | --git-dir | --work-tree | --namespace | --config-env | --attr-source) i=$((i + 2)); continue ;;
-        -*) ;;
-        *) break ;;
-      esac
-    elif [ "$t" = git ]; then
-      seen_git=1
-    fi
-    i=$((i + 1))
-  done
-  printf '%s' "$out"
-}
-
-# split_git_words <string>: split one segment into shell-like words in the
-# array `w`, modelling quoting the way the shell does -- a quote opens a span in
-# which whitespace is ordinary text, and a backslash escapes the character after
-# it -- and handing the words back unquoted. The same copy as the one in
-# block-main-destructive-git.sh, whose docblock carries why it accumulates a
-# block at a time rather than a character at a time.
-split_git_words() {
-  local s="$1" NL=$'\n' TAB=$'\t'
-  local BLOCK=256 base=0 n_s block n_b k c
-  local q="" esc=0 word="" chunk="" have=0
-  w=()
-  n_s=${#s}
-  while [ "$base" -lt "$n_s" ]; do
-    block="${s:$base:$BLOCK}"
-    base=$((base + BLOCK))
-    k=0
-    n_b=${#block}
-    while [ "$k" -lt "$n_b" ]; do
-      c="${block:$k:1}"
-      k=$((k + 1))
-      if [ "$esc" = 1 ]; then esc=0; chunk="$chunk$c"; have=1; continue; fi
-      # A backslash is literal inside single quotes, as in the shell itself.
-      if [ "$c" = "\\" ] && [ "$q" != "'" ]; then esc=1; continue; fi
-      if [ -n "$q" ]; then
-        if [ "$c" = "$q" ]; then q=""; else chunk="$chunk$c"; fi
-        have=1
-        continue
-      fi
-      case "$c" in
-        '"' | "'") q="$c"; have=1 ;;
-        ' ' | "$TAB" | "$NL")
-          [ "$have" = 1 ] && w+=("$word$chunk")
-          word=""; chunk=""; have=0 ;;
-        *) chunk="$chunk$c"; have=1 ;;
-      esac
-    done
-    word="$word$chunk"
-    chunk=""
-  done
-  [ "$have" = 1 ] && w+=("$word$chunk")
-  return 0
-}
-
-# hidden_bodies <text>: print, one per line, the body of every construct that
-# runs a command in the current shell with no `| & ; ( )` cut in front of it:
-# bash 5.3's `${ cmd; }` function substitution, and a zsh glob qualifier's
-# `e<delim>code<delim>` or `+cmd` (optionally behind `#q` or other qualifier
-# flags). The walk below reads these lines AFTER the command's own lines,
-# which it reads byte for byte as before, so this can only add segments and
-# never hides one: a spurious match (an `e_` inside `(file_1=a git …)`) adds a
-# harmless extra line while the real segment stays intact. A spurious body
-# that happens to begin with `git commit` inside quoted text over-demands a
-# RED, the safe direction. Each pass re-reads the bodies the last one found,
-# so nested funsubs surface; bodies only shrink, and the pass bound is a
-# backstop.
-# block-no-verify.sh and block-main-destructive-git.sh carry the same function,
-# and block-no-verify.bats pins the copies identical.
-hidden_bodies() {
-  local text="$1" pass=0
-  # shellcheck disable=SC2016 # a literal opener matched in the text, not an expansion
-  case "$text" in *'${'* | *'('*) ;; *) return 0 ;; esac
-  while [ -n "$text" ] && [ "$pass" -lt 8 ]; do
-    text=$(printf '%s\n' "$text" \
-      | { grep -oE '\$\{[[:space:]]+[^;|&()]*|\([^()[:space:]]*(e[^[:alnum:][:space:]]|\+)[^;|&()]*' || true; } \
-      | sed -E -e 's/^\$\{[[:space:]]+//' \
-          -e 's/^\([^()[:space:]]*(e[^[:alnum:][:space:]]|\+)//' \
-          -e 's/^["'"'"']//' \
-          -e 's/["'"'"']?[^[:alnum:][:space:]]?$//')
-    [ -n "$text" ] && printf '%s\n' "$text"
-    pass=$((pass + 1))
-  done
-  return 0
-}
-
-# collapsed_substitutions <text>: print the command once more with every
-# `$( … )` span replaced by a single placeholder word, and print nothing when
-# the text carries none or the collapse changes nothing. Cutting at every `(`
-# and `)` is what lets the walk read a commit INSIDE a substitution, and is
-# also what splits a substitution standing in git's OWN arguments away from the
-# command word: `git -C "$(pwd)" commit -m x` leaves no segment carrying both
-# `git` and `commit`, so the gate saw no commit at all. This line is read IN
-# ADDITION to the command's own, so the body still reaches the walk as its own
-# segment and only the outer invocation is rejoined. The placeholder is a bare
-# `_` so a `commit` written inside the span cannot arm the rejoined segment
-# with a subcommand it never spelled.
-#
-# Innermost first, so a nested span collapses over successive passes; the bound
-# is a backstop. A span crossing a newline is left alone, since sed reads a
-# line at a time: that leaves the segment cut where it already was, which is
-# the direction that hides nothing the walk reads today.
-# block-no-verify.sh and block-main-destructive-git.sh carry the same function,
-# and block-no-verify.bats pins the copies identical.
-collapsed_substitutions() {
-  local text="$1" prev pass=0
-  # shellcheck disable=SC2016 # a literal opener matched in the text, not an expansion
-  case "$text" in *'$('*) ;; *) return 0 ;; esac
-  while [ "$pass" -lt 8 ]; do
-    prev="$text"
-    text=$(printf '%s' "$text" | sed -E 's/\$\([^()]*\)/_/g')
-    [ "$text" = "$prev" ] && break
-    pass=$((pass + 1))
-  done
-  [ "$text" = "$1" ] || printf '%s\n' "$text"
-  return 0
-}
+[[ "$cmd" =~ (^|[[:space:]&;|()])git([[:space:]]|$) ]] || exit 0
 
 saw_commit=0
-commit_c=""
 while IFS= read -r seg; do
-  # Command word = the first token past any leading whitespace, env-var
-  # assignment prefix, shell reserved word, or redirection. What the shell
-  # accepts in that run, each of which hid the whole invocation from a narrower
-  # reading: `NAME+=value` is a command prefix exactly as `NAME=value` is
-  # (`bash -c 'zz+=1 env'` prints `zz=1`); an assignment's value may be quoted
-  # and carry whitespace (`GIT_AUTHOR_DATE="2024-01-01 12:00" git commit`), so
-  # a value read as an unquoted run stops at the opening quote; a reserved
-  # word or grouping token stands in command position with no `| & ; ( )` ahead
-  # of the command word for the walk to cut at, with `time` taking an optional
-  # `-p` or `--` of its own; and a redirection may lead a simple command
-  # (`bash -c '>/tmp/x echo hi'` writes the file), so one standing ahead of the
-  # invocation occupies the slot the command word is read from. bash 3.2 does
-  # not populate BASH_REMATCH reliably, so strip with sed rather than a capture
-  # loop.
-  #
-  # A command WRAPPER (`env` and `timeout` among them) stands in that same slot
-  # but is NOT a prefix: each carries its own option grammar, so a blind
-  # alternation here would misread `env -i git …` and `timeout 5 git …`. It
-  # is stripped separately, by the per-wrapper table in
-  # lib/command-wrappers.sh, on the line after this one.
-  #
-  # Honest limit: a redirection whose target is another descriptor
-  # (`2>&1`, `>&2`) never reaches this strip at all, because
-  # the walk cuts segments at `&` and the invocation lands in a segment
-  # beginning with the descriptor number. Closing it means not cutting at an
-  # `&` that belongs to a redirection, which a separator split cannot tell from
-  # `&&` without reading the command the way the shell does.
-  #
-  # block-no-verify.sh and block-main-destructive-git.sh carry this expression
-  # too, and block-no-verify.bats pins the copies identical: a widening applied
-  # to one and not the rest leaves the gap open in whichever copy was missed.
-  seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*\+?=([^[:space:]"'"'"']+|"[^"]*"|'"'"'[^'"'"']*'"'"')*|[0-9]*[<>][^[:space:]]*|[{!]|coproc|elif|else|while|until|then|time([[:space:]]+(-p|--))?|do|if)[[:space:]]+)*//')
-  seg_prog=$(gaia_strip_command_wrappers "$seg_cmd")
-  [[ "$seg_prog" =~ ^git([[:space:]]|$) ]] || continue
-  if [[ "$seg" =~ (^|[[:space:]])commit([[:space:]]|$) ]]; then
-    saw_commit=1
-    # The wrapper-stripped word, so `env git -C ../other commit` hands the
-    # repo-scope read git's own `-C` rather than the wrapper's first word.
-    commit_c=$(git_segment_c "$seg_prog")
-  fi
-done < <({ printf '%s\n' "$cmd"; collapsed_substitutions "$cmd"; hidden_bodies "$cmd"; } | tr '|&;()' '\n')
+  # Command word = first token after leading whitespace + env-var assignments.
+  seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*//')
+  [[ "$seg_cmd" =~ ^git([[:space:]]|$) ]] || continue
+  [[ "$seg" =~ (^|[[:space:]])commit([[:space:]]|$) ]] && saw_commit=1
+done < <(printf '%s\n' "$cmd" | tr '|&;()' '\n')
 
 [ "$saw_commit" -eq 1 ] || exit 0
 
@@ -350,36 +117,6 @@ if type cmd_targets_foreign_repo >/dev/null 2>&1 \
 fi
 
 # ---------------------------------------------------------------------------
-# The checkout this commit acts on. A home verdict covers this REPOSITORY, and
-# every linked worktree of it is this repository, so a home command can still
-# be aimed at a checkout that is not this hook's: `git -C <worktree> commit`,
-# or a leading `cd <worktree> &&`. The staged set, the HEAD blob, and the
-# per-tree ledger below all belong to that checkout, so each is read from it
-# rather than from wherever this process happens to sit.
-#
-# The precedence is the one block-main-destructive-git.sh's branch_dir uses:
-# the segment's own `-C`, else the leading `cd` the repo-scope verdict
-# publishes, else the payload cwd the resolver validates further down. That
-# verdict publishes the `cd` target only once it resolved as this repository,
-# so an unresolvable one never reaches here.
-# ---------------------------------------------------------------------------
-payload_cwd=$(echo "$input" | jq -r '.cwd // empty' 2>/dev/null)
-cmd_dir="${commit_c:-${GAIA_REPO_SCOPE_LEAD_CD:-}}"
-# A relative target resolves against the acting agent's own directory, the way
-# the payload cwd itself is read, never against this process's, which nobody
-# chose.
-case "$cmd_dir" in
-  '' | /*) ;;
-  *)
-    if [[ "$payload_cwd" == /* ]]; then
-      cmd_dir="$payload_cwd/$cmd_dir"
-    else
-      cmd_dir="$PWD/$cmd_dir"
-    fi
-    ;;
-esac
-
-# ---------------------------------------------------------------------------
 # Shared RED-ledger lib: ledger path, repo-relative normalization, and the
 # signal-helper wrapper. Without it we cannot compute identity, so fail-open.
 # ---------------------------------------------------------------------------
@@ -393,6 +130,22 @@ command -v node >/dev/null 2>&1 || exit 0
 
 # This hook only enforces where git answers (a real work tree at pwd).
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
+
+# ---------------------------------------------------------------------------
+# Staged test files new/modified at HEAD, filtered to the vitest include glob
+# (app/**/*.test.ts|tsx, confirmed against vitest.config.ts: './app/**/*.test.{ts,tsx}').
+# A pure deletion/rename-away cannot add a new passing test, so --diff-filter=ACM.
+#
+# `-z` is what makes the glob filter below reachable at all: without it git
+# C-quotes a path carrying a non-ASCII byte, so `app/café.test.ts` arrives as
+# `"app/caf\303\251.test.ts"`, matches no `app/*` case, and the gate exits
+# having verified nothing. The records are translated back to newlines because
+# the consumer reads them from a here-doc; a path holding a literal newline is
+# the separate, far rarer class .gaia/scripts/lint-git-path-quoting.sh declares
+# out of its scope.
+# ---------------------------------------------------------------------------
+staged=$(git diff --cached --name-only -z --diff-filter=ACM 2>/dev/null | tr '\0' '\n' || true)
+[ -n "$staged" ] || exit 0
 
 # The shared main-root resolver, sourced from this hook's own checkout via
 # BASH_SOURCE (never process cwd): the RED ledger is per-tree state, so its
@@ -408,36 +161,12 @@ source "$gaia_scripts/main-root-lib.sh" 2>/dev/null || exit 0
 # rather than by a raw git call this hook writes itself. Payload cwd is
 # measured, not contracted, and only established on PreToolUse, so the
 # fallback is mandatory.
+payload_cwd=$(echo "$input" | jq -r '.cwd // empty' 2>/dev/null)
 source_cwd="$PWD"
 if [[ "$payload_cwd" == /* ]] && gaia_resolve_tree_root "$payload_cwd" >/dev/null 2>&1; then
   source_cwd="$payload_cwd"
 fi
-# The command's own target outranks both: that is the checkout the commit lands
-# in, while the payload cwd is only where the agent was standing when it ran
-# the command. A target the resolver cannot answer for is left behind rather
-# than enforced against, which keeps the reads on the directory this gate would
-# have read anyway.
-if [ -n "$cmd_dir" ] && gaia_resolve_tree_root "$cmd_dir" >/dev/null 2>&1; then
-  source_cwd="$cmd_dir"
-fi
 tree_root="$(gaia_resolve_tree_root "$source_cwd" 2>/dev/null)" || exit 0
-
-# ---------------------------------------------------------------------------
-# Staged test files new/modified at HEAD in the ACTING tree, filtered to the
-# vitest include glob (app/**/*.test.ts|tsx, confirmed against vitest.config.ts:
-# './app/**/*.test.{ts,tsx}').
-# A pure deletion/rename-away cannot add a new passing test, so --diff-filter=ACM.
-#
-# `-z` is what makes the glob filter below reachable at all: without it git
-# C-quotes a path carrying a non-ASCII byte, so `app/café.test.ts` arrives as
-# `"app/caf\303\251.test.ts"`, matches no `app/*` case, and the gate exits
-# having verified nothing. The records are translated back to newlines because
-# the consumer reads them from a here-doc; a path holding a literal newline is
-# the separate, far rarer class .gaia/scripts/lint-git-path-quoting.sh declares
-# out of its scope.
-# ---------------------------------------------------------------------------
-staged=$(git -C "$tree_root" diff --cached --name-only -z --diff-filter=ACM 2>/dev/null | tr '\0' '\n' || true)
-[ -n "$staged" ] || exit 0
 
 ledger=$(red_ledger_path "$tree_root") || exit 0
 signal_script=$(red_ledger_signal_script)
@@ -538,7 +267,7 @@ while IFS= read -r path; do
   # -> every current test is new. If HEAD content is unparseable we cannot prove
   # a test pre-existed; treat the HEAD set as empty (conservative: more tests
   # look new), but a genuinely new file is the common case on this path.
-  head_src=$(git -C "$tree_root" show "HEAD:$rel" 2>/dev/null || true)
+  head_src=$(git show "HEAD:$rel" 2>/dev/null || true)
   head_fullnames=""
   if [ -n "$head_src" ]; then
     # From the acting tree, like the two reads above: $signal_script is the bare

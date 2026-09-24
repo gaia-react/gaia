@@ -20,7 +20,6 @@
     ".claude/commands/gaia-spec.md": "owned",
     ".claude/commands/setup-gaia.md": "owned",
     ".claude/hooks/audit-disposition-check.sh": "owned",
-    ".claude/hooks/audit-residual-shape-check.sh": "owned",
     ".claude/hooks/audit-stamp-trailer.sh": "owned",
     ".claude/hooks/block-bare-test.sh": "owned",
     ".claude/hooks/block-env-read.sh": "owned",
@@ -56,7 +55,6 @@
     ".claude/hooks/lib/audit-rules-changed.sh": "owned",
     ".claude/hooks/lib/audit-scope.sh": "owned",
     ".claude/hooks/lib/audit-selfheal-paths.sh": "owned",
-    ".claude/hooks/lib/command-wrappers.sh": "owned",
     ".claude/hooks/lib/gaia-active-plan.sh": "owned",
     ".claude/hooks/lib/gaia-ci-defer.sh": "owned",
     ".claude/hooks/lib/gaia-version.sh": "owned",
@@ -684,7 +682,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-23T22:21:27.110Z",
+  "generated": "2026-09-23T23:59:16.000Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

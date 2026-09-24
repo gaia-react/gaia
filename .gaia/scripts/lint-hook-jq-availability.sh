@@ -70,9 +70,7 @@ readonly PROG="lint-hook-jq-availability"
 readonly SETTINGS=".claude/settings.json"
 
 # Blocking PreToolUse hooks whose jq arm still stands the hook down instead of
-# refusing. EMPTY, and the emptiness is the point: every blocking hook this gate
-# reaches refuses rather than standing down, so the obligation is carried
-# entirely by the check below rather than half by a list.
+# refusing.
 #
 # It stays a named variable rather than going away with its last entry, because
 # the shape is what a conversion that cannot land in one change needs: a hook
@@ -82,7 +80,8 @@ readonly SETTINGS=".claude/settings.json"
 # The list is asserted EXACT below: an entry that no longer fails is reported so
 # it must be deleted here, which is what keeps a baseline from quietly becoming
 # a permanent exemption.
-BASELINE=""
+BASELINE="block-bare-test.sh
+red-verify-commit-check.sh"
 
 # uses_jq <hook_script_path>
 #

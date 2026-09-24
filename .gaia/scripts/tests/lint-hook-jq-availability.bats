@@ -302,14 +302,15 @@ write_hook() {
 
 # --- the baseline cannot rot -------------------------------------------------
 
-# stage_check_with_baseline <hook-basename>: a copy of the gate carrying one
-# baseline entry, and echo its path.
+# stage_check_with_baseline <hook-basename>: a copy of the gate carrying only
+# the given baseline entry in place of its real (possibly multi-line) BASELINE
+# assignment, and echo its path.
 #
 # The two tests below exercise the exact-assert over BASELINE, and that assert
-# needs a non-empty baseline to have anything to assert over. The live one is
-# empty, and parking a fake entry in the shipped gate to feed a test would be
+# needs the tested entry to be the only one so the assert has a known set to
+# check. Parking a fake entry in the shipped gate to feed a test would be
 # exactly the standing exemption the assert exists to prevent. So they drive a
-# COPY of the gate with the BASELINE literal substituted and nothing else
+# COPY of the gate with the BASELINE assignment substituted and nothing else
 # touched, beside a copy of the library the gate loads from its own on-disk
 # location. Every predicate under test is the real one byte for byte, because
 # the copy is the gate.
@@ -319,8 +320,17 @@ stage_check_with_baseline() {
   mkdir -p "$dir"
   cp "$SCRIPT_DIR/hook-registration-lib.sh" "$dir/hook-registration-lib.sh"
   staged="$dir/lint-hook-jq-availability.sh"
-  sed 's/^BASELINE=""$/BASELINE="'"$entry"'"/' "$CHECK" >"$staged"
-  # A substitution that matched nothing leaves the copy with an empty baseline,
+  # The real assignment may span one line (`BASELINE="x"`) or several
+  # (`BASELINE="x` ... `y"`), so the whole assignment is replaced rather than
+  # one line matched literally: a one-line replacement is emitted in its place,
+  # and any continuation line up to the closing quote is swallowed.
+  awk -v entry="$entry" '
+    skip { if ($0 ~ /"$/) skip = 0; next }
+    /^BASELINE=".*"$/ { print "BASELINE=\"" entry "\""; next }
+    /^BASELINE="/ { print "BASELINE=\"" entry "\""; skip = 1; next }
+    { print }
+  ' "$CHECK" >"$staged"
+  # A substitution that matched nothing leaves the copy with the real baseline,
   # and both tests below red on their own when it does. What this adds is a
   # named failure at the cause instead of two assertion mismatches pointing at
   # a gate that is behaving correctly. `|| return 1` is load-bearing: the

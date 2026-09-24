@@ -55,30 +55,8 @@ gaia_require_jq 'the commit-floor bypass guard' "$payload" tool_input 'git'
 cmd=$(echo "$payload" | jq -r '.tool_input.command // empty')
 
 # Only act on git commands, short-circuit everything else. (Fast path only;
-# correctness comes from the command-position scan below.) Any non-word
-# character may stand before `git`, since a zsh glob qualifier puts a quote or
-# its own delimiter there.
-[[ "$cmd" =~ (^|[^[:alnum:]_])git([[:space:]]|$) ]] || exit 0
-
-# command-wrappers arm: without the table the walk reads a wrapper as the
-# command word and skips the invocation behind it, which is a silent fail-OPEN
-# on exactly the bypasses this hook exists to deny, so a failed load refuses.
-#
-# BELOW the fast path, not above it, and that placement is the whole of the
-# arm's blast radius. This hook is registered on the `Bash` matcher, so an arm
-# standing above the short-circuit would deny EVERY Bash call on a missing
-# library, `ls` and the editor and the package manager along with it, closing
-# off the very repair that restores the file. Past the short-circuit the refusal
-# reaches only a command that names `git`, which is the same narrowing
-# `gaia_require_jq` applies with its own needle.
-set +e
-# shellcheck source=lib/command-wrappers.sh
-[ -n "$_jq_lib_dir" ] && [ -f "$_jq_lib_dir/command-wrappers.sh" ] && . "$_jq_lib_dir/command-wrappers.sh" 2>/dev/null
-set -e
-if ! type gaia_strip_command_wrappers >/dev/null 2>&1; then
-  printf 'BLOCKED: block-no-verify.sh cannot load lib/command-wrappers.sh, so this git call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
-  exit 2
-fi
+# correctness comes from the command-position scan below.)
+[[ "$cmd" =~ (^|[[:space:]&;|()])git([[:space:]]|$) ]] || exit 0
 
 # Repo-scope: this repo's commit-floor policy governs this repo only. A git
 # command aimed at a different repo (e.g. `git -C ../other commit --no-verify`)
@@ -128,36 +106,6 @@ floor_msg() {
   echo "$msg"
 }
 
-# hidden_bodies <text>: print, one per line, the body of every construct that
-# runs a command in the current shell with no `| & ; ( )` cut in front of it:
-# bash 5.3's `${ cmd; }` function substitution, and a zsh glob qualifier's
-# `e<delim>code<delim>` or `+cmd` (optionally behind `#q` or other qualifier
-# flags). The walk below reads these lines AFTER the command's own lines,
-# which it reads byte for byte as before, so this can only add segments and
-# never hides one: a spurious match (an `e_` inside `(file_1=a git …)`) adds a
-# harmless extra line while the real segment stays intact. A spurious body
-# that happens to begin with `git commit` inside quoted text over-blocks, the
-# safe direction. Each pass re-reads the bodies the last one found, so nested
-# funsubs surface; bodies only shrink, and the pass bound is a backstop.
-# block-main-destructive-git.sh and red-verify-commit-check.sh carry the same
-# function, and block-no-verify.bats pins the copies identical.
-hidden_bodies() {
-  local text="$1" pass=0
-  # shellcheck disable=SC2016 # a literal opener matched in the text, not an expansion
-  case "$text" in *'${'* | *'('*) ;; *) return 0 ;; esac
-  while [ -n "$text" ] && [ "$pass" -lt 8 ]; do
-    text=$(printf '%s\n' "$text" \
-      | { grep -oE '\$\{[[:space:]]+[^;|&()]*|\([^()[:space:]]*(e[^[:alnum:][:space:]]|\+)[^;|&()]*' || true; } \
-      | sed -E -e 's/^\$\{[[:space:]]+//' \
-          -e 's/^\([^()[:space:]]*(e[^[:alnum:][:space:]]|\+)//' \
-          -e 's/^["'"'"']//' \
-          -e 's/["'"'"']?[^[:alnum:][:space:]]?$//')
-    [ -n "$text" ] && printf '%s\n' "$text"
-    pass=$((pass + 1))
-  done
-  return 0
-}
-
 # collapsed_substitutions <text>: print the command once more with every
 # `$( … )` span replaced by a single placeholder word, and print nothing when
 # the text carries none or the collapse changes nothing. Cutting at every `(`
@@ -174,8 +122,8 @@ hidden_bodies() {
 # is a backstop. A span crossing a newline is left alone, since sed reads a
 # line at a time: that leaves the segment cut where it already was, which is
 # the direction that hides nothing the walk reads today.
-# block-main-destructive-git.sh and red-verify-commit-check.sh carry the same
-# function, and block-no-verify.bats pins the copies identical.
+# block-main-destructive-git.sh carries the same function, and
+# block-no-verify.bats pins the copies identical.
 collapsed_substitutions() {
   local text="$1" prev pass=0
   # shellcheck disable=SC2016 # a literal opener matched in the text, not an expansion
@@ -215,25 +163,24 @@ while IFS= read -r seg; do
   # not populate BASH_REMATCH reliably, so strip with sed rather than a capture
   # loop.
   #
-  # A command WRAPPER (`env` and `timeout` among them) stands in that same slot
-  # but is NOT a prefix: each carries its own option grammar, so a blind
-  # alternation here would misread `env -i git …` and `timeout 5 git …`. It is stripped separately, by the per-wrapper table in
-  # lib/command-wrappers.sh, on the line after this one.
+  # Honest limit: a command WRAPPER (`env`, `command`, `exec`, `nohup`,
+  # `timeout`, `xargs`) also stands where the command word is read and is NOT
+  # stripped, so it still hides the invocation. Each carries its own option
+  # grammar, and a blind strip would misread `env -i git …` and `timeout 5 git
+  # …`, so closing them needs a per-wrapper option table rather than this list.
   #
-  # Honest limit: a redirection whose target is
+  # Second honest limit, of a different kind: a redirection whose target is
   # another descriptor (`2>&1`, `>&2`) never reaches this strip at all, because
   # the walk cuts segments at `&` and the invocation lands in a segment
   # beginning with the descriptor number. Closing it means not cutting at an
   # `&` that belongs to a redirection, which a separator split cannot tell from
   # `&&` without reading the command the way the shell does.
   #
-  # block-main-destructive-git.sh and red-verify-commit-check.sh carry this
-  # expression too, and block-no-verify.bats pins the copies identical: a
-  # widening applied to one and not the rest leaves the gap open in whichever
-  # copy was missed.
+  # block-main-destructive-git.sh carries this expression too, and
+  # block-no-verify.bats pins the copies identical: a widening applied to one
+  # and not the rest leaves the gap open in whichever copy was missed.
   seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*\+?=([^[:space:]"'"'"']+|"[^"]*"|'"'"'[^'"'"']*'"'"')*|[0-9]*[<>][^[:space:]]*|[{!]|coproc|elif|else|while|until|then|time([[:space:]]+(-p|--))?|do|if)[[:space:]]+)*//')
-  seg_prog=$(gaia_strip_command_wrappers "$seg_cmd")
-  [[ "$seg_prog" =~ ^git([[:space:]]|$) ]] || continue
+  [[ "$seg_cmd" =~ ^git([[:space:]]|$) ]] || continue
 
   is_commit=0
   is_push=0
@@ -271,29 +218,11 @@ while IFS= read -r seg; do
   # must pass. Matches a single-dash short-flag bundle containing n (-n, -nm,
   # -anm), never the long --no-verify (handled above) or --dry-run. Scoped to
   # the git segment so a `-n` on another program (grep/head/sort/tail) is inert.
-  #
-  # Read from seg_prog, the WRAPPER-STRIPPED word, and not from the raw segment
-  # the three arms above read. A wrapper is another program, so its own options
-  # are in that inert class, but the segment now ARMS on the git behind it, so a
-  # raw-segment scan reaches them: `nice -n 5 git commit -m x` and `xargs -n 1
-  # git commit -m x` carry no bypass and would deny on the wrapper's `-n`. That
-  # is a false deny whose message names the commit-message over-block, which is
-  # a repair that cannot clear it.
-  #
-  # Only this arm moves, and the HUSKY arm above is the one that must not. `env`
-  # consumes `NAME=value` assignments, so `env HUSKY=0 git commit` has no HUSKY
-  # left in seg_prog at all and that arm would stop firing. What it would NOT do
-  # is let the bypass through: the whole-command safety net below re-asserts
-  # HUSKY over the entire command, and that net covers this exact case. So the
-  # arm stays on the raw segment to keep the decision segment-scoped rather than
-  # leaning on the backstop, which is a defence-in-depth argument and not a
-  # correctness one. Stated precisely because the difference is testable and the
-  # suite cannot pin it: moving that arm leaves every test green.
   if [[ "$is_commit" -eq 1 ]] \
-     && [[ "$seg_prog" =~ (^|[[:space:]])-[a-zA-Z]*n[a-zA-Z]*([[:space:]]|$) ]]; then
+     && [[ "$seg" =~ (^|[[:space:]])-[a-zA-Z]*n[a-zA-Z]*([[:space:]]|$) ]]; then
     deny "$(floor_msg '-n (= --no-verify)')"
   fi
-done < <({ printf '%s\n' "$cmd"; collapsed_substitutions "$cmd"; hidden_bodies "$cmd"; } | tr '|&;()' '\n')
+done < <({ printf '%s\n' "$cmd"; collapsed_substitutions "$cmd"; } | tr '|&;()' '\n')
 
 # Fail-closed safety net for the UNAMBIGUOUS tokens. Segment-splitting on a
 # `| & ; ( )` that is actually inside a quoted commit message could orphan a

@@ -876,9 +876,7 @@ and a separator, a comment, a command wrapper standing in front of the merge
 shape the command scanner declines to model, a branch name or URL in place of a
 number, or any byte outside the small set a merge invocation needs each deny on
 their own. A quoted flag value is the common case: drop it, or set it on the
-pull request before merging. A wrapper is read when deciding whether this gate
-arms, and deliberately not read here: arming may over-read a command, a permit
-may not, so re-run the merge with no wrapper in front of it."
+pull request before merging."
 
   # Which arm, and the sentinel belongs on the SPELLING side. An unreadable
   # command named no target the gate could read, so it never established a

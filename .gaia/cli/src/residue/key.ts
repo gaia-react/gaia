@@ -5,28 +5,24 @@
  * here and they are not interchangeable, because they serve two different
  * consumers and agreeing with the wrong one is a defect in each direction.
  *
- * `KEY_PATTERN` reproduces the merge gate's own key regex
- * (`.claude/hooks/audit-residual-shape-check.sh`). Attribution uses it,
- * because the tally's whole honesty claim is that it finds exactly the keys
- * the gate counted, and a conformance comparison drives both implementations
- * over one corpus to prove it. `parseKey` serves that side and keeps the
- * mandatory `v1` token.
+ * `KEY_PATTERN` is the recognized dedup-key grammar. `attributeBody` uses it
+ * to find every key in a pull-request body, and `parseKey` serves that side
+ * and keeps the mandatory `v1` token.
  *
  * `LENIENT_KEY_PATTERN` reproduces the tech-debt filer's grammar
  * (`.gaia/scripts/debt-count-refresh.sh`). Suppression matching against
  * tech-debt issue bodies uses it, because the thing suppression must agree
- * with is the filer, not the gate. It anchors on the wrapped comment opener
- * and it does not require `v1`. Both grammars terminate the path on the key
- * comment's own closer rather than on a space; this side also stops at a
- * newline because its subject is a whole body and a key never spans one.
- * `parseWrappedKeys` serves that side.
+ * with is the filer. It anchors on the wrapped comment opener and it does not
+ * require `v1`. Both grammars terminate the path on the key comment's own
+ * closer rather than on a space; this side also stops at a newline because
+ * its subject is a whole body and a key never spans one. `parseWrappedKeys`
+ * serves that side.
  *
  * A caller may not substitute one for the other. Reading FEWER issue keys
  * than the filer matches is a livelock: the drain keeps offering a residual
  * the filer then refuses to file as a duplicate, forever. Reading a key out
  * of a pull-request body with the lenient grammar is the mirror defect: the
- * tally would attribute entries the gate never counted, and the conformance
- * comparison would red.
+ * tally would attribute entries the strict grammar never counted.
  */
 
 /**
@@ -82,10 +78,10 @@ const CONTROL_CHARACTERS: readonly (readonly [string, string])[] = [
  * line=1` written with two spaces parses `ok` with a trailing space and reads
  * as a different coordinate from the same file filed without it. Under the
  * old space-terminated grammar the comment matched no key at all, so the unit
- * was keyless and the gate denied the merge over it; `malformed[]` is reached
- * only once the pattern matches and field validation then fails, which it
- * never did here. The regression is therefore merge-denied becoming silently
- * accepted as a distinct coordinate, not reported becoming accepted. It is
+ * was keyless; `malformed[]` is reached only once the pattern matches and
+ * field validation then fails, which it never did here. The regression is
+ * therefore keyless becoming silently accepted as a distinct coordinate, not
+ * reported becoming accepted. It is
  * still disposable through the normal drain rather than a livelock: it
  * resolves `unresolvable` and is dismissible.
  */

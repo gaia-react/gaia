@@ -604,7 +604,6 @@ JS
   gaia_copy_real "$MAIN" \
     .claude/hooks/red-verify-commit-check.sh \
     .claude/hooks/capture-red-observations.sh \
-    .claude/hooks/lib/command-wrappers.sh \
     .claude/hooks/lib/jq-availability.sh \
     .claude/hooks/lib/red-ledger.sh \
     .claude/hooks/lib/repo-scope.sh \

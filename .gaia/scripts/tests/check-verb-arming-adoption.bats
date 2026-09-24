@@ -67,7 +67,7 @@ gaia_verb_arm_view() {
 }
 EOF
 
-  for h in pr-merge-audit-check worthiness-presence-check audit-disposition-check audit-residual-shape-check; do
+  for h in pr-merge-audit-check worthiness-presence-check audit-disposition-check; do
     cat >"$dir/.claude/hooks/$h.sh" <<EOF
 #!/usr/bin/env bash
 . "\$(dirname "\${BASH_SOURCE[0]}")/lib/verb-arming.sh" 2>/dev/null
@@ -119,7 +119,6 @@ EOF
         {"type": "command", "command": ".claude/hooks/pr-merge-audit-check.sh"},
         {"type": "command", "command": ".claude/hooks/worthiness-presence-check.sh"},
         {"type": "command", "command": ".claude/hooks/audit-disposition-check.sh"},
-        {"type": "command", "command": ".claude/hooks/audit-residual-shape-check.sh"},
         {"type": "command", "command": ".claude/hooks/distribution-preflight-check.sh"}
       ]}
     ],
