@@ -822,6 +822,26 @@ run_step() {
 # cannot run still blocks the free success.
 # -----------------------------------------------------------------------------
 
+@test "chore-deps skip: the stamp step exists and its if: is exactly the chore-deps skip condition" {
+  block="$(extract_step_block 'Write GAIA-Audit commit status (chore-deps skip)')"
+
+  grep -qF 'id: chore-deps-status' "$block" || return 1
+
+  # The if: field's own text, dedented and compared for equality, not by
+  # substring: a widened if (an added `||` arm, a loosened gate) would still
+  # contain the chore-deps token and pass a substring check while stamping
+  # success on a PR outside the chore(deps) fast path.
+  condition="$(awk '
+    /^        if: \|[[:space:]]*$/ { inif=1; next }
+    inif && /^        [a-z]/ { exit }
+    inif { sub(/^          /, ""); print }
+  ' "$block")"
+
+  [ "$condition" = "$(printf '%s\n%s' \
+    "steps.gate.outputs.gated == 'false' &&" \
+    "steps.chore-deps.outputs.skip == 'true'")" ]
+}
+
 @test "chore-deps skip: mixed diff never posts success while a co-dispatched member is pending" {
   body="$(extract_step_body 'Write GAIA-Audit commit status (chore-deps skip)')"
   commit_mixed_diff

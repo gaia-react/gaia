@@ -204,9 +204,9 @@ In the maintainer repo the audit workflow lives in three byte-identical tracked 
 2. `.gaia/cli/templates/workflows/code-review-audit.yml.tmpl` — the build artifact `gaia automation install-audit-workflow` installs from, sitting next to the bundled binary.
 3. `.gaia/cli/src/automation/templates/workflows/code-review-audit.yml.tmpl` — the source of truth.
 
-`.gaia/cli`'s `pnpm bundle` regenerates copy #2 from copy #3 (its `bundle:adopter` step copies `src/automation/templates/workflows/` into `templates/workflows/`). The `audit-template-dogfood` test (`.gaia/cli/src/automation/__tests__/audit-template-dogfood.test.ts`) reads copy #3 through `workflowAuditTemplatePath()` and asserts the live workflow (#1) is byte-identical to it, so a mismatch flags the live gate and the source template out of sync.
+`.gaia/cli`'s `pnpm bundle` regenerates copy #2 from copy #3 (its `bundle:adopter` step copies `src/automation/templates/workflows/` into `templates/workflows/`). `.github/audit/tests/self-heal-scope-gate.bats`'s "the three code-review-audit.yml copies are byte-identical" test diffs all three copies against each other, so a mismatch flags whichever pair fell out of sync.
 
-A workflow-touching PR edits copy #3, regenerates copy #2 with `pnpm bundle`, and syncs copy #1 to match, all up front in the same PR. The drift-guard is a backstop, not the sync mechanism, and it compares only #1 against #3: a stale #2 slips past it, so propagate the edit deliberately across all three rather than pushing one copy and trusting the test to catch the miss.
+A workflow-touching PR edits copy #3, regenerates copy #2 with `pnpm bundle`, and syncs copy #1 to match, all up front in the same PR. The byte-identity test is a backstop, not the sync mechanism, so propagate the edit deliberately across all three rather than pushing one copy and trusting the test to catch the miss.
 
 <!-- gaia:maintainer-only:end -->
 

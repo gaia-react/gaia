@@ -10,10 +10,9 @@
 # no awk interpreter is present at all, and 6 when GAIA_AWK resolves to an
 # interpreter that identifies as neither mawk nor BWK one-true-awk.
 #
-# TypeScript is not this script's surface. The CLI's git listing calls are
-# argv arrays rather than shell words, and .gaia/cli/src/git-z-chokepoint.test.ts
-# guards them instead: it requires a literal listing verb in an argv array to be
-# built through `gitZArgs`, and its own header states the shapes it cannot see.
+# TypeScript is not this script's surface. The CLI's git listing calls are argv
+# arrays rather than shell words, and route through `gitZArgs` in
+# .gaia/cli/src/util/git-z.ts instead.
 # gaia:maintainer-only:start
 #
 # Enforced by the sibling bats suite

@@ -21,7 +21,6 @@ setup() {
   HOOK="$REPO_ROOT/.claude/hooks/pr-merge-audit-check.sh"
   # The delimiters of the marker-strip transform in .gaia/release-scrub.yml that
   # governs shell files, the surface the strip test below is pointed at.
-  # marker-strip.test.ts holds these to that transform.
   MAINTAINER_START='# gaia:maintainer-only:start'
   MAINTAINER_END='# gaia:maintainer-only:end'
 
@@ -812,12 +811,10 @@ EOF
 
 # The awk below models `stripMarkerBlocks` in
 # `.gaia/cli/src/release/marker-strip.ts`, the parser the release scrub actually
-# runs. The agreement is PINNED, not conventional:
-# `.gaia/cli/src/release/marker-strip.test.ts` runs this exact awk against the
-# real parser over a fixture corpus, and then asserts this file carries the
-# invocation verbatim. Two sibling suites carry the same block
-# (`.gaia/scripts/tests/verify-audit-roster.bats`, `audit-write-clearance.bats`),
-# so a change here belongs in all of them.
+# runs, by hand rather than held to it by a test. Two sibling suites carry the
+# same block (`.gaia/scripts/tests/verify-audit-roster.bats`,
+# `audit-write-clearance.bats`), so a change here belongs in all of them, and
+# in the real parser too if the transform it models changed.
 #
 # The two-rule form this replaces diverged from the shipped parser on two shapes
 # audit-scope.sh does not currently carry, which is the only reason it was green:

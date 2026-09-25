@@ -58,7 +58,7 @@ If the spec-kit area is already being refactored for other reasons, the roughly 
 - respect the `with-ledger-lock` co-move constraint (the allocator and ledger-update scripts cannot move unless their `.gaia/scripts` consumers move too);
 - a one-time upstream-deletion prompt per file on every adopter's next update;
 - reassign the maintainer-shell audit remit to the node agent and re-point (not delete) the guarding coverage;
-- wire an external invoker for each new subcommand so command-reachability coverage stays satisfied.
+- wire an external invoker for each new subcommand, so it is not left dispatched but never called from anywhere.
 
 Excluded even here: all CI scripts. `ci-revert` and `ci-stale-check` already live in the binary; `resolve-check-base.sh` runs before Node is set up in CI and has a `shared`-class call site, so folding it would couple a required status check to the binary.
 

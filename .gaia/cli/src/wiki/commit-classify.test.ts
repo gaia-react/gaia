@@ -356,7 +356,7 @@ describe('wiki commit-classify', () => {
         [`wiki/concepts/${NON_ASCII_STEM}.md`]: '# concept\n',
       });
 
-      // gaia-lint-ignore git-z-chokepoint: runs without -z on purpose, since
+      // Deliberately unrouted: runs without -z on purpose, since
       // the quoted output is what proves the fixture can fail the assertion.
       const listed = sandboxGit(sandbox.root, [
         'diff-tree',

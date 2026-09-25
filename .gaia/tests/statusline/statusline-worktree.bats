@@ -30,7 +30,6 @@ setup() {
 
   # The delimiters of the marker-strip transform in .gaia/release-scrub.yml
   # that governs shell files, the surface stripped_copy below is pointed at.
-  # marker-strip.test.ts holds these to that transform.
   MAINTAINER_START='# gaia:maintainer-only:start'
   MAINTAINER_END='# gaia:maintainer-only:end'
 
@@ -86,12 +85,10 @@ run_statusline() {
 # same text `gaia-maintainer release scrub` produces at bundle time, and print
 # its path. This is what an adopter actually runs.
 #
-# The agreement with the shipped parser (`stripMarkerBlocks` in
-# `.gaia/cli/src/release/marker-strip.ts`) is PINNED, not conventional:
-# `.gaia/cli/src/release/marker-strip.test.ts` runs this exact awk against the
-# real parser over a fixture corpus, and asserts every suite carrying it holds
-# it verbatim. Sibling suites carry the same block, so a change here belongs in
-# all of them.
+# This awk is a hand-kept model of the shipped parser (`stripMarkerBlocks` in
+# `.gaia/cli/src/release/marker-strip.ts`), not held to it by a test. Sibling
+# suites carry the same block, so a change here belongs in all of them, and in
+# the real parser too if the transform it models changed.
 #
 # The `sed` range this replaces was not that text. A range checks its end
 # address only from the line AFTER the start matches, so a line carrying both

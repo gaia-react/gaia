@@ -273,7 +273,7 @@ The marker is this exact line, with `<class>` substituted:
 `/gaia-audit` recognizes this marker only to apply its existing obsolescence / redundancy / supersession / duplication signals without a policy-memory exemption, and to explicitly NOT treat non-recurrence as a prune signal. The marker grants no special lifecycle. Do not alter its wording: multiple binders key on it. The `covered-classes.ts` `MARKER_RE` matches its prefix (`gaia-harden: promoted from recurring finding_class`) and is deliberately tail-agnostic. `/gaia-audit` (`.claude/skills/gaia/references/audit.md`) keys on the full text.
 
 <!-- gaia:maintainer-only:start -->
-The `marker.test.ts` guard asserts every doc copy reproduces `markerComment(...)` from `.gaia/cli/src/harden/marker.ts` byte for byte. A wording change that misses any copy silently breaks one binder or the other, so the marker text lives once in `marker.ts` and every copy tracks it.
+The marker text lives once, in `.gaia/cli/src/harden/marker.ts`'s `markerComment(...)`, and every doc copy reproduces it byte for byte. A wording change that misses any copy silently breaks one binder or the other.
 <!-- gaia:maintainer-only:end -->
 
 ## Unclassified recurrence signal (seed-a-class-or-investigate)

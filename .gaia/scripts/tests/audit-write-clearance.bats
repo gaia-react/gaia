@@ -22,7 +22,7 @@ setup() {
   RESOLVER="$THIS_DIR/../resolve-audit-members.sh"
   # The delimiters of the marker-strip transform in .gaia/release-scrub.yml that
   # governs shell files and .gaia/audit-ci.yml, the two shapes scrub_maintainer_only
-  # below is pointed at. marker-strip.test.ts holds these to that transform.
+  # below is pointed at.
   MAINTAINER_START='# gaia:maintainer-only:start'
   MAINTAINER_END='# gaia:maintainer-only:end'
   [ -x "$WRITER" ] || skip "audit-write-clearance.sh not executable"
@@ -482,18 +482,16 @@ member_digest() {
 # Strips maintainer-only blocks from the file named by $1, writing the result to
 # stdout, as the bundle-time scrub does to shipped files.
 #
-# The agreement with the shipped parser (`stripMarkerBlocks` in
-# `.gaia/cli/src/release/marker-strip.ts`) is PINNED, not conventional:
-# `.gaia/cli/src/release/marker-strip.test.ts` runs this exact awk against the
-# real parser over a fixture corpus, and then asserts this file carries the
-# invocation below verbatim. Two sibling suites carry the same block
-# (`verify-audit-roster.bats`, `.gaia/tests/hooks/audit-scope-lib.bats`), so a
-# change here belongs in all of them.
+# This awk is a hand-kept model of the shipped parser (`stripMarkerBlocks` in
+# `.gaia/cli/src/release/marker-strip.ts`), not held to it by a test. Two
+# sibling suites carry the same block (`verify-audit-roster.bats`,
+# `.gaia/tests/hooks/audit-scope-lib.bats`), so a change here belongs in all of
+# them, and in the real parser too if the transform it models changed.
 #
 # The unanchored `/gaia:maintainer-only:start/` pair this replaces was a third
 # marker vocabulary: it fired on the HTML-comment form too, which the transform
 # governing shell files does not use. The constants above are the ones that
-# transform declares, and the guard asserts they still are.
+# transform declares.
 scrub_maintainer_only() {
   awk -v s="$MAINTAINER_START" -v e="$MAINTAINER_END" '
     {

@@ -165,9 +165,7 @@
 .gaia/cli/src/a11y-structural/check-a11y-triviality.test.ts	code-audit-maintainer-node
 .gaia/cli/src/audit-ledger/append-worthiness.test.ts	code-audit-maintainer-node
 .gaia/cli/src/automation/__tests__/__snapshots__/templates-snapshots.test.ts.snap	code-audit-maintainer-node
-.gaia/cli/src/automation/__tests__/audit-template-dogfood.test.ts	code-audit-maintainer-node
 .gaia/cli/src/automation/__tests__/cron-decide.test.ts	code-audit-maintainer-node
-.gaia/cli/src/automation/__tests__/gaia-ci-template-refs.test.ts	code-audit-maintainer-node
 .gaia/cli/src/automation/__tests__/install-audit-workflow.test.ts	code-audit-maintainer-node
 .gaia/cli/src/automation/__tests__/paths.test.ts	code-audit-maintainer-node
 .gaia/cli/src/automation/__tests__/read-config.test.ts	code-audit-maintainer-node
@@ -206,7 +204,6 @@
 .gaia/cli/src/ci/stale-check.ts	code-audit-maintainer-node
 .gaia/cli/src/ci/util/run-process.ts	code-audit-maintainer-node
 .gaia/cli/src/classifier/classify-determinism.test.ts	code-audit-maintainer-node
-.gaia/cli/src/command-reachability.test.ts	code-audit-maintainer-node
 .gaia/cli/src/exit.ts	code-audit-maintainer-node
 .gaia/cli/src/fitness/index.ts	code-audit-maintainer-node
 .gaia/cli/src/fitness/render-card.test.ts	code-audit-maintainer-node
@@ -215,7 +212,6 @@
 .gaia/cli/src/harden/__tests__/covered-classes.test.ts	code-audit-maintainer-node
 .gaia/cli/src/harden/__tests__/ledger-bridge.test.ts	code-audit-maintainer-node
 .gaia/cli/src/harden/__tests__/ledger.test.ts	code-audit-maintainer-node
-.gaia/cli/src/harden/__tests__/marker.test.ts	code-audit-maintainer-node
 .gaia/cli/src/harden/__tests__/parse-findings-block.test.ts	code-audit-maintainer-node
 .gaia/cli/src/harden/__tests__/tally.test.ts	code-audit-maintainer-node
 .gaia/cli/src/harden/compute-tally.ts	code-audit-maintainer-node
@@ -259,7 +255,6 @@
 .gaia/cli/src/release/changelog.ts	code-audit-maintainer-node
 .gaia/cli/src/release/commit-and-tag.test.ts	code-audit-maintainer-node
 .gaia/cli/src/release/commit-and-tag.ts	code-audit-maintainer-node
-.gaia/cli/src/release/distribution-guards.test.ts	code-audit-maintainer-node
 .gaia/cli/src/release/index.test.ts	code-audit-maintainer-node
 .gaia/cli/src/release/index.ts	code-audit-maintainer-node
 .gaia/cli/src/release/manifest-answers.test.ts	code-audit-maintainer-node

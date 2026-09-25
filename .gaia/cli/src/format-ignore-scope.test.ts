@@ -43,8 +43,7 @@
  * `Vitest (.gaia/cli)` job is a declared-required context.
  *
  * Maintainer-only by construction: `.gaia/cli/src` is release-excluded, so an
- * adopter clone carries this test's subjects but not the test. Mirrors
- * `node-pin-parity.test.ts`.
+ * adopter clone carries this test's subjects but not the test.
  */
 import {describe, expect, test} from 'vitest';
 import {readFileSync} from 'node:fs';
@@ -123,8 +122,7 @@ const narrowedIgnorePathsIn = (script: string): null | string[] => {
   return ignorePaths.includes('.gitignore') ? null : ignorePaths;
 };
 
-// Throws rather than returning `undefined` for an absent or non-string script,
-// the same posture `node-pin-parity.test.ts` takes toward an unreadable subject:
+// Throws rather than returning `undefined` for an absent or non-string script:
 // a guard that cannot find what it guards has failed, not passed. It is also
 // what keeps the assertions below typed, since the CLI tsconfig sets
 // `noUncheckedIndexedAccess`.

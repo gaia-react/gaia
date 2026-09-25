@@ -48,10 +48,9 @@ if ! cmp -s "${work}/gaia-maintainer-committed" .gaia/cli/gaia-maintainer; then
 fi
 # Template content resolves at runtime via import.meta.url and never enters the
 # bundled binary, so the byte-cmp above cannot catch a stale committed template.
-# The dogfood drift-guard in cli-tests.yml's Vitest step covers only
-# templates/workflows/; component/, hook/, route/, and service/ have no other
-# guard in the pull-request lane. Diff the regenerated tree against the snapshot
-# taken before the bundle.
+# This diff is the only freshness guard for the whole .gaia/cli/templates/ tree,
+# component/, hook/, route/, service/, and workflows/ included. Diff the
+# regenerated tree against the snapshot taken before the bundle.
 if ! diff -rq "${work}/templates-committed" .gaia/cli/templates; then
   echo "::error::.gaia/cli/templates is stale: regenerating from src (pnpm -C .gaia/cli bundle) produces different template files. Run the bundle and commit the result." >&2
   exit 1
