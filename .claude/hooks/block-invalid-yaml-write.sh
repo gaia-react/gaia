@@ -7,12 +7,10 @@
 # often a mid-sentence ": " (read as a mapping-key separator) or a stray " #"
 # (read as a comment, silently truncating the value), and only discovers it
 # when a downstream parser or lint fails, sometimes on an already-saved
-# immutable artifact. .specify/extensions/gaia/lib/lint.sh catches the same
-# class in SPEC frontmatter, but only at save-time, after the round trip this
-# hook exists to prevent, and only for one surface; this hook is structural
-# (any .yml/.yaml, any .md carrying --- frontmatter) rather than a directory
-# allowlist, since the highest-frequency case (frontmatter inside .md) is
-# exactly what a naive extension-only scope misses.
+# immutable artifact. This hook is structural (any .yml/.yaml, any .md
+# carrying --- frontmatter) rather than a directory allowlist, since the
+# highest-frequency case (frontmatter inside .md) is exactly what a naive
+# extension-only scope misses.
 #
 # Regression-only, never a blanket validity gate: this hook compares the
 # region's state before and after the call and denies only a valid -> invalid

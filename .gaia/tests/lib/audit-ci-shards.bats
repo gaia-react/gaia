@@ -958,7 +958,7 @@ assert_checker_is_content_blind() {
 # would notice if it started skipping on CI: a lib leg that lost python3-yaml
 # would report `ok ... # skip` for each of them and green the job with the
 # shard-list invariant retired. This test is what makes that weakening red.
-# Same shape as the sibling gates' own proving tests in lint-yaml.bats,
+# Same shape as the sibling gates' own proving tests in
 # workflow-filter-coverage.bats, retrigger-reachability.bats, and
 # block-invalid-yaml-write.bats. Not itself gated.
 

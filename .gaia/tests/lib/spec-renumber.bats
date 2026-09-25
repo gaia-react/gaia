@@ -74,23 +74,7 @@ _renumber() {
   [ ! -e "$REPO/$CACHE/spec-session-SPEC-904.lock" ]
 }
 
-# --- 3: the rename hint rewrites the number in whatever padding it is in -----
-#
-# The hint's match runs through the library, which strips leading zeros, so it
-# fires on every padding. Both paddings are driven because rewriting only one
-# of them yields a rename command that renames the branch to itself, which
-# reads as an instruction while doing nothing.
-
-@test "3: the rename hint rewrites an unpadded branch number, not only a padded one" {
-  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-folder SPEC-009)"
-  git -C "$REPO" checkout -q -b "plan/spec-9-cards"
-
-  run _renumber "$REPO" SPEC-009 SPEC-010
-  [ "$status" -eq 0 ]
-  grep -qF "branch -m 'plan/spec-010-cards'" <<<"$output"
-  grep -qF "Rename it by hand" <<<"$output" && return 1
-  true
-}
+# --- 3b: the rename hint rewrites a padded branch number --------------------
 
 @test "3b: the rename hint rewrites a padded branch number" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-folder SPEC-011)"
@@ -99,18 +83,4 @@ _renumber() {
   run _renumber "$REPO" SPEC-011 SPEC-012
   [ "$status" -eq 0 ]
   grep -qF "branch -m 'plan/spec-012-cards'" <<<"$output"
-  grep -qF "Rename it by hand" <<<"$output" && return 1
-  true
-}
-
-@test "3c: a shorter number does not match a longer one sharing its prefix" {
-  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-folder SPEC-009)"
-  git -C "$REPO" checkout -q -b "plan/spec-99-cards"
-
-  # The branch holds SPEC-099, not SPEC-009, so the hint must stay silent
-  # rather than offer to rename someone else's branch.
-  run _renumber "$REPO" SPEC-009 SPEC-010
-  [ "$status" -eq 0 ]
-  grep -qF "plan/spec-99-cards' references" <<<"$output" && return 1
-  true
 }

@@ -310,7 +310,6 @@
     ".specify/extensions/gaia/commands/uat-write.md": "owned",
     ".specify/extensions/gaia/commands/wiki-promote.md": "owned",
     ".specify/extensions/gaia/extension.yml": "owned",
-    ".specify/extensions/gaia/lib/ledger-title-repair.sh": "owned",
     ".specify/extensions/gaia/lib/ledger-update.sh": "owned",
     ".specify/extensions/gaia/lib/lint.sh": "owned",
     ".specify/extensions/gaia/lib/plan-allocator.sh": "owned",
@@ -331,7 +330,6 @@
     ".specify/extensions/gaia/lib/version-check.sh": "owned",
     ".specify/extensions/gaia/lib/with-ledger-lock.sh": "owned",
     ".specify/extensions/gaia/README.md": "owned",
-    ".specify/extensions/gaia/rules/smoke.md": "owned",
     ".specify/extensions/gaia/rules/uat-divergence.md": "owned",
     ".specify/extensions/gaia/templates/clarify-prompts.md": "owned",
     ".specify/extensions/gaia/templates/spec-template.md": "owned",
@@ -664,7 +662,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-25T02:34:21.737Z",
+  "generated": "2026-09-25T03:30:26.088Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

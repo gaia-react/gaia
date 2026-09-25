@@ -209,10 +209,6 @@ transforms:
         scope:
           - "**"
         path-allowlist:
-          # Documents the UAT-runbook naming convention under
-          # `.specify/extensions/gaia/test/`; the literal path is the rule's
-          # own classification example, not a stray reference.
-          - ".specify/extensions/gaia/rules/smoke.md"
           # Adopter-owned sentinels that ship in the tarball but contain
           # release-baseline content after `gaia-maintainer release scrub-wiki`
           # (Step 8 of `/gaia-release`). Local simulations against
