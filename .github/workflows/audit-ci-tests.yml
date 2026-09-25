@@ -161,20 +161,18 @@ jobs:
               # running one line of the suite.
               - '.lintstagedrc.json'
               - '.gaia/scripts/**'
-              # comprehensive-gauge.bats (.gaia/scripts/tests/) exercises
-              # .gaia/cli/health/comprehensive/gauge.sh directly, which sits
-              # outside '.gaia/cli/src/**' further down and so matches no
-              # pattern here at all. Every other root holding a '*.sh' is
-              # already matched above or below. Without this line a pull
-              # request editing that script would report `code=false`, skip
-              # every bats step, and green the job having run that suite
-              # against a stale script. The glob is deliberately the suite's
-              # own input rather than an enumeration of the directories it
-              # currently misses: it self-maintains when shell appears
-              # somewhere new, which is the whole point of arming a
-              # hand-kept path list, and it newly arms only those files,
-              # since every other tracked *.sh already matches a pattern
-              # here.
+              # The shell lint suites (.gaia/scripts/tests/lint-*.bats) scan
+              # the real tree's tracked shell, lint-errexit-status-read.bats
+              # among them, and comprehensive-gauge.bats exercises
+              # .gaia/cli/health/comprehensive/gauge.sh directly. Two tracked
+              # shell files match no narrower pattern here: that gauge and
+              # .gaia/cli/test-fixtures/ci-shape/composite-actions.smoke.sh,
+              # both outside '.gaia/cli/src/**' further down. Without this line
+              # a pull request editing only one of them would report
+              # `code=false`, skip every bats step, and green the job having
+              # run none of those suites. The glob is the suites' own input
+              # rather than an enumeration of the files it currently reaches,
+              # so it self-maintains when shell appears somewhere new.
               - '**/*.sh'
               # check-main-root-derivation.bats (.gaia/scripts/tests/) scans
               # tracked source for a hand-rolled main-checkout derivation, and
