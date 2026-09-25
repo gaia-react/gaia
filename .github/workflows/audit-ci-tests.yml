@@ -354,9 +354,6 @@ jobs:
               # path, this page's list of merges that leave the claim in place
               # against the same list in .claude/rules/issue-claim.md.
               - 'wiki/concepts/Issue Claim.md'
-              # local-janitor-wiki-doc.bats (.gaia/tests/hooks/) cross-checks
-              # this page's janitor sweep enumeration against the hook source.
-              - 'wiki/concepts/Local Working State.md'
               # doc-scope-digest-obligation.bats (.gaia/tests/lib/) requires the
               # scope-digest obligation literal under this page's step-1 heading.
               - 'wiki/concepts/Registering a Code Audit Team Member.md'

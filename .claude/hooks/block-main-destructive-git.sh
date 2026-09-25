@@ -601,8 +601,7 @@ hop_guard() {
     if [ -n "$sid" ]; then
       bc=$(gaia_gh_artifact_path "$(gaia_gh_artifact_cache_dir)" "$branch")
       # A year, not the lib's one-day default: session ids never repeat, so a
-      # match proves ownership at any age, and the janitor's retention already
-      # bounds how long the file lives.
+      # match proves ownership at any age, however long the file lives.
       [ -n "$(gaia_gh_artifact_read "$bc" "$sid" "$branch" 31536000)" ] && return 0
     fi
   fi

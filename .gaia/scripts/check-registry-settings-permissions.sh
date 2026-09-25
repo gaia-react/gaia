@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 #
-# settings.json <-> registry permission conformance check (the third of
-# D-009's enumerating copies -- after the janitor allowlists and
-# block-rm-rf's whitelist, now converted).
+# settings.json <-> registry permission conformance check (one of D-009's
+# enumerating copies -- alongside block-rm-rf's whitelist, now converted).
 #
 # .claude/settings.json is static JSON the Claude Code harness reads at
 # startup; nothing at runtime can read the registry and inject permission

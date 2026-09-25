@@ -80,7 +80,6 @@ telemetry-cost-ledger
 v2-update-notes
 version-check-lock
 wiki-promote-and-uat-write-scratch
-worktree-reap-miss-memo
 '
 
 # Frozen at initial build, one id per line, sorted -- matches

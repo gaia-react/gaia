@@ -105,7 +105,7 @@ FORENSICS_DIR="${FORENSICS_DIR:-.gaia/tests/forensics}"
 STATUSLINE_DIR="${STATUSLINE_DIR:-.gaia/tests/statusline}"
 
 # Cost floor, not correctness: a file-level sharder cannot split one file, and
-# local-janitor.bats is the heaviest file in the hooks suite (83 @test, each
+# local-janitor.bats is the heaviest file in the hooks suite (40 @test, each
 # doing a full git init plus a bare origin plus a push), so it anchors hooks-1
 # alone rather than folding into the weighted split with the rest of
 # HOOKS_DIR. An array so a future maintainer can pin a second file and add a

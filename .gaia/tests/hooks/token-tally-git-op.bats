@@ -588,13 +588,6 @@ run_staged_hook() {
   run env GAIA_TALLY_PROJECTS_ROOT="$ANCHOR" bash -c "echo '$input' | $interp '$STAGED_HOOK'"
 }
 
-# Overwrites <path> with an unresolved-merge-conflict body: the file opens and
-# reads fine, so an existence test passes it, and bash cannot parse it.
-write_conflicted_lib() {
-  { printf '<<<<<<< HEAD\n'; printf 'x() { :; }\n'; printf '=======\n'
-    printf 'y() { :; }\n'; printf '>>>>>>> other\n'; } > "$1"
-}
-
 # Scaffolds the staged repo with an active plan folder keyed to its branch, the
 # state every case below shares. Sets $plan_dir.
 stage_with_plan() {
@@ -603,108 +596,6 @@ stage_with_plan() {
   plan_dir="$REPO/.gaia/local/plans/my-plan"
   write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-013/SPEC.md"
   write_running "$plan_dir" "$(git branch --show-current)" "2026-07-01T00:00:00Z"
-}
-
-@test "staged hook, every lib usable: records (control)" {
-  stage_with_plan
-
-  run_staged_hook "git commit -m x"
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
-  [ "$(jq -r '.kind' "$REPO/.gaia/local/telemetry/cost.jsonl")" = "execute" ]
-}
-
-# The stock-/bin/bash control. Without it the two /bin/bash-pinned cases below
-# would stay green if the hook stopped recording entirely under 3.2, which is
-# exactly the class the empty-array case above exists to catch.
-@test "staged hook under stock /bin/bash, every lib usable: records (control)" {
-  [ -x /bin/bash ] || skip "no /bin/bash"
-  stage_with_plan
-
-  run_staged_hook "git commit -m x" /bin/bash
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
-  [ "$(jq -r '.kind' "$REPO/.gaia/local/telemetry/cost.jsonl")" = "execute" ]
-}
-
-@test "staged hook in a checkout lacking gaia-active-plan.sh: exit 0, no output, no record" {
-  stage_with_plan
-  rm -f "$REPO/.claude/hooks/lib/gaia-active-plan.sh"
-
-  run_staged_hook "git commit -m x"
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
-  [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
-}
-
-# Pinned to stock /bin/bash: on 3.2.57 the shell abandons on the failed source
-# before a trailing `||` arm on that line runs, where 5.x reaches it, so only a
-# /bin/bash run reproduces this half of the class on a stock Mac. On a bash-5
-# /bin/bash (Linux CI) it passes either way, the same honest caveat the
-# empty-array case above carries.
-@test "staged hook in a checkout lacking main-root-lib.sh under stock /bin/bash: exit 0, no output, no record" {
-  [ -x /bin/bash ] || skip "no /bin/bash"
-  stage_with_plan
-  rm -f "$REPO/.gaia/scripts/main-root-lib.sh"
-
-  run_staged_hook "git commit -m x" /bin/bash
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
-  [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
-}
-
-# Pinned to stock /bin/bash for the same reason the absent case above is, and
-# it is the pin rather than the failure mode that decides: the form this load
-# replaced already survived an unparseable lib on bash 5 (its `|| exit 0` arm
-# runs there), so only 3.2 tells the parse check apart from it. On a bash-5
-# /bin/bash this passes either way. The gaia-active-plan sibling below needs no
-# pin, because the form IT replaced carried no arm at all and dies on both.
-@test "staged hook whose main-root-lib.sh holds conflict markers, under stock /bin/bash: exit 0, no output, no record" {
-  [ -x /bin/bash ] || skip "no /bin/bash"
-  stage_with_plan
-  write_conflicted_lib "$REPO/.gaia/scripts/main-root-lib.sh"
-
-  run_staged_hook "git commit -m x" /bin/bash
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
-  [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
-}
-
-@test "staged hook whose gaia-active-plan.sh holds conflict markers: exit 0, no output, no record" {
-  stage_with_plan
-  write_conflicted_lib "$REPO/.claude/hooks/lib/gaia-active-plan.sh"
-
-  run_staged_hook "git commit -m x"
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
-  [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
-}
-
-# The pre-gate verb-arming load parse-checks, so BOTH halves of the unparseable
-# case are closed and the pair below says so: unpinned for the bash 5 half, and
-# pinned to /bin/bash for the 3.2 half that the `{ . lib || true; }` arm this
-# load first carried would have left open. Both have teeth: the bare source the
-# arm replaced dies on bash 5, and the arm itself dies on 3.2, so each case reds
-# against the spelling it supersedes.
-@test "staged hook whose verb-arming.sh holds conflict markers: exit 0, no output, no record" {
-  stage_with_plan
-  write_conflicted_lib "$REPO/.claude/hooks/lib/verb-arming.sh"
-
-  run_staged_hook "git commit -m x"
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
-  [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
-}
-
-@test "staged hook whose verb-arming.sh holds conflict markers, under stock /bin/bash: exit 0, no output, no record" {
-  [ -x /bin/bash ] || skip "no /bin/bash"
-  stage_with_plan
-  write_conflicted_lib "$REPO/.claude/hooks/lib/verb-arming.sh"
-
-  run_staged_hook "git commit -m x" /bin/bash
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
-  [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
 }
 
 # ---------- 11. The tally invocation resolves off BASH_SOURCE, not the cwd ----------

@@ -411,9 +411,9 @@ mutant_script() {
 # ========== 15: the SessionStart hook, sandboxed only ==========
 #
 # .claude/hooks/wiki-session-start.sh is a REAL SessionStart hook with side
-# effects on the live checkout (records HEAD, fires local-janitor.sh's nine
-# sweeps over the live .gaia/local). Every test below runs it against a
-# throwaway `git init` sandbox and never against the real repository.
+# effects on the live checkout (records HEAD, fires local-janitor.sh's
+# wiki-landing catch-up). Every test below runs it against a throwaway
+# `git init` sandbox and never against the real repository.
 
 # make_hook_sandbox: a throwaway git repo with a copy of the real prune
 # script + its lib at the sandbox's own .gaia/scripts/, exactly where the

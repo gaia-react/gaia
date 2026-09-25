@@ -58,22 +58,12 @@
 #   the literal `.<slug>.` anchor cannot straddle a key boundary or match a
 #   branch whose name merely ends in this one.
 #
-#   What bounds the read in TIME is the janitor, not the key.
-#   `.claude/hooks/local-janitor.sh` reaps `*.findings.json` off file mtime
-#   (`GAIA_AUDIT_FINDINGS_RETENTION_HOURS`, default 72, floor 24), so a branch name reused long
-#   after its first pull request merged reads only its own rounds. Inside that
-#   window a reused branch name would merge the earlier run's rounds into the
-#   later one's block, which is the honest cost of selecting on the branch: the
-#   base half could not have bounded it either, since a superseded round's base
-#   is an ancestor of HEAD exactly as this round's is.
-#
-#   The window cuts the other way too, and that direction is the likelier one:
-#   a fix loop running LONGER than the retention still loses its early rounds,
-#   because the janitor reaps off each sidecar's own mtime rather than off the
-#   branch's. So this widens the read from one round to every round still on
-#   disk, which is not the same as every round the loop ran. A block posted on a
-#   pull request older than the window carries what survived, and nothing here
-#   can tell a reader which rounds were swept.
+#   Nothing bounds the read in TIME; only the key does. A branch name reused
+#   long after its first pull request merged reads every sidecar its own name
+#   ever wrote, merging the earlier run's rounds into the later one's block.
+#   That is the honest cost of selecting on the branch: the base half could
+#   not have bounded it either, since a superseded round's base is an
+#   ancestor of HEAD exactly as this round's is.
 #
 # Output contract
 #   One stdout marker line, always. Exit 0 on EVERY path.
@@ -177,10 +167,7 @@
 #   directory for `.ok`/`.refused` files by pattern.
 #   post-audit-status.sh operates only on the single marker path an agent
 #   hands it as an argument; pr-merge-audit-check.sh reads only its own single
-#   exact digest-keyed path. local-janitor.sh DOES glob the directory, and it
-#   does sweep findings sidecars (its own `*.findings.json` arm, aged off
-#   plain file mtime), but every arm it runs selects by an exact suffix, so no
-#   arm can reap or misidentify a sidecar as a marker or a marker as a sidecar.
+#   exact digest-keyed path. Nothing else globs the audit directory.
 #
 # Bash 3.2 compatible (macOS default). Never `cd`s. jq required (fails
 # closed, matching every other digest/clearance script in this directory).

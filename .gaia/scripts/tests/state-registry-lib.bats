@@ -235,13 +235,12 @@ run_in_repo() {
   [ -z "$stdout_val" ]
 }
 
-# The keyed-shape rows are the regression rail for the defect where sweep #4
-# used to hand-roll `grep -qxF` (an exact-string test) against these paths:
+# The keyed-shape rows are the regression rail for a defect where a former
+# consumer hand-rolled `grep -qxF` (an exact-string test) against these paths:
 # a keyed per-tree child never exact-matched a bare container name, so an
 # empty red-ledger/<tree_key>/ or its .tmp scratch subdir was one rmdir away
 # from deletion. These two checks prove the glob row's SHAPE actually matches
-# a real tree-key-formed relpath via the shared matcher, independent of the
-# janitor end-to-end test in local-janitor.bats's own sweep-#4 section.
+# a real tree-key-formed relpath via the shared matcher.
 @test "gaia_registry_drop_zones: the red-ledger keyed-child glob row matches a tree-key-shaped path via _gaia_registry_pattern_matches" {
   run _gaia_registry_pattern_matches "red-ledger/3f9c2b1a4e5d6f78" "red-ledger/*" "glob"
   [ "$status" -eq 0 ]

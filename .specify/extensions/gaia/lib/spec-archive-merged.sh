@@ -31,10 +31,9 @@
 # 30; a non-numeric override falls back to 30) days have passed since the
 # row's merged_at, so a just-merged SPEC survives for review instead of
 # vanishing at merge. The gate lives here so every caller inherits it: the
-# /gaia-spec pre-flight sweep, the spec-close single-id delegate, and the
-# janitor's SessionStart sweep. --close bypasses ONLY this gate (early-reap
-# at close, once the caller has already confirmed the merge); every other
-# gate still applies.
+# /gaia-spec pre-flight sweep and the spec-close single-id delegate.
+# --close bypasses ONLY this gate (early-reap at close, once the caller has
+# already confirmed the merge); every other gate still applies.
 #
 # Consolidation gate: a folder that still holds SPEC.md or AUDIT.md with no
 # non-empty SUMMARY.md has never been through consolidation, so those layers

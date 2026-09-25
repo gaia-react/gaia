@@ -306,9 +306,9 @@ scope_advisory=0
 #
 # The never-blocking member is exempt here too, not only in the staleness arms
 # below. Its definition always passes --scope-digest "$D_SCOPE", and --read
-# prints nothing whenever the capture never ran, the audit key moved between two
-# of the member's Bash calls, or the janitor reaped the scope file -- so the
-# value it passes is EMPTY on exactly the paths the exemption exists to cover.
+# prints nothing whenever the capture never ran or the audit key moved between
+# two of the member's Bash calls -- so the value it passes is EMPTY on exactly
+# the paths the exemption exists to cover.
 # Exiting 2 here would make the one member that can never block a merge the one
 # that blocks it permanently, with no marker for the AND-aggregator to wait on.
 # A malformed value from that member therefore degrades to the not-supplied

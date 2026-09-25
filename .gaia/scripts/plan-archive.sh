@@ -25,8 +25,7 @@
 # Encapsulating the delete in a subprocess keeps the destructive rm out of
 # the caller's own tool-call stream, so the block-rm-rf.sh PreToolUse hook
 # and the settings.json permission gate never see the internal rm and cannot
-# prompt or block. Every caller (the orchestrator self-cleanup,
-# local-janitor.sh's backstop) shares this one code path.
+# prompt or block.
 #
 # Usage:
 #   plan-archive.sh <plan_dir>
@@ -34,9 +33,8 @@
 # <plan_dir> is normally a repo-relative path to the plan folder (trailing
 # slash tolerated), e.g. .gaia/local/plans/my-slug or
 # .gaia/local/specs/SPEC-NNN/plan. An absolute path under the repo root is
-# also accepted and normalized to repo-relative before matching: callers
-# that cache an absolute plan dir (the orchestrator) or iterate
-# $root-anchored absolute paths (local-janitor.sh) both hand this script an
+# also accepted and normalized to repo-relative before matching: the
+# orchestrator caches an absolute plan dir and hands this script that
 # absolute path, so refusing it would silently skip cleanup. An absolute
 # path outside the repo root is refused, as is any path not shaped like
 # .gaia/local/plans/<slug> or .gaia/local/specs/<SPEC-ID>/plan[-N].
@@ -221,8 +219,8 @@ fi
 if [ "$kind" = "specs" ]; then
   # Spec-colocated plan[-N]: delete only the subfolder, gated on the parent
   # SPEC's own consolidated SUMMARY.md existing (consolidation has consumed
-  # plan/PROGRESS.md). A cold/janitor invocation that races ahead of
-  # consolidation keeps the subfolder rather than destroying PROGRESS.md.
+  # plan/PROGRESS.md). A cold invocation that races ahead of consolidation
+  # keeps the subfolder rather than destroying PROGRESS.md.
   spec_dir="$(dirname "$source_abs")"
   spec_summary="$spec_dir/SUMMARY.md"
   summary_ok=1

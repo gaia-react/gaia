@@ -734,8 +734,8 @@ STUB
 # remit (that is what makes its increment empty) and an owned path inside it.
 # `.claude/hooks/lib/audit-clearance.sh`, which some of these members used
 # for this purpose before, is now a GLOBAL RULE (it resets every member's
-# per-member base), so `.claude/hooks/local-janitor.sh` replaces it. That file
-# is NOT ownerless: `audit_owner_for_path` resolves it to
+# per-member base), so `.claude/hooks/block-selfheal-paths.sh` replaces it.
+# That file is NOT ownerless: `audit_owner_for_path` resolves it to
 # code-audit-maintainer-shell. It is outside the remit of every member probed
 # with it, and inside the remit of the one member that is not, which is why the
 # shell probe reaches for `.github/workflows/code-review-audit.yml` instead.
@@ -818,9 +818,9 @@ probe_deadlock() {
   probe_deadlock code-audit-maintainer-shell \
     ".claude/rules/fixture-rule.md" ".github/workflows/code-review-audit.yml"
   probe_deadlock code-audit-github-workflows \
-    ".github/workflows/fixture-ci.yml" ".claude/hooks/local-janitor.sh"
+    ".github/workflows/fixture-ci.yml" ".claude/hooks/block-selfheal-paths.sh"
   probe_deadlock code-audit-maintainer-node \
-    ".gaia/cli/src/fixture.ts" ".claude/hooks/local-janitor.sh"
+    ".gaia/cli/src/fixture.ts" ".claude/hooks/block-selfheal-paths.sh"
 }
 
 @test "deadlock: each specialist's self-skip prose is wired to the whole-PR list" {

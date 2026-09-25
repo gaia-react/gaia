@@ -80,8 +80,9 @@ classes above are a floor, not a checklist to copy verbatim.
   directory listing, for the split-brain question.
 - `.gaia/manifest.json`, cross-checked against the live filesystem, for
   stale references.
-- `.claude/hooks/local-janitor.sh` for what is and isn't covered by existing
-  cleanup automation (don't re-flag what it already handles).
+- `.gaia/scripts/plan-archive.sh` and the `.specify/extensions/gaia/lib/*-archive-*.sh`
+  scripts for what is and isn't covered by existing cleanup automation (don't
+  re-flag what they already handle).
 
 ## Output
 

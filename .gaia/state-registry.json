@@ -35,7 +35,7 @@
       "keyed_by": "content digest over the files the audited member owns (per member)",
       "why": "A clearance marker attests a Code Audit Team member reviewed content; in git the tree is the content, so the key is the content, and the symlinked drop zone lets one gate judge every checkout's markers.",
       "writer": "code",
-      "reaped_by": "orphaned audit markers sweep",
+      "reaped_by": null,
       "source": "SPEC-061 §shared"
     },
     {
@@ -47,7 +47,7 @@
       "keyed_by": "base-sha plus branch, computed by gaia_audit_key (.gaia/scripts/audit-key-lib.sh); base-sha alone collides across worktrees cut from one main tip",
       "why": "Co-written into the symlinked audit store; the branch discriminator is the missing partition that keeps two trees' findings from overwriting each other.",
       "writer": "code",
-      "reaped_by": "orphaned audit markers sweep",
+      "reaped_by": null,
       "source": "SPEC-061 §shared"
     },
     {
@@ -59,7 +59,7 @@
       "keyed_by": "base-sha plus branch, computed by gaia_audit_key (.gaia/scripts/audit-key-lib.sh), plus the member -- the same partition the findings sidecar uses, and for the same reason (base-sha alone collides across worktrees cut from one main tip)",
       "why": "The scope-time digest a Code Audit Team member attests to, written where the member resolves its review scope (.gaia/scripts/audit-scope-digest.sh --capture) and read back where it writes its clearance (--read), so the marker cannot attest content that moved under the review.",
       "writer": "code",
-      "reaped_by": "orphaned audit markers sweep",
+      "reaped_by": null,
       "source": "SPEC-077 §shared"
     },
     {
@@ -71,7 +71,7 @@
       "keyed_by": "tree sha",
       "why": "A CI-observability breadcrumb written by the frontend audit and read by the CI print step, keyed by the tree sha and never re-keyed as a clearance.",
       "writer": "code",
-      "reaped_by": "orphaned audit markers sweep",
+      "reaped_by": null,
       "source": "SPEC-061 §shared"
     },
     {
@@ -215,7 +215,7 @@
       "keyed_by": null,
       "why": "The plan folder stays in the main checkout by contract; worktree-mode orchestrators write PROGRESS.md back to main.",
       "writer": "code",
-      "reaped_by": "plan archive sweep",
+      "reaped_by": null,
       "source": "SPEC-061 §main-only"
     },
     {
@@ -227,7 +227,7 @@
       "keyed_by": null,
       "why": "A PR-capture written under main's cache for the merge flow, main-anchored not per-tree, and partitioned per-branch in the filename (cache/gh-artifact-pr.<branch-slug>.json) so two worktrees opening PRs concurrently no longer share one unkeyed last-writer-wins file. Still main-only rather than shared: worktrees reach this file by resolving main's root, they are never given their own linked copy, so keyed_by stays null per the schema's rule and the key shows up in `path` instead.",
       "writer": "code",
-      "reaped_by": "stale cache sweep",
+      "reaped_by": null,
       "source": "SPEC-061 §main-only"
     },
     {
@@ -237,9 +237,9 @@
       "kind": "file",
       "scope": "main-only",
       "keyed_by": null,
-      "why": "The residue triage command's derived read cache (per-pull-request attribution and resolved cited lines, keyed by pull-request number and head sha) and its resumable per-run cursor. Derived state, never a record: a cold cache reproduces the same candidate list. Main-only rather than shared, so keyed_by stays null per the schema's rule and the two concrete filenames show up in `path` instead. Named `residual`, not `residue`: this registry's own top-level `residue` array names an unrelated concept, orphaned machine-local state reaped by the janitor.",
+      "why": "The residue triage command's derived read cache (per-pull-request attribution and resolved cited lines, keyed by pull-request number and head sha) and its resumable per-run cursor. Derived state, never a record: a cold cache reproduces the same candidate list. Main-only rather than shared, so keyed_by stays null per the schema's rule and the two concrete filenames show up in `path` instead. Named `residual`, not `residue`: this registry's own top-level `residue` array names an unrelated concept, orphaned machine-local state with no automatic reaper.",
       "writer": "code",
-      "reaped_by": "stale cache sweep",
+      "reaped_by": null,
       "source": "SPEC-081 §main-only"
     },
     {
@@ -251,20 +251,8 @@
       "keyed_by": null,
       "why": "The pre-merge audit gate's per-session round counter, deliberately resolved to main and keyed by session id, so the count follows one session across a tree switch and a fresh session starts a fresh three.",
       "writer": "code",
-      "reaped_by": "stale cache sweep",
+      "reaped_by": null,
       "source": "PLAN-020 §main-only, applied to the pre-merge audit gate's per-session round counter"
-    },
-    {
-      "id": "worktree-reap-miss-memo",
-      "path": "cache/worktree-reap-misses.txt|cache/worktree-reap-misses.txt.*.tmp",
-      "match": "glob",
-      "kind": "file",
-      "scope": "main-only",
-      "keyed_by": null,
-      "why": "The orphaned-worktree reap's record of which candidates a completed upstream scan already declined, one line per candidate under the branch tip and origin/<base> tip that produced the answer. Main-anchored because worktrees register in main and the sweep resolves main before reading them. The .tmp alternative is the same-directory staging name the rewrite renames from, so a concurrent sweep never reports it as an unrecognized cache child.",
-      "writer": "code",
-      "reaped_by": "orphaned worktree reap sweep, which rewrites the file from each run's own misses",
-      "source": "SPEC-061 §main-only, applied to a later main-anchored coordination store"
     },
     {
       "id": "project-id",
@@ -335,7 +323,7 @@
       "keyed_by": null,
       "why": "The live in-flight SPEC draft, its pre-dispatch retry snapshots, and the gate-1 drift-detection snapshot for one authoring session; keyed by spec id, deleted at canonical save or on discard.",
       "writer": "code",
-      "reaped_by": "stale cache sweep",
+      "reaped_by": null,
       "source": "SPEC-061 §ephemeral"
     },
     {
@@ -347,7 +335,7 @@
       "keyed_by": null,
       "why": "Per-tree session shape (start time, Socratic question-ceiling counter) for one SPEC-authoring session; the holder's own working state, keyed by spec id, stays where it is written.",
       "writer": "code",
-      "reaped_by": "stale cache sweep",
+      "reaped_by": null,
       "source": "SPEC-061 §ephemeral"
     },
     {
@@ -359,7 +347,7 @@
       "keyed_by": null,
       "why": "The session-host liveness lock for one SPEC-authoring session; deliberately resolved to main so the cross-tree mutex is reachable from both trees, keyed by spec id.",
       "writer": "code",
-      "reaped_by": "stale cache sweep",
+      "reaped_by": null,
       "source": "SPEC-061 §ephemeral"
     },
     {
@@ -371,7 +359,7 @@
       "keyed_by": null,
       "why": "Self-review and adversarial-audit scratch (per-lens findings, refutation verdicts, coverage log) for one in-progress SPEC-authoring session; keyed by spec id, deleted at canonical save or discard.",
       "writer": "code",
-      "reaped_by": "stale cache sweep",
+      "reaped_by": null,
       "source": "SPEC-061 §ephemeral"
     },
     {
@@ -383,7 +371,7 @@
       "keyed_by": null,
       "why": "One Code Audit Team member's private working copy for the one kind of evidence that needs real bytes on disk: breaking a construct a guard names to establish the guard is not hollow. Each child is keyed by audit key plus member name, because every member of one parallel wave resolves the same audit key and it is the member half that keeps two co-dispatched members from overwriting each other's tree. Minted and released by .gaia/scripts/audit-scratch-dir.sh.",
       "writer": "code",
-      "reaped_by": "stale cache sweep",
+      "reaped_by": null,
       "source": "gaia-react/gaia#1447, added after the frozen classification"
     },
     {
@@ -419,7 +407,7 @@
       "keyed_by": null,
       "why": "gaia-react-perf measurement run output, keyed by run id.",
       "writer": "code",
-      "reaped_by": "stale cache sweep",
+      "reaped_by": null,
       "source": "SPEC-061 §ephemeral"
     },
     {
@@ -464,7 +452,7 @@
       "id": "mentorship-config",
       "path": "mentorship.json",
       "match": "exact",
-      "why": "Opt-in config for the removed mentorship feature. Not on the janitor's outlier allowlist, so a stray one is also eventually reaped by the outlier sweep.",
+      "why": "Opt-in config for the removed mentorship feature; a stray one has no reaper.",
       "writer": "none-residue"
     },
     {
@@ -492,7 +480,7 @@
       "id": "audit-carried-markers-residue",
       "path": "audit/*.carried",
       "match": "glob",
-      "why": "Residue pattern from a deleted carry-forward feature; no current writer anywhere in the codebase, reaped unconditionally by the outlier sweep if one is ever found.",
+      "why": "Residue pattern from a deleted carry-forward feature; no current writer anywhere in the codebase, and no reaper if one is ever found.",
       "writer": "none-residue"
     },
     {

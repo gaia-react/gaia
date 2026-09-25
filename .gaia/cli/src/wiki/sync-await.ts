@@ -84,8 +84,7 @@ const safeOutput = (value: null | string | undefined): string => value ?? '';
  * Non-numeric falls back to the default; a below-floor numeric override is
  * raised to the floor; `0` is special-cased BEFORE the clamp so the opt-out
  * is real. Mirrors the janitor's shipped clamp idiom for
- * `GAIA_AUDIT_FINDINGS_RETENTION_HOURS` and `GAIA_CACHE_ARTIFACT_RETENTION_DAYS`
- * (`.claude/hooks/local-janitor.sh`).
+ * `GAIA_WIKI_FETCH_TIMEOUT_SECONDS` (`.claude/hooks/local-janitor.sh`).
  *
  * Trimmed once, up front, so a whitespace-padded override (`' 0 '`) is
  * recognized as the opt-out instead of falling through to `Number(' 0 ')`
@@ -312,7 +311,7 @@ type CleanUpAndReportMergedOptions = {
 /**
  * Gate the local catch-up on HEAD already sitting on base, the same
  * precondition the janitor's own fast-forward requires
- * (`.claude/hooks/local-janitor.sh` sweep #1d). `discoverBranch` only
+ * (`.claude/hooks/local-janitor.sh`, step d). `discoverBranch` only
  * excludes the branch HEAD is currently on, not every other branch, so a
  * merged-but-not-yet-reaped `wiki-sync/*` branch can be discovered while
  * HEAD sits on a third, unrelated branch. Switching the checkout in that

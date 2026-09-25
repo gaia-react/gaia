@@ -159,8 +159,8 @@ while IFS= read -r spec_id; do
   # never happen: unlike the merged path, which GUARDS on this flag
   # (skip-and-let-close-drain), there is no close to drain it here, so it is
   # purged rather than left to orphan (nothing else ever reaps
-  # wiki-promote/, see local-janitor.sh sweep #9's allowlist). Best-effort
-  # and fail-open, matching the rest of this script's contract.
+  # wiki-promote/). Best-effort and fail-open, matching the rest of this
+  # script's contract.
   local_cache="${repo_root}/.gaia/local/cache"
   rm -f "${local_cache}/gate1-${spec_id}.json" \
         "${local_cache}/draft-${spec_id}.md" \

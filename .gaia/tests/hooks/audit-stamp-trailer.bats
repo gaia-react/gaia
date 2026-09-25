@@ -140,7 +140,7 @@ install_resolver() {
 # OWN content digest (owned files + machinery, computed via digest_of, NOT the
 # tree). code-audit-frontend is infix-free (<digest>.ok); a specialized member
 # carries a ".<member>" infix (<digest>.<member>.ok). `tree` stays in the body
-# as a plain data field (janitor liveness only), never the validity key.
+# as a plain data field (scanned by resolve-audit-base.sh only), never the validity key.
 write_marker() {
   local member="$1" digest tree sha path sidecar
   digest=$(digest_of "$REPO" "$member")
