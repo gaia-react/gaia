@@ -361,7 +361,7 @@ run_write_hook_edit() {
   hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Read")' block-env-read.sh
 }
 
-@test "settings.json registers block-env-read.sh for both tools it binds (UAT-008)" {
+@test "settings.json registers block-env-read.sh on the Bash|Monitor matcher (UAT-008)" {
   hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor")' block-env-read.sh
 }
 

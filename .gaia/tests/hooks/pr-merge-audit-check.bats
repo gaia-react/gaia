@@ -2565,10 +2565,9 @@ run_merge_hook_lib_absent() {
 }
 
 # Every test above invokes the hook by path, so all of them stay green on a
-# registration narrowed back to one tool, with the gate inert for the other in
-# every real session. This is the only assertion that reads the file deciding
-# which tool calls reach the hook at all.
+# registration that no longer names the hook at all. This is the only
+# assertion that reads the file deciding which tool calls reach the hook.
 
-@test "the hook is registered in settings.json for both tools it binds" {
+@test "the hook is registered in settings.json on the Bash|Monitor matcher" {
   hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor")' pr-merge-audit-check.sh
 }

@@ -90,8 +90,7 @@
 # The templates render into an ADOPTER's CI, where a status read the author
 # expected to run is skipped on a machine neither this repo's review nor the
 # adopter's ever watches. That is this class one distribution hop further out,
-# and it is the same reason the sibling run-interpolation and grep-escape gates
-# scan them.
+# and it is the same reason the sibling run-interpolation gate scans them.
 #
 # `.gaia/cli/templates/workflows/` is a build artifact copied from `src/` by
 # `bundle:adopter` and is deliberately NOT scanned, so no hit is reported twice
