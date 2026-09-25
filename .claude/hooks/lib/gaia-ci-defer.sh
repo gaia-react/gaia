@@ -20,33 +20,7 @@
 
 gaia_ci_defer_if_managed() {
   local config_key="$1"
-
-  # The config is a tracked file belonging to the ACTING TREE, so it is
-  # resolved rather than named relative to the process working directory. A
-  # caller reached from a subdirectory -- wiki-commit-nudge.sh is one, gated
-  # only by `git rev-parse --is-inside-work-tree`, true at any depth -- would
-  # otherwise miss the file and take the absent-config default. That default
-  # fails toward RUNNING, so a tool the operator put in `ci` mode fires its
-  # local trigger anyway, with output byte-identical to having no config at
-  # all: there is nothing in the result to read the miss off.
-  #
-  # Resolved inside the function body, never at source time, so this lib keeps
-  # its no-side-effects-on-source contract; lib/red-ledger.sh's
-  # red_ledger_path resolves on the same terms. Every failure along the chain
-  # returns the caller to "not managed", which is this function's existing
-  # posture for an unreadable config, and the chain's last step is `pwd`, what
-  # the bare literal named before.
-  local self_dir tree_root
-  self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || return 0
-  # shellcheck source=/dev/null
-  . "$self_dir/../../../.gaia/scripts/main-root-lib.sh" 2>/dev/null || true
-  tree_root=''
-  if type gaia_resolve_tree_root >/dev/null 2>&1; then
-    tree_root="$(gaia_resolve_tree_root 2>/dev/null)" || tree_root=''
-  fi
-  [ -n "$tree_root" ] || tree_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-
-  local config_path="$tree_root/.gaia/automation.json"
+  local config_path=".gaia/automation.json"
 
   [ -f "$config_path" ] || return 0
   command -v jq >/dev/null 2>&1 || return 0

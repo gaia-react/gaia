@@ -41,7 +41,6 @@ setup() {
 .claude/hooks/pr-merge-audit-check.sh
 .claude/hooks/post-audit-status.sh
 .claude/hooks/audit-stamp-trailer.sh
-.claude/hooks/local-janitor.sh
 .claude/hooks/block-selfheal-paths.sh
 .github/audit/resolve-audit-base.sh
 .github/audit/audit-success-present.sh

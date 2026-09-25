@@ -34,56 +34,6 @@ count_autocommits() {
 # Tranche 3 -- CONVERT
 # ---------------------------------------------------------------------------
 
-@test "C3-01: janitor spares a live peer tree" {
-  MAIN="$(gaia_new_main gaia-c301-main)"
-  gaia_copy_real "$MAIN" \
-    .gaia/scripts/main-root-lib.sh \
-    .gaia/scripts/state-registry-lib.sh \
-    .gaia/scripts/link-worktree.sh \
-    .claude/hooks/local-janitor.sh
-  gaia_copy_registry "$MAIN"
-  gaia_commit_all "$MAIN" "add janitor deps"
-
-  ORIGIN="$(gaia_mk_tmp gaia-c301-origin)"
-  git init -q --bare "$ORIGIN"
-  git -C "$MAIN" remote add origin "$ORIGIN"
-
-  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
-  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
-
-  # treeB's branch upstream is pushed then deleted remotely: the same
-  # provable-death signal the reaper uses for wiki-sync/* branches. treeB is
-  # otherwise LIVE: it carries an active plan RUNNING sentinel, GAIA's own
-  # in-progress marker, in its own (gitignored, per-tree) .gaia/local.
-  git -C "$B" push -q -u origin treeB
-  git -C "$B" push -q origin --delete treeB
-  git -C "$B" fetch -q --prune
-
-  mkdir -p "$B/.gaia/local/plans/PLAN-999"
-  {
-    printf 'branch: treeB\n'
-    printf 'status: RUNNING\n'
-  } > "$B/.gaia/local/plans/PLAN-999/RUNNING"
-
-  # treeA needs its own .gaia/local present (a real worktree gets one from
-  # link-worktree.sh at creation), or the janitor's own local_dir guard exits
-  # before ever reaching the worktree-reap sweep.
-  gaia_link_worktree "$A"
-
-  run run_in "$A" -- bash "$MAIN/.claude/hooks/local-janitor.sh"
-  [ "$status" -eq 0 ]
-
-  # Target: treeB, a live peer (a RUNNING plan in flight), survives a
-  # session-start janitor run fired from treeA -- the live_trees set the
-  # reaper's own liveness test relies on covers every live worktree, and no
-  # live tree's state is swept. Today the reaper's only liveness test is
-  # git-level ([gone] upstream + a clean working tree; a RUNNING sentinel is
-  # gitignored and invisible to `git status`), so it deletes treeB's whole
-  # worktree -- including the RUNNING plan -- out from under the live session.
-  [ -d "$B" ] || return 1
-  [ -f "$B/.gaia/local/plans/PLAN-999/RUNNING" ]
-}
-
 @test "C3-02: write-guard attributes by payload cwd" {
   MAIN="$(gaia_new_main gaia-c302-main)"
   gaia_copy_real "$MAIN" \
@@ -1099,69 +1049,22 @@ test("adds two numbers c407", () => {
   # assertion changes). This drove GAIA's own create-worktree.sh twice on one
   # name and watched the peer. That creator is gone, so the harm it guarded
   # moved rather than disappeared, and this scenario follows it to where it
-  # now lives. Both halves below are hermetic and both can regress; the
-  # harness's own collision behaviour is NOT asserted here, because a bats
-  # fixture cannot drive it -- that half is the phase gate's live trial, run
-  # and recorded, and the README says so rather than implying this row covers
-  # it.
+  # now lives. The harness's own collision behaviour is NOT asserted here,
+  # because a bats fixture cannot drive it -- that half is the phase gate's
+  # live trial, run and recorded, and the README says so rather than
+  # implying this row covers it.
 
-  # ---- half 1: GAIA does not interpose a creator that could delete a peer.
-  # The shipped settings register no WorktreeCreate and no WorktreeRemove, so
-  # no GAIA code adjudicates a collision at all. This is the half that can
-  # silently come back: re-registering either hook restores exactly the class
-  # of defect the deletion removed, and nothing else in the suite would notice.
-  # Read from the REAL settings.json, not a fixture, because the claim is about
-  # what GAIA ships.
+  # GAIA does not interpose a creator that could delete a peer. The shipped
+  # settings register no WorktreeCreate and no WorktreeRemove, so no GAIA
+  # code adjudicates a collision at all. This is the half that can silently
+  # come back: re-registering either hook restores exactly the class of
+  # defect the deletion removed, and nothing else in the suite would notice.
+  # Read from the REAL settings.json, not a fixture, because the claim is
+  # about what GAIA ships.
   settings="$GAIA_REPO_ROOT_REAL/.claude/settings.json"
   [ -f "$settings" ]
   [ "$(jq -r 'has("hooks") and (.hooks | has("WorktreeCreate"))' "$settings")" = "false" ]
   [ "$(jq -r 'has("hooks") and (.hooks | has("WorktreeRemove"))' "$settings")" = "false" ]
-
-  # ---- half 2: the one place GAIA still removes a worktree spares a peer's
-  # uncommitted work. The janitor's reap sweep owns teardown now, so it is the
-  # only shipped code left that can delete someone's tree, and this task is
-  # what moved that teardown into it. C3-01 covers the sweep's OTHER spare-arm
-  # (a live RUNNING plan sentinel); this covers the arm that carries the
-  # original harm -- irreplaceable uncommitted work destroyed by a reaper that
-  # judged the tree dead.
-  MAIN="$(gaia_new_main gaia-c601-main)"
-  gaia_copy_real "$MAIN" \
-    .gaia/scripts/link-worktree.sh \
-    .gaia/scripts/main-root-lib.sh \
-    .gaia/scripts/state-registry-lib.sh \
-    .claude/hooks/local-janitor.sh
-  gaia_copy_registry "$MAIN"
-  gaia_commit_all "$MAIN" "add janitor deps"
-
-  ORIGIN="$(gaia_mk_tmp gaia-c601-origin)"
-  git init -q --bare "$ORIGIN"
-  git -C "$MAIN" remote add origin "$ORIGIN"
-
-  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
-  B="$(gaia_add_worktree "$MAIN" "debt/collide" "worktree-debt/collide")"
-
-  # treeB reads provably dead to every git-level signal the reaper has: its
-  # upstream is pushed then deleted remotely, so the branch tracks [gone].
-  git -C "$B" push -q -u origin "worktree-debt/collide"
-  git -C "$B" push -q origin --delete "worktree-debt/collide"
-  git -C "$B" fetch -q --prune
-
-  # ...and it holds real, valuable, uncommitted work. That is the ONLY thing
-  # standing between it and the reaper.
-  echo irreplaceable > "$B/uncommitted.txt"
-  git -C "$B" add -A
-
-  # treeA needs its own .gaia/local present or the janitor's local_dir guard
-  # exits before the worktree-reap sweep is ever reached (same as C3-01).
-  gaia_link_worktree "$A"
-
-  run run_in "$A" -- bash "$MAIN/.claude/hooks/local-janitor.sh"
-  [ "$status" -eq 0 ]
-
-  # Target: the peer, and its uncommitted work, survive.
-  [ -d "$B" ] || return 1
-  [ -f "$B/uncommitted.txt" ] || return 1
-  grep -qxF irreplaceable "$B/uncommitted.txt"
 }
 
 @test "C6-02: provisioning self-heals on re-entry" {

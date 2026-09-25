@@ -8,7 +8,7 @@ Interactive and human-gated. Promote is one question per entry and never auto-ad
 
 ## Naming disambiguation
 
-This tree spends the word "residue" on a second meaning: orphaned machine-local state the janitor reaps, carried by the `residue` array in `.gaia/state-registry.json`. That is a different thing from what this command drains. The audit sense this command triages is always spelled "residual": a residual is one keyed entry recorded under a canonical heading in a merged pull request's body. The collision is confined to maintainer-internal registry vocabulary and shadows nothing a user types, but any prose where both senses could be read together disambiguates explicitly, the way this paragraph does.
+This tree spends the word "residue" on a second meaning: orphaned machine-local state, carried by the `residue` array in `.gaia/state-registry.json`. That is a different thing from what this command drains. The audit sense this command triages is always spelled "residual": a residual is one keyed entry recorded under a canonical heading in a merged pull request's body. The collision is confined to maintainer-internal registry vocabulary and shadows nothing a user types, but any prose where both senses could be read together disambiguates explicitly, the way this paragraph does.
 
 ## Argument parsing
 

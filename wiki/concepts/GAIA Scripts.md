@@ -37,7 +37,7 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 | `audit-respawn-lib.sh` | no | sourced | Shared reader and writer for the audit re-spawn ledger. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `audit-respawn-prune.sh` | no | `wiki-session-start.sh` hook | Prunes aged rows out of the re-spawn ledger. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `audit-respawn-report.sh` | no | by hand | Attribution query over the re-spawn ledger: which member was re-spawned, and against what. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
-| `audit-scope-digest.sh` | yes | agent definitions, `local-janitor.sh` hook, CI | Carries a member's own content digest between scope resolution and clearance write, the two Bash calls that must agree. |
+| `audit-scope-digest.sh` | yes | agent definitions, CI | Carries a member's own content digest between scope resolution and clearance write, the two Bash calls that must agree. |
 | `audit-scratch-dir.sh` | yes | agent definitions | Hands a member a per-run scratch directory when it needs real bytes on disk. |
 | `audit-window-lib.sh` | yes | sourced | Shared derivation of the audit window a run is accounted against. |
 | `audit-write-clearance.sh` | yes | agent definitions, CI | The one writer for every Code Audit Team clearance marker. |
@@ -56,7 +56,7 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 | `check-hook-scope-manifest.sh` | yes | GAIA's own invariant harness (maintainer-side) | Scans every hook for a `.gaia/local` path built without a resolved root. |
 | `check-main-root-derivation.sh` | no | GAIA's own invariant harness | Catches a hand-rolled main-checkout derivation inlined into a consumer that declares no resolver at all. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `check-registry-completeness.sh` | no | GAIA's own invariant harness | Reconciles the state registry against the frozen inventory denominator. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
-| `check-registry-runtime.sh` | yes | GAIA's own invariant harness (maintainer-side) | Reconciles the state registry against the runtime directory it describes. |
+| `check-registry-runtime.sh` | yes | manual | Reconciles the state registry against the runtime directory it describes. |
 | `check-registry-settings-permissions.sh` | yes | GAIA's own invariant harness (maintainer-side) | Reconciles `.claude/settings.json` permissions against the state registry. |
 | `check-registry-source-literals.sh` | no | GAIA's own invariant harness | Reconciles the state registry against the path literals tracked source actually spells. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `check-resolver-singleton.sh` | no | GAIA's own invariant harness | Asserts one canonical main-checkout resolver per language, never a second definition. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
@@ -127,11 +127,11 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 | `guard-awk-lib.sh` | no | sourced | Shared awk scaffolding the guard lints build their detectors on. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `hook-registration-lib.sh` | no | sourced | The shared read of `.claude/settings.json`'s registrations, and the oracle for whether a registered hook can stop a tool call. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `ledger-path-lib.sh` | yes | sourced | The one definition of every main-checkout ledger path, so renaming one changes one place. |
-| `ledger-status-migrate.sh` | yes | `local-janitor.sh` hook | One-time, idempotent migration of spec and plan ledger rows onto the unified status vocabulary. |
+| `ledger-status-migrate.sh` | yes | manual | One-time, idempotent migration of spec and plan ledger rows onto the unified status vocabulary. |
 | `link-worktree.sh` | yes | `provision-worktree.sh` hook, `/setup-gaia` | Lays the shared-state symlinks a linked worktree needs. |
 | `main-only-lib.sh` | yes | the main-only skills | Refusal helper for a flow that must run in the main checkout, never a linked worktree. |
 | `main-root-lib.sh` | yes | sourced by most hooks and scripts | GAIA's shared main-checkout resolver: the one answer to which checkout am I in. |
-| `plan-archive.sh` | yes | `local-janitor.sh` hook, the plan-close flows | Reduces or deletes a merged plan folder. |
+| `plan-archive.sh` | yes | the orchestrator self-cleanup | Reduces or deletes a merged plan folder. |
 | `plan-resume-point.sh` | yes | `/gaia-plan` | Deterministic phase-level resume point for a plan picked up mid-flight. |
 | `post-findings-block.sh` | yes | agent definitions, `post-findings-block-on-merge.sh` hook | Merges every dispatched member's findings sidecar into one machine-readable block and posts it on the pull request. |
 | `pr-wait-merge.sh` | yes | the merge workflow, `/gaia-release`, every flow that merges | The merge wait: polls a pull request to `MERGED` and exits early on every state that means it never will. |

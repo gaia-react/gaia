@@ -8,15 +8,10 @@
 GIT_DIR=$(git rev-parse --git-dir 2>/dev/null) || exit 0
 git rev-parse HEAD > "$GIT_DIR/claude-session-start" 2>/dev/null || true
 
-# Both scripts below are located from this file's own directory, never from the
-# process working directory: each existence test guards a silent side effect, so
-# a session started anywhere under the repository root would skip both with
-# nothing to say the residue was never swept.
 _hook_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || exit 0
 
-# Bounded GC of .gaia/local working-state residue (orphaned audit markers,
-# completed-but-unswept plan dirs, stray empty dirs). Side-effect only; never
-# blocks the session. See local-janitor.sh for the provable-death contract.
+# Runs the wiki-landing catch-up (a merged wiki-sync branch's local reap and
+# base fast-forward). Side-effect only; never blocks the session.
 [ -f "$_hook_dir/local-janitor.sh" ] && bash "$_hook_dir/local-janitor.sh" || true
 
 # gaia:maintainer-only:start

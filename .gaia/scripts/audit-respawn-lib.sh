@@ -107,8 +107,7 @@
 #   condition is measured over at least one month of accumulated
 #   breadcrumbs, and the registry entry's `reaped_by` promises a sweep whose
 #   retention outlasts that window, so no override may shorten it below one
-#   month. Floor-clamping mirrors the janitor's existing knobs
-#   (GAIA_AUDIT_FINDINGS_RETENTION_HOURS, GAIA_CACHE_ARTIFACT_RETENTION_DAYS).
+#   month.
 #
 # gaia_respawn_max_records
 #   Prints the line cap, default-then-floor, same rule: 20000 when

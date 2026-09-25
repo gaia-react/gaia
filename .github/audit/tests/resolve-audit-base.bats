@@ -802,7 +802,7 @@ assert_global_reset_for() {
 @test "merely-shared machinery resets nobody in the member form" {
   add_commit a
   base="$(stamp_anchor)"
-  commit_append ".claude/hooks/local-janitor.sh"
+  commit_append ".claude/hooks/block-selfheal-paths.sh"
   commit_append ".github/workflows/code-review-audit.yml"
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
@@ -1407,7 +1407,7 @@ assert_degraded_with_unparseable() {
 @test "reason token: machinery-reset" {
   add_commit a
   stamp_anchor >/dev/null
-  commit_append ".claude/hooks/local-janitor.sh"
+  commit_append ".claude/hooks/block-selfheal-paths.sh"
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
   grep -qF "reason=machinery-reset" <<<"$stderr"

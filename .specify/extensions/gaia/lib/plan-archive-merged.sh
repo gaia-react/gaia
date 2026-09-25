@@ -35,10 +35,9 @@
 # 30; a non-numeric override falls back to 30) days have passed since the
 # row's merged_at, the SAME single knob spec-archive-merged.sh reads, so a
 # just-merged plan survives for review instead of vanishing at merge. The
-# gate lives here so every caller inherits it: the janitor's SessionStart
-# sweep and the plan-close single-id delegate. --close bypasses ONLY this
-# gate (early-reap at close, once the caller has already confirmed the
-# merge); every other gate still applies.
+# gate lives here so its caller, the plan-close single-id delegate, inherits
+# it. --close bypasses ONLY this gate (early-reap at close, once the caller
+# has already confirmed the merge); every other gate still applies.
 #
 # Consolidation gate: a folder that still holds SPEC.md or AUDIT.md with no
 # non-empty SUMMARY.md has never been through consolidation, so those layers

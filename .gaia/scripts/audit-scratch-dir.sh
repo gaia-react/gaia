@@ -31,12 +31,10 @@
 #   <main_root>/.gaia/local/cache/mutation-scratch/<audit-key>.<member>/
 #
 # Registered as `audit-mutation-scratch` in .gaia/state-registry.json
-# (cache/mutation-scratch/, prefix, dir, ephemeral). Two reapers, in that
-# order of preference: gaia_audit_scratch_release, which a member calls when
-# it is done, and the janitor's stale cache sweep
-# (.claude/hooks/local-janitor.sh sweep #5b), which ages out a directory a
-# member died before releasing. The release path is the real one; the sweep is
-# the backstop for a member that never got there.
+# (cache/mutation-scratch/, prefix, dir, ephemeral). Reaped by
+# gaia_audit_scratch_release, which a member calls when it is done. A
+# directory left behind by a member that died before releasing has no other
+# reaper.
 #
 # Every function below prints nothing and returns 0 when it cannot resolve a
 # path, the same fail-open rule audit-key-lib.sh and gh-artifact-lib.sh

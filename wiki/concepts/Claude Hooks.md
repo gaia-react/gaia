@@ -57,7 +57,7 @@ The sourced libraries under `.claude/hooks/lib/` are deliberately absent. They a
 | `debt-sentinel-touch.sh` | PostToolUse (Bash) | Arms the debt-count staleness sentinel after a `gh` command that mutates the backlog. |
 | `debt-session-reconcile.sh` | SessionStart (startup\|resume) | Reconciles a shown `Run /gaia-debt` nudge against the live backlog. |
 | `issue-claim-release.sh` | PostToolUse (Bash) | Strips the `in-progress` claim from every issue a merged pull request closes. |
-| `local-janitor.sh` | Invoked by path from `wiki-session-start.sh`; also runnable on its own | Bounded garbage collection and reconciliation over GAIA's local working state. |
+| `local-janitor.sh` | Invoked by path from `wiki-session-start.sh`; also runnable on its own | Reaps a merged-and-gone local wiki-sync branch and fast-forwards base to catch up a wiki landing. |
 | `post-audit-status.sh` | Invoked by path by the orchestrating session, after every member is dispositioned | Posts the `GAIA-Audit` commit status on HEAD. |
 | `post-findings-block-on-merge.sh` | PreToolUse (Bash) | Posts the machine-readable findings block on a local-mode merge, so it counts toward the recurrence tally. Never blocks. |
 | `pr-merge-audit-check.sh` | PreToolUse (Bash, Monitor) | Blocks `gh pr merge` until every dispatched Code Audit Team member has written its clearance marker. |

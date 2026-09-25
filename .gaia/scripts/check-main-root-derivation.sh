@@ -35,11 +35,9 @@
 #      reader (`head -1`, `head -n 1`, `sed -n '1p'`, `awk 'NR==1'`, and
 #      close spellings) within two lines. Assumes the first porcelain
 #      record is main, which happens to be true but is not how anything
-#      else in this repo answers "where is main". The two real call sites
-#      (.claude/hooks/local-janitor.sh) already resolve main FIRST via the
-#      shared resolver and then parse the FULL porcelain stream through an
-#      awk state machine, not a first-line grab, so this shape does not
-#      false-fire on them.
+#      else in this repo answers "where is main". No tracked source pipes
+#      the porcelain stream this way today, so this ingredient currently has
+#      nothing to exempt.
 #
 # NOT covered, and known not to be:
 #

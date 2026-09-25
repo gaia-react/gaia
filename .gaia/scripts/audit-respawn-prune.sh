@@ -63,8 +63,7 @@
 #   audit-respawn-prune.sh [<root>] [--help|-h]
 #
 # <root> defaults to the current tree's own toplevel (git rev-parse
-# --show-toplevel) when omitted -- the same call the janitor uses for its own
-# .gaia/local walks. A linked worktree's .gaia/local is one wholesale symlink
+# --show-toplevel) when omitted. A linked worktree's .gaia/local is one wholesale symlink
 # to the main checkout's (.gaia/scripts/link-worktree.sh), so this reaches
 # the single shared ledger from every tree without a separate main-root
 # derivation.
@@ -180,8 +179,8 @@ keep_nums="$(
 )"
 
 tmp="$(mktemp "${ledger}.XXXXXX" 2>/dev/null)" || exit 0
-# Nothing else reaps a stray sibling: the janitor's outlier sweep never enters
-# telemetry/, and the ledger's registry entry matches an exact path. An
+# Nothing else reaps a stray sibling, and the ledger's registry entry matches
+# an exact path. An
 # interrupt between here and the mv would otherwise leave one behind for good.
 #
 # Three arms, not one shared arm. Bash resumes at the point of interruption once

@@ -6,7 +6,7 @@
 # Reads .gaia/state-registry.json, the one classification of every
 # .gaia/local entry, transcribed by hand into the tracked file. This
 # library is the ONLY place that parses the registry; every consumer (link
-# twins, the janitor, conformance checks) calls these functions instead of
+# twins, write guards, conformance checks) calls these functions instead of
 # re-reading or hand-restating the registry's shape. Dual-mode, mirroring
 # .gaia/scripts/main-root-lib.sh: source it for the reader functions below, or
 # run it directly as a script.
@@ -61,14 +61,14 @@
 # gaia_registry_drop_zones
 #   Prints, one per line in registry order as `path<TAB>match` (match one of
 #   "exact"/"glob"/"prefix"), the .gaia/local-relative structural directories
-#   the janitor's empty-dir sweep must preserve even when momentarily empty
+#   a caller pruning empty dirs must preserve even when momentarily empty
 #   (the drop_zones the registry declares). A caller tests each empty dir's
 #   relpath against these rows via _gaia_registry_pattern_matches -- the same
 #   matcher gaia_registry_recognizes/gaia_registry_classify use -- never a
 #   hand-rolled string test, so a keyed per-tree child (e.g.
 #   red-ledger/<tree_key>/, declared as a glob row) is recognized alongside a
-#   bare literal container. Derived from the registry, never hardcoded in the
-#   janitor. Prints nothing and returns 1 when the registry cannot be read
+#   bare literal container. Derived from the registry, never hardcoded in a
+#   caller. Prints nothing and returns 1 when the registry cannot be read
 #   (see gaia_registry_path), so a caller failing to read the list keeps
 #   every empty dir rather than rmdir a structural directory it could not
 #   classify.
@@ -97,7 +97,7 @@
 #   opposite of a deny guard's safe-empty default.
 #
 # gaia_registry_recognizes <relpath> <type: f|d>
-#   The janitor's "may I reap this?" predicate. Exit 0 ("recognized",
+#   A "may I reap this?" predicate. Exit 0 ("recognized",
 #   never reap) when <relpath> (a .gaia/local-relative child path) matches
 #   a live entry OR a residue-block entry, by that entry's own `match` rule.
 #   Exit 1 ("unknown") only when the registry was read successfully and
@@ -106,8 +106,8 @@
 #   cannot be located/read, this returns 0 (recognized), never 1. A caller
 #   that cannot classify a child must never reap it -- an unreadable
 #   registry is exactly the case this registry's report-not-delete rule exists
-#   to protect, and failing shut here would turn a broken registry into an
-#   outlier-reap trigger, the opposite of the intended safety property.
+#   to protect, and failing shut here would turn a broken registry into a
+#   false reap license, the opposite of the intended safety property.
 #   Residue entries are checked before live entries, so a residue leaf
 #   nested under a live subtree (cache/shared/coaching-active.txt under the
 #   live cache/shared/ prefix) is reported as residue, not as a live match.
@@ -117,8 +117,8 @@
 #   recognized when it is an ancestor of a registered entry (the bare
 #   audit/, cache/, debt/, telemetry/, harden/, audit/security/ containers
 #   hold classified children even though the bare directory has no row of its
-#   own). Without this the janitor and the runtime check would report every
-#   legitimate container as unknown on every session. A file is never a
+#   own). Without this a caller would report every legitimate container as
+#   unknown on every session. A file is never a
 #   container, so this applies to <type> d (and the untyped case) only.
 #
 # gaia_registry_classify <relpath>
@@ -182,9 +182,7 @@ gaia_registry_path() {
 }
 
 # _gaia_registry_pattern_matches <relpath> <pattern> <matchtype>
-# Core matcher shared by gaia_registry_recognizes / gaia_registry_classify,
-# and called directly by local-janitor.sh's sweep #4 (after sourcing this
-# file) against each `path`/`match` row gaia_registry_drop_zones hands back.
+# Core matcher shared by gaia_registry_recognizes / gaia_registry_classify.
 # <pattern> may be a "|"-joined set of alternatives; each is tested
 # independently under <matchtype> ("exact" | "glob" | "prefix"), per the
 # convention documented at the top of this file. Returns 0 on the first
@@ -297,11 +295,11 @@ gaia_registry_recognizes() {
   # Ancestor recognition. A directory that is not itself an entry is still
   # recognized when it is an ANCESTOR of a registered entry: .gaia/local/audit
   # holds classified children (audit/*.ok, ...) even though the bare directory
-  # is not its own row. Without this, the janitor's outlier sweep and the
-  # runtime conformance check would report every legitimate container
-  # (audit/, cache/, debt/, telemetry/, harden/, audit/security/) as
-  # unrecognized on every session. A file is never a container, so this
-  # applies to a directory (and the untyped case) only.
+  # is not its own row. Without this, the runtime conformance check would
+  # report every legitimate container (audit/, cache/, debt/, telemetry/,
+  # harden/, audit/security/) as unrecognized on every session. A file is
+  # never a container, so this applies to a directory (and the untyped case)
+  # only.
   if [ "$reqtype" != f ]; then
     if jq -e --arg pre "$relpath/" '
       [ (.entries[], .residue[]).path | split("|")[] ] | any(.[]; startswith($pre))
