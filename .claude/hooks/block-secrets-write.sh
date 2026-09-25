@@ -107,10 +107,8 @@ trim_value() {
 }
 
 # secret_shaped <text>: 0 when the text carries a run of 13+ alphanumerics
-# mixing letters and digits. A placeholder segment is bounded at 12 and prose
-# does not take that shape, so this is the same structural rule the placeholder
-# arms use, applied to text that is not a value. Its honest limit: an all-letter
-# secret clears it, and so does anything under 13 characters.
+# mixing letters and digits. Prose does not take that shape. Its honest limit:
+# an all-letter secret clears it, and so does anything under 13 characters.
 #
 # The consumer is fed by process substitution rather than sitting at the end of
 # a pipe, because under `pipefail` the pipeline's status IS this function's
@@ -124,8 +122,9 @@ secret_shaped() {
 }
 
 # value_allowed <value>: 0 when the value carries no literal secret. Every arm
-# is a shape heuristic, not a proof, and each has to mean "the value is WHOLLY
-# this shape" rather than "the value starts or ends like it".
+# is a shape heuristic, not a proof. The your-/fake-/dummy-/example prefix
+# arms match the start of the value and admit any tail; the other arms match
+# the whole value.
 #
 # `$(mint_key)` and `$(echo <a-literal-secret>)` are the same shape, so the
 # substitution arm admits both; separating them needs reading the command, and
@@ -159,8 +158,7 @@ value_allowed() {
   # placeholder does. The all-references arm needs no bound at all, since a
   # value made only of references contains no literal to hide one in.
   #
-  # The path arm carries the SAME per-segment bound the placeholder arms use,
-  # for the same reason they use it. Requiring the literal to open with `/` or
+  # The path arm bounds each segment. Requiring the literal to open with `/` or
   # `.` bounds only where the tail starts, not how long it runs, so on its own
   # the separator would unlock the whole character set a secret is written in:
   # `${X}/sk-live-…` is one segment, not a path. Bounding each segment keeps

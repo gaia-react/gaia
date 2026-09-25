@@ -28,9 +28,8 @@
 # Scope: the guard adjudicates "does this target resolve into the acting tree",
 # denying any write whose target lands in a different checkout -- the main
 # checkout (gaia-react/gaia#841's own case) or a sibling linked worktree. The acting tree is the
-# worktree the payload cwd names; the target's own tree is compared against it,
-# so the question is answered from that one authoritative identity, not from main
-# alone. This is the defense-in-depth role isolation.md contracts: deny an
+# one the hook process cwd sits in; the target's own tree is compared against
+# it, not against main alone. This is the defense-in-depth role isolation.md contracts: deny an
 # Edit/Write/MultiEdit whose file_path resolves to a different worktree than
 # RESOLVED_ROOT.
 #
