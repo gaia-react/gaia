@@ -119,36 +119,8 @@ jobs:
           # contains tracked files (no .DS_Store, node_modules, build
           # artifacts, etc.), then filter out paths matched by
           # .gaia/release-exclude.
-          #
-          # Discovery runs through the shared boundary rather than inline,
-          # because the NUL-to-newline conversion this list needs is lossy for
-          # exactly one input and the loss is not always loud. `-z` stops git
-          # C-quoting a path carrying a non-ASCII byte under its default
-          # `core.quotePath`; translating back to newlines then splits a path
-          # holding a literal newline into two records that name no file.
-          # rsync exits 23 on a `--files-from` name that does not exist, which
-          # under this `bash -e` step aborts the release, but it exits 0
-          # whenever every name it is handed happens to exist, and the tarball
-          # then publishes without the file while `.gaia/manifest.json` records
-          # it as shipping. list-tracked-paths.sh refuses that input outright,
-          # naming the path, and fails closed on the discovery by reading git's
-          # own exit status directly, which is what the pipefail subshell here
-          # was standing in for before the pipe went away (#1669).
-          #
-          # The two failure arms get different annotations because they send a
-          # maintainer to different places, and the annotation panel is a
-          # surface the script's stderr never reaches. Exit 1 is a tracked path
-          # that needs renaming. Everything else is the boundary failing rather
-          # than refusing, and the second arm names the boundary rather than any
-          # one of its several causes, because it cannot tell them apart and the
-          # stderr line directly above it already can.
-          rc=0
-          bash .gaia/scripts/list-tracked-paths.sh . /tmp/all-tracked.txt || rc=$?
-          if [ "$rc" -eq 1 ]; then
-            echo "::error::a tracked path holds a literal newline; see the diagnostic above" >&2
-            exit 1
-          elif [ "$rc" -ne 0 ]; then
-            echo "::error::tracked-path discovery boundary failed (exit $rc); see the diagnostic above" >&2
+          if ! (set -o pipefail; git -c core.quotepath=false ls-files -z | tr '\0' '\n' > /tmp/all-tracked.txt); then
+            echo "::error::tracked-path discovery failed" >&2
             exit 1
           fi
           # The maintainer CLI is the single compiler of .gaia/release-exclude
@@ -175,9 +147,8 @@ jobs:
           # tarball — not only the independently re-staged distribution-gate
           # tree. Reuses the exclude regex compiled above.
           #
-          # The assertion lives in a script rather than inline, on the same
-          # ground the tracked-path boundary above does: this gate's failing
-          # state has to be observable, and the shape it replaces read a failed
+          # The assertion lives in a script rather than inline: this gate's
+          # failing state has to be observable, and the shape it replaces read a failed
           # or partial scan as "nothing leaked" (#2061) with nothing in the
           # repository going red when the scan did not happen. A `run:` body can
           # be driven from a suite here, through a helper that extracts the step

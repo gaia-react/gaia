@@ -49,7 +49,7 @@ END { gaia_scan_end(file, is_bats, "stub-guard", 0, 1) }
 '
 
 if [ "$#" -eq 0 ]; then
-  gaia_guard_bats_files stub-guard || exit $?
+  gaia_guard_bats_files stub-guard || exit 1
   set -- ${GAIA_GUARD_BATS_FILES[@]+"${GAIA_GUARD_BATS_FILES[@]}"}
 fi
 

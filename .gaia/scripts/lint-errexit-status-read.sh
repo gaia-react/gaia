@@ -1097,7 +1097,7 @@ yaml_files=(${GAIA_GUARD_SCAN_FILES[@]+"${GAIA_GUARD_SCAN_FILES[@]}"})
 # Deliberately its own call rather than a set folded into the ones above: an
 # operator whose discovery broke needs to know WHICH surface came back empty,
 # and each call's message names only the sets that call asked for.
-gaia_guard_bats_files lint-errexit-status-read || exit $?
+gaia_guard_bats_files lint-errexit-status-read || exit 1
 
 report=""
 for f in ${sh_files[@]+"${sh_files[@]}"}; do

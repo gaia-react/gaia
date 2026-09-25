@@ -118,7 +118,6 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 | Script | Ships | Invoker | What it is |
 |---|---|---|---|
 | `append-audit-author.sh` | yes | `/setup-gaia` | Writes one `login=mode` pair into the audit config's author knob without clobbering other entries. |
-| `archived-backlog-migrate.sh` | yes | by hand, once | One-time, human-gated removal of the pre-existing archived spec and plan backlog. |
 | `assert-no-release-leak.sh` | no | `release.yml` | Proves no release-excluded path survived into the tree that becomes the tarball. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `awk-interp-lib.sh` | no | sourced | Resolves `GAIA_AWK`, the sanctioned awk interpreter (mawk or BWK one-true-awk) the awk-tokenizer guards run under. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `bats5.sh` | yes | the bats runners | Runs bats under a bash 5 when one is available, so local matches CI. |
@@ -127,14 +126,11 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 | `gh-artifact-lib.sh` | yes | sourced | Shared breadcrumb for the GitHub pull request a run produced. |
 | `guard-awk-lib.sh` | no | sourced | Shared awk scaffolding the guard lints build their detectors on. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `hook-registration-lib.sh` | no | sourced | The shared read of `.claude/settings.json`'s registrations, and the oracle for whether a registered hook can stop a tool call. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
-| `knowledge-audit-clean.sh` | yes | `/gaia-audit` | Confirms a zero-action knowledge-audit report covered every store before it may skip the decision gate. |
 | `ledger-path-lib.sh` | yes | sourced | The one definition of every main-checkout ledger path, so renaming one changes one place. |
 | `ledger-status-migrate.sh` | yes | `local-janitor.sh` hook | One-time, idempotent migration of spec and plan ledger rows onto the unified status vocabulary. |
 | `link-worktree.sh` | yes | `provision-worktree.sh` hook, `/setup-gaia` | Lays the shared-state symlinks a linked worktree needs. |
-| `list-tracked-paths.sh` | no | `release.yml` | The one boundary where release staging turns git's NUL-delimited tracked set into the newline-delimited list its consumers read. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `main-only-lib.sh` | yes | the main-only skills | Refusal helper for a flow that must run in the main checkout, never a linked worktree. |
 | `main-root-lib.sh` | yes | sourced by most hooks and scripts | GAIA's shared main-checkout resolver: the one answer to which checkout am I in. |
-| `mentorship-cleanup-sweep.sh` | yes | `local-janitor.sh` hook | One-time, idempotent destruction of the mentorship residue a checkout carries. |
 | `plan-archive.sh` | yes | `local-janitor.sh` hook, the plan-close flows | Reduces or deletes a merged plan folder. |
 | `plan-resume-point.sh` | yes | `/gaia-plan` | Deterministic phase-level resume point for a plan picked up mid-flight. |
 | `post-findings-block.sh` | yes | agent definitions, `post-findings-block-on-merge.sh` hook | Merges every dispatched member's findings sidecar into one machine-readable block and posts it on the pull request. |
