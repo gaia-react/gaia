@@ -34,8 +34,8 @@ if ! type gaia_require_jq >/dev/null 2>&1; then
   exit 2
 fi
 gaia_require_jq 'the manifest write guard' "$payload" tool_input 'manifest.json'
-# The GAIA_MANIFEST_WRITE= exemption is not read here: with no jq the segment
-# walk that honours it cannot run, so a legitimate writer refuses too.
+# The GAIA_MANIFEST_WRITE= exemption is not read here: with no jq the command
+# that would carry it cannot be read, so a legitimate writer refuses too.
 
 tool_name=$(jq -r '.tool_name // empty' <<<"$payload")
 
