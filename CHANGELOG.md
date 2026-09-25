@@ -510,7 +510,7 @@ A release change that requires the adopter to act, run a command or hand-migrate
 - the static capability-declaration oracle for hooks and scripts (`.gaia/hook-capabilities.json`, `.gaia/script-capabilities.json`) and its checkers. It was review-time legibility with no run-time effect. (#2239)
 - `.github/audit/check-trailer.sh` and the code-review audit workflow's trailer-match skip, plus its per-push advisory PR status comment and `.github/audit/cra-status-upsert.sh`. The skip was a CI-mode cost saving the default mode never reached, and the comment only restated the `GAIA-Audit` status. A drifted adopter workflow still calling either script fails that step loudly; re-render it with `/update-gaia`.
 - three always-loaded rules, `.claude/rules/dep-audit.md`, `.claude/rules/knip.md` and `.claude/rules/instruction-files.md`. Each only pointed at guidance that already lives where it is used (the audit agent, the dependency skill, the wiki and the release scrub check), so they cost context on every session for nothing. `/update-gaia` offers to remove them.
-- `.specify/extensions/gaia/rules/smoke.md`, a convention note on where GAIA files its own `/gaia-spec` test runbooks. It governed only maintainer-only directories that adopter projects never receive.
+- `.specify/extensions/gaia/rules/smoke.md`, a convention note on where GAIA files its own `/gaia-spec` test runbooks. It governed only maintainer-only directories that adopter projects never receive. (#2266)
 
 ### Fixed
 
