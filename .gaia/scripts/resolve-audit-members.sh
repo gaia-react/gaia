@@ -191,13 +191,6 @@ audit_scope_init "$repo_root"
 # same reason, since a member that skips while membership still demands its
 # marker deadlocks the merge.
 #
-# The eligibility set the machinery-waive abuse-check reads
-# (.claude/hooks/lib/audit-dispositions.sh) reaches the opposite answer from
-# this same principle, and the difference is a property of the consumer rather
-# than of the derivation: there a wider set WAIVES more findings into prose
-# instead of filing them, so wide is the loose direction and that set scopes to
-# the pull request's own base. The two are not accidentally different.
-#
 # The anchor is supplied to the shared resolver as an explicit `default-branch`
 # argument here, rather than being implicit in a private merge-base chain, so
 # a narrowing to `pr-record` shows up as a diff to this literal rather than as

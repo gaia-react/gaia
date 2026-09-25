@@ -274,20 +274,6 @@ fi
 # shellcheck source=/dev/null
 . "$_provenance_lib"
 
-# The shared disposition-ledger logic (disposition_offenders). C4 re-verifies
-# code-audit-frontend's dispositions whenever its own earned digest marker is
-# valid, so a still-open receipt that seed-forward carried across a digest
-# rotation without re-verifying it against the backend is still caught here.
-# Loaded lazily here, after the early exits, resolved from this hook's own
-# on-disk location. An absent lib is NOT fail-closed: the re-check below
-# simply cannot run (every call site guards on `command -v
-# disposition_offenders`), the gate still demands every dispatched member's
-# own clearance regardless.
-if [ -f "$_lib_dir/audit-dispositions.sh" ]; then
-  # shellcheck source=/dev/null
-  . "$_lib_dir/audit-dispositions.sh"
-fi
-
 # Resolve HEAD SHA. If we cannot (no git, detached state we can't read),
 # fall back to permissive: this hook only enforces in repos where git answers.
 sha=$(git rev-parse HEAD 2>/dev/null || true)
@@ -1166,104 +1152,6 @@ frontend_cleared() {
   return 1
 }
 
-# _gate_frontend_disposition_denial: when code-audit-frontend's OWN earned
-# digest marker is valid (regardless of whether a trailer/status/bypass signal
-# is what ultimately clears the merge), re-verify its disposition sidecar.
-# Seed-forward unions a still-open receipt across a digest rotation without
-# re-verifying it against the backend, so this hook is the deterministic
-# backstop: a filed key whose issue no longer exists, a pending(definitive)
-# entry, or a machinery_waived entry recorded against a path that is neither
-# gate machinery nor a file this pull request changes, denies. Fail closed
-# when the marker is valid but its sidecar is absent (a valid marker proves
-# nothing about dispositions with no sidecar to read). Prints the deny JSON
-# and returns 1 on denial; returns 0 (silent) when there is nothing to deny.
-_gate_frontend_disposition_denial() {
-  clearance_member_cleared "$root" "$frontend_digest" code-audit-frontend || return 0
-
-  local sidecar reason offenders offender_list notes note_block
-  sidecar="$root/.gaia/local/audit/${frontend_digest}.dispositions.json"
-
-  if [ ! -f "$sidecar" ]; then
-    reason="PR merge gate: code-audit-frontend's clearance marker is valid for HEAD ${sha:0:12}, but its disposition sidecar (${sidecar}) is absent.
-
-A valid earned marker with no matching sidecar cannot prove its out-of-scope
-findings were dispositioned, so this denies rather than assume none exist.
-Re-spawn the code-audit-frontend agent on this HEAD so it re-files its
-disposition sidecar, then retry gh pr merge.
-
-See wiki/concepts/PR Merge Workflow.md for the full contract."
-    jq -n --arg r "$reason$gate_arm_note" '{
-      hookSpecificOutput: {
-        hookEventName: "PreToolUse",
-        permissionDecision: "deny",
-        permissionDecisionReason: $r
-      }
-    }'
-    return 1
-  fi
-
-  command -v disposition_offenders >/dev/null 2>&1 || return 0
-  offenders="$(disposition_offenders "$sidecar" "$tree_root" 2>/dev/null || true)"
-
-  notes=""
-  if command -v disposition_notes >/dev/null 2>&1; then
-    notes="$(disposition_notes "$sidecar" "$tree_root" 2>/dev/null || true)"
-  fi
-  note_block=""
-  if [ -n "$notes" ] && command -v disposition_note_block >/dev/null 2>&1; then
-    note_block="$(disposition_note_block "$notes")"
-  fi
-  if [ -n "$note_block" ]; then
-    printf '%s\n' "$note_block" >&2
-  fi
-
-  [ -n "$offenders" ] || return 0
-
-  offender_list=$(printf '%s' "$offenders" | sed 's/^/  - /')
-  reason="PR merge gate: code-audit-frontend's disposition sidecar names a finding that does not hold for HEAD ${sha:0:12}.
-
-Offending finding key(s):
-
-${offender_list}
-
-A filed tech-debt issue named in the sidecar no longer exists, a
-pending(definitive) entry remains, or a machinery-waived-not-eligible entry
-names a path that is neither gate machinery nor a file this pull request
-already changes.
-
-To unblock a filed-but-missing or pending(definitive) offender, re-spawn the
-code-audit-frontend agent on this HEAD so it re-files the missing disposition,
-then retry gh pr merge.
-
-To unblock a machinery-waived-not-eligible offender:
-  1. If the pull request should still be changing that file and a plain revert
-     commit dropped it from the diff, restore the change and retry. The
-     eligibility set is the fork point against HEAD, and HEAD moves.
-  2. Otherwise the finding is ordinary out-of-scope debt and takes its normal
-     filing path: delete the stale entry from ${sidecar} (gitignored working
-     state; no other file records it) and re-run the audit so it is filed as a
-     tech-debt issue.
-  3. Re-running the member with the entry in place reproduces the same waive
-     and the same denial.
-
-See wiki/concepts/PR Merge Workflow.md for the full contract."
-
-  if [ -n "$note_block" ]; then
-    reason="${reason}
-
-${note_block}"
-  fi
-
-  jq -n --arg r "$reason$gate_arm_note" '{
-    hookSpecificOutput: {
-      hookEventName: "PreToolUse",
-      permissionDecision: "deny",
-      permissionDecisionReason: $r
-    }
-  }'
-  return 1
-}
-
 # --- Dispatch: resolve the Code Audit Team member set for this diff ---------
 #
 # Anchored on $tree_root, the ACTING tree: who must clear is a property of the
@@ -1322,12 +1210,7 @@ if [ -z "$members" ]; then
   # than check_out_of_scope_pr's denylist, so an ownerless-but-in-scope file
   # (root Makefile, public/**, ...) still denies here without a marker.
   if frontend_cleared; then
-    # Binding first, disposition second: both print a deny payload of their own
-    # and this hook emits at most one, so the guard that can refuse the permit
-    # outright runs before the one that inspects what the permit rests on.
-    if gate_permit_binds_to_named_pr; then
-      _gate_frontend_disposition_denial
-    fi
+    gate_permit_binds_to_named_pr
     exit 0
   fi
 
@@ -1477,10 +1360,7 @@ while IFS= read -r m; do
 done <<< "$members"
 
 if [ "$all_cleared" -eq 1 ]; then
-  # Same order, and for the same reason, as the legacy permit site above.
-  if gate_permit_binds_to_named_pr; then
-    _gate_frontend_disposition_denial
-  fi
+  gate_permit_binds_to_named_pr
   exit 0
 fi
 

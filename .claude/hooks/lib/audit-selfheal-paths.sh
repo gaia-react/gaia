@@ -65,7 +65,7 @@
 # tracked file, and being gitignored it never appears in the CI push gate's
 # diff, so the carve-out is a no-op on that consumer and only frees the local
 # hook's per-attempt check. Refusing it would block the very sidecars this
-# team writes and, via the disposition backstop, deadlock the merge gate.
+# team writes.
 # Everything else under .gaia/ (including a sibling like .gaia/localfoo/)
 # stays refused.
 #

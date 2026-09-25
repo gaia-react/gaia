@@ -176,12 +176,11 @@
 #   as, a marker by VALUE. Direction two: no marker reader globs the audit
 #   directory for `.ok`/`.refused` files by pattern.
 #   post-audit-status.sh operates only on the single marker path an agent
-#   hands it as an argument; pr-merge-audit-check.sh and
-#   audit-disposition-check.sh read only their own single exact digest-keyed
-#   path. local-janitor.sh DOES glob the directory, and it does sweep
-#   findings sidecars (its own `*.findings.json` arm, aged off plain file
-#   mtime), but every arm it runs selects by an exact suffix, so no arm can
-#   reap or misidentify a sidecar as a marker or a marker as a sidecar.
+#   hands it as an argument; pr-merge-audit-check.sh reads only its own single
+#   exact digest-keyed path. local-janitor.sh DOES glob the directory, and it
+#   does sweep findings sidecars (its own `*.findings.json` arm, aged off
+#   plain file mtime), but every arm it runs selects by an exact suffix, so no
+#   arm can reap or misidentify a sidecar as a marker or a marker as a sidecar.
 #
 # Bash 3.2 compatible (macOS default). Never `cd`s. jq required (fails
 # closed, matching every other digest/clearance script in this directory).

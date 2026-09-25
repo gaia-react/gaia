@@ -192,7 +192,7 @@ deny_reason() {
 # state is `local`, so the two calls cannot leak boundary or interpreter state
 # into each other.
 scan_exec_positions() {
-  local prev_sep=1 after_interp=0 after_interp_env=0 cand exec_pos skip
+  local prev_sep=1 after_interp=0 cand exec_pos skip
 
   for cand in "$@"; do
     # strip_quotes, inlined: bash 3.2 copies the caller's positional list on
@@ -213,11 +213,6 @@ scan_exec_positions() {
         -c) ;;
         -*) skip=1 ;;
       esac
-      if [ "$skip" -eq 0 ] && [ "$after_interp_env" -eq 1 ]; then
-        case "$cand" in
-          [A-Za-z_]*=*) skip=1 ;;
-        esac
-      fi
       if [ "$skip" -eq 0 ]; then
         exec_pos=1
         after_interp=0
@@ -231,13 +226,8 @@ scan_exec_positions() {
           ;;
       esac
       case "$cand" in
-        bash | sh | zsh | nohup)
+        bash | sh | zsh)
           after_interp=1
-          after_interp_env=0
-          ;;
-        env)
-          after_interp=1
-          after_interp_env=1
           ;;
       esac
     fi
@@ -489,13 +479,12 @@ case "$tool_name" in
     #
     # Matched only at an EXECUTION position: token 0, a token immediately
     # following a `;` / `&&` / `||` / `|` separator, or -- after an
-    # interpreter-like token (bash, sh, zsh, env, nohup) -- the first
-    # following token that is neither a `-`-prefixed option nor (after `env`)
-    # a `VAR=VALUE` assignment, so `sh -x <writer>`, `bash --norc <writer>`,
-    # `env FOO=1 <writer>`, and `nohup <writer>` all deny. `-c` is never
-    # treated as a skippable option: its argument is a quoted script STRING
-    # this whitespace tokenizer cannot safely parse, so `bash -c '<writer>'`
-    # is a stated, out-of-scope gap. A backtick-quoted invocation is a second
+    # interpreter-like token (bash, sh, zsh) -- the first following token that
+    # is not a `-`-prefixed option, so `sh -x <writer>` and
+    # `bash --norc <writer>` both deny. `-c` is never treated as a skippable
+    # option: its argument is a quoted script STRING this whitespace tokenizer
+    # cannot safely parse, so `bash -c '<writer>'` is a stated, out-of-scope
+    # gap. A backtick-quoted invocation is a second
     # stated gap, and deliberately not closed the way the brackets below are:
     # a backtick is common inside ordinary quoted prose (a commit message
     # naming a script), so padding it would false-deny commands that write
@@ -649,10 +638,6 @@ case "$tool_name" in
       i=$((i + 1))
     done
 
-    exit 0
-    ;;
-
-  *)
     exit 0
     ;;
 esac

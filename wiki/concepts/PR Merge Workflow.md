@@ -335,46 +335,13 @@ Every waived finding is listed in the pull request body under the heading `## Ou
 
 The changed-file set is the `ELIG_CHANGED` lines `.claude/agents/code-audit-frontend.md`'s scope-resolver command prints under `--eligibility` (`.gaia/scripts/audit-resolve-scope.sh`); it is never the member's TS/TSX-filtered review-scope set, which excludes every surface this rule exists for.
 
-The gate-machinery set is whatever `audit_path_is_machinery` (`.claude/hooks/lib/audit-machinery.sh`) accepts, the same classifier both merge gates apply when they re-verify the waive, so the orchestrator and the gates read one definition of gate machinery rather than two.
-
-**Recording a waive.** The abuse-check both merge gates run reads the disposition-ledger sidecar, so a waive not recorded there is invisible to both gates, and the orchestrator writes it directly. Two roots: the sidecar is main-anchored shared state, and the digest is computed over the acting tree whose HEAD is being merged.
-
-```bash
-main_root="$(bash .gaia/scripts/main-root-lib.sh)"
-tree_root="$(git rev-parse --show-toplevel)"
-digest="$(bash .gaia/scripts/audit-member-digest.sh --root "$tree_root" --member code-audit-frontend)"
-sidecar="$main_root/.gaia/local/audit/${digest}.dispositions.json"
-```
-
-The orchestrator writes the entry after the final Code Audit Team member clearance and before `gh pr merge`, so the digest it keys to is the one the gates read, and re-applies it after every round in which HEAD moves: a content change rotates the digest, and the seed-forward union carries forward only `filed` and `pending(definitive)` entries, so a `machinery_waived` entry lives exactly one digest and has no re-deriver but the orchestrator.
-
-It is a read-modify-write, never an overwrite. The default member owns this file, and its `filed` receipts and its `backend` field live in it.
-
-- Absent → create `{"schema":1,"sha":"<tree_root HEAD sha>","branch":"<tree_root current branch>","backend":"present","findings":[]}`.
-- Present → leave `backend` and every existing entry exactly as they are, and set `.sha` to the acting tree's HEAD sha and `.branch` to its current branch (`git -C "$tree_root" symbolic-ref --quiet --short HEAD`, empty on a detached HEAD); those two are what bind a waive to the pull request under judgment, so the writer that adds an entry is the writer that stamps them.
-- Append an entry only when no existing entry carries the same `key`; an existing entry always wins.
-- Write atomically: a temp file in the sidecar's own directory, then `mv`.
-
-The entry uses the existing schema, with no new fields:
-
-```json
-{ "key": "v1 class=<finding_class> path=<repo-relative-posix-path> line=<int>",
-  "severity": "critical|important|suggestion",
-  "security_class": false,
-  "disposition": "machinery_waived" }
-```
-
-`issue_number` and `pending_reason` stay unset.
-
-The sidecar is named by the default member's content digest, which does not rotate for a diff that touches nothing that member owns and no gate machinery, so one file can be read while judging several consecutive pull requests. Both gates read the recorded `branch` and `sha`: an entry whose sidecar belongs to a different pull request is set aside rather than judged against a diff it was never about, and the gate says so out loud. `branch` is the decisive half, because a pull request squash-merged with `--delete-branch` leaves a head reachable from no ref, which no test over `sha` alone can tell from this branch's own rewritten-away commit. That is why the stamp above is not optional.
-
-The orchestrator is trusted rather than bounded here, and this is a member-error guard, not a security boundary: it removes members' write access to files outside their own domain and hands that same access to the orchestrator. What makes that reasonable is stated rather than assumed: under local mode a human watches every turn the orchestrator takes, which is not true of a member dispatched inside a CI job. A bad orchestrator repair is caught by human review of the pull request and by nothing else.
+The gate-machinery set is whatever `audit_path_is_machinery` (`.claude/hooks/lib/audit-machinery.sh`) accepts.
 
 ### 3. Marker handshake
 
 #### Marker key
 
-Every clearance is written by the **one shared writer** (`.gaia/scripts/audit-write-clearance.sh`); no member hand-writes a marker file. Given the audited root, the writer derives the member's **content digest**, a sha256 over exactly the files that member owns plus the shared gate machinery (plus the in-scope-but-ownerless paths, for the default member; see [[Code Audit Team#Ownership classifier]]), through the digest engine (`.claude/hooks/lib/audit-digest.sh`), resolves HEAD's real tree and commit sha as plain data fields, then writes the body atomically. The body carries a version, `schema: 4`, the audited `member`, a `provenance` (`earned` or `refused` only, there is no carried family), the `digest` (the validity key), `tree` and `sha` (data only, used by the janitor's live-tree keep-arm, never compared for validity), `audited_at`, and two sidecar flags. `sidecar` answers "does this member file a findings sidecar, its report of record": every member does, so it is always true. `dispositions_sidecar` answers "does it file the out-of-scope disposition sidecar the merge gate's backstop reads": only the default member does. Two flags because there are two sidecars, and one field cannot answer for both; reading `sidecar` as the disposition flag was wrong for every member but the default one, and a wrong answer there reads as "this refusal carries no report", which is the state that makes a refusal look unrepairable. `schema` is informational, no reader validates it, so a marker written under the previous contract still validates unchanged. The gate's reader (`clearance_acceptable`) accepts a clearance only when it is **well-formed**: the body parses, its recorded `digest` matches the filename key, its `member` matches, and its `provenance` is `earned`; a file that exists but fails that check is neither cleared nor missing, the gate reports it as present but invalid and asks for a re-run. This is a well-formedness check, not an authenticity one, it raises the bar a hand-written marker has to clear; it does not by itself prove who wrote a given file. `jq` is required for every digest-keyed predicate; with `jq` absent every check returns false (fail-closed), it never degrades to a bare-existence match.
+Every clearance is written by the **one shared writer** (`.gaia/scripts/audit-write-clearance.sh`); no member hand-writes a marker file. Given the audited root, the writer derives the member's **content digest**, a sha256 over exactly the files that member owns plus the shared gate machinery (plus the in-scope-but-ownerless paths, for the default member; see [[Code Audit Team#Ownership classifier]]), through the digest engine (`.claude/hooks/lib/audit-digest.sh`), resolves HEAD's real tree and commit sha as plain data fields, then writes the body atomically. The body carries a version, `schema: 4`, the audited `member`, a `provenance` (`earned` or `refused` only, there is no carried family), the `digest` (the validity key), `tree` and `sha` (data only, used by the janitor's live-tree keep-arm, never compared for validity), `audited_at`, and two sidecar flags. `sidecar` answers "does this member file a findings sidecar, its report of record": every member does, so it is always true. `dispositions_sidecar` answers "does it file the out-of-scope disposition sidecar": only the default member does. Two flags because there are two sidecars, and one field cannot answer for both; reading `sidecar` as the disposition flag was wrong for every member but the default one, and a wrong answer there reads as "this refusal carries no report", which is the state that makes a refusal look unrepairable. `schema` is informational, no reader validates it, so a marker written under the previous contract still validates unchanged. The gate's reader (`clearance_acceptable`) accepts a clearance only when it is **well-formed**: the body parses, its recorded `digest` matches the filename key, its `member` matches, and its `provenance` is `earned`; a file that exists but fails that check is neither cleared nor missing, the gate reports it as present but invalid and asks for a re-run. This is a well-formedness check, not an authenticity one, it raises the bar a hand-written marker has to clear; it does not by itself prove who wrote a given file. `jq` is required for every digest-keyed predicate; with `jq` absent every check returns false (fail-closed), it never degrades to a bare-existence match.
 
 Provenance gets its own filename, not just a body field:
 
@@ -435,8 +402,6 @@ When CI self-heals (the audit modifies a file and pushes the fix), the workflow 
 
 A clean pass requires no Critical Issues, every Important Issue addressed, and every Suggestion either auto-fixed or resolved by the operator. Those three preconditions govern **in-scope** findings (defects inside the PR's changed line ranges). A **fourth precondition** governs out-of-scope findings: every out-of-scope finding the audit identifies within its review radius must carry a disposition before the marker writes, a filed `tech-debt` issue, a diverted security advisory or operator surface, or a backend-absent waive. The marker is withheld only on a genuinely-missing disposition (a present, writable backend where a filing definitively failed); backend-absent, transient, and diverted findings all fail open. Knip, react-doctor, and dependency-CVE (`pnpm audit`) advisories remain advisory and never block signal emission. See [[Audit Disposition and Debt Fix]] for the full disposition contract.
 
-The deterministic backstop hook `.claude/hooks/audit-disposition-check.sh` gates `gh pr merge` alongside `pr-merge-audit-check.sh`: it re-reads the disposition-ledger sidecar for the current frontend digest and denies on a present-backend inconsistency (a `filed` entry whose key resolves to no open `tech-debt` issue, or a genuinely-missing disposition) or on a valid frontend marker whose sidecar is absent, failing open on an absent or transient backend (the never-block invariant). It also denies on a `machinery_waived` entry whose key path is neither a gate-machinery path nor a file this pull request changes, and drops only the changed-files term when it cannot resolve a diff base. A `/gaia-debt` fix PR is an ordinary in-scope change that clears the normal gate.
-
 If the local agent declines to write the marker, its report names what remains unaddressed; resolve those, commit, push, re-spawn.
 
 #### Re-run carry-forward ledger
@@ -445,7 +410,7 @@ On a non-clean pass (no marker written) the audit writes a carry-forward ledger 
 
 **The shared clearance writer maintains it**, from the `--base <sha>` every member passes to `.gaia/scripts/audit-write-clearance.sh`. That coupling is the point: a refusal is a blocking artifact retired only by its own author, so a refusal that briefs nothing blocks a merge no one can clear, and the one moment a refusal is guaranteed to be written is the moment it is written. On a refusal the writer rebuilds that member's `remaining[]` from its findings sidecar, so each open finding arrives with its path, line, failure mode, verification, and recommended repair already populated (the sidecar's `error`/`warning` severities map onto the ledger's `critical`/`important`). On an earned write it retires that member's entries into `fixed_last_round[]`, stamped with the sha that closed them, and removes the file once no member has anything left. One ledger serves the whole dispatched set, so every entry carries a `member` field and a write only ever touches its own member's entries. The whole of it is best-effort: a ledger failure warns and never fails the clearance write.
 
-The ledger holds in-scope remaining work, the `remaining[]` open findings plus `fixed_last_round[]`, and is a sibling of the `<frontend-digest>.dispositions.json` sidecar, which holds out-of-scope findings and gates the merge. The two do not overlap and neither reads the other; the ledger never gates anything. `pr-merge-audit-check.sh` reads only `<digest>.ok` and `audit-disposition-check.sh` reads only `<frontend-digest>.dispositions.json`, so a `<base>.rerun.json` is invisible to both gates.
+The ledger holds in-scope remaining work, the `remaining[]` open findings plus `fixed_last_round[]`, and is a sibling of the `<frontend-digest>.dispositions.json` sidecar, which holds out-of-scope findings. The two do not overlap and neither reads the other; neither gates a merge. `pr-merge-audit-check.sh` reads only `<digest>.ok`, so a `<base>.rerun.json` is invisible to it.
 
 The ledger is local-flow-only. In CI each audit runs in a fresh ephemeral job, so it carries cross-round state by git-native means, the `GAIA-Audit` trailer/status (read by `.github/audit/resolve-audit-base.sh`) and the PR-comment findings block, and skips the ledger entirely. A separate per-member findings sidecar shares the ledger's base-sha key but is a different artifact feeding a different consumer; see [[#Marker key]] for how the two are distinguished. See [[Audit Disposition and Debt Fix]].
 

@@ -552,7 +552,7 @@ Three audit-specific rules override the agent's defaults; do NOT "fix" them back
 <!-- gaia:maintainer-only:start -->
   Maintainer repository only: also map the block's `audience` field → the `audience:<side>` label.
 <!-- gaia:maintainer-only:end -->
-- **Do NOT write a `<HEAD>.dispositions.json` sidecar.** That sidecar gates the code-audit-frontend marker; the audit's own PR clears the merge gate through the out-of-scope bypass whenever the oracle finds nothing owed for its diff (see `## Publish`). Writing one would make `audit-disposition-check.sh` gate the audit's own merge on a filing it never needed. File the issues; write no sidecar.
+- **Do NOT write a `<HEAD>.dispositions.json` sidecar.** That sidecar is the code-audit-frontend agent's own report of record; the audit's own PR clears the merge gate through the out-of-scope bypass whenever the oracle finds nothing owed for its diff (see `## Publish`). This flow is not that agent, and writing one would leave a foreign entry in its report for a filing it never needed. File the issues; write no sidecar.
 
 Record the filed / diverted / deduped counts for the final summary. A backend-absent or transient `gh` failure is never fatal: file what you can, note the rest, and let the main conversation publish regardless.
 

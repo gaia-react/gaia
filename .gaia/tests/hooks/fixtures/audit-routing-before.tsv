@@ -20,7 +20,6 @@
 .claude/commands/gaia-spec.md	-
 .claude/commands/health-audit.md	-
 .claude/commands/setup-gaia.md	-
-.claude/hooks/audit-disposition-check.sh	code-audit-maintainer-shell
 .claude/hooks/audit-stamp-trailer.sh	code-audit-maintainer-shell
 .claude/hooks/block-bare-test.sh	code-audit-maintainer-shell
 .claude/hooks/block-env-read.sh	code-audit-maintainer-shell
@@ -32,7 +31,6 @@
 .claude/hooks/block-no-verify.sh	code-audit-maintainer-shell
 .claude/hooks/block-rm-rf.sh	code-audit-maintainer-shell
 .claude/hooks/block-secrets-write.sh	code-audit-maintainer-shell
-.claude/hooks/block-spec-plan-chain.sh	code-audit-maintainer-shell
 .claude/hooks/block-vitest-globals-tsconfig.sh	code-audit-maintainer-shell
 .claude/hooks/capture-gh-artifact.sh	code-audit-maintainer-shell
 .claude/hooks/capture-red-observations.sh	code-audit-maintainer-shell
@@ -42,7 +40,6 @@
 .claude/hooks/debt-session-reconcile.sh	code-audit-maintainer-shell
 .claude/hooks/lib/audit-clearance.sh	code-audit-maintainer-shell
 .claude/hooks/lib/audit-digest.sh	code-audit-maintainer-shell
-.claude/hooks/lib/audit-dispositions.sh	code-audit-maintainer-shell
 .claude/hooks/lib/audit-machinery.sh	code-audit-maintainer-shell
 .claude/hooks/lib/audit-scope.sh	code-audit-maintainer-shell
 .claude/hooks/lib/gaia-active-plan.sh	code-audit-maintainer-shell
@@ -710,7 +707,6 @@
 .gaia/tests/forensics/run-all.sh	code-audit-maintainer-shell
 .gaia/tests/forensics/unit.bats	code-audit-maintainer-shell
 .gaia/tests/hooks/audit-digest-lib.bats	code-audit-maintainer-shell
-.gaia/tests/hooks/audit-disposition-check.bats	code-audit-maintainer-shell
 .gaia/tests/hooks/audit-scope-lib.bats	code-audit-maintainer-shell
 .gaia/tests/hooks/audit-stamp-trailer.bats	code-audit-maintainer-shell
 .gaia/tests/hooks/block-bare-test.bats	code-audit-maintainer-shell
@@ -719,7 +715,6 @@
 .gaia/tests/hooks/block-manifest-write.bats	code-audit-maintainer-shell
 .gaia/tests/hooks/block-no-verify.bats	code-audit-maintainer-shell
 .gaia/tests/hooks/block-rm-rf.bats	code-audit-maintainer-shell
-.gaia/tests/hooks/block-spec-plan-chain.bats	code-audit-maintainer-shell
 .gaia/tests/hooks/capture-gh-artifact.bats	code-audit-maintainer-shell
 .gaia/tests/hooks/capture-red-observations.bats	code-audit-maintainer-shell
 .gaia/tests/hooks/commit-nudge.bats	code-audit-maintainer-shell

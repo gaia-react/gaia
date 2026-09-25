@@ -537,8 +537,7 @@ fi
 #   sidecar               does this member file a FINDINGS sidecar, its report
 #                         of record? Every member does, so this is always true.
 #   dispositions_sidecar  does this member file the out-of-scope DISPOSITION
-#                         sidecar the merge gate's backstop reads? Only the
-#                         default member does.
+#                         sidecar? Only the default member does.
 sidecar="true"
 if [ "$MEMBER" = "$DEFAULT_MEMBER" ]; then
   dispositions_sidecar="true"

@@ -179,14 +179,6 @@ These ARE distributed but excluded from `.gaia/manifest.json` by the classifier 
 
 The classifier is in `.gaia/cli/src/release/manifest.ts`, `ADOPTER_OWNED_SENTINELS` constant.
 
-## Local pre-flight for the manifest answer-contract
-
-`.claude/hooks/distribution-preflight-check.sh` is a local `PreToolUse` hook that denies `gh pr create` when a file this branch newly ships has no answer in the committed `.gaia/manifest.json`, so the maintainer learns it before pushing rather than only at a later manual `/distribution-audit` run or at release time. There is no PR-time CI counterpart: this hook is the only automatic check of the unanswered-file rule at PR-creation time, and it fails open on every uncertainty rather than risking a false deny with nothing else to catch a genuine miss.
-
-The hook runs `gaia-maintainer release manifest --check --json` and reads its `missing` array (every classified file the committed manifest has never acknowledged). It denies only on the intersection of `missing` with the files this branch's own commits touch (a three-dot diff against the branch's merge base): a pre-existing backlog inherited from earlier merges is not this branch's to drain. To clear a denial, run `/distribution-audit`, answer ship-or-withhold for each named file, and commit the regenerated manifest (and `.gaia/release-exclude` for any withheld file) to the branch.
-
-This is the PR-time complement to release Step 10, which regenerates the manifest with `--allow-undecided`: the release path must never start failing on a tree that carries a new file, so it takes the escape hatch by design, while `/distribution-audit` is where a newly-shipping file is actually answered.
-
 The hook does not cover the underlying classifier's second condition, region-declaration drift, or the shipped-issue-reference lint: `.gaia/scripts/lint-shipped-issue-refs.sh` scans every shipped non-Markdown file (the committed manifest's file set, minus Markdown) for a bare `#NNN` issue or pull-request reference. `#NNN` resolves against whatever repository the reader is looking at, so an unqualified number in a file GAIA ships silently points an adopter at their own tracker; `.claude/rules/code-comments.md` requires the qualified `gaia-react/gaia#NNN` form on shipped files, and this lint is what makes that requirement checkable. No CI job runs it on every pull request: `audit-ci-tests.yml` runs its bats suite only when a harness path changes, so a pull request touching only `app/` reaches it only when a maintainer runs `bash .gaia/scripts/lint-shipped-issue-refs.sh` by hand.
 
 ## create-gaia bootstrapper

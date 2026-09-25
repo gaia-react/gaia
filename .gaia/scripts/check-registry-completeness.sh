@@ -71,7 +71,6 @@ red-ledger
 residual-triage-caches
 setup-state
 spec-audit-scratch
-spec-chain-guard
 spec-draft-and-gate1-scratch
 spec-session-lock
 spec-session-scratch

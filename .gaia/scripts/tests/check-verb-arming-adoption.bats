@@ -38,10 +38,8 @@ teardown() {
 
 # write_baseline <dir>: a healthy tree -- the library's two definitions,
 # every enumerated hook adopting gaia_verb_armed and registered in
-# settings.json to match, the merge gates denying on a missing library, and
-# distribution-preflight-check.sh taking the written fail-open exemption
-# while staying deny-capable. Every "must fail" fixture starts here and
-# mutates one thing.
+# settings.json to match, and the merge gates denying on a missing library.
+# Every "must fail" fixture starts here and mutates one thing.
 write_baseline() {
   local dir="$1" h
   mkdir -p "$dir/.claude/hooks/lib"
@@ -67,7 +65,7 @@ gaia_verb_arm_view() {
 }
 EOF
 
-  for h in pr-merge-audit-check worthiness-presence-check audit-disposition-check; do
+  for h in pr-merge-audit-check worthiness-presence-check; do
     cat >"$dir/.claude/hooks/$h.sh" <<EOF
 #!/usr/bin/env bash
 . "\$(dirname "\${BASH_SOURCE[0]}")/lib/verb-arming.sh" 2>/dev/null
@@ -80,24 +78,6 @@ if gaia_verb_armed 'gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|\$)' 'gh pr me
 fi
 EOF
   done
-
-  cat >"$dir/.claude/hooks/distribution-preflight-check.sh" <<'EOF'
-#!/usr/bin/env bash
-. "$(dirname "${BASH_SOURCE[0]}")/lib/verb-arming.sh" 2>/dev/null
-type gaia_verb_armed >/dev/null 2>&1 || exit 0
-if gaia_verb_armed 'gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)' 'gh pr create' "$cmd_joined"; then
-  :
-fi
-deny() {
-  jq -n --arg r "$1" '{
-    hookSpecificOutput: {
-      permissionDecision: "deny",
-      permissionDecisionReason: $r
-    }
-  }'
-  exit 0
-}
-EOF
 
   for h in post-findings-block-on-merge token-tally-git-op token-tally-review \
            token-rollup-merge issue-claim-release debt-sentinel-touch capture-gh-artifact; do
@@ -117,9 +97,7 @@ EOF
     "PreToolUse": [
       {"matcher": "Bash", "hooks": [
         {"type": "command", "command": ".claude/hooks/pr-merge-audit-check.sh"},
-        {"type": "command", "command": ".claude/hooks/worthiness-presence-check.sh"},
-        {"type": "command", "command": ".claude/hooks/audit-disposition-check.sh"},
-        {"type": "command", "command": ".claude/hooks/distribution-preflight-check.sh"}
+        {"type": "command", "command": ".claude/hooks/worthiness-presence-check.sh"}
       ]}
     ],
     "PostToolUse": [
@@ -327,23 +305,6 @@ EOF
   run gaia_check_verb_arming_adoption "$repo"
   [ "$status" -eq 1 ]
   grep -qF "worthiness-presence-check.sh: does not deny on a missing verb-arming library, and carries no written exemption" <<<"$output" || return 1
-}
-
-@test "fixture: the exempt hook losing deny-capability makes the exemption stale and fails" {
-  local repo
-  repo="$(make_fixture_repo faildir-stale-exemption)"
-  cat >"$repo/.claude/hooks/distribution-preflight-check.sh" <<'EOF'
-#!/usr/bin/env bash
-. "$(dirname "${BASH_SOURCE[0]}")/lib/verb-arming.sh" 2>/dev/null
-type gaia_verb_armed >/dev/null 2>&1 || exit 0
-if gaia_verb_armed 'gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)' 'gh pr create' "$cmd_joined"; then
-  :
-fi
-EOF
-  commit_all "$repo"
-  run gaia_check_verb_arming_adoption "$repo"
-  [ "$status" -eq 1 ]
-  grep -qF "no longer deny-capable; the fail-open exemption is stale" <<<"$output" || return 1
 }
 
 @test "usage: no repo_root and not a git repository exits 2" {

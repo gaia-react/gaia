@@ -9,16 +9,6 @@
 # guard too, so treat AUDIT_MACHINERY_PATHS as a naming aid for the roster
 # and for review, never as a security boundary on its own.
 #
-# Bats suites are DELIBERATELY EXCLUDED from this set: their bytes change
-# none of the four things above (a `.bats` file does not decide who reviews
-# what, or whether a clearance is honored). They are covered instead by the
-# roster's own `.bats` globs, which dispatch a real member to review them.
-# The exclusion is enforced in the two matchers below rather than by the shape
-# of the list, because a `/**` entry sweeps in whatever sits under it: the
-# suites beside the gate scripts under `.github/audit/` are the live case, and
-# narrowing that entry to dodge them would fail open the moment a new gate
-# script lands under it unlisted.
-#
 # One literal list, no second copy anywhere. Entries ending in `/**` are
 # directory prefixes (every tracked file under them is machinery); every
 # other entry is an exact path.
@@ -33,9 +23,9 @@ AUDIT_MACHINERY_PATHS="$(cat <<'EOF'
 .gaia/scripts/audit-write-clearance.sh
 .gaia/scripts/audit-write-findings.sh
 # main-root-lib.sh decides WHERE the gate looks for a clearance
-# (pr-merge-audit-check.sh, audit-disposition-check.sh, post-audit-status.sh
-# all resolve their store root through it), and audit-key-lib.sh decides the
-# key every findings sidecar and re-run ledger is written and read under.
+# (pr-merge-audit-check.sh, post-audit-status.sh all resolve their store root
+# through it), and audit-key-lib.sh decides the key every findings sidecar and
+# re-run ledger is written and read under.
 # Both sit squarely inside the generating rule above; without them a change
 # to the file that selects the gate's own root rotates only the shell
 # member's digest and leaves the other four markers standing.
@@ -46,13 +36,8 @@ AUDIT_MACHINERY_PATHS="$(cat <<'EOF'
 # whether it self-skips: it derives the review and membership bases and the
 # changed-file lists each member acts on.
 .gaia/scripts/audit-resolve-scope.sh
-# audit-seed-dispositions.sh carries a still-open disposition receipt across a
-# frontend digest rotation, which both merge gates re-verify.
-.gaia/scripts/audit-seed-dispositions.sh
-.claude/hooks/lib/audit-dispositions.sh
 .gaia/scripts/resolve-audit-members.sh
 .claude/hooks/pr-merge-audit-check.sh
-.claude/hooks/audit-disposition-check.sh
 .claude/hooks/post-audit-status.sh
 .claude/hooks/audit-stamp-trailer.sh
 .claude/hooks/local-janitor.sh
@@ -81,10 +66,6 @@ EOF
 # audit_path_is_machinery <path> -> exit 0 iff the path is in the set above.
 audit_path_is_machinery() {
   local path="$1" entry prefix
-
-  case "$path" in
-    *.bats) return 1 ;;
-  esac
 
   while IFS= read -r entry; do
     [ -n "$entry" ] || continue
@@ -128,8 +109,7 @@ audit_delta_has_machinery() {
 # shell arrays ONCE, then tests each path against those arrays, so a caller
 # classifying every tracked file does not re-read the heredoc once per path the
 # way audit_path_is_machinery does. The membership semantics are byte-identical
-# to audit_path_is_machinery (never a `.bats` suite; otherwise exact match, or a
-# `/**` directory-prefix match);
+# to audit_path_is_machinery (exact match, or a `/**` directory-prefix match);
 # empty input lines are skipped, symmetric with audit_owners_for_paths, so the
 # digest walk can align this output line-for-line with that classifier's.
 audit_machinery_flags() {
@@ -153,26 +133,21 @@ EOF
   while IFS= read -r path; do
     [ -n "$path" ] || continue
     hit=0
-    case "$path" in
-      *.bats) ;;
-      *)
-        i=0
-        while [ "$i" -lt "$ne" ]; do
-          if [ "$path" = "${exact[$i]}" ]; then hit=1; break; fi
-          i=$((i + 1))
-        done
-        if [ "$hit" -eq 0 ]; then
-          i=0
-          while [ "$i" -lt "$np" ]; do
-            prefix="${prefixes[$i]}"
-            case "$path" in
-              "$prefix"*) hit=1; break ;;
-            esac
-            i=$((i + 1))
-          done
-        fi
-        ;;
-    esac
+    i=0
+    while [ "$i" -lt "$ne" ]; do
+      if [ "$path" = "${exact[$i]}" ]; then hit=1; break; fi
+      i=$((i + 1))
+    done
+    if [ "$hit" -eq 0 ]; then
+      i=0
+      while [ "$i" -lt "$np" ]; do
+        prefix="${prefixes[$i]}"
+        case "$path" in
+          "$prefix"*) hit=1; break ;;
+        esac
+        i=$((i + 1))
+      done
+    fi
     printf '%s\t%d\n' "$path" "$hit"
   done
 }

@@ -328,11 +328,8 @@ CALL_SITE_FLOW_NAMES=(
 # /distribution-audit writes `.gaia/manifest.json` and `.gaia/release-exclude`,
 # git-tracked branch-scoped files a linked worktree isolates correctly, and it
 # writes nothing under `.gaia/local`, so a worktree run collides with no shared
-# state. Meanwhile the `gh pr create` distribution pre-flight demands that
-# answer land on the worktree's own branch, which the main checkout cannot
-# supply, so a refusal here made the hook's own remediation unfollowable. The
-# release path's main-only property is enforced at /gaia-release's own call
-# site above, not here.
+# state. The release path's main-only property is enforced at /gaia-release's
+# own call site above, not here.
 #
 # That warrant stands on its own and deliberately does not rest on
 # main-only-lib.sh's docblock, which disclaims deciding membership and points

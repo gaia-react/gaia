@@ -59,8 +59,6 @@ GAIA_VERB_TEST_EXCLUDES=(':!*.bats' ':!*/tests/*' ':!*/__tests__/*' ':!*.test.ts
 GAIA_VERB_ADOPTING_HOOKS=(
   pr-merge-audit-check.sh
   worthiness-presence-check.sh
-  audit-disposition-check.sh
-  distribution-preflight-check.sh
   post-findings-block-on-merge.sh
   token-tally-git-op.sh
   token-tally-review.sh
@@ -113,25 +111,17 @@ GAIA_VERB_GREP_IDIOM_SEP_3='||'
 GAIA_VERB_DENY_CAPABLE_HOOKS=(
   pr-merge-audit-check.sh
   worthiness-presence-check.sh
-  audit-disposition-check.sh
-  distribution-preflight-check.sh
 )
 GAIA_VERB_FAIL_CLOSED_ANCHOR='cannot load the shared verb-arming decision'
 GAIA_VERB_FAIL_OPEN_ANCHOR='type gaia_verb_armed >/dev/null 2>&1 || exit 0'
 GAIA_VERB_DENY_SHAPE_ANCHOR='permissionDecision: "deny"'
 
-# The one written exemption (audit finding COV-003, resolved by the
-# maintainer at plan time). distribution-preflight-check.sh is deny-capable
-# but exits 0 rather than denying when verb-arming.sh cannot be sourced,
-# because its own header doctrine is that it is advisory-in-effect and fails
-# open on every uncertainty -- a hook with that contract must not become the
-# one guard that denies every Bash tool call on a corrupted checkout. This is the
-# form check-base-provenance-adoption.sh uses for its own written
-# exemptions: named here, with its reason, so a reader who greps this check
-# finds the carve-out and why it exists. Any ADDITION to this array is a
-# decision the SPEC has to record too, not a maintenance edit to make here
-# alone.
-GAIA_VERB_FAIL_OPEN_EXEMPT_HOOKS=(distribution-preflight-check.sh)
+# Written exemptions, none today. This is the form
+# check-base-provenance-adoption.sh uses for its own written exemptions:
+# named here, with its reason, so a reader who greps this check finds the
+# carve-out and why it exists. Any ADDITION to this array is a decision the
+# SPEC has to record too, not a maintenance edit to make here alone.
+GAIA_VERB_FAIL_OPEN_EXEMPT_HOOKS=()
 
 # _gaia_verb_is_exempt_fail_open <hook>: 0 iff <hook> is a written exemption.
 _gaia_verb_is_exempt_fail_open() {

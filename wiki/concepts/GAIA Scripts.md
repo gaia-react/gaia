@@ -41,7 +41,6 @@ The index is held to the tree by `.gaia/scripts/lint-scripts-wiki-inventory.sh`,
 | `audit-respawn-report.sh` | no | by hand | Attribution query over the re-spawn ledger: which member was re-spawned, and against what. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `audit-scope-digest.sh` | yes | agent definitions, `local-janitor.sh` hook, CI | Carries a member's own content digest between scope resolution and clearance write, the two Bash calls that must agree. |
 | `audit-scratch-dir.sh` | yes | agent definitions | Hands a member a per-run scratch directory when it needs real bytes on disk. |
-| `audit-seed-dispositions.sh` | yes | agent definition, audit hooks | Seeds the default member's disposition ledger forward from the prior digest's sidecar. |
 | `audit-window-lib.sh` | yes | sourced | Shared derivation of the audit window a run is accounted against. |
 | `audit-write-clearance.sh` | yes | agent definitions, CI | The one writer for every Code Audit Team clearance marker. |
 | `audit-write-findings.sh` | yes | agent definitions | The one writer for a member's findings sidecar, the report of record the merge workflow reads. |

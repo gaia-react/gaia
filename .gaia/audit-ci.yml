@@ -242,7 +242,8 @@ unowned:
   # unowned here and deliberately stays IN scope there. Unowned is advisory and
   # suppresses no review; the allowlist clears a merge with no member having
   # read the diff, so each of its entries is judged against what the path can
-  # actually contain. See the arm comment in `.claude/hooks/lib/audit-scope.sh`.
+  # actually contain. See `audit_out_of_scope_allowlisted` in
+  # `.claude/hooks/lib/audit-scope.sh`.
   - "*.md"
   - "LICENSE"
   - ".editorconfig"

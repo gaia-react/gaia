@@ -243,18 +243,6 @@
       "source": "SPEC-081 §main-only"
     },
     {
-      "id": "spec-chain-guard",
-      "path": "cache/spec-chain-*.json",
-      "match": "glob",
-      "kind": "file",
-      "scope": "main-only",
-      "keyed_by": null,
-      "why": "A spec-to-plan chain guard sentinel deliberately resolved to main, keyed by session id, so it holds across a tree switch within one session.",
-      "writer": "code",
-      "reaped_by": "stale cache sweep",
-      "source": "SPEC-061 §main-only"
-    },
-    {
       "id": "audit-round-counter",
       "path": "cache/audit-rounds-*.json|cache/audit-rounds-*.json.*",
       "match": "glob",

@@ -67,11 +67,7 @@ GAIA_PROVENANCE_CONSUMERS=(
   '.claude/hooks/worthiness-presence-check.sh'
 )
 
-# The chain's written exemptions plus the resolver's own file. No entry
-# for .claude/hooks/lib/audit-dispositions.sh: after adoption its
-# changed-set helper carries no origin-then-local chain at all, because that
-# helper's body became this resolver's definition rather than staying a
-# copy of it, so there is nothing to exempt.
+# The chain's written exemptions plus the resolver's own file.
 GAIA_PROVENANCE_ALLOWED_CHAIN_FILES=(
   '.claude/hooks/lib/audit-base-provenance.sh'
   '.gaia/scripts/audit-resolve-scope.sh'

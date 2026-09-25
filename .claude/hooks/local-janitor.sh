@@ -129,15 +129,13 @@
 #      list this sweep cannot read skips the sweep outright, keeping every
 #      empty dir rather than rmdir a structural one it could not identify.
 #   5. stale SPEC-workflow cache artifacts (gate1-*.json, draft-*.md,
-#      spec-session-*.json, spec-session-*.lock, spec-chain-*.json, audit-*/)
+#      spec-session-*.json, spec-session-*.lock, audit-*/)
 #      and react-perf run dirs
 #      (<run>/renders.json) at the root of .gaia/local/cache, once older than 14
-#      days. A spec-chain-*.json is the spec→plan chain guard's per-session
-#      sentinel (block-spec-plan-chain.sh), and an audit-rounds-*.json is the
-#      pre-merge audit gate's per-session round counter
-#      (block-fourth-audit-round.sh); both are keyed on session_id, so an old
-#      one can never match a live session and is inert long before it is stale.
-#      All of them are age-gated
+#      days. An audit-rounds-*.json is the pre-merge audit gate's per-session
+#      round counter (block-fourth-audit-round.sh), keyed on session_id, so an
+#      old one can never match a live session and is inert long before it is
+#      stale. All of them are age-gated
 #      rather than reference-checked: a generous window survives a paused
 #      multi-day authoring session while still reaping abandoned drafts and
 #      forgotten profiling dumps that no other owner ever cleans up.
@@ -864,8 +862,7 @@ sweep="$root/.gaia/scripts/mentorship-cleanup-sweep.sh"
 #   Keep-arm C (open-receipt durability) keep a frontend `<digest>.ok` marker
 #     together with its co-keyed `<digest>.dispositions.json` sidecar
 #     whenever that sidecar still holds a still-open entry (disposition
-#     "filed", or "pending" with pending_reason "definitive" -- the same
-#     predicate the disposition seed-forward machinery uses), so a >72h idle
+#     "filed", or "pending" with pending_reason "definitive"), so a >72h idle
 #     gap between audit rounds can never let a still-open out-of-scope
 #     receipt age out from under a live predecessor.
 #
@@ -959,8 +956,7 @@ janitor_new_scheme_fields() {
 }
 
 # janitor_sidecar_has_open_receipt <path>: ONE jq fork. Exit 0 iff the
-# sidecar holds at least one still-open entry, using the SAME predicate
-# task-dispositions' disposition_seed_forward uses: disposition "filed", OR
+# sidecar holds at least one still-open entry: disposition "filed", OR
 # disposition "pending" with pending_reason "definitive".
 janitor_sidecar_has_open_receipt() {
   jq -e '
@@ -1246,10 +1242,9 @@ if [ -d "$cache_dir" ]; then
 fi
 
 # --- 5b. Main-anchored cache families, swept at MAIN's cache, never the invoking tree's ---
-# cache/spec-chain-*.json, cache/gh-artifact-pr*.json, and
-# cache/mutation-scratch/ all have writers that resolve MAIN's root before
-# writing (block-spec-plan-chain.sh, gh-artifact-lib.sh's
-# gaia_gh_artifact_cache_dir, audit-scratch-dir.sh's
+# cache/gh-artifact-pr*.json and cache/mutation-scratch/ both have writers
+# that resolve MAIN's root before
+# writing (gh-artifact-lib.sh's gaia_gh_artifact_cache_dir, audit-scratch-dir.sh's
 # gaia_audit_scratch_root), so a worktree-invoked sweep has to target
 # $main_root/.gaia/local/cache too, never $cache_dir above. On a PROVISIONED
 # worktree the two coincide, because that tree's whole .gaia/local is a
@@ -1268,7 +1263,7 @@ if [ -d "$main_cache_dir" ]; then
   # without this reach it would be neither reaped nor surfaced, which is the
   # inverse of the orphan the gh-artifact arm below was widened to avoid.
   find "$main_cache_dir" -maxdepth 1 -type f \( \
-      -name 'spec-chain-*.json' -o -name 'audit-rounds-*.json*' \
+      -name 'audit-rounds-*.json*' \
     \) -mtime +14 -delete 2>/dev/null
 
   # cache/gh-artifact-pr*.json: mtime-only, on its own floor-clamped knob

@@ -97,7 +97,6 @@ spawn-roster|resolve-audit-members.sh|exec|runs verbatim against this checkout
 noop-classify|audit-noop-detect.sh --shape audit-team-member|exec|runs against a fixture root, marker and sidecar
 wave-stamp|WAVE_STAMP="$(mktemp)"|exec|runs verbatim, and the claim under test is where mktemp puts the file
 residual-enumerate|gh pr list --state merged|exec|the --jq PROGRAM TEXT is extracted and run against the committed residue-corpus fixture, standing in for the network call
-disposition-sidecar|audit-member-digest.sh|exec|runs verbatim against this checkout
 findings-block|post-findings-block.sh --pr|static|posts a comment to a live PR
 post-status|post-audit-status.sh <current-member-marker>|static|posts a commit status to a live PR head
 merge-and-poll|gh pr merge <N> --squash|static|merges a live PR
@@ -784,17 +783,6 @@ FAKE
   run bash "$script"
   [ "$status" -eq 0 ]
   grep -qx 'peer-branch' <<<"$output"
-}
-
-@test "fence disposition-sidecar: it builds a sidecar path under the main checkout's audit directory" {
-  script="$(materialize 'audit-member-digest.sh')"
-  emit_values "$script" digest sidecar
-  run bash -c "cd '$REPO_ROOT' && bash '$script'"
-  [ "$status" -eq 0 ]
-  digest="$(value_of digest)"
-  sidecar="$(value_of sidecar)"
-  grep -qE '^[0-9a-f]{64}$' <<<"$digest"
-  grep -qF -- "/.gaia/local/audit/${digest}.dispositions.json" <<<"$sidecar"
 }
 
 @test "fence residual-enumerate: the extracted enumeration query emits the spaced-path residual verbatim" {

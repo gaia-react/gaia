@@ -10,9 +10,8 @@
 # with reports it can no longer weigh against each other. The judgement
 # "is a fourth round worth it" gets made mid-loop by the session least able
 # to make it. Prose cannot hold a boundary an agent has a standing reason to
-# cross, the same lesson block-spec-plan-chain.sh was written for; this hook
-# is that file's structural twin, same session-keyed main-anchored
-# sentinel, same deny mechanism, same fail-open posture.
+# cross, so this hook enforces it with a session-keyed main-anchored
+# sentinel, a deny mechanism, and a fail-open posture.
 #
 # WAVE IDENTITY: the acting tree's HEAD tree SHA. A round is one dispatch
 # wave, whatever that wave spawns. Every member in a wave is dispatched

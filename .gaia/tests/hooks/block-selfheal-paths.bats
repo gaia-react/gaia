@@ -308,9 +308,9 @@ run_hook_bash() {
 
 # --- .gaia/local/ is the members' own gitignored artifact dir, never refused ---
 # A member writes its clearance marker, findings sidecar, disposition sidecar,
-# and re-run ledger under .gaia/local/audit/. Refusing that directory blocks
-# the sidecars this team writes and deadlocks the merge gate via the
-# disposition backstop. Everything else under .gaia/ stays refused.
+# and re-run ledger under .gaia/local/audit/. Refusing that directory would
+# block the sidecars this team writes. Everything else under .gaia/ stays
+# refused.
 
 @test "code-audit-frontend writing its findings sidecar under .gaia/local/audit/ is allowed" {
   run_hook_edit "code-audit-frontend" "Write" ".gaia/local/audit/2cea369b.code-audit-frontend.findings.json"
@@ -493,7 +493,7 @@ run_hook_bash() {
   assert_denied_by_json
 }
 
-# --- execution-position anchor: skip interpreter options and env assignments ---
+# --- execution-position anchor: skip interpreter options ---
 
 @test "SPEC-056 UAT-015: bash -x <writer> is denied" {
   run_hook_bash "code-audit-frontend" "bash -x .gaia/scripts/write-audit-remits.sh"
@@ -507,16 +507,6 @@ run_hook_bash() {
 
 @test "SPEC-056 UAT-015: bash --norc <writer> is denied" {
   run_hook_bash "code-audit-frontend" "bash --norc .gaia/scripts/write-audit-remits.sh"
-  assert_denied_by_json
-}
-
-@test "SPEC-056 UAT-015: env FOO=1 <writer> is denied" {
-  run_hook_bash "code-audit-frontend" "env FOO=1 .gaia/scripts/write-audit-remits.sh"
-  assert_denied_by_json
-}
-
-@test "SPEC-056 UAT-015: nohup <writer> is denied" {
-  run_hook_bash "code-audit-frontend" "nohup .gaia/scripts/write-audit-remits.sh"
   assert_denied_by_json
 }
 
