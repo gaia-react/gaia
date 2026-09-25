@@ -380,9 +380,9 @@ fi
 # say the fence re-run is safe EXCEPT after this refusal.
 # Each outcome carries its own status, because the caller's diagnostic differs
 # for each and a message that asserts one of them for all of them is read as a
-# description of what happened (`.claude/rules/partial-cause-reporting.md`). Saying "the
-# capture is released" on a run that released nothing points the operator at a
-# deadlock they have been told is already cleared.
+# description of what happened. Saying "the capture is released" on a run
+# that released nothing points the operator at a deadlock they have been told
+# is already cleared.
 #
 #   0  released: a stored capture existed and is gone.
 #   1  nothing to release: no capture is stored, so none can strand a later

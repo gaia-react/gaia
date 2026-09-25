@@ -253,8 +253,8 @@ run_hook_from() {
 }
 
 # Two independent conditions reach this deny and their repairs differ, so each
-# one carries its own message (.claude/rules/partial-cause-reporting.md). An
-# operator denied for the refspec is already standing on a feature branch:
+# one carries its own message. An operator denied for the refspec is already
+# standing on a feature branch:
 # telling them to create one names a cause they have ruled out and never names
 # the respelling that clears the deny.
 @test "a refspec-triggered push deny names the refspec cause, not the branch" {

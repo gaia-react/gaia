@@ -66,13 +66,12 @@
 # guard machinery, where the failure mode is a guard reporting clean over a live
 # defect. gaia-react/gaia#745 (`audit-success-present.sh`, fixed by
 # gaia-react/gaia#748), gaia-react/gaia#757 and gaia-react/gaia#761 (two shapes
-# in `audit-noop-detect.sh`), and the first draft of
-# .gaia/scripts/lint-hook-advisory-classification.sh, which classified with a
-# filtering grep feeding a quiet one and reported clean over the very defect it
-# was written for, on its first run against the live tree. Each of the first
-# three was patched in place with no gate left behind, which is why the fourth
-# had nothing to catch it. gaia-react/gaia#1810 is the issue that replaced the
-# patches with this tree-wide gate.
+# in `audit-noop-detect.sh`), and a hook-classification guard whose first draft
+# classified with a filtering grep feeding a quiet one and reported clean over
+# the very defect it was written for, on its first run against the live tree.
+# Each of the first three was patched in place with no gate left behind, which
+# is why the fourth had nothing to catch it. gaia-react/gaia#1810 is the issue
+# that replaced the patches with this tree-wide gate.
 #
 # Nothing else in the tree reaches the class. shellcheck at the `*.sh` severity
 # floor .gaia/tests/shell-lint.sh sets returns exit 0 on a fixture carrying both

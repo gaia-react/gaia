@@ -558,8 +558,7 @@ hop_moves_head() {
 # The guard's fail-open diagnostic. It takes the WHOLE message rather than a
 # branch plus a cause: the arms below do not all fail at the same lookup, and
 # one is reached before a branch name has been resolved at all, so a template
-# naming one lookup misreports the others
-# (.claude/rules/partial-cause-reporting.md).
+# naming one lookup misreports the others.
 hop_unchecked() {
   printf 'block-main-destructive-git.sh: %s; allowing the command.\n' "$1" >&2
 }

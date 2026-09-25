@@ -8,21 +8,13 @@
 # run-interpolation guard (.gaia/scripts/lint-workflow-run-interpolation.sh),
 # the grep ERE-escape guard (.gaia/scripts/lint-grep-ere-escapes.sh), the
 # errexit status-read guard (.gaia/scripts/lint-errexit-status-read.sh), the
-# stale-cardinal guard
-# (.gaia/scripts/lint-stale-cardinals.sh), the guard-rule shell-coverage
-# guard (.gaia/scripts/lint-guard-rule-shell-coverage.sh), the collapsed
-# signal-trap guard (.gaia/scripts/lint-collapsed-signal-trap.sh), the
-# SIGPIPE-reader guard (.gaia/scripts/lint-sigpipe-readers.sh), and the
-# bundled-hooks inventory guard (.gaia/scripts/lint-hook-wiki-inventory.sh),
-# the wiki cached-version guard (.gaia/scripts/lint-wiki-cached-version.sh),
-# the hook advisory-classification guard
-# (.gaia/scripts/lint-hook-advisory-classification.sh), the hook
+# collapsed signal-trap guard (.gaia/scripts/lint-collapsed-signal-trap.sh),
+# the SIGPIPE-reader guard (.gaia/scripts/lint-sigpipe-readers.sh), the hook
 # cwd-relative-load guard (.gaia/scripts/lint-hook-cwd-relative-loads.sh), the
 # hook jq-availability guard
 # (.gaia/scripts/lint-hook-jq-availability.sh), the hook Monitor-arming guard
-# (.gaia/scripts/lint-hook-monitor-arming.sh), the awk interpreter pin
-# (.gaia/scripts/lint-awk-interpreter-pin.sh), and the scripts inventory guard
-# (.gaia/scripts/lint-scripts-wiki-inventory.sh).
+# (.gaia/scripts/lint-hook-monitor-arming.sh), and the awk interpreter pin
+# (.gaia/scripts/lint-awk-interpreter-pin.sh).
 # Exit 0 when clean, 1 on any finding at or above the severity floor, and 1 on
 # a pass that cannot run at all (no shellcheck binary, an empty *.sh discovery
 # set, an unusable bash-3.2 interpreter). A red gate is therefore not always a
@@ -491,12 +483,11 @@ fi
 # same pattern, so a table-driven banner, or a comment naming the marker in
 # its quoted form, both make that helper refuse.
 #
-# Two invocation shapes survive from before this change, for the reason each
-# carried before: every guard named `subshell` in GUARD_MODES resolves its own
-# scan surface against the working directory, so it runs as
-# `(cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/<slug>.sh")`. The guards
-# named `root` in GUARD_MODES take the repo root as an explicit argument
-# instead and need neither a `cd` nor a subshell.
+# GUARD_MODES supports two invocation shapes: a guard named `subshell`
+# resolves its own scan surface against the working directory, so it runs as
+# `(cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/<slug>.sh")`. A guard
+# named `root` would take the repo root as an explicit argument instead and
+# need neither a `cd` nor a subshell.
 #
 # Streams split, they never merge. Most of these guards print their own
 # `<name>: clean` line to stderr and a minority print it to stdout via a bare
@@ -524,14 +515,8 @@ GUARD_SLUGS=(
   lint-workflow-run-interpolation
   lint-grep-ere-escapes
   lint-errexit-status-read
-  lint-stale-cardinals
-  lint-guard-rule-shell-coverage
   lint-collapsed-signal-trap
   lint-sigpipe-readers
-  lint-hook-wiki-inventory
-  lint-wiki-cached-version
-  lint-hook-advisory-classification
-  lint-scripts-wiki-inventory
   lint-hook-cwd-relative-loads
   lint-hook-jq-availability
   lint-awk-interpreter-pin
@@ -548,12 +533,6 @@ GUARD_MODES=(
   subshell
   subshell
   subshell
-  root
-  root
-  root
-  root
-  subshell
-  subshell
   subshell
   subshell
 )
@@ -563,12 +542,11 @@ GUARD_COUNT="${#GUARD_SLUGS[@]}"
 # a cost table goes stale the moment a guard's own runtime shifts, and a
 # stale entry here costs the pool a few seconds of head-of-line blocking,
 # never a wrong verdict. Measured heaviest to lightest on an idle host:
-# lint-stale-cardinals (~7s), lint-git-path-quoting (~7s),
-# lint-errexit-status-read (~6s), lint-collapsed-signal-trap (~5s),
-# lint-grep-ere-escapes (~5s). Every other guard totals a few seconds combined
-# and dispatches after these in GUARD_SLUGS' own declared order.
+# lint-git-path-quoting (~7s), lint-errexit-status-read (~6s),
+# lint-collapsed-signal-trap (~5s), lint-grep-ere-escapes (~5s). Every other
+# guard totals a few seconds combined and dispatches after these in
+# GUARD_SLUGS' own declared order.
 GUARD_HEAVY_HINT=(
-  lint-stale-cardinals
   lint-git-path-quoting
   lint-errexit-status-read
   lint-collapsed-signal-trap
@@ -834,47 +812,6 @@ if ! replay_guard 5; then
   status=1
 fi
 
-# Fold in the stale-cardinal guard, for a reason none of the guards above share:
-# what it reads is not shell at all, it is the PROSE the shell carries. A
-# comment or a bats test name asserting how many of something the tree holds is
-# a claim nothing recounts, so it stays green while the set it names moves
-# underneath it, and every tool above is blind to it by construction: shellcheck
-# models the language, and the class lives in the text the language ignores.
-# This gate is where it lands rather than in a suite of its own because the
-# shell and bats half of its scan surface is already this gate's surface, and
-# this is the pass every pull request runs. Its other half, the C-family globs
-# `.claude/rules/code-comments.md` binds, reaches past this gate's own surface,
-# so the paths filter in .github/workflows/shell-lint.yml carries those globs
-# too: a filter narrower than the surface it arms greens a check that scanned
-# nothing. Run from the repo root so its `git ls-files` discovery resolves and
-# the file:line it prints is repo-relative.
-echo "--> lint-stale-cardinals (a definite cardinal naming a set nothing recounts)"
-if ! replay_guard 6; then
-  status=1
-fi
-
-# Fold in the guard-rule shell-coverage guard. Like the stale-cardinal guard
-# above, what it reads is not shell but the prose binding shell: the `paths:`
-# frontmatter by which .claude/rules/guards-must-fail.md and
-# .claude/rules/partial-cause-reporting.md decide which surfaces they load on. A
-# tracked shell file neither list names is one whose author is shown neither rule,
-# and nothing else in this repository notices, because a rule that loads nowhere
-# and a rule with nothing to say are the same silence. It lands in this gate
-# because its scan surface IS this gate's surface -- the tracked shell set -- and
-# this is the pass every pull request runs. It is advisory here; the blocking
-# runner is its sibling suite .gaia/scripts/tests/lint-guard-rule-shell-coverage.bats
-# in the `Audit CI Tests` scripts shard, armed by that job's `**/*.sh` code
-# filter AND by its `.husky/**` entry: `**/*.sh` matches no extensionless
-# hook, so a pull request touching only .husky/pre-commit arms this check
-# through the husky glob alone. Both are named because that entry's own
-# stated reason is a different suite, and trimming it on that reason would
-# silently unarm this check for husky-only diffs.
-# Run from the repo root so its `git ls-files` discovery resolves.
-echo "--> lint-guard-rule-shell-coverage (tracked shell the guard/diagnostic rules do not reach)"
-if ! replay_guard 7; then
-  status=1
-fi
-
 # Fold in the collapsed signal-trap guard, for the same reason as the guards
 # above: shellcheck models the syntax of a `trap` call and says nothing about
 # which dispositions may share one arm. Bash resumes at the point of
@@ -887,7 +824,7 @@ fi
 # replaced those pins. Run from the repo root so its `git ls-files` discovery
 # resolves and the file:line it prints is repo-relative.
 echo "--> lint-collapsed-signal-trap (one trap arm binding EXIT with INT or TERM)"
-if ! replay_guard 8; then
+if ! replay_guard 6; then
   status=1
 fi
 
@@ -901,65 +838,7 @@ fi
 # Run from the repo root so its `git ls-files` discovery resolves and the
 # file:line it prints is repo-relative.
 echo "--> lint-sigpipe-readers (a short-circuiting reader inverting a pipeline under pipefail)"
-if ! replay_guard 9; then
-  status=1
-fi
-
-# The bundled-hooks inventory in wiki/concepts/Claude Hooks.md is hand-kept, and
-# it drifted silently until four registered hooks were missing from it at once
-# (gaia-react/gaia#1786). This gate is what makes the next omission red on the
-# pull request that adds the hook, whether or not it registers one. Its
-# subjects are .claude/settings.json,
-# the .claude/hooks/ listing, and that page; only the listing is shell, and only
-# as filenames. So it rides here rather than earning a workflow of its own:
-# this harness is already the folded home for every guard that shellcheck
-# cannot model, and the arming line for settings.json lives in
-# .github/workflows/shell-lint.yml's paths filter alongside the others, as does
-# the one for the hooks listing. It takes
-# the root explicitly rather than resolving one ambiently: it reads the fixed
-# paths named above and needs neither a working checkout nor git on PATH,
-# and this harness already holds the value its argument-free arm would re-derive.
-# Hence no `cd` and no subshell either, unlike the siblings above, whose
-# tracked-file discovery genuinely needs the working directory.
-echo "--> lint-hook-wiki-inventory (a hook absent from the bundled-hooks inventory)"
-if ! replay_guard 10; then
-  status=1
-fi
-
-# Two guards over wiki prose that caches a fact the tree already answers. They
-# ride here for the reason the inventory guard above does: neither subject is
-# shell, and this harness is the folded home for every guard shellcheck cannot
-# model. Their arming lines are already on the `Shell Lint` paths filter --
-# `**/*.md` for the pages, `**/*.sh` for the hook bodies the classification
-# oracle reads, and `.claude/settings.json` for the registrations it reads them
-# through -- so neither needed a filter entry of its own.
-#
-# Both take the root explicitly rather than resolving one ambiently, so neither
-# needs a subshell or a `cd`.
-echo "--> lint-wiki-cached-version (a hand-kept version in wiki frontmatter)"
-if ! replay_guard 11; then
-  status=1
-fi
-
-echo "--> lint-hook-advisory-classification (a blocking hook filed under an Advisory heading)"
-if ! replay_guard 12; then
-  status=1
-fi
-
-# The scripts inventory guard, folded here for the reason the bundled-hooks
-# guard above is: its subjects are a directory listing and a wiki page, and
-# only the listing is shell, and only as filenames. Its arming lines are on the
-# `Shell Lint` paths filter alongside the others -- `**/*.md` for the page, and
-# a `.gaia/scripts/**` entry for the listing, which `**/*.sh` covers only for
-# the root files that happen to be scripts.
-#
-# It takes the root explicitly rather than resolving one ambiently, so it needs
-# neither a subshell nor a `cd`; this harness already holds the value its
-# argument-free arm would re-derive. One half of its subject set is the git
-# index, which it reads with `git -C "$root"` rather than from the working
-# directory, so the explicit root is what scopes it here too.
-echo "--> lint-scripts-wiki-inventory (a .gaia/scripts root file absent from the scripts index)"
-if ! replay_guard 13; then
+if ! replay_guard 7; then
   status=1
 fi
 
@@ -975,7 +854,7 @@ fi
 # `${BASH_SOURCE[0]}` and never consults the working directory, which is the
 # same property it exists to enforce, and its own suite pins that.
 echo "--> lint-hook-cwd-relative-loads (a hook locating framework code from the working directory)"
-if ! replay_guard 14; then
+if ! replay_guard 8; then
   status=1
 fi
 
@@ -986,7 +865,7 @@ fi
 # non-blocking error. The refused call proceeds with no denial and no diagnostic,
 # across the whole fail-closed layer at once.
 echo "--> lint-hook-jq-availability (a blocking hook standing down on a missing jq)"
-if ! replay_guard 15; then
+if ! replay_guard 9; then
   status=1
 fi
 
@@ -1004,7 +883,7 @@ fi
 # the repo root so its `git ls-files` discovery resolves and the file:line it
 # prints is repo-relative.
 echo "--> lint-awk-interpreter-pin (a bare awk where the closure must use the resolved GAIA_AWK)"
-if ! replay_guard 16; then
+if ! replay_guard 10; then
   status=1
 fi
 
@@ -1015,7 +894,7 @@ fi
 # never invoked. The bypass is silent in both directions, and it reaches the
 # whole command-reading layer at once.
 echo "--> lint-hook-monitor-arming (a blocking guard a Monitor-armed command walks past)"
-if ! replay_guard 17; then
+if ! replay_guard 11; then
   status=1
 fi
 

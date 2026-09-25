@@ -94,7 +94,6 @@
     ".claude/rules/guards-must-fail.md": "owned",
     ".claude/rules/i18n.md": "owned",
     ".claude/rules/issue-claim.md": "owned",
-    ".claude/rules/partial-cause-reporting.md": "owned",
     ".claude/rules/playwright.md": "owned",
     ".claude/rules/pr-merge.md": "owned",
     ".claude/rules/quality-gate.md": "owned",
@@ -665,7 +664,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-25T01:35:18.238Z",
+  "generated": "2026-09-25T02:34:21.737Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

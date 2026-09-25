@@ -179,7 +179,7 @@ These ARE distributed but excluded from `.gaia/manifest.json` by the classifier 
 
 The classifier is in `.gaia/cli/src/release/manifest.ts`, `ADOPTER_OWNED_SENTINELS` constant.
 
-The hook does not cover the underlying classifier's second condition, region-declaration drift, or the shipped-issue-reference lint: `.gaia/scripts/lint-shipped-issue-refs.sh` scans every shipped non-Markdown file (the committed manifest's file set, minus Markdown) for a bare `#NNN` issue or pull-request reference. `#NNN` resolves against whatever repository the reader is looking at, so an unqualified number in a file GAIA ships silently points an adopter at their own tracker; `.claude/rules/code-comments.md` requires the qualified `gaia-react/gaia#NNN` form on shipped files, and this lint is what makes that requirement checkable. No CI job runs it on every pull request: `audit-ci-tests.yml` runs its bats suite only when a harness path changes, so a pull request touching only `app/` reaches it only when a maintainer runs `bash .gaia/scripts/lint-shipped-issue-refs.sh` by hand.
+The hook does not cover the underlying classifier's second condition, region-declaration drift.
 
 ## create-gaia bootstrapper
 

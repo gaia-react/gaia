@@ -84,8 +84,8 @@ the gate alone:
   wrapped comment do not block a match.
 - **`waive`** runs its pre/post spelling **anchored (`^...$`), against a
   ground-truth-extracted inner key**, because the machinery-waive validator's
-  real subject is an already-unwrapped sidecar key (`.claude/hooks/lib/audit-dispositions.sh`),
-  never the wrapped comment or the prose around it. The ground-truth
+  real subject is an already-unwrapped sidecar key, never the wrapped comment
+  or the prose around it. The ground-truth
   extraction anchors on the **last** literal `<!-- gaia-debt-key:` occurrence
   in the line (not the first) through the first ` -->` that follows it; every
   row but one in this corpus carries exactly one such occurrence, so this

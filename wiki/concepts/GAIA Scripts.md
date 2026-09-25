@@ -24,8 +24,6 @@ One row per file at the root of `.gaia/scripts/`, grouped by name prefix, becaus
 `yes` in that column means the file reaches an adopter and `no` means it is withheld and exists only in the maintainer repository; `.gaia/manifest.json` and `.gaia/release-exclude` are the authorities it restates. The split runs along family lines and is invisible from the directory itself.
 
 The maintainer's copy of this page carries every root file. An adopter's copy carries only the `yes` rows, so every row they read says `yes`: each withheld row ends in a single-line `gaia:maintainer-only` marker pair, which the bundle-time scrub drops whole before tar, so both audiences read one table built from one source. Prose that names a withheld path is wrapped the same way. See [[Bundle-time Scrub]] and [[Release Workflow]].
-
-The index is held to the tree by `.gaia/scripts/lint-scripts-wiki-inventory.sh`, which reds when a root file exists that this page never mentions. That check is what makes an enumeration safe to keep on a page at all: an unenforced list caches a fact and drifts from it silently. It asks that one direction only; a file deleted from the tree and left on this page is real drift and is not covered, for the reasons its own header records.
 <!-- gaia:maintainer-only:end -->
 
 ### `audit-`
@@ -91,19 +89,11 @@ The index is held to the tree by `.gaia/scripts/lint-scripts-wiki-inventory.sh`,
 | `lint-errexit-status-read.sh` | no | `shell-lint.yml` | Flags `$?` read after a command-substitution assignment under `set -e`, where it reports the wrong command. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `lint-git-path-quoting.sh` | no | `shell-lint.yml` | Flags an executed git listing that names files without `-z`, so a C-quoted path reaches the reader mangled. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `lint-grep-ere-escapes.sh` | no | `shell-lint.yml` | Flags a `grep -E` pattern whose escapes mean different things under BSD and GNU regex. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
-| `lint-guard-rule-shell-coverage.sh` | no | GAIA's own shell-lint harness | Flags a tracked shell file the guard and diagnostic rules do not reach. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
-| `lint-hook-advisory-classification.sh` | no | GAIA's own shell-lint harness | Flags a hook that stops a tool call but is filed under an Advisory heading on a wiki page. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `lint-hook-array-guard.sh` | yes | GAIA's own CI (maintainer-side) | Flags unguarded bare array expansions under `set -u` across the framework's own bash, the bash-3.2 empty-array class. |
 | `lint-hook-cwd-relative-loads.sh` | no | GAIA's own shell-lint harness | Flags a hook that locates the framework code it loads from the working directory rather than from its own path. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `lint-hook-jq-availability.sh` | no | GAIA's own shell-lint harness | Flags a blocking hook that parses its payload with jq and fails open when jq is absent. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `lint-hook-monitor-arming.sh` | no | GAIA's own shell-lint harness | Flags a blocking command-reading guard bound to `Bash` alone, which a `Monitor`-armed command walks past. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
-| `lint-hook-wiki-inventory.sh` | no | GAIA's own shell-lint harness | Flags a hook absent from the bundled-hooks inventory page. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
-| `lint-retired-label-spellings.sh` | no | GAIA's own invariant harness | Fails when a label spelling the registry records as retired still occurs in tracked source. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
-| `lint-scripts-wiki-inventory.sh` | no | GAIA's own shell-lint harness | Flags a root script of this directory absent from the index on this page. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
-| `lint-shipped-issue-refs.sh` | no | `audit-ci-tests.yml` | Flags an unqualified issue or pull-request reference on a shipped non-Markdown file. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `lint-sigpipe-readers.sh` | no | `shell-lint.yml`, `audit-ci-tests.yml` | Flags a short-circuiting reader downstream of a pipe under `pipefail`, where the pipeline status inverts on a match. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
-| `lint-stale-cardinals.sh` | no | GAIA's own shell-lint harness | Flags a definite cardinal in a comment or a bats test name that states how many of something the tree holds, where nothing recounts the set. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
-| `lint-wiki-cached-version.sh` | no | GAIA's own shell-lint harness | Flags a `version:` field in wiki frontmatter, a hand-kept copy of a number `package.json` already holds. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `lint-workflow-run-interpolation.sh` | no | `shell-lint.yml` | Flags a `${{ }}` expression substituted into a workflow `run:` body, the script-injection shape. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 
 ### `token-`

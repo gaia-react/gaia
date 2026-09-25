@@ -54,10 +54,6 @@ Prefer the set to its cardinality. The enumeration is almost always adjacent, so
 
 Where the number does carry the claim, it needs something that recounts it: a test asserting the cardinality against the live set, or a check that fails when the two disagree. That makes the number self-correcting. A count with neither is an assertion nobody is keeping, and correcting a stale one without adding the recount restarts the same decay from a fresher number.
 
-<!-- gaia:maintainer-only:start -->
-GAIA maintainers: part of this is gated rather than merely asserted. `.gaia/scripts/lint-stale-cardinals.sh` reds on a **definite** cardinal of at least three standing against a repository-artifact noun, in a comment that owns its line or in a bats `@test` name, across every glob above: `#` comments on the shell and bats surfaces, `//` and `/* */` comments on the rest. `.gaia/tests/shell-lint.sh` folds it in, so it runs on every pull request, and its sibling suite pins its C-family pathspecs against this file's own frontmatter so a glob added here cannot go unread. The script's own header owns what it reaches and what it does not, and it is the authority rather than this paragraph. What it leaves to a reader: a bare cardinal with no determiner, a possessive noun phrase, a noun outside its closed vocabulary, a phrase wrapped across two comment lines, and a count in a trailing comment sharing its line with code. A clean gate is therefore not a clean tree, and this rule still governs every count the gate cannot see.
-<!-- gaia:maintainer-only:end -->
-
 ## Editing an existing comment
 
 - **Never truncate a pointer to a bare unresolvable id.** Delete the line instead. A bare id keeps the maintenance obligation and discards the meaning, which is strictly worse than saying nothing.
@@ -78,24 +74,3 @@ Linter and type-checker directives, test-environment and editor pragmas, generat
 ## Issue and PR references
 
 `#NNN` names an issue or a pull request out of one shared number space. Keep a `#NNN` only beside the failure mode, the guard, or the test it names; a bare id with nothing else a reader can act on is not a comment worth keeping. On a file an adopter receives, write the reference as `gaia-react/gaia#NNN`, so it names the repository the number belongs to rather than the reader's own; that obligation reaches comments, test names, and user-facing message strings alike, is scoped to shipped files that are not Markdown (Markdown spends `#` on headings and quoted counter-examples), and does not reach a release-excluded file (no reader there can be misled about whose issue it is).
-
-<!-- gaia:maintainer-only:start -->
-## Audit
-
-GAIA maintainers: the audit is maintainer-only because the obligation it enforces is GAIA's own. On an adopter clone a `#NNN` in a file they edited means their tracker, so a gate demanding the `gaia-react/gaia` form there would be wrong, and both the gate and its runners are release-excluded for that reason.
-
-Every reference on a shipped non-Markdown file names its repository. One command is the gate, silent on a conforming tree and reporting `file:line` the moment an unqualified reference returns:
-
-```bash
-bash .gaia/scripts/lint-shipped-issue-refs.sh
-```
-
-That script is the gate rather than a command transcribed here, so the rule and the thing enforcing it cannot drift apart. It derives its file set from `.gaia/manifest.json`, skips Markdown and binary assets, and exempts a CSS short hex colour (`#333` is both a valid issue number and a valid colour); the script's own header states the exemption's accepted miss. `.gaia/scripts/tests/lint-shipped-issue-refs.bats` runs it on the real tree in Audit CI Tests, proves it reds on a regression and pins the release-boundary split the next paragraph states in prose.
-
-The grep below is a candidate list, not a gate. It surfaces qualified and unqualified references alike and asserts no silence, so a human triages its output at block level, where any non-empty match is a candidate for a verdict rather than a finding. The judgment above applies on all four surfaces it sweeps. The qualification obligation applies to the shipped half only: the shipped `.claude/hooks/` scripts, and the shipped `.github/**` helper scripts under `.github/audit/` and `.github/actions/**/lib/`. `.gaia/tests/`, `.gaia/scripts/tests/`, and `.github/audit/tests/` are release-excluded and exempt from it, as are the release-excluded workflows. Neither comment rule's activation globs reach a `.yml`, so neither auto-loads on one, but the gate does reach every `.yml` the manifest ships, workflows and composite actions and issue templates alike. `.github/workflows/code-review-audit.yml` is absent from the manifest because it is regenerated from a shipped CLI template the gate already covers.
-
-```bash
-grep -rnE '((^|[^A-Za-z0-9_/#-])|gaia-react/gaia)#[0-9]{2,4}([^0-9A-Fa-f]|$)' \
-  .gaia/tests/ .gaia/scripts/tests/ .github/audit/tests/ .claude/hooks/
-```
-<!-- gaia:maintainer-only:end -->
