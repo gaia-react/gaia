@@ -479,11 +479,11 @@ copy_shipped_registry() {
   [ ! -e "$cache_dir/gh-artifact-pr.treeA.json" ]
 }
 
-# --- MAIN-CACHE: the two main-only cache globs, swept at MAIN's cache when --
+# --- MAIN-CACHE: the main-only cache globs, swept at MAIN's cache when --
 # --- invoked from a linked worktree, never the invoking tree's own -----------
-# gh-artifact-pr-cache and spec-chain-guard are both registry main-only
-# (.gaia/state-registry.json): their real writers (gh-artifact-lib.sh,
-# block-spec-plan-chain.sh) always resolve main's root before writing, so a
+# gh-artifact-pr-cache and audit-round-counter are registry main-only
+# (.gaia/state-registry.json): their writers always resolve main's root
+# before writing (gh-artifact-lib.sh, for gh-artifact-pr-cache), so a
 # worktree-invoked sweep has to target main's cache too. Before this fix, the
 # sweep read $cache_dir off the INVOKING tree's own root, so a worktree-run
 # janitor cleaned an empty worktree-local cache and never main's real one --
@@ -505,24 +505,6 @@ copy_shipped_registry() {
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ ! -e "$MAIN/.gaia/local/cache/gh-artifact-pr.treeA.json" ]
-}
-
-@test "MAIN-CACHE-02: the sweep 5 spec-chain arm reaps an aged cache/spec-chain-*.json at MAIN's cache when invoked from a linked worktree" {
-  make_repo
-  MAIN="$REPO"
-  mkdir -p "$MAIN/.gaia/local/cache"
-  echo '{}' > "$MAIN/.gaia/local/cache/spec-chain-sess123.json"
-  touch -t 202001010000 "$MAIN/.gaia/local/cache/spec-chain-sess123.json"
-
-  WT="$MAIN/.claude/worktrees/wt-cache2"
-  mkdir -p "$MAIN/.claude/worktrees"
-  git -C "$MAIN" worktree add -q -b wt-cache2-branch "$WT"
-  mkdir -p "$WT/.gaia/local/cache"
-
-  cd "$WT"
-  run bash "$HOOK_ABS"
-  [ "$status" -eq 0 ]
-  [ ! -e "$MAIN/.gaia/local/cache/spec-chain-sess123.json" ]
 }
 
 @test "MAIN-CACHE-03: the sweep 5 audit-round-cap arm reaps an aged cache/audit-rounds-*.json at MAIN's cache when invoked from a linked worktree, and keeps a fresh one" {

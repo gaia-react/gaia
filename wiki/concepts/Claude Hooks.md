@@ -33,7 +33,6 @@ The sourced libraries under `.claude/hooks/lib/` are deliberately absent. They a
 
 | Hook | Event or invoker | Purpose |
 |---|---|---|
-| `audit-disposition-check.sh` | PreToolUse (Bash, Monitor) | Denies `gh pr merge` until every recorded audit finding carries a disposition. |
 | `audit-stamp-trailer.sh` | Invoked by path from the `code-audit-*` agent definitions | Writes the `GAIA-Audit` commit trailer on HEAD for a member that earned its clearance marker. |
 | `block-bare-test.sh` | PreToolUse (Bash, Monitor) | Denies a bare `pnpm test` / `npm test` that would start the watcher instead of exiting. |
 | `block-env-read.sh` | PreToolUse (Bash, Monitor, Read, Grep) | Read-side guard for dotenv paths, across all three tool tiers that can reach one. |
@@ -51,7 +50,6 @@ The sourced libraries under `.claude/hooks/lib/` are deliberately absent. They a
 | `block-secrets-write.sh` | PreToolUse (Edit\|Write\|MultiEdit) | Denies a write whose content carries an obvious secret. |
 | `block-selfheal-paths.sh` | PreToolUse (Bash, Monitor, Edit\|Write\|MultiEdit) | Denies a Code Audit Team member editing outside its own self-heal remit. |
 | `block-serena-cross-tree-activation.sh` | PreToolUse (`mcp__serena__activate_project`) | Denies a Serena activation naming a tree other than the acting one. |
-| `block-spec-plan-chain.sh` | PreToolUse (Bash, Monitor, Read, Skill), SessionStart (clear) | Stops a session that authored a SPEC from going straight on to plan it. |
 | `block-vitest-globals-tsconfig.sh` | PreToolUse (Edit\|Write\|MultiEdit) | Refuses adding `vitest/globals` to a tsconfig. |
 | `block-worktree-path-mismatch.sh` | PreToolUse (Edit\|Write\|MultiEdit) | Inside a linked worktree, denies an edit whose `file_path` resolves to the main checkout. |
 | `capture-gh-artifact.sh` | PostToolUse (Bash) | Records the pull request a `gh pr create` produced, so plan execution can name it in its cost rows. |
@@ -60,7 +58,6 @@ The sourced libraries under `.claude/hooks/lib/` are deliberately absent. They a
 | `check-story-exists.sh` | PreToolUse (Edit\|Write\|MultiEdit) | Advisory: reminds to add a Storybook story for a new component. |
 | `debt-sentinel-touch.sh` | PostToolUse (Bash) | Arms the debt-count staleness sentinel after a `gh` command that mutates the backlog. |
 | `debt-session-reconcile.sh` | SessionStart (startup\|resume) | Reconciles a shown `Run /gaia-debt` nudge against the live backlog. |
-| `distribution-preflight-check.sh` | PreToolUse (Bash, Monitor) | Denies `gh pr create` when a file the branch newly ships has no ship-or-withhold answer. |
 | `issue-claim-release.sh` | PostToolUse (Bash) | Strips the `in-progress` claim from every issue a merged pull request closes. |
 | `local-janitor.sh` | Invoked by path from `wiki-session-start.sh`; also runnable on its own | Bounded garbage collection and reconciliation over GAIA's local working state. |
 | `post-audit-status.sh` | Invoked by path by the orchestrating session, after every member is dispositioned | Posts the `GAIA-Audit` commit status on HEAD. |
@@ -148,9 +145,8 @@ Each script reads `tool_input.command` from stdin and filters by content; there 
 
 - **`serena-code-search-guard.sh`** (PreToolUse, Grep deny): blocks a `Grep` call whose pattern is a bare identifier (≥ 3 chars, no spaces or regex metacharacters) scoped to `app/**` or `test/**` TS/TSX, and points it at Serena's `find_symbol` / `find_referencing_symbols` / `get_symbols_overview` instead. Re-running the identical grep within 2 minutes passes (block-once escape), for the rare string-literal or comment search that happens to be identifier-shaped. No-ops unless Serena is a registered MCP server and the repo has a `tsconfig.json`, so adopters without Serena never see it. Closes the gap left by `.claude/rules/code-search.md` being path-scoped to `app/**`/`test/**` *edits*: the rule is absent from context during exploration, which is when the grep-vs-Serena decision actually gets made. See [[Serena Integration]].
 
-### Workflow-boundary safeguard (Skill, Read, Bash, Agent, SessionStart)
+### Workflow-boundary safeguard (Bash, Agent, SessionStart)
 
-- **`block-spec-plan-chain.sh`** (PreToolUse deny + SessionStart release): stops a session that authored a SPEC from going on to plan it, because `/gaia-plan`'s deep synthesis needs a clean context and a spec session ends with an enormous one. It stamps a per-`session_id` sentinel when a spec session is underway (a `Skill` call resolving to `gaia-spec`, or a `Bash` call invoking `lib/spec-allocator.sh`, the SPEC-id allocation every `/gaia-spec` path runs), then denies both routes into planning while that stamp is live: a `Skill` call resolving to `gaia-plan`, and a `Read` of `.claude/skills/gaia/references/plan.md`. The `Read` arm is the load-bearing one, since an agent can plan without ever touching the `Skill` tool by reading the reference and following it inline. `/clear` releases the guard; compaction deliberately does not. Inert in any session that did not run `/gaia-spec`. See [[GAIA Spec#The spec-to-plan chain guard]].
 - **`block-fourth-audit-round.sh`** (PreToolUse deny + SessionStart release): denies an `Agent` dispatch of a `code-audit-*` member once a session has already dispatched three waves on a branch, where a wave is the acting checkout's HEAD tree. It counts each wave's tree in a per-`session_id` counter under `.gaia/local/cache/`. `/clear` releases the guard; compaction deliberately does not. See [[PR Merge Workflow#The three-round session cap]].
 - **`block-handrolled-pr-poll.sh`** (PreToolUse, Bash and Monitor deny): denies a shell loop that polls `gh pr view` for PR state, or `gh pr checks`, without reading `mergeable` anywhere in the command, and names `.gaia/scripts/pr-wait-merge.sh` in the denial. A wait that exits only on `MERGED` cannot end once the base branch has landed a conflicting change: the queued `--auto` merge never lands and the loop spins until a human notices. Two escapes, both cheap: a command that already reads `mergeable`/`CONFLICTING` passes however it is spelled, and so does one naming `pr-wait-merge.sh`, which covers the blessed path and any command quoting the shape while writing about it. It requires a loop keyword at a command position (after a separator or a newline, so multi-line commands are reached) *and* a `done`, which is what keeps it off prose mentioning a poll inside a `--body`. It binds both tools that take a raw shell command in the same `tool_input.command` field, so the shape is not armable from the tool beside the one the guard watches; a `Monitor` call carrying `ws` rather than a command is not a poll and passes. A text heuristic over an unbounded surface, the same posture `block-selfheal-paths.sh` takes: a poll written in Python, or inside a script file, walks past it. See [[PR Merge Workflow#Post-merge verification before cleanup]].
 
@@ -185,8 +181,6 @@ Every adopting hook, and whether an armed call can deny the tool call outright:
 |---|---|---|
 | `pr-merge-audit-check.sh` | PreToolUse | yes |
 | `worthiness-presence-check.sh` | PreToolUse | yes |
-| `audit-disposition-check.sh` | PreToolUse | yes |
-| `distribution-preflight-check.sh` | PreToolUse | yes |
 | `post-findings-block-on-merge.sh` | PreToolUse | no |
 | `token-tally-git-op.sh` | PreToolUse | no |
 | `token-tally-review.sh` | PostToolUse + Stop | no |
@@ -251,7 +245,7 @@ That compounds with the ordinary cost of a `cd`: the working directory it sets p
 
 ## Adding hooks
 
-Ask Claude to add a hook; Claude will drop the script into `.claude/hooks/` and register it in `.claude/settings.json` via the `update-config` skill. **A registered hook owes an entry above.** The inventory in `## Bundled hooks` is what every reader treats as the complete hook layer, and it is hand-kept, so `.gaia/scripts/lint-hook-wiki-inventory.sh` holds it to `.claude/settings.json`: a hook registered without a matching entry reds on the pull request that registers it rather than on an audit round months later. It asks only that direction, whether every registered hook is named here; a hook that leaves the registration and is left on this page is not covered. Naming convention: `block-{noun}.sh` for blockers, `check-{noun}.sh` for advisory, `pre-{event}-{noun}.sh` for pre-event reminders. Blocker scripts begin with `#!/usr/bin/env bash` + `set -euo pipefail`, read stdin via `jq`, and either `exit 0`/`exit 2` or emit the structured `hookSpecificOutput.permissionDecision` JSON, except `block-spec-plan-chain.sh` and `block-fourth-audit-round.sh`, which open `set -uo pipefail` because a fail-open decision hook must never abort mid-decision.
+Ask Claude to add a hook; Claude will drop the script into `.claude/hooks/` and register it in `.claude/settings.json` via the `update-config` skill. **A registered hook owes an entry above.** The inventory in `## Bundled hooks` is what every reader treats as the complete hook layer, and it is hand-kept, so `.gaia/scripts/lint-hook-wiki-inventory.sh` holds it to `.claude/settings.json`: a hook registered without a matching entry reds on the pull request that registers it rather than on an audit round months later. It asks only that direction, whether every registered hook is named here; a hook that leaves the registration and is left on this page is not covered. Naming convention: `block-{noun}.sh` for blockers, `check-{noun}.sh` for advisory, `pre-{event}-{noun}.sh` for pre-event reminders. Blocker scripts begin with `#!/usr/bin/env bash` + `set -euo pipefail`, read stdin via `jq`, and either `exit 0`/`exit 2` or emit the structured `hookSpecificOutput.permissionDecision` JSON, except `block-fourth-audit-round.sh`, which opens `set -uo pipefail` because a fail-open decision hook must never abort mid-decision.
 
 A CI gate (`.gaia/scripts/lint-hook-array-guard.sh`, run over `.claude/hooks/` and the shipped `.gaia/scripts/` on every push) flags a bare `"${arr[@]}"` / `"${arr[*]}"` expansion in a `set -u` body: on stock macOS `/bin/bash` (3.2.57) that expansion aborts with `unbound variable` over an empty array before any trailing `|| true` can catch it, a failure class the bash-5 test suites in CI cannot see. Guard the expansion (`"${arr[@]+"${arr[@]}"}"`) or check the array is non-empty first.
 

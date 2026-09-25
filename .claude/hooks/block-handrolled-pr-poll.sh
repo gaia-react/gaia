@@ -21,8 +21,7 @@
 # refused by the worktree-isolation guard and the caller was one keystroke from
 # improvising past it. Prose cannot hold a boundary an agent has a standing
 # reason to cross under pressure; this is the same lesson
-# `block-fourth-audit-round.sh` and `block-spec-plan-chain.sh` were written
-# for.
+# `block-fourth-audit-round.sh` was written for.
 #
 # WHY THE DENIAL NAMES A SCRIPT. `.gaia/scripts/pr-wait-merge.sh` ships in the
 # same change as this hook, and the order matters: a denial with no blessed

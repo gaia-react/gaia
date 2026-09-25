@@ -161,10 +161,6 @@ setup() {
     "$ROOT/.claude/agents/code-audit-maintainer-node.md"
     "$ROOT/.claude/agents/code-audit-maintainer-shell.md"
   )
-
-  # Resolved offender label (decision 2), interpolated verbatim, never
-  # re-derived.
-  LABEL="machinery-waived-not-eligible"
 }
 
 # --- Group 1: the union rule is stated at both surfaces ---------------------
@@ -403,14 +399,6 @@ setup() {
     }
   done
   true
-}
-
-# --- Group 7: the label literal ----------------------------------------------
-
-@test "Group 7: section B-mw's abuse-check paragraph names the resolved offender label" {
-  local section
-  section="$(extract_section_or_fail "$FRONTEND" '^### B-mw\. Machinery-path waive' '^#{2,3} ')" || return 1
-  printf '%s\n' "$section" | grep -qF -- "$LABEL" || return 1
 }
 
 # --- Group 8: both disqualifiers are stated at all three prose surfaces -----

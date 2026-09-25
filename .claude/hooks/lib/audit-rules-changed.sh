@@ -35,19 +35,11 @@
 # `.claude/hooks/lib/**` prefix entry already sweeps, so it is machinery by
 # construction and needs no entry of its own in AUDIT_MACHINERY_PATHS.
 #
-# Matching semantics mirror audit_path_is_machinery: the same `/**`-directory-
-# prefix and exact-path rules, the same unconditional `*.bats` exclusion, plus
-# explicit `#`-comment skipping. audit_path_is_machinery has no comment
-# skipping (a `#` line there falls through to its exact-match arm and can
-# never equal a real path); that accident is not good enough here, because
-# this file's literal is also walked as DATA by its own bats suite.
-#
-# No entry below ends in `/**`, so the prefix arm and the `*.bats` early
-# return decide nothing today. Both are retained deliberately: they keep this
-# matcher's semantics identical to audit_path_is_machinery, which still
-# carries `/**` entries and still excludes suites, so a `/**` entry re-added
-# here inherits the exclusion instead of silently losing it. Deleting either
-# arm as dead code is what would introduce the defect.
+# Matching semantics: exact-path only, plus explicit `#`-comment skipping.
+# audit_path_is_machinery has no comment skipping (a `#` line there falls
+# through to its exact-match arm and can never equal a real path); that
+# accident is not good enough here, because this file's literal is also
+# walked as DATA by its own bats suite.
 #
 # Bash 3.2 compatible (macOS default). Never `cd`.
 
@@ -71,7 +63,6 @@ AUDIT_GLOBAL_RULES_PATHS="$(cat <<'EOF'
 .gaia/scripts/audit-member-digest.sh
 .gaia/scripts/audit-key-lib.sh
 .gaia/scripts/audit-resolve-scope.sh
-.gaia/scripts/audit-seed-dispositions.sh
 .gaia/scripts/main-root-lib.sh
 .gaia/scripts/resolve-audit-members.sh
 .claude/hooks/audit-stamp-trailer.sh
@@ -90,22 +81,12 @@ EOF
 
 # audit_path_is_global_rule <path> -> exit 0 iff the path is in the set above.
 audit_path_is_global_rule() {
-  local path="$1" entry prefix
-
-  case "$path" in
-    *.bats) return 1 ;;
-  esac
+  local path="$1" entry
 
   while IFS= read -r entry; do
     [ -n "$entry" ] || continue
     case "$entry" in
       "#"*) continue ;;
-      *"/**")
-        prefix="${entry%\*\*}"
-        case "$path" in
-          "$prefix"*) return 0 ;;
-        esac
-        ;;
       *)
         [ "$path" = "$entry" ] && return 0
         ;;

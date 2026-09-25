@@ -29,7 +29,7 @@ transforms:
       - ".claude/settings.json"
     selectors:
       - path: "hooks.PreToolUse[].hooks[]"
-        match: {command: ".claude/hooks/distribution-preflight-check.sh"}
+        match: {command: ".claude/hooks/block-selfheal-paths.sh"}
 `;
 
 type Sandbox = {
@@ -744,7 +744,7 @@ describe('json-strip-array-element transform', () => {
   let sandbox: Sandbox;
   let stdio: ReturnType<typeof captureStdio>;
 
-  const PREFLIGHT = '.claude/hooks/distribution-preflight-check.sh';
+  const TARGET_HOOK = '.claude/hooks/block-selfheal-paths.sh';
 
   const writeSettings = (value: unknown): void => {
     sandbox.writeStaged(
@@ -785,8 +785,8 @@ describe('json-strip-array-element transform', () => {
             hooks: [
               {command: '.claude/hooks/block-bare-test.sh', type: 'command'},
               {
-                command: PREFLIGHT,
-                statusMessage: 'Checking distribution manifest pre-flight…',
+                command: TARGET_HOOK,
+                statusMessage: 'Checking self-heal repair-boundary gate…',
                 type: 'command',
               },
             ],
@@ -799,7 +799,7 @@ describe('json-strip-array-element transform', () => {
     const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
     expect(exit).toBe(0);
 
-    // Array stays well-formed: the surviving sibling remains, preflight is gone.
+    // Array stays well-formed: the surviving sibling remains, the target hook is gone.
     expect(commandsIn(0)).toEqual(['.claude/hooks/block-bare-test.sh']);
   });
 
@@ -839,7 +839,7 @@ describe('json-strip-array-element transform', () => {
           {
             hooks: [
               {
-                command: '.claude/hooks/block-spec-plan-chain.sh',
+                command: '.claude/hooks/block-fourth-audit-round.sh',
                 type: 'command',
               },
             ],
@@ -848,8 +848,8 @@ describe('json-strip-array-element transform', () => {
           {
             hooks: [
               {
-                command: PREFLIGHT,
-                statusMessage: 'Checking distribution manifest pre-flight…',
+                command: TARGET_HOOK,
+                statusMessage: 'Checking self-heal repair-boundary gate…',
                 type: 'command',
               },
             ],
@@ -869,7 +869,9 @@ describe('json-strip-array-element transform', () => {
     expect(preToolUse[1]?.matcher).toBe('Bash');
     expect(preToolUse[1]?.hooks).toEqual([]);
     // Sibling matcher entry is untouched.
-    expect(commandsIn(0)).toEqual(['.claude/hooks/block-spec-plan-chain.sh']);
+    expect(commandsIn(0)).toEqual([
+      '.claude/hooks/block-fourth-audit-round.sh',
+    ]);
   });
 
   test('removes only the targeted element across multiple matcher entries', () => {
@@ -889,8 +891,8 @@ describe('json-strip-array-element transform', () => {
             hooks: [
               {command: '.claude/hooks/block-bare-test.sh', type: 'command'},
               {
-                command: PREFLIGHT,
-                statusMessage: 'Checking distribution manifest pre-flight…',
+                command: TARGET_HOOK,
+                statusMessage: 'Checking self-heal repair-boundary gate…',
                 type: 'command',
               },
               {command: '.claude/hooks/block-rm-rf.sh', type: 'command'},
@@ -913,8 +915,8 @@ describe('json-strip-array-element transform', () => {
     expect(exit).toBe(0);
 
     const after = readSettings();
-    // Non-targeted entry is untouched; only the preflight element is removed
-    // from the Bash entry; unrelated sections survive.
+    // Non-targeted entry is untouched; only the target hook's element is
+    // removed from the Bash entry; unrelated sections survive.
     expect(commandsIn(0)).toEqual([
       '.claude/hooks/block-env-write.sh',
       '.claude/hooks/check-i18n-strings.sh',
@@ -977,8 +979,8 @@ describe('json-strip-array-element transform', () => {
           {
             hooks: [
               {
-                command: PREFLIGHT,
-                statusMessage: 'Checking distribution manifest pre-flight…',
+                command: TARGET_HOOK,
+                statusMessage: 'Checking self-heal repair-boundary gate…',
                 type: 'command',
               },
             ],

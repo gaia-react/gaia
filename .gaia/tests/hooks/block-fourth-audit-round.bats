@@ -6,11 +6,10 @@
 # one branch: a round is identified by the acting tree's HEAD tree SHA, and a
 # dispatch whose tree is already recorded is the same wave (a parallel
 # sibling, or the hardened single re-dispatch of a no-op'd member) rather than
-# a new one. The counter is session-keyed and main-anchored, exactly like
-# block-spec-plan-chain.sh's sentinel, and this suite's structure mirrors
-# block-spec-plan-chain.bats for that reason: same helpers, same
-# assert_denied_by_json / assert_allowed_by_json mechanism
-# (helpers/run-hook.sh), same tmp-git-repo.sh fixture.
+# a new one. The counter is session-keyed and main-anchored. This suite uses
+# the same assert_denied_by_json / assert_allowed_by_json mechanism
+# (helpers/run-hook.sh) and the same tmp-git-repo.sh fixture as the rest of
+# this directory.
 #
 # The hook path is overridable (GAIA_ROUND_CAP_HOOK) so a red fixture can be
 # proven against a broken COPY of the hook without ever touching the live one,

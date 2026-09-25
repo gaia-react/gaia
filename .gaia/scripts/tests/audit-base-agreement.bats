@@ -987,13 +987,11 @@ probe_deadlock() {
 # than the review scope: the union of the gate-machinery paths and every file
 # this pull request already changes. The `ELIG_CHANGED` lines the default
 # member's resolver command prints under `--eligibility` are that set's write
-# side; the shared library's `_disposition_changed_set` is its verify side.
-# Four things about the write side are load-bearing and none of them is
+# side. Three things about the write side are load-bearing and none of them is
 # checked by any other suite in this tree: that the definition's command asks
 # for it at all and it resolves the fork point, that its set is distinct from
-# the TS/TSX-filtered review-scope set, that the command continues rather than
-# exiting when the base cannot resolve, and that it agrees byte for byte with
-# the verify side.
+# the TS/TSX-filtered review-scope set, and that the command continues rather
+# than exiting when the base cannot resolve.
 
 @test "the eligibility derivation is present and resolves the fork point" {
   local repo expected_base full_base full_changed
@@ -1112,84 +1110,6 @@ probe_deadlock() {
   }
 }
 
-# assert_write_verify_agree <acting-root> <label>
-#
-# Drives the agent's resolver command (write side) and the shared library's
-# _disposition_changed_set (verify side) against the SAME acting root and
-# asserts the two changed-file sets are byte-identical. The library is
-# sourced from THIS repo's own copy (never the scratch repo's): it is pure
-# git plumbing parameterized entirely by its <acting-root> argument, and the
-# question here is agreement on that root's diff, not the library's own
-# portability.
-#
-# Normalization, per README.md frozen contract A: the write side prints one
-# `ELIG_CHANGED=` line per path, read here as newline-delimited, from a
-# `-z`-delimited diff. The verify side writes its NUL-delimited set to a file, kept
-# on disk so the NULs survive, and is normalized here with the same `tr`. The
-# two sides agree on paths and order and differ only in delimiter; that
-# normalization is the whole of this helper, not a shortcut around it. A path
-# containing a literal newline is the accepted, named limitation on both
-# sides.
-assert_write_verify_agree() {
-  local root="$1" label="$2" write verify outfile
-
-  write="$(elig_eval code-audit-frontend "$root" ELIG_CHANGED)" || {
-    echo "$label: the default member's resolver command failed to resolve an eligibility set" >&2
-    return 1
-  }
-
-  outfile="$BATS_TEST_TMPDIR/verify-changed-${label}"
-  ( . "$REPO_ROOT/.claude/hooks/lib/audit-dispositions.sh" && _disposition_changed_set "$root" "$outfile" ) || {
-    echo "$label: _disposition_changed_set failed to resolve a base" >&2
-    return 1
-  }
-  verify="$(tr '\0' '\n' < "$outfile")"
-
-  [ "$write" = "$verify" ] || {
-    printf '%s: write side and verify side disagree.\nwrite:\n%s\nverify:\n%s\n' "$label" "$write" "$verify" >&2
-    return 1
-  }
-}
-
-@test "the write side and the verify side agree across three repository shapes" {
-  local repo wt
-
-  repo="$(make_repo elig-agreement)"
-  git -C "$repo" checkout -q -b origin-sim
-  commit_file "$repo" "docs/origin-only.md" "a commit only origin/main will carry"
-  git -C "$repo" checkout -q main
-  commit_file "$repo" "docs/main-advance.md" "advance local main past origin/main"
-  git -C "$repo" checkout -q -b feat
-  commit_file "$repo" "docs/note.md" "feat's own commit"
-
-  # Shape 1: refs/remotes/origin/HEAD set, built from a remote-tracking ref
-  # rather than a real remote (origin/HEAD only ever needs to resolve, never
-  # to fetch). origin/main points at origin-sim, which shares no ancestry
-  # with feat's actual fork point (local main) beyond their common root, so
-  # the origin/<name> arm and the bare <name> arm resolve to two DIFFERENT
-  # commits here. Swapping which arm is tried first therefore changes
-  # FULL_BASE, which is exactly what this shape exists to catch.
-  git -C "$repo" update-ref refs/remotes/origin/main refs/heads/origin-sim
-  git -C "$repo" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
-  assert_write_verify_agree "$repo" "origin-head-set"
-
-  # Shape 2: the same repository without it. Removing both the symref and the
-  # tracking ref falls the default-branch probe back to the literal `main`,
-  # and only the bare `<name>` merge-base arm can resolve: no origin/main ref
-  # exists anymore to satisfy the first.
-  git -C "$repo" symbolic-ref -d refs/remotes/origin/HEAD
-  git -C "$repo" update-ref -d refs/remotes/origin/main
-  assert_write_verify_agree "$repo" "no-origin-refs"
-
-  # Shape 3: a linked worktree. The diff belongs to the tree that holds HEAD,
-  # the same acting-tree requirement the gates carry, so both sides read the
-  # worktree's own root, never the main tree's.
-  wt="$BATS_TEST_TMPDIR/elig-agreement-wt"
-  git -C "$repo" worktree add -q -b wt-feat "$wt" main
-  commit_file "$wt" "docs/wt-note.md" "the worktree's own commit"
-  assert_write_verify_agree "$wt" "worktree"
-}
-
 # --- the eligibility base is the pull request's own base branch ---------------
 #
 # The eligibility set answers "which files does this pull request change", and
@@ -1222,12 +1142,11 @@ make_stacked_repo() {
 }
 
 @test "the eligibility set excludes what only the pull request's base branch changed" {
-  local repo write outfile verify
+  local repo write
 
   repo="$(make_stacked_repo elig-stacked)"
 
-  # GITHUB_BASE_REF is set by the pull_request event under Actions, so both
-  # sides read the same declared base without a network call.
+  # GITHUB_BASE_REF is set by the pull_request event under Actions.
   export GITHUB_ACTIONS=true
   export GITHUB_BASE_REF=release
 
@@ -1243,17 +1162,7 @@ make_stacked_repo() {
     printf 'write side still carries a base-branch-only file: %s\n' "$write" >&2
     return 1
   }
-
-  outfile="$BATS_TEST_TMPDIR/verify-stacked"
-  ( . "$REPO_ROOT/.claude/hooks/lib/audit-dispositions.sh" && _disposition_changed_set "$repo" "$outfile" ) || {
-    echo "_disposition_changed_set failed to resolve a base" >&2
-    return 1
-  }
-  verify="$(tr '\0' '\n' < "$outfile")"
-  [ "$write" = "$verify" ] || {
-    printf 'write side and verify side disagree.\nwrite:\n%s\nverify:\n%s\n' "$write" "$verify" >&2
-    return 1
-  }
+  true
 }
 
 @test "the eligibility derivation refuses an empty root rather than reading the ambient repository" {
@@ -1331,7 +1240,7 @@ EOF
 }
 
 @test "the write side takes the base from the pull request's own record when Actions declares none" {
-  local repo write outfile verify
+  local repo write
 
   repo="$(make_stacked_repo elig-record)"
   install_pr_view_mock release
@@ -1346,49 +1255,6 @@ EOF
   }
   grep -qxF "app/base-only.ts" <<<"$write" && {
     printf 'write side still carries a base-branch-only file: %s\n' "$write" >&2
-    return 1
-  }
-
-  outfile="$BATS_TEST_TMPDIR/verify-record"
-  ( . "$REPO_ROOT/.claude/hooks/lib/audit-dispositions.sh" && _disposition_changed_set "$repo" "$outfile" ) || {
-    echo "_disposition_changed_set failed to resolve a base" >&2
-    return 1
-  }
-  verify="$(tr '\0' '\n' < "$outfile")"
-  [ "$write" = "$verify" ] || {
-    printf 'write side and verify side disagree.\nwrite:\n%s\nverify:\n%s\n' "$write" "$verify" >&2
-    return 1
-  }
-}
-
-# --- the lifted helper adopts the shared base-provenance resolver ------------
-#
-# _disposition_changed_set no longer runs its own ladder; it calls
-# audit_resolve_base_provenance with anchor pr-record, passing pr_branch
-# (still read from GITHUB_BASE_REF / `gh pr view` at THIS call site) as the
-# explicit record-base argument. The behavior on every arm is unchanged;
-# these fixtures pin the post-lift call site directly rather than only
-# through the write-side comparison above.
-
-@test "_disposition_changed_set reads GITHUB_BASE_REF at its own call site (COV-002 CI arm)" {
-  local repo outfile got
-
-  repo="$(make_stacked_repo elig-ci-arm)"
-  export GITHUB_ACTIONS=true
-  export GITHUB_BASE_REF=release
-
-  outfile="$BATS_TEST_TMPDIR/ci-arm-changed"
-  ( . "$REPO_ROOT/.claude/hooks/lib/audit-dispositions.sh" && _disposition_changed_set "$repo" "$outfile" ) || {
-    echo "_disposition_changed_set failed to resolve a base" >&2
-    return 1
-  }
-  got="$(tr '\0' '\n' < "$outfile")"
-  grep -qxF "app/feat-only.ts" <<<"$got" || {
-    printf 'missing the pull request own change: %s\n' "$got" >&2
-    return 1
-  }
-  grep -qxF "app/base-only.ts" <<<"$got" && {
-    printf 'still carries a base-branch-only file; GITHUB_BASE_REF was not honored at the call site: %s\n' "$got" >&2
     return 1
   }
   true
@@ -1406,72 +1272,12 @@ EOF
   }
 }
 
-@test "_disposition_changed_set: unresolvable base returns 1 untouched, resolved-empty base returns 0 with an empty file" {
-  local repo outfile rc repo2 outfile2
+@test "the write side resolves correctly under a shadowing local branch named origin/main that sits AHEAD of the remote-tracking ref (DP-002, ahead)" {
+  local repo write
 
-  repo="$(make_no_base_repo)"
-  outfile="$BATS_TEST_TMPDIR/rv-unresolvable"
-  rc=0
-  ( . "$REPO_ROOT/.claude/hooks/lib/audit-dispositions.sh" && _disposition_changed_set "$repo" "$outfile" ) || rc=$?
-  [ "$rc" -eq 1 ] || {
-    printf 'expected 1 on an unresolvable base, got %s\n' "$rc" >&2
-    return 1
-  }
-  [ ! -s "$outfile" ] || {
-    echo "an unresolvable base wrote a non-empty file" >&2
-    return 1
-  }
-
-  repo2="$(make_repo rv-resolved-empty)"
-  outfile2="$BATS_TEST_TMPDIR/rv-resolved-empty-outfile"
-  ( . "$REPO_ROOT/.claude/hooks/lib/audit-dispositions.sh" && _disposition_changed_set "$repo2" "$outfile2" ) || {
-    echo "a resolved base with no differences returned non-zero" >&2
-    return 1
-  }
-  [ -f "$outfile2" ] || {
-    echo "a resolved base did not write an output file" >&2
-    return 1
-  }
-  [ ! -s "$outfile2" ] || {
-    echo "a resolved base with no differences wrote a non-empty file" >&2
-    return 1
-  }
-}
-
-@test "a verified record ref with a failed merge-base still returns UNKNOWN, not a wider resolved set" {
-  local repo outfile rc
-
-  repo="$(make_repo unrelated-record)"
-  # An orphan branch sharing no history with HEAD, so its remote-tracking ref
-  # verifies but merge-base against it fails.
-  git -C "$repo" checkout -q --orphan orphan-record
-  git -C "$repo" rm -rf -q . >/dev/null 2>&1 || true
-  commit_file "$repo" "unrelated.md" "an unrelated root"
-  git -C "$repo" update-ref refs/remotes/origin/orphan-record refs/heads/orphan-record
-  git -C "$repo" checkout -q main
-
-  export GITHUB_ACTIONS=true
-  export GITHUB_BASE_REF=orphan-record
-
-  outfile="$BATS_TEST_TMPDIR/verified-record-failed-mergebase"
-  rc=0
-  ( . "$REPO_ROOT/.claude/hooks/lib/audit-dispositions.sh" && _disposition_changed_set "$repo" "$outfile" ) || rc=$?
-  [ "$rc" -eq 1 ] || {
-    printf 'expected 1 (UNKNOWN) on a verified-but-unrelated record ref, got %s\n' "$rc" >&2
-    return 1
-  }
-  [ ! -s "$outfile" ] || {
-    echo "a failed merge-base wrote a resolved, wider set instead of UNKNOWN" >&2
-    return 1
-  }
-}
-
-@test "the write side and the verify side agree under a shadowing local branch named origin/main that sits AHEAD of the remote-tracking ref (DP-002, ahead)" {
-  local repo write verify outfile
-
-  # Both sides must take their non-Actions arm here, or this pins nothing.
-  # Under Actions the job exports GITHUB_BASE_REF for the whole run, the write
-  # side's derivation resolves its base from that instead of from origin/<default>,
+  # The non-Actions arm here is the one this test exercises. Under Actions
+  # the job exports GITHUB_BASE_REF for the whole run, the write side's
+  # derivation resolves its base from that instead of from origin/<default>,
   # and the shadowing branch this test exists to exercise is never consulted.
   # That is a real environment difference, not a flake: the same test passes
   # locally and fails on CI without this.
@@ -1481,8 +1287,9 @@ EOF
 
   # A local branch literally named origin/main sits on the ADVANCED commit
   # below, while the remote-tracking ref stays on the commit BEFORE it. A
-  # short `origin/<name>` revspec would resolve to the local branch; both sides
-  # spell the fully-qualified `refs/remotes/origin/<name>` and see the advance.
+  # short `origin/<name>` revspec would resolve to the local branch; the
+  # write side spells the fully-qualified `refs/remotes/origin/<name>` and
+  # sees the advance.
   commit_file "$repo" "docs/advance.md" "advance local main past origin/main"
   git -C "$repo" update-ref refs/remotes/origin/main "$(git -C "$repo" rev-parse HEAD~1)"
   git -C "$repo" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
@@ -1492,27 +1299,17 @@ EOF
     echo "the default member's resolver command failed to resolve an eligibility set" >&2
     return 1
   }
-  outfile="$BATS_TEST_TMPDIR/dp002-verify"
-  ( . "$REPO_ROOT/.claude/hooks/lib/audit-dispositions.sh" && _disposition_changed_set "$repo" "$outfile" ) || {
-    echo "_disposition_changed_set failed to resolve a base" >&2
-    return 1
-  }
-  verify="$(tr '\0' '\n' < "$outfile")"
 
-  # Both sides take the real remote-tracking ref, so both see the advance and
-  # neither reads the shadowing local branch.
+  # The write side takes the real remote-tracking ref, so it sees the advance
+  # and never reads the shadowing local branch.
   grep -qxF "docs/advance.md" <<<"$write" || {
     printf 'write side did not see the advance past the shadowed ref: %s\n' "$write" >&2
     return 1
   }
-  [ "$write" = "$verify" ] || {
-    printf 'write side %s disagrees with verify side %s\n' "$write" "$verify" >&2
-    return 1
-  }
 }
 
-@test "the write side and the verify side agree under a shadowing local branch named origin/main that sits BEHIND the remote-tracking ref (DP-002, behind)" {
-  local repo write verify outfile
+@test "the write side resolves correctly under a shadowing local branch named origin/main that sits BEHIND the remote-tracking ref (DP-002, behind)" {
+  local repo write
 
   # The non-Actions, no-record arm is the only one that consults the
   # default-branch rung, so clear both ambient variables and stand in a `gh`
@@ -1537,22 +1334,12 @@ EOF
     echo "the default member's resolver command failed to resolve an eligibility set" >&2
     return 1
   }
-  outfile="$BATS_TEST_TMPDIR/dp002-behind-verify"
-  ( . "$REPO_ROOT/.claude/hooks/lib/audit-dispositions.sh" && _disposition_changed_set "$repo" "$outfile" ) || {
-    echo "_disposition_changed_set failed to resolve a base" >&2
-    return 1
-  }
-  verify="$(tr '\0' '\n' < "$outfile")"
 
-  # A write side wider than the verify side is the un-clearable direction: a
-  # waive on `docs/ahead.md` passes the write side and the disposition check
-  # denies it on every round while the shadowing branch stands.
+  # A write side wider than intended is the un-clearable direction: a waive
+  # on `docs/ahead.md` recorded under a shadowing branch would waive a file
+  # this pull request never touched.
   [ "$write" = "app/feat.ts" ] || {
     printf 'write side is not the pull request own change alone: %s\n' "$write" >&2
-    return 1
-  }
-  [ "$write" = "$verify" ] || {
-    printf 'write side %s disagrees with verify side %s\n' "$write" "$verify" >&2
     return 1
   }
 }

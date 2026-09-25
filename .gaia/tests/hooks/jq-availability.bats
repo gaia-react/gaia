@@ -264,20 +264,6 @@ readonly INSTALL_CMD="brew install jq"
   assert_allowed_by_exit
 }
 
-@test "jq absent: block-spec-plan-chain refuses the skill it denies" {
-  local json
-  json=$(jq -n '{hook_event_name: "PreToolUse", tool_name: "Skill", tool_input: {name: "gaia-plan"}}')
-  without_jq block-spec-plan-chain.sh "$json"
-  assert_blocked_by_exit
-}
-
-@test "jq absent: block-spec-plan-chain allows the jq install" {
-  local json
-  json=$(bash_payload "$INSTALL_CMD")
-  without_jq block-spec-plan-chain.sh "$json"
-  assert_allowed_by_exit
-}
-
 @test "jq absent: block-fourth-audit-round refuses a member dispatch" {
   local json
   json=$(jq -n '{hook_event_name: "PreToolUse", tool_name: "Agent", tool_input: {subagent_type: "code-audit-frontend"}}')
@@ -310,20 +296,6 @@ readonly INSTALL_CMD="brew install jq"
 # the verb that gate's own predicate binds on, so a conversion that dropped its
 # literal would green the refusal here and red the install beside it.
 
-@test "jq absent: audit-disposition-check refuses a merge attempt" {
-  local json
-  json=$(bash_payload "gh pr merge 42 --squash")
-  without_jq audit-disposition-check.sh "$json"
-  assert_blocked_by_exit
-}
-
-@test "jq absent: audit-disposition-check allows the jq install" {
-  local json
-  json=$(bash_payload "$INSTALL_CMD")
-  without_jq audit-disposition-check.sh "$json"
-  assert_allowed_by_exit
-}
-
 @test "jq absent: pr-merge-audit-check refuses a merge attempt" {
   local json
   json=$(bash_payload "gh pr merge 42 --squash")
@@ -349,20 +321,6 @@ readonly INSTALL_CMD="brew install jq"
   local json
   json=$(bash_payload "$INSTALL_CMD")
   without_jq worthiness-presence-check.sh "$json"
-  assert_allowed_by_exit
-}
-
-@test "jq absent: distribution-preflight-check refuses a PR creation" {
-  local json
-  json=$(bash_payload "gh pr create --title x --body y")
-  without_jq distribution-preflight-check.sh "$json"
-  assert_blocked_by_exit
-}
-
-@test "jq absent: distribution-preflight-check allows the jq install" {
-  local json
-  json=$(bash_payload "$INSTALL_CMD")
-  without_jq distribution-preflight-check.sh "$json"
   assert_allowed_by_exit
 }
 

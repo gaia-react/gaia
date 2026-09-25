@@ -46,8 +46,6 @@
 # on maintainer-only, release-excluded workflows); an adopter clone has no such
 # ruleset and none of those jobs, so the script has no adopter surface.
 .gaia/scripts/verify-required-checks.sh
-# Maintainer-only distribution pre-flight; drives the release-excluded gaia-maintainer binary and would mislead adopter-side agents about a manifest their clone does not have
-.claude/hooks/distribution-preflight-check.sh
 # The four worktree-program build checks assert invariants that are true of
 # GAIA's own source and of nothing else: that each language has exactly one
 # main-root resolver (Check A) and no hand-rolled re-derivation of it (Check

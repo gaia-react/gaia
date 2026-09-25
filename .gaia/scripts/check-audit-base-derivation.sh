@@ -64,8 +64,8 @@
 #      the increment could write no marker while membership still demanded
 #      one, deadlocking the merge. The default member's whole-PR base is
 #      `ELIG_BASE`, for a different job: the eligibility set the out-of-scope
-#      machinery-waive abuse-check reads (.claude/hooks/lib/audit-dispositions.sh),
-#      never a review base either. Those two whole-PR bases answer to
+#      machinery-waive that the default member records against, never a
+#      review base either. Those two whole-PR bases answer to
 #      different branches, which is why they carry different names: a
 #      specialist's merge-bases against the advertised default, because
 #      membership is safe wide, while the eligibility one merge-bases against

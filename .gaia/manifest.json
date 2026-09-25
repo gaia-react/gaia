@@ -19,7 +19,6 @@
     ".claude/commands/gaia-serena-sync.md": "owned",
     ".claude/commands/gaia-spec.md": "owned",
     ".claude/commands/setup-gaia.md": "owned",
-    ".claude/hooks/audit-disposition-check.sh": "owned",
     ".claude/hooks/audit-stamp-trailer.sh": "owned",
     ".claude/hooks/block-bare-test.sh": "owned",
     ".claude/hooks/block-env-read.sh": "owned",
@@ -37,7 +36,6 @@
     ".claude/hooks/block-secrets-write.sh": "owned",
     ".claude/hooks/block-selfheal-paths.sh": "owned",
     ".claude/hooks/block-serena-cross-tree-activation.sh": "owned",
-    ".claude/hooks/block-spec-plan-chain.sh": "owned",
     ".claude/hooks/block-vitest-globals-tsconfig.sh": "owned",
     ".claude/hooks/block-worktree-path-mismatch.sh": "owned",
     ".claude/hooks/capture-gh-artifact.sh": "owned",
@@ -50,7 +48,6 @@
     ".claude/hooks/lib/audit-base-provenance.sh": "owned",
     ".claude/hooks/lib/audit-clearance.sh": "owned",
     ".claude/hooks/lib/audit-digest.sh": "owned",
-    ".claude/hooks/lib/audit-dispositions.sh": "owned",
     ".claude/hooks/lib/audit-machinery.sh": "owned",
     ".claude/hooks/lib/audit-rules-changed.sh": "owned",
     ".claude/hooks/lib/audit-scope.sh": "owned",
@@ -220,7 +217,6 @@
     ".gaia/scripts/audit-resolve-scope.sh": "owned",
     ".gaia/scripts/audit-scope-digest.sh": "owned",
     ".gaia/scripts/audit-scratch-dir.sh": "owned",
-    ".gaia/scripts/audit-seed-dispositions.sh": "owned",
     ".gaia/scripts/audit-window-lib.sh": "owned",
     ".gaia/scripts/audit-write-clearance.sh": "owned",
     ".gaia/scripts/audit-write-findings.sh": "owned",
@@ -669,7 +665,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-24T14:39:33.556Z",
+  "generated": "2026-09-25T01:35:18.238Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

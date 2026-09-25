@@ -1669,15 +1669,13 @@ SHIM
 # --- COV-002: the open-receipt keep-arm (decision 2) ------------------------
 #
 # A still-open out-of-scope disposition receipt must survive a digest
-# rotation even after its predecessor marker ages past the retention window,
-# so seed-forward always finds a live predecessor sidecar to read. Both
-# halves are pinned here: a still-open entry keeps the marker+sidecar pair
-# alive past every other arm (arms A and B both deliberately fail in each
-# fixture below: a non-live tree, and an out-of-window audited_at); a
+# rotation even after its predecessor marker ages past the retention window.
+# Both halves are pinned here: a still-open entry keeps the marker+sidecar
+# pair alive past every other arm (arms A and B both deliberately fail in
+# each fixture below: a non-live tree, and an out-of-window audited_at); a
 # fully-resolved sidecar gets no such exemption and is reaped normally. The
-# still-open predicate mirrors task-dispositions' disposition_seed_forward
-# byte-for-byte: `.disposition == "filed"` OR (`.disposition == "pending"`
-# AND `.pending_reason == "definitive"`).
+# still-open predicate: `.disposition == "filed"` OR (`.disposition ==
+# "pending"` AND `.pending_reason == "definitive"`).
 
 @test "COV-002: a still-open (filed) receipt keeps its marker+sidecar alive past the window on a non-live tree" {
   make_repo
@@ -1694,7 +1692,7 @@ SHIM
   [ -f "$REPO/.gaia/local/audit/$digest.dispositions.json" ]
 }
 
-@test "COV-002: a pending(definitive) receipt also keeps its marker+sidecar alive (same predicate as seed-forward)" {
+@test "COV-002: a pending(definitive) receipt also keeps its marker+sidecar alive" {
   make_repo
   dead=$(orphan_sha)
   dead_tree=$(git -C "$REPO" rev-parse "${dead}^{tree}")
