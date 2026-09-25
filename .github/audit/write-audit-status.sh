@@ -354,10 +354,10 @@ fi
 # admits a file that is present but UNPARSEABLE, and on bash 3.2.57 errexit
 # abandons the shell AT the load, so the `|| true` is never reached and the
 # `command -v` degrade below never runs. Dropping errexit across the load is
-# what lets that failure reach the degrade. The flat `set -e` restore is the
-# shape .gaia/scripts/lint-errexit-source-guard.sh prescribes for a file that
-# arms errexit itself, which this one does above; the sibling repair in
-# resolve-audit-base.sh carries the long form of the argument.
+# what lets that failure reach the degrade. The flat `set -e` restore matches
+# this file's own errexit arming above, rather than the state-preserving form
+# a library uses; the sibling repair in resolve-audit-base.sh carries the same
+# shape.
 version_lib="$repo_root/.claude/hooks/lib/gaia-version.sh"
 set +e
 # shellcheck source=/dev/null

@@ -204,7 +204,7 @@ surface_file="$(mktemp -t lint-hook-cwd-relative-loads.XXXXXX)" || {
 }
 # One arm per disposition: a handler shared between EXIT and a terminating
 # signal returns and lets the script carry on, which deletes the disposition it
-# replaced (.gaia/scripts/lint-collapsed-signal-trap.sh).
+# replaced.
 trap 'rm -f -- "$surface_file"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM

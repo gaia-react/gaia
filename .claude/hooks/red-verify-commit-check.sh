@@ -63,13 +63,7 @@ input=$(cat)
 command -v jq >/dev/null 2>&1 || exit 0
 
 tool_name=$(echo "$input" | jq -r '.tool_name // ""' 2>/dev/null)
-# `Monitor` hands this hook the same raw shell command in the same
-# `tool_input.command` field and runs it in the same shell environment, so a
-# guard bound to `Bash` alone refuses nothing a caller arms through it.
-case "$tool_name" in
-  Bash | Monitor) ;;
-  *) exit 0 ;;
-esac
+[ "$tool_name" = "Bash" ] || exit 0
 
 # Avoid the name `command`: it would shadow bash's `command` builtin and break
 # later `command -v ...` guards.

@@ -233,8 +233,7 @@ GAIA_GUARD_AWK_LIB_SOURCED=1
 # Bracketed against an unparseable target the way a LIBRARY has to be: this
 # file has no errexit of its own, it inherits whatever its caller armed, so
 # the bracket saves and restores that inherited state instead of
-# unconditionally turning errexit back on. .gaia/scripts/lint-errexit-source-guard.sh
-# is the gate that demands this shape for exactly this file.
+# unconditionally turning errexit back on.
 _gaia_guard_awk_lib_dir="${BASH_SOURCE[0]%/*}"
 if [ "$_gaia_guard_awk_lib_dir" = "${BASH_SOURCE[0]}" ]; then _gaia_guard_awk_lib_dir="."; fi
 _gaia_guard_awk_errexit_was=0

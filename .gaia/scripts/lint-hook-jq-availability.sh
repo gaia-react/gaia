@@ -39,10 +39,9 @@
 #   advisory  -- the hook only ever nudges, so standing down costs a reminder and
 #                nothing else. `command -v jq >/dev/null 2>&1 || exit 0` is right
 #                for it, and refusing would be wrong.
-# Which posture a hook has is not this gate's judgement: it reads the same
-# blocking oracle .gaia/scripts/lint-hook-monitor-arming.sh reads, out of
-# .gaia/scripts/hook-registration-lib.sh, so a hook cannot be blocking for one
-# gate and advisory for the other.
+# Which posture a hook has is not this gate's judgement: it reads the shared
+# blocking oracle out of .gaia/scripts/hook-registration-lib.sh, rather than
+# deciding for itself.
 #
 # SCOPE is the PreToolUse registrations in .claude/settings.json, derived rather
 # than listed, so a newly registered hook carries the obligation the moment it is
@@ -299,10 +298,9 @@ EOF
   return 0
 }
 
-# The PreToolUse registration read and the blocking oracle are shared with
-# .gaia/scripts/lint-hook-monitor-arming.sh, which asks a different question
-# of the same two answers. Rooted at this script's own on-disk location so it
-# resolves however the gate is invoked.
+# The PreToolUse registration read and the blocking oracle come from the
+# shared library rather than a private copy. Rooted at this script's own
+# on-disk location so it resolves however the gate is invoked.
 _gaia_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || _gaia_lib_dir=''
 if [ -z "$_gaia_lib_dir" ] || [ ! -f "$_gaia_lib_dir/hook-registration-lib.sh" ]; then
   printf '%s: cannot load hook-registration-lib.sh beside this script\n' "$PROG" >&2

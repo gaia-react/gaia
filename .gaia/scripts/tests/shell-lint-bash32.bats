@@ -257,11 +257,10 @@ gate_pass_headers() {
   # ran is caught whether or not it found anything. Written as the bad case plus
   # an explicit `return 1` per .claude/rules/bats-assertions.md.
   #
-  # The set is derived from the gate rather than listed here. The list this
-  # replaced was hand-written and had already fallen one pass behind the gate:
-  # it never named lint-errexit-source-guard, so moving that invocation above
-  # the early exit would have left the test green while the 10x-billed macOS leg
-  # silently started paying for a pass whose verdict does not depend on the host
+  # The set is derived from the gate rather than listed here. A hand-written
+  # list falls behind the gate silently: a pass it never named could move above
+  # the early exit and leave the test green while the 10x-billed macOS leg
+  # started paying for a pass whose verdict does not depend on the host
   # interpreter -- the exact short read .claude/rules/bats-assertions.md names.
   local p seen=0
   while IFS= read -r p; do

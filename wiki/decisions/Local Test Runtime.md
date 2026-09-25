@@ -38,7 +38,7 @@ keep current and the runner's own header is what cannot go stale.
 interpreter when one is available. Neither backend is required: adopters
 never need either, since none of the files that use them ship.
 
-## The awk interpreter pin's stated non-claim
+## The awk interpreter resolver's stated non-claim
 
 `mawk` measurably outperforms the platform-default `awk` on the specific
 guards that tokenize shell source, and `.gaia/scripts/awk-interp-lib.sh`
@@ -48,16 +48,14 @@ candidate on the same measurement basis, not on the usual expectation about
 it: it is slower than the platform default on this workload, so it is never
 resolved automatically and is not offered as a fallback.
 
-The resolver, and the guard that pins every awk invocation in its closure to
-what it resolves, both govern that closure and nothing wider. Further
-command-position awk sites exist elsewhere in `.gaia/scripts/` and
-`.gaia/tests/`, in files that do not source `guard-awk-lib.sh`, and a
-meaningful share of those files ship to adopters, where a maintainer-only
-resolver cannot exist at all. Widening either the resolver or its guard to
-reach them is a materially larger conversion than either currently is, and
-the divergence closed here was measured on the tokenizer guards specifically.
-Both files' own headers carry the fuller argument and derive their surface
-from the tree rather than from a count kept here.
+The resolver governs that closure and nothing wider. Further command-position
+awk sites exist elsewhere in `.gaia/scripts/` and `.gaia/tests/`, in files
+that do not source `guard-awk-lib.sh`, and a meaningful share of those files
+ship to adopters, where a maintainer-only resolver cannot exist at all.
+Widening the resolver to reach them is a materially larger conversion than it
+currently is, and the divergence closed here was measured on the tokenizer
+guards specifically. The resolver's own header carries the fuller argument
+and derives its surface from the tree rather than from a count kept here.
 
 ## The full bats corpus: no scheduling win exists
 

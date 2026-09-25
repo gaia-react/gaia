@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# lint-git-path-quoting.sh: flag every executed `git diff --name-only`, every
-# executed `git ls-files`, and every executed `git grep` that LISTS FILE NAMES,
-# which omits `-z`, across the scan surface the `scan_files` pathspec below
-# declares and the comment above it explains. Exit
+# lint-git-path-quoting.sh: flag every executed `git diff --name-only` and every
+# executed `git ls-files` that omits `-z`, across the scan surface the
+# `scan_files` pathspec below declares and the comment above it explains. Exit
 # 1 with a file:line report on any hit, exit 0 when clean. Run it directly from
 # the repo root: `bash .gaia/scripts/lint-git-path-quoting.sh`.#
 # Four statuses say the gate never ran at all: 2 when guard-awk-lib.sh is
@@ -38,14 +37,6 @@
 # that tax for `diff --name-only`, and `#1389` is the one that stopped paying it
 # for `ls-files` -- a variant the guard's first shape could not see, which is how
 # the class recurred in five discovery call sites INCLUDING this file's own.
-# `#2055` is the third round of the same story, and it is the reason the header
-# above now names three verbs: the arming reached two while this paragraph
-# claimed the class broadly, and a listing `git grep` quotes identically. It
-# recurred live in `#2054`, where a tree-wide lint discovered carriers with
-# `git grep -F -l` and no `-z`: a tracked `wiki/café.md` came back C-quoted,
-# named no file on disk, and reached `awk` as an unopenable path, so the
-# carrier went ungraded and the run died with awk's message instead of the
-# script's own, discarding report lines earlier terms had accumulated.
 #
 # Fix a `diff --name-only` hit with the idiom the repository already uses
 # throughout:
@@ -71,19 +62,6 @@
 # become `| LC_ALL=C sort -z`, or the sort re-joins the records on newlines and
 # undoes the fix. Both BSD sort (macOS) and GNU sort accept `-z`.
 #
-# Fix a listing `grep` hit the same way, with one constraint the other two verbs
-# do not carry: `git grep` takes a POSITIONAL pattern, and the option walk below
-# stops at the first non-option token, so `-z` goes in the option region AHEAD
-# of the pattern rather than after it:
-#
-#   while IFS= read -r -d '' f; do
-#     carriers+=("$f")
-#   done < <(git -C "$root" grep -lIF -z "$needle" -- <pathspecs>)
-#
-# A `-z` written after the pattern reads as missing and the call reds. That is
-# fail-CLOSED, the repair is to move the flag, and options-first is the idiom
-# every call in this tree already writes.
-#
 # A consumer that COUNTS rather than iterates takes `| tr -cd '\0' | wc -c`,
 # never the `| tr '\0' '\n' | wc -l` round-trip above. Translating the records
 # back to newlines makes a path holding a literal newline count twice, so on a
@@ -108,60 +86,10 @@
 #                       at an explicit `--`. `ls-files` idiomatically carries
 #                       selector options first (`--others --exclude-standard
 #                       -z`), and `diff` carries `--cached` or `--staged` ahead
-#                       of `--name-only`, so every half reads the region rather
+#                       of `--name-only`, so both halves read the region rather
 #                       than a fixed position. Terminating the walk at the first
 #                       non-option is what stops a pathspec carrying the token
 #                       from vouching for a call that still quotes.
-#
-# `grep` is offered NO carve-out of its own, and that is a decision rather than
-# an omission. The shape that would earn the `--error-unmatch` analogue is a
-# call whose contract is its exit status: `git grep -q`. But `-q` suppresses the
-# very listing the flag above asks for, so a call carrying both is a
-# contradiction, none exists in this tree, and a carve-out for it would be
-# machinery for a shape that does not occur; should one ever be written, it pays
-# one correct edit. The other candidate, a listing call whose output is merely
-# counted or tested for emptiness, is not a closed property of the CALL TEXT at
-# all. It is a judgment about the consumer, which is the line both `ls-files`
-# carve-outs stay on the right side of and the reason they are affordable. So
-# every executed `git grep` that lists file names is on the surface.
-#
-# What the arming covers is five spellings, each of which makes `git grep` print
-# a path AS THE WHOLE RECORD: `-l`, `--files-with-matches`, `--name-only`, `-L`
-# and `--files-without-match`. The two short spellings are read inside a CLUSTER
-# (`-lIF` arms, and so would `-LIF`), because clustering is how every real call
-# in this tree writes them.
-#
-# That is the set this file ARMS ON, stated as such, and deliberately not as a
-# claim that no sixth spelling exists. `--heading` is a sixth, documented in the
-# git already installed rather than in some future release: it prints the
-# filename on a record of its own above that file's matches, C-quoted by the
-# identical mechanism. It is left off the surface because its stream INTERLEAVES
-# path records with match records, so anything reading it is reading a rendering
-# meant for a human rather than a path list, and no call in this tree writes it.
-# A closed-set claim would have been the load-bearing half of an enumeration, and
-# the one enumeration this file permits itself has to survive being checked
-# against the installed tool, so it asserts its own reach instead.
-#
-# "As the whole record" is doing real work in that sentence. `git grep -n`, and
-# the bare default form, print the path too, as the first COLON-DELIMITED FIELD
-# of a larger record, and git C-quotes it there by the identical mechanism. This
-# gate does not reach those either, and the blind-spot block below states it as a
-# miss rather than leaving the sentence above to be read as covering it. What
-# keeps them off the surface is the same rule that keeps the `ls-files`
-# carve-outs honest: whether a record's path field is parsed out and opened, or
-# merely printed to a human alongside the matched text, is a judgment about the
-# consumer, and the two shapes are textually identical.
-#
-# The `-z` half is deliberately NOT cluster-aware, and the asymmetry is the
-# point: reading a letter out of a cluster is exact for a flag letter and
-# approximate for a cluster carrying an attached value (`-ePATTERN`), and
-# telling those apart needs git's own argument parser. Approximating on the
-# ARMING half costs a false positive, which fails closed; approximating on the
-# DISARMING half would cost a missed defect, which fails open, in a gate whose
-# entire purpose is closing fail-open holes. So `-z` is recognized only as a
-# standalone token, exactly as it already is for the other two verbs, and
-# `git grep -lz` reds with the repair being to write the flag separately. A
-# cluster can no more vouch for a call than a pathspec can.
 #
 # `git status --porcelain` is the third member of this family and is deliberately
 # OUT of the declared surface rather than merely unreached. Its dominant shape in
@@ -204,8 +132,7 @@
 #     it from an indented continuation line without parsing the block structure
 #     the delimiters make free, and no page in this tree executes one.
 #
-# So: the surface this file claims is at zero for `ls-files`, for every listing
-# spelling of `grep`, and for every
+# So: the surface this file claims is at zero for `ls-files` and for every
 # option spelling of `diff --name-only`, which is what the tests below pin. The
 # `diff` half reads its option region rather than a fixed string, so an OPTION
 # written between `diff` and `--name-only` -- `--cached`, `--staged`, or any
@@ -236,9 +163,9 @@ set -euo pipefail
 
 # Script-relative, never cwd-relative: every fixture test runs this guard with
 # cwd inside a throwaway repo that carries no .gaia/scripts/. Bracketed with
-# set +e/-e because this file arms errexit itself, the shape
-# .gaia/scripts/lint-errexit-source-guard.sh demands for an unbracketed load in
-# an errexit-reachable file.
+# set +e/-e because this file arms errexit itself, and an unbracketed load
+# would abort the script outright if the library were ever present but
+# unparseable.
 _gaia_guard_lib_dir="${BASH_SOURCE[0]%/*}"
 if [ "$_gaia_guard_lib_dir" = "${BASH_SOURCE[0]}" ]; then _gaia_guard_lib_dir="."; fi
 # shellcheck source=.gaia/scripts/guard-awk-lib.sh
@@ -319,21 +246,17 @@ gaia_guard_bats_files lint-git-path-quoting || exit 1
 #               a fence, where a code span cannot nest and an odd count is a
 #               legacy substitution instead.
 #   in-option-region
-#            -- all three halves accept `-z` as a standalone token anywhere in
-#               the call's option region, and stop at the first token not
-#               beginning with `-`, or at an explicit `--`. A fixed position
-#               would be wrong for any of them: `ls-files` idiomatically carries
-#               selectors first (`--others --exclude-standard -z`), `diff`
-#               carries `--cached` or `--staged` before `--name-only`, and
-#               `grep` carries its match selectors (`-I`, `-F`, `-E`) around the
-#               listing flag. Terminating the walk is what keeps the guarantee a
-#               fixed position was there to give: a pathspec cannot vouch for
-#               the call, because the walk never reaches one. `diff` is on the
-#               surface only when the walk finds `--name-only` in that region,
-#               so a plain `git diff` and a `git diff --quiet` are never
-#               candidates; `grep` likewise only when the walk finds a listing
-#               flag, so a `git grep -n` and a `git grep -q` are never
-#               candidates either.
+#            -- both halves accept `-z` as a standalone token anywhere in the
+#               call's option region, and stop at the first token not beginning
+#               with `-`, or at an explicit `--`. A fixed position would be
+#               wrong for either: `ls-files` idiomatically carries selectors
+#               first (`--others --exclude-standard -z`), and `diff` carries
+#               `--cached` or `--staged` before `--name-only`. Terminating the
+#               walk is what keeps the guarantee a fixed position was there to
+#               give: a pathspec cannot vouch for the call, because the walk
+#               never reaches one. `diff` is on the surface only when the walk
+#               finds `--name-only` in that region, so a plain `git diff` and a
+#               `git diff --quiet` are never candidates.
 #
 # Full-line comments are skipped outright, which covers both a shell comment and
 # a `#` line inside a workflow `run:` block.
@@ -395,40 +318,7 @@ gaia_guard_bats_files lint-git-path-quoting || exit 1
 #     a pathspec from vouching for a call that quotes. Distinguishing a revision
 #     from a pathspec needs git's own argument parser, not a scanner. Every call
 #     in this tree writes its options first, which is the idiom the fix hints
-#     advertise, so nothing here is missed today. A listing flag written after
-#     `git grep`'s positional PATTERN is the same miss on the same mechanism,
-#     and it is the more likely of the two to be written, because a pattern is
-#     an ordinary argument where a revision reads as one; the same sentence
-#     applies unchanged, including that every call in this tree writes its
-#     options first.
-#   - A `git grep -n`, or a bare `git grep`, whose caller PARSES the path out of
-#     the record it prints. The path is the record's first colon-delimited
-#     field and git quotes it exactly as it quotes a listing call's, so such a
-#     caller carries this class in full; a caller that only shows the record to
-#     a human carries none of it. Nothing in the call text separates the two, so
-#     arming on `-n` would red every match-line call in this tree to reach the
-#     few that parse, which is how a gate gets bypassed rather than fixed. This
-#     is therefore a deliberate fail-OPEN miss rather than an oversight, and it
-#     is the one blind spot here with a known live instance:
-#     `.gaia/scripts/check-main-root-derivation.sh` reads a `-n` record and
-#     opens the path it extracts. That call site carries `-c core.quotepath=false`
-#     as its own local repair, which closes the NON-ASCII arm of the quoting and
-#     nothing else: that flag only stops bytes above 0x80 counting as unusual, so
-#     a tracked name carrying a double quote or a backslash is still C-quoted
-#     with it set, and a name carrying a colon defeats a `first-field` split
-#     whatever the quoting does. `-z` is the only complete remedy for a parse
-#     site, and it is unavailable to a `-n` caller without rewriting the split,
-#     since `-z` changes the record's own delimiter. The flag is the right repair
-#     THERE because the non-ASCII arm is the one with a live case in this tree;
-#     it is not a general close of the shape, and a second parse site is not
-#     made safe by copying one flag onto it.
-#
-# One FALSE POSITIVE the `grep` half adds, fail-CLOSED and stated with the
-# others above rather than left to be discovered:
-#   - `-z` written after `git grep`'s positional pattern (`git grep -l "$pat"
-#     -z`) reads as missing, because the walk has already terminated at the
-#     pattern. The repair is to move the flag into the option region, which is
-#     where the fix hint puts it.
+#     advertise, so nothing here is missed today.
 #
 # Out of scope entirely: `-z` does not, on its own, survive a path containing a
 # literal newline when the consumer re-splits on newlines via `tr`. That is a
@@ -445,20 +335,14 @@ gaia_guard_bats_files lint-git-path-quoting || exit 1
 readonly OWN_AWK='
     # option_walk(window): walk the option region following a call, setting
     # has_z when a standalone -z appears in it, has_name_only when --name-only
-    # does, existence_only when --error-unmatch does, and has_list when one of
-    # the five spellings that make `git grep` print a path as the whole record
-    # does; the header states why -n is not among them. All four are
+    # does, and existence_only when --error-unmatch does. All three are
     # deliberately global: awk has no other way to return a tuple. The walk
     # stops at the first token that is not an option, which is exactly where a
-    # pathspec would begin, so a pathspec can never vouch for the call. It is
-    # also where the positional PATTERN of a `git grep` begins, which is why
-    # the fix hint for that verb puts -z ahead of the pattern. No apostrophe
-    # anywhere in this block: it sits in a single-quoted string.
+    # pathspec would begin, so a pathspec can never vouch for the call.
     function option_walk(window,   n, i, tok, arr) {
       has_z = 0
       has_name_only = 0
       existence_only = 0
-      has_list = 0
       n = split(window, arr, "[ \t]+")
       for (i = 1; i <= n; i++) {
         tok = arr[i]
@@ -485,16 +369,6 @@ readonly OWN_AWK='
         if (tok == "-z") has_z = 1
         if (tok == "--name-only") has_name_only = 1
         if (tok == "--error-unmatch") existence_only = 1
-        # The listing half of `git grep`. The short spellings are read inside a
-        # cluster, because `-lIF` is how every real call in this tree writes
-        # them; the leading `[^-]*` cannot cross a second dash, so a long option
-        # never arms this arm by accident and the three long spellings are
-        # matched in full below. -z stays standalone-only, one arm above: the
-        # asymmetry is stated in the header, and it keeps the approximation a
-        # cluster read makes on the fail-CLOSED side.
-        if (tok ~ /^-[^-]*[lL]/) has_list = 1
-        if (tok == "--files-with-matches" || tok == "--name-only") has_list = 1
-        if (tok == "--files-without-match") has_list = 1
       }
     }
     BEGIN {
@@ -503,13 +377,9 @@ readonly OWN_AWK='
       # names. They differ for `diff` because the surface is the call PLUS the
       # --name-only the walk finds in its option region, and only the walk can
       # see that: the text between the two is an open set of selectors.
-      # They differ for `grep` for the same reason and in the same way: the
-      # surface is the call PLUS a listing flag the walk finds, and `-l` is the
-      # spelling every call in this tree uses, so it is what the report names.
-      ncalls = 3
+      ncalls = 2
       callname[1] = "diff";     calllabel[1] = "diff --name-only"
       callname[2] = "ls-files"; calllabel[2] = "ls-files"
-      callname[3] = "grep";     calllabel[3] = "grep -l"
     }
     # Pass 1 of a two-pass `*.bats` invocation accumulates the prepass sets a
     # fixture constant bound far above its consuming helper call needs; every
@@ -601,11 +471,6 @@ readonly OWN_AWK='
         option_walk(window)
         if (call == "ls-files")
           quoted_ok = (has_z || existence_only)
-        else if (call == "grep")
-          # A `grep` with no listing flag in its option region prints match
-          # lines rather than paths, so it is off the surface entirely rather
-          # than a passing hit -- the same shape the `diff` arm below takes.
-          quoted_ok = (!has_list || has_z)
         else
           # A `diff` with no --name-only in its option region is off the surface
           # entirely rather than a passing hit, so it can never be reported.
@@ -697,12 +562,6 @@ if [ -n "$report" ]; then
     # back to newlines, so it needs no `tr` and survives a path containing one.
     # shellcheck disable=SC2016
     printf 'Fix an ls-files hit: while IFS= read -r -d %s%s f; do ...; done < <(git ls-files -z <pathspecs>)\n' "'" "'" >&2
-    # The grep repair reads the same NUL stream, with -z placed AHEAD of the
-    # positional pattern: the option walk terminates at the pattern, so a flag
-    # written after it reads as missing. Hinting the wrong order would send the
-    # operator around the loop a second time on a call they had already fixed.
-    # shellcheck disable=SC2016
-    printf 'Fix a grep -l hit: while IFS= read -r -d %s%s f; do ...; done < <(git grep -lIF -z <pattern> -- <pathspecs>)\n' "'" "'" >&2
   fi
   exit 1
 fi

@@ -85,8 +85,7 @@ jobs:
               # The gate folds in guards whose scan surface INCLUDES the
               # workflow `run:` blocks, which no *.sh glob reaches:
               # lint-git-path-quoting.sh, lint-workflow-run-interpolation.sh,
-              # lint-grep-ere-escapes.sh, lint-errexit-status-read.sh,
-              # lint-collapsed-signal-trap.sh, and lint-sigpipe-readers.sh. Only
+              # lint-errexit-status-read.sh, and lint-sigpipe-readers.sh. Only
               # lint-workflow-run-interpolation.sh is
               # workflow/action/template-only; the rest scan tracked *.sh as
               # well, so this line is not their whole surface, it is the only
@@ -101,9 +100,9 @@ jobs:
               # check having linted the very files it just changed -- the same
               # gap the .husky/** line above closes, one file type over.
               - '.github/workflows/**'
-              # The run-interpolation, grep-escape, status-read,
-              # collapsed-signal-trap and sigpipe-reader guards also scan the
-              # composite actions, which the glob above does not reach. The
+              # The run-interpolation, status-read and sigpipe-reader guards
+              # also scan the composite actions, which the glob above does not
+              # reach. The
               # composite actions are where the sigpipe-reader guard's oracle
               # has the most to say: GitHub's schema makes `shell:` mandatory on
               # a composite `run:` step, and every composite step in this tree
@@ -120,10 +119,9 @@ jobs:
               # explicit record that this gate re-runs on a change to itself,
               # which survives any later narrowing of that glob.
               - '.github/workflows/shell-lint.yml'
-              # The run-interpolation, grep-escape, status-read,
-              # collapsed-signal-trap and sigpipe-reader guards also scan the
-              # adopter workflow templates. Those render into an adopter's own
-              # CI, so a
+              # The run-interpolation, status-read and sigpipe-reader guards
+              # also scan the adopter workflow templates. Those render into an
+              # adopter's own CI, so a
               # template-only PR resolving `shell=false` would green the check
               # having left unscanned the one surface whose defects this repo's
               # review is the last place able to see.
@@ -138,13 +136,12 @@ jobs:
               # the surface it arms is the fail-open shape, so the two are
               # widened and narrowed together or not at all.
               - '**/*.md'
-              # The hook jq-availability and Monitor-arming guards both read
-              # .claude/settings.json through hook-registration-lib.sh, a
-              # surface nothing above matches. Without this line a pull request
-              # that only registers an already-present hook changes
-              # settings.json alone: it would resolve `shell=false` and green
-              # the check having never re-run either guard against the
-              # registration it just added.
+              # The hook jq-availability guard reads .claude/settings.json
+              # through hook-registration-lib.sh, a surface nothing above
+              # matches. Without this line a pull request that only registers
+              # an already-present hook changes settings.json alone: it would
+              # resolve `shell=false` and green the check having never re-run
+              # the guard against the registration it just added.
               - '.claude/settings.json'
       # Install a pinned release binary rather than `apt-get install shellcheck`:
       # Ubuntu ships 0.9.0 while a maintainer's Homebrew ships newer, and their

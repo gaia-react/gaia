@@ -23,9 +23,7 @@
 # nothing saying so. This narrows that divergence rather than opening one: it
 # closes it across the guard-awk-lib.sh closure, which is the surface the
 # divergence was measured on, and leaves the awk sites outside that closure
-# where they were. Same shape as .gaia/scripts/lint-grep-ere-escapes.sh
-# against the sibling BSD-versus-GNU grep divergence, and the region left
-# unclaimed is named in that guard's own header rather than left silent.
+# where they were, named below rather than left silent.
 #
 # Speed is the secondary argument, and it is measured: mawk 1.3.4 runs the
 # awk-tokenizer guards roughly 1.7x to 2.1x faster than BWK one-true-awk on
@@ -45,8 +43,7 @@
 # "mawk ", BWK one-true-awk's opens with "awk version ". Anything else --
 # gawk's "GNU Awk ...", a BusyBox stub, silence, an error -- is unsanctioned.
 #
-# The governed surface is stated closed, in the form
-# lint-grep-ere-escapes.sh uses for `sed -E`: GAIA_AWK governs exactly the
+# The governed surface is stated closed: GAIA_AWK governs exactly the
 # guard-awk-lib.sh closure, this library and its consumers. Nothing else in
 # the tree is claimed. `.gaia/scripts/**/*.sh` and `.gaia/tests/**/*.sh` hold
 # further command-position awk sites in files that do not source

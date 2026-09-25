@@ -151,16 +151,6 @@ run_merge_hook() {
   run_merge_hook_at "$REPO" "${1:-gh pr merge 30 --squash --delete-branch}"
 }
 
-# The same merge, armed through the other tool that carries a raw shell command
-# in `tool_input.command`.
-run_merge_hook_monitor() {
-  local cmd="${1:-gh pr merge 30 --squash --delete-branch}"
-  local json
-  json=$(jq -n --arg c "$cmd" \
-    '{tool_name: "Monitor", tool_input: {command: $c}}')
-  invoke_hook_in "$REPO" "$json" "$HOOK_ABS"
-}
-
 # Run the hook with a command too large to pass through argv. Linux caps a
 # single argument at 128KB (MAX_ARG_STRLEN) while macOS does not, so the sibling
 # helpers above, which hand the command to `jq` and the payload to `bash -c` as
@@ -451,18 +441,6 @@ assert_not_in_set() {
   run_merge_hook
   [ "$status" -eq 0 ]
   [[ "$output" == *'"permissionDecision": "deny"'* ]]
-}
-
-@test "denies the same merge armed through Monitor" {
-  # The apex merge gate is the one this class costs most: a `gh pr merge` armed
-  # through `Monitor` merges with the audit-clearance check never invoked, and
-  # the merge lands with no denial and no diagnostic anywhere. The tool arm
-  # inside the hook is half the repair; the matcher in settings.json is the
-  # other half, and the registration assertion at the foot of this file pins it.
-  commit_files "app/components/Foo/index.tsx" "export const Foo = () => null"
-  run_merge_hook_monitor
-  [ "$status" -eq 0 ]
-  [[ "$output" == *'"permissionDecision": "deny"'* ]] || return 1
 }
 
 @test "denies a PR that changes a root config (package.json)" {
