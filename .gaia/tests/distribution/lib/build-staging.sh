@@ -57,11 +57,9 @@ ALL_TRACKED="$SCRATCH/all-tracked.txt"
 EXCLUDE_REGEX="$SCRATCH/exclude-regex.txt"
 INCLUDE="$SCRATCH/include.txt"
 
-# Same shared boundary release.yml stages through, so the harness reproduces
-# production's refusal of a newline-bearing tracked path instead of
-# reproducing the lossy conversion that made the defect invisible here (#1669).
-if ! bash "$PROJECT_ROOT/.gaia/scripts/list-tracked-paths.sh" "$PROJECT_ROOT" "$ALL_TRACKED"; then
-  printf 'tracked-path discovery refused or failed; see the diagnostic above\n' >&2
+# Same discovery release.yml stages through.
+if ! (set -o pipefail; git -C "$PROJECT_ROOT" -c core.quotepath=false ls-files -z | tr '\0' '\n' > "$ALL_TRACKED"); then
+  printf 'tracked-path discovery failed\n' >&2
   exit 1
 fi
 

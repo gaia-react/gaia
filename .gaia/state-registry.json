@@ -464,28 +464,28 @@
       "id": "mentorship-config",
       "path": "mentorship.json",
       "match": "exact",
-      "why": "Opt-in config for the removed mentorship feature. Not on the janitor's outlier allowlist, so a stray one is also eventually reaped by the outlier sweep; actively deleted by the mentorship-residue cleanup sweep.",
+      "why": "Opt-in config for the removed mentorship feature. Not on the janitor's outlier allowlist, so a stray one is also eventually reaped by the outlier sweep.",
       "writer": "none-residue"
     },
     {
       "id": "telemetry-cloud-residue",
       "path": "telemetry/cloud/",
       "match": "prefix",
-      "why": "Removed mentorship feature's cloud event stream, deleted by the mentorship-residue cleanup sweep.",
+      "why": "Removed mentorship feature's cloud event stream.",
       "writer": "none-residue"
     },
     {
       "id": "telemetry-analytics-residue",
       "path": "telemetry/analytics/",
       "match": "prefix",
-      "why": "Removed mentorship feature's analytics reports, deleted by the mentorship-residue cleanup sweep.",
+      "why": "Removed mentorship feature's analytics reports.",
       "writer": "none-residue"
     },
     {
       "id": "cache-shared-coaching-active-residue",
       "path": "cache/shared/coaching-active.txt",
       "match": "exact",
-      "why": "Orphaned marker from the removed mentorship feature; both its writer and reader are gone. Deleted by the mentorship-residue cleanup sweep.",
+      "why": "Orphaned marker from the removed mentorship feature; both its writer and reader are gone.",
       "writer": "none-residue"
     },
     {
@@ -499,7 +499,7 @@
       "id": "mentorship-swept-sentinel-residue",
       "path": ".mentorship-swept",
       "match": "exact",
-      "why": "Per-checkout sentinel recording that the mentorship-residue cleanup sweep already ran here; the sweep it belongs to is itself transitional cleanup for a removed feature.",
+      "why": "Per-checkout sentinel from a removed feature's one-time cleanup pass; transitional residue with no live writer.",
       "writer": "none-residue"
     },
     {

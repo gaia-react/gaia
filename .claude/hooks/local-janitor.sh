@@ -818,10 +818,10 @@ janitor_sweep_outliers() {
 
 # --- Isolation entrypoint (bats-only) ---------------------------------------
 # GAIA_JANITOR_SWEEP_ONLY=outliers runs ONLY sweep #9 against $local_dir, then
-# exits, skipping sweeps 2-8 and the one-time ledger-migrate / mentorship-
-# cleanup blocks below so the bats suite can exercise sweep #9 with zero
-# interference. Sweep #1 (git-branch-scoped, above the $local_dir guard) has
-# already run by this point; it is a no-op on file-only isolation fixtures.
+# exits, skipping sweeps 2-8 and the one-time ledger-migrate block below so
+# the bats suite can exercise sweep #9 with zero interference. Sweep #1
+# (git-branch-scoped, above the $local_dir guard) has already run by this
+# point; it is a no-op on file-only isolation fixtures.
 if [ "${GAIA_JANITOR_SWEEP_ONLY:-}" = outliers ]; then
   janitor_sweep_outliers "$local_dir"
   exit 0
@@ -832,15 +832,6 @@ fi
 # vocabulary (ready|merged|abandoned) instead of a retired status.
 migrate="$root/.gaia/scripts/ledger-status-migrate.sh"
 [ -f "$migrate" ] && bash "$migrate" "$root" >/dev/null 2>&1 || true
-
-# --- One-time mentorship-residue cleanup sweep -----------------------------
-# Sentinel-guarded, idempotent, silent, best-effort. Deletes the off-repo
-# mentorship store, the computed profile, the install id and the directory
-# holding it, the display-rule memory file and its MEMORY.md pointer line, the
-# in-repo opt-in config and its worktree symlink, the in-repo cloud stream, and
-# the in-repo analytics reports. Never blocks a session.
-sweep="$root/.gaia/scripts/mentorship-cleanup-sweep.sh"
-[ -f "$sweep" ] && bash "$sweep" "$root" >/dev/null 2>&1 || true
 
 # --- 2. Orphaned audit markers ---------------------------------------------
 #

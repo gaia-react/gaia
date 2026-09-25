@@ -4,7 +4,7 @@
 
 **Do not execute the playbook yourself in the current conversation.** Dispatch the Stage 1 and Stage 2 subagents via the `Agent` tool. Each subagent runs in isolated context. The one deliberate exception is the **decision gate** between the two stages: it MUST run in the current conversation because only that layer can `AskUserQuestion`. Do not "fix" the gate back into a subagent.
 
-Calling `/gaia-audit` is the intent to audit. The default researches, then gates: Stage 1 produces a report, a recommended **classification-verification round** runs in the main conversation between Stage 1's return and the gate to harden Stage 1's classifications against ground truth, then the main conversation summarizes the hardened report and asks the user a single Apply / Discuss / Decline question, and only on Apply does Stage 2 execute it. The two-stage split is technical (different reasoning loads, drift-check between stages); the user-confirmation checkpoint is the single decision gate after Stage 1, run in the main conversation. **Exception: a clean audit (0 actions, confirmed by the deterministic clean check in step 3 below) skips both the round and the gate and auto-applies.** There is nothing to approve, and "applying" only finalizes the report's `status`, files any out-of-scope findings, and clears the statusline nudge; leaving a 0-action report parked at the gate is the exact path that strands a `draft` that then nudges indefinitely.
+Calling `/gaia-audit` is the intent to audit. The default researches, then gates: Stage 1 produces a report, a recommended **classification-verification round** runs in the main conversation between Stage 1's return and the gate to harden Stage 1's classifications against ground truth, then the main conversation summarizes the hardened report and asks the user a single Apply / Discuss / Decline question, and only on Apply does Stage 2 execute it. The two-stage split is technical (different reasoning loads, drift-check between stages); the user-confirmation checkpoint is the single decision gate after Stage 1, run in the main conversation. **Exception: a clean audit (0 actions) skips both the round and the gate and auto-applies.** There is nothing to approve, and "applying" only finalizes the report's `status`, files any out-of-scope findings, and clears the statusline nudge; leaving a 0-action report parked at the gate is the exact path that strands a `draft` that then nudges indefinitely.
 
 **Stage 2 also files out-of-scope findings; the main conversation then publishes.** The run does the same full flow /update-deps and /gaia-debt do, one up-front decision (the gate, or the preview in those skills) and then it drives autonomously to merge. Two mechanical additions ride the finalizing path (gated Apply, 0-action auto-apply, and `--apply`), never the Decline path:
 
@@ -29,18 +29,9 @@ Every path below referenced as `$PROJECT_ROOT/...`, `$MEMORY_DIR/...`, or `$AGEN
 
 1. Spawn the Stage 1 (Research) subagent below. Wait for it to return. Stage 1 writes the report with `status: draft`.
 2. If Stage 1 failed (no report path printed), do not gate or spawn Stage 2. Surface the error and stop. (Run ends here; see `## Cost record (run end)`.)
-3. **If Stage 1's printed totals show 0 actions, confirm it before trusting it.** Stage 1's totals are self-reported, and a pass that stopped before walking every store reads exactly like a clean one. Run the clean check against the report path Stage 1 printed:
-
-   ```bash
-   bash .gaia/scripts/knowledge-audit-clean.sh <report path>
-   ```
-
-   It re-runs Step 1's inventory, compares each store's live file count with the report's `## Coverage` record, and reads the report's `Actions proposed:` and `Applied scope:` Summary lines, its action blocks, and its recorded roots. The script's header owns the exact conditions.
-
-   - **It prints `clean` (exit 0) and `$ARGUMENTS` carried no scope hint** → a clean audit. Skip both the round and the gate and spawn the Stage 2 (Apply) subagent below directly. Briefly tell the user the audit was clean and you are finalizing it. With no in-scope actions there is nothing to verify, review, or approve; Stage 2 flips the report `status: draft → applied`, files any out-of-scope findings (filing is non-destructive and idempotent, so it needs no gate), and busts the statusline nudge. A 0-action run changes no in-repo file, so the main conversation's Publish step no-ops.
-   - **Any other outcome** (a non-zero exit for any reason, the script absent included, or a scope hint) → not a clean audit. Take the ≥1-action branch below, relaying the check's stderr reasons in the gate summary so a person decides whether to finalize the scan (Apply), re-run it (Decline, then `/gaia-audit` again), or look closer (Discuss).
-4. **If Stage 1 reported ≥1 action, or step 3 did not confirm a clean audit**, run the **classification-verification round** in the main conversation before the decision gate (full procedure: `## Classification-verification round (recommended)`). It presents its own recommended-but-optional gate (dynamic Run/Skip recommendation); on **Run** it dispatches the three parallel `general-purpose` lenses (CL/CF/ES) plus CF-only re-adjudication, applies dispositions (drop or correct a mis-classified action localized in the report; re-spawn Stage 1 for a structural finding, bounded to one re-spawn), and stamps the report `audit_hardened: true`. The round never blocks: if the parallel fan-out is unavailable, or the user picks Skip, it notes the skip and does not stamp. A report carrying no action block has nothing for the round to verify, so it skips the round. Then proceed to the decision gate (next step).
-5. **Then present the decision gate** (still the branch step 4 opened): **in the main conversation** summarize the now-hardened report's findings to the user, then ask via `AskUserQuestion`:
+3. **If Stage 1 reported 0 actions** (a clean audit: its printed totals and the report's `Actions proposed: 0` Summary line both show none), skip both the round and the gate and spawn the Stage 2 (Apply) subagent below directly. Briefly tell the user the audit was clean and you are finalizing it. With no in-scope actions there is nothing to verify, review, or approve; Stage 2 flips the report `status: draft → applied`, files any out-of-scope findings (filing is non-destructive and idempotent, so it needs no gate), and busts the statusline nudge. A 0-action run changes no in-repo file, so the main conversation's Publish step no-ops.
+4. **If Stage 1 reported ≥1 action**, run the **classification-verification round** in the main conversation before the decision gate (full procedure: `## Classification-verification round (recommended)`). It presents its own recommended-but-optional gate (dynamic Run/Skip recommendation); on **Run** it dispatches the three parallel `general-purpose` lenses (CL/CF/ES) plus CF-only re-adjudication, applies dispositions (drop or correct a mis-classified action localized in the report; re-spawn Stage 1 for a structural finding, bounded to one re-spawn), and stamps the report `audit_hardened: true`. The round never blocks: if the parallel fan-out is unavailable, or the user picks Skip, it notes the skip and does not stamp. Then proceed to the decision gate (next step).
+5. **Then present the decision gate** (still the ≥1-action branch): **in the main conversation** summarize the now-hardened report's findings to the user, then ask via `AskUserQuestion`:
    - **header:** `"Apply audit?"`
    - **question:** `"Stage 1 found {N} actions. Apply them?"`
    - **options (this exact order):**
@@ -192,11 +183,11 @@ find "$PROJECT_ROOT" -maxdepth 3 -name CLAUDE.md -not -path '*/node_modules/*'
 wc -w "$PROJECT_ROOT"/CLAUDE.md "$PROJECT_ROOT"/wiki/hot.md "$PROJECT_ROOT"/.claude/rules/*.md 2>/dev/null
 ```
 
-Record per file: path, word count, last-modified. Compute totals per store, and record each store's file count in the report's `## Coverage` table: the main conversation re-runs these same `find` lines before a 0-action report may skip the decision gate.
+Record per file: path, word count, last-modified. Compute totals per store.
 
 ## Step 2, Cross-store duplication
 
-For every memory entry and every rules file, check whether the same fact lives in the wiki. Count the files you classify per store for the `## Coverage` table's `Classified` column; a store you did not finish walking records the number you actually classified, never the inventoried one. Use `Grep` with 2–3 representative phrases from each entry. Classify each hit:
+For every memory entry and every rules file, check whether the same fact lives in the wiki. Use `Grep` with 2–3 representative phrases from each entry. Classify each hit:
 
 - **DUPLICATE**: fact already canonical in wiki → mark memory/rules entry for deletion
 - **PROMOTE**: durable knowledge only in memory → propose moving to a specific wiki page (name the page)
@@ -245,8 +236,6 @@ Derive the timestamp from the shell, never guess the current date/time: `date '+
 
 Stage 1 writes `audit_hardened: false`; the classification-verification round flips it to `true` after it hardens the report. A report with the field absent is treated as unhardened (see `## Classification-verification round (recommended)`).
 
-`Actions proposed` in the Summary is the count of action blocks under `## Actions`. The `## Coverage` table carries one row per store Step 1 inventories, under exactly the store ids the template names: `memory` (`$MEMORY_DIR`), `agent-memory` (`$AGENT_MEMORY_DIR`), `project-agent-memory` (`.claude/agent-memory`), `rules` (`.claude/rules`), `wiki`, and `claude-md` (the `CLAUDE.md` files). `Inventoried` is the file count that store's Step 1 `find` line returned. `Classified` is the number of those files Step 2 classified, and equals `Inventoried` only when Step 2 walked the whole store; `wiki` and `claude-md` carry `n/a`, since Step 2 compares against the wiki rather than classifying it and the `CLAUDE.md` files are Step 3's budget. `.gaia/scripts/knowledge-audit-clean.sh` reads both, so a missing row or a short count sends a 0-action report to the decision gate instead of auto-applying.
-
 ````markdown
 ---
 generated: {YYYY-MM-DD HH:MM}
@@ -272,7 +261,6 @@ Resolved paths (Stage 2 must match these):
 ## Summary
 
 - Stores scanned: {N files, M words total}
-- Actions proposed: {count of action blocks under ## Actions}
 - Cross-store duplicates: {X}
 - Auto-load total: {Z words} (budget: {total budget})
 - Over-budget files: {list}
@@ -280,17 +268,6 @@ Resolved paths (Stage 2 must match these):
 - Conflicts: {count}
 - Out-of-scope findings: {count} (filed as tech-debt issues by Stage 2)
 - Applied scope: {scope hint, or "full"}
-
-## Coverage
-
-| Store | Inventoried | Classified |
-| --- | --- | --- |
-| memory | {n} | {n} |
-| agent-memory | {n} | {n} |
-| project-agent-memory | {n} | {n} |
-| rules | {n} | {n} |
-| wiki | {n} | n/a |
-| claude-md | {n} | n/a |
 
 ## Actions
 
@@ -403,7 +380,7 @@ End the research run by printing: report path and total actions per category. (S
 
 An adversarial verification round that hardens Stage 1's classifications against ground truth in the MAIN CONVERSATION, between Stage 1 returning its draft report and the Apply / Discuss / Decline decision gate. Stage 1's DUPLICATE / STALE / CONFLICT / PROMOTE / shrink classifications are single-pass semantic judgments that nothing else verifies before they drive edits, and for memory entries those edits are IRREVERSIBLE (machine-local under `$HOME/.claude`, no git undo). The round verifies the checkable claim behind each action against the actual stores, wiki, and repo, then drops, corrects, or re-spawns to harden the report before any human approval or any apply path consumes it.
 
-It runs only when the report carries ≥1 action; a 0-action report has nothing to verify and skips the round, and skips the decision gate too once the clean check in `### Branch on $ARGUMENTS` step 3 confirms it. The round dispatches the skill's own parallel `general-purpose` Agent fan-out (the same primitive Stage 1 and Stage 2 use), so it is available in every context including headless and `--apply` runs.
+It runs only when Stage 1 reported ≥1 action; a 0-action report has nothing to verify and skips both the round and the decision gate (the existing 0-action auto-apply path is unchanged). The round dispatches the skill's own parallel `general-purpose` Agent fan-out (the same primitive Stage 1 and Stage 2 use), so it is available in every context including headless and `--apply` runs.
 
 **Deliberate divergences from the canonical adversarial pattern (`.claude/skills/gaia/references/spec.md` step 7, `plan.md` step 4.6). Do not "fix" these back to the spec shape:**
 

@@ -8,8 +8,7 @@
 # the machine's real .gaia/local ledgers. The script sources with-ledger-lock.sh
 # from its real repo-relative location, a pure, read-only mutex-function
 # definition with no side effects of its own, so isolation stays total while
-# still exercising the real lock path. This mirrors archived-backlog-migrate.bats,
-# which runs its script against a sandbox repo_root the same way.
+# still exercising the real lock path.
 #
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 

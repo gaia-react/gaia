@@ -562,56 +562,6 @@ EOF
   grep -qF -- "a.bats" <<<"$output" || return 1
 }
 
-# bats_fixture_repo: a repo carrying a tracked suite at the root and another in a
-# subtree, so a call made from that subtree comes back POPULATED and the
-# empty-surface refusal never fires. A subtree that happened to hold no suite
-# would exit non-zero by luck, which is what the two bats-only gates rested on
-# and is not a guard.
-bats_fixture_repo() {
-  local repo="$TMP/batsrepo"
-  mkdir -p "$repo/sub"
-  git -C "$repo" init -q .
-  printf 'x\n' > "$repo/root.bats"
-  printf 'x\n' > "$repo/sub/nested.bats"
-  git -C "$repo" add -A
-  printf '%s' "$repo"
-}
-
-# `git ls-files` resolves against the working directory rather than the
-# repository, so from a subdirectory the surface silently narrows to that subtree
-# and a consuming gate reports clean having read a fraction of the tree.
-# `--show-prefix` is empty only at the top level, and it answers without
-# comparing two paths, so a symlinked checkout (`/var` -> `/private/var`, which
-# every `mktemp -d` fixture here sits behind) cannot make a correct invocation
-# look wrong.
-@test "a bats call from below the repository root is refused rather than silently narrowed" {
-  local repo
-  repo="$(bats_fixture_repo)"
-  run bash -c "cd '$repo/sub' && . '$LIB' && gaia_guard_bats_files probe && printf '%s\n' \"\${GAIA_GUARD_BATS_FILES[@]}\""
-  # Status 2, never 1: a caller may tolerate an empty surface where a suite-less
-  # tree is a legitimate one for it, and must never tolerate a surface narrowed
-  # to whichever directory it happened to be run from.
-  [ "$status" -eq 2 ]
-  grep -qF -- "probe: ERROR" <<<"$output" || return 1
-  grep -qF -- "run from the repository root" <<<"$output" || return 1
-  # The prefix is in the message because it is the only thing telling the
-  # operator which subtree the surface would have narrowed to.
-  grep -qF -- "'sub'" <<<"$output" || return 1
-  grep -qxF -- "nested.bats" <<<"$output" && return 1
-  true
-}
-
-# The control for the refusal above: the same accessor over the same fixture, one
-# directory up. Without it the refusal could pass by refusing everywhere.
-@test "a bats call from the repository root still resolves the whole surface" {
-  local repo
-  repo="$(bats_fixture_repo)"
-  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_bats_files probe && printf '%s\n' \"\${GAIA_GUARD_BATS_FILES[@]}\""
-  [ "$status" -eq 0 ]
-  grep -qxF -- "root.bats" <<<"$output" || return 1
-  grep -qxF -- "sub/nested.bats" <<<"$output" || return 1
-}
-
 # ---- the scan-surface discovery --------------------------------------------
 
 # scan_fixture_repo: a repo carrying one tracked member of every set the helper
@@ -760,52 +710,6 @@ scan_fixture_repo() {
   [ "$status" -eq 3 ]
   grep -qF -- "discovery failed" <<<"$output" || return 1
   grep -qF -- "nothing was scanned" <<<"$output"
-}
-
-# `git ls-files` resolves against the working directory rather than the
-# repository, so from a subdirectory the union silently narrows to that subtree
-# and a consuming gate reports clean having read a fraction of the tree.
-# `--show-prefix` is empty only at the top level, and it answers without
-# comparing two paths, so a symlinked checkout (`/var` -> `/private/var`, which
-# every `mktemp -d` fixture here sits behind) cannot make a correct invocation
-# look wrong.
-#
-# The subtree deliberately holds a tracked `*.sh`, so the narrowed union comes
-# back POPULATED and the empty-surface refusal never fires. A subtree that
-# happened to match nothing would exit non-zero by luck, which is what the
-# consuming gates rest on today and is not a guard.
-@test "a call from below the repository root is refused rather than silently narrowed" {
-  local repo
-  repo="$(scan_fixture_repo)"
-  mkdir -p "$repo/sub"
-  printf 'x\n' > "$repo/sub/nested.sh"
-  git -C "$repo" add -A
-  run bash -c "cd '$repo/sub' && . '$LIB' && gaia_guard_scan_files probe shell && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
-  # Status 2, never 1: a caller may tolerate an empty surface where one is a
-  # legitimate tree, and must never tolerate a surface narrowed to whichever
-  # directory it happened to be run from.
-  [ "$status" -eq 2 ]
-  grep -qF -- "probe: ERROR" <<<"$output" || return 1
-  grep -qF -- "run from the repository root" <<<"$output" || return 1
-  # The prefix is in the message because it is the only thing telling the
-  # operator which subtree the surface would have narrowed to.
-  grep -qF -- "'sub'" <<<"$output" || return 1
-  grep -qxF -- "nested.sh" <<<"$output" && return 1
-  true
-}
-
-# The control for the refusal above: the same accessor over the same fixture,
-# one directory up. Without it the refusal could pass by refusing everywhere.
-@test "a call from the repository root still resolves the whole surface" {
-  local repo
-  repo="$(scan_fixture_repo)"
-  mkdir -p "$repo/sub"
-  printf 'x\n' > "$repo/sub/nested.sh"
-  git -C "$repo" add -A
-  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
-  [ "$status" -eq 0 ]
-  grep -qxF -- "tool.sh" <<<"$output" || return 1
-  grep -qxF -- "sub/nested.sh" <<<"$output" || return 1
 }
 
 # The refusing set is named FIRST and a resolvable set follows it, which is what
@@ -1035,56 +939,14 @@ mutate() {
 # The one exclusion is the suite surface, which carries the load line as the
 # literal the bracket check below compares against. That is data this file
 # reads, not a load it performs.
-#
-# Parameterized on a repo root, the way scan_fixture_repo parameterizes the
-# discovery tests above, so the reach itself can be driven against a fixture.
-# Over the real tree the widened pathspec and the directory-scoped form it
-# replaced return the same paths, so no assertion here can red on a revert of
-# the widening; the fixture test below is what does.
 library_consumers() {
-  local root="${1:-$REPO_ROOT}" f
+  local f
   # -z and a NUL read: without it git C-quotes any consumer whose path carries
   # a non-ASCII byte, and the quoted spelling names no file the caller can open.
   while IFS= read -r -d '' f; do
-    printf '%s\n' "$root/$f"
-  done < <(git -C "$root" grep -l -z -- '_gaia_guard_lib_dir/guard-awk-lib.sh' \
+    printf '%s\n' "$REPO_ROOT/$f"
+  done < <(git -C "$REPO_ROOT" grep -l -z -- '_gaia_guard_lib_dir/guard-awk-lib.sh' \
              -- ':(exclude)*.bats')
-}
-
-# consumer_fixture_repo: a repo carrying a tracked consumer inside the guards'
-# own directory and another outside it, plus a tracked non-consumer, so the
-# derivation can be asserted to reach past .gaia/scripts/ and to stop at a file
-# that does not carry the load line.
-consumer_fixture_repo() {
-  local repo="$TMP/consumerrepo" load
-  load='set +e; [ -f "$_gaia_guard_lib_dir/guard-awk-lib.sh" ] && . "$_gaia_guard_lib_dir/guard-awk-lib.sh" 2>/dev/null; set -e'
-  mkdir -p "$repo/.gaia/scripts" "$repo/.claude/hooks"
-  git -C "$repo" init -q .
-  printf '%s\n' "$load" > "$repo/.gaia/scripts/lint-probe.sh"
-  printf '%s\n' "$load" > "$repo/.claude/hooks/probe-hook.sh"
-  printf 'x\n' > "$repo/.gaia/scripts/not-a-consumer.sh"
-  git -C "$repo" add -A
-  printf '%s' "$repo"
-}
-
-# The tree-wide pathspec is the whole claim the comment above makes, and the
-# real tree cannot hold it: the directory-scoped form the widening replaced
-# returns the same paths today, so reverting it leaves every check here green.
-# A fixture carrying a consumer outside the guards' own directory is what makes
-# the reach the thing under test rather than a count both forms agree on.
-@test "the consumer derivation reaches a consumer outside the guards' own directory" {
-  local repo
-  repo="$(consumer_fixture_repo)"
-  run library_consumers "$repo"
-  [ "$status" -eq 0 ]
-  grep -qxF -- "$repo/.claude/hooks/probe-hook.sh" <<<"$output" || return 1
-  # Non-vacuity: the same call reaches the in-directory consumer, so an empty
-  # derivation cannot satisfy the assertion above. And it stops at a tracked
-  # file carrying no load line, so a derivation returning everything cannot
-  # satisfy it either.
-  grep -qxF -- "$repo/.gaia/scripts/lint-probe.sh" <<<"$output" || return 1
-  grep -qxF -- "$repo/.gaia/scripts/not-a-consumer.sh" <<<"$output" && return 1
-  true
 }
 
 participating_files() {
@@ -1106,37 +968,11 @@ production_guards() {
 
 # A derivation that came back short would leave a check asserting over a subset
 # while its name still says every, so every consumer check confirms the count
-# before its per-file loop runs.
-#
-# Equality against a second walk of the same tracked files, rather than a floor
-# written down here. A floor is exact only until the consumer set grows, after
-# which it goes slack and a derivation regressing back to it still passes; a
-# recount has no such moment, because no number survives between runs. The two
-# walks reach the tree by different routes, `git grep`'s pathspec against a
-# filter over `git ls-files`, so a derivation that narrows its own pathspec
-# disagrees with the tree rather than agreeing with a literal.
-#
-# The emptiness check is separate and is not redundant with the equality: two
-# walks that both come back empty agree, and a per-element claim over nothing
-# is true without covering anything.
+# is non-empty before its per-file loop runs.
 assert_consumer_count() {
-  local derived recount
-  derived="$(library_consumers | grep -c . || true)"
-  # Anchored to REPO_ROOT rather than to the ambient cwd. `git ls-files` prints
-  # paths relative to the repository it walks, and the grep consuming them
-  # resolves each one against wherever bats was started from, so a run from a
-  # subdirectory opens none of them. The worse case is the one that does not
-  # error: this repo keeps worktrees under .claude/worktrees/, and a run from a
-  # sibling checkout would grep that other tree and could agree with a
-  # derivation over this one. The `cd` is confined to the substitution's own
-  # subshell, so no cwd reaches the rest of the test.
-  recount="$(cd "$REPO_ROOT" && git ls-files -z -- ':(exclude)*.bats' \
-    | xargs -0 grep -l -- '_gaia_guard_lib_dir/guard-awk-lib.sh' \
-    | grep -c . || true)"
-  [ "$derived" -gt 0 ] \
-    || { echo "library_consumers returned nothing" >&2; return 1; }
-  [ "$derived" -eq "$recount" ] \
-    || { echo "library_consumers returned $derived, the tree carries $recount" >&2; return 1; }
+  local n
+  n="$(library_consumers | grep -c . || true)"
+  [ "$n" -gt 0 ] || { echo "library_consumers returned nothing" >&2; return 1; }
 }
 
 @test "every library consumer's shellcheck source= line carries the library's full repo-relative path" {

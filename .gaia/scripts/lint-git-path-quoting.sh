@@ -259,22 +259,8 @@ case "$GAIA_AWK_STATUS" in
     ;;
 esac
 
-# The `*.bats` surface, discovered and hard-errored on separately by the shared
-# library, for the same reason the scan surface below is: a widened pathspec that
-# quietly missed every suite would still pass this guard's own empty-set check.
-#
-# It leads the two discoveries because it is the only one carrying the below-root
-# refusal, and both resolve against the working directory. Run second, its
-# refusal is unreachable from a subtree that narrows the other to empty: that
-# surface's own "nothing was scanned" fires first and tells the operator the tree
-# is empty when the working directory is the real cause, which is the conflation
-# this status vocabulary exists to end.
-gaia_guard_bats_files lint-git-path-quoting || exit $?
-
 # Scan surface: tracked shell, the extensionless husky hooks, the workflow YAML
-# whose `run:` blocks are shell by another name, the adopter workflow templates
-# that render into that same YAML in a repository this gate never runs in,
-# tracked markdown, whose
+# whose `run:` blocks are shell by another name, tracked markdown, whose
 # fenced blocks are shell by another name on any page a rule tells the agent to
 # execute, and tracked `*.bats`, collected as its own set below. `git ls-files`
 # rather than a filesystem walk, so an untracked scratch script or a vendored
@@ -290,23 +276,10 @@ gaia_guard_bats_files lint-git-path-quoting || exit $?
 # suite runs through `bash -c` or `eval`; see
 # wiki/decisions/Shell Guard Fixture Discrimination.md for the convention and
 # the reasoning behind the argument-region rule and the suppression pragma.
-#
-# The template pathspec below is the SOURCE directory, never the built copy
-# under `.gaia/cli/templates/workflows/` that `bundle:adopter` re-creates from
-# it: scanning both would report every hit twice and name a path whose repair
-# the next build discards. Its spelling is hand-copied from `guard-awk-lib.sh`'s
-# `workflows` set and nothing binds the two, so a move of the template directory
-# has to be written in both places: that set is what every sibling gate on this
-# surface discovers through, and this gate alone inlines its own pathspec. The
-# two are already not equal, and deliberately so -- `workflows` also carries the
-# composite actions under `.github/actions/`, which this gate does not scan and
-# whose exclusion the sibling suite pins. Artifact-equals-source is held by
-# `audit-template-dogfood.test.ts` and `verify-cli-bundle-fresh.sh`, so a
-# repair to the source that never regenerates reds there rather than here.
 scan_files=()
 while IFS= read -r -d '' f; do
   scan_files+=("$f")
-done < <(git -c core.quotepath=false ls-files -z '*.sh' '.husky/*' '.github/workflows/*.yml' '.github/workflows/*.yaml' '.gaia/cli/src/automation/templates/workflows/*.tmpl' '*.md' | LC_ALL=C sort -z)
+done < <(git -c core.quotepath=false ls-files -z '*.sh' '.husky/*' '.github/workflows/*.yml' '.github/workflows/*.yaml' '*.md' | LC_ALL=C sort -z)
 
 # An empty scan set is a hard error, never a clean tree. The loop above reads
 # from a process substitution, whose failure `set -o pipefail` cannot see, so a
@@ -321,6 +294,11 @@ if [ "${#scan_files[@]}" -eq 0 ]; then
   echo "lint-git-path-quoting: ERROR: no tracked files matched the scan surface; nothing was scanned" >&2
   exit 1
 fi
+
+# The `*.bats` surface, discovered and hard-errored on separately by the shared
+# library, for the same reason as above: a widened pathspec that quietly missed
+# every suite would still pass this guard's own empty-set check.
+gaia_guard_bats_files lint-git-path-quoting || exit 1
 
 # scan_file <path>: print one `file:line: message` per unquoted call.
 #

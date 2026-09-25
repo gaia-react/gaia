@@ -15,7 +15,7 @@
 # interpreter is present at all, and 6 when GAIA_AWK resolves to an interpreter
 # that identifies as neither mawk nor BWK one-true-awk. The discovery statuses
 # the shared library raises, 1 for a tracked shell set that came back empty, 2
-# for a working directory below the repository root, and 3 for a discovery that
+# for a call the library itself refuses, and 3 for a discovery that
 # failed outright, are forwarded rather than flattened, for the reason that
 # library's own header gives.
 #

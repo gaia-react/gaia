@@ -133,7 +133,7 @@ gaia_guard_scan_files lint-collapsed-signal-trap shell husky workflows || exit $
 
 # A separate set from the scan surface above, never a widened pathspec: a tree
 # carrying .sh and no .bats must not pass clean carried by the rest of it.
-gaia_guard_bats_files lint-collapsed-signal-trap || exit $?
+gaia_guard_bats_files lint-collapsed-signal-trap || exit 1
 
 # The class-detection program, concatenated after $GAIA_GUARD_AWK so it can call
 # the shared fixture-versus-execution discriminator. Single-quoted, so every

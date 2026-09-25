@@ -140,29 +140,17 @@
 .gaia/scripts/awk-interp-lib.sh
 # The awk interpreter pin flags a bare `awk`, `gawk`, `mawk` or `nawk` in command position inside the guard-awk-lib.sh closure, where the resolved GAIA_AWK is the required form, so the guards in that closure cannot run under one awk implementation locally and another in CI. Withheld on the absent SUBJECT first, which is stronger than the absent-runner ground most of the lints above rest on: its whole subject is the resolver directly above and the closure around it, every file of which is withheld, so on an adopter clone this gate would scan a surface that does not exist and refuse at its empty-closure status on every run rather than answer. Every runner is withheld too, so the decision holds on either ground alone: shell-lint.sh via the .gaia/tests entry below, and the sibling bats suite .gaia/scripts/tests/lint-awk-interpreter-pin.bats via the separate .gaia/scripts/tests entry beside it. What is NOT claimed: the detector is a generic command-position reader and would work over any surface, so shipping it later to pin an adopter's own awk calls would be a re-decision rather than a correction. Nor is the wider tree claimed even here -- the gate governs the closure alone, and the command-position awk sites elsewhere in this repository are a stated non-claim in its own header, not an omission this entry repairs.
 .gaia/scripts/lint-awk-interpreter-pin.sh
-# The tracked-path discovery boundary the release staging pipeline reads its
-# file list through. It belongs to the release surface by its callers, every one
-# of which is maintainer-only and release-excluded -- release.yml (category 9),
-# the .gaia/tests/distribution/ harness scripts (category 3), and the staging
-# build documented in .gaia/cli/health/runbook.md (category 10). An adopter
-# clone never stages a GAIA release, so nothing there would invoke it. Note
-# what is NOT claimed: the script is generic enough to be useful anywhere a
-# tracked-file list is built, so the withhold rests on the absent caller alone,
-# and shipping it later would be a re-decision rather than a correction.
-.gaia/scripts/list-tracked-paths.sh
 # The shipped-tree leak assertion: it proves no release-excluded path survived
-# into the tree that becomes the tarball. Withheld on the absent caller, the same
-# ground the tracked-path boundary above rests on: its one caller is release.yml
-# (category 9), and an adopter clone never stages a GAIA release, so nothing
-# there would invoke it. Its blocking runner, the sibling bats suite
-# .gaia/scripts/tests/assert-no-release-leak.bats, is release-excluded by the
-# separate .gaia/scripts/tests entry in category 3. What is NOT claimed: the
-# script takes a staging directory and a pattern file as arguments and is
-# generic over both, so shipping it later would be a re-decision rather than a
-# correction. There is a second, narrower reason to withhold it that the
-# tracked-path boundary does not carry: its subject is the maintainer-only
-# distribution boundary itself, which is a GAIA-internal concern an adopter has
-# no counterpart to.
+# into the tree that becomes the tarball. Withheld on the absent caller: its one
+# caller is release.yml (category 9), and an adopter clone never stages a GAIA
+# release, so nothing there would invoke it. Its blocking runner, the sibling
+# bats suite .gaia/scripts/tests/assert-no-release-leak.bats, is
+# release-excluded by the separate .gaia/scripts/tests entry in category 3.
+# What is NOT claimed: the script takes a staging directory and a pattern file
+# as arguments and is generic over both, so shipping it later would be a
+# re-decision rather than a correction. There is a second, narrower reason to
+# withhold it: its subject is the maintainer-only distribution boundary itself,
+# which is a GAIA-internal concern an adopter has no counterpart to.
 .gaia/scripts/assert-no-release-leak.sh
 # Deterministic lint over GAIA's own hook layer; every runner (shell-lint.sh and its sibling bats suite) is release-excluded, so an adopter clone would carry a check nothing invokes. The repaired hooks themselves ship.
 .gaia/scripts/lint-hook-cwd-relative-loads.sh

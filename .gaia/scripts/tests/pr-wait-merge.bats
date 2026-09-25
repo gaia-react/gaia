@@ -476,46 +476,6 @@ tsv() {
   true
 }
 
-@test "a --repo that is not OWNER/REPO is a usage error" {
-  # It would otherwise reach gh as an unresolvable repo, fail every read, and
-  # land in the no-read refusal, whose message blames auth or the PR number
-  # rather than the argument actually at fault.
-  stub_gh "$(tsv MERGED CLEAN)"
-  run bash "$WAIT" --pr 7 --repo gaia-react --interval 0
-  [ "$status" -eq 2 ]
-  grep -qF -- 'OWNER/REPO' <<<"$output"
-}
-
-@test "a --repo carrying an undotted third segment is a usage error" {
-  # `a/b/c` is a three-segment path, not a host qualifier: a GitHub owner name
-  # cannot contain a dot, which is what tells the two apart.
-  stub_gh "$(tsv MERGED CLEAN)"
-  run bash "$WAIT" --pr 7 --repo a/b/c --interval 0
-  [ "$status" -eq 2 ]
-}
-
-@test "gh's documented HOST/OWNER/REPO form is accepted" {
-  # gh itself documents `-R, --repo [HOST/]OWNER/REPO`, so rejecting it would
-  # make this wrapper stricter than the tool it wraps, on a spelling agents
-  # do write.
-  stub_gh "$(tsv MERGED CLEAN)"
-  run bash "$WAIT" --pr 7 --repo github.com/gaia-react/create-gaia --interval 0
-  [ "$status" -eq 0 ]
-  grep -qF -- '--repo github.com/gaia-react/create-gaia' <<<"$(first_view_argv)"
-}
-
-@test "a four-segment --repo is a usage error" {
-  stub_gh "$(tsv MERGED CLEAN)"
-  run bash "$WAIT" --pr 7 --repo github.com/a/b/c --interval 0
-  [ "$status" -eq 2 ]
-}
-
-@test "a --repo with a trailing slash is a usage error" {
-  stub_gh "$(tsv MERGED CLEAN)"
-  run bash "$WAIT" --pr 7 --repo gaia-react/ --interval 0
-  [ "$status" -eq 2 ]
-}
-
 @test "--repo with no value is a usage error" {
   stub_gh "$(tsv MERGED CLEAN)"
   run bash "$WAIT" --pr 7 --repo

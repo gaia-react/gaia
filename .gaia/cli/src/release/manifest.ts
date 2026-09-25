@@ -249,13 +249,8 @@ export const resolveManifestPath = (repoRoot: string): string =>
  * One asymmetry with staging survives this, in the other direction: the shell
  * readers pipe the NUL stream through `tr '\0' '\n'` into a newline-delimited
  * file, which a path holding a literal newline cannot survive, while it stays
- * one entry here. Staging no longer resolves that disagreement by chance --
- * `.gaia/scripts/list-tracked-paths.sh` refuses such a path at the boundary and
- * names it, rather than aborting on an rsync `stat` error or publishing a
- * tarball without the file according to whether every split name happens to
- * exist (#1669). This side needs no counterpart guard: it records the joined
- * path as shipping, which is correct, and the release it would disagree with
- * now stops before a tarball exists.
+ * one entry here. This side needs no counterpart guard: it records the joined
+ * path as shipping, which is correct.
  */
 const listGitFiles = (cwd: string): string[] =>
   splitZStream(

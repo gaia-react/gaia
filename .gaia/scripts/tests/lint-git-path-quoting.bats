@@ -94,45 +94,6 @@ run_linter() {
   run bash -c "cd '$TMP' && bash '$LINTER'"
 }
 
-# 0. The working directory the surface resolves against
-
-# This gate reaches the shared bats accessor and never the shared scan accessor,
-# so that accessor is the only thing standing between it and a `git ls-files`
-# resolved against cwd. The subtree is seeded on both surfaces this gate
-# hard-errors on when empty -- its own scan set and the accessor's bats set -- so
-# each narrowed set comes back POPULATED and neither empty-surface refusal can
-# supply the exit status. That is what leaves the refusal as the only thing this
-# test can be passing on, whatever order the two discoveries run in.
-@test "a run from below the repository root is refused rather than silently narrowed" {
-  fixture_repo
-  fixture_file sub/nested.bats $'@test "nested" {\n  true\n}'
-  fixture_file sub/nested.sh 'true'
-  run bash -c "cd '$TMP/sub' && bash '$LINTER' 2>&1"
-  # Status 2, never 1: 1 is the empty-surface refusal a caller may tolerate where
-  # a suite-less tree is a legitimate one, and this is the narrowing it must not.
-  [ "$status" -eq 2 ]
-  grep -qF -- "run from the repository root" <<<"$output" || return 1
-  grep -qF -- "'sub'" <<<"$output" || return 1
-  grep -qF -- "clean" <<<"$output" && return 1
-  true
-}
-
-# The companion to the test above, and the one that pins the discovery ORDER
-# rather than the refusal itself. Here the subtree narrows this gate's own scan
-# set to empty, so its "nothing was scanned" would fire first if the accessor ran
-# after it -- naming an empty tree for what is really a working directory below
-# the root, the conflation the status vocabulary exists to end. The accessor
-# leads, so the refusal is what the operator gets.
-@test "a below-root run reports the refusal, not an emptied surface's own error" {
-  fixture_repo
-  fixture_file sub/nested.bats $'@test "nested" {\n  true\n}'
-  run bash -c "cd '$TMP/sub' && bash '$LINTER' 2>&1"
-  [ "$status" -eq 2 ]
-  grep -qF -- "run from the repository root" <<<"$output" || return 1
-  grep -qF -- "no tracked files matched" <<<"$output" && return 1
-  true
-}
-
 # 1. The real scanned tree is clean (regression gate)
 
 @test "the real scanned tree passes the lint" {
@@ -165,32 +126,6 @@ run_linter() {
   run_linter
   [ "$status" -eq 1 ]
   grep -qF -- ".github/workflows/ci.yml:5" <<<"$output"
-}
-
-# The adopter workflow templates render into a repository this gate never runs
-# in, so a quoting defect written here ships and is scanned nowhere. Several of
-# them have no `.github/workflows` twin in this tree, so the twin's own scan is
-# not a stand-in for this one.
-@test "flags an unquoted diff --name-only in an adopter workflow template" {
-  fixture_repo
-  fixture_file .gaia/cli/src/automation/templates/workflows/gaia-ci.yml.tmpl \
-    $'jobs:\n  a:\n    steps:\n      - run: |\n          changed=$(git diff --name-only "${BASE}...HEAD")'
-  run_linter
-  [ "$status" -eq 1 ]
-  grep -qF -- ".gaia/cli/src/automation/templates/workflows/gaia-ci.yml.tmpl:5" <<<"$output"
-}
-
-# The built copy under `.gaia/cli/templates/workflows/` carries the same bytes,
-# and scanning it too would report every hit twice and name a path the repair
-# must not hand-edit, since the next `bundle:adopter` discards it. Source-only
-# is the same split `.gaia/audit-ci.yml` and the sibling gates already declare.
-@test "the built copy of an adopter workflow template is not scanned" {
-  fixture_repo
-  fixture_file probe.sh 'true'
-  fixture_file .gaia/cli/templates/workflows/gaia-ci.yml.tmpl \
-    $'jobs:\n  a:\n    steps:\n      - run: |\n          changed=$(git diff --name-only "${BASE}...HEAD")'
-  run_linter
-  [ "$status" -eq 0 ]
 }
 
 # The binding test. `#1229`'s Suggested fix: whichever guard lands must be shown

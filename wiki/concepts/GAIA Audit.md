@@ -28,8 +28,6 @@ A clean audit (Stage 1 finds 0 actions) skips the gate and auto-applies: there i
 - **Discuss / refine**: talk it through, edit the report in place, then re-ask.
 - **Decline**: delete the report; nothing is applied, filed, or published.
 
-Stage 1's own "0 actions" is not enough for a clean audit to skip the gate, because a research pass that stopped before walking every store writes a report that reads exactly like a clean one. The report carries a per-store coverage record (files inventoried, files classified) and an `Actions proposed` Summary line, and before auto-applying the main conversation runs `.gaia/scripts/knowledge-audit-clean.sh`, which re-runs the inventory itself and holds the record to it. A missing record, a short count, a scope-narrowed run, or any other failure of the check routes the report to the Apply / Discuss / Decline gate instead, with the check's reasons in the summary. The skill reference owns the record's schema and the script's header owns the exact conditions.
-
 ### Full flow: apply, file, publish
 
 Apply is the single up-front decision; from there the run drives to merge autonomously, the same shape `/update-deps` and `/gaia-debt` use (see [[Audit Disposition and Debt Fix]]). Two mechanical steps ride every finalizing path (gated Apply, 0-action auto-apply, `--apply`) and never the Decline path:

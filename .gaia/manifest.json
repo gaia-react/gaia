@@ -208,7 +208,6 @@
     ".gaia/labels.schema.json": "owned",
     ".gaia/scripts/a11y-structural/check-a11y-triviality.mjs": "owned",
     ".gaia/scripts/append-audit-author.sh": "owned",
-    ".gaia/scripts/archived-backlog-migrate.sh": "owned",
     ".gaia/scripts/audit-key-lib.sh": "owned",
     ".gaia/scripts/audit-ledger/append-worthiness.mjs": "owned",
     ".gaia/scripts/audit-member-digest.sh": "owned",
@@ -235,7 +234,6 @@
     ".gaia/scripts/debt-count-refresh.sh": "owned",
     ".gaia/scripts/debt-stale-claims.sh": "owned",
     ".gaia/scripts/gh-artifact-lib.sh": "owned",
-    ".gaia/scripts/knowledge-audit-clean.sh": "owned",
     ".gaia/scripts/ledger-path-lib.sh": "owned",
     ".gaia/scripts/ledger-status-migrate.sh": "owned",
     ".gaia/scripts/lib/serena-lang.sh": "owned",
@@ -243,7 +241,6 @@
     ".gaia/scripts/lint-hook-array-guard.sh": "owned",
     ".gaia/scripts/main-only-lib.sh": "owned",
     ".gaia/scripts/main-root-lib.sh": "owned",
-    ".gaia/scripts/mentorship-cleanup-sweep.sh": "owned",
     ".gaia/scripts/plan-archive.sh": "owned",
     ".gaia/scripts/plan-resume-point.sh": "owned",
     ".gaia/scripts/post-findings-block.sh": "owned",
@@ -662,7 +659,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-25T03:30:26.088Z",
+  "generated": "2026-09-25T05:01:01.554Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

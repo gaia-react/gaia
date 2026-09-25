@@ -171,36 +171,6 @@ if ! is_uint "$INTERVAL"; then
   printf '%s: --interval must be a non-negative integer, got: %s\n' "$PROG" "$INTERVAL" >&2
   exit 2
 fi
-# gh's own spelling, `[HOST/]OWNER/REPO`. Validated rather than passed through
-# because a value gh cannot resolve prints nothing and exits non-zero on every
-# read, which lands in the no-read refusal below, where the message would blame
-# auth or the pull-request number rather than the argument actually at fault.
-#
-# The host-qualified form is accepted because gh documents it and agents write
-# it; `.claude/rules/issue-claim.md` names it as a spelling that turns up in
-# practice. It is told apart from a plain three-segment path by the dot in its
-# first segment, which a host has and a GitHub owner name cannot.
-repo_ok() {
-  case "$1" in
-    /* | */) return 1 ;;
-    */*/*/*) return 1 ;;
-    */*/*)
-      # [HOST/]OWNER/REPO: the first segment must look like a host.
-      case "${1%%/*}" in
-        *.*) return 0 ;;
-        *) return 1 ;;
-      esac
-      ;;
-    */*) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-if [ -n "$REPO" ] && ! repo_ok "$REPO"; then
-  printf '%s: --repo must be OWNER/REPO, or HOST/OWNER/REPO, got: %s\n' "$PROG" "$REPO" >&2
-  exit 2
-fi
-
 if ! command -v gh >/dev/null 2>&1; then
   printf '%s: gh is not on PATH, so the merge state cannot be read. This is a\n' "$PROG" >&2
   printf 'refusal, not a verdict: nothing here reports the wait succeeded or failed.\n' >&2
