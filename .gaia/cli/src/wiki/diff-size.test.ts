@@ -308,7 +308,7 @@ describe('wiki diff-size', () => {
       sandbox.writeFile(`wiki/${NON_ASCII_STEM}.md`, fillLines(40, 'line'));
       sandbox.commitAll('base');
 
-      // gaia-lint-ignore git-z-chokepoint: runs without -z on purpose, since
+      // Deliberately unrouted: runs without -z on purpose, since
       // the quoted output is what proves the fixture can fail the assertion.
       const listed = execFileSync(
         'git',

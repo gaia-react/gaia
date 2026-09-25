@@ -35,10 +35,7 @@
  * reads as an ESLint crash rather than as a reported lint violation.
  *
  * Its version tracks the one `@gaia-react/lint` pins, because root declares no
- * version of its own and resolves the copy that preset depends on. The lockfile
- * block of `src/lint-pin-parity.test.ts` holds the two together: it compares the
- * version each workspace resolves for every `prettier-plugin-*` package, so
- * moving the `@gaia-react/lint` pin without moving this one reds there.
+ * version of its own and resolves the copy that preset depends on.
  */
 import config from '@gaia-react/lint/prettier';
 

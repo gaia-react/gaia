@@ -74,68 +74,25 @@ jobs:
             code:
               - '.gaia/cli/**'
               - '.github/workflows/cli-tests.yml'
-              # The lint-pin parity guard (src/lint-pin-parity.test.ts) asserts
-              # .gaia/cli/package.json declares the same version as the root
-              # workspace for every pin the two share: the @gaia-react/lint
-              # preset, and the tools whose own version reaches lint output.
-              # A root-only bump to any of them is what causes that drift, and
-              # tests.yml skips its whole suite for the `chore(deps):` title
-              # /update-deps opens, so without this entry nothing evaluates the
-              # guard on the PR that breaks it -- it would first fire on some
-              # later, unrelated .gaia/cli/** change instead (#1051).
+              # format-ignore-scope.test.ts (src/format-ignore-scope.test.ts)
+              # reads the root `format` script off this file; see the fuller
+              # rationale below, beside `.gitignore`.
               - 'package.json'
-              # Same guard, second subject. Its resolution half asserts both
-              # workspaces RESOLVE the same version of every shared rule-bearing
-              # package, which no manifest states: they are direct dependencies
-              # of neither workspace and arrive transitively through a caret, so
-              # the only record of them is each lockfile. A root-only re-resolve
-              # is what floats that caret, and it moves no manifest, so without
-              # this entry the root-lockfile side of the guard is unreachable on
-              # the pull request that breaks it. The .gaia/cli side already lands
-              # under '.gaia/cli/**'.
-              - 'pnpm-lock.yaml'
-              # Third subject of the same guard: both workspaces must harden on
-              # the same terms (minimumReleaseAge, its strict flag, and
-              # trustPolicy). .gaia/cli is a separate pnpm root, so the settings
-              # exist twice by hand with nothing holding them together, and
-              # relaxing root's copy alone is the drift worth catching at the
-              # moment it is proposed.
-              - 'pnpm-workspace.yaml'
-              # The audit-template dogfood drift-guard compares this in-tree
-              # workflow against the bundled .tmpl. Editing the .tmpl already
-              # lands under .gaia/cli/**; the live workflow is the other side
-              # of that equality, so a workflow-only edit must re-run the guard
-              # or template drift lands silently.
-              - '.github/workflows/code-review-audit.yml'
-              # Same shape, wider subject, which is why this glob subsumes the
-              # entry above rather than replacing its rationale. The adopter-CI
-              # pin guard (automation/__tests__/adopter-ci-action-pins.test.ts)
-              # asserts the workflow templates pin the same action SHAs every
-              # workflow here runs, and Dependabot lands its weekly bump here
-              # first, so any workflow-only edit must re-run that guard or the
-              # bump merges with the templates left behind. A glob rather than
-              # an itemized list: the guard reads the whole directory, so an
-              # itemized one would silently stop covering a workflow added
-              # later.
-              - '.github/workflows/**'
               # The composite action the Node setup step below `uses:`. It lives
               # outside .github/workflows/, so it matches nothing else here, and
               # without this line a pull request changing only the action -- its
               # node version, its install arms, its cache key -- would report
               # `code=false`, skip every step gated on this filter, and green
               # `Vitest (.gaia/cli)` having run nothing. A glob rather than the
-              # one path, the same reasoning as the workflows glob above: the
-              # directory is where shared composite actions go, so an itemized
-              # entry would silently stop covering the next one.
+              # one path: the directory is where shared composite actions go, so
+              # an itemized entry would silently stop covering the next one.
               - '.github/actions/**'
               # The action's own inputs, one hop past the action file itself.
               # It resolves the runtime from `.node-version` and installs under
               # `.npmrc`, and neither matches anything else here, so a bump to
               # either would resolve `code=false` and green this required check
               # having run the suite zero times under the new pin.
-              # `pnpm-workspace.yaml` is already listed above for the parity
-              # guard and covers the third. audit-ci-tests.yml lists the same
-              # two for the same reason.
+              # audit-ci-tests.yml lists the same two for the same reason.
               # Hand-maintained, and not covered by the coverage guard: it
               # checks that the action file itself is reachable but does not
               # descend into the action's body, so a fourth file the action
@@ -143,24 +100,6 @@ jobs:
               # entries whenever the action's inputs change.
               - '.node-version'
               - '.npmrc'
-              # The two Node-pin subjects the parity guard
-              # (src/node-pin-parity.test.ts) reads that nothing else in this
-              # list reaches. It holds `.node-version`, `.nvmrc`, and every
-              # `FROM node:<tag>` in `Dockerfile` to the `engines.node` floor in
-              # the root `package.json`; all four are edited independently, since
-              # a floor raise touches `package.json` alone and the repair that
-              # forgets a copy touches one of the other three alone.
-              # `package.json` and `.node-version` are already listed above for
-              # other guards, so only these two are added, and dropping either
-              # leaves a pull request that moves only it resolving `code=false`,
-              # skipping the Vitest step, and greening this required check having
-              # never compared the pin it changed. `Dockerfile` has no other
-              # cover at all: no workflow here builds it
-              # (`.gaia/tests/distribution/` builds a heredoc Dockerfile of its
-              # own), so this entry is the only thing that runs any assertion
-              # against the Node version an adopter's image would deploy.
-              - 'Dockerfile'
-              - '.nvmrc'
               # The second subject of the format-ignore-scope guard
               # (src/format-ignore-scope.test.ts). It holds the root `format`
               # script to a prettier ignore set that still consults
@@ -241,82 +180,7 @@ jobs:
               # schema alone -- and either alone must re-run the job.
               - '.gaia/labels.json'
               - '.gaia/labels.schema.json'
-              # The grading-declaration divergence guard
-              # (`src/harden/__tests__/severity-map.test.ts`) reads every
-              # `code-audit-*.md` under `.claude/agents/` off the repo root and
-              # checks each file's `<!-- gaia-audit:gradings: -->` declaration
-              # against `SEVERITY_BY_GRADING` and the parser's accepted set. The
-              # one-sided edit it exists to catch -- a member declaring a fourth
-              # grading before the map learns it -- touches only those agent
-              # files, so without this line the filter resolves `code=false`,
-              # the Vitest step below skips, and this required check reports
-              # green having run the divergence check zero times (#1513).
-              # `audit-ci-tests.yml` is no fallback: it arms on the same glob but
-              # runs bats shards only, and no bats suite reimplements this
-              # divergence check or even approximates it.
-              # A glob rather than an itemized list, the same reasoning as the
-              # workflows and actions globs above: the guard reads whatever
-              # matches this name pattern, so a member added or removed later is
-              # covered without an edit here. The suite's own "at least four"
-              # assertion is a rot floor rather than a roster count, and the
-              # roster is larger than it, so on a removal it is this glob, not
-              # that assertion, that re-runs the job.
-              # Deliberately NOT `.claude/**`. The suite's other real-repo reader
-              # (`src/command-reachability.test.ts`) scans four `.claude/`
-              # subdirectories plus `wiki/`, and arming `code:` on those would
-              # newly run this required job in full on roughly two in five pull
-              # requests instead of one in thirty. That is a different cost
-              # class, and the `reach:` filter below is where it is paid at the
-              # size it is worth (#1524).
-              - '.claude/agents/code-audit-*.md'
-            # The second gate, and the narrow one. `code:` above lists the paths
-            # whose edits need the whole job; these are the surfaces
-            # `src/command-reachability.test.ts`'s `INVOKER_SURFACES` scans for a
-            # command's external invocations, and the only assertion an edit to
-            # one of them can invalidate is that guard's. The one-sided edit it
-            # exists to catch -- the removal of a command's sole invocation --
-            # lands in a skill, a command, a hook, an agent, a workflow, or a
-            # wiki page, and before this output four of those seven surfaces
-            # matched nothing here at all: the filter resolved `code=false`, the
-            # Vitest step skipped, and `Vitest (.gaia/cli)` reported green having
-            # run the reachability guard zero times, which branch protection
-            # then read as a merge (#1524).
-            #
-            # A separate output rather than more `code:` entries, which is the
-            # one place this file breaks its own one-gate-per-job shape. Those
-            # surfaces are prose and configuration, so arming `code:` on them
-            # would run typecheck, cold eslint, bats, and bundle-freshness --
-            # about 80-180s against roughly 20s skipped -- on two pull requests
-            # in five, on a declared-required context, to re-derive nothing but a
-            # reachability verdict. Only the workspace install and the Vitest
-            # step below gate on this output; every other step stays on `code:`
-            # alone.
-            #
-            # The list mirrors `INVOKER_SURFACES` entry for entry, in its order,
-            # and `src/command-reachability.test.ts` asserts that set equality in
-            # both directions, so a surface added there without a mirror here
-            # reds this job instead of silently leaving the guard unarmed on the
-            # one edit that breaks it. Both halves are reachable, which is what
-            # makes the binding enforceable: the guard's edit lands under
-            # `.gaia/cli/**` and this file's under `.github/workflows/**`, and
-            # `code:` arms on both.
-            #
-            # `.github/**` is wider than the guard strictly needs and is
-            # load-bearing anyway: `.gaia/scripts/tests/workflow-filter-coverage.bats`
-            # grades a multi-output gate CONJUNCTIVELY, so every output named in a
-            # step's `if:` must itself reach that step's literal inputs -- this
-            # workflow file for both steps, plus the composite action the install
-            # step `uses:`. Narrowing this entry to `.github/workflows/**` would
-            # red that guard.
-            reach:
-              - '.claude/skills/**'
-              - '.claude/commands/**'
-              - '.claude/hooks/**'
-              - '.claude/agents/**'
-              - '.github/**'
-              - 'wiki/**'
-              - '.gaia/cli/src/automation/templates/**'
-      - if: steps.filter.outputs.code == 'true' || steps.filter.outputs.reach == 'true' || github.event_name == 'workflow_dispatch'
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Setup Node and install the CLI workspace
         # Bounds a STALLED install rather than sizing the leg, the same
         # reasoning audit-ci-tests.yml states at length for its own
@@ -394,7 +258,7 @@ jobs:
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Lint
         run: pnpm -C .gaia/cli lint
-      - if: steps.filter.outputs.code == 'true' || steps.filter.outputs.reach == 'true' || github.event_name == 'workflow_dispatch'
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Run Vitest tests
         run: pnpm -C .gaia/cli test --run
       # The region-marker conformance suite drives the real TypeScript parser
@@ -732,8 +596,8 @@ jobs:
       # first, which is why the two jobs above never see it; this job runs no
       # pnpm at all, and setup-node passes no pnpm restore keys, so every pull
       # request that moves the root lockfile is a guaranteed miss. Dropping the
-      # cache also drops the pnpm bootstrap this job never uses. The pin is
-      # unchanged, which is what keeps adopter-ci-action-pins.test.ts green.
+      # cache also drops the pnpm bootstrap this job never uses. The pin stays
+      # unchanged from every other workflow's copy of this action.
       - name: Setup Node
         # Bounds a stalled Node tarball fetch, not a budget for the work:
         # strictly under this job's own 10-minute cap so a stall reds with this

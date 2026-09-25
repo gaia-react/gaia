@@ -32,8 +32,7 @@ name: CLI Advisory Scan
 # have no second pnpm root, so on an adopter clone this would be a red check over
 # a directory they do not have.
 #
-# Pinned action SHAs match the other workflows here; adopter-ci-action-pins.test.ts
-# holds every workflow in this directory to one pin per action:
+# Pinned action SHAs match the other workflows here:
 #   actions/checkout @ 3d3c42e5aac5ba805825da76410c181273ba90b1 (v7.0.1)
 
 on:

@@ -35,9 +35,8 @@ defect.
 
 None of these guards reads TypeScript. The path-listing class does reach the CLI's
 TypeScript source, but a git call there is an argv array rather than a line of
-shell, so nothing on this page applies to it. `.gaia/cli/src/git-z-chokepoint.test.ts`
-guards that surface instead, and its own docblock states what it reaches and how its
-exemption marker mirrors the pragma below.
+shell, so nothing on this page applies to it. The CLI routes a git listing call
+through `gitZArgs` in `.gaia/cli/src/util/git-z.ts` instead.
 
 ## Why the suppression is bats-only
 

@@ -17,11 +17,9 @@
  * added here (`/` as `\/`, a `\u{...}` form) breaks a parity contract the
  * compiling consumer cannot see.
  *
- * `exclude-parser-parity.test.ts` is the only call-site suite that pins the
- * whole set today, and only through that one path, against the shell reference
- * rather than against this module. The remaining callers are guards that keep
- * passing their own suites with a wrong set, which is what
- * `escape-regexp.test.ts` beside this file exists to assert directly.
+ * `escape-regexp.test.ts` beside this file is what pins the whole set
+ * directly. The remaining callers are guards that keep passing their own
+ * suites with a wrong set.
  */
 
 // Hoisted rather than written inline: a literal in the function body

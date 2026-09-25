@@ -63,12 +63,11 @@ assert_contains() {
 # cases the shipped state machine does, including a start and end on one line
 # and an end with no open block (which the shipped parser keeps).
 #
-# The agreement is PINNED, not conventional: `.gaia/cli/src/release/marker-strip.test.ts`
-# runs this exact awk against the real parser over a fixture corpus, and then
-# asserts this file carries the invocation below verbatim. Edit either side and
-# that guard reds. Two sibling suites carry the same block for the same reason
+# This awk is a hand-kept model, not held to the real parser by a test. Two
+# sibling suites carry the same block for the same reason
 # (`audit-write-clearance.bats`, `.gaia/tests/hooks/audit-scope-lib.bats`), so a
-# change here belongs in all of them.
+# change here belongs in all of them, and in the real parser too if the
+# transform it models changed.
 strip_maintainer_only() {
   awk -v s="$MAINTAINER_START" -v e="$MAINTAINER_END" '
     {

@@ -101,8 +101,8 @@
 # `bundle:adopter` and is deliberately NOT scanned. Scanning both would report
 # every hit twice, and scanning the artifact alone would name a file the repair
 # must not hand-edit. Artifact-equals-source is held by
-# `audit-template-dogfood.test.ts` and `verify-cli-bundle-fresh.sh`, so a repair
-# to the source that never regenerates fails there rather than here.
+# `verify-cli-bundle-fresh.sh`, so a repair to the source that never
+# regenerates fails there rather than here.
 #
 # Sibling gate: .gaia/scripts/lint-git-path-quoting.sh, which scans the same
 # workflow YAML for a different class. The two are kept separate because their
