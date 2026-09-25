@@ -208,8 +208,7 @@ workflow_for_context() {
 # greens the job, so a runner that lost that install would retire the 15
 # parser-gated tests below in silence -- the hollow-guard failure the rest of
 # this file exists to catch, turned on the file itself. Section 0 below proves
-# this branch fires. Matches .gaia/tests/lib/lint-yaml.bats, whose own gate also
-# accepts a `yq` fallback this one has no equivalent of.
+# this branch fires.
 require_yaml_parser() {
   if command -v python3 >/dev/null 2>&1 && python3 -c 'import yaml' >/dev/null 2>&1; then
     return 0

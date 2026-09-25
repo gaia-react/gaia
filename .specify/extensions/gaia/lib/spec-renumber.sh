@@ -48,8 +48,7 @@ set +e; [ -f "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" ] && . "
 # bracketed way as the ledger-path lib above, for the same reason.
 # shellcheck source=../../../../.gaia/scripts/branch-name-lib.sh
 set +e; [ -f "${_lib_dir}/../../../../.gaia/scripts/branch-name-lib.sh" ] && . "${_lib_dir}/../../../../.gaia/scripts/branch-name-lib.sh" 2>/dev/null; set -e
-if ! type gaia_branch_spec_number >/dev/null 2>&1 \
-  || ! type gaia_branch_refs_readable >/dev/null 2>&1; then
+if ! type gaia_branch_spec_number >/dev/null 2>&1; then
   echo "spec-renumber: the branch-naming library is unusable, so SPEC numbers held only on a branch cannot be read; refuse to renumber" >&2
   exit 4
 fi
@@ -57,20 +56,6 @@ fi
 if ! git -C "$repo_root" rev-parse --git-dir >/dev/null 2>&1; then
   echo "spec-renumber: $repo_root is not a git repository" >&2
   exit 3
-fi
-
-# The branch source of the known-id scan below reads gaia_branch_list, which
-# returns 0 whatever the ref read does, so an unreadable ref store would report
-# no branch holding the target number and the rename would land on a burned id.
-# Probing here rather than leaning on the allocator is what makes that fail
-# closed: the scan is guarded by `bash "$allocator" highest`, so an allocator
-# that refuses would skip the whole check instead of stopping the renumber.
-# The library owns the probe itself (gaia_branch_refs_readable, its fail-closed
-# companion); this caller keeps only what is its own, the namespace it names,
-# the message, and the exit code.
-if ! _ns="$(gaia_branch_refs_readable "$repo_root")"; then
-  echo "spec-renumber: $repo_root $_ns cannot be read (corrupt, unreadable, or permission-denied), so SPEC numbers held only on a branch cannot be read; refuse to renumber (would risk duplicate SPEC ids)" >&2
-  exit 4
 fi
 
 # repo_root names the tree this renumber runs in; the ledger and folder it
@@ -262,27 +247,11 @@ echo
 echo "Next steps (external state, not auto-updated):"
 
 # Branch name, flag if the current branch references the old id.
-# Full refname, stripped, never `--short`: a tag sharing the branch's name
-# makes `--short` answer `heads/<branch>`, and the number read below would
-# then miss, printing a rename of the branch to itself.
-current_branch="$(git -C "$repo_root" symbolic-ref -q HEAD || true)"
-current_branch="${current_branch#refs/heads/}"
+current_branch="$(git -C "$repo_root" symbolic-ref --short -q HEAD || true)"
 if [ -n "$current_branch" ] && [ "$(gaia_branch_spec_number "$current_branch")" = "$old_num" ]; then
-  # The match above reads the number through the library, which strips leading
-  # zeros, so the branch can carry the number in any padding the minter was
-  # given. Rewriting only the three-digit spelling left every other one
-  # untouched and printed a rename of the branch to itself. `0*` accepts any
-  # padding and the trailing `(-|$)` keeps spec-9 from matching spec-99; the
-  # replacement carries the new id's own padding, the way the minter would.
-  new_token="spec-${new_id#SPEC-}"
-  new_branch="$(printf '%s' "$current_branch" \
-    | sed -E 's/spec-0*'"$old_num"'(-|$)/'"$new_token"'\1/')"
+  new_branch="${current_branch//spec-$(printf '%03d' "$old_num")/spec-$(printf '%03d' "$new_num")}"
   echo "  - Current branch '$current_branch' references $old_id."
-  if [ "$new_branch" = "$current_branch" ]; then
-    echo "    Rename it by hand: the branch names $old_id in a spelling this step does not rewrite."
-  else
-    echo "    Rename:   git -C $repo_root branch -m '$new_branch'"
-  fi
+  echo "    Rename:   git -C $repo_root branch -m '$new_branch'"
 fi
 
 echo "  - Commit-message history is immutable; past commits keep $old_id refs."

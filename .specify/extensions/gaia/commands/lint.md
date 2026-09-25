@@ -44,7 +44,7 @@ The helper emits a JSON result on stdout: `{"ok": true, "findings": []}` on pass
 
 ## What the helper checks (reference; helper is the source of truth)
 
-- Frontmatter present and well-formed.
+- Frontmatter present (closed `--- ... ---` block).
 - Required keys: `spec_id`, `type`, `status`, `immutable`, `wiki_promote_default`, `chain_trigger`, `intent`, `success_criteria`, `uats`, `scope_boundaries`, `clarifications`, `research_summary`, `created`, `updated`.
 - `immutable: true`.
 - `status` ∈ {`in-progress`, `reopened`, `closed`}.

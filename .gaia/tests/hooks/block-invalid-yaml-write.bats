@@ -24,8 +24,8 @@
 # skip reports `ok ... # skip` and greens the job, so a runner that lost that
 # install would retire every test in this file in silence, the hollow guard this
 # suite exists to prevent on the hook, turned on the suite itself. The gate test in
-# the first section below proves this branch fires. Matches the same-shaped gates in
-# .gaia/scripts/tests/retrigger-reachability.bats and .gaia/tests/lib/lint-yaml.bats.
+# the first section below proves this branch fires. Matches the same-shaped gate in
+# .gaia/scripts/tests/retrigger-reachability.bats.
 require_yaml_parser() {
   if command -v python3 >/dev/null 2>&1 && python3 -c 'import yaml' >/dev/null 2>&1; then
     return 0
