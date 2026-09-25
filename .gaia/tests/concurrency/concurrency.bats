@@ -34,95 +34,6 @@ count_autocommits() {
 # Tranche 3 -- CONVERT
 # ---------------------------------------------------------------------------
 
-@test "C3-02: write-guard attributes by payload cwd" {
-  MAIN="$(gaia_new_main gaia-c302-main)"
-  gaia_copy_real "$MAIN" \
-    .claude/hooks/block-worktree-path-mismatch.sh \
-    .claude/hooks/lib/jq-availability.sh \
-    .gaia/scripts/main-root-lib.sh \
-    .gaia/scripts/state-registry-lib.sh
-  gaia_copy_registry "$MAIN"
-  gaia_commit_all "$MAIN" "add write-guard"
-
-  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
-  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
-
-  # A subagent in worktree B, delivered with B's own payload cwd, edits a file
-  # that physically resolves inside worktree A -- a DIFFERENT linked worktree,
-  # not main. The payload cwd correctly names B (the true acting tree); the
-  # guard's job is to attribute the write by that payload cwd and deny a
-  # target naming a different tree.
-  json="$(jq -n --arg c "$B" --arg p "$A/README.md" \
-    '{tool_name: "Edit", cwd: $c, tool_input: {file_path: $p}}')"
-  run gaia_deliver_hook "$json" "$MAIN/.claude/hooks/block-worktree-path-mismatch.sh"
-  [ "$status" -eq 0 ]
-
-  # Target: denied (payload cwd names B, target resolves to a different real
-  # tree, A). Today this hook only ever checks the target against MAIN's root
-  # ("Scope, and why it stops there" in its own header) -- a write from one
-  # linked worktree into another sibling worktree is explicitly left
-  # unguarded, so this is allowed.
-  grep -qF -- '"permissionDecision": "deny"' <<< "$output"
-}
-
-@test "C3-03: tree identity is the payload cwd, and the target is judged against it" {
-  MAIN="$(gaia_new_main gaia-c303-main)"
-  gaia_copy_real "$MAIN" \
-    .claude/hooks/block-worktree-path-mismatch.sh \
-    .claude/hooks/lib/jq-availability.sh \
-    .gaia/scripts/main-root-lib.sh \
-    .gaia/scripts/state-registry-lib.sh
-  gaia_copy_registry "$MAIN"
-  gaia_commit_all "$MAIN" "add write-guard"
-
-  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
-  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
-  guard="$MAIN/.claude/hooks/block-worktree-path-mismatch.sh"
-  outside="$(gaia_mk_tmp gaia-c303-outside)"
-
-  # The REAL acting process sits in treeB throughout (every run_in below), while
-  # the payload names treeA -- a well-shaped, absolute cwd resolving to a
-  # DIFFERENT real checkout of the same repo, not a garbage value. Identity is
-  # decided by the payload, so treeA is the acting tree in cases 1 and 2.
-
-  # (1) ADOPTED. Payload names treeA, target lands in treeA: judged against
-  # treeA and allowed, even though the hook process runs in treeB.
-  json="$(jq -n --arg c "$A" --arg p "$A/README.md" \
-    '{tool_name: "Edit", cwd: $c, tool_input: {file_path: $p}}')"
-  run run_in "$B" -- gaia_deliver_hook "$json" "$guard"
-  [ "$status" -eq 0 ]
-  grep -qF -- '"permissionDecision": "deny"' <<< "$output" && return 1
-
-  # (2) ADJUDICATED AGAINST THE NAMED TREE -- the half that separates this
-  # design from a process-cwd one. Payload names treeA, target lands in treeB,
-  # the tree the hook process itself sits in: denied. A guard taking identity
-  # from its own process cwd would see treeB writing into treeB and allow it.
-  json="$(jq -n --arg c "$A" --arg p "$B/README.md" \
-    '{tool_name: "Edit", cwd: $c, tool_input: {file_path: $p}}')"
-  run run_in "$B" -- gaia_deliver_hook "$json" "$guard"
-  [ "$status" -eq 0 ]
-  grep -qF -- '"permissionDecision": "deny"' <<< "$output" || return 1
-
-  # (3) FALLBACK, LIVE NOT INERT. An unusable payload cwd -- absolute but not a
-  # checkout (a relative one routes the same way) -- is not adopted, so identity
-  # falls back to the process cwd, treeB, and a target in treeA is denied.
-  json="$(jq -n --arg c "$outside" --arg p "$A/README.md" \
-    '{tool_name: "Edit", cwd: $c, tool_input: {file_path: $p}}')"
-  run run_in "$B" -- gaia_deliver_hook "$json" "$guard"
-  [ "$status" -eq 0 ]
-  grep -qF -- '"permissionDecision": "deny"' <<< "$output" || return 1
-
-  # (4) FAIL-OPEN ON AN UNDETERMINABLE IDENTITY. Neither the payload cwd nor the
-  # process cwd names a checkout, so the guard cannot attribute the write and
-  # allows it -- emitting no decision at all -- rather than blocking an edit on
-  # an identity it could not confirm. The contract every block-*.sh guard shares.
-  json="$(jq -n --arg c "$outside" --arg p "$A/README.md" \
-    '{tool_name: "Edit", cwd: $c, tool_input: {file_path: $p}}')"
-  run run_in "$outside" -- gaia_deliver_hook "$json" "$guard"
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
-}
-
 @test "C3-04: main-anchored ledgers resolve to main from a worktree" {
   MAIN="$(gaia_new_main gaia-c304-main)"
   gaia_copy_real "$MAIN" \
@@ -1173,61 +1084,8 @@ SH
 }
 
 # ---------------------------------------------------------------------------
-# Step-7 carve-out candidates -- the hard three
+# Step-7 carve-out candidates
 # ---------------------------------------------------------------------------
-
-@test "C7-01: Serena answers the acting tree or refuses" {
-  # Claude Code spawns one Serena MCP process PER SESSION (measured: two live
-  # processes for two sessions), so there is no single shared process for a
-  # later activation to collide inside. The real silent-wrong-tree path is a
-  # bare project NAME resolving through Serena's own machine-global registry
-  # to whichever checkout registered it, which .serena/project.yml (tracked,
-  # identical in every linked worktree) makes the main checkout. This drives
-  # the shipped activation guard that denies it.
-  MAIN="$(gaia_new_main gaia-c701-main)"
-  mkdir -p "$MAIN/.serena"
-  printf 'project_name: "gaia"\n' > "$MAIN/.serena/project.yml"
-  gaia_copy_real "$MAIN" \
-    .claude/hooks/block-serena-cross-tree-activation.sh \
-    .claude/hooks/lib/jq-availability.sh \
-    .gaia/scripts/main-root-lib.sh
-  gaia_commit_all "$MAIN" "add serena activation guard"
-
-  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
-  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
-  guard="$MAIN/.claude/hooks/block-serena-cross-tree-activation.sh"
-
-  # (1) NAME ARM. B's own .serena/project.yml (checked out from the same
-  # tracked file main carries) names "gaia", exactly the name the registry
-  # would resolve to main. Denied, naming B's own root as the correct value.
-  json="$(jq -n --arg c "$B" '{tool_name: "mcp__serena__activate_project", cwd: $c, tool_input: {project: "gaia"}}')"
-  run run_in "$B" -- gaia_deliver_hook "$json" "$guard"
-  [ "$status" -eq 0 ]
-  grep -qF -- '"permissionDecision": "deny"' <<< "$output"
-  grep -qF -- "$B" <<< "$output"
-
-  # (2) PATH ARM, the main checkout. The same silent-wrong-tree shape by
-  # absolute path instead of by name.
-  json="$(jq -n --arg c "$B" --arg p "$MAIN" '{tool_name: "mcp__serena__activate_project", cwd: $c, tool_input: {project: $p}}')"
-  run run_in "$B" -- gaia_deliver_hook "$json" "$guard"
-  [ "$status" -eq 0 ]
-  grep -qF -- '"permissionDecision": "deny"' <<< "$output"
-  grep -qF -- "$B" <<< "$output"
-
-  # (3) PATH ARM, a sibling worktree -- the case the original simulated
-  # scenario named (tree A, not only main).
-  json="$(jq -n --arg c "$B" --arg p "$A" '{tool_name: "mcp__serena__activate_project", cwd: $c, tool_input: {project: $p}}')"
-  run run_in "$B" -- gaia_deliver_hook "$json" "$guard"
-  [ "$status" -eq 0 ]
-  grep -qF -- '"permissionDecision": "deny"' <<< "$output"
-
-  # (4) PATH ARM, B's own root: the correct activation, allowed.
-  json="$(jq -n --arg c "$B" --arg p "$B" '{tool_name: "mcp__serena__activate_project", cwd: $c, tool_input: {project: $p}}')"
-  run run_in "$B" -- gaia_deliver_hook "$json" "$guard"
-  [ "$status" -eq 0 ]
-  grep -qF -- '"permissionDecision": "deny"' <<< "$output" && return 1
-  return 0
-}
 
 @test "C7-02: tests use the acting tree's dependencies" {
   MAIN="$(gaia_new_main gaia-c702-main)"

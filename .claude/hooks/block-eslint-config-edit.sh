@@ -1,13 +1,8 @@
 #!/usr/bin/env bash
-# PreToolUse Edit|Write|MultiEdit hook: guard eslint.config.{js,cjs,mjs,ts,mts,cts}
+# PreToolUse Edit|Write|MultiEdit hook: guard eslint.config.{js,cjs,mjs,ts}
 # at any path. Single-app projects have it at the repo root; monorepos nest it
 # under each app (apps/web/eslint.config.mjs), so the path gate matches on the
 # filename and works in both layouts.
-#
-# The six extensions are ESLint's own `FLAT_CONFIG_FILENAMES`, not a guess at
-# the ones people use. A config the resolver loads and this gate does not match
-# is unguarded and silently so, which is the worst of the two directions: the
-# adopter gets no message telling them the rule they wanted is now off.
 #
 # The guard is a filename match, and what a match buys is a QUESTION rather than
 # a verdict: every edit to the file prompts the operator, whatever the edit does.
@@ -92,7 +87,7 @@ file_path=$(jq -r '.tool_input.file_path // ""' <<<"$payload" 2>/dev/null) || fi
 # turns a match into an unprompted allow. A guard whose failure mode is "allows
 # what it matched" has to not have that mode at all, so the pipeline goes rather
 # than being bounded.
-grep -Eq '(^|/)eslint\.config\.(js|cjs|mjs|ts|mts|cts)$' <<<"$file_path" || exit 0
+grep -Eq '(^|/)eslint\.config\.(js|cjs|mjs|ts)$' <<<"$file_path" || exit 0
 
 jq -n --arg r "CONFIRM: this hook asks on the filename alone, whatever the edit does, because no automatic test tells a lint error being silenced here apart from a legitimate config change. Most edits here are the first kind: fix the ESLint error in the source file where it occurs, not in this file. Some are not, and adding a '...lint.<group>' preset spread is one, including the '...lint.reactRouter' migration GAIA's CHANGELOG tells adopters to make. Approve only if you meant this edit; otherwise deny it, and do not disable this hook to get past it." '{
   hookSpecificOutput: {

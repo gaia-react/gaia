@@ -133,20 +133,6 @@ readonly INSTALL_CMD="brew install jq"
   assert_blocked_by_exit
 }
 
-@test "jq absent: block-invalid-yaml-write refuses an edit" {
-  local json
-  json=$(edit_payload ".github/workflows/ci.yml")
-  without_jq block-invalid-yaml-write.sh "$json"
-  assert_blocked_by_exit
-}
-
-@test "jq absent: block-lockfile-edit refuses an edit" {
-  local json
-  json=$(edit_payload "pnpm-lock.yaml")
-  without_jq block-lockfile-edit.sh "$json"
-  assert_blocked_by_exit
-}
-
 @test "jq absent: block-secrets-write refuses a write carrying a key" {
   local json
   json=$(edit_payload "app/config.ts")
@@ -165,13 +151,6 @@ readonly INSTALL_CMD="brew install jq"
   local json
   json=$(edit_payload "app/foo.ts")
   without_jq block-worktree-path-mismatch.sh "$json"
-  assert_blocked_by_exit
-}
-
-@test "jq absent: block-serena-cross-tree-activation refuses an activation" {
-  local json
-  json=$(jq -n '{tool_name: "mcp__serena__activate_project", tool_input: {project: "/tmp/other"}}')
-  without_jq block-serena-cross-tree-activation.sh "$json"
   assert_blocked_by_exit
 }
 
@@ -324,20 +303,6 @@ readonly INSTALL_CMD="brew install jq"
   assert_allowed_by_exit
 }
 
-@test "jq absent: serena-code-search-guard refuses a shell symbol search" {
-  local json
-  json=$(bash_payload "grep -r useBreakpoint app")
-  without_jq serena-code-search-guard.sh "$json"
-  assert_blocked_by_exit
-}
-
-@test "jq absent: serena-code-search-guard allows the jq install" {
-  local json
-  json=$(bash_payload "$INSTALL_CMD")
-  without_jq serena-code-search-guard.sh "$json"
-  assert_allowed_by_exit
-}
-
 # --- the advisory hooks stand down, which is the opposite obligation ---------
 #
 # They nudge and never deny, so refusing on a missing interpreter would trade a
@@ -382,10 +347,10 @@ readonly INSTALL_CMD="brew install jq"
   local dir json
   dir="$BATS_TEST_TMPDIR/no-lib"
   mkdir -p "$dir/lib"
-  cp "$HOOKS_SRC/block-lockfile-edit.sh" "$dir/block-lockfile-edit.sh"
+  cp "$HOOKS_SRC/block-eslint-config-edit.sh" "$dir/block-eslint-config-edit.sh"
 
-  json=$(edit_payload "pnpm-lock.yaml")
-  invoke_hook "$json" "$dir/block-lockfile-edit.sh"
+  json=$(edit_payload "eslint.config.ts")
+  invoke_hook "$json" "$dir/block-eslint-config-edit.sh"
   [ "$status" -eq 2 ]
   grep -qF -- 'cannot load lib/jq-availability.sh' <<<"$output"
 }

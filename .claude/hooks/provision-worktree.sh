@@ -49,8 +49,9 @@ source "$self_dir/../../.gaia/scripts/main-root-lib.sh" 2>/dev/null || exit 0
 # ---------- which tree ----------
 # An explicit argument wins (the direct-call form). Otherwise read the hook
 # payload: tool_response.worktreePath is EnterWorktree's own statement of the
-# tree it just switched into, and `cwd` is the payload-anchored identity every
-# other hook in this repository uses. The process cwd is the last fallback.
+# tree it just switched into, and `cwd` is the payload-anchored identity
+# several other hooks in this repository use. The process cwd is the last
+# fallback.
 tree="${1:-}"
 if [ -z "$tree" ] && [ ! -t 0 ]; then
   payload="$(cat)"

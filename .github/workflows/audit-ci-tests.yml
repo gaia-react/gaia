@@ -686,8 +686,7 @@ jobs:
       # trade is the one this whole scan already prefers. Blast radius: every
       # listed leg joins the concurrent `apt-get update` burst, where a mirror
       # hash-sum mismatch on any one of them reds `Audit CI Tests`, a
-      # declared-required context. This rounding took the list from five legs
-      # to seven. `wiki/decisions/Sharded CI Test Matrix.md` prices that second
+      # declared-required context. `wiki/decisions/Sharded CI Test Matrix.md` prices that second
       # half and is the place to weigh any further widening; it is not
       # seconds-cheap the way the first half is.
       #
@@ -695,7 +694,7 @@ jobs:
       # suite's dependency changed or a group's membership did, and the repair
       # is to copy the set W10 names, which it derives from the suites and the
       # sharder's own groups rather than from here.
-      - if: contains(fromJSON('["hooks-2", "hooks-3", "hooks-4", "lib", "scripts-1", "scripts-2", "scripts-3"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
+      - if: contains(fromJSON('["lib", "scripts-1", "scripts-2", "scripts-3"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Install the YAML parser and zsh
         # Sized for fast failure and honest attribution, NOT to the leg. When
         # this cap fires is the budget paragraph's subject, not this one's,

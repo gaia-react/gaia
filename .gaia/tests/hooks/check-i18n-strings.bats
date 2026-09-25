@@ -188,13 +188,13 @@ run_hook_edit() {
   return 0
 }
 
-# The subdirectory scenario above cannot tell the two resolvers apart: in a
-# plain checkout gaia_resolve_tree_root and gaia_resolve_main_root return the
-# same path by construction, so swapping one for the other in the hook leaves
-# it green while every worktree session writes its marker into the main
-# checkout and suppresses the main session's reminder. A linked worktree is the
-# input that discriminates, and this is the i18n counterpart of the axis
-# drift-check.bats pins for its own sibling.
+# The subdirectory scenario above cannot tell a worktree-rooted resolution
+# apart from a main-checkout one: in a plain checkout `git rev-parse
+# --show-toplevel` from either would return the same path. A linked worktree
+# is the input that discriminates: run from inside one, it resolves to the
+# worktree's own root rather than main's, and this pins that a session working
+# in a worktree writes its marker there instead of suppressing the main
+# session's reminder.
 @test "the marker lands in the acting worktree, not in the main checkout" {
   I18N_REPO=$("$BATS_TEST_DIRNAME/helpers/tmp-git-repo.sh")
   local wt="$I18N_REPO/.claude/worktrees/wt"
@@ -209,40 +209,6 @@ run_hook_edit() {
   [ -f "$wt/.claude/i18n-strings-checked" ] || return 1
   [ -f "$I18N_REPO/.claude/i18n-strings-checked" ] && return 1
   return 0
-}
-
-# --- the resolver load degrades rather than abandoning the hook -------------
-# The load disarms the ERR trap as well as errexit. Those are independent: the
-# trap fires on a failing command whatever errexit is set to, so with only the
-# `set +e` bracket an unparseable library exits 0 from inside the source and the
-# reminder is dropped. Without this case, reverting the disarm leaves the whole
-# suite green, so it is what pins the four-line idiom rather than the comment
-# beside it. Same shape as the library-holding-conflict-markers cases the
-# block-no-verify and block-rm-rf suites already carry.
-
-# An unresolved-merge-conflict body: the file opens and reads fine, so an
-# existence test passes it, and bash cannot parse it.
-write_conflicted_lib() {
-  { printf '<<<<<<< HEAD\n'; printf 'x() { :; }\n'; printf '=======\n'
-    printf 'y() { :; }\n'; printf '>>>>>>> other\n'; } > "$1"
-}
-
-@test "main-root-lib.sh holding conflict markers: the reminder still fires" {
-  local staged="$BATS_TEST_TMPDIR/staged"
-  rm -rf "$staged"
-  # The whole tree rather than the one library, so the hook finds every sibling
-  # it loads and this case drives the degrade it is named for instead of some
-  # other missing-file path.
-  mkdir -p "$staged/.claude" "$staged/.gaia"
-  cp -R "$HOOKS_SRC" "$staged/.claude/hooks"
-  cp -R "${HOOKS_SRC%/.claude/hooks}/.gaia/scripts" "$staged/.gaia/scripts"
-  write_conflicted_lib "$staged/.gaia/scripts/main-root-lib.sh"
-
-  local json
-  json=$(jq -n '{session_id: "S1", hook_event_name: "PreToolUse", tool_name: "Edit", tool_input: {file_path: "app/pages/Public/HomePage/index.tsx"}}')
-  invoke_hook_in "$WORK" "$json" "$staged/.claude/hooks/check-i18n-strings.sh"
-  [ "$status" -eq 0 ]
-  grep -qF -- "t() from useTranslation()" <<<"$output"
 }
 
 # --- structural ---

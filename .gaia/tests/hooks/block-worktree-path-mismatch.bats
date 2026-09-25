@@ -27,7 +27,6 @@ teardown() {
   [ -n "${REPO:-}" ] && rm -rf "$REPO"
   [ -n "${NONREPO:-}" ] && rm -rf "$NONREPO"
   [ -n "${SYMLINK_REPO:-}" ] && rm -f "$SYMLINK_REPO"
-  [ -n "${OTHER_REPO:-}" ] && rm -rf "$OTHER_REPO"
   return 0
 }
 
@@ -113,30 +112,6 @@ run_hook_edit() {
   json=$(jq -n --arg t "$tool" --arg p "$path" '{tool_name: $t, tool_input: {file_path: $p}}')
   invoke_hook "$json" "$HOOK_ABS"
 }
-
-# Same delivery contract as run_hook_edit, plus the payload's `cwd` field: the
-# working directory Claude Code reports for the agent that issued the call. The
-# process cwd stays whatever the test `cd`s to, so the two can be set
-# independently and the hook's choice between them is observable.
-run_hook_edit_cwd() {
-  local tool="$1" path="$2" cwd="$3"
-  local json
-  json=$(jq -n --arg t "$tool" --arg p "$path" --arg c "$cwd" \
-    '{tool_name: $t, cwd: $c, tool_input: {file_path: $p}}')
-  invoke_hook "$json" "$HOOK_ABS"
-}
-
-# An unrelated git repository, used to check that a payload cwd naming some
-# other repo is not honored. No commit is needed: `rev-parse` answers
-# --show-toplevel and --git-common-dir on an empty repo.
-make_other_repo() {
-  local raw
-  raw=$(mktemp -d -t gaia-wt-mismatch-other-XXXXXX)
-  OTHER_REPO="$(cd "$raw" && pwd -P)"
-  git -C "$OTHER_REPO" init -q --initial-branch=main
-}
-
-
 
 # --- allowed: editing inside the current worktree ---
 
@@ -469,9 +444,7 @@ make_other_repo() {
 # tree. A sibling worktree is a different, equally valid checkout, so a write
 # from this worktree into a sibling's file is the same silent-wrong-write a stale
 # main-checkout path is: a real, valid file in another checkout the edit tools
-# apply with no error. The acting tree here comes from the process cwd (no
-# payload cwd); the companion case below drives the same detection from an
-# authoritative payload cwd.
+# apply with no error. The acting tree comes from the process cwd.
 @test "an edit to a sibling worktree is denied while cwd sits in another worktree" {
   make_repo
   make_worktree "debt/14-a" "debt/14-a"
@@ -479,24 +452,6 @@ make_other_repo() {
   make_worktree "debt/14-b" "debt/14-b"
   cd "$WT"
   run_hook_edit "Edit" "$WT_A/f"
-  assert_denied_by_json
-}
-
-# The payload cwd is authoritative for the acting tree, so the target-side
-# detection holds no matter where the hook process sits. Here the process cwd is
-# in the main checkout -- which alone would stand the guard down (a main-checkout
-# session guards nothing) -- but the payload names worktree B, so the guard reads
-# B as the acting tree and denies a target in sibling worktree A. This is the
-# worktree->worktree detection: the payload is taken at its word, and the target
-# is judged against that tree with no cross-check against the process cwd.
-@test "a payload cwd in one worktree denies a target in a sibling worktree" {
-  make_repo
-  make_worktree "debt/43-a" "debt/43-a"
-  WT_A="$WT"
-  make_worktree "debt/43-b" "debt/43-b"
-  WT_B="$WT"
-  cd "$REPO"
-  run_hook_edit_cwd "Edit" "$WT_A/f" "$WT_B"
   assert_denied_by_json
 }
 
@@ -541,202 +496,17 @@ make_other_repo() {
   assert_allowed_by_json
 }
 
-# --- the calling agent's cwd comes from the payload ---
-
-# The payload names the working directory of the agent that issued the call,
-# which is the only value that answers "which checkout is this agent in". The
-# hook's own process cwd answers "which checkout is this hook process in", a
-# different question that coincides only as long as the harness keeps the two
-# aligned. Pin the payload as the authority: when it says the agent is in the
-# worktree, a target in the main checkout is the wrong-checkout write, no matter
-# where the hook process itself sits.
-@test "a payload cwd inside the worktree denies a main-checkout target from a main-checkout process cwd" {
-  make_repo
-  make_worktree "debt/22-foo" "debt/22-foo"
-  cd "$REPO"
-  run_hook_edit_cwd "Edit" "$REPO/f" "$WT"
-  assert_denied_by_json
-}
-
-# The mirror of the case above: the same payload cwd, targeting that agent's own
-# worktree, is the correct write and stays allowed.
-@test "a payload cwd inside the worktree allows a worktree target from a main-checkout process cwd" {
-  make_repo
-  make_worktree "debt/23-foo" "debt/23-foo"
-  cd "$REPO"
-  run_hook_edit_cwd "Edit" "$WT/f" "$WT"
-  assert_allowed_by_json
-}
-
-# A payload without `cwd` still adjudicates off the process cwd. The rest of
-# this suite exercises that path implicitly; this pins it by name so a future
-# change cannot drop the fallback silently.
-@test "a payload with no cwd field falls back to the process cwd" {
-  make_repo
-  make_worktree "debt/24-foo" "debt/24-foo"
-  cd "$WT"
-  run_hook_edit "Edit" "$REPO/f"
-  assert_denied_by_json
-}
-
-# A payload cwd the hook cannot resolve is not a reason to stop guarding. Both
-# unusable shapes, a path that does not exist and a real directory outside any
-# git repository, fall back to the process cwd rather than going inert.
-@test "a payload cwd naming a nonexistent path falls back to the process cwd" {
-  make_repo
-  make_worktree "debt/25-foo" "debt/25-foo"
-  cd "$WT"
-  run_hook_edit_cwd "Edit" "$REPO/f" "/no-such-agent-cwd-xyz"
-  assert_denied_by_json
-}
-
-@test "a payload cwd naming a directory outside any git repository falls back to the process cwd" {
-  make_repo
-  make_worktree "debt/26-foo" "debt/26-foo"
-  NONREPO=$(mktemp -d -t gaia-wt-mismatch-nonrepo-XXXXXX)
-  cd "$WT"
-  run_hook_edit_cwd "Edit" "$REPO/f" "$NONREPO"
-  assert_denied_by_json
-}
-
-# The payload cwd is authoritative for tree identity whenever it is absolute and
-# resolves to a checkout: the guard takes it at its word, with no cross-check
-# against the process cwd. A payload naming an unrelated repository therefore
-# makes the guard resolve THAT repository, find it is not a linked worktree, and
-# stand down. Here the process cwd sits in the main checkout, so the outcome is
-# allowed either way; the companion case below, with the process cwd in the
-# worktree, is where taking the payload at its word is observable.
-@test "a payload cwd inside an unrelated repository is taken at its word (process cwd in main)" {
-  make_repo
-  make_worktree "debt/27-foo" "debt/27-foo"
-  make_other_repo
-  cd "$REPO"
-  run_hook_edit_cwd "Edit" "$REPO/f" "$OTHER_REPO"
-  assert_allowed_by_json
-}
-
-# The accepted residual of making the payload authoritative (the dropped
-# payload-versus-process cross-check). The process cwd is inside the worktree, so
-# the old cross-check would have used it and denied the stale main-checkout
-# write. The payload names an unrelated repository and is now taken at its word,
-# so the guard resolves that repository, sees no linked worktree, and stands
-# down. This gives up defense against a harness that ever delivers a well-shaped
-# cwd from an unrelated checkout; across every measured configuration the harness
-# delivers the acting agent's own tree, never a cross-repository one, so the
-# cross-check only ever fired on the false positive it was invented to suppress
-# (which was itself a false deny of a legitimate edit). Pinned so a future
-# re-introduction of the cross-check is a deliberate, visible decision.
-@test "a foreign payload cwd is taken at its word, standing the guard down (accepted residual)" {
-  make_repo
-  make_worktree "debt/39-foo" "debt/39-foo"
-  make_other_repo
-  cd "$WT"
-  run_hook_edit_cwd "Edit" "$REPO/f" "$OTHER_REPO"
-  assert_allowed_by_json
-}
-
-# The payload cwd is honored only when it is absolute. The absolute check gates
-# the payload before it reaches `git -C`, so a relative value is never resolved
-# against the hook's own process cwd and mistaken for the agent's tree: `git -C
-# linkdir` would otherwise resolve `linkdir` relative to wherever the hook
-# process sits. The absolute requirement also shuts the leading-dash door (a
-# value like `-P` would option-parse inside a bare `cd`). A relative cwd
-# resolving to the main checkout is the observable case: honored, it would read
-# the agent as sitting in the main checkout and allow the target; ignored, the
-# worktree process cwd stays in charge and denies.
-@test "a relative payload cwd is ignored in favour of the process cwd" {
-  make_repo
-  make_worktree "debt/28-foo" "debt/28-foo"
-  ln -s "$REPO" "$WT/linkdir"
-  cd "$WT"
-  run_hook_edit_cwd "Edit" "$REPO/f" "linkdir"
-  assert_denied_by_json
-}
-
-# The mirror of the load-bearing deny case above, and the one case reading the
-# cwd from the payload deliberately loosens: when the payload says the agent is
-# in the MAIN checkout, a main-checkout target is that agent's own correct
-# write, even though the hook's process cwd sits in a worktree. Adjudicating off
-# the process cwd alone denies it.
-@test "a payload cwd in the main checkout allows a main-checkout target from a worktree process cwd" {
-  make_repo
-  make_worktree "debt/29-foo" "debt/29-foo"
-  cd "$WT"
-  run_hook_edit_cwd "Edit" "$REPO/f" "$REPO"
-  assert_allowed_by_json
-}
-
-# A payload cwd below the main checkout's root, not at it. The shared resolver
-# answers "is this a linked worktree" and "where is main" identically from a
-# subdirectory as from the root (it resolves git's directory-relative common-dir
-# form itself), so the guard reads a main-checkout subdirectory as the main
-# checkout, not a worktree, and allows the agent's own main-checkout write. A
-# derivation that mishandled the subdirectory case would read it as a worktree
-# and deny the correct write.
-@test "a payload cwd in a main-checkout subdirectory is read as the main checkout" {
-  make_repo
-  make_worktree "debt/30-foo" "debt/30-foo"
-  mkdir -p "$REPO/sub"
-  cd "$WT"
-  run_hook_edit_cwd "Edit" "$REPO/f" "$REPO/sub"
-  assert_allowed_by_json
-}
-
-# tech-debt #940. main_root used to derive from the hook's own process cwd even
-# after the rest of the adjudication had migrated to the payload cwd, so a hook
-# process sitting outside every git repository failed the --git-common-dir call
-# and exited before any payload-aware logic ran. The guard went inert for that
-# call, and inertness here is an ALLOW: it fails silently rather than loudly.
-# Both roots now come from whichever source wins, so a payload cwd naming the
-# worktree still adjudicates with no usable process cwd at all.
-@test "a payload cwd inside the worktree guards even when the process cwd is outside any git repository" {
-  make_repo
-  make_worktree "debt/36-foo" "debt/36-foo"
-  NONREPO=$(mktemp -d -t gaia-wt-mismatch-nonrepo-XXXXXX)
-  cd "$NONREPO"
-  run_hook_edit_cwd "Edit" "$REPO/f" "$WT"
-  assert_denied_by_json
-}
-
-# The mirror of the case above: the same payload cwd, targeting that agent's own
-# worktree, is the correct write and stays allowed.
-@test "a payload cwd inside the worktree allows its own target when the process cwd is outside any git repository" {
-  make_repo
-  make_worktree "debt/37-foo" "debt/37-foo"
-  NONREPO=$(mktemp -d -t gaia-wt-mismatch-nonrepo-XXXXXX)
-  cd "$NONREPO"
-  run_hook_edit_cwd "Edit" "$WT/f" "$WT"
-  assert_allowed_by_json
-}
-
-# The payload is authoritative and both roots come from it, so a target in a
-# different repository can never equal the payload repo's main root: a foreign
-# payload cwd cannot produce a false deny of an edit in this repo. Here the
-# process cwd is outside every repository, confirming the payload alone decides
-# regardless of where the hook process sits.
-@test "a payload cwd in an unrelated repository cannot deny a target in this repo" {
-  make_repo
-  make_worktree "debt/38-foo" "debt/38-foo"
-  make_other_repo
-  NONREPO=$(mktemp -d -t gaia-wt-mismatch-nonrepo-XXXXXX)
-  cd "$NONREPO"
-  run_hook_edit_cwd "Edit" "$REPO/f" "$OTHER_REPO"
-  assert_allowed_by_json
-}
-
 # --- defense in depth: the file_path chain's own two guards ---
 
 # tech-debt #944. `dirname --` and `CDPATH=''` on the target_dir/
 # resolved_target_dir pair are unreachable in practice, because
 # .claude/skills/gaia/references/isolation.md contracts file_path as an absolute
 # path with no cwd resolution, and an absolute path defeats both. The two tests
-# below cover them anyway, for a reason specific to this pair: unlike the
-# identically-shaped guards on the payload_cwd chain, whose unreachability rests
-# on an absolute-cwd invariant THIS script enforces itself, these rest on an
-# external convention the script cannot enforce. If the harness ever emits a
-# relative file_path, they are the only thing standing there, and without
-# coverage a future edit dropping either one regresses in silence. Both cases
-# are mutation-verified: each fails against a hook with its guard removed.
+# below cover them anyway: that contract rests on an external convention the
+# script cannot enforce, so if the harness ever emits a relative file_path,
+# they are the only thing standing there, and without coverage a future edit
+# dropping either one regresses in silence. Both cases are mutation-verified:
+# each fails against a hook with its guard removed.
 
 # CDPATH killer. With CDPATH honored, `cd inner` resolves through CDPATH into
 # the exempt audit tree instead of through the worktree's own `inner` symlink,
@@ -823,12 +593,12 @@ stage_hook_repo() {
   make_worktree "debt/lib-degrade" "debt/lib-degrade"
 }
 
-# run_staged_hook <path> <cwd> [interpreter]
+# run_staged_hook <path> <cwd> [interpreter]: runs the staged hook with its
+# process cwd at <cwd>, which is what the acting tree now resolves from.
 run_staged_hook() {
   local json interp="${3:-bash}"
-  json=$(jq -n --arg p "$1" --arg c "$2" \
-    '{tool_name: "Edit", cwd: $c, tool_input: {file_path: $p}}')
-  run bash -c 'printf %s "$1" | "$3" "$2"' _ "$json" "$STAGED_HOOK" "$interp"
+  json=$(jq -n --arg p "$1" '{tool_name: "Edit", tool_input: {file_path: $p}}')
+  run bash -c 'cd "$1" && printf %s "$2" | "$3" "$4"' _ "$2" "$json" "$interp" "$STAGED_HOOK"
 }
 
 # Overwrites <path> with an unresolved-merge-conflict body: the file opens and

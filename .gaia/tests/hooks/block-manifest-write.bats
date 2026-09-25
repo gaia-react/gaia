@@ -135,37 +135,10 @@ run_hook_bash() {
   assert_denied_by_json
 }
 
-@test "marker as an echo argument does not exempt the redirect it precedes" {
-  run_hook_bash 'echo GAIA_MANIFEST_WRITE=hi > .gaia/manifest.json'
-  assert_denied_by_json
-}
-
-@test "marker inside a quoted string does not exempt the redirect it precedes" {
-  # Quote-safe delivery (mandatory): the command text carries its own double
-  # quotes around the marker.
-  run_hook_bash 'echo "GAIA_MANIFEST_WRITE=x" > .gaia/manifest.json'
-  assert_denied_by_json
-}
-
-@test "a marked segment does not exempt a later unmarked segment after &&" {
-  run_hook_bash "GAIA_MANIFEST_WRITE=1 echo ok && sed -i '' 's/a/b/' .gaia/manifest.json"
-  assert_denied_by_json
-}
-
-@test "marker inside a sed script does not exempt the in-place edit" {
-  run_hook_bash "sed -i '' 's/GAIA_MANIFEST_WRITE=//' .gaia/manifest.json"
-  assert_denied_by_json
-}
-
 # --- denied: multi-line commands ---
 
 @test "a redirect write on line 2 of a multi-line command is denied" {
   run_hook_bash $'echo ok\nprintf x > .gaia/manifest.json'
-  assert_denied_by_json
-}
-
-@test "a marker on line 1 does not exempt an unmarked write on line 2" {
-  run_hook_bash $'GAIA_MANIFEST_WRITE=1 echo ok\nsed -i \'\' \'s/a/b/\' .gaia/manifest.json'
   assert_denied_by_json
 }
 

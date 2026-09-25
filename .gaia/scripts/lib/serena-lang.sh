@@ -65,9 +65,8 @@ _serena_clean_token() {
 # --- Serena registration ----------------------------------------------------
 
 # serena_registered <root> — exit 0 if Serena is a registered MCP server.
-# Deliberate parallel to the inline serena_registered() in
-# .claude/hooks/serena-code-search-guard.sh, but WITHOUT its tsconfig gate so
-# detection fires for non-TS projects. Requires jq; exit 1 if jq is absent.
+# Not gated on a tsconfig, so detection fires for non-TS projects too.
+# Requires jq; exit 1 if jq is absent.
 serena_registered() {
   local root="$1"
   command -v jq >/dev/null 2>&1 || return 1
