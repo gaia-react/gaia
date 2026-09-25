@@ -16,7 +16,7 @@
 # regex engines and each drops the trailing terminator its own way, so a change
 # that repairs one and not the other is green in whichever half the author
 # happened to run. The gates that source the library
-# (lint-hook-advisory-classification.sh, lint-hook-jq-availability.sh) reach the
+# (lint-hook-jq-availability.sh, lint-hook-monitor-arming.sh) reach the
 # literal only through `gaia_pretooluse_hooks`, so the live-tree test at the
 # bottom re-verifies them rather than driving each one separately here.
 #

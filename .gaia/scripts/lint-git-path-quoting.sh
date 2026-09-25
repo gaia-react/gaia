@@ -42,10 +42,10 @@
 # `#2055` is the third round of the same story, and it is the reason the header
 # above now names three verbs: the arming reached two while this paragraph
 # claimed the class broadly, and a listing `git grep` quotes identically. It
-# recurred live in `#2054`, where lint-retired-label-spellings.sh discovered
-# carriers with `git grep -F -l` and no `-z`: a tracked `wiki/café.md` came back
-# C-quoted, named no file on disk, and reached `awk` as an unopenable path, so
-# the carrier went ungraded and the run died with awk's message instead of the
+# recurred live in `#2054`, where a tree-wide lint discovered carriers with
+# `git grep -F -l` and no `-z`: a tracked `wiki/café.md` came back C-quoted,
+# named no file on disk, and reached `awk` as an unopenable path, so the
+# carrier went ungraded and the run died with awk's message instead of the
 # script's own, discarding report lines earlier terms had accumulated.
 #
 # Fix a `diff --name-only` hit with the idiom the repository already uses

@@ -302,8 +302,8 @@ dispatch_first_last() {
 # Overrides EVERY folded guard with a trivial stub that emits only its own
 # "<name>: clean" line, on the stream the real guard would have used, so a
 # test exercising pool mechanics (fork/collect/replay ordering, dispatch
-# ends, stream separation, the missing-log arm) does not pay for seventeen
-# real tree scans to prove it -- the guards under test here run this gate's
+# ends, stream separation, the missing-log arm) does not pay for a real tree
+# scan per guard to prove it -- the guards under test here run this gate's
 # OWN dispatch/collect/replay code, not the guards' own detection logic,
 # which each has its own suite for. Built from the SAME
 # SHELL_LINT_GUARD_OVERRIDE_* seam the single-guard-failure tests below
@@ -328,7 +328,7 @@ dispatch_first_last() {
 # Args: <dir to write stub scripts into>
 stub_all_guards() {
   local dir="$1" stdout_guards p script stream_redirect var
-  stdout_guards="lint-guard-rule-shell-coverage lint-hook-wiki-inventory lint-wiki-cached-version lint-hook-advisory-classification lint-scripts-wiki-inventory lint-hook-jq-availability lint-hook-monitor-arming"
+  stdout_guards="lint-hook-jq-availability lint-hook-monitor-arming"
   while IFS= read -r p; do
     case "$p" in lint-*) ;; *) continue ;; esac
     script="$dir/$p.stub.sh"
@@ -470,8 +470,8 @@ STUB
 # what a completion-order replay would scramble. Driven through the all-stub
 # fixture: every guard comes back clean deterministically, so the loop below
 # checks every pair rather than only whichever guards a real tree scan
-# happens to leave clean, and does so without paying for seventeen real
-# scans.
+# happens to leave clean, and does so without paying for a real scan per
+# guard.
 @test "each guard's banner appears in declared order, and its own clean line -- when present -- stays between its own banner and the next" {
   local overrides=() line
   while IFS= read -r line; do

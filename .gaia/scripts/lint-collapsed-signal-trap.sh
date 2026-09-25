@@ -59,9 +59,9 @@
 #                       the SHARING, not either signal.
 #
 # Provenance: the class was repaired by hand twice in gaia-react/gaia#1716, in
-# .gaia/scripts/audit-respawn-prune.sh and .gaia/scripts/lint-guard-rule-shell-
-# coverage.sh, and each repair was pinned by a per-file assertion in that
-# script's own sibling suite. Each pin greps one hardcoded path, so the rule they
+# .gaia/scripts/audit-respawn-prune.sh and a second guard script, and each
+# repair was pinned by a per-file assertion in that script's own sibling
+# suite. Each pin greps one hardcoded path, so the rule they
 # encoded was armed for exactly two files -- the hand-kept list
 # .claude/rules/guards-must-fail.md names as an arming-stage failure. The third
 # instance, in .specify/extensions/gaia/lib/with-ledger-lock.sh, sat unreached by

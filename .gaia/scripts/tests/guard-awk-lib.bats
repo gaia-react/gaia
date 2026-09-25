@@ -1093,7 +1093,6 @@ participating_files() {
     "$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh" \
     "$REPO_ROOT/.gaia/scripts/lint-grep-ere-escapes.sh" \
     "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh" \
-    "$REPO_ROOT/.gaia/scripts/lint-stale-cardinals.sh" \
     "$REPO_ROOT/.gaia/scripts/tests/fixtures/stub-guard.sh"
 }
 
@@ -1214,7 +1213,6 @@ assert_consumer_count() {
   grep -qF -- "gaia_scan_run_only(" "$REPO_ROOT/.gaia/scripts/lint-collapsed-signal-trap.sh" && return 1
   grep -qF -- "gaia_scan_run_only(" "$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh" && return 1
   grep -qF -- "gaia_scan_run_only(" "$REPO_ROOT/.gaia/scripts/lint-grep-ere-escapes.sh" && return 1
-  grep -qF -- "gaia_scan_run_only(" "$REPO_ROOT/.gaia/scripts/lint-stale-cardinals.sh" && return 1
   true
 }
 
@@ -1294,26 +1292,6 @@ own_awk_functions() {
   # doc.
   actual="$(own_awk_functions "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh")"
   expected="$(printf '%s\n' arm check_desync eat_word feed has_status_read pragma_offsurface report reset_state walk yfeed)"
-  [ "$actual" = "$expected" ]
-
-  # The stale-cardinal guard's private walks, all of them class detection or
-  # comment-syntax reading, none of them shell syntax, so none duplicates
-  # anything the library tokenizes.
-  #
-  # vocab_init, tokenize, is_cardinal, scan_prose and report_hits are the shared
-  # predicate: tokenize splits a comment into case-folded tokens against literal
-  # character sets rather than a regex, which is the portability property the
-  # guard's own header records; is_cardinal is the numeric half of the same
-  # decision; scan_prose collects rather than prints so the bats surface can
-  # consult the library about fixture data AFTER the class is decided.
-  #
-  # cfam_prose and is_pragma belong to the C-family reader, which loads no
-  # library at all. cfam_prose is the `//` and `/* */` comment extractor and the
-  # C-family surface cannot be read without it; is_pragma is the off-surface
-  # pragma report, the analogue of the gaia_scan_pragma_here call the `#` reader
-  # makes, and it exists here because the library is absent on that program.
-  actual="$(own_awk_functions "$REPO_ROOT/.gaia/scripts/lint-stale-cardinals.sh")"
-  expected="$(printf '%s\n' cfam_prose is_cardinal is_pragma report_hits scan_prose tokenize vocab_init)"
   [ "$actual" = "$expected" ]
 
   actual="$(own_awk_functions "$REPO_ROOT/.gaia/scripts/tests/fixtures/stub-guard.sh")"
@@ -1517,12 +1495,6 @@ mutate_guard_copy() {
   mutate_guard_copy "$prog" lint-errexit-status-read lint-errexit-status-read.bats
   GAIA_GUARD_MUTATION_CHILD=1 run bash "$REPO_ROOT/.gaia/scripts/bats5.sh" \
     --filter "a pragma naming this gate suppresses the instance below it" \
-    "$XG_SUITE"
-  [ "$status" -ne 0 ]
-
-  mutate_guard_copy "$prog" lint-stale-cardinals lint-stale-cardinals.bats
-  GAIA_GUARD_MUTATION_CHILD=1 run bash "$REPO_ROOT/.gaia/scripts/bats5.sh" \
-    --filter "a pragma waives a test name beneath it in a bats suite" \
     "$XG_SUITE"
   [ "$status" -ne 0 ]
 }

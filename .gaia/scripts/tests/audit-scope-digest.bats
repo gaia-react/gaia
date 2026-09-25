@@ -644,9 +644,9 @@ rotate_machinery() {
 }
 
 @test "the forfeiture diagnostic reports what actually happened, not what it hoped" {
-  # `.claude/rules/partial-cause-reporting.md`: three conditions reach this
-  # refusal and they need different operator actions, so one message asserting
-  # a release for all three sends the operator away from a live deadlock.
+  # Three conditions reach this refusal and they need different operator
+  # actions, so one message asserting a release for all three sends the
+  # operator away from a live deadlock.
   writer="$THIS_DIR/../audit-write-clearance.sh"
   [ -x "$writer" ] || skip "audit-write-clearance.sh not executable"
 

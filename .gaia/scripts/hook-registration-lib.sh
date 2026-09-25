@@ -7,11 +7,11 @@
 # command. Source it; it defines functions and that literal, and runs nothing.
 #
 # Two gates ask the same two questions of the same surface and must not answer
-# them differently: `.gaia/scripts/lint-hook-advisory-classification.sh` (a
-# blocking hook filed under an Advisory wiki heading) and
-# `.gaia/scripts/lint-hook-jq-availability.sh` (a blocking hook whose jq arm
-# fails open). A second copy of either question drifts from the first silently,
-# because each gate's own suite passes against its own copy.
+# them differently: `.gaia/scripts/lint-hook-jq-availability.sh` (a blocking
+# hook whose jq arm fails open) and `.gaia/scripts/lint-hook-monitor-arming.sh`
+# (a blocking guard a Monitor-armed command walks past). A second copy of
+# either question drifts from the first silently, because each gate's own
+# suite passes against its own copy.
 #
 # `GAIA_HOOK_NAME_RE` has a consumer outside those gates, and it fails in a
 # quieter direction than they do. `.gaia/tests/helpers/hook-registration.sh`

@@ -387,35 +387,6 @@ awk "{print}" file' > "$TMP/.gaia/scripts/untracked.sh"
   grep -qF -- "awk in command position" "$TMP/out"
 }
 
-# --- the registrations a folded guard owes ---------------------------------
-
-# The inventory obligation, driven the same way: red against a copy of the page
-# with the row removed, green against the real one.
-@test "removing the scripts-inventory row reds that guard" {
-  TMP="$( new_tmp )"
-  local root="$TMP/root" inventory="$REPO_ROOT/.gaia/scripts/lint-scripts-wiki-inventory.sh" f
-  mkdir -p "$root/.gaia/scripts" "$root/wiki/concepts"
-  for f in "$REPO_ROOT"/.gaia/scripts/lint-*.sh; do
-    printf '#!/usr/bin/env bash\nexit 0\n' > "$root/.gaia/scripts/${f##*/}"
-  done
-  grep -v -- 'lint-awk-interpreter-pin.sh' \
-    "$REPO_ROOT/wiki/concepts/GAIA Scripts.md" > "$root/wiki/concepts/GAIA Scripts.md"
-  git -C "$root" init -q .
-  git -C "$root" add -A
-  run bash -c "bash '$inventory' '$root' 2>&1"
-  [ "$status" -eq 1 ]
-  grep -qF -- "lint-awk-interpreter-pin.sh" <<<"$output"
-
-  # Green against the real page, which is the half that says the red above was
-  # the missing row rather than the mirror.
-  cp "$REPO_ROOT/wiki/concepts/GAIA Scripts.md" "$root/wiki/concepts/GAIA Scripts.md"
-  run bash -c "bash '$inventory' '$root' 2>&1"
-  [ "$status" -eq 0 ]
-
-  run bash -c "bash '$inventory' '$REPO_ROOT' 2>&1"
-  [ "$status" -eq 0 ]
-}
-
 # The release-exclusion obligation. Its only enforcement runs at release time,
 # so nothing else in this repository would catch the omission; the entry is
 # asserted here, and so is the reasoned paragraph above it, because a bare path

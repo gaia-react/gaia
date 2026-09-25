@@ -587,7 +587,9 @@ while IFS=$'\t' read -r kind f1 f2 f3 f4; do
       printf '  This check scrapes the raw globs while the classifier compiles\n'
       printf '  them, and the two disagree, so no remit-parity verdict was\n'
       printf '  produced: one of the two readers has drifted from the roster\n'
-      printf '  format. Fix that before trusting this check.\n'
+      printf '  format. The remit-region parity and unowned-dialect checks below\n'
+      printf '  did not run either, for the same reason. Fix that before trusting\n'
+      printf '  this check.\n'
       printf '\n'
       ;;
     REMITMISSING)

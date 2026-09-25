@@ -126,7 +126,7 @@ GAIA_VERB_FAIL_OPEN_EXEMPT_HOOKS=()
 # _gaia_verb_is_exempt_fail_open <hook>: 0 iff <hook> is a written exemption.
 _gaia_verb_is_exempt_fail_open() {
   local hook="$1" e
-  for e in "${GAIA_VERB_FAIL_OPEN_EXEMPT_HOOKS[@]}"; do
+  for e in ${GAIA_VERB_FAIL_OPEN_EXEMPT_HOOKS[@]+"${GAIA_VERB_FAIL_OPEN_EXEMPT_HOOKS[@]}"}; do
     [ "$hook" = "$e" ] && return 0
   done
   return 1

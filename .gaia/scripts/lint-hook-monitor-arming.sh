@@ -25,8 +25,7 @@
 #
 # THE TWO POSTURES, and which hook takes which. The split is not this gate's
 # judgement: it reads the same blocking oracle
-# .gaia/scripts/lint-hook-advisory-classification.sh and
-# .gaia/scripts/lint-hook-jq-availability.sh read, out of
+# .gaia/scripts/lint-hook-jq-availability.sh reads, out of
 # .gaia/scripts/hook-registration-lib.sh, so a hook cannot be blocking for one
 # gate and advisory for another.
 #   blocking  -- the hook can stop a tool call, so the action it refuses is the
@@ -368,10 +367,9 @@ EOF
 }
 
 # The PreToolUse name spelling and the blocking oracle are shared with
-# .gaia/scripts/lint-hook-jq-availability.sh and
-# .gaia/scripts/lint-hook-advisory-classification.sh, which ask different
-# questions of the same two answers. Rooted at this script's own on-disk
-# location so it resolves however the gate is invoked.
+# .gaia/scripts/lint-hook-jq-availability.sh, which asks a different question
+# of the same two answers. Rooted at this script's own on-disk location so it
+# resolves however the gate is invoked.
 _gaia_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || _gaia_lib_dir=''
 if [ -z "$_gaia_lib_dir" ] || [ ! -f "$_gaia_lib_dir/hook-registration-lib.sh" ]; then
   printf '%s: cannot load hook-registration-lib.sh beside this script\n' "$PROG" >&2
