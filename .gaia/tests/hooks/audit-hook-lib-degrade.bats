@@ -94,8 +94,8 @@ teardown() {
 # is the short-read hazard this file's own header warns about, one level up in
 # the predicate feeding it.
 #
-# Armed reads the two spellings this repo's own errexit lints accept
-# (`.gaia/scripts/lint-errexit-source-guard.sh`, `lint-errexit-status-read.sh`):
+# Armed reads the two spellings this repo's own errexit lint
+# (`.gaia/scripts/lint-errexit-status-read.sh`) accepts:
 # an `e` inside a short option bundle (`set -e`, `set -euo pipefail`), or an
 # explicit `set -o errexit`. Either may sit at any position on the line, ahead
 # of any `#`, so a trailing comment naming `-e` does not arm. `set +e` suspends

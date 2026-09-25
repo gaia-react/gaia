@@ -1889,7 +1889,7 @@ FIXTURE
 @test "no tracked file in this repository defeats the tokenizer" {
   # The desync verdict is the gate's honest answer when it could not read a file
   # to the end, and a tree carrying one is a tree this gate cannot certify. The
-  # four suites named below each defeated it through an ANSI-C literal carrying
+  # three suites named below each defeated it through an ANSI-C literal carrying
   # an escaped quote, so they are the regression pins for that repair; the first
   # assertion is the general claim and does not depend on the list.
   #
@@ -1899,7 +1899,7 @@ FIXTURE
   run bash -c "cd '$REPO_ROOT' && bash '$LINTER' 2>&1"
   grep -qF -- 'ERROR: the scan lost track of shell state' <<<"$output" && return 1
   local suite
-  for suite in lint-errexit-source-guard lint-git-path-quoting \
+  for suite in lint-git-path-quoting \
                block-manifest-write pr-merge-audit-check; do
     grep -qE -- "$suite\\.bats: ERROR:" <<<"$output" && return 1
   done

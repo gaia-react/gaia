@@ -1120,11 +1120,6 @@ mutate_resolver() {
   # at all reports zero and passes. Pin both candidate sets as non-empty: the
   # BASE_SHA namers assertion 2 ranges over, and the exempted whole-PR
   # derivations assertion 1 must be deciding about rather than never meeting.
-  # gaia-lint-ignore lint-git-path-quoting: bats `run` captures stdout into
-  # $output, which cannot hold a NUL byte, so -z here would concatenate the
-  # paths into one unsplittable string rather than delimit them; both
-  # assertions are non-emptiness plus a fixed ASCII path literal, which git
-  # never quotes
   run git -C "$REPO_ROOT" grep -lIF 'BASE_SHA' -- '.claude/agents/' '.gaia/scripts/audit-resolve-scope.sh'
   [ "$status" -eq 0 ]
   [ -n "$output" ]
@@ -1133,8 +1128,6 @@ mutate_resolver() {
 
   # The default member's eligibility fork point is a bare merge-base the
   # resolver owns under the exempt name ELIG_BASE.
-  # gaia-lint-ignore lint-git-path-quoting: same `run`-into-$output shape and
-  # same fixed-ASCII-literal assertion as the call above
   run git -C "$REPO_ROOT" grep -lIE '^[[:space:]]*ELIG_BASE="?\$\(git -C "\$root" merge-base ' -- '.gaia/scripts/audit-resolve-scope.sh'
   [ "$status" -eq 0 ]
   grep -qF ".gaia/scripts/audit-resolve-scope.sh" <<<"$output" || return 1
@@ -1144,8 +1137,6 @@ mutate_resolver() {
   # exemption it still exercises is KEY_BASE's. Pin that candidate the same
   # way, so assertion 1 is shown deciding about the script rather than never
   # meeting a merge-base in it.
-  # gaia-lint-ignore lint-git-path-quoting: same `run`-into-$output shape and
-  # same fixed-ASCII-literal assertion as the calls above
   run git -C "$REPO_ROOT" grep -lIE '^[[:space:]]*\[ -z "\$KEY_REF" \] \|\| KEY_BASE="\$\(git -C "\$root" merge-base ' -- '.gaia/scripts/audit-resolve-scope.sh'
   [ "$status" -eq 0 ]
   grep -qF ".gaia/scripts/audit-resolve-scope.sh" <<<"$output" || return 1

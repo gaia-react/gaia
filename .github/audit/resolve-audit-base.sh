@@ -352,9 +352,8 @@ fi
 # claims -- errexit abandons the shell AT the load, so the `|| true` is never
 # reached and the resolver exits emitting nothing instead of degrading to full
 # scope. Dropping errexit across the load is what lets the failure reach the
-# `command -v` degrade below. The flat `set -e` restore is the shape
-# .gaia/scripts/lint-errexit-source-guard.sh prescribes for a file that arms
-# errexit itself, which this one does above.
+# `command -v` degrade below. The flat `set -e` restore matches this file's own
+# errexit arming above, rather than the state-preserving form a library uses.
 version_lib="${repo_root}/.claude/hooks/lib/gaia-version.sh"
 set +e
 # shellcheck source=/dev/null

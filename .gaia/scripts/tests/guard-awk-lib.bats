@@ -307,12 +307,12 @@ EOF
 @test "two stacked pragmas naming two guards both apply to the same target" {
   cat > "$TMP/stack.bats" <<'EOF'
 # gaia-lint-ignore lint-git-path-quoting: first of the stack
-# gaia-lint-ignore lint-grep-ere-escapes: second of the stack
+# gaia-lint-ignore lint-sigpipe-readers: second of the stack
 echo "STUBCLASS on the target line"
 EOF
   probe stack.bats 1 lint-git-path-quoting
   grep -qF -- "STUBCLASS" <<<"$output" && return 1
-  probe stack.bats 1 lint-grep-ere-escapes
+  probe stack.bats 1 lint-sigpipe-readers
   grep -qF -- "STUBCLASS" <<<"$output" && return 1
   true
 }
@@ -335,7 +335,7 @@ echo "an ordinary line"
 EOF
   probe unused.bats 1 lint-git-path-quoting
   grep -qF -- "unused.bats:1: unused gaia-lint-ignore for lint-git-path-quoting" <<<"$output" || return 1
-  probe unused.bats 1 lint-grep-ere-escapes
+  probe unused.bats 1 lint-sigpipe-readers
   grep -qF -- "unused gaia-lint-ignore" <<<"$output" && return 1
   true
 }
@@ -345,12 +345,12 @@ EOF
 # gaia-lint-ignore lint-no-such-guard: names a script that does not exist
 echo "an ordinary line"
 
-# gaia-lint-ignore lint-grep-ere-escapes:
+# gaia-lint-ignore lint-sigpipe-readers:
 echo "another ordinary line"
 EOF
   probe mal.bats 1 lint-git-path-quoting 1 1
   [ "$(grep -cF -- "malformed gaia-lint-ignore: lint-no-such-guard does not resolve to .gaia/scripts/lint-no-such-guard.sh" <<<"$output")" -eq 1 ]
-  [ "$(grep -cF -- "malformed gaia-lint-ignore for lint-grep-ere-escapes: no reason given" <<<"$output")" -eq 1 ]
+  [ "$(grep -cF -- "malformed gaia-lint-ignore for lint-sigpipe-readers: no reason given" <<<"$output")" -eq 1 ]
   probe mal.bats 1 lint-git-path-quoting 0 1
   grep -qF -- "malformed gaia-lint-ignore" <<<"$output" && return 1
   true
@@ -951,9 +951,7 @@ library_consumers() {
 
 participating_files() {
   printf '%s\n' \
-    "$REPO_ROOT/.gaia/scripts/lint-collapsed-signal-trap.sh" \
     "$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh" \
-    "$REPO_ROOT/.gaia/scripts/lint-grep-ere-escapes.sh" \
     "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh" \
     "$REPO_ROOT/.gaia/scripts/tests/fixtures/stub-guard.sh"
 }
@@ -985,14 +983,13 @@ assert_consumer_count() {
 
 @test "every library consumer brackets its library load with set +e and set -e on one line" {
   # The bracket verbatim, because it is frozen rather than merely
-  # conventional: `.gaia/scripts/lint-errexit-source-guard.sh`'s header owns
-  # the two accepted shapes and states why a file that arms errexit itself
-  # takes this flat one while a library takes the state-preserving form. A
-  # reworded load would still satisfy that guard and silently stop being the
-  # shape this suite reports on, so the literal is what holds it. The load is
-  # script-relative by design and does not itself carry the full path (which
-  # lives above it, on the shellcheck source= directive line), so this checks
-  # the bracket rather than a second copy of the path.
+  # conventional: a guard sourcing this library runs under errexit itself, so
+  # an unbracketed load would abort the guard outright if the library were
+  # ever present but unparseable. A reworded load would silently stop being
+  # the shape this suite reports on, so the literal is what holds it. The
+  # load is script-relative by design and does not itself carry the full
+  # path (which lives above it, on the shellcheck source= directive line),
+  # so this checks the bracket rather than a second copy of the path.
   local f load
   assert_consumer_count || return 1
   load='set +e; [ -f "$_gaia_guard_lib_dir/guard-awk-lib.sh" ] && . "$_gaia_guard_lib_dir/guard-awk-lib.sh" 2>/dev/null; set -e'
@@ -1046,9 +1043,7 @@ assert_consumer_count() {
     grep -qF -- "gaia_scan_pragma_here(" "$f" || { echo "$f: never calls gaia_scan_pragma_here" >&2; return 1; }
   done < <(production_guards)
   grep -qF -- "gaia_scan_run_only(" "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh" || return 1
-  grep -qF -- "gaia_scan_run_only(" "$REPO_ROOT/.gaia/scripts/lint-collapsed-signal-trap.sh" && return 1
   grep -qF -- "gaia_scan_run_only(" "$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh" && return 1
-  grep -qF -- "gaia_scan_run_only(" "$REPO_ROOT/.gaia/scripts/lint-grep-ere-escapes.sh" && return 1
   true
 }
 
@@ -1103,20 +1098,8 @@ own_awk_functions() {
   # here rather than asserted.
   local actual expected
 
-  # The collapsed-trap gate's three private walks, all class detection: signal_words
-  # reads the signal list off one trap arm, in_command_position decides whether the
-  # word `trap` opens a command rather than sitting inside one, and collapsed is the
-  # verdict over the two. None of them tokenizes shell the library already reads.
-  actual="$(own_awk_functions "$REPO_ROOT/.gaia/scripts/lint-collapsed-signal-trap.sh")"
-  expected="$(printf '%s\n' collapsed in_command_position signal_words)"
-  [ "$actual" = "$expected" ]
-
   actual="$(own_awk_functions "$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh")"
   [ "$actual" = "option_walk" ]
-
-  actual="$(own_awk_functions "$REPO_ROOT/.gaia/scripts/lint-grep-ere-escapes.sh")"
-  expected="$(printf '%s\n' ere_mode scan_window)"
-  [ "$actual" = "$expected" ]
 
   # Deviation from the plan's README table, recorded rather than silently
   # absorbed: the table lists eight functions for this file. The tree
@@ -1249,7 +1232,7 @@ extract_wiki_paths() {
   done
 }
 
-@test "each guard's header states its bats reach; the ere and errexit gates also state a bats-tied fail-open" {
+@test "each guard's header states its bats reach; the errexit gate also states a bats-tied fail-open" {
   # Presence check against phrasing the guards actually wrote (this task's
   # own instruction: read the headers first and pin what is there, so the
   # check does not rot against the next prose edit).
@@ -1258,7 +1241,6 @@ extract_wiki_paths() {
     grep -qF -- '*.bats' "$g" || { echo "$g: header states no bats reach" >&2; return 1; }
   done < <(production_guards)
 
-  grep -qF -- 'FAIL-OPEN' "$REPO_ROOT/.gaia/scripts/lint-grep-ere-escapes.sh" || return 1
   grep -qF -- 'FAIL-OPEN' "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh" || return 1
 
   # lint-git-path-quoting.sh's own "*.bats residuals" bullets state only a
@@ -1322,12 +1304,6 @@ mutate_guard_copy() {
     "$XG_SUITE"
   [ "$status" -ne 0 ]
 
-  mutate_guard_copy "$prog" lint-grep-ere-escapes lint-grep-ere-escapes.bats
-  GAIA_GUARD_MUTATION_CHILD=1 run bash "$REPO_ROOT/.gaia/scripts/bats5.sh" \
-    --filter "a well-formed pragma resolves against the guard's own scripts_dir" \
-    "$XG_SUITE"
-  [ "$status" -ne 0 ]
-
   mutate_guard_copy "$prog" lint-errexit-status-read lint-errexit-status-read.bats
   GAIA_GUARD_MUTATION_CHILD=1 run bash "$REPO_ROOT/.gaia/scripts/bats5.sh" \
     --filter "a pragma naming this gate suppresses the instance below it" \
@@ -1348,17 +1324,17 @@ mutate_guard_copy() {
     "$BATS_TEST_FILENAME"
   [ "$status" -ne 0 ]
 
-  # A production guard's suite: lint-grep-ere-escapes.sh keeps no tokenizer
-  # of its own (README C1, "keep only their own class detection"), so its
-  # "real repository tree is clean" verdict rests entirely on the library's
-  # region-skip protecting its own 23 own-suite fixtures. Tracking the
-  # copied suite as the only *.bats file in a throwaway git repo reproduces
-  # that verdict without touching the real tree.
-  mutate_guard_copy "$prog" lint-grep-ere-escapes lint-grep-ere-escapes.bats
+  # A production guard's suite: lint-errexit-status-read.sh's own suite
+  # carries real fixture literals of its class, so its "the repository's own
+  # scanned surface is clean" verdict depends on the library's region-skip
+  # telling those fixtures apart from executed shell. Tracking the copied
+  # suite as the only *.bats file in a throwaway git repo reproduces that
+  # verdict without touching the real tree.
+  mutate_guard_copy "$prog" lint-errexit-status-read lint-errexit-status-read.bats
   git -C "$XG_ROOT" init -q .
   git -C "$XG_ROOT" add -A
   GAIA_GUARD_MUTATION_CHILD=1 run bash "$REPO_ROOT/.gaia/scripts/bats5.sh" \
-    --filter "the real repository tree is clean" "$XG_SUITE"
+    --filter "the repository's own scanned surface is clean" "$XG_SUITE"
   [ "$status" -ne 0 ]
 }
 

@@ -602,10 +602,9 @@ set -euo pipefail
   grep -qF -- "inner.sh:2:" <<<"$output"
 }
 
-# The bracketed load is the shape .gaia/scripts/lint-errexit-source-guard.sh
-# demands of an errexit-arming file, so it is what an armed caller in this tree
-# actually writes. A source reader keyed to line start alone draws no edge from
-# it and the library it loads goes ungraded.
+# The bracketed load is the shape an errexit-arming file in this tree actually
+# writes. A source reader keyed to line start alone draws no edge from it and
+# the library it loads goes ungraded.
 @test "an edge is drawn from the bracketed load an errexit-armed caller writes" {
   fixture_repo
   fixture_file lib.sh '#!/usr/bin/env bash

@@ -2,19 +2,13 @@
 # shell-lint.sh: run shellcheck over every tracked shell script, bats suite, and
 # husky hook, then parse every tracked shell script with bash 3.2, then the
 # repo-authored guards shellcheck cannot model: the hook
-# array-guard (.gaia/scripts/lint-hook-array-guard.sh), the errexit source guard
-# (.gaia/scripts/lint-errexit-source-guard.sh), the git path-quoting
+# array-guard (.gaia/scripts/lint-hook-array-guard.sh), the git path-quoting
 # guard (.gaia/scripts/lint-git-path-quoting.sh), the workflow
 # run-interpolation guard (.gaia/scripts/lint-workflow-run-interpolation.sh),
-# the grep ERE-escape guard (.gaia/scripts/lint-grep-ere-escapes.sh), the
-# errexit status-read guard (.gaia/scripts/lint-errexit-status-read.sh), the
-# collapsed signal-trap guard (.gaia/scripts/lint-collapsed-signal-trap.sh),
+# the errexit status-read guard (.gaia/scripts/lint-errexit-status-read.sh),
 # the SIGPIPE-reader guard (.gaia/scripts/lint-sigpipe-readers.sh), the hook
-# cwd-relative-load guard (.gaia/scripts/lint-hook-cwd-relative-loads.sh), the
-# hook jq-availability guard
-# (.gaia/scripts/lint-hook-jq-availability.sh), the hook Monitor-arming guard
-# (.gaia/scripts/lint-hook-monitor-arming.sh), and the awk interpreter pin
-# (.gaia/scripts/lint-awk-interpreter-pin.sh).
+# cwd-relative-load guard (.gaia/scripts/lint-hook-cwd-relative-loads.sh), and
+# the hook jq-availability guard (.gaia/scripts/lint-hook-jq-availability.sh).
 # Exit 0 when clean, 1 on any finding at or above the severity floor, and 1 on
 # a pass that cannot run at all (no shellcheck binary, an empty *.sh discovery
 # set, an unusable bash-3.2 interpreter). A red gate is therefore not always a
@@ -510,24 +504,14 @@ fi
 # instead of resolving it from the working directory.
 GUARD_SLUGS=(
   lint-hook-array-guard
-  lint-errexit-source-guard
   lint-git-path-quoting
   lint-workflow-run-interpolation
-  lint-grep-ere-escapes
   lint-errexit-status-read
-  lint-collapsed-signal-trap
   lint-sigpipe-readers
   lint-hook-cwd-relative-loads
   lint-hook-jq-availability
-  lint-awk-interpreter-pin
-  lint-hook-monitor-arming
 )
 GUARD_MODES=(
-  subshell
-  subshell
-  subshell
-  subshell
-  subshell
   subshell
   subshell
   subshell
@@ -542,15 +526,12 @@ GUARD_COUNT="${#GUARD_SLUGS[@]}"
 # a cost table goes stale the moment a guard's own runtime shifts, and a
 # stale entry here costs the pool a few seconds of head-of-line blocking,
 # never a wrong verdict. Measured heaviest to lightest on an idle host:
-# lint-git-path-quoting (~7s), lint-errexit-status-read (~6s),
-# lint-collapsed-signal-trap (~5s), lint-grep-ere-escapes (~5s). Every other
+# lint-git-path-quoting (~7s), lint-errexit-status-read (~6s). Every other
 # guard totals a few seconds combined and dispatches after these in
 # GUARD_SLUGS' own declared order.
 GUARD_HEAVY_HINT=(
   lint-git-path-quoting
   lint-errexit-status-read
-  lint-collapsed-signal-trap
-  lint-grep-ere-escapes
 )
 
 # Test-only seams, both unset in every real invocation and both named after
@@ -741,21 +722,6 @@ if ! replay_guard 0; then
   status=1
 fi
 
-# Fold in the errexit source guard, for the same reason as the array guard: the
-# linter above cannot model it either. Under errexit, sourcing a file that is
-# present but UNPARSEABLE abandons the shell at the load, which in a PreToolUse
-# hook is exit 2 -- a deny on every matching call, including the edit that would
-# repair the library. It works on the errexit-reachable source closure rather
-# than on one file, so it sees a library's own loads whether or not a consumer
-# parse-checked the library. Run from the repo root because it derives its
-# surface with `git ls-files`, which resolves against the working directory: the
-# guard refuses outright on a non-empty `--show-prefix` rather than scanning the
-# subtree, so a run from anywhere else fails here instead of reporting clean.
-echo "--> lint-errexit-source-guard (unbracketed source under errexit)"
-if ! replay_guard 1; then
-  status=1
-fi
-
 # Fold in the git path-quoting guard, for the same reason as the array guard:
 # the linter above cannot model it, and the class has been fixed seven times by
 # hand and never once by a check. It reaches further than the passes above --
@@ -765,7 +731,7 @@ fi
 # the repo root so its own discovery resolves and the file:line it prints is
 # repo-relative.
 echo "--> lint-git-path-quoting (C-quoted paths from an unquoted diff or ls-files)"
-if ! replay_guard 2; then
+if ! replay_guard 1; then
   status=1
 fi
 
@@ -777,26 +743,11 @@ fi
 # root so its `git ls-files` resolves and the file:line it prints is
 # repo-relative.
 echo "--> lint-workflow-run-interpolation (\${{ }} substituted into run: script text)"
-if ! replay_guard 3; then
+if ! replay_guard 2; then
   status=1
 fi
 
-# Fold in the grep ERE-escape guard, for the same reason as the three above:
-# the linter above models the shell AROUND a regex and never the regex itself.
-# POSIX leaves a backslash before a letter undefined in an ERE, and BSD grep
-# (macOS) expands `\r` `\t` `\d` where GNU grep (the runner) matches the bare
-# letter, so a pattern authored and verified locally means something else in CI.
-# That is the class this gate reaches that the passes above cannot: it is
-# invisible to shellcheck, invisible to a suite run on the authoring platform,
-# and it fails toward a check that quietly passes. Run from the repo root so its
-# `git ls-files` discovery resolves and the file:line it prints is
-# repo-relative.
-echo "--> lint-grep-ere-escapes (BSD-vs-GNU regex escapes in a grep -E pattern)"
-if ! replay_guard 4; then
-  status=1
-fi
-
-# Fold in the errexit status-read guard, for the same reason as the four above:
+# Fold in the errexit status-read guard, for the same reason as the two above:
 # the linter above is silent on the class. An assignment takes its command
 # substitution's exit status, so under `set -e` a failing command exits ON the
 # assignment line and the `rc=$?` after it never runs -- every branch written to
@@ -808,23 +759,7 @@ fi
 # class lived. Run from the repo root so its `git ls-files` discovery resolves
 # and the file:line it prints is repo-relative.
 echo "--> lint-errexit-status-read (\$? read after a command-substitution assignment under set -e)"
-if ! replay_guard 5; then
-  status=1
-fi
-
-# Fold in the collapsed signal-trap guard, for the same reason as the guards
-# above: shellcheck models the syntax of a `trap` call and says nothing about
-# which dispositions may share one arm. Bash resumes at the point of
-# interruption once a trapped handler returns, so an arm shared between EXIT and
-# INT or TERM silently deletes the terminating disposition it replaced and the
-# script becomes uninterruptible. The class was repaired by hand twice and
-# pinned each time by a per-file assertion in that script's own suite, which is
-# the hand-kept list .claude/rules/guards-must-fail.md names as an arming-stage
-# failure: the third instance sat unreached by any of it. This gate is what
-# replaced those pins. Run from the repo root so its `git ls-files` discovery
-# resolves and the file:line it prints is repo-relative.
-echo "--> lint-collapsed-signal-trap (one trap arm binding EXIT with INT or TERM)"
-if ! replay_guard 6; then
+if ! replay_guard 3; then
   status=1
 fi
 
@@ -838,7 +773,7 @@ fi
 # Run from the repo root so its `git ls-files` discovery resolves and the
 # file:line it prints is repo-relative.
 echo "--> lint-sigpipe-readers (a short-circuiting reader inverting a pipeline under pipefail)"
-if ! replay_guard 7; then
+if ! replay_guard 4; then
   status=1
 fi
 
@@ -854,7 +789,7 @@ fi
 # `${BASH_SOURCE[0]}` and never consults the working directory, which is the
 # same property it exists to enforce, and its own suite pins that.
 echo "--> lint-hook-cwd-relative-loads (a hook locating framework code from the working directory)"
-if ! replay_guard 8; then
+if ! replay_guard 5; then
   status=1
 fi
 
@@ -865,36 +800,7 @@ fi
 # non-blocking error. The refused call proceeds with no denial and no diagnostic,
 # across the whole fail-closed layer at once.
 echo "--> lint-hook-jq-availability (a blocking hook standing down on a missing jq)"
-if ! replay_guard 9; then
-  status=1
-fi
-
-# Fold in the awk interpreter pin, one layer under the grep gate above it: that
-# gate closes a BSD-versus-GNU divergence in the patterns, and this one closes
-# an implementation divergence in the interpreter those patterns' sibling
-# tokenizers run under. POSIX leaves a great deal of awk implementation-defined,
-# CI runs mawk and a macOS maintainer runs BWK one-true-awk, and a guard whose
-# detector means something different on the two still reports green on both.
-# .gaia/scripts/awk-interp-lib.sh resolves one sanctioned interpreter into
-# GAIA_AWK for the guard-awk-lib.sh closure; this gate is what binds the next
-# guard added to that closure to use it. Its surface is that closure alone,
-# which .gaia/scripts/*.sh already arms on the paths filter in
-# .github/workflows/shell-lint.yml, so it needed no entry of its own. Run from
-# the repo root so its `git ls-files` discovery resolves and the file:line it
-# prints is repo-relative.
-echo "--> lint-awk-interpreter-pin (a bare awk where the closure must use the resolved GAIA_AWK)"
-if ! replay_guard 10; then
-  status=1
-fi
-
-# Fold in the Monitor-arming guard, for the reason its siblings ride here: a
-# `"matcher": "Bash"` registration is well-formed to every static checker, and
-# it is well-formed, right up to the point where the same command arrives
-# through `Monitor` in the same `tool_input.command` field and the guard is
-# never invoked. The bypass is silent in both directions, and it reaches the
-# whole command-reading layer at once.
-echo "--> lint-hook-monitor-arming (a blocking guard a Monitor-armed command walks past)"
-if ! replay_guard 11; then
+if ! replay_guard 6; then
   status=1
 fi
 

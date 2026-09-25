@@ -467,16 +467,14 @@ jobs:
               # the one path: the directory is where shared composite actions go,
               # so an itemized entry would silently stop covering the next one.
               - '.github/actions/**'
-              # lint-errexit-source-guard.sh scans every tracked `*.sh` outside
-              # `.husky/` and outside any `tests/` directory, including the ones
-              # under `.github`, and its docblock requires every path the scan
-              # reads to be named here, or the job greens having run that
-              # assertion zero times. Redundant today:
-              # the scan reads only `*.sh`, and `**/*.sh` above already matches
-              # every one of those under this directory. Listed deliberately
-              # anyway, the same convention the redundant `.github/workflows/`
-              # entries at the top of this filter use, so that narrowing
-              # `**/*.sh` later cannot silently unarm this directory. The
+              # lint-errexit-status-read.sh scans every tracked `*.sh`,
+              # including the ones under `.github` (its audit, actions and
+              # forensics scripts). Redundant today: `**/*.sh` above already
+              # matches every one of those under this directory. Listed
+              # deliberately anyway, the same convention the redundant
+              # `.github/workflows/` entries at the top of this filter use, so
+              # that narrowing `**/*.sh` later cannot silently unarm this
+              # directory. The
               # widening it costs is small and worth naming: the only files
               # this newly matches are the six under
               # .github/ that no glob above reaches -- CODEOWNERS, FUNDING.yml,

@@ -248,6 +248,6 @@ run_hook_bash() {
   hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Edit|Write|MultiEdit")' block-manifest-write.sh
 }
 
-@test "settings.json registers the hook for both tools it binds" {
+@test "settings.json registers the hook on the Bash|Monitor matcher" {
   hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor")' block-manifest-write.sh
 }

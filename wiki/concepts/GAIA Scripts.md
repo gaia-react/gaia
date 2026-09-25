@@ -83,16 +83,11 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 
 | Script | Ships | Invoker | What it is |
 |---|---|---|---|
-| `lint-awk-interpreter-pin.sh` | no | GAIA's own shell-lint harness | Flags a bare `awk`, `gawk`, `mawk` or `nawk` in command position inside the `guard-awk-lib.sh` closure, where the resolved `GAIA_AWK` is the required form. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
-| `lint-collapsed-signal-trap.sh` | no | `shell-lint.yml` | Flags one `trap` arm binding EXIT together with INT or TERM, the shape that leaves a script uninterruptible. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
-| `lint-errexit-source-guard.sh` | no | `shell-lint.yml` | Flags a `source` that can run with errexit armed and is not bracketed against an unparseable target. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `lint-errexit-status-read.sh` | no | `shell-lint.yml` | Flags `$?` read after a command-substitution assignment under `set -e`, where it reports the wrong command. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `lint-git-path-quoting.sh` | no | `shell-lint.yml` | Flags an executed git listing that names files without `-z`, so a C-quoted path reaches the reader mangled. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
-| `lint-grep-ere-escapes.sh` | no | `shell-lint.yml` | Flags a `grep -E` pattern whose escapes mean different things under BSD and GNU regex. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `lint-hook-array-guard.sh` | yes | GAIA's own CI (maintainer-side) | Flags unguarded bare array expansions under `set -u` across the framework's own bash, the bash-3.2 empty-array class. |
 | `lint-hook-cwd-relative-loads.sh` | no | GAIA's own shell-lint harness | Flags a hook that locates the framework code it loads from the working directory rather than from its own path. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `lint-hook-jq-availability.sh` | no | GAIA's own shell-lint harness | Flags a blocking hook that parses its payload with jq and fails open when jq is absent. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
-| `lint-hook-monitor-arming.sh` | no | GAIA's own shell-lint harness | Flags a blocking command-reading guard bound to `Bash` alone, which a `Monitor`-armed command walks past. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `lint-sigpipe-readers.sh` | no | `shell-lint.yml`, `audit-ci-tests.yml` | Flags a short-circuiting reader downstream of a pipe under `pipefail`, where the pipeline status inverts on a match. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `lint-workflow-run-interpolation.sh` | no | `shell-lint.yml` | Flags a `${{ }}` expression substituted into a workflow `run:` body, the script-injection shape. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 

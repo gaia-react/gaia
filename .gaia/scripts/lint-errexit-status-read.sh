@@ -90,8 +90,7 @@
 # The templates render into an ADOPTER's CI, where a status read the author
 # expected to run is skipped on a machine neither this repo's review nor the
 # adopter's ever watches. That is this class one distribution hop further out,
-# and it is the same reason the sibling run-interpolation and grep-escape gates
-# scan them.
+# and it is the same reason the sibling run-interpolation gate scans them.
 #
 # `.gaia/cli/templates/workflows/` is a build artifact copied from `src/` by
 # `bundle:adopter` and is deliberately NOT scanned, so no hit is reported twice
@@ -304,12 +303,11 @@ set -euo pipefail
 # load would abort the gate on every one of them.
 #
 # The `set +e; ...; set -e` bracket is not decoration. This file arms errexit on
-# the line above, and an unbracketed load in an errexit-reachable file is exactly
-# what the sibling .gaia/scripts/lint-errexit-source-guard.sh reports -- the gate
-# beside this one is the one that would catch a careless load here, which is
-# worth stating rather than rediscovering. The `if` on the second line is load
-# bearing for the same reason: under errexit a bare `[ ... ] && ...` whose test
-# is false returns 1 and kills the script.
+# the line above, and an unbracketed load in an errexit-reachable file would
+# abort the script outright if the library were ever present but unparseable.
+# The `if` on the second line is load bearing for the same reason: under
+# errexit a bare `[ ... ] && ...` whose test is false returns 1 and kills the
+# script.
 _gaia_guard_lib_dir="${BASH_SOURCE[0]%/*}"
 if [ "$_gaia_guard_lib_dir" = "${BASH_SOURCE[0]}" ]; then _gaia_guard_lib_dir="."; fi
 # shellcheck source=.gaia/scripts/guard-awk-lib.sh

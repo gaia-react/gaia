@@ -291,9 +291,9 @@ readonly PROG="lint-sigpipe-readers"
 
 # Script-relative, never cwd-relative: every fixture test runs this guard with
 # cwd inside a throwaway repo that carries no .gaia/scripts/. Bracketed with
-# set +e/-e because this file arms errexit itself, the shape
-# .gaia/scripts/lint-errexit-source-guard.sh demands for an unbracketed load in
-# an errexit-reachable file.
+# set +e/-e because this file arms errexit itself, and an unbracketed load
+# would abort the script outright if the library were ever present but
+# unparseable.
 _gaia_guard_lib_dir="${BASH_SOURCE[0]%/*}"
 if [ "$_gaia_guard_lib_dir" = "${BASH_SOURCE[0]}" ]; then _gaia_guard_lib_dir="."; fi
 # shellcheck source=.gaia/scripts/guard-awk-lib.sh

@@ -104,21 +104,10 @@
 # workflows into an adopter's `.github/workflows/` from templates the manifest
 # ships. The withhold rests on the absent runner, not on an empty surface.
 .gaia/scripts/lint-workflow-run-interpolation.sh
-# The grep ERE-escape lint guards GAIA's own framework shell, its CI workflow and
-# composite-action YAML, and the adopter workflow templates against a
-# backslash-escaped letter in a `grep -E` pattern, which BSD grep and GNU grep
-# read differently. Withheld on the same reasoning as the two lints above:
-# shell-lint.sh, its only runner, is release-excluded wholesale via the
-# `.gaia/tests` entry, so shipping this file would ship a check nothing on an
-# adopter clone invokes. It also sources guard-awk-lib.sh, withheld below, so
-# the absent dependency would decide the withhold on its own. An adopter clone
-# does have a populated scan surface, for the reason the run-interpolation note
-# above spells out, so neither withhold rests on an empty one.
-.gaia/scripts/lint-grep-ere-escapes.sh
 # The errexit status-read lint guards GAIA's own framework shell, its CI workflow
 # and composite-action YAML, and the adopter workflow templates against a `$?`
 # read that `set -e` has already made unreachable. Withheld on the same reasoning
-# as the three lints above: shell-lint.sh, its only runner, is release-excluded
+# as the two lints above: shell-lint.sh, its only runner, is release-excluded
 # wholesale via the `.gaia/tests` entry, so shipping this file would ship a check
 # nothing on an adopter clone invokes. It also sources guard-awk-lib.sh, withheld
 # below, so the absent dependency would decide the withhold on its own. An
@@ -126,10 +115,6 @@
 # templates render into their CI carrying the class's own exposure, so neither
 # withhold rests on an empty one.
 .gaia/scripts/lint-errexit-status-read.sh
-# The errexit source guard lints GAIA's own framework shell for a source that runs with errexit armed and is not bracketed against an unparseable target. Withheld on the same reasoning as the four lints above, and on that reasoning ALONE: every one of its runners is release-excluded, so shipping this file would ship a check nothing on an adopter clone invokes. Those runners are shell-lint.sh, excluded by the .gaia/tests entry below, and the sibling bats suite .gaia/scripts/tests/lint-errexit-source-guard.bats, excluded by the separate .gaia/scripts/tests entry beside it. The bats suite is named explicitly because it is the BLOCKING runner, the one whose absence decides that an adopter clone gates on nothing here, and it is excluded by a different entry than the other one. An adopter clone does have a populated scan surface (it carries .claude/hooks and .gaia/scripts), so the withhold rests on the absent runner rather than on an empty surface.
-.gaia/scripts/lint-errexit-source-guard.sh
-# The collapsed signal-trap lint flags a `trap` arm that binds EXIT together with INT or TERM, the shape that leaves bash resuming at the point of interruption and so makes a script uninterruptible. Withheld on the same reasoning as the lints above: every one of its runners is release-excluded, so shipping this file would ship a check nothing on an adopter clone invokes. Those runners are shell-lint.sh, excluded by the .gaia/tests entry below, and the sibling bats suite .gaia/scripts/tests/lint-collapsed-signal-trap.bats, excluded by the separate .gaia/scripts/tests entry beside it. It also sources guard-awk-lib.sh, withheld just below, so the absent dependency would decide the withhold on its own. An adopter clone does carry a populated scan surface, so neither withhold rests on an empty one.
-.gaia/scripts/lint-collapsed-signal-trap.sh
 # The SIGPIPE-reader lint flags a short-circuiting reader -- a `grep` or `rg` told to stop early, in whichever spelling the gate's own header enumerates -- standing downstream of a pipe where `pipefail` is armed, in a tracked shell script or in an Actions `run:` body, the shape whose pipeline status inverts on a match because the reader closes the pipe and the upstream dies of SIGPIPE. Withheld on the same reasoning as the lints above: every one of its runners is release-excluded, so shipping this file would ship a check nothing on an adopter clone invokes. Those runners are shell-lint.sh, excluded by the .gaia/tests entry below, and the sibling bats suite .gaia/scripts/tests/lint-sigpipe-readers.bats via the separate .gaia/scripts/tests entry beside it. It also sources guard-awk-lib.sh, withheld just below, so the absent dependency would decide the withhold on its own. An adopter clone does carry a populated scan surface, so neither withhold rests on an empty one.
 .gaia/scripts/lint-sigpipe-readers.sh
 # The CLI workspace-floor check reports a security floor declared in a second pnpm workspace root's pnpm-workspace.yaml that the lockfile beside it does not apply. Withheld on the absent SUBJECT, which is stronger than the absent-runner reasoning the lints above rest on: the root it checks is .gaia/cli, and every file constituting that root -- src, package.json, pnpm-lock.yaml, pnpm-workspace.yaml -- is release-excluded in the category below, so an adopter clone has no second workspace root at all and the check would exit 2 on every run rather than answer. Every runner of this check is itself release-excluded too, so the withhold holds on either ground alone. The runner set is deliberately not enumerated here: `git grep -l check-cli-workspace-floors` lists every file that references the check, which is the set the runners are read out of, and nothing holds a hand-kept list to the tree, which is how the enumeration that stood here went stale. Nothing about this reaches an adopter's own dependency hygiene: their single root is audited by the shipped `/update-deps` skill and the CI audit template exactly as before.
@@ -138,8 +123,6 @@
 .gaia/scripts/guard-awk-lib.sh
 # The GAIA_AWK interpreter resolver, sourced by guard-awk-lib.sh just above. Withheld on the absent consumer, a stronger ground than the absent-runner reasoning most of the lints above rest on: every file that sources this library, through guard-awk-lib.sh, is itself withheld, so an adopter clone has nothing that would ever source it. What is NOT claimed: the resolver is generic over any awk call site in the tree, not only the surface it currently serves, so shipping it later to widen GAIA_AWK's governed surface would be a re-decision rather than a correction. The consumer set is not counted here, for the reason the check-cli-workspace-floors entry above gives about its own runner set: `git grep -l guard-awk-lib` reads it out of the tree, and a hand-kept cardinal beside it is a second copy that nothing holds to the tree.
 .gaia/scripts/awk-interp-lib.sh
-# The awk interpreter pin flags a bare `awk`, `gawk`, `mawk` or `nawk` in command position inside the guard-awk-lib.sh closure, where the resolved GAIA_AWK is the required form, so the guards in that closure cannot run under one awk implementation locally and another in CI. Withheld on the absent SUBJECT first, which is stronger than the absent-runner ground most of the lints above rest on: its whole subject is the resolver directly above and the closure around it, every file of which is withheld, so on an adopter clone this gate would scan a surface that does not exist and refuse at its empty-closure status on every run rather than answer. Every runner is withheld too, so the decision holds on either ground alone: shell-lint.sh via the .gaia/tests entry below, and the sibling bats suite .gaia/scripts/tests/lint-awk-interpreter-pin.bats via the separate .gaia/scripts/tests entry beside it. What is NOT claimed: the detector is a generic command-position reader and would work over any surface, so shipping it later to pin an adopter's own awk calls would be a re-decision rather than a correction. Nor is the wider tree claimed even here -- the gate governs the closure alone, and the command-position awk sites elsewhere in this repository are a stated non-claim in its own header, not an omission this entry repairs.
-.gaia/scripts/lint-awk-interpreter-pin.sh
 # The shipped-tree leak assertion: it proves no release-excluded path survived
 # into the tree that becomes the tarball. Withheld on the absent caller: its one
 # caller is release.yml (category 9), and an adopter clone never stages a GAIA
@@ -158,8 +141,6 @@
 .gaia/scripts/lint-hook-jq-availability.sh
 # The PreToolUse registration read and blocking oracle the two hook-layer gates share. Both consumers are withheld above, so an adopter clone would carry a library nothing sources.
 .gaia/scripts/hook-registration-lib.sh
-# Deterministic lint over GAIA's own hook layer, withheld on the same terms as its siblings: every runner (shell-lint.sh and its sibling bats suite) is release-excluded, so an adopter clone would carry a check nothing invokes. The repaired hooks themselves ship.
-.gaia/scripts/lint-hook-monitor-arming.sh
 
 # --- 2. Maintainer-only wiki content ---
 # Internal vault administration files and team-specific knowledge that
@@ -179,7 +160,7 @@ wiki/decisions/Forensics Triage Workflow.md
 wiki/decisions/Sharded CI Test Matrix.md
 # Documents the fixture-discrimination convention for the maintainer-only shell guards and their shared library, none of which an adopter clone has.
 wiki/decisions/Shell Guard Fixture Discrimination.md
-# Documents the local runtime of shell-lint.sh (release-excluded via the wholesale .gaia/tests entry below), the mawk/GNU-parallel maintainer tool prerequisites it uses, and the awk-interpreter-pin guard and resolver (.gaia/scripts/lint-awk-interpreter-pin.sh, .gaia/scripts/awk-interp-lib.sh), which govern only the guard-awk-lib.sh closure and are withheld individually elsewhere in this file. Every subject this page describes is maintainer-only; an adopter clone has none of them to run.
+# Documents the local runtime of shell-lint.sh (release-excluded via the wholesale .gaia/tests entry below), the mawk/GNU-parallel maintainer tool prerequisites it uses, and the awk interpreter resolver (.gaia/scripts/awk-interp-lib.sh), which serves the guard-awk-lib.sh closure and is withheld individually elsewhere in this file. Every subject this page describes is maintainer-only; an adopter clone has none of them to run.
 wiki/decisions/Local Test Runtime.md
 
 # --- 3. Test harnesses and audit reports ---

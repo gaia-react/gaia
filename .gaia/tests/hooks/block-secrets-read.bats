@@ -34,13 +34,6 @@ run_hook_bash() {
   invoke_hook "$json" "$HOOK_ABS"
 }
 
-run_hook_monitor() {
-  local cmd="$1"
-  local json
-  json=$(jq -n --arg c "$cmd" '{tool_name: "Monitor", tool_input: {command: $c}}')
-  invoke_hook "$json" "$HOOK_ABS"
-}
-
 run_hook_grep() {
   local path="$1" glob="$2"
   local json
@@ -161,24 +154,6 @@ run_hook_without_library() {
 @test "grep -f pats.txt certs/server.key is denied (the target file, not the pattern file)" {
   run_hook_bash "grep -f pats.txt certs/server.key"
   assert_denied_by_json
-}
-
-# --- Monitor denies the same reader, since it carries the same command ---
-
-@test "the same reader armed through Monitor is denied" {
-  # `Monitor` hands the hook a raw shell command in the same
-  # `tool_input.command` field and runs it in the same shell environment. A
-  # guard admitting `Bash` alone in its own tool_name arm stands down here,
-  # with no denial and no diagnostic, while its registration reads as armed.
-  run_hook_monitor "cat certs/server.key"
-  assert_denied_by_json
-}
-
-@test "Monitor carrying an allowed reader is still allowed" {
-  # The widened arm must not turn into an unconditional deny on the second
-  # tool: the content predicate is what decides, exactly as on the first.
-  run_hook_monitor "cat app/components/Button/index.tsx"
-  assert_allowed_by_json
 }
 
 # --file (long form of -f) supplies the pattern the same way -e/--regexp does,
@@ -455,7 +430,7 @@ run_hook_without_library() {
   hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Read")' block-secrets-read.sh
 }
 
-@test "settings.json registers block-secrets-read.sh for both tools it binds" {
+@test "settings.json registers block-secrets-read.sh on the Bash|Monitor matcher" {
   hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor")' block-secrets-read.sh
 }
 

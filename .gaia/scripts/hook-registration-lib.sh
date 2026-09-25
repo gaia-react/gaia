@@ -6,15 +6,14 @@
 # stop a tool call, and the one spelling of a hook name inside a registration
 # command. Source it; it defines functions and that literal, and runs nothing.
 #
-# Two gates ask the same two questions of the same surface and must not answer
-# them differently: `.gaia/scripts/lint-hook-jq-availability.sh` (a blocking
-# hook whose jq arm fails open) and `.gaia/scripts/lint-hook-monitor-arming.sh`
-# (a blocking guard a Monitor-armed command walks past). A second copy of
-# either question drifts from the first silently, because each gate's own
-# suite passes against its own copy.
+# `.gaia/scripts/lint-hook-jq-availability.sh` asks whether a registered hook
+# can stop a tool call, so its jq arm knows when a fail-open miss is a blocking
+# guard rather than an advisory one. A second copy of that question drifts
+# from this one silently, because the gate's own suite would pass against its
+# own copy.
 #
-# `GAIA_HOOK_NAME_RE` has a consumer outside those gates, and it fails in a
-# quieter direction than they do. `.gaia/tests/helpers/hook-registration.sh`
+# `GAIA_HOOK_NAME_RE` has a consumer outside that gate, and it fails in a
+# quieter direction than it does. `.gaia/tests/helpers/hook-registration.sh`
 # feeds the literal to jq's `match` builtin to assert that a hook is registered
 # at all, once per registration assertion across the bats suites. Widening the
 # class to admit a path shape a gate needs also widens what every one of those

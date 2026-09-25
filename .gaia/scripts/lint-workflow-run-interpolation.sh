@@ -113,9 +113,9 @@ set -euo pipefail
 
 # Script-relative, never cwd-relative: every fixture test runs this guard with
 # cwd inside a throwaway repo that carries no .gaia/scripts/. Bracketed with
-# set +e/-e because this file arms errexit itself, the shape
-# .gaia/scripts/lint-errexit-source-guard.sh demands for an unbracketed load in
-# an errexit-reachable file. This gate reads none of the library's awk, only its
+# set +e/-e because this file arms errexit itself, and an unbracketed load
+# would abort the script outright if the library were ever present but
+# unparseable. This gate reads none of the library's awk, only its
 # scan-surface discovery.
 _gaia_guard_lib_dir="${BASH_SOURCE[0]%/*}"
 if [ "$_gaia_guard_lib_dir" = "${BASH_SOURCE[0]}" ]; then _gaia_guard_lib_dir="."; fi

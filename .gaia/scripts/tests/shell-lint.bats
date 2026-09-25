@@ -196,9 +196,8 @@ rig_piece() {
 #
 # The set is derived from the gate rather than listed here, for the reason the
 # --only absence loop below records: a hand-written list falls behind the gate
-# silently. The list this replaced had already done so -- it never named
-# lint-errexit-source-guard, so that pass could have lost its invocation with
-# nothing red. Deriving it means a guard folded in tomorrow is covered the day
+# silently, and a pass it never named could lose its invocation with nothing
+# red. Deriving it means a guard folded in tomorrow is covered the day
 # it lands.
 #
 # SHELLCHECK_LOG is set on this run so the husky dialect assertion rides along
@@ -328,7 +327,7 @@ dispatch_first_last() {
 # Args: <dir to write stub scripts into>
 stub_all_guards() {
   local dir="$1" stdout_guards p script stream_redirect var
-  stdout_guards="lint-hook-jq-availability lint-hook-monitor-arming"
+  stdout_guards="lint-hook-jq-availability"
   while IFS= read -r p; do
     case "$p" in lint-*) ;; *) continue ;; esac
     script="$dir/$p.stub.sh"
@@ -529,12 +528,12 @@ STUB
     overrides+=("$line")
   done < <(stub_all_guards "$STUB_DIR")
   env PATH="$STUB_DIR:$PATH" ${overrides[@]+"${overrides[@]}"} bash "$GATE" >"$out_file" 2>"$err_file" || true
-  # lint-collapsed-signal-trap prints its clean line to stderr;
+  # lint-git-path-quoting prints its clean line to stderr;
   # lint-hook-jq-availability prints its to stdout via a bare printf -- one
   # from each side of the split this file's header records.
-  grep -qF -- "lint-collapsed-signal-trap: clean" "$err_file"
+  grep -qF -- "lint-git-path-quoting: clean" "$err_file"
   grep -qF -- "lint-hook-jq-availability: clean" "$out_file"
-  grep -qF -- "lint-collapsed-signal-trap: clean" "$out_file" && return 1
+  grep -qF -- "lint-git-path-quoting: clean" "$out_file" && return 1
   grep -qF -- "lint-hook-jq-availability: clean" "$err_file" && return 1
   true
 }
