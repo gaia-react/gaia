@@ -68,8 +68,8 @@ GAIA_VERB_ADOPTING_HOOKS=(
   capture-gh-artifact.sh
 )
 
-# Case-sensitive, lowercase-only: the uppercase Python BLOCK_START_RE in
-# .claude/hooks/block-invalid-yaml-write.sh is not a false positive.
+# Case-sensitive, lowercase-only, so an uppercase same-named identifier
+# elsewhere in the tree is not a false positive.
 GAIA_VERB_PRIVATE_PATTERN='^[[:space:]]*(start_re|sep_re)='
 # The library itself composes start_re/sep_re as locals -- that is the one
 # legitimate site, and it is excluded from assertion 3's scan rather than

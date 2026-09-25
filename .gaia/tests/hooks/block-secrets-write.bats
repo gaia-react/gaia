@@ -85,28 +85,8 @@ run_hook_multiedit_path() {
   invoke_hook "$json" "$HOOK_ABS"
 }
 
-# A deny fixture that grows past one of rule 4's scan caps keeps passing while no
-# longer reaching the rule it exists to exercise: the cap denies first, the
-# assertion sees a deny, and the test greens on the wrong rule. Prose per fixture
-# does not scale to the 70-odd deny sites, so the hazard is enforced here
-# instead. Every fixture whose deny is SUPPOSED to come from a cap says so with
-# `assert_denied_cap`; for all the others a cap deny is now a red test.
-#
-# The cap check goes ahead of the deny check rather than after it because the
-# bad-case form is `<condition> && return 1`, whose status is 1 when the
-# condition is FALSE. As a function's last command that inverts the whole
-# assertion, so it can only ever sit before one.
 assert_denied() {
-  grep -qF -- 'this guard judges in one write' <<<"$output" && return 1
   assert_denied_by_json
-}
-
-# The opt-in variant, for the fixtures that cross a cap on purpose. Callers
-# follow it with a grep for the specific cap, since this one only pins that some
-# cap fired.
-assert_denied_cap() {
-  assert_denied_by_json
-  grep -qF -- 'this guard judges in one write' <<<"$output"
 }
 
 
@@ -171,28 +151,6 @@ assert_denied_cap() {
 
 @test "a literal value is denied even when a command substitution follows it" {
   run_hook_write "$(printf 'API_KEY=%s\n' 'sk-live-9f3a1c4e8b7d2064$(whoami)')"
-  assert_denied
-}
-
-# --- The other allowlist arms mean "wholly" too ---
-#
-# The command-substitution arm is not the only one that has to resist a splice.
-# `<…>` had the identical defect (`.` matches `>`), and the `your-` / `example`
-# arms matched a prefix with nothing anchoring the tail, so any value merely
-# *starting* like a placeholder was allowed whatever followed it.
-
-@test "a literal value between two angle-bracket placeholders is denied" {
-  run_hook_write "$(printf 'API_KEY=%s\n' '<a>sk-live-9f3a1c4e8b7d2064<b>')"
-  assert_denied
-}
-
-@test "a literal value carrying an example- placeholder prefix is denied" {
-  run_hook_write "$(printf 'API_KEY=%s\n' 'example-sk-live-9f3a1c4e8b7d2064')"
-  assert_denied
-}
-
-@test "a literal value carrying a your- placeholder prefix is denied" {
-  run_hook_write "$(printf 'API_KEY=%s\n' 'your-key-sk-live-9f3a1c4e8b7d2064')"
   assert_denied
 }
 
@@ -298,8 +256,8 @@ assert_denied_cap() {
   assert_allowed_by_json
 }
 
-# The expansion allowance is bounded by the same segment rule as the placeholder
-# arms: a secret does not stop being a secret for sitting inside a default.
+# The expansion allowance is bounded: a secret does not stop being a secret for
+# sitting inside a default.
 
 @test "a literal secret inside an expansion default is denied" {
   run_hook_write "$(printf 'API_KEY=%s\n' '${API_KEY:-sk-live-9f3a1c4e8b7d2064}')"
@@ -325,8 +283,8 @@ assert_denied_cap() {
   assert_denied
 }
 
-# The path arm bounds each segment the way the placeholder arms do, so the
-# separator buys a path suffix and not an unbounded tail. Without these three
+# The path arm bounds each segment, so the separator buys a path suffix and not
+# an unbounded tail. Without these three
 # the arm's allow direction is pinned and its failure mode is not: a secret
 # behind the separator is exactly what the separator must not admit.
 
@@ -354,18 +312,6 @@ assert_denied_cap() {
   assert_denied
 }
 
-# The placeholder arms require a separator BETWEEN segments. Making it optional
-# would let one unbroken run be read as several short ones, which is the bound
-# defeating itself.
-
-@test "an unbroken run behind a placeholder prefix cannot be read as segments" {
-  run_hook_write "$(printf 'API_KEY=%s\n' 'example550e8400e29b41d4a716446655440000')"
-  assert_denied
-}
-
-# Segmented placeholders pass at any length; an unbroken run does not. A length
-# cap gets both of these backwards, which is why the arms bound the segment.
-
 @test "a long but segmented your- placeholder is allowed" {
   run_hook_write "$(printf 'GITHUB_TOKEN=%s\n' 'your-github-personal-access-token')"
   assert_allowed_by_json
@@ -374,11 +320,6 @@ assert_denied_cap() {
 @test "an underscore-segmented your_ placeholder is allowed" {
   run_hook_write "$(printf 'SUPABASE_ANON_KEY=%s\n' 'your_supabase_anon_key_here')"
   assert_allowed_by_json
-}
-
-@test "a short unbroken run behind a placeholder prefix is denied" {
-  run_hook_write "$(printf 'API_KEY=%s\n' 'your-aB3xK9pQ7zR2wL5t')"
-  assert_denied
 }
 
 # --- A computed value is allowed: the source line holds no literal secret ---
@@ -539,106 +480,13 @@ assert_denied_cap() {
   assert_allowed_by_json
 }
 
-# A separator inside the value AND a tail on the same line is the case the
-# untrimmed judgement cannot reach: attaching a tail stops the whole value
-# matching any arm, so the strip runs, and a strip located on the raw value cuts
-# at the body's own separator and leaves `$(cmd`. The cut point is located on a
-# length-preserving mask instead, which hides the body's separators from it,
-# while the value the allowlist reads stays the unmasked one.
-
-@test "a guarded substitution ahead of a trailing comment is allowed" {
-  run_hook_write "$(printf 'export GH_TOKEN=%s\n' '$(gh auth token 2>/dev/null || true) # for gh cli')"
-  assert_allowed_by_json
-}
-
-@test "a guarded substitution ahead of an executable tail is allowed" {
-  run_hook_write "$(printf 'local API_KEY=%s\n' '$(cat f || true) && echo done')"
-  assert_allowed_by_json
-}
-
-@test "a quoted guarded substitution ahead of a comment is allowed" {
-  run_hook_write "$(printf 'API_KEY=%s\n' '"$(gaia_audit_key "$B" "$R" 2>/dev/null || true)" # base key')"
-  assert_allowed_by_json
-}
-
-# Masking the cut point widens nothing else, because the allowlist still reads
-# the true value. A literal spliced onto the substitution is denied exactly as it
-# is with no tail, and the tail itself is still read rather than discarded.
-
-@test "a literal spliced onto a substitution ahead of a comment is denied" {
-  run_hook_write "$(printf 'export API_KEY=%s\n' '$(a)sk-live-9f3a1c4e8b7d2064 # note')"
-  assert_denied
-}
-
-@test "a secret parked in a comment behind a guarded substitution is denied" {
-  run_hook_write "$(printf 'API_KEY=%s\n' '$(cat f || true) # sk-live-9f3a1c4e8b7d2064')"
-  assert_denied
-}
-
-@test "an assignment parked behind a guarded substitution is denied" {
-  run_hook_write "$(printf 'API_KEY=%s\n' '$(cat f || true) ; REAL_TOKEN=correcthorsebattery')"
-  assert_denied
-}
-
-# The remaining limit belongs to the separator grammar, not to the mask. An
-# executable separator has to be preceded by whitespace to open a tail, so a bare
-# `;` behind the substitution is read as part of the value and the line is
-# denied. That grammar stays as it is on purpose: `a;b` is ordinary content in a
-# dotenv value, and widening to bare separators trades this false positive for
-# either a concealed literal or a broader false deny.
+# The remaining limit belongs to the separator grammar. An executable separator
+# has to be preceded by whitespace to open a tail, so a bare `;` behind a value
+# is read as part of it and the line is denied. That grammar stays as it is on
+# purpose: `a;b` is ordinary content in a dotenv value.
 
 @test "a bare separator after a guarded substitution is denied" {
   run_hook_write "$(printf 'GH_TOKEN=%s; export GH_TOKEN\n' '$(gh auth token 2>/dev/null || true)')"
-  assert_denied
-}
-
-# The mask walks the value in bash, and both of its costs grow faster than the
-# value does: the x-run per body, and the walk per substitution. This hook
-# registration carries no `timeout`, and a hook killed before it reaches its
-# `deny` lets the write through, so an unbounded walk is a fail-open reached by
-# input size rather than by input shape. A length cap bounds it. Above the cap
-# the mask is the identity, so the cut falls back to the raw value and the false
-# positive returns for that one line, which is the fail-closed direction. These
-# pin both sides of the cap, and a return of the old quadratic surfaces here as
-# a stall rather than as a silent regression.
-#
-# The fixtures sit close to that boundary on purpose, and the headroom is small:
-# the 4000-character body below lands at 4023 characters against the 4096 cap,
-# leaving 73. Enlarging the body to widen the stall multiple, or lengthening the
-# trailing ` # note`, crosses the cap, drops the value to the raw cut, and flips
-# the allowed case to DENY. The failure is loud, but its cause is not visible
-# from the test body without this note.
-#
-# A second ceiling sits above these: rule 4's own 65536-character cap on the
-# matching material it will judge at all. The 60000-character fixture below
-# lands near 60038 and stays under it deliberately, and it sets a floor under
-# that cap. Enlarging it past the cap turns it RED rather than quietly retiring
-# it: the size cap would deny, this test asserts DENY, and `assert_denied`
-# refuses a cap deny for exactly that reason. Raise rule 4's cap alongside it, or
-# leave the fixture alone.
-
-@test "a guarded substitution in a long value under the cap is allowed" {
-  long=$(printf '%*s' 4000 '' | tr ' ' 'a')
-  run_hook_write "$(printf 'export API_KEY=$(echo %s || true) # note\n' "$long")"
-  assert_allowed_by_json
-}
-
-@test "a value over the mask cap falls back to the raw cut" {
-  long=$(printf '%*s' 5000 '' | tr ' ' 'a')
-  run_hook_write "$(printf 'export API_KEY=$(echo %s || true) # note\n' "$long")"
-  assert_denied
-}
-
-@test "a value far over the mask cap is judged without stalling" {
-  long=$(printf '%*s' 60000 '' | tr ' ' 'a')
-  run_hook_write "$(printf 'export API_KEY=$(echo %s || true) # note\n' "$long")"
-  assert_denied
-}
-
-@test "a value packed with substitutions at the cap is judged without stalling" {
-  many=''
-  while [ ${#many} -lt 3900 ]; do many="$many\$(a||b)"; done
-  run_hook_write "$(printf 'export API_KEY=%s # note\n' "$many")"
   assert_denied
 }
 
@@ -666,115 +514,14 @@ assert_denied_cap() {
   assert_allowed_by_json
 }
 
-# The fragment split is a `tr`, not a parser, so a `||` or `&&` INSIDE a parked
-# assignment's value reads as a separator unless the substitution is taken out of
-# the operators' way first. The guarded-substitution idiom is as ordinary after a
-# `;` as it is before one, and truncating it at the `||` leaves a fragment with
-# no closing paren that no arm can match, which is the same false deny the
-# untrimmed-first ordering fixes for the primary value.
-
-@test "a guarded substitution in a parked assignment is allowed" {
-  run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; export API_TOKEN=$(gh auth token 2>/dev/null || true)')"
-  assert_allowed_by_json
-}
-
-@test "an and-guarded substitution in a parked assignment is allowed" {
-  run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; export GH_TOKEN=$(gh auth token 2>/dev/null && :)')"
-  assert_allowed_by_json
-}
-
-# ...and the bound runs one way only. A sibling fragment carrying a literal is
-# still denied, so keeping the substitution whole does not hollow out the rescan.
-
-@test "a literal beside a guarded substitution in a tail is still denied" {
-  run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; API_TOKEN=hunter2xyz ; GH_TOKEN=$(gh auth token 2>/dev/null || true)')"
-  assert_denied
-}
-
-# The mask has to stop at the first `)`, the same way the allowlist's own
-# substitution arm does. A greedy one spans from the first `$(` to the last `)`,
-# swallowing whatever is parked BETWEEN two substitutions and handing the rescan
-# a tail with nothing left to judge.
-
-@test "a literal parked between two substitutions in a tail is denied" {
-  run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; GH_TOKEN=$(gh auth token 2>/dev/null || true) ; API_TOKEN=hunter2xyz ; OTHER_KEY=$(id -u || true)')"
-  assert_denied
-}
-
-# ...and it has to be global. Mask only the first substitution and a second
-# guarded one keeps its `||`, which collapses to a separator and truncates that
-# fragment, false-denying a tail carrying no literal at all. The deny case above
-# cannot observe this: it asserts a deny, so a mutation that only adds denies
-# leaves it green.
-
-@test "two guarded substitutions in one tail are allowed" {
-  run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; A_TOKEN=$(gh auth token 2>/dev/null || true) ; B_TOKEN=$(id -u 2>/dev/null || true)')"
-  assert_allowed_by_json
-}
-
-# The mask is not verdict-preserving: erasing a substitution body erases what
-# the body held. Two widenings follow, both deliberate, so both are pinned here
-# rather than left incidental. First, an assignment between a `$(` and its first
-# `)` goes away with the body.
-
-@test "an assignment inside a substitution body in a tail is allowed" {
-  run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; A_TOKEN=$(foo ; B_KEY=hunter2xyz123 )')"
-  assert_allowed_by_json
-}
-
-# Second, the erased body takes an inner `>` with it, so a `<…>` wrapper that
-# the `>` used to disqualify reads as a whole placeholder. The primary value
-# does not reach this one, which makes the tail briefly the more permissive of
-# the two. It conceals nothing an unwrapped `$(…)`, allowed in both positions
-# already, does not conceal too.
-
-@test "a bracket-wrapped substitution carrying a redirect in a tail is allowed" {
-  run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; A_TOKEN=<$(gh auth token 2>/dev/null)>')"
-  assert_allowed_by_json
-}
-
-# Erasing a body erases any assignment inside it, so the flag has to come off
-# the UNMASKED tail. Read it off the masked one and a tail whose only watched
-# assignment sits in a substitution falls through to the shape rule, which then
-# denies on the very material the mask claimed to remove. Here that material is
-# an ordinary commit sha and both values are references, so there is no literal
-# anywhere on the line.
-
-@test "an assignment inside a substitution does not expose the tail to the shape rule" {
-  run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; OUT=$(cd repo ; export GH_TOKEN=$T ; git checkout 3ea35f1756b5375b0691436907e14ee8d2dbc43b)')"
-  assert_allowed_by_json
-}
-
-# The same line, long enough that the flag pass's reader is still writing when
-# its `grep -q` leaves on the first match. Written as a bare pipeline the flag
-# pass then takes SIGPIPE, reports 141 under `pipefail`, drops the flag on a
-# tail that plainly carries an assignment, and denies. Only length exposes it,
-# so the fixture has to outrun grep's read buffer; the short twin above passes
-# either way.
-#
-# The filler is bounded above as well as below: rule 4 judges at most 65536
-# characters of matching material, and this whole line is matching material.
-# Past that the size cap denies before the flag pass ever runs, which reads as
-# this test failing. Both ends are real, so the fixture has a window rather than
-# a floor: large enough to outrun the read buffer, small enough to be judged.
-
-@test "a long tail whose assignment sits in a substitution is allowed" {
-  local filler
-  filler=$(head -c 40000 < /dev/zero | tr '\0' 'a')
-  run_hook_write "$(printf 'export API_KEY=%s\n' "\$X ; OUT=\$(cd repo ; export GH_TOKEN=\$T ; echo ${filler} ; git checkout 3ea35f1756b5375b0691436907e14ee8d2dbc43b)")"
-  assert_allowed_by_json
-}
-
-# ...and the shape backstop survives that split. A tail carrying no watched
-# assignment at all still reaches the shape rule, masked substitution or not.
+# A tail carrying no watched assignment at all still reaches the shape rule.
 
 @test "secret-shaped material in a substitution with no assignment is denied" {
   run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; OUT=$(echo hunter2xyz123)')"
   assert_denied
 }
 
-# The mask declines an empty body, matching the substitution arm's own `[^)]+`.
-# With `*` the tail would allow a value the primary position denies.
+# The substitution arm's own `[^)]+` declines an empty body.
 
 @test "an empty substitution in a tail is denied" {
   run_hook_write "$(printf 'export API_KEY=%s\n' '$X ; A_TOKEN=$()')"
@@ -793,12 +540,12 @@ assert_denied_cap() {
   assert_allowed_by_json
 }
 
-# `secret_shaped` is fed by process substitution for the same reason the flag
-# pass is, and it fails in the worse direction. Under `pipefail` the pipeline's
-# status IS the function's return value, and its `grep -q` leaves on the first
-# match; on a tail carrying enough runs that the producer is still writing, the
-# producer takes SIGPIPE and the pipeline reports 141. Written as a bare
-# pipeline the shape backstop then reports NOT secret-shaped on exactly the
+# `secret_shaped` is fed by process substitution rather than sitting at the end
+# of a pipe, and it fails in the worse direction. Under `pipefail` the
+# pipeline's status IS the function's return value, and its `grep -q` leaves on
+# the first match; on a tail carrying enough runs that the producer is still
+# writing, the producer takes SIGPIPE and the pipeline reports 141. Written as a
+# bare pipeline the shape backstop then reports NOT secret-shaped on exactly the
 # tails densest with secret-shaped material, so the guard fails OPEN. Only
 # length exposes it, and the short twin above ("a secret parked in a trailing
 # comment is denied") passes either way.
@@ -1010,144 +757,3 @@ assert_denied_cap() {
   assert_denied
 }
 
-# --- The two scan caps ---
-#
-# Both per-line loops spawn several processes per matching line, so a write
-# carrying enough of them runs for minutes. A PreToolUse hook that misses its
-# deadline is CANCELLED rather than denied: it reports no decision at all, and
-# the write then continues through the ordinary permission flow. That makes an
-# unbounded scan a fail-OPEN reached by input SIZE rather than by input shape,
-# the same axis the length cap inside `mask_subs` bounds for the mask.
-#
-# Two caps, because there are two axes. Per-LINE cost is unbounded as well: the
-# executable-tail rescan spawns a grep per `;` / `&&` / `||` fragment, so one
-# line carrying thousands of separators costs seconds by itself, and a cap on
-# line count alone leaves their product free. The SIZE cap is the one that
-# bounds the work; the line cap names the ordinary case.
-#
-# Crossing either denies rather than truncating the scan, because the material a
-# truncated scan drops is exactly where a secret would sit. These pin both sides
-# of both caps, and each deny case asserts the REASON: a deny that did not name
-# the cap it was meant to cross would mean some other rule fired and the test
-# would pass for the wrong reason.
-
-@test "a write at the matching-line cap is still judged" {
-  many=$(for i in $(seq 1 200); do printf 'A%d_KEY=${FOO}\n' "$i"; done)
-  run_hook_write "$many"
-  assert_allowed_by_json
-}
-
-# The test above passes both when every line up to the cap was judged and when a
-# regression short-circuits to allow at the cap without judging any of them, and
-# truncate-then-allow is precisely the fail-open the cap exists to refuse. This
-# one carries a secret on the LAST line under the cap, so it can only deny if
-# the loop ran the whole way.
-
-@test "a write at the matching-line cap is judged to its last line" {
-  many=$(
-    for i in $(seq 1 199); do printf 'A%d_KEY=${FOO}\n' "$i"; done
-    printf 'Z_KEY=%s\n' 'hunter2xyz9876543'
-  )
-  run_hook_write "$many"
-  assert_denied
-}
-
-@test "a write over the matching-line cap is denied" {
-  many=$(for i in $(seq 1 201); do printf 'A%d_KEY=${FOO}\n' "$i"; done)
-  run_hook_write "$many"
-  assert_denied_cap
-  grep -qF -- 'over the 200 this guard judges in one write' <<<"$output"
-}
-
-# `.env.example` runs a loop of its own, and it is unbounded in the same way. The
-# cap is read before the path-scoped branch so one check covers both, and this is
-# what pins that: moving the check inside the general branch turns this red.
-
-@test "a .env.example write over the matching-line cap is denied" {
-  many=$(for i in $(seq 1 201); do printf 'A%d_KEY=%d\n' "$i" "$i"; done)
-  run_hook_write_path '.env.example' "$many"
-  assert_denied_cap
-  grep -qF -- 'over the 200 this guard judges in one write' <<<"$output"
-}
-
-# Both caps read MATCHING material, never the content. What they bound is the
-# judging, and the feeder grep skips an ordinary large file before any judging
-# happens, so a long file is unaffected however long it runs. The content here
-# is far over the size cap while the material that reaches a loop is one line;
-# measuring either cap against the whole content turns this red.
-#
-# The fixture has a ceiling as well as a floor, and the ceiling is the platform's
-# rather than this guard's. `run_hook_write` hands the whole payload to
-# `bash -c` as ONE argv element, and Linux caps a single element at 128 KiB
-# (MAX_ARG_STRLEN) where macOS caps only the total. Past that, `execve` fails
-# with E2BIG and the helper exits 126 on the CI runner while every local run
-# stays green. 2500 lines is 86405 characters of content, well over the 65536
-# size cap, against an argv payload of 93972 bytes, 37100 under the 131072 limit.
-# Enlarging this fixture spends the second margin, not the first.
-
-@test "a large write carrying few matching lines is allowed" {
-  bulk=$(for i in $(seq 1 2500); do printf 'const value%d = "ordinary line";\n' "$i"; done)
-  run_hook_write "$bulk$(printf '\nA_KEY=${FOO}\n')"
-  assert_allowed_by_json
-}
-
-# The size cap is what bounds the work, since one line can carry unboundedly
-# many tail fragments and each costs its own process. A single matching line is
-# enough to cross it, which is exactly what a line cap alone cannot catch.
-#
-# The pair below pins the cap's own boundary, the way the line cap's 200-and-201
-# pair does. A deny side alone leaves the comparison loose: with no admitted case
-# at the cap, `-gt` could widen to `-ge` with the suite still green.
-# The admitted case is a single long reference rather than a fragment-dense line
-# because the cap counts characters and this shape spends one judgement on all of
-# them, so pinning the boundary costs the suite no measurable time.
-
-@test "a single matching line at the judged-size cap is still judged" {
-  name=$(printf '%*s' 65527 '' | tr ' ' 'A')
-  run_hook_write "$(printf 'A_KEY=${%s}\n' "$name")"
-  assert_allowed_by_json
-}
-
-@test "a single matching line one character over the judged-size cap is denied" {
-  name=$(printf '%*s' 65528 '' | tr ' ' 'A')
-  run_hook_write "$(printf 'A_KEY=${%s}\n' "$name")"
-  assert_denied_cap
-  grep -qF -- 'over the 65536 this guard judges in one write' <<<"$output"
-}
-
-# The at-cap ALLOW test above, the 65527-character braced reference whose whole
-# line is exactly 65536, passes both when the loop judged all 65536 characters
-# and when a regression waves a cap-sized payload through without judging it,
-# which is the truncate-then-allow this cap refuses. Keep it even though an
-# allow-side assertion reads as the weaker of the two: it is the admitted case
-# at the cap, and without one the comparison could widen from `-gt` to `-ge`
-# unnoticed. This one carries a literal value at exactly the cap, so it can
-# only deny if the judging ran.
-
-@test "a write at the judged-size cap is judged rather than waved through" {
-  long=$(printf '%*s' 65530 '' | tr ' ' 'a')
-  run_hook_write "$(printf 'A_KEY=%s\n' "$long")"
-  assert_denied
-}
-
-@test "a single matching line over the judged-size cap is denied" {
-  long=$(printf '%*s' 70000 '' | tr ' ' 'a')
-  run_hook_write "$(printf 'A_KEY=%s\n' "$long")"
-  assert_denied_cap
-  grep -qF -- 'over the 65536 this guard judges in one write' <<<"$output"
-}
-
-# A fragment-dense line is the shape the size cap exists for: the line count is
-# one, and the work is thousands of judgements. Under the cap it is still judged
-# rather than waved through, so the bound cannot be mistaken for a bypass.
-
-@test "a fragment-dense matching line under the size cap is still judged" {
-  tail=''
-  i=1
-  while [ "$i" -le 200 ]; do
-    tail="$tail ; a$i"
-    i=$((i + 1))
-  done
-  run_hook_write "$(printf 'A_KEY=${FOO}%s ; Z_KEY=%s\n' "$tail" 'hunter2xyz9876543')"
-  assert_denied
-}

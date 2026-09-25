@@ -143,7 +143,7 @@ resolve() {
 # resolve_from <cwd> <dir>: process cwd=$1 (unrelated to $2), operand=$2.
 # Quote-safe delivery: positional args to an inner bash -c rather than
 # re-wrapping in an outer single-quoted string (mirrors
-# block-worktree-path-mismatch.bats's run_hook_edit_cwd).
+# block-worktree-path-mismatch.bats's run_staged_hook).
 resolve_from() {
   local cwd="$1" dir="$2"
   run bash -c 'cd "$1" && bash "$2" "$3" 2>/dev/null' _ "$cwd" "$LIB" "$dir"

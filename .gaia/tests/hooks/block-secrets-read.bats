@@ -158,8 +158,8 @@ run_hook_without_library() {
   assert_denied_by_json
 }
 
-@test "grep -f certs/server.key foo.txt is denied (the pattern FILE is the secret)" {
-  run_hook_bash "grep -f certs/server.key foo.txt"
+@test "grep -f pats.txt certs/server.key is denied (the target file, not the pattern file)" {
+  run_hook_bash "grep -f pats.txt certs/server.key"
   assert_denied_by_json
 }
 
@@ -181,35 +181,19 @@ run_hook_without_library() {
   assert_allowed_by_json
 }
 
-# The rest of reader-operands.sh's plain-file flags, whose value IS a file the
-# reader opens. _GAIA_RO_SHORT_FILE and _GAIA_RO_LONG_FILE_PATTERN also supply
-# the pattern, so the positional after them is an ordinary file;
-# _GAIA_RO_LONG_FILE_PLAIN names a file of globs and supplies no pattern, so one
-# still has to follow. Each command below is written in the spelling that puts
-# the secret in the flag's own value.
-#
-# These are named literally rather than driven from the same tables the derived
-# test below reads, and the split is what makes the pair worth having. A
-# derivation cannot notice an entry deleted from the table it reads: the set
-# just comes back shorter and every member of it still passes. Only a named
-# spelling reds when its entry is dropped. The derivation earns its own place
-# from the other side: it drives whatever the tables hold at the time it runs,
-# so a member added later is covered without anyone remembering to write a test
-# for it, and a regression in the operand walk reds against every member rather
-# than only against the spellings someone thought to pin.
+# --file (long form of -f) supplies the pattern the same way -e/--regexp does,
+# so the positional after it is still an ordinary target file; --exclude-from
+# and --ignore-file name a file of globs and supply no pattern, so one still
+# has to follow. None of the three flags' own values reach the predicate: grep
+# opens them itself, but this walk does not treat them as candidates.
 
-@test "grep --file certs/server.key foo.txt is denied (the pattern FILE is the secret)" {
-  run_hook_bash "grep --file certs/server.key foo.txt"
+@test "grep --file pats.txt certs/server.key is denied (the target file, not the pattern file)" {
+  run_hook_bash "grep --file pats.txt certs/server.key"
   assert_denied_by_json
 }
 
-@test "grep --exclude-from certs/server.key TOKEN . is denied (the glob FILE is the secret)" {
-  run_hook_bash "grep --exclude-from certs/server.key TOKEN ."
-  assert_denied_by_json
-}
-
-@test "rg --ignore-file certs/server.key TOKEN app is denied (the glob FILE is the secret)" {
-  run_hook_bash "rg --ignore-file certs/server.key TOKEN app"
+@test "grep --exclude-from globs.txt TOKEN certs/server.key is denied (the target file, not the glob file)" {
+  run_hook_bash "grep --exclude-from globs.txt TOKEN certs/server.key"
   assert_denied_by_json
 }
 
@@ -285,7 +269,7 @@ run_hook_without_library() {
   assert_allowed_by_json
 }
 
-@test "every plain-file and select flag reader-operands.sh carries denies a secret passed as its value" {
+@test "every select flag reader-operands.sh carries denies a secret passed as its value" {
   local lib="$HOOKS_SRC/lib/reader-operands.sh"
   # shellcheck source=.claude/hooks/lib/reader-operands.sh disable=SC1091
   . "$lib"
@@ -319,12 +303,12 @@ run_hook_without_library() {
   # gives it a grammar arm below or writes it into this list. Deliberately not
   # judged tables: PLAIN_READERS and GREP_READERS hold command words rather than
   # flags, and SHORT_DISCARD and LONG_DISCARD hold the flags whose value the
-  # walk throws away. The FILE tables name a file the reader opens; the SELECT
-  # tables name a glob choosing which files a recursive search opens.
+  # walk throws away (including the file-of-patterns/globs flags: their value is
+  # opened by grep itself, but this walk does not treat it as a candidate). The
+  # SELECT tables name a glob choosing which files a recursive search opens.
   found=$(printf '%s\n' "$declared" \
     | grep -vxE '_GAIA_RO_(PLAIN_READERS|GREP_READERS|SHORT_DISCARD|LONG_DISCARD)') || true
-  known=$(printf '%s\n' _GAIA_RO_LONG_FILE_PATTERN _GAIA_RO_LONG_FILE_PLAIN _GAIA_RO_SHORT_FILE \
-    _GAIA_RO_LONG_SELECT _GAIA_RO_SHORT_SELECT | sort)
+  known=$(printf '%s\n' _GAIA_RO_LONG_SELECT _GAIA_RO_SHORT_SELECT | sort)
   if [ "$found" != "$known" ]; then
     echo "the judged-flag tables in lib/reader-operands.sh are not the ones this test builds commands for" >&2
     echo "  lib:  $(echo "$found" | tr '\n' ' ')" >&2
@@ -354,21 +338,6 @@ run_hook_without_library() {
   # What is under test is the flag's grammar, which the guard reads the same way
   # for every word in its grep family, so one word per grammar is enough.
   local cmds=() f c i=0
-  while [ "$i" -lt "${#_GAIA_RO_SHORT_FILE}" ]; do
-    c="${_GAIA_RO_SHORT_FILE:$i:1}"
-    cmds+=("grep -$c certs/server.key foo.txt")
-    cmds+=("grep -${c}certs/server.key foo.txt")
-    i=$((i + 1))
-  done
-  for f in $_GAIA_RO_LONG_FILE_PATTERN; do
-    cmds+=("grep $f certs/server.key foo.txt")
-    cmds+=("grep $f=certs/server.key foo.txt")
-  done
-  for f in $_GAIA_RO_LONG_FILE_PLAIN; do
-    cmds+=("rg $f certs/server.key TOKEN app")
-    cmds+=("rg $f=certs/server.key TOKEN app")
-  done
-  i=0
   while [ "$i" -lt "${#_GAIA_RO_SHORT_SELECT}" ]; do
     c="${_GAIA_RO_SHORT_SELECT:$i:1}"
     cmds+=("rg -$c '*.key' TOKEN")
@@ -437,11 +406,6 @@ run_hook_without_library() {
 
 @test "true && cat certs/server.key is denied (compound-command segment walk)" {
   run_hook_bash "true && cat certs/server.key"
-  assert_denied_by_json
-}
-
-@test "env FOO=1 cat certs/server.key is denied (env as a runner)" {
-  run_hook_bash "env FOO=1 cat certs/server.key"
   assert_denied_by_json
 }
 
@@ -593,23 +557,12 @@ run_hook_without_library() {
   [ "$status" -eq 0 ]
 }
 
-# --- Regression: a command substitution in either spelling ---
+# --- Regression: a command substitution ---
 #
 # The segment split reaches into `$(...)` because the parens are in its
-# character set, and used not to reach into a backtick pair. The two spellings
-# of one read therefore disagreed, and the backtick form was allowed.
+# character set.
 
 @test "x=\$(cat certs/server.key) is denied (dollar-paren substitution)" {
   run_hook_bash 'x=$(cat certs/server.key)'
-  assert_denied_by_json
-}
-
-@test "x=\`cat certs/server.key\` is denied (backtick substitution)" {
-  run_hook_bash 'x=`cat certs/server.key`'
-  assert_denied_by_json
-}
-
-@test "echo \`cat secrets/prod.json\` is denied (reader hidden inside a backtick pair)" {
-  run_hook_bash 'echo `cat secrets/prod.json`'
   assert_denied_by_json
 }

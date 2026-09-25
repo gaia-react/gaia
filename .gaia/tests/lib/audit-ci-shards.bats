@@ -959,8 +959,8 @@ assert_checker_is_content_blind() {
 # would report `ok ... # skip` for each of them and green the job with the
 # shard-list invariant retired. This test is what makes that weakening red.
 # Same shape as the sibling gates' own proving tests in
-# workflow-filter-coverage.bats, retrigger-reachability.bats, and
-# block-invalid-yaml-write.bats. Not itself gated.
+# workflow-filter-coverage.bats and retrigger-reachability.bats. Not itself
+# gated.
 
 @test "the parser gate fails on a CI runner and still skips off CI" {
   local shim="$BATS_TEST_TMPDIR/no-parser" rc

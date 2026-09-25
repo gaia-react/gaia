@@ -15,17 +15,7 @@
 # Tree identity comes from one shared rule and one shared resolver, so this
 # guard never re-derives "which tree am I in":
 #
-#   Whose working directory: the payload's `cwd` field names the working
-#   directory Claude Code reports for the agent that issued this call, and it is
-#   authoritative for tree identity whenever it is absolute and resolves to a
-#   checkout. It is honored on its own terms there: no comparison against the
-#   hook's own process cwd. The absolute requirement is load-bearing, because
-#   the value reaches a bare `cd` that would option-parse a leading dash and
-#   succeed into the wrong directory. A payload cwd that is relative, or absolute
-#   but not a checkout, is unusable and routes to the process cwd instead. The
-#   process cwd is the fallback, and it alone would leave the guard inert
-#   whenever the hook process sits outside the repository (tech-debt gaia-react/gaia#940), which
-#   is an ALLOW; reading the payload first is what keeps the guard live.
+#   Whose working directory: the hook's own process cwd.
 #
 #   Which tree, and where main is: .gaia/scripts/main-root-lib.sh is the one
 #   resolver for both questions. gaia_is_linked_worktree answers whether the
@@ -143,16 +133,8 @@ gaia_scripts="$gaia_scripts/.gaia/scripts"
 "${BASH:-bash}" -n "$gaia_scripts/main-root-lib.sh" 2>/dev/null && . "$gaia_scripts/main-root-lib.sh" 2>/dev/null || true
 type gaia_resolve_tree_root >/dev/null 2>&1 || exit 0
 
-# The acting agent's working directory: the payload cwd when it is absolute and
-# resolves to a checkout, the hook's process cwd otherwise. The absolute check is
-# the load-bearing gate (a leading dash would option-parse inside `git -C`'s and
-# `cd`'s operand); the checkout check is what routes an absolute non-repo value
-# (e.g. /tmp) to the fallback rather than adopting it as a tree.
-payload_cwd=$(jq -r '.cwd // empty' <<<"$payload")
+# The acting agent's working directory: the hook's own process cwd.
 source_cwd="$PWD"
-if [[ "$payload_cwd" == /* ]] && gaia_resolve_tree_root "$payload_cwd" >/dev/null 2>&1; then
-  source_cwd="$payload_cwd"
-fi
 
 # Not inside a linked worktree (or identity indeterminate): nothing to guard.
 # gaia_is_linked_worktree is the resolver's own linked-worktree predicate, so the

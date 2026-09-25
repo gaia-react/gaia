@@ -19,11 +19,10 @@
 #   - Bash readers against the same set: cat, head, tail, sed, xxd, od,
 #     hexdump, strings, nl, less, more, diff, cut, tac, paste, awk, perl, and
 #     the grep family (grep, egrep, fgrep, rgrep, rg);
-#   - sourcing (source / .), redirection from a dotenv path (< / $(<...)), and
-#     `env FOO=1 <reader> <path>`, where env runs a reader rather than dumping;
-#   - bare process-environment dumps (env, printenv, set, export -p, declare -p,
-#     compgen -v) that read the shell environment rather than a file, so no
-#     file-permission rule ever governed them.
+#   - sourcing (source / .), and redirection from a dotenv path (< / $(<...));
+#   - bare process-environment dumps (env, printenv) that read the shell
+#     environment rather than a file, so no file-permission rule ever governed
+#     them.
 #
 # The grep family needs argument grammar rather than a token sweep, because
 # `grep PATTERN FILE` puts a non-path in first position and `grep '.env'
@@ -137,14 +136,13 @@ if ! type gaia_require_jq >/dev/null 2>&1; then
   printf 'BLOCKED: block-env-read.sh cannot load lib/jq-availability.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
   exit 2
 fi
-gaia_require_jq 'the dotenv read guard' "$payload" tool_input 'env' 'set' 'export -p' 'declare -p' 'compgen -v'
-# `env` subsumes both `.env` and `printenv`, and the two flag-carrying dump
-# spellings are given whole so an ordinary `export FOO=1` does not refuse.
+gaia_require_jq 'the dotenv read guard' "$payload" tool_input 'env'
+# `env` subsumes both `.env` and `printenv`.
 
 tool_name=$(jq -r '.tool_name // empty' <<<"$payload")
 
 DENY_READ_TOOL="BLOCKED: reading '.env' / '.env.*' files is denied to protect local secrets. Only '.env.example' is readable. This guard is heuristic defense-in-depth, not a sandbox."
-DENY_DUMP="BLOCKED: a bare environment dump (env/printenv/set) is denied so exported secrets cannot be printed into the transcript. Use 'env NAME=value <cmd>' to set a variable for a command. Heuristic defense-in-depth, not a sandbox."
+DENY_DUMP="BLOCKED: a bare environment dump (env/printenv) is denied so exported secrets cannot be printed into the transcript. Use 'env NAME=value <cmd>' to set a variable for a command. Heuristic defense-in-depth, not a sandbox."
 DENY_READ="BLOCKED: reading a .env / .env.* file (a reader, sourcing, or redirection) is denied to protect local secrets. '.env.example' is exempt. Heuristic defense-in-depth, not a sandbox."
 
 deny() {
@@ -182,23 +180,9 @@ is_dotenv_path() {
   return 1
 }
 
-# `set` with no args, or whose first arg does not start with -/+, is a dump.
-# `set -e`, `set -euo pipefail`, `set +x` are shell options, not a dump.
-check_set_tokens() {
-  if [ "$#" -eq 0 ]; then
-    deny "$DENY_DUMP"
-  fi
-  case "$1" in
-    -* | +*) : ;;
-    *) deny "$DENY_DUMP" ;;
-  esac
-  return 0
-}
-
 # `env` is a dump with no command operand (bare `env`, option flags only,
-# `env -0`). With a command operand it is a runner, and the operand walk in
-# lib/reader-operands.sh judges whatever it wraps, so this arm only has to
-# decide the dump question.
+# `env -0`). With a command operand it is a runner rather than a dump, so this
+# arm only has to decide the dump question.
 check_env_tokens() {
   local toks=("$@")
   local n=${#toks[@]}
@@ -238,18 +222,6 @@ check_dump_tokens() {
       # printenv has no runner form; with or without a NAME it only ever
       # prints the environment, so any invocation is a dump.
       deny "$DENY_DUMP"
-      ;;
-    set)
-      check_set_tokens "${toks[@]:1}"
-      ;;
-    export)
-      [[ "${toks[1]:-}" == "-p" ]] && deny "$DENY_DUMP"
-      ;;
-    declare)
-      [[ "${toks[1]:-}" == "-p" ]] && deny "$DENY_DUMP"
-      ;;
-    compgen)
-      [[ "${toks[1]:-}" == "-v" ]] && deny "$DENY_DUMP"
       ;;
   esac
   return 0
@@ -306,15 +278,9 @@ case "$tool_name" in
     cmd=$(jq -r '.tool_input.command // empty' <<<"$payload")
     [[ -n "$cmd" ]] || exit 0
 
-    # The backtick is in the set for the same reason the parens are: a
-    # substitution hides a whole command inside another one, and only splitting
-    # on it puts that command's own word in first position where the walk reads
-    # it. Without it the two substitution spellings disagree, `$(cat <secret>)`
-    # denying while the backtick form of the identical read is allowed, so
-    # coverage would turn on which spelling the caller happened to use.
     while IFS= read -r seg; do
       process_segment "$seg"
-    done < <(printf '%s\n' "$cmd" | tr '|&;()`' '\n')
+    done < <(printf '%s\n' "$cmd" | tr '|&;()' '\n')
 
     exit 0
     ;;

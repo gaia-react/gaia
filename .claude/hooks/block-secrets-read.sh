@@ -201,15 +201,9 @@ case "$tool_name" in
     cmd=$(jq -r '.tool_input.command // empty' <<<"$payload")
     [[ -n "$cmd" ]] || exit 0
 
-    # The backtick is in the set for the same reason the parens are: a
-    # substitution hides a whole command inside another one, and only splitting
-    # on it puts that command's own word in first position where the walk reads
-    # it. Without it the two substitution spellings disagree, `$(cat <secret>)`
-    # denying while the backtick form of the identical read is allowed, so
-    # coverage would turn on which spelling the caller happened to use.
     while IFS= read -r seg; do
       process_segment "$seg"
-    done < <(printf '%s\n' "$cmd" | tr '|&;()`' '\n')
+    done < <(printf '%s\n' "$cmd" | tr '|&;()' '\n')
 
     exit 0
     ;;

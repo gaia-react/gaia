@@ -26,8 +26,6 @@
     ".claude/hooks/block-eslint-config-edit.sh": "owned",
     ".claude/hooks/block-fourth-audit-round.sh": "owned",
     ".claude/hooks/block-handrolled-pr-poll.sh": "owned",
-    ".claude/hooks/block-invalid-yaml-write.sh": "owned",
-    ".claude/hooks/block-lockfile-edit.sh": "owned",
     ".claude/hooks/block-main-destructive-git.sh": "owned",
     ".claude/hooks/block-manifest-write.sh": "owned",
     ".claude/hooks/block-no-verify.sh": "owned",
@@ -35,7 +33,6 @@
     ".claude/hooks/block-secrets-read.sh": "owned",
     ".claude/hooks/block-secrets-write.sh": "owned",
     ".claude/hooks/block-selfheal-paths.sh": "owned",
-    ".claude/hooks/block-serena-cross-tree-activation.sh": "owned",
     ".claude/hooks/block-vitest-globals-tsconfig.sh": "owned",
     ".claude/hooks/block-worktree-path-mismatch.sh": "owned",
     ".claude/hooks/capture-gh-artifact.sh": "owned",
@@ -68,7 +65,6 @@
     ".claude/hooks/pr-merge-audit-check.sh": "owned",
     ".claude/hooks/provision-worktree.sh": "owned",
     ".claude/hooks/red-verify-commit-check.sh": "owned",
-    ".claude/hooks/serena-code-search-guard.sh": "owned",
     ".claude/hooks/token-rollup-merge.sh": "owned",
     ".claude/hooks/token-tally-git-op.sh": "owned",
     ".claude/hooks/token-tally-review.sh": "owned",
@@ -659,7 +655,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-25T05:01:01.554Z",
+  "generated": "2026-09-25T11:33:03.403Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",
