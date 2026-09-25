@@ -61,14 +61,14 @@
 # gaia_registry_drop_zones
 #   Prints, one per line in registry order as `path<TAB>match` (match one of
 #   "exact"/"glob"/"prefix"), the .gaia/local-relative structural directories
-#   the janitor's empty-dir sweep must preserve even when momentarily empty
+#   a caller pruning empty dirs must preserve even when momentarily empty
 #   (the drop_zones the registry declares). A caller tests each empty dir's
 #   relpath against these rows via _gaia_registry_pattern_matches -- the same
 #   matcher gaia_registry_recognizes/gaia_registry_classify use -- never a
 #   hand-rolled string test, so a keyed per-tree child (e.g.
 #   red-ledger/<tree_key>/, declared as a glob row) is recognized alongside a
-#   bare literal container. Derived from the registry, never hardcoded in the
-#   janitor. Prints nothing and returns 1 when the registry cannot be read
+#   bare literal container. Derived from the registry, never hardcoded in a
+#   caller. Prints nothing and returns 1 when the registry cannot be read
 #   (see gaia_registry_path), so a caller failing to read the list keeps
 #   every empty dir rather than rmdir a structural directory it could not
 #   classify.

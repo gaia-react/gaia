@@ -215,7 +215,7 @@
       "keyed_by": null,
       "why": "The plan folder stays in the main checkout by contract; worktree-mode orchestrators write PROGRESS.md back to main.",
       "writer": "code",
-      "reaped_by": null,
+      "reaped_by": "plan-close (plan-archive-merged.sh --close)",
       "source": "SPEC-061 §main-only"
     },
     {

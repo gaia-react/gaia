@@ -160,7 +160,7 @@ wiki_catchup_state_unset() {
   return 0
 }
 
-# --- 1. Merged-and-gone wiki-sync branches ---------------------------------
+# --- Half A: merged-and-gone wiki-sync branches ---------------------------
 # Git-scoped: independent of .gaia/local, so a fresh clone carrying an
 # orphaned wiki-sync branch is still swept before any .gaia/local exists.
 # List every local branch with its upstream-track state. `[gone]` only
@@ -231,7 +231,7 @@ EOF
 fi
 
 if [ "$wiki_sync_present" -eq 1 ]; then
-  # Knobs, the janitor's shipped clamp idiom. `0` is special-cased on BOTH knobs before the floor
+  # Knobs, floor-clamped. `0` is special-cased on BOTH knobs before the floor
   # clamp, but means something different on each: the timeout knob's `0`
   # disables the fetch outright, while the min-interval knob's `0` removes the
   # rate limit rather than disabling anything -- a `0` swallowed by the floor

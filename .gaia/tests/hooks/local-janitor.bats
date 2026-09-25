@@ -952,7 +952,7 @@ plant_shadowing_tag() {
   # so wiki-sync/*'s upstream is never mapped to a local tracking ref at all
   # -- %(upstream:track) reads empty, not "[gone]", for a ref outside that
   # refspec. The reap loop's own `[ "$track" = "[gone]" ] || continue` gate
-  # (line 390, .claude/hooks/local-janitor.sh) then never treats it as a reap
+  # (.claude/hooks/local-janitor.sh) then never treats it as a reap
   # candidate, so it survives untouched: the "degrades without error" case
   # for this fixture is skip, not delete.
   git -C "$shallow" rev-parse --verify --quiet "refs/heads/$br" >/dev/null 2>&1 || return 1
