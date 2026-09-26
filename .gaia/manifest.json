@@ -564,7 +564,6 @@
     "wiki/concepts/Git Workflow.md": "wiki-owned",
     "wiki/concepts/GitHub Labels.md": "wiki-owned",
     "wiki/concepts/Incremental CI Skipping.md": "wiki-owned",
-    "wiki/concepts/Issue Claim.md": "wiki-owned",
     "wiki/concepts/Local Working State.md": "wiki-owned",
     "wiki/concepts/OS Sandbox.md": "wiki-owned",
     "wiki/concepts/Policy-Memory Loop.md": "wiki-owned",
@@ -652,7 +651,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-26T03:01:25.730Z",
+  "generated": "2026-09-26T03:46:06.135Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

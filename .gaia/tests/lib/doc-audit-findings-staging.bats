@@ -43,8 +43,8 @@
 #
 # Nothing type-checks an agent spec and no runtime assertion fires when a
 # prescribed command drifts, so this suite is the mechanism, following
-# `doc-debt-query.bats` and `doc-issue-claim-parity.bats` in this
-# directory: grep for frozen literals, ground-truthed against the source text.
+# `doc-debt-query.bats` in this directory: grep for frozen literals,
+# ground-truthed against the source text.
 #
 # The roster comes from the `code-audit-*.md` glob rather than a hardcoded
 # list, so a sixth member joins the guard by existing. The **first `@test`**
