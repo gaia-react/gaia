@@ -48,7 +48,7 @@
 # the tree is claimed. `.gaia/scripts/**/*.sh` and `.gaia/tests/**/*.sh` hold
 # further command-position awk sites in files that do not source
 # guard-awk-lib.sh (verify-audit-roster.sh, check-audit-base-derivation.sh,
-# lint-hook-array-guard.sh, audit-respawn-prune.sh, lib/serena-lang.sh,
+# lint-hook-array-guard.sh, lib/serena-lang.sh,
 # shell-lint.sh itself, among others). A substantial minority of them carry
 # no .gaia/release-exclude entry and ship, where this resolver must not
 # exist at all. Widening the surface to reach them would be a re-decision,

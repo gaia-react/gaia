@@ -6,8 +6,7 @@
 # expected output, or a captured thin return), it prints `real`/`noop` and
 # exits 0/1 accordingly, or 2 on a usage error. This suite covers every
 # FC-2 shape's REAL fixture and its absent/malformed/reminder-echo fixture
-# (UAT-001/UAT-007), plus the `--audit-md` companion check and the usage-
-# error paths.
+# (UAT-001/UAT-007), plus the usage-error paths.
 #
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
@@ -44,155 +43,6 @@ setup() {
 @test "usage error: no arguments exits 2" {
   run "$SCRIPT"
   [ "$status" -eq 2 ]
-}
-
-# spec-selfreview-file (file-backed)
-
-@test "spec-selfreview-file: bare top-level array is REAL" {
-  run "$SCRIPT" --shape spec-selfreview-file --path "$FIX/spec-selfreview/real-array.json"
-  [ "$status" -eq 0 ]
-  [ "$output" = "real" ]
-}
-
-@test "spec-selfreview-file: object with .findings array is REAL" {
-  run "$SCRIPT" --shape spec-selfreview-file --path "$FIX/spec-selfreview/real-findings-obj.json"
-  [ "$status" -eq 0 ]
-  [ "$output" = "real" ]
-}
-
-@test "spec-selfreview-file: wrong shape is NO-OP" {
-  run "$SCRIPT" --shape spec-selfreview-file --path "$FIX/spec-selfreview/malformed.json"
-  [ "$status" -eq 1 ]
-  [ "$output" = "noop" ]
-}
-
-@test "spec-selfreview-file: absent path is NO-OP" {
-  run "$SCRIPT" --shape spec-selfreview-file --path "$FIX/spec-selfreview/does-not-exist.json"
-  [ "$status" -eq 1 ]
-  [ "$output" = "noop" ]
-}
-
-# spec-findings-file (file-backed) -- covers both 7a lens and completeness critic
-
-@test "spec-findings-file: non-empty .findings array is REAL" {
-  run "$SCRIPT" --shape spec-findings-file --path "$FIX/spec-findings/real.json"
-  [ "$status" -eq 0 ]
-  [ "$output" = "real" ]
-}
-
-@test "spec-findings-file: EMPTY .findings array is REAL (a lens that found nothing still writes one)" {
-  run "$SCRIPT" --shape spec-findings-file --path "$FIX/spec-findings/real-empty.json"
-  [ "$status" -eq 0 ]
-  [ "$output" = "real" ]
-}
-
-@test "spec-findings-file: missing .findings key is NO-OP" {
-  run "$SCRIPT" --shape spec-findings-file --path "$FIX/spec-findings/malformed.json"
-  [ "$status" -eq 1 ]
-  [ "$output" = "noop" ]
-}
-
-@test "spec-findings-file: absent path is NO-OP" {
-  run "$SCRIPT" --shape spec-findings-file --path "$FIX/spec-findings/does-not-exist.json"
-  [ "$status" -eq 1 ]
-  [ "$output" = "noop" ]
-}
-
-# spec-verdict-file (file-backed) -- covers both 7b refuter and the
-# completeness-critic refuter (identical shape)
-
-@test "spec-verdict-file: confirmed is REAL" {
-  run "$SCRIPT" --shape spec-verdict-file --path "$FIX/spec-verdict/real-confirmed.json"
-  [ "$status" -eq 0 ]
-  [ "$output" = "real" ]
-}
-
-@test "spec-verdict-file: partial is REAL" {
-  run "$SCRIPT" --shape spec-verdict-file --path "$FIX/spec-verdict/real-partial.json"
-  [ "$status" -eq 0 ]
-  [ "$output" = "real" ]
-}
-
-@test "spec-verdict-file: refuted is REAL" {
-  run "$SCRIPT" --shape spec-verdict-file --path "$FIX/spec-verdict/real-refuted.json"
-  [ "$status" -eq 0 ]
-  [ "$output" = "real" ]
-}
-
-@test "spec-verdict-file: unrecognized verdict token is NO-OP" {
-  run "$SCRIPT" --shape spec-verdict-file --path "$FIX/spec-verdict/malformed.json"
-  [ "$status" -eq 1 ]
-  [ "$output" = "noop" ]
-}
-
-@test "spec-verdict-file: absent path is NO-OP" {
-  run "$SCRIPT" --shape spec-verdict-file --path "$FIX/spec-verdict/does-not-exist.json"
-  [ "$status" -eq 1 ]
-  [ "$output" = "noop" ]
-}
-
-# applier-summary (return-conformance) -- optional --audit-md companion check
-
-@test "applier-summary: .counts present is REAL" {
-  run "$SCRIPT" --shape applier-summary --path "$FIX/applier-summary/real-counts.json"
-  [ "$status" -eq 0 ]
-  [ "$output" = "real" ]
-}
-
-@test "applier-summary: .folded present is REAL" {
-  run "$SCRIPT" --shape applier-summary --path "$FIX/applier-summary/real-folded.json"
-  [ "$status" -eq 0 ]
-  [ "$output" = "real" ]
-}
-
-@test "applier-summary: neither .counts nor .folded is NO-OP" {
-  run "$SCRIPT" --shape applier-summary --path "$FIX/applier-summary/malformed.json"
-  [ "$status" -eq 1 ]
-  [ "$output" = "noop" ]
-}
-
-@test "applier-summary: harness-reminder-echo return is NO-OP" {
-  run "$SCRIPT" --shape applier-summary --path "$FIX/shared/reminder-echo.txt"
-  [ "$status" -eq 1 ]
-  [ "$output" = "noop" ]
-}
-
-@test "applier-summary: --audit-md present + existing AUDIT.md is REAL" {
-  run "$SCRIPT" --shape applier-summary --path "$FIX/applier-summary/real-counts.json" --audit-md "$FIX/applier-summary/AUDIT.md"
-  [ "$status" -eq 0 ]
-  [ "$output" = "real" ]
-}
-
-@test "applier-summary: --audit-md present but AUDIT.md missing is NO-OP" {
-  run "$SCRIPT" --shape applier-summary --path "$FIX/applier-summary/real-counts.json" --audit-md "$FIX/applier-summary/does-not-exist.md"
-  [ "$status" -eq 1 ]
-  [ "$output" = "noop" ]
-}
-
-@test "applier-summary: --audit-md is ignored for other shapes (no crash, no false gate)" {
-  run "$SCRIPT" --shape plan-findings --path "$FIX/plan-findings/real.json" --audit-md "$FIX/applier-summary/does-not-exist.md"
-  [ "$status" -eq 0 ]
-  [ "$output" = "real" ]
-}
-
-# plan-findings (return-conformance)
-
-@test "plan-findings: .dimension + .findings array is REAL" {
-  run "$SCRIPT" --shape plan-findings --path "$FIX/plan-findings/real.json"
-  [ "$status" -eq 0 ]
-  [ "$output" = "real" ]
-}
-
-@test "plan-findings: missing .findings is NO-OP" {
-  run "$SCRIPT" --shape plan-findings --path "$FIX/plan-findings/malformed.json"
-  [ "$status" -eq 1 ]
-  [ "$output" = "noop" ]
-}
-
-@test "plan-findings: harness-reminder-echo return is NO-OP" {
-  run "$SCRIPT" --shape plan-findings --path "$FIX/shared/reminder-echo.txt"
-  [ "$status" -eq 1 ]
-  [ "$output" = "noop" ]
 }
 
 # cra-specialist (return-conformance)
@@ -1227,7 +1077,7 @@ _noop_resolve_marker() {
   [ "$status" -eq 2 ]
 
   # Every other shape still requires --path.
-  run "$SCRIPT" --shape spec-findings-file
+  run "$SCRIPT" --shape agent-report-file
   [ "$status" -eq 2 ]
 }
 
@@ -1235,8 +1085,7 @@ _noop_resolve_marker() {
 # composed at the point of need.
 #
 # The shape separates "the agent wrote nothing" from "the agent wrote an empty
-# answer", so an empty report is REAL for the same reason spec-findings-file's
-# empty findings array is. Without that separation an absent report is
+# answer", so an empty report is REAL. Without that separation an absent report is
 # indistinguishable from a clean result, and the likeliest reading of a missing
 # report is the one a caller must not draw, so the failure is biased toward
 # false confidence (gaia-react/gaia#1409).
@@ -1388,7 +1237,7 @@ _noop_resolve_marker() {
 }
 
 @test "agent-report-file: the count flags are ignored for other shapes (no crash, no false gate)" {
-  run "$SCRIPT" --shape spec-findings-file --path "$FIX/spec-findings/real-empty.json" \
+  run "$SCRIPT" --shape cra-refuter --path "$FIX/cra-refuter/stands.txt" \
     --expect-count 18
   [ "$status" -eq 0 ]
   [ "$output" = "real" ]

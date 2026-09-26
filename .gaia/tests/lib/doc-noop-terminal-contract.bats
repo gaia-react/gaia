@@ -75,8 +75,6 @@ setup() {
     '.claude/agents/code-audit-frontend.md'
     '.gaia/cli/health/runbook.md'
     '.claude/rules/subagent-dispatch.md'
-    '.claude/skills/gaia/references/plan.md'
-    '.claude/skills/gaia/references/spec.md'
     'wiki/concepts/Code Review Audit Agent.md'
     'wiki/concepts/PR Merge Workflow.md'
   )
@@ -128,10 +126,10 @@ terminal_lines() {
 # Prints the terminal SENTENCE from each such line: the marker phrase through
 # the next sentence break. These surfaces write a whole paragraph on one line,
 # and every line stating an ending also names dispositions, file paths, and
-# breadcrumbs further along it. A whole-line read is therefore satisfied by the
-# word `inline` appearing anywhere on the paragraph, including inside an
-# unrelated `inline_fallback` disposition value, which greens a sentence whose
-# ending was rewritten to something else entirely.
+# breadcrumbs further along it, some of which carry the word `inline` on their
+# own terms. A whole-line read is therefore satisfied by `inline` appearing
+# anywhere on the paragraph, which greens a sentence whose ending was
+# rewritten to something else entirely.
 #
 # Per OCCURRENCE rather than per line, for the same reason one step down: a
 # paragraph stating the ending twice, a drifted first sentence beside a still

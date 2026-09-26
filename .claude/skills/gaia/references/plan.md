@@ -414,14 +414,6 @@ Findings schema (each agent returns exactly this object):
       ]
     }
 
-**No-op detection, retry, and inline fallback (per lens).** After the fan-out returns, write each dispatched lens's returned findings JSON to a temp file and classify it with `bash .gaia/scripts/audit-noop-detect.sh --shape plan-findings --path <tempfile>` (exit 0 = real, exit 1 = no-op; the return is already thin, so nothing extra enters main's reasoning context). This is the return-conformance arm: 4.6a has no findings file to pre-clear, only the captured return. A lens the gate above never dispatched (SPEC coverage on a SPEC-less plan) is not-applicable, never classified as a no-op.
-
-On a no-op, re-dispatch that lens **exactly one** time, prepending this hardened retry prefix to its original prompt (`<target>` = the plan folder's `README.md` and `task-*.md`):
-
-    RETRY (hardened, one attempt only): Your very first action MUST be a Read of <target>. Emit no prose before that Read. Produce your structured output (the findings or verdict file this prompt names, or your returned digest if it names none) before any returned prose. Then perform the original task below exactly as written.
-
-A second consecutive no-op does not re-dispatch a third time; instead run that lens inline (the **inline fallback**): perform the lens's review yourself, producing the same findings JSON shape, and fold those findings into the 4.6b collection below so they re-enter the normal apply path exactly like a dispatched lens's findings. Record the degraded lens and its disposition (`retried_recovered` or `inline_fallback`) in the `## Audit notes` section (4.6b below).
-
 #### 4.6b. Apply findings
 
 Collect findings across all lenses. The plan is editable and unsaved-to-handoff, so applying a fix is just rewriting plan files, no ceremony.
@@ -430,8 +422,6 @@ Collect findings across all lenses. The plan is editable and unsaved-to-handoff,
 - **Structural findings** (the phase graph is wrong, tasks need re-factoring across phases): re-spawn the planner (step 4) with the surviving findings appended as a correction directive, rather than hand-patching the graph. This goes through the same `PLAN_DIR` and overwrites the flawed artifacts.
 
 **Interactive:** surface each material (non-`low`) finding to the user before applying (issue, evidence, recommendation; apply / keep / revise); apply `low` findings silently. **Auto-mode:** auto-apply unambiguous fixes; if a repair is ambiguous (more than one defensible fix), leave the plan unchanged and record the finding in a `## Audit notes` section appended to `README.md` so the orchestrator and user see it. If the audit re-spawned the planner, re-run step 4.5 against the regenerated folder before proceeding.
-
-**Degraded-coverage record (both modes).** Independent of the ambiguous-repair recording above, if any lens from 4.6a was retried or ran as an inline fallback, append one line per degraded lens to the same `## Audit notes` section in `README.md` (creating the section if it does not already exist), naming the lens and its disposition (`retried_recovered` or `inline_fallback`), so a reader can tell a clean lens from a degraded one. Write this line in interactive mode as well as auto-mode; it is not gated behind the auto-only ambiguous-repair branch above.
 
 **Close the audit window (cost-ledger breadcrumb).** The audit unit is now complete (findings applied, and any structural re-spawn resolved). Capture the end and write the FC-1 breadcrumb by sourcing the FC-5 lib and calling its single breadcrumb writer, to the feature-namespaced path. A spec-derived plan is namespaced by the SPEC id, not the plan-dir basename, so two SPECs planned concurrently never collide on one shared breadcrumb. Do not inline `jq -n` here, the write goes through `gaia_audit_window_write` so the same code path a unit test exercises is the one production runs:
 

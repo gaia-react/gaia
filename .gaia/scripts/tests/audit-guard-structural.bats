@@ -1,17 +1,18 @@
 #!/usr/bin/env bats
-# Structural + guard-line + schema tests for the SPEC-025 adversarial-audit
-# no-op guard (plan FC-3/FC-4/FC-5/FC-6/FC-7; see
-# .gaia/local/specs/SPEC-025/plan/README.md for the frozen contracts).
+# Structural + guard-line + schema tests for the adversarial-audit dispatch
+# prompts: the first-tool-call guard line's byte-identity across every
+# dispatch prompt (spec.md, plan.md, code-audit-frontend.md), the no-op
+# detection/retry/inline-fallback wiring that survives in
+# code-audit-frontend.md's own internal specialist/refuter fan-out, and the
+# absence of any machine-specific path.
 #
 # The detection predicate itself is deterministic and unit-tested by the
-# sibling suite `audit-noop-detect.bats` (Phase 1). The orchestration wiring
-# tested here, calling the predicate after each dispatch, retrying once,
-# falling back inline, is agent-executed instruction prose, not code, so it
-# cannot be exercised end-to-end; these assertions are structural: each
-# dispatch site's prose is grepped for the shared predicate, the exactly-one
-# retry, and the inline fallback (stronger than guard-line presence alone),
-# the guard line's byte-identity across every dispatch prompt, the
-# retry-prefix template, and the absence of any machine-specific path.
+# sibling suite `audit-noop-detect.bats`. The orchestration wiring still
+# tested here (code-audit-frontend.md's specialist and refuter dispatch
+# sites) is agent-executed instruction prose, not code, so it cannot be
+# exercised end-to-end; these assertions are structural: each site's prose is
+# grepped for the shared predicate, the exactly-one retry, and the inline
+# fallback (stronger than guard-line presence alone).
 #
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
@@ -132,52 +133,8 @@ assert_predicate_retry_fallback() {
   grep -qF -- "$GUARD_LINE" <<<"$content"
 }
 
-# 2. Predicate + one-retry + inline-fallback in each of the 9 FC-7 sites
-#    (Directive #8). Sites 3/4/5 are delimited by the `##### 7b-i/ii/iii`
-#    sub-headings; an empty section here is a real Phase-2 gap, not a
-#    fallback to a whole-7b grep.
-
-@test "wiring: spec.md 6a self-review site" {
-  content="$(section_between "$SPEC_MD" '^#### 6a' '^#### 6b')"
-  assert_section_nonempty "spec.md #### 6a" "$content"
-  assert_predicate_retry_fallback "$content"
-}
-
-@test "wiring: spec.md 7a lens site" {
-  content="$(section_between "$SPEC_MD" '^#### 7a' '^#### 7b')"
-  assert_section_nonempty "spec.md #### 7a" "$content"
-  assert_predicate_retry_fallback "$content"
-}
-
-@test "wiring: spec.md 7b-i refuter site" {
-  content="$(section_between "$SPEC_MD" '^##### 7b-i' '^##### 7b-ii')"
-  assert_section_nonempty "spec.md ##### 7b-i" "$content"
-  assert_predicate_retry_fallback "$content"
-}
-
-@test "wiring: spec.md 7b-ii Deep completeness-critic site" {
-  content="$(section_between "$SPEC_MD" '^##### 7b-ii' '^##### 7b-iii')"
-  assert_section_nonempty "spec.md ##### 7b-ii" "$content"
-  assert_predicate_retry_fallback "$content"
-}
-
-@test "wiring: spec.md 7b-iii completeness-critic refuter site" {
-  content="$(section_between "$SPEC_MD" '^##### 7b-iii' '^#### 7c')"
-  assert_section_nonempty "spec.md ##### 7b-iii" "$content"
-  assert_predicate_retry_fallback "$content"
-}
-
-@test "wiring: spec.md 7c applier site" {
-  content="$(section_between "$SPEC_MD" '^#### 7c' '^#### 7d')"
-  assert_section_nonempty "spec.md #### 7c" "$content"
-  assert_predicate_retry_fallback "$content"
-}
-
-@test "wiring: plan.md 4.6a decomposition-lens site" {
-  content="$(section_between "$PLAN_MD" '^#### 4.6a' '^#### 4.6b')"
-  assert_section_nonempty "plan.md #### 4.6a" "$content"
-  assert_predicate_retry_fallback "$content"
-}
+# 2. Predicate + one-retry + inline-fallback at code-audit-frontend.md's own
+#    internal specialist/refuter fan-out sites.
 
 @test "wiring: code-audit-frontend.md specialist dispatch site" {
   content="$(section_between "$CRA_MD" '^### How to run' '^### Knip findings')"
@@ -191,15 +148,7 @@ assert_predicate_retry_fallback() {
   assert_predicate_retry_fallback "$content"
 }
 
-# 2b. FC-4 retry-prefix template present in each edited file (UAT-002)
-
-@test "retry-prefix template embedded verbatim in spec.md" {
-  grep -qF -- "$RETRY_PREFIX" "$SPEC_MD"
-}
-
-@test "retry-prefix template embedded verbatim in plan.md" {
-  grep -qF -- "$RETRY_PREFIX" "$PLAN_MD"
-}
+# 2b. Retry-prefix template present in code-audit-frontend.md.
 
 @test "retry-prefix template embedded verbatim in code-audit-frontend.md" {
   grep -qF -- "$RETRY_PREFIX" "$CRA_MD"
@@ -213,14 +162,6 @@ assert_predicate_retry_fallback() {
 }
 
 # 5. The helper is referenced, not reinvented
-
-@test "helper reference: spec.md calls the real audit-noop-detect.sh path" {
-  grep -qF -- ".gaia/scripts/audit-noop-detect.sh" "$SPEC_MD"
-}
-
-@test "helper reference: plan.md calls the real audit-noop-detect.sh path" {
-  grep -qF -- ".gaia/scripts/audit-noop-detect.sh" "$PLAN_MD"
-}
 
 @test "helper reference: code-audit-frontend.md calls the real audit-noop-detect.sh path" {
   grep -qF -- ".gaia/scripts/audit-noop-detect.sh" "$CRA_MD"

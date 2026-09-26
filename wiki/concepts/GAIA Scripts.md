@@ -34,11 +34,7 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 | `audit-member-digest.sh` | yes | CI, audit hooks, agent definitions | Prints one Code Audit Team member's content digest, and exits non-zero printing nothing on any condition it cannot resolve. |
 | `audit-noop-detect.sh` | yes | `.claude/rules/subagent-dispatch.md`, the audit fan-out surfaces | Decides whether a dispatched agent's report artifact is a real result or a silent no-op. |
 | `audit-resolve-scope.sh` | yes | every Code Audit Team agent definition | Resolves a member's review scope in one command: diff bases, changed-file lists, the dirty-in-scope check, and the scope digest. |
-| `audit-respawn-lib.sh` | no | sourced | Shared reader and writer for the audit re-spawn ledger. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
-| `audit-respawn-prune.sh` | no | `wiki-session-start.sh` hook | Prunes aged rows out of the re-spawn ledger. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
-| `audit-respawn-report.sh` | no | by hand | Attribution query over the re-spawn ledger: which member was re-spawned, and against what. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `audit-scope-digest.sh` | yes | agent definitions, CI | Carries a member's own content digest between scope resolution and clearance write, the two Bash calls that must agree. |
-| `audit-scratch-dir.sh` | yes | agent definitions | Hands a member a per-run scratch directory when it needs real bytes on disk. |
 | `audit-window-lib.sh` | yes | sourced | Shared derivation of the audit window a run is accounted against. |
 | `audit-write-clearance.sh` | yes | agent definitions, CI | The one writer for every Code Audit Team clearance marker. |
 | `audit-write-findings.sh` | yes | agent definitions | The one writer for a member's findings sidecar, the report of record the merge workflow reads. |

@@ -14,13 +14,4 @@ _hook_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || exit 0
 # base fast-forward). Side-effect only; never blocks the session.
 [ -f "$_hook_dir/local-janitor.sh" ] && bash "$_hook_dir/local-janitor.sh" || true
 
-# gaia:maintainer-only:start
-# Bounded prune of the Code Audit Team re-spawn breadcrumb ledger: age-drops
-# records past the retention window and caps the file's line count. Side-effect
-# only; never blocks the session. The prune script is release-excluded, so this
-# block is maintainer-only and the scrub strips it from the shipped hook; the
-# guard keeps it inert on a maintainer clone that does not carry the script.
-[ -f "$_hook_dir/../../.gaia/scripts/audit-respawn-prune.sh" ] && bash "$_hook_dir/../../.gaia/scripts/audit-respawn-prune.sh" || true
-# gaia:maintainer-only:end
-
 exit 0

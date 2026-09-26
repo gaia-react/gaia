@@ -237,11 +237,9 @@ make_repo() {
   cp "$REPO_ROOT/.gaia/scripts/audit-member-digest.sh" "$dir/.gaia/scripts/"
   chmod +x "$dir/.gaia/scripts/audit-member-digest.sh"
   # The resolver refuses a --root that is not the tree it sits in, so every
-  # fixture carries its own copy, plus the capture script and the lib that
-  # script loads.
+  # fixture carries its own copy, plus the capture script it calls.
   cp "$REPO_ROOT/.gaia/scripts/audit-resolve-scope.sh" \
     "$REPO_ROOT/.gaia/scripts/audit-scope-digest.sh" \
-    "$REPO_ROOT/.gaia/scripts/audit-respawn-lib.sh" \
     "$dir/.gaia/scripts/"
   chmod +x "$dir/.gaia/scripts/audit-resolve-scope.sh" "$dir/.gaia/scripts/audit-scope-digest.sh"
   cp "$REPO_ROOT/.gaia/audit-ci.yml" "$dir/.gaia/"

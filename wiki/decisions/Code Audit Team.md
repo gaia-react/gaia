@@ -76,7 +76,7 @@ A clearance marker's content digest is computed over `git ls-tree HEAD`, while a
 
 The clean-tree invariant above composes with a second fact into an obligation neither states alone: establishing that a guard is not hollow means breaking the construct the guard names and watching its check go red, which needs real bytes on disk. The mutation therefore has to happen on a copy, and the only writable space a dispatched subagent is handed is the session scratchpad, which every member of one parallel wave shares. A member improvising a name there picks the name its siblings also pick, and one member's copy lands over another's. Neither direction of that overwrite announces itself: a pristine tree over a mutated one makes the mutation look like it did not red, which reads as a hollow assertion that is not there; a mutated tree over a pristine one reds a check that has nothing to do with the change under review.
 
-`.gaia/scripts/audit-scratch-dir.sh` mints the path instead, keyed on the audit key **plus** the member name, the pairing the findings sidecar already publishes under. The audit key alone is not enough, because every member of one wave resolves the same key; the member half is what makes the name wave-safe by construction. Each member's definition points at the helper in one line rather than describing a naming convention every member would have to re-derive. A member releases its own copy when it finishes; a copy a member died before releasing has no other reaper; see [[Local Working State]].
+Each member's definition instructs it to name its own scratch paths (mutation trees) with its own member name, so co-dispatched members never collide.
 
 ## Dispatch resolver
 
@@ -89,25 +89,13 @@ The gates are reactive: they deny, they never spawn. The pre-merge procedure res
 A claimant member with nothing to audit is never spawned, and if a stale caller spawns it anyway, it self-skips (its agent file carries the skip clause). The default member carries no self-skip: spawned, it runs a full review.
 
 <!-- gaia:maintainer-only:start -->
-### Re-spawn breadcrumbs
-
-`.gaia/scripts/audit-respawn-lib.sh` defines two record kinds sharing one ledger at `.gaia/local/telemetry/audit-respawn.jsonl`, discriminated by a `kind` field, at `schema` 2. A `spawn` record carries `schema`, `kind`, `ts`, `branch`, `head`, `merge_base`, `member`, `digest`, and `cleared`; nothing currently writes one. A `scope` record, appended by `.gaia/scripts/audit-scope-digest.sh` where a member resolves its review scope, carries `schema`, `kind`, `ts`, `branch`, `head`, `merge_base`, `member`, and `scope_digest` in place of the last two: it records the digest that member's clearance will attest to, before the review starts. `merge_base` is the merge-base of `refs/remotes/origin/main` and HEAD on both. A record with `schema` below 2, with no `kind`, or with an unexpected `schema` value is **pre-addition**: a reader treats it as a spawn record, and as unknown rather than false for every quantity the second kind introduced. That boundary is per-tree, not temporal, because `schema` is a property of the writing tree's own copy of `.gaia/scripts/audit-respawn-lib.sh` and a checkout on an older commit keeps appending the older shape into the same shared ledger.
-
-`.gaia/scripts/audit-respawn-report.sh` is the documented query over the accumulated ledger, `--since <days>` (default 30) and `--json`. It filters to spawn records first, groups them by branch and member, orders each group by timestamp, and reads every consecutive pair for whether the digest rotated, whether the merge-base advanced, and whether a clearance was lost. It reports `records`, `transitions`, `exposed_pairs`, `lost_clearances`, `peer_merge_respawns`, `own_change_respawns`, `peer_merge_rotations_upper`, `mid_flight_rotations`, and `mid_flight_undeterminable`. `peer_merge_respawns` is the headline, the single quantity a re-spawn caused by absorbing a peer's merge rather than the branch's own edits, and `own_change_respawns` is its complement; both are rotation-classified subsets of `lost_clearances`. `exposed_pairs` is the denominator that keeps a small headline honest: the in-window pairs whose earlier record reads `cleared: true`, the only pairs a lost clearance could have come from at all, so a zero beside it is a measured negative rather than an absence of evidence.
-
-**The two `mid_flight_*` quantities are keyed on different units, and neither is a subset of the other.** `mid_flight_rotations` is keyed on **scope** records: each pairs forward against the next spawn breadcrumb in its group and counts when that breadcrumb's `digest` differs from the scope record's `scope_digest`. That is a rotation landing while the member is still reviewing, the case `cleared` alone can never express, because a member mid-review has written no marker to lose. `mid_flight_undeterminable` is keyed on **spawn** records instead: an in-window spawn record counts when it is itself pre-addition or its nearest predecessor in the group is, which is a pair the reader cannot decide either way. A schema-2 spawn record whose nearest predecessor is another schema-2 spawn record is neither, since no member resolved a scope before it and nothing was left undecided. The text report prints a mixed-window note whenever `mid_flight_undeterminable` is non-zero, naming both the unit split and the fact that the window mixes pre-addition records with post-addition ones; the `--json` object carries the two counts and leaves the reading to the caller.
-
-Four caveats travel with the numbers wherever they are reported. A run that both absorbs main and lands its own edits counts as peer-merge, so within its class the count is an upper bound. The spawn pairing needs an observation taken while the member was cleared, so the count is a lower bound on total incidence. Attribution is a query over recorded facts, never a judgement the resolver makes, so refining the rule needs no ledger migration. And the later half of a mid-flight pair is the next spawn observation rather than the marker write itself, so `mid_flight_rotations` approximates the window it names rather than measuring it exactly.
-
-The ledger is registered in `.gaia/state-registry.json` at `scope: shared` and reaped by `.gaia/scripts/audit-respawn-prune.sh`, delegated from the SessionStart hook. Two arms bound it: an age window (`GAIA_AUDIT_RESPAWN_RETENTION_DAYS`, default 90, floored at 45) and a line cap (`GAIA_AUDIT_RESPAWN_MAX_RECORDS`, default 20000, floored at 1000). The cap trims only records the age window has already dropped, so retention never falls below the window no matter how busy the repository gets; a record the sweep cannot classify is kept, never dropped.
+### Clearance digest keying
 
 **The clearance digest stays keyed to tree content.** Keying the marker to the reviewed diff instead of the whole owned content is declined on measurement, not rejected on principle: every member already resolves a per-member base and the writer already accepts it as `--base`, so the input a diff-keyed digest would need is in hand and this is not a feasibility call. What the measurement says is that the failure the re-key repairs is too rare to pay for the surface it moves.
 
-The snapshot below is the durable artifact, not the ledger. The ledger is machine-local and gitignored, and the retention arms above reap it, so these figures cannot be re-derived later; they are recorded once, with the command that produced them. Two of them are ledger properties rather than report keys, and their derivations are in the block. A bats suite appended real rows by running the real dispatch resolver against a real checkout, so the pair count includes test-generated observations; whether to exclude them is open, and the contamination is stated here rather than silently corrected for.
+The figures below were measured once, over a 32-day window of recorded member dispatches (first record 2026-08-02T01:18:32Z, last 2026-09-02T03:19:13Z), and cannot be re-derived. A bats suite appended real rows by running the real dispatch resolver against a real checkout, so the pair count includes test-generated observations; the contamination is stated here rather than silently corrected for.
 
 ```text
-bash .gaia/scripts/audit-respawn-report.sh --since 32 --json
-
 window_days                   32
 since                         2026-08-01T03:20:16Z
 records                       2406
@@ -117,18 +105,6 @@ lost_clearances               57
 peer_merge_respawns           3
 own_change_respawns           54
 peer_merge_rotations_upper    20
-mid_flight_rotations          0
-mid_flight_undeterminable     2387
-
-Ledger properties, derived directly over
-.gaia/local/telemetry/audit-respawn.jsonl as "$LEDGER":
-
-  jq -rs 'map(.ts) | [min, max] | @tsv' "$LEDGER"
-    first record                2026-08-02T01:18:32Z
-    last record                 2026-09-02T03:19:13Z
-
-  jq -rs '(map(.ts | fromdateiso8601) | (max - min)) / 86400 | floor' "$LEDGER"
-    span, whole days            31
 ```
 
 Read against its denominator: 626 pairs were exposed to the failure at all, 57 of them lost a clearance, and 3 of those 57 are attributable to a peer's merge landing under an already-audited branch rather than to the branch's own edits. The remaining 54 are the branch's own content changing, which is the digest working as designed. Three peer-merge re-spawns across a month of real traffic is the rate the re-key would buy down, against the following surface.
@@ -141,9 +117,6 @@ Read against its denominator: 626 pairs were exposed to the failure at all, 57 o
 
 Orphaned and rotated are two different claims, and conflating them prices this surface wrong. Only a change to the digest recipe, the `gaia-audit-digest-v1` sentinel, `AUDIT_MACHINERY_PATHS`, or the roster moves the key space, and only then does an existing marker, trailer, or status become unfindable. Any edit to a machinery path rotates every member's digest once, exactly as any machinery change does, and re-dispatches every member in flight at that commit. A rotation is ordinary and self-healing; an orphaning is neither. The scope digest a member captures and the staleness check the clearance writer runs against it are both on the rotating side of that line: they read the recipe and never define it.
 
-The reopen condition is `mid_flight_rotations`, not the headline: it counts a rotation that lands between a member's scope resolution and its next spawn observation, which is the case tree-content keying actually costs a member something and the one the spawn pairing structurally cannot see. The threshold is the maintainer's call and is deliberately not written here. What is written is the trigger to look: the first report window sitting entirely inside post-addition records, which is the first window whose `mid_flight_undeterminable` reads zero. At the default 30-day window that is 2026-10-02, thirty days past the point the scope record enters the ledger; before then the quantity is diluted by trees still writing the older shape.
-
-That trigger is reachable only because of how the coverage quantity is scoped, and the scoping is load-bearing rather than an oversight. A spawn breadcrumb appends per considered member on every run that writes one, so a schema-2 spawn record following another schema-2 spawn record recurs whenever that happens; counting that pattern as undeterminable would leave the bucket unable to reach zero and the trigger unfirable. It counts as neither decidable nor undeterminable because no member resolved a scope before it, so there was never anything to decide.
 <!-- gaia:maintainer-only:end -->
 
 ## AND-aggregation at the merge gate

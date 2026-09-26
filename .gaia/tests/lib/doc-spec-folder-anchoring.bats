@@ -11,8 +11,8 @@
 # from a worktree therefore does not reach main -- it forks a second specs
 # tree inside the worktree. Three sites write the SPEC folder and must each
 # resolve main first: the preset's step-2 item 3 (mkdir + first SPEC.md copy),
-# and spec.md's 7d (AUDIT.md write) and 7c (the no-op guard's --audit-md
-# argument).
+# and spec.md's 7d (AUDIT.md write) and 7c (where the AUDIT.md path the
+# applier's report lands at is built).
 #
 # THE READ SIDE IS THE SAME CLASS. Once the writes land in main, a read that
 # still builds a relative `.gaia/local/specs` path looks into a tree that holds

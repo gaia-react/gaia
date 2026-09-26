@@ -32,10 +32,10 @@
 # Sidecar-only lower bound (DP-003 / COV-005): gaia_window_subset sums
 # DISPATCHED sidecars only (file_agent != "main"). An audit sub-agent that
 # runs main-inline (an applier / refuter / completeness fold in the main
-# transcript, the documented inline_fallback path) lands its tokens under
-# file_agent == "main" and is intentionally excluded, so the recorded
-# subtotal is a LOWER BOUND of the audited unit on that path. This is by
-# design (inline != dispatched); it is not a bug to fix.
+# transcript) lands its tokens under file_agent == "main" and is
+# intentionally excluded, so the recorded subtotal is a LOWER BOUND of the
+# audited unit on that path. This is by design (inline != dispatched); it is
+# not a bug to fix.
 
 # gaia_audit_window_read <breadcrumb_path>
 # Echoes the breadcrumb JSON (single compact line) iff the file exists and

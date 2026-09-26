@@ -156,22 +156,6 @@ Reading the full cache (rather than only the listed ids) is what lets the applie
 
 **Fallback.** If subagent dispatch is unavailable, the main thread folds inline exactly as today, writing `AUDIT.md` at that same resolved path.
 
-### No-op guard (detection, retry, inline fallback)
-
-Every in-scope self-review/audit dispatch below (6a self-review, 7a lens fan-out, 7b-i refuter, 7b-ii completeness critic, 7b-iii completeness-critic refuter, 7c applier) is followed by this guard, so a dispatched agent that no-ops (a harness-reminder-echo, an output-style fragment, or an empty return, zero tool uses) never silently counts as "found nothing" or "clean":
-
-1. **Detect.** Classify the dispatch with `bash .gaia/scripts/audit-noop-detect.sh --shape <SHAPE> --path <PATH>` (exit 0 = a real result, exit 1 = a no-op, exit 2 = usage error). The helper reads only the file or captured return already on disk, so no finding/verdict/draft body enters main's reasoning context from this check. File-backed shapes pre-clear `<PATH>` (`rm -f`) before the dispatch and again before any retry, so its presence afterward is a fresh-write signal.
-2. **Retry (best-effort, exactly one).** On a no-op, re-dispatch the same unit **exactly one** time, prepending this hardened prefix to the original prompt (`<target>` = the concrete artifact that dispatch reads):
-
-       RETRY (hardened, one attempt only): Your very first action MUST be a Read of <target>. Emit no prose before that Read. Produce your structured output (the findings or verdict file this prompt names, or your returned digest if it names none) before any returned prose. Then perform the original task below exactly as written.
-
-   Never a third dispatch.
-3. **Inline fallback (guaranteed).** If the retry also no-ops, do not re-dispatch again: run the unit inline instead (main performs the task itself), record its disposition as `inline_fallback`, and route any recovered findings into the same on-disk path a dispatched agent would have used, so they re-enter the normal pipeline rather than vanishing. A dispatch that was scope-gated and never issued (e.g. a specialist lens the gauge did not select) is recorded `not_applicable` and is never treated as a no-op.
-
-Each in-scope dispatch appends one thin coverage record `{ "phase": ..., "lens": ..., "disposition": "first_pass"|"retried_recovered"|"inline_fallback"|"not_applicable" }` to `.gaia/local/cache/audit-<spec_id>/coverage.jsonl` as main resolves it (7d renders `## Coverage` in `AUDIT.md` from this file).
-
-**Mutating units** (6a self-review, 7c applier) detect on their **output artifact**, not on their return alone, so a unit that actually wrote is a real result even if its return was malformed. Because `.gaia/local/cache/draft-<spec_id>.md` is the single live working draft these units mutate in place (it is NOT itself a checkpoint), main **snapshots** it before dispatch to `.gaia/local/cache/draft-<spec_id>.pre-<site>.md` (`.pre-6a.md` / `.pre-7c.md`); a retry **restores the live draft from that snapshot first**, then re-dispatches, so the retry is a clean redo against pristine pre-dispatch state and can never double-apply. The snapshot is deleted once the unit resolves.
-
 ### Escape option (used in step 5 AskUserQuestion sets)
 
 Closed-set `AskUserQuestion` calls during the clarify loop append a fifth option after `Discuss this`:
@@ -517,11 +501,10 @@ First, create the audit cache's findings directory if absent, so `self-review.js
 mkdir -p .gaia/local/cache/audit-${SPEC_ID}/findings || true
 ```
 
-This is a **mutating unit** (the self-review agent applies low/medium fixes directly to the live draft), so before dispatching, pre-clear the findings path and snapshot the live draft to a pre-dispatch checkpoint (see "No-op guard" in Operational primitives):
+Before dispatching, pre-clear the findings path:
 
 ```bash
 rm -f .gaia/local/cache/audit-${SPEC_ID}/findings/self-review.json
-cp .gaia/local/cache/draft-${SPEC_ID}.md .gaia/local/cache/draft-${SPEC_ID}.pre-6a.md
 ```
 
 Spawn a `general-purpose` Agent with this prompt (interpolate `<DRAFT_PATH>` and `<spec_id>`):
@@ -559,9 +542,9 @@ Spawn a `general-purpose` Agent with this prompt (interpolate `<DRAFT_PATH>` and
 
 The digest is thin: `counts` gives the low/medium/high split, `applied` lists the folded ids, and each `high_findings` entry carries `kind`, `excerpt`, and `suggested_fix` (aligned with the 6a schema) so 6b's auto-branch and auto-mode rule 8 can gate and render the prompt without re-reading the draft.
 
-**No-op guard (site #1).** Classify the return with `bash .gaia/scripts/audit-noop-detect.sh --shape spec-selfreview-file --path .gaia/local/cache/audit-<spec_id>/findings/self-review.json` (exit 0 = real, exit 1 = no-op; see "No-op guard" in Operational primitives). On a no-op: restore the live draft from `.gaia/local/cache/draft-<spec_id>.pre-6a.md` first, re-clear the findings path, then re-dispatch the same unit **exactly one** time, prepending the hardened retry prefix with `<target>` = `<DRAFT_PATH>`. A second consecutive no-op does not re-dispatch a third time; instead run the self-review inline as the **inline fallback** below (the same terminal action the fan-out-unavailable case takes), and record the unit as degraded rather than clean or empty. Delete `draft-<spec_id>.pre-6a.md` once the unit resolves (recovered, retried, or fallen back). Append one `coverage.jsonl` record (`phase: "self_review"`, `disposition: "first_pass"|"retried_recovered"|"inline_fallback"`) to `.gaia/local/cache/audit-<spec_id>/coverage.jsonl`.
+Append one `coverage.jsonl` record (`phase: "self_review"`, `disposition: "first_pass"|"not_applicable"`) to `.gaia/local/cache/audit-<spec_id>/coverage.jsonl`.
 
-**Fallback.** When subagent dispatch is unavailable, the main thread runs the self-review inline (parity with the step-7 audit fallback): it reads the draft, records the same findings, applies every `low` and `medium` `suggested_fix` itself in a single Write, and gates the highs at 6b. This is also the terminal **inline fallback** action for a double no-op above.
+**Fallback.** When subagent dispatch is unavailable, the main thread runs the self-review inline (parity with the step-7 audit fallback): it reads the draft, records the same findings, applies every `low` and `medium` `suggested_fix` itself in a single Write, and gates the highs at 6b.
 
 #### 6b. Apply findings (severity-gated)
 
@@ -674,7 +657,7 @@ Findings **file** schema (what each agent writes to `findings/<LENS>.json`; NOT 
       ]
     }
 
-**No-op guard (site #2).** Before dispatching the fan-out, pre-clear each `findings/<LENS>.json` (`rm -f`) for every lens about to be dispatched, and re-clear before any retry, so presence afterward is a fresh-write signal. After the fan-out returns, classify each lens with `bash .gaia/scripts/audit-noop-detect.sh --shape spec-findings-file --path .gaia/local/cache/audit-<spec_id>/findings/<LENS>.json` (an empty `findings: []` is still real). On a no-op, re-dispatch that one lens **exactly one** time with the hardened retry prefix (`<target>` = `<DRAFT_PATH>`); a second no-op runs the **inline fallback**: main runs that lens's audit inline and writes to the SAME `findings/<LENS>.json` so the recovered findings re-enter 7b/7c exactly like a dispatched lens's, recorded degraded rather than clean or empty. A specialist lens the gauge did not select for this dispatch is never issued and is recorded `not_applicable`, never treated as a no-op. Append one `coverage.jsonl` record (`phase: "lens"`, `lens: "<LENS>"`, `disposition: "..."`) per in-scope lens.
+Before dispatching the fan-out, pre-clear each `findings/<LENS>.json` (`rm -f`) for every lens about to be dispatched. A specialist lens the gauge did not select for this dispatch is never issued and is recorded `not_applicable`. Append one `coverage.jsonl` record (`phase: "lens"`, `lens: "<LENS>"`, `disposition: "first_pass"|"not_applicable"`) per in-scope lens.
 
 #### 7b. Refutation pass (severity discipline)
 
@@ -687,7 +670,7 @@ From the 7a thin digests, main selects every **material** finding id (severity �
 - **Standard:** one refuter per material finding, all in parallel.
 - **Deep:** three refuters per material finding, all in parallel, each given a distinct verification lens, prepend one of `correctness`, `security/safety`, or `reproduces-as-described` to the refuter prompt below. A finding is refuted only on a ≥2-of-3 majority; its corrected severity is the median of the non-refuting refuters.
 
-Main dispatches each refuter keyed by `{ finding_id, findings_file, refuter_lens? }` — **no finding fields interpolated** — where `findings_file` is the lens's `.gaia/local/cache/audit-<spec_id>/findings/<LENS>.json` and `verdict_file` is the refuter's output path (`verdicts/<finding-id>.json` for Standard, `verdicts/<finding-id>-<slug-lens>.json` for Deep, slug per the frozen mapping). The refuter reads the finding body from the file itself. Before dispatch, and again before any retry, pre-clear `<verdict_file>` (`rm -f`) so its presence is a fresh-write signal.
+Main dispatches each refuter keyed by `{ finding_id, findings_file, refuter_lens? }` — **no finding fields interpolated** — where `findings_file` is the lens's `.gaia/local/cache/audit-<spec_id>/findings/<LENS>.json` and `verdict_file` is the refuter's output path (`verdicts/<finding-id>.json` for Standard, `verdicts/<finding-id>-<slug-lens>.json` for Deep, slug per the frozen mapping). The refuter reads the finding body from the file itself. Before dispatch, pre-clear `<verdict_file>` (`rm -f`) so its presence is a fresh-write signal.
 
 Refuter prompt (interpolate `<finding_id>`, `<findings_file>`, `<verdict_file>`, `<DRAFT_PATH>`, `<repo_root>` — no finding fields inline):
 
@@ -711,11 +694,11 @@ Verdict schema — the **file** the refuter writes to `verdicts/<finding-id>.jso
 
 Main computes the Deep ≥2/3 majority and the median severity **from the returned thin verdict lines only** and **never opens the per-refuter verdict files**, so verdict reasoning bodies never reach main. Surviving findings = the low-severity findings (carried forward) plus every material finding not refuted (Standard: a single `refuted` verdict kills it; Deep: a ≥2-of-3 majority kills it), each stamped with its `corrected_severity` and `disposition`.
 
-**No-op guard (site #3).** This shape is file-backed (not a captured return): after each refuter returns, classify it with `bash .gaia/scripts/audit-noop-detect.sh --shape spec-verdict-file --path <verdict_file>` (it re-reads the same `<verdict_file>` the refuter wrote; exit 0 = real, exit 1 = no-op). On a no-op, re-dispatch that one refuter **exactly one** time with the hardened retry prefix (`<target>` = `<findings_file>`); a second no-op runs the **inline fallback**: main refutes that one finding inline (reads `<findings_file>` and `<DRAFT_PATH>` itself, writes `<verdict_file>` with its own verdict), recorded degraded. Append one `coverage.jsonl` record (`phase: "refuter"`, `disposition: "..."`) per material finding refuted.
+Append one `coverage.jsonl` record (`phase: "refuter"`, `disposition: "first_pass"|"not_applicable"`) per material finding refuted.
 
 ##### 7b-ii. Completeness critic
 
-**Deep only.** After the refutation pass, dispatch one more `general-purpose` Agent over the draft plus the surviving findings, and ask what the lenses missed: an unverified load-bearing claim, an untested UAT, a `success_criteria` with no covering UAT, a consumer or blast-radius site the SPEC overlooked. Before dispatch, and again before any retry, pre-clear `.gaia/local/cache/audit-<spec_id>/findings/completeness.json`.
+**Deep only.** After the refutation pass, dispatch one more `general-purpose` Agent over the draft plus the surviving findings, and ask what the lenses missed: an unverified load-bearing claim, an untested UAT, a `success_criteria` with no covering UAT, a consumer or blast-radius site the SPEC overlooked. Before dispatch, pre-clear `.gaia/local/cache/audit-<spec_id>/findings/completeness.json`.
 
 Dispatch prompt (interpolate `<DRAFT_PATH>`, `<spec_id>`, `<surviving_findings>` = the 7b-i survivor ids/severities/titles, no bodies):
 
@@ -729,13 +712,13 @@ Dispatch prompt (interpolate `<DRAFT_PATH>`, `<spec_id>`, `<surviving_findings>`
 
 It **writes its fresh findings to `.gaia/local/cache/audit-<spec_id>/findings/completeness.json`** (7a findings schema) and returns the thin digest above; its bodies never flow into main.
 
-**No-op guard (site #4).** After the agent returns, classify with `bash .gaia/scripts/audit-noop-detect.sh --shape spec-findings-file --path .gaia/local/cache/audit-<spec_id>/findings/completeness.json` (exit 0 = real, exit 1 = no-op). On a no-op, re-dispatch **exactly one** time with the hardened retry prefix (`<target>` = `<DRAFT_PATH>`); a second no-op runs the **inline fallback**: main runs the completeness critic inline (reads the draft and surviving findings itself, writes `findings/completeness.json`), recorded degraded. Append one `coverage.jsonl` record (`phase: "completeness"`, `disposition: "..."`).
+Append one `coverage.jsonl` record (`phase: "completeness"`, `disposition: "first_pass"|"not_applicable"`).
 
 ##### 7b-iii. Completeness-critic refuter
 
-Any fresh findings from 7b-ii run through a single-refuter round under the **same** refuter prompt, verdict schema, and naming contracts as 7b-i (its verdicts write to `verdicts/<finding-id>.json`); merge the survivors. This refuter is **file-backed** like 7b-i, not a distinct return-conformance shape: pre-clear `verdicts/<finding-id>.json` before dispatch and before any retry.
+Any fresh findings from 7b-ii run through a single-refuter round under the **same** refuter prompt, verdict schema, and naming contracts as 7b-i (its verdicts write to `verdicts/<finding-id>.json`); merge the survivors. Like 7b-i, pre-clear `verdicts/<finding-id>.json` before dispatch.
 
-**No-op guard (site #5).** Classify with `bash .gaia/scripts/audit-noop-detect.sh --shape spec-verdict-file --path .gaia/local/cache/audit-<spec_id>/verdicts/<finding-id>.json` (exit 0 = real, exit 1 = no-op). On a no-op, re-dispatch that one refuter **exactly one** time with the hardened retry prefix (`<target>` = `.gaia/local/cache/audit-<spec_id>/findings/completeness.json`); a second no-op runs the **inline fallback**: main refutes that fresh finding inline and writes its verdict file itself, recorded degraded. Append one `coverage.jsonl` record (`phase: "refuter"`, `disposition: "..."`).
+Append one `coverage.jsonl` record (`phase: "refuter"`, `disposition: "first_pass"|"not_applicable"`).
 
 Its bodies never flow into main.
 
@@ -761,7 +744,7 @@ Route each surviving finding by its `disposition`, read from the **thin verdict 
 
 **Fold through the delegated applier.** Dispatch the applier (see "Audit cache + delegated fold") with the inputs that primitive enumerates, taking `${SPEC_DIR}` from 7c above. It reads the draft plus every findings and verdict file plus the decision list, folds every spec-defect fix in **one Write**, and **writes `AUDIT.md` itself** (7d) at the folder path it was handed, from the on-disk findings and verdicts — main never loads a finding body to produce `AUDIT.md`. **Fallback:** if subagent dispatch is unavailable, main folds inline as today, writing `AUDIT.md` at that same resolved path.
 
-**No-op guard (site #6).** This is a **mutating unit**: the applier's draft-cache write pre-exists, so a no-op is judged on its returned summary's shape, not on file-absence. Before dispatching, snapshot the live draft to `.gaia/local/cache/draft-<spec_id>.pre-7c.md`, and finalize `.gaia/local/cache/audit-<spec_id>/coverage.jsonl`, one thin JSON-Lines record per in-scope dispatch resolved so far, `{ "phase": ..., "lens": ..., "disposition": "first_pass"|"retried_recovered"|"inline_fallback"|"not_applicable" }`, carrying no finding body (this is the applier's data source for `## Coverage` in 7d; the findings/verdict files cannot encode a disposition). Capture the applier's returned summary to a temp file and classify it with `bash .gaia/scripts/audit-noop-detect.sh --shape applier-summary --path <summary_file>` (add `--audit-md "${AUDIT_MD}"`, the report path resolved at the top of this step, at the 7c-with-directives dispatch, when the fold routes any finding to a plan-time directive, so AUDIT.md presence is also required; exit 0 = real, exit 1 = no-op). On a no-op: restore the live draft from `draft-<spec_id>.pre-7c.md` first, then re-dispatch the applier **exactly one** time with the hardened retry prefix (`<target>` = the audit-cache directory). A second no-op runs the **inline fallback**, which reuses the pre-existing applier inline-fold above (main folds inline as today), recorded degraded. Delete `draft-<spec_id>.pre-7c.md` once the unit resolves.
+Before dispatching, finalize `.gaia/local/cache/audit-<spec_id>/coverage.jsonl`, one thin JSON-Lines record per in-scope dispatch resolved so far, `{ "phase": ..., "lens": ..., "disposition": "first_pass"|"not_applicable" }`, carrying no finding body (this is the applier's data source for `## Coverage` in 7d; the findings/verdict files cannot encode a disposition).
 
 #### 7d. Persist AUDIT.md
 
@@ -799,7 +782,7 @@ These satisfy the SPEC's binding contracts; the plan and implementation must hon
 - **<phase>** (`<lens>`): `<disposition>`
 ```
 
-The `## Coverage` section is sourced from `.gaia/local/cache/audit-<spec_id>/coverage.jsonl` (the thin phase/lens/disposition record main appends per dispatch, see "No-op guard" in Operational primitives), not from the findings/verdict files (which cannot encode a disposition). Each line's `<disposition>` is one of `first_pass` / `retried_recovered` / `inline_fallback` / `not_applicable`, so a reader can distinguish a clean unit from a degraded one at a glance.
+The `## Coverage` section is sourced from `.gaia/local/cache/audit-<spec_id>/coverage.jsonl`, one thin phase/lens/disposition record main appends per in-scope dispatch as it resolves, not from the findings/verdict files (which cannot encode a disposition). Each line's `<disposition>` is one of `first_pass` / `not_applicable`.
 
 When a sibling `AUDIT.md` exists, the step-11 `/gaia-plan` handoff names it so its plan-time directives are discoverable.
 
