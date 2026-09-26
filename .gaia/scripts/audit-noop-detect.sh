@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # audit-noop-detect.sh: shared deterministic no-op detection predicate for
-# the three adversarial-audit fan-out surfaces (/gaia-spec SPEC audit,
-# /gaia-plan decomposition audit, pre-merge code-review-audit).
+# the pre-merge Code Audit Team member dispatch, code-audit-frontend's
+# internal specialist and refuter fan-out, and the generic agent-report-file
+# contract any other dispatch uses.
 #
 # When a dispatched `general-purpose` Agent no-ops (zero tool uses, its
 # whole return is a harness-reminder-echo / output-style fragment), no
@@ -10,8 +11,7 @@
 # from disk only, "is the expected structured audit output present and does
 # it match this caller's valid result shape?" It never loads a finding,
 # verdict, or draft BODY into the calling agent's reasoning context -- only
-# a boolean crosses back (spec.md's "main never opens the verdict files"
-# invariant).
+# a boolean crosses back.
 #
 # Usage:
 #   audit-noop-detect.sh --shape <SHAPE> --path <PATH> [--marker <MARKER_PATH>] [--findings <FINDINGS_PATH>] [--findings-root <ROOT> --findings-since <STAMP>] [--report-key <KEY>] [--expect-count <N> | --min-count <N>]
