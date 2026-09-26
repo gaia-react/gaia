@@ -210,7 +210,6 @@
     ".gaia/scripts/audit-noop-detect.sh": "owned",
     ".gaia/scripts/audit-resolve-scope.sh": "owned",
     ".gaia/scripts/audit-scope-digest.sh": "owned",
-    ".gaia/scripts/audit-scratch-dir.sh": "owned",
     ".gaia/scripts/audit-window-lib.sh": "owned",
     ".gaia/scripts/audit-write-clearance.sh": "owned",
     ".gaia/scripts/audit-write-findings.sh": "owned",
@@ -653,7 +652,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-26T01:32:01.350Z",
+  "generated": "2026-09-26T03:01:25.730Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

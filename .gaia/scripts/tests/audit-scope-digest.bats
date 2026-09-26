@@ -21,7 +21,6 @@ setup() {
   THIS_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
   SCRIPT="$THIS_DIR/../audit-scope-digest.sh"
   KEY_LIB="$THIS_DIR/../audit-key-lib.sh"
-  RESPAWN_LIB="$THIS_DIR/../audit-respawn-lib.sh"
   DIGEST_LIB="$THIS_DIR/../../../.claude/hooks/lib/audit-digest.sh"
   SCOPE_LIB="$THIS_DIR/../../../.claude/hooks/lib/audit-scope.sh"
   MACHINERY_LIB="$THIS_DIR/../../../.claude/hooks/lib/audit-machinery.sh"
@@ -41,21 +40,6 @@ setup() {
 
   BASE="$(git -C "$ROOT" rev-parse HEAD)"
   MEMBER="code-audit-frontend"
-  AUDIT_DIR="$ROOT/.gaia/local/audit"
-}
-
-# require_non_root: skip (or hard-fail on CI) when running as root, where a
-# chmod-restricted file/dir stays accessible and the fixture would skip to
-# green. Mirrors .gaia/tests/lib/audit-ci-shards.bats's helper of the same name.
-require_non_root() {
-  if [ "$(id -u)" -ne 0 ]; then
-    return 0
-  fi
-  if [ -n "${GITHUB_ACTIONS:-}" ]; then
-    echo "running as root on a CI runner, where a chmod-restricted path stays accessible, so this fixture would skip to green. This job is expected to run unprivileged." >&2
-    return 1
-  fi
-  skip "running as root; a chmod-restricted path stays accessible"
 }
 
 # audit_key_for <base> <root>: gaia_audit_key computed the same way the
@@ -72,18 +56,16 @@ scope_file_for() {
   printf '%s/.gaia/local/audit/%s.%s.scope.json' "$root" "$key" "$member"
 }
 
-# build_sandbox <dir> [--no-respawn-lib]: a standalone fixture carrying its
-# OWN copy of the script and its libs at the real repo's relative layout, so
-# a test can remove one sibling lib without touching the real repo. Git repo
-# rooted at <dir>.
+# build_sandbox <dir>: a standalone fixture carrying its OWN copy of the
+# script and its libs at the real repo's relative layout, so a test can
+# manipulate the script's own on-disk neighborhood without touching the real
+# repo. Git repo rooted at <dir>.
 build_sandbox() {
-  local sb="$1" with_respawn="yes"
-  [ "${2:-}" = "--no-respawn-lib" ] && with_respawn="no"
+  local sb="$1"
   mkdir -p "$sb/.gaia/scripts" "$sb/.claude/hooks/lib"
   cp "$SCRIPT" "$sb/.gaia/scripts/audit-scope-digest.sh"
   chmod +x "$sb/.gaia/scripts/audit-scope-digest.sh"
   cp "$KEY_LIB" "$sb/.gaia/scripts/audit-key-lib.sh"
-  [ "$with_respawn" = "yes" ] && cp "$RESPAWN_LIB" "$sb/.gaia/scripts/audit-respawn-lib.sh"
   cp "$DIGEST_LIB" "$sb/.claude/hooks/lib/audit-digest.sh"
   cp "$SCOPE_LIB" "$sb/.claude/hooks/lib/audit-scope.sh"
   cp "$MACHINERY_LIB" "$sb/.claude/hooks/lib/audit-machinery.sh"
@@ -124,7 +106,7 @@ build_sandbox() {
   [ "$status" -ne 0 ]
 }
 
-# ========== UAT-014: --capture writes, prints, records ==========
+# ========== UAT-014: --capture writes, prints ==========
 
 @test "UAT-014: --capture in a writable fixture root writes the scope file, prints the 64-hex digest, exits 0" {
   run "$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE"
@@ -139,26 +121,6 @@ build_sandbox() {
   [ "$(jq -r '.scope_digest' "$sf")" = "$digest" ]
   [ "$(jq -r '.member' "$sf")" = "$MEMBER" ]
   [ "$(jq -r '.schema' "$sf")" = "1" ]
-}
-
-@test "UAT-014: --capture appends exactly one kind:scope schema-2 record carrying member, branch, head, merge base, and scope digest" {
-  ledger="$ROOT/.gaia/local/telemetry/audit-respawn.jsonl"
-  [ ! -e "$ledger" ]
-  run "$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE"
-  [ "$status" -eq 0 ]
-  digest="$output"
-
-  [ -f "$ledger" ]
-  [ "$(wc -l <"$ledger" | tr -d ' ')" = "1" ]
-  line="$(head -n1 "$ledger")"
-  jq -e . <<<"$line" >/dev/null
-  [ "$(jq -r '.schema' <<<"$line")" = "2" ]
-  [ "$(jq -r '.kind' <<<"$line")" = "scope" ]
-  [ "$(jq -r '.member' <<<"$line")" = "$MEMBER" ]
-  [ "$(jq -r '.branch' <<<"$line")" = "main" ]
-  [ "$(jq -r '.head' <<<"$line")" = "$BASE" ]
-  [ "$(jq -r '.merge_base' <<<"$line")" = "$BASE" ]
-  [ "$(jq -r '.scope_digest' <<<"$line")" = "$digest" ]
 }
 
 # ========== --read round-trip ==========
@@ -194,55 +156,6 @@ build_sandbox() {
   [ -z "$output" ]
 }
 
-# ========== read-only telemetry directory ==========
-
-@test "a read-only telemetry directory does not change --capture's stdout, stderr, or exit status" {
-  require_non_root
-
-  status_baseline=0
-  digest_baseline="$("$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE" 2>/dev/null)" || status_baseline=$?
-  rm -rf "$AUDIT_DIR"
-
-  ro_root="$BATS_TEST_TMPDIR/ro-root"
-  mkdir -p "$ro_root"
-  git -C "$ro_root" init --quiet --initial-branch=main
-  git -C "$ro_root" config user.email "test@example.com"
-  git -C "$ro_root" config user.name "Test"
-  git -C "$ro_root" config commit.gpgsign false
-  echo "# readme" >"$ro_root/README.md"
-  git -C "$ro_root" add README.md
-  git -C "$ro_root" commit --quiet -m "init"
-  mkdir -p "$ro_root/.gaia/local/telemetry"
-  chmod 500 "$ro_root/.gaia/local/telemetry"
-
-  run "$SCRIPT" --capture --root "$ro_root" --member "$MEMBER" --base "$BASE"
-  ro_status="$status"
-  ro_stdout="$output"
-  chmod 755 "$ro_root/.gaia/local/telemetry"
-
-  [ "$ro_status" -eq "$status_baseline" ]
-  [ "$ro_stdout" = "$digest_baseline" ]
-
-  sf="$(scope_file_for "$ro_root" "$BASE" "$MEMBER")"
-  [ -f "$sf" ]
-}
-
-# ========== absent respawn lib (the adopter case) ==========
-
-@test "an absent respawn lib still succeeds, still prints the digest, appends nothing" {
-  sb="$BATS_TEST_TMPDIR/sb-no-respawn"
-  build_sandbox "$sb" --no-respawn-lib
-  sb_base="$(git -C "$sb" rev-parse HEAD)"
-
-  run "$sb/.gaia/scripts/audit-scope-digest.sh" --capture --root "$sb" --member "$MEMBER" --base "$sb_base"
-  [ "$status" -eq 0 ]
-  [ "${#output}" -eq 64 ]
-
-  sf="$(scope_file_for "$sb" "$sb_base" "$MEMBER")"
-  [ -f "$sf" ]
-  [ ! -e "$sb/.gaia/local/telemetry/audit-respawn.jsonl" ]
-}
-
 # ========== unwritable scope-file directory ==========
 
 @test "an unwritable scope-file directory makes --capture exit non-zero with a stderr diagnostic and no stdout" {
@@ -257,7 +170,7 @@ build_sandbox() {
 
 # ========== FC-2b's fence text, verbatim, against a real member run ==========
 
-@test "FC-2b's capture fence, run verbatim, emits the record and the printed digest" {
+@test "FC-2b's capture fence, run verbatim, emits the printed digest" {
   # Mirrors the plan README's FC-2b/FC-2c fences exactly, substituting a
   # fixture member and AUDIT_ROOT/KEY_BASE. AUDIT_ROOT must carry the real
   # .gaia/scripts/audit-scope-digest.sh at its own relative layout, since the
@@ -273,10 +186,6 @@ build_sandbox() {
 
   [ -n "$D_SCOPE" ]
   [ "${#D_SCOPE}" -eq 64 ]
-
-  ledger="$sb/.gaia/local/telemetry/audit-respawn.jsonl"
-  [ -f "$ledger" ]
-  [ "$(jq -r '.scope_digest' "$ledger")" = "$D_SCOPE" ]
 
   D_SCOPE_READ="$("$AUDIT_ROOT/.gaia/scripts/audit-scope-digest.sh" --read --root "$AUDIT_ROOT" --member "$MEMBER" --base "$KEY_BASE")"
   [ "$D_SCOPE_READ" = "$D_SCOPE" ]
@@ -429,14 +338,6 @@ stored_head_for() {
   run "$SCRIPT" --read --recapture --root "$ROOT" --member "$MEMBER" --base "$BASE"
   [ "$status" -eq 2 ]
   printf '%s\n' "$output" | grep -qF -- "--recapture is valid only with --capture"
-}
-
-@test "a --base carrying a path separator is rejected, not left to fail at the write" {
-  run "$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "origin/main"
-  [ "$status" -eq 2 ]
-  printf '%s\n' "$output" | grep -qF -- "must be a key base sha"
-  # and nothing was published anywhere under the audit dir
-  [ -z "$(find "$ROOT/.gaia/local" -name '*.scope.json' 2>/dev/null)" ]
 }
 
 @test "a detached HEAD resolves no key, and GAIA_AUDIT_KEY_BRANCH supplies the missing half" {

@@ -117,7 +117,6 @@ make_repo() {
   cp "$script_src" "$dir/.gaia/scripts/audit-resolve-scope.sh"
   cp "$REPO_ROOT/.gaia/scripts/audit-scope-digest.sh" \
     "$REPO_ROOT/.gaia/scripts/audit-key-lib.sh" \
-    "$REPO_ROOT/.gaia/scripts/audit-respawn-lib.sh" \
     "$REPO_ROOT/.gaia/scripts/audit-member-digest.sh" \
     "$dir/.gaia/scripts/"
   chmod +x "$dir/.gaia/scripts/audit-resolve-scope.sh" "$dir/.gaia/scripts/audit-scope-digest.sh"

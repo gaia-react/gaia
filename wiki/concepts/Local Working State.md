@@ -28,7 +28,6 @@ Because the folder is invisible to git, residue a subsystem leaves behind never 
 | `red-ledger/observations.jsonl` | TDD RED-verification | live | append-only |
 | `debt/` | debt sentinel | live | one copy shared by every tree, so a debt fix merged from a linked worktree arms the main checkout's count cache and sentinel; recomputed |
 | `cache/` | [[GAIA Spec]] / gate sessions | ephemeral | reaped on SPEC merge/close and the merged-SPEC age reap; an entry with no linked SPEC row (an orphaned gate1/draft/session cache, a react-perf run dir) has no reaper |
-| `cache/mutation-scratch/<audit-key>.<member>/` | [[Code Audit Team]] members needing evidence on disk | ephemeral | one private working copy per member per audit, minted and released by `.gaia/scripts/audit-scratch-dir.sh`; a copy whose member died before releasing it has no other reaper |
 | `cache/shared/` | release / statusline (`update-gaia`, `check-updates.sh`) | live | one copy every linked worktree reads; self-pruned by its owners (tarball prune on update) |
 | `cache/shared/wiki-base-catchup.state` | session-start janitor | live | one key-value file carrying the janitor's last-fetch timestamp and, when a base catch-up is outstanding, the durable obligation to retry; the janitor drains the obligation once base is at or ahead of its upstream |
 | `cache/shared/wiki-base-catchup.report` | session-start janitor | ephemeral | one line, overwritten per refusal; read and deleted by the drift-check hook on the next prompt, so it surfaces exactly once |
@@ -44,10 +43,6 @@ Because the folder is invisible to git, residue a subsystem leaves behind never 
 | `harden/review-tally.json` | `/gaia-harden` | live | the saved start-of-run tally a review builds its snapshot from; overwritten by the next review |
 
 A linked worktree's `.gaia/local` is a single symlink to the main checkout's `.gaia/local`, so every path in the table above resolves to one copy rather than forking per tree. `.gaia/state-registry.json` declares each entry's scope, and an entry that has to stay private to one tree gets that isolation from a tree key in its own path rather than from a directory of its own; see [[Worktrees]]. The same linking covers a second, disjoint set: the checkout-root gitignored `.env` / `.env.*` files (every basename matching `.env` or `.env.*`, excluding the committed `.env.example`). Each linked worktree gets `<worktree>/.env` (and any `.env.*`) symlinked to the main checkout's copy, so the worktree's `pnpm dev` and Playwright runs read the same local secrets without a manual copy. These files live at the checkout root, not under `.gaia/local/`, so they aren't rows in the table above.
-
-<!-- gaia:maintainer-only:start -->
-`telemetry/` also holds a second, maintainer-only ledger beside `cost.jsonl`: `telemetry/audit-respawn.jsonl`, the Code Audit Team's append-only re-spawn breadcrumb ledger, one record per member a review-scope resolution considers. It is shared like its `cost.jsonl` sibling, so every tree contributes to one copy, but it is bounded where that sibling is not: a session-start sweep, separate from the janitor's wiki-landing catch-up below, age-drops records past a retention window and caps the line count, both knobs floor-clamped. It exists only on a maintainer clone.
-<!-- gaia:maintainer-only:end -->
 
 A **live** entry is load-bearing state that tooling reads. An **ephemeral** entry is consumed once and then orphaned; its owner is meant to prune it, and most entries have no other backstop if the owner doesn't.
 

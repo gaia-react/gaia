@@ -5,15 +5,15 @@
 # SessionStart hook with two jobs, both pure side effect and neither of them
 # ever reported: record HEAD into $GIT_DIR/claude-session-start so the Stop
 # hook can diff against the session's starting point, then hand off to the
-# bounded working-state janitors. It writes nothing to stdout, decides nothing,
+# bounded working-state janitor. It writes nothing to stdout, decides nothing,
 # and always exits 0.
 #
 # The stamp is the load-bearing half. If it stops being written, the Stop hook
 # loses its baseline and wiki commits made during the session go undetected --
 # with no error, no output, and nothing that distinguishes it from a session
 # that genuinely changed no wiki page. The delegation tests below cover the
-# other half: the janitors must run when present and must not be able to fail
-# the session when they break.
+# other half: the janitor must run when present and must not be able to fail
+# the session when it breaks.
 
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
@@ -45,13 +45,13 @@ stub_script() {
 # the stamp.
 #
 # The delegation tests need this and the stamp tests do not, because the hook
-# locates both janitors from its OWN directory (`${BASH_SOURCE[0]}`) rather
+# locates the janitor from its OWN directory (`${BASH_SOURCE[0]}`) rather
 # than from the working directory. Invoking $HOOK_ABS with cwd set to $REPO
-# therefore runs the real janitors out of the home checkout and never sees a
+# therefore runs the real janitor out of the home checkout and never sees a
 # stub placed in the fixture, which reads as a pass for the fail-open tests and
 # as a failure for the witness tests. Running a copy makes the fixture the
 # hook's own tree, so a stub is what it finds; that the copy resolves its
-# delegates beside itself, in whichever tree it was invoked from, is the
+# delegate beside itself, in whichever tree it was invoked from, is the
 # property the rooting buys and these tests are what pin it.
 install_hook() {
   mkdir -p "$REPO/.claude/hooks"
@@ -117,7 +117,7 @@ install_hook() {
   [ ! -f "$PLAIN/claude-session-start" ]
 }
 
-# --- delegation to the bounded janitors ---
+# --- delegation to the bounded janitor ---
 
 @test "runs the local janitor when it is present" {
   REPO=$("$HELPERS/tmp-git-repo.sh")
@@ -126,15 +126,6 @@ install_hook() {
   invoke_hook_in "$REPO" '' "$hook"
   [ "$status" -eq 0 ]
   [ -f "$REPO/local-janitor.sh.ran" ]
-}
-
-@test "runs the audit re-spawn prune when it is present" {
-  REPO=$("$HELPERS/tmp-git-repo.sh")
-  stub_script ".gaia/scripts/audit-respawn-prune.sh"
-  hook=$(install_hook)
-  invoke_hook_in "$REPO" '' "$hook"
-  [ "$status" -eq 0 ]
-  [ -f "$REPO/audit-respawn-prune.sh.ran" ]
 }
 
 @test "finds its janitor from its own tree, not from the working directory" {
@@ -152,7 +143,7 @@ install_hook() {
 }
 
 @test "a missing janitor is not an error" {
-  # An adopter clone, or a checkout mid-update, can be missing either script.
+  # An adopter clone, or a checkout mid-update, can be missing the script.
   # The session must start anyway.
   REPO=$("$HELPERS/tmp-git-repo.sh")
   hook=$(install_hook)
@@ -174,7 +165,7 @@ install_hook() {
   [ -f "$REPO/.git/claude-session-start" ]
 }
 
-@test "the stamp is written before the janitors run" {
+@test "the stamp is written before the janitor runs" {
   # Ordering matters: a janitor that hangs or dies must not be able to take
   # the baseline with it.
   REPO=$("$HELPERS/tmp-git-repo.sh")

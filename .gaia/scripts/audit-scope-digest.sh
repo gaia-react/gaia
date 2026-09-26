@@ -19,8 +19,7 @@
 #   audit-scope-digest.sh --read    --root <path> --member <name> --base <key-base>
 #
 #   --capture  Derives the member's content digest, writes the scope file,
-#              appends one scope-resolution telemetry record (best-effort,
-#              see below), prints the 64-hex digest on stdout, exits 0. On an
+#              prints the 64-hex digest on stdout, exits 0. On an
 #              underivable digest or an unwritable scope file: prints nothing
 #              on stdout, a diagnostic on stderr, exits non-zero. Fail loud
 #              here -- the member must learn at capture time, not at write
@@ -29,12 +28,9 @@
 #              unreadable, unparseable, or non-64-hex: prints nothing, exits
 #              non-zero. Fails closed to empty rather than to a placeholder,
 #              so a caller that feeds this straight into
-#              `--scope-digest "$(...)"` gets an empty flag value. For an
-#              ordinary member the writer refuses on that, the correct outcome
-#              for a member that never captured. For the one contractually
-#              never-blocking member it degrades to the advisory arm instead,
-#              because a member that can never block a merge must not be able
-#              to strand one either.
+#              `--scope-digest "$(...)"` gets an empty flag value; the writer
+#              refuses on that, the correct outcome for a member that never
+#              captured.
 #
 # Scope file: <root>/.gaia/local/audit/<audit-key>.<member>.scope.json, where
 # <audit-key> is `gaia_audit_key "<key-base>" "<root>"`
@@ -65,17 +61,8 @@
 # whenever the operator commits mid-review, leaving the writer comparing a value
 # against itself and re-deriving the guard's own inertness.
 #
-# Telemetry is fail-open and adopter-safe. The scope-resolution record is
-# appended through .gaia/scripts/audit-respawn-lib.sh, sourced guarded from
-# this script's own on-disk location, and the append is gated on
-# `command -v gaia_respawn_scope_record`. That lib is release-excluded, so on
-# an adopter clone it is simply absent: the record is skipped and nothing
-# else changes -- not the printed digest, not the exit status, not the scope
-# file. This fail-open guard is deliberate telemetry fail-open, distinct from
-# the writer's staleness check, which is fail-closed.
-#
-# This script SHIPS to adopters (the default member needs it), unlike the
-# telemetry lib it optionally sources. It is deliberately NOT a member of
+# This script SHIPS to adopters (the default member needs it). It is
+# deliberately NOT a member of
 # AUDIT_MACHINERY_PATHS (.claude/hooks/lib/audit-machinery.sh): this
 # script decides the value a clearance attests, which is the kind of file
 # that list exists to cover, but changing it is out of scope here.
@@ -203,19 +190,6 @@ if [ -z "$BASE" ]; then
   usage
   exit 2
 fi
-# The key is "<base>.<branch-slug>" and only the branch half is slugified, so a
-# base carrying a path separator escapes into the scope-file path and the atomic
-# mv below fails on a directory that was never created. Reject it here, where the
-# diagnostic can name the real cause: --base takes the key BASE SHA, and a caller
-# passing a ref name ("origin/main", the no-anchor answer) has a resolution bug
-# upstream rather than a filesystem problem here.
-case "$BASE" in
-  */* | .. | . | *[!0-9A-Za-z._-]*)
-    err "--base must be a key base sha, not a ref name or path: '$BASE'"
-    exit 2
-    ;;
-esac
-
 command -v jq >/dev/null 2>&1 || {
   err "jq is required"
   exit 1
@@ -387,35 +361,6 @@ mv -f "$tmp" "$scope_file" 2>/dev/null || {
   err "cannot publish scope file to '$scope_file'"
   exit 1
 }
-
-# -----------------------------------------------------------------------------
-# Scope-resolution telemetry (best-effort, fail-open, adopter-safe).
-#
-# This is the observation the mid-flight rotation count needs: the re-spawn
-# ledger's spawn breadcrumb alone cannot see a rotation that lands WHILE a
-# member is reviewing, because a member still mid-review has written no
-# marker to lose. Recording the scope-time digest here, paired forward
-# against the next spawn breadcrumb by the attribution query, makes that
-# case countable.
-#
-# Sourced guarded, exactly like the digest and key libs above, but the
-# consequence of an absent lib is different: this lib is release-excluded
-# (an adopter clone never has it), and its absence must never fail this
-# script, never change the printed digest, and never change whether the
-# scope file was written. Only the telemetry append is skipped.
-# -----------------------------------------------------------------------------
-if [ -f "${_self_dir}/audit-respawn-lib.sh" ]; then
-  # shellcheck source=/dev/null
-  . "${_self_dir}/audit-respawn-lib.sh"
-fi
-if command -v gaia_respawn_scope_record >/dev/null 2>&1; then
-  _scope_ledger="$(gaia_respawn_ledger_path "$ROOT" 2>/dev/null || true)"
-  if [ -n "$_scope_ledger" ]; then
-    _scope_branch="$(git -C "$ROOT" branch --show-current 2>/dev/null || true)"
-    gaia_respawn_scope_record "$_scope_ledger" "$captured_at" "$_scope_branch" \
-      "$head_sha" "$BASE" "$MEMBER" "$digest" || true
-  fi
-fi
 
 printf '%s\n' "$digest"
 exit 0

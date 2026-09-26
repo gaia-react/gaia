@@ -50,12 +50,9 @@
 #                  --provenance refused; an earned write carrying
 #                  --supersede-refusal is conditionally exempt, see the
 #                  staleness gate's own header comment further down for the
-#                  exact condition, and advisory-only for the one
-#                  contractually never-blocking member (mirroring its own
-#                  dirty-scope exemption). A member
-#                  resolves its review scope at one HEAD, then finishes and
-#                  writes at a later one; this carries the
-#                  digest captured at scope resolution
+#                  exact condition. A member resolves its review scope at one
+#                  HEAD, then finishes and writes at a later one; this
+#                  carries the digest captured at scope resolution
 #                  (.gaia/scripts/audit-scope-digest.sh --capture) for
 #                  comparison against the digest this script derives fresh,
 #                  right here, from the CURRENT --root. A difference means the
@@ -293,26 +290,10 @@ if [ "$SUPERSEDE_SEEN" -eq 1 ]; then
   fi
 fi
 
-# scope_advisory would exempt a contractually never-blocking member from the
-# fail-closed refusal below, keyed on a plain variable rather than a
-# member-name literal. No current roster member is never-blocking, so this
-# stays 0 unconditionally: every member gets the full fail-closed refusal.
-scope_advisory=0
-
 # --scope-digest, when present, must be exactly 64 lowercase hex: the shape
 # the digest engine emits. This is a usage error, not a staleness refusal, so
 # a caller passing a malformed value gets a distinct diagnostic from a caller
 # whose digest genuinely rotated. Bash-3.2-safe `case`, not `[[ =~ ]]`.
-#
-# The never-blocking member is exempt here too, not only in the staleness arms
-# below. Its definition always passes --scope-digest "$D_SCOPE", and --read
-# prints nothing whenever the capture never ran or the audit key moved between
-# two of the member's Bash calls -- so the value it passes is EMPTY on exactly
-# the paths the exemption exists to cover.
-# Exiting 2 here would make the one member that can never block a merge the one
-# that blocks it permanently, with no marker for the AND-aggregator to wait on.
-# A malformed value from that member therefore degrades to the not-supplied
-# state and falls through to the advisory arm, which reports and clears.
 _scope_digest_malformed=0
 if [ "$SCOPE_DIGEST_SEEN" -eq 1 ]; then
   case "$SCOPE_DIGEST" in
@@ -323,15 +304,9 @@ if [ "$SCOPE_DIGEST_SEEN" -eq 1 ]; then
   fi
 fi
 if [ "$_scope_digest_malformed" -eq 1 ]; then
-  if [ "$scope_advisory" -eq 1 ]; then
-    err "--scope-digest is not a 64-hex digest (advisory): treating as not supplied"
-    SCOPE_DIGEST_SEEN=0
-    SCOPE_DIGEST=""
-  else
-    err "--scope-digest must be a 64-hex digest"
-    usage
-    exit 2
-  fi
+  err "--scope-digest must be a 64-hex digest"
+  usage
+  exit 2
 fi
 
 # The member's content digest is the marker's validity key. Fail closed: never
@@ -388,13 +363,9 @@ fi
 #   1  nothing to release: no capture is stored, so none can strand a later
 #      round. Not a failure.
 #   2  could not resolve the scope file at all -- no key lib, no --base (the CI
-#      clearance call passes none), or an unresolvable key. A capture may or may
-#      not be sitting there; this arm cannot tell, and must not claim either.
-#   3  located, but not removed: the capture is exactly where it should be and
-#      the rm failed. Distinct from 2 precisely because the location IS known --
-#      the helper has already printed a diagnostic naming the path, so a caller
-#      that folded this into 2 would follow that diagnostic with a second
-#      message guessing at location causes, none of which is what happened.
+#      clearance call passes none), an unresolvable key, or the capture was
+#      located but could not be removed. A capture may or may not still be
+#      sitting there; this arm cannot always tell, and must not claim either.
 _release_forfeited_capture() {
   local key="" scope_file
   command -v gaia_audit_key >/dev/null 2>&1 || return 2
@@ -405,7 +376,7 @@ _release_forfeited_capture() {
   [ -f "$scope_file" ] || return 1
   rm -f "$scope_file" || {
     err "warning: could not release the forfeited capture at '$scope_file'; the next round will refuse identically until it is removed"
-    return 3
+    return 2
   }
   return 0
 }
@@ -452,31 +423,9 @@ fi
 # that left nothing behind; for a blocking member the surviving two-call
 # route leaves a `.refused` artifact on disk on the way and publishes a body
 # carrying a `supersedes` block with a stated reason and a timestamp, so it
-# cannot be taken silently. The qualifier is load-bearing: the advisory
-# softening below lets the never-blocking member publish on a mismatched
-# digest with no refusal ever written, and that route leaves no durable
-# record. It warns on stderr on the way past, so an operator watching the run
-# sees it, but the marker it publishes records no supersession and no artifact
-# survives to discriminate it from an ordinary earned write. That route is
-# pre-existing, and this gate neither closes it nor pretends to.
+# cannot be taken silently.
 if [ "$PROVENANCE" = "earned" ] && [ "$supersede_retires_refusal" -ne 1 ]; then
-  if [ "$scope_advisory" -eq 1 ]; then
-    if [ "$SCOPE_DIGEST_SEEN" -ne 1 ]; then
-      err "review scope superseded (advisory)"
-    elif [ "$SCOPE_DIGEST" != "$digest" ]; then
-      err "review scope superseded (advisory): scope=$SCOPE_DIGEST write=$digest"
-      # This arm warns and falls through to publish, and the marker it
-      # publishes is keyed to the WRITE-TIME digest, never to the captured one
-      # the spent test looks for. So without this release the capture is never
-      # spent by the very round that ends on it: it survives for the life of
-      # the audit key, and every later round re-reads it and re-emits the
-      # warning above, which the never-blocking member is instructed to record
-      # as a finding. The signal is stuck on, and the findings it produces are
-      # false. Only the mismatch arm releases; the not-supplied arm above says
-      # nothing about whether this round ended, exactly as on the blocking path.
-      _release_forfeited_capture || true
-    fi
-  elif [ "$SCOPE_DIGEST_SEEN" -ne 1 ]; then
+  if [ "$SCOPE_DIGEST_SEEN" -ne 1 ]; then
     err "scope digest not supplied"
     # A member dispatched into a worktree loads the agent definition the
     # session resolved from the MAIN checkout, not from the worktree under
@@ -496,8 +445,7 @@ if [ "$PROVENANCE" = "earned" ] && [ "$supersede_retires_refusal" -ne 1 ]; then
     case "$?" in
       0) err "this round is forfeited and its capture is released; the next dispatch captures fresh." ;;
       1) err "this round is forfeited; no stored capture was found to release, so nothing carries into the next dispatch." ;;
-      3) err "this round is forfeited; the stored capture was located but could not be removed, so the next dispatch inherits it and refuses identically until the path named above is cleared." ;;
-      *) err "this round is forfeited, but the stored capture could not be located to release it (no --base, an unresolvable audit key, or the key library not being loaded). If one is present, the next dispatch inherits it and refuses identically; clear it with audit-scope-digest.sh --capture --recapture." ;;
+      *) err "this round is forfeited, but the stored capture could not be located or removed (no --base, an unresolvable audit key, the key library not being loaded, or the removal itself failed). If one is present, the next dispatch inherits it and refuses identically; clear it with audit-scope-digest.sh --capture --recapture." ;;
     esac
     err "Do NOT re-run the scope fence to obtain a new capture in this round: you reviewed the superseded content, and a marker earned on a fresh capture would attest content you never read."
     exit 2

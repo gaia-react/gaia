@@ -16,15 +16,15 @@
 # stale staging file holding another member's findings.
 #
 # The fix is a staging directory no sibling can share, written fresh in the
-# call before the writer. `audit-scratch-dir.sh <member> <KEY_BASE>` mints a
-# directory keyed to the audit key AND the member name, so co-dispatched members
-# never pick the same file. A name derived from the audit key alone closes
-# neither case, because the key is a base sha plus a branch slug over a shared
-# base every co-dispatched member resolves alike, and that base advances only
-# when a clean round stamps its trailer, so the re-dispatch after a withheld
-# round recomputes the key it just used. Writing the file fresh with `printf`
-# immediately before the writer is what keeps an earlier round's file from
-# republishing.
+# call before the writer. Each spec names its own scratch directory under
+# `.gaia/local/cache/mutation-scratch/`, keyed to the audit key AND the member
+# name, so co-dispatched members never pick the same file. A name derived from
+# the audit key alone closes neither case, because the key is a base sha plus a
+# branch slug over a shared base every co-dispatched member resolves alike, and
+# that base advances only when a clean round stamps its trailer, so the
+# re-dispatch after a withheld round recomputes the key it just used. Writing
+# the file fresh with `printf` immediately before the writer is what keeps an
+# earlier round's file from republishing.
 #
 # The stage is a `printf` redirect, and the writer a separate command, rather
 # than a pipe, a heredoc, or the `Write` tool, because worktree isolation

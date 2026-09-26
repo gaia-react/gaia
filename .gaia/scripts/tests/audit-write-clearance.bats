@@ -1243,16 +1243,16 @@ EOF
   # is every helper return whose status has no explicit arm, not the literal 2.
   # Both halves of that are derived from the writer rather than restated here:
   # a cause added later under a brand-new status routes to this same arm and
-  # must be named in it, and this file's own split of 3 out of 2 is the
-  # precedent for a new status arriving. So the guard recounts instead of
-  # trusting a sentence. One assertion per named cause as well, since a single
-  # pin stays green while an edit drops one of the others and re-opens the very
-  # gap this drains. Driven through the no---base condition; what is pinned is
-  # that the parenthetical reads as the full set it is, not as a closed subset
-  # that sends the operator to rule out the wrong things.
+  # must be named in it. So the guard recounts instead of trusting a sentence.
+  # One assertion per named cause as well, since a single pin stays green while
+  # an edit drops one of the others and re-opens the very gap this drains.
+  # Driven through the no---base condition; what is pinned is that the
+  # parenthetical reads as the full set it is, not as a closed subset that
+  # sends the operator to rule out the wrong things.
   causes="--base
 unresolvable audit key
-key library"
+key library
+removal itself failed"
   helper="$(sed -n '/^_release_forfeited_capture() {/,/^}/p' "$WRITER")"
   [ -n "$helper" ]
   # The statuses the caller gives an explicit arm; everything else falls to *).
@@ -1272,37 +1272,11 @@ key library"
     --scope-digest "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
   [ "$status" -eq 2 ]
   grep -qF "review scope superseded" <<<"$output" || return 1
-  grep -qF "could not be located to release it" <<<"$output" || return 1
+  grep -qF "could not be located or removed" <<<"$output" || return 1
   while IFS= read -r cause; do
     grep -qF -- "$cause" <<<"$output" || return 1
   done <<<"$causes"
   true
-}
-
-@test "the forfeiture arm defers to the removal warning when the capture is located but cannot be removed" {
-  # The rm failure carries its own status and its own arm rather than sharing
-  # the could-not-locate one. On this path the capture IS located and the helper
-  # has already printed a diagnostic naming the exact path, so the shared arm
-  # would follow that with a second message guessing at location causes, none of
-  # which is what happened. A non-writable audit directory is what makes rm fail:
-  # removing a directory entry needs write permission on the directory itself,
-  # which root ignores, so this fixture is unavailable there.
-  [ "$(id -u)" -eq 0 ] && skip "root ignores the mode bits this test relies on"
-  base="$(git -C "$ROOT" rev-parse HEAD)"
-  key="$(bash -c '. "$1"; gaia_audit_key "$2" "$3"' _ "$THIS_DIR/../audit-key-lib.sh" "$base" "$ROOT")"
-  [ -n "$key" ]
-  mkdir -p "$AUDIT_DIR"
-  : > "$AUDIT_DIR/${key}.code-audit-frontend.scope.json"
-  chmod 500 "$AUDIT_DIR"
-  run bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned \
-    --base "$base" \
-    --scope-digest "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
-  chmod 700 "$AUDIT_DIR"
-  [ "$status" -eq 2 ]
-  grep -qF "could not release the forfeited capture at" <<<"$output" || return 1
-  grep -qF "could not be removed" <<<"$output" || return 1
-  grep -qF "could not be located to release it" <<<"$output" && return 1
-  return 0
 }
 
 @test "UAT-012: --provenance refused ignores a stale --scope-digest and behaves exactly as before" {
