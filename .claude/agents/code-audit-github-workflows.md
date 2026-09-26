@@ -83,7 +83,7 @@ For every in-remit changed file, the workflow-security core:
 Grade every finding Critical / Important / Suggestion, matching the sibling Code Audit Team members: Critical breaks the merge gate, exposes a secret, or is exploitable with adversary-controlled input; Important is a real defect with a narrower blast radius; Suggestion is style or robustness with no live failure mode.
 
 <!-- gaia:maintainer-only:start -->
-GAIA maintainers: before grading, Read `.claude/rules/maintainers/harness-triage-threshold.md` by path; do not rely on it auto-loading inside a subagent. When its Pre-adjudicated removals clause applies, read the PR body as it prescribes before grading a removal as a regression.
+GAIA maintainers: before grading, Read `.claude/rules/maintainers/harness-triage-threshold.md` by path; do not rely on it auto-loading inside a subagent.
 <!-- gaia:maintainer-only:end -->
 
 ## Advisory-only: no self-heal
