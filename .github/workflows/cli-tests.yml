@@ -95,7 +95,7 @@ jobs:
               # audit-ci-tests.yml lists the same two for the same reason.
               # Hand-maintained, and not covered by the coverage guard: it
               # checks that the action file itself is reachable but does not
-              # descend into the action's body, so a fourth file the action
+              # descend into the action's body, so another file the action
               # starts reading is a gap that guard cannot see. Revisit these
               # entries whenever the action's inputs change.
               - '.node-version'

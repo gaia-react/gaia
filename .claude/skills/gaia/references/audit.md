@@ -520,16 +520,15 @@ This verification is the single authority for the report's terminal `status`: af
 
 After applying the in-scope actions, file every finding in the report's `## Out-of-scope findings` section as a `tech-debt` issue. This is the audit's equivalent of the code-audit-frontend disposition contract: **you file, you never fix**, and never edit the working tree for one. If that report section reads `None.`, skip this step entirely.
 
-Follow `.claude/agents/code-audit-frontend.md` section **C** (backend probe: definitive-absent → file nothing, note it, continue; transient → note and continue) for the backend probe. Follow the **file-tech-debt** skill (`.claude/skills/file-tech-debt/SKILL.md`) for building the dedup key, the dedup query, creating with `--body-file`, the idempotent labels, and the `file:line` + failure-mode + suggested-fix body, and for touching the debt-count sentinel (`mkdir -p .gaia/local/debt && : > .gaia/local/debt/refresh-requested`). Reuse that procedure verbatim, do not re-derive it. **Skip E.7** (the disposition-ledger sidecar record, which stays in the agent), the audit writes no sidecar, see the third rule below.
+Follow `.claude/agents/code-audit-frontend.md` section **C** (backend probe: definitive-absent → file nothing, note it, continue; transient → note and continue) for the backend probe. Follow the **file-tech-debt** skill (`.claude/skills/file-tech-debt/SKILL.md`) for building the dedup key, the dedup query, creating with `--body-file`, the idempotent labels, and the `file:line` + failure-mode + suggested-fix body, and for touching the debt-count sentinel (`mkdir -p .gaia/local/debt && : > .gaia/local/debt/refresh-requested`). Reuse that procedure verbatim, do not re-derive it. **Skip E.7** (recording the disposition against the marker, which applies only to the agent's own clearance flow).
 
-Three audit-specific rules override the agent's defaults; do NOT "fix" them back to the agent's shape:
+Two audit-specific rules override the agent's defaults; do NOT "fix" them back to the agent's shape:
 
 - **Screen on `security_sensitive`, never on the class.** A finding is security-class **only** when its block's `security_sensitive: true` (its content reads as a security concern or is secret-shaped), never merely because it carries `holistic/unclassified`, which is the expected class for an audit finding (knowledge/doc hygiene maps to no seeded class by construction). This is the agent's own rule rather than an audit-specific carve-out: `.claude/agents/code-audit-frontend.md` section B screens on content and severity and excludes the fallback class as a trigger, precisely because a class-keyed screen would divert every finding and file nothing on a public repo. Screen on the flag, then apply the agent's **section D** visibility gate (PUBLIC/INTERNAL → divert, never a public issue; confirmed PRIVATE → file through E).
 - **Build the dedup key from the block's own fields:** `<!-- gaia-debt-key: v1 class=<finding_class> path=<path> line=<line> -->` from the block's `finding_class` (or `holistic/unclassified`), `path`, and `line`. Dedup per the file-tech-debt skill's dedup procedure (open + declined-closed + keyless `path:line` fallback) so a repeated audit never re-files a standing wiki-internal problem. Map `severity` → the `severity:<tier>` label, map `difficulty` → the `difficulty:<grade>` label, and map the block's `footprint` → the `footprint:<class>` label. Run the skill's blocking pre-file metadata check (`.gaia/scripts/check-debt-issue-metadata.sh --pre-file`) on the assembled label set and body before creating, and do not file on a finding.
 <!-- gaia:maintainer-only:start -->
   Maintainer repository only: also map the block's `audience` field → the `audience:<side>` label.
 <!-- gaia:maintainer-only:end -->
-- **Do NOT write a `<HEAD>.dispositions.json` sidecar.** That sidecar is the code-audit-frontend agent's own report of record; the audit's own PR clears the merge gate through the out-of-scope bypass whenever the oracle finds nothing owed for its diff (see `## Publish`). This flow is not that agent, and writing one would leave a foreign entry in its report for a filing it never needed. File the issues; write no sidecar.
 
 Record the filed / diverted / deduped counts for the final summary. A backend-absent or transient `gh` failure is never fatal: file what you can, note the rest, and let the main conversation publish regardless.
 
@@ -578,7 +577,7 @@ handoff: changes are uncommitted; the main conversation runs Publish next (branc
 - Never improvise: if drift-check fails, skip and report. Do not search for the "right" target.
 - Never merge two actions: each block is atomic.
 - If an action targets a path that doesn't exist, mark `[!]` with `target missing` and continue.
-- File out-of-scope findings, never fix them: no working-tree edit for an out-of-scope finding, and no `<HEAD>.dispositions.json` sidecar (the audit produces no marker).
+- File out-of-scope findings, never fix them: no working-tree edit for an out-of-scope finding.
 
 ## Publish (commit / PR / merge)
 

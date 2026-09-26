@@ -80,10 +80,7 @@
 #     partial digest, and never an empty or partial body published.
 #   - The body is schema 4. `schema` is informational: no reader validates it,
 #     and clearance_acceptable ignores it entirely, so a schema-3 body on disk
-#     still validates exactly as before. The bump records that `sidecar`'s
-#     meaning changed and that `dispositions_sidecar` joined it (see the two
-#     flags' derivation below), so someone diffing two markers can tell which
-#     contract each was written under.
+#     still validates exactly as before.
 #   - jq is REQUIRED: it builds the body, so every value is escaped by
 #     construction. Absent jq the writer fails closed rather than emitting a
 #     hand-assembled body. The gate's reader requires jq for the same reason.
@@ -479,19 +476,9 @@ else
   err "version normalizer unavailable (.claude/hooks/lib/gaia-version.sh); recording an empty version"
 fi
 
-# Two sidecar flags, because there are two sidecars and one field cannot answer
-# for both. Derived from the member name; no CLI flag for either.
-#
-#   sidecar               does this member file a FINDINGS sidecar, its report
-#                         of record? Every member does, so this is always true.
-#   dispositions_sidecar  does this member file the out-of-scope DISPOSITION
-#                         sidecar? Only the default member does.
+# Every member files a FINDINGS sidecar, its report of record, so this flag
+# is always true. No CLI flag for it.
 sidecar="true"
-if [ "$MEMBER" = "$DEFAULT_MEMBER" ]; then
-  dispositions_sidecar="true"
-else
-  dispositions_sidecar="false"
-fi
 
 audited_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
@@ -540,13 +527,11 @@ jq -cn \
   --arg sha "$sha" \
   --arg audited_at "$audited_at" \
   --argjson sidecar "$sidecar" \
-  --argjson dispositions_sidecar "$dispositions_sidecar" \
   --argjson do_supersede "$do_supersede" \
   --arg supersede_reason "$SUPERSEDE_REASON" \
   '{version: $version, schema: $schema, member: $member,
     provenance: $provenance, digest: $digest, tree: $tree, sha: $sha,
-    audited_at: $audited_at, sidecar: $sidecar,
-    dispositions_sidecar: $dispositions_sidecar}
+    audited_at: $audited_at, sidecar: $sidecar}
    + (if $do_supersede
       then {supersedes: {provenance: "refused", reason: $supersede_reason,
                          superseded_at: $audited_at}}

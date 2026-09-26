@@ -136,8 +136,6 @@ This lens activates only for the non-script paths above, and it is additive: a d
 
 ## Findings grading
 
-<!-- gaia-audit:gradings: Critical, Important, Suggestion -->
-
 Grade every finding Critical / Important / Suggestion, matching the sibling Code Audit Team members: Critical breaks the merge gate, bricks a session, or is exploitable with adversary-controlled input; Important is a real bug or portability failure with a narrower blast radius; Suggestion is style or robustness with no live failure mode.
 
 ## Advisory-only: no self-heal

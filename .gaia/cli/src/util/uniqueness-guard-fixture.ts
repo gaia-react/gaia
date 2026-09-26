@@ -41,8 +41,8 @@ const REPO_ROOT = resolveRepoRootFromImportMeta(import.meta.url);
 /**
  * The corpus the uniqueness guards scan: the CLI's TypeScript sources.
  *
- * Resolved from this module's own location rather than handed in by each guard,
- * so the pair cannot end up scanning different roots. It has held hundreds of
+ * Resolved from this module's own location rather than handed in by its caller,
+ * so it cannot end up scanning a different root. It has held hundreds of
  * `.ts` files for the life of the CLI, which is what makes a floor in the tens
  * a live signal rather than a formality.
  */

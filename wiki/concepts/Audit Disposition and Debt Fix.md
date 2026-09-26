@@ -47,7 +47,7 @@ An out-of-scope finding whose path is the **gate machinery itself**, or a file t
 The disposition is restricted by a deterministic **path eligibility test**, and by two disqualifiers no gate checks, so it cannot become a universal escape hatch. A finding is `machinery_waived`-eligible only when it is non-security (the security screen runs first, and a security-class finding diverts, never waives) **and** its dedup-key `path` is in the **union** of two sets:
 
 - a **gate-machinery path**, the self-referential set `audit_path_is_machinery` defines (`.claude/hooks/lib/audit-machinery.sh`), the files whose bytes change what a member reviews, who reviews it, where a clearance lands, or whether a clearance is believed;
-- a file the **pull request under judgment already changes**: its whole-pull-request fork point against the branch the pull request merges into, unfiltered by file type, resolved against the **acting** tree that holds HEAD rather than the main checkout that holds the sidecar, so a merge driven from a linked worktree evaluates its own diff.
+- a file the **pull request under judgment already changes**: its whole-pull-request fork point against the branch the pull request merges into, unfiltered by file type, resolved against the **acting** tree that holds HEAD rather than the main checkout that holds the marker store, so a merge driven from a linked worktree evaluates its own diff.
 
 Two disqualifiers narrow what may be waived inside that eligible set, and neither widens it: a finding must clear both to stay eligible. No gate checks either one; they sit on the same agent-judgment wall the non-security screen sits on.
 
@@ -57,11 +57,9 @@ Two disqualifiers narrow what may be waived inside that eligible set, and neithe
 
 Either path term alone is sufficient, and a gate-machinery finding satisfies the path condition whether or not the pull request touches it. An empty eligibility set disengages the waive rather than opening it, and a finding satisfying neither term files or diverts as usual. Comparison is **exact whole-string equality** against repo-relative POSIX paths, never a prefix, suffix, basename, or substring match; the changed-file enumeration is NUL-delimited so a legitimately quoted path never reads as an offender. A dedup key the path extractor cannot parse is itself an offender, failing closed.
 
-A machinery-waived finding is recorded as a `machinery_waived` entry in the disposition-ledger sidecar (with its dedup key) **and** listed in the PR body under the heading `## Out-of-scope machinery findings (recorded, not filed)`, its dedup key written there in the wrapped `<!-- gaia-debt-key: … -->` form (`.claude/skills/file-tech-debt/SKILL.md`). The sidecar is gitignored and unreaped, so the PR body is the durable, human-readable record of what was waived. The disposition enum value `machinery_waived` and the sidecar schema carry no field for the changed-files term; the union lives entirely in how the eligibility test reads the existing `path=`.
+A machinery-waived finding is recorded as a `machinery_waived` disposition and listed in the PR body under the heading `## Out-of-scope machinery findings (recorded, not filed)`, its dedup key written there in the wrapped `<!-- gaia-debt-key: … -->` form (`.claude/skills/file-tech-debt/SKILL.md`). The PR body is the durable, human-readable record of what was waived. The disposition enum value `machinery_waived` carries no field for the changed-files term; the union lives entirely in how the eligibility test reads the existing `path=`.
 
-An **accepted residual** is a distinct disposition from a machinery waive: a waive covers an out-of-scope finding on an eligible path, while an accepted residual is an in-scope Suggestion or finding the operator defers rather than fixing in this pull request, in the member's own remit ([[PR Merge Workflow#Applying the audit's own Suggestions: digest economics]]). It is recorded under the heading `## Accepted residuals (recorded, not fixed)` in the pull request body and nowhere else: it adds no disposition-sidecar value, no sidecar entry, and no dependence on any gitignored `.gaia/local` store.
-
-**Binding a waive to its pull request.** The sidecar is named by the default member's content digest, which does not rotate for a diff touching nothing that member owns and no machinery, so one sidecar can be read while judging several consecutive pull requests. The agent stamps each entry's sidecar with the acting tree's `branch` and `sha` at write time, so a reader can tell an entry recorded for this pull request apart from one recorded for a different one sharing the same digest.
+An **accepted residual** is a distinct disposition from a machinery waive: a waive covers an out-of-scope finding on an eligible path, while an accepted residual is an in-scope Suggestion or finding the operator defers rather than fixing in this pull request, in the member's own remit ([[PR Merge Workflow#Applying the audit's own Suggestions: digest economics]]). It is recorded under the heading `## Accepted residuals (recorded, not fixed)` in the pull request body and nowhere else: no dependence on any gitignored `.gaia/local` store.
 
 Eligibility is partly **author-controlled**: touching a file at all makes that file's non-security out-of-scope findings waivable, so the eligibility test bounds **where** a waive may be recorded, not **which** findings may be waived. Three walls stand on that second question, all of them agent judgment and none of them gate-checked: the non-security screen, and the two disqualifiers above.
 
@@ -118,7 +116,7 @@ A security-class finding's detail never reaches a public or internal issue, the 
 
 The disposition gate is the **fourth marker precondition**, alongside the three existing ones (no in-scope Critical, every in-scope Important addressed, every in-scope Suggestion auto-fixed or escalated), which are now scoped to in-scope findings. Before writing the marker the audit re-queries open `tech-debt` issues for each out-of-scope key and confirms each `filed` entry still resolves to an open issue carrying the key.
 
-The audit records its decision in a gitignored **disposition-ledger sidecar** at `.gaia/local/audit/<frontend-digest>.dispositions.json`, keyed to the frontend member's own content digest (`findings: []` when none were identified, so a reader can tell "audit ran, none identified" from "no sidecar"). Each entry carries the dedup key's inner content (the `v1 class=… path=… line=…` text without the `<!-- gaia-debt-key: … -->` wrapper), its severity, `security_class`, and a `disposition`:
+The audit decides a disposition for each out-of-scope finding at its marker-decision point; filed `tech-debt` issues and the PR-body headings carry the durable record, never a local file. Each disposition entry carries the dedup key's inner content (the `v1 class=… path=… line=…` text without the `<!-- gaia-debt-key: … -->` wrapper), its severity, `security_class`, and a `disposition`:
 
 - `filed`: an open `tech-debt` issue carries the key (`issue_number` set).
 - `diverted`: security-class diverted; no public issue.
@@ -139,7 +137,7 @@ The audit probes the issue backend once at the start of the disposition flow:
 
 ### Sibling: the re-run carry-forward ledger
 
-The local re-run carry-forward ledger (`.gaia/local/audit/<audit-key>.rerun.json`, `<audit-key>` the shared pull-request-wide base sha plus the acting tree's own branch, `.gaia/scripts/audit-key-lib.sh`) is a distinct artifact from this disposition-ledger sidecar, not an overlap. The sidecar holds **out-of-scope** findings keyed to the frontend member's content digest; the re-run ledger holds **in-scope** remaining work keyed to the shared base plus branch (the same base every dispatched member's artifacts key to, not the frontend member's own narrower per-member review base), so two worktrees sharing a base sha never collide on it. Neither gates a merge. They do not overlap and do not read each other. See [[Code Review Audit Agent]] for the ledger's role in the local fix → re-audit loop.
+The local re-run carry-forward ledger (`.gaia/local/audit/<audit-key>.rerun.json`, `<audit-key>` the shared pull-request-wide base sha plus the acting tree's own branch, `.gaia/scripts/audit-key-lib.sh`) is a distinct, non-overlapping concern from the out-of-scope disposition process above: the ledger holds **in-scope** remaining work only, keyed to the shared base plus branch (the same base every dispatched member's artifacts key to, not the frontend member's own narrower per-member review base), so two worktrees sharing a base sha never collide on it. The ledger never gates a merge, and it does not read or feed the disposition process. See [[Code Review Audit Agent]] for the ledger's role in the local fix → re-audit loop.
 
 ## /gaia-debt: fixing the backlog
 
@@ -203,7 +201,7 @@ The following are intentionally out of scope for the current implementation and 
 
 ## Pairs with
 
-- [[Code Review Audit Agent]]: the producer; classifies scope, disposes out-of-scope findings, and writes the disposition-ledger sidecar.
+- [[Code Review Audit Agent]]: the producer; classifies scope and disposes out-of-scope findings.
 - [[PR Merge Workflow]]: the disposition gate is the fourth marker precondition.
 - [[Policy-Memory Loop]]: the sibling `finding_class` consumer; hardens recurring forms while `/gaia-debt` fixes concrete instances.
 - [[Worktrees]]: the per-tree/shared state model that `.gaia/local/debt/`'s shared scope and the worktree-mode fix mechanics both follow.

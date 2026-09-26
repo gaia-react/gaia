@@ -18,8 +18,8 @@
  * compiling consumer cannot see.
  *
  * `escape-regexp.test.ts` beside this file is what pins the whole set
- * directly. The remaining callers are guards that keep passing their own
- * suites with a wrong set.
+ * directly; every other caller is a guard that keeps passing its own suite
+ * with a wrong set.
  */
 
 // Hoisted rather than written inline: a literal in the function body

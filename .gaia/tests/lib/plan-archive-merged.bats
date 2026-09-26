@@ -141,28 +141,6 @@ _days_ago() {
   jq -rn --argjson n "$1" '(now - ($n * 86400)) | strftime("%Y-%m-%dT%H:%M:%SZ")'
 }
 
-# _plant_cost_md <plan_id> <fresh> <cwrite> <cread> <output> <session>: writes
-# an `## Execution` cost.md section under the seeded folder.
-_plant_cost_md() {
-  local id="$1" fresh="$2" cwrite="$3" cread="$4" output="$5" session="$6"
-  cat > "$PLANS/$id/cost.md" <<EOF
-# Cost: $id
-
-## Execution
-
-| Bucket | Tokens |
-| --- | --- |
-| Fresh input | $fresh |
-| Cache write | $cwrite |
-| Cache read | $cread |
-| Output | $output |
-
-**Est. cost (USD):** \$1.23
-
-Session \`$session\` · generated 2026-07-05T10:00:00Z
-EOF
-}
-
 # _seed_cost_row <plan_id> <session> <fresh> <cwrite> <cread> <output>:
 # appends a cost.jsonl row keyed by plan_id, matching token-tally's schema.
 _seed_cost_row() {
@@ -182,7 +160,6 @@ _seed_cost_row() {
 
 @test "1: a merged row whose cost is represented is deleted; ledger row untouched" {
   _seed_merged_plan PLAN-001
-  _plant_cost_md PLAN-001 100 10 5 20 sess-1
   _seed_cost_row PLAN-001 sess-1 100 10 5 20
 
   run _archive "$SANDBOX"
@@ -420,7 +397,6 @@ _seed_cost_row() {
   _seed_merged_plan PLAN-001
   rm -f "$PLANS/PLAN-001/SUMMARY.md"
   printf '# Spec\n' > "$PLANS/PLAN-001/SPEC.md"
-  _plant_cost_md PLAN-001 100 10 5 20 sess-1
   _seed_cost_row PLAN-001 sess-1 100 10 5 20
   _set_merged_at PLAN-001 "$(_days_ago 45)"
   export GAIA_SPEC_RETENTION_DAYS=30

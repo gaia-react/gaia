@@ -19,9 +19,8 @@ Because the folder is invisible to git, residue a subsystem leaves behind never 
 | `.project-id`, `setup-state.json` | setup / identity | live | permanent identity |
 | `declined-updates.json` | `/update-deps` | live | permanent preference |
 | `.patched-statusline.sh`, `maintainer-statusline.sh` | statusline | live | regenerated |
-| `audit/<digest>.ok`, `audit/<digest>.<member>.ok` (earned) | [[Code Review Audit Agent]] merge gate | ephemeral | spent once its recorded `tree` is no longer live AND it has aged past `GAIA_AUDIT_MARKER_RETENTION_HOURS` (default 72) past its own `audited_at`; the frontend marker additionally survives either test while its co-keyed disposition sidecar still holds a still-open receipt |
-| `audit/<digest>.refused`, `audit/<digest>.<member>.refused` (refused) | [[Code Review Audit Agent]] merge gate | ephemeral | spent once its recorded `tree` is no longer live; no retention-window or open-receipt extension |
-| `audit/<frontend-digest>.dispositions.json` | [[Code Review Audit Agent]] merge gate | ephemeral | kept alongside its frontend marker whenever that marker is kept; additionally kept on its own while it still holds a still-open receipt |
+| `audit/<digest>.ok`, `audit/<digest>.<member>.ok` (earned) | [[Code Review Audit Agent]] merge gate | ephemeral | spent once its recorded `tree` is no longer live AND it has aged past `GAIA_AUDIT_MARKER_RETENTION_HOURS` (default 72) past its own `audited_at` |
+| `audit/<digest>.refused`, `audit/<digest>.<member>.refused` (refused) | [[Code Review Audit Agent]] merge gate | ephemeral | spent once its recorded `tree` is no longer live; no retention-window extension |
 | `audit/<tree>.progress.log` | [[Code Review Audit Agent]] merge gate | ephemeral | reaped unconditionally every session (a CI-observability breadcrumb, never liveness-tracked) |
 | `audit/KNOWLEDGE-*.md` | [[GAIA Audit]] | ephemeral | self-pruned by the next applied run |
 | `worthiness-ledger/worthiness.jsonl` | worthiness check | live | append-only |

@@ -78,8 +78,6 @@ For every in-remit changed file, the workflow-security core:
 
 ## Findings grading
 
-<!-- gaia-audit:gradings: Critical, Important, Suggestion -->
-
 Grade every finding Critical / Important / Suggestion, matching the sibling Code Audit Team members: Critical breaks the merge gate, exposes a secret, or is exploitable with adversary-controlled input; Important is a real defect with a narrower blast radius; Suggestion is style or robustness with no live failure mode.
 
 <!-- gaia:maintainer-only:start -->

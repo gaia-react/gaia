@@ -70,29 +70,6 @@ _snapshot() {
          | xargs -0 shasum 2>/dev/null ) || true
 }
 
-# _plant_cost_md <spec_id> <fresh> <cwrite> <cread> <output> <session>: writes
-# a `## SPEC` cost.md section under the seeded folder, mirroring
-# token-tally.sh's render_tally_body bucket-table + Session line shape.
-_plant_cost_md() {
-  local id="$1" fresh="$2" cwrite="$3" cread="$4" output="$5" session="$6"
-  cat > "$REPO/$SPECS/$id/cost.md" <<EOF
-# Cost: $id
-
-## SPEC
-
-| Bucket | Tokens |
-| --- | --- |
-| Fresh input | $fresh |
-| Cache write | $cwrite |
-| Cache read | $cread |
-| Output | $output |
-
-**Est. cost (USD):** \$1.23
-
-Session \`$session\` · generated 2026-07-05T10:00:00Z
-EOF
-}
-
 # _seed_cost_row <spec_id> <session> <fresh> <cwrite> <cread> <output>: appends
 # a cost.jsonl row matching the schema token-tally.sh writes, so the
 # representation gate finds it for <spec_id>.
@@ -143,7 +120,6 @@ _clear_merged_at() {
 
 @test "1: a merged row whose cost is represented is deleted; ledger stays merged" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged-folder SPEC-001)"
-  _plant_cost_md SPEC-001 100 10 5 20 sess-1
   _seed_cost_row SPEC-001 sess-1 100 10 5 20
 
   run _archive "$REPO"
@@ -432,7 +408,6 @@ _clear_merged_at() {
 @test "23: a folder holding SPEC.md with no SUMMARY.md is kept past the window even when cost-represented" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged-folder SPEC-001)"
   rm -f "$REPO/$SPECS/SPEC-001/SUMMARY.md"
-  _plant_cost_md SPEC-001 100 10 5 20 sess-1
   _seed_cost_row SPEC-001 sess-1 100 10 5 20
   _set_merged_at "$REPO" SPEC-001 "$(_days_ago 45)"
   export GAIA_SPEC_RETENTION_DAYS=30
