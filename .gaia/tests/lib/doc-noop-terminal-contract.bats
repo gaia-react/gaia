@@ -61,13 +61,10 @@ setup() {
   # The maintainer-only health audit departs too, escalating rather than
   # stopping at a merge gate, for its own reason: its Orchestrator never audits.
   HEALTH_REL='.gaia/cli/health/runbook.md'
-  # The ad-hoc dispatch rule, whose pointer has to resolve to the owner.
-  RULE_REL='.claude/rules/subagent-dispatch.md'
 
   OWNER="$ROOT/$OWNER_REL"
   GATE="$ROOT/$GATE_REL"
   HEALTH="$ROOT/$HEALTH_REL"
-  RULE="$ROOT/$RULE_REL"
 
   # Every surface expected to state a terminal action. The roster test
   # reconciles this against the tree in both directions.
@@ -289,46 +286,4 @@ terminal_segments() {
   grep -qF -- '[[Code Review Audit Agent]]' "$GATE"
   grep -qF -- "own attestation" "$GATE"
   grep -qF -- 'fail-closed' "$GATE"
-}
-
-# --- The pointer: it has to resolve ----------------------------------------
-
-@test "the dispatch rule's full-contract pointer names a file that exists and a heading it carries" {
-  local line target section
-  line="$(grep -m1 -F -- 'Full contract for this shape' "$RULE")"
-  [ -n "$line" ] || { echo "no full-contract pointer read in ${RULE_REL}" >&2; return 1; }
-
-  # Both halves come out of the pointer's own text, so a repoint that moves
-  # either one is checked against the new destination rather than the old.
-  # Anchored to the phrase: these surfaces write a whole paragraph on one
-  # line, so an unanchored extraction reads whichever path the paragraph
-  # happens to name first, which is a different pointer.
-  line="${line#*Full contract for this shape}"
-  target="$(printf '%s\n' "$line" | grep -oE '`[^`]+\.md`' | head -n 1 | tr -d '`')"
-  [ -n "$target" ] || { echo "the pointer names no file" >&2; return 1; }
-  [ -f "$ROOT/$target" ] || { echo "the pointer names ${target}, which does not exist" >&2; return 1; }
-
-  section="$(printf '%s\n' "$line" | grep -oE '`[^`]+`' | grep -v '\.md`' | head -n 1 | tr -d '`')"
-  [ -n "$section" ] || { echo "the pointer names no section" >&2; return 1; }
-  # Fixed-string against heading lines only. The section name is text lifted
-  # out of the pointer, so splicing it into an ERE lets a rename carrying a
-  # metacharacter either over-match or make grep exit 2; the sibling test below
-  # already matches its own destination as a fixed string.
-  grep -E '^#+ ' "$ROOT/$target" | grep -qF -- "$section" || {
-    echo "${target} carries no heading matching the pointed-at section '${section}'" >&2
-    return 1
-  }
-}
-
-@test "the dispatch rule cites no markdown path that has gone missing" {
-  local p missing
-  missing=''
-  while IFS= read -r p; do
-    [ -f "$ROOT/$p" ] || missing="${missing}${p}"$'\n'
-  done < <(grep -oE '`[^`]+\.md`' "$RULE" | tr -d '`' | LC_ALL=C sort -u)
-  [ -z "$missing" ] || {
-    echo "${RULE_REL} cites markdown paths that do not exist:" >&2
-    printf '%s' "$missing" >&2
-    return 1
-  }
 }

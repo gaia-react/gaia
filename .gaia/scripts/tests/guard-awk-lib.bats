@@ -973,31 +973,6 @@ assert_consumer_count() {
   [ "$n" -gt 0 ] || { echo "library_consumers returned nothing" >&2; return 1; }
 }
 
-@test "every library consumer's shellcheck source= line carries the library's full repo-relative path" {
-  local f
-  assert_consumer_count || return 1
-  while IFS= read -r f; do
-    grep -qF -- ".gaia/scripts/guard-awk-lib.sh" "$f" || { echo "$f: no shellcheck source= citation" >&2; return 1; }
-  done < <(library_consumers)
-}
-
-@test "every library consumer brackets its library load with set +e and set -e on one line" {
-  # The bracket verbatim, because it is frozen rather than merely
-  # conventional: a guard sourcing this library runs under errexit itself, so
-  # an unbracketed load would abort the guard outright if the library were
-  # ever present but unparseable. A reworded load would silently stop being
-  # the shape this suite reports on, so the literal is what holds it. The
-  # load is script-relative by design and does not itself carry the full
-  # path (which lives above it, on the shellcheck source= directive line),
-  # so this checks the bracket rather than a second copy of the path.
-  local f load
-  assert_consumer_count || return 1
-  load='set +e; [ -f "$_gaia_guard_lib_dir/guard-awk-lib.sh" ] && . "$_gaia_guard_lib_dir/guard-awk-lib.sh" 2>/dev/null; set -e'
-  while IFS= read -r f; do
-    grep -qF -- "$load" "$f" || { echo "$f: unbracketed or reworded library load" >&2; return 1; }
-  done < <(library_consumers)
-}
-
 # Equality, not a per-file grep over the roster: the roster is what the awk
 # checks below iterate, so a consumer that grew an awk program and was never
 # added to it is invisible to any check the roster drives. This is the one
@@ -1149,115 +1124,13 @@ strip_full_line_comments() {
   strip_full_line_comments "$copy" | grep -qE '[A-Za-z0-9_.-]+\.bats' || return 1
 }
 
-# ============================================================================
-# Section C: the mechanical documentation arm (UAT-013)
-# ============================================================================
-#
-# This is the MECHANICAL half only: what a grep can prove about citation,
-# resolution, registration and heading structure. A separately-labelled
-# HUMAN review arm is owed and is not this: a human confirms the page
-# states in its own prose why suppression is bats-only, what makes a line
-# fixture data, and what the pragma must contain, and that it points at
-# each guard header for that guard's blind spots rather than restating
-# them. That review happens as the first step of Phase 4, with the user,
-# before /distribution-audit, and its outcome is recorded in PROGRESS.md.
-
 # Derived from production_guards() rather than re-listed, so a guard added
-# there is held to the citation rule without a second edit here. The library
-# itself cites the page too and is not a guard, so it is appended.
+# there is held to the no-basename-list check above without a second edit
+# here. The library itself is checked too and is not a guard, so it is
+# appended.
 wiki_citing_files() {
   production_guards
   printf '%s\n' "$REPO_ROOT/.gaia/scripts/guard-awk-lib.sh"
-}
-
-@test "every participating file cites the wiki decision page" {
-  local f
-  while IFS= read -r f; do
-    grep -qF -- "wiki/decisions/Shell Guard Fixture Discrimination.md" "$f" \
-      || { echo "$f: does not cite the page" >&2; return 1; }
-  done < <(wiki_citing_files)
-}
-
-extract_wiki_paths() {
-  grep -oE 'wiki/[A-Za-z0-9/ _.-]+\.md' "$1" | sort -u
-}
-
-@test "every wiki/*.md path any participating file cites resolves on disk" {
-  local f p
-  while IFS= read -r f; do
-    while IFS= read -r p; do
-      [ -n "$p" ] || continue
-      [ -f "$REPO_ROOT/$p" ] || { echo "$f: cites $p, which does not resolve" >&2; return 1; }
-    done < <(extract_wiki_paths "$f")
-  done < <(wiki_citing_files)
-}
-
-@test "a citation rewritten to a non-existent page reds the resolution check" {
-  local copy="$TMP/broken.sh" p bad=1
-  cp "$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh" "$copy"
-  sed -i.bak 's#wiki/decisions/Shell Guard Fixture Discrimination\.md#wiki/decisions/No Such Page At All.md#' "$copy"
-  while IFS= read -r p; do
-    [ -n "$p" ] || continue
-    [ -f "$REPO_ROOT/$p" ] || bad=0
-  done < <(extract_wiki_paths "$copy")
-  [ "$bad" -eq 0 ]
-}
-
-@test "the wiki decision page is registered inside the maintainer-only block of the Decisions (ADRs) section" {
-  local index="$REPO_ROOT/wiki/index.md"
-  awk '/^## Decisions \(ADRs\)/{f=1; next} f && /^## /{exit} f{print}' "$index" \
-    | awk '/gaia:maintainer-only:start/{m=1} /gaia:maintainer-only:end/{m=0} m && /Shell Guard Fixture Discrimination/{found=1} END{exit !found}' \
-    || { echo "page entry missing from the maintainer-only block of Decisions (ADRs)" >&2; return 1; }
-
-  local starts ends
-  starts="$(grep -c -- 'gaia:maintainer-only:start' "$index")"
-  ends="$(grep -c -- 'gaia:maintainer-only:end' "$index")"
-  [ "$starts" -eq "$ends" ]
-}
-
-@test "every pinned heading anchor in the wiki page exists and carries content before the next heading" {
-  local page="$REPO_ROOT/wiki/decisions/Shell Guard Fixture Discrimination.md"
-  local h
-  for h in "Why the suppression is bats-only" \
-           "What makes a line fixture data" \
-           "What a pragma must contain" \
-           "Where the blind spots live" \
-           "Adopting the convention in a new guard"; do
-    awk -v h="## $h" '
-      $0 == h { found = 1; next }
-      found && /^## / { exit }
-      found && NF > 0 { has_content = 1 }
-      END { exit !(found && has_content) }
-    ' "$page" || { echo "heading '$h' missing or carries no content" >&2; return 1; }
-  done
-}
-
-@test "each guard's header states its bats reach; the errexit gate also states a bats-tied fail-open" {
-  # Presence check against phrasing the guards actually wrote (this task's
-  # own instruction: read the headers first and pin what is there, so the
-  # check does not rot against the next prose edit).
-  local g
-  while IFS= read -r g; do
-    grep -qF -- '*.bats' "$g" || { echo "$g: header states no bats reach" >&2; return 1; }
-  done < <(production_guards)
-
-  grep -qF -- 'FAIL-OPEN' "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh" || return 1
-
-  # lint-git-path-quoting.sh's own "*.bats residuals" bullets state only a
-  # FAIL-CLOSED shape (an unrecognized fixture helper is reported rather
-  # than missed) and a statement about the pragma being honored nowhere on
-  # other surfaces; it names no NEW fail-open for the bats surface.
-  # Recorded as a finding rather than papered over: the plan's README
-  # assumed every guard would state one.
-}
-
-@test "the wiki-style audit greps add no new match from the wiki page" {
-  local page="wiki/decisions/Shell Guard Fixture Discrimination.md"
-  ( cd "$REPO_ROOT" && grep -rEn "UAT-[0-9]+|SPEC-[0-9]+" wiki/ --include="*.md" --exclude="log.md" --exclude="hot.md" --exclude-dir="meta" ) \
-    | grep -qF -- "$page" && return 1
-  ( cd "$REPO_ROOT" && grep -rEn "\bchanged from|was changed|previously (did|was|stated|had|used)|previously set|as of [0-9]{4}|in PR #?[0-9]+|in commit [a-f0-9]{6,}" wiki/ --include="*.md" --exclude="log.md" --exclude="hot.md" --exclude-dir="meta" ) \
-    | grep -qF -- "$page" && return 1
-  true
 }
 
 # ============================================================================

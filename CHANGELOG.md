@@ -16,7 +16,6 @@ A release change that requires the adopter to act, run a command or hand-migrate
 
 ### Fixed
 
-- the pre-merge audit no longer counts a member that stopped mid-review as a real result just because its progress text cites a file location. Return text now vouches only alongside an earned clearance marker or a fresh findings sidecar, for every member including the default one, so a truncated review earns the free hardened retry instead of spending a capped audit round (#2243)
 - the self-heal path guard no longer falsely denies a `sed -i`, `tee`, `cp` or `mv` whose separator is glued to the next command (`copy.sh;bash ...`), and it now denies a protected destination hidden behind a trailing redirection (`cp a <path> 2>&1`) or inside `find -exec cp {} <path> \;` (#2247)
 - the self-heal path guard no longer stalls for tens of seconds on a large command. It forked a subshell per token, so an audit member's own findings write of roughly 80 KB spent about 20 seconds in the hook on bash 5 and about 50 on the stock macOS bash; the same command now clears in about 2 seconds on both (#2250)
 - the health-audit taxonomy, runbook and SELF lens no longer hard-code the fitness category list; they point at the fitness page, so the two cannot drift (#2248)

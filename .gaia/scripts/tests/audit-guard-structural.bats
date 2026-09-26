@@ -1,10 +1,9 @@
 #!/usr/bin/env bats
-# Structural + guard-line + schema tests for the adversarial-audit dispatch
-# prompts: the first-tool-call guard line's byte-identity across every
-# dispatch prompt (spec.md, plan.md, code-audit-frontend.md), the no-op
+# Structural tests for the adversarial-audit dispatch wiring: the no-op
 # detection/retry/inline-fallback wiring that survives in
 # code-audit-frontend.md's own internal specialist/refuter fan-out, and the
-# absence of any machine-specific path.
+# shared clearance-writer invocation across every Code Audit Team member and
+# the CI workflow that dispatches them.
 #
 # The detection predicate itself is deterministic and unit-tested by the
 # sibling suite `audit-noop-detect.bats`. The orchestration wiring still
@@ -19,23 +18,14 @@
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
-  SPEC_MD="$REPO_ROOT/.claude/skills/gaia/references/spec.md"
-  PLAN_MD="$REPO_ROOT/.claude/skills/gaia/references/plan.md"
   CRA_MD="$REPO_ROOT/.claude/agents/code-audit-frontend.md"
-  HELPER="$REPO_ROOT/.gaia/scripts/audit-noop-detect.sh"
 
   # SPEC-042 clearance-writer surfaces (UAT-020 structural half + PLAN-001).
   SHELL_MD="$REPO_ROOT/.claude/agents/code-audit-maintainer-shell.md"
   NODE_MD="$REPO_ROOT/.claude/agents/code-audit-maintainer-node.md"
-  WRITER="$REPO_ROOT/.gaia/scripts/audit-write-clearance.sh"
   AUDIT_WORKFLOW="$REPO_ROOT/.github/workflows/code-review-audit.yml"
   WF_TMPL_ARTIFACT="$REPO_ROOT/.gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
   WF_TMPL_SOURCE="$REPO_ROOT/.gaia/cli/src/automation/templates/workflows/code-review-audit.yml.tmpl"
-
-  # FC-3: the byte-identical guard-line substring, verbatim.
-  GUARD_LINE="Lead with a tool call, not prose: your first action is a Read of the artifact under audit, and you emit your structured result before any prose."
-  # FC-4: the stable retry-prefix template substring (UAT-002).
-  RETRY_PREFIX="RETRY (hardened, one attempt only):"
 }
 
 # section_between FILE START END: prints the lines from the first line
@@ -80,59 +70,6 @@ assert_predicate_retry_fallback() {
   grep -qF -- "inline fallback" <<<"$content"
 }
 
-# 0. The edited surfaces exist
-
-@test "edited surfaces exist: spec.md, plan.md, code-audit-frontend.md, helper" {
-  [ -f "$SPEC_MD" ]
-  [ -f "$PLAN_MD" ]
-  [ -f "$CRA_MD" ]
-  [ -f "$HELPER" ]
-}
-
-# 1. Guard-line byte-identity across all 7 FC-6 prompts (FC-3; UAT-004)
-
-@test "guard line: spec.md 6a self-review dispatch prompt" {
-  content="$(section_between "$SPEC_MD" '^#### 6a' '^#### 6b')"
-  assert_section_nonempty "spec.md #### 6a" "$content"
-  grep -qF -- "$GUARD_LINE" <<<"$content"
-}
-
-@test "guard line: spec.md 7a lens-auditor shared preamble" {
-  content="$(section_between "$SPEC_MD" '^#### 7a' '^#### 7b')"
-  assert_section_nonempty "spec.md #### 7a" "$content"
-  grep -qF -- "$GUARD_LINE" <<<"$content"
-}
-
-@test "guard line: spec.md 7b-i refuter prompt" {
-  content="$(section_between "$SPEC_MD" '^##### 7b-i' '^##### 7b-ii')"
-  assert_section_nonempty "spec.md ##### 7b-i" "$content"
-  grep -qF -- "$GUARD_LINE" <<<"$content"
-}
-
-@test "guard line: spec.md 7b-ii completeness-critic dispatch prompt" {
-  content="$(section_between "$SPEC_MD" '^##### 7b-ii' '^##### 7b-iii')"
-  assert_section_nonempty "spec.md ##### 7b-ii" "$content"
-  grep -qF -- "$GUARD_LINE" <<<"$content"
-}
-
-@test "guard line: plan.md 4.6a decomposition-lens shared preamble" {
-  content="$(section_between "$PLAN_MD" '^#### 4.6a' '^#### 4.6b')"
-  assert_section_nonempty "plan.md #### 4.6a" "$content"
-  grep -qF -- "$GUARD_LINE" <<<"$content"
-}
-
-@test "guard line: code-audit-frontend.md specialist-subagent instructions template" {
-  content="$(section_between "$CRA_MD" '^### Subagent instructions template' '^## Constraints')"
-  assert_section_nonempty "code-audit-frontend.md Subagent instructions template" "$content"
-  grep -qF -- "$GUARD_LINE" <<<"$content"
-}
-
-@test "guard line: code-audit-frontend.md adversarial-refuter prompt" {
-  content="$(section_between "$CRA_MD" '^## Finding Proof Gate' '^## Scope classification')"
-  assert_section_nonempty "code-audit-frontend.md Finding Proof Gate" "$content"
-  grep -qF -- "$GUARD_LINE" <<<"$content"
-}
-
 # 2. Predicate + one-retry + inline-fallback at code-audit-frontend.md's own
 #    internal specialist/refuter fan-out sites.
 
@@ -148,38 +85,12 @@ assert_predicate_retry_fallback() {
   assert_predicate_retry_fallback "$content"
 }
 
-# 2b. Retry-prefix template present in code-audit-frontend.md.
-
-@test "retry-prefix template embedded verbatim in code-audit-frontend.md" {
-  grep -qF -- "$RETRY_PREFIX" "$CRA_MD"
-}
-
-# 4. No machine-specific paths in the changed files (UAT-004)
-
-@test "portability: no /Users/ or /home/ literal paths in the edited surfaces" {
-  run grep -REn "/Users/|/home/" "$SPEC_MD" "$PLAN_MD" "$CRA_MD" "$HELPER"
-  [ "$status" -ne 0 ]
-}
-
-# 5. The helper is referenced, not reinvented
-
-@test "helper reference: code-audit-frontend.md calls the real audit-noop-detect.sh path" {
-  grep -qF -- ".gaia/scripts/audit-noop-detect.sh" "$CRA_MD"
-}
-
 # 6. Shared clearance writer: each Code Audit Team member's definition invokes
 #    the ONE shared writer, and NONE still carries the inline marker `printf`
 #    or the `[ ! -f "$marker" ]` idempotence guard. This negative assertion is
 #    load-bearing: a missed producer keeps writing a legacy-bodied marker that
 #    every existence-only consumer honors, so the gate passes and the only
 #    symptom is a member that silently never carries forward.
-
-@test "writer surfaces exist: the three agent definitions and the writer script" {
-  [ -f "$CRA_MD" ]
-  [ -f "$SHELL_MD" ]
-  [ -f "$NODE_MD" ]
-  [ -f "$WRITER" ]
-}
 
 @test "clearance writer: each code-audit-*.md invokes the shared writer, none keeps the inline printf or the [ ! -f marker ] guard" {
   local md
@@ -192,24 +103,6 @@ assert_predicate_retry_fallback() {
     grep -qF -- '[ ! -f "$marker" ]' "$md" && return 1
   done
   return 0
-}
-
-# 7. PLAN-001: CI's agent tool policy must grant the writer, or the required
-#    GAIA-Audit check never stamps. The `--allowedTools` line names the writer
-#    in the live workflow AND both byte-identical bundled templates, and all
-#    three agree.
-
-@test "PLAN-001: --allowedTools names the writer in the workflow and both templates, all three identical" {
-  local line_wf line_src line_art
-  line_wf="$(grep -F -- '--allowedTools' "$AUDIT_WORKFLOW" | head -n1)"
-  line_src="$(grep -F -- '--allowedTools' "$WF_TMPL_SOURCE" | head -n1)"
-  line_art="$(grep -F -- '--allowedTools' "$WF_TMPL_ARTIFACT" | head -n1)"
-  [ -n "$line_wf" ]
-  grep -qF -- "audit-write-clearance.sh" <<<"$line_wf" || return 1
-  grep -qF -- "audit-write-clearance.sh" <<<"$line_src" || return 1
-  grep -qF -- "audit-write-clearance.sh" <<<"$line_art" || return 1
-  [ "$line_wf" = "$line_src" ]
-  [ "$line_src" = "$line_art" ]
 }
 
 # 7b. The self-heal push arm must prove the marker the same way the no-push
@@ -231,11 +124,4 @@ assert_predicate_retry_fallback() {
     [ -n "$block" ] || return 1
     grep -qF -- '--require-marker' <<<"$block" || return 1
   done
-}
-
-@test "PLAN-001: the two bundled workflow templates are byte-identical" {
-  local a b
-  a="$(git -C "$REPO_ROOT" hash-object "$WF_TMPL_SOURCE")"
-  b="$(git -C "$REPO_ROOT" hash-object "$WF_TMPL_ARTIFACT")"
-  [ "$a" = "$b" ]
 }

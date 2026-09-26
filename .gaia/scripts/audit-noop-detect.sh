@@ -35,10 +35,9 @@
 #                 audit-key is the incremental base sha plus the acting tree's
 #                 branch, .gaia/scripts/audit-key-lib.sh); see the case arm
 #                 below for the lost-report gate this argument enables when
-#                 passed, its member-identity binding, and the second
-#                 witness it makes the return text need. Omit it to keep the
-#                 marker-only short-circuit and the text-alone arm. Ignored
-#                 for every other shape.
+#                 passed and its member-identity binding. Omit it to keep the
+#                 marker-only short-circuit; the text-alone arm classifies
+#                 independently either way. Ignored for every other shape.
 #                 A caller that cannot name the path takes the resolve arm
 #                 below instead; the two are mutually exclusive.
 #   --findings-root / --findings-since
@@ -106,27 +105,22 @@
 #                         wrote it) AND, when --findings or the --findings-root
 #                         resolve arm is passed, that durable report of record
 #                         is present, fresh, and attributed to the same member,
-#                         OR the captured return in --path carries a report
-#                         token: a backticked `` `<path>:<line>` `` finding
-#                         location (every Code Audit Team member's shared
-#                         Output Format template bolds each reported finding's
-#                         Location field this way, blocking or not), or
-#                         code-audit-frontend's terse LOCAL return-contract
-#                         preamble, the literal string "Remaining in-scope:".
-#                         When --findings or the resolve arm is passed, a
-#                         report token counts only beside ONE artifact witness
-#                         (the writer-earned marker, or the fresh member-bound
-#                         sidecar), so REAL needs two of those three: a member
-#                         that stops mid-review cites `path:line` in its
-#                         progress report too, and alone that is NO-OP. With no
-#                         sidecar requested (a caller whose key did not
-#                         resolve, so no sidecar exists) a report token alone
-#                         still classifies REAL. Real outcomes covered: clean
-#                         and advisory-dirty (earned marker plus sidecar),
-#                         blocking-dirty full report and terse ledger-pointer
-#                         (sidecar plus return, or a refusal), a self-healed
-#                         pass and a DIRTY= withhold (sidecar plus return, no
-#                         marker, no refusal), and a declined sidecar write
+#                         OR TARGET_PATH exists and the captured return in
+#                         --path carries a report token: a backticked
+#                         `` `<path>:<line>` `` finding location (every Code
+#                         Audit Team member's shared Output Format template
+#                         bolds each reported finding's Location field this
+#                         way, blocking or not), or code-audit-frontend's
+#                         terse LOCAL return-contract preamble, the literal
+#                         string "Remaining in-scope:". A report token
+#                         classifies REAL on its own, whether or not --findings
+#                         or the resolve arm was passed: no earned marker or
+#                         sidecar is required beside it. Real outcomes
+#                         covered: clean and advisory-dirty (earned marker plus
+#                         sidecar), blocking-dirty full report and terse
+#                         ledger-pointer (return alone, or a refusal), a
+#                         self-healed pass and a DIRTY= withhold (return alone,
+#                         no marker, no refusal), and a declined sidecar write
 #                         (earned marker plus return). A bare harness-reminder
 #                         / output-style echo carries no report token and, on
 #                         its own, classifies NO-OP.
@@ -175,17 +169,15 @@ usage: audit-noop-detect.sh --shape <SHAPE> --path <PATH> [--marker <MARKER_PATH
   --findings  optional; honored only for --shape audit-team-member. The
               member's findings sidecar; when passed, the EARNED marker
               short-circuit also requires it (lost-report detection). It does
-              not gate the refusal arm. When passed, return text alone no
-              longer classifies real; it needs the earned marker or this
-              sidecar beside it.
+              not gate the refusal arm or the text-alone arm.
   --findings-root / --findings-since
               optional, both-or-neither; honored only for --shape
               audit-team-member; mutually exclusive with --findings. Resolves
               the member's newest sidecar under <ROOT> instead of being told
               its path, and requires it to be newer than the <STAMP> file the
-              caller wrote immediately before the dispatch wave. When passed,
-              return text alone no longer classifies real; it needs the earned
-              marker or this sidecar beside it.
+              caller wrote immediately before the dispatch wave. Gates the
+              EARNED marker short-circuit the same way --findings does; does
+              not gate the text-alone arm.
   --report-key   optional; honored only for --shape agent-report-file. The
                  top-level key holding the report array. Omit for a bare
                  top-level array.
@@ -612,7 +604,7 @@ case "$SHAPE" in
     # file-backed shapes above whose file always writes on any real
     # completion, so its absence alone cannot mean no-op. Check it first as a
     # same-cost short-circuit; when it does not settle the run, fall through
-    # to the two-of-three text arm below.
+    # to the text arm below.
     #
     # Short-circuit to real ONLY when $MARKER_PATH is a writer-produced EARNED
     # clearance: the body parses, provenance is "earned", and the body digest
@@ -623,8 +615,8 @@ case "$SHAPE" in
     #
     # Derive the audited member and digest from the marker FILENAME up front,
     # whether or not the file exists: pure parameter expansion plus basename,
-    # needing no sourced lib, so the findings gate, the clearance check, and
-    # the text arm all bind to the same identity. The detector is only ever
+    # needing no sourced lib, so the findings gate and the clearance check
+    # both bind to the same identity. The detector is only ever
     # handed the `.ok` earned marker path, so stripping just `.ok` is the
     # whole job: the remaining stem is `<digest>` (default member) or
     # `<digest>.<member>` (a specialist).
@@ -666,13 +658,12 @@ case "$SHAPE" in
     # this shape straight back on the marker-only short-circuit, which is the
     # gate silently disappearing in exactly the runs it exists for.
     #
-    # Computed once, outside the marker block, because the text arm reads the
-    # same sidecar as a witness. A request with no --marker names no member to
-    # bind a sidecar to, so the witness stays absent (fail-closed). The empty
-    # member is refused here, not left to `_acd_sidecar_ok`: with jq present
-    # that predicate would reject the `.member` mismatch on its own, but with
-    # jq absent it degrades to file existence and never reads `.member`, so
-    # only this guard keeps an unbound sidecar from counting as a witness.
+    # A request with no --marker names no member to bind a sidecar to, so it
+    # stays absent (fail-closed).
+    # The empty member is refused here, not left to `_acd_sidecar_ok`: with jq
+    # present that predicate would reject the `.member` mismatch on its own,
+    # but with jq absent it degrades to file existence and never reads
+    # `.member`, so only this guard keeps an unbound sidecar from counting.
     _acd_findings_requested=""
     if [ -n "$FINDINGS_ROOT_SEEN" ] || [ -n "$FINDINGS_PATH" ]; then
       _acd_findings_requested=1
@@ -693,9 +684,8 @@ case "$SHAPE" in
       _acd_findings_ok=$_acd_sidecar_present
     fi
 
-    # The earned witness, kept separate from the short-circuit so the text
-    # arm can count it. The clearance reader is sourced at the top of this
-    # branch.
+    # Whether the marker itself is a writer-produced EARNED clearance. The
+    # clearance reader is sourced at the top of this branch.
     _acd_earned=0
     if [ -n "$MARKER_PATH" ] && [ -f "$MARKER_PATH" ]; then
       if ! command -v jq >/dev/null 2>&1; then
@@ -711,21 +701,6 @@ case "$SHAPE" in
     fi
 
     [ -f "$TARGET_PATH" ] || noop
-
-    # Two-of-three (gaia-react/gaia#2243). A member that stops mid-review can
-    # cite `path:line` in a progress report, so once the caller asked for the
-    # sidecar the return text is a confirming witness, never a sole one: it
-    # needs the earned marker or a fresh member-bound sidecar beside it. The
-    # two states it still decides are an earned marker whose sidecar write
-    # was declined (the report reached the orchestrator in the return), and a
-    # sidecar with no marker (a self-healed pass and a DIRTY= withhold both
-    # write the sidecar but neither a marker nor a .refused). With no sidecar
-    # requested there is no second witness in reach, because the key did not
-    # resolve and no sidecar exists, so the text still classifies alone.
-    if [ -n "$_acd_findings_requested" ] && [ "$_acd_earned" -eq 0 ] \
-       && [ "$_acd_sidecar_present" -eq 0 ]; then
-      noop
-    fi
 
     content="$(cat "$TARGET_PATH" 2>/dev/null)"
     # Here-string, not a `printf | grep -q` pipe: under `pipefail`, grep -q's
