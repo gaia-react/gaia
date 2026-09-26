@@ -386,17 +386,10 @@ write_marker_at() {
   tree="$(git -C "$digest_root" rev-parse "HEAD^{tree}")"
   if [ "$member" = "code-audit-frontend" ]; then infix=""; flag="true"; else infix=".$member"; flag="false"; fi
   mkdir -p "$store_root/.gaia/local/audit"
-  printf '{"version":"1.4.0","schema":4,"member":"%s","provenance":"earned","digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":%s,"dispositions_sidecar":%s}\n' \
-    "$member" "$digest" "$tree" "$sha" "$flag" "$flag" \
+  printf '{"version":"1.4.0","schema":4,"member":"%s","provenance":"earned","digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":%s}\n' \
+    "$member" "$digest" "$tree" "$sha" "$flag" \
     > "$store_root/.gaia/local/audit/${digest}${infix}.ok"
   printf '%s\n' "$digest"
-}
-
-write_sidecar_at() {
-  local store_root="$1" digest="$2"
-  mkdir -p "$store_root/.gaia/local/audit"
-  printf '{"schema":1,"backend":"absent","findings":[]}\n' \
-    > "$store_root/.gaia/local/audit/${digest}.dispositions.json"
 }
 
 # provision_all_members <root>: an earned marker for every roster member,
@@ -898,7 +891,6 @@ run_audit_root_block() {
   local m digest payload
   for m in "${ALL_MEMBERS[@]}"; do
     digest="$(write_marker_at "$MAIN" "$WT" "$m")"
-    [ "$m" = "code-audit-frontend" ] && write_sidecar_at "$MAIN" "$digest"
   done
   payload="$(write_merge_payload)"
 
@@ -912,7 +904,6 @@ run_audit_root_block() {
   local m digest payload
   for m in "${ALL_MEMBERS[@]}"; do
     digest="$(write_marker_at "$MAIN" "$MAIN" "$m")"
-    [ "$m" = "code-audit-frontend" ] && write_sidecar_at "$MAIN" "$digest"
   done
   payload="$(write_merge_payload)"
 
@@ -928,7 +919,6 @@ run_audit_root_block() {
   # Baseline (unmutated): the store assertion holds.
   for m in "${ALL_MEMBERS[@]}"; do
     digest="$(write_marker_at "$MAIN" "$WT" "$m")"
-    [ "$m" = "code-audit-frontend" ] && write_sidecar_at "$MAIN" "$digest"
   done
   payload="$(write_merge_payload)"
   invoke_hook_in "$WT" "$(cat "$payload")" "$HOOK_MERGE"
@@ -971,7 +961,6 @@ run_audit_root_block() {
   rm -rf "$MAIN/.gaia/local"
   for m in "${ALL_MEMBERS[@]}"; do
     digest="$(write_marker_at "$MAIN" "$WT" "$m")"
-    [ "$m" = "code-audit-frontend" ] && write_sidecar_at "$MAIN" "$digest"
   done
   payload="$(write_merge_payload)"
   invoke_hook_in "$WT" "$(cat "$payload")" "$HOOK_MERGE"

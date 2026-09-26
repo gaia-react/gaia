@@ -48,7 +48,7 @@ if ! cmp -s "${work}/gaia-maintainer-committed" .gaia/cli/gaia-maintainer; then
 fi
 # Template content resolves at runtime via import.meta.url and never enters the
 # bundled binary, so the byte-cmp above cannot catch a stale committed template.
-# This diff is the only freshness guard for the whole .gaia/cli/templates/ tree,
+# This diff is a freshness guard for the whole .gaia/cli/templates/ tree,
 # component/, hook/, route/, service/, and workflows/ included. Diff the
 # regenerated tree against the snapshot taken before the bundle.
 if ! diff -rq "${work}/templates-committed" .gaia/cli/templates; then

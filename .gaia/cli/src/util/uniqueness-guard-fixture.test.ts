@@ -103,8 +103,8 @@ describe('scanCorpus', () => {
 });
 
 describe('CLI_SRC', () => {
-  // Derived from this module's own location rather than handed in by each
-  // guard, so the pair cannot drift onto different roots.
+  // Derived from this module's own location rather than handed in by its
+  // caller, so it cannot drift onto a different root.
   test('resolves to the corpus the uniqueness guards scan', () => {
     expect(existsSync(path.join(CLI_SRC, 'util', 'tree-walk.ts'))).toBe(true);
   });

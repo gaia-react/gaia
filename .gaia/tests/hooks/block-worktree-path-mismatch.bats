@@ -79,8 +79,7 @@ write_registry() {
     { "id": "gh-cache", "path": "cache/gh-artifact-pr.json", "match": "exact", "kind": "file", "scope": "main-only" },
     { "id": "handoff", "path": "handoff/", "match": "prefix", "kind": "dir", "scope": "per-tree" }
   ],
-  "residue": [],
-  "drop_zones": []
+  "residue": []
 }
 JSON
 }

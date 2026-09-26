@@ -58,21 +58,6 @@
 #   nothing and returns 1 when the registry cannot be read (see
 #   gaia_registry_path).
 #
-# gaia_registry_drop_zones
-#   Prints, one per line in registry order as `path<TAB>match` (match one of
-#   "exact"/"glob"/"prefix"), the .gaia/local-relative structural directories
-#   a caller pruning empty dirs must preserve even when momentarily empty
-#   (the drop_zones the registry declares). A caller tests each empty dir's
-#   relpath against these rows via _gaia_registry_pattern_matches -- the same
-#   matcher gaia_registry_recognizes/gaia_registry_classify use -- never a
-#   hand-rolled string test, so a keyed per-tree child (e.g.
-#   red-ledger/<tree_key>/, declared as a glob row) is recognized alongside a
-#   bare literal container. Derived from the registry, never hardcoded in a
-#   caller. Prints nothing and returns 1 when the registry cannot be read
-#   (see gaia_registry_path), so a caller failing to read the list keeps
-#   every empty dir rather than rmdir a structural directory it could not
-#   classify.
-#
 # gaia_registry_rm_whitelist
 #   Prints, one per line as `path<TAB>children_only` (children_only "true"/"false"),
 #   the repo-root-relative safe-scratch directories block-rm-rf.sh carves out of its
@@ -140,7 +125,6 @@
 # Usage (executable):
 #   bash .gaia/scripts/state-registry-lib.sh path                       # gaia_registry_path
 #   bash .gaia/scripts/state-registry-lib.sh linkable-paths             # gaia_registry_linkable_paths
-#   bash .gaia/scripts/state-registry-lib.sh drop-zones                 # gaia_registry_drop_zones
 #   bash .gaia/scripts/state-registry-lib.sh rm-whitelist               # gaia_registry_rm_whitelist
 #   bash .gaia/scripts/state-registry-lib.sh integrity-snapshot         # gaia_registry_integrity_snapshot
 #   bash .gaia/scripts/state-registry-lib.sh recognizes <relpath> <f|d> # gaia_registry_recognizes
@@ -239,13 +223,6 @@ gaia_registry_linkable_paths() {
     | reduce .[] as $x ([]; if any(.[]; . == $x) then . else . + [$x] end)
     | .[]
   ' "$registry"
-}
-
-# gaia_registry_drop_zones: see the header contract above.
-gaia_registry_drop_zones() {
-  local registry
-  registry="$(gaia_registry_path)" || return 1
-  jq -r '.drop_zones[]? | [.path, .match] | @tsv' "$registry"
 }
 
 # gaia_registry_rm_whitelist: see the header contract above.
@@ -358,11 +335,6 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
       gaia_registry_linkable_paths
       exit $?
       ;;
-    drop-zones)
-      shift
-      gaia_registry_drop_zones
-      exit $?
-      ;;
     rm-whitelist)
       shift
       gaia_registry_rm_whitelist
@@ -384,7 +356,7 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
       exit $?
       ;;
     *)
-      printf 'usage: %s {path|linkable-paths|drop-zones|rm-whitelist|integrity-snapshot|recognizes <relpath> <f|d>|classify <relpath>}\n' "$0" >&2
+      printf 'usage: %s {path|linkable-paths|rm-whitelist|integrity-snapshot|recognizes <relpath> <f|d>|classify <relpath>}\n' "$0" >&2
       exit 2
       ;;
   esac

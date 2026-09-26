@@ -59,28 +59,6 @@ _snapshot() {
          | xargs -0 shasum 2>/dev/null ) || true
 }
 
-# _plant_cost_md <spec_id> <fresh> <cwrite> <cread> <output> <session>:
-# mirrors spec-archive-merged.bats's helper of the same shape.
-_plant_cost_md() {
-  local id="$1" fresh="$2" cwrite="$3" cread="$4" output="$5" session="$6"
-  cat > "$REPO/$SPECS/$id/cost.md" <<EOF
-# Cost: $id
-
-## SPEC
-
-| Bucket | Tokens |
-| --- | --- |
-| Fresh input | $fresh |
-| Cache write | $cwrite |
-| Cache read | $cread |
-| Output | $output |
-
-**Est. cost (USD):** \$1.23
-
-Session \`$session\` · generated 2026-07-05T10:00:00Z
-EOF
-}
-
 _seed_cost_row() {
   local id="$1" session="$2" fresh="$3" cwrite="$4" cread="$5" output="$6"
   local total=$((fresh + cwrite + cread + output))
@@ -123,7 +101,6 @@ _clear_abandoned_at() {
 
 @test "1: an abandoned row whose cost is represented is deleted; ledger stays abandoned" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-abandoned-folder SPEC-001)"
-  _plant_cost_md SPEC-001 100 10 5 20 sess-1
   _seed_cost_row SPEC-001 sess-1 100 10 5 20
 
   run _archive "$REPO"

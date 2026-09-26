@@ -236,9 +236,9 @@ describe('producer seam: sidecar -> post-findings-block.sh -> parseFindingsBlock
       base: 'd'.repeat(40),
       findings: [
         // Raw grading, not the lowercase mapped severity the contract
-        // requires: `severity-map.ts` maps `Critical` -> `error`, but a
-        // member that stamped the raw grading verbatim violates the
-        // contract, and the parser must drop it rather than accept it.
+        // requires: `Critical` maps to `error`, but a member that stamped
+        // the raw grading verbatim violates the contract, and the parser
+        // must drop it rather than accept it.
         {
           area_tags: ['app/routes'],
           finding_class: 'holistic/hardcoded-string',

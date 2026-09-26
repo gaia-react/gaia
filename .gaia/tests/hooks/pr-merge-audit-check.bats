@@ -1055,11 +1055,9 @@ teardown_linked_worktree() {
   local digest
   digest="$(member_digest_at "$WT" code-audit-frontend)"
   mkdir -p "$REPO/.gaia/local/audit"
-  printf '{"version":"1.4.0","schema":4,"member":"code-audit-frontend","provenance":"earned","digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":true,"dispositions_sidecar":true}\n' \
+  printf '{"version":"1.4.0","schema":4,"member":"code-audit-frontend","provenance":"earned","digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":true}\n' \
     "$digest" "$(git -C "$WT" rev-parse 'HEAD^{tree}')" "$(git -C "$WT" rev-parse HEAD)" \
     > "$REPO/.gaia/local/audit/${digest}.ok"
-  printf '{"schema":1,"backend":"absent","findings":[]}\n' \
-    > "$REPO/.gaia/local/audit/${digest}.dispositions.json"
 
   run_merge_hook_in_worktree
   teardown_linked_worktree
@@ -1080,7 +1078,7 @@ teardown_linked_worktree() {
   [ "$main_digest" != "$wt_digest" ]
 
   mkdir -p "$REPO/.gaia/local/audit"
-  printf '{"version":"1.4.0","schema":4,"member":"code-audit-frontend","provenance":"earned","digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":true,"dispositions_sidecar":true}\n' \
+  printf '{"version":"1.4.0","schema":4,"member":"code-audit-frontend","provenance":"earned","digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":true}\n' \
     "$main_digest" "$(git -C "$REPO" rev-parse 'HEAD^{tree}')" "$(git -C "$REPO" rev-parse HEAD)" \
     > "$REPO/.gaia/local/audit/${main_digest}.ok"
 

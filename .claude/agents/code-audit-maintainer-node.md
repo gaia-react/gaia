@@ -92,8 +92,6 @@ Lean on `pnpm -C <root> lint:cli` and `pnpm -C <root>/.gaia/cli typecheck` as de
 
 ## Findings grading
 
-<!-- gaia-audit:gradings: Critical, Important, Suggestion -->
-
 Grade every finding Critical / Important / Suggestion, matching the sibling Code Audit Team members: Critical is data loss, a merge-gate bypass, a command-injection path, or a silent success on a real failure; Important is a real bug or safety gap with a narrower blast radius; Suggestion is testability or style with no live failure mode.
 
 ## Advisory-only: no self-heal

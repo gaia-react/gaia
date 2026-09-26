@@ -40,8 +40,7 @@ export type ParsedFindingsBlock = {
 };
 
 /**
- * The one accepted severity set. `severity-map.ts`'s `SEVERITY_BY_GRADING`
- * maps every agent grading onto it; it is the one source and no test may
+ * The one accepted severity set. It is the one source and no test may
  * re-declare it.
  */
 export const SEVERITIES = new Set(['error', 'suggestion', 'warning']);

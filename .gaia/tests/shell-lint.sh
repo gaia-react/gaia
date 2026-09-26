@@ -470,18 +470,11 @@ fi
 #
 # The banner stays a literal `echo` line per guard: `--> <name>
 # (<parenthetical>)`, same indentation, same position, one per guard. The
-# table below may carry a script path and an invocation mode, never the
-# banner text itself.
+# table below may carry a script path, never the banner text itself.
 # .gaia/scripts/tests/shell-lint.bats:123-129 greps the source for the
 # banner marker and cross-checks the count against a `sed` extraction of the
 # same pattern, so a table-driven banner, or a comment naming the marker in
 # its quoted form, both make that helper refuse.
-#
-# GUARD_MODES supports two invocation shapes: a guard named `subshell`
-# resolves its own scan surface against the working directory, so it runs as
-# `(cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/<slug>.sh")`. A guard
-# named `root` would take the repo root as an explicit argument instead and
-# need neither a `cd` nor a subshell.
 #
 # Streams split, they never merge. Most of these guards print their own
 # `<name>: clean` line to stderr and a minority print it to stdout via a bare
@@ -498,10 +491,6 @@ fi
 # respectively; the cost is that a single guard's own stdout and stderr no
 # longer interleave with each other, only with themselves.
 #
-# GUARD_MODES: `subshell` runs `(cd "$REPO_ROOT" && bash ".../<slug>.sh")`;
-# `root` runs `bash ".../<slug>.sh" "$REPO_ROOT"` with no `cd` and no
-# subshell, for the guards whose own discovery takes the root as an argument
-# instead of resolving it from the working directory.
 GUARD_SLUGS=(
   lint-hook-array-guard
   lint-git-path-quoting
@@ -510,15 +499,6 @@ GUARD_SLUGS=(
   lint-sigpipe-readers
   lint-hook-cwd-relative-loads
   lint-hook-jq-availability
-)
-GUARD_MODES=(
-  subshell
-  subshell
-  subshell
-  subshell
-  subshell
-  subshell
-  subshell
 )
 GUARD_COUNT="${#GUARD_SLUGS[@]}"
 
@@ -613,17 +593,12 @@ fi
 # supplies one.
 LAST_PID=""
 dispatch_guard() {
-  local idx="$1" slug mode script out err
+  local idx="$1" slug script out err
   slug="${GUARD_SLUGS[$idx]}"
-  mode="${GUARD_MODES[$idx]}"
   script="$(guard_script_path "$slug")"
   out="$GUARD_TMP/guard.$idx.out"
   err="$GUARD_TMP/guard.$idx.err"
-  if [ "$mode" = root ]; then
-    bash "$script" "$REPO_ROOT" </dev/null >"$out" 2>"$err" &
-  else
-    (cd "$REPO_ROOT" && bash "$script") </dev/null >"$out" 2>"$err" &
-  fi
+  (cd "$REPO_ROOT" && bash "$script") </dev/null >"$out" 2>"$err" &
   LAST_PID="$!"
 }
 

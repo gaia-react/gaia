@@ -459,8 +459,8 @@ extract_payload() {
 
 # AC9: the sidecar glob is provably distinct from every clearance/marker key
 
-@test "the sidecar glob never matches a clearance marker, refusal, dispositions sidecar, or rerun ledger" {
-  # A marker/refusal/dispositions family is keyed to a 64-hex content DIGEST;
+@test "the sidecar glob never matches a clearance marker, refusal, or rerun ledger" {
+  # A marker/refusal family is keyed to a 64-hex content DIGEST;
   # a findings sidecar is keyed to a 40-hex commit BASE-SHA. Placing
   # lookalikes at the exact BASE value this suite uses proves the glob
   # (`<base>.*.findings.json`) cannot pick any of them up, in either
@@ -469,7 +469,6 @@ extract_payload() {
   # them at all).
   : > "$AUDIT_DIR/${BASE}.ok"
   : > "$AUDIT_DIR/${BASE}.refused"
-  : > "$AUDIT_DIR/${BASE}.dispositions.json"
   : > "$AUDIT_DIR/${AUDIT_KEY}.rerun.json"
   write_sidecar code-audit-frontend '[]'
   stub_gh '[]'
@@ -478,7 +477,6 @@ extract_payload() {
   [ "$output" = "findings: posted 0 finding(s) from 1 member(s) to PR #42" ]
   grep -qF "${BASE}.ok" <<<"$output" && return 1
   grep -qF "${BASE}.refused" <<<"$output" && return 1
-  grep -qF "${BASE}.dispositions.json" <<<"$output" && return 1
   grep -qF "${AUDIT_KEY}.rerun.json" <<<"$output" && return 1
   return 0
 }

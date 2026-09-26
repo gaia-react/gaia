@@ -811,10 +811,11 @@ EOF
 
 # The awk below models `stripMarkerBlocks` in
 # `.gaia/cli/src/release/marker-strip.ts`, the parser the release scrub actually
-# runs, by hand rather than held to it by a test. Two sibling suites carry the
-# same block (`.gaia/scripts/tests/verify-audit-roster.bats`,
-# `audit-write-clearance.bats`), so a change here belongs in all of them, and
-# in the real parser too if the transform it models changed.
+# runs, by hand rather than held to it by a test. Three sibling suites carry
+# the same block (`.gaia/scripts/tests/verify-audit-roster.bats`,
+# `audit-write-clearance.bats`, `.gaia/tests/statusline/statusline-worktree.bats`),
+# so a change here belongs in all of them, and in the real parser too if the
+# transform it models changed.
 #
 # The two-rule form this replaces diverged from the shipped parser on two shapes
 # audit-scope.sh does not currently carry, which is the only reason it was green:

@@ -307,23 +307,17 @@ run_hook_bash() {
 }
 
 # --- .gaia/local/ is the members' own gitignored artifact dir, never refused ---
-# A member writes its clearance marker, findings sidecar, disposition sidecar,
-# and re-run ledger under .gaia/local/audit/. Refusing that directory would
-# block the sidecars this team writes. Everything else under .gaia/ stays
-# refused.
+# A member writes its clearance marker, findings sidecar, and re-run ledger
+# under .gaia/local/audit/. Refusing that directory would block the sidecar
+# this team writes. Everything else under .gaia/ stays refused.
 
 @test "code-audit-frontend writing its findings sidecar under .gaia/local/audit/ is allowed" {
   run_hook_edit "code-audit-frontend" "Write" ".gaia/local/audit/2cea369b.code-audit-frontend.findings.json"
   assert_allowed_by_json
 }
 
-@test "code-audit-frontend writing its disposition sidecar under .gaia/local/audit/ is allowed" {
-  run_hook_edit "code-audit-frontend" "Write" ".gaia/local/audit/abc123.dispositions.json"
-  assert_allowed_by_json
-}
-
 @test "Bash: code-audit-frontend redirecting into a .gaia/local/audit/ sidecar is allowed" {
-  run_hook_bash "code-audit-frontend" "printf '%s' '{}' > .gaia/local/audit/abc123.dispositions.json"
+  run_hook_bash "code-audit-frontend" "printf '%s' '{}' > .gaia/local/audit/abc123.rerun.json"
   assert_allowed_by_json
 }
 

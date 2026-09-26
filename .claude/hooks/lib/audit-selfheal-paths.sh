@@ -60,7 +60,7 @@
 #
 # .gaia/local/ is deliberately NOT refused. It is the members' own gitignored
 # working and output directory -- clearance markers, findings sidecars,
-# disposition sidecars, the re-run ledger -- not gate-machinery source. A
+# the re-run ledger -- not gate-machinery source. A
 # member writing there is emitting its own audit record, not repairing a
 # tracked file, and being gitignored it never appears in the CI push gate's
 # diff, so the carve-out is a no-op on that consumer and only frees the local

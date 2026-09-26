@@ -126,11 +126,8 @@ member_digest() {
   [ "$(jq -r .digest "$marker")" = "$digest" ]
   [ "$(jq -r .sha "$marker")" = "$HEAD_SHA" ]
   [ "$(jq -r .tree "$marker")" = "$TREE" ]
-  # Two flags, two sidecars: `sidecar` answers "does this member file a findings
-  # sidecar" (every member does), `dispositions_sidecar` answers "does it file
-  # the out-of-scope disposition sidecar" (only the default member does).
+  # `sidecar` answers "does this member file a findings sidecar" (every member does).
   [ "$(jq -r .sidecar "$marker")" = "true" ]
-  [ "$(jq -r .dispositions_sidecar "$marker")" = "true" ]
   grep -qE '"audited_at":"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z"' "$marker"
   # No evidence block, no anchor_tree, no second sidecar pointer.
   [ "$(jq -r 'has("evidence")' "$marker")" = "false" ]
@@ -150,33 +147,24 @@ member_digest() {
   marker="$AUDIT_DIR/${digest}.code-audit-maintainer-shell.ok"
   [ -f "$marker" ]
   [ "$(jq -r .sidecar "$marker")" = "true" ]
-  # The distinction the old single field was actually carrying survives under
-  # its own name: only the default member files a disposition sidecar.
-  [ "$(jq -r .dispositions_sidecar "$marker")" = "false" ]
 }
 
-@test "every member records sidecar true; only the default member records dispositions_sidecar true" {
+@test "every member records sidecar true" {
   for m in code-audit-frontend code-audit-maintainer-shell code-audit-maintainer-node \
            code-audit-github-workflows; do
     d="$(member_digest "$ROOT" "$m")"
     out="$(bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned --scope-digest "$d")"
     [ "$(jq -r .sidecar "$out")" = "true" ]
-    if [ "$m" = "code-audit-frontend" ]; then
-      [ "$(jq -r .dispositions_sidecar "$out")" = "true" ]
-    else
-      [ "$(jq -r .dispositions_sidecar "$out")" = "false" ]
-    fi
   done
 }
 
-@test "a refusal carries the same two flags as an earned marker" {
+@test "a refusal carries the same flag as an earned marker" {
   # A refusal is the case that matters most: its sidecar flag is what tells a
   # reader a report exists to work from.
   digest="$(member_digest "$ROOT" code-audit-maintainer-shell)"
   bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance refused >/dev/null
   marker="$AUDIT_DIR/${digest}.code-audit-maintainer-shell.refused"
   [ "$(jq -r .sidecar "$marker")" = "true" ]
-  [ "$(jq -r .dispositions_sidecar "$marker")" = "false" ]
 }
 
 @test "back-compat: a schema-3 body still validates through the shared reader" {
@@ -483,10 +471,11 @@ member_digest() {
 # stdout, as the bundle-time scrub does to shipped files.
 #
 # This awk is a hand-kept model of the shipped parser (`stripMarkerBlocks` in
-# `.gaia/cli/src/release/marker-strip.ts`), not held to it by a test. Two
+# `.gaia/cli/src/release/marker-strip.ts`), not held to it by a test. Three
 # sibling suites carry the same block (`verify-audit-roster.bats`,
-# `.gaia/tests/hooks/audit-scope-lib.bats`), so a change here belongs in all of
-# them, and in the real parser too if the transform it models changed.
+# `.gaia/tests/hooks/audit-scope-lib.bats`,
+# `.gaia/tests/statusline/statusline-worktree.bats`), so a change here belongs
+# in all of them, and in the real parser too if the transform it models changed.
 #
 # The unanchored `/gaia:maintainer-only:start/` pair this replaces was a third
 # marker vocabulary: it fired on the HTML-comment form too, which the transform

@@ -51,20 +51,6 @@ gaia_pretooluse_hooks() {
     sort -u
 }
 
-# gaia_hook_name_from_command <command>
-#
-# Print the hook's path relative to .claude/hooks/, extracted from ONE
-# registration command string, or nothing if the command names no hook under
-# .claude/hooks/. The single-command counterpart to gaia_pretooluse_hooks
-# above: that one reads a whole registration set from settings.json and
-# returns it sorted and deduplicated, which a caller judging one row at a
-# time, keeping its own row index, cannot use.
-gaia_hook_name_from_command() {
-  local command="$1"
-  printf '%s' "$command" | grep -oE "$GAIA_HOOK_NAME_RE" |
-    sed -e 's#^.*\.claude/hooks/##'
-}
-
 # gaia_hook_blocks <hook_script_path>
 #
 # Succeed when the script can stop a tool call: it emits a permissionDecision,

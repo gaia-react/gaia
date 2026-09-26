@@ -63,11 +63,11 @@ assert_contains() {
 # cases the shipped state machine does, including a start and end on one line
 # and an end with no open block (which the shipped parser keeps).
 #
-# This awk is a hand-kept model, not held to the real parser by a test. Two
+# This awk is a hand-kept model, not held to the real parser by a test. Three
 # sibling suites carry the same block for the same reason
-# (`audit-write-clearance.bats`, `.gaia/tests/hooks/audit-scope-lib.bats`), so a
-# change here belongs in all of them, and in the real parser too if the
-# transform it models changed.
+# (`audit-write-clearance.bats`, `.gaia/tests/hooks/audit-scope-lib.bats`,
+# `.gaia/tests/statusline/statusline-worktree.bats`), so a change here belongs
+# in all of them, and in the real parser too if the transform it models changed.
 strip_maintainer_only() {
   awk -v s="$MAINTAINER_START" -v e="$MAINTAINER_END" '
     {

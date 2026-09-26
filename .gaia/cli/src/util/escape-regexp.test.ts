@@ -3,8 +3,8 @@
  * suite owns is the **escape set itself**, which is the reason the helper has
  * one home: its call sites build guards whose matching behaviour is decided by
  * which characters get escaped. This suite is what pins the whole set
- * directly; the remaining callers are guards that keep passing their own
- * suites with a wrong set.
+ * directly; every other caller is a guard that keeps passing its own suite
+ * with a wrong set.
  *
  * The set is pinned two ways on purpose. The character-by-character table is
  * the readable statement of intent; the round-trip cases are the ones that
