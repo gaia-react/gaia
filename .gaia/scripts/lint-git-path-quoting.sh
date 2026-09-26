@@ -152,12 +152,6 @@
 # is reach the widening brought rather than coverage anyone asked for, and it
 # is left in place because narrowing the match to exclude them would trade a
 # fail-closed demand that is right for a blind spot that is not.
-#
-# Sibling gate: .gaia/scripts/check-audit-base-derivation.sh's assertion 4 makes
-# the same claim about the audit agents' prose. This file is deliberately not
-# folded into it: that check's remit is the audit-base derivation, and its
-# `consumes` predicate keys on the audit-base variable spellings and the
-# resolver name, none of which any shell call site here mentions.
 
 set -euo pipefail
 

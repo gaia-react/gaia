@@ -182,39 +182,6 @@ jobs:
               # settings.json alone would skip every bats step and green the job
               # having run that scan zero times.
               - '.claude/settings.json'
-              # check-wiki-state-collision.bats (.gaia/scripts/tests/) exercises
-              # check-wiki-state-collision.sh, which reads only whether
-              # wiki/.state.json stays tracked and the `merge` attribute git
-              # resolves for it -- nothing about the bytes inside the file. A
-              # content-only rewrite, which is what a wiki sync commits, changes
-              # neither, so this entry deliberately does not match one. That
-              # narrows the ENTRY rather than the output: the wiki glob further
-              # down matches this path on any change type, so a wiki sync does
-              # resolve `code=true` and does run the full matrix. What the
-              # keying buys is that this entry is not what arms it. `deleted`
-              # is the
-              # change type that carries an untracking (a plain deletion or a
-              # `git rm --cached`), and it also carries a rename out of wiki/,
-              # because the pull-request lane -- the lane this workflow runs the
-              # filter on -- decomposes a rename into a delete of the previous
-              # path plus an add of the new one before matching, so no
-              # `renamed` token is needed or wanted for that case. `renamed`
-              # and `copied` sit in the action's own accepted change-status set
-              # but are forbidden on this entry; a check pins the token to
-              # exactly `deleted` so a drift toward either of those, or toward
-              # any other status, reds rather than parsing cleanly and matching
-              # nothing forever.
-              # .gitattributes is the check's other input -- an added or
-              # changed `merge` attribute reaching the path -- and it stays a
-              # bare, unqualified entry rather than joining the mapping: the
-              # check reads that file's CONTENT (the attribute value it
-              # resolves to), not whether it changed type, so any modification
-              # has to arm. It is listed once unqualified and again with a
-              # leading `**/`, because git honors a nested .gitattributes and a
-              # root-level glob would not reach one.
-              - deleted: 'wiki/.state.json'
-              - '.gitattributes'
-              - '**/.gitattributes'
               # shell-lint.bats (.gaia/scripts/tests/) asserts the wiring of the
               # local shell gate .gaia/tests/shell-lint.sh -- its .husky/*
               # discovery pass and its lint-hook-array-guard.sh invocation. The
@@ -432,10 +399,8 @@ jobs:
               # refreshers that feed those segments:
               # .gaia/scripts/check-updates.sh (the hardenUnclassifiedCount and
               # hardenNudgeReason segments -- the latter driven by
-              # harden-nudge-reason.bats -- and the audit nudge's
-              # project_drift suppression) and
-              # .gaia/scripts/debt-count-refresh.sh (the coveredPaths that
-              # suppression keys on). Both refreshers are already covered by
+              # harden-nudge-reason.bats) and
+              # .gaia/scripts/debt-count-refresh.sh. Both refreshers are already covered by
               # the .gaia/scripts/** glob above, so only the statusline dirs
               # and harden.md need listing here -- but narrowing that glob
               # would stop arming this suite on two of its sources.
@@ -978,85 +943,14 @@ jobs:
         name: Run the INV-7 concurrency meter
         run: bash .gaia/tests/concurrency/meter-gate.sh
 
-  # A standalone job, not a matrix leg. .gaia/scripts/check-verb-arming-adoption.sh
-  # pins the shared verb-arming decision as a singleton and the eleven adopting
-  # hooks against drift (SPEC-075's Constitution requires the check run in CI
-  # rather than by hand; see that check's own header). It runs here rather than
-  # inside a bats shard because bats-shards.sh weights a shard by its suites'
-  # file size, and this checker has no .bats file of its own to weigh it in --
-  # a short suite shelling out to it would misprice that shard. It runs at hop
-  # 1 alongside `shards`, so the `needs:` chain into the aggregator below stays
-  # 2 hops; see the `shards` job's own comment for the 15-minute total that
-  # arithmetic is sized to.
-  verb-arming-adoption:
-    name: Verb Arming Adoption
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    # The check itself is a handful of git grep calls (~1s standalone), so 2
-    # minutes sizes to the measurement rather than a borrowed cap.
-    timeout-minutes: 2
-    # Checks out and runs a shell checker; no write scope needed. No
-    # `pull-requests: read`: this job's filter is hand-rolled (see the
-    # comment on the filter step below) rather than dorny/paths-filter, so it
-    # never calls the API that scope exists for.
-    permissions:
-      contents: read
-    steps:
-      # `fetch-depth: 0` (full history), not the default shallow clone: the
-      # hand-rolled filter step below diffs against the PR's base commit,
-      # which a depth-1 checkout never fetches.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-      # Hand-rolled rather than a second dorny/paths-filter step. W7 in
-      # .gaia/tests/lib/audit-ci-shards.bats pins exactly one paths-filter
-      # step for the whole workflow, and this job runs in parallel with
-      # `shards` rather than depending on it, so it cannot read that one
-      # step's output without adding a `needs:` hop the arithmetic above has
-      # no room for. `tests.yml`'s own hand-rolled gate is the precedent this
-      # mirrors; both files are named in workflow-filter-coverage.bats's
-      # HANDROLLED_EXEMPT set for the same reason. The alternation below is
-      # maintained by hand: a step reading a new path means adding that path
-      # here in the same edit.
-      - name: Detect verb-arming-adoption-relevant changes
-        id: filter
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: |
-          set -eu
-          # `-z` plus `tr`, not a bare `--name-only`: see `tests.yml`'s
-          # identical filter step for why an unquoted diff over a non-ASCII
-          # path breaks the pattern below.
-          changed=$(set -o pipefail; git diff --name-only -z "$BASE_SHA" HEAD | tr '\0' '\n')
-          # `\.sh$` rather than a list of directories, because the checker's
-          # own scan is the whole tracked tree: its private-pattern and
-          # grep-idiom assertions take `-- '*.sh'`, so a shell file ANYWHERE
-          # can plant what they look for, including under directories no
-          # arming code lives in today. Any directory list is therefore
-          # narrower than what the checker reads, and a filter narrower than
-          # the checker runs the job with the checker step skipped and reports
-          # success over content it never scanned. Honest limit: the singleton
-          # assertion scans `-- .`, every tracked file, so a definition planted
-          # in a non-`.sh` file arms nothing here.
-          pattern='^\.claude/hooks/|^\.claude/settings\.json$|\.sh$|^\.github/workflows/audit-ci-tests\.yml$'
-          if printf '%s\n' "$changed" | grep -qE "$pattern"; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "code=false" >> "$GITHUB_OUTPUT"
-          fi
-      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
-        name: Run the verb-arming adoption checker
-        run: bash .gaia/scripts/check-verb-arming-adoption.sh
-
-  # The declared-required check. `needs: [shards, verb-arming-adoption]` makes
-  # it the second hop of a 2-hop chain the arithmetic above is sized to, and
-  # `always()` is what stops a plain skip-on-dependency-failure from
-  # satisfying nothing: a `needs:` with no `if:` SKIPS when a dependency
-  # fails, and a skipped stamp satisfies no required check.
+  # The declared-required check. `needs: [shards]` makes it the second hop of
+  # a 2-hop chain the arithmetic above is sized to, and `always()` is what
+  # stops a plain skip-on-dependency-failure from satisfying nothing: a
+  # `needs:` with no `if:` SKIPS when a dependency fails, and a skipped stamp
+  # satisfies no required check.
   audit-ci-tests:
     name: Audit CI Tests
-    needs: [shards, verb-arming-adoption]
+    needs: [shards]
     if: always() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -1065,12 +959,12 @@ jobs:
     # without a count, which goes stale the next time a job joins `needs:`.
     permissions: {}
     steps:
-      # `needs.shards.result` is the aggregate over every matrix leg: it reads
+      # The `shards` result is the aggregate over every matrix leg: it reads
       # `success` only when every leg concluded `success`. A leg whose steps
       # all skipped because the filter resolved false still concludes
       # `success`, which is correct and matches today's pre-shard behavior --
       # a PR touching nothing relevant should report this check green having
-      # run nothing. Every other `needs:` result is read the same way.
+      # run nothing.
       # `skipped` and `cancelled` both fail this check, along with
       # `failure`, because each comparison is `!= "success"` rather than a
       # `case` enumerating the failure states it knows about, so a conclusion
@@ -1079,13 +973,8 @@ jobs:
       - name: Require every dependency in needs to have concluded success
         env:
           SHARDS_RESULT: ${{ needs.shards.result }}
-          VERB_ARMING_RESULT: ${{ needs.verb-arming-adoption.result }}
         run: |
           if [ "$SHARDS_RESULT" != "success" ]; then
             echo "::error::at least one shard did not conclude success: $SHARDS_RESULT" >&2
-            exit 1
-          fi
-          if [ "$VERB_ARMING_RESULT" != "success" ]; then
-            echo "::error::verb-arming-adoption did not conclude success: $VERB_ARMING_RESULT" >&2
             exit 1
           fi

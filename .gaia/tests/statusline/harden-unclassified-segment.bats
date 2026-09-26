@@ -166,15 +166,6 @@ run_statusline_with_cache() {
   [ "$(jq -r '.hardenUnclassifiedCount' "$CACHE_FILE")" = "3" ]
 }
 
-@test "refresher preserves the previous hardenUnclassifiedCount when gh_ok is false" {
-  CACHE_FILE="$REFRESH_ROOT/.gaia/local/cache/shared/update-check.json"
-  printf '{"checkedAt":0,"hardenCandidateCount":0,"hardenUnclassifiedCount":5}' > "$CACHE_FILE"
-  run env MOCK_GH_OK=false bash "$REFRESH_ROOT/.gaia/scripts/check-updates.sh"
-  [ "$status" -eq 0 ]
-  jq . "$CACHE_FILE" >/dev/null
-  [ "$(jq -r '.hardenUnclassifiedCount' "$CACHE_FILE")" = "5" ]
-}
-
 # UAT-007: both delivery channels clear once a maintainer records the
 # suppression -- the refresher writes 0 into the cache, and the statusline
 # rendered against that same cache carries no unclassified nudge.

@@ -1216,9 +1216,7 @@ SH
   # This fixture builds its own repository, so it proves the behavior but not
   # that the real repository still qualifies for it: git refuses only while
   # the state file is tracked and no merge driver is bound to its path, and a
-  # fixture cannot see either. .gaia/scripts/check-wiki-state-collision.sh
-  # asserts both against the real tree, so the two halves together are the
-  # coverage; this one alone is not.
+  # fixture cannot see either.
   if [ "$status" -eq 0 ]; then
     final_sha="$(jq -r '.last_evaluated_sha' "$MAIN/wiki/.state.json")"
     [ "$final_sha" = "$a_sha" ] && return 1

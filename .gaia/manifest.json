@@ -221,8 +221,6 @@
     ".gaia/scripts/check-debt-issue-metadata.sh": "owned",
     ".gaia/scripts/check-hook-command-rooting.sh": "owned",
     ".gaia/scripts/check-hook-scope-manifest.sh": "owned",
-    ".gaia/scripts/check-registry-runtime.sh": "owned",
-    ".gaia/scripts/check-registry-settings-permissions.sh": "owned",
     ".gaia/scripts/check-updates.sh": "owned",
     ".gaia/scripts/chore-deps-skip.sh": "owned",
     ".gaia/scripts/classifier/classify-determinism.mjs": "owned",
@@ -655,7 +653,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-25T11:33:03.403Z",
+  "generated": "2026-09-26T01:32:01.350Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

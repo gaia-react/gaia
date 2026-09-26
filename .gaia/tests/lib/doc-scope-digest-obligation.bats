@@ -11,12 +11,8 @@
 #
 # Three literals, three reasons:
 #   Group 1: FC-2a's obligation sentence, byte-identical in every agent
-#     definitions. This is the prose half of what
-#     .gaia/scripts/check-scope-digest-adoption.sh's assertion 2 already
-#     proves mechanically; this suite exists so the pin survives even if
-#     that check is ever weakened, and because the check's own text is
-#     itself read from the tree rather than hardcoded, so nothing else pins
-#     the literal's own wording against silent rewrite.
+#     definitions. Nothing else pins the literal's own wording against
+#     silent rewrite.
 #   Group 2: the same sentence in wiki/concepts/Registering a Code Audit
 #     Team Member.md step 1 -- the reason it needs its own pin is that the
 #     next member registered reads that page, not the five existing
@@ -39,8 +35,7 @@ setup() {
   # Discovered, not transcribed. A hardcoded list here would assert the
   # obligation literal over the definitions that existed the day this suite
   # was written, and stay green for a newly registered member that never
-  # carried the literal at all -- the same blindness the sibling check
-  # .gaia/scripts/check-scope-digest-adoption.sh was repaired for.
+  # carried the literal at all.
   AGENTS=()
   local agent
   for agent in "$ROOT"/.claude/agents/code-audit-*.md; do

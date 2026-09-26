@@ -331,20 +331,19 @@ time_view_ms() {
   [ "$REPLY_MS" -gt 0 ] || return 1
 }
 
-# The adopting hooks, derived from the roster that owns them rather than
-# copied. Sourcing the dual-mode .gaia/scripts/check-verb-arming-adoption.sh
-# exposes GAIA_VERB_ADOPTING_HOOKS, which that check already holds set-equal to
-# the registered hooks in .claude/settings.json in both directions, so this
-# derivation inherits a reconciled roster. A literal copy here would be a
-# second roster with nothing reconciling it: the check excludes every *.bats
-# file from its tracked-tree walk by design (GAIA_VERB_TEST_EXCLUDES), so a
-# hook missing from a copy kept here would silently never be timed by the two
-# all-hooks ceilings below, and nothing in the tree would red. The check is
-# dual-mode, so sourcing it defines the roster and runs nothing.
+# The adopting hooks, in the order the adopting-hook table under "Shared
+# verb-arming decision" in wiki/concepts/Claude Hooks.md lists them.
 adopting_hooks() {
-  # shellcheck source=.gaia/scripts/check-verb-arming-adoption.sh
-  . "$BATS_TEST_DIRNAME/../../scripts/check-verb-arming-adoption.sh"
-  printf '%s\n' "${GAIA_VERB_ADOPTING_HOOKS[@]}"
+  printf '%s\n' \
+    pr-merge-audit-check.sh \
+    worthiness-presence-check.sh \
+    post-findings-block-on-merge.sh \
+    token-tally-git-op.sh \
+    token-tally-review.sh \
+    token-rollup-merge.sh \
+    issue-claim-release.sh \
+    debt-sentinel-touch.sh \
+    capture-gh-artifact.sh
 }
 
 # ---------------------------------------------------------------------------

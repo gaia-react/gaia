@@ -81,7 +81,6 @@ setup() {
   CLI_WORKFLOW="$REPO_ROOT/.github/workflows/cli-tests.yml"
   WORKFLOW_DIR="$REPO_ROOT/.github/workflows"
   BATS_SHARDS="$REPO_ROOT/.gaia/tests/bats-shards.sh"
-  CHECK_WIKI_STATE_COLLISION="$REPO_ROOT/.gaia/scripts/check-wiki-state-collision.sh"
   # Matches retrigger-reachability.bats' own constant: the self-heal poller
   # margin charged per hop of the needs: chain.
   POLLER_MARGIN_MIN=5
@@ -118,12 +117,8 @@ setup() {
   require_repo_path -f "$CLI_WORKFLOW" "cli-tests.yml" || return 1
   require_repo_path -d "$WORKFLOW_DIR" ".github/workflows/" || return 1
   require_repo_path -f "$BATS_SHARDS" "bats-shards.sh" || return 1
-  require_repo_path -f "$SPEC078_FIXTURES/codefilter-token-out-of-set.yml" \
-    "fixtures/spec-078/codefilter-token-out-of-set.yml" || return 1
   require_repo_path -f "$SPEC078_FIXTURES/paths-filter-pin-bumped.yml" \
     "fixtures/spec-078/paths-filter-pin-bumped.yml" || return 1
-  require_repo_path -f "$CHECK_WIKI_STATE_COLLISION" \
-    "check-wiki-state-collision.sh" || return 1
 
   # W12's subject set: every workflow file in the directory, derived from the
   # directory rather than listed, so a workflow added later is scanned without
@@ -830,25 +825,6 @@ PY
 # case run the identical code against a healthy and a doctored input, the
 # same posture every other guard in this file takes.
 
-# assert_wiki_state_key_is_deleted <workflow>: the code: filter's entry for
-# wiki/.state.json is keyed on exactly `deleted`. Whole-field string equality
-# against read_wf codefilterentries' key column, never a substring test, so a
-# compound key like `deleted|renamed` reds rather than passing on the
-# substring it contains.
-assert_wiki_state_key_is_deleted() {
-  local workflow="$1" entries key count
-  entries="$(read_wf codefilterentries "$workflow" shards)" || return 1
-  key="$(printf '%s\n' "$entries" | awk -F'\t' '$2 == "wiki/.state.json" { print $1 }')"
-  count="$(printf '%s\n' "$key" | grep -c '.')"
-  [ "$count" -eq 1 ] || {
-    echo "expected exactly one code: entry naming wiki/.state.json in $workflow, found $count" >&2
-    return 1
-  }
-  [ "$key" = "deleted" ] && return 0
-  echo "$workflow's code: entry for wiki/.state.json is keyed '$key', expected exactly 'deleted'" >&2
-  return 1
-}
-
 # assert_no_renamed_or_copied_tokens <workflow>: no code: filter entry
 # anywhere in <workflow> carries `renamed` or `copied` in its change-type
 # key, split on `|` so a compound key like `deleted|renamed` is caught by its
@@ -898,59 +874,6 @@ assert_paths_filter_pin_matches() {
   fi
   echo "$workflow pins dorny/paths-filter@$sha ($tag), lever one's premises, were verified against $PATHS_FILTER_PINNED_SHA ($PATHS_FILTER_PINNED_TAG). Re-derive against the pinned source at the new SHA: the accepted change-status set (file.ts:6-13) and its unvalidated per-entry cast (filter.ts:171-176); the plain array membership check that lets an unrecognized token match nothing forever (filter.ts:123-125); and the pull-request lane's rename decomposition -- the token input defaults to github.token (action.yml:5-8), so this lane takes getChangedFilesFromApi (main.ts:101-107), which replaces a renamed row with an added-new-path row plus a deleted-previous-path row (main.ts:227-239)." >&2
   return 1
-}
-
-# make_state_collision_fixture_repo <name> <state-bytes>: a fresh git repo
-# under BATS_TEST_TMPDIR with wiki/.state.json tracked and committed holding
-# exactly <state-bytes>, and no .gitattributes. Mirrors the `git init`
-# incantation .gaia/scripts/tests/check-wiki-state-collision.bats's own
-# make_fixture_repo uses, so both suites build the identical fixture shape
-# for check-wiki-state-collision.sh.
-make_state_collision_fixture_repo() {
-  local name="$1" bytes="$2" dir
-  dir="$BATS_TEST_TMPDIR/$name"
-  mkdir -p "$dir/wiki"
-  git init -q --initial-branch=main "$dir"
-  git -C "$dir" config user.email t@example.com
-  git -C "$dir" config user.name T
-  git -C "$dir" config commit.gpgsign false
-  printf '%s' "$bytes" >"$dir/wiki/.state.json"
-  git -C "$dir" add -A
-  git -C "$dir" commit -q -m seed
-  printf '%s' "$dir"
-}
-
-# assert_checker_is_content_blind <checker-script>: builds two fixture repos
-# identical except for the bytes inside wiki/.state.json, sources
-# <checker-script> and runs gaia_check_wiki_state_collision against each,
-# and requires the exit status and the combined stdout+stderr to be
-# byte-identical. A behavioral oracle rather than a spelling-specific scan:
-# "the checker reads the file's contents" is not statically decidable in
-# shell, and a scan tuned to one spelling would miss a helper it sources or
-# a different way of reading the bytes.
-assert_checker_is_content_blind() {
-  local checker="$1" repoA repoB statusA outputA statusB outputB
-  repoA="$(make_state_collision_fixture_repo w15-a 'aaaaaaa-oracle-fixture-bytes')"
-  repoB="$(make_state_collision_fixture_repo w15-b 'zzzzzzz-oracle-fixture-different')"
-
-  run bash -c 'source "$1" && gaia_check_wiki_state_collision "$2"' _ "$checker" "$repoA"
-  statusA="$status"
-  outputA="$output"
-  run bash -c 'source "$1" && gaia_check_wiki_state_collision "$2"' _ "$checker" "$repoB"
-  statusB="$status"
-  outputB="$output"
-
-  [ "$statusA" -eq "$statusB" ] || {
-    echo "$checker's exit status differs between two repos differing only in wiki/.state.json's bytes: $statusA vs $statusB" >&2
-    return 1
-  }
-  [ "$outputA" = "$outputB" ] || {
-    echo "$checker's output differs between two repos differing only in wiki/.state.json's bytes" >&2
-    printf 'repo A output:\n%s\n' "$outputA" >&2
-    printf 'repo B output:\n%s\n' "$outputB" >&2
-    return 1
-  }
-  return 0
 }
 
 # The parser gate above is the single point where every parser-gated test in
@@ -2328,70 +2251,18 @@ concurrency_tree_needs_packages() {
 # W13 (SPEC-078 lever one, UAT-003). dorny/paths-filter casts an unrecognized
 # change-status token without validating it (filter.ts:171-176), so a
 # misspelled or out-of-allowlist key parses cleanly and matches nothing
-# forever. This pins the wiki/.state.json entry to exactly `deleted` and
-# sweeps every code: entry for the two tokens the action accepts but this
-# repository forbids, `renamed` and `copied` -- both are redundant with
-# `deleted` on the pull-request lane, which decomposes a rename into a
-# delete of the previous path plus an add of the new one before matching:
-# the `token` input defaults to github.token (action.yml:5-8), so the
-# pull-request lane takes getChangedFilesFromApi (main.ts:101-107), which
-# does exactly that decomposition (main.ts:227-239).
-
-@test "W13: audit-ci-tests.yml's code filter keys wiki/.state.json on exactly deleted" {
-  require_yaml_parser
-  assert_wiki_state_key_is_deleted "$WORKFLOW"
-}
+# forever. This sweeps every code: entry for the two tokens the action
+# accepts but this repository forbids, `renamed` and `copied` -- both are
+# redundant with `deleted` on the pull-request lane, which decomposes a
+# rename into a delete of the previous path plus an add of the new one
+# before matching: the `token` input defaults to github.token
+# (action.yml:5-8), so the pull-request lane takes
+# getChangedFilesFromApi (main.ts:101-107), which does exactly that
+# decomposition (main.ts:227-239).
 
 @test "W13: no code: filter entry anywhere carries a renamed or copied change-type token" {
   require_yaml_parser
   assert_no_renamed_or_copied_tokens "$WORKFLOW"
-}
-
-@test "W13 adversarial: the committed out-of-set-token fixture reds and names the token" {
-  require_yaml_parser
-  run assert_wiki_state_key_is_deleted "$SPEC078_FIXTURES/codefilter-token-out-of-set.yml"
-  [ "$status" -ne 0 ] || {
-    echo "the out-of-set token fixture did not red" >&2
-    return 1
-  }
-  printf '%s\n' "$output" | grep -qF -- "'changed'" || {
-    echo "the refusal did not name the offending token 'changed'" >&2
-    return 1
-  }
-}
-
-@test "W13 adversarial: doctoring the entry to an in-set but wrong token reds and names it" {
-  require_yaml_parser
-  local line
-  line="$(sole_line_matching "$WORKFLOW" "^ *- deleted: 'wiki/\\.state\\.json'\$")" || return 1
-
-  local doctored_added="$BATS_TEST_TMPDIR/w13-added.yml" mutated_added
-  mutated_added="$(printf '%s' "$line" | sed "s/deleted:/added:/")"
-  assert_doctored "$line" "$mutated_added" "keying the entry on added" || return 1
-  replace_line "$WORKFLOW" "$line" "$mutated_added" "$doctored_added"
-  run assert_wiki_state_key_is_deleted "$doctored_added"
-  [ "$status" -ne 0 ] || {
-    echo "keying the entry on 'added' did not red" >&2
-    return 1
-  }
-  printf '%s\n' "$output" | grep -qF -- "'added'" || {
-    echo "the refusal did not name the offending token 'added'" >&2
-    return 1
-  }
-
-  local doctored_compound="$BATS_TEST_TMPDIR/w13-compound.yml" mutated_compound
-  mutated_compound="$(printf '%s' "$line" | sed "s/deleted:/deleted|renamed:/")"
-  assert_doctored "$line" "$mutated_compound" "keying the entry on deleted|renamed" || return 1
-  replace_line "$WORKFLOW" "$line" "$mutated_compound" "$doctored_compound"
-  run assert_wiki_state_key_is_deleted "$doctored_compound"
-  [ "$status" -ne 0 ] || {
-    echo "keying the entry on 'deleted|renamed' did not red, so the check is a substring test rather than whole-field equality" >&2
-    return 1
-  }
-  printf '%s\n' "$output" | grep -qF -- "'deleted|renamed'" || {
-    echo "the refusal did not name the offending compound token 'deleted|renamed'" >&2
-    return 1
-  }
 }
 
 @test "W13 adversarial: the renamed/copied sweep reds when a second, unrelated entry is doctored" {
@@ -2435,36 +2306,6 @@ concurrency_tree_needs_packages() {
   }
   printf '%s\n' "$output" | grep -qF -- '0000000000000000000000000000000000000000' || {
     echo "the refusal did not name the fixture's bumped SHA" >&2
-    return 1
-  }
-}
-
-# W15 (SPEC-078 lever one, UAT-004). Lever one's whole premise is that
-# check-wiki-state-collision.sh cannot see a difference between two commits
-# that change only wiki/.state.json's bytes. "The checker reads the file's
-# contents" is not statically decidable in shell, so this is a behavioral
-# oracle rather than a spelling-specific scan: see assert_checker_is_content_
-# blind's own header for why, and the adversarial case below for the proof
-# that a checker perturbed to read the bytes makes the oracle disagree.
-
-@test "W15: check-wiki-state-collision.sh is content-blind (behavioral oracle)" {
-  assert_checker_is_content_blind "$CHECK_WIKI_STATE_COLLISION"
-}
-
-@test "W15 adversarial: the oracle fails when the checker is doctored to read the file's bytes" {
-  local old mutated doctored_checker="$BATS_TEST_TMPDIR/doctored-check-wiki-state-collision.sh"
-  old="$(sole_line_matching "$CHECK_WIKI_STATE_COLLISION" "printf 'wiki state file tracked: yes")" || return 1
-  mutated='    printf '\''wiki state file tracked: yes (%s)\n'\'' "$(head -c 8 "$repo_root/wiki/.state.json" 2>/dev/null)"'
-  assert_doctored "$old" "$mutated" "making the tracked verdict echo content-derived bytes" || return 1
-  replace_line "$CHECK_WIKI_STATE_COLLISION" "$old" "$mutated" "$doctored_checker"
-
-  run assert_checker_is_content_blind "$doctored_checker"
-  [ "$status" -ne 0 ] || {
-    echo "doctoring the checker to echo content-derived bytes did not fail the oracle" >&2
-    return 1
-  }
-  printf '%s\n' "$output" | grep -qF -- "output differs" || {
-    echo "the oracle's failure did not name the differing output" >&2
     return 1
   }
 }

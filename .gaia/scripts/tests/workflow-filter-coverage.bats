@@ -135,12 +135,7 @@ setup() {
   # Workflows that gate a step on a hand-rolled `run:`-emitted output rather than
   # a dorny/paths-filter glob list. Section 4 asserts this set exactly, so adding
   # a hand-rolled gate to a new workflow reds until it is named here on purpose.
-  # audit-ci-tests.yml's verb-arming-adoption job hand-rolls its gate for
-  # the same reason tests.yml does: it cannot depend on the workflow's one
-  # dorny/paths-filter step (that step lives in a job it must not `needs:`,
-  # since a needs hop is exactly what the job exists to avoid) and a glob list
-  # section 2 could read is not on offer.
-  HANDROLLED_EXEMPT=$'tests.yml\naudit-ci-tests.yml'
+  HANDROLLED_EXEMPT='tests.yml'
 
   require_repo_path -d "$WORKFLOWS_DIR" ".github/workflows" || return 1
 }

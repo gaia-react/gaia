@@ -95,12 +95,6 @@ const RUNTIME_PREFIXES = ['.gaia/local/'] as const;
  * `release/runtime-deps.ts`'s same-named set, so an entry added here alone reds
  * that test, and one added on both sides would assert that a machine-local
  * settings file is a release runtime dependency, which it is not.
- *
- * `release/runtime-deps.ts`'s `PROSE_PATH_ALLOWLIST` names this same file on
- * the same underlying fact, and is deliberately not shared with: it answers a
- * different question (whether a path token in a shell script is a runtime
- * dependency), and that module is maintainer-only, so importing it would pull
- * release tooling into the adopter `gaia` bundle.
  */
 const GITIGNORED_LOCAL_FILES: ReadonlySet<string> = new Set([
   '.claude/settings.local.json',

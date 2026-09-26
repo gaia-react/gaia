@@ -30,5 +30,5 @@ For the subjects GAIA already centralizes, call the owner instead of deriving it
 - A Code Audit Team member's incremental review base: `.github/audit/resolve-audit-base.sh --member <name>`.
 
 <!-- gaia:maintainer-only:start -->
-GAIA maintainers: the CLI's TypeScript counterpart is `resolveMainWorktreeRoot` in `.gaia/cli/src/util/main-root.ts`; call it rather than deriving the main root inside CLI source. `.gaia/scripts/check-resolver-singleton.sh`, `.gaia/scripts/check-main-root-derivation.sh`, and `.gaia/scripts/check-base-provenance-adoption.sh` catch a second definition and the derivation spellings their own headers name, and those headers are the authority on what they reach. Any other spelling, and any subject those checks do not name, falls to this rule.
+GAIA maintainers: the CLI's TypeScript counterpart is `resolveMainWorktreeRoot` in `.gaia/cli/src/util/main-root.ts`; call it rather than deriving the main root inside CLI source. `.gaia/scripts/check-main-root-derivation.sh` catches the derivation spellings its own header names, and that header is the authority on what it reaches. Any other spelling, and any subject that check does not name, falls to this rule.
 <!-- gaia:maintainer-only:end -->

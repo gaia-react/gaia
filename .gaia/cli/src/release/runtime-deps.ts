@@ -153,22 +153,6 @@ const PATH_PREFIXES = ['.gaia/', '.claude/', '.specify/', '.github/'] as const;
  *     directory, `$HOME/.claude/projects`, referenced by
  *     `token-tally-review.sh`. It lives outside the repo on every machine and
  *     structurally can never have a manifest entry.
- *   - `.claude/settings.local.json`: Claude Code's own per-machine settings
- *     layer, gitignored on both sides, so it structurally can never have a
- *     manifest entry. `check-hook-command-rooting.sh` gates on its presence
- *     AND on it registering hooks, then names it in the note it prints, to
- *     say which registration surface the check does NOT cover. Absent on an
- *     adopter clone the gate is simply false and the note never prints, so
- *     the reference resolves to a benign absent branch rather than a
- *     dependency. THREE occurrences extract and this one entry suppresses all
- *     three: the gate's two `"$repo_root/.claude/settings.local.json"`
- *     references and the printf note. The two rooted ones are extracted
- *     rather than skipped precisely BECAUSE they sit in a variable-expansion
- *     context: that context is what disables the substring skip, since the
- *     static half of `$VAR/<path>` is the project-relative path this scan
- *     wants. `runtime-deps.test.ts` asserts that exact set with the allowlist
- *     bypassed, so any reword that stops one of them extracting fails the
- *     unit suite rather than the release gate.
  *   - `.claude/shell-snapshots`: Claude Code's own per-Bash-call snapshot
  *     wrapper directory, referenced inside `SNAPSHOT_WRAPPER_PATTERN`, a
  *     regex literal in `spec-session-lock.sh` that MATCHES/REJECTS the
@@ -177,7 +161,6 @@ const PATH_PREFIXES = ['.gaia/', '.claude/', '.specify/', '.github/'] as const;
  */
 export const PROSE_PATH_ALLOWLIST: ReadonlySet<string> = new Set([
   '.claude/projects',
-  '.claude/settings.local.json',
   '.claude/shell-snapshots',
   '.github/workflows',
   '.github/workflows/code-review-audit.yml',

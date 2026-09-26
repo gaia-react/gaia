@@ -30,32 +30,26 @@ Run `bash .gaia/scripts/write-audit-remits.sh`. It reads `.gaia/audit-ci.yml` an
 
 Add the new agent file's path to `AUDIT_MACHINERY_PATHS` in `.claude/hooks/lib/audit-machinery.sh`. Every member's clearance marker keys to a content digest computed over the files it owns plus this machinery set; an agent file missing from the list rotates no digest when it changes, so a rewrite of the member's own instructions would merge unaudited by that member. `.gaia/scripts/verify-audit-roster.sh` asserts every roster member's agent file is listed.
 
-### 5. Declare a scope-resolution anchor, only if the fence is not where the checker looks
-
-`.gaia/scripts/check-scope-digest-adoption.sh` discovers members rather than carrying a list of them, so a new definition joins its scanned set with nothing to register. Its own header owns the list of what it verifies; exactly one of those assertions depends on a member telling it anything, the one placing the capture inside the member's own scope-resolution region. The checker assumes that region starts at `## Remit and self-skip`, which is where nearly every member resolves `KEY_BASE`/`BASE_SHA` and captures.
-
-A member whose fence lives elsewhere needs one line: add `member|^<its heading regex>` to `GAIA_SDA_ANCHOR_OVERRIDES` in that script. `code-audit-frontend` is the standing example, whose fence sits under `### How to run`. Skipping this on a member that needs it does not fail open, the region extraction finds nothing and the check exits non-zero naming the member and the anchor that matched nothing.
-
-### 6. Add a finding_class bucket, if the member needs new classes
+### 5. Add a finding_class bucket, if the member needs new classes
 
 A member reporting an **oracle** finding, backed by a deterministic tool (`react-doctor/`, `axe/`, `knip/`, `cve/`), needs no schema change: the tool owns the id space after its prefix, and any well-formed slug is valid. A member reporting findings in a genuinely new category needs a new closed-vocabulary bucket in the `finding_class` schema: a new prefix, a seeded `as const` union of specific classes, and that union folded into the closed-vocabulary set the validator checks against. Keep new classes genuine root-cause categories the member can assign reliably and repeatably, never a subsystem tag standing in for "somewhere in this member's remit." When in doubt, leave a class out; an unclassed finding is stamped with the classless fallback and counted as the unclassified recurrence signal rather than a draftable candidate.
 
 <!-- gaia:maintainer-only:start -->
-The schema lives at `.gaia/cli/src/schemas/finding-class.ts`, maintainer-only CLI source that never reaches an adopter clone. A bucket added there only reaches the shipped `harden-tally` command once the bundled binary is rebuilt (see step 8).
+The schema lives at `.gaia/cli/src/schemas/finding-class.ts`, maintainer-only CLI source that never reaches an adopter clone. A bucket added there only reaches the shipped `harden-tally` command once the bundled binary is rebuilt (see step 7).
 <!-- gaia:maintainer-only:end -->
 
-### 7. Integrate the recurrence tally
+### 6. Integrate the recurrence tally
 
 The finding-recurrence tally reads each member's findings sidecar to feed `/gaia-harden`'s judge-the-form logic. If the new member's finding classes need routing guidance beyond the default (a mechanizable pattern routes to a deterministic check, a judgment call routes to a prose rule), add a short paragraph to `.claude/skills/gaia/references/harden.md` describing how the new bucket routes, alongside the existing oracle / holistic / rule / workflow / prose paragraphs.
 
 <!-- gaia:maintainer-only:start -->
-### 8. Regenerate the CLI binary
+### 7. Regenerate the CLI binary
 
 A finding-class schema change only reaches the shipped `harden-tally` command once the bundled adopter binary (`.gaia/cli/gaia`) is rebuilt from `.gaia/cli/src` and committed alongside the schema edit. Skipping this leaves the schema and the binary disagreeing about the valid vocabulary.
 
 A change to how the tally counts, the window, the recurrence threshold, which PRs count as audited, how one PR's findings from several auditors merge, or which findings blocks and findings the parser accepts, bumps `TALLY_SCHEMA_VERSION` in `.gaia/cli/src/harden/material-rise.ts` in the same change. The counting code sits inside the `tally-semantics` regions of `.gaia/cli/src/harden/tally.ts`, `.gaia/cli/src/harden/compute-tally.ts`, and `.gaia/cli/src/harden/parse-findings-block.ts`; nothing checks the bump, so a change inside those regions is the cue to make it. A comment-only edit there needs no bump, and neither does a new finding_class bucket alone. A bump fires exactly one "tally changed" nudge and voids every share baseline recorded under the old counting.
 
-### 9. Release-exclude any test fixtures
+### 8. Release-exclude any test fixtures
 
 A `audience: maintainer` member's agent file, and any fixtures or bats suites written to exercise it, belong in `.gaia/release-exclude` so the release scrub strips them from the adopter bundle. A `audience: adopter` member ships as-is and needs no exclusion entry.
 <!-- gaia:maintainer-only:end -->

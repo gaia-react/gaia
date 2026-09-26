@@ -109,11 +109,9 @@ The one genuinely-close pair is **shared vs main-only**, since both resolve to m
 
 There is **one file** declaring every `.gaia/local/` entry — its scope, a plain-language reason, and, for a shared entry, its key. Everything that needs that information reads this registry; nothing keeps its own copy. That is the whole product: the registry is the only list, so "someone forgot to update one of the hand-written lists" has nowhere left to happen, and drift from the registry is reported rather than silently absorbed.
 
-`check-registry-runtime.sh` compares real on-disk state to the registry when run by hand. It **reports, never deletes or blocks**, an entry it does not recognize.
-
 <!-- gaia:maintainer-only:start -->
-GAIA maintainers: because the directory is gitignored and empty on a fresh CI checkout, the rest of the enforcement is split by where each half can see something real. One CI check requires that a single canonical resolver definition exists per language. A second checks the registry against shipped source in both directions: a live registry entry naming no real source reference fails the build, while the reverse direction — `.gaia/local/` literals in shipped source that map to no entry — is a report rather than a gate. Both run only from the release-excluded suites, so they guard maintainer changes; `check-registry-runtime.sh`, run by hand, is the half that reads live on-disk state.
-<!-- gaia:maintainer-only:end --> Three reasons: the directory is deliberately discoverable, so a human or an adopter may keep their own folder there; a machine on one GAIA version may carry a folder a different version owns; and enumerating an allowlist to police what may exist is the hardcoded-list reflex this whole model removes. Reporting surfaces drift without asserting an authority the registry does not have — in both directions of version skew.
+GAIA maintainers: because the directory is gitignored and empty on a fresh CI checkout, enforcement is limited to what a checkout without it can still see. One CI check requires that a single canonical resolver definition exists per language.
+<!-- gaia:maintainer-only:end --> The directory is deliberately discoverable, so a human or an adopter may keep their own folder there; a machine on one GAIA version may carry a folder a different version owns; and enumerating an allowlist to police what may exist is the hardcoded-list reflex this whole model removes.
 
 ### Keys and guards
 
