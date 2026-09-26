@@ -1309,12 +1309,6 @@ removal itself failed"
   grep -qF -- "--scope-digest must be a 64-hex digest" <<<"$output" || return 1
 }
 
-@test "usage: an empty --scope-digest value exits 2 with the format error" {
-  run bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned --scope-digest ""
-  [ "$status" -eq 2 ]
-  grep -qF -- "--scope-digest must be a 64-hex digest" <<<"$output" || return 1
-}
-
 @test "control: an ordinary member is still hard-refused on the same empty value" {
   run bash "$WRITER" --root "$ROOT" --member code-audit-frontend \
     --provenance earned --scope-digest ""
