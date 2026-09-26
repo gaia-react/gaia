@@ -264,9 +264,9 @@ esac
 # eligibility gate), drops promoted/suppressed classes, and emits
 # candidate_count plus a separate `unclassified` recurrence signal (non-null
 # only at/above the recurrence threshold). Runs in this same TTL pass; network
-# is non-fatal (gh failure yields candidate_count 0 and unclassified null).
-# Falls back to the previous cached counts on any failure: missing binary,
-# network error, parse error.
+# is non-fatal: a gh failure yields candidate_count 0 and unclassified null,
+# which this pass takes as the new counts. Falls back to the previous cached
+# counts only on a missing binary or a parse error.
 #
 # hardenNudgeReason is the text the statusline actually renders; the two
 # counts above keep being written for the upgrade-window seed (see

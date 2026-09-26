@@ -47,7 +47,8 @@
 # ruleset and none of those jobs, so the script has no adopter surface.
 .gaia/scripts/verify-required-checks.sh
 # This check asserts an invariant true of GAIA's own source and of nothing
-# else: that each language has exactly one main-root resolver. An adopter
+# else: that no consumer hand-rolls a main-root derivation in place of the
+# shared resolver. An adopter
 # does not write GAIA's resolvers, and its runners (the .gaia/scripts/tests/
 # bats suite and audit-ci-tests.yml) are already maintainer-only, so today it
 # ships a check no adopter can trigger and could not act on. Withholding it

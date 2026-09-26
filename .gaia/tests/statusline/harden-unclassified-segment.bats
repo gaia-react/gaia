@@ -61,13 +61,11 @@ teardown() {
 # A `gaia` binary stub answering the two subcommands check-updates.sh calls:
 # `update-deps run --emit-updates <file>` (writes an empty plan) and
 # `harden-tally` (emits candidate_count 0 plus an `unclassified` object shaped
-# by $MOCK_GH_OK / $MOCK_UNCLASSIFIED_COUNT / $MOCK_UNCLASSIFIED_SUPPRESSED
-# from the test's environment). $MOCK_UNCLASSIFIED_SUPPRESSED=true mirrors
-# compute-tally.ts's suppressed-fallback shape: a successful gh window read
-# (gh_ok true) whose classless recurrence the decline ledger suppresses,
-# which computeTally reports as `unclassified: null` same as the gh-failure
-# case, but with `gh_ok: true` so check-updates.sh treats it as a fresh
-# reading rather than falling back to the previous cached count.
+# by $MOCK_UNCLASSIFIED_COUNT / $MOCK_UNCLASSIFIED_SUPPRESSED from the test's
+# environment). $MOCK_UNCLASSIFIED_SUPPRESSED=true mirrors compute-tally.ts's
+# suppressed-fallback shape: a successful gh window read whose classless
+# recurrence the decline ledger suppresses, which computeTally reports as
+# `unclassified: null`.
 write_mock_gaia() {
   cat > "$1" <<'EOF'
 #!/usr/bin/env bash
@@ -84,9 +82,7 @@ case "$1" in
     exit 0
     ;;
   harden-tally)
-    if [ "${MOCK_GH_OK:-true}" = "false" ]; then
-      printf '{"candidate_count":0,"unclassified":null,"gh_ok":false,"window_days":90}'
-    elif [ "${MOCK_UNCLASSIFIED_SUPPRESSED:-false}" = "true" ]; then
+    if [ "${MOCK_UNCLASSIFIED_SUPPRESSED:-false}" = "true" ]; then
       printf '{"candidate_count":0,"unclassified":null,"gh_ok":true,"window_days":90}'
     else
       printf '{"candidate_count":0,"unclassified":{"distinct_pr_count":%s,"pr_numbers":[401,405,409],"area_tags":["app/routes"],"severity_max":"suggestion"},"gh_ok":true,"window_days":90}' "${MOCK_UNCLASSIFIED_COUNT:-3}"
@@ -158,7 +154,7 @@ run_statusline_with_cache() {
 }
 
 @test "refresher writes a valid hardenUnclassifiedCount field on a fresh run" {
-  run env MOCK_GH_OK=true MOCK_UNCLASSIFIED_COUNT=3 bash "$REFRESH_ROOT/.gaia/scripts/check-updates.sh"
+  run env MOCK_UNCLASSIFIED_COUNT=3 bash "$REFRESH_ROOT/.gaia/scripts/check-updates.sh"
   [ "$status" -eq 0 ]
   CACHE_FILE="$REFRESH_ROOT/.gaia/local/cache/shared/update-check.json"
   [ -f "$CACHE_FILE" ]
@@ -172,7 +168,7 @@ run_statusline_with_cache() {
 @test "the rendered statusline carries no unclassified segment once the tally reports a suppressed fallback" {
   CACHE_FILE="$REFRESH_ROOT/.gaia/local/cache/shared/update-check.json"
   printf '{"checkedAt":0,"hardenCandidateCount":0,"hardenUnclassifiedCount":5}' > "$CACHE_FILE"
-  run env MOCK_GH_OK=true MOCK_UNCLASSIFIED_SUPPRESSED=true bash "$REFRESH_ROOT/.gaia/scripts/check-updates.sh"
+  run env MOCK_UNCLASSIFIED_SUPPRESSED=true bash "$REFRESH_ROOT/.gaia/scripts/check-updates.sh"
   [ "$status" -eq 0 ]
   jq . "$CACHE_FILE" >/dev/null
   [ "$(jq -r '.hardenUnclassifiedCount' "$CACHE_FILE")" = "0" ]

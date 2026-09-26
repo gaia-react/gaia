@@ -2197,15 +2197,9 @@ concurrency_tree_needs_packages() {
 }
 
 # read_wf codefilter unwraps a change-type mapping entry (`- deleted: 'x'`)
-# to its bare value, which SPEC-078 needs before any check can read the
-# wiki/.state.json entry once it becomes one. Doctored onto
-# .gaia/release-exclude, not wiki/.state.json: SPEC-078 makes the mapping
-# form of the wiki/.state.json entry the real workflow line, so a fixture
-# doctoring that entry would produce a line identical to the real one from
-# that point on, assert_doctored would find no change to make, and this case
-# would go inert on the very next phase. .gaia/release-exclude is a bare
-# entry this change never touches, and W11's own adversarial case above
-# already derives that same line, so the pattern is proven.
+# to its bare value. Doctored onto .gaia/release-exclude, a bare entry, so the
+# doctored line always differs from the real one; W11's own adversarial case
+# above already derives that same line, so the pattern is proven.
 
 @test "read_wf codefilter unwraps a change-type mapping entry to its path" {
   require_yaml_parser
