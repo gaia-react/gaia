@@ -317,11 +317,6 @@ jobs:
               # having run that suite's assertions zero times. A suite that only
               # names a page in a comment, or reuses its path inside a synthetic
               # temp repo, never reads the tracked file, so it earns no entry.
-              #
-              # doc-issue-claim-parity.bats (.gaia/tests/lib/) compares, path by
-              # path, this page's list of merges that leave the claim in place
-              # against the same list in .claude/rules/issue-claim.md.
-              - 'wiki/concepts/Issue Claim.md'
               # doc-scope-digest-obligation.bats (.gaia/tests/lib/) requires the
               # scope-digest obligation literal under this page's step-1 heading.
               - 'wiki/concepts/Registering a Code Audit Team Member.md'
