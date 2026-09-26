@@ -9,7 +9,6 @@ name: CLI Tests
 # required context, so without this trigger -- and without the jobs admitting it
 # in their `if:` -- a self-heal commit leaves the check absent and branch
 # protection blocks the merge with no bypass short of an admin override.
-# .gaia/scripts/tests/retrigger-reachability.bats guards the whole invariant.
 #
 # GitHub honors `workflow_dispatch` only for the copy of a workflow on the
 # DEFAULT branch, so a dispatch of this file fails with 422 until it lands on
@@ -182,24 +181,6 @@ jobs:
               - '.gaia/labels.schema.json'
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Setup Node and install the CLI workspace
-        # Bounds a STALLED install rather than sizing the leg, the same
-        # reasoning audit-ci-tests.yml states at length for its own
-        # gaia-setup-node steps: a step-level cap on a step that `uses:` a
-        # composite action bounds the whole composite, and what it buys is a
-        # bound on a hung pnpm registry fetch or Node tarball download.
-        #
-        # Measured rather than estimated. Across recent CI runs this step took
-        # 21-28 seconds with the pnpm store warm, so five minutes is about ten
-        # times its observed cost, and it still leaves ten of the job's 15 for
-        # the checks below.
-        #
-        # Under the job's own cap on purpose: a step cap at or above the job's
-        # can never fire first, so the job would red with a generic timeout
-        # naming no step, which on a declared-required context is the
-        # attribution this exists to buy. W12 in
-        # .gaia/tests/lib/audit-ci-shards.bats holds every gaia-setup-node call
-        # site in every workflow to both halves of that.
-        timeout-minutes: 5
         uses: ./.github/actions/gaia-setup-node
         with:
           install: cli
@@ -487,18 +468,6 @@ jobs:
               - 'pnpm-workspace.yaml'
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Setup Node
-        # Same bound-a-stall reasoning as the sibling job's install step above,
-        # sized to what this one actually does. What the cap has to hold is the
-        # composite's own provisioning, which
-        # `.github/actions/gaia-setup-node/action.yml` enumerates and already
-        # sizes its retry pause against this cap. Read that set there rather
-        # than restating it here, where a copy of it goes stale the next time
-        # the composite changes. Across recent CI runs it took 13-18 seconds
-        # warm, and three minutes is about ten times that. Lower than the
-        # sibling's five because `install: none` skips the workspace install,
-        # not because the job cap is lower: both jobs cap at 15, and the
-        # scenarios below need the rest.
-        timeout-minutes: 3
         uses: ./.github/actions/gaia-setup-node
         with:
           install: none
@@ -599,10 +568,6 @@ jobs:
       # cache also drops the pnpm bootstrap this job never uses. The pin stays
       # unchanged from every other workflow's copy of this action.
       - name: Setup Node
-        # Bounds a stalled Node tarball fetch, not a budget for the work:
-        # strictly under this job's own 10-minute cap so a stall reds with this
-        # step's name rather than as a generic job timeout.
-        timeout-minutes: 3
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: '.node-version'

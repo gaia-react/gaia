@@ -32,7 +32,7 @@
 # the suite locally. That is gaia-react/gaia#1748.
 #
 # So the CI branch returns non-zero, matching the YAML-parser gate in
-# .gaia/scripts/tests/retrigger-reachability.bats, whose comment states the
+# `.gaia/tests/lib/audit-ci-shards.bats`, whose comment states the
 # same argument for the same reason: on CI the dependency is a precondition
 # rather than a maybe, because the job that runs the suite installs it. Off CI
 # the skip stands -- a checkout that has not run `pnpm install` is not the

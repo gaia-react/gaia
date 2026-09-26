@@ -162,8 +162,6 @@ Nothing in the pull-request lane exercises the dispatch path, so a break here is
 
 <!-- gaia:maintainer-only:start -->
 On `gaia-react/gaia` the knob carries two maintainer-only entries beyond the shipped defaults (`CLI Tests`, `Audit CI Tests`), wrapped in maintainer-only markers so the release scrub strips them: their workflows are release-excluded, and naming them on an adopter clone would dispatch workflows that do not exist there.
-
-The assertion lives in `.gaia/scripts/tests/retrigger-reachability.bats`, covering every context in `.gaia/scripts/verify-required-checks.sh`'s declared-required list, including the step-level trap above.
 <!-- gaia:maintainer-only:end -->
 
 ## Failed-run status backstop

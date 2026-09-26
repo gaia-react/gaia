@@ -66,7 +66,7 @@
 # saying it did not run. The CI branch therefore FAILS instead of skipping.
 # Off CI the skip stands: a workstation without jq is not the environment
 # this suite makes a claim about. Same fail-closed shape as
-# .gaia/scripts/tests/retrigger-reachability.bats' own precondition gates.
+# workflow-filter-coverage.bats' own precondition gates.
 # Section 0 below proves the CI branch fires.
 require_jq() {
   command -v jq >/dev/null 2>&1 && return 0

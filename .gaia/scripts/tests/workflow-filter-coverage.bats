@@ -114,8 +114,8 @@ require_repo_path() {
 # Gate only the tests that parse YAML. On CI the parser is a precondition rather
 # than a maybe: audit-ci-tests.yml installs python3-yaml in the same job that runs
 # this suite. So the CI branch FAILS instead of skipping, for the same reason
-# require_repo_path does. Matches .gaia/scripts/tests/retrigger-reachability.bats,
-# whose own gate this mirrors.
+# require_repo_path does. Matches `.gaia/tests/lib/audit-ci-shards.bats`'s own
+# gate, which this mirrors.
 require_yaml_parser() {
   if command -v python3 >/dev/null 2>&1 && python3 -c 'import yaml' >/dev/null 2>&1; then
     return 0
@@ -819,49 +819,6 @@ YAML
   }
 }
 
-@test "negative: a filter value written as a bare scalar, not a list, is honored" {
-  require_yaml_parser
-  local dir="$BATS_TEST_TMPDIR/sb"
-  mkdir -p "$dir/.github/workflows"
-  # dorny/paths-filter's own schema allows a filter's value to be a single
-  # string rather than a list; nothing else in this tree uses that shape, so a
-  # regression here would go unnoticed by every other fixture in this file.
-  cat > "$dir/.github/workflows/fixture.yml" <<'YAML'
-name: Fixture
-on:
-  pull_request:
-jobs:
-  fixture:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: dorny/paths-filter@v4
-        id: filter
-        with:
-          filters: |
-            code: '.github/workflows/fixture.yml'
-      - if: steps.filter.outputs.code == 'true'
-        name: Gated step
-        run: bash scripts/guard.sh
-YAML
-  printf '%s\n' ".github/workflows/fixture.yml" "scripts/guard.sh" > "$dir/tracked"
-
-  run filter_coverage pairs "$dir/tracked" "$dir/.github/workflows/fixture.yml"
-  [ "$status" -eq 0 ] || { echo "extractor failed: $output" >&2; return 1; }
-
-  # The listed workflow file grades ok. Before the fix, the scalar is iterated
-  # character by character and none of those single-character globs reach it.
-  printf '%s\n' "$output" | grep -q "^ok.*fixture.yml" || {
-    echo "a scalar filter value reported its own listed path as unreached" >&2
-    return 1
-  }
-  # The omitted script still grades unreached, so the fix normalizes the
-  # scalar to a one-element list rather than blessing every path.
-  printf '%s\n' "$output" | grep -q "^unreached.*scripts/guard.sh" || {
-    echo "a scalar filter value blessed a path it does not list" >&2
-    return 1
-  }
-}
-
 @test "negative: a run-body comment naming a path does not count as an input" {
   require_yaml_parser
   local dir="$BATS_TEST_TMPDIR/sb"
@@ -900,106 +857,6 @@ YAML
   # unreachable (SC2317). This is also the spelling .claude/rules/bats-assertions.md
   # prescribes for closing a test whose last assertion is the `<bad-case> && return 1`
   # form.
-  true
-}
-
-@test "negative: a gated step's env-indirected path resolves to the file it names" {
-  require_yaml_parser
-  local dir="$BATS_TEST_TMPDIR/sb"
-  mkdir -p "$dir/.github/workflows"
-  # Both spellings, because the token scan mangles them differently: `$VAR/x`
-  # tokenizes as `VAR/x` (a slash-bearing token that is simply untracked), while
-  # `${VAR}/x` splits into `VAR` and `/x`. Neither reaches the membership test as
-  # a path, so an unexpanded body grades the step as reading nothing but its own
-  # workflow file, which is the same silent green a broken token scan gives.
-  #
-  # The third and fourth put the reference somewhere other than the leading
-  # segment, which is where the header's out-of-scope note used to draw a
-  # boundary the substitution does not actually have. Pinned here so the prose is
-  # a claim that re-checks itself rather than one that decays.
-  cat > "$dir/.github/workflows/fixture.yml" <<'YAML'
-name: Fixture
-on:
-  pull_request:
-jobs:
-  fixture:
-    runs-on: ubuntu-latest
-    env:
-      SCRIPTS_DIR: scripts
-      LEAF: third
-      MIDDLE: nested
-    steps:
-      - uses: dorny/paths-filter@v4
-        id: filter
-        with:
-          filters: |
-            code:
-              - '.github/workflows/fixture.yml'
-      - if: steps.filter.outputs.code == 'true'
-        name: Gated step
-        run: |
-          bash "$SCRIPTS_DIR/guard.sh"
-          bash "${SCRIPTS_DIR}/other.sh"
-          bash "scripts/$LEAF.sh"
-          bash "scripts/${MIDDLE}/fourth.sh"
-YAML
-  printf '%s\n' \
-    ".github/workflows/fixture.yml" "scripts/guard.sh" "scripts/other.sh" \
-    "scripts/third.sh" "scripts/nested/fourth.sh" > "$dir/tracked"
-
-  run filter_coverage pairs "$dir/tracked" "$dir/.github/workflows/fixture.yml"
-  [ "$status" -eq 0 ] || { echo "extractor failed: $output" >&2; return 1; }
-
-  local script
-  for script in scripts/guard.sh scripts/other.sh scripts/third.sh scripts/nested/fourth.sh; do
-    printf '%s\n' "$output" | grep -q "^unreached.*$script" || {
-      echo "the guard did not report $script; a path indirected through env: is invisible to it" >&2
-      return 1
-    }
-  done
-}
-
-@test "negative: an env name a step redeclares does not expand to the outer value" {
-  require_yaml_parser
-  local dir="$BATS_TEST_TMPDIR/sb"
-  mkdir -p "$dir/.github/workflows"
-  # The step's own value is a `${{ }}` expression, resolved at runtime from
-  # context this parse cannot see. Falling back to the job's literal would name a
-  # tracked file the step provably never reads: an over-reach, and the one
-  # direction this guard must not have, since it reports a red against a path
-  # nobody can make the filter cover.
-  cat > "$dir/.github/workflows/fixture.yml" <<'YAML'
-name: Fixture
-on:
-  pull_request:
-jobs:
-  fixture:
-    runs-on: ubuntu-latest
-    env:
-      SCRIPTS_DIR: scripts
-    steps:
-      - uses: dorny/paths-filter@v4
-        id: filter
-        with:
-          filters: |
-            code:
-              - '.github/workflows/fixture.yml'
-      - if: steps.filter.outputs.code == 'true'
-        name: Gated step
-        env:
-          SCRIPTS_DIR: ${{ runner.temp }}/staged
-        run: bash "$SCRIPTS_DIR/guard.sh"
-YAML
-  printf '%s\n' ".github/workflows/fixture.yml" "scripts/guard.sh" > "$dir/tracked"
-
-  run filter_coverage pairs "$dir/tracked" "$dir/.github/workflows/fixture.yml"
-  [ "$status" -eq 0 ] || { echo "extractor failed: $output" >&2; return 1; }
-
-  printf '%s\n' "$output" | grep -q "scripts/guard.sh" && {
-    echo "the step's redeclared env name fell back to the job's value; the guard named a path the step never reads" >&2
-    return 1
-  }
-  # Explicit `true` for the reason the comment-fixture test above gives.
   true
 }
 

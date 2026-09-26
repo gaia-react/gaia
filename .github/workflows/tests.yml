@@ -25,10 +25,9 @@ jobs:
     # that hits this cap is cancelled and its run still completes, so the poller
     # stamps a failure: an ordinary red check to re-run rather than a merge
     # wedged with no signal. The cap bounds execution only, so the ~10 minutes it
-    # leaves under the window are what covers this run's queue wait. A test
-    # derives that ceiling from the poller's own loop and charges the margin once
-    # per job along a `needs:` chain, so this number is checked rather than
-    # asserted here.
+    # leaves under the window are what covers this run's queue wait, derived
+    # from the poller's own loop with the margin charged once per job along a
+    # `needs:` chain.
     #
     # 15 is what every unchained job in a re-dispatched workflow carries; a
     # chained pair is budgeted lower, against the tighter ceiling its hop count
@@ -131,21 +130,6 @@ jobs:
           fi
       - if: steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true'
         name: Setup Node and install
-        # Bounds a STALLED install; it is not a budget for the work. A step that
-        # `uses:` a composite action is bounded as a whole by its own
-        # `timeout-minutes`, and without one a hung pnpm registry fetch or Node
-        # tarball download runs until the job's 15-minute cap fires. The job then
-        # reds with a generic job-timeout message attributed to no step at all,
-        # and because this is a declared-required check, the pull request is
-        # blocked by a failure that points at nothing.
-        #
-        # Five minutes against a warm-cache install of this workspace that
-        # finishes in under a minute: the margin is what a cold store has to fill
-        # before this fires on real work. Raise it if your own install is larger.
-        # Strictly under the job's cap on purpose, which is what makes it fire
-        # first; a step cap at or above the job's can never fire before it, so it
-        # would buy the bound and none of the attribution.
-        timeout-minutes: 5
         uses: ./.github/actions/gaia-setup-node
       # Reads the version inline rather than through a Marketplace action. The
       # Marketplace option here is a CONTAINER action, and GitHub builds a

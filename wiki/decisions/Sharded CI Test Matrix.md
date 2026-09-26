@@ -34,7 +34,7 @@ The group is the right granularity for anything that must survive a reshuffle. T
 The `needs:` chain sits at **exactly its ceiling with zero headroom**, and this is the first thing to check before proposing any new CI structure here.
 
 - The self-heal poller window is 25 minutes (see [[Dispatched-Check Rollup via Polling]]).
-- `.gaia/scripts/tests/retrigger-reachability.bats` charges `POLLER_MARGIN_MIN=5` **per hop**, so the ceiling is `25 - 5 x hops`. At two hops that is 15 minutes.
+- `audit-ci-shards.bats` W5 charges `POLLER_MARGIN_MIN=5` **per hop**, so the ceiling is `25 - 5 x hops`. At two hops that is 15 minutes.
 - The caps are 13 (shards) + 2 (aggregator) = 15. Exactly the ceiling.
 
 Consequences, each load-bearing:
