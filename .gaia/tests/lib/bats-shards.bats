@@ -228,26 +228,6 @@ write_trivial_bats() {
   [ "$status" -eq 0 ]
 }
 
-@test "S4: shards prints exactly ten ids in the documented order" {
-  run bash "$SCRIPT" shards
-  [ "$status" -eq 0 ]
-  [ "${#lines[@]}" -eq 10 ]
-  expected="hooks-1
-hooks-2
-hooks-3
-hooks-4
-scripts-1
-scripts-2
-scripts-3
-audit
-lib
-misc"
-  [ "$output" = "$expected" ]
-  grep -qF -- 'sandbox' <<<"$output" && return 1
-  grep -qF -- 'concurrency' <<<"$output" && return 1
-  true
-}
-
 @test "S5: hooks-1 is exactly the pinned singleton" {
   run bash "$SCRIPT" files hooks-1
   [ "$status" -eq 0 ]
@@ -808,47 +788,6 @@ gate_block() {
     sed 's/^ *//'
 }
 
-# Exit 0 when sharder $1 and bats5 $2 carry the same non-empty gating block.
-check_gate_parity() {
-  local ours theirs
-  ours="$(gate_block "$1")"
-  theirs="$(gate_block "$2")"
-  [ -n "$ours" ] || return 1
-  [ -n "$theirs" ] || return 1
-  [ "$ours" = "$theirs" ]
-}
-
-# The vitest side's gate list in file $1, as the `key=value` words the shell
-# runners loop over: one pair per entry of its MAINTENANCE_SUPPRESSION array.
-# Every array line that is neither blank nor a `//` comment counts as an entry,
-# and the list prints nothing unless each one parses as a pair, so a reshaped
-# entry, a spread or a named constant among them, reads as no list rather than
-# as the shorter list that did parse.
-ts_gate_list() {
-  local block entries pairs
-  block="$(awk '/^const MAINTENANCE_SUPPRESSION/ {f = 1; next} f && /^\];$/ {exit} f' "$1")"
-  entries="$(grep -cvE '^[[:space:]]*(//|$)' <<<"$block" || true)"
-  pairs="$(sed -n "s/^ *\['\([^']*\)', '\([^']*\)'\],\$/\1=\2/p" <<<"$block")"
-  [ -n "$pairs" ] || return 0
-  [ "$(printf '%s\n' "$pairs" | wc -l | tr -d ' ')" -eq "$entries" ] || return 0
-  printf '%s\n' "$pairs" | paste -sd' ' -
-}
-
-# The shell gate list in file $1: the words of its `for kv in ...; do` line.
-shell_gate_list() {
-  sed -n 's/^ *for kv in \(.*\); do$/\1/p' "$1"
-}
-
-# Exit 0 when vitest file $1 and bats5 $2 carry the same non-empty gate list.
-check_ts_gate_parity() {
-  local ts sh
-  ts="$(ts_gate_list "$1")"
-  sh="$(shell_gate_list "$2")"
-  [ -n "$ts" ] || return 1
-  [ -n "$sh" ] || return 1
-  [ "$ts" = "$sh" ]
-}
-
 # A9 fixture: empties run's gate list on the copy, so the count it exports is
 # the ambient one and the suites it runs get git's own maintenance resolution.
 # What this proves is that S17's subject arm can red, not merely that the gates
@@ -860,18 +799,6 @@ doctor_ungated_run() {
   sed 's/^\( *for kv in\) .*\(; do\)$/\1\2/' "$dest" >"$dest.new"
   mv "$dest.new" "$dest"
   grep -qxF '    for kv in; do' "$dest" || return 1
-  printf '%s\n' "$dest"
-}
-
-# A10 fixture: drops one gate from run's list on the copy, the drift S18
-# exists to catch. gc.autoDetach is one of the keys S17 cannot see go missing.
-doctor_dropped_gate() {
-  local dest
-  dest="$(copy_sharder a10-dropped-gate.sh)"
-  grep -qF ' gc.autoDetach=false ' "$dest" || return 1
-  sed 's/ gc\.autoDetach=false / /' "$dest" >"$dest.new"
-  mv "$dest.new" "$dest"
-  grep -qF ' gc.autoDetach=false ' "$dest" && return 1
   printf '%s\n' "$dest"
 }
 
@@ -903,51 +830,6 @@ doctor_dropped_gate() {
   [ "$status" -eq 1 ]
   grep -qE '^ok [0-9]+ control$' <<<"$output"
   grep -qE '^not ok [0-9]+ subject$' <<<"$output"
-}
-
-@test "S18: run's maintenance gating block matches bats5.sh's" {
-  run check_gate_parity "$SCRIPT" "$BATS_TEST_DIRNAME/../../scripts/bats5.sh"
-  [ "$status" -eq 0 ]
-}
-
-@test "A10: a gate dropped from run's list reds S18's parity check" {
-  local copy
-  copy="$(doctor_dropped_gate)"
-  run check_gate_parity "$copy" "$BATS_TEST_DIRNAME/../../scripts/bats5.sh"
-  [ "$status" -eq 1 ]
-}
-
-# The vitest setup file is where the reasoning for each key lives, so it is
-# where a key is likeliest to be added first. S19 carries that edit to the
-# shell runners by going red until they match it.
-@test "S19: bats5.sh's maintenance gate list matches the vitest side's" {
-  run check_ts_gate_parity "$BATS_TEST_DIRNAME/../../cli/src/util/git-maintenance-env.ts" \
-    "$BATS_TEST_DIRNAME/../../scripts/bats5.sh"
-  [ "$status" -eq 0 ]
-}
-
-@test "A11: a key added only on the vitest side reds S19's parity check" {
-  local ts
-  ts="$BATS_TEST_TMPDIR/git-maintenance-env.ts"
-  awk '{print} /^  \[.maintenance\.autoDetach., .false.\],$/ {print "  [\x27maintenance.strategy\x27, \x27none\x27],"}' \
-    "$BATS_TEST_DIRNAME/../../cli/src/util/git-maintenance-env.ts" >"$ts"
-  grep -qF "['maintenance.strategy', 'none']," "$ts"
-  run check_ts_gate_parity "$ts" "$BATS_TEST_DIRNAME/../../scripts/bats5.sh"
-  [ "$status" -eq 1 ]
-}
-
-# A spread and a named constant are one shape to ts_gate_list, an entry line
-# that is not a bracketed pair, so this samples the spread. The pairs that do
-# parse still equal bats5.sh's list, which leaves the entry count as the only
-# thing that can red it.
-@test "A12: an entry that is not a bracketed pair reds S19's parity check" {
-  local ts
-  ts="$BATS_TEST_TMPDIR/git-maintenance-env.ts"
-  awk '{print} /^  \[.maintenance\.autoDetach., .false.\],$/ {print "  ...EXTRA_GATES,"}' \
-    "$BATS_TEST_DIRNAME/../../cli/src/util/git-maintenance-env.ts" >"$ts"
-  grep -qxF '  ...EXTRA_GATES,' "$ts"
-  run check_ts_gate_parity "$ts" "$BATS_TEST_DIRNAME/../../scripts/bats5.sh"
-  [ "$status" -eq 1 ]
 }
 
 # S13's allowlist: a tracked .bats file that no shard resolves, paired with

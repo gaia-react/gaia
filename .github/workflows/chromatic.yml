@@ -111,18 +111,6 @@ jobs:
               - '.github/actions/**'
       - if: steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true'
         name: Setup Node and install
-        # Bounds a STALLED install, the same reasoning tests.yml states at its
-        # own install step: without a step-level cap a hung pnpm registry fetch
-        # or Node tarball download runs until this job's 12-minute cap fires, and
-        # the job reds with a generic job-timeout message attributed to no step.
-        #
-        # Five minutes against a warm-cache install of this workspace that
-        # finishes in under a minute, and this job can afford it: the Storybook
-        # build and the Chromatic upload below run near 2 minutes together, so
-        # the headroom left under the job's cap is several times what they need.
-        # Strictly under that cap on purpose, which is what makes this fire first
-        # and name the install rather than the job.
-        timeout-minutes: 5
         uses: ./.github/actions/gaia-setup-node
       # The preview must publish no environment values, and until now nothing on
       # the build path said so. `test/preview-env.test.ts` pins the Vitest worker;

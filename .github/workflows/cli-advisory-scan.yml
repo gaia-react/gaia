@@ -79,12 +79,6 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # Bounded at the step because this lane's whole subject is a network
-      # call: an install that stalls fetching the pnpm tarball would otherwise
-      # burn the job cap before the scan it exists to run had started, and the
-      # failure would name the job rather than the fetch. Five minutes is the
-      # same bound audit-ci-tests.yml sizes its own gaia-setup-node steps to,
-      # for the same reason.
       - name: Setup Node and install the CLI workspace
         timeout-minutes: 5
         uses: ./.github/actions/gaia-setup-node

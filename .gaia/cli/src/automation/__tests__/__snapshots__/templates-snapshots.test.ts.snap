@@ -241,7 +241,6 @@ jobs:
       # the composite itself, not restated here.
       - name: Setup Node and install
         if: steps.pre_run.outputs.decision != 'skip'
-        timeout-minutes: 5
         uses: ./.github/actions/gaia-setup-node
 
       - name: Quality Gate
@@ -437,7 +436,6 @@ jobs:
       # the composite itself, not restated here.
       - name: Setup Node and install
         if: steps.pre_run.outputs.decision != 'skip'
-        timeout-minutes: 5
         uses: ./.github/actions/gaia-setup-node
 
       - name: Quality Gate
@@ -566,7 +564,6 @@ jobs:
       # the composite itself, not restated here.
       - name: Setup Node and install
         if: steps.pre_run.outputs.decision != 'skip'
-        timeout-minutes: 5
         uses: ./.github/actions/gaia-setup-node
 
       - name: Quality Gate
@@ -725,7 +722,6 @@ jobs:
       # the composite itself, not restated here.
       - name: Setup Node and install
         if: steps.pre_run.outputs.decision != 'skip'
-        timeout-minutes: 5
         uses: ./.github/actions/gaia-setup-node
 
       - name: Create per-group branch
@@ -894,7 +890,6 @@ jobs:
       # the composite itself, not restated here.
       - name: Setup Node and install
         if: steps.pre_run.outputs.decision != 'skip'
-        timeout-minutes: 5
         uses: ./.github/actions/gaia-setup-node
 
       - name: Quality Gate

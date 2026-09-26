@@ -6,5 +6,4 @@
       # the composite itself, not restated here.
       - name: Setup Node and install
         if: steps.pre_run.outputs.decision != 'skip'
-        timeout-minutes: 5
         uses: ./.github/actions/gaia-setup-node

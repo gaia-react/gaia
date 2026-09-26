@@ -27,10 +27,9 @@ name: Audit CI Tests
 # the new HEAD. `Audit CI Tests` below is a declared-required context, so
 # without this trigger -- and without the job admitting it in its `if:` -- the
 # check is absent on the self-heal HEAD and branch protection blocks the merge.
-# Same shape as cli-tests.yml; .gaia/scripts/tests/retrigger-reachability.bats
-# guards the invariant for every declared-required context. As there, GitHub
-# honors the trigger only for the default-branch copy of this file, so a
-# dispatch fails with 422 until it lands on main.
+# Same shape as cli-tests.yml. GitHub honors the trigger only for the
+# default-branch copy of this file, so a dispatch fails with 422 until it
+# lands on main.
 on:
   push:
     branches: [ main ]
@@ -63,10 +62,10 @@ jobs:
     # work today's shared 15-minute cap was sized for. A matrix takes ONE
     # integer cap for every leg, so the lighter shards inherit it too. Paired
     # with the aggregator's 2-minute cap this sums to 15 over the 2-hop
-    # `needs:` chain .gaia/scripts/tests/retrigger-reachability.bats checks,
-    # which is the maximum this repo's 25-minute self-heal poller window
-    # allows at 2 hops -- zero headroom, so raising either cap or adding a
-    # third hop reds that suite immediately.
+    # `needs:` chain `.gaia/tests/lib/audit-ci-shards.bats` W5 checks, which is
+    # the maximum this repo's 25-minute self-heal poller window allows at 2
+    # hops -- zero headroom, so raising either cap or adding a third hop reds
+    # that check immediately.
     timeout-minutes: 13
     # Read-only token: the job checks out, resolves changed files via
     # dorny/paths-filter, and runs bats or the sandbox/concurrency runners; it
@@ -110,9 +109,8 @@ jobs:
               - '.github/audit/**'
               # This job's own definition. The filter above, the step conditions
               # below and the bats invocations they arm all live here, so an edit
-              # to this file changes what every suite in this job runs, and
-              # retrigger-reachability.bats reads it as one of the workflows it
-              # scans. Redundant today: the `.github/workflows/**` catch-all below
+              # to this file changes what every suite in this job runs.
+              # Redundant today: the `.github/workflows/**` catch-all below
               # already matches it. Listed deliberately anyway, so that
               # narrowing that glob later cannot silently drop this file. It is
               # documentation of the self-coverage, not the thing arming it.
@@ -397,15 +395,13 @@ jobs:
               - '.gaia/statusline/**'
               - '.gaia/tests/statusline/**'
               - '.claude/skills/gaia/references/harden.md'
-              # retrigger-reachability.bats (.gaia/scripts/tests/) reads every
-              # workflow in .github/workflows/ and the retrigger_workflows knob
-              # in .gaia/audit-ci.yml, so both are sources it guards. Without
-              # them, the edit the suite exists to catch -- a required check's
-              # workflow losing its workflow_dispatch trigger, or dropping out
-              # of the knob -- matches no pattern here, every bats step skips,
-              # and the job greens having run that assertion zero times. The
-              # workflows glob self-maintains as the declared-required set
-              # changes, the same reasoning as the code-audit-*.md glob above.
+              # workflow-filter-coverage.bats (.gaia/scripts/tests/) reads every
+              # workflow in .github/workflows/, so without this line an edit to
+              # one alone matches no pattern here, every bats step skips, and
+              # the job greens having run that suite's assertions zero times.
+              # The glob self-maintains as workflows are added, the same
+              # reasoning as the code-audit-*.md glob above. `.gaia/audit-ci.yml`
+              # below is a source the same way, for read-audit-ci-config.bats.
               - '.github/workflows/**'
               # The composite action the Node setup step below `uses:`. It lives
               # outside .github/workflows/, so it matches nothing else here, and
@@ -474,16 +470,6 @@ jobs:
               - '.gaia/tests/concurrency/**'
               - '.gaia/state-registry.json'
               - '.gaia/cli/src/**'
-              # The build artifact copy of the adopter workflow templates.
-              # provisioning-attribution.bats reads this directory as one of
-              # its four provisioning-discovery roots, and it is otherwise
-              # reached only through `.gaia/cli/src/**` above, which covers
-              # the source templates, not the regenerated copy. Without this
-              # entry, a change to the artifact alone (a `bundle:adopter` run
-              # with no matching source edit) resolves `code=false`, skips
-              # every bats step, and greens the job having run that guard
-              # zero times over the file it changed.
-              - '.gaia/cli/templates/workflows/**'
               - '.claude/commands/gaia-release.md'
               - 'pnpm-lock.yaml'
               - '.gaia/cli/pnpm-lock.yaml'
@@ -759,27 +745,6 @@ jobs:
       # install different things for different reasons.
       - if: matrix.shard == 'concurrency' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Setup Node and install both workspaces
-        # Sized for fast failure and honest attribution, the same reasoning the
-        # apt step above states at length, and NOT sized to the leg. Every
-        # gaia-setup-node step in this job carries this same cap: they differ
-        # in how much they install, but what a cap buys here is a bound on a
-        # STALLED registry fetch or Node tarball download, and a stall does
-        # not care which workspace it was asked for.
-        #
-        # Five minutes is measured rather than estimated. Across recent CI
-        # runs these steps took 27-43 seconds each with the pnpm store warm,
-        # and this one, installing both workspaces, was the slowest of them
-        # every time. The cap is about seven times that, which is the margin a
-        # cold store has to fill before this fires on real work.
-        #
-        # Under the job's own 13-minute cap on purpose, and W12 in
-        # .gaia/tests/lib/audit-ci-shards.bats holds it there: a step cap at or
-        # above the job's can never fire first, so the job would red with a
-        # generic timeout naming no step, which is the attribution this exists
-        # to buy. Under it, the apt step's 6 and this 5 still sum to 11 on the
-        # legs that draw both, so whichever one hangs is killed by its own cap
-        # with the job cap still unreached.
-        timeout-minutes: 5
         uses: ./.github/actions/gaia-setup-node
         with:
           install: both
@@ -826,9 +791,6 @@ jobs:
       # suites.
       - if: contains(fromJSON('["hooks-2", "hooks-3", "hooks-4"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Setup Node for the node-dependent RED suites
-        # Same cap, same reasoning as the concurrency leg's step above; W12
-        # holds every gaia-setup-node step in every workflow to it.
-        timeout-minutes: 5
         uses: ./.github/actions/gaia-setup-node
         with:
           install: root
@@ -894,9 +856,6 @@ jobs:
       # that reason.
       - if: steps.needs-cli-workspace.outputs.needed == '1'
         name: Install the CLI workspace for the floor-check suite
-        # Same cap, same reasoning as the concurrency leg's step above; W12
-        # holds every gaia-setup-node step in every workflow to it.
-        timeout-minutes: 5
         uses: ./.github/actions/gaia-setup-node
         with:
           install: cli

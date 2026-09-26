@@ -438,9 +438,9 @@ run_lib() {
 # makes that weakening red.
 #
 # It cannot escape its own setup(), which calls the gate before any test body
-# runs. That is the same shape `require_repo_path` takes in
-# .gaia/scripts/tests/retrigger-reachability.bats, and its comment states the
-# reading this inherits: "what the test catches is the weakening, not the
+# runs. That is the same shape `require_jq` takes in
+# `.gaia/scripts/tests/audit-base-agreement.bats`, and its comment states the
+# reading this inherits: "what it catches is the weakening, not the
 # condition." The condition is covered by the other half of the fix instead --
 # the workflow now installs the dependency on this suite's leg, so on CI
 # setup() passes and this test runs.
