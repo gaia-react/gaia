@@ -119,7 +119,6 @@ prev_residue_count=0
 prev_audit_last_applied_at=0
 prev_audit_memory_count=0
 prev_audit_memory_baseline=0
-prev_audit_drift_baseline='{}'
 if [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
   prev_checked_at=$(jq -r '.checkedAt // 0' "$CACHE_FILE" 2>/dev/null)
   prev_outdated_count=$(jq -r '.outdatedCount // 0' "$CACHE_FILE" 2>/dev/null)
@@ -133,7 +132,7 @@ if [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
   # A cache written before hardenNudgeReason existed (the upgrade window) has
   # no key to read, so seed it from the counts it does carry with today's
   # composition, never "": otherwise the first refresh after an upgrade that
-  # lands on gh_ok false would write an empty reason and silently drop a
+  # fails to read harden-tally would write an empty reason and silently drop a
   # nudge the old cache was showing.
   if jq -e 'has("hardenNudgeReason")' "$CACHE_FILE" >/dev/null 2>&1; then
     prev_harden_reason=$(jq -r '.hardenNudgeReason // ""' "$CACHE_FILE" 2>/dev/null)
@@ -144,12 +143,6 @@ if [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
   prev_audit_last_applied_at=$(jq -r '.auditLastAppliedAt // 0' "$CACHE_FILE" 2>/dev/null)
   prev_audit_memory_count=$(jq -r '.auditMemoryCount // 0' "$CACHE_FILE" 2>/dev/null)
   prev_audit_memory_baseline=$(jq -r '.auditMemoryBaseline // 0' "$CACHE_FILE" 2>/dev/null)
-  # Read once and validate that value, so the guard and the assignment cannot
-  # disagree about what was read.
-  drift_baseline_read=$(jq -c '.auditDriftBaseline // {}' "$CACHE_FILE" 2>/dev/null)
-  case "$drift_baseline_read" in
-    '{'*) prev_audit_drift_baseline="$drift_baseline_read" ;;
-  esac
   case "$prev_checked_at" in
     ''|*[!0-9]*) prev_checked_at=0 ;;
   esac
@@ -270,14 +263,10 @@ esac
 # at any severity (severity_max is a running-max ranking signal, not an
 # eligibility gate), drops promoted/suppressed classes, and emits
 # candidate_count plus a separate `unclassified` recurrence signal (non-null
-# only at/above the recurrence threshold) and a gh_ok flag. Runs in this same
-# TTL pass; network is non-fatal: on a gh/network failure, or a window too
-# large for its paged read to finish, harden-tally exits 0
-# emitting candidate_count 0, unclassified null, and gh_ok false, so this
-# consumer honors gh_ok and keeps the previous cached counts rather than
-# resetting the nudges to 0. Falls back to the previous cached counts on any
-# failure: missing binary, gh/network error or truncated window (gh_ok
-# false), parse error.
+# only at/above the recurrence threshold). Runs in this same TTL pass; network
+# is non-fatal: a gh failure yields candidate_count 0 and unclassified null,
+# which this pass takes as the new counts. Falls back to the previous cached
+# counts only on a missing binary or a parse error.
 #
 # hardenNudgeReason is the text the statusline actually renders; the two
 # counts above keep being written for the upgrade-window seed (see
@@ -285,22 +274,16 @@ esac
 # no snapshot yet, or a pre-SPEC/mock binary), the reason is today's count
 # text via harden_count_reason. With one, it names the trigger events
 # harden-tally reports: schema_change, the new_class count, one
-# "<last path segment of finding_class> rising" per distinct segment in
+# "<last path segment of finding_class> rising" per rising_class in
 # triggers[] order (the segment stripped to [A-Za-z0-9._-], since class
 # names come from PR comments any author can write), then "unclassified
-# rising"; empty when triggers is empty. Only the first two rising labels
-# render and the rest collapse into "+N more": a clone that goes long
-# between reviews can accumulate several at once, and one segment that long
-# crowds out the rest of the status line. The dedupe is on the sanitized
-# label, since two oracle ids (axe/x, knip/x) can share a last segment.
-# gh_ok false (or no reading at all) keeps prev_harden_reason.
+# rising"; empty when triggers is empty.
 #
-# snapshot_present and snapshot_reviewed_at are read from the tally JSON
-# regardless of gh_ok: harden-tally emits them on a gh_ok-false run too, and
-# the race check below (arm b) needs this run's own values to catch
-# harden-tally's own snapshot reading disagreeing with the file the script
-# re-reads before the write, a mismatch arm (a) cannot see because both of
-# the script's own reads of that file agree with each other.
+# snapshot_present and snapshot_reviewed_at are read from the tally JSON; the
+# race check below (arm b) needs this run's own values to catch harden-tally's
+# own snapshot reading disagreeing with the file the script re-reads before
+# the write, a mismatch arm (a) cannot see because both of the script's own
+# reads of that file agree with each other.
 harden_count="$prev_harden_count"
 unclassified_count="$prev_harden_unclassified"
 harden_reason="$prev_harden_reason"
@@ -311,35 +294,30 @@ if [ -x "$GAIA_BIN" ] && command -v jq >/dev/null 2>&1; then
   if [ -n "$tally_json" ]; then
     parsed=$(printf '%s' "$tally_json" | jq -r '.candidate_count // empty' 2>/dev/null)
     unclassified_parsed=$(printf '%s' "$tally_json" | jq -r '.unclassified.distinct_pr_count // 0' 2>/dev/null)
-    gh_ok=$(printf '%s' "$tally_json" | jq -r '.gh_ok // false' 2>/dev/null)
     snapshot_present=$(printf '%s' "$tally_json" | jq -r '.snapshot_present // false' 2>/dev/null)
     snapshot_reviewed_at=$(printf '%s' "$tally_json" | jq -r '.snapshot_reviewed_at // empty' 2>/dev/null)
-    if [ "$gh_ok" = "true" ]; then
-      case "$parsed" in
-        ''|*[!0-9]*) ;;
-        *) harden_count="$parsed" ;;
-      esac
-      case "$unclassified_parsed" in
-        ''|*[!0-9]*) ;;
-        *) unclassified_count="$unclassified_parsed" ;;
-      esac
-      if [ "$snapshot_present" = "true" ]; then
-        harden_reason=$(printf '%s' "$tally_json" | jq -r '
-          [.triggers[]?] as $triggers
-          | ($triggers | map(select(.type=="new_class")) | length) as $newk
-          | ([$triggers[] | select(.type=="rising_class") | .finding_class | split("/") | last | gsub("[^A-Za-z0-9._-]"; "") | if . == "" then "a pattern" else . end] | reduce .[] as $l ([]; if index([$l]) then . else . + [$l] end)) as $rising
-          | [
-              (if ($triggers | any(.type=="schema_change")) then "tally changed" else empty end),
-              (if $newk > 0 then (if $newk == 1 then "1 new pattern" else "\($newk) new patterns" end) else empty end),
-              ($rising[:2][] + " rising"),
-              (if ($rising | length) > 2 then "+\(($rising | length) - 2) more" else empty end),
-              (if ($triggers | any(.type=="rising_unclassified")) then "unclassified rising" else empty end)
-            ]
-          | join(", ")
-        ' 2>/dev/null)
-      else
-        harden_reason=$(harden_count_reason "$harden_count" "$unclassified_count")
-      fi
+    case "$parsed" in
+      ''|*[!0-9]*) ;;
+      *) harden_count="$parsed" ;;
+    esac
+    case "$unclassified_parsed" in
+      ''|*[!0-9]*) ;;
+      *) unclassified_count="$unclassified_parsed" ;;
+    esac
+    if [ "$snapshot_present" = "true" ]; then
+      harden_reason=$(printf '%s' "$tally_json" | jq -r '
+        [.triggers[]?] as $triggers
+        | ($triggers | map(select(.type=="new_class")) | length) as $newk
+        | [
+            (if ($triggers | any(.type=="schema_change")) then "tally changed" else empty end),
+            (if $newk > 0 then (if $newk == 1 then "1 new pattern" else "\($newk) new patterns" end) else empty end),
+            ($triggers[] | select(.type=="rising_class") | (.finding_class | split("/") | last | gsub("[^A-Za-z0-9._-]"; "") | if . == "" then "a pattern" else . end) + " rising"),
+            (if ($triggers | any(.type=="rising_unclassified")) then "unclassified rising" else empty end)
+          ]
+        | join(", ")
+      ' 2>/dev/null)
+    else
+      harden_reason=$(harden_count_reason "$harden_count" "$unclassified_count")
     fi
   fi
 fi
@@ -471,101 +449,32 @@ fi
 
 # (b) Project drift: any committed auto-load file over budget. Budget-only, no
 # committed marker; clears for everyone once a dev fixes + commits.
-#
-# Unlike the three arms above, this one is a live measurement rather than a
-# debounce keyed to whether an audit ran, so completing an audit does not clear
-# it. When the audit's answer is to FILE the over-budget file as tech-debt
-# rather than trim it, the condition is already tracked in the debt channel and
-# the nudge is asking for work that is queued. Suppress it in exactly that case:
-# a path carrying an open `tech-debt` issue is the debt indicator's to report.
-#
-# The suppression key is shared state (an open issue, visible to everyone), so a
-# machine-local audit run cannot silence a repo-wide condition for other devs.
-covered_paths=""
-if command -v jq >/dev/null 2>&1; then
-  covered_paths=$(jq -r '.coveredPaths[]? // empty' "$STATE_ROOT/.gaia/local/debt/count.json" 2>/dev/null)
-fi
-
-# Growth guard: suppression must not hide a file that keeps growing. The size
-# observed when a path was first suppressed lives in this script's own cache, so
-# there is no new state file to register. Machine-local is sound for this
-# specific value because it only ever UN-suppresses -- a baseline can add a
-# nudge and can never remove one, which is the property the shared-state rule
-# above exists to protect.
-#
-# This cache has other writers, and they matter here. /update-deps and
-# /update-gaia rewrite it wholesale from an enumerated preserve list, so both
-# must name this field. Unlike serenaLangDrift, which the next refresh
-# recomputes from source, a baseline is a HISTORICAL OBSERVATION: drop it and
-# the next run re-seeds at the file's current, larger size, disarming this guard
-# with nothing to show for it. /gaia-audit's post-flight is safe by contrast,
-# it updates single fields in place rather than rewriting the object.
-drift_baseline_next=""
-
-# drifts <repo-relative path> <measured> <budget>
-# Returns 0 when the file is over budget AND not suppressed. Every suppressed
-# path is recorded in drift_baseline_next, which becomes the next cache value;
-# a path that stops being covered is simply not recorded, so its stale baseline
-# drops rather than being inherited by a later re-filing.
-drifts() {
-  local path="$1" measured="$2" budget="$3" baseline=""
-  [ "$measured" -gt "$budget" ] 2>/dev/null || return 1
-  printf '%s\n' "$covered_paths" | grep -qxF -- "$path" || return 0
-  baseline=$(printf '%s' "$prev_audit_drift_baseline" | jq -r --arg p "$path" '.[$p] // empty' 2>/dev/null)
-  case "$baseline" in
-    ''|*[!0-9]*) baseline="$measured" ;;
-  esac
-  drift_baseline_next="${drift_baseline_next}${baseline} ${path}
-"
-  # Compare against the ORIGINAL baseline and never advance it: a nudge that
-  # fired once on growth and then went quiet would hide a file still growing.
-  [ "$measured" -gt "$baseline" ] 2>/dev/null && return 0
-  return 1
-}
-
 project_drift=false
 hot_words=$(wc -w < "$PROJECT_ROOT/wiki/hot.md" 2>/dev/null | tr -d '[:space:]')
 case "$hot_words" in
   ''|*[!0-9]*) hot_words=0 ;;
 esac
-if drifts "wiki/hot.md" "$hot_words" "$AUDIT_HOT_BUDGET"; then
+if [ "$hot_words" -gt "$AUDIT_HOT_BUDGET" ] 2>/dev/null; then
   project_drift=true
 fi
 claudemd_words=$(wc -w < "$PROJECT_ROOT/CLAUDE.md" 2>/dev/null | tr -d '[:space:]')
 case "$claudemd_words" in
   ''|*[!0-9]*) claudemd_words=0 ;;
 esac
-if drifts "CLAUDE.md" "$claudemd_words" "$AUDIT_CLAUDEMD_BUDGET"; then
+if [ "$claudemd_words" -gt "$AUDIT_CLAUDEMD_BUDGET" ] 2>/dev/null; then
   project_drift=true
 fi
-# No early exit on the first over-budget rule file: the scan has to reach every
-# covered file to record its baseline. Stopping at the first drifting file would
-# leave a covered file later in the glob unmeasured, so its baseline would only
-# be taken once the earlier file is fixed, at whatever size it had grown to by
-# then, which is the growth guard reading a number it never observed.
 for rule in "$PROJECT_ROOT"/.claude/rules/*.md; do
   [ -f "$rule" ] || continue
   rule_lines=$(wc -l < "$rule" 2>/dev/null | tr -d '[:space:]')
   case "$rule_lines" in
     ''|*[!0-9]*) continue ;;
   esac
-  if drifts "${rule#"$PROJECT_ROOT"/}" "$rule_lines" "$AUDIT_RULE_BUDGET"; then
+  if [ "$rule_lines" -gt "$AUDIT_RULE_BUDGET" ] 2>/dev/null; then
     project_drift=true
+    break
   fi
 done
-
-# Fold the surviving baselines back into a JSON object for the cache write.
-audit_drift_baseline='{}'
-if command -v jq >/dev/null 2>&1; then
-  audit_drift_baseline=$(printf '%s' "$drift_baseline_next" | jq -R -s '
-    split("\n") | map(select(length > 0))
-    | map(capture("^(?<n>[0-9]+) (?<p>.*)$"))
-    | map({(.p): (.n | tonumber)}) | add // {}' 2>/dev/null)
-  case "$audit_drift_baseline" in
-    '{'*) ;;
-    *) audit_drift_baseline='{}' ;;
-  esac
-fi
 
 # Pick the single highest-priority reason. The two machine-drift arms each get
 # a self-describing label; when both fire, the concrete new-memory count wins.
@@ -695,18 +604,16 @@ if command -v jq >/dev/null 2>&1; then
     --argjson auditMemoryCount "$audit_memory_count" \
     --argjson auditMemoryBaseline "$audit_memory_baseline" \
     --argjson serenaLangDrift "$serena_lang_drift_json" \
-    --argjson auditDriftBaseline "$audit_drift_baseline" \
-    '{checkedAt: $checkedAt, outdatedCount: $outdatedCount, gaiaCurrent: $gaiaCurrent, gaiaLatest: $gaiaLatest, gaiaHasUpdate: $gaiaHasUpdate, hardenCandidateCount: $hardenCandidateCount, hardenUnclassifiedCount: $hardenUnclassifiedCount, hardenNudgeReason: $hardenNudgeReason, residueCandidateCount: $residueCandidateCount, auditNudge: $auditNudge, auditNudgeReason: $auditNudgeReason, auditLastAppliedAt: $auditLastAppliedAt, auditMemoryCount: $auditMemoryCount, auditMemoryBaseline: $auditMemoryBaseline, serenaLangDrift: $serenaLangDrift, auditDriftBaseline: $auditDriftBaseline}' \
+    '{checkedAt: $checkedAt, outdatedCount: $outdatedCount, gaiaCurrent: $gaiaCurrent, gaiaLatest: $gaiaLatest, gaiaHasUpdate: $gaiaHasUpdate, hardenCandidateCount: $hardenCandidateCount, hardenUnclassifiedCount: $hardenUnclassifiedCount, hardenNudgeReason: $hardenNudgeReason, residueCandidateCount: $residueCandidateCount, auditNudge: $auditNudge, auditNudgeReason: $auditNudgeReason, auditLastAppliedAt: $auditLastAppliedAt, auditMemoryCount: $auditMemoryCount, auditMemoryBaseline: $auditMemoryBaseline, serenaLangDrift: $serenaLangDrift}' \
     > "$tmp_file" 2>/dev/null
 else
-  # jq not available; emit valid JSON via printf. auditDriftBaseline is empty
-  # for the same reason serenaLangDrift is: deriving it requires jq, and with
-  # no jq there is no coveredPaths list to suppress against either.
+  # jq not available; emit valid JSON via printf. serenaLangDrift is empty:
+  # deriving it requires jq.
   # harden_reason is always the empty string on this path: both places that
   # compute it (the tally-driven composition above and the cache seed at
   # startup) require jq themselves, so neither branch ever runs without it.
   # Nothing here needs escaping.
-  printf '{"checkedAt":%s,"outdatedCount":%s,"gaiaCurrent":"%s","gaiaLatest":"%s","gaiaHasUpdate":%s,"hardenCandidateCount":%s,"hardenUnclassifiedCount":%s,"hardenNudgeReason":"%s","residueCandidateCount":%s,"auditNudge":%s,"auditNudgeReason":"%s","auditLastAppliedAt":%s,"auditMemoryCount":%s,"auditMemoryBaseline":%s,"serenaLangDrift":[],"auditDriftBaseline":{}}\n' \
+  printf '{"checkedAt":%s,"outdatedCount":%s,"gaiaCurrent":"%s","gaiaLatest":"%s","gaiaHasUpdate":%s,"hardenCandidateCount":%s,"hardenUnclassifiedCount":%s,"hardenNudgeReason":"%s","residueCandidateCount":%s,"auditNudge":%s,"auditNudgeReason":"%s","auditLastAppliedAt":%s,"auditMemoryCount":%s,"auditMemoryBaseline":%s,"serenaLangDrift":[]}\n' \
     "$checked_at_out" "$outdated_count" "$gaia_current" "$gaia_latest" "$gaia_has_update" "$harden_count" "$unclassified_count" "$harden_reason" "$residue_count" "$audit_nudge" "$audit_nudge_reason" "$audit_last_applied_at" "$audit_memory_count" "$audit_memory_baseline" \
     > "$tmp_file" 2>/dev/null
 fi

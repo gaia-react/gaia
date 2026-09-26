@@ -63,15 +63,6 @@ BASE_SHA="$(git -C "$AUDIT_ROOT" merge-base "${BASE_REF}" HEAD 2>/dev/null || tr
 ```
 '
 
-# The unbraced `"$BASE_REF"` spelling, inside a markdown code span rather than
-# a fence. Both shapes are reachable in an agent definition, which is prose
-# carrying code, so the exemption has to hold for either. `$` is the character
-# that has to clear the left-edge boundary here, where the fenced form above
-# clears it on `{`.
-BASE_REF_UNBRACED='Agent prose, per .github/audit/resolve-audit-base.sh.
-From the same resolved base, compute `BASE_SHA="$(git -C "$AUDIT_ROOT" merge-base "$BASE_REF" HEAD 2>/dev/null || true)"`, then the key.
-'
-
 DRIFTED_BARE_MERGE_BASE='Agent prose.
 ```bash
 BASE_SHA=$(git -C "$AUDIT_ROOT" merge-base HEAD "origin/${default_branch}" 2>/dev/null || true)
@@ -155,28 +146,6 @@ The base comes from .github/audit/resolve-audit-base.sh, or so this file claims.
 # the call, and the file IS the instruction, so the line still reds.
 DRIFT_BASE_REF_AFTER_CLOSE='Agent prose.
 The retired form was BASE_SHA=$(git merge-base HEAD main), now BASE_REF.
-'
-
-# A drifted call routed through a variable whose name merely ENDS in
-# BASE_REF. The exemption is a rule about the token identity, not its
-# presence, so a bare-substring test accepts the tail of a longer identifier
-# and clears exactly the derivation it exists to reject. `GITHUB_BASE_REF` is
-# the live spelling of this: an ordinary CI variable naming a branch, not an
-# invented one.
-DRIFT_ALIASED_BASE_REF_SUFFIX='Agent prose.
-```bash
-BASE_SHA=$(git -C "$AUDIT_ROOT" merge-base HEAD "origin/$GITHUB_BASE_REF" 2>/dev/null || true)
-```
-The base comes from .github/audit/resolve-audit-base.sh, or so this file claims.
-'
-
-# A drifted call whose exemption token abuts the `)` that closes it. The
-# left-edge boundary has to subtract the stop set, not merely require a
-# non-identifier character: a bare non-identifier class is a SUPERSET of the
-# stop set, so it is satisfied BY that `)` and hands the exemption back on the
-# very character the stop set exists to treat as a wall.
-DRIFT_BASE_REF_ABUTTING_CLOSE='Agent prose.
-The retired form was BASE_SHA=$(git merge-base HEAD main)BASE_REF and nothing else.
 '
 
 # ---------- assertion 1: no bare-merge-base review derivation ----------
@@ -277,43 +246,6 @@ The retired form was BASE_SHA=$(git merge-base HEAD main)BASE_REF and nothing el
   grep -qF "review bases derived by a bare merge-base against the default branch: 1" <<<"$output" || return 1
 }
 
-@test "fixture: an alias whose name ends in BASE_REF does not exempt a drifted call" {
-  local repo
-  repo="$(make_fixture_repo drift-aliased-base-ref-suffix)"
-  write_agent_file "$repo" code-audit-maintainer-node.md "$DRIFT_ALIASED_BASE_REF_SUFFIX"
-  commit_fixture_repo "$repo"
-  run gaia_check_audit_base_derivation "$repo"
-  [ "$status" -eq 1 ]
-  grep -qF "review bases derived by a bare merge-base against the default branch: 1" <<<"$output" || return 1
-  # Assertion 2 is satisfied (the prose names the resolver), so the exemption
-  # boundary is the only thing this red can be coming from.
-  grep -qF "agent files naming BASE_SHA without naming resolve-audit-base.sh: 0" <<<"$output" || return 1
-}
-
-@test "fixture: a boundary landing on the call-closing paren does not exempt it" {
-  local repo
-  repo="$(make_fixture_repo drift-base-ref-abutting-close)"
-  write_agent_file "$repo" code-audit-github-workflows.md "$DRIFT_BASE_REF_ABUTTING_CLOSE"
-  commit_fixture_repo "$repo"
-  run gaia_check_audit_base_derivation "$repo"
-  [ "$status" -eq 1 ]
-  grep -qF "review bases derived by a bare merge-base against the default branch: 1" <<<"$output" || return 1
-}
-
-@test "fixture: the canonical resolver-derived call is still exempt on both spellings" {
-  # The other half of the boundary. A left-edge rule that reds the alias above
-  # but also reds `"${BASE_REF}"` or `"$BASE_REF"` would have closed the
-  # escape by retiring the exemption, which is a different check.
-  local repo
-  repo="$(make_fixture_repo base-ref-both-spellings)"
-  write_agent_file "$repo" code-audit-maintainer-shell.md "$CONVERTED_OK"
-  write_agent_file "$repo" code-audit-frontend.md "$BASE_REF_UNBRACED"
-  commit_fixture_repo "$repo"
-  run gaia_check_audit_base_derivation "$repo"
-  [ "$status" -eq 0 ]
-  grep -qF "review bases derived by a bare merge-base against the default branch: 0" <<<"$output" || return 1
-}
-
 @test "fixture: the FULL_BASE self-skip derivation is exempt and never counted" {
   local repo
   repo="$(make_fixture_repo full-base-only)"
@@ -377,8 +309,8 @@ if ! git -C "$root" diff --name-only -z "${ELIG_BASE}...HEAD" > "$tmp/elig"; the
 ```
 '
 
-# The same eligibility diff in the two-dot, quoting form: ELIG_BASE is a base
-# spelling assertions 3 and 4 must recognise, or a drift on it goes unseen.
+# The same eligibility diff in the two-dot form: ELIG_BASE is a base
+# spelling assertion 3 must recognise, or a drift on it goes unseen.
 DIFF_ELIG_BASE_TWO_DOT_NO_Z='```bash
 if ! git -C "$root" diff --name-only "${ELIG_BASE}" > "$tmp/elig"; then
 ```
@@ -399,7 +331,6 @@ MY_ELIG_BASE="$(git -C "$root" merge-base HEAD main)"
   [ "$status" -eq 0 ]
   grep -qF "review bases derived by a bare merge-base against the default branch: 0" <<<"$output" || return 1
   grep -qF "review diffs consuming a base that never reached the fork point: 0" <<<"$output" || return 1
-  grep -qF "changed-file diffs that let git C-quote a path: 0" <<<"$output" || return 1
 }
 
 @test "fixture: a name merely ending in ELIG_BASE is not exempt by name" {
@@ -412,7 +343,7 @@ MY_ELIG_BASE="$(git -C "$root" merge-base HEAD main)"
   grep -qF "review bases derived by a bare merge-base against the default branch: 1" <<<"$output" || return 1
 }
 
-@test "fixture: a two-dot, unquoted diff on ELIG_BASE fails both assertions 3 and 4" {
+@test "fixture: a two-dot, unquoted diff on ELIG_BASE fails assertion 3" {
   local repo
   repo="$(make_fixture_repo diff-elig-base-two-dot)"
   write_agent_file "$repo" code-audit-frontend.md "$DIFF_ELIG_BASE_TWO_DOT_NO_Z"
@@ -420,7 +351,6 @@ MY_ELIG_BASE="$(git -C "$root" merge-base HEAD main)"
   run gaia_check_audit_base_derivation "$repo"
   [ "$status" -eq 1 ]
   grep -qF "review diffs consuming a base that never reached the fork point: 1" <<<"$output" || return 1
-  grep -qF "changed-file diffs that let git C-quote a path: 1" <<<"$output" || return 1
 }
 
 # ---------- assertion 2: every BASE_SHA namer names the resolver ----------
@@ -760,221 +690,6 @@ full_changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${FULL_BASE}" 2>/dev/nu
   grep -qF "review bases derived by a bare merge-base against the default branch: 0" <<<"$output" || return 1
 }
 
-# ---------- assertion 4: no diff lets git quote the paths it prints ----------
-#
-# Assertion 3 polices the RANGE a call compares; this one polices the ENCODING
-# of what it prints back. Under git's default core.quotePath a correct
-# three-dot call still C-quotes any path carrying non-ASCII or control bytes,
-# and the quoted token matches no remit glob, so the member self-skips and the
-# file merges unaudited. That failure is silent by construction, which is why
-# it gets a static assertion rather than a convention.
-#
-# Every fixture above carries `-z` for the same reason each carries exactly one
-# defect: a fixture that reds two assertions cannot show which one caught it.
-# They carry the flag alone, not the `| tr` a real derivation also needs, both
-# because that is all assertion 4 reads and because a literal single quote
-# would end the single-quoted constant holding it.
-
-# The self-skip diff with quoting left on: a correct three-dot range that still
-# hands back a quoted token. This is the shape #1213 found live in four members.
-DIFF_FULL_BASE_QUOTED='Agent prose.
-```bash
-FULL_BASE=$(git -C "$AUDIT_ROOT" merge-base HEAD "origin/${default_branch}" 2>/dev/null || true)
-full_changed=$(git -C "$AUDIT_ROOT" diff --name-only "${FULL_BASE}...HEAD" 2>/dev/null || true)
-```
-'
-
-# A quoting call sharing its LINE with a quote-safe one. The window has to end
-# at the NEXT call or the later `-z` satisfies the token test for the earlier
-# call, which is the same wall assertion 3 needs and the reason both assertions
-# run through one walk rather than two copies of it.
-TWO_DIFFS_ONE_LINE_ONE_QUOTED='Agent prose, per .github/audit/resolve-audit-base.sh.
-```bash
-changed=$(git diff --name-only "${BASE_SHA}...HEAD") ; full_changed=$(git diff --name-only -z "${FULL_BASE}...HEAD")
-```
-'
-
-# A quoting call whose line goes on to test the resulting variable for
-# emptiness. `[ -z "$changed" ]` is an ordinary thing to write beside a diff,
-# and its `-z` is not the diff's, so without the `)` wall the window runs to
-# end of line and the emptiness test vouches for a call that quotes. None of
-# the other walls closes this: no second call, no comment, no code span.
-DIFF_LATER_DASH_Z_ON_LINE='Agent prose, per .github/audit/resolve-audit-base.sh.
-```bash
-changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD") && [ -z "$changed" ]
-```
-'
-
-# Assertion 4 requires TWO things of the token and they need separate fixtures,
-# because a mutant that drops one is invisible to a fixture the other already
-# rejects. The token is ` -z` with a LEADING SPACE, and the match is ANCHORED at
-# the position immediately after the call. Which fixture pins which, stated
-# from the mutants rather than from intent:
-#
-#   - the ANCHOR is pinned by DIFF_DASH_Z_AFTER_PIPE below, the only test that
-#     goes green when the anchor alone is dropped;
-#   - the LEADING SPACE is pinned by the CORRECT-CALL fixtures, which red when
-#     the space alone is dropped, because `-z` unanchored-by-a-space no longer
-#     sits at index 1 in a window that opens with one;
-#   - this fixture pins NEITHER on its own. It survives both single mutants and
-#     turns green only on the both-absent pre-fix spelling, so what it rejects
-#     is the original anywhere-in-the-call substring test.
-#
-# The distinction matters to a later editor: deleting a correct-call fixture on
-# the belief that this one covers the space would retire the space's only
-# guard.
-#
-# A quoting call whose PATHSPEC happens to contain the token. `[a-z]` is an
-# ordinary character class and it carries `-z` inside it, so a bare
-# anywhere-in-the-call substring test vouches for a call that quotes. The `)`
-# wall does not help, because the pathspec is inside the call rather than after
-# it.
-DIFF_DASH_Z_INSIDE_PATHSPEC='Agent prose, per .github/audit/resolve-audit-base.sh.
-```bash
-changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD" -- "app/[a-z]/*")
-```
-'
-
-@test "fixture: a -z inside a pathspec does not count as the call passing -z" {
-  local repo
-  repo="$(make_fixture_repo diff-dash-z-in-pathspec)"
-  write_agent_file "$repo" code-audit-maintainer-node.md "$DIFF_DASH_Z_INSIDE_PATHSPEC"
-  commit_fixture_repo "$repo"
-  run gaia_check_audit_base_derivation "$repo"
-  [ "$status" -eq 1 ]
-  grep -qF "changed-file diffs that let git C-quote a path: 1" <<<"$output" || return 1
-  # Correctly ranged, so this red is the anchored token test alone.
-  grep -qF "review diffs consuming a base that never reached the fork point: 0" <<<"$output" || return 1
-}
-
-# A quoting call piping into a command that legitimately takes `-z` of its own.
-# The token here is spelled with its leading space, so the space test admits it
-# and ONLY the anchor rejects it: this is the fixture that discriminates the
-# two mechanisms. `|` is deliberately not a window wall, so ` -z` really does
-# land inside this call's window, at an index that is not 1.
-DIFF_DASH_Z_AFTER_PIPE='Agent prose, per .github/audit/resolve-audit-base.sh.
-```bash
-changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD" | sort -z)
-```
-'
-
-@test "fixture: a -z belonging to a piped command does not count as the call passing -z" {
-  local repo
-  repo="$(make_fixture_repo diff-dash-z-after-pipe)"
-  write_agent_file "$repo" code-audit-maintainer-shell.md "$DIFF_DASH_Z_AFTER_PIPE"
-  commit_fixture_repo "$repo"
-  run gaia_check_audit_base_derivation "$repo"
-  [ "$status" -eq 1 ]
-  grep -qF "changed-file diffs that let git C-quote a path: 1" <<<"$output" || return 1
-  # Correctly ranged, so this red is the anchor alone. Drop the `anchored`
-  # argument at the call site and this is the test that goes green while the
-  # pathspec fixture beside it stays red.
-  grep -qF "review diffs consuming a base that never reached the fork point: 0" <<<"$output" || return 1
-}
-
-@test "fixture: an unrelated -z later on the line does not vouch for a quoting call" {
-  local repo
-  repo="$(make_fixture_repo diff-later-dash-z)"
-  write_agent_file "$repo" code-audit-maintainer-shell.md "$DIFF_LATER_DASH_Z_ON_LINE"
-  commit_fixture_repo "$repo"
-  run gaia_check_audit_base_derivation "$repo"
-  [ "$status" -eq 1 ]
-  grep -qF "changed-file diffs that let git C-quote a path: 1" <<<"$output" || return 1
-  # The range is correct, so assertion 3 stays green and this red is the token
-  # test catching a call the `)` wall is what scoped correctly.
-  grep -qF "review diffs consuming a base that never reached the fork point: 0" <<<"$output" || return 1
-}
-
-@test "fixture: a base-consuming diff without -z fails assertion 4" {
-  local repo
-  repo="$(make_fixture_repo diff-full-base-quoted)"
-  write_agent_file "$repo" code-audit-github-workflows.md "$DIFF_FULL_BASE_QUOTED"
-  commit_fixture_repo "$repo"
-  run gaia_check_audit_base_derivation "$repo"
-  [ "$status" -eq 1 ]
-  grep -qF "code-audit-github-workflows.md" <<<"$output" || return 1
-  grep -qF "changed-file diffs that let git C-quote a path: 1" <<<"$output" || return 1
-  # The range is correct and the FULL_BASE derivation is exempt from assertion
-  # 1, so this red is assertion 4's alone. Without that isolation the test
-  # would pass on any red at all, including one it did not cause.
-  grep -qF "review diffs consuming a base that never reached the fork point: 0" <<<"$output" || return 1
-  grep -qF "review bases derived by a bare merge-base against the default branch: 0" <<<"$output" || return 1
-}
-
-@test "fixture: the same self-skip diff carrying -z passes assertion 4" {
-  local repo
-  repo="$(make_fixture_repo diff-full-base-unquoted)"
-  write_agent_file "$repo" code-audit-github-workflows.md "$DIFF_FULL_BASE_OK"
-  commit_fixture_repo "$repo"
-  run gaia_check_audit_base_derivation "$repo"
-  [ "$status" -eq 0 ]
-  grep -qF "changed-file diffs that let git C-quote a path: 0" <<<"$output" || return 1
-}
-
-@test "fixture: a diff that consumes no base is never required to carry -z" {
-  # The `--cached` call reaches no base at all, so assertion 4 has nothing to
-  # be about. Without the `consumes` test it would condemn every `git diff` an
-  # agent definition happens to mention.
-  local repo
-  repo="$(make_fixture_repo diff-no-base-no-z)"
-  write_agent_file "$repo" code-audit-maintainer-shell.md "$DIFF_TRAILING_COMMENT_NO_RANGE_OK"
-  commit_fixture_repo "$repo"
-  run gaia_check_audit_base_derivation "$repo"
-  [ "$status" -eq 0 ]
-  grep -qF "changed-file diffs that let git C-quote a path: 0" <<<"$output" || return 1
-}
-
-@test "fixture: a quoting call is not vouched for by a later call's -z" {
-  local repo
-  repo="$(make_fixture_repo diff-two-calls-one-quoted)"
-  write_agent_file "$repo" code-audit-maintainer-node.md "$TWO_DIFFS_ONE_LINE_ONE_QUOTED"
-  commit_fixture_repo "$repo"
-  run gaia_check_audit_base_derivation "$repo"
-  [ "$status" -eq 1 ]
-  grep -qF "changed-file diffs that let git C-quote a path: 1" <<<"$output" || return 1
-  # Both calls are correctly ranged, so assertion 3 stays green and the line is
-  # condemned by the token test alone.
-  grep -qF "review diffs consuming a base that never reached the fork point: 0" <<<"$output" || return 1
-}
-
-# KEY_BASE joined the `consumes` spelling list assertions 3 and 4 share
-# (contract F). No real derivation diffs against it today, but the net has to
-# catch a future one on the new variable exactly as it catches the other four
-# spellings.
-DIFF_KEY_BASE_TWO_DOT_NO_Z='Agent prose, per .github/audit/resolve-audit-base.sh.
-```bash
-changed=$(git -C "$AUDIT_ROOT" diff --name-only "${KEY_BASE}" -- x)
-```
-'
-
-DIFF_KEY_BASE_THREE_DOT_OK='Agent prose, per .github/audit/resolve-audit-base.sh.
-```bash
-changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${KEY_BASE}...HEAD" -- x)
-```
-'
-
-@test "fixture: a two-dot, unquoted diff on KEY_BASE fails both assertions 3 and 4" {
-  local repo
-  repo="$(make_fixture_repo diff-key-base-two-dot)"
-  write_agent_file "$repo" code-audit-maintainer-shell.md "$DIFF_KEY_BASE_TWO_DOT_NO_Z"
-  commit_fixture_repo "$repo"
-  run gaia_check_audit_base_derivation "$repo"
-  [ "$status" -eq 1 ]
-  grep -qF "review diffs consuming a base that never reached the fork point: 1" <<<"$output" || return 1
-  grep -qF "changed-file diffs that let git C-quote a path: 1" <<<"$output" || return 1
-}
-
-@test "fixture: the three-dot -z form on KEY_BASE passes both assertions 3 and 4" {
-  local repo
-  repo="$(make_fixture_repo diff-key-base-three-dot)"
-  write_agent_file "$repo" code-audit-maintainer-shell.md "$DIFF_KEY_BASE_THREE_DOT_OK"
-  commit_fixture_repo "$repo"
-  run gaia_check_audit_base_derivation "$repo"
-  [ "$status" -eq 0 ]
-  grep -qF "review diffs consuming a base that never reached the fork point: 0" <<<"$output" || return 1
-  grep -qF "changed-file diffs that let git C-quote a path: 0" <<<"$output" || return 1
-}
-
 # ---------- the resolver script is part of the scan surface ----------
 #
 # Each fixture copies the REAL resolver into the fixture tree and breaks one
@@ -1002,7 +717,7 @@ mutate_resolver() {
   }
 }
 
-@test "resolver: the real resolver script passes all four assertions" {
+@test "resolver: the real resolver script passes all three assertions" {
   local repo
   repo="$(make_fixture_repo resolver-ok)"
   copy_resolver "$repo"
@@ -1047,18 +762,6 @@ mutate_resolver() {
   grep -qF ".gaia/scripts/audit-resolve-scope.sh:" <<<"$output" || return 1
 }
 
-@test "resolver: a membership diff in the script without -z fails assertion 4" {
-  local repo
-  repo="$(make_fixture_repo resolver-quoting)"
-  copy_resolver "$repo"
-  mutate_resolver "$repo" 's/diff --name-only -z "\$\{FULL_BASE\}/diff --name-only "\${FULL_BASE}/' 'diff --name-only "${FULL_BASE}...HEAD"'
-  commit_fixture_repo "$repo"
-  run gaia_check_audit_base_derivation "$repo"
-  [ "$status" -eq 1 ]
-  grep -qF "changed-file diffs that let git C-quote a path: 1" <<<"$output" || return 1
-  grep -qF ".gaia/scripts/audit-resolve-scope.sh:" <<<"$output" || return 1
-}
-
 # ---------- real repo: the standing guarantee ----------
 
 @test "real repo: every Code Audit Team definition resolves its review base through the resolver" {
@@ -1067,15 +770,13 @@ mutate_resolver() {
   grep -qF "review bases derived by a bare merge-base against the default branch: 0" <<<"$output" || return 1
   grep -qF "agent files naming BASE_SHA without naming resolve-audit-base.sh: 0" <<<"$output" || return 1
   grep -qF "review diffs consuming a base that never reached the fork point: 0" <<<"$output" || return 1
-  grep -qF "changed-file diffs that let git C-quote a path: 0" <<<"$output" || return 1
 }
 
-@test "real repo: every changed-file diff in the roster is a three-dot range and quote-safe" {
-  # Assertions 3 and 4 state their rules negatively (counts of violations), so
-  # this pins the positive form directly: every `diff --name-only` the five
-  # definitions carry inside a fence resolves `<something>...HEAD` and carries
-  # `-z`. A definition that drops to two-dot, or that lets git quote what it
-  # prints, reds here as well as on the check.
+@test "real repo: every changed-file diff in the roster is a three-dot range" {
+  # Assertion 3 states the rule negatively (a count of violations), so this
+  # pins the positive form directly: every `diff --name-only` the five
+  # definitions carry inside a fence resolves `<something>...HEAD`. A
+  # definition that drops to two-dot reds here as well as on the check.
   #
   # The `"?` accepts both spellings of the assignment. Requiring `$(` to sit
   # immediately after the `=` matches the unquoted form alone, so a definition
@@ -1106,10 +807,6 @@ mutate_resolver() {
     [ -n "$line" ] || continue
     grep -qF '...HEAD' <<<"$line" || {
       printf 'changed-file diff is not a three-dot range: %s\n' "$line"
-      return 1
-    }
-    grep -qF -- '--name-only -z' <<<"$line" || {
-      printf 'changed-file diff lets git quote the paths it prints: %s\n' "$line"
       return 1
     }
   done <<< "$output"

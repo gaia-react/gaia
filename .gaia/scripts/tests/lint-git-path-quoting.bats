@@ -221,7 +221,7 @@ run_linter() {
 }
 
 # The false positive that would otherwise fire on
-# .gaia/scripts/check-audit-base-derivation.sh:278, where the call is the VALUE
+# .gaia/scripts/check-audit-base-derivation.sh:247, where the call is the VALUE
 # of a fixed-string variable rather than an invocation.
 @test "a string constant that is not a git invocation is skipped" {
   fixture_repo
@@ -233,8 +233,7 @@ run_linter() {
 # `-z` is accepted anywhere in the option region and nowhere after it. The walk
 # terminates at the first non-option token, which is exactly where a pathspec
 # begins, so a pathspec carrying the token cannot vouch for a call that still
-# quotes -- the same discrimination assertion 4 in
-# check-audit-base-derivation.sh makes, and for the same reason.
+# quotes.
 @test "a -z appearing later in the call does not vouch for it" {
   fixture_repo
   fixture_file probe.sh $'#!/usr/bin/env bash\nchanged=$(git diff --name-only "${base}...HEAD" -- "docs/a -z b.md")'

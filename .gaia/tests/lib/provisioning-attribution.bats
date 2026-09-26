@@ -58,17 +58,6 @@
 #
 # Maintainer-only. `.gaia/tests` is wholesale release-excluded via
 # `.gaia/release-exclude`, so this never reaches an adopter.
-#
-# Relationship to the step-body extractor roster
-# (`.gaia/scripts/check-step-body-extractor-roster.sh`): this suite names
-# `code-review-audit.yml` -- it is one of the files the discovery roots
-# reach -- but it never extracts a step BODY out of it, and none of its own
-# literals reproduce that check's six-space step-header prefix (this suite's
-# own anchors sit at four-space job-level or eight-space step-level
-# indentation instead). It is therefore not a candidate under that check's
-# own predicate and needs no entry in either of its tables. Deliberately
-# described rather than quoted here, so this paragraph does not itself
-# become the six-space literal it is explaining the absence of.
 
 # Same gate as the sibling suite's own: on a CI runner an absent path means a
 # rename this suite has not been told about, so the CI branch FAILS rather

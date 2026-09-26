@@ -184,22 +184,6 @@ EOF
     # in this set, so an unqualified "every registered command" would claim a
     # surface this check never opened.
     printf '.claude/settings.json registered commands (hooks plus statusLine): every one resolves independently of cwd (%s checked)\n' "$count"
-    # Gated on registered COMMANDS, not on mere existence and not on the
-    # `hooks` key. settings.local.json is what Claude Code writes for
-    # per-machine permissions, so the common shape carries a permissions key
-    # and no hooks at all; noting a local hook layer there would send an
-    # operator hunting one that does not exist. Keying on `.hooks` alone
-    # closes only that case: `{"hooks":{"PreToolUse":[]}}` registers nothing
-    # and would still print, and `length` over a string counts characters. So
-    # the predicate is the same derivation this check already owns, minus
-    # statusLine, which is a per-machine hooks question rather than a
-    # statusline one. An unreadable or malformed local file yields no commands
-    # and stays silent, which is the safe direction for an advisory note.
-    if [ -f "$repo_root/.claude/settings.local.json" ] \
-      && jq -e '[(.hooks // {} | .[][].hooks[].command)] | length > 0' \
-        "$repo_root/.claude/settings.local.json" >/dev/null 2>&1; then
-      printf 'check-hook-command-rooting: note: .claude/settings.local.json also registers hooks and is NOT covered by this check.\n'
-    fi
   fi
   return $rc
 }

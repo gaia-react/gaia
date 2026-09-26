@@ -285,21 +285,13 @@ count_pending_writers() {
 # Matches the `- name:` line EXACTLY, so "Write GAIA-Audit commit status" does
 # not also match its "(clean, no push)" / "(out-of-scope skip)" siblings.
 #
-# Several other bats files carry a near-identical copy of this helper. None of
-# them share it (bats files do not define functions across files), so they are
-# kept in agreement about what "extract the real step body" means by hand. The
-# live set is DECLARED, in the roster this check owns and enforces:
-#
-#   .gaia/scripts/check-step-body-extractor-roster.sh
-#
-# Read that file for the membership criterion and the family. Do not re-derive
-# the set with a `git grep` for the `run: |` detector: a copy is free to spell
-# that detector any way awk accepts, so the literal decays silently, which is
-# exactly how the recipe this replaced missed a live member three times. The
-# check enumerates candidates by the two things a copy cannot extract without
-# -- naming the workflow, and keying on the six-space step header -- and fails
-# on a candidate registered in neither of its tables. Adding a copy means adding
-# a roster entry; the build says so.
+# Several other bats files carry a near-identical copy of this helper. None
+# of them share it (bats files do not define functions across files), so
+# they are kept in agreement about what "extract the real step body" means
+# by hand, not by a `git grep` for the `run: |` detector: a copy is free to
+# spell that detector any way awk accepts, so a literal scan decays
+# silently, which is exactly how the recipe this replaced missed a live
+# member three times.
 extract_step_body() {
   local step_name="$1" out="$BATS_TEST_TMPDIR/step.sh"
   awk -v want="      - name: ${step_name}" '

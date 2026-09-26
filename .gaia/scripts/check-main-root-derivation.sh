@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 #
-# The other spelling of check-resolver-singleton.sh's (Check A's) defect.
-# Check A catches a second named DEFINITION of the resolver; this one
-# catches a hand-rolled main-root DERIVATION inlined into a
-# consumer that declares no resolver function at all -- the same
-# wrong-identity defect this whole program exists to end, spelled without
-# ever writing `gaia_resolve_main_root` or `resolveMainWorktreeRoot`.
+# Catches a hand-rolled main-root DERIVATION inlined into a consumer that
+# declares no resolver function at all -- the wrong-identity defect this
+# check exists to end, spelled without ever writing
+# `gaia_resolve_main_root` or `resolveMainWorktreeRoot`.
 #
 # Deliberately narrow, not the full "every hand-derivation shape" repo-wide
 # scan the SPEC originally wanted. That
@@ -43,8 +41,7 @@
 #
 #   `--show-toplevel` chained into a `dirname` walk. `--show-toplevel` alone
 #   answers "which tree is THIS", a question dozens of legitimate call sites
-#   ask every day (see check-resolver-singleton.sh's own docblock on
-#   current-tree resolvers); `dirname` is one of the most common path
+#   ask every day; `dirname` is one of the most common path
 #   operations in the tree for reasons that have nothing to do with git. A
 #   window scan over that pair would match real, unrelated code constantly.
 #   This is exactly the multi-line, high-ambiguity shape that made the
@@ -70,15 +67,15 @@
 # app/** would run this job on every application change to guard a shape that
 # has never appeared there.
 #
-# Dual-mode, mirroring check-resolver-singleton.sh: source it for
-# gaia_check_main_root_derivation, or run it directly as a script.
+# Dual-mode: source it for gaia_check_main_root_derivation, or run it
+# directly as a script.
 #
 # gaia_check_main_root_derivation <repo_root>
 #   Runs all three scans over tracked source. Prints every match line, then
 #   one verdict line per scan. Returns 0 when all three are clean, 1
 #   otherwise. <repo_root> is a required parameter -- this check never
-#   derives it itself (mirrors check-resolver-singleton.sh: a CI caller
-#   passes the plain checkout root, a bats fixture passes a temp repo).
+#   derives it itself: a CI caller passes the plain checkout root, a bats
+#   fixture passes a temp repo.
 
 # Shared exclusion pathspec for all three scans:
 #   *.md                         prose (wiki, skills, agents) mentions these
@@ -87,14 +84,12 @@
 #   */__tests__/*, *.test.ts,
 #   *.test.tsx                   test suites: a fixture that plants the
 #                                 defect on purpose (to prove a check fires)
-#                                 must not trip the real-source scan, same
-#                                 exclusion check-resolver-singleton.sh uses.
+#                                 must not trip the real-source scan.
 #   the two resolver definitions themselves (main-root-lib.sh,
 #     main-root.ts) -- they ARE the legitimate derivation.
 #   the two committed CLI bundles -- esbuild output containing an inlined
 #     copy of the resolver, not a second one; scanning them would fail this
-#     check on every release, the same reasoning check-resolver-singleton.sh
-#     documents for its own TypeScript pattern.
+#     check on every release.
 #   this file itself -- a detector necessarily spells the ingredients it
 #     detects, in its own scan code and in the comments that explain them, so
 #     scanning itself reports its own definition as a violation and can never

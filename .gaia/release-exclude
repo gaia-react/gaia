@@ -46,37 +46,16 @@
 # on maintainer-only, release-excluded workflows); an adopter clone has no such
 # ruleset and none of those jobs, so the script has no adopter surface.
 .gaia/scripts/verify-required-checks.sh
-# The four worktree-program build checks assert invariants that are true of
-# GAIA's own source and of nothing else: that each language has exactly one
-# main-root resolver (Check A) and no hand-rolled re-derivation of it (Check
-# B), that .gaia/state-registry.json covers every state directory, and that no
-# shipped source hardcodes a path the registry already answers. An adopter does
-# not write GAIA's resolvers or its registry, and every runner of these four is
-# already maintainer-only (the .gaia/scripts/tests/ bats suites and
-# audit-ci-tests.yml, both release-excluded), so today they ship a check no
-# adopter can trigger and could not act on. Withholding them is also what stops
-# their scan lists and their sibling-suite citations naming .gaia/cli/src/,
-# .gaia/cli/gaia-maintainer and .gaia/scripts/tests/ inside an adopter bundle.
-.gaia/scripts/check-main-root-derivation.sh
-.gaia/scripts/check-registry-completeness.sh
-.gaia/scripts/check-registry-source-literals.sh
-.gaia/scripts/check-resolver-singleton.sh
 # This check asserts an invariant true of GAIA's own source and of nothing
-# else: that GAIA's audit machinery holds one base-provenance resolver and
-# that GAIA's named consumers call it. An adopter does not write GAIA's
-# resolvers or its consumers. Its only runners (the .gaia/scripts/tests/
-# bats suite and audit-ci-tests.yml) are already release-excluded, so
-# shipping it would ship a check nothing on an adopter clone invokes.
-.gaia/scripts/check-base-provenance-adoption.sh
-# This check asserts an invariant true of GAIA's own source: that the shared
-# verb-arming decision stays a singleton and that GAIA's own hooks all adopt
-# it. An adopter does not write GAIA's hooks or its shared library. Its
-# only runner (the .gaia/scripts/tests/ bats suite, run from
-# audit-ci-tests.yml) is already release-excluded, so shipping it would ship
-# a check nothing on an adopter clone invokes.
-.gaia/scripts/check-verb-arming-adoption.sh
-# Task 7.3's check asserts this repository still qualifies for git's merge refusal on the tracked wiki state file; its only runner (audit-ci-tests.yml and its bats suite) is already maintainer-only, and an adopter cannot act on the failure.
-.gaia/scripts/check-wiki-state-collision.sh
+# else: that no consumer hand-rolls a main-root derivation in place of the
+# shared resolver. An adopter
+# does not write GAIA's resolvers, and its runners (the .gaia/scripts/tests/
+# bats suite and audit-ci-tests.yml) are already maintainer-only, so today it
+# ships a check no adopter can trigger and could not act on. Withholding it
+# is also what stops its scan list and sibling-suite citations naming
+# .gaia/cli/src/, .gaia/cli/gaia-maintainer and .gaia/scripts/tests/ inside
+# an adopter bundle.
+.gaia/scripts/check-main-root-derivation.sh
 # The git path-quoting lint guards GAIA's own framework shell and its CI
 # workflow YAML against an unquoted `diff --name-only` or `ls-files`, either of
 # which lets git C-quote a path the caller then parses. Withheld on the reasoning
@@ -185,10 +164,6 @@ wiki/decisions/Local Test Runtime.md
 # is coupled to a GAIA component an adopter may rename or remove. The capture
 # helper it exercises (.playwright/react-perf/) DOES ship; this canary does not.
 .playwright/e2e/react-perf-smoke.spec.ts
-# Asserts that GAIA's own bats suites agree about how they extract a step out of .github/workflows/code-review-audit.yml. Both ends are already release-excluded: the audit workflow (category 9) and the .gaia/scripts/tests and .github/audit/tests suites it enumerates (this category). Its roster is two hardcoded tables, not a derived set, so on an adopter clone carrying none of those suites every entry is stale and the check fails outright rather than sitting inert. Withholding it also keeps its roster from naming .github/audit/tests/ and .gaia/scripts/tests/ paths inside an adopter bundle.
-.gaia/scripts/check-step-body-extractor-roster.sh
-# This check asserts an invariant true of GAIA's own source: that every Code Audit Team member definition carries the scope-digest obligation literal and captures inside its own scope-resolution region. Three of the five definitions it scans are maintainer-only, and its only runner, the .gaia/scripts/tests/ bats suite, is already release-excluded, so shipping it would ship a check nothing on an adopter clone invokes.
-.gaia/scripts/check-scope-digest-adoption.sh
 # The audit-residual dismissal store records this repository's own triage
 # decisions: assertions about this repository's code that are false about
 # an adopter's. The machinery ships and the data does not. Without this

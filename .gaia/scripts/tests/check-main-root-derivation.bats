@@ -9,19 +9,17 @@
 # info that a future reader has to re-adjudicate before finding a real one.
 # shellcheck disable=SC2016
 #
-# Conformance suite for .gaia/scripts/check-main-root-derivation.sh -- Check
-# B, task 7.4's regression gate. Where check-resolver-singleton.sh (Check A)
-# catches a second named resolver DEFINITION, this check catches a
-# hand-rolled main-root DERIVATION inlined into a consumer that declares no
-# resolver function at all: three cheap ingredient scans
-# (--git-common-dir, a worktrees parameter-expansion trim, and
-# `worktree list --porcelain` piped to a first-record reader), each proven
-# against tracked source to carry zero legitimate use outside the resolver.
+# Conformance suite for .gaia/scripts/check-main-root-derivation.sh, task
+# 7.4's regression gate. It catches a hand-rolled main-root DERIVATION
+# inlined into a consumer that declares no resolver function at all: three
+# cheap ingredient scans (--git-common-dir, a worktrees parameter-expansion
+# trim, and `worktree list --porcelain` piped to a first-record reader),
+# each proven against tracked source to carry zero legitimate use outside
+# the resolver.
 #
 # This suite IS the gate: nothing else in the repo invokes the check, so
 # the "real repo" test below is what actually fails a build when a new
-# hand-rolled derivation lands (same shape as
-# check-resolver-singleton.bats's own "real repo" tests).
+# hand-rolled derivation lands.
 #
 # Run under bash 5 (bash 3.2's `[[ ]]` skip-under-set-e gap is real; see
 # .claude/rules/bats-assertions.md): `source .gaia/scripts/bats5.sh && bats5

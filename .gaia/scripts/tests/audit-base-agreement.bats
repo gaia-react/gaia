@@ -914,13 +914,12 @@ probe_deadlock() {
 # outcome is indistinguishable from a genuine no-match, and nothing in the run
 # records that it happened.
 #
-# check-audit-base-derivation.sh's assertion 4 pins the `-z` that prevents it,
-# but a static check can only see that the flag is present. This proves the
-# flag does what that check assumes, against a real repository and the REAL
-# roster classifier, and it carries its own non-vacuity: the same repository is
-# asked the same question through the pre-fix spelling, which must give the
-# answer the flag exists to stop. Without that half, a fixture whose paths were
-# quietly all-ASCII would pass while proving nothing.
+# This proves the `-z` the roster's derivations carry does what it is meant
+# to, against a real repository and the REAL roster classifier, and it carries
+# its own non-vacuity: the same repository is asked the same question through
+# the pre-fix spelling, which must give the answer the flag exists to stop.
+# Without that half, a fixture whose paths were quietly all-ASCII would pass
+# while proving nothing.
 
 @test "each specialist's whole-PR list survives a non-ASCII path, where the pre-fix spelling does not" {
   local repo member full owners base quoted

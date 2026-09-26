@@ -14,7 +14,7 @@
 # This suite IS the gate for the registration file: nothing else in the
 # repo asserts that a hook command resolves independently of cwd, so the
 # "real repo" test below is what actually fails a build when an unrooted
-# registration lands (same shape as check-wiki-state-collision.bats).
+# registration lands.
 #
 # What the check can and cannot do is a decided residual, not an
 # oversight. It reads the file, so it catches an unrooted registration in
@@ -215,60 +215,3 @@ fixture_with() {
   [ "$status" -eq 0 ]
 }
 
-# The advisory note about .claude/settings.local.json is gated on that file
-# actually registering hooks. The permissions-only shape is the common one
-# (it is what Claude Code writes for per-machine permissions), so an
-# existence-only gate would print a local hook layer into existence and send
-# an operator hunting one. Both arms are pinned so a regression in either
-# direction fails here rather than in someone's terminal.
-@test "local settings note: printed when settings.local.json registers hooks" {
-  local dir
-  dir="$(fixture_with '["\"$(git rev-parse --show-toplevel)/.claude/hooks/a.sh\""]')"
-  jq -n '{
-    hooks: {
-      PreToolUse: [ { matcher: "Bash",
-                      hooks: [ { type: "command", command: ".claude/hooks/local.sh" } ] } ]
-    }
-  }' > "$dir/.claude/settings.local.json"
-
-  run gaia_check_hook_command_rooting "$dir"
-  [ "$status" -eq 0 ]
-  case "$output" in
-    *"settings.local.json also registers hooks"*) : ;;
-    *) printf 'expected the local-registration note, got: %s\n' "$output" >&2; return 1 ;;
-  esac
-}
-
-@test "local settings note: silent when settings.local.json registers no hooks" {
-  local dir
-  dir="$(fixture_with '["\"$(git rev-parse --show-toplevel)/.claude/hooks/a.sh\""]')"
-  jq -n '{ permissions: { allow: ["Bash(ls:*)"] } }' \
-    > "$dir/.claude/settings.local.json"
-
-  run gaia_check_hook_command_rooting "$dir"
-  [ "$status" -eq 0 ]
-  case "$output" in
-    *"settings.local.json also registers hooks"*)
-      printf 'note printed for a permissions-only local file: %s\n' "$output" >&2
-      return 1 ;;
-    *) : ;;
-  esac
-}
-
-@test "local settings note: silent when settings.local.json has an empty hooks event" {
-  local dir
-  dir="$(fixture_with '["\"$(git rev-parse --show-toplevel)/.claude/hooks/a.sh\""]')"
-  # A `hooks` key that registers no command at all. Key presence alone would
-  # print the note here, which is the sibling case the permissions-only test
-  # does not reach.
-  jq -n '{ hooks: { PreToolUse: [] } }' > "$dir/.claude/settings.local.json"
-
-  run gaia_check_hook_command_rooting "$dir"
-  [ "$status" -eq 0 ]
-  case "$output" in
-    *"settings.local.json also registers hooks"*)
-      printf 'note printed for a hooks key registering no command: %s\n' "$output" >&2
-      return 1 ;;
-    *) : ;;
-  esac
-}

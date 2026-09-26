@@ -73,8 +73,7 @@
 #   gaia_refuse_if_worktree "/some-flow" my_state_line || exit 1
 
 # Sibling-location idiom matched from main-root-lib.sh's own callers
-# (.gaia/scripts/link-worktree.sh, check-registry-runtime.sh): resolve
-# this file's own directory via
+# (.gaia/scripts/link-worktree.sh): resolve this file's own directory via
 # BASH_SOURCE, never cwd. Guarded so a consumer that already sourced
 # main-root-lib.sh itself needs no second, redundant source.
 #
