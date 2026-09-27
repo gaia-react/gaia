@@ -36,7 +36,6 @@ setup() {
   require_node_typescript "$HOME_ROOT"
   CAPTURE_HOOK="$HOME_ROOT/.claude/hooks/capture-red-observations.sh"
   CHECK_HOOK="$HOME_ROOT/.claude/hooks/red-verify-commit-check.sh"
-  BARE_TEST_HOOK="$HOME_ROOT/.claude/hooks/block-bare-test.sh"
 
   REPO=$(mktemp -d -t red-e2e-XXXXXX)
   git -C "$REPO" init --quiet --initial-branch=main
@@ -224,20 +223,3 @@ test("adds two numbers", () => {
   [[ "$output" == *"adds two numbers"* ]]
 }
 
-# ---------------------------------------------------------------------------
-# Regression guard: the untouched block-bare-test.sh still blocks a bare
-# `pnpm test` (no --run) with exit 2. The RED-verification feature introduced no
-# regression; the assertion targets the existing hook directly and needs neither new hook.
-# ---------------------------------------------------------------------------
-@test "bare pnpm test is still blocked by block-bare-test.sh (exit 2)" {
-  payload=$(jq -nc '{tool_name:"Bash", tool_input:{command:"pnpm test"}}')
-  invoke_hook "$payload" "$BARE_TEST_HOOK"
-  [ "$status" -eq 2 ]
-  [[ "$output" == *"BLOCKED"* ]]
-}
-
-@test "pnpm test --run is NOT blocked by block-bare-test.sh" {
-  payload=$(jq -nc '{tool_name:"Bash", tool_input:{command:"pnpm test --run app/utils/x/index.test.ts"}}')
-  invoke_hook "$payload" "$BARE_TEST_HOOK"
-  [ "$status" -eq 0 ]
-}

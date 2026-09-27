@@ -58,7 +58,7 @@ Each entry: pattern, codified detection where one exists, prior occurrences (com
 - Detection: `grep -rEn "the (seven|eight|nine|ten|N) primitives|Phase [0-9]+ (of|task-adaptation|adaptation-inject)" .gaia/cli/src/ .claude/hooks/ .gaia/statusline/`
 - Prior: 5 sibling files (`init`, `update`, `update/merge`, `wiki`, `release` `index.ts`) carried `Phase N of the Claude Integration Optimization plan` headers; `wiki/index.ts:7` additionally said "the seven primitives" (ten ship); fixed in `ac7c019`. `.claude/hooks/wiki-session-start.sh:12` said "Phase 5 task-adaptation-inject writes …"; fixed in 10th audit.
 
-**Test scripts with baked-in `--run`.** `block-bare-test.sh` requires every `pnpm`/`npm test` invocation to carry `--run` (the watch-mode guard); it matches the command segment and never inspects `package.json`. A `scripts.test` value that also bakes `--run` doubles the flag on a `pnpm test --run` call (`vitest --run --run`) and errors. The script value stays the bare runner (`vitest …`); `--run` belongs on the caller's command line.
+**Test scripts with baked-in `--run`.** A one-shot vitest run is invoked as `pnpm test --run` (avoiding watch mode). A `scripts.test` value that also bakes `--run` doubles the flag on that call (`vitest --run --run`) and errors. The script value stays the bare runner (`vitest …`); `--run` belongs on the caller's command line.
 
 - Detection: read `.gaia/cli/package.json scripts.test`; verify no `--run` baked in
 - Prior: `--run` baked in caused command failure (ed94f49)

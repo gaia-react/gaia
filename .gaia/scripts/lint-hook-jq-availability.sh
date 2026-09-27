@@ -83,8 +83,7 @@ readonly SETTINGS=".claude/settings.json"
 # The list is asserted EXACT below: an entry that no longer fails is reported so
 # it must be deleted here, which is what keeps a baseline from quietly becoming
 # a permanent exemption.
-BASELINE="block-bare-test.sh
-red-verify-commit-check.sh"
+BASELINE="red-verify-commit-check.sh"
 
 # uses_jq <hook_script_path>
 #

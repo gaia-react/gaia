@@ -174,9 +174,6 @@ wiki_catchup_state_unset() {
 # candidate, an empty/[ahead]/[behind] track is skipped (remote head still
 # present), an unanswerable cherry read keeps the branch, and any git failure
 # leaves the branch untouched.
-# Full refname, stripped, never `--short`: a tag sharing the branch's name
-# makes `--short` answer `heads/<branch>`, and the `[ "$current" = "$base" ]`
-# gate below then misses, skipping the base fast-forward silently.
 current=$(git -C "$root" symbolic-ref --quiet HEAD 2>/dev/null || true)
 current=${current#refs/heads/}
 branch_tracks=$(git -C "$root" for-each-ref \
@@ -189,13 +186,6 @@ branch_tracks=$(git -C "$root" for-each-ref \
 # SEC-011: shape-validated immediately, before any git call interpolates it.
 # An unresolvable or unsafely-shaped base clears $base to empty; every
 # consumer below treats an empty $base as "unanswerable, skip".
-# Read the FULL refname and strip the full prefix, rather than asking for
-# `--short` and stripping `origin/`. `--short` answers with the shortest
-# UNAMBIGUOUS spelling, so a tag named `origin/main` makes it answer
-# `remotes/origin/main`; the `origin/` strip then no longer matches and every
-# consumer below is handed a base naming nothing. This is the same spelling
-# .claude/hooks/lib/audit-base-provenance.sh already requires for the same
-# reason.
 base=$(git -C "$root" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null || true)
 base=${base#refs/remotes/origin/}
 [ -n "$base" ] || base=main

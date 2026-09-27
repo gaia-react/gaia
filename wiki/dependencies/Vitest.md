@@ -28,7 +28,7 @@ Vitest-aware lint rules come from `@vitest/eslint-plugin`, which the shared `@ga
 
 ## Run rules
 
-> [!warning] Never run bare `pnpm test` in CI
-> Bare `pnpm test` starts watch mode. Use `pnpm test --run` for CI-style. See [[Test Runner]] rule.
+> [!info] Watch mode needs a TTY
+> Vitest only enters watch mode with an interactive TTY; in CI or under Claude, a bare `pnpm test` runs once and exits. Use `pnpm test --run` for an explicit single pass, or at an interactive terminal to avoid watch mode. See [[Test Runner]] rule.
 
 See [[Testing]], [[Component Testing]].
