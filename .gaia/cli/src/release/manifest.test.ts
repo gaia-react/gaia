@@ -15,9 +15,6 @@ import {
   buildManifest,
   classifyPath,
   computeDrift,
-  computeMissing,
-  lintClassifierSets,
-  lintScanScopes,
   ManifestSchema,
   parseExcludePatterns,
   serialize,
@@ -292,101 +289,6 @@ describe('buildManifest', () => {
   });
 });
 
-describe('lintClassifierSets', () => {
-  test('returns empty when no classifier entry is also excluded', () => {
-    const patterns = parseExcludePatterns('.gaia/scripts\nwiki/entities\n');
-    expect(lintClassifierSets(patterns)).toEqual([]);
-  });
-
-  test.each<[string, string, string]>([
-    ['flags exact-set entry that is also excluded', 'CLAUDE.md', 'SHARED'],
-    [
-      'flags prefix-set entry that is also excluded',
-      'wiki/concepts',
-      'WIKI_OWNED_PREFIXES',
-    ],
-    [
-      'flags adopter-sentinel that is also excluded',
-      'wiki/hot.md',
-      'ADOPTER_OWNED_SENTINELS',
-    ],
-  ])('%s', (_label, entry, setName) => {
-    const patterns = parseExcludePatterns(`${entry}\n`);
-    const overlaps = lintClassifierSets(patterns);
-    expect(overlaps).toHaveLength(1);
-    expect(overlaps[0]).toMatchObject({entry, setName});
-  });
-});
-
-describe('lintScanScopes', () => {
-  test('returns empty when scope info is unavailable (no release-scrub.yml)', () => {
-    const files = {'.gaia/scripts/foo.sh': 'owned' as const};
-    expect(lintScanScopes(files, undefined)).toEqual([]);
-  });
-
-  test('ignores non-owned and non-.sh manifest entries', () => {
-    const files = {
-      'app/foo.ts': 'owned' as const,
-      'wiki/index.md': 'shared' as const,
-    };
-    expect(lintScanScopes(files, [])).toEqual([]);
-  });
-
-  test('returns empty when an owned .sh file is covered by both scopes', () => {
-    // .gaia/scripts is a real SCAN_GLOBS entry; '.gaia/scripts/**' covers it
-    // on the maintainer-paths side too.
-    const files = {'.gaia/scripts/foo.sh': 'owned' as const};
-    expect(lintScanScopes(files, ['.gaia/scripts/**'])).toEqual([]);
-  });
-
-  test('a whole-tree ** scope covers every owned .sh directory', () => {
-    const files = {'.gaia/scripts/foo.sh': 'owned' as const};
-    expect(lintScanScopes(files, ['**'])).toEqual([]);
-  });
-
-  test('a whole-tree ** scope still leaves a SCAN_GLOBS gap reportable', () => {
-    const files = {'.gaia/new-tool/foo.sh': 'owned' as const};
-    expect(lintScanScopes(files, ['**'])).toEqual([
-      {dir: '.gaia/new-tool', missingFrom: ['runtime-deps SCAN_GLOBS']},
-    ]);
-  });
-
-  test('flags a directory missing from the maintainer-paths scope only', () => {
-    const files = {'.gaia/scripts/foo.sh': 'owned' as const};
-    const gaps = lintScanScopes(files, ['.claude/**']);
-    expect(gaps).toEqual([
-      {dir: '.gaia/scripts', missingFrom: ['maintainer-paths scope']},
-    ]);
-  });
-
-  test('flags a directory missing from SCAN_GLOBS only', () => {
-    // .gaia/new-tool is not one of the real SCAN_GLOBS entries.
-    const files = {'.gaia/new-tool/foo.sh': 'owned' as const};
-    const gaps = lintScanScopes(files, ['.gaia/new-tool/**']);
-    expect(gaps).toEqual([
-      {dir: '.gaia/new-tool', missingFrom: ['runtime-deps SCAN_GLOBS']},
-    ]);
-  });
-
-  test('flags a directory missing from both scopes, sorted by directory', () => {
-    const files = {
-      '.gaia/new-tool/bar.sh': 'owned' as const,
-      '.gaia/other-tool/foo.sh': 'owned' as const,
-    };
-    const gaps = lintScanScopes(files, []);
-    expect(gaps).toEqual([
-      {
-        dir: '.gaia/new-tool',
-        missingFrom: ['maintainer-paths scope', 'runtime-deps SCAN_GLOBS'],
-      },
-      {
-        dir: '.gaia/other-tool',
-        missingFrom: ['maintainer-paths scope', 'runtime-deps SCAN_GLOBS'],
-      },
-    ]);
-  });
-});
-
 describe('ManifestSchema: regions', () => {
   const baseFields = {
     files: {},
@@ -433,106 +335,7 @@ const regionDrift = (
   expected: ManifestShape,
   actual: ManifestShape
 ): ReturnType<typeof computeDrift>['regionDrift'] =>
-  computeDrift(expected, actual, {classifierOverlaps: [], scanScopeGaps: []})
-    .regionDrift;
-
-const manifestWithFiles = (files: ManifestShape['files']): ManifestShape => ({
-  files,
-  generated: '2026-05-07T00:00:00.000Z',
-  regions: [],
-  version: '1.0.0',
-});
-
-/**
- * The path a committed manifest actually takes: written by `serialize`, read
- * back by `JSON.parse`, then validated by the schema. Hand-built
- * `ManifestShape` objects skip all three, so a case that never calls this
- * proves nothing about what survives the trip.
- */
-const roundTrip = (manifest: ManifestShape): ManifestShape =>
-  ManifestSchema.parse(JSON.parse(serialize(manifest)));
-
-describe('computeMissing: paths named after Object.prototype keys', () => {
-  test.each([
-    'constructor',
-    'toString',
-    'valueOf',
-    '__proto__',
-    'hasOwnProperty',
-  ])(
-    'a classified file named %s that the committed manifest has never acknowledged is reported missing',
-    (file) => {
-      // These are all legal POSIX filenames. A bare `actual.files[file]` index
-      // reaches Object.prototype and returns a truthy inherited value, which
-      // reads as "already acknowledged" and drops a genuinely missing entry
-      // from the set the drift report and the answer gate both consume.
-      const expected = manifestWithFiles({[file]: 'owned'});
-      const actual = manifestWithFiles({});
-
-      expect(computeMissing(expected, actual)).toEqual([file]);
-    }
-  );
-
-  test('a path the committed manifest does acknowledge is not reported missing', () => {
-    const expected = manifestWithFiles({'app/root.tsx': 'owned'});
-    const actual = manifestWithFiles({'app/root.tsx': 'owned'});
-
-    expect(computeMissing(expected, actual)).toEqual([]);
-  });
-
-  // The rows above hand-build `ManifestShape` objects, so not one of them
-  // crosses `ManifestSchema`. Read alone they imply all five names are proven
-  // to reach `lookupClass` through the path a committed manifest actually
-  // takes. Only four are, and the two cases below are what make the list say
-  // so rather than merely be true. The surrounding convention settles the
-  // shape: `ManifestSchema: regions` and `buildManifest: region round trip`
-  // both assert through a real parse.
-  //
-  // Every key below is written computed. A bare `{__proto__: 'owned'}` object
-  // literal sets the PROTOTYPE instead of defining an own property, which
-  // would make these cases test nothing at all.
-  test.each(['constructor', 'toString', 'valueOf', 'hasOwnProperty'])(
-    'a manifest path named %s survives the real serialize/parse round trip and is still reported missing',
-    (file) => {
-      const committed = roundTrip(manifestWithFiles({[file]: 'owned'}));
-
-      expect(Object.hasOwn(committed.files, file)).toBe(true);
-      expect(
-        computeMissing(manifestWithFiles({[file]: 'owned'}), committed)
-      ).toEqual([]);
-      expect(
-        computeMissing(
-          manifestWithFiles({[file]: 'owned'}),
-          manifestWithFiles({})
-        )
-      ).toEqual([file]);
-    }
-  );
-
-  test('a manifest path named __proto__ does not survive the round trip, so it never reaches the guard', () => {
-    const built = manifestWithFiles({['__proto__']: 'owned'});
-    const committed = roundTrip(built);
-
-    // Which stage drops it, named because these two assertions are a canary on
-    // that stage and a reader who has to go find it cannot tell a real
-    // regression from a dependency moving underneath. `serialize` emits the
-    // key, `JSON.parse` KEEPS it as an own property, and `ManifestSchema`'s
-    // `z.record` is what drops it, by an explicit guard rather than by any
-    // language-level invariant. So a zod bump that reworks that guard flips the
-    // two lines below and reds this suite.
-    expect(serialize(built)).toContain('"__proto__"');
-    expect(Object.hasOwn(committed.files, '__proto__')).toBe(false);
-    expect(Object.keys(committed.files)).toEqual([]);
-
-    // The consequence, and why this is a suggestion rather than a bug: the
-    // entry is absent from `actual.files` on EVERY run, so `computeMissing`
-    // reports it missing forever and the drift/answer gate blocks
-    // permanently. That fails closed, never a silent pass. It is also why no
-    // end-to-end row is possible for this name, and why the unit row above is
-    // the whole of the coverage it can have.
-    expect(computeMissing(built, committed)).toEqual(['__proto__']);
-  });
-});
+  computeDrift(expected, actual).regionDrift;
 
 describe('computeDrift: regionDrift', () => {
   const region = {

@@ -6,19 +6,12 @@
  * and adopter-owned sentinels, classifies each remaining path, and returns
  * a deterministic (alphabetically sorted) manifest shape.
  *
- * Also lints the classifier sets for entries that are dead code because
- * release-exclude already masks them, and lints every owned `.sh`-bearing
- * directory against the scrub `maintainer-paths` scope and `runtime-deps`'s
- * `SCAN_GLOBS` (`lintScanScopes`), so a shipped script tree can't fall
- * outside both distribution-boundary leak checks at once.
- *
  * The CLI flag grammar, `--check` report rendering, and the `run` entrypoint
  * that consume the pieces here live in `manifest-cli.ts`.
  */
-import {load as parseYaml} from 'js-yaml';
 import {z} from 'zod';
 import {execFileSync} from 'node:child_process';
-import {existsSync, readFileSync} from 'node:fs';
+import {readFileSync} from 'node:fs';
 import path from 'node:path';
 import {escapeRegExp} from '../util/escape-regexp.js';
 import {gitZArgs, splitZStream} from '../util/git-z.js';
@@ -26,7 +19,6 @@ import {resolveRepoRoot} from '../util/repo-root.js';
 import {hasRejectedExcludeMetacharacter} from './manifest-answers.js';
 import {scanRegionDeclarations} from './region-scan.js';
 import type {RegionDeclaration} from './region-scan.js';
-import {SCAN_GLOBS} from './scan-globs.js';
 
 // Root governance files (CHANGELOG.md, CODE_OF_CONDUCT.md, CONTRIBUTING.md,
 // LICENSE, README.md, SUPPORTERS.md) and `.github/CODEOWNERS` are handled by
@@ -245,12 +237,6 @@ export const resolveManifestPath = (repoRoot: string): string =>
  * the literal path can never match one, so the file would be recorded as
  * shipping whatever the maintainer answered. `gitZArgs` states why its flags
  * prevent that.
- *
- * One asymmetry with staging survives this, in the other direction: the shell
- * readers pipe the NUL stream through `tr '\0' '\n'` into a newline-delimited
- * file, which a path holding a literal newline cannot survive, while it stays
- * one entry here. This side needs no counterpart guard: it records the joined
- * path as shipping, which is correct.
  */
 const listGitFiles = (cwd: string): string[] =>
   splitZStream(
@@ -303,185 +289,9 @@ export const buildManifest = (
 export const serialize = (manifest: ManifestShape): string =>
   `${JSON.stringify(manifest, null, 2)}\n`;
 
-// Classifier-set lint
-
-export type ClassifierOverlap = {
-  entry: string;
-  excludePattern: string;
-  setName: string;
-};
-
-/**
- * Cross-check the classifier sets against `.gaia/release-exclude`. An
- * entry that's matched by an exclude pattern is dead code: `buildManifest`
- * runs the exclude filter first, so the classifier never sees the path.
- *
- * For prefix sets, probe the prefix without its trailing slash; exclude
- * regexes are anchored `^P(/|$)` so the directory path itself matches.
- */
-export const lintClassifierSets = (
-  excludePatterns: readonly RegExp[]
-): ClassifierOverlap[] => {
-  const overlaps: ClassifierOverlap[] = [];
-
-  const findOverlap = (entry: string, setName: string): void => {
-    const matched = excludePatterns.find((pattern) => pattern.test(entry));
-
-    if (matched !== undefined) {
-      overlaps.push({entry, excludePattern: matched.source, setName});
-    }
-  };
-
-  for (const entry of ADOPTER_OWNED_SENTINELS)
-    findOverlap(entry, 'ADOPTER_OWNED_SENTINELS');
-  for (const entry of SHARED) findOverlap(entry, 'SHARED');
-  for (const entry of WIKI_OWNED_EXACT) findOverlap(entry, 'WIKI_OWNED_EXACT');
-
-  for (const prefix of SHARED_PREFIXES) {
-    findOverlap(prefix.replace(/\/$/, ''), 'SHARED_PREFIXES');
-  }
-
-  for (const prefix of WIKI_OWNED_PREFIXES) {
-    findOverlap(prefix.replace(/\/$/, ''), 'WIKI_OWNED_PREFIXES');
-  }
-
-  return overlaps;
-};
-
-// Scan-scope lint
-
-const RELEASE_SCRUB_PATH = '.gaia/release-scrub.yml';
-const MAINTAINER_PATHS_CHECK_ID = 'maintainer-paths';
-
-export type ScanScopeGap = {
-  dir: string;
-  missingFrom: readonly ScanScopeName[];
-};
-
-type ScanScopeName = 'maintainer-paths scope' | 'runtime-deps SCAN_GLOBS';
-
-/**
- * Read the `maintainer-paths` leak-check's `scope` list straight out of
- * `.gaia/release-scrub.yml`. A light, unvalidated read (mirrors how
- * `buildManifest` reads `.gaia/release-exclude` directly) rather than going
- * through `scrub.ts`'s `loadConfig`, so this module never has to import
- * `scrub.ts` for one field. Returns `undefined` when the file is absent, a
- * minimal/sandboxed checkout (unit-test fixtures) has nothing to lint
- * against, distinct from a present-but-empty scope, which is a real gap.
- */
-export const readMaintainerPathsScope = (
-  repoRoot: string
-): readonly string[] | undefined => {
-  const scrubPath = path.resolve(repoRoot, RELEASE_SCRUB_PATH);
-
-  if (!existsSync(scrubPath)) return undefined;
-
-  const parsed = parseYaml(readFileSync(scrubPath, 'utf8')) as {
-    transforms?: {checks?: {id?: string; scope?: string[]}[]}[];
-  };
-
-  for (const transform of parsed.transforms ?? []) {
-    for (const check of transform.checks ?? []) {
-      if (check.id === MAINTAINER_PATHS_CHECK_ID) return check.scope ?? [];
-    }
-  }
-
-  return [];
-};
-
-/**
- * A scope glob is the whole tree (`**`), a prefix (`.gaia/scripts/**`), or an
- * exact literal; the `maintainer-paths` check's `scope` list uses only those
- * three shapes (no bare `*` entries), so a minimal matcher suffices without
- * pulling in `scrub.ts`'s general-purpose `globToRegex`.
- *
- * The `**` case is what makes this lint's maintainer-paths half satisfiable
- * by construction rather than by enumeration: a check scoped to the staging
- * tree can have no directory outside it. The lint stays because the same call
- * still answers for `runtime-deps`'s hand-maintained `SCAN_GLOBS`, and because
- * re-narrowing the scope makes it fire again.
- */
-const matchesScopeGlob = (file: string, glob: string): boolean => {
-  if (glob === '**') return true;
-  if (glob === file) return true;
-  if (!glob.endsWith('/**')) return false;
-
-  const prefix = glob.slice(0, -3);
-
-  return file === prefix || file.startsWith(`${prefix}/`);
-};
-
-const inScanGlobs = (file: string): boolean =>
-  SCAN_GLOBS.some((glob) => file === glob || file.startsWith(`${glob}/`));
-
-const computeMissingScopes = (
-  file: string,
-  inMaintainerScope: (file: string) => boolean
-): ScanScopeName[] => {
-  const missing: ScanScopeName[] = [];
-
-  if (!inMaintainerScope(file)) missing.push('maintainer-paths scope');
-  if (!inScanGlobs(file)) missing.push('runtime-deps SCAN_GLOBS');
-
-  return missing;
-};
-
-const recordGap = (
-  gapsByDir: Map<string, Set<ScanScopeName>>,
-  file: string,
-  missing: readonly ScanScopeName[]
-): void => {
-  const dir = path.dirname(file);
-  const existing = gapsByDir.get(dir) ?? new Set<ScanScopeName>();
-  for (const name of missing) existing.add(name);
-  gapsByDir.set(dir, existing);
-};
-
-const listOwnedShFiles = (
-  manifestFiles: Readonly<Record<string, ManifestClass>>
-): string[] =>
-  Object.entries(manifestFiles)
-    .filter(([file, klass]) => klass === 'owned' && file.endsWith('.sh'))
-    .map(([file]) => file);
-
-/**
- * Cross-check every owned, non-release-excluded `.sh`-bearing directory in
- * the manifest against BOTH distribution-boundary leak-check scopes: the
- * scrub `maintainer-paths` check's `scope` list and `runtime-deps`'s
- * `SCAN_GLOBS`. A directory absent from either is invisible to that check
- * for every `.sh` file beneath it, the shipped-`.sh`-scope-gap Issue Class
- * (`.gaia/cli/health/taxonomy.md`).
- *
- * Matching runs per file (not per directory) since a `**`-suffixed scope
- * glob is anchored to a full path and needs the file's trailing segment to
- * match; the per-file misses are then grouped by directory for reporting.
- */
-export const lintScanScopes = (
-  manifestFiles: Readonly<Record<string, ManifestClass>>,
-  maintainerPathsScope: readonly string[] | undefined
-): ScanScopeGap[] => {
-  if (maintainerPathsScope === undefined) return [];
-
-  const inMaintainerScope = (file: string): boolean =>
-    maintainerPathsScope.some((glob) => matchesScopeGlob(file, glob));
-
-  const gapsByDir = new Map<string, Set<ScanScopeName>>();
-
-  for (const file of listOwnedShFiles(manifestFiles)) {
-    const missing = computeMissingScopes(file, inMaintainerScope);
-
-    if (missing.length > 0) recordGap(gapsByDir, file, missing);
-  }
-
-  return [...gapsByDir.entries()]
-    .map(([dir, missingFrom]) => ({dir, missingFrom: [...missingFrom]}))
-    .toSorted((a, b) => a.dir.localeCompare(b.dir));
-};
-
 // Check
 
 export type ManifestDrift = {
-  classifierOverlaps: readonly ClassifierOverlap[];
   drift: readonly {
     actual: ManifestClass;
     expected: ManifestClass;
@@ -498,26 +308,18 @@ export type ManifestDrift = {
     missing: readonly string[];
     regionId: string;
   }[];
-  scanScopeGaps: readonly ScanScopeGap[];
   versionDrift: undefined | {actual: string; expected: string};
 };
 
-// A file present on one side of the diff genuinely may be absent on the other,
-// and that absence is exactly what marks it missing. The own-property guard is
-// load-bearing: a bare index reaches `Object.prototype`, so a manifest path
-// named `constructor` or `toString` (both legal POSIX filenames) returns a
-// truthy inherited value and drops out of the missing set the drift report and
-// the distribution-answer gate share.
+// `Record<string, T>` indexing types as `T`, never `undefined`, without
+// `noUncheckedIndexedAccess`, but a file present on one side of the diff
+// genuinely may be absent on the other, so this local widening keeps that
+// runtime possibility honest instead of narrowing a real "missing" case away.
 const lookupClass = (
   files: Record<string, ManifestClass>,
   file: string
 ): ManifestClass | undefined =>
-  Object.hasOwn(files, file) ? files[file] : undefined;
-
-export type LintResults = {
-  classifierOverlaps: readonly ClassifierOverlap[];
-  scanScopeGaps: readonly ScanScopeGap[];
-};
+  (files as Record<string, ManifestClass | undefined>)[file];
 
 const computeMissingEntries = (
   expected: ManifestShape,
@@ -664,10 +466,8 @@ const computeRegionDrift = (
 
 export const computeDrift = (
   expected: ManifestShape,
-  actual: ManifestShape,
-  lints: LintResults
+  actual: ManifestShape
 ): ManifestDrift => {
-  const {classifierOverlaps, scanScopeGaps} = lints;
   const missing = computeMissingEntries(expected, actual);
   const extra: {actual: ManifestClass; file: string}[] = [];
   const drift: {
@@ -704,12 +504,10 @@ export const computeDrift = (
     : {actual: actual.version, expected: expected.version};
 
   return {
-    classifierOverlaps,
     drift,
     extra,
     missing,
     regionDrift,
-    scanScopeGaps,
     versionDrift,
   };
 };

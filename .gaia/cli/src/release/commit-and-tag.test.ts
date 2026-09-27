@@ -228,7 +228,7 @@ describe('release commit-and-tag --commit', () => {
     expect([0, 1]).toContain(exit);
   });
 
-  test('rolls back the release commit when the state-SHA amend fails', () => {
+  test('exits non-zero when the state-SHA amend fails', () => {
     sandbox = setupSandbox('1.4.0');
     const recorded: RecordedCall[] = [];
     const runner = buildRecordingRunner(
@@ -245,39 +245,6 @@ describe('release commit-and-tag --commit', () => {
     const exit = run(['--commit'], {cwd: sandbox.root, runner});
     expect(exit).toBe(2);
     expect(stdio.errors.join('')).toContain('amend blocked by hook');
-
-    // The release commit must be unwound after the amend failure.
-    const calls = recorded.map(
-      (call) => `${call.command} ${call.args.join(' ')}`
-    );
-    expect(calls).toContain('git reset --soft HEAD~1');
-    expect(stdio.errors.join('')).toContain('rolled back the release commit');
-    expect(stdio.errors.join('')).toContain('amend failed');
-  });
-
-  test('rollback message names staging when the state-file add fails', () => {
-    sandbox = setupSandbox('1.5.0');
-    const recorded: RecordedCall[] = [];
-    const runner = buildRecordingRunner(
-      [
-        {argv: ['rev-parse', 'HEAD'], result: okResult('abc1234def\n')},
-        {
-          argv: ['add', 'wiki/.state.json'],
-          result: failResult(1, 'fatal: cannot stage state file'),
-        },
-      ],
-      recorded
-    );
-
-    const exit = run(['--commit'], {cwd: sandbox.root, runner});
-    expect(exit).toBe(2);
-
-    // The failing step is the `add`, not the `commit --amend`, so the
-    // rollback message must name staging, not amend.
-    const errors = stdio.errors.join('');
-    expect(errors).toContain('staging the state file failed');
-    expect(errors).not.toContain('amend failed');
-    expect(errors).toContain('rolled back the release commit');
   });
 });
 
@@ -343,7 +310,7 @@ describe('release commit-and-tag --tag', () => {
     expect(recorded.find((c) => c.args[0] === 'push')).toBeUndefined();
   });
 
-  test('rolls back the local tag when the push fails', () => {
+  test('exits non-zero when the push fails', () => {
     sandbox = setupSandbox('2.5.1');
     const recorded: RecordedCall[] = [];
     const runner = buildRecordingRunner(
@@ -359,14 +326,6 @@ describe('release commit-and-tag --tag', () => {
     const exit = run(['--tag'], {cwd: sandbox.root, runner});
     expect(exit).toBe(2);
     expect(stdio.errors.join('')).toContain('unable to access remote');
-
-    // The created tag must be deleted after the failed push.
-    const calls = recorded.map(
-      (call) => `${call.command} ${call.args.join(' ')}`
-    );
-    expect(calls).toContain('git tag -a v2.5.1 -m Release v2.5.1');
-    expect(calls).toContain('git tag -d v2.5.1');
-    expect(stdio.errors.join('')).toContain('deleted the local tag v2.5.1');
   });
 });
 

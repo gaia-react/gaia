@@ -37,7 +37,7 @@
  * Exit codes:
  *   0: no leaks
  *   1: leaks detected, missing inputs, bad flags
- *   2: unexpected (manifest parse failure, IO error)
+ *   2: unexpected (manifest load failure, script walk failure)
  */
 import {readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
@@ -64,7 +64,7 @@ const HELP_TEXT = `Usage: gaia-maintainer release runtime-deps [--staging <dir>]
   Exit codes:
     0  no leaks
     1  leaks detected, missing inputs, bad flags
-    2  unexpected (manifest parse failure, IO error)
+    2  unexpected (manifest load failure, script walk failure)
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
@@ -693,24 +693,6 @@ const collectLeaks = (
   return leaks;
 };
 
-const tryCollectLeaksOrReport = (
-  root: string,
-  scriptFiles: readonly string[],
-  manifest: ReadonlySet<string>
-): null | readonly Leak[] => {
-  try {
-    return collectLeaks(root, scriptFiles, manifest);
-  } catch (error) {
-    structuredError({
-      code: 'script_read_failed',
-      message: error instanceof Error ? error.message : String(error),
-      subcommand: 'release runtime-deps',
-    });
-
-    return null;
-  }
-};
-
 export const run = (
   argv: readonly string[],
   options: RunOptions = {}
@@ -771,10 +753,7 @@ export const run = (
       scriptFiles.filter((scriptPath) => manifest.has(scriptPath))
     : scriptFiles;
 
-  const leaks = tryCollectLeaksOrReport(root, scannedFiles, manifest);
-
-  if (leaks === null) return UNEXPECTED_EXIT;
-
+  const leaks = collectLeaks(root, scannedFiles, manifest);
   const report: Report = {
     leaks,
     scan_scope: isBareMode ? 'manifest-backed' : 'tarball',

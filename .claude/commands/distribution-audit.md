@@ -15,10 +15,10 @@ Maintainer-only. Thin orchestrator over `.gaia/cli/gaia-maintainer`, which owns 
 .gaia/cli/gaia-maintainer release manifest --check --json
 ```
 
-`--check` is read-only. It exits non-zero whenever it finds any of six conditions, so capture stdout and parse it as JSON regardless of the exit code; a non-zero exit here is not a failure, it is the normal signal that something needs attention. The payload shape is:
+`--check` is read-only. It exits non-zero whenever it finds any of five conditions, so capture stdout and parse it as JSON regardless of the exit code; a non-zero exit here is not a failure, it is the normal signal that something needs attention. The payload shape is:
 
 ```json
-{"missing": [{"expected": "owned", "file": ".gaia/statusline/example.sh"}], "extra": [], "drift": [], "versionDrift": null, "classifierOverlaps": [], "scanScopeGaps": []}
+{"missing": [{"expected": "owned", "file": ".gaia/statusline/example.sh"}], "extra": [], "drift": [], "regionDrift": [], "versionDrift": null}
 ```
 
 `missing` is an array of objects, not of path strings: the path lives in `.file`, and `.expected` is the update class the classifier would assign. Extract paths with:
@@ -33,8 +33,8 @@ Treating `missing`'s entries as if they were bare strings prints JSON blobs inst
 
 ## Step 2. Decide which path applies
 
-- **Nothing outstanding.** `missing` is empty and the other five conditions (`extra`, `drift`, `versionDrift`, `classifierOverlaps`, `scanScopeGaps`) are all empty: report that the boundary is current, write nothing, regenerate nothing, and stop. Regenerating here would rewrite the manifest's timestamp for no reason. `git status --porcelain` for `.gaia/manifest.json` and `.gaia/release-exclude` must stay empty.
-- **Bookkeeping only.** `missing` is empty but at least one of the other five conditions is not: this is accounting drift, not a boundary question, nobody needs to decide whether a file ships. Name the condition(s) that fired and list their entries, then ask the maintainer via `AskUserQuestion` whether to regenerate now to absorb them. Do not regenerate unprompted.
+- **Nothing outstanding.** `missing` is empty and the other four conditions (`extra`, `drift`, `regionDrift`, `versionDrift`) are all empty: report that the boundary is current, write nothing, regenerate nothing, and stop. Regenerating here would rewrite the manifest's timestamp for no reason. `git status --porcelain` for `.gaia/manifest.json` and `.gaia/release-exclude` must stay empty.
+- **Bookkeeping only.** `missing` is empty but at least one of the other four conditions is not: this is accounting drift, not a boundary question, nobody needs to decide whether a file ships. Name the condition(s) that fired and list their entries, then ask the maintainer via `AskUserQuestion` whether to regenerate now to absorb them. Do not regenerate unprompted.
 - **Files await an answer.** `missing` is non-empty: continue to Step 3.
 
 ## Step 3. Classify against the categories, then ask only what needs asking

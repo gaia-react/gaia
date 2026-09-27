@@ -11,7 +11,7 @@
  *
  *   2. json-strip: delete maintainer-only keys from structured JSON files
  *      using dot-notation paths (e.g. "scripts.test:forensics"). Dots are
- *      path separators; a literal dot inside a key name is escaped as `\.`.
+ *      path separators; key names must not contain literal dots.
  *
  *   3. json-strip-array-element: remove a single array element by predicate
  *      from a structured JSON file (e.g. a maintainer-only hook registration
@@ -320,47 +320,11 @@ export type JsonStripResult = {
 };
 
 /**
- * Split a dot-notation key path into segments. A literal `.` inside a key
- * name is expressed with a backslash escape (`\.`), so a package.json key
- * that contains a dot, e.g. `exports.\.\/feature`, stays addressable.
+ * Split a dot-notation key path into segments.
  *
  * `scripts.test:forensics` → `['scripts', 'test:forensics']`
- * String.raw`scripts.foo\.bar` → `['scripts', 'foo.bar']`
- *
- * A trailing lone backslash is treated literally.
- *
- * Rejects malformed input: an empty segment (produced by a leading,
- * trailing, or doubled dot, or an empty key string) is never a valid
- * object key path, so it throws rather than silently mis-targeting.
  */
-export const parseKeyPath = (key: string): string[] => {
-  const segments: string[] = [];
-  let current = '';
-
-  for (let index = 0; index < key.length; index += 1) {
-    const char = key[index];
-
-    if (char === '\\' && key[index + 1] === '.') {
-      current += '.';
-      index += 1;
-    } else if (char === '.') {
-      segments.push(current);
-      current = '';
-    } else {
-      current += char;
-    }
-  }
-
-  segments.push(current);
-
-  if (segments.some((segment) => segment.length === 0)) {
-    throw new Error(
-      `malformed key path "${key}": empty segment (leading/trailing/double dot)`
-    );
-  }
-
-  return segments;
-};
+export const parseKeyPath = (key: string): string[] => key.split('.');
 
 const deleteKeyPath = (
   obj: Record<string, unknown>,
@@ -1150,39 +1114,12 @@ const stripSkippedSpans = (line: string): string =>
 
 type TitleMatcher = {regex: RegExp; title: string};
 
-const closedFenceLines = (lines: readonly string[]): Set<number> => {
-  const fenceIndices = lines.flatMap((line, index) =>
-    isFenceDelimiter(line) ? [index] : []
-  );
-  const inside = new Set<number>();
-
-  for (let pair = 0; pair + 1 < fenceIndices.length; pair += 2) {
-    const start = fenceIndices[pair];
-    const end = fenceIndices[pair + 1];
-
-    if (start !== undefined && end !== undefined) {
-      for (let index = start; index <= end; index += 1) {
-        inside.add(index);
-      }
-    }
-  }
-
-  return inside;
-};
-
 /**
  * Scan one post-strip staging file for bare-title leaks with its OWN full
- * line-stream walk (not `scanForLeaks`), tracking fenced-code-block spans per
- * file. Spans are derived from the raw line stream up front, independent of the
- * line-allowlist, so an allowlisted line inside a fence can never desync
- * detection; routing this through `scanForLeaks` would drop allowlisted lines
- * before the walk and cause exactly that desync.
- *
- * Fence delimiters bound a code block only when they PAIR. An unbalanced (odd)
- * delimiter count leaves a trailing unclosed fence whose lone opener closes
- * nothing, so every line from it to EOF is scanned as prose rather than
- * silently swallowed. Otherwise a bare excluded-title mention after an unclosed
- * fence would go unreported (fail-open).
+ * line-stream walk (not `scanForLeaks`), tracking fenced-code-block state per
+ * file. Every line is observed so a fence delimiter always toggles state, even
+ * a line-allowlisted one; routing this through `scanForLeaks` would drop
+ * allowlisted lines before the walk and desync the fence counter.
  */
 const findTitleLeaksInFile = (
   file: {content: string; id: string; path: string},
@@ -1190,15 +1127,12 @@ const findTitleLeaksInFile = (
   lineAllowlist: readonly RegExp[]
 ): Leak[] => {
   const leaks: Leak[] = [];
-  const lines = file.content.split('\n');
-  const insideClosedFence = closedFenceLines(lines);
+  let insideFence = false;
 
-  for (const [index, line] of lines.entries()) {
-    const scannable =
-      !insideClosedFence.has(index) &&
-      !lineAllowlist.some((rx) => rx.test(line));
-
-    if (scannable) {
+  for (const [index, line] of file.content.split('\n').entries()) {
+    if (isFenceDelimiter(line)) {
+      insideFence = !insideFence;
+    } else if (!insideFence && !lineAllowlist.some((rx) => rx.test(line))) {
       const residue = stripSkippedSpans(line);
 
       for (const {regex, title} of matchers) {

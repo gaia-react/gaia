@@ -649,29 +649,6 @@ describe('json-strip transform', () => {
     expect(stdio.errors.join('')).toContain('transform_failed');
   });
 
-  test('surfaces a structured error on a malformed dotted key', () => {
-    const malformedKeyConfig = `
-transforms:
-  - type: json-strip
-    paths:
-      - "package.json"
-    keys:
-      - "scripts..build"
-`;
-    sandbox = setupSandbox({config: malformedKeyConfig});
-    sandbox.writeStaged(
-      'package.json',
-      JSON.stringify({scripts: {build: 'x'}}, null, 2)
-    );
-
-    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
-    expect(exit).toBe(2);
-
-    const errors = stdio.errors.join('');
-    expect(errors).toContain('transform_failed');
-    expect(errors).toContain('malformed key path');
-  });
-
   test('--json report includes json_strip section', () => {
     sandbox = setupSandbox({config: JSON_STRIP_CONFIG});
     sandbox.writeStaged(
@@ -700,37 +677,6 @@ transforms:
     };
     expect(report.json_strip.keys_removed).toBe(0);
     expect(report.json_strip.files_touched).toHaveLength(0);
-  });
-
-  test('removes a key whose name contains a literal dot via backslash-dot escape', () => {
-    // YAML double-quote turns `\\.` into `\.`, which parseKeyPath reads as
-    // a literal dot inside the key name. Key path: ['exports', './secret'].
-    const dottedKeyConfig = String.raw`
-transforms:
-  - type: json-strip
-    paths:
-      - "package.json"
-    keys:
-      - "exports.\\./secret"
-`;
-    sandbox = setupSandbox({config: dottedKeyConfig});
-    sandbox.writeStaged(
-      'package.json',
-      JSON.stringify(
-        {exports: {'./public': './a.js', './secret': './b.js'}, name: 'app'},
-        null,
-        2
-      )
-    );
-
-    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
-    expect(exit).toBe(0);
-
-    const after = JSON.parse(
-      readFileSync(path.join(sandbox.stagingDir, 'package.json'), 'utf8')
-    );
-    expect(after.exports).not.toHaveProperty('./secret');
-    expect(after.exports).toHaveProperty('./public');
   });
 });
 
@@ -1042,38 +988,8 @@ describe('parseKeyPath', () => {
     ]);
   });
 
-  test('treats an escaped dot as a literal in the key name', () => {
-    expect(parseKeyPath(String.raw`scripts.foo\.bar`)).toEqual([
-      'scripts',
-      'foo.bar',
-    ]);
-  });
-
-  test('handles a leading escaped-dot segment', () => {
-    expect(parseKeyPath(String.raw`exports.\./feature`)).toEqual([
-      'exports',
-      './feature',
-    ]);
-  });
-
   test('returns a single segment for a plain key', () => {
     expect(parseKeyPath('bin')).toEqual(['bin']);
-  });
-
-  test('throws on a doubled dot (empty inner segment)', () => {
-    expect(() => parseKeyPath('a..b')).toThrow('malformed key path');
-  });
-
-  test('throws on a leading dot (empty first segment)', () => {
-    expect(() => parseKeyPath('.a')).toThrow('malformed key path');
-  });
-
-  test('throws on a trailing dot (empty last segment)', () => {
-    expect(() => parseKeyPath('a.')).toThrow('malformed key path');
-  });
-
-  test('throws on an empty key string', () => {
-    expect(() => parseKeyPath('')).toThrow('malformed key path');
   });
 });
 
@@ -1788,47 +1704,6 @@ describe('excluded-titles derived check', () => {
 
     const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
     expect(exit).toBe(0);
-  });
-
-  test('flags a bare title after an unbalanced (unclosed) fence while still skipping a closed fence', () => {
-    // Fence delimiters bound a code block only when they PAIR. An odd delimiter
-    // count leaves a trailing unclosed fence: a naive per-line toggle stays
-    // stuck `inside` after it and swallows the rest of the file, so a real title
-    // leaking after the unclosed fence goes unreported (fail-open). The closed
-    // pair above it must still be skipped.
-    sandbox = setupSandbox({config: TITLE_DERIVED_CONFIG});
-    seedTitleSource(sandbox);
-    sandbox.writeStaged(
-      'wiki/concepts/Foo.md',
-      [
-        '# Foo',
-        '',
-        '```',
-        'Bundle-time Scrub inside a closed block.',
-        '```',
-        '',
-        '```',
-        'code with no closing fence',
-        '',
-        'The Forensics Triage Workflow leaks after the unclosed fence.',
-        '',
-      ].join('\n')
-    );
-
-    const exit = run([sandbox.stagingDir, '--json'], {cwd: sandbox.rootDir});
-    expect(exit).toBe(1);
-
-    const report = JSON.parse(stdio.outputs.join('')) as {
-      leaks: {check: string; file: string; line: number; match: string}[];
-    };
-    expect(report.leaks).toEqual([
-      {
-        check: 'excluded-titles',
-        file: 'wiki/concepts/Foo.md',
-        line: 10,
-        match: 'Forensics Triage Workflow',
-      },
-    ]);
   });
 
   test('does not flag a bare title inside a stripped maintainer-only block', () => {

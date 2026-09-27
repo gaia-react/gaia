@@ -38,19 +38,15 @@ export const HELP_TEXT = `Usage: gaia-maintainer release manifest [--out <path>]
     --out <path>       Override output path (default: .gaia/manifest.json).
     --stdout           Print manifest JSON to stdout instead of writing the file.
     --check            Verify the committed manifest matches what the
-                       classifier would produce against the current source,
-                       lint classifier sets against release-exclude for
-                       dead-code overlap, and lint every owned .sh-bearing
-                       directory against the scrub maintainer-paths scope and
-                       runtime-deps's SCAN_GLOBS. Exits non-zero on drift,
-                       overlap, or a scan-scope gap. Read-only: incompatible
-                       with every flag above.
+                       classifier would produce against the current source.
+                       Exits non-zero on drift. Read-only: incompatible with
+                       every flag above.
     --json             (with --check) Emit a structured JSON drift report.
 
   Exit codes:
     0  success / check clean
     1  unanswered or invalid answers / user-correctable error / check found
-       drift or overlap
+       drift
     2  unexpected (filesystem / git failure)
 `;
 
