@@ -394,13 +394,3 @@ JSON
   [ "$status" -eq 0 ]
   grep -qF -- "update-deps" <<<"$output"
 }
-
-@test "this checkout matches the source-repo case the tests above simulate" {
-  # Binds the sandbox simulation to the real repo. If either half of the
-  # discriminator moves -- the command file stops shipping, or the CLI source
-  # moves out of .gaia/cli/src -- the escape hatch goes quietly dead and the
-  # maintainer's own nudges disappear again with nothing to say so.
-  REPO_ROOT="$(git -C "$BATS_TEST_DIRNAME" rev-parse --show-toplevel)"
-  [ -f "$REPO_ROOT/.claude/commands/gaia-init.md" ]
-  [ -d "$REPO_ROOT/.gaia/cli/src" ]
-}

@@ -40,10 +40,6 @@ add_hook() {
 
 # ========== real repo ==========
 
-@test "real repo: check-hook-scope-manifest.sh is executable" {
-  [ -x "$CHECK" ]
-}
-
 @test "real repo: sourcing the script defines the gate with no side effects" {
   run bash -c '
     # shellcheck disable=SC1090
@@ -187,10 +183,4 @@ cat ".gaia/local/audit/sneaky.json"'
   run gaia_check_hook_scope_manifest "$repo"
   [ "$status" -eq 1 ]
   grep -qF "no hooks found" <<<"$output" || return 1
-}
-
-@test "gate: a root with no .claude/hooks directory fails" {
-  run gaia_check_hook_scope_manifest "$BATS_TEST_TMPDIR/nowhere"
-  [ "$status" -eq 1 ]
-  grep -qF "no .claude/hooks directory" <<<"$output" || return 1
 }

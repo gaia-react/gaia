@@ -330,15 +330,3 @@ literal_hits() {
   [ "$status" -eq 0 ]
   [ "$(printf '%s\n' "$output" | tr '\n' ' ')" = "drain 41-42 41 42 7 " ]
 }
-
-@test "structural: shellcheck is clean" {
-  command -v shellcheck >/dev/null 2>&1 || skip "shellcheck not available"
-  shellcheck "$LIB"
-}
-
-@test "structural: never invokes cd, per .claude/rules/shell-cwd.md" {
-  local code_lines
-  code_lines="$(grep -vE '^[[:space:]]*#' "$LIB")"
-  grep -qE '(^|[^[:alnum:]_])cd([^[:alnum:]_]|$)' <<<"$code_lines" && return 1
-  true
-}

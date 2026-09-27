@@ -80,9 +80,8 @@
 # not with their callers: a second caller reaching for one of them is the moment
 # the condition arrives, not a later one.
 #
-# `.gaia/scripts/tests/bats-path-helper.bats` holds this file to the standard
-# the copies could not be held to, driving the over-strip case directly with a
-# control that proves the old predicate accepts it.
+# `.gaia/scripts/tests/bats-path-helper.bats` pins that the two builders refuse
+# to write outside a bats per-test temp dir.
 
 # path_dir_provides <dir> <name>: true when <dir>/<name> is a command bash's
 # PATH lookup would accept -- a regular file with the execute bit -- and false

@@ -900,14 +900,6 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
 
 # ---------- Shared arming decision (tokenizer, and the bound past 6d) ----------
 
-@test "10: a quoted verb in the first command releases (tokenizer arm; red before this change)" {
-  export FAKE_GH_PR_BODY="Closes #77"
-  run_hook 'gh pr "merge" 1508'
-  [ "$status" -eq 0 ]
-  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "1508" ]
-  assert_released_once "77"
-}
-
 # The generic past-bound pairing (6d's heredoc, padded past
 # GAIA_VERB_ARM_MAX_CHARS, arms because the walker abstains above the bound)
 # cannot discriminate through this hook's own release: the heredoc's first

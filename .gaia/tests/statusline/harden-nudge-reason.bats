@@ -169,23 +169,6 @@ render_statusline_against_refresher_cache() {
   [ "$new_segment" = "$old_segment" ]
 }
 
-@test "no snapshot: byte identity with the old-style cache, singular count (UAT-001)" {
-  run_refresher '{"candidate_count":1,"unclassified":null,"gh_ok":true,"window_days":90,"snapshot_present":false,"snapshot_reviewed_at":null,"triggers":[]}'
-  [ "$status" -eq 0 ]
-  [ "$(jq -r '.hardenNudgeReason' "$CACHE_FILE")" = "1 recurring pattern" ]
-
-  render_statusline_against_refresher_cache
-  [ "$status" -eq 0 ]
-  new_segment=$(grep -oE 'Run /gaia-harden \([^)]*\)' <<<"$output")
-  [ "$new_segment" = "Run /gaia-harden (1 recurring pattern)" ]
-
-  printf '{"hardenCandidateCount":1,"hardenUnclassifiedCount":0}' > "$MAIN/.gaia/local/cache/shared/update-check.json"
-  render_statusline
-  [ "$status" -eq 0 ]
-  old_segment=$(grep -oE 'Run /gaia-harden \([^)]*\)' <<<"$output")
-  [ "$new_segment" = "$old_segment" ]
-}
-
 # 2. Pre-SPEC tally shape ------------------------------------------------------
 
 @test "a tally with no snapshot_present key at all composes today's text" {

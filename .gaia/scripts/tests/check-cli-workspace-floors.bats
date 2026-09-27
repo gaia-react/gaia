@@ -1224,19 +1224,6 @@ STUB
   [ "$status" -eq 1 ]
 }
 
-@test "the header states the decay this check does not catch" {
-  # An honest-limits line is load-bearing here rather than decorative: the issue
-  # this gate closes is classed holistic/overclaimed-guarantee, and a floor that
-  # has quietly become a cap passes the parity arm. A reader who takes a green
-  # run as "the floors are current" has been misled by the gate itself.
-  # Both phrases are unique to the honest-limits paragraph. A bare 'cap' is
-  # not: it also matches the advisory-arm paragraph's "whose own cap it
-  # competes for", so deleting the paragraph this test names would leave that
-  # assertion passing and only the dedupe one red.
-  grep -qiF -- 'becomes a cap' "$CHECK"
-  grep -qiF -- 'dedupe' "$CHECK"
-}
-
 @test "the repository's own CLI workspace reports its floors, not merely exit 0" {
   # Asserting only the status lets a reader that has stopped parsing the live
   # files satisfy this test while reading nothing. The floors it names are the

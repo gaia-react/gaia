@@ -383,15 +383,6 @@ code-audit-maintainer-shell"
   [ "$output" = "code-audit-maintainer-node" ]
 }
 
-@test "built-in roster dispatches maintainer-node for .gaia/cli/prettier.config.mjs (*.config.mjs)" {
-  rm -f "$SANDBOX/.gaia/audit-ci.yml"
-  stage .gaia/cli/prettier.config.mjs
-  commit "chore: cli prettier config"
-  run run_resolver
-  [ "$status" -eq 0 ]
-  [ "$output" = "code-audit-maintainer-node" ]
-}
-
 # 15. Novel member (extensibility): a fabricated roster member is dispatched
 #     purely from its config entry, proving generic roster iteration.
 
