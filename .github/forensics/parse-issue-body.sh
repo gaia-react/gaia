@@ -343,16 +343,11 @@ fi
 
 # json_escape_file <path> -> stdout: escapes the file's bytes for
 # embedding inside JSON double-quotes. Handles backslash, double-quote,
-# tab, carriage return, and newline. Other control bytes in the
-# 0x01–0x1f range are stripped so the emitted JSON stays valid even on
-# pathological input (the consumer's `jq` parse remains the
-# authoritative gate; this defense keeps the internal-error path from
-# tripping on payload-shape rather than infrastructure).
+# tab, carriage return, and newline.
 json_escape_file() {
   awk '
     BEGIN {
       first = 1
-      for (k = 0; k < 256; k++) ord[sprintf("%c", k)] = k
     }
     {
       if (first == 1) { first = 0 } else { printf "\\n" }
@@ -367,10 +362,6 @@ json_escape_file() {
           printf "\\t"
         } else if (c == "\r") {
           printf "\\r"
-        } else if (ord[c] < 32) {
-          # Strip remaining 0x01–0x1f control bytes; not valid in JSON
-          # strings without \uXXXX escaping, never expected from the
-          # issue-body schema.
         } else {
           printf "%s", c
         }

@@ -33,8 +33,6 @@ You also own the declarative half of that same subsystem: the roster your own di
 Filter the changed-file list against the globs above. **If none match, self-skip cleanly.** Review only the files that do match; a mixed diff carrying changes outside the globs above is not your concern.
 <!-- gaia:audit-remit:end -->
 
-The committed workflow templates under `.gaia/cli/templates/workflows/` are deliberately **not** in that list, and a glob reaching them does not belong there. They are build artifacts: byte-identical copies `bundle:adopter` regenerates wholesale from `.gaia/cli/src/automation/templates/workflows/`, which is `code-audit-maintainer-node`'s remit. Reading a copy decides nothing the source review did not already decide, and a drift guard pins every one of them to its source, so the carve-out stays honest rather than becoming an unreviewed hole.
-
 The `.bats` globs are load-bearing: those suites are the only enforcement standing behind the framework's bash, so a commit that weakens, skips, or deletes one is the change least affordable to merge unreviewed. A bats-only diff dispatches you and nobody else.
 
 Resolve the audited root first, before the scope query below. The orchestrator dispatches you with a "Working root:" line and an `AUDIT_ROOT` assignment; that value is authoritative. The ambient directory is the fallback only when no working root was supplied. It resolves here, ahead of the scope query, because that query decides what you review: answered from the ambient cwd while your clearance keys to the supplied root, it reviews one tree and certifies another.
@@ -88,8 +86,6 @@ For every in-remit changed script:
 - **Bash 3.2 compatibility** (macOS ships 3.2 as `/bin/bash`, and this bash runs there): no associative arrays (`declare -A`), no `mapfile`/`readarray`, no `${var^^}`/`${var,,}`, no `&>>`. Indexed arrays, `read -r`, and POSIX parameter expansion are fine.
 - **BSD-vs-GNU portability.** `sed -i` needs a backup-suffix argument on BSD (`sed -i ''` vs GNU's `sed -i`), `date -d` is a GNU-ism, `awk`/`grep` flag sets differ (e.g. no `grep -P` on BSD grep). Flag a construct that only works under one flavor when the script has to run on both.
 - **Repo-relative paths and no-`cd`**, per `.claude/rules/shell-cwd.md`: no hardcoded machine-specific absolute paths; no bare `cd` that leaves the caller's working directory altered for the rest of a session-scoped hook chain. A script that needs an absolute path derives it (`git rev-parse --show-toplevel`) rather than assuming the CWD.
-
-**`.husky/**` is POSIX `sh`, not bash.** Husky runs each hook as `sh -e`, which is dash on Linux, so the Bash 3.2 and `set -euo pipefail` dimensions above do not apply there (`set -o pipefail` is not POSIX and dash lacks it) and recommending either into a husky hook greens on macOS and breaks a Linux runner; run the oracle below as `shellcheck -s sh` for these files.
 
 ## Deterministic oracle: shellcheck
 

@@ -13,10 +13,6 @@ A bash-3.2 local `bats` run is a **weaker signal than CI** (ubuntu bash 5), and 
 
 Run bats through the guard in `.gaia/scripts/bats5.sh` instead of calling `bats` directly: `source .gaia/scripts/bats5.sh`, then call `bats5` wherever the rest of this page says `bats` (or run `.gaia/scripts/bats5.sh <args>` directly). It prefers a Homebrew bash 5 when one is installed (Apple Silicon: `/opt/homebrew/bin/bash`, Intel: `/usr/local/bin/bash`) and warns loudly on stderr when the bash bats will actually use resolves to major version < 4, so the warning fires only where the gap is real (silent on any bash 5 host, macOS or Linux).
 
-<!-- gaia:maintainer-only:start -->
-A deterministic lint over `.bats` files and shipped `*.sh` for `date -v` / `date -d` usage would catch the BSD/GNU class statically; that belongs in the shell-lint gate (`.gaia/tests/shell-lint.sh`), outside this rule's scope.
-<!-- gaia:maintainer-only:end -->
-
 ## `!`-negated assertions never fail a non-final test line (all bash versions)
 
 <!-- gaia-harden: promoted from recurring finding_class rule/bats-negation-under-set-e; pruned by /gaia-audit on obsolescence/redundancy/supersession/duplication only, never for non-recurrence -->
