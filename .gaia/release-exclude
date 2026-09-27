@@ -18,10 +18,7 @@
 # maintainer-only autonomous audit + auto-heal loop (runbook lives under
 # .gaia/cli/health/, already excluded wholesale via category 10). Other
 # /gaia-* commands (plan, handoff, pickup, audit) are adopter-useful and
-# must NOT be added here. preferred-base.sh is the maintainer's personal
-# statusline left-side renderer; adopters get the right-side-only
-# gaia-statusline.sh wrapper which delegates left-side rendering to the
-# user's own global statusline. The three code-audit-maintainer-* agents are
+# must NOT be added here. The three code-audit-maintainer-* agents are
 # the Code Audit Team's maintainer-only members (framework shell + framework
 # TypeScript + skills-prose lenses); adopters audit only their own app via
 # code-audit-frontend. /distribution-audit is the maintainer's
@@ -30,7 +27,6 @@
 .claude/commands/gaia-release.md
 .claude/commands/health-audit.md
 .claude/skills/release-notes
-.gaia/statusline/preferred-base.sh
 .claude/agents/code-audit-maintainer-shell.md
 .claude/agents/code-audit-maintainer-node.md
 .claude/commands/distribution-audit.md
@@ -149,7 +145,6 @@ wiki/decisions/Local Test Runtime.md
 .gaia/scripts/tests
 .claude/rules/maintainers
 .github/audit/tests
-.specify/extensions/gaia/test
 # react-perf-smoke.spec.ts is the bippy version-bump canary: it asserts GAIA's
 # capture harness still resolves a known GAIA component (ThemeSwitch) by name +
 # memo + timing, and that the StrictMode bypass fires. It guards GAIA's own
@@ -275,11 +270,8 @@ wiki/decisions/Local Test Runtime.md
 # `.gaia/cli/health/` holds the audit taxonomy, run state, and (post-#97)
 # the orchestrator's per-cycle outputs. Only maintainers run health audits
 # against the GAIA template; adopters audit their own app via the standard
-# `code-review-audit` agent. The bundled `gaia` binary does not import
-# from `src/health/`, so esbuild tree-shakes any future health code out
-# of the adopter binary by construction.
+# `code-review-audit` agent.
 .gaia/cli/health
-.gaia/cli/src/health
 
 # --- 11. Maintainer-only project governance ---
 # Adopters use GAIA as a template via `npx create-gaia` and run independent
