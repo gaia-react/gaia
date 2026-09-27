@@ -39,7 +39,7 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
   react-perf reduce <raw.json> [--frame-budget-ms N]
   wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|frontmatter|empty-sections|diff-size|chain|sync land|sync await
   fitness render-card [--cols N]
-  labels check|docs|sync
+  labels docs|sync
   harden-ledger list|record|is-suppressed|prune|snapshot
   harden-tally
   automation read-config|cron-decide|render-workflows|install-audit-workflow

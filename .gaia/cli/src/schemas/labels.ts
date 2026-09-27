@@ -2,13 +2,10 @@
  * Zod schema for `.gaia/labels.json`, the single source of truth for every
  * GitHub label GAIA creates, syncs, and documents.
  *
- * This module is the validator the CLI runs. `.gaia/labels.schema.json` is
- * the editor-facing copy: it restates the per-entry blocked/color/reason
- * invariant, and the two are kept in step by hand, so a change to either
- * belongs in both. Uniqueness of names and colors, and the
- * no-em-dash/no-en-dash house rule on every description, live only here,
- * because a JSON Schema cannot express them. `isCreatable` is the one
- * predicate every consumer (sync, `/gaia-setup`, `/gaia-update`) uses to
+ * This module is the validator the CLI runs. Uniqueness of names and colors,
+ * the per-entry blocked/color/reason invariant, and the no-em-dash/no-en-dash
+ * house rule on every description are all enforced here. `isCreatable` is the
+ * one predicate every consumer (sync, `/gaia-setup`, `/gaia-update`) uses to
  * decide whether an entry belongs on a given repository.
  */
 import {z} from 'zod';
@@ -112,7 +109,6 @@ export type LabelEntry = z.infer<typeof LabelEntrySchema>;
 
 export const LabelRegistrySchema = z
   .object({
-    $schema: z.string().min(1),
     description: z.string().min(1),
     labels: z.array(LabelEntrySchema),
     version: z.literal(1),

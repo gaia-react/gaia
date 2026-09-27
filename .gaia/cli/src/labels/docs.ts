@@ -308,7 +308,7 @@ export const run = (argv: readonly string[]): number => {
   let pagePath: string;
 
   try {
-    // Inside the try, like the sibling handlers in check.ts and sync.ts:
+    // Inside the try, like the sibling handler in sync.ts:
     // resolveRepoRoot spawns git and throws outside a worktree, and escaping
     // to the top-level catch would exit 1, the code this subcommand's help
     // reserves for "the committed span differs". A caller keyed on that, the

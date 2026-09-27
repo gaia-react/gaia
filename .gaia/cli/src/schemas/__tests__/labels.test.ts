@@ -63,7 +63,6 @@ describe('schemas/labels', () => {
 
   test('two entries sharing a color are rejected, and the message names the color', () => {
     const result = LabelRegistrySchema.safeParse({
-      $schema: './labels.schema.json',
       description: 'test registry',
       labels: [
         {...baseEntry, color: 'abcdef', name: 'one'},
@@ -81,7 +80,6 @@ describe('schemas/labels', () => {
 
   test('two entries sharing a name are rejected', () => {
     const result = LabelRegistrySchema.safeParse({
-      $schema: './labels.schema.json',
       description: 'test registry',
       labels: [
         {...baseEntry, color: 'abcdef', name: 'dup'},
@@ -99,7 +97,6 @@ describe('schemas/labels', () => {
 
   test('a description containing an em dash is rejected, and the message names the character', () => {
     const result = LabelRegistrySchema.safeParse({
-      $schema: './labels.schema.json',
       description: 'test registry',
       labels: [{...baseEntry, description: 'has an em dash — in it'}],
       version: 1,
@@ -114,7 +111,6 @@ describe('schemas/labels', () => {
 
   test('a description containing an en dash is rejected, and the message names the character', () => {
     const result = LabelRegistrySchema.safeParse({
-      $schema: './labels.schema.json',
       description: 'test registry',
       labels: [{...baseEntry, description: 'has an en dash – in it'}],
       version: 1,
@@ -250,20 +246,6 @@ describe('schemas/labels', () => {
       };
 
       expect(isCreatable(entry, 'adopter', ['forensics'])).toBe(false);
-    });
-  });
-
-  test('the committed .gaia/labels.schema.json parses as JSON, and every required entry key appears on the first entry of .gaia/labels.json', () => {
-    const schema = JSON.parse(
-      readFileSync(path.join(repoRoot, '.gaia/labels.schema.json'), 'utf8')
-    );
-    const registry = readRegistry() as {labels: Record<string, unknown>[]};
-    const requiredKeys: string[] = schema.$defs.entry.required;
-    const firstEntry = registry.labels[0];
-
-    assert.ok(firstEntry);
-    requiredKeys.forEach((key) => {
-      expect(Object.hasOwn(firstEntry, key)).toBe(true);
     });
   });
 });
