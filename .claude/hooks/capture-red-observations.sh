@@ -39,15 +39,16 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null || ec
 [ -n "$cmd" ] || exit 0
 
 # --- scope match: a `(pnpm|npm) [run] test … --run …` invocation --------------
-# Reuse block-bare-test.sh's ANCHORED detection: walk pipeline segments, strip
-# leading env-var prefixes, and act only when `pnpm`/`npm` is the segment's
-# command word AND `test` is the script position, requiring the POSITIVE
-# `--run` case scoped to that same segment (a bare run is blocked upstream by
-# block-bare-test.sh and never reaches a passing PostToolUse). Command TEXT that
-# merely mentions the phrase (a commit message, a `--body` string) is not an
-# invocation, so a spurious full-suite vitest re-run never fires on prose.
-# `test:ci` / `test:lint-staged` carry a `test:` token, not a bare `test`, so
-# the `test([[:space:]]|$)` boundary skips them, aligned with the bare-test hook.
+# ANCHORED detection: walk pipeline segments, strip leading env-var prefixes,
+# and act only when `pnpm`/`npm` is the segment's command word AND `test` is
+# the script position, requiring the POSITIVE `--run` case scoped to that same
+# segment (a bare run without `--run` is simply not captured here;
+# red-verify-commit-check.sh names `pnpm test --run` as the recovery when its
+# gate denies for a missing RED observation). Command TEXT that merely mentions
+# the phrase (a commit message, a `--body` string) is not an invocation, so a
+# spurious full-suite vitest re-run never fires on prose. `test:ci` /
+# `test:lint-staged` carry a `test:` token, not a bare `test`, so the
+# `test([[:space:]]|$)` boundary skips them.
 # $test_seg is the matched invocation with its env prefix stripped; the scope
 # parse below reads it (not the whole command) so only that call's args count.
 test_seg=""
@@ -167,9 +168,9 @@ else
   cleanup_json=1
 
   # Re-invoke vitest directly (not `pnpm test`) with the json reporter. Using
-  # `pnpm exec vitest` avoids the project `test` script, passes json cleanly,
-  # and dodges block-bare-test.sh (different command word), and this is a hook
-  # subprocess, not a Bash-tool call, so no PreToolUse hook intercepts it.
+  # `pnpm exec vitest` avoids the project `test` script and passes json
+  # cleanly; this is a hook subprocess, not a Bash-tool call, so no PreToolUse
+  # hook intercepts it.
   # shellcheck disable=SC2086 # $scope is an intentional word-split arg list.
   pnpm exec vitest --run --reporter=json --outputFile="$json_file" $scope \
     >/dev/null 2>&1 || true

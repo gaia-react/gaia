@@ -50,7 +50,7 @@ Three layers, three triggers. Pick the layer that loads guidance only when it's 
 
 Layer-selection heuristics:
 
-- **Hook** when the guidance is a deterministic block on a specific tool call (e.g. `block-bare-test.sh` denies bare `pnpm test`).
+- **Hook** when the guidance is a deterministic block on a specific tool call (e.g. `block-env-write.sh` denies writes to `.env`).
 - **Skill** when the guidance is intent-triggered, not file-path-triggered, and benefits from references that load on demand (e.g. `eslint-fixes` only matters when fixing lint, not on every edit).
 - **Rule** when the guidance must auto-apply whenever an in-scope file is touched, regardless of intent (`i18n.md`, `accessibility.md`, `coding-guidelines.md`, `quality-gate.md`).
 

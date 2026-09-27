@@ -307,8 +307,7 @@ assert_spaced_redirect_target_absent() {
 @test "a --body string mentioning 'pnpm test --run' exits 0 and writes nothing" {
   # Command-position anchoring: the phrase appears inside a PR-body argument,
   # not as a `pnpm`/`npm` command word, so no spurious full-suite vitest re-run
-  # fires and nothing is recorded. (Regression guard for the bare-test false
-  # positive that this hook shared the token grammar with.)
+  # fires and nothing is recorded.
   run_capture "Bash" 'gh pr create --body "see `pnpm test --run` output"'
   [ "$status" -eq 0 ]
   [ "$(ledger_lines)" -eq 0 ]

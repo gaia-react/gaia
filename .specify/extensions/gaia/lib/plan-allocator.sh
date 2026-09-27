@@ -38,30 +38,12 @@ subject_arg="${3:-}"
 # repo_root is the value whose trustworthiness is in question here, so loading
 # a library by it would decide correctness with the input under test.
 _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-#
-# Each load is bracketed against a target that is present but UNPARSEABLE, and
-# the probe under each one decides the degrade. A bare `.` under errexit
-# abandons the shell AT the load, exit 2 with no diagnostic, so none of the
-# refusals written below would run; and a trailing `|| true` does not save it on
-# stock macOS /bin/bash 3.2.57, which aborts before the arm is ever evaluated.
-# An interrupted update, an unresolved merge conflict, and a truncated write all
-# leave exactly that state on disk.
 # shellcheck source=/dev/null
-set +e; [ -f "${_lib_dir}/with-ledger-lock.sh" ] && . "${_lib_dir}/with-ledger-lock.sh" 2>/dev/null; set -e
-type with_ledger_lock >/dev/null 2>&1 || {
-  echo "plan-allocator: the shared ledger mutex is unusable; refuse to allocate (would risk duplicate PLAN ids)" >&2
-  exit 4
-}
+. "${_lib_dir}/with-ledger-lock.sh"
 # shellcheck source=/dev/null
-set +e; [ -f "${_lib_dir}/title-normalize.sh" ] && . "${_lib_dir}/title-normalize.sh" 2>/dev/null; set -e
-type gaia_normalize_title >/dev/null 2>&1 || {
-  echo "plan-allocator: the shared title normalizer is unusable; refuse to allocate (would write an unnormalized ledger subject)" >&2
-  exit 4
-}
-# No probe of its own: the gaia_resolve_plans_dir call below already refuses
-# when the function is absent, which is the degrade this load owes.
+. "${_lib_dir}/title-normalize.sh"
 # shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
-set +e; [ -f "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" ] && . "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null; set -e
+. "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
 
 # repo_root names the tree this allocation runs in; the ledger it feeds is
 # main's, because the state registry declares plans/ main-only. Resolve rather

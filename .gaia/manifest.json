@@ -20,7 +20,6 @@
     ".claude/commands/gaia-spec.md": "owned",
     ".claude/commands/setup-gaia.md": "owned",
     ".claude/hooks/audit-stamp-trailer.sh": "owned",
-    ".claude/hooks/block-bare-test.sh": "owned",
     ".claude/hooks/block-env-read.sh": "owned",
     ".claude/hooks/block-env-write.sh": "owned",
     ".claude/hooks/block-eslint-config-edit.sh": "owned",
@@ -642,7 +641,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-27T04:48:51.475Z",
+  "generated": "2026-09-27T08:15:11.820Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

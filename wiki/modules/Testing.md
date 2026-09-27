@@ -30,8 +30,8 @@ The `composeStory` pattern means integration tests and visual regression share o
 
 Config at `vitest.config.ts`; see its `test.include` for the covered directories. Runs against `happy-dom`.
 
-> [!warning] Never run bare `pnpm test` in CI
-> Bare `pnpm test` enters watch mode and never exits. Use `pnpm test --run`. See [[Test Runner]].
+> [!info] Watch mode needs a TTY
+> Vitest only enters watch mode with an interactive TTY; in CI or under Claude, a bare `pnpm test` runs once and exits. Use `pnpm test --run` for an explicit single pass. See [[Test Runner]].
 
 ## Component test pattern
 

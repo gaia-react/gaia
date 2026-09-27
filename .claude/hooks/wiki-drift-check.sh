@@ -88,24 +88,10 @@ fi
 # GAIA CI deferral. When wiki.mode == "ci", local automatic triggers stand
 # down so they don't collide with the cron-managed wiki run. The marker is
 # NOT advanced here so a future config change still gets the drift check.
-# Disarmed and bracketed on the same terms as the resolver load above, and for
-# the same reason: an unparseable copy (an unresolved merge conflict, a
-# truncated write) must degrade to "not managed" at the `type` check below
-# rather than abandon the hook at the load, and `set +e` alone does not deliver
-# that while the ERR trap is armed. Reuses the `_hook_root` resolved at the top
-# of this file, which is this file's own on-disk location and never the process
-# working directory: a bare test is false from anywhere below the repository
-# root, and the `type` check reads that as a missing library. Through the
-# ancestor rather than a lib child, for the reason
-# block-main-destructive-git.sh states at the same load: the ancestor cannot
-# fail, so no degrade branch is owed.
+# Reuses the `_hook_root` resolved at the top of this file.
 _defer_lib="$_hook_root/.claude/hooks/lib/gaia-ci-defer.sh"
-trap - ERR
-set +e
 # shellcheck source=/dev/null
 [ -n "$_hook_root" ] && [ -f "$_defer_lib" ] && . "$_defer_lib" 2>/dev/null
-set -e
-trap 'exit 0' ERR
 if type gaia_ci_defer_if_managed >/dev/null 2>&1; then
   gaia_ci_defer_if_managed wiki || true
 fi
