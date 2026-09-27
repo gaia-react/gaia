@@ -523,15 +523,15 @@ describe('release runtime-deps CLI', () => {
   });
 
   test('scans nested scripts under .github/actions', () => {
-    // The CI composite-action scripts live two directories deep
+    // Composite-action scripts can live two directories deep
     // (.github/actions/<action>/lib/*.sh); the walk must recurse to reach
-    // them. They ship (manifest "owned") and reference no maintainer paths,
-    // so a clean scan is the expected steady state.
+    // them. This fixture ships (manifest "owned") and references no
+    // maintainer paths, so a clean scan is the expected steady state.
     sandbox.writeManifest({
-      '.github/actions/gaia-ci-merge-and-watch/lib/wait-for-ci.sh': 'owned',
+      '.github/actions/gaia-example-action/lib/wait-for-ci.sh': 'owned',
     });
     sandbox.writeFile(
-      '.github/actions/gaia-ci-merge-and-watch/lib/wait-for-ci.sh',
+      '.github/actions/gaia-example-action/lib/wait-for-ci.sh',
       ['#!/usr/bin/env bash', 'gh pr checks "$PR_NUMBER"', ''].join('\n')
     );
 
@@ -543,7 +543,7 @@ describe('release runtime-deps CLI', () => {
       scanned_files: readonly string[];
     };
     expect(parsed.scanned_files).toContain(
-      '.github/actions/gaia-ci-merge-and-watch/lib/wait-for-ci.sh'
+      '.github/actions/gaia-example-action/lib/wait-for-ci.sh'
     );
     expect(parsed.leaks).toHaveLength(0);
   });
@@ -553,10 +553,10 @@ describe('release runtime-deps CLI', () => {
     // deeply nested composite-action script must still flag, proving the new
     // scan scope walks the tree rather than only its top level.
     sandbox.writeManifest({
-      '.github/actions/gaia-ci-merge-and-watch/lib/render-issue.sh': 'owned',
+      '.github/actions/gaia-example-action/lib/render-issue.sh': 'owned',
     });
     sandbox.writeFile(
-      '.github/actions/gaia-ci-merge-and-watch/lib/render-issue.sh',
+      '.github/actions/gaia-example-action/lib/render-issue.sh',
       ['#!/usr/bin/env bash', 'bash .gaia/cli/src/release/scrub.ts', ''].join(
         '\n'
       )

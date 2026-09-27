@@ -171,7 +171,6 @@ The list below is **annotation, not the contract**. It makes no completeness cla
 - `.gaia/scripts/check-debt-issue-metadata.sh` (loud, and first)
 - `.claude/rules/issue-claim.md` (silent, for the same reason `debt.md` is)
 - `.claude/hooks/issue-claim-release.sh` (silent)
-- `.github/actions/gaia-ci-merge-and-watch/action.yml` (`severity:important`, `severity:critical`; loud, but only on the revert path, so it can sit unfired for a long time)
 - `.gaia/labels.json` (neither loud nor silent: it is the rename itself rather than a carrier of it)
 - `.gaia/cli/src/labels/registry.ts` (every governed namespace prefix; silent, and held as bare prefixes, which no search for a full spelling reaches)
 - `.gaia/cli/health/comprehensive/runbook.md` (silent: a pasted command fails in a human's terminal rather than in CI)

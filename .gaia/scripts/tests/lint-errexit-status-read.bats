@@ -112,7 +112,7 @@ run_linter() {
   steps:
     - shell: bash
       run: |
-        revert_out="$(gaia ci-revert open --pr "$PR")"
+        revert_out="$(gh pr view "$PR" --json state)"
         revert_rc=$?
         if [ "$revert_rc" -ne 0 ]; then
           echo "::error::revert failed" >&2

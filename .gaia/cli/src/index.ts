@@ -12,9 +12,6 @@
 import {realpathSync} from 'node:fs';
 import {pathToFileURL} from 'node:url';
 import {run as runAutomation} from './automation/index.js';
-import {run as runCiCheckSubject} from './ci/check-subject.js';
-import {run as runCiRevert} from './ci/revert.js';
-import {run as runCiStaleCheck} from './ci/stale-check.js';
 import {EXIT_CODES} from './exit.js';
 import {run as runFitness} from './fitness/index.js';
 import {run as runHardenLedger} from './harden/ledger.js';
@@ -46,9 +43,6 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
   harden-ledger list|record|is-suppressed|prune|snapshot
   harden-tally
   automation read-config|cron-decide|render-workflows|install-audit-workflow
-  ci-check-subject --subject "<text>"
-  ci-stale-check --label <name> --base <branch> [--author <login>] [--json]
-  ci-revert open|mark-failed|is-cap-reached
   update merge-workspace|merge-audit-ci|merge-region|regen-regions
   update-deps run|decline
   init strip-branding|configure-i18n|rename|wire-statusline|bootstrap-env|configure-automation|finalize|resume
@@ -75,9 +69,6 @@ const SUBCOMMAND_HANDLERS: Readonly<
   Partial<Record<string, SubcommandHandler>>
 > = {
   automation: runAutomation,
-  'ci-check-subject': runCiCheckSubject,
-  'ci-revert': runCiRevert,
-  'ci-stale-check': runCiStaleCheck,
   fitness: runFitness,
   'harden-ledger': runHardenLedger,
   'harden-tally': runHardenTally,

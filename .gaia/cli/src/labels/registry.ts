@@ -9,9 +9,9 @@
  * adopter repositories, not GAIA's own CI. A tree that has never run
  * `/gaia-setup`'s automation step owes neither label.
  *
- * Every helper takes an explicit `repoRoot` and none calls `process.cwd()`,
- * matching `ci/paths.ts`. Each `run(argv)` handler resolves its own default
- * once with `resolveRepoRoot()` and passes the result down.
+ * Every helper takes an explicit `repoRoot` and none calls `process.cwd()`.
+ * Each `run(argv)` handler resolves its own default once with
+ * `resolveRepoRoot()` and passes the result down.
  */
 import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';

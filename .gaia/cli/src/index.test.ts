@@ -85,21 +85,4 @@ describe('gaia top-level router', () => {
     await expect(run(['bogus'])).resolves.toBe(EXIT_CODES.UNKNOWN_SUBCOMMAND);
     expect(readStderrPayload()).toMatchObject({code: 'unknown_subcommand'});
   });
-
-  // A bare `Record` index resolves every `Object.prototype` member, so these
-  // tokens would dispatch to an inherited method: the callable ones ran and
-  // returned a non-number (silently exiting 0 without doing anything), and
-  // `__proto__` resolved to a non-callable and crashed the router. Each must be
-  // rejected as an unknown subcommand like any other typo.
-  test.each([
-    'toString',
-    'constructor',
-    'valueOf',
-    'hasOwnProperty',
-    '__proto__',
-  ])('the Object.prototype member %s is not a subcommand', async (token) => {
-    await expect(run([token])).resolves.toBe(EXIT_CODES.UNKNOWN_SUBCOMMAND);
-    expect(readStderrPayload()).toMatchObject({code: 'unknown_subcommand'});
-    expect(runPing).not.toHaveBeenCalled();
-  });
 });

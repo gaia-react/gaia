@@ -337,19 +337,15 @@ describe('wiki sync await', () => {
     helpStdio.restore();
     expect(helpStdio.outputs.join('')).toContain('await');
 
-    // Both entrypoints carry `sync await` in the free-form tail.
+    // The adopter entrypoint carries `sync await` in the free-form tail.
+    // index.maintainer.ts is release-only and carries no `wiki` namespace.
     const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
     const indexSource = readFileSync(
       path.join(repoRoot, '.gaia', 'cli', 'src', 'index.ts'),
       'utf8'
     );
-    const maintainerSource = readFileSync(
-      path.join(repoRoot, '.gaia', 'cli', 'src', 'index.maintainer.ts'),
-      'utf8'
-    );
 
     expect(indexSource).toContain('sync land|sync await');
-    expect(maintainerSource).toContain('sync land|sync await');
   });
 
   test('a wiki-sync branch with a real CLOSED PR: silent no-op', () => {

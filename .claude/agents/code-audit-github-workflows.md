@@ -61,7 +61,7 @@ A narrower `CHANGED` shifts one risk onto you: it can begin after a commit this 
 
 ## Why this member exists
 
-Composite actions carry the same surface as workflows. Their sibling `.sh` scripts are owned by the shell auditor (`.github/**/*.sh`); the composite action's own YAML wiring them into CI is yours. `.github/actions/gaia-ci-merge-and-watch/action.yml` is the concrete case: `using: composite` with multiple `shell: bash` steps, `GH_TOKEN` passed as an `env:` binding in several of them, and `${{ github.event.* }}`/`${{ steps.* }}` interpolation inside `env:` blocks feeding those steps. The scripts have a reviewer; the workflow YAML deciding what runs, with what token, and under what trigger has you.
+Composite actions carry the same surface as workflows. Their sibling `.sh` scripts are owned by the shell auditor (`.github/**/*.sh`); the composite action's own YAML wiring them into CI is yours: `using: composite` with multiple `shell: bash` steps, a `GH_TOKEN` passed as an `env:` binding, and `${{ github.event.* }}`/`${{ steps.* }}` interpolation inside `env:` blocks feeding those steps are all in your remit wherever they appear. The scripts have a reviewer; the workflow YAML deciding what runs, with what token, and under what trigger has you.
 
 ## Review dimensions
 
