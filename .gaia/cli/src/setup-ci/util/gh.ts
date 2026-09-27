@@ -1,21 +1,9 @@
 /**
  * Thin wrapper around `gh` invocations used by `gaia setup-ci`.
  *
- * Spawns child processes via `child_process.spawn` (NOT `execSync`) so
- * stdin can be piped into `gh` when a caller needs it. Returns a
- * discriminated `{ ok: true, stdout }` / `{ ok: false, exitCode, stderr }`
- * shape.
- *
- * Security contract for any stdin-carrying invocation:
- *
- * - The wrapper NEVER appends `stdin` content to `args`.
- * - The wrapper NEVER logs or echoes `stdin` content.
- * - On wrapper-internal errors (e.g. `gh` not on PATH), the wrapper
- *   returns a structured failure WITHOUT including `stdin` content
- *   in any error field.
- *
- * Tests assert these guarantees by inspecting a sandbox `gh` shim's
- * recorded argv + stdin files.
+ * Spawns child processes via `child_process.spawn` (NOT `execSync`).
+ * Returns a discriminated `{ ok: true, stdout }` /
+ * `{ ok: false, exitCode, stderr }` shape.
  */
 import {spawn} from 'node:child_process';
 
@@ -29,7 +17,6 @@ export type GhOptions = {
   args: readonly string[];
   cwd?: string;
   env?: NodeJS.ProcessEnv;
-  stdin?: Buffer | string;
 };
 
 export type GhResult = GhFailure | GhSuccess;
@@ -66,9 +53,7 @@ export const runGh = async (options: GhOptions): Promise<GhResult> =>
     });
 
     child.on('error', (error: Error) => {
-      // Wrapper-internal failure (gh not on PATH, ENOENT, etc). The
-      // stdin payload is intentionally NOT included in the surfaced
-      // stderr; secret callers depend on this guarantee.
+      // Wrapper-internal failure (gh not on PATH, ENOENT, etc).
       settle({
         exitCode: -1,
         ok: false,
@@ -91,20 +76,5 @@ export const runGh = async (options: GhOptions): Promise<GhResult> =>
       settle({exitCode: code ?? 1, ok: false, stderr: stderrBuf});
     });
 
-    // A child that exits before draining stdin leaves the pipe closed;
-    // a subsequent write/end then emits EPIPE on the stream. Without an
-    // `error` listener that EPIPE becomes an unhandled stream error and
-    // crashes the process. The child's exit is already captured by the
-    // `close` handler above, so a broken stdin pipe is benign here.
-    child.stdin.on('error', () => {
-      // Intentionally swallowed; `close` carries the real outcome.
-    });
-
-    if (options.stdin === undefined) {
-      child.stdin.end();
-    } else {
-      // `end(payload)` writes then closes in one call; respecting
-      // backpressure is unnecessary because we are done after this.
-      child.stdin.end(options.stdin);
-    }
+    child.stdin.end();
   });

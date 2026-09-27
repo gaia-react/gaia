@@ -17,6 +17,7 @@ import {EXIT_CODES} from '../../exit.js';
 import {declineLedgerPath} from '../../schemas/decline-ledger.js';
 import type {DeclineLedger} from '../../schemas/decline-ledger.js';
 import {isValidFindingClass} from '../../schemas/finding-class.js';
+import {reviewSnapshotPath} from '../../schemas/review-snapshot.js';
 import {run} from '../ledger.js';
 import {isMaterialRise, TALLY_SCHEMA_VERSION} from '../material-rise.js';
 import type * as MaterialRiseModule from '../material-rise.js';
@@ -952,10 +953,7 @@ describe('harden-ledger', () => {
   });
 
   describe('snapshot dispatch', () => {
-    test('show with no snapshot returns 1 without throwing; record then show returns 0', () => {
-      const showBeforeCode = run(['snapshot', 'show'], {cwd: sandbox.root});
-      expect(showBeforeCode).toBe(EXIT_CODES.UNKNOWN_SUBCOMMAND);
-
+    test('record dispatches to the review-snapshot verb', () => {
       const tallyPath = path.join(sandbox.root, 'tally.json');
       writeFileSync(
         tallyPath,
@@ -977,9 +975,7 @@ describe('harden-ledger', () => {
         {cwd: sandbox.root}
       );
       expect(recordCode).toBe(EXIT_CODES.OK);
-
-      const showAfterCode = run(['snapshot', 'show'], {cwd: sandbox.root});
-      expect(showAfterCode).toBe(EXIT_CODES.OK);
+      expect(existsSync(reviewSnapshotPath(sandbox.root))).toBe(true);
     });
   });
 

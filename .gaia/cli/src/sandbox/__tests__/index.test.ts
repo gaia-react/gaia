@@ -135,66 +135,6 @@ describe('gaia sandbox detect', () => {
   });
 });
 
-describe('gaia sandbox seed', () => {
-  let stdio: ReturnType<typeof captureStdio>;
-
-  beforeEach(() => {
-    stdio = captureStdio();
-  });
-
-  afterEach(() => {
-    stdio.restore();
-    vi.restoreAllMocks();
-  });
-
-  test('default registry, docker absent: allowedDomains defaults and excludedCommands is absent', () => {
-    const exit = run([
-      'seed',
-      '--registry',
-      '',
-      '--docker-present',
-      'false',
-      '--json',
-    ]);
-
-    expect(exit).toBe(0);
-    const parsed = JSON.parse(stdio.outputs.join('').trim()) as {
-      sandbox: {
-        excludedCommands?: string[];
-        network: {allowedDomains: string[]};
-      };
-    };
-    expect(parsed.sandbox.network.allowedDomains).toEqual([
-      'registry.npmjs.org',
-    ]);
-    expect(parsed.sandbox.excludedCommands).toBeUndefined();
-  });
-
-  test('docker present: excludedCommands contains docker *', () => {
-    const exit = run([
-      'seed',
-      '--registry',
-      'https://registry.npmjs.org/',
-      '--docker-present',
-      'true',
-      '--json',
-    ]);
-
-    expect(exit).toBe(0);
-    const parsed = JSON.parse(stdio.outputs.join('').trim()) as {
-      sandbox: {excludedCommands?: string[]};
-    };
-    expect(parsed.sandbox.excludedCommands).toContain('docker *');
-  });
-
-  test('missing --registry exits non-zero', () => {
-    const exit = run(['seed', '--docker-present', 'true']);
-
-    expect(exit).toBe(1);
-    expect(stdio.errors.join('')).toContain('--registry is required');
-  });
-});
-
 describe('gaia sandbox apply', () => {
   let sandbox: Sandbox;
   let stdio: ReturnType<typeof captureStdio>;

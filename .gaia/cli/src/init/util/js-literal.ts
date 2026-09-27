@@ -1,12 +1,8 @@
 /**
- * The sink-side half of `gaia init`'s `--title` policy, for the sinks that are
- * quoted JavaScript string literals.
- *
- * `./title.ts` refuses what is not a title and deliberately never rewrites the
- * value, because escaping is a property of the sink rather than of the input.
- * This is that escaping for one sink shape, shared by the two commands that
- * write a title into a `.ts` file: `init rename` (the seeded language files)
- * and `init strip-branding` (`.storybook/preview.ts`).
+ * Escaping for `gaia init`'s `--title` value where the sink is a quoted
+ * JavaScript string literal, shared by the two commands that write a title
+ * into a `.ts` file: `init rename` (the seeded language files) and
+ * `init strip-branding` (`.storybook/preview.ts`).
  */
 
 /** The quote characters a value may be wrapped in. */

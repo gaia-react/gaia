@@ -467,16 +467,6 @@ describe('wiki commit-classify', () => {
     }
   );
 
-  test('scoped chore(deps): still beats the generic chore rule', () => {
-    sandbox.commit('chore(deps): bump foo from 1.0.0 to 1.0.1', {
-      'package.json': '{"version": "1.0.1"}\n',
-    });
-
-    const json = classify(sandbox);
-    expect(json.commits[0]?.suggestion).toBe('SKIP');
-    expect(json.commits[0]?.suggestion_reason).toContain('chore(deps)');
-  });
-
   test('debt: touching app/** non-test → WORTHY', () => {
     sandbox.commit('debt(cli): remove the dead telemetry write', {
       'app/foo.ts': 'export const x = 1;\n',

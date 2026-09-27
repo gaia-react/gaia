@@ -14,11 +14,8 @@
  *   - `app/languages/en/pages/_index.ts` `meta.title`, `title`, and
  *     `heroTitle` → `<Title>` (when the keys exist).
  *
- * A language-file key that is absent is tolerated; one that is present but
- * holds something other than a quoted string literal fails the step, for the
- * same reason the `CLAUDE.md` heading does. Rewriting it is not possible, and
- * exiting 0 over a file that still holds the old title reports a rename that
- * did not happen.
+ * A language-file key that is absent is tolerated; one that is present is
+ * rewritten wherever its value is a quoted string literal.
  *
  * Idempotent: re-running with the same args is a no-op once the rename
  * has been applied.
@@ -34,7 +31,6 @@ import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {escapeJsLiteralValue} from './util/js-literal.js';
 import type {JsLiteralQuote} from './util/js-literal.js';
 import {markStepCompleted} from './util/state.js';
-import {titleFailure} from './util/title.js';
 
 const HELP_TEXT = `Usage: gaia init rename --title <T> --kebab <K>
 
@@ -47,9 +43,8 @@ const HELP_TEXT = `Usage: gaia init rename --title <T> --kebab <K>
 
   Exit codes:
     0  success (no stdout)
-    1  user-correctable error (missing flags, invalid title or kebab, no
-       package.json, no CLAUDE.md heading, a language-file key whose value
-       is not a rewritable string literal)
+    1  user-correctable error (missing flags, invalid kebab, no package.json,
+       no CLAUDE.md heading)
     2  unexpected (filesystem failure)
 `;
 
@@ -106,10 +101,6 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
     return {message: '--kebab is required', ok: false};
   }
 
-  const titleProblem = titleFailure(title);
-
-  if (titleProblem) return {message: titleProblem, ok: false};
-
   if (!/^[a-z][\d a-z-]*$/u.test(kebab)) {
     return {message: '--kebab must be a kebab-case identifier', ok: false};
   }
@@ -143,11 +134,6 @@ const FENCE_LINE = /^\s*(?:```|~~~)/u;
 // bare `#`, and the rewrite then swallows the blank line below it.
 const H1_LINE = /^#\s/u;
 
-// A CRLF checkout leaves `\r` on every line after splitting on `\n`, where
-// `\s` would match it and read a bare `#` as a heading.
-const withoutCr = (line: string): string =>
-  line.endsWith('\r') ? line.slice(0, -1) : line;
-
 /**
  * Index of the document's title heading, or `-1`.
  *
@@ -165,11 +151,9 @@ const withoutCr = (line: string): string =>
  */
 const findH1Line = (lines: readonly string[]): number => {
   for (const [index, line] of lines.entries()) {
-    const text = withoutCr(line);
+    if (FENCE_LINE.test(line)) return -1;
 
-    if (FENCE_LINE.test(text)) return -1;
-
-    if (H1_LINE.test(text)) return index;
+    if (H1_LINE.test(line)) return index;
   }
 
   return -1;
@@ -209,9 +193,7 @@ const renameClaudeMd = (cwd: string, title: string): void => {
   const currentLine = lines[index];
 
   if (currentLine === undefined) return;
-  // Carry the line's own ending, so a CRLF file does not come back with one
-  // lone LF line through the middle of it.
-  const heading = currentLine.endsWith('\r') ? `# ${title}\r` : `# ${title}`;
+  const heading = `# ${title}`;
 
   if (currentLine === heading) return;
   lines[index] = heading;
@@ -252,14 +234,9 @@ type LanguageFile = {
  *
  * `global` is whether the key is rewritten everywhere it appears or only at its
  * first match, which is the one regex flag that varies across the table.
- *
- * `label` is what a refusal calls the key, and the prefix is read two ways, as
- * the rewrite itself and as the precondition's probe, so the check that a key
- * *was* rewritten cannot drift from the rewrite that was supposed to do it.
  */
 type RewriteKey = {
   global: boolean;
-  label: string;
   prefix: string;
 };
 
@@ -268,10 +245,6 @@ const flagsFor = (key: RewriteKey): string => (key.global ? 'gmu' : 'mu');
 /** The whole property: prefix, opening quote, body, matching close quote. */
 const literalPattern = (key: RewriteKey): RegExp =>
   new RegExp(String.raw`(${key.prefix})(['"])${LITERAL_BODY}\2`, flagsFor(key));
-
-/** The key alone, matched wherever its own rewrite would look for it. */
-const keyPattern = (key: RewriteKey): RegExp =>
-  new RegExp(key.prefix, flagsFor(key));
 
 /**
  * `source` with `newValue` written into every value `key` matches.
@@ -303,7 +276,6 @@ const applyRewrite = (
 /** A key whose value is the title wherever in the file it appears. */
 const unscopedKey = (key: string): RewriteKey => ({
   global: true,
-  label: key,
   prefix: String.raw`\b${key}\s*:\s*`,
 });
 
@@ -314,7 +286,6 @@ const unscopedKey = (key: string): RewriteKey => ({
  */
 const topLevelKey = (key: string): RewriteKey => ({
   global: true,
-  label: key,
   prefix: String.raw`^\x20\x20${key}\s*:\s*`,
 });
 
@@ -325,13 +296,11 @@ const topLevelKey = (key: string): RewriteKey => ({
  */
 const META_TITLE_KEY: RewriteKey = {
   global: false,
-  label: 'meta.title',
   prefix: String.raw`^\x20\x20meta\s*:\s*\{[^}]*?\btitle\s*:\s*`,
 };
 
 /**
- * Every identity key this step rewrites, grouped by the file carrying it. One
- * table, read by both the rewrite below and the precondition after it.
+ * Every identity key this step rewrites, grouped by the file carrying it.
  *
  * `common.ts` carries a single identity-bearing key. Other `*Name` properties
  * exist there (form labels) but no second `siteName`, so an unscoped rewrite is
@@ -341,15 +310,6 @@ const META_TITLE_KEY: RewriteKey = {
  *
  * Every key is optional. The shipped `_index.ts` carries only `meta.title`, so
  * a file missing the others is a clean pass.
- *
- * `heroTitle` and top-level `title` are not in the seed, so a file carrying one
- * carries a key the adopter added, and the precondition below holds it to the
- * same standard as a seeded key. That is deliberate: this table is the single
- * definition of what the step rewrites, and the rewrite already claims those
- * two, overwriting either with the project title wherever it finds a literal.
- * A refusal scoped narrower than the rewrite would mean the step silently
- * declines to rename a key it does in fact own, which is the failure this
- * precondition exists to remove.
  */
 const LANGUAGE_FILES: readonly LanguageFile[] = [
   {file: COMMON_TS, keys: [unscopedKey('siteName')]},
@@ -358,57 +318,6 @@ const LANGUAGE_FILES: readonly LanguageFile[] = [
     keys: [topLevelKey('heroTitle'), topLevelKey('title'), META_TITLE_KEY],
   },
 ];
-
-/**
- * The first of `keys` that `target` carries but this step cannot rewrite, or
- * `undefined` when the file is absent or every key present is rewritable.
- *
- * The probe is the rewrite's own prefix, so it reads the key exactly where the
- * rewrite looks for it. Both halves are existential over the whole file, which
- * is what keeps the check aligned with a rewrite that is itself file-wide: a
- * key refuses only when it appears somewhere the rewrite would look and **no**
- * occurrence of it anywhere in the file is a rewritable literal. So a diverged
- * `common.ts` carrying both a `// siteName:` comment and a real
- * `siteName: 'App'` passes, and the comment is ignored rather than refused;
- * that same comment alone, with no literal to rewrite, refuses.
- */
-const missedKeyIn = (
-  target: string,
-  keys: readonly RewriteKey[]
-): RewriteKey | undefined => {
-  if (!existsSync(target)) return undefined;
-  const source = readFileSync(target, 'utf8');
-
-  return keys.find(
-    (key) => keyPattern(key).test(source) && !literalPattern(key).test(source)
-  );
-};
-
-/**
- * The first identity key a seeded language file carries but this step cannot
- * rewrite, or `null` when every key present is rewritable.
- *
- * The precondition the missing `CLAUDE.md` heading already settled for this
- * module, applied to the other sink. A key holding something that is not a
- * quoted literal is a rename that cannot happen, and reporting it beats exiting
- * 0 over a file still holding the old title, where the adopter finds out from
- * the running app rather than from the command. Checked before the first write,
- * so a refused run has renamed nothing.
- *
- * It reports a key it can see but cannot rewrite, so it is silent on a key it
- * cannot see at all: an `_index.ts` reindented past the anchored prefixes has
- * nothing to report here and nothing to rewrite either. That gap is why the
- * suite pins the shipped files by renaming them rather than by asking this.
- */
-const unrewritableKey = (cwd: string): null | {file: string; label: string} => {
-  for (const {file, keys} of LANGUAGE_FILES) {
-    const missed = missedKeyIn(path.join(cwd, file), keys);
-
-    if (missed) return {file, label: missed.label};
-  }
-
-  return null;
-};
 
 const renameLanguageFile = (
   cwd: string,
@@ -467,18 +376,6 @@ export const run = (
         code: 'claude_md_heading_missing',
         message:
           'CLAUDE.md has no top-level "# " heading to rewrite; add one above any fenced code block and re-run',
-        subcommand: 'init rename',
-      });
-
-      return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-    }
-
-    const unrewritable = unrewritableKey(cwd);
-
-    if (unrewritable) {
-      structuredError({
-        code: 'language_value_not_rewritable',
-        message: `${unrewritable.file} carries a "${unrewritable.label}" key whose value is not a plain quoted string literal, so this step cannot rewrite it; give it a string literal value, or remove the key if it should not hold the project title, then re-run`,
         subcommand: 'init rename',
       });
 

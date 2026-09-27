@@ -1,14 +1,12 @@
 /**
- * `gaia harden-ledger snapshot {record|show}`
+ * `gaia harden-ledger snapshot record`
  *
  * A completed `/gaia-harden` review records what it reviewed so the
  * `/gaia-harden` statusline nudge can stay silent until something changes.
  * `record` builds the snapshot from a saved `harden-tally` JSON and writes
  * it, unconditionally overwriting whatever snapshot came before; it never
  * reads the prior snapshot, so a malformed one is simply replaced rather
- * than blocking the next completed review. `show` prints the current
- * snapshot, which is how a maintainer (and the malformed-snapshot error
- * path) inspects it.
+ * than blocking the next completed review.
  *
  * A `gh_ok: false` tally, an unparseable file, or a pre-SPEC tally lacking
  * the new keys is refused with a named exit code and no write: a snapshot
@@ -22,7 +20,6 @@ import {readFileSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {
-  readReviewSnapshot,
   ReviewTallyInputSchema,
   snapshotFromTally,
   writeReviewSnapshot,
@@ -31,14 +28,11 @@ import {summarizeZodError} from '../schemas/zod-error.js';
 import {structuredError} from '../stderr.js';
 import {resolveRepoRoot} from '../util/repo-root.js';
 
-const HELP_TEXT = `Usage: gaia harden-ledger snapshot <record|show> [args]
+const HELP_TEXT = `Usage: gaia harden-ledger snapshot record [args]
 
   record --tally-file <path>
     Build a review snapshot from a saved harden-tally JSON file and write it,
     overwriting any existing snapshot unconditionally.
-
-  show
-    Print the current review snapshot as JSON to stdout.
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
@@ -169,50 +163,6 @@ const handleRecord = (argv: readonly string[], options: RunOptions): number => {
   return EXIT_CODES.OK;
 };
 
-// --- show --------------------------------------------------------------
-
-const handleShow = (argv: readonly string[], options: RunOptions): number => {
-  if (argv.length > 0) {
-    structuredError({
-      code: 'invalid_arguments',
-      message: `unknown argument: ${argv[0]}`,
-      subcommand: 'harden-ledger snapshot show',
-    });
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-
-  const repoRoot = resolveRoot(options, 'snapshot show');
-
-  if (repoRoot === null) return EXIT_CODES.STORAGE_INACCESSIBLE;
-
-  const result = readReviewSnapshot(repoRoot);
-
-  if (result.status === 'missing') {
-    structuredError({
-      code: 'no_snapshot',
-      message: 'no review snapshot recorded yet',
-      subcommand: 'harden-ledger snapshot show',
-    });
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-
-  if (result.status === 'malformed') {
-    structuredError({
-      code: 'malformed_snapshot',
-      message: result.error,
-      subcommand: 'harden-ledger snapshot show',
-    });
-
-    return EXIT_CODES.CONFIG_INVALID;
-  }
-
-  process.stdout.write(`${JSON.stringify(result.snapshot)}\n`);
-
-  return EXIT_CODES.OK;
-};
-
 // --- dispatch ----------------------------------------------------------------
 
 export const runSnapshot = (
@@ -228,7 +178,6 @@ export const runSnapshot = (
   }
 
   if (sub === 'record') return handleRecord(rest, options);
-  if (sub === 'show') return handleShow(rest, options);
 
   structuredError({
     code: 'unknown_subcommand',

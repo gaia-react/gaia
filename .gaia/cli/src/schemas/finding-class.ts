@@ -24,7 +24,6 @@ export const FINDING_CLASS_PREFIXES = [
   'holistic',
   'rule',
   'workflow',
-  'prose',
 ] as const;
 
 export type FindingClassPrefix = (typeof FINDING_CLASS_PREFIXES)[number];
@@ -138,26 +137,10 @@ export const WORKFLOW_FINDING_CLASSES = [
 
 export type WorkflowFindingClass = (typeof WORKFLOW_FINDING_CLASSES)[number];
 
-/**
- * Closed-vocabulary members for the prose bucket: the prose-complexity
- * dimensions (excessive reducible length, deep nesting, high cross-reference
- * indirection, redundant instruction duplicated across files). Each is a
- * prose-level root cause, never a subsystem tag.
- */
-export const PROSE_FINDING_CLASSES = [
-  'prose/excessive-length',
-  'prose/deep-nesting',
-  'prose/high-indirection',
-  'prose/redundant-instruction',
-] as const;
-
-export type ProseFindingClass = (typeof PROSE_FINDING_CLASSES)[number];
-
 const CLOSED_VOCABULARY: ReadonlySet<string> = new Set([
   ...HOLISTIC_FINDING_CLASSES,
   ...RULE_FINDING_CLASSES,
   ...WORKFLOW_FINDING_CLASSES,
-  ...PROSE_FINDING_CLASSES,
 ]);
 
 const splitPrefix = (
@@ -192,8 +175,8 @@ export const isOracleFindingClass = (findingClass: string): boolean => {
 /**
  * True when `value` matches the per-bucket convention: a well-formed oracle id
  * (open id space after a known oracle prefix, bounded to the safe id shape) or
- * a seeded closed-vocabulary member (holistic, rule, workflow, or prose).
- * Everything else (free text, unknown prefix, empty or malformed slug, unseeded
+ * a seeded closed-vocabulary member (holistic, rule, or workflow). Everything
+ * else (free text, unknown prefix, empty or malformed slug, unseeded
  * closed-vocabulary member) is invalid.
  */
 export const isValidFindingClass = (value: string): boolean => {

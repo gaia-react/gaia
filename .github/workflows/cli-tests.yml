@@ -147,20 +147,13 @@ jobs:
               # against the real workspace rather than against fixtures.
               - '.gaia/scripts/check-cli-workspace-floors.sh'
               # src/red-ledger/extract-test-signals.test.ts spawns this helper
-              # to pin its stdout-exit contract: a reader that stops before EOF
-              # must leave it exiting 0 silently. Removing that helper's EPIPE
-              # listener is a change to this file and nothing else, so without
-              # this line such a pull request resolves `code=false`, skips the
-              # Vitest step, and reports this required check green having run
-              # the assertion zero times. The bats copy of the same assertion
-              # is no fallback, though not for the reason once written here: it
-              # sits in red-ledger-lib.bats, which is in the hooks exchange
-              # group, and audit-ci-tests.yml DOES install the root workspace on
-              # every leg of that group. Under CI that suite runs, and where its Node
-              # precondition is unmet it REDS rather than skipping, which is the
-              # whole point of gaia-react/gaia#1748. It is no fallback because
-              # the Vitest assertion is the one this job runs, not because the
-              # bats copy is inert.
+              # to pin its title-handling carve-outs: a `.each`, `.for`, or
+              # dynamic-title describe/test must emit no signal, since vitest
+              # never preserves such a title verbatim at runtime. A change to
+              # this file and nothing else is otherwise invisible to that
+              # suite: without this line such a pull request resolves
+              # `code=false`, skips the Vitest step, and reports this required
+              # check green having run the assertion zero times.
               - '.gaia/scripts/red-ledger/extract-test-signals.mjs'
               # The label registry and the JSON Schema beside it, both read from
               # the repo root by suites that live under `.gaia/cli/**`:

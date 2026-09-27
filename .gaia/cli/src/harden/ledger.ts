@@ -57,8 +57,8 @@ const HELP_TEXT = `Usage: gaia harden-ledger <subcommand> [args]
     Remove any decline entry whose finding_class is not in the comma-separated
     set (no qualifying evidence left in the window). Idempotent.
 
-  snapshot <record|show> [args]
-    Dispatches to the review-snapshot verbs. See
+  snapshot record [args]
+    Dispatches to the review-snapshot verb. See
     \`gaia harden-ledger snapshot --help\`.
 `;
 

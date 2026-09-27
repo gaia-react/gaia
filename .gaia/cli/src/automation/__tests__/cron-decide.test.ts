@@ -1,6 +1,4 @@
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
-import {writeFileSync} from 'node:fs';
-import path from 'node:path';
 import {EXIT_CODES} from '../../exit.js';
 import {run as runCronDecide} from '../cron-decide.js';
 import {setupSandbox, VALID_BASE_CONFIG} from './sandbox.js';
@@ -82,31 +80,6 @@ describe('automation cron-decide', () => {
     sandbox.writeConfig(VALID_BASE_CONFIG);
     const exit = runCronDecide(['wiki', '--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);
-    const decision = decisionFromStdout(stdio.outputs.join(''));
-    expect(decision.decision).toBe('run');
-    expect(decision.reason).toBe('enabled');
-    expect(decision.skip_log_line).toBeNull();
-  });
-
-  test('never suppresses on cost overage; a configured wiki tool always runs (reason=enabled)', () => {
-    sandbox.writeConfig(VALID_BASE_CONFIG);
-    // A stale state file with cost_overage=true once forced a skip. The
-    // state layer is gone: cron-decide no longer reads any state file, so
-    // even a present cost_overage blob cannot suppress an enabled wiki run.
-    writeFileSync(
-      path.join(sandbox.root, '.gaia', 'automation.state-wiki.json'),
-      JSON.stringify({
-        cost_overage: true,
-        last_run_at: '2026-05-01T00:00:00Z',
-        last_run_sha: sandbox.headSha,
-        version: 1,
-      }),
-      'utf8'
-    );
-
-    const exit = runCronDecide(['wiki', '--json'], {cwd: sandbox.root});
-    expect(exit).toBe(0);
-
     const decision = decisionFromStdout(stdio.outputs.join(''));
     expect(decision.decision).toBe('run');
     expect(decision.reason).toBe('enabled');
