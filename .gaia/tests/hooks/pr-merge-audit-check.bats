@@ -405,14 +405,14 @@ assert_not_in_set() {
 
 @test "allows a docs/metadata-only PR (wiki + .claude + .gaia)" {
   install_gh_stub
-  # The .claude/ witness must be a path no roster member owns. The
-  # release-notes eval directory is declared in `unowned:` (it is Python and
-  # eval config, and the roster carries no Python member), which is what
-  # makes it the right witness for the unaudited kind.
+  # The .claude/ witness must be a path no roster member owns. Skill prose is
+  # declared in `unowned:` (`.claude/skills/**/*.md`, and the roster carries
+  # no prose member), which is what makes it the right witness for the
+  # unaudited kind.
   # The .gaia/ file is a README for the same reason: the roster grants
   # .gaia/*.json to the shell member, so the manifest is audited metadata.
   commit_files \
-    ".claude/skills/release-notes/eval/trigger-eval.json" "{}" \
+    ".claude/skills/release-notes/SKILL.md" "updated" \
     "wiki/concepts/PR Merge Workflow.md" "updated" \
     ".gaia/templates/README.md" "updated"
   run_merge_hook
@@ -887,12 +887,12 @@ assert_not_in_set() {
   install_gh_stub
   # The .claude/ witness has to keep the spawn set EMPTY, which is what this
   # case is about, so it must be a path no roster member owns. `.claude/rules/**`
-  # and `.claude/agents/code-audit-*.md` are owned by the shell member; the
-  # release-notes eval directory is declared in `unowned:` regardless, so it
-  # stays the witness even though the rest of `.claude/skills/**` is ownerless too.
+  # and `.claude/agents/code-audit-*.md` are owned by the shell member; skill
+  # prose is declared in `unowned:` (`.claude/skills/**/*.md`), so a skill
+  # file is the witness.
   commit_files \
     "wiki/x.md" "doc" \
-    ".claude/skills/release-notes/eval/trigger-eval.json" "{}" \
+    ".claude/skills/release-notes/SKILL.md" "updated" \
     "README.md" "# changed again"
   set=$(spawn_set)
   [ -z "$set" ]
