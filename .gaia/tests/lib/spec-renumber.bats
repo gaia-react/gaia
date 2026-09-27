@@ -84,3 +84,29 @@ _renumber() {
   [ "$status" -eq 0 ]
   grep -qF "branch -m 'plan/spec-012-cards'" <<<"$output"
 }
+
+# --- 8: renumber a foldered SPEC ---------------------------------------------
+
+@test "8a: renumber renames the folder; SPEC.md keeps its name; siblings ride along" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-folder SPEC-002)"
+  echo "report body" > "$REPO/.gaia/local/specs/SPEC-002/REPORT.md"
+
+  run _renumber "$REPO" SPEC-002 SPEC-005
+  [ "$status" -eq 0 ]
+
+  [ ! -e "$REPO/.gaia/local/specs/SPEC-002" ]
+  [ -f "$REPO/.gaia/local/specs/SPEC-005/SPEC.md" ]
+  [ -f "$REPO/.gaia/local/specs/SPEC-005/REPORT.md" ]
+  [ "$(cat "$REPO/.gaia/local/specs/SPEC-005/REPORT.md")" = "report body" ]
+  # Inner SPEC.md frontmatter id rewritten.
+  grep -q '^spec_id: SPEC-005$' "$REPO/.gaia/local/specs/SPEC-005/SPEC.md"
+}
+
+@test "8b: renumber collision guard fires when the target folder exists" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-folder SPEC-002 --seed-folder SPEC-005)"
+
+  run _renumber "$REPO" SPEC-002 SPEC-005
+  [ "$status" -eq 4 ]
+  # Source folder untouched on a refused renumber.
+  [ -f "$REPO/.gaia/local/specs/SPEC-002/SPEC.md" ]
+}

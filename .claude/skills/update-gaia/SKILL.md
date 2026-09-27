@@ -619,52 +619,14 @@ On a `killed` entry, `cause` says which of the runner's own ceilings ended it: `
 What the step guarantees, and what it does not:
 
 - **The regeneration is authoritative.** A declared region's body is machine-authored, so regeneration overwrites whatever sits between the markers, including an adopter's hand edits inside them. That is by design. Step 9 names every path whose region this run rewrote, so the overwrite is stated rather than silent.
-- **Writes are confined and backed up.** A region's regeneration command legitimately rewrites the paths it declares and nothing else, and **scope is what decides how a write outside them is handled**. Before the spawn the runner records every path under the region's own directories, the run's **snapshot**, in which each path's recorded state is its **pre-image**; anywhere else in the tree it records nothing. A write inside the snapshot is reverted to its pre-image, and a write anywhere else is reported and left where the command put it. Reverting is what the runner attempts inside the snapshot rather than what it always achieves: a path it cannot put back, or cannot establish that putting back would be safe, is reported instead. The runner also copies every declared path it is about to rewrite into `$BACKUP_DIR` first, unless the merge walk already backed that path up.
+- **Writes are confined and backed up.** A region's regeneration command legitimately rewrites the paths it declares and nothing else, and **scope is what decides how a write outside them is handled**. Before the spawn the runner records every file and symlink under the region's own directories, the run's **snapshot**, in which each path's recorded state is its **pre-image**; anywhere else in the tree it records nothing. Inside the snapshot, a path the command left changed is restored to its pre-image and a path it created, which has no pre-image, is removed; a path the command deletes is left deleted and not reported. Anywhere else in the tree there is no pre-image to restore from, so a write is reported and left where the command put it. The runner also copies every declared path it is about to rewrite into `$BACKUP_DIR` first, unless the merge walk already backed that path up.
 
-  **Every way of leaving an undeclared path different counts as a write**, not just overwriting it. Inside the snapshot a **deletion** is reverted from its pre-image, so only the region's own declared paths may be deleted and stay deleted, and a **creation**, which has no pre-image, is removed. Never tell the adopter a file the regeneration created was removed without saying which side of the snapshot it was on: outside it a creation is reported like any other write, and is still sitting where the command put it.
-
-  Symlinks take the same rule rather than an exception to it, because a link's pre-image is the target string it holds: one the command deletes, retargets, or swaps for a regular file is put back as a link on its original target, and one it creates is removed. Restoring a link writes no content and follows nothing, so whatever it pointed at is never touched.
+  Symlinks take the same rule rather than an exception to it, because a link's pre-image is the target string it holds: one the command retargets or swaps for a regular file is put back as a link on its original target, and one it creates is removed. Restoring a link writes no content and follows nothing, so whatever it pointed at is never touched.
 - **The operand guard is well-formedness, not security.** The runner refuses an operand that is absolute, carries a parent-directory segment, resolves through a symlink out of the repository, or is not an exact key of the same manifest's shipped file map. This guards against a stale, corrupt, or hand-edited declaration. It is **not** a defense against anyone who controls the manifest: the flow already extracts and runs the release tarball's bundled tool, so a manifest that could not be trusted would be the smaller problem. Do not describe it as a security control to the adopter.
 
-### Step 8: Count trailer invalidations
+### Step 8: Deferred version bump
 
-The version bump itself is deferred to Step 9 (after the summary prints) so an interrupted run stays resumable, see that step for the rationale. First, while `BASELINE` still names the installed version, count open PRs whose `GAIA-Audit` trailer is stamped with it. The upcoming bump invalidates them, they re-run the full CI audit on their next push:
-
-```bash
-INVALIDATED_COUNT=0
-if command -v gh >/dev/null 2>&1; then
-  OLD_VERSION="$BASELINE"
-  pr_list=$(gh pr list --state open --json number,headRefOid 2>/dev/null || true)
-  if [ -n "$pr_list" ]; then
-    while IFS= read -r sha; do
-      [ -z "$sha" ] && continue
-      msg=$(git log -1 --format='%B' "$sha" 2>/dev/null || true)
-      if echo "$msg" | grep -qE "^GAIA-Audit:[[:space:]]+${OLD_VERSION}[[:space:]]+[0-9a-f]{40}"; then
-        INVALIDATED_COUNT=$((INVALIDATED_COUNT + 1))
-      fi
-    done < <(echo "$pr_list" | jq -r '.[].headRefOid' 2>/dev/null || true)
-  fi
-else
-  INVALIDATED_COUNT="unknown"
-fi
-```
-
-Persist `INVALIDATED_COUNT` for Step 9.
-
-### Step 8b: Migrate SPEC artifacts to per-SPEC folders
-
-SPEC artifacts live in per-SPEC folders: `.gaia/local/specs/<spec_id>/SPEC.md` (archived: `.gaia/local/specs/archived/<spec_id>/`). `.gaia/local/specs/**` is adopter-owned data the three-way merge never touches, so the freshly-updated runbooks reference the folder layout while the adopter's existing specs may still be flat files. Run the migration script to fold any flat specs into the folder layout. It is idempotent, a no-op when specs are already foldered or none exist, so run it unconditionally:
-
-```bash
-spec_folderize_out=$(bash .specify/extensions/gaia/lib/spec-folderize.sh 2>&1)
-spec_folderize_rc=$?
-```
-
-Parse the result for the Step 9 summary:
-
-- The script writes `spec-folderize: migrated <n> SPEC artifact(s) ...` to stderr on a successful migration. Persist `<n>` as `SPECS_MIGRATED`. On a no-op (already foldered or no specs) the script exits `0` with a `nothing to migrate` line, set `SPECS_MIGRATED=0`.
-- Exit code `4` is a migration conflict: a flat `SPEC-<id>.md` **and** a folder `<id>/SPEC.md` both exist for the same id. The script names both conflicting paths on stderr and changes nothing. **Do not swallow this and do not auto-resolve it.** Capture the conflicting ids/paths from `$spec_folderize_out`, set `SPECS_MIGRATED="conflict"`, and surface it in Step 9 as a blocking action item the user must reconcile by hand.
-- Any other non-zero exit (`2` usage, `3` unresolvable repo root) is a script-invocation error. **Do not hard-stop here**, that would discard the Step 9 summary covering every file already merged. Capture `$spec_folderize_out`, set `SPECS_MIGRATED="error"`, and route it through Step 9 as a blocking action item (same handling as the exit-`4` conflict).
+The version bump itself is deferred to Step 9 (after the summary prints) so an interrupted run stays resumable, see that step for the rationale.
 
 ### Step 8c: Sync GitHub labels
 
@@ -738,8 +700,6 @@ GAIA update: v$BASELINE → $LATEST_TAG
   Region fallbacks: <n>  (declared paths compared whole-file this run)
   Pre-region paths: <n>  (declared paths not yet carrying a region)
   Backed up:    <n>  (see .gaia-backup/<timestamp>/)
-  Specs migrated: <n>  (flat .gaia/local/specs files folded into per-SPEC folders)
-  Trailer invalidations: <n>  (open PRs stamped v$BASELINE will re-audit on next push)
   Labels:       <c> created, <r> renamed, <e> descriptions updated, <d> color drift found  (color drift not applied; your own recolor wins)
 ```
 
@@ -767,24 +727,6 @@ When all three `package.json` counts are zero, render that row as `package.json:
 
 **The fallback row counts only `malformed-markers` and `oracle-failed`.** Those two are the paths that genuinely took the unmodified whole-file comparison. An `absent-markers` path **was** normalized per side, so counting it in a row that tells the adopter it was compared whole-file states something false and collapses the distinction **Marker anomalies** in Step 7 draws. Absent-marker paths get the separate `Pre-region paths` row, which carries no alarm.
 
-Use `SPECS_MIGRATED` for the `Specs migrated` row. If it is `"conflict"`, emit the row as `Specs migrated: conflict, see action item below` and, after the table, print a blocking action item naming the conflicting ids/paths from `$spec_folderize_out`:
-
-> **Action required:** SPEC migration could not complete. A flat `SPEC-<id>.md` and a folder `<id>/SPEC.md` exist for the same id: <conflicting paths>. Resolve by hand (keep one, remove the other), then re-run `bash .specify/extensions/gaia/lib/spec-folderize.sh` to finish the migration. The freshly-updated runbooks reference the folder layout, so leaving this unresolved breaks SPEC tooling.
-
-If `SPECS_MIGRATED` is `"error"`, emit the row as `Specs migrated: error, see action item below` and, after the table, print a blocking action item carrying the script-invocation failure from `$spec_folderize_out`:
-
-> **Action required:** SPEC migration could not run, the `spec-folderize.sh` script errored: <`$spec_folderize_out`>. The GAIA file merge completed and is summarized above; only the SPEC-artifact migration was skipped. Fix the reported error, then re-run `bash .specify/extensions/gaia/lib/spec-folderize.sh` to finish the migration. The freshly-updated runbooks reference the folder layout, so leaving this unresolved breaks SPEC tooling.
-
-If `INVALIDATED_COUNT` is `"unknown"`, emit instead:
-
-```
-  Trailer invalidations: unknown  (gh unavailable, open PRs with GAIA-Audit stamps may re-audit)
-```
-
-If `INVALIDATED_COUNT` is greater than 0, also print after the table:
-
-> **Note:** $INVALIDATED_COUNT open PR(s) carry a `GAIA-Audit` trailer stamped with v$BASELINE. On their next push, CI re-runs the full audit (one extra billing cycle per PR). This is intentional, a newer GAIA agent version may catch issues the prior version missed. To minimize re-audit churn, merge or close these PRs before updating GAIA.
-
 **Documented adopter actions (opt-in).** Two merge outcomes leave the adopter with a follow-up the three-way merge deliberately will **not** perform: a dependency GAIA dropped this release that the adopter still has (the Step 7a "GAIA removed it; adopter still has it" no-op, left in place by design) and files removed upstream still in the working tree (`delete[]`). Both are silent or bare, the agent knows _what_ changed but surfaces no _why_. Recover the intent from the release CHANGELOG and offer an opt-in suggestion.
 
 Read `$LATEST_DIR/CHANGELOG.md` (already on disk from Step 5, no extra fetch) and extract the `## [x.y.z]` sections strictly newer than `$BASELINE` through `$LATEST` with the **same range-walk awk as Step 4** (see that block), with one difference: here the awk reads the file as a positional argument (`awk -v baseline="$BASELINE" -v latest="$LATEST" '…' "$LATEST_DIR/CHANGELOG.md"`) rather than from piped stdin.
@@ -802,7 +744,7 @@ When `adopterActions[]` is non-empty, print a recommendation block after the tab
 >
 > These are advisory. Run a command only if you want it.
 
-**This stays opt-in.** The CHANGELOG context upgrades a silent no-op into a suggestion; it never changes the merge's "respect the adopter's choice" behavior and never auto-removes a dependency or deletes a file. This mirrors the Step 8b SPEC-migration action item: surfaced for the user, never auto-resolved.
+**This stays opt-in.** The CHANGELOG context upgrades a silent no-op into a suggestion; it never changes the merge's "respect the adopter's choice" behavior and never auto-removes a dependency or deletes a file.
 
 **Generated regions.** Print each of the following after the table, whenever it applies. Each one reports a state the adopter cannot see any other way, so none may be dropped for brevity.
 
@@ -821,11 +763,10 @@ When `adopterActions[]` is non-empty, print a recommendation block after the tab
 7. **Malformed declarations.** Name each entry in `regions.malformedDeclarations` with its index and reason. The adopter cannot fix these (the declaration ships with the release), so pair them with the off switch: `GAIA_UPDATE_NO_REGIONS=1` disables region awareness for a run if a bad declaration is causing trouble.
 8. **Superseded patches.** Name every entry in `regions.supersededPatches` and say the pre-existing patch is superseded by this run's handling of that path, so the adopter deletes it instead of hand-resolving a region the run already reconciled.
 9. **Audit gate clearance.** The paths carrying a shipped region are audit gate machinery, so a regeneration write on a **resumed** update changes files the gate has already cleared. Clearance markers earned on an earlier push to the same pull request are invalidated, and the dispatched Code Audit Team members have to be re-spawned on the new HEAD.
-10. **Confined writes.** When `regions.regen.confined` is non-empty, name each entry with its action. `restored` and `removed` are writes the regeneration made inside the snapshot (7d), outside the region's declared paths, that the runner undid. `reported` is an entry the runner surfaced and deliberately left alone, and it has three origins:
+10. **Confined writes.** When `regions.regen.confined` is non-empty, name each entry with its action. `restored` and `removed` are writes the regeneration made inside the snapshot (7d), outside the region's declared paths, that the runner undid. `reported` is an entry the runner surfaced and deliberately left alone, and it has two origins:
 
     - A write **outside the snapshot**, where nothing was ever a candidate for reverting. A wholly new untracked directory surfaces here as the directory itself rather than as its individual files.
-    - A path **inside the snapshot with no pre-image** to put back: an unreadable file, link, or directory, or a node holding nothing to read, such as a FIFO, socket, or device node. That last kind is not a write and reports on every run, including those the regeneration never touched.
-    - A path **inside the snapshot** the runner did not put back, because it could not establish the write would land at the path the snapshot recorded, could not tell the adopter's own file apart from something the regeneration created, or could not complete the revert it attempted.
+    - A path **inside the snapshot** the runner attempted to restore or remove but could not complete.
 
     A `reported` entry is the one the adopter has to look at.
 

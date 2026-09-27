@@ -289,3 +289,21 @@ EOF
   [ "$status" -eq 4 ]
   grep -qF "branch-naming library is unusable" <<<"$output"
 }
+
+# --- Test 7a: highest over a foldered SPEC; next never creates a folder ------
+
+@test "7a: highest reads foldered SPEC.md; next does not create a folder" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-folder SPEC-004)"
+  cd "$REPO"
+
+  run bash -c "bash '$REPO/$ALLOC' highest '$REPO'"
+  [ "$status" -eq 0 ]
+  [ "$output" = "SPEC-004" ]
+
+  run bash -c "bash '$REPO/$ALLOC' next '$REPO'"
+  [ "$status" -eq 0 ]
+  [ "$output" = "SPEC-005" ]
+  # `next` only appends a ledger row; it must NOT create the folder.
+  [ ! -e "$REPO/.gaia/local/specs/SPEC-005" ]
+  [ "$(jq -r '.specs[-1].id' "$REPO/.gaia/local/specs/ledger.json")" = "SPEC-005" ]
+}

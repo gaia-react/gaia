@@ -23,11 +23,6 @@
 #   --seed-file SPEC-NNN        write .gaia/local/specs/SPEC-NNN.md with
 #                               status: in-progress frontmatter and NO ledger
 #                               row (the legacy fallback case)
-#   --seed-flat SPEC-NNN        write a legacy flat .gaia/local/specs/
-#                               SPEC-NNN.md (status: draft frontmatter); a
-#                               migration candidate for spec-folderize.sh
-#   --seed-archived-flat SPEC-NNN  same but under
-#                               .gaia/local/specs/archived/SPEC-NNN.md
 #   --seed-folder SPEC-NNN      write the foldered shape
 #                               .gaia/local/specs/SPEC-NNN/SPEC.md with
 #                               status: in-progress frontmatter and NO ledger
@@ -45,11 +40,6 @@
 #                               consolidation gate itself removes the seeded
 #                               SUMMARY.md to simulate a folder consolidation
 #                               never ran on.
-#   --seed-flat-sibling SPEC-NNN-SUFFIX  write a legacy flat sibling file
-#                               .gaia/local/specs/SPEC-NNN-SUFFIX.md; a
-#                               sibling migration candidate for spec-folderize.sh
-#   --seed-archived-flat-sibling SPEC-NNN-SUFFIX  same but under
-#                               .gaia/local/specs/archived/SPEC-NNN-SUFFIX.md
 #   --seed-provisional SPEC-NNN [subject]  append a ledger row
 #                               status:"draft", reservation:"provisional",
 #                               subject:<subject|id> (the offline-allocated row
@@ -118,7 +108,7 @@ printf '{\n  "version": 1,\n  "specs": []\n}\n' > .gaia/local/specs/ledger.json
 # Copy (not symlink) so the scripts' ${BASH_SOURCE[0]}-relative source of
 # with-ledger-lock.sh resolves to this tmp lib dir.
 for s in spec-allocator.sh plan-allocator.sh ledger-update.sh with-ledger-lock.sh \
-         spec-folderize.sh spec-renumber.sh spec-reconcile.sh \
+         spec-renumber.sh spec-reconcile.sh \
          spec-archive-merged.sh spec-archive-abandoned.sh title-normalize.sh; do
   cp "${real_lib}/${s}" ".specify/extensions/gaia/lib/${s}"
   chmod +x ".specify/extensions/gaia/lib/${s}"
@@ -177,38 +167,6 @@ status: in-progress
 
 # ${id}
 EOF
-      ;;
-    --seed-flat)
-      id="$2"; shift 2
-      cat > ".gaia/local/specs/${id}.md" <<EOF
----
-spec_id: ${id}
-status: draft
----
-
-# ${id}
-EOF
-      ;;
-    --seed-archived-flat)
-      id="$2"; shift 2
-      mkdir -p .gaia/local/specs/archived
-      cat > ".gaia/local/specs/archived/${id}.md" <<EOF
----
-spec_id: ${id}
-status: archived
----
-
-# ${id}
-EOF
-      ;;
-    --seed-flat-sibling)
-      id="$2"; shift 2
-      printf 'sibling body for %s\n' "$id" > ".gaia/local/specs/${id}.md"
-      ;;
-    --seed-archived-flat-sibling)
-      id="$2"; shift 2
-      mkdir -p .gaia/local/specs/archived
-      printf 'sibling body for %s\n' "$id" > ".gaia/local/specs/archived/${id}.md"
       ;;
     --seed-folder)
       id="$2"; shift 2
