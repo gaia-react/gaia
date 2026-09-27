@@ -303,7 +303,6 @@
     ".specify/extensions/gaia/lib/spec-allocator.sh": "owned",
     ".specify/extensions/gaia/lib/spec-archive-abandoned.sh": "owned",
     ".specify/extensions/gaia/lib/spec-archive-merged.sh": "owned",
-    ".specify/extensions/gaia/lib/spec-folderize.sh": "owned",
     ".specify/extensions/gaia/lib/spec-reconcile.sh": "owned",
     ".specify/extensions/gaia/lib/spec-renumber.sh": "owned",
     ".specify/extensions/gaia/lib/spec-session-lock.sh": "owned",
@@ -643,7 +642,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-27T01:58:47.070Z",
+  "generated": "2026-09-27T04:48:51.475Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

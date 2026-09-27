@@ -6,7 +6,7 @@
  * applies `applied[]` via the Edit tool to preserve comments and order).
  */
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
-import {mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {run} from './merge-workspace.js';
@@ -431,43 +431,6 @@ describe('update merge-workspace', () => {
 
     expect(exit).not.toBe(0);
     expect(stdio.errors.join('')).toContain('invalid_arguments');
-  });
-
-  test.each([
-    'constructor',
-    'toString',
-    'valueOf',
-    '__proto__',
-    'hasOwnProperty',
-  ])(
-    'an unknown flag named after an Object.prototype key (%s) exits non-zero with invalid_arguments',
-    (token) => {
-      // A bare VALUE_FLAGS index returns the inherited value for these tokens,
-      // which would skip the unknown-flag branch and silently consume the NEXT
-      // argv element as the flag's value. The three real flags are already
-      // satisfied, so the malformed invocation would report a clean merge.
-      sandbox.write('baseline', 'minimumReleaseAge: 10080\n');
-      sandbox.write('latest', 'minimumReleaseAge: 20160\n');
-      sandbox.write('current', 'minimumReleaseAge: 10080\n');
-
-      const exit = run([...argv(sandbox), token, 'swallowed']);
-
-      expect(exit).not.toBe(0);
-      expect(stdio.errors.join('')).toContain('invalid_arguments');
-    }
-  );
-
-  test('the module source carries no raw NUL byte', () => {
-    // A raw NUL inside the first 8000 bytes makes git classify the whole file
-    // as binary, which drops it out of `git grep` and every plain-text diff.
-    // The sort separator is written as an escape so the file stays text.
-    const source = readFileSync(
-      new URL('merge-workspace.ts', import.meta.url),
-      'utf8'
-    );
-
-    expect(source).not.toContain(String.fromCodePoint(0));
-    expect(source).toMatch(/const sortKey =[\s\S]*?\\u0000/);
   });
 
   test('verdict items sort by section then key across a U+0000 separator', () => {

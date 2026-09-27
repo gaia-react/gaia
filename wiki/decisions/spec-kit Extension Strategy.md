@@ -54,7 +54,7 @@ Neither is published to spec-kit's public extension/preset catalog. Distribution
 
 ### 6. The canonical artifact layout is a folder, not a flat file
 
-Each SPEC lives in its own `.gaia/local/specs/SPEC-NNN/` folder containing `SPEC.md` plus any sibling notes (e.g. `IMPLEMENTATION-NOTES.md`). The folder is the archival unit. `lib/spec-folderize.sh` migrates any legacy flat `.gaia/local/specs/SPEC-NNN.md` into the folder shape, moving sibling `SPEC-NNN-<rest>.md` files alongside.
+Each SPEC lives in its own `.gaia/local/specs/SPEC-NNN/` folder containing `SPEC.md` plus any sibling notes (e.g. `IMPLEMENTATION-NOTES.md`). The folder is the archival unit.
 
 ### 7. /gaia-spec runs its own clarify loop
 

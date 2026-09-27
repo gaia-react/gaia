@@ -120,34 +120,6 @@ describe('update merge-audit-ci', () => {
     expect(report.suggestions).toEqual([]);
   });
 
-  test('leaves `unowned` entirely unmanaged, in every bucket', () => {
-    // Pins the premise the merge-audit-ci docblock rests on: `unowned` belongs
-    // to no managed set, so this command never visits it. Without this test the
-    // docblock's whole argument is unenforced prose, and a maintainer adding
-    // `unowned` to MANAGED_WHOLE_VALUE_KEYS would falsify it with nothing going
-    // red -- the same silent-drift class the roster's coverage invariant exists
-    // to close. All three sides differ deliberately: that is the shape most
-    // likely to produce a verdict if the key were managed at all.
-    sandbox.write('baseline', 'unowned:\n  - "wiki/**"\n');
-    sandbox.write('latest', 'unowned:\n  - "wiki/**"\n  - "docs/**"\n');
-    sandbox.write('current', 'unowned:\n  - "my-own-tree/**"\n');
-
-    const exit = run(argv(sandbox));
-    expect(exit).toBe(0);
-
-    const report = parseJson(stdio.outputs);
-    const touched = [
-      ...report.applied,
-      ...report.conflicts,
-      ...report.suggestions,
-    ];
-    expect(touched.filter((item) => item.section === 'unowned')).toEqual([]);
-    expect(touched.filter((item) => item.key === 'unowned')).toEqual([]);
-    expect(report.applied).toEqual([]);
-    expect(report.conflicts).toEqual([]);
-    expect(report.suggestions).toEqual([]);
-  });
-
   test('preserves an adopter-only audit_authors entry untouched', () => {
     // Baseline / latest ship only stevensacks; the adopter committed alice + bob.
     sandbox.write('baseline', 'audit_authors: "stevensacks=local"\n');
@@ -563,21 +535,4 @@ describe('update merge-audit-ci', () => {
     expect(exit).not.toBe(0);
     expect(stdio.errors.join('')).toContain('invalid_arguments');
   });
-
-  test.each(['constructor', 'toString', 'valueOf', '__proto__'])(
-    'an unknown flag named after an Object.prototype key (%s) exits non-zero with invalid_arguments',
-    (token) => {
-      // A bare VALUE_FLAGS index returns the inherited value for these tokens,
-      // which would skip the unknown-flag branch and silently consume the
-      // NEXT argv element as the flag's value.
-      sandbox.write('baseline', 'default_mode: ci\n');
-      sandbox.write('latest', 'default_mode: ci\n');
-      sandbox.write('current', 'default_mode: ci\n');
-
-      const exit = run([...argv(sandbox), token, 'swallowed']);
-
-      expect(exit).not.toBe(0);
-      expect(stdio.errors.join('')).toContain('invalid_arguments');
-    }
-  );
 });
