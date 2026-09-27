@@ -135,13 +135,6 @@ readonly INSTALL_CMD="brew install jq"
   assert_blocked_by_exit
 }
 
-@test "jq absent: block-vitest-globals-tsconfig refuses an edit" {
-  local json
-  json=$(edit_payload "tsconfig.json")
-  without_jq block-vitest-globals-tsconfig.sh "$json"
-  assert_blocked_by_exit
-}
-
 @test "jq absent: block-worktree-path-mismatch refuses an edit" {
   local json
   json=$(edit_payload "app/foo.ts")
