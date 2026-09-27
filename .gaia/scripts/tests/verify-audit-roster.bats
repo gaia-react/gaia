@@ -11,9 +11,7 @@
 # call sites do (SC2329). Every test runs. shell-lint gates `.bats` at
 # severity=warning, above both codes, so this only quiets an ad-hoc run. The
 # spelling that avoids both outright is the explicit `true`
-# .claude/rules/bats-assertions.md prescribes, and
-# .gaia/tests/shell-lint.sh's header carries the full account of the SC2317
-# half.
+# .claude/rules/bats-assertions.md prescribes.
 # shellcheck disable=SC2317,SC2329
 # Tests for .gaia/scripts/verify-audit-roster.sh, the roster's deterministic
 # check.
