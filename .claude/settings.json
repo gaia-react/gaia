@@ -169,10 +169,6 @@
           },
           {
             "type": "command",
-            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-vitest-globals-tsconfig.sh\""
-          },
-          {
-            "type": "command",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-manifest-write.sh\""
           },
           {
