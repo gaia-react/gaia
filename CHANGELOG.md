@@ -282,6 +282,7 @@ A release change that requires the adopter to act, run a command or hand-migrate
 
 ### Changed
 
+- `gaia setup` now reads a `.gaia/local/setup-state.json` that records an unrecognized completed step with that step ignored, instead of failing (#2283)
 - the harness is retuned for Opus 5.5, which can end a turn on a progress report partway through a task. The pre-merge audit's specialist reviewers now end with a `Files reviewed: <n>` line that `audit-noop-detect.sh --shape cra-specialist --expect-count <n>` checks, so a specialist that stops with files unread is retried instead of read as a complete review; the health audit now checks each dispatched leaf's artifact before using it; and the `/gaia-plan` sub-agent template, the audit specialists and refuters, the merge workflow's audit members and the `/gaia-fitness` auditors all name the early stops to avoid. `/gaia-plan` also compares each task's declared files with what changed before committing a phase. `design-baseline.md` gains a named list of default styles to avoid when an adopter leaves the look to Claude, and the scaffold skills read a similar existing file before hand-editing. The agent, rule, skills and script ship, so the change reaches adopters on their next `/update-gaia` (#2246)
 - `.claude/rules/shell-cwd.md`, `wiki-style.md` and `playwright.md` shrink to their instructions. The rationale they carried moves to the wiki or is dropped, and no obligation changes.
 
