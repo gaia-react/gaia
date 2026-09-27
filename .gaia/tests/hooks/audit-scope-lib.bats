@@ -788,7 +788,7 @@ EOF
   . "$SCOPE_LIB"
   audit_scope_init "$REPO_ROOT"
   [ -z "$(audit_owner_for_path '.claude/skills/gaia/references/debt.md')" ]
-  [ -z "$(audit_owner_for_path '.claude/skills/release-notes/eval/probe.py')" ]
+  [ -z "$(audit_owner_for_path '.claude/skills/gaia/helper.py')" ]
 }
 
 # ---------------------------------------------------------------------------
