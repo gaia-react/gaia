@@ -284,26 +284,6 @@ readonly INSTALL_CMD="brew install jq"
   assert_allowed_by_exit
 }
 
-# --- the advisory hooks stand down, which is the opposite obligation ---------
-#
-# They nudge and never deny, so refusing on a missing interpreter would trade a
-# lost reminder for a blocked session. The pair below is what keeps a later
-# uniformity pass from "fixing" them into refusals.
-
-@test "jq absent: check-i18n-strings stands down silently" {
-  local json
-  json=$(edit_payload "app/pages/Home/index.tsx")
-  without_jq check-i18n-strings.sh "$json"
-  assert_allowed_by_exit
-}
-
-@test "jq absent: check-story-exists stands down silently" {
-  local json
-  json=$(edit_payload "app/components/Button/index.tsx")
-  without_jq check-story-exists.sh "$json"
-  assert_allowed_by_exit
-}
-
 # --- the arm's own library is unreachable ------------------------------------
 
 @test "a mis-arity call refuses rather than dying at a non-blocking status" {

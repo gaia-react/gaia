@@ -380,13 +380,12 @@ describe('release runtime-deps CLI', () => {
 
   test('allowlists per-session marker files', () => {
     sandbox.writeManifest({
-      '.claude/hooks/check-i18n-strings.sh': 'owned',
+      '.claude/hooks/wiki-drift-check.sh': 'owned',
     });
     sandbox.writeFile(
-      '.claude/hooks/check-i18n-strings.sh',
+      '.claude/hooks/wiki-drift-check.sh',
       [
         '#!/usr/bin/env bash',
-        'marker=".claude/i18n-strings-checked"',
         'touch ".claude/wiki-drift-checked"',
         'echo > ".claude/wiki-safety-checked"',
         '',

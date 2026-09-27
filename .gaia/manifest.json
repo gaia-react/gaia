@@ -35,8 +35,6 @@
     ".claude/hooks/block-worktree-path-mismatch.sh": "owned",
     ".claude/hooks/capture-gh-artifact.sh": "owned",
     ".claude/hooks/capture-red-observations.sh": "owned",
-    ".claude/hooks/check-i18n-strings.sh": "owned",
-    ".claude/hooks/check-story-exists.sh": "owned",
     ".claude/hooks/debt-sentinel-touch.sh": "owned",
     ".claude/hooks/debt-session-reconcile.sh": "owned",
     ".claude/hooks/issue-claim-release.sh": "owned",
@@ -640,7 +638,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-27T09:28:00.933Z",
+  "generated": "2026-09-27T11:38:22.580Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

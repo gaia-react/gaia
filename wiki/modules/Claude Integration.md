@@ -57,11 +57,6 @@ This section describes the load-bearing ones; see [[Claude Hooks]] for the full 
 - `worthiness-presence-check.sh`: denies `gh pr merge` when an emergent test the PR changed has no worthiness-ledger line matching its current content (see the worthiness-evaluator agent below).
 - `pr-merge-audit-check.sh`: denies `gh pr merge` until every dispatched Code Audit Team member has written its clearance marker under `.gaia/local/audit/`. See [[PR Merge Workflow]].
 
-### Advisory hooks (nudge, don't block)
-
-- `check-i18n-strings.sh`: reminds to use `t()` for user-facing strings in pages/components
-- `check-story-exists.sh`: reminds to add a Storybook story for new components
-
 ### Wiki coherence (a layered system)
 
 > [!key-insight] Why three hooks for one job
