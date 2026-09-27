@@ -21,7 +21,6 @@ Because the folder is invisible to git, residue a subsystem leaves behind never 
 | `.patched-statusline.sh`, `maintainer-statusline.sh` | statusline | live | regenerated |
 | `audit/<digest>.ok`, `audit/<digest>.<member>.ok` (earned) | [[Code Review Audit Agent]] merge gate | ephemeral | spent once its recorded `tree` is no longer live AND it has aged past `GAIA_AUDIT_MARKER_RETENTION_HOURS` (default 72) past its own `audited_at` |
 | `audit/<digest>.refused`, `audit/<digest>.<member>.refused` (refused) | [[Code Review Audit Agent]] merge gate | ephemeral | spent once its recorded `tree` is no longer live; no retention-window extension |
-| `audit/<tree>.progress.log` | [[Code Review Audit Agent]] merge gate | ephemeral | reaped unconditionally every session (a CI-observability breadcrumb, never liveness-tracked) |
 | `audit/KNOWLEDGE-*.md` | [[GAIA Audit]] | ephemeral | self-pruned by the next applied run |
 | `worthiness-ledger/worthiness.jsonl` | worthiness check | live | append-only |
 | `red-ledger/observations.jsonl` | TDD RED-verification | live | append-only |

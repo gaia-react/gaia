@@ -63,18 +63,6 @@
       "source": "SPEC-077 §shared"
     },
     {
-      "id": "audit-progress-log",
-      "path": "audit/*.progress.log",
-      "match": "glob",
-      "kind": "file",
-      "scope": "shared",
-      "keyed_by": "tree sha",
-      "why": "A CI-observability breadcrumb written by the frontend audit and read by the CI print step, keyed by the tree sha and never re-keyed as a clearance.",
-      "writer": "code",
-      "reaped_by": null,
-      "source": "SPEC-061 §shared"
-    },
-    {
       "id": "audit-security-notes",
       "path": "audit/security/*.md",
       "match": "glob",

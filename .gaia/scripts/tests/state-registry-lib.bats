@@ -318,7 +318,6 @@ run_in_repo() {
     "cache/shared/update-check.json:shared"
     "audit/abc123.ok:shared"
     "audit/abc123.def456.findings.json:shared"
-    "audit/abc123.progress.log:shared"
     "audit/security/deadbeef.md:shared"
     "telemetry/cost.jsonl:shared"
     "debt/count.json:shared"

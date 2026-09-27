@@ -567,13 +567,10 @@ run_step() {
   # One HEAD_SHA event-payload binding for each of the three steps in the loop
   # above (the local-mode stand-down and the two skip-path stamps, out-of-scope
   # and chore-deps), plus the workflow-self-modification check, the pre-existing
-  # clean-no-push stamp, the progress-breadcrumb print step (resolves the
-  # tree the agent keyed its breadcrumb file to, for the same reason: a
-  # self-heal commit can move the runner's local HEAD before this step runs),
-  # and the failed-run backstop, which falls back to it when no self-heal
-  # resolved an audit_sha.
+  # clean-no-push stamp, and the failed-run backstop, which falls back to it
+  # when no self-heal resolved an audit_sha.
   run grep -cF 'HEAD_SHA: ${{ github.event.pull_request.head.sha }}' "$WORKFLOW"
-  [ "$output" -eq 7 ]
+  [ "$output" -eq 6 ]
 }
 
 # -----------------------------------------------------------------------------

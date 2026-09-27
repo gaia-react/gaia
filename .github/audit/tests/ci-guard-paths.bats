@@ -336,7 +336,7 @@ $( guarded_steps )
 EOF
   # Sanity floor: the job carries many guarded steps; a parser that silently
   # matched nothing would otherwise pass this suite vacuously.
-  [ "$count" -ge 20 ]
+  [ "$count" -ge 19 ]
 }
 
 @test "harness: a guard naming no status function carries the implicit success()" {
@@ -585,7 +585,6 @@ Setup Node
 Install dependencies
 Compute audit step timeout
 Run code-review-audit (claude-code-action)
-Print audit progress breadcrumbs
 Status - audit aborted
 ${BACKSTOP}"
 }
@@ -614,7 +613,6 @@ Setup Node
 Install dependencies
 Compute audit step timeout
 Run code-review-audit (claude-code-action)
-Print audit progress breadcrumbs
 Commit and push self-heal
 Write GAIA-Audit commit status
 Re-trigger and stamp required checks on new HEAD"
@@ -631,7 +629,6 @@ Setup Node
 Install dependencies
 Compute audit step timeout
 Run code-review-audit (claude-code-action)
-Print audit progress breadcrumbs
 Commit and push self-heal
 Write GAIA-Audit commit status (clean, no push)"
 }
