@@ -62,30 +62,6 @@ The `Write GAIA-Audit commit status (clean, no push)` step closes this gap: it s
 
 This is the audit's instance of the cross-workflow mechanism in [[Incremental CI Skipping]].
 
-## Progress breadcrumbs
-
-The agent's own SDK output is not surfaced in the public Actions log: `claude-code-action` does not echo tool results unless explicitly enabled, and the workflow leaves that off (it passes only `--max-turns`, `--allowedTools`, and `--verbose` in `claude_args`). This is deliberate: on a public repo the Actions log is world-readable, so echoing tool results that may contain secrets is unsafe.
-
-To provide a public-safe, post-hoc view of audit progress, the agent writes a curated per-phase breadcrumb line to `.gaia/local/audit/<tree-sha>.progress.log` (runner-local, gitignored; the same directory as the `<tree-sha>.ok` clean marker, keyed to the tree captured at review start) via its `Write`/`Edit` tool. Each line is a phase label plus integer counts only: no code, no file contents, no raw tool output, no secrets. These writes are best-effort: a write failure never blocks or fails the audit.
-
-The writes are gated on `GITHUB_ACTIONS`/`CI`, so only a CI run produces a breadcrumb file. The reader is the print step below, which exists only in the workflow; a local audit run writes nothing and leaves no file behind.
-
-`.gaia/local/audit/` is shared state across every concurrent GAIA session on a developer's machine, one store every checkout reaches (see [[Worktrees]]); keying the breadcrumb file to the tree it describes, exactly like the marker, keeps one session's progress from being written over or misread as another's.
-
-A trailing workflow step (`Print audit progress breadcrumbs`) locates the same file after the agent step completes and prints it into `$GITHUB_STEP_SUMMARY`. It resolves the tree from the pushed PR head sha (`github.event.pull_request.head.sha`), never `git rev-parse HEAD`: a self-heal commit lands during the agent's own turn, before this step and before a later step pushes it, so the runner's local HEAD can already sit one tree ahead of the pushed head the breadcrumb file was keyed to. Its gate mirrors the agent step's gate exactly (gate label present, source changes present, no workflow self-modification, no matching trailer), so breadcrumbs surface whenever the audit ran. Partial breadcrumbs appear even when the audit aborts due to max-turns or an SDK error. The step always exits successfully, so it never affects the required `code-review-audit` check status.
-
-The agent itself cannot write directly to the runner log because its `Bash` tool is captured by the SDK and bare `echo`/`cat` commands are not in the workflow `allowedTools` globs. The progress file plus trailing print step is the split that makes runner-log output possible.
-
-Five phases emit a breadcrumb, in run order:
-
-| # | Phase label | Emitted when |
-|---|---|---|
-| 1 | `scope resolved` | Changed-file list resolved against the incremental base, before dispatch |
-| 2 | `oracles done` | Parallel oracle dispatch returns (react-doctor, pnpm knip, pnpm audit, rule subagents) |
-| 3 | `holistic review done` | Cross-cutting review produces candidate findings, before the adversarial pass |
-| 4 | `adversarial verify done` | Finding Proof Gate adversarial refuter pass completes |
-| 5 | `report stamped` | Audit-marker decision complete: marker written or not, self-heal applied or not |
-
 ## Adopter knobs
 
 The adopter-tunable knobs live at `.gaia/audit-ci.yml`. The workflow reads the file at job start via `.gaia/scripts/read-audit-ci-config.sh`; missing file or missing keys fall back to documented defaults.
@@ -218,7 +194,6 @@ A workflow-touching PR edits copy #3, regenerates copy #2 with `pnpm bundle`, an
 - Incremental-base helper (CI): `.github/audit/resolve-audit-base.sh` (argument-less form resolves the shared pull-request-wide base every non-agent caller uses; `--member <name>` resolves a per-member review base for a Code Audit Team member's own fence)
 - Config reader: `.gaia/scripts/read-audit-ci-config.sh`
 - Default config: `.gaia/audit-ci.yml`
-- Progress breadcrumb file (runner-local, gitignored, tree-keyed): `.gaia/local/audit/<tree-sha>.progress.log`
 
 ## See also
 

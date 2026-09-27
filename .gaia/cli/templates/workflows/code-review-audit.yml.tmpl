@@ -365,19 +365,12 @@ jobs:
         if: |
           steps.phase.outputs.reached_audit == 'true' &&
           steps.decision.outputs.should_run == 'true'
-        # Bounds a stalled fetch, not a budget for the work; strictly under the
-        # job's 60-minute cap so this step fires first and names the install.
-        timeout-minutes: 5
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
       - name: Setup Node
         if: |
           steps.phase.outputs.reached_audit == 'true' &&
           steps.decision.outputs.should_run == 'true'
-        # Bounds a stalled Node tarball fetch, not a budget for the work;
-        # strictly under the job's 60-minute cap so this step fires first and
-        # names the Node install rather than redding as a generic job timeout.
-        timeout-minutes: 3
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: '.node-version'
@@ -387,10 +380,6 @@ jobs:
         if: |
           steps.phase.outputs.reached_audit == 'true' &&
           steps.decision.outputs.should_run == 'true'
-        # Bounds a stalled registry fetch, not a budget for the work: a stall
-        # fails here, where the failed-run status backstop sees it, instead of
-        # eating the audit step's headroom until the job is cancelled.
-        timeout-minutes: 10
         run: pnpm install --frozen-lockfile
 
       - name: Compute audit step timeout
@@ -514,14 +503,15 @@ jobs:
             DISPOSITION (out-of-scope findings): the agent files out-of-scope
             findings as deduped, severity-labeled `tech-debt` issues per its own
             definition (.claude/agents/code-audit-frontend.md). Three CI-mode
-            invariants are load-bearing because this run is `--verbose` and posts
-            to a PUBLIC channel, so they are restated here (the CI prompt is the
-            load-bearing copy for the CI run):
+            invariants are load-bearing because this run posts to a PUBLIC
+            channel (the Actions log and PR comment are public), so they are
+            restated here (the CI prompt is the load-bearing copy for the CI
+            run):
             1. BODY VIA FILE: pass every `gh issue` / advisory body via
-               `--body-file <path>` or stdin, NEVER a `--body` argv string.
-               `--verbose` echoes command lines into the public Actions log, so a
-               `--body` argv would leak finding detail. This mirrors the
-               agent-definition rule.
+               `--body-file <path>` or stdin, NEVER a `--body` argv string. A
+               `--body` argv puts finding detail on the command line, which a
+               verbose or full-output run echoes into the public Actions log.
+               This mirrors the agent-definition rule.
             2. SECURITY DIVERT (count-only): a security-class finding on a
                PUBLIC/INTERNAL repo NEVER becomes a public or internal issue. The
                default GITHUB_TOKEN cannot POST a repository security advisory, and
@@ -562,52 +552,6 @@ jobs:
           claude_args: |
             --max-turns ${{ steps.config.outputs.max_turns }}
             --allowedTools "Edit,Write,Bash(git:*),Bash(pnpm:*),Bash(node:*),Bash(npm:*),Bash(gh:*),Bash(bash .gaia/scripts/audit-write-clearance.sh:*),Bash(bash .gaia/scripts/audit-scope-digest.sh:*),Bash(bash .gaia/scripts/check-debt-issue-metadata.sh:*)"
-            --verbose
-
-      - name: Print audit progress breadcrumbs
-        # Public-safe observability. The agent (show_full_output:false hides its
-        # SDK output) writes curated per-phase breadcrumbs to a tree-keyed
-        # gitignored file via Write/Edit, keyed to the tree it started reviewing
-        # (AUDIT_TREE_SHA); this step surfaces it in the step summary AFTER the
-        # agent runs. Gate MIRRORS the agent step exactly (not always(), not
-        # success()) so partial breadcrumbs surface even on an aborted audit.
-        # Always exits 0: a missing/empty file must never fail the required
-        # check.
-        if: |
-          steps.phase.outputs.reached_audit == 'true' &&
-          steps.decision.outputs.should_run == 'true'
-        env:
-          # The PUSHED PR head sha, not `git rev-parse HEAD`. On a self-heal run
-          # the agent commits its fix during its own turn, before this step and
-          # before "Commit and push self-heal" pushes it, so the runner's local
-          # HEAD can already be one commit (one tree) ahead of what was pushed
-          # when the agent captured AUDIT_TREE_SHA and keyed its breadcrumb file.
-          # $HEAD_SHA is always the tree the agent started from.
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          set +e
-          tree_sha="$(git rev-parse "${HEAD_SHA}^{tree}" 2>/dev/null)"
-          progress=""
-          [ -n "$tree_sha" ] && progress=".gaia/local/audit/${tree_sha}.progress.log"
-          {
-            echo "## code-review-audit progress"
-            echo ""
-            if [ -z "$tree_sha" ]; then
-              echo "_Progress unavailable: could not resolve HEAD's tree._"
-            elif [ -s "$progress" ]; then
-              echo '```'
-              cat "$progress"
-              echo '```'
-            else
-              echo "_No breadcrumbs recorded (audit wrote none, or aborted before the first phase)._"
-            fi
-          } >> "$GITHUB_STEP_SUMMARY" 2>/dev/null
-          # Mirror to the step log for log-only consumers.
-          if [ -n "$progress" ] && [ -s "$progress" ]; then
-            echo "code-review-audit progress:"
-            cat "$progress"
-          fi
-          exit 0
 
       - name: Commit and push self-heal
         id: push-fixes
