@@ -49,9 +49,9 @@ counter_path() {
 }
 
 # dispatch_member SUBAGENT_TYPE [SESSION] [CALLER_AGENT_TYPE]
-# CALLER_AGENT_TYPE, when given, is the TOP-LEVEL agent_type field
-# block-selfheal-paths.sh reads (the dispatching agent's own identity), never
-# tool_input.agent_type, which does not exist.
+# CALLER_AGENT_TYPE, when given, is a PreToolUse payload's TOP-LEVEL
+# agent_type field (the dispatching agent's own identity, present only
+# inside a subagent call), never tool_input.agent_type, which does not exist.
 dispatch_member() {
   local sub="$1" sid="${2:-$SESSION}" caller="${3:-}"
   local payload

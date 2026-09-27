@@ -26,10 +26,9 @@
 # after the `## Remit and self-skip` heading (or, failing that, after the
 # YAML frontmatter) and leaves everything else on the page untouched.
 #
-# A dispatched Code Audit Team member is denied this script entirely by
-# .claude/hooks/block-selfheal-paths.sh: repairing a drifted remit is the
-# orchestrator's action, taken between dispatches, never a member's own. A
-# member that notices its region has drifted reports it as a finding instead.
+# Repairing a drifted remit is the orchestrator's action, taken between
+# dispatches, never a member's own. A member that notices its region has
+# drifted reports it as a finding instead.
 #
 # Reads the roster and each agent file; writes only inside a member's own
 # markers, or inserts a fresh pair. Never touches the roster itself, the

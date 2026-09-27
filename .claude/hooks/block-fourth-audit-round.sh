@@ -82,10 +82,10 @@
 # wiki/concepts/Claude Hooks.md), so a member dispatched from inside another
 # subagent still carries this session's id and still counts. Only
 # .tool_input.subagent_type is read to identify the dispatched agent; there
-# is no tool_input.agent_type. The agent_type field block-selfheal-paths.sh
-# reads is a TOP-LEVEL payload field naming the agent MAKING the call, the
-# opposite question, and folding it in here would count a member's own
-# nested dispatches as if they were top-level rounds.
+# is no tool_input.agent_type. A PreToolUse payload's top-level agent_type
+# field (present only inside a subagent call) names the agent MAKING the
+# call, the opposite question, and folding it in here would count a
+# member's own nested dispatches as if they were top-level rounds.
 #
 # /clear AND COMPACTION. /clear is the sanctioned reset (SessionStart,
 # source == "clear"): it cannot be typed by the model or any subagent, so

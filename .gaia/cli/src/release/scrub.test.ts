@@ -29,7 +29,7 @@ transforms:
       - ".claude/settings.json"
     selectors:
       - path: "hooks.PreToolUse[].hooks[]"
-        match: {command: ".claude/hooks/block-selfheal-paths.sh"}
+        match: {command: ".claude/hooks/pr-merge-audit-check.sh"}
 `;
 
 type Sandbox = {
@@ -690,7 +690,7 @@ describe('json-strip-array-element transform', () => {
   let sandbox: Sandbox;
   let stdio: ReturnType<typeof captureStdio>;
 
-  const TARGET_HOOK = '.claude/hooks/block-selfheal-paths.sh';
+  const TARGET_HOOK = '.claude/hooks/pr-merge-audit-check.sh';
 
   const writeSettings = (value: unknown): void => {
     sandbox.writeStaged(
@@ -732,7 +732,7 @@ describe('json-strip-array-element transform', () => {
               {command: '.claude/hooks/block-bare-test.sh', type: 'command'},
               {
                 command: TARGET_HOOK,
-                statusMessage: 'Checking self-heal repair-boundary gate…',
+                statusMessage: 'Checking PR-merge audit gate…',
                 type: 'command',
               },
             ],
@@ -795,7 +795,7 @@ describe('json-strip-array-element transform', () => {
             hooks: [
               {
                 command: TARGET_HOOK,
-                statusMessage: 'Checking self-heal repair-boundary gate…',
+                statusMessage: 'Checking PR-merge audit gate…',
                 type: 'command',
               },
             ],
@@ -838,7 +838,7 @@ describe('json-strip-array-element transform', () => {
               {command: '.claude/hooks/block-bare-test.sh', type: 'command'},
               {
                 command: TARGET_HOOK,
-                statusMessage: 'Checking self-heal repair-boundary gate…',
+                statusMessage: 'Checking PR-merge audit gate…',
                 type: 'command',
               },
               {command: '.claude/hooks/block-rm-rf.sh', type: 'command'},
@@ -926,7 +926,7 @@ describe('json-strip-array-element transform', () => {
             hooks: [
               {
                 command: TARGET_HOOK,
-                statusMessage: 'Checking self-heal repair-boundary gate…',
+                statusMessage: 'Checking PR-merge audit gate…',
                 type: 'command',
               },
             ],

@@ -424,10 +424,10 @@ describe('release runtime-deps CLI', () => {
     // legitimate and must not cost a release.
     sandbox.writeManifest({
       '.claude/agents/code-audit-frontend.md': 'owned',
-      '.claude/hooks/block-selfheal-paths.sh': 'owned',
+      '.claude/hooks/block-fourth-audit-round.sh': 'owned',
     });
     sandbox.writeFile(
-      '.claude/hooks/block-selfheal-paths.sh',
+      '.claude/hooks/block-fourth-audit-round.sh',
       [
         '#!/usr/bin/env bash',
         'deny "rewrites .claude/agents/code-audit-*.md, which are machinery"',
