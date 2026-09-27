@@ -69,8 +69,7 @@
 # Everything else under .gaia/ (including a sibling like .gaia/localfoo/)
 # stays refused.
 #
-# TWO consumers read this ERE. Neither writes a second copy of it, and a
-# reader who finds one must not assume it is the only one:
+# One sourcing consumer reads this ERE, and nobody writes a second copy of it:
 #   - the CI producer's push gate, the "Commit and push self-heal" step of
 #     .github/workflows/code-review-audit.yml (and its rendered template
 #     mirror, .gaia/cli/templates/workflows/code-review-audit.yml.tmpl)
@@ -79,8 +78,6 @@
 #     template is generated from,
 #     .gaia/cli/src/automation/templates/workflows/code-review-audit.yml.tmpl
 # gaia:maintainer-only:end
-#   - the local producer's PreToolUse hook,
-#     .claude/hooks/block-selfheal-paths.sh
 #
 # The BUILD-CONFIG half of this ERE is the workflow's own `has_source` file
 # pattern (code-review-audit.yml's "Detect in-scope source changes" step),
@@ -111,5 +108,5 @@
 #
 # Bash 3.2 compatible (macOS default). Never `cd`.
 
-# shellcheck disable=SC2034 # consumed by both sourcing consumers named above
+# shellcheck disable=SC2034 # consumed by the sourcing consumer named above
 AUDIT_SELFHEAL_REFUSE_ERE='^(\.claude|\.specify|wiki|test|\.playwright|\.storybook|\.github)/|^app/(.*/)?tests/|^app/.*\.test\.tsx?$|^app/.*\.stories\.tsx$|^\.gaia/(local[^/]|loca[^l]|loc[^a]|lo[^c]|l[^o]|[^l])|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$|^tsconfig[^/]*\.json$|^[^/]*\.config\.(ts|mts|mjs|cjs|js)$|^(\.npmrc|\.lintstagedrc\.json|\.prettierignore|Dockerfile|\.env\.example|\.nvmrc|\.node-version)$'

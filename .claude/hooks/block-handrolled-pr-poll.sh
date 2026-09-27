@@ -47,7 +47,7 @@
 #
 # WHAT IT CATCHES, honestly: the common spelling, not the class. This is a text
 # heuristic over an unbounded surface, the same posture
-# `block-selfheal-paths.sh` already takes. A poll written in Python, or inside
+# `block-manifest-write.sh` already takes. A poll written in Python, or inside
 # a script file this hook never sees, walks past it untouched. The
 # justification for a heuristic anyway is that this failure is silent and costs
 # a full wait plus a spent CI round, which is the argument gaia-react/gaia#2144 already made

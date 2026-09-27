@@ -31,7 +31,6 @@
     ".claude/hooks/block-rm-rf.sh": "owned",
     ".claude/hooks/block-secrets-read.sh": "owned",
     ".claude/hooks/block-secrets-write.sh": "owned",
-    ".claude/hooks/block-selfheal-paths.sh": "owned",
     ".claude/hooks/block-vitest-globals-tsconfig.sh": "owned",
     ".claude/hooks/block-worktree-path-mismatch.sh": "owned",
     ".claude/hooks/capture-gh-artifact.sh": "owned",
@@ -641,7 +640,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-27T08:15:11.820Z",
+  "generated": "2026-09-27T09:28:00.933Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

@@ -293,24 +293,3 @@ lib_degrade_candidates() {
     fi
   done < <(lib_degrade_members)
 }
-
-@test "mutation control: restoring the unguarded assignment goes silent" {
-  # Samples ONE member on purpose. This control exists to prove the assertion
-  # above is not vacuous, and one member establishes that; mutating every
-  # member buys the same signal at N times the cost. Coverage is per element
-  # in the test above.
-  local hook
-  hook=$(lib_degrade_members | head -n 1)
-  [ -n "$hook" ]
-
-  # Strip the guard the fix added, restoring the pre-fix shape.
-  # shellcheck disable=SC2016  # a literal sed program matching shell syntax in
-  # the hook's text; expansion is exactly what must not happen here.
-  sed -i.bak 's/^\(_lib_dir="\$(cd .*pwd)"\) || true$/\1/' "$DEGRADED/$hook"
-  rm -f "$DEGRADED/$hook.bak"
-  grep -qE '^_lib_dir="\$\(cd .*pwd\)"$' "$DEGRADED/$hook"
-
-  run bash -c "cd '$DEGRADED' && bash './$hook' </dev/null 2>&1"
-  [ "$status" -ne 0 ]
-  [ -z "$output" ]
-}

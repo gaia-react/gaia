@@ -63,11 +63,6 @@ without_jq() {
 # still-allowed case below, the jq install among them, which is the session with
 # no way out the literals exist to prevent, reached by the mechanism meant to
 # prevent it. These builders are what make that a red rather than a green.
-#
-# ONE literal is deliberately absent: `code-audit-`. block-selfheal-paths.sh
-# binds on the top-level agent_type, so it scans the whole document by design and
-# is correct to; poisoning the ambient fields with its literal would assert the
-# opposite of that hook's contract.
 readonly AMBIENT_CWD="/Users/you/work/platform/git-svc/highlights/org-mirror/ripgrep/storage/.venv/settings/test-credentials/secrets"
 readonly AMBIENT_TRANSCRIPT="/Users/you/.claude/projects/gaia-plan/manifest.json.d/server.pem/id.key/plan.md.log"
 
@@ -254,20 +249,6 @@ readonly INSTALL_CMD="brew install jq"
   local json
   json=$(jq -n '{hook_event_name: "PreToolUse", tool_name: "Agent", tool_input: {subagent_type: "general-purpose"}}')
   without_jq block-fourth-audit-round.sh "$json"
-  assert_allowed_by_exit
-}
-
-@test "jq absent: block-selfheal-paths refuses a member edit" {
-  local json
-  json=$(jq -n '{agent_type: "code-audit-frontend", tool_name: "Edit", tool_input: {file_path: "test/foo.ts"}}')
-  without_jq block-selfheal-paths.sh "$json"
-  assert_blocked_by_exit
-}
-
-@test "jq absent: block-selfheal-paths allows the jq install" {
-  local json
-  json=$(bash_payload "$INSTALL_CMD")
-  without_jq block-selfheal-paths.sh "$json"
   assert_allowed_by_exit
 }
 

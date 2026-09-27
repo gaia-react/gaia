@@ -164,7 +164,7 @@
 #      prose stays clean on the backtick wall alone and a rewording could red
 #      the check for a file with no base at all. The `code-audit-` prefix is
 #      the same convention the roster globs in .gaia/audit-ci.yml, the CI
-#      paths filter in audit-ci-tests.yml, and block-selfheal-paths.sh all
+#      paths filter in audit-ci-tests.yml, and block-fourth-audit-round.sh all
 #      already key on, so this narrows to what the rest of the system treats
 #      as the member set rather than inventing a second one.
 #
