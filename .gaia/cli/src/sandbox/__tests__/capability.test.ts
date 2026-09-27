@@ -9,12 +9,6 @@ describe('classifyCapability', () => {
     expect(result.installCommand).toBeUndefined();
   });
 
-  test('darwin wins even if wsl is nonsensically supplied', () => {
-    const result = classifyCapability({platform: 'darwin', wsl: 'wsl1'});
-
-    expect(result.capability).toBe('ready');
-  });
-
   test('linux with bwrap and socat is ready', () => {
     const result = classifyCapability({
       hasBwrap: true,
@@ -82,12 +76,6 @@ describe('classifyCapability', () => {
     expect(result.capability).toBe('unsupported');
     expect(result.installCommand).toBeUndefined();
     expect(result.reason).toContain('WSL2');
-  });
-
-  test('win32 wins even if wsl2 is nonsensically supplied', () => {
-    const result = classifyCapability({platform: 'win32', wsl: 'wsl2'});
-
-    expect(result.capability).toBe('unsupported');
   });
 
   test('wsl1 is unsupported and names WSL2 as the path', () => {

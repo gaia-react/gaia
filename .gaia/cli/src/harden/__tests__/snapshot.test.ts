@@ -120,10 +120,7 @@ describe('harden-ledger snapshot', () => {
       );
       expect(recordCode).toBe(EXIT_CODES.OK);
 
-      const showCode = runSnapshot(['show'], {cwd: sandbox.root});
-      expect(showCode).toBe(EXIT_CODES.OK);
-
-      const snapshot = JSON.parse(io.out.join('')) as ReviewSnapshot;
+      const snapshot = readSnapshot(sandbox.snapshotPath);
       expect(snapshot.tally_schema_version).toBe(1);
       expect(snapshot.window_days).toBe(90);
       expect(snapshot.audited_pr_count).toBe(400);
@@ -231,8 +228,7 @@ describe('harden-ledger snapshot', () => {
       );
       expect(recordCode).toBe(EXIT_CODES.OK);
 
-      const showCode = runSnapshot(['show'], {cwd: sandbox.root});
-      expect(showCode).toBe(EXIT_CODES.OK);
+      expect(readSnapshot(sandbox.snapshotPath)).toBeDefined();
     });
   });
 
@@ -263,29 +259,6 @@ describe('harden-ledger snapshot', () => {
     });
   });
 
-  describe('show', () => {
-    test('exits 1 with no_snapshot when absent', () => {
-      const code = runSnapshot(['show'], {cwd: sandbox.root});
-
-      expect(code).not.toBe(EXIT_CODES.OK);
-      expect(io.err.join('')).toContain('no_snapshot');
-    });
-
-    test('exits 30 code malformed_snapshot when the recorded file fails the schema', () => {
-      mkdirSync(path.dirname(sandbox.snapshotPath), {recursive: true});
-      writeFileSync(
-        sandbox.snapshotPath,
-        JSON.stringify({classes: 'nope', version: 1}),
-        'utf8'
-      );
-
-      const code = runSnapshot(['show'], {cwd: sandbox.root});
-
-      expect(code).toBe(EXIT_CODES.CONFIG_INVALID);
-      expect(io.err.join('')).toContain('malformed_snapshot');
-    });
-  });
-
   describe('arguments', () => {
     test('record with no flag exits 1 and writes nothing', () => {
       const code = runSnapshot(['record'], {cwd: sandbox.root});
@@ -308,12 +281,6 @@ describe('harden-ledger snapshot', () => {
       const code = runSnapshot(['record', '--bogus', 'x'], {
         cwd: sandbox.root,
       });
-
-      expect(code).toBe(EXIT_CODES.UNKNOWN_SUBCOMMAND);
-    });
-
-    test('show extra exits 1', () => {
-      const code = runSnapshot(['show', 'extra'], {cwd: sandbox.root});
 
       expect(code).toBe(EXIT_CODES.UNKNOWN_SUBCOMMAND);
     });

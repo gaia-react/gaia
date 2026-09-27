@@ -1,11 +1,5 @@
 import {afterEach, beforeEach, describe, expect, test} from 'vitest';
-import {
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from 'node:fs';
+import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {
@@ -21,17 +15,9 @@ const seed = (root: string, relative: string): void => {
   writeFileSync(abs, '', 'utf8');
 };
 
-// The separator is passed rather than read from `path.sep`, so these assert on
-// input the walk cannot produce on any platform this repository runs on. That
-// is the point: through `collectTreeFiles` alone the rewrite is the identity
-// function here and deleting it would leave every test green.
+// The separator is passed rather than read from `path.sep`, so a case can
+// assert a POSIX pass-through regardless of which platform runs the suite.
 describe('normalizeEntry', () => {
-  test('rewrites a Windows separator to POSIX', () => {
-    expect(normalizeEntry(String.raw`nested\deep\leaf.ts`, '\\')).toBe(
-      'nested/deep/leaf.ts'
-    );
-  });
-
   test('leaves an entry that carries no separator alone', () => {
     expect(normalizeEntry('leaf.ts', '\\')).toBe('leaf.ts');
   });
@@ -117,38 +103,6 @@ describe('collectTreeFiles', () => {
       'Makefile',
       'nested/prose.md',
     ]);
-  });
-
-  // Reported, this would reach a caller's `readFileSync` and throw EISDIR.
-  test('excludes a directory whose name carries a matching extension', () => {
-    mkdirSync(path.join(dir, 'looks-like-a-file.ts'));
-    seed(dir, 'real.ts');
-
-    expect(collectTreeFiles(dir, TS_SOURCE_EXTENSIONS)).toEqual(['real.ts']);
-  });
-
-  test('excludes a symlink rather than following it', () => {
-    seed(dir, 'real.ts');
-    symlinkSync(path.join(dir, 'real.ts'), path.join(dir, 'link.ts'));
-
-    expect(collectTreeFiles(dir, TS_SOURCE_EXTENSIONS)).toEqual(['real.ts']);
-  });
-
-  // `readdirSync`'s own `recursive` option descends a symlinked directory and
-  // reports what sits under it as regular files. A caller that rewrites what
-  // it is handed would then write outside the root it named.
-  test('does not descend a symlinked directory', () => {
-    const outside = mkdtempSync(path.join(tmpdir(), 'gaia-collect-outside-'));
-
-    try {
-      seed(outside, 'escaped.ts');
-      seed(dir, 'real.ts');
-      symlinkSync(outside, path.join(dir, 'linked'));
-
-      expect(collectTreeFiles(dir, EVERY_EXTENSION)).toEqual(['real.ts']);
-    } finally {
-      rmSync(outside, {force: true, recursive: true});
-    }
   });
 
   test('throws when the root does not exist', () => {

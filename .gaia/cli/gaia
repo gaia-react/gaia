@@ -15863,14 +15863,11 @@ var snapshotFromTally = (tally, now) => {
 };
 
 // src/harden/snapshot.ts
-var HELP_TEXT8 = `Usage: gaia harden-ledger snapshot <record|show> [args]
+var HELP_TEXT8 = `Usage: gaia harden-ledger snapshot record [args]
 
   record --tally-file <path>
     Build a review snapshot from a saved harden-tally JSON file and write it,
     overwriting any existing snapshot unconditionally.
-
-  show
-    Print the current review snapshot as JSON to stdout.
 `;
 var HELP_TOKENS8 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var resolveRoot = (options, subcommand) => {
@@ -15960,38 +15957,6 @@ var handleRecord = (argv, options) => {
   writeReviewSnapshot(repoRoot, snapshotFromTally(result.data, now()));
   return EXIT_CODES.OK;
 };
-var handleShow = (argv, options) => {
-  if (argv.length > 0) {
-    structuredError({
-      code: "invalid_arguments",
-      message: `unknown argument: ${argv[0]}`,
-      subcommand: "harden-ledger snapshot show"
-    });
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-  const repoRoot = resolveRoot(options, "snapshot show");
-  if (repoRoot === null) return EXIT_CODES.STORAGE_INACCESSIBLE;
-  const result = readReviewSnapshot(repoRoot);
-  if (result.status === "missing") {
-    structuredError({
-      code: "no_snapshot",
-      message: "no review snapshot recorded yet",
-      subcommand: "harden-ledger snapshot show"
-    });
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-  }
-  if (result.status === "malformed") {
-    structuredError({
-      code: "malformed_snapshot",
-      message: result.error,
-      subcommand: "harden-ledger snapshot show"
-    });
-    return EXIT_CODES.CONFIG_INVALID;
-  }
-  process.stdout.write(`${JSON.stringify(result.snapshot)}
-`);
-  return EXIT_CODES.OK;
-};
 var runSnapshot = (argv, options = {}) => {
   const [sub, ...rest] = argv;
   if (sub === void 0 || HELP_TOKENS8.has(sub)) {
@@ -15999,7 +15964,6 @@ var runSnapshot = (argv, options = {}) => {
     return sub === void 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
   }
   if (sub === "record") return handleRecord(rest, options);
-  if (sub === "show") return handleShow(rest, options);
   structuredError({
     code: "unknown_subcommand",
     message: `unknown harden-ledger snapshot subcommand: ${sub}`,
@@ -16031,8 +15995,8 @@ var HELP_TEXT9 = `Usage: gaia harden-ledger <subcommand> [args]
     Remove any decline entry whose finding_class is not in the comma-separated
     set (no qualifying evidence left in the window). Idempotent.
 
-  snapshot <record|show> [args]
-    Dispatches to the review-snapshot verbs. See
+  snapshot record [args]
+    Dispatches to the review-snapshot verb. See
     \`gaia harden-ledger snapshot --help\`.
 `;
 var HELP_TOKENS9 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
@@ -16461,17 +16425,10 @@ var WORKFLOW_FINDING_CLASSES = [
   "workflow/unpinned-action",
   "workflow/broad-permissions"
 ];
-var PROSE_FINDING_CLASSES = [
-  "prose/excessive-length",
-  "prose/deep-nesting",
-  "prose/high-indirection",
-  "prose/redundant-instruction"
-];
 var CLOSED_VOCABULARY = /* @__PURE__ */ new Set([
   ...HOLISTIC_FINDING_CLASSES,
   ...RULE_FINDING_CLASSES,
-  ...WORKFLOW_FINDING_CLASSES,
-  ...PROSE_FINDING_CLASSES
+  ...WORKFLOW_FINDING_CLASSES
 ]);
 var splitPrefix = (value) => {
   const separatorIndex = value.indexOf("/");
@@ -17629,17 +17586,6 @@ import path15 from "node:path";
 // src/init/util/js-literal.ts
 var escapeJsLiteralValue = (value, quote) => value.replaceAll("\\", "\\\\").replaceAll(quote, `\\${quote}`);
 
-// src/init/util/title.ts
-var titleFailure = (title) => {
-  if (/[\n\r]/u.test(title)) {
-    return "--title must be a single line";
-  }
-  if (title.trim() === "") {
-    return "--title must not be blank";
-  }
-  return void 0;
-};
-
 // src/init/rename.ts
 var HELP_TEXT15 = `Usage: gaia init rename --title <T> --kebab <K>
 
@@ -17652,9 +17598,8 @@ var HELP_TEXT15 = `Usage: gaia init rename --title <T> --kebab <K>
 
   Exit codes:
     0  success (no stdout)
-    1  user-correctable error (missing flags, invalid title or kebab, no
-       package.json, no CLAUDE.md heading, a language-file key whose value
-       is not a rewritable string literal)
+    1  user-correctable error (missing flags, invalid kebab, no package.json,
+       no CLAUDE.md heading)
     2  unexpected (filesystem failure)
 `;
 var HELP_TOKENS15 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
@@ -17685,8 +17630,6 @@ var parseFlags3 = (argv) => {
   if (kebab === void 0) {
     return { message: "--kebab is required", ok: false };
   }
-  const titleProblem = titleFailure(title);
-  if (titleProblem) return { message: titleProblem, ok: false };
   if (!/^[a-z][\d a-z-]*$/u.test(kebab)) {
     return { message: "--kebab must be a kebab-case identifier", ok: false };
   }
@@ -17710,12 +17653,10 @@ var renamePackageJson = (cwd, kebab) => {
 };
 var FENCE_LINE = /^\s*(?:```|~~~)/u;
 var H1_LINE = /^#\s/u;
-var withoutCr = (line) => line.endsWith("\r") ? line.slice(0, -1) : line;
 var findH1Line = (lines) => {
   for (const [index, line] of lines.entries()) {
-    const text = withoutCr(line);
-    if (FENCE_LINE.test(text)) return -1;
-    if (H1_LINE.test(text)) return index;
+    if (FENCE_LINE.test(line)) return -1;
+    if (H1_LINE.test(line)) return index;
   }
   return -1;
 };
@@ -17732,7 +17673,7 @@ var renameClaudeMd = (cwd, title) => {
   if (index === -1) return;
   const currentLine = lines[index];
   if (currentLine === void 0) return;
-  const heading = currentLine.endsWith("\r") ? `# ${title}\r` : `# ${title}`;
+  const heading = `# ${title}`;
   if (currentLine === heading) return;
   lines[index] = heading;
   atomicWriteFileSync(target, lines.join("\n"));
@@ -17740,7 +17681,6 @@ var renameClaudeMd = (cwd, title) => {
 var LITERAL_BODY = String.raw`(?:(?!\2)[^\n\\]|\\.)*`;
 var flagsFor = (key) => key.global ? "gmu" : "mu";
 var literalPattern = (key) => new RegExp(String.raw`(${key.prefix})(['"])${LITERAL_BODY}\2`, flagsFor(key));
-var keyPattern = (key) => new RegExp(key.prefix, flagsFor(key));
 var applyRewrite = (source, key, newValue) => source.replace(
   literalPattern(key),
   // `literalPattern` captures the quote as `(['"])`, so group 2 is one of the
@@ -17749,17 +17689,14 @@ var applyRewrite = (source, key, newValue) => source.replace(
 );
 var unscopedKey = (key) => ({
   global: true,
-  label: key,
   prefix: String.raw`\b${key}\s*:\s*`
 });
 var topLevelKey = (key) => ({
   global: true,
-  label: key,
   prefix: String.raw`^\x20\x20${key}\s*:\s*`
 });
 var META_TITLE_KEY = {
   global: false,
-  label: "meta.title",
   prefix: String.raw`^\x20\x20meta\s*:\s*\{[^}]*?\btitle\s*:\s*`
 };
 var LANGUAGE_FILES = [
@@ -17769,20 +17706,6 @@ var LANGUAGE_FILES = [
     keys: [topLevelKey("heroTitle"), topLevelKey("title"), META_TITLE_KEY]
   }
 ];
-var missedKeyIn = (target, keys) => {
-  if (!existsSync8(target)) return void 0;
-  const source = readFileSync11(target, "utf8");
-  return keys.find(
-    (key) => keyPattern(key).test(source) && !literalPattern(key).test(source)
-  );
-};
-var unrewritableKey = (cwd) => {
-  for (const { file: file2, keys } of LANGUAGE_FILES) {
-    const missed = missedKeyIn(path15.join(cwd, file2), keys);
-    if (missed) return { file: file2, label: missed.label };
-  }
-  return null;
-};
 var renameLanguageFile = (cwd, { file: file2, keys }, title) => {
   const target = path15.join(cwd, file2);
   if (!existsSync8(target)) return;
@@ -17816,15 +17739,6 @@ var run15 = (argv, options = {}) => {
       structuredError({
         code: "claude_md_heading_missing",
         message: 'CLAUDE.md has no top-level "# " heading to rewrite; add one above any fenced code block and re-run',
-        subcommand: "init rename"
-      });
-      return EXIT_CODES.UNKNOWN_SUBCOMMAND;
-    }
-    const unrewritable = unrewritableKey(cwd);
-    if (unrewritable) {
-      structuredError({
-        code: "language_value_not_rewritable",
-        message: `${unrewritable.file} carries a "${unrewritable.label}" key whose value is not a plain quoted string literal, so this step cannot rewrite it; give it a string literal value, or remove the key if it should not hold the project title, then re-run`,
         subcommand: "init rename"
       });
       return EXIT_CODES.UNKNOWN_SUBCOMMAND;
@@ -17879,7 +17793,7 @@ var HELP_TEXT16 = `Usage: gaia init strip-branding --title <T>
 
   Exit codes:
     0  success (no stdout)
-    1  user-correctable error (missing flag, invalid title, missing template)
+    1  user-correctable error (missing flag, missing template)
     2  unexpected (filesystem failure)
 `;
 var HELP_TOKENS16 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
@@ -17901,8 +17815,6 @@ var parseFlags4 = (argv) => {
   if (title === void 0) {
     return { message: "--title is required", ok: false };
   }
-  const titleProblem = titleFailure(title);
-  if (titleProblem) return { message: titleProblem, ok: false };
   return { flags: { title }, ok: true };
 };
 var FUNDING_PATH = ".github/FUNDING.yml";
@@ -20541,10 +20453,8 @@ var decodeToken = (token) => {
 };
 
 // src/residue/cursor-cmd.ts
-var HELP_TEXT27 = `Usage: gaia residue-cursor <show|advance|clear> [args]
+var HELP_TEXT27 = `Usage: gaia residue-cursor <advance|clear> [args]
 
-  show                Print the recorded cursor as JSON (including its own
-                       token), or "null" when none is recorded.
   advance --token T    Record T's decoded coordinate as the cursor.
   clear                Remove the cursor file.
 `;
@@ -20555,18 +20465,6 @@ var resolveRoot3 = (cwd) => {
   } catch {
     return cwd;
   }
-};
-var handleShow2 = (repoRoot) => {
-  const cursor = readCursor(repoRoot);
-  if (cursor === null) {
-    process.stdout.write("null\n");
-    return EXIT_CODES.OK;
-  }
-  process.stdout.write(
-    `${JSON.stringify({ ...cursor, token: encodeToken(cursor) })}
-`
-  );
-  return EXIT_CODES.OK;
 };
 var handleAdvance = (argv, repoRoot) => {
   let token;
@@ -20603,7 +20501,6 @@ var run27 = (argv, options = {}) => {
     process.stdout.write(HELP_TEXT27);
     return sub === void 0 ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
   }
-  if (sub === "show") return handleShow2(repoRoot);
   if (sub === "advance") return handleAdvance(rest, repoRoot);
   if (sub === "clear") {
     clearCursor(repoRoot);
@@ -21172,18 +21069,16 @@ var closeUnit = (unit, result) => {
     unit_start_line: unit.start_line
   });
 };
-var matchInnerKey = (line, keyPattern2) => {
+var matchInnerKey = (line, keyPattern) => {
   const match = new RegExp(
-    keyPattern2.source,
-    keyPattern2.flags.replace("g", "")
+    keyPattern.source,
+    keyPattern.flags.replace("g", "")
   ).exec(line);
   return match?.[1] ?? null;
 };
-var headingText = (line) => line.replace(HEADING_PATTERN, "");
 var canonicalDisposition = (trimmedHeading, predicates) => {
-  const text = headingText(trimmedHeading);
-  if (text === headingText(predicates.canonAccept)) return "accept";
-  if (text === headingText(predicates.canonWaive)) return "waive";
+  if (trimmedHeading === predicates.canonAccept) return "accept";
+  if (trimmedHeading === predicates.canonWaive) return "waive";
   return null;
 };
 var attributeBodyWith = (body, predicates) => {
@@ -21826,7 +21721,6 @@ var HELP_TEXT30 = `Usage: gaia sandbox <subcommand> [args]
 
   detect [--platform <darwin|linux|win32>] [--wsl <none|wsl1|wsl2>]
          [--has-bwrap <true|false>] [--has-socat <true|false>] [--json]
-  seed --registry <value> --docker-present <true|false> [--json]
   apply --registry <value> --docker-present <true|false>
         [--settings-path <path>] [--capability <ready|needs-deps|unsupported>]
   record --outcome <enabled|declined|incapable>
@@ -21963,53 +21857,6 @@ var runDetect = (argv) => {
     wsl: built.value.wsl ?? detectWsl()
   };
   printDetectResult(classifyCapability(input), tokens.json);
-  return EXIT_CODES.OK;
-};
-var SEED_HELP_TEXT = `Usage: gaia sandbox seed --registry <value> --docker-present <true|false> [--json]
-
-  Print the minimal sandbox settings fragment for this registry/docker
-  combination. --json prints a single-line JSON fragment; otherwise a
-  human-readable summary.
-`;
-var SEED_FLAG_SPECS = [
-  { flag: "--registry", key: "registry", kind: "string", required: true },
-  {
-    flag: "--docker-present",
-    key: "dockerPresent",
-    kind: "boolean",
-    required: true
-  }
-];
-var printSeedResult = (fragment, json3) => {
-  if (json3) {
-    process.stdout.write(`${JSON.stringify(fragment)}
-`);
-    return;
-  }
-  const lines = [
-    `registry host: ${fragment.sandbox.network.allowedDomains[0]}`,
-    `docker excluded: ${fragment.sandbox.excludedCommands === void 0 ? "no" : "yes"}`
-  ];
-  process.stdout.write(`${lines.join("\n")}
-`);
-};
-var runSeed = (argv) => {
-  const [first] = argv;
-  if (first !== void 0 && HELP_TOKENS30.has(first)) {
-    process.stdout.write(SEED_HELP_TEXT);
-    return EXIT_CODES.OK;
-  }
-  const tokens = tokenize(argv);
-  if (!tokens.ok) return failInvalid("sandbox seed", tokens.message);
-  const built = buildFlags(tokens.provided, SEED_FLAG_SPECS);
-  if (!built.ok) return failInvalid("sandbox seed", built.message);
-  printSeedResult(
-    seedSandboxConfig({
-      dockerPresent: built.value.dockerPresent,
-      registry: built.value.registry
-    }),
-    tokens.json
-  );
   return EXIT_CODES.OK;
 };
 var APPLY_HELP_TEXT = `Usage: gaia sandbox apply --registry <value> --docker-present <true|false>
@@ -22252,7 +22099,6 @@ var SUBCOMMAND_HANDLERS6 = {
   apply: runApply,
   detect: runDetect,
   record: runRecord,
-  seed: runSeed,
   status: runStatus
 };
 var run30 = (argv, options = {}) => {
@@ -23750,13 +23596,7 @@ var runGh2 = async (options) => new Promise((resolve) => {
     }
     settle({ exitCode: code ?? 1, ok: false, stderr: stderrBuf });
   });
-  child.stdin.on("error", () => {
-  });
-  if (options.stdin === void 0) {
-    child.stdin.end();
-  } else {
-    child.stdin.end(options.stdin);
-  }
+  child.stdin.end();
 });
 
 // src/setup-ci/check-admin.ts
@@ -25301,9 +25141,7 @@ var SETUP_STEPS = [
   "bootstrap-env",
   "audit-mode-decision"
 ];
-var RETIRED_SETUP_STEPS = ["mentorship-decision"];
 var isSetupStep = (value) => SETUP_STEPS.includes(value);
-var isRetiredSetupStep = (value) => RETIRED_SETUP_STEPS.includes(value);
 var resolveStateFilePath = (repoRoot) => path40.join(repoRoot, STATE_DIRECTORY_RELATIVE, STATE_FILENAME);
 var readStateFile = (repoRoot) => {
   const filePath = resolveStateFilePath(repoRoot);
@@ -25316,16 +25154,6 @@ var readStateFile = (repoRoot) => {
     );
   }
   const rawSteps = parsed.completed_steps ?? [];
-  const unknownSteps = rawSteps.filter(
-    (step) => !isSetupStep(step) && !isRetiredSetupStep(step)
-  );
-  if (unknownSteps.length > 0) {
-    throw new Error(
-      `setup-state.json has unrecognized completed_steps: ${unknownSteps.join(
-        ", "
-      )}`
-    );
-  }
   if (typeof parsed.started_at !== "string") {
     throw new TypeError("setup-state.json is missing a valid started_at");
   }
@@ -32851,15 +32679,6 @@ var HELP_TEXT64 = `Usage: gaia wiki dead-paths [--json]
   tarball and never resolve on a single-repo clone. Excludes wiki/log.md,
   wiki/hot.md and wiki/meta/** (generated or append-only files that
   legitimately reference historical paths).
-
-  A citation of a path that is an illustration rather than a real file is
-  exempted on its own line by a trailing marker naming the same path
-  unbackticked, with a reason:
-
-    <!-- gaia:hypothetical .claude/commands/tool.sh: reason it cannot exist -->
-
-  A marker whose line carries no matching dead path is reported alongside the
-  dead paths, as is one missing either half of its path-and-reason pair.
 `;
 var HELP_TOKENS62 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var TRACKED_PREFIXES = [
@@ -32872,27 +32691,17 @@ var TRACKED_PREFIXES = [
 var SIBLING_REPO_PATTERN = /(?:^|\/)(studio|website)\//;
 var LOCAL_EXEMPT_PREFIX = "wiki/.state.json";
 var RUNTIME_PREFIXES = [".gaia/local/"];
-var GITIGNORED_LOCAL_FILES = /* @__PURE__ */ new Set([
-  ".claude/settings.local.json"
-]);
 var ADOPTER_OWNED_SENTINELS = /* @__PURE__ */ new Set([
   ".gaia/automation.json"
 ]);
-var MARKER_PATTERN = /<!--\s*gaia:hypothetical\b([^>]*)-->/g;
 var PATH_TOKEN_PATTERN = /`([^`\n]+?)`/g;
 var PLACEHOLDER_PATTERN = /[<>*${}]|N{3,}|X{3,}/;
 var HISTORICAL_BULLET_PATTERN = /^\s*-\s+\*\*(Removed|Deleted|Renamed|Migrated|Replaced)\*\*/i;
-var STALE_MARKER_LABELS = {
-  "missing-path": "malformed gaia:hypothetical marker, no path given",
-  "missing-reason": "malformed gaia:hypothetical marker, no reason given",
-  unused: "unused gaia:hypothetical marker"
-};
 var isTrackedPath = (token) => {
   if (PLACEHOLDER_PATTERN.test(token)) return false;
   if (!token.includes("/")) return false;
   if (!/\.[a-z0-9]{1,8}$/i.test(token)) return false;
   if (ADOPTER_OWNED_SENTINELS.has(token)) return false;
-  if (GITIGNORED_LOCAL_FILES.has(token)) return false;
   if (RUNTIME_PREFIXES.some((prefix) => token.startsWith(prefix))) return false;
   if (SIBLING_REPO_PATTERN.test(token)) return true;
   return TRACKED_PREFIXES.some((prefix) => token.startsWith(prefix));
@@ -32907,48 +32716,13 @@ var pathExists = (root, candidate) => {
   }
 };
 var isDeadToken = (cwd, token) => SIBLING_REPO_PATTERN.test(token) || !pathExists(cwd, token);
-var parseMarker = (match) => {
-  const payload = match[1] ?? "";
-  const separator = payload.indexOf(":");
-  const declared = (separator === -1 ? payload : payload.slice(0, separator)).trim();
-  const reason = separator === -1 ? "" : payload.slice(separator + 1).trim();
-  const pathless = declared === "" || separator === -1 && !declared.includes("/");
-  return {
-    defect: pathless ? "missing-path" : reason === "" ? "missing-reason" : null,
-    path: declared.normalize("NFC"),
-    raw: payload.trim()
-  };
-};
 var collectFindingsInLine = (ctx, lineNumber, line) => {
-  const markers = [...line.matchAll(MARKER_PATTERN)].map(parseMarker);
-  const report2 = (matched2) => markers.filter((marker) => marker.defect !== null || !matched2.has(marker.path)).map((marker) => ({
-    filePath: ctx.filePath,
-    line: lineNumber,
-    marker: marker.raw,
-    problem: marker.defect ?? "unused"
-  }));
-  if (HISTORICAL_BULLET_PATTERN.test(line))
-    return { dead: [], staleMarkers: report2(/* @__PURE__ */ new Set()) };
-  const exempt = new Set(
-    markers.filter((marker) => marker.defect === null).map((m) => m.path)
-  );
-  const scanned = markers.length === 0 ? line : line.replaceAll(MARKER_PATTERN, " ");
-  const deadTokens = [...scanned.matchAll(PATH_TOKEN_PATTERN)].flatMap(
-    (match) => {
-      const token = match[1];
-      return token !== void 0 && isTrackedPath(token) && isDeadToken(ctx.cwd, token) ? [{ normalized: token.normalize("NFC"), token }] : [];
-    }
-  );
-  const matched = new Set(
-    deadTokens.filter((found) => exempt.has(found.normalized)).map((found) => found.normalized)
-  );
-  const dead = deadTokens.filter((found) => !exempt.has(found.normalized)).map((found) => ({
-    filePath: ctx.filePath,
-    line: lineNumber,
-    path: found.token
-  }));
-  const staleMarkers = report2(matched);
-  return { dead, staleMarkers };
+  if (HISTORICAL_BULLET_PATTERN.test(line)) return { dead: [] };
+  const dead = [...line.matchAll(PATH_TOKEN_PATTERN)].flatMap((match) => {
+    const token = match[1];
+    return token !== void 0 && isTrackedPath(token) && isDeadToken(ctx.cwd, token) ? [{ filePath: ctx.filePath, line: lineNumber, path: token }] : [];
+  });
+  return { dead };
 };
 var collectFindingsInFile = (ctx) => {
   const content = readFileSync41(path52.join(ctx.cwd, ctx.filePath), "utf8");
@@ -32957,15 +32731,13 @@ var collectFindingsInFile = (ctx) => {
     (line, index) => collectFindingsInLine(ctx, index + 1, line)
   );
   return {
-    dead: perLine.flatMap((found) => found.dead),
-    staleMarkers: perLine.flatMap((found) => found.staleMarkers)
+    dead: perLine.flatMap((found) => found.dead)
   };
 };
 var scanWikiPaths = (cwd) => {
   const perFile = collectWikiMarkdown(cwd).filter((filePath) => !shouldSkipFile(filePath)).map((filePath) => collectFindingsInFile({ cwd, filePath }));
   return {
-    dead: perFile.flatMap((found) => found.dead),
-    staleMarkers: perFile.flatMap((found) => found.staleMarkers)
+    dead: perFile.flatMap((found) => found.dead)
   };
 };
 var run65 = (argv, options = {}) => {
@@ -32988,20 +32760,13 @@ var run65 = (argv, options = {}) => {
   }
   try {
     const cwd = options.cwd ?? process.cwd();
-    const { dead, staleMarkers } = scanWikiPaths(cwd);
+    const { dead } = scanWikiPaths(cwd);
     if (json3) {
-      process.stdout.write(
-        `${JSON.stringify({ dead, staleMarkers }, null, 2)}
-`
-      );
+      process.stdout.write(`${JSON.stringify({ dead }, null, 2)}
+`);
       return EXIT_CODES.OK;
     }
-    const lines = [
-      ...dead.map((ref) => `${ref.filePath}:${ref.line}  ${ref.path}`),
-      ...staleMarkers.map(
-        (stale) => `${stale.filePath}:${stale.line}  ${STALE_MARKER_LABELS[stale.problem]}: ${stale.marker}`
-      )
-    ];
+    const lines = dead.map((ref) => `${ref.filePath}:${ref.line}  ${ref.path}`);
     if (lines.length === 0) return EXIT_CODES.OK;
     process.stdout.write(`${lines.join("\n")}
 `);
@@ -34951,10 +34716,10 @@ var HELP_TEXT78 = `Usage: gaia <subcommand> [args]
   init strip-branding|configure-i18n|rename|wire-statusline|bootstrap-env|configure-automation|finalize|resume
   setup status|mark-step|finalize|link-worktree
   setup-ci status|check-drift|check-audit-drift|detect-remote|warn-existing-tools|check-admin|dismiss-personal|opt-out-team|enable-delete-branch|verify-run|finalize|write-tool-mode|write-isolation-policy
-  sandbox detect|seed|apply|record|status
+  sandbox detect|apply|record|status
   ping --event <init|setup|update> [--field value ...]
   residue-tally [--count-only] [--attribute-only] [--cap N] [--no-cap] [--json]
-  residue-cursor show|advance --token T|clear
+  residue-cursor advance --token T|clear
   residue-record --disposition dismissed|kept|suppressed --token T [--token T ...] --reason-file F
 `;
 var printHelp2 = () => {

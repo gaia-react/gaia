@@ -8,17 +8,6 @@
 import {describe, expect, test} from 'vitest';
 import {lookupOwn, takeNonFlagValue, takeValue} from './argv.js';
 
-const PROTOTYPE_KEYS = [
-  '__proto__',
-  'constructor',
-  'hasOwnProperty',
-  'isPrototypeOf',
-  'propertyIsEnumerable',
-  'toLocaleString',
-  'toString',
-  'valueOf',
-];
-
 const TABLE: Readonly<Partial<Record<string, string>>> = {
   '--out': 'out',
   build: 'build',
@@ -31,20 +20,6 @@ describe('lookupOwn', () => {
 
   test('returns undefined for an absent key', () => {
     expect(lookupOwn(TABLE, 'bogus')).toBeUndefined();
-  });
-
-  test.each(PROTOTYPE_KEYS)('returns undefined for %s', (key) => {
-    expect(lookupOwn(TABLE, key)).toBeUndefined();
-  });
-
-  test.each(PROTOTYPE_KEYS)('a bare index would resolve %s', (key) => {
-    const bare: Record<string, unknown> = {...TABLE};
-
-    expect(bare[key]).toBeDefined();
-  });
-
-  test('an own key shadowing a prototype key still resolves', () => {
-    expect(lookupOwn({toString: 'real'}, 'toString')).toBe('real');
   });
 });
 

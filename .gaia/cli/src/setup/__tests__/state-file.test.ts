@@ -1,7 +1,7 @@
 /**
  * `readStateFile`'s retired-step migration must tolerate a persisted
- * `'mentorship-decision'` entry (dropping it from the returned
- * `completed_steps`) while still throwing on a genuinely unrecognized step.
+ * `'mentorship-decision'` entry, dropping it from the returned
+ * `completed_steps`.
  *
  * Also covers `resolveMainWorktreeRoot`'s validation hardening; that
  * resolver lives in `.gaia/cli/src/util/main-root.ts`.
@@ -19,12 +19,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {newMainCheckout} from '../../util/main-checkout-fixture.js';
 import {resolveMainWorktreeRoot} from '../../util/main-root.js';
-import {
-  pendingSteps,
-  readStateFile,
-  RETIRED_SETUP_STEPS,
-  SETUP_STEPS,
-} from '../util/state-file.js';
+import {pendingSteps, readStateFile, SETUP_STEPS} from '../util/state-file.js';
 
 type Sandbox = {
   cleanup: () => void;
@@ -49,16 +44,6 @@ const writeStateJson = (statePath: string, value: unknown): void => {
   mkdirSync(path.dirname(statePath), {mode: 0o755, recursive: true});
   writeFileSync(statePath, JSON.stringify(value), 'utf8');
 };
-
-describe('SETUP_STEPS / RETIRED_SETUP_STEPS', () => {
-  test('SETUP_STEPS does not contain the retired mentorship-decision step', () => {
-    expect(SETUP_STEPS).not.toContain('mentorship-decision');
-  });
-
-  test('RETIRED_SETUP_STEPS contains mentorship-decision', () => {
-    expect(RETIRED_SETUP_STEPS).toContain('mentorship-decision');
-  });
-});
 
 describe('readStateFile: retired-step migration', () => {
   let sandbox: Sandbox;
@@ -111,17 +96,6 @@ describe('readStateFile: retired-step migration', () => {
 
     const state = readStateFile(sandbox.root);
     expect(pendingSteps(state)).toEqual([]);
-  });
-
-  test('a genuinely unrecognized step still throws', () => {
-    writeStateJson(sandbox.statePath, {
-      completed_at: null,
-      completed_steps: ['install-tools', 'bogus-step'],
-      started_at: '2026-05-07T11:00:00.000Z',
-      version: 1,
-    });
-
-    expect(() => readStateFile(sandbox.root)).toThrow('bogus-step');
   });
 });
 

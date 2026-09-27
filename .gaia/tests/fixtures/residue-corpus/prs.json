@@ -54,12 +54,6 @@
     "number": 3004
   },
   {
-    "body": "### Accepted residuals (recorded, not fixed)\n- MARKER_3005_LEVEL3, under a level-three spelling <!-- gaia-debt-key: v1 class=lint path=app/level3/thing.ts line=1 -->",
-    "headRefOid": "sha3005",
-    "mergedAt": "2026-09-09T00:00:00Z",
-    "number": 3005
-  },
-  {
     "body": "## Accepted residuals (recorded, not fixed)\n- MARKER_3006_SPACEPATH, key whose path contains a space <!-- gaia-debt-key: v1 class=lint path=app/my dir/file.ts line=1 -->",
     "headRefOid": "sha3006",
     "mergedAt": "2026-09-10T00:00:00Z",

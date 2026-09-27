@@ -2,21 +2,9 @@ import {afterEach, describe, expect, test, vi} from 'vitest';
 import {existsSync, mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {readCursor} from '../cache.js';
 import {run} from '../cursor-cmd.js';
 import {encodeToken} from '../token.js';
-
-const captureStdout = () => {
-  const lines: string[] = [];
-  const spy = vi
-    .spyOn(process.stdout, 'write')
-    .mockImplementation((chunk: unknown) => {
-      lines.push(typeof chunk === 'string' ? chunk : String(chunk));
-
-      return true;
-    });
-
-  return {lines, spy};
-};
 
 describe('residue-cursor', () => {
   const dirs: string[] = [];
@@ -36,30 +24,16 @@ describe('residue-cursor', () => {
       rmSync(dir, {force: true, recursive: true});
   });
 
-  test('show prints "null" when no cursor is recorded', () => {
-    const root = makeRoot();
-    const {lines} = captureStdout();
-
-    const exitCode = run(['show'], {cwd: root});
-
-    expect(exitCode).toBe(0);
-    expect(lines.join('')).toBe('null\n');
-  });
-
-  test('advance then show round-trips the coordinate; clear removes it', () => {
+  test('advance records the coordinate; clear removes it', () => {
     const root = makeRoot();
     const token = encodeToken({line: 42, path: 'app/x.ts', pr_number: 1234});
 
     expect(run(['advance', '--token', token], {cwd: root})).toBe(0);
 
-    const {lines} = captureStdout();
-
-    expect(run(['show'], {cwd: root})).toBe(0);
-    expect(JSON.parse(lines.join(''))).toEqual({
+    expect(readCursor(root)).toEqual({
       line: 42,
       path: 'app/x.ts',
       pr_number: 1234,
-      token,
     });
 
     expect(run(['clear'], {cwd: root})).toBe(0);

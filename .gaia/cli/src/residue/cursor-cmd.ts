@@ -1,5 +1,5 @@
 /**
- * `gaia residue-cursor show | advance --token T | clear`
+ * `gaia residue-cursor advance --token T | clear`
  *
  * The resumable per-run cursor (RD-005): `advance` records the coordinate the
  * skill just confirmed a disposition for, so a later `residue-tally` run
@@ -11,13 +11,11 @@
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {resolveRepoRoot} from '../util/repo-root.js';
-import {clearCursor, readCursor, writeCursor} from './cache.js';
-import {decodeToken, encodeToken} from './token.js';
+import {clearCursor, writeCursor} from './cache.js';
+import {decodeToken} from './token.js';
 
-const HELP_TEXT = `Usage: gaia residue-cursor <show|advance|clear> [args]
+const HELP_TEXT = `Usage: gaia residue-cursor <advance|clear> [args]
 
-  show                Print the recorded cursor as JSON (including its own
-                       token), or "null" when none is recorded.
   advance --token T    Record T's decoded coordinate as the cursor.
   clear                Remove the cursor file.
 `;
@@ -32,22 +30,6 @@ const resolveRoot = (cwd: string): string => {
   } catch {
     return cwd;
   }
-};
-
-const handleShow = (repoRoot: string): number => {
-  const cursor = readCursor(repoRoot);
-
-  if (cursor === null) {
-    process.stdout.write('null\n');
-
-    return EXIT_CODES.OK;
-  }
-
-  process.stdout.write(
-    `${JSON.stringify({...cursor, token: encodeToken(cursor)})}\n`
-  );
-
-  return EXIT_CODES.OK;
 };
 
 const handleAdvance = (argv: readonly string[], repoRoot: string): number => {
@@ -100,7 +82,6 @@ export const run = (
     return sub === undefined ? EXIT_CODES.UNKNOWN_SUBCOMMAND : EXIT_CODES.OK;
   }
 
-  if (sub === 'show') return handleShow(repoRoot);
   if (sub === 'advance') return handleAdvance(rest, repoRoot);
 
   if (sub === 'clear') {

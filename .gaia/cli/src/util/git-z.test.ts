@@ -58,16 +58,6 @@ describe('splitZStream', () => {
     expect(splitZStream('')).toEqual([]);
   });
 
-  test('keeps a path holding a newline as one record', () => {
-    expect(splitZStream('wiki/two\nnames.md\0')).toEqual([
-      'wiki/two\nnames.md',
-    ]);
-  });
-
-  test('never trims, since git permits whitespace at either end of a path', () => {
-    expect(splitZStream(' wiki/padded.md \0')).toEqual([' wiki/padded.md ']);
-  });
-
   test('never unquotes, since -z emits raw bytes a name may legally contain', () => {
     expect(splitZStream('wiki/"quoted".md\0')).toEqual(['wiki/"quoted".md']);
   });

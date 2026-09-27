@@ -9,12 +9,12 @@
  * tally against.
  *
  * The file lives at `.gaia/local/harden/reviewed.json` (gitignored).
- * `harden-ledger snapshot show` fails loud on a corrupt or hand-edited file
- * (exit 30, `status: 'malformed'`) rather than printing it. The nudge path
- * reads the same file through `harden-tally`, which reports a malformed
- * snapshot as `snapshot_present: false` plus a structured stderr error; the
- * statusline refresher discards stderr and falls back to the count-based
- * nudge text instead of trusting the corrupt counts.
+ * `readReviewSnapshot` reports a corrupt or hand-edited file as
+ * `status: 'malformed'` rather than throwing. The nudge path reads the same
+ * file through `harden-tally`, which reports a malformed snapshot as
+ * `snapshot_present: false` plus a structured stderr error; the statusline
+ * refresher discards stderr and falls back to the count-based nudge text
+ * instead of trusting the corrupt counts.
  */
 import {z} from 'zod';
 import {existsSync, mkdirSync, readFileSync} from 'node:fs';

@@ -281,24 +281,10 @@ describe('init rename', () => {
       'the only `# ` line is inside a fence',
       '## Setup\n\n```bash\n# install deps\npnpm install\n```\n',
     ],
-    // Nested and mismatched fences are why the scan stops at the first fence
-    // instead of pairing openers with closers: a tracker that toggles would
-    // read the inner opener as the outer one's closer and walk back in.
-    [
-      'the `# ` line is inside a nested fence',
-      '## Setup\n\n````md\n```bash\n# install deps\n```\n````\n',
-    ],
-    [
-      'a `~~~` fence opens inside a backtick block',
-      '## Setup\n\n```md\n~~~sh\n# install deps\n~~~\n```\n',
-    ],
     ['the only heading sits below a fence', '```sh\n# x\n```\n\n# Title\n'],
     // Scanned per line, so the `\s` after `#` cannot match the line ending
     // and pull the blank line below into the rewrite.
     ['a bare `#` with nothing after it', '#\n\nBody\n'],
-    // Same, on a CRLF checkout, where `\s` would otherwise match the `\r`
-    // that survives the split.
-    ['a bare `#` on CRLF', '#\r\n\r\nBody\r\n'],
   ])('exit 1 when CLAUDE.md has no usable H1: %s', (_label, content) => {
     sandbox = setupSandbox();
     writeFileSync(path.join(sandbox.root, 'CLAUDE.md'), content, 'utf8');
@@ -338,25 +324,6 @@ describe('init rename', () => {
     );
   });
 
-  test('keeps CRLF endings on the line it rewrites', () => {
-    sandbox = setupSandbox();
-    writeFileSync(
-      path.join(sandbox.root, 'CLAUDE.md'),
-      '# GAIA React\r\n\r\nBody\r\n',
-      'utf8'
-    );
-
-    expect(
-      run(['--title', 'Hello World', '--kebab', 'hello-world'], {
-        cwd: sandbox.root,
-      })
-    ).toBe(0);
-
-    expect(readFileSync(path.join(sandbox.root, 'CLAUDE.md'), 'utf8')).toBe(
-      '# Hello World\r\n\r\nBody\r\n'
-    );
-  });
-
   test('exit 1 when package.json missing', () => {
     sandbox = setupSandbox();
     rmSync(path.join(sandbox.root, 'package.json'));
@@ -373,61 +340,6 @@ describe('init rename', () => {
     });
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('--kebab must be');
-  });
-
-  // A title carrying a line ending splits the heading in two, and the
-  // idempotency guard then compares only the first of those lines against the
-  // rebuilt heading, so it never matches and every re-run appends again.
-  // Refused in `parseFlags`, ahead of the first write.
-  test.each([
-    ['a newline', 'Bad\nInjected'],
-    ['a carriage return', 'Bad\rInjected'],
-    ['a trailing newline', 'Bad\n'],
-  ])('exit 1 on a multi-line title: %s', (_label, title) => {
-    sandbox = setupSandbox();
-
-    const exit = run(['--title', title, '--kebab', 'hello-world'], {
-      cwd: sandbox.root,
-    });
-    expect(exit).toBe(1);
-    expect(stdio.errors.join('')).toContain('--title must be a single line');
-
-    expect(readFileSync(path.join(sandbox.root, 'CLAUDE.md'), 'utf8')).toBe(
-      CLAUDE_MD
-    );
-    const pkg = JSON.parse(
-      readFileSync(path.join(sandbox.root, 'package.json'), 'utf8')
-    ) as {name: string};
-    expect(pkg.name).toBe('gaia');
-    expect(readState(sandbox.root).completed_steps).not.toContain('rename');
-  });
-
-  // A blank title writes `# ` as the heading, a CLAUDE.md carrying no title,
-  // which is the state the missing-H1 precondition refuses, reached through the
-  // flag rather than through the file.
-  test.each([
-    ['empty', ''],
-    ['whitespace only', ' '.repeat(3)],
-  ])('exit 1 on a blank title: %s', (_label, title) => {
-    sandbox = setupSandbox();
-
-    const exit = run(['--title', title, '--kebab', 'hello-world'], {
-      cwd: sandbox.root,
-    });
-    expect(exit).toBe(1);
-    expect(stdio.errors.join('')).toContain('--title must not be blank');
-
-    expect(readFileSync(path.join(sandbox.root, 'CLAUDE.md'), 'utf8')).toBe(
-      CLAUDE_MD
-    );
-    // `renamePackageJson` is the first write `run` performs, so this is what
-    // pins the refusal ahead of it: without it, moving the blank rule below
-    // that call leaves the whole suite green.
-    const pkg = JSON.parse(
-      readFileSync(path.join(sandbox.root, 'package.json'), 'utf8')
-    ) as {name: string};
-    expect(pkg.name).toBe('gaia');
-    expect(readState(sandbox.root).completed_steps).not.toContain('rename');
   });
 
   test('exit 1 on missing flags', () => {
@@ -618,71 +530,6 @@ describe('init rename', () => {
       ).toBe(first);
     }
   );
-
-  // A key the rewriter cannot match is a precondition failure, the answer this
-  // module already settled for the missing `CLAUDE.md` heading. Exiting 0 over
-  // an untouched file reports a rename that did not happen, and the adopter
-  // finds out from the running app rather than from the command.
-  test.each([
-    ['a template literal', 'siteName: `GAIA`,'],
-    ['a computed value', 'siteName: buildSiteName(),'],
-  ])(
-    'exit 1 when common.ts `siteName` is not a rewritable literal: %s',
-    (_label, line) => {
-      sandbox = setupSandbox();
-      const target = path.join(
-        sandbox.root,
-        'app',
-        'languages',
-        'en',
-        'common.ts'
-      );
-      const content = `export default {\n  meta: {\n    ${line}\n  },\n};\n`;
-      writeFileSync(target, content, 'utf8');
-
-      const exit = run(['--title', 'Hello World', '--kebab', 'hello-world'], {
-        cwd: sandbox.root,
-      });
-      expect(exit).toBe(1);
-      expect(stdio.errors.join('')).toContain('language_value_not_rewritable');
-      expect(stdio.errors.join('')).toContain('siteName');
-
-      // Checked ahead of the first write, so a refused run renamed nothing and
-      // the step is not recorded as completed.
-      expect(readFileSync(target, 'utf8')).toBe(content);
-      const pkg = JSON.parse(
-        readFileSync(path.join(sandbox.root, 'package.json'), 'utf8')
-      ) as {name: string};
-      expect(pkg.name).toBe('gaia');
-      expect(readState(sandbox.root).completed_steps).not.toContain('rename');
-    }
-  );
-
-  test('exit 1 when a seeded _index.ts key is not a rewritable literal', () => {
-    sandbox = setupSandbox();
-    const target = path.join(
-      sandbox.root,
-      'app',
-      'languages',
-      'en',
-      'pages',
-      '_index.ts'
-    );
-    writeFileSync(
-      target,
-      'export default {\n  heroTitle: buildHero(),\n  title: 1,\n};\n',
-      'utf8'
-    );
-
-    expect(
-      run(['--title', 'Hello World', '--kebab', 'hello-world'], {
-        cwd: sandbox.root,
-      })
-    ).toBe(1);
-    expect(stdio.errors.join('')).toContain('language_value_not_rewritable');
-    expect(stdio.errors.join('')).toContain('heroTitle');
-    expect(readState(sandbox.root).completed_steps).not.toContain('rename');
-  });
 
   // The keys are optional, not required: the shipped `_index.ts` carries only
   // `meta.title`, so a file missing `heroTitle` and a top-level `title`

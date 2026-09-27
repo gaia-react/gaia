@@ -31,13 +31,11 @@ import type {
 import {readSandboxMarker, writeSandboxMarker} from './marker.js';
 import type {SandboxOutcome} from './marker.js';
 import {seedSandboxConfig} from './seed.js';
-import type {SandboxSettingsFragment} from './seed.js';
 
 const HELP_TEXT = `Usage: gaia sandbox <subcommand> [args]
 
   detect [--platform <darwin|linux|win32>] [--wsl <none|wsl1|wsl2>]
          [--has-bwrap <true|false>] [--has-socat <true|false>] [--json]
-  seed --registry <value> --docker-present <true|false> [--json]
   apply --registry <value> --docker-present <true|false>
         [--settings-path <path>] [--capability <ready|needs-deps|unsupported>]
   record --outcome <enabled|declined|incapable>
@@ -266,68 +264,6 @@ const runDetect = (argv: readonly string[]): number => {
   };
 
   printDetectResult(classifyCapability(input), tokens.json);
-
-  return EXIT_CODES.OK;
-};
-
-const SEED_HELP_TEXT = `Usage: gaia sandbox seed --registry <value> --docker-present <true|false> [--json]
-
-  Print the minimal sandbox settings fragment for this registry/docker
-  combination. --json prints a single-line JSON fragment; otherwise a
-  human-readable summary.
-`;
-
-const SEED_FLAG_SPECS: readonly FlagSpec[] = [
-  {flag: '--registry', key: 'registry', kind: 'string', required: true},
-  {
-    flag: '--docker-present',
-    key: 'dockerPresent',
-    kind: 'boolean',
-    required: true,
-  },
-];
-
-const printSeedResult = (
-  fragment: SandboxSettingsFragment,
-  json: boolean
-): void => {
-  if (json) {
-    process.stdout.write(`${JSON.stringify(fragment)}\n`);
-
-    return;
-  }
-
-  const lines = [
-    `registry host: ${fragment.sandbox.network.allowedDomains[0]}`,
-    `docker excluded: ${fragment.sandbox.excludedCommands === undefined ? 'no' : 'yes'}`,
-  ];
-  process.stdout.write(`${lines.join('\n')}\n`);
-};
-
-const runSeed = (argv: readonly string[]): number => {
-  const [first] = argv;
-
-  if (first !== undefined && HELP_TOKENS.has(first)) {
-    process.stdout.write(SEED_HELP_TEXT);
-
-    return EXIT_CODES.OK;
-  }
-
-  const tokens = tokenize(argv);
-
-  if (!tokens.ok) return failInvalid('sandbox seed', tokens.message);
-
-  const built = buildFlags(tokens.provided, SEED_FLAG_SPECS);
-
-  if (!built.ok) return failInvalid('sandbox seed', built.message);
-
-  printSeedResult(
-    seedSandboxConfig({
-      dockerPresent: built.value.dockerPresent as boolean,
-      registry: built.value.registry as string,
-    }),
-    tokens.json
-  );
 
   return EXIT_CODES.OK;
 };
@@ -665,7 +601,6 @@ const SUBCOMMAND_HANDLERS: Readonly<Partial<Record<string, Handler>>> = {
   apply: runApply,
   detect: runDetect,
   record: runRecord,
-  seed: runSeed,
   status: runStatus,
 };
 

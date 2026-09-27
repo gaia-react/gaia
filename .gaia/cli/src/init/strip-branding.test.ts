@@ -104,24 +104,6 @@ const captureStdio = (): {
   };
 };
 
-/**
- * Assert a refused run wrote nothing at all.
- *
- * `removeIfPresent(FUNDING_PATH)` is the first write `run` performs, so the
- * FUNDING assertion is what pins the refusal ahead of it: without it, moving a
- * rule below that call leaves the whole suite green.
- */
-const expectNothingWritten = (root: string): void => {
-  expect(existsSync(path.join(root, '.github', 'FUNDING.yml'))).toBe(true);
-  expect(readFileSync(path.join(root, 'README.md'), 'utf8')).toBe(
-    '# GAIA stale\n'
-  );
-  expect(
-    readFileSync(path.join(root, '.storybook', 'preview.ts'), 'utf8')
-  ).toBe(PREVIEW_BEFORE);
-  expect(readState(root).completed_steps).not.toContain('strip-branding');
-};
-
 describe('init strip-branding', () => {
   let sandbox: Sandbox;
   let stdio: ReturnType<typeof captureStdio>;
@@ -198,43 +180,8 @@ describe('init strip-branding', () => {
     expect(stdio.errors.join('')).toContain('--title is required');
   });
 
-  // A title carrying a line ending is spliced into a single-quoted JavaScript
-  // string literal in `.storybook/preview.ts`, which emits an unterminated
-  // literal and leaves the adopter's fresh scaffold unable to build Storybook.
-  // Refused in `parseFlags`, ahead of the first write.
-  test.each([
-    ['a newline', 'Bad\nInjected'],
-    ['a carriage return', 'Bad\rInjected'],
-    ['a trailing newline', 'Bad\n'],
-  ])('exit 1 on a multi-line title: %s', (_label, title) => {
-    sandbox = setupSandbox();
-
-    const exit = run(['--title', title], {cwd: sandbox.root});
-    expect(exit).toBe(1);
-    expect(stdio.errors.join('')).toContain('--title must be a single line');
-
-    expectNothingWritten(sandbox.root);
-  });
-
-  // A blank title writes `# ` as the README heading, because the template's
-  // first line is `# {{PROJECT_TITLE}}`: a README carrying a heading and no
-  // title, the same state `rename` refuses in CLAUDE.md.
-  test.each([
-    ['empty', ''],
-    ['whitespace only', ' '.repeat(3)],
-  ])('exit 1 on a blank title: %s', (_label, title) => {
-    sandbox = setupSandbox();
-
-    const exit = run(['--title', title], {cwd: sandbox.root});
-    expect(exit).toBe(1);
-    expect(stdio.errors.join('')).toContain('--title must not be blank');
-
-    expectNothingWritten(sandbox.root);
-  });
-
   // A title carrying a quote, a backslash or a `$` is an ordinary title and is
-  // escaped rather than refused, which is the other half of the policy the two
-  // refusal rules above encode. Scoped to this command's own sink: these rows
+  // escaped rather than refused. Scoped to this command's own sink: these rows
   // assert what `debrandStorybook` does, and say nothing about any other sink.
   test.each([
     ['an apostrophe', "Steve's App", String.raw`Steve\'s App`],

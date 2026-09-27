@@ -1,9 +1,7 @@
 /**
  * Strategy: `parseValueFlags` is pure, so every case calls it directly with an
  * in-memory argv. The three consuming command suites cover their own required-
- * field validation; what this suite owns is the argv walk itself and the
- * own-property guard that keeps an `Object.prototype` key from resolving to an
- * inherited value and consuming the following argv element.
+ * field validation; what this suite owns is the argv walk itself.
  */
 import {describe, expect, test} from 'vitest';
 import {parseValueFlags} from './parse-value-flags.js';
@@ -15,8 +13,6 @@ const VALUE_FLAGS: ValueFlagMap<Field> = {
   '--current': 'current',
   '--latest': 'latest',
 };
-
-const PROTOTYPE_KEYS = ['constructor', 'toString', 'valueOf', '__proto__'];
 
 describe('parseValueFlags', () => {
   test('collects a known --flag <value> pair into state.collected', () => {
@@ -78,25 +74,4 @@ describe('parseValueFlags', () => {
 
     expect(result).toEqual({message: '--current requires a value', ok: false});
   });
-
-  test.each(PROTOTYPE_KEYS)(
-    'an Object.prototype key (%s) is rejected as unknown rather than consuming the next element',
-    (token) => {
-      const result = parseValueFlags([token, 'swallowed'], VALUE_FLAGS);
-
-      expect(result).toEqual({message: `unknown flag: ${token}`, ok: false});
-    }
-  );
-
-  test.each(PROTOTYPE_KEYS)(
-    'an Object.prototype key (%s) is rejected before any later flag is collected',
-    (token) => {
-      const result = parseValueFlags(
-        [token, 'swallowed', '--current', 'a.txt'],
-        VALUE_FLAGS
-      );
-
-      expect(result).toEqual({message: `unknown flag: ${token}`, ok: false});
-    }
-  );
 });

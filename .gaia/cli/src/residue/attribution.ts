@@ -26,19 +26,6 @@
  * malformed: it is not a key at all, so its unit is keyless. `parseKey` still
  * refuses such a key with its own reason for a caller holding one from
  * elsewhere.
- *
- * # Deliberate heading-matching behavior
- *
- * A canonical heading is matched by its TEXT, not by its whole line: the
- * leading `#` run and the one whitespace character after it are stripped from
- * the line under test and from each canonical literal before the comparison,
- * so the heading LEVEL is not load-bearing and a level-three spelling of a
- * canonical literal is canonical. Two things widen with it: the marker run,
- * and the separator, which is any single member of the pattern's character
- * class rather than the literal space the canonical literals carry, so a
- * tab-separated spelling is canonical too. What does not widen is how many
- * separator characters are stripped, so `###  <canonical text>`, two spaces,
- * is still not canonical.
  */
 import {KEY_PATTERN, parseKey} from './key.js';
 import type {ResidueKey} from './key.js';
@@ -217,22 +204,12 @@ const matchInnerKey = (line: string, keyPattern: RegExp): null | string => {
   return match?.[1] ?? null;
 };
 
-// Heading text, over the same language HEADING_PATTERN recognizes: a line
-// that reads as a heading is a line this strips a marker from. The pattern carries no `g` flag, so `replace` takes the one anchored
-// match and neither call site has a `lastIndex` to carry between lines.
-const headingText = (line: string): string => line.replace(HEADING_PATTERN, '');
-
-// The literals are written at level two and the remediation text names that
-// form, so both sides of each comparison are reduced to heading text rather
-// than the canonical spellings being restated once per level.
 const canonicalDisposition = (
   trimmedHeading: string,
   predicates: AttributionPredicates
 ): null | ResidueDisposition => {
-  const text = headingText(trimmedHeading);
-
-  if (text === headingText(predicates.canonAccept)) return 'accept';
-  if (text === headingText(predicates.canonWaive)) return 'waive';
+  if (trimmedHeading === predicates.canonAccept) return 'accept';
+  if (trimmedHeading === predicates.canonWaive) return 'waive';
 
   return null;
 };

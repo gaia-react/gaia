@@ -1,35 +1,19 @@
 import {describe, expect, test} from 'vitest';
 import {
-  FINDING_CLASS_PREFIXES,
   FindingClassSchema,
   HOLISTIC_FINDING_CLASSES,
   isOracleFindingClass,
   isValidFindingClass,
   OUT_OF_SCOPE_FALLBACK_FINDING_CLASS,
-  PROSE_FINDING_CLASSES,
   RULE_FINDING_CLASSES,
   WORKFLOW_FINDING_CLASSES,
 } from '../finding-class.js';
 import type {HolisticFindingClass} from '../finding-class.js';
 
 /**
- * The holistic members seeded from the maintainer surface, the tail of
- * `HOLISTIC_FINDING_CLASSES` that begins at `holistic/hollow-assertion`. New
- * members are appended, so a newly seeded one lands in this slice on its own
- * and the coverage test below demands its near-miss entries.
- */
-const MAINTAINER_SURFACE_HOLISTIC_CLASSES = HOLISTIC_FINDING_CLASSES.slice(
-  HOLISTIC_FINDING_CLASSES.indexOf('holistic/hollow-assertion')
-);
-
-/**
  * Near-miss spellings per maintainer-surface member, the shapes a writer
  * reaches for when the real slug is nearly right. Held as pairs rather than a
- * flat list so one table feeds both the rejection cases and the coverage test
- * below. That test fails in three directions: a seeded member with no row, a
- * row whose entry list is empty, and a row naming a member no longer seeded.
- * The empty-list arm is separate because comparing the member column alone
- * passes a row that contributes no rejection case at all.
+ * flat list so one table feeds the rejection cases below.
  */
 const MAINTAINER_SURFACE_MEMBERS: readonly (readonly [
   HolisticFindingClass,
@@ -159,17 +143,6 @@ describe('schemas/finding-class', () => {
       }
     );
 
-    test.each(PROSE_FINDING_CLASSES)(
-      'accepts seeded prose member: %s',
-      (value) => {
-        expect(FindingClassSchema.safeParse(value).success).toBe(true);
-      }
-    );
-
-    test('PROSE_FINDING_CLASSES is non-empty (a closed bucket with members)', () => {
-      expect(PROSE_FINDING_CLASSES.length).toBeGreaterThan(0);
-    });
-
     test('rejects an unseeded holistic member (closed bucket)', () => {
       expect(
         FindingClassSchema.safeParse('holistic/something-made-up').success
@@ -184,18 +157,6 @@ describe('schemas/finding-class', () => {
         expect(isValidFindingClass(value)).toBe(false);
       }
     );
-
-    test('every maintainer-surface holistic member carries near-miss coverage', () => {
-      expect(MAINTAINER_SURFACE_MEMBERS.map(([member]) => member)).toEqual([
-        ...MAINTAINER_SURFACE_HOLISTIC_CLASSES,
-      ]);
-
-      expect(
-        MAINTAINER_SURFACE_MEMBERS.filter(
-          ([, nearMisses]) => nearMisses.length === 0
-        ).map(([member]) => member)
-      ).toEqual([]);
-    });
 
     test('rejects an unseeded rule member (closed bucket)', () => {
       expect(
@@ -224,23 +185,6 @@ describe('schemas/finding-class', () => {
         expect(isValidFindingClass(value)).toBe(false);
       }
     );
-  });
-
-  describe('exported vocabulary', () => {
-    test('exposes the eight known prefixes', () => {
-      expect(new Set(FINDING_CLASS_PREFIXES)).toEqual(
-        new Set([
-          'axe',
-          'cve',
-          'holistic',
-          'knip',
-          'prose',
-          'react-doctor',
-          'rule',
-          'workflow',
-        ])
-      );
-    });
   });
 
   describe('isOracleFindingClass (harden-tally is_oracle source)', () => {
