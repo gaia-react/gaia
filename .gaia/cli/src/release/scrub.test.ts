@@ -829,13 +829,16 @@ describe('json-strip-array-element transform', () => {
           {
             hooks: [
               {command: '.claude/hooks/block-env-write.sh', type: 'command'},
-              {command: '.claude/hooks/check-i18n-strings.sh', type: 'command'},
+              {
+                command: '.claude/hooks/block-manifest-write.sh',
+                type: 'command',
+              },
             ],
             matcher: 'Edit|Write',
           },
           {
             hooks: [
-              {command: '.claude/hooks/block-bare-test.sh', type: 'command'},
+              {command: '.claude/hooks/block-no-verify.sh', type: 'command'},
               {
                 command: TARGET_HOOK,
                 statusMessage: 'Checking PR-merge audit gate…',
@@ -865,10 +868,10 @@ describe('json-strip-array-element transform', () => {
     // removed from the Bash entry; unrelated sections survive.
     expect(commandsIn(0)).toEqual([
       '.claude/hooks/block-env-write.sh',
-      '.claude/hooks/check-i18n-strings.sh',
+      '.claude/hooks/block-manifest-write.sh',
     ]);
     expect(commandsIn(1)).toEqual([
-      '.claude/hooks/block-bare-test.sh',
+      '.claude/hooks/block-no-verify.sh',
       '.claude/hooks/block-rm-rf.sh',
     ]);
     expect(after.env).toEqual({CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1'});

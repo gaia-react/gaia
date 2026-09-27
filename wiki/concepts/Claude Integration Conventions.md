@@ -106,14 +106,10 @@ Examples of path-scoped rules: `i18n.md` (pages + components + languages), `rout
 Steps (all mechanical):
 
 1. **Update `paths:` globs in rules**: prefix every `app/…` glob with `{CONTAINER}/{APP}/`. Example: `app/state/**/*` → `apps/web/app/state/**/*`.
-2. **Update hook script regexes**: the advisory hooks match on file paths:
-   - `check-i18n-strings.sh`: regex on `app/(pages|components)/…`
-   - `check-story-exists.sh`: regex on `app/components/…`
-   - `block-eslint-config-edit.sh`: already path-agnostic post GAP §2A-1; no change needed.
-3. **Update scaffolding templates**: in `.claude/skills/new-*/SKILL.md` (and any `references/`), path outputs must become `{CONTAINER}/{APP}/app/…`.
-4. **Split CLAUDE.md**: add a per-app `CLAUDE.md` at `{CONTAINER}/{APP}/CLAUDE.md` with stack-specific commands; keep root `CLAUDE.md` as the monorepo overview (see §10).
-5. **Verify hook scripts**: confirm no script hardcodes a specific container folder name. If found, fix.
-6. **Leave wiki hooks alone**: `wiki-session-start.sh` / `wiki-session-stop.sh` are git-level and path-agnostic.
+2. **Update scaffolding templates**: in `.claude/skills/new-*/SKILL.md` (and any `references/`), path outputs must become `{CONTAINER}/{APP}/app/…`.
+3. **Split CLAUDE.md**: add a per-app `CLAUDE.md` at `{CONTAINER}/{APP}/CLAUDE.md` with stack-specific commands; keep root `CLAUDE.md` as the monorepo overview (see §10).
+4. **Verify hook scripts**: confirm no script hardcodes a specific container folder name. If found, fix.
+5. **Leave wiki hooks alone**: `wiki-session-start.sh` / `wiki-session-stop.sh` are git-level and path-agnostic.
 
 ## 7. External-service rule pattern
 

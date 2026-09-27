@@ -55,7 +55,6 @@ __pycache__/
 # Wiki sync system markers (project-local, never commit)
 .claude/wiki-drift-checked
 .claude/wiki-safety-checked
-.claude/i18n-strings-checked
 .claude/wiki-recompact-pending
 
 # GAIA release/update working directories

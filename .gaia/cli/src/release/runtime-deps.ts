@@ -105,7 +105,6 @@ const RUNTIME_PREFIXES: readonly string[] = [
  * source side and recreated on each session by the hook that owns them.
  */
 const RUNTIME_MARKERS: ReadonlySet<string> = new Set([
-  '.claude/i18n-strings-checked',
   '.claude/wiki-drift-checked',
   // Runtime-created sentinel: wiki-recompact-sentinel.sh (PostCompact) writes
   // this file and wiki-recompact-inject.sh (UserPromptSubmit) reads and clears
