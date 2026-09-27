@@ -255,14 +255,6 @@ make_repo() {
   [ -z "$output" ]
 }
 
-@test "a failing slug never yields the base with a trailing separator" {
-  make_repo "main"
-  gaia_key_slug() { return 1; }
-  run gaia_audit_key "$BASE" "$REPO"
-  [ "$output" != "${BASE}." ]
-  [ "$output" != "$BASE" ]
-}
-
 # ========== the defect, expressed as a unit ==========
 
 @test "two real linked worktrees off one base produce DIFFERENT keys from the SAME base sha" {

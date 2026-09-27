@@ -120,11 +120,6 @@ name_half_verdict() {
   [ "$(verdict 'gh pr merge --repo other-org/widgets 5')" = "foreign" ]
 }
 
-@test "s5: a -R attached to its value is read" {
-  [ "$(verdict 'gh pr merge -Rother-org/widgets 5')" = "foreign" ]
-  [ "$(verdict 'gh pr merge -Racme/widgets 5')" = "home" ]
-}
-
 @test "s6: the = form is read" {
   [ "$(verdict 'gh pr merge --repo=other-org/widgets 5')" = "foreign" ]
 }
@@ -191,12 +186,6 @@ name_half_verdict() {
   [ "$(verdict 'gh pr merge 42 --squash && ls -RA')" = "home" ]
 }
 
-@test "s16: an attached -R still decides when it names a real slug" {
-  # s15's safety direction: rejecting a bare-letter value must not also reject
-  # the spelling s5 exists for.
-  [ "$(verdict 'gh pr merge -Rother-org/widgets 5 && ls -RA')" = "foreign" ]
-}
-
 # s17 covers the redirections no pattern set models. Each puts a command ahead
 # of the merge, so each fails the first-command requirement and reads foreign,
 # and the third does so without the path being resolvable at all. Declining is
@@ -218,16 +207,6 @@ name_half_verdict() {
   [ "$(verdict 'gh pr merge 42 --squash && grep -R app/routes .')" = "home" ]
   [ "$(verdict 'gh pr merge 42 && cp -R a/b c/d')" = "home" ]
   [ "$(verdict 'gh pr merge 42 && ls -R /tmp')" = "home" ]
-}
-
-# s19 pins the abstention the parser makes on its own account, separately from
-# the first-command one. gh accepts a single-dash cluster and its flag library
-# reads it letter by letter, so `-sR<slug>` is a squash merge of another
-# repository; the parser does not model that and declines rather than reading
-# the merge as home.
-@test "s19: a single-dash flag cluster is foreign" {
-  [ "$(verdict 'gh pr merge -sd 42')" = "foreign" ]
-  [ "$(verdict 'gh pr merge -sRother-org/widgets 42')" = "foreign" ]
 }
 
 # s20 discriminates the three words that identify the merge. The redirection

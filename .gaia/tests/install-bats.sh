@@ -39,8 +39,8 @@
 #     https://github.com/bats-core/bats-core/archive/refs/tags/v<X.Y.Z>.tar.gz
 #   shasum -a 256 .gaia/tests/vendor/bats-core-<X.Y.Z>.tar.gz
 # Paste that digest into BATS_SHA256, commit the new archive, and delete the
-# one it replaces. `.gaia/tests/lib/install-bats.bats` reds on a bump that
-# skips any of those steps.
+# one it replaces. `.gaia/tests/lib/install-bats.bats` reds on a version,
+# archive, or digest left out of sync with the others.
 #
 # Derive the digest from that fresh download and nowhere else, because no
 # check in the tree can catch it if you do not. The archive and the pin are

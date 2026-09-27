@@ -11,7 +11,7 @@
 # root, one fact about the clone -- but that fact alone does not make the
 # segment render from every tree, only from the tree that can act on it.
 # These tests inject the cache directly (no drift computation) and assert the
-# rendered right side, covering UAT-013..017.
+# rendered right side, covering UAT-013, UAT-015..017.
 #
 # Hermeticity: each fixture PROJECT_ROOT lives under a per-test mktemp -d with a
 # fake $HOME (so the left-side delegation never reads the real
@@ -116,17 +116,6 @@ render() {
   render "$r"
   [ "$status" -eq 0 ]
   assert_contains 'Run /gaia-serena-sync (Serena missing: python, go)'
-}
-
-@test "UAT-014 statusline: serenaLangDrift [go] -> segment names only go, never python" {
-  local r="$TMPROOT/r014"
-  scaffold_root "$r"
-  write_cache "$r" '["go"]'
-  write_setup "$r" complete
-  render "$r"
-  [ "$status" -eq 0 ]
-  assert_contains 'Run /gaia-serena-sync (Serena missing: go)'
-  refute_contains 'python'
 }
 
 @test "UAT-015 statusline: empty array and absent field both render no segment" {

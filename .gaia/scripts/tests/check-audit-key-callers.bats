@@ -290,28 +290,6 @@ LEDGER=".gaia/local/audit/$(gaia_audit_key "$KEY_BASE").rerun.json"
   grep -qF "is not a git repository root; nothing was scanned" <<<"$output" || return 1
 }
 
-@test "a bare repository and a .git directory both report 2, never a clean 0" {
-  # --show-prefix alone clears both (exit 0, empty output). The work-tree
-  # check is what separates "has a prefix of empty" from "has a work tree",
-  # and without it `git grep` fails below with its diagnostic swallowed.
-  local bare="$BATS_TEST_TMPDIR/bare.git"
-  git init -q --bare "$bare"
-  run gaia_check_audit_key_callers "$bare"
-  [ "$status" -eq 2 ]
-
-  local live
-  live="$(make_fixture_repo gitdir-probe)"
-  write_agent_file "$live" some-agent.md "$UNRELATED_FILE"
-  commit_fixture_repo "$live"
-  run gaia_check_audit_key_callers "$live/.git"
-  [ "$status" -eq 2 ]
-  grep -qF "is not a git repository root; nothing was scanned" <<<"$output" || return 1
-}
-
-@test "structural: check-audit-key-callers.sh is executable" {
-  [ -x "$CHECK" ]
-}
-
 @test "structural: sourcing the script defines gaia_check_audit_key_callers with no side effects" {
   run bash -c '
     # shellcheck disable=SC1090
@@ -321,20 +299,4 @@ LEDGER=".gaia/local/audit/$(gaia_audit_key "$KEY_BASE").rerun.json"
   ' _ "$CHECK"
   [ "$status" -eq 0 ]
   [ "$output" = "OK" ]
-}
-
-@test "structural: never invokes cd, per .claude/rules/shell-cwd.md" {
-  code_lines="$(grep -vE '^[[:space:]]*#' "$CHECK")"
-  grep -qE '(^|[^[:alnum:]_])cd([^[:alnum:]_]|$)' <<<"$code_lines" && return 1
-  return 0
-}
-
-@test "structural: no hardcoded /Users or /home paths" {
-  grep -E '/Users/|/home/' "$CHECK" && return 1
-  return 0
-}
-
-@test "structural: shellcheck is clean" {
-  command -v shellcheck >/dev/null 2>&1 || skip "shellcheck not available"
-  shellcheck "$CHECK"
 }

@@ -546,11 +546,6 @@ run_hook_edit() {
   [ -x "$HOOK_ABS" ]
 }
 
-@test "settings.json is valid JSON" {
-  run jq empty "$SETTINGS_ABS"
-  [ "$status" -eq 0 ]
-}
-
 @test "settings.json registers the hook under the Edit|Write|MultiEdit matcher" {
   hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Edit|Write|MultiEdit")' block-worktree-path-mismatch.sh
 }

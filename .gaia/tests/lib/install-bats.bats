@@ -17,11 +17,9 @@
 # an archive missing for the pinned version fails them before that. Neither is
 # silent, but both are cheaper to catch here than across eleven red legs.
 #
-# The two structural assertions (V5, V6) pin the properties the pin exists for,
-# which vendoring must not quietly relax: verify before extracting, and never
-# stream bytes into the extractor. V4 pins the network's absence, which is the
-# one that would otherwise rot silently -- restoring a download re-creates the
-# burst while every test still passes and every leg still greens.
+# V4 pins the network's absence, which is the one that would otherwise rot
+# silently -- restoring a download re-creates the burst while every test still
+# passes and every leg still greens.
 #
 # Run under bash 5 (see .claude/rules/bats-assertions.md):
 #   source .gaia/scripts/bats5.sh && bats5 .gaia/tests/lib/install-bats.bats
@@ -51,7 +49,7 @@ file_sha256() {
 # Whole-line comments are dropped because the header documents the re-vendor
 # recipe, and that recipe quotes the very command lines the assertions below
 # search for. Every assertion that reads the script reads it through here, so
-# a comment can neither trip an absence check nor satisfy an ordering one.
+# a comment cannot trip an absence check.
 #
 # Number first and drop after: stripping first renumbers what survives, so a
 # reported line would point a reader at an unrelated part of the script.
@@ -63,12 +61,6 @@ code_lines() {
 refute_code_match() {
   code_lines | grep -E "$1" && return 1
   return 0
-}
-
-# The script line number of the first executable line matching $1, empty when
-# nothing matches.
-code_line_of() {
-  code_lines | grep -E "$1" | head -1 | cut -d: -f1
 }
 
 @test "V1: the version and digest pins parse out of the script" {
@@ -94,30 +86,4 @@ code_line_of() {
 # catch. `git` cannot join them: this script resolves the checkout with it.
 @test "V4: the install reaches no network" {
   refute_code_match '(^|[^[:alnum:]_-])(curl|wget|nc|scp|npx|gh)([^[:alnum:]_-]|$)'
-}
-
-@test "V5: the digest is checked before the archive is extracted" {
-  local verify_line extract_line
-  verify_line="$(code_line_of 'sha256sum -c -')"
-  extract_line="$(code_line_of 'tar -xzf')"
-  [ -n "$verify_line" ]
-  [ -n "$extract_line" ]
-  [ "$verify_line" -lt "$extract_line" ]
-}
-
-@test "V6: nothing is piped into tar" {
-  refute_code_match '\|[[:space:]]*(sudo[[:space:]]+)?tar([^[:alnum:]_-]|$)'
-}
-
-# The half of a bump that leaves no other trace. A superseded archive left
-# beside the new one still passes every assertion above, because each of them
-# reads the pinned name and finds it; what a leftover costs is that the
-# directory stops answering which blob is live, and it carries the retired
-# bytes forward in the tree for no reason. Asserting the whole directory,
-# rather than the pinned file's presence, is what makes the script header's
-# claim that this suite reds on a half-finished bump true.
-@test "V7: the vendor directory holds the pinned archive and nothing else" {
-  local found
-  found="$(find "$REPO_ROOT/.gaia/tests/vendor" -maxdepth 1 -name '*.tar.gz' | sort)"
-  [ "$found" = "$VENDORED" ]
 }

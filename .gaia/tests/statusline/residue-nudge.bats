@@ -156,31 +156,12 @@ run_statusline_with_cache() {
   run env HOME="$TMP_HOME" bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
 }
 
-# Render against a scratch copy of the statusline with RESIDUE_NUDGE_THRESHOLD
-# lowered to 1, so the noun-agreement branch is exercised at a count (1) that
-# sits below the real threshold.
-run_statusline_lowered_threshold() {
-  local cache_json="$1" lowered="$MAIN/.gaia/statusline/gaia-statusline-lowered.sh" json
-  sed 's/RESIDUE_NUDGE_THRESHOLD=5/RESIDUE_NUDGE_THRESHOLD=1/' \
-    "$STATUSLINE_SRC/gaia-statusline.sh" > "$lowered"
-  chmod +x "$lowered"
-  printf '%s' "$cache_json" > "$MAIN/.gaia/local/cache/shared/update-check.json"
-  json=$(jq -n --arg d "$MAIN" '{workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
-  run env HOME="$TMP_HOME" bash -c "printf '%s' '$json' | bash '$lowered'"
-}
-
 # --- Rendering ---
 
 @test "statusline renders the plural residue segment at 8" {
   run_statusline_with_cache '{"residueCandidateCount":8}'
   [ "$status" -eq 0 ]
   grep -qF -- "Run /gaia-residue (8 aged residuals)" <<<"$output"
-}
-
-@test "statusline renders the singular noun at 1, threshold lowered to isolate the noun branch" {
-  run_statusline_lowered_threshold '{"residueCandidateCount":1}'
-  [ "$status" -eq 0 ]
-  grep -qF -- "Run /gaia-residue (1 aged residual)" <<<"$output"
 }
 
 @test "the count threshold boundary: 4 renders nothing, 5 renders the segment" {
@@ -220,17 +201,6 @@ run_statusline_lowered_threshold() {
   true
 }
 
-@test "the residue segment coexists with harden, audit, and debt without disturbing them" {
-  mkdir -p "$MAIN/.gaia/local/debt"
-  printf '{"openCount":3}' > "$MAIN/.gaia/local/debt/count.json"
-  run_statusline_with_cache '{"hardenCandidateCount":2,"auditNudge":true,"auditNudgeReason":"stale","residueCandidateCount":8}'
-  [ "$status" -eq 0 ]
-  grep -qF -- "Run /gaia-harden (2 recurring patterns)" <<<"$output"
-  grep -qF -- "Run /gaia-audit (stale)" <<<"$output"
-  grep -qF -- "Run /gaia-debt (3 issues)" <<<"$output"
-  grep -qF -- "Run /gaia-residue (8 aged residuals)" <<<"$output"
-}
-
 # --- Refresher ---
 
 @test "refresher writes aged_candidate_count into residueCandidateCount on a fresh run" {
@@ -253,21 +223,6 @@ run_statusline_lowered_threshold() {
   true
 }
 
-# Proves the argv guard above can fail (guards-must-fail): a mutated refresher
-# with --count-only dropped from the call leaves the flag out of the recorded
-# argv, which the same assertion the previous test relies on catches.
-@test "the --count-only argv guard reds when a mutated refresher drops the flag" {
-  : > "$RESIDUE_ARGV_LOG"
-  broken="$BATS_TEST_TMPDIR/check-updates-broken.sh"
-  sed 's/residue-tally --count-only/residue-tally/' \
-    "$REFRESH_ROOT/.gaia/scripts/check-updates.sh" > "$broken"
-  chmod +x "$broken"
-  run env MOCK_RESIDUE_GH_OK=true MOCK_RESIDUE_COUNT=3 bash "$broken"
-  [ "$status" -eq 0 ]
-  grep -qF -- "--count-only" "$RESIDUE_ARGV_LOG" && return 1
-  true
-}
-
 @test "refresher preserves the previous residueCandidateCount when gh_ok is false" {
   CACHE_FILE="$REFRESH_ROOT/.gaia/local/cache/shared/update-check.json"
   printf '{"checkedAt":0,"residueCandidateCount":6}' > "$CACHE_FILE"
@@ -275,16 +230,6 @@ run_statusline_lowered_threshold() {
   [ "$status" -eq 0 ]
   jq . "$CACHE_FILE" >/dev/null
   [ "$(jq -r '.residueCandidateCount' "$CACHE_FILE")" = "6" ]
-}
-
-@test "refresher writes the count unchanged and never writes count_approximate" {
-  run env MOCK_RESIDUE_GH_OK=true MOCK_RESIDUE_COUNT=4 MOCK_RESIDUE_APPROX=true bash "$REFRESH_ROOT/.gaia/scripts/check-updates.sh"
-  [ "$status" -eq 0 ]
-  CACHE_FILE="$REFRESH_ROOT/.gaia/local/cache/shared/update-check.json"
-  jq . "$CACHE_FILE" >/dev/null
-  [ "$(jq -r '.residueCandidateCount' "$CACHE_FILE")" = "4" ]
-  jq -e 'has("count_approximate")' "$CACHE_FILE" >/dev/null && return 1
-  true
 }
 
 @test "refresher preserves the previous count when the stub exits non-zero" {

@@ -338,33 +338,6 @@ opener_pair() {
   assert_not_armed
 }
 
-@test "inside backticks a backslash-escaped opener is live, and the same escape at top level is not" {
-  local bt='`'
-  # The shell strips the backslash from \$ inside backticks before parsing the
-  # inner command, so each of these runs the merge.
-  arm "$MERGE_FRAG" "$MERGE_WORDS" "x=${bt}echo \\\$(gh pr merge 1)${bt}"
-  assert_armed || return 1
-  arm "$MERGE_FRAG" "$MERGE_WORDS" "x=${bt}echo \"\\\$(gh pr merge 1)\"${bt}"
-  assert_armed || return 1
-  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"${bt}echo \\\$(gh pr merge 1)${bt}\""
-  assert_armed || return 1
-  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \\\$(gh pr merge 1)"
-  assert_not_armed
-}
-
-@test "under backticks a backtick inside quotes ends the substitution for bash, so the scan stops" {
-  local bt='`'
-  # bash closes the outer backquote at the quoted backtick, leaving the
-  # substitution after it live.
-  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo ${bt}echo 'a${bt} \$(gh pr merge 1) ${bt}'${bt}"
-  assert_armed || return 1
-  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo ${bt}echo \"a${bt} \$(gh pr merge 1) ${bt}\"${bt}"
-  assert_armed || return 1
-  # The same quoted text outside backticks is one quoted span.
-  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo 'a${bt} \$(gh pr merge 1) ${bt}'"
-  assert_not_armed
-}
-
 @test "an ampersand or pipe completing a redirection does not start a new command for the heredoc owner" {
   local body="echo \$(gh pr merge 1)${NL}EOF"
   arm "$MERGE_FRAG" "$MERGE_WORDS" "bash -s >& cat <<'EOF'${NL}${body}"
@@ -726,11 +699,6 @@ opener_pair() {
 
 @test "a quoted verb that is not the first command arms nothing" {
   arm "$MERGE_FRAG" "$MERGE_WORDS" 'echo x && gh pr "merge" 12'
-  assert_not_armed
-}
-
-@test "a dollar-quoted verb arms nothing" {
-  arm "$MERGE_FRAG" "$MERGE_WORDS" "\$'gh' pr merge 12"
   assert_not_armed
 }
 

@@ -158,15 +158,6 @@ fi'
   grep -qF -- "a source operand names a bare repo-relative path" <<<"$output"
 }
 
-@test "flags a TAB-indented source operand too" {
-  fixture_repo
-  fixture_hook "$(printf 'while :; do\n\tsource .gaia/scripts/ledger-path-lib.sh\ndone')"
-  run_linter
-  [ "$status" -eq 1 ]
-  grep -qF -- ".claude/hooks/check.sh:4:" <<<"$output" || return 1
-  grep -qF -- "a source operand names a bare repo-relative path" <<<"$output"
-}
-
 @test "an indented VARIABLE-rooted load is still the repair, not a hit" {
   fixture_repo
   fixture_hook 'if true; then

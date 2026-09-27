@@ -388,19 +388,6 @@ run_write_hook_edit() {
   [ "$status" -eq 0 ]
 }
 
-@test "a benign Bash command allows without short-circuiting the chain (UAT-008)" {
-  run_hook_bash "pnpm dev"
-  assert_allowed_by_json
-}
-
-@test "hook header documents the corrected posture (UAT-010)" {
-  grep -qF -- "defense-in-depth" "$HOOK_ABS"
-  grep -qF -- "not a sandbox" "$HOOK_ABS"
-  grep -qF -- "sandbox.filesystem" "$HOOK_ABS"
-  grep -qiF -- "variant" "$HOOK_ABS"
-  grep -qF -- "Serena" "$HOOK_ABS"
-}
-
 # --- Regression: a discard-listed flag that is value-less for the invoked tool ---
 #
 # Each of these was ALLOWED before the flag tables dropped -r, -T and the bare

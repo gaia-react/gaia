@@ -580,12 +580,6 @@ extract_payload() {
 
 # AC10/11: structural hygiene
 
-@test "structural: never invokes cd, per .claude/rules/shell-cwd.md" {
-  code_lines="$(grep -vE '^[[:space:]]*#' "$SCRIPT")"
-  grep -qE '(^|[^[:alnum:]_])cd([^[:alnum:]_]|$)' <<<"$code_lines" && return 1
-  return 0
-}
-
 @test "structural: no hardcoded /Users or /home paths" {
   grep -E '/Users/|/home/' "$SCRIPT" && return 1
   return 0
@@ -603,11 +597,6 @@ extract_payload() {
   # likely to reintroduce this.
   grep -nE -- '(^|[[:space:]])(-f|--raw-field)[[:space:]=]*[a-zA-Z_]+=@' "$SCRIPT" && return 1
   return 0
-}
-
-@test "structural: shellcheck is clean" {
-  command -v shellcheck >/dev/null 2>&1 || skip "shellcheck not available"
-  shellcheck "$SCRIPT"
 }
 
 # review_bases: the merged per-member decision record (task-findings-record

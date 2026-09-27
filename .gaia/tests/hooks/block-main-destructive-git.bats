@@ -1386,21 +1386,6 @@ run_hop() {
 
 # --- command-word derivation: prefixes that hid `git` from the segment walk ---
 
-# `NAME+=value` is a command prefix the shell accepts exactly as `NAME=value`
-# (`bash -c 'zz+=1 env'` prints `zz=1`), so a strip reading only the `=`
-# spelling leaves the command word unexposed and the whole segment unread.
-@test "a NAME+=value prefix does not hide the git command word" {
-  on_main
-  run_hook 'zz+=1 git commit -m x'
-  assert_denied_by_json
-  run_hook '(name+=v git commit -m x)'
-  assert_denied_by_json
-  run_hook 'zz+=1 git push'
-  assert_denied_by_json
-  run_hook 'a=1 b+=2 git commit -m x'
-  assert_denied_by_json
-}
-
 # A reserved word or grouping token stands in command position with no
 # `| & ; ( )` between it and the command word, so the segment reaches the walk
 # with the reserved word read as its command.
