@@ -8,7 +8,7 @@ tags: [concept, github, labels, workflow]
 
 # GitHub Labels
 
-`.gaia/labels.json` is the single machine-readable source of truth for every GitHub label GAIA creates, syncs, and documents. Each entry carries its color, its description, the axis it classifies on, whether it belongs to an adopter repository or only to the GAIA maintainer repository, and which feature has to be enabled before the label is owed at all. `.gaia/labels.schema.json` is the editor-facing copy of the shape, and the `gaia labels` commands validate the registry themselves before acting on it.
+`.gaia/labels.json` is the single machine-readable source of truth for every GitHub label GAIA creates, syncs, and documents. Each entry carries its color, its description, the axis it classifies on, whether it belongs to an adopter repository or only to the GAIA maintainer repository, and which feature has to be enabled before the label is owed at all. The `gaia labels` commands validate the registry themselves before acting on it.
 
 The middle of this page is generated from that registry. A hand edit between the two `gaia:labels:generated` markers is reverted by the next regeneration, so a label's color or description changes in `.gaia/labels.json` and reaches the page from there. Everything above the start marker and below the end marker is hand-maintained, and the generator never touches a byte of it.
 
@@ -20,7 +20,6 @@ The registry documents each label's shape; it does not document how one is used 
 
 - `.gaia/cli/gaia labels sync` reconciles this repository's labels against the registry.
 - `.gaia/cli/gaia labels docs` regenerates the span below from the registry.
-- `.gaia/cli/gaia labels check` fails when a label literal in the tree is absent from the registry.
 
 Sync is conservative by design. It renames rather than deleting and recreating, because a delete strips the label from every issue and pull request carrying it. It reports an unknown live label instead of touching it. Color is operator wins and description is GAIA wins, so a deliberate recolor survives an update while a stale description does not. A rename is the one exception: it carries the registry's color with it, under no flag. Sync cannot tell a registry recolor from an operator's own, so a renamed entry's leftover color would sit unreconciled indefinitely; the rename resolves that in the registry's favour, at the cost of an operator's recolor of the old name not surviving the rename. Nothing is deleted without `--prune-deprecated` or `--enforce-blocked`, and `--enforce-blocked` counts a label's carriers on both surfaces, issues and pull requests, before reading it as uncarried; a label it cannot count on either surface is never deleted. A token without label-write scope produces a list of manual `gh` commands and a zero exit rather than a failed setup. That list means two different things, so the degraded output and the `--json` `degradedAt` field name which refusal happened: after a refused write it is the mutations still owed, while after a refused read the plan was computed against an assumed-empty repository and the list is the whole registry.
 <!-- gaia:maintainer-only:start -->
@@ -208,7 +207,7 @@ Nothing catches that omission, which is why it is called out. No test couples th
 
 ## Project labels
 
-This section is where a project documents the labels it adds for itself. `gaia labels docs` never rewrites it, and `gaia labels check` never demands that a label named here be present in the registry.
+This section is where a project documents the labels it adds for itself. `gaia labels docs` never rewrites it.
 
 A project label that falls into one of the GAIA axes above can take that family's color, so the palette stays readable across both sets. `gaia labels sync` reports a label it does not recognize and suggests the family color when the name carries a known namespace prefix, but it never recolors one without `--adopt-palette`.
 

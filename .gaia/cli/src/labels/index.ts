@@ -1,14 +1,12 @@
 /**
  * `gaia labels`: the commands that read `.gaia/labels.json`, named below.
  *
- * `sync` reconciles a repository against the registry, `docs` regenerates the
- * span of `wiki/concepts/GitHub Labels.md`, and `check` cross-references every
- * label literal in the tracked tree back against the registry.
+ * `sync` reconciles a repository against the registry, and `docs` regenerates
+ * the span of `wiki/concepts/GitHub Labels.md`.
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {lookupOwn} from '../util/argv.js';
-import {run as runCheck} from './check.js';
 import {run as runDocumentation} from './docs.js';
 import {run as runSync} from './sync.js';
 
@@ -20,9 +18,6 @@ const HELP_TEXT = `Usage: gaia labels <subcommand> [args]
                              Reconcile a repository against the registry.
   docs [--repo-root <path>] [--check]
                              Regenerate the generated span of the wiki page.
-  check [--repo-root <path>] [--json]
-                             Fail on a label literal the registry does not
-                             carry, or carries as blocked.
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
@@ -32,7 +27,6 @@ type SubcommandHandler = (args: readonly string[]) => number | Promise<number>;
 const SUBCOMMAND_HANDLERS: Readonly<
   Partial<Record<string, SubcommandHandler>>
 > = {
-  check: runCheck,
   docs: runDocumentation,
   sync: runSync,
 };
