@@ -60,7 +60,7 @@ If the spec-kit area is already being refactored for other reasons, the roughly 
 - reassign the maintainer-shell audit remit to the node agent and re-point (not delete) the guarding coverage;
 - wire an external invoker for each new subcommand, so it is not left dispatched but never called from anywhere.
 
-Excluded even here: all CI scripts. `ci-revert` and `ci-stale-check` already live in the binary; `resolve-check-base.sh` runs before Node is set up in CI and has a `shared`-class call site, so folding it would couple a required status check to the binary.
+Excluded even here: all CI scripts. `resolve-check-base.sh` runs before Node is set up in CI and has a `shared`-class call site, so folding it would couple a required status check to the binary.
 
 ## Consequences
 

@@ -40,12 +40,11 @@
 #
 # The observable outcome is a bare non-zero exit carrying none of the
 # diagnostics the author wrote, and the branch that was supposed to handle the
-# failure is never entered. Two instances of exactly this shape shipped in
-# .github/actions/gaia-ci-merge-and-watch/action.yml (gaia-react/gaia#1477,
-# gaia-react/gaia#1478); one of them silently disabled the whole post-merge
-# revert escalation, because three later steps were gated on a step outcome that
-# could no longer be reached, so a CI failure that could not be reverted
-# escalated to nobody.
+# failure is never entered. Two instances of exactly this shape shipped in a
+# CI composite action (gaia-react/gaia#1477, gaia-react/gaia#1478); one of
+# them silently disabled the whole post-merge revert escalation, because three
+# later steps were gated on a step outcome that could no longer be reached, so
+# a CI failure that could not be reverted escalated to nobody.
 #
 # The repair is always the same and never wrong -- move the status out of the
 # assignment's way, so the shell has a chance to run the next line:
@@ -62,9 +61,7 @@
 #     spelling here, but a capture into a variable draws nothing, and shellcheck
 #     does not model `set -e` assignment status at all. The uncovered half is
 #     therefore the capture, which is also the form both shipped instances took.
-#   - actionlint v1.7 does not lint composite-action step bodies at all, which
-#     .gaia/cli/test-fixtures/ci-shape/composite-actions.smoke.sh already
-#     records.
+#   - actionlint v1.7 does not lint composite-action step bodies at all.
 #   - The `run:` bodies of workflows and composite actions are shell that no
 #     `*.sh` glob reaches, so shell-lint's own discovery never opens the file
 #     either shipped instance lived in.

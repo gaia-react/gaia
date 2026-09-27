@@ -1,12 +1,12 @@
 /**
- * Shell-out helpers for `gh` and `git` invocations from the `gaia ci`
- * subcommand family.
+ * Shell-out helpers for `gh` and `git` invocations, imported by `labels/`,
+ * `residue/`, and `harden/` alongside this directory's own
+ * `merged-pr-window.ts`.
  *
- * The two functions are the *only* points the rest of the `ci/` tree
- * spawns external processes through. Tests intercept by stubbing the
- * exported symbols (the fixture in `.gaia/cli/test-fixtures/ci-shape/`
- * mocks `runGh` and `runGit` to verify argv verbatim and supply
- * canned responses).
+ * The two functions are the *only* points those callers spawn external
+ * processes through. Tests intercept by stubbing the exported symbols
+ * directly (`vi.mock` on this module) to verify argv verbatim and supply
+ * canned responses.
  *
  * Both helpers are synchronous (mirroring `wiki/util/git.ts`) and
  * return a small `{exitCode, stdout, stderr}` shape. We never throw
