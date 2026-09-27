@@ -10,29 +10,33 @@ tags: [decision, testing, performance, shell, bats]
 
 # Decision: Local Test Runtime
 
-The local pre-merge gate, `.gaia/tests/shell-lint.sh`, runs its own units
-concurrently rather than in a loop. This page records why, what bounds that
-concurrency, the negative result on the full bats corpus, and the two related
-non-claims a reader is likely to reach for next.
+The local pre-merge gate, `.gaia/tests/shell-lint.sh`, runs its shellcheck
+passes concurrently rather than in a loop; its folded guards run in a fixed
+serial sequence instead. This page records why the shellcheck passes are
+parallel, what bounds that concurrency, the negative result on the full bats
+corpus, and the two related non-claims a reader is likely to reach for next.
 
-## Why the gate is parallel
+## Why the shellcheck passes are parallel
 
-`shell-lint.sh` cannot shrink the work it does: it runs shellcheck plus a
-folded set of custom lints over every tracked shell and bats file. What it
-can do is stop paying for that work serially. Forking its units into a
-bounded pool overlaps them on the host's cores instead of running one after
-another, which is a real win only when the units genuinely vary in cost: a
-handful of expensive units account for most of the wall clock, and a large
-remainder costs very little between them.
+`shell-lint.sh` cannot shrink the shellcheck work it does: it runs shellcheck
+over every tracked shell and bats file, and one shellcheck invocation is
+single-threaded and CPU-bound. Splitting each pass's file list across a
+bounded pool of workers costs roughly the longest chunk instead of the whole
+list on one core.
+
+The gate's folded guards (`.gaia/scripts/lint-*.sh`) run one after another
+in the order the gate declares. Together they cost a few seconds more than
+their slowest member, too little to justify a second pool with its own
+stream capture and replay.
 
 ## The concurrency budget
 
-`shell-lint.sh` forks its own shellcheck passes and its folded guards,
-bounded by its own `JOBS`. The bound is a resolver with a documented default
-and floor, not a literal kept here: the script's own header carries the
-reasoning for its cap, and running `--list` reports the live unit set. This
-page does not restate either, because a second copy is a second thing to
-keep current and the runner's own header is what cannot go stale.
+`shell-lint.sh` forks its own shellcheck passes, bounded by its own `JOBS`;
+its folded guards run serially and need no such bound. The `JOBS` bound is a
+resolver with a documented default and floor, not a literal kept here: the
+script's own header carries the reasoning for its cap. This page does not
+restate it, because a second copy is a second thing to keep current and the
+runner's own header is what cannot go stale.
 
 `shell-lint.sh`'s guards source a bats parallel backend or an alternate awk
 interpreter when one is available. Neither backend is required: adopters
