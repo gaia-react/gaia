@@ -206,11 +206,9 @@ const writeStateSha = (cwd: string, sha: string): void => {
 
 /**
  * Stages `wiki/.state.json` (if present) and amends the release commit with
- * it. On failure, rolls back the release commit (`git reset --soft HEAD~1`)
- * so the maintainer retries from a clean state instead of carrying a
- * half-finished commit forward. Returns the exit code to return from
- * `runCommitMode` on failure, or `null` when the state file is absent or the
- * amend succeeded (caller should continue).
+ * it. Returns the exit code to return from `runCommitMode` on failure, or
+ * `null` when the state file is absent or the amend succeeded (caller should
+ * continue).
  */
 const amendStateFile = (ctx: CommitContext): null | number => {
   const statePath = path.join(ctx.cwd, 'wiki', '.state.json');
@@ -225,33 +223,7 @@ const amendStateFile = (ctx: CommitContext): null | number => {
   for (const step of amendSequence) {
     const result = ctx.runner(step.command, step.args, {cwd: ctx.cwd});
 
-    if (!stepSucceeded(result)) {
-      // The `--amend` token uniquely identifies the commit step in this
-      // two-step sequence; anything else is the state-file staging step.
-      const failedStage =
-        step.args.includes('--amend') ? 'amend' : 'staging the state file';
-      // The release commit already landed but the state-SHA amend step
-      // failed, leaving a partial release commit. Undo it (`reset --soft`
-      // keeps the staged files) so the maintainer can retry from a clean
-      // state instead of carrying a half-finished commit forward.
-      const rollback = ctx.runner('git', ['reset', '--soft', 'HEAD~1'], {
-        cwd: ctx.cwd,
-      });
-
-      if (stepSucceeded(rollback)) {
-        process.stderr.write(
-          `commit-and-tag: ${failedStage} failed; rolled back the release commit ` +
-            '(git reset --soft HEAD~1); fix the cause and retry\n'
-        );
-      } else {
-        process.stderr.write(
-          `commit-and-tag: ${failedStage} failed AND rollback (git reset --soft HEAD~1) failed; ` +
-            'the release commit is left in place; undo it manually before retrying\n'
-        );
-      }
-
-      return passthroughFailure(result, step);
-    }
+    if (!stepSucceeded(result)) return passthroughFailure(result, step);
   }
 
   return null;
@@ -342,28 +314,8 @@ const runTagMode = (ctx: TagContext): number => {
       cwd: ctx.cwd,
     });
 
-    if (!stepSucceeded(pushResult)) {
-      // The tag was created locally but never reached origin. Delete the
-      // local tag so a retry re-tags cleanly instead of failing on an
-      // already-existing tag.
-      const rollback = ctx.runner('git', ['tag', '-d', tagName], {
-        cwd: ctx.cwd,
-      });
-
-      if (stepSucceeded(rollback)) {
-        process.stderr.write(
-          `commit-and-tag: push failed; deleted the local tag ${tagName} ` +
-            '; fix the cause and retry\n'
-        );
-      } else {
-        process.stderr.write(
-          `commit-and-tag: push failed AND rollback (git tag -d ${tagName}) failed; ` +
-            `the local tag ${tagName} is left in place; delete it manually before retrying\n`
-        );
-      }
-
+    if (!stepSucceeded(pushResult))
       return passthroughFailure(pushResult, pushStep);
-    }
   }
 
   process.stdout.write(

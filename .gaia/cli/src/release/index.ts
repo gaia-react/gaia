@@ -33,7 +33,7 @@ const HELP_TEXT = `Usage: gaia-maintainer release <subcommand> [args]
   manifest [--ship <path>]... [--withhold <path> --category <N> --reason <text>]...
                                               Regenerate .gaia/manifest.json. Refuses while any
                                               newly-shipping file is unanswered; see manifest --help.
-  manifest --check [--json]                   Verify committed manifest is fresh + lint classifier sets.
+  manifest --check [--json]                   Verify committed manifest is fresh.
   exclude-regex [--exclude-file <path>]        Compile .gaia/release-exclude to anchored regexes (stdout).
   scrub <staging-dir> [--config <path>] [--json]
                                               Apply bundle-time marker-strip + leak-check.

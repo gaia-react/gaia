@@ -8,10 +8,9 @@
 #
 #   2. json-strip: delete maintainer-only keys from structured JSON files.
 #      Keys use dot-notation to address nested paths (e.g. "scripts.foo").
-#      Dots are path separators; a literal dot inside a key name is escaped
-#      as `\.` (e.g. "exports.\./feature"). Missing keys are silently skipped
-#      (no error). Runs after marker-strip so leak-check sees the already-
-#      clean JSON.
+#      Dots are path separators; key names must not contain literal dots.
+#      Missing keys are silently skipped (no error). Runs after marker-strip
+#      so leak-check sees the already-clean JSON.
 #
 #   3. json-strip-array-element: remove a single array element by predicate
 #      from a structured JSON file, the shape json-strip cannot express. A

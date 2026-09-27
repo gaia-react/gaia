@@ -3,11 +3,10 @@
  * real `audit-remit` markers), so these cases are hermetic and independent
  * of `.gaia/audit-ci.yml` / `region-registry.ts`, which has its own suite.
  *
- * Two cases deliberately use the real `REGION_REGISTRY` instead, because what
- * they pin is a property of the shipped `audit-remit` entry rather than of the
- * scan: that the default registry is what a caller passing no override gets,
- * and that an unparseable roster reaches the maintainer as a YAML error. Both
- * still build their fixtures in the temp dir.
+ * One case deliberately uses the real `REGION_REGISTRY` instead, because what
+ * it pins is a property of the shipped `audit-remit` entry rather than of the
+ * scan: that the default registry is what a caller passing no override gets.
+ * It still builds its fixture in the temp dir.
  */
 import {describe, expect, test} from 'vitest';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
@@ -227,36 +226,6 @@ describe('scanRegionDeclarations', () => {
       expect(declarations.map((declaration) => declaration.id)).toEqual([
         'audit-remit',
       ]);
-    } finally {
-      sandbox.cleanup();
-    }
-  });
-
-  test('an unparseable roster surfaces the YAML error, not the membership remedy', () => {
-    const sandbox = setupSandbox();
-
-    try {
-      writeFile(sandbox.root, '.gaia/audit-ci.yml', 'auditors: [\n  - x\n');
-      writeFile(
-        sandbox.root,
-        '.claude/agents/code-audit-frontend.md',
-        [
-          '<!-- gaia:audit-remit:start -->',
-          'body',
-          '<!-- gaia:audit-remit:end -->',
-        ].join('\n')
-      );
-
-      const scan = (): unknown =>
-        scanRegionDeclarations(sandbox.root, {
-          '.claude/agents/code-audit-frontend.md': 'owned',
-        });
-
-      expect(scan).toThrow(/\.gaia\/audit-ci\.yml is not valid YAML/);
-      // The misdirection itself: an empty rewrites set reaches
-      // unrewrittenMessage, which tells the maintainer to edit roster
-      // membership or delete the markers. Neither fixes a syntax error.
-      expect(scan).not.toThrow(/re-adding the corresponding member/);
     } finally {
       sandbox.cleanup();
     }

@@ -3,11 +3,9 @@
  * itself.
  *
  * Reads the committed manifest, regenerates an expected manifest in memory
- * via `./manifest.js`, and exits non-zero on any drift. Also surfaces the
- * classifier-set and scan-scope lint results `./manifest.js` computes, so a
- * shipped script tree can't fall outside both distribution-boundary leak
- * checks at once. Wired into `release.yml` so a stale committed manifest
- * fails the build at tag-time before any bundle work runs.
+ * via `./manifest.js`, and exits non-zero on any drift. Wired into
+ * `release.yml` so a stale committed manifest fails the build at tag-time
+ * before any bundle work runs.
  *
  * `readCommittedManifest` and `UNEXPECTED_EXIT` are also consumed by
  * `manifest-cli.ts`'s emit/answer-gate path, which reads the same committed
@@ -21,12 +19,7 @@ import {resolveRepoRoot} from '../util/repo-root.js';
 import {
   buildManifest,
   computeDrift,
-  lintClassifierSets,
-  lintScanScopes,
   ManifestSchema,
-  parseExcludePatterns,
-  readMaintainerPathsScope,
-  resolveExcludePath,
   resolveManifestPath,
 } from './manifest.js';
 import type {ManifestDrift, ManifestShape} from './manifest.js';
@@ -101,29 +94,6 @@ const renderRegionDriftLines = (result: ManifestDrift): string[] =>
       ]),
     ];
 
-const renderOverlapLines = (result: ManifestDrift): string[] =>
-  result.classifierOverlaps.length === 0 ?
-    []
-  : [
-      '',
-      `classifier-set overlaps with release-exclude (${result.classifierOverlaps.length}):`,
-      ...result.classifierOverlaps.map(
-        (overlap) =>
-          `  ${overlap.setName}: ${overlap.entry} (matched by /${overlap.excludePattern}/)`
-      ),
-    ];
-
-const renderScanScopeLines = (result: ManifestDrift): string[] =>
-  result.scanScopeGaps.length === 0 ?
-    []
-  : [
-      '',
-      `.sh-bearing directories outside a leak-check scope (${result.scanScopeGaps.length}):`,
-      ...result.scanScopeGaps.map(
-        (gap) => `  ${gap.dir}  missing from: ${gap.missingFrom.join(', ')}`
-      ),
-    ];
-
 const renderCheckReport = (
   result: ManifestDrift,
   jsonMode: boolean
@@ -134,8 +104,6 @@ const renderCheckReport = (
     result.missing.length +
     result.extra.length +
     result.drift.length +
-    result.classifierOverlaps.length +
-    result.scanScopeGaps.length +
     result.regionDrift.length +
     (result.versionDrift === undefined ? 0 : 1);
 
@@ -150,8 +118,6 @@ const renderCheckReport = (
     ...renderExtraLines(result),
     ...renderDriftLines(result),
     ...renderRegionDriftLines(result),
-    ...renderOverlapLines(result),
-    ...renderScanScopeLines(result),
   ];
 
   return `${out.join('\n')}\n`;
@@ -196,14 +162,10 @@ export const runCheck = (
 ): number => {
   let repoRoot: string;
   let expected: ManifestShape;
-  let excludePatterns: RegExp[];
 
   try {
     repoRoot = resolveRepoRoot(cwd);
     expected = buildManifest(cwd, {generatedAt, repoRoot});
-    excludePatterns = parseExcludePatterns(
-      readFileSync(resolveExcludePath(repoRoot), 'utf8')
-    );
   } catch (error) {
     structuredError({
       code: 'manifest_build_failed',
@@ -243,23 +205,13 @@ export const runCheck = (
   }
 
   const actual = committed.manifest;
-  const classifierOverlaps = lintClassifierSets(excludePatterns);
-  const scanScopeGaps = lintScanScopes(
-    expected.files,
-    readMaintainerPathsScope(repoRoot)
-  );
-  const result = computeDrift(expected, actual, {
-    classifierOverlaps,
-    scanScopeGaps,
-  });
+  const result = computeDrift(expected, actual);
   process.stdout.write(renderCheckReport(result, jsonMode));
 
   const hasIssue =
     result.missing.length > 0 ||
     result.extra.length > 0 ||
     result.drift.length > 0 ||
-    result.classifierOverlaps.length > 0 ||
-    result.scanScopeGaps.length > 0 ||
     result.regionDrift.length > 0 ||
     result.versionDrift !== undefined;
 

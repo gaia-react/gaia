@@ -8,12 +8,9 @@
  * `.gaia/release-scrub.yml`, whose scope includes `.gaia/cli/templates/**`
  * and scans file content regardless of extension.
  *
- * Its own leaf module, imported by both `runtime-deps.ts` and
- * `manifest.ts`'s `lintScanScopes`, so the two never drift and neither file
- * has to import the other (both already import from / are imported by
- * `manifest.ts` elsewhere, and a two-way edge there would risk a
- * circular-import TDZ failure since `runtime-deps.ts` dereferences its
- * `manifest.ts` import at module top level).
+ * Its own leaf module, imported by `runtime-deps.ts` and by the
+ * `runtime-deps.test.ts` fixture that holds every owned `.sh` file in the
+ * committed manifest to these globs.
  */
 export const SCAN_GLOBS = [
   '.gaia/statusline',

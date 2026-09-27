@@ -257,7 +257,6 @@ Reads (in order):
 **Key symbols to locate while reading `manifest.ts`** (load-bearing for the verdict):
 
 - `--check` mode; staleness detection.
-- `lintClassifierSets()`; cross-checks classifier sets for release-excluded paths; the enforcing primitive for the _classifier-sets_ D-B class.
 
 Output: structured table; for each § Distribution boundary class, name the enforcing primitive (scrub check id, runtime-deps, manifest --check) or `none`. Confidence: high / medium / low.
 

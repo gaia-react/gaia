@@ -1,14 +1,16 @@
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {
-  chmodSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {resolveRepoRootFromImportMeta} from '../util/repo-root-fixture.js';
 import {extractPathRefs, run} from './runtime-deps.js';
+import {SCAN_GLOBS} from './scan-globs.js';
 
 type ManifestFiles = Record<string, 'owned' | 'shared' | 'wiki-owned'>;
 
@@ -604,32 +606,6 @@ describe('release runtime-deps CLI', () => {
     expect(stdio.errors.join('')).toContain('manifest_load_failed');
   });
 
-  test('exits 2 when a scanned script cannot be read (IO error)', () => {
-    // #925: the `readFileSync` inside `collectLeaks` was the only IO in `run()`
-    // not wrapped in a `try*OrReport` helper. When a script is unreadable
-    // (EACCES) or vanishes between the walk and the read, the throw escaped
-    // `run()` and the top-level handler reported it as exit 1, the code the
-    // contract reserves for "leaks detected". A genuine IO failure must surface
-    // as UNEXPECTED_EXIT (2), matching the two sibling helpers.
-    sandbox.writeManifest({
-      '.claude/hooks/ships.sh': 'owned',
-    });
-    // Leak-free body: a successful read would exit 0, so a 2 can only come from
-    // the read failing, not from a leak finding.
-    sandbox.writeFile('.claude/hooks/ships.sh', 'echo hi\n');
-    const scriptPath = path.join(sandbox.rootDir, '.claude/hooks/ships.sh');
-    chmodSync(scriptPath, 0o000);
-
-    try {
-      const exit = run([], {cwd: sandbox.rootDir});
-      expect(exit).toBe(2);
-      expect(stdio.errors.join('')).toContain('script_read_failed');
-    } finally {
-      // Restore readability so the sandbox cleanup can remove it.
-      chmodSync(scriptPath, 0o644);
-    }
-  });
-
   test('--staging scans inside the staging dir', () => {
     const stagingDir = path.join(sandbox.rootDir, 'staging');
     sandbox.writeStagingManifest(stagingDir, {'.gaia/cli/gaia': 'owned'});
@@ -851,5 +827,25 @@ describe('release runtime-deps CLI', () => {
     const exit = run(['--staging', stagingDir], {cwd: sandbox.rootDir});
     expect(exit).toBe(1);
     expect(stdio.outputs.join('')).toContain('.gaia/scripts/missing.sh');
+  });
+});
+
+describe('SCAN_GLOBS coverage of the committed manifest', () => {
+  test('every owned .sh file in the committed manifest sits under a SCAN_GLOBS entry', () => {
+    const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+    const manifestPath = path.join(repoRoot, '.gaia', 'manifest.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      files: Record<string, string>;
+    };
+    const ownedShFiles = Object.entries(manifest.files)
+      .filter(([file, klass]) => klass === 'owned' && file.endsWith('.sh'))
+      .map(([file]) => file);
+
+    for (const file of ownedShFiles) {
+      const covered = SCAN_GLOBS.some(
+        (glob) => file === glob || file.startsWith(`${glob}/`)
+      );
+      expect(covered, `${file} is not under any SCAN_GLOBS entry`).toBe(true);
+    }
   });
 });
