@@ -385,11 +385,9 @@ jobs:
   # expensive.
   #
   # This runs Layers 0+1 plus the adopter-flow regressions (07+) and the
-  # deterministic marker-strip survival check. It passes NO
-  # CLAUDE_CODE_OAUTH_TOKEN, so the Docker/secret-dependent scenarios (06, and
-  # 15's advisory model probe) soft-pass-skip via their own guards; the full
-  # Layers 0+1+2 run stays with release.yml, which has the
-  # org secret. Not a declared-required context (see verify-required-checks.sh),
+  # deterministic marker-strip survival check, the same run-all.sh that
+  # release.yml runs before it publishes a tag.
+  # Not a declared-required context (see verify-required-checks.sh),
   # unlike the sibling cli-tests job. It shares that job's always-runs shape --
   # reporting green when the filter does not match -- so it is
   # branch-protection-safe without ever forcing a merge block from a
@@ -490,8 +488,6 @@ jobs:
           done
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Run distribution scenarios (Layers 0+1 + adopter-flow; no token)
-        # Intentionally no CLAUDE_CODE_OAUTH_TOKEN: keeps the Docker/secret
-        # scenarios out of the required PR lane (they self-skip as soft PASS).
         run: bash .gaia/tests/distribution/run-all.sh
 
   # The cheap half of the harness above, split out so it can run over the whole

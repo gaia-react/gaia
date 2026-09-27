@@ -12,8 +12,7 @@
 #     pnpm.
 #
 # What this does NOT test:
-#   - /gaia-init or /setup-gaia execution (would need Claude; see
-#     `diagnostic/claude-auth-in-docker.md`).
+#   - /gaia-init or /setup-gaia execution (would need Claude).
 #   - Full filesystem isolation (a true Docker run is the answer; deferred).
 #   - Linux-only adopter environments (the host OS is what it is).
 #

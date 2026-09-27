@@ -7,11 +7,11 @@
 # the bundled CLI binary actually executes its first user-facing step on
 # that tree.
 #
-# Why it exists: 06-claude-runs-staged.sh proves Claude can talk to
-# Anthropic from a Linux container, but does NOT prove the shipped CLI
-# works on a tree adopters receive. If release-exclude strips a file
-# strip-branding needs (e.g. .gaia/templates/README.md), Layers 0+1+2
-# stay green and only this scenario fails.
+# Why it exists: Layers 0+1 prove the release tree stages and bootstraps
+# cleanly, but do NOT prove the shipped CLI works on a tree adopters
+# receive. If release-exclude strips a file strip-branding needs (e.g.
+# .gaia/templates/README.md), Layers 0+1 stay green and only this
+# scenario fails.
 #
 # Asserts (post-conditions of strip-branding --title "Test Project"):
 #   - Exit code 0, no stdout (per the subcommand contract).

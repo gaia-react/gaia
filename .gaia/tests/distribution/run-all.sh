@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run all distribution-validation scenarios, report pass/fail.
 # Walks .gaia/tests/distribution/*.sh in lexicographic order, excluding
-# run-all.sh itself and anything under lib/ or diagnostic/. Naming
+# run-all.sh itself and anything under lib/. Naming
 # convention is NN-name.sh so order is deterministic.
 #
 # Each scenario runs in a separate `bash` subprocess so one scenario's
