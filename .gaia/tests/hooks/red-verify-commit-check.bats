@@ -611,6 +611,15 @@ test("uses wall-clock time", () => {
   denied
 }
 
+@test "deny reason names a scoped test run as the RED recovery" {
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
+  run_commit_hook
+  [ "$status" -eq 0 ]
+  grep -qF -- 'pnpm test --run <test-file>' <<<"$output"
+  grep -qF -- 'Run `pnpm test --run` and' <<<"$output" && return 1
+  denied
+}
+
 # --- comment-only edit vs. an assertion absorbed into a comment (UAT-006, UAT-014, UAT-008) ---
 
 @test "denies when a live assertion is absorbed into a comment (strict, new-at-HEAD, runtime; UAT-006)" {

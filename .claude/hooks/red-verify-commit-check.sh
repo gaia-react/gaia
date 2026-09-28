@@ -352,7 +352,7 @@ $offender_list
 These tests are new at HEAD and pass now, but no matching RED was recorded for the current test body. A passing test that was never seen failing first does not prove the test can fail; that is the gap this gate closes.
 
 To unblock:
-  1. Run \`pnpm test --run\` and confirm the test FAILS (RED) before the change that makes it pass.
+  1. Run \`pnpm test --run <test-file>\`, naming the test's file, and confirm the test FAILS (RED) before the change that makes it pass. A run with no test path records no RED.
   2. Then make the change that turns it green and commit.
 
 A RED is bound to the test's comment-free content: rewording a comment inside a test leaves the signal unchanged and the RED still counts, but any change to what the test executes invalidates that RED, so a fresh failing run must be observed for the current body. Edits, renames, and refactors of tests already present at HEAD are out of scope and never demand a RED."
