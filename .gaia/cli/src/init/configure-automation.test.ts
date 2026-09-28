@@ -62,7 +62,7 @@ const captureStdio = (): {
   };
 };
 
-const allCiArgs = ['--wiki', 'ci', '--stale-branches', 'ci'];
+const allCiArgs = ['--wiki', 'ci'];
 
 describe('init configure-automation', () => {
   let sandbox: Sandbox;
@@ -78,7 +78,7 @@ describe('init configure-automation', () => {
     vi.restoreAllMocks();
   });
 
-  test('happy path: both flags ci writes schema-valid config', () => {
+  test('happy path: --wiki ci writes schema-valid config', () => {
     sandbox = setupSandbox();
 
     const exit = run(allCiArgs, {cwd: sandbox.root});
@@ -96,7 +96,6 @@ describe('init configure-automation', () => {
     expect(parsed).toEqual({
       setup_complete: false,
       setup_opted_out: false,
-      stale_branches: {mode: 'ci', schedule: 'monthly'},
       update_gaia: {mode: 'local'},
       version: 1,
       wiki: {mode: 'ci'},
@@ -105,29 +104,11 @@ describe('init configure-automation', () => {
     const state = readState(sandbox.root);
     expect(state.completed_steps).toContain('configure-automation');
     expect(state.step_args['configure-automation']).toEqual({
-      stale_branches: 'ci',
       wiki: 'ci',
     });
   });
 
-  test('happy path: mixed values are recorded faithfully', () => {
-    sandbox = setupSandbox();
-
-    const exit = run(['--wiki', 'local', '--stale-branches', 'ci'], {
-      cwd: sandbox.root,
-    });
-    expect(exit).toBe(0);
-
-    const raw = readFileSync(automationConfigPath(sandbox.root), 'utf8');
-    const parsed = AutomationConfigSchema.parse(JSON.parse(raw));
-    expect(parsed.wiki.mode).toBe('local');
-    expect(parsed.stale_branches.mode).toBe('ci');
-    expect(parsed.update_gaia.mode).toBe('local');
-    expect(parsed.setup_complete).toBe(false);
-    expect(parsed.setup_opted_out).toBe(false);
-  });
-
-  test.each(['pnpm-audit', 'update-deps'])(
+  test.each(['pnpm-audit', 'update-deps', 'stale-branches'])(
     'exit 1 when --%s is passed (removed flag falls to unknown-flag error)',
     (tool) => {
       sandbox = setupSandbox();
@@ -258,9 +239,7 @@ describe('init configure-automation', () => {
   test('configure-automation writes complete config with all-local modes (CI-declined derivation)', () => {
     sandbox = setupSandbox();
 
-    const exit = run(['--wiki', 'local', '--stale-branches', 'local'], {
-      cwd: sandbox.root,
-    });
+    const exit = run(['--wiki', 'local'], {cwd: sandbox.root});
     expect(exit).toBe(0);
     expect(stdio.outputs.join('')).toBe('');
     expect(stdio.errors.join('')).toBe('');
@@ -270,7 +249,6 @@ describe('init configure-automation', () => {
     expect(parsed).toEqual({
       setup_complete: false,
       setup_opted_out: false,
-      stale_branches: {mode: 'local', schedule: 'monthly'},
       update_gaia: {mode: 'local'},
       version: 1,
       wiki: {mode: 'local'},
@@ -279,7 +257,6 @@ describe('init configure-automation', () => {
     const state = readState(sandbox.root);
     expect(state.completed_steps).toContain('configure-automation');
     expect(state.step_args['configure-automation']).toEqual({
-      stale_branches: 'local',
       wiki: 'local',
     });
   });
@@ -306,7 +283,7 @@ describe('init configure-automation', () => {
 
   test('exit 1 when --wiki missing', () => {
     sandbox = setupSandbox();
-    const exit = run(['--stale-branches', 'ci'], {cwd: sandbox.root});
+    const exit = run([], {cwd: sandbox.root});
     expect(exit).toBe(1);
     expect(existsSync(automationConfigPath(sandbox.root))).toBe(false);
     const state = readState(sandbox.root);
@@ -318,18 +295,9 @@ describe('init configure-automation', () => {
     expect(errLine).toContain('"code":"invalid_arguments"');
   });
 
-  test('exit 1 when --stale-branches missing', () => {
-    sandbox = setupSandbox();
-    const exit = run(['--wiki', 'ci'], {cwd: sandbox.root});
-    expect(exit).toBe(1);
-    expect(stdio.errors.join('')).toContain('--stale-branches is required');
-  });
-
   test('exit 1 when --wiki value invalid', () => {
     sandbox = setupSandbox();
-    const exit = run(['--wiki', 'bogus', '--stale-branches', 'ci'], {
-      cwd: sandbox.root,
-    });
+    const exit = run(['--wiki', 'bogus'], {cwd: sandbox.root});
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain(
       '--wiki must be one of: ci, local, off'
@@ -339,10 +307,9 @@ describe('init configure-automation', () => {
 
   test('exit 1 when --wiki specified twice', () => {
     sandbox = setupSandbox();
-    const exit = run(
-      ['--wiki', 'ci', '--wiki', 'local', '--stale-branches', 'ci'],
-      {cwd: sandbox.root}
-    );
+    const exit = run(['--wiki', 'ci', '--wiki', 'local'], {
+      cwd: sandbox.root,
+    });
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('--wiki specified twice');
   });

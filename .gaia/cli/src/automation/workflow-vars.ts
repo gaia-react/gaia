@@ -16,9 +16,7 @@ export type WorkflowSchedule = 'daily' | 'monthly' | 'weekly';
 export type WorkflowTemplateVars = {
   config_key: string;
   cron: string;
-  enable_auto_merge: boolean;
   enable_diff_size_check: boolean;
-  enable_stale_branch_delete: boolean;
   needs_human_label: string;
   pr_label: string;
   schedule: WorkflowSchedule;
@@ -33,13 +31,17 @@ const CRON_BY_SCHEDULE: Readonly<Record<WorkflowSchedule, string>> = {
 };
 
 const DEFAULT_SCHEDULE_BY_TOOL: Readonly<Record<ToolId, WorkflowSchedule>> = {
-  'stale-branches': 'monthly',
   wiki: 'daily',
 };
 
 const WORKFLOW_NAME_BY_TOOL: Readonly<Record<ToolId, string>> = {
-  'stale-branches': 'GAIA CI - Stale Branches',
   wiki: 'GAIA CI - Wiki',
+};
+
+// The diff-size check runs `gaia wiki diff-size`, which measures the wiki
+// corpus only, so a tool opts in here rather than inheriting it.
+const DIFF_SIZE_CHECK_BY_TOOL: Readonly<Record<ToolId, boolean>> = {
+  wiki: true,
 };
 
 export const cronForSchedule = (schedule: WorkflowSchedule): string =>
@@ -79,11 +81,7 @@ export const buildWorkflowVars = (
     // Read by the scheduler template, not by the tool template: a tool
     // workflow carries no `schedule:` of its own.
     cron: cronForSchedule(schedule),
-    // stale-branches doesn't open a PR, so auto-merge is suppressed.
-    // The auto-merge partial gates its body on this flag.
-    enable_auto_merge: tool !== 'stale-branches',
-    enable_diff_size_check: tool === 'wiki',
-    enable_stale_branch_delete: tool === 'stale-branches',
+    enable_diff_size_check: DIFF_SIZE_CHECK_BY_TOOL[tool],
     needs_human_label: 'needs-human',
     pr_label: 'gaia-ci',
     schedule,

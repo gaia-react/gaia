@@ -29,7 +29,6 @@ import {markStepCompleted} from './util/state.js';
 
 const HELP_TEXT = String.raw`Usage: gaia init configure-automation \
   --wiki <ci|local|off> \
-  --stale-branches <ci|local|off> \
   [--sandbox-recommended <true|false>] \
   [--isolation-policy <${ISOLATION_POLICIES.join('|')}>]
 
@@ -39,7 +38,6 @@ const HELP_TEXT = String.raw`Usage: gaia init configure-automation \
 
   Required flags:
     --wiki <ci|local|off>
-    --stale-branches <ci|local|off>
 
   Optional flags:
     --sandbox-recommended <true|false>
@@ -76,7 +74,6 @@ type FlagParseSuccess = {
 type Flags = {
   isolationPolicy?: IsolationPolicy;
   sandboxRecommended?: boolean;
-  staleBranches: ToolMode;
   wiki: ToolMode;
 };
 
@@ -110,19 +107,17 @@ const takeMode = (
 // The tool-mode flags, required on every call. `sandboxRecommended` is
 // optional and parsed separately below (its value domain is true/false, not
 // ci/local/off, so it does not fit the `takeMode` shape).
-type RequiredFlagKey = 'staleBranches' | 'wiki';
+type RequiredFlagKey = 'wiki';
 
 // Object lookup instead of an if/else-if chain per flag: every flag follows
 // the identical take-mode-and-assign shape, so dispatching through a table
 // keeps `parseFlags` itself flat (a Map, since a plain object's index
 // signature would hide the genuine "unknown token" miss from TypeScript).
 const FLAG_SPECS = new Map<string, {flag: string; key: RequiredFlagKey}>([
-  ['--stale-branches', {flag: '--stale-branches', key: 'staleBranches'}],
   ['--wiki', {flag: '--wiki', key: 'wiki'}],
 ]);
 
 const REQUIRED_MESSAGE: Readonly<Record<RequiredFlagKey, string>> = {
-  staleBranches: '--stale-branches is required',
   wiki: '--wiki is required',
 };
 
@@ -295,7 +290,6 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
     flags: {
       isolationPolicy: scalars.isolationPolicy,
       sandboxRecommended: scalars.sandboxRecommended,
-      staleBranches: flags.staleBranches,
       wiki: flags.wiki,
     } as Flags,
     ok: true,
@@ -318,7 +312,6 @@ const buildConfig = (flags: Flags): AutomationConfig => ({
   : {sandbox_recommended: flags.sandboxRecommended}),
   setup_complete: false,
   setup_opted_out: false,
-  stale_branches: {mode: flags.staleBranches, schedule: 'monthly'},
   update_gaia: {mode: 'local'},
   version: 1,
   wiki: {mode: flags.wiki},
@@ -385,7 +378,6 @@ export const run = (
 
   try {
     markStepCompleted(cwd, STEP_NAME, {
-      stale_branches: parsed.flags.staleBranches,
       wiki: parsed.flags.wiki,
     });
   } catch (error) {

@@ -11,7 +11,7 @@ import {existsSync, readFileSync} from 'node:fs';
 import {automationConfigPath} from '../automation/paths.js';
 import {summarizeZodError} from './zod-error.js';
 
-export const TOOL_IDS = ['wiki', 'stale-branches'] as const;
+export const TOOL_IDS = ['wiki'] as const;
 
 export type ToolId = (typeof TOOL_IDS)[number];
 
@@ -72,7 +72,6 @@ export const AutomationConfigSchema = z.object({
   sandbox_recommended: z.boolean().optional(),
   setup_complete: z.boolean(),
   setup_opted_out: z.boolean(),
-  stale_branches: ToolConfigSchema,
   update_gaia: UpdateGaiaConfigSchema,
   // Same permissive-at-read pattern as isolation_policy above: an
   // unrecognized or absent version degrades to 1 rather than malforming
@@ -108,17 +107,15 @@ export type ToolConfigKey = {
  * to the snake_case key used inside `.gaia/automation.json`.
  *
  * The split is intentional: the SPEC names the JSON keys snake_case
- * (`stale_branches`) but workflow / state-file paths use kebab-case. The
- * value type is `ToolConfigKey` so `config[key]` resolves directly to
- * `ToolConfig`; no cast needed at call sites.
+ * but workflow / state-file paths use kebab-case. The value type is
+ * `ToolConfigKey` so `config[key]` resolves directly to `ToolConfig`; no
+ * cast needed at call sites.
  */
 export const TOOL_ID_TO_CONFIG_KEY: Readonly<Record<ToolId, ToolConfigKey>> = {
-  'stale-branches': 'stale_branches',
   wiki: 'wiki',
 };
 
 export const CONFIG_KEY_TO_TOOL_ID: Readonly<Record<string, ToolId>> = {
-  stale_branches: 'stale-branches',
   wiki: 'wiki',
 };
 

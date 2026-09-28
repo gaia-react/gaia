@@ -141,7 +141,7 @@ describe('setup-ci check-drift', () => {
       sandbox.root,
       '.github',
       'workflows',
-      'gaia-ci-stale-branches.yml'
+      'gaia-ci-wiki.yml'
     );
     writeFileSync(target, '# drifted contents\n', 'utf8');
 
@@ -153,15 +153,13 @@ describe('setup-ci check-drift', () => {
       in_sync: ToolId[];
       missing: ToolId[];
     };
-    expect(parsed.drifted).toEqual(['stale-branches']);
+    expect(parsed.drifted).toEqual(['wiki']);
     expect(parsed.missing).toEqual([]);
-    expect(new Set(parsed.in_sync)).toEqual(new Set(['wiki']));
+    expect(parsed.in_sync).toEqual([]);
   });
 
   test('flags tools as missing when the rendered workflow file does not exist', () => {
     sandbox.writeConfig({...VALID_BASE_CONFIG, setup_complete: true});
-    // Write only stale-branches, so wiki then reads as missing.
-    writeFreshWorkflows(sandbox, ['stale-branches']);
 
     const exit = run(['--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);
@@ -173,14 +171,14 @@ describe('setup-ci check-drift', () => {
     };
     expect(parsed.missing).toEqual(['wiki']);
     expect(parsed.drifted).toEqual([]);
-    expect(new Set(parsed.in_sync)).toEqual(new Set(['stale-branches']));
+    expect(parsed.in_sync).toEqual([]);
   });
 
   test('omits tools whose mode != ci from all three buckets', () => {
     sandbox.writeConfig({
       ...VALID_BASE_CONFIG,
       setup_complete: true,
-      stale_branches: {mode: 'off'},
+      wiki: {mode: 'off'},
     });
     writeFreshWorkflows(sandbox, ['wiki']);
 
@@ -194,7 +192,7 @@ describe('setup-ci check-drift', () => {
     };
     expect(parsed.drifted).toEqual([]);
     expect(parsed.missing).toEqual([]);
-    expect(new Set(parsed.in_sync)).toEqual(new Set(['wiki']));
+    expect(parsed.in_sync).toEqual([]);
   });
 
   test('reports the scheduler as in_sync when its rendered file matches', () => {
@@ -256,7 +254,6 @@ describe('setup-ci check-drift', () => {
     sandbox.writeConfig({
       ...VALID_BASE_CONFIG,
       setup_complete: true,
-      stale_branches: {mode: 'off'},
       wiki: {mode: 'off'},
     });
 
