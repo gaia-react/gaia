@@ -54,11 +54,11 @@ Every gate is one of two tiers. The tier is fixed here, do not reclassify by jud
 | kebab-case slug | Step 2, Q5 |
 | CI intent (Configure-CI decision) | Step 8, Configure CI integrations |
 
-**SAFE-DEFAULT** (reversible, the recommended default is the safe outcome). On non-response in interactive mode: re-ask once; if still no answer, apply the stated default, name it plainly ("Defaulting the maintenance tools to their recommended run mode, you can reconfigure later"), and continue. Do not claim the user is absent.
+**SAFE-DEFAULT** (reversible, the recommended default is the safe outcome). On non-response in interactive mode: re-ask once; if still no answer, apply the stated default, name it plainly ("Defaulting the maintenance tool to its recommended run mode, you can reconfigure later"), and continue. Do not claim the user is absent.
 
 | Gate | Default on non-response | Where |
 |---|---|---|
-| Maintenance-tool run modes | all `ci` (CI enabled) or all `local` (CI declined) | Step 9 |
+| Maintenance-tool run mode | `ci` (CI enabled) or `local` (CI declined) | Step 9 |
 
 ### Free-text identity values are never fabricated
 
@@ -93,7 +93,7 @@ When the user chose Automatic, first detect the project folder name (`basename "
 > | Slug | {folder name} | Yes, re-run rename |
 > | CODEOWNERS handle | {gh-detected handle when available, else `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder} | Placeholder: one-line edit required. Detected handle: none |
 > | GAIA CI intent | Enabled, activate later via /setup-gaia | Yes, /setup-gaia --reconfigure |
-> | Maintenance tools | Both in `ci` mode | Yes, reconfigure |
+> | Maintenance tools | Wiki sync in `ci` mode | Yes, reconfigure |
 > | Sandbox recommendation | Not recommended | Yes, reconfigure |
 
 Exactly one row per setting. For the CODEOWNERS row, show the gh-detected handle when detection succeeds (it is the user's own authenticated identity, not a guess), otherwise the `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder. **Never** put a guessed or git-config-derived handle there: the only non-placeholder value allowed is the gh-detected login.
@@ -107,7 +107,7 @@ Then apply the defaults and proceed without stopping (the user chose Automatic; 
 - Project title (Q4): title-cased folder name.
 - kebab slug (Q5): folder name.
 - CI intent (Step 8): "Yes, I'll enable CI after pushing" (records intent only).
-- Maintenance tools (Step 9): all `ci`.
+- Maintenance tools (Step 9): `ci`.
 - Sandbox recommendation (Step 9): not recommended (`false`).
 
 ## Step 0: Ensure pnpm is available (and new enough)
@@ -424,9 +424,9 @@ If any step fails, surface the error verbatim and halt, do not silently continue
 
 ### Configure CI integrations
 
-GAIA CI has two parts: a pre-merge **audit gate** (the `code-audit-frontend` agent run against every PR) and two optional **maintenance jobs** on a smart cron (wiki sync, stale-branch cleanup).
+GAIA CI has two parts: a pre-merge **audit gate** (the `code-audit-frontend` agent run against every PR) and an optional **maintenance job** on a smart cron (wiki sync).
 
-**No `.github/workflows/` files ship in this project.** They are generated and installed on demand by `/setup-gaia` after your first `git push origin main` (Phase B). This step (Phase A) is local-only: it records your CI intent so Step 9 can offer the right maintenance-tool modes, and it sets the local audit baseline. It does not create, move, or push any workflow file, and it touches nothing on GitHub.
+**No `.github/workflows/` files ship in this project.** They are generated and installed on demand by `/setup-gaia` after your first `git push origin main` (Phase B). This step (Phase A) is local-only: it records your CI intent so Step 9 can offer the right maintenance-tool mode, and it sets the local audit baseline. It does not create, move, or push any workflow file, and it touches nothing on GitHub.
 
 (`forensics-triage.yml` is maintainer-only and never ships to or installs on an adopter project. The adopter-side `/gaia-forensics` command files reports to the upstream GAIA repo, which owns the `gaia-forensics` label; nothing about forensics needs configuring here.)
 
@@ -438,7 +438,7 @@ Use AskUserQuestion (in the user's language; this configuration block stays in E
 >
 > New to GAIA CI? Read https://docs.gaiareact.com/maintenance/gaia-ci/ before deciding (Cmd/Ctrl+click to open).
 >
-> - **Yes, I'll enable CI after pushing** (Recommended). Records the intent; Step 9 then offers `ci` / `local` / `off` per maintenance tool. After your first push, run `/setup-gaia` to install the audit gate and cron workflows, store the bot token, and register the `GAIA-Audit` required check.
+> - **Yes, I'll enable CI after pushing** (Recommended). Records the intent; Step 9 then offers `ci` / `local` / `off` for wiki maintenance. After your first push, run `/setup-gaia` to install the audit gate and cron workflows, store the bot token, and register the `GAIA-Audit` required check.
 > - **No, local only.** GAIA's audit and maintenance tools run only when you invoke them on this machine. Step 9 offers `local` / `off` only.
 
 Record the answer as the **Configure-CI decision** (`enabled` or `declined`); Step 9 reads it. This is held as init-state only; it neither probes nor writes any workflow file.
@@ -491,50 +491,44 @@ The same probe set applies when setting up from an existing clone, `/setup-gaia`
 
 ## Step 9: Configure GAIA CI (Phase A)
 
-GAIA CI is an optional automated maintenance system that runs two jobs on a smart schedule (wiki sync, stale-branch cleanup), opens labeled PRs, and auto-merges on green CI. Phase A, this step, is local-only: it writes `.gaia/automation.json` with your tool selections and `setup_complete: false`. No GitHub repo or workflow files are involved here. After you push to GitHub for the first time, you'll run `/setup-gaia` to wire up tokens and activate CI (Phase B).
+GAIA CI is an optional automated maintenance system that runs a wiki-sync job on a smart schedule, opens labeled PRs, and auto-merges on green CI. Phase A, this step, is local-only: it writes `.gaia/automation.json` with your tool selection and `setup_complete: false`. No GitHub repo or workflow files are involved here. After you push to GitHub for the first time, you'll run `/setup-gaia` to wire up tokens and activate CI (Phase B).
 
-_Non-response (the run-mode question in Branch A or B): SAFE-DEFAULT. Re-ask once, then apply the recommended default (all `ci` when CI was enabled, all `local` when CI was declined), name it plainly, and continue to the terminal `configure-automation` write. Automatic mode: same defaults, no re-ask. This never claims the user is absent, and it never skips the mandatory terminal write._
+_Non-response (the run-mode question in Branch A or B): SAFE-DEFAULT. Re-ask once, then apply the recommended default (`ci` when CI was enabled, `local` when CI was declined), name it plainly, and continue to the terminal `configure-automation` write. Automatic mode: same defaults, no re-ask. This never claims the user is absent, and it never skips the mandatory terminal write._
 
-**Carry the Configure-CI decision forward.** The Configure CI integrations block above already recorded whether the user intends to enable CI (`enabled`) or run local only (`declined`). Hold that decision as init-state for this step, do NOT re-probe the filesystem (no workflow files exist at init time, so there is nothing to detect). Step 9 branches on it: a CI decline means CI is not a valid target for any maintenance tool, so the contradictory "Enable both in CI mode" recommendation is never shown.
+**Carry the Configure-CI decision forward.** The Configure CI integrations block above already recorded whether the user intends to enable CI (`enabled`) or run local only (`declined`). Hold that decision as init-state for this step, do NOT re-probe the filesystem (no workflow files exist at init time, so there is nothing to detect). Step 9 branches on it: a CI decline means CI is not a valid target for any maintenance tool, so the contradictory "Enable in CI mode" recommendation is never shown.
 
-**The unconditional terminal action of Step 9, on every exit path (the enumerated recommendation, a free-text answer, a CI decline, or a resumed run), is a single `gaia init configure-automation` call with both tool modes set to valid values.** No branch may end Step 9 with a half-written or absent `.gaia/automation.json`. The CLI handler writes a complete, schema-valid config (`setup_complete: false`, `update_gaia.mode: local`, both tool modes) in one atomic write; the prose's only job is to guarantee that call always runs with derived modes.
+**The unconditional terminal action of Step 9, on every exit path (the enumerated recommendation, a free-text answer, a CI decline, or a resumed run), is a single `gaia init configure-automation` call with the tool mode set to a valid value.** No branch may end Step 9 with a half-written or absent `.gaia/automation.json`. The CLI handler writes a complete, schema-valid config (`setup_complete: false`, `update_gaia.mode: local`, the tool mode) in one atomic write; the prose's only job is to guarantee that call always runs with a derived mode.
 
 ### Branch A, CI was enabled
 
 Tell the user (in their language; the table headers stay English):
 
-> Configure GAIA's automated maintenance jobs. Recommended: enable both in CI mode so they run unattended. You can pick a different mode per tool.
+> Configure GAIA's automated wiki maintenance. Recommended: enable it in CI mode so it runs unattended.
 
-Use AskUserQuestion to confirm the recommendation OR open per-tool overrides. Include the run-mode docs link in the question text so the user can Cmd/Ctrl+click to read it before answering:
+Use AskUserQuestion to confirm the recommendation OR pick another mode. Include the run-mode docs link in the question text so the user can Cmd/Ctrl+click to read it before answering:
 
-> How should GAIA CI's tools run?
+> How should GAIA CI's wiki sync run?
 >
 > Run-mode reference: https://docs.gaiareact.com/maintenance/gaia-ci/#run-modes (Cmd/Ctrl+click to open).
 >
-> - **Enable both in CI mode (Recommended).** Sets `wiki` and `stale_branches` to `ci`. Phase B (`/setup-gaia`) activates them.
-> - **Customize per tool.** Show the table below and ask for each tool's mode.
-
-If the user picks "Customize per tool", show this table and use AskUserQuestion once per row (or one combined free-text prompt; the prose is the contract, the prompt shape is at the assistant's discretion):
-
-| Tool             | Default | What it does                                     | Modes                  |
-| ---------------- | ------- | ------------------------------------------------ | ---------------------- |
-| `wiki`           | `ci`    | Smart-cron wiki sync against `app/**` changes.   | `ci` / `local` / `off` |
-| `stale_branches` | `ci`    | Monthly cleanup of branches merged >30 days ago. | `ci` / `local` / `off` |
+> - **Enable in CI mode (Recommended).** Sets `wiki` to `ci`: smart-cron wiki sync against `app/**` changes. Phase B (`/setup-gaia`) activates it.
+> - **Local only.** Sets `wiki` to `local`.
+> - **Off.** Sets `wiki` to `off`.
 
 ### Branch B, CI was declined
 
-Do NOT show the "Enable both in CI mode" recommendation, CI is not a valid target. Auto-derive every tool's mode to `local` (the only producer is the adopter's local invocation) and tell the user (in their language; table headers stay English):
+Do NOT show the "Enable in CI mode" recommendation, CI is not a valid target. Auto-derive the tool's mode to `local` (the only producer is the adopter's local invocation) and tell the user (in their language; table headers stay English):
 
-> You declined GAIA CI, so the maintenance tools default to `local`, they run only when you invoke them on this machine. Set any tool to `off` if you don't want it at all.
+> You declined GAIA CI, so wiki maintenance defaults to `local`, it runs only when you invoke it on this machine. Set it to `off` if you don't want it at all.
 
-Use AskUserQuestion to confirm the all-`local` derivation OR open per-tool overrides between `local` and `off` only (never `ci`). Include the run-mode docs link in the question text so the user can Cmd/Ctrl+click to read it before answering:
+Use AskUserQuestion to confirm the `local` derivation OR choose `off` instead (never `ci`). Include the run-mode docs link in the question text so the user can Cmd/Ctrl+click to read it before answering:
 
-> How should GAIA's maintenance tools run? (CI is unavailable.)
+> How should GAIA's wiki maintenance run? (CI is unavailable.)
 >
 > Run-mode reference: https://docs.gaiareact.com/maintenance/gaia-ci/#run-modes (Cmd/Ctrl+click to open).
 >
-> - **Both `local` (Recommended).** Sets `wiki` and `stale_branches` to `local`. Each runs only when you invoke it here.
-> - **Customize per tool.** Choose `local` or `off` for each of the two tools.
+> - **Local (Recommended).** Sets `wiki` to `local`. It runs only when you invoke it here.
+> - **Off.** Sets `wiki` to `off`.
 
 Mode meanings:
 
@@ -542,7 +536,7 @@ Mode meanings:
 - `local`, does not run in CI; only the adopter's local invocation runs the tool.
 - `off`, never runs (neither in CI nor locally via the smart entrypoints).
 
-The fifth config key, `update_gaia.mode`, is fixed to `local` and not surfaced as a question, `/update-gaia` is a per-machine command by design.
+The `update_gaia.mode` config key is fixed to `local` and not surfaced as a question, `/update-gaia` is a per-machine command by design.
 
 ### Sandbox recommendation
 
@@ -586,17 +580,16 @@ Hold the answer as `prefer-branch`, `prefer-worktree`, or `always-worktree`, or 
 
 ### Apply the answer
 
-Once you have a value for each of the two tools (from Branch A, Branch B, or a resumed run's saved arguments), the sandbox recommendation, and the isolation-policy answer above, run, ALWAYS, the terminal write:
+Once you have the wiki mode (from Branch A, Branch B, or a resumed run's saved arguments), the sandbox recommendation, and the isolation-policy answer above, run, ALWAYS, the terminal write:
 
 ```bash
 .gaia/cli/gaia init configure-automation \
   --wiki <wiki-mode> \
-  --stale-branches <stale-branches-mode> \
   --sandbox-recommended <true|false> \
   [--isolation-policy <always-worktree|prefer-worktree|prefer-branch>]
 ```
 
-Substitute each `<*-mode>` with the derived selection (`ci` is only valid on the CI-enabled branch; the CI-declined branch substitutes `local` or `off`) and `<true|false>` with the sandbox recommendation. Append `--isolation-policy <value>` **only** when the user chose one of the three labels above. On a non-response, on "Other", or in Automatic mode, **omit the flag entirely**: omitting it omits the key, which leaves the team policy unset and leaves `/setup-gaia`'s question live for the owner to answer later. Never substitute a default value for a missing answer here. This call is mandatory on every exit path, there is no Step 9 branch that skips it.
+Substitute `<wiki-mode>` with the derived selection (`ci` is only valid on the CI-enabled branch; the CI-declined branch substitutes `local` or `off`) and `<true|false>` with the sandbox recommendation. Append `--isolation-policy <value>` **only** when the user chose one of the three labels above. On a non-response, on "Other", or in Automatic mode, **omit the flag entirely**: omitting it omits the key, which leaves the team policy unset and leaves `/setup-gaia`'s question live for the owner to answer later. Never substitute a default value for a missing answer here. This call is mandatory on every exit path, there is no Step 9 branch that skips it.
 
 If the CLI exits non-zero, surface the structured-error JSON verbatim and stop. The user can re-run the failing command manually after addressing the cause, then resume `/gaia-init` with `.gaia/cli/gaia init resume`.
 
@@ -685,7 +678,7 @@ Derive the three values from state this run already holds, never from a state fi
 
 - **`$MODE`** is the run-mode answer from the very first gate ("Interactive gates: run mode and non-response policy" above): `interactive` or `automatic`. Held for the whole run.
 - **`$I18N_COUNT`** is `0` when `STRIP_I18N` is `true` (Step 2 Q2, i18n stripped); otherwise the number of locales in `LOCALES` (the count passed to `gaia init configure-i18n --locales`). Automatic mode keeps i18n with only the detected primary language, so `$I18N_COUNT` is `1` there.
-- **`$CI_CATEGORY`** is derived from the two tool modes passed to `gaia init configure-automation` in Step 9 (`--wiki`, `--stale-branches`): if both are the same value, use that value (`ci` / `local` / `off`); if they differ, use `custom`. Automatic mode sets both to `ci`, so `$CI_CATEGORY` is `ci` there.
+- **`$CI_CATEGORY`** is the `--wiki` mode passed to `gaia init configure-automation` in Step 9 (`ci` / `local` / `off`). Automatic mode sets it to `ci`, so `$CI_CATEGORY` is `ci` there.
 
 Then output the message below verbatim. Output the `cd` line exactly as written, even though Claude is currently running inside the project folder: when the user exits Claude back to the terminal, their shell returns to the directory they launched from (the parent), not the project folder. Do not tell the user they are "already inside" the folder or that they can skip the `cd`.
 

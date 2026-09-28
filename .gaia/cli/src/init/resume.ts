@@ -169,18 +169,11 @@ const isToolModeValue = (value: unknown): boolean =>
 
 const buildConfigureAutomationArgv: StepArgvBuilder = (saved) => {
   if (saved === undefined) return null;
-  const {stale_branches: staleBranches, wiki} = saved;
+  const {wiki} = saved;
 
-  if (!isToolModeValue(wiki) || !isToolModeValue(staleBranches)) {
-    return null;
-  }
+  if (!isToolModeValue(wiki)) return null;
 
-  return [
-    '--wiki',
-    wiki as string,
-    '--stale-branches',
-    staleBranches as string,
-  ];
+  return ['--wiki', wiki as string];
 };
 
 const buildWireStatuslineArgv: StepArgvBuilder = (saved) => {

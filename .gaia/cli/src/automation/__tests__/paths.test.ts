@@ -46,17 +46,9 @@ describe('automation/paths', () => {
   });
 
   describe('workflowFilePath', () => {
-    test('returns the kebab-case workflow filename per tool', () => {
+    test('returns the kebab-case workflow filename for the tool', () => {
       expect(workflowFilePath('/tmp/repo', 'wiki')).toBe(
         path.join('/tmp/repo', '.github', 'workflows', 'gaia-ci-wiki.yml')
-      );
-      expect(workflowFilePath('/tmp/repo', 'stale-branches')).toBe(
-        path.join(
-          '/tmp/repo',
-          '.github',
-          'workflows',
-          'gaia-ci-stale-branches.yml'
-        )
       );
     });
   });
@@ -68,18 +60,14 @@ describe('automation/paths', () => {
           path.join('templates', 'workflows', 'gaia-ci-wiki.yml.tmpl')
         )
       ).toBe(true);
-      expect(
-        workflowTemplatePath('stale-branches').endsWith(
-          path.join('templates', 'workflows', 'gaia-ci-stale-branches.yml.tmpl')
-        )
-      ).toBe(true);
     });
 
-    test('no template ships for pnpm-audit or update-deps', () => {
+    test('no template ships for pnpm-audit, update-deps, or stale-branches', () => {
       const dir = path.dirname(workflowTemplatePath('wiki'));
       const files = readdirSync(dir);
       expect(files).not.toContain('gaia-ci-pnpm-audit.yml.tmpl');
       expect(files).not.toContain('gaia-ci-update-deps.yml.tmpl');
+      expect(files).not.toContain('gaia-ci-stale-branches.yml.tmpl');
     });
   });
 

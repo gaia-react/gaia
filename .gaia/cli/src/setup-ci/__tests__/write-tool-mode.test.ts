@@ -99,33 +99,33 @@ describe('setup-ci write-tool-mode', () => {
   test('flips a tool mode to off and preserves schedule', () => {
     sandbox.writeConfig(VALID_BASE_CONFIG);
 
-    const exit = run(['stale-branches', 'off'], {cwd: sandbox.root});
+    const exit = run(['wiki', 'off'], {cwd: sandbox.root});
     expect(exit).toBe(0);
 
     const result = readAutomationConfig(sandbox.root);
     expect(result.status).toBe('ok');
     assertStatusOk(result);
 
-    expect(result.config.stale_branches.mode).toBe('off');
+    expect(result.config.wiki.mode).toBe('off');
     // Schedule preserved.
-    expect(result.config.stale_branches.schedule).toBe('monthly');
+    expect(result.config.wiki.schedule).toBe('daily');
   });
 
   test('writes mode without schedule when existing slot has none', () => {
     sandbox.writeConfig({
       ...VALID_BASE_CONFIG,
-      stale_branches: {mode: 'ci'},
+      wiki: {mode: 'ci'},
     });
 
-    const exit = run(['stale-branches', 'local'], {cwd: sandbox.root});
+    const exit = run(['wiki', 'local'], {cwd: sandbox.root});
     expect(exit).toBe(0);
 
     const result = readAutomationConfig(sandbox.root);
     expect(result.status).toBe('ok');
     assertStatusOk(result);
 
-    expect(result.config.stale_branches.mode).toBe('local');
-    expect(result.config.stale_branches.schedule).toBeUndefined();
+    expect(result.config.wiki.mode).toBe('local');
+    expect(result.config.wiki.schedule).toBeUndefined();
   });
 
   test('emits {tool, mode} JSON on success', () => {
@@ -150,7 +150,7 @@ describe('setup-ci write-tool-mode', () => {
     expect(stdio.err.join('')).toContain('unknown tool');
   });
 
-  test.each(['pnpm-audit', 'update-deps'])(
+  test.each(['pnpm-audit', 'update-deps', 'stale-branches'])(
     'rejects %s as unknown tool',
     (tool) => {
       sandbox.writeConfig(VALID_BASE_CONFIG);
