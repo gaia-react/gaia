@@ -9,6 +9,7 @@ import {execFileSync} from 'node:child_process';
 import {
   chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -766,6 +767,167 @@ describe('update regen-regions: behavior coverage', () => {
     expect(exit).toBe(0);
     expect(report.confined).toEqual([]);
     expect(existsSync(path.join(root, DECLARED_PATHS[1]))).toBe(false);
+  });
+  test('12d-i. a symlink the program retargets in scope is put back on its original target', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    mkdirSync(path.join(root, 'outside'), {recursive: true});
+    writeFileSync(path.join(root, 'outside/target.txt'), 'TARGET CONTENT\n');
+    writeFileSync(path.join(root, 'outside/other.txt'), 'OTHER CONTENT\n');
+    symlinkSync(
+      '../../outside/target.txt',
+      path.join(root, '.claude/agents/link.md')
+    );
+    writeScript(
+      root,
+      [
+        HAPPY_SCRIPT_BODY,
+        'rm .claude/agents/link.md',
+        'ln -s ../../outside/other.txt .claude/agents/link.md',
+      ].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+
+    // Same path, same kind, different target: comparing links by presence
+    // alone would call this untouched and leave the region pointing an
+    // undeclared path somewhere it chose.
+    expect(report.confined).toEqual([
+      {
+        action: 'restored',
+        path: '.claude/agents/link.md',
+        regionId: 'test-region',
+      },
+    ]);
+    expect(readlinkSync(path.join(root, '.claude/agents/link.md'))).toBe(
+      '../../outside/target.txt'
+    );
+  });
+
+  test('12d-ii. a symlink the program replaces with a regular file is put back as a link', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    mkdirSync(path.join(root, 'outside'), {recursive: true});
+    writeFileSync(path.join(root, 'outside/target.txt'), 'TARGET CONTENT\n');
+    symlinkSync(
+      '../../outside/target.txt',
+      path.join(root, '.claude/agents/link.md')
+    );
+    writeScript(
+      root,
+      [
+        HAPPY_SCRIPT_BODY,
+        'rm .claude/agents/link.md',
+        String.raw`printf "now a real file\n" > .claude/agents/link.md`,
+      ].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+
+    // Swapping a link for a regular file is an out-of-scope write like any
+    // other, and the link's own pre-image is its target string, so it is put
+    // back as a link. Reporting nothing here would let the program's own
+    // undeclared content survive at the path under a clean confinement result.
+    expect(report.confined).toEqual([
+      {
+        action: 'restored',
+        path: '.claude/agents/link.md',
+        regionId: 'test-region',
+      },
+    ]);
+    expect(
+      lstatSync(path.join(root, '.claude/agents/link.md')).isSymbolicLink()
+    ).toBe(true);
+    expect(readlinkSync(path.join(root, '.claude/agents/link.md'))).toBe(
+      '../../outside/target.txt'
+    );
+    // Restoring a link writes no content, so the target is untouched.
+    expect(readFileSync(path.join(root, 'outside/target.txt'), 'utf8')).toBe(
+      'TARGET CONTENT\n'
+    );
+  });
+
+  test('12e. a symlink the program creates in scope is removed, like any other undeclared creation', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    mkdirSync(path.join(root, 'outside'), {recursive: true});
+    writeFileSync(path.join(root, 'outside/target.txt'), 'TARGET CONTENT\n');
+    writeScript(
+      root,
+      [
+        HAPPY_SCRIPT_BODY,
+        'ln -s ../../outside/target.txt .claude/agents/sneak.md',
+      ].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+
+    // A link the spawn created is an undeclared creation with no pre-image, so
+    // it is removed exactly as a regular file would be; letting it survive
+    // would leave the confinement guarantee claiming a clean run while an
+    // undeclared path persists. Unlinking never touches what it pointed at.
+    expect(report.confined).toEqual([
+      {
+        action: 'removed',
+        path: '.claude/agents/sneak.md',
+        regionId: 'test-region',
+      },
+    ]);
+    expect(existsSync(path.join(root, '.claude/agents/sneak.md'))).toBe(false);
+    // Removing the link must never touch what it pointed at.
+    expect(readFileSync(path.join(root, 'outside/target.txt'), 'utf8')).toBe(
+      'TARGET CONTENT\n'
+    );
+  });
+
+  test('12f. a symlink the program puts where an in-scope file was is restored without writing through the link', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    writeFileSync(
+      path.join(root, '.claude/agents/extra.md'),
+      'extra original\n'
+    );
+    mkdirSync(path.join(root, 'outside'), {recursive: true});
+    writeFileSync(path.join(root, 'outside/target.txt'), 'TARGET CONTENT\n');
+    writeScript(
+      root,
+      [
+        HAPPY_SCRIPT_BODY,
+        'rm .claude/agents/extra.md',
+        'ln -s ../../outside/target.txt .claude/agents/extra.md',
+      ].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+
+    expect(report.confined).toEqual([
+      {
+        action: 'restored',
+        path: '.claude/agents/extra.md',
+        regionId: 'test-region',
+      },
+    ]);
+    // The pre-image goes back at the path itself, which must be a regular file
+    // again. Following the link would write these bytes into the target, which
+    // can live anywhere in or outside the tree: the confinement mechanism
+    // writing outside the scope it exists to enforce.
+    expect(lstatSync(path.join(root, '.claude/agents/extra.md')).isFile()).toBe(
+      true
+    );
+    expect(
+      readFileSync(path.join(root, '.claude/agents/extra.md'), 'utf8')
+    ).toBe('extra original\n');
+    expect(readFileSync(path.join(root, 'outside/target.txt'), 'utf8')).toBe(
+      'TARGET CONTENT\n'
+    );
   });
 
   test('13. a file created outside the declared set but inside the snapshot scope is removed', () => {
