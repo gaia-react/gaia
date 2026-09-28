@@ -18,6 +18,7 @@
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
+  . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
   THIS_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
   SCRIPT="$THIS_DIR/../audit-scope-digest.sh"
   KEY_LIB="$THIS_DIR/../audit-key-lib.sh"
@@ -35,7 +36,8 @@ setup() {
   git -C "$ROOT" config user.name "Test"
   git -C "$ROOT" config commit.gpgsign false
   echo "# readme" >"$ROOT/README.md"
-  git -C "$ROOT" add README.md
+  seed_audit_roster "$ROOT"
+  git -C "$ROOT" add .gaia/audit-ci.yml README.md
   git -C "$ROOT" commit --quiet -m "init"
 
   BASE="$(git -C "$ROOT" rev-parse HEAD)"
@@ -74,6 +76,7 @@ build_sandbox() {
   git -C "$sb" config user.name "Test"
   git -C "$sb" config commit.gpgsign false
   echo "# readme" >"$sb/README.md"
+  seed_audit_roster "$sb"
   git -C "$sb" add -A
   git -C "$sb" commit --quiet -m "init"
 }

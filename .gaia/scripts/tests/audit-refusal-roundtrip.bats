@@ -28,6 +28,7 @@
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
+  . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   FINDINGS_WRITER="$THIS_DIR/../audit-write-findings.sh"
   CLEARANCE_WRITER="$THIS_DIR/../audit-write-clearance.sh"
@@ -49,7 +50,8 @@ setup() {
   git -C "$ROOT" config user.name "Test"
   git -C "$ROOT" config commit.gpgsign false
   printf '#!/usr/bin/env bash\necho base\n' > "$ROOT/.claude/hooks/guard.sh"
-  git -C "$ROOT" add .gaia/VERSION .claude/hooks/guard.sh
+  seed_audit_roster "$ROOT"
+  git -C "$ROOT" add .gaia/VERSION .gaia/audit-ci.yml .claude/hooks/guard.sh
   git -C "$ROOT" commit --quiet -m "base"
   BASE="$(git -C "$ROOT" rev-parse HEAD)"
 

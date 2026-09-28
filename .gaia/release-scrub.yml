@@ -57,9 +57,8 @@ transforms:
     end: "# gaia:maintainer-only:end"
 
   # Code Audit Team maintainer-only blocks: the roster's maintainer-only
-  # entries in .gaia/audit-ci.yml and the resolver's built-in-default block
-  # (audit-scope.sh, sourced by resolve-audit-members.sh). Same #-comment
-  # markers as the .prettierignore transform above, kept as its own block
+  # entries in .gaia/audit-ci.yml, plus any maintainer-only block in a shipped
+  # shell script. Same #-comment markers as the .prettierignore transform above, kept as its own block
   # (rather than folded into that transform's paths) so the
   # .prettierignore-specific rationale above stays intact.
   # **/*.sh is broad by design: any maintainer-only block wrapped in shipped
@@ -280,10 +279,10 @@ transforms:
       # shell declaration `AUDIENCE_VALUES`. Whitespace after the colon is
       # allowed only before the brace, the one carrier that writes a space
       # there. It is NOT allowed before a value: the Code Audit Team roster's
-      # `audience: adopter` field ships in `.gaia/audit-ci.yml` and the built-in
-      # fallback roster, and a pattern reaching it would fail every release
-      # build on a legitimate file. The registry's JSON `"audience": "adopter"`
-      # field misses both forms, because the closing quote breaks the colon.
+      # `audience: adopter` field ships in `.gaia/audit-ci.yml`, and a pattern
+      # reaching it would fail every release build on a legitimate file. The
+      # registry's JSON `"audience": "adopter"` field misses both forms,
+      # because the closing quote breaks the colon.
       - id: audience-label-vocabulary
         description: "Maintainer-only `audience:` label vocabulary surviving the marker strip"
         pattern: "audience:\\s*\\{|audience:(adopter|maintainer|<side>|\\*)|AUDIENCE_VALUES"
