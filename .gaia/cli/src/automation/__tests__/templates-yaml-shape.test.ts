@@ -16,7 +16,6 @@ import {buildSchedulerVars, buildWorkflowVars} from '../workflow-vars.js';
 const baseConfig: AutomationConfig = {
   setup_complete: true,
   setup_opted_out: false,
-  stale_branches: {mode: 'ci', schedule: 'monthly'},
   update_gaia: {mode: 'local'},
   version: 1,
   wiki: {mode: 'ci', schedule: 'daily'},
@@ -105,7 +104,7 @@ const renderForTool = (tool: ToolId): string => {
   );
 };
 
-const tools: readonly ToolId[] = ['wiki', 'stale-branches'];
+const tools: readonly ToolId[] = ['wiki'];
 
 // Extracted so the `if (!result.success) throw` lives outside the test
 // body (vitest/no-conditional-in-test forbids conditionals in test bodies);

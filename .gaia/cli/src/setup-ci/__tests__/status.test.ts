@@ -69,7 +69,6 @@ describe('setup-ci status', () => {
     sandbox.writeConfig({
       ...VALID_BASE_CONFIG,
       setup_complete: false,
-      stale_branches: {mode: 'local', schedule: 'monthly'},
     });
 
     const exit = run(['--json'], {cwd: sandbox.root});
@@ -82,7 +81,6 @@ describe('setup-ci status', () => {
     expect(parsed.configured).toBe(true);
     expect(parsed.setup_complete).toBe(false);
     expect(parsed.setup_opted_out).toBe(false);
-    // `stale_branches` is local, so only wiki is CI-mode.
     expect(parsed.tools_enabled).toEqual(['wiki']);
   });
 

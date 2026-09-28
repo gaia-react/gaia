@@ -88,24 +88,17 @@ describe('argvFromStepArgs', () => {
   });
 
   test('reconstructs configure-automation argv', () => {
+    expect(argvFromStepArgs('configure-automation', {wiki: 'ci'})).toEqual([
+      '--wiki',
+      'ci',
+    ]);
+    expect(argvFromStepArgs('configure-automation', {})).toBeNull();
     expect(
-      argvFromStepArgs('configure-automation', {
-        stale_branches: 'off',
-        wiki: 'ci',
-      })
-    ).toEqual(['--wiki', 'ci', '--stale-branches', 'off']);
-    expect(
-      argvFromStepArgs('configure-automation', {stale_branches: 'ci'})
-    ).toBeNull();
-    expect(
-      argvFromStepArgs('configure-automation', {
-        stale_branches: 'ci',
-        wiki: 'bogus',
-      })
+      argvFromStepArgs('configure-automation', {wiki: 'bogus'})
     ).toBeNull();
   });
 
-  test('configure-automation argv replays only wiki and stale-branches, ignoring legacy update_deps/pnpm_audit', () => {
+  test('configure-automation argv replays only wiki, ignoring legacy update_deps/pnpm_audit/stale_branches', () => {
     expect(
       argvFromStepArgs('configure-automation', {
         pnpm_audit: 'ci',
@@ -113,7 +106,7 @@ describe('argvFromStepArgs', () => {
         update_deps: 'ci',
         wiki: 'ci',
       })
-    ).toEqual(['--wiki', 'ci', '--stale-branches', 'off']);
+    ).toEqual(['--wiki', 'ci']);
   });
 
   test('finalize requires no args', () => {

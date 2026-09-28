@@ -1,7 +1,3 @@
-      # Auto-merge partial. Gated on `enable_auto_merge` so the
-      # stale-branches workflow (which doesn't open a PR) emits no
-      # merge invocation in its rendered YAML.
-{{#enable_auto_merge}}
       - name: Open and auto-merge gaia-ci PR
         if: steps.pre_run.outputs.decision == 'run' && success()
         env:
@@ -47,4 +43,3 @@
           fi
 {{/enable_diff_size_check}}
           gh pr merge "$pr_number" --auto --squash
-{{/enable_auto_merge}}

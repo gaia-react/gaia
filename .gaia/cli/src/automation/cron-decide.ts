@@ -4,8 +4,7 @@
  * The smart-cron decision primitive. Reads `.gaia/automation.json` and
  * returns a deterministic `{decision, reason, skip_log_line}` triple.
  * Pure config-only: it never reads or mutates any state file. An enabled
- * wiki tool runs; a non-wiki tool emits a not_implemented skip; a tool
- * whose mode is `off` emits a tool_off skip.
+ * wiki tool runs; a tool whose mode is `off` emits a tool_off skip.
  *
  * Exit code 0 covers both `run` and `skip` decisions. Non-zero covers
  * configuration errors (missing or malformed config).
@@ -30,16 +29,15 @@ type CronDecision = {
   skip_log_line: null | string;
 };
 
-type CronReason = 'enabled' | 'not_implemented' | 'tool_off';
+type CronReason = 'enabled' | 'tool_off';
 
 const HELP_TEXT = `Usage: gaia automation cron-decide <tool> [--json]
 
   Smart-cron decision primitive. Reads .gaia/automation.json and emits
   {decision, reason, skip_log_line}.
   Decision priority:
-    1. tool_off        (config.<tool>.mode == "off")
-    2. enabled          (wiki, mode != off -> run)
-    3. not_implemented (any other tool; skip)
+    1. tool_off (config.<tool>.mode == "off")
+    2. enabled  (mode != off -> run)
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
@@ -50,28 +48,12 @@ const toolConfigFor = (config: AutomationConfig, tool: ToolId): ToolConfig =>
   // indexed access resolves directly to `ToolConfig`; no cast needed.
   config[TOOL_ID_TO_CONFIG_KEY[tool]];
 
-type DecideArgs = {
-  tool: ToolId;
-  toolConfig: ToolConfig;
-};
-
-const decide = (args: DecideArgs): CronDecision => {
-  const {tool, toolConfig} = args;
-
+const decide = (toolConfig: ToolConfig): CronDecision => {
   if (toolConfig.mode === 'off') {
     return {
       decision: 'skip',
       reason: 'tool_off',
       skip_log_line: 'tool mode is off; skipping',
-    };
-  }
-
-  // Non-wiki tools are not yet implemented.
-  if (tool !== 'wiki') {
-    return {
-      decision: 'skip',
-      reason: 'not_implemented',
-      skip_log_line: `cron-decide not yet implemented for ${tool}; skipping`,
     };
   }
 
@@ -194,7 +176,7 @@ export const run = (
 
   const toolConfig = toolConfigFor(configResult.config, tool);
 
-  const decision = decide({tool, toolConfig});
+  const decision = decide(toolConfig);
 
   if (json) {
     process.stdout.write(`${JSON.stringify(decision)}\n`);
