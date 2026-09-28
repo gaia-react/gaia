@@ -3,7 +3,7 @@
 # Tests for .claude/hooks/post-audit-status.sh.
 #
 # Handed an EARNED marker, the hook posts the GAIA-Audit success commit status
-# on the PUSHED PR head (head_sha, resolved via `gh pr view --json headRefOid,title`,
+# on the PUSHED PR head (head_sha, resolved via `gh pr view --json headRefOid,title,files`,
 # falling back to the upstream tracking tip and then local HEAD) once every
 # dispatched Code Audit Team member has cleared. Handed a REFUSAL it posts
 # state=failure and skips that member-aware gate entirely (case 9 below).
@@ -152,7 +152,7 @@ write_refusal() {
 }
 
 # Install a gh stub on a prepended PATH.
-#   $1  the sha `gh pr view --json headRefOid,title` reports; empty means "no PR
+#   $1  the sha `gh pr view --json headRefOid,title,files` reports; empty means "no PR
 #       resolvable" (the stub exits non-zero, as gh does off a PR branch). The
 #       reply carries no title line, which the hook reads as an unreadable title.
 #   $2  the exit status `gh api` returns (default 0, a successful POST).

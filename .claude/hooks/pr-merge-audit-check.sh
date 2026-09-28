@@ -46,11 +46,13 @@
 #      matches. Queried via `gh api` using GH_TOKEN or the ambient gh auth
 #      session.
 #
-#   4. chore(deps) PR bypass: PR title matches `^chore\(deps(-dev)?\):`. The
+#   4. chore(deps) PR bypass: PR title matches `^chore\(deps(-dev)?\):` and the
+#      PR's recorded file list is confined to a dependency manifest. The
 #      /update-deps wrapper runs the full quality gate locally before
-#      pushing, so the audit signal is implicit for this PR class. Mirrors
-#      the same narrowing applied to code-review-audit.yml, tests.yml, and
-#      chromatic.yml, all four surfaces skip together on chore(deps) PRs.
+#      pushing, so the audit signal is implicit for this PR class, but only
+#      for the manifest bump itself; a dep-bump PR carrying a migration edit
+#      or a rebuilt bundle runs the normal gate. Mirrors the same narrowing
+#      applied to code-review-audit.yml, tests.yml, and chromatic.yml.
 #
 #   5. Out-of-scope bypass (legacy gate only, a non-empty dispatched set means
 #      an in-scope file exists so this never applies there): every file the PR
@@ -500,15 +502,15 @@ check_github_status() {
 }
 
 # resolve_pr_record: read this pull request's record once into
-# $pr_record_title, $pr_record_base, $pr_record_head and $pr_record_number.
-# Memoized on $pr_record_read, which is what distinguishes "not read yet" from
-# "read, and the answer was nothing".
+# $pr_record_title, $pr_record_base, $pr_record_head, $pr_record_number and
+# $pr_record_files. Memoized on $pr_record_read, which is what distinguishes
+# "not read yet" from "read, and the answer was nothing".
 #
 # One read rather than one per field. `gh` carries no request timeout of its
 # own, so a second round-trip is a second OS-length stall on a blackholed
 # network, and the memo is what keeps every consumer to the first one. Every
-# failure (no gh, no auth, no PR for this branch, network error) leaves all
-# four fields empty and each consumer takes its own no-answer path.
+# failure (no gh, no auth, no PR for this branch, network error) leaves every
+# field empty and each consumer takes its own no-answer path.
 #
 # The consumers are the two record-based bypasses, the legacy deny reason, and
 # gate_cmd_names_the_record_pr, which every permit reaches through
@@ -517,8 +519,8 @@ check_github_status() {
 # clearance still has to establish which pull request it is a permit FOR. See
 # gate_permit_binds_to_named_pr for why that is worth a network read.
 #
-# All five variables are initialized HERE, at parent level, and that placement
-# is load-bearing rather than cosmetic. This script runs under `set -uo
+# Every field is initialized HERE, at parent level, and that placement is
+# load-bearing rather than cosmetic. This script runs under `set -uo
 # pipefail`, and this function returns early before reaching any jq assignment
 # on its two most common paths: no `gh` on PATH, and a `gh` that answers with
 # nothing. A reader that dereferences $pr_record_head after either of those
@@ -530,12 +532,13 @@ pr_record_title=""
 pr_record_base=""
 pr_record_head=""
 pr_record_number=""
+pr_record_files=""
 resolve_pr_record() {
   [ -z "$pr_record_read" ] || return 0
   pr_record_read=yes
 
   command -v gh >/dev/null 2>&1 || return 0
-  pr_record=$(gh pr view --json title,baseRefName,headRefOid,number 2>/dev/null || true)
+  pr_record=$(gh pr view --json title,baseRefName,headRefOid,number,files 2>/dev/null || true)
   [ -n "$pr_record" ] || return 0
 
   # `// ""` so a JSON null reaches the callers as the same empty string an
@@ -547,19 +550,23 @@ resolve_pr_record() {
   pr_record_base=$(printf '%s' "$pr_record" | jq -r '.baseRefName // ""' 2>/dev/null || true)
   pr_record_head=$(printf '%s' "$pr_record" | jq -r '.headRefOid // ""' 2>/dev/null || true)
   pr_record_number=$(printf '%s' "$pr_record" | jq -r '.number // ""' 2>/dev/null || true)
+  pr_record_files=$(printf '%s' "$pr_record" | jq -r '(.files // [])[] | .path // empty' 2>/dev/null || true)
 }
 
-# chore(deps) bypass: PRs whose title matches `^chore\(deps(-dev)?\):` are
+# chore(deps) bypass: PRs whose title matches `^chore\(deps(-dev)?\):` AND
+# whose recorded file list is confined to a dependency manifest are
 # pre-verified by the /update-deps wrapper's local quality gate (typecheck +
 # lint + vitest + playwright + build), so the audit-marker requirement is
 # waived for this PR class. The predicate itself lives in one place,
 # .gaia/scripts/chore-deps-skip.sh, shared with the CI workflows
-# (code-review-audit.yml, tests.yml, chromatic.yml).
+# (code-review-audit.yml, tests.yml, chromatic.yml). A dep-bump PR that also
+# carries a non-manifest path (a migration edit, a rebuilt bundle) does not
+# waive; it runs the normal member-aware gate below.
 #
-# The title comes from the shared PR-record read above. On any failure (no gh,
-# no auth, no PR for the current branch, network error, or an unresolved repo
-# root) the bypass does not fire and the normal deny path runs, the bypass is
-# opt-in proof, not a fallback.
+# The title and file list come from the shared PR-record read above. On any
+# failure (no gh, no auth, no PR for the current branch, network error, an
+# empty file list, or an unresolved repo root) the bypass does not fire and the
+# normal deny path runs, the bypass is opt-in proof, not a fallback.
 check_chore_deps_pr() {
   resolve_pr_record
   [ -n "$pr_record_title" ] || return 1
@@ -577,7 +584,7 @@ check_chore_deps_pr() {
   # ACTING tree that carries it. root is the main checkout, which from a linked
   # worktree is a different branch entirely and need not have the script at all.
   [ -n "$tree_root" ] || return 1
-  [ "$(bash "$tree_root/.gaia/scripts/chore-deps-skip.sh" "$pr_record_title")" = "true" ]
+  [ "$(bash "$tree_root/.gaia/scripts/chore-deps-skip.sh" "$pr_record_title" <<<"$pr_record_files")" = "true" ]
 }
 
 # gate_resolve_base: resolve, ONCE per run, the diff base that scopes this pull
@@ -1226,7 +1233,7 @@ None of the accepted signals is present:
   - Local marker:    ${marker} $(marker_state "$marker")
   - Commit trailer:  ${trailer_status:-missing}
   - GitHub CI status: absent or version/digest mismatch
-  - chore(deps) PR:  PR title does not match \`chore(deps):\` or \`chore(deps-dev):\`
+  - chore(deps) PR:  PR title does not match \`chore(deps):\`/\`chore(deps-dev):\`, or the PR changes a path other than a dependency manifest
   - Out-of-scope:    PR changes at least one in-scope path (app/, test/, configs,
                      .github/workflows/), not a wiki/docs/.gaia-config-only diff
   - Diff base:       ${gate_trust:-unresolvable} provenance (anchor ${gate_anchor:-default-branch}, base ${base_display}); an empty
@@ -1343,7 +1350,7 @@ while IFS= read -r m; do
       Local marker:    ${marker} $(marker_state "$marker")
       Commit trailer:  ${trailer_status:-missing}
       GitHub CI status: absent or version/digest mismatch
-      chore(deps) PR:  PR title does not match \`chore(deps):\` or \`chore(deps-dev):\`
+      chore(deps) PR:  PR title does not match \`chore(deps):\`/\`chore(deps-dev):\`, or the PR changes a path other than a dependency manifest
 "
     else
       member_marker="$root/.gaia/local/audit/${m_digest:-<unavailable>}.${m}.ok"

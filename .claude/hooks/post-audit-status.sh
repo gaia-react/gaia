@@ -57,8 +57,9 @@
 #   clearance the caller already wrote is untouched. A SUCCESS status is never
 #   posted without every dispatched member's marker present and none of them
 #   holding a live refusal, save a code-audit-frontend marker the chore(deps)
-#   title waiver excuses (a frontend refusal is never excused), and an absent status never inverts into a cleared
-#   gate. The caller may hand in any one current member's own marker path;
+#   manifest-only waiver excuses (a frontend refusal is never excused), and an
+#   absent status never inverts into a cleared gate. The caller may hand in
+#   any one current member's own marker path;
 #   the member-aware gate below evaluates the whole roster regardless of
 #   which member's marker was passed, so the call is order-independent with
 #   respect to the roster even though there is now exactly one caller (the
@@ -319,14 +320,22 @@ fi
 # derived from the cwd it already had. Choosing which tree this hook answers
 # for is the caller's job, done by invoking the hook from that tree.
 #
-# The same read carries the pull request's title, on a second line, for the
-# chore(deps) waiver in the member-aware gate below. GitHub titles are single
-# line, so the first newline is an unambiguous split.
-pr_view="$( cd "$repo_root" && gh pr view --json headRefOid,title --jq '.headRefOid + "\n" + .title' 2>/dev/null || true )"
+# The same read carries the pull request's title, on a second line, and its
+# file list on the lines after that, for the chore(deps) waiver in the
+# member-aware gate below. GitHub titles are single line, so the first two
+# newlines are an unambiguous split.
+pr_view="$( cd "$repo_root" && gh pr view --json headRefOid,title,files --jq '.headRefOid, .title, (.files[]?.path)' 2>/dev/null || true )"
 head_sha="${pr_view%%$'\n'*}"
 pr_title=""
+pr_files=""
 case "$pr_view" in
-  *$'\n'*) pr_title="${pr_view#*$'\n'}" ;;
+  *$'\n'*)
+    pr_view_rest="${pr_view#*$'\n'}"
+    pr_title="${pr_view_rest%%$'\n'*}"
+    case "$pr_view_rest" in
+      *$'\n'*) pr_files="${pr_view_rest#*$'\n'}" ;;
+    esac
+    ;;
 esac
 if [ -z "$head_sha" ]; then
   # No PR resolvable: fall back to the upstream tracking tip, then local HEAD.
@@ -427,16 +436,21 @@ if [ "$post_state" = "success" ] \
 fi
 
 # The chore(deps) waiver, mirroring audit-stamp-trailer.sh's: a dep-bump pull
-# request waives code-audit-frontend on its title, through the same predicate
-# the merge hook and CI already read, so a co-dispatched member's earned marker
-# completes the handshake. It waives the missing frontend marker only and sits
-# after the loop's refusal read, so a frontend refusal stays pending under a
-# dep-bump title. Fail-closed: no pull request, an unreadable title, or an
-# absent predicate leave frontend pending.
+# request whose recorded file list is confined to a dependency manifest waives
+# code-audit-frontend, through the same predicate the merge hook and CI
+# already read, so a co-dispatched member's earned marker completes the
+# handshake. It waives the missing frontend marker only and sits after the
+# loop's refusal read, so a frontend refusal stays pending under a dep-bump
+# title. Fail-closed: no pull request, an unreadable title, an empty or
+# non-manifest file list, or an absent predicate leave frontend pending. No
+# extra tree binding is needed here: the pushed-head guards above (target_tree
+# == tree_sha, head_local == head_sha) already proved local HEAD equals this
+# same read's headRefOid before this point, so the file list already describes
+# exactly the tree being posted about.
 frontend_waived="false"
 chore_deps_predicate="${repo_root}/.gaia/scripts/chore-deps-skip.sh"
 if [ -n "$pr_title" ] && [ -f "$chore_deps_predicate" ] \
-   && [ "$(bash "$chore_deps_predicate" "$pr_title" 2>/dev/null || true)" = "true" ]; then
+   && [ "$(bash "$chore_deps_predicate" "$pr_title" <<<"$pr_files" 2>/dev/null || true)" = "true" ]; then
   frontend_waived="true"
 fi
 

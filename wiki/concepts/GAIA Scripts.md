@@ -103,7 +103,7 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 | `awk-interp-lib.sh` | no | sourced | Resolves `GAIA_AWK`, the sanctioned awk interpreter (mawk or BWK one-true-awk) the awk-tokenizer guards run under. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `bats5.sh` | yes | the bats runners | Runs bats under a bash 5 when one is available, so local matches CI. |
 | `branch-name-lib.sh` | yes | sourced, and run as a command by the skills | GAIA's branch-naming convention: the one place a branch or worktree name is minted and read back. |
-| `chore-deps-skip.sh` | yes | `tests.yml`, `chromatic.yml`, `code-review-audit.yml`, `pr-merge-audit-check.sh` | The single source for the `chore(deps)` skip predicate every CI gate shares. |
+| `chore-deps-skip.sh` | yes | `git grep chore-deps-skip` | The chore(deps) predicate: a dep-bump subject plus a manifest-only changed-file list on stdin. |
 | `gh-artifact-lib.sh` | yes | sourced | Shared breadcrumb for the GitHub pull request a run produced. |
 | `guard-awk-lib.sh` | no | sourced | Shared awk scaffolding the guard lints build their detectors on. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `hook-registration-lib.sh` | no | sourced | The shared read of `.claude/settings.json`'s registrations, and the oracle for whether a registered hook can stop a tool call. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->

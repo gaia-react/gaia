@@ -132,17 +132,27 @@ jobs:
         if: steps.gate.outputs.gated == 'false'
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -eu
           # Pre-verified dep-bump PRs (the /update-deps wrapper runs the full
-          # quality gate locally before pushing) skip the audit. Predicate
-          # lives in .gaia/scripts/chore-deps-skip.sh. Assigned first, then
-          # echoed: a substitution inside echo's argument is a status `set -e`
-          # cannot see, so a predicate that failed to run would write an empty
-          # `skip` that satisfies neither the skip=='true' nor the skip=='false'
-          # arms below, firing no terminal status writer and leaving the merge
-          # gate unsatisfiable in silence.
-          skip="$(bash .gaia/scripts/chore-deps-skip.sh "$PR_TITLE")"
+          # quality gate locally before pushing) skip the audit, but only when
+          # the dep-bump title is matched by a full-PR diff (the event's own
+          # base sha, not the incremental audit base) confined to dependency
+          # manifests: skip requires both, so a dep-bump PR carrying a
+          # migration edit or a rebuilt bundle runs the audit. A diff that
+          # cannot be read (unresolvable base sha) runs the audit too.
+          # Predicate lives in .gaia/scripts/chore-deps-skip.sh. Assigned
+          # first, then echoed: a substitution inside echo's argument is a
+          # status `set -e` cannot see, so a predicate that failed to run
+          # would write an empty `skip` that satisfies neither the
+          # skip=='true' nor the skip=='false' arms below, firing no terminal
+          # status writer and leaving the merge gate unsatisfiable in silence.
+          if changed=$(set -o pipefail; git diff --name-only -z --no-renames "${PR_BASE_SHA}...HEAD" | tr '\0' '\n'); then
+            skip="$(bash .gaia/scripts/chore-deps-skip.sh "$PR_TITLE" <<<"$changed")"
+          else
+            skip=false
+          fi
           echo "skip=${skip}" >> "$GITHUB_OUTPUT"
 
       - name: Resolve audit base
@@ -1207,12 +1217,13 @@ jobs:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -eu
-          # chore(deps) fast-path stamp. A `chore(deps):` / `chore(deps-dev):` PR
-          # skips the expensive frontend audit: the /update-deps wrapper runs the
-          # full quality gate locally before pushing, so the bump is pre-verified
-          # and the frontend member's clearance is implicit for this PR class (the
-          # same bypass the local merge gate applies, and the same narrowing
-          # tests.yml and chromatic.yml apply). But skipping the audit must NOT
+          # chore(deps) fast-path stamp. A chore(deps) PR whose diff is
+          # manifest-only skips the expensive frontend audit: the /update-deps
+          # wrapper runs the full quality gate locally before pushing, so the
+          # bump is pre-verified and the frontend member's clearance is
+          # implicit for this PR class (the same bypass the local merge gate
+          # applies, and the same narrowing tests.yml and chromatic.yml
+          # apply). But skipping the audit must NOT
           # also skip the STAMP: the required GAIA-Audit check is a POSTed commit
           # status, not a job conclusion, so unlike the other required checks it is
           # not satisfied by a job-level skip conclusion. With no stamp the
