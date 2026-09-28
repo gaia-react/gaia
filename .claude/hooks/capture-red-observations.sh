@@ -42,10 +42,12 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null || ec
 # ANCHORED detection: walk pipeline segments, strip leading env-var prefixes,
 # and act only when `pnpm`/`npm` is the segment's command word AND `test` is
 # the script position, requiring the POSITIVE `--run` case scoped to that same
-# segment (a bare run without `--run` is simply not captured here;
-# red-verify-commit-check.sh names `pnpm test --run` as the recovery when its
-# gate denies for a missing RED observation). Command TEXT that merely mentions
-# the phrase (a commit message, a `--body` string) is not an invocation, so a
+# segment (a bare run without `--run` is simply not captured here, and a
+# `--run` naming no test path is skipped below with a diagnostic;
+# red-verify-commit-check.sh names `pnpm test --run <test-file>` as the
+# recovery when its gate denies for a missing RED observation). Command TEXT
+# that merely mentions the phrase (a commit message, a `--body` string) is
+# not an invocation, so a
 # spurious full-suite vitest re-run never fires on prose. `test:ci` /
 # `test:lint-staged` carry a `test:` token, not a bare `test`, so the
 # `test([[:space:]]|$)` boundary skips them.
@@ -147,13 +149,20 @@ else
 
   # No scope parsed: SKIP the capture (re-run no tests) rather than re-running
   # the whole vitest suite. A full-suite re-run on every unscoped `test --run`
-  # is an unbounded worst-case wall-clock cost. Skipping does not break the
-  # design: a missing capture only means the commit check may later deny, which
-  # is the safe direction (the same posture as the override-absent and
-  # parse-failure paths). A scoped invocation is unaffected: $scope carries the
-  # path/pattern and the re-run below stays bounded to it. Emptiness is tested on
-  # a whitespace-stripped copy so $scope itself keeps its word-split tokens.
-  [ -n "$(printf '%s' "$scope" | tr -d '[:space:]')" ] || exit 0
+  # is an unbounded worst-case wall-clock cost. The skip is announced, not
+  # silent: a developer who watched a test fail on an unscoped run would
+  # otherwise meet the commit check's denial later with nothing tying it to this
+  # run. A scoped invocation is unaffected: $scope carries the path/pattern and
+  # the re-run below stays bounded to it. Emptiness is tested on a
+  # whitespace-stripped copy so $scope itself keeps its word-split tokens.
+  # additionalContext rather than a printf: on PostToolUse, Claude Code sends
+  # plain stdout and stderr to its debug log only, so a printed line would be as
+  # silent as the bare exit.
+  if [ -z "$(printf '%s' "$scope" | tr -d '[:space:]')" ]; then
+    jq -n --arg c "RED capture skipped: this test run named no test file, so no failing (RED) result was recorded for the RED-verification commit gate. An unscoped run is not captured, because re-running the whole suite on every run is an unbounded cost. If a new test failed here and you need its RED on record, re-run it with a test path: pnpm test --run <test-file>" \
+      '{hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $c}}' 2>/dev/null || true
+    exit 0
+  fi
 
   mkdir -p "$tmp_dir" 2>/dev/null || true
   # BSD mktemp (macOS) only substitutes a TRAILING run of X's; an embedded

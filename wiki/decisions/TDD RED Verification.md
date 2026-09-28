@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-06-04
 created: 2026-06-04
-updated: 2026-09-22
+updated: 2026-09-28
 tags: [decision, tdd, hooks, quality]
 ---
 
@@ -24,7 +24,7 @@ A RED-observation ledger at `.gaia/local/red-ledger/` (machine-local, gitignored
 
 - **`red-verify-commit-check.sh`** (PreToolUse, Bash deny): before `git commit`, walks every test file that is new at HEAD. For each new test, the hook computes the current content signal and looks it up in the ledger. A missing entry or a signal mismatch (the test's comment-free content changed since the RED was observed, which a comment reword does not trigger) denies the commit, naming the offending test. Fail-open on missing tooling or unparseable test files; fail-closed only for the clean case.
 
-An unscoped run (`pnpm test --run` with no path or glob argument) records nothing at all: when no scope token parses from the command, the hook skips the re-run rather than paying full-suite wall-clock cost on every invocation. The skip is silent, so a developer who genuinely observed a test fail gets no diagnostic here, only a later commit denial that reads as a broken gate rather than a run that needed a scope argument. Separate, not-yet-fixed limitation: issue #2228.
+An unscoped run (`pnpm test --run` with no path or glob argument) records nothing: when no scope token parses from the command, the hook skips the re-run rather than paying full-suite wall-clock cost on every invocation. The skip is announced, not silent: the hook adds a note to Claude's context saying no RED was recorded and to re-run with a test path (`pnpm test --run <test-file>`), and the commit check's denial names the same scoped command as its recovery.
 
 The content signal is a normalized hash of the test's comment-free content, so that a cosmetic rename does not reuse a stale RED entry from a substantively different test. Rewording a comment is likewise not a substantive change and does not expire the RED.
 
@@ -81,6 +81,6 @@ The honest RED on the deterministic surface is a genuine missing-implementation 
 
 ## Consequences
 
-A new test on the deterministic surface always requires a one-shot vitest run that observes the test failing before the commit is allowed. This is a one-time step per new test; a green-only test that was never run red will be denied at commit time with a clear message naming the test. An emergent-subject test carries no such requirement.
+A new test on the deterministic surface always requires a one-shot vitest run scoped to the test's file (`pnpm test --run <test-file>`) that observes the test failing before the commit is allowed. This is a one-time step per new test; a green-only test that was never run red will be denied at commit time with a clear message naming the test. An emergent-subject test carries no such requirement.
 
 See [[Claude Hooks]] for hook registration. See the [[Quality Gate]] for the broader pre-commit enforcement surface.
