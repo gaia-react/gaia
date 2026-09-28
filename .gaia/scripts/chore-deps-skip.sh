@@ -30,7 +30,13 @@ subject="${1-}"
 
 paths=""
 if [ ! -t 0 ]; then
-  while IFS= read -r p || [ -n "$p" ]; do
+  # `p=` first: a closed fd 0 (`<&-`) still passes `[ ! -t 0 ]`, and a `read`
+  # on a closed fd assigns nothing, so `[ -n "$p" ]` on an unset `p` would trip
+  # `set -u`. `read`'s own stderr is silenced for the same closed-fd case:
+  # bash writes a "Bad file descriptor" diagnostic there that a caller under
+  # `set -eu` never asked for and this predicate's contract never promises.
+  p=
+  while IFS= read -r p 2>/dev/null || [ -n "$p" ]; do
     paths="${paths}${p}"$'\n'
   done
 fi
@@ -39,6 +45,7 @@ case "$subject" in
   'chore(deps):'* | 'chore(deps-dev):'*)
     manifest_only=1
     saw_path=0
+    p=
     while IFS= read -r p || [ -n "$p" ]; do
       [ -n "$p" ] || continue
       saw_path=1

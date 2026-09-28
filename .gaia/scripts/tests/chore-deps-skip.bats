@@ -87,6 +87,12 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
+@test "closed stdin (not just empty) prints false and exits 0" {
+  run bash -c "bash '$PREDICATE' 'chore(deps): x' <&-"
+  [ "$status" -eq 0 ]
+  [ "$output" = "false" ]
+}
+
 # -----------------------------------------------------------------------------
 # Workflow waiver steps: extract and execute the real `run:` body against a
 # sandbox repo.
