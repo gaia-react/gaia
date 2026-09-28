@@ -13,21 +13,7 @@ Maintainer-only validation of the post-scrub GAIA tarball. Excluded from the rel
 
 ## Layout
 
-```
-.gaia/tests/distribution/
-├── run-all.sh                   # top-level driver
-├── lib/
-│   ├── lib.sh                   # pass/fail/log/require_cmd, PROJECT_ROOT, CLI stderr capture
-│   └── build-staging.sh         # builds staging tarball into $1 (mktemp dir)
-├── 01-files-present.sh          # manifest/exclude/sentinel presence
-├── 03-marker-strip.sh           # asserts maintainer-only markers gone
-├── 04-scaffold-runs.sh          # extract + pnpm install + typecheck/lint/test/build
-├── 05-clean-env.sh              # PATH-stripped subshell (Layer 1)
-├── 07-gaia-init-strip-branding.sh  # Adopter-flow regression: gaia init strip-branding
-├── 08-gaia-init-cli-sequence.sh    # Adopter-flow regression: full gaia init CLI sequence
-├── 16-audit-remit-parity.sh        # Roster-derived remit regions and writer repair hold on the scrubbed adopter shape
-└── 17-gaia-update-merge-region.sh  # Adopter-flow regression: gaia update merge-region region-aware verdict oracle
-```
+`run-all.sh` is the driver, `lib/` holds its helpers (`lib.sh`, `build-staging.sh`), and each numbered `*.sh` at the root is one scenario whose header comment states what it asserts.
 
 ## Running
 
