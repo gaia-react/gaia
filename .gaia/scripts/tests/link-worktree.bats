@@ -298,26 +298,3 @@ FAKE
   # links the raw glob match.
   [ ! -L "$LINKED/.env.local~" ]
 }
-
-# ---------- 16. The byte-locked link trio: the .sh and .ts twins agree ----------
-
-# Before the state registry, this script's own link_one list and the CLI's
-# SHARED_PATHS were two hand-maintained copies of the same five paths, kept in
-# sync by hand (tech-debt #953). After the cutover neither twin enumerates a
-# path list at all -- both symlink the ONE path, .gaia/local -- so the thing
-# left to keep in lockstep is that literal itself. This proves it two ways:
-# the script's own logged action names exactly .gaia/local, and the
-# TypeScript twin's source hardcodes the identical relative path, so a future
-# edit that widens or narrows either twin's target shows up here.
-@test "shared path: the script's one action is .gaia/local, matching the TypeScript twin's literal" {
-  run run_in "$LINKED"
-  [ "$status" -eq 0 ]
-
-  linked_lines="$(grep -c '^linked: ' <<<"$output")"
-  [ "$linked_lines" -eq 1 ]
-  [[ "$output" == *"linked: $LINKED/.gaia/local"* ]] || return 1
-
-  ts_src="$SCRIPT_DIR/../cli/src/setup/link-worktree.ts"
-  [ -f "$ts_src" ]
-  grep -qF "path.join('.gaia', 'local')" "$ts_src" || return 1
-}

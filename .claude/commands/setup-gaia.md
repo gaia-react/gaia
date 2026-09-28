@@ -40,12 +40,12 @@ These run on every invocation and record no setup-state step. They sit outside t
 If this clone is being set up from a linked worktree (e.g. one created via `git worktree add` outside the Claude Code harness), the shared-state links that `.gaia/scripts/link-worktree.sh` creates may not exist yet: one symlink at `.gaia/local` pointing at the main checkout's, plus a link for each gitignored root `.env` file the main checkout holds. Run the self-heal:
 
 ```bash
-.gaia/cli/gaia setup link-worktree
+bash .gaia/scripts/link-worktree.sh
 ```
 
-In a main checkout this is a no-op (exits 0 with `not a linked worktree`). In a linked worktree that lacks them it creates them; where a real file or directory already sits at one of those paths, it is backed up to `<path>.bak.<timestamp>` first, so nothing is clobbered.
+In a main checkout this is a no-op (prints `not a linked worktree`). In a linked worktree that lacks them it creates them; where a real file or directory already sits at one of those paths, it is backed up to `<path>.bak.<timestamp>` first, so nothing is clobbered.
 
-If the command exits non-zero (e.g. Windows symlink permission failure), HALT and surface the error verbatim. The user must fix the underlying issue (typically: enable Windows Developer Mode) and re-run `/setup-gaia`.
+The script always exits 0, so read its output: if it prints a `failed:` line (e.g. Windows symlink permission failure), HALT and surface that line verbatim. The user must fix the underlying issue (typically: enable Windows Developer Mode) and re-run `/setup-gaia`.
 
 ### 0b. Ensure pnpm + node_modules
 

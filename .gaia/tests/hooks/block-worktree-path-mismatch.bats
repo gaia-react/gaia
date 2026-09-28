@@ -395,8 +395,8 @@ run_hook_edit() {
 # The exemption is registry-driven (gaia_registry_recognizes +
 # gaia_registry_classify), not a fixed list baked into this hook. A directory
 # newly classified `shared` in the registry is exempted here with no edit to
-# the guard: this is the structural property that keeps the guard,
-# link-worktree.sh, and link-worktree.ts in lockstep off one registry,
+# the guard: this is the structural property that keeps the guard
+# and link-worktree.sh in lockstep off one registry,
 # replacing the byte-locked-twin enumeration a hand-maintained list would
 # need. A synthetic shared dir the fixture does not otherwise carry proves
 # the guard reads the registry rather than a hardcoded set.

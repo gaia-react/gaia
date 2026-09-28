@@ -134,7 +134,7 @@ run_in_repo() {
 }
 
 # ========== gaia_registry_linkable_paths ==========
-# link-worktree.sh / link-worktree.ts no longer call this to build their own
+# link-worktree.sh no longer calls this to build its own
 # symlink set (a linked worktree's whole .gaia/local is one symlink to
 # main's now). It stays as the regression guard the concurrency meter's
 # cutover-risk scenarios (C4-06, C4-08) run against the shipped registry: the

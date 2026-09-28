@@ -47,10 +47,10 @@
 #   top-level paths of every scope=="shared" registry entry (its own `path`,
 #   trimmed, for a match=="prefix" entry; otherwise its `path`'s first
 #   "/"-segment), de-duplicated in first-occurrence order. Derived from the
-#   registry, never hardcoded. link-worktree.sh and link-worktree.ts no
-#   longer call this to build their own symlink set -- a linked worktree's
-#   whole .gaia/local is one symlink to main's now, so there is no per-path
-#   set left to enumerate for that purpose. This function stays as a
+#   registry, never hardcoded. link-worktree.sh no longer calls this to
+#   build its own symlink set -- a linked worktree's whole .gaia/local
+#   is one symlink to main's now, so there is no per-path set left to
+#   enumerate for that purpose. This function stays as a
 #   diagnostic/regression-guard read: it is what proves a per-tree entry
 #   (red-ledger, forensics, handoff) is genuinely NOT shared, the concrete
 #   check the concurrency meter's cutover-risk scenarios (C4-06, C4-08) run
