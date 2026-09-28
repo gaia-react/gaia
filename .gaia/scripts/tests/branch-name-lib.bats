@@ -263,13 +263,9 @@ corrupt_packed_refs() {
 @test "lockstep: the CLI still mints wiki-sync/ and the CI templates still mint gaia-ci/" {
   grep -qF "const WIKI_CHAIN_BRANCH_PREFIX = 'wiki-sync/';" "$REPO_ROOT/.gaia/cli/src/wiki/chain.ts"
   grep -qF 'const branchName = `wiki-sync/${' "$REPO_ROOT/.gaia/cli/src/wiki/sync-land.ts"
-  local tmpl
-  for tmpl in \
-    .gaia/cli/src/automation/templates/workflows/partials/auto-merge.yml.tmpl \
-    .gaia/cli/src/automation/templates/workflows/gaia-ci-pnpm-audit.yml.tmpl; do
-    grep -qE 'branch="gaia-ci/\{\{tool_id\}\}/' "$REPO_ROOT/$tmpl" \
-      || { echo "$tmpl no longer mints gaia-ci/{{tool_id}}/" >&2; return 1; }
-  done
+  local tmpl=.gaia/cli/src/automation/templates/workflows/partials/auto-merge.yml.tmpl
+  grep -qE 'branch="gaia-ci/\{\{tool_id\}\}/' "$REPO_ROOT/$tmpl" \
+    || { echo "$tmpl no longer mints gaia-ci/{{tool_id}}/" >&2; return 1; }
   expect_classify "wiki-sync/2026-09-20-abc1234" "maintenance 2026-09-20-abc1234"
   expect_classify "gaia-ci/t/x" "maintenance t/x"
 }

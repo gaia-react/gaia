@@ -1,9 +1,6 @@
       # Setup sits after the skip decision so a tick that skips does not pay
-      # for an install it never uses. The gate reads `!= 'skip'` rather than
-      # `== 'run'` so this same partial also serves a job gated at the job
-      # level with no `pre_run` step of its own (the `wave_b` fan-out in
-      # gaia-ci-update-deps). What the composite provisions is documented on
-      # the composite itself, not restated here.
+      # for an install it never uses. What the composite provisions is
+      # documented on the composite itself, not restated here.
       - name: Setup Node and install
         if: steps.pre_run.outputs.decision != 'skip'
         uses: ./.github/actions/gaia-setup-node

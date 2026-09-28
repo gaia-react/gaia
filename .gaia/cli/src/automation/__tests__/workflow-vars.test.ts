@@ -10,11 +10,9 @@ import {
 } from '../workflow-vars.js';
 
 const baseConfig: AutomationConfig = {
-  pnpm_audit: {mode: 'ci', schedule: 'daily'},
   setup_complete: true,
   setup_opted_out: false,
   stale_branches: {mode: 'ci', schedule: 'monthly'},
-  update_deps: {mode: 'ci', schedule: 'weekly'},
   update_gaia: {mode: 'local'},
   version: 1,
   wiki: {mode: 'ci'},
@@ -49,40 +47,12 @@ describe('buildWorkflowVars', () => {
       cron: '0 4 * * *',
       enable_auto_merge: true,
       enable_diff_size_check: true,
-      enable_major_bump_split: false,
-      enable_security_pr: false,
       enable_stale_branch_delete: false,
       needs_human_label: 'needs-human',
       pr_label: 'gaia-ci',
       schedule: 'daily',
       tool_id: 'wiki',
       workflow_name: 'GAIA CI - Wiki',
-    });
-  });
-
-  test('returns the update-deps vars with weekly schedule from config', () => {
-    const vars = buildWorkflowVars(baseConfig, 'update-deps');
-
-    expect(vars).toMatchObject({
-      config_key: 'update_deps',
-      cron: '0 4 * * 0',
-      enable_major_bump_split: true,
-      schedule: 'weekly',
-      tool_id: 'update-deps',
-      workflow_name: 'GAIA CI - Update Deps',
-    });
-  });
-
-  test('returns the pnpm-audit vars with daily schedule', () => {
-    const vars = buildWorkflowVars(baseConfig, 'pnpm-audit');
-
-    expect(vars).toMatchObject({
-      config_key: 'pnpm_audit',
-      cron: '0 4 * * *',
-      enable_security_pr: true,
-      schedule: 'daily',
-      tool_id: 'pnpm-audit',
-      workflow_name: 'GAIA CI - pnpm audit',
     });
   });
 
@@ -100,22 +70,20 @@ describe('buildWorkflowVars', () => {
     });
   });
 
-  test('sets enable_auto_merge=true for the three PR-opening tools', () => {
-    for (const tool of ['wiki', 'update-deps', 'pnpm-audit'] as const) {
-      const vars = buildWorkflowVars(baseConfig, tool);
-      expect(vars?.enable_auto_merge).toBe(true);
-    }
+  test('sets enable_auto_merge=true for wiki (the one PR-opening tool)', () => {
+    const vars = buildWorkflowVars(baseConfig, 'wiki');
+    expect(vars?.enable_auto_merge).toBe(true);
   });
 
   test('falls back to the default schedule when the config row omits it', () => {
     const config: AutomationConfig = {
       ...baseConfig,
-      update_deps: {mode: 'ci'},
+      stale_branches: {mode: 'ci'},
     };
 
-    expect(buildWorkflowVars(config, 'update-deps')).toMatchObject({
-      cron: '0 4 * * 0',
-      schedule: 'weekly',
+    expect(buildWorkflowVars(config, 'stale-branches')).toMatchObject({
+      cron: '0 4 1-7 * 0',
+      schedule: 'monthly',
     });
   });
 
@@ -131,27 +99,20 @@ describe('buildWorkflowVars', () => {
   test('returns null when the tool mode is off', () => {
     const config: AutomationConfig = {
       ...baseConfig,
-      pnpm_audit: {mode: 'off'},
+      stale_branches: {mode: 'off'},
     };
 
-    expect(buildWorkflowVars(config, 'pnpm-audit')).toBeNull();
+    expect(buildWorkflowVars(config, 'stale-branches')).toBeNull();
   });
 
   test('produces mutually exclusive enable_* flags per tool', () => {
-    const tools: readonly ToolId[] = [
-      'wiki',
-      'update-deps',
-      'pnpm-audit',
-      'stale-branches',
-    ];
+    const tools: readonly ToolId[] = ['wiki', 'stale-branches'];
 
     for (const tool of tools) {
       const vars = buildWorkflowVars(baseConfig, tool);
       expect(vars).not.toBeNull();
       const flags = [
         vars!.enable_diff_size_check,
-        vars!.enable_major_bump_split,
-        vars!.enable_security_pr,
         vars!.enable_stale_branch_delete,
       ];
       expect(flags.filter(Boolean)).toHaveLength(1);
@@ -162,14 +123,9 @@ describe('buildWorkflowVars', () => {
 describe('buildSchedulerVars', () => {
   test('lists every CI-mode tool paired with its own cron', () => {
     expect(buildSchedulerVars(baseConfig)).toEqual({
-      scheduler_crons: ['0 4 * * *', '0 4 * * 0', '0 4 1-7 * 0'],
-      scheduler_decisions: [
-        "wiki '0 4 * * *'",
-        "update-deps '0 4 * * 0'",
-        "pnpm-audit '0 4 * * *'",
-        "stale-branches '0 4 1-7 * 0'",
-      ],
-      scheduler_tools: ['wiki', 'update-deps', 'pnpm-audit', 'stale-branches'],
+      scheduler_crons: ['0 4 * * *', '0 4 1-7 * 0'],
+      scheduler_decisions: ["wiki '0 4 * * *'", "stale-branches '0 4 1-7 * 0'"],
+      scheduler_tools: ['wiki', 'stale-branches'],
       workflow_name: 'GAIA CI',
     });
   });
@@ -178,13 +134,12 @@ describe('buildSchedulerVars', () => {
     const config: AutomationConfig = {
       ...baseConfig,
       stale_branches: {mode: 'off'},
-      update_deps: {mode: 'local'},
     };
 
     expect(buildSchedulerVars(config)).toEqual({
       scheduler_crons: ['0 4 * * *'],
-      scheduler_decisions: ["wiki '0 4 * * *'", "pnpm-audit '0 4 * * *'"],
-      scheduler_tools: ['wiki', 'pnpm-audit'],
+      scheduler_decisions: ["wiki '0 4 * * *'"],
+      scheduler_tools: ['wiki'],
       workflow_name: 'GAIA CI',
     });
   });
@@ -203,9 +158,7 @@ describe('buildSchedulerVars', () => {
   test('returns null when no tool is in ci mode', () => {
     const config: AutomationConfig = {
       ...baseConfig,
-      pnpm_audit: {mode: 'off'},
       stale_branches: {mode: 'off'},
-      update_deps: {mode: 'off'},
       wiki: {mode: 'off'},
     };
 

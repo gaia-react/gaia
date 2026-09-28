@@ -29,7 +29,7 @@ export const workflowFilePath = (repoRoot: string, tool: ToolId): string =>
 /**
  * The rendered scheduler workflow: the one file carrying a `schedule:`.
  * Deliberately not `gaia-ci-<something>.yml`, so the guards that enumerate
- * the per-tool set by that prefix keep matching exactly the four tools.
+ * the per-tool set by that prefix keep matching exactly the per-tool set.
  */
 export const SCHEDULER_WORKFLOW_FILENAME = 'gaia-ci.yml';
 

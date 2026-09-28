@@ -61,8 +61,8 @@ When invoked with `--scope <group-name>` (e.g. `/update-deps --scope react-route
   in root `package.json`.
 - Quality gate, return value, and final report still run.
 
-Used by the GAIA CI update-deps workflow's wave-B matrix shards to fan
-out one PR per major-bump group.
+Invoked manually, one group per run, when a maintainer wants a single
+major-bump group's own PR rather than the combined Wave A/B run.
 
 ## Companion groups (reference)
 
@@ -157,9 +157,6 @@ If `skipped[]` has any `reason: "held"` entries, print one line above the
 sections listing them, e.g. `Held by config (not offered): vite (current
 8.0.16, ceiling 8.0)`. This is informational, held packages are never part of
 any apply set; the line just keeps the active holds visible.
-
-If `update_deps.mode` in `.gaia/automation.json` is `ci`, first print one line:
-`CI owns updates; snoozing here only quiets your local statusline.`
 
 Then ask with `AskUserQuestion` (single-select). **When `snoozedGroups` is
 non-empty**, offer these options in this order:
@@ -508,6 +505,6 @@ Then branch on where the run started.
    ```bash
    git push
    ```
-2. Do not open a PR and do not merge, the branch owner (the user, or the CI workflow) drives it from here.
+2. Do not open a PR and do not merge, the branch owner (the user, or the CI job that invoked it) drives it from here.
 
 If any `git push`, `gh pr create`, or `gh pr merge` above exits non-zero, print the command's error and STOP. Do not retry, force-push, or amend, a rejected push, failed PR creation, or blocked merge is the user's call to resolve (usually a manual rebase, a remote-side block, or a failing check).

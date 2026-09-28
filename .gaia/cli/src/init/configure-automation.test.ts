@@ -62,16 +62,7 @@ const captureStdio = (): {
   };
 };
 
-const allCiArgs = [
-  '--wiki',
-  'ci',
-  '--update-deps',
-  'ci',
-  '--pnpm-audit',
-  'ci',
-  '--stale-branches',
-  'ci',
-];
+const allCiArgs = ['--wiki', 'ci', '--stale-branches', 'ci'];
 
 describe('init configure-automation', () => {
   let sandbox: Sandbox;
@@ -87,7 +78,7 @@ describe('init configure-automation', () => {
     vi.restoreAllMocks();
   });
 
-  test('happy path: all four flags ci writes schema-valid config', () => {
+  test('happy path: both flags ci writes schema-valid config', () => {
     sandbox = setupSandbox();
 
     const exit = run(allCiArgs, {cwd: sandbox.root});
@@ -103,11 +94,9 @@ describe('init configure-automation', () => {
 
     const parsed = AutomationConfigSchema.parse(JSON.parse(raw));
     expect(parsed).toEqual({
-      pnpm_audit: {mode: 'ci', schedule: 'daily'},
       setup_complete: false,
       setup_opted_out: false,
       stale_branches: {mode: 'ci', schedule: 'monthly'},
-      update_deps: {mode: 'ci', schedule: 'weekly'},
       update_gaia: {mode: 'local'},
       version: 1,
       wiki: {mode: 'ci'},
@@ -116,9 +105,7 @@ describe('init configure-automation', () => {
     const state = readState(sandbox.root);
     expect(state.completed_steps).toContain('configure-automation');
     expect(state.step_args['configure-automation']).toEqual({
-      pnpm_audit: 'ci',
       stale_branches: 'ci',
-      update_deps: 'ci',
       wiki: 'ci',
     });
   });
@@ -126,31 +113,32 @@ describe('init configure-automation', () => {
   test('happy path: mixed values are recorded faithfully', () => {
     sandbox = setupSandbox();
 
-    const exit = run(
-      [
-        '--wiki',
-        'local',
-        '--update-deps',
-        'off',
-        '--pnpm-audit',
-        'ci',
-        '--stale-branches',
-        'ci',
-      ],
-      {cwd: sandbox.root}
-    );
+    const exit = run(['--wiki', 'local', '--stale-branches', 'ci'], {
+      cwd: sandbox.root,
+    });
     expect(exit).toBe(0);
 
     const raw = readFileSync(automationConfigPath(sandbox.root), 'utf8');
     const parsed = AutomationConfigSchema.parse(JSON.parse(raw));
     expect(parsed.wiki.mode).toBe('local');
-    expect(parsed.update_deps.mode).toBe('off');
-    expect(parsed.pnpm_audit.mode).toBe('ci');
     expect(parsed.stale_branches.mode).toBe('ci');
     expect(parsed.update_gaia.mode).toBe('local');
     expect(parsed.setup_complete).toBe(false);
     expect(parsed.setup_opted_out).toBe(false);
   });
+
+  test.each(['pnpm-audit', 'update-deps'])(
+    'exit 1 when --%s is passed (removed flag falls to unknown-flag error)',
+    (tool) => {
+      sandbox = setupSandbox();
+
+      const exit = run([...allCiArgs, `--${tool}`, 'ci'], {
+        cwd: sandbox.root,
+      });
+      expect(exit).toBe(1);
+      expect(stdio.errors.join('')).toContain(`unknown flag: --${tool}`);
+    }
+  );
 
   test('--sandbox-recommended true writes sandbox_recommended: true', () => {
     sandbox = setupSandbox();
@@ -270,19 +258,9 @@ describe('init configure-automation', () => {
   test('configure-automation writes complete config with all-local modes (CI-declined derivation)', () => {
     sandbox = setupSandbox();
 
-    const exit = run(
-      [
-        '--wiki',
-        'local',
-        '--update-deps',
-        'local',
-        '--pnpm-audit',
-        'local',
-        '--stale-branches',
-        'local',
-      ],
-      {cwd: sandbox.root}
-    );
+    const exit = run(['--wiki', 'local', '--stale-branches', 'local'], {
+      cwd: sandbox.root,
+    });
     expect(exit).toBe(0);
     expect(stdio.outputs.join('')).toBe('');
     expect(stdio.errors.join('')).toBe('');
@@ -290,11 +268,9 @@ describe('init configure-automation', () => {
     const raw = readFileSync(automationConfigPath(sandbox.root), 'utf8');
     const parsed = AutomationConfigSchema.parse(JSON.parse(raw));
     expect(parsed).toEqual({
-      pnpm_audit: {mode: 'local', schedule: 'daily'},
       setup_complete: false,
       setup_opted_out: false,
       stale_branches: {mode: 'local', schedule: 'monthly'},
-      update_deps: {mode: 'local', schedule: 'weekly'},
       update_gaia: {mode: 'local'},
       version: 1,
       wiki: {mode: 'local'},
@@ -303,9 +279,7 @@ describe('init configure-automation', () => {
     const state = readState(sandbox.root);
     expect(state.completed_steps).toContain('configure-automation');
     expect(state.step_args['configure-automation']).toEqual({
-      pnpm_audit: 'local',
       stale_branches: 'local',
-      update_deps: 'local',
       wiki: 'local',
     });
   });
@@ -332,10 +306,7 @@ describe('init configure-automation', () => {
 
   test('exit 1 when --wiki missing', () => {
     sandbox = setupSandbox();
-    const exit = run(
-      ['--update-deps', 'ci', '--pnpm-audit', 'ci', '--stale-branches', 'ci'],
-      {cwd: sandbox.root}
-    );
+    const exit = run(['--stale-branches', 'ci'], {cwd: sandbox.root});
     expect(exit).toBe(1);
     expect(existsSync(automationConfigPath(sandbox.root))).toBe(false);
     const state = readState(sandbox.root);
@@ -347,44 +318,18 @@ describe('init configure-automation', () => {
     expect(errLine).toContain('"code":"invalid_arguments"');
   });
 
-  test.each<[string, string[], string]>([
-    [
-      'exit 1 when --update-deps missing',
-      ['--wiki', 'ci', '--pnpm-audit', 'ci', '--stale-branches', 'ci'],
-      '--update-deps is required',
-    ],
-    [
-      'exit 1 when --pnpm-audit missing',
-      ['--wiki', 'ci', '--update-deps', 'ci', '--stale-branches', 'ci'],
-      '--pnpm-audit is required',
-    ],
-    [
-      'exit 1 when --stale-branches missing',
-      ['--wiki', 'ci', '--update-deps', 'ci', '--pnpm-audit', 'ci'],
-      '--stale-branches is required',
-    ],
-  ])('%s', (_label, argv, message) => {
+  test('exit 1 when --stale-branches missing', () => {
     sandbox = setupSandbox();
-    const exit = run(argv, {cwd: sandbox.root});
+    const exit = run(['--wiki', 'ci'], {cwd: sandbox.root});
     expect(exit).toBe(1);
-    expect(stdio.errors.join('')).toContain(message);
+    expect(stdio.errors.join('')).toContain('--stale-branches is required');
   });
 
   test('exit 1 when --wiki value invalid', () => {
     sandbox = setupSandbox();
-    const exit = run(
-      [
-        '--wiki',
-        'bogus',
-        '--update-deps',
-        'ci',
-        '--pnpm-audit',
-        'ci',
-        '--stale-branches',
-        'ci',
-      ],
-      {cwd: sandbox.root}
-    );
+    const exit = run(['--wiki', 'bogus', '--stale-branches', 'ci'], {
+      cwd: sandbox.root,
+    });
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain(
       '--wiki must be one of: ci, local, off'
@@ -395,18 +340,7 @@ describe('init configure-automation', () => {
   test('exit 1 when --wiki specified twice', () => {
     sandbox = setupSandbox();
     const exit = run(
-      [
-        '--wiki',
-        'ci',
-        '--wiki',
-        'local',
-        '--update-deps',
-        'ci',
-        '--pnpm-audit',
-        'ci',
-        '--stale-branches',
-        'ci',
-      ],
+      ['--wiki', 'ci', '--wiki', 'local', '--stale-branches', 'ci'],
       {cwd: sandbox.root}
     );
     expect(exit).toBe(1);

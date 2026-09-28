@@ -2,6 +2,7 @@
    tests exercise path-construction logic with `/tmp/repo` synthetic prefixes;
    nothing is written to disk. */
 import {describe, expect, test} from 'vitest';
+import {readdirSync} from 'node:fs';
 import path from 'node:path';
 import {
   automationConfigPath,
@@ -49,9 +50,6 @@ describe('automation/paths', () => {
       expect(workflowFilePath('/tmp/repo', 'wiki')).toBe(
         path.join('/tmp/repo', '.github', 'workflows', 'gaia-ci-wiki.yml')
       );
-      expect(workflowFilePath('/tmp/repo', 'pnpm-audit')).toBe(
-        path.join('/tmp/repo', '.github', 'workflows', 'gaia-ci-pnpm-audit.yml')
-      );
       expect(workflowFilePath('/tmp/repo', 'stale-branches')).toBe(
         path.join(
           '/tmp/repo',
@@ -71,20 +69,17 @@ describe('automation/paths', () => {
         )
       ).toBe(true);
       expect(
-        workflowTemplatePath('update-deps').endsWith(
-          path.join('templates', 'workflows', 'gaia-ci-update-deps.yml.tmpl')
-        )
-      ).toBe(true);
-      expect(
-        workflowTemplatePath('pnpm-audit').endsWith(
-          path.join('templates', 'workflows', 'gaia-ci-pnpm-audit.yml.tmpl')
-        )
-      ).toBe(true);
-      expect(
         workflowTemplatePath('stale-branches').endsWith(
           path.join('templates', 'workflows', 'gaia-ci-stale-branches.yml.tmpl')
         )
       ).toBe(true);
+    });
+
+    test('no template ships for pnpm-audit or update-deps', () => {
+      const dir = path.dirname(workflowTemplatePath('wiki'));
+      const files = readdirSync(dir);
+      expect(files).not.toContain('gaia-ci-pnpm-audit.yml.tmpl');
+      expect(files).not.toContain('gaia-ci-update-deps.yml.tmpl');
     });
   });
 

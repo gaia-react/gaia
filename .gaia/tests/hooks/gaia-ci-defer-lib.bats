@@ -52,7 +52,7 @@ write_config() {
 }
 
 @test "does not defer when the config names a different tool" {
-  write_config '{"pnpm_audit":{"mode":"ci"}}'
+  write_config '{"stale_branches":{"mode":"ci"}}'
   defer_from "$REPO" wiki
   [ "$status" -eq 0 ]
   [ -z "$output" ]

@@ -11,12 +11,7 @@ import {existsSync, readFileSync} from 'node:fs';
 import {automationConfigPath} from '../automation/paths.js';
 import {summarizeZodError} from './zod-error.js';
 
-export const TOOL_IDS = [
-  'wiki',
-  'update-deps',
-  'pnpm-audit',
-  'stale-branches',
-] as const;
+export const TOOL_IDS = ['wiki', 'stale-branches'] as const;
 
 export type ToolId = (typeof TOOL_IDS)[number];
 
@@ -74,18 +69,19 @@ export const AutomationConfigSchema = z.object({
   // cron. The three known values are validated at the WRITE boundary (the
   // CLI) and at the CONSUMER (the fragment's `case`), not here.
   isolation_policy: z.string().optional().catch(undefined),
-  pnpm_audit: ToolConfigSchema,
   sandbox_recommended: z.boolean().optional(),
   setup_complete: z.boolean(),
   setup_opted_out: z.boolean(),
   stale_branches: ToolConfigSchema,
-  update_deps: ToolConfigSchema,
   update_gaia: UpdateGaiaConfigSchema,
   // Same permissive-at-read pattern as isolation_policy above: an
   // unrecognized or absent version degrades to 1 rather than malforming
   // the config.
   version: z.literal(1).catch(1),
   wiki: ToolConfigSchema,
+  // z.object (not .strict()/.passthrough()) strips unknown top-level keys,
+  // so a config carrying a row for a tool outside `TOOL_IDS` still parses
+  // `ok`; the unknown row is dropped rather than failing the whole config.
 });
 
 export type AutomationConfig = z.infer<typeof AutomationConfigSchema>;
@@ -112,21 +108,17 @@ export type ToolConfigKey = {
  * to the snake_case key used inside `.gaia/automation.json`.
  *
  * The split is intentional: the SPEC names the JSON keys snake_case
- * (`pnpm_audit`, `stale_branches`) but workflow / state-file paths use
- * kebab-case. The value type is `ToolConfigKey` so `config[key]` resolves
- * directly to `ToolConfig`; no cast needed at call sites.
+ * (`stale_branches`) but workflow / state-file paths use kebab-case. The
+ * value type is `ToolConfigKey` so `config[key]` resolves directly to
+ * `ToolConfig`; no cast needed at call sites.
  */
 export const TOOL_ID_TO_CONFIG_KEY: Readonly<Record<ToolId, ToolConfigKey>> = {
-  'pnpm-audit': 'pnpm_audit',
   'stale-branches': 'stale_branches',
-  'update-deps': 'update_deps',
   wiki: 'wiki',
 };
 
 export const CONFIG_KEY_TO_TOOL_ID: Readonly<Record<string, ToolId>> = {
-  pnpm_audit: 'pnpm-audit',
   stale_branches: 'stale-branches',
-  update_deps: 'update-deps',
   wiki: 'wiki',
 };
 
