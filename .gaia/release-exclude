@@ -5,10 +5,10 @@
 #
 # Anything excluded here is ALSO skipped by `gaia-maintainer release manifest`, so the
 # adopter-facing manifest never references files an adopter cannot have.
-# Authoritative narrative of what's maintainer-only and why lives in
-# `wiki/concepts/Release Workflow.md` (Distribution Boundary section).
-#
-# Categories below are ordered the same way that page lists them.
+# This file is the authoritative list of what is maintainer-only. Each
+# numbered category's comment carries the rationale for its paths;
+# `wiki/concepts/Release Workflow.md` (Distribution Boundary) points here
+# rather than restating them.
 
 # --- 1. Maintainer-only Claude surface ---
 # /gaia-release cuts releases of the GAIA template itself; adopters never
@@ -18,9 +18,9 @@
 # maintainer-only autonomous audit + auto-heal loop (runbook lives under
 # .gaia/cli/health/, already excluded wholesale via category 10). Other
 # /gaia-* commands (plan, handoff, pickup, audit) are adopter-useful and
-# must NOT be added here. The three code-audit-maintainer-* agents are
+# must NOT be added here. The two code-audit-maintainer-* agents are
 # the Code Audit Team's maintainer-only members (framework shell + framework
-# TypeScript + skills-prose lenses); adopters audit only their own app via
+# TypeScript lenses); adopters audit only their own app via
 # code-audit-frontend. /distribution-audit is the maintainer's
 # ship-or-withhold audit over newly-shipping files; it drives the
 # maintainer-only release CLI and has no meaning on an adopter clone.

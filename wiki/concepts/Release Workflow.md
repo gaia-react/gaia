@@ -64,7 +64,7 @@ The tag push triggers [`release.yml`](../../.github/workflows/release.yml), whic
 2. **Bundle-time scrub**: `gaia-maintainer release scrub /tmp/gaia-vX.Y.Z` applies the transforms in `.gaia/release-scrub.yml`: marker-delimited section strips and a leak-check pass that mirrors the `wiki-style.md` audit greps. Build fails closed on any leak. See [[Bundle-time Scrub]] for rationale.
 3. **Runtime-deps verification**: `gaia-maintainer release runtime-deps --staging /tmp/gaia-vX.Y.Z` walks shipped shell scripts and verifies every explicit path constant resolves to a shipped path, an adopter-owned sentinel, or a runtime-allocated location. Catches the leak class scrubbing cannot see; runtime references survive lexical strip.
 4. **Distribution test gate**: `bash .gaia/tests/distribution/run-all.sh` runs Layers 0+1 against an independently-staged tree (`build-staging.sh` re-runs the same `git ls-files` + scrub + runtime-deps phases above). Layer 0 confirms an adopter scaffold typechecks, lints, tests, and builds; Layer 1 confirms the bootstrap path survives in a PATH-stripped subshell. If any scenario fails the release halts; the tarball is never built and `gh release create` never runs, so a broken release cannot publish.
-5. **Tar**: `tar -czf gaia-vX.Y.Z.tar.gz -C /tmp gaia-vX.Y.Z`. The same release-exclude list drives `gaia-maintainer release manifest`, so the manifest never references files an adopter cannot have. The categories are spelled out in the next section.
+5. **Tar**: `tar -czf gaia-vX.Y.Z.tar.gz -C /tmp gaia-vX.Y.Z`. The same release-exclude list drives `gaia-maintainer release manifest`, so the manifest never references files an adopter cannot have. What the list withholds, and why, is covered in the next section.
 
 The scrubbed `wiki/hot.md` + `wiki/log.md` contain only the release marker; none of GAIA's internal session cache.
 
@@ -78,95 +78,9 @@ New leak patterns become explicit `.gaia/release-scrub.yml` entries: visible, re
 
 ## Distribution Boundary
 
-The exclusion categories below are authoritative. `.gaia/release-exclude` is the executable copy; this section is the human-readable narrative. Anything **not** listed here ships in the adopter tarball and is classified in `.gaia/manifest.json`. Future audits that flag any of the listed paths as "missing from manifest" should consult this page first; the absence is intentional, not a bug.
+GAIA is a template repository that also carries its own maintainers' tooling: release machinery, test and audit harnesses, CI that gates only GAIA's own pull requests, dev-tool configs, and project governance. None of that has a counterpart on an adopter's clone, so the release withholds it, and the source tree carries it on purpose.
 
-### 1. Maintainer-only Claude commands
-
-- `.claude/commands/gaia-release.md`: cuts releases of the GAIA template itself.
-
-The other `/gaia-*` commands (`plan`, `handoff`, `pickup`, `audit`) are adopter-useful and DO ship.
-
-### 2. Maintainer-only wiki content
-
-- `wiki/entities/`: team and people pages specific to the GAIA project.
-- `wiki/meta/`: lint and consolidate audit reports; references specific commits and dates.
-- `wiki/.obsidian/workspace.json`: per-machine Obsidian layout state.
-- `wiki/concepts/Release Workflow.md`: this page; documents GAIA administration, not adopter workflow.
-- `wiki/decisions/Bundle-time Scrub.md`: ADR for the bundle-time enforcement primitives; describes maintainer release machinery.
-
-Other wiki pages under `wiki/concepts/`, `wiki/decisions/`, `wiki/dependencies/`, `wiki/modules/`, `wiki/components/`, `wiki/flows/`, `wiki/sources/` ship as `wiki-owned` and are intended for adopter projects to extend.
-
-### 3. Test harnesses and audit harnesses
-
-- `.gaia/tests/`: bats / smoke harness invoked by maintainer CI.
-- `.gaia/scripts/tests/`: bats suite for the shipped `.gaia/scripts/` helpers.
-- `.github/audit/tests/`: bats suite for the shipped `.github/audit/` helpers.
-- `.claude/rules/maintainers/`: maintainer-only rules (smoke-harness conventions, framework-distribution guidance); path-scoped or `@`-imported content that would dangle or misapply on an adopter install.
-
-The two bats suites cover GAIA-owned scripts that ship as `owned` code an adopter never edits, and their only runner (`.github/workflows/audit-ci-tests.yml`) is itself maintainer-only (category 9). The scripts are verified at maintainer CI time and reach adopters already-green, so the suites guard only maintainer changes and have no adopter-side use. The verified scripts ship; their verification rigs do not.
-
-### 4. CLI maintainer source
-
-Adopters receive only the bundled binary at `.gaia/cli/gaia` plus the runtime templates at `.gaia/cli/templates/`. Everything under `.gaia/cli/` else stays in the template repo:
-
-- `.gaia/cli/src/`, `.gaia/cli/test-fixtures/`, `.gaia/cli/__tests__/`
-- `.gaia/cli/package.json`, `pnpm-lock.yaml`, `tsconfig.json`, `vitest.config.ts`, `.gitignore`
-- `.gaia/cli/node_modules/`, `.gaia/cli/dist/` (also gitignored, defense-in-depth)
-
-Excluding the source prevents adopters from accidentally rebuilding the binary out from under themselves with a different toolchain.
-
-`pnpm -C .gaia/cli bundle` builds two binaries from two entry points: `.gaia/cli/gaia` (adopter, no `release` namespace) and `.gaia/cli/gaia-maintainer` (maintainer-only, includes `release`). The maintainer binary is excluded from tarballs alongside the source. See [[CLI-Binary-Split]] for why the CLI ships as two binaries and how esbuild tree-shakes the release surface out of the adopter build.
-
-### 5. Release-time maintainer tooling
-
-- `.gaia/release-exclude`: this exclusion file itself.
-- `.gaia/release-scrub.yml`: bundle-time scrub config consumed by `gaia-maintainer release scrub`. Adopters never run releases.
-
-`.gaia/scripts/` ships to adopters: `check-updates.sh` is the background refresher the statusline invokes to populate `Run /update-deps` and `Run /update-gaia` indicators.
-
-### 6. Maintainer dev-tool configs
-
-- `.serena/`: Serena MCP project config. Initialized per-machine by `/setup-gaia` on the adopter's side; the template's copy isn't portable. Not in manifest so `/update-gaia` never tries to merge it.
-
-### 7. Scratch and transient
-
-- `.raw/`: scratchpad ingestion drop zone.
-- `.gaia/local/`: per-machine state, CLI build cache (`.gaia/local/cache/`), the cost ledger (`.gaia/local/telemetry/`).
-- `.gaia-backup/`, `.gaia-merge/`: `/gaia-init` backup and `/update-gaia` stage areas.
-
-### 8. Per-machine Claude state
-
-- `.claude/handoff/`, `.claude/worktrees/`, `.claude/agent-memory/`, `.claude/audit/`: generated at runtime under the user's clone; not template content.
-
-### 9. Maintainer-only CI workflows
-
-- `.github/workflows/release.yml`: cuts releases of the GAIA template itself, triggered by `v*.*.*` tags against `.gaia/VERSION`. Adopters never release GAIA, so the workflow is at best a silent passenger and at worst a CI failure if they accidentally tag with `v*`. Its tag-equality step reads `.gaia/VERSION` through the same `gaia_read_version` normalizer (`.claude/hooks/lib/gaia-version.sh`) the `GAIA-Audit` trailer and commit-status machinery uses, rather than a second, independently-written normalization of the same file; a caller-side idiom that trims differently than the shared function would agree with it only by accident and diverge silently later.
-- `.github/workflows/cli-tests.yml`: runs `.gaia/cli/` typecheck and vitest, plus a PR-gated `Distribution harness (no-Docker)` job, path-filtered to the bundle inputs and the harness, that runs `.gaia/tests/distribution/run-all.sh` so Layers 0+1, the adopter-flow scenarios, and the deterministic marker-strip survival check gate the PR, plus an advisory `Shipped-surface leak check` job that runs `.gaia/tests/distribution/lib/build-staging.sh` and the marker-strip scenario on every PR with no path filter, since both read every tracked file `.gaia/release-exclude` does not withhold and no narrower allowlist describes that honestly. Adopters receive only the bundled binary at `.gaia/cli/gaia`, so there is nothing for the workflow to test on their side.
-- `.github/workflows/audit-ci-tests.yml`: runs the bats suite for the shipped `.github/audit/` helpers. Adopters receive those scripts as GAIA-controlled (`owned`) code they never modify, so the suite only guards maintainer edits.
-- `.github/workflows/forensics-triage.yml`: runs autonomous Claude Code triage against `gaia-forensics`-labeled issues on the upstream `gaia-react/gaia` repo, with helpers under `.github/forensics/` (also excluded). Adopters never triage GAIA's own issues, so neither the workflow nor its helpers belong on their clone.
-- `.github/workflows/code-review-audit.yml`: runs the Code Audit Team gate in CI, posting the `GAIA-Audit` status a merge waits on. It installs on demand via `/setup-gaia` rather than shipping by default, so an adopter who has not enabled GAIA CI never carries a credential-less audit that would block every merge.
-- `.github/workflows/shell-lint.yml`: runs shellcheck over GAIA's framework bash via the `.gaia/tests/shell-lint.sh` harness. Adopters run that bash as GAIA-controlled code they never author, so the linter guarding it has no adopter surface. The harness also parses every tracked `*.sh` with bash 3.2, the version stock macOS ships as `/bin/bash` and the version GAIA's own scripts declare support for, because shellcheck models bash 5's grammar and a construct that is a syntax error only on 3.2 clears every shellcheck pass; where no bash older than 4 exists (any Linux runner) that pass skips loudly rather than silently, and it fails rather than reporting clean when the interpreter is missing or unreadable. Because every Linux runner takes that skip, the workflow carries a second job on `macos-latest`, the one image in GAIA's CI whose `/bin/bash` is a real 3.2.57, and runs `shell-lint.sh --only bash32-parse` there: the pass-selection flag keeps that leg to the one pass whose verdict depends on the host's interpreter, since macOS runner minutes bill at 10x and every other pass duplicates the ubuntu leg. That leg asserts the image's `/bin/bash` major version before running, because inheriting the pass's exit-0 skip would leave it green having parsed nothing. It also folds in the repository's own pattern lints, each written for a class shellcheck cannot model at all: a shape that is legal bash and still wrong on the hosts this repo runs on, or a claim in one file that has to agree with another file. Which guards those are is not restated here. `.gaia/tests/shell-lint.sh`'s own header names every guard it folds in, beside the code that runs them, and each guard's own header states the class it flags and the surface it scans, which is the copy that cannot drift from the guard. Those surfaces are not uniform, and the workflow's name understates its reach: some of the folded guards read the `run:` bodies of workflow and composite-action YAML, which no `*.sh` glob sees.
-
-`tests.yml` and `chromatic.yml` DO ship; both are adopter-relevant. Their `paths-filter` allowlists are written without reference to maintainer-only paths so the filter stays meaningful on an adopter clone.
-
-### 10. Maintainer-only health-audit infrastructure
-
-- `.gaia/cli/health/`: health-audit taxonomy and per-cycle run state. Documents the issue classes prior independent audits found and the "decided / not findings" list so future audits don't re-litigate settled questions.
-
-Adopters audit their own app via the standard `code-review-audit` agent under `.claude/agents/`; the GAIA-template-specific health audit is maintainer-only because its taxonomy and detections target the GAIA repo's surface, not an adopter project.
-
-### 11. Maintainer-only project governance
-
-Adopters use GAIA as a template via `npx create-gaia` to scaffold an independent project. Maintainers clone or fork the GAIA repo itself to contribute upstream. The GAIA template's governance documents describe GAIA, not the adopter's downstream project, and they ship empty consequences for adopters: a CONTRIBUTING file pointing at GAIA test harnesses, a CHANGELOG with GAIA's release history, a SUPPORTERS list of GAIA's supporters, an MIT LICENSE that pre-decides license choice, etc.
-
-- `CHANGELOG.md`: GAIA's release history. Adopters write their own as they ship.
-- `CODE_OF_CONDUCT.md`: GAIA's community standards. Adopters set their own (or none).
-- `CONTRIBUTING.md`: how to contribute to GAIA. Adopter projects may not accept contributors at all.
-- `LICENSE`: GAIA's MIT license. Adopters choose their own license.
-- `README.md`: GAIA's marketing and architecture description. `/gaia-init` regenerates it from `.gaia/templates/README.md` (which DOES ship) substituting the project name.
-- `SUPPORTERS.md`: list of GAIA's financial supporters. Adopters maintain their own if they want one.
-
-The README template at `.gaia/templates/README.md` is the only governance-style file that ships, because `/gaia-init` consumes it as a strip-branding source.
+`.gaia/release-exclude` is the single authoritative list of what is withheld. Its numbered categories each carry their rationale beside the paths they cover, and this page does not restate them. Everything git tracks that no line there masks ships in the adopter tarball and is classified in `.gaia/manifest.json`. An audit that flags a withheld path as "missing from manifest" should read that path's category in `.gaia/release-exclude` first: the absence is intentional, not a bug.
 
 ### Adopter-owned sentinels
 
