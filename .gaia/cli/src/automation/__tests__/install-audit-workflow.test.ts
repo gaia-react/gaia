@@ -1,9 +1,27 @@
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {run} from '../install-audit-workflow.js';
+import type * as PathsModule from '../paths.js';
 import {setupSandbox} from './sandbox.js';
 import type {Sandbox} from './sandbox.js';
+
+// Under vitest this module resolves `templates/workflows/` beside the source
+// file, where no audit template lives: bundle:adopter builds it from the live
+// workflow into .gaia/cli/templates/. Point at that committed artifact, the
+// file the bundled binary reads at runtime.
+vi.mock('../paths.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof PathsModule>();
+  const artifact = fileURLToPath(
+    new URL(
+      '../../../templates/workflows/code-review-audit.yml.tmpl',
+      import.meta.url
+    )
+  );
+
+  return {...actual, workflowAuditTemplatePath: () => artifact};
+});
 
 const captureIo = () => {
   const errors: string[] = [];

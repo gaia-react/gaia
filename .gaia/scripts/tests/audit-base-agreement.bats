@@ -888,8 +888,7 @@ probe_deadlock() {
   local out
   out="$(git -C "$REPO_ROOT" grep -n "resolve-audit-base.sh" -- \
     .github/workflows/code-review-audit.yml \
-    .gaia/cli/templates/workflows/code-review-audit.yml.tmpl \
-    .gaia/cli/src/automation/templates/workflows/code-review-audit.yml.tmpl)"
+    .gaia/cli/templates/workflows/code-review-audit.yml.tmpl)"
   [ -n "$out" ]
   grep -qF -- "--member" <<<"$out" && {
     printf 'a non-agent caller now passes --member, which resolves a per-member base rather than the shared key: %s\n' \

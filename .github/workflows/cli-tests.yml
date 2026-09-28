@@ -136,6 +136,11 @@ jobs:
               # shellcheck can see, and a semantic weakening -- dropping the
               # template `diff -rq`, inverting a `cmp` -- is invisible to it.
               - '.gaia/scripts/verify-cli-bundle-fresh.sh'
+              # bundle:adopter builds the shipped audit-workflow template from
+              # the live workflow, so a pull request touching only that file
+              # changes the template the freshness gate above diffs; without
+              # this line it resolves `code=false` and greens a stale template.
+              - '.github/workflows/code-review-audit.yml'
               # The workspace-floor check below is this script, so an edit to it
               # must re-run the check on its own pull request, exactly as the
               # bundle-freshness entry above does. The two subjects it reads,
