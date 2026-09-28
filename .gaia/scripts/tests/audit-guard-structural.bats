@@ -25,7 +25,6 @@ setup() {
   NODE_MD="$REPO_ROOT/.claude/agents/code-audit-maintainer-node.md"
   AUDIT_WORKFLOW="$REPO_ROOT/.github/workflows/code-review-audit.yml"
   WF_TMPL_ARTIFACT="$REPO_ROOT/.gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
-  WF_TMPL_SOURCE="$REPO_ROOT/.gaia/cli/src/automation/templates/workflows/code-review-audit.yml.tmpl"
 }
 
 # section_between FILE START END: prints the lines from the first line
@@ -112,12 +111,12 @@ assert_predicate_retry_fallback() {
 #     arm, write-audit-status.sh never opens the marker at all and CI stamps
 #     GAIA-Audit success on a pushed head no member ever attested. Nothing
 #     re-runs after a GITHUB_TOKEN push, so that success is final. Pinned in
-#     all three copies because the three must stay byte-identical anyway, and
-#     a flag dropped from one of them is invisible to a reader of the others.
+#     both copies because the two must stay byte-identical anyway, and a flag
+#     dropped from one of them is invisible to a reader of the other.
 
-@test "the self-heal push status writer passes --require-marker, in all three workflow copies" {
+@test "the self-heal push status writer passes --require-marker, in both workflow copies" {
   local f block
-  for f in "$AUDIT_WORKFLOW" "$WF_TMPL_SOURCE" "$WF_TMPL_ARTIFACT"; do
+  for f in "$AUDIT_WORKFLOW" "$WF_TMPL_ARTIFACT"; do
     # The push arm is the one writer whose --sha comes from a step output
     # rather than the event payload, so AUDIT_SHA identifies it unambiguously.
     block="$(grep -A 3 -F -- '--sha "${AUDIT_SHA:-}"' "$f")"

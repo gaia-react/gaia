@@ -30,8 +30,9 @@ trap 'rm -rf "${work}"' EXIT
 
 cp .gaia/cli/gaia "${work}/gaia-committed"
 cp .gaia/cli/gaia-maintainer "${work}/gaia-maintainer-committed"
-# bundle:adopter regenerates .gaia/cli/templates/ from src as a side effect
-# (rm -rf templates && cp -r src/scaffold/templates ...), decoupled from the
+# bundle:adopter regenerates .gaia/cli/templates/ from src, and the audit
+# workflow template from .github/workflows/code-review-audit.yml, as a side
+# effect (rm -rf templates && cp -r src/scaffold/templates ...), decoupled from the
 # bundled binary bytes. Snapshot the committed copy before the bundle overwrites
 # it so the diff below can see drift.
 cp -r .gaia/cli/templates "${work}/templates-committed"
