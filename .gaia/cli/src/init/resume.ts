@@ -169,29 +169,15 @@ const isToolModeValue = (value: unknown): boolean =>
 
 const buildConfigureAutomationArgv: StepArgvBuilder = (saved) => {
   if (saved === undefined) return null;
-  const {
-    pnpm_audit: pnpmAudit,
-    stale_branches: staleBranches,
-    update_deps: updateDeps,
-    wiki,
-  } = saved;
+  const {stale_branches: staleBranches, wiki} = saved;
 
-  if (
-    !isToolModeValue(wiki) ||
-    !isToolModeValue(updateDeps) ||
-    !isToolModeValue(pnpmAudit) ||
-    !isToolModeValue(staleBranches)
-  ) {
+  if (!isToolModeValue(wiki) || !isToolModeValue(staleBranches)) {
     return null;
   }
 
   return [
     '--wiki',
     wiki as string,
-    '--update-deps',
-    updateDeps as string,
-    '--pnpm-audit',
-    pnpmAudit as string,
     '--stale-branches',
     staleBranches as string,
   ];

@@ -141,7 +141,7 @@ describe('setup-ci check-drift', () => {
       sandbox.root,
       '.github',
       'workflows',
-      'gaia-ci-pnpm-audit.yml'
+      'gaia-ci-stale-branches.yml'
     );
     writeFileSync(target, '# drifted contents\n', 'utf8');
 
@@ -153,21 +153,15 @@ describe('setup-ci check-drift', () => {
       in_sync: ToolId[];
       missing: ToolId[];
     };
-    expect(parsed.drifted).toEqual(['pnpm-audit']);
+    expect(parsed.drifted).toEqual(['stale-branches']);
     expect(parsed.missing).toEqual([]);
-    expect(new Set(parsed.in_sync)).toEqual(
-      new Set(['stale-branches', 'update-deps', 'wiki'])
-    );
+    expect(new Set(parsed.in_sync)).toEqual(new Set(['wiki']));
   });
 
   test('flags tools as missing when the rendered workflow file does not exist', () => {
     sandbox.writeConfig({...VALID_BASE_CONFIG, setup_complete: true});
-    // Write every workflow except wiki, which then reads as missing.
-    writeFreshWorkflows(sandbox, [
-      'update-deps',
-      'pnpm-audit',
-      'stale-branches',
-    ]);
+    // Write only stale-branches, so wiki then reads as missing.
+    writeFreshWorkflows(sandbox, ['stale-branches']);
 
     const exit = run(['--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);
@@ -179,19 +173,16 @@ describe('setup-ci check-drift', () => {
     };
     expect(parsed.missing).toEqual(['wiki']);
     expect(parsed.drifted).toEqual([]);
-    expect(new Set(parsed.in_sync)).toEqual(
-      new Set(['pnpm-audit', 'stale-branches', 'update-deps'])
-    );
+    expect(new Set(parsed.in_sync)).toEqual(new Set(['stale-branches']));
   });
 
   test('omits tools whose mode != ci from all three buckets', () => {
     sandbox.writeConfig({
       ...VALID_BASE_CONFIG,
-      pnpm_audit: {mode: 'local', schedule: 'weekly'},
       setup_complete: true,
       stale_branches: {mode: 'off'},
     });
-    writeFreshWorkflows(sandbox, ['wiki', 'update-deps']);
+    writeFreshWorkflows(sandbox, ['wiki']);
 
     const exit = run(['--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);
@@ -203,7 +194,7 @@ describe('setup-ci check-drift', () => {
     };
     expect(parsed.drifted).toEqual([]);
     expect(parsed.missing).toEqual([]);
-    expect(new Set(parsed.in_sync)).toEqual(new Set(['update-deps', 'wiki']));
+    expect(new Set(parsed.in_sync)).toEqual(new Set(['wiki']));
   });
 
   test('reports the scheduler as in_sync when its rendered file matches', () => {
@@ -264,10 +255,8 @@ describe('setup-ci check-drift', () => {
   test('reports the scheduler as disabled when no tool is in ci mode', () => {
     sandbox.writeConfig({
       ...VALID_BASE_CONFIG,
-      pnpm_audit: {mode: 'off'},
       setup_complete: true,
       stale_branches: {mode: 'off'},
-      update_deps: {mode: 'off'},
       wiki: {mode: 'off'},
     });
 

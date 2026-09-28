@@ -14584,12 +14584,7 @@ var summarizeZodError = (filePath, error51) => {
 };
 
 // src/schemas/automation-config.ts
-var TOOL_IDS = [
-  "wiki",
-  "update-deps",
-  "pnpm-audit",
-  "stale-branches"
-];
+var TOOL_IDS = ["wiki", "stale-branches"];
 var ToolModeSchema = external_exports.literal(["ci", "local", "off"]);
 var ScheduleSchema = external_exports.literal(["daily", "monthly", "weekly"]);
 var ToolConfigSchema = external_exports.object({
@@ -14613,23 +14608,22 @@ var AutomationConfigSchema = external_exports.object({
   // cron. The three known values are validated at the WRITE boundary (the
   // CLI) and at the CONSUMER (the fragment's `case`), not here.
   isolation_policy: external_exports.string().optional().catch(void 0),
-  pnpm_audit: ToolConfigSchema,
   sandbox_recommended: external_exports.boolean().optional(),
   setup_complete: external_exports.boolean(),
   setup_opted_out: external_exports.boolean(),
   stale_branches: ToolConfigSchema,
-  update_deps: ToolConfigSchema,
   update_gaia: UpdateGaiaConfigSchema,
   // Same permissive-at-read pattern as isolation_policy above: an
   // unrecognized or absent version degrades to 1 rather than malforming
   // the config.
   version: external_exports.literal(1).catch(1),
   wiki: ToolConfigSchema
+  // z.object (not .strict()/.passthrough()) strips unknown top-level keys,
+  // so a config carrying a row for a tool outside `TOOL_IDS` still parses
+  // `ok`; the unknown row is dropped rather than failing the whole config.
 });
 var TOOL_ID_TO_CONFIG_KEY = {
-  "pnpm-audit": "pnpm_audit",
   "stale-branches": "stale_branches",
-  "update-deps": "update_deps",
   wiki: "wiki"
 };
 var readAutomationConfigRaw = (repoRoot) => {
@@ -14710,9 +14704,9 @@ var HELP_TEXT = `Usage: gaia automation cron-decide <tool> [--json]
   Smart-cron decision primitive. Reads .gaia/automation.json and emits
   {decision, reason, skip_log_line}.
   Decision priority:
-    1. tool_off   (config.<tool>.mode == "off")
-    2. enabled    (wiki, mode != off -> run)
-  Non-wiki tools are not yet implemented and skip with a placeholder.
+    1. tool_off        (config.<tool>.mode == "off")
+    2. enabled          (wiki, mode != off -> run)
+    3. not_implemented (any other tool; skip)
 `;
 var HELP_TOKENS = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var TOOL_ID_SET = new Set(TOOL_IDS);
@@ -14733,7 +14727,7 @@ var decide = (args) => {
   if (tool !== "wiki") {
     return {
       decision: "skip",
-      reason: "tool_off",
+      reason: "not_implemented",
       skip_log_line: `cron-decide not yet implemented for ${tool}; skipping`
     };
   }
@@ -14999,8 +14993,6 @@ var run3 = (argv, options = {}) => {
 setup_complete: ${String(c.setup_complete)}
 setup_opted_out: ${String(c.setup_opted_out)}
 ${formatToolLine("wiki", c.wiki)}
-${formatToolLine("update_deps", c.update_deps)}
-${formatToolLine("pnpm_audit", c.pnpm_audit)}
 ${formatToolLine("stale_branches", c.stale_branches)}
 update_gaia: mode=${c.update_gaia.mode}
 `
@@ -15071,15 +15063,11 @@ var CRON_BY_SCHEDULE = {
   weekly: "0 4 * * 0"
 };
 var DEFAULT_SCHEDULE_BY_TOOL = {
-  "pnpm-audit": "daily",
   "stale-branches": "monthly",
-  "update-deps": "weekly",
   wiki: "daily"
 };
 var WORKFLOW_NAME_BY_TOOL = {
-  "pnpm-audit": "GAIA CI - pnpm audit",
   "stale-branches": "GAIA CI - Stale Branches",
-  "update-deps": "GAIA CI - Update Deps",
   wiki: "GAIA CI - Wiki"
 };
 var cronForSchedule = (schedule) => CRON_BY_SCHEDULE[schedule];
@@ -15100,8 +15088,6 @@ var buildWorkflowVars = (config2, tool) => {
     // The auto-merge partial gates its body on this flag.
     enable_auto_merge: tool !== "stale-branches",
     enable_diff_size_check: tool === "wiki",
-    enable_major_bump_split: tool === "update-deps",
-    enable_security_pr: tool === "pnpm-audit",
     enable_stale_branch_delete: tool === "stale-branches",
     needs_human_label: "needs-human",
     pr_label: "gaia-ci",
@@ -15185,7 +15171,7 @@ var HELP_TEXT4 = `Usage: gaia automation render-workflows --out-dir <path> [--to
   --out-dir <path>     Required. Where to write the rendered files.
                        Created with mkdir -p semantics if missing.
   --tools <csv>        Optional. Comma-separated subset of:
-                       ${TOOL_IDS.join(", ")}. Defaults to all four.
+                       ${TOOL_IDS.join(", ")}. Defaults to all of them.
                        The scheduler always covers every CI-mode tool in
                        the config, since it is one file describing all of
                        them; a subset here narrows the per-tool files only.
@@ -17099,8 +17085,6 @@ var writeAutomationConfig = (repoRoot, payload) => {
 // src/init/configure-automation.ts
 var HELP_TEXT12 = String.raw`Usage: gaia init configure-automation \
   --wiki <ci|local|off> \
-  --update-deps <ci|local|off> \
-  --pnpm-audit <ci|local|off> \
   --stale-branches <ci|local|off> \
   [--sandbox-recommended <true|false>] \
   [--isolation-policy <${ISOLATION_POLICIES.join("|")}>]
@@ -17111,8 +17095,6 @@ var HELP_TEXT12 = String.raw`Usage: gaia init configure-automation \
 
   Required flags:
     --wiki <ci|local|off>
-    --update-deps <ci|local|off>
-    --pnpm-audit <ci|local|off>
     --stale-branches <ci|local|off>
 
   Optional flags:
@@ -17147,15 +17129,11 @@ var takeMode = (argv, index, context) => {
   return { mode: taken.value, ok: true };
 };
 var FLAG_SPECS = /* @__PURE__ */ new Map([
-  ["--pnpm-audit", { flag: "--pnpm-audit", key: "pnpmAudit" }],
   ["--stale-branches", { flag: "--stale-branches", key: "staleBranches" }],
-  ["--update-deps", { flag: "--update-deps", key: "updateDeps" }],
   ["--wiki", { flag: "--wiki", key: "wiki" }]
 ]);
 var REQUIRED_MESSAGE = {
-  pnpmAudit: "--pnpm-audit is required",
   staleBranches: "--stale-branches is required",
-  updateDeps: "--update-deps is required",
   wiki: "--wiki is required"
 };
 var SANDBOX_RECOMMENDED_FLAG = "--sandbox-recommended";
@@ -17263,10 +17241,8 @@ var parseFlags = (argv) => {
   return {
     flags: {
       isolationPolicy: scalars.isolationPolicy,
-      pnpmAudit: flags.pnpmAudit,
       sandboxRecommended: scalars.sandboxRecommended,
       staleBranches: flags.staleBranches,
-      updateDeps: flags.updateDeps,
       wiki: flags.wiki
     },
     ok: true
@@ -17279,14 +17255,12 @@ var buildConfig = (flags) => ({
   // so a default here would make the clause unreachable for every new
   // project.
   ...flags.isolationPolicy === void 0 ? {} : { isolation_policy: flags.isolationPolicy },
-  pnpm_audit: { mode: flags.pnpmAudit, schedule: "daily" },
   // Omit the key entirely when the flag was never passed (no recommendation
   // on file), rather than writing an explicit `undefined`.
   ...flags.sandboxRecommended === void 0 ? {} : { sandbox_recommended: flags.sandboxRecommended },
   setup_complete: false,
   setup_opted_out: false,
   stale_branches: { mode: flags.staleBranches, schedule: "monthly" },
-  update_deps: { mode: flags.updateDeps, schedule: "weekly" },
   update_gaia: { mode: "local" },
   version: 1,
   wiki: { mode: flags.wiki }
@@ -17331,9 +17305,7 @@ var run12 = (argv, options = {}) => {
   }
   try {
     markStepCompleted(cwd, STEP_NAME2, {
-      pnpm_audit: parsed.flags.pnpmAudit,
       stale_branches: parsed.flags.staleBranches,
-      update_deps: parsed.flags.updateDeps,
       wiki: parsed.flags.wiki
     });
   } catch (error51) {
@@ -18155,22 +18127,13 @@ var buildRenameArgv = (saved) => {
 var isToolModeValue = (value) => value === "ci" || value === "local" || value === "off";
 var buildConfigureAutomationArgv = (saved) => {
   if (saved === void 0) return null;
-  const {
-    pnpm_audit: pnpmAudit,
-    stale_branches: staleBranches,
-    update_deps: updateDeps,
-    wiki
-  } = saved;
-  if (!isToolModeValue(wiki) || !isToolModeValue(updateDeps) || !isToolModeValue(pnpmAudit) || !isToolModeValue(staleBranches)) {
+  const { stale_branches: staleBranches, wiki } = saved;
+  if (!isToolModeValue(wiki) || !isToolModeValue(staleBranches)) {
     return null;
   }
   return [
     "--wiki",
     wiki,
-    "--update-deps",
-    updateDeps,
-    "--pnpm-audit",
-    pnpmAudit,
     "--stale-branches",
     staleBranches
   ];
@@ -18268,7 +18231,7 @@ var HELP_TEXT19 = `Usage: gaia init <subcommand> [args]
   wire-statusline --mode <global|project|skip>
                             Wire the GAIA statusline into Claude settings.
   bootstrap-env             Copy .env.example to .env if .env is absent.
-  configure-automation --wiki <m> --update-deps <m> --pnpm-audit <m> --stale-branches <m>
+  configure-automation --wiki <m> --stale-branches <m>
                             Write .gaia/automation.json (Phase A of GAIA CI).
   finalize                  Final cleanup steps for the init runbook.
   resume [--from-step <N>]  Resume a partially-completed init via state file.

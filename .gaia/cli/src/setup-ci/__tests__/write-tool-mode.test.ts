@@ -114,18 +114,18 @@ describe('setup-ci write-tool-mode', () => {
   test('writes mode without schedule when existing slot has none', () => {
     sandbox.writeConfig({
       ...VALID_BASE_CONFIG,
-      update_deps: {mode: 'ci'},
+      stale_branches: {mode: 'ci'},
     });
 
-    const exit = run(['update-deps', 'local'], {cwd: sandbox.root});
+    const exit = run(['stale-branches', 'local'], {cwd: sandbox.root});
     expect(exit).toBe(0);
 
     const result = readAutomationConfig(sandbox.root);
     expect(result.status).toBe('ok');
     assertStatusOk(result);
 
-    expect(result.config.update_deps.mode).toBe('local');
-    expect(result.config.update_deps.schedule).toBeUndefined();
+    expect(result.config.stale_branches.mode).toBe('local');
+    expect(result.config.stale_branches.schedule).toBeUndefined();
   });
 
   test('emits {tool, mode} JSON on success', () => {
@@ -149,6 +149,21 @@ describe('setup-ci write-tool-mode', () => {
     expect(exit).not.toBe(0);
     expect(stdio.err.join('')).toContain('unknown tool');
   });
+
+  test.each(['pnpm-audit', 'update-deps'])(
+    'rejects %s as unknown tool',
+    (tool) => {
+      sandbox.writeConfig(VALID_BASE_CONFIG);
+
+      const before = readFileSync(automationConfigPath(sandbox.root), 'utf8');
+      const exit = run([tool, 'ci'], {cwd: sandbox.root});
+      expect(exit).not.toBe(0);
+      expect(stdio.err.join('')).toContain('unknown tool');
+      expect(readFileSync(automationConfigPath(sandbox.root), 'utf8')).toBe(
+        before
+      );
+    }
+  );
 
   test('exits invalid_arguments on unknown mode', () => {
     sandbox.writeConfig(VALID_BASE_CONFIG);
