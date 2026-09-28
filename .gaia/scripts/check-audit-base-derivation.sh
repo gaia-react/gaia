@@ -32,8 +32,8 @@
 #
 # Over `.claude/agents/`, the maintainer members' shared protocol file
 # (`.claude/hooks/lib/audit-member-protocol.md`, which carries their handshake
-# and sidecar commands; release-excluded, so on an adopter clone that pathspec
-# matches nothing), and `.gaia/scripts/audit-resolve-scope.sh`, THREE
+# and sidecar commands; the release scrub strips that entry along with the
+# file, so an adopter clone scans the definitions alone), and `.gaia/scripts/audit-resolve-scope.sh`, THREE
 # assertions. The resolver script is scanned because it is where every
 # specialist's membership base, review base, key base, and both changed-file
 # diffs are derived: a definition resolves its scope by invoking it rather
@@ -207,8 +207,14 @@
 # The resolver script scanned beside the definitions (see the header).
 GAIA_AUDIT_SCOPE_RESOLVER='.gaia/scripts/audit-resolve-scope.sh'
 
-# The maintainer members' shared protocol file, scanned beside their definitions.
-GAIA_AUDIT_MEMBER_PROTOCOL='.claude/hooks/lib/audit-member-protocol.md'
+# The maintainer members' shared protocol file, scanned beside the member
+# definitions. An array, expanded with the empty-safe form, so the scrubbed
+# adopter copy passes no pathspec at all rather than an empty one, which git
+# grep rejects and the silenced stderr would turn into an unscanned 0.
+GAIA_AUDIT_MEMBER_SCAN=()
+# gaia:maintainer-only:start
+GAIA_AUDIT_MEMBER_SCAN+=('.claude/hooks/lib/audit-member-protocol.md')
+# gaia:maintainer-only:end
 
 
 # Assertion 1's candidate shape: any assignment whose value reaches a
@@ -448,7 +454,7 @@ gaia_check_audit_base_derivation() {
   # git grep exits 1 when it finds nothing, a normal outcome here, not a
   # script error -- so it is not run under -e and its status is captured
   # explicitly via the variable assignment instead.
-  candidates="$(git -C "$repo_root" grep -nIE "$GAIA_AUDIT_BARE_MERGE_BASE_PATTERN" -- '.claude/agents/' "$GAIA_AUDIT_MEMBER_PROTOCOL" "$GAIA_AUDIT_SCOPE_RESOLVER" 2>/dev/null)"
+  candidates="$(git -C "$repo_root" grep -nIE "$GAIA_AUDIT_BARE_MERGE_BASE_PATTERN" -- '.claude/agents/' ${GAIA_AUDIT_MEMBER_SCAN[@]+"${GAIA_AUDIT_MEMBER_SCAN[@]}"} "$GAIA_AUDIT_SCOPE_RESOLVER" 2>/dev/null)"
   bare_matches="$(printf '%s\n' "$candidates" | _gaia_drop_full_base_matches)"
   if [ -n "$bare_matches" ]; then
     printf '%s\n' "$bare_matches"
@@ -472,12 +478,12 @@ gaia_check_audit_base_derivation() {
       missing_count=$((missing_count + 1))
       resolver_failed=1
     fi
-  done < <(git -C "$repo_root" grep -lIF -z "$GAIA_AUDIT_BASE_VAR" -- '.claude/agents/' "$GAIA_AUDIT_MEMBER_PROTOCOL" "$GAIA_AUDIT_SCOPE_RESOLVER" 2>/dev/null)
+  done < <(git -C "$repo_root" grep -lIF -z "$GAIA_AUDIT_BASE_VAR" -- '.claude/agents/' ${GAIA_AUDIT_MEMBER_SCAN[@]+"${GAIA_AUDIT_MEMBER_SCAN[@]}"} "$GAIA_AUDIT_SCOPE_RESOLVER" 2>/dev/null)
   printf 'agent files naming BASE_SHA without naming resolve-audit-base.sh: %s\n' "$missing_count"
 
   # ---------- assertion 3: no diff consumes an un-anchored base ----------
   local diff_candidates diff_matches diff_count=0
-  diff_candidates="$(git -C "$repo_root" grep -nIF "$GAIA_AUDIT_DIFF_CALL" -- '.claude/agents/code-audit-*.md' "$GAIA_AUDIT_MEMBER_PROTOCOL" "$GAIA_AUDIT_SCOPE_RESOLVER" 2>/dev/null)"
+  diff_candidates="$(git -C "$repo_root" grep -nIF "$GAIA_AUDIT_DIFF_CALL" -- '.claude/agents/code-audit-*.md' ${GAIA_AUDIT_MEMBER_SCAN[@]+"${GAIA_AUDIT_MEMBER_SCAN[@]}"} "$GAIA_AUDIT_SCOPE_RESOLVER" 2>/dev/null)"
   diff_matches="$(printf '%s\n' "$diff_candidates" | _gaia_keep_unanchored_diff_matches)"
   if [ -n "$diff_matches" ]; then
     printf '%s\n' "$diff_matches"

@@ -13,8 +13,8 @@
 #
 # Over `.claude/agents/` and the maintainer members' shared protocol file
 # (`.claude/hooks/lib/audit-member-protocol.md`, where their sidecar and
-# handshake prose lives; release-excluded, so on an adopter clone that
-# pathspec matches nothing), TWO assertions:
+# handshake prose lives; the release scrub strips that entry along with the
+# file, so an adopter clone scans `.claude/agents/` alone), TWO assertions:
 #
 #   1. No bare `${BASE_SHA}.`/`${base}.`/`${KEY_BASE}.` sidecar or ledger path
 #      literal survives anywhere. That shell-interpolated shape
@@ -89,8 +89,14 @@ GAIA_AUDIT_KEY_BAD_LITERAL_PATTERN='\$\{(BASE_SHA|base|KEY_BASE)\}\.([A-Za-z0-9_
 # would be vacuous once the prose lands.
 GAIA_AUDIT_ARTIFACT_NAME_PATTERN='findings\.json|rerun\.json'
 
-# The maintainer members' shared protocol file, scanned beside `.claude/agents/`.
-GAIA_AUDIT_MEMBER_PROTOCOL='.claude/hooks/lib/audit-member-protocol.md'
+# The maintainer members' shared protocol file, scanned beside the member
+# definitions. An array, expanded with the empty-safe form, so the scrubbed
+# adopter copy passes no pathspec at all rather than an empty one, which git
+# grep rejects and the silenced stderr would turn into an unscanned 0.
+GAIA_AUDIT_MEMBER_SCAN=()
+# gaia:maintainer-only:start
+GAIA_AUDIT_MEMBER_SCAN+=('.claude/hooks/lib/audit-member-protocol.md')
+# gaia:maintainer-only:end
 
 gaia_check_audit_key_callers() {
   local repo_root="${1:?gaia_check_audit_key_callers requires a repo_root argument}"
@@ -137,7 +143,7 @@ gaia_check_audit_key_callers() {
   # git grep exits 1 when it finds nothing, a normal outcome here (no bad
   # literal), not a script error -- so it is not run under -e and its status
   # is captured explicitly via the variable assignment instead.
-  literal_matches="$(git -C "$repo_root" grep -nIE "$GAIA_AUDIT_KEY_BAD_LITERAL_PATTERN" -- '.claude/agents/' "$GAIA_AUDIT_MEMBER_PROTOCOL" 2>/dev/null)"
+  literal_matches="$(git -C "$repo_root" grep -nIE "$GAIA_AUDIT_KEY_BAD_LITERAL_PATTERN" -- '.claude/agents/' ${GAIA_AUDIT_MEMBER_SCAN[@]+"${GAIA_AUDIT_MEMBER_SCAN[@]}"} 2>/dev/null)"
   if [ -n "$literal_matches" ]; then
     printf '%s\n' "$literal_matches"
     literal_count="$(printf '%s\n' "$literal_matches" | wc -l | tr -d ' ')"
@@ -160,7 +166,7 @@ gaia_check_audit_key_callers() {
       missing_count=$((missing_count + 1))
       caller_failed=1
     fi
-  done < <(git -C "$repo_root" grep -lIE -z "$GAIA_AUDIT_ARTIFACT_NAME_PATTERN" -- '.claude/agents/' "$GAIA_AUDIT_MEMBER_PROTOCOL" 2>/dev/null)
+  done < <(git -C "$repo_root" grep -lIE -z "$GAIA_AUDIT_ARTIFACT_NAME_PATTERN" -- '.claude/agents/' ${GAIA_AUDIT_MEMBER_SCAN[@]+"${GAIA_AUDIT_MEMBER_SCAN[@]}"} 2>/dev/null)
   printf 'agent files naming a sidecar/ledger without a gaia_audit_key call: %s\n' "$missing_count"
 
   [ "$literal_failed" -eq 0 ] && [ "$caller_failed" -eq 0 ]
