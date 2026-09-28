@@ -851,6 +851,42 @@ describe('update regen-regions: behavior coverage', () => {
     );
   });
 
+  test('12d-iii. a link whose target is not valid UTF-8 is put back byte-for-byte', () => {
+    const root = buildRoot();
+
+    writeDeclaredFiles(root, 'original');
+    // A symlink target is an arbitrary byte string on both Linux and macOS.
+    // Decoding one as UTF-8 does not throw on an invalid byte, it silently
+    // substitutes U+FFFD, so a target read that way and written back points
+    // somewhere else entirely while the report claims it was restored.
+    const rawTarget = Buffer.from([
+      0x2e, 0x2e, 0x2f, 0xff, 0x2e, 0x74, 0x78, 0x74,
+    ]);
+    const linkAbs = path.join(root, '.claude/agents/link.md');
+
+    symlinkSync(rawTarget, linkAbs);
+    writeScript(
+      root,
+      [
+        HAPPY_SCRIPT_BODY,
+        'rm .claude/agents/link.md',
+        'ln -s ../elsewhere.txt .claude/agents/link.md',
+      ].join('\n')
+    );
+    const manifestPath = writeManifest(root, [buildDeclaration()]);
+
+    const {report} = runCapturing(baseArgv(manifestPath, root));
+
+    expect(report.confined).toEqual([
+      {
+        action: 'restored',
+        path: '.claude/agents/link.md',
+        regionId: 'test-region',
+      },
+    ]);
+    expect(readlinkSync(linkAbs, 'buffer').equals(rawTarget)).toBe(true);
+  });
+
   test('12e. a symlink the program creates in scope is removed, like any other undeclared creation', () => {
     const root = buildRoot();
 
