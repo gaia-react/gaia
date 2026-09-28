@@ -39,7 +39,7 @@ Treating `missing`'s entries as if they were bare strings prints JSON blobs inst
 
 ## Step 3. Classify against the categories, then ask only what needs asking
 
-`.gaia/release-exclude` carries twelve numbered categories, each with a rationale paragraph, and `wiki/concepts/Release Workflow.md` (Distribution Boundary) opens by calling them authoritative. Most of `missing` is already answered there: category 3 settles a shipped script's verification rig in one line, category 4 settles everything under `.gaia/cli/src/`, category 1 settles the `/gaia-*` command split and names the adopter-useful exceptions.
+`.gaia/release-exclude` carries twelve numbered categories, each with a rationale paragraph, and is the single authoritative list of what stays maintainer-only. Most of `missing` is already answered there: category 3 settles a shipped script's verification rig in one line, category 4 settles everything under `.gaia/cli/src/`, category 1 settles the `/gaia-*` command split and names the adopter-useful exceptions.
 
 So classify first and ask second. This is not "use judgment": it is matching each file against a written taxonomy and saying which entry it matched and why. A wrong decision then surfaces as a wrong **citation**, which a reader can check against the category's own text, instead of as a verdict they would have to re-derive from scratch.
 

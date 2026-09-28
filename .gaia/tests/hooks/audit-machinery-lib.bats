@@ -46,7 +46,6 @@ setup() {
 .github/audit/gate-pending-members.sh
 .github/workflows/code-review-audit.yml
 .gaia/cli/templates/workflows/code-review-audit.yml.tmpl
-.gaia/cli/src/automation/templates/workflows/code-review-audit.yml.tmpl
 .claude/agents/code-audit-frontend.md
 .claude/agents/code-audit-maintainer-shell.md
 .claude/agents/code-audit-maintainer-node.md

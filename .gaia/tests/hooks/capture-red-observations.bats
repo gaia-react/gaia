@@ -278,19 +278,50 @@ assert_spaced_redirect_target_absent() {
   [ "$(ledger_lines)" -eq 0 ]
 }
 
-@test "an unparseable/empty scope skips the capture (no full-suite re-run, writes nothing)" {
+@test "an empty scope skips the capture (no full-suite re-run, writes nothing) and says so" {
   # No override and no scope arg after `test`: the hook must SKIP the capture
-  # rather than re-run the whole vitest suite. It bails before vitest is ever
-  # invoked, so it stays fast and offline and records nothing. A missing capture
-  # only means the commit check may later deny (the safe direction).
+  # rather than re-run the whole vitest suite, and must say so in a
+  # model-visible diagnostic naming the scoped command. It bails before vitest
+  # is ever invoked, so it stays fast and offline and records nothing.
   run_capture "Bash" "pnpm test --run"
   [ "$status" -eq 0 ]
   [ "$(ledger_lines)" -eq 0 ]
+  jq -e '.hookSpecificOutput.hookEventName == "PostToolUse"' <<<"$output"
+  jq -r '.hookSpecificOutput.additionalContext' <<<"$output" | grep -qF -- 'pnpm test --run <test-file>'
   # No temp vitest json was produced (the skip happens before the mktemp).
   local ledger_dir
   ledger_dir=$(dirname "$LEDGER_ABS")
   run bash -c "ls '$ledger_dir/.tmp'/vitest-*.json 2>/dev/null | wc -l | tr -d ' '"
   [ "$output" = "0" ]
+}
+
+@test "an unscoped run piped to tail still announces the skip" {
+  stub_pnpm
+  run_capture "Bash" "pnpm test --run | tail -5"
+  [ "$status" -eq 0 ]
+  [ "$(ledger_lines)" -eq 0 ]
+  [ ! -s "$STUB_PNPM_ARGS_FILE" ]
+  jq -r '.hookSpecificOutput.additionalContext' <<<"$output" | grep -qF -- 'pnpm test --run <test-file>'
+}
+
+@test "commands that never reach the scope check emit no diagnostic" {
+  # Guard, not RED: the diagnostic is branch-local to the empty-scope skip, and
+  # must stay silent on every command that returns before reaching it.
+  for c in "git status" "pnpm test" "pnpm typecheck" 'gh pr create --body "see `pnpm test --run` output"'; do
+    run_capture "Bash" "$c"
+    [ "$status" -eq 0 ] || return 1
+    [ -z "$output" ] || return 1
+  done
+}
+
+@test "a scoped run emits no skip diagnostic" {
+  stub_pnpm
+  STUB_PNPM_JSON_SRC="$REPO_ROOT/$JSON_REL/assertion-fail.json"
+  export STUB_PNPM_JSON_SRC
+  run_capture "Bash" "pnpm test --run $FIX_REL/mixed-pass-fail.test.ts"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'RED capture skipped' <<<"$output" && return 1
+  true
 }
 
 @test "a scoped invocation still parses its scope (the skip is no-scope only)" {

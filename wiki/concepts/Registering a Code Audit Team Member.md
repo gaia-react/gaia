@@ -16,11 +16,15 @@ The [[Code Audit Team]] gate dispatches specialized auditor members by file glob
 
 Write `.claude/agents/<name>.md` following the shape of the existing members: `name` / `description` / `model` / `color` frontmatter, a **Remit and self-skip** section with the heading and the diff-base resolution and the mechanical self-skip detail (self-skipping cleanly, writing no marker, when nothing matches), **Review dimensions**, a **Finding Proof Gate**, **Findings grading** (which severities the member may use), an advisory-only or self-heal stance, **Cross-remit findings** handling, an **Output Format** section, the **Gate handshake** (mark / stamp / push / status), a **Findings sidecar** for the recurrence tally, and a **Methodology** summary. Leave the glob list and the filter instruction to the generated remit region, which the next step produces. The `description` still states the member's subject matter and self-heal stance in one line, since that's what a dispatching agent reads first, but no longer restates a glob.
 
+<!-- gaia:maintainer-only:start -->
+A maintainer-only member does not carry those three sections itself. It carries one **Report, gate handshake and findings sidecar** section that points at `.claude/hooks/lib/audit-member-protocol.md`, the protocol the two maintainer members share, and names any clean-pass condition it adds. That file is release-excluded, so an adopter-facing member keeps its own copy.
+<!-- gaia:maintainer-only:end -->
+
 The **Remit and self-skip** section also carries the scope-resolution obligation, byte-identical across every member definition: Capture your own content digest at scope resolution with `.gaia/scripts/audit-scope-digest.sh --capture`, and at marker-write time read that captured value back with `--read` and pass it as `--scope-digest`; never re-derive it in the writing call, and a rotation between the two means the review was superseded and you must be re-dispatched on the new HEAD.
 
 ### 2. Register in the roster
 
-Add an entry to the `auditors:` list in `.gaia/audit-ci.yml`: `name`, `globs`, `audience` (`adopter` or `maintainer`), and `push_fixes`. Mirror the same entry, verbatim, into `_audit_scope_builtin_roster()` inside `.claude/hooks/lib/audit-scope.sh`, the built-in fallback roster the ownership classifier parses when `.gaia/audit-ci.yml` carries no `auditors:` block. The two stay in lockstep: a glob present in the config but missing from the fallback leaves that path ownerless whenever the fallback is the one in effect.
+Add an entry to the `auditors:` list in `.gaia/audit-ci.yml`: `name`, `globs`, `audience` (`adopter` or `maintainer`), and `push_fixes`. That list is the only roster: the ownership classifier has no fallback, and a config without an `auditors:` block fails closed.
 
 ### 3. Generate the remit region
 
@@ -57,7 +61,7 @@ A `audience: maintainer` member's agent file, and any fixtures or bats suites wr
 ## Choices to make per member
 
 - **Advisory vs. gating.** `push_fixes: true` lets the member self-heal (push a fix commit) as part of clearing its own marker; `push_fixes: false` makes it advisory-only, it reports and then clears or withholds, but never rewrites the tree. No auditor may self-heal the surface that runs auditors, regardless of its own `push_fixes` setting: a deterministic push gate refuses a self-heal touching any path in the one refusal set, `AUDIT_SELFHEAL_REFUSE_ERE` in `.claude/hooks/lib/audit-selfheal-paths.sh`. That set reaches past the workflow YAML, the roster, and the agent definitions that produce clearances to the tests, the whole `.github/` tree, the `.gaia/` machinery, `.claude/**`, `.specify/**`, `wiki/**`, and root build config. The ERE is the boundary; a prose list is a summary, so read the ERE.
-- **`audience`.** `adopter` ships to every clone. `maintainer` entries sit inside `# gaia:maintainer-only` marker comments in both the roster and the builtin fallback, and the release scrub strips them, so an adopter's fallback roster only ever carries adopter-audience members.
+- **`audience`.** `adopter` ships to every clone. `maintainer` entries sit inside `# gaia:maintainer-only` marker comments in the roster, and the release scrub strips them, so an adopter's roster only ever carries adopter-audience members.
 - **Globs and roster order.** Every claimant member's globs are matched first-match-wins over roster order; the default member's globs are a catch-all tier reached only once every claimant has failed to match. Two claimants claiming overlapping territory silently hands a path to whichever member the roster happens to list first, so check for that by eye when adding a member; `.gaia/scripts/verify-audit-roster.sh` asserts remit region parity (each member's agent definition carries exactly its roster globs, in roster order, inside a balanced marker pair) and ownerless-path coverage, and its own bats suite asserts machinery registration and the `code-audit-` name-prefix convention against the real tree. It ships to every clone; nothing gates a merge on it, so run it by hand after any roster change: `bash .gaia/scripts/verify-audit-roster.sh`, then `bash .gaia/scripts/write-audit-remits.sh` to repair a remit finding.
 
 <!-- gaia:maintainer-only:start -->
@@ -66,11 +70,11 @@ A `audience: maintainer` member's agent file, and any fixtures or bats suites wr
 Registering a member touches shared classifier and merge-gate machinery, not just the new agent file, so the bats suites guarding that machinery are the local gate for the change. Run all of these before merge:
 
 - `bash .gaia/scripts/verify-audit-roster.sh`, the roster's own deterministic check (remit region parity, ownerless-path coverage), plus its own bats suite (machinery registration, the name-prefix convention).
-- `.gaia/tests/hooks/audit-scope-lib.bats`, structural and invariant tests over the shared ownership classifier (`.claude/hooks/lib/audit-scope.sh`): golden ownership-resolution cases, the machinery-is-roster-claimed invariant, and scrub-marker survival.
+- `.gaia/tests/hooks/audit-scope-lib.bats`, structural and invariant tests over the shared ownership classifier (`.claude/hooks/lib/audit-scope.sh`): golden ownership-resolution cases, the machinery-is-roster-claimed invariant, and the fail-closed roster-less init.
 - `.gaia/tests/hooks/audit-scope-routing-parity.bats`, the before/after routing-parity proof: it classifies every tracked file against a committed fixture snapshot and asserts each resolves to its prior owner, except the named set of paths a deliberate roster change is moving. A new member's globs belong in that named-exception set.
 - `.gaia/tests/hooks/pr-merge-audit-check.bats`, tests over the local merge-gate deny-hook itself: the dispatched-member set it resolves, and the AND-aggregation across every dispatched member's own marker.
 
-All four read live roster and machinery state, so a registration that only edits `.gaia/audit-ci.yml` and the agent file, without updating the fallback roster or the machinery lists in lockstep, is exactly the drift these checks exist to catch before CI does.
+All four read live roster and machinery state, so a registration that only edits `.gaia/audit-ci.yml` and the agent file, without updating the machinery lists in lockstep, is exactly the drift these checks exist to catch before CI does.
 <!-- gaia:maintainer-only:end -->
 
 ## Pairs with

@@ -30,7 +30,7 @@ const HELP_TEXT = `Usage: gaia automation render-workflows --out-dir <path> [--t
   --out-dir <path>     Required. Where to write the rendered files.
                        Created with mkdir -p semantics if missing.
   --tools <csv>        Optional. Comma-separated subset of:
-                       ${TOOL_IDS.join(', ')}. Defaults to all four.
+                       ${TOOL_IDS.join(', ')}. Defaults to all of them.
                        The scheduler always covers every CI-mode tool in
                        the config, since it is one file describing all of
                        them; a subset here narrows the per-tool files only.

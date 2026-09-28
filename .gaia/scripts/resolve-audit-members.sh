@@ -27,7 +27,8 @@
 #   Exit 0 covers every ANSWERABLE query, including an empty diff, an
 #   unresolvable diff base, and an unknown flag, so consumers can parse stdout
 #   unconditionally there. Exit 2 means the query is UNANSWERABLE: the audited
-#   root does not resolve, from --root or from cwd. Nothing lands on stdout and
+#   root does not resolve, from --root or from cwd, or its .gaia/audit-ci.yml
+#   has no `auditors:` roster. Nothing lands on stdout and
 #   one diagnostic line lands on stderr. A caller must never read a non-zero
 #   exit as an empty member set: "I could not answer" is not "nobody is owed",
 #   and a gate that conflates them clears a diff no dispatched member read.
@@ -42,14 +43,8 @@
 #      consults a hardcoded auditable-base literal; every member, the default
 #      included, declares its domain in the roster.
 #
-# Roster-source precedence:
-#   1. The `auditors:` block in <repo-root>/.gaia/audit-ci.yml, when present
-#      and non-empty.
-#   2. Otherwise the built-in fallback roster in audit-scope.sh. Its
-#      maintainer-only entries sit inside `# gaia:maintainer-only` markers so
-#      the release scrub strips them from the shipped script; an adopter's
-#      built-in fallback is therefore the default (frontend) member and the
-#      workflows member only.
+# Roster source: the `auditors:` block in <repo-root>/.gaia/audit-ci.yml.
+#   There is no fallback roster; an absent or empty block exits 2.
 #   The resolver iterates the roster GENERICALLY: it emits whatever member
 #   names the roster defines and is not hard-coded to any specific member, so
 #   an adopter adds a member with a config entry plus an agent file, no script
@@ -83,7 +78,8 @@ print_usage() {
 Usage: resolve-audit-members.sh [--root <path>] [--base <ref>]
   Emits the dispatched auditor member set (one name per line, sorted) for the
   current branch's diff. Empty output = entire diff out of scope. Exit 0 on
-  every answerable query; exit 2 when the audited root does not resolve.
+  every answerable query; exit 2 when the audited root does not resolve or
+  its .gaia/audit-ci.yml has no auditors: roster.
 USAGE
 }
 
@@ -177,7 +173,10 @@ set -e
 type audit_owners_for_paths >/dev/null 2>&1 || exit 0
 type audit_provenance_empty_is_decisive >/dev/null 2>&1 || exit 0
 
-audit_scope_init "$repo_root"
+if ! audit_scope_init "$repo_root" 2>/dev/null; then
+  echo "resolve-audit-members: ${repo_root}/.gaia/audit-ci.yml has no auditors: roster; restore the auditors: block from the GAIA template" >&2
+  exit 2
+fi
 
 # --- Resolve the diff base + changed files -----------------------------------
 

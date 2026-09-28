@@ -76,11 +76,9 @@ export function assertStatusOk<T extends {status: string}>(
 }
 
 export const VALID_BASE_CONFIG: AutomationConfig = {
-  pnpm_audit: {mode: 'ci', schedule: 'weekly'},
   setup_complete: false,
   setup_opted_out: false,
   stale_branches: {mode: 'ci', schedule: 'monthly'},
-  update_deps: {mode: 'ci', schedule: 'weekly'},
   update_gaia: {mode: 'local'},
   version: 1,
   wiki: {mode: 'ci', schedule: 'daily'},

@@ -692,7 +692,7 @@ First confirm the remote is GitHub (cached in Phase 1). If `detect-remote` repor
 
 If `RECONFIGURE` is set, skip this question and use the reconfigure flow. Otherwise AskUserQuestion with these three options in this exact order:
 
-> Enable GAIA CI now? It runs four maintenance jobs on a smart cron (wiki sync, /update-deps, pnpm audit, stale branches), opens labeled PRs, and auto-merges them on green CI.
+> Enable GAIA CI now? It runs maintenance jobs on a smart cron (wiki sync, stale branches), opens labeled PRs, and auto-merges them on green CI.
 >
 > - **Enable GAIA CI now** (Recommended)
 > - **Not now** (you can re-run /setup-gaia anytime)
@@ -894,7 +894,7 @@ Do not halt on a registration failure; the workflow install already succeeded. C
 
 ### Claude GitHub App install (prerequisite for the verification run)
 
-Every GAIA CI workflow (all four) invokes the Claude Code Action, which mints a short-lived **repo installation token** at runtime. The `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` secret authenticates the Anthropic API, but the action **also** needs the **Claude GitHub App** installed on the repo to exchange for that GitHub token. Without it, any workflow that reaches the action step fails with `App token exchange failed: 401 Unauthorized` (surfaced in logs as `Claude Code is not installed on this repository`) even though the Quality Gate and earlier steps pass. Gate the app install **before** the verification run, out of band exactly like the token secret, rather than letting the run fail and asking afterward. The agent cannot install the app (it is an interactive GitHub authorization); only the repo admin / org owner can.
+Every GAIA CI workflow that runs Claude (`gaia-ci-wiki` and the `code-review-audit` gate; `gaia-ci-stale-branches` never reaches the action) invokes the Claude Code Action, which mints a short-lived **repo installation token** at runtime. The `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` secret authenticates the Anthropic API, but the action **also** needs the **Claude GitHub App** installed on the repo to exchange for that GitHub token. Without it, any workflow that reaches the action step fails with `App token exchange failed: 401 Unauthorized` (surfaced in logs as `Claude Code is not installed on this repository`) even though the Quality Gate and earlier steps pass. Gate the app install **before** the verification run, out of band exactly like the token secret, rather than letting the run fail and asking afterward. The agent cannot install the app (it is an interactive GitHub authorization); only the repo admin / org owner can.
 
 **Best-effort detection (skip the prompt when already installed).** No user-token endpoint reveals a repo's app installations directly: `repos/<owner>/<repo>/installation` needs a GitHub App JWT (401 under a user token) and `/user/installations` needs an app-authorized token (403). The one probe that works under a plain `gh` login is the org installations list, and only for an org-owned repo where you're an org owner. A 403/404 (personal repo, or a repo admin who is not an org owner) means "not confirmed", never treat it as "absent":
 
@@ -939,6 +939,8 @@ Pick the FIRST workflow file from the generated list (typically `.github/workflo
 If `verified: true`, print `Verification run succeeded. Conclusion: success. URL: <url>.` and fall through to **Finalize and commit**.
 
 If `verified: false`, surface the URL and AskUserQuestion "Retry verification" / "Abandon" / "Commit without verification". On Retry, re-shell `verify-run` (one retry permitted). On Abandon, delete every file in the generated paths list and fall through to Phase 5; `setup_complete` stays `false`. On Commit without verification, fall through with a flag that adds `(unverified)` to the commit message.
+
+If the command exits non-zero instead of printing `verified` JSON, surface the error `code` from stderr (e.g. `run_not_found`, `workflow_run_failed`, `run_list_failed`) and take the same Retry / Abandon / Commit without verification path. For `run_not_found`, no run created after the dispatch was listed within the poll bound. Usually GitHub had not listed it yet, so Retry is the natural first choice; if Retry fails the same way, a local clock running well ahead of GitHub's is the likely cause, so offer Commit without verification.
 
 Because the **Claude GitHub App install** is gated just above, a run that fails at the Claude step with `App token exchange failed: 401 Unauthorized` means the app install did not complete or does not grant this repo access. Tell the user to re-check the install at https://github.com/apps/claude (confirm `<owner>/<repo>` is in scope) before choosing Retry.
 
@@ -1004,7 +1006,7 @@ When `RECONFIGURE` is set, the short-circuit above is skipped and the CI flow re
   > - **Re-prompt and rewrite .gaia/automation.json**
   > - **Keep current selections** (only rotate the token)
 
-  On "Re-prompt", AskUserQuestion for each of `wiki`, `update-deps`, `pnpm-audit`, `stale-branches` with mode options `ci` / `local` / `off`, applying each via `.gaia/cli/gaia setup-ci write-tool-mode <tool> <mode>`.
+  On "Re-prompt", AskUserQuestion for each of `wiki`, `stale-branches` with mode options `ci` / `local` / `off`, applying each via `.gaia/cli/gaia setup-ci write-tool-mode <tool> <mode>`.
 
 - **Audit-mode policy** re-offers the solo/team gate (and, for a team, the Local vs CI question) and rewrites `default_mode` / `override_label` in `.gaia/audit-ci.yml`.
 - **Token provisioning** runs its **Reconfigure (rotation)** path: it asks the user to overwrite the secret out of band (`gh secret set` overwrites silently), never reading the existing or new value, then verifies presence by name.

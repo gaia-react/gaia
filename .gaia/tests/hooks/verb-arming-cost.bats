@@ -331,8 +331,8 @@ time_view_ms() {
   [ "$REPLY_MS" -gt 0 ] || return 1
 }
 
-# The adopting hooks, in the order the adopting-hook table under "Shared
-# verb-arming decision" in wiki/concepts/Claude Hooks.md lists them.
+# The adopting hooks: the root .claude/hooks/*.sh files that load
+# lib/verb-arming.sh (grep -l 'lib/verb-arming.sh' .claude/hooks/*.sh).
 adopting_hooks() {
   printf '%s\n' \
     pr-merge-audit-check.sh \

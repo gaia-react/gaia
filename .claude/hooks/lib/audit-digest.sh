@@ -92,7 +92,8 @@ audit_digests_all() {
     return 1
   fi
 
-  audit_scope_init "$root"
+  # Fail closed: a config with no auditors: roster has no members to digest.
+  audit_scope_init "$root" || return 1
 
   # Single ls-tree walk. A bash variable cannot hold the NUL bytes `-z` emits
   # (command substitution strips them), so the records go to a temp file that

@@ -73,11 +73,6 @@
 #   - the CI producer's push gate, the "Commit and push self-heal" step of
 #     .github/workflows/code-review-audit.yml (and its rendered template
 #     mirror, .gaia/cli/templates/workflows/code-review-audit.yml.tmpl)
-# gaia:maintainer-only:start
-#     -- the maintainer source repo also carries the build source this
-#     template is generated from,
-#     .gaia/cli/src/automation/templates/workflows/code-review-audit.yml.tmpl
-# gaia:maintainer-only:end
 #
 # The BUILD-CONFIG half of this ERE is the workflow's own `has_source` file
 # pattern (code-review-audit.yml's "Detect in-scope source changes" step),

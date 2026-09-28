@@ -10,38 +10,15 @@ tags: [concept, claude, hooks]
 
 `.gaia/local/` holds machine-local working state for GAIA's subsystems. It is gitignored in full, carries no tracked files, and is absent from `.gaia/manifest.json`, so nothing under it is committed or shipped to adopters. Each developer's copy is private to their machine, and subsystems create the subdirectories they need on demand (`mkdir -p`).
 
-Because the folder is invisible to git, residue a subsystem leaves behind never surfaces in a diff and accumulates silently. Each subsystem owns pruning its own residue; this page catalogues it so a reader can tell live state from leftovers.
+Because the folder is invisible to git, residue a subsystem leaves behind never surfaces in a diff and accumulates silently. Each subsystem owns pruning its own residue; the state registry records who writes and who reaps each entry, so a reader can tell live state from leftovers.
 
 ## Layout
 
-| Path | Owner | Kind | Retention |
-|---|---|---|---|
-| `.project-id`, `setup-state.json` | setup / identity | live | permanent identity |
-| `declined-updates.json` | `/update-deps` | live | permanent preference |
-| `.patched-statusline.sh`, `maintainer-statusline.sh` | statusline | live | regenerated |
-| `audit/<digest>.ok`, `audit/<digest>.<member>.ok` (earned) | [[Code Review Audit Agent]] merge gate | ephemeral | spent once its recorded `tree` is no longer live AND it has aged past `GAIA_AUDIT_MARKER_RETENTION_HOURS` (default 72) past its own `audited_at` |
-| `audit/<digest>.refused`, `audit/<digest>.<member>.refused` (refused) | [[Code Review Audit Agent]] merge gate | ephemeral | spent once its recorded `tree` is no longer live; no retention-window extension |
-| `audit/KNOWLEDGE-*.md` | [[GAIA Audit]] | ephemeral | self-pruned by the next applied run |
-| `worthiness-ledger/worthiness.jsonl` | worthiness check | live | append-only |
-| `red-ledger/observations.jsonl` | TDD RED-verification | live | append-only |
-| `debt/` | debt sentinel | live | one copy shared by every tree, so a debt fix merged from a linked worktree arms the main checkout's count cache and sentinel; recomputed |
-| `cache/` | [[GAIA Spec]] / gate sessions | ephemeral | reaped on SPEC merge/close and the merged-SPEC age reap; an entry with no linked SPEC row (an orphaned gate1/draft/session cache, a react-perf run dir) has no reaper |
-| `cache/shared/` | release / statusline (`update-gaia`, `check-updates.sh`) | live | one copy every linked worktree reads; self-pruned by its owners (tarball prune on update) |
-| `cache/shared/wiki-base-catchup.state` | session-start janitor | live | one key-value file carrying the janitor's last-fetch timestamp and, when a base catch-up is outstanding, the durable obligation to retry; the janitor drains the obligation once base is at or ahead of its upstream |
-| `cache/shared/wiki-base-catchup.report` | session-start janitor | ephemeral | one line, overwritten per refusal; read and deleted by the drift-check hook on the next prompt, so it surfaces exactly once |
-| `specs/` | [[GAIA Spec]] | live | a merged or abandoned folder is kept at merge/abandonment; age-reaped after the retention window either way |
-| `specs/ledger.json` | [[GAIA Spec]] | live | per-machine number cache |
-| `plans/PLAN-NNN/` | [[GAIA Plan]] | live | a merged folder is kept at merge (reduced to `SUMMARY.md` + `cost.json`, `RUNNING` cleared); an abandoned folder is kept as-is at abandonment; both age-reaped after the retention window |
-| `plans/ledger.json` | [[GAIA Plan]] | live | per-machine number cache |
-| `handoff/`, `forensics/` | [[GAIA Handoff]] / [[Forensics]] | live | drop zones |
-| `telemetry/` | [[Cost Data Contract]] | live | an append-only cost ledger (`cost.jsonl`) |
-| `harden/declines.json` | `/gaia-harden` | live | one copy shared by every tree, so an operator decline made in a linked worktree suppresses the candidate everywhere and survives the worktree's removal |
-| `harden/reviewed.json` | `/gaia-harden` | live | the review snapshot; written at a completed review, read by `harden-tally`, one copy per clone shared by every tree, replaced by the next completed review |
-| `harden/review-tally.json` | `/gaia-harden` | live | the saved start-of-run tally a review builds its snapshot from; overwritten by the next review |
+`.gaia/state-registry.json` is the entry-by-entry list of `.gaia/local/`: each entry's path, scope (`shared`, `per-tree`, `main-only`, `ephemeral`), reason, writer, and reaper, plus known residue from removed features.
 
-A linked worktree's `.gaia/local` is a single symlink to the main checkout's `.gaia/local`, so every path in the table above resolves to one copy rather than forking per tree. `.gaia/state-registry.json` declares each entry's scope, and an entry that has to stay private to one tree gets that isolation from a tree key in its own path rather than from a directory of its own; see [[Worktrees]]. The same linking covers a second, disjoint set: the checkout-root gitignored `.env` / `.env.*` files (every basename matching `.env` or `.env.*`, excluding the committed `.env.example`). Each linked worktree gets `<worktree>/.env` (and any `.env.*`) symlinked to the main checkout's copy, so the worktree's `pnpm dev` and Playwright runs read the same local secrets without a manual copy. These files live at the checkout root, not under `.gaia/local/`, so they aren't rows in the table above.
+A linked worktree's `.gaia/local` is a single symlink to the main checkout's `.gaia/local`, so every registry entry resolves to one copy rather than forking per tree. `.gaia/state-registry.json` declares each entry's scope, and an entry that has to stay private to one tree gets that isolation from a tree key in its own path rather than from a directory of its own; see [[Worktrees]]. The same linking covers a second, disjoint set: the checkout-root gitignored `.env` / `.env.*` files (every basename matching `.env` or `.env.*`, excluding the committed `.env.example`). Each linked worktree gets `<worktree>/.env` (and any `.env.*`) symlinked to the main checkout's copy, so the worktree's `pnpm dev` and Playwright runs read the same local secrets without a manual copy. These files live at the checkout root, not under `.gaia/local/`, so they aren't registry entries.
 
-A **live** entry is load-bearing state that tooling reads. An **ephemeral** entry is consumed once and then orphaned; its owner is meant to prune it, and most entries have no other backstop if the owner doesn't.
+An `ephemeral` entry is consumed once and then orphaned; its owner is meant to prune it, and most such entries have no other backstop if the owner doesn't.
 
 ## The session-start janitor
 

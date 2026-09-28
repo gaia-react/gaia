@@ -145,7 +145,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Task Orchestration]]
 - [[Code Review Audit Agent]]
 - [[Code Review Audit CI]]: pre-merge GitHub Actions gate; `GAIA-Audit:` trailer skip logic; adopter-tunable knobs at `.gaia/audit-ci.yml`.
-- [[Registering a Code Audit Team Member]]: how-to for adding a new roster member: agent def, roster + builtin fallback, machinery wiring, finding_class bucket, recurrence-tally integration, and the local-gate checklist.
+- [[Registering a Code Audit Team Member]]: how-to for adding a new roster member: agent def, roster entry, machinery wiring, finding_class bucket, recurrence-tally integration, and the local-gate checklist.
 - [[Audit Disposition and Debt Fix]]: forced disposition of out-of-scope audit findings as deduped tech-debt issues; security-class divert; the /gaia-debt fix loop (single issue or recommended related batch, isolated per the team's git isolation policy) and statusline nudge; /gaia-residue drains the accepted-residual record the same audit leaves unfiled.
 - [[GitHub Labels]]: the label registry at `.gaia/labels.json`, the palette rule, the generated page, and `gaia labels sync` / `docs`.
 - [[Policy-Memory Loop]]: prune-first self-improvement; recurring finding_class -> statusline nudge -> `/gaia-harden` -> path-scoped rule -> `/gaia-audit` prunes only on obsolescence/redundancy/supersession/duplication.
@@ -154,7 +154,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[GAIA Scripts]]: the index of `.gaia/scripts/`: one row per root file with its family, ship status, invoker, and what it is, plus the subdirectories and why the directory stays flat.
 - [[OS Sandbox]]: two-tier sandbox-enablement preference (owner recommends, each machine resolves) and the honest `.env` deny-merge boundary.
 - [[Claude Integration Conventions]]: Conventions for Claude's config surface: extension points, monorepo retrofit, service swaps, domain isolation.
-- [[Local Working State]]: layout and retention of the gitignored `.gaia/local/` working-state folder; the SessionStart janitor's wiki-landing catch-up.
+- [[Local Working State]]: the gitignored `.gaia/local/` working-state folder and its pointer to the state registry; the SessionStart janitor's wiki-landing catch-up.
 - [[Worktrees]]: the worktree model a feature author needs: tree identity from the acting event's working directory, the single main-checkout resolver, the single `.gaia/local` symlink, and the state registry's four scopes.
 - [[Claude Skills]]
 - [[Update Workflow]]: `/update-gaia` three-way diff, manifest classes (`owned` / `shared` / `wiki-owned`), `.gaia-merge` sidecar patches.

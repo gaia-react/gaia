@@ -4,9 +4,8 @@
           set -euo pipefail
           # Skip only if an open gaia-ci PR for THIS tool already exists.
           # Scope by branch prefix `gaia-ci/{{tool_id}}/` so a wiki PR does
-          # not block the audit, etc. Each workflow branches under its own
-          # tool_id prefix (see partials/auto-merge and the audit/update-deps
-          # templates).
+          # not block another tool's run, etc. Each workflow branches under
+          # its own tool_id prefix (see partials/auto-merge).
           existing_pr=$(gh pr list --state open --label gaia-ci \
             --search 'author:app/github-actions' \
             --json number,headRefName \

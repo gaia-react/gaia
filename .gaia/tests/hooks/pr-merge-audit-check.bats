@@ -52,6 +52,7 @@ bats_require_minimum_version 1.5.0
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/path.sh"
+  . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
   HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/pr-merge-audit-check.sh
   SETTINGS_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude" && pwd)/settings.json
   RESOLVER_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/resolve-audit-members.sh
@@ -66,7 +67,8 @@ setup() {
   mkdir -p "$REPO/.gaia"
   printf '1.4.0\n' > "$REPO/.gaia/VERSION"
   echo "# readme" > "$REPO/README.md"
-  git -C "$REPO" add .gaia/VERSION README.md
+  seed_audit_roster "$REPO"
+  git -C "$REPO" add .gaia/VERSION .gaia/audit-ci.yml README.md
   git -C "$REPO" commit --quiet -m "init"
 
   git -C "$REPO" checkout --quiet -b feature
@@ -232,7 +234,8 @@ make_no_base_repo_pr() {
   git -C "$dir" config user.name "Test"
   git -C "$dir" config commit.gpgsign false
   printf '1.4.0\n' > "$dir/.gaia/VERSION"
-  git -C "$dir" add .gaia/VERSION
+  seed_audit_roster "$dir"
+  git -C "$dir" add .gaia/VERSION .gaia/audit-ci.yml
   git -C "$dir" commit --quiet -m "init"
   printf 'second\n' > "$dir/.gaia/second.txt"
   git -C "$dir" add .gaia/second.txt
@@ -450,6 +453,22 @@ assert_not_in_set() {
   run_merge_hook
   [ "$status" -eq 0 ]
   [[ "$output" == *'"permissionDecision": "deny"'* ]]
+}
+
+@test "a roster-less config denies with the roster named, even on a docs-only diff" {
+  # There is no fallback roster. A docs-only diff would otherwise clear on the
+  # out-of-scope bypass, so this proves the roster deny runs first and names
+  # its own remedy rather than the digest-batch deny's missing sha256 tool.
+  install_gh_stub
+  printf 'default_mode: local\n' > "$REPO/.gaia/audit-ci.yml"
+  git -C "$REPO" commit --quiet -am "drop the roster"
+  commit_files "docs/guide.md" "guide"
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"permissionDecision": "deny"'* ]]
+  [[ "$output" == *'has no auditors: roster'* ]]
+  [[ "$output" == *'Restore the auditors: block'* ]]
+  [[ "$output" != *'sha256'* ]]
 }
 
 @test "denies a PR that changes a root config (package.json)" {

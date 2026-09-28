@@ -12,6 +12,7 @@
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
+  . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   SCRIPT="$THIS_DIR/../resolve-audit-members.sh"
   [ -x "$SCRIPT" ] || skip "resolve-audit-members.sh not executable"
@@ -290,24 +291,27 @@ code-audit-maintainer-shell"
   [ -z "$output" ]
 }
 
-# 13. Missing auditors: key → built-in default roster (app → frontend)
+# 13. Missing auditors: key → unanswerable (exit 2, one named stderr line).
+#     There is no fallback roster, so the query cannot be answered, and an
+#     empty stdout here would read as "nobody is owed".
 
-@test "missing auditors key falls back to the built-in default roster" {
+@test "missing auditors key exits 2 with a named reason and empty stdout" {
   # A config with other knobs but no `auditors:` block.
   printf 'gate_label: null\npush_fixes: true\n' > "$SANDBOX/.gaia/audit-ci.yml"
   stage app/x.tsx
   commit "feat"
-  run run_resolver
-  [ "$status" -eq 0 ]
-  [ "$output" = "code-audit-frontend" ]
+  ( cd "$SANDBOX" && "$SCRIPT" ) >"$BATS_TEST_TMPDIR/out" 2>"$BATS_TEST_TMPDIR/err" && rc=0 || rc=$?
+  [ "$rc" -eq 2 ]
+  [ ! -s "$BATS_TEST_TMPDIR/out" ]
+  [ "$(wc -l <"$BATS_TEST_TMPDIR/err" | tr -d ' ')" -eq 1 ]
+  grep -qF 'has no auditors: roster' "$BATS_TEST_TMPDIR/err"
 }
 
-# 14. Built-in default roster still dispatches the maintainer members
-#     (the in-tree script carries them; only the release scrub removes them).
+# 14. The committed roster dispatches the maintainer members (only the release
+#     scrub removes them).
 
-@test "built-in default roster dispatches maintainer-node for framework source" {
-  # No config file at all → the script's built-in roster applies.
-  rm -f "$SANDBOX/.gaia/audit-ci.yml"
+@test "committed roster dispatches maintainer-node for framework source" {
+  seed_audit_roster "$SANDBOX"
   stage .gaia/cli/src/foo.ts
   commit "feat"
   run run_resolver
@@ -315,7 +319,7 @@ code-audit-maintainer-shell"
   [ "$output" = "code-audit-maintainer-node" ]
 }
 
-# 14b. Built-in roster: the CLI build/config surface dispatches maintainer-node.
+# 14b. Committed roster: the CLI build/config surface dispatches maintainer-node.
 #      package.json carries the bundle build scripts + runtime deps,
 #      pnpm-lock.yaml the resolved dependency tree, tsconfig*.json the build
 #      config, and vitest/eslint/prettier.config.* the CLI's own test and lint
@@ -324,8 +328,8 @@ code-audit-maintainer-shell"
 #      code-audit review. One file per test on purpose: a combined stage would
 #      still emit maintainer-node if only one of them were owned.
 
-@test "built-in roster dispatches maintainer-node for .gaia/cli/package.json" {
-  rm -f "$SANDBOX/.gaia/audit-ci.yml"
+@test "committed roster dispatches maintainer-node for .gaia/cli/package.json" {
+  seed_audit_roster "$SANDBOX"
   stage .gaia/cli/package.json
   commit "chore: cli deps"
   run run_resolver
@@ -333,8 +337,8 @@ code-audit-maintainer-shell"
   [ "$output" = "code-audit-maintainer-node" ]
 }
 
-@test "built-in roster dispatches maintainer-node for .gaia/cli/pnpm-lock.yaml" {
-  rm -f "$SANDBOX/.gaia/audit-ci.yml"
+@test "committed roster dispatches maintainer-node for .gaia/cli/pnpm-lock.yaml" {
+  seed_audit_roster "$SANDBOX"
   stage .gaia/cli/pnpm-lock.yaml
   commit "chore: cli lockfile"
   run run_resolver
@@ -342,11 +346,11 @@ code-audit-maintainer-shell"
   [ "$output" = "code-audit-maintainer-node" ]
 }
 
-@test "built-in roster dispatches maintainer-node for .gaia/cli/pnpm-workspace.yaml" {
+@test "committed roster dispatches maintainer-node for .gaia/cli/pnpm-workspace.yaml" {
   # A workspace-file-only diff is the shape that resolves an empty dispatched
   # set when no glob claims the file: no member reviews the supply-chain
   # policy it carries, and no marker is required to merge it.
-  rm -f "$SANDBOX/.gaia/audit-ci.yml"
+  seed_audit_roster "$SANDBOX"
   stage .gaia/cli/pnpm-workspace.yaml
   commit "chore: cli workspace policy"
   run run_resolver
@@ -354,8 +358,8 @@ code-audit-maintainer-shell"
   [ "$output" = "code-audit-maintainer-node" ]
 }
 
-@test "built-in roster dispatches maintainer-node for .gaia/cli/tsconfig.json (tsconfig*.json)" {
-  rm -f "$SANDBOX/.gaia/audit-ci.yml"
+@test "committed roster dispatches maintainer-node for .gaia/cli/tsconfig.json (tsconfig*.json)" {
+  seed_audit_roster "$SANDBOX"
   stage .gaia/cli/tsconfig.json
   commit "chore: cli tsconfig"
   run run_resolver
@@ -363,10 +367,10 @@ code-audit-maintainer-shell"
   [ "$output" = "code-audit-maintainer-node" ]
 }
 
-@test "built-in roster dispatches maintainer-node for .gaia/cli/vitest.config.ts (*.config.ts)" {
+@test "committed roster dispatches maintainer-node for .gaia/cli/vitest.config.ts (*.config.ts)" {
   # The sharpest of the CLI's three tool configs: `setupFiles` executes
   # arbitrary code in every CLI test run, so a config-only diff is a code diff.
-  rm -f "$SANDBOX/.gaia/audit-ci.yml"
+  seed_audit_roster "$SANDBOX"
   stage .gaia/cli/vitest.config.ts
   commit "chore: cli vitest config"
   run run_resolver
@@ -374,8 +378,8 @@ code-audit-maintainer-shell"
   [ "$output" = "code-audit-maintainer-node" ]
 }
 
-@test "built-in roster dispatches maintainer-node for .gaia/cli/eslint.config.mjs (*.config.mjs)" {
-  rm -f "$SANDBOX/.gaia/audit-ci.yml"
+@test "committed roster dispatches maintainer-node for .gaia/cli/eslint.config.mjs (*.config.mjs)" {
+  seed_audit_roster "$SANDBOX"
   stage .gaia/cli/eslint.config.mjs
   commit "chore: cli eslint config"
   run run_resolver
@@ -492,15 +496,12 @@ YAML
   [ "$output" = "code-audit-maintainer-shell" ]
 }
 
-# 23. Built-in default roster also owns the bats suites.
-#     Pins the SECOND literal copy of the roster (the one inside the script).
-#     Without a bats glob there, a bats-only diff on a clone carrying no
-#     audit-ci.yml resolves to an empty member set and rides the merge gate's
+# 23. The committed roster also owns the bats suites. Without a bats glob, a
+#     bats-only diff resolves to an empty member set and rides the merge gate's
 #     out-of-scope bypass.
 
-@test "built-in default roster dispatches maintainer-shell for a bats-only diff" {
-  # No config file at all → the script's built-in roster applies.
-  rm -f "$SANDBOX/.gaia/audit-ci.yml"
+@test "committed roster dispatches maintainer-shell for a bats-only diff" {
+  seed_audit_roster "$SANDBOX"
   stage .gaia/scripts/tests/token-tally.bats
   commit "test"
   run run_resolver

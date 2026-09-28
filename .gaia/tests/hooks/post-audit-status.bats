@@ -69,6 +69,7 @@
 # here.
 
 setup() {
+  . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
   HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/post-audit-status.sh
   DIGEST_LIB=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/audit-digest.sh
   REPO=$(mktemp -d -t post-audit-status-test-XXXXXX)
@@ -85,7 +86,8 @@ setup() {
   mkdir -p "$REPO/.gaia"
   printf '1.2.3\n' > "$REPO/.gaia/VERSION"
   echo "# readme" > "$REPO/README.md"
-  git -C "$REPO" add .gaia/VERSION README.md
+  seed_audit_roster "$REPO"
+  git -C "$REPO" add .gaia/audit-ci.yml .gaia/VERSION README.md
   git -C "$REPO" commit --quiet -m "init"
 
   API_CALLS="$BATS_TEST_TMPDIR/api-calls"

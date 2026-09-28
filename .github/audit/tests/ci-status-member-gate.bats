@@ -56,6 +56,7 @@
 # Assertion style per .claude/rules/bats-assertions.md.
 
 setup() {
+  . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
   WORKFLOW="$REPO_ROOT/.github/workflows/code-review-audit.yml"
@@ -104,7 +105,8 @@ setup() {
   git -C "$SANDBOX" config user.name "Test"
   git -C "$SANDBOX" config commit.gpgsign false
   echo "# readme" > "$SANDBOX/README.md"
-  git -C "$SANDBOX" add .gaia/VERSION README.md
+  seed_audit_roster "$SANDBOX"
+  git -C "$SANDBOX" add .gaia/audit-ci.yml .gaia/VERSION README.md
   git -C "$SANDBOX" commit --quiet -m "init"
 
   # The real resolver, the real gate, and the real non-clobber read, so every
@@ -322,7 +324,7 @@ extract_step_block() {
 base_sha() { git -C "$SANDBOX" rev-parse main; }
 
 # app/ + .gaia/cli/src/** -> dispatches code-audit-frontend AND
-# code-audit-maintainer-node against the built-in roster.
+# code-audit-maintainer-node against the seeded roster.
 commit_mixed_diff() {
   git -C "$SANDBOX" checkout --quiet -b feature
   mkdir -p "$SANDBOX/app" "$SANDBOX/.gaia/cli/src"

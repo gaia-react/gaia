@@ -11,11 +11,11 @@
  * snoozed groups as updatable; nothing here gates the apply set.
  *
  * The file lives at `.gaia/local/declined-updates.json`, which is gitignored,
- * so the CI update-deps cron (a fresh checkout) never sees it: CI is the
- * "don't forget long-term" backstop and keeps opening PRs regardless. The CLI
- * READS this on the hot path (`update-deps run`) and WRITES it only via the
- * explicit `update-deps decline` subcommand; the statusline refresher never
- * writes, keeping the hot path race-free (mirrors the dep-audit baseline).
+ * so it is local to this clone: a fresh checkout starts with no declines on
+ * file. The CLI READS this on the hot path (`update-deps run`) and WRITES it
+ * only via the explicit `update-deps decline` subcommand; the statusline
+ * refresher never writes, keeping the hot path race-free (mirrors the
+ * dep-audit baseline).
  */
 import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';

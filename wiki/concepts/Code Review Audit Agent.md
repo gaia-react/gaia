@@ -18,7 +18,7 @@ Reviews security, performance, code smells, architecture, robustness, and mainta
 
 Knip runs pre-merge here (post-task by design) and its findings are bucketed advisory: real dead code, intentional library export (update `entry` globs), or implicit dependency (update `ignoreDependencies`). See [[knip]].
 
-A deterministic `pnpm audit --json` run is the oracle for known-vulnerable dependencies; the Security dimension does not LLM-judge current CVEs. Its high/critical advisories surface in an advisory bucket (read-only; never blocking the marker), scoped by a severity threshold and a machine-local baseline allowlist at `.gaia/local/dep-audit-baseline.json`. It is distinct from the blocking GAIA CI `pnpm audit` cron, which opens review-required security PRs. See [[pnpm-audit]].
+A deterministic `pnpm audit --json` run is the oracle for known-vulnerable dependencies; the Security dimension does not LLM-judge current CVEs. Its high/critical advisories surface in an advisory bucket (read-only; never blocking the marker), scoped by a severity threshold and a machine-local baseline allowlist at `.gaia/local/dep-audit-baseline.json`. See [[pnpm-audit]].
 
 ## Finding proof gate and adversarial verification
 
@@ -113,13 +113,6 @@ Library-specific audit rules live in `.claude/agents/code-audit-frontend/*.md`. 
 The `subagents:` values (`react-patterns`, `typescript`, `translation`) are **rule-injection labels** - metadata that selects which specialist prompt receives this file's rules. They are not skill or command names. The agent dispatches each specialist via the **Agent (Task) tool** with an explicit `subagent_type`. Routing a specialist through the Skill tool misroutes it to a fuzzy-matched command (e.g. `/gaia-audit`), which rejects the args and aborts the audit before its marker is written.
 
 To swap a library: remove its extension file, add one for the replacement. The main agent definition stays unchanged. See the `README.md` in that directory for the full format.
-
-| File                 | Library              |
-| -------------------- | -------------------- |
-| `conform.md`         | `@conform-to/zod`    |
-| `tailwind-merge.md`  | `tailwind-merge`     |
-| `react-i18next.md`   | `react-i18next`      |
-| `form-components.md` | GAIA Form Components |
 
 ## Finding emission
 

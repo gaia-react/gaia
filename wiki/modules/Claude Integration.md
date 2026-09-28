@@ -42,19 +42,7 @@ Hooks are bash scripts wired through `.claude/settings.json`. See its `hooks` ke
 
 ### Blocking hooks (deny risky actions)
 
-This section describes the load-bearing ones; see [[Claude Hooks]] for the full bundled-hook inventory:
-
-- `block-env-write.sh`: denies writes to `.env` / `.env.*` (allows `.env.example`). Local secrets must stay gitignored.
-- `block-env-read.sh`: the whole tool-tier read guard for `.env` and every `.env.<env>` variant (`.env.local`, `.env.production`), covering the Read tool, the Grep tool's `path` and `glob`, and Bash readers, sourcing, redirection, and bare `env`/`printenv` dumps; allows `.env.example`. Heuristic defense-in-depth, not a sandbox. Registered on the `Read`, `Grep`, and `Bash` matchers.
-- `block-secrets-read.sh`: denies reads of key, certificate, and credential paths (basename ending `.key` or `.pem`, basename containing `credential`, anything under a `secrets/` directory) across the same three matchers. Shares the grep/ripgrep operand grammar in `lib/reader-operands.sh` with `block-env-read.sh`.
-- `block-eslint-config-edit.sh`: puts every edit to `eslint.config.*` at any path to the operator, on the filename alone, via `permissionDecision: "ask"`. Fix the source, not the config. The breadth is deliberate: an added preset spread is both the sanctioned `...lint.reactRouter` migration and a way to turn rules off, so no test over the edit separates them. The separating property is intent, which no hook reads, so the hook asks the party that holds it; the reason carries what the match cannot, naming the legitimate edit and telling the operator the answer is theirs.
-- `block-secrets-write.sh`: detects AWS keys, GH PATs, PEM headers, and dotenv-style assignments to `_TOKEN` / `_SECRET` / `_KEY` / `_PASSWORD` names, with or without a leading `export` / `declare` / `typeset` / `local` / `readonly` and that keyword's own options; allows placeholders. It matches known shapes, not entropy.
-- `block-main-destructive-git.sh`: denies `git commit` on `main`/`master`, plain `git push` from `main`/`master` (PR-only flow), and force-push to `main`/`master`. See [[Git Workflow]].
-- `block-no-verify.sh`: denies `git commit` / `git push` carrying a hook-bypass token (`--no-verify`, falsy `HUSKY=` prefix, `core.hooksPath` redirect) and `git commit -n`, so the commit-time deterministic floor cannot be silently skipped; `git push -n` (dry-run) stays allowed.
-- `block-rm-rf.sh`: denies `rm -rf` of `/`, `~`, `.git`, and other root-level / repo-critical paths.
-- `red-verify-commit-check.sh`: denies `git commit` when a new-at-HEAD test that now passes has no recorded failing (RED) run matching its current content. The sibling `capture-red-observations.sh` (PostToolUse) records REDs at test-run time; this enforces them at commit, the mechanical-TDD RED-before-GREEN gate.
-- `worthiness-presence-check.sh`: denies `gh pr merge` when an emergent test the PR changed has no worthiness-ledger line matching its current content (see the worthiness-evaluator agent below).
-- `pr-merge-audit-check.sh`: denies `gh pr merge` until every dispatched Code Audit Team member has written its clearance marker under `.gaia/local/audit/`. See [[PR Merge Workflow]].
+[[Claude Hooks]] is the bundled-hook inventory: each blocking hook's index row says what it denies, and its subsection says why.
 
 ### Wiki coherence (a layered system)
 

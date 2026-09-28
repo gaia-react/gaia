@@ -8,10 +8,10 @@ description: |
   workspace, so folding checkout in would be both behavior-changing and
   self-defeating.
 
-  Deliberately excludes `code-review-audit.yml`: it exists as three
-  byte-identical copies (live workflow, source template, build artifact), and
-  a suite pins that workflow's exact ordered guarded-step set and each step's
-  `if:` expression, so replacing three steps with one here would rewrite a
+  Deliberately excludes `code-review-audit.yml`: it exists as two
+  byte-identical copies (the live workflow and the build artifact generated
+  from it), and a suite pins that workflow's exact ordered guarded-step set and
+  each step's `if:` expression, so replacing three steps with one here would rewrite a
   suite that exists to detect exactly that kind of rewrite. That is not
   because `.github/actions/**` fails to reach adopters; this action itself
   ships to them.

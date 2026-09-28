@@ -64,6 +64,7 @@
 #      leaves it pending, and a frontend refusal still outranks the waiver.
 
 setup() {
+  . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   SCRIPT="$THIS_DIR/../../../.claude/hooks/post-audit-status.sh"
   [ -x "$SCRIPT" ] || skip "post-audit-status.sh not executable"
@@ -78,7 +79,8 @@ setup() {
   git -C "$SANDBOX" config user.name "Test"
   git -C "$SANDBOX" config commit.gpgsign false
   echo "# readme" > "$SANDBOX/README.md"
-  git -C "$SANDBOX" add .gaia/VERSION README.md
+  seed_audit_roster "$SANDBOX"
+  git -C "$SANDBOX" add .gaia/audit-ci.yml .gaia/VERSION README.md
   git -C "$SANDBOX" commit --quiet -m "init"
 
   # A bare remote makes the pushed head sha fetchable, so the gh mock's `api`
@@ -243,7 +245,7 @@ install_resolver() {
 # Commit a mixed app/ + .gaia/**/*.sh change on a new `feature` branch off
 # SANDBOX's init commit, so the resolver's merge-base(HEAD, main) diff is
 # non-empty and dispatches both code-audit-frontend (app/) and
-# code-audit-maintainer-shell (.gaia/**/*.sh) against the built-in roster.
+# code-audit-maintainer-shell (.gaia/**/*.sh) against the seeded roster.
 commit_mixed_diff() {
   git -C "$SANDBOX" checkout --quiet -b feature
   mkdir -p "$SANDBOX/app" "$SANDBOX/.gaia/scripts"

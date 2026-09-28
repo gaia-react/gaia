@@ -97,101 +97,6 @@ audit_self_mod_classify() {
 }
 
 # --- Roster parsing (moved, not copied) --------------------------------------
-#
-# Used only when <root>/.gaia/audit-ci.yml has no `auditors:` block. Emitted
-# as the same YAML shape the config uses, so ONE parser handles both. Its
-# members and their globs mirror the committed .gaia/audit-ci.yml roster and
-# must stay in step with it: a glob present there but missing here leaves that
-# path ownerless in the degraded fallback, so the merge gate dispatches nobody
-# for a change to it. The maintainer-only entries are wrapped in
-# `# gaia:maintainer-only` markers;
-# the release scrub strips marker-delimited blocks from shipped `.sh` files,
-# so a shipped script's fallback carries only the default (frontend) member
-# and the workflows member, both adopter-audience.
-# These markers MUST survive verbatim: dropping, reflowing, or moving them
-# makes an adopter's merge gate demand clearances from members whose agent
-# definitions the adopter does not have, a permanent local merge deadlock.
-
-_audit_scope_builtin_roster() {
-  cat <<'YAML'
-auditors:
-  - name: code-audit-frontend
-    globs:
-      - "app/**"
-      - "test/**"
-      - ".storybook/**"
-      - ".github/workflows/**"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - "tsconfig*.json"
-      - "*.config.ts"
-      - "*.config.mts"
-      - "*.config.mjs"
-      - "*.config.cjs"
-      - "*.config.js"
-      - ".playwright/**"
-      - ".npmrc"
-      - ".lintstagedrc.json"
-      - ".prettierignore"
-      - "Dockerfile"
-      - ".env.example"
-      - ".nvmrc"
-      - ".node-version"
-    audience: adopter
-    push_fixes: true
-    default: true
-  - name: code-audit-github-workflows
-    globs:
-      - ".github/workflows/*.yml"
-      - ".github/workflows/*.yaml"
-      - ".github/actions/**/*.yml"
-      - ".github/actions/**/*.yaml"
-    audience: adopter
-    push_fixes: false
-  # gaia:maintainer-only:start
-  - name: code-audit-maintainer-shell
-    globs:
-      - ".gaia/**/*.sh"
-      - ".gaia/**/*.bats"
-      - ".claude/hooks/**/*.sh"
-      - ".specify/extensions/gaia/lib/*.sh"
-      - ".github/**/*.sh"
-      - ".github/**/*.bats"
-      - ".husky/**"
-      - ".gaia/*.yml"
-      - ".gaia/*.json"
-      - ".gaia/scripts/token-rates.json"
-      - ".gaia/release-exclude"
-      - ".gaia/tests/vendor/**"
-      - ".gaia/VERSION"
-      - ".claude/settings.json"
-      - ".github/CODEOWNERS"
-      - ".claude/agents/code-audit-*.md"
-      - ".claude/rules/**"
-    audience: maintainer
-    push_fixes: false
-  - name: code-audit-maintainer-node
-    globs:
-      - ".gaia/cli/src/**/*.ts"
-      - ".gaia/cli/src/**/*.tmpl"
-      - ".gaia/cli/src/**/*.snap"
-      - ".gaia/cli/src/**/.gitkeep"
-      - ".gaia/cli/package.json"
-      - ".gaia/cli/pnpm-lock.yaml"
-      - ".gaia/cli/pnpm-workspace.yaml"
-      - ".gaia/cli/tsconfig*.json"
-      - ".gaia/cli/*.config.ts"
-      - ".gaia/cli/*.config.mts"
-      - ".gaia/cli/*.config.mjs"
-      - ".gaia/cli/*.config.cjs"
-      - ".gaia/cli/*.config.js"
-      - ".gaia/scripts/**/*.mjs"
-    audience: maintainer
-    push_fixes: false
-  # gaia:maintainer-only:end
-YAML
-}
 
 # Reads a YAML `auditors:` list-of-maps on stdin and emits one record per line:
 #   DEFAULT <name>              the single default member's name
@@ -357,11 +262,12 @@ _audit_scope_parse_unowned() {
 
 # --- audit_scope_init <root> [config-file] ------------------------------------
 #
-# Parses the roster ONCE per run: <root>/.gaia/audit-ci.yml when it defines
-# an `auditors:` block, else the built-in default roster above. Populates
-# the module's internal state consumed by audit_owner_for_path /
-# audit_owners_for_paths. Safe to call more than once (each call resets and
-# re-parses); callers should still call it only once per run.
+# Parses the roster ONCE per run from <root>/.gaia/audit-ci.yml's `auditors:`
+# block. Populates the module's internal state consumed by
+# audit_owner_for_path / audit_owners_for_paths. Safe to call more than once
+# (each call resets and re-parses); callers should still call it only once
+# per run. Returns 1, with one stderr line naming the file, when the config is
+# absent or has no parseable `auditors:` block: there is no fallback roster.
 #
 # The optional second argument overrides which roster file is read, for a
 # caller that resolves the roster itself. verify-audit-roster.sh is the one
@@ -386,7 +292,8 @@ audit_scope_init() {
     records="$(_audit_scope_parse_auditors < "$config_file")"
   fi
   if [ -z "$records" ]; then
-    records="$(_audit_scope_builtin_roster | _audit_scope_parse_auditors)"
+    printf 'audit-scope: no auditors: roster in %s; restore the auditors: block from the GAIA template\n' "$config_file" >&2
+    return 1
   fi
 
   while read -r kind a b; do

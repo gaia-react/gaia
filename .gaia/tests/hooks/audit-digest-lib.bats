@@ -10,7 +10,7 @@
 # leaves every member's digest byte-identical, so its marker re-validates with no
 # re-audit. Every degradation resolves fail-closed (empty output, non-zero exit).
 #
-# Fixtures use the builtin roster (no .gaia/audit-ci.yml in the fixture) and
+# Fixtures seed the committed roster (git_init writes its auditors: block) and
 # probe a subset of it, deliberately rather than for want of coverage:
 # code-audit-frontend (default), code-audit-maintainer-shell and
 # code-audit-maintainer-node. The members left out have their ownership routing
@@ -22,6 +22,7 @@
 # Assertion style: .claude/rules/bats-assertions.md.
 
 setup() {
+  . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
   DIGEST_LIB="$REPO_ROOT/.claude/hooks/lib/audit-digest.sh"
@@ -39,6 +40,7 @@ git_init() {
   git -C "$d" config user.email "test@example.com"
   git -C "$d" config user.name "Test"
   git -C "$d" config commit.gpgsign false
+  seed_audit_roster "$d"
 }
 
 # Seed a fixture repo with an owned file for each probed member, a
@@ -350,6 +352,9 @@ mutate_commit() {
 @test "UAT-013: a non-git root -> emit nothing, exit non-zero" {
   ROOT="$BATS_TEST_TMPDIR/uat013nogit"
   mkdir -p "$ROOT"
+  # Seeded so the failure under test is the missing repository, not the
+  # missing roster.
+  seed_audit_roster "$ROOT"
   run bash -c '. "$1"; audit_member_digest "$2" code-audit-frontend' _ "$DIGEST_LIB" "$ROOT"
   [ "$status" -ne 0 ]
   [ -z "$output" ]

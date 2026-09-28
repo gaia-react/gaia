@@ -15,6 +15,7 @@
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
+  . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   WRITER="$THIS_DIR/../audit-write-clearance.sh"
   READER="$THIS_DIR/../../../.claude/hooks/lib/audit-clearance.sh"
@@ -37,7 +38,8 @@ setup() {
   git -C "$ROOT" config user.name "Test"
   git -C "$ROOT" config commit.gpgsign false
   echo "# readme" > "$ROOT/README.md"
-  git -C "$ROOT" add .gaia/VERSION README.md
+  seed_audit_roster "$ROOT"
+  git -C "$ROOT" add .gaia/audit-ci.yml .gaia/VERSION README.md
   git -C "$ROOT" commit --quiet -m "init"
 
   TREE="$(git -C "$ROOT" rev-parse "HEAD^{tree}")"
@@ -86,7 +88,8 @@ member_digest() {
   git -C "$other" config user.name "Test"
   git -C "$other" config commit.gpgsign false
   echo "different content entirely" > "$other/x.txt"
-  git -C "$other" add x.txt
+  seed_audit_roster "$other"
+  git -C "$other" add .gaia/audit-ci.yml x.txt
   git -C "$other" commit --quiet -m "other"
   other_digest="$(member_digest "$other" code-audit-frontend)"
   root_digest="$(member_digest "$ROOT" code-audit-frontend)"
@@ -471,9 +474,8 @@ member_digest() {
 # stdout, as the bundle-time scrub does to shipped files.
 #
 # This awk is a hand-kept model of the shipped parser (`stripMarkerBlocks` in
-# `.gaia/cli/src/release/marker-strip.ts`), not held to it by a test. Three
+# `.gaia/cli/src/release/marker-strip.ts`), not held to it by a test. Two
 # sibling suites carry the same block (`verify-audit-roster.bats`,
-# `.gaia/tests/hooks/audit-scope-lib.bats`,
 # `.gaia/tests/statusline/statusline-worktree.bats`), so a change here belongs
 # in all of them, and in the real parser too if the transform it models changed.
 #
@@ -515,8 +517,8 @@ scrub_maintainer_only() {
   git -C "$ADOPTER" commit --quiet -m "feat: x"
 
   # Provision the adopter shape (all UNTRACKED, so they never join the diff):
-  #  1. scrub the maintainer-only block from the roster config, and
-  #  2. scrub it from the resolver's builtin_roster fallback too, and
+  #  1. scrub the maintainer-only block from the roster config,
+  #  2. copy the resolver through the same scrub the release applies, and
   #  3. omit the two maintainer agent definitions.
   scrub_maintainer_only "$THIS_DIR/../../audit-ci.yml" > "$ADOPTER/.gaia/audit-ci.yml"
   scrub_maintainer_only "$RESOLVER" > "$ADOPTER/.gaia/scripts/resolve-audit-members.sh"
@@ -527,9 +529,7 @@ scrub_maintainer_only() {
   # The writer copy resolves its digest lib relative to ITSELF
   # ($ADOPTER/.claude/hooks/lib/), and the resolver copy resolves its
   # ownership classifier the same way, so provision both there. The scrubbed
-  # .gaia/audit-ci.yml (written above) still drives the single-member roster;
-  # the lib's builtin fallback is consulted only when the config has no
-  # auditors block, which it does.
+  # .gaia/audit-ci.yml (written above) drives the adopter roster.
   _lib_src="$(dirname "$READER")"
   mkdir -p "$ADOPTER/.claude/hooks/lib"
   cp "$_lib_src/audit-scope.sh" "$ADOPTER/.claude/hooks/lib/audit-scope.sh"

@@ -170,17 +170,14 @@ Editing HEAD between the local stamp and `gh pr merge` invalidates a trailer (tr
 
 <!-- gaia:maintainer-only:start -->
 
-## Template sync (three tracked copies)
+## Template sync (two tracked copies)
 
-In the maintainer repo the audit workflow lives in three byte-identical tracked copies:
+In the maintainer repo the audit workflow lives in two byte-identical tracked copies:
 
-1. `.github/workflows/code-review-audit.yml` — the live gate that runs on every PR.
-2. `.gaia/cli/templates/workflows/code-review-audit.yml.tmpl` — the build artifact `gaia automation install-audit-workflow` installs from, sitting next to the bundled binary.
-3. `.gaia/cli/src/automation/templates/workflows/code-review-audit.yml.tmpl` — the source of truth.
+1. `.github/workflows/code-review-audit.yml`, the live gate that runs on every PR and the source of truth.
+2. `.gaia/cli/templates/workflows/code-review-audit.yml.tmpl`, the build artifact `gaia automation install-audit-workflow` installs from, sitting next to the bundled binary.
 
-`.gaia/cli`'s `pnpm bundle` regenerates copy #2 from copy #3 (its `bundle:adopter` step copies `src/automation/templates/workflows/` into `templates/workflows/`). `.github/audit/tests/self-heal-scope-gate.bats`'s "the three code-review-audit.yml copies are byte-identical" test diffs all three copies against each other, so a mismatch flags whichever pair fell out of sync.
-
-A workflow-touching PR edits copy #3, regenerates copy #2 with `pnpm bundle`, and syncs copy #1 to match, all up front in the same PR. The byte-identity test is a backstop, not the sync mechanism, so propagate the edit deliberately across all three rather than pushing one copy and trusting the test to catch the miss.
+`.gaia/cli`'s `pnpm bundle` regenerates copy #2 from copy #1 (its `bundle:adopter` step). A workflow-touching PR edits copy #1 and runs `pnpm bundle`; `.gaia/scripts/verify-cli-bundle-fresh.sh` fails a PR whose committed copy #2 is stale, and `.github/audit/tests/self-heal-scope-gate.bats` diffs the two copies.
 
 <!-- gaia:maintainer-only:end -->
 
