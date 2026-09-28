@@ -51,7 +51,7 @@ Overrides drift. The `update-deps` skill audits every `overrides` key before a r
 
 ## Transitive refresh
 
-pnpm keeps a transitive dependency's locked version for as long as its parent's range still admits it, so bumping direct specs never pulls in a patched transitive that was already in range. The `update-deps` skill closes that gap with a transitive-refresh phase after its waves and before the post-update override audit: `pnpm update --no-save --depth Infinity` re-resolves the whole tree to the newest in-range versions, and `--no-save` leaves every `package.json` range as declared. pnpm applies `minimumReleaseAge` while it resolves, so the refresh cannot land a version younger than the window. The phase's gating, whole-refresh revert, and report section live in `.claude/skills/update-deps/SKILL.md`.
+pnpm keeps a transitive dependency's locked version for as long as its parent's range still admits it, so bumping direct specs never pulls in a patched transitive that was already in range. The `update-deps` skill closes that gap with a transitive-refresh phase after its waves and before the post-update override audit: `pnpm update --no-save --depth Infinity` re-resolves the whole tree to the newest in-range versions, and `--no-save` leaves every `package.json` range as declared. pnpm applies `minimumReleaseAge` while it resolves, so the refresh cannot land a version younger than the window. The phase runs on every run outside `--scope`, including one whose direct dependencies are all current or all snoozed, so a routine run on an up-to-date repository still picks up in-range transitive fixes. The phase's gating, whole-refresh revert, and report section live in `.claude/skills/update-deps/SKILL.md`.
 
 ## Release-age-aware version selection
 

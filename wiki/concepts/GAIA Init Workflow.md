@@ -24,7 +24,7 @@ Each language-file key is optional (the shipped `_index.ts` carries only `meta.t
 
 **`bootstrap-env`**: Copies `.env.example` to `.env` when `.env` does not yet exist, running as a CLI subprocess so it bypasses Claude Code's `Write(.env)` deny rule. No-op when `.env` already exists or `.env.example` is absent.
 
-**`configure-automation`**: Writes an automation config file (`automation.json` under `.gaia/`; created on first run) with the maintenance-tool mode selections (wiki, stale-branches) and `setup_complete: false`. `/setup-gaia` later flips `setup_complete` to `true` and commits the file as part of its finalize step; it is absent from `.gaia/manifest.json`, so `/update-gaia` never touches it, and it also carries committed team-level GAIA preferences (such as the git isolation policy, once a team sets one) alongside the CI configuration.
+**`configure-automation`**: Writes an automation config file (`automation.json` under `.gaia/`; created on first run) with the maintenance-tool mode selections (wiki, stale-branches) and `setup_complete: false`. `/setup-gaia` later flips `setup_complete` to `true` and commits the file as part of its finalize step; it is absent from `.gaia/manifest.json`, so `/update-gaia` never touches it, and it also carries committed team-level GAIA preferences (such as the git isolation policy and the Dependabot security-updates opt-in, once a team sets them) alongside the CI configuration.
 
 **`finalize`**: Deletes `.claude/commands/gaia-init.md` so init cannot be re-run. It does not commit; the user reviews and commits the init changes.
 

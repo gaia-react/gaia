@@ -42,7 +42,7 @@ If the detection does not fire, fall through to the existing `## Pre-flight: Bra
 git branch --show-current
 ```
 
-If the current branch is `main` or `master` **and not running in CI**, set a flag (`SHOULD_CREATE_BRANCH=true`) but **do not create the branch yet**, branch creation is deferred until after Phase 1 confirms there are packages to update. Creating a branch when there is nothing to update pollutes the branch list.
+If the current branch is `main` or `master` **and not running in CI**, set a flag (`SHOULD_CREATE_BRANCH=true`) but **do not create the branch yet**, branch creation is deferred until the run has confirmed work: after Phase 1 when the apply set is non-empty, or after Phase 5b lands on a refresh-only run (see Branch creation). Creating a branch when there is nothing to update pollutes the branch list.
 
 In CI (`CI=true`, set by GitHub Actions, GitLab CI, CircleCI, and most CI providers), skip branch creation, the workflow owns branch management and pre-creates the appropriate branch before this skill runs.
 
@@ -109,7 +109,13 @@ updates_json="$(mktemp)"
 ```
 
 Read the payload. If `total_count` is `0`, print `All packages are up to date.`
-and exit (no branch, no changes). Each `wave_a[]` and `wave_b[].packages[]` entry
+Under `--scope`, exit (no branch, no changes). Otherwise the apply set is empty
+and the run is **refresh-only** (see Decision): in CI it proceeds straight to
+Phase 5b; interactively, print `Transitive refresh: re-resolve every
+transitive dependency to the newest in-range version past the release-age
+window; reverted whole if the quality gate fails.` and ask with `AskUserQuestion`
+(single-select): **Refresh transitive dependencies** (default, first option) or
+**Skip** (exit now, no branch, no changes, no ledger write). Each `wave_a[]` and `wave_b[].packages[]` entry
 carries `bucket` (`patch` | `minor` | `major` | `nonsemver`), `current`, `latest`,
 `group`, `is_pinned`, and `kind`. `total_count` is the genuine-upgrade count;
 `actionable_count` is for the statusline only (it already subtracts local
@@ -194,7 +200,8 @@ snoozes AND any newly named), or the omitted ones are dropped from the ledger.
   `snoozedGroups`. Leave the ledger untouched (the snoozes already match the
   current targets), no `decline` call. **If the apply set is empty** (every
   outstanding group is snoozed), print
-  `Snoozed N group(s); nothing else to update.` and exit (no branch).
+  `Snoozed N group(s); nothing else to update.` and continue as a refresh-only
+  run.
 - **Update all** (no snoozed groups) → clear any prior snoozes, apply
   everything:
   ```bash
@@ -212,7 +219,9 @@ snoozes AND any newly named), or the omitted ones are dropped from the ledger.
   skipped); an unknown name errors so you can re-ask. Apply set = the payload
   minus the skip set. Echo the resulting apply set back for confirmation.
   **If the apply set is now empty** (everything is skipped), print
-  `Snoozed N group(s); nothing else to update.` and exit (no branch).
+  `Snoozed N group(s); nothing else to update.`, then continue as a
+  refresh-only run, or exit (no branch) when `transitive-refresh` was also
+  named.
   The name `transitive-refresh` is not a group: strip it from the names before
   the `decline` call and skip Phase 5b for this run only, it is never recorded
   in the ledger. If it was the only name given, handle the choice as **Update
@@ -229,6 +238,13 @@ entirely (CI is the freshness backstop and keeps opening PRs).
 Carry the **apply set** (filtered `wave_a` and `wave_b`) into the phases below,
 together with whether Phase 5b runs: yes by default and in CI, no when the human
 skipped `transitive-refresh`, never under `--scope`.
+
+A **refresh-only run** has an empty apply set but still runs Phase 5b: every
+direct dependency is current, or every outstanding group is snoozed or skipped.
+It skips the Override audit + Wave A agent and Phase 5, runs Phase 5b first, and
+creates its branch only when the refresh lands (see Branch creation). Phase 0
+does not run, so Phase 6 runs only after a landed refresh and treats every key
+in the `overrides:` map as retained.
 
 ## Override audit + Wave A: Haiku agent
 
@@ -312,9 +328,14 @@ Report back to the orchestrator with:
 
 ## Branch creation (after discovery)
 
-Phase 1 already exited if nothing was outstanding or the human cancelled or
-skipped everything, so reaching here means the apply set is non-empty. After the
-Haiku agent returns:
+Phase 1 already exited if the human cancelled, or declined the transitive
+refresh with nothing else to apply, so reaching here means the apply set is
+non-empty or the run is refresh-only. With a non-empty apply set, run this
+section after the Haiku agent returns. On a refresh-only run, run it after
+Phase 5b returns, and only when it reports `landed`; on `Nothing moved` or
+`Reverted (<reason>)`, skip this section and every phase up to Phase 7 and go
+straight to the report (no branch exists, and Phase 8's nothing-updated rule
+skips publish):
 
 - Updates were confirmed. **Immediately bust the update-check cache** so the statusline reflects the post-update state on the next session regardless of whether this run completes. Use the Write tool to overwrite `.gaia/local/cache/shared/update-check.json`: read the existing cache first, then write it back unchanged **except** `outdatedCount` set to `0` and `checkedAt` set to the current Unix timestamp. **Carry every other field across verbatim, named here or not.** The cache holds fields this step has no reason to know about, and several are observations nothing later can reconstruct (`auditMemoryBaseline` and the two `harden*` counts), so dropping one silently disarms the nudge it belongs to instead of causing a visible error. If the cache file does not exist, skip this step. (Snoozed groups are already excluded by the ledger on the next real check.)
 
@@ -330,7 +351,7 @@ Otherwise (`SHOULD_CREATE_BRANCH=false`), proceed on the current branch and **re
 ## Phase 5: Wave B (per-group major bumps)
 
 Use the **Wave B groups from the apply set** (the payload's `wave_b` minus any
-group the human skipped). If there are none, skip to Phase 6.
+group the human skipped). If there are none, skip to Phase 5b.
 
 For each Wave B group, classify complexity and assign a model:
 
@@ -403,7 +424,7 @@ Operate on the root pnpm project only: run every `pnpm` command from the project
 
 1. **Snapshot** the three files the refresh could touch, and the direct dependencies' resolved versions:
    ```bash
-   rm -rf /tmp/update-deps-refresh && mkdir /tmp/update-deps-refresh
+   mkdir -p /tmp/update-deps-refresh
    cp package.json pnpm-lock.yaml pnpm-workspace.yaml /tmp/update-deps-refresh/
    pnpm ls --depth 0 --json | jq '.[0] | (.dependencies // {}) + (.devDependencies // {}) | map_values(.version)' > /tmp/update-deps-refresh/direct.json
    ```
@@ -451,6 +472,8 @@ Report back: the outcome (`landed`, `Nothing moved`, or `Reverted (<reason>)`), 
 
 For every override that was **retained** in Phase 0, repeat the full Phase 0 audit (both the peer-dep and the security-floor check, re-capturing a fresh advisory baseline against the now-updated tree) now that surrounding packages have moved. A version that landed in Wave A, Wave B, or the Phase 5b refresh may have resolved the original peer-dep conflict or carried the patched transitive dependency that made a security-floor pin obsolete. The toggle test re-resolves with `pnpm dedupe`, never a bare `pnpm install`, exactly as in Phase 0. This is the last phase that mutates the `overrides:` map, so the lockfile settles here: close it with the same assertion Phase 0 runs, the lockfile's `overrides:` block must list exactly the keys in `pnpm-workspace.yaml`, repairing any drift with `pnpm dedupe`.
 
+On a refresh-only run Phase 0 did not run: Phase 6 runs only when Phase 5b reported `landed`, and treats every key in the `overrides:` map as retained.
+
 Run this as a **Haiku agent**. Its dispatch carries every Phase 6 duty, so pass it all four of these:
 
 - **The recipe.** The Phase 0 section and the Quality gate subsection above verbatim, restricted to the keys retained in Phase 0, so every quality-gate run it owes runs those same commands.
@@ -480,7 +503,7 @@ Build the report **only** from the agent reports returned to you, plus the snooz
 - **Updated packages**: every package the Haiku agent or a Wave B agent reports as `updated`. Nothing else.
 - **Breaking changes applied**: only what Wave B agents report editing in the codebase. Empty if no Wave B group ran.
 - **Transitive refresh**: the Phase 5b agent's result: one row per package it moved (from and to), or one of `Nothing moved`, `Declined in preview`, `Not run (--scope)`, or `Reverted (<reason>)` followed by the rows that would have moved. Always include this section; `Nothing moved` is a result, not an empty section. These rows never go in Updated packages, and a reverted refresh is reported here, not in Skipped packages.
-- **Overrides audited**: only what the Phase 0 / Phase 6 audit reports. If the `overrides:` map was empty, write "None" and move on.
+- **Overrides audited**: only what the Phase 0 / Phase 6 audit reports. If the `overrides:` map was empty, write "None" and move on. On a refresh-only run where Phase 6 did not run, write `Not run (refresh-only, tree unchanged)`.
 - **Skipped packages**: _only_ packages that were attempted and reverted mid-run (peer-dep conflict, quality-gate failure, manual revert by an agent). **Never** include packages filtered out before installation by a policy rule (e.g. the ESLint 9.x cap or the release-age cooldown). Those are silent by design, surfacing them is noise that adopters see every run. When you cannot tell whether a package was policy-filtered before installation or attempted and reverted mid-run, include it in Skipped, a spurious row is recoverable but a silently dropped real failure is not. If nothing was actually skipped during the run, write "None" or omit the table.
 - **Snoozed (deferred this run)**: the companion groups the human chose to skip in the preview, with the version each was snoozed at. These quiet the statusline for 14 days (or until a newer version ships); they are not failures. Omit the section if the human chose "Update all".
 - **Quality gate**: the gate result reported by the agents, verbatim.
@@ -525,7 +548,7 @@ Print the report. Do not commit.
 
 ## Phase 8: Publish
 
-**If nothing was updated** (all packages were already up to date or all were skipped, and the transitive refresh landed nothing), skip this phase entirely.
+**If nothing was updated** (all packages were already up to date or all were skipped, and the transitive refresh did not report `landed`), skip this phase entirely.
 
 **Commit the update.** Stage and commit the applied changes on the current branch. Write the message to a temp file first, then commit from it:
 
@@ -534,7 +557,7 @@ git add -A
 git commit -F <commit-message-file>
 ```
 
-The commit **subject** must be `chore(deps): <concise summary of what moved>` (use `chore(deps-dev):` when every bump is a devDependency). That subject is load-bearing: it triggers the dep-bump bypass in the merge gate (`wiki/concepts/PR Merge Workflow.md`), so the PR needs no code-audit-frontend marker. The bypass waives that member only; any other member the diff dispatches still earns its own marker. Routing the message through a file rather than `-m` keeps package-manager keywords from tripping shell-hook false positives. The Wave agents already ran the full quality gate over their changes, the Phase 5b refresh landed only after passing it, and Phase 6 kept only the override changes that passed it, so nothing else is owed before committing. A Phase 6 gate failure with nothing to restore is already in the report's Quality gate section for the maintainer.
+The commit **subject** must be `chore(deps): <concise summary of what moved>` (use `chore(deps-dev):` when every bump is a devDependency; a refresh-only run uses `chore(deps): refresh transitive dependencies`). That subject is load-bearing: it triggers the dep-bump bypass in the merge gate (`wiki/concepts/PR Merge Workflow.md`), so the PR needs no code-audit-frontend marker. The bypass waives that member only; any other member the diff dispatches still earns its own marker. Routing the message through a file rather than `-m` keeps package-manager keywords from tripping shell-hook false positives. The Wave agents already ran the full quality gate over their changes, the Phase 5b refresh landed only after passing it, and Phase 6 kept only the override changes that passed it, so nothing else is owed before committing. A Phase 6 gate failure with nothing to restore is already in the report's Quality gate section for the maintainer.
 <!-- gaia:maintainer-only:start -->
 A Phase 6b failure is the exception: it keeps its raised pins and reports through its `.gaia/cli pin sync` row, so the required `Vitest (.gaia/cli)` check stays red and step 3's queued merge waits on the maintainer rather than landing.
 <!-- gaia:maintainer-only:end -->
