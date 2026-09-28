@@ -940,7 +940,7 @@ If `verified: true`, print `Verification run succeeded. Conclusion: success. URL
 
 If `verified: false`, surface the URL and AskUserQuestion "Retry verification" / "Abandon" / "Commit without verification". On Retry, re-shell `verify-run` (one retry permitted). On Abandon, delete every file in the generated paths list and fall through to Phase 5; `setup_complete` stays `false`. On Commit without verification, fall through with a flag that adds `(unverified)` to the commit message.
 
-If the command exits non-zero instead of printing `verified` JSON, surface the error `code` from stderr (e.g. `run_not_found`, `workflow_run_failed`, `run_list_failed`) and take the same Retry / Abandon / Commit without verification path. For `run_not_found`, GitHub had not listed the dispatched run within the poll bound, so Retry is the natural first choice.
+If the command exits non-zero instead of printing `verified` JSON, surface the error `code` from stderr (e.g. `run_not_found`, `workflow_run_failed`, `run_list_failed`) and take the same Retry / Abandon / Commit without verification path. For `run_not_found`, no run created after the dispatch was listed within the poll bound. Usually GitHub had not listed it yet, so Retry is the natural first choice; if Retry fails the same way, a local clock running well ahead of GitHub's is the likely cause, so offer Commit without verification.
 
 Because the **Claude GitHub App install** is gated just above, a run that fails at the Claude step with `App token exchange failed: 401 Unauthorized` means the app install did not complete or does not grant this repo access. Tell the user to re-check the install at https://github.com/apps/claude (confirm `<owner>/<repo>` is in scope) before choosing Retry.
 
