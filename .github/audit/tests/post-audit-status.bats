@@ -22,11 +22,12 @@
 #
 # `gh` is mocked on a prepended PATH. The mock answers `gh auth status` (ok or
 # fail per the test), `gh repo view --json nameWithOwner` (a fixed slug),
-# `gh pr view --json headRefOid,title` (the pushed head sha captured by
-# push_branch, plus the PR title when a test writes one),
-# and `gh api .../statuses ... --method POST` (records the invocation only when
-# the target sha exists on a bare remote, proving it is genuinely fetchable,
-# not just that the mock accepted it unconditionally).
+# `gh pr view --json headRefOid,title,files` (the pushed head sha captured by
+# push_branch, plus the PR title and, one per line, the PR's changed paths,
+# when a test writes them), and `gh api .../statuses ... --method POST`
+# (records the invocation only when the target sha exists on a bare remote,
+# proving it is genuinely fetchable, not just that the mock accepted it
+# unconditionally).
 #
 # SANDBOX pushes to a bare remote (origin) so `gh pr view`'s resolution has a
 # real pushed head to target, and so the mock can reject a status posted to a
@@ -57,9 +58,10 @@
 #      short sha re-resolves to the sha the POST actually targeted (#794).
 #   5. Frontend digest unavailable (masked sha256 tool) → declines fail-closed,
 #      never posts a status with a missing or empty digest field.
-#   6. chore(deps) waiver: a dep-bump PR title waives an unmarked
-#      code-audit-frontend and no other member; a non-matching or unreadable
-#      title leaves it pending, and a frontend refusal still outranks the waiver.
+#   6. chore(deps) waiver: a dep-bump PR title with a manifest-only file list
+#      waives an unmarked code-audit-frontend and no other member; a
+#      non-matching or unreadable title, an empty or non-manifest file list,
+#      leaves it pending, and a frontend refusal still outranks the waiver.
 
 setup() {
   . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
@@ -111,10 +113,12 @@ push_branch() {
 #   auth   → exit 0 (ok) or 1 (fail) per $1
 #   repo   → print the fixed slug for `gh repo view --json nameWithOwner --jq`
 #   pr     → print the pushed head sha (from PUSHED_HEAD_FILE, written by
-#            push_branch) for `gh pr view --json headRefOid,title`, then the
-#            title on a second line when PR_TITLE_FILE holds one (the shape
-#            the script's `--jq` joins the two fields into); no title file
-#            prints the sha alone, which reads as an unreadable title
+#            push_branch) for `gh pr view --json headRefOid,title,files`, then
+#            the title on a second line when PR_TITLE_FILE holds one (the
+#            shape the script's `--jq` joins the fields into), then each
+#            changed path on its own line when PR_FILES_FILE holds any; no
+#            title file prints the sha alone, which reads as an unreadable
+#            title
 #   api    → verify the `statuses/<sha>` target exists on the bare REMOTE
 #            before accepting: append the full argv to POST_LOG and exit 0
 #            only when the sha is a fetchable commit there, else exit 1 and
@@ -131,6 +135,7 @@ record="$POST_LOG"
 remote="$REMOTE"
 pushed_head_file="$PUSHED_HEAD_FILE"
 pr_title_file="$BATS_TEST_TMPDIR/pr-title"
+pr_files_file="$BATS_TEST_TMPDIR/pr-files"
 EOF
   cat >> "$GH_BIN/gh" <<'EOF'
 case "$1" in
@@ -143,8 +148,14 @@ case "$1" in
   pr)
     [ -f "$pushed_head_file" ] || exit 1
     cat "$pushed_head_file"
-    [ -s "$pr_title_file" ] && { printf '\n'; cat "$pr_title_file"; }
-    printf '\n'
+    if [ -s "$pr_title_file" ]; then
+      printf '\n'
+      cat "$pr_title_file"
+      printf '\n'
+      [ -s "$pr_files_file" ] && cat "$pr_files_file"
+    else
+      printf '\n'
+    fi
     ;;
   api)
     sha="${2##*statuses/}"
@@ -379,14 +390,21 @@ commit_mixed_diff() {
   [ ! -f "$POST_LOG" ]
 }
 
-# The chore(deps) waiver. A dep-bump pull request waives code-audit-frontend on
-# its title, the predicate the merge hook and CI already read, so a member
-# co-dispatched on a dep-bump diff completes the handshake with its own earned
-# marker. Fail-closed on a non-matching or unreadable title, and refusal-first:
-# a frontend refusal still keeps frontend pending under a dep-bump title.
+# The chore(deps) waiver. A dep-bump pull request waives code-audit-frontend
+# through the same title-plus-file-list predicate the merge hook and CI
+# already read, so a member co-dispatched on a dep-bump diff completes the
+# handshake with its own earned marker. Fail-closed on a non-matching or
+# unreadable title, an empty or non-manifest file list, and refusal-first: a
+# frontend refusal still keeps frontend pending under a dep-bump title.
 install_chore_deps_predicate() {
   mkdir -p "$SANDBOX/.gaia/scripts"
   cp "$THIS_DIR/../../../.gaia/scripts/chore-deps-skip.sh" "$SANDBOX/.gaia/scripts/chore-deps-skip.sh"
+}
+
+# Write $@ as the PR's changed-path list the mock's `pr` case reads back, one
+# path per line.
+install_pr_files() {
+  printf '%s\n' "$@" > "$BATS_TEST_TMPDIR/pr-files"
 }
 
 # Run the shell member's handshake with frontend unmarked, the title (if any)
@@ -399,12 +417,13 @@ run_shell_member_handshake() {
   run run_helper "$marker"
 }
 
-@test "chore(deps) waiver: a dep-bump title waives frontend, so the co-dispatched member's marker posts success" {
+@test "chore(deps) waiver: a dep-bump title with a manifest-only file list waives frontend, so the co-dispatched member's marker posts success" {
   install_gh_mock ok
   install_resolver
   install_chore_deps_predicate
   commit_mixed_diff
   printf '%s' "chore(deps): bump vite to 8.3.0" > "$BATS_TEST_TMPDIR/pr-title"
+  install_pr_files "package.json" "pnpm-lock.yaml"
   head_sha=$(git -C "$SANDBOX" rev-parse HEAD)
   tree=$(current_tree)
   frontend_digest=$(digest_of "$SANDBOX" code-audit-frontend)
@@ -424,6 +443,36 @@ run_shell_member_handshake() {
   install_chore_deps_predicate
   commit_mixed_diff
   printf '%s' "fix(cli): raise shared pins" > "$BATS_TEST_TMPDIR/pr-title"
+  install_pr_files "package.json"
+
+  run_shell_member_handshake
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "status: declined: members pending code-audit-frontend" ]
+  [ ! -f "$POST_LOG" ]
+}
+
+@test "chore(deps) waiver: a dep-bump title whose PR changes app/x.ts leaves frontend pending" {
+  install_gh_mock ok
+  install_resolver
+  install_chore_deps_predicate
+  commit_mixed_diff
+  printf '%s' "chore(deps): bump vite to 8.3.0" > "$BATS_TEST_TMPDIR/pr-title"
+  install_pr_files "package.json" "app/x.ts"
+
+  run_shell_member_handshake
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "status: declined: members pending code-audit-frontend" ]
+  [ ! -f "$POST_LOG" ]
+}
+
+@test "chore(deps) waiver: an empty file list leaves frontend pending" {
+  install_gh_mock ok
+  install_resolver
+  install_chore_deps_predicate
+  commit_mixed_diff
+  printf '%s' "chore(deps): bump vite to 8.3.0" > "$BATS_TEST_TMPDIR/pr-title"
 
   run_shell_member_handshake
 
@@ -438,6 +487,7 @@ run_shell_member_handshake() {
   install_chore_deps_predicate
   commit_mixed_diff
   printf '%s' "chore(deps): bump vite to 8.3.0" > "$BATS_TEST_TMPDIR/pr-title"
+  install_pr_files "package.json" "pnpm-lock.yaml"
   # Frontend holds its own marker and shell holds none. Only a waiver widened
   # past frontend would clear shell here, so this is what pins it to frontend.
   frontend_digest=$(digest_of "$SANDBOX" code-audit-frontend)
@@ -465,12 +515,28 @@ run_shell_member_handshake() {
   [ ! -f "$POST_LOG" ]
 }
 
+@test "chore(deps) waiver: a files line does not fold into the title (pr_title is line 2 only)" {
+  install_gh_mock ok
+  install_resolver
+  install_chore_deps_predicate
+  commit_mixed_diff
+  printf '%s' "fix(cli): raise shared pins" > "$BATS_TEST_TMPDIR/pr-title"
+  install_pr_files "package.json" "pnpm-lock.yaml"
+
+  run_shell_member_handshake
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "status: declined: members pending code-audit-frontend" ]
+  [ ! -f "$POST_LOG" ]
+}
+
 @test "chore(deps) waiver: a frontend refusal keeps frontend pending under a dep-bump title" {
   install_gh_mock ok
   install_resolver
   install_chore_deps_predicate
   commit_mixed_diff
   printf '%s' "chore(deps): bump vite to 8.3.0" > "$BATS_TEST_TMPDIR/pr-title"
+  install_pr_files "package.json" "pnpm-lock.yaml"
   frontend_digest=$(digest_of "$SANDBOX" code-audit-frontend)
   write_refusal_body "$SANDBOX/.gaia/local/audit/${frontend_digest}.refused" code-audit-frontend
 
