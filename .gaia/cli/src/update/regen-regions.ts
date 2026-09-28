@@ -679,9 +679,10 @@ const collectScopeDigests = (
 
       // A link's pre-image is the target it holds, which is the whole of it:
       // recording that makes a link restorable in its own right, so the
-      // confinement guarantee covers every shape a link can be left in
-      // (deleted, retargeted, replaced by a file) rather than only the created
-      // one. Reading it never follows the link, and a dangling one reads fine.
+      // confinement guarantee covers a link the spawn retargets or replaces
+      // with a file, not only one it creates. A deleted link is left deleted,
+      // like any deleted path. Reading it never follows the link, and a
+      // dangling one reads fine.
       // `'buffer'`, never `'utf8'`: see SnapshotEntry.
       if (stat.isSymbolicLink()) {
         try {
