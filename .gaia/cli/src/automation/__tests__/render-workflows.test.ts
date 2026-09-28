@@ -35,12 +35,10 @@ const captureIo = () => {
   };
 };
 
-const allFourCi: AutomationConfig = {
-  pnpm_audit: {mode: 'ci', schedule: 'daily'},
+const allCi: AutomationConfig = {
   setup_complete: true,
   setup_opted_out: false,
   stale_branches: {mode: 'ci', schedule: 'monthly'},
-  update_deps: {mode: 'ci', schedule: 'weekly'},
   update_gaia: {mode: 'local'},
   version: 1,
   wiki: {mode: 'ci', schedule: 'daily'},
@@ -61,36 +59,29 @@ describe('automation render-workflows', () => {
     vi.restoreAllMocks();
   });
 
-  test('writes one file per CI-mode tool when all four are configured', () => {
-    sandbox.writeConfig(allFourCi);
+  test('writes one file per CI-mode tool when both are configured', () => {
+    sandbox.writeConfig(allCi);
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
     const exit = run(['--out-dir', outDir], {cwd: sandbox.root});
 
     expect(exit).toBe(0);
 
-    for (const tool of [
-      'wiki',
-      'update-deps',
-      'pnpm-audit',
-      'stale-branches',
-    ]) {
+    for (const tool of ['wiki', 'stale-branches']) {
       expect(existsSync(path.join(outDir, `gaia-ci-${tool}.yml`))).toBe(true);
     }
   });
 
   test('writes only the requested subset when --tools is given', () => {
-    sandbox.writeConfig(allFourCi);
+    sandbox.writeConfig(allCi);
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
-    const exit = run(['--out-dir', outDir, '--tools', 'wiki,update-deps'], {
+    const exit = run(['--out-dir', outDir, '--tools', 'wiki'], {
       cwd: sandbox.root,
     });
 
     expect(exit).toBe(0);
     expect(existsSync(path.join(outDir, 'gaia-ci-wiki.yml'))).toBe(true);
-    expect(existsSync(path.join(outDir, 'gaia-ci-update-deps.yml'))).toBe(true);
-    expect(existsSync(path.join(outDir, 'gaia-ci-pnpm-audit.yml'))).toBe(false);
     expect(existsSync(path.join(outDir, 'gaia-ci-stale-branches.yml'))).toBe(
       false
     );
@@ -100,7 +91,7 @@ describe('automation render-workflows', () => {
   // subset render leaves it calling files that were never written, and a
   // missing `uses:` target fails the run before any job starts.
   test('warns when --tools leaves a scheduler-called workflow unrendered', () => {
-    sandbox.writeConfig(allFourCi);
+    sandbox.writeConfig(allCi);
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
     const exit = run(['--out-dir', outDir, '--tools', 'wiki'], {
@@ -109,12 +100,12 @@ describe('automation render-workflows', () => {
 
     expect(exit).toBe(0);
     expect(io.errors.join('')).toContain(
-      'scheduler: calls update-deps, pnpm-audit, stale-branches, which --tools did not render'
+      'scheduler: calls stale-branches, which --tools did not render'
     );
   });
 
   test('warns about no unrendered tool when every tool is rendered', () => {
-    sandbox.writeConfig(allFourCi);
+    sandbox.writeConfig(allCi);
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
     const exit = run(['--out-dir', outDir], {cwd: sandbox.root});
@@ -124,7 +115,7 @@ describe('automation render-workflows', () => {
   });
 
   test('writes nothing in --dry-run mode and reports per-tool byte counts', () => {
-    sandbox.writeConfig(allFourCi);
+    sandbox.writeConfig(allCi);
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
     const exit = run(['--out-dir', outDir, '--dry-run'], {cwd: sandbox.root});
@@ -134,19 +125,13 @@ describe('automation render-workflows', () => {
     const stdout = io.outs.join('');
     expect(stdout).toMatch(/wiki: \d+ bytes -> .*gaia-ci-wiki\.yml/u);
     expect(stdout).toMatch(
-      /update-deps: \d+ bytes -> .*gaia-ci-update-deps\.yml/u
-    );
-    expect(stdout).toMatch(
-      /pnpm-audit: \d+ bytes -> .*gaia-ci-pnpm-audit\.yml/u
-    );
-    expect(stdout).toMatch(
       /stale-branches: \d+ bytes -> .*gaia-ci-stale-branches\.yml/u
     );
   });
 
   test('skips tools whose mode is local and writes the others', () => {
     const config: AutomationConfig = {
-      ...allFourCi,
+      ...allCi,
       wiki: {mode: 'local'},
     };
     sandbox.writeConfig(config);
@@ -156,24 +141,26 @@ describe('automation render-workflows', () => {
 
     expect(exit).toBe(0);
     expect(existsSync(path.join(outDir, 'gaia-ci-wiki.yml'))).toBe(false);
-    expect(existsSync(path.join(outDir, 'gaia-ci-update-deps.yml'))).toBe(true);
+    expect(existsSync(path.join(outDir, 'gaia-ci-stale-branches.yml'))).toBe(
+      true
+    );
     expect(io.errors.join('')).toContain('wiki: skipped (mode=local)');
   });
 
   test('skips tools whose mode is off', () => {
     const config: AutomationConfig = {
-      ...allFourCi,
-      update_deps: {mode: 'off'},
+      ...allCi,
+      stale_branches: {mode: 'off'},
     };
     sandbox.writeConfig(config);
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
     run(['--out-dir', outDir], {cwd: sandbox.root});
 
-    expect(existsSync(path.join(outDir, 'gaia-ci-update-deps.yml'))).toBe(
+    expect(existsSync(path.join(outDir, 'gaia-ci-stale-branches.yml'))).toBe(
       false
     );
-    expect(io.errors.join('')).toContain('update-deps: skipped (mode=off)');
+    expect(io.errors.join('')).toContain('stale-branches: skipped (mode=off)');
   });
 
   test('exits non-zero with config_missing when there is no config', () => {
@@ -214,7 +201,7 @@ describe('automation render-workflows', () => {
   });
 
   test('creates a missing --out-dir with mkdir -p semantics', () => {
-    sandbox.writeConfig(allFourCi);
+    sandbox.writeConfig(allCi);
     const outDir = path.join(sandbox.root, 'nested', 'deeper', 'workflows');
 
     const exit = run(['--out-dir', outDir], {cwd: sandbox.root});
@@ -224,7 +211,7 @@ describe('automation render-workflows', () => {
   });
 
   test('overwrites existing files on a repeat invocation (idempotent)', () => {
-    sandbox.writeConfig(allFourCi);
+    sandbox.writeConfig(allCi);
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
     run(['--out-dir', outDir], {cwd: sandbox.root});
@@ -237,7 +224,7 @@ describe('automation render-workflows', () => {
   });
 
   test('rejects unknown flags', () => {
-    sandbox.writeConfig(allFourCi);
+    sandbox.writeConfig(allCi);
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
     const exit = run(['--out-dir', outDir, '--bogus'], {cwd: sandbox.root});
@@ -259,7 +246,7 @@ describe('automation render-workflows', () => {
   });
 
   test('rejects --tools with an unknown tool', () => {
-    sandbox.writeConfig(allFourCi);
+    sandbox.writeConfig(allCi);
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
     const exit = run(['--out-dir', outDir, '--tools', 'wiki,bogus'], {
@@ -279,7 +266,7 @@ describe('automation render-workflows', () => {
   });
 
   test('writes byte-identical content to what renderWorkflowTemplate produces directly', () => {
-    sandbox.writeConfig(allFourCi);
+    sandbox.writeConfig(allCi);
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
     run(['--out-dir', outDir], {cwd: sandbox.root});
@@ -289,12 +276,7 @@ describe('automation render-workflows', () => {
     // construction (same render path). This test asserts the byte
     // count is non-trivial so we catch a regression where the writer
     // emits an empty file.
-    for (const tool of [
-      'wiki',
-      'update-deps',
-      'pnpm-audit',
-      'stale-branches',
-    ]) {
+    for (const tool of ['wiki', 'stale-branches']) {
       const content = readFileSync(
         path.join(outDir, `gaia-ci-${tool}.yml`),
         'utf8'
@@ -302,5 +284,43 @@ describe('automation render-workflows', () => {
       expect(content.length).toBeGreaterThan(500);
       expect(content).toContain(`gaia-ci-${tool}`);
     }
+  });
+
+  test('a legacy config with update_deps/pnpm_audit in ci renders neither workflow nor schedules them', () => {
+    writeFileSync(
+      automationConfigPath(sandbox.root),
+      JSON.stringify({
+        ...allCi,
+        pnpm_audit: {mode: 'ci', schedule: 'daily'},
+        update_deps: {mode: 'ci', schedule: 'weekly'},
+      }),
+      'utf8'
+    );
+    const outDir = path.join(sandbox.root, '.github', 'workflows');
+
+    const exit = run(['--out-dir', outDir], {cwd: sandbox.root});
+
+    expect(exit).toBe(0);
+    expect(existsSync(path.join(outDir, 'gaia-ci-wiki.yml'))).toBe(true);
+    expect(existsSync(path.join(outDir, 'gaia-ci.yml'))).toBe(true);
+    expect(existsSync(path.join(outDir, 'gaia-ci-update-deps.yml'))).toBe(
+      false
+    );
+    expect(existsSync(path.join(outDir, 'gaia-ci-pnpm-audit.yml'))).toBe(false);
+    const scheduler = readFileSync(path.join(outDir, 'gaia-ci.yml'), 'utf8');
+    expect(scheduler).not.toContain('update-deps');
+    expect(scheduler).not.toContain('pnpm-audit');
+  });
+
+  test('rejects --tools pnpm-audit as an unknown tool', () => {
+    sandbox.writeConfig(allCi);
+    const outDir = path.join(sandbox.root, '.github', 'workflows');
+
+    const exit = run(['--out-dir', outDir, '--tools', 'pnpm-audit'], {
+      cwd: sandbox.root,
+    });
+
+    expect(exit).not.toBe(0);
+    expect(io.errors.join('')).toContain('"code":"invalid_arguments"');
   });
 });

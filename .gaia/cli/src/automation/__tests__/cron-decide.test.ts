@@ -86,16 +86,7 @@ describe('automation cron-decide', () => {
     expect(decision.skip_log_line).toBeNull();
   });
 
-  test('non-wiki tools return tool_off-shaped placeholder', () => {
-    sandbox.writeConfig(VALID_BASE_CONFIG);
-    const exit = runCronDecide(['update-deps', '--json'], {cwd: sandbox.root});
-    expect(exit).toBe(0);
-    const decision = decisionFromStdout(stdio.outputs.join(''));
-    expect(decision.decision).toBe('skip');
-    expect(decision.reason).toBe('tool_off');
-  });
-
-  test('non-wiki tool with mode != off still returns the placeholder', () => {
+  test('non-wiki tool with mode != off skips with reason not_implemented', () => {
     sandbox.writeConfig({
       ...VALID_BASE_CONFIG,
       stale_branches: {mode: 'ci', schedule: 'weekly'},
@@ -106,9 +97,21 @@ describe('automation cron-decide', () => {
     expect(exit).toBe(0);
     const decision = decisionFromStdout(stdio.outputs.join(''));
     expect(decision.decision).toBe('skip');
-    expect(decision.reason).toBe('tool_off');
+    expect(decision.reason).toBe('not_implemented');
     expect(decision.skip_log_line).toContain('cron-decide not yet implemented');
   });
+
+  test.each(['pnpm-audit', 'update-deps'])(
+    'rejects %s as an unknown tool',
+    (tool) => {
+      sandbox.writeConfig(VALID_BASE_CONFIG);
+      const exit = runCronDecide([tool, '--json'], {cwd: sandbox.root});
+      expect(exit).toBe(EXIT_CODES.UNKNOWN_SUBCOMMAND);
+      const errors = stdio.errors.join('');
+      expect(errors).toContain('"code":"invalid_arguments"');
+      expect(errors).toContain('unknown tool');
+    }
+  );
 
   test('no adopter cron turns red when isolation_policy is absent (UAT-002)', () => {
     sandbox.writeConfig(VALID_BASE_CONFIG);

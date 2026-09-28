@@ -19,11 +19,9 @@ export type Sandbox = {
 };
 
 export const VALID_BASE_CONFIG: AutomationConfig = {
-  pnpm_audit: {mode: 'local', schedule: 'weekly'},
   setup_complete: true,
   setup_opted_out: false,
   stale_branches: {mode: 'ci', schedule: 'weekly'},
-  update_deps: {mode: 'off'},
   update_gaia: {mode: 'local'},
   version: 1,
   wiki: {mode: 'ci', schedule: 'daily'},

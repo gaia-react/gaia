@@ -6,10 +6,10 @@
 #
 # WHY THIS EXISTS AT ALL. Every dependency-CVE surface in this repository runs
 # `pnpm audit` from the repository root and nowhere else: the `/update-deps`
-# skill's override audit, the code-review agent's advisory oracle, and the CI
-# cron template. A second workspace root is invisible to all of them, because a
-# root's own pnpm-workspace.yaml is what makes it a separate root in the first
-# place, so root's closure never contains it. `.gaia/cli` is such a root, its
+# skill's override audit and the code-review agent's advisory oracle. A second
+# workspace root is invisible to both of them, because a root's own
+# pnpm-workspace.yaml is what makes it a separate root in the first place, so
+# root's closure never contains it. `.gaia/cli` is such a root, its
 # overrides map carries security floors retired by hand, and its build inlines
 # its dependencies into a binary adopters receive. Nothing reported on it.
 #

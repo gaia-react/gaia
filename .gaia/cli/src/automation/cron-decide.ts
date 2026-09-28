@@ -4,8 +4,8 @@
  * The smart-cron decision primitive. Reads `.gaia/automation.json` and
  * returns a deterministic `{decision, reason, skip_log_line}` triple.
  * Pure config-only: it never reads or mutates any state file. An enabled
- * wiki tool runs; a non-wiki tool emits a not-yet-implemented placeholder
- * skip; a tool whose mode is `off` emits a tool_off skip.
+ * wiki tool runs; a non-wiki tool emits a not_implemented skip; a tool
+ * whose mode is `off` emits a tool_off skip.
  *
  * Exit code 0 covers both `run` and `skip` decisions. Non-zero covers
  * configuration errors (missing or malformed config).
@@ -30,16 +30,16 @@ type CronDecision = {
   skip_log_line: null | string;
 };
 
-type CronReason = 'enabled' | 'tool_off';
+type CronReason = 'enabled' | 'not_implemented' | 'tool_off';
 
 const HELP_TEXT = `Usage: gaia automation cron-decide <tool> [--json]
 
   Smart-cron decision primitive. Reads .gaia/automation.json and emits
   {decision, reason, skip_log_line}.
   Decision priority:
-    1. tool_off   (config.<tool>.mode == "off")
-    2. enabled    (wiki, mode != off -> run)
-  Non-wiki tools are not yet implemented and skip with a placeholder.
+    1. tool_off        (config.<tool>.mode == "off")
+    2. enabled          (wiki, mode != off -> run)
+    3. not_implemented (any other tool; skip)
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
@@ -66,13 +66,11 @@ const decide = (args: DecideArgs): CronDecision => {
     };
   }
 
-  // Non-wiki tools are not yet implemented. Emit a clearly-tagged
-  // tool_off-shaped placeholder so the workflow can see the limitation
-  // and bail.
+  // Non-wiki tools are not yet implemented.
   if (tool !== 'wiki') {
     return {
       decision: 'skip',
-      reason: 'tool_off',
+      reason: 'not_implemented',
       skip_log_line: `cron-decide not yet implemented for ${tool}; skipping`,
     };
   }

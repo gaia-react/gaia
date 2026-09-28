@@ -18,8 +18,6 @@ export type WorkflowTemplateVars = {
   cron: string;
   enable_auto_merge: boolean;
   enable_diff_size_check: boolean;
-  enable_major_bump_split: boolean;
-  enable_security_pr: boolean;
   enable_stale_branch_delete: boolean;
   needs_human_label: string;
   pr_label: string;
@@ -35,16 +33,12 @@ const CRON_BY_SCHEDULE: Readonly<Record<WorkflowSchedule, string>> = {
 };
 
 const DEFAULT_SCHEDULE_BY_TOOL: Readonly<Record<ToolId, WorkflowSchedule>> = {
-  'pnpm-audit': 'daily',
   'stale-branches': 'monthly',
-  'update-deps': 'weekly',
   wiki: 'daily',
 };
 
 const WORKFLOW_NAME_BY_TOOL: Readonly<Record<ToolId, string>> = {
-  'pnpm-audit': 'GAIA CI - pnpm audit',
   'stale-branches': 'GAIA CI - Stale Branches',
-  'update-deps': 'GAIA CI - Update Deps',
   wiki: 'GAIA CI - Wiki',
 };
 
@@ -65,10 +59,10 @@ export const buildWorkflowVars = (
 
   // Defensive narrowing: TOOL_ID_TO_CONFIG_KEY only points at ToolConfig
   // entries, but the AutomationConfig union also contains UpdateGaiaConfig
-  // and primitive values. The four ToolIds are guaranteed by construction
-  // to map to ToolConfig rows. `ToolConfigKey` resolves `config[configKey]`
-  // to `ToolConfig` directly, which is never `null`, so only the `typeof`
-  // and `'mode' in` checks are meaningful here.
+  // and primitive values. Every ToolId is guaranteed by construction to map
+  // to a ToolConfig row. `ToolConfigKey` resolves `config[configKey]` to
+  // `ToolConfig` directly, which is never `null`, so only the `typeof` and
+  // `'mode' in` checks are meaningful here.
   if (typeof toolConfig !== 'object' || !('mode' in toolConfig)) {
     return null;
   }
@@ -89,8 +83,6 @@ export const buildWorkflowVars = (
     // The auto-merge partial gates its body on this flag.
     enable_auto_merge: tool !== 'stale-branches',
     enable_diff_size_check: tool === 'wiki',
-    enable_major_bump_split: tool === 'update-deps',
-    enable_security_pr: tool === 'pnpm-audit',
     enable_stale_branch_delete: tool === 'stale-branches',
     needs_human_label: 'needs-human',
     pr_label: 'gaia-ci',

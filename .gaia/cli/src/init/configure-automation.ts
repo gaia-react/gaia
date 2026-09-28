@@ -29,8 +29,6 @@ import {markStepCompleted} from './util/state.js';
 
 const HELP_TEXT = String.raw`Usage: gaia init configure-automation \
   --wiki <ci|local|off> \
-  --update-deps <ci|local|off> \
-  --pnpm-audit <ci|local|off> \
   --stale-branches <ci|local|off> \
   [--sandbox-recommended <true|false>] \
   [--isolation-policy <${ISOLATION_POLICIES.join('|')}>]
@@ -41,8 +39,6 @@ const HELP_TEXT = String.raw`Usage: gaia init configure-automation \
 
   Required flags:
     --wiki <ci|local|off>
-    --update-deps <ci|local|off>
-    --pnpm-audit <ci|local|off>
     --stale-branches <ci|local|off>
 
   Optional flags:
@@ -79,10 +75,8 @@ type FlagParseSuccess = {
 
 type Flags = {
   isolationPolicy?: IsolationPolicy;
-  pnpmAudit: ToolMode;
   sandboxRecommended?: boolean;
   staleBranches: ToolMode;
-  updateDeps: ToolMode;
   wiki: ToolMode;
 };
 
@@ -113,26 +107,22 @@ const takeMode = (
   return {mode: taken.value, ok: true};
 };
 
-// The four tool-mode flags, required on every call. `sandboxRecommended` is
+// The tool-mode flags, required on every call. `sandboxRecommended` is
 // optional and parsed separately below (its value domain is true/false, not
 // ci/local/off, so it does not fit the `takeMode` shape).
-type RequiredFlagKey = 'pnpmAudit' | 'staleBranches' | 'updateDeps' | 'wiki';
+type RequiredFlagKey = 'staleBranches' | 'wiki';
 
 // Object lookup instead of an if/else-if chain per flag: every flag follows
 // the identical take-mode-and-assign shape, so dispatching through a table
 // keeps `parseFlags` itself flat (a Map, since a plain object's index
 // signature would hide the genuine "unknown token" miss from TypeScript).
 const FLAG_SPECS = new Map<string, {flag: string; key: RequiredFlagKey}>([
-  ['--pnpm-audit', {flag: '--pnpm-audit', key: 'pnpmAudit'}],
   ['--stale-branches', {flag: '--stale-branches', key: 'staleBranches'}],
-  ['--update-deps', {flag: '--update-deps', key: 'updateDeps'}],
   ['--wiki', {flag: '--wiki', key: 'wiki'}],
 ]);
 
 const REQUIRED_MESSAGE: Readonly<Record<RequiredFlagKey, string>> = {
-  pnpmAudit: '--pnpm-audit is required',
   staleBranches: '--stale-branches is required',
-  updateDeps: '--update-deps is required',
   wiki: '--wiki is required',
 };
 
@@ -304,10 +294,8 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
   return {
     flags: {
       isolationPolicy: scalars.isolationPolicy,
-      pnpmAudit: flags.pnpmAudit,
       sandboxRecommended: scalars.sandboxRecommended,
       staleBranches: flags.staleBranches,
-      updateDeps: flags.updateDeps,
       wiki: flags.wiki,
     } as Flags,
     ok: true,
@@ -323,7 +311,6 @@ const buildConfig = (flags: Flags): AutomationConfig => ({
   ...(flags.isolationPolicy === undefined ?
     {}
   : {isolation_policy: flags.isolationPolicy}),
-  pnpm_audit: {mode: flags.pnpmAudit, schedule: 'daily'},
   // Omit the key entirely when the flag was never passed (no recommendation
   // on file), rather than writing an explicit `undefined`.
   ...(flags.sandboxRecommended === undefined ?
@@ -332,7 +319,6 @@ const buildConfig = (flags: Flags): AutomationConfig => ({
   setup_complete: false,
   setup_opted_out: false,
   stale_branches: {mode: flags.staleBranches, schedule: 'monthly'},
-  update_deps: {mode: flags.updateDeps, schedule: 'weekly'},
   update_gaia: {mode: 'local'},
   version: 1,
   wiki: {mode: flags.wiki},
@@ -399,9 +385,7 @@ export const run = (
 
   try {
     markStepCompleted(cwd, STEP_NAME, {
-      pnpm_audit: parsed.flags.pnpmAudit,
       stale_branches: parsed.flags.staleBranches,
-      update_deps: parsed.flags.updateDeps,
       wiki: parsed.flags.wiki,
     });
   } catch (error) {

@@ -14,11 +14,9 @@ import {renderWorkflowTemplate} from '../render.js';
 import {buildSchedulerVars, buildWorkflowVars} from '../workflow-vars.js';
 
 const baseConfig: AutomationConfig = {
-  pnpm_audit: {mode: 'ci', schedule: 'daily'},
   setup_complete: true,
   setup_opted_out: false,
   stale_branches: {mode: 'ci', schedule: 'monthly'},
-  update_deps: {mode: 'ci', schedule: 'weekly'},
   update_gaia: {mode: 'local'},
   version: 1,
   wiki: {mode: 'ci', schedule: 'daily'},
@@ -107,12 +105,7 @@ const renderForTool = (tool: ToolId): string => {
   );
 };
 
-const tools: readonly ToolId[] = [
-  'wiki',
-  'update-deps',
-  'pnpm-audit',
-  'stale-branches',
-];
+const tools: readonly ToolId[] = ['wiki', 'stale-branches'];
 
 // Extracted so the `if (!result.success) throw` lives outside the test
 // body (vitest/no-conditional-in-test forbids conditionals in test bodies);

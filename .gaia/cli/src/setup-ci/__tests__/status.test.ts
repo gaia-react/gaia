@@ -68,8 +68,8 @@ describe('setup-ci status', () => {
   test('returns configured: true with full report when config is present', () => {
     sandbox.writeConfig({
       ...VALID_BASE_CONFIG,
-      pnpm_audit: {mode: 'local', schedule: 'weekly'},
       setup_complete: false,
+      stale_branches: {mode: 'local', schedule: 'monthly'},
     });
 
     const exit = run(['--json'], {cwd: sandbox.root});
@@ -82,12 +82,8 @@ describe('setup-ci status', () => {
     expect(parsed.configured).toBe(true);
     expect(parsed.setup_complete).toBe(false);
     expect(parsed.setup_opted_out).toBe(false);
-    // `pnpm_audit` is local, so only the other three are CI-mode.
-    expect(parsed.tools_enabled).toEqual([
-      'wiki',
-      'update-deps',
-      'stale-branches',
-    ]);
+    // `stale_branches` is local, so only wiki is CI-mode.
+    expect(parsed.tools_enabled).toEqual(['wiki']);
   });
 
   test('reports nudge_dismissed from .gaia/local/automation.json when present', () => {

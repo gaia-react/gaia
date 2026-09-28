@@ -24,11 +24,9 @@ type Sandbox = {
 };
 
 const VALID_CONFIG = {
-  pnpm_audit: {mode: 'local', schedule: 'weekly'},
   setup_complete: true,
   setup_opted_out: false,
   stale_branches: {mode: 'ci', schedule: 'weekly'},
-  update_deps: {mode: 'off'},
   update_gaia: {mode: 'local'},
   version: 1,
   wiki: {mode: 'ci', schedule: 'daily'},
@@ -97,7 +95,7 @@ describe('schemas/automation-config', () => {
       expect(() =>
         AutomationConfigSchema.parse({
           ...VALID_CONFIG,
-          update_deps: {mode: 'off'},
+          stale_branches: {mode: 'off'},
         })
       ).not.toThrow();
     });
@@ -172,6 +170,10 @@ describe('schemas/automation-config', () => {
         })
       ).not.toThrow();
     });
+
+    test('TOOL_IDS is wiki and stale-branches only', () => {
+      expect(TOOL_IDS).toEqual(['wiki', 'stale-branches']);
+    });
   });
 
   describe('TOOL_ID_TO_CONFIG_KEY <-> CONFIG_KEY_TO_TOOL_ID round-trip', () => {
@@ -207,6 +209,29 @@ describe('schemas/automation-config', () => {
       expect(result.config.wiki.mode).toBe('ci');
     });
 
+    test('a config still listing update_deps and pnpm_audit parses ok and drops them', () => {
+      writeFileSync(
+        sandbox.configPath,
+        JSON.stringify({
+          ...VALID_CONFIG,
+          pnpm_audit: {mode: 'ci', schedule: 'daily'},
+          update_deps: {mode: 'ci', schedule: 'weekly'},
+        }),
+        'utf8'
+      );
+      const result = readAutomationConfig(sandbox.root);
+      expect(result.status).toBe('ok');
+      assert.ok(result.status === 'ok');
+      expect('update_deps' in result.config).toBe(false);
+      expect('pnpm_audit' in result.config).toBe(false);
+    });
+
+    test('a config omitting update_deps and pnpm_audit also parses ok', () => {
+      writeFileSync(sandbox.configPath, JSON.stringify(VALID_CONFIG), 'utf8');
+      const result = readAutomationConfig(sandbox.root);
+      expect(result.status).toBe('ok');
+    });
+
     test('round-trips a fully-valid config unchanged (no regression)', () => {
       writeFileSync(sandbox.configPath, JSON.stringify(VALID_CONFIG), 'utf8');
       const result = readAutomationConfig(sandbox.root);
@@ -225,9 +250,7 @@ describe('schemas/automation-config', () => {
       expect(result.status).toBe('ok');
       assert.ok(result.status === 'ok');
       expect(result.config.wiki.mode).toBe('off');
-      expect(result.config.pnpm_audit).toEqual(VALID_CONFIG.pnpm_audit);
       expect(result.config.stale_branches).toEqual(VALID_CONFIG.stale_branches);
-      expect(result.config.update_deps).toEqual(VALID_CONFIG.update_deps);
       expect(result.config.setup_complete).toBe(true);
       expect(result.config.setup_opted_out).toBe(false);
       expect(result.config.version).toBe(1);

@@ -22,7 +22,7 @@ tags: [dependency, security, quality]
 
 Two filters keep the same unfixable transitive advisory from spamming every review:
 
-1. **Severity threshold**: only `high` and `critical` advisories are candidates (matches the CI floor; drops the long tail of low/moderate transitive noise). Within-run dedup is free: the JSON is keyed by advisory ID.
+1. **Severity threshold**: only `high` and `critical` advisories are candidates (drops the long tail of low/moderate transitive noise). Within-run dedup is free: the JSON is keyed by advisory ID.
 2. **Baseline allowlist**: `.gaia/local/dep-audit-baseline.json` (machine-local, gitignored). Acknowledge an unfixable advisory by its ID and it is suppressed (count-only) on later reviews:
 
    ```jsonc
@@ -31,9 +31,9 @@ Two filters keep the same unfixable transitive advisory from spamming every revi
 
    The audit only READS this file: acknowledging is an explicit operator action, never something the audit writes (writing it would turn the advisory into a self-managed suppression gate). Missing file ⇒ empty baseline ⇒ every high/critical advisory surfaces.
 
-## Distinct from the CI blocking path
+## Surfaces
 
-This local check is read-only. GAIA's automation renders a `pnpm audit` workflow, called on a schedule by `gaia-ci.yml`, that opens review-required security PRs and issues for high/critical advisories; that is the blocking placement, on the network side. It is generated per project from `.gaia/automation.json` by `gaia automation render-workflows`, so it runs only where a project has configured it. The local check duplicates none of it: it opens no PR, files no issue, bumps no package. Where that workflow is rendered, CI blocks the merge train; the local run only informs one review.
+No workflow GAIA renders into your project runs `pnpm audit` on a schedule or opens security PRs or issues. The two `pnpm audit` surfaces are `/update-deps`'s override audit (`wiki/decisions/pnpm.md`) and this local, read-only advisory check inside the Code Review Audit Agent; neither files a security PR or issue on its own. There is no CI blocking path.
 
 ## Acting on output
 

@@ -6,9 +6,9 @@
 #
 # The argument is the snake_case CONFIG KEY from the automation schema,
 # the same identifier used as the top-level field in .gaia/automation.json
-# (e.g. `wiki`, `pnpm_audit`, `stale_branches`, `update_deps`, `update_gaia`).
-# It is NOT necessarily the CLI tool id (kebab-case `pnpm-audit` vs
-# snake_case `pnpm_audit`). Callers must pass the config-key form.
+# (e.g. `wiki`, `stale_branches`, `update_gaia`).
+# It is NOT necessarily the CLI tool id (kebab-case `stale-branches` vs
+# snake_case `stale_branches`). Callers must pass the config-key form.
 #
 # Usage (from a hook script):
 #   . .claude/hooks/lib/gaia-ci-defer.sh

@@ -12,11 +12,9 @@ import {renderWorkflowTemplate} from '../render.js';
 import {buildWorkflowVars} from '../workflow-vars.js';
 
 const baseConfig: AutomationConfig = {
-  pnpm_audit: {mode: 'ci', schedule: 'daily'},
   setup_complete: true,
   setup_opted_out: false,
   stale_branches: {mode: 'ci', schedule: 'monthly'},
-  update_deps: {mode: 'ci', schedule: 'weekly'},
   update_gaia: {mode: 'local'},
   version: 1,
   wiki: {mode: 'ci', schedule: 'daily'},
@@ -161,94 +159,6 @@ describe('workflow templates: gaia-ci-wiki', () => {
   });
 });
 
-describe('workflow templates: gaia-ci-update-deps', () => {
-  const rendered = renderForTool('update-deps');
-  const doc = parseRendered(rendered);
-
-  test('uses concurrency group gaia-ci-update-deps', () => {
-    expect((doc.concurrency as {group: string}).group).toBe(
-      'gaia-ci-update-deps'
-    );
-  });
-
-  test('invokes the emit-updates plan + claude-code-action chain', () => {
-    expect(rendered).toContain('update-deps run --emit-updates');
-    expect(rendered).toContain(
-      'anthropics/claude-code-action@63322d7b2bc79e7b621b89f41b53ceb8e5a5d314'
-    );
-    expect(rendered).toContain('wave_b_matrix');
-    expect(rendered).toContain('strategy:');
-    expect(rendered).toContain(
-      // eslint-disable-next-line no-template-curly-in-string -- literal GH Actions `${{ }}` syntax, not JS interpolation
-      'matrix: ${{ fromJson(needs.run.outputs.wave_b_matrix) }}'
-    );
-  });
-
-  test('emits the auto-merge step', () => {
-    expect(rendered).toContain('gh pr merge "$pr_number" --auto --squash');
-  });
-
-  // The wave-B fan-out is gated at the job level and runs no `pre_run` step,
-  // so `steps.pre_run.outputs.decision` is absent there. The `!= 'skip'` gate
-  // the setup partial carries is true against an absent output; an `== 'run'`
-  // gate would skip the install and leave every wave-B `pnpm add` without a
-  // node_modules to add to.
-  test('keeps the wave-B setup reachable without a pre_run step', () => {
-    const waveB = jobSteps(doc, 'wave_b');
-    const gates = GATED_SETUP_STEPS.map(
-      (name) => waveB.find((step) => step.name === name)?.if
-    );
-
-    expect(waveB.map((step) => step.name)).not.toContain(PRE_RUN_STEP);
-    expect(gates).toEqual(GATED_SETUP_STEPS.map(() => SKIP_GATE));
-  });
-
-  test('does NOT emit wiki, pnpm-audit, or stale-branch logic', () => {
-    expect(rendered).not.toContain('wiki diff-size');
-    expect(rendered).not.toContain('pnpm audit --json');
-    expect(rendered).not.toContain('gh api -X DELETE');
-  });
-
-  test('contains no unresolved {{ or }} mustache tokens', () => {
-    const stripped = rendered.replaceAll(/\$\{\{[\s\S]*?\}\}/gu, '');
-    expect(stripped).not.toContain('{{');
-    expect(stripped).not.toContain('}}');
-  });
-});
-
-describe('workflow templates: gaia-ci-pnpm-audit', () => {
-  const rendered = renderForTool('pnpm-audit');
-  const doc = parseRendered(rendered);
-
-  test('uses concurrency group gaia-ci-pnpm-audit', () => {
-    expect((doc.concurrency as {group: string}).group).toBe(
-      'gaia-ci-pnpm-audit'
-    );
-  });
-
-  test('runs pnpm audit and opens a security PR + issue for high/critical', () => {
-    expect(rendered).toContain('pnpm audit --json');
-    expect(rendered).toContain('gh issue create');
-    expect(rendered).toContain('--label gaia-ci,security');
-  });
-
-  test('emits the auto-merge step', () => {
-    expect(rendered).toContain('gh pr merge "$pr_number" --auto --squash');
-  });
-
-  test('does NOT emit wiki, update-deps, or stale-branch logic', () => {
-    expect(rendered).not.toContain('wiki diff-size');
-    expect(rendered).not.toContain('semver-major bumps');
-    expect(rendered).not.toContain('gh api -X DELETE');
-  });
-
-  test('contains no unresolved {{ or }} mustache tokens', () => {
-    const stripped = rendered.replaceAll(/\$\{\{[\s\S]*?\}\}/gu, '');
-    expect(stripped).not.toContain('{{');
-    expect(stripped).not.toContain('}}');
-  });
-});
-
 describe('workflow templates: gaia-ci-stale-branches', () => {
   const rendered = renderForTool('stale-branches');
   const doc = parseRendered(rendered);
@@ -280,12 +190,7 @@ describe('workflow templates: gaia-ci-stale-branches', () => {
 });
 
 describe('workflow templates: cross-tool invariants', () => {
-  const tools: readonly ToolId[] = [
-    'wiki',
-    'update-deps',
-    'pnpm-audit',
-    'stale-branches',
-  ];
+  const tools: readonly ToolId[] = ['wiki', 'stale-branches'];
 
   test.each(tools)(
     'every rendered file references the three secrets (%s)',
@@ -366,10 +271,9 @@ describe('workflow templates: push re-authentication (issue #581)', () => {
   // OIDC-derived GitHub App token that no longer authorizes the subsequent
   // `git push`. Every push that can follow such a step must first reset the
   // extraheader to the workflow `GH_TOKEN` so it authenticates
-  // deterministically. `wiki` (confirmed failing) and `update-deps` (same
-  // bug, latent) are the affected tools.
+  // deterministically. `wiki` is the affected tool.
   const REAUTH = 'git config --local http.https://github.com/.extraheader';
-  const affected = ['wiki', 'update-deps'] as const;
+  const affected = ['wiki'] as const;
 
   test.each(affected)(
     're-authenticates with GH_TOKEN before the auto-merge push (%s)',
@@ -384,18 +288,6 @@ describe('workflow templates: push re-authentication (issue #581)', () => {
       expect(rendered).toContain('"$GH_TOKEN"');
     }
   );
-
-  test('re-authenticates before the wave-B push too (update-deps)', () => {
-    const rendered = renderForTool('update-deps');
-    const waveBPushAt = rendered.indexOf('git push origin "$BRANCH"');
-    const reauthBeforeWaveB = rendered.lastIndexOf(REAUTH, waveBPushAt);
-
-    expect(waveBPushAt).toBeGreaterThan(-1);
-    expect(reauthBeforeWaveB).toBeGreaterThan(-1);
-    expect(reauthBeforeWaveB).toBeLessThan(waveBPushAt);
-    // Both the run-job auto-merge push and the wave-B group push re-auth.
-    expect(rendered.split(REAUTH).length - 1).toBe(2);
-  });
 });
 
 // The rendered partial's single `uses:` step carries no `with:` block, so what
