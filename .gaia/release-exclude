@@ -109,6 +109,8 @@
 .gaia/scripts/lint-hook-jq-availability.sh
 # The PreToolUse registration read and blocking oracle the two hook-layer gates share. Both consumers are withheld above, so an adopter clone would carry a library nothing sources.
 .gaia/scripts/hook-registration-lib.sh
+# Shared report, handshake and sidecar protocol read only by the two maintainer-only code-audit-maintainer-* members, which this category already withholds
+.claude/hooks/lib/audit-member-protocol.md
 
 # --- 2. Maintainer-only wiki content ---
 # Internal vault administration files and team-specific knowledge that
