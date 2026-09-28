@@ -3,7 +3,7 @@ name: update-deps
 description: Autonomous Dependabot, auto-discover outdated packages, audit overrides, apply migrations for major bumps, resolve conflicts, run quality gate. Trigger when the user clicks the statusline `Run /update-deps` indicator or asks "update dependencies", "bump deps", "run dependabot".
 ---
 
-Superpowered Dependabot. Auto-discover all outdated packages, preview them grouped by severity so you can snooze any you are not ready for, audit overrides, apply codebase migrations for major bumps, resolve dependency conflicts, and run the quality gate. In CI it runs unattended (no preview); interactively it shows the preview first. On a `main`/`master` run it opens the PR and merges it once checks are green, then cleans up locally; on any other branch it pushes and leaves the PR to you.
+Superpowered Dependabot. Auto-discover all outdated packages, preview them grouped by severity so you can snooze any you are not ready for, audit overrides, apply codebase migrations for major bumps, resolve dependency conflicts, refresh transitive dependencies within range, and run the quality gate. In CI it runs unattended (no preview); interactively it shows the preview first. On a `main`/`master` run it opens the PR and merges it once checks are green, then cleans up locally; on any other branch it pushes and leaves the PR to you.
 
 ## Pre-flight: Worktree check
 
@@ -59,6 +59,8 @@ When invoked with `--scope <group-name>` (e.g. `/update-deps --scope react-route
   as Wave A if all members are minor/patch, else Wave B.
 - Wave A / Wave B still apply, scoped to the named group's members
   in root `package.json`.
+- Skip Phase 5b (transitive refresh), a single-group run does not re-resolve
+  the whole tree.
 - Quality gate, return value, and final report still run.
 
 Invoked manually, one group per run, when a maintainer wants a single
@@ -158,6 +160,12 @@ sections listing them, e.g. `Held by config (not offered): vite (current
 8.0.16, ceiling 8.0)`. This is informational, held packages are never part of
 any apply set; the line just keeps the active holds visible.
 
+Below the sections, print one line for the transitive refresh (Phase 5b),
+which runs by default after the waves: `Transitive refresh: re-resolve every
+transitive dependency to the newest in-range version past the release-age
+window; reverted whole if the quality gate fails. Name transitive-refresh under
+"Choose what to skip" to skip it this run.`
+
 Then ask with `AskUserQuestion` (single-select). **When `snoozedGroups` is
 non-empty**, offer these options in this order:
 
@@ -205,6 +213,11 @@ snoozes AND any newly named), or the omitted ones are dropped from the ledger.
   minus the skip set. Echo the resulting apply set back for confirmation.
   **If the apply set is now empty** (everything is skipped), print
   `Snoozed N group(s); nothing else to update.` and exit (no branch).
+  The name `transitive-refresh` is not a group: strip it from the names before
+  the `decline` call and skip Phase 5b for this run only, it is never recorded
+  in the ledger. If it was the only name given, handle the choice as **Update
+  all** (or **Update the rest** when snoozed groups are present) with Phase 5b
+  skipped.
 - **Cancel** → stop here.
 
 The snooze ledger (`.gaia/local/declined-updates.json`) is local-only and
@@ -213,7 +226,9 @@ this preview until a newer version ships or 14 days pass. It never HARD-gates a
 run, the human can always choose to refresh a snoozed group, and CI ignores it
 entirely (CI is the freshness backstop and keeps opening PRs).
 
-Carry the **apply set** (filtered `wave_a` and `wave_b`) into the phases below.
+Carry the **apply set** (filtered `wave_a` and `wave_b`) into the phases below,
+together with whether Phase 5b runs: yes by default and in CI, no when the human
+skipped `transitive-refresh`, never under `--scope`.
 
 ## Override audit + Wave A: Haiku agent
 
@@ -374,9 +389,67 @@ Report back: updated packages, breaking changes applied, any skipped reason, qua
 
 ---
 
+## Phase 5b: Transitive refresh (Haiku agent)
+
+Waves A and B move direct specs only, and pnpm keeps a transitive dependency's locked version for as long as its parent's range still admits it, so a vulnerable transitive whose patched release is already in range survives every earlier phase. This phase asks pnpm for the newest in-range version of every transitive dependency. It runs before Phase 6 so the post-update override audit reads the refreshed tree.
+
+Skip it when the human skipped `transitive-refresh` in the preview (report `Declined in preview`) or under `--scope` (report `Not run (--scope)`). Otherwise spawn a **Haiku agent** (`model: "haiku"`) and pass it these instructions verbatim, substituting the **frozen names**: every package in `skipped[]` with `reason: "held"`, plus every member of a group in the skip set (empty when nothing was held or skipped).
+
+---
+
+### Transitive refresh instructions
+
+Operate on the root pnpm project only: run every `pnpm` command from the project root, never with `-r`, `-C`, or `cd`. Frozen names: `{FROZEN_NAMES}`.
+
+1. **Snapshot** the three files the refresh could touch, and the direct dependencies' resolved versions:
+   ```bash
+   rm -rf /tmp/update-deps-refresh && mkdir /tmp/update-deps-refresh
+   cp package.json pnpm-lock.yaml pnpm-workspace.yaml /tmp/update-deps-refresh/
+   pnpm ls --depth 0 --json | jq '.[0] | (.dependencies // {}) + (.devDependencies // {}) | map_values(.version)' > /tmp/update-deps-refresh/direct.json
+   ```
+2. **Refresh:**
+   ```bash
+   pnpm update --no-save --depth Infinity
+   ```
+   `--no-save` leaves every range in `package.json` as declared, so direct specs stay with Waves A and B; `--depth Infinity` spells out pnpm's default of re-resolving the whole tree. Do not use `pnpm update --latest` (it ignores ranges) or `pnpm dedupe` (it moves a transitive only when that removes a duplicate). pnpm applies `minimumReleaseAge` while it resolves, so no version younger than the window lands; never add a `minimumReleaseAgeExclude` entry or change any setting to get a version through. If the command exits non-zero, revert (step 6) with reason `install error: <first error line>`.
+3. **Check what it touched.**
+   - `package.json` and `pnpm-workspace.yaml` must be byte-identical to the snapshot (`cmp`). A difference means pnpm rewrote a range or recorded a release-age exemption: revert with reason `rewrote <file>`.
+   - Re-run the step 1 `pnpm ls` line into `/tmp/update-deps-refresh/direct-after.json` and compare each frozen name's version with `direct.json`. A frozen name whose version changed means the refresh moved a held or snoozed package inside its range: revert with reason `moved frozen <name> (<from> -> <to>); pin it to an exact version in package.json to let the refresh run`.
+4. **List what moved**, from the lockfile's `packages:` keys before and after:
+   ```bash
+   lock_keys() {
+     awk '/^packages:/{p=1;next} /^[^ ]/{p=0} p && /^  [^ ]/{k=$0; sub(/^  /,"",k); sub(/:$/,"",k); gsub(/\047/,"",k); print k}' "$1" | sort -u
+   }
+   lock_keys /tmp/update-deps-refresh/pnpm-lock.yaml > /tmp/update-deps-refresh/keys-before
+   lock_keys pnpm-lock.yaml > /tmp/update-deps-refresh/keys-after
+   { comm -23 /tmp/update-deps-refresh/keys-before /tmp/update-deps-refresh/keys-after | sed 's/^/- /'; comm -13 /tmp/update-deps-refresh/keys-before /tmp/update-deps-refresh/keys-after | sed 's/^/+ /'; } |
+     awk '{ i=match($2, /.@[^@]*$/); n=substr($2,1,i); v=substr($2,i+2); if ($1=="-") from[n]=(n in from ? from[n] ", " : "") v; else to[n]=(n in to ? to[n] ", " : "") v; seen[n]=1 }
+          END { for (n in seen) printf "%s\t%s\t%s\n", n, (n in from ? from[n] : "(new)"), (n in to ? to[n] : "(removed)") }' | sort
+   ```
+   Each row is `package<TAB>from<TAB>to`; a package locked at several versions lists them comma-separated. Empty output means nothing moved: report `Nothing moved` and stop, there is nothing to gate.
+5. **Quality gate**:
+   ```bash
+   pnpm typecheck
+   pnpm lint
+   pnpm test --run
+   pnpm pw
+   pnpm build
+   ```
+   On any failure, revert (step 6) with reason `quality gate failed: <step>`. No remediation pass: one gate run cannot say which of the moved packages broke it.
+6. **Revert** restores the whole refresh, never part of it:
+   ```bash
+   cp /tmp/update-deps-refresh/package.json /tmp/update-deps-refresh/pnpm-lock.yaml /tmp/update-deps-refresh/pnpm-workspace.yaml .
+   pnpm install --frozen-lockfile
+   cmp pnpm-lock.yaml /tmp/update-deps-refresh/pnpm-lock.yaml
+   ```
+
+Report back: the outcome (`landed`, `Nothing moved`, or `Reverted (<reason>)`), the step 4 rows (for a revert, the rows that would have moved, when step 4 ran), and the quality gate results.
+
+---
+
 ## Phase 6: Post-update override audit
 
-For every override that was **retained** in Phase 0, repeat the full Phase 0 audit (both the peer-dep and the security-floor check, re-capturing a fresh advisory baseline against the now-updated tree) now that surrounding packages have moved. A version that landed in Wave A or Wave B may have resolved the original peer-dep conflict or carried the patched transitive dependency that made a security-floor pin obsolete. The toggle test re-resolves with `pnpm dedupe`, never a bare `pnpm install`, exactly as in Phase 0. This is the last phase that mutates the `overrides:` map, so the lockfile settles here: close it with the same assertion Phase 0 runs, the lockfile's `overrides:` block must list exactly the keys in `pnpm-workspace.yaml`, repairing any drift with `pnpm dedupe`.
+For every override that was **retained** in Phase 0, repeat the full Phase 0 audit (both the peer-dep and the security-floor check, re-capturing a fresh advisory baseline against the now-updated tree) now that surrounding packages have moved. A version that landed in Wave A, Wave B, or the Phase 5b refresh may have resolved the original peer-dep conflict or carried the patched transitive dependency that made a security-floor pin obsolete. The toggle test re-resolves with `pnpm dedupe`, never a bare `pnpm install`, exactly as in Phase 0. This is the last phase that mutates the `overrides:` map, so the lockfile settles here: close it with the same assertion Phase 0 runs, the lockfile's `overrides:` block must list exactly the keys in `pnpm-workspace.yaml`, repairing any drift with `pnpm dedupe`.
 
 Run this as a **Haiku agent**. Its dispatch carries every Phase 6 duty, so pass it all four of these:
 
@@ -400,12 +473,13 @@ The raised pins put `.gaia/cli/package.json` and its lockfile in the diff, which
 
 ## Phase 7: Final report
 
-Build the report **only** from the agent reports returned to you, plus the snooze decision from Phase 1. Do not add rows from your own memory of the run.
+Build the report **only** from the agent reports returned to you, plus the snooze and transitive-refresh decisions from Phase 1. Do not add rows from your own memory of the run.
 
 **What goes in each section:**
 
 - **Updated packages**: every package the Haiku agent or a Wave B agent reports as `updated`. Nothing else.
 - **Breaking changes applied**: only what Wave B agents report editing in the codebase. Empty if no Wave B group ran.
+- **Transitive refresh**: the Phase 5b agent's result: one row per package it moved (from and to), or one of `Nothing moved`, `Declined in preview`, `Not run (--scope)`, or `Reverted (<reason>)` followed by the rows that would have moved. Always include this section; `Nothing moved` is a result, not an empty section. These rows never go in Updated packages, and a reverted refresh is reported here, not in Skipped packages.
 - **Overrides audited**: only what the Phase 0 / Phase 6 audit reports. If the `overrides:` map was empty, write "None" and move on.
 - **Skipped packages**: _only_ packages that were attempted and reverted mid-run (peer-dep conflict, quality-gate failure, manual revert by an agent). **Never** include packages filtered out before installation by a policy rule (e.g. the ESLint 9.x cap or the release-age cooldown). Those are silent by design, surfacing them is noise that adopters see every run. When you cannot tell whether a package was policy-filtered before installation or attempted and reverted mid-run, include it in Skipped, a spurious row is recoverable but a silently dropped real failure is not. If nothing was actually skipped during the run, write "None" or omit the table.
 - **Snoozed (deferred this run)**: the companion groups the human chose to skip in the preview, with the version each was snoozed at. These quiet the statusline for 14 days (or until a newer version ships); they are not failures. Omit the section if the human chose "Update all".
@@ -428,6 +502,10 @@ Print the report. Do not commit.
 ### Breaking changes applied
 - [group] description
 
+### Transitive refresh
+| Package | From | To |
+| --- | --- | --- |
+
 ### Overrides audited
 - Removed: <key>, <reason>
 - Retained: <key>, <reason>
@@ -447,7 +525,7 @@ Print the report. Do not commit.
 
 ## Phase 8: Publish
 
-**If nothing was updated** (all packages were already up to date or all were skipped), skip this phase entirely.
+**If nothing was updated** (all packages were already up to date or all were skipped, and the transitive refresh landed nothing), skip this phase entirely.
 
 **Commit the update.** Stage and commit the applied changes on the current branch. Write the message to a temp file first, then commit from it:
 
@@ -456,7 +534,7 @@ git add -A
 git commit -F <commit-message-file>
 ```
 
-The commit **subject** must be `chore(deps): <concise summary of what moved>` (use `chore(deps-dev):` when every bump is a devDependency). That subject is load-bearing: it triggers the dep-bump bypass in the merge gate (`wiki/concepts/PR Merge Workflow.md`), so the PR needs no code-audit-frontend marker. The bypass waives that member only; any other member the diff dispatches still earns its own marker. Routing the message through a file rather than `-m` keeps package-manager keywords from tripping shell-hook false positives. The Wave agents already ran the full quality gate over their changes, and Phase 6 kept only the override changes that passed it, so nothing else is owed before committing. A Phase 6 gate failure with nothing to restore is already in the report's Quality gate section for the maintainer.
+The commit **subject** must be `chore(deps): <concise summary of what moved>` (use `chore(deps-dev):` when every bump is a devDependency). That subject is load-bearing: it triggers the dep-bump bypass in the merge gate (`wiki/concepts/PR Merge Workflow.md`), so the PR needs no code-audit-frontend marker. The bypass waives that member only; any other member the diff dispatches still earns its own marker. Routing the message through a file rather than `-m` keeps package-manager keywords from tripping shell-hook false positives. The Wave agents already ran the full quality gate over their changes, the Phase 5b refresh landed only after passing it, and Phase 6 kept only the override changes that passed it, so nothing else is owed before committing. A Phase 6 gate failure with nothing to restore is already in the report's Quality gate section for the maintainer.
 <!-- gaia:maintainer-only:start -->
 A Phase 6b failure is the exception: it keeps its raised pins and reports through its `.gaia/cli pin sync` row, so the required `Vitest (.gaia/cli)` check stays red and step 3's queued merge waits on the maintainer rather than landing.
 <!-- gaia:maintainer-only:end -->
