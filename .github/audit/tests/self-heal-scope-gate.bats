@@ -1001,13 +1001,12 @@ EOF
   [ -s "$PUSH_LOG" ]
 }
 
-@test "the three code-review-audit.yml copies are byte-identical" {
-  local src="$REPO_ROOT/.gaia/cli/src/automation/templates/workflows/code-review-audit.yml.tmpl"
+@test "the live workflow and its shipped template are byte-identical" {
+  # bundle:adopter builds the template from the live workflow. Fails closed
+  # rather than skipping: a missing artifact is the drift this pins.
   local artifact="$REPO_ROOT/.gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
-  [ -f "$src" ] || skip "source template not found"
-  [ -f "$artifact" ] || skip "build artifact not found"
-  diff -q "$WORKFLOW" "$src"
-  diff -q "$src" "$artifact"
+  [ -f "$artifact" ] || { echo "shipped template missing: $artifact" >&2; return 1; }
+  diff -q "$WORKFLOW" "$artifact"
 }
 
 # -----------------------------------------------------------------------------
