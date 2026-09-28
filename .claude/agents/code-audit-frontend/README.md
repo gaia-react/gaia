@@ -38,9 +38,4 @@ These values are **rule-injection labels** (metadata selecting which specialist 
 
 ## Current extensions
 
-| File                 | Library              | Subagents                  |
-| -------------------- | -------------------- | -------------------------- |
-| `conform.md`         | `@conform-to/zod`    | react-patterns, typescript |
-| `tailwind-merge.md`  | `tailwind-merge`     | typescript                 |
-| `react-i18next.md`   | `react-i18next`      | translation                |
-| `form-components.md` | GAIA Form Components | react-patterns             |
+List this directory; each file's frontmatter names its library and subagents.

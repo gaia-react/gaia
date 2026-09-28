@@ -7,8 +7,8 @@
 # restatement in `.claude/agents/code-audit-frontend.md`'s `### B-mw.
 # Machinery-path waive (file side)` section, and
 # `wiki/concepts/Audit Disposition and Debt Fix.md`'s `### Out-of-scope
-# waive` section, plus the routing sentence every Code Audit Team member
-# carries identically. A prose requirement survives exactly as long as the
+# waive` section. The Code Audit Team members carry no copy of the rule, only
+# a pointer to its owner. A prose requirement survives exactly as long as the
 # next person editing those files remembers it, which is not a mechanism;
 # this suite is the mechanism, the same pattern `doc-debt-query.bats`
 # in this directory uses: grep for the frozen literals, ground-truthed
@@ -94,35 +94,6 @@ extract_section_or_fail() {
   printf '%s\n' "$out"
 }
 
-# extract_orchestrator_paragraph <file>
-# Prints the "The orchestrator owns the disposition." paragraph: every
-# physical line from the first line matching that opening sentence up to
-# (excluding) the next blank line, so the same paragraph hard-wrapped at a
-# different width in another file is still captured whole.
-extract_orchestrator_paragraph() {
-  awk '
-    /^The orchestrator owns the disposition\./ { found=1 }
-    found && NF==0 { exit }
-    found { print }
-  ' "$1"
-}
-
-# extract_orchestrator_paragraph_or_fail <file>
-# extract_orchestrator_paragraph, plus extract_section_or_fail's guard: fails
-# loudly rather than passing vacuously when the lead sentence matches nothing.
-# The absence assertions below need this most, since an empty paragraph makes a
-# retired-wording grep report green over prose it never read, which is the
-# failure those assertions exist to catch rather than to reproduce.
-extract_orchestrator_paragraph_or_fail() {
-  local out
-  out="$(extract_orchestrator_paragraph "$1")"
-  [ -n "$out" ] || {
-    echo "the orchestrator-owns-the-disposition paragraph matched nothing in ${1}; a scoped assertion here would pass vacuously" >&2
-    return 1
-  }
-  printf '%s\n' "$out"
-}
-
 # normalize_ws
 # Collapses newlines and runs of whitespace to single spaces and trims the
 # ends, so a paragraph wrapped at one width compares equal to the same
@@ -154,13 +125,6 @@ setup() {
   FRONTEND="$ROOT/.claude/agents/code-audit-frontend.md"
   WIKI="$ROOT/wiki/concepts/PR Merge Workflow.md"
   DISPOSITION="$ROOT/wiki/concepts/Audit Disposition and Debt Fix.md"
-
-  ALL_AGENTS=(
-    "$FRONTEND"
-    "$ROOT/.claude/agents/code-audit-github-workflows.md"
-    "$ROOT/.claude/agents/code-audit-maintainer-node.md"
-    "$ROOT/.claude/agents/code-audit-maintainer-shell.md"
-  )
 }
 
 # --- Group 1: the union rule is stated at both surfaces ---------------------
@@ -305,102 +269,6 @@ setup() {
   printf '%s\n' "$section" | grep -qF -- ".claude/hooks/" || return 1
 }
 
-# --- Group 6: the routing sentence is one sentence in every member file -----
-
-@test "Group 6: the routing paragraph is present in every Code Audit Team member" {
-  local f out
-  for f in "${ALL_AGENTS[@]}"; do
-    out="$(extract_orchestrator_paragraph "$f")"
-    [ -n "$out" ] || {
-      echo "the orchestrator-owns-the-disposition paragraph is missing from $f" >&2
-      return 1
-    }
-  done
-}
-
-@test "Group 6: the routing paragraph is byte-identical across every member after whitespace normalization" {
-  local f first cur
-  first="$(extract_orchestrator_paragraph "${ALL_AGENTS[0]}" | normalize_ws)"
-  for f in "${ALL_AGENTS[@]}"; do
-    cur="$(extract_orchestrator_paragraph "$f" | normalize_ws)"
-    [ "$cur" = "$first" ] || {
-      echo "routing paragraph in $f diverges from ${ALL_AGENTS[0]} after whitespace normalization" >&2
-      return 1
-    }
-  done
-}
-
-@test "Group 6: each member's routing paragraph names gate machinery and the pull request's own changed files" {
-  local f para
-  for f in "${ALL_AGENTS[@]}"; do
-    para="$(extract_orchestrator_paragraph_or_fail "$f")" || return 1
-    printf '%s\n' "$para" | grep -qF -- "gate machinery" || {
-      echo "$f's routing paragraph does not name gate machinery" >&2
-      return 1
-    }
-    printf '%s\n' "$para" | grep -qF -- "already changes" || {
-      echo "$f's routing paragraph does not name the pull request's own changed files" >&2
-      return 1
-    }
-  done
-}
-
-@test "Group 6: no member's routing paragraph still carries the retired unconditional clause" {
-  local f para
-  for f in "${ALL_AGENTS[@]}"; do
-    para="$(extract_orchestrator_paragraph_or_fail "$f")" || return 1
-    printf '%s\n' "$para" | grep -qF -- "or files it as a tech-debt issue when it is not" && {
-      echo "$f's routing paragraph still carries the retired unconditional clause" >&2
-      return 1
-    }
-  done
-  true
-}
-
-# The three assertions below pin the amendment the path terms alone no longer
-# decide. Group 6's identity test makes the member files agree with each other;
-# it cannot tell whether what they agree on matches the owner section, which is
-# exactly how the paragraph drifted from a two-term rule to a four-term one
-# while staying byte-identical everywhere.
-
-@test "Group 6: each member's routing paragraph requires the finding to clear both disqualifiers" {
-  local f para
-  for f in "${ALL_AGENTS[@]}"; do
-    para="$(extract_orchestrator_paragraph_or_fail "$f")" || return 1
-    printf '%s\n' "$para" | grep -qF -- "clears both disqualifiers" || {
-      echo "$f's routing paragraph does not require clearing both disqualifiers" >&2
-      return 1
-    }
-  done
-}
-
-@test "Group 6: each member's routing paragraph delegates to the owner section" {
-  local f para
-  for f in "${ALL_AGENTS[@]}"; do
-    para="$(extract_orchestrator_paragraph_or_fail "$f")" || return 1
-    printf '%s\n' "$para" | grep -qF -- 'wiki/concepts/PR Merge Workflow.md' || {
-      echo "$f's routing paragraph does not name the owner page" >&2
-      return 1
-    }
-    printf '%s\n' "$para" | grep -qF -- "governs wherever this summary and it differ" || {
-      echo "$f's routing paragraph does not defer to the owner section on a conflict" >&2
-      return 1
-    }
-  done
-}
-
-@test "Group 6: no member's routing paragraph still states the retired two-term waive rule" {
-  local f para
-  for f in "${ALL_AGENTS[@]}"; do
-    para="$(extract_orchestrator_paragraph_or_fail "$f")" || return 1
-    printf '%s\n' "$para" | grep -qF -- "and files it as a tech-debt issue otherwise" && {
-      echo "$f's routing paragraph still states the retired two-term waive rule" >&2
-      return 1
-    }
-  done
-  true
-}
-
 # --- Group 8: both disqualifiers are stated at all three prose surfaces -----
 # Each disqualifier's opening clause is asserted separately from its bound:
 # a later editor trimming the bound off would still pass a test that only
@@ -462,9 +330,9 @@ setup() {
 # bounding the authored-inconsistency term is the costly one to lose: without
 # it the term disqualifies every finding on a file the change touches, which
 # is the whole population the changed-files path term exists to serve. The
-# two identity assertions below close that gap with the same instrument
-# Group 6 uses on the routing paragraph, pinning the lead-in and then both
-# term paragraphs whole rather than by fragment.
+# two identity assertions below close that gap by pinning the lead-in and then
+# both term paragraphs whole rather than by fragment, after whitespace
+# normalization.
 @test "Group 8: the disqualifier lead-in is identical across all three prose surfaces" {
   # The lead-in carries the claim that the two terms only ever narrow the
   # eligible set. A rewrite on one surface saying they widen it, or dropping

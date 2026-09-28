@@ -114,13 +114,6 @@ The `subagents:` values (`react-patterns`, `typescript`, `translation`) are **ru
 
 To swap a library: remove its extension file, add one for the replacement. The main agent definition stays unchanged. See the `README.md` in that directory for the full format.
 
-| File                 | Library              |
-| -------------------- | -------------------- |
-| `conform.md`         | `@conform-to/zod`    |
-| `tailwind-merge.md`  | `tailwind-merge`     |
-| `react-i18next.md`   | `react-i18next`      |
-| `form-components.md` | GAIA Form Components |
-
 ## Finding emission
 
 `finding_class` follows a per-bucket convention: oracle buckets use the tool's own id prefixed (`react-doctor/...`, `axe/...`, `knip/...`, `cve/...`); holistic and rule-subagent buckets draw from a constrained vocabulary seeded in the `finding_class` schema, not in the agent definition. The frontend member carries a mirror of it; the schema is authoritative.
