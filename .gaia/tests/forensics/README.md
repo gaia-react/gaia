@@ -4,31 +4,9 @@ Maintainer-only fixture suite for the `/gaia-forensics` skill. Excluded from the
 
 ## Coverage
 
-| File                               | UATs covered     |
-| ---------------------------------- | ---------------- |
-| `01-redaction-roundtrip.bats`      | UAT-003, UAT-010 |
-| `02-classification-evidence.bats`  | UAT-009, UAT-011 |
-| `03-strict-schema.bats`            | UAT-007, UAT-010 |
-| `04-write-surface.bats`            | UAT-008          |
-| `05-gh-invocation-shape.bats`      | UAT-012, UAT-006 |
-| `06-gh-decline-saves-locally.bats` | UAT-005          |
-| `07-gh-not-installed.bats`         | UAT-013          |
-| `08-user-config-no-gh.bats`        | UAT-004          |
-| `09-other-class-offers-gh.bats`    | UAT-011          |
+Each `*.bats` file's header comment names the UAT or TST ids it binds and what it asserts; this page does not restate them.
 
 Every UAT from UAT-001 through UAT-013 has at least one binding assertion. UAT-001 and UAT-002 are covered through the fixture inputs and golden files (the init/update classification and schema tests exercise these end-to-end scenarios).
-
-## What the harness covers
-
-- **Redaction roundtrip** (`01`): feeds synthetic inputs through `lib/redact.sh` and asserts output matches golden files byte-for-byte. Runs the fragment's regex set in declared order. Tests path conversion (Rule A + Rule B), all token patterns (GitHub, Anthropic, OpenAI, GitLab, Slack, AWS, generic fallback), and env-var value scrub. Also verifies idempotency.
-- **Classification + evidence** (`02`): verifies the classifier table lookup in `lib/classify.sh` for all eight taxonomy classes. Confirms evidence cite shape.
-- **Strict schema** (`03`): asserts golden files carry the four required sections (`## Symptom`, `## Classification`, `## Capture`, `## Reproduction context`) in declared order, with no extra top-level headers. Verifies frontmatter field presence.
-- **Write surface** (`04`): snapshots working-tree mtimes via a marker file, runs the runbook surrogate, asserts no writes outside `.gaia/local/forensics/<tree_key>/` and `.gaia/local/telemetry/`. Also includes a negative test that confirms the detection logic catches violations.
-- **gh invocation shape** (`05`): stubs `gh` via `lib/stub-gh.sh` (argv-capture), asserts captured argv contains `--repo gaia-react/gaia`, `--label gaia-forensics`, `--title "forensics: <class>; <one-line>"`, and `--body-file`. Also tests the failure path (UAT-006): a failing-gh stub exits non-zero; the local report is left in place and gh's stderr is surfaced verbatim.
-- **Decline saves locally** (`06`): confirms the "No, save locally only" branch writes the report file and does not call `gh`.
-- **gh not installed** (`07`): removes `gh` from `$PATH`, asserts exit-zero plus one-line note, report file present.
-- **User-config no-gh** (`08`): diagnoses user-config signals (dirty tree, wrong Node, missing env var); confirms surrogate saves locally, prints remediation, never calls `gh`.
-- **Other class offers gh** (`09`): confirms `other` class is treated as probable bug (offers gh, no remediation), evidence = "no taxonomy class matched", golden matches strict schema.
 
 ## Library
 
