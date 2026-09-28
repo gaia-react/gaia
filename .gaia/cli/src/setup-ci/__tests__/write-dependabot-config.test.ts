@@ -17,6 +17,14 @@ const CHORE_DEPS_SKIP_SCRIPT = fileURLToPath(
   new URL('../../../../scripts/chore-deps-skip.sh', import.meta.url)
 );
 
+// A Dependabot security update touches only manifests, the one diff shape
+// the chore(deps) skip predicate lets a matching title skip on.
+const choreDepsSkip = (subject: string) =>
+  execFileSync('bash', [CHORE_DEPS_SKIP_SCRIPT, subject], {
+    encoding: 'utf8',
+    input: 'package.json\npnpm-lock.yaml\n',
+  }).trim();
+
 const captureStdio = (): {
   err: string[];
   out: string[];
@@ -328,16 +336,12 @@ updates:
     expect(prefixLine).toContain('"fix"');
     expect(prefixLine).not.toContain('chore');
 
-    const subjects = [
-      'fix(deps): bump the npm-security group',
-      'fix(deps-dev): bump x',
-    ];
-
-    for (const subject of subjects) {
-      const stdout = execFileSync('bash', [CHORE_DEPS_SKIP_SCRIPT, subject], {
-        encoding: 'utf8',
-      }).trim();
-      expect(stdout).toBe('false');
-    }
+    expect(choreDepsSkip('chore(deps): bump the npm-security group')).toBe(
+      'true'
+    );
+    expect(choreDepsSkip('fix(deps): bump the npm-security group')).toBe(
+      'false'
+    );
+    expect(choreDepsSkip('fix(deps-dev): bump x')).toBe('false');
   });
 });

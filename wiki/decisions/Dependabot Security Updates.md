@@ -28,7 +28,7 @@ Alerts (`vulnerability-alerts`) and security updates (`automated-security-fixes`
 
 ## Why the title is fix(deps), not chore(deps)
 
-`.gaia/scripts/chore-deps-skip.sh` makes `tests.yml` skip the suite, and makes `code-review-audit.yml` stamp `GAIA-Audit` without an audit, for `chore(deps):` titles. That is safe only because `/update-deps` runs the quality gate locally first. A Dependabot pull request has no such proof, so its prefix is `fix` and a test in the CLI pins that the rendered prefix never matches the bypass.
+`.gaia/scripts/chore-deps-skip.sh` makes `tests.yml` skip the suite, and makes `code-review-audit.yml` stamp `GAIA-Audit` without an audit, for a `chore(deps):` title on a diff confined to dependency manifests, which a Dependabot security update always is. That is safe only because `/update-deps` runs the quality gate locally first. A Dependabot pull request has no such proof, so its prefix is `fix` and a test in the CLI pins that the rendered prefix never matches the bypass.
 
 ## Accepted tradeoffs
 
