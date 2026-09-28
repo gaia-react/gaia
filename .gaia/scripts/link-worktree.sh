@@ -24,7 +24,7 @@
 # DO NOT add `set -e`; each path is independent and one failure must not
 # abort the rest of the operations.
 
-# Frozen log labels (consumed by the CLI subcommand parser):
+# Frozen log labels:
 #   linked: <abs-path>
 #   already-linked: <abs-path>
 #   linked-after-backup: <abs-path> (backup: <abs-backup-path>)

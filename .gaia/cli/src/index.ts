@@ -46,7 +46,7 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
   update merge-workspace|merge-audit-ci|merge-region|regen-regions
   update-deps run|decline
   init strip-branding|configure-i18n|rename|wire-statusline|bootstrap-env|configure-automation|finalize|resume
-  setup status|mark-step|finalize|link-worktree
+  setup status|mark-step|finalize
   setup-ci status|check-drift|check-audit-drift|detect-remote|warn-existing-tools|check-admin|dismiss-personal|opt-out-team|enable-delete-branch|verify-run|finalize|write-tool-mode|write-isolation-policy
   sandbox detect|apply|record|status
   ping --event <init|setup|update> [--field value ...]

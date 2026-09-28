@@ -8,7 +8,6 @@ import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {lookupOwn} from '../util/argv.js';
 import {run as runFinalize} from './finalize.js';
-import {run as runLinkWorktree} from './link-worktree.js';
 import {run as runMarkStep} from './mark-step.js';
 import {run as runStatus} from './status.js';
 
@@ -17,7 +16,6 @@ const HELP_TEXT = `Usage: gaia setup <subcommand> [args]
   status [--json]            Print whether per-machine setup is complete.
   mark-step <step>           Record a setup step as complete.
   finalize [--force]         Mark setup as complete (refuses if steps pending).
-  link-worktree [--json]     Create the worktree shared-state symlinks.
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
@@ -28,7 +26,6 @@ const SUBCOMMAND_HANDLERS: Readonly<
   Partial<Record<string, SubcommandHandler>>
 > = {
   finalize: runFinalize,
-  'link-worktree': runLinkWorktree,
   'mark-step': runMarkStep,
   status: runStatus,
 };

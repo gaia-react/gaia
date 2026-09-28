@@ -134,7 +134,7 @@ my_state() { :; }
 gaia_refuse_if_worktree "/update-deps" my_state
 ' _ "$LIB"
   [ "$status" -eq 1 ]
-  grep -qF -- 'Cached state unavailable on main; symlinks may be broken, run `.gaia/cli/gaia setup link-worktree` to repair.' <<<"$output" || return 1
+  grep -qF -- 'Cached state unavailable on main; symlinks may be broken, run `bash .gaia/scripts/link-worktree.sh` to repair.' <<<"$output" || return 1
 }
 
 @test "linked worktree, state_line_fn's own cache_file argument is main's cache path, not the worktree's" {

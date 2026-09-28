@@ -60,7 +60,7 @@
 #   When state_line_fn is supplied but prints nothing (cache file missing,
 #   jq absent, fields empty), the state line falls back to:
 #   "Cached state unavailable on main; symlinks may be broken, run
-#   `.gaia/cli/gaia setup link-worktree` to repair." When state_line_fn is
+#   `bash .gaia/scripts/link-worktree.sh` to repair." When state_line_fn is
 #   not supplied at all, the state paragraph and its surrounding blank line
 #   are omitted entirely.
 #
@@ -112,7 +112,7 @@ fi
 
 # The shared fallback state line, used when a supplied state_line_fn prints
 # nothing. Byte-identical to the text both pre-existing copies used.
-_GAIA_MAIN_ONLY_FALLBACK_STATE_LINE="Cached state unavailable on main; symlinks may be broken, run \`.gaia/cli/gaia setup link-worktree\` to repair."
+_GAIA_MAIN_ONLY_FALLBACK_STATE_LINE="Cached state unavailable on main; symlinks may be broken, run \`bash .gaia/scripts/link-worktree.sh\` to repair."
 
 gaia_refuse_if_worktree() {
   local flow_name="$1" state_line_fn="${2:-}"
