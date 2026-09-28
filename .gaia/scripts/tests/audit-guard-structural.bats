@@ -23,6 +23,9 @@ setup() {
   # SPEC-042 clearance-writer surfaces (UAT-020 structural half + PLAN-001).
   SHELL_MD="$REPO_ROOT/.claude/agents/code-audit-maintainer-shell.md"
   NODE_MD="$REPO_ROOT/.claude/agents/code-audit-maintainer-node.md"
+  WORKFLOWS_MD="$REPO_ROOT/.claude/agents/code-audit-github-workflows.md"
+  # The maintainer members' shared handshake; both maintainer definitions point here.
+  PROTOCOL_MD="$REPO_ROOT/.claude/hooks/lib/audit-member-protocol.md"
   AUDIT_WORKFLOW="$REPO_ROOT/.github/workflows/code-review-audit.yml"
   WF_TMPL_ARTIFACT="$REPO_ROOT/.gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
 }
@@ -84,22 +87,34 @@ assert_predicate_retry_fallback() {
   assert_predicate_retry_fallback "$content"
 }
 
-# 6. Shared clearance writer: each Code Audit Team member's definition invokes
-#    the ONE shared writer, and NONE still carries the inline marker `printf`
+# 6. Shared clearance writer: every handshake surface (the frontend member's
+#    and github-workflows definitions, and the maintainer members' shared
+#    protocol file) invokes the ONE shared writer, both maintainer definitions
+#    point at that protocol file,
+#    and NONE still carries the inline marker `printf`
 #    or the `[ ! -f "$marker" ]` idempotence guard. This negative assertion is
 #    load-bearing: a missed producer keeps writing a legacy-bodied marker that
 #    every existence-only consumer honors, so the gate passes and the only
 #    symptom is a member that silently never carries forward.
 
-@test "clearance writer: each code-audit-*.md invokes the shared writer, none keeps the inline printf or the [ ! -f marker ] guard" {
+@test "clearance writer: the handshake surfaces invoke the shared writer, none keeps the inline printf or the [ ! -f marker ] guard" {
   local md
-  for md in "$CRA_MD" "$SHELL_MD" "$NODE_MD"; do
+  # The frontend and github-workflows members carry their own handshake; the
+  # maintainer members carry theirs in the shared protocol file.
+  for md in "$CRA_MD" "$WORKFLOWS_MD" "$PROTOCOL_MD"; do
     # Positive: invokes the one shared writer.
     grep -qF -- ".gaia/scripts/audit-write-clearance.sh" "$md" || return 1
+  done
+  for md in "$CRA_MD" "$PROTOCOL_MD" "$SHELL_MD" "$NODE_MD" "$WORKFLOWS_MD"; do
     # Negative: no inline marker printf (the bad case is a present match).
     grep -qF -- 'printf '\''{"sha"' "$md" && return 1
     # Negative: no idempotence guard (the bad case is a present match).
     grep -qF -- '[ ! -f "$marker" ]' "$md" && return 1
+  done
+  # Each maintainer member reaches the writer only through the protocol file,
+  # so a definition that drops the pointer has no marker command at all.
+  for md in "$SHELL_MD" "$NODE_MD"; do
+    grep -qF -- ".claude/hooks/lib/audit-member-protocol.md" "$md" || return 1
   done
   return 0
 }

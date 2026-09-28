@@ -30,7 +30,10 @@
 # .gaia/scripts/tests/audit-base-agreement.bats.
 # gaia:maintainer-only:end
 #
-# Over `.claude/agents/` and `.gaia/scripts/audit-resolve-scope.sh`, THREE
+# Over `.claude/agents/`, the maintainer members' shared protocol file
+# (`.claude/hooks/lib/audit-member-protocol.md`, which carries their handshake
+# and sidecar commands; the release scrub strips that entry along with the
+# file, so an adopter clone scans the definitions alone), and `.gaia/scripts/audit-resolve-scope.sh`, THREE
 # assertions. The resolver script is scanned because it is where every
 # specialist's membership base, review base, key base, and both changed-file
 # diffs are derived: a definition resolves its scope by invoking it rather
@@ -157,7 +160,7 @@
 #      said three while the code had grown to cut on four.
 #
 #      This assertion scans `.claude/agents/code-audit-*.md` (plus the
-#      resolver script), NOT the whole directory that (1) and (2) range over. Only a Code Audit Team member HAS
+#      protocol file and the resolver script), NOT the whole directory that (1) and (2) range over. Only a Code Audit Team member HAS
 #      a review base; an agent that takes its file list from the orchestrator
 #      (.claude/agents/worthiness-evaluator.md) has nothing for this rule to be
 #      about, and scanning it buys only a false-positive surface, since its
@@ -189,8 +192,8 @@
 # "Executable entry" at the bottom).
 #
 # gaia_check_audit_base_derivation <repo_root>
-#   Runs `git -C <repo_root> grep` over `.claude/agents/` (recursive) and the
-#   resolver script for every assertion. Prints every match line, then one verdict line per
+#   Runs `git -C <repo_root> grep` over `.claude/agents/` (recursive), the
+#   protocol file, and the resolver script for every assertion. Prints every match line, then one verdict line per
 #   assertion. Returns 0 when ALL THREE hold, 1 otherwise.
 #   <repo_root> is a required parameter -- this check never derives it
 #   itself: a CI caller passes the plain checkout root, a bats fixture
@@ -203,6 +206,15 @@
 
 # The resolver script scanned beside the definitions (see the header).
 GAIA_AUDIT_SCOPE_RESOLVER='.gaia/scripts/audit-resolve-scope.sh'
+
+# The maintainer members' shared protocol file, scanned beside the member
+# definitions. An array, expanded with the empty-safe form, so the scrubbed
+# adopter copy passes no pathspec at all rather than an empty one, which git
+# grep rejects and the silenced stderr would turn into an unscanned 0.
+GAIA_AUDIT_MEMBER_SCAN=()
+# gaia:maintainer-only:start
+GAIA_AUDIT_MEMBER_SCAN+=('.claude/hooks/lib/audit-member-protocol.md')
+# gaia:maintainer-only:end
 
 
 # Assertion 1's candidate shape: any assignment whose value reaches a
@@ -442,7 +454,7 @@ gaia_check_audit_base_derivation() {
   # git grep exits 1 when it finds nothing, a normal outcome here, not a
   # script error -- so it is not run under -e and its status is captured
   # explicitly via the variable assignment instead.
-  candidates="$(git -C "$repo_root" grep -nIE "$GAIA_AUDIT_BARE_MERGE_BASE_PATTERN" -- '.claude/agents/' "$GAIA_AUDIT_SCOPE_RESOLVER" 2>/dev/null)"
+  candidates="$(git -C "$repo_root" grep -nIE "$GAIA_AUDIT_BARE_MERGE_BASE_PATTERN" -- '.claude/agents/' ${GAIA_AUDIT_MEMBER_SCAN[@]+"${GAIA_AUDIT_MEMBER_SCAN[@]}"} "$GAIA_AUDIT_SCOPE_RESOLVER" 2>/dev/null)"
   bare_matches="$(printf '%s\n' "$candidates" | _gaia_drop_full_base_matches)"
   if [ -n "$bare_matches" ]; then
     printf '%s\n' "$bare_matches"
@@ -466,12 +478,12 @@ gaia_check_audit_base_derivation() {
       missing_count=$((missing_count + 1))
       resolver_failed=1
     fi
-  done < <(git -C "$repo_root" grep -lIF -z "$GAIA_AUDIT_BASE_VAR" -- '.claude/agents/' "$GAIA_AUDIT_SCOPE_RESOLVER" 2>/dev/null)
+  done < <(git -C "$repo_root" grep -lIF -z "$GAIA_AUDIT_BASE_VAR" -- '.claude/agents/' ${GAIA_AUDIT_MEMBER_SCAN[@]+"${GAIA_AUDIT_MEMBER_SCAN[@]}"} "$GAIA_AUDIT_SCOPE_RESOLVER" 2>/dev/null)
   printf 'agent files naming BASE_SHA without naming resolve-audit-base.sh: %s\n' "$missing_count"
 
   # ---------- assertion 3: no diff consumes an un-anchored base ----------
   local diff_candidates diff_matches diff_count=0
-  diff_candidates="$(git -C "$repo_root" grep -nIF "$GAIA_AUDIT_DIFF_CALL" -- '.claude/agents/code-audit-*.md' "$GAIA_AUDIT_SCOPE_RESOLVER" 2>/dev/null)"
+  diff_candidates="$(git -C "$repo_root" grep -nIF "$GAIA_AUDIT_DIFF_CALL" -- '.claude/agents/code-audit-*.md' ${GAIA_AUDIT_MEMBER_SCAN[@]+"${GAIA_AUDIT_MEMBER_SCAN[@]}"} "$GAIA_AUDIT_SCOPE_RESOLVER" 2>/dev/null)"
   diff_matches="$(printf '%s\n' "$diff_candidates" | _gaia_keep_unanchored_diff_matches)"
   if [ -n "$diff_matches" ]; then
     printf '%s\n' "$diff_matches"
