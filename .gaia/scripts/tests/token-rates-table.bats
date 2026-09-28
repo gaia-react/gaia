@@ -48,7 +48,7 @@ rate_for() {
 @test "shipped table: the fleet's live model keys all resolve to a rate window" {
   # Every model key that has appeared in a real ledger. An absent row here is
   # the #1088 failure: silently priced at zero.
-  for m in claude-opus-5 claude-opus-4-8 claude-sonnet-5 claude-haiku-4-5-20251001; do
+  for m in claude-opus-5-5 claude-opus-5 claude-opus-4-8 claude-sonnet-5 claude-haiku-4-5-20251001; do
     got="$(rate_for "$m" 2026-07-30)"
     [ "$got" != "NULL" ] || { echo "no rate window for $m" >&2; return 1; }
   done
@@ -65,6 +65,12 @@ rate_for() {
   jq -e '.models["claude-opus-5"][0] | has("effective_through") | not' "$TABLE" >/dev/null
 }
 
+@test "shipped table: claude-opus-5-5 prices at 4/20 with one unconditional window" {
+  [ "$(rate_for claude-opus-5-5 2026-09-29)" = "4 20" ]
+  [ "$(rate_for claude-opus-5-5 2020-01-01)" = "4 20" ]
+  [ "$(jq -r '.models["claude-opus-5-5"] | length' "$TABLE")" -eq 1 ]
+}
+
 @test "shipped table: claude-mythos-5 prices at 10/50, the fable-5 tier" {
   [ "$(rate_for claude-mythos-5 2026-07-30)" = "10 50" ]
   [ "$(rate_for claude-mythos-5 2026-07-30)" = "$(rate_for claude-fable-5 2026-07-30)" ]
@@ -78,15 +84,15 @@ rate_for() {
 }
 
 @test "shipped table: the model key set is exactly this, and every window array is non-empty" {
-  # As a SET, not a roll call: the per-model tests below name four keys, so
+  # As a SET, not a roll call: the per-model tests below name five keys, so
   # deleting any of the other six passed every test. Adding a model to the table
   # now fails here until it is acknowledged, which is the point of a suite whose
   # job is guarding the shipped table.
   jq -e '.models | keys == [
            "claude-fable-5", "claude-haiku-4-5", "claude-haiku-4-5-20251001",
            "claude-mythos-5", "claude-opus-4-6", "claude-opus-4-7",
-           "claude-opus-4-8", "claude-opus-5", "claude-sonnet-4-6",
-           "claude-sonnet-5"
+           "claude-opus-4-8", "claude-opus-5", "claude-opus-5-5",
+           "claude-sonnet-4-6", "claude-sonnet-5"
          ]' "$TABLE" >/dev/null
 
   # A window array emptied to [] makes rate_window yield null, which prices that

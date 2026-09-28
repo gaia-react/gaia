@@ -11,6 +11,92 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-09-28 d58c153 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 dc022ea SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 d6b175f SKIP - docs: prose-only
+- 2026-09-28 e6b4365 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 af49fb8 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 533a754 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 2f40335 SKIP - fixes setup-ci verify-run race; behavior owned by setup-gaia.md, not duplicated in wiki
+- 2026-09-28 5457c71 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 457b7ce SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 2c0fb1e SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 218bc5f SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 49b1497 SKIP - docs: prose-only
+- 2026-09-28 8822419 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 80aa73d SKIP - test: test-only change
+- 2026-09-28 7ca8e78 SKIP - test: test-only change
+- 2026-09-28 c9739f7 SKIP - chore: generic chore
+- 2026-09-28 4cafa9a SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 b49a383 SKIP - chore: generic chore
+- 2026-09-28 8fcb968 SKIP - deletes an unused eval probe never referenced in wiki
+- 2026-09-28 265063e SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 c39560c SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 aa53a27 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 f4999c0 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 13e8330 SKIP - chore: generic chore
+- 2026-09-28 a5200d9 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 0813225 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 ea5358a SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 1ad4414 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 1e46f35 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 b6dc6be SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 a444f75 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 d885429 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 7e711d8 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 806d2b8 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 c09bafb SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 6112bc1 SKIP - chore: generic chore
+- 2026-09-28 e36f9c3 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 0e3d297 SKIP - chore: generic chore
+- 2026-09-28 b06d922 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 33ee6a9 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 6e99d66 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 f9034ec SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 b11c790 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 15a9ec0 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 044e6aa SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 2f07183 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 fabbc46 SKIP - chore: generic chore
+- 2026-09-28 92d079e SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 4c324a1 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 1b1b58e SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 4ba3633 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 1f2a9a2 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 3ecda60 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 87ab89a SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 2a30f87 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 0581952 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 d1acc1c SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 73e7d6b SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 ea9aa5d SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 ee4b6ee SKIP - chore: generic chore
+- 2026-09-28 81de52c SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 48292fb SKIP - perf-only fix in self-heal path guard; no behavior change
+- 2026-09-28 fadd447 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 51d347d SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 1c78f86 SKIP - perf-only refactor (oracle splitter to awk), behavior unchanged, no wiki fact affected
+- 2026-09-28 b931a76 SKIP - perf-only fix (string-join vs per-line append); no behavior change
+- 2026-09-28 aebd53b SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 dfc6a2f SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 cfb6c95 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 7cc276a SKIP - wires callers to the already wiki-documented pr-wait-merge verdict set; no new fact
+- 2026-09-28 faabe86 SKIP - feat/fix/perf/refactor/debt: tests-only
+- 2026-09-28 c58b934 SKIP - ci: CI plumbing
+- 2026-09-28 7bfee21 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 b72489e SKIP - internal git revspec-qualification hardening; no documented wiki convention changed
+- 2026-09-28 8935bf6 SKIP - internal wrapper-table correctness fix (BSD options); implementation detail
+- 2026-09-28 fbbe729 SKIP - hook robustness fix for verb-arming past wrappers; implementation detail, no wiki contract changed
+- 2026-09-28 88533a0 SKIP - internal CI base-resolver correctness fix; no documented wiki behavior changed
+- 2026-09-28 31b5197 SKIP - hook robustness fix for command-wrapper reading; implementation detail, no wiki contract changed
+- 2026-09-28 32a0f74 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 1079e4c SKIP - internal fail-closed probe added to branch-name-lib; no documented wiki behavior changed
+- 2026-09-28 e275f0f SKIP - hook robustness fix for RED gate funsub/glob detection; implementation detail, no wiki contract changed
+- 2026-09-28 262e705 SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 bd97d87 SKIP - docs: prose-only
+- 2026-09-28 bbf33fa SKIP - wiki updated in-commit; no further sync action needed
+- 2026-09-28 ce7fded SKIP - changes distribution-audit Step 3 logic; owned by distribution-audit.md, not duplicated in wiki
+- 2026-09-28 8c5a895 SKIP - wiki: self-referential
 - 2026-09-20 7098f0fb SKIP - severity:investigate label already reflected in wiki/concepts/Audit Disposition and Debt Fix.md, GitHub Labels.md by the same PR
 - 2026-09-20 b3f62549 SKIP - +=/reserved-word/coproc/quoted-value command-word hardening; implementation detail of already-documented command-position segment walk in Claude Hooks.md, no new behavior claim
 - 2026-09-20 5b3dfbcf SKIP - branch-name-lib.sh single-source + worktree claim reconcile fix already reflected in wiki/concepts/Audit Disposition and Debt Fix.md, GAIA Spec.md, Git Workflow.md, PR Merge Workflow.md, Task Orchestration.md, decisions/Claude Integration Fitness.md by the same PR
