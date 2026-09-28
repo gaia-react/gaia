@@ -37,9 +37,7 @@ const setupSandbox = (): Sandbox => {
 const baseVars: WorkflowTemplateVars = {
   config_key: 'wiki',
   cron: '0 4 * * *',
-  enable_auto_merge: true,
   enable_diff_size_check: true,
-  enable_stale_branch_delete: false,
   needs_human_label: 'needs-human',
   pr_label: 'gaia-ci',
   schedule: 'daily',

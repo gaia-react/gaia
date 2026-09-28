@@ -14584,7 +14584,7 @@ var summarizeZodError = (filePath, error51) => {
 };
 
 // src/schemas/automation-config.ts
-var TOOL_IDS = ["wiki", "stale-branches"];
+var TOOL_IDS = ["wiki"];
 var ToolModeSchema = external_exports.literal(["ci", "local", "off"]);
 var ScheduleSchema = external_exports.literal(["daily", "monthly", "weekly"]);
 var ToolConfigSchema = external_exports.object({
@@ -14618,7 +14618,6 @@ var AutomationConfigSchema = external_exports.object({
   sandbox_recommended: external_exports.boolean().optional(),
   setup_complete: external_exports.boolean(),
   setup_opted_out: external_exports.boolean(),
-  stale_branches: ToolConfigSchema,
   update_gaia: UpdateGaiaConfigSchema,
   // Same permissive-at-read pattern as isolation_policy above: an
   // unrecognized or absent version degrades to 1 rather than malforming
@@ -14630,7 +14629,6 @@ var AutomationConfigSchema = external_exports.object({
   // `ok`; the unknown row is dropped rather than failing the whole config.
 });
 var TOOL_ID_TO_CONFIG_KEY = {
-  "stale-branches": "stale_branches",
   wiki: "wiki"
 };
 var readAutomationConfigRaw = (repoRoot) => {
@@ -14711,9 +14709,8 @@ var HELP_TEXT = `Usage: gaia automation cron-decide <tool> [--json]
   Smart-cron decision primitive. Reads .gaia/automation.json and emits
   {decision, reason, skip_log_line}.
   Decision priority:
-    1. tool_off        (config.<tool>.mode == "off")
-    2. enabled          (wiki, mode != off -> run)
-    3. not_implemented (any other tool; skip)
+    1. tool_off (config.<tool>.mode == "off")
+    2. enabled  (mode != off -> run)
 `;
 var HELP_TOKENS = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var TOOL_ID_SET = new Set(TOOL_IDS);
@@ -14722,20 +14719,12 @@ var toolConfigFor = (config2, tool) => (
   // indexed access resolves directly to `ToolConfig`; no cast needed.
   config2[TOOL_ID_TO_CONFIG_KEY[tool]]
 );
-var decide = (args) => {
-  const { tool, toolConfig } = args;
+var decide = (toolConfig) => {
   if (toolConfig.mode === "off") {
     return {
       decision: "skip",
       reason: "tool_off",
       skip_log_line: "tool mode is off; skipping"
-    };
-  }
-  if (tool !== "wiki") {
-    return {
-      decision: "skip",
-      reason: "not_implemented",
-      skip_log_line: `cron-decide not yet implemented for ${tool}; skipping`
     };
   }
   return { decision: "run", reason: "enabled", skip_log_line: null };
@@ -14822,7 +14811,7 @@ var run = (argv, options = {}) => {
     return EXIT_CODES.CONFIG_INVALID;
   }
   const toolConfig = toolConfigFor(configResult.config, tool);
-  const decision = decide({ tool, toolConfig });
+  const decision = decide(toolConfig);
   if (json3) {
     process.stdout.write(`${JSON.stringify(decision)}
 `);
@@ -15000,7 +14989,6 @@ var run3 = (argv, options = {}) => {
 setup_complete: ${String(c.setup_complete)}
 setup_opted_out: ${String(c.setup_opted_out)}
 ${formatToolLine("wiki", c.wiki)}
-${formatToolLine("stale_branches", c.stale_branches)}
 update_gaia: mode=${c.update_gaia.mode}
 `
     );
@@ -15070,12 +15058,13 @@ var CRON_BY_SCHEDULE = {
   weekly: "0 4 * * 0"
 };
 var DEFAULT_SCHEDULE_BY_TOOL = {
-  "stale-branches": "monthly",
   wiki: "daily"
 };
 var WORKFLOW_NAME_BY_TOOL = {
-  "stale-branches": "GAIA CI - Stale Branches",
   wiki: "GAIA CI - Wiki"
+};
+var DIFF_SIZE_CHECK_BY_TOOL = {
+  wiki: true
 };
 var cronForSchedule = (schedule) => CRON_BY_SCHEDULE[schedule];
 var buildWorkflowVars = (config2, tool) => {
@@ -15091,11 +15080,7 @@ var buildWorkflowVars = (config2, tool) => {
     // Read by the scheduler template, not by the tool template: a tool
     // workflow carries no `schedule:` of its own.
     cron: cronForSchedule(schedule),
-    // stale-branches doesn't open a PR, so auto-merge is suppressed.
-    // The auto-merge partial gates its body on this flag.
-    enable_auto_merge: tool !== "stale-branches",
-    enable_diff_size_check: tool === "wiki",
-    enable_stale_branch_delete: tool === "stale-branches",
+    enable_diff_size_check: DIFF_SIZE_CHECK_BY_TOOL[tool],
     needs_human_label: "needs-human",
     pr_label: "gaia-ci",
     schedule,
@@ -17092,7 +17077,6 @@ var writeAutomationConfig = (repoRoot, payload) => {
 // src/init/configure-automation.ts
 var HELP_TEXT12 = String.raw`Usage: gaia init configure-automation \
   --wiki <ci|local|off> \
-  --stale-branches <ci|local|off> \
   [--sandbox-recommended <true|false>] \
   [--isolation-policy <${ISOLATION_POLICIES.join("|")}>]
 
@@ -17102,7 +17086,6 @@ var HELP_TEXT12 = String.raw`Usage: gaia init configure-automation \
 
   Required flags:
     --wiki <ci|local|off>
-    --stale-branches <ci|local|off>
 
   Optional flags:
     --sandbox-recommended <true|false>
@@ -17136,11 +17119,9 @@ var takeMode = (argv, index, context) => {
   return { mode: taken.value, ok: true };
 };
 var FLAG_SPECS = /* @__PURE__ */ new Map([
-  ["--stale-branches", { flag: "--stale-branches", key: "staleBranches" }],
   ["--wiki", { flag: "--wiki", key: "wiki" }]
 ]);
 var REQUIRED_MESSAGE = {
-  staleBranches: "--stale-branches is required",
   wiki: "--wiki is required"
 };
 var SANDBOX_RECOMMENDED_FLAG = "--sandbox-recommended";
@@ -17249,7 +17230,6 @@ var parseFlags = (argv) => {
     flags: {
       isolationPolicy: scalars.isolationPolicy,
       sandboxRecommended: scalars.sandboxRecommended,
-      staleBranches: flags.staleBranches,
       wiki: flags.wiki
     },
     ok: true
@@ -17267,7 +17247,6 @@ var buildConfig = (flags) => ({
   ...flags.sandboxRecommended === void 0 ? {} : { sandbox_recommended: flags.sandboxRecommended },
   setup_complete: false,
   setup_opted_out: false,
-  stale_branches: { mode: flags.staleBranches, schedule: "monthly" },
   update_gaia: { mode: "local" },
   version: 1,
   wiki: { mode: flags.wiki }
@@ -17312,7 +17291,6 @@ var run12 = (argv, options = {}) => {
   }
   try {
     markStepCompleted(cwd, STEP_NAME2, {
-      stale_branches: parsed.flags.staleBranches,
       wiki: parsed.flags.wiki
     });
   } catch (error51) {
@@ -18134,16 +18112,9 @@ var buildRenameArgv = (saved) => {
 var isToolModeValue = (value) => value === "ci" || value === "local" || value === "off";
 var buildConfigureAutomationArgv = (saved) => {
   if (saved === void 0) return null;
-  const { stale_branches: staleBranches, wiki } = saved;
-  if (!isToolModeValue(wiki) || !isToolModeValue(staleBranches)) {
-    return null;
-  }
-  return [
-    "--wiki",
-    wiki,
-    "--stale-branches",
-    staleBranches
-  ];
+  const { wiki } = saved;
+  if (!isToolModeValue(wiki)) return null;
+  return ["--wiki", wiki];
 };
 var buildWireStatuslineArgv = (saved) => {
   if (saved === void 0) return null;
@@ -18238,7 +18209,7 @@ var HELP_TEXT19 = `Usage: gaia init <subcommand> [args]
   wire-statusline --mode <global|project|skip>
                             Wire the GAIA statusline into Claude settings.
   bootstrap-env             Copy .env.example to .env if .env is absent.
-  configure-automation --wiki <m> --stale-branches <m>
+  configure-automation --wiki <m>
                             Write .gaia/automation.json (Phase A of GAIA CI).
   finalize                  Final cleanup steps for the init runbook.
   resume [--from-step <N>]  Resume a partially-completed init via state file.

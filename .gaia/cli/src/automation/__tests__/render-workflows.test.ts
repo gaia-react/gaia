@@ -38,7 +38,6 @@ const captureIo = () => {
 const allCi: AutomationConfig = {
   setup_complete: true,
   setup_opted_out: false,
-  stale_branches: {mode: 'ci', schedule: 'monthly'},
   update_gaia: {mode: 'local'},
   version: 1,
   wiki: {mode: 'ci', schedule: 'daily'},
@@ -59,17 +58,14 @@ describe('automation render-workflows', () => {
     vi.restoreAllMocks();
   });
 
-  test('writes one file per CI-mode tool when both are configured', () => {
+  test('writes the workflow for a CI-mode tool', () => {
     sandbox.writeConfig(allCi);
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
     const exit = run(['--out-dir', outDir], {cwd: sandbox.root});
 
     expect(exit).toBe(0);
-
-    for (const tool of ['wiki', 'stale-branches']) {
-      expect(existsSync(path.join(outDir, `gaia-ci-${tool}.yml`))).toBe(true);
-    }
+    expect(existsSync(path.join(outDir, 'gaia-ci-wiki.yml'))).toBe(true);
   });
 
   test('writes only the requested subset when --tools is given', () => {
@@ -82,26 +78,6 @@ describe('automation render-workflows', () => {
 
     expect(exit).toBe(0);
     expect(existsSync(path.join(outDir, 'gaia-ci-wiki.yml'))).toBe(true);
-    expect(existsSync(path.join(outDir, 'gaia-ci-stale-branches.yml'))).toBe(
-      false
-    );
-  });
-
-  // The scheduler covers every CI-mode tool whatever `--tools` says, so a
-  // subset render leaves it calling files that were never written, and a
-  // missing `uses:` target fails the run before any job starts.
-  test('warns when --tools leaves a scheduler-called workflow unrendered', () => {
-    sandbox.writeConfig(allCi);
-    const outDir = path.join(sandbox.root, '.github', 'workflows');
-
-    const exit = run(['--out-dir', outDir, '--tools', 'wiki'], {
-      cwd: sandbox.root,
-    });
-
-    expect(exit).toBe(0);
-    expect(io.errors.join('')).toContain(
-      'scheduler: calls stale-branches, which --tools did not render'
-    );
   });
 
   test('warns about no unrendered tool when every tool is rendered', () => {
@@ -124,12 +100,9 @@ describe('automation render-workflows', () => {
     expect(existsSync(outDir)).toBe(false);
     const stdout = io.outs.join('');
     expect(stdout).toMatch(/wiki: \d+ bytes -> .*gaia-ci-wiki\.yml/u);
-    expect(stdout).toMatch(
-      /stale-branches: \d+ bytes -> .*gaia-ci-stale-branches\.yml/u
-    );
   });
 
-  test('skips tools whose mode is local and writes the others', () => {
+  test('skips a tool whose mode is local', () => {
     const config: AutomationConfig = {
       ...allCi,
       wiki: {mode: 'local'},
@@ -141,26 +114,21 @@ describe('automation render-workflows', () => {
 
     expect(exit).toBe(0);
     expect(existsSync(path.join(outDir, 'gaia-ci-wiki.yml'))).toBe(false);
-    expect(existsSync(path.join(outDir, 'gaia-ci-stale-branches.yml'))).toBe(
-      true
-    );
     expect(io.errors.join('')).toContain('wiki: skipped (mode=local)');
   });
 
-  test('skips tools whose mode is off', () => {
+  test('skips a tool whose mode is off', () => {
     const config: AutomationConfig = {
       ...allCi,
-      stale_branches: {mode: 'off'},
+      wiki: {mode: 'off'},
     };
     sandbox.writeConfig(config);
     const outDir = path.join(sandbox.root, '.github', 'workflows');
 
     run(['--out-dir', outDir], {cwd: sandbox.root});
 
-    expect(existsSync(path.join(outDir, 'gaia-ci-stale-branches.yml'))).toBe(
-      false
-    );
-    expect(io.errors.join('')).toContain('stale-branches: skipped (mode=off)');
+    expect(existsSync(path.join(outDir, 'gaia-ci-wiki.yml'))).toBe(false);
+    expect(io.errors.join('')).toContain('wiki: skipped (mode=off)');
   });
 
   test('exits non-zero with config_missing when there is no config', () => {
@@ -276,22 +244,18 @@ describe('automation render-workflows', () => {
     // construction (same render path). This test asserts the byte
     // count is non-trivial so we catch a regression where the writer
     // emits an empty file.
-    for (const tool of ['wiki', 'stale-branches']) {
-      const content = readFileSync(
-        path.join(outDir, `gaia-ci-${tool}.yml`),
-        'utf8'
-      );
-      expect(content.length).toBeGreaterThan(500);
-      expect(content).toContain(`gaia-ci-${tool}`);
-    }
+    const content = readFileSync(path.join(outDir, 'gaia-ci-wiki.yml'), 'utf8');
+    expect(content.length).toBeGreaterThan(500);
+    expect(content).toContain('gaia-ci-wiki');
   });
 
-  test('a legacy config with update_deps/pnpm_audit in ci renders neither workflow nor schedules them', () => {
+  test('a legacy config with update_deps/pnpm_audit/stale_branches in ci renders none of their workflows nor schedules them', () => {
     writeFileSync(
       automationConfigPath(sandbox.root),
       JSON.stringify({
         ...allCi,
         pnpm_audit: {mode: 'ci', schedule: 'daily'},
+        stale_branches: {mode: 'ci', schedule: 'monthly'},
         update_deps: {mode: 'ci', schedule: 'weekly'},
       }),
       'utf8'
@@ -307,20 +271,27 @@ describe('automation render-workflows', () => {
       false
     );
     expect(existsSync(path.join(outDir, 'gaia-ci-pnpm-audit.yml'))).toBe(false);
+    expect(existsSync(path.join(outDir, 'gaia-ci-stale-branches.yml'))).toBe(
+      false
+    );
     const scheduler = readFileSync(path.join(outDir, 'gaia-ci.yml'), 'utf8');
     expect(scheduler).not.toContain('update-deps');
     expect(scheduler).not.toContain('pnpm-audit');
+    expect(scheduler).not.toContain('stale-branches');
   });
 
-  test('rejects --tools pnpm-audit as an unknown tool', () => {
-    sandbox.writeConfig(allCi);
-    const outDir = path.join(sandbox.root, '.github', 'workflows');
+  test.each(['pnpm-audit', 'stale-branches'])(
+    'rejects --tools %s as an unknown tool',
+    (tool) => {
+      sandbox.writeConfig(allCi);
+      const outDir = path.join(sandbox.root, '.github', 'workflows');
 
-    const exit = run(['--out-dir', outDir, '--tools', 'pnpm-audit'], {
-      cwd: sandbox.root,
-    });
+      const exit = run(['--out-dir', outDir, '--tools', tool], {
+        cwd: sandbox.root,
+      });
 
-    expect(exit).not.toBe(0);
-    expect(io.errors.join('')).toContain('"code":"invalid_arguments"');
-  });
+      expect(exit).not.toBe(0);
+      expect(io.errors.join('')).toContain('"code":"invalid_arguments"');
+    }
+  );
 });

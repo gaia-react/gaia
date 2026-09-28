@@ -119,7 +119,6 @@ export const run = (
         `setup_complete: ${String(c.setup_complete)}\n` +
         `setup_opted_out: ${String(c.setup_opted_out)}\n` +
         `${formatToolLine('wiki', c.wiki)}\n` +
-        `${formatToolLine('stale_branches', c.stale_branches)}\n` +
         `update_gaia: mode=${c.update_gaia.mode}\n`
     );
   }

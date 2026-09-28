@@ -14,7 +14,6 @@ import {buildWorkflowVars} from '../workflow-vars.js';
 const baseConfig: AutomationConfig = {
   setup_complete: true,
   setup_opted_out: false,
-  stale_branches: {mode: 'ci', schedule: 'monthly'},
   update_gaia: {mode: 'local'},
   version: 1,
   wiki: {mode: 'ci', schedule: 'daily'},
@@ -159,38 +158,8 @@ describe('workflow templates: gaia-ci-wiki', () => {
   });
 });
 
-describe('workflow templates: gaia-ci-stale-branches', () => {
-  const rendered = renderForTool('stale-branches');
-  const doc = parseRendered(rendered);
-
-  test('uses concurrency group gaia-ci-stale-branches', () => {
-    expect((doc.concurrency as {group: string}).group).toBe(
-      'gaia-ci-stale-branches'
-    );
-  });
-
-  test('emits the branch-deletion step', () => {
-    expect(rendered).toContain('gh api -X DELETE');
-    expect(rendered).toContain('30 days ago');
-  });
-
-  test('emits NO gh pr merge invocation (auto-merge gated off)', () => {
-    expect(rendered).not.toContain('gh pr merge');
-  });
-
-  test('omits the auto-merge step entirely (no PR-creation logic)', () => {
-    expect(stepNames(doc)).not.toContain('Open and auto-merge gaia-ci PR');
-  });
-
-  test('contains no unresolved {{ or }} mustache tokens', () => {
-    const stripped = rendered.replaceAll(/\$\{\{[\s\S]*?\}\}/gu, '');
-    expect(stripped).not.toContain('{{');
-    expect(stripped).not.toContain('}}');
-  });
-});
-
 describe('workflow templates: cross-tool invariants', () => {
-  const tools: readonly ToolId[] = ['wiki', 'stale-branches'];
+  const tools: readonly ToolId[] = ['wiki'];
 
   test.each(tools)(
     'every rendered file references the three secrets (%s)',

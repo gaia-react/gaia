@@ -86,22 +86,7 @@ describe('automation cron-decide', () => {
     expect(decision.skip_log_line).toBeNull();
   });
 
-  test('non-wiki tool with mode != off skips with reason not_implemented', () => {
-    sandbox.writeConfig({
-      ...VALID_BASE_CONFIG,
-      stale_branches: {mode: 'ci', schedule: 'weekly'},
-    });
-    const exit = runCronDecide(['stale-branches', '--json'], {
-      cwd: sandbox.root,
-    });
-    expect(exit).toBe(0);
-    const decision = decisionFromStdout(stdio.outputs.join(''));
-    expect(decision.decision).toBe('skip');
-    expect(decision.reason).toBe('not_implemented');
-    expect(decision.skip_log_line).toContain('cron-decide not yet implemented');
-  });
-
-  test.each(['pnpm-audit', 'update-deps'])(
+  test.each(['pnpm-audit', 'update-deps', 'stale-branches'])(
     'rejects %s as an unknown tool',
     (tool) => {
       sandbox.writeConfig(VALID_BASE_CONFIG);

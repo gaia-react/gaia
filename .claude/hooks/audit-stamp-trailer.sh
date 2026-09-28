@@ -18,9 +18,9 @@
 #   .claude/hooks/audit-stamp-trailer.sh
 #
 #   Argument-less. Reads its inputs from the environment + git state, plus the
-#   pull request's title through `gh`, read only when the member resolver
-#   dispatches code-audit-frontend and it has no marker (the chore(deps) waiver
-#   below).
+#   pull request's head sha, title and file list through `gh`, read only when
+#   the member resolver dispatches code-audit-frontend and it has no marker
+#   (the chore(deps) waiver below).
 #
 # Required env input
 #   AUDIT_TREE_SHA      The tree-sha the audit reviewed (captured at audit
@@ -208,28 +208,39 @@ if [ -z "$frontend_digest" ]; then
   exit 0
 fi
 
-# The chore(deps) waiver: a dep-bump pull request waives code-audit-frontend on
-# its title, through the same predicate the merge hook and CI already read, so
-# a member co-dispatched on a dep-bump diff can complete the handshake with its
-# own earned marker. It waives the missing frontend marker only; a frontend
-# refusal still declines, at the frontend-refusal check and at the member
-# loop's refusal-first read, both below. Fail-closed: no gh, no pull request, an unreadable title, or an
-# absent predicate all leave frontend pending.
+# The chore(deps) waiver: a dep-bump pull request whose recorded file list is
+# confined to a dependency manifest waives code-audit-frontend, through the
+# same predicate the merge hook and CI already read, so a member co-dispatched
+# on a dep-bump diff can complete the handshake with its own earned marker. It
+# waives the missing frontend marker only; a frontend refusal still declines,
+# at the frontend-refusal check and at the member loop's refusal-first read,
+# both below. Fail-closed: no gh, no pull request, an unreadable title, an
+# empty or non-manifest file list, or an absent predicate all leave frontend
+# pending.
 #
-# The title is read at most once, and only when the resolver dispatches frontend
-# and its marker is missing, so a run with a frontend marker, or one frontend
-# does not audit at all, makes no network call. It is read HERE, ahead
-# of the stamp lock, not inside the member loop: the lock is reclaimed as stale
-# after 15 seconds with no heartbeat, so a `gh` call stalling inside it would let
-# a racing member take the lock and stamp a second trailer.
+# This hook can stamp an un-pushed HEAD (the amend path), where the PR record
+# `gh` answers with still describes the PREVIOUS pushed head, an older tree
+# that can differ from what is being stamped now. The waiver additionally
+# requires the recorded head sha's tree to equal the current tree, so the
+# server's file list is guaranteed to describe the exact content being
+# certified; on a mismatch the waiver does not fire and the normal push-and-
+# rerun flow applies, same as any other pending frontend case.
+#
+# The record is read at most once, and only when the resolver dispatches
+# frontend and its marker is missing, so a run with a frontend marker, or one
+# frontend does not audit at all, makes no network call. It is read HERE,
+# ahead of the stamp lock, not inside the member loop: the lock is reclaimed as
+# stale after 15 seconds with no heartbeat, so a `gh` call stalling inside it
+# would let a racing member take the lock and stamp a second trailer.
 #
 # Honest limit: whatever this waiver lets through, a trailer commit or (on an
 # already-pushed attached HEAD) the GAIA-Audit status posted next, still
 # carries the frontend digest, and the readers that check version and digest
-# never read the title, so it stays valid if the pull request is later
-# retitled away from chore(deps). CI's own chore(deps) success status has the
-# same shape, and any content change rotates the digest and retires it for the
-# digest-checking readers. It does not retire it as an incremental-review anchor:
+# never read the title or the file list, so it stays valid if the pull request
+# is later retitled away from chore(deps) or grows a non-manifest commit. CI's
+# own chore(deps) success status has the same shape, and any content change
+# rotates the digest and retires it for the digest-checking readers. It does
+# not retire it as an incremental-review anchor:
 # .github/audit/resolve-audit-base.sh reads a trailer as a whole-team anchor on
 # version alone, so after such a retitle and a later app/ change, frontend
 # reviews only the delta past the trailer. CI's chore(deps) status anchors the
@@ -238,10 +249,22 @@ frontend_waiver=""
 chore_deps_waives_frontend() {
   if [ -z "$frontend_waiver" ]; then
     frontend_waiver="false"
-    local predicate="${repo_root}/.gaia/scripts/chore-deps-skip.sh" title=""
+    local predicate="${repo_root}/.gaia/scripts/chore-deps-skip.sh" record="" rest="" pr_head="" title="" paths="" pr_tree=""
     if [ -f "$predicate" ] && command -v gh >/dev/null 2>&1; then
-      title="$( cd "$repo_root" && gh pr view --json title --jq .title 2>/dev/null || true )"
-      if [ -n "$title" ] && [ "$(bash "$predicate" "$title" 2>/dev/null || true)" = "true" ]; then
+      record="$( cd "$repo_root" && gh pr view --json headRefOid,title,files --jq '.headRefOid, .title, (.files[]?.path)' 2>/dev/null || true )"
+      pr_head="${record%%$'\n'*}"
+      case "$record" in
+        *$'\n'*) rest="${record#*$'\n'}" ;;
+      esac
+      title="${rest%%$'\n'*}"
+      case "$rest" in
+        *$'\n'*) paths="${rest#*$'\n'}" ;;
+      esac
+      if [ -n "$pr_head" ]; then
+        pr_tree="$(git -C "$repo_root" rev-parse --verify --quiet "${pr_head}^{tree}" 2>/dev/null || true)"
+      fi
+      if [ -n "$pr_tree" ] && [ "$pr_tree" = "$current_tree" ] && [ -n "$title" ] \
+         && [ "$(bash "$predicate" "$title" <<<"$paths" 2>/dev/null || true)" = "true" ]; then
         frontend_waiver="true"
       fi
     fi

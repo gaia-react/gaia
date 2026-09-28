@@ -309,25 +309,34 @@ EOF
   export PATH="$GH_BIN:$PATH"
 }
 
-# Same stub, but the PR record carries $1 as the title, so the chore(deps)
-# bypass can actually fire. Every other case above leaves the title empty, which
-# is why no test here exercised the bypass's allow path. jq builds the record
-# rather than a printf format, so a title carrying a quote or a backslash stays
-# valid JSON instead of silently emptying the field the test is pinning.
+# Same stub, but the PR record carries $1 as the title and every remaining
+# positional as one entry of the record's `files` array, so the chore(deps)
+# bypass can actually fire (it requires a manifest-only file list alongside
+# the title). $2 is still the issues payload, defaulting to `[]`, exactly as
+# install_gh_stub's own. jq builds the record rather than a printf format, so a
+# title or path carrying a quote or a backslash stays valid JSON instead of
+# silently emptying the field the test is pinning.
 install_gh_stub_with_title() {
-  local title="$1"
-  install_gh_stub "${2:-[]}"
+  local title="$1" issues="${2:-[]}"
+  if [ "$#" -gt 0 ]; then shift; fi
+  if [ "$#" -gt 0 ]; then shift; fi
+  install_gh_stub "$issues"
   printf '%s' "$title" > "$BATS_TEST_TMPDIR/pr-title.txt"
+  printf '%s\n' "$@" | jq -R -s -c 'split("\n") | map(select(length > 0)) | map({path: .})' \
+    > "$BATS_TEST_TMPDIR/pr-files.json"
   cat > "$GH_BIN/gh" <<EOF
 #!/usr/bin/env bash
 issues_file="$BATS_TEST_TMPDIR/issues.json"
 title_file="$BATS_TEST_TMPDIR/pr-title.txt"
+files_file="$BATS_TEST_TMPDIR/pr-files.json"
 EOF
   cat >> "$GH_BIN/gh" <<'EOF'
 case "$1" in
   auth) exit 0 ;;
   repo) printf 'gaia-react/gaia\n'; exit 0 ;;
-  pr) jq -n --arg t "$(cat "$title_file")" '{title:$t, baseRefName:"", number:"30"}'; exit 0 ;;
+  pr) jq -n --arg t "$(cat "$title_file")" --slurpfile f "$files_file" \
+        '{title:$t, baseRefName:"", number:"30", files: $f[0]}'
+      exit 0 ;;
   issue) cat "$issues_file"; exit 0 ;;
   api) printf 'null\n'; exit 0 ;;
   *) exit 0 ;;
@@ -1230,24 +1239,46 @@ gh pr merge 30 --squash"
 # chore(deps) bypass, allow path
 #
 # Every case above stubs `gh pr view` to an empty title, so the bypass never
-# fires and its allow path went untested. These three cover it, and the third
-# is the reason: the predicate is executable code, so it must be resolved from
-# the ACTING tree. Resolving it from the main checkout instead looks correct in
-# an ordinary clone, where the two are the same directory, and silently denies
-# every chore(deps) merge from a linked worktree.
+# fires and its allow path went untested. These cover it, and the linked-
+# worktree case is the reason for the third: the predicate is executable code,
+# so it must be resolved from the ACTING tree. Resolving it from the main
+# checkout instead looks correct in an ordinary clone, where the two are the
+# same directory, and silently denies every chore(deps) merge from a linked
+# worktree.
+#
+# The bypass requires the PR record's file list to be manifest-only alongside
+# the title, so every case below states its file list explicitly.
 # ---------------------------------------------------------------------------
 
-@test "chore(deps): a dep-bump PR is allowed with no marker at all" {
-  install_gh_stub_with_title "chore(deps): bump the github-actions group"
+@test "chore(deps): a dep-bump PR with a manifest-only file list is allowed with no marker at all" {
+  install_gh_stub_with_title "chore(deps): bump the github-actions group" "[]" "package.json" "pnpm-lock.yaml"
   install_chore_deps_predicate
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "package.json" "{}"
 
   run_merge_hook
   assert_allowed_by_json
 }
 
+@test "chore(deps): a dep-bump title whose PR changes app/ still requires a marker" {
+  install_gh_stub_with_title "chore(deps): bump the github-actions group" "[]" "package.json" "app/x.ts"
+  install_chore_deps_predicate
+  commit_files "app/x.ts" "export const x = 1"
+
+  run_merge_hook
+  assert_denied_by_json
+}
+
+@test "chore(deps): a record with no files keeps the marker mandatory" {
+  install_gh_stub_with_title "chore(deps): bump the github-actions group"
+  install_chore_deps_predicate
+  commit_files "app/x.ts" "export const x = 1"
+
+  run_merge_hook
+  assert_denied_by_json
+}
+
 @test "chore(deps): an ordinary PR title still requires a marker" {
-  install_gh_stub_with_title "feat: add a thing"
+  install_gh_stub_with_title "feat: add a thing" "[]" "package.json"
   install_chore_deps_predicate
   commit_files "app/x.ts" "export const x = 1"
 
@@ -1256,8 +1287,8 @@ gh pr merge 30 --squash"
 }
 
 @test "chore(deps): the bypass fires from a linked worktree, where main lacks the predicate" {
-  install_gh_stub_with_title "chore(deps): bump the github-actions group"
-  commit_files "app/x.ts" "export const x = 1"
+  install_gh_stub_with_title "chore(deps): bump the github-actions group" "[]" "package.json"
+  commit_files "package.json" "{}"
   setup_linked_worktree
 
   # The predicate lands in the WORKTREE only. REPO stands in for a main
@@ -1889,20 +1920,22 @@ rge 30 --squash'
 # ---------------------------------------------------------------------------
 
 @test "chore(deps): the bypass denies a merge naming a pull request other than the record's" {
-  install_gh_stub_with_title "chore(deps): bump the github-actions group"
+  install_gh_stub_with_title "chore(deps): bump the github-actions group" "[]" "package.json"
   install_chore_deps_predicate
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "package.json" "{}"
 
   # The record describes pull request 30. A dep-bump title on THIS branch says
-  # nothing about 999, which no local quality gate pre-verified.
+  # nothing about 999, which no local quality gate pre-verified. The record's
+  # file list is manifest-only, so this denies on the naming mismatch alone,
+  # not vacuously on an empty or non-manifest list.
   run_merge_hook "gh pr merge 999 --squash"
   assert_denied_by_json
 }
 
 @test "chore(deps): the bypass still fires when the command names no pull request" {
-  install_gh_stub_with_title "chore(deps): bump the github-actions group"
+  install_gh_stub_with_title "chore(deps): bump the github-actions group" "[]" "package.json"
   install_chore_deps_predicate
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "package.json" "{}"
 
   # gh resolves an absent positional to the current branch, which is the very
   # pull request the record was read for, so the turnkey spelling keeps clearing.

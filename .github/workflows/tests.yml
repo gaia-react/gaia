@@ -53,19 +53,25 @@ jobs:
         with:
           fetch-depth: 0
       # Pre-verified dep-bump PRs (the /update-deps wrapper runs the full
-      # quality gate locally before pushing) skip the CI suite. Title-pattern
-      # gate is restricted to `chore(deps):` and `chore(deps-dev):` so other
-      # chore PRs still run normally. Skipped jobs do not satisfy required
-      # checks under classic branch protection, so we gate steps instead.
+      # quality gate locally before pushing) skip the CI suite, but only when
+      # the dep-bump title is matched AND the PR's diff is confined to
+      # dependency manifests; otherwise the incremental filter below decides
+      # as for any other PR. Skipped jobs do not satisfy required checks under
+      # classic branch protection, so we gate steps instead.
       - name: Check chore-deps title
         id: chore-deps
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
           set -eu
           if [ "$EVENT_NAME" = "pull_request" ]; then
-            skip="$(bash .gaia/scripts/chore-deps-skip.sh "$PR_TITLE")"
+            if changed=$(set -o pipefail; git diff --name-only -z --no-renames "${PR_BASE_SHA}...HEAD" | tr '\0' '\n'); then
+              skip="$(bash .gaia/scripts/chore-deps-skip.sh "$PR_TITLE" <<<"$changed")"
+            else
+              skip=false
+            fi
           else
             skip=false
           fi

@@ -31,12 +31,16 @@
 #                                               lib without the refusal reader declines
 #   11. UAT-008: stamped trailer's field 2 is the frontend content digest
 #       (64-hex) and field 3 is the real HEAD tree (40-hex), distinctly
-#   12. chore(deps) waiver                   -> a dep-bump PR title waives an unmarked
+#   12. chore(deps) waiver                   -> a dep-bump PR title with a manifest-only
+#                                               file list waives an unmarked
 #                                               code-audit-frontend and no other member;
-#                                               a non-matching or unreadable title, or an
+#                                               a non-matching or unreadable title, an
+#                                               empty or non-manifest file list, a
+#                                               recorded head sha whose tree does not
+#                                               match the content being stamped, or an
 #                                               absent predicate, leaves it pending; a
 #                                               diff that does not dispatch frontend
-#                                               reads no title at all
+#                                               reads no record at all
 #
 # The helper never pushes; the agent caller pushes after writing the
 # audit marker (see .claude/agents/code-review-audit.md "Audit marker
@@ -718,11 +722,13 @@ EOF
 }
 
 # -----------------------------------------------------------------------------
-# chore(deps) waiver: a dep-bump PR waives code-audit-frontend on its title, the
-# same predicate the merge hook and CI read, so a co-dispatched member's earned
-# marker is enough to stamp. The waiver is fail-closed: an unreadable title, a
-# non-matching title, or an absent predicate leaves frontend pending exactly as
-# before. Every case writes the shell member's marker and leaves frontend
+# chore(deps) waiver: a dep-bump PR whose recorded file list is manifest-only
+# waives code-audit-frontend, the same predicate the merge hook and CI read, so
+# a co-dispatched member's earned marker is enough to stamp. The waiver is
+# fail-closed: an unreadable title, a non-matching title, an empty or
+# non-manifest file list, a recorded head sha whose tree does not match the
+# content being stamped, or an absent predicate leaves frontend pending exactly
+# as before. Every case writes the shell member's marker and leaves frontend
 # unmarked, the shape a /update-deps PR that also touches .gaia/cli presents.
 # -----------------------------------------------------------------------------
 
@@ -737,20 +743,31 @@ install_chore_deps_predicate() {
   git -C "$REPO" commit --quiet -m "install chore(deps) predicate"
 }
 
-# A fake `gh` whose `pr view` prints $1 as the PR title, or exits non-zero when
+# A fake `gh` whose `pr view` prints, on three-plus lines, the pushed head sha
+# (read from $FAKEBIN/pr-head, empty until a caller writes it, since the real
+# pushed sha is only known after run_waiver_case's own push), then $1 as the PR
+# title, then each remaining argument as one changed path. Exits non-zero when
 # $1 is empty (gh off a PR branch, or unauthenticated).
 install_title_stub() {
+  local title="$1"
+  shift || true
   FAKEBIN=$(mktemp -d -t audit-stamp-fakebin-XXXXXX)
-  printf '%s' "${1:-}" > "$FAKEBIN/pr-title"
+  printf '%s' "$title" > "$FAKEBIN/pr-title"
+  : > "$FAKEBIN/pr-head"
+  printf '%s\n' "$@" > "$FAKEBIN/pr-files"
   cat > "$FAKEBIN/gh" <<EOF
 #!/usr/bin/env bash
 title_file="$FAKEBIN/pr-title"
+head_file="$FAKEBIN/pr-head"
+files_file="$FAKEBIN/pr-files"
 EOF
   cat >> "$FAKEBIN/gh" <<'EOF'
 case "$1" in
   pr)
     [ -s "$title_file" ] || exit 1
+    cat "$head_file"; printf '\n'
     cat "$title_file"; printf '\n'
+    cat "$files_file"
     ;;
   *) exit 0 ;;
 esac
@@ -759,22 +776,25 @@ EOF
 }
 
 # Run the hook with the shell member cleared and frontend unmarked, the title
-# stub on PATH. Leaves the pre-run HEAD in $before_sha and tree in $before_tree.
+# stub on PATH. Writes the pushed head sha into the stub's pr-head file, so a
+# caller who wants a MISMATCHED head instead overwrites it after calling this.
+# Leaves the pre-run HEAD in $before_sha and tree in $before_tree.
 run_waiver_case() {
   git -C "$REPO" remote add origin "$REMOTE"
   git -C "$REPO" push --quiet --set-upstream origin feature
   before_sha=$(git -C "$REPO" rev-parse HEAD)
   before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  printf '%s' "$before_sha" > "$FAKEBIN/pr-head"
   write_marker code-audit-maintainer-shell
   cd "$REPO" || return 1
   PATH="$FAKEBIN:$PATH" AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
 }
 
-@test "chore(deps) waiver: a dep-bump title waives frontend, so the co-dispatched member's marker stamps (status only)" {
+@test "chore(deps) waiver: a dep-bump title with a manifest-only file list waives frontend, so the co-dispatched member's marker stamps (status only)" {
   install_resolver
   install_chore_deps_predicate
   commit_mixed_diff
-  install_title_stub "chore(deps): bump vite to 8.3.0"
+  install_title_stub "chore(deps): bump vite to 8.3.0" "package.json" "pnpm-lock.yaml"
   before_count=$(git -C "$REPO" rev-list --count HEAD)
 
   run_waiver_case
@@ -790,7 +810,7 @@ run_waiver_case() {
   install_resolver
   install_chore_deps_predicate
   commit_mixed_diff
-  install_title_stub "fix(cli): raise shared pins"
+  install_title_stub "fix(cli): raise shared pins" "package.json"
 
   run_waiver_case
 
@@ -814,17 +834,74 @@ run_waiver_case() {
   [ -z "$(trailer_on_head)" ]
 }
 
-@test "chore(deps) waiver: waives frontend only, so an unmarked co-dispatched member stays pending" {
+@test "chore(deps) waiver: an empty file list leaves frontend pending" {
   install_resolver
   install_chore_deps_predicate
   commit_mixed_diff
   install_title_stub "chore(deps): bump vite to 8.3.0"
+
+  run_waiver_case
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "stamp: declined: members pending code-audit-frontend" ]
+  [ "$before_sha" = "$(git -C "$REPO" rev-parse HEAD)" ]
+  [ -z "$(trailer_on_head)" ]
+}
+
+@test "chore(deps) waiver: a non-manifest path in the file list leaves frontend pending" {
+  install_resolver
+  install_chore_deps_predicate
+  commit_mixed_diff
+  install_title_stub "chore(deps): bump vite to 8.3.0" "package.json" "app/x.ts"
+
+  run_waiver_case
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "stamp: declined: members pending code-audit-frontend" ]
+  [ "$before_sha" = "$(git -C "$REPO" rev-parse HEAD)" ]
+  [ -z "$(trailer_on_head)" ]
+}
+
+@test "chore(deps) waiver: a recorded head sha whose tree differs from what's being stamped leaves frontend pending" {
+  install_resolver
+  install_chore_deps_predicate
+  commit_mixed_diff
+  git -C "$REPO" remote add origin "$REMOTE"
+  git -C "$REPO" push --quiet --set-upstream origin feature
+  pushed_sha=$(git -C "$REPO" rev-parse HEAD)
+  write_marker code-audit-maintainer-shell
+  # A further un-pushed commit changes HEAD's tree, so the pushed sha the
+  # stubbed PR record answers with (below) no longer describes the content
+  # being stamped now.
+  echo "export const y = 2;" > "$REPO/app/y.ts"
+  git -C "$REPO" add app/y.ts
+  git -C "$REPO" commit --quiet -m "further un-pushed change"
+  before_sha=$(git -C "$REPO" rev-parse HEAD)
+  before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  install_title_stub "chore(deps): bump vite to 8.3.0" "package.json" "pnpm-lock.yaml"
+  printf '%s' "$pushed_sha" > "$FAKEBIN/pr-head"
+
+  cd "$REPO"
+  PATH="$FAKEBIN:$PATH" AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "stamp: declined: members pending code-audit-frontend" ]
+  [ "$before_sha" = "$(git -C "$REPO" rev-parse HEAD)" ]
+  [ -z "$(trailer_on_head)" ]
+}
+
+@test "chore(deps) waiver: waives frontend only, so an unmarked co-dispatched member stays pending" {
+  install_resolver
+  install_chore_deps_predicate
+  commit_mixed_diff
+  install_title_stub "chore(deps): bump vite to 8.3.0" "package.json" "pnpm-lock.yaml"
   git -C "$REPO" remote add origin "$REMOTE"
   git -C "$REPO" push --quiet --set-upstream origin feature
   # Every test assigns before_sha before reading it, so no sibling's value leaks.
   # shellcheck disable=SC2030
   before_sha=$(git -C "$REPO" rev-parse HEAD)
   before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  printf '%s' "$before_sha" > "$FAKEBIN/pr-head"
 
   cd "$REPO"
   PATH="$FAKEBIN:$PATH" AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
@@ -843,7 +920,7 @@ run_waiver_case() {
   echo "#!/bin/bash" > "$REPO/.gaia/scripts/example.sh"
   git -C "$REPO" add .gaia/scripts/example.sh
   git -C "$REPO" commit --quiet -m "shell-only change"
-  install_title_stub "chore(deps): bump vite to 8.3.0"
+  install_title_stub "chore(deps): bump vite to 8.3.0" "package.json"
   # Log every gh invocation, so the assertion reads what the hook called.
   mv "$FAKEBIN/gh" "$FAKEBIN/gh-real"
   printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/gh-calls"\nexec "%s/gh-real" "$@"\n' "$FAKEBIN" "$FAKEBIN" > "$FAKEBIN/gh"
@@ -863,7 +940,7 @@ run_waiver_case() {
   install_resolver
   install_chore_deps_predicate
   commit_mixed_diff
-  install_title_stub "chore(deps): bump vite to 8.3.0"
+  install_title_stub "chore(deps): bump vite to 8.3.0" "package.json"
   # Log every gh invocation, so the assertion reads what the hook called.
   mv "$FAKEBIN/gh" "$FAKEBIN/gh-real"
   printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/gh-calls"\nexec "%s/gh-real" "$@"\n' "$FAKEBIN" "$FAKEBIN" > "$FAKEBIN/gh"
@@ -883,7 +960,7 @@ run_waiver_case() {
 @test "chore(deps) waiver: an absent predicate fails closed even on a dep-bump title" {
   install_resolver
   commit_mixed_diff
-  install_title_stub "chore(deps): bump vite to 8.3.0"
+  install_title_stub "chore(deps): bump vite to 8.3.0" "package.json"
 
   run_waiver_case
 
