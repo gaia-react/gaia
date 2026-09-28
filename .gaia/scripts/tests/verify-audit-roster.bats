@@ -61,9 +61,9 @@ assert_contains() {
 # cases the shipped state machine does, including a start and end on one line
 # and an end with no open block (which the shipped parser keeps).
 #
-# This awk is a hand-kept model, not held to the real parser by a test. Three
+# This awk is a hand-kept model, not held to the real parser by a test. Two
 # sibling suites carry the same block for the same reason
-# (`audit-write-clearance.bats`, `.gaia/tests/hooks/audit-scope-lib.bats`,
+# (`audit-write-clearance.bats`,
 # `.gaia/tests/statusline/statusline-worktree.bats`), so a change here belongs
 # in all of them, and in the real parser too if the transform it models changed.
 strip_maintainer_only() {
@@ -895,14 +895,12 @@ YAML
   [ "$status" -eq 0 ]
 }
 
-@test "coverage: a roster carrying no auditors skips rather than answering for the builtin" {
-  # audit_scope_init falls back to the BUILTIN roster when the config yields no
-  # records, so without the skip this fixture's paths get classified against
-  # GAIA's own roster while every finding prints the injected config's name. The
-  # exit status is 1 either way (unreadable-machinery-list fires first, since a
-  # roster with no auditors names no member to register), so nothing green is
-  # at stake; what the skip protects is attribution, which is the whole value
-  # of a finding that names a roster.
+@test "coverage: a roster carrying no auditors skips the coverage invariant" {
+  # There is no roster to classify against, and audit_scope_init returns
+  # non-zero on it. The exit status is 1 either way (unreadable-machinery-list
+  # fires first, since a roster with no auditors names no member to register),
+  # so nothing green is at stake; the skip keeps not-run from reading as a
+  # coverage verdict.
   local r="$BATS_TEST_TMPDIR/cov-no-auditors"
   scaffold_root "$r" <<'YAML'
 default_mode: local
@@ -913,7 +911,7 @@ YAML
   [ "$status" -eq 1 ]
   assert_contains "unreadable-machinery-list"
   assert_contains "carries no auditors"
-  # The misattributed finding the skip exists to suppress.
+  # The spurious ownerless findings an empty roster would produce.
   grep -qF "ownerless-path" <<<"$output" && return 1
   return 0
 }

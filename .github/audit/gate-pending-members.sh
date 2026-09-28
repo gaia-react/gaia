@@ -59,8 +59,10 @@
 #   The resolver's own unanswerable-root exit is excluded before it can arrive:
 #   the resolver derives its root from the same cwd the repo-root check below
 #   already resolved, so a root that answers here answers there. What remains is
-#   a resolver that crashes, which is a CI-shaped fault the local gate catches
-#   independently.
+#   a resolver that crashes, or one that exits 2 on a .gaia/audit-ci.yml with
+#   no auditors: roster. The local gate denies both independently, and on the
+#   roster-less config write-audit-status.sh also declines, since it cannot
+#   derive the frontend digest from an empty roster.
 #
 #   The note is what tells an operator a disarmed gate apart from a genuinely
 #   clean one -- never fail open silently.

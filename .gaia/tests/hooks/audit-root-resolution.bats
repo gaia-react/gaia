@@ -168,6 +168,7 @@ roster_members() {
 }
 
 setup() {
+  . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
 
@@ -676,6 +677,10 @@ run_audit_root_block() {
   local orig_sum subdir before_snapshot after_snapshot start mutated_sum went_red=0 restored_sum
   orig_sum="$(backup_file "$SCRIPT_WRITE_CLEARANCE")"
   subdir="$WT/app"
+  # The mutated writer treats the subdirectory as the root and reads its roster
+  # from there, so seed one: without it the mutated run fails on the missing
+  # roster and stays green for the wrong reason.
+  seed_audit_roster "$subdir"
 
   before_snapshot="$(pool_snapshot "$WT")"
   run_stdout_only bash "$SCRIPT_WRITE_CLEARANCE" --root "$subdir" --member code-audit-frontend --provenance earned \

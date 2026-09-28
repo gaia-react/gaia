@@ -12,6 +12,7 @@
 
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
+  . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
   SCOPE_LIB="$REPO_ROOT/.claude/hooks/lib/audit-scope.sh"
@@ -19,11 +20,6 @@ setup() {
   PROVENANCE_LIB="$REPO_ROOT/.claude/hooks/lib/audit-base-provenance.sh"
   RESOLVER="$REPO_ROOT/.gaia/scripts/resolve-audit-members.sh"
   HOOK="$REPO_ROOT/.claude/hooks/pr-merge-audit-check.sh"
-  # The delimiters of the marker-strip transform in .gaia/release-scrub.yml that
-  # governs shell files, the surface the strip test below is pointed at.
-  MAINTAINER_START='# gaia:maintainer-only:start'
-  MAINTAINER_END='# gaia:maintainer-only:end'
-
   # One entry per arm of the allowlist, not just the first. The uniqueness
   # invariant below is what stops a second copy of this set appearing in another
   # tracked script and drifting from this one, and an arm it does not name is an
@@ -389,13 +385,14 @@ golden_setup() {
   # tree it already lives there; a /update-gaia self-mod PR refreshes the
   # installed .github/workflows/code-review-audit.yml to match it and never
   # re-commits the template itself. The template is maintainer-shell-owned in
-  # both rosters, so a diff that CHANGED it would dispatch that member and never
+  # the roster, so a diff that CHANGED it would dispatch that member and never
   # reach the frontend-only self-mod bypass. Keeping it on the base, out of the
   # self-mod diff, is what makes the self-mod golden cases representative.
   mkdir -p "$GREPO/.gaia/cli/templates/workflows"
   printf 'name: Code Review Audit\n' \
     > "$GREPO/.gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
-  git -C "$GREPO" add .gaia/VERSION README.md \
+  seed_audit_roster "$GREPO"
+  git -C "$GREPO" add .gaia/VERSION .gaia/audit-ci.yml README.md \
     .gaia/cli/templates/workflows/code-review-audit.yml.tmpl
   git -C "$GREPO" commit --quiet -m "init"
   git -C "$GREPO" checkout --quiet -b feature
@@ -593,11 +590,9 @@ golden_run_hook() {
 }
 
 # ---------------------------------------------------------------------------
-# SEC-007: every machinery path is roster-claimed, against BOTH rosters the
-# module can load: the committed .gaia/audit-ci.yml (the maintainer roster)
-# and the builtin fallback (_audit_scope_builtin_roster, consulted when that
-# config is absent or unparseable). Bats suites are release-excluded, so this
-# only ever runs where the maintainer members exist.
+# SEC-007: every machinery path is claimed by the committed .gaia/audit-ci.yml
+# roster, the only roster the module loads. Bats suites are release-excluded,
+# so this only ever runs where the maintainer members exist.
 #
 # One named exception: `.gaia/cli/templates/workflows/code-review-audit.yml.tmpl`
 # is machinery (its bytes must still rotate every member's digest) but
@@ -609,11 +604,10 @@ golden_run_hook() {
 # ---------------------------------------------------------------------------
 
 # Assert audit_owner_for_path returns a non-empty owner for every machinery
-# path in $AUDIT_MACHINERY_PATHS, against whichever roster the caller already
+# path in $AUDIT_MACHINERY_PATHS, against the roster the caller already
 # init'd, except the one named ownerless-by-design artifact above. Real files
-# under a `/**` prefix are enumerated from $REPO_ROOT; only the roster source
-# (committed config vs builtin fallback) differs per caller. Ends in the
-# pass/fail check, so it is safe as a @test's final command.
+# under a `/**` prefix are enumerated from $REPO_ROOT. Ends in the pass/fail
+# check, so it is safe as a @test's final command.
 assert_every_machinery_path_owned() {
   local entry prefix rep owner tracked fail=0
   while IFS= read -r entry; do
@@ -665,27 +659,29 @@ EOF
   assert_every_machinery_path_owned
 }
 
-@test "SEC-007 (fallback): the builtin roster claims every machinery path too (one named carve-out)" {
-  # shellcheck source=/dev/null
-  . "$SCOPE_LIB"
-  # shellcheck source=/dev/null
-  . "$MACHINERY_LIB"
-  # An empty root has no .gaia/audit-ci.yml, so audit_scope_init falls back to
-  # _audit_scope_builtin_roster: the roster under test is the builtin one. It
-  # must grant code-audit-maintainer-shell the same declarative surfaces the
-  # committed roster does (.gaia/audit-ci.yml, .gaia/VERSION, the agent defs,
-  # .claude/rules/**), or a degraded merge gate dispatches nobody for a
-  # change to one of them and merges it unaudited. The one named carve-out
-  # above still applies: the pinned workflow-template artifact owns no
-  # reviewer under either roster.
-  EMPTY_ROOT=$(mktemp -d -t audit-scope-builtin-XXXXXX)
-  audit_scope_init "$EMPTY_ROOT"
+@test "audit_scope_init fails closed with a named reason on a roster-less root" {
+  # There is no fallback roster: a root whose .gaia/audit-ci.yml is absent or
+  # carries no auditors: block must return non-zero and name the file, never
+  # leave a populated roster behind from an earlier call.
+  EMPTY_ROOT=$(mktemp -d -t audit-scope-noroster-XXXXXX)
+  mkdir -p "$EMPTY_ROOT/.gaia"
+  printf 'audit_authors: []\n' > "$EMPTY_ROOT/.gaia/audit-ci.yml"
+  run bash -c '
+    . "$1"
+    audit_scope_init "$2" || { echo "rc=$?"; audit_owner_for_path "app/x.ts"; exit 0; }
+    echo "rc=0"
+  ' _ "$SCOPE_LIB" "$EMPTY_ROOT"
   rm -rf "$EMPTY_ROOT"
 
-  assert_every_machinery_path_owned
+  [ "$status" -eq 0 ]
+  grep -qF 'rc=1' <<<"$output" || return 1
+  grep -qF 'no auditors: roster in' <<<"$output" || return 1
+  grep -qF '/.gaia/audit-ci.yml' <<<"$output" || return 1
+  # Nothing owns a path once init has failed.
+  [ "$(grep -c 'code-audit' <<<"$output")" -eq 0 ]
 }
 
-@test "the husky commit hook is owned by the shell member under both rosters" {
+@test "the husky commit hook is owned by the shell member" {
   # .husky/pre-commit is the Quality Gate floor for every commit and is POSIX
   # shell, so the shell member (which holds the shellcheck oracle) owns it.
   # Without a glob claiming it, a PR that changes the hook alongside any other
@@ -701,17 +697,9 @@ EOF
   . "$SCOPE_LIB"
   audit_scope_init "$REPO_ROOT"
   [ "$(audit_owner_for_path '.husky/pre-commit')" = "code-audit-maintainer-shell" ]
-
-  # The builtin fallback roster must claim it too: when .gaia/audit-ci.yml is
-  # absent the degraded gate falls back to it, and a glob present in the
-  # committed roster but missing here leaves the hook ownerless there.
-  EMPTY_ROOT=$(mktemp -d -t audit-scope-husky-XXXXXX)
-  audit_scope_init "$EMPTY_ROOT"
-  rm -rf "$EMPTY_ROOT"
-  [ "$(audit_owner_for_path '.husky/pre-commit')" = "code-audit-maintainer-shell" ]
 }
 
-@test "the CLI workspace policy file is owned by the node member under both rosters" {
+@test "the CLI workspace policy file is owned by the node member" {
   # .gaia/cli/pnpm-workspace.yaml carries the .gaia/cli workspace's entire
   # supply-chain policy: minimumReleaseAge and its strict-enforcement flag,
   # trustPolicy, and both exclusion
@@ -735,17 +723,9 @@ EOF
   # The default member's own `pnpm-workspace.yaml` glob never crosses a `/`,
   # so the repository-root file stays with it and the two do not collide.
   [ "$(audit_owner_for_path 'pnpm-workspace.yaml')" = "code-audit-frontend" ]
-
-  # The builtin fallback roster must claim it too: when .gaia/audit-ci.yml is
-  # absent the degraded gate falls back to it, and a glob present in the
-  # committed roster but missing here leaves the file ownerless there.
-  EMPTY_ROOT=$(mktemp -d -t audit-scope-cli-workspace-XXXXXX)
-  audit_scope_init "$EMPTY_ROOT"
-  rm -rf "$EMPTY_ROOT"
-  [ "$(audit_owner_for_path '.gaia/cli/pnpm-workspace.yaml')" = "code-audit-maintainer-node" ]
 }
 
-@test "the CLI's own tool config files are owned by the node member under both rosters" {
+@test "the CLI's own tool config files are owned by the node member" {
   # `.gaia/cli/` carries three tool configs beside src/: vitest.config.ts,
   # eslint.config.mjs, and prettier.config.mjs. The default member's bare
   # `*.config.ts` / `*.config.mjs` globs never cross a `/`, so they claim the
@@ -768,16 +748,6 @@ EOF
   # repository-root files stay with it and the two do not collide.
   [ "$(audit_owner_for_path 'vitest.config.ts')" = "code-audit-frontend" ]
   [ "$(audit_owner_for_path 'eslint.config.mjs')" = "code-audit-frontend" ]
-
-  # The builtin fallback roster must claim them too: when .gaia/audit-ci.yml is
-  # absent the degraded gate falls back to it, and a glob present in the
-  # committed roster but missing here leaves the files ownerless there.
-  EMPTY_ROOT=$(mktemp -d -t audit-scope-cli-config-XXXXXX)
-  audit_scope_init "$EMPTY_ROOT"
-  rm -rf "$EMPTY_ROOT"
-  [ "$(audit_owner_for_path '.gaia/cli/vitest.config.ts')" = "code-audit-maintainer-node" ]
-  [ "$(audit_owner_for_path '.gaia/cli/eslint.config.mjs')" = "code-audit-maintainer-node" ]
-  [ "$(audit_owner_for_path '.gaia/cli/prettier.config.mjs')" = "code-audit-maintainer-node" ]
 }
 
 @test "UAT-002: skills-md and non-md under skills both stay ownerless" {
@@ -789,73 +759,6 @@ EOF
   audit_scope_init "$REPO_ROOT"
   [ -z "$(audit_owner_for_path '.claude/skills/gaia/references/debt.md')" ]
   [ -z "$(audit_owner_for_path '.claude/skills/gaia/helper.py')" ]
-}
-
-# ---------------------------------------------------------------------------
-# The scrub markers survive. Balanced start/end markers, and a marker-
-# stripped copy of the module (simulating the release scrub) yields a
-# roster naming exactly two members, code-audit-frontend (the default) and
-# code-audit-github-workflows (a claimant, adopter-audience, unmarked): the
-# maintainer-only members are gone, and everything outside the markers stays.
-# ---------------------------------------------------------------------------
-
-@test "scrub markers are balanced in audit-scope.sh" {
-  starts="$(grep -cF -- "$MAINTAINER_START" "$SCOPE_LIB")"
-  ends="$(grep -cF -- "$MAINTAINER_END" "$SCOPE_LIB")"
-  [ "$starts" -eq "$ends" ]
-  [ "$starts" -ge 1 ]
-  start_line="$(grep -nF -- "$MAINTAINER_START" "$SCOPE_LIB" | head -1 | cut -d: -f1)"
-  end_line="$(grep -nF -- "$MAINTAINER_END" "$SCOPE_LIB" | head -1 | cut -d: -f1)"
-  [ "$start_line" -lt "$end_line" ]
-}
-
-# The awk below models `stripMarkerBlocks` in
-# `.gaia/cli/src/release/marker-strip.ts`, the parser the release scrub actually
-# runs, by hand rather than held to it by a test. Three sibling suites carry
-# the same block (`.gaia/scripts/tests/verify-audit-roster.bats`,
-# `audit-write-clearance.bats`, `.gaia/tests/statusline/statusline-worktree.bats`),
-# so a change here belongs in all of them, and in the real parser too if the
-# transform it models changed.
-#
-# The two-rule form this replaces diverged from the shipped parser on two shapes
-# audit-scope.sh does not currently carry, which is the only reason it was green:
-# its `/start/` rule fired `next`, so a start and end on ONE line never reached
-# the `/end/` rule and `skip` was never cleared, swallowing the rest of the file;
-# and it DROPPED an end with no open block, where the shipped parser keeps it
-# (`marker-strip.ts:55-57`). Adding either shape to audit-scope.sh would have
-# produced a stripped copy the release scrub does not produce, with nothing red.
-@test "a marker-stripped copy of audit-scope.sh yields exactly the frontend and workflows members" {
-  SCRUBBED=$(mktemp -t audit-scope-scrubbed-XXXXXX)
-  awk -v s="$MAINTAINER_START" -v e="$MAINTAINER_END" '
-    {
-      has_s = index($0, s) > 0
-      has_e = index($0, e) > 0
-      if (!skip && has_s) { if (!has_e) skip = 1; next }
-      if (skip) { if (has_e) skip = 0; next }
-      print
-    }
-  ' "$SCOPE_LIB" > "$SCRUBBED"
-
-  EMPTY_ROOT=$(mktemp -d -t audit-scope-noroster-XXXXXX)
-
-  # Probe a path each of the two surviving members owns, plus a maintainer-
-  # only path that must now be ownerless: this exercises the new member
-  # rather than merely asserting its absence from a stripped maintainer glob.
-  run bash -c '
-    . "$1"
-    audit_scope_init "$2"
-    audit_owner_for_path "app/x.ts"
-    audit_owner_for_path ".github/workflows/foo.yml"
-    audit_owner_for_path ".gaia/scripts/y.sh"
-  ' _ "$SCRUBBED" "$EMPTY_ROOT"
-
-  rm -f "$SCRUBBED"
-  rm -rf "$EMPTY_ROOT"
-
-  [ "$status" -eq 0 ]
-  expected="code-audit-frontend
-code-audit-github-workflows"
-  [ "$output" = "$expected" ]
 }
 
 @test "the shared awk source carries exactly one copy of each transformation" {

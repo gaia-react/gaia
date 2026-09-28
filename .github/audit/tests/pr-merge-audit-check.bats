@@ -34,6 +34,7 @@
 # coverage list up here only drifts behind them.
 
 setup() {
+  . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   SCRIPT="$THIS_DIR/../../../.claude/hooks/pr-merge-audit-check.sh"
   LIB_DIR="$( cd "$THIS_DIR/../../../.claude/hooks/lib" && pwd )"
@@ -51,7 +52,8 @@ setup() {
 
   # Base commit on main; the PR branch diverges from here.
   echo "# readme" > "$SANDBOX/README.md"
-  git -C "$SANDBOX" add .gaia/VERSION README.md
+  seed_audit_roster "$SANDBOX"
+  git -C "$SANDBOX" add .gaia/audit-ci.yml .gaia/VERSION README.md
   git -C "$SANDBOX" commit --quiet -m "init"
 
   # Feature branch with an in-scope (app/) change, so the out-of-scope and

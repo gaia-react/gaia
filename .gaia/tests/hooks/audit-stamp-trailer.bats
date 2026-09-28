@@ -54,6 +54,7 @@
 #   - bare upstream is NOT advanced for empty-commit or status-only cases (helper never pushes)
 
 setup() {
+  . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
   HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/audit-stamp-trailer.sh
   DIGEST_LIB=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/audit-digest.sh
   REPO=$(mktemp -d -t audit-stamp-test-XXXXXX)
@@ -77,7 +78,8 @@ setup() {
   echo ".gaia/local/" > "$REPO/.gitignore"
 
   echo "# readme" > "$REPO/README.md"
-  git -C "$REPO" add .gaia/VERSION .gitignore README.md
+  seed_audit_roster "$REPO"
+  git -C "$REPO" add .gaia/audit-ci.yml .gaia/VERSION .gitignore README.md
   git -C "$REPO" commit --quiet -m "init"
 }
 
@@ -180,7 +182,7 @@ write_refusal() {
 # Commit a mixed app/ + .gaia/**/*.sh change on a new `feature` branch off
 # REPO's init commit, so the resolver's merge-base(HEAD, main) diff is
 # non-empty and dispatches both code-audit-frontend (app/) and
-# code-audit-maintainer-shell (.gaia/**/*.sh) against the built-in roster.
+# code-audit-maintainer-shell (.gaia/**/*.sh) against the seeded roster.
 commit_mixed_diff() {
   git -C "$REPO" checkout --quiet -b feature
   mkdir -p "$REPO/app" "$REPO/.gaia/scripts"

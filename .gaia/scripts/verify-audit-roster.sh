@@ -745,13 +745,10 @@ else
   printf 'verify-audit-roster: coverage invariant SKIPPED, %s is not a repository root\n' "$root" >&2
 fi
 
-# The same skip, for the other way this invariant can end up answering about a
-# roster nobody asked about. audit_scope_init falls back to the BUILTIN roster
-# whenever the config yields no records, so a --config naming an `auditors:`-less
-# file would classify every path against the builtin while the findings above
-# print the injected config's name, misattributing them to a roster that did
-# not produce them. Not-run is not a violation, so this is stderr and the exit
-# status stays untouched.
+# The same skip, for a --config naming an `auditors:`-less file: there is no
+# roster to classify against, and audit_scope_init returns non-zero on it.
+# Not-run is not a violation, so this is stderr and the exit status stays
+# untouched.
 if [ -n "$coverage_universe" ] && [ -z "$class_records" ]; then
   coverage_universe=""
   printf 'verify-audit-roster: coverage invariant SKIPPED, %s carries no auditors\n' "$config" >&2

@@ -318,8 +318,19 @@ tree_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 # internally (its own single-walk contract), so this call is redundant with
 # it in effect but kept explicit: check_out_of_scope_pr() and
 # check_self_mod_only_update_pr() run before any digest-dependent path in a
-# future edit would still find the roster parsed.
-audit_scope_init "$tree_root"
+# future edit would still find the roster parsed. A config with no auditors:
+# roster fails here with its own named remedy, ahead of the digest-batch deny
+# below, whose text would otherwise blame a missing sha256 tool.
+if ! audit_scope_init "$tree_root" 2>/dev/null; then
+  jq -n --arg r "PR merge gate: ${tree_root}/.gaia/audit-ci.yml has no auditors: roster, so no Code Audit Team member can be resolved or cleared for HEAD ${sha:0:12}. There is no fallback roster. Restore the auditors: block from the GAIA template's .gaia/audit-ci.yml, commit it, and retry.${gate_arm_note}" '{
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason: $r
+    }
+  }'
+  exit 0
+fi
 
 # Compute every roster member's content digest in ONE walk (directive
 # PERF-001): audit_digests_all parses the roster, walks the tree once, and
