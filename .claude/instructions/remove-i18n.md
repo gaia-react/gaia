@@ -332,8 +332,6 @@ In the routing block (Step 3 / "Parse each file's `subagents:` frontmatter field
 
 ### F2. `.claude/agents/code-audit-frontend/README.md`
 
-Delete the row in the extension table that mentions `react-i18next.md` and `translation`.
-
 Search for any `subagents:` lists and drop `translation` from them.
 
 ### F3. `.claude/skills/react-code/SKILL.md`
