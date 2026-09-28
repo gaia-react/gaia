@@ -6,8 +6,8 @@
 #
 # The argument is the snake_case CONFIG KEY from the automation schema,
 # the same identifier used as the top-level field in .gaia/automation.json
-# (e.g. `wiki`, `update_gaia`), which is snake_case where the CLI tool id
-# is kebab-case. Callers must pass the config-key form.
+# (e.g. `wiki`, `update_gaia`). Pass that key, never a kebab-case CLI tool
+# id: the lib looks the argument up as a top-level field and nothing else.
 #
 # Usage (from a hook script):
 #   . .claude/hooks/lib/gaia-ci-defer.sh
