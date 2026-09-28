@@ -19,10 +19,10 @@ Two facts make that hard, and everything below exists to handle them: GAIA must 
 You almost never compute any of this yourself. If you are about to write "find the repo root" or "the list of shared `.gaia/local` folders," stop — those are the two mistakes this model exists to prevent, and each has one shared answer:
 
 - **Never derive the main checkout by hand.** Do not write `dirname "$(git rev-parse --git-common-dir)"` or any cousin of it. Source the resolver and call it. It is correct in checkout shapes the hand-rolled idiom gets wrong.
-- **Never hardcode what lives in `.gaia/local/`.** Do not restate the list of shared entries, or which folders are per-tree. Read the state registry. Every entry is declared once, with its scope and its key; the registry is the only list, and a child it does not know is reported rather than silently absorbed.
+- **Never hardcode what lives in `.gaia/local/`.** Do not restate the list of shared entries, or which folders are per-tree. Read the state registry. Every entry is declared once, with its scope and its key; the registry is the only list, and inside a linked worktree an Edit or Write to a child it does not know is denied rather than silently absorbed.
 
 <!-- gaia:maintainer-only:start -->
-GAIA maintainers: both rules are backed by CI in this repo. A second shell definition of the resolver fails the build, and a live registry entry with no source reference fails the build; a companion report lists the `.gaia/local/` literals in shipped source that no entry maps to. Those checks run only from the release-excluded suites, so they guard maintainer changes rather than adopter ones.
+GAIA maintainers: only the first rule is backed by CI in this repo. `check-main-root-derivation.bats` fails the build on a hand-rolled main-checkout derivation in tracked source; it runs only from the release-excluded suites, so it guards maintainer changes rather than adopter ones. The registry rule has no check.
 <!-- gaia:maintainer-only:end -->
 
 Get those two right and your feature is worktree-correct for free. Get either wrong by hand and you have re-created the defect this model removed. The rest of this page is why those two things are enough.
@@ -72,7 +72,7 @@ The defense today is the fallback and the per-site failure directions above: a d
 Almost everything GAIA does needs one path: the root of the project's main working tree. Worktree creation puts new trees under it; the linker points shared state at it; the cost ledger records into it; the janitor sweeps inside it; the statusline reads from it. There is **one resolver per language**, and everything calls its own — bash sites source `main-root-lib.sh`, instruction prose invokes it as a script, the Node CLI calls its TypeScript counterpart rather than paying a subprocess on a hot path. Two implementations, one per language, is the deliberate position; a third copy in either is not. The shell resolver is the one that answers correctly in every shape below.
 
 <!-- gaia:maintainer-only:start -->
-GAIA maintainers: a CI check counts resolver definitions per language and fails the build on a second copy in either. It runs from the release-excluded suites, so it guards maintainer changes.
+GAIA maintainers: a CI check scans tracked source outside the two resolvers for the ingredients of a hand-rolled derivation (`--git-common-dir`, a worktree-suffix path trim, a first-record read of `git worktree list --porcelain`) and fails the build on a match. It runs from the release-excluded suites, so it guards maintainer changes.
 <!-- gaia:maintainer-only:end -->
 
 The naive idiom — "the main checkout is the parent of git's common directory" — is wrong outside an ordinary clone. In a submodule, git's directory lives in the superproject, so the idiom hands back a path inside `.git`. In a `--separate-git-dir` checkout it does the same. Nothing errors, because the paths are guarded by silent presence checks, so the wrongness is invisible until GAIA writes a ledger or links shared state into git's own storage. The resolver answers correctly in every shape git can describe:
@@ -163,18 +163,17 @@ The identical write from Bash succeeds. That asymmetry is the whole surprise, an
 
 ## What is permanent
 
-The registry is the only list, and the session-start sweep reports every `.gaia/local/` child it does not recognize — so drift surfaces rather than vanishing. That is the defense an adopter clone carries.
+The registry is the only list. Inside a linked worktree, `.claude/hooks/block-worktree-path-mismatch.sh` denies an Edit, Write, or MultiEdit to a `.gaia/local/` path that no registry entry recognizes, so drift written there surfaces rather than vanishing. Writes from the main checkout, or through Bash, are not checked. That is the defense an adopter clone carries.
 
 Repo-root tooling is a separate hazard from anything the registry governs: a command with no notion of "tree" at all can still walk into one. The `format` script (`prettier --write` over a root-anchored glob) relies on Prettier's default ignore resolution, `.gitignore` plus `.prettierignore`, to stay off untracked and build-output paths, `.claude/worktrees/` included. Passing `--ignore-path` to that command replaces Prettier's ignore set rather than adding to it, which drops the implicit `.gitignore` read and lets the same glob descend into every live worktree; a `--write` there lands silently in another session's in-flight tree. The script does not pass that flag.
 
 <!-- gaia:maintainer-only:start -->
-GAIA maintainers: three enforcement mechanisms persist in this repo and are the entire defense against re-creating the problem in the next cross-cutting feature.
+GAIA maintainers: two enforcement mechanisms persist in this repo against re-creating the problem in the next cross-cutting feature.
 
-1. A second copy of the main-checkout derivation, in either language, fails the build.
-2. A live registry entry with no source reference fails the build; an unregistered `.gaia/local/` child is reported, by the CI companion report over source literals and by the session-start sweep over real on-disk state.
-3. The N-worktree concurrency meter runs in CI: two trees off the same base drive audit, PR, and merge cycles concurrently — some scenarios directly, some simulated or proxied — and nothing from one leaks into the other.
+1. The derivation scan: a hand-rolled main-checkout derivation in tracked source fails the build (`check-main-root-derivation.bats`).
+2. The INV-7 concurrency meter runs in CI (`meter-gate.sh`): two trees off the same base drive audit, PR, and merge cycles concurrently, some scenarios directly and some simulated, and nothing from one leaks into the other.
 
-All three run from release-excluded suites, so they guard maintainer changes. If they exist and are enforced, the next feature cannot recreate this. If they do not, it will.
+Both run from release-excluded suites, so they guard maintainer changes. The registry rule has no CI check; the path-mismatch hook above is its only enforcement.
 <!-- gaia:maintainer-only:end -->
 
 ## Adding state or a hook correctly (the checklist)
@@ -186,6 +185,6 @@ All three run from release-excluded suites, so they guard maintainer changes. If
 
 ## Cross-references
 
-- [[Local Working State]] — the entry-by-entry catalogue of `.gaia/local/` and the session-start janitor.
+- [[Local Working State]]: the `.gaia/local/` folder, its pointer to the state registry, and the session-start janitor.
 - [[Claude Hooks]] — the hook surface and the per-agent working-directory measurement the identity rule rests on.
 - [[PR Merge Workflow]] — the audit → PR → merge cycle the concurrency test drives, and the content-digest clearance markers.
