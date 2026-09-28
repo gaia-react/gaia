@@ -199,8 +199,8 @@ export type FinalizeMergeOptions = MergeWaitOptions & {
 /**
  * Finish a protected-branch landing like any other PR: take one bounded wait
  * on the auto-merge, then either clean up locally (on `MERGED`) or return to
- * `base` and leave the local catch-up to the `sync await` verb and the
- * session-start janitor (on timeout). Writes a one-line
+ * `base` and leave the local catch-up to the session-start janitor (on
+ * timeout). Writes a one-line
  * `prefix`-tagged summary and returns `EXIT_CODES.OK`. Shared by `chain finish`
  * and `sync land`'s protected-branch path.
  */
@@ -218,11 +218,9 @@ export const finalizeMerge = (options: FinalizeMergeOptions): number => {
 
   // The merge did not land within the wait (slow/pending checks, a stuck
   // queue). Auto-merge stays queued and GitHub completes it once checks pass;
-  // return to base and leave the local catch-up to two places that own it: the
-  // `/gaia-wiki` router's `sync await` verb, which takes another bounded slice
-  // in the same session, and the session-start janitor, which prune-fetches,
-  // reaps the merged-and-gone branch, and fast-forwards base on a later
-  // session. Neither depends on this wait succeeding.
+  // return to base and leave the local catch-up to the session-start janitor,
+  // which prune-fetches, reaps the merged-and-gone branch, and fast-forwards
+  // base on a later session. It does not depend on this wait succeeding.
   runner('git', ['checkout', '--end-of-options', base], {cwd});
   process.stdout.write(
     `${prefix}: opened PR for ${branch}; auto-merge queued but not yet merged, local cleanup deferred\n`

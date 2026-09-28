@@ -363,13 +363,11 @@ if [ "$wiki_sync_present" -eq 1 ]; then
         [ -n "$line" ] || continue
         ref=${line%% *}                        # branch name (no spaces in a ref)
         track=${line#"$ref"}; track=${track# }  # remainder: [gone]/[ahead N]/... token
-        # The glob is a conservative superset of the CLI verb's
-        # WIKI_SYNC_BRANCH regex, not an exact mirror: it only requires ONE
-        # hex character where the regex demands 7-40, so a name like
-        # `wiki-sync/2026-08-09-a` is glob-eligible but invisible to the
-        # await verb. That is safe here because the cherry check and the
-        # `[gone]` track state below are what actually gate the delete, not
-        # this glob alone. Validated before any destructive step (SEC-011).
+        # The glob is deliberately loose: it requires only ONE hex character
+        # where the landing's short sha has 7-40. That is safe because the
+        # cherry check and the `[gone]` track state below are what actually
+        # gate the delete, not this glob alone. Validated before any
+        # destructive step (SEC-011).
         case "$ref" in
           wiki-sync/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9a-f]*) ;;
           *) continue ;;

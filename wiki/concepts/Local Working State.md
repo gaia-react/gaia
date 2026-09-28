@@ -29,7 +29,6 @@ Because the folder is invisible to git, residue a subsystem leaves behind never 
 | `cache/shared/` | release / statusline (`update-gaia`, `check-updates.sh`) | live | one copy every linked worktree reads; self-pruned by its owners (tarball prune on update) |
 | `cache/shared/wiki-base-catchup.state` | session-start janitor | live | one key-value file carrying the janitor's last-fetch timestamp and, when a base catch-up is outstanding, the durable obligation to retry; the janitor drains the obligation once base is at or ahead of its upstream |
 | `cache/shared/wiki-base-catchup.report` | session-start janitor | ephemeral | one line, overwritten per refusal; read and deleted by the drift-check hook on the next prompt, so it surfaces exactly once |
-| `cache/shared/wiki-await.json` | `gaia wiki sync await` | ephemeral | the in-session await's branch and start time, so its wall-clock ceiling survives across separate invocations; deleted the moment the await resolves, is exhausted, or finds nothing pending |
 | `specs/` | [[GAIA Spec]] | live | a merged or abandoned folder is kept at merge/abandonment; age-reaped after the retention window either way |
 | `specs/ledger.json` | [[GAIA Spec]] | live | per-machine number cache |
 | `plans/PLAN-NNN/` | [[GAIA Plan]] | live | a merged folder is kept at merge (reduced to `SUMMARY.md` + `cost.json`, `RUNNING` cleared); an abandoned folder is kept as-is at abandonment; both age-reaped after the retention window |
