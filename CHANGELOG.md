@@ -471,6 +471,7 @@ A release change that requires the adopter to act, run a command or hand-migrate
 
 ### Removed
 
+- the `pnpm-audit` and `update-deps` GAIA CI workflows. Neither tool's schedule check was ever implemented, so both workflows skipped every run while reporting success, and a security audit or dependency update you enabled in CI never happened. `/setup-gaia` no longer offers or renders them; run `/update-deps` locally instead. `stale-branches` and `wiki` are unaffected. **Action required:** if you enabled GAIA CI, run `git rm .github/workflows/gaia-ci-pnpm-audit.yml .github/workflows/gaia-ci-update-deps.yml` (a leftover copy now fails on every scheduled run), then `/setup-gaia` to re-render the rest. The `update_deps` and `pnpm_audit` entries in `.gaia/automation.json` are ignored and can be deleted (#2227)
 - the `.claude-pr/` exclusion from the audit trailer stamp's dirty-tree check. `claude-code-action` creates that directory only in CI, where the shipped `.gitignore` already hides it; if a project's `.gitignore` lacks the entry, the stamp declines as `tree dirty` and the CI `GAIA-Audit` status still gates the merge (#2288)
 - the `spec-folderize.sh` migration and its `/update-gaia` step. SPECs have used per-SPEC folders since v1.2.1, so the step only ever converted installs older than that (#2284)
 - the GAIA-Audit trailer invalidation count from the `/update-gaia` summary. It only reported a re-audit the version bump triggers either way; the merge gate still refuses a stale trailer by name (#2284)
