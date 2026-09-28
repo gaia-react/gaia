@@ -1,6 +1,6 @@
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {readFileSync} from 'node:fs';
-import {run} from '../verify-run.js';
+import {pickDispatchedRun, run} from '../verify-run.js';
 import {setupSandbox} from './sandbox.js';
 import type {Sandbox} from './sandbox.js';
 
@@ -54,13 +54,56 @@ const inProgress = JSON.stringify({
   url: 'https://github.com/foo/bar/actions/runs/12345',
 });
 
-const runListPayload = JSON.stringify([
-  {createdAt: '2026-05-09T05:00:00.000Z', databaseId: 12_345},
-]);
+// A `gh run list --json databaseId,createdAt` page with one entry, timed
+// relative to the moment the test builds it rather than a fixed date, so
+// "created after the trigger" (the default +60s) and "created well before
+// it" (a large negative offset) stay true no matter when the suite runs.
+const runList = (id: number | string = 12_345, offsetMs = 60_000): string =>
+  JSON.stringify([
+    {createdAt: new Date(Date.now() + offsetMs).toISOString(), databaseId: id},
+  ]);
+
+const STALE_OFFSET_MS = -600_000;
 
 // Step 0 of every run resolves the default branch via `gh repo view`.
 const repoViewPayload = JSON.stringify({
   defaultBranchRef: {name: 'main'},
+});
+
+describe('pickDispatchedRun', () => {
+  test('returns the oldest entry created at or after notBeforeMs', () => {
+    const now = Date.now();
+    const entries = [
+      {createdAt: new Date(now + 120_000).toISOString(), databaseId: 333},
+      {createdAt: new Date(now + 60_000).toISOString(), databaseId: 222},
+      {
+        createdAt: new Date(now + STALE_OFFSET_MS).toISOString(),
+        databaseId: 111,
+      },
+    ];
+
+    expect(pickDispatchedRun(entries, now - 5000)).toBe('222');
+  });
+
+  test('skips entries with a missing or unparseable createdAt', () => {
+    const now = Date.now();
+    const entries = [
+      {databaseId: 1},
+      {createdAt: 'not-a-date', databaseId: 2},
+      {createdAt: new Date(now + 60_000).toISOString(), databaseId: 3},
+    ];
+
+    expect(pickDispatchedRun(entries, now - 5000)).toBe('3');
+  });
+
+  test('returns null when nothing qualifies', () => {
+    const now = Date.now();
+    const entries = [
+      {createdAt: new Date(now + STALE_OFFSET_MS).toISOString(), databaseId: 1},
+    ];
+
+    expect(pickDispatchedRun(entries, now - 5000)).toBeNull();
+  });
 });
 
 describe('setup-ci verify-run', () => {
@@ -84,7 +127,7 @@ describe('setup-ci verify-run', () => {
   test('returns verified: true on completed/success', async () => {
     // Sequence: repo view, workflow run, run list, run view (success).
     const handle = sandbox.installGhShim({
-      stdoutQueue: [repoViewPayload, '', runListPayload, completedSuccess],
+      stdoutQueue: [repoViewPayload, '', runList(), completedSuccess],
     });
     restore = handle.restore;
 
@@ -104,7 +147,7 @@ describe('setup-ci verify-run', () => {
 
   test('returns verified: false on completed/failure', async () => {
     const handle = sandbox.installGhShim({
-      stdoutQueue: [repoViewPayload, '', runListPayload, completedFailure],
+      stdoutQueue: [repoViewPayload, '', runList(), completedFailure],
     });
     restore = handle.restore;
 
@@ -128,7 +171,7 @@ describe('setup-ci verify-run', () => {
       stdoutQueue: [
         repoViewPayload,
         '',
-        runListPayload,
+        runList(),
         inProgress,
         inProgress,
         completedSuccess,
@@ -168,7 +211,7 @@ describe('setup-ci verify-run', () => {
   test('returns conclusion: polling_timeout on hard timeout', async () => {
     // Endless in_progress responses -> the handler should hit the
     // timeout and emit polling_timeout.
-    const queue: string[] = [repoViewPayload, '', runListPayload];
+    const queue: string[] = [repoViewPayload, '', runList()];
 
     for (let index = 0; index < 50; index += 1) queue.push(inProgress);
 
@@ -227,7 +270,7 @@ describe('setup-ci verify-run', () => {
       stdoutQueue: [
         JSON.stringify({defaultBranchRef: {name: 'trunk'}}),
         '',
-        runListPayload,
+        runList(),
         completedSuccess,
       ],
     });
@@ -248,9 +291,129 @@ describe('setup-ci verify-run', () => {
     expect(dispatch?.[dispatch.indexOf('--ref') + 1]).toBe('trunk');
   });
 
-  test('exits non-zero when gh run list returns no runs', async () => {
+  test('run list argv requests workflow_dispatch runs, limit 20', async () => {
     const handle = sandbox.installGhShim({
-      stdoutQueue: [repoViewPayload, '', '[]'],
+      stdoutQueue: [repoViewPayload, '', runList(), completedSuccess],
+    });
+    restore = handle.restore;
+
+    const exit = await run(['.github/workflows/gaia-ci-wiki.yml', '--json'], {
+      cwd: sandbox.root,
+    });
+    expect(exit).toBe(0);
+
+    const recorded = JSON.parse(
+      readFileSync(sandbox.ghArgvPath, 'utf8')
+    ) as string[][];
+    const list = recorded.find(
+      (args) => args[0] === 'run' && args[1] === 'list'
+    );
+    expect(list).toContain('--event');
+    expect(list?.[list.indexOf('--event') + 1]).toBe('workflow_dispatch');
+    expect(list).toContain('--limit');
+    expect(list?.[list.indexOf('--limit') + 1]).toBe('20');
+  });
+
+  test('keeps polling gh run list until a run created after the trigger appears', async () => {
+    const handle = sandbox.installGhShim({
+      stdoutQueue: [
+        repoViewPayload,
+        '',
+        runList(111, STALE_OFFSET_MS),
+        runList(222),
+        completedSuccess,
+      ],
+    });
+    restore = handle.restore;
+
+    const exit = await run(
+      [
+        '.github/workflows/gaia-ci-wiki.yml',
+        '--json',
+        '--poll-interval-ms',
+        '5',
+      ],
+      {cwd: sandbox.root}
+    );
+    expect(exit).toBe(0);
+
+    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
+      string,
+      unknown
+    >;
+    expect(parsed.run_id).toBe('222');
+
+    const recorded = JSON.parse(
+      readFileSync(sandbox.ghArgvPath, 'utf8')
+    ) as string[][];
+    const listCalls = recorded.filter(
+      (args) => args[0] === 'run' && args[1] === 'list'
+    );
+    expect(listCalls).toHaveLength(2);
+  });
+
+  test('exits with run_not_found when every listed run predates the trigger', async () => {
+    const queue: string[] = [repoViewPayload, ''];
+
+    for (let index = 0; index < 15; index += 1) {
+      queue.push(runList(111, STALE_OFFSET_MS));
+    }
+
+    const handle = sandbox.installGhShim({stdoutQueue: queue});
+    restore = handle.restore;
+
+    const exit = await run(
+      [
+        '.github/workflows/gaia-ci-wiki.yml',
+        '--json',
+        '--poll-interval-ms',
+        '5',
+      ],
+      {cwd: sandbox.root}
+    );
+    expect(exit).not.toBe(0);
+    expect(stdio.err.join('')).toContain('run_not_found');
+    expect(stdio.out.join('')).toBe('');
+
+    const recorded = JSON.parse(
+      readFileSync(sandbox.ghArgvPath, 'utf8')
+    ) as string[][];
+    const listCalls = recorded.filter(
+      (args) => args[0] === 'run' && args[1] === 'list'
+    );
+    expect(listCalls).toHaveLength(15);
+    const viewCalls = recorded.filter(
+      (args) => args[0] === 'run' && args[1] === 'view'
+    );
+    expect(viewCalls).toHaveLength(0);
+  });
+
+  test('treats an empty gh run list page as not-yet-listed, not an error', async () => {
+    const queue: string[] = [repoViewPayload, ''];
+
+    for (let index = 0; index < 15; index += 1) queue.push('[]');
+
+    const handle = sandbox.installGhShim({stdoutQueue: queue});
+    restore = handle.restore;
+
+    const exit = await run(
+      [
+        '.github/workflows/gaia-ci-wiki.yml',
+        '--json',
+        '--poll-interval-ms',
+        '5',
+      ],
+      {cwd: sandbox.root}
+    );
+    expect(exit).not.toBe(0);
+
+    const error = JSON.parse(stdio.err.join('').trim()) as {code: string};
+    expect(error.code).toBe('run_not_found');
+  });
+
+  test('exits non-zero with run_list_malformed when gh run list returns non-JSON', async () => {
+    const handle = sandbox.installGhShim({
+      stdoutQueue: [repoViewPayload, '', 'not json'],
     });
     restore = handle.restore;
 
@@ -258,7 +421,20 @@ describe('setup-ci verify-run', () => {
       cwd: sandbox.root,
     });
     expect(exit).not.toBe(0);
-    expect(stdio.err.join('')).toContain('run_list_empty');
+    expect(stdio.err.join('')).toContain('run_list_malformed');
+  });
+
+  test('exits non-zero with run_list_malformed when gh run list returns a non-array', async () => {
+    const handle = sandbox.installGhShim({
+      stdoutQueue: [repoViewPayload, '', '{}'],
+    });
+    restore = handle.restore;
+
+    const exit = await run(['.github/workflows/gaia-ci-wiki.yml', '--json'], {
+      cwd: sandbox.root,
+    });
+    expect(exit).not.toBe(0);
+    expect(stdio.err.join('')).toContain('run_list_malformed');
   });
 
   test('rejects --timeout-seconds with trailing garbage', async () => {

@@ -2,7 +2,7 @@
  * `gaia setup-ci verify-run <workflow-file> [--timeout-seconds N] [--json]` handler.
  *
  * Triggers a `workflow_dispatch` run via `gh workflow run <file> --ref
- * <default-branch>`, captures the run id, and polls `gh run view <id>`
+ * <default-branch>`, discovers its run id, and polls `gh run view <id>`
  * until the run completes or the timeout fires. The dispatch ref is
  * resolved from `gh repo view` so the command works in repositories
  * whose default branch is not `main`.
@@ -17,17 +17,18 @@
  *   }
  *
  * `verified: true` iff `conclusion == "success"`. On polling timeout,
- * `conclusion: "polling_timeout"` and `verified: false`. Race-window
- * note: step 3 picks the most recent run for the workflow file. If
- * the user triggered a manual run between step 2 and step 3, the
- * latest one could be theirs. As a soft guard, the handler captures
- * `Date.now()` immediately before step 1 and compares it against the
- * picked run's `createdAt`; a `createdAt` more than 5s before that
- * timestamp emits a stderr warning but proceeds without failing.
+ * `conclusion: "polling_timeout"` and `verified: false`. Run discovery:
+ * `Date.now()` captured immediately before the dispatch is the lower
+ * bound (minus a small clock-skew allowance) a listed run's `createdAt`
+ * must meet to be treated as the one just dispatched; the handler polls
+ * `gh run list` for a bounded number of attempts until such a run
+ * appears, never falling back to the newest listed run, which could
+ * belong to someone else's dispatch of the same workflow. Exhausting
+ * the attempts without a qualifying run is a `run_not_found` error.
  *
  * The handler exits 0 regardless of `verified`; the slash command
  * branches on the JSON. Exits non-zero only on hard `gh` errors (e.g.
- * `gh workflow run` failed entirely).
+ * `gh workflow run` failed entirely) or on `run_not_found`.
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
@@ -44,7 +45,21 @@ const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
 const DEFAULT_TIMEOUT_SECONDS = 600;
 const DEFAULT_POLL_INTERVAL_MS = 10_000;
-const RACE_WINDOW_GUARD_MS = 5000;
+// A listed run's `createdAt` and our local `Date.now()` come from two
+// different clocks (GitHub's API server and this process); allow a small
+// gap so a run dispatched a moment ago isn't rejected as predating the
+// trigger.
+const CLOCK_SKEW_ALLOWANCE_MS = 5000;
+// `gh run list`'s default page is small; widen it so a busy workflow
+// history doesn't push the just-dispatched run off the first page.
+const RUN_LIST_LIMIT = 20;
+// Bounds how long discovery waits for the dispatched run to appear in
+// `gh run list` before giving up as `run_not_found`.
+const RUN_DISCOVERY_MAX_ATTEMPTS = 15;
+// Independent of `pollIntervalMs` (which paces `gh run view` once the run
+// id is known): discovery uses the smaller of the two so a long
+// `--poll-interval-ms` doesn't stall run discovery.
+const RUN_DISCOVERY_INTERVAL_MS = 2000;
 
 type RunListEntry = {createdAt?: string; databaseId: number | string};
 
@@ -302,19 +317,51 @@ const resolveDefaultBranch = async (
   return {branch: defaultBranch};
 };
 
-type TriggerAndCaptureArgs = {
+/**
+ * Pick the oldest `gh run list` entry whose `createdAt` is at or after
+ * `notBeforeMs`, so discovery never falls back to a run that predates
+ * the dispatch it is trying to find. Entries with a missing or
+ * unparseable `createdAt` are skipped rather than treated as a match.
+ */
+export const pickDispatchedRun = (
+  entries: RunListEntry[],
+  notBeforeMs: number
+): null | string => {
+  const qualifying = entries
+    .map((entry) => ({
+      createdAtMs:
+        entry.createdAt === undefined ?
+          Number.NaN
+        : new Date(entry.createdAt).getTime(),
+      runId: String(entry.databaseId),
+    }))
+    .filter(
+      (entry) =>
+        !Number.isNaN(entry.createdAtMs) && entry.createdAtMs >= notBeforeMs
+    );
+
+  const [first, ...rest] = qualifying;
+
+  if (first === undefined) return null;
+
+  return rest.reduce(
+    (oldest, entry) =>
+      entry.createdAtMs < oldest.createdAtMs ? entry : oldest,
+    first
+  ).runId;
+};
+
+type TriggerWorkflowArgs = {
   cwd: string;
   defaultBranch: string;
-  triggerTime: number;
   workflowFile: string;
 };
 
-// Steps 1-2: trigger the workflow_dispatch run, then capture the most
-// recent run id for the workflow (with the race-window soft guard).
-const triggerAndCaptureRunId = async (
-  args: TriggerAndCaptureArgs
-): Promise<{exitCode: number} | {runId: string}> => {
-  const {cwd, defaultBranch, triggerTime, workflowFile} = args;
+// Step 1: dispatch the workflow_dispatch run.
+const triggerWorkflowRun = async (
+  args: TriggerWorkflowArgs
+): Promise<{exitCode: number} | {triggered: true}> => {
+  const {cwd, defaultBranch, workflowFile} = args;
 
   const triggerResult = await runGh({
     args: ['workflow', 'run', workflowFile, '--ref', defaultBranch],
@@ -332,38 +379,47 @@ const triggerAndCaptureRunId = async (
     return {exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND};
   }
 
-  const listResult = await runGh({
-    args: [
-      'run',
-      'list',
-      `--workflow=${workflowFile}`,
-      '--limit',
-      '1',
-      '--json',
-      'databaseId,createdAt',
-    ],
-    cwd,
-  });
+  return {triggered: true};
+};
 
-  if (!listResult.ok) {
-    structuredError({
-      code: 'run_list_failed',
-      message: listResult.stderr.trim(),
-      subcommand: 'setup-ci verify-run',
-      workflow: workflowFile,
+type DiscoverRunIdArgs = {
+  cwd: string;
+  notBeforeMs: number;
+  pollIntervalMs: number;
+  workflowFile: string;
+};
+
+// Step 2: poll `gh run list` for the run this call dispatched, identified
+// by `createdAt >= notBeforeMs` (see `pickDispatchedRun`). A page that
+// lists no qualifying run, including an empty page, just means the run
+// hasn't shown up yet, so the loop keeps polling rather than failing on
+// an empty list.
+const discoverRunId = async (
+  args: DiscoverRunIdArgs
+): Promise<{exitCode: number} | {runId: string}> => {
+  const {cwd, notBeforeMs, pollIntervalMs, workflowFile} = args;
+
+  for (let attempt = 1; attempt <= RUN_DISCOVERY_MAX_ATTEMPTS; attempt += 1) {
+    // eslint-disable-next-line no-await-in-loop -- intentional sequential poll
+    const listResult = await runGh({
+      args: [
+        'run',
+        'list',
+        `--workflow=${workflowFile}`,
+        '--event',
+        'workflow_dispatch',
+        '--limit',
+        String(RUN_LIST_LIMIT),
+        '--json',
+        'databaseId,createdAt',
+      ],
+      cwd,
     });
 
-    return {exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND};
-  }
-
-  try {
-    const parsed = JSON.parse(listResult.stdout) as RunListEntry[];
-    const first = parsed.at(0);
-
-    if (first === undefined) {
+    if (!listResult.ok) {
       structuredError({
-        code: 'run_list_empty',
-        message: `gh run list returned no runs for ${workflowFile}`,
+        code: 'run_list_failed',
+        message: listResult.stderr.trim(),
         subcommand: 'setup-ci verify-run',
         workflow: workflowFile,
       });
@@ -371,33 +427,82 @@ const triggerAndCaptureRunId = async (
       return {exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND};
     }
 
-    const runId = String(first.databaseId);
+    let parsed: unknown;
 
-    if (first.createdAt !== undefined) {
-      const createdAtMs = new Date(first.createdAt).getTime();
+    try {
+      parsed = JSON.parse(listResult.stdout);
+    } catch (error) {
+      structuredError({
+        code: 'run_list_malformed',
+        message: error instanceof Error ? error.message : String(error),
+        subcommand: 'setup-ci verify-run',
+        workflow: workflowFile,
+      });
 
-      if (
-        !Number.isNaN(createdAtMs) &&
-        createdAtMs < triggerTime - RACE_WINDOW_GUARD_MS
-      ) {
-        process.stderr.write(
-          `verify-run: warning: picked run ${runId} createdAt ` +
-            `${first.createdAt} predates trigger time by ` +
-            `${triggerTime - createdAtMs}ms; may be a concurrent dispatch\n`
-        );
-      }
+      return {exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND};
     }
 
-    return {runId};
-  } catch (error) {
-    structuredError({
-      code: 'run_list_malformed',
-      message: error instanceof Error ? error.message : String(error),
-      subcommand: 'setup-ci verify-run',
-    });
+    if (!Array.isArray(parsed)) {
+      structuredError({
+        code: 'run_list_malformed',
+        message: 'gh run list did not return a JSON array',
+        subcommand: 'setup-ci verify-run',
+        workflow: workflowFile,
+      });
 
-    return {exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND};
+      return {exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND};
+    }
+
+    const runId = pickDispatchedRun(parsed as RunListEntry[], notBeforeMs);
+
+    if (runId !== null) return {runId};
+
+    if (attempt < RUN_DISCOVERY_MAX_ATTEMPTS) {
+      // eslint-disable-next-line no-await-in-loop -- intentional sequential poll
+      await sleep(Math.min(pollIntervalMs, RUN_DISCOVERY_INTERVAL_MS));
+    }
   }
+
+  structuredError({
+    code: 'run_not_found',
+    message:
+      `no workflow_dispatch run for ${workflowFile} was created at or ` +
+      'after the trigger within the discovery attempt bound',
+    subcommand: 'setup-ci verify-run',
+    workflow: workflowFile,
+  });
+
+  return {exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND};
+};
+
+type TriggerAndCaptureArgs = {
+  cwd: string;
+  defaultBranch: string;
+  pollIntervalMs: number;
+  triggerTime: number;
+  workflowFile: string;
+};
+
+// Steps 1-2: trigger the workflow_dispatch run, then discover its run id.
+const triggerAndCaptureRunId = async (
+  args: TriggerAndCaptureArgs
+): Promise<{exitCode: number} | {runId: string}> => {
+  const {cwd, defaultBranch, pollIntervalMs, triggerTime, workflowFile} = args;
+
+  const triggerResult = await triggerWorkflowRun({
+    cwd,
+    defaultBranch,
+    workflowFile,
+  });
+
+  if ('exitCode' in triggerResult) return triggerResult;
+
+  return discoverRunId({
+    cwd,
+    notBeforeMs: triggerTime - CLOCK_SKEW_ALLOWANCE_MS,
+    pollIntervalMs,
+    workflowFile,
+  });
 };
 
 type PollRunArgs = {
@@ -484,16 +589,15 @@ export const run = async (
 
   if ('exitCode' in branchResult) return branchResult.exitCode;
 
-  // Captured before step 1 so the race-window guard below can compare
-  // the picked run's `createdAt` against the moment we asked GH to
-  // start one. Any run created earlier than this minus a small fudge
-  // is suspicious (someone else dispatched between our list call and
-  // ours actually appearing).
+  // Captured before step 1: the lower bound `discoverRunId` requires a
+  // listed run's `createdAt` to meet (minus `CLOCK_SKEW_ALLOWANCE_MS`)
+  // before treating it as the run just dispatched.
   const triggerTime = Date.now();
 
   const triggered = await triggerAndCaptureRunId({
     cwd,
     defaultBranch: branchResult.branch,
+    pollIntervalMs,
     triggerTime,
     workflowFile,
   });

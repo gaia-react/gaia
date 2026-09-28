@@ -24262,7 +24262,10 @@ var HELP_TEXT43 = `Usage: gaia setup-ci verify-run <workflow-file> [--timeout-se
 var HELP_TOKENS41 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var DEFAULT_TIMEOUT_SECONDS = 600;
 var DEFAULT_POLL_INTERVAL_MS = 1e4;
-var RACE_WINDOW_GUARD_MS = 5e3;
+var CLOCK_SKEW_ALLOWANCE_MS = 5e3;
+var RUN_LIST_LIMIT = 20;
+var RUN_DISCOVERY_MAX_ATTEMPTS = 15;
+var RUN_DISCOVERY_INTERVAL_MS = 2e3;
 var parsePositiveInteger = (value) => {
   if (!/^\d+$/u.test(value)) return null;
   const parsed = Number.parseInt(value, 10);
@@ -24404,8 +24407,22 @@ var resolveDefaultBranch = async (cwd) => {
   }
   return { branch: defaultBranch2 };
 };
-var triggerAndCaptureRunId = async (args) => {
-  const { cwd, defaultBranch: defaultBranch2, triggerTime, workflowFile } = args;
+var pickDispatchedRun = (entries, notBeforeMs) => {
+  const qualifying = entries.map((entry) => ({
+    createdAtMs: entry.createdAt === void 0 ? Number.NaN : new Date(entry.createdAt).getTime(),
+    runId: String(entry.databaseId)
+  })).filter(
+    (entry) => !Number.isNaN(entry.createdAtMs) && entry.createdAtMs >= notBeforeMs
+  );
+  const [first, ...rest] = qualifying;
+  if (first === void 0) return null;
+  return rest.reduce(
+    (oldest, entry) => entry.createdAtMs < oldest.createdAtMs ? entry : oldest,
+    first
+  ).runId;
+};
+var triggerWorkflowRun = async (args) => {
+  const { cwd, defaultBranch: defaultBranch2, workflowFile } = args;
   const triggerResult = await runGh2({
     args: ["workflow", "run", workflowFile, "--ref", defaultBranch2],
     cwd
@@ -24419,58 +24436,83 @@ var triggerAndCaptureRunId = async (args) => {
     });
     return { exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND };
   }
-  const listResult = await runGh2({
-    args: [
-      "run",
-      "list",
-      `--workflow=${workflowFile}`,
-      "--limit",
-      "1",
-      "--json",
-      "databaseId,createdAt"
-    ],
-    cwd
-  });
-  if (!listResult.ok) {
-    structuredError({
-      code: "run_list_failed",
-      message: listResult.stderr.trim(),
-      subcommand: "setup-ci verify-run",
-      workflow: workflowFile
+  return { triggered: true };
+};
+var discoverRunId = async (args) => {
+  const { cwd, notBeforeMs, pollIntervalMs, workflowFile } = args;
+  for (let attempt = 1; attempt <= RUN_DISCOVERY_MAX_ATTEMPTS; attempt += 1) {
+    const listResult = await runGh2({
+      args: [
+        "run",
+        "list",
+        `--workflow=${workflowFile}`,
+        "--event",
+        "workflow_dispatch",
+        "--limit",
+        String(RUN_LIST_LIMIT),
+        "--json",
+        "databaseId,createdAt"
+      ],
+      cwd
     });
-    return { exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND };
-  }
-  try {
-    const parsed = JSON.parse(listResult.stdout);
-    const first = parsed.at(0);
-    if (first === void 0) {
+    if (!listResult.ok) {
       structuredError({
-        code: "run_list_empty",
-        message: `gh run list returned no runs for ${workflowFile}`,
+        code: "run_list_failed",
+        message: listResult.stderr.trim(),
         subcommand: "setup-ci verify-run",
         workflow: workflowFile
       });
       return { exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND };
     }
-    const runId = String(first.databaseId);
-    if (first.createdAt !== void 0) {
-      const createdAtMs = new Date(first.createdAt).getTime();
-      if (!Number.isNaN(createdAtMs) && createdAtMs < triggerTime - RACE_WINDOW_GUARD_MS) {
-        process.stderr.write(
-          `verify-run: warning: picked run ${runId} createdAt ${first.createdAt} predates trigger time by ${triggerTime - createdAtMs}ms; may be a concurrent dispatch
-`
-        );
-      }
+    let parsed;
+    try {
+      parsed = JSON.parse(listResult.stdout);
+    } catch (error51) {
+      structuredError({
+        code: "run_list_malformed",
+        message: error51 instanceof Error ? error51.message : String(error51),
+        subcommand: "setup-ci verify-run",
+        workflow: workflowFile
+      });
+      return { exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND };
     }
-    return { runId };
-  } catch (error51) {
-    structuredError({
-      code: "run_list_malformed",
-      message: error51 instanceof Error ? error51.message : String(error51),
-      subcommand: "setup-ci verify-run"
-    });
-    return { exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND };
+    if (!Array.isArray(parsed)) {
+      structuredError({
+        code: "run_list_malformed",
+        message: "gh run list did not return a JSON array",
+        subcommand: "setup-ci verify-run",
+        workflow: workflowFile
+      });
+      return { exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND };
+    }
+    const runId = pickDispatchedRun(parsed, notBeforeMs);
+    if (runId !== null) return { runId };
+    if (attempt < RUN_DISCOVERY_MAX_ATTEMPTS) {
+      await sleep(Math.min(pollIntervalMs, RUN_DISCOVERY_INTERVAL_MS));
+    }
   }
+  structuredError({
+    code: "run_not_found",
+    message: `no workflow_dispatch run for ${workflowFile} was created at or after the trigger within the discovery attempt bound`,
+    subcommand: "setup-ci verify-run",
+    workflow: workflowFile
+  });
+  return { exitCode: EXIT_CODES.UNKNOWN_SUBCOMMAND };
+};
+var triggerAndCaptureRunId = async (args) => {
+  const { cwd, defaultBranch: defaultBranch2, pollIntervalMs, triggerTime, workflowFile } = args;
+  const triggerResult = await triggerWorkflowRun({
+    cwd,
+    defaultBranch: defaultBranch2,
+    workflowFile
+  });
+  if ("exitCode" in triggerResult) return triggerResult;
+  return discoverRunId({
+    cwd,
+    notBeforeMs: triggerTime - CLOCK_SKEW_ALLOWANCE_MS,
+    pollIntervalMs,
+    workflowFile
+  });
 };
 var pollRunUntilDone = async (args) => {
   const { cwd, pollIntervalMs, runId, timeoutSeconds } = args;
@@ -24523,6 +24565,7 @@ var run44 = async (argv, options = {}) => {
   const triggered = await triggerAndCaptureRunId({
     cwd,
     defaultBranch: branchResult.branch,
+    pollIntervalMs,
     triggerTime,
     workflowFile
   });
