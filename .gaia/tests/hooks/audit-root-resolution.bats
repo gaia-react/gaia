@@ -207,6 +207,9 @@ setup() {
            jq-availability.sh verb-arming.sh verb-arming-walk.sh repo-scope.sh; do
     cp "$REPO_ROOT/.claude/hooks/lib/$f" "$MAIN/.claude/hooks/lib/$f"
   done
+  # The maintainer members' shared handshake, which stage 8b reads through
+  # their definitions' pointer.
+  cp "$REPO_ROOT/.claude/hooks/lib/audit-member-protocol.md" "$MAIN/.claude/hooks/lib/audit-member-protocol.md"
   # Read the roster out of .gaia/audit-ci.yml rather than restating it. The
   # tests these members drive are named "every definition", and a hand-copied
   # array is only every definition until the next member joins the roster:
@@ -1028,8 +1031,22 @@ run_audit_root_block() {
       return 1
     }
     # And the anchored form must actually be present, so a definition that
-    # simply lost its handshake cannot pass this by having no call sites.
-    grep -qE 'bash[[:space:]]+<root>/\.gaia/scripts/audit-write-clearance\.sh' "$file" || {
+    # simply lost its handshake cannot pass this by having no call sites. The
+    # two maintainer members carry their handshake in the shared protocol file
+    # their definition points at, so for them the protocol file is where the
+    # anchored call must live, and it gets the same unanchored scan.
+    local carrier="$file"
+    if grep -qF '.claude/hooks/lib/audit-member-protocol.md' "$file"; then
+      carrier="$MAIN/.claude/hooks/lib/audit-member-protocol.md"
+      [ -f "$carrier" ] || { echo "$m: points at a protocol file that does not exist" >&2; return 1; }
+      bad="$(grep -nE 'bash[[:space:]]+\.gaia/scripts/audit-write-(clearance|findings)\.sh' "$carrier" || true)"
+      [ -z "$bad" ] || {
+        echo "$m: unanchored writer invocation(s) in the protocol file:" >&2
+        echo "$bad" >&2
+        return 1
+      }
+    fi
+    grep -qE 'bash[[:space:]]+<root>/\.gaia/scripts/audit-write-clearance\.sh' "$carrier" || {
       echo "$m: no anchored clearance-writer invocation found at all" >&2
       return 1
     }

@@ -16,6 +16,10 @@ The [[Code Audit Team]] gate dispatches specialized auditor members by file glob
 
 Write `.claude/agents/<name>.md` following the shape of the existing members: `name` / `description` / `model` / `color` frontmatter, a **Remit and self-skip** section with the heading and the diff-base resolution and the mechanical self-skip detail (self-skipping cleanly, writing no marker, when nothing matches), **Review dimensions**, a **Finding Proof Gate**, **Findings grading** (which severities the member may use), an advisory-only or self-heal stance, **Cross-remit findings** handling, an **Output Format** section, the **Gate handshake** (mark / stamp / push / status), a **Findings sidecar** for the recurrence tally, and a **Methodology** summary. Leave the glob list and the filter instruction to the generated remit region, which the next step produces. The `description` still states the member's subject matter and self-heal stance in one line, since that's what a dispatching agent reads first, but no longer restates a glob.
 
+<!-- gaia:maintainer-only:start -->
+A maintainer-only member does not carry those three sections itself. It carries one **Report, gate handshake and findings sidecar** section that points at `.claude/hooks/lib/audit-member-protocol.md`, the protocol the two maintainer members share, and names any clean-pass condition it adds. That file is release-excluded, so an adopter-facing member keeps its own copy.
+<!-- gaia:maintainer-only:end -->
+
 The **Remit and self-skip** section also carries the scope-resolution obligation, byte-identical across every member definition: Capture your own content digest at scope resolution with `.gaia/scripts/audit-scope-digest.sh --capture`, and at marker-write time read that captured value back with `--read` and pass it as `--scope-digest`; never re-derive it in the writing call, and a rotation between the two means the review was superseded and you must be re-dispatched on the new HEAD.
 
 ### 2. Register in the roster

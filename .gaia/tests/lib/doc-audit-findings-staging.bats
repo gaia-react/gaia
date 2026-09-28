@@ -46,6 +46,13 @@
 # `doc-debt-query.bats` in this directory: grep for frozen literals,
 # ground-truthed against the source text.
 #
+# The two maintainer members carry no handshake of their own: each definition points
+# at the shared protocol file `.claude/hooks/lib/audit-member-protocol.md`,
+# which holds their writer call. So the positive checks below walk SPECS, the
+# files that prescribe the call (every definition without that pointer, plus the
+# protocol file), and every absence check walks ALL, SPECS plus the pointing
+# definitions, so prose drifting back into a member is still caught.
+#
 # The roster comes from the `code-audit-*.md` glob rather than a hardcoded
 # list, so a sixth member joins the guard by existing. The **first `@test`**
 # pins the five known specs as a floor, and it is what keeps the rest of the
@@ -58,20 +65,28 @@
 
 setup() {
   ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
+  PROTOCOL_REL=".claude/hooks/lib/audit-member-protocol.md"
 
   SPECS=()
+  DELEGATES=()
   for f in "$ROOT"/.claude/agents/code-audit-*.md; do
     # `-s`, not `-f`: an empty file satisfies `-f` and then greens every
     # absence check below on nothing.
     [ -s "$f" ] || continue
-    SPECS+=("$f")
+    if grep -qF -- "$PROTOCOL_REL" "$f"; then
+      DELEGATES+=("$f")
+    else
+      SPECS+=("$f")
+    fi
   done
+  [ -s "$ROOT/$PROTOCOL_REL" ] && SPECS+=("$ROOT/$PROTOCOL_REL")
+  ALL=("${SPECS[@]}" "${DELEGATES[@]}")
 }
 
 # --- Group 1: the roster the rest of the suite walks -----------------------
 
 @test "the glob resolves to at least the known Code Audit Team specs" {
-  [ "${#SPECS[@]}" -ge 4 ]
+  [ "${#ALL[@]}" -ge 5 ]
   for member in \
     code-audit-frontend \
     code-audit-github-workflows \
@@ -79,6 +94,22 @@ setup() {
     code-audit-maintainer-shell; do
     [ -s "$ROOT/.claude/agents/${member}.md" ] || {
       echo "roster member ${member}.md is missing or empty; every per-spec loop here would skip it silently" >&2
+      return 1
+    }
+  done
+}
+
+@test "the maintainer members point at the protocol file, which prescribes the write" {
+  # The floor for the SPECS/DELEGATES split: a member that loses its pointer
+  # moves to SPECS and fails every positive check there, and a missing
+  # protocol file leaves the delegates with no write at all.
+  [ -s "$ROOT/$PROTOCOL_REL" ] || { echo "$PROTOCOL_REL is missing or empty" >&2; return 1; }
+  [ "${#DELEGATES[@]}" -ge 2 ]
+  for member in \
+    code-audit-maintainer-node \
+    code-audit-maintainer-shell; do
+    grep -qF -- "$PROTOCOL_REL" "$ROOT/.claude/agents/${member}.md" || {
+      echo "${member}.md does not point at $PROTOCOL_REL" >&2
       return 1
     }
   done
@@ -97,13 +128,15 @@ setup() {
   #
   # The offenders check runs FIRST so a drifted spec is reported by its
   # offending line rather than as "prescribes no sidecar write at all".
-  for f in "${SPECS[@]}"; do
+  for f in "${ALL[@]}"; do
     local offenders
     offenders="$(grep -n -- '--findings' "$f" | grep -vE -- '^[0-9]+:[[:space:]]*--findings <scratch>/findings\.json[[:space:]]*$' || true)"
     [ -z "$offenders" ] || {
       echo "$f: --findings appears outside the pinned staged-file form: $offenders" >&2
       return 1
     }
+  done
+  for f in "${SPECS[@]}"; do
     grep -qE -- '^[[:space:]]*--findings <scratch>/findings\.json[[:space:]]*$' "$f" || {
       echo "$f carries no --findings line of any shape, so it prescribes no sidecar write at all" >&2
       return 1
@@ -117,7 +150,7 @@ setup() {
   # by the rule above and kept anyway: it names the defect this suite exists
   # for, so a failure reads as the regression it is rather than as generic
   # drift.
-  for f in "${SPECS[@]}"; do
+  for f in "${ALL[@]}"; do
     grep -qF -- '--findings /path/to/findings.json' "$f" && return 1
   done
   true
@@ -167,7 +200,7 @@ setup() {
   # A double-quoted payload expands `$` and backticks inside the finding text
   # before the writer validates the array, so a finding quoting shell prose
   # publishes something other than what the member wrote.
-  for f in "${SPECS[@]}"; do
+  for f in "${ALL[@]}"; do
     grep -qE -- "^printf '%s' \"" "$f" && return 1
   done
   true
@@ -177,7 +210,7 @@ setup() {
   # A pipe into the writer is the superseded stdin form. The confinement
   # refuses it whenever the payload carries the token `git`, which any finding
   # path under `.github/` does, so it is unrunnable from a linked worktree.
-  for f in "${SPECS[@]}"; do
+  for f in "${ALL[@]}"; do
     grep -qE -- '\|[[:space:]]*bash[[:space:]].*audit-write-findings\.sh' "$f" && return 1
   done
   true
@@ -187,7 +220,7 @@ setup() {
   # Subsumed by Group 2's anchored rule for the flag line, and extended to the
   # producer, so a revival reads as the regression it is: a heredoc form cannot
   # run at all on a pull request audited from a linked worktree.
-  for f in "${SPECS[@]}"; do
+  for f in "${ALL[@]}"; do
     grep -qF -- '--findings - <<' "$f" && return 1
     grep -qE -- "^printf '%s'.*<<" "$f" && return 1
   done
@@ -213,7 +246,7 @@ setup() {
 }
 
 @test "no spec still states the superseded stdin staging rule" {
-  for f in "${SPECS[@]}"; do
+  for f in "${ALL[@]}"; do
     grep -qF -- 'Stage nothing: the array goes in through the single-quoted `printf` payload above, never through a file.' "$f" && return 1
   done
   true
@@ -223,7 +256,7 @@ setup() {
   # The superseded sentence, verbatim. It presented stdin as a convenience for
   # a member that would rather not stage a file, which left the staged file
   # the default reading of the placeholder above it.
-  for f in "${SPECS[@]}"; do
+  for f in "${ALL[@]}"; do
     grep -qF -- 'reads the array from stdin when you would rather not stage a temp file' "$f" && return 1
   done
   true
@@ -239,7 +272,7 @@ setup() {
   # sidecar writer then exits 2 on `--findings` as an unrecognized argument,
   # and no report of record is written. Observed live from a linked worktree.
   # Single quotes keep an empty value as its own `''` argument.
-  for f in "${SPECS[@]}"; do
+  for f in "${ALL[@]}"; do
     local offenders
     offenders="$(grep -nE -- '--[a-z-]+ <[A-Z_]+>' "$f" || true)"
     [ -z "$offenders" ] || {

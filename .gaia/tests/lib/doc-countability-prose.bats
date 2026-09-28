@@ -72,6 +72,20 @@ setup() {
     "$ROOT/.claude/agents/code-audit-github-workflows.md"
     "$ROOT/.claude/agents/code-audit-maintainer-node.md"
     "$ROOT/.claude/agents/code-audit-maintainer-shell.md"
+    # The maintainer members' shared protocol file, which carries their
+    # "## Findings sidecar" section in place of their own definitions.
+    "$ROOT/.claude/hooks/lib/audit-member-protocol.md"
+  )
+  # The frontend and github-workflows members and the protocol file carry the
+  # sidecar section; the maintainer definitions point at the protocol file.
+  SIDECAR_FILES=(
+    "$ROOT/.claude/agents/code-audit-frontend.md"
+    "$ROOT/.claude/agents/code-audit-github-workflows.md"
+    "$ROOT/.claude/hooks/lib/audit-member-protocol.md"
+  )
+  DELEGATE_FILES=(
+    "$ROOT/.claude/agents/code-audit-maintainer-node.md"
+    "$ROOT/.claude/agents/code-audit-maintainer-shell.md"
   )
   WIKI_PAGE="$ROOT/wiki/concepts/Policy-Memory Loop.md"
   AUDIT_AGENT_PAGE="$ROOT/wiki/concepts/Code Review Audit Agent.md"
@@ -146,7 +160,13 @@ setup() {
 
 @test "UAT-010: each agent file's Findings sidecar section names holistic/unclassified as the stamped key" {
   local f section
-  for f in "${AGENT_FILES[@]}"; do
+  for f in "${DELEGATE_FILES[@]}"; do
+    grep -Fq ".claude/hooks/lib/audit-member-protocol.md" "$f" || {
+      echo "$f carries no Findings sidecar pointer to the protocol file" >&2
+      return 1
+    }
+  done
+  for f in "${SIDECAR_FILES[@]}"; do
     section="$(extract_section "$f")"
     [ -n "$section" ] || {
       echo "no '## Findings sidecar' section found in $f" >&2

@@ -11,7 +11,10 @@
 # over a broken writer -- the false-green shape this program cares most
 # about.
 #
-# Over `.claude/agents/`, TWO assertions:
+# Over `.claude/agents/` and the maintainer members' shared protocol file
+# (`.claude/hooks/lib/audit-member-protocol.md`, where their sidecar and
+# handshake prose lives; release-excluded, so on an adopter clone that
+# pathspec matches nothing), TWO assertions:
 #
 #   1. No bare `${BASE_SHA}.`/`${base}.`/`${KEY_BASE}.` sidecar or ledger path
 #      literal survives anywhere. That shell-interpolated shape
@@ -59,7 +62,7 @@
 # gaia_check_audit_key_callers <repo_root>
 #   Runs `git -C <repo_root> grep` for both patterns across `.claude/agents/`
 #   (recursive: the check names no exemption for a reference doc under an
-#   agent's own subdirectory). Prints every match line, then one verdict line
+#   agent's own subdirectory) and the protocol file. Prints every match line, then one verdict line
 #   per assertion. Returns 0 when BOTH assertions hold, 1 otherwise, and 2
 #   when <repo_root> is not a git repository root and nothing was scanned.
 #   <repo_root> is a required parameter -- this check never derives it
@@ -68,8 +71,9 @@
 #   without touching real tracked source.
 #
 # GREEN against this repo's real `.claude/agents/`: `code-audit-frontend.md`
-# derives its ledger path through `gaia_audit_key`, and the other four
-# definitions reach the same key by delegating to the sidecar writer. A red
+# derives its ledger path through `gaia_audit_key`, and the other members
+# reach the same key by delegating to the sidecar writer, the two maintainer
+# members through the protocol file. A red
 # here means a definition has drifted back to hand-building a path from a
 # bare base sha, which is the collision this key exists to remove.
 
@@ -84,6 +88,9 @@ GAIA_AUDIT_KEY_BAD_LITERAL_PATTERN='\$\{(BASE_SHA|base|KEY_BASE)\}\.([A-Za-z0-9_
 # bad shape would never flag the converted (compliant) file and assertion 2
 # would be vacuous once the prose lands.
 GAIA_AUDIT_ARTIFACT_NAME_PATTERN='findings\.json|rerun\.json'
+
+# The maintainer members' shared protocol file, scanned beside `.claude/agents/`.
+GAIA_AUDIT_MEMBER_PROTOCOL='.claude/hooks/lib/audit-member-protocol.md'
 
 gaia_check_audit_key_callers() {
   local repo_root="${1:?gaia_check_audit_key_callers requires a repo_root argument}"
@@ -130,7 +137,7 @@ gaia_check_audit_key_callers() {
   # git grep exits 1 when it finds nothing, a normal outcome here (no bad
   # literal), not a script error -- so it is not run under -e and its status
   # is captured explicitly via the variable assignment instead.
-  literal_matches="$(git -C "$repo_root" grep -nIE "$GAIA_AUDIT_KEY_BAD_LITERAL_PATTERN" -- '.claude/agents/' 2>/dev/null)"
+  literal_matches="$(git -C "$repo_root" grep -nIE "$GAIA_AUDIT_KEY_BAD_LITERAL_PATTERN" -- '.claude/agents/' "$GAIA_AUDIT_MEMBER_PROTOCOL" 2>/dev/null)"
   if [ -n "$literal_matches" ]; then
     printf '%s\n' "$literal_matches"
     literal_count="$(printf '%s\n' "$literal_matches" | wc -l | tr -d ' ')"
@@ -153,7 +160,7 @@ gaia_check_audit_key_callers() {
       missing_count=$((missing_count + 1))
       caller_failed=1
     fi
-  done < <(git -C "$repo_root" grep -lIE -z "$GAIA_AUDIT_ARTIFACT_NAME_PATTERN" -- '.claude/agents/' 2>/dev/null)
+  done < <(git -C "$repo_root" grep -lIE -z "$GAIA_AUDIT_ARTIFACT_NAME_PATTERN" -- '.claude/agents/' "$GAIA_AUDIT_MEMBER_PROTOCOL" 2>/dev/null)
   printf 'agent files naming a sidecar/ledger without a gaia_audit_key call: %s\n' "$missing_count"
 
   [ "$literal_failed" -eq 0 ] && [ "$caller_failed" -eq 0 ]
