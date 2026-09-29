@@ -114,7 +114,7 @@ Then apply the defaults and proceed without stopping (the user chose Automatic; 
 
 **First, ask the run-mode gate** from "Interactive gates: run mode and non-response policy" above, it is the very first thing `/gaia-init` asks. Hold the answer (interactive or automatic) for every later gate. Then continue with the pnpm check.
 
-GAIA needs pnpm 11+. Tell the user: "Checking for pnpm…" then read the currently-resolved version **from the project root** (so corepack's `packageManager` pin applies when it's active):
+GAIA needs pnpm 12+. Tell the user: "Checking for pnpm…" then read the currently-resolved version **from the project root** (so corepack's `packageManager` pin applies when it's active):
 
 ```bash
 pnpm --version 2>/dev/null || echo "absent"
@@ -122,7 +122,7 @@ pnpm --version 2>/dev/null || echo "absent"
 
 Branch on the result:
 
-**a) `absent` (no pnpm on PATH):** auto-install. Prefer corepack (it activates the version pinned in `package.json` `packageManager`, currently `pnpm@11.9.0`); fall back to the latest global when corepack is missing.
+**a) `absent` (no pnpm on PATH):** auto-install. Prefer corepack (it activates the version pinned in `package.json` `packageManager`, currently `pnpm@12.6.0`); fall back to the latest global when corepack is missing.
 
 ```bash
 if command -v corepack &>/dev/null; then
@@ -134,18 +134,18 @@ fi
 
 If this fails, stop and report the error. Then proceed to Step 1.
 
-**b) Major version ≥ 11:** good, proceed to Step 1.
+**b) Major version ≥ 12:** good, proceed to Step 1.
 
-**c) Major version < 11 (a stale pnpm, e.g. 10.x):** do **not** silently proceed. Use the **AskUserQuestion** tool to get consent before touching the user's toolchain, with exactly these two options:
+**c) Major version < 12 (a stale pnpm, e.g. 11.x):** do **not** silently proceed. Use the **AskUserQuestion** tool to get consent before touching the user's toolchain, with exactly these two options:
 
 _Non-response: HARD-BLOCK. Re-ask; never auto-upgrade or auto-exit on a timeout. Automatic mode: upgrade (Yes)._
 
-- **Yes (Required)**: "Upgrade pnpm to a supported version (11+). Required to continue with /gaia-init."
+- **Yes (Required)**: "Upgrade pnpm to a supported version (12+). Required to continue with /gaia-init."
 - **No**: "Keep the current pnpm and stop /gaia-init. Nothing has been installed or renamed yet, so it's safe to exit and re-run later."
 
 On **No** (or anything that is not an explicit Yes): stop `/gaia-init` immediately with a one-line message. Step 0 runs before any file is installed or renamed, so exiting here leaves the clone untouched.
 
-On **Yes**: upgrade by enabling corepack (its `packageManager` pin makes the in-project version 11.9.0 regardless of any stray global pnpm); fall back to a latest global install when corepack is missing.
+On **Yes**: upgrade by enabling corepack (its `packageManager` pin makes the in-project version 12.6.0 regardless of any stray global pnpm); fall back to a latest global install when corepack is missing.
 
 ```bash
 if command -v corepack &>/dev/null; then
@@ -161,13 +161,13 @@ Then **re-verify from the project root**:
 pnpm --version
 ```
 
-If the major version is still < 11, a non-corepack pnpm (Homebrew, the standalone installer) is shadowing the upgrade earlier on `PATH`. Do **not** loop or silently continue. Show which binary wins and halt so the user can resolve it:
+If the major version is still < 12, a non-corepack pnpm (Homebrew, the standalone installer) is shadowing the upgrade earlier on `PATH`. Do **not** loop or silently continue. Show which binary wins and halt so the user can resolve it:
 
 ```bash
 command -v pnpm   # e.g. /opt/homebrew/bin/pnpm, the shadowing install
 ```
 
-Halt with: "pnpm <version> at <path> is older than the required 11+ and takes precedence on your PATH. Upgrade or remove it (e.g. `brew upgrade pnpm`, `pnpm self-update`) so corepack's pinned version wins, then re-run /gaia-init."
+Halt with: "pnpm <version> at <path> is older than the required 12+ and takes precedence on your PATH. Upgrade or remove it (e.g. `brew upgrade pnpm`, `pnpm self-update`) so corepack's pinned version wins, then re-run /gaia-init."
 
 ## Step 1: Install dependencies
 

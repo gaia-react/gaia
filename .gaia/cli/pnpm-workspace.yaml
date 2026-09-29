@@ -8,10 +8,10 @@
 # Supply-chain hardening, for parity with the root workspace. This workspace is
 # its own pnpm root (see above), so it inherits none of root's settings and an
 # install here resolved unhardened until #1152. Value is in minutes;
-# 10080 = 7 days. The exposure is at lockfile-write time, when a maintainer
+# 4320 = 3 days (root's entry says why). The exposure is at lockfile-write time, when a maintainer
 # bumps a dependency: CI's --frozen-lockfile install does not re-resolve and so
 # inherits whatever the last unhardened resolve committed.
-minimumReleaseAge: 10080
+minimumReleaseAge: 4320
 
 # Require a decision when a resolution breaches the window above (a prompt on an
 # interactive terminal, a hard install failure in CI and any other non-TTY),
@@ -30,7 +30,7 @@ trustPolicy: no-downgrade
 # to correct; the relation is containment, not difference. Do not sync them by
 # copying.
 
-# Exempt first-party packages from the release-age delay. The 7-day window
+# Exempt first-party packages from the release-age delay. The 3-day window
 # defends against malicious THIRD-party updates; @gaia-react/lint is authored,
 # reviewed, and published by this project's own maintainer, so the
 # community-vetting rationale does not apply. Same reasoning as root's entry.

@@ -3,8 +3,12 @@
 
 # Supply-chain hardening; see https://pnpm.io/settings
 # Delay installs until a published version has had time to be vetted.
-# Value is in minutes; 10080 = 7 days.
-minimumReleaseAge: 10080
+# Value is in minutes; 4320 = 3 days. Publicized npm compromises have been
+# pulled within hours, mostly within a day, so three days clears that range
+# with margin for a weekend publish that waits until Monday for removal. A
+# longer window mostly delays security fixes: anything still undetected after
+# three days tends to stay undetected for weeks.
+minimumReleaseAge: 4320
 
 # Require a decision when a resolution breaches the window above, rather than
 # letting it through. An interactive terminal gets a prompt; CI and any other
@@ -50,7 +54,7 @@ trustPolicyExclude:
   - 'eslint-import-resolver-typescript@3.10.1'
   - 'chokidar@4.0.3'
 
-# Exempt first-party packages from the release-age delay. The 7-day window
+# Exempt first-party packages from the release-age delay. The 3-day window
 # defends against malicious THIRD-party updates; @gaia-react/lint is authored,
 # reviewed, and published by this project's own maintainer, so the
 # community-vetting rationale does not apply.
