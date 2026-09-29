@@ -2,7 +2,7 @@ import type {FC} from 'react';
 import {useLoaderData} from 'react-router';
 import {getInstance} from '~/middleware/i18next';
 import TermsPage from '~/pages/Legal/TermsPage';
-import type {Route} from './+types/terms';
+import type {Route} from './+types/_legal.terms';
 
 export const loader = async ({context}: Route.LoaderArgs) => {
   const i18next = getInstance(context);

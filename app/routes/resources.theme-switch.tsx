@@ -2,7 +2,7 @@ import {data, redirect} from 'react-router';
 import {z} from 'zod';
 import {isLocalRedirect} from '~/utils/http';
 import {setTheme} from '~/utils/theme.server';
-import type {Route} from './+types/theme-switch';
+import type {Route} from './+types/resources.theme-switch';
 
 export const ThemeFormSchema = z.object({
   redirectTo: z.string().refine(isLocalRedirect).optional(),
