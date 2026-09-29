@@ -19,16 +19,16 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@gaia-react/lint": "2.1.0",
+    "@gaia-react/lint": "2.2.0",
     "@types/js-yaml": "4.0.9",
-    "@types/node": "26.5.1",
-    "esbuild": "0.28.1",
+    "@types/node": "26.6.3",
+    "esbuild": "0.28.2",
     "eslint": "9.39.5",
-    "prettier": "3.9.6",
+    "prettier": "3.9.9",
     "prettier-plugin-tailwindcss": "0.8.1",
-    "tsx": "4.22.4",
+    "tsx": "4.23.15",
     "typescript": "6.0.3",
-    "vite": "8.3.0",
-    "vitest": "5.0.0"
+    "vite": "8.3.1",
+    "vitest": "5.0.2"
   }
 }
