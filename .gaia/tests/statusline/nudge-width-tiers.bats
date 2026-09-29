@@ -1,17 +1,20 @@
 #!/usr/bin/env bats
 
-# The statusline's right side is a task queue that fits itself to COLUMNS: it
-# drops reasons first, then collapses the lowest-priority nudges to an
-# icon+count, then falls back to a `+N` for whatever still does not fit. This
-# suite pins the four tiers and the priority order (update-gaia, serena-sync,
-# update-deps, audit, harden, debt, residue) against exact widths, so a
-# regression in the arithmetic reds here rather than silently shifting a tier
-# boundary.
+# The statusline's right side is a task queue that fits itself to COLUMNS.
+# Each nudge sizes independently through Large, Medium, Small, icon, then a
+# trailing `+N`: the lowest-priority nudge still at its current size shrinks
+# first, so a higher-priority nudge is never smaller than a lower-priority
+# one. This suite pins the exact boundaries and the priority order
+# (update-gaia, serena-sync, update-deps, audit, harden, debt, residue)
+# against exact widths, so a regression in the arithmetic reds here rather
+# than silently shifting a boundary.
 #
 # Fixture mirrors segment-command-uniqueness.bats: a MAIN git checkout with
 # setup marked complete, HOME pointing at an empty dir (left resolves to the
 # "Claude Code" fallback, 11 columns), and a cache that arms every right-side
-# nudge at once.
+# nudge at once, at the widths the issue table names: update-gaia 9.9.9,
+# serena missing go+rust (2 languages), 28 outdated deps, an audit reason,
+# a harden reason with 6 candidates, 1 open debt issue, 15 aged residuals.
 
 setup() {
   STATUSLINE_SRC=$(cd "$BATS_TEST_DIRNAME/../../statusline" && pwd)
@@ -32,17 +35,18 @@ setup() {
 {
   "gaiaHasUpdate": true,
   "gaiaLatest": "9.9.9",
-  "outdatedCount": 3,
-  "hardenCandidateCount": 2,
+  "outdatedCount": 28,
+  "hardenNudgeReason": "1 new pattern, dangling-reference rising",
+  "hardenCandidateCount": 6,
   "hardenUnclassifiedCount": 1,
-  "residueCandidateCount": 5,
+  "residueCandidateCount": 15,
   "auditNudge": true,
-  "auditNudgeReason": "stale",
-  "serenaLangDrift": ["go"]
+  "auditNudgeReason": "34 days since review",
+  "serenaLangDrift": ["go", "rust"]
 }
 JSON
   mkdir -p "$MAIN/.gaia/local/debt"
-  printf '{"openCount":4}' > "$MAIN/.gaia/local/debt/count.json"
+  printf '{"openCount":1}' > "$MAIN/.gaia/local/debt/count.json"
 
   TMP_HOME=$(mktemp -d -t gaia-sl-tiers-home-XXXXXX)
 }
@@ -63,18 +67,23 @@ render_at() {
   plain=$(printf '%s' "$output" | sed 's/\x1b\[[0-9;]*m//g')
 }
 
-@test "full tier renders every segment with its reason, in priority order" {
-  render_at 274
+@test "every nudge renders Large, in priority order, when the line fits" {
+  render_at 300
   [ "$status" -eq 0 ]
-  expected="Claude Code  Run /update-gaia (GAIA 9.9.9 available)  Run /gaia-serena-sync (Serena missing: go)  Run /update-deps (3 outdated)  Run /gaia-audit (stale)  Run /gaia-harden (2 recurring patterns, 1 unclassified)  Run /gaia-debt (4 issues)  Run /gaia-residue (5 aged residuals)"
+  expected="Claude Code  Run /update-gaia (GAIA 9.9.9 available)  Run /gaia-serena-sync (Serena missing: go, rust)  Run /update-deps (28 outdated)  Run /gaia-audit (34 days since review)  Run /gaia-harden (1 new pattern, dangling-reference rising)  Run /gaia-debt (1 issue)  Run /gaia-residue (15 aged residuals)"
   [ "$plain" = "$expected" ]
-}
 
-@test "priority order holds at the full tier" {
+  render_at 299
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"Run /gaia-debt (1 issue)  Run /gaia-residue (15)") ;;
+    *) return 1 ;;
+  esac
+
   render_at 400
   [ "$status" -eq 0 ]
   order=$(grep -oE 'Run /[a-z][a-z0-9-]*' <<<"$plain")
-  expected=$(printf '%s\n' \
+  expected_order=$(printf '%s\n' \
     "Run /update-gaia" \
     "Run /gaia-serena-sync" \
     "Run /update-deps" \
@@ -82,114 +91,140 @@ render_at() {
     "Run /gaia-harden" \
     "Run /gaia-debt" \
     "Run /gaia-residue")
-  [ "$order" = "$expected" ]
+  [ "$order" = "$expected_order" ]
 }
 
-@test "a two-line left sizes the right side against the last line's width" {
-  mkdir -p "$TMP_HOME/.claude"
-  cat > "$TMP_HOME/.claude/settings.json" <<'JSON'
-{"statusLine": {"command": "printf 'line one\\n%s' \"$(printf '%052d' 0 | tr 0 x)\""}}
-JSON
-  local json last_line_x
-  last_line_x=$(printf '%052d' 0 | tr 0 x)
-  json=$(jq -n --arg d "$MAIN" '{workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
-
-  # A measurement of the first line (8) or the old digit guard's 0, instead
-  # of the last (joined) line's 52, both leave enough avail at 315 for the
-  # full tier too, so a wrong measurement is not observable there on its own;
-  # the exact pad (2, only correct at 52) is what tells them apart.
-  run env HOME="$TMP_HOME" COLUMNS=315 bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
+@test "Large shrinks to Medium bottom-up, leaving mixed sizes at one width" {
+  render_at 240
   [ "$status" -eq 0 ]
-  plain=$(printf '%s' "$output" | sed 's/\x1b\[[0-9;]*m//g')
-  last_line="${plain##*$'\n'}"
-  expected_right="Run /update-gaia (GAIA 9.9.9 available)  Run /gaia-serena-sync (Serena missing: go)  Run /update-deps (3 outdated)  Run /gaia-audit (stale)  Run /gaia-harden (2 recurring patterns, 1 unclassified)  Run /gaia-debt (4 issues)  Run /gaia-residue (5 aged residuals)"
-  [ "$last_line" = "${last_line_x}  ${expected_right}" ]
+  expected="Claude Code  Run /update-gaia (GAIA 9.9.9 available)  Run /gaia-serena-sync (Serena missing: go, rust)  Run /update-deps (28 outdated)  Run /gaia-audit (34 days since review)  Run /gaia-harden (6)  Run /gaia-debt (1)  Run /gaia-residue (15)"
+  [ "$plain" = "$expected" ]
 
-  # At 314 a 52-column measurement leaves avail 260, one below the full
-  # tier's 261, so it drops to the short tier (no reason parens); a
-  # first-line or zeroed measurement leaves enough avail for the full tier
-  # to still fit, which is the observable difference this case pins.
-  run env HOME="$TMP_HOME" COLUMNS=314 bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
+  render_at 239
   [ "$status" -eq 0 ]
-  plain=$(printf '%s' "$output" | sed 's/\x1b\[[0-9;]*m//g')
-  last_line="${plain##*$'\n'}"
-  grep -qF -- "(" <<<"$last_line" && return 1
+  grep -qF -- "Run /update-deps (28 outdated)" <<<"$plain"
+  grep -qF -- "Run /gaia-audit  Run /gaia-harden (6)" <<<"$plain"
+
+  render_at 285
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"Run /gaia-debt (1 issue)  Run /gaia-residue (15)") ;;
+    *) return 1 ;;
+  esac
+
+  render_at 284
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"Run /gaia-debt (1)  Run /gaia-residue (15)") ;;
+    *) return 1 ;;
+  esac
+}
+
+@test "audit has no Medium: it goes straight to its bare command" {
+  render_at 217
+  [ "$status" -eq 0 ]
+  expected="Claude Code  Run /update-gaia (GAIA 9.9.9 available)  Run /gaia-serena-sync (Serena missing: go, rust)  Run /update-deps (28 outdated)  Run /gaia-audit  Run /gaia-harden (6)  Run /gaia-debt (1)  Run /gaia-residue (15)"
+  [ "$plain" = "$expected" ]
+  grep -qF -- "Run /gaia-audit (" <<<"$plain" && return 1
+
+  render_at 170
+  [ "$status" -eq 0 ]
+  grep -qF -- "Run /gaia-audit (" <<<"$plain" && return 1
   true
 }
 
-@test "short tier drops every parenthetical reason when the full tier does not fit" {
-  render_at 273
+@test "Medium forms carry the number: the version for update-gaia, the language count for serena" {
+  render_at 185
   [ "$status" -eq 0 ]
-  short_right="Run /update-gaia  Run /gaia-serena-sync  Run /update-deps  Run /gaia-audit  Run /gaia-harden  Run /gaia-debt  Run /gaia-residue"
   case "$plain" in
-    *"$short_right") ;;
+    *"Run /update-gaia (GAIA 9.9.9 available)"*"Run /gaia-serena-sync (2)"*) ;;
     *) return 1 ;;
   esac
-  grep -qF -- "(" <<<"$plain" && return 1
+
+  render_at 184
+  [ "$status" -eq 0 ]
+  grep -qF -- "Run /update-gaia (9.9.9)" <<<"$plain"
+
+  render_at 170
+  [ "$status" -eq 0 ]
+  expected="Claude Code  Run /update-gaia (9.9.9)  Run /gaia-serena-sync (2)  Run /update-deps (28)  Run /gaia-audit  Run /gaia-harden (6)  Run /gaia-debt (1)  Run /gaia-residue (15)"
+  [ "$plain" = "$expected" ]
+}
+
+@test "Medium shrinks to Small bottom-up after every nudge reached Medium" {
+  render_at 169
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"Run /gaia-debt (1)  Run /gaia-residue") ;;
+    *) return 1 ;;
+  esac
+
+  render_at 148
+  [ "$status" -eq 0 ]
+  expected="Claude Code  Run /update-gaia (9.9.9)  Run /gaia-serena-sync  Run /update-deps  Run /gaia-audit  Run /gaia-harden  Run /gaia-debt  Run /gaia-residue"
+  [ "$plain" = "$expected" ]
+
+  render_at 147
+  [ "$status" -eq 0 ]
+  expected="Claude Code         Run /update-gaia  Run /gaia-serena-sync  Run /update-deps  Run /gaia-audit  Run /gaia-harden  Run /gaia-debt  Run /gaia-residue"
+  [ "$plain" = "$expected" ]
 
   render_at 140
   [ "$status" -eq 0 ]
-  case "$plain" in
-    *"$short_right") ;;
-    *) return 1 ;;
-  esac
-}
+  expected="Claude Code  Run /update-gaia  Run /gaia-serena-sync  Run /update-deps  Run /gaia-audit  Run /gaia-harden  Run /gaia-debt  Run /gaia-residue"
+  [ "$plain" = "$expected" ]
 
-@test "icon tier keeps the highest-priority segments as text and collapses the lowest first" {
   render_at 139
   [ "$status" -eq 0 ]
-  right="Run /update-gaia  Run /gaia-serena-sync  Run /update-deps  Run /gaia-audit  Run /gaia-harden  Run /gaia-debt  🧹5"
-  case "$plain" in
-    *"$right") ;;
-    *) return 1 ;;
-  esac
-
-  render_at 60
-  [ "$status" -eq 0 ]
-  right="Run /update-gaia  🔭 📦3 🔎 🔨 💸4 🧹5"
-  case "$plain" in
-    *"$right") ;;
-    *) return 1 ;;
-  esac
+  grep -qF -- "🧹15" <<<"$plain"
+  grep -qF -- "Run /gaia-residue" <<<"$plain" && return 1
+  true
 }
 
-@test "the icon-collapse boundary is exact: 126 keeps six segments as text, 125 drops to five" {
-  render_at 126
+@test "icons carry their Medium number: harden and serena gain counts, update-gaia and audit stay bare" {
+  render_at 74
   [ "$status" -eq 0 ]
-  expected="Claude Code  Run /update-gaia  Run /gaia-serena-sync  Run /update-deps  Run /gaia-audit  Run /gaia-harden  Run /gaia-debt  🧹5"
+  expected="Claude Code  Run /update-gaia  Run /gaia-serena-sync  📦28 🔎 🔨6 💸1 🧹15"
   [ "$plain" = "$expected" ]
 
-  render_at 125
+  render_at 55
   [ "$status" -eq 0 ]
-  right="Run /gaia-harden  💸4 🧹5"
-  case "$plain" in
-    *"$right") ;;
-    *) return 1 ;;
-  esac
-}
-
-@test "each icon is counted as exactly two columns" {
-  render_at 36
-  [ "$status" -eq 0 ]
-  expected="Claude Code  🌍 🔭 📦3 🔎 🔨 💸4 🧹5"
+  expected="Claude Code  Run /update-gaia  🔭2 📦28 🔎 🔨6 💸1 🧹15"
   [ "$plain" = "$expected" ]
 
-  render_at 35
+  render_at 54
   [ "$status" -eq 0 ]
-  expected="Claude Code  🌍 🔭 📦3 🔎 🔨 💸4 +1"
+  expected="Claude Code                🌍 🔭2 📦28 🔎 🔨6 💸1 🧹15"
   [ "$plain" = "$expected" ]
 
   render_at 40
   [ "$status" -eq 0 ]
-  expected="Claude Code      🌍 🔭 📦3 🔎 🔨 💸4 🧹5"
+  expected="Claude Code  🌍 🔭2 📦28 🔎 🔨6 💸1 🧹15"
+  [ "$plain" = "$expected" ]
+
+  render_at 44
+  [ "$status" -eq 0 ]
+  expected="Claude Code      🌍 🔭2 📦28 🔎 🔨6 💸1 🧹15"
   [ "$plain" = "$expected" ]
 }
 
-@test "+N names exactly how many segments are hidden, and never vanishes" {
-  render_at 20
+@test "+N names how many icons were dropped and never vanishes" {
+  render_at 39
+  [ "$status" -eq 0 ]
+  expected="Claude Code   🌍 🔭2 📦28 🔎 🔨6 💸1 +1"
+  [ "$plain" = "$expected" ]
+
+  render_at 18
   [ "$status" -eq 0 ]
   case "$plain" in
     *"🌍 +6") ;;
+    *) return 1 ;;
+  esac
+
+  render_at 17
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"+7") ;;
     *) return 1 ;;
   esac
 
@@ -204,45 +239,118 @@ JSON
   true
 }
 
-@test "text forms keep their segment color and icons render uncolored" {
-  render_at 139
-  [ "$status" -eq 0 ]
-  grep -qF -- $'\033[01;34mRun /gaia-debt\033[00m' <<<"$output"
-  grep -qF -- $'\033[01;36mRun /update-gaia\033[00m' <<<"$output"
+@test "a block-character left side is measured in characters, not bytes" {
+  mkdir -p "$TMP_HOME/.claude"
+  cat > "$TMP_HOME/.claude/settings.json" <<'JSON'
+{"statusLine": {"command": "printf '▓▓░░░░░░░░'"}}
+JSON
+  local json
+  json=$(jq -n --arg d "$MAIN" '{workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
 
-  render_at 36
+  run env HOME="$TMP_HOME" LC_ALL=C.UTF-8 COLUMNS=299 bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
   [ "$status" -eq 0 ]
-  after_left="${output#*Claude Code}"
-  grep -qF -- $'\033' <<<"$after_left" && return 1
-  true
-}
+  plain=$(printf '%s' "$output" | sed 's/\x1b\[[0-9;]*m//g')
+  expected="▓▓░░░░░░░░  Run /update-gaia (GAIA 9.9.9 available)  Run /gaia-serena-sync (Serena missing: go, rust)  Run /update-deps (28 outdated)  Run /gaia-audit (34 days since review)  Run /gaia-harden (1 new pattern, dangling-reference rising)  Run /gaia-debt (1 issue)  Run /gaia-residue (15 aged residuals)"
+  [ "$plain" = "$expected" ]
 
-@test "the setup-gaia nudge renders alone and never collapses" {
-  rm -f "$MAIN/.gaia/local/setup-state.json"
-  render_at 20
+  run env HOME="$TMP_HOME" LC_ALL=C.UTF-8 COLUMNS=298 bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
   [ "$status" -eq 0 ]
+  plain=$(printf '%s' "$output" | sed 's/\x1b\[[0-9;]*m//g')
   case "$plain" in
-    *"Run /setup-gaia (Required)") ;;
+    *"Run /gaia-debt (1 issue)  Run /gaia-residue (15)") ;;
     *) return 1 ;;
   esac
-  grep -qF -- "🌍" <<<"$plain" && return 1
-  grep -qF -- "🔭" <<<"$plain" && return 1
-  grep -qF -- "+" <<<"$plain" && return 1
-  true
 }
 
-@test "a lone segment degrades through all four tiers" {
-  printf '{"outdatedCount":3}' > "$MAIN/.gaia/local/cache/shared/update-check.json"
+@test "a two-line left sizes the right side against the last line's width" {
+  mkdir -p "$TMP_HOME/.claude"
+  cat > "$TMP_HOME/.claude/settings.json" <<'JSON'
+{"statusLine": {"command": "printf 'line one\\n%s' \"$(printf '%052d' 0 | tr 0 x)\""}}
+JSON
+  local json last_line_x
+  last_line_x=$(printf '%052d' 0 | tr 0 x)
+  json=$(jq -n --arg d "$MAIN" '{workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
+
+  run env HOME="$TMP_HOME" COLUMNS=341 bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
+  [ "$status" -eq 0 ]
+  plain=$(printf '%s' "$output" | sed 's/\x1b\[[0-9;]*m//g')
+  last_line="${plain##*$'\n'}"
+  expected_right="Run /update-gaia (GAIA 9.9.9 available)  Run /gaia-serena-sync (Serena missing: go, rust)  Run /update-deps (28 outdated)  Run /gaia-audit (34 days since review)  Run /gaia-harden (1 new pattern, dangling-reference rising)  Run /gaia-debt (1 issue)  Run /gaia-residue (15 aged residuals)"
+  [ "$last_line" = "${last_line_x}  ${expected_right}" ]
+
+  run env HOME="$TMP_HOME" COLUMNS=340 bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
+  [ "$status" -eq 0 ]
+  plain=$(printf '%s' "$output" | sed 's/\x1b\[[0-9;]*m//g')
+  last_line="${plain##*$'\n'}"
+  case "$last_line" in
+    *"Run /gaia-debt (1 issue)  Run /gaia-residue (15)") ;;
+    *) return 1 ;;
+  esac
+}
+
+@test "harden with no candidates has no Medium and a bare icon" {
+  cat > "$MAIN/.gaia/local/cache/shared/update-check.json" <<'JSON'
+{
+  "gaiaHasUpdate": true,
+  "gaiaLatest": "9.9.9",
+  "outdatedCount": 28,
+  "hardenNudgeReason": "unclassified rising",
+  "hardenCandidateCount": 0,
+  "hardenUnclassifiedCount": 1,
+  "residueCandidateCount": 15,
+  "auditNudge": true,
+  "auditNudgeReason": "34 days since review",
+  "serenaLangDrift": ["go", "rust"]
+}
+JSON
+
+  render_at 240
+  [ "$status" -eq 0 ]
+  grep -qF -- "Run /gaia-harden" <<<"$plain"
+  grep -qF -- "Run /gaia-harden (" <<<"$plain" && return 1
+
+  render_at 60
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"🔎 🔨 💸1"*) ;;
+    *) return 1 ;;
+  esac
+}
+
+@test "a lone nudge steps through Large, Medium, Small, icon, +N" {
+  printf '{"outdatedCount":28}' > "$MAIN/.gaia/local/cache/shared/update-check.json"
   rm -f "$MAIN/.gaia/local/debt/count.json"
+
+  render_at 43
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"Run /update-deps (28 outdated)") ;;
+    *) return 1 ;;
+  esac
 
   render_at 42
   [ "$status" -eq 0 ]
   case "$plain" in
-    *"Run /update-deps (3 outdated)") ;;
+    *"Run /update-deps (28)") ;;
     *) return 1 ;;
   esac
 
-  render_at 41
+  render_at 34
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"Run /update-deps (28)") ;;
+    *) return 1 ;;
+  esac
+
+  render_at 33
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"Run /update-deps") ;;
+    *) return 1 ;;
+  esac
+  grep -qF -- "(" <<<"$plain" && return 1
+
+  render_at 29
   [ "$status" -eq 0 ]
   case "$plain" in
     *"Run /update-deps") ;;
@@ -253,17 +361,54 @@ JSON
   render_at 28
   [ "$status" -eq 0 ]
   case "$plain" in
-    *"📦3") ;;
+    *"📦28") ;;
     *) return 1 ;;
   esac
   grep -qF -- "Run /" <<<"$plain" && return 1
 
-  render_at 15
+  render_at 17
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"📦28") ;;
+    *) return 1 ;;
+  esac
+  grep -qF -- "Run /" <<<"$plain" && return 1
+
+  render_at 16
   [ "$status" -eq 0 ]
   case "$plain" in
     *"+1") ;;
     *) return 1 ;;
   esac
   grep -qF -- "📦" <<<"$plain" && return 1
+  true
+}
+
+@test "text forms keep their color, icons and +N render uncolored; setup-gaia renders alone" {
+  render_at 170
+  [ "$status" -eq 0 ]
+  grep -qF -- $'\033[01;34mRun /gaia-debt (1)\033[00m' <<<"$output"
+  grep -qF -- $'\033[01;36mRun /update-gaia (9.9.9)\033[00m' <<<"$output"
+
+  render_at 40
+  [ "$status" -eq 0 ]
+  after_left="${output#*Claude Code}"
+  grep -qF -- $'\033' <<<"$after_left" && return 1
+
+  render_at 17
+  [ "$status" -eq 0 ]
+  after_left="${output#*Claude Code}"
+  grep -qF -- $'\033' <<<"$after_left" && return 1
+
+  rm -f "$MAIN/.gaia/local/setup-state.json"
+  render_at 20
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"Run /setup-gaia (Required)") ;;
+    *) return 1 ;;
+  esac
+  grep -qF -- "🌍" <<<"$plain" && return 1
+  grep -qF -- "🔭" <<<"$plain" && return 1
+  grep -qF -- "+" <<<"$plain" && return 1
   true
 }

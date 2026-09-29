@@ -59,15 +59,15 @@ GAIA's skills split into three groups: shared `gaia/references/` playbooks consu
 
 Every GAIA nudge (`update-gaia`, `gaia-serena-sync`, `update-deps`, `gaia-audit`, `gaia-harden`, `gaia-debt`, `gaia-residue`, in that priority order) is surfaced by the **statusline**, not by a hook. `.gaia/statusline/gaia-statusline.sh` reads `.gaia/local/cache/shared/update-check.json` (plus the debt count's own cache) and right-aligns a colored `Run /<command> (<reason>)` segment for each nudge that is armed. The wrapper delegates left-side rendering to `~/.claude/settings.json`'s existing `statusLine.command` so the adopter's existing global statusline appears unchanged, falling back to a bare `Claude Code` label. The hot path is cache-only (no network, no `pnpm` calls) and a background refresher (`.gaia/scripts/check-updates.sh`, TTL 6h) keeps the cache fresh. The outdated count derives from `gaia update-deps run` rather than raw `pnpm outdated`, so it counts only the plan the skill will apply and inherits the `minimumReleaseAge` cooldown and major-version cap (see [[pnpm]]); the nudge never advertises an update the skill would skip. It reads the payload's `actionable_count`, which also subtracts groups the operator snoozed in the `/update-deps` preview (a gitignored `.gaia/local/declined-updates.json` ledger, resurfacing after a newer version or 14 days); CI never reads the ledger. Silent on missing cache or missing `jq`.
 
-The right side fits itself to the terminal width rather than letting a nudge past the edge disappear. In order, it tries: every nudge's full text with its reason; every nudge's bare command name, reasons dropped; the highest-priority nudges kept as bare command names with the rest collapsed to an icon (and a count, where the nudge has one); and, as a last resort, only the highest-priority icons plus a trailing `+N` naming how many more are hidden. `/setup-gaia` is the one exception: while setup is incomplete it renders alone, as text, at every width. The icon legend:
+The right side fits itself to the terminal width rather than letting a nudge past the edge disappear. Each nudge sizes independently through its own Large, Medium, and Small forms, then an icon, then a trailing `+N`: Large carries the full reason, Medium a short form with just its number (`Run /update-deps (28)`; the version for `/update-gaia`; `/gaia-audit` has none, since its reasons share no unit), and Small the bare command. The lowest-priority nudge still at its current size shrinks first, so a higher-priority nudge is never smaller than a lower-priority one, and past the icon stage `+N` names how many more are hidden. `/setup-gaia` is the one exception: while setup is incomplete it renders alone, as text, at every width. Claude Code does not re-render the statusline on a bare terminal resize, so the line refits on the next message rather than immediately. The icon legend:
 
 | Icon | Command             | Count shown          |
 | ---- | ------------------- | --------------------- |
 | 🌍   | `/update-gaia`      | none                   |
-| 🔭   | `/gaia-serena-sync` | none                   |
+| 🔭   | `/gaia-serena-sync` | missing language count |
 | 📦   | `/update-deps`      | outdated count         |
 | 🔎   | `/gaia-audit`       | none                   |
-| 🔨   | `/gaia-harden`      | none                   |
+| 🔨   | `/gaia-harden`      | candidate count (none when zero) |
 | 💸   | `/gaia-debt`        | open issue count       |
 | 🧹   | `/gaia-residue`     | aged residual count    |
 

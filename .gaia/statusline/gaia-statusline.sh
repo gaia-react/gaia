@@ -3,9 +3,10 @@
 #
 # Reads JSON from stdin (Claude Code convention), prints a single line.
 # Left side is delegated; right side is the GAIA nudges, read from the
-# TTL-cached refresher and fitted to COLUMNS: full reasons first, then bare
-# command names, then the lowest-priority nudges collapsed to an icon and
-# count, then a `+N` for however many still do not fit.
+# TTL-cached refresher and fitted to COLUMNS. Each nudge has its own Large,
+# Medium and Small form, then an icon, then a `+N` for however many still do
+# not fit; the lowest-priority nudge still at its current size shrinks first,
+# so a higher-priority nudge is never smaller than a lower-priority one.
 #
 # Left-side resolution (first match wins):
 #   1. User has `statusLine.command` in `~/.claude/settings.json` → run that
@@ -72,9 +73,18 @@ fi
 # leave behind. `awk`'s END block reports the LAST line's length (the row the
 # right side actually joins) rather than one number per line, and `n+0`
 # forces a plain digit even on empty input.
+#
+# `LC_ALL=C` makes every awk (BWK, gawk, mawk) count bytes rather than
+# characters, even under a UTF-8 locale where BSD awk otherwise miscounts a
+# multi-byte glyph as more than one column and gawk raises an invalid-range
+# error on the byte-range gsub below. Deleting every UTF-8 continuation byte
+# (`\200`-`\277`) first leaves exactly one byte per character, so the byte
+# count IS the character count. Known limit: a wide glyph (emoji, CJK)
+# counts one column but renders two, so a left side containing one
+# under-measures by one per glyph; the pad floor absorbs small errors.
 measure_left() {
   cols="${COLUMNS:-120}"
-  left_visible=$(printf '%b' "$left" | sed 's/\x1b\[[0-9;]*m//g' | awk '{n=length} END{print n+0}')
+  left_visible=$(printf '%b' "$left" | sed 's/\x1b\[[0-9;]*m//g' | LC_ALL=C awk '{gsub(/[\200-\277]/, ""); n = length} END {print n+0}')
   case "$left_visible" in
     ''|*[!0-9]*) left_visible=0 ;;
   esac
@@ -198,27 +208,44 @@ else
     # update-check-derived nudges stay gated on $CACHE_FILE; the debt nudge is
     # gated independently on $DEBT_CACHE so it still renders when
     # update-check.json is absent, which is why debt (5) is armed after
-    # residue (6) in source order but renders before it. The width-tiered
-    # renderer below reads every slot once both blocks have run.
+    # residue (6) in source order but renders before it.
+    #
+    # Each slot carries its Large text, its bare Small command, and `mid`,
+    # the Medium form's parenthetical content; an empty mid means the nudge
+    # has no Medium size (its Large shrinks straight to Small). The renderer
+    # below reads every slot once both blocks have run, sizes each nudge
+    # independently (Large, then Medium, then Small, then icon, then folded
+    # into the trailing `+N`), and shows an icon's mid as its count only when
+    # mid is all digits.
     nudge_color=()
-    nudge_short=()
-    nudge_full=()
+    nudge_small=()
+    nudge_large=()
+    nudge_mid=()
     nudge_icon=()
-    nudge_count=()
     nudge_set() {
       nudge_color[$1]="$2"
-      nudge_short[$1]="$3"
-      nudge_full[$1]="$4"
-      nudge_icon[$1]="$5"
-      nudge_count[$1]="$6"
+      nudge_small[$1]="$3"
+      nudge_large[$1]="$4"
+      nudge_mid[$1]="$5"
+      nudge_icon[$1]="$6"
     }
     if [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
       outdated_count=$(jq -r '.outdatedCount // 0' "$CACHE_FILE" 2>/dev/null)
       gaia_has_update=$(jq -r '.gaiaHasUpdate // false' "$CACHE_FILE" 2>/dev/null)
       gaia_latest=$(jq -r '.gaiaLatest // empty' "$CACHE_FILE" 2>/dev/null)
-      # One spawn for both reads: a leading 1 or 0 says whether the key exists,
-      # and the rest is the reason itself.
-      harden_reason_raw=$(jq -r 'if has("hardenNudgeReason") then "1" + ((.hardenNudgeReason // "") | tostring) else "0" end' "$CACHE_FILE" 2>/dev/null)
+      # One spawn for three reads: a digit-string candidate count, a comma,
+      # then a leading 1 or 0 saying whether hardenNudgeReason exists,
+      # followed by the reason itself.
+      harden_all=$(jq -r '((.hardenCandidateCount // 0) | if type == "number" then (floor | tostring) else "0" end) + "," + (if has("hardenNudgeReason") then "1" + ((.hardenNudgeReason // "") | tostring) else "0" end)' "$CACHE_FILE" 2>/dev/null)
+      harden_count="${harden_all%%,*}"
+      harden_reason_raw="${harden_all#*,}"
+      case "$harden_count" in
+        ''|*[!0-9]*) harden_count=0 ;;
+      esac
+      # The Medium/icon form for /gaia-harden; empty when there is no
+      # candidate count, so the segment goes straight to Small.
+      harden_mid=""
+      [ "$harden_count" -gt 0 ] 2>/dev/null && harden_mid="$harden_count"
       has_harden_reason="${harden_reason_raw:0:1}"
       # A cached reason is untrusted: harden-tally's finding_class segments and
       # the review snapshot both originate in PR text any author controls, so
@@ -232,11 +259,11 @@ else
 
       if [ "$gaia_has_update" = "true" ] && [ -n "$gaia_latest" ]; then
         printf -v full 'Run /update-gaia (GAIA %s available)' "$gaia_latest"
-        nudge_set 0 '01;36' 'Run /update-gaia' "$full" '🌍' ''
+        nudge_set 0 '01;36' 'Run /update-gaia' "$full" "$gaia_latest" '🌍'
       fi
       if [ -n "$outdated_count" ] && [ "$outdated_count" -gt 0 ] 2>/dev/null; then
         printf -v full 'Run /update-deps (%d outdated)' "$outdated_count"
-        nudge_set 2 '01;33' 'Run /update-deps' "$full" '📦' "$outdated_count"
+        nudge_set 2 '01;33' 'Run /update-deps' "$full" "$outdated_count" '📦'
       fi
       # Both signals are discharged by the same bare `/gaia-harden` run, and no
       # argument selects between them, so they stack into one segment's reason
@@ -250,13 +277,12 @@ else
       if [ "$has_harden_reason" = "1" ]; then
         if [ -n "$harden_reason" ]; then
           printf -v full 'Run /gaia-harden (%s)' "$harden_reason"
-          nudge_set 4 '01;35' 'Run /gaia-harden' "$full" '🔨' ''
+          nudge_set 4 '01;35' 'Run /gaia-harden' "$full" "$harden_mid" '🔨'
         fi
       else
-        harden_count=$(jq -r '.hardenCandidateCount // 0' "$CACHE_FILE" 2>/dev/null)
         harden_unclassified=$(jq -r '.hardenUnclassifiedCount // 0' "$CACHE_FILE" 2>/dev/null)
         fallback_reason=""
-        if [ -n "$harden_count" ] && [ "$harden_count" -gt 0 ] 2>/dev/null; then
+        if [ "$harden_count" -gt 0 ] 2>/dev/null; then
           harden_noun="recurring patterns"
           [ "$harden_count" -eq 1 ] && harden_noun="recurring pattern"
           fallback_reason=$(printf '%d %s' "$harden_count" "$harden_noun")
@@ -267,20 +293,23 @@ else
         fi
         if [ -n "$fallback_reason" ]; then
           printf -v full 'Run /gaia-harden (%s)' "$fallback_reason"
-          nudge_set 4 '01;35' 'Run /gaia-harden' "$full" '🔨' ''
+          nudge_set 4 '01;35' 'Run /gaia-harden' "$full" "$harden_mid" '🔨'
         fi
       fi
       if [ "$audit_nudge" = "true" ]; then
         if [ -n "$audit_reason" ]; then
           printf -v full 'Run /gaia-audit (%s)' "$audit_reason"
-          nudge_set 3 '01;32' 'Run /gaia-audit' "$full" '🔎' ''
+          nudge_set 3 '01;32' 'Run /gaia-audit' "$full" '' '🔎'
         else
-          nudge_set 3 '01;32' 'Run /gaia-audit' 'Run /gaia-audit' '🔎' ''
+          nudge_set 3 '01;32' 'Run /gaia-audit' 'Run /gaia-audit' '' '🔎'
         fi
       fi
       if [ -n "$serena_drift" ]; then
         printf -v full 'Run /gaia-serena-sync (Serena missing: %s)' "$serena_drift"
-        nudge_set 1 '01;31' 'Run /gaia-serena-sync' "$full" '🔭' ''
+        # Language count from the already-joined string: commas plus one.
+        serena_commas="${serena_drift//[!,]/}"
+        serena_n=$(( ${#serena_commas} + 1 ))
+        nudge_set 1 '01;31' 'Run /gaia-serena-sync' "$full" "$serena_n" '🔭'
       fi
       # Residue nudge: renders once at least RESIDUE_NUDGE_THRESHOLD keyed
       # candidates have aged past 30 days (the age dial lives in the tally,
@@ -297,7 +326,7 @@ else
         residue_suffix="s"
         [ "$residue_count" -eq 1 ] && residue_suffix=""
         printf -v full 'Run /gaia-residue (%d aged residual%s)' "$residue_count" "$residue_suffix"
-        nudge_set 6 '01;37' 'Run /gaia-residue' "$full" '🧹' "$residue_count"
+        nudge_set 6 '01;37' 'Run /gaia-residue' "$full" "$residue_count" '🧹'
       fi
     fi
     # Debt-backlog nudge, read from the pinned debt cache. Independent of
@@ -308,27 +337,34 @@ else
         debt_noun="issues"
         [ "$debt_count" -eq 1 ] && debt_noun="issue"
         printf -v full 'Run /gaia-debt (%d %s)' "$debt_count" "$debt_noun"
-        nudge_set 5 '01;34' 'Run /gaia-debt' "$full" '💸' "$debt_count"
+        nudge_set 5 '01;34' 'Run /gaia-debt' "$full" "$debt_count" '💸'
       fi
     fi
 
     # Compact the sparse priority slots into dense, priority-ordered arrays;
     # a gap between slots is a nudge that did not arm this render. `${!arr[@]}`
     # walks an indexed array's set keys in ascending order, which is what
-    # makes the slot numbers double as the render order.
+    # makes the slot numbers double as the render order. dense_iconcount is
+    # derived in the same pass: a nudge's mid is shown on its icon only when
+    # it is all digits (update-gaia's version mid stays bare).
     dense_color=()
-    dense_short=()
-    dense_full=()
+    dense_small=()
+    dense_large=()
+    dense_mid=()
     dense_icon=()
-    dense_count=()
-    for slot in "${!nudge_short[@]}"; do
+    dense_iconcount=()
+    for slot in "${!nudge_small[@]}"; do
       dense_color+=("${nudge_color[$slot]}")
-      dense_short+=("${nudge_short[$slot]}")
-      dense_full+=("${nudge_full[$slot]}")
+      dense_small+=("${nudge_small[$slot]}")
+      dense_large+=("${nudge_large[$slot]}")
+      dense_mid+=("${nudge_mid[$slot]}")
       dense_icon+=("${nudge_icon[$slot]}")
-      dense_count+=("${nudge_count[$slot]}")
+      case "${nudge_mid[$slot]}" in
+        ''|*[!0-9]*) dense_iconcount+=("") ;;
+        *) dense_iconcount+=("${nudge_mid[$slot]}") ;;
+      esac
     done
-    n="${#dense_short[@]}"
+    n="${#dense_small[@]}"
 
     if [ "$n" -gt 0 ]; then
       measure_left
@@ -336,104 +372,92 @@ else
       # two sides.
       avail=$((cols - left_visible - 2))
 
-      full_width=0
-      short_width=0
+      # Per-nudge size: 0 Large, 1 Medium, 2 Small, 3 icon, 4 hidden (folded
+      # into the trailing `+N`). All start Large.
+      lvl=()
       for ((i = 0; i < n; i++)); do
-        full_width=$((full_width + ${#dense_full[$i]}))
-        short_width=$((short_width + ${#dense_short[$i]}))
+        lvl[i]=0
       done
-      full_width=$((full_width + 2 * (n - 1)))
-      short_width=$((short_width + 2 * (n - 1)))
 
-      tier=""
-      if [ "$full_width" -le "$avail" ]; then
-        tier="full"
-        right_width="$full_width"
-      elif [ "$short_width" -le "$avail" ]; then
-        tier="short"
-        right_width="$short_width"
-      else
-        # The first k nudges (highest priority) keep their bare command text;
-        # the rest collapse to an icon and count. Each icon costs 2 columns
-        # (never measured with awk, which counts bytes and cannot see a
-        # terminal's wide-glyph rendering), joined by a single space, with a
-        # two-space gap between the text group and the icon group. Widest k
-        # that fits wins, so the fewest nudges lose their text form.
-        for ((k = n - 1; k >= 0; k--)); do
-          w=0
-          for ((i = 0; i < k; i++)); do
-            w=$((w + ${#dense_short[$i]}))
-          done
-          if [ "$k" -gt 0 ]; then
-            w=$((w + 2 * (k - 1) + 2))
+      # Sets right_width, hidden_count, and right (composed inline, since
+      # only the last call before the shrink loop below breaks is ever
+      # printed) from the current $lvl values. A visible segment is 2
+      # columns from its neighbor, except two adjacent icons, or an icon
+      # next to the trailing `+N`, which are 1 (an icon already reads as a
+      # unit with what immediately follows it). An icon's width is hardcoded
+      # rather than measured off its text: a single emoji is one character
+      # to bash's `${#...}` but renders two columns wide.
+      measure() {
+        right_width=0
+        hidden_count=0
+        right=""
+        local i len text icon_form last=-1
+        for ((i = 0; i < n; i++)); do
+          if [ "${lvl[$i]}" -eq 4 ]; then
+            hidden_count=$((hidden_count + 1))
+            continue
           fi
-          for ((i = k; i < n; i++)); do
-            w=$((w + 2 + ${#dense_count[$i]}))
-          done
-          w=$((w + (n - k - 1)))
-          if [ "$w" -le "$avail" ]; then
-            tier="collapse"
-            collapse_k="$k"
-            right_width="$w"
-            break
+          case "${lvl[$i]}" in
+            0) text="${dense_large[$i]}"; icon_form=0 ;;
+            1)
+              if [ -n "${dense_mid[$i]}" ]; then
+                text="${dense_small[$i]} (${dense_mid[$i]})"
+              else
+                text="${dense_small[$i]}"
+              fi
+              icon_form=0
+              ;;
+            2) text="${dense_small[$i]}"; icon_form=0 ;;
+            3) text="${dense_icon[$i]}${dense_iconcount[$i]}"; icon_form=1 ;;
+          esac
+          if [ "$icon_form" -eq 1 ]; then
+            len=$((2 + ${#dense_iconcount[$i]}))
+          else
+            len=${#text}
           fi
+          if [ "$last" -ge 0 ]; then
+            if [ "${lvl[$last]}" -eq 3 ] && [ "$icon_form" -eq 1 ]; then
+              right_width=$((right_width + 1))
+              right="${right} "
+            else
+              right_width=$((right_width + 2))
+              right="${right}  "
+            fi
+          fi
+          right_width=$((right_width + len))
+          if [ "$icon_form" -eq 1 ]; then
+            right="${right}${text}"
+          else
+            right="${right}"$'\033['"${dense_color[$i]}"'m'"${text}"$'\033[00m'
+          fi
+          last=$i
         done
-      fi
-
-      if [ -z "$tier" ]; then
-        # Even every nudge as an icon does not fit: keep the first m
-        # (highest priority) as icons and name how many more are hidden with
-        # a trailing `+<n-m>`, so a nudge never disappears without saying so.
-        # m=0 always renders, even past avail, rather than emitting nothing.
-        for ((m = n - 1; m >= 0; m--)); do
-          w=0
-          for ((i = 0; i < m; i++)); do
-            w=$((w + 3 + ${#dense_count[$i]}))
-          done
-          plus="+$((n - m))"
-          w=$((w + ${#plus}))
-          if [ "$w" -le "$avail" ] || [ "$m" -eq 0 ]; then
-            tier="hidden"
-            hidden_m="$m"
-            right_width="$w"
-            break
+        if [ "$hidden_count" -gt 0 ]; then
+          if [ "$last" -ge 0 ]; then
+            right_width=$((right_width + 1))
+            right="${right} "
           fi
-        done
-      fi
+          right_width=$((right_width + 1 + ${#hidden_count}))
+          right="${right}+${hidden_count}"
+        fi
+      }
 
-      case "$tier" in
-        full)
-          right=$'\033['"${dense_color[0]}"'m'"${dense_full[0]}"$'\033[00m'
-          for ((i = 1; i < n; i++)); do
-            right="${right}  "$'\033['"${dense_color[$i]}"'m'"${dense_full[$i]}"$'\033[00m'
-          done
-          ;;
-        short)
-          right=$'\033['"${dense_color[0]}"'m'"${dense_short[0]}"$'\033[00m'
-          for ((i = 1; i < n; i++)); do
-            right="${right}  "$'\033['"${dense_color[$i]}"'m'"${dense_short[$i]}"$'\033[00m'
-          done
-          ;;
-        collapse)
-          right=""
-          for ((i = 0; i < collapse_k; i++)); do
-            [ -n "$right" ] && right="${right}  "
-            right="${right}"$'\033['"${dense_color[$i]}"'m'"${dense_short[$i]}"$'\033[00m'
-          done
-          [ "$collapse_k" -gt 0 ] && right="${right}  "
-          for ((i = collapse_k; i < n; i++)); do
-            [ "$i" -gt "$collapse_k" ] && right="${right} "
-            right="${right}${dense_icon[$i]}${dense_count[$i]}"
-          done
-          ;;
-        hidden)
-          right=""
-          for ((i = 0; i < hidden_m; i++)); do
-            right="${right}${dense_icon[$i]}${dense_count[$i]} "
-          done
-          right="${right}+$((n - hidden_m))"
-          ;;
-      esac
+      # Shrink the lowest-priority nudge still at the current size, one step
+      # at a time: every nudge to Medium bottom-up, then Medium to Small
+      # bottom-up, then Small to icon bottom-up, then icon to hidden
+      # bottom-up. s caps at 4n (every nudge through every step), the point
+      # at which every nudge is hidden and `+N` renders alone, even past
+      # avail, rather than emitting nothing. The measure() call right before
+      # the break leaves `right` and `right_width` set to what gets printed.
+      s=0
+      while :; do
+        measure
+        if [ "$right_width" -le "$avail" ] || [ "$s" -ge $((4 * n)) ]; then
+          break
+        fi
+        lvl[n - 1 - s % n]=$((s / n + 1))
+        s=$((s + 1))
+      done
     fi
   fi
 fi

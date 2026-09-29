@@ -70,11 +70,11 @@ teardown() {
 }
 
 # Run the copy of the script at $1 with a payload whose current_dir is $2.
-# COLUMNS=400 pins the full tier: several tests here arm every main-side
-# segment at once, and at the width-tiered renderer's default (COLUMNS unset
-# -> 120) the lowest-priority segment collapses to an icon, which reads as
-# suppressed to a plain `grep -qF` on its command name even though the gate
-# these tests exercise never touched it.
+# COLUMNS=400 keeps every nudge at its Large size: several tests here arm
+# every main-side segment at once, and at the width-tiered renderer's default
+# (COLUMNS unset -> 120) the lowest-priority segment shrinks to an icon,
+# which reads as suppressed to a plain `grep -qF` on its command name even
+# though the gate these tests exercise never touched it.
 run_statusline_from() {
   local script="$1" cur="$2" json
   json=$(jq -n --arg d "$cur" '{workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
