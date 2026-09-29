@@ -127,7 +127,8 @@ strictPeerDependencies: false
 #     bracket in the URI authority, and GHSA-qw65-cvwx-89v3, authority
 #     injection via an unvalidated port in serialize; also clears
 #     GHSA-7p8r-x3mc-p8w7 and the earlier host-confusion advisories it
-#     supersedes. Reached through ajv (^3.0.1) in the eslint toolchain.
+#     supersedes. Reached through ajv (^3.0.1) under stylelint's table
+#     dependency, via @gaia-react/lint.
 overrides:
   'cosmiconfig>js-yaml': 4.3.2
   '@eslint/eslintrc>js-yaml': 4.3.2
