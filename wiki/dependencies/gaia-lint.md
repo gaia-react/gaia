@@ -4,7 +4,7 @@ status: active
 package: '@gaia-react/lint'
 role: lint-config
 created: 2026-04-27
-updated: 2026-08-29
+updated: 2026-09-29
 tags: [dependency, lint, eslint]
 ---
 
@@ -67,11 +67,11 @@ export default defineConfig([
 | `storybook` | `eslint-plugin-storybook` recommended, scoped to `*.stories.*` and `.storybook/main.*` | `.storybook/` half reaches files from 1.11.0 |
 | `playwright` | `eslint-plugin-playwright` recommended, scoped to `.playwright/**`; `expect-expect` counts `expect*()` helpers as the assertion, `no-skipped-test` allows the conditional `test.skip(condition, reason)` form | block reaches files from 1.11.0; `allowConditional` added there |
 | `guardrails` | `no-enum`, `no-switch`, `no-jsx-iife`, `no-zod-enum` (errors on `z.enum([...])`; use `z.literal([...])` for string unions) custom plugins; `gaia/no-restricted-syntax` selectors ban `cond ? <JSX/> : null` and `cond ? null : <JSX/>` (flag-only, no autofix) and flag `.length && <JSX/>` numeric-0 leaks (report-only); the `sonarjs` recommended set, whose `parameterized-tests` errors where three or more sibling tests differ only by their data and wants one `test.each` table instead (no autofix) | `.length` selector added in 1.8.0; `no-zod-enum` added in 1.9.0; `sonarjs/parameterized-tests` reaches files from 2.1.0 |
-| `styleHygiene` | `import-x/no-restricted-paths` with carve-outs: `resources+/` and `actions+/` routes are exempt for UI layers | Carve-out added in 1.6.0 |
+| `guardrails` | `import-x/no-restricted-paths` with carve-outs: `resources.*` and `actions.*` route files are exempt for UI layers | Carve-out added in 1.6.0; spelling moved to `actions.*`/`resources.*` in 2.2.0 (the older `+` folders are still accepted on the 2.x line) |
 | `betterTailwind` | Tailwind class ordering and hygiene | - |
 | `prettier` | Formatting via Prettier as an ESLint rule | - |
 
-The `resources+/` and `actions+/` carve-out means UI-layer files may import typed action/loader types from flat-file resource routes without an `eslint-disable` comment. Consumer tests must not import from `*.server` files or internal server surfaces; the `test/setup.ts` global Vitest setupFile is the single sanctioned place to start the MSW harness.
+The `resources.*` and `actions.*` carve-out means UI-layer files may import typed action/loader types from flat-file resource routes without an `eslint-disable` comment. Consumer tests must not import from `*.server` files or internal server surfaces; the `test/setup.ts` global Vitest setupFile is the single sanctioned place to start the MSW harness.
 
 ## When to edit
 

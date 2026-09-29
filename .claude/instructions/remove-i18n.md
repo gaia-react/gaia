@@ -23,7 +23,7 @@ Discover every call site:
 grep -rln "useTranslation\|i18next" app test
 ```
 
-For every match in `app/` (excluding `app/i18n.ts`, `app/middleware/i18next.ts`, `app/languages/`, `app/sessions.server/language.ts`, `app/routes/actions+/set-language.ts`, `app/components/LanguageSelect/`, those are deleted in Section C):
+For every match in `app/` (excluding `app/i18n.ts`, `app/middleware/i18next.ts`, `app/languages/`, `app/sessions.server/language.ts`, `app/routes/actions.set-language.ts`, `app/components/LanguageSelect/`, those are deleted in Section C):
 
 1. Open the file.
 2. Delete the import line: `import {useTranslation} from 'react-i18next';`
@@ -33,11 +33,11 @@ For every match in `app/` (excluding `app/i18n.ts`, `app/middleware/i18next.ts`,
 
 The seeded list of files known to use `t()` (verify against the grep output, add any newcomers, drop any that have already been unwrapped):
 
-- `app/routes/_legal+/terms.tsx`
-- `app/routes/_legal+/privacy.tsx`
-- `app/routes/_public+/_index.tsx`
+- `app/routes/_legal.terms.tsx`
+- `app/routes/_legal.privacy.tsx`
+- `app/routes/_public._index.tsx`
 - `app/pages/Public/IndexPage/index.tsx`
-- `app/routes/resources+/theme-switch.tsx`
+- `app/routes/resources.theme-switch.tsx`
 - `app/components/Form/InputEmail/index.tsx`
 - `app/components/Form/InputPassword/index.tsx`
 - `app/components/Form/YearMonthDay/index.tsx`
@@ -215,7 +215,7 @@ rm -rf \
   app/types/i18n \
   app/languages \
   app/sessions.server/language.ts \
-  app/routes/actions+/set-language.ts \
+  app/routes/actions.set-language.ts \
   app/components/LanguageSelect \
   .storybook/i18next.ts \
   .playwright/e2e/language-switch-a11y.spec.ts \
@@ -292,6 +292,18 @@ grep -rln "getLanguage" app test
 ```
 
 For each caller, drop the import and replace any usage with the literal `'en'`.
+
+### D4. `.playwright/e2e/route-status.spec.ts` and `app/action-paths.ts`
+
+Delete the `'set-language action is not a 404, whatever the language count'` test (the one that POSTs to `ACTION_PATHS.setLanguage`) from `.playwright/e2e/route-status.spec.ts`, leaving the page-status and theme-toggle tests.
+
+Remove the `setLanguage` key from `ACTION_PATHS` in `app/action-paths.ts`:
+
+```ts
+setLanguage: '/actions/set-language',
+```
+
+`test/action-paths.test.ts` iterates `Object.entries(ACTION_PATHS)`, so it needs no edit.
 
 ---
 
@@ -383,7 +395,7 @@ Remove every key whose path matches any of:
 - `app/middleware/i18next.ts`
 - `app/types/i18n/*`
 - `app/sessions.server/language.ts`
-- `app/routes/actions+/set-language.ts`
+- `app/routes/actions.set-language.ts`
 - `app/components/LanguageSelect/*`
 - `.claude/rules/i18n.md`
 - `.claude/agents/code-audit-frontend/react-i18next.md`
@@ -401,7 +413,7 @@ A bare edit is blocked by `.claude/hooks/block-manifest-write.sh`, so the remova
 GAIA_MANIFEST_WRITE=remove-i18n jq '
   .files |= with_entries(
     select(.key
-      | test("^app/languages/|^app/i18n\\.ts$|^app/middleware/i18next\\.ts$|^app/types/i18n/|^app/sessions\\.server/language\\.ts$|^app/routes/actions\\+/set-language\\.ts$|^app/components/LanguageSelect/|^\\.claude/rules/i18n\\.md$|^\\.claude/agents/code-audit-frontend/react-i18next\\.md$|^\\.claude/skills/react-code/references/translation-patterns\\.md$|^\\.storybook/i18next\\.ts$|^\\.playwright/e2e/language-switch-a11y\\.spec\\.ts$|^wiki/modules/i18n\\.md$|^wiki/flows/Language Flow\\.md$|^wiki/dependencies/i18next\\.md$|^wiki/dependencies/remix-i18next\\.md$")
+      | test("^app/languages/|^app/i18n\\.ts$|^app/middleware/i18next\\.ts$|^app/types/i18n/|^app/sessions\\.server/language\\.ts$|^app/routes/actions\\.set-language\\.ts$|^app/components/LanguageSelect/|^\\.claude/rules/i18n\\.md$|^\\.claude/agents/code-audit-frontend/react-i18next\\.md$|^\\.claude/skills/react-code/references/translation-patterns\\.md$|^\\.storybook/i18next\\.ts$|^\\.playwright/e2e/language-switch-a11y\\.spec\\.ts$|^wiki/modules/i18n\\.md$|^wiki/flows/Language Flow\\.md$|^wiki/dependencies/i18next\\.md$|^wiki/dependencies/remix-i18next\\.md$")
       | not))
 ' .gaia/manifest.json > .gaia/manifest.json.tmp \
   && GAIA_MANIFEST_WRITE=remove-i18n mv .gaia/manifest.json.tmp .gaia/manifest.json

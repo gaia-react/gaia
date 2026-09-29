@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-04-20
 created: 2026-04-20
-updated: 2026-06-24
+updated: 2026-09-29
 tags: [decision, routing, architecture]
 ---
 
@@ -17,7 +17,7 @@ Route files (`app/routes/**`) contain only loader, action, meta, and a one-line 
 - Easy to scan a route file and see what data flows in/out
 - Page components are easy to test in isolation (composeStory + Storybook stories)
 - Sub-components can live next to the page that owns them; no cross-imports through routes
-- Route group folders (`_public+`, `_session+`, `_legal+`, `actions+`, `resources+`) become the org chart; `actions+` and `resources+` hold form action endpoints (no UI)
+- Route group prefixes organize the routes; see [[Routing]] for the naming convention
 
 ## Meta pattern
 

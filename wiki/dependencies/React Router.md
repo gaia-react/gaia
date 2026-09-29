@@ -4,7 +4,7 @@ status: active
 package: react-router
 role: framework
 created: 2026-04-20
-updated: 2026-06-27
+updated: 2026-09-29
 tags: [dependency, framework]
 ---
 
@@ -18,16 +18,15 @@ The full-stack web framework GAIA is built on. Provides SSR, file-based routing,
 - `@react-router/serve`
 - `@react-router/dev`
 - `@react-router/fs-routes`
-- `@react-router/remix-routes-option-adapter`
 
 The `/update-deps` command upgrades all of these together when react-router is selected.
 
 ## Used by
 
-- [[Routing]] (with [[remix-flat-routes]] adapter)
+- [[Routing]] (route discovery through [[fs-routes]])
 - [[Middleware]]
 - [[Sessions]] (`createCookie`)
 
 ## Related
 
-- [[remix-flat-routes]], [[remix-i18next]], [[remix-toast]]
+- [[fs-routes]], [[remix-i18next]], [[remix-toast]]

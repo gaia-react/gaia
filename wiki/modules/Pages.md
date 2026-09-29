@@ -5,7 +5,7 @@ status: active
 language: typescript
 purpose: Page-specific UI components, organized by route group
 created: 2026-04-20
-updated: 2026-06-24
+updated: 2026-09-29
 tags: [module, pages]
 ---
 
@@ -17,7 +17,7 @@ This is **different** from `app/components/`, which holds shared UI used across 
 
 ## Folder convention
 
-Pages are grouped by route group: `app/pages/{Group}/{PascalName}/`. Legal pages follow the same convention under `app/pages/Legal/{PageName}/`; the route files in `_legal+/` stay thin and render the page component. When you add auth-guarded pages behind `_session+/`, ask Claude to scaffold a `Session/` folder; `/new-route` handles the wiring.
+Pages are grouped by route group: `app/pages/{Group}/{PascalName}/`. Legal pages follow the same convention under `app/pages/Legal/{PageName}/`; the `_legal.*.tsx` route files stay thin and render the page component. When you add auth-guarded pages behind `_session`, ask Claude to scaffold a `Session/` folder; `/new-route` handles the wiring.
 
 Within a page folder: `index.tsx`, plus `tests/index.test.tsx` (Vitest via `composeStory`) and `tests/index.stories.tsx` (Storybook). The test/story files are co-located by convention but not present on every page: only `Public/IndexPage` ships a `tests/` folder (both story and test). Sub-components in their own PascalCase folders, lifted only as high as needed (same lift rule as [[Components]]).
 

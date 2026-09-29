@@ -2,7 +2,7 @@
 type: flow
 status: active
 created: 2026-04-20
-updated: 2026-06-24
+updated: 2026-09-29
 tags: [flow, theme, dark-mode]
 ---
 
@@ -17,7 +17,7 @@ Dark mode is wired through cookie + OS `matchMedia`. The cookie is the source of
 3. **Loader**: `app/root.tsx` returns `requestInfo: {origin, path, userPrefs: {theme}}`.
 4. **Document**: `app/components/Document/index.tsx` calls `useOptionalTheme()` and renders `<html className={theme === 'dark' && 'dark'}>` with `suppressHydrationWarning`. The pre-paint script owns the `dark` class during hydration; React takes over post-hydration without a flash.
 5. **System theme hook**: `app/hooks/useTheme.ts` exports `useSystemTheme()` via `useSyncExternalStore`. Returns `undefined` on the server/first-hydration render (matching SSR) then resolves to the live `matchMedia` value on the client. Tracks OS changes reactively.
-6. **Switcher**: `app/components/ThemeSwitch/index.tsx` is the switcher component. `app/hooks/useTheme.ts` exports `useOptionalTheme`, `useSystemTheme`, and `useOptimisticThemeMode`. `app/routes/resources+/theme-switch.tsx` exports `ThemeFormSchema` and the `action` that writes the cookie.
+6. **Switcher**: `app/components/ThemeSwitch/index.tsx` is the switcher component. `app/hooks/useTheme.ts` exports `useOptionalTheme`, `useSystemTheme`, and `useOptimisticThemeMode`. `app/routes/resources.theme-switch.tsx` exports `ThemeFormSchema` and the `action` that writes the cookie.
 7. **Storybook**: `@vueless/storybook-dark-mode` toggles the same `dark` class on `<html>` (Tailwind's `@custom-variant dark` matches it). No story changes required.
 
 ## Theme priority (`useOptionalTheme` resolver)
