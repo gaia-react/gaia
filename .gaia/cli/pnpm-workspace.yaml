@@ -123,13 +123,12 @@ strictPeerDependencies: false
 #     disagreement in the lockfile diff to catch it. That pin is exact, so it
 #     cannot drift on its own and needs no floor; these two parents declare
 #     ^4.1.0 and ^4.3.0 and are the copies that can.
-#   - fast-uri -> 3.1.6: GHSA-7p8r-x3mc-p8w7, host confusion via a backslash
-#     authority introducer, plus the two earlier host-confusion advisories it
-#     supersedes. Reached through ajv (^3.0.1) in the eslint toolchain. Root
-#     pins 3.1.5, the advisory's own floor; this workspace pins the 3.1.6 its
-#     closure already resolved, because pinning down to root's value would be a
-#     downgrade that buys nothing. The two are not meant to match.
+#   - fast-uri -> 3.1.7: GHSA-58mr-gqgx-xq4g, host confusion via an unclosed
+#     bracket in the URI authority, and GHSA-qw65-cvwx-89v3, authority
+#     injection via an unvalidated port in serialize; also clears
+#     GHSA-7p8r-x3mc-p8w7 and the earlier host-confusion advisories it
+#     supersedes. Reached through ajv (^3.0.1) in the eslint toolchain.
 overrides:
   'cosmiconfig>js-yaml': 4.3.2
   '@eslint/eslintrc>js-yaml': 4.3.2
-  fast-uri: 3.1.6
+  fast-uri: 3.1.7
