@@ -259,10 +259,10 @@ wiki/decisions/Dependabot Security Updates.md
 # at worst on adopter clones.
 # Every workflow excluded here that has no
 # `.gaia/cli/templates/workflows/<file>.tmpl` must carry the `GAIA: ` prefix
-# on its workflow `name:` (single-quoted), enforced by
-# `.gaia/cli/src/release/workflow-prefix.test.ts`; `code-review-audit.yml`
-# is the declared exception because adopters receive a rendered twin. Do
-# not change any path line.
+# on its workflow `name:`, enforced by
+# `.gaia/cli/src/release/workflow-prefix.test.ts`. Quote the value: an
+# unquoted `GAIA: X` does not parse. `code-review-audit.yml` is the declared
+# exception because adopters receive a rendered twin.
 .github/workflows/release.yml
 .github/workflows/cli-tests.yml
 .github/workflows/audit-ci-tests.yml
