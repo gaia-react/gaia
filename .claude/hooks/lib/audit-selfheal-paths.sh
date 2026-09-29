@@ -75,17 +75,20 @@
 #     mirror, .gaia/cli/templates/workflows/code-review-audit.yml.tmpl)
 #
 # The BUILD-CONFIG half of this ERE is the workflow's own `has_source` file
-# pattern (code-review-audit.yml's "Detect in-scope source changes" step),
-# reused verbatim, so the two sets can never drift apart. It is the
+# pattern (code-review-audit.yml's "Check for source-code changes" step),
+# copied verbatim by hand; edit the two together. It is the
 # `package.json` / lockfile / workspace, `tsconfig*.json`, and root
-# `*.config.*` alternatives below. Naming them rather than their positions is
-# what survives an arm being inserted ahead of them, which is how a reader
-# verifying the no-drift contract ends up counting to the wrong alternative.
+# `*.config.*` alternatives below, plus the root-tooling alternative after
+# them. Naming them rather than their positions is what survives an arm being
+# inserted ahead of them, which is how a reader verifying the no-drift
+# contract ends up counting to the wrong alternative.
 #
 # The ROOT-TOOLING half, the `.npmrc` / `.lintstagedrc.json` / `.prettierignore`
 # / `Dockerfile` / `.env.example` / `.nvmrc` / `.node-version` alternative, is
-# deliberately NOT part of that mirror, and the asymmetry is the point.
-# `has_source` decides whether an audit RUNS; this ERE decides what a running
+# in both sets for two different reasons. `has_source` decides whether an audit
+# RUNS, and it carries these because the roster grants them to
+# `code-audit-frontend`: a path that member owns but `has_source` missed would
+# receive CI's out-of-scope success unread. This ERE decides what a running
 # member may REPAIR. The files below are granted to `code-audit-frontend`, the
 # roster's only `push_fixes: true` member, so a diff touching one of them
 # dispatches the member that could then rewrite it in its own self-heal commit.
@@ -98,8 +101,7 @@
 # `.node-version` decide the Node that CI and local must agree on. Every SIBLING
 # root config the same member owns is already refused by the mirrored half, so
 # refusing these restores the consistency the grant broke rather than inventing
-# a new rule. Adding them to `has_source` instead would change when the audit
-# runs, which is a different question.
+# a new rule.
 #
 # Bash 3.2 compatible (macOS default). Never `cd`.
 
