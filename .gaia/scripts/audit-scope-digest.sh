@@ -17,6 +17,7 @@
 # Usage:
 #   audit-scope-digest.sh --capture --root <path> --member <name> --base <key-base> [--help|-h]
 #   audit-scope-digest.sh --read    --root <path> --member <name> --base <key-base>
+#   audit-scope-digest.sh --release --root <path> --member <name> --base <key-base>
 #
 #   --capture  Derives the member's content digest, writes the scope file,
 #              prints the 64-hex digest on stdout, exits 0. On an
@@ -31,6 +32,11 @@
 #              `--scope-digest "$(...)"` gets an empty flag value; the writer
 #              refuses on that, the correct outcome for a member that never
 #              captured.
+#   --release  Removes this member's stored capture and exits 0, or exits 0
+#              when none is stored. On a capture that cannot be removed:
+#              a diagnostic on stderr, exits non-zero. The self-heal exit of
+#              a member's round calls this; see the SPENT-capture block below
+#              for why that round cannot be seen to end any other way.
 #
 # Scope file: <root>/.gaia/local/audit/<audit-key>.<member>.scope.json, where
 # <audit-key> is `gaia_audit_key "<key-base>" "<root>"`
@@ -104,7 +110,11 @@ usage() {
   cat >&2 <<'EOF'
 usage: audit-scope-digest.sh --capture [--recapture] --root <path> --member <name> --base <key-base> [--help|-h]
        audit-scope-digest.sh --read    --root <path> --member <name> --base <key-base>
+       audit-scope-digest.sh --release --root <path> --member <name> --base <key-base>
 
+  --release    remove this member's stored capture, so the next round captures
+               fresh. For a round that self-healed and so ends publishing
+               nothing while the repair commit rotates the digest.
   --recapture  valid only with --capture; replace an existing capture for this
                audit key and member instead of returning it unchanged. For a
                caller that legitimately changed the content its review ends on
@@ -130,6 +140,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --read)
       MODE="read"
+      shift
+      ;;
+    --release)
+      MODE="release"
       shift
       ;;
     --recapture)
@@ -161,9 +175,9 @@ while [ "$#" -gt 0 ]; do
 done
 
 case "$MODE" in
-  capture | read) ;;
+  capture | read | release) ;;
   "")
-    err "exactly one of --capture or --read is required"
+    err "exactly one of --capture, --read, or --release is required"
     usage
     exit 2
     ;;
@@ -222,6 +236,16 @@ if [ "$MODE" = "read" ]; then
   exit 0
 fi
 
+if [ "$MODE" = "release" ]; then
+  [ -e "$scope_file" ] || exit 0
+  rm -f "$scope_file" 2>/dev/null
+  if [ -e "$scope_file" ]; then
+    err "cannot release the capture at '$scope_file'; the next round inherits it and forfeits"
+    exit 1
+  fi
+  exit 0
+fi
+
 # MODE = capture
 
 # A capture is taken ONCE per audit key and member, at scope resolution, and a
@@ -258,17 +282,26 @@ fi
 #   review still running              -> nothing published   -> keep
 #
 # THE PARTITION ABOVE IS NOT EXHAUSTIVE, and the third case is why the writer
-# has a release arm. A round that ENDS WITHOUT PUBLISHING ANYTHING -- the
-# dirty-tree withhold, a superseded forfeiture, a crash -- is byte-for-byte
-# indistinguishable here from a running review, so it lands in the keep arm and
-# its capture survives it. That capture is stale the moment the operator
-# commits, and a stale capture makes the next round's earned write refuse
-# `review scope superseded` and publish nothing, which spends nothing, which
-# strands the round after it, forever. Nothing this script can read separates a
-# round that ended silently from one still going; what CAN see it is the writer,
-# at the moment it refuses a stale capture, so `_release_forfeited_capture` in
-# audit-write-clearance.sh drops the capture as that refusal exits. The cost is
-# the one forfeited round, not every round after it.
+# has a release arm. A round that ENDS WITHOUT PUBLISHING ANYTHING -- a
+# self-heal, the dirty-tree withhold, a superseded forfeiture, a crash -- is
+# byte-for-byte indistinguishable here from a running review, so it lands in the
+# keep arm and its capture survives it. That capture is stale the moment the
+# operator commits, and a stale capture makes the next round's earned write
+# refuse `review scope superseded` and publish nothing, which spends nothing,
+# which strands the round after it, forever. Nothing this script can read
+# separates a round that ended silently from one still going; what CAN see it is
+# the writer, at the moment it refuses a stale capture, so
+# `_release_forfeited_capture` in audit-write-clearance.sh drops the capture as
+# that refusal exits. The cost is the one forfeited round, not every round after
+# it.
+#
+# A self-heal is the common case and does not pay that round. The member knows
+# it self-healed and that the orchestrator's repair commit will rotate its
+# digest, so it releases its own capture with --release on the way out, and the
+# post-repair round captures fresh and clears on its first try. Releasing is safe
+# there for the reason it is unsafe after a forfeiture: a self-healed round
+# writes no marker, so no fresh capture it could take afterwards attests
+# anything.
 #
 # Keeping the second is what preserves the guarantee this arm was written for:
 # the fence a member re-runs on every handshake call must not overwrite the
