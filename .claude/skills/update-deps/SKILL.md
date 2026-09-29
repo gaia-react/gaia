@@ -3,7 +3,7 @@ name: update-deps
 description: Autonomous Dependabot, auto-discover outdated packages, audit overrides, apply migrations for major bumps, resolve conflicts, run quality gate. Trigger when the user clicks the statusline `Run /update-deps` indicator or asks "update dependencies", "bump deps", "run dependabot".
 ---
 
-Superpowered Dependabot. Auto-discover all outdated packages, preview them grouped by severity so you can snooze any you are not ready for, audit overrides, apply codebase migrations for major bumps, resolve dependency conflicts, refresh transitive dependencies within range, and run the quality gate. In CI it runs unattended (no preview); interactively it shows the preview first. On a `main`/`master` run it opens the PR and merges it once checks are green, then cleans up locally; on any other branch it pushes and leaves the PR to you.
+Superpowered Dependabot. Auto-discover all outdated packages, preview them grouped by severity so you can snooze any you are not ready for, audit overrides, apply codebase migrations for major bumps, resolve dependency conflicts, refresh transitive dependencies within range, report any advisory the refresh could not clear, and run the quality gate. In CI it runs unattended (no preview); interactively it shows the preview first. On a `main`/`master` run it opens the PR and merges it once checks are green, then cleans up locally; on any other branch it pushes and leaves the PR to you.
 
 ## Pre-flight: Worktree check
 
@@ -496,7 +496,18 @@ The raised pins put `.gaia/cli/package.json` and its lockfile in the diff, which
 
 ## Phase 7: Final report
 
-Build the report **only** from the agent reports returned to you, plus the snooze and transitive-refresh decisions from Phase 1. Do not add rows from your own memory of the run.
+**Residual advisories.** Before building the report, audit the final tree once, inline, from the project root. This is report-only: it never fails the run, never reverts anything, and never edits the `overrides:` map.
+
+```bash
+pnpm audit --json > /tmp/update-deps-residual.json 2> /tmp/update-deps-residual.err || true
+jq -e '.advisories | type == "object"' /tmp/update-deps-residual.json >/dev/null 2>&1 || { jq -r '.error.message // empty' /tmp/update-deps-residual.json 2>/dev/null | grep . || head -n 1 /tmp/update-deps-residual.err | grep . || echo "pnpm audit produced no JSON"; }
+jq -r '.advisories // {} | .[] | [.id, .module_name, .severity, (.findings | map(.version) | unique | join(", ")), .patched_versions, (.findings | map(.paths[]) | map(sub("^\\.>"; "")) | unique | first), (.findings | map(.paths | length) | add)] | @tsv' /tmp/update-deps-residual.json
+if [ -f .gaia/local/dep-audit-baseline.json ]; then jq -r '.acknowledged[]?.id' .gaia/local/dep-audit-baseline.json; fi
+```
+
+`pnpm audit` exits non-zero whenever an advisory is open, so read the JSON, not the exit status. When the second command prints a line (the file has no `advisories` object, e.g. `pnpm audit` reported an error or the registry did not answer), the section reads `Not run (<that line>)`, never `None`. Otherwise each row is `id, package, severity, installed, patched, chain, path count`; the chain runs from a direct dependency down to the package, and the segment before the package is the parent whose range holds it. The last line lists the advisory ids `.gaia/local/dep-audit-baseline.json` already acknowledges, the source for marking a row `accepted` below. List every severity: the frontend audit's `pnpm audit` oracle surfaces only high and critical, and on a manifest-only `chore(deps)` PR it does not run at all.
+
+Build the report **only** from the agent reports returned to you, the snooze and transitive-refresh decisions from Phase 1, and the residual advisory check above. Do not add rows from your own memory of the run.
 
 **What goes in each section:**
 
@@ -504,11 +515,12 @@ Build the report **only** from the agent reports returned to you, plus the snooz
 - **Breaking changes applied**: only what Wave B agents report editing in the codebase. Empty if no Wave B group ran.
 - **Transitive refresh**: the Phase 5b agent's result: one row per package it moved (from and to), or one of `Nothing moved`, `Declined in preview`, `Not run (--scope)`, or `Reverted (<reason>)` followed by the rows that would have moved. Always include this section; `Nothing moved` is a result, not an empty section. These rows never go in Updated packages, and a reverted refresh is reported here, not in Skipped packages.
 - **Overrides audited**: only what the Phase 0 / Phase 6 audit reports. If the `overrides:` map was empty, write "None" and move on. On a refresh-only run where Phase 6 did not run, write `Not run (refresh-only, tree unchanged)`.
+- **Residual advisories**: one row per advisory the check above found, with the package, severity, installed and patched versions, the chain holding it back, and its options: an override (a security floor in the `overrides:` map, which Phase 0 then audits like any other), a bump of the direct dependency that heads the chain to a release whose range admits the patch, or accepting it by adding its `id` to `.gaia/local/dep-audit-baseline.json`'s `acknowledged[]` list (see `wiki/dependencies/pnpm-audit.md`). Mark a row `accepted` when its `id` is among the ids the bash block's last line read from that file. `Held back by` shows the one chain the extraction returns, plus `(+N more paths)` when the advisory's path count exceeds 1. The skill proposes these; it never applies one. Always include this section: write `None` when the audit found nothing, or `Not run (<reason>)` when it did not answer, so a missing section is never read as a clean tree.
 - **Skipped packages**: _only_ packages that were attempted and reverted mid-run (peer-dep conflict, quality-gate failure, manual revert by an agent). **Never** include packages filtered out before installation by a policy rule (e.g. the ESLint 9.x cap or the release-age cooldown). Those are silent by design, surfacing them is noise that adopters see every run. When you cannot tell whether a package was policy-filtered before installation or attempted and reverted mid-run, include it in Skipped, a spurious row is recoverable but a silently dropped real failure is not. If nothing was actually skipped during the run, write "None" or omit the table.
 - **Snoozed (deferred this run)**: the companion groups the human chose to skip in the preview, with the version each was snoozed at. These quiet the statusline for 14 days (or until a newer version ships); they are not failures. Omit the section if the human chose "Update all".
 - **Quality gate**: the gate result reported by the agents, verbatim.
 <!-- gaia:maintainer-only:start -->
-- **Phase 6b**: runs inline rather than as an agent, so its `.gaia/cli pin sync` row is the one exception to building the report only from agent reports. Include it whenever Phase 6b ran past step 1, including a failed step it kept in the diff.
+- **Phase 6b**: runs inline rather than as an agent, so its `.gaia/cli pin sync` row is an exception to building the report only from agent reports, like the residual advisory check. Include it whenever Phase 6b ran past step 1, including a failed step it kept in the diff.
 <!-- gaia:maintainer-only:end -->
 
 If a section would be empty, write "None" rather than leaving it blank or fabricating filler.
@@ -532,6 +544,10 @@ Print the report. Do not commit.
 ### Overrides audited
 - Removed: <key>, <reason>
 - Retained: <key>, <reason>
+
+### Residual advisories
+| Package | Severity | Installed | Patched | Held back by | Advisory | Options |
+| --- | --- | --- | --- | --- | --- | --- |
 
 ### Skipped packages
 | Package | Reason |
