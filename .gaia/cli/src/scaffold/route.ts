@@ -1,12 +1,13 @@
 /**
  * `gaia scaffold route <name>` handler.
  *
- * Emits a route file under `app/routes/<group>/`, a page folder under
+ * Emits a route file at `app/routes/<group>.<name>.tsx`, a flat
+ * `@react-router/fs-routes` file, a page folder under
  * `app/pages/<Group>/<PageName>/` (with index.tsx + tests/), and optionally
  * an i18n locale file + alphabetical insert into the locale barrel.
  *
- * Group folders are React Router 7 flat-route groups: `_public+` or
- * `_session+`. Group segment in the page tree maps to `Public` / `Session`.
+ * Groups are `_public` or `_session`. Group segment in the page tree maps
+ * to `Public` / `Session`.
  *
  * Templates and the shared scaffold primitives live alongside under
  * `templates/route/` and `template.ts` / `fs.ts` / `barrel.ts`.
@@ -23,11 +24,11 @@ import {renderTemplate} from './template.js';
 import type {TemplateVars} from './template.js';
 import type {ScaffoldResult} from './types.js';
 
-const VALID_GROUPS = new Set(['_public+', '_session+']);
+const VALID_GROUPS = new Set(['_public', '_session']);
 
 const GROUP_TO_SEGMENT: Readonly<Record<string, string>> = {
-  '_public+': 'Public',
-  '_session+': 'Session',
+  _public: 'Public',
+  _session: 'Session',
 };
 
 /** kebab-case validation: lowercase letters, digits, hyphens; cannot start or end with hyphen. */
@@ -48,15 +49,23 @@ type RunOptions = {
   cwd?: string;
 };
 
-const HELP_TEXT = `Usage: gaia scaffold route <name> --group <_public+|_session+> [flags]
+const HELP_TEXT = `Usage: gaia scaffold route <name> --group <_public|_session> [flags]
 
-  --group     required, _public+ or _session+
+  --group     required, _public or _session
   --loader    emit a loader stub
   --action    emit an action stub
   --i18n      emit a locale file and wire the locale barrel
   --dry-run   print what would be written without touching the filesystem
   --json      print ScaffoldResult as JSON
 `;
+
+// The retired `+` spelling must not appear in the error text (UAT-005), so
+// that case gets its own message rather than echoing the raw input back.
+const invalidGroupMessage = (rawGroup: string): string =>
+  rawGroup.endsWith('+') ?
+    '--group must be one of: _public, _session (drop the trailing "+"; ' +
+    'the route groups are flat file prefixes)'
+  : `--group must be one of: _public, _session (got "${rawGroup}")`;
 
 const userError = (message: string, subcommand = 'scaffold route'): number => {
   structuredError({code: 'invalid_input', message, subcommand});
@@ -366,21 +375,28 @@ const resolveNames = (kebabName: string, group: string): ResolvedNames => {
   };
 };
 
-const buildRouteVars = (
-  names: ResolvedNames,
-  flags: ParsedFlags,
-  kebabName: string
-): TemplateVars => ({
-  groupSegment: names.groupSegment,
-  hasAction: flags.action,
-  hasLoader: flags.loader,
-  i18nKey: names.i18nKey,
-  needsRouteType: flags.loader || flags.action,
-  noLoader: !flags.loader,
-  pageName: names.pageName,
-  routeFile: kebabName,
-  routeName: names.routeName,
-});
+type BuildRouteVarsArgs = {
+  flags: ParsedFlags;
+  group: string;
+  kebabName: string;
+  names: ResolvedNames;
+};
+
+const buildRouteVars = (args: BuildRouteVarsArgs): TemplateVars => {
+  const {flags, group, kebabName, names} = args;
+
+  return {
+    groupSegment: names.groupSegment,
+    hasAction: flags.action,
+    hasLoader: flags.loader,
+    i18nKey: names.i18nKey,
+    needsRouteType: flags.loader || flags.action,
+    noLoader: !flags.loader,
+    pageName: names.pageName,
+    routeFile: `${group}.${kebabName}`,
+    routeName: names.routeName,
+  };
+};
 
 type WriteFileArgs = {
   absPath: string;
@@ -529,13 +545,11 @@ export const run = (
   }
 
   if (flags.group === null) {
-    return userError('--group is required (one of: _public+, _session+)');
+    return userError('--group is required (one of: _public, _session)');
   }
 
   if (!VALID_GROUPS.has(flags.group)) {
-    return userError(
-      `--group must be one of: _public+, _session+ (got "${flags.group}")`
-    );
+    return userError(invalidGroupMessage(flags.group));
   }
 
   // Output paths resolve from the working directory, matching the other
@@ -550,9 +564,9 @@ export const run = (
   const result: ScaffoldResult = {edited: [], skipped: [], written: []};
 
   try {
-    const routeVars = buildRouteVars(names, flags, name);
+    const routeVars = buildRouteVars({flags, group, kebabName: name, names});
 
-    const routeAbs = path.join(root, 'app', 'routes', group, `${name}.tsx`);
+    const routeAbs = path.join(root, 'app', 'routes', `${group}.${name}.tsx`);
     writeFile({
       absPath: routeAbs,
       contents: renderTemplate(tmpls.route, routeVars),
