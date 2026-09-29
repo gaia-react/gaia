@@ -98,11 +98,13 @@ describe('scaffold route: argument validation', () => {
 
     expect(exit).toBe(1);
     expect(out).toContain('--group is required');
+    expect(out).toContain('_public');
+    expect(out).toContain('_session');
   });
 
   test('rejects invalid --group value', () => {
     const stderr = captureStderr();
-    const exit = run(['dashboard', '--group', '_admin+'], {
+    const exit = run(['dashboard', '--group', '_admin'], {
       cwd: sandbox.fakeRoot,
     });
     const out = stderr.restore();
@@ -111,9 +113,39 @@ describe('scaffold route: argument validation', () => {
     expect(out).toContain('--group must be one of');
   });
 
+  test('rejects the retired trailing-+ group spelling', () => {
+    const stderr = captureStderr();
+    const exit = run(['dashboard', '--group', '_session+'], {
+      cwd: sandbox.fakeRoot,
+    });
+    const out = stderr.restore();
+
+    expect(exit).toBe(1);
+    expect(out).toContain('_public');
+    expect(out).toContain('_session');
+    expect(out).not.toContain('_public+');
+    expect(out).not.toContain('_session+');
+
+    const routeFile = path.join(
+      sandbox.fakeRoot,
+      'app',
+      'routes',
+      '_session.dashboard.tsx'
+    );
+    const routeFolder = path.join(
+      sandbox.fakeRoot,
+      'app',
+      'routes',
+      '_session+',
+      'dashboard.tsx'
+    );
+    expect(existsSync(routeFile)).toBe(false);
+    expect(existsSync(routeFolder)).toBe(false);
+  });
+
   test('rejects non-kebab name', () => {
     const stderr = captureStderr();
-    const exit = run(['Dashboard', '--group', '_session+'], {
+    const exit = run(['Dashboard', '--group', '_session'], {
       cwd: sandbox.fakeRoot,
     });
     const out = stderr.restore();
@@ -124,7 +156,7 @@ describe('scaffold route: argument validation', () => {
 
   test('rejects unknown flag', () => {
     const stderr = captureStderr();
-    const exit = run(['dashboard', '--group', '_session+', '--bogus'], {
+    const exit = run(['dashboard', '--group', '_session', '--bogus'], {
       cwd: sandbox.fakeRoot,
     });
     const out = stderr.restore();
@@ -142,7 +174,7 @@ describe('scaffold route: argument validation', () => {
   });
 });
 
-describe('scaffold route: base emission (_session+)', () => {
+describe('scaffold route: base emission (_session)', () => {
   let sandbox: Sandbox;
 
   beforeEach(() => {
@@ -155,7 +187,7 @@ describe('scaffold route: base emission (_session+)', () => {
 
   test('emits route file, page index, test, and story', () => {
     const stdout = captureStdout();
-    const exit = run(['dashboard', '--group', '_session+'], {
+    const exit = run(['dashboard', '--group', '_session'], {
       cwd: sandbox.fakeRoot,
     });
     stdout.restore();
@@ -166,8 +198,7 @@ describe('scaffold route: base emission (_session+)', () => {
       sandbox.fakeRoot,
       'app',
       'routes',
-      '_session+',
-      'dashboard.tsx'
+      '_session.dashboard.tsx'
     );
     const pageIndex = path.join(
       sandbox.fakeRoot,
@@ -219,7 +250,7 @@ describe('scaffold route: base emission (_session+)', () => {
 
   test('hyphenated names map to <Pascal>Page folder', () => {
     const stdout = captureStdout();
-    const exit = run(['user-settings', '--group', '_session+'], {
+    const exit = run(['user-settings', '--group', '_session'], {
       cwd: sandbox.fakeRoot,
     });
     stdout.restore();
@@ -240,8 +271,7 @@ describe('scaffold route: base emission (_session+)', () => {
       sandbox.fakeRoot,
       'app',
       'routes',
-      '_session+',
-      'user-settings.tsx'
+      '_session.user-settings.tsx'
     );
     const routeBody = readFileSync(routeFile, 'utf8');
     expect(routeBody).toContain('const UserSettingsRoute');
@@ -250,9 +280,9 @@ describe('scaffold route: base emission (_session+)', () => {
     );
   });
 
-  test('_public+ group writes to Public segment', () => {
+  test('_public group writes to Public segment', () => {
     const stdout = captureStdout();
-    const exit = run(['marketing', '--group', '_public+'], {
+    const exit = run(['marketing', '--group', '_public'], {
       cwd: sandbox.fakeRoot,
     });
     stdout.restore();
@@ -271,8 +301,7 @@ describe('scaffold route: base emission (_session+)', () => {
       sandbox.fakeRoot,
       'app',
       'routes',
-      '_public+',
-      'marketing.tsx'
+      '_public.marketing.tsx'
     );
     expect(existsSync(pageIndex)).toBe(true);
     expect(existsSync(routeFile)).toBe(true);
@@ -292,7 +321,7 @@ describe('scaffold route: flag combos', () => {
 
   test('--loader emits loader export', () => {
     const stdout = captureStdout();
-    run(['dashboard', '--group', '_session+', '--loader'], {
+    run(['dashboard', '--group', '_session', '--loader'], {
       cwd: sandbox.fakeRoot,
     });
     stdout.restore();
@@ -301,18 +330,18 @@ describe('scaffold route: flag combos', () => {
       sandbox.fakeRoot,
       'app',
       'routes',
-      '_session+',
-      'dashboard.tsx'
+      '_session.dashboard.tsx'
     );
     const body = readFileSync(routeFile, 'utf8');
     expect(body).toContain('export const loader');
     expect(body).toContain('useLoaderData');
-    expect(body).toContain("from './+types/dashboard'");
+    expect(body).toContain("from './+types/_session.dashboard'");
+    expect(body).not.toContain("from './+types/dashboard'");
   });
 
   test('--action emits action export', () => {
     const stdout = captureStdout();
-    run(['dashboard', '--group', '_session+', '--action'], {
+    run(['dashboard', '--group', '_session', '--action'], {
       cwd: sandbox.fakeRoot,
     });
     stdout.restore();
@@ -321,17 +350,18 @@ describe('scaffold route: flag combos', () => {
       sandbox.fakeRoot,
       'app',
       'routes',
-      '_session+',
-      'dashboard.tsx'
+      '_session.dashboard.tsx'
     );
     const body = readFileSync(routeFile, 'utf8');
     expect(body).toContain('export const action');
     expect(body).toContain('Route.ActionArgs');
+    expect(body).toContain("from './+types/_session.dashboard'");
+    expect(body).not.toContain("from './+types/dashboard'");
   });
 
   test('--loader and --action together', () => {
     const stdout = captureStdout();
-    run(['dashboard', '--group', '_session+', '--loader', '--action'], {
+    run(['dashboard', '--group', '_session', '--loader', '--action'], {
       cwd: sandbox.fakeRoot,
     });
     stdout.restore();
@@ -340,12 +370,13 @@ describe('scaffold route: flag combos', () => {
       sandbox.fakeRoot,
       'app',
       'routes',
-      '_session+',
-      'dashboard.tsx'
+      '_session.dashboard.tsx'
     );
     const body = readFileSync(routeFile, 'utf8');
     expect(body).toContain('export const loader');
     expect(body).toContain('export const action');
+    expect(body).toContain("from './+types/_session.dashboard'");
+    expect(body).not.toContain("from './+types/dashboard'");
   });
 
   test('--i18n with existing barrel inserts alphabetically', () => {
@@ -364,7 +395,7 @@ describe('scaffold route: flag combos', () => {
     );
 
     const stdout = captureStdout();
-    const exit = run(['dashboard', '--group', '_session+', '--i18n'], {
+    const exit = run(['dashboard', '--group', '_session', '--i18n'], {
       cwd: sandbox.fakeRoot,
     });
     stdout.restore();
@@ -424,7 +455,7 @@ describe('scaffold route: flag combos', () => {
   test('--i18n with a missing barrel surfaces the failure', () => {
     // No barrel seeded: the locale file is written but cannot be wired.
     const stderr = captureStderr();
-    const exit = run(['dashboard', '--group', '_session+', '--i18n'], {
+    const exit = run(['dashboard', '--group', '_session', '--i18n'], {
       cwd: sandbox.fakeRoot,
     });
     const out = stderr.restore();
@@ -435,7 +466,7 @@ describe('scaffold route: flag combos', () => {
 
   test('--json emits a single ScaffoldResult JSON line', () => {
     const stdout = captureStdout();
-    const exit = run(['dashboard', '--group', '_session+', '--json'], {
+    const exit = run(['dashboard', '--group', '_session', '--json'], {
       cwd: sandbox.fakeRoot,
     });
     const out = stdout.restore();
@@ -462,7 +493,7 @@ describe('scaffold route: --dry-run', () => {
 
   test('reports would-be writes without touching the filesystem', () => {
     const stdout = captureStdout();
-    const exit = run(['dashboard', '--group', '_session+', '--dry-run'], {
+    const exit = run(['dashboard', '--group', '_session', '--dry-run'], {
       cwd: sandbox.fakeRoot,
     });
     const out = stdout.restore();
@@ -475,8 +506,7 @@ describe('scaffold route: --dry-run', () => {
       sandbox.fakeRoot,
       'app',
       'routes',
-      '_session+',
-      'dashboard.tsx'
+      '_session.dashboard.tsx'
     );
     const pageIndex = path.join(
       sandbox.fakeRoot,
@@ -503,7 +533,7 @@ describe('scaffold route: --dry-run', () => {
 
     const stdout = captureStdout();
     const exit = run(
-      ['dashboard', '--group', '_session+', '--i18n', '--dry-run', '--json'],
+      ['dashboard', '--group', '_session', '--i18n', '--dry-run', '--json'],
       {cwd: sandbox.fakeRoot}
     );
     const out = stdout.restore();
@@ -547,7 +577,7 @@ describe('scaffold route: idempotency', () => {
 
   test('second invocation with same args is a no-op (no throws, files unchanged)', () => {
     const stdout1 = captureStdout();
-    const exit1 = run(['dashboard', '--group', '_session+'], {
+    const exit1 = run(['dashboard', '--group', '_session'], {
       cwd: sandbox.fakeRoot,
     });
     stdout1.restore();
@@ -557,13 +587,12 @@ describe('scaffold route: idempotency', () => {
       sandbox.fakeRoot,
       'app',
       'routes',
-      '_session+',
-      'dashboard.tsx'
+      '_session.dashboard.tsx'
     );
     const before = readFileSync(routeFile, 'utf8');
 
     const stdout2 = captureStdout();
-    const exit2 = run(['dashboard', '--group', '_session+'], {
+    const exit2 = run(['dashboard', '--group', '_session'], {
       cwd: sandbox.fakeRoot,
     });
     stdout2.restore();
@@ -587,7 +616,7 @@ describe('scaffold route: idempotency', () => {
     );
 
     const stdout1 = captureStdout();
-    run(['dashboard', '--group', '_session+', '--i18n'], {
+    run(['dashboard', '--group', '_session', '--i18n'], {
       cwd: sandbox.fakeRoot,
     });
     stdout1.restore();
@@ -595,7 +624,7 @@ describe('scaffold route: idempotency', () => {
     const afterFirst = readFileSync(barrelPath, 'utf8');
 
     const stdout2 = captureStdout();
-    run(['dashboard', '--group', '_session+', '--i18n'], {
+    run(['dashboard', '--group', '_session', '--i18n'], {
       cwd: sandbox.fakeRoot,
     });
     stdout2.restore();
@@ -633,7 +662,7 @@ describe('scaffold route: barrel alphabetical insert correctness', () => {
     );
 
     const stdout = captureStdout();
-    run(['admin', '--group', '_session+', '--i18n'], {cwd: sandbox.fakeRoot});
+    run(['admin', '--group', '_session', '--i18n'], {cwd: sandbox.fakeRoot});
     stdout.restore();
 
     const after = readFileSync(barrelPath, 'utf8');
@@ -662,7 +691,7 @@ describe('scaffold route: barrel alphabetical insert correctness', () => {
     );
 
     const stdout = captureStdout();
-    run(['zone', '--group', '_session+', '--i18n'], {cwd: sandbox.fakeRoot});
+    run(['zone', '--group', '_session', '--i18n'], {cwd: sandbox.fakeRoot});
     stdout.restore();
 
     const after = readFileSync(barrelPath, 'utf8');

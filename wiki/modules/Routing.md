@@ -3,32 +3,34 @@ type: module
 path: app/routes/
 status: active
 language: typescript
-purpose: File-based routing using remix-flat-routes on top of React Router
+purpose: File-based routing using @react-router/fs-routes on top of React Router
 depends_on:
-  - '[[remix-flat-routes]]'
+  - '[[fs-routes]]'
   - '[[React Router]]'
 created: 2026-04-20
-updated: 2026-09-02
+updated: 2026-09-29
 tags: [module, routing]
 ---
 
 # Routing
 
-GAIA uses [[remix-flat-routes]] on top of [[React Router]] for file-based routing. The adapter lives in `app/routes.ts`. You can switch to standard React Router routing if you prefer.
+GAIA uses [[fs-routes]] (React Router's own file convention) configured in `app/routes.ts`. You can switch to standard React Router routing if you prefer.
 
 ## Route group convention
 
-Routes are organized using flat-routes folder syntax; `_` prefix + `+` suffix marks a folder as a layout/route group:
+Routes are flat, dot-delimited files directly in `app/routes/`; there are no `+`-suffixed folders. A leading `_` marks a pathless layout: `_public.tsx` is the layout, `_public.<name>.tsx` its children, `_public._index.tsx` the index route under it. Group prefixes:
 
-- `_public+`: home, marketing, public content (no auth)
-- `_session+`: hook point for auth-guarded app (intentionally a stub)
-- `_legal+`: terms of service, privacy
-- `actions+`: root-level form actions (no UI), e.g. `set-language.ts`
-- `resources+`: no-UI resource routes that handle a form submission and write a cookie or return data, e.g. `theme-switch.tsx`
+- `_public`: home, marketing, public content (no auth)
+- `_session`: hook point for auth-guarded app (intentionally a stub)
+- `_legal`: terms of service, privacy
+- `actions`: root-level form actions (no UI), e.g. `actions.set-language.ts`
+- `resources`: no-UI resource routes that handle a form submission and write a cookie or return data, e.g. `resources.theme-switch.tsx`
 
-Both `actions+` and `resources+` hold no-UI server-side form endpoints. Use `actions+` for a route whose job is to mutate state and redirect; use `resources+` for a route that also serves as a data/cookie endpoint a fetcher posts to without navigating.
+Both `actions.*` and `resources.*` hold no-UI server-side form endpoints. Use `actions.*` for a route whose job is to mutate state and redirect; use `resources.*` for a route that also serves as a data/cookie endpoint a fetcher posts to without navigating.
 
-`_session+/` ships only a `README.md` (flat-routes matches `.ts`/`.tsx`, so the README isn't a route). To guard it, add a `_layout.tsx` with a loader that throws `redirect('/login')` when the user isn't authenticated; every route nested under `_session+/` then inherits the guard. Choose any auth provider: Supabase, Clerk, Auth0, custom sessions. The README walks through the setup.
+`app/routes/_session/` ships only a `README.md`. The folder holds no `route.*` or `index.*` module, so fs-routes skips it entirely; it isn't a route. To guard the group, add `app/routes/_session.tsx` with a loader that throws `redirect('/login')` when the user isn't authenticated, and add children as `app/routes/_session.<name>.tsx`; every route nested under it then inherits the guard. Choose any auth provider: Supabase, Clerk, Auth0, custom sessions. The README walks through the setup.
+
+`app/routes.ts` fails loudly at startup if a leftover `+`-suffixed folder still exists under `app/routes/`, naming the offending folder and pointing at the flat dot-delimited rename.
 
 ## Thin Routes Convention
 
@@ -43,6 +45,7 @@ The page folder and its component are named `<PascalName>Page` (e.g. `DashboardP
 
 ### Scaffold flags
 
+- `--group _public|_session`: required; writes the route file at `app/routes/<group>.<name>.tsx`
 - `--loader`: emit a loader stub
 - `--action`: emit an action stub
 - `--i18n`: emit a flat `<kebab>.ts` locale file and wire it into the locale barrel (fails loudly if the barrel is absent)
@@ -50,7 +53,7 @@ The page folder and its component are named `<PascalName>Page` (e.g. `DashboardP
 
 ### Fetcher action paths
 
-`app/action-paths.ts` exports `ACTION_PATHS`, the single source of truth for every path a fetcher submits to under `actions+`/`resources+` (e.g. `themeSwitch: '/resources/theme-switch'`). React Router derives each path from its route file's name, so a hand-copied literal at a call site goes stale silently the moment that file renames: the submission 404s, an optimistic update stops applying while the POST still succeeds, or a story renders the router's error boundary. The component, the optimistic-mode matcher, and the test router stub all read `ACTION_PATHS` instead of keeping their own copies, and `test/action-paths.test.ts` resolves the app's real route config to assert every declared path still resolves to a served route.
+`app/action-paths.ts` exports `ACTION_PATHS`, the single source of truth for every path a fetcher submits to under `actions.*`/`resources.*` (e.g. `themeSwitch: '/resources/theme-switch'`). React Router derives each path from its route file's name, so a hand-copied literal at a call site goes stale silently the moment that file renames: the submission 404s, an optimistic update stops applying while the POST still succeeds, or a story renders the router's error boundary. The component, the optimistic-mode matcher, and the test router stub all read `ACTION_PATHS` instead of keeping their own copies, and `test/action-paths.test.ts` resolves the app's real route config to assert every declared path still resolves to a served route.
 
 ## Server-side i18n in loaders
 
@@ -62,4 +65,4 @@ Route actions validate form data with plain [[Zod]]: build a `z.object({...})` s
 
 ## Where to look up the inventory
 
-For the current set of routes and bundled `actions+` endpoints, query Serena (`.claude/rules/code-search.md`).
+For the current set of routes and bundled `actions.*` endpoints, query Serena (`.claude/rules/code-search.md`).

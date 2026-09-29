@@ -64,7 +64,7 @@ Affected pages (10):
 5. **[[Form Text Inputs]]** (`components/Form Text Inputs.md`): `depends_on: [[Form Components]], [[Form Field]]`
 6. **[[Form YearMonthDay]]** (`components/Form YearMonthDay.md`): `depends_on: [[Form Select]], [[Conform]], [[Form Components]]`
 7. **[[Form Components]]** (`modules/Form Components.md`): `depends_on: [[Conform]], [[Zod]]`
-8. **[[Routing]]** (`modules/Routing.md`): `depends_on: [[remix-flat-routes]], [[React Router 7]]`
+8. **[[Routing]]** (`modules/Routing.md`): `depends_on: ` `remix-flat-routes` `, [[React Router 7]]`
 9. **[[Services]]** (`modules/Services.md`): `depends_on: [[Ky]], [[Zod]]`
 10. **[[Storybook Stories]]** (`modules/Storybook Stories.md`): `depends_on: [[Storybook]], [[MSW]]`
 11. **[[Testing]]** (`modules/Testing.md`): `depends_on: [[Vitest]], [[React Testing Library]], [[Playwright]], [[MSW]]`

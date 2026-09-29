@@ -47,7 +47,6 @@ const GROUP_RULES: readonly GroupRule[] = [
       '@react-router/dev',
       '@react-router/fs-routes',
       '@react-router/node',
-      '@react-router/remix-routes-option-adapter',
       '@react-router/serve',
       'react-router',
     ],

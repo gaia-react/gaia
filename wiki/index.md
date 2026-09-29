@@ -3,7 +3,7 @@ type: meta
 title: Index
 status: active
 created: 2026-04-20
-updated: 2026-07-01
+updated: 2026-09-29
 tags: [meta]
 ---
 
@@ -67,7 +67,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 ## Dependencies
 
 - [[React Router]]
-- [[remix-flat-routes]]
+- [[fs-routes]]
 - [[remix-i18next]]
 - [[remix-toast]]
 - [[remix-utils]]: per-helper adopt-vs-hand-roll decision map.

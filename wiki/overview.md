@@ -3,7 +3,7 @@ type: overview
 title: GAIA React Overview
 status: mature
 created: 2026-04-20
-updated: 2026-06-24
+updated: 2026-09-29
 tags: [overview, gaia]
 ---
 
@@ -19,7 +19,7 @@ See [[GAIA Philosophy]] for the long version.
 
 ## Tech Stack at a Glance
 
-- **Framework**: [[React Router]] (SSR, file-based routing via [[remix-flat-routes]])
+- **Framework**: [[React Router]] (SSR, file-based routing via [[fs-routes]])
 - **Forms**: [[Conform]] + [[Zod]], see [[Form Components]]
 - **Styling**: [[Tailwind]] v4 with `tailwind-merge`, plus [[react-icons]] icons
 - **i18n**: [[remix-i18next]] with TypeScript language files (not JSON)
@@ -48,21 +48,15 @@ app/
 ├── types/            global TS types
 ├── utils/            pure helpers (date, dom, http, string, ...)
 ├── root.tsx          root layout, i18n hookup, theme, toast
-├── routes.ts         flat-routes adapter
+├── routes.ts         fs-routes route config
 └── env.server.ts     Zod-validated env vars
 ```
 
 See [[Folder Structure]] for the full breakdown.
 
-## Route Groups (remix-flat-routes)
+## Routes
 
-- `_public+`: unauthenticated pages
-- `_session+`: hook point for auth-guarded pages (empty stub; add your own auth guard)
-- `_legal+`: terms, privacy, etc.
-- `actions+`: root-level form actions (set-language)
-- `resources+`: resource routes (theme-switch, the action `useTheme` posts to)
-
-See [[Routing]].
+Route files are flat, dot-delimited, and grouped by name prefix. See [[Routing]].
 
 ## Quality Gate
 

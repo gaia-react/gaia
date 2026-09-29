@@ -2,7 +2,7 @@ import type {FC} from 'react';
 import {useLoaderData} from 'react-router';
 import {getInstance} from '~/middleware/i18next';
 import PrivacyPage from '~/pages/Legal/PrivacyPage';
-import type {Route} from './+types/privacy';
+import type {Route} from './+types/_legal.privacy';
 
 export const loader = async ({context}: Route.LoaderArgs) => {
   const i18next = getInstance(context);

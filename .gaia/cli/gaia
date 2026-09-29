@@ -22382,21 +22382,22 @@ var run31 = (argv, options = {}) => {
 import { existsSync as existsSync20, readFileSync as readFileSync26 } from "node:fs";
 import path33 from "node:path";
 import { fileURLToPath as fileURLToPath4 } from "node:url";
-var VALID_GROUPS = /* @__PURE__ */ new Set(["_public+", "_session+"]);
+var VALID_GROUPS = /* @__PURE__ */ new Set(["_public", "_session"]);
 var GROUP_TO_SEGMENT = {
-  "_public+": "Public",
-  "_session+": "Session"
+  _public: "Public",
+  _session: "Session"
 };
 var KEBAB_PATTERN = /^[a-z\d]+(?:-[a-z\d]+)*$/u;
-var HELP_TEXT31 = `Usage: gaia scaffold route <name> --group <_public+|_session+> [flags]
+var HELP_TEXT31 = `Usage: gaia scaffold route <name> --group <_public|_session> [flags]
 
-  --group     required, _public+ or _session+
+  --group     required, _public or _session
   --loader    emit a loader stub
   --action    emit an action stub
   --i18n      emit a locale file and wire the locale barrel
   --dry-run   print what would be written without touching the filesystem
   --json      print ScaffoldResult as JSON
 `;
+var invalidGroupMessage = (rawGroup) => rawGroup.endsWith("+") ? '--group must be one of: _public, _session (drop the trailing "+"; the route groups are flat file prefixes)' : `--group must be one of: _public, _session (got "${rawGroup}")`;
 var userError = (message, subcommand = "scaffold route") => {
   structuredError({ code: "invalid_input", message, subcommand });
   return EXIT_CODES.UNKNOWN_SUBCOMMAND;
@@ -22563,20 +22564,24 @@ var resolveNames = (kebabName, group) => {
     // Page folder, component, and the route's import use the `<Pascal>Page`
     // convention (e.g. `IndexPage`); the route component stays `<Pascal>Route`.
     pageName: `${pascal}Page`,
+    routeFile: `${group}.${kebabName}`,
     routeName: pascal
   };
 };
-var buildRouteVars = (names, flags, kebabName) => ({
-  groupSegment: names.groupSegment,
-  hasAction: flags.action,
-  hasLoader: flags.loader,
-  i18nKey: names.i18nKey,
-  needsRouteType: flags.loader || flags.action,
-  noLoader: !flags.loader,
-  pageName: names.pageName,
-  routeFile: kebabName,
-  routeName: names.routeName
-});
+var buildRouteVars = (args) => {
+  const { flags, names } = args;
+  return {
+    groupSegment: names.groupSegment,
+    hasAction: flags.action,
+    hasLoader: flags.loader,
+    i18nKey: names.i18nKey,
+    needsRouteType: flags.loader || flags.action,
+    noLoader: !flags.loader,
+    pageName: names.pageName,
+    routeFile: names.routeFile,
+    routeName: names.routeName
+  };
+};
 var writeFile = (args) => {
   const { absPath, contents, dryRun, result } = args;
   const { written } = writeFileIfAbsent(absPath, contents, { dryRun });
@@ -22673,22 +22678,20 @@ var run32 = (rest, options = {}) => {
     );
   }
   if (flags.group === null) {
-    return userError("--group is required (one of: _public+, _session+)");
+    return userError("--group is required (one of: _public, _session)");
   }
   if (!VALID_GROUPS.has(flags.group)) {
-    return userError(
-      `--group must be one of: _public+, _session+ (got "${flags.group}")`
-    );
+    return userError(invalidGroupMessage(flags.group));
   }
   const root = options.cwd ?? process.cwd();
   const { dryRun, group, i18n, json: json3 } = flags;
   const names = resolveNames(name, group);
-  const { groupSegment, i18nKey, pageName } = names;
+  const { groupSegment, i18nKey, pageName, routeFile } = names;
   const tmpls = templatePaths();
   const result = { edited: [], skipped: [], written: [] };
   try {
-    const routeVars = buildRouteVars(names, flags, name);
-    const routeAbs = path33.join(root, "app", "routes", group, `${name}.tsx`);
+    const routeVars = buildRouteVars({ flags, names });
+    const routeAbs = path33.join(root, "app", "routes", `${routeFile}.tsx`);
     writeFile({
       absPath: routeAbs,
       contents: renderTemplate(tmpls.route, routeVars),
@@ -28824,7 +28827,6 @@ var GROUP_RULES = [
       "@react-router/dev",
       "@react-router/fs-routes",
       "@react-router/node",
-      "@react-router/remix-routes-option-adapter",
       "@react-router/serve",
       "react-router"
     ],

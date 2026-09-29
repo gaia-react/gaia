@@ -59,8 +59,9 @@ const CATEGORY_HEADER = /^# --- (\d+)\. (.+?) ---\s*$/;
  * `.`, `+`, `-`, `_`, `~`, `@`, `,`, `!`, and `=` are deliberately allowed:
  * all three release-exclude parsers (the regex compiler in `manifest.ts`,
  * `release.yml`'s sed, and the distribution harness's literal test) escape
- * `.` and `+` identically, and GAIA's own `app/routes/_public+/` paths carry
- * a `+`. Over-rejecting them would make a legitimate file unwithholdable.
+ * `.` and `+` identically, and React Router's generated `+types` directories
+ * and an adopter's own paths can carry a `+`. Over-rejecting them would make
+ * a legitimate file unwithholdable.
  */
 const REJECTED_PATH_CHARACTERS = [
   '(',

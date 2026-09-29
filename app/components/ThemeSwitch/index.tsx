@@ -4,7 +4,7 @@ import {IoDesktopOutline, IoMoon, IoSunny} from 'react-icons/io5';
 import {useFetcher} from 'react-router';
 import {ACTION_PATHS} from '~/action-paths';
 import {useOptimisticThemeMode} from '~/hooks/useTheme';
-import type {action} from '~/routes/resources+/theme-switch';
+import type {action} from '~/routes/resources.theme-switch';
 import type {Theme} from '~/utils/theme.server';
 
 export type ThemeSwitchProps = {

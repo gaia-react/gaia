@@ -5,7 +5,7 @@ status: active
 language: typescript
 purpose: Shared UI components used across pages
 created: 2026-04-20
-updated: 2026-06-24
+updated: 2026-09-29
 tags: [module, components]
 ---
 
@@ -46,6 +46,6 @@ Not strict, but a strong default. Refactoring is easier when the folder hierarch
 The current set of bundled components changes over time. Use Serena (`.claude/rules/code-search.md`) to list `app/components/` rather than maintaining a roster here. Notable exceptions:
 
 - `Form/`: the headline feature with its own deep dives ([[Form Components]])
-- `ThemeSwitch` lives at `app/components/ThemeSwitch/`. Its resource-route action and Zod schema live separately at `app/routes/resources+/theme-switch.tsx`, and its theme hooks live at `app/hooks/useTheme.ts`. See [[Theme Flow]].
+- `ThemeSwitch` lives at `app/components/ThemeSwitch/`. Its resource-route action and Zod schema live separately at `app/routes/resources.theme-switch.tsx`, and its theme hooks live at `app/hooks/useTheme.ts`. See [[Theme Flow]].
 
 See [[Component Testing]] for the `composeStory` test pattern.

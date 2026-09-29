@@ -23,7 +23,6 @@ export default {
     '@epic-web/invariant',
     '@msw/data',
     '@playwright-testing-library/test',
-    '@react-router/fs-routes',
     '@storybook/addon-docs',
     '@tailwindcss/forms',
     '@tailwindcss/typography',

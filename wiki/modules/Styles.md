@@ -6,7 +6,7 @@ language: css
 purpose: Tailwind setup and shared utilities
 depends_on: [[Tailwind]]
 created: 2026-04-20
-updated: 2026-06-24
+updated: 2026-09-29
 tags: [module, styles, tailwind]
 ---
 
@@ -32,7 +32,7 @@ The pipeline (query Serena for current paths):
 
 - `app/utils/theme.server.ts`: reads/writes the `__theme` cookie
 - `app/hooks/useTheme.ts`: tracks OS `prefers-color-scheme` via `useSyncExternalStore` (`useSystemTheme`), derives the optimistic theme from pending `useFetchers()` (`useOptimisticThemeMode`), and resolves the effective theme (`useOptionalTheme`) from optimistic value, then the loader cookie preference, then OS
-- `app/routes/resources+/theme-switch.tsx`: action + `ThemeFormSchema` only
+- `app/routes/resources.theme-switch.tsx`: action + `ThemeFormSchema` only
 - `app/components/ThemeSwitch/index.tsx`: the `ThemeSwitch` UI
 - Tailwind's `dark:` variant via `@custom-variant dark` in `tailwind.css`
 - Storybook's `@vueless/storybook-dark-mode` addon (unchanged)

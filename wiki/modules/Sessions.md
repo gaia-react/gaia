@@ -5,7 +5,7 @@ status: active
 language: typescript
 purpose: Server-only signed cookie for the language preference
 created: 2026-04-20
-updated: 2026-06-24
+updated: 2026-09-29
 tags: [module, sessions, cookies]
 ---
 
@@ -21,7 +21,7 @@ The `__theme` cookie is read/written as a plain cookie via `app/utils/theme.serv
 
 ## Adding auth sessions
 
-`_session+/` is the designated hook point for consumer auth. Add your own `createCookieSessionStorage` (or use Clerk, Supabase, Auth0 SDKs) in `app/sessions.server/` and wire a loader into a `_layout.tsx` you create there. See [[Routing]] for the route group overview.
+`_session` is the designated hook point for consumer auth. Add your own `createCookieSessionStorage` (or use Clerk, Supabase, Auth0 SDKs) in `app/sessions.server/` and wire a loader into `app/routes/_session.tsx`. See [[Routing]] for the route group overview.
 
 For the current bundled session files, query Serena (`.claude/rules/code-search.md`).
 
@@ -29,4 +29,4 @@ For the current bundled session files, query Serena (`.claude/rules/code-search.
 
 - [[Theme Flow]]: full SSR→client theme lifecycle
 - [[Language Flow]]: language detection + persistence
-- [[Routing]]: `_session+/` hook point
+- [[Routing]]: `_session` hook point
