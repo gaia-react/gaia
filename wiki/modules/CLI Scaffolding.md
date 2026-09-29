@@ -28,7 +28,7 @@ All scaffolding subcommands use a common foundation:
 - **Idempotency**: All scaffolders write via `writeFileIfAbsent`. A byte-identical existing file is reported as skipped (re-runs are safe), but a file that exists with different content makes the write throw, protecting customizations. The component flow additionally errors when its `--parent` target directory is missing; the hook, route, and service flows create any missing directories on demand (`mkdir -p`).
 - **Barrel insert**: The service `--mocks` flow registers new mock collections in the test database barrel (`test/mocks/database.ts`), and the route `--i18n` flow inserts the new page locale alphabetically into `app/languages/en/pages/index.ts`. The component and hook flows edit no barrels; `app/components/` and `app/hooks/` have no top-level `index.ts` in this template.
 
-Templates follow GAIA naming conventions and include TypeScript types and unit-test structure. The route scaffolder additionally emits an i18n locale file and wires the locale barrel when `--i18n` is passed.
+Templates follow GAIA naming conventions and include TypeScript types and unit-test structure. The route scaffolder additionally emits an i18n locale file and wires the locale barrel when `--i18n` is passed. A `--loader` route reads its copy from the locale only under `--i18n`; without it the loader returns placeholder literals, so the route typechecks without locale keys.
 
 ## Integration
 
