@@ -34,12 +34,14 @@ test('theme toggle POST resolves 2xx', async ({page}) => {
   expect(response.status()).toBeLessThan(300);
 });
 
-test('set-language action is not a 404, whatever the language count', async ({
+test('set-language action redirects and sets the language cookie', async ({
   request,
 }) => {
   const response = await request.post(ACTION_PATHS.setLanguage, {
     form: {language: 'en', redirectUrl: '/'},
     maxRedirects: 0,
   });
-  expect(response.status()).not.toBe(404);
+  expect(response.status()).toBe(302);
+  expect(response.headers().location).toBe('/');
+  expect(response.headers()['set-cookie']).toMatch(/^lng=/);
 });
