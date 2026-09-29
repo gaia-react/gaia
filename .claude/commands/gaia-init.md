@@ -122,7 +122,7 @@ pnpm --version 2>/dev/null || echo "absent"
 
 Branch on the result:
 
-**a) `absent` (no pnpm on PATH):** auto-install. Prefer corepack (it activates the version pinned in `package.json` `packageManager`, currently `pnpm@12.6.0`); fall back to the latest global when corepack is missing.
+**a) `absent` (no pnpm on PATH):** auto-install. Prefer corepack (it activates the version pinned in `package.json` `packageManager`, currently `pnpm@12.7.0`); fall back to the latest global when corepack is missing.
 
 ```bash
 if command -v corepack &>/dev/null; then
@@ -145,7 +145,7 @@ _Non-response: HARD-BLOCK. Re-ask; never auto-upgrade or auto-exit on a timeout.
 
 On **No** (or anything that is not an explicit Yes): stop `/gaia-init` immediately with a one-line message. Step 0 runs before any file is installed or renamed, so exiting here leaves the clone untouched.
 
-On **Yes**: upgrade by enabling corepack (its `packageManager` pin makes the in-project version 12.6.0 regardless of any stray global pnpm); fall back to a latest global install when corepack is missing.
+On **Yes**: upgrade by enabling corepack (its `packageManager` pin makes the in-project version 12.7.0 regardless of any stray global pnpm); fall back to a latest global install when corepack is missing.
 
 ```bash
 if command -v corepack &>/dev/null; then
