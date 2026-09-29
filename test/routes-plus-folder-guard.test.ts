@@ -1,5 +1,11 @@
 import {afterEach, describe, expect, test, vi} from 'vitest';
-import {mkdirSync, mkdtempSync, realpathSync, writeFileSync} from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -10,6 +16,8 @@ const appDirectoryGlobal = globalThis as GlobalWithAppDirectory;
 // eslint-disable-next-line no-underscore-dangle -- React Router's app-directory global, read by getAppDirectory()
 const originalAppDirectory = appDirectoryGlobal.__reactRouterAppDirectory;
 
+const temporaryAppDirectories: string[] = [];
+
 const setAppDirectory = (appDirectory: string | undefined) => {
   // eslint-disable-next-line no-underscore-dangle -- React Router's app-directory global, read by getAppDirectory()
   appDirectoryGlobal.__reactRouterAppDirectory = appDirectory;
@@ -18,8 +26,9 @@ const setAppDirectory = (appDirectory: string | undefined) => {
 
 const writeTemporaryApp = (routeFile: string) => {
   const appDirectory = realpathSync(
-    mkdtempSync(path.join(os.tmpdir(), 'spec-085-'))
+    mkdtempSync(path.join(os.tmpdir(), 'routes-guard-'))
   );
+  temporaryAppDirectories.push(appDirectory);
 
   writeFileSync(
     path.join(appDirectory, 'root.tsx'),
@@ -37,6 +46,10 @@ const writeTemporaryApp = (routeFile: string) => {
 
 afterEach(() => {
   setAppDirectory(originalAppDirectory);
+
+  for (const appDirectory of temporaryAppDirectories.splice(0)) {
+    rmSync(appDirectory, {force: true, recursive: true});
+  }
 });
 
 describe('leftover "+" route folder guard', () => {

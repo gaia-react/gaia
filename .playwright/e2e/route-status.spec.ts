@@ -22,9 +22,11 @@ test('theme toggle POST resolves 2xx', async ({page}) => {
 
   const [response] = await Promise.all([
     page.waitForResponse(
-      (res) =>
-        res.request().method() === 'POST' &&
-        new URL(res.url()).pathname.startsWith(ACTION_PATHS.themeSwitch)
+      (candidateResponse) =>
+        candidateResponse.request().method() === 'POST' &&
+        new URL(candidateResponse.url()).pathname.startsWith(
+          ACTION_PATHS.themeSwitch
+        )
     ),
     toggle.click(),
   ]);

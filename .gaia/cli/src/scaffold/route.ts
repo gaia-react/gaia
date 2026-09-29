@@ -59,7 +59,7 @@ const HELP_TEXT = `Usage: gaia scaffold route <name> --group <_public|_session> 
   --json      print ScaffoldResult as JSON
 `;
 
-// The retired `+` spelling must not appear in the error text (UAT-005), so
+// The retired `+` spelling must not appear in the error text, so
 // that case gets its own message rather than echoing the raw input back.
 const invalidGroupMessage = (rawGroup: string): string =>
   rawGroup.endsWith('+') ?
