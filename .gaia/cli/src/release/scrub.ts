@@ -981,7 +981,7 @@ const runDerivedWikilinkCheck = ({
  * Reading the exclude list from `cwd` mirrors `buildExcludedSlugSet`: the file
  * excludes itself, so it never reaches the staging tree the other checks scan.
  */
-const buildNeverPresentWorkflowSet = (cwd: string): Set<string> => {
+export const buildNeverPresentWorkflowSet = (cwd: string): Set<string> => {
   const lines = parseExcludeLines(
     readFileSync(path.join(cwd, RELEASE_EXCLUDE_PATH), 'utf8')
   );
