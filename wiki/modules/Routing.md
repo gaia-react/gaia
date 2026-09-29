@@ -28,7 +28,7 @@ Routes are flat, dot-delimited files directly in `app/routes/`; there are no `+`
 
 Both `actions.*` and `resources.*` hold no-UI server-side form endpoints. Use `actions.*` for a route whose job is to mutate state and redirect; use `resources.*` for a route that also serves as a data/cookie endpoint a fetcher posts to without navigating.
 
-`app/routes/_session/` ships only a `README.md`. The folder holds no `route.*` or `index.*` module, so fs-routes skips it entirely; it isn't a route. To guard the group, add `app/routes/_session.tsx` with a loader that throws `redirect('/login')` when the user isn't authenticated, and add children as `app/routes/_session.<name>.tsx`; every route nested under it then inherits the guard. Choose any auth provider: Supabase, Clerk, Auth0, custom sessions. The README walks through the setup.
+`app/routes/_session/` ships only a `README.md`. The folder holds no `route.*` or `index.*` module, so fs-routes skips it entirely; it isn't a route. To guard the group, add a `_session.tsx` layout route to `app/routes/` with a loader that throws `redirect('/login')` when the user isn't authenticated, and add children as `app/routes/_session.<name>.tsx`; every route nested under it then inherits the guard. Choose any auth provider: Supabase, Clerk, Auth0, custom sessions. The README walks through the setup.
 
 `app/routes.ts` fails loudly at startup if a leftover `+`-suffixed folder still exists under `app/routes/`, naming the offending folder and pointing at the flat dot-delimited rename.
 
