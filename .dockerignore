@@ -7,5 +7,8 @@
 .env.*
 !.env.example
 build
+.react-router
+storybook-static
+coverage
 .gaia/local
 .claude/worktrees
