@@ -36,7 +36,7 @@ import {
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {resolveRepoRootFromImportMeta} from '../util/repo-root-fixture.js';
-import {parseExcludeLines} from './manifest.js';
+import {parseExcludeLines, resolveExcludePath} from './manifest.js';
 import {buildNeverPresentWorkflowSet} from './scrub.js';
 
 const REPO_ROOT = resolveRepoRootFromImportMeta(import.meta.url);
@@ -44,9 +44,13 @@ const REPO_ROOT = resolveRepoRootFromImportMeta(import.meta.url);
 const GAIA_PREFIX = 'GAIA: ';
 const DECLARED_EXCEPTION = '.github/workflows/code-review-audit.yml';
 const WORKFLOWS_DIR = '.github/workflows';
-const RELEASE_EXCLUDE_PATH = '.gaia/release-exclude';
 const WORKFLOW_TEMPLATES_DIR = '.gaia/cli/templates/workflows';
 const RELEASE_EXCLUDE_WORKFLOW_LINE = /^\.github\/workflows\/[^/]+\.yml$/;
+
+// Minimal workflow body for fixtures; `name` is written verbatim, so a caller
+// quotes it (or deliberately does not) exactly as it would appear on disk.
+const workflowYaml = (name: string, on = 'pull_request'): string =>
+  `name: ${name}\non: ${on}\njobs: {}\n`;
 
 const readWorkflowName = (absolutePath: string): unknown => {
   const parsed: unknown = parseYaml(readFileSync(absolutePath, 'utf8'));
@@ -150,7 +154,7 @@ const collectExceptionViolation = (root: string): string | undefined => {
   if (!existsSync(path.join(root, DECLARED_EXCEPTION))) return undefined;
 
   const excludeLines = parseExcludeLines(
-    readFileSync(path.join(root, RELEASE_EXCLUDE_PATH), 'utf8')
+    readFileSync(resolveExcludePath(root), 'utf8')
   );
   const templateAbsolute = path.join(
     root,
@@ -221,7 +225,7 @@ const setupFixture = (): Fixture => {
   mkdirSync(path.join(root, WORKFLOWS_DIR), {recursive: true});
   writeFileSync(
     path.join(root, WORKFLOW_TEMPLATES_DIR, 'code-review-audit.yml.tmpl'),
-    'name: Code Review Audit\non: pull_request\njobs: {}\n',
+    workflowYaml('Code Review Audit'),
     'utf8'
   );
 
@@ -233,11 +237,7 @@ const setupFixture = (): Fixture => {
     },
     root,
     writeReleaseExclude: (lines) => {
-      writeFileSync(
-        path.join(root, RELEASE_EXCLUDE_PATH),
-        `${lines.join('\n')}\n`,
-        'utf8'
-      );
+      writeFileSync(resolveExcludePath(root), `${lines.join('\n')}\n`, 'utf8');
     },
     writeWorkflow: (fileName, contents) => {
       writeFileSync(path.join(root, WORKFLOWS_DIR, fileName), contents, 'utf8');
@@ -245,22 +245,13 @@ const setupFixture = (): Fixture => {
   };
 
   fixture.writeReleaseExclude(BASE_RELEASE_EXCLUDE);
-  fixture.writeWorkflow(
-    'release.yml',
-    "name: 'GAIA: Release'\non: push\njobs: {}\n"
-  );
-  fixture.writeWorkflow(
-    'shell-lint.yml',
-    "name: 'GAIA: Shell Lint'\non: pull_request\njobs: {}\n"
-  );
+  fixture.writeWorkflow('release.yml', workflowYaml("'GAIA: Release'", 'push'));
+  fixture.writeWorkflow('shell-lint.yml', workflowYaml("'GAIA: Shell Lint'"));
   fixture.writeWorkflow(
     'code-review-audit.yml',
-    'name: Code Review Audit\non: pull_request\njobs: {}\n'
+    workflowYaml('Code Review Audit')
   );
-  fixture.writeWorkflow(
-    'tests.yml',
-    'name: Tests\non: pull_request\njobs: {}\n'
-  );
+  fixture.writeWorkflow('tests.yml', workflowYaml('Tests'));
 
   return fixture;
 };
@@ -278,10 +269,7 @@ describe('assertWorkflowPrefixInvariant', () => {
   });
 
   test('the live derive is not a short read', () => {
-    const excludeLines = readFileSync(
-      path.join(REPO_ROOT, RELEASE_EXCLUDE_PATH),
-      'utf8'
-    )
+    const excludeLines = readFileSync(resolveExcludePath(REPO_ROOT), 'utf8')
       .split('\n')
       .map((line) => line.trim())
       .filter((line) => RELEASE_EXCLUDE_WORKFLOW_LINE.test(line));
@@ -309,10 +297,7 @@ describe('assertWorkflowPrefixInvariant', () => {
 
   test('refuses an excluded workflow missing the prefix', () => {
     fixture = setupFixture();
-    fixture.writeWorkflow(
-      'shell-lint.yml',
-      'name: Shell Lint\non: pull_request\njobs: {}\n'
-    );
+    fixture.writeWorkflow('shell-lint.yml', workflowYaml('Shell Lint'));
     expect(() => assertWorkflowPrefixInvariant(fixture!.root)).toThrow(
       /\.github\/workflows\/shell-lint\.yml/
     );
@@ -320,10 +305,7 @@ describe('assertWorkflowPrefixInvariant', () => {
 
   test('refuses a shipped workflow carrying the prefix', () => {
     fixture = setupFixture();
-    fixture.writeWorkflow(
-      'tests.yml',
-      "name: 'GAIA: Tests'\non: pull_request\njobs: {}\n"
-    );
+    fixture.writeWorkflow('tests.yml', workflowYaml("'GAIA: Tests'"));
     expect(() => assertWorkflowPrefixInvariant(fixture!.root)).toThrow(
       /\.github\/workflows\/tests\.yml/
     );
@@ -333,7 +315,7 @@ describe('assertWorkflowPrefixInvariant', () => {
     fixture = setupFixture();
     fixture.writeWorkflow(
       'code-review-audit.yml',
-      "name: 'GAIA: Code Review Audit'\non: pull_request\njobs: {}\n"
+      workflowYaml("'GAIA: Code Review Audit'")
     );
     expect(() => assertWorkflowPrefixInvariant(fixture!.root)).toThrow(
       /declared exception/
@@ -342,10 +324,7 @@ describe('assertWorkflowPrefixInvariant', () => {
 
   test('refuses an unquoted prefix (YAML parse error)', () => {
     fixture = setupFixture();
-    fixture.writeWorkflow(
-      'release.yml',
-      'name: GAIA: Release\non: push\njobs: {}\n'
-    );
+    fixture.writeWorkflow('release.yml', workflowYaml('GAIA: Release', 'push'));
     expect(() => assertWorkflowPrefixInvariant(fixture!.root)).toThrow(
       /\.github\/workflows\/release\.yml/
     );
@@ -386,7 +365,7 @@ describe('assertWorkflowPrefixInvariant', () => {
     ]);
     fixture.writeWorkflow(
       'cli-advisory-scan.yml',
-      "name: 'GAIA: CLI Advisory Scan'\non: schedule\njobs: {}\n"
+      workflowYaml("'GAIA: CLI Advisory Scan'", 'schedule')
     );
     expect(() => assertWorkflowPrefixInvariant(fixture!.root)).not.toThrow();
   });
