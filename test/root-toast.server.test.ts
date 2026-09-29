@@ -11,7 +11,7 @@ import {loader} from '~/root';
 // is silent in the app: the root loader returns no toast and nothing throws.
 setToastCookieOptions({secrets: [env.SESSION_SECRET]});
 
-const cookiePair = (setCookie: string) => setCookie.split(';', 1)[0];
+const extractCookiePair = (setCookie: string) => setCookie.split(';', 1)[0];
 
 const runRootLoader = async (cookie?: string) => {
   const url = new URL('http://localhost/');
@@ -41,20 +41,20 @@ describe('root loader toast round trip', () => {
 
     expect(emitted).toBeDefined();
 
-    const first = await runRootLoader(cookiePair(emitted));
+    const first = await runRootLoader(extractCookiePair(emitted));
 
     expect(first.data.toast).toMatchObject({message: 'Saved', type: 'success'});
 
     // The flash is consumed by re-committing the session empty, not by
     // expiring the cookie, so the proof is a replay of what came back.
-    const toastCookieName = cookiePair(emitted).split('=', 1)[0];
+    const toastCookieName = extractCookiePair(emitted).split('=', 1)[0];
     const returned = new Headers(first.init?.headers)
       .getSetCookie()
       .find((setCookie) => setCookie.startsWith(`${toastCookieName}=`));
 
     expect(returned).toBeDefined();
 
-    const second = await runRootLoader(cookiePair(returned ?? ''));
+    const second = await runRootLoader(extractCookiePair(returned ?? ''));
 
     expect(second.data.toast).toBeUndefined();
   });
