@@ -172,10 +172,10 @@ jobs:
               # fires on some later, unrelated `.gaia/cli/**` change, reddening a
               # diff that did not cause it (#1510).
               - '.gaia/labels.json'
-              # src/release/workflow-prefix.test.ts (lands with the prefix
-              # invariant) reads every workflow's `name:` against the
-              # release-exclude derive, so a pull request that only adds or
-              # renames a workflow must re-run this job. Redundant with the
+              # src/release/workflow-prefix.test.ts reads every workflow's
+              # `name:` against the release-exclude derive, so a pull request
+              # that only adds or renames a workflow must re-run this job.
+              # Redundant with the
               # `.github/workflows/cli-tests.yml` and `code-review-audit.yml`
               # entries above for those two files specifically; listed anyway
               # so the whole directory is covered, not just those two.

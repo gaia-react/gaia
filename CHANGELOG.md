@@ -497,6 +497,7 @@ A release change that requires the adopter to act, run a command or hand-migrate
   - verify with `pnpm exec react-router routes --json` before and after and compare URLs; roll back with git, since the old `app/routes.ts` works only while `remix-flat-routes` stays installed
   - then `pnpm remove remix-flat-routes @react-router/remix-routes-option-adapter`
   (#2344)
+- The CI code-audit job now shows as `Code audit (frontend)` in a pull request's checks instead of `code-audit-frontend`. The merge gate is still the `GAIA-Audit` status, so nothing changes unless you registered the old job name as a required check, which `/setup-gaia` never does; if you did, require `GAIA-Audit` instead. (#2356)
 
 ### Removed
 
@@ -527,7 +528,6 @@ A release change that requires the adopter to act, run a command or hand-migrate
 - `.claude/hooks/block-vitest-globals-tsconfig.sh`, the hook that refused adding `vitest/globals` to a `tsconfig.json`. It enforced a type-only style choice that `globals: true` in `vitest.config.ts` already relaxes at runtime; explicit `import {describe, expect, test} from 'vitest'` in each test file stays the convention (#2292)
   - **Action required:** if a `block-vitest-globals-tsconfig.sh` registration survives in your `.claude/settings.json` after updating (possible when you have customized its hooks block), delete that entry; otherwise the missing script prints a non-blocking hook error on every edit
 - `gaia setup link-worktree`, a TypeScript copy of `.gaia/scripts/link-worktree.sh` that lays the same shared-state symlinks in a linked worktree. The `provision-worktree.sh` hook already runs the script on every worktree entry, so two implementations of one contract had to be kept in step by hand. To repair a worktree's links by hand, run `bash .gaia/scripts/link-worktree.sh` from inside it; `/setup-gaia` now does the same (#2295)
-- The CI code-audit job now shows as `Code audit (frontend)` in a pull request's checks instead of `code-audit-frontend`. The merge gate is still the `GAIA-Audit` status, so nothing changes unless you registered the old job name as a required check, which `/setup-gaia` never does; if you did, require `GAIA-Audit` instead.
 
 ### Fixed
 

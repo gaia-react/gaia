@@ -1,19 +1,19 @@
 /**
  * `GAIA: ` prefix invariant over `.github/workflows/*.yml`.
  *
- * Phase 1 of the workflow-naming plan gave every maintainer-only workflow
- * (one an adopter clone never receives) a `GAIA: ` prefix on its workflow
- * `name:`, so the prefix reads as "this workflow does not exist on an
- * adopter's machine" at a glance. Without a check that is decoration: a new
- * maintainer-only workflow can land unprefixed, or a shipped workflow can
- * gain the prefix by copy-paste, and nothing notices.
+ * Every maintainer-only workflow (one an adopter clone never receives)
+ * carries a `GAIA: ` prefix on its workflow `name:`, so the prefix reads as
+ * "this workflow does not exist on an adopter's machine" at a glance.
+ * Without a check that is decoration: a new maintainer-only workflow can land
+ * unprefixed, or a shipped workflow can gain the prefix by copy-paste, and
+ * nothing notices.
  *
  * The authoritative set of "release-excluded workflows an adopter never has"
  * already exists: `buildNeverPresentWorkflowSet` reads `.gaia/release-exclude`
  * and drops any workflow that has a render template under
  * `.gaia/cli/templates/workflows/`, because adopters receive those rendered
  * from the template rather than never at all. `code-review-audit.yml` is the
- * one such workflow today, and it is the plan's declared exception: it stays
+ * one such workflow today, and it is the declared exception: it stays
  * `name: Code Review Audit`, unprefixed, on purpose.
  *
  * The invariant: the set of workflows whose `name:` starts with `GAIA: `
