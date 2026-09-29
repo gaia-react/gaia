@@ -221,8 +221,9 @@ jobs:
           # decides what runs (Dockerfile, .npmrc, .nvmrc, ...). A path that
           # member owns but this step misses reads has_source=false and gets
           # the out-of-scope success carrying that member's digest, so the two
-          # lists must agree; .github/audit/tests/ci-source-scope-parity.bats
-          # holds them together. PRs whose UN-AUDITED DELTA
+          # lists must agree, and they are kept in step by hand: widening that
+          # roster entry means widening dir_pattern / file_pattern here too.
+          # PRs whose UN-AUDITED DELTA
           # (<audit-base>...HEAD) only touches wiki/, .claude/, .specify/,
           # prose docs, or .gaia/ metadata are skipped; the agent has no rules
           # that would meaningfully apply. The base is the last clean-audited

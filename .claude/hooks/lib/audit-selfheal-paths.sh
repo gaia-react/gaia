@@ -76,7 +76,7 @@
 #
 # The BUILD-CONFIG half of this ERE is the workflow's own `has_source` file
 # pattern (code-review-audit.yml's "Check for source-code changes" step),
-# reused verbatim, so the two sets can never drift apart. It is the
+# copied verbatim by hand; edit the two together. It is the
 # `package.json` / lockfile / workspace, `tsconfig*.json`, and root
 # `*.config.*` alternatives below, plus the root-tooling alternative after
 # them. Naming them rather than their positions is what survives an arm being

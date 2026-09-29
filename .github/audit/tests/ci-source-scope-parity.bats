@@ -19,7 +19,9 @@
 # hand-kept in step and this suite is what holds them there: it derives one
 # concrete path from EVERY glob the roster grants `code-audit-frontend`, drives
 # the REAL step body extracted from the workflow YAML against a sandbox commit
-# touching that path, and asserts `has_source=true`.
+# touching that path, and asserts `has_source=true`. A second test holds the
+# self-heal refusal set, which copies the step's root-level file list by hand,
+# to the same roster entry.
 #
 # Assertion style per .claude/rules/bats-assertions.md.
 
@@ -139,5 +141,30 @@ has_source_for() {
     fi
   done < <(frontend_globs)
   [ "$seen" -ge 20 ]
+  [ "$fail" -eq 0 ]
+}
+
+# The self-heal refusal set (.claude/hooks/lib/audit-selfheal-paths.sh) copies
+# the step's root-level file alternatives by hand. The frontend member is the
+# roster's only push_fixes one, so a root file the roster grants it and the
+# refusal set omits is a gate-deciding file that member may rewrite in its own
+# self-heal commit. Directory globs are out of this check's scope: `app/**` is
+# that member's own repair surface and is refused only in part, by design.
+@test "parity: every root-level file the roster grants code-audit-frontend is in the self-heal refusal set" {
+  # shellcheck source=/dev/null
+  . "$REPO_ROOT/.claude/hooks/lib/audit-selfheal-paths.sh"
+  [ -n "$AUDIT_SELFHEAL_REFUSE_ERE" ]
+  fail=0
+  seen=0
+  while IFS= read -r glob; do
+    case "$glob" in */*|'') continue ;; esac
+    seen=$((seen + 1))
+    path="$(concrete_path "$glob")"
+    if ! printf '%s\n' "$path" | grep -qE "$AUDIT_SELFHEAL_REFUSE_ERE"; then
+      echo "REFUSAL DRIFT: roster root glob '$glob' (probe path '$path') is not in AUDIT_SELFHEAL_REFUSE_ERE" >&2
+      fail=$((fail + 1))
+    fi
+  done < <(frontend_globs)
+  [ "$seen" -ge 10 ]
   [ "$fail" -eq 0 ]
 }
