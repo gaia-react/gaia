@@ -42,6 +42,6 @@ Or read the raw suite by hand, without the gate:
 ## CI
 
 `meter-gate.sh` runs as the whole of the `concurrency` leg of the sharded
-`Audit CI Tests` workflow (`.github/workflows/audit-ci-tests.yml`), one of
+`GAIA: Audit CI Tests` workflow (`.github/workflows/audit-ci-tests.yml`), one of
 the matrix legs the aggregator job waits on before it reports the required
 context.

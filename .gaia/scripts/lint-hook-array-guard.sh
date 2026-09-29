@@ -15,7 +15,7 @@
 # and the filter misses reports green having run this assertion zero times,
 # which is the failure this gate exists to prevent, one level up. Adding a root
 # to the scan below is therefore always two edits, here and in that filter.
-# `Shell Lint` runs the same scan a second way, on any tracked *.sh, through
+# `GAIA: Shell Lint` runs the same scan a second way, on any tracked *.sh, through
 # .gaia/tests/shell-lint.sh; it is advisory rather than required, so it reports
 # a regression without blocking the merge. Also runnable directly:
 # `bats .gaia/scripts/tests/lint-hook-array-guard.bats`.

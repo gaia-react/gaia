@@ -869,7 +869,7 @@ assert_paths_filter_pin_matches() {
 @test "W1 adversarial: two jobs carrying the same name is caught" {
   require_yaml_parser
   local doctored="$BATS_TEST_TMPDIR/w1b.yml"
-  replace_line "$WORKFLOW" '    name: shard ${{ matrix.shard }}' "    name: Audit CI Tests" "$doctored"
+  replace_line "$WORKFLOW" '    name: Shard (${{ matrix.shard }})' "    name: Audit CI Tests" "$doctored"
 
   [ "$(grep -c '^    name: Audit CI Tests$' "$doctored")" -eq 2 ] || {
     echo "doctoring did not produce two matching name: lines" >&2

@@ -1,4 +1,4 @@
-name: Shell Lint
+name: 'GAIA: Shell Lint'
 
 # Runs shellcheck over every tracked *.sh and *.bats in the repo via
 # .gaia/tests/shell-lint.sh (per-type severity floor: *.sh at style, *.bats at
@@ -46,7 +46,7 @@ permissions: {}
 
 jobs:
   shell-lint:
-    name: shellcheck (tracked *.sh + *.bats)
+    name: Shellcheck (tracked *.sh + *.bats) (advisory)
     runs-on: ubuntu-latest
     # A checkout, one pinned-tarball download, and a whole-tree shellcheck run.
     # Ten minutes is a wide margin for an ordinary run, wider than it looks
@@ -217,7 +217,7 @@ jobs:
         run: bash .gaia/tests/shell-lint.sh
 
   bash32-parse:
-    name: bash-3.2 parse (stock macOS /bin/bash)
+    name: Bash-3.2 parse (stock macOS /bin/bash) (advisory)
     runs-on: macos-latest
     # A checkout and a `bash -n` sweep of the tracked *.sh set, seconds of work.
     # Ten minutes matches the sibling job above for the same reason: without a

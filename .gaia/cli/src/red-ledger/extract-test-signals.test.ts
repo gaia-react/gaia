@@ -17,7 +17,7 @@ const SIGNAL_HELPER = path.join(
 );
 
 // The helper resolves `typescript` by walking up from its own location to the
-// repo-root node_modules. The CLI Tests CI job installs deps only in
+// repo-root node_modules. The GAIA: CLI Tests workflow installs deps only in
 // `.gaia/cli`, so typescript lives there, not at the (uninstalled) repo root.
 // Expose `.gaia/cli/node_modules` via NODE_PATH so the exec'd script resolves
 // typescript whether or not the repo root is installed.

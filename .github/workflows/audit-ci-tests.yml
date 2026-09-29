@@ -1,4 +1,4 @@
-name: Audit CI Tests
+name: 'GAIA: Audit CI Tests'
 
 # Runs the bats suites for the .github/audit/ helpers,
 # resolve-audit-base.sh (code-review-audit.yml's incremental review base) and
@@ -54,7 +54,7 @@ jobs:
   # shard from cancelling its siblings without also cancelling the check
   # itself.
   shards:
-    name: shard ${{ matrix.shard }}
+    name: Shard (${{ matrix.shard }})
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     # 13 minutes is sized to the heaviest leg, `concurrency`: it runs the two
@@ -330,7 +330,7 @@ jobs:
               # of it that no glob names -- reintroducing the bash-3.2
               # empty-array class the gate exists to catch -- would report
               # `code=false`, skip every bats step, and green this required
-              # check having run that assertion zero times. `Shell Lint` runs
+              # check having run that assertion zero times. `GAIA: Shell Lint` runs
               # the same scan on any tracked *.sh, but it is advisory rather
               # than a declared-required context, so it reports such a
               # regression without blocking the merge.

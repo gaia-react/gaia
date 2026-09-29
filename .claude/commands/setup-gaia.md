@@ -1044,7 +1044,7 @@ No cron tools are configured for CI mode in .gaia/automation.json. The code-revi
 
 ### Register GAIA-Audit as the required check
 
-The audit gate is the `GAIA-Audit` COMMIT STATUS, not the `code-audit-frontend` job name. The audit job reaches a green terminal step on every path (including a local-mode stand-down where no audit ran), so requiring the job name would let an unaudited PR merge through the github.com button. Only the `GAIA-Audit` status is the gate, and the resolver honors `default_mode: local` only when this registration is confirmed present.
+The audit gate is the `GAIA-Audit` COMMIT STATUS, not the `Code audit (frontend)` job name. The audit job reaches a green terminal step on every path (including a local-mode stand-down where no audit ran), so requiring the job name would let an unaudited PR merge through the github.com button. Only the `GAIA-Audit` status is the gate, and the resolver honors `default_mode: local` only when this registration is confirmed present.
 
 Register **after** the default-branch protection rule exists (Phase 3), so the `required_status_checks` PUT returns 2xx, not 404. **GET the current contexts, union `GAIA-Audit` into them, then PUT the union**. A static PUT REPLACES the array and would drop sibling contexts (e.g. `Tests`, `Chromatic`), letting unaudited code merge:
 

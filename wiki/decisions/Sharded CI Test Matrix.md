@@ -10,7 +10,7 @@ tags: [decision, ci, performance, github-actions, bats]
 
 # Decision: Sharded CI Test Matrix
 
-`Audit CI Tests` is the whole pull-request critical path. It runs as a fan-out matrix of twelve legs plus a thin aggregator that carries the declared-required check name, because the bats work saturates a single runner's cores and the remaining lever is more runners.
+The `GAIA: Audit CI Tests` workflow is the whole pull-request critical path. It runs as a fan-out matrix of twelve legs plus a thin aggregator that carries the declared-required check name, because the bats work saturates a single runner's cores and the remaining lever is more runners.
 
 ## Shape
 

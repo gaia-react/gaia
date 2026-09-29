@@ -1,4 +1,4 @@
-name: Release
+name: 'GAIA: Release'
 
 on:
   push:
@@ -13,7 +13,7 @@ permissions: {}
 
 jobs:
   release:
-    name: Publish GitHub Release
+    name: Publish GitHub release
     runs-on: ubuntu-latest
     # `gh release create` in the last step publishes the release and uploads
     # the tarball; nothing else here writes.
