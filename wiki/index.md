@@ -124,8 +124,8 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Determinism Classifier]]: per-file AST signal labelling a source file strict (RED-gated) or emergent (advisory audit); versioned DOM-API allowlist, file-granular.
 - [[Worthiness Audit]]: advisory two-axis (honesty + worthiness) review of emergent-surface tests; fresh-context reviewer proposes keep/fix/delete, deletes human-gated, audit ledger sibling to the RED ledger; judge-independent structural a11y floor for the non-triviality signal; two-tier end-of-task surfacing.
 - [[Worthiness Presence Gate]]: merge-time `gh pr merge` hook requiring each changed emergent test to carry a worthiness-ledger line matching its current content; presence + signal match only (never the verdict), scoped to the PR's changed emergent tests, fail-open.
-- [[Dependabot Security Updates]]: `/setup-gaia` opt-in that merges a grouped, security-updates-only npm entry into `.github/dependabot.yml` and turns on the repository's alert/security-update settings.
 <!-- gaia:maintainer-only:start -->
+- [[Dependabot Security Updates]]: `/setup-gaia` opt-in that merges a grouped, security-updates-only npm entry into `.github/dependabot.yml` and turns on the repository's alert/security-update settings.
 - [[Bundle-time Scrub]]: marker-strip + leak-check + runtime-deps; closes the audit-round loop with build-time enforcement.
 <!-- gaia:maintainer-only:end -->
 
