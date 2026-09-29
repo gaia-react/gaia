@@ -34,7 +34,7 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 | `audit-member-digest.sh` | yes | CI, audit hooks, agent definitions | Prints one Code Audit Team member's content digest, and exits non-zero printing nothing on any condition it cannot resolve. |
 | `audit-noop-detect.sh` | yes | `.claude/rules/subagent-dispatch.md`, the audit fan-out surfaces | Decides whether a dispatched agent's report artifact is a real result or a silent no-op. |
 | `audit-resolve-scope.sh` | yes | every Code Audit Team agent definition | Resolves a member's review scope in one command: diff bases, changed-file lists, the dirty-in-scope check, and the scope digest. |
-| `audit-scope-digest.sh` | yes | agent definitions, CI | Carries a member's own content digest between scope resolution and clearance write, the two Bash calls that must agree. |
+| `audit-scope-digest.sh` | yes | agent definitions, CI | Carries a member's own content digest between scope resolution and clearance write, the two Bash calls that must agree. `--release` drops a capture when a round ends without publishing a marker or refusal (a self-healed round), so the next round captures fresh. |
 | `audit-window-lib.sh` | yes | sourced | Shared derivation of the audit window a run is accounted against. |
 | `audit-write-clearance.sh` | yes | agent definitions, CI | The one writer for every Code Audit Team clearance marker. |
 | `audit-write-findings.sh` | yes | agent definitions | The one writer for a member's findings sidecar, the report of record the merge workflow reads. |

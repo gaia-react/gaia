@@ -11,6 +11,25 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-09-29 a4dc2b7 WORTHY - workflow naming standardized; Workflow Naming Convention ADR added in-PR
+- 2026-09-29 ebb3477 WORTHY - audit-scope-digest --release for self-healed rounds → wiki/concepts/GAIA Scripts.md
+- 2026-09-29 499e46d SKIP - test: test-only change
+- 2026-09-29 e034cea WORTHY - scaffold route loader i18n gate → wiki/modules/CLI Scaffolding.md
+- 2026-09-29 1a90fe9 SKIP - test: test-only change
+- 2026-09-29 54c27b1 WORTHY - fs-routes route discovery; wiki updated in-PR (Routing, fs-routes)
+- 2026-09-29 0235db2 WORTHY - .dockerignore added → wiki/decisions/pnpm.md
+- 2026-09-29 2aa436f SKIP - test: test-only change
+- 2026-09-29 b427998 WORTHY - audit scope gate aligned with frontend roster; Code Review Audit CI updated in-PR
+- 2026-09-29 a32d0c5 SKIP - docs: prose-only
+- 2026-09-29 dad1abe WORTHY - per-nudge sizing in statusline; wiki updated in-PR
+- 2026-09-29 6d1d0d5 WORTHY - CLI fast-uri floor bump; dev-only transitive, no page change
+- 2026-09-29 e694dbf WORTHY - docker runtime resolves pnpm at build time; wiki/decisions/pnpm.md
+- 2026-09-29 9607b60 WORTHY - docker selective-copy stages need pnpm-workspace.yaml; covered in wiki/decisions/pnpm.md
+- 2026-09-29 6a4c35f WORTHY - pnpm 12.7 and 3-day release age; wiki/decisions/pnpm.md updated in-PR
+- 2026-09-29 b260fa6 WORTHY - statusline nudge width tiers; wiki updated in-PR (Claude Skills, Claude Integration)
+- 2026-09-29 74b3b83 SKIP - wiki: self-referential
+- 2026-09-29 3adc8e4 SKIP - wiki: self-referential
+- 2026-09-29 924986c SKIP - wiki: self-referential
 - 2026-09-29 cf5188e SKIP - wiki pages updated in the commit itself
 - 2026-09-29 a74d8c1 SKIP - CI rename-diff fix, no wiki page describes it
 - 2026-09-29 81141d2 SKIP - wiki pages and ADR added in the commit itself
