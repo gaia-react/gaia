@@ -8,27 +8,28 @@
 # prefix. Keep this file in step with the .gitignore files.
 .git
 **/node_modules
-.env
-.env.*
-!.env.example
+**/.env
+**/.env.*
+!**/.env.example
 
 # react-router
 .cache
 build
 public/build
-.react-router
+**/.react-router
 
 # Editors and OS
-.idea
-.vscode
+**/.idea
+**/.vscode
 **/.DS_Store
 
 # Logs and tool caches
-logs
+**/logs
 **/*.log
-.npm
-.eslintcache
-.jest-cache
+**/npm-debug.log*
+**/.npm
+**/.eslintcache
+**/.jest-cache
 **/__pycache__
 **/*.pyc
 
@@ -36,8 +37,8 @@ logs
 playwright
 .playwright/.cache
 .playwright/output
-.playwright-cli
-coverage
+**/.playwright-cli
+**/coverage
 storybook-static
 
 # Per-machine Claude and GAIA state
@@ -46,16 +47,16 @@ storybook-static
 .claude/scheduled_tasks.lock
 .claude/settings.local.json
 .claude/skills/react-doctor
-.claude-pr
+**/.claude-pr
 .claude/wiki-drift-checked
 .claude/wiki-safety-checked
 .claude/wiki-recompact-pending
 .gaia/local
 .gaia/local.bak.*
 .gaia/statusline/.use-vendored-base
-.gaia-backup
-.gaia-merge
-.bats-shards-scratch.*
+**/.gaia-backup
+**/.gaia-merge
+**/.bats-shards-scratch.*
 .husky/_
 .serena/cache
 .serena/project.local.yml
