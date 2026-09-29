@@ -11,7 +11,7 @@
 # step reads as out of scope merges with no member having read it.
 #
 # WHY THIS SUITE EXISTS. The ownerless-path triage granted `.playwright/**` and
-# seven root tooling files (Dockerfile, .npmrc, ...) to `code-audit-frontend` in
+# the root tooling files (Dockerfile, .npmrc, ...) to `code-audit-frontend` in
 # .gaia/audit-ci.yml without widening the step's patterns, and PR #2334 (a
 # Dockerfile change) received an out-of-scope success for a diff the resolver
 # said the frontend member owed. The step stays a workflow-local grep pair

@@ -84,21 +84,23 @@ auditors:
       # which this member already owns. It dispatched nobody until now.
       - ".playwright/**"
       # Root tooling that decides what runs: the registry and install policy,
-      # what the pre-commit gate formats and lints, what the image builds, the
-      # environment contract, and the Node version CI and local must agree on.
-      # Editor preferences, VCS bookkeeping, the licence and the root prose are
-      # deliberately NOT here; they are declared in `unowned:` instead.
+      # what the pre-commit gate formats and lints, what the image builds and
+      # the build context it sees, the environment contract, and the Node
+      # version CI and local must agree on. Editor preferences, VCS
+      # bookkeeping, the licence and the root prose are deliberately NOT here;
+      # they are declared in `unowned:` instead.
       #
       # REVIEWED here, REPAIRED nowhere. This member is the roster's only
       # `push_fixes: true` one, so granting it a path that decides what the
       # gates check would let it rewrite the gate in the same self-heal commit
-      # as its repair. All seven are therefore also in the self-heal refusal set
+      # as its repair. Every one is therefore also in the self-heal refusal set
       # (`.claude/hooks/lib/audit-selfheal-paths.sh`), matching every sibling
       # root config this member owns; the grant buys review, not write access.
       - ".npmrc"
       - ".lintstagedrc.json"
       - ".prettierignore"
       - "Dockerfile"
+      - ".dockerignore"
       - ".env.example"
       - ".nvmrc"
       - ".node-version"
