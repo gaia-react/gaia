@@ -22,6 +22,11 @@ export const runAxe = async (
 ): Promise<AxeResults> => {
   assertJsdomEnvironment();
 
+  // axe-core probes a 2D canvas context, which jsdom does not implement: it
+  // returns nothing and prints a warning straight to stderr, past onConsoleLog.
+  // null is the spec's "context unavailable", which axe already handles.
+  HTMLCanvasElement.prototype.getContext = () => null;
+
   // Omit options when undefined; axe.run treats trailing undefined as callback mode.
   return options === undefined ?
       axeCore.run(container)
