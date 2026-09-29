@@ -1,0 +1,11 @@
+# Keeps the Docker build context to what the image builds from. The Dockerfile's
+# `COPY . /app` stages would otherwise pull in local environment files, git
+# history, and host-platform node_modules; the image installs its own.
+**/node_modules
+.git
+.env
+.env.*
+!.env.example
+build
+.gaia/local
+.claude/worktrees
