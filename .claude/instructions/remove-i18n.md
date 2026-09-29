@@ -295,7 +295,7 @@ For each caller, drop the import and replace any usage with the literal `'en'`.
 
 ### D4. `.playwright/e2e/route-status.spec.ts` and `app/action-paths.ts`
 
-Delete the `'set-language action is not a 404, whatever the language count'` test (the one that POSTs to `ACTION_PATHS.setLanguage`) from `.playwright/e2e/route-status.spec.ts`, leaving the page-status and theme-toggle tests.
+Delete the `'set-language action redirects and sets the language cookie'` test (the one that POSTs to `ACTION_PATHS.setLanguage`) from `.playwright/e2e/route-status.spec.ts`, leaving the page-status and theme-toggle tests.
 
 Remove the `setLanguage` key from `ACTION_PATHS` in `app/action-paths.ts`:
 
