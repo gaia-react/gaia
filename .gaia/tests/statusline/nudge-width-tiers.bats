@@ -3,8 +3,10 @@
 # The statusline's right side is a task queue that fits itself to COLUMNS.
 # Each nudge sizes independently through Large, Medium, Small, icon, then a
 # trailing `+N`: the lowest-priority nudge still at its current size shrinks
-# first, so a higher-priority nudge is never smaller than a lower-priority
-# one. This suite pins the exact boundaries and the priority order
+# first, so a higher-priority nudge is never at a later size step than a
+# lower-priority one (a nudge with no Medium form, such as /gaia-audit,
+# shows its Small text at that step). This suite pins the exact boundaries
+# and the priority order
 # (update-gaia, serena-sync, update-deps, audit, harden, debt, residue)
 # against exact widths, so a regression in the arithmetic reds here rather
 # than silently shifting a boundary.
@@ -254,6 +256,29 @@ JSON
   [ "$plain" = "$expected" ]
 
   run env HOME="$TMP_HOME" LC_ALL=C.UTF-8 COLUMNS=298 bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
+  [ "$status" -eq 0 ]
+  plain=$(printf '%s' "$output" | sed 's/\x1b\[[0-9;]*m//g')
+  case "$plain" in
+    *"Run /gaia-debt (1 issue)  Run /gaia-residue (15)") ;;
+    *) return 1 ;;
+  esac
+}
+
+@test "an emoji in the left side is measured as two columns, not one" {
+  mkdir -p "$TMP_HOME/.claude"
+  cat > "$TMP_HOME/.claude/settings.json" <<'JSON'
+{"statusLine": {"command": "printf '🚀'"}}
+JSON
+  local json
+  json=$(jq -n --arg d "$MAIN" '{workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
+
+  run env HOME="$TMP_HOME" LC_ALL=C.UTF-8 COLUMNS=291 bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
+  [ "$status" -eq 0 ]
+  plain=$(printf '%s' "$output" | sed 's/\x1b\[[0-9;]*m//g')
+  expected="🚀  Run /update-gaia (GAIA 9.9.9 available)  Run /gaia-serena-sync (Serena missing: go, rust)  Run /update-deps (28 outdated)  Run /gaia-audit (34 days since review)  Run /gaia-harden (1 new pattern, dangling-reference rising)  Run /gaia-debt (1 issue)  Run /gaia-residue (15 aged residuals)"
+  [ "$plain" = "$expected" ]
+
+  run env HOME="$TMP_HOME" LC_ALL=C.UTF-8 COLUMNS=290 bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
   [ "$status" -eq 0 ]
   plain=$(printf '%s' "$output" | sed 's/\x1b\[[0-9;]*m//g')
   case "$plain" in

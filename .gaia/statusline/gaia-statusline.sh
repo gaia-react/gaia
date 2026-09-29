@@ -6,7 +6,9 @@
 # TTL-cached refresher and fitted to COLUMNS. Each nudge has its own Large,
 # Medium and Small form, then an icon, then a `+N` for however many still do
 # not fit; the lowest-priority nudge still at its current size shrinks first,
-# so a higher-priority nudge is never smaller than a lower-priority one.
+# so a higher-priority nudge is never at a later size step than a
+# lower-priority one (a nudge with no Medium form, such as /gaia-audit,
+# shows its Small text at that step).
 #
 # Left-side resolution (first match wins):
 #   1. User has `statusLine.command` in `~/.claude/settings.json` → run that
@@ -78,13 +80,13 @@ fi
 # characters, even under a UTF-8 locale where BSD awk otherwise miscounts a
 # multi-byte glyph as more than one column and gawk raises an invalid-range
 # error on the byte-range gsub below. Deleting every UTF-8 continuation byte
-# (`\200`-`\277`) first leaves exactly one byte per character, so the byte
-# count IS the character count. Known limit: a wide glyph (emoji, CJK)
-# counts one column but renders two, so a left side containing one
-# under-measures by one per glyph; the pad floor absorbs small errors.
+# (`\200`-`\277`) first leaves exactly one byte per character; a 4-byte lead
+# byte (`\360`-`\364`, emoji and other astral-plane glyphs) is counted a
+# second time (`w`) to match its 2-column render. Known limit: a 3-byte
+# glyph (CJK) still counts one column but renders two.
 measure_left() {
   cols="${COLUMNS:-120}"
-  left_visible=$(printf '%b' "$left" | sed 's/\x1b\[[0-9;]*m//g' | LC_ALL=C awk '{gsub(/[\200-\277]/, ""); n = length} END {print n+0}')
+  left_visible=$(printf '%b' "$left" | sed 's/\x1b\[[0-9;]*m//g' | LC_ALL=C awk '{w = gsub(/[\360-\364]/, "&"); gsub(/[\200-\277]/, ""); n = length + w} END {print n+0}')
   case "$left_visible" in
     ''|*[!0-9]*) left_visible=0 ;;
   esac
