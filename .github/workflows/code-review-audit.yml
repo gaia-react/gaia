@@ -230,7 +230,10 @@ jobs:
           # the audit entirely. The `tr` stays inside the substitution because
           # `$(...)` discards NUL bytes, and the subshell sets pipefail so a git
           # failure still aborts under `set -e` as it did before the pipe.
-          changed=$(set -o pipefail; git diff --name-only -z "${AUDIT_BASE}...HEAD" | tr '\0' '\n')
+          # --no-renames, so a file moved out of an in-scope directory lists
+          # its old path too: rename detection reports only the new path, and
+          # the move would read as has_source=false and skip the audit.
+          changed=$(set -o pipefail; git diff --name-only -z --no-renames "${AUDIT_BASE}...HEAD" | tr '\0' '\n')
           dir_pattern='^(app|test|\.storybook|\.github/workflows)/'
           file_pattern='^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$|^tsconfig[^/]*\.json$|^[^/]*\.config\.(ts|mts|mjs|cjs|js)$'
           if printf '%s\n' "$changed" | grep -qE "${dir_pattern}|${file_pattern}"; then
