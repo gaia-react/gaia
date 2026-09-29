@@ -2,8 +2,10 @@
 # GAIA project-scoped statusline.
 #
 # Reads JSON from stdin (Claude Code convention), prints a single line.
-# Left side is delegated; right side is the GAIA addons (outdated packages,
-# GAIA release available) read from the TTL-cached refresher.
+# Left side is delegated; right side is the GAIA nudges, read from the
+# TTL-cached refresher and fitted to COLUMNS: full reasons first, then bare
+# command names, then the lowest-priority nudges collapsed to an icon and
+# count, then a `+N` for however many still do not fit.
 #
 # Left-side resolution (first match wins):
 #   1. User has `statusLine.command` in `~/.claude/settings.json` → run that
@@ -64,6 +66,20 @@ fi
 
 [ -z "$left" ] && left="Claude Code"
 
+# Sets cols and left_visible; called only where a right side is about to be
+# composed (the setup-gaia branch and the nudges-present branch), so a render
+# with no right side pays no pipeline for it. Compose reads the values these
+# leave behind. `awk`'s END block reports the LAST line's length (the row the
+# right side actually joins) rather than one number per line, and `n+0`
+# forces a plain digit even on empty input.
+measure_left() {
+  cols="${COLUMNS:-120}"
+  left_visible=$(printf '%b' "$left" | sed 's/\x1b\[[0-9;]*m//g' | awk '{n=length} END{print n+0}')
+  case "$left_visible" in
+    ''|*[!0-9]*) left_visible=0 ;;
+  esac
+}
+
 # ---------- Where this session's state lives ----------
 # Every path below is anchored on the MAIN checkout, resolved from the
 # SESSION's directory (carried on the StatusLine payload) through the one
@@ -119,6 +135,7 @@ DEBT_REFRESH_SCRIPT="$STATE_ROOT/.gaia/scripts/debt-count-refresh.sh"
 # /gaia-init finishes (which deletes that file). Suppress all right-side
 # indicators during that window.
 right=""
+right_width=0
 mid_init=0
 if [ -f "$STATE_ROOT/.claude/commands/gaia-init.md" ]; then
   mid_init=1
@@ -166,17 +183,35 @@ else
   fi
 
   if [ "$setup_complete" != "true" ]; then
-    right="$(printf '\033[01;35mRun /setup-gaia (Required)\033[00m')"
+    measure_left
+    setup_text='Run /setup-gaia (Required)'
+    right=$'\033[01;35m'"$setup_text"$'\033[00m'
+    right_width=${#setup_text}
   elif [ "$IS_WORKTREE" = "true" ]; then
     : # linked worktree, setup complete: the rest is a main-checkout task
       # queue, nothing to build; right stays empty and falls through to the
       # left-side-only path below.
   else
-    # Declare the segment array once for the whole setup-complete path. The
-    # update-check-derived segments stay gated on $CACHE_FILE; the debt
-    # segment is gated independently on $DEBT_CACHE, so it still renders when
-    # update-check.json is absent. The join runs once after both blocks.
-    segments=()
+    # Nudge slots, indexed by render priority rather than by where each one
+    # is armed below: update-gaia 0, gaia-serena-sync 1, update-deps 2,
+    # gaia-audit 3, gaia-harden 4, gaia-debt 5, gaia-residue 6. The
+    # update-check-derived nudges stay gated on $CACHE_FILE; the debt nudge is
+    # gated independently on $DEBT_CACHE so it still renders when
+    # update-check.json is absent, which is why debt (5) is armed after
+    # residue (6) in source order but renders before it. The width-tiered
+    # renderer below reads every slot once both blocks have run.
+    nudge_color=()
+    nudge_short=()
+    nudge_full=()
+    nudge_icon=()
+    nudge_count=()
+    nudge_set() {
+      nudge_color[$1]="$2"
+      nudge_short[$1]="$3"
+      nudge_full[$1]="$4"
+      nudge_icon[$1]="$5"
+      nudge_count[$1]="$6"
+    }
     if [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
       outdated_count=$(jq -r '.outdatedCount // 0' "$CACHE_FILE" 2>/dev/null)
       gaia_has_update=$(jq -r '.gaiaHasUpdate // false' "$CACHE_FILE" 2>/dev/null)
@@ -196,10 +231,12 @@ else
       serena_drift=$(jq -r '(.serenaLangDrift // []) | join(", ")' "$CACHE_FILE" 2>/dev/null)
 
       if [ "$gaia_has_update" = "true" ] && [ -n "$gaia_latest" ]; then
-        segments+=("$(printf '\033[01;36mRun /update-gaia (GAIA %s available)\033[00m' "$gaia_latest")")
+        printf -v full 'Run /update-gaia (GAIA %s available)' "$gaia_latest"
+        nudge_set 0 '01;36' 'Run /update-gaia' "$full" '🌍' ''
       fi
       if [ -n "$outdated_count" ] && [ "$outdated_count" -gt 0 ] 2>/dev/null; then
-        segments+=("$(printf '\033[01;33mRun /update-deps (%d outdated)\033[00m' "$outdated_count")")
+        printf -v full 'Run /update-deps (%d outdated)' "$outdated_count"
+        nudge_set 2 '01;33' 'Run /update-deps' "$full" '📦' "$outdated_count"
       fi
       # Both signals are discharged by the same bare `/gaia-harden` run, and no
       # argument selects between them, so they stack into one segment's reason
@@ -212,7 +249,8 @@ else
       # upgrade-window seed does.
       if [ "$has_harden_reason" = "1" ]; then
         if [ -n "$harden_reason" ]; then
-          segments+=("$(printf '\033[01;35mRun /gaia-harden (%s)\033[00m' "$harden_reason")")
+          printf -v full 'Run /gaia-harden (%s)' "$harden_reason"
+          nudge_set 4 '01;35' 'Run /gaia-harden' "$full" '🔨' ''
         fi
       else
         harden_count=$(jq -r '.hardenCandidateCount // 0' "$CACHE_FILE" 2>/dev/null)
@@ -228,18 +266,21 @@ else
           fallback_reason=$(printf '%s%d unclassified' "$fallback_reason" "$harden_unclassified")
         fi
         if [ -n "$fallback_reason" ]; then
-          segments+=("$(printf '\033[01;35mRun /gaia-harden (%s)\033[00m' "$fallback_reason")")
+          printf -v full 'Run /gaia-harden (%s)' "$fallback_reason"
+          nudge_set 4 '01;35' 'Run /gaia-harden' "$full" '🔨' ''
         fi
       fi
       if [ "$audit_nudge" = "true" ]; then
         if [ -n "$audit_reason" ]; then
-          segments+=("$(printf '\033[01;32mRun /gaia-audit (%s)\033[00m' "$audit_reason")")
+          printf -v full 'Run /gaia-audit (%s)' "$audit_reason"
+          nudge_set 3 '01;32' 'Run /gaia-audit' "$full" '🔎' ''
         else
-          segments+=("$(printf '\033[01;32mRun /gaia-audit\033[00m')")
+          nudge_set 3 '01;32' 'Run /gaia-audit' 'Run /gaia-audit' '🔎' ''
         fi
       fi
       if [ -n "$serena_drift" ]; then
-        segments+=("$(printf '\033[01;31mRun /gaia-serena-sync (Serena missing: %s)\033[00m' "$serena_drift")")
+        printf -v full 'Run /gaia-serena-sync (Serena missing: %s)' "$serena_drift"
+        nudge_set 1 '01;31' 'Run /gaia-serena-sync' "$full" '🔭' ''
       fi
       # Residue nudge: renders once at least RESIDUE_NUDGE_THRESHOLD keyed
       # candidates have aged past 30 days (the age dial lives in the tally,
@@ -255,7 +296,8 @@ else
       if [ "$residue_count" -ge "$RESIDUE_NUDGE_THRESHOLD" ] 2>/dev/null; then
         residue_suffix="s"
         [ "$residue_count" -eq 1 ] && residue_suffix=""
-        segments+=("$(printf '\033[01;37mRun /gaia-residue (%d aged residual%s)\033[00m' "$residue_count" "$residue_suffix")")
+        printf -v full 'Run /gaia-residue (%d aged residual%s)' "$residue_count" "$residue_suffix"
+        nudge_set 6 '01;37' 'Run /gaia-residue' "$full" '🧹' "$residue_count"
       fi
     fi
     # Debt-backlog nudge, read from the pinned debt cache. Independent of
@@ -265,14 +307,133 @@ else
       if [ -n "$debt_count" ] && [ "$debt_count" -gt 0 ] 2>/dev/null; then
         debt_noun="issues"
         [ "$debt_count" -eq 1 ] && debt_noun="issue"
-        segments+=("$(printf '\033[01;34mRun /gaia-debt (%d %s)\033[00m' "$debt_count" "$debt_noun")")
+        printf -v full 'Run /gaia-debt (%d %s)' "$debt_count" "$debt_noun"
+        nudge_set 5 '01;34' 'Run /gaia-debt' "$full" '💸' "$debt_count"
       fi
     fi
-    if [ "${#segments[@]}" -gt 0 ]; then
-      right="${segments[0]}"
-      for ((i=1; i<${#segments[@]}; i++)); do
-        right="${right}  ${segments[$i]}"
+
+    # Compact the sparse priority slots into dense, priority-ordered arrays;
+    # a gap between slots is a nudge that did not arm this render. `${!arr[@]}`
+    # walks an indexed array's set keys in ascending order, which is what
+    # makes the slot numbers double as the render order.
+    dense_color=()
+    dense_short=()
+    dense_full=()
+    dense_icon=()
+    dense_count=()
+    for slot in "${!nudge_short[@]}"; do
+      dense_color+=("${nudge_color[$slot]}")
+      dense_short+=("${nudge_short[$slot]}")
+      dense_full+=("${nudge_full[$slot]}")
+      dense_icon+=("${nudge_icon[$slot]}")
+      dense_count+=("${nudge_count[$slot]}")
+    done
+    n="${#dense_short[@]}"
+
+    if [ "$n" -gt 0 ]; then
+      measure_left
+      # avail reserves the 2-column minimum gap Compose keeps between the
+      # two sides.
+      avail=$((cols - left_visible - 2))
+
+      full_width=0
+      short_width=0
+      for ((i = 0; i < n; i++)); do
+        full_width=$((full_width + ${#dense_full[$i]}))
+        short_width=$((short_width + ${#dense_short[$i]}))
       done
+      full_width=$((full_width + 2 * (n - 1)))
+      short_width=$((short_width + 2 * (n - 1)))
+
+      tier=""
+      if [ "$full_width" -le "$avail" ]; then
+        tier="full"
+        right_width="$full_width"
+      elif [ "$short_width" -le "$avail" ]; then
+        tier="short"
+        right_width="$short_width"
+      else
+        # The first k nudges (highest priority) keep their bare command text;
+        # the rest collapse to an icon and count. Each icon costs 2 columns
+        # (never measured with awk, which counts bytes and cannot see a
+        # terminal's wide-glyph rendering), joined by a single space, with a
+        # two-space gap between the text group and the icon group. Widest k
+        # that fits wins, so the fewest nudges lose their text form.
+        for ((k = n - 1; k >= 0; k--)); do
+          w=0
+          for ((i = 0; i < k; i++)); do
+            w=$((w + ${#dense_short[$i]}))
+          done
+          if [ "$k" -gt 0 ]; then
+            w=$((w + 2 * (k - 1) + 2))
+          fi
+          for ((i = k; i < n; i++)); do
+            w=$((w + 2 + ${#dense_count[$i]}))
+          done
+          w=$((w + (n - k - 1)))
+          if [ "$w" -le "$avail" ]; then
+            tier="collapse"
+            collapse_k="$k"
+            right_width="$w"
+            break
+          fi
+        done
+      fi
+
+      if [ -z "$tier" ]; then
+        # Even every nudge as an icon does not fit: keep the first m
+        # (highest priority) as icons and name how many more are hidden with
+        # a trailing `+<n-m>`, so a nudge never disappears without saying so.
+        # m=0 always renders, even past avail, rather than emitting nothing.
+        for ((m = n - 1; m >= 0; m--)); do
+          w=0
+          for ((i = 0; i < m; i++)); do
+            w=$((w + 3 + ${#dense_count[$i]}))
+          done
+          plus="+$((n - m))"
+          w=$((w + ${#plus}))
+          if [ "$w" -le "$avail" ] || [ "$m" -eq 0 ]; then
+            tier="hidden"
+            hidden_m="$m"
+            right_width="$w"
+            break
+          fi
+        done
+      fi
+
+      case "$tier" in
+        full)
+          right=$'\033['"${dense_color[0]}"'m'"${dense_full[0]}"$'\033[00m'
+          for ((i = 1; i < n; i++)); do
+            right="${right}  "$'\033['"${dense_color[$i]}"'m'"${dense_full[$i]}"$'\033[00m'
+          done
+          ;;
+        short)
+          right=$'\033['"${dense_color[0]}"'m'"${dense_short[0]}"$'\033[00m'
+          for ((i = 1; i < n; i++)); do
+            right="${right}  "$'\033['"${dense_color[$i]}"'m'"${dense_short[$i]}"$'\033[00m'
+          done
+          ;;
+        collapse)
+          right=""
+          for ((i = 0; i < collapse_k; i++)); do
+            [ -n "$right" ] && right="${right}  "
+            right="${right}"$'\033['"${dense_color[$i]}"'m'"${dense_short[$i]}"$'\033[00m'
+          done
+          [ "$collapse_k" -gt 0 ] && right="${right}  "
+          for ((i = collapse_k; i < n; i++)); do
+            [ "$i" -gt "$collapse_k" ] && right="${right} "
+            right="${right}${dense_icon[$i]}${dense_count[$i]}"
+          done
+          ;;
+        hidden)
+          right=""
+          for ((i = 0; i < hidden_m; i++)); do
+            right="${right}${dense_icon[$i]}${dense_count[$i]} "
+          done
+          right="${right}+$((n - hidden_m))"
+          ;;
+      esac
     fi
   fi
 fi
@@ -307,12 +468,9 @@ if [ -z "$right" ]; then
   exit 0
 fi
 
-cols="${COLUMNS:-120}"
-left_visible=$(printf '%b' "$left" | sed 's/\x1b\[[0-9;]*m//g' | awk '{print length}')
-right_visible=$(printf '%b' "$right" | sed 's/\x1b\[[0-9;]*m//g' | awk '{print length}')
-pad=$((cols - left_visible - right_visible))
+pad=$((cols - left_visible - right_width))
 if [ "$pad" -lt 2 ]; then
   pad=2
 fi
 spaces=$(printf '%*s' "$pad" '')
-printf '%b%s%b' "$left" "$spaces" "$right"
+printf '%b%s%s' "$left" "$spaces" "$right"
