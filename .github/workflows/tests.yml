@@ -127,7 +127,10 @@ jobs:
           # run no tests. `$(...)` discards NUL bytes, so the `tr` must stay
           # inside the substitution; the subshell sets pipefail so a git failure
           # still aborts the step under `set -e` as it did before the pipe.
-          changed=$(set -o pipefail; git diff --name-only -z "${CHECK_BASE}...HEAD" | tr '\0' '\n')
+          # --no-renames, so a file moved out of app/ lists its old path too:
+          # rename detection reports only the new path, and a move to docs/
+          # would read as no relevant change while its importers break.
+          changed=$(set -o pipefail; git diff --name-only -z --no-renames "${CHECK_BASE}...HEAD" | tr '\0' '\n')
           pattern='^(app|test)/|^\.playwright/|^\.storybook/|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.npmrc|\.node-version)$|^tsconfig[^/]*\.json$|^(vite|vitest|playwright|eslint|react-router|doctor|knip|prettier|stylelint)\.config\.|^\.github/workflows/tests\.yml$'
           if printf '%s\n' "$changed" | grep -qE "$pattern"; then
             echo "code=true" >> "$GITHUB_OUTPUT"
