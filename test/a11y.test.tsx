@@ -17,4 +17,13 @@ describe('runAxe', () => {
 
     expect(calls).toEqual([]);
   });
+
+  test('restores getContext after the run', async () => {
+    const original = HTMLCanvasElement.prototype.getContext;
+    const {container} = render(<button type="button">Test</button>);
+
+    await runAxe(container);
+
+    expect(HTMLCanvasElement.prototype.getContext).toBe(original);
+  });
 });
