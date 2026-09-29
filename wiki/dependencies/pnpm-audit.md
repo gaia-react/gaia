@@ -4,7 +4,7 @@ status: active
 package: pnpm audit
 role: dependency-cve-advisory
 created: 2026-06-04
-updated: 2026-06-04
+updated: 2026-09-29
 tags: [dependency, security, quality]
 ---
 
@@ -33,7 +33,7 @@ Two filters keep the same unfixable transitive advisory from spamming every revi
 
 ## Surfaces
 
-No workflow GAIA renders into your project runs `pnpm audit` on a schedule or opens security PRs or issues. The two `pnpm audit` surfaces are `/update-deps`'s override audit (`wiki/decisions/pnpm.md`) and this local, read-only advisory check inside the Code Review Audit Agent; neither files a security PR or issue on its own. There is no CI blocking path.
+No workflow GAIA renders into your project runs `pnpm audit` on a schedule or opens security PRs or issues. The `pnpm audit` surfaces are `/update-deps`'s override audit and its report of residual advisories (`wiki/decisions/pnpm.md`), and this local, read-only advisory check inside the Code Review Audit Agent; none files a security PR or issue on its own. There is no CI blocking path.
 
 ## Acting on output
 
