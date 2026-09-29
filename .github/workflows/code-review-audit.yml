@@ -242,7 +242,7 @@ jobs:
           # the move would read as has_source=false and skip the audit.
           changed=$(set -o pipefail; git diff --name-only -z --no-renames "${AUDIT_BASE}...HEAD" | tr '\0' '\n')
           dir_pattern='^(app|test|\.playwright|\.storybook|\.github/workflows)/'
-          file_pattern='^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$|^tsconfig[^/]*\.json$|^[^/]*\.config\.(ts|mts|mjs|cjs|js)$|^(\.npmrc|\.lintstagedrc\.json|\.prettierignore|Dockerfile|\.env\.example|\.nvmrc|\.node-version)$'
+          file_pattern='^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$|^tsconfig[^/]*\.json$|^[^/]*\.config\.(ts|mts|mjs|cjs|js)$|^(\.npmrc|\.lintstagedrc\.json|\.prettierignore|Dockerfile|\.dockerignore|\.env\.example|\.nvmrc|\.node-version)$'
           if printf '%s\n' "$changed" | grep -qE "${dir_pattern}|${file_pattern}"; then
             echo "has_source=true" >> "$GITHUB_OUTPUT"
           else

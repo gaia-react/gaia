@@ -155,6 +155,7 @@
     ".claude/skills/typescript/SKILL.md": "owned",
     ".claude/skills/update-deps/SKILL.md": "owned",
     ".claude/skills/update-gaia/SKILL.md": "owned",
+    ".dockerignore": "owned",
     ".editorconfig": "owned",
     ".env.example": "owned",
     ".gaia/audit-ci.yml": "shared",
@@ -633,7 +634,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-29T00:20:10.911Z",
+  "generated": "2026-09-29T08:28:19.759Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",
