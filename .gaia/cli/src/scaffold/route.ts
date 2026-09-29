@@ -358,6 +358,7 @@ type ResolvedNames = {
   groupSegment: string;
   i18nKey: string;
   pageName: string;
+  routeFile: string;
   routeName: string;
 };
 
@@ -371,19 +372,18 @@ const resolveNames = (kebabName: string, group: string): ResolvedNames => {
     // Page folder, component, and the route's import use the `<Pascal>Page`
     // convention (e.g. `IndexPage`); the route component stays `<Pascal>Route`.
     pageName: `${pascal}Page`,
+    routeFile: `${group}.${kebabName}`,
     routeName: pascal,
   };
 };
 
 type BuildRouteVarsArgs = {
   flags: ParsedFlags;
-  group: string;
-  kebabName: string;
   names: ResolvedNames;
 };
 
 const buildRouteVars = (args: BuildRouteVarsArgs): TemplateVars => {
-  const {flags, group, kebabName, names} = args;
+  const {flags, names} = args;
 
   return {
     groupSegment: names.groupSegment,
@@ -393,7 +393,7 @@ const buildRouteVars = (args: BuildRouteVarsArgs): TemplateVars => {
     needsRouteType: flags.loader || flags.action,
     noLoader: !flags.loader,
     pageName: names.pageName,
-    routeFile: `${group}.${kebabName}`,
+    routeFile: names.routeFile,
     routeName: names.routeName,
   };
 };
@@ -559,14 +559,14 @@ export const run = (
   const root = options.cwd ?? process.cwd();
   const {dryRun, group, i18n, json} = flags;
   const names = resolveNames(name, group);
-  const {groupSegment, i18nKey, pageName} = names;
+  const {groupSegment, i18nKey, pageName, routeFile} = names;
   const tmpls = templatePaths();
   const result: ScaffoldResult = {edited: [], skipped: [], written: []};
 
   try {
-    const routeVars = buildRouteVars({flags, group, kebabName: name, names});
+    const routeVars = buildRouteVars({flags, names});
 
-    const routeAbs = path.join(root, 'app', 'routes', `${group}.${name}.tsx`);
+    const routeAbs = path.join(root, 'app', 'routes', `${routeFile}.tsx`);
     writeFile({
       absPath: routeAbs,
       contents: renderTemplate(tmpls.route, routeVars),

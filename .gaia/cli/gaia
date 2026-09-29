@@ -22564,11 +22564,12 @@ var resolveNames = (kebabName, group) => {
     // Page folder, component, and the route's import use the `<Pascal>Page`
     // convention (e.g. `IndexPage`); the route component stays `<Pascal>Route`.
     pageName: `${pascal}Page`,
+    routeFile: `${group}.${kebabName}`,
     routeName: pascal
   };
 };
 var buildRouteVars = (args) => {
-  const { flags, group, kebabName, names } = args;
+  const { flags, names } = args;
   return {
     groupSegment: names.groupSegment,
     hasAction: flags.action,
@@ -22577,7 +22578,7 @@ var buildRouteVars = (args) => {
     needsRouteType: flags.loader || flags.action,
     noLoader: !flags.loader,
     pageName: names.pageName,
-    routeFile: `${group}.${kebabName}`,
+    routeFile: names.routeFile,
     routeName: names.routeName
   };
 };
@@ -22685,12 +22686,12 @@ var run32 = (rest, options = {}) => {
   const root = options.cwd ?? process.cwd();
   const { dryRun, group, i18n, json: json3 } = flags;
   const names = resolveNames(name, group);
-  const { groupSegment, i18nKey, pageName } = names;
+  const { groupSegment, i18nKey, pageName, routeFile } = names;
   const tmpls = templatePaths();
   const result = { edited: [], skipped: [], written: [] };
   try {
-    const routeVars = buildRouteVars({ flags, group, kebabName: name, names });
-    const routeAbs = path33.join(root, "app", "routes", `${group}.${name}.tsx`);
+    const routeVars = buildRouteVars({ flags, names });
+    const routeAbs = path33.join(root, "app", "routes", `${routeFile}.tsx`);
     writeFile({
       absPath: routeAbs,
       contents: renderTemplate(tmpls.route, routeVars),
