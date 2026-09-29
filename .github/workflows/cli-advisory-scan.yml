@@ -1,4 +1,4 @@
-name: CLI Advisory Scan
+name: 'GAIA: CLI Advisory Scan'
 
 # Runs the advisory arm of .gaia/scripts/check-cli-workspace-floors.sh against
 # .gaia/cli's dependency closure, on a schedule, on its own lane.

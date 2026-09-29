@@ -497,6 +497,7 @@ A release change that requires the adopter to act, run a command or hand-migrate
   - verify with `pnpm exec react-router routes --json` before and after and compare URLs; roll back with git, since the old `app/routes.ts` works only while `remix-flat-routes` stays installed
   - then `pnpm remove remix-flat-routes @react-router/remix-routes-option-adapter`
   (#2344)
+- The CI code-audit job now shows as `Code audit (frontend)` in a pull request's checks instead of `code-audit-frontend`. The merge gate is still the `GAIA-Audit` status, so nothing changes unless you registered the old job name as a required check, which `/setup-gaia` never does; if you did, require `GAIA-Audit` instead. (#2356)
 
 ### Removed
 

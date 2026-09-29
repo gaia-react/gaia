@@ -154,7 +154,7 @@ Both signals are tracked by the maintainer health audit, which aggregates the re
 ### Halt a runaway run
 
 1. Open the **Actions** tab on the upstream repo.
-2. Filter by workflow name `Forensics Triage`.
+2. Filter by workflow name `GAIA: Forensics Triage`.
 3. Locate the in-flight run; click **Cancel workflow**.
 4. The cancelled run leaves any already-applied labels in place (fail-forward). If `gaia-triaged` was already applied, no further triage will fire on the issue. If not, removing `gaia-forensics` and re-adding it will re-trigger.
 

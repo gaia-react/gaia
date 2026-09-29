@@ -50,8 +50,8 @@ retrigger_workflows:
   # The two maintainer-only required checks. Their workflows are
   # release-excluded, so naming them on an adopter clone would dispatch
   # workflows that do not exist there; the release scrub strips this block.
-  - CLI Tests
-  - Audit CI Tests
+  - 'GAIA: CLI Tests'
+  - 'GAIA: Audit CI Tests'
   # gaia:maintainer-only:end
 
 # Code Audit Team roster. Each entry maps file-globs to a specialized auditor

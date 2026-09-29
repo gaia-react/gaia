@@ -1,4 +1,4 @@
-name: CLI Tests
+name: 'GAIA: CLI Tests'
 
 # `workflow_dispatch:` is the CI-mode self-heal lane, not a convenience. When
 # the Code Review Audit pushes a self-heal commit, GitHub's GITHUB_TOKEN
@@ -172,6 +172,17 @@ jobs:
               # fires on some later, unrelated `.gaia/cli/**` change, reddening a
               # diff that did not cause it (#1510).
               - '.gaia/labels.json'
+              # src/release/workflow-prefix.test.ts reads every workflow's
+              # `name:` against the release-exclude derive, so a pull request
+              # that only adds or renames a workflow must re-run this job.
+              # Redundant with the
+              # `.github/workflows/cli-tests.yml` and `code-review-audit.yml`
+              # entries above for those two files specifically; listed anyway
+              # so the whole directory is covered, not just those two.
+              - '.github/workflows/**'
+              # The same test derives its expected set from this file, so an
+              # edit to it alone must also re-run the job.
+              - '.gaia/release-exclude'
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Setup Node and install the CLI workspace
         uses: ./.github/actions/gaia-setup-node
@@ -386,7 +397,7 @@ jobs:
   # branch-protection-safe without ever forcing a merge block from a
   # maintainer-only surface adopters cannot see.
   distribution-harness:
-    name: Distribution harness (no-Docker)
+    name: Distribution harness (no-Docker) (advisory)
     # Advisory, not a required context, but it shares this workflow with the
     # required sibling above: one dispatch runs both, and the audit stamps a
     # check run per JOB. Left gated to `pull_request` it would stamp a bare
@@ -519,7 +530,7 @@ jobs:
   # request can skip by changing only a shipped file the harness filter above
   # does not name.
   shipped-surface-leak-check:
-    name: Shipped-surface leak check
+    name: Shipped-surface leak check (advisory)
     # Advisory, not a declared-required context, and it must not become one. It
     # admits `workflow_dispatch` for the same reason the harness above does: one
     # dispatch runs every job in this workflow and the audit stamps a check run

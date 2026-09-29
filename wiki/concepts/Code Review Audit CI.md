@@ -141,7 +141,7 @@ A dispatched job also has to finish inside the poller's window. The poller waits
 Nothing in the pull-request lane exercises the dispatch path, so a break here is invisible until the first self-heal wedges a PR. Every condition above is a repo-visible property of the workflow files and the knob, which makes the whole invariant worth asserting deterministically rather than leaving to review.
 
 <!-- gaia:maintainer-only:start -->
-On `gaia-react/gaia` the knob carries two maintainer-only entries beyond the shipped defaults (`CLI Tests`, `Audit CI Tests`), wrapped in maintainer-only markers so the release scrub strips them: their workflows are release-excluded, and naming them on an adopter clone would dispatch workflows that do not exist there.
+On `gaia-react/gaia` the knob carries two maintainer-only entries beyond the shipped defaults (`GAIA: CLI Tests`, `GAIA: Audit CI Tests`), wrapped in maintainer-only markers so the release scrub strips them: their workflows are release-excluded, and naming them on an adopter clone would dispatch workflows that do not exist there.
 <!-- gaia:maintainer-only:end -->
 
 ## Failed-run status backstop
@@ -200,7 +200,7 @@ In the maintainer repo the audit workflow lives in two byte-identical tracked co
 
 - [[Incremental CI Skipping]]: the cross-workflow "since-last-green" mechanism this audit's no-auditable-delta skip is an instance of.
 - [[Code Review Audit Agent]]: the agent the workflow invokes.
-- [[Code Audit Team]]: the config-driven roster this workflow's `code-audit-frontend` job is one member of; the dispatch resolver and AND-aggregator that require every dispatched member's clearance at the local merge gate.
+- [[Code Audit Team]]: the config-driven roster this workflow's `Code audit (frontend)` job runs one member of; the dispatch resolver and AND-aggregator that require every dispatched member's clearance at the local merge gate.
 - [[PR Merge Workflow]]: the local-side gate handshake (`.gaia/local/audit/<tree-sha>.ok` marker file).
 - [[Quality Gate]]: the lint/typecheck/test/knip gate that still runs alongside this audit.
 <!-- gaia:maintainer-only:start -->

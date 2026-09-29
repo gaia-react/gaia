@@ -92,7 +92,7 @@ Requires `bats-core` (`brew install bats-core`). Tests are deterministic, run in
 
 The hooks directory covers the bulk of the wiki system: drift math, marker file behavior, hook input parsing, edge cases (missing state, unreachable SHA, malformed JSON). The other five directories cover the audit helpers, the shipped `.gaia/scripts`, the SPEC-ledger libs, forensics, and the statusline.
 
-CI reaches the same partition through a different entry point. The `Audit CI Tests` workflow's `shards` matrix runs `bash .gaia/tests/bats-shards.sh run <shard-id>` once per leg, each shard on its own runner, so the slowest leg sets the wall clock rather than the sum. The sharder discovers `.bats` files at run time, so a new suite file joins a shard with no matrix edit. See `.github/workflows/audit-ci-tests.yml` and `wiki/decisions/Sharded CI Test Matrix.md`.
+CI reaches the same partition through a different entry point. The `GAIA: Audit CI Tests` workflow's `shards` matrix runs `bash .gaia/tests/bats-shards.sh run <shard-id>` once per leg, each shard on its own runner, so the slowest leg sets the wall clock rather than the sum. The sharder discovers `.bats` files at run time, so a new suite file joins a shard with no matrix edit. See `.github/workflows/audit-ci-tests.yml` and `wiki/decisions/Sharded CI Test Matrix.md`.
 
 ### Pre-release checklist
 

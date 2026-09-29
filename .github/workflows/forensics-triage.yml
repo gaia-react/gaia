@@ -1,4 +1,4 @@
-name: Forensics Triage
+name: 'GAIA: Forensics Triage'
 
 # SPEC-002 phase 2: autonomous Claude Code triage for `gaia-forensics`-labeled
 # issues. Spec lives at `.gaia/local/specs/SPEC-002.md`; the per-task plan is at
@@ -22,7 +22,7 @@ on:
 permissions: {}
 
 jobs:
-  triage:
+  forensics-triage:
     name: Triage gaia-forensics issue
     if: contains(github.event.issue.labels.*.name, 'gaia-forensics')
     runs-on: ubuntu-latest

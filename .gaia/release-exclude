@@ -128,6 +128,8 @@ wiki/decisions/Forensics Triage Workflow.md
 # release-excluded, so on an adopter clone every claim here is about a
 # workflow they do not have.
 wiki/decisions/Sharded CI Test Matrix.md
+# Describes the naming of the maintainer-only workflows, none of which an adopter clone has.
+wiki/decisions/Workflow Naming Convention.md
 # Documents the fixture-discrimination convention for the maintainer-only shell guards and their shared library, none of which an adopter clone has.
 wiki/decisions/Shell Guard Fixture Discrimination.md
 # Documents the local runtime of shell-lint.sh (release-excluded via the wholesale .gaia/tests entry below), the mawk/GNU-parallel maintainer tool prerequisites it uses, and the awk interpreter resolver (.gaia/scripts/awk-interp-lib.sh), which serves the guard-awk-lib.sh closure and is withheld individually elsewhere in this file. Every subject this page describes is maintainer-only; an adopter clone has none of them to run.
@@ -255,6 +257,12 @@ wiki/decisions/Dependabot Security Updates.md
 # run that bash but never author it, so the linter guarding it has no adopter
 # surface. All would be silent passengers at best and confusing CI failures
 # at worst on adopter clones.
+# Every workflow excluded here that has no
+# `.gaia/cli/templates/workflows/<file>.tmpl` must carry the `GAIA: ` prefix
+# on its workflow `name:`, enforced by
+# `.gaia/cli/src/release/workflow-prefix.test.ts`. Quote the value: an
+# unquoted `GAIA: X` does not parse. `code-review-audit.yml` is the declared
+# exception because adopters receive a rendered twin.
 .github/workflows/release.yml
 .github/workflows/cli-tests.yml
 .github/workflows/audit-ci-tests.yml
