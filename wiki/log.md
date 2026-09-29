@@ -11,6 +11,13 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-09-29 cf5188e SKIP - wiki pages updated in the commit itself
+- 2026-09-29 a74d8c1 SKIP - CI rename-diff fix, no wiki page describes it
+- 2026-09-29 81141d2 SKIP - wiki pages and ADR added in the commit itself
+- 2026-09-29 7e01f15 SKIP - wiki pages updated in the commit itself
+- 2026-09-29 82957ab SKIP - stale-branches cron removal, no wiki page references it
+- 2026-09-29 825baff SKIP - rate-table data entry, no wiki page enumerates models
+- 2026-09-29 bf830cf SKIP - wiki: self-referential
 - 2026-09-28 d58c153 SKIP - wiki updated in-commit; no further sync action needed
 - 2026-09-28 dc022ea SKIP - wiki updated in-commit; no further sync action needed
 - 2026-09-28 d6b175f SKIP - docs: prose-only
