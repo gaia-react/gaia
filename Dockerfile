@@ -23,4 +23,6 @@ COPY ./package.json pnpm-lock.yaml pnpm-workspace.yaml /app/
 COPY --from=production-dependencies-env /app/node_modules /app/node_modules
 COPY --from=build-env /app/build /app/build
 WORKDIR /app
+# Resolve the pinned pnpm and its native binary now, so `pnpm start` needs no registry at run time.
+RUN corepack prepare --activate && pnpm --version
 CMD ["pnpm", "start"]
