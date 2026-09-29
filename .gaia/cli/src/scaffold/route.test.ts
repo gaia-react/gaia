@@ -319,7 +319,9 @@ describe('scaffold route: flag combos', () => {
     sandbox.cleanup();
   });
 
-  test('--loader emits loader export', () => {
+  // gaia-react/gaia#2349: without --i18n no `pages` locale keys exist, so a
+  // loader that looks them up fails the typed i18next resources at typecheck.
+  test('--loader without --i18n emits a loader with no i18next lookup', () => {
     const stdout = captureStdout();
     run(['dashboard', '--group', '_session', '--loader'], {
       cwd: sandbox.fakeRoot,
@@ -335,6 +337,48 @@ describe('scaffold route: flag combos', () => {
     const body = readFileSync(routeFile, 'utf8');
     expect(body).toContain('export const loader');
     expect(body).toContain('useLoaderData');
+    expect(body).toContain("title: 'DashboardPage'");
+    expect(body).toContain("description: 'Description of the dashboard page'");
+    expect(body).not.toContain('i18next');
+    expect(body).not.toContain('getInstance');
+    expect(body).not.toContain('RouterContextProvider');
+    expect(body).not.toContain('./+types/');
+  });
+
+  test('--loader with --i18n emits a loader reading the pages locale', () => {
+    seedLocaleBarrel(
+      sandbox.fakeRoot,
+      [
+        "import index from './_index';",
+        '',
+        'export default {',
+        '  index,',
+        '};',
+        '',
+      ].join('\n')
+    );
+
+    const stdout = captureStdout();
+    const exit = run(
+      ['dashboard', '--group', '_session', '--loader', '--i18n'],
+      {
+        cwd: sandbox.fakeRoot,
+      }
+    );
+    stdout.restore();
+
+    expect(exit).toBe(0);
+
+    const routeFile = path.join(
+      sandbox.fakeRoot,
+      'app',
+      'routes',
+      '_session.dashboard.tsx'
+    );
+    const body = readFileSync(routeFile, 'utf8');
+    expect(body).toContain("i18next.t('dashboard.meta.title', {ns: 'pages'})");
+    expect(body).toContain("from '~/middleware/i18next'");
+    expect(body).toContain('Route.LoaderArgs');
     expect(body).toContain("from './+types/_session.dashboard'");
     expect(body).not.toContain("from './+types/dashboard'");
   });

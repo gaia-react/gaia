@@ -379,22 +379,31 @@ const resolveNames = (kebabName: string, group: string): ResolvedNames => {
 
 type BuildRouteVarsArgs = {
   flags: ParsedFlags;
+  name: string;
   names: ResolvedNames;
 };
 
 const buildRouteVars = (args: BuildRouteVarsArgs): TemplateVars => {
-  const {flags, names} = args;
+  const {flags, name, names} = args;
+  // Only --i18n writes the `pages` locale keys, so a loader that looks them up
+  // without it fails typecheck against the typed i18next resources
+  // (gaia-react/gaia#2349). The literal loader takes no args, so it needs no
+  // `Route` type either.
+  const hasLoaderI18n = flags.loader && flags.i18n;
 
   return {
     groupSegment: names.groupSegment,
     hasAction: flags.action,
     hasLoader: flags.loader,
+    hasLoaderI18n,
+    hasLoaderNoI18n: flags.loader && !flags.i18n,
     i18nKey: names.i18nKey,
-    needsRouteType: flags.loader || flags.action,
+    needsRouteType: hasLoaderI18n || flags.action,
     noLoader: !flags.loader,
     pageName: names.pageName,
     routeFile: names.routeFile,
     routeName: names.routeName,
+    routeSlug: name,
   };
 };
 
@@ -564,7 +573,7 @@ export const run = (
   const result: ScaffoldResult = {edited: [], skipped: [], written: []};
 
   try {
-    const routeVars = buildRouteVars({flags, names});
+    const routeVars = buildRouteVars({flags, name, names});
 
     const routeAbs = path.join(root, 'app', 'routes', `${routeFile}.tsx`);
     writeFile({

@@ -1,10 +1,10 @@
-{{#hasLoader}}import type {RouterContextProvider} from 'react-router';
-import {useLoaderData} from 'react-router';
-import {getInstance} from '~/middleware/i18next';
-{{/hasLoader}}import {{pageName}} from '~/pages/{{groupSegment}}/{{pageName}}';
+{{#hasLoaderI18n}}import type {RouterContextProvider} from 'react-router';
+{{/hasLoaderI18n}}{{#hasLoader}}import {useLoaderData} from 'react-router';
+{{/hasLoader}}{{#hasLoaderI18n}}import {getInstance} from '~/middleware/i18next';
+{{/hasLoaderI18n}}import {{pageName}} from '~/pages/{{groupSegment}}/{{pageName}}';
 {{#needsRouteType}}import type {Route} from './+types/{{routeFile}}';
 {{/needsRouteType}}
-{{#hasLoader}}export const loader = async ({context}: Route.LoaderArgs) => {
+{{#hasLoaderI18n}}export const loader = async ({context}: Route.LoaderArgs) => {
   const i18next = getInstance(context as RouterContextProvider);
   const title = i18next.t('{{i18nKey}}.meta.title', {ns: 'pages'});
   const description = i18next.t('{{i18nKey}}.meta.description', {ns: 'pages'});
@@ -12,7 +12,12 @@ import {getInstance} from '~/middleware/i18next';
   return {description, title};
 };
 
-{{/hasLoader}}{{#hasAction}}export const action = async ({request}: Route.ActionArgs) => {
+{{/hasLoaderI18n}}{{#hasLoaderNoI18n}}export const loader = () => ({
+  description: 'Description of the {{routeSlug}} page',
+  title: '{{pageName}}',
+});
+
+{{/hasLoaderNoI18n}}{{#hasAction}}export const action = async ({request}: Route.ActionArgs) => {
   // TODO: implement action
   await request.formData();
 
