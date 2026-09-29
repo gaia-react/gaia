@@ -7,6 +7,7 @@ import path from 'node:path';
 import {
   AutomationConfigSchema,
   CONFIG_KEY_TO_TOOL_ID,
+  DEPENDABOT_SECURITY_UPDATES,
   ISOLATION_POLICIES,
   parseAutomationConfig,
   readAutomationConfig,
@@ -159,6 +160,37 @@ describe('schemas/automation-config', () => {
         isolation_policy: 42,
       });
       expect(parsed.isolation_policy).toBeUndefined();
+    });
+
+    test('parses when dependabot_security_updates is absent (tolerated)', () => {
+      const parsed = AutomationConfigSchema.parse(VALID_CONFIG);
+      expect(parsed.dependabot_security_updates).toBeUndefined();
+    });
+
+    for (const value of DEPENDABOT_SECURITY_UPDATES) {
+      test(`parses and retains a known dependabot_security_updates (${value})`, () => {
+        const parsed = AutomationConfigSchema.parse({
+          ...VALID_CONFIG,
+          dependabot_security_updates: value,
+        });
+        expect(parsed.dependabot_security_updates).toBe(value);
+      });
+    }
+
+    test('parses an unrecognized dependabot_security_updates value without malforming the config', () => {
+      const parsed = AutomationConfigSchema.parse({
+        ...VALID_CONFIG,
+        dependabot_security_updates: 'maybe',
+      });
+      expect(parsed.dependabot_security_updates).toBe('maybe');
+    });
+
+    test('parses a non-string dependabot_security_updates without malforming the config', () => {
+      const parsed = AutomationConfigSchema.parse({
+        ...VALID_CONFIG,
+        dependabot_security_updates: 42,
+      });
+      expect(parsed.dependabot_security_updates).toBeUndefined();
     });
 
     test('tolerates an unknown key (never .strict())', () => {

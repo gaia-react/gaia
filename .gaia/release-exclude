@@ -132,6 +132,8 @@ wiki/decisions/Sharded CI Test Matrix.md
 wiki/decisions/Shell Guard Fixture Discrimination.md
 # Documents the local runtime of shell-lint.sh (release-excluded via the wholesale .gaia/tests entry below), the mawk/GNU-parallel maintainer tool prerequisites it uses, and the awk interpreter resolver (.gaia/scripts/awk-interp-lib.sh), which serves the guard-awk-lib.sh closure and is withheld individually elsewhere in this file. Every subject this page describes is maintainer-only; an adopter clone has none of them to run.
 wiki/decisions/Local Test Runtime.md
+# Design rationale for the /setup-gaia Dependabot opt-in; maintainer kept it internal
+wiki/decisions/Dependabot Security Updates.md
 
 # --- 3. Test harnesses and audit reports ---
 # Smoke / observability harnesses run by maintainers in CI; never invoked

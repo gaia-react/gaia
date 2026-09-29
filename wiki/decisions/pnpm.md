@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-04-26
 created: 2026-04-26
-updated: 2026-09-05
+updated: 2026-09-29
 tags: [decision, tooling, package-manager, security]
 ---
 
@@ -48,6 +48,10 @@ Every dependency-CVE surface in this repository (the `/update-deps` override aud
 ## Override audit
 
 Overrides drift. The `update-deps` skill audits every `overrides` key before a run and re-audits the retained ones after the waves land; its Phase 0 section in `.claude/skills/update-deps/SKILL.md` owns the procedure and the verdicts it reports. The re-resolution primitive it uses is `pnpm dedupe`, not `pnpm install`: an overrides-only change does not re-resolve under `pnpm install`, which short-circuits with "Already up to date" and leaves the floor unapplied. See [[pnpm-overrides]].
+
+## Transitive refresh
+
+pnpm keeps a transitive dependency's locked version for as long as its parent's range still admits it, so bumping direct specs never pulls in a patched transitive that was already in range. The `update-deps` skill closes that gap with a transitive-refresh phase after its waves and before the post-update override audit: `pnpm update --no-save --depth Infinity` re-resolves the whole tree to the newest in-range versions, and `--no-save` leaves every `package.json` range as declared. pnpm applies `minimumReleaseAge` while it resolves, so the refresh cannot land a version younger than the window. The phase runs on every run outside `--scope`, including one whose direct dependencies are all current or all snoozed, so a routine run on an up-to-date repository still picks up in-range transitive fixes. The phase's gating, whole-refresh revert, and report section live in `.claude/skills/update-deps/SKILL.md`.
 
 ## Release-age-aware version selection
 

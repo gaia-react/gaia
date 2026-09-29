@@ -61,7 +61,28 @@ export type IsolationPolicy = (typeof ISOLATION_POLICIES)[number];
 export const isIsolationPolicy = (value: string): value is IsolationPolicy =>
   (ISOLATION_POLICIES as readonly string[]).includes(value);
 
+/**
+ * The team's opt-in for Dependabot security-updates on npm (`/setup-gaia`
+ * Phase 3.6). Read at the CONSUMER, same permissive-at-read pattern as
+ * `isolation_policy` above: `AutomationConfigSchema` stores the raw string
+ * so an unrecognized or future value never malforms the whole config.
+ */
+export const DEPENDABOT_SECURITY_UPDATES = ['on', 'off'] as const;
+
+export type DependabotSecurityUpdates =
+  (typeof DEPENDABOT_SECURITY_UPDATES)[number];
+
+export const isDependabotSecurityUpdates = (
+  value: string
+): value is DependabotSecurityUpdates =>
+  (DEPENDABOT_SECURITY_UPDATES as readonly string[]).includes(value);
+
 export const AutomationConfigSchema = z.object({
+  // Same permissive-at-read pattern as isolation_policy below: an absent
+  // key, an unrecognized string, and a non-string value must all leave
+  // the config parsing `ok`. The known values are validated at the WRITE
+  // boundary (`setup-ci/write-dependabot-policy.ts`).
+  dependabot_security_updates: z.string().optional().catch(undefined),
   // Permissive by contract: an absent key, an unrecognized string, and a
   // non-string value must all leave the config parsing `ok`. A bare
   // `z.literal([...])` union would reject a typo or a future value and

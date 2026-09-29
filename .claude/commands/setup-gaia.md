@@ -476,7 +476,7 @@ On Enable:
 
 If already `true`, print `delete_branch_on_merge is already enabled.` and continue.
 
-**Dependabot posture.** Enable Dependabot **alerts** (visibility), keep the PR-producing features **off**. First warn about any existing Dependabot / Renovate config:
+**Dependabot posture.** Enable Dependabot **alerts** (visibility) and keep the PR-producing features **off** here; Phase 3.6 offers security updates as an opt-in. First warn about any existing Dependabot / Renovate config:
 
 ```bash
 .gaia/cli/gaia setup-ci warn-existing-tools --json
@@ -497,7 +497,7 @@ gh api -X PUT "repos/<owner>/<repo>/vulnerability-alerts"                       
 gh api "repos/<owner>/<repo>/automated-security-fixes" --jq .enabled                 # assert this is false: PR features stay off
 ```
 
-Assert `automated-security-fixes` is `false`, and write **no** `.github/dependabot.yml`. **`/update-deps` owns package updates** in GAIA; Dependabot is enabled for alert visibility only, never as a second PR-opening bot.
+Assert `automated-security-fixes` is `false` (unless `.gaia/automation.json` already records `"dependabot_security_updates": "on"`), and write **no** `.github/dependabot.yml` here. **`/update-deps` owns version updates** in GAIA; Dependabot never opens a version-update pull request. Security-update pull requests are a separate, explicit opt-in offered in Phase 3.6, the only path that turns `automated-security-fixes` on.
 
 All Phase-3 GitHub mutations (create, protection, vuln-alerts, delete-branch) are net-new, admin-gated, security-sensitive calls. A non-admin runner degrades gracefully: skip the mutation, print the admin-note above, and continue to Phase 3.5.
 
@@ -516,7 +516,7 @@ policy written to disk but never committed.
 ```bash
 if [ ! -f .gaia/automation.json ]; then
   echo "No .gaia/automation.json in this clone, so there is nothing to record the team's git isolation policy in. Skipping the question."
-  # Continue to Phase 4.
+  # Continue to Phase 3.6.
 fi
 ```
 
@@ -635,6 +635,190 @@ rm -f .gaia/local/setup-in-progress
 If the push fails, say so in one line and tell the admin the value is committed locally and needs a push (or
 a PR); do not report success on a failed push. The commit itself makes the policy real for this machine's next
 run; the push is what makes it real for the team.
+
+Fall through to Phase 3.6.
+
+## Phase 3.6: Dependabot security updates (opt-in, always evaluated)
+
+This is a **committed team setting**, like Phase 3.5's isolation policy, not per-machine state. It sits here,
+after Phase 3.5, for the same reason Phase 3.5 sits after Phase 3: Phase 3 short-circuits entirely once the
+repo is already provisioned, so this clause always runs and carries its own commit rather than relying on
+Phase 4's finalize commit, which never runs on a provisioned-repo path. It closes a gap nothing else in GAIA
+covers: between `/update-deps` runs, a vulnerable transitive dependency sits unpatched, Dependabot alerts
+alone are advisory and open no pull request.
+
+### Gate 1: `.gaia/automation.json` absent
+
+```bash
+if [ ! -f .gaia/automation.json ]; then
+  echo "No .gaia/automation.json in this clone, so there is nothing to record the Dependabot security-updates decision in. Skipping the question."
+  # Continue to Phase 4.
+fi
+```
+
+### Gate 2: the key's own presence
+
+```bash
+HAS_DEPENDABOT="$(jq -r 'has("dependabot_security_updates")' .gaia/automation.json 2>/dev/null || echo false)"
+```
+
+- `HAS_DEPENDABOT` is `true` and `RECONFIGURE` is NOT set → the decision stands. **Skip silently**: do not
+  re-prompt, do not flip the settled value.
+- `HAS_DEPENDABOT` is `false`, OR `RECONFIGURE` is set → an answer is owed. Continue to Gate 3.
+
+Answering the question below writes the key, so its presence alone is a sufficient "already asked" signal. No
+separate marker file, no `SETUP_STEPS` entry, no `mark-step` call; `.gaia/automation.json` is the source of
+truth here, the same shape as Phase 3.5's isolation-policy decision.
+
+### Gate 3: `check-admin` probe (fail closed)
+
+Gated behind Gate 2, so the `gh api` round-trip only costs anything on a repo that still owes an answer. Reuse
+Phase 1's cached `detect-remote` values (`found`, `host`, `owner`, `repo`):
+
+```bash
+.gaia/cli/gaia setup-ci check-admin --owner <owner> --repo <repo> --json
+```
+
+Fail closed, silently (skip the question, no error, no output), on any of:
+
+- `detect-remote` reported `found: false` (no GitHub origin at all);
+- `host != "github.com"`;
+- `admin` is not `true`;
+- `auth_status` is not `"ok"`.
+
+A non-admin is not the audience for a repository setting, and Dependabot exists only on GitHub.
+
+### The question
+
+Tell the user (in their language, detected from earlier context): "Dependabot can open a pull request when a
+security advisory lands for a package in your lockfile."
+
+Show the explainer (this block stays English regardless of UI language, it's the canonical contract):
+
+> Dependabot security updates open a pull request when GitHub publishes an advisory for a package in your
+> lockfile, including transitive dependencies that `/update-deps` reaches only on its next run. Accepting does
+> three things:
+>
+> - Adds an `npm` entry (it covers pnpm) to `.github/dependabot.yml`, merged beside any other ecosystems
+>   already there, with version updates disabled (`open-pull-requests-limit: 0`), so it never competes with
+>   `/update-deps` for routine upgrades. Security-update pull requests are not subject to that limit.
+> - Groups each batch of security fixes into one pull request titled `fix(deps): ...` and labeled
+>   `dependencies` and `security` (a label that does not exist in the repository is skipped). The `fix`
+>   prefix is deliberate: a `chore(deps)` title takes GAIA's dep-bump bypass, which skips the test suite and
+>   the audit, and that bypass is only safe for `/update-deps`, which runs the quality gate locally first.
+> - Turns on the repository settings Dependabot alerts and Dependabot security updates. The config file alone
+>   opens nothing.
+>
+> Tradeoffs:
+>
+> - Dependabot's `cooldown` applies only to version updates, so Dependabot does not hold these pull requests
+>   back. pnpm's own `minimumReleaseAge` still applies to the lockfile Dependabot writes: a patched version
+>   published inside the window fails the pull request's `pnpm install` in CI (and with
+>   `minimumReleaseAgeStrict` can fail the Dependabot job itself) until it ages out or you add a hand-checked
+>   exact-version `minimumReleaseAgeExclude` entry, per the policy in `pnpm-workspace.yaml`.
+> - Workflows triggered by Dependabot get no GitHub Actions secrets, and the audit action rejects bot-authored
+>   runs by default, so a CI-mode audit does not run Claude on these pull requests and `GAIA-Audit` does not go
+>   green on its own. Merge them through your local audit flow.
+> - GitHub's supported-ecosystems table lists pnpm through v10. If your project pins a newer pnpm and a
+>   security-update job fails, the repository's Dependabot tab shows the error, and `/update-deps` remains the
+>   path.
+
+Use `AskUserQuestion`, header **`Dependabot`**, with these two options in this exact order:
+
+- **Enable Dependabot security updates**
+- **No, keep /update-deps as the only path**
+
+Neither option is marked Recommended; this is an opt-in, not a default. Choosing "Other" or dismissing the
+question writes nothing and commits nothing. The key stays absent, so the question re-fires on a later explicit
+`/setup-gaia` run. "No" is a recorded decision (see below).
+
+### On "No"
+
+```bash
+.gaia/cli/gaia setup-ci write-dependabot-policy off
+```
+
+Then **The commit** below with the message `chore(gaia): record the Dependabot security-updates opt-out`.
+
+When `RECONFIGURE` is set and the previous value was `on`, also print: `Dependabot security updates stay
+enabled on GitHub until you turn them off: gh api -X DELETE
+"repos/<owner>/<repo>/automated-security-fixes". The npm entry in .github/dependabot.yml is left in place.` Do
+not auto-disable.
+
+### On "Enable"
+
+1. Render or merge the config:
+
+   ```bash
+   .gaia/cli/gaia setup-ci write-dependabot-config --json
+   ```
+
+   - `created` or `merged` → stage its `path` for **The commit** below.
+   - `npm_entry_exists` → print `An npm entry already exists in <path>; leaving it unchanged. For
+     /update-deps to keep owning version updates, it needs open-pull-requests-limit: 0. Security-update pull
+     requests use that entry's commit-message settings: if its prefix is chore with include: scope, their
+     titles start chore(deps): and skip the test suite and audit, so change the prefix (GAIA renders fix). If
+     the entry sets no commit-message, Dependabot copies the repository's existing commit style, and a GAIA
+     history full of chore(deps): commits makes that the likely title.` This clause enables nothing on this
+     path: after that message, print `Once that entry sets commit-message: prefix: "fix" (or any non-chore
+     prefix) and is on <default-branch>, finish with:` followed by the two gh api -X PUT commands from the
+     failure block below. Stage nothing from this step.
+   - `unmergeable` (nonzero exit) → print `Could not merge the npm entry into <path> (<reason>). Add this
+     under updates: by hand, commit it, then re-run /setup-gaia:` followed by the `entry` text in a fenced
+     block, then **stop this clause**: write no policy, enable nothing. Enabling without the grouping config
+     opens one ungrouped pull request per alert.
+
+2. Write the policy:
+
+   ```bash
+   .gaia/cli/gaia setup-ci write-dependabot-policy on
+   ```
+
+   If this exits non-zero, surface the structured-error JSON verbatim and stop the clause.
+
+3. **The commit** below with the message `chore(gaia): enable Dependabot security updates for npm`, staging
+   `.gaia/automation.json` plus the config path from step 1 when one was written. Never use a `chore(deps)`
+   subject here.
+
+4. Enable the repository settings only when the config is on the default branch: the push in step 3 succeeded
+   AND the current branch is the default branch. Dependabot reads its config from the default branch, and
+   turning the setting on first would open one ungrouped pull request per open alert.
+
+   Otherwise print `The Dependabot config is committed on <branch> but not yet on <default-branch>. Once it
+   lands there, finish with:` followed by the two `gh api -X PUT` commands from the failure block below, and
+   continue (do not treat this as a failure).
+
+   ```bash
+   .gaia/cli/gaia setup-ci enable-dependabot-security --owner <owner> --repo <repo> --json
+   ```
+
+   On success, print `Dependabot security updates are on for <owner>/<repo> (alerts: enabled, security
+   updates: enabled).` If `paused` is `true`, add `GitHub reports security updates as paused for this
+   repository; resume them from the repository's Dependabot settings.`
+
+   On failure (nonzero exit), print with no silent skip:
+
+   ```
+   Could not enable Dependabot security updates on <owner>/<repo> (failed at <step>). The config is committed; finish with repo-admin access:
+     gh api -X PUT "repos/<owner>/<repo>/vulnerability-alerts"
+     gh api -X PUT "repos/<owner>/<repo>/automated-security-fixes"
+   Then confirm: gh api "repos/<owner>/<repo>/automated-security-fixes" --jq .enabled   (expects true)
+   Or turn on Dependabot alerts and Dependabot security updates at https://github.com/<owner>/<repo>/settings/security_analysis
+   ```
+
+   An organization policy can block this even for a repo admin.
+
+### The commit
+
+Uses exactly Phase 3.5's **The commit** mechanics: the sentinel `touch` in its own earlier Bash call, the
+commit and push in its own call, `rm -f .gaia/local/setup-in-progress` unconditionally in its own call, and
+the honest push-failure line. Only the git block differs:
+
+```bash
+git add .gaia/automation.json <config-path-if-written>
+git commit -m "<message from the branch above>"
+git push origin <current-branch>
+```
 
 Fall through to Phase 4.
 
