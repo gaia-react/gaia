@@ -83,7 +83,8 @@
 # verifying the no-drift contract ends up counting to the wrong alternative.
 #
 # The ROOT-TOOLING half, the `.npmrc` / `.lintstagedrc.json` / `.prettierignore`
-# / `Dockerfile` / `.env.example` / `.nvmrc` / `.node-version` alternative, is
+# / `Dockerfile` / `.dockerignore` / `.env.example` / `.nvmrc` / `.node-version`
+# alternative, is
 # deliberately NOT part of that mirror, and the asymmetry is the point.
 # `has_source` decides whether an audit RUNS; this ERE decides what a running
 # member may REPAIR. The files below are granted to `code-audit-frontend`, the
@@ -94,7 +95,8 @@
 # exec lint-staged`, so a member free to edit it can narrow the Quality Gate
 # floor in the same commit as its repair; `.npmrc` is the registry and install
 # policy; `.prettierignore` decides what formatting skips; `Dockerfile` builds
-# the image; `.env.example` is the environment contract; `.nvmrc` and
+# the image and `.dockerignore` decides what its build context carries;
+# `.env.example` is the environment contract; `.nvmrc` and
 # `.node-version` decide the Node that CI and local must agree on. Every SIBLING
 # root config the same member owns is already refused by the mirrored half, so
 # refusing these restores the consistency the grant broke rather than inventing
@@ -104,4 +106,4 @@
 # Bash 3.2 compatible (macOS default). Never `cd`.
 
 # shellcheck disable=SC2034 # consumed by the sourcing consumer named above
-AUDIT_SELFHEAL_REFUSE_ERE='^(\.claude|\.specify|wiki|test|\.playwright|\.storybook|\.github)/|^app/(.*/)?tests/|^app/.*\.test\.tsx?$|^app/.*\.stories\.tsx$|^\.gaia/(local[^/]|loca[^l]|loc[^a]|lo[^c]|l[^o]|[^l])|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$|^tsconfig[^/]*\.json$|^[^/]*\.config\.(ts|mts|mjs|cjs|js)$|^(\.npmrc|\.lintstagedrc\.json|\.prettierignore|Dockerfile|\.env\.example|\.nvmrc|\.node-version)$'
+AUDIT_SELFHEAL_REFUSE_ERE='^(\.claude|\.specify|wiki|test|\.playwright|\.storybook|\.github)/|^app/(.*/)?tests/|^app/.*\.test\.tsx?$|^app/.*\.stories\.tsx$|^\.gaia/(local[^/]|loca[^l]|loc[^a]|lo[^c]|l[^o]|[^l])|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$|^tsconfig[^/]*\.json$|^[^/]*\.config\.(ts|mts|mjs|cjs|js)$|^(\.npmrc|\.lintstagedrc\.json|\.prettierignore|Dockerfile|\.dockerignore|\.env\.example|\.nvmrc|\.node-version)$'

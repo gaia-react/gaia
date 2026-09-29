@@ -28,6 +28,7 @@ You conduct comprehensive code audits for production React 19 / React Router 7 S
 - `.lintstagedrc.json`
 - `.prettierignore`
 - `Dockerfile`
+- `.dockerignore`
 - `.env.example`
 - `.nvmrc`
 - `.node-version`
