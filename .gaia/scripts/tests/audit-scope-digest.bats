@@ -92,7 +92,7 @@ build_sandbox() {
 @test "neither --capture nor --read exits non-zero with a stderr diagnostic" {
   run "$SCRIPT" --root "$ROOT" --member "$MEMBER" --base "$BASE"
   [ "$status" -ne 0 ]
-  grep -qF "one of --capture or --read" <<<"$output" || return 1
+  grep -qF "one of --capture, --read, or --release" <<<"$output" || return 1
 }
 
 @test "a missing --root, --member, or --base each exits non-zero" {
@@ -577,4 +577,72 @@ rotate_machinery() {
   grep -qF -- "could not be located" <<<"$output" || return 1
   grep -qF -- "its capture is released" <<<"$output" && return 1
   return 0
+}
+
+# The self-heal release. A self-healed round ends having published nothing, so
+# the spent test cannot see it end, and the orchestrator's repair commit rotates
+# the member digest before the next dispatch. Without --release that next round
+# inherits the stale capture and forfeits, and only the round after it clears.
+# The member knows it self-healed, so it releases its own capture on the way out.
+
+@test "--release removes this member's stored capture and exits 0" {
+  "$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE" >/dev/null
+  [ -f "$(scope_file_for "$ROOT" "$BASE" "$MEMBER")" ]
+
+  run "$SCRIPT" --release --root "$ROOT" --member "$MEMBER" --base "$BASE"
+  [ "$status" -eq 0 ]
+  [ ! -f "$(scope_file_for "$ROOT" "$BASE" "$MEMBER")" ]
+}
+
+@test "--release with no stored capture exits 0: nothing is left to strand a later round" {
+  [ ! -f "$(scope_file_for "$ROOT" "$BASE" "$MEMBER")" ]
+  run "$SCRIPT" --release --root "$ROOT" --member "$MEMBER" --base "$BASE"
+  [ "$status" -eq 0 ]
+}
+
+@test "--release leaves another member's capture alone" {
+  local other="code-audit-maintainer-shell"
+  "$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE" >/dev/null
+  "$SCRIPT" --capture --root "$ROOT" --member "$other" --base "$BASE" >/dev/null
+
+  run "$SCRIPT" --release --root "$ROOT" --member "$MEMBER" --base "$BASE"
+  [ "$status" -eq 0 ]
+  [ ! -f "$(scope_file_for "$ROOT" "$BASE" "$MEMBER")" ]
+  [ -f "$(scope_file_for "$ROOT" "$BASE" "$other")" ]
+}
+
+@test "--release that cannot remove the capture exits non-zero and says so" {
+  # A directory at the scope-file path defeats `rm -f` even as root, where a
+  # permission bit would not.
+  mkdir -p "$(scope_file_for "$ROOT" "$BASE" "$MEMBER")"
+  run "$SCRIPT" --release --root "$ROOT" --member "$MEMBER" --base "$BASE"
+  [ "$status" -ne 0 ]
+  grep -qF -- "cannot release" <<<"$output" || return 1
+}
+
+@test "--recapture is rejected on --release" {
+  run "$SCRIPT" --release --recapture --root "$ROOT" --member "$MEMBER" --base "$BASE"
+  [ "$status" -eq 2 ]
+  printf '%s\n' "$output" | grep -qF -- "--recapture is valid only with --capture"
+}
+
+@test "END TO END: a self-healed round that releases lets the next round clear on its first try" {
+  writer="$THIS_DIR/../audit-write-clearance.sh"
+  [ -x "$writer" ] || skip "audit-write-clearance.sh not executable"
+
+  # --- round 1: captures, self-heals, publishes nothing, releases ---
+  captured="$("$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE")"
+  "$SCRIPT" --release --root "$ROOT" --member "$MEMBER" --base "$BASE"
+  [ -z "$(find "$ROOT/.gaia/local/audit" -name '*.ok' -o -name '*.refused' 2>/dev/null)" ]
+
+  # --- the orchestrator commits the repair, rotating the member digest ---
+  rotate_in_scope
+
+  # --- round 2: captures fresh, and its earned write clears first time ---
+  fresh="$("$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE")"
+  [ "$fresh" != "$captured" ]
+  run "$writer" --root "$ROOT" --member "$MEMBER" --provenance earned \
+    --base "$BASE" --scope-digest "$fresh"
+  [ "$status" -eq 0 ]
+  [ -f "$ROOT/.gaia/local/audit/${fresh}.ok" ]
 }

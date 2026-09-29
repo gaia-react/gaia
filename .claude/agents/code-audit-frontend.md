@@ -914,6 +914,14 @@ A self-heal pass edits the working tree and stops there: you make **no `git comm
 
 A pass that repairs a file writes **no clearance marker for that pass**, even if every remaining item now looks resolved in the working tree, and reports that it must be re-dispatched. A marker only ever attests **committed** content: your repair is committed by the orchestrator, your own digest rotates from that commit, your marker invalidates, and the resolver re-dispatches you on the next round, a fresh pass over the fresh HEAD that finds nothing left to fix and writes the marker then. That is the whole loop; it needs no healing oracle, no round counter, and no fan-out.
 
+Before you return from a self-healed pass, release your scope capture:
+
+```bash
+<root>/.gaia/scripts/audit-scope-digest.sh --release --root <root> --member code-audit-frontend --base '<KEY_BASE>'
+```
+
+A self-healed pass publishes neither a marker nor a refusal, so nothing tells the scope script your round ended and the capture survives it. The orchestrator's commit then rotates your digest, and without the release the next dispatch inherits the stale capture: its clean review forfeits with `review scope superseded`, and only the round after that clears, one wasted full round against the three-round cap. Releasing is safe here because this pass writes no marker, so no capture taken after it attests anything. A non-zero exit names a capture it could not remove; put it in your report, because the next round will forfeit once.
+
 This binds the **local** path, where the orchestrator, not the member, owns git. Inside CI, the workflow's own commit-and-push step commits and pushes a self-heal diff separately, and that is unchanged.
 
 ## Audit marker (gate handshake)
