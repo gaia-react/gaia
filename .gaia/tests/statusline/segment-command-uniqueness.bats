@@ -13,10 +13,11 @@
 # renders one of them; a source-level count would red on the very shape that
 # is correct.
 #
-# COLUMNS=400 pins the full tier: the saturated fixture's seven segments do
-# not fit the width-tiered renderer's default (COLUMNS unset -> 120), and
-# this suite's invariant is checked where every command still names itself,
-# not where a narrower render has already dropped to short text or icons.
+# COLUMNS=400 keeps every nudge at its Large size: the saturated fixture's
+# seven segments do not fit the width-tiered renderer's default (COLUMNS
+# unset -> 120), and this suite's invariant is checked where every command
+# still names itself, not where a narrower render has already shrunk to a
+# bare command or an icon.
 #
 # The fixture mirrors the statusline half of harden-unclassified-segment.bats:
 # a MAIN git checkout with setup marked complete and no gaia-init gate file,

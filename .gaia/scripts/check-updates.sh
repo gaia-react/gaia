@@ -11,11 +11,14 @@
 #   - hardenCandidateCount (recurring code-review findings ready to harden)
 #   - hardenUnclassifiedCount (classless recurring findings over threshold;
 #                     a seed-a-class-or-investigate signal, never a candidate)
-#   - hardenNudgeReason (the composed text the /gaia-harden segment renders;
-#                     the two counts above keep being written even though the
-#                     statusline no longer reads them directly, so a cache
-#                     written before this field existed still has a value to
-#                     seed the reason from on the first post-upgrade refresh)
+#   - hardenNudgeReason (the composed text the /gaia-harden segment's Large
+#                     form renders; the statusline also reads
+#                     hardenCandidateCount directly for that segment's
+#                     Medium form and icon count. hardenUnclassifiedCount
+#                     keeps being written only for the upgrade-window seed:
+#                     a cache written before hardenNudgeReason existed still
+#                     has a value to seed the reason from on the first
+#                     post-upgrade refresh)
 #   - residueCandidateCount (keyed audit residue aged 30+ days, ready to
 #                     triage via /gaia-residue)
 #   - auditNudge / auditNudgeReason / auditLastAppliedAt / auditMemoryCount /
@@ -268,9 +271,11 @@ esac
 # which this pass takes as the new counts. Falls back to the previous cached
 # counts only on a missing binary or a parse error.
 #
-# hardenNudgeReason is the text the statusline actually renders; the two
-# counts above keep being written for the upgrade-window seed (see
-# prev_harden_reason). Without a review snapshot (snapshot_present not true:
+# hardenNudgeReason is the text the /gaia-harden segment's Large form
+# renders; the statusline reads hardenCandidateCount directly for that
+# segment's Medium form and icon count, and hardenUnclassifiedCount keeps
+# being written only for the upgrade-window seed (see prev_harden_reason).
+# Without a review snapshot (snapshot_present not true:
 # no snapshot yet, or a pre-SPEC/mock binary), the reason is today's count
 # text via harden_count_reason. With one, it names the trigger events
 # harden-tally reports: schema_change, the new_class count, one
