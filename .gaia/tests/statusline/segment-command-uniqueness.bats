@@ -8,10 +8,15 @@
 # rendered statusline.
 #
 # It has to be checked against the RENDERED line rather than against the
-# source's `segments+=` calls. `/gaia-audit` legitimately occupies two of
+# source's `nudge_set` calls. `/gaia-audit` legitimately occupies two of
 # those calls, an if/else over whether a reason is available, and only ever
 # renders one of them; a source-level count would red on the very shape that
 # is correct.
+#
+# COLUMNS=400 pins the full tier: the saturated fixture's seven segments do
+# not fit the width-tiered renderer's default (COLUMNS unset -> 120), and
+# this suite's invariant is checked where every command still names itself,
+# not where a narrower render has already dropped to short text or icons.
 #
 # The fixture mirrors the statusline half of harden-unclassified-segment.bats:
 # a MAIN git checkout with setup marked complete and no gaia-init gate file,
@@ -62,7 +67,7 @@ JSON
   mkdir -p "$MAIN/.gaia/local/debt"
   printf '{"openCount":4}' > "$MAIN/.gaia/local/debt/count.json"
   json=$(jq -n --arg d "$MAIN" '{workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
-  run env HOME="$TMP_HOME" bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
+  run env HOME="$TMP_HOME" COLUMNS=400 bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
 }
 
 # Every slash command the rendered line names, one per line, sorted. The
@@ -119,7 +124,7 @@ JSON
   mkdir -p "$MAIN/.gaia/local/debt"
   printf '{"openCount":4}' > "$MAIN/.gaia/local/debt/count.json"
   json=$(jq -n --arg d "$MAIN" '{workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
-  run env HOME="$TMP_HOME" bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
+  run env HOME="$TMP_HOME" COLUMNS=400 bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
   [ "$status" -eq 0 ]
   grep -qF -- "Run /gaia-harden (1 new pattern, drifting-duplicate rising)" <<<"$output"
   [ "$(grep -oF -- "Run /gaia-harden" <<<"$output" | wc -l | tr -d ' ')" -eq 1 ]
