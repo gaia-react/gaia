@@ -214,9 +214,16 @@ jobs:
           AUDIT_BASE: ${{ steps.base.outputs.base }}
         run: |
           set -eu
-          # Audit-relevant scope: TS/TSX/CSS code under app/, tests,
-          # .storybook configs, GitHub workflow files, and root-level
-          # build/lint/test/typecheck configs. PRs whose UN-AUDITED DELTA
+          # Audit-relevant scope: exactly what .gaia/audit-ci.yml grants
+          # code-audit-frontend -- code under app/, tests, the Playwright
+          # suite, .storybook configs, GitHub workflow files, root-level
+          # build/lint/test/typecheck configs, and the root tooling that
+          # decides what runs (Dockerfile, .npmrc, .nvmrc, ...). A path that
+          # member owns but this step misses reads has_source=false and gets
+          # the out-of-scope success carrying that member's digest, so the two
+          # lists must agree, and they are kept in step by hand: widening that
+          # roster entry means widening dir_pattern / file_pattern here too.
+          # PRs whose UN-AUDITED DELTA
           # (<audit-base>...HEAD) only touches wiki/, .claude/, .specify/,
           # prose docs, or .gaia/ metadata are skipped; the agent has no rules
           # that would meaningfully apply. The base is the last clean-audited
@@ -234,8 +241,8 @@ jobs:
           # its old path too: rename detection reports only the new path, and
           # the move would read as has_source=false and skip the audit.
           changed=$(set -o pipefail; git diff --name-only -z --no-renames "${AUDIT_BASE}...HEAD" | tr '\0' '\n')
-          dir_pattern='^(app|test|\.storybook|\.github/workflows)/'
-          file_pattern='^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$|^tsconfig[^/]*\.json$|^[^/]*\.config\.(ts|mts|mjs|cjs|js)$'
+          dir_pattern='^(app|test|\.playwright|\.storybook|\.github/workflows)/'
+          file_pattern='^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$|^tsconfig[^/]*\.json$|^[^/]*\.config\.(ts|mts|mjs|cjs|js)$|^(\.npmrc|\.lintstagedrc\.json|\.prettierignore|Dockerfile|\.dockerignore|\.env\.example|\.nvmrc|\.node-version)$'
           if printf '%s\n' "$changed" | grep -qE "${dir_pattern}|${file_pattern}"; then
             echo "has_source=true" >> "$GITHUB_OUTPUT"
           else

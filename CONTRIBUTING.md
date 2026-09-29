@@ -59,7 +59,7 @@ If Claude generates a change that fights an existing rule, the rule wins. If you
 - Refactors without a stated problem.
 - Architectural changes without prior discussion.
 - Removing or weakening the strict tooling.
-- Framework swaps. The current stack is React Router 7, Tailwind, Vitest, Playwright, MSW, Conform, Zod. If you want to add support for Next.js, Astro, or TanStack Start, open an issue first. That's a roadmap conversation, not a PR.
+- Framework swaps. The current stack is React Router 8, Tailwind, Vitest, Playwright, MSW, Conform, Zod. If you want to add support for Next.js, Astro, or TanStack Start, open an issue first. That's a roadmap conversation, not a PR.
 - Cosmetic-only changes to working code.
 
 ## Wiki sync system
