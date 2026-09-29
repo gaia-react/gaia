@@ -23,7 +23,7 @@ The old implementation had three real problems:
 ## What changed
 
 - **Added** `app/utils/theme.server.ts`, `app/utils/request-info.ts`, `app/hooks/useTheme.ts`.
-- **Added** `app/routes/resources+/theme-switch.tsx` (now `app/routes/resources.theme-switch.tsx`): co-located `action` + Zod `ThemeFormSchema`. The theme hooks live in `app/hooks/useTheme.ts` and the switcher component in `app/components/ThemeSwitch/index.tsx`.
+- **Added** `app/routes/resources.theme-switch.tsx` (originally `resources+/theme-switch.tsx`, before the flat fs-routes rename): co-located `action` + Zod `ThemeFormSchema`. The theme hooks live in `app/hooks/useTheme.ts` and the switcher component in `app/components/ThemeSwitch/index.tsx`.
 - **Removed** `app/state/theme.tsx`, `app/sessions.server/theme.ts`, `app/routes/actions+/set-theme.ts`, `app/components/ThemeSwitcher/index.tsx`.
 - **Updated** `app/root.tsx` loader to return `requestInfo`. `<State>` no longer carries `theme`.
 - **Updated** `app/components/Document/index.tsx` to call `useOptionalTheme()` and, when no explicit cookie preference exists, render an inline pre-paint `<script>` (`THEME_SCRIPT`) in `<head>` that adds the `dark` class from `matchMedia`.
