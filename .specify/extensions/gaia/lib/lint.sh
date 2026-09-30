@@ -23,6 +23,8 @@
 #   - status in {in-progress, reopened, closed}
 #   - spec_id matches SPEC-NNN
 #   - every UAT has a frozen uat_id matching UAT-NNN
+#   - optional lineage: list; every entry is a research:/issue:/init:/spec:/plan: ref
+#     (finding code invalid_lineage)
 #   - no placeholder text ([PLACEHOLDER], <TODO>, TBD, FIXME, <TBD>)
 #   - reopen ceremony: when status == reopened, body must contain a UAT diff capture
 #     and a rationale block (markers: "## Reopen rationale" and "## UAT diff" or
@@ -192,6 +194,46 @@ if [ -n "$uats_block" ]; then
   if [ -n "$bad_ids" ]; then
     add_finding "bad_uat_id" "UAT id(s) do not match UAT-NNN frozen format" "frontmatter.uats"
   fi
+fi
+
+# --- Lineage check (optional key): every entry must be a parent ref ---
+# Regexes are a copy of the research/init, issue, spec, and plan rows of the ref
+# grammar defined in .gaia/scripts/usage-lib.sh; keep them matching that file.
+# This file stays self-contained under .specify/, so it does not source the lib.
+# A SPEC's parent is never a branch, PR, session, or command, so only these kinds.
+if has_fm_key lineage; then
+  lineage_re_slug='^(research|init):[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'
+  lineage_re_issue='^issue:[1-9][0-9]{0,9}$'
+  lineage_re_spec='^spec:SPEC-[0-9]{3,}$'
+  lineage_re_plan='^plan:PLAN-[0-9]{3,}$'
+  lineage_inline="$(get_fm_field lineage || true)"
+  lineage_inline="${lineage_inline%"${lineage_inline##*[![:space:]]}"}"
+  if [ -n "$lineage_inline" ]; then
+    # Flow list: [a, b]
+    lineage_entries="${lineage_inline#\[}"
+    lineage_entries="${lineage_entries%\]}"
+    lineage_entries="$(printf '%s' "$lineage_entries" | tr ',' '\n')"
+  else
+    # Block list: indented "- entry" lines up to the next top-level key.
+    lineage_entries="$(printf '%s' "$fm" | awk '
+      /^lineage:/ { capture = 1; next }
+      capture && /^[A-Za-z_][A-Za-z0-9_]*:/ { capture = 0 }
+      capture && /^[[:space:]]*-[[:space:]]/ { sub(/^[[:space:]]*-[[:space:]]+/, ""); print }
+    ')"
+  fi
+  while IFS= read -r lineage_entry; do
+    lineage_entry="${lineage_entry#"${lineage_entry%%[![:space:]]*}"}"
+    lineage_entry="${lineage_entry%"${lineage_entry##*[![:space:]]}"}"
+    lineage_entry="${lineage_entry#[\"\']}"
+    lineage_entry="${lineage_entry%[\"\']}"
+    [ -z "$lineage_entry" ] && continue
+    if ! [[ "$lineage_entry" =~ $lineage_re_slug ]] \
+      && ! [[ "$lineage_entry" =~ $lineage_re_issue ]] \
+      && ! [[ "$lineage_entry" =~ $lineage_re_spec ]] \
+      && ! [[ "$lineage_entry" =~ $lineage_re_plan ]]; then
+      add_finding "invalid_lineage" "lineage entry is not a valid parent ref: '$lineage_entry'" "frontmatter.lineage"
+    fi
+  done <<<"$lineage_entries"
 fi
 
 # --- Placeholder text scan over the whole file ---
