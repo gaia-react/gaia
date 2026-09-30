@@ -9,7 +9,8 @@
 #
 # It sums `.message.usage` across the session's MAIN transcript
 # (<projects-root>/*/<session-id>.jsonl) AND every sub-agent sidecar
-# (<projects-root>/*/<session-id>/subagents/agent-*.jsonl). A single assistant
+# (<projects-root>/*/<session-id>/subagents/agent-*.jsonl, plus a Workflow run's
+# subagents/workflows/wf_*/agent-*.jsonl). A single assistant
 # message is streamed across MULTIPLE JSONL lines that repeat the same
 # `.message.id` and the same usage, so the tally DEDUPS by `.message.id`
 # (fallback `.uuid`) before summing; without this it overcounts output ~3x.
@@ -450,6 +451,17 @@ if [[ -n "$SESSION_ID" && -n "$tmp" ]]; then
       emit_file "$f" "$(sidecar_agent_type "$f")" "$sidecar_file_id"
     fi
   done
+
+  # Workflow sidecars sit one level deeper, under workflows/wf_<id>/. The file
+  # id keeps the wf_<id> segment so it stays unique across workflow runs; the
+  # agent-*.jsonl glob excludes the run's journal.jsonl as well as meta.json.
+  for f in "$PROJECTS_ROOT"/*/"$SESSION_ID"/subagents/workflows/wf_*/agent-*.jsonl; do
+    if [[ -f "$f" ]]; then
+      sidecar_file_id="$(basename "$(dirname "$f")")/$(basename "$f")"
+      sidecar_file_id="${sidecar_file_id%.jsonl}"
+      emit_file "$f" "$(sidecar_agent_type "$f")" "$sidecar_file_id"
+    fi
+  done
 fi
 
 # ---------- --action review: standalone FC-3 records, no phase record ----------
@@ -536,8 +548,11 @@ if [[ "$ACTION" == "review" ]]; then
     fi
 
     # Unfiltered $tmp: this IS the review's own window (never tmp_phase, which
-    # excludes code-review-audit windows for the PHASE path only).
-    subset="$(gaia_window_subset "$tmp" "$w_started" "$w_ended")"
+    # excludes code-review-audit windows for the PHASE path only), narrowed to
+    # the sidecars gaia_review_windows assigned it, so parallel members whose
+    # windows nest never count the same spend in two review rows.
+    w_ids="$(jq -c '.file_ids // null' <<<"$w" 2>/dev/null)"
+    subset="$(gaia_window_subset "$tmp" "$w_started" "$w_ended" "$w_ids")"
 
     r_fresh="$(jq -r '.buckets.fresh_input' <<<"$subset" 2>/dev/null)"
     r_cwrite="$(jq -r '.buckets.cache_write' <<<"$subset" 2>/dev/null)"

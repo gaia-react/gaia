@@ -316,6 +316,25 @@ $records
 EOF
 }
 
+# --- audit_roster_member_names <config-file> ----------------------------------
+#
+# Prints every member name on <config-file>'s `auditors:` roster, one per line,
+# in roster order. Returns 1 with nothing on stdout when the file is absent or
+# carries no parseable roster; like audit_scope_init, it supplies no fallback,
+# so a caller that needs one names it. A claimant declaring no globs emits no
+# parser record and is not listed, which is harmless: it can never be
+# dispatched. Answers "is this agentType a Code Audit Team member", which the
+# cost tally asks of sidecar transcripts.
+
+audit_roster_member_names() {
+  local config_file="$1" names
+  [ -f "$config_file" ] || return 1
+  names="$(_audit_scope_parse_auditors < "$config_file" \
+    | awk '($1 == "DEFAULT" || $1 == "GLOB") && !seen[$2]++ { print $2 }')"
+  [ -n "$names" ] || return 1
+  printf '%s\n' "$names"
+}
+
 # --- Internal: classify one path with no subshell and no stdout -------------
 #
 # Sets _AUDIT_SCOPE_OWNER_RESULT (empty when ownerless). Shared by the two

@@ -221,6 +221,32 @@ led() { jq -r "$1" "$LEDGER"; }
   [ "$after" -eq "$before" ]
 }
 
+# ---------- 4b. workflow sidecars (subagents/workflows/wf_<id>/) are tallied ----------
+# A Workflow run writes its agents one level deeper than a plain Agent dispatch.
+# m5 (fresh=50 cwrite=500 cread=5000 out=5, 5555) sits inside the anchor's span,
+# so the total moves 11110 -> 16665 and the duration stays 125s. Its meta.json
+# sibling names the agentType bucket, and the journal.jsonl decoy (usage 999999)
+# must stay out, exactly like the plain-sidecar meta.json decoy.
+@test "workflow sidecars under subagents/workflows/wf_*/ are tallied" {
+  cp -R "$ANCHOR" "$BATS_TEST_TMPDIR/projcopy"
+  wf="$BATS_TEST_TMPDIR/projcopy/proj-hash-a/$SESSION/subagents/workflows/wf_fixture0001"
+  mkdir -p "$wf"
+  printf '%s\n' '{"type":"assistant","uuid":"u-m5-a","timestamp":"2026-07-02T17:01:00.000Z","message":{"id":"m5","role":"assistant","usage":{"input_tokens":50,"cache_creation_input_tokens":500,"cache_read_input_tokens":5000,"output_tokens":5}}}' \
+    > "$wf/agent-0005.jsonl"
+  printf '%s\n' '{"agentType":"workflow-subagent"}' > "$wf/agent-0005.meta.json"
+  printf '%s\n' '{"type":"assistant","uuid":"j","message":{"id":"journal1","usage":{"input_tokens":999999,"cache_creation_input_tokens":999999,"cache_read_input_tokens":999999,"output_tokens":999999}}}' \
+    > "$wf/journal.jsonl"
+
+  run bash "$SCRIPT" --action execute --spec-id SPEC-013 --plan-slug slug \
+    --out-dir "$OUTDIR" --session-id "$SESSION" \
+    --projects-root "$BATS_TEST_TMPDIR/projcopy" --ledger "$LEDGER"
+  [ "$status" -eq 0 ]
+  [ "$(led '.partial')" = "false" ]
+  [ "$(led '.total')" -eq 16665 ]
+  [ "$(led '.duration_seconds')" -eq 125 ]
+  [ "$(led '.by_agent_type["workflow-subagent"].fresh_input')" -eq 50 ]
+}
+
 # ---------- 5. cost.json content (UAT-001) ----------
 @test "cost.json exists in --out-dir with all five figures (not empty/placeholder)" {
   run_anchor
