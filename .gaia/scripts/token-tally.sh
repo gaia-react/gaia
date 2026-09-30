@@ -9,7 +9,8 @@
 #
 # It sums `.message.usage` across the session's MAIN transcript
 # (<projects-root>/*/<session-id>.jsonl) AND every sub-agent sidecar
-# (<projects-root>/*/<session-id>/subagents/agent-*.jsonl). A single assistant
+# (<projects-root>/*/<session-id>/subagents/agent-*.jsonl, plus a Workflow run's
+# subagents/workflows/wf_*/agent-*.jsonl). A single assistant
 # message is streamed across MULTIPLE JSONL lines that repeat the same
 # `.message.id` and the same usage, so the tally DEDUPS by `.message.id`
 # (fallback `.uuid`) before summing; without this it overcounts output ~3x.
@@ -446,6 +447,17 @@ if [[ -n "$SESSION_ID" && -n "$tmp" ]]; then
   for f in "$PROJECTS_ROOT"/*/"$SESSION_ID"/subagents/agent-*.jsonl; do
     if [[ -f "$f" ]]; then
       sidecar_file_id="$(basename "$f")"
+      sidecar_file_id="${sidecar_file_id%.jsonl}"
+      emit_file "$f" "$(sidecar_agent_type "$f")" "$sidecar_file_id"
+    fi
+  done
+
+  # Workflow sidecars sit one level deeper, under workflows/wf_<id>/. The file
+  # id keeps the wf_<id> segment so it stays unique across workflow runs; the
+  # agent-*.jsonl glob excludes the run's journal.jsonl as well as meta.json.
+  for f in "$PROJECTS_ROOT"/*/"$SESSION_ID"/subagents/workflows/wf_*/agent-*.jsonl; do
+    if [[ -f "$f" ]]; then
+      sidecar_file_id="$(basename "$(dirname "$f")")/$(basename "$f")"
       sidecar_file_id="${sidecar_file_id%.jsonl}"
       emit_file "$f" "$(sidecar_agent_type "$f")" "$sidecar_file_id"
     fi
