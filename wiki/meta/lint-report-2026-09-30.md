@@ -15,11 +15,7 @@ status: developing
 
 ## #12: Dead repo-relative paths
 
-⚠ 3 dead path reference(s) in wiki/, files no longer exist on disk:
-
-- `wiki/decisions/Dark Mode Modernization.md:26` → `app/routes/resources+/theme-switch.tsx`
-- `wiki/modules/Routing.md:31` → `app/routes/_session.tsx`
-- `wiki/modules/Sessions.md:24` → `app/routes/_session.tsx`
+✓ No dead repo-relative paths detected in wiki body prose.
 
 ## #13: UAT/SPEC narrative-ref drift
 
