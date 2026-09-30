@@ -82,6 +82,9 @@ const App: FC = () => {
           __html: `window.process = ${serializedEnvironment}`,
         }}
         nonce={nonce}
+        // The client renders an empty nonce; see the nonce contract in
+        // Document.
+        suppressHydrationWarning={true}
       />
       <Outlet />
       <Toast />
