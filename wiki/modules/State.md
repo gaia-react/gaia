@@ -11,7 +11,7 @@ tags: [module, state]
 
 # State
 
-GAIA uses plain React Context+Provider for global state; no Redux, Zustand, etc. `app/state/index.tsx` defines a single `<State>` component that `root.tsx` renders around `<App />`. It is the designated composition point: consumers nest their own providers inside `<State>` as they add slices.
+The app uses plain React Context+Provider for global state; no Redux, Zustand, etc. `app/state/index.tsx` defines a single `<State>` component that `root.tsx` renders around `<App />`. It is the designated composition point: consumers nest their own providers inside `<State>` as they add slices.
 
 ## Template ships with no slices
 

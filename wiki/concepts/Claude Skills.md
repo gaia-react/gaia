@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-06-24
+updated: 2026-09-30
 tags: [concept, claude, skills]
 ---
 
@@ -39,7 +39,7 @@ GAIA's skills split into three groups: shared `gaia/references/` playbooks consu
 | `new-component` | "create a component", "scaffold a card": drops a PascalCase folder under `app/components/` with `index.tsx` and a `tests/` dir          |
 | `new-hook`      | "create a useFoo hook", "add a hook under app/hooks": drops a `useThing.ts` + Vitest test                                               |
 | `new-route`     | "add a new page", "scaffold /dashboard": wires a route file + `app/pages/{Group}/{PageName}/` + i18n keys                               |
-| `new-service`   | "add a service", "scaffold the projects API": drops `app/services/gaia/{name}/` (parsers, types, requests) and matching MSW collections |
+| `new-service`   | "add a service", "scaffold the projects API": drops `app/services/{layer}/{name}/` (parsers, types, requests) and matching MSW collections |
 | `update-deps`   | Autonomous Dependabot: fired by `/gaia-init`, accepted from the statusline `Run /update-deps` indicator, or "update dependencies"       |
 | `update-gaia`   | Pull a later GAIA release into the project: accepted from the SessionStart update prompt, or "pull the latest GAIA"                     |
 

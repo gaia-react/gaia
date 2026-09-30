@@ -14,7 +14,7 @@ tags: [module, components, forms]
 
 # Form Components
 
-Built on [[Conform]] + [[Zod]], GAIA's form components handle label association, validation state, error display, and accessibility automatically.
+Built on [[Conform]] + [[Zod]], the form components handle label association, validation state, error display, and accessibility automatically.
 
 ## Replace native inputs
 
@@ -56,4 +56,4 @@ See [[Component Testing]] for the canonical example (`YearMonthDay/tests/`).
 
 ## Accessibility
 
-GAIA's Form components handle label association automatically. For custom inputs, ensure `<label htmlFor>` or `aria-label`. See [[Accessibility]].
+The Form components handle label association automatically. For custom inputs, ensure `<label htmlFor>` or `aria-label`. See [[Accessibility]].

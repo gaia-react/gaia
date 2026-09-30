@@ -2,13 +2,13 @@
 type: module
 status: active
 created: 2026-05-07
-updated: 2026-09-29
+updated: 2026-09-30
 tags: [module, cli, scaffolding]
 ---
 
 # CLI Scaffolding
 
-The CLI provides subcommands for scaffolding new project artifacts: components, hooks, routes, and services. Each subcommand generates boilerplate code following GAIA patterns.
+The CLI provides subcommands for scaffolding new project artifacts: components, hooks, routes, and services. Each subcommand generates boilerplate code following the project's patterns.
 
 ## Subcommands
 
@@ -18,7 +18,7 @@ The CLI provides subcommands for scaffolding new project artifacts: components, 
 
 **`gaia scaffold route`**: Generates a new React Router route file at `app/routes/<group>.<name>.tsx` plus a matching page folder at `app/pages/<Group>/<PageName>/` containing `index.tsx`, `tests/index.test.tsx`, and `tests/index.stories.tsx`. `--group <_public|_session>` is required (the command exits otherwise); loader and action stubs are opt-in via `--loader` and `--action`. Flags: `--group` (required), `--loader`, `--action`, `--i18n`, `--dry-run`, `--json`.
 
-**`gaia scaffold service`**: Generates a new service module at `app/services/gaia/<name>/` with request functions (`requests.ts`), Zod schemas (`parsers.ts`), types (`types.ts`), URL constants (`urls.ts`), and a barrel (`index.ts`). With `--mocks` it also emits a matching `test/mocks/<name>/` MSW collection and inserts it alphabetically into the test database barrel (`test/mocks/database.ts`). Flags: `--endpoints "get,post,put,delete"` (required), `--schema "id:string,name:string"` (required), `--mocks`, `--json`.
+**`gaia scaffold service`**: Generates a new service module at `app/services/<layer>/<name>/`, where `<layer>` is the domain-layer folder (`gaia/` until you rename it; the CLI finds it as the one folder besides `api/`), with request functions (`requests.ts`), Zod schemas (`parsers.ts`), types (`types.ts`), URL constants (`urls.ts`), and a barrel (`index.ts`). With `--mocks` it also emits a matching `test/mocks/<name>/` MSW collection and inserts it alphabetically into the test database barrel (`test/mocks/database.ts`). Flags: `--endpoints "get,post,put,delete"` (required), `--schema "id:string,name:string"` (required), `--layer <folder>` (only when several folders qualify), `--mocks`, `--json`.
 
 ## Shared infrastructure
 
@@ -28,7 +28,7 @@ All scaffolding subcommands use a common foundation:
 - **Idempotency**: All scaffolders write via `writeFileIfAbsent`. A byte-identical existing file is reported as skipped (re-runs are safe), but a file that exists with different content makes the write throw, protecting customizations. The component flow additionally errors when its `--parent` target directory is missing; the hook, route, and service flows create any missing directories on demand (`mkdir -p`).
 - **Barrel insert**: The service `--mocks` flow registers new mock collections in the test database barrel (`test/mocks/database.ts`), and the route `--i18n` flow inserts the new page locale alphabetically into `app/languages/en/pages/index.ts`. The component and hook flows edit no barrels; `app/components/` and `app/hooks/` have no top-level `index.ts` in this template.
 
-Templates follow GAIA naming conventions and include TypeScript types and unit-test structure. The route scaffolder additionally emits an i18n locale file and wires the locale barrel when `--i18n` is passed. A `--loader` route reads its copy from the locale only under `--i18n`; without it the loader returns placeholder literals, so the route typechecks without locale keys.
+Templates follow the project's naming conventions and include TypeScript types and unit-test structure. The route scaffolder additionally emits an i18n locale file and wires the locale barrel when `--i18n` is passed. A `--loader` route reads its copy from the locale only under `--i18n`; without it the loader returns placeholder literals, so the route typechecks without locale keys.
 
 ## Integration
 

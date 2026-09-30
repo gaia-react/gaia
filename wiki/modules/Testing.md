@@ -17,7 +17,7 @@ tags: [module, testing]
 
 # Testing
 
-GAIA ships **four layers** of testing, all sharing a common [[MSW Handlers|MSW]] mocking layer:
+Testing has **four layers**, all sharing a common [[MSW Handlers|MSW]] mocking layer:
 
 - Unit: [[Vitest]] in `app/utils/tests/`, `app/hooks/tests/`
 - Integration: Vitest + [[React Testing Library]] in `app/components/*/tests/`, `app/pages/*/tests/`

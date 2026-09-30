@@ -531,4 +531,100 @@ describe('gaia scaffold service', () => {
     expect(types).toContain('UserSetting');
     expect(types).toContain('UserSettings');
   });
+
+  test('writes into a renamed domain-layer folder and points mocks at it', () => {
+    const servicesDir = path.join(sandbox.dir, 'app', 'services');
+    rmSync(path.join(servicesDir, 'gaia'), {force: true, recursive: true});
+    mkdirSync(path.join(servicesDir, 'acme'), {recursive: true});
+    mkdirSync(path.join(servicesDir, 'api'), {recursive: true});
+
+    const code = run(
+      ['projects', '--endpoints', 'get', '--schema', 'id:string', '--mocks'],
+      {cwd: sandbox.dir}
+    );
+
+    expect(code).toBe(EXIT_CODES.OK);
+    expect(
+      existsSync(path.join(servicesDir, 'acme', 'projects', 'urls.ts'))
+    ).toBe(true);
+    expect(existsSync(path.join(servicesDir, 'gaia'))).toBe(false);
+    expect(
+      read(path.join(sandbox.dir, 'test', 'mocks', 'projects', 'get.ts'))
+    ).toContain("from '~/services/acme/projects/urls'");
+  });
+
+  test('refuses to guess when several domain-layer folders exist', () => {
+    const servicesDir = path.join(sandbox.dir, 'app', 'services');
+    mkdirSync(path.join(servicesDir, 'acme'), {recursive: true});
+
+    const code = run(
+      ['projects', '--endpoints', 'get', '--schema', 'id:string'],
+      {cwd: sandbox.dir}
+    );
+
+    expect(code).toBe(EXIT_CODES.UNKNOWN_SUBCOMMAND);
+    expect(existsSync(path.join(servicesDir, 'gaia', 'projects'))).toBe(false);
+    expect(existsSync(path.join(servicesDir, 'acme', 'projects'))).toBe(false);
+  });
+
+  test('--layer picks the folder when several exist', () => {
+    const servicesDir = path.join(sandbox.dir, 'app', 'services');
+    mkdirSync(path.join(servicesDir, 'acme'), {recursive: true});
+
+    const code = run(
+      [
+        'projects',
+        '--endpoints',
+        'get',
+        '--schema',
+        'id:string',
+        '--layer',
+        'acme',
+      ],
+      {cwd: sandbox.dir}
+    );
+
+    expect(code).toBe(EXIT_CODES.OK);
+    expect(
+      existsSync(path.join(servicesDir, 'acme', 'projects', 'urls.ts'))
+    ).toBe(true);
+  });
+
+  test('rejects a --layer that names a file, not a folder', () => {
+    const servicesDir = path.join(sandbox.dir, 'app', 'services');
+    writeFileSync(path.join(servicesDir, 'notes'), '');
+
+    const code = run(
+      [
+        'projects',
+        '--endpoints',
+        'get',
+        '--schema',
+        'id:string',
+        '--layer',
+        'notes',
+      ],
+      {cwd: sandbox.dir}
+    );
+
+    expect(code).toBe(EXIT_CODES.UNKNOWN_SUBCOMMAND);
+    expect(existsSync(path.join(servicesDir, 'notes', 'projects'))).toBe(false);
+  });
+
+  test('rejects a --layer that is not one folder name', () => {
+    const code = run(
+      [
+        'projects',
+        '--endpoints',
+        'get',
+        '--schema',
+        'id:string',
+        '--layer',
+        '../escape',
+      ],
+      {cwd: sandbox.dir}
+    );
+
+    expect(code).toBe(EXIT_CODES.UNKNOWN_SUBCOMMAND);
+  });
 });

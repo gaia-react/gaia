@@ -8,7 +8,7 @@ tags: [flow, forms, conform, zod]
 
 # Form Submit Flow
 
-The end-to-end path of a form submission in GAIA.
+The end-to-end path of a form submission in the app.
 
 1. User fills out a form built from [[Form Components]].
 2. Conform's `useForm({ onValidate })` runs `parseWithZod(formData, {schema})` client-side for instant feedback.

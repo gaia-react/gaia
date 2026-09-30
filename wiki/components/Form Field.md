@@ -3,7 +3,7 @@ type: component
 path: app/components/Form/Field/
 status: active
 language: typescript
-purpose: Label + input + status wrapper several GAIA Form components wrap directly
+purpose: Label + input + status wrapper several Form components wrap directly
 depends_on: [[Form Components]]
 created: 2026-04-20
 updated: 2026-06-24
