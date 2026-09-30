@@ -548,8 +548,11 @@ if [[ "$ACTION" == "review" ]]; then
     fi
 
     # Unfiltered $tmp: this IS the review's own window (never tmp_phase, which
-    # excludes code-review-audit windows for the PHASE path only).
-    subset="$(gaia_window_subset "$tmp" "$w_started" "$w_ended")"
+    # excludes code-review-audit windows for the PHASE path only), narrowed to
+    # the sidecars gaia_review_windows assigned it, so parallel members whose
+    # windows nest never count the same spend in two review rows.
+    w_ids="$(jq -c '.file_ids // null' <<<"$w" 2>/dev/null)"
+    subset="$(gaia_window_subset "$tmp" "$w_started" "$w_ended" "$w_ids")"
 
     r_fresh="$(jq -r '.buckets.fresh_input' <<<"$subset" 2>/dev/null)"
     r_cwrite="$(jq -r '.buckets.cache_write' <<<"$subset" 2>/dev/null)"

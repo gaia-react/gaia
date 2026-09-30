@@ -59,16 +59,34 @@ sid=$(jq -r '.session_id // ""' <<<"$payload")
 # resolves the default itself.
 projects_root="${GAIA_TALLY_PROJECTS_ROOT:-$HOME/.claude/projects}"
 
+_hook_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+
 # Cheap negative gate (the spurious guard): before paying for
 # token-tally.sh, confirm the session actually ran a code-review-audit
 # sub-agent. This sidecar-meta glob is new; no existing hook models it, so
 # it is authored fresh with a nullglob + per-file -f guard.
+#
+# A review run is any Code Audit Team member, read from this checkout's
+# roster, because the merge gate can dispatch a member other than the default
+# without the default. The roster is parsed only once a sidecar exists, so a
+# Stop in a session with no sub-agents pays nothing. An unreadable roster
+# falls back to the default member's name, the member the gate falls back to
+# spawning, and must agree with the same fallback in audit-window-lib.sh.
 has_review=0
+review_agents=""
 shopt -s nullglob
 for meta in "$projects_root"/*/"$sid"/subagents/agent-*.meta.json; do
   [ -f "$meta" ] || continue
+  if [ -z "$review_agents" ]; then
+    review_agents=$(
+      . "$_hook_dir/lib/audit-scope.sh" 2>/dev/null \
+        && audit_roster_member_names "$_hook_dir/../../.gaia/audit-ci.yml" 2>/dev/null
+    ) || review_agents=""
+    [ -n "$review_agents" ] || review_agents="code-audit-frontend"
+  fi
   atype=$(jq -r '.agentType // ""' "$meta" 2>/dev/null || printf '')
-  if [ "$atype" = "code-audit-frontend" ]; then
+  [ -n "$atype" ] || continue
+  if grep -qxF -- "$atype" <<<"$review_agents"; then
     has_review=1
     break
   fi
@@ -84,7 +102,6 @@ shopt -u nullglob
 # parse-checks before sourcing where this one does not, which it can afford to
 # skip because it runs without errexit, so a source that fails, whether the
 # file is missing or unparseable, reaches the ERR trap above and exits 0.
-_hook_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
 . "$_hook_dir/lib/gaia-active-plan.sh"
 
 plan_dir="$(resolve_active_plan_dir)" || true

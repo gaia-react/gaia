@@ -2,8 +2,8 @@
 #
 # Bats suite for .claude/hooks/token-tally-review.sh (SPEC-032 FC-3/FC-4).
 #
-# This hook is a thin trigger: it cheap-gates on a code-audit-frontend sidecar
-# actually existing, resolves SPEC/PLAN association, and invokes
+# This hook is a thin trigger: it cheap-gates on a Code Audit Team member's
+# sidecar (any name on the .gaia/audit-ci.yml roster) actually existing, resolves SPEC/PLAN association, and invokes
 # `token-tally.sh --action review` by a path rooted at its own on-disk
 # location, never by a PATH lookup and never against the working directory. The
 # real trigger -> row -> dedup effect is owned by task-integration-e2e; this
@@ -33,6 +33,7 @@ setup() {
   VERB_ARMING_SRC="$REPO_ROOT/.claude/hooks/lib/verb-arming.sh"
   VERB_ARMING_WALK_SRC="$REPO_ROOT/.claude/hooks/lib/verb-arming-walk.sh"
   REPO_SCOPE_SRC="$REPO_ROOT/.claude/hooks/lib/repo-scope.sh"
+  AUDIT_SCOPE_SRC="$REPO_ROOT/.claude/hooks/lib/audit-scope.sh"
 
   export GIT_AUTHOR_NAME="GAIA Test"
   export GIT_AUTHOR_EMAIL="gaia-test@example.com"
@@ -61,6 +62,20 @@ build_repo() {
   cp "$VERB_ARMING_SRC" "$REPO/.claude/hooks/lib/verb-arming.sh"
   cp "$VERB_ARMING_WALK_SRC" "$REPO/.claude/hooks/lib/verb-arming-walk.sh"
   cp "$REPO_SCOPE_SRC" "$REPO/.claude/hooks/lib/repo-scope.sh"
+  cp "$AUDIT_SCOPE_SRC" "$REPO/.claude/hooks/lib/audit-scope.sh"
+
+  # A two-member roster: the default member plus one claimant, so the gate's
+  # roster read is exercised on a member that is not the default.
+  cat > "$REPO/.gaia/audit-ci.yml" <<'ROSTER'
+auditors:
+  - name: code-audit-frontend
+    globs:
+      - "app/**"
+    default: true
+  - name: code-audit-github-workflows
+    globs:
+      - ".github/workflows/*.yml"
+ROSTER
 
   CALLS_FILE="$REPO/.gaia/local/tally-review-calls.txt"
   mkdir -p "$(dirname "$CALLS_FILE")"
@@ -349,6 +364,42 @@ run_hook_stop() {
   run_hook_bash "gh pr merge" "S1" "$PROOT"
   [ "$status" -eq 0 ]
   [ ! -f "$CALLS_FILE" ]
+}
+
+@test "gh pr merge with only a non-default roster member's sidecar: invokes the tally" {
+  build_repo
+  cd "$REPO"
+  PROOT="$REPO/projects"
+  write_review_sidecar "$PROOT" "S1" "code-audit-github-workflows"
+
+  run_hook_bash "gh pr merge 7 --squash" "S1" "$PROOT"
+  [ "$status" -eq 0 ]
+  [ -f "$CALLS_FILE" ]
+  grep -qF -- "review" "$CALLS_FILE"
+}
+
+@test "gh pr merge with an off-roster code-audit-* sidecar: exit 0, tally not invoked" {
+  build_repo
+  cd "$REPO"
+  PROOT="$REPO/projects"
+  # Shares the members' naming prefix but is not on the roster.
+  write_review_sidecar "$PROOT" "S1" "code-audit-not-on-roster"
+
+  run_hook_bash "gh pr merge" "S1" "$PROOT"
+  [ "$status" -eq 0 ]
+  [ ! -f "$CALLS_FILE" ]
+}
+
+@test "unreadable roster: the gate falls back to the default member name" {
+  build_repo
+  cd "$REPO"
+  rm -f "$REPO/.gaia/audit-ci.yml"
+  PROOT="$REPO/projects"
+  write_review_sidecar "$PROOT" "S1" "code-audit-frontend"
+
+  run_hook_bash "gh pr merge" "S1" "$PROOT"
+  [ "$status" -eq 0 ]
+  [ -f "$CALLS_FILE" ]
 }
 
 # ---------- 4. Stop path (acceptance criterion 2, Stop variant) ----------

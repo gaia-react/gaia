@@ -1,10 +1,10 @@
 # shellcheck shell=bash
 # GAIA shared audit-window lib (single-sourced).
 #
-# Sourced by token-tally.sh to bracket adversarial-audit and code-audit-frontend
+# Sourced by token-tally.sh to bracket adversarial-audit and Code Audit Team
 # spend by TIME WINDOW rather than by agentType: a Deep spec audit spans
 # lenses + refuters + completeness + applier (all `general-purpose`), and a
-# code-audit-frontend run spawns other-typed sub-agents, so a single-agentType
+# Code Audit Team member can spawn other-typed sub-agents, so a single-agentType
 # filter would under-count both. Windows are computed over token-tally's
 # per-file record stream: one JSON object per line, each
 #   { usage: [ {id, u, m} ], tmin, tmax, file_agent, file_id }
@@ -54,7 +54,7 @@ gaia_audit_window_read() {
   return 0
 }
 
-# gaia_window_subset <records_file> <started_at> <ended_at>
+# gaia_window_subset <records_file> <started_at> <ended_at> [file_ids_json]
 # Selects sidecar records (file_agent != "main") whose tmin/tmax both fall
 # within [started_at, ended_at] (inclusive, precision-normalized), dedupes
 # their usage entries by .id (last-wins, same as token-tally's aggregate),
@@ -66,14 +66,17 @@ gaia_audit_window_read() {
 # (fromdateiso8601, never the `date` binary). Degrades to a zero-filled
 # object on any malformed/empty input or unparseable timestamp.
 gaia_window_subset() {
-  local records_file="${1:-}" started_at="${2:-}" ended_at="${3:-}"
+  local records_file="${1:-}" started_at="${2:-}" ended_at="${3:-}" file_ids="${4:-}"
   local zero='{"count":0,"buckets":{"fresh_input":0,"cache_write":0,"cache_read":0,"output":0},"by_model":{},"elapsed_seconds":0}'
   if [[ -z "$records_file" || ! -f "$records_file" ]]; then
     printf '%s' "$zero"
     return 0
   fi
+  # The optional 4th arg, a JSON array of file_ids (gaia_review_windows'
+  # partition), narrows the time-range selection to exactly those sidecars.
+  jq -e 'type == "array"' >/dev/null 2>&1 <<<"$file_ids" || file_ids="null"
   local out
-  out="$(jq -cs --arg ws "$started_at" --arg we "$ended_at" '
+  out="$(jq -cs --arg ws "$started_at" --arg we "$ended_at" --argjson ids "$file_ids" '
     def norm: if type=="string" then sub("\\.[0-9]+Z$"; "Z") else . end;
     ($ws | norm) as $s
     | ($we | norm) as $e
@@ -81,6 +84,7 @@ gaia_window_subset() {
         | map(select(.tmin != null and .tmax != null))
         | map(. + {ntmin: (.tmin | norm), ntmax: (.tmax | norm)})
         | map(select(.ntmin >= $s and .ntmax <= $e))
+        | if $ids == null then . else map(select((.file_id // "") as $f | any($ids[]; . == $f))) end
       ) as $sel
     | ($sel | length) as $count
     | ($sel | map(.usage // []) | add // []) as $allusage
@@ -181,11 +185,37 @@ gaia_audit_window_write() {
   return 0
 }
 
+# _gaia_review_agents_json
+# Echoes a JSON array of the agentTypes that count as a code-review-audit run:
+# every member on this checkout's .gaia/audit-ci.yml roster, since the merge
+# gate can dispatch any of them without the default member. Rooted at this
+# file rather than the working directory, so a tally run from a sibling tree
+# reads the roster that shipped with this lib. An unreadable roster degrades to
+# the default member's name alone, the member the gate falls back to spawning.
+_gaia_review_agents_json() {
+  local lib_dir names=""
+  lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || lib_dir=""
+  if [[ -n "$lib_dir" ]] && . "$lib_dir/../../.claude/hooks/lib/audit-scope.sh" 2>/dev/null; then
+    names="$(audit_roster_member_names "$lib_dir/../audit-ci.yml" 2>/dev/null)" || names=""
+  fi
+  [[ -n "$names" ]] || names="code-audit-frontend"
+  jq -Rnc '[inputs | select(length > 0)]' <<<"$names" 2>/dev/null || printf '%s' '["code-audit-frontend"]'
+}
+
 # gaia_review_windows <records_file>
-# Echoes a JSON array, one entry per record with file_agent ==
-# "code-audit-frontend": [ { review_id, started_at, ended_at }, ... ].
-# review_id is the record's file_id. Echoes "[]" when none, and on any
-# malformed/empty/missing input.
+# Echoes a JSON array, one entry per record whose file_agent is a Code Audit
+# Team member (_gaia_review_agents_json):
+#   [ { review_id, started_at, ended_at, file_ids }, ... ]
+# review_id is the record's file_id. file_ids PARTITIONS the non-main sidecars
+# across the windows: a member's own record goes to its own window, and any
+# other sidecar contained in one or more windows goes to the tightest of them
+# (earliest in record order on a tie). The merge gate dispatches its members
+# as one parallel wave, so their windows nest; pricing each window by time
+# range alone would count a nested member's spend in its own row and again in
+# every sibling row containing it. The tightest-window rule can attribute a
+# sub-agent to the wrong member when windows nest, but never to two, so the
+# rows always sum to the wave's real spend.
+# Echoes "[]" when none, and on any malformed/empty/missing input.
 gaia_review_windows() {
   local records_file="${1:-}"
   local empty='[]'
@@ -193,10 +223,34 @@ gaia_review_windows() {
     printf '%s' "$empty"
     return 0
   fi
-  local out
-  out="$(jq -cs '
-    map(select((.file_agent // "") == "code-audit-frontend"))
-    | map({review_id: (.file_id // ""), started_at: .tmin, ended_at: .tmax})
+  local out agents
+  agents="$(_gaia_review_agents_json)"
+  out="$(jq -cs --argjson agents "$agents" '
+    def norm: if type=="string" then sub("\\.[0-9]+Z$"; "Z") else . end;
+    def span: try ((.e | fromdateiso8601) - (.s | fromdateiso8601)) catch 0;
+    . as $all
+    | [ $all[]
+        | select((.file_agent // "") as $a | any($agents[]; . == $a))
+        | {review_id: (.file_id // ""), started_at: .tmin, ended_at: .tmax,
+           s: (.tmin | norm), e: (.tmax | norm)}
+      ] as $wins
+    | [ $all[]
+        | select((.file_agent // "main") != "main" and .tmin != null and .tmax != null)
+        | (.file_id // "") as $fid
+        | (.tmin | norm) as $s
+        | (.tmax | norm) as $e
+        | ( [ $wins[] | select(.s != null and .e != null and .s <= $s and $e <= .e) ]
+            | if length == 0 then empty
+              elif any(.[]; .review_id == $fid) then $fid
+              else (sort_by(span) | .[0].review_id)
+              end
+          ) as $rid
+        | {fid: $fid, rid: $rid}
+      ] as $assign
+    | $wins
+    | map(.review_id as $r
+          | {review_id, started_at, ended_at,
+             file_ids: [ $assign[] | select(.rid == $r) | .fid ]})
   ' "$records_file" 2>/dev/null)"
   if [[ -n "$out" ]] && jq -e 'type == "array"' >/dev/null 2>&1 <<<"$out"; then
     printf '%s' "$out"
@@ -208,31 +262,33 @@ gaia_review_windows() {
 
 # gaia_exclude_review_windows <records_file>
 # Echoes the record stream (JSON lines) with every record whose [tmin, tmax]
-# is a subset of ANY code-audit-frontend window removed (including the
-# code-audit-frontend records themselves). Used by a phase tally to strip a
-# review run's spend out of the phase buckets before aggregating (double-
-# count guard). A byte no-op when no code-audit-frontend record is present
-# (the file is `cat`, never re-serialized through jq). Degrades to the raw
-# input on any parse failure -- never blocks, never drops the stream.
+# is a subset of ANY Code Audit Team member's window removed (including the
+# member records themselves). Used by a phase tally to strip a review run's
+# spend out of the phase buckets before aggregating (double-count guard). A
+# byte no-op when no member record is present (the file is `cat`, never
+# re-serialized through jq). Degrades to the raw input on any parse failure --
+# never blocks, never drops the stream.
 gaia_exclude_review_windows() {
   local records_file="${1:-}"
   [[ -z "$records_file" || ! -f "$records_file" ]] && return 0
-  local review_count
-  review_count="$(jq -sc '[.[] | select((.file_agent // "") == "code-audit-frontend")] | length' "$records_file" 2>/dev/null)"
+  local review_count agents
+  agents="$(_gaia_review_agents_json)"
+  review_count="$(jq -sc --argjson agents "$agents" '[.[] | select((.file_agent // "") as $a | any($agents[]; . == $a))] | length' "$records_file" 2>/dev/null)"
   if ! [[ "$review_count" =~ ^[1-9][0-9]*$ ]]; then
     cat "$records_file" 2>/dev/null
     return 0
   fi
-  jq -rs '
+  jq -rs --argjson agents "$agents" '
     def norm: if type=="string" then sub("\\.[0-9]+Z$"; "Z") else . end;
     def contained($s; $e; $windows): $windows | any(.s <= $s and $e <= .e);
+    def member: (.file_agent // "") as $a | any($agents[]; . == $a);
     . as $all
     | ( [ $all[]
-          | select((.file_agent // "") == "code-audit-frontend" and .tmin != null and .tmax != null)
+          | select(member and .tmin != null and .tmax != null)
           | {s: (.tmin | norm), e: (.tmax | norm)}
         ] ) as $windows
     | $all
-    | map(select((.file_agent // "") != "code-audit-frontend"))
+    | map(select(member | not))
     | map(select(
         (.tmin == null or .tmax == null)
         or ( (.tmin | norm) as $s | (.tmax | norm) as $e | (contained($s; $e; $windows) | not) )
