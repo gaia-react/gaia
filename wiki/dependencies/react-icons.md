@@ -10,7 +10,7 @@ tags: [dependency, icons]
 
 # react-icons
 
-Icon library providing thousands of icons as React components. GAIA uses `react-icons/io5` (Ionicons 5) for icons.
+Icon library providing thousands of icons as React components. Icons come from `react-icons/io5` (Ionicons 5).
 
 ## Usage
 

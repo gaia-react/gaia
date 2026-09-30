@@ -10,7 +10,7 @@ tags: [dependency, i18n]
 
 # remix-i18next
 
-i18n integration built on `i18next` for React Router. GAIA wires it through middleware (`app/middleware/i18next.ts`) and exposes server-side translation for loaders via `getInstance(context)`. All exports come from the bare `remix-i18next` package; there are no subpath exports. The package peers `react-router ^8`.
+i18n integration built on `i18next` for React Router. The app wires it through middleware (`app/middleware/i18next.ts`) and exposes server-side translation for loaders via `getInstance(context)`. All exports come from the bare `remix-i18next` package; there are no subpath exports. The package peers `react-router ^8`.
 
 ## Companion
 

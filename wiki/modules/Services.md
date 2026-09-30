@@ -8,7 +8,7 @@ depends_on:
   - '[[Ky]]'
   - '[[Zod]]'
 created: 2026-04-20
-updated: 2026-06-24
+updated: 2026-09-30
 tags: [module, services, api]
 ---
 
@@ -21,7 +21,7 @@ tags: [module, services, api]
 - `app/services/api/`: the [[Ky]] wrapper. A `create()` factory plus path/search-param interpolation, snake_case ↔ camelCase conversion, and per-request `token` / `language` request options. **Reusable across domains.**
 - `app/services/gaia/`: the GAIA template's domain layer. Rename to your company name or 3rd-party API name; Claude updates imports, barrels, and references across the app.
 
-The pattern: each domain folder under `app/services/gaia/{domain}/` holds `parsers.ts`, `types.ts`, `requests.ts`, its own URL constants (`urls.ts`), and a non-server `index.ts` barrel re-exporting parsers, types, and urls. Domains share the root `Ky` instance (`app/services/gaia/api.ts`) via `import {api} from '../api'`. `/new-service` scaffolds the full pattern and leaves the root `urls.ts` and `index.server.ts` untouched.
+The pattern: each domain folder under `app/services/gaia/{domain}/` holds `parsers.ts`, `types.ts`, `requests.ts`, its own URL constants (`urls.ts`), and a non-server `index.ts` barrel re-exporting parsers, types, and urls. Domains share the root `Ky` instance (`app/services/gaia/api.ts`) via `import {api} from '../api'`. `/new-service` scaffolds the full pattern into the domain-layer folder (`app/services/gaia/`, or whatever you renamed it to), and leaves the root `urls.ts` and `index.server.ts` untouched.
 
 ## Why URL constants are mandatory
 

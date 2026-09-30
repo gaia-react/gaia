@@ -98,7 +98,7 @@ Analyze the changed code across these dimensions. Focus on cross-cutting concern
 
 - **N+1 patterns**: Sequential awaits inside loops that could be parallelized with `Promise.all`
 - **Unnecessary re-renders**: Missing memoization, unstable references in deps arrays, large objects passed as props, unnecessary `useCallback`/`useMemo` that adds indirection without benefit
-- **Bundle size**: Large imports that could be tree-shaken or lazy-loaded, duplicate logic, named imports over namespace imports (the barrel-import false-positive caveat under "Merge findings" applies here too: GAIA's documented barrel modules, e.g. `app/services/gaia/*` and `test/mocks/*`, are the intended pattern, not defects)
+- **Bundle size**: Large imports that could be tree-shaken or lazy-loaded, duplicate logic, named imports over namespace imports (the barrel-import false-positive caveat under "Merge findings" applies here too: the project's documented barrel modules, e.g. `app/services/gaia/*` and `test/mocks/*`, are the intended pattern, not defects)
 - **SSR performance**: Heavy computation in loaders that blocks response, missing caching for cacheable upstream responses
 - **Service-layer efficiency**: Over-fetching data, missing pagination/limits on list endpoints, redundant requests that could be coalesced
 - **Network waterfall**: Sequential fetches that could be parallel, missing prefetching opportunities
@@ -705,7 +705,7 @@ An empty `ELIG_BASE` **disengages** the waive rather than opening it: with no el
 Parse the JSON output from `pnpm knip --reporter json` (an `issues[]` array keyed by file with `files`, `dependencies`, `devDependencies`, `unlisted`, `binaries`, `unresolved`, `exports`, `types`, `enumMembers`, `duplicates`). For each finding, classify into one of the three buckets from `wiki/dependencies/knip.md`:
 
 1. **Real dead code**: unused file/export/type with no remaining callers. Recommend deletion.
-2. **Library API exposed for downstream use**: intentionally exported even though this repo doesn't consume it (common for `app/components/`, `app/hooks/`, `app/utils/`, `app/services/`, `app/types/`, see template-aware config). Recommend adding to `entry` globs in `knip.config.ts`.
+2. **Unconsumed template surface**: exported on purpose though nothing in this repo imports it yet (see the template-aware config section of that page). Recommend covering it with an `entry` glob in `knip.config.ts`, as narrow as the case allows.
 3. **Implicit dependency**: package used via config plugin, CSS, or runtime resolution that knip can't trace. Recommend adding to `ignoreDependencies` in `knip.config.ts`.
 
 Knip findings are **advisory, not blocking**, like react-doctor's. Surface them in the audit summary with the recommended bucket and action so the user can decide. Do not auto-delete or auto-edit `knip.config.ts` during the review.

@@ -22748,10 +22748,11 @@ var run32 = (rest, options = {}) => {
 };
 
 // src/scaffold/service.ts
-import { existsSync as existsSync21, readFileSync as readFileSync27 } from "node:fs";
+import { existsSync as existsSync21, readdirSync as readdirSync2, readFileSync as readFileSync27, statSync as statSync3 } from "node:fs";
 import path34 from "node:path";
 import { fileURLToPath as fileURLToPath5 } from "node:url";
 var KEBAB_PATTERN2 = /^[a-z][a-z\d]*(?:-[a-z\d]+)*$/u;
+var LAYER_PATTERN = /^[a-zA-Z][\w-]*$/u;
 var NAME_TOKEN_PATTERN = /^[a-zA-Z][a-zA-Z\d]*(?::[a-zA-Z][a-zA-Z\d]*(?:\([^)]*\))?)?$/u;
 var ALL_ENDPOINTS = ["get", "post", "put", "delete"];
 var ALL_ENDPOINTS_SET = new Set(ALL_ENDPOINTS);
@@ -22761,6 +22762,8 @@ var HELP_TEXT32 = `Usage: gaia scaffold service <name> --endpoints "get,post,put
   --schema "id:string,name:string"   required: comma-separated <name>:<type> pairs
                                       type ::= string | number | boolean | datetime |
                                                enum(<a>,<b>,...) | <type>?
+  --layer <folder>                   domain-layer folder under app/services/; required only
+                                      when more than one folder besides api exists there
   --mocks                            also emit MSW mock collection under test/mocks/<name>/
   --json                             emit ScaffoldResult JSON on stdout
 `;
@@ -22785,6 +22788,9 @@ var parseFlags9 = (argv) => {
         index += 1;
       } else if (arg === "--schema") {
         result.schema = argv[index + 1];
+        index += 1;
+      } else if (arg === "--layer") {
+        result.layer = argv[index + 1];
         index += 1;
       } else if (!arg.startsWith("--")) {
         result.positional.push(arg);
@@ -22892,10 +22898,16 @@ var parseArgs8 = (argv) => {
       error: '--schema entries must look like "name:string" (allowed types: string, number, boolean, datetime, enum(a,b,...); append "?" for optional)'
     };
   }
+  if (flags.layer !== void 0 && (!LAYER_PATTERN.test(flags.layer) || flags.layer === "api")) {
+    return {
+      error: `--layer must name one domain-layer folder under app/services/ (not api); got: ${flags.layer}`
+    };
+  }
   return {
     endpoints: new Set(endpoints),
     fields,
     json: flags.json,
+    layer: flags.layer,
     mocks: flags.mocks,
     name
   };
@@ -23074,6 +23086,20 @@ var updateDatabaseBarrel = (databasePath, derived) => {
   atomicWriteFileSync(databasePath, next);
   return { written: true };
 };
+var resolveLayer = (repoRoot, requested) => {
+  const servicesDir = path34.join(repoRoot, "app", "services");
+  if (requested !== void 0) {
+    const requestedDir = path34.join(servicesDir, requested);
+    return existsSync21(requestedDir) && statSync3(requestedDir).isDirectory() ? { layer: requested } : { error: `--layer folder not found: app/services/${requested}/` };
+  }
+  const candidates = existsSync21(servicesDir) ? readdirSync2(servicesDir, { withFileTypes: true }).filter((entry) => entry.isDirectory() && entry.name !== "api").map((entry) => entry.name).toSorted((a, b) => a.localeCompare(b)) : [];
+  const [only] = candidates;
+  if (candidates.length === 1 && only !== void 0) return { layer: only };
+  const found = candidates.length === 0 ? "none" : candidates.join(", ");
+  return {
+    error: `cannot pick the domain-layer folder under app/services/ (found: ${found}); pass --layer <folder>`
+  };
+};
 var TEMPLATES_DIR2 = path34.join(
   path34.dirname(fileURLToPath5(import.meta.url)),
   "templates"
@@ -23088,12 +23114,12 @@ var writeRendered = (absPath, contents, result) => {
   }
 };
 var emitServiceFiles = (context, result) => {
-  const { derived, endpoints, fields, repoRoot } = context;
+  const { derived, endpoints, fields, layer, repoRoot } = context;
   const serviceDir = path34.join(
     repoRoot,
     "app",
     "services",
-    "gaia",
+    layer,
     derived.name
   );
   ensureDir(serviceDir);
@@ -23126,10 +23152,11 @@ var emitServiceFiles = (context, result) => {
   writeRendered(path34.join(serviceDir, "index.ts"), indexBody, result);
 };
 var emitMockFiles = (context, result) => {
-  const { derived, endpoints, fields, repoRoot } = context;
+  const { derived, endpoints, fields, layer, repoRoot } = context;
   const mockDir = path34.join(repoRoot, "test", "mocks", derived.name);
   ensureDir(mockDir);
   const baseVars = {
+    layer,
     name: derived.name,
     NAME_UPPER: derived.NAME_UPPER,
     Plural: derived.Plural,
@@ -23191,13 +23218,19 @@ var run33 = (argv, options = {}) => {
   if ("error" in parsed) {
     return userError2(parsed.error, "scaffold service");
   }
+  const repoRoot = options.cwd ?? process.cwd();
+  const resolved = resolveLayer(repoRoot, parsed.layer);
+  if ("error" in resolved) {
+    return userError2(resolved.error, "scaffold service");
+  }
   const result = { edited: [], skipped: [], written: [] };
   const context = {
     derived: deriveNames(parsed.name),
     endpoints: parsed.endpoints,
     fields: parsed.fields,
+    layer: resolved.layer,
     mocks: parsed.mocks,
-    repoRoot: options.cwd ?? process.cwd()
+    repoRoot
   };
   try {
     emitServiceFiles(context, result);
@@ -30598,7 +30631,7 @@ import {
   existsSync as existsSync29,
   lstatSync,
   mkdirSync as mkdirSync19,
-  readdirSync as readdirSync2,
+  readdirSync as readdirSync3,
   readFileSync as readFileSync39,
   readlinkSync,
   realpathSync as realpathSync2,
@@ -30921,7 +30954,7 @@ var collectScopeDigests = (root, scopeDirs) => {
     if (!existsSync29(absDir)) return;
     let entries;
     try {
-      entries = readdirSync2(absDir, { recursive: true });
+      entries = readdirSync3(absDir, { recursive: true });
     } catch {
       return;
     }
@@ -32405,20 +32438,20 @@ var run65 = (argv, options = {}) => {
 };
 
 // src/wiki/dead-paths.ts
-import { readFileSync as readFileSync41, statSync as statSync4 } from "node:fs";
+import { readFileSync as readFileSync41, statSync as statSync5 } from "node:fs";
 import path51 from "node:path";
 
 // src/wiki/util/markdown-corpus.ts
-import { statSync as statSync3 } from "node:fs";
+import { statSync as statSync4 } from "node:fs";
 import path50 from "node:path";
 
 // src/util/tree-walk.ts
-import { readdirSync as readdirSync3 } from "node:fs";
+import { readdirSync as readdirSync4 } from "node:fs";
 import path49 from "node:path";
 var EVERY_EXTENSION = "every-extension";
 var normalizeEntry = (entry, separator) => entry.split(separator).join("/");
 var collectTreeFiles = (root, extensions) => {
-  const walk = (directory) => readdirSync3(directory, { withFileTypes: true }).flatMap((entry) => {
+  const walk = (directory) => readdirSync4(directory, { withFileTypes: true }).flatMap((entry) => {
     const absolute = path49.join(directory, entry.name);
     if (entry.isDirectory()) {
       return walk(absolute);
@@ -32441,7 +32474,7 @@ var isGeneratedContentExempt = (relativePath) => GENERATED_CONTENT_EXEMPT_PATHS.
 var collectWikiMarkdown = (cwd) => {
   const wikiDir = path50.join(cwd, WIKI_DIR);
   try {
-    statSync3(wikiDir);
+    statSync4(wikiDir);
   } catch {
     return [];
   }
@@ -32489,7 +32522,7 @@ var isTrackedPath = (token) => {
 var shouldSkipFile = (relPath) => isWikiScanExempt(relPath) || isGeneratedContentExempt(relPath) || relPath.startsWith(LOCAL_EXEMPT_PREFIX);
 var pathExists = (root, candidate) => {
   try {
-    statSync4(path51.join(root, candidate));
+    statSync5(path51.join(root, candidate));
     return true;
   } catch {
     return false;
@@ -33187,7 +33220,7 @@ var run70 = (argv, options = {}) => {
 };
 
 // src/wiki/near-collisions.ts
-import { existsSync as existsSync32, readdirSync as readdirSync4, statSync as statSync5 } from "node:fs";
+import { existsSync as existsSync32, readdirSync as readdirSync5, statSync as statSync6 } from "node:fs";
 import path55 from "node:path";
 var HELP_TEXT70 = `Usage: gaia wiki near-collisions [--max-distance 3]
 
@@ -33235,10 +33268,10 @@ var levenshtein = (a, b) => {
 var isCollectibleSlugFile = (entry) => entry.isFile() && entry.name.endsWith(".md") && !SKIPPED_FILES.has(entry.name) && !entry.name.startsWith("_");
 var collectDomainSlugs = (wikiRoot) => DOMAIN_DIRS.flatMap((domain2) => {
   const domainDir = path55.join(wikiRoot, domain2);
-  if (!existsSync32(domainDir) || !statSync5(domainDir).isDirectory()) {
+  if (!existsSync32(domainDir) || !statSync6(domainDir).isDirectory()) {
     return [];
   }
-  const entries = readdirSync4(domainDir, { withFileTypes: true });
+  const entries = readdirSync5(domainDir, { withFileTypes: true });
   const slugs = entries.filter((entry) => isCollectibleSlugFile(entry)).map((entry) => entry.name.replace(/\.md$/u, "")).toSorted(
     (left, right) => left < right ? -1 : left > right ? 1 : 0
   );
@@ -33334,7 +33367,7 @@ var run71 = (argv, options = {}) => {
 };
 
 // src/wiki/page-index.ts
-import { existsSync as existsSync33, readdirSync as readdirSync5, readFileSync as readFileSync45, statSync as statSync6 } from "node:fs";
+import { existsSync as existsSync33, readdirSync as readdirSync6, readFileSync as readFileSync45, statSync as statSync7 } from "node:fs";
 import path56 from "node:path";
 
 // src/wiki/util/wikilinks.ts
@@ -33418,8 +33451,8 @@ var readPageRecord = (domainDir, domain2, entry) => {
 };
 var collectDomainPages = (wikiRoot, domain2) => {
   const domainDir = path56.join(wikiRoot, domain2);
-  if (!existsSync33(domainDir) || !statSync6(domainDir).isDirectory()) return [];
-  const entries = readdirSync5(domainDir, { withFileTypes: true });
+  if (!existsSync33(domainDir) || !statSync7(domainDir).isDirectory()) return [];
+  const entries = readdirSync6(domainDir, { withFileTypes: true });
   return entries.filter((entry) => isIndexablePage(entry)).map((entry) => readPageRecord(domainDir, domain2, entry));
 };
 var collectPages = (wikiRoot) => DOMAIN_DIRS2.flatMap((domain2) => collectDomainPages(wikiRoot, domain2));
@@ -33802,7 +33835,7 @@ var run75 = (argv, options = {}) => {
 };
 
 // src/wiki/state.ts
-import { existsSync as existsSync36, readdirSync as readdirSync6, readFileSync as readFileSync47, statSync as statSync7 } from "node:fs";
+import { existsSync as existsSync36, readdirSync as readdirSync7, readFileSync as readFileSync47, statSync as statSync8 } from "node:fs";
 import path59 from "node:path";
 var HELP_TEXT75 = `Usage: gaia wiki state [--json]
 `;
@@ -33827,10 +33860,10 @@ var countDomainPages = (wikiRoot) => {
   const counts = {};
   for (const domain2 of DOMAIN_DIRS3) {
     const domainDir = path59.join(wikiRoot, domain2);
-    if (!existsSync36(domainDir) || !statSync7(domainDir).isDirectory()) {
+    if (!existsSync36(domainDir) || !statSync8(domainDir).isDirectory()) {
       counts[domain2] = 0;
     } else {
-      const entries = readdirSync6(domainDir, { withFileTypes: true });
+      const entries = readdirSync7(domainDir, { withFileTypes: true });
       let count = 0;
       for (const entry of entries) {
         if (entry.isFile() && entry.name.endsWith(".md") && entry.name !== "_index.md") {

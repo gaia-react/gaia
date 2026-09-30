@@ -10,7 +10,7 @@ tags: [decision, tooling, package-manager, security]
 
 # Decision: pnpm as the Package Manager
 
-GAIA uses **pnpm** for installs and dependency resolution. The `packageManager` field in `package.json` pins the exact version; `corepack enable pnpm` reads that field and provisions it transparently.
+The project uses **pnpm** for installs and dependency resolution. The `packageManager` field in `package.json` pins the exact version; `corepack enable pnpm` reads that field and provisions it transparently.
 
 ## Why
 

@@ -4,7 +4,7 @@ status: active
 package: knip
 role: dead-code-detection
 created: 2026-05-04
-updated: 2026-07-07
+updated: 2026-09-30
 tags: [dependency, quality]
 ---
 
@@ -21,7 +21,7 @@ Reports unused files, exports, types, and dependencies across the codebase. Devt
 
 ## Template-aware config
 
-GAIA's `gaia/` directory is a library template. Files in `app/components/`, `app/hooks/`, `app/utils/`, `app/services/`, `app/types/`, `app/middleware/`, and `app/languages/index.ts` are intentionally exported for downstream projects to consume. The config marks these as `entry` globs so their exports aren't flagged as dead, alongside the test and tooling roots `.playwright/`, `.storybook/`, and `test/`. Bundled deps used via Tailwind / Storybook / MSW / runtime resolution are listed in `ignoreDependencies`.
+GAIA ships as a template, so `app/` carries components, hooks, utilities, services, and types that the template itself does not consume yet. `knip.config.ts` lists those folders as `entry` globs, alongside the test and tooling roots, so a fresh project does not open with a wall of unused-export findings for scaffolding it has not reached. The cost is a blind spot: knip never reports an unused export from an entry file, including one your app used and then dropped. Once your app consumes a folder, remove its glob from `entry` so knip reports that folder's dead exports again. Bundled deps used via Tailwind, Storybook, MSW, or runtime resolution are listed in `ignoreDependencies`.
 
 ## When to run
 
@@ -35,7 +35,7 @@ GAIA's `gaia/` directory is a library template. Files in `app/components/`, `app
 Output falls into three buckets:
 
 1. **Real dead code**: unused file/export/type with no callers. Delete.
-2. **Library API exposed for downstream use**: intentionally exported even though this repo doesn't consume it. Add to `entry` globs in `knip.config.ts`.
+2. **Unconsumed template surface**: exported on purpose though nothing in this repo imports it yet. Cover it with an `entry` glob in `knip.config.ts`, as narrow as the case allows, and remove the glob once the app consumes it.
 3. **Implicit dependency**: package used via config plugin, CSS, or runtime resolution that knip can't trace. Add to `ignoreDependencies` in `knip.config.ts`.
 
 See [[Quality Gate]].

@@ -14,7 +14,7 @@ tags: [module, routing]
 
 # Routing
 
-GAIA uses [[fs-routes]] (React Router's own file convention) configured in `app/routes.ts`. You can switch to standard React Router routing if you prefer.
+The app uses [[fs-routes]] (React Router's own file convention) configured in `app/routes.ts`. You can switch to standard React Router routing if you prefer.
 
 ## Route group convention
 

@@ -3,7 +3,7 @@ type: module
 path: app/
 status: active
 language: typescript
-purpose: Top-level folder layout of the GAIA app
+purpose: Top-level folder layout of the app
 created: 2026-04-20
 updated: 2026-06-24
 tags: [module, structure]
