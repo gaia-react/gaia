@@ -1,11 +1,11 @@
 ---
 subagents: [react-patterns]
-library: GAIA Form Components
+library: Form Components
 ---
 
-# GAIA Form Component Gate
+# Form Component Gate
 
-Use project form components instead of native elements in all `.tsx` files. Native form elements bypass GAIA's Conform integration and accessible error/label wiring.
+Use project form components instead of native elements in all `.tsx` files. Native form elements bypass the project's Conform integration and accessible error/label wiring.
 
 | Native element                              | Use instead                                            |
 | ------------------------------------------- | ------------------------------------------------------ |

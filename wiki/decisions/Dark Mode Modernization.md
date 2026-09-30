@@ -33,7 +33,7 @@ The old implementation had three real problems:
 
 - **3-state cycle (`light → dark → system → light`).** The pattern includes `'system'` (delete cookie). The previous GAIA toggle was 2-state. The action/schema carry the 3-state cycle, and the switcher shows three icons (sun for light, moon for dark, desktop for system) reflecting the current preference rather than the resolved theme. Passing through `system` lets users follow the OS again. This is a minor behavioral change.
 - **Cookie name preserved.** We kept `__theme` (vs Epic Stack's `theme`) to avoid invalidating existing user preferences after deploy.
-- **`@conform-to/*` not adopted.** GAIA already has Conform installed for forms, but the theme action uses plain Zod to keep the resource route minimal. Forms with user-facing validation continue to use Conform.
+- **`@conform-to/*` not adopted.** The app already has Conform installed for forms, but the theme action uses plain Zod to keep the resource route minimal. Forms with user-facing validation continue to use Conform.
 
 ## Bugs the migration fixes
 

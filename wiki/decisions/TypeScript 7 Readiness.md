@@ -35,7 +35,7 @@ The ceiling pins two segments rather than one because 6.1 is already out of rang
 
 ## resolveJsonModule
 
-Retained even though GAIA imports no JSON. GAIA is a foundation for [[React Router]] projects, JSON imports are a first-class Vite pattern, and the option is inert until an import exists. See [[TypeScript Language Files]].
+Retained even though the app imports no JSON. GAIA is a foundation for [[React Router]] projects, JSON imports are a first-class Vite pattern, and the option is inert until an import exists. See [[TypeScript Language Files]].
 
 ## allowJs
 

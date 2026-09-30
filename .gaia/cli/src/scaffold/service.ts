@@ -2,21 +2,25 @@
  * `gaia scaffold service <name>` handler.
  *
  * Replaces the prose `new-service` skill. Emits the per-service folder
- * (`app/services/gaia/<name>/`) with parsers, types, requests, urls, and a
+ * (`app/services/<layer>/<name>/`) with parsers, types, requests, urls, and a
  * barrel, and when `--mocks` is passed, the matching MSW mock collection
  * under `test/mocks/<name>/` plus an alphabetical insert into
  * `test/mocks/database.ts`.
  *
  * Contract notes:
+ *   - `<layer>` is the domain-layer folder under `app/services/`: `--layer`
+ *     when passed, else the single directory there other than `api`. The
+ *     template ships it as `gaia` and adopters rename it, so it is never
+ *     hardcoded.
  *   - The task spec deliberately makes each service self-contained (its own
  *     `urls.ts` and `index.ts`); we do NOT touch the historical root
- *     `app/services/gaia/urls.ts` or `app/services/gaia/index.server.ts`.
+ *     `<layer>/urls.ts` or `<layer>/index.server.ts`.
  *   - `requests.server.ts` is preserved as the request-functions filename so
  *     the project's server-only convention (enforced by Vite) keeps holding.
  *   - Endpoint flag drives which request functions, mock files, and the
  *     handlers-array order. The set is closed: get/post/put/delete only.
  */
-import {existsSync, readFileSync} from 'node:fs';
+import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {EXIT_CODES} from '../exit.js';
@@ -29,6 +33,7 @@ import type {TemplateVars} from './template.js';
 import type {ScaffoldResult} from './types.js';
 
 const KEBAB_PATTERN = /^[a-z][a-z\d]*(?:-[a-z\d]+)*$/u;
+const LAYER_PATTERN = /^[a-zA-Z][\w-]*$/u;
 const NAME_TOKEN_PATTERN =
   /^[a-zA-Z][a-zA-Z\d]*(?::[a-zA-Z][a-zA-Z\d]*(?:\([^)]*\))?)?$/u;
 const ALL_ENDPOINTS = ['get', 'post', 'put', 'delete'] as const;
@@ -41,6 +46,7 @@ type ParsedArgs = {
   endpoints: ReadonlySet<Endpoint>;
   fields: SchemaField[];
   json: boolean;
+  layer: string | undefined;
   mocks: boolean;
   name: string;
 };
@@ -58,6 +64,8 @@ const HELP_TEXT = `Usage: gaia scaffold service <name> --endpoints "get,post,put
   --schema "id:string,name:string"   required: comma-separated <name>:<type> pairs
                                       type ::= string | number | boolean | datetime |
                                                enum(<a>,<b>,...) | <type>?
+  --layer <folder>                   domain-layer folder under app/services/; required only
+                                      when more than one folder besides api exists there
   --mocks                            also emit MSW mock collection under test/mocks/<name>/
   --json                             emit ScaffoldResult JSON on stdout
 `;
@@ -77,6 +85,7 @@ const userError = (message: string, subcommand: string): number => {
 type FlagMap = {
   endpoints?: string;
   json: boolean;
+  layer?: string;
   mocks: boolean;
   positional: string[];
   schema?: string;
@@ -98,6 +107,9 @@ const parseFlags = (argv: readonly string[]): FlagMap => {
         index += 1;
       } else if (arg === '--schema') {
         result.schema = argv[index + 1];
+        index += 1;
+      } else if (arg === '--layer') {
+        result.layer = argv[index + 1];
         index += 1;
       } else if (!arg.startsWith('--')) {
         result.positional.push(arg);
@@ -250,10 +262,20 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | {error: string} => {
     };
   }
 
+  if (
+    flags.layer !== undefined &&
+    (!LAYER_PATTERN.test(flags.layer) || flags.layer === 'api')
+  ) {
+    return {
+      error: `--layer must name one domain-layer folder under app/services/ (not api); got: ${flags.layer}`,
+    };
+  }
+
   return {
     endpoints: new Set(endpoints),
     fields,
     json: flags.json,
+    layer: flags.layer,
     mocks: flags.mocks,
     name,
   };
@@ -582,12 +604,54 @@ const updateDatabaseBarrel = (
   return {written: true};
 };
 
+// Domain-layer resolution
+
+/**
+ * The folder under `app/services/` holding the domain layer. The template
+ * ships it as `gaia` and adopters rename it to their company or API name, so
+ * it is discovered: `--layer` when passed, else the single directory there
+ * other than the `api` wrapper. Zero or several candidates is an error naming
+ * them, never a guess.
+ */
+const resolveLayer = (
+  repoRoot: string,
+  requested: string | undefined
+): {error: string} | {layer: string} => {
+  const servicesDir = path.join(repoRoot, 'app', 'services');
+
+  if (requested !== undefined) {
+    const requestedDir = path.join(servicesDir, requested);
+
+    return existsSync(requestedDir) && statSync(requestedDir).isDirectory() ?
+        {layer: requested}
+      : {error: `--layer folder not found: app/services/${requested}/`};
+  }
+
+  const candidates =
+    existsSync(servicesDir) ?
+      readdirSync(servicesDir, {withFileTypes: true})
+        .filter((entry) => entry.isDirectory() && entry.name !== 'api')
+        .map((entry) => entry.name)
+        .toSorted((a, b) => a.localeCompare(b))
+    : [];
+  const [only] = candidates;
+
+  if (candidates.length === 1 && only !== undefined) return {layer: only};
+
+  const found = candidates.length === 0 ? 'none' : candidates.join(', ');
+
+  return {
+    error: `cannot pick the domain-layer folder under app/services/ (found: ${found}); pass --layer <folder>`,
+  };
+};
+
 // Emit
 
 type EmitContext = {
   derived: DerivedNames;
   endpoints: ReadonlySet<Endpoint>;
   fields: SchemaField[];
+  layer: string;
   mocks: boolean;
   repoRoot: string;
 };
@@ -620,12 +684,12 @@ const emitServiceFiles = (
   context: EmitContext,
   result: ScaffoldResult
 ): void => {
-  const {derived, endpoints, fields, repoRoot} = context;
+  const {derived, endpoints, fields, layer, repoRoot} = context;
   const serviceDir = path.join(
     repoRoot,
     'app',
     'services',
-    'gaia',
+    layer,
     derived.name
   );
   ensureDir(serviceDir);
@@ -665,11 +729,12 @@ const emitServiceFiles = (
 };
 
 const emitMockFiles = (context: EmitContext, result: ScaffoldResult): void => {
-  const {derived, endpoints, fields, repoRoot} = context;
+  const {derived, endpoints, fields, layer, repoRoot} = context;
   const mockDir = path.join(repoRoot, 'test', 'mocks', derived.name);
   ensureDir(mockDir);
 
   const baseVars: TemplateVars = {
+    layer,
     name: derived.name,
     NAME_UPPER: derived.NAME_UPPER,
     Plural: derived.Plural,
@@ -756,13 +821,21 @@ export const run = (
     return userError(parsed.error, 'scaffold service');
   }
 
+  const repoRoot = options.cwd ?? process.cwd();
+  const resolved = resolveLayer(repoRoot, parsed.layer);
+
+  if ('error' in resolved) {
+    return userError(resolved.error, 'scaffold service');
+  }
+
   const result: ScaffoldResult = {edited: [], skipped: [], written: []};
   const context: EmitContext = {
     derived: deriveNames(parsed.name),
     endpoints: parsed.endpoints,
     fields: parsed.fields,
+    layer: resolved.layer,
     mocks: parsed.mocks,
-    repoRoot: options.cwd ?? process.cwd(),
+    repoRoot,
   };
 
   try {

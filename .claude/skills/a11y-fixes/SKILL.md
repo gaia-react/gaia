@@ -24,7 +24,7 @@ WCAG AA requires 4.5:1 for normal text, 3:1 for large text. Use the project's se
 
 ## label
 
-Form inputs need an associated `<label>`. Use GAIA's `Field` wrapper from `~/components/Form/Field` rather than a bare `<label>`, it wires `htmlFor`, error text, and description automatically. See the `form-components.md` audit extension.
+Form inputs need an associated `<label>`. Use the `Field` wrapper from `~/components/Form/Field` rather than a bare `<label>`, it wires `htmlFor`, error text, and description automatically. See the `form-components.md` audit extension.
 
 ```tsx
 // BAD, bare input with no label association
@@ -98,7 +98,7 @@ Same pattern as `button-name`, anchors need an accessible name.
 
 ## region / landmark-one-main
 
-Page content must live inside a landmark, and there must be exactly one `<main>`. GAIA's Layout component owns the `<main>` landmark, page components render inside it and should not add their own.
+Page content must live inside a landmark, and there must be exactly one `<main>`. The Layout component owns the `<main>` landmark, page components render inside it and should not add their own.
 
 ```tsx
 // BAD, page component wraps itself in <main>, duplicating Layout's

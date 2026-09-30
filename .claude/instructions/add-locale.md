@@ -1,6 +1,6 @@
 ---
 name: add-locale
-description: Add a single locale to the GAIA i18n setup. Parameterized, substitute LOCALE_CODE / LANGUAGE_NAME_EN / LANGUAGE_NAME_NATIVE / IS_RTL before executing.
+description: Add a single locale to the project's i18n setup. Parameterized, substitute LOCALE_CODE / LANGUAGE_NAME_EN / LANGUAGE_NAME_NATIVE / IS_RTL before executing.
 ---
 
 # add-locale instruction

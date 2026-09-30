@@ -11,13 +11,13 @@ Write and edit React components, pages, routes, hooks, and forms following proje
 
 Before installing a package or hand-rolling a primitive, walk this ladder and stop at the first hit:
 
-1. **Existing GAIA code**, a component, hook, or util already covers it (form inputs → Gate 2).
+1. **Existing project code**, a component, hook, or util already covers it (form inputs → Gate 2).
 2. **Web platform**, a browser API or native element does the job: `Intl` (dates, numbers, lists, plurals), `URL` / `URLSearchParams`, `crypto.randomUUID()`, `structuredClone()`, `AbortController`, native `Array` / `Object` methods, `<dialog>`, modern CSS (`:has()`, container queries).
 3. **Already-installed dependency**, check `package.json` before adding a sibling that does the same job. For component/hook traps Claude often hand-rolls (client-only/useHydrated, sse, debounce-fetcher), see the remix-utils decision map at `wiki/dependencies/remix-utils.md` before reinventing.
 4. **New dependency**, only when 1-3 genuinely fall short; the added weight has to earn its place.
 5. **Custom code**, last resort, kept minimal.
 
-The largest real savings come from `Intl` over date/number-formatting libraries and native collection methods over `lodash`/`underscore` (already enforced by `you-dont-need-lodash-underscore`). Reaching for the platform replaces a needless dependency or bespoke widget; it never overrides accessibility, input validation, or an existing GAIA component (a wrapper exists for a reason).
+The largest real savings come from `Intl` over date/number-formatting libraries and native collection methods over `lodash`/`underscore` (already enforced by `you-dont-need-lodash-underscore`). Reaching for the platform replaces a needless dependency or bespoke widget; it never overrides accessibility, input validation, or an existing project component (a wrapper exists for a reason).
 
 ## Pre-Flight Gates
 
@@ -44,7 +44,7 @@ Only use when the function is:
 
 If none apply, skip `useCallback`, it adds indirection without benefit.
 
-**`useState` type inference:** Omit explicit type when inferable from the default value. Add types for unions or complex objects. For an absent initial value, prefer `undefined` over `null` (GAIA never-null): `useState<T>()` is already typed `T | undefined`.
+**`useState` type inference:** Omit explicit type when inferable from the default value. Add types for unions or complex objects. For an absent initial value, prefer `undefined` over `null` (never-null convention): `useState<T>()` is already typed `T | undefined`.
 
 ### Gate 2: Form Element Check
 
@@ -96,9 +96,9 @@ See `references/translation-patterns.md` for edge cases (keyPrefix, Trans compon
 
 ### Gate 4: React 19 Idiom Check
 
-GAIA writes React 19 idioms. The work here is to not regress to pre-19 habits, and to not pull in React's framework-level form APIs that React Router already owns.
+Write React 19 idioms. The work here is to not regress to pre-19 habits, and to not pull in React's framework-level form APIs that React Router already owns.
 
-**Before writing `forwardRef`: don't.** In React 19, `ref` is an ordinary prop on function components, so `forwardRef` is no longer needed (slated for deprecation in a future release). GAIA has zero `forwardRef`; every Form control destructures `ref` from props. Match that.
+**Before writing `forwardRef`: don't.** In React 19, `ref` is an ordinary prop on function components, so `forwardRef` is no longer needed (slated for deprecation in a future release). Use no `forwardRef`; destructure `ref` from props, as every Form control does.
 
 ```tsx
 // BAD, needless indirection
@@ -127,9 +127,9 @@ const nonce = use(NonceContext); // not useContext(NonceContext)
 <NonceContext value={nonce}>{children}</NonceContext>; // not <NonceContext.Provider>
 ```
 
-`<Context.Provider>`/`<Context.Consumer>` are legacy (deprecation planned). GAIA uses the `<Context>` shorthand and `use()` exclusively, never `.Provider`, `.Consumer`, or `useContext`. Convert any you find.
+`<Context.Provider>`/`<Context.Consumer>` are legacy (deprecation planned). Use the `<Context>` shorthand and `use()` exclusively, never `.Provider`, `.Consumer`, or `useContext`. Convert any you find.
 
-**Stay in React Router's lane; don't reach for React's form Actions.** GAIA submits through React Router `<Form>` / `useFetcher` + route `action` exports, validates with Conform + Zod (Gate 2), and reads pending/optimistic state from React Router. React 19's framework-level form hooks duplicate and fight that surface. When tempted, redirect:
+**Stay in React Router's lane; don't reach for React's form Actions.** Submit through React Router `<Form>` / `useFetcher` + route `action` exports, validate with Conform + Zod (Gate 2), and read pending/optimistic state from React Router. React 19's framework-level form hooks duplicate and fight that surface. When tempted, redirect:
 
 | React 19 API (don't use here)          | Use instead                                                                                   |
 | -------------------------------------- | --------------------------------------------------------------------------------------------- |
@@ -138,7 +138,7 @@ const nonce = use(NonceContext); // not useContext(NonceContext)
 | `useOptimistic`                        | fetcher-based optimism (`useOptimisticThemeMode` in `useTheme.ts`)                            |
 | `use(promise)` for route data          | loader + `useLoaderData` (`use(promise)` only for non-route promises inside `<Suspense>`)     |
 
-Metadata is the mirror case: GAIA renders `<title>`/`<meta>` as JSX (React 19 hoisting), not a React Router route `meta`/`links` export. Keep it that way; adding a route `meta` export to a page that already renders `<title>` in JSX produces duplicate tags.
+Metadata is the mirror case: render `<title>`/`<meta>` as JSX (React 19 hoisting), not a React Router route `meta`/`links` export. Keep it that way; adding a route `meta` export to a page that already renders `<title>` in JSX produces duplicate tags.
 
 When you do reach for React Router's API, read it from the version-matched docs shipped at `node_modules/react-router/docs`, not the web.
 

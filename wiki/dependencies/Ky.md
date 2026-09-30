@@ -10,7 +10,7 @@ tags: [dependency, http]
 
 # Ky
 
-Tiny HTTP client built on `fetch`. GAIA's `app/services/api/index.ts` wraps it:
+Tiny HTTP client built on `fetch`. `app/services/api/index.ts` wraps it:
 
 - `create()` factory that returns a typed request function
 - per-request `token` / `language` options that set `Authorization` and `Accept-Language` headers per call
