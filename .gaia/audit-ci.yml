@@ -257,6 +257,10 @@ unowned:
   - ".github/FUNDING.yml"
   - ".github/ISSUE_TEMPLATE/**"
   - ".github/pull_request_template.md"
+  # The `/gaia-residue` dismissal store: append-only JSON Lines written only
+  # through `gaia residue-record`, read as data by the residue tally, and
+  # executed by nothing.
+  - ".gaia/audit-residual-dismissals.jsonl"
   # gaia:maintainer-only:start
   # GAIA's fixtures, generated bundles, test data and inert documentation.
   # Several are extension-qualified rather than whole-subtree because a member
