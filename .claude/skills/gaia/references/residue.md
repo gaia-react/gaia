@@ -113,6 +113,30 @@ Delete the reason file in a **separate** tool call, for the same reason the fili
 
 The store is append-only JSON Lines, carries a schema version, and is named above; point at the CLI rather than restating its fields. Never hand-write a line into the store.
 
+## Refresh the statusline nudge (end of run)
+
+Runs once, after the last disposition and before the publish step, whenever this run confirmed at least one disposition: a store record, or a promotion's filed issue. `list` and `why` never reach it. The statusline reads `residueCandidateCount` from the shared update-check cache, which `.gaia/scripts/check-updates.sh` recomputes only once its 6-hour TTL lapses, so without this step a user who just drained the residue keeps being told to run the command again.
+
+Rewrite that one field from a fresh count, and leave every other field alone:
+
+```bash
+CACHE_ROOT="$(bash .gaia/scripts/main-root-lib.sh 2>/dev/null || git rev-parse --show-toplevel)"
+CACHE="$CACHE_ROOT/.gaia/local/cache/shared/update-check.json"
+if [ -f "$CACHE" ] && command -v jq >/dev/null 2>&1; then
+  AGED="$(.gaia/cli/gaia residue-tally --count-only 2>/dev/null \
+    | jq -r 'select(.gh_ok == true) | .aged_candidate_count // empty' 2>/dev/null)"
+  case "$AGED" in
+    ''|*[!0-9]*) ;;
+    *)
+      TMP="$(mktemp)"
+      jq --argjson n "$AGED" '.residueCandidateCount = $n' "$CACHE" > "$TMP" && mv "$TMP" "$CACHE"
+      ;;
+  esac
+fi
+```
+
+`--count-only` is the mode the refresher uses, for the same reason: the count needs no line resolution, and resolution costs seconds per fetch. When `gh_ok` is not `true` the field is left as it was, the refresher's rule too, because a failed read is not a zero. `checkedAt` is not stamped: resetting it would make the next render re-fetch every signal just because residuals were drained. With no cache file there is nothing to correct, and the next refresh computes the count from scratch.
+
 ## Publish approved changes (end of run)
 
 Runs once, after the last disposition, only when the store was actually written this run. `list` and `why` never reach it.
@@ -207,6 +231,7 @@ Apply the shared tally machinery in `.claude/skills/gaia/references/cost-record.
 - `.gaia/audit-residual-dismissals.jsonl`, the dismissal store;
 - `.gaia/local/cache/residual-attribution.json`, the derived read cache;
 - `.gaia/local/cache/residual-cursor.json`, the resumable cursor;
+- the `residueCandidateCount` field of `.gaia/local/cache/shared/update-check.json`, the statusline cache, rewritten by the end-of-run refresh and no other field of it;
 - the transient reason file under `.gaia/local/audit/`, deleted in its own tool call;
 - the filing recipe's own transient issue-body file under `.gaia/local/audit/`, and the debt-count staleness sentinel that recipe touches;
 - `.gaia/local/telemetry/cost.jsonl`, the shared machine-local telemetry ledger the mandatory cost record appends to. Not this workflow's own file, and its shape is owned by `.gaia/scripts/token-tally.sh`, but a run does write it, so a self-check against this list has to expect it.
