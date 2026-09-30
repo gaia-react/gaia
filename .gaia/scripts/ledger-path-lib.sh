@@ -15,11 +15,17 @@
 # Echoes the main-checkout cost ledger path; honors an override (test seam).
 # main_root comes from the shared main-root resolver
 # (.gaia/scripts/main-root-lib.sh), so a run inside a linked worktree records
-# to the surviving main ledger, not the worktree's discarded copy. Returns 1
-# when the resolver cannot resolve a main checkout.
+# to the surviving main ledger, not the worktree's discarded copy. An optional
+# second argument is a main root the caller already resolved: it is used as is,
+# so a process that resolves once does not resolve again. Returns 1 when the
+# resolver cannot resolve a main checkout.
 gaia_resolve_ledger_path() {
-  local override="${1:-}"
+  local override="${1:-}" given_root="${2:-}"
   if [[ -n "$override" ]]; then printf '%s' "$override"; return 0; fi
+  if [[ -n "$given_root" ]]; then
+    printf '%s' "$given_root/.gaia/local/telemetry/cost.jsonl"
+    return 0
+  fi
   local script_dir main_root errexit_was
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   # Suspend errexit across the load, then RESTORE WHAT WAS THERE. A copy that is

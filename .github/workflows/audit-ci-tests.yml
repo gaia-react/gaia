@@ -45,6 +45,10 @@ concurrency:
 # repository default. Each job below grants exactly what it needs.
 permissions: {}
 
+# Bats legs must never reach the rates feed.
+env:
+  GAIA_RATES_FEED_DISABLE: "1"
+
 jobs:
   # The fan-out matrix: one leg per bats shard, plus the sandbox conformance
   # tree and the INV-7 concurrency meter as two further legs that run their

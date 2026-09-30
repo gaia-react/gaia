@@ -162,7 +162,10 @@ compute_project_id() {
   # Path fallback: hash the main-checkout absolute path, resolved through the
   # shared main-root resolver -- the same one ledger-path-lib.sh uses for the
   # ledger, here for the directory rather than the file, so the two stay tied.
-  main_root="$(gaia_resolve_main_root)" || return 0
+  main_root="$TALLY_MAIN_ROOT"
+  if [[ -z "$main_root" ]]; then
+    main_root="$(gaia_resolve_main_root)" || return 0
+  fi
   h="$(printf '%s' "$main_root" | hash16)" || return 0
   [[ -n "$h" ]] && printf 'path:%s' "$h"
 }
@@ -251,6 +254,15 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# The main root is resolved once per process and handed to the ledger path, the
+# rate table, the cache dir, and the project id, so a hook run pays one git
+# call for it, not one per consumer. Empty means every consumer keeps its own
+# no-main-root behavior.
+TALLY_MAIN_ROOT=""
+if declare -F gaia_resolve_main_root >/dev/null 2>&1; then
+  TALLY_MAIN_ROOT="$(gaia_resolve_main_root 2>/dev/null)" || TALLY_MAIN_ROOT=""
+fi
 
 resolve_branch() {
   if [[ -n "$BRANCH_NAME_ARG" ]]; then
@@ -461,7 +473,7 @@ if [[ "$ACTION" == "review" ]]; then
   fi
 
   ledger=""
-  if lp="$(gaia_resolve_ledger_path "$LEDGER_OVERRIDE")" && [[ -n "$lp" ]]; then
+  if lp="$(gaia_resolve_ledger_path "$LEDGER_OVERRIDE" "$TALLY_MAIN_ROOT")" && [[ -n "$lp" ]]; then
     ledger="$lp"
   else
     log "token-tally: could not resolve ledger path; skipping review append"
@@ -485,20 +497,13 @@ if [[ "$ACTION" == "review" ]]; then
   partial_bool=false
   [[ "$partial" -ne 0 ]] && partial_bool=true
 
-  # Resolve the rate table ONCE for every review record this run produces
-  # (never re-resolved per window).
+  # The rate table is prepared lazily, on the first window that survives the
+  # dedup skip below, so a run that only re-sees recorded reviews never seeds,
+  # syncs, or heals anything. Prepared once for every record this run produces.
   review_cost_ok=false
+  review_prepared=false
   review_rt=""
   review_rates="null"
-  if review_rt="$(gaia_resolve_rate_table "$RATE_TABLE_OVERRIDE")" && [[ -n "$review_rt" ]]; then
-    if review_rates="$(gaia_load_rate_table "$review_rt")"; then
-      review_cost_ok=true
-    else
-      log "token-tally: rate table unreadable: $review_rt"
-    fi
-  else
-    log "token-tally: could not resolve rate table path"
-  fi
 
   telemetry_dir="$(dirname "$ledger")"
   mkdir -p "$telemetry_dir" 2>/dev/null   # the lock dir must exist before acquisition
@@ -558,7 +563,40 @@ if [[ "$ACTION" == "review" ]]; then
     jq -e 'type=="object"' >/dev/null 2>&1 <<<"$r_by_model" || r_by_model='{}'
     r_dollars="null"
     r_rtid=""
+    r_unpriced="[]"
+    if [[ "$review_prepared" != "true" ]] && jq -e 'length > 0' >/dev/null 2>&1 <<<"$r_by_model"; then
+      review_prepared=true
+      review_rt=""
+      if declare -F gaia_rates_prepare >/dev/null 2>&1; then
+        # Called in this shell, not in $(...): it sets GAIA_RATES_TABLE and keeps
+        # per-process state a subshell would discard.
+        if gaia_rates_prepare "$RATE_TABLE_OVERRIDE" "$TALLY_MAIN_ROOT"; then
+          review_rt="$GAIA_RATES_TABLE"
+        fi
+      else
+        # A partial update can leave the local-table lib absent.
+        review_rt="$(gaia_resolve_rate_table "$RATE_TABLE_OVERRIDE")" || review_rt=""
+      fi
+      if [[ -n "$review_rt" ]]; then
+        if review_rates="$(gaia_load_rate_table "$review_rt")"; then
+          review_cost_ok=true
+        else
+          log "token-tally: rate table unreadable: $review_rt"
+        fi
+      else
+        log "token-tally: could not resolve rate table path"
+      fi
+    fi
     if [[ "$review_cost_ok" == "true" ]] && jq -e 'length > 0' >/dev/null 2>&1 <<<"$r_by_model"; then
+      # The feed lib makes at most one request per process, so calling this per
+      # window costs nothing after the first attempt.
+      if declare -F gaia_rates_heal >/dev/null 2>&1 \
+        && gaia_rates_heal "$(jq -c 'keys' <<<"$r_by_model")"; then
+        review_rt="$GAIA_RATES_TABLE"
+        if healed_rates="$(gaia_load_rate_table "$review_rt")"; then
+          review_rates="$healed_rates"
+        fi
+      fi
       r_priced="$(jq -cn --argjson rates "$review_rates" --arg ts "$TS" --argjson bm "$r_by_model" \
         "$GAIA_PRICING_JQ_DEFS"'
           priced_row({ts: $ts, by_model: $bm})
@@ -569,6 +607,11 @@ if [[ "$ACTION" == "review" ]]; then
           r_dollars="$r_d"
         fi
         r_rtid="$(rate_table_id "$review_rt" 2>/dev/null || true)"
+        # Same rule as the phase record: keep the names only as a real array.
+        r_unpriced_raw="$(jq -c '.unpriced' <<<"$r_priced" 2>/dev/null)"
+        if printf '%s' "$r_unpriced_raw" | jq -e 'type=="array"' >/dev/null 2>&1; then
+          r_unpriced="$r_unpriced_raw"
+        fi
       fi
     fi
 
@@ -581,6 +624,7 @@ if [[ "$ACTION" == "review" ]]; then
       --argjson total "$r_total" \
       --argjson by_model "$r_by_model" \
       --argjson dollars "$r_dollars" \
+      --argjson unpriced "$r_unpriced" \
       --arg rate_table_id "$r_rtid" \
       --argjson partial "$partial_bool" \
       --arg started "$w_started" \
@@ -606,6 +650,7 @@ if [[ "$ACTION" == "review" ]]; then
           total: $total
         }
         + (if ($by_model | type) == "object" and ($by_model | length) > 0 then {by_model: $by_model} else {} end)
+        + (if ($unpriced | type) == "array" and ($unpriced | length) > 0 then {unpriced: $unpriced} else {} end)
         + {
             dollars: $dollars,
             rate_table_id: (if $rate_table_id == "" then null else $rate_table_id end),
@@ -793,7 +838,9 @@ TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 # whose effective window covers TS (this run's generation stamp) -- a frozen
 # snapshot, deliberately distinct from token-rollup.sh's read-time reprice.
 # Never guesses, never blocks: empty attribution or an unreadable rate table
-# degrade to a marked "unavailable" line rather than a fabricated figure.
+# degrade to a marked "unavailable" line rather than a fabricated figure. The
+# table is the machine-local one (seeded from the main checkout's distributed
+# table), or the --rate-table override.
 #
 # The ledger persists the RAW numeric `dollars` (not a formatted string) so a
 # downstream reader reproduces this exact historical figure, plus `rate_table_id`
@@ -813,9 +860,30 @@ UNPRICED_JSON="[]"            # claude-* models with no rate-table row; [] when 
 if jq -e 'length > 0' >/dev/null 2>&1 <<<"$BY_MODEL"; then
   cost_rates="null"
   cost_ok=false
-  if cost_rt="$(gaia_resolve_rate_table "$RATE_TABLE_OVERRIDE")" && [[ -n "$cost_rt" ]]; then
+  cost_rt=""
+  if declare -F gaia_rates_prepare >/dev/null 2>&1; then
+    # Called in this shell, not in $(...): it sets GAIA_RATES_TABLE and keeps
+    # per-process state a subshell would discard.
+    if gaia_rates_prepare "$RATE_TABLE_OVERRIDE" "$TALLY_MAIN_ROOT"; then
+      cost_rt="$GAIA_RATES_TABLE"
+    fi
+  else
+    # A partial update can leave the local-table lib absent.
+    cost_rt="$(gaia_resolve_rate_table "$RATE_TABLE_OVERRIDE")" || cost_rt=""
+  fi
+  if [[ -n "$cost_rt" ]]; then
     if cost_rates="$(gaia_load_rate_table "$cost_rt")"; then
       cost_ok=true
+      # A claude-* model the table lacks may be a release GAIA has since priced;
+      # heal fetches it once, and only then is the figure final. Status 0 means
+      # the local table was rewritten, so reload before pricing.
+      if declare -F gaia_rates_heal >/dev/null 2>&1 \
+        && gaia_rates_heal "$(jq -c 'keys' <<<"$BY_MODEL")"; then
+        cost_rt="$GAIA_RATES_TABLE"
+        if healed_rates="$(gaia_load_rate_table "$cost_rt")"; then
+          cost_rates="$healed_rates"
+        fi
+      fi
     else
       log "token-tally: rate table unreadable: $cost_rt"
     fi
@@ -862,7 +930,9 @@ CACHE_DIR=""
 if [[ "$ACTION" == "spec" || "$ACTION" == "plan" || "$ACTION" == "execute" ]]; then
   CACHE_DIR="$CACHE_DIR_ARG"
   if [[ -z "$CACHE_DIR" ]]; then
-    if audit_main_root="$(gaia_resolve_main_root)"; then
+    if [[ -n "$TALLY_MAIN_ROOT" ]]; then
+      CACHE_DIR="$TALLY_MAIN_ROOT/.gaia/local/cache"
+    elif audit_main_root="$(gaia_resolve_main_root)"; then
       CACHE_DIR="$audit_main_root/.gaia/local/cache"
     fi
   fi
@@ -996,7 +1066,7 @@ fi
 # ledger filename lives in one place. A KICKOFF run inside a linked worktree
 # records to the surviving main ledger. --ledger overrides (test seam).
 resolve_ledger() {
-  gaia_resolve_ledger_path "$LEDGER_OVERRIDE"
+  gaia_resolve_ledger_path "$LEDGER_OVERRIDE" "$TALLY_MAIN_ROOT"
 }
 
 # Best-effort: clear `final` on every PRIOR same-(feature,session) execute row so

@@ -3,6 +3,15 @@
 # Sourced by token-rollup.sh and token-tally.sh. Defines the rate-table
 # resolution/load helpers and the rate_window / priced_row jq definitions.
 # No side effects at source time; defines functions + one jq-defs variable.
+# Also sources token-rates-local-lib.sh and token-rates-feed-lib.sh from its own
+# directory, silently when either is absent (a partial update).
+
+_gaia_pricing_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+source "$_gaia_pricing_dir/token-rates-local-lib.sh" 2>/dev/null || true
+# shellcheck source=/dev/null
+source "$_gaia_pricing_dir/token-rates-feed-lib.sh" 2>/dev/null || true
+unset _gaia_pricing_dir
 
 # shellcheck disable=SC2034 # consumed by sourcing scripts (token-rollup.sh, token-tally.sh)
 GAIA_PRICING_JQ_DEFS="$(cat <<'JQDEFS'
@@ -45,6 +54,9 @@ GAIA_PRICING_JQ_DEFS="$(cat <<'JQDEFS'
 JQDEFS
 )"
 
+# Partial-update fallback only: used when gaia_rates_prepare is undefined (the
+# new libs are absent). It resolves via git rev-parse --show-toplevel because it
+# predates the local table; it is not the primary resolution path.
 gaia_resolve_rate_table() {
   local override="${1:-}"
   if [[ -n "$override" ]]; then
@@ -79,7 +91,7 @@ gaia_hash16() {
 }
 
 # The identity of the card a row was priced under, as `sha256:<16-hex>`: sha256
-# over the shipped file's raw bytes, truncated to 16 hex characters.
+# over the raw bytes of the table that priced, truncated to 16 hex characters.
 gaia_rate_table_id() {
   local path="$1" h
   [[ -f "$path" ]] || return 1

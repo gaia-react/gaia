@@ -1,0 +1,7 @@
+{
+  "models": {
+    "claude-opus-6": [ { "input": 8, "output": 40 } ],
+    "claude-opus-6-1": [ { "input": 8, "output": 40 } ],
+    "claude-opus-7": [ { "input": 9, "output": 45 } ]
+  }
+}

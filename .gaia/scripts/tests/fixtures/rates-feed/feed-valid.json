@@ -1,0 +1,8 @@
+{
+  "cache_multipliers": { "read": 0.9, "write_5m": 9.0, "write_1h": 9.0 },
+  "models": {
+    "claude-opus-6": [ { "input": 7, "output": 35 } ],
+    "claude-sonnet-6": [ { "input": 3.3, "output": 16.5, "cache_read_multiplier": 0.05 } ],
+    "claude-opus-5": [ { "input": 5, "output": 25 } ]
+  }
+}

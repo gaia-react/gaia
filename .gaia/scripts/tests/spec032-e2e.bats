@@ -61,6 +61,9 @@
 #       total=54
 
 setup() {
+  # Isolate pricing from the developer's real rate table and the network.
+  export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state"
+  export GAIA_RATES_FEED_DISABLE=1
   SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   TALLY="$SCRIPT_DIR/token-tally.sh"
@@ -130,6 +133,8 @@ build_full_repo() {
   cp "$REPO_ROOT/.gaia/scripts/token-tally.sh" "$REPO/.gaia/scripts/token-tally.sh"
   chmod +x "$REPO/.gaia/scripts/token-tally.sh"
   cp "$REPO_ROOT/.gaia/scripts/token-pricing-lib.sh" "$REPO/.gaia/scripts/token-pricing-lib.sh"
+  cp "$REPO_ROOT/.gaia/scripts/token-rates-local-lib.sh" "$REPO/.gaia/scripts/token-rates-local-lib.sh"
+  cp "$REPO_ROOT/.gaia/scripts/token-rates-feed-lib.sh" "$REPO/.gaia/scripts/token-rates-feed-lib.sh"
   cp "$REPO_ROOT/.gaia/scripts/ledger-path-lib.sh" "$REPO/.gaia/scripts/ledger-path-lib.sh"
   cp "$REPO_ROOT/.gaia/scripts/main-root-lib.sh" "$REPO/.gaia/scripts/main-root-lib.sh"
   cp "$REPO_ROOT/.gaia/scripts/audit-window-lib.sh" "$REPO/.gaia/scripts/audit-window-lib.sh"

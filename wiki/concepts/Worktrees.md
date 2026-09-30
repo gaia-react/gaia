@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-07-23
-updated: 2026-09-18
+updated: 2026-09-30
 tags: [concept, worktree, claude, hooks, state]
 ---
 
@@ -56,7 +56,7 @@ Undeterminable identity is one rule with a direction chosen per site, not a sing
 | Per-tree writer / reaper | the session-start janitor, the RED ledger, the worthiness ledger | **refuse to act** — no-op rather than writing or deleting one tree's state as another's, which is the worse failure (`GAIA_TREE_KEY_UNRESOLVABLE` is the diagnostic where one is emitted) |
 | Destructive removal guard | the `rm -rf` guard | **fail cautious** — a wrong destructive action is unrecoverable, so an unreadable registry loses the scratch carve-outs and the target falls to the absolute-path deny. It derives no tree identity; it is one of several guards that do not fail open. |
 | Read-side scope gate | the statusline's nudge gate | **fail open, render**: a surface that goes dark on an identity it could not confirm tells the developer nothing, and the failure is cheap to notice. Its state reads stay main-anchored regardless of the gate's answer. |
-| Main-anchored surface or state (exempt) | the SPEC and plan ledgers, the token tally, the PR-artifact capture | does not derive tree identity — anchors to main by design. |
+| Main-anchored surface or state (exempt) | the SPEC and plan ledgers, the token tally and its local rate table with its state files, the PR-artifact capture | does not derive tree identity; anchors to main by design. |
 | Content-keyed shared state (exempt) | the audit content-digest clearance markers | does not derive tree identity — keyed by content, one shared store |
 
 The exempt classes are named so their absence reads as deliberate, not an oversight. The deriving classes never choose their own default; the direction above is the rule.

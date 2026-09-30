@@ -115,6 +115,9 @@ bats_require_minimum_version 1.5.0
 #   against the shipped seed rates: opus $1.00 + sonnet $0.30 = $1.30.
 
 setup() {
+  # Isolate pricing from the developer's real rate table and the network.
+  export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state"
+  export GAIA_RATES_FEED_DISABLE=1
   SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
   SCRIPT="$SCRIPT_DIR/token-rollup.sh"
   FIX="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-rollup" && pwd)"
@@ -339,52 +342,73 @@ setup() {
 }
 
 # ---------- 16. DP-003: committed rate table smoke case (SPEC-019) ----------
-# The ONLY test that resolves the LIVE committed .gaia/scripts/token-rates.json
-# (no --rate-table override), so a wrong number in the shipped seed rates is
-# caught here. Every other dollar assertion in the suite injects a hermetic
-# fixture table instead. claude-opus-4-8 seed rate: input $5/MTok; claude-
-# sonnet-4-6 seed rate: input $3/MTok (see token-rates.json).
+# The ONLY test that prices from the committed .gaia/scripts/token-rates.json,
+# pinned through --rate-table (the local table a bare run prices from is seeded
+# from the main checkout, not from this tree), so a wrong number in the shipped
+# seed rates is caught here. Every other dollar assertion in the suite injects a
+# hermetic fixture table instead. claude-opus-4-8 seed rate: input $5/MTok;
+# claude-sonnet-4-6 seed rate: input $3/MTok (see token-rates.json).
 #   opus:   200,000 * 5 / 1e6 = $1.00
 #   sonnet: 100,000 * 3 / 1e6 = $0.30
 #   Total = $1.30
 # Keep this expected value in sync if the committed seed rates ever change.
-@test "committed-rate-smoke: resolves the real token-rates.json and prices the committed seed rates" {
-  run bash "$SCRIPT" --spec-id SPEC-260 --ledger "$FIX/committed-rate-smoke.jsonl"
+@test "committed-rate-smoke: prices the committed token-rates.json seed rates through --rate-table" {
+  run bash "$SCRIPT" --spec-id SPEC-260 --ledger "$FIX/committed-rate-smoke.jsonl" --rate-table "$SCRIPT_DIR/token-rates.json"
   [ "$status" -eq 0 ]
   [[ "$output" == *'execute:   $1.30'* ]]
   [[ "$output" == *'Total:     $1.30'* ]]
 }
 
-# ---------- 17. Directive 5: rate table resolves from inside a linked worktree ----------
-# The positive counterpart to test 13's ledger-resolution case. resolve_rate_table()
-# (no --rate-table override) locates the table at `git rev-parse --show-toplevel`/
-# .gaia/scripts/token-rates.json. Inside a LINKED worktree, --show-toplevel returns
-# the WORKTREE's own root (not the main checkout), and a real worktree carries the
-# committed table because git checks it out. Test 13's synthetic worktree carries no
-# committed table, so it only ever exercised the "rate table unreadable" degrade;
-# this seeds the real shipped rates into a committed table, so the worktree checkout
-# resolves it and prices the same $1.30 as the committed-rate-smoke case above.
-@test "worktree-rate-table: resolves the committed token-rates.json via --show-toplevel from a linked worktree" {
+# Builds MAIN (a repo whose committed table is the real shipped one) and WT (a
+# linked worktree whose branch raises the opus input rate from $5 to $7/MTok).
+# Priced against the smoke ledger: the shipped table gives $1.30, the branch's
+# row gives 200,000 * 7 / 1e6 + $0.30 = $1.70.
+_make_worktree_with_changed_row() {
   MAIN="$(cd "$BATS_TEST_TMPDIR" && pwd -P)/main"
   WT="$(cd "$BATS_TEST_TMPDIR" && pwd -P)/wt"
   mkdir -p "$MAIN/.gaia/scripts"
   git -C "$MAIN" init -q
-  # Commit the real shipped rate table so the worktree checkout carries it, exactly
-  # as a real linked worktree of this repo would.
   cp "$SCRIPT_DIR/token-rates.json" "$MAIN/.gaia/scripts/token-rates.json"
   git -C "$MAIN" add .gaia/scripts/token-rates.json
   git -C "$MAIN" commit -q -m "seed committed rate table"
   git -C "$MAIN" worktree add -q "$WT" -b "feature/kickoff"
+  jq '.models["claude-opus-4-8"][0].input = 7' "$WT/.gaia/scripts/token-rates.json" >"$WT/.gaia/scripts/token-rates.json.new"
+  mv "$WT/.gaia/scripts/token-rates.json.new" "$WT/.gaia/scripts/token-rates.json"
+  git -C "$WT" commit -q -am "raise the opus rate on the branch"
+}
 
-  # No --rate-table override: the rate table must resolve to the WORKTREE's own
-  # <toplevel>/.gaia/scripts/token-rates.json. --ledger is explicit so this isolates
-  # rate-table resolution (test 13 covers ledger resolution). Same seed rates as
-  # committed-rate-smoke -> $1.30, and NOT the "rate table unreadable" degrade.
+# ---------- 17. Rate table follows the main checkout, not the linked worktree ----------
+# A bare run prices from the machine-local table, which is seeded from the MAIN
+# checkout's distributed table. From a linked worktree whose branch changes a
+# row, the figure therefore stays the main checkout's $1.30 rather than the
+# branch's $1.70; the branch's table is priced only when named through
+# --rate-table (next test). --ledger is explicit so this isolates rate-table
+# resolution (test 13 covers ledger resolution).
+@test "worktree-rate-table: a bare run from a linked worktree prices the main checkout's table, not the branch's changed row" {
+  _make_worktree_with_changed_row
+
   run bash -c "cd '$WT' && bash '$SCRIPT' --spec-id SPEC-260 --ledger '$FIX/committed-rate-smoke.jsonl'"
   [ "$status" -eq 0 ]
   [[ "$output" == *'execute:   $1.30'* ]]
   [[ "$output" == *'Total:     $1.30'* ]]
+  [[ "$output" != *'$1.70'* ]]
   [[ "$output" != *'unavailable (rate table unreadable)'* ]]
+  # The local table was seeded under the state dir from main's file.
+  [ -s "$GAIA_RATES_STATE_DIR/token-rates.json" ]
+  [ "$(jq -r '.models["claude-opus-4-8"][0].input' "$GAIA_RATES_STATE_DIR/token-rates.json")" = "5" ]
+
+  git -C "$MAIN" worktree remove --force "$WT" 2>/dev/null || rm -rf "$WT"
+}
+
+@test "worktree-rate-table-override: --rate-table naming the worktree's table prices the branch's changed row" {
+  _make_worktree_with_changed_row
+
+  run bash -c "cd '$WT' && bash '$SCRIPT' --spec-id SPEC-260 --ledger '$FIX/committed-rate-smoke.jsonl' --rate-table '$WT/.gaia/scripts/token-rates.json'"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'execute:   $1.70'* ]]
+  [[ "$output" == *'Total:     $1.70'* ]]
+  # An override prices in place: nothing is seeded.
+  [ ! -e "$GAIA_RATES_STATE_DIR/token-rates.json" ]
 
   git -C "$MAIN" worktree remove --force "$WT" 2>/dev/null || rm -rf "$WT"
 }

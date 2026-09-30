@@ -26,6 +26,9 @@ bats_require_minimum_version 1.5.0
 # plus explicit status checks for JSON assertions.
 
 setup() {
+  # Isolate pricing from the developer's real rate table and the network.
+  export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state"
+  export GAIA_RATES_FEED_DISABLE=1
   SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
   SCRIPT="$SCRIPT_DIR/token-tally.sh"
   FIX="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-tally" && pwd)"

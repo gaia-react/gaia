@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-09-20
-updated: 2026-09-20
+updated: 2026-09-30
 tags: [concept, gaia, scripts]
 ---
 
@@ -81,8 +81,10 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 
 | Script | Ships | Invoker | What it is |
 |---|---|---|---|
-| `token-pricing-lib.sh` | yes | sourced | Shared rate-table resolution and the pricing jq definitions the ledger readers share. |
-| `token-rates.json` | yes | read by the pricing lib | The rate card the cost ledger prices rows against. |
+| `token-pricing-lib.sh` | yes | sourced | Shared rate-table resolution and the pricing jq definitions the ledger readers share; sources the two rate-table libs below. |
+| `token-rates-feed-lib.sh` | yes | sourced by the pricing lib | Heals a `claude-*` model the local rate table lacks with one bounded request to the public distributed table on `main`. |
+| `token-rates-local-lib.sh` | yes | sourced by the pricing lib | Seeds and syncs the machine-local rate table the cost ledger prices rows against. |
+| `token-rates.json` | yes | read by the local-table lib | The distributed rate card: the seed for the local table and the table the feed serves from `main`. |
 | `token-rollup.sh` | yes | `token-rollup-merge.sh` hook | Reads the token ledger and rolls it up for reporting. |
 | `token-tally.sh` | yes | the cost-accounting hooks | Appends a run's token and dollar tally to the ledger. |
 
