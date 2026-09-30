@@ -123,10 +123,16 @@ _gaia_branch_is_members() {
   return 0
 }
 
-# _gaia_branch_leading_digits <text>: the leading run of ASCII digits.
+# The readers below are built on setters that assign a global rather than
+# print, so a caller reading thousands of branch names in one shell (the usage
+# ledger's read side) pays no subshell per name. The printing functions stay
+# the public interface.
+
+# _gaia_branch_set_leading_digits <text>: sets _gaia_branch_digits to the
+# leading run of ASCII digits.
 # `${text:$i:1}`, not bash's bare `${text:i:1}`: zsh reads a bare identifier
 # after the colon as a history modifier and aborts the walk.
-_gaia_branch_leading_digits() {
+_gaia_branch_set_leading_digits() {
   local LC_ALL=C
   local text="${1-}" out="" i len c
   len="${#text}"
@@ -137,7 +143,7 @@ _gaia_branch_leading_digits() {
       *) break ;;
     esac
   done
-  printf '%s' "$out"
+  _gaia_branch_digits="$out"
 }
 
 # _gaia_branch_strip_zeros <digits>: <digits> without leading zeros, `0` for
@@ -150,17 +156,30 @@ _gaia_branch_strip_zeros() {
   printf '%s' "$text"
 }
 
-gaia_branch_normalize() {
+# _gaia_branch_set_normalized <branch>: sets _gaia_branch_nb.
+_gaia_branch_set_normalized() {
   local text="${1-}"
   text="${text#worktree-}"
   # `\+`: an escaped literal means the same thing in bash and zsh.
   text="${text//\+//}"
-  printf '%s' "$text"
+  _gaia_branch_nb="$text"
 }
 
-gaia_branch_classify() {
+gaia_branch_normalize() {
+  _gaia_branch_set_normalized "${1-}"
+  printf '%s' "$_gaia_branch_nb"
+}
+
+# _gaia_branch_set_class <branch>: sets _gaia_branch_mode and _gaia_branch_unit.
+_gaia_branch_set_class() {
   local nb mode="adhoc" unit="" rest="" id="" lead=""
-  nb="$(gaia_branch_normalize "${1-}")"
+  _gaia_branch_set_normalized "${1-}"
+  nb="$_gaia_branch_nb"
+  # Trailing newlines dropped, as a command substitution of the normalized
+  # name would drop them, so a name git would refuse still classifies the same.
+  while :; do
+    case "$nb" in *$'\n') nb="${nb%$'\n'}" ;; *) break ;; esac
+  done
 
   case "$nb" in
     debt/*)
@@ -175,7 +194,10 @@ gaia_branch_classify() {
           fi
           ;;
       esac
-      [ -n "$unit" ] || unit="$(_gaia_branch_leading_digits "$rest")"
+      if [ -z "$unit" ]; then
+        _gaia_branch_set_leading_digits "$rest"
+        unit="$_gaia_branch_digits"
+      fi
       ;;
     plan/*)
       mode="plan"
@@ -202,15 +224,20 @@ gaia_branch_classify() {
   esac
 
   [ -n "$unit" ] || unit="unknown"
-  printf '%s %s\n' "$mode" "$unit"
+  _gaia_branch_mode="$mode" _gaia_branch_unit="$unit"
+}
+
+gaia_branch_classify() {
+  _gaia_branch_set_class "${1-}"
+  printf '%s %s\n' "$_gaia_branch_mode" "$_gaia_branch_unit"
   return 0
 }
 
 gaia_branch_members() {
-  local classified mode unit
-  classified="$(gaia_branch_classify "${1-}")"
-  mode="${classified%% *}"
-  unit="${classified#* }"
+  local mode unit
+  _gaia_branch_set_class "${1-}"
+  mode="$_gaia_branch_mode"
+  unit="$_gaia_branch_unit"
   [ "$mode" = "drain" ] || return 0
   [ "$unit" != "unknown" ] || return 0
   # Walk the dash-joined list by parameter expansion rather than IFS

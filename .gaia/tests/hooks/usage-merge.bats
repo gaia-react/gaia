@@ -26,21 +26,36 @@
 #   capture hook has run.
 #   Rendered block: 488 characters (about 122 tokens) for a spec branch with one
 #   initiative root, one per merged PR, plus about 100 characters per marker.
-#   Readout budget: `usage.sh pr <N>` (median of 3 to 5 runs) over a synthesized
-#   usage.jsonl at the flusher's measured rate of about 8,000 rows a month
-#   (4,191 segments, 625 bindings, 3,155 cursors), random keys and sessions,
-#   and 60 merged PRs a month in links.jsonl: 1 month 3.9 s, 3 months 7.0 s,
-#   6 months 15.9 s, 12 months 50.5 s. The growth is super-linear, and the
-#   render is not bounded by the merge cap.
+#   Readout budget: `usage.sh pr <N>`, median of 5 (3 for the slowest points
+#   before), over synthesized stores at the flusher's measured rate of about
+#   8,000 usage.jsonl rows a month (4,191 segments, 625 bindings, 3,155
+#   cursors) and 60 merged PRs a month in links.jsonl, in two shapes.
+#   Pessimistic: keys drawn from a fixed pool of 660 branches or a random
+#   session, 3,000 random sessions. Realistic: about 150 new branch keys and
+#   700 new sessions a month, with start bindings closed by cost rows and some
+#   inherit segments. Before the batching fix (a subshell per branch name in
+#   the key pass, and a scan of every interval, binding, and segment per
+#   segment in the resolver):
+#     pessimistic 1 month 3.9 s, 6 months 16.9 s, 12 months 51.8 s;
+#     realistic 1 month 2.8 s, 6 months 50.7 s, 12 months 182.6 s.
+#   After (byte-identical blocks at every point):
+#     pessimistic 1 month 0.55 s, 6 months 1.59 s, 12 months 2.88 s;
+#     realistic 1 month 0.49 s, 6 months 1.97 s, 12 months 3.91 s.
+#   Growth is now linear. The remaining floor at 12 months is two full parses
+#   of a 25 MB ledger (the branch-key pass, then the view) plus per-segment
+#   epoch and resolution work, so the render is also bounded in the hook by
+#   GAIA_USAGE_RENDER_CAP_SECS (default 10).
 
 bats_require_minimum_version 1.5.0
 
 setup() {
+  . "$BATS_TEST_DIRNAME/helpers/usage-merge-env.sh"
+  # shellcheck disable=SC2034  # read by build_repo in the helper
   SRC="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   TMP="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
   export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state" GAIA_RATES_FEED_DISABLE=1
   unset CLAUDE_CODE_SESSION_ID GAIA_TALLY_PROJECTS_ROOT GITHUB_ACTIONS GAIA_USAGE_HOOKS_DISABLE
-  unset GAIA_LEDGER_LOCK_FORCE_FALLBACK GAIA_LEDGER_LOCK_TIMEOUT_SECS GAIA_USAGE_MERGE_CAP_SECS
+  unset GAIA_LEDGER_LOCK_FORCE_FALLBACK GAIA_LEDGER_LOCK_TIMEOUT_SECS GAIA_USAGE_MERGE_CAP_SECS GAIA_USAGE_RENDER_CAP_SECS
   export GAIA_LEDGER_LOCK_POLL_SECS=0.1
   export GIT_AUTHOR_NAME="GAIA Test" GIT_AUTHOR_EMAIL="gaia-test@example.com"
   export GIT_COMMITTER_NAME="GAIA Test" GIT_COMMITTER_EMAIL="gaia-test@example.com"
@@ -51,96 +66,6 @@ setup() {
   export PATH="$TMP/bin:$PATH"
   build_repo
 }
-
-make_stubs() {
-  cat >"$TMP/bin/gh" <<'EOF'
-#!/usr/bin/env bash
-printf '%s\n' "$*" >>"$GHSTUB_DIR/argv.log"
-[ -f "$GHSTUB_DIR/sleep" ] && sleep "$(cat "$GHSTUB_DIR/sleep")"
-[ "$1 $2" = "pr view" ] || exit 2
-op="${3:-none}"
-case "$op" in -*) op=none ;; esac
-f="$GHSTUB_DIR/view-$op.json"
-[ -f "$f" ] || f="$GHSTUB_DIR/view.json"
-[ -f "$f" ] || exit 1
-cat "$f"
-EOF
-  local h
-  for h in curl wget nc; do
-    printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$0 $*" >>"$GHSTUB_DIR/net.log"\n' >"$TMP/bin/$h"
-  done
-  chmod +x "$TMP/bin/"*
-}
-
-enc() { printf '%s' "$1" | LC_ALL=C sed 's/[^A-Za-z0-9]/-/g'; }
-
-build_repo() {
-  REPO="$TMP/repo"
-  PROJ="$TMP/projects"
-  TD="$REPO/.gaia/local/telemetry"
-  mkdir -p "$REPO" "$PROJ/$(enc "$REPO")"
-  git -C "$REPO" init -q -b main
-  git -C "$REPO" -c commit.gpgsign=false commit -q --allow-empty -m init
-  mkdir -p "$REPO/.claude/hooks/lib" "$REPO/.gaia/scripts" "$REPO/.specify/extensions/gaia/lib" "$TD"
-  local f
-  cp "$SRC/.claude/hooks/token-rollup-merge.sh" "$REPO/.claude/hooks/"
-  for f in verb-arming.sh verb-arming-walk.sh repo-scope.sh gaia-active-plan.sh; do
-    cp "$SRC/.claude/hooks/lib/$f" "$REPO/.claude/hooks/lib/"
-  done
-  for f in "$SRC"/.gaia/scripts/usage*.sh "$SRC"/.gaia/scripts/token-pricing-lib.sh \
-    "$SRC"/.gaia/scripts/token-rates-local-lib.sh "$SRC"/.gaia/scripts/token-rates-feed-lib.sh \
-    "$SRC"/.gaia/scripts/ledger-path-lib.sh "$SRC"/.gaia/scripts/main-root-lib.sh \
-    "$SRC"/.gaia/scripts/branch-name-lib.sh "$SRC"/.gaia/scripts/token-rollup.sh; do
-    cp "$f" "$REPO/.gaia/scripts/"
-  done
-  cp "$SRC/.specify/extensions/gaia/lib/with-ledger-lock.sh" "$REPO/.specify/extensions/gaia/lib/"
-  cat >"$REPO/.gaia/scripts/token-rates.json" <<'EOF'
-{
-  "cache_multipliers": { "read": 0.1, "write_5m": 1.25, "write_1h": 2.0 },
-  "models": { "claude-opus-5-5": [ { "input": 2, "output": 10 } ] }
-}
-EOF
-  cat >"$REPO/.claude/settings.json" <<'EOF'
-{"hooks": {
-  "Stop": [{"hooks": [{"type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/usage-capture.sh"}]}],
-  "SessionStart": [{"hooks": [{"type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/usage-capture.sh"}]}]
-}}
-EOF
-}
-
-# seg <key> <sid> <first_ts> <fresh> <output>: one usage.jsonl segment row.
-seg() {
-  jq -nc --arg k "$1" --arg s "$2" --arg t "$3" --argjson f "$4" --argjson o "$5" \
-    '{schema_version:1,kind:"segment",key:$k,session_id:$s,inherit:false,first_ts:$t,last_ts:$t,messages:2,
-      by_model:{"claude-opus-5-5":{fresh_input:$f,cache_write_5m:0,cache_write_1h:0,cache_read:0,output:$o}}}'
-}
-
-# gh_view <operand> <number> <headRefName> <state> <mergedAt>
-gh_view() {
-  jq -nc --argjson n "$2" --arg h "$3" --arg s "$4" --arg m "$5" \
-    '{number:$n,headRefName:$h,state:$s,mergedAt:(if $m == "" then null else $m end)}' >"$GHSTUB_DIR/view-$1.json"
-}
-
-payload_for() {
-  local cmd="$1" sid="${2:-s-hook}" tp="${3:-}"
-  [ -n "$tp" ] || tp="$PROJ/$(enc "$REPO")/$sid.jsonl"
-  jq -nc --arg c "$cmd" --arg s "$sid" --arg t "$tp" \
-    '{hook_event_name:"PostToolUse",tool_name:"Bash",tool_input:{command:$c},tool_response:{stdout:"",stderr:""},session_id:$s,transcript_path:$t}'
-}
-
-# run_merge <command> [sid]: the real hook, cwd = the tmp repo.
-run_merge() {
-  run bash -c 'cd "$1" && printf %s "$2" | bash "$3"' _ "$REPO" "$(payload_for "$1" "${2:-s-hook}")" "$REPO/.claude/hooks/token-rollup-merge.sh"
-}
-
-# run_script <script> <command> [sid]: a usage-merge.sh copy run directly.
-run_script() {
-  run bash -c 'cd "$1" && printf %s "$2" | bash "$3"' _ "$REPO" "$(payload_for "$2" "${3:-s-hook}")" "$1"
-}
-
-has_line() { grep -qxF -- "$1" <<<"$output" || { printf 'missing line: [%s]\nin:\n%s\n' "$1" "$output" >&2; return 1; }; }
-lacks() { grep -qF -- "$1" <<<"$output" && { printf 'unexpected [%s] in:\n%s\n' "$1" "$output" >&2; return 1; }; return 0; }
-merge_rows() { jq -s --argjson p "$1" '[.[] | select(.kind == "merge" and .pr == $p)] | length' "$TD/links.jsonl"; }
 
 seed_uat007() {
   {
@@ -342,6 +267,85 @@ seed_unflushed() {
   has_line "[PR cost] pr:103 (branch unresolved)"
   grep -qF '! merge not confirmed' <<<"$output"
   [ "$(merge_rows 103)" -eq 0 ]
+}
+
+# ---------- 4b. the render cap ----------
+
+# slow_render <secs>: usage.sh becomes a stand-in whose `pr` readout sleeps
+# <secs> before printing; every other subcommand runs the real script.
+slow_render() {
+  mv "$REPO/.gaia/scripts/usage.sh" "$REPO/.gaia/scripts/usage-real.sh"
+  printf '#!/usr/bin/env bash\nif [ "${1-}" = pr ]; then sleep %s; printf "[PR cost] late\\n"; exit 0; fi\nexec bash "${BASH_SOURCE[0]%%/*}/usage-real.sh" "$@"\n' \
+    "$1" >"$REPO/.gaia/scripts/usage.sh"
+}
+
+# seed_rollup: an active plan on the current branch with one execute record,
+# so token-rollup-merge.sh prints its cycle roll-up after the block.
+seed_rollup() {
+  local plan="$REPO/.gaia/local/plans/my-plan"
+  mkdir -p "$plan"
+  printf '# Plan\n\n## Source SPEC\n\nDerived from SPEC-042 (/abs/root/.gaia/local/specs/SPEC-042/SPEC.md).\n' >"$plan/README.md"
+  printf 'branch: main\nslug: my-plan\nstarted: 2026-07-01T00:00:00Z\n' >"$plan/RUNNING"
+  jq -nc '{kind:"execute", spec_id:"SPEC-042", plan_slug:"my-plan", session_id:"sess-a",
+    buckets:{fresh_input:300, cache_write:0, cache_read:0, output:0}, total:300, partial:false,
+    started_at:"2026-06-01T00:00:00Z", ended_at:"2026-06-01T00:00:00Z", duration_seconds:10,
+    duration_available:true, ts:"2026-06-01T00:00:00Z"}' >>"$TD/cost.jsonl"
+}
+
+@test "the render cap: a render past the cap is killed, one timed-out line replaces the block, and the roll-up still prints" {
+  seed_uat007
+  seed_rollup
+  slow_render 8
+  gh_view 103 103 fix/foo MERGED 2026-09-25T02:00:00Z
+  export GAIA_USAGE_RENDER_CAP_SECS=1
+  local t0 t1
+  t0="$(date +%s)"
+  run_merge "gh pr merge 103"
+  t1="$(date +%s)"
+  [ "$status" -eq 0 ]
+  [ "$((t1 - t0))" -le 4 ]
+  has_line "! readout timed out after 1s; rerun: bash .gaia/scripts/usage.sh pr 103"
+  [ "$(grep -c 'readout timed out' <<<"$output")" -eq 1 ]
+  lacks "[PR cost]"
+  has_line "[cycle cost at merge]"
+  grep -qF "Cycle cost (SPEC-042)" <<<"$output"
+  [ "$(merge_rows 103)" -eq 1 ]
+}
+
+@test "the render cap, numberless: the rerun line names the branch the block would have used" {
+  git -C "$REPO" checkout -q -b worktree-fix+bar
+  slow_render 8
+  export GAIA_USAGE_RENDER_CAP_SECS=1
+  run_merge "gh pr merge"
+  [ "$status" -eq 0 ]
+  [ "$output" = "! readout timed out after 1s; rerun: bash .gaia/scripts/usage.sh pr --branch worktree-fix+bar" ]
+}
+
+@test "guards-must-fail: a copy of usage-merge.sh without the render watchdog overruns cap plus 3 s" {
+  seed_uat007
+  slow_render 8
+  gh_view 103 103 fix/foo MERGED 2026-09-25T02:00:00Z
+  export GAIA_USAGE_RENDER_CAP_SECS=1
+  sed '/_um_expired "\$rcap" && break/d' "$REPO/.gaia/scripts/usage-merge.sh" >"$REPO/.gaia/scripts/usage-merge-mutant.sh"
+  cmp -s "$REPO/.gaia/scripts/usage-merge.sh" "$REPO/.gaia/scripts/usage-merge-mutant.sh" && return 1
+  local t0 t1
+  t0="$(date +%s)"
+  run_script "$REPO/.gaia/scripts/usage-merge-mutant.sh" "gh pr merge 103"
+  t1="$(date +%s)"
+  [ "$status" -eq 0 ]
+  [ "$((t1 - t0))" -gt 4 ]
+  has_line "[PR cost] late"
+}
+
+@test "the render cap, control: a render inside the cap prints the block and no timed-out line" {
+  seed_uat007
+  gh_view 103 103 fix/foo MERGED 2026-09-25T02:00:00Z
+  export GAIA_USAGE_RENDER_CAP_SECS=5
+  run_merge "gh pr merge 103"
+  [ "$status" -eq 0 ]
+  has_line "[PR cost] pr:103 branch:fix/foo"
+  has_line "  tokens: 440,000 (fresh 400,000, cache write 0, cache read 0, output 40,000)"
+  lacks "readout timed out"
 }
 
 # ---------- 5. a reused branch ----------

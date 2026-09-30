@@ -317,3 +317,18 @@ edges() {
   grep -qE 'SPEC-093|PLAN-777|SPEC-778' <<<"$output" && return 1
   true
 }
+
+# derive <branch-ref>...: gaia_usage_derive_map over the refs, run from a clean
+# shell, keys sorted so the literal below compares byte for byte.
+derive() {
+  # shellcheck disable=SC2016
+  bash -c 'source "$1/usage-lib.sh" && source "$1/usage-resolve-lib.sh" || exit 9
+    shift; gaia_usage_derive_map "$@" | jq -cS .' _ "$SCRIPTS" "$@"
+}
+
+@test "derived edges in one batch: each branch gets only its own parents, whatever came before it" {
+  run derive branch:debt/41-42-batch branch:debt/7-x branch:fix/foo branch:plan/spec-7 branch:feat/x \
+    branch:spec-9-y branch:chore/12-z branch:plan/plan-5-q branch:debt/8 'branch:%0123456789abcdef' session:s
+  [ "$status" -eq 0 ]
+  [ "$output" = '{"branch:chore/12-z":["issue:12"],"branch:debt/41-42-batch":["issue:41","issue:42"],"branch:debt/7-x":["issue:7"],"branch:debt/8":["issue:8"],"branch:plan/plan-5-q":["plan:PLAN-005"],"branch:plan/spec-7":["spec:SPEC-007"],"branch:spec-9-y":["spec:SPEC-009"]}' ]
+}

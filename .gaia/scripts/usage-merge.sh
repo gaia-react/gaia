@@ -18,6 +18,14 @@
 # left (at least 1), so a held lock cannot stretch the merge past the cap by
 # the mutex's own default wait.
 #
+# The render has its own cap, GAIA_USAGE_RENDER_CAP_SECS (default 10). The
+# hook registration sets no timeout, so a render the host kills would take
+# the roll-up printed after this block down with it. Measured on synthetic
+# ledgers, a render over twelve months of heavy use takes about 3 to 4 s, so
+# 10 s is headroom for a slower machine without letting a pathological ledger
+# hold the merge. At the cap the render and its children are killed and one
+# `! readout timed out` line replaces the block.
+#
 # Branch resolution, first answer wins: the read's headRefName; the `pr:<N>`
 # edge recorded at `gh pr create` (through `usage.sh pr-branch`, never parsed
 # here); the current branch when the command named no PR. Normalization and
@@ -56,6 +64,8 @@ tpath="$(jq -r '.transcript_path // ""' <<<"$payload" 2>/dev/null)" || tpath=""
 
 cap="${GAIA_USAGE_MERGE_CAP_SECS:-5}"
 case "$cap" in '' | *[!0-9]* | 0) cap=5 ;; esac
+rcap="${GAIA_USAGE_RENDER_CAP_SECS:-10}"
+case "$rcap" in '' | *[!0-9]* | 0) rcap=10 ;; esac
 
 # Sets UM_PR (a PR number), UM_GHARG (what to hand `gh pr view`), UM_NAMED
 # (1 when the statement carried a positional argument, readable or not).
@@ -116,11 +126,12 @@ ticks=0
 # at least one 0.1 s sleep, so the cap can overshoot by loop overhead but never
 # undershoot.
 _um_expired() {
+  local c="${1:-$cap}"
   if [ -n "$start_us" ]; then
-    [ "$(($(_um_us) - start_us))" -ge $((cap * 1000000)) ]
+    [ "$(($(_um_us) - start_us))" -ge $((c * 1000000)) ]
   else
     ticks=$((ticks + 1))
-    [ "$ticks" -ge $((cap * 10)) ]
+    [ "$ticks" -ge $((c * 10)) ]
   fi
 }
 _um_left() {
@@ -219,12 +230,43 @@ if [ -z "$pr" ] && [ "${#bflag[@]}" -eq 0 ]; then
   exit 0
 fi
 
-# render <pr or ""> [flags...]
+# _um_tree <pid>: the pid and every descendant, parents first. Listed before
+# any kill, because a killed parent hands its children to init and `pgrep -P`
+# then no longer finds them. Without pgrep only the pid itself is listed.
+_um_tree() {
+  local c
+  printf '%s\n' "$1"
+  command -v pgrep >/dev/null 2>&1 || return 0
+  for c in $(pgrep -P "$1" 2>/dev/null); do _um_tree "$c"; done
+}
+
+# render <pr or ""> [flags...]: sets `out` to what usage.sh printed; rc 1 when
+# the render cap, shared by every render this run, ran out first.
 render() {
   local -a a=(pr)
+  local rf="$UM_WORK/render.out" rpid pids n
   [ -z "$1" ] || a+=("$1")
   shift
-  bash "$UM_DIR/usage.sh" "${a[@]}" "$@" "${common[@]}" </dev/null 2>/dev/null
+  out=""
+  bash "$UM_DIR/usage.sh" "${a[@]}" "$@" "${common[@]}" </dev/null >"$rf" 2>/dev/null 3>&- &
+  rpid=$!
+  while kill -0 "$rpid" 2>/dev/null; do
+    _um_expired "$rcap" && break
+    sleep 0.1
+  done
+  if kill -0 "$rpid" 2>/dev/null; then
+    pids="$(_um_tree "$rpid")"
+    disown "$rpid" 2>/dev/null
+    # shellcheck disable=SC2086  # one pid per word
+    kill -TERM $pids 2>/dev/null
+    n=0
+    while [ "$n" -lt 10 ] && kill -0 "$rpid" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
+    # shellcheck disable=SC2086  # one pid per word
+    kill -KILL $pids 2>/dev/null
+    return 1
+  fi
+  wait "$rpid" 2>/dev/null
+  out="$(cat "$rf")"
 }
 rargs=()
 [ "${#bflag[@]}" -eq 0 ] || rargs=("${bflag[@]}")
@@ -234,11 +276,22 @@ else
   rargs+=(--unconfirmed)
 fi
 [ "$partial" = 0 ] || rargs+=(--partial)
-out="$(render "$pr" ${rargs[@]+"${rargs[@]}"})"
-if [ -z "$out" ] && [ -n "$pr" ] && [ "${#bflag[@]}" -gt 0 ]; then
+start_us="$(_um_us)"
+ticks=0
+timed_out=0
+render "$pr" ${rargs[@]+"${rargs[@]}"} || timed_out=1
+if [ "$timed_out" = 0 ] && [ -z "$out" ] && [ -n "$pr" ] && [ "${#bflag[@]}" -gt 0 ]; then
   fallback=(--unconfirmed)
   [ "$partial" = 0 ] || fallback+=(--partial)
-  out="$(render "$pr" "${fallback[@]}")"
+  render "$pr" "${fallback[@]}" || timed_out=1
+fi
+if [ "$timed_out" = 1 ]; then
+  if [ -n "$pr" ]; then
+    printf '! readout timed out after %ss; rerun: bash .gaia/scripts/usage.sh pr %s\n' "$rcap" "$pr"
+  else
+    printf '! readout timed out after %ss; rerun: bash .gaia/scripts/usage.sh pr %s %s\n' "$rcap" "${bflag[0]}" "${bflag[1]}"
+  fi
+  exit 0
 fi
 [ -z "$out" ] || printf '%s\n' "$out"
 exit 0

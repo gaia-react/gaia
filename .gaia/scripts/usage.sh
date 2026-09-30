@@ -330,8 +330,8 @@ _readout() {
   local view="$1" render="$2" v hooks=0 unf
   shift 2
   KEYS="$(_keys)" || KEYS='{}'
-  usage_rates_load "$RATE_TABLE" "$MAIN_ROOT" \
-    "$(_jq_store '[usage_rows($u)[] | select(.kind == "segment") | (.by_model // {}) | keys[]] | unique' -c)"
+  usage_rates_load "$RATE_TABLE" "$MAIN_ROOT" "$(usage_models_of "$KEYS" ||
+    _jq_store '[usage_rows($u)[] | select(.kind == "segment") | (.by_model // {}) | keys[]] | unique' -c)"
   RATES="$USAGE_RATES"
   v="$(_jq_store "$view" -c)" || { _err "could not read the usage ledger"; return 0; }
   gaia_usage_hooks_registered "$MAIN_ROOT" && hooks=1

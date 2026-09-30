@@ -29,24 +29,26 @@ _usage_money() {
 # shellcheck disable=SC2034,SC2016  # consumed by usage.sh; jq source, no shell expansion
 GAIA_USAGE_VIEW_JQ='
 def usage_unattributed: (.rkey | type) != "string" or (.rkey | startswith("session:"));
-def usage_in($cl): .rkey as $x | any($cl[]; . == $x);
+# $cs is usage_set of a closure: a lookup per segment, not a scan of the closure.
+def usage_set($refs): reduce $refs[] as $r ({}; .[$r] = true);
+def usage_in($cs): (.rkey | type) == "string" and $cs[.rkey] == true;
 
 def usage_view_pr($pr; $key):
-  usage_model as $m
+  usage_model_base as $m
   | ($key // (if $pr == null then null
        else usage_pr_branch($m.links; $m.edges; $pr)
          // ([$m.links[] | select(.kind == "merge" and .pr == $pr) | .key | strings] | last) end)) as $k
   | if $k == null then {pr: $pr, key: null, coverage: $m.coverage}
     else usage_window($m.links; $k; $pr) as $w
       | [$m.segs[] | select(.rkey == $k)] as $mine
-      | [$mine[] | (.first_ts | usage_epoch) as $t
+      | [$mine[] | ._t as $t
           | select($t != null and ($w.from == null or $w.from < $t) and ($w.to == null or $t <= $w.to))] as $in
-      | ([$mine[] | .first_ts | usage_epoch | select(. != null)] | min) as $earliest
-      | {pr: $pr, key: $k, window: $w, sum: usage_sum($in), coverage: $m.coverage,
+      | ([$mine[] | ._t | select(. != null)] | min) as $earliest
+      | {pr: $pr, key: $k, window: $w, sum: usage_sum($in | map(usage_priced)), coverage: $m.coverage,
          lower_bound: ($earliest != null and $m.coverage_t != null and ($earliest - $m.coverage_t) < 86400),
          roots: [usage_roots($m.edges; $k)[] | select(. != $k) | . as $r
-           | usage_closure($m.edges; $r) as $cl
-           | {root: $r, sum: usage_sum([$m.segs[] | select(usage_in($cl))])}]}
+           | usage_set(usage_closure($m.edges; $r)) as $cs
+           | {root: $r, sum: usage_sum([$m.segs[] | select(usage_in($cs)) | usage_priced])}]}
     end;
 
 # A node is listed when it owns resolved spend, or when an explicit edge from
@@ -55,8 +57,8 @@ def usage_view_initiative($ref):
   usage_model as $m
   | {coverage: $m.coverage,
      roots: [usage_roots($m.edges; $ref)[] | . as $r
-       | usage_closure($m.edges; $r) as $cl
-       | [$m.segs[] | select(usage_in($cl))] as $ss
+       | usage_closure($m.edges; $r) as $cl | usage_set($cl) as $cs
+       | [$m.segs[] | select(usage_in($cs))] as $ss
        | {root: $r, sum: usage_sum($ss),
           nodes: ([$cl[] | . as $n
             | [$ss[] | select(.rkey == $n)] as $own
@@ -94,6 +96,14 @@ usage_rates_load() {
   if declare -F gaia_rates_heal >/dev/null 2>&1 && gaia_rates_heal "$3"; then
     USAGE_RATES="$(gaia_load_rate_table "$GAIA_RATES_TABLE")" || USAGE_RATES=null
   fi
+}
+
+# usage_models_of <keys-json>: the models list a gaia_usage_keys_json object
+# carries, printed compact (nothing when it could not be listed); rc 1 when the
+# object has none, so the caller lists them itself.
+usage_models_of() {
+  jq -r 'if has("models") then (.models | if . == null then empty else tojson end) else error("no models") end' \
+    <<<"$1" 2>/dev/null
 }
 
 # usage_unflushed <projects_root> <main_root> <telemetry_dir>: "<files>\t<bytes>"

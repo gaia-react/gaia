@@ -186,34 +186,53 @@ _gaia_usage_hash16() {
 }
 
 gaia_usage_branch_key() {
+  _gaia_usage_set_branch_key "${1-}" || return 1
+  printf '%s\n' "$_gaia_usage_key"
+}
+
+# Sets _gaia_usage_key; forks only to hash a name that fails the grammar.
+_gaia_usage_set_branch_key() {
   local b="${1-}" h
-  if gaia_usage_valid_ref "branch:$b"; then printf 'branch:%s\n' "$b"; return 0; fi
+  if gaia_usage_valid_ref "branch:$b"; then _gaia_usage_key="branch:$b"; return 0; fi
   h="$(_gaia_usage_hash16 "$b")" || return 1
-  printf 'branch:%%%s\n' "$h"
+  _gaia_usage_key="branch:%$h"
+}
+
+# _gaia_usage_capture <file> <fn> [args...]: sets _gaia_usage_text to what
+# <fn> printed, trailing newlines dropped exactly as $(...) drops them. The
+# function runs in this shell with its output sent to <file>, so a reader
+# walking thousands of branch names pays no subshell per name.
+_gaia_usage_capture() {
+  local f="$1"
+  shift
+  _gaia_usage_text=""
+  "$@" >"$f" || return
+  # read -d '' stops only at NUL or end of file, and says 1 at end of file.
+  IFS= read -r -d '' _gaia_usage_text <"$f" || true
+  while :; do
+    case "$_gaia_usage_text" in *$'\n') _gaia_usage_text="${_gaia_usage_text%$'\n'}" ;; *) break ;; esac
+  done
+  return 0
 }
 
 # Every positional carries a leading `x` that jq strips, so a raw spelling that
-# starts with `-` is never read as a jq option.
+# starts with `-` is never read as a jq option. A repeated raw maps to the same
+# entry, so repeats cost only time.
 gaia_usage_branch_map() {
-  local raw norm key i dup
-  local -a flat=() seen=()
+  local raw norm key tmp
+  local -a flat=()
   _gaia_usage_load gaia_branch_normalize branch-name-lib.sh || return 1
+  tmp="$(mktemp "${TMPDIR:-/tmp}/gaia-usage-bmap.XXXXXX")" || return 1
   for raw in "$@"; do
-    dup=0
-    i=0
-    while [ "$i" -lt "${#seen[@]}" ]; do
-      if [ "${seen[$i]}" = "$raw" ]; then dup=1; break; fi
-      i=$((i + 1))
-    done
-    [ "$dup" = 0 ] || continue
-    seen[${#seen[@]}]="$raw"
-    norm="$(gaia_branch_normalize "$raw")"
+    _gaia_usage_capture "$tmp" gaia_branch_normalize "$raw"
+    norm="$_gaia_usage_text"
     key=""
-    if [ -n "$norm" ]; then key="$(gaia_usage_branch_key "$norm")" || key=""; fi
+    if [ -n "$norm" ] && _gaia_usage_set_branch_key "$norm"; then key="$_gaia_usage_key"; fi
     flat[${#flat[@]}]="x$raw"
     flat[${#flat[@]}]="x$norm"
     flat[${#flat[@]}]="x$key"
   done
+  rm -f "$tmp"
   jq -nc '$ARGS.positional | map(.[1:]) as $p
     | [range(0; $p | length; 3) | {key: $p[.], value: {norm: $p[. + 1], key: (if $p[. + 2] == "" then null else $p[. + 2] end)}}]
     | from_entries' --args ${flat[@]+"${flat[@]}"}
