@@ -237,8 +237,9 @@ is_uint "$actions_len" || actions_len=0
 
 # ---------- dollar pricing ----------
 # Prices each winning row's by_model breakdown against the rate table:
-# cache_read at input*0.1, cache_write_5m at input*1.25, cache_write_1h at
-# input*2.0 (see token-rates.json's cache_multipliers). Degrades to a marked
+# each cache bucket at input times its multiplier from token-rates.json
+# (cache_multipliers, or a rate window's own cache_read_multiplier where the
+# price card discounts cache reads per model). Degrades to a marked
 # lower bound or an "unavailable" line on any unreadable table, unknown
 # model, missing run-time anchor, or corrupt ledger line -- never guesses,
 # never blocks.

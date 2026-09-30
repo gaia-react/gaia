@@ -33,7 +33,7 @@ GAIA_PRICING_JQ_DEFS="$(cat <<'JQDEFS'
                     ( (.b.fresh_input // 0) * .w.input
                     + (.b.cache_write_5m // 0) * .w.input * $rates.cache_multipliers.write_5m
                     + (.b.cache_write_1h // 0) * .w.input * $rates.cache_multipliers.write_1h
-                    + (.b.cache_read // 0) * .w.input * $rates.cache_multipliers.read
+                    + (.b.cache_read // 0) * .w.input * (.w.cache_read_multiplier // $rates.cache_multipliers.read)
                     + (.b.output // 0) * .w.output
                     ) / 1000000
                   end
