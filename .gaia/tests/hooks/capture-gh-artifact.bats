@@ -387,6 +387,18 @@ edge_file() { printf '%s/.gaia/local/telemetry/links.jsonl' "$REPO"; }
   [ ! -f "$(edge_file)" ] || ! grep -q '"pr:' "$(edge_file)"
 }
 
+@test "gh pr create with a multi-line body before a repo flag records no pr:<N> edge" {
+  build_repo
+  cd "$REPO"
+  unset GAIA_USAGE_HOOKS_DISABLE
+  git checkout -b feat/foreign-body --quiet
+
+  run_hook $'gh pr create --title t --body "line one\nline two" --repo x/y' "https://github.com/x/y/pull/82"
+  [ "$status" -eq 0 ]
+  run_hook $'gh pr create --body "line one\nline two" -Rx/y' "https://github.com/x/y/pull/83"
+  [ ! -f "$(edge_file)" ] || ! grep -q '"pr:' "$(edge_file)"
+}
+
 @test "an unwritable breadcrumb cache never drops the edge" {
   build_repo
   cd "$REPO"

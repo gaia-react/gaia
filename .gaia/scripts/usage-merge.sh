@@ -31,15 +31,29 @@
 # here); the current branch when the command named no PR. Normalization and
 # keying happen only inside usage.sh.
 #
+# A merge aimed at another repository prints no per-PR block, reads nothing,
+# and records nothing: the hook exits 0 before any `gh` call, flush, render,
+# or ledger write, and never falls back to the current branch's pull request.
+# Aimed at another repository means a repo flag (`-R`, `-Rvalue`, `--repo`,
+# `--repo=`) anywhere in the text after the verb, including later lines, or a
+# PR URL naming a repository other than the local origin's. A `--repo` value
+# naming the local repository itself counts as foreign too, which fails toward
+# no output. A flag inside quoted prose also counts, for the same reason.
+# A URL is compared with the origin remote's owner/repo (https and ssh forms,
+# no network); an absent or unparseable origin counts every URL as foreign.
+#
+# Operand shapes, for a merge aimed at this repository: no operand resolves
+# the current branch's pull request through an operand-less `gh pr view`; a
+# number or a same-repo URL is handed to `gh pr view` as given; a branch name
+# is handed to `gh pr view` as given, which resolves the pull request whose
+# head is that branch. Flag values (`--subject 45`, `-t 45`, `--body 45`,
+# `--match-head-commit <sha>`, `--author-email x`) are skipped and never become
+# the operand. A named operand the scan cannot read (a wrapper, a quote the
+# statement cut off, an odd spelling) resolves nothing and prints the
+# unresolved line; it never reads the current branch's pull request.
+#
 # Honest limits: the operand scan reads the first `gh pr merge` statement as
-# raw text, stops at `;`, `&`, `|`, and a newline, and treats a repo flag
-# (`-R`, `--repo`, `--repo=`, wherever it sits in the statement), a PR URL
-# naming a repository other than the local origin's, a wrapper, or a spelling
-# it cannot read as no resolvable operand, which falls through to the
-# resolution above. A URL is compared with the origin remote's owner/repo
-# (https and ssh forms, no network); an absent or unparseable origin counts
-# every URL as foreign. Another repository is never followed, so its PR number
-# is never read against the local repository.
+# raw text and stops at `;`, `&`, `|`, and a newline.
 #
 # GAIA_USAGE_HOOKS_DISABLE=1 makes this do nothing. It is a test seam for the
 # suites that run the real merge hook and must not drive ledger writes.
@@ -87,15 +101,17 @@ _um_origin_slug() {
 }
 
 # Sets UM_PR (a PR number), UM_GHARG (what to hand `gh pr view`), UM_NAMED
-# (1 when the statement carried a positional argument, readable or not). A
-# repo flag, or a URL for a repository other than origin, clears UM_PR and
-# UM_GHARG and keeps UM_NAMED.
+# (1 when the statement carried a positional argument, readable or not, or the
+# scan was cut inside a quoted value), and UM_FOREIGN (1 when the merge is aimed
+# at another repository: a repo flag anywhere in the text after the verb, or a
+# URL for a repository other than origin). A foreign merge is terminal for the
+# caller, which exits before reading anything.
 _um_parse_cmd() {
-  local rx='gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)' rest tok skip=0 q="" last slug origin foreign=0
-  UM_PR="" UM_GHARG="" UM_NAMED=0
+  local rx='gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)' rest tok skip=0 q="" last slug origin full
+  UM_PR="" UM_GHARG="" UM_NAMED=0 UM_FOREIGN=0
   [[ $cmd =~ $rx ]] || return 0
-  rest="${cmd#*"${BASH_REMATCH[0]}"}"
-  rest="${rest%%[;&|]*}"
+  full="${cmd#*"${BASH_REMATCH[0]}"}"
+  rest="${full%%[;&|]*}"
   rest="${rest%%$'\n'*}"
   set -f
   # shellcheck disable=SC2086  # word splitting is the scan
@@ -127,9 +143,9 @@ _um_parse_cmd() {
           if [[ $tok =~ ^https?://[^/]+/([^/]+)/([^/]+)/pull/ ]]; then
             slug="$(printf '%s/%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
             origin="$(_um_origin_slug)"
-            [ -n "$origin" ] && [ "$slug" = "$origin" ] || foreign=1
+            [ -n "$origin" ] && [ "$slug" = "$origin" ] || UM_FOREIGN=1
           else
-            foreign=1
+            UM_FOREIGN=1
           fi
         elif [[ $tok =~ ^[A-Za-z0-9._/:+@-]+$ ]]; then
           UM_GHARG="$tok"
@@ -138,10 +154,14 @@ _um_parse_cmd() {
     esac
   done
   set +f
-  local frx='(^|[[:space:]])(-R|--repo)([[:space:]=]|$)'
-  if [ "$foreign" = 1 ] || [[ $rest =~ $frx ]]; then UM_PR="" UM_GHARG=""; fi
+  # A quote the statement cut off hides the rest of the operands.
+  [ -z "$q" ] || UM_NAMED=1
+  local frx='(^|[[:space:]])(-R|--repo)'
+  if [[ $full =~ $frx ]]; then UM_FOREIGN=1; fi
+  if [ "$UM_FOREIGN" = 1 ]; then UM_PR="" UM_GHARG=""; fi
 }
 _um_parse_cmd
+[ "$UM_FOREIGN" = 1 ] && exit 0
 
 UM_WORK="$(mktemp -d 2>/dev/null)" || exit 0
 proj="$(gaia_usage_projects_root "$tpath")"
@@ -181,10 +201,11 @@ gfile="$UM_WORK/gh.json"
 if command -v gh >/dev/null 2>&1; then
   if [ -n "$UM_GHARG" ]; then
     GH_PROMPT_DISABLED=1 gh pr view "$UM_GHARG" --json number,headRefName,state,mergedAt </dev/null >"$gfile" 2>/dev/null 3>&- &
-  else
+    gpid=$!
+  elif [ "$UM_NAMED" = 0 ]; then
     GH_PROMPT_DISABLED=1 gh pr view --json number,headRefName,state,mergedAt </dev/null >"$gfile" 2>/dev/null 3>&- &
+    gpid=$!
   fi
-  gpid=$!
 fi
 
 while :; do

@@ -93,3 +93,154 @@ assert_foreign_ignored() {
   # operand itself must have reached gh.
   [ "$(grep -c '^pr view https://github.com/o/r/pull/45 ' "$GHSTUB_DIR/argv.log")" -eq 2 ]
 }
+
+# ---------- A merge aimed at another repository is terminal ----------
+#
+# The current branch has its own pull request 12, which an operand-less
+# `gh pr view` would answer. Every foreign spelling must leave that answer
+# unread: no block, no merge row, no edge, no `pr view` call at all.
+
+use_feature_branch() {
+  git -C "$REPO" checkout -q -b feat/cur
+  gh_view none 12 feat/cur "$1" "${2:-}"
+}
+
+# argv_has <pattern>: the gh stub's argv log holds a line matching the pattern.
+argv_has() { [ -f "$GHSTUB_DIR/argv.log" ] && grep -q -- "$1" "$GHSTUB_DIR/argv.log"; }
+
+# no_trace_of_12: neither a merge row nor a pr edge was written for PR 12.
+no_trace_of_12() {
+  [ -f "$TD/links.jsonl" ] || return 0
+  [ "$(merge_rows 12)" -eq 0 ] || return 1
+  grep -q '"pr:12"' "$TD/links.jsonl" && return 1
+  return 0
+}
+
+assert_nothing_touched() {
+  [ "$status" -eq 0 ] || return 1
+  lacks "[PR cost]" || return 1
+  lacks "pr:12" || return 1
+  lacks "pr:45" || return 1
+  if [ -f "$TD/links.jsonl" ]; then
+    [ "$(jq -s '[.[] | select(.kind == "merge")] | length' "$TD/links.jsonl")" -eq 0 ] || return 1
+    grep -q '"pr:' "$TD/links.jsonl" && return 1
+  fi
+  argv_has '^pr view' && return 1
+  return 0
+}
+
+foreign_spellings() {
+  printf '%s\n' \
+    "gh pr merge --repo x/y 45" \
+    "gh pr merge 45 --repo x/y" \
+    "gh pr merge -R x/y 45" \
+    "gh pr merge 45 -R x/y" \
+    "gh pr merge -Rx/y 45" \
+    "gh pr merge --repo=x/y 45" \
+    "gh pr merge --repo x/y" \
+    "gh pr merge --squash --repo x/y" \
+    "gh pr merge feat/cur --repo x/y" \
+    "gh pr merge --repo o/r 45" \
+    "gh pr merge --subject 45 --repo x/y" \
+    "gh pr merge https://github.com/x/y/pull/45" \
+    "gh pr merge https://github.com/x/y/pull/45 --squash"
+}
+
+run_foreign_spellings() {
+  local c
+  git -C "$REPO" remote add origin https://github.com/o/r.git
+  while IFS= read -r c; do
+    rm -f "$GHSTUB_DIR/argv.log"
+    run_merge "$c"
+    assert_nothing_touched || { printf 'failed for: %s\n%s\n' "$c" "$output" >&2; return 1; }
+  done < <(foreign_spellings)
+  # A multi-line body ahead of the flag cannot hide it.
+  rm -f "$GHSTUB_DIR/argv.log"
+  run_merge $'gh pr merge 45 --body "line one\nline two" --repo x/y'
+  assert_nothing_touched
+}
+
+@test "a foreign merge on a feature branch with an OPEN PR 12 reads and prints nothing" {
+  use_feature_branch OPEN
+  run_foreign_spellings
+}
+
+@test "a foreign merge on a feature branch whose PR 12 is MERGED writes no row and no edge" {
+  use_feature_branch MERGED 2026-09-25T02:00:00Z
+  run_foreign_spellings
+}
+
+@test "control: no operand on a feature branch still resolves that branch's PR" {
+  use_feature_branch OPEN
+  run_merge "gh pr merge --squash"
+  [ "$status" -eq 0 ]
+  has_line "[PR cost] pr:12 branch:feat/cur"
+  argv_has '^pr view --json'
+}
+
+@test "control: no operand on a feature branch whose PR is MERGED records the merge" {
+  use_feature_branch MERGED 2026-09-25T02:00:00Z
+  run_merge "gh pr merge"
+  [ "$status" -eq 0 ]
+  has_line "[PR cost] pr:12 branch:feat/cur"
+  [ "$(merge_rows 12)" -eq 1 ]
+}
+
+@test "a branch-name operand resolves that branch's PR, never the current branch's" {
+  use_feature_branch MERGED 2026-09-25T02:00:00Z
+  gh_view mybranch 77 mybranch MERGED 2026-09-26T02:00:00Z
+  run_merge "gh pr merge mybranch --squash"
+  [ "$status" -eq 0 ]
+  has_line "[PR cost] pr:77 branch:mybranch"
+  [ "$(merge_rows 77)" -eq 1 ]
+  [ "$(merge_rows 12)" -eq 0 ]
+  argv_has '^pr view mybranch '
+  argv_has '^pr view --json' && return 1
+  true
+}
+
+@test "a branch-name operand that gh cannot answer never falls back to the current branch" {
+  use_feature_branch MERGED 2026-09-25T02:00:00Z
+  run_merge "gh pr merge ghostbranch"
+  [ "$status" -eq 0 ]
+  lacks "pr:12"
+  no_trace_of_12
+  argv_has '^pr view ghostbranch '
+  argv_has '^pr view --json' && return 1
+  true
+}
+
+@test "an operand the scan cannot read never reads the current branch's PR" {
+  use_feature_branch MERGED 2026-09-25T02:00:00Z
+  run_merge 'gh pr merge $(echo 45)'
+  [ "$status" -eq 0 ]
+  lacks "pr:12"
+  no_trace_of_12
+  argv_has '^pr view' && return 1
+  # A multi-line body cuts the statement inside a quote, hiding the operand.
+  rm -f "$GHSTUB_DIR/argv.log"
+  run_merge $'gh pr merge --body "line one\nline two" 45'
+  [ "$status" -eq 0 ]
+  lacks "pr:12"
+  no_trace_of_12
+  argv_has '^pr view' && return 1
+  true
+}
+
+@test "a flag value that looks like a number never becomes the operand" {
+  use_feature_branch OPEN
+  local c
+  for c in "--subject 99" "-t 99" "--body 99" "-b 99" "--match-head-commit 99" "-A 99" "--author-email 99"; do
+    rm -f "$GHSTUB_DIR/argv.log"
+    run_merge "gh pr merge $c"
+    [ "$status" -eq 0 ]
+    has_line "[PR cost] pr:12 branch:feat/cur" || { printf 'failed for: %s\n' "$c" >&2; return 1; }
+    argv_has '^pr view 99' && return 1
+    argv_has '^pr view --json' || return 1
+  done
+  rm -f "$GHSTUB_DIR/argv.log"
+  run_merge "gh pr merge -t 99 45"
+  argv_has '^pr view 45 '
+  argv_has '^pr view 99' && return 1
+  true
+}

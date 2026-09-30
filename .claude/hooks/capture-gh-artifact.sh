@@ -115,18 +115,19 @@ branch="$(git branch --show-current 2>/dev/null || true)"
 # The PR-to-branch edge is written before the cache and breadcrumb exits below,
 # so a cache that cannot be written never costs the merge hook its way back to
 # the branch. No network call.
-# A repo flag (`-R`, `--repo`, `--repo=`) anywhere in the create statement
-# means the PR lives in another repository, so its number names nothing on the
-# local branch and no edge is written. The statement is the text after the
-# verb up to `;`, `&`, `|`, or a newline; a flag inside quoted prose also
-# skips the edge, which fails toward no edge.
+# A repo flag (`-R`, `-Rvalue`, `--repo`, `--repo=`) anywhere in the text after
+# the create verb, later lines included, means the PR lives in another
+# repository, so its number names nothing on the local branch and no edge is
+# written. The scan reads the whole remaining text, so a multi-line `--body`
+# ahead of the flag cannot hide it; a flag inside quoted prose, or in a later
+# command, also skips the edge, which fails toward no edge. The created URL is
+# not compared with origin, because a fork workflow creates a PR in the
+# upstream repository from the local branch.
 _gh_frag='gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)'
 _gh_foreign=0
 if [[ $cmd =~ $_gh_frag ]]; then
   _gh_rest="${cmd#*"${BASH_REMATCH[0]}"}"
-  _gh_rest="${_gh_rest%%[;&|]*}"
-  _gh_rest="${_gh_rest%%$'\n'*}"
-  _gh_frx='(^|[[:space:]])(-R|--repo)([[:space:]=]|$)'
+  _gh_frx='(^|[[:space:]])(-R|--repo)'
   if [[ $_gh_rest =~ $_gh_frx ]]; then _gh_foreign=1; fi
 fi
 if [ "${GAIA_USAGE_HOOKS_DISABLE:-}" != 1 ] && [ -n "$branch" ] && [ "$_gh_foreign" = 0 ]; then
