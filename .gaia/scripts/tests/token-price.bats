@@ -137,6 +137,18 @@ setup() {
   [[ "$output" != *'synthetic'* ]]
 }
 
+# ---------- 5b. #2382: unpriced model name passes the charset filter ----------
+# Same fixture with the model key rewritten to carry an ESC control byte, `[`,
+# and `;`, all outside the _usage_safe allowlist: each prints as `?`.
+@test "unknown-model: unpriced model name outside the allowlist is filtered before printing" {
+  jq -c '.by_model |= with_entries(if .key == "claude-ghost-9" then .key = "claude-ghost\u001b[31m;9" else . end)' \
+    "$FIX/unknown-model.jsonl" >"$BATS_TEST_TMPDIR/ledger.jsonl"
+  run bash "$SCRIPT" --spec-id SPEC-305 --ledger "$BATS_TEST_TMPDIR/ledger.jsonl" --rate-table "$RATES"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'(lower bound: unpriced model(s) claude-ghost??31m?9)'* ]]
+  [[ "$output" != *$'\033'* ]]
+}
+
 # ---------- 6. UAT-006: pre-attribution only ----------
 @test "pre-attribution-only: unavailable (records predate attribution), token lines unaffected" {
   run bash "$SCRIPT" --spec-id SPEC-306 --ledger "$FIX/pre-attribution-only.jsonl" --rate-table "$RATES"

@@ -428,7 +428,8 @@ else
 
   [[ "$cost_pre_attribution_present" == "true" ]] && printf '    (partial lower bound: some records predate per-model attribution)\n'
   [[ "$cost_corrupt_present" == "true" ]] && printf '    (partial lower bound: some ledger input was unreadable, corrupt, or lacked timing)\n'
-  [[ -n "$cost_unpriced_models" ]] && printf '    (lower bound: unpriced model(s) %s)\n' "$cost_unpriced_models"
+  # Model names come from transcripts: same allowlist as _usage_safe (usage-render-lib.sh).
+  [[ -n "$cost_unpriced_models" ]] && printf '    (lower bound: unpriced model(s) %s)\n' "${cost_unpriced_models//[^A-Za-z0-9._:%@+\/ ,-]/?}"
   [[ "$cost_missing_anchor" == "true" ]] && printf '    (lower bound: a session lacked a run-time anchor)\n'
 fi
 
