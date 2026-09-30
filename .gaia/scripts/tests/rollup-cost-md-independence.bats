@@ -23,8 +23,11 @@ setup() {
 # committed-rate-smoke.jsonl (SPEC-260) is a hand-verified oracle already used
 # by token-rollup.bats: one execute row, buckets 300000/0/0/0, total 300000,
 # duration_seconds 60 (1m0s), by_model claude-opus-4-8 fresh_input=200000 +
-# claude-sonnet-4-6 fresh_input=100000, pricing to $1.30 against the live
-# committed token-rates.json (opus $5/MTok, sonnet $3/MTok seed rates).
+# claude-sonnet-4-6 fresh_input=100000, pricing to $1.30 against this tree's
+# committed token-rates.json (opus $5/MTok, sonnet $3/MTok seed rates). The
+# pricing test pins that file through --rate-table: a bare run prices from the
+# machine-local table seeded from the main checkout, which in a linked worktree
+# is not this branch's file.
 
 @test "UAT-006: token-rollup reports cost.jsonl figures, never a planted wrong-number cost.md" {
   SANDBOX="$(mktemp -d "${BATS_TEST_TMPDIR}/sandbox.XXXXXX")"
@@ -45,7 +48,7 @@ setup() {
 **Est. cost (USD):** $999.99
 EOF
 
-  run bash "$SCRIPT" --spec-id SPEC-260 --ledger "$FIX/committed-rate-smoke.jsonl"
+  run bash "$SCRIPT" --spec-id SPEC-260 --ledger "$FIX/committed-rate-smoke.jsonl" --rate-table "$SCRIPT_DIR/token-rates.json"
   [ "$status" -eq 0 ]
 
   # The real cost.jsonl-derived token and dollar figures render.

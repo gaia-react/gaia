@@ -40,6 +40,11 @@
 . "$(dirname "${BASH_SOURCE[0]}")/token-pricing-lib.sh" 2>/dev/null || true
 # shellcheck source=.gaia/scripts/ledger-path-lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/ledger-path-lib.sh" 2>/dev/null || true
+# Sourced here as well: ledger-path-lib loads it only inside a $(...) subshell,
+# so without this the resolver is undefined in this shell and the single
+# resolution below would silently come back empty.
+# shellcheck source=.gaia/scripts/main-root-lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/main-root-lib.sh" 2>/dev/null || true
 
 log() {
   printf '%s\n' "$*" >&2
@@ -119,8 +124,14 @@ no_records() {
 # inside a linked worktree reads the surviving main ledger, not a worktree
 # copy that was never written. --ledger overrides (test seam).
 resolve_ledger() {
-  gaia_resolve_ledger_path "$LEDGER_OVERRIDE"
+  gaia_resolve_ledger_path "$LEDGER_OVERRIDE" "$ROLLUP_MAIN_ROOT"
 }
+
+# Resolved once and handed to both the ledger path and the rate table.
+ROLLUP_MAIN_ROOT=""
+if declare -F gaia_resolve_main_root >/dev/null 2>&1; then
+  ROLLUP_MAIN_ROOT="$(gaia_resolve_main_root 2>/dev/null)" || ROLLUP_MAIN_ROOT=""
+fi
 
 LEDGER=""
 if ledger_path="$(resolve_ledger)" && [[ -n "$ledger_path" ]]; then
@@ -244,17 +255,25 @@ is_uint "$actions_len" || actions_len=0
 # model, missing run-time anchor, or corrupt ledger line -- never guesses,
 # never blocks.
 #
-# The rate table is committed (public Claude pricing, shared across
-# developers), unlike the ledger which is machine-local. Resolve via
-# --show-toplevel (the current checkout, worktree or main -- both carry the
-# committed file) rather than --git-common-dir. --rate-table overrides (test
-# seam). Resolution + load are shared with token-tally.sh via
+# Prices from the machine-local rate table, like token-tally.sh: seeded from the
+# main checkout's distributed table (never a linked worktree's copy), synced to
+# later corrections, and healed once from the public table when a winner's model
+# is missing from it. --rate-table prices from that file instead, with no seed,
+# sync, or heal. Resolution + load are shared with token-tally.sh via
 # token-pricing-lib.sh (sourced above).
 rate_table_ok=true
 RATE_TABLE=""
-if rt_path="$(gaia_resolve_rate_table "$RATE_TABLE_OVERRIDE")" && [[ -n "$rt_path" ]]; then
-  RATE_TABLE="$rt_path"
+if declare -F gaia_rates_prepare >/dev/null 2>&1; then
+  # Called in this shell, not in $(...): it sets GAIA_RATES_TABLE and keeps
+  # per-process state a subshell would discard.
+  if gaia_rates_prepare "$RATE_TABLE_OVERRIDE" "$ROLLUP_MAIN_ROOT"; then
+    RATE_TABLE="$GAIA_RATES_TABLE"
+  fi
 else
+  # A partial update can leave the local-table lib absent.
+  RATE_TABLE="$(gaia_resolve_rate_table "$RATE_TABLE_OVERRIDE")" || RATE_TABLE=""
+fi
+if [[ -z "$RATE_TABLE" ]]; then
   log "token-rollup: could not resolve rate table path"
   rate_table_ok=false
 fi
@@ -263,6 +282,15 @@ rates_json="null"
 if [[ "$rate_table_ok" == "true" ]]; then
   if rt_contents="$(gaia_load_rate_table "$RATE_TABLE")"; then
     rates_json="$rt_contents"
+    # Heal with every model any winner priced; status 0 means the local table
+    # was rewritten, so reload before pricing.
+    if declare -F gaia_rates_heal >/dev/null 2>&1 \
+      && gaia_rates_heal "$(jq -c '[.actions[].winners[] | (.by_model // {}) | keys[]] | unique' <<<"$summary" 2>/dev/null)"; then
+      RATE_TABLE="$GAIA_RATES_TABLE"
+      if healed_contents="$(gaia_load_rate_table "$RATE_TABLE")"; then
+        rates_json="$healed_contents"
+      fi
+    fi
   else
     log "token-rollup: rate table unreadable: $RATE_TABLE"
     rate_table_ok=false
