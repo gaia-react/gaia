@@ -11,6 +11,17 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-09-30 d8826432 WORTHY - self-healing local rate table, Token Cost Readout and related pages updated in the commit itself
+- 2026-09-30 49d792ab WORTHY - harness scoping and service scaffold fixes, wiki updated in the commit itself
+- 2026-09-30 92dfcb71 SKIP - residue reference statusline refresh, covered in skill reference
+- 2026-09-30 964deca6 SKIP - roster declares dismissal store unowned, config-only, no wiki surface
+- 2026-09-30 43eb45d4 SKIP - chore: residue dismissals
+- 2026-09-30 3ff03848 WORTHY - Sonnet 5.5 and Fable 5.1 rates plus cache_read_multiplier, wiki updated in the commit itself
+- 2026-09-30 409f49c6 SKIP - docs: prose-only
+- 2026-09-30 c45a6bf1 WORTHY - React 19.3 nonce hydration suppression, Links nonce empty on both sides → wiki/decisions/Content Security Policy.md
+- 2026-09-30 3019a69c SKIP - chore(deps): version bump only
+- 2026-09-30 9e346eb9 SKIP - wiki-only route path rewording
+- 2026-09-30 1343c667 SKIP - wiki-only maintenance chain, already catalogued
 - 2026-09-29 a4dc2b7 WORTHY - workflow naming standardized; Workflow Naming Convention ADR added in-PR
 - 2026-09-29 ebb3477 WORTHY - audit-scope-digest --release for self-healed rounds → wiki/concepts/GAIA Scripts.md
 - 2026-09-29 499e46d SKIP - test: test-only change
