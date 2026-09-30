@@ -237,6 +237,8 @@
     ".gaia/scripts/state-registry-lib.sh": "owned",
     ".gaia/scripts/summary-verify.sh": "owned",
     ".gaia/scripts/token-pricing-lib.sh": "owned",
+    ".gaia/scripts/token-rates-feed-lib.sh": "owned",
+    ".gaia/scripts/token-rates-local-lib.sh": "owned",
     ".gaia/scripts/token-rates.json": "owned",
     ".gaia/scripts/token-rollup.sh": "owned",
     ".gaia/scripts/token-tally.sh": "owned",
@@ -487,6 +489,7 @@
     "public/site.webmanifest": "owned",
     "react-router.config.ts": "owned",
     "stylelint.config.mjs": "owned",
+    "test/a11y.test.tsx": "owned",
     "test/a11y.ts": "owned",
     "test/action-paths.test.ts": "owned",
     "test/mocks/database.ts": "owned",
@@ -637,7 +640,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-29T12:59:31.463Z",
+  "generated": "2026-09-30T07:51:02.179Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",
