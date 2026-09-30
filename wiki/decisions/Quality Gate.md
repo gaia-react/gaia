@@ -19,7 +19,7 @@ Every change must pass the Quality Gate. Pre-commit hooks enforce a subset; Clau
 3. `pnpm typecheck`: zero errors. This is the sole enforcer for type-only tests (`expectTypeOf`/`assertType`/`@ts-expect-error`), which [[TDD RED Verification]] exempts from its runtime-RED demand.
 4. `pnpm lint`: zero errors, zero warnings. Runs `eslint --fix`, so it auto-fixes every fixable lint rule **and** Prettier formatting (Prettier is wired in as an `eslint` rule via `prettier/prettier`); only non-auto-fixable issues need manual attention. Hand-formatting while authoring is wasted effort; this step normalizes it. `pnpm lint` ignores `.gaia/**`; changes touching `.gaia/cli/**` also run `pnpm lint:cli` (`pnpm -C .gaia/cli lint`), the CLI's own ESLint config in its separate pnpm workspace.
 5. `pnpm test --run`: all tests pass with **zero console warnings** (missing keys, HydrateFallback, etc. count as failures).
-6. `pnpm pw`: all Playwright E2E tests pass.
+6. `pnpm pw`: all Playwright E2E tests pass. A fresh worktree or clone has no `.env`, so the web server never starts; when `.env` is absent, run `cp .env.example .env` first. The committed placeholders are enough for this step and the dev smoke test. Never copy the main checkout's `.env`: it holds real secrets and reading it is denied.
 7. **Dev smoke test**: start `pnpm dev`, curl a route, verify HTTP 200.
 8. `pnpm build`: confirms production build.
 9. **Fix all warnings before reporting**: never hand off with known warnings.
