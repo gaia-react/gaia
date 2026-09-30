@@ -176,7 +176,7 @@
       "match": "exact",
       "kind": "file",
       "scope": "shared",
-      "keyed_by": "singleton store; the shared cost mutex plus self-identifying rows (session_id + key + first_ts; cursor rows by session_id + role + path)",
+      "keyed_by": "singleton store; the shared cost mutex plus self-identifying rows (edge and unlink rows by child + parent + ts; merge rows by pr + key)",
       "why": "Append-only lineage ledger of edge, unlink, and merge rows. Written by any tree under the same mutex as the usage ledger; readers apply tombstones at read time.",
       "writer": "code",
       "reaped_by": null,
