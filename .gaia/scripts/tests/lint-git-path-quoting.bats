@@ -220,9 +220,9 @@ run_linter() {
   [ "$status" -eq 0 ]
 }
 
-# The false positive that would otherwise fire on
-# .gaia/scripts/check-audit-base-derivation.sh:247, where the call is the VALUE
-# of a fixed-string variable rather than an invocation.
+# The false positive that would otherwise fire on the GAIA_AUDIT_DIFF_CALL
+# assignment in .gaia/scripts/check-audit-base-derivation.sh, where the call is
+# the VALUE of a fixed-string variable rather than an invocation.
 @test "a string constant that is not a git invocation is skipped" {
   fixture_repo
   fixture_file probe.sh $'#!/usr/bin/env bash\nGAIA_AUDIT_DIFF_CALL=\'diff --name-only\''
