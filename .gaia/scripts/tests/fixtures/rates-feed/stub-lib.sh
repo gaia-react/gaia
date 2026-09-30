@@ -14,7 +14,10 @@
 # serve, status500, nonjson, nomodels, oversize, stall-handshake, stall-body.
 #
 # Every start function returns non-zero with one stderr line when python3 or
-# openssl is missing; a suite skips with that reason rather than failing.
+# openssl is missing or the stub fails to start. Suites start the stub through
+# rates_stub_start_or_skip, never `rates_stub_start || skip`: bats reports a
+# skip as `ok`, so that spelling turns a broken stub into a green run that never
+# exercised the feed.
 
 _RATES_STUB_PIDS=""
 
@@ -193,6 +196,32 @@ rates_stub_start_plain() {
   RATES_PLAIN_URL="http://127.0.0.1:${_RATES_STUB_PORT}/gaia-react/gaia/main/.gaia/scripts/token-rates.json"
   RATES_PLAIN_REQS="$RATES_PLAIN_DIR/reqs"
   export RATES_PLAIN_DIR RATES_PLAIN_URL RATES_PLAIN_REQS
+}
+
+# rates_stub_start_or_skip <tls|plain> [start args...]
+#
+# Skips the calling test only when a tool is absent off CI. On a CI runner a
+# missing tool returns non-zero, because the job that runs the suite provides
+# python3 and openssl, so their absence there is a broken leg rather than a
+# maybe (the same argument .gaia/tests/hooks/helpers/require-node-typescript.sh
+# makes, gaia-react/gaia#1748). A stub that fails to start with its tools present
+# always returns non-zero, on CI or off it. `skip` comes from the sourcing bats
+# suite.
+rates_stub_start_or_skip() {
+  local kind="$1"
+  shift
+  if ! _rates_stub_need_tools "$kind"; then
+    if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+      echo "rates-stub: a required tool is missing on a CI runner; the feed tests would skip to green" >&2
+      return 1
+    fi
+    skip "rates stub unavailable: a required tool (python3 or openssl) is missing"
+  fi
+  if [[ "$kind" == "tls" ]]; then
+    rates_stub_start "$@"
+  else
+    rates_stub_start_plain "$@"
+  fi
 }
 
 # An https URL on a port nothing listens on: bind port 0, read it, close it.

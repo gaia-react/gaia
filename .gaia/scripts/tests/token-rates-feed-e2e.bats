@@ -106,7 +106,7 @@ feed_on() {
 }
 
 start_stub() {
-  rates_stub_start "$@" || skip "rates stub unavailable: python3 or openssl missing"
+  rates_stub_start_or_skip tls "$@"
 }
 
 now_ms() {
@@ -473,14 +473,14 @@ scheme_refused() {
 }
 
 @test "UAT-020: an http:// URL makes no request and names the scheme once" {
-  rates_stub_start_plain "$FX/feed-opus6.json" || skip "python3 missing"
+  rates_stub_start_or_skip plain "$FX/feed-opus6.json"
   feed_on "$RATES_PLAIN_URL"
   tally_opus6
   scheme_refused http
 }
 
 @test "UAT-020: an ftp:// URL makes no request and names the scheme once" {
-  rates_stub_start_plain "$FX/feed-opus6.json" || skip "python3 missing"
+  rates_stub_start_or_skip plain "$FX/feed-opus6.json"
   feed_on "ftp://127.0.0.1:1/token-rates.json"
   tally_opus6
   scheme_refused ftp

@@ -70,7 +70,7 @@ new_process() {
 }
 
 start_stub() {
-  rates_stub_start "$@" || skip "rates stub unavailable: python3 or openssl missing"
+  rates_stub_start_or_skip tls "$@"
 }
 
 # feed_file <json> : write a feed body and point the override at it via file://.
@@ -404,7 +404,7 @@ assert_row_rejected() {
 }
 
 @test "a rejected scheme sends no request and prints one line naming the sanitized scheme" {
-  rates_stub_start_plain "$FIXTURES/feed-valid.json" || skip "rates stub unavailable: python3 missing"
+  rates_stub_start_or_skip plain "$FIXTURES/feed-valid.json"
   export GAIA_RATES_FEED_URL="$RATES_PLAIN_URL"
   prepare_local
   heal '["claude-opus-6"]'
@@ -781,4 +781,26 @@ feed_path_tracked() {
   sed "s#/gaia-react/gaia/main/#/someone/else/main/#" "$FEED_LIB" >"$copy"
   run feed_path_tracked "$copy"
   [ "$status" -eq 1 ]
+}
+
+# rates_stub_start_or_skip is what keeps a broken stub from reporting green: a
+# skip reads as `ok`, so these pin the two arms that must fail instead.
+
+@test "stub start fails, not skips, when the tools are present but the stub cannot start" {
+  local shim="$BATS_TEST_TMPDIR/shim"
+  mkdir -p "$shim"
+  printf '#!/bin/sh\nexit 1\n' >"$shim/openssl"
+  chmod +x "$shim/openssl"
+  PATH="$shim:$PATH" run rates_stub_start_or_skip tls serve "$FIXTURES/feed-valid.json"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"could not create the throwaway cert"* ]]
+}
+
+@test "stub start fails, not skips, on a CI runner missing a tool" {
+  local bin="$BATS_TEST_TMPDIR/bin"
+  mkdir -p "$bin"
+  ln -s "$(command -v python3)" "$bin/python3"
+  GITHUB_ACTIONS=true PATH="$bin" run rates_stub_start_or_skip tls serve
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"missing on a CI runner"* ]]
 }

@@ -81,7 +81,7 @@ reaching_suites() {
   true
 }
 
-@test "the derived set is non-empty and covers the tally, roll-up, and hook suites" {
+@test "the derived set is non-empty and covers the tally, roll-up, and tally git-op hook suites" {
   local set
   set="$(reaching_suites "$REPO_ROOT/.gaia/scripts/tests" "$REPO_ROOT/.gaia/tests")"
   [ -n "$set" ]

@@ -7,6 +7,10 @@
 # that never replaces a row the adopter edited. The distributed source is always
 # the main checkout's file, never a linked worktree's copy.
 #
+# GAIA_RATES_STATE_DIR, when non-empty, replaces <main>/.gaia/local/telemetry as
+# the state dir (the distributed source does not move). It exists so bats suites
+# never touch a real machine's table; nothing in GAIA sets it outside tests.
+#
 # Calling rule: call gaia_rates_prepare in the caller's own shell, never inside
 # $(...). It sets GAIA_RATES_TABLE / GAIA_RATES_MODE / GAIA_RATES_DIR and keeps
 # per-process state, and a subshell would discard both. Nothing here writes to

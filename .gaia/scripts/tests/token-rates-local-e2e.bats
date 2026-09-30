@@ -317,7 +317,7 @@ feed_state() {
 
 @test "UAT-011: a provisioned linked worktree heals into main's one local table" {
   unset GAIA_RATES_STATE_DIR GAIA_RATES_FEED_DISABLE
-  rates_stub_start serve "$FIX/feed-opus6.json" || skip "feed stub unavailable (needs python3 and openssl)"
+  rates_stub_start_or_skip tls serve "$FIX/feed-opus6.json"
   export GAIA_RATES_FEED_URL="$RATES_STUB_URL"
   local main="$TMP/main" wt="$TMP/wt"
   mk_repo "$main"
@@ -378,7 +378,7 @@ feed_state() {
 
 @test "UAT-013: --rate-table runs price from the file, make no request, and touch no state; the bare run heals once" {
   unset GAIA_RATES_FEED_DISABLE
-  rates_stub_start serve "$FIX/feed-opus6.json" || skip "feed stub unavailable (needs python3 and openssl)"
+  rates_stub_start_or_skip tls serve "$FIX/feed-opus6.json"
   export GAIA_RATES_FEED_URL="$RATES_STUB_URL"
   mk_repo "$REPO"
   seed_state
@@ -454,7 +454,7 @@ corrupt_case() {
 
 @test "UAT-015: from a bare repository's linked worktree the run prices readonly, makes no request, writes no table" {
   unset GAIA_RATES_STATE_DIR GAIA_RATES_FEED_DISABLE
-  rates_stub_start serve "$FIX/feed-opus6.json" || skip "feed stub unavailable (needs python3 and openssl)"
+  rates_stub_start_or_skip tls serve "$FIX/feed-opus6.json"
   export GAIA_RATES_FEED_URL="$RATES_STUB_URL"
   local src="$TMP/src" bare="$TMP/bare.git" wt="$TMP/bare-wt"
   mk_repo "$src"
