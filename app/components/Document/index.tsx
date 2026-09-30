@@ -57,11 +57,14 @@ const Document: FC<DocumentProps> = ({
         <meta charSet="utf-8" />
         <meta content="width=device-width,initial-scale=1" name="viewport" />
         <MetaHydrated />
-        {/* <Links> emits stylesheets without suppressing the nonce diff, and
-            style-src carries no nonce (getContentSecurityPolicy), so it gets an
-            empty one on both sides. Omitting the prop does not work: <Links>
-            then falls back to the server router's real nonce, and the client
-            renders none. */}
+        {/* <Links> does not suppress the nonce diff, so it gets an empty nonce
+            on both sides. Stylesheets need none (style-src carries no nonce in
+            getContentSecurityPolicy), but a links() script preload
+            (modulepreload, or preload as="script") also renders unnonced, so
+            it must be same-origin to pass script-src's 'self'; a cross-origin
+            one is blocked. Omitting the prop does not work: <Links> then falls
+            back to the server router's real nonce, and the client renders
+            none. */}
         <Links nonce="" />
         {noIndex && <meta content="noindex" name="robots" />}
         {title && <title>{title}</title>}
