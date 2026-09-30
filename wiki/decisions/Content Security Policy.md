@@ -4,7 +4,7 @@ status: active
 priority: 2
 date: 2026-05-21
 created: 2026-05-21
-updated: 2026-07-29
+updated: 2026-09-30
 tags: [decision, security, csp]
 ---
 
@@ -23,11 +23,18 @@ Router's single-fetch stream scripts and post-shell chunks included, so
 enforcement does not block hydration. App-authored inline scripts read the
 nonce through `useNonce()`: the `window.process` ENV bootstrap in
 `app/root.tsx`, and the dark-mode probe plus `ScrollRestoration` / `Scripts` /
-`Links` in `app/components/Document`. Every React Router component that emits
-a nonced element takes the nonce explicitly rather than reading it ambiently:
-the browser blanks a nonce attribute after parsing, so an element rendered
-without the explicit prop mismatches between the server's real value and the
-client's `undefined` default on hydration.
+`Links` in `app/components/Document`. The browser blanks a nonce attribute
+after parsing, and React 19.3+ hydrates `nonce` against the element's `.nonce`
+property, which keeps the real value. The client's empty-string default
+therefore always differs from the server's real nonce, so every nonced element
+handles that diff:
+
+- React Router's `ScrollRestoration` and `Scripts` suppress it internally.
+- App-authored nonced inline scripts (the theme probe, the ENV bootstrap) set
+  `suppressHydrationWarning`.
+- `Links` cannot suppress it, and `style-src` carries no nonce, so it renders
+  `nonce=""` on both sides. Omitting the prop does not work: `Links` falls back
+  to the server router's real nonce while the client renders none.
 
 ## Trade-offs
 
