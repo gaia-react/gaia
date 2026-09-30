@@ -153,6 +153,11 @@ setup() {
   # Isolate pricing from the developer's real rate table and the network.
   export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state"
   export GAIA_RATES_FEED_DISABLE=1
+  # HOOKS_DIR is the real hooks dir, so the real usage-merge.sh would run in
+  # every armed row below and, with the shared gh stub answering MERGED, drive
+  # ledger writes during timing. The seam keeps every existing row timing what
+  # it timed before; the usage-merge row unsets it.
+  export GAIA_USAGE_HOOKS_DISABLE=1
   HOOKS_DIR=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
 
   REPO=$(mktemp -d -t verb-arming-cost-XXXXXX)
@@ -502,4 +507,41 @@ CEILING_VIEW_16K_MS=100
   [ "$armed" -gt 0 ]
   echo "all-hooks total over ${armed} hooks, 16KB raw-matching gh pr merge: ${total}ms (ceiling ${CEILING_ALL_HOOKS_RAWMATCH_MS}ms)" >&2
   [ "$total" -le "$CEILING_ALL_HOOKS_RAWMATCH_MS" ]
+}
+
+# The merge hook with the usage block live: a repo carrying the usage scripts,
+# the seam unset, a cap of one second, and a `gh` whose `pr view` exits 1, so
+# the row times the path that cannot confirm a merge (flush, failed read,
+# pr-branch, render). The stub is local to this row and replaces the shared one
+# only inside this test's own $REPO.
+# Measured ~550-620ms over four runs on the maintainer machine; that is the
+# fixed cost of the flusher, the pr-branch lookup, and the render, none of which
+# waits on the cap here because nothing is slow. Ceiling 4000ms: the cap plus
+# the 3s of headroom usage-merge.bats asserts by wall clock. Headroom:
+# 4000/623 ~= 6.4x, so a runner several times slower than this machine does
+# not red it.
+CEILING_USAGE_MERGE_MS=4000
+
+@test "cost: the merge hook with the usage block live stays inside the cap plus headroom when gh cannot answer" {
+  local f
+  mkdir -p "$REPO/.claude/hooks/lib" "$REPO/.gaia/scripts" "$REPO/.specify/extensions/gaia/lib"
+  cp "$HOOKS_DIR/token-rollup-merge.sh" "$REPO/.claude/hooks/"
+  for f in verb-arming.sh verb-arming-walk.sh repo-scope.sh gaia-active-plan.sh; do
+    cp "$HOOKS_DIR/lib/$f" "$REPO/.claude/hooks/lib/"
+  done
+  for f in "$HOOKS_DIR"/../../.gaia/scripts/usage*.sh "$HOOKS_DIR"/../../.gaia/scripts/token-pricing-lib.sh \
+    "$HOOKS_DIR"/../../.gaia/scripts/token-rates-local-lib.sh "$HOOKS_DIR"/../../.gaia/scripts/token-rates-feed-lib.sh \
+    "$HOOKS_DIR"/../../.gaia/scripts/ledger-path-lib.sh "$HOOKS_DIR"/../../.gaia/scripts/main-root-lib.sh \
+    "$HOOKS_DIR"/../../.gaia/scripts/branch-name-lib.sh "$HOOKS_DIR"/../../.gaia/scripts/token-rollup.sh; do
+    cp "$f" "$REPO/.gaia/scripts/"
+  done
+  cp "$HOOKS_DIR/../../.specify/extensions/gaia/lib/with-ledger-lock.sh" "$REPO/.specify/extensions/gaia/lib/"
+  printf '#!/usr/bin/env bash\nexit 1\n' >"$GH_BIN/gh"
+  chmod +x "$GH_BIN/gh"
+
+  unset GAIA_USAGE_HOOKS_DISABLE
+  export GAIA_USAGE_MERGE_CAP_SECS=1
+  time_hook_ms "$REPO/.claude/hooks/token-rollup-merge.sh" "gh pr merge 30 --squash"
+  echo "token-rollup-merge.sh with the usage block live, gh failing, cap 1s: ${REPLY_MS}ms (ceiling ${CEILING_USAGE_MERGE_MS}ms)" >&2
+  [ "$REPLY_MS" -le "$CEILING_USAGE_MERGE_MS" ]
 }

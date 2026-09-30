@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# PostToolUse Bash hook on `gh pr create`. Drops a breadcrumb (the PR number,
+# PostToolUse Bash hook on `gh pr create`. Records the PR-to-branch edge in the
+# usage ledger (`usage.sh link --pr`), and drops a breadcrumb (the PR number,
 # repo, branch, and session) that only `token-tally.sh --action execute` ever
 # reads, so plan execution can carry the pull request its own commit-triggered
-# rows have no agent in the loop to report. Every other cost-recording surface
-# (the five prose maintenance commands and the /gaia-wiki chain) binds its
-# artifact by direct pass-through instead and reads no breadcrumb; see
-# .gaia/scripts/gh-artifact-lib.sh for the full rationale.
+# rows have no agent in the loop to report. GAIA_USAGE_HOOKS_DISABLE=1 skips
+# the edge; it is a test seam for suites that run this real hook. Every other
+# cost-recording surface (the five prose maintenance commands and the
+# /gaia-wiki chain) binds its artifact by direct pass-through instead and reads
+# no breadcrumb; see .gaia/scripts/gh-artifact-lib.sh for the full rationale.
 #
 # Fires on every Bash tool call in every session: stay cheap, degrade
 # silently, never emit a permission decision, never write to stdout, always
@@ -109,6 +111,16 @@ number="$(jq -r '.number' <<<"$parsed" 2>/dev/null)"
 repo="$(jq -r '.repo' <<<"$parsed" 2>/dev/null)"
 sid="$(jq -r '.session_id // ""' <<<"$payload")"
 branch="$(git branch --show-current 2>/dev/null || true)"
+
+# The PR-to-branch edge is written before the cache and breadcrumb exits below,
+# so a cache that cannot be written never costs the merge hook its way back to
+# the branch. No network call.
+if [ "${GAIA_USAGE_HOOKS_DISABLE:-}" != 1 ] && [ -n "$branch" ]; then
+  _usage_sh="${_va_lib:+$_va_lib/../../../.gaia/scripts/usage.sh}"
+  if [ -n "$_usage_sh" ] && [ -f "$_usage_sh" ]; then
+    bash "$_usage_sh" link --pr "$number" --branch "$branch" --source gh-pr-create --session "$sid" >/dev/null 2>&1 || true
+  fi
+fi
 
 cache_dir="$(gaia_gh_artifact_cache_dir)"
 [ -n "$cache_dir" ] || exit 0

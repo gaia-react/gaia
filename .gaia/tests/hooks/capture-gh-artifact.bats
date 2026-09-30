@@ -23,6 +23,10 @@ setup() {
   CACHE="$BATS_TEST_TMPDIR/cache"
   mkdir -p "$CACHE"
   export GAIA_GH_ARTIFACT_CACHE_DIR="$CACHE"
+  # This suite runs the REAL hook, so the PR-to-branch edge would be written
+  # into the real tree's ledger from every case. The seam keeps the existing
+  # breadcrumb cases exactly as they were; the edge cases unset it.
+  export GAIA_USAGE_HOOKS_DISABLE=1
 }
 
 teardown() {
@@ -350,4 +354,66 @@ run_staged_hook() {
   local input interp="${3:-bash}"
   input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Bash "$1" "$2")
   run bash -c 'printf %s "$1" | "$3" "$2"' _ "$input" "$STAGED_HOOK" "$interp"
+}
+
+# ---------- The PR-to-branch edge in the usage ledger ----------
+
+edge_file() { printf '%s/.gaia/local/telemetry/links.jsonl' "$REPO"; }
+
+@test "gh pr create records the pr:<N> to branch edge, normalizing a worktree branch spelling" {
+  build_repo
+  cd "$REPO"
+  unset GAIA_USAGE_HOOKS_DISABLE
+  git checkout -b worktree-debt+42-fix --quiet
+
+  run_hook "gh pr create --title x --body y" "https://github.com/gaia-react/gaia/pull/77"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+
+  [ "$(jq -sc '[.[] | [.kind, .child, .parent, .source]]' "$(edge_file)")" = '[["edge","pr:77","branch:debt/42-fix","gh-pr-create"]]' ]
+  [ -f "$(breadcrumb_path "worktree-debt+42-fix")" ]
+}
+
+@test "an unwritable breadcrumb cache never drops the edge" {
+  build_repo
+  cd "$REPO"
+  unset GAIA_USAGE_HOOKS_DISABLE
+  git checkout -b feat/edge --quiet
+  : >"$BATS_TEST_TMPDIR/not-a-dir"
+  export GAIA_GH_ARTIFACT_CACHE_DIR="$BATS_TEST_TMPDIR/not-a-dir/cache"
+
+  run_hook "gh pr create --title x --body y" "https://github.com/gaia-react/gaia/pull/78"
+  [ "$status" -eq 0 ]
+
+  [ "$(jq -sc '[.[] | [.child, .parent]]' "$(edge_file)")" = '[["pr:78","branch:feat/edge"]]' ]
+  any_breadcrumb_exists && return 1
+  return 0
+}
+
+@test "the test seam keeps the edge unwritten" {
+  build_repo
+  cd "$REPO"
+  git checkout -b feat/seam --quiet
+
+  run_hook "gh pr create --title x --body y" "https://github.com/gaia-react/gaia/pull/79"
+  [ "$status" -eq 0 ]
+
+  [ ! -e "$(edge_file)" ]
+  [ -f "$(breadcrumb_path "feat/seam")" ]
+}
+
+@test "jq absent on PATH: no edge is written" {
+  build_repo
+  cd "$REPO"
+  unset GAIA_USAGE_HOOKS_DISABLE
+  git checkout -b feat/nojq-edge --quiet
+
+  nojq_bin="$(path_allowlist bash cat git)"
+  input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Bash "gh pr create --title x" \
+    "https://github.com/gaia-react/gaia/pull/80")
+  PATH="$nojq_bin" invoke_hook "$input" "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+
+  [ ! -e "$(edge_file)" ]
 }

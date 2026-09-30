@@ -24,6 +24,10 @@ setup() {
   SELF="$(basename "$BATS_TEST_FILENAME")"
 }
 
+# The scripts that reach the pricing path; both the violation scan and the
+# reaching-suites derivation read this one pattern.
+PRICING_PATH_SCRIPTS='token-tally\.sh|token-rollup\.sh|token-tally-git-op\.sh|token-tally-review\.sh|token-rollup-merge\.sh|usage\.sh|usage-merge\.sh'
+
 # non_comment <file>: the file's lines that do not start with a comment marker.
 non_comment() {
   grep -Ev '^[[:space:]]*#' "$1" || true
@@ -34,7 +38,7 @@ non_comment() {
 # state dir and the feed; returns non-zero when any exist.
 hermetic_violations() {
   local dir file body bad=0
-  local reaches='token-tally\.sh|token-rollup\.sh|token-tally-git-op\.sh|token-tally-review\.sh|token-rollup-merge\.sh'
+  local reaches="$PRICING_PATH_SCRIPTS"
   local seam='GAIA_RATES_STATE_DIR=.*(\$\{?BATS_(TEST|FILE|RUN)_TMPDIR|mktemp)'
   local disable='GAIA_RATES_FEED_DISABLE=["'\'']?1(["'\'']|[^0-9A-Za-z_]|$)'
   local feedurl='GAIA_RATES_FEED_URL=.*(RATES_STUB_URL|RATES_PLAIN_URL|127\.0\.0\.1|file://)'
@@ -65,7 +69,7 @@ reaching_suites() {
     while IFS= read -r file; do
       [ "$(basename "$file")" = "$SELF" ] && continue
       non_comment "$file" |
-        grep -Eq 'token-tally\.sh|token-rollup\.sh|token-tally-git-op\.sh|token-tally-review\.sh|token-rollup-merge\.sh' &&
+        grep -Eq "$PRICING_PATH_SCRIPTS" &&
         printf '%s\n' "$file"
     done < <(find "$dir" -type f -name '*.bats' | sort)
   done
@@ -171,4 +175,28 @@ reaching_suites() {
   run hermetic_violations "$d"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
+}
+
+@test "a suite that runs the usage scripts without isolation is reported by both the violation scan and the reaching-suites derivation" {
+  local d="$BATS_TEST_TMPDIR/usage-fixtures" name
+  mkdir -p "$d"
+  printf '%s\n' '@test "x" { bash .gaia/scripts/usage.sh pr 1; }' >"$d/bare-usage.bats"
+  printf '%s\n' '@test "x" { bash .gaia/scripts/usage-merge.sh; }' >"$d/bare-merge.bats"
+
+  run hermetic_violations "$d"
+  [ "$status" -ne 0 ]
+  for name in bare-usage bare-merge; do
+    printf '%s\n' "$output" | grep -qF -- "$d/$name.bats" || {
+      echo "violation scan missed: $name"
+      return 1
+    }
+  done
+
+  run reaching_suites "$d"
+  for name in bare-usage bare-merge; do
+    printf '%s\n' "$output" | grep -qF -- "$d/$name.bats" || {
+      echo "reaching_suites missed: $name"
+      return 1
+    }
+  done
 }
