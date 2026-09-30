@@ -54,7 +54,7 @@ gaia_audit_window_read() {
   return 0
 }
 
-# gaia_window_subset <records_file> <started_at> <ended_at>
+# gaia_window_subset <records_file> <started_at> <ended_at> [file_ids_json]
 # Selects sidecar records (file_agent != "main") whose tmin/tmax both fall
 # within [started_at, ended_at] (inclusive, precision-normalized), dedupes
 # their usage entries by .id (last-wins, same as token-tally's aggregate),
@@ -66,14 +66,17 @@ gaia_audit_window_read() {
 # (fromdateiso8601, never the `date` binary). Degrades to a zero-filled
 # object on any malformed/empty input or unparseable timestamp.
 gaia_window_subset() {
-  local records_file="${1:-}" started_at="${2:-}" ended_at="${3:-}"
+  local records_file="${1:-}" started_at="${2:-}" ended_at="${3:-}" file_ids="${4:-}"
   local zero='{"count":0,"buckets":{"fresh_input":0,"cache_write":0,"cache_read":0,"output":0},"by_model":{},"elapsed_seconds":0}'
   if [[ -z "$records_file" || ! -f "$records_file" ]]; then
     printf '%s' "$zero"
     return 0
   fi
+  # The optional 4th arg, a JSON array of file_ids (gaia_review_windows'
+  # partition), narrows the time-range selection to exactly those sidecars.
+  jq -e 'type == "array"' >/dev/null 2>&1 <<<"$file_ids" || file_ids="null"
   local out
-  out="$(jq -cs --arg ws "$started_at" --arg we "$ended_at" '
+  out="$(jq -cs --arg ws "$started_at" --arg we "$ended_at" --argjson ids "$file_ids" '
     def norm: if type=="string" then sub("\\.[0-9]+Z$"; "Z") else . end;
     ($ws | norm) as $s
     | ($we | norm) as $e
@@ -81,6 +84,7 @@ gaia_window_subset() {
         | map(select(.tmin != null and .tmax != null))
         | map(. + {ntmin: (.tmin | norm), ntmax: (.tmax | norm)})
         | map(select(.ntmin >= $s and .ntmax <= $e))
+        | if $ids == null then . else map(select((.file_id // "") as $f | any($ids[]; . == $f))) end
       ) as $sel
     | ($sel | length) as $count
     | ($sel | map(.usage // []) | add // []) as $allusage
@@ -200,9 +204,18 @@ _gaia_review_agents_json() {
 
 # gaia_review_windows <records_file>
 # Echoes a JSON array, one entry per record whose file_agent is a Code Audit
-# Team member (_gaia_review_agents_json): [ { review_id, started_at, ended_at },
-# ... ]. review_id is the record's file_id. Echoes "[]" when none, and on any
-# malformed/empty/missing input.
+# Team member (_gaia_review_agents_json):
+#   [ { review_id, started_at, ended_at, file_ids }, ... ]
+# review_id is the record's file_id. file_ids PARTITIONS the non-main sidecars
+# across the windows: a member's own record goes to its own window, and any
+# other sidecar contained in one or more windows goes to the tightest of them
+# (earliest in record order on a tie). The merge gate dispatches its members
+# as one parallel wave, so their windows nest; pricing each window by time
+# range alone would count a nested member's spend in its own row and again in
+# every sibling row containing it. The tightest-window rule can attribute a
+# sub-agent to the wrong member when windows nest, but never to two, so the
+# rows always sum to the wave's real spend.
+# Echoes "[]" when none, and on any malformed/empty/missing input.
 gaia_review_windows() {
   local records_file="${1:-}"
   local empty='[]'
@@ -213,8 +226,31 @@ gaia_review_windows() {
   local out agents
   agents="$(_gaia_review_agents_json)"
   out="$(jq -cs --argjson agents "$agents" '
-    map(select((.file_agent // "") as $a | any($agents[]; . == $a)))
-    | map({review_id: (.file_id // ""), started_at: .tmin, ended_at: .tmax})
+    def norm: if type=="string" then sub("\\.[0-9]+Z$"; "Z") else . end;
+    def span: try ((.e | fromdateiso8601) - (.s | fromdateiso8601)) catch 0;
+    . as $all
+    | [ $all[]
+        | select((.file_agent // "") as $a | any($agents[]; . == $a))
+        | {review_id: (.file_id // ""), started_at: .tmin, ended_at: .tmax,
+           s: (.tmin | norm), e: (.tmax | norm)}
+      ] as $wins
+    | [ $all[]
+        | select((.file_agent // "main") != "main" and .tmin != null and .tmax != null)
+        | (.file_id // "") as $fid
+        | (.tmin | norm) as $s
+        | (.tmax | norm) as $e
+        | ( [ $wins[] | select(.s != null and .e != null and .s <= $s and $e <= .e) ]
+            | if length == 0 then empty
+              elif any(.[]; .review_id == $fid) then $fid
+              else (sort_by(span) | .[0].review_id)
+              end
+          ) as $rid
+        | {fid: $fid, rid: $rid}
+      ] as $assign
+    | $wins
+    | map(.review_id as $r
+          | {review_id, started_at, ended_at,
+             file_ids: [ $assign[] | select(.rid == $r) | .fid ]})
   ' "$records_file" 2>/dev/null)"
   if [[ -n "$out" ]] && jq -e 'type == "array"' >/dev/null 2>&1 <<<"$out"; then
     printf '%s' "$out"

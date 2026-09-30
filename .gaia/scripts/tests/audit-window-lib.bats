@@ -232,6 +232,60 @@ setup() {
   grep -qF '"file_id":"agent-qqqq0009"' <<<"$out" || return 1
 }
 
+# ---------- fixtures/audit-window/review-nested.jsonl ----------
+# One parallel wave whose member windows nest (the shape a real merge-gate
+# wave produces): FE (code-audit-frontend, input 1000, [05:00:00,05:10:00]),
+# SH (code-audit-maintainer-shell, input 100, [05:00:05,05:04:00]), WF
+# (code-audit-github-workflows, input 10, [05:00:03,05:02:00]), GP (a
+# general-purpose sidecar, input 1, [05:01:00,05:01:30], inside all three),
+# and main (input 5000, never review spend).
+# Partition: each member's own record to its own window, GP to the tightest
+# containing window (WF). expected rows FE=1000 SH=100 WF=10+1=11, summing
+# to the wave's real sidecar spend 1111; pricing each window by time range
+# alone gives FE=1111 SH=11 WF=11 (sum 1133), the double count.
+@test "gaia_review_windows: nested member windows partition the sidecars, so review rows sum to the wave total" {
+  run gaia_review_windows "$FIX/review-nested.jsonl"
+  [ "$status" -eq 0 ]
+  wins="$output"
+  [ "$(jq -r 'length' <<<"$wins")" -eq 3 ]
+  # Every non-main sidecar is assigned to exactly one window.
+  [ "$(jq -r '[.[].file_ids[]] | length' <<<"$wins")" -eq 4 ]
+  [ "$(jq -r '[.[].file_ids[]] | unique | length' <<<"$wins")" -eq 4 ]
+
+  local total=0 rid ids s e fresh
+  for rid in agent-fe01 agent-sh01 agent-wf01; do
+    s="$(jq -r --arg r "$rid" '.[] | select(.review_id == $r) | .started_at' <<<"$wins")"
+    e="$(jq -r --arg r "$rid" '.[] | select(.review_id == $r) | .ended_at' <<<"$wins")"
+    ids="$(jq -c --arg r "$rid" '.[] | select(.review_id == $r) | .file_ids' <<<"$wins")"
+    fresh="$(gaia_window_subset "$FIX/review-nested.jsonl" "$s" "$e" "$ids" | jq -r '.buckets.fresh_input')"
+    case "$rid" in
+      agent-fe01) [ "$fresh" -eq 1000 ] ;;
+      agent-sh01) [ "$fresh" -eq 100 ] ;;
+      agent-wf01) [ "$fresh" -eq 11 ] ;;
+    esac
+    total=$((total + fresh))
+  done
+  [ "$total" -eq 1111 ]
+}
+
+@test "gaia_review_windows: two members with identical windows each keep their own record" {
+  local f="$BATS_TEST_TMPDIR/tie.jsonl"
+  # Record order puts the workflows member first, so a tie broken by order
+  # alone would hand the frontend member's record to the workflows window.
+  jq -cn '{usage: [], tmin: "2026-07-08T07:00:00Z", tmax: "2026-07-08T07:05:00Z", file_agent: "code-audit-github-workflows", file_id: "agent-tw01"}' > "$f"
+  jq -cn '{usage: [], tmin: "2026-07-08T07:00:00Z", tmax: "2026-07-08T07:05:00Z", file_agent: "code-audit-frontend", file_id: "agent-tf01"}' >> "$f"
+  run gaia_review_windows "$f"
+  [ "$status" -eq 0 ]
+  [ "$(jq -c '.[] | select(.review_id == "agent-tw01") | .file_ids' <<<"$output")" = '["agent-tw01"]' ]
+  [ "$(jq -c '.[] | select(.review_id == "agent-tf01") | .file_ids' <<<"$output")" = '["agent-tf01"]' ]
+}
+
+@test "gaia_window_subset: without an id filter it still sums by time range alone" {
+  run gaia_window_subset "$FIX/review-nested.jsonl" "2026-07-08T05:00:00Z" "2026-07-08T05:10:00Z"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.buckets.fresh_input' <<<"$output")" -eq 1111 ]
+}
+
 # ---------- 8. gaia_audit_window_read (AC8) ----------
 @test "gaia_audit_window_read: valid breadcrumb round-trips, invalid/missing inputs echo nothing" {
   bc="$BATS_TEST_TMPDIR/valid.json"
