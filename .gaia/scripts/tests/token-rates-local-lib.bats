@@ -278,7 +278,10 @@ corrupt_case() {
 @test "readonly: an unresolvable main root prices the tree's own table, writes nothing" {
   local bare="$BATS_TEST_TMPDIR/bare.git" wt="$BATS_TEST_TMPDIR/wt" c
   git init -q --bare "$bare"
-  c="$(git -C "$bare" commit-tree "$(git -C "$bare" hash-object -t tree /dev/null)" -m x)"
+  # CI runners carry no git identity, and commit-tree refuses without one.
+  c="$(GIT_AUTHOR_NAME="GAIA Test" GIT_AUTHOR_EMAIL="gaia-test@example.com" \
+    GIT_COMMITTER_NAME="GAIA Test" GIT_COMMITTER_EMAIL="gaia-test@example.com" \
+    git -C "$bare" commit-tree "$(git -C "$bare" hash-object -t tree /dev/null)" -m x)"
   git -C "$bare" update-ref refs/heads/main "$c"
   git -C "$bare" worktree add -q "$wt" main
   mkdir -p "$wt/.gaia/scripts"
