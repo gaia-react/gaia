@@ -1,0 +1,6 @@
+{"schema_version":1,"kind":"edge","child":"spec:SPEC-100","parent":"research:a","source":"spec-frontmatter","ts":"2026-10-01T00:00:00Z","session_id":null,"sidechain":false}
+{"schema_version":1,"kind":"edge","child":"branch:plan/spec-100-b","parent":"research:a","source":"link-command","ts":"2026-10-01T00:00:00Z","session_id":null,"sidechain":false}
+{"schema_version":1,"kind":"edge","child":"branch:feat/p1","parent":"research:a","source":"link-command","ts":"2026-10-01T00:00:00Z","session_id":null,"sidechain":false}
+{"schema_version":1,"kind":"edge","child":"branch:feat/p2","parent":"research:a","source":"link-command","ts":"2026-10-01T00:00:00Z","session_id":null,"sidechain":false}
+{"schema_version":1,"kind":"edge","child":"branch:feat/shared","parent":"research:a","source":"link-command","ts":"2026-10-01T00:00:00Z","session_id":null,"sidechain":false}
+{"schema_version":1,"kind":"edge","child":"branch:feat/shared","parent":"research:b","source":"link-command","ts":"2026-10-01T00:00:00Z","session_id":null,"sidechain":false}

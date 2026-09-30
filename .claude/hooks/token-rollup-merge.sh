@@ -1,17 +1,33 @@
 #!/usr/bin/env bash
-# PostToolUse Bash hook on `gh pr merge`. Renders the full-cycle token-cost
-# roll-up (spec / plan / execute / total) for the merging feature into the
-# session's context. Session-independent: resolves the feature key from
-# on-disk state only, the active plan folder or, failing that, the ledger's
-# most recent execute record, so it renders from any session that runs the
-# merge, including a fresh top-level session that never ran the plan itself.
+# PostToolUse Bash hook on `gh pr merge`. Renders two blocks into the session's
+# context, in this order: the per-PR usage-ledger block from
+# .gaia/scripts/usage-merge.sh, then the full-cycle token-cost roll-up
+# (spec / plan / execute / total) for the merging feature. The roll-up is
+# session-independent: it resolves the feature key from on-disk state only,
+# the active plan folder or, failing that, the ledger's most recent execute
+# record, so it renders from any session that runs the merge, including a
+# fresh top-level session that never ran the plan itself.
+#
+# jq absent: the one arming decision made without jq is a raw grep of the
+# payload for the merge verb, which prints a single marker line so usage
+# tracking does not go quiet without saying so. It can over-arm on a payload
+# that merely mentions the phrase; that prints one line and changes nothing.
+#
+# GAIA_USAGE_HOOKS_DISABLE=1 is a test seam: usage-merge.sh then prints
+# nothing, so a suite that runs this real hook drives no ledger writes.
 
 set -euo pipefail
 trap 'exit 0' ERR
 
-command -v jq >/dev/null 2>&1 || exit 0
-
 payload=$(cat)
+
+if ! command -v jq >/dev/null 2>&1; then
+  if grep -Eq 'gh[[:space:]]+pr[[:space:]]+merge' <<<"$payload"; then
+    printf 'usage tracking inactive: jq not found\n'
+  fi
+  exit 0
+fi
+
 tool_name=$(jq -r '.tool_name // ""' <<<"$payload")
 [ "$tool_name" = "Bash" ] || exit 0
 
@@ -64,6 +80,21 @@ else
   exit 0
 fi
 
+# Empty on failure, and guarded rather than defaulted to a bare
+# `.claude/hooks`: that default resolves against the process working directory,
+# so the one branch where the rooting fails would revert to exactly the
+# resolution the rooting exists to remove, and every load below would take it.
+# Standing the render down is the same silent degrade every other arm here
+# takes, and it is the honest one.
+_hook_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || _hook_dir=''
+[ -n "$_hook_dir" ] || exit 0
+
+# The per-PR block prints first and never gates the roll-up below: a failure
+# here degrades to no block.
+if [ -f "$_hook_dir/../../.gaia/scripts/usage-merge.sh" ]; then
+  bash "$_hook_dir/../../.gaia/scripts/usage-merge.sh" <<<"$payload" 2>/dev/null || true
+fi
+
 feature_key=""
 fallback=0
 
@@ -82,15 +113,6 @@ fallback=0
 # the parse check answers false for a library it simply cannot see, and the
 # `type` degrade below reads that as a lib that defined no functions, so a cwd
 # under the repository root would lose attribution with nothing to say so.
-#
-# Empty on failure, and guarded rather than defaulted to a bare
-# `.claude/hooks`: that default resolves against the process working directory,
-# so the one branch where the rooting fails would revert to exactly the
-# resolution the rooting exists to remove, and all three loads below would take
-# it. Standing the render down is the same silent degrade every other arm here
-# takes, and it is the honest one.
-_hook_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || _hook_dir=''
-[ -n "$_hook_dir" ] || exit 0
 if "${BASH:-bash}" -n "$_hook_dir/lib/gaia-active-plan.sh" 2>/dev/null; then
   . "$_hook_dir/lib/gaia-active-plan.sh" 2>/dev/null || true
   # Degrades INTO the fallback below rather than out of the hook: a lib that

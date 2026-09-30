@@ -44,7 +44,7 @@ The sourced libraries under `.claude/hooks/lib/` are deliberately absent. They a
 | `block-secrets-read.sh` | PreToolUse (Bash, Read, Grep) | Read-side guard for key and certificate paths, across all three tool tiers. |
 | `block-secrets-write.sh` | PreToolUse (Edit\|Write\|MultiEdit) | Denies a write whose content carries an obvious secret. |
 | `block-worktree-path-mismatch.sh` | PreToolUse (Edit\|Write\|MultiEdit) | Inside a linked worktree, denies an edit whose `file_path` resolves to the main checkout. |
-| `capture-gh-artifact.sh` | PostToolUse (Bash) | Records the pull request a `gh pr create` produced, so plan execution can name it in its cost rows. |
+| `capture-gh-artifact.sh` | PostToolUse (Bash) | Records the pull request a `gh pr create` produced, so plan execution can name it in its cost rows, and the pull request's branch for the usage ledger. |
 | `capture-red-observations.sh` | PostToolUse (Bash) | Records a genuinely-failing test run in the RED ledger, the observing half of the RED-verification gate. |
 | `debt-sentinel-touch.sh` | PostToolUse (Bash) | Arms the debt-count staleness sentinel after a `gh` command that mutates the backlog. |
 | `debt-session-reconcile.sh` | SessionStart (startup\|resume) | Reconciles a shown `Run /gaia-debt` nudge against the live backlog. |
@@ -55,9 +55,10 @@ The sourced libraries under `.claude/hooks/lib/` are deliberately absent. They a
 | `pr-merge-audit-check.sh` | PreToolUse (Bash) | Blocks `gh pr merge` until every dispatched Code Audit Team member has written its clearance marker. |
 | `provision-worktree.sh` | PostToolUse (EnterWorktree), SessionStart (startup\|resume) | Re-links a linked worktree's shared state and regenerates what it needs generated. |
 | `red-verify-commit-check.sh` | PreToolUse (Bash) | Denies `git commit` when a new-at-HEAD passing test has no matching failing run on record. |
-| `token-rollup-merge.sh` | PostToolUse (Bash) | Renders the full-cycle token-cost rollup once a pull request merges. |
+| `token-rollup-merge.sh` | PostToolUse (Bash) | Renders the per-PR usage block, then the full-cycle token-cost rollup, once a pull request merges. |
 | `token-tally-git-op.sh` | PreToolUse (Bash) | Records the session's ground-truth token counts ahead of a git operation. |
 | `token-tally-review.sh` | PostToolUse (Bash), Stop | Captures a code-review-audit run as its own cost record, on either end-of-context trigger. |
+| `usage-capture.sh` | Stop, SessionStart (startup\|resume) | Launches the detached usage flusher and returns. |
 | `wiki-commit-nudge.sh` | PostToolUse (Bash) | Nudges a wiki refresh after a commit that outpaces the wiki's recorded state. |
 | `wiki-drift-check.sh` | UserPromptSubmit | Detects drift between the wiki's recorded state and HEAD. |
 | `wiki-recompact-inject.sh` | UserPromptSubmit | Re-injects the hot cache on the first turn after a compaction, then clears the sentinel. |
@@ -136,7 +137,9 @@ Neither of these denies anything; both repair state that a session's entry point
 ### Cost accounting (Bash)
 
 - **`token-tally-git-op.sh`** (PreToolUse, Bash): fires on the orchestrator's per-phase `git commit`/`push` during plan execution; gated on an active plan folder (resolved via the shared `.claude/hooks/lib/gaia-active-plan.sh`), it records the execution session's ground-truth token tally keyed to the feature. See [[Token Cost Readout]].
-- **`token-rollup-merge.sh`** (PostToolUse, Bash): fires on `gh pr merge`; resolves the feature key from the active plan folder (or the ledger's most recent `execute` row as a labeled fallback) and renders the full spec/plan/execute/total cost roll-up into the merging session. See [[Token Cost Readout]].
+- **`token-rollup-merge.sh`** (PostToolUse, Bash): fires on `gh pr merge`; resolves the feature key from the active plan folder (or the ledger's most recent `execute` row as a labeled fallback) and renders two blocks into the merging session: the per-PR usage-ledger block (from `.gaia/scripts/usage-merge.sh`, which flushes the session and confirms the merge under a cap), then the full spec/plan/execute/total cost roll-up. See [[Token Cost Readout]] and [[Usage Ledger]].
+- **`usage-capture.sh`** (Stop, and SessionStart `startup|resume`): launches `.gaia/scripts/usage-flush.sh` detached and returns, so spend is recorded while the transcript still exists. Stop flushes the ending session; SessionStart runs a bounded sweep over every transcript with unrecorded bytes. The synchronous path is a gate and a fork: it reads no transcript, prints nothing, and always exits 0. Inert in CI and without `jq`. See [[Usage Ledger]].
+- **`capture-gh-artifact.sh`** (PostToolUse, Bash): on a `gh pr create`, writes the session-keyed breadcrumb plan execution reads to name the pull request in its cost rows, and records the pull request's branch in the usage ledger (`usage.sh link --pr`) so the merge block can resolve it. See [[Cost Data Contract]] and [[Usage Ledger]].
 - **`token-tally-review.sh`** (PostToolUse, Bash matcher `gh pr merge`, and Stop): captures a `code-review-audit` run as a standalone `kind: "review"` cost ledger row. One script serves both end-of-context triggers (the merge gate, and an ad-hoc run that ends without a merge); `token-tally.sh --action review` owns window detection and dedups by `review_id`, so whichever trigger fires first writes the row. See [[Cost Data Contract]].
 
 ### Shared verb-arming decision

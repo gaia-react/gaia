@@ -1,0 +1,47 @@
+{
+  "branch:feat/sw4": {
+    "claude-opus-5-5": {
+      "cache_read": 4000,
+      "cache_write_1h": 400,
+      "cache_write_5m": 40,
+      "fresh_input": 4,
+      "output": 40
+    }
+  },
+  "branch:fix/sw2": {
+    "claude-opus-5-5": {
+      "cache_read": 3000,
+      "cache_write_1h": 300,
+      "cache_write_5m": 30,
+      "fresh_input": 3,
+      "output": 30
+    }
+  },
+  "branch:fix/sw3": {
+    "claude-opus-5-5": {
+      "cache_read": 3000,
+      "cache_write_1h": 300,
+      "cache_write_5m": 30,
+      "fresh_input": 3,
+      "output": 30
+    }
+  },
+  "session:s-sw1": {
+    "claude-opus-5-5": {
+      "cache_read": 3000,
+      "cache_write_1h": 300,
+      "cache_write_5m": 30,
+      "fresh_input": 3,
+      "output": 30
+    }
+  },
+  "session:s-sw5": {
+    "claude-opus-5-5": {
+      "cache_read": 5000,
+      "cache_write_1h": 500,
+      "cache_write_5m": 50,
+      "fresh_input": 5,
+      "output": 50
+    }
+  }
+}

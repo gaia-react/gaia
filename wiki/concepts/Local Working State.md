@@ -32,4 +32,6 @@ The hook is fail-safe throughout. Every gate is cheap and local, `--ff-only` aga
 
 Anything under `.gaia/local/` is safe to delete once its owner is done with it: a spent audit marker for an already-merged PR, a plan directory for a merged or abandoned branch, a `KNOWLEDGE-*.md` report already applied, a gate cache for a merged spec. The append-only ledgers (`red-ledger/observations.jsonl`, `worthiness-ledger/worthiness.jsonl`, `telemetry`), the identity files (`.project-id`, `setup-state.json`), and `.gaia/local/specs/ledger.json` (and the `specs/` store it lives in) are the load-bearing exceptions; deleting the ledger drops per-machine draft-resume state and the local half of SPEC-number allocation.
 
+`.gaia/local/research/` is where GAIA looks for research; a write there binds the session's spend to it (see [[Usage Ledger]]). The state registry stays the source of truth for how each path is classified.
+
 See [[Claude Hooks]] for the hook surface and [[Audit Disposition and Debt Fix]] for the marker lifecycle.

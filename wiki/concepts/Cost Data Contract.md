@@ -97,7 +97,12 @@ Every writer serializes on one shared cost mutex keyed on the main checkout's te
 
 The mutex is not unconditional, and the exception is deliberate. `token-tally.sh` runs from hooks, so it holds a **never block a hook** contract: when it cannot acquire the mutex within its timeout it degrades to an **unlocked** append rather than waiting or skipping, skipping only that write's `clear_prior_finals` rewrite. The reader's max-seq fallback copes with the un-cleared prior `final` row, so no row is lost, only the `final` flag rewrite is deferred.
 
+## The word `unattributed`
+
+This page uses `unattributed` for `kind: "command"` rows that carry no spec or plan id. The usage ledger uses the same word for something else: spend that no binding reached, read from a different store. The two are not comparable figures; see [[Usage Ledger]].
+
 ## Pairs with
 
+- [[Usage Ledger]]: the separate per-message usage store that leaves this ledger unchanged and attributes spend at read time.
 - [[Token Cost Readout]]: the `by_model` pricing surfaces (rate card, shared pricing lib, tally-time vs roll-up-time dollar figures) built on top of this ledger.
 - [[Task Orchestration]]: the merge-time reconcile and retention lifecycle that eventually removes the folder this ledger's rows outlive.

@@ -5,6 +5,7 @@ status: in-progress
 immutable: true
 wiki_promote_default: yes
 chain_trigger: gaia-plan
+lineage: []
 intent: |
   <Plain-English statement of the feature. One paragraph. Captures the
   user-facing change, the user it is for, and the value delivered.

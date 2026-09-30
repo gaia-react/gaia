@@ -63,6 +63,7 @@
     ".claude/hooks/token-rollup-merge.sh": "owned",
     ".claude/hooks/token-tally-git-op.sh": "owned",
     ".claude/hooks/token-tally-review.sh": "owned",
+    ".claude/hooks/usage-capture.sh": "owned",
     ".claude/hooks/wiki-commit-nudge.sh": "owned",
     ".claude/hooks/wiki-drift-check.sh": "owned",
     ".claude/hooks/wiki-recompact-inject.sh": "owned",
@@ -242,6 +243,13 @@
     ".gaia/scripts/token-rates.json": "owned",
     ".gaia/scripts/token-rollup.sh": "owned",
     ".gaia/scripts/token-tally.sh": "owned",
+    ".gaia/scripts/usage-flush.sh": "owned",
+    ".gaia/scripts/usage-lib.sh": "owned",
+    ".gaia/scripts/usage-merge.sh": "owned",
+    ".gaia/scripts/usage-parse-lib.sh": "owned",
+    ".gaia/scripts/usage-render-lib.sh": "owned",
+    ".gaia/scripts/usage-resolve-lib.sh": "owned",
+    ".gaia/scripts/usage.sh": "owned",
     ".gaia/scripts/verify-audit-roster.sh": "owned",
     ".gaia/scripts/write-audit-remits.sh": "owned",
     ".gaia/state-registry.json": "owned",
@@ -565,6 +573,7 @@
     "wiki/concepts/Test Runner.md": "wiki-owned",
     "wiki/concepts/Token Cost Readout.md": "wiki-owned",
     "wiki/concepts/Update Workflow.md": "wiki-owned",
+    "wiki/concepts/Usage Ledger.md": "wiki-owned",
     "wiki/concepts/Wiki Consolidate.md": "wiki-owned",
     "wiki/concepts/Wiki Sync.md": "wiki-owned",
     "wiki/concepts/Worktrees.md": "wiki-owned",
@@ -640,7 +649,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-30T07:51:02.179Z",
+  "generated": "2026-09-30T15:09:27.362Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

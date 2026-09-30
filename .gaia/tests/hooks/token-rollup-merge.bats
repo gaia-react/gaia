@@ -14,6 +14,10 @@ setup() {
   # Isolate pricing from the developer's real rate table and the network.
   export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state"
   export GAIA_RATES_FEED_DISABLE=1
+  # This suite runs the REAL hook, so its usage-merge.sh would run in every
+  # armed case. The seam keeps each pre-existing case exactly as it was; the
+  # cases that test the usage block unset it.
+  export GAIA_USAGE_HOOKS_DISABLE=1
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HELPERS="$BATS_TEST_DIRNAME/helpers"
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
@@ -387,4 +391,60 @@ run_hook() {
 
 @test "the hook file is executable" {
   [ -x "$HOOK_ABS" ]
+}
+
+# ---------- 10. The per-PR usage block and the jq-absent marker ----------
+
+@test "the per-PR block prints first and the cycle roll-up follows it" {
+  build_repo
+  cd "$REPO"
+  unset GAIA_USAGE_HOOKS_DISABLE
+  branch="$(git branch --show-current)"
+  plan_dir="$REPO/.gaia/local/plans/my-plan"
+  write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-042/SPEC.md"
+  write_running "$plan_dir" "$branch" "2026-07-01T00:00:00Z"
+  write_record execute SPEC-042 sess-exec 300 "2026-06-03T00:00:00Z"
+  mkdir -p "$BATS_TEST_TMPDIR/ghbin"
+  cat >"$BATS_TEST_TMPDIR/ghbin/gh" <<'EOF'
+#!/usr/bin/env bash
+printf '{"number":7,"headRefName":"fix/co","state":"MERGED","mergedAt":"2026-07-02T00:00:00Z"}\n'
+EOF
+  chmod +x "$BATS_TEST_TMPDIR/ghbin/gh"
+  PATH="$BATS_TEST_TMPDIR/ghbin:$PATH" run_hook "gh pr merge 7 --squash"
+  [ "$status" -eq 0 ]
+  pr_line="$(grep -n '^\[PR cost\] pr:7 branch:fix/co$' <<<"$output" | head -1 | cut -d: -f1)"
+  rollup_line="$(grep -n '^\[cycle cost at merge\]$' <<<"$output" | head -1 | cut -d: -f1)"
+  [ -n "$pr_line" ]
+  [ -n "$rollup_line" ]
+  [ "$pr_line" -lt "$rollup_line" ]
+  [[ "$output" == *"Cycle cost (SPEC-042)"* ]]
+}
+
+# run_nojq <hook> <command>: the hook under a PATH that carries cat and grep
+# and no jq.
+run_nojq() {
+  local dir="$BATS_TEST_TMPDIR/nojq-bin" input
+  mkdir -p "$dir"
+  ln -sf "$(command -v cat)" "$dir/cat"
+  ln -sf "$(command -v grep)" "$dir/grep"
+  input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Bash "$2")
+  run bash -c 'printf %s "$1" | PATH="$2" /bin/bash "$3"' _ "$input" "$dir" "$1"
+}
+
+@test "jq absent: an armed merge prints the inactive marker and exits 0; a non-merge prints nothing" {
+  run_nojq "$HOOK_ABS" "gh pr merge 101"
+  [ "$status" -eq 0 ]
+  [ "$output" = "usage tracking inactive: jq not found" ]
+  run_nojq "$HOOK_ABS" "gh pr view 101"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "guards-must-fail: a copy of the hook without the raw-grep branch stays silent for the same merge payload" {
+  local mutant="$BATS_TEST_TMPDIR/rollup-noraw.sh"
+  sed 's/^  if grep -Eq .*<<<"$payload"; then$/  if false; then/' "$HOOK_ABS" >"$mutant"
+  cmp -s "$HOOK_ABS" "$mutant" && return 1
+  run_nojq "$mutant" "gh pr merge 101"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
 }

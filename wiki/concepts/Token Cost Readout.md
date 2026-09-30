@@ -9,7 +9,7 @@ tags: [concept, cost, token-accounting]
 
 # Token Cost Readout
 
-GAIA prices the ground-truth token usage of each workflow action into a dollar estimate: `/gaia-spec`, `/gaia-plan`, KICKOFF plan execution, and each maintenance command the tally's `--command` closed set names (see [[Cost Data Contract]]). Two scripts share the pricing math: `.gaia/scripts/token-tally.sh` writes a per-action ledger record and, for `/gaia-spec`, `/gaia-plan`, and plan execution, also prices a generation-time `dollars` figure into each `cost.json` sidecar record it writes, alongside the matching `cost.jsonl` row (the write half); `.gaia/scripts/token-rollup.sh` reads the ledger, sums a full-cycle spec / plan / execute / total breakdown, and appends a dollar figure (the read half). The roll-up renders at `gh pr merge` via a `PostToolUse` hook and on demand from the command line.
+GAIA prices the ground-truth token usage of each workflow action into a dollar estimate: `/gaia-spec`, `/gaia-plan`, KICKOFF plan execution, and each maintenance command the tally's `--command` closed set names (see [[Cost Data Contract]]). Two scripts share the pricing math: `.gaia/scripts/token-tally.sh` writes a per-action ledger record and, for `/gaia-spec`, `/gaia-plan`, and plan execution, also prices a generation-time `dollars` figure into each `cost.json` sidecar record it writes, alongside the matching `cost.jsonl` row (the write half); `.gaia/scripts/token-rollup.sh` reads the ledger, sums a full-cycle spec / plan / execute / total breakdown, and appends a dollar figure (the read half). At `gh pr merge` a `PostToolUse` hook renders two readouts, the per-PR cost block from the usage ledger and then the roll-up; the roll-up is also available on demand from the command line.
 
 The write half is documented in full in [[Cost Data Contract]]; this page covers the surfaces the dollar estimate rests on: the `by_model` field, the machine-local rate table, the shared pricing lib both scripts source, the roll-up's dollar block, and the tally's own per-run dollar figure.
 
@@ -127,8 +127,13 @@ An unpriced model is the exception, and it is the one degrade whose figure is si
 
 A reader who wants a human-facing description of any of the other degrades, rather than a bare number, reads the roll-up's dollar-block markers above, which cover the same triggers and render as text at read time.
 
+## Per-PR and initiative readouts
+
+The per-PR block and the initiative readouts come from the usage ledger, not from `cost.jsonl`; [[Usage Ledger]] documents them. Their dollars are repriced at read time from the raw token buckets through the same shared pricing lib, so they follow the machine-local rate table the same way the roll-up does. `bash .gaia/scripts/usage.sh` prints its subcommands.
+
 ## Pairs with
 
+- [[Usage Ledger]]: per-message usage capture, attribution, and the per-PR and initiative readouts priced through this page's lib.
 - [[Cost Data Contract]]: the full `cost.jsonl` record schema, the execute aggregation rule, and the retention rules for what survives merge.
 - [[PR Merge Workflow]]: the merge-time `PostToolUse` hook that renders the full-cycle roll-up.
 - [[Task Orchestration]]: KICKOFF plan execution, whose per-commit cost the ledger accumulates.

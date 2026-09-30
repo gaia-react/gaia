@@ -1,0 +1,5 @@
+{"schema_version":1,"kind":"edge","child":"spec:SPEC-090","parent":"research:topic-a-2026-10-01","source":"spec-frontmatter","ts":"2026-10-01T00:00:00Z","session_id":null,"sidechain":false}
+{"schema_version":1,"kind":"edge","child":"pr:501","parent":"branch:plan/spec-090-foo","source":"gh-pr-create","ts":"2026-10-01T00:00:00Z","session_id":null,"sidechain":false}
+{"schema_version":1,"kind":"merge","pr":501,"key":"branch:plan/spec-090-foo","merged_at":"2026-09-25T00:00:00Z","source":"gh-pr-merge","ts":"2026-09-25T00:00:00Z","session_id":null}
+{"schema_version":1,"kind":"merge","pr":502,"key":"branch:debt/200-x","merged_at":"2026-09-25T01:00:00Z","source":"gh-pr-merge","ts":"2026-09-25T01:00:00Z","session_id":null}
+{"schema_version":1,"kind":"merge","pr":503,"key":"branch:fix/foo","merged_at":"2026-09-25T02:00:00Z","source":"gh-pr-merge","ts":"2026-09-25T02:00:00Z","session_id":null}

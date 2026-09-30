@@ -176,6 +176,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[GAIA CLI]]: the `.gaia/cli/` workspace, the `.gaia/cli/gaia` bundled binary, and the adoption ping (`gaia ping`) sent on `/gaia-init`, `/setup-gaia`, and `/update-gaia` completion.
 - [[Token Cost Readout]]: per-action token-to-dollar pricing off one shared pricing lib; the `by_model` field, the machine-local rate table seeded from the distributed `token-rates.json` and healed from the public feed, the roll-up's read-time dollar block, and the tally's own per-phase `dollars` snapshot in the `cost.json` sidecar record, each with its degrade markers.
 - [[Cost Data Contract]]: the `cost.jsonl` record schema (every field + type), the execute aggregation rule, the schema_version evolution rule, the retention-at-merge rule, and `token-tally.sh` as the single source of truth for the emitted schema.
+- [[Usage Ledger]]: the append-only per-message usage store under `.gaia/local/telemetry/`, separate from `cost.jsonl`; read-time attribution through bindings and a lineage graph, the per-PR block at `gh pr merge`, initiative and reconcile readouts, and `usage.sh`.
 - [[Serena Integration]]: Serena handles live code; the wiki handles institutional memory.
 - [[React Perf Diagnostic]]: `/gaia-react-perf`: measure-only runtime render-performance diagnostic built on bippy; capture -> reduce CLI -> ranked `memoDefeated` findings with a structural-fix cross-reference.
 - [[Chromatic Opt-Out]]
