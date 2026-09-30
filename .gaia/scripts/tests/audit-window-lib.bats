@@ -203,6 +203,35 @@ setup() {
   [ "$output" = "$expected" ]
 }
 
+# ---------- fixtures/audit-window/review-member.jsonl ----------
+# W (code-audit-github-workflows, a non-default roster member, window
+# [05:00:00,05:10:00]), P (sidecar CONTAINED in W's window), X (agentType
+# code-audit-not-on-roster: shares the naming prefix but is no roster member,
+# window [06:00:00,06:10:00]), Q (sidecar CONTAINED in X's window).
+# expected gaia_review_windows: one entry, review_id "agent-wf0001" (X is not
+#   a review run, so the prefix alone never qualifies an agentType).
+# expected gaia_exclude_review_windows: drops W and P, keeps X and Q.
+@test "gaia_review_windows: a non-default roster member's run is a review window; an off-roster agentType is not" {
+  run gaia_review_windows "$FIX/review-member.jsonl"
+  [ "$status" -eq 0 ]
+  out="$output"
+  [ "$(jq -r 'length' <<<"$out")" -eq 1 ]
+  [ "$(jq -r '.[0].review_id' <<<"$out")" = "agent-wf0001" ]
+  [ "$(jq -r '.[0].started_at' <<<"$out")" = "2026-07-08T05:00:00Z" ]
+  [ "$(jq -r '.[0].ended_at' <<<"$out")" = "2026-07-08T05:10:00Z" ]
+}
+
+@test "gaia_exclude_review_windows: strips a non-default roster member's window, keeps an off-roster one" {
+  run gaia_exclude_review_windows "$FIX/review-member.jsonl"
+  [ "$status" -eq 0 ]
+  out="$output"
+  [ "$(wc -l <<<"$out" | tr -d ' ')" -eq 2 ]
+  grep -qF '"file_id":"agent-wf0001"' <<<"$out" && return 1
+  grep -qF '"file_id":"agent-pppp0007"' <<<"$out" && return 1
+  grep -qF '"file_id":"agent-xxxx0008"' <<<"$out" || return 1
+  grep -qF '"file_id":"agent-qqqq0009"' <<<"$out" || return 1
+}
+
 # ---------- 8. gaia_audit_window_read (AC8) ----------
 @test "gaia_audit_window_read: valid breadcrumb round-trips, invalid/missing inputs echo nothing" {
   bc="$BATS_TEST_TMPDIR/valid.json"
