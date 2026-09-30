@@ -150,6 +150,9 @@
 bats_require_minimum_version 1.5.0
 
 setup() {
+  # Isolate pricing from the developer's real rate table and the network.
+  export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state"
+  export GAIA_RATES_FEED_DISABLE=1
   HOOKS_DIR=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
 
   REPO=$(mktemp -d -t verb-arming-cost-XXXXXX)

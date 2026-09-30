@@ -67,6 +67,9 @@ assert_prefix() {
 }
 
 setup() {
+  # Isolate pricing from the developer's real rate table and the network.
+  export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state"
+  export GAIA_RATES_FEED_DISABLE=1
   SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
   TALLY="$SCRIPT_DIR/token-tally.sh"
   ROLLUP="$SCRIPT_DIR/token-rollup.sh"

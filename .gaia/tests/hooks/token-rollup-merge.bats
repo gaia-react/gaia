@@ -11,6 +11,9 @@
 # (build_repo below), matching what a real checkout has.
 
 setup() {
+  # Isolate pricing from the developer's real rate table and the network.
+  export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state"
+  export GAIA_RATES_FEED_DISABLE=1
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HELPERS="$BATS_TEST_DIRNAME/helpers"
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
@@ -18,6 +21,8 @@ setup() {
   LIB_SRC="$REPO_ROOT/.claude/hooks/lib/gaia-active-plan.sh"
   ROLLUP_SRC="$REPO_ROOT/.gaia/scripts/token-rollup.sh"
   LIB_PRICING_SRC="$REPO_ROOT/.gaia/scripts/token-pricing-lib.sh"
+  LIB_RATES_LOCAL_SRC="$REPO_ROOT/.gaia/scripts/token-rates-local-lib.sh"
+  LIB_RATES_FEED_SRC="$REPO_ROOT/.gaia/scripts/token-rates-feed-lib.sh"
   LIB_LEDGER_SRC="$REPO_ROOT/.gaia/scripts/ledger-path-lib.sh"
   LIB_MAIN_ROOT_SRC="$REPO_ROOT/.gaia/scripts/main-root-lib.sh"
   VERB_ARMING_SRC="$REPO_ROOT/.claude/hooks/lib/verb-arming.sh"
@@ -46,6 +51,8 @@ build_repo() {
   cp "$ROLLUP_SRC" "$REPO/.gaia/scripts/token-rollup.sh"
   chmod +x "$REPO/.gaia/scripts/token-rollup.sh"
   cp "$LIB_PRICING_SRC" "$REPO/.gaia/scripts/token-pricing-lib.sh"
+  cp "$LIB_RATES_LOCAL_SRC" "$REPO/.gaia/scripts/token-rates-local-lib.sh"
+  cp "$LIB_RATES_FEED_SRC" "$REPO/.gaia/scripts/token-rates-feed-lib.sh"
   cp "$LIB_LEDGER_SRC" "$REPO/.gaia/scripts/ledger-path-lib.sh"
   cp "$LIB_MAIN_ROOT_SRC" "$REPO/.gaia/scripts/main-root-lib.sh"
   cp "$VERB_ARMING_SRC" "$REPO/.claude/hooks/lib/verb-arming.sh"

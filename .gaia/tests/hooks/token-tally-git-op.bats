@@ -15,12 +15,17 @@
 # hand-computed oracle token-tally.bats uses: total 11110.
 
 setup() {
+  # Isolate pricing from the developer's real rate table and the network.
+  export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state"
+  export GAIA_RATES_FEED_DISABLE=1
   HELPERS="$BATS_TEST_DIRNAME/helpers"
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   HOOK_ABS="$REPO_ROOT/.claude/hooks/token-tally-git-op.sh"
   LIB_SRC="$REPO_ROOT/.claude/hooks/lib/gaia-active-plan.sh"
   TALLY_SRC="$REPO_ROOT/.gaia/scripts/token-tally.sh"
   LIB_PRICING_SRC="$REPO_ROOT/.gaia/scripts/token-pricing-lib.sh"
+  LIB_RATES_LOCAL_SRC="$REPO_ROOT/.gaia/scripts/token-rates-local-lib.sh"
+  LIB_RATES_FEED_SRC="$REPO_ROOT/.gaia/scripts/token-rates-feed-lib.sh"
   LIB_LEDGER_PATH_SRC="$REPO_ROOT/.gaia/scripts/ledger-path-lib.sh"
   LIB_MAIN_ROOT_SRC="$REPO_ROOT/.gaia/scripts/main-root-lib.sh"
   LIB_AUDIT_WINDOW_SRC="$REPO_ROOT/.gaia/scripts/audit-window-lib.sh"
@@ -54,6 +59,8 @@ build_repo() {
   cp "$TALLY_SRC" "$REPO/.gaia/scripts/token-tally.sh"
   chmod +x "$REPO/.gaia/scripts/token-tally.sh"
   cp "$LIB_PRICING_SRC" "$REPO/.gaia/scripts/token-pricing-lib.sh"
+  cp "$LIB_RATES_LOCAL_SRC" "$REPO/.gaia/scripts/token-rates-local-lib.sh"
+  cp "$LIB_RATES_FEED_SRC" "$REPO/.gaia/scripts/token-rates-feed-lib.sh"
   cp "$LIB_LEDGER_PATH_SRC" "$REPO/.gaia/scripts/ledger-path-lib.sh"
   cp "$LIB_MAIN_ROOT_SRC" "$REPO/.gaia/scripts/main-root-lib.sh"
   cp "$LIB_AUDIT_WINDOW_SRC" "$REPO/.gaia/scripts/audit-window-lib.sh"

@@ -3,7 +3,7 @@ type: concept
 title: Token Cost Readout
 status: active
 created: 2026-07-04
-updated: 2026-07-14
+updated: 2026-09-30
 tags: [concept, cost, token-accounting]
 ---
 
@@ -11,7 +11,7 @@ tags: [concept, cost, token-accounting]
 
 GAIA prices the ground-truth token usage of each workflow action into a dollar estimate: `/gaia-spec`, `/gaia-plan`, KICKOFF plan execution, and each maintenance command the tally's `--command` closed set names (see [[Cost Data Contract]]). Two scripts share the pricing math: `.gaia/scripts/token-tally.sh` writes a per-action ledger record and, for `/gaia-spec`, `/gaia-plan`, and plan execution, also prices a generation-time `dollars` figure into each `cost.json` sidecar record it writes, alongside the matching `cost.jsonl` row (the write half); `.gaia/scripts/token-rollup.sh` reads the ledger, sums a full-cycle spec / plan / execute / total breakdown, and appends a dollar figure (the read half). The roll-up renders at `gh pr merge` via a `PostToolUse` hook and on demand from the command line.
 
-The write half is documented in full in [[Cost Data Contract]]; this page covers the surfaces the dollar estimate rests on: the `by_model` field, the committed rate table, the shared pricing lib both scripts source, the roll-up's dollar block, and the tally's own per-run dollar figure.
+The write half is documented in full in [[Cost Data Contract]]; this page covers the surfaces the dollar estimate rests on: the `by_model` field, the machine-local rate table, the shared pricing lib both scripts source, the roll-up's dollar block, and the tally's own per-run dollar figure.
 
 ## The `by_model` ledger field
 
@@ -32,7 +32,15 @@ A record whose attribution fails omits `by_model` entirely rather than writing a
 
 ## The rate table
 
-Rates live in a **committed** table at `.gaia/scripts/token-rates.json`, so they ship to adopters and version with the code. Both scripts locate it the same way, via `git rev-parse --show-toplevel`: the table is committed, so it sits in whichever tree the script runs in, and asking for that tree's own root is the right question here rather than asking where the main checkout is (see [[Worktrees]]). No override is needed; a `--rate-table` flag on either script's CLI substitutes a path directly, for tests.
+Pricing reads a **machine-local** table at `.gaia/local/telemetry/token-rates.json`, resolved to the main checkout (a provisioned worktree reaches it through its `.gaia/local` symlink; see [[Worktrees]]). The file is uncommitted. It is seeded as a byte copy of the main checkout's `.gaia/scripts/token-rates.json`, which stays the single file the maintainer edits and ships to adopters. Both scripts resolve the table through the same lib call, so the tally and the roll-up price from one file.
+
+- **Sync.** When the distributed file changes, a per-model three-way merge brings the local table along: GAIA's new row replaces any model the adopter never edited, a row the adopter edited is kept, an adopter-added model is kept, a new model is added, and no local row is ever dropped. `cache_multipliers` follow the same rule as one value. When the merged result equals GAIA's table, the local file is GAIA's bytes, so `rate_table_id` matches the committed table's id.
+- **Custom prices** belong in the local table. A price written into the distributed file is treated as GAIA's and replaced on a later sync. A deleted local row comes back on the next sync or heal. Reverting the feature leaves the local file inert.
+- **Heal.** When a run prices a `claude-*` model the local table lacks, the pricing path makes one request to `https://raw.githubusercontent.com/gaia-react/gaia/main/.gaia/scripts/token-rates.json`, the public distributed table on `main`. Each candidate row is validated per model; a row that passes is written into the local table marked `"source": "feed"` (the price math ignores the mark), refreshed on a later fetch while the adopter has not edited it, and the same run is priced with the healed table. A failed request leaves the table untouched and backs off before trying again.
+- **What a request discloses.** Your IP address, curl's default User-Agent, and the request time. It reveals that a miss happened, never which model or any usage. `.gaia/scripts/check-updates.sh` already contacts api.github.com on the same footing.
+- **Switches.** `GAIA_RATES_FEED_DISABLE=1` turns the request off; only the value `1` does. `GAIA_RATES_FEED_URL` overrides the URL, and only `https://` or `file://` is accepted. The timeout, size cap, and backoff live in `.gaia/scripts/token-rates-feed-lib.sh`, which is their source of truth.
+- **`--rate-table <path>`** on either script prices from that file with no seed, sync, heal, or write. This is how a maintainer prices a branch's edit of the distributed table.
+- **Readonly fallback.** With no main checkout to resolve (a bare repository's worktree), the lib prices from the current tree's distributed table and writes nothing.
 
 This file is a **public read contract**: any reader pricing token usage, GAIA's own scripts or an external re-implementation, parses this exact shape rather than reverse-engineering shell internals.
 
@@ -51,16 +59,16 @@ This file is a **public read contract**: any reader pricing token usage, GAIA's 
 ```
 
 - **Table shape.** `models` maps each model id to a list of rate entries, each carrying an `input` and `output` price per million tokens, an optional `effective_through`, and an optional `cache_read_multiplier`. `cache_multipliers` is a sibling top-level object carrying the four bucket multipliers. A reader parses exactly these two top-level keys.
-- **Cache multipliers scale the input rate, value-coupled to the committed file.** `fresh_input` prices at `input`; `cache_read` at `input × cache_read_multiplier` when the winning rate entry carries one (the price card discounts cache reads on some models below the standard factor), else at `input × cache_multipliers.read`; `cache_write_5m` at `input × cache_multipliers.write_5m`; `cache_write_1h` at `input × cache_multipliers.write_1h`; `output` at `output`. Every bucket is summed and divided by 1e6. The committed `.gaia/scripts/token-rates.json` file, not this description, is the source of truth for the multiplier values: as committed, they read `read: 0.1`, `write_5m: 1.25`, `write_1h: 2.0`, and a reader always takes the live values from the file, so the contract holds even after those values change.
+- **Cache multipliers scale the input rate, value-coupled to the table.** `fresh_input` prices at `input`; `cache_read` at `input × cache_read_multiplier` when the winning rate entry carries one (the price card discounts cache reads on some models below the standard factor), else at `input × cache_multipliers.read`; `cache_write_5m` at `input × cache_multipliers.write_5m`; `cache_write_1h` at `input × cache_multipliers.write_1h`; `output` at `output`. Every bucket is summed and divided by 1e6. The table file that priced, not this description, is the source of truth for the multiplier values: a reader always takes the live values from the file, so the contract holds even after those values change.
 - **Effective-dated intro pricing.** A model with introductory pricing lists the intro entry first with an `effective_through` date, then the sticker entry with none. Each script selects the entry whose window covers its own run-time anchor (the roll-up's per-record timestamp, the tally's own generation stamp), comparing at **day granularity**: the anchor's date (its `[0:10]` slice) against `effective_through`. `effective_through` is an **inclusive** upper bound, an entry is a candidate whenever the anchor's date is less than or equal to it, and the final entry with no `effective_through` is the open-ended sticker rate that wins once no earlier entry's window covers the anchor.
-- **The `rate_table_id` recipe.** `sha256` of the committed `token-rates.json` file's raw bytes, truncated to the first 16 hex characters, prefixed `sha256:` (e.g. `sha256:1a2b3c4d5e6f7890`). `.gaia/scripts/token-pricing-lib.sh`'s `gaia_hash16` and `gaia_rate_table_id` are the implementation anchor. This is the exact identity a downstream reader uses to re-price a stored `by_model` under a known rate card.
+- **The `rate_table_id` recipe.** `sha256` of the raw bytes of the table that priced, truncated to the first 16 hex characters, prefixed `sha256:` (e.g. `sha256:1a2b3c4d5e6f7890`). `.gaia/scripts/token-pricing-lib.sh`'s `gaia_hash16` and `gaia_rate_table_id` are the implementation anchor. This is the exact identity a downstream reader uses to re-price a stored `by_model` under a known rate card.
 - **Implementation source of truth for selection semantics.** `.gaia/scripts/token-pricing-lib.sh`'s `rate_window` and `priced_row` jq definitions (detailed in the next section) are the authoritative implementation of window selection and per-bucket arithmetic; this section is the contract they satisfy, not a parallel spec that can drift from them.
 
 ## Shared pricing lib
 
-The rate-table resolution helpers and the per-model, per-bucket dollar arithmetic (the `rate_window` and `priced_row` jq definitions) live in one sourced shell lib, `.gaia/scripts/token-pricing-lib.sh`. Both `token-rollup.sh` and `token-tally.sh` source it relative to their own script path (`$(dirname "${BASH_SOURCE[0]}")/token-pricing-lib.sh`), which resolves correctly from inside a linked worktree as well as the main checkout. This is the single source of the pricing math: the roll-up's full-cycle sum and the tally's per-section snapshot run the identical `rate_window` window-selection logic and the identical `priced_row` per-bucket multiplication.
+The rate-table resolution helpers and the per-model, per-bucket dollar arithmetic (the `rate_window` and `priced_row` jq definitions) live in one sourced shell lib, `.gaia/scripts/token-pricing-lib.sh`. It sources two sibling libs relative to its own path: `.gaia/scripts/token-rates-local-lib.sh` (seed, corrupt-file recovery, and the three-way sync of the local table) and `.gaia/scripts/token-rates-feed-lib.sh` (the bounded heal request). Both `token-rollup.sh` and `token-tally.sh` source the pricing lib relative to their own script path (`$(dirname "${BASH_SOURCE[0]}")/token-pricing-lib.sh`), which resolves correctly from inside a linked worktree as well as the main checkout. This is the single source of the pricing math: the roll-up's full-cycle sum and the tally's per-section snapshot run the identical `rate_window` window-selection logic and the identical `priced_row` per-bucket multiplication.
 
-The committed rate-table **data file** keeps its own resolution path: `gaia_resolve_rate_table`, one of the lib's exported helpers, locates it via `git rev-parse --show-toplevel` rather than relative to the sourcing script, since the data file is addressed from the repo root, not from wherever the lib itself happens to live.
+`gaia_resolve_rate_table`, which locates the current tree's distributed table via `git rev-parse --show-toplevel`, survives only as the fallback for a partial update that left the two new libs absent.
 
 ## The roll-up's dollar block
 
@@ -77,8 +85,8 @@ The block never fabricates a number. Anything it cannot price truthfully surface
 | Marker | Kind | Trigger |
 | --- | --- | --- |
 | `unavailable (records predate per-model attribution)` | unavailable | No record for the feature carries `by_model`, so nothing is priceable. Token lines still render their real totals. |
-| `unavailable (rate table unreadable)` | unavailable | The committed rate table is missing or unparseable. |
-| `(lower bound: unpriced model(s) <names>)` | lower bound | A `claude-` model in the ledger is absent from the rate table; it contributes $0 and is named. |
+| `unavailable (rate table unreadable)` | unavailable | Neither the local table nor the distributed table could be read. |
+| `(lower bound: unpriced model(s) <names>)` | lower bound | A `claude-` model in the ledger is absent from the local table after any heal; it contributes $0 and is named. |
 | `(lower bound: a session lacked a run-time anchor)` | lower bound | A session has no timestamp, so no effective-dated rate can be selected; it contributes $0. |
 | `(partial lower bound: some records predate per-model attribution)` | lower bound | Mixed provenance: some rows are priced, others predate attribution and are excluded from the dollar sum (their token totals stay intact). |
 | `(partial lower bound: …)` | lower bound | The token readout itself is partial (some ledger input was unreadable, corrupt, or lacked timing), so the dollar figure inherits that partial signal. |
@@ -102,7 +110,7 @@ There are two assembly paths for the pinned `Cost:` line, depending on which act
 
 The sidecar record's `dollars` is a generation-time snapshot: it is frozen at the rate whose effective window covers the session's run-time anchor at the moment the record is written. The `execute` key refreshes on every orchestrator commit that rewrites the sidecar (each write replaces only its own key and preserves the sibling, see [[Cost Data Contract]]), so its snapshot moves forward each time; the `spec` and `plan` keys are each written once and stay fixed after that.
 
-The roll-up's dollar block is a read-time reprice: it recomputes from the ledger every time it runs, against whatever rate table is committed at that moment. Both surfaces select a rate the same way, effective-dating on the run-time anchor through the shared lib's `rate_window` logic, so the two figures agree for a session most of the time. They can still diverge for one session: the rate table can be edited between the tally's write and a later merge-time roll-up, or the roll-up's ledger dedup can select a different underlying row than the one the tally priced. The roll-up is the authoritative live figure; the sidecar's `dollars` field is a per-phase snapshot of what pricing looked like when that record was written.
+The roll-up's dollar block is a read-time reprice: it recomputes from the ledger every time it runs, against whatever the machine-local rate table holds at that moment. Both surfaces select a rate the same way, effective-dating on the run-time anchor through the shared lib's `rate_window` logic, so the two figures agree for a session most of the time. They can still diverge for one session: the rate table can change between the tally's write and a later merge-time roll-up, or the roll-up's ledger dedup can select a different underlying row than the one the tally priced. The roll-up is the authoritative live figure; the sidecar's `dollars` field is a per-phase snapshot of what pricing looked like when that record was written.
 
 ## Tally-time degrade markers
 
@@ -112,9 +120,9 @@ An unpriced model is the exception, and it is the one degrade whose figure is si
 
 | Trigger | Record effect |
 | --- | --- |
-| The committed rate table is missing or unparseable | `dollars: null` |
+| Neither the local table nor the distributed table could be read | `dollars: null` |
 | The section's `by_model` is empty (no per-model attribution for the session) | `dollars: null` |
-| A `claude-` model in the section's `by_model` is absent from the rate table | `dollars` prices the remaining models and omits the absent one's share, a lower bound. The absent models are named in an `unpriced` array on both the record and the sidecar, and the stdout line carries the lower-bound marker |
+| A `claude-` model in the section's `by_model` is absent from the local table after any heal | `dollars` prices the remaining models and omits the absent one's share, a lower bound. The absent models are named in an `unpriced` array on both the record and the sidecar, and the stdout line carries the lower-bound marker |
 | The section's own token render is itself partial | `dollars` prices whatever `by_model` data is available, silently, with no marker recorded (the token partial marker on the bucket totals still renders independently) |
 
 A reader who wants a human-facing description of any of the other degrades, rather than a bare number, reads the roll-up's dollar-block markers above, which cover the same triggers and render as text at read time.
