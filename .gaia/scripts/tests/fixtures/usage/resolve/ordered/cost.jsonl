@@ -1,0 +1,3 @@
+{"schema_version":1,"kind":"plan","session_id":"s18","ts":"2026-10-01T12:30:00Z","spec_id":null,"plan_id":"PLAN-022","git_branch":"main"}
+{"schema_version":1,"kind":"plan","session_id":"s18","ts":"2026-10-01T13:30:00Z","spec_id":"SPEC-091","plan_id":null,"git_branch":"main"}
+{"schema_version":1,"kind":"command","session_id":"s18","ts":"2026-10-01T14:30:00Z","spec_id":null,"plan_id":null,"command":"gaia-debt","run_id":"gaia-debt-20261001T143000Z-c3d4","git_branch":"main"}

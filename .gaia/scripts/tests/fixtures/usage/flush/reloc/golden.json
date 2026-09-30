@@ -1,0 +1,20 @@
+{
+  "branch:fix/rel": {
+    "claude-opus-5-5": {
+      "cache_read": 6000,
+      "cache_write_1h": 600,
+      "cache_write_5m": 60,
+      "fresh_input": 6,
+      "output": 60
+    }
+  },
+  "branch:fix/trunc": {
+    "claude-opus-5-5": {
+      "cache_read": 6000,
+      "cache_write_1h": 600,
+      "cache_write_5m": 60,
+      "fresh_input": 6,
+      "output": 60
+    }
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "branch:debt/123-slug": {
+    "claude-opus-5-5": {
+      "cache_read": 2000,
+      "cache_write_1h": 200,
+      "cache_write_5m": 20,
+      "fresh_input": 2,
+      "output": 20
+    },
+    "claude-sonnet-5": {
+      "cache_read": 5000,
+      "cache_write_1h": 500,
+      "cache_write_5m": 50,
+      "fresh_input": 5,
+      "output": 50
+    }
+  },
+  "branch:fix/bar": {
+    "claude-opus-5-5": {
+      "cache_read": 3000,
+      "cache_write_1h": 300,
+      "cache_write_5m": 30,
+      "fresh_input": 3,
+      "output": 30
+    },
+    "claude-sonnet-5": {
+      "cache_read": 13000,
+      "cache_write_1h": 1300,
+      "cache_write_5m": 130,
+      "fresh_input": 13,
+      "output": 130
+    }
+  },
+  "session:s-multi": {
+    "claude-opus-5-5": {
+      "cache_read": 1000,
+      "cache_write_1h": 100,
+      "cache_write_5m": 10,
+      "fresh_input": 1,
+      "output": 10
+    },
+    "claude-sonnet-5": {
+      "cache_read": 4000,
+      "cache_write_1h": 400,
+      "cache_write_5m": 40,
+      "fresh_input": 4,
+      "output": 40
+    }
+  }
+}

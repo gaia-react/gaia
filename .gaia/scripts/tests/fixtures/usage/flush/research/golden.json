@@ -1,0 +1,11 @@
+{
+  "session:s-res": {
+    "claude-opus-5-5": {
+      "cache_read": 10000,
+      "cache_write_1h": 1000,
+      "cache_write_5m": 100,
+      "fresh_input": 10,
+      "output": 100
+    }
+  }
+}

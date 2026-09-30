@@ -1,0 +1,3 @@
+{"schema_version":1,"kind":"binding","type":"start","session_id":"s23","ts":"2026-10-01T10:00:00Z","workflow":"gaia-spec","source":"transcript"}
+{"schema_version":1,"kind":"segment","key":"session:s23","session_id":"s23","inherit":false,"first_ts":"2026-10-01T10:30:00Z","last_ts":"2026-10-01T10:30:00Z","messages":2,"by_model":{"claude-opus-5-5":{"fresh_input":100000,"cache_write_5m":0,"cache_write_1h":0,"cache_read":0,"output":10000}}}
+{"schema_version":1,"kind":"segment","key":"branch:plan/spec-090-foo","session_id":"s24","inherit":false,"first_ts":"2026-10-01T12:00:00Z","last_ts":"2026-10-01T12:00:00Z","messages":2,"by_model":{"claude-opus-5-5":{"fresh_input":200000,"cache_write_5m":0,"cache_write_1h":0,"cache_read":0,"output":20000}}}

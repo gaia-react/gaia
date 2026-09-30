@@ -1,0 +1,29 @@
+{
+  "branch:fix/c1": {
+    "claude-opus-5-5": {
+      "cache_read": 10000,
+      "cache_write_1h": 1000,
+      "cache_write_5m": 100,
+      "fresh_input": 10,
+      "output": 100
+    }
+  },
+  "branch:fix/c2": {
+    "claude-opus-5-5": {
+      "cache_read": 10000,
+      "cache_write_1h": 1000,
+      "cache_write_5m": 100,
+      "fresh_input": 10,
+      "output": 100
+    }
+  },
+  "session:s-c3": {
+    "claude-opus-5-5": {
+      "cache_read": 5000,
+      "cache_write_1h": 500,
+      "cache_write_5m": 50,
+      "fresh_input": 5,
+      "output": 50
+    }
+  }
+}

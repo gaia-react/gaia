@@ -1,0 +1,46 @@
+{
+  "_unit": "a unit-k segment is fresh k*100000 + output k*10000 = k*110000 tokens; rates-a prices it at $0.30k, rates-b at $0.60k",
+  "research": {
+    "research:topic-a-2026-10-01": { "tokens": "330,000", "usd": "$0.90" },
+    "research:topic-b-2026-10-01": { "tokens": "770,000", "usd": "$2.10" },
+    "all": { "tokens": "1,100,000", "usd": "$3.00" }
+  },
+  "discussion": { "all": { "tokens": "770,000", "usd": "$2.10" } },
+  "spec-interval": {
+    "before_unattributed": { "tokens": "660,000", "usd": "$1.80" },
+    "spec:SPEC-123": { "tokens": "550,000", "usd": "$1.50" },
+    "after_unattributed": { "tokens": "110,000", "usd": "$0.30" }
+  },
+  "command": {
+    "pr_fix_other": { "tokens": "550,000", "usd": "$1.50" },
+    "command:gaia-debt-20261001T110000Z-a1b2": { "tokens": "220,000", "usd": "$0.60" }
+  },
+  "ordered": {
+    "research:x": { "tokens": "330,000", "usd": "$0.90" },
+    "research:topic-y": { "tokens": "0", "usd": "$0.00" },
+    "research:topic-z": { "tokens": "1,210,000", "usd": "$3.30" },
+    "plan:PLAN-022": { "tokens": "990,000", "usd": "$2.70" },
+    "spec:SPEC-091": { "tokens": "660,000", "usd": "$1.80" },
+    "command:gaia-debt-20261001T143000Z-c3d4": { "tokens": "770,000", "usd": "$2.10" },
+    "unattributed": { "tokens": "0", "usd": "$0.00" }
+  },
+  "diamond": {
+    "research:a": { "tokens": "1,980,000", "usd": "$5.40" },
+    "research:b": { "tokens": "660,000", "usd": "$1.80" },
+    "branch:feat/shared": { "tokens": "660,000", "usd": "$1.80" }
+  },
+  "prs": {
+    "501": { "tokens": "1,430,000", "fresh": "300,000", "cw": "100,000", "cr": "1,000,000", "out": "30,000", "usd_a": "$1.35", "usd_b": "$2.70" },
+    "502": { "tokens": "330,000", "usd_a": "$0.90" },
+    "503": { "tokens": "440,000", "usd_a": "$1.20" }
+  },
+  "window": {
+    "601": { "tokens": "330,000", "usd": "$0.90" },
+    "602": { "tokens": "440,000", "usd": "$1.20" }
+  },
+  "lineage": { "research:topic-a-2026-10-01": { "tokens": "330,000", "usd": "$0.90" } },
+  "inherit": {
+    "branch:feat/agent": { "tokens": "660,000", "usd": "$1.80" },
+    "research:r24": { "tokens": "110,000", "usd": "$0.30" }
+  }
+}
