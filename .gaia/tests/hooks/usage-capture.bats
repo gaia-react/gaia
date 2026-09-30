@@ -170,12 +170,16 @@ mutated_hook() {
   payload Stop S5 "$PDIR/S5.jsonl" >"$TMP/payload.json"
   # The redirects sit inside `bash -c` so they bind to the hook itself: the
   # orphaned reader would otherwise hold bats' own pipes and hang the suite.
-  run bash -c 'perl -e "alarm 3; exec @ARGV" bash "$1" <"$2" >/dev/null 2>&1 3>&- 4>&-' _ "$HOOK" "$TMP/payload.json"
-  # 142 is 128 + SIGALRM: the watchdog fired because the read never returned.
-  [ "$status" -eq 142 ]
-  # Release the orphaned reader so it does not outlive the test.
+  # SIGALRM is reset first: a runner that starts bats with it ignored (GNU
+  # parallel under `bats --jobs`) would otherwise leave the alarm inert.
+  run bash -c 'perl -e "\$SIG{ALRM}=q(DEFAULT); alarm 3; exec @ARGV" bash "$1" <"$2" >/dev/null 2>&1 3>&- 4>&-' _ "$HOOK" "$TMP/payload.json"
+  local rc="$status"
+  # Release the orphaned reader before asserting, so a failed assertion never
+  # leaves it outliving the test.
   { : >"$PDIR/S5.jsonl"; } </dev/null >/dev/null 2>&1 3>&- 4>&- &
   disown "$!" 2>/dev/null || true
+  # 142 is 128 + SIGALRM: the watchdog fired because the read never returned.
+  [ "$rc" -eq 142 ]
 }
 
 # ---------- detach guard ----------

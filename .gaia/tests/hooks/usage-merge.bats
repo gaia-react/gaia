@@ -148,7 +148,7 @@ assert_gh_only_pr_view() {
   run_merge "gh pr merge"
   [ "$status" -eq 0 ]
   has_line "[PR cost] pr:? branch:fix/bar"
-  grep -qF 'merge not confirmed; boundary not recorded (record it: bash .gaia/scripts/usage.sh link --merge <N> --branch worktree-fix+bar)' <<<"$output"
+  grep -qF 'merge not confirmed; boundary not recorded (record it: bash .gaia/scripts/usage.sh link --merge <N> --key branch:fix/bar)' <<<"$output"
 }
 
 @test "no operand, on the default branch, gh failing: the single unresolved line" {
@@ -175,7 +175,7 @@ assert_gh_only_pr_view() {
   gh_view 105 105 fix/foo OPEN ""
   run_merge "gh pr merge 105 --auto"
   [ "$status" -eq 0 ]
-  grep -qF 'merge not confirmed; boundary not recorded (record it: bash .gaia/scripts/usage.sh link --merge 105 --branch fix/foo)' <<<"$output"
+  grep -qF 'merge not confirmed; boundary not recorded (record it: bash .gaia/scripts/usage.sh link --merge 105 --key branch:fix/foo)' <<<"$output"
   cmp "$TMP/links-before" "$TD/links.jsonl"
 
   gh_view 105 105 fix/foo MERGED 2026-09-25T02:00:00Z
@@ -318,7 +318,7 @@ seed_rollup() {
   export GAIA_USAGE_RENDER_CAP_SECS=1
   run_merge "gh pr merge"
   [ "$status" -eq 0 ]
-  [ "$output" = "! readout timed out after 1s; rerun: bash .gaia/scripts/usage.sh pr --branch worktree-fix+bar" ]
+  [ "$output" = "! readout timed out after 1s; rerun: bash .gaia/scripts/usage.sh pr --key branch:fix/bar" ]
 }
 
 @test "guards-must-fail: a copy of usage-merge.sh without the render watchdog overruns cap plus 3 s" {

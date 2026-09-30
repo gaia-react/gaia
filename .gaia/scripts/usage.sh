@@ -85,7 +85,7 @@ _parse() {
         esac
         shift 2 ;;
       --) shift; while [ $# -gt 0 ]; do ARGS[${#ARGS[@]}]="$1"; shift; done ;;
-      -*) _err "unknown flag $f"; return 2 ;;
+      -*) _err "unknown flag ${f//[^A-Za-z0-9._=\/-]/?}"; return 2 ;;
       *) ARGS[${#ARGS[@]}]="$f"; shift ;;
     esac
   done
@@ -187,7 +187,7 @@ _edge_rows() {
         . as $e | usage_path($e; $p; $c) | if . == null then empty else [$c] + . | join(" -> ") end' <<<"$edges")"
       if [ -n "$cyc" ]; then
         _err "refused: the edge would close a cycle (each arrow points from child to parent)"
-        printf '  cycle: %s\n' "$cyc" >&2
+        printf '  cycle: %s\n' "${cyc//[^A-Za-z0-9._:%\/ >-]/?}" >&2
         [ "$skip" = 1 ] && continue
         return 1
       fi
@@ -271,7 +271,7 @@ cmd_lineage() {
   local path="${ARGS[0]-}" id e rows rc first=1
   local -a pairs=()
   if [ -z "$path" ] || [ ! -f "$path" ]; then
-    printf "usage lineage: no SPEC file at '%s'\n" "$path" >&2
+    printf "usage lineage: no SPEC file at '%s'\n" "${path//[^A-Za-z0-9._\/ -]/?}" >&2
     return 2
   fi
   while IFS= read -r e; do
@@ -283,7 +283,7 @@ cmd_lineage() {
     [ -n "$e" ] || continue
     if ! gaia_usage_valid_ref "$e"; then
       _err "skipping lineage entry that is not a valid ref"
-      printf '  entry: %s\n' "$e" >&2
+      printf '  entry: %s\n' "${e//[^A-Za-z0-9._:\/ -]/?}" >&2
       continue
     fi
     pairs[${#pairs[@]}]="spec:$id"

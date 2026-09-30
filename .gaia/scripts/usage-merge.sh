@@ -340,7 +340,18 @@ if [ "$timed_out" = 1 ]; then
   if [ -n "$pr" ]; then
     printf '! readout timed out after %ss; rerun: bash .gaia/scripts/usage.sh pr %s\n' "$rcap" "$pr"
   else
-    printf '! readout timed out after %ss; rerun: bash .gaia/scripts/usage.sh pr %s %s\n' "$rcap" "${bflag[0]}" "${bflag[1]}"
+    # The branch name is chosen by whoever opened the PR and this line is a
+    # runnable command: print the grammar-checked key, else a shell-inert
+    # name, else a placeholder.
+    rk="$key"
+    if [ -z "$rk" ] && [ -n "$branch" ] && _gaia_usage_load gaia_branch_normalize branch-name-lib.sh 2>/dev/null; then
+      rn="$(gaia_branch_normalize "$branch" 2>/dev/null)" || rn=""
+      [ -z "$rn" ] || rk="$(gaia_usage_branch_key "$rn" 2>/dev/null)" || rk=""
+    fi
+    if [[ $rk =~ ^branch:(%[0-9a-f]{16}|[A-Za-z0-9._/-]{1,128})$ ]]; then rf="--key $rk"
+    elif [[ $branch =~ ^[A-Za-z0-9._/+-]+$ && $branch != -* ]]; then rf="--branch $branch"
+    else rf="--branch <branch>"; fi
+    printf '! readout timed out after %ss; rerun: bash .gaia/scripts/usage.sh pr %s\n' "$rcap" "$rf"
   fi
   exit 0
 fi

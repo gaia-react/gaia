@@ -53,8 +53,8 @@ while [ $# -gt 0 ]; do
     --finished-main) UF_FINISHED_MAIN=true; shift; continue ;;
     --sweep) UF_SWEEP=1; shift; continue ;;
     --session | --transcript | --self-session | --projects-root | --main-root | --telemetry-dir | --ledger)
-      [ $# -ge 2 ] || { _uf_log "missing value for $1"; exit 0; } ;;
-    *) _uf_log "unknown argument: $1"; exit 0 ;;
+      [ $# -ge 2 ] || { _uf_log "missing value for ${1//[^A-Za-z0-9._=\/-]/?}"; exit 0; } ;;
+    *) _uf_log "unknown argument: ${1//[^A-Za-z0-9._=\/-]/?}"; exit 0 ;;
   esac
   case "$1" in
     --session) UF_SESSION="$2" ;;
@@ -314,9 +314,9 @@ _uf_flush_file() {
     with_ledger_lock "$UF_TEL" _uf_commit_locked "$UF_BATCH" "$sid" "$role" "$UF_N0" "$UF_PRUNE" || rc=$?
     case "$rc" in
       0) UF_PRUNE=0; return 0 ;;
-      3) _uf_log "another flusher committed $role of $sid first; reparsing" ;;
-      75) _uf_log "ledger lock timed out; $f is left for the next trigger"; return 0 ;;
-      *) _uf_log "commit failed for $f"; return 0 ;;
+      3) _uf_log "another flusher committed ${role//[^A-Za-z0-9._-]/?} of ${sid//[^A-Za-z0-9._-]/?} first; reparsing" ;;
+      75) _uf_log "ledger lock timed out; ${f//[^A-Za-z0-9._\/ -]/?} is left for the next trigger"; return 0 ;;
+      *) _uf_log "commit failed for ${f//[^A-Za-z0-9._\/ -]/?}"; return 0 ;;
     esac
   done
   return 0

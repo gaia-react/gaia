@@ -21,6 +21,11 @@ commify() {
   printf '%s%s' "$n" "$out"
 }
 
+# _usage_safe <text>: a value read from a transcript, the ledger, or gh, with
+# every character outside a plain-name set replaced, so a hook readout carries
+# no shell syntax, control sequence, or line break from an untrusted source.
+_usage_safe() { printf '%s' "${1//[^A-Za-z0-9._:%@+\/ ,-]/?}"; }
+
 _usage_money() {
   if [ -z "$1" ] || [ "$1" = null ]; then printf 'unavailable (rate table unreadable)'; return 0; fi
   LC_ALL=C printf '$%.2f' "$1" 2>/dev/null || printf 'unavailable'
@@ -122,7 +127,7 @@ _usage_markers() {
   if [ -n "$unf" ]; then printf '  ! unflushed: %s file(s), %s bytes not yet recorded\n' "${unf%%"$tab"*}" "${unf#*"$tab"}"; fi
   for m in "$@"; do printf '  ! %s\n' "$m"; done
   unp="$(jq -r '[.sum // empty, .all // empty, (.roots // [])[].sum] | map(.unpriced[]) | unique | join(", ")' <<<"$v")"
-  if [ -n "$unp" ]; then printf '  ! lower bound: unpriced model(s) %s\n' "$unp"; fi
+  if [ -n "$unp" ]; then printf '  ! lower bound: unpriced model(s) %s\n' "$(_usage_safe "$unp")"; fi
 }
 
 # usage_render_pr <view-json> <hooks_ok> <unflushed> <partial 0|1> <unconfirmed 0|1> <raw branch or "">
@@ -139,29 +144,34 @@ usage_render_pr() {
   local -a extra=()
   [ "$partial" = 1 ] && extra[${#extra[@]}]="partial: flush incomplete"
   if [ "$unconf" = 1 ]; then
-    if [ -n "$rawb" ]; then f="--branch $rawb"; elif [ -n "$key" ]; then f="--key $key"; else f="--branch <branch>"; fi
+    # The hint is a runnable command read by Claude and the branch name is
+    # chosen by whoever opened the PR: only a grammar-checked key or a
+    # shell-inert raw name is printed, else a placeholder.
+    if [[ $key =~ ^branch:(%[0-9a-f]{16}|[A-Za-z0-9._/-]{1,128})$ ]]; then f="--key $key"
+    elif [[ $rawb =~ ^[A-Za-z0-9._/+-]+$ && $rawb != -* ]]; then f="--branch $rawb"
+    else f="--branch <branch>"; fi
     extra[${#extra[@]}]="merge not confirmed; boundary not recorded (record it: bash .gaia/scripts/usage.sh link --merge ${pr/\?/<N>} $f)"
   fi
   if [ -z "$key" ]; then
-    printf '[PR cost] pr:%s (branch unresolved)\n' "$pr"
-    printf '  coverage start: %s\n' "$cov"
+    printf '[PR cost] pr:%s (branch unresolved)\n' "$(_usage_safe "$pr")"
+    printf '  coverage start: %s\n' "$(_usage_safe "$cov")"
     _usage_markers "$v" "$hooks" "$unf" ${extra[@]+"${extra[@]}"}
     return 0
   fi
   [ "$lb" = true ] && extra[${#extra[@]}]="lower bound: branch spend may predate coverage start"
-  printf '[PR cost] pr:%s %s\n' "$pr" "$key"
+  printf '[PR cost] pr:%s %s\n' "$(_usage_safe "$pr")" "$(_usage_safe "$key")"
   if [ "$hooks" = 1 ]; then
     printf '  tokens: %s (fresh %s, cache write %s, cache read %s, output %s)\n' "$(commify "$tot")" \
       "$(commify "$fr")" "$(commify "$cw")" "$(commify "$cr")" "$(commify "$out")"
     printf '  est. cost (USD): %s\n' "$(_usage_money "$usd")"
   fi
   if [ "$sf" != - ]; then st="$sf..$st"; else st=none; fi
-  printf '  sessions: %s  span: %s  coverage start: %s\n' "$sess" "$st" "$cov"
-  printf '  window: after %s through %s\n' "$wf" "$wt"
+  printf '  sessions: %s  span: %s  coverage start: %s\n' "$sess" "$(_usage_safe "$st")" "$(_usage_safe "$cov")"
+  printf '  window: after %s through %s\n' "$(_usage_safe "$wf")" "$(_usage_safe "$wt")"
   _usage_markers "$v" "$hooks" "$unf" ${extra[@]+"${extra[@]}"}
   [ "$hooks" = 1 ] || return 0
   while IFS=$'\t' read -r key tot usd; do
-    printf '[initiative %s to date; initiative totals overlap, never sum them across roots]\n' "$key"
+    printf '[initiative %s to date; initiative totals overlap, never sum them across roots]\n' "$(_usage_safe "$key")"
     printf '  tokens: %s  est. cost (USD): %s\n' "$(commify "$tot")" "$(_usage_money "$usd")"
   done < <(jq -r '.roots[] | [.root, .sum.total, (.sum.usd // "null")] | @tsv' <<<"$v")
 }
@@ -173,11 +183,11 @@ usage_render_initiative() {
   i=0
   while [ "$i" -lt "$n" ]; do
     root="$(jq -r --argjson i "$i" '.roots[$i].root' <<<"$v")"
-    printf '[initiative %s]  coverage start: %s\n' "$root" "$cov"
+    printf '[initiative %s]  coverage start: %s\n' "$(_usage_safe "$root")" "$(_usage_safe "$cov")"
     if [ "$hooks" = 1 ]; then
       while IFS=$'\t' read -r ref tot usd ex; do
         [ "$ex" = true ] && ex='  (explicit link)' || ex=''
-        printf '  %s  tokens %s  est. %s%s\n' "$ref" "$(commify "$tot")" "$(_usage_money "$usd")" "$ex"
+        printf '  %s  tokens %s  est. %s%s\n' "$(_usage_safe "$ref")" "$(commify "$tot")" "$(_usage_money "$usd")" "$ex"
       done < <(jq -r --argjson i "$i" '.roots[$i].nodes[] | [.ref, .sum.total, (.sum.usd // "null"), .explicit] | @tsv' <<<"$v")
       IFS=$'\t' read -r tot usd < <(jq -r --argjson i "$i" '.roots[$i].sum | [.total, (.usd // "null")] | @tsv' <<<"$v")
       printf '  total (distinct segments): tokens %s  est. %s\n' "$(commify "$tot")" "$(_usage_money "$usd")"
@@ -190,7 +200,7 @@ usage_render_initiative() {
 
 usage_render_reconcile() {
   local v="$1" hooks="$2" unf="$3" at atu un unu al alu nl
-  printf '[usage reconcile]  coverage start: %s\n' "$(jq -r '.coverage // "none"' <<<"$v")"
+  printf '[usage reconcile]  coverage start: %s\n' "$(_usage_safe "$(jq -r '.coverage // "none"' <<<"$v")")"
   if [ "$hooks" = 1 ]; then
     IFS=$'\t' read -r at atu un unu al alu nl < <(jq -r '[.attributed.total, (.attributed.usd // "null"),
         .unattributed.total, (.unattributed.usd // "null"), .all.total, (.all.usd // "null"), .nolink.total] | @tsv' <<<"$v")

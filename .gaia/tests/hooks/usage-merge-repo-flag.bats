@@ -244,3 +244,66 @@ run_foreign_spellings() {
   argv_has '^pr view 99' && return 1
   true
 }
+
+# ---------- a hostile branch name never reaches a runnable hint ----------
+
+# slow_render <secs>: usage.sh becomes a stand-in whose `pr` readout sleeps
+# before printing; every other subcommand runs the real script.
+slow_render() {
+  mv "$REPO/.gaia/scripts/usage.sh" "$REPO/.gaia/scripts/usage-real.sh"
+  printf '#!/usr/bin/env bash\nif [ "${1-}" = pr ]; then sleep %s; printf "[PR cost] late\\n"; exit 0; fi\nexec bash "${BASH_SOURCE[0]%%/*}/usage-real.sh" "$@"\n' \
+    "$1" >"$REPO/.gaia/scripts/usage.sh"
+}
+
+@test "an OPEN PR with a hostile headRefName prints a hashed --key and nothing shell-active" {
+  gh_view 108 108 'x$(touch pwn)' OPEN ""
+  run_merge "gh pr merge 108"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/pwn" ]
+  lacks '$('
+  lacks 'touch'
+  grep -Eq 'link --merge 108 --key branch:%[0-9a-f]{16}\)$' <<<"$output"
+}
+
+@test "a hostile name with shell metacharacters is never printed raw" {
+  gh_view 108 108 'x;rm-rf' OPEN ""
+  run_merge "gh pr merge 108"
+  [ "$status" -eq 0 ]
+  lacks 'rm-rf'
+  grep -Eq 'link --merge 108 --(key branch:%[0-9a-f]{16}|branch <branch>)\)$' <<<"$output"
+}
+
+@test "the render-timeout rerun line for a hostile current branch names a hashed key" {
+  git -C "$REPO" checkout -q -b 'x$(touch-pwn)'
+  slow_render 8
+  export GAIA_USAGE_RENDER_CAP_SECS=1
+  run_merge "gh pr merge"
+  [ "$status" -eq 0 ]
+  [ ! -e "$REPO/pwn" ]
+  lacks '$('
+  grep -Eqx '! readout timed out after 1s; rerun: bash \.gaia/scripts/usage\.sh pr --key branch:%[0-9a-f]{16}' <<<"$output"
+}
+
+@test "a safe branch still prints a usable recovery command" {
+  gh_view 109 109 fix/foo OPEN ""
+  run_merge "gh pr merge 109"
+  [ "$status" -eq 0 ]
+  grep -qF 'link --merge 109 --key branch:fix/foo)' <<<"$output"
+}
+
+@test "guards-must-fail: copies of the hint sites that print the raw branch leak a hostile name" {
+  gh_view 108 108 'x$(touch pwn)' OPEN ""
+  sed -i.bak 's|^    if \[\[ \$key =~ .*|    if false; then f=""|; s|^    elif \[\[ \$rawb =~ .*|    elif true; then f="--branch $rawb"|' "$REPO/.gaia/scripts/usage-render-lib.sh"
+  grep -q 'elif true' "$REPO/.gaia/scripts/usage-render-lib.sh"
+  run_merge "gh pr merge 108"
+  grep -qF -- '--branch x$(touch pwn)' <<<"$output"
+
+  cp "$SRC/.gaia/scripts/usage-render-lib.sh" "$REPO/.gaia/scripts/usage-render-lib.sh"
+  git -C "$REPO" checkout -q -b 'x$(touch-pwn)'
+  slow_render 8
+  export GAIA_USAGE_RENDER_CAP_SECS=1
+  sed -i.bak 's|^    if \[\[ \$rk =~ .*|    if false; then rf=""|; s|^    elif \[\[ \$branch =~ .*|    elif true; then rf="--branch $branch"|' "$REPO/.gaia/scripts/usage-merge.sh"
+  grep -q 'elif true' "$REPO/.gaia/scripts/usage-merge.sh"
+  run_merge "gh pr merge"
+  grep -qF -- '--branch x$(touch-pwn)' <<<"$output"
+}
