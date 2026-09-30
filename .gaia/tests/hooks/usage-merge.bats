@@ -369,6 +369,7 @@ seed_rollup() {
 # ---------- operand scan and seams ----------
 
 @test "the operand scan: number, URL, quoted body text, and the first statement only reach gh as the operand" {
+  git -C "$REPO" remote add origin https://github.com/o/r.git
   run_merge 'gh pr merge 110 --squash && gh pr merge 111'
   run_merge 'gh pr merge https://github.com/o/r/pull/108 --auto'
   run_merge 'gh pr merge --body "a b c" --subject x 109'

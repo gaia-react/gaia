@@ -374,6 +374,19 @@ edge_file() { printf '%s/.gaia/local/telemetry/links.jsonl' "$REPO"; }
   [ -f "$(breadcrumb_path "worktree-debt+42-fix")" ]
 }
 
+@test "gh pr create with a repo flag records no pr:<N> edge, in any flag spelling" {
+  build_repo
+  cd "$REPO"
+  unset GAIA_USAGE_HOOKS_DISABLE
+  git checkout -b feat/foreign --quiet
+
+  run_hook "gh pr create --repo x/y --title t" "https://github.com/x/y/pull/79"
+  [ "$status" -eq 0 ]
+  run_hook "gh pr create -R x/y --title t" "https://github.com/x/y/pull/80"
+  run_hook "gh pr create --title t --repo=x/y" "https://github.com/x/y/pull/81"
+  [ ! -f "$(edge_file)" ] || ! grep -q '"pr:' "$(edge_file)"
+}
+
 @test "an unwritable breadcrumb cache never drops the edge" {
   build_repo
   cd "$REPO"

@@ -32,10 +32,14 @@
 # keying happen only inside usage.sh.
 #
 # Honest limits: the operand scan reads the first `gh pr merge` statement as
-# raw text, stops at `;`, `&`, `|`, and a newline, and treats a repo flag, a
-# wrapper, or a spelling it cannot read as no resolvable operand, which falls
-# through to the resolution above. A repo flag naming another repository is
-# not followed.
+# raw text, stops at `;`, `&`, `|`, and a newline, and treats a repo flag
+# (`-R`, `--repo`, `--repo=`, wherever it sits in the statement), a PR URL
+# naming a repository other than the local origin's, a wrapper, or a spelling
+# it cannot read as no resolvable operand, which falls through to the
+# resolution above. A URL is compared with the origin remote's owner/repo
+# (https and ssh forms, no network); an absent or unparseable origin counts
+# every URL as foreign. Another repository is never followed, so its PR number
+# is never read against the local repository.
 #
 # GAIA_USAGE_HOOKS_DISABLE=1 makes this do nothing. It is a test seam for the
 # suites that run the real merge hook and must not drive ledger writes.
@@ -67,10 +71,27 @@ case "$cap" in '' | *[!0-9]* | 0) cap=5 ;; esac
 rcap="${GAIA_USAGE_RENDER_CAP_SECS:-10}"
 case "$rcap" in '' | *[!0-9]* | 0) rcap=10 ;; esac
 
+# Prints the lowercased owner/repo of the origin remote, nothing when it is
+# absent or unparseable. Reads git config only.
+_um_origin_slug() {
+  local u o r
+  u="$(git -C "$UM_MAIN" remote get-url origin 2>/dev/null)" || return 0
+  u="${u%/}"
+  u="${u%.git}"
+  case "$u" in *[:/]*/* | *:*/*) ;; *) return 0 ;; esac
+  r="${u##*[:/]}"
+  o="${u%[:/]*}"
+  o="${o##*[:/]}"
+  [ -n "$o" ] && [ -n "$r" ] || return 0
+  printf '%s/%s' "$o" "$r" | LC_ALL=C tr '[:upper:]' '[:lower:]'
+}
+
 # Sets UM_PR (a PR number), UM_GHARG (what to hand `gh pr view`), UM_NAMED
-# (1 when the statement carried a positional argument, readable or not).
+# (1 when the statement carried a positional argument, readable or not). A
+# repo flag, or a URL for a repository other than origin, clears UM_PR and
+# UM_GHARG and keeps UM_NAMED.
 _um_parse_cmd() {
-  local rx='gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)' rest tok skip=0 q="" last
+  local rx='gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)' rest tok skip=0 q="" last slug origin foreign=0
   UM_PR="" UM_GHARG="" UM_NAMED=0
   [[ $cmd =~ $rx ]] || return 0
   rest="${cmd#*"${BASH_REMATCH[0]}"}"
@@ -103,6 +124,13 @@ _um_parse_cmd() {
           UM_PR="$tok" UM_GHARG="$tok"
         elif [[ $tok =~ ^https?://[^[:space:]]+/pull/([1-9][0-9]{0,9})([/?#].*)?$ ]]; then
           UM_PR="${BASH_REMATCH[1]}" UM_GHARG="$tok"
+          if [[ $tok =~ ^https?://[^/]+/([^/]+)/([^/]+)/pull/ ]]; then
+            slug="$(printf '%s/%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
+            origin="$(_um_origin_slug)"
+            [ -n "$origin" ] && [ "$slug" = "$origin" ] || foreign=1
+          else
+            foreign=1
+          fi
         elif [[ $tok =~ ^[A-Za-z0-9._/:+@-]+$ ]]; then
           UM_GHARG="$tok"
         fi
@@ -110,6 +138,8 @@ _um_parse_cmd() {
     esac
   done
   set +f
+  local frx='(^|[[:space:]])(-R|--repo)([[:space:]=]|$)'
+  if [ "$foreign" = 1 ] || [[ $rest =~ $frx ]]; then UM_PR="" UM_GHARG=""; fi
 }
 _um_parse_cmd
 

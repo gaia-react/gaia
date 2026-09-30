@@ -115,7 +115,21 @@ branch="$(git branch --show-current 2>/dev/null || true)"
 # The PR-to-branch edge is written before the cache and breadcrumb exits below,
 # so a cache that cannot be written never costs the merge hook its way back to
 # the branch. No network call.
-if [ "${GAIA_USAGE_HOOKS_DISABLE:-}" != 1 ] && [ -n "$branch" ]; then
+# A repo flag (`-R`, `--repo`, `--repo=`) anywhere in the create statement
+# means the PR lives in another repository, so its number names nothing on the
+# local branch and no edge is written. The statement is the text after the
+# verb up to `;`, `&`, `|`, or a newline; a flag inside quoted prose also
+# skips the edge, which fails toward no edge.
+_gh_frag='gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)'
+_gh_foreign=0
+if [[ $cmd =~ $_gh_frag ]]; then
+  _gh_rest="${cmd#*"${BASH_REMATCH[0]}"}"
+  _gh_rest="${_gh_rest%%[;&|]*}"
+  _gh_rest="${_gh_rest%%$'\n'*}"
+  _gh_frx='(^|[[:space:]])(-R|--repo)([[:space:]=]|$)'
+  if [[ $_gh_rest =~ $_gh_frx ]]; then _gh_foreign=1; fi
+fi
+if [ "${GAIA_USAGE_HOOKS_DISABLE:-}" != 1 ] && [ -n "$branch" ] && [ "$_gh_foreign" = 0 ]; then
   _usage_sh="${_va_lib:+$_va_lib/../../../.gaia/scripts/usage.sh}"
   if [ -n "$_usage_sh" ] && [ -f "$_usage_sh" ]; then
     bash "$_usage_sh" link --pr "$number" --branch "$branch" --source gh-pr-create --session "$sid" >/dev/null 2>&1 || true
