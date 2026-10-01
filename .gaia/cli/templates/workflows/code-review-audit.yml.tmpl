@@ -1451,6 +1451,60 @@ jobs:
           exit 1
 
       # ----------------------------------------------------------------
+      # Audit-rounds record. The one deterministic writer of the PR body's
+      # marker-delimited `## Audit rounds` section in CI mode; it counts this
+      # workflow's completed runs through the GitHub API and rewrites the
+      # section in place. Publication only: nothing reads the section back to
+      # grant a round or set a count. `continue-on-error` keeps a failed write
+      # from reddening the check, and `always()` lets it run after an aborted
+      # audit so a stopped PR still carries its count.
+      # ----------------------------------------------------------------
+
+      - name: Record audit rounds in the PR body
+        if: |
+          always() &&
+          steps.decision.outputs.resolved_mode == 'ci'
+        continue-on-error: true
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_IS_FORK: ${{ github.event.pull_request.head.repo.fork }}
+          AUDITED_SHA: ${{ github.event.pull_request.head.sha }}
+          AUDIT_STEP_OUTCOME: ${{ steps.audit.outcome }}
+        run: |
+          set -eu
+          case "$PR_NUMBER" in
+            ''|*[!0-9]*)
+              echo "::error::audit rounds record: PR_NUMBER is not an integer" >&2
+              exit 1
+              ;;
+          esac
+          case "$PR_IS_FORK" in
+            true)
+              echo "::notice::audit rounds record skipped: a fork PR's token is read-only"
+              exit 0
+              ;;
+            false) ;;
+            *)
+              echo "::error::audit rounds record: PR_IS_FORK is neither true nor false" >&2
+              exit 1
+              ;;
+          esac
+          if ! printf '%s' "$AUDITED_SHA" | grep -Eq '^([0-9a-f]{40}|[0-9a-f]{64})$'; then
+            echo "::error::audit rounds record: AUDITED_SHA is not a hex object id" >&2
+            exit 1
+          fi
+          audited=false
+          case "$AUDIT_STEP_OUTCOME" in
+            success|failure) audited=true ;;
+          esac
+          bash .gaia/scripts/audit-loop-record.sh \
+            --pr "$PR_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --from-ci \
+            --current-sha "$AUDITED_SHA" \
+            --current-audited "$audited"
+
+      # ----------------------------------------------------------------
       # Failed-run backstop. Every step above carries GitHub's implicit
       # `success()`, so one failed step skips every writer after it and the
       # job ends with NO `GAIA-Audit` status at all. `GAIA-Audit` is a
