@@ -1,6 +1,6 @@
 ---
 type: decision
-status: active
+status: superseded
 priority: 2
 date: 2026-05-26
 created: 2026-05-26
@@ -9,6 +9,8 @@ tags: [decision, ci, audit, github-actions]
 ---
 
 # Decision: Dispatched-Check Rollup via In-Loop Polling
+
+> Superseded. GAIA no longer runs the audit in a GitHub Actions workflow, so no self-heal step dispatches sibling workflows and nothing stamps their check runs. The audit is local; see [[PR Merge Workflow]]. This page keeps the reasoning for anyone who reintroduces a workflow that dispatches required checks under `GITHUB_TOKEN`.
 
 The audit workflow's self-heal step dispatches required sibling workflows (e.g. Chromatic, Tests) on the self-heal HEAD via `workflow_dispatch` under `GITHUB_TOKEN`. Those dispatched runs complete, but their check suites carry an empty `pull_requests` link, so GitHub excludes them from `statusCheckRollup`. Branch protection reads the rollup, so dispatched runs alone never satisfy a required-check rule; the PR stays blocked even when every dispatched run is green.
 
@@ -31,8 +33,6 @@ The empirical signature distinguishing rollup-included from rollup-excluded chec
 - Dispatched-workflow check runs each carry their own suite with `check_suite.head_branch=<pr-branch>` and `check_suite.pull_requests=[]`; the rollup excludes them.
 
 Polling runs parallel across dispatched workflows, so total wait time tracks the slowest dispatched run, not the sum. The audit step's `budget_seconds` plus the slowest dispatched run plus a small overhead must fit within the job-level `timeout-minutes: 60` cap.
-
-See [[Code Review Audit CI#Self-heal re-trigger]] for the adopter-facing configuration surface.
 
 ## Why a `workflow_run`-event listener doesn't work
 
@@ -62,4 +62,4 @@ The listener fires for `push`- and `pull_request`-triggered Chromatic / Tests co
 <!-- gaia:maintainer-only:start -->
 - Verification fixture: the `test/verify-audit-retrigger` test branch fires the audit self-heal chain end-to-end. Both the listener failure mode and the in-loop polling resolution are verified against this fixture.
 <!-- gaia:maintainer-only:end -->
-- Related: [[Code Review Audit CI]] for the dispatch half.
+- Related: [[PR Merge Workflow]], the local audit path that replaced the workflow.

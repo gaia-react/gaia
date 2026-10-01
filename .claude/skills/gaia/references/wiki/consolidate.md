@@ -191,7 +191,7 @@ The `wiki/.state.json` file is committed by `/gaia-wiki sync` (or by the maintai
 
 ## Step 6, Hand off and report
 
-Do NOT commit. Applied edits are staged; `/gaia-wiki sync` (or the `wiki-commit-nudge` hook) handles the commit per its branch-aware rules.
+Do NOT commit. Applied edits are staged; `/gaia-wiki sync` handles the commit per its branch-aware rules.
 
 Print:
 

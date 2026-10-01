@@ -88,6 +88,7 @@ setup() {
 # ---------------------------------------------------------------------------
 fence_table() {
   cat <<'TABLE'
+fork-check|--json isCrossRepository|static|reaches github.com for a live PR's fork flag
 audit-check-state|grep GAIA-Audit|static|reaches github.com for a live PR's check rows
 catchup-merge|git merge --no-edit origin/main|static|merges `origin/main` into this checkout
 spawn-roster|resolve-audit-members.sh|exec|runs verbatim against this checkout

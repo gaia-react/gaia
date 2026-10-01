@@ -24,7 +24,7 @@ Each language-file key is optional (the shipped `_index.ts` carries only `meta.t
 
 **`bootstrap-env`**: Copies `.env.example` to `.env` when `.env` does not yet exist, running as a CLI subprocess so it bypasses Claude Code's `Write(.env)` deny rule. No-op when `.env` already exists or `.env.example` is absent.
 
-**`configure-automation`**: Writes an automation config file (`automation.json` under `.gaia/`; created on first run) with the wiki maintenance mode and `setup_complete: false`. `/setup-gaia` later flips `setup_complete` to `true` and commits the file as part of its finalize step; it is absent from `.gaia/manifest.json`, so `/update-gaia` never touches it, and it also carries committed team-level GAIA preferences (such as the git isolation policy and the Dependabot security-updates opt-in, once a team sets them) alongside the CI configuration.
+**`write-project-config`**: Records the answers `/gaia-init` collects in its project-settings step (whether a sandbox is recommended and the git isolation policy) in the team-shared settings file described in [[Project Config]], creating it when absent. `/gaia-init` asks no CI or wiki-mode question. The file is committed with the rest of the init changes and never overwritten by `/update-gaia`.
 
 **`finalize`**: Deletes `.claude/commands/gaia-init.md` so init cannot be re-run. It does not commit; the user reviews and commits the init changes.
 
@@ -32,8 +32,8 @@ Each language-file key is optional (the shipped `_index.ts` carries only `meta.t
 
 ## Target guard
 
-The router refuses to run any subcommand in the wrong tree, before dispatching to the step: a tree with no `.gaia/manifest.json` is not a GAIA project (`not_a_gaia_project`), and a tree carrying the CLI's TypeScript sources is the GAIA template source itself rather than a project scaffolded from it (`gaia_template_source`, since adopters receive only the compiled `.gaia/cli/gaia` binary, never the source). The guard lives on the router rather than on any one step because all eight steps resolve their target identically from ambient state, and it hands the step the same resolved path it checked so the two cannot disagree.
+The router refuses to run any subcommand in the wrong tree, before dispatching to the step: a tree with no `.gaia/manifest.json` is not a GAIA project (`not_a_gaia_project`), and a tree carrying the CLI's TypeScript sources is the GAIA template source itself rather than a project scaffolded from it (`gaia_template_source`, since adopters receive only the compiled `.gaia/cli/gaia` binary, never the source). The guard lives on the router rather than on any one step because every step resolves their target identically from ambient state, and it hands the step the same resolved path it checked so the two cannot disagree.
 
 ## Integration
 
-All subcommands are called by `/gaia-init` (the skill), which prompts the user through each phase and dispatches the matching subcommand. The init workflow can also be run manually via `gaia init <subcommand>` from the project root.
+All subcommands are called by `/gaia-init` (the skill), which prompts the user through each phase and dispatches the matching subcommand. The init workflow can also be run manually via `gaia init <subcommand>` from the project root. The step order and the `--from-step` numbering belong to the init CLI, which resume reads from the saved state.

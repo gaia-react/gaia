@@ -68,10 +68,10 @@ GAIA's wiki is a living knowledge layer. Adopters scaffold from a release tarbal
 
 ### How it works (quick tour)
 
-Three Claude Code hooks keep Claude informed about wiki state:
+A statusline nudge and two Claude Code hooks keep you informed about wiki state:
 
-- `wiki-drift-check.sh`: UserPromptSubmit, once per session. Compares `wiki/.state.json` to HEAD; nudges if drifted.
-- `wiki-commit-nudge.sh`: PostToolUse on Bash. Injects diff summary + drift count after each `git commit`.
+- Statusline nudge: `🧠 Run /gaia-wiki` appears once the wiki is 20 or more commits behind (`drift_count` in `gaia wiki state --json`). It is the only drift signal; a landed `/gaia-wiki sync` clears it.
+- `janitor-report-drain.sh`: UserPromptSubmit. Delivers the session-start janitor's one-line report once, then deletes it.
 - `wiki-session-stop.sh`: Stop hook. Two reminders share one git/jq pass: nudge to refresh `wiki/hot.md` if wiki/ files were modified this session, and a safety-net nag at session end if commits landed but `wiki/.state.json` didn't advance.
 
 The workhorse is `/gaia-wiki sync`. It's the only thing that writes `wiki/.state.json`. Hooks are read-only consumers.
@@ -104,7 +104,7 @@ Before running `/gaia-release`, you should have:
 - [ ] `/gaia-wiki sync` run, with all returned WORTHY commits resulting in defensible wiki edits
 - [ ] Working tree clean
 
-If `/gaia-wiki sync` reports drift but you decide a commit doesn't warrant a wiki update, it logs that as a SKIP entry in `wiki/log.md`. State still advances. That's the convergence: wiki is "in sync" once every commit has been classified as either WORTHY (and the page updated) or SKIP (and the reason logged).
+If `/gaia-wiki sync` finds drift but you decide a commit doesn't warrant a wiki update, it logs that as a SKIP entry in `wiki/log.md`. State still advances. That's the convergence: wiki is "in sync" once every commit has been classified as either WORTHY (and the page updated) or SKIP (and the reason logged).
 
 ### What ships, what doesn't
 
@@ -115,12 +115,11 @@ If `/gaia-wiki sync` reports drift but you decide a commit doesn't warrant a wik
 | `wiki/.state.json`                         | Yes (committed)                                         |
 | `wiki/concepts/Wiki Sync.md`               | Yes                                                     |
 | `.gaia/tests/`                             | **No**: `.gaia/release-exclude` excludes the whole tree |
-| `.claude/wiki-{drift,safety}-checked`      | **No**: gitignored, never committed                     |
 
 ### Troubleshooting
 
-- **Drift check is too noisy.** It only fires on the first prompt of each session. If you're seeing it more often, check `.claude/wiki-drift-checked`; the marker file should match your current `session_id`. If a hook is failing to write the marker, that's the bug.
-- **`/gaia-wiki sync` reports zero drift but you know there were commits.** Check `wiki/.state.json`'s `last_evaluated_sha`; it may already match HEAD if a prior sync ran. Or the SHA may be unreachable (rebase) and the hook silently skipped.
+- **The wiki nudge will not clear.** It clears when a `/gaia-wiki sync` lands and `wiki/.state.json` advances on the main checkout. A queued auto-merge keeps the nudge until the merge lands.
+- **`/gaia-wiki sync` reports zero drift but you know there were commits.** Check `wiki/.state.json`'s `last_evaluated_sha`; it may already match HEAD if a prior sync ran. Or the SHA may be unreachable (rebase), in which case the count starts from `suggested_base`.
 
 ## Code of conduct
 

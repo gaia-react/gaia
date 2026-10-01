@@ -3,7 +3,7 @@ type: concept
 status: active
 created: 2026-06-02
 updated: 2026-06-24
-tags: [concept, ci, audit]
+tags: [concept, ci]
 ---
 
 # Incremental CI Skipping
@@ -18,21 +18,19 @@ suite on a tree it has already cleared.
 ## Scope
 
 <!-- gaia:maintainer-only:start -->
-`main`'s ruleset requires three checks: `Run Chromatic`, `Vitest and
-Playwright`, and `code-review-audit`.
+`main`'s ruleset requires the `Run Chromatic` and `Vitest and Playwright`
+checks plus the `GAIA-Audit` commit status, which the local audit posts.
 <!-- gaia:maintainer-only:end -->
 GAIA's expensive required checks are **job-level**: the required context equals
 the job `name:`. A job that runs but gates its expensive steps off still
 completes and posts a green check under that name, so a required-check rule
 stays satisfied with no external check stamping.
 
-Incremental skipping applies to the two expensive checks:
+Incremental skipping applies to the expensive check, `Vitest and Playwright`
+(`.github/workflows/tests.yml`). The audit is not a CI job: it runs locally
+through the [[PR Merge Workflow]], which keeps its own per-member review base.
 
-- **`code-review-audit`** (`.github/workflows/code-review-audit.yml`): see
-  [[Code Review Audit CI]].
-- **`Vitest and Playwright`** (`.github/workflows/tests.yml`).
-
-`Run Chromatic` is left always-on. It is the cheapest of the three (TurboSnap
+`Run Chromatic` is left always-on. It is the cheapest of the two (TurboSnap
 `onlyChanged` already skips unchanged snapshots), and its `UI Review` /
 `UI Tests` / `Storybook Publish` results are commit **statuses** the Chromatic
 app posts only when it runs. Leaving Chromatic always-on keeps it adopter-safe
@@ -40,26 +38,20 @@ regardless of which Chromatic context an adopter chooses to require.
 
 ## Mechanism
 
-Each gated workflow does two things before its expensive steps:
+The gated workflow does two things before its expensive steps:
 
 1. **Resolve the last-green base.** Walk `merge-base(origin/main, HEAD)..HEAD`,
    newest→oldest, skipping HEAD, and return the most recent ancestor that
-   already passed:
-   - `code-review-audit` uses `.github/audit/resolve-audit-base.sh`; the base
-     is the most recent ancestor carrying a version-matched `GAIA-Audit` signal
-     (commit trailer or commit status). Version-aware: a `.gaia/VERSION` bump
-     invalidates older audits and forces a full re-audit under the new ruleset.
-   - `tests.yml` uses `.github/audit/resolve-check-base.sh "Vitest and
-Playwright"`; the base is the most recent ancestor whose `check-runs`
-     include that context with `conclusion == "success"`.
+   already passed. `tests.yml` uses `.github/audit/resolve-check-base.sh
+   "Vitest and Playwright"`; the base is the most recent ancestor whose
+   `check-runs` include that context with `conclusion == "success"`.
 2. **Diff `<base>...HEAD` against a path allowlist.** The workflow lists the
    changed files in the un-passed delta and matches them (ERE) against the
    files that affect it. No match → gate the expensive steps off; the job still
    reports its required check green.
 
 When no green ancestor exists (the first run on a PR, every prior run
-failed/cancelled (those leave no green signal), a `.gaia/VERSION` bump (audit
-only), or the Checks API is unreachable (fork PRs run with a token that the
+failed/cancelled (those leave no green signal), or the Checks API is unreachable (fork PRs run with a token that the
 helper falls back from)), the helper emits the branch the PR merges into and
 the diff covers the full PR scope. That branch is `GITHUB_BASE_REF`, read under
 Actions only, where the event sets it rather than the caller: a value that
@@ -69,13 +61,6 @@ therefore falls back to its own base rather than to the repository default,
 whose divergence it never introduced; `origin/main` is the answer outside
 Actions and whenever no base ref is declared. The helpers never anchor on an un-passed commit, so they
 never skip code the check has not cleared.
-
-For `code-review-audit`, in-scope PRs by `local`-mode authors with no override
-label add a third terminal state: CI stands down without spending tokens and
-posts a `pending` `GAIA-Audit` commit status on HEAD. The audit job still
-concludes green, so the gate is the `GAIA-Audit` commit status, not the job
-conclusion: a `pending` stand-down keeps the merge button blocked until the
-local audit clears it. See [[Code Review Audit CI]].
 
 ## Why "last green", not "last run"
 
@@ -97,13 +82,11 @@ full scope.
 
 - Generic last-green resolver: `.github/audit/resolve-check-base.sh` (tests +
   any future check).
-- Version-aware audit resolver: `.github/audit/resolve-audit-base.sh`. It serves
-  two consumers: this job-level gate, and the review scope every Code Audit Team
-  member resolves for itself (see [[Code Review Audit Agent]]).
+- Version-aware audit resolver: `.github/audit/resolve-audit-base.sh`. It is
+  not part of this gate; it gives every Code Audit Team member its own review
+  scope (see [[Code Review Audit Agent]]).
 
 ## See also
 
-- [[Code Review Audit CI]]: the audit workflow and its trailer/chore-deps skip
-  rules; this is its incremental-scope companion.
 - [[Chromatic Opt-Out]]: why and how the Chromatic check can be disabled.
 - [[PR Merge Workflow]]: the local-side audit handshake.

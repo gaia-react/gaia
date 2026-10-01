@@ -6,11 +6,11 @@ Dispatched by the `/gaia-wiki` router (`references/wiki.md` → "Sync"). Runs in
 
 Evaluate every commit between `wiki/.state.json` `last_evaluated_sha` and HEAD. For each, decide whether the wiki needs an update. Edit pages, log decisions, advance state, commit.
 
-`wiki/.state.json` is written by two workflows: this one writes the sync-related fields (`last_evaluated_sha`, `last_evaluated_at`); `/gaia-wiki consolidate` writes the consolidate-related field (`last_consolidated_sha`). Each must preserve fields owned by the other when writing. The hooks (`wiki-drift-check`, `wiki-commit-nudge`, `wiki-session-stop`) are read-only consumers.
+`wiki/.state.json` is written by two workflows: this one writes the sync-related fields (`last_evaluated_sha`, `last_evaluated_at`); `/gaia-wiki consolidate` writes the consolidate-related field (`last_consolidated_sha`). Each must preserve fields owned by the other when writing. Everything else that reads it, the statusline nudge included, is a read-only consumer.
 
 ## Step 1: Read state and compute drift
 
-Run `.gaia/cli/gaia wiki state --json` and parse the result. Use `head_short`, `state_sha`, `commits_ahead`, `reachable`, and `suggested_base` directly.
+Run `.gaia/cli/gaia wiki state --json` and parse the result. Use `head_short`, `state_sha`, `commits_ahead`, `drift_count`, `reachable`, and `suggested_base` directly.
 
 Throughout this playbook, **the evaluation baseline** is the ref Steps 2, 3, and 8 evaluate from. On the normal path it is `last_evaluated_sha`; on the recovery path (below) it is `suggested_base`. Each branch states which.
 
@@ -33,7 +33,7 @@ If drift > 30 commits, ASK the user via `AskUserQuestion`:
 
 Only proceed automatically when drift ≤ 30.
 
-The drift count is `commits_ahead` on the normal path. On the recovery path `commits_ahead` is `0` (the recorded SHA is unreachable, so the CLI cannot count from it); use the recovered range size instead, `git rev-list --count <suggested_base>..HEAD`, and apply this same cap to it. A batch that landed since the last sync (worst case, a whole release) shows up here and is gated exactly like normal drift.
+The drift count is `drift_count`, on the normal path and on the recovery path alike. The CLI already counts from the right base (the recorded SHA when reachable, else `suggested_base`) and leaves out the wiki bookkeeping commits, so do not recompute it with `git rev-list`. Apply the cap to `drift_count`. A batch that landed since the last sync (worst case, a whole release) shows up here and is gated exactly like normal drift.
 
 ## Step 3: First-pass, classify commits
 

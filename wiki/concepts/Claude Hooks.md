@@ -38,6 +38,7 @@ The sourced libraries under `.claude/hooks/lib/` are deliberately absent. They a
 | `block-env-read.sh` | PreToolUse (Bash, Read, Grep) | Read-side guard for dotenv paths, across all three tool tiers that can reach one. |
 | `block-env-write.sh` | PreToolUse (Edit\|Write\|MultiEdit) | Refuses a write targeting a `.env` file. |
 | `block-eslint-config-edit.sh` | PreToolUse (Edit\|Write\|MultiEdit) | Puts every edit to an ESLint flat config to the operator, on the filename alone. |
+| `block-fork-pr-checkout.sh` | PreToolUse (Bash) | Denies `gh pr checkout` and a `pull/<n>/head` fetch for a cross-repository (fork) pull request, and fails closed when `gh` cannot answer. |
 | `block-handrolled-pr-poll.sh` | PreToolUse (Bash, Monitor) | Denies a hand-rolled merge wait that never reads `mergeable`, and names the shipped one. |
 | `block-main-destructive-git.sh` | PreToolUse (Bash, Monitor) | Denies a commit on `main`/`master`, a force-push to it, and a push destined for it. |
 | `block-manifest-write.sh` | PreToolUse (Bash, Edit\|Write\|MultiEdit) | Refuses a write to the release-generated manifest, through the edit tools and the common Bash vectors alike. |
@@ -51,6 +52,7 @@ The sourced libraries under `.claude/hooks/lib/` are deliberately absent. They a
 | `debt-sentinel-touch.sh` | PostToolUse (Bash) | Arms the debt-count staleness sentinel after a `gh` command that mutates the backlog. |
 | `debt-session-reconcile.sh` | SessionStart (startup\|resume) | Reconciles a shown `Run /gaia-debt` nudge against the live backlog. |
 | `issue-claim-release.sh` | PostToolUse (Bash) | Strips the `in-progress` claim from every issue a merged pull request closes. |
+| `janitor-report-drain.sh` | UserPromptSubmit | Delivers the janitor's one-line base-catch-up report to the conversation, once. |
 | `local-janitor.sh` | Invoked by path from `wiki-session-start.sh`; also runnable on its own | Reaps a merged-and-gone local wiki-sync branch and fast-forwards base to catch up a wiki landing. |
 | `post-audit-status.sh` | Invoked by path by the orchestrating session, after every member is dispositioned | Posts the `GAIA-Audit` commit status on HEAD. |
 | `post-findings-block-on-merge.sh` | PreToolUse (Bash) | Posts the machine-readable findings block on a local-mode merge, so it counts toward the recurrence tally. Never blocks. |
@@ -61,12 +63,10 @@ The sourced libraries under `.claude/hooks/lib/` are deliberately absent. They a
 | `token-tally-git-op.sh` | PreToolUse (Bash) | Records the session's ground-truth token counts ahead of a git operation. |
 | `token-tally-review.sh` | PostToolUse (Bash), Stop | Captures a code-review-audit run as its own cost record, on either end-of-context trigger. |
 | `usage-capture.sh` | Stop, SessionStart (startup\|resume) | Launches the detached usage flusher and returns. |
-| `wiki-commit-nudge.sh` | PostToolUse (Bash) | Nudges a wiki refresh after a commit that outpaces the wiki's recorded state. |
-| `wiki-drift-check.sh` | UserPromptSubmit | Detects drift between the wiki's recorded state and HEAD. |
 | `wiki-recompact-inject.sh` | UserPromptSubmit | Re-injects the hot cache on the first turn after a compaction, then clears the sentinel. |
 | `wiki-recompact-sentinel.sh` | PostCompact | Drops the sentinel a compaction happened, which the inject hook acts on next turn. |
 | `wiki-session-start.sh` | SessionStart (startup\|resume) | Records HEAD for the acting tree and delegates to `local-janitor.sh`. |
-| `wiki-session-stop.sh` | Stop | Prompts to refresh the hot cache, and nags when the session's commits outran the wiki's state. |
+| `wiki-session-stop.sh` | Stop | Prompts to refresh the hot cache when the session committed wiki changes. |
 | `wiki-squash-autocommits.sh` | Stop | Squashes the session's trailing run of wiki auto-commits into one. |
 | `workflow-doctrine-inject.sh` | PostToolUse (Bash, EnterWorktree), SessionStart (startup\|resume\|clear\|compact) | Injects the execution doctrine into a session on a non-default branch or in a linked worktree, once per branch key. |
 | `worthiness-presence-check.sh` | PreToolUse (Bash) | Denies `gh pr merge` when an emergent test the pull request changed carries no worthiness verdict. |
@@ -123,7 +123,8 @@ Each script reads `tool_input.command` from stdin and filters by content; there 
 - **`capture-red-observations.sh`** (PostToolUse, Bash): on a one-shot vitest run, re-invokes vitest with `--reporter=json` scoped to the agent's target, records each genuinely-failing per-test result to the RED-observation ledger (`.gaia/local/red-ledger/`). Records file, full test name, content signal, and failure kind. Collection/compile errors are excluded. Observe-only; always exits 0. See [[TDD RED Verification]].
 - **`red-verify-commit-check.sh`** (PreToolUse, Bash deny): before each `git commit`, checks every new-at-HEAD test file against the RED-observation ledger. Requires a ledger RED whose content signal still matches the current test body; no matching entry denies the commit, naming the offending test. Fail-open on missing tooling or unparseable test files. See [[TDD RED Verification]].
 - **`worthiness-presence-check.sh`** (PreToolUse, Bash deny): before each `gh pr merge` (armed through the shared verb-arming decision below), scopes to the emergent test files the PR changed and denies the merge when a changed emergent test has no worthiness-ledger line matching its current content signal. Sits alongside `pr-merge-audit-check.sh` as an independent deny on the same event. Checks presence plus signal match only, never the verdict. No-op when zero emergent tests changed; fail-open on missing tooling or unparseable files. See [[Worthiness Presence Gate]].
-- **`pr-merge-audit-check.sh`** (PreToolUse, Bash deny): denies `gh pr merge` until every Code Audit Team member the branch's scope resolves to has written its clearance marker under `.gaia/local/audit/`, and denies again when a member's markers are stale against the pushed head. Its siblings on this event are `worthiness-presence-check.sh` above and `post-findings-block-on-merge.sh`. See [[PR Merge Workflow]].
+- **`block-fork-pr-checkout.sh`** (PreToolUse, Bash deny): denies `gh pr checkout <n>` and a fetch naming `pull/<n>/head` when pull request `<n>` is cross-repository, and denies when `gh` cannot answer. It runs from the tree that is current before the checkout, so it is the one fork control that acts before fork content can reach the working tree; every guard that runs afterwards runs the fork's own copy.
+- **`pr-merge-audit-check.sh`** (PreToolUse, Bash deny): denies `gh pr merge` of a cross-repository pull request, posts the `GAIA-Audit` bypass status for a pull request it classified out of scope or manifest-only `chore(deps)`, and otherwise denies until every Code Audit Team member the branch's scope resolves to has written its clearance marker under `.gaia/local/audit/`, and denies again when a member's markers are stale against the pushed head. Its siblings on this event are `worthiness-presence-check.sh` above and `post-findings-block-on-merge.sh`. See [[PR Merge Workflow]].
 
 ### Workflow-boundary safeguard (Bash, Agent, UserPromptSubmit)
 
@@ -186,14 +187,13 @@ Every **blocking** command-reading hook's `PreToolUse` registration names `Bash|
 
 The wiki sync system is convergent: the user's already-paid-for Claude session does the work via `/gaia-wiki sync`. Hooks only keep Claude _informed_; they never spawn `claude -p` sub-processes. See [[Wiki Sync]] for the full design.
 
-- **`wiki-session-start.sh`** (SessionStart) / **`wiki-session-stop.sh`** (Stop): wiki coherence and `hot.md` refresh. The Stop hook also injects an end-of-session reminder when the session committed but `wiki/.state.json` did not advance (once-per-session via `.claude/wiki-safety-checked` marker). See [[Claude Integration Conventions]] § Wiki vendor relationship.
-- **`wiki-drift-check.sh`** (UserPromptSubmit): first prompt of each session, compares `wiki/.state.json`'s `last_evaluated_sha` to HEAD; if drifted, injects a `[wiki state]` reminder. Once-per-session via `.claude/wiki-drift-checked` marker.
+- **`wiki-session-start.sh`** (SessionStart) / **`wiki-session-stop.sh`** (Stop): wiki coherence and `hot.md` refresh. The Stop hook prompts a `hot.md` refresh when the session committed changes under `wiki/`. See [[Claude Integration Conventions]] § Wiki vendor relationship.
+- **`janitor-report-drain.sh`** (UserPromptSubmit): reads and deletes the one-line base-catch-up report `local-janitor.sh` writes when its fast-forward of the base branch is refused, so the line reaches the conversation once. A SessionStart hook's exit-0 stderr is not injected into the conversation, which is why the delivery runs on this event.
 - **`wiki-recompact-sentinel.sh`** (PostCompact): on a context compaction event, drops a sentinel file (`.claude/wiki-recompact-pending`) so the next `UserPromptSubmit` knows to re-inject the hot cache. PostCompact command hooks cannot inject stdout into context directly, so the sentinel hands off to `wiki-recompact-inject.sh`. A no-op when `wiki/hot.md` does not exist.
 - **`wiki-recompact-inject.sh`** (UserPromptSubmit): on the first prompt after a compaction (sentinel present), re-injects `wiki/hot.md` into context via stdout, then removes the sentinel so it fires exactly once per compaction. Replaces the claude-obsidian prompt-type PostCompact hook, which some Claude Code builds reject. A no-op on every prompt where no compaction has occurred.
-- **`wiki-commit-nudge.sh`** (PostToolUse, Bash): fires after `git commit` invocations. Injects a `[wiki nudge]` line with the short SHA, subject, file count, and current drift count. Skips merge / amend / `wiki:` subjects to avoid loops. Never spawns sub-processes.
 - **`wiki-squash-autocommits.sh`** (Stop): folds adjacent `wiki: auto-commit` subjects into a single PR-branch commit. Failed `gh pr create` / `gh pr merge` preserves the working tree (no silent reset).
 
-`update-deps` and `update-gaia` are surfaced via the **statusline** (not a hook); see [[Claude Skills]] § Statusline update indicators. The statusline surface is chosen over a SessionStart `<system-reminder>` because system-reminders are visible only to the model; passive statusline indicators are visible to the user.
+Wiki drift has no hook: the only drift signal is the `🧠 Run /gaia-wiki` statusline nudge, see [[Wiki Sync]]. `update-deps` and `update-gaia` are surfaced via the **statusline** (not a hook); see [[Claude Skills]] § Statusline update indicators. The statusline surface is chosen over a SessionStart `<system-reminder>` because system-reminders are visible only to the model; passive statusline indicators are visible to the user.
 
 ## Why `.claude/rules/shell-cwd.md` bans `cd`
 

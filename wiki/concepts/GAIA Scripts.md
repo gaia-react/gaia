@@ -33,12 +33,12 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 | `audit-fix-verify.sh` | yes | the PR Merge Workflow fix round | Records the working-tree baseline before a fixer runs, pins a copy of itself beside it, and checks the fixer's changes against the dispositions afterward from that copy. |
 | `audit-key-lib.sh` | yes | sourced | Mints the worktree-partitioned key every audit artifact path is built from, and the general slug rule those keys share. |
 | `audit-loop-eval.sh` | yes | `audit-loop-bound.sh` (sourced), the PR Merge Workflow checkpoint (CLI) | Judges each audit round's findings and prints the verdict and the checkpoint brief; read-only. |
-| `audit-loop-record.sh` | yes | the PR Merge Workflow fix round, the CI audit workflow | Writes the marker-delimited `## Audit rounds` section into a pull request body. |
+| `audit-loop-record.sh` | yes | the PR Merge Workflow fix round | Writes the marker-delimited `## Audit rounds` section into a pull request body. |
 | `audit-loop-state-lib.sh` | yes | sourced | Reads, validates and writes the per-branch audit loop state, and parses the typed grant and accept lines. |
 | `audit-member-digest.sh` | yes | CI, audit hooks, agent definitions | Prints one Code Audit Team member's content digest, and exits non-zero printing nothing on any condition it cannot resolve. |
 | `audit-noop-detect.sh` | yes | `.claude/rules/subagent-dispatch.md`, the audit fan-out surfaces | Decides whether a dispatched agent's report artifact is a real result or a silent no-op. |
 | `audit-resolve-scope.sh` | yes | every Code Audit Team agent definition | Resolves a member's review scope in one command: diff bases, changed-file lists, the dirty-in-scope check, and the scope digest. |
-| `audit-scope-digest.sh` | yes | agent definitions, CI | Carries a member's own content digest between scope resolution and clearance write, the two Bash calls that must agree. `--release` drops a capture when a round ends without publishing a marker or refusal (a self-healed round), so the next round recaptures fresh. |
+| `audit-scope-digest.sh` | yes | agent definitions | Carries a member's own content digest between scope resolution and clearance write, the two Bash calls that must agree. `--release` drops a capture when a round ends without publishing a marker or refusal (a self-healed round), so the next round recaptures fresh. |
 | `audit-window-lib.sh` | yes | sourced | Shared derivation of the audit window a run is accounted against. |
 | `audit-write-clearance.sh` | yes | agent definitions, CI | The one writer for every Code Audit Team clearance marker. |
 | `audit-write-findings.sh` | yes | agent definitions | The one writer for a member's findings sidecar, the report of record the merge workflow reads. |
@@ -50,11 +50,11 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 | `check-audit-base-derivation.sh` | yes | GAIA's own invariant harness (maintainer-side) | Keeps every Code Audit Team member resolving one review base rather than several. |
 | `check-audit-key-callers.sh` | yes | GAIA's own invariant harness (maintainer-side) | Asserts the agent definitions that name an audit artifact actually call the shared key helper instead of hand-building a path. |
 | `check-cli-workspace-floors.sh` | no | `cli-advisory-scan.yml`, `cli-tests.yml` | Reports security floors that have stopped being applied in a pnpm workspace root outside the repository root. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
-| `check-debt-issue-metadata.sh` | yes | `code-review-audit.yml`, the audit agent, `/gaia-debt` | Validates the label set and dedup key a tech-debt filing carries against the filing rules. |
+| `check-debt-issue-metadata.sh` | yes | the audit agent, `/gaia-debt` | Validates the label set and dedup key a tech-debt filing carries against the filing rules. |
 | `check-hook-command-rooting.sh` | yes | GAIA's own invariant harness (maintainer-side) | Asserts every hook command in `.claude/settings.json` is rooted at the repository top level rather than at the working directory. |
 | `check-hook-scope-manifest.sh` | yes | GAIA's own invariant harness (maintainer-side) | Scans every hook for a `.gaia/local` path built without a resolved root. |
 | `check-main-root-derivation.sh` | no | GAIA's own invariant harness | Catches a hand-rolled main-checkout derivation inlined into a consumer that declares no resolver at all. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
-| `check-updates.sh` | yes | `SessionStart`, the statusline | Background check for a newer GAIA release, feeding the statusline update nudge. |
+| `check-updates.sh` | yes | `SessionStart`, the statusline | Background check that feeds the statusline nudges: a newer GAIA release, the residue candidate count, and `wikiDriftCount` (commits the wiki trails HEAD by, from `gaia wiki state`). |
 
 ### `cost-`
 
@@ -104,7 +104,6 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 
 | Script | Ships | Invoker | What it is |
 |---|---|---|---|
-| `append-audit-author.sh` | yes | `/setup-gaia` | Writes one `login=mode` pair into the audit config's author knob without clobbering other entries. |
 | `assert-no-release-leak.sh` | no | `release.yml` | Proves no release-excluded path survived into the tree that becomes the tarball. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `awk-interp-lib.sh` | no | sourced | Resolves `GAIA_AWK`, the sanctioned awk interpreter (mawk or BWK one-true-awk) the awk-tokenizer guards run under. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `bats5.sh` | yes | the bats runners | Runs bats under a bash 5 when one is available, so local matches CI. |
@@ -122,7 +121,7 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 | `plan-resume-point.sh` | yes | `/gaia-plan` | Deterministic phase-level resume point for a plan picked up mid-flight. |
 | `post-findings-block.sh` | yes | agent definitions, `post-findings-block-on-merge.sh` hook | Merges every dispatched member's findings sidecar into one machine-readable block and posts it on the pull request. |
 | `pr-wait-merge.sh` | yes | the merge workflow, every flow that merges | The merge wait: polls a pull request to `MERGED` and exits early on every state that means it never will. |
-| `read-audit-ci-config.sh` | yes | `code-review-audit.yml`, the merge workflow, audit hooks | Reader and per-author resolver for the audit CI config, so a flow obeys the project's own settings. |
+| `read-audit-ci-config.sh` | yes | the merge workflow, audit hooks | Reader for the audit roster file's settings (`push_fixes`, `retrigger_workflows`). Its author resolver always answers `local`, because every audit runs locally. |
 | `resolve-audit-members.sh` | yes | the merge workflow, audit hooks, CI | Resolves which Code Audit Team members a diff dispatches. |
 | `state-registry-lib.sh` | yes | sourced | Reader for the state registry, the record of every runtime path GAIA writes. |
 | `summary-verify.sh` | yes | the spec and plan close flows | Fail-closed verify gate for the consolidated summary artifact, run before the irreversible removal of the layers it replaces. |

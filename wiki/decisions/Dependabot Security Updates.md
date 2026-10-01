@@ -12,7 +12,7 @@ tags: [decision, dependencies, security, ci]
 
 ## Decision
 
-`/setup-gaia` offers Dependabot security updates for npm as an opt-in (Phase 3.6 of `.claude/commands/setup-gaia.md`), recorded as `dependabot_security_updates` in `.gaia/automation.json`. It is never a file every clone inherits. `/update-deps` keeps sole ownership of version updates.
+`/setup-gaia` offers Dependabot security updates for npm as an opt-in (Phase 3.6 of `.claude/commands/setup-gaia.md`), recorded as `dependabot_security_updates` in the committed `.gaia/project.json` (see [[Project Config]]). It is never a file every clone inherits. `/update-deps` keeps sole ownership of version updates.
 
 ## Why
 
@@ -28,12 +28,12 @@ Alerts (`vulnerability-alerts`) and security updates (`automated-security-fixes`
 
 ## Why the title is fix(deps), not chore(deps)
 
-`.gaia/scripts/chore-deps-skip.sh` makes `tests.yml` skip the suite, and makes `code-review-audit.yml` stamp `GAIA-Audit` without an audit, for a `chore(deps):` title on a diff confined to dependency manifests, which a Dependabot security update always is. That is safe only because `/update-deps` runs the quality gate locally first. A Dependabot pull request has no such proof, so its prefix is `fix` and a test in the CLI pins that the rendered prefix never matches the bypass.
+`.gaia/scripts/chore-deps-skip.sh` makes `tests.yml` skip the suite, and lets the local merge gate stamp `GAIA-Audit` without an audit, for a `chore(deps):` title on a diff confined to dependency manifests, which a Dependabot security update always is. That is safe only because `/update-deps` runs the quality gate locally first. A Dependabot pull request has no such proof, so its prefix is `fix` and a test in the CLI pins that the rendered prefix never matches the bypass.
 
 ## Accepted tradeoffs
 
 - `cooldown` is version-updates-only, so Dependabot does not delay these pull requests, but pnpm's `minimumReleaseAge` (see [[pnpm]]) still applies to the lockfile. A fix published inside the window fails the pull request's install until it ages out or gets a hand-checked exact-version exclusion. The advisory is public, so the window is the operator's call per fix, not something a cooldown can express.
-- Workflows triggered by Dependabot get no Actions secrets, and `claude-code-action` rejects bot actors by default (`allowed_bots` is empty), so a CI-mode audit cannot run on these pull requests. They merge through the local audit flow.
+- Nothing in CI audits a pull request or posts `GAIA-Audit`. On a repository that requires `GAIA-Audit`, a Dependabot pull request therefore merges only after a local merge run through the [[PR Merge Workflow]] in Claude Code, which posts the status. A merge from the GitHub UI is blocked by the required check.
 - GitHub's supported-ecosystems table lists pnpm through v10 for security updates. A project pinned to a newer pnpm may see security-update jobs fail, visible in the Dependabot tab, and `/update-deps` stays the fallback.
 
 ## Rejected alternative
@@ -42,4 +42,4 @@ Keeping security fixes behind `/update-deps`, with Dependabot only surfacing the
 
 ## Related
 
-[[Code Review Audit CI]], [[Incremental CI Skipping]], [[GAIA Init Workflow]].
+[[Project Config]], [[Incremental CI Skipping]], [[GAIA Init Workflow]].

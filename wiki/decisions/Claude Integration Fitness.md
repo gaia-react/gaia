@@ -96,7 +96,7 @@ Things audits keep re-discovering that are not findings:
 
 **Slash commands appear under "skills" in Claude Code's surface listing.** `.claude/commands/` files register through Claude Code's plugin/skill discovery and appear in the same listing as actual skills. This is a Claude Code surface artifact. Skip the round-trip.
 
-**`wiki/.state.json` lagging HEAD.** Normal pre-release state. The session-start hook reports drift informationally; the wiki-fitness category surfaces it as `info` (not `error` or `warning`) and recommends `/gaia-wiki sync`. Do not escalate to a blocking finding.
+**`wiki/.state.json` lagging HEAD.** Normal pre-release state. No hook reports wiki drift (the statusline nudge is the only drift signal); the wiki-fitness category surfaces it as `info` (not `error` or `warning`) and recommends `/gaia-wiki sync`. Do not escalate to a blocking finding.
 
 **Release-excluded wiki pages flagged as orphans by `gaia wiki orphans`.** Expected state, not a defect. Shipped pages must not `[[wikilink]]` release-excluded pages (enforced by `wikilink-to-excluded`); plain-text references to them are correct. `gaia wiki orphans` cannot see release-exclusion, so it will always flag such a page. Surface as `info`; do not escalate to a blocking finding.
 

@@ -15,7 +15,7 @@ tags: [decision, distribution, maintainer, cli]
 
 The `.gaia/cli/` directory ships two binaries:
 
-- **`gaia`** (adopter binary): public CLI, every adopter-facing namespace (`automation`, `fitness`, `harden-ledger`, `harden-tally`, `init`, `labels`, `ping`, `react-perf`, `residue-*`, `sandbox`, `scaffold`, `setup`, `setup-ci`, `update`, `update-deps`, `wiki`). Shipped in tarballs.
+- **`gaia`** (adopter binary): public CLI, every adopter-facing namespace (`fitness`, `harden-ledger`, `harden-tally`, `init`, `labels`, `ping`, `react-perf`, `residue-*`, `sandbox`, `scaffold`, `setup`, `setup-ci`, `update`, `update-deps`, `wiki`). Shipped in tarballs.
 - **`gaia-maintainer`** (maintainer-only binary): release-only, carrying just the `release` namespace. Excluded from tarballs by `.gaia/release-exclude`.
 
 The two surfaces are not a strict superset relationship: each entry point includes only the subcommands it needs.
