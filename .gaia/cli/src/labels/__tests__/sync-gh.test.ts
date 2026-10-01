@@ -24,7 +24,7 @@ const ALL_FEATURES = [
   '--feature',
   'tech-debt',
   '--feature',
-  'gaia-ci',
+  'dependabot',
   '--feature',
   'forensics',
 ];

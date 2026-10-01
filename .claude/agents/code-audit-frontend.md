@@ -281,14 +281,14 @@ This decision runs **after** section B's security classification and **before** 
 Promote a non-security out-of-scope finding into the self-heal path, repaired in place rather than filed, **if and only if all five** of these hold:
 
 1. The finding's file is in the audit's **changed TS/TSX file set**: the exact `CHANGED=` set the audit already resolved in "Rules-Based Audit" → "How to run" (`.gaia/scripts/audit-resolve-scope.sh`). Read those lines; do not re-derive them, or this filter and the review can disagree about which files the audit covered. A changed non-TS file (a `*.mjs` config, a CSS file) is out.
-2. The file is **inside the self-heal repair boundary**: it does NOT match `AUDIT_SELFHEAL_REFUSE_ERE` (`.claude/hooks/lib/audit-selfheal-paths.sh`). A file in the refusal set (`test/**`, a root `*.config.ts`, `.claude/**`, and the rest of that set) is out: the CI push gate (`.github/workflows/code-review-audit.yml`) sources the same ERE and refuses the whole self-heal at push time, leaving the finding with no disposition at all.
+2. The file is **inside the self-heal repair boundary**: it does NOT match `AUDIT_SELFHEAL_REFUSE_ERE` (`.claude/hooks/lib/audit-selfheal-paths.sh`). A file in the refusal set (`test/**`, a root `*.config.ts`, `.claude/**`, and the rest of that set) is out: repairing it would cross the self-heal boundary, so the finding is reported or filed instead, never left without a disposition.
 3. The file is in **your own remit** (your declared globs, see "Remit and self-skip", evaluated at the second precedence tier), not a cross-remit file a claimant member owns.
 4. The finding is **non-security** per section B's classification, read as section B's own flag, bound on **every repo including a confirmed PRIVATE one**. Never re-derive "non-security" from the `finding_class` tag or a fresh screen.
 5. The fix is **narrow**: a single logical unit confined to that one file, no public-contract change, no cross-module ripple (`footprint:narrow`, never `footprint:wide` or `footprint:spec`).
 
 Any condition failing routes the finding to the existing filing path (sections C/D/E), exactly as today.
 
-**Aggregate cap (the sixth gate).** <!-- honors AUDIT plan-time directive 2 (aggregate self-heal cap) --> Promoted repairs count against the existing self-heal >10-file cap. That cap is enforced deterministically only by the CI push gate (`.github/workflows/code-review-audit.yml`); in local mode the cap has no deterministic backstop and rests on your own running count of files touched this self-heal pass (in-scope suggestion fixes plus promoted out-of-scope repairs). Once you are at the cap, promote no further findings; the remaining qualifying findings **file** instead, through sections C/D/E.
+**Aggregate cap (the sixth gate).** <!-- honors AUDIT plan-time directive 2 (aggregate self-heal cap) --> Promoted repairs count against the existing self-heal >10-file cap. The cap has no deterministic backstop; it rests on your own running count of files touched this self-heal pass (in-scope suggestion fixes plus promoted out-of-scope repairs). Once you are at the cap, promote no further findings; the remaining qualifying findings **file** instead, through sections C/D/E.
 
 A **security-class** finding (per section B) is **never** a promotion candidate, on any repo, including a confirmed PRIVATE one; it takes its existing section D (divert) or section E (private file) path.
 
@@ -339,8 +339,7 @@ Probe the issue backend once at the start of the disposition flow:
 `cd <root> && gh repo view --json visibility` returns `PUBLIC | PRIVATE | INTERNAL`. **Re-read it immediately before each security-relevant write** (TOCTOU); treat any non-confirmed-`PRIVATE` state as divert.
 
 - security-class on **PUBLIC or INTERNAL** → **divert**, never a public/internal issue:
-  - **local run**: write a redacted operator surface to `.gaia/local/audit/security/<HEAD-sha>.md` (gitignored) and surface a redacted pointer, **count only, no detail**, in the report. Surface to the operator and wait; never auto-draft an advisory, never auto-disclose. Record disposition `diverted`.
-  - **CI run**: a private advisory needs a privileged credential the default `GITHUB_TOKEN` lacks (mechanism deferred). For now emit a redacted **count-only** signal to the public PR comment (`N security-class findings diverted; maintainer must review`), never the detail. The marker still writes. Record `diverted`.
+  - write a redacted operator surface to `.gaia/local/audit/security/<HEAD-sha>.md` (gitignored) and surface a redacted pointer, **count only, no detail**, in the report. Surface to the operator and wait; never auto-draft an advisory, never auto-disclose. Record disposition `diverted`.
 - security-class on **confirmed PRIVATE** → file as a normal private `tech-debt` issue through the non-security pipeline (section E), fully dedupable/fixable. Record `filed`.
 - A **divert failure** (missing advisory credential or API error) reverts the finding to a redacted operator/maintainer surface, never a public issue, and the marker still writes. Record `diverted`.
 - A security-class finding's **detail** is never written to: a public or internal issue, the PR comment, or the Actions log. A diverted security finding contributes only to counts on those surfaces.
@@ -445,9 +444,9 @@ Out-of-scope dispositions: <D>.
 Ledger: .gaia/local/audit/<audit-key>.rerun.json  (removed on a clean pass)
 ```
 
-**When the ledger write was skipped or failed** (empty `KEY_BASE`, a best-effort write failure, or any CI run, where the ledger never writes), do NOT emit the terse block: return the **full report** (the Summary / Critical / Important / Suggestions sections above) as today, so the per-finding detail is never lost. This is what makes the reader contract's "behave as today" achievable: detail is in the ledger on a successful write, in the RETURN otherwise.
+**When the ledger write was skipped or failed** (empty `KEY_BASE` or a best-effort write failure), do NOT emit the terse block: return the **full report** (the Summary / Critical / Important / Suggestions sections above) as today, so the per-finding detail is never lost. This is what makes the reader contract's "behave as today" achievable: detail is in the ledger on a successful write, in the RETURN otherwise.
 
-The full report sections remain the structure you author internally to populate the ledger (local) and the PR comment (CI). The terse form changes only what the RETURN string carries when the detail safely landed in the ledger. It never makes the CI PR comment terse, CI wants the comment FULL, and CI skips the ledger so its RETURN always carries the full report.
+The full report sections remain the structure you author internally to populate the ledger. The terse form changes only what the RETURN string carries when the detail safely landed in the ledger; it never makes the PR comment terse.
 
 ## Finding classification
 
@@ -510,7 +509,7 @@ A sentence presenting a subset as the whole set is an incomplete enumeration; an
 
 The re-run loop (audit, fix, re-audit) carries state across rounds. Locally that state lives in the main orchestrator thread's degrading memory: it hand-authors a cumulative briefing forward into each next round and absorbs every round's full ~10k-token report. That is lossy and rot-prone. The ledger replaces it with a deterministic, gitignored cache file that briefs the next re-audit losslessly (the fixer is briefed from the main thread's dispositions file), and it lets the local Task return go terse so the main thread stops absorbing full reports (see "Return contract" under Output Format).
 
-The ledger is **LOCAL-FLOW-ONLY and NON-GATING.** It never gates the merge, no hook reads it, and it is skipped entirely in CI (see "CI gating" below). It is a sibling of the out-of-scope disposition pipeline (section F/G) that never overlaps it: that pipeline handles **out-of-scope** findings and gates the merge; the ledger holds **in-scope** remaining work and never gates. Neither reads the other.
+The ledger is **LOCAL-FLOW-ONLY and NON-GATING.** It never gates the merge, no hook reads it, and it is skipped whenever `GITHUB_ACTIONS` or `CI` is set (see "CI gating" below). It is a sibling of the out-of-scope disposition pipeline (section F/G) that never overlaps it: that pipeline handles **out-of-scope** findings and gates the merge; the ledger holds **in-scope** remaining work and never gates. Neither reads the other.
 
 ### Filename and keying
 
@@ -539,7 +538,7 @@ A base-keyed filename therefore survives the HEAD moves within a round with no H
 <root>/.gaia/local/audit/<AUDIT_KEY>.rerun.json
 ```
 
-If `AUDIT_KEY` is empty (the base or the branch is undeterminable), skip the ledger entirely (fail-open; behave as today). In CI the agent prompt provides `<base>...HEAD`; use that same base when present, but the ledger is skipped in CI regardless (see "CI gating").
+If `AUDIT_KEY` is empty (the base or the branch is undeterminable), skip the ledger entirely (fail-open; behave as today).
 
 ### JSON shape (schema 1)
 
@@ -621,7 +620,7 @@ if [ -n "${GITHUB_ACTIONS:-}" ] || [ -n "${CI:-}" ]; then
 fi
 ```
 
-CI already carries cross-round state by git-native means that survive a fresh checkout: the incremental base via the `GAIA-Audit` commit trailer + status (read by `.github/audit/resolve-audit-base.sh`), and remaining findings via the PR-comment findings block plus `tech-debt` disposition issues. Each CI audit is a fresh ephemeral checkout with no artifact upload/download of `.gaia/local/audit/`, and that directory is gitignored, so a ledger written in one CI run is never read by the next, and there is no long-lived orchestrator threading a summary forward in CI for it to brief. Gating to local avoids leaving a misleading inert file in the CI workspace and guarantees the ledger never perturbs the trailer/status handshake `resolve-audit-base.sh` depends on. Do NOT wire the ledger into `.github/audit/resolve-audit-base.sh`, the disposition pipeline, the marker, or the PR-comment findings block; those paths are unchanged.
+An ephemeral CI checkout has no long-lived orchestrator to brief and `.gaia/local/audit/` is gitignored, so a ledger written there is never read again. Gating to local avoids leaving a misleading inert file in such a workspace and guarantees the ledger never perturbs the trailer/status handshake `resolve-audit-base.sh` depends on. Do NOT wire the ledger into `.github/audit/resolve-audit-base.sh`, the disposition pipeline, the marker, or the PR-comment findings block; those paths are unchanged.
 
 ### Non-interference invariant
 
@@ -652,7 +651,7 @@ Rule-based line-level checks are done by specialist subagents in parallel with `
 
 #### Resolve the review scope
 
-**When the invoking context supplies a base, that base overrides `BASE_REF` (and therefore `BASE_SHA`) only.** CI passes `<base>...HEAD` in the agent prompt; pass it as `--base-override <base>` on the command below, in place of the resolver's own `BASE_REF`. `KEY_REF` and `KEY_BASE` still come from the resolver call inside that command regardless, because the resolver, not the supplied base, made the reason/anchor decision those values carry. On that path this member does NOT pass `--review-base` / `--base-reason` / `--anchor-tree` to the findings sidecar writer, because the resolver did not make the decision being recorded. Only CI supplies a base, and every member skips the sidecar in CI outright, so the record is moot there.
+**When the invoking context supplies a base, that base overrides `BASE_REF` (and therefore `BASE_SHA`) only.** An agent prompt can carry `<base>...HEAD`; pass it as `--base-override <base>` on the command below, in place of the resolver's own `BASE_REF`. `KEY_REF` and `KEY_BASE` still come from the resolver call inside that command regardless, because the resolver, not the supplied base, made the reason/anchor decision those values carry. On that path this member does NOT pass `--review-base` / `--base-reason` / `--anchor-tree` to the findings sidecar writer, because the resolver did not make the decision being recorded.
 
 Otherwise this command is the file's ONE derivation of `BASE_REF`, `BASE_REASON`, `KEY_REF`, `ANCHOR_TREE`, `BASE_SHA`, `KEY_BASE`, `AUDIT_KEY`, `CHANGED`, `ELIG_BASE`, and `ELIG_CHANGED`, and every later consumer, the ledger, the findings sidecar, the handshake's `--base`, takes the value it printed rather than deriving its own. Nothing about it is conditional on being local: only the ledger READ further down is local-only, never the base it reads from.
 
@@ -718,7 +717,7 @@ A deterministic `pnpm audit --json` run is the oracle for "known vulnerable depe
 
 **Run + parse.** `pnpm audit` can exit non-zero when advisories exist, so append `|| true` and parse the JSON regardless of exit code. The top-level `advisories` field is an object keyed by advisory ID; each value carries `id`, `module_name`, `severity`, `title`, `cves`, `url`, `patched_versions`, and `findings[].paths`.
 
-**Severity threshold (entry gate).** Only `high` and `critical` advisories are candidates. This matches the GAIA CI blocking path's own high/critical floor and drops the long tail of low/moderate transitive noise. (Within-run dedup is free: the JSON is already keyed by advisory ID.)
+**Severity threshold (entry gate).** Only `high` and `critical` advisories are candidates. This drops the long tail of low/moderate transitive noise. (Within-run dedup is free: the JSON is already keyed by advisory ID.)
 
 **Baseline suppression (cross-review noise scoping).** A machine-local, gitignored allowlist at `.gaia/local/dep-audit-baseline.json` lets the operator acknowledge an unfixable transitive advisory so it does not respam every review. Shape:
 
@@ -891,8 +890,8 @@ How your run ends: a reply with no tool call ends it, and the orchestrator reads
 - Prioritize ruthlessly **in the final report's ordering**, 5 important issues lead over 50 trivial ones; this governs how findings are ranked and presented, not whether they are surfaced (surface everything at the finding stage, let the proof gate and verifier cut)
 - Work within the project's existing patterns when suggesting fixes; don't introduce new dependencies
 - **Self-heal scope is fix-only, not restore-only.** Do NOT recreate files the PR explicitly deleted, do NOT add files you think "should" exist (deprecation aliases, restored renames, templates the PR removed). The PR's intent is authoritative; if a removal looks wrong, raise it as a finding for human review rather than reverting it via a self-heal commit.
-- **Self-heal scope.** A self-heal may touch only files inside your own declared domain, and never a path in the one refusal set, `AUDIT_SELFHEAL_REFUSE_ERE` in `.claude/hooks/lib/audit-selfheal-paths.sh`. That set covers the tests, the whole `.github/` tree, the `.gaia/` gate and roster machinery, the instruction surfaces (`.claude/**`, `.specify/**`, `wiki/**`), and root build config; the ERE is the boundary and this list is only a summary of it, so read the ERE. This is not a request: the push gate refuses any self-heal touching those surfaces whether or not you were told not to. `test/**` is inside your declared globs and you may **review** it; you may not **repair** it, because a healing pass that adjusts the test which would catch its own repair is exactly the failure this boundary exists to prevent. The same split runs through `app/**`, your own repair surface, and it is the half most likely to surprise you: the vitest suites (`app/**/*.test.ts`, `app/**/*.test.tsx`, and everything under an `app/**/tests/` folder) and the Chromatic stories (`app/**/*.stories.tsx`) sit inside it and are yours to review and not to repair, so a finding in one is reported rather than fixed.
-- The push gate also refuses a self-heal diff that touches more than 10 files: a sprawling self-heal indicates the agent is undoing intentional work.
+- **Self-heal scope.** A self-heal may touch only files inside your own declared domain, and never a path in the one refusal set, `AUDIT_SELFHEAL_REFUSE_ERE` in `.claude/hooks/lib/audit-selfheal-paths.sh`. That set covers the tests, the whole `.github/` tree, the `.gaia/` gate and roster machinery, the instruction surfaces (`.claude/**`, `.specify/**`, `wiki/**`), and root build config; the ERE is the boundary and this list is only a summary of it, so read the ERE. This is not a request: the boundary holds whether or not a given self-heal looks harmless, and the per-branch audit loop and its checkpoint bound what a self-heal can do. `test/**` is inside your declared globs and you may **review** it; you may not **repair** it, because a healing pass that adjusts the test which would catch its own repair is exactly the failure this boundary exists to prevent. The same split runs through `app/**`, your own repair surface, and it is the half most likely to surprise you: the vitest suites (`app/**/*.test.ts`, `app/**/*.test.tsx`, and everything under an `app/**/tests/` folder) and the Chromatic stories (`app/**/*.stories.tsx`) sit inside it and are yours to review and not to repair, so a finding in one is reported rather than fixed.
+- A self-heal that touches more than 10 files is out of bounds: a sprawling self-heal indicates the agent is undoing intentional work.
 
 ## Audit-run env (capture before any edits)
 
@@ -922,7 +921,7 @@ Before you return from a self-healed pass, release your scope capture:
 
 A self-healed pass publishes neither a marker nor a refusal, so nothing tells the scope script your round ended and the capture survives it. The orchestrator's commit then rotates your digest, and without the release the next dispatch inherits the stale capture: its clean review forfeits with `review scope superseded`, and only the round after that clears, one wasted full round. Releasing is safe here because this pass writes no marker, so no capture taken after it attests anything. A non-zero exit names a capture it could not remove; put it in your report, because the next round will forfeit once.
 
-This binds the **local** path, where the orchestrator, not the member, owns git. Inside CI, the workflow's own commit-and-push step commits and pushes a self-heal diff separately, and that is unchanged.
+This binds the **local** path, where the orchestrator, not the member, owns git.
 
 ## Audit marker (gate handshake)
 
@@ -986,7 +985,7 @@ The writer derives your content digest from `--root`, keys the marker to the con
 cd <root> && AUDIT_TREE_SHA=<AUDIT_TREE_SHA> AUDIT_SELF_HEALED=<AUDIT_SELF_HEALED> .claude/hooks/audit-stamp-trailer.sh
 ```
 
-**3. Push.** Push the stamp commit, only when the helper created an empty commit AND HEAD is on an attached tracking branch with an upstream. Amend paths add no new commit (the next operator push carries the trailer); an already-pushed attached HEAD makes no commit at all (step 2 status-only), so there is nothing here to push; a detached HEAD has no upstream from the agent's vantage (CI's own commit-and-push step handles propagation). The empty-commit placement now only fires on a detached HEAD, so this step's own precondition (empty commit AND an attached tracking branch) is never satisfied by the current placement rule; it stays as the correct guard against a future placement change rather than a live path today. Every git call in this step anchors to `<root>`, because step 2 creates the stamp commit there: both preconditions are properties of the audited tree, and an ambient push sends the session tree's own branch to its own upstream, which leaves the trailer unpushed while `push_status` still reads `pushed`. Step 4 below still follows this one.
+**3. Push.** Push the stamp commit, only when the helper created an empty commit AND HEAD is on an attached tracking branch with an upstream. Amend paths add no new commit (the next operator push carries the trailer); an already-pushed attached HEAD makes no commit at all (step 2 status-only), so there is nothing here to push; a detached HEAD has no upstream from the agent's vantage. The empty-commit placement now only fires on a detached HEAD, so this step's own precondition (empty commit AND an attached tracking branch) is never satisfied by the current placement rule; it stays as the correct guard against a future placement change rather than a live path today. Every git call in this step anchors to `<root>`, because step 2 creates the stamp commit there: both preconditions are properties of the audited tree, and an ambient push sends the session tree's own branch to its own upstream, which leaves the trailer unpushed while `push_status` still reads `pushed`. Step 4 below still follows this one.
 
 ```bash
 git -C <root> symbolic-ref --short -q HEAD
@@ -1010,7 +1009,7 @@ rm -f <root>/.gaia/local/audit/<AUDIT_KEY>.rerun.json
 
 When the marker is written, also surface `status: deferred to orchestrator` on its own line below the marker line, in place of an `audit_status_line`: this pass never calls `post-audit-status.sh`, so there is no status outcome of its own to report. The operator, or the orchestrating session, posts the `GAIA-Audit` status later, per `wiki/concepts/PR Merge Workflow.md` `#### Posting the status last`.
 
-Three exact arms carry an operator action of their own: `push_status=push_failed`, `push_status=detached`, and `push_status=not_attempted` only when that value was left by an earlier round's un-pushed stamp making step 2 decline `already stamped`. In each, the trailer sits on local HEAD only, so say beside it that the branch has to be pushed before the orchestrator's later status post, and the required check, can succeed, manually before the merge on a local run and by the runner's own commit-and-push step in CI. This excludes every other `not_attempted` arm, in particular `stamp: status only (HEAD already pushed)` (HEAD already is the pushed head, nothing to push) and `stamp: declined: members pending <list>` (no trailer has landed for anyone to push). No later member retries the push.
+Three exact arms carry an operator action of their own: `push_status=push_failed`, `push_status=detached`, and `push_status=not_attempted` only when that value was left by an earlier round's un-pushed stamp making step 2 decline `already stamped`. In each, the trailer sits on local HEAD only, so say beside it that the branch has to be pushed before the orchestrator's later status post, and the required check, can succeed, manually before the merge. This excludes every other `not_attempted` arm, in particular `stamp: status only (HEAD already pushed)` (HEAD already is the pushed head, nothing to push) and `stamp: declined: members pending <list>` (no trailer has landed for anyone to push). No later member retries the push.
 
 Then surface, as the final line of your report, pick the line that matches the `stamp_line` + `push_status` combination:
 
@@ -1018,9 +1017,9 @@ Then surface, as the final line of your report, pick the line that matches the `
 
 > Audit marker written for HEAD `<short-sha>`; GAIA-Audit trailer stamped via empty commit (pushed to upstream); status: deferred to orchestrator; gh pr merge is unblocked.
 
-> Audit marker written for HEAD `<short-sha>`; GAIA-Audit trailer stamped via empty commit (push to upstream FAILED, push manually before merging or CI's audit will rerun); status: deferred to orchestrator; gh pr merge is unblocked.
+> Audit marker written for HEAD `<short-sha>`; GAIA-Audit trailer stamped via empty commit (push to upstream FAILED, push manually before merging); status: deferred to orchestrator; gh pr merge is unblocked.
 
-> Audit marker written for HEAD `<short-sha>`; GAIA-Audit trailer stamped via empty commit (HEAD detached; runner pushes separately); status: deferred to orchestrator; gh pr merge is unblocked.
+> Audit marker written for HEAD `<short-sha>`; GAIA-Audit trailer stamped via empty commit (HEAD detached; push the branch before merging); status: deferred to orchestrator; gh pr merge is unblocked.
 
 > Audit marker written for HEAD `<short-sha>`; GAIA-Audit trailer amended onto audit-self-heal HEAD; status: deferred to orchestrator; gh pr merge is unblocked.
 
@@ -1034,13 +1033,13 @@ Mapping:
 - `stamp: amended onto audit-self-heal HEAD` → "amended onto audit-self-heal HEAD"
 - `stamp: empty commit (created locally)` + `push_status=pushed` → "empty commit (pushed to upstream)"
 - `stamp: empty commit (created locally)` + `push_status=push_failed` → "empty commit (push to upstream FAILED, …)"
-- `stamp: empty commit (created locally)` + `push_status=detached` → "empty commit (HEAD detached; runner pushes separately)"
+- `stamp: empty commit (created locally)` + `push_status=detached` → "empty commit (HEAD detached; push the branch before merging)"
 - `stamp: status only (HEAD already pushed)` → "no stamp commit (HEAD already pushed)"
 - `stamp: declined: <reason>` → "skipped (`<reason>`)"
 
 For the amend, status-only, and declined variants, `push_status` stays at its default `not_attempted` and is not consulted, the `stamp_line` alone determines the surface line. `push_status` is only meaningful for the empty-commit branch. Every variant reports `status: deferred to orchestrator`, the same line, regardless of the stamp/push outcome, since the member posts no status on any of them.
 
-The skipped form applies when `stamp_line` begins with `stamp: declined:`, the marker is still written (the local gate is unblocked); whether downstream CI re-audits depends on this repo's audit-ci mode and, when it does check, its own trailer-check step falls back to the newest `GAIA-Audit` commit status rather than requiring the trailer.
+The skipped form applies when `stamp_line` begins with `stamp: declined:`, the marker is still written (the local gate is unblocked).
 
 If you do not write the marker because this pass applied a self-heal fix, surface this instead:
 
@@ -1090,7 +1089,7 @@ Never write a marker for content other than current `HEAD`. The shared writer de
 
 ## Findings sidecar (local run record)
 
-The finding-recurrence tally reads PR comments for a machine-readable findings block; CI's own workflow prompt already emits one (`code-review-audit.yml:359-372`), but a PR audited by the local producer left the tally with nothing. Close that gap yourself: on **every LOCAL pass**, clean or not, marker written or withheld, write a findings sidecar. **Skip this entirely in CI** (`GITHUB_ACTIONS`/`CI` set): CI's own prompt already covers it, unrelated to this file.
+The finding-recurrence tally reads PR comments for a machine-readable findings block; a PR whose audit left no such block gives the tally nothing. Close that gap yourself: on **every LOCAL pass**, clean or not, marker written or withheld, write a findings sidecar. **Skip this entirely in CI** (`GITHUB_ACTIONS`/`CI` set): the audit runs locally only.
 
 **Write it with the shared writer, never by hand**, and write it **before** any clearance artifact (step 0 of the gate handshake above). The writer derives the path, validates every entry, and publishes atomically. `<scratch>` is your own scratch directory under `.gaia/local/cache/mutation-scratch/`, named with your member name. Stage the array, then hand the file to the writer:
 
@@ -1136,7 +1135,7 @@ Best-effort: a write failure here never blocks or alters the marker / stamp / st
 
 ## GAIA-Audit trailer
 
-The `GAIA-Audit:` commit trailer written by `.claude/hooks/audit-stamp-trailer.sh` is the cross-machine companion to the local marker file, stamped on both a local run and a CI run. The marker file gates `gh pr merge` locally; the trailer travels with the commit so a later local run (via the local merge hook) can recognize an already-audited tree. CI does not read this trailer to decide whether to run: it always runs the frontend audit when a PR is in scope. The trailer's other consumer is `.github/audit/resolve-audit-base.sh`, which reads it to resolve the next audit's incremental review base.
+The `GAIA-Audit:` commit trailer written by `.claude/hooks/audit-stamp-trailer.sh` is the cross-machine companion to the local marker file. The marker file gates `gh pr merge` locally; the trailer travels with the commit so a later local run (via the local merge hook) can recognize an already-audited tree. The trailer's consumer is `.github/audit/resolve-audit-base.sh`, which reads it to resolve the next audit's incremental review base.
 
 Trailer shape, three positional fields:
 
@@ -1145,10 +1144,10 @@ GAIA-Audit: <agent-version> <frontend-digest> <tree>
 ```
 
 - `<agent-version>` is read from `.gaia/VERSION` at stamp time.
-- `<frontend-digest>` is your own 64-hex content digest (owned files + machinery + in-scope-but-ownerless), the validity key CI recomputes and compares.
+- `<frontend-digest>` is your own 64-hex content digest (owned files + machinery + in-scope-but-ownerless), the validity key the marker is checked against.
 - `<tree>` is the full 40-char `git rev-parse HEAD^{tree}` of the audited tree, a plain data field the merge gate checks only for format, never for validity.
 
-The helper writes the trailer only when the working tree is clean, `.gaia/VERSION` exists and is non-empty, and the tree the audit reviewed (`AUDIT_TREE_SHA`) matches HEAD's current tree. Placement is automatic: amend on un-pushed HEADs, an empty commit on a detached HEAD (CI's own checkout shape; never silently rewriting published history), amend on the audit's own self-heal commits regardless of push state, and no commit at all on an attached HEAD that is already pushed, since the `GAIA-Audit` status the orchestrator posts later carries the same signal without moving the PR head.
+The helper writes the trailer only when the working tree is clean, `.gaia/VERSION` exists and is non-empty, and the tree the audit reviewed (`AUDIT_TREE_SHA`) matches HEAD's current tree. Placement is automatic: amend on un-pushed HEADs, an empty commit on a detached HEAD (never silently rewriting published history), amend on the audit's own self-heal commits regardless of push state, and no commit at all on an attached HEAD that is already pushed, since the `GAIA-Audit` status the orchestrator posts later carries the same signal without moving the PR head.
 
 ## Durable knowledge
 

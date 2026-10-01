@@ -57,7 +57,7 @@
 # file; that is what bounds it, with no cap and no retention window. A
 # fast-forward that was TRIED and failed additionally writes one line to
 # .gaia/local/cache/shared/wiki-base-catchup.report, drained (read, then
-# deleted, so it surfaces exactly once) by wiki-drift-check.sh, a
+# deleted, so it surfaces exactly once) by janitor-report-drain.sh, a
 # UserPromptSubmit hook whose stdout reaches the conversation. A merely
 # SKIPPED attempt is silent and leaves base byte-identical.
 #
@@ -499,7 +499,7 @@ if [ "$attempt_ff" -eq 1 ] && [ -n "$base" ]; then
       if [ -d "$main_root/.gaia/local" ]; then
         mkdir -p "$main_root/.gaia/local/cache/shared" 2>/dev/null
         # Temp-file-plus-mv, same idiom wiki_catchup_state_set uses above: a
-        # plain truncating redirect leaves a window where wiki-drift-check.sh
+        # plain truncating redirect leaves a window where janitor-report-drain.sh
         # (a separate process draining this file: read, then delete) can
         # observe it mid-truncate as blank and lose the refusal permanently.
         # `mv -f` is atomic, so a concurrent drain either sees the old

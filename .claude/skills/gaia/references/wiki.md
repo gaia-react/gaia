@@ -4,9 +4,7 @@ Wiki-maintenance router. Sub-commands run individually or chain end-to-end.
 
 ## Argument parsing
 
-Tokenize `$ARGUMENTS`. Detect a trailing `--force` token; if present, strip
-it and set `FORCE=true`. Then tokenize the first remaining whitespace-
-separated word.
+Tokenize `$ARGUMENTS` and read the first whitespace-separated word.
 
 | First arg       | Action                                                                       |
 | --------------- | ---------------------------------------------------------------------------- |
@@ -16,66 +14,16 @@ separated word.
 | (empty)         | Full chain: sync → (gated) consolidate → lint. See "Full chain".             |
 | (anything else) | Print help.                                                                  |
 
-`--force` is positional-flexible but the contract is "trailing", it must be
-the LAST argument so it doesn't shadow `sync` / `consolidate` / `lint`:
-
-- `/gaia-wiki --force` (full chain, force)
-- `/gaia-wiki sync --force` (sync only, force)
-
 Help message:
 
 ```
-Usage: /gaia-wiki [--force] [sync|consolidate|lint]
+Usage: /gaia-wiki [sync|consolidate|lint]
 
-  --force        Override GAIA CI deferral (no-op when wiki.mode != "ci")
   (no arg)       Full chain: sync, then consolidate if gate trips, then lint
   sync           Evaluate commits since last sync; update wiki where warranted
   consolidate    Cross-SPEC redundancy + contradiction audit; surfaces findings
   lint           Health check: orphans, dead links, drift, narrative-ref scrub
 ```
-
-## GAIA CI deferral check
-
-Before any sub-command dispatches (sync / consolidate / lint / full chain),
-the parent reads `.gaia/automation.json` to determine whether wiki updates
-are CI-managed.
-
-```
-STATUS=$(.gaia/cli/gaia automation read-config --json 2>/dev/null \
-         | jq -r '.wiki.mode // "local"') || STATUS=local
-```
-
-If the binary or config is missing the read fails; treat that as `local`
-and proceed.
-
-If `STATUS == "ci"` and `FORCE != "true"`, print this conflict-risk
-warning to stderr and exit 1 without dispatching anything:
-
-```
-GAIA CI manages /gaia-wiki for this repo. Running it locally now risks colliding
-with the next scheduled run. To override, re-invoke with --force.
-```
-
-**On this abort, only when there is no sub-argument** (the full-chain
-invocation), record cost before exiting, no `--github-*` flags, the run opened
-nothing:
-
-```bash
-bash .gaia/scripts/token-tally.sh --action command --command gaia-wiki
-```
-
-A deferred `sync`, `consolidate`, or `lint` (a sub-argument is present) hits
-this same abort but records **nothing**: the no-sub-argument gate above is
-what keeps a standalone stage from writing a cost record it never should.
-
-This is the only cost record the router itself emits. The full chain's cost
-record comes from `gaia wiki chain finish` (on every normal path:
-success, empty branch, in-place, any git/gh failure); do not add a second
-call here or anywhere else in this file.
-
-If `STATUS == "ci"` and `FORCE == "true"`, the chain runs as normal.
-
-If `STATUS != "ci"`, behave as before (no defer, no force).
 
 ## Sync
 
@@ -92,7 +40,7 @@ Spawn:
 
 When the subagent returns, relay its final summary verbatim. Do not redo the work in the parent.
 
-If invoked as `/gaia-wiki sync` (sub-arg form): stop after relaying the summary. Do **not** chain into consolidate or lint, that's only the no-arg form's job. The sub-arg form `/gaia-wiki sync --force` is also valid; the same defer / force logic from "GAIA CI deferral check" applies.
+If invoked as `/gaia-wiki sync` (sub-arg form): stop after relaying the summary. Do **not** chain into consolidate or lint, that's only the no-arg form's job.
 
 Standalone, sync's Step 7 lands on its own: from `main` it cuts a `wiki-sync/<date>-<sha>` branch, opens its own PR, and queues auto-merge, then takes one bounded in-CLI wait; normally it returns with the local cleanup outstanding, because the merge gate outlasts any wait that fits in one call (same mechanism as `chain finish`), and the session-start janitor completes it on a later session; from a feature branch it commits in place. In the no-arg full chain the parent pre-cuts the branch via `chain begin`, so the same Step 7 commits in place on the chain branch and the chain opens a single PR at the end (see "Full chain").
 

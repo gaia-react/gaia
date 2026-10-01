@@ -345,7 +345,6 @@ run_in_repo() {
     "declined-updates.json:main-only"
     ".patched-statusline.sh:main-only"
     "dep-audit-baseline.json:main-only"
-    "automation.json:main-only"
     "sandbox.json:main-only"
     "setup-in-progress:main-only"
     "cache/v2-update-notes.md:main-only"

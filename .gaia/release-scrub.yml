@@ -62,13 +62,11 @@ transforms:
   # (rather than folded into that transform's paths) so the
   # .prettierignore-specific rationale above stays intact.
   # **/*.sh is broad by design: any maintainer-only block wrapped in shipped
-  # shell is meant to be stripped, wherever it lands. Same for **/*.yml.tmpl
-  # (workflow render templates).
+  # shell is meant to be stripped, wherever it lands.
   - type: marker-strip
     paths:
       - ".gaia/audit-ci.yml"
       - "**/*.sh"
-      - "**/*.yml.tmpl"
     start: "# gaia:maintainer-only:start"
     end: "# gaia:maintainer-only:end"
 
@@ -197,7 +195,7 @@ transforms:
       # Derived, so skipped: untracked local state (`.serena`, `.gaia/local`),
       # root governance files adopters have their own of (`README.md`), and
       # `.github/workflows/*`, which `excluded-workflow-ref` below owns because
-      # some excluded workflows are installed from a render template.
+      # `.github/workflows/` is partly shipped.
       #
       # What this does NOT catch is prose that names a maintainer-only concept
       # with no token in it, or a glob over a partly-shipped tree
@@ -235,12 +233,6 @@ transforms:
           # nothing and never fires. Anchored to a bare quoted YAML sequence
           # entry, so a prose mention of the same tree still trips the check.
           - "^\\s*-\\s*'\\.gaia/cli/src/\\*\\*'$"
-          # The shared verbatim re-render predicate declines in a tree that
-          # carries the CLI source, because that tree builds the bundled
-          # template from the audit workflow. The path is load-bearing, and on
-          # an adopter clone its absence is what lets /update-gaia clear.
-          # Anchored to the one assignment line that holds it.
-          - "^\\s*cli_source_tree=\"\\.gaia/cli/src\"$"
 
       # ---- Code Audit Team maintainer-only member names ----
       # A mis-wrapped roster entry or resolver block would leave a
@@ -292,15 +284,14 @@ transforms:
       # alternation cannot blanket it, and enumerating
       # each excluded workflow by hand drifts. This derived check reads
       # `.gaia/release-exclude` at scan time and flags references to any excluded
-      # `.github/workflows/*.yml` that has NO render template under
-      # `.gaia/cli/templates/workflows/`, i.e. is never installable on an adopter
-      # (unlike `code-review-audit.yml`, which `/setup-gaia` renders from its
-      # `.tmpl`, so references to it are legitimate). A newly excluded maintainer
-      # workflow is covered with no edit here; the set cannot drift from the
-      # exclude list. Mirrors `wikilink-to-excluded`. Prior occurrence: a shipped
-      # workflow-template comment cross-referenced `forensics-triage.yml`.
+      # `.github/workflows/*.yml`: no excluded workflow is ever present on an
+      # adopter, so a shipped reference to one points at nothing. A newly
+      # excluded maintainer workflow is covered with no edit here; the set
+      # cannot drift from the exclude list. Mirrors `wikilink-to-excluded`.
+      # Prior occurrence: a shipped workflow-template comment cross-referenced
+      # `forensics-triage.yml`.
       - id: excluded-workflow-ref
-        description: "References to release-excluded, never-installed workflows in shipped surfaces"
+        description: "References to release-excluded, never-present workflows in shipped surfaces"
         derive: excluded-workflows
         scope:
           - "**"
@@ -471,22 +462,3 @@ transforms:
         pattern: "^\\s*paths-ignore\\s*:|^\\s*-\\s*['\"]?!|\\[[^\\]]*['\"]!"
         scope:
           - ".github/workflows/**"
-
-      # ---- Runtime-optional dependency references ----
-      # Hook scripts that reference .gaia/ config files guarded by `[ -f ]`
-      # are runtime-optional; adopters without the file get a graceful no-op.
-      # The runtime-deps checker cannot infer conditionality from shell guard
-      # syntax and flags these as missing dependencies.
-      - id: runtime-deps
-        description: "Runtime-optional .gaia/ config references guarded by shell [ -f ] checks"
-        pattern: "\\.gaia/automation\\.json"
-        scope:
-          - ".claude/hooks/**"
-        line-allowlist:
-          # In .claude/hooks/lib/gaia-ci-defer.sh: a variable assignment guarded
-          # by `[ -f "$config_path" ] || return 0`, so adopters without
-          # .gaia/automation.json get a graceful no-op.
-          - "local config_path=.*\\.gaia/automation\\.json"
-          # In .claude/hooks/lib/gaia-ci-defer.sh: shell comment lines documenting
-          # the .gaia/automation.json config file in prose, not runtime refs.
-          - "#.*\\.gaia/automation\\.json"

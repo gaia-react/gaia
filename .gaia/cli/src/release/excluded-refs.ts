@@ -29,8 +29,8 @@ export type ExcludedRefTokens = {
   unusedOptOut: readonly string[];
 };
 
-// `excluded-workflow-ref` owns excluded workflows, because some of them are
-// installed on adopters from a render template and that check knows which.
+// `excluded-workflow-ref` owns excluded workflows: it derives them from the
+// exclude list itself.
 const WORKFLOWS_PREFIX = '.github/workflows/';
 const COMMAND_PATTERN =
   /^\.claude\/(?:commands\/(?<command>[\w-]+)\.md|skills\/(?<skill>[\w-]+))$/;

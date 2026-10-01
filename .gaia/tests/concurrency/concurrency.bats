@@ -800,10 +800,10 @@ test("adds two numbers c407", () => {
 @test "C5-02: wiki hooks are live in a worktree" {
   MAIN="$(gaia_new_main gaia-c502-main)"
   gaia_copy_real "$MAIN" \
-    .claude/hooks/wiki-drift-check.sh \
-    .claude/hooks/wiki-commit-nudge.sh \
+    .claude/hooks/janitor-report-drain.sh \
     .claude/hooks/wiki-session-stop.sh \
-    .claude/hooks/wiki-squash-autocommits.sh
+    .claude/hooks/wiki-squash-autocommits.sh \
+    .gaia/scripts/main-root-lib.sh
   mkdir -p "$MAIN/wiki"
   jq -n --arg sha "$(git -C "$MAIN" rev-parse HEAD)" \
     '{version: 1, last_evaluated_sha: $sha, last_evaluated_at: "2026-01-01T00:00:00Z"}' \
@@ -812,8 +812,8 @@ test("adds two numbers c407", () => {
 
   B="$(gaia_add_worktree "$MAIN" treeB treeB)"
 
-  # Advance treeB past its recorded last_evaluated_sha so real drift exists,
-  # and remember this point as the session-start marker for hook 3 below.
+  # Advance treeB by one commit and remember this point as the session-start
+  # marker for hook 2 below.
   echo more >> "$B/README.md"
   git -C "$B" add README.md
   git -C "$B" commit -q -m "drift commit"
@@ -821,18 +821,15 @@ test("adds two numbers c407", () => {
 
   dead=""
 
-  # 1. wiki-drift-check.sh: real drift exists; a live hook prints the
-  # reminder and stamps its own marker.
+  # 1. janitor-report-drain.sh: a report seeded under the main checkout
+  # surfaces once when the prompt is submitted from the worktree.
+  mkdir -p "$MAIN/.gaia/local/cache/shared"
+  printf '[wiki base] seeded report line\n' > "$MAIN/.gaia/local/cache/shared/wiki-base-catchup.report"
   json="$(jq -n '{session_id: "S1"}')"
-  out="$(run_in "$B" -- gaia_deliver_hook "$json" "$MAIN/.claude/hooks/wiki-drift-check.sh")"
-  grep -qF '[wiki state]' <<< "$out" || dead="$dead wiki-drift-check"
+  out="$(run_in "$B" -- gaia_deliver_hook "$json" "$MAIN/.claude/hooks/janitor-report-drain.sh")"
+  grep -qF '[wiki base] seeded report line' <<< "$out" || dead="$dead janitor-report-drain"
 
-  # 2. wiki-commit-nudge.sh: fires on a Bash `git commit` PostToolUse call.
-  json="$(jq -n --arg c 'git commit -m "x"' '{tool_name: "Bash", tool_input: {command: $c}}')"
-  out="$(run_in "$B" -- gaia_deliver_hook "$json" "$MAIN/.claude/hooks/wiki-commit-nudge.sh")"
-  grep -qF '[wiki nudge]' <<< "$out" || dead="$dead wiki-commit-nudge"
-
-  # 3. wiki-session-stop.sh: a session-start marker recording HEAD before a
+  # 2. wiki-session-stop.sh: a session-start marker recording HEAD before a
   # commit that touched wiki/ was made; a live hook nudges to refresh hot.md.
   git_dir_b="$(run_in "$B" -- git rev-parse --git-dir)"
   echo "$session_start_sha" > "$git_dir_b/claude-session-start"
@@ -843,7 +840,7 @@ test("adds two numbers c407", () => {
   out="$(run_in "$B" -- gaia_deliver_hook "$json" "$MAIN/.claude/hooks/wiki-session-stop.sh")"
   grep -qF 'WIKI_CHANGED' <<< "$out" || dead="$dead wiki-session-stop"
 
-  # 4. wiki-squash-autocommits.sh: two consecutive `wiki: auto-commit` commits
+  # 3. wiki-squash-autocommits.sh: two consecutive `wiki: auto-commit` commits
   # at HEAD; a live hook squashes them into one.
   echo a1 > "$B/wiki/auto.md"
   git -C "$B" add wiki/auto.md

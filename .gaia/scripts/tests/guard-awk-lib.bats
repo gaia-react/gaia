@@ -562,6 +562,17 @@ EOF
   grep -qF -- "a.bats" <<<"$output" || return 1
 }
 
+# surface_has_workflow_and_action <repo> <lib>: the `workflows` set, as <lib>
+# resolves it inside <repo>, holds at least one workflow and one composite
+# action. A set pointing at a directory that no longer exists would answer from
+# the other half alone and still look populated.
+surface_has_workflow_and_action() {
+  run bash -c "cd '$1' && . '$2' && gaia_guard_scan_files probe workflows && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  [ "$status" -eq 0 ] || return 1
+  grep -qE -- '^\.github/workflows/[^/]+\.ya?ml$' <<<"$output" || return 1
+  grep -qE -- '^\.github/actions/[^/]+/action\.ya?ml$' <<<"$output" || return 1
+}
+
 # ---- the scan-surface discovery --------------------------------------------
 
 # scan_fixture_repo: a repo carrying one tracked member of every set the helper
@@ -570,13 +581,11 @@ EOF
 scan_fixture_repo() {
   local repo="$TMP/scanrepo"
   mkdir -p "$repo/.husky" "$repo/.github/workflows" "$repo/.github/actions/probe"
-  mkdir -p "$repo/.gaia/cli/src/automation/templates/workflows"
   git -C "$repo" init -q .
   printf 'x\n' > "$repo/tool.sh"
   printf 'x\n' > "$repo/.husky/pre-commit"
   printf 'x\n' > "$repo/.github/workflows/ci.yml"
   printf 'x\n' > "$repo/.github/actions/probe/action.yaml"
-  printf 'x\n' > "$repo/.gaia/cli/src/automation/templates/workflows/ci.yml.tmpl"
   git -C "$repo" add -A
   printf '%s' "$repo"
 }
@@ -635,16 +644,13 @@ scan_fixture_repo() {
   true
 }
 
-# The workflow templates are `.tmpl` rather than `.yml`, so a set that returned
-# the workflows and missed them would still look populated.
-@test "the workflows set returns workflows, composite actions, and templates" {
+@test "the workflows set returns workflows and composite actions" {
   local repo
   repo="$(scan_fixture_repo)"
   run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe workflows && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
   [ "$status" -eq 0 ]
   grep -qxF -- ".github/workflows/ci.yml" <<<"$output" || return 1
   grep -qxF -- ".github/actions/probe/action.yaml" <<<"$output" || return 1
-  grep -qxF -- ".gaia/cli/src/automation/templates/workflows/ci.yml.tmpl" <<<"$output" || return 1
   grep -qxF -- "tool.sh" <<<"$output" && return 1
   true
 }
@@ -1234,4 +1240,23 @@ mutate_guard_copy() {
     run bash -c "cd '$repo' && bash '$guard'"
     [ "$status" -ne 0 ] || { echo "$guard exited 0 on a tree with no tracked bats suite" >&2; return 1; }
   done < <(production_guards)
+}
+
+# --- no phantom coverage ----------------------------------------------------
+
+@test "the real scan surface holds a workflow and a composite action" {
+  surface_has_workflow_and_action "$REPO_ROOT" "$LIB"
+}
+
+@test "the surface check fails when the composite-action directory is absent" {
+  local scratch
+  scratch="$(mktemp -d -t surface-probe-XXXXXX)"
+  mkdir -p "$scratch/.github/workflows"
+  git -C "$scratch" init -q .
+  printf 'x\n' > "$scratch/.github/workflows/only.yml"
+  git -C "$scratch" add -A
+  local verdict=0
+  surface_has_workflow_and_action "$scratch" "$LIB" || verdict=$?
+  rm -rf "$scratch"
+  [ "$verdict" -eq 1 ]
 }

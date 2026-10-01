@@ -6,8 +6,7 @@
 # never added to the ruleset, or can quietly stop blocking if removed from
 # it. This script makes that drift visible; it never writes to the live
 # ruleset -- registering a required check stays a deliberate, maintainer-run
-# step, the same ask-first cutover read-audit-ci-config.sh documents for
-# GAIA-Audit.
+# step.
 #
 # Usage:
 #   verify-required-checks.sh [--repo <owner/name>] [--branch <branch>]
@@ -34,7 +33,7 @@ set -uo pipefail
 # promote or demote a check; that decision is what this script exists to
 # guard, not to make on its own.
 REQUIRED_CONTEXTS=(
-  "GAIA-Audit"                        # custom status posted by the code-audit gate itself
+  "GAIA-Audit"                        # custom status posted locally by the PR Merge Workflow
   "Audit CI Tests"                    # .github/workflows/audit-ci-tests.yml
   "Run Chromatic"                     # .github/workflows/chromatic.yml
   "Vitest and Playwright"             # .github/workflows/tests.yml

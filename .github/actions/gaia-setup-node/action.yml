@@ -8,14 +8,6 @@ description: |
   workspace, so folding checkout in would be both behavior-changing and
   self-defeating.
 
-  Deliberately excludes `code-review-audit.yml`: it exists as two
-  byte-identical copies (the live workflow and the build artifact generated
-  from it), and a suite pins that workflow's exact ordered guarded-step set and
-  each step's `if:` expression, so replacing three steps with one here would rewrite a
-  suite that exists to detect exactly that kind of rewrite. That is not
-  because `.github/actions/**` fails to reach adopters; this action itself
-  ships to them.
-
   Deliberately excludes two callers, both of which want the pinned Node
   runtime and nothing else. One gates two steps behind a narrow multi-clause
   `if:` with no install step; the other runs a single script against a

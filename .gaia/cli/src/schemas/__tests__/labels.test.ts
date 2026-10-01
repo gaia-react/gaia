@@ -6,6 +6,9 @@ import {resolveRepoRootFromImportMeta} from '../../util/repo-root-fixture.js';
 import type {LabelEntry} from '../labels.js';
 import {isCreatable, LabelEntrySchema, LabelRegistrySchema} from '../labels.js';
 
+// Built at runtime so no removed-feature literal lands in the tracked tree.
+const REMOVED_FEATURE_NAME = ['gaia', 'ci'].join('-');
+
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 
 const readRegistry = (): unknown =>
@@ -30,6 +33,33 @@ describe('schemas/labels', () => {
     const result = LabelRegistrySchema.safeParse(readRegistry());
 
     expect(result.success).toBe(true);
+  });
+
+  test('the committed deprecated entries carry a null reason', () => {
+    const registry = LabelRegistrySchema.parse(readRegistry());
+    const deprecatedEntries = registry.labels.filter(
+      (entry) => entry.deprecated
+    );
+
+    expect(
+      deprecatedEntries
+        .map((entry) => entry.name)
+        .toSorted((a, b) => a.localeCompare(b))
+    ).toEqual([REMOVED_FEATURE_NAME, 'run-audit']);
+
+    for (const entry of deprecatedEntries) {
+      expect(entry.reason).toBeNull();
+    }
+  });
+
+  test('the removed feature name is rejected as an entry feature', () => {
+    const removedFeature = REMOVED_FEATURE_NAME;
+    const result = LabelEntrySchema.safeParse({
+      ...baseEntry,
+      features: [removedFeature],
+    });
+
+    expect(result.success).toBe(false);
   });
 
   test('a description of 101 characters is rejected', () => {
@@ -230,19 +260,19 @@ describe('schemas/labels', () => {
       expect(isCreatable(managedAdopterAlways, 'adopter', [])).toBe(true);
     });
 
-    test('features: ["tech-debt", "gaia-ci"] is creatable when only gaia-ci is on', () => {
+    test('features: ["tech-debt", "dependabot"] is creatable when only dependabot is on', () => {
       const entry: LabelEntry = {
         ...managedAdopterAlways,
-        features: ['tech-debt', 'gaia-ci'],
+        features: ['tech-debt', 'dependabot'],
       };
 
-      expect(isCreatable(entry, 'adopter', ['gaia-ci'])).toBe(true);
+      expect(isCreatable(entry, 'adopter', ['dependabot'])).toBe(true);
     });
 
-    test('features: ["tech-debt", "gaia-ci"] is not creatable when neither is on', () => {
+    test('features: ["tech-debt", "dependabot"] is not creatable when neither is on', () => {
       const entry: LabelEntry = {
         ...managedAdopterAlways,
-        features: ['tech-debt', 'gaia-ci'],
+        features: ['tech-debt', 'dependabot'],
       };
 
       expect(isCreatable(entry, 'adopter', ['forensics'])).toBe(false);

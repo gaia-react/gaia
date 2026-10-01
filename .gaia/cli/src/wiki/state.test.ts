@@ -24,6 +24,8 @@ type Sandbox = {
   // creates the whole chain in one process; single startup, all
   // commits assembled in-memory, no per-commit pack overhead.
   commitEmptyChain: (count: number) => void;
+  // Like `commitEmptyChain`, but each commit carries the given subject.
+  commitSubjects: (subjects: readonly string[]) => void;
   root: string;
 };
 
@@ -78,17 +80,17 @@ const setupSandbox = (): Sandbox => {
     }).trim();
   };
 
-  const commitEmptyChain = (count: number): void => {
-    if (count <= 0) return;
+  const commitSubjects = (subjects: readonly string[]): void => {
+    if (subjects.length === 0) return;
     const lines: string[] = [];
 
-    for (let index = 0; index < count; index += 1) {
+    for (const [index, subject] of subjects.entries()) {
       lines.push(
         'commit refs/heads/main',
         `mark :${index + 1}`,
         `committer Test <test@example.com> ${1_700_000_000 + index} +0000`,
         'data <<COMMITMSG',
-        `feat: change ${index}`,
+        subject,
         'COMMITMSG',
         index === 0 ? 'from refs/heads/main^0' : `from :${index}`,
         ''
@@ -102,6 +104,15 @@ const setupSandbox = (): Sandbox => {
     });
   };
 
+  const commitEmptyChain = (count: number): void => {
+    commitSubjects(
+      Array.from(
+        {length: Math.max(count, 0)},
+        (_, index) => `feat: change ${index}`
+      )
+    );
+  };
+
   return {
     cleanup: () => {
       rmSync(root, {force: true, recursive: true});
@@ -109,6 +120,7 @@ const setupSandbox = (): Sandbox => {
     commit,
     commitAt,
     commitEmptyChain,
+    commitSubjects,
     root,
   };
 };
@@ -170,6 +182,28 @@ const writeStateFileAt = (root: string, sha: string, at: string): void => {
     'utf8'
   );
 };
+
+const readStateJson = (cwd: string): Record<string, unknown> => {
+  const chunks: string[] = [];
+  const exit = run(['--json'], {
+    cwd,
+    write: (chunk) => {
+      chunks.push(chunk);
+    },
+  });
+  expect(exit).toBe(0);
+
+  return JSON.parse(chunks.join('').trim()) as Record<string, unknown>;
+};
+
+const countRange = (cwd: string, range: string): number =>
+  Number.parseInt(
+    execFileSync('git', ['rev-list', '--count', range], {
+      cwd,
+      encoding: 'utf8',
+    }).trim(),
+    10
+  );
 
 describe('wiki state', () => {
   let sandbox: Sandbox;
@@ -501,5 +535,157 @@ describe('wiki state', () => {
     const json = JSON.parse(chunks.join('').trim()) as Record<string, unknown>;
     expect(json.commits_ahead).toBe(0);
     expect(stdio.outputs.join('')).toBe('');
+  });
+
+  describe('drift_count', () => {
+    const BOOKKEEPING_SUBJECTS = [
+      'wiki: sync through abc1234',
+      'wiki: maintenance chain through abc1234',
+      'wiki: consolidate through abc1234',
+      'wiki: lint through abc1234',
+      'wiki: sync through abc1234 (#99)',
+    ];
+
+    test('excludes bookkeeping subjects and equals commits_ahead when reachable', () => {
+      const baseSha = sandbox.commit('initial', {'README.md': '# repo\n'});
+      writeStateFile(sandbox.root, baseSha);
+      sandbox.commitSubjects([
+        ...Array.from({length: 19}, (_, index) => `feat: change ${index}`),
+        ...BOOKKEEPING_SUBJECTS,
+      ]);
+
+      const json = readStateJson(sandbox.root);
+      expect(json.reachable).toBe(true);
+      expect(json.drift_count).toBe(19);
+      expect(json.commits_ahead).toBe(19);
+
+      sandbox.commitSubjects(['feat: the twentieth']);
+      const next = readStateJson(sandbox.root);
+      expect(next.drift_count).toBe(20);
+      expect(next.commits_ahead).toBe(20);
+    }, 60_000);
+
+    test('the bookkeeping filter is load-bearing and matches only the exact subjects', () => {
+      const baseSha = sandbox.commit('initial', {'README.md': '# repo\n'});
+      writeStateFile(sandbox.root, baseSha);
+      sandbox.commitSubjects([
+        'feat: change',
+        ...BOOKKEEPING_SUBJECTS,
+        'wiki: synced through x',
+        'docs: wiki sync through x',
+      ]);
+
+      // Near-miss subjects are real drift: only the five exact forms drop out.
+      expect(readStateJson(sandbox.root).drift_count).toBe(3);
+      // Without the filter the same range reads 8, so the filter is what
+      // makes the count 3.
+      expect(countRange(sandbox.root, `${baseSha}..HEAD`)).toBe(8);
+    }, 60_000);
+
+    test.each([
+      ['no state file', () => undefined],
+      [
+        'an all-zero last_evaluated_sha',
+        (root: string) => {
+          writeStateFile(root, '0'.repeat(40));
+        },
+      ],
+      [
+        'an upstream SHA absent from history with no last_evaluated_at',
+        (root: string) => {
+          writeStateFile(root, 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef');
+        },
+      ],
+    ])(
+      'counts the whole history when the baseline is %s',
+      (_label, writeBaseline) => {
+        sandbox.commit('initial', {'README.md': '# repo\n'});
+        sandbox.commitSubjects([
+          'feat: one',
+          'feat: two',
+          ...BOOKKEEPING_SUBJECTS,
+        ]);
+        writeBaseline(sandbox.root);
+
+        const json = readStateJson(sandbox.root);
+        expect(json.reachable).toBe(false);
+        expect(json.commits_ahead).toBe(0);
+        expect(json.drift_count).toBe(3);
+        expect(countRange(sandbox.root, 'HEAD')).toBe(8);
+      },
+      60_000
+    );
+
+    test('counts suggested_base..HEAD when the recorded SHA is orphaned', () => {
+      sandbox.commitAt('A', {'app/a.ts': 'a\n'}, '2026-01-01T00:00:00Z');
+      const shaB = sandbox.commitAt(
+        'B',
+        {'app/b.ts': 'b\n'},
+        '2026-01-02T00:00:00Z'
+      );
+      sandbox.commitAt('C', {'app/c.ts': 'c\n'}, '2026-01-03T00:00:00Z');
+      sandbox.commitAt(
+        'wiki: sync through abc1234',
+        {'wiki/log.md': 'x\n'},
+        '2026-01-04T00:00:00Z'
+      );
+      sandbox.commitAt('E', {'app/e.ts': 'e\n'}, '2026-01-05T00:00:00Z');
+
+      execFileSync('git', ['checkout', '-q', '-b', 'feat', shaB], {
+        cwd: sandbox.root,
+      });
+      const orphan = sandbox.commitAt(
+        'O',
+        {'app/o.ts': 'o\n'},
+        '2026-01-02T12:00:00Z'
+      );
+      execFileSync('git', ['checkout', '-q', 'main'], {cwd: sandbox.root});
+      writeStateFileAt(sandbox.root, orphan, '2026-01-02T12:00:00Z');
+
+      const json = readStateJson(sandbox.root);
+      expect(json.reachable).toBe(false);
+      expect(json.suggested_base).toBe(shortShaOf(sandbox.root, shaB));
+      // C and E only: the bookkeeping commit drops out, and the count is
+      // neither the whole history (4) nor 0.
+      expect(json.drift_count).toBe(2);
+    }, 30_000);
+
+    test('prints the bookkeeping-excluded count in the human block', () => {
+      const baseSha = sandbox.commit('initial', {'README.md': '# repo\n'});
+      writeStateFile(sandbox.root, baseSha);
+      sandbox.commitSubjects(['feat: one', ...BOOKKEEPING_SUBJECTS]);
+
+      stdio.outputs.length = 0;
+      expect(run([], {cwd: sandbox.root})).toBe(0);
+      expect(stdio.outputs.join('')).toContain('Drift:          1 commits');
+    }, 30_000);
+
+    test('grades the human Drift line by the count it prints, not by commits_ahead', () => {
+      sandbox.commitAt('A', {'app/a.ts': 'a\n'}, '2026-01-01T00:00:00Z');
+      const shaB = sandbox.commitAt(
+        'B',
+        {'app/b.ts': 'b\n'},
+        '2026-01-02T00:00:00Z'
+      );
+      sandbox.commitAt('C', {'app/c.ts': 'c\n'}, '2026-01-03T00:00:00Z');
+      sandbox.commitAt('E', {'app/e.ts': 'e\n'}, '2026-01-05T00:00:00Z');
+
+      execFileSync('git', ['checkout', '-q', '-b', 'feat', shaB], {
+        cwd: sandbox.root,
+      });
+      const orphan = sandbox.commitAt(
+        'O',
+        {'app/o.ts': 'o\n'},
+        '2026-01-02T12:00:00Z'
+      );
+      execFileSync('git', ['checkout', '-q', 'main'], {cwd: sandbox.root});
+      writeStateFileAt(sandbox.root, orphan, '2026-01-02T12:00:00Z');
+
+      stdio.outputs.length = 0;
+      expect(run([], {cwd: sandbox.root})).toBe(0);
+      const out = stdio.outputs.join('');
+      expect(out).toContain('Drift:          2 commits (low)');
+      expect(out).not.toContain('(none)');
+    }, 30_000);
   });
 });

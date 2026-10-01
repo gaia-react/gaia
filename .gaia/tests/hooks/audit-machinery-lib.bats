@@ -33,6 +33,8 @@ setup() {
 .claude/hooks/lib/audit-digest.sh
 .claude/hooks/lib/audit-selfheal-paths.sh
 .claude/hooks/lib/gaia-version.sh
+.claude/hooks/lib/audit-bypass-stamp.sh
+.claude/hooks/lib/cross-repo-refusal.sh
 .gaia/scripts/audit-write-clearance.sh
 .gaia/scripts/audit-member-digest.sh
 .gaia/scripts/audit-resolve-scope.sh
@@ -42,10 +44,6 @@ setup() {
 .claude/hooks/post-audit-status.sh
 .claude/hooks/audit-stamp-trailer.sh
 .github/audit/resolve-audit-base.sh
-.github/audit/audit-success-present.sh
-.github/audit/gate-pending-members.sh
-.github/workflows/code-review-audit.yml
-.gaia/cli/templates/workflows/code-review-audit.yml.tmpl
 .claude/agents/code-audit-frontend.md
 .claude/agents/code-audit-maintainer-shell.md
 .claude/agents/code-audit-maintainer-node.md

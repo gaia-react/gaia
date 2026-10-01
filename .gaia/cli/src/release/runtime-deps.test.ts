@@ -174,20 +174,6 @@ describe('extractPathRefs', () => {
     expect(refs.map((r) => r.path)).toContain('.github/workflows/deploy.yml');
   });
 
-  test('skips the allowlisted audit-workflow path constant', () => {
-    // pr-merge-audit-check.sh's check_self_mod_only_update_pr() assigns the
-    // audit workflow path to compare against the PR diff and template blob; it
-    // never sources or executes the file. The path is release-excluded, so the
-    // exact full-path token is allowlisted as a non-dependency.
-    const refs = extractPathRefs(
-      '.claude/hooks/pr-merge-audit-check.sh',
-      'audit_wf=".github/workflows/code-review-audit.yml"\n'
-    );
-    expect(refs.map((r) => r.path)).not.toContain(
-      '.github/workflows/code-review-audit.yml'
-    );
-  });
-
   test('skips the allowlisted shell-snapshots regex-literal token', () => {
     // spec-session-lock.sh assigns Claude Code's snapshot-wrapper directory to
     // a regex literal that a `ps` command line is matched against; it is never
@@ -224,26 +210,6 @@ describe('extractPathRefs', () => {
       '.claude/settings.local.json'
     );
     expect(refs.map((r) => r.path)).toContain('.claude/settings.json');
-  });
-
-  test('skips the allowlisted CLI-source path constant in the re-render predicate', () => {
-    // audit-scope.sh hands the CLI source directory to `git rev-parse` to ask
-    // whether the tree builds the bundled template from the audit workflow. It
-    // is never sourced or executed, and its absence on an adopter clone is the
-    // branch that lets /update-gaia clear, so the exact token is allowlisted.
-    const refs = extractPathRefs(
-      '.claude/hooks/lib/audit-scope.sh',
-      '  cli_source_tree=".gaia/cli/src"\n'
-    );
-    expect(refs.map((r) => r.path)).not.toContain('.gaia/cli/src');
-  });
-
-  test('still flags a genuine file leak under the CLI-source directory', () => {
-    const refs = extractPathRefs(
-      '.claude/hooks/lib/audit-scope.sh',
-      'node .gaia/cli/src/index.ts\n'
-    );
-    expect(refs.map((r) => r.path)).toContain('.gaia/cli/src/index.ts');
   });
 
   test('reduces a pattern that truncates mid-basename to its directory', () => {
@@ -415,14 +381,13 @@ describe('release runtime-deps CLI', () => {
 
   test('allowlists per-session marker files', () => {
     sandbox.writeManifest({
-      '.claude/hooks/wiki-drift-check.sh': 'owned',
+      '.claude/hooks/wiki-recompact-inject.sh': 'owned',
     });
     sandbox.writeFile(
-      '.claude/hooks/wiki-drift-check.sh',
+      '.claude/hooks/wiki-recompact-inject.sh',
       [
         '#!/usr/bin/env bash',
-        'touch ".claude/wiki-drift-checked"',
-        'echo > ".claude/wiki-safety-checked"',
+        'touch ".claude/wiki-recompact-pending"',
         '',
       ].join('\n')
     );
@@ -677,7 +642,7 @@ describe('release runtime-deps CLI', () => {
       [
         '#!/usr/bin/env bash',
         '# gaia:maintainer-only:start',
-        'echo .gaia/cli/src/index.ts',
+        'echo .gaia/cli/src',
         '# gaia:maintainer-only:end',
         '',
       ].join('\n')
@@ -697,12 +662,12 @@ describe('release runtime-deps CLI', () => {
     });
     sandbox.writeFile(
       '.gaia/scripts/resolve-audit-members.sh',
-      ['#!/usr/bin/env bash', 'echo .gaia/cli/src/index.ts', ''].join('\n')
+      ['#!/usr/bin/env bash', 'echo .gaia/cli/src', ''].join('\n')
     );
 
     const exit = run([], {cwd: sandbox.rootDir});
     expect(exit).toBe(1);
-    expect(stdio.outputs.join('')).toContain('.gaia/cli/src/index.ts');
+    expect(stdio.outputs.join('')).toContain('.gaia/cli/src');
   });
 
   test('skips self-references', () => {

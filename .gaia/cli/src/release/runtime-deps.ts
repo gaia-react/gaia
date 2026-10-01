@@ -76,13 +76,14 @@ const UNEXPECTED_EXIT = 2;
  *
  * The git-tracked subset is the single canonical set exported by
  * `manifest.ts` (`classifyPath` maps those to `null`). This scan adds
- * `.gaia/automation.json`, a runtime file created on the adopter side,
- * never git-tracked, so it cannot live in the manifest's set; to cover
+ * `.gaia/project.json`, a file created on the adopter side by `/gaia-init`
+ * or `/setup-gaia`, never in the manifest so `/update-gaia` leaves it alone;
+ * it cannot live in the manifest's set, so it is added here to cover
  * references found in the extracted staging tree.
  */
 export const ADOPTER_OWNED_SENTINELS: ReadonlySet<string> = new Set([
   ...GIT_TRACKED_SENTINELS,
-  '.gaia/automation.json',
+  '.gaia/project.json',
 ]);
 
 /**
@@ -105,12 +106,10 @@ const RUNTIME_PREFIXES: readonly string[] = [
  * source side and recreated on each session by the hook that owns them.
  */
 const RUNTIME_MARKERS: ReadonlySet<string> = new Set([
-  '.claude/wiki-drift-checked',
   // Runtime-created sentinel: wiki-recompact-sentinel.sh (PostCompact) writes
   // this file and wiki-recompact-inject.sh (UserPromptSubmit) reads and clears
   // it. Created on first compaction event; never a shipped dependency.
   '.claude/wiki-recompact-pending',
-  '.claude/wiki-safety-checked',
 ]);
 
 const PATH_PREFIXES = ['.gaia/', '.claude/', '.specify/', '.github/'] as const;
@@ -141,13 +140,6 @@ const PATH_PREFIXES = ['.gaia/', '.claude/', '.specify/', '.github/'] as const;
  *     descriptive, not an invocation. An inline-ignore comment cannot annotate
  *     the occurrence because it lives inside a multi-line quoted `reason="..."`
  *     string that renders to the operator, hence this central allowlist.
- *   - `.github/workflows/code-review-audit.yml`: the workflow path constant in
- *     the same hook's `check_self_mod_only_update_pr()` bypass. It is compared
- *     against the PR's changed-file list and against the bundled template's
- *     git blob; it is never sourced or executed. The file is release-excluded
- *     (installed on demand by `/setup-gaia`), and when absent on an adopter
- *     clone the path simply never appears in the diff, so the bypass returns
- *     the normal deny. A path constant, not a runtime dependency.
  *   - `.claude/projects`: Claude Code's own global session-transcript
  *     directory, `$HOME/.claude/projects`, referenced by
  *     `token-tally-review.sh`. It lives outside the repo on every machine and
@@ -163,20 +155,12 @@ const PATH_PREFIXES = ['.gaia/', '.claude/', '.specify/', '.github/'] as const;
  *     is per-machine and gitignored, so it can never have a manifest entry.
  *     This module has no inline-ignore channel, so the allowlist is the
  *     documented one.
- *   - `.gaia/cli/src`: the CLI source directory, handed to `git rev-parse` by
- *     the shared verbatim re-render predicate in `.claude/hooks/lib/audit-scope.sh`
- *     to ask whether the tree builds the bundled template from the audit
- *     workflow. It is never sourced or executed, and on an adopter clone its
- *     absence is the branch that lets an `/update-gaia` re-render clear. A path
- *     constant, not a runtime dependency; a file beneath it still flags.
  */
 export const PROSE_PATH_ALLOWLIST: ReadonlySet<string> = new Set([
   '.claude/projects',
   '.claude/settings.local.json',
   '.claude/shell-snapshots',
-  '.gaia/cli/src',
   '.github/workflows',
-  '.github/workflows/code-review-audit.yml',
 ]);
 
 const PATH_BODY_CHAR = /[a-zA-Z0-9._/-]/;

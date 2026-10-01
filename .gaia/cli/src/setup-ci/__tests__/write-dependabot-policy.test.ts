@@ -1,13 +1,14 @@
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
-import {readFileSync, writeFileSync} from 'node:fs';
-import {automationConfigPath} from '../../automation/paths.js';
+import {existsSync, readFileSync, writeFileSync} from 'node:fs';
+import path from 'node:path';
 import {EXIT_CODES} from '../../exit.js';
 import {
   DEPENDABOT_SECURITY_UPDATES,
-  readAutomationConfig,
-} from '../../schemas/automation-config.js';
+  projectConfigPath,
+  readProjectConfig,
+} from '../../schemas/project-config.js';
 import {run} from '../write-dependabot-policy.js';
-import {assertStatusOk, setupSandbox, VALID_BASE_CONFIG} from './sandbox.js';
+import {assertStatusOk, setupSandbox} from './sandbox.js';
 import type {Sandbox} from './sandbox.js';
 
 const captureStdio = (): {
@@ -43,10 +44,14 @@ const captureStdio = (): {
 };
 
 const readRaw = (root: string): Record<string, unknown> =>
-  JSON.parse(readFileSync(automationConfigPath(root), 'utf8')) as Record<
+  JSON.parse(readFileSync(projectConfigPath(root), 'utf8')) as Record<
     string,
     unknown
   >;
+
+// Built at runtime so the retired config file name never lands as a literal.
+const retiredConfigPath = (root: string): string =>
+  path.join(root, '.gaia', ['automation', 'json'].join('.'));
 
 describe('setup-ci write-dependabot-policy', () => {
   let sandbox: Sandbox;
@@ -63,126 +68,100 @@ describe('setup-ci write-dependabot-policy', () => {
     vi.restoreAllMocks();
   });
 
-  test('read-merge preservation: an unknown key a newer binary wrote survives (UAT-019)', () => {
-    writeFileSync(
-      automationConfigPath(sandbox.root),
-      JSON.stringify({...VALID_BASE_CONFIG, some_future_key: 'x'}),
-      'utf8'
+  test('creates .gaia/project.json when absent, never the retired config', () => {
+    const exit = run(['on'], {cwd: sandbox.root});
+    expect(exit).toBe(EXIT_CODES.OK);
+
+    expect(readFileSync(projectConfigPath(sandbox.root), 'utf8')).toBe(
+      '{\n  "version": 1,\n  "dependabot_security_updates": "on"\n}\n'
     );
+    expect(existsSync(retiredConfigPath(sandbox.root))).toBe(false);
+  });
+
+  test('a second writer keeps the first key, and an unknown key survives', () => {
+    sandbox.writeProjectConfig({
+      isolation_policy: 'prefer-branch',
+      some_future_key: 'x',
+      version: 1,
+    });
 
     const exit = run(['on'], {cwd: sandbox.root});
     expect(exit).toBe(EXIT_CODES.OK);
 
     const written = readRaw(sandbox.root);
     expect(written.some_future_key).toBe('x');
+    expect(written.isolation_policy).toBe('prefer-branch');
     expect(written.dependabot_security_updates).toBe('on');
-
-    for (const [key, value] of Object.entries(VALID_BASE_CONFIG)) {
-      expect(written[key]).toEqual(value);
-    }
+    expect(existsSync(retiredConfigPath(sandbox.root))).toBe(false);
   });
 
   test.each(DEPENDABOT_SECURITY_UPDATES)(
     'writes dependabot_security_updates: %s',
     (value) => {
-      sandbox.writeConfig(VALID_BASE_CONFIG);
-
       const exit = run([value], {cwd: sandbox.root});
       expect(exit).toBe(EXIT_CODES.OK);
 
-      const result = readAutomationConfig(sandbox.root);
-      expect(result.status).toBe('ok');
+      const result = readProjectConfig(sandbox.root);
       assertStatusOk(result);
       expect(result.config.dependabot_security_updates).toBe(value);
     }
   );
 
-  test('overwrites an existing dependabot_security_updates (the --reconfigure path)', () => {
-    writeFileSync(
-      automationConfigPath(sandbox.root),
-      JSON.stringify({
-        ...VALID_BASE_CONFIG,
-        dependabot_security_updates: 'off',
-      }),
-      'utf8'
-    );
+  test('overwrites an existing value (the --reconfigure path)', () => {
+    sandbox.writeProjectConfig({
+      dependabot_security_updates: 'off',
+      version: 1,
+    });
 
     const exit = run(['on'], {cwd: sandbox.root});
     expect(exit).toBe(EXIT_CODES.OK);
 
-    const result = readAutomationConfig(sandbox.root);
-    expect(result.status).toBe('ok');
-    assertStatusOk(result);
-    expect(result.config.dependabot_security_updates).toBe('on');
+    expect(readRaw(sandbox.root).dependabot_security_updates).toBe('on');
   });
 
   test('emits {dependabot_security_updates} JSON on success', () => {
-    sandbox.writeConfig(VALID_BASE_CONFIG);
-
-    const exit = run(['off'], {cwd: sandbox.root});
+    const exit = run(['on'], {cwd: sandbox.root});
     expect(exit).toBe(EXIT_CODES.OK);
 
     const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
       string,
       unknown
     >;
-    expect(parsed.dependabot_security_updates).toBe('off');
+    expect(parsed.dependabot_security_updates).toBe('on');
   });
 
-  test('exits CONFIG_INVALID and writes nothing when config is missing', () => {
-    const exit = run(['on'], {cwd: sandbox.root});
-    expect(exit).toBe(EXIT_CODES.CONFIG_INVALID);
-    expect(stdio.err.join('')).toContain('config_missing');
-
-    const result = readAutomationConfig(sandbox.root);
-    expect(result.status).toBe('missing');
-  });
-
-  test('exits CONFIG_INVALID and writes nothing when config is malformed', () => {
-    writeFileSync(
-      automationConfigPath(sandbox.root),
-      JSON.stringify({...VALID_BASE_CONFIG, setup_complete: 'not-a-boolean'}),
-      'utf8'
-    );
+  test('exits CONFIG_INVALID, names the file, and leaves a malformed file unchanged', () => {
+    const malformed = '{not json';
+    writeFileSync(projectConfigPath(sandbox.root), malformed, 'utf8');
 
     const exit = run(['on'], {cwd: sandbox.root});
     expect(exit).toBe(EXIT_CODES.CONFIG_INVALID);
     expect(stdio.err.join('')).toContain('config_malformed');
-
-    const written = readRaw(sandbox.root);
-    expect(written.setup_complete).toBe('not-a-boolean');
+    expect(stdio.err.join('')).toContain('project.json');
+    expect(readFileSync(projectConfigPath(sandbox.root), 'utf8')).toBe(
+      malformed
+    );
   });
 
-  test('exits 1 on an unrecognized value and writes nothing', () => {
-    sandbox.writeConfig(VALID_BASE_CONFIG);
+  test('exits non-zero on an unrecognized value and leaves the file byte-identical', () => {
+    sandbox.writeProjectConfig({some_future_key: 'x', version: 1});
+    const before = readFileSync(projectConfigPath(sandbox.root), 'utf8');
 
-    const exit = run(['maybe'], {cwd: sandbox.root});
-    expect(exit).toBe(1);
+    const exit = run(['sometimes'], {cwd: sandbox.root});
+    expect(exit).not.toBe(EXIT_CODES.OK);
     expect(stdio.err.join('')).toContain(
       'unrecognized dependabot_security_updates value'
     );
-
-    const result = readAutomationConfig(sandbox.root);
-    expect(result.status).toBe('ok');
-    assertStatusOk(result);
-    expect(result.config.dependabot_security_updates).toBeUndefined();
+    expect(readFileSync(projectConfigPath(sandbox.root), 'utf8')).toBe(before);
   });
 
-  test('version is untouched', () => {
-    sandbox.writeConfig(VALID_BASE_CONFIG);
-
-    const exit = run(['on'], {cwd: sandbox.root});
-    expect(exit).toBe(EXIT_CODES.OK);
-
-    const result = readAutomationConfig(sandbox.root);
-    expect(result.status).toBe('ok');
-    assertStatusOk(result);
-    expect(result.config.version).toBe(1);
+  test('an unrecognized value creates no file when none existed', () => {
+    const exit = run(['sometimes'], {cwd: sandbox.root});
+    expect(exit).not.toBe(EXIT_CODES.OK);
+    expect(existsSync(projectConfigPath(sandbox.root))).toBe(false);
   });
 
   test('rejects unexpected extra arguments', () => {
-    sandbox.writeConfig(VALID_BASE_CONFIG);
-
     const exit = run(['on', '--bogus'], {cwd: sandbox.root});
     expect(exit).not.toBe(0);
     expect(stdio.err.join('')).toContain('unexpected argument');

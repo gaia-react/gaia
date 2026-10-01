@@ -60,9 +60,8 @@
 #      NAME: `FULL_BASE`, the whole-PR fork point a member resolves whenever
 #      it needs one that is not a review base. A specialist keeps it for its
 #      SELF-SKIP arm: self-skip is a membership decision, and membership is
-#      resolved over the whole PR diff (.gaia/scripts/resolve-audit-members.sh,
-#      and the "Full-PR scope (load-bearing)" note in
-#      .github/audit/gate-pending-members.sh). A member that self-skipped on
+#      resolved over the whole PR diff (.gaia/scripts/resolve-audit-members.sh).
+#      A member that self-skipped on
 #      the increment could write no marker while membership still demanded
 #      one, deadlocking the merge. The default member's whole-PR base is
 #      `ELIG_BASE`, for a different job: the eligibility set the out-of-scope

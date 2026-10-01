@@ -19,19 +19,9 @@ jobs:
   tests:
     name: Vitest and Playwright
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
-    # Bounded by the self-heal re-trigger poller in code-review-audit.yml, which
-    # waits ~25 minutes for a dispatched run and then stamps nothing, leaving
-    # this required context ABSENT on the self-heal HEAD instead of red. A job
-    # that hits this cap is cancelled and its run still completes, so the poller
-    # stamps a failure: an ordinary red check to re-run rather than a merge
-    # wedged with no signal. The cap bounds execution only, so the ~10 minutes it
-    # leaves under the window are what covers this run's queue wait, derived
-    # from the poller's own loop with the margin charged once per job along a
-    # `needs:` chain.
-    #
-    # 15 is what every unchained job in a re-dispatched workflow carries; a
-    # chained pair is budgeted lower, against the tighter ceiling its hop count
-    # earns. A full run here is about 4 minutes: typecheck and lint dominate it,
+    # 15 minutes bounds execution: a job that hits the cap is cancelled and
+    # reports an ordinary red check to re-run rather than hanging. A full run
+    # here is about 4 minutes: typecheck and lint dominate it,
     # Vitest and Playwright together are under a minute, and the browser install
     # below fetches one engine rather than every engine Playwright ships.
     timeout-minutes: 15

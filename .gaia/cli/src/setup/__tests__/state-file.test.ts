@@ -45,6 +45,21 @@ const writeStateJson = (statePath: string, value: unknown): void => {
   writeFileSync(statePath, JSON.stringify(value), 'utf8');
 };
 
+describe('SETUP_STEPS', () => {
+  test('lists exactly the surviving steps, without the retired audit step', () => {
+    expect([...SETUP_STEPS]).toEqual([
+      'install-tools',
+      'install-plugins',
+      'init-speckit',
+      'chmod-statusline',
+      'bootstrap-env',
+    ]);
+    expect(SETUP_STEPS as readonly string[]).not.toContain(
+      'audit-mode-decision'
+    );
+  });
+});
+
 describe('readStateFile: retired-step migration', () => {
   let sandbox: Sandbox;
 
@@ -78,7 +93,7 @@ describe('readStateFile: retired-step migration', () => {
     expect(state?.completed_steps).toEqual([...SETUP_STEPS]);
   });
 
-  test('pendingSteps reports none when the six surviving steps are all present', () => {
+  test('pendingSteps reports none when every surviving step is present', () => {
     writeStateJson(sandbox.statePath, {
       completed_at: null,
       completed_steps: [

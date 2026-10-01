@@ -62,7 +62,7 @@ worktree_spelling() {
 
 @test "normalize strips one worktree- prefix and turns every + into /" {
   [ "$(gaia_branch_normalize "worktree-debt+42-fix")" = "debt/42-fix" ]
-  [ "$(gaia_branch_normalize "worktree-gaia-ci+tool+x")" = "gaia-ci/tool/x" ]
+  [ "$(gaia_branch_normalize "worktree-fix+tool+x")" = "fix/tool/x" ]
   [ "$(gaia_branch_normalize "worktree-worktree-a")" = "worktree-a" ]
   [ "$(gaia_branch_normalize "debt/42-fix")" = "debt/42-fix" ]
 }
@@ -84,7 +84,6 @@ worktree_spelling() {
     "chore/update-deps-2026-09-20-1200|maintenance update-deps-2026-09-20-1200" \
     "release/v1.4.0|maintenance v1.4.0" \
     "wiki-sync/2026-09-20-abc1234|maintenance 2026-09-20-abc1234" \
-    "gaia-ci/pnpm-audit/20260920-120000|maintenance pnpm-audit/20260920-120000" \
     "main|adhoc unknown" \
     "fix/some-thing|adhoc unknown" \
     "feat/new-thing|adhoc unknown" \
@@ -260,14 +259,29 @@ corrupt_packed_refs() {
 
 # ========== 9. lockstep with the kinds minted outside bash ==========
 
-@test "lockstep: the CLI still mints wiki-sync/ and the CI templates still mint gaia-ci/" {
+@test "lockstep: the CLI still mints wiki-sync/" {
   grep -qF "const WIKI_CHAIN_BRANCH_PREFIX = 'wiki-sync/';" "$REPO_ROOT/.gaia/cli/src/wiki/chain.ts"
   grep -qF 'const branchName = `wiki-sync/${' "$REPO_ROOT/.gaia/cli/src/wiki/sync-land.ts"
-  local tmpl=.gaia/cli/src/automation/templates/workflows/partials/auto-merge.yml.tmpl
-  grep -qE 'branch="gaia-ci/\{\{tool_id\}\}/' "$REPO_ROOT/$tmpl" \
-    || { echo "$tmpl no longer mints gaia-ci/{{tool_id}}/" >&2; return 1; }
   expect_classify "wiki-sync/2026-09-20-abc1234" "maintenance 2026-09-20-abc1234"
-  expect_classify "gaia-ci/t/x" "maintenance t/x"
+}
+
+# The prefix is built at runtime so no removed-layer literal lands in the tree.
+@test "a removed maintenance prefix falls through to the unrecognized class" {
+  local prefix
+  prefix="$(printf 'gaia%sci' -)"
+  expect_classify "$prefix/tool/x" "adhoc unknown"
+  expect_classify "$(worktree_spelling "$prefix/tool/x")" "adhoc unknown"
+}
+
+@test "the removed-prefix fall-through test can fail: a lib that still has the old arm classifies it maintenance" {
+  local prefix scratch_lib
+  prefix="$(printf 'gaia%sci' -)"
+  scratch_lib="$BATS_TEST_TMPDIR/branch-name-lib-old-arm.sh"
+  sed "s#wiki-sync/\*)#wiki-sync/* | $prefix/*)#" "$LIB" > "$scratch_lib"
+  grep -qF -- "$prefix/*)" "$scratch_lib"
+  run bash -c ". '$scratch_lib' && gaia_branch_classify '$prefix/t/x'"
+  [ "$status" -eq 0 ]
+  [ "$output" = "maintenance t/x" ]
 }
 
 # ========== 10. creation sites mint through the library ==========

@@ -14,13 +14,13 @@ import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {lookupOwn} from '../util/argv.js';
 import {run as runBootstrapEnv} from './bootstrap-env.js';
-import {run as runConfigureAutomation} from './configure-automation.js';
 import {run as runConfigureI18n} from './configure-i18n.js';
 import {run as runFinalize} from './finalize.js';
 import {run as runRename} from './rename.js';
 import {run as runResume} from './resume.js';
 import {run as runStripBranding} from './strip-branding.js';
 import {run as runWireStatusline} from './wire-statusline.js';
+import {run as runWriteProjectConfig} from './write-project-config.js';
 
 const HELP_TEXT = `Usage: gaia init <subcommand> [args]
 
@@ -33,8 +33,8 @@ const HELP_TEXT = `Usage: gaia init <subcommand> [args]
   wire-statusline --mode <global|project|skip>
                             Wire the GAIA statusline into Claude settings.
   bootstrap-env             Copy .env.example to .env if .env is absent.
-  configure-automation --wiki <m>
-                            Write .gaia/automation.json (Phase A of GAIA CI).
+  write-project-config --sandbox-recommended <bool>
+                            Write .gaia/project.json (sandbox + isolation policy).
   finalize                  Final cleanup steps for the init runbook.
   resume [--from-step <N>]  Resume a partially-completed init via state file.
 `;
@@ -96,13 +96,13 @@ const SUBCOMMAND_HANDLERS: Readonly<
   Partial<Record<string, SubcommandHandler>>
 > = {
   'bootstrap-env': runBootstrapEnv,
-  'configure-automation': runConfigureAutomation,
   'configure-i18n': runConfigureI18n,
   finalize: runFinalize,
   rename: runRename,
   resume: runResume,
   'strip-branding': runStripBranding,
   'wire-statusline': runWireStatusline,
+  'write-project-config': runWriteProjectConfig,
 };
 
 export const run = async (

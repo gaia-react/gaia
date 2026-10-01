@@ -70,6 +70,28 @@ describe('labels/docs renderGeneratedSpan', () => {
     expect(source).not.toContain('run-process');
   });
 
+  test('a deprecated entry is omitted while a live one still renders', () => {
+    const scratch: LabelRegistry = {
+      ...registry,
+      labels: adopterRegistry.labels.slice(0, 1).flatMap((template) => [
+        {...template, deprecated: false, name: 'scratch-live'},
+        {...template, deprecated: true, name: 'scratch-retired'},
+      ]),
+    };
+    const span = renderGeneratedSpan(scratch);
+
+    expect(span).toContain('`scratch-live`');
+    expect(span).not.toContain('scratch-retired');
+  });
+
+  test('the committed span names neither deprecated label', () => {
+    const span = renderGeneratedSpan(registry);
+
+    for (const entry of registry.labels.filter((label) => label.deprecated)) {
+      expect(span).not.toContain(`\`${entry.name}\``);
+    }
+  });
+
   test('the adopter tables carry no maintainer row', () => {
     const span = renderGeneratedSpan(registry);
     const adopterSection = span.slice(0, span.indexOf(MAINTAINER_START));

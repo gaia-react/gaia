@@ -11,7 +11,7 @@ import type {Sandbox} from './sandbox.js';
 
 // Resolved relative to this test file so it works from any cwd and needs no
 // hardcoded absolute path: the single source of truth every dep-bump-title
-// consumer (tests.yml, chromatic.yml, code-review-audit.yml,
+// consumer (tests.yml, chromatic.yml,
 // pr-merge-audit-check.sh) shares.
 const CHORE_DEPS_SKIP_SCRIPT = fileURLToPath(
   new URL('../../../../scripts/chore-deps-skip.sh', import.meta.url)
@@ -328,8 +328,8 @@ updates:
   });
 
   // Pins the criterion-0 hazard: a `chore(deps)` PR title makes the shipped
-  // tests.yml skip the test suite and code-review-audit.yml stamp
-  // GAIA-Audit success without an audit. This entry must render `fix`, not
+  // tests.yml skip the test suite and pr-merge-audit-check.sh
+  // allow the merge without an audit. This entry must render `fix`, not
   // `chore`, on its commit-message prefix.
   test('the rendered commit-message prefix never trips the chore(deps) skip predicate', () => {
     const prefixLine = NPM_ENTRY_LINES.find((line) => line.includes('prefix:'));

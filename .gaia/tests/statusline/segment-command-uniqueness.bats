@@ -14,7 +14,7 @@
 # is correct.
 #
 # COLUMNS=400 keeps every nudge at its Large size: the saturated fixture's
-# seven segments do not fit the width-tiered renderer's default (COLUMNS
+# segments do not all fit the width-tiered renderer's default (COLUMNS
 # unset -> 120), and this suite's invariant is checked where every command
 # still names itself, not where a narrower render has already shrunk to a
 # bare command or an icon.
@@ -60,6 +60,7 @@ run_saturated_statusline() {
   "hardenCandidateCount": 2,
   "hardenUnclassifiedCount": 1,
   "residueCandidateCount": 5,
+  "wikiDriftCount": 20,
   "auditNudge": true,
   "auditNudgeReason": "stale",
   "serenaLangDrift": ["go"]
@@ -93,6 +94,7 @@ rendered_commands() {
     "Run /gaia-harden" \
     "Run /gaia-residue" \
     "Run /gaia-serena-sync" \
+    "Run /gaia-wiki" \
     "Run /update-deps" \
     "Run /update-gaia")
   [ "$(rendered_commands "$output")" = "$expected" ]

@@ -131,7 +131,6 @@ const SUGGESTED_REVPARSE = [
   '--verify',
   `${SUGGESTED_BASE}^{commit}`,
 ];
-const SUGGESTED_COUNT = ['rev-list', '--count', `${SUGGESTED_FULL}..HEAD`];
 const SUGGESTED_RANGE = `${SUGGESTED_FULL}..HEAD`;
 
 describe('release preflight', () => {
@@ -167,6 +166,7 @@ describe('release preflight', () => {
       runner,
       wikiStateProbe: () => ({
         commits_ahead: 0,
+        drift_count: 0,
         reachable: true,
         state_sha: STATE_SHA,
         suggested_base: '',
@@ -196,6 +196,7 @@ describe('release preflight', () => {
       runner,
       wikiStateProbe: () => ({
         commits_ahead: 0,
+        drift_count: 0,
         reachable: true,
         state_sha: STATE_SHA,
         suggested_base: '',
@@ -226,6 +227,7 @@ describe('release preflight', () => {
       runner,
       wikiStateProbe: () => ({
         commits_ahead: 0,
+        drift_count: 0,
         reachable: true,
         state_sha: STATE_SHA,
         suggested_base: '',
@@ -258,6 +260,7 @@ describe('release preflight', () => {
       runner,
       wikiStateProbe: () => ({
         commits_ahead: 2,
+        drift_count: 2,
         reachable: true,
         state_sha: STATE_SHA,
         suggested_base: '',
@@ -290,6 +293,7 @@ describe('release preflight', () => {
       runner,
       wikiStateProbe: () => ({
         commits_ahead: 1,
+        drift_count: 1,
         reachable: true,
         state_sha: STATE_SHA,
         suggested_base: '',
@@ -322,6 +326,7 @@ describe('release preflight', () => {
       runner,
       wikiStateProbe: () => ({
         commits_ahead: 2,
+        drift_count: 2,
         reachable: true,
         state_sha: STATE_SHA,
         suggested_base: '',
@@ -360,6 +365,7 @@ describe('release preflight', () => {
       runner,
       wikiStateProbe: () => ({
         commits_ahead: 1,
+        drift_count: 1,
         reachable: true,
         state_sha: STATE_SHA,
         suggested_base: '',
@@ -399,6 +405,7 @@ describe('release preflight', () => {
       runner,
       wikiStateProbe: () => ({
         commits_ahead: 1,
+        drift_count: 1,
         reachable: true,
         state_sha: STATE_SHA,
         suggested_base: '',
@@ -421,7 +428,6 @@ describe('release preflight', () => {
         },
         {argv: ['status', '--porcelain=v1', '-uall'], result: okResult('')},
         {argv: SUGGESTED_REVPARSE, result: okResult(`${SUGGESTED_FULL}\n`)},
-        {argv: SUGGESTED_COUNT, result: okResult('2\n')},
         {
           argv: ['log', '--format=%s', SUGGESTED_RANGE],
           result: okResult('feat: a real change\nwiki: sync through abc1234\n'),
@@ -435,6 +441,7 @@ describe('release preflight', () => {
       runner,
       wikiStateProbe: () => ({
         commits_ahead: 0,
+        drift_count: 2,
         reachable: false,
         state_sha: STATE_SHA,
         suggested_base: SUGGESTED_BASE,
@@ -462,7 +469,6 @@ describe('release preflight', () => {
         },
         {argv: ['status', '--porcelain=v1', '-uall'], result: okResult('')},
         {argv: SUGGESTED_REVPARSE, result: okResult(`${SUGGESTED_FULL}\n`)},
-        {argv: SUGGESTED_COUNT, result: okResult('1\n')},
         {
           argv: ['log', '--format=%s', SUGGESTED_RANGE],
           result: okResult('wiki: sync through abc1234 (#173)\n'),
@@ -476,6 +482,7 @@ describe('release preflight', () => {
       runner,
       wikiStateProbe: () => ({
         commits_ahead: 0,
+        drift_count: 1,
         reachable: false,
         state_sha: STATE_SHA,
         suggested_base: SUGGESTED_BASE,
@@ -505,6 +512,7 @@ describe('release preflight', () => {
       runner,
       wikiStateProbe: () => ({
         commits_ahead: 0,
+        drift_count: 0,
         reachable: false,
         state_sha: '',
         suggested_base: '',
@@ -518,7 +526,9 @@ describe('release preflight', () => {
     expect(recorded.every((call) => call.args[0] !== 'log')).toBe(true);
   });
 
-  test('exit 1 when the orphaned recovery count cannot be read', () => {
+  test('exit 0 when the orphaned recovered window holds only bookkeeping commits', () => {
+    // `gaia wiki state` excludes bookkeeping subjects from drift_count, so a
+    // window of nothing else arrives as 0 and needs no drift-log inspection.
     const recorded: RecordedCall[] = [];
     const runner = buildRunner(
       [
@@ -528,8 +538,37 @@ describe('release preflight', () => {
         },
         {argv: ['status', '--porcelain=v1', '-uall'], result: okResult('')},
         {argv: SUGGESTED_REVPARSE, result: okResult(`${SUGGESTED_FULL}\n`)},
+      ],
+      recorded
+    );
+
+    const exit = run([], {
+      cwd: sandbox.root,
+      runner,
+      wikiStateProbe: () => ({
+        commits_ahead: 0,
+        drift_count: 0,
+        reachable: false,
+        state_sha: STATE_SHA,
+        suggested_base: SUGGESTED_BASE,
+      }),
+    });
+    expect(exit).toBe(0);
+    expect(stdio.errors.join('')).toBe('');
+    expect(recorded.every((call) => call.args[0] !== 'rev-list')).toBe(true);
+  });
+
+  test('exit 1 when the orphaned recovery base does not resolve, even at drift_count 0', () => {
+    const recorded: RecordedCall[] = [];
+    const runner = buildRunner(
+      [
         {
-          argv: SUGGESTED_COUNT,
+          argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+          result: okResult('main\n'),
+        },
+        {argv: ['status', '--porcelain=v1', '-uall'], result: okResult('')},
+        {
+          argv: SUGGESTED_REVPARSE,
           result: {
             output: ['', '', ''] as never,
             pid: 0,
@@ -548,6 +587,7 @@ describe('release preflight', () => {
       runner,
       wikiStateProbe: () => ({
         commits_ahead: 0,
+        drift_count: 0,
         reachable: false,
         state_sha: STATE_SHA,
         suggested_base: SUGGESTED_BASE,
@@ -584,6 +624,7 @@ describe('release preflight', () => {
       runner,
       wikiStateProbe: () => ({
         commits_ahead: 1,
+        drift_count: 1,
         reachable: true,
         state_sha: STATE_SHA,
         suggested_base: SUGGESTED_BASE,
@@ -605,6 +646,7 @@ describe('release preflight', () => {
       runner: gitNotFoundRunner,
       wikiStateProbe: () => ({
         commits_ahead: 0,
+        drift_count: 0,
         reachable: true,
         state_sha: STATE_SHA,
         suggested_base: '',
@@ -632,6 +674,7 @@ describe('release preflight', () => {
       runner,
       wikiStateProbe: () => ({
         commits_ahead: 0,
+        drift_count: 0,
         reachable: true,
         state_sha: STATE_SHA,
         suggested_base: '',
@@ -645,6 +688,7 @@ describe('release preflight', () => {
       cwd: sandbox.root,
       wikiStateProbe: () => ({
         commits_ahead: 0,
+        drift_count: 0,
         reachable: true,
         state_sha: STATE_SHA,
         suggested_base: '',
@@ -659,6 +703,7 @@ describe('release preflight', () => {
       cwd: sandbox.root,
       wikiStateProbe: () => ({
         commits_ahead: 0,
+        drift_count: 0,
         reachable: true,
         state_sha: STATE_SHA,
         suggested_base: '',

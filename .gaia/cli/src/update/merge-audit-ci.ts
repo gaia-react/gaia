@@ -3,16 +3,14 @@
  * handler.
  *
  * Field-aware verdict oracle for `.gaia/audit-ci.yml`, the audit analog of the
- * `pnpm-workspace.yaml` step in `/update-gaia`. The file is mixed: GAIA-authored
- * scalar knobs (`gate_label`, `budget_seconds`, `max_turns`, `push_fixes`,
- * `default_mode`, `override_label`, the `retrigger_workflows` list), the
- * adopter-extensible `audit_authors` string (per-developer `login=mode` entries
- * the adopter commits), and the `auditors` roster list, GAIA-authored **and**
- * adopter-extensible at once (a member GAIA ships alongside any member an
- * adopter has added of their own). A whole-file three-way merge produces a
- * full-file conflict patch the moment an adopter adds one `audit_authors`
- * entry or one roster member, so this command merges at key / per-entry
- * granularity instead.
+ * `pnpm-workspace.yaml` step in `/update-gaia`. The one managed section is the
+ * `auditors` roster list, GAIA-authored **and** adopter-extensible at once (a
+ * member GAIA ships alongside any member an adopter has added of their own). A
+ * whole-file three-way merge produces a full-file conflict patch the moment an
+ * adopter adds one roster member, so this command merges at key / per-entry
+ * granularity instead. A top-level key an older version of the file carried
+ * (the retired scalar knobs among them) is neither applied nor flagged: only
+ * the roster is read, so the adopter's copy of any other key is never visited.
  *
  * It is READ-ONLY: it parses the baseline, latest and current YAML files with
  * js-yaml and emits a JSON verdict report. It never writes the file; the
@@ -20,8 +18,7 @@
  * order, and quote style survive.
  *
  * Verdict table (identical to the package.json / pnpm-workspace steps), per
- * managed scalar key and per `audit_authors` login, with baseline `B` /
- * latest `L` / adopter `A`:
+ * roster member, with baseline `B` / latest `L` / adopter `A`:
  *
  *   in B and L, B == L                     → no-op  (adopter's value stands)
  *   in B and L, B != L, A present, A == B  → apply  (take latest)
@@ -30,14 +27,9 @@
  *   in L, not in B                         → suggestion (added)
  *   in B, not in L                         → no-op  (adopter keeps theirs)
  *
- * The `audit_authors` value is a single space-separated `login=mode` string on
- * each side; it is parsed into per-login entries keyed case-insensitively on the
- * login (matching the resolver's case-fold), and iterated over keys(B) ∪ keys(L)
- * so an adopter-only login is never visited, never clobbered, never conflicted.
- *
  * The `auditors` roster list is keyed on member `name` exactly (not
- * case-folded: a member name is an agent filename, not a case-insensitive
- * GitHub login) and iterated the same keys(B) ∪ keys(L) way. **One row is
+ * case-folded: a member name is an agent filename) and iterated the same
+ * keys(B) ∪ keys(L) way. **One row is
  * changed for this section only**: `in L, not in B` resolves to `apply`, not
  * `suggestion (added)`. See the comment at the roster-merge call site for why.
  *
@@ -54,10 +46,8 @@ import type {ValueFlagMap} from '../util/parse-value-flags.js';
 const HELP_TEXT = `Usage: gaia update merge-audit-ci --baseline <file> --latest <file> --current <file> [--json]
 
   Field-aware three-way verdict for .gaia/audit-ci.yml. Reads three YAML files
-  (baseline / latest tarball + working-tree current), classifies the GAIA-managed
-  scalar knobs, the adopter-shared audit_authors login=mode entries, and the
-  auditors roster members, and emits a JSON report of {applied, conflicts,
-  suggestions}.
+  (baseline / latest tarball + working-tree current), classifies the auditors
+  roster members, and emits a JSON report of {applied, conflicts, suggestions}.
 
   Read-only: never writes the file. The /update-gaia skill applies the 'applied'
   entries with the Edit tool to preserve comments and order.
@@ -68,24 +58,6 @@ const HELP_TEXT = `Usage: gaia update merge-audit-ci --baseline <file> --latest 
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
-
-/**
- * GAIA-managed top-level keys, merged whole-value (the adopter's whole value
- * for the key is compared / applied as a unit; the `retrigger_workflows` list
- * included).
- */
-const MANAGED_WHOLE_VALUE_KEYS: readonly string[] = [
-  'gate_label',
-  'budget_seconds',
-  'max_turns',
-  'push_fixes',
-  'default_mode',
-  'override_label',
-  'retrigger_workflows',
-];
-
-/** The adopter-shared section: a space-separated `login=mode` string. */
-const AUTHORS_SECTION = 'audit_authors';
 
 /** The GAIA-authored-and-adopter-extensible roster list. */
 const ROSTER_SECTION = 'auditors';
@@ -174,60 +146,18 @@ const deepEqual = (a: unknown, b: unknown): boolean => {
 
 type Presence = {has: boolean; value: unknown};
 
-const lookup = (root: Record<string, unknown>, key: string): Presence =>
-  Object.hasOwn(root, key) ?
-    {has: true, value: root[key]}
-  : {has: false, value: undefined};
-
 const asRecord = (value: unknown): Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value) ?
     (value as Record<string, unknown>)
   : {};
 
 /**
- * Parse a space-separated `login=mode` string into a login → mode map keyed
- * case-insensitively on the login (matching the resolver's case-fold). Each
- * entry keeps the original (display-cased) login under `display` so the verdict
- * report shows the source spelling. Malformed tokens (no `=`, empty login, or
- * empty mode) are skipped, mirroring the resolver's skip-malformed behavior.
- */
-type AuthorEntry = {display: string; mode: string};
-
-const parseAuthors = (value: unknown): Map<string, AuthorEntry> => {
-  const entries = new Map<string, AuthorEntry>();
-
-  if (typeof value !== 'string') return entries;
-
-  for (const token of value.split(/\s+/)) {
-    if (token.length > 0) {
-      const eq = token.indexOf('=');
-
-      // eq > 0 && eq < token.length - 1: has '=', with a non-empty login
-      // and a non-empty mode either side of it.
-      if (eq > 0 && eq !== token.length - 1) {
-        const login = token.slice(0, eq);
-        const mode = token.slice(eq + 1);
-        const lowerLogin = login.toLowerCase();
-
-        // First occurrence wins, matching the resolver's first-match-wins scan.
-        if (!entries.has(lowerLogin))
-          entries.set(lowerLogin, {display: login, mode});
-      }
-    }
-  }
-
-  return entries;
-};
-
-/**
  * Parse a YAML `auditors:` list into a name → member-config map. Each
  * member's whole mapping (`globs`, `audience`, `push_fixes`, `default`) is
- * compared and applied as a single unit, mirroring `parseAuthors`'s `mode`
- * value: `name` is the map key (like `login`), the rest of the item is the
- * value (like `mode`). A per-glob merge would let an adopter's roster end up
+ * compared and applied as a single unit: `name` is the map key, the rest of the
+ * item is the value. A per-glob merge would let an adopter's roster end up
  * with a glob set neither side ever authored. Malformed entries (no `name`,
- * or a `name` that is not a string) are skipped, mirroring `parseAuthors`'s
- * skip-malformed behavior; a malformed roster must not crash the update.
+ * or a `name` that is not a string) are skipped; a malformed roster must not crash the update.
  */
 type RosterMember = Record<string, unknown>;
 
@@ -252,7 +182,7 @@ const parseRoster = (value: unknown): Map<string, RosterMember> => {
         (item as Record<string, unknown>).name
       : undefined;
 
-    // First occurrence wins, matching parseAuthors' first-match-wins scan.
+    // First occurrence wins.
     if (typeof name === 'string' && !entries.has(name))
       entries.set(name, omitName(item as Record<string, unknown>));
   }
@@ -321,17 +251,6 @@ const sortKey = (item: AuditCiVerdictItem): string =>
 const bySortKey = (a: AuditCiVerdictItem, b: AuditCiVerdictItem): number =>
   sortKey(a).localeCompare(sortKey(b));
 
-const authorPresence = (
-  entries: Map<string, AuthorEntry>,
-  login: string
-): Presence => {
-  const entry = entries.get(login);
-
-  return entry === undefined ?
-      {has: false, value: undefined}
-    : {has: true, value: entry.mode};
-};
-
 const rosterPresence = (
   entries: Map<string, RosterMember>,
   name: string
@@ -354,51 +273,15 @@ const computeReport = (
 
   const triples: Triple[] = [];
 
-  for (const key of MANAGED_WHOLE_VALUE_KEYS) {
-    triples.push({
-      a: lookup(current, key),
-      b: lookup(baseline, key),
-      key,
-      kind: 'key',
-      l: lookup(latest, key),
-    });
-  }
-
-  // audit_authors: parse each side's login=mode string and merge per login over
-  // keys(B) ∪ keys(L) only, so an adopter-only login is never visited.
-  const baseAuthors = parseAuthors(baseline[AUTHORS_SECTION]);
-  const latestAuthors = parseAuthors(latest[AUTHORS_SECTION]);
-  const currentAuthors = parseAuthors(current[AUTHORS_SECTION]);
-  const authorLogins = [
-    ...new Set([...baseAuthors.keys(), ...latestAuthors.keys()]),
-  ];
-
-  for (const login of authorLogins) {
-    // The display key is the latest spelling if present, else the baseline one.
-    const display =
-      latestAuthors.get(login)?.display ??
-      baseAuthors.get(login)?.display ??
-      login;
-    triples.push({
-      a: authorPresence(currentAuthors, login),
-      b: authorPresence(baseAuthors, login),
-      key: display,
-      kind: 'entry',
-      l: authorPresence(latestAuthors, login),
-      section: AUTHORS_SECTION,
-    });
-  }
-
-  // auditors: the roster is a *third* kind of content, GAIA-authored and
-  // adopter-extensible at once. It reuses the same keys(B) ∪ keys(L) shape as
-  // audit_authors above, keyed on member `name` exactly, with exactly one
-  // changed row: `in L, not in B` (a GAIA-authored member the adopter's file
+  // auditors: the roster is GAIA-authored and adopter-extensible at once. It
+  // merges over keys(B) ∪ keys(L), keyed on member `name` exactly, with exactly
+  // one changed row: `in L, not in B` (a GAIA-authored member the adopter's file
   // has never seen) resolves to `apply`, not `suggest-add`. Every other
   // section treats that row as an opt-in suggestion, surfaced but never
   // written; a roster member is a capability the adopter cannot opt into if
-  // it never arrives, unlike a scalar knob they already have a value for, so
-  // leaving it a suggestion would mean a new GAIA-authored member (e.g.
-  // code-audit-github-workflows) reaches no existing adopter. This is a
+  // it never arrives, so leaving it a suggestion would mean a new
+  // GAIA-authored member (e.g. code-audit-github-workflows) reaches no
+  // existing adopter. This is a
   // named, deliberate divergence from every other section's added-row
   // semantics, not an inconsistency to "fix". Bounded precisely: an
   // adopter's *edit* to a GAIA-authored member is still a conflict below, and

@@ -2,12 +2,11 @@
 # audit-loop-record.sh: publish the PR body's `## Audit rounds` section.
 #
 #   audit-loop-record.sh --pr <N> [--repo <owner/name>]
-#       (--values-json <file|-> | --from-ci
-#          [--current-sha <hex> --current-audited true|false])
+#       --values-json <file|->
 #       [--body-in <file> --body-out <file>]
 #
 # The one deterministic writer of the marker-delimited section below, used by
-# the main thread after each round and by the CI workflow's single record step.
+# the main thread after each round.
 # Branch state is local and gitignored; the PR body is the published,
 # cross-machine record of how many audit rounds a PR took. Publication only:
 # nothing reads the section back to grant a round or set a count, so a
@@ -29,15 +28,7 @@
 # Values: `--values-json` takes {"total":n,"members":{"code-audit-x":n},
 # "grants":g} (the shape `audit-loop-eval.sh record-values` prints; `-` reads
 # stdin). Integers must be non-negative, member names `code-audit-[a-z0-9-]+`,
-# no extra keys. `--from-ci` computes them from the GitHub API instead: it
-# counts distinct head SHAs among this workflow's completed `pull_request` runs
-# for the PR whose `Run code-review-audit (claude-code-action)` step concluded
-# success or failure (stand-downs, out-of-scope and chore-deps skips never reach
-# that step, and cancelled runs do not conclude either way; self-heal pushes
-# fire no `pull_request` event). The current run is not yet complete, so the
-# workflow step passes `--current-sha` and `--current-audited` to add it. CI
-# audits only code-audit-frontend and has no human grant channel, so members is
-# {"code-audit-frontend": total} and grants is 0.
+# no extra keys.
 #
 # The body is read with `gh pr view` and written with
 # `gh pr edit --body-file <temp>`; it never travels on a command line. The
@@ -55,8 +46,6 @@ set -eu
 
 START_MARKER='<!-- gaia:audit-rounds:start -->'
 END_MARKER='<!-- gaia:audit-rounds:end -->'
-AUDIT_STEP_NAME='Run code-review-audit (claude-code-action)'
-WORKFLOW_FILE='code-review-audit.yml'
 
 die_usage() {
   printf 'audit-loop-record: %s\n' "$1" >&2
@@ -71,30 +60,21 @@ die_fail() {
 PR=""
 REPO=""
 VALUES_SRC=""
-FROM_CI=0
-CUR_SHA=""
-CUR_AUDITED=""
 BODY_IN=""
 BODY_OUT=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --pr|--repo|--values-json|--current-sha|--current-audited|--body-in|--body-out)
+    --pr|--repo|--values-json|--body-in|--body-out)
       [ $# -ge 2 ] || die_usage "$1 needs a value"
       case "$1" in
         --pr) PR="$2" ;;
         --repo) REPO="$2" ;;
         --values-json) VALUES_SRC="$2" ;;
-        --current-sha) CUR_SHA="$2" ;;
-        --current-audited) CUR_AUDITED="$2" ;;
         --body-in) BODY_IN="$2" ;;
         --body-out) BODY_OUT="$2" ;;
       esac
       shift 2
-      ;;
-    --from-ci)
-      FROM_CI=1
-      shift
       ;;
     *)
       die_usage "unknown argument: $1"
@@ -108,27 +88,8 @@ if [ -n "$REPO" ]; then
     || die_usage "--repo must be <owner>/<name>"
 fi
 
-if [ "$FROM_CI" -eq 1 ] && [ -n "$VALUES_SRC" ]; then
-  die_usage "--values-json and --from-ci are mutually exclusive"
-fi
-if [ "$FROM_CI" -eq 0 ] && [ -z "$VALUES_SRC" ]; then
-  die_usage "one of --values-json or --from-ci is required"
-fi
-if [ "$FROM_CI" -eq 0 ] && { [ -n "$CUR_SHA" ] || [ -n "$CUR_AUDITED" ]; }; then
-  die_usage "--current-sha and --current-audited apply only with --from-ci"
-fi
-if [ -n "$CUR_SHA" ]; then
-  printf '%s' "$CUR_SHA" | grep -Eq '^([0-9a-f]{40}|[0-9a-f]{64})$' \
-    || die_usage "--current-sha must be a hex object id"
-fi
-if [ -n "$CUR_AUDITED" ]; then
-  case "$CUR_AUDITED" in
-    true|false) ;;
-    *) die_usage "--current-audited must be true or false" ;;
-  esac
-fi
-if [ "$CUR_AUDITED" = true ] && [ -z "$CUR_SHA" ]; then
-  die_usage "--current-audited true needs --current-sha"
+if [ -z "$VALUES_SRC" ]; then
+  die_usage "--values-json is required"
 fi
 if { [ -n "$BODY_IN" ] && [ -z "$BODY_OUT" ]; } || { [ -z "$BODY_IN" ] && [ -n "$BODY_OUT" ]; }; then
   die_usage "--body-in and --body-out go together"
@@ -147,75 +108,7 @@ require_gh() {
 # Values
 # ---------------------------------------------------------------------------
 
-compute_ci_values() {
-  require_gh
-  local repo="$REPO" branch rows id sha counted jobs_out
-  if [ -z "$repo" ]; then
-    repo="$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null)" \
-      || die_fail "could not resolve the repository"
-    printf '%s' "$repo" | grep -Eq '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' \
-      || die_fail "could not resolve the repository"
-  fi
-  branch="$(gh pr view "$PR" --repo "$repo" --json headRefName --jq .headRefName 2>/dev/null)" \
-    || die_fail "gh could not read the PR head branch"
-  [ -n "$branch" ] || die_fail "gh returned an empty PR head branch"
-
-  # --method GET is required: gh api sends POST when -f fields are given
-  # without it, and the runs endpoint answers a POST with 404.
-  gh api "repos/${repo}/actions/workflows/${WORKFLOW_FILE}/runs" --paginate \
-    --method GET -f event=pull_request -f branch="$branch" -f status=completed -f per_page=100 \
-    > "$WORK/runs.json" 2>/dev/null \
-    || die_fail "gh could not list the workflow runs"
-
-  rows="$(jq -r --argjson n "$PR" '
-      .workflow_runs[]?
-      | select(.event == "pull_request"
-               and .status == "completed"
-               and (.conclusion == "success" or .conclusion == "failure")
-               and ((.pull_requests // []) | map(.number == $n) | any))
-      | "\(.id) \(.head_sha)"' "$WORK/runs.json" 2>/dev/null)" \
-    || die_fail "the workflow runs listing was not valid JSON"
-
-  counted=""
-  while read -r id sha; do
-    [ -n "$id" ] || continue
-    printf '%s' "$id" | grep -Eq '^[0-9]+$' || continue
-    printf '%s' "$sha" | grep -Eq '^([0-9a-f]{40}|[0-9a-f]{64})$' || continue
-    case "
-$counted
-" in
-      *"
-$sha
-"*) continue ;;
-    esac
-    gh api "repos/${repo}/actions/runs/${id}/jobs" --paginate \
-      > "$WORK/jobs.json" 2>/dev/null \
-      || die_fail "gh could not list the jobs of run ${id}"
-    jobs_out="$(jq -r --arg name "$AUDIT_STEP_NAME" '
-        .jobs[]?.steps[]? | select(.name == $name) | .conclusion // empty' \
-      "$WORK/jobs.json" 2>/dev/null)" \
-      || die_fail "the jobs listing of run ${id} was not valid JSON"
-    if printf '%s\n' "$jobs_out" | grep -Eqx 'success|failure'; then
-      counted="${counted}${sha}
-"
-    fi
-  done <<ROWS
-$rows
-ROWS
-
-  if [ "$CUR_AUDITED" = true ]; then
-    counted="${counted}${CUR_SHA}
-"
-  fi
-  local total
-  total="$(printf '%s' "$counted" | grep . | sort -u | grep -c . || true)"
-  jq -n --argjson t "${total:-0}" \
-    '{total: $t, members: {"code-audit-frontend": $t}, grants: 0}' > "$WORK/values.json"
-}
-
-if [ "$FROM_CI" -eq 1 ]; then
-  compute_ci_values
-elif [ "$VALUES_SRC" = "-" ]; then
+if [ "$VALUES_SRC" = "-" ]; then
   cat > "$WORK/values.json"
 else
   [ -f "$VALUES_SRC" ] || die_usage "--values-json file not found: $VALUES_SRC"

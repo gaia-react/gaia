@@ -206,7 +206,7 @@ else
   else
     # Nudge slots, indexed by render priority rather than by where each one
     # is armed below: update-gaia 0, gaia-serena-sync 1, update-deps 2,
-    # gaia-audit 3, gaia-harden 4, gaia-debt 5, gaia-residue 6. The
+    # gaia-audit 3, gaia-harden 4, gaia-debt 5, gaia-residue 6, gaia-wiki 7. The
     # update-check-derived nudges stay gated on $CACHE_FILE; the debt nudge is
     # gated independently on $DEBT_CACHE so it still renders when
     # update-check.json is absent, which is why debt (5) is armed after
@@ -329,6 +329,20 @@ else
         [ "$residue_count" -eq 1 ] && residue_suffix=""
         printf -v full 'Run /gaia-residue (%d aged residual%s)' "$residue_count" "$residue_suffix"
         nudge_set 6 '01;37' 'Run /gaia-residue' "$full" "$residue_count" '🧹'
+      fi
+      # Wiki nudge: renders once the wiki trails HEAD by at least
+      # WIKI_NUDGE_THRESHOLD non-bookkeeping commits. A maintainer constant,
+      # deliberately not adopter-configurable. Reads only the count the
+      # refresher cached; no repository query runs on this render path.
+      WIKI_NUDGE_THRESHOLD=20
+      wiki_drift_count=$(jq -r '.wikiDriftCount // 0' "$CACHE_FILE" 2>/dev/null)
+      case "$wiki_drift_count" in
+        ''|*[!0-9]*) wiki_drift_count=0 ;;
+      esac
+      if [ "$wiki_drift_count" -ge "$WIKI_NUDGE_THRESHOLD" ] 2>/dev/null; then
+        # 01;96 (bright cyan) is the one color no other slot or the setup
+        # segment uses.
+        nudge_set 7 '01;96' 'Run /gaia-wiki' "Run /gaia-wiki ($wiki_drift_count commits behind)" "$wiki_drift_count" '🧠'
       fi
     fi
     # Debt-backlog nudge, read from the pinned debt cache. Independent of

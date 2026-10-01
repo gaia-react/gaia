@@ -271,18 +271,7 @@ If `design_established=false`, apply the normal decision table to both files as 
 ```bash
 BACKUP_DIR=".gaia-backup/$(date +%Y%m%d-%H%M%S)"
 mkdir -p .gaia-merge "$BACKUP_DIR"
-
-# Snapshot whether the installed audit-ci.yml already declares default_mode,
-# captured BEFORE the Step 7c merge can write the key. The Step 10 opt-in nudge
-# reads this; gating on the post-merge file state would let the merge pre-silence
-# the nudge on the very run that should surface it.
-had_default_mode_before_merge=false
-if [ -f .gaia/audit-ci.yml ] && grep -qE '^[[:space:]]*default_mode[[:space:]]*:' .gaia/audit-ci.yml; then
-  had_default_mode_before_merge=true
-fi
 ```
-
-Persist `had_default_mode_before_merge` for Step 10.
 
 Track seven lists plus a `package.json` sub-report internally (`UpdateMergeReport`):
 
@@ -317,9 +306,9 @@ Track seven lists plus a `package.json` sub-report internally (`UpdateMergeRepor
     notes_path?: string;    // .gaia-merge/pnpm-workspace.yaml.notes when conflicts or suggestions exist
   };
   auditCiYml: {          // field-aware result for .gaia/audit-ci.yml (Step 7c)
-    applied: string[];      // managed scalar knobs / audit_authors entries GAIA changed that the adopter still tracked, PLUS any auditors roster member GAIA added or changed that the adopter hasn't diverged (a roster addition is applied here, not suggested, see Step 7c), written to the working tree
-    conflicts: string[];    // knobs / entries / roster members GAIA changed but the adopter independently diverged, left as the adopter's, noted
-    suggestions: string[];  // scalar knobs / audit_authors entries GAIA added, or changed but the adopter had removed, surfaced opt-in, never applied
+    applied: string[];      // any auditors roster member GAIA added or changed that the adopter hasn't diverged (a roster addition is applied here, not suggested, see Step 7c), written to the working tree
+    conflicts: string[];    // roster members GAIA changed but the adopter independently diverged, left as the adopter's, noted
+    suggestions: string[];  // roster members GAIA changed but the adopter had removed, surfaced opt-in, never applied
     notes_path?: string;    // .gaia-merge/audit-ci.yml.notes when conflicts or suggestions exist
   };
   regions: {             // declared generated regions (Step 6 load, Step 7 oracle, Step 7d regeneration)
@@ -343,7 +332,7 @@ Track seven lists plus a `package.json` sub-report internally (`UpdateMergeRepor
 }
 ```
 
-**Iterate every `<path>: <class>` entry in `$LATEST_MANIFEST`'s `.files` object, except `package.json`, `pnpm-workspace.yaml`, and `.gaia/audit-ci.yml`**, all three are handled field-aware below (`package.json` in **Step 7a**, `pnpm-workspace.yaml` in **Step 7b**, `.gaia/audit-ci.yml` in **Step 7c**). A whole-file `cmp`/`diff` can't separate adopter identity and intentional removals from the real upstream delta; `pnpm-workspace.yaml` is a mixed file (GAIA-authored supply-chain / resolution settings plus adopter-extensible `overrides` and `allowBuilds` maps) that drifts the moment an adopter adds one override; and `.gaia/audit-ci.yml` is a mixed file (GAIA-authored scalar knobs, the adopter-extensible `audit_authors` login=mode string, and the `auditors` roster list, which is GAIA-authored **and** adopter-extensible at once) that drifts the moment a developer commits one per-author entry or a roster member is added on either side. Skip all three during this walk.
+**Iterate every `<path>: <class>` entry in `$LATEST_MANIFEST`'s `.files` object, except `package.json`, `pnpm-workspace.yaml`, and `.gaia/audit-ci.yml`**, all three are handled field-aware below (`package.json` in **Step 7a**, `pnpm-workspace.yaml` in **Step 7b**, `.gaia/audit-ci.yml` in **Step 7c**). A whole-file `cmp`/`diff` can't separate adopter identity and intentional removals from the real upstream delta; `pnpm-workspace.yaml` is a mixed file (GAIA-authored supply-chain / resolution settings plus adopter-extensible `overrides` and `allowBuilds` maps) that drifts the moment an adopter adds one override; and `.gaia/audit-ci.yml` is a mixed file (GAIA-authored scalar knobs, and the `auditors` roster list, which is GAIA-authored **and** adopter-extensible at once) that drifts the moment a roster member is added on either side. Skip all three during this walk.
 
 Let `A` = working-tree `<path>`, `B` = `$BASELINE_DIR/<path>`, `L` = `$LATEST_DIR/<path>`. Use `cmp -s` for equality; `mkdir -p` before writing.
 
@@ -534,7 +523,7 @@ The JSON report is `{ applied, conflicts, suggestions }`. Each item is `{ kind: 
 
 ### Step 7c: Field-aware `.gaia/audit-ci.yml` merge
 
-`.gaia/audit-ci.yml` is classed `shared`, but it is a **mixed** file like `pnpm-workspace.yaml`, carrying three kinds of content: GAIA-authored scalar knobs (`gate_label`, `budget_seconds`, `max_turns`, `push_fixes`, `default_mode`, `override_label`, the `retrigger_workflows` list); the adopter-extensible `audit_authors` string, a space-separated `login=mode` list each developer appends their own pair to via `/setup-gaia`; and the `auditors` roster list, GAIA-authored **and** adopter-extensible at once (GAIA ships and updates its own members, an adopter can add their own alongside them). A whole-file three-way merge emits a full-file conflict patch the moment one developer commits an `audit_authors` entry or an adopter adds their own roster member, so merge it at YAML-key / per-entry granularity instead, acting only on the genuine upstream delta `B → L`.
+`.gaia/audit-ci.yml` is classed `shared`, but it is a **mixed** file like `pnpm-workspace.yaml`, carrying one managed section: the `auditors` roster list, GAIA-authored **and** adopter-extensible at once (GAIA ships and updates its own members, an adopter can add their own alongside them). A whole-file three-way merge emits a full-file conflict patch the moment an adopter adds their own roster member, so merge it at YAML-key / per-entry granularity instead, acting only on the genuine upstream delta `B → L`.
 
 Let `A` = working-tree `.gaia/audit-ci.yml`, `B` = `$BASELINE_DIR/.gaia/audit-ci.yml`, `L` = `$LATEST_DIR/.gaia/audit-ci.yml`.
 
@@ -552,17 +541,16 @@ Let `A` = working-tree `.gaia/audit-ci.yml`, `B` = `$BASELINE_DIR/.gaia/audit-ci
 
 The command exits non-zero with a structured error if any file is missing or not valid YAML. On a non-zero exit, fall back to a whole-file conflict patch (`diff -u A L > .gaia-merge/audit-ci.yml.patch`) and surface it as a conflict; do not proceed with the JSON path.
 
-The JSON report is `{ applied, conflicts, suggestions }`. Each item is `{ kind: 'key' | 'entry', section?, key, baseline?, latest?, adopter?, reason? }`. The CLI iterates only `keys(B) ∪ keys(L)` per managed scalar key, per `audit_authors` login, and per `auditors` roster member name, so an adopter-only developer entry or an adopter-added roster member is never visited, never clobbered. The seven managed knobs are compared whole-value; `audit_authors` is parsed into per-login entries (the login compared case-insensitively, matching the resolver's case-fold) and compared per login; `auditors` is parsed into per-member entries (the name compared exactly, not case-folded, a member name is an agent filename, not a login) and each member's whole mapping (`globs`, `scope`, `push_fixes`, `default`) is compared and applied as a unit, never glob-by-glob. All three sections use the identical verdict table (`apply` / `conflict` / `suggest-add` / `suggest-removed`), **with one deliberate exception**: for `auditors` only, a member present in latest and absent from baseline resolves to `apply`, not `suggest-add`. Every other section treats that row as an opt-in suggestion the adopter must act on; a roster member is a capability the adopter cannot opt into if it never arrives, so a new GAIA-authored member (e.g. `code-audit-github-workflows`) is written straight into the adopter's file rather than surfaced as something they might miss. An adopter's own roster member is still never visited, and an adopter's *edit* to a GAIA-authored member is still a `conflict`, not silently overwritten.
+The JSON report is `{ applied, conflicts, suggestions }`. Each item is `{ kind: 'key' | 'entry', section?, key, baseline?, latest?, adopter?, reason? }`. The CLI iterates only `keys(B) ∪ keys(L)` per `auditors` roster member name, so an adopter-added roster member is never visited, never clobbered, and a top-level key an older version of the file carried (a legacy mode, author map, override label, or the retired `push_fixes` and re-dispatch list) is neither applied nor flagged. `auditors` is parsed into per-member entries (the name compared exactly, not case-folded, a member name is an agent filename) and each member's whole mapping (`globs`, `scope`, `push_fixes`, `default`) is compared and applied as a unit, never glob-by-glob. The verdict table is the same as Step 7b's (`apply` / `conflict` / `suggest-add` / `suggest-removed`), **with one deliberate exception**: a member present in latest and absent from baseline resolves to `apply`, not `suggest-add`. Step 7b treats that row as an opt-in suggestion the adopter must act on; a roster member is a capability the adopter cannot opt into if it never arrives, so a new GAIA-authored member (e.g. `code-audit-github-workflows`) is written straight into the adopter's file rather than surfaced as something they might miss. An adopter's own roster member is still never visited, and an adopter's *edit* to a GAIA-authored member is still a `conflict`, not silently overwritten.
 
-**Apply clean changes (`applied[]`):** for each item, edit the working-tree `.gaia/audit-ci.yml` so the key's (or entry's) value becomes `latest`, using the **Edit** tool. Preserve the file's comments, key order, and quote style; change only the value text. For an `audit_authors` entry item, edit that login's `=mode` token inside the existing `audit_authors` string; do not rewrite the whole string or reorder the other developers' entries. For an `auditors` roster item: if the member already exists in the working tree, edit its `globs:` / `scope:` / `push_fixes:` / `default:` fields in place to match latest; if it is a new member (the added-row exception above), append a whole new `- name: ...` list item to the `auditors:` list, matching the indentation and key order of its neighbors. Do **not** reserialize the file.
+**Apply clean changes (`applied[]`):** for each item, edit the working-tree `.gaia/audit-ci.yml` so the key's (or entry's) value becomes `latest`, using the **Edit** tool. Preserve the file's comments, key order, and quote style; change only the value text. For an `auditors` roster item: if the member already exists in the working tree, edit its `globs:` / `scope:` / `push_fixes:` / `default:` fields in place to match latest; if it is a new member (the added-row exception above), append a whole new `- name: ...` list item to the `auditors:` list, matching the indentation and key order of its neighbors. Do **not** reserialize the file.
 
 **Record conflicts + suggestions:** if either bucket is non-empty, write a human-readable `.gaia-merge/audit-ci.yml.notes` listing, per item: the section (if any), the key, the adopter / baseline / latest values, and the recommended action. Set `notes_path`. This file is informational; it is **not** a `diff -u` patch and is **not** added to the file-level `conflicts[]` bucket.
 
 **Net effect:**
 
-- **No managed-key delta** (knobs, any shipped `audit_authors` entries, and the roster all unchanged by the release) → zero applied/conflicts/suggestions → **clean skip, no notes file.** An adopter whose only divergence is their committed `audit_authors` entries or their own added roster member never sees a conflict.
-- **Reader safe-defaults absent keys:** an adopter whose installed file predates these keys is fine, the reader defaults `override_label=run-audit` and `audit_authors=` empty; a missing `default_mode` now falls back to `local`. The merge adds the keys. This is a real behavior change for the pre-`default_mode` cohort, their next merge moves them from CI-audited to local-audited; see the Step 10 opt-in nudge for what to tell them.
-- **A GAIA-authored roster addition always lands in `applied[]`, not `suggestions[]`.** This is the one section whose added-row verdict diverges from every other merged section (scalar knobs, `audit_authors`), by design (see above): the alternative would mean a new GAIA-authored auditor never reaches an existing adopter's file at all.
+- **No managed-key delta** (the roster unchanged by the release) → zero applied/conflicts/suggestions → **clean skip, no notes file.** An adopter whose only divergence is their own added roster member or a legacy key never sees a conflict.
+- **A GAIA-authored roster addition always lands in `applied[]`, not `suggestions[]`.** This is the one section whose added-row verdict diverges from every other merged section, by design (see above): the alternative would mean a new GAIA-authored auditor never reaches an existing adopter's file at all.
 
 ### Step 7d: Regenerate declared regions
 
@@ -804,17 +792,13 @@ Tell the user:
 5. Inspect the diff (`git diff`) before committing.
 6. When satisfied, commit with `chore: update GAIA to $LATEST_TAG`.
 
-**Opt-in nudge (only when `had_default_mode_before_merge` is `false`).** Show this line only when the pre-Step-7 snapshot found no `default_mode` key in the installed `.gaia/audit-ci.yml`, i.e. the adopter's config predates the per-author audit mode. Gate on the snapshot, NOT the post-merge file state: the Step 7c merge may have just added the key, and gating on the current file would pre-silence the nudge on the very run that should surface it. Once the adopter's own config carries `default_mode` (a later run's snapshot finds it), the nudge no longer fires.
-
-> **New: per-author audit mode.** The code-audit-frontend now runs locally at merge time by default, falling back to CI only for a pinned per-author override or a fork PR. **This changes your merges from CI-audited to local-audited starting now.** Run `/setup-gaia` to set the team policy, either keep CI-audited, or record your own per-author preference.
-
 Do **not** auto-commit on behalf of the user, they need to review the changes first.
 
 ---
 
-## Steps 11–12 (orchestrator, after the user commits)
+## Step 11 (orchestrator, after the user commits)
 
-The execution agent's work ends at Step 10, it returns its `UpdateMergeReport` and the orchestrator relays the summary. Steps 11-12 run in the **orchestrator**, not the spawned agent: they depend on the Step 10 commit, which is the user's manual action and lands after the one-shot agent has already returned. Run them once that commit exists.
+The execution agent's work ends at Step 10, it returns its `UpdateMergeReport` and the orchestrator relays the summary. Step 11 runs in the **orchestrator**, not the spawned agent: it depends on the Step 10 commit, which is the user's manual action and lands after the one-shot agent has already returned. Run it once that commit exists.
 
 ### Step 11: Open a pull request
 
@@ -846,67 +830,3 @@ fi
 ```
 
 If `gh` is unavailable or errors, tell the user to open the PR manually: `$branch` → `main`.
-
-### Step 12: Refresh a stale CI audit workflow
-
-`.github/workflows/code-review-audit.yml` is **not** synced by the manifest walk (Steps 6-7); the audit workflow installs and updates through its own template, not a manifest class. A project that enabled GAIA CI on an older release therefore keeps whatever audit workflow shipped then, frozen, even after this update pulls a newer template. That stale copy is the root of an ordering trap: if this update's payload makes `has_source=true` (a dependency or config bump), CI runs a **full** audit under the **stale** workflow on the PR just opened, which cannot earn a clean `GAIA-Audit` stamp, and the operator then has to run `/setup-gaia` by hand to refresh it (a second commit that self-mod-skips). Refreshing the workflow **inside this update PR** collapses that into a single, expected self-mod-skip.
-
-The audit workflow is **adopter-tunable**: an adopter may have customized it (self-hosted runners, extra secrets wiring, concurrency, extra steps), so it is refreshed via a 3-way classify that never clobbers real edits. The audit template is static (no render), so the three inputs are files already on disk:
-
-- `A` = the installed workflow, `.github/workflows/code-review-audit.yml`
-- `L_old` = the prior release's template, `$BASELINE_DIR/.gaia/cli/templates/workflows/code-review-audit.yml.tmpl`
-- `L_new` = this release's template, `$LATEST_DIR/.gaia/cli/templates/workflows/code-review-audit.yml.tmpl`
-
-`gaia setup-ci check-audit-drift` classifies them and the SKILL acts on the verdict: `missing` (CI not installed → silent no-op, this is the opt-in guard), `in_sync` (already current, or this release did not touch the template → no-op), `clean` (`A == L_old`, stale but un-customized → safe to overwrite), or `conflict` (`A` matches neither template, or the baseline template is unavailable → never auto-write).
-
-```bash
-# $BASELINE (pre-update version) and $LATEST_TAG carry from the run, as in
-# Step 11. The release tarball cache from Step 5 still holds both templates.
-BASELINE_DIR=".gaia/local/cache/shared/update-gaia/v$BASELINE"
-LATEST_DIR=".gaia/local/cache/shared/update-gaia/$LATEST_TAG"
-audit_tmpl=".gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
-audit_wf=".github/workflows/code-review-audit.yml"
-
-audit_state="$(.gaia/cli/gaia setup-ci check-audit-drift \
-  --baseline "$BASELINE_DIR/$audit_tmpl" \
-  --latest "$LATEST_DIR/$audit_tmpl" \
-  --json 2>/dev/null | jq -r '.state // "unknown"' 2>/dev/null || echo unknown)"
-
-case "$audit_state" in
-  clean)
-    # Stale but un-customized: overwrite with the new template and land it in
-    # the update PR so CI sees the refreshed workflow from the start. The
-    # commit stages only a workflow YAML (no ts/tsx/css), so the Quality Gate
-    # has nothing to check.
-    cp "$LATEST_DIR/$audit_tmpl" "$audit_wf"
-    git add "$audit_wf"
-    if git commit -m "chore: re-render code-review-audit.yml for $LATEST_TAG" && git push; then
-      echo "Refreshed $audit_wf from the $LATEST_TAG template and pushed it to the update PR."
-    else
-      echo "Refreshed $audit_wf from the $LATEST_TAG template; commit and push it to the update PR manually."
-    fi
-    cat <<EOF
-Expectation: re-rendering $audit_wf makes this update PR self-modifying, so claude-code-action's workflow-validation guardrail refuses to run the audit on it. CI self-mod-skips the audit, one expected skip instead of a wasted full audit under the stale workflow plus a manual /setup-gaia step. When the workflow is the only in-scope change, CI stamps GAIA-Audit for the verbatim re-render and the merge needs no local audit. When this PR also changes other in-scope files, CI posts no GAIA-Audit status; a local audit clears the merge and posts it (see PR Merge Workflow).
-EOF
-    ;;
-  conflict)
-    # Adopter customized the workflow, or the baseline template is missing.
-    # Never auto-write: emit a sidecar patch (installed -> latest template) and
-    # defer to a manual refresh, mirroring the Step 7 conflict handling.
-    mkdir -p .gaia-merge
-    diff -u "$audit_wf" "$LATEST_DIR/$audit_tmpl" \
-      > ".gaia-merge/code-review-audit.yml.patch" || true
-    echo "Heads up: $audit_wf has local customizations, so the $LATEST_TAG template was NOT applied. Review .gaia-merge/code-review-audit.yml.patch, reconcile, then run /setup-gaia to refresh it. The merge gate's out-of-scope bypass / local audit keeps this update PR mergeable in the meantime."
-    ;;
-  missing | in_sync)
-    : # missing → GAIA CI not installed (opt-in), stay silent. in_sync → nothing to do.
-    ;;
-  *)
-    # Unknown verdict (e.g. a CLI predating 3-way support, or a probe error):
-    # fall back to the manual nudge so there is zero regression.
-    echo "Heads up: $audit_wf may be out of date vs the $LATEST_TAG template. Run /setup-gaia to refresh it so the CI audit stamps the GAIA-Audit status correctly. The merge gate's out-of-scope bypass keeps this update PR mergeable in the meantime."
-    ;;
-esac
-```
-
-Only `clean` auto-refreshes; `conflict` and any unknown verdict defer to the manual `/setup-gaia` nudge, and `missing` / `in_sync` do nothing.

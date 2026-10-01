@@ -22,6 +22,7 @@ The registry documents each label's shape; it does not document how one is used 
 - `.gaia/cli/gaia labels docs` regenerates the span below from the registry.
 
 Sync is conservative by design. It renames rather than deleting and recreating, because a delete strips the label from every issue and pull request carrying it. It reports an unknown live label instead of touching it. Color is operator wins and description is GAIA wins, so a deliberate recolor survives an update while a stale description does not. A rename is the one exception: it carries the registry's color with it, under no flag. Sync cannot tell a registry recolor from an operator's own, so a renamed entry's leftover color would sit unreconciled indefinitely; the rename resolves that in the registry's favour, at the cost of an operator's recolor of the old name not surviving the rename. Nothing is deleted without `--prune-deprecated` or `--enforce-blocked`, and `--enforce-blocked` counts a label's carriers on both surfaces, issues and pull requests, before reading it as uncarried; a label it cannot count on either surface is never deleted. A token without label-write scope produces a list of manual `gh` commands and a zero exit rather than a failed setup. That list means two different things, so the degraded output and the `--json` `degradedAt` field name which refusal happened: after a refused write it is the mutations still owed, while after a refused read the plan was computed against an assumed-empty repository and the list is the whole registry.
+A label GAIA no longer files is kept in the registry with `"deprecated": true` and no feature, and `.gaia/labels.json` is the authority on which entries those are. `gaia labels sync --prune-deprecated` removes them from a repository, and the generated span below leaves deprecated entries out. The `security` label belongs to the `dependabot` feature, owed only once a repository opts into Dependabot security updates.
 <!-- gaia:maintainer-only:start -->
 
 The `audience` axis answers two questions at two layers, under one name. A registry entry's `audience` field decides which clones receive the label; an `audience:*` label records which side can observe the defect it is filed against. So the two `audience:*` entries carry `"audience": "maintainer"` themselves: only this repository files against the split, while `audience:adopter` still means an adopter can observe the defect. The Code Audit Team roster's `audience:` field in `.gaia/audit-ci.yml` uses the same two values for the same split.
@@ -39,14 +40,14 @@ The `audience` axis answers two questions at two layers, under one name. A regis
 | `bug` | `d73a4a` | Existing behavior is broken or wrong | always |
 | `enhancement` | `a2eeef` | New feature or request | always |
 | `documentation` | `0075ca` | Improvements or additions to documentation | always |
-| `security` | `a1121b` | Security defect or dependency CVE | gaia-ci |
+| `security` | `a1121b` | Security defect or dependency CVE | dependabot |
 
 ### Urgency
 
 | Label | Color | Description | Created by |
 | --- | --- | --- | --- |
-| `severity:critical` | `b60205` | Breaks a documented promise or loses work; drain first | tech-debt, gaia-ci |
-| `severity:important` | `fbca04` | Degrades a documented behavior; drain before suggestions | tech-debt, gaia-ci |
+| `severity:critical` | `b60205` | Breaks a documented promise or loses work; drain first | tech-debt |
+| `severity:important` | `fbca04` | Degrades a documented behavior; drain before suggestions | tech-debt |
 | `severity:suggestion` | `c5def5` | Improvement with no broken behavior behind it | tech-debt |
 | `severity:investigate` | `1d76db` | Severity not yet determined; research required before it can be graded | tech-debt |
 
@@ -85,13 +86,6 @@ The `audience` axis answers two questions at two layers, under one name. A regis
 | Label | Color | Description | Created by |
 | --- | --- | --- | --- |
 | `wontfix` | `e5e5e5` | Deliberately declined; do not re-file | always |
-
-### Origin and trigger
-
-| Label | Color | Description | Created by |
-| --- | --- | --- | --- |
-| `gaia-ci` | `d4d4d4` | Opened by a GAIA CI maintenance job | gaia-ci |
-| `run-audit` | `a78bfa` | Forces the Code Audit Team to run on this pull request | always |
 
 ### Attention gate
 

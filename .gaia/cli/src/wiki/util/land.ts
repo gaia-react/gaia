@@ -1,3 +1,4 @@
+import {z} from 'zod';
 /**
  * Shared landing primitives for the wiki `sync land` and `chain` commands.
  *
@@ -9,6 +10,7 @@
 import type {SpawnSyncReturns} from 'node:child_process';
 import {EXIT_CODES} from '../../exit.js';
 import type {CommandRunner} from './branch.js';
+import {invalidateStatuslineCache} from './statusline-cache.js';
 
 /** Exit code for an unexpected git/gh process failure. */
 export const UNEXPECTED_EXIT = 2;
@@ -191,6 +193,196 @@ export const cleanupAfterMerge = (
   return commandSucceeded(deleteResult);
 };
 
+export type OutOfScopeStampOptions = {
+  branch: string;
+  cwd: string;
+  prefix: string;
+  runner: CommandRunner;
+};
+
+const OUT_OF_SCOPE_DESCRIPTION = 'skipped: out of scope';
+
+const PullRequestRecordSchema = z.object({
+  baseRefName: z.string().min(1),
+  files: z.array(z.object({path: z.string()})),
+  headRefOid: z.string().min(1),
+});
+
+type PullRequestRecordResult =
+  {reason: string} | {record: z.infer<typeof PullRequestRecordSchema>};
+
+const failureDetail = (result: SpawnSyncReturns<string>): string => {
+  const stderr = safeOutput(result.stderr).trim();
+
+  return stderr === '' ? `exit ${result.status ?? -1}` : stderr;
+};
+
+const readPullRequestRecord = (
+  options: OutOfScopeStampOptions
+): PullRequestRecordResult => {
+  const {branch, cwd, runner} = options;
+  const view = runner(
+    'gh',
+    ['pr', 'view', branch, '--json', 'files,headRefOid,baseRefName'],
+    {cwd}
+  );
+
+  if (!commandSucceeded(view)) {
+    return {reason: `could not read the pull request (${failureDetail(view)})`};
+  }
+
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(safeOutput(view.stdout));
+  } catch {
+    return {reason: 'the pull request record is not JSON'};
+  }
+
+  const record = PullRequestRecordSchema.safeParse(parsed);
+
+  return record.success ?
+      {record: record.data}
+    : {reason: 'the pull request record is malformed'};
+};
+
+/**
+ * Post the `GAIA-Audit` out-of-scope success status on the landing branch's
+ * head, for the wiki-only PR the CLI merges itself with auto-merge, outside the
+ * Claude Code merge hook that stamps every other bypass PR. Call it after
+ * `gh pr create` and before the auto-merge step.
+ *
+ * The subject is the pull request, not the local checkout: both landers cut
+ * their branch from a local default branch that can carry commits origin never
+ * received, and a diff against it would hide those commits from the roster
+ * while the PR still contains them. So the changed set is the PR's own file
+ * list, its recorded head must be the commit this checkout holds, and the
+ * roster is resolved against the PR base fetched from the remote.
+ *
+ * Refuses (one stderr line, no POST) unless every PR path is under `wiki/`, the
+ * recorded head equals local `HEAD`, and the Code Audit Team roster dispatches
+ * no member for the diff. The roster check keeps a later roster entry that owns
+ * a `wiki/` path from letting the path check alone clear an in-scope PR. Any
+ * failure to answer refuses too, since "could not answer" is not "nobody is
+ * owed". Never changes the land's exit code.
+ */
+export const postOutOfScopeStamp = (options: OutOfScopeStampOptions): void => {
+  const {cwd, prefix, runner} = options;
+
+  const refusePost = (reason: string): void => {
+    process.stderr.write(
+      `${prefix}: GAIA-Audit out-of-scope stamp not posted: ${reason}; run the PR Merge Workflow on this pull request\n`
+    );
+  };
+
+  const read = readPullRequestRecord(options);
+
+  if ('reason' in read) {
+    refusePost(read.reason);
+
+    return;
+  }
+
+  const {record} = read;
+
+  const head = runner('git', ['rev-parse', 'HEAD'], {cwd});
+  const headSha = commandSucceeded(head) ? safeOutput(head.stdout).trim() : '';
+
+  if (headSha === '') {
+    refusePost('could not resolve the head commit');
+
+    return;
+  }
+
+  if (record.headRefOid !== headSha) {
+    refusePost('the pull request head is not the commit this checkout holds');
+
+    return;
+  }
+
+  if (
+    record.files.length === 0 ||
+    record.files.some((file) => !file.path.startsWith('wiki/'))
+  ) {
+    refusePost('the pull request changes paths outside wiki/');
+
+    return;
+  }
+
+  // A base name that starts with `-` would be read as an option by `git fetch`.
+  if (record.baseRefName.startsWith('-')) {
+    refusePost('the pull request base name is not a branch name');
+
+    return;
+  }
+
+  const fetchBase = runner('git', ['fetch', 'origin', record.baseRefName], {
+    cwd,
+  });
+
+  if (!commandSucceeded(fetchBase)) {
+    refusePost(
+      `could not fetch origin/${record.baseRefName} (${failureDetail(fetchBase)})`
+    );
+
+    return;
+  }
+
+  const members = runner(
+    'bash',
+    [
+      '.gaia/scripts/resolve-audit-members.sh',
+      '--root',
+      cwd,
+      '--base',
+      `origin/${record.baseRefName}`,
+    ],
+    {cwd}
+  );
+
+  if (!commandSucceeded(members)) {
+    refusePost(
+      `resolve-audit-members.sh could not answer (${failureDetail(members)})`
+    );
+
+    return;
+  }
+
+  const dispatched = safeOutput(members.stdout)
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  if (dispatched.length > 0) {
+    refusePost(
+      `the Code Audit Team dispatches ${dispatched.join(', ')} for this diff`
+    );
+
+    return;
+  }
+
+  const post = runner(
+    'gh',
+    [
+      'api',
+      '-X',
+      'POST',
+      `repos/{owner}/{repo}/statuses/${headSha}`,
+      '-f',
+      'state=success',
+      '-f',
+      'context=GAIA-Audit',
+      '-f',
+      `description=${OUT_OF_SCOPE_DESCRIPTION}`,
+    ],
+    {cwd}
+  );
+
+  if (!commandSucceeded(post)) {
+    refusePost(`the status POST failed (${failureDetail(post)})`);
+  }
+};
+
 export type FinalizeMergeOptions = MergeWaitOptions & {
   base: string;
   prefix: string;
@@ -209,6 +401,7 @@ export const finalizeMerge = (options: FinalizeMergeOptions): number => {
 
   if (waitForMerge(options)) {
     cleanupAfterMerge({base, branch, cwd, runner});
+    invalidateStatuslineCache(cwd);
     process.stdout.write(
       `${prefix}: merged PR for ${branch} and cleaned up locally\n`
     );
@@ -222,6 +415,9 @@ export const finalizeMerge = (options: FinalizeMergeOptions): number => {
   // which prune-fetches, reaps the merged-and-gone branch, and fast-forwards
   // base on a later session. It does not depend on this wait succeeding.
   runner('git', ['checkout', '--end-of-options', base], {cwd});
+  // Still invalidate: the next refresher run recomputes, and the nudge clears
+  // once the queued merge lands and the main checkout's state file advances.
+  invalidateStatuslineCache(cwd);
   process.stdout.write(
     `${prefix}: opened PR for ${branch}; auto-merge queued but not yet merged, local cleanup deferred\n`
   );

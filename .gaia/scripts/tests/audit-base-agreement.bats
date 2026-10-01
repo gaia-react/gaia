@@ -736,7 +736,9 @@ STUB
 # That file is NOT ownerless: `audit_owner_for_path` resolves it to
 # code-audit-maintainer-shell. It is outside the remit of every member probed
 # with it, and inside the remit of the one member that is not, which is why the
-# shell probe reaches for `.github/workflows/code-review-audit.yml` instead.
+# shell probe reaches for a non-shell file under `.github/audit/` instead: the
+# directory is machinery, but the roster gives the shell member only its `.sh`
+# and `.bats` files.
 
 # probe_deadlock <member> <owned-path> <machinery-path-outside-remit>
 probe_deadlock() {
@@ -814,7 +816,7 @@ probe_deadlock() {
 
 @test "deadlock: each specialist's self-skip arm reads the whole-PR list, not the increment" {
   probe_deadlock code-audit-maintainer-shell \
-    ".claude/rules/fixture-rule.md" ".github/workflows/code-review-audit.yml"
+    ".claude/rules/fixture-rule.md" ".github/audit/fixture-note.md"
   probe_deadlock code-audit-github-workflows \
     ".github/workflows/fixture-ci.yml" ".claude/hooks/lib/audit-selfheal-paths.sh"
   probe_deadlock code-audit-maintainer-node \
@@ -869,33 +871,6 @@ probe_deadlock() {
       return 1
     }
   done
-}
-
-# ---------- the non-agent callers still invoke the resolver argument-lessly ----
-#
-# The agent definitions are the ones UAT-016 deliberately moves onto
-# --member (proved above). The callers below resolve the SHARED
-# pull-request-wide base, which is what keys every artifact a round shares, so
-# none of them may grow a --member flag. No count is stated: the pathspec is
-# the roster, and a stated number rots the next time a caller joins or leaves.
-#
-# post-findings-block-on-merge.sh was one of these and no longer resolves a
-# base at all: the producer it calls selects its sidecars on the branch half
-# of the key alone (gaia-react/gaia#1573), so there is nothing left there for
-# a --member flag to narrow.
-
-@test "the non-agent callers still invoke the resolver argument-lessly" {
-  local out
-  out="$(git -C "$REPO_ROOT" grep -n "resolve-audit-base.sh" -- \
-    .github/workflows/code-review-audit.yml \
-    .gaia/cli/templates/workflows/code-review-audit.yml.tmpl)"
-  [ -n "$out" ]
-  grep -qF -- "--member" <<<"$out" && {
-    printf 'a non-agent caller now passes --member, which resolves a per-member base rather than the shared key: %s\n' \
-      "$out" >&2
-    return 1
-  }
-  return 0
 }
 
 # ---------- probe 3b: the membership list survives an unusual path -----------

@@ -209,9 +209,8 @@ run_linter() {
   [ "$status" -eq 0 ]
 }
 
-# The false positive that would otherwise fire on
-# .github/workflows/code-review-audit.yml:486, where an agent prompt names the
-# command inside a markdown code span.
+# The false positive that would otherwise fire on a workflow step where an
+# agent prompt names the command inside a markdown code span.
 @test "a call inside a markdown code span is prose, not an invocation" {
   fixture_repo
   fixture_file .github/workflows/ci.yml \

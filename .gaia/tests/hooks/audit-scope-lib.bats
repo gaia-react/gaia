@@ -257,9 +257,10 @@ last_definition() {
 }
 
 # ---------------------------------------------------------------------------
-# Part 3: the remaining in-scope sets stay separately named. Each of
-# audit_out_of_scope_allowlisted and audit_self_mod_classify is a distinct
-# symbol, and neither is defined in terms of the other. CI's has_source stays
+# Part 3: the remaining in-scope sets stay separately named.
+# audit_out_of_scope_allowlisted is the one path-classification predicate; the
+# self-modification classifier it once had a sibling in is gone, along with
+# the merge-gate bypass that was its only caller. CI's has_source stays
 # a workflow-local grep pair, never replaced by a call into the module. No
 # routing decision consults a hardcoded auditable-base literal: the function
 # that once held one, audit_in_auditable_base, is gone, and ownership is a
@@ -267,31 +268,10 @@ last_definition() {
 # default member's own declared globs).
 # ---------------------------------------------------------------------------
 
-@test "the two path-classification functions are distinct symbols" {
+@test "the out-of-scope allowlist is defined, and the self-modification classifier is gone from the library and the gate" {
   grep -qF "audit_out_of_scope_allowlisted() {" "$SCOPE_LIB" || return 1
-  grep -qF "audit_self_mod_classify() {" "$SCOPE_LIB" || return 1
-}
-
-@test "audit_out_of_scope_allowlisted is not defined in terms of audit_self_mod_classify" {
-  body="$(extract_function "$SCOPE_LIB" audit_out_of_scope_allowlisted)"
-  grep -qF "audit_self_mod_classify" <<<"$body" && return 1
-  true
-}
-
-@test "audit_self_mod_classify is not defined in terms of audit_out_of_scope_allowlisted, and stays a three-way classification" {
-  body="$(extract_function "$SCOPE_LIB" audit_self_mod_classify)"
-  grep -qF "audit_out_of_scope_allowlisted" <<<"$body" && return 1
-  grep -qF "out-of-scope" <<<"$body" || return 1
-  grep -qF "audit-workflow" <<<"$body" || return 1
-  grep -qF "in-scope" <<<"$body" || return 1
-}
-
-@test "CI's has_source gate is not replaced by a call into the classifier module" {
-  wf="$REPO_ROOT/.github/workflows/code-review-audit.yml"
-  [ -f "$wf" ]
-  grep -qF "has_source" "$wf" || return 1
-  grep -qF "audit-scope.sh" "$wf" && return 1
-  grep -qF "audit_out_of_scope_allowlisted" "$wf" && return 1
+  grep -qF "audit_self_mod_classify" "$SCOPE_LIB" && return 1
+  grep -qE "audit_self_mod_classify|check_self_mod_only_update_pr|self_mod_only" "$HOOK" && return 1
   true
 }
 
@@ -381,19 +361,15 @@ golden_setup() {
   mkdir -p "$GREPO/.gaia"
   printf '1.4.0\n' > "$GREPO/.gaia/VERSION"
   echo "# readme" > "$GREPO/README.md"
-  # Seed the bundled audit-workflow template on the base (main). In the real
-  # tree it already lives there; a /update-gaia self-mod PR refreshes the
-  # installed .github/workflows/code-review-audit.yml to match it and never
-  # re-commits the template itself. The template is maintainer-shell-owned in
-  # the roster, so a diff that CHANGED it would dispatch that member and never
-  # reach the frontend-only self-mod bypass. Keeping it on the base, out of the
-  # self-mod diff, is what makes the self-mod golden cases representative.
+  # Seed a bundled workflow template on the base (main), so a feature commit
+  # can re-render it verbatim: the shape of pull request the removed
+  # self-modification bypass used to clear, which the table pins as a deny.
   mkdir -p "$GREPO/.gaia/cli/templates/workflows"
   printf 'name: Code Review Audit\n' \
-    > "$GREPO/.gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
+    > "$GREPO/.gaia/cli/templates/workflows/fixture-audit.yml.tmpl"
   seed_audit_roster "$GREPO"
   git -C "$GREPO" add .gaia/VERSION .gaia/audit-ci.yml README.md \
-    .gaia/cli/templates/workflows/code-review-audit.yml.tmpl
+    .gaia/cli/templates/workflows/fixture-audit.yml.tmpl
   git -C "$GREPO" commit --quiet -m "init"
   git -C "$GREPO" checkout --quiet -b feature
 
@@ -409,10 +385,23 @@ golden_setup() {
   cp "$SCOPE_LIB" "$GREPO/.claude/hooks/lib/audit-scope.sh"
   cp "$MACHINERY_LIB" "$GREPO/.claude/hooks/lib/audit-machinery.sh"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-base-provenance.sh" "$GREPO/.claude/hooks/lib/audit-base-provenance.sh"
+
+  # A gh that answers the gate's fork query (`--json isCrossRepository`) with
+  # `false` and fails everything else, so the table never reaches the
+  # developer's own gh and a pull-request record stays unresolvable, which is
+  # what the golden_run_hook comment below relies on.
+  GOLDEN_GH_BIN="$GREPO.bin"
+  mkdir -p "$GOLDEN_GH_BIN"
+  cat > "$GOLDEN_GH_BIN/gh" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in *isCrossRepository*) printf 'false\n'; exit 0 ;; esac
+exit 1
+EOF
+  chmod +x "$GOLDEN_GH_BIN/gh"
 }
 
 golden_teardown() {
-  [ -n "${GREPO:-}" ] && rm -rf "$GREPO"
+  [ -n "${GREPO:-}" ] && rm -rf "$GREPO" "$GREPO.bin"
   true
 }
 
@@ -436,7 +425,7 @@ golden_commit() {
 golden_run_hook() {
   local json
   json=$(jq -n '{tool_name: "Bash", tool_input: {command: "gh pr merge --squash"}}')
-  invoke_hook_in "$GREPO" "$json" "$HOOK"
+  PATH="$GOLDEN_GH_BIN:$PATH" invoke_hook_in "$GREPO" "$json" "$HOOK"
 }
 
 @test "golden table: pure wiki-only diff allows" {
@@ -506,40 +495,12 @@ golden_run_hook() {
   true
 }
 
-@test "golden table: self-mod-only with a template-matching workflow blob allows" {
+@test "golden table: a verbatim re-render of a bundled workflow template denies" {
   golden_setup
-  # Only the installed workflow changes; the template is already on the base
-  # (seeded in golden_setup) with identical bytes, so the blob-identity check
-  # passes and the self-mod-only bypass clears the merge. The workflow routes to
-  # code-audit-github-workflows, so the bypass clears a member that is not the
-  # default: it proves a property of the PR, not of one member.
-  golden_commit ".github/workflows/code-review-audit.yml" "name: Code Review Audit"
-  golden_run_hook
-  golden_teardown
-  [ "$status" -eq 0 ]
-  grep -qF -- '"permissionDecision": "deny"' <<<"$output" && return 1
-  true
-}
-
-@test "golden table: self-mod plus one extra in-scope path denies" {
-  golden_setup
-  golden_commit \
-    ".github/workflows/code-review-audit.yml" "name: Code Review Audit" \
-    "app/evil.ts" "export const evil = 1;"
-  golden_run_hook
-  golden_teardown
-  [ "$status" -eq 0 ]
-  grep -qF -- '"permissionDecision": "deny"' <<<"$output" || return 1
-  true
-}
-
-@test "golden table: self-mod with an edited (non-template-matching) workflow denies" {
-  golden_setup
-  # The installed workflow is customized, so its bytes no longer equal the
-  # template seeded on the base: the blob-identity check fails and the self-mod
-  # bypass does not fire.
-  golden_commit \
-    ".github/workflows/code-review-audit.yml" "name: Code Review Audit (customized)"
+  # The template on the base and the installed workflow carry identical bytes,
+  # which is exactly what the removed self-modification bypass cleared on.
+  # The workflow is in scope, so with no marker the merge denies.
+  golden_commit ".github/workflows/fixture-audit.yml" "name: Code Review Audit"
   golden_run_hook
   golden_teardown
   [ "$status" -eq 0 ]
@@ -593,19 +554,11 @@ golden_run_hook() {
 # SEC-007: every machinery path is claimed by the committed .gaia/audit-ci.yml
 # roster, the only roster the module loads. Bats suites are release-excluded,
 # so this only ever runs where the maintainer members exist.
-#
-# One named exception: `.gaia/cli/templates/workflows/code-review-audit.yml.tmpl`
-# is machinery (its bytes must still rotate every member's digest) but
-# deliberately owns no reviewer. It is a pure byte-identical copy of the
-# live .github/workflows/code-review-audit.yml; a reviewer reading it decides
-# nothing the live workflow's review did not already decide. The drift guard covering every workflow template
-# under `.gaia/cli/templates/workflows/`, partials included, is the pin that
-# keeps this carve-out honest: it fails if any of them drifts from its source.
 # ---------------------------------------------------------------------------
 
 # Assert audit_owner_for_path returns a non-empty owner for every machinery
 # path in $AUDIT_MACHINERY_PATHS, against the roster the caller already
-# init'd, except the one named ownerless-by-design artifact above. Real files
+# init'd. Real files
 # under a `/**` prefix are enumerated from $REPO_ROOT. Ends in the pass/fail
 # check, so it is safe as a @test's final command.
 assert_every_machinery_path_owned() {
@@ -631,10 +584,6 @@ assert_every_machinery_path_owned() {
           fi
         done < <(git -C "$REPO_ROOT" ls-files -z "$prefix")
         ;;
-      ".gaia/cli/templates/workflows/code-review-audit.yml.tmpl")
-        # Named exactly, not a relaxed `*)` arm: every OTHER machinery path
-        # still fails closed on a gap. See the SEC-007 header above.
-        ;;
       *)
         owner="$(audit_owner_for_path "$entry")"
         if [ -z "$owner" ]; then
@@ -649,7 +598,7 @@ EOF
   [ "$fail" -eq 0 ]
 }
 
-@test "SEC-007: audit_owner_for_path returns a non-empty member for every machinery path (one named carve-out)" {
+@test "SEC-007: audit_owner_for_path returns a non-empty member for every machinery path" {
   # shellcheck source=/dev/null
   . "$SCOPE_LIB"
   # shellcheck source=/dev/null

@@ -147,7 +147,6 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Task Orchestration]]
 - [[Workflow Doctrine]]: the one execution doctrine (roles, git ownership, checkpoint and resume, model choice) and the hook that injects it on a branch.
 - [[Code Review Audit Agent]]
-- [[Code Review Audit CI]]: pre-merge GitHub Actions gate; `GAIA-Audit:` trailer skip logic; adopter-tunable knobs at `.gaia/audit-ci.yml`.
 - [[Registering a Code Audit Team Member]]: how-to for adding a new roster member: agent def, roster entry, machinery wiring, finding_class bucket, recurrence-tally integration, and the local-gate checklist.
 - [[Audit Disposition and Debt Fix]]: forced disposition of out-of-scope audit findings as deduped tech-debt issues; security-class divert; the /gaia-debt fix loop (single issue or recommended related batch, isolated per the team's git isolation policy) and statusline nudge; /gaia-residue drains the accepted-residual record the same audit leaves unfiled.
 - [[GitHub Labels]]: the label registry at `.gaia/labels.json`, the palette rule, the generated page, and `gaia labels sync` / `docs`.
@@ -156,6 +155,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Claude Hooks]]
 - [[GAIA Scripts]]: the index of `.gaia/scripts/`: one row per root file with its family, ship status, invoker, and what it is, plus the subdirectories and why the directory stays flat.
 - [[OS Sandbox]]: two-tier sandbox-enablement preference (owner recommends, each machine resolves) and the honest `.env` deny-merge boundary.
+- [[Project Config]]: `.gaia/project.json`, the committed team-shared settings file (sandbox recommendation, isolation policy, Dependabot answer), its writers and readers, and why `/update-gaia` never touches it.
 - [[Claude Integration Conventions]]: Conventions for Claude's config surface: extension points, monorepo retrofit, service swaps, domain isolation.
 - [[Local Working State]]: the gitignored `.gaia/local/` working-state folder and its pointer to the state registry; the SessionStart janitor's wiki-landing catch-up.
 - [[Worktrees]]: the worktree model a feature author needs: tree identity from the acting event's working directory, the single main-checkout resolver, the single `.gaia/local` symlink, and the state registry's four scopes.
@@ -171,9 +171,9 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[GAIA Handoff]]: `/gaia-handoff`: session handoff doc.
 - [[GAIA Pickup]]: `/gaia-pickup`: resume from the latest handoff.
 - [[GAIA Audit]]: `/gaia-audit`: two-stage knowledge-store hygiene sweep.
-- [[Wiki Sync]]: `/gaia-wiki sync` + drift hooks: keep the wiki convergent with code without spawned sub-Claudes.
+- [[Wiki Sync]]: `/gaia-wiki sync` and the statusline drift nudge: keep the wiki convergent with code without spawned sub-Claudes.
 - [[Wiki Consolidate]]: `/gaia-wiki consolidate`: cross-SPEC redundancy and contradiction audit; surfaces supersession candidates, reversed decisions, near-collision slugs, and subject-orphans.
-- [[GAIA Init Workflow]]: `/gaia init` subcommands: strip-branding, configure-i18n, rename, wire-statusline, configure-automation, finalize, resume.
+- [[GAIA Init Workflow]]: `/gaia init` subcommands: strip-branding, configure-i18n, rename, wire-statusline, write-project-config, finalize, resume.
 - [[GAIA CLI]]: the `.gaia/cli/` workspace, the `.gaia/cli/gaia` bundled binary, and the adoption ping (`gaia ping`) sent on `/gaia-init`, `/setup-gaia`, and `/update-gaia` completion.
 - [[Token Cost Readout]]: per-action token-to-dollar pricing off one shared pricing lib; the `by_model` field, the machine-local rate table seeded from the distributed `token-rates.json` and healed from the public feed, the roll-up's read-time dollar block, and the tally's own per-phase `dollars` snapshot in the `cost.json` sidecar record, each with its degrade markers.
 - [[Cost Data Contract]]: the `cost.jsonl` record schema (every field + type), the execute aggregation rule, the schema_version evolution rule, the retention-at-merge rule, and `token-tally.sh` as the single source of truth for the emitted schema.

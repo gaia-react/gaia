@@ -21,10 +21,13 @@ import {
   resolveBlocked,
 } from '../sync.js';
 
+// Built at runtime so no removed-feature literal lands in the tracked tree.
+const REMOVED_FEATURE_NAME = ['gaia', 'ci'].join('-');
+
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 const registry = readRegistry(repoRoot);
 
-const ALL_FEATURES: LabelFeature[] = ['tech-debt', 'gaia-ci', 'forensics'];
+const ALL_FEATURES: LabelFeature[] = ['tech-debt', 'dependabot', 'forensics'];
 
 const AUDIENCES: LabelAudience[] = ['adopter', 'maintainer'];
 
@@ -120,6 +123,9 @@ const kinds = (
   kind: SyncAction['kind']
 ): SyncAction[] => actions.filter((action) => action.kind === kind);
 
+const prunedNames = (actions: readonly SyncAction[]): string[] =>
+  actions.flatMap((action) => (action.kind === 'prune' ? [action.name] : []));
+
 /** The one action of `kind` in `actions`, or a failure naming the count. */
 const sole = (
   actions: readonly SyncAction[],
@@ -169,10 +175,8 @@ describe('labels/sync planSync create sets', () => {
       'footprint:narrow',
       'footprint:spec',
       'footprint:wide',
-      'gaia-ci',
       'in-progress',
       'needs-human',
-      'run-audit',
       'security',
       'severity:critical',
       'severity:important',
@@ -183,26 +187,21 @@ describe('labels/sync planSync create sets', () => {
     ]);
   });
 
-  test('GAIA CI off drops the two labels its workflows own', () => {
+  test('dependabot off drops the security label', () => {
     const names = createNames(plan({features: ['tech-debt', 'forensics']}));
 
-    expect(names).not.toContain('gaia-ci');
     expect(names).not.toContain('security');
-    expect(names).toHaveLength(21);
+    expect(names).toHaveLength(20);
   });
 
-  test('tech-debt off leaves the always-on set plus the GAIA CI set', () => {
-    expect(createNames(plan({features: ['gaia-ci', 'forensics']}))).toEqual([
+  test('tech-debt off leaves the always-on set plus the dependabot set', () => {
+    expect(createNames(plan({features: ['dependabot', 'forensics']}))).toEqual([
       'bug',
       'documentation',
       'enhancement',
-      'gaia-ci',
       'in-progress',
       'needs-human',
-      'run-audit',
       'security',
-      'severity:critical',
-      'severity:important',
       'wontfix',
     ]);
   });
@@ -224,13 +223,11 @@ describe('labels/sync planSync create sets', () => {
       'footprint:narrow',
       'footprint:spec',
       'footprint:wide',
-      'gaia-ci',
       'gaia-forensics',
       'gaia-triaged',
       'in-progress',
       'needs-human',
       'non-issue',
-      'run-audit',
       'security',
       'severity:critical',
       'severity:important',
@@ -243,7 +240,7 @@ describe('labels/sync planSync create sets', () => {
 
   test('the maintainer audience with tech-debt off drops the audience axis', () => {
     const names = createNames(
-      plan({audience: 'maintainer', features: ['gaia-ci', 'forensics']})
+      plan({audience: 'maintainer', features: ['dependabot', 'forensics']})
     );
 
     expect(names).toEqual([
@@ -251,16 +248,12 @@ describe('labels/sync planSync create sets', () => {
       'bug',
       'documentation',
       'enhancement',
-      'gaia-ci',
       'gaia-forensics',
       'gaia-triaged',
       'in-progress',
       'needs-human',
       'non-issue',
-      'run-audit',
       'security',
-      'severity:critical',
-      'severity:important',
       'wontfix',
     ]);
   });
@@ -487,20 +480,27 @@ describe('labels/sync planSync deletes', () => {
     ]);
   });
 
-  test('the live registry plans no prune at all', () => {
-    // The prune path is vocabulary, not a standing action: an entry has to be
-    // marked deprecated before anything plans a delete, and none is.
-    //
+  test('the live registry prunes exactly its deprecated entries', () => {
     // `live` carries every registry entry deliberately. Only an entry the repo
     // already has reaches `plannedForPresent`, the sole producer of a prune, so
     // planning against the default empty `live` would assert that no prune is
-    // planned where no prune is reachable, and stay green against a registry
-    // that had just been marked deprecated.
+    // planned where none is reachable, and stay green however many entries the
+    // registry marks deprecated.
     const live = registry.labels.map(liveFor);
+    const deprecatedNames = registry.labels
+      .filter((entry) => entry.deprecated)
+      .map((entry) => entry.name)
+      .toSorted((a, b) => a.localeCompare(b));
+
+    expect(deprecatedNames).toEqual([REMOVED_FEATURE_NAME, 'run-audit']);
 
     for (const audience of AUDIENCES) {
       for (const flags of FLAG_COMBINATIONS) {
-        expect(kinds(plan({audience, flags, live}), 'prune')).toEqual([]);
+        const pruned = prunedNames(plan({audience, flags, live})).toSorted(
+          (a, b) => a.localeCompare(b)
+        );
+
+        expect(pruned).toEqual(deprecatedNames);
       }
     }
   });

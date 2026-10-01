@@ -94,8 +94,7 @@
 # `git status --porcelain` is the third member of this family and is deliberately
 # OUT of the declared surface rather than merely unreached. Its dominant shape in
 # this repository is an emptiness test (`[ -z "$(git status --porcelain)" ]`),
-# where quoting cannot change the verdict, and its remaining instances sit in
-# adopter-facing workflow templates that regenerate through `bundle:adopter`.
+# where quoting cannot change the verdict.
 # Claiming it here would red the gate on call sites that carry no failure mode,
 # which is how a gate gets bypassed rather than fixed.
 #

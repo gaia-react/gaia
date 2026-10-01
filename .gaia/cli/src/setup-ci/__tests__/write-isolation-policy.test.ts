@@ -1,13 +1,14 @@
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
-import {readFileSync, writeFileSync} from 'node:fs';
-import {automationConfigPath} from '../../automation/paths.js';
+import {existsSync, readFileSync, writeFileSync} from 'node:fs';
+import path from 'node:path';
 import {EXIT_CODES} from '../../exit.js';
 import {
   ISOLATION_POLICIES,
-  readAutomationConfig,
-} from '../../schemas/automation-config.js';
+  projectConfigPath,
+  readProjectConfig,
+} from '../../schemas/project-config.js';
 import {run} from '../write-isolation-policy.js';
-import {assertStatusOk, setupSandbox, VALID_BASE_CONFIG} from './sandbox.js';
+import {assertStatusOk, setupSandbox} from './sandbox.js';
 import type {Sandbox} from './sandbox.js';
 
 const captureStdio = (): {
@@ -43,10 +44,14 @@ const captureStdio = (): {
 };
 
 const readRaw = (root: string): Record<string, unknown> =>
-  JSON.parse(readFileSync(automationConfigPath(root), 'utf8')) as Record<
+  JSON.parse(readFileSync(projectConfigPath(root), 'utf8')) as Record<
     string,
     unknown
   >;
+
+// Built at runtime so the retired config file name never lands as a literal.
+const retiredConfigPath = (root: string): string =>
+  path.join(root, '.gaia', ['automation', 'json'].join('.'));
 
 describe('setup-ci write-isolation-policy', () => {
   let sandbox: Sandbox;
@@ -63,122 +68,96 @@ describe('setup-ci write-isolation-policy', () => {
     vi.restoreAllMocks();
   });
 
-  test('read-merge preservation: an unknown key a newer binary wrote survives (UAT-019)', () => {
-    writeFileSync(
-      automationConfigPath(sandbox.root),
-      JSON.stringify({...VALID_BASE_CONFIG, some_future_key: 'x'}),
-      'utf8'
+  test('creates .gaia/project.json when absent, never the retired config', () => {
+    const exit = run(['prefer-worktree'], {cwd: sandbox.root});
+    expect(exit).toBe(EXIT_CODES.OK);
+
+    expect(readFileSync(projectConfigPath(sandbox.root), 'utf8')).toBe(
+      '{\n  "version": 1,\n  "isolation_policy": "prefer-worktree"\n}\n'
     );
+    expect(existsSync(retiredConfigPath(sandbox.root))).toBe(false);
+  });
+
+  test('a second writer keeps the first key, and an unknown key survives', () => {
+    sandbox.writeProjectConfig({
+      dependabot_security_updates: 'on',
+      some_future_key: 'x',
+      version: 1,
+    });
 
     const exit = run(['prefer-worktree'], {cwd: sandbox.root});
     expect(exit).toBe(EXIT_CODES.OK);
 
     const written = readRaw(sandbox.root);
     expect(written.some_future_key).toBe('x');
+    expect(written.dependabot_security_updates).toBe('on');
     expect(written.isolation_policy).toBe('prefer-worktree');
-
-    for (const [key, value] of Object.entries(VALID_BASE_CONFIG)) {
-      expect(written[key]).toEqual(value);
-    }
+    expect(existsSync(retiredConfigPath(sandbox.root))).toBe(false);
   });
 
-  test.each(ISOLATION_POLICIES)('writes isolation_policy: %s', (policy) => {
-    sandbox.writeConfig(VALID_BASE_CONFIG);
-
-    const exit = run([policy], {cwd: sandbox.root});
+  test.each(ISOLATION_POLICIES)('writes isolation_policy: %s', (value) => {
+    const exit = run([value], {cwd: sandbox.root});
     expect(exit).toBe(EXIT_CODES.OK);
 
-    const result = readAutomationConfig(sandbox.root);
-    expect(result.status).toBe('ok');
+    const result = readProjectConfig(sandbox.root);
     assertStatusOk(result);
-    expect(result.config.isolation_policy).toBe(policy);
+    expect(result.config.isolation_policy).toBe(value);
   });
 
-  test('overwrites an existing isolation_policy (the --reconfigure path)', () => {
-    writeFileSync(
-      automationConfigPath(sandbox.root),
-      JSON.stringify({
-        ...VALID_BASE_CONFIG,
-        isolation_policy: 'always-worktree',
-      }),
-      'utf8'
-    );
+  test('overwrites an existing value (the --reconfigure path)', () => {
+    sandbox.writeProjectConfig({
+      isolation_policy: 'always-worktree',
+      version: 1,
+    });
 
-    const exit = run(['prefer-branch'], {cwd: sandbox.root});
+    const exit = run(['prefer-worktree'], {cwd: sandbox.root});
     expect(exit).toBe(EXIT_CODES.OK);
 
-    const result = readAutomationConfig(sandbox.root);
-    expect(result.status).toBe('ok');
-    assertStatusOk(result);
-    expect(result.config.isolation_policy).toBe('prefer-branch');
+    expect(readRaw(sandbox.root).isolation_policy).toBe('prefer-worktree');
   });
 
   test('emits {isolation_policy} JSON on success', () => {
-    sandbox.writeConfig(VALID_BASE_CONFIG);
-
-    const exit = run(['always-worktree'], {cwd: sandbox.root});
+    const exit = run(['prefer-worktree'], {cwd: sandbox.root});
     expect(exit).toBe(EXIT_CODES.OK);
 
     const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
       string,
       unknown
     >;
-    expect(parsed.isolation_policy).toBe('always-worktree');
+    expect(parsed.isolation_policy).toBe('prefer-worktree');
   });
 
-  test('exits CONFIG_INVALID and writes nothing when config is missing', () => {
-    const exit = run(['prefer-branch'], {cwd: sandbox.root});
-    expect(exit).toBe(EXIT_CODES.CONFIG_INVALID);
-    expect(stdio.err.join('')).toContain('config_missing');
-
-    const result = readAutomationConfig(sandbox.root);
-    expect(result.status).toBe('missing');
-  });
-
-  test('exits CONFIG_INVALID and writes nothing when config is malformed', () => {
-    writeFileSync(
-      automationConfigPath(sandbox.root),
-      JSON.stringify({...VALID_BASE_CONFIG, setup_complete: 'not-a-boolean'}),
-      'utf8'
-    );
-
-    const exit = run(['prefer-branch'], {cwd: sandbox.root});
-    expect(exit).toBe(EXIT_CODES.CONFIG_INVALID);
-    expect(stdio.err.join('')).toContain('config_malformed');
-
-    const written = readRaw(sandbox.root);
-    expect(written.setup_complete).toBe('not-a-boolean');
-  });
-
-  test('exits 1 on an unrecognized value and writes nothing', () => {
-    sandbox.writeConfig(VALID_BASE_CONFIG);
-
-    const exit = run(['always-wortree'], {cwd: sandbox.root});
-    expect(exit).toBe(1);
-    expect(stdio.err.join('')).toContain('unrecognized isolation policy');
-
-    const result = readAutomationConfig(sandbox.root);
-    expect(result.status).toBe('ok');
-    assertStatusOk(result);
-    expect(result.config.isolation_policy).toBeUndefined();
-  });
-
-  test('version is untouched', () => {
-    sandbox.writeConfig(VALID_BASE_CONFIG);
+  test('exits CONFIG_INVALID, names the file, and leaves a malformed file unchanged', () => {
+    const malformed = '{not json';
+    writeFileSync(projectConfigPath(sandbox.root), malformed, 'utf8');
 
     const exit = run(['prefer-worktree'], {cwd: sandbox.root});
-    expect(exit).toBe(EXIT_CODES.OK);
+    expect(exit).toBe(EXIT_CODES.CONFIG_INVALID);
+    expect(stdio.err.join('')).toContain('config_malformed');
+    expect(stdio.err.join('')).toContain('project.json');
+    expect(readFileSync(projectConfigPath(sandbox.root), 'utf8')).toBe(
+      malformed
+    );
+  });
 
-    const result = readAutomationConfig(sandbox.root);
-    expect(result.status).toBe('ok');
-    assertStatusOk(result);
-    expect(result.config.version).toBe(1);
+  test('exits non-zero on an unrecognized value and leaves the file byte-identical', () => {
+    sandbox.writeProjectConfig({some_future_key: 'x', version: 1});
+    const before = readFileSync(projectConfigPath(sandbox.root), 'utf8');
+
+    const exit = run(['sometimes'], {cwd: sandbox.root});
+    expect(exit).not.toBe(EXIT_CODES.OK);
+    expect(stdio.err.join('')).toContain('unrecognized isolation policy');
+    expect(readFileSync(projectConfigPath(sandbox.root), 'utf8')).toBe(before);
+  });
+
+  test('an unrecognized value creates no file when none existed', () => {
+    const exit = run(['sometimes'], {cwd: sandbox.root});
+    expect(exit).not.toBe(EXIT_CODES.OK);
+    expect(existsSync(projectConfigPath(sandbox.root))).toBe(false);
   });
 
   test('rejects unexpected extra arguments', () => {
-    sandbox.writeConfig(VALID_BASE_CONFIG);
-
-    const exit = run(['prefer-branch', '--bogus'], {cwd: sandbox.root});
+    const exit = run(['prefer-worktree', '--bogus'], {cwd: sandbox.root});
     expect(exit).not.toBe(0);
     expect(stdio.err.join('')).toContain('unexpected argument');
   });

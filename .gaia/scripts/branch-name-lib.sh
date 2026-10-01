@@ -22,7 +22,6 @@
 #   chore      chore/<task>-<YYYY-MM-DD-HHMM>       maintenance  <rest>
 #   release    release/v<version>                   maintenance  <rest>
 #   wiki-sync  wiki-sync/<YYYY-MM-DD>-<short-sha>   maintenance  <rest>
-#   gaia-ci    gaia-ci/<tool>/<rest>                maintenance  <rest>
 #   (any other branch, including main and hand-named fix/ feat/ docs/)
 #                                                   adhoc        unknown
 #
@@ -32,10 +31,9 @@
 # implements); the maintenance kinds carry a timestamp so two runs never
 # collide.
 #
-# Two kinds are minted outside bash and are therefore not arms of
-# gaia_branch_name: `wiki-sync` by the GAIA CLI's wiki chain, and `gaia-ci` by
-# the CI workflows the CLI renders. GAIA's own test suite pins both prefixes to
-# this table, so neither can drift without a red suite.
+# One kind is minted outside bash and is therefore not an arm of
+# gaia_branch_name: `wiki-sync`, by the GAIA CLI's wiki chain. GAIA's own test
+# suite pins that prefix to this table, so it cannot drift without a red suite.
 #
 # THE WORKTREE SPELLING. A worktree created with `EnterWorktree({name: <n>})`
 # sits on a branch the harness names `worktree-<n>`, with every `/` in <n>
@@ -217,7 +215,7 @@ _gaia_branch_set_class() {
           ;;
       esac
       ;;
-    chore/* | release/* | wiki-sync/* | gaia-ci/*)
+    chore/* | release/* | wiki-sync/*)
       mode="maintenance"
       unit="${nb#*/}"
       ;;

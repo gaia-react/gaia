@@ -76,11 +76,8 @@ setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
   WORKFLOW="$REPO_ROOT/.github/workflows/audit-ci-tests.yml"
-  POLLER_WORKFLOW="$REPO_ROOT/.github/workflows/code-review-audit.yml"
   CLI_WORKFLOW="$REPO_ROOT/.github/workflows/cli-tests.yml"
   BATS_SHARDS="$REPO_ROOT/.gaia/tests/bats-shards.sh"
-  # The self-heal poller margin charged per hop of the needs: chain.
-  POLLER_MARGIN_MIN=5
   # The four patterns W10 detects a zsh or PyYAML dependency by, written once
   # because three scans have to agree on them: two disagreeing copies would
   # each report a defensible set and W10 would compare them against each other.
@@ -110,7 +107,6 @@ setup() {
   PATHS_FILTER_PINNED_TAG='v4.0.3'
 
   require_repo_path -f "$WORKFLOW" "audit-ci-tests.yml" || return 1
-  require_repo_path -f "$POLLER_WORKFLOW" "code-review-audit.yml" || return 1
   require_repo_path -f "$CLI_WORKFLOW" "cli-tests.yml" || return 1
   require_repo_path -f "$BATS_SHARDS" "bats-shards.sh" || return 1
   require_repo_path -f "$SPEC078_FIXTURES/paths-filter-pin-bumped.yml" \
@@ -139,10 +135,9 @@ teardown() {
 #   name <job-id>         that job's raw `name:` value, unnormalized; empty if unset
 #   if <job-id>           that job's `if:`, normalized; empty if unset
 #   needs <job-id>        that job's `needs:` entries, one per line
-#   capkind <job-id>      'int' | 'missing' | 'other', mirroring cap_of's
-#                         bool/non-int rejection: an expression-valued cap
-#                         reads as uncapped downstream, so this distinguishes
-#                         "no cap declared" from "a cap that will not compare".
+#   capkind <job-id>      'int' | 'missing' | 'other': an expression-valued cap
+#                         is not an integer literal, so this distinguishes
+#                         "no cap declared" from "a cap that is not a number".
 #   matrix <job-id>       that job's strategy.matrix.shard list, one per line
 #   stepshards <job-id> <step-name>
 #                         the shard ids named by that step's
@@ -202,9 +197,6 @@ teardown() {
 #                         without its comparison reds. 'no' on a job with an
 #                         empty `needs:`, so the coverage claim can never
 #                         pass over an empty set.
-#   chain <margin>          the worst needs-chain over every job in the file,
-#                         as "<minutes> <hops>", weighed by minutes + margin x
-#                         hops
 #
 # Exits 2 when the file will not parse, declares no jobs mapping, or names no
 # such job. A caller must check the status.
@@ -276,25 +268,6 @@ def kind_of(mapping):
 
 def cap_kind(jid):
     return kind_of(jobs[jid])
-
-
-def cap_of(jid):
-    return jobs[jid]['timeout-minutes'] if cap_kind(jid) == 'int' else None
-
-
-def weigh(pair, margin):
-    return pair[0] + margin * pair[1]
-
-
-def chain(jid, seen, margin):
-    best = (0, 0)
-    for dep in needs_of(jid):
-        if dep not in jobs or dep in seen:
-            continue
-        candidate = chain(dep, seen | {dep}, margin)
-        if weigh(candidate, margin) > weigh(best, margin):
-            best = candidate
-    return (cap_of(jid) or 0) + best[0], best[1] + 1
 
 
 def filter_step_for(jid):
@@ -509,42 +482,9 @@ elif mode == 'stepshards':
             print(item)
     if not seen:
         die('no step named %r in job %r' % (wanted, rest[0]))
-elif mode == 'chain':
-    try:
-        margin = int(rest[0])
-    except ValueError:
-        die('margin %r is not a number' % rest[0])
-    print('%d %d' % max((chain(jid, {jid}, margin) for jid in jobs), key=lambda p: weigh(p, margin)))
 else:
     die('unknown mode %r' % mode)
 PY
-}
-
-# The completion-poll window in code-review-audit.yml's poll_and_stamp, in
-# minutes: iterations x sleep seconds. Derived from the workflow rather than
-# restated as a literal, so a change to the poller re-derives the ceiling
-# below instead of leaving this guard enforcing a number the poller no longer
-# honors.
-poller_window_minutes() {
-  awk '
-    /seq 1 [0-9]+/ {
-      v = $0; sub(/.*seq 1 /, "", v); sub(/[^0-9].*$/, "", v)
-      if (v != "") { iters = v; slp = "" }
-    }
-    /^[[:space:]]*sleep [0-9]+[[:space:]]*$/ {
-      v = $0; sub(/^[[:space:]]*sleep /, "", v); sub(/[^0-9].*$/, "", v)
-      if (v != "" && slp == "") slp = v
-    }
-    /did not complete within/ {
-      if (iters != "" && slp != "") { printf "%d\n", (iters * slp) / 60 }
-      exit
-    }
-  ' "$1"
-}
-
-chain_ceiling() {
-  local window="$1" hops="$2"
-  printf '%s' "$(( window - POLLER_MARGIN_MIN * hops ))"
 }
 
 # Writes a copy of $1 to $4 with every line that equals $2 byte-for-byte
@@ -1007,40 +947,15 @@ assert_paths_filter_pin_matches() {
   [ -n "$found_gap" ] || { echo "doctoring the step's if: did not produce a gap" >&2; return 1; }
 }
 
-# W5. Every job is capped with an integer literal, and the worst needs: chain
-# fits the poller-derived ceiling.
+# W5. Every job is capped with an integer literal.
 
-@test "W5: every job declares an integer cap, and the worst chain fits the ceiling" {
+@test "W5: every job declares an integer cap" {
   require_yaml_parser
-  local jid gaps="" window minutes hops ceiling
+  local jid gaps=""
   for jid in $(read_wf jobs "$WORKFLOW"); do
     [ "$(read_wf capkind "$WORKFLOW" "$jid")" = "int" ] || gaps="${gaps}${jid} "
   done
   [ -z "$gaps" ] || { echo "job(s) without an integer timeout-minutes:${gaps}" >&2; return 1; }
-
-  window="$(poller_window_minutes "$POLLER_WORKFLOW")"
-  [ -n "$window" ] || { echo "could not derive the poll window from $(basename "$POLLER_WORKFLOW")" >&2; return 1; }
-
-  read -r minutes hops < <(read_wf chain "$WORKFLOW" "$POLLER_MARGIN_MIN")
-  ceiling="$(chain_ceiling "$window" "$hops")"
-  [ "$minutes" -le "$ceiling" ] || {
-    echo "worst chain ${minutes}m over ${hops} hops exceeds the ${ceiling}m ceiling (window ${window}m)" >&2
-    return 1
-  }
-}
-
-@test "W5 adversarial: an over-cap aggregator is caught" {
-  require_yaml_parser
-  local doctored="$BATS_TEST_TMPDIR/w5a.yml" window minutes hops ceiling
-  replace_line "$WORKFLOW" "    timeout-minutes: 2" "    timeout-minutes: 40" "$doctored"
-
-  window="$(poller_window_minutes "$POLLER_WORKFLOW")"
-  read -r minutes hops < <(read_wf chain "$doctored" "$POLLER_MARGIN_MIN")
-  ceiling="$(chain_ceiling "$window" "$hops")"
-  [ "$minutes" -gt "$ceiling" ] || {
-    echo "raising the aggregator's cap to 40 did not exceed the ceiling" >&2
-    return 1
-  }
 }
 
 @test "W5 adversarial: a job with no timeout-minutes is caught" {

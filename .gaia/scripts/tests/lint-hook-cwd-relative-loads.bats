@@ -277,8 +277,8 @@ bash "$_lib_dir/../../.gaia/scripts/token-tally.sh"'
 
 @test "quiet on a per-tree state path in ASSIGNMENT position" {
   fixture_repo
-  fixture_hook 'marker=".claude/wiki-drift-checked"
-config_path=".gaia/automation.json"'
+  fixture_hook 'marker=".claude/example-session-marker"
+config_path=".gaia/local/example-state.json"'
   run_linter
   [ "$status" -eq 0 ]
   grep -qF -- "check.sh" <<<"$output" && return 1
@@ -295,8 +295,8 @@ config_path=".gaia/automation.json"'
   # worktree. Every live state site tests through a variable today, so this arm
   # is unexercised by the tree and only a fixture reaches it.
   fixture_repo
-  fixture_hook '[ -f .claude/wiki-drift-checked ] || exit 0
-[ -f ".gaia/automation.json" ] || exit 0'
+  fixture_hook '[ -f .claude/example-session-marker ] || exit 0
+[ -f ".gaia/local/example-state.json" ] || exit 0'
   run_linter
   [ "$status" -eq 0 ]
   grep -qF -- "check.sh" <<<"$output" && return 1
@@ -310,8 +310,8 @@ config_path=".gaia/automation.json"'
   # operand for the same reason and the gate stays silent rather than
   # prescribing the `${BASH_SOURCE[0]}` root its own header rules out for state.
   fixture_repo
-  fixture_hook '[ ! -f .claude/wiki-drift-checked ] && exit 0
-[ ! -f ".gaia/automation.json" ] && exit 0'
+  fixture_hook '[ ! -f .claude/example-session-marker ] && exit 0
+[ ! -f ".gaia/local/example-state.json" ] && exit 0'
   run_linter
   [ "$status" -eq 0 ]
   grep -qF -- "check.sh" <<<"$output" && return 1
@@ -320,7 +320,7 @@ config_path=".gaia/automation.json"'
 
 @test "quiet on a git revision path, which git resolves from the repo root" {
   fixture_repo
-  fixture_hook 'blob=$(git rev-parse "HEAD:.gaia/cli/templates/workflows/code-review-audit.yml.tmpl")'
+  fixture_hook 'blob=$(git rev-parse "HEAD:.gaia/manifest.json")'
   run_linter
   [ "$status" -eq 0 ]
   grep -qF -- "check.sh" <<<"$output" && return 1

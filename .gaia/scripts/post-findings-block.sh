@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
 # post-findings-block.sh: merge every dispatched Code Audit Team member's
 # findings sidecar for this run into ONE machine-readable findings block and
-# post-or-update it on the PR, the local-producer counterpart to the block
-# CI's own workflow prompt already emits (code-review-audit.yml:359-372).
+# post-or-update it on the PR.
 #
 # Purpose
 #   The finding-recurrence tally reads PR comments for a parseable findings
 #   block and counts distinct PRs per
-#   finding_class. Only CI ever emitted that block, so a PR audited entirely
-#   by the local producer contributed nothing. Each dispatched member writes
+#   finding_class. Each dispatched member writes
 #   a deterministic sidecar (see the "Findings sidecar" section of its own
 #   agent definition); this script merges every sidecar for one run into a
 #   single block, matching the frozen comment-block contract, and posts or
@@ -82,12 +80,10 @@
 #
 # Caller contract (load-bearing, not this script's own concern)
 #   Call this ONLY from the local orchestrator, once per local dispatch wave,
-#   after every dispatched member has returned, and ONLY when
-#   resolved_mode=local. This script edits ANY PR comment carrying the
-#   `<!-- gaia-harden:findings:start -->` sentinel; calling it under
-#   resolved_mode=ci would silently overwrite CI's own findings block with
-#   one carrying only the locally-dispatched members' findings. See
-#   wiki/concepts/PR Merge Workflow.md.
+#   after every dispatched member has returned. This script edits ANY PR
+#   comment carrying the `<!-- gaia-harden:findings:start -->` sentinel, so a
+#   second call for the same PR replaces the first block with one carrying
+#   only that call's members' findings. See wiki/concepts/PR Merge Workflow.md.
 #
 # Sidecar shape (each Code Audit Team member's own contract; written by
 # .gaia/scripts/audit-write-findings.sh)

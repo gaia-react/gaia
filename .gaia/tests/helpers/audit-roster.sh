@@ -16,8 +16,8 @@
 #   Appends the `auditors:` block of this repository's .gaia/audit-ci.yml to
 #   <dir>/.gaia/audit-ci.yml, creating the file when absent. Appends rather than
 #   overwrites so a fixture that already wrote other config keys keeps them.
-#   Only the `auditors:` block is copied: the other keys (default_mode,
-#   audit_authors, ...) change behavior a suite may not expect. Returns
+#   Only the `auditors:` block is copied: any other top-level key could change
+#   behavior a suite does not expect. Returns
 #   non-zero when the source block is missing, so a seed that copied nothing
 #   fails the setup instead of leaving a roster-less sandbox.
 seed_audit_roster() {

@@ -204,7 +204,8 @@ setup() {
     chmod +x "$MAIN/.claude/hooks/$f"
   done
   for f in audit-scope.sh audit-machinery.sh audit-clearance.sh audit-digest.sh gaia-version.sh audit-base-provenance.sh \
-           jq-availability.sh verb-arming.sh verb-arming-walk.sh repo-scope.sh; do
+           jq-availability.sh verb-arming.sh verb-arming-walk.sh repo-scope.sh \
+           cross-repo-refusal.sh audit-bypass-stamp.sh; do
     cp "$REPO_ROOT/.claude/hooks/lib/$f" "$MAIN/.claude/hooks/lib/$f"
   done
   # The maintainer members' shared handshake, which stage 8b reads through
@@ -419,9 +420,10 @@ trailer_digest_on() {
 # install_gh_stub: a `gh` on a fresh PATH-only directory that logs every
 # invocation's OWN $PWD (the load-bearing field, stage 6) plus its argv to
 # GH_LOG, then answers just enough to let post-audit-status.sh proceed:
-# `auth status` ok, `repo view` a fixed slug, `pr view` fails (so the hook
-# falls back to local HEAD instead of needing a real PR), `api` (the status
-# POST) ok.
+# `auth status` ok, `repo view` a fixed slug, the merge gate's fork query
+# (`--json isCrossRepository`) `false`, every other `pr view` fails (so the
+# hook falls back to local HEAD instead of needing a real PR), `api` (the
+# status POST) ok.
 install_gh_stub() {
   GH_BIN="$BATS_TEST_TMPDIR/bin"
   GH_LOG="$BATS_TEST_TMPDIR/gh-calls.log"
@@ -430,6 +432,7 @@ install_gh_stub() {
   cat > "$GH_BIN/gh" <<EOF
 #!/usr/bin/env bash
 printf '%s\t%s\n' "\$PWD" "\$*" >> "$GH_LOG"
+case "\$*" in *isCrossRepository*) printf 'false\n'; exit 0 ;; esac
 case "\$1" in
   auth) exit 0 ;;
   repo) printf 'test-owner/test-repo\n'; exit 0 ;;
@@ -439,6 +442,16 @@ case "\$1" in
 esac
 EOF
   chmod +x "$GH_BIN/gh"
+}
+
+# invoke_merge_hook_in <dir> <payload-file>: run the merge gate from <dir>
+# with the stub above first on PATH. The gate asks gh whether the pull request
+# is a fork before it reads any marker, and denies when gh cannot answer, so
+# without the stub every case here would deny on the developer's own gh (or
+# its absence) before reaching the root question it exists to test.
+invoke_merge_hook_in() {
+  install_gh_stub
+  PATH="$GH_BIN:$PATH" invoke_hook_in "$1" "$(cat "$2")" "$HOOK_MERGE"
 }
 
 # write_merge_payload -> a fresh PreToolUse JSON payload file for a
@@ -888,7 +901,7 @@ run_audit_root_block() {
   main_frontend_digest="$(digest_of "$MAIN" code-audit-frontend)"
   payload="$(write_merge_payload)"
 
-  invoke_hook_in "$WT" "$(cat "$payload")" "$HOOK_MERGE"
+  invoke_merge_hook_in "$WT" "$payload"
   [ "$status" -eq 0 ]
   grep -qF -- "$wt_frontend_digest" <<<"$output" || { echo "deny output does not name WT's frontend digest ($wt_frontend_digest): $output" >&2; return 1; }
   grep -qF -- "$main_frontend_digest" <<<"$output" && { echo "deny output names MAIN's digest instead of WT's" >&2; return 1; }
@@ -902,7 +915,7 @@ run_audit_root_block() {
   done
   payload="$(write_merge_payload)"
 
-  invoke_hook_in "$WT" "$(cat "$payload")" "$HOOK_MERGE"
+  invoke_merge_hook_in "$WT" "$payload"
   [ "$status" -eq 0 ]
   grep -qF -- '"permissionDecision": "deny"' <<<"$output" && { echo "expected allow, got deny: $output" >&2; return 1; }
   return 0
@@ -915,7 +928,7 @@ run_audit_root_block() {
   done
   payload="$(write_merge_payload)"
 
-  invoke_hook_in "$WT" "$(cat "$payload")" "$HOOK_MERGE"
+  invoke_merge_hook_in "$WT" "$payload"
   [ "$status" -eq 0 ]
   grep -qF -- '"permissionDecision": "deny"' <<<"$output" || { echo "expected deny (wrong-digest marker must not clear), got allow: $output" >&2; return 1; }
 }
@@ -929,7 +942,7 @@ run_audit_root_block() {
     digest="$(write_marker_at "$MAIN" "$WT" "$m")"
   done
   payload="$(write_merge_payload)"
-  invoke_hook_in "$WT" "$(cat "$payload")" "$HOOK_MERGE"
+  invoke_merge_hook_in "$WT" "$payload"
   if grep -qF -- '"permissionDecision": "deny"' <<<"$output"; then
     echo "baseline (unmutated) stage 7 store assertion failed: $output" >&2
     restore_file "$HOOK_MERGE" "$orig_sum"
@@ -941,7 +954,7 @@ run_audit_root_block() {
   rm -rf "$MAIN/.gaia/local"
   wt_frontend_digest="$(digest_of "$WT" code-audit-frontend)"
   payload="$(write_merge_payload)"
-  invoke_hook_in "$WT" "$(cat "$payload")" "$HOOK_MERGE"
+  invoke_merge_hook_in "$WT" "$payload"
   if ! grep -qF -- "$wt_frontend_digest" <<<"$output"; then
     echo "baseline (unmutated) stage 7 digest assertion failed: $output" >&2
     restore_file "$HOOK_MERGE" "$orig_sum"
@@ -971,14 +984,14 @@ run_audit_root_block() {
     digest="$(write_marker_at "$MAIN" "$WT" "$m")"
   done
   payload="$(write_merge_payload)"
-  invoke_hook_in "$WT" "$(cat "$payload")" "$HOOK_MERGE"
+  invoke_merge_hook_in "$WT" "$payload"
   grep -qF -- '"permissionDecision": "deny"' <<<"$output" && store_went_red=1
 
   # Digest assertion, mutated: must stay green -- tree_root's own derivation
   # is untouched by this mutation and still walks WT.
   rm -rf "$MAIN/.gaia/local"
   payload="$(write_merge_payload)"
-  invoke_hook_in "$WT" "$(cat "$payload")" "$HOOK_MERGE"
+  invoke_merge_hook_in "$WT" "$payload"
   grep -qF -- "$wt_frontend_digest" <<<"$output" && digest_stayed_green=1
 
   restore_file "$HOOK_MERGE" "$orig_sum"

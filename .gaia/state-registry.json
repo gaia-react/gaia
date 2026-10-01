@@ -424,12 +424,12 @@
     },
     {
       "id": "machine-markers",
-      "path": "automation.json|sandbox.json|setup-in-progress",
+      "path": "sandbox.json|setup-in-progress",
       "match": "exact",
       "kind": "file",
       "scope": "main-only",
       "keyed_by": null,
-      "why": "Per-machine markers (a dismissed nudge, a sandbox-resolution result, a short-lived setup sentinel); one value per clone.",
+      "why": "Per-machine markers (a sandbox-resolution result, a short-lived setup sentinel); one value per clone.",
       "writer": "code",
       "reaped_by": null,
       "source": "SPEC-061 §main-only"

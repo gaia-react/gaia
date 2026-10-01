@@ -1,32 +1,32 @@
 /**
- * Writes `isolation_policy` to `.gaia/automation.json` (the committed
- * config). Read-merges the new value onto the RAW parsed JSON via
- * `readAutomationConfigRaw`, never onto Zod's stripped `config`, so a key
- * a newer binary wrote survives the round-trip.
+ * Writes `isolation_policy` to `.gaia/project.json` (the committed project config)
+ * through `updateProjectConfig`, creating the file when absent.
  *
- * Refuses (non-zero) when the config is missing or malformed; fail-closed,
- * no destructive write on a broken state. Also refuses, and writes
- * nothing, when the value is not one of the three known policies: the
- * WRITE boundary rejects what the READ boundary (the permissive schema)
+ * Refuses (non-zero), and writes nothing, when the existing file is
+ * malformed or when the value is not one of the known values: the WRITE
+ * boundary rejects what the READ boundary (the permissive schema)
  * tolerates.
  */
 import {EXIT_CODES} from '../exit.js';
 import {
   isIsolationPolicy,
   ISOLATION_POLICIES,
-  readAutomationConfigRaw,
-} from '../schemas/automation-config.js';
-import type {AutomationConfig} from '../schemas/automation-config.js';
+} from '../schemas/project-config.js';
 import {structuredError} from '../stderr.js';
+import {
+  ProjectConfigError,
+  updateProjectConfig,
+} from '../util/project-config-write.js';
 import {resolveRepoRoot} from '../util/repo-root.js';
-import {writeAutomationConfig} from './util/automation-write.js';
+
+const SUBCOMMAND = 'setup-ci write-isolation-policy';
 
 const HELP_TEXT = `Usage: gaia setup-ci write-isolation-policy <${ISOLATION_POLICIES.join('|')}>
 
-  Write isolation_policy to .gaia/automation.json (committed), read-merged
-  onto the raw parsed config so a key a newer binary wrote survives.
-  Refuses if the config is missing or malformed, or if the value is not
-  one of: ${ISOLATION_POLICIES.join(', ')}.
+  Write isolation_policy to .gaia/project.json (committed), merged onto the
+  raw parsed config so a key a newer binary wrote survives. Creates the file
+  when absent. Refuses if the file is malformed, or if the value is not one
+  of: ${ISOLATION_POLICIES.join(', ')}.
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
@@ -56,7 +56,7 @@ export const run = (
     structuredError({
       code: 'invalid_arguments',
       message: `unexpected argument: ${rest[0]}`,
-      subcommand: 'setup-ci write-isolation-policy',
+      subcommand: SUBCOMMAND,
     });
 
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
@@ -66,7 +66,7 @@ export const run = (
     structuredError({
       code: 'invalid_arguments',
       message: `unrecognized isolation policy: ${valueToken}. Supported: ${ISOLATION_POLICIES.join(', ')}`,
-      subcommand: 'setup-ci write-isolation-policy',
+      subcommand: SUBCOMMAND,
     });
 
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
@@ -83,38 +83,33 @@ export const run = (
       code: 'not_a_git_repo',
       message:
         'gaia setup-ci write-isolation-policy must run inside a git repository',
-      subcommand: 'setup-ci write-isolation-policy',
+      subcommand: SUBCOMMAND,
     });
 
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  const result = readAutomationConfigRaw(repoRoot);
+  try {
+    updateProjectConfig(repoRoot, {isolation_policy: value});
+  } catch (error) {
+    if (error instanceof ProjectConfigError && error.kind === 'malformed') {
+      structuredError({
+        code: 'config_malformed',
+        message: error.message,
+        subcommand: SUBCOMMAND,
+      });
 
-  if (result.status === 'missing') {
+      return EXIT_CODES.CONFIG_INVALID;
+    }
+
     structuredError({
-      code: 'config_missing',
-      message: '.gaia/automation.json does not exist',
-      subcommand: 'setup-ci write-isolation-policy',
+      code: 'project_config_write_failed',
+      message: error instanceof Error ? error.message : String(error),
+      subcommand: SUBCOMMAND,
     });
 
-    return EXIT_CODES.CONFIG_INVALID;
+    return EXIT_CODES.STORAGE_INACCESSIBLE;
   }
-
-  if (result.status === 'malformed') {
-    structuredError({
-      code: 'config_malformed',
-      message: result.error,
-      subcommand: 'setup-ci write-isolation-policy',
-    });
-
-    return EXIT_CODES.CONFIG_INVALID;
-  }
-
-  writeAutomationConfig(repoRoot, {
-    ...result.raw,
-    isolation_policy: value,
-  } as AutomationConfig);
 
   process.stdout.write(`${JSON.stringify({isolation_policy: value})}\n`);
 

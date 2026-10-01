@@ -21,6 +21,9 @@
 #                     post-upgrade refresh)
 #   - residueCandidateCount (keyed audit residue aged 30+ days, ready to
 #                     triage via /gaia-residue)
+#   - wikiDriftCount (non-bookkeeping commits the wiki trails HEAD by, from
+#                     `gaia wiki state --json` drift_count; feeds the
+#                     /gaia-wiki nudge)
 #   - auditNudge / auditNudgeReason / auditLastAppliedAt / auditMemoryCount /
 #                  auditMemoryBaseline (knowledge-audit drift signals)
 #   - checkedAt      (Unix epoch seconds)
@@ -119,6 +122,7 @@ prev_harden_count=0
 prev_harden_unclassified=0
 prev_harden_reason=""
 prev_residue_count=0
+prev_wiki_drift_count=0
 prev_audit_last_applied_at=0
 prev_audit_memory_count=0
 prev_audit_memory_baseline=0
@@ -143,11 +147,15 @@ if [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
     prev_harden_reason=$(harden_count_reason "$prev_harden_count" "$prev_harden_unclassified")
   fi
   prev_residue_count=$(jq -r '.residueCandidateCount // 0' "$CACHE_FILE" 2>/dev/null)
+  prev_wiki_drift_count=$(jq -r '.wikiDriftCount // 0' "$CACHE_FILE" 2>/dev/null)
   prev_audit_last_applied_at=$(jq -r '.auditLastAppliedAt // 0' "$CACHE_FILE" 2>/dev/null)
   prev_audit_memory_count=$(jq -r '.auditMemoryCount // 0' "$CACHE_FILE" 2>/dev/null)
   prev_audit_memory_baseline=$(jq -r '.auditMemoryBaseline // 0' "$CACHE_FILE" 2>/dev/null)
   case "$prev_checked_at" in
     ''|*[!0-9]*) prev_checked_at=0 ;;
+  esac
+  case "$prev_wiki_drift_count" in
+    ''|*[!0-9]*) prev_wiki_drift_count=0 ;;
   esac
   case "$prev_audit_last_applied_at" in
     ''|*[!0-9]*) prev_audit_last_applied_at=0 ;;
@@ -365,6 +373,27 @@ if [ -x "$GAIA_BIN" ] && command -v jq >/dev/null 2>&1; then
 fi
 case "$residue_count" in
   ''|*[!0-9]*) residue_count=0 ;;
+esac
+
+# ---------- wikiDriftCount ----------
+# Wiki drift is a fact about the main checkout's wiki/.state.json, so the CLI
+# runs from STATE_ROOT, never PROJECT_ROOT: a refresher copy inside a linked
+# worktree would otherwise report that worktree's branch. Carries the previous
+# cached count forward on a missing binary, a non-zero exit, empty output, or a
+# non-integer drift_count, so a transient failure never clears a showing nudge.
+wiki_drift_count="$prev_wiki_drift_count"
+if [ -x "$GAIA_BIN" ] && command -v jq >/dev/null 2>&1; then
+  if wiki_state_json="$(cd "$STATE_ROOT" && "$GAIA_BIN" wiki state --json 2>/dev/null)" \
+    && [ -n "$wiki_state_json" ]; then
+    parsed=$(printf '%s' "$wiki_state_json" | jq -r '.drift_count // empty' 2>/dev/null)
+    case "$parsed" in
+      ''|*[!0-9]*) ;;
+      *) wiki_drift_count="$parsed" ;;
+    esac
+  fi
+fi
+case "$wiki_drift_count" in
+  ''|*[!0-9]*) wiki_drift_count=0 ;;
 esac
 
 # ---------- auditNudge ----------
@@ -603,13 +632,14 @@ if command -v jq >/dev/null 2>&1; then
     --argjson hardenUnclassifiedCount "$unclassified_count" \
     --arg hardenNudgeReason "$harden_reason" \
     --argjson residueCandidateCount "$residue_count" \
+    --argjson wikiDriftCount "$wiki_drift_count" \
     --argjson auditNudge "$audit_nudge" \
     --arg auditNudgeReason "$audit_nudge_reason" \
     --argjson auditLastAppliedAt "$audit_last_applied_at" \
     --argjson auditMemoryCount "$audit_memory_count" \
     --argjson auditMemoryBaseline "$audit_memory_baseline" \
     --argjson serenaLangDrift "$serena_lang_drift_json" \
-    '{checkedAt: $checkedAt, outdatedCount: $outdatedCount, gaiaCurrent: $gaiaCurrent, gaiaLatest: $gaiaLatest, gaiaHasUpdate: $gaiaHasUpdate, hardenCandidateCount: $hardenCandidateCount, hardenUnclassifiedCount: $hardenUnclassifiedCount, hardenNudgeReason: $hardenNudgeReason, residueCandidateCount: $residueCandidateCount, auditNudge: $auditNudge, auditNudgeReason: $auditNudgeReason, auditLastAppliedAt: $auditLastAppliedAt, auditMemoryCount: $auditMemoryCount, auditMemoryBaseline: $auditMemoryBaseline, serenaLangDrift: $serenaLangDrift}' \
+    '{checkedAt: $checkedAt, outdatedCount: $outdatedCount, gaiaCurrent: $gaiaCurrent, gaiaLatest: $gaiaLatest, gaiaHasUpdate: $gaiaHasUpdate, hardenCandidateCount: $hardenCandidateCount, hardenUnclassifiedCount: $hardenUnclassifiedCount, hardenNudgeReason: $hardenNudgeReason, residueCandidateCount: $residueCandidateCount, wikiDriftCount: $wikiDriftCount, auditNudge: $auditNudge, auditNudgeReason: $auditNudgeReason, auditLastAppliedAt: $auditLastAppliedAt, auditMemoryCount: $auditMemoryCount, auditMemoryBaseline: $auditMemoryBaseline, serenaLangDrift: $serenaLangDrift}' \
     > "$tmp_file" 2>/dev/null
 else
   # jq not available; emit valid JSON via printf. serenaLangDrift is empty:
@@ -618,8 +648,8 @@ else
   # compute it (the tally-driven composition above and the cache seed at
   # startup) require jq themselves, so neither branch ever runs without it.
   # Nothing here needs escaping.
-  printf '{"checkedAt":%s,"outdatedCount":%s,"gaiaCurrent":"%s","gaiaLatest":"%s","gaiaHasUpdate":%s,"hardenCandidateCount":%s,"hardenUnclassifiedCount":%s,"hardenNudgeReason":"%s","residueCandidateCount":%s,"auditNudge":%s,"auditNudgeReason":"%s","auditLastAppliedAt":%s,"auditMemoryCount":%s,"auditMemoryBaseline":%s,"serenaLangDrift":[]}\n' \
-    "$checked_at_out" "$outdated_count" "$gaia_current" "$gaia_latest" "$gaia_has_update" "$harden_count" "$unclassified_count" "$harden_reason" "$residue_count" "$audit_nudge" "$audit_nudge_reason" "$audit_last_applied_at" "$audit_memory_count" "$audit_memory_baseline" \
+  printf '{"checkedAt":%s,"outdatedCount":%s,"gaiaCurrent":"%s","gaiaLatest":"%s","gaiaHasUpdate":%s,"hardenCandidateCount":%s,"hardenUnclassifiedCount":%s,"hardenNudgeReason":"%s","residueCandidateCount":%s,"wikiDriftCount":%s,"auditNudge":%s,"auditNudgeReason":"%s","auditLastAppliedAt":%s,"auditMemoryCount":%s,"auditMemoryBaseline":%s,"serenaLangDrift":[]}\n' \
+    "$checked_at_out" "$outdated_count" "$gaia_current" "$gaia_latest" "$gaia_has_update" "$harden_count" "$unclassified_count" "$harden_reason" "$residue_count" "$wiki_drift_count" "$audit_nudge" "$audit_nudge_reason" "$audit_last_applied_at" "$audit_memory_count" "$audit_memory_baseline" \
     > "$tmp_file" 2>/dev/null
 fi
 

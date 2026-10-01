@@ -109,7 +109,10 @@ setup() {
 
   local stub="$BATS_TEST_TMPDIR/stubbin" home="$BATS_TEST_TMPDIR/home" names name src
   mkdir -p "$stub" "$home"
-  printf '#!/bin/sh\nexit 1\n' >"$stub/gh"
+  # gh's own wording for a branch with no pull request: the audit loop
+  # checkpoint reads it as "no PR" and proceeds to its checkpoint, where a
+  # silent failure would read as gh unable to say whether the PR is a fork.
+  printf '#!/bin/sh\necho "no pull requests found for branch" >&2\nexit 1\n' >"$stub/gh"
   chmod +x "$stub/gh"
 
   names="$(jq -r '[.hooks.SessionStart[].hooks[].command | capture("/[.]claude/hooks/(?<n>[^/\"]+[.]sh)").n] | unique | .[]' "$SETTINGS")"

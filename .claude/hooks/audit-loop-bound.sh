@@ -88,6 +88,15 @@
 # checkout), and the state file is resolved to the main checkout through
 # gaia_resolve_main_root in main-root-lib.sh, so a worktree and the main
 # checkout name one record.
+#
+# FORK REFUSAL. A dispatch that would record a new round is denied when the
+# audited checkout's pull request is a fork (cross-repository), and also when
+# gh cannot say whether it is one; a branch with no pull request yet proceeds.
+# The check and the message live in .claude/hooks/lib/cross-repo-refusal.sh.
+# A dispatch joining an already-recorded round skips it: that round was
+# recorded past this same check. This is a refusal, not a defense: on a fork
+# head this file is itself the fork's copy, and only the pre-checkout guard
+# acts before that.
 set -uo pipefail
 
 payload=$(cat)
@@ -324,6 +333,11 @@ run_decision() {
   [ "$libs_failed" -eq 1 ] || . "$scripts/audit-loop-eval.sh" 2>/dev/null || libs_failed=1
   [ "$libs_failed" -eq 0 ] ||
     finish_deny "BLOCKED: the audit loop checkpoint cannot load its libraries from $scripts. Fail-loud, not fail-open: restore audit-loop-state-lib.sh and audit-loop-eval.sh."
+  # shellcheck source=lib/cross-repo-refusal.sh
+  . "$(dirname "${BASH_SOURCE[0]}")/lib/cross-repo-refusal.sh" 2>/dev/null || libs_failed=1
+  if [ "$libs_failed" -ne 0 ] || ! type gaia_cross_repo_deny_reason >/dev/null 2>&1; then
+    finish_deny 'BLOCKED: the audit loop checkpoint cannot load .claude/hooks/lib/cross-repo-refusal.sh, so it cannot tell whether this pull request comes from a fork. Fail-loud, not fail-open: restore the library and retry.'
+  fi
 
   if ! root=$(gaia_loop_resolve_audited_root "$payload"); then
     # shellcheck disable=SC2016 # the backticks are literal text in the message
@@ -376,6 +390,14 @@ run_decision() {
       1) finish_deny "BLOCKED: the audited checkout $root has uncommitted tracked changes (modified or staged), so a new audit round on it would audit work that is not in the round's commit. Commit the round first, then dispatch the next one." ;;
       *) finish_deny "BLOCKED: the audit loop checkpoint could not check $root for uncommitted changes. Fail-loud, not fail-open: check the checkout and retry." ;;
     esac
+    # Asked from the audited checkout, whose current branch is the pull
+    # request in question.
+    if fork_reason=$(gaia_cross_repo_deny_reason '' "$root" \
+      'BLOCKED: ' \
+      "BLOCKED: the audit loop checkpoint cannot tell whether the pull request for $root" \
+      'so it refuses the dispatch rather than audit one. Check gh (gh auth status, the network) and retry.'); then
+      finish_deny "$fork_reason"
+    fi
     gh_lookup
   fi
 

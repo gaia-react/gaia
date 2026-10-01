@@ -5,7 +5,6 @@
  *
  * 1. Filesystem sandbox: `setupSandbox` creates a tmp dir with
  *    `git init` + an initial commit + `.gaia/` ready for config files.
- *    Mirror's slice 1's `automation/__tests__/sandbox.ts` shape.
  *
  * 2. `gh` shim: `installGhShim` writes a tiny Node script to
  *    `<sandbox>/bin/gh` that records argv to a sandbox file and emits
@@ -23,8 +22,7 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {automationConfigPath} from '../../automation/paths.js';
-import type {AutomationConfig} from '../../schemas/automation-config.js';
+import {projectConfigPath} from '../../schemas/project-config.js';
 
 export type Sandbox = {
   binDir: string;
@@ -40,7 +38,7 @@ export type Sandbox = {
     stdoutQueue?: string[];
   }) => {pathOverride: string; restore: () => void};
   root: string;
-  writeConfig: (config: AutomationConfig) => void;
+  writeProjectConfig: (config: Record<string, unknown>) => void;
 };
 
 export function assertNotOk<T extends {ok: boolean}>(
@@ -62,7 +60,7 @@ export function assertOk<T extends {ok: boolean}>(
 
 /**
  * Narrows a `{status: 'ok', ...} | ...` discriminated union (e.g.
- * `readAutomationConfig`/`readLocalAutomation` results) without an `if`
+ * `readProjectConfig` results) without an `if`
  * inside the test body — vitest/no-conditional-in-test forbids a bare `if`
  * there, and vitest/no-conditional-expect forbids an `expect` inside one.
  * Shared across setup-ci tests that read back a schema-validated file.
@@ -74,14 +72,6 @@ export function assertStatusOk<T extends {status: string}>(
     throw new Error(`expected status "ok", got: ${result.status}`);
   }
 }
-
-export const VALID_BASE_CONFIG: AutomationConfig = {
-  setup_complete: false,
-  setup_opted_out: false,
-  update_gaia: {mode: 'local'},
-  version: 1,
-  wiki: {mode: 'ci', schedule: 'daily'},
-};
 
 const SHIM_NODE_SOURCE = `#!/usr/bin/env node
 // Sandbox \`gh\` shim. Records argv and emits scripted output.
@@ -157,8 +147,11 @@ export const setupSandbox = (prefix = 'gaia-setup-ci-'): Sandbox => {
   const ghStderrQueuePath = path.join(root, 'gh-stderr-queue.json');
   const ghExitCodeQueuePath = path.join(root, 'gh-exit-code-queue.json');
 
-  const writeConfig = (config: AutomationConfig): void => {
-    writeFileSync(automationConfigPath(root), JSON.stringify(config), 'utf8');
+  const writeProjectConfig = (config: Record<string, unknown>): void => {
+    const target = projectConfigPath(root);
+
+    mkdirSync(path.dirname(target), {recursive: true});
+    writeFileSync(target, JSON.stringify(config), 'utf8');
   };
 
   const installGhShim = (
@@ -255,6 +248,6 @@ export const setupSandbox = (prefix = 'gaia-setup-ci-'): Sandbox => {
     ghStdoutQueuePath,
     installGhShim,
     root,
-    writeConfig,
+    writeProjectConfig,
   };
 };

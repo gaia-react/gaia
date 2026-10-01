@@ -22,9 +22,9 @@ export type TemplateVars = Record<string, boolean | string | string[]>;
 
 const TEMPLATES_DIRECTORY_NAME = 'templates';
 // The negative lookbehind on `$` keeps `${{ ... }}` GitHub Actions
-// expressions intact when these regexes are reused for workflow templates
-// (see `automation/render.ts`). Scalars and sections never need a leading
-// `$`, so the constraint is harmless for the scaffolder use case.
+// expressions intact in a template that carries them. Scalars and sections
+// never need a leading `$`, so the constraint is harmless for the scaffolder
+// use case.
 const VAR_PATTERN = /(?<!\$)\{\{\s*([\w.]+)\s*\}\}/gu;
 const SECTION_PATTERN =
   /(?<!\$)\{\{#\s*(\w+)\s*\}\}([\s\S]*?)\{\{\/\s*\1\s*\}\}/gu;
@@ -37,8 +37,7 @@ const THIS_PATTERN = /(?<!\$)\{\{\s*this\s*\}\}/gu;
 // declared return type (unlike a local variable annotation, which
 // TS narrows back to the initializer's type via control flow) is honored at
 // call sites, so wrapping the read here widens it without loosening the
-// exported (and externally consumed, see `automation/render.ts`)
-// `TemplateVars` type itself.
+// exported `TemplateVars` type itself.
 const getVar = (
   vars: TemplateVars,
   name: string
@@ -82,11 +81,9 @@ const renderScalars = (template: string, vars: TemplateVars): string =>
     return value;
   });
 
-// Section bodies may contain nested `{{#flag}}...{{/flag}}` blocks (the
-// workflow renderer relies on this for the auto-merge partial's diff-size
-// branch). A single regex pass only resolves the outer level; we run the
-// pass to a fixed point with a small depth cap so a malformed template
-// can't loop forever.
+// Section bodies may contain nested `{{#flag}}...{{/flag}}` blocks. A single
+// regex pass only resolves the outer level; we run the pass to a fixed point
+// with a small depth cap so a malformed template can't loop forever.
 const MAX_SECTION_DEPTH = 4;
 
 const renderBooleanSectionsToFixedPoint = (
@@ -107,9 +104,7 @@ const renderBooleanSectionsToFixedPoint = (
 
 /**
  * Apply each / section / scalar substitution to a raw string. Pure;
- * does no IO. Exported so external renderers (the workflow renderer in
- * `automation/render.ts`) can reuse the same syntax without re-implementing
- * the regexes. Section bodies may nest up to four levels deep.
+ * does no IO. Section bodies may nest up to four levels deep.
  */
 export const substituteVars = (raw: string, vars: TemplateVars): string => {
   const eached = renderEachBlocks(raw, vars);

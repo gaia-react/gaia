@@ -30,9 +30,9 @@
 # Invocation
 #   .github/audit/resolve-audit-base.sh [--member <name>]
 #
-#   The argument-less form is what every non-agent caller uses (the audit
-#   workflow and the workflow templates), and its resolution is unchanged on
-#   every input except the inverted degraded arm below. The merge-time
+#   The argument-less form resolves the shared pull-request-wide base, and its
+#   resolution is unchanged on every input except the inverted degraded arm
+#   below. The merge-time
 #   findings hook is not one of them and no longer calls this script at all:
 #   the block it posts selects its sidecars on the branch, across every base. `--member <name>` is the per-member form; the Code Audit Team's
 #   agent definitions are the only call sites that can name a member.
@@ -323,8 +323,8 @@ resolve_main_ref() {
     printf 'main'
     return 0
   fi
-  # Last resort: emit origin/main anyway (matches the existing workflow's
-  # assumption; the caller's diff errors loudly if it truly can't resolve).
+  # Last resort: emit origin/main anyway; the caller's diff errors loudly if
+  # it truly can't resolve.
   printf 'origin/main'
 }
 main_ref="$(resolve_main_ref)"

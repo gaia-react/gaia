@@ -15,10 +15,9 @@ const HELP_TEXT = String.raw`Usage: gaia ping --event <init|setup|update> [--fie
   Send the shared adoption ping. Accepted fields depend on
   --event:
 
-    init    --mode <interactive|automatic> --i18n <non-negative int> \
-            --ci <ci|local|off|custom>
+    init    --mode <interactive|automatic> --i18n <non-negative int>
     setup   --type <init|clone|reconfigure> --repo <create|adopt|manual> \
-            --ci <on|off|skip> --audit <local|ci> --sandbox <on|off>
+            --sandbox <on|off>
     update  --from <version> --to <version>
 
   All fields are individually optional; only provided fields are sent.
@@ -49,7 +48,6 @@ const FIELDS_BY_EVENT: Readonly<Record<PingEvent, readonly FieldSpec[]>> = {
   init: [
     {enumValues: ['interactive', 'automatic'], flag: '--mode', key: 'mode'},
     {flag: '--i18n', key: 'i18n', numeric: true},
-    {enumValues: ['ci', 'local', 'off', 'custom'], flag: '--ci', key: 'ci'},
   ],
   setup: [
     {
@@ -62,8 +60,6 @@ const FIELDS_BY_EVENT: Readonly<Record<PingEvent, readonly FieldSpec[]>> = {
       flag: '--repo',
       key: 'repo',
     },
-    {enumValues: ['on', 'off', 'skip'], flag: '--ci', key: 'ci'},
-    {enumValues: ['local', 'ci'], flag: '--audit', key: 'audit'},
     {enumValues: ['on', 'off'], flag: '--sandbox', key: 'sandbox'},
   ],
   update: [

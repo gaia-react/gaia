@@ -2,10 +2,14 @@
  * `gaia wiki state [--json]` handler.
  *
  * Reports drift between `wiki/.state.json` `last_evaluated_sha` and `git
- * HEAD`. Replaces the prose-form drift checks scattered across
- * `wiki-drift-check.sh`, `wiki/lint.md`, and `wiki/sync.md`.
+ * HEAD`. `drift_count` is the one drift definition shared by the statusline
+ * nudge and the release preflight: commits since the baseline, minus wiki
+ * bookkeeping subjects (`countDriftCommits`). The baseline is
+ * `last_evaluated_sha` when it is a real ancestor of HEAD, else
+ * `suggested_base`, else the whole history, so it is a number even for a fresh
+ * adopter clone whose state file names an upstream SHA.
  *
- * Severity thresholds mirror `wiki-drift-check.sh`:
+ * Severity thresholds classify `commits_ahead`:
  *   - none:   commits_ahead === 0
  *   - low:    1–5
  *   - medium: 6–20
@@ -22,7 +26,7 @@ import {structuredError} from '../stderr.js';
 import {resolveRepoRoot} from '../util/repo-root.js';
 import {
   ancestorBefore,
-  commitsAhead,
+  countDriftCommits,
   headSha,
   isReachable,
   recentCommits,
@@ -33,12 +37,16 @@ import type {RecentCommit} from './util/git.js';
 const HELP_TEXT = `Usage: gaia wiki state [--json]
 `;
 
+const ALL_ZERO_SHA = '0'.repeat(40);
+
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
 export type DriftSeverity = 'high' | 'low' | 'medium' | 'none';
 
 export type WikiState = {
   commits_ahead: number;
+  /** Bookkeeping-excluded commits behind HEAD; always a number. */
+  drift_count: number;
   drift_severity: DriftSeverity;
   head_short: string;
   per_domain_page_counts: Record<string, number>;
@@ -126,7 +134,7 @@ const printHuman = (state: WikiState, write: (chunk: string) => void): void => {
     `  HEAD:           ${state.head_short}`,
     `  Last evaluated: ${state.state_sha}`,
     `  Reachable:      ${state.reachable ? 'yes' : 'no'}`,
-    `  Drift:          ${state.commits_ahead} commits (${state.drift_severity})`,
+    `  Drift:          ${state.drift_count} commits (${classifySeverity(state.drift_count)})`,
   ];
 
   if (state.suggested_base !== '') {
@@ -232,9 +240,13 @@ export const run = (
   const head = headSha(repoRoot);
   const headShort = shortSha(head, repoRoot);
   const stateShort = stateSha === '' ? '' : shortSha(stateSha, repoRoot);
-  const reachable = stateSha !== '' && isReachable(stateSha, repoRoot);
-  const ahead =
-    stateSha === '' || !reachable ? 0 : commitsAhead(stateSha, repoRoot);
+  // The all-zero SHA is the "never evaluated" sentinel; git would reject it as
+  // an ancestor anyway, the explicit guard keeps that independent of git.
+  const reachable =
+    stateSha !== '' &&
+    stateSha !== ALL_ZERO_SHA &&
+    isReachable(stateSha, repoRoot);
+  const ahead = reachable ? countDriftCommits(stateSha, repoRoot) : 0;
   const recent =
     stateSha === '' || !reachable ? [] : recentCommits(stateSha, repoRoot, 5);
   const severity = classifySeverity(ahead);
@@ -247,8 +259,12 @@ export const run = (
   const suggestedBase =
     suggestedFull === '' ? '' : shortSha(suggestedFull, repoRoot);
 
+  const driftCount =
+    reachable ? ahead : countDriftCommits(suggestedFull, repoRoot);
+
   const state: WikiState = {
     commits_ahead: ahead,
+    drift_count: driftCount,
     drift_severity: severity,
     head_short: headShort,
     per_domain_page_counts: counts,

@@ -99,30 +99,11 @@ Per managed entry key `k`:
 
 The load-bearing guarantee: a dependency the adopter removed is **never re-added** unless GAIA changed it this release _and_ the adopter opts in, the JSON-key analog of the file-level "respect adopter deletions" rule. Clean applies are written surgically (the changed line only, preserving the adopter's formatting). Re-pin conflicts and dep suggestions go to `.gaia-merge/package.json.notes`. A version-only release touches nothing and emits no notes.
 
-## CI audit workflow refresh
+## Audit configuration merge
 
-`.github/workflows/code-review-audit.yml` is not a manifest-class file, so the merge walk never touches it; it tracks its own template at `.gaia/cli/templates/workflows/code-review-audit.yml.tmpl`. After the PR opens, `/update-gaia` refreshes a stale copy in place so the update PR carries the current workflow instead of auditing itself under a frozen one.
+`/update-gaia` re-renders no workflow and nudges for no audit mode: the audit runs locally, so there is no audit workflow to refresh. The one audit-related file it merges is `.gaia/audit-ci.yml`, a `shared` file handled field-aware (Step 7c of the command) because it mixes GAIA-authored values with adopter-extensible ones. The merge covers the `auditors` roster; top-level keys an older adopter file still carries are ignored. A conflict or suggestion is recorded in `.gaia-merge/audit-ci.yml.notes` rather than written over the adopter's value, mirroring the `package.json` rule above.
 
-The refresh is a **3-way text classify** (the audit template is static, so there is no render): installed `A`, the baseline release's template `L_old`, and the latest release's template `L_new`, both pulled from the `.gaia/local/cache/shared/update-gaia/` tarballs. `gaia setup-ci check-audit-drift --baseline <L_old> --latest <L_new>` returns the verdict:
-
-| Verdict    | Meaning                                             | Action                                                        |
-| ---------- | --------------------------------------------------- | ------------------------------------------------------------- |
-| `missing`  | CI not installed (audit is opt-in)                  | Silent no-op.                                                 |
-| `in_sync`  | Installed already current, or release left it alone | No-op.                                                        |
-| `clean`    | `A == L_old`: stale but un-customized               | Overwrite with `L_new`, commit, and push into the update PR.  |
-| `conflict` | `A` matches neither, or baseline unavailable        | Write `.gaia-merge/code-review-audit.yml.patch`; never write. |
-
-The audit workflow is **adopter-tunable**: `conflict` never clobbers adopter edits (self-hosted runners, extra secrets wiring, concurrency, extra steps), it emits a sidecar patch and defers to a manual `/setup-gaia` refresh, mirroring the `shared` drift rule. The rendered `gaia-ci` workflows stay disposable (regenerated wholesale on `/setup-gaia --reconfigure`); only the audit workflow gets the 3-way.
-
-`gaia-ci.yml` is the single scheduled entry point. It carries every distinct tool cron, and when one fires it asks each tool due on that cron whether it has work, then calls only the ones that answer `run` as reusable workflows. Each `gaia-ci-<tool>.yml` therefore carries `workflow_call` and `workflow_dispatch` and no `schedule` of its own, and behaves identically whether the scheduler calls it or an adopter runs it by hand. GitHub bills every job a whole-minute minimum, so a tool waking its own cron paid that floor just to reach a decision; one scheduler pays it once per fired cron instead. Each rendered `gaia-ci-*` job splits its shared setup into a `checkout` partial and a separate `node-setup` partial, which routes through `.github/actions/gaia-setup-node` for pnpm and Node provisioning, with the pre-run skip decision between them: the decision needs only the `gh` CLI and the committed `.gaia/cli/gaia` bundle, neither of which needs an install, so a tick that skips no longer pays for checkout, pnpm, Node, and a frozen-lockfile install before learning it had no work. `gaia setup-ci check-drift` reports the scheduler alongside the per-tool files, on the same states plus `disabled` for a config with no CI-mode tool.
-
-The `gaia-ci-*` templates pin their third-party actions by full commit SHA with a resolved-tag comment, not by a mutable major tag, so a force-moved upstream tag cannot execute in an adopter's job holding that job's token. The composite action owns the Node-provisioning pin instead of the template family. `/setup-gaia` (not `/update-gaia`) is what delivers a re-rendered `gaia-ci-*` workflow to an adopter, since these templates regenerate wholesale rather than merge.
-
-<!-- gaia:maintainer-only:start -->
-A CLI guard keeps the pins from drifting from GAIA's own live workflows: it asserts every template action is SHA-pinned and that each pin equals the one the corresponding live workflow runs, so a weekly action bump has to land in the live workflow first and fails the guard until the template pin is mirrored to match.
-<!-- gaia:maintainer-only:end -->
-
-Re-rendering the workflow makes the update PR self-modifying, so [[Code Review Audit CI]]'s `claude-code-action` refuses to audit it and the run self-mod-skips. This is a UX/ordering cleanup: it replaces a wasted full audit under the stale workflow plus a manual refresh step with one expected skip. It does **not** earn a clean CI `GAIA-Audit` stamp; the merge proceeds on a local audit marker / trailer or the out-of-scope bypass (see [[PR Merge Workflow]]).
+`.gaia/project.json` is not in the manifest, so the merge walk never sees it; see [[Project Config]].
 
 ## Safety invariants
 

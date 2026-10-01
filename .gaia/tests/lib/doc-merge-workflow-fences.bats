@@ -88,10 +88,8 @@ setup() {
 # ---------------------------------------------------------------------------
 fence_table() {
   cat <<'TABLE'
-resolve-mode|read-audit-ci-config.sh --resolve-author|exec|runs the shared per-author resolver with the two gh sub-shells replaced by fixture values
-workflow-present|test -f .github/workflows/code-review-audit.yml|exec|pure filesystem and git plumbing, runs verbatim
+fork-check|--json isCrossRepository|static|reaches github.com for a live PR's fork flag
 audit-check-state|grep GAIA-Audit|static|reaches github.com for a live PR's check rows
-workflow-live|gh api repos/{owner}/{repo}/actions/workflows|static|reaches github.com for the repository's Actions configuration
 catchup-merge|git merge --no-edit origin/main|static|merges `origin/main` into this checkout
 spawn-roster|resolve-audit-members.sh|exec|runs verbatim against this checkout
 noop-classify|audit-noop-detect.sh --shape audit-team-member|exec|runs against a fixture root, marker and sidecar
@@ -302,7 +300,7 @@ cited_paths() {
 # Window: from the script path to the end of its own command. The truncations
 # are what keep a neighbouring command's flags out. `$(` first, because a
 # command substitution opened after the script path belongs to an ARGUMENT of
-# it (`--resolve-author "$(gh pr view ... --json author)"`), and `--json`
+# it (`--flag "$(gh pr view ... --json author)"`), and `--json`
 # there is gh's flag, not the resolver's. Then `)`, which closes the
 # substitution the whole invocation may itself sit inside.
 flags_for() {
@@ -689,33 +687,6 @@ FAKE
 # ---------------------------------------------------------------------------
 # Lens 3: the runnable fences run, and do what the page says
 # ---------------------------------------------------------------------------
-
-@test "fence resolve-mode: eval-ing it puts a resolved_mode and a should_run in scope" {
-  script="$(materialize 'read-audit-ci-config.sh --resolve-author')"
-  # Both substitutions replace a `gh pr view` sub-shell, the only part of this
-  # fence that reaches github.com. The fork answer and the author login are
-  # exactly what a live PR would supply.
-  sub_literal "$script" '$(gh pr view <N> --json isCrossRepository --jq .isCrossRepository)' 'false'
-  sub_literal "$script" '$(gh pr view <N> --json author --jq .author.login)' 'fixture-author'
-  # The page's claim is about what is IN SCOPE afterwards, so the assertion
-  # has to run inside the same shell the fence's eval ran in.
-  emit_values "$script" resolved_mode should_run
-  run bash "$script"
-  [ "$status" -eq 0 ]
-  grep -qE '^(ci|local)$' <<<"$(value_of resolved_mode)"
-  grep -qE '^(true|false)$' <<<"$(value_of should_run)"
-}
-
-@test "fence workflow-present: it answers present here, and prints the SHA the marker must match" {
-  script="$(materialize 'test -f .github/workflows/code-review-audit.yml')"
-  run bash -c "cd '$REPO_ROOT' && bash '$script'"
-  [ "$status" -eq 0 ]
-  # This repository configures the CI audit, so the page's `present` branch is
-  # the one under test; `absent` here would mean the workflow was removed.
-  grep -qx 'absent' <<<"$output" && return 1
-  grep -qx 'present' <<<"$output"
-  grep -qE '^[0-9a-f]{40}$' <<<"$output"
-}
 
 @test "fence spawn-roster: it exits 0 and prints deduped, sorted member names" {
   script="$(materialize 'resolve-audit-members.sh')"

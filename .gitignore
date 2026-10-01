@@ -53,9 +53,8 @@ __pycache__/
 .claude-pr/
 
 # Wiki sync system markers (project-local, never commit)
-.claude/wiki-drift-checked
-.claude/wiki-safety-checked
 .claude/wiki-recompact-pending
+.claude/wiki-*-checked
 
 # GAIA release/update working directories
 # No trailing slash: in the main checkout this is a directory, in a provisioned

@@ -43,7 +43,7 @@ The split is forced by `AskUserQuestion`: dispatched subagents cannot surface it
 - **Near-collision:** rename the non-canonical page (user picks canonical), update all wikilinks.
 - **Subject-orphan:** retire to `wiki/_archived/` or set `consolidation_ack: [self]` to suppress future flags.
 
-Consolidate does NOT commit; it stages edits and hands off to `/gaia-wiki sync` (or `wiki-commit-nudge`) for the branch-aware commit.
+Consolidate does NOT commit; it stages edits and hands off to `/gaia-wiki sync` for the branch-aware commit.
 
 ## State tracking
 
