@@ -333,11 +333,50 @@ enforcement_case() {
   edit a.txt
   edit b.txt
   mkdir -p "$REPO/.gaia/local/audit"
-  printf '{}\n' >"$REPO/.gaia/local/audit/t.slug.m.findings.json"
-  touch -t 203001010000 "$REPO/.gaia/local/audit/t.slug.m.findings.json"
+  slug="$(git -C "$REPO" branch --show-current)"
+  printf '{}\n' >"$REPO/.gaia/local/audit/t.$slug.m.findings.json"
+  touch -t 203001010000 "$REPO/.gaia/local/audit/t.$slug.m.findings.json"
   default_result >"$RES"
   do_check
   assert_fail_kind audit-artifact-written findings.json
+}
+
+@test "a foreign branch's sidecar written after the baseline still passes" {
+  prepare
+  edit a.txt
+  edit b.txt
+  mkdir -p "$REPO/.gaia/local/audit"
+  printf '{}\n' >"$REPO/.gaia/local/audit/t.other-branch.m.findings.json"
+  touch -t 203001010000 "$REPO/.gaia/local/audit/t.other-branch.m.findings.json"
+  default_result >"$RES"
+  do_check
+  [ "$status" -eq 0 ]
+}
+
+@test "a foreign root's marker and refusal written after the baseline still pass" {
+  prepare
+  edit a.txt
+  edit b.txt
+  mkdir -p "$REPO/.gaia/local/audit"
+  printf '{"tree":"%s","sha":"%s"}\n' "$(printf 'f%.0s' {1..40})" "$(printf 'e%.0s' {1..40})" \
+    >"$REPO/.gaia/local/audit/foreign.ok"
+  cp "$REPO/.gaia/local/audit/foreign.ok" "$REPO/.gaia/local/audit/foreign.refused"
+  touch -t 203001010000 "$REPO/.gaia/local/audit/foreign.ok" "$REPO/.gaia/local/audit/foreign.refused"
+  default_result >"$RES"
+  do_check
+  [ "$status" -eq 0 ]
+}
+
+@test "a marker carrying this root's HEAD tree fails audit-artifact-written" {
+  prepare
+  edit a.txt
+  edit b.txt
+  mkdir -p "$REPO/.gaia/local/audit"
+  printf '{"tree":"%s","sha":"x"}\n' "$(git -C "$REPO" rev-parse 'HEAD^{tree}')" >"$REPO/.gaia/local/audit/own.ok"
+  touch -t 203001010000 "$REPO/.gaia/local/audit/own.ok"
+  default_result >"$RES"
+  do_check
+  assert_fail_kind audit-artifact-written own.ok
 }
 
 @test "an audit file older than the baseline does not fail" {

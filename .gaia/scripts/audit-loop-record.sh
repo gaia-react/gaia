@@ -160,8 +160,10 @@ compute_ci_values() {
     || die_fail "gh could not read the PR head branch"
   [ -n "$branch" ] || die_fail "gh returned an empty PR head branch"
 
+  # --method GET is required: gh api sends POST when -f fields are given
+  # without it, and the runs endpoint answers a POST with 404.
   gh api "repos/${repo}/actions/workflows/${WORKFLOW_FILE}/runs" --paginate \
-    -f event=pull_request -f branch="$branch" -f status=completed -f per_page=100 \
+    --method GET -f event=pull_request -f branch="$branch" -f status=completed -f per_page=100 \
     > "$WORK/runs.json" 2>/dev/null \
     || die_fail "gh could not list the workflow runs"
 

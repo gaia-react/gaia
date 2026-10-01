@@ -380,6 +380,16 @@ case "$1 $2" in
     done
     ;;
   "api "*)
+    # Like the real gh: a -f field without --method GET turns the call into a
+    # POST, which the runs endpoint rejects.
+    case " $* " in
+      *" -f "*)
+        case " $* " in
+          *" --method GET "*) ;;
+          *) exit 1 ;;
+        esac
+        ;;
+    esac
     case "$2" in
       *"/actions/workflows/"*) cat "$STUB_DIR/runs.json" ;;
       repos/*/actions/runs/*/jobs)

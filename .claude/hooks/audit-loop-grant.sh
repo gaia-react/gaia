@@ -23,12 +23,14 @@
 #      not always the audited one). Because a checkpoint is answered once, a
 #      second typed line finds nothing pending: a grant is once per
 #      checkpoint, never a standing licence. Ambiguity records nothing.
-#   3. The session is interactive. The session transcript's first record that
-#      carries an `entrypoint` field must hold `cli`. Claude's Bash tool can
-#      start a nested `claude -p` session in the same checkout that loads
-#      these same project hooks, with any prompt Claude likes; that session's
-#      transcript records a different entrypoint, so the UserPromptSubmit
-#      event alone is not proof a person typed the line.
+#   3. The session is interactive. The hook's own environment must carry
+#      CLAUDE_CODE_ENTRYPOINT=cli, and every transcript record that carries an
+#      `entrypoint` field must hold `cli`. Claude's Bash tool can start a
+#      nested `claude -p` session in the same checkout that loads these same
+#      project hooks, with any prompt Claude likes: a fresh one reports
+#      `sdk-cli` in its environment, and a resumed one (`claude -c -p`)
+#      appends records whose entrypoint is not `cli` to the same transcript.
+#      The UserPromptSubmit event alone is not proof a person typed the line.
 #
 # Channels that are deliberately absent. An AskUserQuestion selection attests
 # nothing: Claude authors the options and the question text, so a "selected"
@@ -137,9 +139,9 @@ esac
 transcript="$(printf '%s' "$payload" | jq -r '.transcript_path // "" | strings' 2>/dev/null)" || transcript=""
 entry=""
 if [ -n "$transcript" ] && [ -f "$transcript" ]; then
-  entry="$(jq -r -n 'first(inputs | select(type == "object" and has("entrypoint")) | .entrypoint | strings)' <"$transcript" 2>/dev/null)" || entry=""
+  entry="$(jq -r -n '[inputs | select(type == "object" and has("entrypoint")) | .entrypoint] | if length > 0 and all(. == "cli") then "cli" else "other" end' <"$transcript" 2>/dev/null)" || entry=""
 fi
-if [ "$entry" != cli ]; then
+if [ "${CLAUDE_CODE_ENTRYPOINT-}" != cli ] || [ "$entry" != cli ]; then
   printf 'audit-loop-grant: session is not interactive; nothing recorded\n' >&2
   _gl_say "Not recorded: this session is not interactive (a person must type the line in a Claude Code terminal session)."
   exit 0

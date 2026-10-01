@@ -70,6 +70,11 @@
 #     kinds: missing-disposition, undeclared-path, undeclared-revert,
 #     forbidden-path, enforcement-path, head-moved, index-changed,
 #     audit-artifact-written, bad-input.
+#     audit-artifact-written fires on a file under the shared audit directory
+#     newer than the baseline that belongs to this branch only: its name
+#     carries this branch's slug, or (a marker or refusal) its body names this
+#     root's HEAD tree or commit. Another branch's concurrent audit never fails
+#     this branch's round.
 #
 # Known limits: an untracked path is judged on presence only, never content,
 # and a mode-only change on a baseline-dirty path is invisible because the
@@ -510,9 +515,39 @@ EOF
   . "$_here/main-root-lib.sh"
   if main="$(gaia_resolve_main_root "$ROOT" 2>/dev/null)" && [ -n "$main" ]; then
     if [ -d "$main/.gaia/local/audit" ]; then
+      # The audit directory is shared by every linked worktree, so a file
+      # newer than the baseline counts only when it belongs to this branch: a
+      # sidecar, ledger or scope file carries this branch's slug in its name,
+      # and a marker or refusal (named by digest only) carries this root's
+      # HEAD tree or commit in its body. A slug that cannot be resolved, or a
+      # marker body that does not parse, counts the file, so the check never
+      # narrows silently.
+      slug=''
+      # shellcheck source=audit-key-lib.sh
+      . "$_here/audit-key-lib.sh"
+      slug="$(gaia_branch_slug "$ROOT" 2>/dev/null)" || slug=''
+      head_tree="$(git -C "$ROOT" rev-parse 'HEAD^{tree}' 2>/dev/null)" || head_tree=''
+      head_sha="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null)" || head_sha=''
       find "$main/.gaia/local/audit" -type f -newer "$BASE" >"$T/audit-new" 2>/dev/null
       while IFS= read -r p; do
-        [ -n "$p" ] && add_err audit-artifact-written "$p"
+        [ -n "$p" ] || continue
+        case "$p" in
+          *.ok | *.refused)
+            if [ -n "$head_tree" ] && jq -e --arg t "$head_tree" --arg s "$head_sha" \
+              '(type == "object") and (((.tree // "") != $t) and ((.sha // "") != $s))' "$p" >/dev/null 2>&1; then
+              continue
+            fi
+            ;;
+          *)
+            if [ -n "$slug" ]; then
+              case "${p##*/}" in
+                *".$slug."*) ;;
+                *) continue ;;
+              esac
+            fi
+            ;;
+        esac
+        add_err audit-artifact-written "$p"
       done <"$T/audit-new"
     fi
   else

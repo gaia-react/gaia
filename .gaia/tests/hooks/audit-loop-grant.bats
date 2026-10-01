@@ -20,6 +20,7 @@ setup() {
   BASH_BIN="$(command -v "${GRANT_BASH:-bash}")"
   HELPERS="$BATS_TEST_DIRNAME/helpers"
   unset GAIA_AUDIT_CHECKPOINT_ROUND GAIA_AUDIT_GRANT_ROUNDS
+  export CLAUDE_CODE_ENTRYPOINT=cli
   # shellcheck source=/dev/null
   . "$REPO_ROOT/.gaia/scripts/audit-loop-state-lib.sh"
   # shellcheck source=/dev/null
@@ -121,12 +122,36 @@ allowed() { gaia_loop_allowed "$(cat "$ALF_STATE")"; }
   printf '%s' "$output" | grep -qF 'not interactive'
 }
 
-@test "a cli transcript whose first record lacks entrypoint uses the first record that carries it" {
+@test "a cli transcript whose first records lack entrypoint still records when every entrypoint is cli" {
   seed_pending
-  printf '%s\n' '{"type":"summary"}' '{"type":"queue"}' '{"type":"user","entrypoint":"cli"}' '{"type":"user","entrypoint":"sdk-cli"}' >"$BATS_TEST_TMPDIR/tx-late.jsonl"
+  printf '%s\n' '{"type":"summary"}' '{"type":"queue"}' '{"type":"user","entrypoint":"cli"}' '{"type":"user","entrypoint":"cli"}' >"$BATS_TEST_TMPDIR/tx-late.jsonl"
   send 'audit-grant 1' "$ALF_ROOT" s1 "$BATS_TEST_TMPDIR/tx-late.jsonl"
   [ "$status" -eq 0 ]
   [ "$(jq '.allowance.answers | length' "$ALF_STATE")" -eq 1 ]
+}
+
+@test "a cli transcript that a later claude -p resume appended an sdk-cli record to records nothing" {
+  seed_pending
+  printf '%s\n' '{"type":"user","entrypoint":"cli"}' '{"type":"user","entrypoint":"sdk-cli"}' >"$BATS_TEST_TMPDIR/tx-resumed.jsonl"
+  snap
+  send 'audit-grant 1' "$ALF_ROOT" s1 "$BATS_TEST_TMPDIR/tx-resumed.jsonl"
+  [ "$status" -eq 0 ]
+  unchanged
+  printf '%s' "$output" | grep -qF 'not interactive'
+}
+
+@test "a CLAUDE_CODE_ENTRYPOINT other than cli, or unset, records nothing even over a cli transcript" {
+  seed_pending
+  snap
+  CLAUDE_CODE_ENTRYPOINT=sdk-cli send 'audit-grant 1'
+  [ "$status" -eq 0 ]
+  unchanged
+  printf '%s' "$output" | grep -qF 'not interactive'
+  unset CLAUDE_CODE_ENTRYPOINT
+  send 'audit-grant 1'
+  [ "$status" -eq 0 ]
+  unchanged
+  printf '%s' "$output" | grep -qF 'not interactive'
 }
 
 @test "a grant line pasted inside longer text is rejected visibly and records nothing" {
