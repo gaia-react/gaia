@@ -69,7 +69,7 @@ this same abort but records **nothing**: the no-sub-argument gate above is
 what keeps a standalone stage from writing a cost record it never should.
 
 This is the only cost record the router itself emits. The full chain's cost
-record comes from `gaia wiki chain finish` (`chain.ts`, every normal path:
+record comes from `gaia wiki chain finish` (on every normal path:
 success, empty branch, in-place, any git/gh failure); do not add a second
 call here or anywhere else in this file.
 

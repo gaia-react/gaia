@@ -1689,10 +1689,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema2) {
   return mergeDefs(schema2._zod.def);
 }
-function getElementAtPath(obj, path14) {
-  if (!path14)
+function getElementAtPath(obj, path15) {
+  if (!path15)
     return obj;
-  return path14.reduce((acc, key) => acc?.[key], obj);
+  return path15.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -2101,11 +2101,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path14, issues) {
+function prefixIssues(path15, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path14);
+    iss.path.unshift(path15);
     return iss;
   });
 }
@@ -2252,16 +2252,16 @@ function flattenError(error51, mapper = (issue2) => issue2.message) {
 }
 function formatError(error51, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error52, path14 = []) => {
+  const processError = (error52, path15 = []) => {
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path14, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path15, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path14, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path15, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path14, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path15, ...issue2.path]);
       } else {
-        const fullpath = [...path14, ...issue2.path];
+        const fullpath = [...path15, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -2288,17 +2288,17 @@ function formatError(error51, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error51, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error52, path14 = []) => {
+  const processError = (error52, path15 = []) => {
     var _a3, _b;
     for (const issue2 of error52.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path14, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path15, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path14, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path15, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path14, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path15, ...issue2.path]);
       } else {
-        const fullpath = [...path14, ...issue2.path];
+        const fullpath = [...path15, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -2330,8 +2330,8 @@ function treeifyError(error51, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path14 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path14) {
+  const path15 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path15) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -15023,13 +15023,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path14 = ref.slice(1).split("/").filter(Boolean);
-  if (path14.length === 0) {
+  const path15 = ref.slice(1).split("/").filter(Boolean);
+  if (path15.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path14[0] === defsKey) {
-    const key = path14[1];
+  if (path15[0] === defsKey) {
+    const key = path15[1];
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -20571,7 +20571,7 @@ var run9 = (argv, options = {}) => {
 
 // src/release/scrub.ts
 import { existsSync as existsSync10, readFileSync as readFileSync13, statSync as statSync3 } from "node:fs";
-import path13 from "node:path";
+import path14 from "node:path";
 
 // src/wiki/util/wikilinks.ts
 var WIKILINK_PATTERN = /\[\[([^\][]+)\]\]/gu;
@@ -20588,6 +20588,101 @@ var extractWikilinks = (body) => {
     }
   }
   return targets;
+};
+
+// src/release/excluded-refs.ts
+import path13 from "node:path";
+var WORKFLOWS_PREFIX = ".github/workflows/";
+var COMMAND_PATTERN = /^\.claude\/(?:commands\/(?<command>[\w-]+)\.md|skills\/(?<skill>[\w-]+))$/;
+var AGENT_PATTERN = /^\.claude\/agents\/(?<agent>[\w-]+)\.md$/;
+var CODE_EXTENSIONS = /* @__PURE__ */ new Set([".mjs", ".sh", ".ts"]);
+var RIGHT_BOUNDARY = String.raw`(?![\w-])`;
+var PATH_LEFT_BOUNDARY = String.raw`(?<![\w.-])(?<![\w-]/)`;
+var NAME_LEFT_BOUNDARY = String.raw`(?<![\w/.-])`;
+var isUnder = (file2, entry) => file2 === entry || file2.startsWith(`${entry}/`);
+var isReferenceableEntry = (entry, tracked) => entry.includes("/") && !entry.startsWith(WORKFLOWS_PREFIX) && tracked.some((file2) => isUnder(file2, entry));
+var isCodeFile = (file2, isExecutable) => {
+  const extension = path13.extname(file2);
+  return extension === "" ? isExecutable(file2) : CODE_EXTENSIONS.has(extension);
+};
+var sortTokens = (tokens) => {
+  const list = [...tokens];
+  return list.toSorted((left, right) => left.localeCompare(right));
+};
+var deriveExcludedRefTokens = ({
+  excludeLines,
+  isExecutable,
+  optOut,
+  shippedBasenames,
+  tracked
+}) => {
+  const entries = excludeLines.filter(
+    (entry) => isReferenceableEntry(entry, tracked)
+  );
+  const paths = new Set(entries);
+  const commands = /* @__PURE__ */ new Set();
+  const agents = /* @__PURE__ */ new Set();
+  const basenames = /* @__PURE__ */ new Set();
+  for (const entry of entries) {
+    const commandGroups = COMMAND_PATTERN.exec(entry)?.groups;
+    const command = commandGroups?.command ?? commandGroups?.skill;
+    const agent = AGENT_PATTERN.exec(entry)?.groups?.agent;
+    if (command !== void 0) commands.add(command);
+    if (agent !== void 0) agents.add(agent);
+    for (const file2 of tracked) {
+      if (isUnder(file2, entry) && !shippedBasenames.has(path13.basename(file2)) && isCodeFile(file2, isExecutable)) {
+        basenames.add(path13.basename(file2));
+      }
+    }
+  }
+  const unusedOptOut = [];
+  for (const token of optOut) {
+    const removed = [paths, commands, agents, basenames].some(
+      (set3) => set3.delete(token)
+    );
+    if (!removed) unusedOptOut.push(token);
+  }
+  return {
+    agents: sortTokens(agents),
+    basenames: sortTokens(basenames),
+    commands: sortTokens(commands),
+    paths: sortTokens(paths),
+    unusedOptOut
+  };
+};
+var compileKind = (tokens, leftBoundary, prefix = "") => {
+  if (tokens.length === 0) return void 0;
+  const alternatives = tokens.toSorted((left, right) => right.length - left.length).map((token) => escapeRegExp(token)).join("|");
+  return new RegExp(
+    `${leftBoundary}${prefix}(?:${alternatives})${RIGHT_BOUNDARY}`,
+    "g"
+  );
+};
+var isRegExp = (value) => value !== void 0;
+var compileExcludedRefMatcher = (tokens) => {
+  const general = [
+    compileKind(tokens.paths, PATH_LEFT_BOUNDARY),
+    compileKind(tokens.commands, NAME_LEFT_BOUNDARY, "/"),
+    compileKind(tokens.agents, NAME_LEFT_BOUNDARY)
+  ].filter(isRegExp);
+  const markdown = [
+    ...general,
+    compileKind(tokens.basenames, NAME_LEFT_BOUNDARY)
+  ].filter(isRegExp);
+  return (line, options) => {
+    const found = [];
+    for (const pattern of options.markdown ? markdown : general) {
+      for (const match of line.matchAll(pattern)) {
+        found.push({ index: match.index, token: match[0] });
+      }
+    }
+    if (found.length === 0) return [];
+    return [
+      ...new Set(
+        found.toSorted((left, right) => left.index - right.index).map(({ token }) => token)
+      )
+    ];
+  };
 };
 
 // src/release/scrub.ts
@@ -20642,10 +20737,18 @@ var TitleDerivedLeakCheckSchema = external_exports.strictObject({
   // The generics that appear in ordinary prose on nearly every page live here.
   "title-opt-out": external_exports.array(external_exports.string()).optional()
 });
+var RefsDerivedLeakCheckSchema = external_exports.strictObject({
+  ...leakCheckBaseShape,
+  derive: external_exports.literal("excluded-refs"),
+  // Tokens subtracted from the derived set by exact equality: paths excluded
+  // only to withhold GAIA's own copy, where adopters create their own.
+  "ref-opt-out": external_exports.array(external_exports.string()).optional()
+});
 var LeakCheckSchema = external_exports.object({
   checks: external_exports.array(
     external_exports.union([
       TitleDerivedLeakCheckSchema,
+      RefsDerivedLeakCheckSchema,
       OtherDerivedLeakCheckSchema,
       StaticLeakCheckSchema
     ])
@@ -20707,7 +20810,7 @@ var applyMarkerStrip = (stagingRoot, files, transform2) => {
   let blocksStripped = 0;
   for (const relativePath of files) {
     if (matchesAnyGlob(relativePath, transform2.paths)) {
-      const absolutePath = path13.join(stagingRoot, relativePath);
+      const absolutePath = path14.join(stagingRoot, relativePath);
       const source = readFileSync13(absolutePath, "utf8");
       const hasAnyMarker = source.includes(transform2.start) || source.includes(transform2.end);
       if (hasAnyMarker) {
@@ -20776,7 +20879,7 @@ var applyJsonStrip = (stagingRoot, files, transform2) => {
   const keySegments = transform2.keys.map((k) => parseKeyPath(k));
   for (const relativePath of files) {
     if (matchesAnyGlob(relativePath, transform2.paths)) {
-      const absolutePath = path13.join(stagingRoot, relativePath);
+      const absolutePath = path14.join(stagingRoot, relativePath);
       const removed = stripJsonKeysFromFile(
         absolutePath,
         relativePath,
@@ -20862,7 +20965,7 @@ var applyJsonStripArrayElement = (stagingRoot, files, transform2) => {
   }));
   for (const relativePath of files) {
     if (matchesAnyGlob(relativePath, transform2.paths)) {
-      const absolutePath = path13.join(stagingRoot, relativePath);
+      const absolutePath = path14.join(stagingRoot, relativePath);
       const removed = stripArrayElementsFromFile(
         absolutePath,
         relativePath,
@@ -20952,7 +21055,7 @@ var applyJsonFieldRewrite = (stagingRoot, files, transform2) => {
   }));
   for (const relativePath of files) {
     if (matchesAnyGlob(relativePath, transform2.paths)) {
-      const absolutePath = path13.join(stagingRoot, relativePath);
+      const absolutePath = path14.join(stagingRoot, relativePath);
       const rewritten = rewriteFieldsInFile(
         absolutePath,
         relativePath,
@@ -20966,17 +21069,37 @@ var applyJsonFieldRewrite = (stagingRoot, files, transform2) => {
   }
   return { fieldsRewritten, filesTouched };
 };
-var isInCheckScope = (relativePath, check2, scopeSkip) => matchesAnyGlob(relativePath, check2.scope) && !matchesAnyGlob(relativePath, check2["path-allowlist"] ?? []) && !matchesAnyGlob(relativePath, scopeSkip);
-var scanForLeaks = ({ check: check2, files, scopeSkip, stagingRoot }, findLeaksInLine) => {
-  const lineAllowlist = (check2["line-allowlist"] ?? []).map(
-    (raw) => new RegExp(raw)
+var trackLineAllowlist = (check2) => {
+  const entries = (check2["line-allowlist"] ?? []).map(
+    (raw) => [raw, new RegExp(raw)]
   );
+  const unmatched = new Set(entries.map(([raw]) => raw));
+  return {
+    isAllowed: (line) => {
+      let allowed = false;
+      for (const [raw, regex] of entries) {
+        if (regex.test(line)) {
+          unmatched.delete(raw);
+          allowed = true;
+        }
+      }
+      return allowed;
+    },
+    unused: () => [...unmatched].map((entry) => ({
+      check: check2.id,
+      entry,
+      kind: "line-allowlist"
+    }))
+  };
+};
+var isInCheckScope = (relativePath, check2, scopeSkip) => matchesAnyGlob(relativePath, check2.scope) && !matchesAnyGlob(relativePath, check2["path-allowlist"] ?? []) && !matchesAnyGlob(relativePath, scopeSkip);
+var scanForLeaks = ({ allowlist, check: check2, files, scopeSkip, stagingRoot }, findLeaksInLine) => {
   const leaks = [];
   for (const relativePath of files) {
     if (isInCheckScope(relativePath, check2, scopeSkip)) {
-      const source = readFileSync13(path13.join(stagingRoot, relativePath), "utf8");
+      const source = readFileSync13(path14.join(stagingRoot, relativePath), "utf8");
       for (const [index, line] of source.split("\n").entries()) {
-        if (!lineAllowlist.some((rx) => rx.test(line))) {
+        if (!allowlist.isAllowed(line)) {
           leaks.push(...findLeaksInLine(line, index + 1, relativePath));
         }
       }
@@ -21000,7 +21123,7 @@ var runLeakCheck = (args) => {
   });
 };
 var isDerivedCheck = (check2) => "derive" in check2;
-var slugFromPath = (filePath) => path13.basename(filePath, ".md");
+var slugFromPath = (filePath) => path14.basename(filePath, ".md");
 var isDirectory = (absolutePath) => {
   try {
     return statSync3(absolutePath).isDirectory();
@@ -21014,16 +21137,16 @@ var addSlugsForExcludeLine = (line, cwd, addSlug) => {
     addSlug(slugFromPath(line));
     return;
   }
-  const absolute = path13.join(cwd, line);
+  const absolute = path14.join(cwd, line);
   if (!isDirectory(absolute)) return;
-  addSlug(path13.basename(line));
+  addSlug(path14.basename(line));
   for (const relative of collectTreeFiles(absolute, EVERY_EXTENSION)) {
     if (relative.endsWith(".md")) addSlug(slugFromPath(relative));
   }
 };
 var buildExcludedSlugSet = (cwd) => {
   const lines = parseExcludeLines(
-    readFileSync13(path13.join(cwd, RELEASE_EXCLUDE_PATH), "utf8")
+    readFileSync13(path14.join(cwd, RELEASE_EXCLUDE_PATH), "utf8")
   );
   const slugs = /* @__PURE__ */ new Set();
   const addSlug = (value) => {
@@ -21035,6 +21158,7 @@ var buildExcludedSlugSet = (cwd) => {
   return slugs;
 };
 var runDerivedWikilinkCheck = ({
+  allowlist,
   check: check2,
   cwd,
   files,
@@ -21043,7 +21167,7 @@ var runDerivedWikilinkCheck = ({
 }) => {
   const excludedSlugs = buildExcludedSlugSet(cwd);
   return scanForLeaks(
-    { check: check2, files, scopeSkip, stagingRoot },
+    { allowlist, check: check2, files, scopeSkip, stagingRoot },
     (line, lineNumber, relativePath) => extractWikilinks(line).filter((target) => excludedSlugs.has(target.toLowerCase())).map((target) => ({
       check: check2.id,
       file: relativePath,
@@ -21054,15 +21178,15 @@ var runDerivedWikilinkCheck = ({
 };
 var buildNeverPresentWorkflowSet = (cwd) => {
   const lines = parseExcludeLines(
-    readFileSync13(path13.join(cwd, RELEASE_EXCLUDE_PATH), "utf8")
+    readFileSync13(path14.join(cwd, RELEASE_EXCLUDE_PATH), "utf8")
   );
   const paths = /* @__PURE__ */ new Set();
   for (const line of lines) {
     if (line.startsWith(`${WORKFLOWS_DIR}/`) && line.endsWith(".yml")) {
-      const templatePath = path13.join(
+      const templatePath = path14.join(
         cwd,
         SHIPPED_WORKFLOW_TEMPLATES_DIR,
-        `${path13.basename(line)}.tmpl`
+        `${path14.basename(line)}.tmpl`
       );
       if (!existsSync10(templatePath)) {
         paths.add(line);
@@ -21072,6 +21196,7 @@ var buildNeverPresentWorkflowSet = (cwd) => {
   return paths;
 };
 var runDerivedWorkflowCheck = ({
+  allowlist,
   check: check2,
   cwd,
   files,
@@ -21081,7 +21206,7 @@ var runDerivedWorkflowCheck = ({
   const neverPresent = buildNeverPresentWorkflowSet(cwd);
   if (neverPresent.size === 0) return [];
   return scanForLeaks(
-    { check: check2, files, scopeSkip, stagingRoot },
+    { allowlist, check: check2, files, scopeSkip, stagingRoot },
     (line, lineNumber, relativePath) => [...neverPresent].filter((excludedPath) => line.includes(excludedPath)).map((excludedPath) => ({
       check: check2.id,
       file: relativePath,
@@ -21098,7 +21223,7 @@ var addTitlesForExcludeLine = (line, cwd, addTitle) => {
     addTitle(slugFromPath(line));
     return;
   }
-  const absolute = path13.join(cwd, line);
+  const absolute = path14.join(cwd, line);
   if (!isDirectory(absolute)) return;
   for (const relative of collectTreeFiles(absolute, EVERY_EXTENSION)) {
     if (relative.endsWith(".md")) addTitle(slugFromPath(relative));
@@ -21106,7 +21231,7 @@ var addTitlesForExcludeLine = (line, cwd, addTitle) => {
 };
 var buildExcludedTitleSet = (cwd) => {
   const lines = parseExcludeLines(
-    readFileSync13(path13.join(cwd, RELEASE_EXCLUDE_PATH), "utf8")
+    readFileSync13(path14.join(cwd, RELEASE_EXCLUDE_PATH), "utf8")
   );
   const titles = /* @__PURE__ */ new Set();
   for (const line of lines) {
@@ -21120,13 +21245,13 @@ var isFenceDelimiter = (line) => {
   return trimmed.startsWith("```") || trimmed.startsWith("~~~");
 };
 var stripSkippedSpans = (line) => line.replaceAll(WIKILINK_SPAN, "").replaceAll(INLINE_CODE_SPAN, "");
-var findTitleLeaksInFile = (file2, matchers, lineAllowlist) => {
+var findTitleLeaksInFile = (file2, matchers, isAllowed) => {
   const leaks = [];
   let insideFence = false;
   for (const [index, line] of file2.content.split("\n").entries()) {
     if (isFenceDelimiter(line)) {
       insideFence = !insideFence;
-    } else if (!insideFence && !lineAllowlist.some((rx) => rx.test(line))) {
+    } else if (!insideFence && !isAllowed(line)) {
       const residue = stripSkippedSpans(line);
       for (const { regex, title } of matchers) {
         if (regex.test(residue)) {
@@ -21143,6 +21268,7 @@ var findTitleLeaksInFile = (file2, matchers, lineAllowlist) => {
   return leaks;
 };
 var runDerivedTitleCheck = ({
+  allowlist,
   check: check2,
   cwd,
   files,
@@ -21152,26 +21278,66 @@ var runDerivedTitleCheck = ({
   const optOut = new Set(check2["title-opt-out"]);
   const matchers = [...buildExcludedTitleSet(cwd)].filter((title) => !optOut.has(title)).map((title) => ({ regex: titleToRegex(title), title }));
   if (matchers.length === 0) return [];
-  const lineAllowlist = (check2["line-allowlist"] ?? []).map(
-    (raw) => new RegExp(raw)
-  );
   const leaks = [];
   for (const relativePath of files) {
     if (isInCheckScope(relativePath, check2, scopeSkip)) {
       const content = readFileSync13(
-        path13.join(stagingRoot, relativePath),
+        path14.join(stagingRoot, relativePath),
         "utf8"
       );
       leaks.push(
         ...findTitleLeaksInFile(
           { content, id: check2.id, path: relativePath },
           matchers,
-          lineAllowlist
+          allowlist.isAllowed
         )
       );
     }
   }
   return leaks;
+};
+var isExecutableIn = (cwd) => (relativePath) => {
+  try {
+    return (statSync3(path14.join(cwd, relativePath)).mode & 73) !== 0;
+  } catch {
+    return false;
+  }
+};
+var runDerivedRefsCheck = ({
+  allowlist,
+  check: check2,
+  cwd,
+  files,
+  scopeSkip,
+  stagingRoot
+}) => {
+  const tokens = deriveExcludedRefTokens({
+    excludeLines: parseExcludeLines(
+      readFileSync13(path14.join(cwd, RELEASE_EXCLUDE_PATH), "utf8")
+    ),
+    isExecutable: isExecutableIn(cwd),
+    optOut: check2["ref-opt-out"] ?? [],
+    shippedBasenames: new Set(files.map((file2) => path14.basename(file2))),
+    tracked: listGitFiles(cwd)
+  });
+  const matcher = compileExcludedRefMatcher(tokens);
+  const leaks = scanForLeaks(
+    { allowlist, check: check2, files, scopeSkip, stagingRoot },
+    (line, lineNumber, relativePath) => matcher(line, { markdown: relativePath.endsWith(".md") }).map((match) => ({
+      check: check2.id,
+      file: relativePath,
+      line: lineNumber,
+      match
+    }))
+  );
+  return {
+    leaks,
+    warnings: tokens.unusedOptOut.map((entry) => ({
+      check: check2.id,
+      entry,
+      kind: "ref-opt-out"
+    }))
+  };
 };
 var loadConfig = (configPath) => {
   const raw = readFileSync13(configPath, "utf8");
@@ -21226,10 +21392,19 @@ var renderHumanReport = (report, jsonMode) => {
   } else {
     out.push("leaks: none");
   }
+  if (report.unused_allowlist.length > 0) {
+    out.push(
+      "",
+      `unused allowlist entries (${report.unused_allowlist.length}, warning only):`
+    );
+    for (const warning of report.unused_allowlist) {
+      out.push(`  [${warning.check}] ${warning.kind}: ${warning.entry}`);
+    }
+  }
   return `${out.join("\n")}
 `;
 };
-var resolveAbsolute = (cwd, value) => path13.isAbsolute(value) ? value : path13.join(cwd, value);
+var resolveAbsolute = (cwd, value) => path14.isAbsolute(value) ? value : path14.join(cwd, value);
 var tryVerifyExists = (target) => {
   try {
     statSync3(target);
@@ -21265,10 +21440,13 @@ var tryWalkFilesOrReport = (stagingDir) => {
 };
 var runLeakChecksForTransform = (transform2, ctx) => {
   const leaks = [];
+  const warnings = [];
   const scopeSkip = transform2["scope-skip"] ?? [];
   for (const check2 of transform2.checks) {
+    const allowlist = trackLineAllowlist(check2);
     if (isDerivedCheck(check2)) {
       const args = {
+        allowlist,
         cwd: ctx.cwd,
         files: ctx.stagedFiles,
         scopeSkip,
@@ -21276,6 +21454,10 @@ var runLeakChecksForTransform = (transform2, ctx) => {
       };
       if (check2.derive === "excluded-titles") {
         leaks.push(...runDerivedTitleCheck({ check: check2, ...args }));
+      } else if (check2.derive === "excluded-refs") {
+        const result = runDerivedRefsCheck({ check: check2, ...args });
+        leaks.push(...result.leaks);
+        warnings.push(...result.warnings);
       } else {
         const runDerived = check2.derive === "excluded-workflows" ? runDerivedWorkflowCheck : runDerivedWikilinkCheck;
         leaks.push(...runDerived({ check: check2, ...args }));
@@ -21283,6 +21465,7 @@ var runLeakChecksForTransform = (transform2, ctx) => {
     } else {
       leaks.push(
         ...runLeakCheck({
+          allowlist,
           check: check2,
           files: ctx.stagedFiles,
           scopeSkip,
@@ -21290,8 +21473,9 @@ var runLeakChecksForTransform = (transform2, ctx) => {
         })
       );
     }
+    warnings.push(...allowlist.unused());
   }
-  return leaks;
+  return { leaks, warnings };
 };
 var runTransforms = (config2, ctx) => {
   const results = {
@@ -21304,7 +21488,8 @@ var runTransforms = (config2, ctx) => {
     leaks: [],
     stripBlocks: 0,
     stripFiles: [],
-    unbalanced: []
+    unbalanced: [],
+    warnings: []
   };
   for (const transform2 of config2.transforms) {
     if (transform2.type === "marker-strip") {
@@ -21337,7 +21522,9 @@ var runTransforms = (config2, ctx) => {
       results.jsonFieldsRewritten += result.fieldsRewritten;
       results.jsonFieldRewriteFiles.push(...result.filesTouched);
     } else {
-      results.leaks.push(...runLeakChecksForTransform(transform2, ctx));
+      const result = runLeakChecksForTransform(transform2, ctx);
+      results.leaks.push(...result.leaks);
+      results.warnings.push(...result.warnings);
     }
   }
   return results;
@@ -21379,7 +21566,7 @@ var run10 = (argv, options = {}) => {
   }
   const cwd = options.cwd ?? process.cwd();
   const stagingDir = resolveAbsolute(cwd, parsed.flags.stagingDir);
-  const configPath = parsed.flags.configPath === void 0 ? path13.join(cwd, DEFAULT_CONFIG_PATH) : resolveAbsolute(cwd, parsed.flags.configPath);
+  const configPath = parsed.flags.configPath === void 0 ? path14.join(cwd, DEFAULT_CONFIG_PATH) : resolveAbsolute(cwd, parsed.flags.configPath);
   if (!tryVerifyExists(stagingDir)) {
     structuredError({
       code: "staging_dir_missing",
@@ -21416,7 +21603,8 @@ var run10 = (argv, options = {}) => {
       blocks_stripped: results.stripBlocks,
       files_touched: results.stripFiles
     },
-    unbalanced_markers: results.unbalanced
+    unbalanced_markers: results.unbalanced,
+    unused_allowlist: results.warnings
   };
   process.stdout.write(renderHumanReport(report, parsed.flags.json));
   if (results.unbalanced.length > 0 || results.leaks.length > 0) {

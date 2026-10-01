@@ -164,8 +164,6 @@ transforms:
           # Identifier fragments inside variable names: uat_id, uats_block,
           # seen_uat_files, --uat-id CLI flag form.
           - "uat[-_]id|uats_block|seen_uat_files"
-          # Filename literals like uat-001.spec.ts.
-          - "uat-[0-9]+\\.spec\\.[a-z]+"
           # Frontmatter-style fixture: `uat_id: 'UAT-099'` or `uat_id: UAT-099`.
           - "uat_id\\s*[:=]\\s*['\"]?UAT-"
 
@@ -187,48 +185,44 @@ transforms:
           # `(e.g. \`SPEC-002\`)` (with optional backticks around the ID).
           - "e\\.g\\.\\s*`?SPEC-[0-9]{3,}"
 
-      # ---- Release-excluded paths leaked into shipped surfaces ----
-      # This check's `scope: ["**"]` already reaches every shipped file, the
-      # whole staging tree being the scope (see the comment on the six
-      # token-leak checks above), so a maintainer-only path referenced inside
-      # any shipped file's own prose is already caught with no scope edit
-      # owed here. What this pattern does NOT catch is prose that names a
-      # maintainer-only concept with no path in it: that class is the
-      # shipped-`why` authoring rules' job, not this check's.
-      # Every directory alternative ends `\b`, never a trailing `/`. A trailing
-      # slash matches only a reference that continues past the directory name,
-      # so a bare-directory mention of the same release-excluded tree passes
-      # silently and ships an adopter a pointer to a path their clone lacks.
-      # `\b` covers both forms: `/` is a non-word character, so the boundary
-      # fires there too.
-      - id: maintainer-paths
-        description: "Release-excluded paths referenced in shipped surfaces"
-        pattern: "\\.gaia/cli/src\\b|\\.gaia/cli/test-fixtures\\b|\\.gaia/cli/__tests__\\b|\\.gaia/cli/health\\b|\\.gaia/cli/gaia-maintainer\\b|\\.specify/extensions/gaia/test\\b|\\.specify/specs\\b|\\.gaia/tests\\b|\\.gaia/scripts/tests\\b|\\.github/audit/tests\\b|\\.github/forensics\\b|\\.claude/rules/maintainers\\b"
+      # ---- Release-excluded references leaked into shipped surfaces ----
+      # Derived at scan time from `.gaia/release-exclude` and the source repo's
+      # tracked files (`.gaia/cli/src/release/excluded-refs.ts`): every tracked
+      # excluded path, a slash command for each excluded command or skill, each
+      # excluded agent name, and, in Markdown only, the basename of each
+      # excluded code file no shipped file shares. A newly excluded file is
+      # covered with no edit here, which a hand-kept alternation cannot match:
+      # it misses each newly excluded file and keeps naming paths that are gone.
+      #
+      # Derived, so skipped: untracked local state (`.serena`, `.gaia/local`),
+      # root governance files adopters have their own of (`README.md`), and
+      # `.github/workflows/*`, which `excluded-workflow-ref` below owns because
+      # some excluded workflows are installed from a render template.
+      #
+      # What this does NOT catch is prose that names a maintainer-only concept
+      # with no token in it, or a glob over a partly-shipped tree
+      # (`.gaia/cli/**`): that class is the shipped-`why` authoring rules' job.
+      - id: excluded-refs
+        description: "References to release-excluded paths, commands, agents, and code files in shipped surfaces"
+        derive: excluded-refs
         scope:
           - "**"
         path-allowlist:
           # Adopter-owned sentinels that ship in the tarball but contain
-          # release-baseline content after `gaia-maintainer release scrub-wiki`
-          # (Step 8 of `/gaia-release`). Local simulations against
-          # mid-development hot/log content would otherwise false-positive.
+          # release-baseline content after `gaia-maintainer release scrub-wiki`.
+          # Local simulations against mid-development hot/log content would
+          # otherwise false-positive.
           - "wiki/hot.md"
           - "wiki/log.md"
-        # The three shipped surfaces below each name one `.github/forensics/`
-        # helper by path. That directory is release-excluded wholesale
-        # (category 9), so the pattern above flags any reference; these are the
-        # sanctioned exceptions. Line-allowlisted, not path-allowlisted, so each
-        # file stays scanned for every OTHER maintainer path and for any
-        # UNlisted forensics script, keeping the pattern a loud tripwire.
+        # Excluded only to withhold GAIA's own copy; adopters create their own,
+        # so a shipped reference to one points at something they do have.
+        ref-opt-out:
+          - ".github/CODEOWNERS" # /gaia-init writes the adopter's.
+          - ".github/pull_request_template.md" # adopters keep their own PR template.
+          - "wiki/meta" # wiki lint and consolidate write their reports here.
+          - "wiki/entities" # an adopter's wiki grows its own entity pages.
+          - ".gaia/audit-residual-dismissals.jsonl" # /gaia-residue writes the adopter's store.
         line-allowlist:
-          # .claude/skills/gaia/references/forensics.md documents the upstream
-          # byte-identical contract: the deterministic issue-body parser an
-          # adopter's filed report is read by. The script is maintainer-only;
-          # the contract it enforces is adopter-relevant.
-          - "\\.github/forensics/parse-issue-body\\.sh"
-          # wiki/decisions/Quality Gate.md describes the Forensics Triage
-          # Workflow's own CI gate (install → typecheck → lint → test → knip)
-          # by its script path; descriptive prose, not a rendered pointer.
-          - "\\.github/forensics/run-quality-gate\\.sh"
           # package.json's `gaia.wikiClassify` source/test path arrays are
           # load-bearing config globs, not prose pointers: an entry naming a
           # release-excluded tree simply matches nothing on an adopter clone.
@@ -238,11 +232,8 @@ transforms:
           # A rule's `paths:` frontmatter entry is the same kind of
           # load-bearing config glob: it decides when the rule auto-loads, and
           # on an adopter clone a glob over a release-excluded tree matches
-          # nothing and never fires. The alternative is dropping the glob,
-          # which would silently stop the rule activating in the one tree
-          # whose convention is the opposite of its neighbours'. Anchored to a
-          # bare quoted YAML sequence entry, so a prose mention of the same
-          # tree anywhere else in the file still trips the check.
+          # nothing and never fires. Anchored to a bare quoted YAML sequence
+          # entry, so a prose mention of the same tree still trips the check.
           - "^\\s*-\\s*'\\.gaia/cli/src/\\*\\*'$"
 
       # ---- Code Audit Team maintainer-only member names ----
@@ -291,8 +282,8 @@ transforms:
 
       # ---- Never-present-on-adopter workflows referenced in shipped surfaces ----
       # `.github/workflows/` is the one distribution-boundary directory where
-      # some files ship (tests.yml, chromatic.yml) and some do not, so the
-      # `maintainer-paths` alternation above cannot blanket it, and enumerating
+      # some files ship (tests.yml, chromatic.yml) and some do not, so a path
+      # alternation cannot blanket it, and enumerating
       # each excluded workflow by hand drifts. This derived check reads
       # `.gaia/release-exclude` at scan time and flags references to any excluded
       # `.github/workflows/*.yml` that has NO render template under
@@ -323,7 +314,7 @@ transforms:
           # release-notes skill is release-excluded (category 1); its
           # ../website/ references are maintainer-only and never ship.
           - ".claude/skills/release-notes/SKILL.md"
-          # Same hot/log carve-out as maintainer-paths; they get
+          # Same hot/log carve-out as excluded-refs; they get
           # release-baseline content via `gaia-maintainer release scrub-wiki`.
           - "wiki/hot.md"
           - "wiki/log.md"
