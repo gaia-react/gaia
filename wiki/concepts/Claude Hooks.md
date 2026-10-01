@@ -66,6 +66,7 @@ The sourced libraries under `.claude/hooks/lib/` are deliberately absent. They a
 | `wiki-session-start.sh` | SessionStart (startup\|resume) | Records HEAD for the acting tree and delegates to `local-janitor.sh`. |
 | `wiki-session-stop.sh` | Stop | Prompts to refresh the hot cache, and nags when the session's commits outran the wiki's state. |
 | `wiki-squash-autocommits.sh` | Stop | Squashes the session's trailing run of wiki auto-commits into one. |
+| `workflow-doctrine-inject.sh` | PostToolUse (Bash, EnterWorktree), SessionStart (startup\|resume\|clear\|compact) | Injects the execution doctrine into a session on a non-default branch or in a linked worktree, once per branch key. |
 | `worthiness-presence-check.sh` | PreToolUse (Bash) | Denies `gh pr merge` when an emergent test the pull request changed carries no worthiness verdict. |
 
 ### Source-edit safeguards (Edit|Write|MultiEdit)

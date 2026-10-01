@@ -351,7 +351,8 @@ adopting_hooks() {
     token-rollup-merge.sh \
     issue-claim-release.sh \
     debt-sentinel-touch.sh \
-    capture-gh-artifact.sh
+    capture-gh-artifact.sh \
+    workflow-doctrine-inject.sh
 }
 
 # ---------------------------------------------------------------------------

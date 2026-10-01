@@ -7,6 +7,7 @@ paths:
   - '.claude/commands/**/*.md'
   - '.claude/agents/**/*.md'
   - '.claude/rules/**/*.md'
+  - '.claude/doctrine/**/*.md'
   - '.claude/hooks/**/*.sh'
   - '.specify/extensions/gaia/README.md'
   - '.specify/extensions/gaia/commands/**/*.md'

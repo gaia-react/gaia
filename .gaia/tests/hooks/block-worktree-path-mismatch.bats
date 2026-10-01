@@ -312,6 +312,43 @@ run_hook_edit() {
   assert_denied_by_json
 }
 
+# Copies the shipped registry into the fixture repo, replacing the minimal
+# fixture write_registry laid down. Only the runs/ cases below use it: they must
+# prove the shipped `runs` entry (not the fixture) is what lets the write
+# through. GAIA_TEST_REGISTRY_SRC lets a mutation run point it at a scratch copy.
+use_real_registry() {
+  cp "${GAIA_TEST_REGISTRY_SRC:-$BATS_TEST_DIRNAME/../../../.gaia/state-registry.json}" \
+    "$REPO/.gaia/state-registry.json"
+}
+
+# The execution doctrine writes .gaia/local/runs/<key>/STATE.md through Bash
+# in the main checkout's shared store; the shipped registry registers runs/ as
+# a shared prefix so a linked worktree's write to it is not an unregistered path.
+@test "a worktree-mode write to the main checkout's .gaia/local/runs folder is allowed (real registry)" {
+  make_repo
+  use_real_registry
+  make_worktree "feat/9-sample" "feat/9-sample"
+  mkdir -p "$REPO/.gaia/local/runs/feat/9-sample"
+  echo state >"$REPO/.gaia/local/runs/feat/9-sample/STATE.md"
+  cd "$WT"
+  run_hook_edit "Write" "$REPO/.gaia/local/runs/feat/9-sample/STATE.md"
+  assert_allowed_by_json
+}
+
+# Pairs with the case above: same payload shape and real registry, an
+# unregistered sibling. Without it the allow could be a blanket allow.
+@test "a worktree-mode write to an unregistered runsx sibling is denied (real registry)" {
+  make_repo
+  use_real_registry
+  make_worktree "feat/9-sample-b" "feat/9-sample-b"
+  mkdir -p "$REPO/.gaia/local/runsx/feat/9-sample"
+  echo state >"$REPO/.gaia/local/runsx/feat/9-sample/STATE.md"
+  cd "$WT"
+  run_hook_edit "Write" "$REPO/.gaia/local/runsx/feat/9-sample/STATE.md"
+  assert_denied_by_json
+  grep -qF -- "no entry in .gaia/state-registry.json recognizes it" <<<"$output" || return 1
+}
+
 # The remaining symlinked dirs get the same coverage as audit/, so a future
 # narrowing of the exemption cannot silently drop one.
 @test "a write under the worktree's symlinked .gaia/local/debt is allowed" {

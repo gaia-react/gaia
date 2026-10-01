@@ -105,7 +105,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Dispatched-Check Rollup via Polling]]: in-loop pollers stamp dispatched-workflow jobs via the Checks API so they land in `statusCheckRollup`; documents why a `workflow_run` listener is not viable under `GITHUB_TOKEN`.
 - [[Composite Action Step Timeouts]]: Node-provisioning steps are bounded by their owning job's `timeout-minutes`; a step-level cap is a per-workflow choice, not a rule.
 - [[Code Audit Team]]: config-driven auditor roster + dispatch resolver; AND-aggregation across dispatched members at the merge gate; maintainer-only shell/node members.
-- [[Deliberate Configuration Asymmetries]]: config that differs from its siblings on purpose; the `.claude/hooks/` Edit carve-out, the skill `model:` pinning criterion, the non-opt-outable update check, and the seeded agent-teams flag.
+- [[Deliberate Configuration Asymmetries]]: config that differs from its siblings on purpose; the `.claude/hooks/` Edit carve-out, the skill `model:` pinning criterion, the non-opt-outable update check, and why the agent-teams flag is not enabled.
 <!-- gaia:maintainer-only:start -->
 - [[CLI-Binary-Split]]
 - [[Folding Shell Scripts into the CLI Binary]]: considered and declined; the manifest is a never-merged sentinel and the fold is a delete, so it cannot deliver simpler diffs.
@@ -145,6 +145,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Git Workflow]]
 - [[PR Merge Workflow]]
 - [[Task Orchestration]]
+- [[Workflow Doctrine]]: the one execution doctrine (roles, git ownership, checkpoint and resume, model choice) and the hook that injects it on a branch.
 - [[Code Review Audit Agent]]
 - [[Code Review Audit CI]]: pre-merge GitHub Actions gate; `GAIA-Audit:` trailer skip logic; adopter-tunable knobs at `.gaia/audit-ci.yml`.
 - [[Registering a Code Audit Team Member]]: how-to for adding a new roster member: agent def, roster entry, machinery wiring, finding_class bucket, recurrence-tally integration, and the local-gate checklist.
