@@ -274,9 +274,6 @@
     ".github/audit/resolve-check-base.sh": "owned",
     ".github/audit/write-audit-status.sh": "owned",
     ".github/FUNDING.yml": "shared",
-    ".github/ISSUE_TEMPLATE/bug_report.yml": "owned",
-    ".github/ISSUE_TEMPLATE/config.yml": "owned",
-    ".github/ISSUE_TEMPLATE/feature_request.yml": "owned",
     ".github/workflows/chromatic.yml": "shared",
     ".github/workflows/tests.yml": "shared",
     ".gitignore": "owned",
@@ -661,7 +658,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-10-01T09:22:39.079Z",
+  "generated": "2026-10-01T09:42:44.370Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

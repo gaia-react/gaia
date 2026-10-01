@@ -297,7 +297,13 @@ wiki/decisions/Dependabot Security Updates.md
 # during setup rather than inheriting GAIA's. The PR template is GAIA's own
 # contribution checklist (its CHANGELOG, its semver change types, its
 # first-run `/gaia-init` check); an adopter's PR process is their own.
+# The issue templates are GAIA's own bug and feature forms, and their
+# config.yml disables blank issues and links to GAIA's Discussions; an
+# adopter's issue intake is their own.
 .github/CODEOWNERS
+.github/ISSUE_TEMPLATE/bug_report.yml
+.github/ISSUE_TEMPLATE/config.yml
+.github/ISSUE_TEMPLATE/feature_request.yml
 .github/pull_request_template.md
 CHANGELOG.md
 CODE_OF_CONDUCT.md
