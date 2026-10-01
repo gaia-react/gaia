@@ -29,9 +29,27 @@ setup() {
   STUB_BIN="$BATS_TEST_TMPDIR/stubbin"
   GH_DIR="$BATS_TEST_TMPDIR/gh"
   mkdir -p "$STUB_BIN" "$GH_DIR"
+  # The fork query (`--json isCrossRepository`) answers from cross-repository
+  # when a case writes one (`true`, `false`, or `fail` for a gh that cannot
+  # answer), and otherwise `false` whenever the branch has a pull request,
+  # mirroring gh's own "no pull requests found" when it has none.
   cat >"$STUB_BIN/gh" <<'EOF'
 #!/bin/bash
 d="${GH_STUB_DIR:?}"
+printf '%s\n' "$*" >>"$d/calls.log"
+case "$*" in
+  *isCrossRepository*)
+    if [ -f "$d/cross-repository" ]; then
+      answer=$(cat "$d/cross-repository")
+      [ "$answer" != fail ] || { echo "HTTP 502: Bad Gateway (https://api.github.com/graphql)" >&2; exit 1; }
+      printf '%s\n' "$answer"
+      exit 0
+    fi
+    [ -f "$d/branch.json" ] || { echo "no pull requests found for branch \"x\"" >&2; exit 1; }
+    printf 'false\n'
+    exit 0
+    ;;
+esac
 if [ "${3-}" = "--json" ]; then
   [ -f "$d/branch.json" ] || { echo "no pull requests found" >&2; exit 1; }
   cat "$d/branch.json"
@@ -749,6 +767,71 @@ EOF
 
 @test "the Task tool name is bound like Agent" {
   run_payload "$(payload "$M" "$SID" "$ALF_ROOT" "$ALF_ROOT" | jq -c '.tool_name = "Task"')"
+  assert_allowed
+  [ "$(nrounds)" -eq 1 ]
+}
+
+# --- fork pull requests ---------------------------------------------------------
+#
+# A dispatch that would record a round asks gh whether the audited checkout's
+# pull request is a fork. The stub's answer comes from $GH_DIR/cross-repository
+# (see setup). Each refusal is driven both ways: against the hook, and against
+# a scratch mutant that lacks the arm, which must let the same case through.
+
+# fork_mutant <perl-substitution>: point HOOK at a copy with one mutation.
+fork_mutant() {
+  local d="$BATS_TEST_TMPDIR/fork-mutant"
+  mkdir -p "$d/.claude/hooks"
+  ln -sfn "$REPO_ROOT/.gaia" "$d/.gaia"
+  ln -sfn "$REPO_ROOT/.claude/hooks/lib" "$d/.claude/hooks/lib"
+  perl -0pe "$1" "$HOOK" >"$d/.claude/hooks/audit-loop-bound.sh"
+  cmp -s "$HOOK" "$d/.claude/hooks/audit-loop-bound.sh" && { printf 'mutation changed nothing: %s\n' "$1" >&2; return 1; }
+  HOOK="$d/.claude/hooks/audit-loop-bound.sh"
+}
+
+@test "UAT-010: a dispatch for a fork pull request is denied with the refusal and records no round" {
+  local message
+  printf '{"number":34,"state":"OPEN"}\n' >"$GH_DIR/branch.json"
+  printf 'true\n' >"$GH_DIR/cross-repository"
+  dispatch
+  assert_denied
+  message="$(bash -c '. "$1"; printf "%s" "$GAIA_CROSS_REPO_REFUSAL_MESSAGE"' _ "$REPO_ROOT/.claude/hooks/lib/cross-repo-refusal.sh")"
+  reason | grep -qF -- "$message"
+  grep -qxF -- 'pr view --json isCrossRepository --jq .isCrossRepository' "$GH_DIR/calls.log"
+  [ ! -f "$ALF_STATE" ]
+}
+
+@test "UAT-010: the same dispatch for a same-repo pull request is allowed and records its round" {
+  printf '{"number":34,"state":"OPEN"}\n' >"$GH_DIR/branch.json"
+  printf 'false\n' >"$GH_DIR/cross-repository"
+  dispatch
+  assert_allowed
+  [ "$(nrounds)" -eq 1 ]
+}
+
+@test "UAT-010: a dispatch is denied, naming the gh failure, when gh cannot say whether the pull request is a fork" {
+  printf 'fail\n' >"$GH_DIR/cross-repository"
+  dispatch
+  assert_denied
+  reason | grep -qF -- 'cannot tell whether the pull request'
+  reason | grep -qF -- 'HTTP 502: Bad Gateway'
+  reason | grep -qF -- 'push the branch to origin'
+  [ ! -f "$ALF_STATE" ]
+}
+
+@test "UAT-010 mutation: without the refusal call the fork dispatch is allowed, so the denial test can fail" {
+  fork_mutant "s/gaia_pr_is_cross_repository '' \\|\\| fork_status=\\\$\\?/fork_status=1/"
+  printf '{"number":34,"state":"OPEN"}\n' >"$GH_DIR/branch.json"
+  printf 'true\n' >"$GH_DIR/cross-repository"
+  dispatch
+  assert_allowed
+  [ "$(nrounds)" -eq 1 ]
+}
+
+@test "UAT-010 mutation: treating an unanswerable gh as allow lets the dispatch through, so the fail-closed test can fail" {
+  fork_mutant 's/\n      1\) ;;\n      0\) finish_deny "BLOCKED: \$GAIA_CROSS_REPO_REFUSAL_MESSAGE" ;;/\n      1 | 2) ;;\n      0) finish_deny "BLOCKED: \$GAIA_CROSS_REPO_REFUSAL_MESSAGE" ;;/'
+  printf 'fail\n' >"$GH_DIR/cross-repository"
+  dispatch
   assert_allowed
   [ "$(nrounds)" -eq 1 ]
 }

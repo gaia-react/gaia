@@ -3,7 +3,7 @@
 #
 # On the first UserPromptSubmit after a context compaction, re-inject
 # wiki/hot.md into context (a UserPromptSubmit hook's stdout is added to the
-# model's context, the same mechanism wiki-drift-check.sh relies on) and clear
+# model's context, the same mechanism janitor-report-drain.sh relies on) and clear
 # the sentinel so it fires exactly once per compaction.
 #
 # Why: compaction drops hook-injected context, including the SessionStart hot

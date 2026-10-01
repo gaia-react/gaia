@@ -33,6 +33,8 @@ setup() {
 .claude/hooks/lib/audit-digest.sh
 .claude/hooks/lib/audit-selfheal-paths.sh
 .claude/hooks/lib/gaia-version.sh
+.claude/hooks/lib/audit-bypass-stamp.sh
+.claude/hooks/lib/cross-repo-refusal.sh
 .gaia/scripts/audit-write-clearance.sh
 .gaia/scripts/audit-member-digest.sh
 .gaia/scripts/audit-resolve-scope.sh

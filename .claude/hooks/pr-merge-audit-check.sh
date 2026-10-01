@@ -38,11 +38,10 @@
 #
 #   3. GAIA-Audit GitHub commit status on HEAD with state: success, description
 #      "<version> <frontend-digest> <tree>", when both version and digest
-#      match (the tree field is data only, never compared). CI stamps this
-#      status instead of pushing an empty marker commit (pushing it would
-#      re-trigger CI and leave the PR HEAD without check runs). A non-success
-#      status (e.g. a local-mode stand-down's pending status on the same
-#      context and SHA) is not a cleared signal even when its description
+#      match (the tree field is data only, never compared). post-audit-status.sh
+#      posts it off a member marker, which is what lets a clearance earned on
+#      one machine satisfy this gate on another. A non-success status on the
+#      same context and SHA is not a cleared signal even when its description
 #      matches. Queried via `gh api` using GH_TOKEN or the ambient gh auth
 #      session.
 #
@@ -51,46 +50,52 @@
 #      /update-deps wrapper runs the full quality gate locally before
 #      pushing, so the audit signal is implicit for this PR class, but only
 #      for the manifest bump itself; a dep-bump PR carrying a migration edit
-#      or a rebuilt bundle runs the normal gate. Mirrors the same narrowing
-#      applied to code-review-audit.yml, tests.yml, and chromatic.yml.
+#      or a rebuilt bundle runs the normal gate.
 #
 #   5. Out-of-scope bypass (legacy gate only, a non-empty dispatched set means
 #      an in-scope file exists so this never applies there): every file the PR
 #      changes lives on a surface outside audit scope, wiki, instruction files
 #      (.claude / .specify), .gaia metadata, prose docs, and root-level
-#      markdown. These mirror the surfaces code-review-audit.yml treats as out
-#      of scope via its `has_source` check. Evaluated fail-closed: any in-scope
-#      path (app/, test/, configs, .github/workflows/) makes the marker
-#      mandatory again. An in-scope-but-ownerless path (a root Makefile,
-#      public/**) is folded into the frontend member's digest input set, so a
-#      stale marker computed for a prior digest never matches such a change
-#      either; this bypass and that digest fold close the same band from two
-#      directions.
+#      markdown. Evaluated fail-closed: any in-scope path (app/, test/,
+#      configs, .github/workflows/) makes the marker mandatory again. An
+#      in-scope-but-ownerless path (a root Makefile, public/**) is folded into
+#      the frontend member's digest input set, so a stale marker computed for a
+#      prior digest never matches such a change either; this bypass and that
+#      digest fold close the same band from two directions.
 #
-#   6. Self-mod-only GAIA-update bypass: the only in-scope path the PR changes
-#      is .github/workflows/code-review-audit.yml AND its committed bytes are a
-#      verbatim re-render of the bundled template
-#      (.gaia/cli/templates/workflows/code-review-audit.yml.tmpl), with every
-#      other changed path out of scope. This is the self-mod-only case
-#      /update-gaia Step 12 produces: it refreshes a stale audit workflow by
-#      copying the release template verbatim, which makes CI self-mod-skip (no
-#      stamp) and trips the in-scope guard of signal 5. The changed bytes are
-#      GAIA's own template, not adopter code, so there is nothing to audit.
-#
-# Signals 1-4 and 6 prove an audit ran against this content (or that none is
+# Signals 1-4 prove an audit ran against this content (or that none is
 # needed); signal 5 proves there is nothing in audit scope to review at all. A
 # refusal artifact (.gaia/local/audit/<digest>[.<member>].refused) for a
 # member's current digest is checked BEFORE any earned signal and is
 # absolute: it denies regardless of a same-digest earned marker, for both
 # code-audit-frontend and every specialized member.
 #
+# BYPASS STAMP. A pull request allowed through signal 4 or 5 has no member
+# marker, so nothing else posts the GAIA-Audit status that branch protection
+# waits on. On those allows, and only those, this gate posts it itself
+# (.claude/hooks/lib/audit-bypass-stamp.sh) with the description
+# `skipped: out of scope` or `skipped: chore(deps) manifest-only`, immediately
+# before the allow. Signal 5 is evaluated on every legacy-gate run, ahead of
+# the other signals, so a wiki-only pull request a still-valid marker would
+# clear first gets its stamp too; a head that already carries a cleared
+# GAIA-Audit status (signal 3) is left alone. Never on a deny, never for a pull
+# request this gate did not itself classify as a bypass, and never when local
+# HEAD is not the pull request's recorded head, since the status would then
+# attest content nobody classified.
+#
+# FORK REFUSAL. A cross-repository pull request is denied outright, before any
+# marker, digest, scope, or base-provenance check, and before anything the
+# acting tree carries (its roster, its member resolver, its dependency
+# predicate) is read or run: once a fork head is checked out, that tree is the
+# fork's. When gh cannot say whether the pull request is a fork, the gate
+# denies as well. .claude/hooks/lib/cross-repo-refusal.sh holds the check and
+# the message.
+#
 # Without every dispatched member's clearance, the hook denies the gh pr merge
 # call. To unblock:
 #   1. Spawn the pending member's agent (code-audit-frontend for the default
 #      member; the specialized member named in the deny reason otherwise) on
-#      the current branch, OR for code-audit-frontend, push to the PR branch
-#      and wait for CI's audit to stamp the GitHub commit status (CI ships no
-#      specialized members).
+#      the current branch.
 #   2. Address any findings; commit and push.
 #   3. Re-spawn the pending member's agent on the new HEAD; let it write its marker.
 #   4. Retry gh pr merge.
@@ -224,13 +229,13 @@ if [ -n "$_root_lib_dir" ] && [ -f "$_root_lib_dir/.gaia/scripts/main-root-lib.s
 fi
 
 # Load the shared ownership classifier + machinery list + digest engine + base
-# provenance resolver from the same on-disk location. check_out_of_scope_pr()
-# and check_self_mod_only_update_pr() below depend on the classifier to know
-# what a changed path is and on the provenance resolver to know what base they
-# are reading a change set against, and every marker check below is keyed to a
-# member's content digest computed by the digest engine; an absent or
-# unreadable module means this gate cannot know what it is gating, so it denies
-# rather than fall through to a degraded, uninformed gate. This is a
+# provenance resolver from the same on-disk location, together with the fork
+# check and the bypass stamp. check_out_of_scope_pr() below depends on the
+# classifier to know what a changed path is and on the provenance resolver to
+# know what base it is reading a change set against, and every marker check
+# below is keyed to a member's content digest computed by the digest engine; an
+# absent or unreadable module means this gate cannot know what it is gating, so
+# it denies rather than fall through to a degraded, uninformed gate. This is a
 # deliberate fail-closed path distinct from every other guard in this hook
 # (which fail OPEN on an unusable lookup).
 #
@@ -243,14 +248,20 @@ fi
 # recommending the exact bare merge that just denied: the real cause is never
 # named and no respelling reaches it. Naming the file here is what turns that
 # into the same one early, honest denial its siblings already give.
+#
+# The fork check is on this list because a missing one must not read as "not a
+# fork", and the stamp because a bypass allow without it leaves the pull
+# request waiting forever on a status nothing posts.
 _scope_lib="$_lib_dir/audit-scope.sh"
 _machinery_lib="$_lib_dir/audit-machinery.sh"
 _digest_lib="$_lib_dir/audit-digest.sh"
 _version_lib="$_lib_dir/gaia-version.sh"
 _provenance_lib="$_lib_dir/audit-base-provenance.sh"
 _repo_scope_lib="$_lib_dir/repo-scope.sh"
-if [ -z "$_lib_dir" ] || [ ! -f "$_scope_lib" ] || [ ! -f "$_machinery_lib" ] || [ ! -f "$_digest_lib" ] || [ ! -f "$_version_lib" ] || [ ! -f "$_provenance_lib" ] || [ ! -f "$_repo_scope_lib" ]; then
-  jq -n --arg r "PR merge gate: cannot load the ownership classifier, the digest engine, the version normalizer, the base provenance resolver, or the command scanner (.claude/hooks/lib/audit-scope.sh, .claude/hooks/lib/audit-machinery.sh, .claude/hooks/lib/audit-digest.sh, .claude/hooks/lib/gaia-version.sh, .claude/hooks/lib/audit-base-provenance.sh, and .claude/hooks/lib/repo-scope.sh must all exist and be readable). Every marker check below is keyed to a member's content digest and to a version literal this gate compares for equality against the stamped one; this gate's out-of-scope and self-mod-only bypasses depend on the classifier to know what a changed path is, and on the provenance resolver to know what base their change set is read against; and every permit this gate issues is bound to the pull request the merge names, which it reads through the command scanner. So it denies rather than guess. Restore all six files (they ship with the framework; a missing or corrupted checkout is the usual cause) and retry.${gate_arm_note}" '{
+_cross_repo_lib="$_lib_dir/cross-repo-refusal.sh"
+_bypass_stamp_lib="$_lib_dir/audit-bypass-stamp.sh"
+if [ -z "$_lib_dir" ] || [ ! -f "$_scope_lib" ] || [ ! -f "$_machinery_lib" ] || [ ! -f "$_digest_lib" ] || [ ! -f "$_version_lib" ] || [ ! -f "$_provenance_lib" ] || [ ! -f "$_repo_scope_lib" ] || [ ! -f "$_cross_repo_lib" ] || [ ! -f "$_bypass_stamp_lib" ]; then
+  jq -n --arg r "PR merge gate: cannot load the ownership classifier, the digest engine, the version normalizer, the base provenance resolver, the command scanner, the fork check, or the bypass stamp (.claude/hooks/lib/audit-scope.sh, .claude/hooks/lib/audit-machinery.sh, .claude/hooks/lib/audit-digest.sh, .claude/hooks/lib/gaia-version.sh, .claude/hooks/lib/audit-base-provenance.sh, .claude/hooks/lib/repo-scope.sh, .claude/hooks/lib/cross-repo-refusal.sh, and .claude/hooks/lib/audit-bypass-stamp.sh must all exist and be readable). Every marker check below is keyed to a member's content digest and to a version literal this gate compares for equality against the stamped one; this gate's out-of-scope bypass depends on the classifier to know what a changed path is, and on the provenance resolver to know what base its change set is read against; every permit this gate issues is bound to the pull request the merge names, which it reads through the command scanner; a fork pull request is refused through the fork check; and a bypass allow posts its GAIA-Audit status through the stamp. So it denies rather than guess. Restore all eight files (they ship with the framework; a missing or corrupted checkout is the usual cause) and retry.${gate_arm_note}" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
@@ -269,6 +280,49 @@ fi
 . "$_version_lib"
 # shellcheck source=/dev/null
 . "$_provenance_lib"
+# shellcheck source=/dev/null
+. "$_cross_repo_lib"
+# shellcheck source=/dev/null
+. "$_bypass_stamp_lib"
+
+# Fork refusal, ahead of every read of the acting tree below: audit_scope_init
+# reads its roster, the member resolver and the chore(deps) predicate run from
+# it, and on a fork head all three are the fork's. The pull request asked about
+# is the one the merge names when it names a bare number, and otherwise the
+# current branch's, which is the only other pull request any permit below can
+# clear (every permit binds to the record of the current branch).
+_fork_check_ref=''
+if type gaia_scan_gh_merge >/dev/null 2>&1 && gaia_scan_gh_merge "$cmd"; then
+  case "${GAIA_GH_MERGE_REF:-}" in
+    '' | *[!0-9]*) ;;
+    *) _fork_check_ref="$GAIA_GH_MERGE_REF" ;;
+  esac
+fi
+_fork_check_status=0
+gaia_pr_is_cross_repository "$_fork_check_ref" || _fork_check_status=$?
+case "$_fork_check_status" in
+  1) ;;
+  0)
+    jq -n --arg r "PR merge gate: ${GAIA_CROSS_REPO_REFUSAL_MESSAGE}${gate_arm_note}" '{
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "deny",
+        permissionDecisionReason: $r
+      }
+    }'
+    exit 0
+    ;;
+  *)
+    jq -n --arg r "PR merge gate: cannot tell whether pull request ${_fork_check_ref:-for the current branch} comes from a fork (${GAIA_CROSS_REPO_GH_ERROR:-gh could not answer}), so it denies rather than risk merging one. Check gh (\`gh auth status\`, the network) and retry. If the pull request is a fork: ${GAIA_CROSS_REPO_REFUSAL_MESSAGE}${gate_arm_note}" '{
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "deny",
+        permissionDecisionReason: $r
+      }
+    }'
+    exit 0
+    ;;
+esac
 
 # Resolve HEAD SHA. If we cannot (no git, detached state we can't read),
 # fall back to permissive: this hook only enforces in repos where git answers.
@@ -318,9 +372,8 @@ tree_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 # Parse the roster ONCE per run (never once per path); the classifier module
 # was sourced above. audit_digests_all below re-inits the same state
 # internally (its own single-walk contract), so this call is redundant with
-# it in effect but kept explicit: check_out_of_scope_pr() and
-# check_self_mod_only_update_pr() run before any digest-dependent path in a
-# future edit would still find the roster parsed. A config with no auditors:
+# it in effect but kept explicit: check_out_of_scope_pr() run before any
+# digest-dependent path in a future edit would still find the roster parsed. A config with no auditors:
 # roster fails here with its own named remedy, ahead of the digest-batch deny
 # below, whose text would otherwise blame a missing sha256 tool.
 if ! audit_scope_init "$tree_root" 2>/dev/null; then
@@ -463,16 +516,17 @@ check_trailer() {
   return 1
 }
 
-# GitHub commit status fallback: CI stamps a GAIA-Audit commit status instead
-# of pushing an empty marker commit (pushing it would re-trigger CI and leave
-# the PR HEAD without check runs). Query the API for a matching status on HEAD.
-# The status must be state: success; its description shape is
+# GitHub commit status fallback: post-audit-status.sh stamps a GAIA-Audit
+# commit status off a member marker, which carries a clearance earned on one
+# machine to a merge run on another. Query the API for a matching status on
+# HEAD. The status must be state: success; its description shape is
 # "<version> <frontend-digest> <tree>" (C3), and version + digest must both
-# match (the tree field is data only, never compared). A non-success status
-# (e.g. a local-mode stand-down's pending status) is filtered out at the
-# source, so a pending status carrying HEAD's version+digest is not treated as
-# cleared. Falls through silently on any error (no gh, no token, no
-# GITHUB_REPOSITORY, API failure), the deny path below fires as normal.
+# match (the tree field is data only, never compared), so a bypass stamp
+# (`skipped: ...`) never reads as cleared here. A non-success status is
+# filtered out at the source, so a pending status carrying HEAD's
+# version+digest is not treated as cleared. Falls through silently on any
+# error (no gh, no token, no GITHUB_REPOSITORY, API failure), the deny path
+# below fires as normal.
 check_github_status() {
   command -v gh >/dev/null 2>&1 || return 1
 
@@ -569,8 +623,8 @@ resolve_pr_record() {
 # pre-verified by the /update-deps wrapper's local quality gate (typecheck +
 # lint + vitest + playwright + build), so the audit-marker requirement is
 # waived for this PR class. The predicate itself lives in one place,
-# .gaia/scripts/chore-deps-skip.sh, shared with the CI workflows
-# (code-review-audit.yml, tests.yml, chromatic.yml). A dep-bump PR that also
+# .gaia/scripts/chore-deps-skip.sh, shared with the CI workflows that skip
+# the same pull requests. A dep-bump PR that also
 # carries a non-manifest path (a migration edit, a rebuilt bundle) does not
 # waive; it runs the normal member-aware gate below.
 #
@@ -917,7 +971,7 @@ flag, is always readable and targets this checkout's own pull request."
   This checkout is on: ${record:-<no pull-request record>}
 
 Every clearance signal, a member's content-digest marker, the GAIA-Audit commit
-trailer, and the GAIA-Audit CI status, proves that a member read THIS
+trailer, and the GAIA-Audit commit status, proves that a member read THIS
 CHECKOUT's content. None of them says anything about another pull request, so
 merging one on their strength would merge a pull request nothing here audited.
 
@@ -983,10 +1037,10 @@ See wiki/concepts/PR Merge Workflow.md for the full contract."
 # whole-gate invariant: no path through this gate clears a merge without
 # establishing that the merge names the pull request the clearance is for. The
 # arms that clear off the current-branch RECORD each ask at their own site, the
-# chore(deps) and self-modification bypasses above and the non-empty arm of this
-# function's own caller, because each needs the answer to decide whether it
-# fires at all; keep it that way when adding a record-based arm, since the four
-# reach that record by three different routes. The arms that clear off a
+# chore(deps) bypass above and both arms of this function's own caller, because
+# each needs the answer to decide whether it fires at all; keep it that way when
+# adding a record-based arm, since they reach that record by different routes.
+# The arms that clear off a
 # CLEARANCE instead ask once, at the permit site, through
 # gate_permit_binds_to_named_pr above; that function owns the reasoning for why
 # the question sits there and what the network read costs.
@@ -1002,8 +1056,7 @@ gate_empty_is_decisive() {
 # Out-of-scope bypass: accept the merge when every file this PR changes lives
 # on a surface outside audit scope. The agent has no rules that apply to wiki,
 # instruction files, .gaia metadata, or prose, so there is nothing to audit and
-# no marker is required, the same determination code-review-audit.yml's
-# `has_source` check makes when it skips. The allowlist itself lives in the
+# no marker is required. The allowlist itself lives in the
 # shared classifier (audit_out_of_scope_allowlisted), the ONE place this
 # literal set is defined.
 # Legacy-gate only: FC-4's auditable-base mirrors this check's complement, so
@@ -1070,98 +1123,62 @@ check_out_of_scope_pr() {
   return 0
 }
 
-# Self-mod-only GAIA-update bypass: accept the merge when the ONLY in-scope path
-# the PR changes is .github/workflows/code-review-audit.yml AND its committed
-# bytes are a verbatim re-render of the bundled template
-# (.gaia/cli/templates/workflows/code-review-audit.yml.tmpl), with every other
-# changed path out of audit scope. This is the self-mod-only case /update-gaia
-# Step 12 produces: it refreshes a stale installed audit workflow by copying the
-# release template verbatim, which makes the update PR self-modifying.
-# claude-code-action's workflow-validation guardrail then refuses to run CI's
-# audit (no GAIA-Audit stamp can land), and the out-of-scope bypass above denies
-# because .github/workflows/ is in scope, so without this signal the operator is
-# forced into a ceremonial local re-audit of bytes that are GAIA's own template,
-# not adopter code. The one in-scope path also sits in the auditable-base set,
-# so this signal is reachable from the member-aware gate too (dispatched set
-# {code-audit-frontend} alone).
-#
-# Stricter than check_out_of_scope_pr: exactly ONE in-scope path, it must be the
-# audit workflow, and git-blob identity must prove its bytes equal the template.
-# Fail-closed: any other in-scope path (app/, test/, a config, a second
-# workflow), an absent template, or a single non-matching byte returns 1 and
-# falls through to the normal deny. A malicious PR cannot smuggle code here, an
-# app/test/config path is in scope and unrecognized, so the loop returns 1 on
-# first sight. No CI stamp; the merge base comes from gate_resolve_base() above,
-# on the same terms as the sibling bypass.
-check_self_mod_only_update_pr() {
-  audit_wf=".github/workflows/code-review-audit.yml"
-  audit_tmpl=".gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
-
-  # Bind to the pull request the COMMAND names, for the reason the chore(deps)
-  # bypass above gives. This arm earns the conjunct more than that one rather
-  # than less: it is reachable from the member-aware gate, where
-  # self_mod_only_pr() clears EVERY dispatched member at once, so a merge it
-  # wrongly answers for is a merge nobody audited on any axis.
-  resolve_pr_record
-  gate_cmd_names_the_record_pr || return 1
-
-  gate_resolve_base
-  [ -n "$gate_base" ] || return 1
-
-  # Newline-delimited, derived NUL-delimited for the reason the sibling
-  # derivation above gives: a C-quoted path is an unrecognized string to the
-  # classifier. A non-zero return is a diff that never ran.
-  changed="$(audit_provenance_changed_files "$tree_root" "$gate_base")" || return 1
-  # Deliberately NOT relaxed, unlike the sibling bypass. That one is reached
-  # only once the dispatched member set is already empty, so treating a decisive
-  # empty range as clearance there stays contained. This one is reachable from
-  # the member-aware gate, where self_mod_only_pr() below clears EVERY
-  # dispatched member at once, and it would do so across mismatched anchors:
-  # the member set comes from a default-branch-anchored derivation while this
-  # range is record-anchored. An empty range must never fire this bypass.
-  [ -n "$changed" ] || return 1
-
-  # Classify every changed path via the shared ORDERED THREE-WAY classifier
-  # (audit_self_mod_classify): out-of-scope surfaces are always fine; the ONE
-  # permitted in-scope path is the audit workflow itself; any other in-scope
-  # path (app/, test/, configs, a different workflow) denies immediately.
-  seen_audit_wf=0
-  while IFS= read -r path; do
-    [ -n "$path" ] || continue
-    class="$(audit_self_mod_classify "$path")"
-    case "$class" in
-      out-of-scope) continue ;;
-      audit-workflow) seen_audit_wf=1 ;;
-      *) return 1 ;;
-    esac
-  done <<< "$changed"
-
-  # The audit workflow must actually be the in-scope change (otherwise this is a
-  # pure out-of-scope PR the earlier bypass already cleared) AND its committed
-  # bytes must be a verbatim copy of the bundled template. Git stores blobs by
-  # content hash, so equal blob SHAs mean byte-identical files. Comparing HEAD's
-  # blobs (not the working tree) keeps the check fail-closed against local dirt;
-  # a missing file makes rev-parse fail and the merge denies.
-  [ "$seen_audit_wf" -eq 1 ] || return 1
-  wf_blob=$(git rev-parse "HEAD:${audit_wf}" 2>/dev/null) || return 1
-  tmpl_blob=$(git rev-parse "HEAD:${audit_tmpl}" 2>/dev/null) || return 1
-  [ "$wf_blob" = "$tmpl_blob" ] || return 1
-
-  return 0
+# code-audit-frontend clearance: a live refusal for the current digest is
+# checked first and is absolute (C6); otherwise any one of the four member
+# signals above (marker, trailer, CI status, chore(deps)). Reused by both the
+# legacy gate and the member-aware gate below. Records which signal cleared in
+# $frontend_cleared_by, because only the chore(deps) arm earns a bypass stamp.
+frontend_cleared_by=""
+frontend_cleared() {
+  frontend_cleared_by=""
+  [ "$frontend_refused" -eq 1 ] && return 1
+  if clearance_member_cleared "$root" "$frontend_digest" code-audit-frontend; then
+    frontend_cleared_by=marker
+    return 0
+  fi
+  if check_trailer; then
+    frontend_cleared_by=trailer
+    return 0
+  fi
+  if github_status_cleared; then
+    frontend_cleared_by=github-status
+    return 0
+  fi
+  if check_chore_deps_pr; then
+    frontend_cleared_by=chore-deps
+    return 0
+  fi
+  return 1
 }
 
-# code-audit-frontend clearance: a live refusal for the current digest is
-# checked first and is absolute (C6); otherwise any one of the five member
-# signals above (marker, trailer, CI status, chore(deps), self-mod-only).
-# Reused by both the legacy gate and the member-aware gate below.
-frontend_cleared() {
-  [ "$frontend_refused" -eq 1 ] && return 1
-  clearance_member_cleared "$root" "$frontend_digest" code-audit-frontend && return 0
-  check_trailer && return 0
-  check_github_status && return 0
-  check_chore_deps_pr && return 0
-  check_self_mod_only_update_pr && return 0
-  return 1
+# github_status_cleared: check_github_status, asked at most once per run. The
+# stamp decision below asks it again after frontend_cleared has, and a second
+# `gh api` read would buy nothing.
+github_status_answer=""
+github_status_cleared() {
+  if [ -z "$github_status_answer" ]; then
+    github_status_answer=no
+    check_github_status && github_status_answer=yes
+  fi
+  [ "$github_status_answer" = yes ]
+}
+
+# gate_post_bypass_stamp <description>: post the GAIA-Audit bypass status for
+# the pull request this run classified. Every caller has already established,
+# through gate_cmd_names_the_record_pr, that the merge names the record's pull
+# request, so the record's number is the one to stamp. The record's head must
+# also be local HEAD, the content the classification read; otherwise the
+# status would attest a head nobody classified, so it is skipped with the
+# manual command instead.
+gate_post_bypass_stamp() {
+  local description="$1"
+  resolve_pr_record
+  if [ -z "$pr_record_number" ] || [ "$pr_record_head" != "$sha" ]; then
+    printf 'GAIA-Audit bypass status not posted: pull request %s records head %s, not local HEAD %s, so this gate did not classify the head GitHub would mark. Push the branch and retry the merge, or post it by hand once the head is the classified one: gh api -X POST repos/{owner}/{repo}/statuses/<sha> -f state=success -f context=GAIA-Audit -f description='"'"'%s'"'"'\n' \
+      "${pr_record_number:-<unknown>}" "${pr_record_head:-<unknown>}" "$sha" "$description" >&2
+    return 0
+  fi
+  audit_post_bypass_status "$pr_record_number" "$description"
 }
 
 # --- Dispatch: resolve the Code Audit Team member set for this diff ---------
@@ -1221,12 +1238,29 @@ if [ -z "$members" ]; then
   # NOT an unconditional allow, FC-4's auditable-base is strictly narrower
   # than check_out_of_scope_pr's denylist, so an ownerless-but-in-scope file
   # (root Makefile, public/**, ...) still denies here without a marker.
+  #
+  # The out-of-scope classification runs FIRST, ahead of every clearance
+  # signal, because the bypass stamp depends on it whichever signal allows: a
+  # wiki-only pull request cut from audited content still validates the old
+  # marker (an out-of-glob change rotates no digest), so a gate that let the
+  # marker answer first would allow it and never post the status branch
+  # protection waits on. The price is the base resolution and diff on a run a
+  # marker would have cleared without them.
+  out_of_scope_pr=0
+  check_out_of_scope_pr && out_of_scope_pr=1
+
   if frontend_cleared; then
-    gate_permit_binds_to_named_pr
+    gate_permit_binds_to_named_pr || exit 0
+    if [ "$out_of_scope_pr" -eq 1 ]; then
+      github_status_cleared || gate_post_bypass_stamp 'skipped: out of scope'
+    elif [ "$frontend_cleared_by" = chore-deps ]; then
+      gate_post_bypass_stamp 'skipped: chore(deps) manifest-only'
+    fi
     exit 0
   fi
 
-  if check_out_of_scope_pr; then
+  if [ "$out_of_scope_pr" -eq 1 ]; then
+    github_status_cleared || gate_post_bypass_stamp 'skipped: out of scope'
     exit 0
   fi
 
@@ -1243,7 +1277,7 @@ ${refusal_note}
 None of the accepted signals is present:
   - Local marker:    ${marker} $(marker_state "$marker")
   - Commit trailer:  ${trailer_status:-missing}
-  - GitHub CI status: absent or version/digest mismatch
+  - GitHub status:   absent or version/digest mismatch
   - chore(deps) PR:  PR title does not match \`chore(deps):\`/\`chore(deps-dev):\`, or the PR changes a path other than a dependency manifest
   - Out-of-scope:    PR changes at least one in-scope path (app/, test/, configs,
                      .github/workflows/), not a wiki/docs/.gaia-config-only diff
@@ -1251,16 +1285,9 @@ None of the accepted signals is present:
                      base-to-HEAD range clears this gate only on remote or supplied
                      provenance, with a pr-record anchor and HEAD at the pull
                      request's recorded head sha
-  - Self-mod-only:   in-scope change is not a verbatim re-render of the bundled
-                     code-review-audit.yml template (adopter edit, extra in-scope
-                     path, or missing template)
 
 To unblock:
-  1. Spawn the code-audit-frontend agent locally, OR push to the PR branch
-     and wait for CI's audit to stamp the GitHub commit status (CI skips
-     when the audit workflow on this head differs from the copy on the
-     default branch, whether this PR edited it or its base did, in that
-     case only the local audit will satisfy the gate).
+  1. Spawn the code-audit-frontend agent locally.
   2. Address any Critical/Important findings; commit and push.
   3. Re-spawn the agent on the new HEAD; let it write the marker.
   4. Retry gh pr merge.
@@ -1296,32 +1323,9 @@ fi
 
 all_cleared=1
 report=""
-
-# The self-mod-only bypass proves a property of the PR, not of one member: the
-# only in-scope changed path is the audit workflow, and its committed bytes are
-# a verbatim copy of the bundled template. Any member dispatched under that
-# condition is therefore dispatched for that one pinned artifact alone, and a
-# reviewer reading it decides nothing a script has not already decided. Resolve
-# it once here rather than per member: the predicate is a repo-wide read, and
-# every member's answer to it is the same.
-#
-# Resolved on first need rather than up front, because the predicate reaches
-# gate_resolve_base() and therefore a base-provenance derivation and a full
-# base-to-HEAD diff. Answering a question that can only matter to an UNCLEARED
-# member would put all of that in front of a merge this gate is about to allow
-# on the markers already sitting on disk. A cleared run does pay the one
-# memoized `gh pr view` the permit binding needs, which is a strictly smaller
-# read and a different question. Deferring changes no verdict: every call site
-# below reaches it only after that member's own clearance has already come up
-# empty.
-self_mod_only=-1
-self_mod_only_pr() {
-  if [ "$self_mod_only" -eq -1 ]; then
-    self_mod_only=0
-    check_self_mod_only_update_pr && self_mod_only=1
-  fi
-  [ "$self_mod_only" -eq 1 ]
-}
+# Set when the chore(deps) waiver, not an earned signal, cleared
+# code-audit-frontend: the one member-aware allow that earns a bypass stamp.
+frontend_chore_deps_waived=0
 
 while IFS= read -r m; do
   [ -n "$m" ] || continue
@@ -1330,7 +1334,10 @@ while IFS= read -r m; do
   if [ "$m" = "code-audit-frontend" ]; then
     m_digest="$frontend_digest"
     m_refused="$frontend_refused"
-    frontend_cleared && member_cleared=1
+    if frontend_cleared; then
+      member_cleared=1
+      [ "$frontend_cleared_by" != chore-deps ] || frontend_chore_deps_waived=1
+    fi
   else
     m_digest="$(member_digest "$m")" || m_digest=""
     m_refused=0
@@ -1339,11 +1346,6 @@ while IFS= read -r m; do
     fi
     if [ "$m_refused" -eq 0 ] && [ -n "$m_digest" ]; then
       clearance_member_cleared "$root" "$m_digest" "$m" && member_cleared=1
-    fi
-    # A live refusal stays absolute (C6): a member that refused this digest is
-    # never cleared by the bypass.
-    if [ "$m_refused" -eq 0 ] && [ "$member_cleared" -eq 0 ] && self_mod_only_pr; then
-      member_cleared=1
     fi
   fi
 
@@ -1360,7 +1362,7 @@ while IFS= read -r m; do
       report="${report}  - code-audit-frontend: PENDING
       Local marker:    ${marker} $(marker_state "$marker")
       Commit trailer:  ${trailer_status:-missing}
-      GitHub CI status: absent or version/digest mismatch
+      GitHub status:   absent or version/digest mismatch
       chore(deps) PR:  PR title does not match \`chore(deps):\`/\`chore(deps-dev):\`, or the PR changes a path other than a dependency manifest
 "
     else
@@ -1372,7 +1374,8 @@ while IFS= read -r m; do
 done <<< "$members"
 
 if [ "$all_cleared" -eq 1 ]; then
-  gate_permit_binds_to_named_pr
+  gate_permit_binds_to_named_pr || exit 0
+  [ "$frontend_chore_deps_waived" -eq 0 ] || gate_post_bypass_stamp 'skipped: chore(deps) manifest-only'
   exit 0
 fi
 

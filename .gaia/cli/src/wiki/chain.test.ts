@@ -12,6 +12,8 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -139,6 +141,28 @@ const TALLY_SCRIPT = '.gaia/scripts/token-tally.sh';
 const tallyCalls = (recorded: RecordedCall[]): RecordedCall[] =>
   recorded.filter(
     (entry) => entry.command === 'bash' && entry.args[0] === TALLY_SCRIPT
+  );
+
+const cachePathOf = (root: string): string =>
+  path.join(root, '.gaia', 'local', 'cache', 'shared', 'update-check.json');
+
+const finishLanding = (cwd: string, runner: CommandRunner): number =>
+  run(['finish', '--branch-aware'], {
+    cwd,
+    runner,
+    sleep: () => undefined,
+  });
+
+const statusCalls = (recorded: RecordedCall[]): RecordedCall[] =>
+  ghCalls(recorded).filter(
+    (entry) =>
+      entry.args[0] === 'api' &&
+      entry.args.some((token) => token.includes('/statuses/'))
+  );
+
+const mergeCalls = (recorded: RecordedCall[]): RecordedCall[] =>
+  ghCalls(recorded).filter(
+    (entry) => entry.args[0] === 'pr' && entry.args[1] === 'merge'
   );
 
 describe('wiki chain', () => {
@@ -1347,6 +1371,187 @@ describe('wiki chain', () => {
       const exit = run(['finish'], {cwd: sandbox.root, runner});
       expect(exit).toBe(0);
       expect(stdio.outputs.join('')).not.toContain('Cost:');
+    });
+  });
+
+  describe('finish: out-of-scope stamp and statusline cache', () => {
+    const BRANCH = 'wiki-sync/2026-05-07-bbbbbbb';
+    const HEAD_SHA = 'b'.repeat(40);
+
+    const finishRunner = (
+      recorded: RecordedCall[],
+      options: {
+        diff?: SpawnSyncReturns<string>;
+        post?: SpawnSyncReturns<string>;
+        push?: SpawnSyncReturns<string>;
+        resolver?: SpawnSyncReturns<string>;
+      } = {}
+    ): CommandRunner =>
+      buildRunner(
+        [
+          {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult(`${BRANCH}\n`),
+          },
+          {
+            argv: ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
+            result: okResult('origin/main\n'),
+          },
+          {
+            argv: ['rev-list', '--count', 'main..HEAD'],
+            result: okResult('3\n'),
+          },
+          {argv: ['rev-parse', 'HEAD'], result: okResult(`${HEAD_SHA}\n`)},
+          {
+            argv: ['diff', '--name-only', '-z', 'main...HEAD'],
+            result: options.diff ?? okResult('wiki/log.md\0'),
+          },
+          {
+            argv: [
+              '.gaia/scripts/resolve-audit-members.sh',
+              '--root',
+              // `resolveRepoRoot` returns the realpath, and the macOS tmpdir
+              // is a symlink.
+              realpathSync(sandbox.root),
+              '--base',
+              'main',
+            ],
+            result: options.resolver ?? okResult(''),
+          },
+          {
+            argv: [
+              'api',
+              '-X',
+              'POST',
+              `repos/{owner}/{repo}/statuses/${HEAD_SHA}`,
+              '-f',
+              'state=success',
+              '-f',
+              'context=GAIA-Audit',
+              '-f',
+              'description=skipped: out of scope',
+            ],
+            result: options.post ?? okResult(''),
+          },
+          {
+            argv: ['push', '-u', 'origin', BRANCH],
+            result: options.push ?? okResult(''),
+          },
+          {
+            argv: ['pr', 'view', BRANCH, '--json', 'state', '--jq', '.state'],
+            result: okResult('MERGED\n'),
+          },
+        ],
+        recorded
+      );
+
+    test('a wiki-only diff posts the stamp after pr create and before pr merge', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+
+      expect(finishLanding(sandbox.root, finishRunner(recorded))).toBe(0);
+
+      const ordered = recorded.map((c) => [c.command, ...c.args].join(' '));
+      const createIndex = ordered.findIndex((c) =>
+        c.startsWith('gh pr create')
+      );
+      const stampIndex = ordered.findIndex((c) =>
+        c.includes(`/statuses/${HEAD_SHA}`)
+      );
+      const mergeIndex = ordered.indexOf(
+        'gh pr merge --squash --auto --delete-branch'
+      );
+      expect(statusCalls(recorded)).toHaveLength(1);
+      expect(stampIndex).toBeGreaterThan(createIndex);
+      expect(mergeIndex).toBeGreaterThan(stampIndex);
+    });
+
+    test('a diff that includes a non-wiki path posts nothing and still lands', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+
+      const exit = finishLanding(
+        sandbox.root,
+        finishRunner(recorded, {diff: okResult('wiki/log.md\0app/root.tsx\0')})
+      );
+      expect(exit).toBe(0);
+      expect(statusCalls(recorded)).toHaveLength(0);
+      expect(mergeCalls(recorded)).toHaveLength(1);
+      expect(stdio.errors.join('')).toContain('outside wiki/');
+    });
+
+    test('a dispatched roster member refuses the post, names the member, and still lands', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+
+      const exit = finishLanding(
+        sandbox.root,
+        finishRunner(recorded, {resolver: okResult('code-audit-frontend\n')})
+      );
+      expect(exit).toBe(0);
+      expect(statusCalls(recorded)).toHaveLength(0);
+      expect(mergeCalls(recorded)).toHaveLength(1);
+      expect(stdio.errors.join('')).toContain('code-audit-frontend');
+    });
+
+    test('a resolver that cannot answer refuses the post and still lands', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+
+      const exit = finishLanding(
+        sandbox.root,
+        finishRunner(recorded, {resolver: failResult(2, 'no auditors roster')})
+      );
+      expect(exit).toBe(0);
+      expect(statusCalls(recorded)).toHaveLength(0);
+      expect(mergeCalls(recorded)).toHaveLength(1);
+      expect(stdio.errors.join('')).toContain('could not answer');
+    });
+
+    test('a failing status POST leaves the exit code unchanged and names the manual path', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+
+      const exit = finishLanding(
+        sandbox.root,
+        finishRunner(recorded, {post: failResult(1, 'HTTP 403')})
+      );
+      expect(exit).toBe(0);
+      expect(mergeCalls(recorded)).toHaveLength(1);
+      expect(stdio.errors.join('')).toContain('HTTP 403');
+      expect(stdio.errors.join('')).toContain('PR Merge Workflow');
+    });
+
+    test('a merged land sets checkedAt to 0 and keeps every other key', () => {
+      sandbox = setupSandbox();
+      mkdirSync(path.dirname(cachePathOf(sandbox.root)), {recursive: true});
+      writeFileSync(
+        cachePathOf(sandbox.root),
+        JSON.stringify({checkedAt: 1_700_000_000, wikiDriftCount: 27}),
+        'utf8'
+      );
+
+      expect(finishLanding(sandbox.root, finishRunner([]))).toBe(0);
+      expect(
+        JSON.parse(readFileSync(cachePathOf(sandbox.root), 'utf8'))
+      ).toEqual({checkedAt: 0, wikiDriftCount: 27});
+    });
+
+    test('a push failure leaves the cache untouched', () => {
+      sandbox = setupSandbox();
+      mkdirSync(path.dirname(cachePathOf(sandbox.root)), {recursive: true});
+      const seeded = JSON.stringify({
+        checkedAt: 1_700_000_000,
+        wikiDriftCount: 27,
+      });
+      writeFileSync(cachePathOf(sandbox.root), seeded, 'utf8');
+
+      const exit = finishLanding(
+        sandbox.root,
+        finishRunner([], {push: failResult(128, 'remote: rejected')})
+      );
+      expect(exit).toBe(2);
+      expect(readFileSync(cachePathOf(sandbox.root), 'utf8')).toBe(seeded);
     });
   });
 

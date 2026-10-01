@@ -37,10 +37,12 @@ import {
   commandSucceeded,
   finalizeMerge,
   passthroughFailure as passthroughFailureWithPrefix,
+  postOutOfScopeStamp,
   refuse,
   todayUtc,
   UNEXPECTED_EXIT,
 } from './util/land.js';
+import {invalidateStatuslineCache} from './util/statusline-cache.js';
 
 const HELP_TEXT = `Usage: gaia wiki sync land [--branch-aware]
 
@@ -153,6 +155,7 @@ const inPlaceLanding = (ctx: LandingContext): number => {
     if (step.marks === 'staged') staged = true;
   }
 
+  invalidateStatuslineCache(ctx.cwd);
   process.stdout.write(
     `sync-land: landed via in-place commit ${ctx.shortHead}\n`
   );
@@ -217,17 +220,17 @@ const protectedBranchLanding = (
     {args: ['add', 'wiki'], command: 'git'},
     {args: ['commit', '-m', message], command: 'git'},
   ];
-  const remoteSequence: RunStep[] = [
+  const openPullRequestSequence: RunStep[] = [
     {args: ['push', '-u', 'origin', branchName], command: 'git'},
     {
       args: ['pr', 'create', '--title', prTitle, '--body', prBody],
       command: 'gh',
     },
-    {
-      args: ['pr', 'merge', '--squash', '--auto', '--delete-branch'],
-      command: 'gh',
-    },
   ];
+  const autoMergeStep: RunStep = {
+    args: ['pr', 'merge', '--squash', '--auto', '--delete-branch'],
+    command: 'gh',
+  };
 
   let onSyncBranch = false;
 
@@ -243,11 +246,25 @@ const protectedBranchLanding = (
     if (step.marks === 'onSyncBranch') onSyncBranch = true;
   }
 
-  for (const step of remoteSequence) {
+  for (const step of openPullRequestSequence) {
     const result = runStep(ctx.runner, step, ctx.cwd);
 
     if (!stepSucceeded(result)) return passthroughFailure(result, step);
   }
+
+  // `--auto` merges outside the Claude Code merge hook, so nothing else posts
+  // GAIA-Audit for this wiki-only PR on a branch that requires it.
+  postOutOfScopeStamp({
+    base: ctx.originalBranch,
+    cwd: ctx.cwd,
+    prefix: 'sync-land',
+    runner: ctx.runner,
+  });
+
+  const mergeResult = runStep(ctx.runner, autoMergeStep, ctx.cwd);
+
+  if (!stepSucceeded(mergeResult))
+    return passthroughFailure(mergeResult, autoMergeStep);
 
   // Land like any other PR: `--auto` waits for the gate to go green server side,
   // then finalizeMerge polls for the merge and cleans up locally (or, on

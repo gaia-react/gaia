@@ -15,6 +15,8 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -151,6 +153,97 @@ const tallyCalls = (recorded: RecordedCall[]): RecordedCall[] =>
     (entry) => entry.command === 'bash' && entry.args[0] === TALLY_SCRIPT
   );
 
+const landProtected = (cwd: string, runner: CommandRunner): number =>
+  run(['--branch-aware'], {
+    cwd,
+    runner,
+    sleep: () => undefined,
+    today: '2026-05-07',
+  });
+
+const statusCalls = (recorded: RecordedCall[]): RecordedCall[] =>
+  recorded.filter(
+    (entry) =>
+      entry.command === 'gh' &&
+      entry.args[0] === 'api' &&
+      entry.args.some((token) => token.includes('/statuses/'))
+  );
+
+const cachePathOf = (root: string): string =>
+  path.join(root, '.gaia', 'local', 'cache', 'shared', 'update-check.json');
+
+const seedCache = (root: string): void => {
+  mkdirSync(path.dirname(cachePathOf(root)), {recursive: true});
+  writeFileSync(
+    cachePathOf(root),
+    JSON.stringify({checkedAt: 1_700_000_000, wikiDriftCount: 31}),
+    'utf8'
+  );
+};
+
+const readCache = (root: string): Record<string, unknown> =>
+  JSON.parse(readFileSync(cachePathOf(root), 'utf8')) as Record<
+    string,
+    unknown
+  >;
+
+const featureRunner = (recorded: RecordedCall[]): CommandRunner =>
+  buildRunner(
+    [
+      {
+        argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+        result: okResult('feature/x\n'),
+      },
+      {
+        argv: ['status', '--porcelain=v1', '-z', '-uall'],
+        result: okResult(' M wiki/log.md\0'),
+      },
+      {
+        argv: ['rev-parse', 'HEAD'],
+        result: okResult('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n'),
+      },
+    ],
+    recorded
+  );
+
+const mainRunner = (
+  recorded: RecordedCall[],
+  overrides: {
+    argv: readonly string[];
+    result: SpawnSyncReturns<string>;
+  }[] = []
+): CommandRunner =>
+  buildRunner(
+    [
+      ...overrides,
+      {
+        argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+        result: okResult('main\n'),
+      },
+      {
+        argv: ['status', '--porcelain=v1', '-z', '-uall'],
+        result: okResult(' M wiki/log.md\0'),
+      },
+      {
+        argv: ['rev-parse', 'HEAD'],
+        result: okResult('bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n'),
+      },
+      {
+        argv: [
+          'pr',
+          'view',
+          'wiki-sync/2026-05-07-bbbbbbb',
+          '--json',
+          'state',
+          '--jq',
+          '.state',
+        ],
+        result: okResult('MERGED\n'),
+      },
+    ],
+    recorded
+  );
+
 describe('wiki sync land', () => {
   let sandbox: Sandbox;
   let stdio: ReturnType<typeof captureStdio>;
@@ -237,7 +330,7 @@ describe('wiki sync land', () => {
     expect(recorded.find((c) => c.command === 'gh')).toBeUndefined();
   });
 
-  test('on main with --branch-aware, PR merges: branch + commit + push + PR + auto-merge, then wait + cleanup', () => {
+  test('on main with --branch-aware, PR merges: branch + commit + push + PR + stamp + auto-merge, then wait + cleanup', () => {
     sandbox = setupSandbox();
     const recorded: RecordedCall[] = [];
     const runner = buildRunner(
@@ -249,6 +342,10 @@ describe('wiki sync land', () => {
         {
           argv: ['status', '--porcelain=v1', '-z', '-uall'],
           result: okResult(' M wiki/log.md\0'),
+        },
+        {
+          argv: ['diff', '--name-only', '-z', 'main...HEAD'],
+          result: okResult('wiki/log.md\0'),
         },
         {
           argv: ['rev-parse', 'HEAD'],
@@ -293,6 +390,22 @@ describe('wiki sync land', () => {
       ['git', 'commit', '-m', 'wiki: sync through bbbbbbb'],
       ['git', 'push', '-u', 'origin', 'wiki-sync/2026-05-07-bbbbbbb'],
       ['gh', 'pr', 'create'],
+      ['git', 'diff', '--name-only', '-z', 'main...HEAD'],
+      ['bash', '.gaia/scripts/resolve-audit-members.sh'],
+      ['git', 'rev-parse', 'HEAD'],
+      [
+        'gh',
+        'api',
+        '-X',
+        'POST',
+        `repos/{owner}/{repo}/statuses/${'b'.repeat(40)}`,
+        '-f',
+        'state=success',
+        '-f',
+        'context=GAIA-Audit',
+        '-f',
+        'description=skipped: out of scope',
+      ],
       ['gh', 'pr', 'merge', '--squash', '--auto', '--delete-branch'],
       ['gh', 'pr', 'view', 'wiki-sync/2026-05-07-bbbbbbb'],
       ['git', 'checkout', '--end-of-options', 'main'],
@@ -714,5 +827,222 @@ describe('wiki sync land', () => {
     expect(stdio.errors.join('')).toContain(
       'refusing to land directly on main'
     );
+  });
+
+  describe('out-of-scope GAIA-Audit stamp', () => {
+    const HEAD_SHA = 'dddddddddddddddddddddddddddddddddddddddd';
+    const BRANCH = 'wiki-sync/2026-05-07-ddddddd';
+    const DIFF_ARGV = ['diff', '--name-only', '-z', 'main...HEAD'];
+
+    const protectedScript = (
+      extra: {
+        argv: readonly string[];
+        result: SpawnSyncReturns<string>;
+      }[] = []
+    ) => [
+      {
+        argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+        result: okResult('main\n'),
+      },
+      {
+        argv: ['status', '--porcelain=v1', '-z', '-uall'],
+        result: okResult(' M wiki/log.md\0'),
+      },
+      {argv: ['rev-parse', 'HEAD'], result: okResult(`${HEAD_SHA}\n`)},
+      {
+        argv: ['pr', 'view', BRANCH, '--json', 'state', '--jq', '.state'],
+        result: okResult('MERGED\n'),
+      },
+      ...extra,
+    ];
+
+    const runnerWithResolver = (
+      recorded: RecordedCall[],
+      diff: SpawnSyncReturns<string>,
+      resolver: SpawnSyncReturns<string>,
+      post: SpawnSyncReturns<string> = okResult('')
+    ): CommandRunner =>
+      buildRunner(
+        protectedScript([
+          {argv: DIFF_ARGV, result: diff},
+          {
+            argv: [
+              '.gaia/scripts/resolve-audit-members.sh',
+              '--root',
+              realpathSync(sandbox.root),
+              '--base',
+              'main',
+            ],
+            result: resolver,
+          },
+          {
+            argv: [
+              'api',
+              '-X',
+              'POST',
+              `repos/{owner}/{repo}/statuses/${HEAD_SHA}`,
+              '-f',
+              'state=success',
+              '-f',
+              'context=GAIA-Audit',
+              '-f',
+              'description=skipped: out of scope',
+            ],
+            result: post,
+          },
+        ]),
+        recorded
+      );
+
+    test('posts the stamp between pr create and pr merge for a wiki-only diff', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+      const runner = runnerWithResolver(
+        recorded,
+        okResult('wiki/log.md\0wiki/concepts/Foo.md\0'),
+        okResult('')
+      );
+
+      expect(landProtected(sandbox.root, runner)).toBe(0);
+
+      const order = recorded.map((call) => `${call.command} ${call.args[0]}`);
+      const create = order.indexOf('gh pr');
+      expect(statusCalls(recorded)).toHaveLength(1);
+      expect(statusCalls(recorded)[0]?.args).toContain(
+        'description=skipped: out of scope'
+      );
+      const stampIndex = recorded.findIndex(
+        (call) => call.command === 'gh' && call.args[0] === 'api'
+      );
+      const mergeIndex = recorded.findIndex(
+        (call) => call.command === 'gh' && call.args[1] === 'merge'
+      );
+      expect(create).toBeLessThan(stampIndex);
+      expect(stampIndex).toBeLessThan(mergeIndex);
+      expect(recorded[mergeIndex]?.args).toContain('--auto');
+    });
+
+    test('refuses when the roster dispatches a member, still lands with --auto', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+      const runner = runnerWithResolver(
+        recorded,
+        okResult('wiki/log.md\0'),
+        okResult('code-audit-frontend\n')
+      );
+
+      expect(landProtected(sandbox.root, runner)).toBe(0);
+      expect(statusCalls(recorded)).toHaveLength(0);
+      expect(stdio.errors.join('')).toContain('code-audit-frontend');
+      expect(stdio.errors.join('')).toContain('PR Merge Workflow');
+      expect(recorded.some((call) => call.args.includes('--auto'))).toBe(true);
+    });
+
+    test('refuses when the resolver cannot answer, still lands with --auto', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+      const runner = runnerWithResolver(
+        recorded,
+        okResult('wiki/log.md\0'),
+        failResult(2, 'resolve-audit-members: no auditors roster')
+      );
+
+      expect(landProtected(sandbox.root, runner)).toBe(0);
+      expect(statusCalls(recorded)).toHaveLength(0);
+      expect(stdio.errors.join('')).toContain('could not answer');
+      expect(recorded.some((call) => call.args.includes('--auto'))).toBe(true);
+    });
+
+    test('refuses a diff that leaves wiki/', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+      const runner = runnerWithResolver(
+        recorded,
+        okResult('wiki/log.md\0app/root.tsx\0'),
+        okResult('')
+      );
+
+      expect(landProtected(sandbox.root, runner)).toBe(0);
+      expect(statusCalls(recorded)).toHaveLength(0);
+      expect(stdio.errors.join('')).toContain('outside wiki/');
+    });
+
+    test('a failing status POST leaves the exit code unchanged and names the manual path', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+      const runner = runnerWithResolver(
+        recorded,
+        okResult('wiki/log.md\0'),
+        okResult(''),
+        failResult(1, 'HTTP 403')
+      );
+
+      expect(landProtected(sandbox.root, runner)).toBe(0);
+      expect(statusCalls(recorded)).toHaveLength(1);
+      expect(stdio.errors.join('')).toContain('HTTP 403');
+      expect(stdio.errors.join('')).toContain('PR Merge Workflow');
+      expect(recorded.some((call) => call.args.includes('--auto'))).toBe(true);
+    });
+  });
+
+  describe('statusline cache invalidation', () => {
+    test('an in-place land sets checkedAt to 0 and keeps every other key', () => {
+      sandbox = setupSandbox();
+      seedCache(sandbox.root);
+
+      expect(run([], {cwd: sandbox.root, runner: featureRunner([])})).toBe(0);
+      expect(readCache(sandbox.root)).toEqual({
+        checkedAt: 0,
+        wikiDriftCount: 31,
+      });
+    });
+
+    test('a protected-branch land that merges sets checkedAt to 0 and keeps every other key', () => {
+      sandbox = setupSandbox();
+      seedCache(sandbox.root);
+
+      const exit = run(['--branch-aware'], {
+        cwd: sandbox.root,
+        runner: mainRunner([]),
+        sleep: () => undefined,
+        today: '2026-05-07',
+      });
+      expect(exit).toBe(0);
+      expect(readCache(sandbox.root)).toEqual({
+        checkedAt: 0,
+        wikiDriftCount: 31,
+      });
+    });
+
+    test('creates no cache file when none exists', () => {
+      sandbox = setupSandbox();
+
+      expect(run([], {cwd: sandbox.root, runner: featureRunner([])})).toBe(0);
+      expect(existsSync(cachePathOf(sandbox.root))).toBe(false);
+    });
+
+    test('a land that fails before landing leaves the cache untouched', () => {
+      sandbox = setupSandbox();
+      seedCache(sandbox.root);
+
+      const exit = run(['--branch-aware'], {
+        cwd: sandbox.root,
+        runner: mainRunner(
+          [],
+          [
+            {
+              argv: ['push', '-u', 'origin', 'wiki-sync/2026-05-07-bbbbbbb'],
+              result: failResult(128, 'remote: rejected'),
+            },
+          ]
+        ),
+        today: '2026-05-07',
+      });
+      expect(exit).toBe(2);
+      expect(readCache(sandbox.root)).toEqual({
+        checkedAt: 1_700_000_000,
+        wikiDriftCount: 31,
+      });
+    });
   });
 });

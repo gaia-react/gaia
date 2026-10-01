@@ -37,6 +37,7 @@ import {
   commandSucceeded,
   finalizeMerge,
   passthroughFailure as passthroughFailureWithPrefix,
+  postOutOfScopeStamp,
   refuse,
   todayUtc,
   UNEXPECTED_EXIT,
@@ -423,6 +424,72 @@ const emitWikiTally = (options: RunOptions, artifact?: GhArtifact): void => {
   }
 };
 
+type QueueAutoMergeOptions = {
+  base: string;
+  branch: string;
+  prBody: string;
+  prTitle: string;
+  repoRoot: string;
+  runner: CommandRunner;
+};
+
+type QueueAutoMergeResult = {artifact?: GhArtifact; failureCode?: number};
+
+/**
+ * Push the chain branch, open its PR, post the out-of-scope stamp, and queue
+ * auto-merge. Runs while still on the chain branch so `gh pr merge` targets its
+ * PR; once `push` succeeds the branch exists on the remote and is left for the
+ * maintainer to resolve rather than force-reverted.
+ */
+const queueAutoMerge = (
+  options: QueueAutoMergeOptions
+): QueueAutoMergeResult => {
+  const {base, branch, prBody, prTitle, repoRoot, runner} = options;
+  const autoMergeStep = {
+    args: ['pr', 'merge', '--squash', '--auto', '--delete-branch'],
+    command: 'gh',
+  };
+  const remoteSequence: {args: string[]; command: string}[] = [
+    {args: ['push', '-u', 'origin', branch], command: 'git'},
+    {
+      args: ['pr', 'create', '--title', prTitle, '--body', prBody],
+      command: 'gh',
+    },
+    autoMergeStep,
+  ];
+
+  let artifact: GhArtifact | undefined;
+
+  for (const step of remoteSequence) {
+    // `--auto` merges outside the Claude Code merge hook, so nothing else posts
+    // GAIA-Audit for a wiki-only chain PR on a branch that requires it. The
+    // poster refuses a diff that leaves `wiki/` or that the roster dispatches.
+    if (step === autoMergeStep) {
+      postOutOfScopeStamp({
+        base,
+        cwd: repoRoot,
+        prefix: 'chain finish',
+        runner,
+      });
+    }
+
+    const result = runner(step.command, step.args, {cwd: repoRoot});
+
+    if (!stepOk(result)) {
+      return {
+        artifact,
+        failureCode: passthroughFailure(result, step.command, step.args),
+      };
+    }
+
+    if (step.command === 'gh' && step.args[1] === 'create') {
+      artifact = parsePrUrl(safeOutput(result.stdout));
+    }
+  }
+
+  return {artifact};
+};
+
 const runFinish = (
   argv: readonly string[],
   options: RunOptions
@@ -485,41 +552,20 @@ const runFinish = (
   const prBody =
     'Automated /gaia-wiki full-chain landing (sync + consolidate + lint) via `gaia wiki chain finish`.';
 
-  // Remote steps run while still on the chain branch so `gh pr merge` targets
-  // its PR. Once `push` succeeds the branch exists on the remote and is left
-  // for the maintainer to resolve rather than force-reverted.
-  const remoteSequence: {args: string[]; command: string}[] = [
-    {args: ['push', '-u', 'origin', branch], command: 'git'},
-    {
-      args: ['pr', 'create', '--title', prTitle, '--body', prBody],
-      command: 'gh',
-    },
-    {
-      args: ['pr', 'merge', '--squash', '--auto', '--delete-branch'],
-      command: 'gh',
-    },
-  ];
+  const queued = queueAutoMerge({
+    base,
+    branch,
+    prBody,
+    prTitle,
+    repoRoot,
+    runner,
+  });
 
-  let artifact: GhArtifact | undefined;
-
-  for (const step of remoteSequence) {
-    const result = runner(step.command, step.args, {cwd: repoRoot});
-
-    if (!stepOk(result)) {
-      return {
-        artifact,
-        code: passthroughFailure(result, step.command, step.args),
-      };
-    }
-
-    if (
-      step.command === 'gh' &&
-      step.args[0] === 'pr' &&
-      step.args[1] === 'create'
-    ) {
-      artifact = parsePrUrl(safeOutput(result.stdout));
-    }
+  if (queued.failureCode !== undefined) {
+    return {artifact: queued.artifact, code: queued.failureCode};
   }
+
+  const {artifact} = queued;
 
   // Land like any other PR: `--auto` waits for the gate to go green server side,
   // then finalizeMerge polls for the merge and cleans up locally (or, on

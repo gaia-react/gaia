@@ -9,15 +9,14 @@
 # .gaia/, docs/, and root-level markdown. Any in-scope path (app/, test/,
 # configs, .github/workflows/) keeps the marker mandatory.
 #
-# Signal 6 (check_self_mod_only_update_pr) is a stricter sibling: it allows the
-# merge when the ONLY in-scope path is .github/workflows/code-review-audit.yml
-# AND its committed bytes are a verbatim re-render of the bundled template
-# (.gaia/cli/templates/workflows/code-review-audit.yml.tmpl, proven by git-blob
-# identity), with every other changed path out of scope. This is the self-mod-
-# only case /update-gaia Step 12 produces; CI self-mod-skips such a PR so no
-# GAIA-Audit stamp can land, but the changed bytes ARE GAIA's own template, not
-# adopter code. Fail-closed: a non-matching workflow byte, a second in-scope
-# path, or an absent template falls through to the normal deny.
+# There is no self-modification bypass: a pull request whose only in-scope
+# change re-renders a bundled workflow template verbatim denies without a
+# marker like any other in-scope change.
+#
+# Every gh stub here answers the fork query (`--json isCrossRepository`) with
+# `false`, ahead of its record arm, because the gate asks it before anything
+# else and denies when gh cannot answer. The fork cases themselves live in
+# cross-repo-refusal.bats; the bypass status POST in bypass-audit-stamp.bats.
 #
 # Every Code Audit Team marker is keyed to a member's own CONTENT DIGEST (a
 # sha256 over exactly the files that member owns plus the shared gate
@@ -119,15 +118,10 @@ commit_files() {
   git -C "$REPO" commit --quiet -m "change"
 }
 
-# Seed the bundled audit-workflow template onto the BASE commit (main), out of
-# the feature diff, then re-point feature at it. This mirrors the real
-# /update-gaia self-mod PR: the template already exists on the base and only the
-# installed .github/workflows/code-review-audit.yml is refreshed. The template is
-# maintainer-shell-owned, so committing it in the feature diff would dispatch that
-# member and defeat the frontend-only self-mod bypass under test; keeping it on
-# the base leaves the diff self-mod-clean while still giving the blob-identity
-# check a template to compare against. The template-absent case deliberately does
-# NOT call this.
+# Seed a bundled workflow template onto the BASE commit (main), out of the
+# feature diff, then re-point feature at it, so a feature commit can re-render
+# it verbatim: the shape of pull request the removed self-modification bypass
+# used to clear.
 seed_base_template() {
   git -C "$REPO" checkout --quiet main
   mkdir -p "$REPO/.gaia/cli/templates/workflows"
@@ -296,6 +290,7 @@ install_gh_stub() {
 issues_file="$BATS_TEST_TMPDIR/issues.json"
 EOF
   cat >> "$GH_BIN/gh" <<'EOF'
+case "$*" in *isCrossRepository*) printf 'false\n'; exit 0 ;; esac
 case "$1" in
   auth) exit 0 ;;
   repo) printf 'gaia-react/gaia\n'; exit 0 ;;
@@ -331,6 +326,7 @@ title_file="$BATS_TEST_TMPDIR/pr-title.txt"
 files_file="$BATS_TEST_TMPDIR/pr-files.json"
 EOF
   cat >> "$GH_BIN/gh" <<'EOF'
+case "$*" in *isCrossRepository*) printf 'false\n'; exit 0 ;; esac
 case "$1" in
   auth) exit 0 ;;
   repo) printf 'gaia-react/gaia\n'; exit 0 ;;
@@ -365,6 +361,7 @@ issues_file="$BATS_TEST_TMPDIR/issues.json"
 status_file="$BATS_TEST_TMPDIR/status-desc.txt"
 EOF
   cat >> "$GH_BIN/gh" <<'EOF'
+case "$*" in *isCrossRepository*) printf 'false\n'; exit 0 ;; esac
 case "$1" in
   auth) exit 0 ;;
   repo) printf 'gaia-react/gaia\n'; exit 0 ;;
@@ -509,51 +506,16 @@ assert_not_in_set() {
 }
 
 # ---------------------------------------------------------------------------
-# Signal 6: self-mod-only GAIA-update bypass (check_self_mod_only_update_pr).
-# The single permitted in-scope path is .github/workflows/code-review-audit.yml
-# AND its committed bytes must equal the bundled template. Commit BOTH paths
-# with identical content so their git blobs match (commit_files appends the
-# same trailing newline to each, so equal content => equal blob).
+# No self-modification bypass: a verbatim re-render of a bundled workflow
+# template is an in-scope change like any other.
 # ---------------------------------------------------------------------------
 
-@test "allows a self-mod-only update PR (workflow bytes == bundled template)" {
+@test "denies a workflow re-render whose bytes equal the bundled template" {
   install_gh_stub
   seed_base_template
   commit_files \
     ".github/workflows/code-review-audit.yml" "name: Code Review Audit" \
     "wiki/log.md" "entry"
-  run_merge_hook
-  [ "$status" -eq 0 ]
-  [[ "$output" != *'"permissionDecision": "deny"'* ]]
-}
-
-@test "denies a workflow edit that does NOT match the bundled template" {
-  # Adopter customization (self-hosted runner, extra secret) diverges from the
-  # template, so there IS something to audit; the marker stays mandatory.
-  seed_base_template
-  commit_files \
-    ".github/workflows/code-review-audit.yml" "name: Code Review Audit (customized)"
-  run_merge_hook
-  [ "$status" -eq 0 ]
-  [[ "$output" == *'"permissionDecision": "deny"'* ]]
-}
-
-@test "denies a verbatim workflow re-render smuggling in-scope source" {
-  # A matching re-render cannot mask an app/ change; the marker is mandatory the
-  # moment any auditable path appears.
-  seed_base_template
-  commit_files \
-    ".github/workflows/code-review-audit.yml" "name: Code Review Audit" \
-    "app/evil.ts" "export const evil = 1"
-  run_merge_hook
-  [ "$status" -eq 0 ]
-  [[ "$output" == *'"permissionDecision": "deny"'* ]]
-}
-
-@test "denies a workflow re-render when the bundled template is absent" {
-  # Fail-closed: without the template on HEAD nothing proves the change is a
-  # verbatim re-render, so the marker stays mandatory.
-  commit_files ".github/workflows/code-review-audit.yml" "name: Code Review Audit"
   run_merge_hook
   [ "$status" -eq 0 ]
   [[ "$output" == *'"permissionDecision": "deny"'* ]]
@@ -1323,10 +1285,6 @@ gh pr merge 30 --squash"
 # pull request in the repository at once, while the record itself is read for
 # the CURRENT BRANCH and so describes a pull request the gated command need
 # never have named.
-#
-# The self-modification bypass reads the same base and is deliberately NOT
-# relaxed: it is reachable from the member-aware gate, where it clears every
-# dispatched member at once.
 # ---------------------------------------------------------------------------
 
 # Advertise refs/remotes/origin/main as the default and point it at REV, so
@@ -1363,6 +1321,7 @@ head_file="$BATS_TEST_TMPDIR/pr-head.txt"
 number_file="$BATS_TEST_TMPDIR/pr-number.txt"
 EOF
   cat >> "$GH_BIN/gh" <<'EOF'
+case "$*" in *isCrossRepository*) printf 'false\n'; exit 0 ;; esac
 case "$1" in
   auth) exit 0 ;;
   repo) printf 'gaia-react/gaia\n'; exit 0 ;;
@@ -1474,8 +1433,11 @@ run_recording_hook() {
   # No JSON at all. The permit keeps the shape every other permit in this hook
   # has: a silent zero exit, never a permissionDecision emission.
   [ -z "$output" ]
-  [ "$(printf '%s\n' "$stderr" | grep -c .)" -eq 1 ]
-  grep -qF 'range is empty' <<<"$stderr" || return 1
+  # The reason is one stderr line. The other is the bypass status attempt,
+  # which this stub cannot complete (its record carries no head for the stamp
+  # to read back); bypass-audit-stamp.bats owns that POST.
+  [ "$(printf '%s\n' "$stderr" | grep -c 'range is empty')" -eq 1 ]
+  [ "$(printf '%s\n' "$stderr" | grep -vc -e 'range is empty' -e 'GAIA-Audit bypass status not posted')" -eq 0 ]
   grep -qF 'remote provenance' <<<"$stderr" || return 1
   grep -qF 'anchor pr-record' <<<"$stderr" || return 1
 }
@@ -1723,19 +1685,6 @@ merge 999 --squash'
   assert_denied_by_json
 }
 
-@test "the self-mod bypass does not fire on an empty range, even with the audit workflow re-rendered verbatim" {
-  seed_base_template
-  commit_files ".github/workflows/code-review-audit.yml" "name: Code Review Audit"
-  set_origin_main_at refs/heads/feature
-  install_gh_stub_with_record "main" "0000000000000000000000000000000000000001"
-
-  run_merge_hook
-  assert_denied_by_json
-  # Positively pin that the base really was remote-verified, so this case
-  # cannot green on a fixture that quietly degraded to a local base.
-  grep -qF 'remote provenance' <<<"$output" || return 1
-}
-
 @test "a non-empty dispatched member set still denies while a member withholds, on remote provenance at the recorded head" {
   commit_files \
     "app/x.ts" "export const x = 1" \
@@ -1832,6 +1781,7 @@ merge 999 --squash'
   install_gh_stub
   cat > "$GH_BIN/gh" <<'EOF'
 #!/usr/bin/env bash
+case "$*" in *isCrossRepository*) printf 'false\n'; exit 0 ;; esac
 case "$1" in
   pr) exit 1 ;;
   api) printf 'null\n'; exit 0 ;;
@@ -1909,9 +1859,9 @@ rge 30 --squash'
 # ---------------------------------------------------------------------------
 # Every clearing arm binds to the pull request the command names
 #
-# Four arms can clear a merge off a record `gh pr view` reads for the CURRENT
-# BRANCH: chore(deps), self-mod-only, out-of-scope, and the empty range. The
-# empty range's binding is covered above; these cover the other three.
+# Three arms can clear a merge off a record `gh pr view` reads for the CURRENT
+# BRANCH: chore(deps), out-of-scope, and the empty range. The empty range's
+# binding is covered above; these cover the other two.
 #
 # Each is a PAIR, and the pairing is load-bearing. A mismatch case alone goes
 # green on a conjunct that denies unconditionally, which is a bypass that no
@@ -1954,28 +1904,6 @@ rge 30 --squash'
 @test "out-of-scope: the bypass still fires when the command names no pull request" {
   install_gh_stub
   commit_files "wiki/x.md" "doc"
-
-  run_merge_hook "gh pr merge --squash --delete-branch"
-  assert_allowed_by_json
-}
-
-@test "self-mod-only: the bypass denies a merge naming a pull request other than the record's" {
-  install_gh_stub
-  seed_base_template
-  commit_files \
-    ".github/workflows/code-review-audit.yml" "name: Code Review Audit" \
-    "wiki/log.md" "entry"
-
-  run_merge_hook "gh pr merge 999 --squash"
-  assert_denied_by_json
-}
-
-@test "self-mod-only: the bypass still fires when the command names no pull request" {
-  install_gh_stub
-  seed_base_template
-  commit_files \
-    ".github/workflows/code-review-audit.yml" "name: Code Review Audit" \
-    "wiki/log.md" "entry"
 
   run_merge_hook "gh pr merge --squash --delete-branch"
   assert_allowed_by_json

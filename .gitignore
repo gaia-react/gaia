@@ -53,8 +53,6 @@ __pycache__/
 .claude-pr/
 
 # Wiki sync system markers (project-local, never commit)
-.claude/wiki-drift-checked
-.claude/wiki-safety-checked
 .claude/wiki-recompact-pending
 
 # GAIA release/update working directories

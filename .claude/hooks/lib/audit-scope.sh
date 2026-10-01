@@ -5,16 +5,13 @@
 # never once per path: this is a sourced library with batch predicates that
 # consume a path list, never a process spawned per path.
 #
-# Three different questions live here, and they are NOT the same question:
+# Two different questions live here, and they are NOT the same question:
 #
 #   audit_out_of_scope_allowlisted the merge gate's out-of-scope allowlist,
 #                                  consulted on its legacy branch, by the spawn
 #                                  oracle's ownerless probe, and by the digest
 #                                  fold; widening it must move all three or a
 #                                  merge deadlocks
-#   audit_self_mod_classify        an ORDERED THREE-WAY classification
-#                                  (out-of-scope / the audit workflow itself /
-#                                  in-scope), never a boolean
 #   audit_owner_for_path           roster ownership: which member (if any)
 #                                  owns a path, in two precedence tiers:
 #                                  every claimant's globs first, first-match-
@@ -22,7 +19,7 @@
 #                                  member's own declared globs; otherwise
 #                                  ownerless
 #
-# Conflating any two of these is a merge-gate bypass. In particular, the
+# Conflating the two is a merge-gate bypass. In particular, the
 # out-of-scope allowlist is NOT an audit-skip predicate: a path can be both
 # allowlisted here (reached only when the roster dispatches nobody) and
 # roster-owned (dispatched, and gated on that owner's clearance) at the same
@@ -72,28 +69,6 @@ audit_out_of_scope_allowlisted() {
     *.md) return 0 ;;
     *) return 1 ;;
   esac
-}
-
-# --- The self-mod-only GAIA-update bypass's classification -------------------
-#
-# An ORDERED THREE-WAY classification, never a boolean: folding it into a
-# generalized out-of-scope predicate breaks the update bypass this exists
-# for. Prints exactly one of: out-of-scope | audit-workflow | in-scope.
-#
-# The audit-workflow arm is a single literal path, checked BEFORE the
-# general "any other nested path is in-scope" arm, exactly mirroring the
-# precedence a caller needs to detect "the only in-scope change is the audit
-# workflow file itself".
-
-audit_self_mod_classify() {
-  case "$1" in
-    wiki/*|.claude/*|.specify/*|.gaia/*|docs/*) printf 'out-of-scope\n' ;;
-    ".github/workflows/code-review-audit.yml") printf 'audit-workflow\n' ;;
-    */*) printf 'in-scope\n' ;;
-    *.md) printf 'out-of-scope\n' ;;
-    *) printf 'in-scope\n' ;;
-  esac
-  return 0
 }
 
 # --- Roster parsing (moved, not copied) --------------------------------------

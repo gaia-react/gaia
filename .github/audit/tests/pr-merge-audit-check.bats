@@ -12,8 +12,8 @@
 # with NO output. Each test runs the hook with cwd inside an isolated git
 # sandbox on a FEATURE branch off main (so the merge-base diff is non-empty)
 # whose diff carries an in-scope path (app/), keeping the marker mandatory so
-# neither the out-of-scope nor self-mod bypass fires and the GitHub commit
-# status fallback is the deciding signal.
+# the out-of-scope bypass does not fire and the GitHub commit status fallback
+# is the deciding signal.
 #
 # The status fallback path is exercised by mocking `gh` on a prepended PATH.
 # The mock returns a full JSON statuses array and runs the hook's real `--jq`
@@ -21,7 +21,8 @@
 # status is filtered out exactly as the hook filters it. The mock also answers
 # the single PR-record read the hook makes, `gh pr view --json
 # title,baseRefName`: an empty title, so the chore(deps) bypass never fires,
-# and whatever base ref a test declared, if any.
+# and whatever base ref a test declared, if any. The fork query the hook asks
+# first (`--json isCrossRepository`) always answers `false`.
 #
 # The status description is three positional fields, "<version>
 # <frontend-digest> <tree>" (C3): field 2 is the frontend content digest, the
@@ -56,8 +57,8 @@ setup() {
   git -C "$SANDBOX" add .gaia/audit-ci.yml .gaia/VERSION README.md
   git -C "$SANDBOX" commit --quiet -m "init"
 
-  # Feature branch with an in-scope (app/) change, so the out-of-scope and
-  # self-mod bypasses both fail-closed and the merge requires an audit signal.
+  # Feature branch with an in-scope (app/) change, so the out-of-scope bypass
+  # fails closed and the merge requires an audit signal.
   # No .gaia/scripts/resolve-audit-members.sh is present in the sandbox, so
   # the hook always takes its legacy zero-dispatch path, and the GitHub
   # commit status fallback is the deciding signal.
@@ -69,10 +70,13 @@ setup() {
 
 # The hook reads tool-call JSON on stdin and resolves HEAD via the cwd's git,
 # so run it with cwd inside the sandbox and a `gh pr merge` command payload.
+# stdout alone: the decision travels there, and an out-of-scope allow also
+# writes the bypass status attempt to stderr, which this mock cannot complete
+# and this suite does not assert on.
 run_hook() {
   local input
   input=$(jq -nc '{tool_name:"Bash",tool_input:{command:"gh pr merge --squash"}}')
-  ( cd "$SANDBOX" && printf '%s' "$input" | "$SCRIPT" )
+  ( cd "$SANDBOX" && printf '%s' "$input" | "$SCRIPT" 2>/dev/null )
 }
 
 current_tree() {
@@ -109,6 +113,9 @@ EOF
   cat >> "$GH_BIN/gh" <<'EOF'
 args="$*"
 case "$args" in
+  *isCrossRepository*)
+    printf 'false\n'
+    ;;
   *baseRefName*)
     # The hook reads the record once, both fields in one call. The title is
     # always empty, so the chore(deps) bypass never fires; the base ref is

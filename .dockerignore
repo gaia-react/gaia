@@ -48,8 +48,6 @@ storybook-static
 .claude/settings.local.json
 .claude/skills/react-doctor
 **/.claude-pr
-.claude/wiki-drift-checked
-.claude/wiki-safety-checked
 .claude/wiki-recompact-pending
 .gaia/local
 .gaia/local.bak.*

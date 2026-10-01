@@ -467,22 +467,3 @@ transforms:
         pattern: "^\\s*paths-ignore\\s*:|^\\s*-\\s*['\"]?!|\\[[^\\]]*['\"]!"
         scope:
           - ".github/workflows/**"
-
-      # ---- Runtime-optional dependency references ----
-      # Hook scripts that reference .gaia/ config files guarded by `[ -f ]`
-      # are runtime-optional; adopters without the file get a graceful no-op.
-      # The runtime-deps checker cannot infer conditionality from shell guard
-      # syntax and flags these as missing dependencies.
-      - id: runtime-deps
-        description: "Runtime-optional .gaia/ config references guarded by shell [ -f ] checks"
-        pattern: "\\.gaia/automation\\.json"
-        scope:
-          - ".claude/hooks/**"
-        line-allowlist:
-          # In .claude/hooks/lib/gaia-ci-defer.sh: a variable assignment guarded
-          # by `[ -f "$config_path" ] || return 0`, so adopters without
-          # .gaia/automation.json get a graceful no-op.
-          - "local config_path=.*\\.gaia/automation\\.json"
-          # In .claude/hooks/lib/gaia-ci-defer.sh: shell comment lines documenting
-          # the .gaia/automation.json config file in prose, not runtime refs.
-          - "#.*\\.gaia/automation\\.json"

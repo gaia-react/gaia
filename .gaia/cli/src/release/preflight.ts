@@ -5,7 +5,8 @@
  *
  *   1. Branch state check: must be on `main` (or maintainer-designated
  *      release branch) with a clean working tree.
- *   2. Wiki state check: `gaia wiki state --json`'s `commits_ahead === 0`.
+ *   2. Wiki state check: `gaia wiki state --json` reports no drift, via
+ *      `commits_ahead` (reachable state) or `drift_count` (orphaned state).
  *
  * Stdout: nothing on success.
  * Stderr: clear refusal on each failure.
@@ -114,6 +115,7 @@ const refuse = (message: string): number => {
 
 type WikiState = {
   commits_ahead: number;
+  drift_count: number;
   reachable: boolean;
   state_sha: string;
   suggested_base: string;
@@ -139,15 +141,20 @@ const runWikiStateJson: WikiStateProbe = (cwd) => {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     const {
       commits_ahead: commitsAhead,
+      drift_count: driftCount,
       reachable,
       state_sha: stateSha,
       suggested_base: suggestedBase,
     } = parsed;
 
-    if (typeof commitsAhead !== 'number') return null;
+    // A payload without `drift_count` cannot prove the orphaned window empty,
+    // so it reads as a failed probe (a refusal) rather than as zero drift.
+    if (typeof commitsAhead !== 'number' || typeof driftCount !== 'number')
+      return null;
 
     return {
       commits_ahead: commitsAhead,
+      drift_count: driftCount,
       // Default reachable to true on a malformed payload so the orphaned-state
       // recovery never fires off bad input; the gate falls back to today's
       // `commits_ahead` reading.
@@ -210,29 +217,6 @@ const readDriftSubjects = (
   });
 };
 
-/**
- * Count the commits in `<base>..HEAD`. `null` if `base` can't be resolved or
- * `git rev-list` fails. Used to recover the drift count on the orphaned-state
- * path, where `gaia wiki state` reports a hardcoded `commits_ahead:0`.
- */
-const countDriftCommits = (
-  runner: CommandRunner,
-  cwd: string,
-  base: string
-): null | number => {
-  const fullSha = resolveCommit(runner, cwd, base);
-
-  if (fullSha === '') return null;
-  const result = runner('git', ['rev-list', '--count', `${fullSha}..HEAD`], {
-    cwd,
-  });
-
-  if (result.error !== undefined || (result.status ?? -1) !== 0) return null;
-  const parsed = Number.parseInt(result.stdout.trim(), 10);
-
-  return Number.isInteger(parsed) ? parsed : null;
-};
-
 type RunOptions = {
   cwd?: string;
   runner?: CommandRunner;
@@ -271,13 +255,13 @@ type DriftWindow = {base: string; count: number};
 /**
  * Resolve the effective drift window. On the reachable path the wiki-state
  * JSON's `commits_ahead`/`state_sha` are authoritative. On the orphaned path
- * (`reachable:false`, the normal post-squash-merge condition) the JSON
- * hardcodes `commits_ahead:0`, blind to any un-evaluated window; recover the
- * window from `suggested_base..HEAD`, the reachable baseline `gaia wiki state`
- * reports for exactly this case. `suggested_base` is `''` on the reachable
- * path, so the recovery branch is inert there and behavior is unchanged.
- * `null` when the recovery read fails: a git failure counting the recovered
- * window can't prove the wiki is current.
+ * (`reachable:false`, the normal post-squash-merge condition) `commits_ahead`
+ * is 0, blind to any un-evaluated window; take `drift_count`, which `gaia wiki
+ * state` computes from `suggested_base..HEAD` with the one shared bookkeeping
+ * filter, and inspect that same window. `suggested_base` is `''` on the
+ * reachable path, so the recovery branch is inert there and behavior is
+ * unchanged. `null` when `suggested_base` does not resolve to a commit: the
+ * window cannot be inspected, so the wiki cannot be proven current.
  */
 const resolveDriftWindow = (
   runner: CommandRunner,
@@ -288,13 +272,11 @@ const resolveDriftWindow = (
     return {base: wikiState.state_sha, count: wikiState.commits_ahead};
   }
 
-  const recovered = countDriftCommits(runner, cwd, wikiState.suggested_base);
-
-  if (recovered === null) return null;
+  if (resolveCommit(runner, cwd, wikiState.suggested_base) === '') return null;
 
   // Inspect `suggested_base..HEAD`, NOT the orphaned `state_sha`, whose
   // `..HEAD` range is topologically unreliable after a squash rewrites the SHA.
-  return {base: wikiState.suggested_base, count: recovered};
+  return {base: wikiState.suggested_base, count: wikiState.drift_count};
 };
 
 /**

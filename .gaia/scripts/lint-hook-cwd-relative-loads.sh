@@ -81,8 +81,8 @@
 # WHAT IS DELIBERATELY NOT A HIT, and why each exclusion is the right call
 # rather than a gap this gate wishes it could close:
 #
-#   - A per-tree STATE path (`marker=".claude/wiki-drift-checked"`,
-#     `config=".gaia/automation.json"`). Those name mutable state rather than
+#   - A per-tree STATE path (`marker=".claude/example-session-marker"`,
+#     `config=".gaia/local/example-state.json"`). Those name mutable state rather than
 #     code, and `${BASH_SOURCE[0]}` is the WRONG root for them: which tree a
 #     hook's state belongs to comes from a resolved root (main-root-lib.sh, or
 #     a caller-supplied root in a lib), never from the script's own directory,
@@ -319,7 +319,7 @@ readonly OWN_AWK='
       # spellings of one defect are read the same way.
       # Pinned to a code extension, the same set ASSIGN_PAT requires and for the
       # same reason: without the pin this arm also matches a per-tree STATE path
-      # (`[ -f .claude/wiki-drift-checked ]`) and hands it the
+      # (`[ -f .claude/example-session-marker ]`) and hands it the
       # `${BASH_SOURCE[0]}` remedy, which is the root the header above rules out
       # for state, because a `main-only` marker rooted at the directory of the
       # script follows a linked worktree. A gate cannot hand out the defect it

@@ -105,9 +105,28 @@ export const ancestorBefore = (isoTimestamp: string, cwd: string): string => {
   return result.trim();
 };
 
-/** Count commits in `<sha>..HEAD`. Returns 0 if `sha` is unreachable. */
-export const commitsAhead = (sha: string, cwd: string): number => {
-  const result = tryRunGit(['rev-list', '--count', `${sha}..HEAD`], {cwd});
+// Subjects `gaia wiki` writes when it lands a stage. They record wiki upkeep,
+// not drift the wiki has to catch up on, so counting them would make every land
+// read as new drift.
+const WIKI_BOOKKEEPING_SUBJECT_PATTERN =
+  '^wiki: (sync|maintenance chain|consolidate|lint) through ';
+
+/**
+ * Count commits in `<base>..HEAD` minus wiki bookkeeping subjects; an empty
+ * `base` counts all of HEAD's history. Returns 0 on git failure.
+ */
+export const countDriftCommits = (base: string, cwd: string): number => {
+  const result = tryRunGit(
+    [
+      'rev-list',
+      '--count',
+      '--extended-regexp',
+      '--invert-grep',
+      `--grep=${WIKI_BOOKKEEPING_SUBJECT_PATTERN}`,
+      base === '' ? 'HEAD' : `${base}..HEAD`,
+    ],
+    {cwd}
+  );
 
   if (result === null) return 0;
   const parsed = Number.parseInt(result.trim(), 10);

@@ -19599,8 +19599,19 @@ var ancestorBefore = (isoTimestamp, cwd) => {
   if (result === null) return "";
   return result.trim();
 };
-var commitsAhead = (sha, cwd) => {
-  const result = tryRunGit(["rev-list", "--count", `${sha}..HEAD`], { cwd });
+var WIKI_BOOKKEEPING_SUBJECT_PATTERN = "^wiki: (sync|maintenance chain|consolidate|lint) through ";
+var countDriftCommits = (base, cwd) => {
+  const result = tryRunGit(
+    [
+      "rev-list",
+      "--count",
+      "--extended-regexp",
+      "--invert-grep",
+      `--grep=${WIKI_BOOKKEEPING_SUBJECT_PATTERN}`,
+      base === "" ? "HEAD" : `${base}..HEAD`
+    ],
+    { cwd }
+  );
   if (result === null) return 0;
   const parsed = Number.parseInt(result.trim(), 10);
   return Number.isNaN(parsed) ? 0 : parsed;
@@ -19632,6 +19643,7 @@ var recentCommits = (sinceSha, cwd, limit = 5) => {
 // src/wiki/state.ts
 var HELP_TEXT6 = `Usage: gaia wiki state [--json]
 `;
+var ALL_ZERO_SHA = "0".repeat(40);
 var HELP_TOKENS6 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var classifySeverity = (commitCount) => {
   if (commitCount <= 0) return "none";
@@ -19683,7 +19695,7 @@ var printHuman = (state, write) => {
     `  HEAD:           ${state.head_short}`,
     `  Last evaluated: ${state.state_sha}`,
     `  Reachable:      ${state.reachable ? "yes" : "no"}`,
-    `  Drift:          ${state.commits_ahead} commits (${state.drift_severity})`
+    `  Drift:          ${state.drift_count} commits (${state.drift_severity})`
   ];
   if (state.suggested_base !== "") {
     lines.push(`  Recovery base:  ${state.suggested_base}`);
@@ -19749,15 +19761,17 @@ var run6 = (argv, options = {}) => {
   const head = headSha(repoRoot);
   const headShort = shortSha(head, repoRoot);
   const stateShort = stateSha === "" ? "" : shortSha(stateSha, repoRoot);
-  const reachable = stateSha !== "" && isReachable(stateSha, repoRoot);
-  const ahead = stateSha === "" || !reachable ? 0 : commitsAhead(stateSha, repoRoot);
+  const reachable = stateSha !== "" && stateSha !== ALL_ZERO_SHA && isReachable(stateSha, repoRoot);
+  const ahead = reachable ? countDriftCommits(stateSha, repoRoot) : 0;
   const recent = stateSha === "" || !reachable ? [] : recentCommits(stateSha, repoRoot, 5);
   const severity = classifySeverity(ahead);
   const counts = countDomainPages(wikiRoot);
   const suggestedFull = !reachable && stateAt !== "" ? ancestorBefore(stateAt, repoRoot) : "";
   const suggestedBase = suggestedFull === "" ? "" : shortSha(suggestedFull, repoRoot);
+  const driftCount = reachable ? ahead : countDriftCommits(suggestedFull, repoRoot);
   const state = {
     commits_ahead: ahead,
+    drift_count: driftCount,
     drift_severity: severity,
     head_short: headShort,
     per_domain_page_counts: counts,
@@ -19843,14 +19857,17 @@ var runWikiStateJson = (cwd) => {
   try {
     const parsed = JSON.parse(raw);
     const {
-      commits_ahead: commitsAhead2,
+      commits_ahead: commitsAhead,
+      drift_count: driftCount,
       reachable,
       state_sha: stateSha,
       suggested_base: suggestedBase
     } = parsed;
-    if (typeof commitsAhead2 !== "number") return null;
+    if (typeof commitsAhead !== "number" || typeof driftCount !== "number")
+      return null;
     return {
-      commits_ahead: commitsAhead2,
+      commits_ahead: commitsAhead,
+      drift_count: driftCount,
       // Default reachable to true on a malformed payload so the orphaned-state
       // recovery never fires off bad input; the gate falls back to today's
       // `commits_ahead` reading.
@@ -19882,16 +19899,6 @@ var readDriftSubjects = (runner, cwd, base) => {
     return trimmed.length > 0 ? [trimmed] : [];
   });
 };
-var countDriftCommits = (runner, cwd, base) => {
-  const fullSha = resolveCommit(runner, cwd, base);
-  if (fullSha === "") return null;
-  const result = runner("git", ["rev-list", "--count", `${fullSha}..HEAD`], {
-    cwd
-  });
-  if (result.error !== void 0 || (result.status ?? -1) !== 0) return null;
-  const parsed = Number.parseInt(result.stdout.trim(), 10);
-  return Number.isInteger(parsed) ? parsed : null;
-};
 var tryReadBranchState = (runner, cwd) => {
   try {
     const branch = expectSuccess2(
@@ -19917,9 +19924,8 @@ var resolveDriftWindow = (runner, cwd, wikiState) => {
   if (wikiState.reachable || wikiState.suggested_base === "") {
     return { base: wikiState.state_sha, count: wikiState.commits_ahead };
   }
-  const recovered = countDriftCommits(runner, cwd, wikiState.suggested_base);
-  if (recovered === null) return null;
-  return { base: wikiState.suggested_base, count: recovered };
+  if (resolveCommit(runner, cwd, wikiState.suggested_base) === "") return null;
+  return { base: wikiState.suggested_base, count: wikiState.drift_count };
 };
 var isDriftBenign = (runner, cwd, driftBase) => {
   const driftSubjects = readDriftSubjects(runner, cwd, driftBase);
