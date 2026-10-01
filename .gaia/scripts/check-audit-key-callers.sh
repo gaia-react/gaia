@@ -12,9 +12,8 @@
 # about.
 #
 # Over `.claude/agents/` and the maintainer members' shared protocol file
-# (`.claude/hooks/lib/audit-member-protocol.md`, where their sidecar and
-# handshake prose lives; the release scrub strips that entry along with the
-# file, so an adopter clone scans `.claude/agents/` alone), TWO assertions:
+# where one exists (their sidecar and handshake prose lives there; an adopter
+# clone has none, so it scans `.claude/agents/` alone), TWO assertions:
 #
 #   1. No bare `${BASE_SHA}.`/`${base}.`/`${KEY_BASE}.` sidecar or ledger path
 #      literal survives anywhere. That shell-interpolated shape

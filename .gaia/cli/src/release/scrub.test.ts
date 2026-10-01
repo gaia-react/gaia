@@ -1,5 +1,6 @@
 import {dump as dumpYaml, load as parseYaml} from 'js-yaml';
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
+import {execFileSync} from 'node:child_process';
 import {
   mkdirSync,
   mkdtempSync,
@@ -10,6 +11,8 @@ import {
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {resolveRepoRootFromImportMeta} from '../util/repo-root-fixture.js';
+import {deriveExcludedRefTokens} from './excluded-refs.js';
+import {listGitFiles, parseExcludeLines} from './manifest.js';
 import {globToRegex, parseKeyPath, run} from './scrub.js';
 
 const JSON_STRIP_CONFIG = `
@@ -1904,7 +1907,12 @@ transforms:
   });
 });
 
-type ShippedLeakCheck = {id: string; pattern?: string};
+type ShippedLeakCheck = {
+  id: string;
+  pattern?: string;
+  'ref-opt-out'?: string[];
+  scope?: string[];
+};
 type ShippedLeakTransform = {checks?: ShippedLeakCheck[]; type?: string};
 
 // A leak check read from `.gaia/release-scrub.yml` itself rather than mirrored
@@ -1935,47 +1943,14 @@ const shippedLeakCheck = (
   throw new Error(`no ${id} check in .gaia/release-scrub.yml`);
 };
 
-const shippedMaintainerPathsSource = (): string => {
-  const {check} = shippedLeakCheck('maintainer-paths');
-
-  if (check.pattern === undefined) {
-    throw new Error('maintainer-paths check has no pattern');
-  }
-
-  return check.pattern;
-};
-
-const shippedMaintainerPathsPattern = (): RegExp =>
-  new RegExp(shippedMaintainerPathsSource());
-
-// The alternation split back into the bare paths it matches, derived from the
-// shipped pattern rather than transcribed beside it. A transcribed list pins
-// only that an existing alternative was not narrowed, and the defect here was a
-// whole alternation written the wrong way, so a thirteenth entry added with a
-// trailing slash has to fail too. Derived from the config string rather than
-// from `RegExp.source`, which re-escapes every `/` so the source can be pasted
-// into a regex literal.
-const shippedMaintainerPathsAlternatives = (): string[] =>
-  shippedMaintainerPathsSource()
-    .split('|')
-    .map((alternative) =>
-      alternative
-        .replace(/\\b$/, '')
-        .split(String.raw`\.`)
-        .join('.')
-    );
-
-// Every release-excluded tree the alternation is meant to name. The derivation
-// above cannot see an alternative deleted outright, so this is the membership
-// floor it is checked against; it is not the input to the match assertions.
-const RELEASE_EXCLUDED_DIRECTORIES = [
+// The trees the retired hand-kept `maintainer-paths` alternation named that
+// still exist. The derived check must keep covering every one of them, or
+// retiring the alternation narrowed the guard.
+const RETIRED_MAINTAINER_PATHS = [
   '.gaia/cli/src',
   '.gaia/cli/test-fixtures',
-  '.gaia/cli/__tests__',
   '.gaia/cli/health',
   '.gaia/cli/gaia-maintainer',
-  '.specify/extensions/gaia/test',
-  '.specify/specs',
   '.gaia/tests',
   '.gaia/scripts/tests',
   '.github/audit/tests',
@@ -1983,45 +1958,182 @@ const RELEASE_EXCLUDED_DIRECTORIES = [
   '.claude/rules/maintainers',
 ];
 
-describe('shipped maintainer-paths check', () => {
-  test('flags a bare-directory reference, not just a path prefix', () => {
-    const pattern = shippedMaintainerPathsPattern();
+describe('shipped excluded-refs check', () => {
+  const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 
-    // The bare form is the half that shipped silently: this leak check passed
-    // the line while the release runtime-dependency scan failed the build on it.
-    expect(
-      pattern.test("done < <(find .gaia/scripts .gaia/tests -name '*.sh')")
-    ).toBe(true);
+  test('scans the whole shipped tree', () => {
+    const {check} = shippedLeakCheck('excluded-refs');
+
+    expect(check.scope).toEqual(['**']);
   });
 
-  test('every alternative is boundary-anchored, never slash-terminated', () => {
-    for (const alternative of shippedMaintainerPathsSource().split('|')) {
-      expect(alternative.endsWith(String.raw`\b`)).toBe(true);
-    }
+  test('derives every tree the retired maintainer-paths alternation named', () => {
+    const {paths} = deriveExcludedRefTokens({
+      excludeLines: parseExcludeLines(
+        readFileSync(path.join(repoRoot, '.gaia', 'release-exclude'), 'utf8')
+      ),
+      isExecutable: () => false,
+      optOut: shippedLeakCheck('excluded-refs').check['ref-opt-out'] ?? [],
+      shippedBasenames: new Set(),
+      tracked: listGitFiles(repoRoot),
+    });
+
+    expect(paths).toEqual(expect.arrayContaining(RETIRED_MAINTAINER_PATHS));
+  });
+});
+
+const REFS_CONFIG = String.raw`
+transforms:
+  - type: leak-check
+    checks:
+      - id: excluded-refs
+        derive: excluded-refs
+        scope:
+          - "**"
+        ref-opt-out:
+          - ".github/CODEOWNERS"
+        line-allowlist:
+          - "^\\s*-\\s*'\\.gaia/cli/src/\\*\\*'$"
+`;
+
+const REFS_EXCLUDE_FIXTURE = [
+  '.claude/commands/gaia-release.md',
+  '.gaia/cli/src',
+  '.gaia/scripts/lint-hook-jq-availability.sh',
+  '.github/CODEOWNERS',
+  '.serena',
+].join('\n');
+
+const seedRefsSource = (sandbox: Sandbox): void => {
+  sandbox.writeSource('.gaia/release-exclude', `${REFS_EXCLUDE_FIXTURE}\n`);
+  sandbox.writeSource('.claude/commands/gaia-release.md', '# release\n');
+  sandbox.writeSource('.gaia/cli/src/wiki/chain.ts', 'export {};\n');
+  sandbox.writeSource(
+    '.gaia/scripts/lint-hook-jq-availability.sh',
+    '#!/bin/sh\n'
+  );
+  sandbox.writeSource('.github/CODEOWNERS', '* @maintainer\n');
+  // Present on disk but untracked, the way a maintainer's local state is.
+  sandbox.writeSource('.serena/project.yml', 'languages: []\n');
+  execFileSync('git', ['init', '-q'], {cwd: sandbox.rootDir});
+  execFileSync(
+    'git',
+    [
+      'add',
+      '.gaia/release-exclude',
+      '.claude/commands/gaia-release.md',
+      '.gaia/cli/src/wiki/chain.ts',
+      '.gaia/scripts/lint-hook-jq-availability.sh',
+      '.github/CODEOWNERS',
+    ],
+    {cwd: sandbox.rootDir}
+  );
+};
+
+describe('excluded-refs derived check', () => {
+  let sandbox: Sandbox;
+  let stdio: ReturnType<typeof captureStdio>;
+
+  beforeEach(() => {
+    stdio = captureStdio();
+    sandbox = setupSandbox({config: REFS_CONFIG});
+    seedRefsSource(sandbox);
   });
 
-  test('flags every alternative in both bare and prefixed form', () => {
-    const pattern = shippedMaintainerPathsPattern();
-
-    for (const bare of shippedMaintainerPathsAlternatives()) {
-      expect(pattern.test(`see ${bare} for the harness`)).toBe(true);
-      expect(pattern.test(`see ${bare}/run-all.sh for the harness`)).toBe(true);
-    }
+  afterEach(() => {
+    stdio.restore();
+    sandbox.cleanup();
+    vi.restoreAllMocks();
   });
 
-  test('still names every release-excluded tree it is meant to cover', () => {
-    expect(shippedMaintainerPathsAlternatives()).toEqual(
-      expect.arrayContaining(RELEASE_EXCLUDED_DIRECTORIES)
+  test.each<[string, string, string, string]>([
+    [
+      'a slash command',
+      'wiki/concepts/A.md',
+      'Run `/gaia-release` first.\n',
+      '/gaia-release',
+    ],
+    [
+      'an excluded script path',
+      '.claude/hooks/a.sh',
+      '# see .gaia/scripts/lint-hook-jq-availability.sh\n',
+      '.gaia/scripts/lint-hook-jq-availability.sh',
+    ],
+    [
+      'a code basename in Markdown',
+      'wiki/concepts/B.md',
+      'It comes from `chain.ts`.\n',
+      'chain.ts',
+    ],
+  ])('flags %s', (_label, stagedPath, contents, expected) => {
+    sandbox.writeStaged(stagedPath, contents);
+
+    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
+
+    expect(exit).toBe(1);
+    expect(stdio.outputs.join('')).toContain(
+      `[excluded-refs] ${stagedPath}:1  ${expected}`
     );
   });
 
-  test('does not flag a longer path that merely starts the same way', () => {
-    const pattern = shippedMaintainerPathsPattern();
+  test.each<[string, string, string]>([
+    [
+      'an opted-out path',
+      'wiki/concepts/A.md',
+      'Write `.github/CODEOWNERS` yourself.\n',
+    ],
+    [
+      'an untracked excluded entry',
+      'wiki/concepts/A.md',
+      'Serena reads `.serena/project.yml`.\n',
+    ],
+    [
+      'a code basename outside Markdown',
+      '.claude/hooks/a.sh',
+      '# mirrors chain.ts\n',
+    ],
+    [
+      'a line-allowlisted config glob',
+      '.claude/rules/a.md',
+      "  - '.gaia/cli/src/**'\n",
+    ],
+  ])('does not flag %s', (_label, stagedPath, contents) => {
+    sandbox.writeStaged(stagedPath, contents);
 
-    expect(pattern.test('.gaia/testsuite/foo.sh')).toBe(false);
-    expect(pattern.test('.gaia/scripts/bats5.sh')).toBe(false);
-    expect(pattern.test('.gaia/cli/templates/workflows/tests.yml.tmpl')).toBe(
-      false
+    expect(run([sandbox.stagingDir], {cwd: sandbox.rootDir})).toBe(0);
+  });
+
+  test('flags a newly excluded path with no config change (drift-proof)', () => {
+    sandbox.writeSource(
+      '.gaia/release-exclude',
+      `${REFS_EXCLUDE_FIXTURE}\n.gaia/scripts/brand-new-lint.sh\n`
+    );
+    sandbox.writeSource('.gaia/scripts/brand-new-lint.sh', '#!/bin/sh\n');
+    execFileSync('git', ['add', '.'], {cwd: sandbox.rootDir});
+    sandbox.writeStaged(
+      'wiki/concepts/A.md',
+      'See .gaia/scripts/brand-new-lint.sh.\n'
+    );
+
+    expect(run([sandbox.stagingDir], {cwd: sandbox.rootDir})).toBe(1);
+    expect(stdio.outputs.join('')).toContain('.gaia/scripts/brand-new-lint.sh');
+  });
+
+  test('warns, without failing, on unused allowlist and opt-out entries', () => {
+    writeFileSync(
+      sandbox.configPath,
+      REFS_CONFIG.replace('".github/CODEOWNERS"', '".github/no-such-file"')
+    );
+    sandbox.writeStaged('wiki/concepts/A.md', 'Nothing to see.\n');
+
+    expect(run([sandbox.stagingDir], {cwd: sandbox.rootDir})).toBe(0);
+
+    const out = stdio.outputs.join('');
+
+    expect(out).toContain('unused allowlist entries (2, warning only):');
+    expect(out).toContain('[excluded-refs] ref-opt-out: .github/no-such-file');
+    expect(out).toContain(
+      String.raw`[excluded-refs] line-allowlist: ^\s*-\s*'\.gaia/cli/src/\*\*'$`
     );
   });
 });

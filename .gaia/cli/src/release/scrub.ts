@@ -48,7 +48,11 @@ import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {escapeRegExp} from '../util/escape-regexp.js';
 import {collectTreeFiles, EVERY_EXTENSION} from '../util/tree-walk.js';
 import {extractWikilinks} from '../wiki/util/wikilinks.js';
-import {parseExcludeLines} from './manifest.js';
+import {
+  compileExcludedRefMatcher,
+  deriveExcludedRefTokens,
+} from './excluded-refs.js';
+import {listGitFiles, parseExcludeLines} from './manifest.js';
 import {stripMarkerBlocks} from './marker-strip.js';
 
 const HELP_TEXT = `Usage: gaia-maintainer release scrub <staging-dir> [--config <path>] [--json]
@@ -98,15 +102,17 @@ const leakCheckBaseShape = {
 // drift away from the manifest the way a hand-maintained alternation does:
 //   - `excluded-slugs`: the release-excluded wiki-slug set (wikilink-to-excluded).
 //   - `excluded-workflows`: release-excluded `.github/workflows/*.yml` that never
-//     reach an adopter (no on-demand render template), whose curated-regex gap is
-//     what the `maintainer-paths` check structurally cannot close.
+//     reach an adopter (no on-demand render template), a directory no path
+//     alternation can blanket because some workflows ship and some do not.
 //   - `excluded-titles`: the release-excluded wiki page-title set, matched as
-//     bare Title-Case prose (the leak the three checks above each miss).
+//     bare Title-Case prose (the leak the checks above each miss).
+//   - `excluded-refs`: excluded paths, slash commands, agent names, and code
+//     file names referenced anywhere in the shipped tree (`excluded-refs.ts`).
 //
 // Every member of the check union parses strictly, so an unknown key is rejected
-// rather than silently stripped. This matters most for `title-opt-out`, which is
-// valid ONLY on the `excluded-titles` variant: a strip-and-pass would drop a
-// maintainer's opt-out and ship the very leak it guards against.
+// rather than silently stripped. This matters most for `title-opt-out` and
+// `ref-opt-out`, each valid ONLY on its own variant: a strip-and-pass would drop
+// a maintainer's opt-out and ship the very leak it guards against.
 const StaticLeakCheckSchema = z.strictObject({
   ...leakCheckBaseShape,
   pattern: z.string().min(1),
@@ -125,6 +131,14 @@ const TitleDerivedLeakCheckSchema = z.strictObject({
   'title-opt-out': z.array(z.string()).optional(),
 });
 
+const RefsDerivedLeakCheckSchema = z.strictObject({
+  ...leakCheckBaseShape,
+  derive: z.literal('excluded-refs'),
+  // Tokens subtracted from the derived set by exact equality: paths excluded
+  // only to withhold GAIA's own copy, where adopters create their own.
+  'ref-opt-out': z.array(z.string()).optional(),
+});
+
 // `scope-skip` subtracts paths from every check in the transform, so the one
 // class of file no token check can read usefully (a binary, whose bytes decoded
 // as UTF-8 are noise a regex can match by accident) is named once rather than
@@ -136,6 +150,7 @@ const LeakCheckSchema = z.object({
     .array(
       z.union([
         TitleDerivedLeakCheckSchema,
+        RefsDerivedLeakCheckSchema,
         OtherDerivedLeakCheckSchema,
         StaticLeakCheckSchema,
       ])
@@ -214,6 +229,7 @@ const ConfigSchema = z.object({
 export type ScrubConfig = z.infer<typeof ConfigSchema>;
 type DerivedLeakCheck =
   | z.infer<typeof OtherDerivedLeakCheckSchema>
+  | z.infer<typeof RefsDerivedLeakCheckSchema>
   | z.infer<typeof TitleDerivedLeakCheckSchema>;
 type JsonFieldRewriteTransform = z.infer<typeof JsonFieldRewriteSchema>;
 type JsonStripArrayElementTransform = z.infer<
@@ -223,6 +239,7 @@ type JsonStripTransform = z.infer<typeof JsonStripSchema>;
 type LeakCheckEntry = LeakCheckTransform['checks'][number];
 type LeakCheckTransform = z.infer<typeof LeakCheckSchema>;
 type MarkerStripTransform = z.infer<typeof MarkerStripSchema>;
+type RefsDerivedLeakCheck = z.infer<typeof RefsDerivedLeakCheckSchema>;
 type StaticLeakCheck = z.infer<typeof StaticLeakCheckSchema>;
 type TitleDerivedLeakCheck = z.infer<typeof TitleDerivedLeakCheckSchema>;
 
@@ -768,6 +785,12 @@ const applyJsonFieldRewrite = (
 
 // Leak check
 
+export type AllowlistWarning = {
+  check: string;
+  entry: string;
+  kind: 'line-allowlist' | 'ref-opt-out';
+};
+
 export type Leak = {
   check: string;
   file: string;
@@ -775,7 +798,48 @@ export type Leak = {
   match: string;
 };
 
+type LineAllowlist = {
+  isAllowed: (line: string) => boolean;
+  unused: () => AllowlistWarning[];
+};
+
+/**
+ * A check's `line-allowlist`, recording which entries ever exempted a line so
+ * the run can report the ones that never did. Nothing else notices when the
+ * line an entry was written for is reworded, and a stale entry quietly exempts
+ * whatever later matches it. Reported, never failed: an entry can be written
+ * ahead of the line it exempts.
+ */
+const trackLineAllowlist = (check: LeakCheckEntry): LineAllowlist => {
+  const entries = (check['line-allowlist'] ?? []).map(
+    (raw) => [raw, new RegExp(raw)] as const
+  );
+  const unmatched = new Set(entries.map(([raw]) => raw));
+
+  return {
+    isAllowed: (line) => {
+      let allowed = false;
+
+      for (const [raw, regex] of entries) {
+        if (regex.test(line)) {
+          unmatched.delete(raw);
+          allowed = true;
+        }
+      }
+
+      return allowed;
+    },
+    unused: () =>
+      [...unmatched].map((entry) => ({
+        check: check.id,
+        entry,
+        kind: 'line-allowlist',
+      })),
+  };
+};
+
 type FileScanArgs = {
+  allowlist: LineAllowlist;
   check: LeakCheckEntry;
   files: readonly string[];
   scopeSkip: readonly string[];
@@ -803,16 +867,13 @@ const isInCheckScope = (
  * wikilink lookup, or excluded-workflow substring search).
  */
 const scanForLeaks = (
-  {check, files, scopeSkip, stagingRoot}: FileScanArgs,
+  {allowlist, check, files, scopeSkip, stagingRoot}: FileScanArgs,
   findLeaksInLine: (
     line: string,
     lineNumber: number,
     relativePath: string
   ) => readonly Leak[]
 ): Leak[] => {
-  const lineAllowlist = (check['line-allowlist'] ?? []).map(
-    (raw) => new RegExp(raw)
-  );
   const leaks: Leak[] = [];
 
   for (const relativePath of files) {
@@ -820,7 +881,7 @@ const scanForLeaks = (
       const source = readFileSync(path.join(stagingRoot, relativePath), 'utf8');
 
       for (const [index, line] of source.split('\n').entries()) {
-        if (!lineAllowlist.some((rx) => rx.test(line))) {
+        if (!allowlist.isAllowed(line)) {
           leaks.push(...findLeaksInLine(line, index + 1, relativePath));
         }
       }
@@ -931,6 +992,7 @@ const buildExcludedSlugSet = (cwd: string): Set<string> => {
 };
 
 type DerivedCheckArgs = {
+  allowlist: LineAllowlist;
   check: DerivedLeakCheck;
   cwd: string;
   files: readonly string[];
@@ -939,6 +1001,7 @@ type DerivedCheckArgs = {
 };
 
 const runDerivedWikilinkCheck = ({
+  allowlist,
   check,
   cwd,
   files,
@@ -948,7 +1011,7 @@ const runDerivedWikilinkCheck = ({
   const excludedSlugs = buildExcludedSlugSet(cwd);
 
   return scanForLeaks(
-    {check, files, scopeSkip, stagingRoot},
+    {allowlist, check, files, scopeSkip, stagingRoot},
     (line, lineNumber, relativePath) =>
       extractWikilinks(line)
         .filter((target) => excludedSlugs.has(target.toLowerCase()))
@@ -969,7 +1032,7 @@ const runDerivedWikilinkCheck = ({
  * against `cwd` (the source repo).
  *
  * `.github/workflows/` is the one distribution-boundary directory where some
- * files ship and some do not, so the curated `maintainer-paths` alternation
+ * files ship and some do not, so a curated path alternation
  * cannot blanket it (most workflows ship) and cannot enumerate every excluded
  * one without drifting. This set is derived instead: an excluded workflow whose
  * on-demand render template is absent from `.gaia/cli/templates/workflows/` is
@@ -1005,6 +1068,7 @@ export const buildNeverPresentWorkflowSet = (cwd: string): Set<string> => {
 };
 
 const runDerivedWorkflowCheck = ({
+  allowlist,
   check,
   cwd,
   files,
@@ -1016,7 +1080,7 @@ const runDerivedWorkflowCheck = ({
   if (neverPresent.size === 0) return [];
 
   return scanForLeaks(
-    {check, files, scopeSkip, stagingRoot},
+    {allowlist, check, files, scopeSkip, stagingRoot},
     (line, lineNumber, relativePath) =>
       [...neverPresent]
         .filter((excludedPath) => line.includes(excludedPath))
@@ -1124,7 +1188,7 @@ type TitleMatcher = {regex: RegExp; title: string};
 const findTitleLeaksInFile = (
   file: {content: string; id: string; path: string},
   matchers: readonly TitleMatcher[],
-  lineAllowlist: readonly RegExp[]
+  isAllowed: (line: string) => boolean
 ): Leak[] => {
   const leaks: Leak[] = [];
   let insideFence = false;
@@ -1132,7 +1196,7 @@ const findTitleLeaksInFile = (
   for (const [index, line] of file.content.split('\n').entries()) {
     if (isFenceDelimiter(line)) {
       insideFence = !insideFence;
-    } else if (!insideFence && !lineAllowlist.some((rx) => rx.test(line))) {
+    } else if (!insideFence && !isAllowed(line)) {
       const residue = stripSkippedSpans(line);
 
       for (const {regex, title} of matchers) {
@@ -1152,6 +1216,7 @@ const findTitleLeaksInFile = (
 };
 
 type DerivedTitleCheckArgs = {
+  allowlist: LineAllowlist;
   check: TitleDerivedLeakCheck;
   cwd: string;
   files: readonly string[];
@@ -1160,6 +1225,7 @@ type DerivedTitleCheckArgs = {
 };
 
 const runDerivedTitleCheck = ({
+  allowlist,
   check,
   cwd,
   files,
@@ -1173,9 +1239,6 @@ const runDerivedTitleCheck = ({
 
   if (matchers.length === 0) return [];
 
-  const lineAllowlist = (check['line-allowlist'] ?? []).map(
-    (raw) => new RegExp(raw)
-  );
   const leaks: Leak[] = [];
 
   for (const relativePath of files) {
@@ -1189,13 +1252,81 @@ const runDerivedTitleCheck = ({
         ...findTitleLeaksInFile(
           {content, id: check.id, path: relativePath},
           matchers,
-          lineAllowlist
+          allowlist.isAllowed
         )
       );
     }
   }
 
   return leaks;
+};
+
+// Derived excluded-refs check
+
+type DerivedRefsCheckArgs = {
+  allowlist: LineAllowlist;
+  check: RefsDerivedLeakCheck;
+  cwd: string;
+  files: readonly string[];
+  scopeSkip: readonly string[];
+  stagingRoot: string;
+};
+
+const isExecutableIn =
+  (cwd: string) =>
+  (relativePath: string): boolean => {
+    try {
+      // eslint-disable-next-line no-bitwise -- the mode's execute bits
+      return (statSync(path.join(cwd, relativePath)).mode & 0o111) !== 0;
+    } catch {
+      return false;
+    }
+  };
+
+/**
+ * The exclude list and the tracked set both come from `cwd`, the source repo,
+ * for the reason `buildExcludedSlugSet` gives: the staging tree holds neither.
+ * Tracked rather than present on disk, so a maintainer's local-state directory
+ * (`.serena`) derives the same set as a clean CI checkout.
+ */
+const runDerivedRefsCheck = ({
+  allowlist,
+  check,
+  cwd,
+  files,
+  scopeSkip,
+  stagingRoot,
+}: DerivedRefsCheckArgs): {leaks: Leak[]; warnings: AllowlistWarning[]} => {
+  const tokens = deriveExcludedRefTokens({
+    excludeLines: parseExcludeLines(
+      readFileSync(path.join(cwd, RELEASE_EXCLUDE_PATH), 'utf8')
+    ),
+    isExecutable: isExecutableIn(cwd),
+    optOut: check['ref-opt-out'] ?? [],
+    shippedBasenames: new Set(files.map((file) => path.basename(file))),
+    tracked: listGitFiles(cwd),
+  });
+  const matcher = compileExcludedRefMatcher(tokens);
+
+  const leaks = scanForLeaks(
+    {allowlist, check, files, scopeSkip, stagingRoot},
+    (line, lineNumber, relativePath) =>
+      matcher(line, {markdown: relativePath.endsWith('.md')}).map((match) => ({
+        check: check.id,
+        file: relativePath,
+        line: lineNumber,
+        match,
+      }))
+  );
+
+  return {
+    leaks,
+    warnings: tokens.unusedOptOut.map((entry) => ({
+      check: check.id,
+      entry,
+      kind: 'ref-opt-out',
+    })),
+  };
 };
 
 // Config loading
@@ -1274,6 +1405,7 @@ type Report = {
     line: number;
     reason: string;
   }[];
+  unused_allowlist: readonly AllowlistWarning[];
 };
 
 type RunOptions = {
@@ -1306,6 +1438,17 @@ const renderHumanReport = (report: Report, jsonMode: boolean): string => {
     }
   } else {
     out.push('leaks: none');
+  }
+
+  if (report.unused_allowlist.length > 0) {
+    out.push(
+      '',
+      `unused allowlist entries (${report.unused_allowlist.length}, warning only):`
+    );
+
+    for (const warning of report.unused_allowlist) {
+      out.push(`  [${warning.check}] ${warning.kind}: ${warning.entry}`);
+    }
   }
 
   return `${out.join('\n')}\n`;
@@ -1367,13 +1510,17 @@ type ScrubContext = {
 const runLeakChecksForTransform = (
   transform: LeakCheckTransform,
   ctx: ScrubContext
-): Leak[] => {
+): {leaks: Leak[]; warnings: AllowlistWarning[]} => {
   const leaks: Leak[] = [];
+  const warnings: AllowlistWarning[] = [];
   const scopeSkip = transform['scope-skip'] ?? [];
 
   for (const check of transform.checks) {
+    const allowlist = trackLineAllowlist(check);
+
     if (isDerivedCheck(check)) {
       const args = {
+        allowlist,
         cwd: ctx.cwd,
         files: ctx.stagedFiles,
         scopeSkip,
@@ -1382,6 +1529,11 @@ const runLeakChecksForTransform = (
 
       if (check.derive === 'excluded-titles') {
         leaks.push(...runDerivedTitleCheck({check, ...args}));
+      } else if (check.derive === 'excluded-refs') {
+        const result = runDerivedRefsCheck({check, ...args});
+
+        leaks.push(...result.leaks);
+        warnings.push(...result.warnings);
       } else {
         const runDerived =
           check.derive === 'excluded-workflows' ?
@@ -1393,6 +1545,7 @@ const runLeakChecksForTransform = (
     } else {
       leaks.push(
         ...runLeakCheck({
+          allowlist,
           check,
           files: ctx.stagedFiles,
           scopeSkip,
@@ -1400,9 +1553,11 @@ const runLeakChecksForTransform = (
         })
       );
     }
+
+    warnings.push(...allowlist.unused());
   }
 
-  return leaks;
+  return {leaks, warnings};
 };
 
 type TransformResults = {
@@ -1416,6 +1571,7 @@ type TransformResults = {
   stripBlocks: number;
   stripFiles: string[];
   unbalanced: {file: string; line: number; reason: string}[];
+  warnings: AllowlistWarning[];
 };
 
 // After marker-strip and json-strip land, leak-check sees the post-strip
@@ -1435,6 +1591,7 @@ const runTransforms = (
     stripBlocks: 0,
     stripFiles: [],
     unbalanced: [],
+    warnings: [],
   };
 
   for (const transform of config.transforms) {
@@ -1468,7 +1625,9 @@ const runTransforms = (
       results.jsonFieldsRewritten += result.fieldsRewritten;
       results.jsonFieldRewriteFiles.push(...result.filesTouched);
     } else {
-      results.leaks.push(...runLeakChecksForTransform(transform, ctx));
+      const result = runLeakChecksForTransform(transform, ctx);
+      results.leaks.push(...result.leaks);
+      results.warnings.push(...result.warnings);
     }
   }
 
@@ -1578,6 +1737,7 @@ export const run = (
       files_touched: results.stripFiles,
     },
     unbalanced_markers: results.unbalanced,
+    unused_allowlist: results.warnings,
   };
 
   process.stdout.write(renderHumanReport(report, parsed.flags.json));

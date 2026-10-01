@@ -4,8 +4,8 @@
  * `*.sh` only). `.gaia/cli/templates` currently has zero `.sh` files (only
  * `*.tmpl`); this entry future-proofs any future `.sh` landing under
  * templates. Template CONTENT leaks (`.tmpl`, any extension) are a separate
- * concern owned by the scrub `maintainer-paths` check in
- * `.gaia/release-scrub.yml`, whose scope includes `.gaia/cli/templates/**`
+ * concern owned by the scrub `excluded-refs` check in
+ * `.gaia/release-scrub.yml`, whose `**` scope includes `.gaia/cli/templates/**`
  * and scans file content regardless of extension.
  *
  * Its own leaf module, imported by `runtime-deps.ts` and by the

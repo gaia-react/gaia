@@ -238,7 +238,7 @@ export const resolveManifestPath = (repoRoot: string): string =>
  * shipping whatever the maintainer answered. `gitZArgs` states why its flags
  * prevent that.
  */
-const listGitFiles = (cwd: string): string[] =>
+export const listGitFiles = (cwd: string): string[] =>
   splitZStream(
     execFileSync('git', gitZArgs('ls-files'), {
       cwd,

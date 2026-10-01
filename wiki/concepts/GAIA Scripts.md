@@ -121,7 +121,7 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 | `plan-archive.sh` | yes | the orchestrator self-cleanup | Reduces or deletes a merged plan folder. |
 | `plan-resume-point.sh` | yes | `/gaia-plan` | Deterministic phase-level resume point for a plan picked up mid-flight. |
 | `post-findings-block.sh` | yes | agent definitions, `post-findings-block-on-merge.sh` hook | Merges every dispatched member's findings sidecar into one machine-readable block and posts it on the pull request. |
-| `pr-wait-merge.sh` | yes | the merge workflow, `/gaia-release`, every flow that merges | The merge wait: polls a pull request to `MERGED` and exits early on every state that means it never will. |
+| `pr-wait-merge.sh` | yes | the merge workflow, every flow that merges | The merge wait: polls a pull request to `MERGED` and exits early on every state that means it never will. |
 | `read-audit-ci-config.sh` | yes | `code-review-audit.yml`, the merge workflow, audit hooks | Reader and per-author resolver for the audit CI config, so a flow obeys the project's own settings. |
 | `resolve-audit-members.sh` | yes | the merge workflow, audit hooks, CI | Resolves which Code Audit Team members a diff dispatches. |
 | `state-registry-lib.sh` | yes | sourced | Reader for the state registry, the record of every runtime path GAIA writes. |
