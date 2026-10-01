@@ -395,7 +395,7 @@ audit_owner_for_path() {
 #
 # Holds when every path in <base>...<head> classifies out-of-scope except the
 # audit workflow, the workflow is among them, no out-of-scope path has a roster
-# owner, <head> does not track .gaia/cli/src, and the workflow's blob at <head>
+# owner, <head> does not carry the CLI's own source, and the workflow's blob at <head>
 # equals the template's. Requires audit_scope_init to have run.
 #
 # Exit 0 when it holds. Otherwise exit 1 with a one-line reason on stdout, for
@@ -409,9 +409,12 @@ audit_owner_for_path() {
 #     alone, so an owned path (GAIA's own gate machinery) still needs its
 #     member. An adopter roster owns no .claude/** or .gaia/** path, so an
 #     /update-gaia PR still clears.
-#   .gaia/cli/src: a tree carrying the CLI source builds the template FROM the
-#     workflow (.gaia/cli/package.json bundle:adopter), so there blob identity
-#     proves nothing. That source is release-excluded, so no adopter tree has it.
+#   the CLI's own source: a tree carrying it builds the template FROM the
+#     workflow (the CLI's adopter bundle script copies it in), so there blob
+#     identity proves nothing. That source is release-excluded, so no adopter
+#     tree has it. Its path sits alone on one assignment line, which the release
+#     scrub's excluded-refs line-allowlist names: a load-bearing literal whose
+#     absence on an adopter clone is the point, not a pointer to follow.
 #
 # Honest limit: the template is read from the same <head>, so a PR rewriting
 # both files identically passes in an adopter tree. That grants nothing CI did
@@ -421,6 +424,7 @@ audit_verbatim_rerender() (
   root="$1" base="$2" head="$3"
   audit_workflow=".github/workflows/code-review-audit.yml"
   audit_template=".gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
+  cli_source_tree=".gaia/cli/src"
 
   if [ -z "$root" ] || [ -z "$base" ] || [ -z "$head" ]; then
     printf 'the re-render check was given no root, base, or head\n'
@@ -471,8 +475,8 @@ EOT
     return 1
   fi
 
-  if git -C "$root" rev-parse --verify --quiet "${head}:.gaia/cli/src" >/dev/null 2>&1; then
-    printf 'the tree tracks .gaia/cli/src, which builds the template from the workflow, so byte identity proves nothing\n'
+  if git -C "$root" rev-parse --verify --quiet "${head}:${cli_source_tree}" >/dev/null 2>&1; then
+    printf 'the tree tracks %s, which builds the template from the workflow, so byte identity proves nothing\n' "$cli_source_tree"
     return 1
   fi
 

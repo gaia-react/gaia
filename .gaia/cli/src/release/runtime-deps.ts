@@ -163,11 +163,18 @@ const PATH_PREFIXES = ['.gaia/', '.claude/', '.specify/', '.github/'] as const;
  *     is per-machine and gitignored, so it can never have a manifest entry.
  *     This module has no inline-ignore channel, so the allowlist is the
  *     documented one.
+ *   - `.gaia/cli/src`: the CLI source directory, handed to `git rev-parse` by
+ *     the shared verbatim re-render predicate in `.claude/hooks/lib/audit-scope.sh`
+ *     to ask whether the tree builds the bundled template from the audit
+ *     workflow. It is never sourced or executed, and on an adopter clone its
+ *     absence is the branch that lets an `/update-gaia` re-render clear. A path
+ *     constant, not a runtime dependency; a file beneath it still flags.
  */
 export const PROSE_PATH_ALLOWLIST: ReadonlySet<string> = new Set([
   '.claude/projects',
   '.claude/settings.local.json',
   '.claude/shell-snapshots',
+  '.gaia/cli/src',
   '.github/workflows',
   '.github/workflows/code-review-audit.yml',
 ]);

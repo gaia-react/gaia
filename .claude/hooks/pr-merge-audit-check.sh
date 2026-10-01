@@ -77,7 +77,7 @@
 #      self-modifying, so CI cannot run its audit on it, and trips the in-scope
 #      guard of signal 5. The changed bytes are
 #      GAIA's own template, not adopter code, so there is nothing to audit.
-#      A tree that tracks .gaia/cli/src never takes this bypass: there the
+#      A tree carrying the CLI's own source never takes this bypass: there the
 #      template is built from the workflow, so byte identity proves nothing.
 #
 # Signals 1-4 and 6 prove an audit ran against this content (or that none is
