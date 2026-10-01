@@ -425,3 +425,71 @@ extract_registration_fence() {
   run assert_stale_context_dropped "$mutated"
   [ "$status" -ne 0 ]
 }
+
+# ---------------------------------------------------------------------------
+# The default-branch protection fence, executed against a stubbed gh
+# ---------------------------------------------------------------------------
+# The full protection PUT replaces every setting on an existing rule, so the
+# fence must send it only when the probe finds no rule (gaia-react/gaia#2412).
+
+PROTECTION_ANCHOR='protection_endpoint='
+
+extract_protection_fence() {
+  awk -v anchor="$PROTECTION_ANCHOR" '
+    /^```bash[[:space:]]*$/ { inside = 1; body = ""; next }
+    /^```[[:space:]]*$/ && inside {
+      inside = 0
+      if (index(body, anchor)) { printf "%s", body; found++ }
+      next
+    }
+    inside { body = body $0 "\n" }
+    END { if (found != 1) exit 1 }
+  ' "$PAGE" >"${BATS_TEST_TMPDIR}/protection.sh"
+  [ -s "${BATS_TEST_TMPDIR}/protection.sh" ]
+}
+
+# run_protection_fence <fence-file> <get-exit-status>: run the fence with a gh
+# stub that logs every call and answers the protection GET with the given exit
+# status (0: a rule exists, 1: none does).
+run_protection_fence() {
+  local stub_dir="${BATS_TEST_TMPDIR}/protection-bin"
+  mkdir -p "$stub_dir"
+  cat >"${stub_dir}/gh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$GH_LOG"
+case " $* " in
+  *" -X PUT "*) cat >"$GH_BODY"; exit 0 ;;
+esac
+exit "$GH_PROTECTION_GET_STATUS"
+STUB
+  chmod +x "${stub_dir}/gh"
+  : >"${BATS_TEST_TMPDIR}/gh.log"
+  : >"${BATS_TEST_TMPDIR}/gh.body"
+  GH_LOG="${BATS_TEST_TMPDIR}/gh.log" GH_BODY="${BATS_TEST_TMPDIR}/gh.body" GH_PROTECTION_GET_STATUS="$2" \
+    PATH="${stub_dir}:${PATH}" bash "$1" >/dev/null
+}
+
+@test "protection fixture: an existing rule is kept and no protection PUT is sent" {
+  extract_protection_fence
+  run_protection_fence "${BATS_TEST_TMPDIR}/protection.sh" 0
+  [ "$(wc -l <"${BATS_TEST_TMPDIR}/gh.log" | tr -d ' ')" -eq 1 ]
+  [ -z "$(put_line)" ]
+}
+
+@test "protection fixture: with no rule, exactly one full protection PUT is sent" {
+  extract_protection_fence
+  run_protection_fence "${BATS_TEST_TMPDIR}/protection.sh" 1
+  [ "$(grep -cE -- '(^| )-X PUT ' "${BATS_TEST_TMPDIR}/gh.log")" -eq 1 ]
+  grep -qE -- '/branches/<default-branch>/protection --input -$' <<<"$(put_line)"
+  jq -e '.enforce_admins == false and .required_status_checks.contexts == []' "${BATS_TEST_TMPDIR}/gh.body" >/dev/null
+}
+
+@test "protection mutation: an unconditional PUT fails the existing-rule fixture" {
+  extract_protection_fence
+  local mutated="${BATS_TEST_TMPDIR}/protection-unconditional.sh"
+  sed 's#^if gh api "\$protection_endpoint" >/dev/null 2>&1; then#if false; then#' \
+    "${BATS_TEST_TMPDIR}/protection.sh" >"$mutated"
+  cmp -s "${BATS_TEST_TMPDIR}/protection.sh" "$mutated" && return 1
+  run_protection_fence "$mutated" 0
+  [ -n "$(put_line)" ]
+}

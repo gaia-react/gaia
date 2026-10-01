@@ -984,6 +984,25 @@ fix_fixture() {
   [ "$(LC_ALL=C sort "${FIX_RF}/gate-1-1.paths" | tr '\n' ' ')" = "a.txt n.txt " ]
 }
 
+@test "fence gate-paths: it records the gate's paths when the before-snapshot is empty" {
+  # Staging the whole delta first leaves nothing unstaged or untracked, the
+  # documented common case; an NR == FNR comparison prints nothing here.
+  fix_fixture
+  printf 'delta\n' >>"${FIX_ROOT}/a.txt"
+  git -C "$FIX_ROOT" add -- a.txt
+  [ -z "$(git -C "$FIX_ROOT" diff --name-only -z | tr '\0' '\n')" ]
+  [ -z "$(git -C "$FIX_ROOT" ls-files -z --others --exclude-standard | tr '\0' '\n')" ]
+  script="$(materialize 'gate_snapshot() {')"
+  sub_literal "$script" '<RESOLVED_ROOT>' "$FIX_ROOT"
+  sub_literal "$script" '<RUN_FOLDER>' "$FIX_RF"
+  sub_literal "$script" '<r>' 1
+  sub_literal "$script" '<k>' 1
+  sub_literal "$script" '# run the per-round verification here' "echo new >'${FIX_ROOT}/n.txt' #"
+  run bash "$script"
+  [ "$status" -eq 0 ]
+  [ "$(tr '\n' ' ' <"${FIX_RF}/gate-1-1.paths")" = "n.txt " ]
+}
+
 @test "fence fix-round-check: a gate log without a passing verifier output fails the round" {
   fix_fixture
   bash "${REPO_ROOT}/.gaia/scripts/audit-fix-verify.sh" baseline --root "$FIX_ROOT" --round 1 \

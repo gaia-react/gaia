@@ -136,3 +136,15 @@ line_starting() {
   grep -qF -- 'the next re-audit and the fixer' "$FRONTEND_AGENT" && return 1
   true
 }
+
+# --- the shared ledger is removed by the clearance writer, never a member ---
+# One ledger serves every dispatched member, so a member deleting it on its own
+# clean pass discards a co-dispatched member's open remaining[] entries
+# (gaia-react/gaia#2416).
+
+@test "code-audit-frontend.md never removes the shared re-run ledger itself" {
+  grep -qF -- 'Never remove the ledger yourself' "$FRONTEND_AGENT"
+  grep -qE -- 'rm[[:space:]].*\.rerun\.json' "$FRONTEND_AGENT" && return 1
+  grep -qF -- 'Ledger cleanup' "$FRONTEND_AGENT" && return 1
+  true
+}
