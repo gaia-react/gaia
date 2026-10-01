@@ -87,7 +87,7 @@ jobs:
               # lint-git-path-quoting.sh, lint-workflow-run-interpolation.sh,
               # lint-errexit-status-read.sh, and lint-sigpipe-readers.sh. Only
               # lint-workflow-run-interpolation.sh is
-              # workflow/action/template-only; the rest scan tracked *.sh as
+              # workflow/action-only; the rest scan tracked *.sh as
               # well, so this line is not their whole surface, it is the only
               # path that arms the half no other line here covers. Naming the
               # exception rather than counting the others is deliberate: a count
@@ -226,8 +226,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Narrower than the sibling job's filter, and deliberately so: this leg
       # runs one pass, and that pass reads the tracked *.sh set and nothing
-      # else. The husky hooks, the composite actions, the workflow templates and
-      # the markdown fences all belong to passes that do not run here. The
+      # else. The husky hooks, the composite actions and the markdown
+      # fences all belong to passes that do not run here. The
       # second entry is the self-coverage half every gated step owes -- a gate
       # blind to a change in its own definition greens having run nothing.
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3

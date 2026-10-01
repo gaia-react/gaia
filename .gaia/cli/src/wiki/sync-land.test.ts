@@ -344,8 +344,20 @@ describe('wiki sync land', () => {
           result: okResult(' M wiki/log.md\0'),
         },
         {
-          argv: ['diff', '--name-only', '-z', 'main...HEAD'],
-          result: okResult('wiki/log.md\0'),
+          argv: [
+            'pr',
+            'view',
+            'wiki-sync/2026-05-07-bbbbbbb',
+            '--json',
+            'files,headRefOid,baseRefName',
+          ],
+          result: okResult(
+            JSON.stringify({
+              baseRefName: 'main',
+              files: [{path: 'wiki/log.md'}],
+              headRefOid: 'b'.repeat(40),
+            })
+          ),
         },
         {
           argv: ['rev-parse', 'HEAD'],
@@ -390,9 +402,17 @@ describe('wiki sync land', () => {
       ['git', 'commit', '-m', 'wiki: sync through bbbbbbb'],
       ['git', 'push', '-u', 'origin', 'wiki-sync/2026-05-07-bbbbbbb'],
       ['gh', 'pr', 'create'],
-      ['git', 'diff', '--name-only', '-z', 'main...HEAD'],
-      ['bash', '.gaia/scripts/resolve-audit-members.sh'],
+      [
+        'gh',
+        'pr',
+        'view',
+        'wiki-sync/2026-05-07-bbbbbbb',
+        '--json',
+        'files,headRefOid,baseRefName',
+      ],
       ['git', 'rev-parse', 'HEAD'],
+      ['git', 'fetch', 'origin', 'main'],
+      ['bash', '.gaia/scripts/resolve-audit-members.sh'],
       [
         'gh',
         'api',
@@ -530,7 +550,11 @@ describe('wiki sync land', () => {
 
     // Polled the budget, then returned to base but deferred the local cleanup.
     const pollCalls = recorded.filter(
-      (c) => c.command === 'gh' && c.args[0] === 'pr' && c.args[1] === 'view'
+      (c) =>
+        c.command === 'gh' &&
+        c.args[0] === 'pr' &&
+        c.args[1] === 'view' &&
+        c.args.includes('state')
     );
     expect(pollCalls).toHaveLength(3);
     const gitCalls = recorded.filter((c) => c.command === 'git');
@@ -832,7 +856,25 @@ describe('wiki sync land', () => {
   describe('out-of-scope GAIA-Audit stamp', () => {
     const HEAD_SHA = 'dddddddddddddddddddddddddddddddddddddddd';
     const BRANCH = 'wiki-sync/2026-05-07-ddddddd';
-    const DIFF_ARGV = ['diff', '--name-only', '-z', 'main...HEAD'];
+    const RECORD_ARGV = [
+      'pr',
+      'view',
+      BRANCH,
+      '--json',
+      'files,headRefOid,baseRefName',
+    ];
+
+    const prRecord = (
+      paths: readonly string[],
+      headRefOid: string = HEAD_SHA
+    ): SpawnSyncReturns<string> =>
+      okResult(
+        JSON.stringify({
+          baseRefName: 'main',
+          files: paths.map((filePath) => ({path: filePath})),
+          headRefOid,
+        })
+      );
 
     const protectedScript = (
       extra: {
@@ -858,20 +900,22 @@ describe('wiki sync land', () => {
 
     const runnerWithResolver = (
       recorded: RecordedCall[],
-      diff: SpawnSyncReturns<string>,
+      record: SpawnSyncReturns<string>,
       resolver: SpawnSyncReturns<string>,
-      post: SpawnSyncReturns<string> = okResult('')
+      post: SpawnSyncReturns<string> = okResult(''),
+      fetchBase: SpawnSyncReturns<string> = okResult('')
     ): CommandRunner =>
       buildRunner(
         protectedScript([
-          {argv: DIFF_ARGV, result: diff},
+          {argv: RECORD_ARGV, result: record},
+          {argv: ['fetch', 'origin', 'main'], result: fetchBase},
           {
             argv: [
               '.gaia/scripts/resolve-audit-members.sh',
               '--root',
               realpathSync(sandbox.root),
               '--base',
-              'main',
+              'origin/main',
             ],
             result: resolver,
           },
@@ -899,7 +943,7 @@ describe('wiki sync land', () => {
       const recorded: RecordedCall[] = [];
       const runner = runnerWithResolver(
         recorded,
-        okResult('wiki/log.md\0wiki/concepts/Foo.md\0'),
+        prRecord(['wiki/log.md', 'wiki/concepts/Foo.md']),
         okResult('')
       );
 
@@ -927,7 +971,7 @@ describe('wiki sync land', () => {
       const recorded: RecordedCall[] = [];
       const runner = runnerWithResolver(
         recorded,
-        okResult('wiki/log.md\0'),
+        prRecord(['wiki/log.md']),
         okResult('code-audit-frontend\n')
       );
 
@@ -943,7 +987,7 @@ describe('wiki sync land', () => {
       const recorded: RecordedCall[] = [];
       const runner = runnerWithResolver(
         recorded,
-        okResult('wiki/log.md\0'),
+        prRecord(['wiki/log.md']),
         failResult(2, 'resolve-audit-members: no auditors roster')
       );
 
@@ -958,7 +1002,7 @@ describe('wiki sync land', () => {
       const recorded: RecordedCall[] = [];
       const runner = runnerWithResolver(
         recorded,
-        okResult('wiki/log.md\0app/root.tsx\0'),
+        prRecord(['wiki/log.md', 'app/root.tsx']),
         okResult('')
       );
 
@@ -967,12 +1011,106 @@ describe('wiki sync land', () => {
       expect(stdio.errors.join('')).toContain('outside wiki/');
     });
 
+    test('a non-wiki path only the pull request carries (local base ahead of origin) posts nothing', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+      // The local range main...HEAD would read wiki-only; the pull request
+      // record is the only place the extra commit shows.
+      const runner = buildRunner(
+        protectedScript([
+          {
+            argv: ['diff', '--name-only', '-z', 'main...HEAD'],
+            result: okResult('wiki/log.md\0'),
+          },
+          {
+            argv: RECORD_ARGV,
+            result: prRecord(['wiki/log.md', 'app/ahead-of-origin.ts']),
+          },
+        ]),
+        recorded
+      );
+
+      expect(landProtected(sandbox.root, runner)).toBe(0);
+      expect(statusCalls(recorded)).toHaveLength(0);
+      expect(stdio.errors.join('')).toContain('outside wiki/');
+      expect(recorded.some((call) => call.args.includes('--auto'))).toBe(true);
+    });
+
+    test('reads the pull request, never a local diff, and resolves members against the fetched remote base', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+      const runner = runnerWithResolver(
+        recorded,
+        prRecord(['wiki/log.md']),
+        okResult('')
+      );
+
+      expect(landProtected(sandbox.root, runner)).toBe(0);
+      expect(
+        recorded.some(
+          (call) => call.command === 'git' && call.args[0] === 'diff'
+        )
+      ).toBe(false);
+      const resolverCall = recorded.find((call) =>
+        call.args.includes('.gaia/scripts/resolve-audit-members.sh')
+      );
+      expect(resolverCall?.args.at(-1)).toBe('origin/main');
+    });
+
+    test('a pull request head that is not the local HEAD posts nothing', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+      const runner = runnerWithResolver(
+        recorded,
+        prRecord(['wiki/log.md'], 'e'.repeat(40)),
+        okResult('')
+      );
+
+      expect(landProtected(sandbox.root, runner)).toBe(0);
+      expect(statusCalls(recorded)).toHaveLength(0);
+      expect(stdio.errors.join('')).toContain('not the commit this checkout');
+      expect(recorded.some((call) => call.args.includes('--auto'))).toBe(true);
+    });
+
+    test('a pull request record that cannot be read posts nothing', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+      const runner = runnerWithResolver(
+        recorded,
+        failResult(1, 'HTTP 502'),
+        okResult('')
+      );
+
+      expect(landProtected(sandbox.root, runner)).toBe(0);
+      expect(statusCalls(recorded)).toHaveLength(0);
+      expect(stdio.errors.join('')).toContain(
+        'could not read the pull request'
+      );
+      expect(recorded.some((call) => call.args.includes('--auto'))).toBe(true);
+    });
+
+    test('a failed fetch of the remote base posts nothing', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+      const runner = runnerWithResolver(
+        recorded,
+        prRecord(['wiki/log.md']),
+        okResult(''),
+        okResult(''),
+        failResult(128, 'fatal: unable to access')
+      );
+
+      expect(landProtected(sandbox.root, runner)).toBe(0);
+      expect(statusCalls(recorded)).toHaveLength(0);
+      expect(stdio.errors.join('')).toContain('could not fetch origin/main');
+    });
+
     test('a failing status POST leaves the exit code unchanged and names the manual path', () => {
       sandbox = setupSandbox();
       const recorded: RecordedCall[] = [];
       const runner = runnerWithResolver(
         recorded,
-        okResult('wiki/log.md\0'),
+        prRecord(['wiki/log.md']),
         okResult(''),
         failResult(1, 'HTTP 403')
       );

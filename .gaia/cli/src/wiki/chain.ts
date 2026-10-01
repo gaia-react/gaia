@@ -425,7 +425,6 @@ const emitWikiTally = (options: RunOptions, artifact?: GhArtifact): void => {
 };
 
 type QueueAutoMergeOptions = {
-  base: string;
   branch: string;
   prBody: string;
   prTitle: string;
@@ -444,7 +443,7 @@ type QueueAutoMergeResult = {artifact?: GhArtifact; failureCode?: number};
 const queueAutoMerge = (
   options: QueueAutoMergeOptions
 ): QueueAutoMergeResult => {
-  const {base, branch, prBody, prTitle, repoRoot, runner} = options;
+  const {branch, prBody, prTitle, repoRoot, runner} = options;
   const autoMergeStep = {
     args: ['pr', 'merge', '--squash', '--auto', '--delete-branch'],
     command: 'gh',
@@ -466,7 +465,7 @@ const queueAutoMerge = (
     // poster refuses a diff that leaves `wiki/` or that the roster dispatches.
     if (step === autoMergeStep) {
       postOutOfScopeStamp({
-        base,
+        branch,
         cwd: repoRoot,
         prefix: 'chain finish',
         runner,
@@ -553,7 +552,6 @@ const runFinish = (
     'Automated /gaia-wiki full-chain landing (sync + consolidate + lint) via `gaia wiki chain finish`.';
 
   const queued = queueAutoMerge({
-    base,
     branch,
     prBody,
     prTitle,

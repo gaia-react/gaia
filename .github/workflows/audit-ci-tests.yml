@@ -536,7 +536,7 @@ jobs:
       # suites themselves via `shard_package_needs`. Every such gate FAILs
       # rather than `skip`s when GITHUB_ACTIONS is set, precisely so dropping
       # this package reds the run here instead of retiring the invariants
-      # behind it, the self-heal reachability one and the YAML-write hook's
+      # behind it, the manual re-run (workflow_dispatch) reachability one and the YAML-write hook's
       # coverage among them, behind `ok ... # skip`. A gate that accepts `yq`
       # as a second parser reds only when neither is present. Those gates are
       # what enforce this line; this comment only explains it. Pin the package

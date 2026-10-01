@@ -55,7 +55,8 @@ teardown() {
 
 # `gh` stub: `release list` answers gaiaLatest; `pr merge` fast-forwards the
 # bare origin's main to the current branch unless MOCK_GH_MERGE=defer (auto-merge
-# queued, PR still open); `pr view` reports MERGED only after a merge.
+# queued, PR still open); `pr view` reports MERGED only after a merge, and answers
+# the stamp precondition query with the branch's own file list, head, and base.
 write_stub_gh() {
   cat > "$1" <<'EOF'
 #!/usr/bin/env bash
@@ -72,6 +73,14 @@ case "$1" in
         : > "$GH_MERGED_MARKER"
         ;;
       view)
+        case "$*" in
+          *files,headRefOid,baseRefName*)
+            files=$(git diff --name-only main...HEAD | jq -R '{path: .}' | jq -s .)
+            jq -n --argjson files "$files" --arg head "$(git rev-parse HEAD)" \
+              '{baseRefName: "main", files: $files, headRefOid: $head}'
+            exit 0
+            ;;
+        esac
         if [ -f "$GH_MERGED_MARKER" ]; then printf 'MERGED\n'; else printf 'OPEN\n'; fi
         ;;
     esac

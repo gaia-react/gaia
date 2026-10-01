@@ -255,7 +255,7 @@ const protectedBranchLanding = (
   // `--auto` merges outside the Claude Code merge hook, so nothing else posts
   // GAIA-Audit for this wiki-only PR on a branch that requires it.
   postOutOfScopeStamp({
-    base: ctx.originalBranch,
+    branch: branchName,
     cwd: ctx.cwd,
     prefix: 'sync-land',
     runner: ctx.runner,

@@ -29875,33 +29875,84 @@ var cleanupAfterMerge = (options) => {
   return commandSucceeded(deleteResult);
 };
 var OUT_OF_SCOPE_DESCRIPTION = "skipped: out of scope";
+var PullRequestRecordSchema = external_exports.object({
+  baseRefName: external_exports.string().min(1),
+  files: external_exports.array(external_exports.object({ path: external_exports.string() })),
+  headRefOid: external_exports.string().min(1)
+});
 var failureDetail = (result) => {
   const stderr = safeOutput2(result.stderr).trim();
   return stderr === "" ? `exit ${result.status ?? -1}` : stderr;
 };
+var readPullRequestRecord = (options) => {
+  const { branch, cwd, runner } = options;
+  const view = runner(
+    "gh",
+    ["pr", "view", branch, "--json", "files,headRefOid,baseRefName"],
+    { cwd }
+  );
+  if (!commandSucceeded(view)) {
+    return { reason: `could not read the pull request (${failureDetail(view)})` };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(safeOutput2(view.stdout));
+  } catch {
+    return { reason: "the pull request record is not JSON" };
+  }
+  const record2 = PullRequestRecordSchema.safeParse(parsed);
+  return record2.success ? { record: record2.data } : { reason: "the pull request record is malformed" };
+};
 var postOutOfScopeStamp = (options) => {
-  const { base, cwd, prefix, runner } = options;
+  const { cwd, prefix, runner } = options;
   const refusePost = (reason) => {
     process.stderr.write(
       `${prefix}: GAIA-Audit out-of-scope stamp not posted: ${reason}; run the PR Merge Workflow on this pull request
 `
     );
   };
-  const diff = runner("git", ["diff", "--name-only", "-z", `${base}...HEAD`], {
-    cwd
-  });
-  if (!commandSucceeded(diff)) {
-    refusePost("could not list changed paths");
+  const read = readPullRequestRecord(options);
+  if ("reason" in read) {
+    refusePost(read.reason);
     return;
   }
-  const changedPaths = splitZStream(safeOutput2(diff.stdout));
-  if (changedPaths.length === 0 || changedPaths.some((changedPath) => !changedPath.startsWith("wiki/"))) {
+  const { record: record2 } = read;
+  const head = runner("git", ["rev-parse", "HEAD"], { cwd });
+  const headSha2 = commandSucceeded(head) ? safeOutput2(head.stdout).trim() : "";
+  if (headSha2 === "") {
+    refusePost("could not resolve the head commit");
+    return;
+  }
+  if (record2.headRefOid !== headSha2) {
+    refusePost("the pull request head is not the commit this checkout holds");
+    return;
+  }
+  if (record2.files.length === 0 || record2.files.some((file2) => !file2.path.startsWith("wiki/"))) {
     refusePost("the pull request changes paths outside wiki/");
+    return;
+  }
+  if (record2.baseRefName.startsWith("-")) {
+    refusePost("the pull request base name is not a branch name");
+    return;
+  }
+  const fetchBase = runner("git", ["fetch", "origin", record2.baseRefName], {
+    cwd
+  });
+  if (!commandSucceeded(fetchBase)) {
+    refusePost(
+      `could not fetch origin/${record2.baseRefName} (${failureDetail(fetchBase)})`
+    );
     return;
   }
   const members = runner(
     "bash",
-    [".gaia/scripts/resolve-audit-members.sh", "--root", cwd, "--base", base],
+    [
+      ".gaia/scripts/resolve-audit-members.sh",
+      "--root",
+      cwd,
+      "--base",
+      `origin/${record2.baseRefName}`
+    ],
     { cwd }
   );
   if (!commandSucceeded(members)) {
@@ -29915,12 +29966,6 @@ var postOutOfScopeStamp = (options) => {
     refusePost(
       `the Code Audit Team dispatches ${dispatched.join(", ")} for this diff`
     );
-    return;
-  }
-  const head = runner("git", ["rev-parse", "HEAD"], { cwd });
-  const headSha2 = commandSucceeded(head) ? safeOutput2(head.stdout).trim() : "";
-  if (headSha2 === "") {
-    refusePost("could not resolve the head commit");
     return;
   }
   const post = runner(
@@ -30198,7 +30243,7 @@ var emitWikiTally = (options, artifact) => {
   }
 };
 var queueAutoMerge = (options) => {
-  const { base, branch, prBody, prTitle, repoRoot, runner } = options;
+  const { branch, prBody, prTitle, repoRoot, runner } = options;
   const autoMergeStep = {
     args: ["pr", "merge", "--squash", "--auto", "--delete-branch"],
     command: "gh"
@@ -30215,7 +30260,7 @@ var queueAutoMerge = (options) => {
   for (const step of remoteSequence) {
     if (step === autoMergeStep) {
       postOutOfScopeStamp({
-        base,
+        branch,
         cwd: repoRoot,
         prefix: "chain finish",
         runner
@@ -30278,7 +30323,6 @@ var runFinish = (argv, options) => {
   const prTitle = `wiki: maintenance chain through ${shortHead}`;
   const prBody = "Automated /gaia-wiki full-chain landing (sync + consolidate + lint) via `gaia wiki chain finish`.";
   const queued = queueAutoMerge({
-    base,
     branch,
     prBody,
     prTitle,
@@ -32127,7 +32171,7 @@ var protectedBranchLanding = (ctx, options) => {
     if (!stepSucceeded(result)) return passthroughFailure3(result, step);
   }
   postOutOfScopeStamp({
-    base: ctx.originalBranch,
+    branch: branchName,
     cwd: ctx.cwd,
     prefix: "sync-land",
     runner: ctx.runner

@@ -556,7 +556,7 @@ describe('wiki chain', () => {
         'gh pr merge --squash --auto --delete-branch'
       );
       const pollIndex = ordered.findIndex((c) =>
-        c.startsWith('gh pr view wiki-sync/2026-05-07-bbbbbbb')
+        c.startsWith('gh pr view wiki-sync/2026-05-07-bbbbbbb --json state')
       );
       const checkoutBaseIndex = ordered.indexOf(
         'git checkout --end-of-options main'
@@ -626,7 +626,8 @@ describe('wiki chain', () => {
 
       // Polled the budget, then returned to base but deferred the local cleanup.
       const pollCalls = ghCalls(recorded).filter(
-        (c) => c.args[0] === 'pr' && c.args[1] === 'view'
+        (c) =>
+          c.args[0] === 'pr' && c.args[1] === 'view' && c.args.includes('state')
       );
       expect(pollCalls).toHaveLength(3);
       expect(gitCalls(recorded)).toContainEqual({
@@ -1378,12 +1379,24 @@ describe('wiki chain', () => {
     const BRANCH = 'wiki-sync/2026-05-07-bbbbbbb';
     const HEAD_SHA = 'b'.repeat(40);
 
+    const prRecord = (
+      paths: readonly string[],
+      headRefOid: string = HEAD_SHA
+    ): SpawnSyncReturns<string> =>
+      okResult(
+        JSON.stringify({
+          baseRefName: 'main',
+          files: paths.map((filePath) => ({path: filePath})),
+          headRefOid,
+        })
+      );
+
     const finishRunner = (
       recorded: RecordedCall[],
       options: {
-        diff?: SpawnSyncReturns<string>;
         post?: SpawnSyncReturns<string>;
         push?: SpawnSyncReturns<string>;
+        record?: SpawnSyncReturns<string>;
         resolver?: SpawnSyncReturns<string>;
       } = {}
     ): CommandRunner =>
@@ -1403,9 +1416,16 @@ describe('wiki chain', () => {
           },
           {argv: ['rev-parse', 'HEAD'], result: okResult(`${HEAD_SHA}\n`)},
           {
-            argv: ['diff', '--name-only', '-z', 'main...HEAD'],
-            result: options.diff ?? okResult('wiki/log.md\0'),
+            argv: [
+              'pr',
+              'view',
+              BRANCH,
+              '--json',
+              'files,headRefOid,baseRefName',
+            ],
+            result: options.record ?? prRecord(['wiki/log.md']),
           },
+          {argv: ['fetch', 'origin', 'main'], result: okResult('')},
           {
             argv: [
               '.gaia/scripts/resolve-audit-members.sh',
@@ -1414,7 +1434,7 @@ describe('wiki chain', () => {
               // is a symlink.
               realpathSync(sandbox.root),
               '--base',
-              'main',
+              'origin/main',
             ],
             result: options.resolver ?? okResult(''),
           },
@@ -1466,18 +1486,66 @@ describe('wiki chain', () => {
       expect(mergeIndex).toBeGreaterThan(stampIndex);
     });
 
-    test('a diff that includes a non-wiki path posts nothing and still lands', () => {
+    test('a pull request path outside wiki/ posts nothing and still lands', () => {
       sandbox = setupSandbox();
       const recorded: RecordedCall[] = [];
 
       const exit = finishLanding(
         sandbox.root,
-        finishRunner(recorded, {diff: okResult('wiki/log.md\0app/root.tsx\0')})
+        finishRunner(recorded, {
+          record: prRecord(['wiki/log.md', 'app/ahead-of-origin.ts']),
+        })
       );
       expect(exit).toBe(0);
       expect(statusCalls(recorded)).toHaveLength(0);
       expect(mergeCalls(recorded)).toHaveLength(1);
       expect(stdio.errors.join('')).toContain('outside wiki/');
+    });
+
+    test('reads the pull request, never a local diff, and resolves members against the fetched remote base', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+
+      expect(finishLanding(sandbox.root, finishRunner(recorded))).toBe(0);
+      expect(
+        recorded.some((c) => c.command === 'git' && c.args[0] === 'diff')
+      ).toBe(false);
+      const resolverCall = recorded.find((c) =>
+        c.args.includes('.gaia/scripts/resolve-audit-members.sh')
+      );
+      expect(resolverCall?.args.at(-1)).toBe('origin/main');
+    });
+
+    test('a pull request head that is not the local HEAD posts nothing and still lands', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+
+      const exit = finishLanding(
+        sandbox.root,
+        finishRunner(recorded, {
+          record: prRecord(['wiki/log.md'], 'e'.repeat(40)),
+        })
+      );
+      expect(exit).toBe(0);
+      expect(statusCalls(recorded)).toHaveLength(0);
+      expect(mergeCalls(recorded)).toHaveLength(1);
+      expect(stdio.errors.join('')).toContain('not the commit this checkout');
+    });
+
+    test('a pull request record that cannot be read posts nothing and still lands', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+
+      const exit = finishLanding(
+        sandbox.root,
+        finishRunner(recorded, {record: failResult(1, 'HTTP 502')})
+      );
+      expect(exit).toBe(0);
+      expect(statusCalls(recorded)).toHaveLength(0);
+      expect(mergeCalls(recorded)).toHaveLength(1);
+      expect(stdio.errors.join('')).toContain(
+        'could not read the pull request'
+      );
     });
 
     test('a dispatched roster member refuses the post, names the member, and still lands', () => {
