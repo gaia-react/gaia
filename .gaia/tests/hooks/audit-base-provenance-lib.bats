@@ -290,6 +290,23 @@ resolve() {
   grep -qF "$(printf 'docs/caf\xc3\xa9.md')" <<<"$output"
 }
 
+@test "changed_files: a rename lists both its old and its new path" {
+  local repo base_sha
+  repo="$(make_repo changed-rename)"
+  mkdir -p "$repo/app"
+  printf 'export const moved = "a line long enough to be detected as a rename";\n' > "$repo/app/moved.ts"
+  git -C "$repo" add app/moved.ts
+  git -C "$repo" commit --quiet -m "app source"
+  base_sha="$(git -C "$repo" rev-parse HEAD)"
+  git -C "$repo" mv app/moved.ts wiki-moved.md
+  git -C "$repo" commit --quiet -m "move"
+
+  run bash -c '. "$1"; audit_provenance_changed_files "$2" "$3"' _ "$LIB" "$repo" "$base_sha"
+  [ "$status" -eq 0 ]
+  grep -qxF "app/moved.ts" <<<"$output"
+  grep -qxF "wiki-moved.md" <<<"$output"
+}
+
 # --- audit_provenance_empty_is_decisive --------------------------------------
 
 @test "empty_is_decisive: 0 for remote and supplied, 1 for local, unresolvable, empty, and unrecognized" {

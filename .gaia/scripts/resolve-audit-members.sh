@@ -230,7 +230,11 @@ base="$(resolve_base)"
 # consuming the NUL stream without the round-trip, which every consumer below
 # would have to want. code-audit-frontend.md records the same residue against
 # its own eligibility set.
-changed="$(git -C "$repo_root" diff --name-only -z "${base}...HEAD" 2>/dev/null | tr '\0' '\n' || true)"
+#
+# `--no-renames`, because under rename detection a move lists only its new
+# path: moving app/x.ts to a root-level .md would dispatch nobody for the app/
+# source the branch removed.
+changed="$(git -C "$repo_root" diff --name-only -z --no-renames "${base}...HEAD" 2>/dev/null | tr '\0' '\n' || true)"
 [ -n "$changed" ] || exit 0
 
 # --- Dispatch: batch-classify every changed path, collect unique owners -----
