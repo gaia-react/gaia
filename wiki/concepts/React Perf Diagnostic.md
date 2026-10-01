@@ -49,7 +49,7 @@ The skill carries a conservative trigger. It fires on explicit perf-investigatio
 v1 boundaries:
 
 - **Measure-only.** No autonomous fixing loop. The skill emits a diagnosis and the human or Claude applies the fix.
-- **The framework/app boundary is a name-denylist heuristic.** It classifies a render as framework noise by component name (React Router and Remix internals plus the react-icons pack), not by where the component is defined. No app component currently shares a name with the denylist, so nothing app-owned is filtered. The ambiguity is structural: an app component that shared a framework name would be dropped as noise.
+- **The framework/app boundary is a name-denylist heuristic.** It classifies a render as framework noise by component name (React Router and Remix internals plus the react-icons pack), not by where the component is defined. No component in GAIA's shipped app shares a name with the denylist. The ambiguity is structural: an app component that shared a framework name would be dropped as noise.
 
 <!-- gaia:maintainer-only:start -->
 

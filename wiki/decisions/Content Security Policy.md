@@ -44,7 +44,7 @@ handles that diff:
   Inter font (already loaded from `fonts.gstatic.com`) eliminates the inline
   stylesheet and lets `'unsafe-inline'` drop, the path to take if style-level
   CSP protection becomes a requirement.
-- **No reporting endpoint.** The policy carries no `report-uri` / `report-to`
+- **No reporting endpoint.** GAIA's shipped policy carries no `report-uri` / `report-to`
   directive. A violation-reporting pipeline is adopter-owned infrastructure,
   out of scope for the template.
 

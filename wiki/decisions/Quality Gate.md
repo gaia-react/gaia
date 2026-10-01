@@ -17,7 +17,10 @@ Every change must pass the Quality Gate. Pre-commit hooks enforce a subset; Clau
 1. **Simplify**: run `simplify` skill; apply all endorsed changes.
 2. **Localization check**: no hardcoded user-facing strings or unfilled keys.
 3. `pnpm typecheck`: zero errors. This is the sole enforcer for type-only tests (`expectTypeOf`/`assertType`/`@ts-expect-error`), which [[TDD RED Verification]] exempts from its runtime-RED demand.
-4. `pnpm lint`: zero errors, zero warnings. Runs `eslint --fix`, so it auto-fixes every fixable lint rule **and** Prettier formatting (Prettier is wired in as an `eslint` rule via `prettier/prettier`); only non-auto-fixable issues need manual attention. Hand-formatting while authoring is wasted effort; this step normalizes it. `pnpm lint` ignores `.gaia/**`; changes touching `.gaia/cli/**` also run `pnpm lint:cli` (`pnpm -C .gaia/cli lint`), the CLI's own ESLint config in its separate pnpm workspace.
+4. `pnpm lint`: zero errors, zero warnings. Runs `eslint --fix`, so it auto-fixes every fixable lint rule **and** Prettier formatting (Prettier is wired in as an `eslint` rule via `prettier/prettier`); only non-auto-fixable issues need manual attention. Hand-formatting while authoring is wasted effort; this step normalizes it. `pnpm lint` ignores `.gaia/**`.
+   <!-- gaia:maintainer-only:start -->
+   Changes touching `.gaia/cli/**` also run `pnpm lint:cli` (`pnpm -C .gaia/cli lint`), the CLI's own ESLint config in its separate pnpm workspace.
+   <!-- gaia:maintainer-only:end -->
 5. `pnpm test --run`: all tests pass with **zero console warnings** (missing keys, HydrateFallback, etc. count as failures).
 6. `pnpm pw`: all Playwright E2E tests pass. Without a `.env` the web server never starts. Entering a worktree provisions it, which symlinks the main checkout's `.env` into it, so a worktree missing one was never entered by a session: run `bash .claude/hooks/provision-worktree.sh <absolute-worktree-path>`, which also installs dependencies and moves a plain `.gaia/local` aside to `.gaia/local.bak.<timestamp>` before linking the shared one. When the main checkout itself has no `.env`, linking skips it; copy `.env.example` to the main checkout's `.env` and link again, or, if `.env.example` is gone too, stop and ask the human to create `.env` (`app/env.server.ts` lists the required variables). Never read, print, or copy `.env` contents: the link shares the file without exposing it. The linked `.env` is the real one, so an `MSW_ENABLED` that is off sends Playwright to the real `API_URL`, exactly as in the main checkout.
 7. **Dev smoke test**: start `pnpm dev`, curl a route, verify HTTP 200.
@@ -41,7 +44,7 @@ Every change must pass the Quality Gate. Pre-commit hooks enforce a subset; Clau
 Skip the gate entirely if no staged file is something typecheck / lint / tests / build can inspect. The gate runs only when at least one staged file matches:
 
 - **Source**: `*.ts`, `*.tsx`, `*.js`, `*.jsx`, `*.mjs`, `*.cjs`, `*.css`
-- **Gate-affecting config**: `package.json`, `pnpm-lock.yaml`, `tsconfig*.json`, `vite.config.*`, `vitest.config.*`, `playwright.config.*`, `eslint.config.*`, `.gaia/cli/eslint.config.mjs`
+- **Gate-affecting config**: `package.json`, `pnpm-lock.yaml`, `tsconfig*.json`, `vite.config.*`, `vitest.config.*`, `playwright.config.*`, `eslint.config.*`
 
 Pure markdown, `.claude/**`, `wiki/**`, image, or other non-source-affecting commits skip straight to the commit step.
 

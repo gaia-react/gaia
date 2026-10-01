@@ -14,7 +14,7 @@ Deterministic scanner for React security, performance, correctness, and accessib
 
 ## Conventions
 
-- Config: `doctor.config.ts` (repo root). Exactly one config file exists (see Single config below).
+- Config: `doctor.config.ts` (repo root). GAIA ships exactly one config file (see Single config below).
 - Run: `npx react-doctor@latest .`. react-doctor is not a project dependency; it is always invoked at latest via `npx`. The config therefore stays a plain `export default` and does not import react-doctor's config type.
 - Install (`/gaia-init`, `/setup-gaia`): `npx -y react-doctor@latest install --yes` installs the skill for every agent it detects. The Claude Code skill lands project-local at `.claude/skills/react-doctor/` (gitignored, kept per-machine, never committed). For any non-Claude agent it detects (Copilot, Warp) it also writes a `.agents/skills/react-doctor/` copy; GAIA strips that copy along with the installer's standalone GitHub Actions workflow, commit-hook block, `doctor` package script, and pinned `react-doctor` devDependency, so the Claude Code skill remains the sole trigger point.
 - Runs automatically pre-merge inside the [[Code Review Audit Agent]] (alongside [[knip]] and [[pnpm-audit]]). Findings are advisory and never block the audit marker.
@@ -39,7 +39,7 @@ A deterministic check fails when more than one `doctor.config.*` or `react-docto
 Findings fall into three buckets:
 
 1. **Real issue**: fix the code. Security and correctness rules take priority over performance and a11y.
-2. **Domain mismatch**: a rule that does not apply to a path (e.g. a web-input rule firing on maintainer CLI tooling, or a generated artifact). Add a scoped `ignore.overrides` entry naming the rule and files, or `ignore.files` for output that should never be scanned (e.g. `build/**`).
+2. **Domain mismatch**: a rule that does not apply to a path (e.g. a web-input rule firing on Node CLI tooling, or a generated artifact). Add a scoped `ignore.overrides` entry naming the rule and files, or `ignore.files` for output that should never be scanned (e.g. `build/**`).
 3. **Tool overlap**: dead-code analysis (`deslop`) duplicates [[knip]], the single dead-code authority. `deadCode: false` disables it.
 
 Suppress with the narrowest control: prefer a per-path `ignore.overrides` entry over a blanket rule-off. Every suppression carries a comment with the evidence so it can be re-evaluated when the ruleset changes (rules also drift between versions, since the scan runs at `npx ...@latest`).

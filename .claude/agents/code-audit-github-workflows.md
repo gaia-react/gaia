@@ -69,7 +69,7 @@ For every in-remit changed file, the workflow-security core:
 
 - **Script injection.** `${{ github.event.* }}` interpolated directly into a `run:` body, where the value is attacker-controlled (`pull_request.title`, `.body`, `head_ref`, issue comments). The fix is an `env:` binding and a quoted shell variable, never inline interpolation.
 - **`pull_request_target` pwn-requests.** A `pull_request_target` trigger that checks out the PR head and then executes it, giving untrusted code a token with write scope.
-- **Unpinned third-party actions.** `uses:` on a tag or branch rather than a full commit SHA. This repo's own workflows already pin by SHA with a trailing `# vN` comment; hold new code to that convention.
+- **Unpinned third-party actions.** `uses:` on a tag or branch rather than a full commit SHA. GAIA's shipped workflows pin by SHA with a trailing `# vN` comment; hold new code to that convention.
 - **Over-broad `permissions:`.** A job granting more than it needs, or a workflow omitting `permissions:` and inheriting the default.
 - **Secret handling.** A secret echoed, written to an output, passed into a third-party action, or exposed to a step that does not need it.
 - **`GITHUB_TOKEN` recursion and required-check interaction.** A token-authored push does not fire `push`/`pull_request` events, so a required check on the new HEAD is absent and branch protection blocks the merge. `.gaia/audit-ci.yml`'s `retrigger_workflows` knob exists for exactly this; a workflow change that breaks the assumption is a real finding.

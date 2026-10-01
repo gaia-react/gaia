@@ -16,7 +16,7 @@ Test runner for unit + integration tests. Paired with `happy-dom` and [[React Te
 
 - `@vitest/coverage-v8`: coverage reports (direct devDependency)
 
-Vitest-aware lint rules come from `@vitest/eslint-plugin`, which the shared `@gaia-react/lint` config pulls in transitively; this repo does not declare it directly.
+Vitest-aware lint rules come from `@vitest/eslint-plugin`, which the shared `@gaia-react/lint` config pulls in transitively; GAIA's `package.json` does not declare it directly.
 
 ## Conventions
 

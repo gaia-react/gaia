@@ -109,7 +109,7 @@ printf '%s\n' "<the reason text>" > .gaia/local/audit/residue-reason-<unique>.tx
 
 Delete the reason file in a **separate** tool call, for the same reason the filing recipe splits its own cleanup: one `PreToolUse` decision covers a whole Bash invocation, so a denied cleanup would take the write standing beside it. Batch dismissal passes one `--token` per entry in a single call, so one confirmation produces one append.
 
-**Check the exit code before reporting anything.** Exit `0` means the record is written. Any non-zero means nothing was recorded: tell the maintainer the disposition did not persist and why, and do not claim success. The residual re-surfaces on the next tally, which is the honest consequence.
+**Check the exit code before reporting anything.** Exit `0` means the record is written. Any non-zero means nothing was recorded: tell the user the disposition did not persist and why, and do not claim success. The residual re-surfaces on the next tally, which is the honest consequence.
 
 The store is append-only JSON Lines, carries a schema version, and is named above; point at the CLI rather than restating its fields. Never hand-write a line into the store.
 
@@ -222,7 +222,9 @@ Apply the shared tally machinery in `.claude/skills/gaia/references/cost-record.
 - Never widen the recognizer beyond the two canonical headings.
 - Never sweep keyless entries into the candidate list.
 - Never change the merge gate's attribution logic.
+<!-- gaia:maintainer-only:start -->
 - Never ship the store's contents to adopters.
+<!-- gaia:maintainer-only:end -->
 - Never record a keep that does not expire, or any suppression that leaves no tracked record a reviewer can remove.
 - Never interpolate a residual's path, or any other residual-derived text, into a shell command.
 

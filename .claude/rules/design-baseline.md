@@ -8,7 +8,7 @@ paths:
 
 # Design Baseline (Neutral, Not a Design System)
 
-The current visual styling in `app/styles/`, `app/components/`, `app/pages/`, and `app/routes/` is a **deliberate neutral baseline**. It carries no brand hue and no opinion the adopter must follow. It is not a chosen design system.
+The visual styling GAIA ships in `app/styles/`, `app/components/`, `app/pages/`, and `app/routes/` is a **deliberate neutral baseline**. It carries no brand hue and no opinion the adopter must follow. It is not a chosen design system.
 
 ## Behavioral switch
 

@@ -20,7 +20,7 @@ Always work on a feature branch. If HEAD is on `main`/`master`, create one first
 git switch -c <type>/<short-description>
 ```
 
-Conventional prefixes in this repo: `feat/`, `fix/`, `chore/`, `refactor/`, `test/`, `wiki/`
+GAIA's conventional prefixes: `feat/`, `fix/`, `chore/`, `refactor/`, `test/`, `wiki/`
 
 Branches GAIA's own commands create are not hand-named: every one takes its name from `.gaia/scripts/branch-name-lib.sh`, whose header holds that convention.
 

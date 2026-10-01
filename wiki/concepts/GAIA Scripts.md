@@ -140,7 +140,9 @@ The root holds the shell layer; each subdirectory holds one thing that is not sh
 | `lib/` | Shell that is sourced by a root script rather than run: the Serena language helper. |
 | `red-ledger/` | The Node extractor that reads test signals out of a RED run, plus its own README. |
 
+<!-- gaia:maintainer-only:start -->
 `tests/` is separate, and separate on purpose. It holds the bats suites that guard the root scripts, and it is far larger than everything above it put together. A suite there is the blocking runner for the guard beside it, which is why a guard's conformance lives next to the guard rather than in the general test tree. It is not indexed here: a suite is discovered from the script it names, so an index of it would be an index of the index above.
+<!-- gaia:maintainer-only:end -->
 
 ## Adding a script
 
@@ -148,7 +150,11 @@ A new file at the root of `.gaia/scripts/` owes **a row on this page**, in the f
 
 Naming: take the family prefix that matches what the script does (`check-` and `lint-` for a deterministic gate, `audit-` for the Code Audit Team's machinery, `cost-` and `token-` for the accounting ledger, `debt-` for the tech-debt backlog, `verify-` for a drift check against an external authority), and `*-lib.sh` for a file that is sourced rather than run. A script that fits no family takes a plain descriptive name and joins the unprefixed table.
 
-**Do not reorganize the directory into subfolders.** The single-level glob `.gaia/scripts/*.sh` is a contract several places depend on by value, not a hazard to be tidied away: it is asserted in a bats suite, it is a literal registry entry, and it is what a worktree provisioning step chmods through. A new subdirectory leaves all three reading a tree that no longer matches, silently. Reference density compounds it, worst in the family with the cleanest case for a move: its members are each named across dozens of files, so relocating one family is a several-hundred-file rename for no functional gain. This directory has already paid for a location change once, recorded in GAIA's own release health taxonomy: moving it across the release boundary added it as a manifest-owned tree without adding it as a scan target to either distribution-boundary primitive, and the repair covered the one file its finding named rather than the tree it had un-excluded.
+**Do not reorganize the directory into subfolders.** The single-level glob `.gaia/scripts/*.sh` is a contract several places depend on by value, not a hazard to be tidied away: it is a literal registry entry, and it is what a worktree provisioning step chmods through. A new subdirectory leaves both reading a tree that no longer matches, silently. Reference density compounds it, worst in the family with the cleanest case for a move: its members are each named across dozens of files, so relocating one family is a several-hundred-file rename for no functional gain.
+
+<!-- gaia:maintainer-only:start -->
+In GAIA's source a bats suite asserts the glob too. This directory has already paid for a location change once, recorded in GAIA's own release health taxonomy: moving it across the release boundary added it as a manifest-owned tree without adding it as a scan target to either distribution-boundary primitive, and the repair covered the one file its finding named rather than the tree it had un-excluded.
+<!-- gaia:maintainer-only:end -->
 
 <!-- gaia:maintainer-only:start -->
 Three further decisions ride with a new root script in the maintainer repository, and each one is a real edit somewhere else:

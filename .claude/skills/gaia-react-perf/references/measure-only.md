@@ -18,10 +18,10 @@ fix it re-captures to confirm the targeted finding goes to zero, then stops.
   43K tokens) for a trivial flow. Only the reduced summary is read. Any
   drill-down is a targeted query (for example `jq`) against the on-disk raw, not
   a full read.
-- **Deferred surfacing is NOT part of v1.** The trip-wire offer, the local
-  audit prompt, the CI label plus merge-gate, and decline persistence are
-  designed but unbuilt. The reduced summary's `findings` array is the unit a
-  future surfacing flow would consume; reserve that seam, do not build it.
+- **Surfacing is out of scope.** The skill reports a diagnosis and stops: no
+  trip-wire offer, audit prompt, CI label, or decline persistence. The reduced
+  summary's `findings` array is the seam a surfacing flow would consume;
+  reserve it, do not build one here.
 
 ## Step 1: Confirm intent and target
 
@@ -157,7 +157,7 @@ live `react-doctor/` ESLint rule ids. `react-doctor` is GAIA's static layer (an
 ESLint-based, always-on, pre-merge `react-doctor/`-namespaced rule set surfaced
 via the `react-doctor` skill); this runtime tool is the complementary diagnosis
 layer. But none of the three labels below is an enabled `react-doctor/` rule:
-`jsx-no-new-object-as-prop` has no literal lint-rule equivalent in this repo, and
+`jsx-no-new-object-as-prop` has no literal lint-rule equivalent in GAIA's lint config, and
 `jsx-no-constructed-context-values` / `no-unstable-nested-components` exist only
 as `eslint-plugin-react` `react/*` names that are not enabled. Present them as
 symptom-to-cause-to-fix guidance. Never claim a named lint rule catches the

@@ -116,7 +116,11 @@ The audit workflow is **adopter-tunable**: `conflict` never clobbers adopter edi
 
 `gaia-ci.yml` is the single scheduled entry point. It carries every distinct tool cron, and when one fires it asks each tool due on that cron whether it has work, then calls only the ones that answer `run` as reusable workflows. Each `gaia-ci-<tool>.yml` therefore carries `workflow_call` and `workflow_dispatch` and no `schedule` of its own, and behaves identically whether the scheduler calls it or an adopter runs it by hand. GitHub bills every job a whole-minute minimum, so a tool waking its own cron paid that floor just to reach a decision; one scheduler pays it once per fired cron instead. Each rendered `gaia-ci-*` job splits its shared setup into a `checkout` partial and a separate `node-setup` partial, which routes through `.github/actions/gaia-setup-node` for pnpm and Node provisioning, with the pre-run skip decision between them: the decision needs only the `gh` CLI and the committed `.gaia/cli/gaia` bundle, neither of which needs an install, so a tick that skips no longer pays for checkout, pnpm, Node, and a frozen-lockfile install before learning it had no work. `gaia setup-ci check-drift` reports the scheduler alongside the per-tool files, on the same states plus `disabled` for a config with no CI-mode tool.
 
-The `gaia-ci-*` templates pin their third-party actions by full commit SHA with a resolved-tag comment, not by a mutable major tag, so a force-moved upstream tag cannot execute in an adopter's job holding that job's token. The composite action owns the Node-provisioning pin instead of the template family. A CLI guard keeps the pins from drifting from the maintainer's own live workflows: it asserts every template action is SHA-pinned and that each pin equals the one the corresponding live workflow runs, so a weekly action bump has to land in the live workflow first and fails the guard until the template pin is mirrored to match. `/setup-gaia` (not `/update-gaia`) is what delivers a re-rendered `gaia-ci-*` workflow to an adopter, since these templates regenerate wholesale rather than merge.
+The `gaia-ci-*` templates pin their third-party actions by full commit SHA with a resolved-tag comment, not by a mutable major tag, so a force-moved upstream tag cannot execute in an adopter's job holding that job's token. The composite action owns the Node-provisioning pin instead of the template family. `/setup-gaia` (not `/update-gaia`) is what delivers a re-rendered `gaia-ci-*` workflow to an adopter, since these templates regenerate wholesale rather than merge.
+
+<!-- gaia:maintainer-only:start -->
+A CLI guard keeps the pins from drifting from GAIA's own live workflows: it asserts every template action is SHA-pinned and that each pin equals the one the corresponding live workflow runs, so a weekly action bump has to land in the live workflow first and fails the guard until the template pin is mirrored to match.
+<!-- gaia:maintainer-only:end -->
 
 Re-rendering the workflow makes the update PR self-modifying, so [[Code Review Audit CI]]'s `claude-code-action` refuses to audit it and the run self-mod-skips. This is a UX/ordering cleanup: it replaces a wasted full audit under the stale workflow plus a manual refresh step with one expected skip. It does **not** earn a clean CI `GAIA-Audit` stamp; the merge proceeds on a local audit marker / trailer or the out-of-scope bypass (see [[PR Merge Workflow]]).
 
@@ -159,8 +163,10 @@ After a new GAIA release is announced (watch releases on `gaia-react/gaia`). Cad
 - [[Quality Gate]]: run the gate after the `update-gaia` skill finishes and before committing.
 - [[Worktrees]]: the shared-state model `.gaia/local/cache/shared/update-gaia/` follows.
 
+<!-- gaia:maintainer-only:start -->
 ## Communications Guidance (User-Facing Docs)
 
 The update flow is **fully automatic from the adopter's perspective**: the GAIA statusline (`.gaia/statusline/gaia-statusline.sh`) runs `.gaia/scripts/check-updates.sh` as a background refresher and renders a `Run /update-gaia (GAIA <version> available)` indicator from `.gaia/local/cache/shared/update-check.json` when a newer release exists. **Do not mention `/update-gaia`, the `update-gaia` skill, or any manual update step in user-facing release notes, README, CHANGELOG, or marketing docs.** Surfacing a manual command implies adopters need to remember to run it, which is wrong.
 
 The skill and command files in `.claude/skills/update-gaia/` exist as the implementation but must not be promoted as a user-invoked workflow in external-facing copy.
+<!-- gaia:maintainer-only:end -->

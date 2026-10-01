@@ -104,7 +104,7 @@ The terse Task return is the contract the local re-run orchestrator reads; it do
 
 The wiki (`wiki/`) is the source of truth for patterns, decisions, and conventions worth preserving across reviews. The agent surfaces recurring anti-patterns or architectural concerns in its report so they can be filed into the wiki.
 
-`.claude/agent-memory/` is **not** treated as canonical: in this repo it is gitignored / machine-local, so anything written there is invisible to other developers and to fresh checkouts. Use the wiki for durable knowledge; let agent-memory accumulate only ephemeral, machine-local notes if at all.
+`.claude/agent-memory/` is **not** treated as canonical: GAIA's shipped `.gitignore` keeps it machine-local, so anything written there is invisible to other developers and to fresh checkouts. Use the wiki for durable knowledge; let agent-memory accumulate only ephemeral, machine-local notes if at all.
 
 ## Extension mechanism
 
