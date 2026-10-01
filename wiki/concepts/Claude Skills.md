@@ -20,40 +20,41 @@ GAIA's skills split into three groups: shared `gaia/references/` playbooks consu
 
 `.claude/skills/gaia/` holds no `SKILL.md`; it is a `references/` folder of nine deep-dive playbooks, each consumed by its matching `gaia-*` command or skill (the command/skill is the activation surface; the reference is the runbook it reads).
 
-| Reference               | Consumed by               | What it does                                                                                                              |
-| ----------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `references/plan.md`    | `/gaia-plan`              | Plan a feature using [[Task Orchestration]]. See [[GAIA Plan]].                                                          |
-| `references/handoff.md` | `gaia-handoff` skill      | Write a session handoff doc. See [[GAIA Handoff]].                                                                       |
-| `references/pickup.md`  | `gaia-pickup` skill       | Resume from the most recent handoff. See [[GAIA Pickup]].                                                                |
-| `references/audit.md`   | `/gaia-audit`             | Research-then-gate knowledge-store audit: Stage 1 (research) → Apply/Discuss/Decline gate → Stage 2 (apply). Both stages run `general-purpose` subagents pinned to Sonnet; a clean (0-action) audit whose coverage record passes a deterministic re-count skips the gate and auto-applies. See [[GAIA Audit]]. |
-| `references/spec.md`    | `/gaia-spec`              | Author an immutable SPEC artifact via Socratic discovery. See [[GAIA Spec]].                                             |
-| `references/fitness.md` | `/gaia-fitness`           | Health-check and auto-heal the project's Claude integration.                                                             |
-| `references/forensics.md` | `/gaia-forensics`       | Turn a workflow misfire into a classified, filing-ready bug report.                                                      |
-| `references/harden.md`  | `/gaia-harden`            | Review recurring audit findings and draft the lowest-weight hardening (check / skill / rule).                            |
-| `references/wiki.md`    | `gaia-wiki` skill         | Wiki maintenance chain (sync / consolidate / lint).                                                                      |
+| Reference                 | Consumed by          | What it does                                                                                                                                                                                                                                                                                                   |
+| ------------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `references/plan.md`      | `/gaia-plan`         | Plan a feature using [[Task Orchestration]]. See [[GAIA Plan]].                                                                                                                                                                                                                                                |
+| `references/handoff.md`   | `gaia-handoff` skill | Write a session handoff doc. See [[GAIA Handoff]].                                                                                                                                                                                                                                                             |
+| `references/pickup.md`    | `gaia-pickup` skill  | Resume from the most recent handoff. See [[GAIA Pickup]].                                                                                                                                                                                                                                                      |
+| `references/audit.md`     | `/gaia-audit`        | Research-then-gate knowledge-store audit: Stage 1 (research) → Apply/Discuss/Decline gate → Stage 2 (apply). Both stages run `general-purpose` subagents pinned to Sonnet; a clean (0-action) audit whose coverage record passes a deterministic re-count skips the gate and auto-applies. See [[GAIA Audit]]. |
+| `references/spec.md`      | `/gaia-spec`         | Author an immutable SPEC artifact via Socratic discovery. See [[GAIA Spec]].                                                                                                                                                                                                                                   |
+| `references/fitness.md`   | `/gaia-fitness`      | Health-check and auto-heal the project's Claude integration.                                                                                                                                                                                                                                                   |
+| `references/forensics.md` | `/gaia-forensics`    | Turn a workflow misfire into a classified, filing-ready bug report.                                                                                                                                                                                                                                            |
+| `references/harden.md`    | `/gaia-harden`       | Review recurring audit findings and draft the lowest-weight hardening (check / skill / rule).                                                                                                                                                                                                                  |
+| `references/wiki.md`      | `gaia-wiki` skill    | Wiki maintenance chain (sync / consolidate / lint).                                                                                                                                                                                                                                                            |
 
 ### Scaffolders
 
-| Skill           | Triggers on                                                                                                                             |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `new-component` | "create a component", "scaffold a card": drops a PascalCase folder under `app/components/` with `index.tsx` and a `tests/` dir          |
-| `new-hook`      | "create a useFoo hook", "add a hook under app/hooks": drops a `useThing.ts` + Vitest test                                               |
-| `new-route`     | "add a new page", "scaffold /dashboard": wires a route file + `app/pages/{Group}/{PageName}/` + i18n keys                               |
+| Skill           | Triggers on                                                                                                                                |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `new-component` | "create a component", "scaffold a card": drops a PascalCase folder under `app/components/` with `index.tsx` and a `tests/` dir             |
+| `new-hook`      | "create a useFoo hook", "add a hook under app/hooks": drops a `useThing.ts` + Vitest test                                                  |
+| `new-route`     | "add a new page", "scaffold /dashboard": wires a route file + `app/pages/{Group}/{PageName}/` + i18n keys                                  |
 | `new-service`   | "add a service", "scaffold the projects API": drops `app/services/{layer}/{name}/` (parsers, types, requests) and matching MSW collections |
-| `update-deps`   | Autonomous Dependabot: fired by `/gaia-init`, accepted from the statusline `Run /update-deps` indicator, or "update dependencies"       |
-| `update-gaia`   | Pull a later GAIA release into the project: accepted from the SessionStart update prompt, or "pull the latest GAIA"                     |
+| `update-deps`   | Autonomous Dependabot: fired by `/gaia-init`, accepted from the statusline `Run /update-deps` indicator, or "update dependencies"          |
+| `update-gaia`   | Pull a later GAIA release into the project: accepted from the SessionStart update prompt, or "pull the latest GAIA"                        |
 
 ### Context-triggered
 
-| Skill              | Triggers on                                                                                                  |
-| ------------------ | ------------------------------------------------------------------------------------------------------------ |
-| `eslint-fixes`     | ESLint failures, autofix conflicts (no-void, prefer-screen-queries, jest-dom matchers, you-dont-need-lodash) |
-| `playwright-cli`   | Browser automation tasks (navigation, form fill, screenshots, data extraction)                               |
-| `react-code`       | Writing/reviewing React components, hooks, event handlers, extraction decisions                              |
-| `skeleton-loaders` | Building skeleton loading states; shimmer animation; preventing layout shift                                 |
-| `tailwind`         | Tailwind class names, conditional classes, variants, twJoin/twMerge, theme tokens                            |
-| `tdd`              | Red-green-refactor; integration tests; test-first development                                                |
-| `typescript`       | Naming, exports, Zod schemas, function params, no-switch / no-enum patterns                                  |
+| Skill                | Triggers on                                                                                                  |
+| -------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `eslint-fixes`       | ESLint failures, autofix conflicts (no-void, prefer-screen-queries, jest-dom matchers, you-dont-need-lodash) |
+| `naming-conventions` | Naming or renaming identifiers in any language; vague names, abbreviations, redundant type noise             |
+| `playwright-cli`     | Browser automation tasks (navigation, form fill, screenshots, data extraction)                               |
+| `react-code`         | Writing/reviewing React components, hooks, event handlers, extraction decisions                              |
+| `skeleton-loaders`   | Building skeleton loading states; shimmer animation; preventing layout shift                                 |
+| `tailwind`           | Tailwind class names, conditional classes, variants, twJoin/twMerge, theme tokens                            |
+| `tdd`                | Red-green-refactor; integration tests; test-first development                                                |
+| `typescript`         | camelCase, exports, Zod schemas, function params, no-switch / no-enum patterns                               |
 
 ### Statusline update indicators
 
@@ -61,15 +62,15 @@ Every GAIA nudge (`update-gaia`, `gaia-serena-sync`, `update-deps`, `gaia-audit`
 
 The right side fits itself to the terminal width rather than letting a nudge past the edge disappear. Each nudge sizes independently through its own Large, Medium, and Small forms, then an icon, then a trailing `+N`: Large carries the full reason, Medium a short form with just its number (`Run /update-deps (28)`; the version for `/update-gaia`; `/gaia-audit` has none, since its reasons share no unit), and Small the bare command. The lowest-priority nudge still at its current size shrinks first, so a higher-priority nudge is never at a later size step than a lower-priority one (a nudge with no Medium form, such as `/gaia-audit`, shows its Small text at that step), and past the icon stage `+N` names how many more are hidden. `/setup-gaia` is the one exception: while setup is incomplete it renders alone, as text, at every width. Claude Code does not re-render the statusline on a bare terminal resize, so the line refits on the next message rather than immediately. The icon legend:
 
-| Icon | Command             | Count shown          |
-| ---- | ------------------- | --------------------- |
-| 🌍   | `/update-gaia`      | none                   |
-| 🔭   | `/gaia-serena-sync` | missing language count |
-| 📦   | `/update-deps`      | outdated count         |
-| 🔎   | `/gaia-audit`       | none                   |
+| Icon | Command             | Count shown                      |
+| ---- | ------------------- | -------------------------------- |
+| 🌍   | `/update-gaia`      | none                             |
+| 🔭   | `/gaia-serena-sync` | missing language count           |
+| 📦   | `/update-deps`      | outdated count                   |
+| 🔎   | `/gaia-audit`       | none                             |
 | 🔨   | `/gaia-harden`      | candidate count (none when zero) |
-| 💸   | `/gaia-debt`        | open issue count       |
-| 🧹   | `/gaia-residue`     | aged residual count    |
+| 💸   | `/gaia-debt`        | open issue count                 |
+| 🧹   | `/gaia-residue`     | aged residual count              |
 
 The statusline surface is chosen over a `SessionStart` `<system-reminder>` hook because system-reminders are visible only to the model; the user never sees them, so prompts fire and snooze without the user being shown a choice. The statusline is always visible, has no snooze state, and clears itself the moment the underlying cache reports clean.
 

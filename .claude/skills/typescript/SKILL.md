@@ -26,20 +26,7 @@ Map snake_case ↔ camelCase at API call boundaries, not in schemas or UI code.
 
 ## Naming, Descriptive and Self-Documenting
 
-Follow Apple's Swift API Design Guidelines: names should be clear at the point of use, reading like prose. Favor long, descriptive names over short or abbreviated ones. Code should be readable without consulting documentation.
-
-- **Functions and methods**: imperative verb phrases: `calculateProgressPercentageFromCompletedSets`, `processUserOnboardingProfile`
-- **Parameters**: role, not type: `totalSeconds` not `n`, `emailAddress` not `s`
-- **Variables**: what they hold: `restDurationInSeconds`, `submitButton`, `weightInputValue`
-- **No abbreviations**: spell out unless universally known (`url`, `id`, `api`): `animationDurationInMilliseconds` not `animDur`
-- **No redundant words**: `availableExercises` not `exerciseArray`, but don't sacrifice clarity for brevity
-
-> **Exception, React event handlers** follow `handle{Action}{Element}` from the react-code skill
-> (e.g. `handleClickSave`, `handleChangeInput`), the `{Element}` is required, since a bare
-> `handleClick` or `handleChange` trips `react-doctor/no-generic-handler-names`. The descriptive
-> naming guidelines above apply to utilities, hooks, callbacks, and non-event-handler functions.
-
-Read `references/naming-conventions.md` for extended BAD/GOOD examples of each naming pattern.
+Owned by the naming-conventions skill (`.claude/skills/naming-conventions/SKILL.md`).
 
 ## Exported Functions, Explicit Return Types
 

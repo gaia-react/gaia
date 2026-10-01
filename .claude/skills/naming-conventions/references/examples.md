@@ -16,7 +16,7 @@ const processUserOnboardingProfile = (user: User) => { ... }
 const calculateProgressPercentageFromCompletedSets = (completedSets: number, totalSets: number) => { ... }
 ```
 
-> React event handlers are the exception (`handle{Action}{Element}`); see the event-handler note in `typescript/SKILL.md`. The descriptive guidelines above apply to utilities, hooks, callbacks, and non-event-handler functions.
+> React event handlers are the exception (`handle{Action}{Element}`); see the event-handler note in `naming-conventions/SKILL.md`. The descriptive guidelines above apply to utilities, hooks, callbacks, and non-event-handler functions.
 
 ## Parameters and Arguments
 
@@ -52,19 +52,7 @@ const maximumRetryAttemptCount = 3;
 
 ## Avoiding Abbreviations
 
-Spell out words in full unless the abbreviation is universally known (e.g., `url`, `id`, `api`).
-
-```ts
-// BAD
-const calcBMI = (ht: number, wt: number) => { ... }
-const usrPref = getUserPref();
-const animDur = 300;
-
-// GOOD
-const calculateBodyMassIndex = (heightInCentimeters: number, weightInKilograms: number) => { ... }
-const userDisplayPreferences = getUserDisplayPreferences();
-const animationDurationInMilliseconds = 300;
-```
+Examples live in `.claude/rules/no-abbreviations.md`.
 
 ## Omitting Redundant Words
 
