@@ -480,12 +480,13 @@ setup() {
 #
 # wiki/concepts/PR Merge Workflow.md states the instruction at four sites
 # across three sections (digest economics, the pre-commit-a-disposition
-# bullet, and both bullets inside the three-round session cap); each gets its
-# own scoped assertion. The cap section states the heading twice, in two
-# bullets whose surrounding wording differs, so a bare fragment grep there
-# would pass on either bullet alone and miss a mutation of the other; each of
-# the two assertions below pins enough of its own bullet's wording to land
-# on that bullet specifically within the shared section.
+# bullet, and two sentences inside the branch checkpoint section); each gets
+# its own scoped assertion. The checkpoint section states the heading twice,
+# in two sentences whose surrounding wording differs (the accept paragraph
+# and the 'does not stop a round' bullet), so a bare fragment grep there
+# would pass on either sentence alone and miss a mutation of the other; each
+# of the two assertions below pins enough of its own sentence's wording to
+# land on that sentence specifically within the shared section.
 
 @test "Group A: the digest-economics section carries the accept-and-note heading, with its article" {
   local section
@@ -499,16 +500,16 @@ setup() {
   printf '%s\n' "$section" | grep -qF -- 'under the heading `## Accepted residuals (recorded, not fixed)`' || return 1
 }
 
-@test "Group A: the three-round-session-cap section carries the accept-and-note heading, with its article, at its 'does not stop a round' bullet" {
+@test "Group A: the branch-checkpoint section carries the accept-and-note heading, with its article, at its 'does not stop a round' bullet" {
   local section
-  section="$(extract_section_or_fail "$WIKI" '^#### The three-round session cap' '^#{3,4} ')" || return 1
+  section="$(extract_section_or_fail "$WIKI" '^#### The branch checkpoint' '^#{3,4} ')" || return 1
   printf '%s\n' "$section" | grep -qF -- 'is accept-and-note under the heading `## Accepted residuals (recorded, not fixed)` in the PR body, then the same post-and-merge.' || return 1
 }
 
-@test "Group A: the three-round-session-cap section carries the accept-and-note heading, with its article, at its continuation-prompt paragraph" {
+@test "Group A: the branch-checkpoint section carries the accept-and-note heading, with its article, at its accept paragraph" {
   local section
-  section="$(extract_section_or_fail "$WIKI" '^#### The three-round session cap' '^#{3,4} ')" || return 1
-  printf '%s\n' "$section" | grep -qF -- 'already recorded under the heading `## Accepted residuals (recorded, not fixed)` in the PR body,' || return 1
+  section="$(extract_section_or_fail "$WIKI" '^#### The branch checkpoint' '^#{3,4} ')" || return 1
+  printf '%s\n' "$section" | grep -qF -- 'the remaining entries are recorded under the heading `## Accepted residuals (recorded, not fixed)` in the PR body, in the entry format' || return 1
 }
 
 @test "Group A: the Out-of-scope waive section (Audit Disposition and Debt Fix.md) carries the accept-and-note heading, with its article" {
@@ -589,7 +590,7 @@ setup() {
   printf '%s\n' "$section" | grep -qE -- 'was changed|previously did|as of ' && return 1
   section="$(extract_section_or_fail "$WIKI" '^#### When rounds stop: pre-commit a disposition for every branch' '^#{3,4} ')" || return 1
   printf '%s\n' "$section" | grep -qE -- 'was changed|previously did|as of ' && return 1
-  section="$(extract_section_or_fail "$WIKI" '^#### The three-round session cap' '^#{3,4} ')" || return 1
+  section="$(extract_section_or_fail "$WIKI" '^#### The branch checkpoint' '^#{3,4} ')" || return 1
   printf '%s\n' "$section" | grep -qE -- 'was changed|previously did|as of ' && return 1
   section="$(extract_section_or_fail "$DISPOSITION" '^### Out-of-scope waive' '^#{2,3} ')" || return 1
   printf '%s\n' "$section" | grep -qE -- 'was changed|previously did|as of ' && return 1

@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-09-20
-updated: 2026-09-30
+updated: 2026-10-01
 tags: [concept, gaia, scripts]
 ---
 
@@ -30,11 +30,15 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 
 | Script | Ships | Invoker | What it is |
 |---|---|---|---|
+| `audit-fix-verify.sh` | yes | the PR Merge Workflow fix round | Records the working-tree baseline before a fixer runs and checks the fixer's changes against the dispositions afterward. |
 | `audit-key-lib.sh` | yes | sourced | Mints the worktree-partitioned key every audit artifact path is built from, and the general slug rule those keys share. |
+| `audit-loop-eval.sh` | yes | `audit-loop-bound.sh` (sourced), the PR Merge Workflow checkpoint (CLI) | Judges each audit round's findings and prints the verdict and the checkpoint brief; read-only. |
+| `audit-loop-record.sh` | yes | the PR Merge Workflow fix round, the CI audit workflow | Writes the marker-delimited `## Audit rounds` section into a pull request body. |
+| `audit-loop-state-lib.sh` | yes | sourced | Reads, validates and writes the per-branch audit loop state, and parses the typed grant and accept lines. |
 | `audit-member-digest.sh` | yes | CI, audit hooks, agent definitions | Prints one Code Audit Team member's content digest, and exits non-zero printing nothing on any condition it cannot resolve. |
 | `audit-noop-detect.sh` | yes | `.claude/rules/subagent-dispatch.md`, the audit fan-out surfaces | Decides whether a dispatched agent's report artifact is a real result or a silent no-op. |
 | `audit-resolve-scope.sh` | yes | every Code Audit Team agent definition | Resolves a member's review scope in one command: diff bases, changed-file lists, the dirty-in-scope check, and the scope digest. |
-| `audit-scope-digest.sh` | yes | agent definitions, CI | Carries a member's own content digest between scope resolution and clearance write, the two Bash calls that must agree. `--release` drops a capture when a round ends without publishing a marker or refusal (a self-healed round), so the next round captures fresh. |
+| `audit-scope-digest.sh` | yes | agent definitions, CI | Carries a member's own content digest between scope resolution and clearance write, the two Bash calls that must agree. `--release` drops a capture when a round ends without publishing a marker or refusal (a self-healed round), so the next round recaptures fresh. |
 | `audit-window-lib.sh` | yes | sourced | Shared derivation of the audit window a run is accounted against. |
 | `audit-write-clearance.sh` | yes | agent definitions, CI | The one writer for every Code Audit Team clearance marker. |
 | `audit-write-findings.sh` | yes | agent definitions | The one writer for a member's findings sidecar, the report of record the merge workflow reads. |

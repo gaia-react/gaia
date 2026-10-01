@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-09-20
+updated: 2026-10-01
 tags: [concept, claude, hooks]
 ---
 
@@ -31,11 +31,13 @@ The sourced libraries under `.claude/hooks/lib/` are deliberately absent. They a
 
 | Hook | Event or invoker | Purpose |
 |---|---|---|
+| `audit-loop-bound.sh` | PreToolUse (Agent\|Task) | Denies a Code Audit Team dispatch on a new tree once the branch's audit allowance is spent or its rounds stop converging, and prints the line a human types to continue. |
+| `audit-loop-grant.sh` | UserPromptSubmit | Records a human-typed `audit-grant <n>` or `audit-accept` line as the answer to a pending branch checkpoint. |
 | `audit-stamp-trailer.sh` | Invoked by path from the `code-audit-*` agent definitions | Writes the `GAIA-Audit` commit trailer on HEAD for a member that earned its clearance marker. |
+| `block-audit-loop-write.sh` | PreToolUse (Edit\|Write\|MultiEdit), PreToolUse (Bash, Monitor) | Refuses a write to the per-branch audit loop state, so only the loop's own hooks change it. |
 | `block-env-read.sh` | PreToolUse (Bash, Read, Grep) | Read-side guard for dotenv paths, across all three tool tiers that can reach one. |
 | `block-env-write.sh` | PreToolUse (Edit\|Write\|MultiEdit) | Refuses a write targeting a `.env` file. |
 | `block-eslint-config-edit.sh` | PreToolUse (Edit\|Write\|MultiEdit) | Puts every edit to an ESLint flat config to the operator, on the filename alone. |
-| `block-fourth-audit-round.sh` | PreToolUse (Agent\|Task), SessionStart (clear) | Denies a fourth Code Audit Team dispatch wave in one session on one branch. |
 | `block-handrolled-pr-poll.sh` | PreToolUse (Bash, Monitor) | Denies a hand-rolled merge wait that never reads `mergeable`, and names the shipped one. |
 | `block-main-destructive-git.sh` | PreToolUse (Bash, Monitor) | Denies a commit on `main`/`master`, a force-push to it, and a push destined for it. |
 | `block-manifest-write.sh` | PreToolUse (Bash, Edit\|Write\|MultiEdit) | Refuses a write to the release-generated manifest, through the edit tools and the common Bash vectors alike. |
@@ -123,9 +125,11 @@ Each script reads `tool_input.command` from stdin and filters by content; there 
 - **`worthiness-presence-check.sh`** (PreToolUse, Bash deny): before each `gh pr merge` (armed through the shared verb-arming decision below), scopes to the emergent test files the PR changed and denies the merge when a changed emergent test has no worthiness-ledger line matching its current content signal. Sits alongside `pr-merge-audit-check.sh` as an independent deny on the same event. Checks presence plus signal match only, never the verdict. No-op when zero emergent tests changed; fail-open on missing tooling or unparseable files. See [[Worthiness Presence Gate]].
 - **`pr-merge-audit-check.sh`** (PreToolUse, Bash deny): denies `gh pr merge` until every Code Audit Team member the branch's scope resolves to has written its clearance marker under `.gaia/local/audit/`, and denies again when a member's markers are stale against the pushed head. Its siblings on this event are `worthiness-presence-check.sh` above and `post-findings-block-on-merge.sh`. See [[PR Merge Workflow]].
 
-### Workflow-boundary safeguard (Bash, Agent, SessionStart)
+### Workflow-boundary safeguard (Bash, Agent, UserPromptSubmit)
 
-- **`block-fourth-audit-round.sh`** (PreToolUse deny + SessionStart release): denies an `Agent` dispatch of a `code-audit-*` member once a session has already dispatched three waves on a branch, where a wave is the acting checkout's HEAD tree. It counts each wave's tree in a per-`session_id` counter under `.gaia/local/cache/`. `/clear` releases the guard; compaction deliberately does not. See [[PR Merge Workflow#The three-round session cap]].
+- **`audit-loop-bound.sh`** (PreToolUse deny on `Agent|Task`): denies a dispatch of a `code-audit-*` member on a new tree once the branch's recorded rounds reach the allowance, or earlier when the evidence says the rounds stopped converging, and records each allowed round in a per-branch state file under `.gaia/local/audit-loop/`. The deny message carries the grant and accept lines a human types to continue. The hook is registered on no SessionStart event, so `/clear` and compaction leave the branch state untouched. See [[PR Merge Workflow#The branch checkpoint]].
+- **`audit-loop-grant.sh`** (UserPromptSubmit): the only writer of the allowance half of the branch state. It records an answer only when the whole typed prompt is exactly `audit-grant <n>` or `audit-accept`, in an interactive session, with a checkpoint pending for the branch. Any other prompt that mentions either word is rejected visibly and records nothing. See [[PR Merge Workflow#The branch checkpoint]].
+- **`block-audit-loop-write.sh`** (PreToolUse deny on `Edit|Write|MultiEdit`, `Bash` and `Monitor`): refuses any write that targets the branch state files, so Claude can neither raise its own allowance nor reset the history. It is a text guard over the natural spellings of a write. See [[PR Merge Workflow#The branch checkpoint]].
 - **`block-handrolled-pr-poll.sh`** (PreToolUse, Bash and Monitor deny): denies a shell loop that polls `gh pr view` for PR state, or `gh pr checks`, without reading `mergeable` anywhere in the command, and names `.gaia/scripts/pr-wait-merge.sh` in the denial. A wait that exits only on `MERGED` cannot end once the base branch has landed a conflicting change: the queued `--auto` merge never lands and the loop spins until a human notices. Two escapes, both cheap: a command that already reads `mergeable`/`CONFLICTING` passes however it is spelled, and so does one naming `pr-wait-merge.sh`, which covers the blessed path and any command quoting the shape while writing about it. It requires a loop keyword at a command position (after a separator or a newline, so multi-line commands are reached) *and* a `done`, which is what keeps it off prose mentioning a poll inside a `--body`. It binds both tools that take a raw shell command in the same `tool_input.command` field, so the shape is not armable from the tool beside the one the guard watches; a `Monitor` call carrying `ws` rather than a command is not a poll and passes. A text heuristic over an unbounded surface, the same posture `block-manifest-write.sh` takes: a poll written in Python, or inside a script file, walks past it. See [[PR Merge Workflow#Post-merge verification before cleanup]].
 
 ### Session-entry maintenance (SessionStart, PostToolUse)
@@ -203,7 +207,7 @@ That compounds with the ordinary cost of a `cd`: the working directory it sets p
 
 ## Adding hooks
 
-Ask Claude to add a hook; Claude will drop the script into `.claude/hooks/` and register it in `.claude/settings.json` via the `update-config` skill. **A registered hook owes an entry above.** The inventory in `## Bundled hooks` is what every reader treats as the complete hook layer, and it is hand-kept. Naming convention: `block-{noun}.sh` for blockers, `check-{noun}.sh` for advisory, `pre-{event}-{noun}.sh` for pre-event reminders. Blocker scripts begin with `#!/usr/bin/env bash` + `set -euo pipefail`, read stdin via `jq`, and either `exit 0`/`exit 2` or emit the structured `hookSpecificOutput.permissionDecision` JSON, except `block-fourth-audit-round.sh`, which opens `set -uo pipefail` because a fail-open decision hook must never abort mid-decision.
+Ask Claude to add a hook; Claude will drop the script into `.claude/hooks/` and register it in `.claude/settings.json` via the `update-config` skill. **A registered hook owes an entry above.** The inventory in `## Bundled hooks` is what every reader treats as the complete hook layer, and it is hand-kept. Naming convention: `block-{noun}.sh` for blockers, `check-{noun}.sh` for advisory, `pre-{event}-{noun}.sh` for pre-event reminders. Blocker scripts begin with `#!/usr/bin/env bash` + `set -euo pipefail`, read stdin via `jq`, and either `exit 0`/`exit 2` or emit the structured `hookSpecificOutput.permissionDecision` JSON, except `audit-loop-bound.sh`, which opens `set -uo pipefail` because a decision hook must not abort mid-decision: every failure path in it is an explicit deny.
 
 A CI gate (`.gaia/scripts/lint-hook-array-guard.sh`, run over `.claude/hooks/` and the shipped `.gaia/scripts/` on every push) flags a bare `"${arr[@]}"` / `"${arr[*]}"` expansion in a `set -u` body: on stock macOS `/bin/bash` (3.2.57) that expansion aborts with `unbound variable` over an empty array before any trailing `|| true` can catch it, a failure class the bash-5 test suites in CI cannot see. Guard the expansion (`"${arr[@]+"${arr[@]}"}"`) or check the array is non-empty first.
 

@@ -96,6 +96,16 @@ catchup-merge|git merge --no-edit origin/main|static|merges `origin/main` into t
 spawn-roster|resolve-audit-members.sh|exec|runs verbatim against this checkout
 noop-classify|audit-noop-detect.sh --shape audit-team-member|exec|runs against a fixture root, marker and sidecar
 wave-stamp|WAVE_STAMP="$(mktemp)"|exec|runs verbatim, and the claim under test is where mktemp puts the file
+loop-round-index|audit-loop-eval.sh current-round|exec|runs against a fixture branch whose seeded history records two rounds
+fix-baseline|audit-fix-verify.sh baseline --root|exec|runs against a fixture checkout carrying a self-heal edit, writing into a fixture run folder
+fixer-classify|audit-noop-detect.sh --shape agent-report-file|exec|runs against fixture fixer results, one complete and one short
+fix-verify|audit-fix-verify.sh check --root|static|needs a live round's dispositions, baseline, fixer result and the digests recorded for them
+fix-stage-delta|.changed_paths[], .reverted_paths[]|exec|runs against a fixture checkout and run folder, and the claim under test is which paths it stages
+gate-paths|gate_snapshot() {|exec|runs against a fixture checkout with a stand-in autofix substituted for the gate placeholder
+fix-round-check|audit-fix-verify.sh round-check|exec|runs against a fixture run folder with and without a passing verifier output
+record-publish|audit-loop-record.sh --pr <N> --values-json -|static|rewrites a live PR's body
+checkpoint-brief|audit-loop-eval.sh brief --root|static|needs a branch history with recorded rounds and a pending checkpoint
+resume-drift|audit-fix-verify.sh drift --root|exec|runs against a fixture checkout before and after a stand-in fixer edit
 residual-enumerate|gh pr list --state merged|exec|the --jq PROGRAM TEXT is extracted and run against the committed residue-corpus fixture, standing in for the network call
 findings-block|post-findings-block.sh --pr|static|posts a comment to a live PR
 post-status|post-audit-status.sh <current-member-marker>|static|posts a commit status to a live PR head
@@ -874,4 +884,145 @@ FAKE
   run extract_enumeration_jq_program "$reflowed"
   [ "$status" -ne 0 ]
   grep -qF -- "extract_enumeration_jq_program:" <<<"$output" || return 1
+}
+
+# ---------------------------------------------------------------------------
+# The fix round's fences (`#### The fix round: fixer, verifier, gate`)
+# ---------------------------------------------------------------------------
+
+# fix_fixture: a committed checkout holding a.txt, b.txt and c.txt, plus an
+# empty run folder beside it. Sets FIX_ROOT and FIX_RF.
+fix_fixture() {
+  FIX_ROOT="${BATS_TEST_TMPDIR}/fix-root"
+  FIX_RF="${BATS_TEST_TMPDIR}/run-folder"
+  git init -q -b feat/fence-fix "$FIX_ROOT"
+  printf 'a\n' >"${FIX_ROOT}/a.txt"
+  printf 'b\n' >"${FIX_ROOT}/b.txt"
+  printf 'c\n' >"${FIX_ROOT}/c.txt"
+  git -C "$FIX_ROOT" add -A
+  git -C "$FIX_ROOT" -c user.email=fence@example.invalid -c user.name=fence -c commit.gpgsign=false \
+    commit -q -m fixture
+  mkdir -p "$FIX_RF"
+}
+
+@test "fence loop-round-index: it prints the round count the branch history records" {
+  . "${REPO_ROOT}/.gaia/tests/helpers/audit-loop-fixture.sh"
+  alf_init
+  alf_branch feat/fence-round
+  alf_fill f.txt 2 one
+  alf_commit r1
+  alf_add_round '["code-audit-frontend"]'
+  alf_set_line f.txt 1 two
+  alf_commit r2
+  alf_add_round '["code-audit-frontend"]'
+  script="$(materialize 'audit-loop-eval.sh current-round')"
+  sub_literal "$script" '<RESOLVED_ROOT>' "$ALF_ROOT"
+  run bash -c "cd '$REPO_ROOT' && bash '$script' 2>/dev/null"
+  [ "$status" -eq 0 ]
+  [ "$output" = "2" ]
+}
+
+@test "fence fix-baseline: the baseline holds the self-heal edit and both digests print" {
+  fix_fixture
+  printf 'self-heal\n' >>"${FIX_ROOT}/a.txt"
+  printf '{"schema":1,"round":1,"entries":[]}\n' >"${FIX_RF}/dispositions-1.json"
+  script="$(materialize 'audit-fix-verify.sh baseline --root')"
+  sub_literal "$script" '<RESOLVED_ROOT>' "$FIX_ROOT"
+  sub_literal "$script" '<RUN_FOLDER>' "$FIX_RF"
+  sub_literal "$script" '<r>' 1
+  run bash -c "cd '$REPO_ROOT' && bash '$script'"
+  [ "$status" -eq 0 ]
+  jq -e '.dirty | has("a.txt")' "${FIX_RF}/baseline-1.json" >/dev/null
+  [ "$(grep -cE '^[0-9a-f]{64} ' <<<"$output")" -eq 2 ]
+  grep -qF -- 'dispositions-1.json' <<<"$output"
+  grep -qF -- 'baseline-1.json' <<<"$output"
+}
+
+@test "fence fixer-classify: a complete fixer result is real and a short one is a no-op" {
+  fix_fixture
+  printf '{"schema":1,"round":1,"attempt":1,"results":[{"member":"code-audit-frontend","finding_class":"rule/x","path":"b.txt","line":1,"disposition":"fixed","reason":"r","changed_paths":["b.txt"]}],"changed_paths":["b.txt"],"reverted_paths":[]}\n' \
+    >"${FIX_RF}/fixer-1-audit.json"
+  script="$(materialize 'audit-noop-detect.sh --shape agent-report-file')"
+  sub_literal "$script" '<RUN_FOLDER>' "$FIX_RF"
+  sub_literal "$script" '<r>' 1
+  short="${script}.short"
+  cp "$script" "$short"
+  sub_literal "$script" '<FIX_COUNT>' 1
+  run bash -c "cd '$REPO_ROOT' && bash '$script'"
+  [ "$status" -eq 0 ]
+  grep -qx 'real' <<<"$output"
+  # Two fix entries and one result: the truncated write the expected count
+  # exists to catch.
+  sub_literal "$short" '<FIX_COUNT>' 2
+  run bash -c "cd '$REPO_ROOT' && bash '$short'"
+  [ "$status" -eq 1 ]
+}
+
+@test "fence fix-stage-delta: it stages the self-heal, fixer and autofix paths and nothing else" {
+  fix_fixture
+  printf 'self-heal\n' >>"${FIX_ROOT}/a.txt"
+  bash "${REPO_ROOT}/.gaia/scripts/audit-fix-verify.sh" baseline --root "$FIX_ROOT" --round 1 \
+    --out "${FIX_RF}/baseline-1.json"
+  printf 'fixer\n' >>"${FIX_ROOT}/b.txt"
+  printf 'stray\n' >>"${FIX_ROOT}/c.txt"
+  printf 'autofix\n' >"${FIX_ROOT}/e.txt"
+  printf '{"schema":1,"round":1,"attempt":2,"results":[],"changed_paths":["b.txt"],"reverted_paths":[]}\n' \
+    >"${FIX_RF}/fixer-1-audit.json"
+  printf 'e.txt\n' >"${FIX_RF}/gate-1-1.paths"
+  script="$(materialize '.changed_paths[], .reverted_paths[]')"
+  sub_literal "$script" '<RESOLVED_ROOT>' "$FIX_ROOT"
+  sub_literal "$script" '<RUN_FOLDER>' "$FIX_RF"
+  sub_literal "$script" '<r>' 1
+  run bash "$script"
+  [ "$status" -eq 0 ]
+  staged="$(git -C "$FIX_ROOT" diff --cached --name-only -z | tr '\0' ' ')"
+  [ "$staged" = "a.txt b.txt e.txt " ]
+}
+
+@test "fence gate-paths: it records the paths the gate changed and no path it left alone" {
+  fix_fixture
+  printf 'delta\n' >>"${FIX_ROOT}/a.txt"
+  git -C "$FIX_ROOT" add -- a.txt
+  printf 'untouched\n' >>"${FIX_ROOT}/b.txt"
+  script="$(materialize 'gate_snapshot() {')"
+  sub_literal "$script" '<RESOLVED_ROOT>' "$FIX_ROOT"
+  sub_literal "$script" '<RUN_FOLDER>' "$FIX_RF"
+  sub_literal "$script" '<r>' 1
+  sub_literal "$script" '<k>' 1
+  # The stand-in autofix: rewrites a staged path and creates a new one. The
+  # needle is the placeholder comment's own text, so the rest of that line
+  # stays a comment after the substitution.
+  sub_literal "$script" '# run the per-round verification here' "echo fixed >>'${FIX_ROOT}/a.txt'; echo new >'${FIX_ROOT}/n.txt' #"
+  run bash "$script"
+  [ "$status" -eq 0 ]
+  [ "$(LC_ALL=C sort "${FIX_RF}/gate-1-1.paths" | tr '\n' ' ')" = "a.txt n.txt " ]
+}
+
+@test "fence fix-round-check: a gate log without a passing verifier output fails the round" {
+  fix_fixture
+  : >"${FIX_RF}/gate-1-1.log"
+  script="$(materialize 'audit-fix-verify.sh round-check')"
+  sub_literal "$script" '<RUN_FOLDER>' "$FIX_RF"
+  sub_literal "$script" '<r>' 1
+  run bash -c "cd '$REPO_ROOT' && bash '$script'"
+  [ "$status" -eq 1 ]
+  printf '{"schema":1,"round":1,"attempt":1,"pass":true,"errors":[]}\n' >"${FIX_RF}/verifier-1-1.json"
+  run bash -c "cd '$REPO_ROOT' && bash '$script'"
+  [ "$status" -eq 0 ]
+}
+
+@test "fence resume-drift: it passes on the baseline tree and names the path a fixer edited" {
+  fix_fixture
+  bash "${REPO_ROOT}/.gaia/scripts/audit-fix-verify.sh" baseline --root "$FIX_ROOT" --round 1 \
+    --out "${FIX_RF}/baseline-1.json"
+  script="$(materialize 'audit-fix-verify.sh drift --root')"
+  sub_literal "$script" '<RESOLVED_ROOT>' "$FIX_ROOT"
+  sub_literal "$script" '<RUN_FOLDER>' "$FIX_RF"
+  sub_literal "$script" '<r>' 1
+  run bash -c "cd '$REPO_ROOT' && bash '$script'"
+  [ "$status" -eq 0 ]
+  printf 'fixer\n' >>"${FIX_ROOT}/b.txt"
+  run bash -c "cd '$REPO_ROOT' && bash '$script'"
+  [ "$status" -eq 1 ]
+  grep -qx 'drift: b.txt' <<<"$output"
 }

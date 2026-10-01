@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-07-09
 created: 2026-07-09
-updated: 2026-08-22
+updated: 2026-10-01
 tags: [decision, claude, audit, ci]
 ---
 
@@ -166,7 +166,7 @@ Adding a `.sh` under `.claude/hooks/**` needs to reach `.gaia/local` only throug
 
 `.gaia/scripts/verify-audit-roster.sh` asserts a named set of invariants over the roster and ships to every clone (manifest class `owned`: a roster change reaches adopters through `/update-gaia`, so they need the check as much as the maintainer does). Its repair, `.gaia/scripts/write-audit-remits.sh`, ships alongside it in the same class, so an adopter who tunes the default member's globs is one command from green rather than hand-transcribing a region. The script's own header is the source of truth for the invariant list and the bounded, decidable glob dialect it classifies against; this page does not restate either.
 
-Two per-member properties -- every roster member's agent file registered in `AUDIT_MACHINERY_PATHS` (`.claude/hooks/lib/audit-machinery.sh`), and every member's `name` carrying the `code-audit-` prefix the three-round audit cap (`.claude/hooks/block-fourth-audit-round.sh`) binds a dispatched member to -- are real-tree assertions in the check's own bats suite rather than a runtime invariant of the script, because both hold over the committed roster whether or not a fixture roster is under test.
+Two per-member properties -- every roster member's agent file registered in `AUDIT_MACHINERY_PATHS` (`.claude/hooks/lib/audit-machinery.sh`), and every member's `name` carrying the `code-audit-` prefix the branch checkpoint's bound hook (`.claude/hooks/audit-loop-bound.sh`) binds a dispatched member to -- are real-tree assertions in the check's own bats suite rather than a runtime invariant of the script, because both hold over the committed roster whether or not a fixture roster is under test.
 
 Named limits, not defects: the check verifies coverage over *paths*, never over *globs*, so a claimant glob narrow enough to reach no file is invisible to it as a glob, and surfaces only through whatever tracked paths it leaves ownerless; it verifies *region parity*, never the truthfulness of the prose around a region. Repairing rotates every member's clearance, because the agent definitions the writer edits are audit-machinery paths, so running the repair invalidates every marker on a pull request and forces a full re-dispatch, which is why the repair is the orchestrator's to run before dispatch or between rounds, never mid-audit and never by a dispatched member.
 

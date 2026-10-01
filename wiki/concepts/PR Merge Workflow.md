@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-09-13
+updated: 2026-10-01
 tags: [concept, ci, review]
 ---
 
@@ -78,7 +78,7 @@ Spawning the local agent when CI has already stamped the marker is redundant; sk
 
 The gate is the most expensive feedback in the workflow, and it is a **merge** gate. The **first** dispatch on a branch has no earned clearance to anchor on, so every member reads its whole owned surface: 60-110k tokens per member and several minutes. Spending that to learn something a local check would have reported is a straight loss, because it consumes the round that should be finding what the author cannot see. Each repair then moves HEAD and rotates the digest, buying another round.
 
-The failure shape is specific and worth naming, because it does not look like a mistake while it is happening. New parsing, matching, or extraction logic is written; it handles the shapes the author thought of; a member finds a shape it mishandles; the fix ships; the next round finds another. Each round is individually productive, so the loop feels like progress while it is really a debugging session billed at audit rates. Three rounds to converge on one hand-rolled parser is the canonical case.
+The failure shape is specific and worth naming, because it does not look like a mistake while it is happening. New parsing, matching, or extraction logic is written; it handles the shapes the author thought of; a member finds a shape it mishandles; the fix ships; the next round finds another. Each round is individually productive, so the loop feels like progress while it is really a debugging session billed at audit rates. Several rounds to converge on one hand-rolled parser is the canonical case.
 
 So before the first dispatch, not after the first refusal:
 
@@ -166,13 +166,13 @@ The **trailer stamp**, landed by whichever dispatched member clears last, is con
 
 A member's self-heal is confined by a **deterministic gate** at the CI producer, and by instruction alone in local mode. CI's push gate reads one sourced refusal set (`.claude/hooks/lib/audit-selfheal-paths.sh`) naming the paths no member may edit: the instruction/convention surfaces (`.claude/`, `.specify/`, `wiki/`), `test/**`, the test surface inside `app/**` itself (the vitest suites `app/**/*.test.ts(x)` and everything under an `app/**/tests/` folder, plus the Chromatic stories `app/**/*.stories.tsx`, each shape taken from the collector that gates the merge rather than from the folder convention, since `app/**` is the default member's own repair surface and cannot be refused whole), the rest of `.gaia/**`, `.github/**` (the whole tree, so the executables the audit workflow runs to decide its own success status are covered alongside the workflow YAML), and the root package/build/lint config the default member's own glob list already covers (`package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `tsconfig*.json`, `*.config.*`).
 
-CI enforces it at push time: the self-heal step's `run:` body checks the staged diff against the refusal set before committing, and reads the whole diff so it cannot be evaded by the shape of the write. Local mode has no deterministic gate: a dispatched member is instructed to stay inside the boundary, and its working-tree edits reach the branch only through the orchestrator's commit (see [[#Parallel dispatch]]). **The orchestrator itself is not bound by the gate**: it is trusted rather than bounded (see Cross-remit findings below), because this same protocol's own execution routinely edits `.gaia/**`, `test/**`, and `.github/workflows/**`.
+CI enforces it at push time: the self-heal step's `run:` body checks the staged diff against the refusal set before committing, and reads the whole diff so it cannot be evaded by the shape of the write. Local mode has no deterministic gate: a dispatched member is instructed to stay inside the boundary, and its working-tree edits reach the branch only through the orchestrator's commit (see [[#Parallel dispatch]]). **The orchestrator itself is not bound by the gate**: it is trusted rather than bounded (see Cross-remit findings below), because this same protocol's own execution routinely edits `.gaia/**`, `test/**`, and `.github/workflows/**`. The fix round's fixer inherits that trust rather than a member's boundary, and its edits reach the branch only through the main thread's verified commit ([[#The fix round: fixer, verifier, gate]]).
 
 #### No-op detection and retry for each dispatched member
 
 A dispatched member can silently no-op: zero tool uses, a return that is just a harness-reminder-echo or output-style fragment instead of a real review. Nothing about the marker gate catches this on its own, fail-closed means no marker and no merge, but with no diagnosis of *why* the gate is stuck, just a stuck gate a human has to notice and investigate by hand. This mirrors, one layer up, the same deterministic classifier `code-audit-frontend` already runs on its own internal specialist and refuter fan-outs (`.claude/agents/code-audit-frontend.md`, "No-op detection and retry for each refuter").
 
-**Classify from the artifacts, and wait for them rather than for the dispatch to return.** The `Agent` call returns before the member has done anything (see the dispatch section above), so classifying at that moment hands the guard an empty hand: it reads a no-op, and the orchestrator spends its one hardened re-dispatch on a member that is still running correctly. Poll the audit directory for the member's marker or its findings sidecar, then classify. A dispatched wave is an open round, not a stopping point: while any member's artifact is still absent, keep polling rather than ending the turn on a status note. The stops this page wants are the ones it names: a surfaced double no-op, a round disposition under "When rounds stop" below, and the three-round cap's continuation prompt. A completion notification may arrive first and is a fine prompt to look, but the artifact is the exit condition: `.claude/rules/subagent-dispatch.md` forbids blocking on a signal that may never arrive, and this page states one procedure with it, not a second one.
+**Classify from the artifacts, and wait for them rather than for the dispatch to return.** The `Agent` call returns before the member has done anything (see the dispatch section above), so classifying at that moment hands the guard an empty hand: it reads a no-op, and the orchestrator spends its one hardened re-dispatch on a member that is still running correctly. Poll the audit directory for the member's marker or its findings sidecar, then classify. A dispatched wave is an open round, not a stopping point: while any member's artifact is still absent, keep polling rather than ending the turn on a status note. The stops this page wants are the ones it names: a surfaced double no-op, a round disposition under "When rounds stop" below, and a checkpoint denial from the bound hook ([[#The branch checkpoint]]). A completion notification may arrive first and is a fine prompt to look, but the artifact is the exit condition: `.claude/rules/subagent-dispatch.md` forbids blocking on a signal that may never arrive, and this page states one procedure with it, not a second one.
 
 ```bash
 bash .gaia/scripts/audit-noop-detect.sh --shape audit-team-member \
@@ -216,16 +216,158 @@ GAIA maintainers: the maintainer-only health audit departs as well, escalating a
 
 ### 2. Fix all issues
 
-The local fix loop reads the re-run carry-forward ledger (`.gaia/local/audit/<AUDIT_KEY>.rerun.json`) for a deterministic, lossless briefing rather than a main-thread-authored prompt summary: the fixer reads `remaining[]` for what to fix and `fixed_last_round[]` for what the previous round already cleared, and the next re-audit reads the same ledger. The filename keys on the incremental base plus branch, the same key the findings sidecar uses, so it does not move as HEAD moves within a round but it **does** advance roughly one stamp per cleared round that stamps a trailer commit: each such round's ledger is its own file, which is what makes every member co-dispatched in one round share exactly one ledger. Fail-open: when the ledger is absent, corrupt, or stale (a different branch or base), the loop falls back to the full report in the audit's return, which the agent emits whenever it could not write the ledger. That fail-open is why a key that moves costs the ledger far less than it costs the sidecar, whose absence is read fail-**closed** as a lost report.
+The main thread decides what happens to every finding, and a fresh fixer sub-agent makes the repairs ([[#The fix round: fixer, verifier, gate]]). The round's finding set comes from the members' findings sidecars, read deterministically with `bash .gaia/scripts/audit-loop-eval.sh findings --root <RESOLVED_ROOT> --round <r>` rather than summarized by the main thread: the sidecars hold every finding of every pass, clean or not. The re-run carry-forward ledger (`.gaia/local/audit/<AUDIT_KEY>.rerun.json`) still exists for the members, whose re-audit reads it as the prior-round briefing; it is not the fix round's briefing, because it holds only a refusing member's `remaining[]`.
 
-- Fix every Critical Issue, every Important Issue, and every Suggestion the audit identifies.
-- If a Suggestion involves an architectural tradeoff, breaking change, or conflicting convention, the agent escalates it with documented rationale rather than auto-fixing; the operator must resolve the escalation before the marker is written.
-- Re-run linting and type checking after fixes.
-- Stage, commit, and push the fixes; HEAD must move so the next audit runs against the fixed tree.
-- **Land the whole round's fixes in one commit**, never one commit per finding. Each commit rotates the reporting member's content digest and buys a re-dispatch to re-earn its marker, so a round repaired finding-by-finding pays for as many re-audits as the round had findings and clears no more than the single batched commit does. Fix everything the round reported, then commit and push once.
-- **Sweep for comment and prose the round falsified, before the last dispatch, and scope the sweep by the claim rather than by the diff.** A re-dispatch this round is already being paid, so a correction that rides it adds no marginal audit cost, which is the first arm of the digest economics below. Doing the sweep here also removes most of the need to decide the question after a member has already cleared, which is the expensive place to decide it. For every behaviour the round changed, grep the whole tree for the sentence asserting the old behaviour and read every hit. A citation list assembled by opening the files already suspected is the shape that fails, and it fails while reading as thorough: re-verifying such a list confirms the entries it holds and says nothing about the ones it never had. The sites that go stale sit in files the diff never opened, and no deterministic check here reads a prose claim about another file's behaviour, so the grep is the only instrument that finds them.
+- **Decide every finding in `dispositions-<r>.json`**, written to the run folder before the baseline: each finding of the round marked `fix`, `accept-residual`, `waive-out-of-scope` or `file`, with a reason. The file's shape lives in `.gaia/scripts/audit-fix-verify.sh`'s header. An in-scope finding defaults to `fix`: fix every Critical Issue, every Important Issue, and every Suggestion the audit identifies.
+- If a Suggestion involves an architectural tradeoff, breaking change, or conflicting convention, it is escalated with documented rationale rather than marked `fix`; the operator must resolve the escalation before the marker is written.
+- A finding outside the reporting member's remit is disposed by [[#Cross-remit findings]]. A non-fix disposition carries forward by identity key (member, finding class, path, line) to later rounds, and the finding leaves the branch's convergence count `A(r)` ([[#The branch checkpoint]]).
+- **During the loop the main thread never hand-edits a file a finding names.** The fixer carries every repair; the Quality Gate's autofix is the one exception, and the fix round records which paths it touched.
+- The main thread stages, commits, and pushes the verified round; HEAD must move so the next audit runs against the fixed tree.
+- **Land the whole round's fixes in one commit**, never one commit per finding. Each commit rotates the reporting member's content digest and buys a re-dispatch to re-earn its marker, so a round repaired finding-by-finding pays for as many re-audits as the round had findings and clears no more than the single batched commit does. Brief the fixer on everything the round marked `fix`, then commit and push once.
+- **Sweep for comment and prose the round falsified, before the last dispatch, and scope the sweep by the claim rather than by the diff.** The fixer's prompt carries the sweep, so its corrections ride the round's one commit. A re-dispatch this round is already being paid, so a correction that rides it adds no marginal audit cost, which is the first arm of the digest economics below. Doing the sweep here also removes most of the need to decide the question after a member has already cleared, which is the expensive place to decide it. For every behaviour the round changed, grep the whole tree for the sentence asserting the old behaviour and read every hit. A citation list assembled by opening the files already suspected is the shape that fails, and it fails while reading as thorough: re-verifying such a list confirms the entries it holds and says nothing about the ones it never had. The sites that go stale sit in files the diff never opened, and no deterministic check here reads a prose claim about another file's behaviour, so the grep is the only instrument that finds them.
 - **The sweep has converged when a round reports nothing this change authored.** Not when the gate is green, which it can be from the first round, and not when a round reports nothing at all. A round whose findings are all pre-existing is terminal; a round that falsifies a sentence this branch wrote is not, and the correction that repaired the previous round's false claim is itself a sentence this branch wrote. What to do with each kind of finding is [[#When rounds stop: pre-commit a disposition for every branch]] below; this is only the test for whether the sweep is finished.
-- Re-spawn the audit agent on the new HEAD until it reports clean, or until this session's third round, whichever comes first ([[#The three-round session cap]]).
+- Re-spawn the audit members on the new HEAD until a round reports clean, or until the bound hook denies a dispatch at the branch checkpoint ([[#The branch checkpoint]]).
+
+#### The fix round: fixer, verifier, gate
+
+The procedure the main thread runs for every round, in this order. It decides, dispatches, verifies, gates, and commits; one fresh fixer sub-agent per round repairs; a deterministic script checks the fixer's work against a baseline recorded before it ran, so nothing rests on the fixer's own account of what it did.
+
+The round's files live in the run folder `.claude/doctrine/execution.md` names for this branch, written `<RUN_FOLDER>` below: the main checkout's `.gaia/local/runs/<branch>/`, at its absolute path. Per round `r` and attempt `k` it holds `dispositions-<r>.json` (main thread), `baseline-<r>.json` and `verifier-<r>-<k>.json` (the verifier script), `fixer-<r>-audit.json` (the fixer, the round's one dispatch artifact), and `gate-<r>-<k>.log` and `gate-<r>-<k>.paths` (main thread). `.gaia/scripts/audit-fix-verify.sh`'s header owns the four JSON shapes. In a linked worktree, write each run-folder file with Bash at the main checkout's absolute path and read it back, never with Edit or Write.
+
+**Round index.** Before writing any run-folder file, read `r` from the branch history:
+
+```bash
+bash .gaia/scripts/audit-loop-eval.sh current-round --root <RESOLVED_ROOT>
+```
+
+The bound hook records a round when its wave is dispatched, so after a wave this prints that wave's index. Never count rounds by hand: a resumed session, or a round another session dispatched on the branch, puts a hand count off by one, and every file below is named by it.
+
+**Zero `fix` entries.** When the dispositions file marks no entry `fix` (every finding disposed non-fix, or the closing round after an accept), the round has no baseline, no fixer, no verifier, no gate, and no commit. Publish the record (below), then follow [[#When rounds stop: pre-commit a disposition for every branch]], or re-dispatch where that section says to.
+
+**Baseline.** After every dispatched member has returned, and before any fixer dispatch:
+
+```bash
+bash .gaia/scripts/audit-fix-verify.sh baseline --root <RESOLVED_ROOT> --round <r> --out <RUN_FOLDER>/baseline-<r>.json
+shasum -a 256 <RUN_FOLDER>/dispositions-<r>.json <RUN_FOLDER>/baseline-<r>.json
+```
+
+It refuses (exit 3) when the index differs from HEAD. A member's self-heal edit sits in the baseline, so the verifier judges only the fixer's delta from it and the round's one commit carries both. The baseline also closes the round's evidence: a findings sidecar written after it is never read as that round's finding set. Record both hashes in STATE.md (`sha256sum` gives the same digest where `shasum` is absent); the verifier takes them as `--dispositions-sha` and `--baseline-sha`, so a fixer that rewrites either file fails verification instead of widening its own bounds.
+
+**Fixer dispatch.** Exactly one fresh `general-purpose` sub-agent per round, on `model: "sonnet"` (the scoped-implementation row of [[Workflow Doctrine]]'s model table: the dispositions file carries the judgment and the verifier stands behind it), dispatched with the checkout path it edits. Pre-clear its artifact first, `rm -f <RUN_FOLDER>/fixer-<r>-audit.json`, and capture the expected tree as for a member wave:
+
+```text
+Agent(
+  subagent_type: "general-purpose",
+  model: "sonnet",
+  prompt: "Working root: <RESOLVED_ROOT>, the absolute path of the checkout you edit; use absolute paths under it for every file. Expected HEAD tree: <EXPECTED_TREE>, captured immediately before this dispatch.
+  MANDATORY FIRST ACTION, before any edit: run `git -C <RESOLVED_ROOT> rev-parse HEAD^{tree}` and compare it to <EXPECTED_TREE>. If that command errors (missing path, git unavailable) OR the value does not match exactly, STOP, edit nothing, and return only the mismatch or error as your entire output.
+  Your briefing is the JSON file <RUN_FOLDER>/dispositions-<r>.json. Repair every entry whose disposition is fix, cross-remit repairs included, and no other entry. Where you will not repair a fix entry, return it as disputed or cannot_fix with a reason rather than widening the repair. For every behaviour a repair changes, grep the whole tree for sentences asserting the old behaviour, read every hit, and correct the ones the repair falsified.
+  Write your result as JSON to <RUN_FOLDER>/fixer-<r>-audit.json with Bash at that absolute path, never with Edit or Write, then read it back. Its shape is the fixer-<r>-audit.json shape in <RESOLVED_ROOT>/.gaia/scripts/audit-fix-verify.sh's header: "attempt": 1, one results entry per fix entry, and every path you changed or reverted declared.
+  Never: run git that changes state (add, commit, push, stash, checkout, switch, reset, restore, rm, mv, branch); write a marker, a ledger, a findings sidecar, or anything under .gaia/local/audit/ or .gaia/local/audit-loop/; post a status; file, edit, or label an issue; edit CHANGELOG.md or the PR body; edit a path in the verifier's ENFORCEMENT_PATHS list unless the dispositions file names it in enforcement_paths_allowed.
+  Return only a thin digest: the counts of fixed, disputed, and cannot_fix entries, and the result file's path.
+  How your run ends: a reply with no tool call ends it, and the orchestrator reads whatever you returned as your finished result. Do not end on a summary that announces a next step, an offer to continue, a list of questions none of which blocks the work, or a progress report because a milestone is done; take the next step instead. Stop only when the task is complete, or when something you cannot resolve blocks it, and then say which."
+)
+```
+
+**Classify the fixer from its file**, polling the file rather than the notification, on the same terms as [[#No-op detection and retry for each dispatched member]]:
+
+```bash
+bash .gaia/scripts/audit-noop-detect.sh --shape agent-report-file --path <RUN_FOLDER>/fixer-<r>-audit.json --report-key results --expect-count <FIX_COUNT>
+```
+
+`<FIX_COUNT>` is the number of entries the dispositions file marks `fix`. On a no-op, pre-clear the path and re-dispatch once. A second consecutive no-op from the fixer stops the round with no commit: an interactive run asks the human, an unattended run stops and reports. This departs from `.claude/rules/subagent-dispatch.md`'s inline fallback on purpose, because during the loop the main thread never hand-edits a file a finding names, and doing the fixer's repairs itself would be exactly that.
+
+**Attempts.** `k` starts at 1 for the fixer's first write in a round and increases by 1 on every SendMessage continuation of that fixer, a verifier retry or a gate repair alike. Each continuation states the new `k` and tells the fixer to rewrite `fixer-<r>-audit.json` with `"attempt": k`; `verifier-<r>-<k>.json`, `gate-<r>-<k>.log` and `gate-<r>-<k>.paths` carry the same `k`.
+
+**Verify.**
+
+```bash
+bash .gaia/scripts/audit-fix-verify.sh check --root <RESOLVED_ROOT> --round <r> --attempt <k> \
+  --dispositions <RUN_FOLDER>/dispositions-<r>.json --dispositions-sha <DISPOSITIONS_SHA> \
+  --baseline <RUN_FOLDER>/baseline-<r>.json --baseline-sha <BASELINE_SHA> \
+  --result <RUN_FOLDER>/fixer-<r>-audit.json --out <RUN_FOLDER>/verifier-<r>-<k>.json
+```
+
+After a gate repair, add `--extra-declared <RUN_FOLDER>/gate-<r>-<j>.paths` once for every earlier gate attempt `j` in the round, so the autofix's own edits are not charged to the fixer. On a failure the main thread neither runs the gate nor commits. It continues the same fixer once via SendMessage with the verifier output's path, then verifies again; a second verifier failure in the round stops it: an interactive run asks the human, an unattended run stops and reports.
+
+**Gate.** After a verifier pass, stage exactly the delta: the baseline's self-heal paths, the paths the fixer declared, and any path an earlier gate attempt's autofix changed.
+
+```bash
+{
+  jq -r '(.dirty | keys[]), .untracked[]' <RUN_FOLDER>/baseline-<r>.json
+  jq -r '.changed_paths[], .reverted_paths[]' <RUN_FOLDER>/fixer-<r>-audit.json
+  cat <RUN_FOLDER>/gate-<r>-*.paths 2>/dev/null
+} | sort -u | while IFS= read -r p; do git -C <RESOLVED_ROOT> add -A -- "$p"; done
+```
+
+Then run the per-round verification, at the placeholder line of the snapshot block below: the [[Quality Gate]] when its skip logic says it applies, saving each attempt's output to `gate-<r>-<k>.log`.
+<!-- gaia:maintainer-only:start -->
+In this repo the per-round verification also runs `bash .gaia/tests/shell-lint.sh` plus every bats suite `git grep -l` finds referencing a changed file, through `.gaia/scripts/bats5.sh` with stdin closed, its output saved to the same log.
+<!-- gaia:maintainer-only:end -->
+
+Record which paths the gate's autofix changed, by snapshotting the dirty and untracked paths with their content hashes before the gate and after it:
+
+```bash
+gate_snapshot() {
+  {
+    git -C <RESOLVED_ROOT> diff --name-only -z
+    git -C <RESOLVED_ROOT> ls-files -z --others --exclude-standard
+  } | tr '\0' '\n' | sort -u | while IFS= read -r p; do
+    if [ -e "<RESOLVED_ROOT>/$p" ]; then
+      printf '%s\t%s\n' "$p" "$(git -C <RESOLVED_ROOT> hash-object -- "$p")"
+    else
+      printf '%s\tdeleted\n' "$p"
+    fi
+  done
+}
+BEFORE="$(mktemp)"
+AFTER="$(mktemp)"
+gate_snapshot >"$BEFORE"
+# run the per-round verification here, its output saved to <RUN_FOLDER>/gate-<r>-<k>.log
+gate_snapshot >"$AFTER"
+awk -F '\t' 'NR == FNR { seen[$0] = 1; next } !($0 in seen) { print $1 }' "$BEFORE" "$AFTER" >"<RUN_FOLDER>/gate-<r>-<k>.paths"
+```
+
+A path lands in `gate-<r>-<k>.paths` when the gate added it to the list or changed its content. On a gate failure, unstage (`git -C <RESOLVED_ROOT> restore --staged .`), continue the same fixer via SendMessage with the log's path, verify again with the `--extra-declared` files, and gate again: at most two repair attempts per round. A gate log exists only for an attempt whose verifier passed, because the verifier runs again after every repair continuation, before the next gate. A third gate failure stops the round without a commit: an interactive run asks one question, `Stop here and leave the PR open (Recommended)` or `One more repair attempt`, and an unattended run stops and reports.
+
+**Round check.** Before the commit, and after any stopped round:
+
+```bash
+bash .gaia/scripts/audit-fix-verify.sh round-check --run-folder <RUN_FOLDER> --round <r>
+```
+
+A non-zero exit means a gate ran on an attempt the verifier did not pass, and the round does not commit.
+
+**Commit, push, publish.** After a gate pass, run the staging block again so the passing attempt's autofix paths are staged, then make one commit carrying the self-heal, fixer, and autofix edits, and push. The [[Quality Gate]] page's stop-and-report step does not apply inside this loop: the branch checkpoint is where the human reviews, and the gate page carries the matching clause. Then rewrite the PR body's record:
+
+```bash
+bash .gaia/scripts/audit-loop-eval.sh record-values --root <RESOLVED_ROOT> |
+  bash .gaia/scripts/audit-loop-record.sh --pr <N> --values-json -
+```
+
+Nothing reads that section back. Publish it at every round end, not only after a push: a committed round, a clean or zero-fix round that makes no commit, the closing round, and any stop (a verifier, gate, or no-op stop, or a checkpoint). The history counts a round when it is dispatched, so a record written only after pushes undercounts. Then return to step 1 on the new HEAD.
+
+**STATE.md and resume.** The loop keeps the execution doctrine's STATE.md current, one Status line per step above, each naming its expected artifact, plus the `NEXT:` line:
+
+```text
+- [ ] round <r> dispositions: dispositions-<r>.json
+- [ ] round <r> baseline: baseline-<r>.json; sha256 dispositions <hex>, baseline <hex>
+- [ ] round <r> fixer: fixer-<r>-audit.json, real, attempt <k>
+- [ ] round <r> verify: verifier-<r>-<k>.json, pass
+- [ ] round <r> gate: gate-<r>-<k>.log and gate-<r>-<k>.paths, pass
+- [ ] round <r> round-check: exit 0
+- [ ] round <r> commit: <sha>, pushed
+- [ ] round <r> record: published
+NEXT: <the next step above, by name>
+```
+
+On resume, one state overrides the execution doctrine's generic rule to re-dispatch any dispatch whose artifact is missing: a round with `baseline-<r>.json` and no `fixer-<r>-audit.json`. Check the tree against the baseline first:
+
+```bash
+bash .gaia/scripts/audit-fix-verify.sh drift --root <RESOLVED_ROOT> --baseline <RUN_FOLDER>/baseline-<r>.json
+```
+
+Exit 0 means the tree equals the baseline, and re-dispatching the fixer is safe. Exit 1 (it prints `head-moved`, `index-changed`, or one `drift: <path>` line per path that differs) means a fixer edited and never wrote its result: do not re-dispatch the fixer. An interactive run asks the human, an unattended run stops and reports. A second fixer on top of those edits would hand the verifier a delta neither fixer declared.
 
 #### Applying the audit's own Suggestions: digest economics
 
@@ -264,50 +406,62 @@ An accepted in-scope residual adds no dependence on any gitignored `.gaia/local`
 The fix loop above says to re-spawn until the audit reports clean, and the digest economics beside it license accept-and-note instead. Choosing between them *after* a finding is on the table is the failure, because at that point the question is no longer what the rule was, it is whether this particular finding is worth one more round, and asked that way it answers yes almost every time. Write the rule down before the round runs.
 
 <!-- gaia:maintainer-only:start -->
-GAIA maintainers: before disposing any harness-path finding, read `.claude/rules/maintainers/harness-triage-threshold.md`. On harness paths it decides which findings are fixed or filed and which are waived, and it overrides this page's fix-every-Suggestion and file-every-out-of-scope-finding terms.
+GAIA maintainers: before disposing any harness-path finding in `dispositions-<r>.json`, read `.claude/rules/maintainers/harness-triage-threshold.md`. On harness paths it decides which findings are marked `fix` or `file` and which are waived, and it overrides this page's fix-every-Suggestion and file-every-out-of-scope-finding terms.
 <!-- gaia:maintainer-only:end -->
 
 A usable rule names a disposition for **every** way the round can come back, including carrying on. A rule that says only "stop and reconsider" has decided nothing: the same question returns one round later with no rule left standing. Three branches, and the third is the one commonly left open:
 
 - **Clean** → post the `GAIA-Audit` status (see [[#Posting the status last]]), then merge.
-- **Only accepted residuals, or prose an earlier round wrote** → accept-and-note under the heading `## Accepted residuals (recorded, not fixed)` in the PR body, post the `GAIA-Audit` status, then merge. Repeat findings on the previous round's own repair are the signal that each pass is enriching the artifact rather than correcting it, and every widening of a prose list invites the next one.
+- **Only accepted residuals** → accept-and-note under the heading `## Accepted residuals (recorded, not fixed)` in the PR body, post the `GAIA-Audit` status, then merge. **Prose an earlier round wrote** goes through the checkpoint instead: a round carrying only new findings on prose the previous round wrote reports `enriching`, the bound hook stops the loop at [[#The branch checkpoint]], and accept is the route there. Repeat findings on the previous round's own repair are the signal that each pass is enriching the artifact rather than correcting it, and every widening of a prose list invites the next one.
 - **A new, reproduced defect in the logic this change authored** → name the concrete outcome rather than deferring it, because "run another round" is not a disposition, it is the absence of one. Say what ships, what gets filed instead, and who decides. Where the round turns on a design decision an operator settled, retiring that decision is the operator's call, so the fallback is to report and recommend rather than to overturn it.
+
+A `quiet` verdict from the evaluator (no fixable finding this branch authored remains) only proposes this section's disposition; this section's own judgment of what this change authored decides it. The verdict counts findings by where they sit in the branch diff, which is evidence about authorship, not the judgment the three branches above ask for.
 
 **A round count is evidence, not a verdict.** What says a guard is the wrong instrument is the **direction** of its repairs, whether each one leaves the artifact smaller, and **where** the defects land: in the parser, the comparison, the payload, or the design. A fifth round in a part that has been stable since the third is a different finding from a fifth round in the same place, and the count alone cannot tell them apart.
 
-#### The three-round session cap
+#### The branch checkpoint
 
-Machine-enforced by `.claude/hooks/block-fourth-audit-round.sh`, which denies an `Agent` dispatch of a `code-audit-*` member once this session has already dispatched three waves on this branch. A wave is identified by the acting checkout's HEAD tree: every member one dispatch spawns shares that tree, so a whole round's parallel members cost one wave, and the single hardened re-dispatch of a member that no-op'd ([[#No-op detection and retry for each dispatched member]]) costs nothing, because it carries the tree unchanged. The deny is not a merge blocker: it denies a dispatch, never `gh pr merge`, and clearance semantics are untouched.
+Machine-enforced by `.claude/hooks/audit-loop-bound.sh` on every `Agent` dispatch of a `code-audit-*` member. A dispatch on a HEAD tree this branch has already audited passes free: every member of one wave shares that tree, and so does the single hardened re-dispatch of a member that no-op'd ([[#No-op detection and retry for each dispatched member]]). A dispatch on a tree not yet audited on the branch starts a new round. The hook first evaluates the previous round itself, from that round's findings sidecars, and stores the result in the branch history; it then denies when the branch has used its allowance, or when the previous round's verdict is `stalled` or `enriching` with no answer recorded since. Otherwise it records the new round and allows it. The deny is not a merge blocker: it denies a dispatch, never `gh pr merge`, and clearance semantics are untouched.
 
-A session dispatches at most **three rounds** on a branch. A round is one dispatch wave, whatever that wave spawns: a first dispatch of every owed member is one round, and so is a later re-dispatch of the single member whose digest rotated, because what the cap bounds is this session's budget rather than the members' work. Round three's findings are fixed, committed, and pushed like any other round's; what the cap forbids is the fourth wave.
+The state is per branch, never per session. History, written only by that hook, and allowance, written only by the grant hook (`.claude/hooks/audit-loop-grant.sh`), live in one main-anchored file keyed by the normalized branch and linked to the PR, so clearing or compacting the context, a new session, a fork, and a sub-agent all leave both byte-identical. The hook denies loudly, and never allows, on corrupt state, missing jq or git, a detached HEAD, a new-tree dispatch from a checkout with uncommitted tracked or staged changes (commit the round first), or an exceeded internal deadline. The defaults, the knobs, the verdict formulas, and the allowance fold live in `.gaia/scripts/audit-loop-eval.sh`'s header, which owns them.
 
-The bound is on **context and cost**, not on convergence. Reading a round well means reading it against what the earlier rounds said, and by the fourth the session holds three reports plus the whole repair history in a context it is about to compact, paying audit rates to reason from a transcript it can no longer see straight. Left alone the loop has no stop of its own, because every round it dispatches produces the fixes that buy the next one, and unattended that is unbounded spend. It is the same failure [[#When rounds stop: pre-commit a disposition for every branch]] describes, answered with a bound rather than a judgement, because the judgement gets made mid-loop by the session least able to make it.
+Each evaluated round gets one verdict, built on `A(r)`, the round's count of findings this branch authored that no earlier round disposed non-fix:
 
-Three things the cap does not do:
+- `continue`: the evidence shows the loop converging, so the round runs within the allowance.
+- `quiet`: `A(r)` is zero; a stop heuristic that proposes the [[#When rounds stop: pre-commit a disposition for every branch]] disposition and decides nothing on its own.
+- `stalled`: the branch-authored count has stopped falling across the latest rounds, so another round is unlikely to move it.
+- `enriching`: the latest round found a new finding on lines the previous round's repair wrote, the sign that each pass is adding to the artifact rather than correcting it.
+- `unknown`: a dispatched member left no readable findings sidecar for the round; missing evidence still counts as a round and is never read as `quiet`.
 
-- **It does not license a merge.** Clearance is unchanged: `gh pr merge` stays denied until every dispatched member holds a marker for its own current digest, and round three's fixes rotate the digests they touch, so the hook denies the merge with no help from this rule. A capped stop leaves a pushed branch and an open PR.
-- **It does not stop a round that ends the work.** The dispositions above resolve first, at any round number including the third: a clean round posts the `GAIA-Audit` status and merges, and a round carrying only accepted residuals or prose an earlier round wrote is accept-and-note under the heading `## Accepted residuals (recorded, not fixed)` in the PR body, then the same post-and-merge. The cap binds only where the disposition would be another round.
-- **It does not judge the change.** A count is evidence, not a verdict, so the direction of the repairs and where the defects land still decide whether this branch deserves a fourth round at all or needs a different instrument. The cap ends the session, not the question.
+**An interactive run asks the human, in this session.** When the hook denies a dispatch at the checkpoint, build the question from the evaluator, which is read-only:
 
-Reaching the cap is a stop, and a stop hands the work forward:
+```bash
+bash .gaia/scripts/audit-loop-eval.sh brief --root <RESOLVED_ROOT>
+```
 
-- Fix, commit, and push round three exactly as any other round.
-- Dispatch nothing further.
-- Emit a continuation prompt and end the run, naming the cap as the reason so the stop is not read as a blocker.
+Relay the brief verbatim into one AskUserQuestion, the brief's recommended option first: grant more rounds, accept the remainder as residuals and merge after one closing round, or stop and file. The body shows the rounds run, `A(r)` per round, the verdict and its evidence, the remaining findings by severity, and the brief's spend, labeled information only (or `unavailable`); spend never grants and never blocks. The grant option prints the brief's `grant_line` and the accept option its `accept_line`, each as the exact line to type. Selecting an option changes nothing until the human types that line as the whole prompt, in this same session; the grant hook records it, and reaches the checkpoint through this session's id when the session's working directory is on another branch. Claude never types, writes, or simulates the line, and never writes the branch state file. Stop and file needs no line: file the remaining in-scope findings through the `file-tech-debt` skill, leave the PR open, and report.
 
-The cap binds the work, not the transcript. Continuing this branch's rounds inside a subagent, a fork, or a fresh session this one starts spends the same money against the same branch and defeats the bound; the session that resumes is one a human starts by pasting the prompt.
+**An accept buys exactly one closing round**, flagged in the history. No fixer is dispatched for it, so the round has no `fixer-<r>-audit.json`: the members re-audit the current tree to earn their markers, and the remaining entries are recorded under the heading `## Accepted residuals (recorded, not fixed)` in the PR body, in the entry format `/gaia-residue` already parses (the `file:line`, the one-line failure mode, and the wrapped `gaia-debt-key` form [[#Applying the audit's own Suggestions: digest economics]] states). A closing round never re-arms the loop: if it does not clear, the next new-tree dispatch is denied and the human decides again.
 
-That prompt is the whole handoff. It lands in a session that can see none of this one's scrollback, so it carries its own context instead of referring to it: the PR number, the branch and its base, that three rounds are already spent, where the re-run carry-forward ledger sits (`.gaia/local/audit/<AUDIT_KEY>.rerun.json`) and that the fixer reads `remaining[]` and `fixed_last_round[]` from it, what each round fixed, which findings are accepted residuals already recorded under the heading `## Accepted residuals (recorded, not fixed)` in the PR body, and an instruction to re-read this page and resume at step 1. Fence it so it pastes as one unit.
+**An unattended run never asks and never grants.** A `/gaia-debt` drain that reaches a checkpoint pushes the round's fix, leaves the PR open, keeps the issue's `in-progress` claim, and reports the verdict, the evidence, a recommendation, and the next step: a human types the printed line in an interactive session on that branch, then re-runs this workflow. The branch state and the PR body carry everything the next run needs. CI never reaches a checkpoint, because the hook does not run there. `/gaia-harden` is interactive and asks like any interactive run.
 
-The reset is keyed to the session, so the resuming session starts a fresh three. A branch that genuinely needs six rounds gets them, three at a time, each read by a session with the room to read them.
+Three things the checkpoint does not do:
 
-`/clear` releases the count for the next session, the same sanctioned handoff described above: a human resumes by typing `/clear` and pasting the continuation prompt, and that reset is what lets the resuming session start its fresh three. Compaction does not release it, deliberately: releasing it there would reset the guard at the exact point described above, where the session holds the whole repair history in a context it is about to compact. There is no override flag: when a fourth round is genuinely warranted, the fresh session above is the sanctioned path, not a workaround.
+- **It does not license a merge.** Clearance is unchanged: `gh pr merge` stays denied until every dispatched member holds a marker for its own current digest, and a round's fixes rotate the digests they touch, so the merge hook denies with no help from this one. A stop at the checkpoint leaves a pushed branch and an open PR.
+- **It does not stop a round that ends the work.** The dispositions above resolve first, at any round number: a clean round posts the `GAIA-Audit` status and merges, and a round carrying only accepted residuals is accept-and-note under the heading `## Accepted residuals (recorded, not fixed)` in the PR body, then the same post-and-merge. The checkpoint binds only where the disposition would be another round.
+- **It does not judge the change.** A round count is evidence, not a verdict, so the direction of the repairs and where the defects land still decide whether this branch deserves more rounds or needs a different instrument. The checkpoint hands that question to the human with the evidence beside it.
+
+The bound is on spend and on a loop that is not converging. Every round's fixes buy the next round, so left alone the loop has no stop of its own; the fixer keeps the repair history out of the main thread's context, so the bound tracks what the loop is doing rather than how long one session has run it. The checkpoint round sits where the normal branch has already finished, and the early stops end a loop the evidence says is not converging before the allowance is spent.
+
+A fail-loud deny names its cause and its repair; for a corrupt state file that repair is a human moving the file aside from a terminal outside Claude Code. At a checkpoint the only recovery is the grant channel above. Nothing raises the allowance from a PR-body edit, an environment knob above the default, or an AskUserQuestion selection.
+
+The PR body's `## Audit rounds` section is the published record of the loop: total rounds, rounds per member, and human grants. The main thread writes it locally at every round end ([[#The fix round: fixer, verifier, gate]]); in CI mode one deterministic workflow step writes it for the audited head instead. Nothing reads it back to grant a round or set a count.
 
 #### Cross-remit findings
 
 A member can find a genuine defect in a file outside its own declared domain, a **cross-remit finding**. The member that found it applies no repair, whether or not the file's owner has already cleared it and whether or not the fix looks trivial; it reports the finding to the orchestrator instead. The orchestrator disposes of it one of two ways:
 
-- **In scope for the PR** → the orchestrator applies the repair itself. Its commit rotates the owning member's digest, invalidating that member's marker, so the owner is re-dispatched and reviews the repair made to its own file.
+- **In scope for the PR** → the orchestrator marks it `fix` in the round's dispositions file and the fixer repairs it ([[#The fix round: fixer, verifier, gate]]). The round's commit rotates the owning member's digest, invalidating that member's marker, so the owner is re-dispatched and reviews the repair made to its own file.
 - **Out of scope** → a non-security finding is recorded as **waived** (listed in the pull request body, not filed) when its path is either a gate-machinery path or a file this pull request already changes and the finding itself clears both disqualifiers; a finding satisfying neither term, or any security-class finding, is filed as a tech-debt issue exactly as it is today, through `/gaia-debt` and the `file-tech-debt` skill.
 
 Either way the finding is **recorded rather than lost**.
@@ -355,7 +509,7 @@ The digest key is what makes the team's markers order-independent, and it is far
 
 The key does not weaken the gate. A change to a file a member owns rotates only that member's digest, correctly forcing a re-audit of exactly the member whose content changed. A change to any gate-machinery file, anything whose bytes can change what a member reviews, who reviews it, where a clearance lands, or whether a clearance is believed, rotates **every** member's digest, since the machinery path set sits inside every member's input set by construction; this also closes the classifier-version skew hazard, since the classifier's own files are themselves machinery. See [[#Parallel dispatch]] for how this plays out when `code-audit-frontend` self-heals mid-dispatch.
 
-Two artifacts under `.gaia/local/audit/` key differently from a member's own marker, because their readers resolve identity at a different point than a content digest: the re-run carry-forward ledger (`<audit-key>.rerun.json`, keyed to the incremental base commit plus branch, an in-scope fix-loop briefing that never gates a merge; see [[Code Review Audit Agent#Re-run carry-forward ledger]]), and the per-member findings sidecar (`<audit-key>.<member>.findings.json`, one per dispatched member, also keyed to the incremental base plus branch; see [[#Findings block]] below). The ledger and the findings sidecar share an audit key but feed different consumers: the ledger briefs the **fix loop** (what remains, what the last round already fixed), the findings sidecar feeds the **posted findings block**, one array of every dispatched member's findings regardless of whether the pass was clean. The re-run carry-forward ledger reaps itself: code-audit-frontend deletes its own on a clean pass. Nothing reaps a marker or a findings sidecar; see [[Local Working State]].
+Two artifacts under `.gaia/local/audit/` key differently from a member's own marker, because their readers resolve identity at a different point than a content digest: the re-run carry-forward ledger (`<audit-key>.rerun.json`, keyed to the incremental base commit plus branch, an in-scope prior-round briefing for the members that never gates a merge; see [[Code Review Audit Agent#Re-run carry-forward ledger]]), and the per-member findings sidecar (`<audit-key>.<member>.findings.json`, one per dispatched member, also keyed to the incremental base plus branch; see [[#Findings block]] below). The ledger and the findings sidecar share an audit key but feed different consumers: the ledger briefs a member's **re-audit** (what remains, what the last round already fixed), the findings sidecar feeds the **posted findings block**, one array of every dispatched member's findings regardless of whether the pass was clean. The re-run carry-forward ledger reaps itself: code-audit-frontend deletes its own on a clean pass. Nothing reaps a marker or a findings sidecar; see [[Local Working State]].
 
 #### Skipping already-cleared members
 
