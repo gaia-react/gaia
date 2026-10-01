@@ -154,6 +154,16 @@ auditors:
       # can judge that is the one holding the script carrying the digest pin.
       # An `unowned:` entry would let a swapped blob dispatch nobody.
       - ".gaia/tests/vendor/**"
+      # Executable fixtures under the scripts' test tree. The `.jq` and `.sed`
+      # mutants are programs the bats suites run to prove a guard can fail, and
+      # `SHA256SUMS` pins the baseline copies that arm the byte-identity guard.
+      # Granted rather than declared unowned: a swapped mutant or baseline
+      # would quietly disarm a guard, so it should dispatch the reviewer who
+      # owns those suites. Scoped to `tests/fixtures` so no other `.jq`, `.sed`
+      # or `SHA256SUMS` file is claimed by accident.
+      - ".gaia/scripts/tests/fixtures/**/*.jq"
+      - ".gaia/scripts/tests/fixtures/**/*.sed"
+      - ".gaia/scripts/tests/fixtures/**/SHA256SUMS"
       - ".gaia/VERSION"
       - ".claude/settings.json"
       - ".github/CODEOWNERS"

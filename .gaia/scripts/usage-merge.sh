@@ -21,7 +21,7 @@
 # The render has its own cap, GAIA_USAGE_RENDER_CAP_SECS (default 10). The
 # hook registration sets no timeout, so a render the host kills would take
 # the roll-up printed after this block down with it. Measured on synthetic
-# ledgers, a render over twelve months of heavy use takes about 3 to 4 s, so
+# ledgers, a warm render over twelve months of heavy use takes about 2 to 2.5 s, so
 # 10 s is headroom for a slower machine without letting a pathological ledger
 # hold the merge. At the cap the render and its children are killed and one
 # `! readout timed out` line replaces the block.

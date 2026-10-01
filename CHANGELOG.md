@@ -14,6 +14,10 @@ A release change that requires the adopter to act, run a command or hand-migrate
 
 ## [Unreleased]
 
+### Changed
+
+- the per-PR usage block printed at `gh pr merge` now renders in about half the time or less on a long-lived clone, with the output unchanged. It keeps a regenerable cache beside the usage stores, `usage-branch-memo.json`, which is safe to delete and is rebuilt on the next readout. The scripts ship, so the change reaches adopters on their next `/update-gaia` (#2381)
+
 ### Fixed
 
 - the token cost roll-up's "unpriced model(s)" marker now filters model names through the same character allowlist every other cost readout uses, so a model name read from a transcript can no longer carry control characters into the output (#2383)
