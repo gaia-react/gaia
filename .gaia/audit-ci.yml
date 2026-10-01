@@ -164,6 +164,9 @@ auditors:
       # machinery path needs an owner, and no `*.sh` glob reaches a `.md`.
       - ".claude/hooks/lib/audit-member-protocol.md"
       - ".claude/rules/**"
+      # The execution doctrine a hook injects into branch and worktree
+      # sessions: instruction prose like the rules, never auto-loaded.
+      - ".claude/doctrine/**"
     audience: maintainer
     push_fixes: false
   - name: code-audit-maintainer-node

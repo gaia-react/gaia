@@ -23,6 +23,9 @@ setup_file() {
 }
 
 setup() {
+  # Isolate the rates state and the price feed (token-rates-hermetic.bats).
+  export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state"
+  export GAIA_RATES_FEED_DISABLE=1
   SCRIPTS="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   USAGE="$SCRIPTS/usage.sh"
   FLUSH="$SCRIPTS/usage-flush.sh"
