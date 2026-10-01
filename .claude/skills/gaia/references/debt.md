@@ -10,6 +10,8 @@ Execute the playbook yourself in the current conversation. The happy path runs s
 
 The skill drives a fix PR through the **full** PR Merge Workflow (cut a branch, implement, run the Quality Gate, commit, push, `gh pr create`, then the marker handshake and merge). Once the PR is up it drives straight through to merge with no second confirmation, resolving the PR to completion the standard way: the same Code Audit Team marker gate every feature PR passes, then `gh pr merge`. The gate is inviolate: never bypass, fake, or pre-empt the marker, and never substitute a bare `gh pr merge` for the workflow's handshake.
 
+The Workflow Doctrine (`wiki/concepts/Workflow Doctrine.md`) defines roles, git ownership, checkpoint and resume, and model choice. This playbook's own contract governs where it differs (for example it implements inline on the main thread and runs the Quality Gate once for the combined diff).
+
 ## Argument parsing
 
 Tokenize the first whitespace-separated word of `$ARGUMENTS`. Accept an optional

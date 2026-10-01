@@ -33,6 +33,7 @@ You also own the declarative half of that same subsystem: the roster your own di
 - `.claude/agents/code-audit-*.md`
 - `.claude/hooks/lib/audit-member-protocol.md`
 - `.claude/rules/**`
+- `.claude/doctrine/**`
 
 Filter the changed-file list against the globs above. **If none match, self-skip cleanly.** Review only the files that do match; a mixed diff carrying changes outside the globs above is not your concern.
 <!-- gaia:audit-remit:end -->
@@ -128,7 +129,7 @@ Several paths in your remit are not scripts, and the correctness core above and 
 - **The readers.** These files are parsed by scripts that mostly do not validate them, so a key the reader ignores fails silently rather than loudly. `git grep` the key or filename and read every consumer against the new value; a stale or dated entry (`token-rates.json` carries per-model `effective_through` dates) is wrong without being malformed.
 - **Deterministic checks instead of shellcheck.** `.gaia/audit-ci.yml` has `bash .gaia/scripts/verify-audit-roster.sh`; the manifest and `release-exclude` have the distribution harness. Run whichever applies and fold the result in, on the same advisory footing as shellcheck.
 
-**The instruction prose** — `.claude/agents/code-audit-*.md` and `.claude/rules/**` — governs what this team reviews and how, so a diff touching only it changes the gate itself with no code to shellcheck. Review it as a contract: does a stated claim still hold against the machinery it describes (a glob list, a hook registration, an exit code), and does a widened or dropped instruction quietly retire a check? A sentence falsified by a roster or hook change is a finding here even though nothing executes it, because these files are what a dispatched member reads instead of deriving the answer.
+**The instruction prose** (`.claude/agents/code-audit-*.md`, `.claude/rules/**`, and the injected `.claude/doctrine/**`) governs what this team reviews and how, so a diff touching only it changes the gate itself with no code to shellcheck. Review it as a contract: does a stated claim still hold against the machinery it describes (a glob list, a hook registration, an exit code), and does a widened or dropped instruction quietly retire a check? A sentence falsified by a roster or hook change is a finding here even though nothing executes it, because these files are what a dispatched member reads instead of deriving the answer.
 
 **The vendored artifact** — `.gaia/tests/vendor/**` — is an opaque blob that a gate tool is built from on every leg of the bats matrix. No oracle reads it and the correctness core assumes a script, so what is left to review is its **provenance**, and the one thing worth knowing is that provenance cannot be established from inside the repository. The archive and the `BATS_SHA256` pin that guards it are committed together, so they agree by construction: a swapped blob landing beside a matching updated pin passes the install's own digest check, the guard suite that compares the two, and every deterministic check in the tree. Confirm instead that the committed bytes are the archive the upstream project publishes at the pinned tag, and that the tag is the version the installer claims to install. A re-vendor whose provenance you cannot establish that way is a finding however clean the diff reads.
 

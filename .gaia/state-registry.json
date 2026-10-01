@@ -577,6 +577,30 @@
       "writer": "code",
       "reaped_by": null,
       "source": "SPEC-061 §ephemeral"
+    },
+    {
+      "id": "runs",
+      "path": "runs/",
+      "match": "prefix",
+      "kind": "dir",
+      "scope": "shared",
+      "keyed_by": "the normalized branch key with its branch: prefix dropped (slashes nest), or session-<session id> for a detached HEAD; one folder per key, never shared between keys",
+      "why": "Execution-doctrine run folder (STATE.md checkpoint, findings, log.md) written by Claude through Bash while a branch or worktree session runs. Shared so a worktree's folder lands in the one main-anchored store and a resumed session finds it from any tree. Small; a reaper is a filed follow-up, so reaped_by is null for now.",
+      "writer": "hand-authored",
+      "reaped_by": null,
+      "source": "SPEC-088 §shared"
+    },
+    {
+      "id": "doctrine-injected-marker",
+      "path": "cache/doctrine-injected.*",
+      "match": "glob",
+      "kind": "file",
+      "scope": "main-only",
+      "keyed_by": null,
+      "why": "Per-session dedupe marker written by workflow-doctrine-inject.sh (tmp + mv, through Bash) holding the last injected key so startup, resume and tool events do not re-inject an unchanged doctrine. Anchored to the main root, never the entered tree. One tiny file per session; a reaper is a filed follow-up, so reaped_by is null for now.",
+      "writer": "code",
+      "reaped_by": null,
+      "source": "SPEC-088 §main-only"
     }
   ],
   "residue": [

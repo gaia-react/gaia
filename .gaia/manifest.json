@@ -19,6 +19,7 @@
     ".claude/commands/gaia-serena-sync.md": "owned",
     ".claude/commands/gaia-spec.md": "owned",
     ".claude/commands/setup-gaia.md": "owned",
+    ".claude/doctrine/execution.md": "owned",
     ".claude/hooks/audit-stamp-trailer.sh": "owned",
     ".claude/hooks/block-env-read.sh": "owned",
     ".claude/hooks/block-env-write.sh": "owned",
@@ -71,6 +72,7 @@
     ".claude/hooks/wiki-session-start.sh": "owned",
     ".claude/hooks/wiki-session-stop.sh": "owned",
     ".claude/hooks/wiki-squash-autocommits.sh": "owned",
+    ".claude/hooks/workflow-doctrine-inject.sh": "owned",
     ".claude/hooks/worthiness-presence-check.sh": "owned",
     ".claude/instructions/add-locale.md": "owned",
     ".claude/instructions/remove-i18n.md": "owned",
@@ -81,6 +83,7 @@
     ".claude/rules/code-comments.md": "owned",
     ".claude/rules/code-search.md": "owned",
     ".claude/rules/coding-guidelines.md": "owned",
+    ".claude/rules/context-discipline.md": "owned",
     ".claude/rules/design-baseline.md": "owned",
     ".claude/rules/file-placement.md": "owned",
     ".claude/rules/guards-must-fail.md": "owned",
@@ -576,6 +579,7 @@
     "wiki/concepts/Usage Ledger.md": "wiki-owned",
     "wiki/concepts/Wiki Consolidate.md": "wiki-owned",
     "wiki/concepts/Wiki Sync.md": "wiki-owned",
+    "wiki/concepts/Workflow Doctrine.md": "wiki-owned",
     "wiki/concepts/Worktrees.md": "wiki-owned",
     "wiki/decisions/Claude Integration Fitness.md": "wiki-owned",
     "wiki/decisions/Co-located Tests Folder.md": "wiki-owned",
@@ -649,7 +653,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-30T15:09:27.362Z",
+  "generated": "2026-10-01T01:57:09.938Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",
