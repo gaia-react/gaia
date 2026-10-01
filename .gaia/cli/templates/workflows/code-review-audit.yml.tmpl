@@ -10,7 +10,8 @@ name: Code Review Audit
 # run, so the audit cannot complete regardless). (b) is reached both by a PR
 # that edits this file and by one on a stale base that never touched it.
 # The (b) skip stamps `GAIA-Audit` only when the PR is a verbatim re-render of
-# the bundled template (the /update-gaia refresh); otherwise it posts no status,
+# the bundled template (the /update-gaia refresh) that changes no other
+# roster-owned path; otherwise it posts no status,
 # so a local audit run supplies it, and for the stale-base case a rebase onto
 # the default branch also clears it.
 # Adopter-tunable knobs live at .gaia/audit-ci.yml.
@@ -1273,11 +1274,12 @@ jobs:
           # Self-modification path. The audit cannot run here, so without this
           # step the required GAIA-Audit check has no CI writer at all. When the
           # PR is a verbatim re-render of the bundled template (what
-          # /update-gaia produces), the local merge gate's self-mod-only bypass
-          # already clears every member, and this stamps the matching success so
-          # branch protection and the merge button agree with it. Any other
-          # self-modifying PR posts nothing, as before, and a local audit
-          # supplies the status. The writer re-proves the predicate itself.
+          # /update-gaia produces) and no other changed path has a roster owner,
+          # this stamps the success so branch protection and the merge button
+          # agree with the local self-mod-only bypass. A re-render that also
+          # changes a roster-owned path, and any other self-modifying PR, posts
+          # nothing, and a local audit supplies the status. The writer
+          # re-proves both conditions itself.
           bash .github/audit/write-audit-status.sh \
             --sha "${HEAD_SHA}" \
             --base "${PR_BASE_SHA}" \
@@ -1455,9 +1457,10 @@ jobs:
       # cleanly, so the job reds instead of silently succeeding with no
       # signal. Every other code path either reached its terminal
       # `GAIA-Audit` commit status write above (the stamp / stand-down
-      # steps, the verbatim re-render stamp included even when it declines)
-      # or is a gate-label skip, which posts no status; none needs anything further here: the required-check gate
-      # is that commit STATUS, not the job name.
+      # steps), or took the verbatim re-render stamp, which posts nothing
+      # when it declines, or is a gate-label skip, which posts no status;
+      # none needs anything further here: the required-check gate is that
+      # commit STATUS, not the job name.
       # ----------------------------------------------------------------
 
       - name: Status - audit aborted

@@ -1026,6 +1026,47 @@ commit_rerender_diff() {
   grep -qF "success_stamped=false" "$STEP_OUTPUT"
 }
 
+@test "verbatim re-render: a roster-owned machinery path riding along posts nothing and names its owner" {
+  body="$(extract_step_body "$RERENDER_STEP")"
+  commit_rerender_diff
+  mkdir -p "$SANDBOX/.gaia/scripts"
+  echo "echo changed" > "$SANDBOX/.gaia/scripts/x.sh"
+  git -C "$SANDBOX" add .gaia/scripts/x.sh
+  git -C "$SANDBOX" commit --quiet -m "machinery change riding along"
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ ! -f "$POST_LOG" ]
+  grep -qF "success_stamped=false" "$STEP_OUTPUT"
+  grep -qF "code-audit-maintainer-shell" <<<"$output"
+}
+
+@test "verbatim re-render: a PR changing only the workflow, template already on the base, posts success" {
+  body="$(extract_step_body "$RERENDER_STEP")"
+  template_bytes="name: Code Review Audit
+# release template
+"
+  mkdir -p "$SANDBOX/.gaia/cli/templates/workflows"
+  printf '%s' "$template_bytes" > "$SANDBOX/.gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
+  git -C "$SANDBOX" add .gaia/cli/templates/workflows/code-review-audit.yml.tmpl
+  git -C "$SANDBOX" commit --quiet -m "template already current on the base"
+  git -C "$SANDBOX" checkout --quiet -b feature
+  mkdir -p "$SANDBOX/.github/workflows"
+  printf '%s' "$template_bytes" > "$SANDBOX/.github/workflows/code-review-audit.yml"
+  git -C "$SANDBOX" add .github/workflows/code-review-audit.yml
+  git -C "$SANDBOX" commit --quiet -m "chore: refresh code-review-audit.yml"
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ -f "$POST_LOG" ]
+  grep -qF "state=success" "$POST_LOG"
+  grep -qF "success_stamped=true" "$STEP_OUTPUT"
+}
+
 @test "verbatim re-render: a stale-base self-modification that never touched the workflow posts nothing" {
   # self_modified compares against the default branch, so a PR that never
   # edited the workflow reaches this step too; its own diff holds no workflow.
