@@ -8,7 +8,8 @@
 # branch and each branch key, so a readout derives only the names the stores
 # gained since the last one instead of every name every time.
 #
-# Sourced by usage.sh after usage-lib.sh and usage-resolve-lib.sh. Defines
+# Sourced by usage.sh after usage-lib.sh, usage-resolve-lib.sh and
+# usage-render-lib.sh (gaia_usage_memo_view reads their jq defs). Defines
 # functions and variables only; sourcing runs no external command. bash 3.2
 # safe, and every function discards its own stderr so a memo failure can never
 # add a line to a readout.
@@ -415,6 +416,122 @@ gaia_usage_memo_save() {
   rm -f "$tmp" 2>/dev/null
   gaia_usage_memo_trace "write=fail"
   return 0
+}
+
+# The single parse's prelude. It binds the rows once, then answers in one of
+# three shapes: {"legacy":true} when the models cannot be listed (the
+# pre-change readout handles that case its own way), {"miss":<gap>} when the
+# memo lacks a name the stores present, or the view itself. The view takes the
+# restricted memo as an explicit argument because a def body's $keys always
+# names the global, so a binding made here could never reach it.
+# shellcheck disable=SC2016  # jq source, no shell expansion
+_GAIA_USAGE_MEMO_PRELUDE_JQ='
+[inputs | (try fromjson catch null) | select(type == "object" and .schema_version == 1)] as $urows
+| usage_rows($_lraw) as $links | usage_rows($_craw) as $cost
+| usage_present($urows; $links; $cost) as $present
+| if $present.models == null then {legacy: true}
+  else usage_memo_gap($present; $_memo) as $gap
+  | if $gap != null then {miss: $gap}
+    else usage_memo_keys($present; $_memo; $_default) as $mk | '
+
+# gaia_usage_memo_view <usage> <links> <cost> <default-branch> <filter> [jq args...]:
+# runs <filter> (a view over $urows, $links, $cost and $mk) in one jq process
+# over the stores and GAIA_USAGE_MEMO, printing the view, {"miss":...} or
+# {"legacy":true}. rc 1 when a store cannot be read or jq fails. Cursor rows are
+# dropped before jq, since no view reads them; only the flusher's own spelling
+# is dropped, so any other line reaches jq and is kept or skipped as before.
+# The globals the defs name are bound empty: no view the filter calls reads them.
+# shellcheck disable=SC2016  # jq source, no shell expansion
+gaia_usage_memo_view() {
+  local u="$1" l="$2" c="$3" def="$4" filter="$5" pricing="${GAIA_PRICING_JQ_DEFS-}" ps
+  shift 5
+  [ -f "$u" ] || u=/dev/null
+  [ -f "$l" ] || l=/dev/null
+  [ -f "$c" ] || c=/dev/null
+  [ -n "$pricing" ] || pricing='def priced_row($r): {dollars: 0, unpriced: []};'
+  LC_ALL=C grep -v '^{"schema_version":1,"kind":"cursor",' "$u" 2>/dev/null |
+    jq -nRc --rawfile _lraw "$l" --rawfile _craw "$c" --argjson _memo "${GAIA_USAGE_MEMO:-null}" \
+      --arg _default "$def" --arg u "" --arg l "" --arg c "" --argjson keys '{}' "$@" \
+      "$GAIA_USAGE_JQ_DEFS$pricing$GAIA_USAGE_RESOLVE_JQ$GAIA_USAGE_MODEL_JQ$GAIA_USAGE_VIEW_JQ$GAIA_USAGE_MEMO_JQ$_GAIA_USAGE_MEMO_PRELUDE_JQ$filter end end" \
+      2>/dev/null
+  ps="${PIPESTATUS[0]} ${PIPESTATUS[1]}"
+  # grep exits 1 when it selects no line (an empty store, or only cursor rows).
+  case "$ps" in "0 0" | "1 0") return 0 ;; *) return 1 ;; esac
+}
+
+# gaia_usage_memo_readout <lib-dir> <tel> <cost> <main-root> <rate-override>
+# <view> [jq args...]: the memo-path readout. Prints the view JSON, or rc 1 when
+# the caller must run the pre-change sequence instead (a jq or read failure, a
+# model list that cannot be built, or a second coverage miss). The memo is
+# saved before the view runs, so a readout killed at the render cap still
+# leaves the next one warm. Every step discards its stderr.
+gaia_usage_memo_readout() {
+  local dir="$1" tel="$2" cost="$3" main="$4" table="$5" view="$6" memo def models rates v rc n=0
+  shift 6
+  memo="$(gaia_usage_memo_path "$tel")"
+  def="$(gaia_usage_default_branch "${main:-.}" 2>/dev/null)"
+  gaia_usage_memo_stamp 2>/dev/null
+  gaia_usage_memo_reap "$tel"
+  gaia_usage_memo_load "$memo"
+  gaia_usage_memo_warm "$tel/usage.jsonl" "$tel/links.jsonl" "$cost"
+  if [ "$GAIA_USAGE_MEMO_DIRTY" = 1 ]; then gaia_usage_memo_save "$memo"; fi
+  models="$(gaia_usage_memo_models)" || return 1
+  usage_rates_load "$table" "$main" "$models" 2>/dev/null
+  rates="$USAGE_RATES"
+  gaia_usage_memo_seam
+  while :; do
+    v="$(gaia_usage_memo_view "$tel/usage.jsonl" "$tel/links.jsonl" "$cost" "$def" "$view" \
+      --argjson rates "$rates" "$@")" || return 1
+    case "$v" in
+      '{"miss":'*) [ "$n" = 0 ] || return 1 ;;
+      '' | '{"legacy":true}') return 1 ;;
+      *) printf '%s\n' "$v"; return 0 ;;
+    esac
+    n=1 rc=0
+    gaia_usage_memo_take_gap "$tel" "$v" || rc=$?
+    case "$rc" in
+      0) ;;
+      2) rates="$(gaia_usage_memo_rates_fresh "$dir" "$table" "$main")" || return 1 ;;
+      *) return 1 ;;
+    esac
+  done
+}
+
+# Prints the memo's models as compact JSON, the spelling usage_models_of
+# prints, so the rate heal sees the same argument a pre-change readout passes.
+gaia_usage_memo_models() { jq -er '.models | tojson' <<<"${GAIA_USAGE_MEMO:-}" 2>/dev/null; }
+
+# gaia_usage_memo_take_gap <tel> <view-output>: traces, merges and saves the
+# {"miss": gap} a view printed. rc 0 when done, 2 when the gap names a model so
+# the caller must reload rates, 1 when the output carries no readable gap.
+gaia_usage_memo_take_gap() {
+  local gap counts
+  gap="$(jq -c '.miss | objects' <<<"$2" 2>/dev/null)" || return 1
+  counts="$(jq -r '"raws=\(.raws | length) bkeys=\(.bkeys | length) models=\((.models | length) + (.models_extra | length))"' \
+    <<<"$gap" 2>/dev/null)" || return 1
+  [ -n "$counts" ] || return 1
+  gaia_usage_memo_trace "rerun=miss $counts"
+  gaia_usage_memo_merge_gap "$gap"
+  if [ "$GAIA_USAGE_MEMO_DIRTY" = 1 ]; then gaia_usage_memo_save "$(gaia_usage_memo_path "$1")"; fi
+  case "$counts" in *" models=0") return 0 ;; esac
+  return 2
+}
+
+# gaia_usage_memo_rates_fresh <lib-dir> <rate-override> <main-root>: prints the
+# rate table a fresh bash loads for the memo's models. The heal tries the feed
+# once per process and the readout's own process already spent that try on the
+# memo's earlier model list, so only a new process can heal the missed model.
+# rc 1 when nothing loads.
+gaia_usage_memo_rates_fresh() {
+  local models out
+  models="$(gaia_usage_memo_models)" || return 1
+  # shellcheck disable=SC2016  # bash source for the child, expanded there
+  out="$("${BASH:-bash}" -c '. "$1/usage-lib.sh" && . "$1/usage-resolve-lib.sh" && . "$1/usage-render-lib.sh" || exit 1
+    . "$1/ledger-path-lib.sh"; . "$1/token-pricing-lib.sh"
+    usage_rates_load "$2" "$3" "$4"; printf "%s" "$USAGE_RATES"' _ "$1" "$2" "$3" "$models" 2>/dev/null </dev/null)" || return 1
+  [ -n "$out" ] || return 1
+  gaia_usage_memo_trace "rates=reload"
+  printf '%s' "$out"
 }
 
 # Test observability for the window between the memo being saved and the view

@@ -15,6 +15,7 @@
 
 # shellcheck disable=SC2016  # jq programs are single-quoted on purpose
 
+_usage_self="${BASH_SOURCE[0]}"
 _usage_dir="${BASH_SOURCE[0]%/*}"
 [ "$_usage_dir" = "${BASH_SOURCE[0]}" ] && _usage_dir=.
 # shellcheck source=.gaia/scripts/usage-lib.sh
@@ -23,6 +24,9 @@ _usage_dir="${BASH_SOURCE[0]%/*}"
 . "$_usage_dir/usage-resolve-lib.sh"
 # shellcheck source=.gaia/scripts/usage-render-lib.sh
 . "$_usage_dir/usage-render-lib.sh"
+# Absent after a partial update: readouts then take the pre-change sequence.
+# shellcheck source=.gaia/scripts/usage-memo-lib.sh
+[ -f "$_usage_dir/usage-memo-lib.sh" ] && . "$_usage_dir/usage-memo-lib.sh" 2>/dev/null
 # shellcheck source=.gaia/scripts/ledger-path-lib.sh
 . "$_usage_dir/ledger-path-lib.sh" 2>/dev/null || true
 # Absent after a partial update: readouts then print cost as unavailable.
@@ -325,8 +329,9 @@ cmd_pr_branch() {
   return 0
 }
 
-# _readout <view-filter> <renderer> [renderer args...]
-_readout() {
+# _readout_legacy <view-filter> <renderer> [renderer args...]: the pre-change
+# readout, kept as the fallback the memo path can always land on.
+_readout_legacy() {
   local view="$1" render="$2" v hooks=0 unf
   shift 2
   KEYS="$(_keys)" || KEYS='{}'
@@ -334,6 +339,32 @@ _readout() {
     _jq_store '[usage_rows($u)[] | select(.kind == "segment") | (.by_model // {}) | keys[]] | unique' -c)"
   RATES="$USAGE_RATES"
   v="$(_jq_store "$view" -c)" || { _err "could not read the usage ledger"; return 0; }
+  gaia_usage_hooks_registered "$MAIN_ROOT" && hooks=1
+  unf="$(usage_unflushed "$PROJECTS_ROOT" "$MAIN_ROOT" "$TEL")"
+  "$render" "$v" "$hooks" "$unf" "$@"
+}
+
+# Reruns this command in a fresh bash that takes only the legacy readout: the
+# rate heal tries the feed once per process, and the memo path spent that try.
+_readout_fallback() {
+  gaia_usage_memo_trace "fallback=legacy"
+  _GAIA_USAGE_READOUT_LEGACY=1 "${BASH:-bash}" "$_usage_self" "$SUB" --main-root "$MAIN_ROOT" \
+    --telemetry-dir "$TEL" --ledger "$LEDGER" --projects-root "$PROJECTS_ROOT" ${_USAGE_ARGV[@]+"${_USAGE_ARGV[@]}"}
+}
+
+# _readout <view> <legacy-view> <renderer> [renderer args...]: <view> reads
+# $urows, $links, $cost and the memo-restricted $mk; <legacy-view> is the same
+# view for the pre-change sequence. The renderers never read RATES, so the memo
+# path can run in a subshell.
+_readout() {
+  local view="$1" legacy="$2" render="$3" v hooks=0 unf
+  shift 3
+  if [ -n "${_GAIA_USAGE_READOUT_LEGACY:-}" ] || ! declare -F gaia_usage_memo_readout >/dev/null 2>&1; then
+    _readout_legacy "$legacy" "$render" "$@"
+    return 0
+  fi
+  v="$(gaia_usage_memo_readout "$_usage_dir" "$TEL" "$LEDGER" "$MAIN_ROOT" "$RATE_TABLE" "$view" \
+    --argjson pr "$PR_JSON" --arg key "$KEY" --arg ref "${ARGS[0]-}")" || { _readout_fallback; return 0; }
   gaia_usage_hooks_registered "$MAIN_ROOT" && hooks=1
   unf="$(usage_unflushed "$PROJECTS_ROOT" "$MAIN_ROOT" "$TEL")"
   "$render" "$v" "$hooks" "$unf" "$@"
@@ -352,7 +383,8 @@ cmd_pr() {
   elif [ "$PR_JSON" = null ]; then
     _err "pr needs a PR number, --branch, or --key"; return 0
   fi
-  _readout 'usage_view_pr($pr; (if $key == "" then null else $key end))' usage_render_pr \
+  _readout 'usage_view_pr_of($urows; $links; $cost; $pr; (if $key == "" then null else $key end); $mk)' \
+    'usage_view_pr($pr; (if $key == "" then null else $key end))' usage_render_pr \
     "$PARTIAL" "$UNCONFIRMED" "$BRANCH"
 }
 
@@ -361,10 +393,11 @@ cmd_initiative() {
     _err "initiative takes one valid ref"
     return 0
   fi
-  _readout 'usage_view_initiative($ref)' usage_render_initiative
+  _readout 'usage_view_initiative_of($urows; $links; $cost; $ref; $mk)' 'usage_view_initiative($ref)' \
+    usage_render_initiative
 }
 
-cmd_reconcile() { _readout 'usage_view_reconcile' usage_render_reconcile; }
+cmd_reconcile() { _readout 'usage_view_reconcile_of($urows; $links; $cost; $mk)' 'usage_view_reconcile' usage_render_reconcile; }
 
 # _pre <write 0|1> [args...]: the shared preamble of every subcommand. Exits
 # on an inactive install or a bad argument; a readout exits 0 either way.
@@ -384,6 +417,7 @@ _pre() {
 
 SUB="${1-}"
 [ $# -gt 0 ] && shift
+_USAGE_ARGV=("$@")
 case "$SUB" in
   link) _pre 1 "$@"; cmd_link; exit ;;
   unlink) _pre 1 "$@"; cmd_unlink; exit ;;
