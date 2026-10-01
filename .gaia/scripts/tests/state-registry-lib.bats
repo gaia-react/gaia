@@ -140,10 +140,10 @@ run_in_repo() {
 # cutover-risk scenarios (C4-06, C4-08) run against the shipped registry: the
 # concrete proof that a per-tree entry is genuinely not shared.
 
-@test "gaia_registry_linkable_paths: prints exactly the 7 shared paths in stable order" {
+@test "gaia_registry_linkable_paths: prints exactly the 8 shared paths in stable order" {
   run_in_repo gaia_registry_linkable_paths
   [ "$status" -eq 0 ]
-  [ "${#lines[@]}" -eq 7 ]
+  [ "${#lines[@]}" -eq 8 ]
   [ "${lines[0]}" = "setup-state.json" ]
   [ "${lines[1]}" = "cache/shared" ]
   [ "${lines[2]}" = "audit" ]
@@ -151,6 +151,7 @@ run_in_repo() {
   [ "${lines[4]}" = "telemetry/usage-sweep.lock.d" ]
   [ "${lines[5]}" = "debt" ]
   [ "${lines[6]}" = "harden" ]
+  [ "${lines[7]}" = "runs" ]
 }
 
 @test "gaia_registry_linkable_paths: a per-tree entry (red-ledger) never appears" {
