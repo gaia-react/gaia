@@ -73,9 +73,12 @@
 #      (.gaia/cli/templates/workflows/code-review-audit.yml.tmpl), with every
 #      other changed path out of scope. This is the self-mod-only case
 #      /update-gaia Step 12 produces: it refreshes a stale audit workflow by
-#      copying the release template verbatim, which makes CI self-mod-skip (no
-#      stamp) and trips the in-scope guard of signal 5. The changed bytes are
+#      copying the release template verbatim, which makes the PR
+#      self-modifying, so CI cannot run its audit on it, and trips the in-scope
+#      guard of signal 5. The changed bytes are
 #      GAIA's own template, not adopter code, so there is nothing to audit.
+#      A tree that tracks .gaia/cli/src never takes this bypass: there the
+#      template is built from the workflow, so byte identity proves nothing.
 #
 # Signals 1-4 and 6 prove an audit ran against this content (or that none is
 # needed); signal 5 proves there is nothing in audit scope to review at all. A
@@ -1074,11 +1077,11 @@ check_out_of_scope_pr() {
 # the PR changes is .github/workflows/code-review-audit.yml AND its committed
 # bytes are a verbatim re-render of the bundled template
 # (.gaia/cli/templates/workflows/code-review-audit.yml.tmpl), with every other
-# changed path out of audit scope. This is the self-mod-only case /update-gaia
+# changed path out of audit scope and owned by no roster member. This is the self-mod-only case /update-gaia
 # Step 12 produces: it refreshes a stale installed audit workflow by copying the
 # release template verbatim, which makes the update PR self-modifying.
 # claude-code-action's workflow-validation guardrail then refuses to run CI's
-# audit (no GAIA-Audit stamp can land), and the out-of-scope bypass above denies
+# audit, and the out-of-scope bypass above denies
 # because .github/workflows/ is in scope, so without this signal the operator is
 # forced into a ceremonial local re-audit of bytes that are GAIA's own template,
 # not adopter code. The one in-scope path also sits in the auditable-base set,
@@ -1105,6 +1108,14 @@ check_self_mod_only_update_pr() {
   resolve_pr_record
   gate_cmd_names_the_record_pr || return 1
 
+  # A tree that tracks the CLI source builds the bundled template FROM the
+  # workflow in that same tree (.gaia/cli/package.json bundle:adopter), so blob
+  # identity below proves nothing there: the template is a build output of the
+  # change under review, not an independent copy. .gaia/cli/src is
+  # release-excluded, so an adopter tree, whose /update-gaia PR may refresh the
+  # workflow and the template together, never trips this.
+  git rev-parse --verify --quiet "HEAD:.gaia/cli/src" >/dev/null 2>&1 && return 1
+
   gate_resolve_base
   [ -n "$gate_base" ] || return 1
 
@@ -1122,15 +1133,23 @@ check_self_mod_only_update_pr() {
   [ -n "$changed" ] || return 1
 
   # Classify every changed path via the shared ORDERED THREE-WAY classifier
-  # (audit_self_mod_classify): out-of-scope surfaces are always fine; the ONE
-  # permitted in-scope path is the audit workflow itself; any other in-scope
-  # path (app/, test/, configs, a different workflow) denies immediately.
+  # (audit_self_mod_classify): the ONE permitted in-scope path is the audit
+  # workflow itself; any other in-scope path (app/, test/, configs, a different
+  # workflow) denies immediately. An out-of-scope path passes only while no
+  # roster member owns it: the re-render proof stands in for the audit
+  # workflow's owner alone, so an owned path (GAIA's own gate machinery under
+  # .claude/hooks/** or .gaia/**) still needs its member's marker. On an adopter
+  # roster those paths have no owner, so an /update-gaia PR still clears. The
+  # owner lookup reads the roster parsed once at the top of this hook.
   seen_audit_wf=0
   while IFS= read -r path; do
     [ -n "$path" ] || continue
     class="$(audit_self_mod_classify "$path")"
     case "$class" in
-      out-of-scope) continue ;;
+      out-of-scope)
+        [ -z "$(audit_owner_for_path "$path")" ] || return 1
+        continue
+        ;;
       audit-workflow) seen_audit_wf=1 ;;
       *) return 1 ;;
     esac
@@ -1253,14 +1272,15 @@ None of the accepted signals is present:
                      request's recorded head sha
   - Self-mod-only:   in-scope change is not a verbatim re-render of the bundled
                      code-review-audit.yml template (adopter edit, extra in-scope
-                     path, or missing template)
+                     path, missing template, or a tree that tracks the CLI source)
 
 To unblock:
   1. Spawn the code-audit-frontend agent locally, OR push to the PR branch
      and wait for CI's audit to stamp the GitHub commit status (CI skips
      when the audit workflow on this head differs from the copy on the
      default branch, whether this PR edited it or its base did, in that
-     case only the local audit will satisfy the gate).
+     case, outside a verbatim re-render CI may stamp, only the local audit
+     will satisfy the gate).
   2. Address any Critical/Important findings; commit and push.
   3. Re-spawn the agent on the new HEAD; let it write the marker.
   4. Retry gh pr merge.

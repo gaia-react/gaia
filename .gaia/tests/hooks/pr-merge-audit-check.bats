@@ -122,12 +122,12 @@ commit_files() {
 # Seed the bundled audit-workflow template onto the BASE commit (main), out of
 # the feature diff, then re-point feature at it. This mirrors the real
 # /update-gaia self-mod PR: the template already exists on the base and only the
-# installed .github/workflows/code-review-audit.yml is refreshed. The template is
-# maintainer-shell-owned, so committing it in the feature diff would dispatch that
-# member and defeat the frontend-only self-mod bypass under test; keeping it on
-# the base leaves the diff self-mod-clean while still giving the blob-identity
-# check a template to compare against. The template-absent case deliberately does
-# NOT call this.
+# installed .github/workflows/code-review-audit.yml is refreshed. Keeping the
+# template on the base leaves the diff to the workflow alone while still giving
+# the blob-identity check a template to compare against. The template is not
+# roster-owned (.gaia/cli/templates/** is declared unowned in .gaia/audit-ci.yml);
+# it sits on the base to mirror an update PR, where only the installed workflow
+# changes. The template-absent case deliberately does NOT call this.
 seed_base_template() {
   git -C "$REPO" checkout --quiet main
   mkdir -p "$REPO/.gaia/cli/templates/workflows"
@@ -557,6 +557,50 @@ assert_not_in_set() {
   run_merge_hook
   [ "$status" -eq 0 ]
   [[ "$output" == *'"permissionDecision": "deny"'* ]]
+}
+
+@test "denies a verbatim workflow re-render riding with roster-owned gate machinery" {
+  # .claude/hooks/** is out of audit scope but owned by a roster member, so the
+  # re-render proof cannot stand in for that member's clearance. Without this
+  # the bypass clears every dispatched member of a PR that edits the gate itself.
+  seed_base_template
+  commit_files \
+    ".github/workflows/code-review-audit.yml" "name: Code Review Audit" \
+    ".claude/hooks/pr-merge-audit-check.sh" "exit 0"
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"permissionDecision": "deny"'* ]]
+}
+
+@test "denies a workflow plus its identical template and CHANGELOG.md in a tree that tracks the CLI source" {
+  # The maintainer shape: .gaia/cli/src is tracked, so the template is built from
+  # the workflow in the same tree and blob identity proves nothing. The
+  # .gaia/cli/templates/** path is unowned, so nothing else declines this PR.
+  git -C "$REPO" checkout --quiet main
+  mkdir -p "$REPO/.gaia/cli/src"
+  printf 'export {};\n' > "$REPO/.gaia/cli/src/index.ts"
+  git -C "$REPO" add .gaia/cli/src/index.ts
+  git -C "$REPO" commit --quiet -m "track the CLI source on base"
+  git -C "$REPO" checkout --quiet -B feature main
+  commit_files \
+    ".github/workflows/code-review-audit.yml" "name: Code Review Audit" \
+    ".gaia/cli/templates/workflows/code-review-audit.yml.tmpl" "name: Code Review Audit" \
+    "CHANGELOG.md" "entry"
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"permissionDecision": "deny"'* ]]
+}
+
+@test "allows a workflow plus its identical template and CHANGELOG.md when the CLI source is not tracked" {
+  # The adopter /update-gaia shape: workflow and template refreshed together, no
+  # CLI source in the tree, so blob identity is an independent proof.
+  commit_files \
+    ".github/workflows/code-review-audit.yml" "name: Code Review Audit" \
+    ".gaia/cli/templates/workflows/code-review-audit.yml.tmpl" "name: Code Review Audit" \
+    "CHANGELOG.md" "entry"
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  [[ "$output" != *'"permissionDecision": "deny"'* ]]
 }
 
 @test "denies a second workflow alongside the matching audit re-render" {
