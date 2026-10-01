@@ -12,7 +12,7 @@
 # which path produced it (gaia-react/gaia#1286). This script is the single copy.
 #
 # Usage:
-#   write-audit-status.sh --sha <sha> --base <pr-base-sha> [--require-marker]
+#   write-audit-status.sh --sha <sha> --base <pr-base-sha> [--require-marker | --self-mod-rerender]
 #   write-audit-status.sh --sha <sha> --force-pending <description>
 #
 # Two modes, because the call sites are two shapes and pretending
@@ -20,18 +20,25 @@
 #
 #   GATED (--base)          Resolve the co-dispatched members CI cannot clear.
 #                           Any pending member means `pending`; none means
-#                           `success`. Four call sites.
+#                           `success`. Every stamp step but the stand-down.
 #   STAND-DOWN (--force-pending)
 #                           Never post success; post the given description as
 #                           `pending`. The local-mode stand-down, where CI runs
 #                           no audit at all, so there is nothing to clear.
 #
-# Modifier, gated mode only. It qualifies the success path, which stand-down
-# mode does not have, so passing it with --force-pending is refused rather than
-# ignored:
+# Modifiers, gated mode only, at most one. Each qualifies the success path,
+# which stand-down mode does not have, so passing one with --force-pending is
+# refused rather than ignored:
 #   --require-marker        Post nothing unless the frontend member's clean
 #                           marker exists for the recomputed digest. The
 #                           clean-no-push path's proven-clean check.
+#   --self-mod-rerender     The workflow self-modification path. Post nothing
+#                           unless the PR is a verbatim re-render of the bundled
+#                           audit workflow template (is_verbatim_rerender
+#                           below); when it is, every dispatched member counts
+#                           as cleared and success is stamped. The flag clears
+#                           nothing by itself: this script re-proves the
+#                           condition.
 #
 # Step outputs. When $GITHUB_OUTPUT is set this writes `members_pending`,
 # `success_stamped`, `post_failed`, and, from the shared non-clobber read,
@@ -69,7 +76,7 @@
 set -eu
 
 usage() {
-  echo "usage: write-audit-status.sh --sha <sha> (--base <sha> | --force-pending <desc>) [--require-marker]" >&2
+  echo "usage: write-audit-status.sh --sha <sha> (--base <sha> | --force-pending <desc>) [--require-marker | --self-mod-rerender]" >&2
 }
 
 sha=""
@@ -78,6 +85,7 @@ force_pending=""
 have_base=0
 have_force_pending=0
 require_marker=0
+self_mod_rerender=0
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -92,6 +100,8 @@ while [ "$#" -gt 0 ]; do
       force_pending="$2"; have_force_pending=1; shift 2 ;;
     --require-marker)
       require_marker=1; shift ;;
+    --self-mod-rerender)
+      self_mod_rerender=1; shift ;;
     *)
       # STOP on an unrecognized argument rather than carrying on with a
       # half-understood invocation. This script decides whether a merge gate
@@ -130,6 +140,15 @@ if [ "$have_force_pending" -eq 1 ] && [ "$require_marker" -eq 1 ]; then
   exit 2
 fi
 
+# The same grounds for the second modifier, and one more for pairing the two:
+# they serve different paths (an audit that ran, and one the
+# workflow-validation guardrail refused), so no caller passes both.
+if [ "$self_mod_rerender" -eq 1 ] \
+    && { [ "$have_force_pending" -eq 1 ] || [ "$require_marker" -eq 1 ]; }; then
+  echo "write-audit-status: --self-mod-rerender qualifies the gated success path and combines with neither --force-pending nor --require-marker" >&2
+  exit 2
+fi
+
 # Publish a step output when running under Actions. No-op elsewhere, so the
 # script is directly testable outside a runner.
 emit() {
@@ -155,8 +174,8 @@ decline() {
 #
 # Only the self-heal push path can arrive with an empty one: its sha comes from
 # steps.push-fixes.outputs.audit_sha, which is unset when push-fixes resolved
-# none. The other four take github.event.pull_request.head.sha, which the event
-# always carries.
+# none. Every other caller takes github.event.pull_request.head.sha, which the
+# event always carries.
 # ---------------------------------------------------------------------------
 if [ -z "$sha" ]; then
   echo "code-review-audit: no audit_sha to stamp; skipping status." >&2
@@ -182,6 +201,63 @@ fi
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 
 # ---------------------------------------------------------------------------
+# 1c. The verbatim re-render predicate, for --self-mod-rerender.
+#
+# CI's mirror of the local merge gate's self-mod-only bypass
+# (check_self_mod_only_update_pr in .claude/hooks/pr-merge-audit-check.sh), on
+# its terms: every path the PR changes is out of audit scope except
+# .github/workflows/code-review-audit.yml, and that file's bytes on the stamped
+# sha are the bundled template's (equal blob ids mean identical bytes). This is
+# the PR /update-gaia produces when it refreshes a stale audit workflow. CI
+# cannot audit it, since claude-code-action refuses a workflow that differs
+# from the default branch's, and without a status from somewhere the required
+# GAIA-Audit check deadlocks the merge (gaia-react/gaia#2400). The scope
+# question goes to the shared classifier (audit_self_mod_classify), so the two
+# gates cannot disagree about what is out of scope.
+#
+# Exit 0 when the predicate holds, 1 otherwise. Fails closed: an unresolvable
+# or empty range, a missing file on either side, or an unloadable classifier
+# all answer 1.
+#
+# Honest limit, shared with the local bypass: the template is read from the
+# same sha, so a PR that rewrites both files identically passes. That grants
+# nothing new, because a pull_request run already executes the PR's own copy
+# of this workflow, which could post any status it liked.
+# ---------------------------------------------------------------------------
+is_verbatim_rerender() (
+  audit_workflow=".github/workflows/code-review-audit.yml"
+  audit_template=".gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
+  # shellcheck source=/dev/null
+  . "$repo_root/.claude/hooks/lib/audit-scope.sh" 2>/dev/null || return 1
+  command -v audit_self_mod_classify >/dev/null 2>&1 || return 1
+
+  # Three-dot: what the PR changed since it forked, the range the local bypass
+  # classifies. -z and --no-renames for the reasons the workflow's scope gate
+  # gives: a C-quoted path is an unrecognized string to the classifier, and a
+  # rename out of an in-scope directory must still list its old path.
+  changed="$(set -o pipefail; git -C "$repo_root" diff --name-only -z --no-renames \
+    "${base}...${sha}" | tr '\0' '\n')" || return 1
+  [ -n "$changed" ] || return 1
+
+  seen_audit_workflow=0
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    case "$(audit_self_mod_classify "$path")" in
+      out-of-scope) ;;
+      audit-workflow) seen_audit_workflow=1 ;;
+      *) return 1 ;;
+    esac
+  done <<EOF
+$changed
+EOF
+  [ "$seen_audit_workflow" -eq 1 ] || return 1
+
+  workflow_blob="$(git -C "$repo_root" rev-parse --verify --quiet "${sha}:${audit_workflow}")" || return 1
+  template_blob="$(git -C "$repo_root" rev-parse --verify --quiet "${sha}:${audit_template}")" || return 1
+  [ "$workflow_blob" = "$template_blob" ]
+)
+
+# ---------------------------------------------------------------------------
 # 2. Which members CI cannot clear.
 #
 # Gate on the member SET, not on marker files: CI runs code-audit-frontend
@@ -195,8 +271,21 @@ repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 # Resolved before the digest so `members_pending` is published, and `ctx`
 # below is built with it, even when the digest recompute then fails -- the
 # two skip paths already ordered it this way.
+#
+# The re-render path skips the member query. It declines on a PR that fails
+# the predicate, which keeps what that path has always done: post nothing and
+# leave the status to a local audit. On one that passes, the bypass clears
+# every dispatched member at once, as the local gate's member loop does.
 # ---------------------------------------------------------------------------
-if [ "$have_base" -eq 1 ]; then
+if [ "$self_mod_rerender" -eq 1 ]; then
+  if ! is_verbatim_rerender; then
+    decline "the workflow self-modification is not a verbatim re-render of the bundled template; CI posts no status, a local audit supplies it."
+  fi
+  pending=""
+  emit "members_pending="
+  tree_sha="$(git rev-parse "${sha}^{tree}")"
+  ctx="verbatim re-render"
+elif [ "$have_base" -eq 1 ]; then
   pending="$(bash "$repo_root/.github/audit/gate-pending-members.sh" --base "$base")"
   emit "members_pending=${pending}"
   # The tree is a plain data field in the success description. Resolved here,
