@@ -426,11 +426,13 @@ write_settings() {
   local reg="$REPO_ROOT/.gaia/state-registry.json" id
   jq empty "$reg"
   for id in telemetry-usage-ledger telemetry-links-ledger telemetry-usage-cursor-cache \
-    telemetry-usage-sweep-lock telemetry-usage-tmp research-main; do
+    telemetry-usage-branch-memo telemetry-usage-sweep-lock telemetry-usage-tmp research-main; do
     [ "$(jq -r --arg id "$id" '[.entries[] | select(.id == $id)] | length' "$reg")" = 1 ] ||
       { printf 'registry entry %s missing or duplicated\n' "$id" >&2; return 1; }
   done
   [ "$(jq -r '.entries[] | select(.id == "research-main") | "\(.path) \(.match) \(.kind) \(.scope) \(.writer)"' "$reg")" = "research/ prefix dir main-only hand-authored" ]
+  [ "$(jq -r '.entries[] | select(.id == "telemetry-usage-branch-memo") | "\(.path) \(.match) \(.kind) \(.scope) \(.writer)"' "$reg")" = "telemetry/usage-branch-memo.json exact file shared code" ]
+  [ "$(jq -r '.entries[] | select(.id == "telemetry-usage-branch-memo") | .keyed_by' "$reg")" = "singleton per clone; temp-file-then-rename, lock-free, last writer wins" ]
   [ "$(jq -r '.entries[] | select(.id == "telemetry-usage-sweep-lock") | .reaped_by' "$reg")" = "usage-flush.sh stale reclaim" ]
   [ "$(jq -r '.entries[] | select(.id == "telemetry-usage-tmp") | .match' "$reg")" = glob ]
 }

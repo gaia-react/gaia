@@ -1,0 +1,6 @@
+{
+  "models": {
+    "claude-xray-1": [ { "input": 3, "output": 15 } ],
+    "claude-yray-1": [ { "input": 2, "output": 10 } ]
+  }
+}

@@ -1,0 +1,268 @@
+{
+  "probes": [
+    {
+      "pr": 2301,
+      "key": "branch:feat/lower-edge",
+      "raw": "feat/lower-edge",
+      "category": "lower_bound",
+      "expect": {
+        "lower_bound": true
+      }
+    },
+    {
+      "pr": 2302,
+      "key": "branch:fix/2302-beta",
+      "raw": "worktree-fix+2302-beta",
+      "category": "first_merge",
+      "expect": {
+        "merges": 1
+      }
+    },
+    {
+      "pr": 2303,
+      "key": "branch:feat/repeat-thing",
+      "raw": "feat/repeat-thing",
+      "category": "repeat_merge",
+      "expect": {
+        "merges": 2
+      }
+    },
+    {
+      "pr": 2304,
+      "key": "branch:feat/repeat-thing",
+      "raw": "worktree-feat+repeat-thing",
+      "category": "repeat_merge",
+      "expect": {
+        "merges": 2
+      }
+    },
+    {
+      "pr": 2305,
+      "key": "branch:debt/2305-multi",
+      "raw": "debt/2305-multi",
+      "category": "multi_root",
+      "expect": {
+        "roots_min": 2
+      }
+    },
+    {
+      "pr": 2306,
+      "key": "branch:feat/inherit-demo",
+      "raw": "feat/inherit-demo",
+      "category": "inherit",
+      "expect": {
+        "inherit": true
+      }
+    },
+    {
+      "pr": 2307,
+      "key": "branch:plan/spec-503-interval",
+      "raw": "plan/spec-503-interval",
+      "category": "interval",
+      "expect": {
+        "interval": true
+      }
+    },
+    {
+      "pr": 2308,
+      "key": "branch:docs/quiet-change",
+      "raw": "docs/quiet-change",
+      "category": "no_spend",
+      "expect": {
+        "no_spend": true
+      }
+    },
+    {
+      "pr": 2309,
+      "key": null,
+      "raw": null,
+      "category": "unresolvable",
+      "expect": {
+        "unresolvable": true
+      }
+    },
+    {
+      "pr": 2311,
+      "key": "branch:fix/cursor-drift",
+      "raw": "fix/cursor-drift",
+      "category": "cursor_adversarial",
+      "expect": {
+        "nonzero": true
+      }
+    },
+    {
+      "pr": 2312,
+      "key": "branch:fix/cwd-spelling",
+      "raw": "worktree-fix+cwd-spelling",
+      "category": "cursor_adversarial",
+      "expect": {
+        "nonzero": true
+      }
+    },
+    {
+      "pr": 2313,
+      "key": "branch:fix/cursor-reordered",
+      "raw": "fix/cursor-reordered",
+      "category": "cursor_adversarial",
+      "expect": {
+        "nonzero": true
+      }
+    },
+    {
+      "pr": 2314,
+      "key": "branch:feat/wide-a",
+      "raw": "feat/wide-a",
+      "category": "wide_root",
+      "expect": {
+        "roots_min": 1
+      }
+    },
+    {
+      "pr": 2315,
+      "key": "branch:feat/wide-b",
+      "raw": "feat/wide-b",
+      "category": "wide_root",
+      "expect": {
+        "roots_min": 1
+      }
+    },
+    {
+      "pr": 2316,
+      "key": "branch:feat/wide-c",
+      "raw": "feat/wide-c",
+      "category": "wide_root",
+      "expect": {
+        "roots_min": 1
+      }
+    },
+    {
+      "pr": 2317,
+      "key": "branch:feat/wide-d",
+      "raw": "feat/wide-d",
+      "category": "wide_root",
+      "expect": {
+        "roots_min": 1
+      }
+    },
+    {
+      "pr": 2318,
+      "key": "branch:feat/wide-e",
+      "raw": "feat/wide-e",
+      "category": "wide_root",
+      "expect": {
+        "roots_min": 1
+      }
+    },
+    {
+      "pr": 2319,
+      "key": "branch:feat/wide-f",
+      "raw": "feat/wide-f",
+      "category": "wide_root",
+      "expect": {
+        "roots_min": 1
+      }
+    },
+    {
+      "pr": 2322,
+      "key": "branch:plan/plan-007-planint",
+      "raw": "plan/plan-007-planint",
+      "category": "interval",
+      "expect": {
+        "interval": true
+      }
+    },
+    {
+      "pr": 2401,
+      "key": "branch:debt/2320-2321-batch",
+      "raw": "debt/2320-2321-batch",
+      "category": "first_merge",
+      "expect": {
+        "merges": 1
+      }
+    },
+    {
+      "pr": 2402,
+      "key": "branch:debt/2327-cmd",
+      "raw": "debt/2327-cmd",
+      "category": "first_merge",
+      "expect": {
+        "merges": 1
+      }
+    },
+    {
+      "pr": 2403,
+      "key": "branch:feat/frac-merge",
+      "raw": "feat/frac-merge",
+      "category": "first_merge",
+      "expect": {
+        "merges": 1
+      }
+    },
+    {
+      "pr": 2404,
+      "key": "branch:fix/2404-revived",
+      "raw": "fix/2404-revived",
+      "category": "multi_root",
+      "expect": {
+        "roots_min": 2
+      }
+    },
+    {
+      "pr": 2405,
+      "key": "branch:fix/2405-unlinked",
+      "raw": "fix/2405-unlinked",
+      "category": "first_merge",
+      "expect": {
+        "merges": 1
+      }
+    },
+    {
+      "pr": 2410,
+      "key": "branch:plan/spec-506-open-start",
+      "raw": "plan/spec-506-open-start",
+      "category": "first_merge",
+      "expect": {
+        "merges": 1
+      }
+    },
+    {
+      "pr": 2412,
+      "key": "branch:fix/2330-first-try",
+      "raw": "fix/2330-first-try",
+      "category": "first_merge",
+      "expect": {
+        "merges": 1
+      }
+    }
+  ],
+  "initiative_roots": {
+    "research": "research:wide-roadmap",
+    "issue": "issue:2330",
+    "spec": "spec:SPEC-503"
+  },
+  "anchors": {
+    "open_start": {
+      "session_id": "s80",
+      "key": "branch:plan/spec-506-open-start",
+      "pr": 2410
+    },
+    "unbound_session": {
+      "session_id": "s40",
+      "root": "research:multi-topic",
+      "pr": 2305
+    },
+    "spare_root": {
+      "ref": "research:spare-topic",
+      "pr": 2302
+    },
+    "new_branch": {
+      "raw": "fix/2330-fresh-one",
+      "key": "branch:fix/2330-fresh-one",
+      "parent": "issue:2330"
+    },
+    "cycle": {
+      "child": "research:cycle-demo",
+      "parent": "issue:2340"
+    }
+  }
+}

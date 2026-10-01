@@ -41,10 +41,34 @@
 #   After (byte-identical blocks at every point):
 #     pessimistic 1 month 0.55 s, 6 months 1.59 s, 12 months 2.88 s;
 #     realistic 1 month 0.49 s, 6 months 1.97 s, 12 months 3.91 s.
-#   Growth is now linear. The remaining floor at 12 months is two full parses
-#   of a 25 MB ledger (the branch-key pass, then the view) plus per-segment
-#   epoch and resolution work, so the render is also bounded in the hook by
-#   GAIA_USAGE_RENDER_CAP_SECS (default 10).
+#   Growth is linear. The floor at 12 months is one parse of the ledger plus
+#   the per-segment epoch pass, since the branch derivations come from the
+#   memo beside the stores, so the render is also
+#   bounded in the hook by GAIA_USAGE_RENDER_CAP_SECS (default 10).
+#   Memoized readout (Apple M2 Pro, macOS 27.0, bash 5.3.15 and /bin/bash
+#   3.2.57, jq 1.7.1, 2026-10-01; stores from .gaia/tests/usage-perf/
+#   gen-usage-stores.sh seed 89, timed with time-usage-readout.sh --runs 5
+#   against e4b57e23). These stores are heavier than the 3.91 s point above:
+#   about 44 MB of usage.jsonl at 12 months against 25 MB. Medians, pre-change
+#   then changed:
+#     warm memo built on the stores minus their last day, then the last day
+#     appended, 12 months: typical PR 5.884 s then 2.217 s (ratio 0.377),
+#     widest-closure PR 6.038 s then 2.461 s (0.408);
+#     cold (no memo, so the first readout), typical PR: 1 month 0.634 s then
+#     0.681 s, 6 months 2.932 s then 2.399 s, 12 months 5.868 s then 4.512 s,
+#     24 months 11.691 s then 8.737 s, 12 months under /bin/bash 3.2 7.186 s
+#     then 5.368 s;
+#     `reconcile` at 12 months, warm memo: 23.700 s then 4.779 s.
+#   Byte identity (stdout, stderr, exit status; every pr output carried token
+#   and dollar figures) held pre-change against changed, cold and warm, at 6
+#   and 12 months over 27 probes covering every UAT-002 category (`pr <N>`,
+#   `pr --key`, `pr <N> --branch --unconfirmed --partial`, `pr-branch`; 106
+#   comparisons, 2 forms skipped for a null key or raw), `initiative` for the
+#   research, issue, and spec roots, and `reconcile`. A `link` that closes a
+#   cycle refused identically under both trees and left links.jsonl untouched.
+#   Under /bin/bash 3.2 at 6 months the same probes were identical, and
+#   alternating readouts between /bin/bash 3.2 and bash 5.3 over one memo
+#   traced path=warm on every read after the first.
 
 bats_require_minimum_version 1.5.0
 

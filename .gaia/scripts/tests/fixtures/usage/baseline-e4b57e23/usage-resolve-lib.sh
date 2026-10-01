@@ -77,16 +77,9 @@ gaia_usage_derive_map() {
     _gaia_usage_branch_parents "${k#branch:}" "$k" "$f"
   done
   rm -f "$f"
-  # The pairs reach jq NUL-separated on stdin, not as --args: argv has a total
-  # cap (about 2 MiB on Linux, 1 MiB on macOS) that the branch history grows
-  # toward. NUL is the one byte a shell string cannot hold, so no ref can split.
-  # Each value is led by a NUL and an `x` jq strips, so the input never ends in
-  # NUL: jq 1.6 drops a trailing NUL from raw input, and with it an empty last
-  # value. With no pairs nothing is printed, since printf would still print one.
-  { [ "${#flat[@]}" -eq 0 ] || printf '\0x%s' "${flat[@]}"; } |
-    jq -Rsc 'split("\u0000")[1:] | map(.[1:]) as $p
+  jq -nc '$ARGS.positional as $p
     | reduce range(0; $p | length; 2) as $i ({}; .[$p[$i]] += [$p[$i + 1]])
-    | map_values(unique)'
+    | map_values(unique)' --args ${flat[@]+"${flat[@]}"}
 }
 
 # gaia_usage_keys_json <main_root> <usage> <links> <cost> [extra-ref...]: the
@@ -115,13 +108,8 @@ gaia_usage_keys_json() {
   bmap="$(gaia_usage_branch_map ${raws[@]+"${raws[@]}"})" || return 1
   while IFS= read -r line; do bkeys[${#bkeys[@]}]="$line"; done < <(jq -r '.[].key | strings' <<<"$bmap")
   derive="$(gaia_usage_derive_map ${bkeys[@]+"${bkeys[@]}"} "$@")" || return 1
-  # The maps reach jq as a JSON stream on stdin, not --argjson: Linux refuses
-  # any one argument over 128 KiB, a size a long branch history passes, and the
-  # legacy readout would then run on empty keys and print wrong figures.
-  jq -nc --arg def "$def" 'input as $s | input as $d | input as $b
-    | {derive: $d, bmap: $b, default: $def, models: $s.models}' <<<"$scan
-$derive
-$bmap"
+  jq -c --argjson d "$derive" --argjson b "$bmap" --arg def "$def" \
+    '{derive: $d, bmap: $b, default: $def, models: .models}' <<<"$scan"
 }
 
 # gaia_usage_spec_lineage <SPEC.md>: the frontmatter spec_id on the first line,
@@ -160,22 +148,12 @@ def usage_rows($raw):
 
 # Seconds since the epoch with the fraction kept, so two turns in the same
 # second still order; null for anything that is not a UTC ISO stamp.
-# The slow path compiles a regex per call (jq 1.7.1) and also reads the
-# +00:00 offset spellings. The fast path takes the stamps the capture hooks
-# write (Z, optional fraction) through one strict test and the same arithmetic,
-# so every value it returns equals the slow path value.
-def usage_epoch_slow:
+def usage_epoch:
   if type != "string" then null
   elif test("\\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\\z") then fromdateiso8601
   else [capture("^(?<b>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})(?<f>\\.[0-9]+)?(Z|[+]00:?00)$")?
       | ((.b + "Z") | fromdateiso8601) + (if .f == null then 0 else ("0" + .f | tonumber) end)] | first
   end;
-
-def usage_epoch:
-  if type == "string"
-     and test("\\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z\\z")
-  then ((.[0:19] + "Z") | fromdateiso8601) + (if length > 20 then ("0" + .[19:-1] | tonumber) else 0 end)
-  else usage_epoch_slow end;
 
 def usage_row_key($r):
   (if ($r.spec_id | type) == "string" and $r.spec_id != "" then "spec:" + ($r.spec_id | ascii_upcase)
@@ -345,23 +323,16 @@ def usage_priced:
 
 # Everything a readout needs: resolved segments (each with its epoch as `_t`),
 # the live edges, the links, and the coverage start (earliest first_ts over
-# every segment). The `_of` forms read rows and keys only through their
-# parameters: jq binds a $name in a def body where the def is written, so a
-# def that names the global $keys can never be handed another object.
-# usage_model_base_of leaves the segments unpriced so a view that sums a few of
-# them prices only those; usage_model_of prices every one.
-def usage_model_base_of($urows; $links; $cost; $keys):
-  [$urows[] | select(.kind == "binding")] as $bindings
+# every segment). usage_model_base leaves the segments unpriced so a view that
+# sums a few of them prices only those; usage_model prices every one.
+def usage_model_base:
+  usage_rows($u) as $urows | usage_rows($l) as $links | usage_rows($c) as $cost
+  | [$urows[] | select(.kind == "binding")] as $bindings
   | usage_resolve_t([$urows[] | select(.kind == "segment")]; $bindings; usage_intervals($bindings; $cost)) as $segs
   | ([$segs[] | {t: ._t, iso: .first_ts} | select(.t != null)] | min_by(.t)) as $cov
   | {segs: $segs, links: $links, edges: usage_edges($links; $cost; $keys),
      coverage: (if $cov == null then null else $cov.iso[0:10] end),
      coverage_t: (if $cov == null then null else $cov.t end)};
 
-def usage_model_of($urows; $links; $cost; $keys):
-  usage_model_base_of($urows; $links; $cost; $keys) | .segs |= map(usage_priced);
-
-def usage_model_base: usage_model_base_of(usage_rows($u); usage_rows($l); usage_rows($c); $keys);
-
-def usage_model: usage_model_of(usage_rows($u); usage_rows($l); usage_rows($c); $keys);
+def usage_model: usage_model_base | .segs |= map(usage_priced);
 '
