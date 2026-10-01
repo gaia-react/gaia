@@ -4,7 +4,7 @@ status: active
 priority: 2
 date: 2026-07-20
 created: 2026-07-20
-updated: 2026-07-20
+updated: 2026-10-01
 tags: [decision, claude, configuration]
 ---
 
@@ -79,38 +79,23 @@ It is a version lookup. It reads a public endpoint and compares the result
 against the local version. Update detection is load-bearing for keeping an
 installation current, so it stays on.
 
-## The agent-teams flag is seeded, not machine-local
+## The agent-teams flag is not enabled
 
-`.claude/settings.json` sets `env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` to
-`1`. The release manifest classes that file `shared`, so GAIA seeds the flag
-into every clone instead of leaving it as one machine's local preference. It
-is the only experimental harness flag the file carries.
+`.claude/settings.json` carries no `env` block, and GAIA does not set
+`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`. With that flag on, any Agent call that
+passes `name` (and is not a fork or an isolated dispatch) launches an
+agent-team teammate instead of a sub-agent. A teammate can spawn its own
+sub-agents, route permission prompts to the user, message its peers, and
+self-claim shared tasks. That contradicts the depth-1 star in
+[[Workflow Doctrine]], where the main thread decides and dispatches, and
+sub-agents return JSON artifacts without prompting the user or spawning
+further agents.
 
-The flag is deliberate and it stays. GAIA's architecture is multi-agent
-throughout: the [[Code Audit Team]] resolves a roster of auditor members and
-spawns them in parallel from a single dispatch, and [[Task Orchestration]]
-runs each plan phase in its own fresh-context sub-agent. A framework whose
-core workflows are fan-outs seeds the capability that fan-out belongs to.
-Adopters inheriting it is the intended posture, not spillover from one
-maintainer's setup.
-
-**It is retained as capability, not as a current dependency.** No shipped
-surface calls an agent-teams-specific API. Every dispatch GAIA performs goes
-through the Agent (Task) tool with a `subagent_type`, which needs no flag, and
-nothing in the tree uses inter-agent messaging or named-agent addressing.
-Clearing the flag breaks no documented workflow.
-
-That is the honest state of it, and it is not an argument for removing it.
-The flag costs nothing to carry, and the multi-agent posture it enables is the
-one every roster, orchestrator, and fan-out in GAIA is designed around. An
-audit reading only the commit that introduced it cannot separate intent from
-accident, which is what this entry exists to settle.
-
-**Open question, unconfirmed.** Whether an agent's message back to the main
-conversation depends on the flag is untested. Confirming it either way needs a
-session running with the flag off. Until someone runs that, treat the question
-as open rather than settled in either direction, and do not cite it as a
-reason the flag is load-bearing.
+No shipped GAIA surface uses a teams-specific API. Every dispatch goes through
+the Agent tool, which needs no flag, so leaving it off breaks no documented
+workflow. An adopter who wants agent teams opts in through their own user or
+local settings. GAIA never sets the flag to `0` either, because a project-level
+`0` would override that opt-in.
 
 ## Related
 
