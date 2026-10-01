@@ -145,6 +145,9 @@ auditors:
       - ".gaia/scripts/tests/fixtures/**/*.jq"
       - ".gaia/scripts/tests/fixtures/**/*.sed"
       - ".gaia/scripts/tests/fixtures/**/SHA256SUMS"
+      # The allowlist a removal guard reads: widening it quietly re-admits a
+      # removed surface, so it dispatches the reviewer who owns that suite.
+      - ".gaia/tests/fixtures/**/*.allowlist"
       - ".gaia/VERSION"
       - ".claude/settings.json"
       - ".github/CODEOWNERS"

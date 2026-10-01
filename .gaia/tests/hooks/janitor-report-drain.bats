@@ -192,7 +192,7 @@ EOF
 }
 
 @test "the Stop hook does not source the deferral library" {
-  deferral_name="gaia-ci""-defer"
+  deferral_name="gaia""-ci-defer"
   grep -qF -- "$deferral_name" "$REPO_ROOT/.claude/hooks/wiki-session-stop.sh" && return 1
   return 0
 }

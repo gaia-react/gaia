@@ -122,7 +122,7 @@ EOF
 }
 
 @test "the hook carries no deferral-library sourcing, end-of-session reminder, or safety marker" {
-  deferral_name="gaia-ci""-defer"
+  deferral_name="gaia""-ci-defer"
   reminder_tag="[wiki end-of""-session]"
   grep -qF -- "$deferral_name" "$HOOK_ABS" && return 1
   grep -qF -- "$reminder_tag" "$HOOK_ABS" && return 1

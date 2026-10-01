@@ -325,7 +325,7 @@ Shape (one entry per finding; the writer rejects the write and names the offendi
 ```json
 [
   {"finding_class":"holistic/secret-exposure","severity":"warning",
-   "path":".github/workflows/release.yml","line":113,
+   "path":".github/workflows/tests.yml","line":113,
    "title":"the expansion-then-path arm admits arbitrary trailing text",
    "failure_mode":"once a separator follows the closing brace the tail is unbounded over the character set a literal secret uses, so a live token assigned behind one is allowed",
    "verified_by":"ran the hook on the braced-expansion fixture at base and at HEAD: base denies, HEAD allows",

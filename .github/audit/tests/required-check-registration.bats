@@ -11,7 +11,7 @@
 #
 # Division of responsibility between the two recipes:
 #   - setup-gaia.md REGISTERS the check: it owns the literal
-#     `required_status_checks` PUT with `contexts[]=GAIA-Audit`, inside
+#     `required_status_checks` PUT to the `/contexts` endpoint with `GAIA-Audit`, inside
 #     Phase 3's admin-gated recommended defaults, right after the
 #     default-branch protection PUT, for every admin with no other
 #     precondition.
@@ -64,13 +64,20 @@ setup() {
 # -----------------------------------------------------------------------------
 
 @test "setup-gaia registers GAIA-Audit as the required check" {
-  run grep -F "contexts[]=GAIA-Audit" "$SETUP_CI"
+  run grep -F '["GAIA-Audit"]' "$SETUP_CI"
   [ "$status" -eq 0 ]
 }
 
 @test "setup-gaia registration targets the required_status_checks endpoint" {
   run grep -F "protection/required_status_checks" "$SETUP_CI"
   [ "$status" -eq 0 ]
+}
+
+@test "setup-gaia writes the contexts through the documented /contexts PUT with a JSON body" {
+  run grep -F -- '-X PUT "$required_checks_endpoint/contexts" --input -' "$SETUP_CI"
+  [ "$status" -eq 0 ]
+  run grep -F -- '-f strict=true' "$SETUP_CI"
+  [ "$status" -ne 0 ]
 }
 
 @test "setup-gaia does not register the bare code-review-audit job name as the required check" {
@@ -94,8 +101,8 @@ phase3_section() {
 check_registration_placement() {
   local file="$1" section in_file in_section between
   section="$(phase3_section "$file")"
-  in_file="$(grep -cF 'contexts[]=GAIA-Audit' "$file" || true)"
-  in_section="$(grep -cF 'contexts[]=GAIA-Audit' <<<"$section" || true)"
+  in_file="$(grep -cF '["GAIA-Audit"]' "$file" || true)"
+  in_section="$(grep -cF '["GAIA-Audit"]' <<<"$section" || true)"
   [ "$in_section" -ge 1 ] || {
     echo "no registration inside Phase 3" >&2
     return 1
@@ -106,7 +113,7 @@ check_registration_placement() {
   }
   awk '
     /branches\/<default-branch>\/protection" --input -/ && !protection { protection = NR }
-    /contexts\[\]=GAIA-Audit/ && !registration { registration = NR }
+    /\["GAIA-Audit"\]/ && !registration { registration = NR }
     END { exit !(protection && registration && protection < registration) }
   ' <<<"$section" || {
     echo "the registration does not follow the protection PUT" >&2
@@ -114,7 +121,7 @@ check_registration_placement() {
   }
   between="$(awk '
     /setup-ci check-admin/ { inside = 1 }
-    /contexts\[\]=GAIA-Audit/ { inside = 0 }
+    /\["GAIA-Audit"\]/ { inside = 0 }
     inside
   ' <<<"$section")"
   [ -n "$between" ] || {

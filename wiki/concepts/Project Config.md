@@ -18,9 +18,9 @@ All keys are optional except `version`, which is `1`.
 | --- | --- | --- |
 | `sandbox_recommended` | `true` or `false` | The owner's recommendation to run Claude Code's OS sandbox. Each machine still resolves it for itself; see [[OS Sandbox]]. |
 | `isolation_policy` | `always-worktree`, `prefer-worktree`, `prefer-branch` | How a session isolates work that closes an issue or runs a plan. The reading rules live in `.claude/skills/gaia/references/isolation.md`. |
-| `dependabot_security_updates` | `on` or `off` | Whether the project opted into Dependabot security updates; see [[Dependabot Security Updates]]. |
+| `dependabot_security_updates` | `on` or `off` | Whether the project opted into Dependabot security updates. |
 
-A reader treats an unknown or invalid value as absent, so a typo or a value a newer GAIA wrote never breaks the file. The known values are enforced when the file is written. The schema lives in `.gaia/cli/src/schemas/project-config.ts` in the maintainer repository; adopters see the behavior, not the path.
+A reader treats an unknown or invalid value as absent, so a typo or a value a newer GAIA wrote never breaks the file. The known values are enforced when the file is written.
 
 ## Writers
 

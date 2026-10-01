@@ -2,8 +2,8 @@
  * `gaia update-deps run --emit-updates <path>` handler.
  *
  * Replicates Phases 1-3 of `.claude/skills/update-deps/SKILL.md` as a
- * deterministic shell primitive so the GAIA CI workflow can split major
- * bumps into per-group PRs before dispatching the LLM-driven flow.
+ * deterministic shell primitive so major bumps split into per-group PRs
+ * before the LLM-driven flow is dispatched.
  *
  * Phase 1: Discover via `pnpm outdated --json`. ESLint 9.x cap rewrites
  *          a `latest >= 10.x` to the highest available `9.x`; if already

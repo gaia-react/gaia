@@ -62,13 +62,11 @@ transforms:
   # (rather than folded into that transform's paths) so the
   # .prettierignore-specific rationale above stays intact.
   # **/*.sh is broad by design: any maintainer-only block wrapped in shipped
-  # shell is meant to be stripped, wherever it lands. Same for **/*.yml.tmpl
-  # (workflow render templates).
+  # shell is meant to be stripped, wherever it lands.
   - type: marker-strip
     paths:
       - ".gaia/audit-ci.yml"
       - "**/*.sh"
-      - "**/*.yml.tmpl"
     start: "# gaia:maintainer-only:start"
     end: "# gaia:maintainer-only:end"
 

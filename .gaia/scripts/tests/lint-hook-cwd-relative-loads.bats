@@ -320,7 +320,7 @@ config_path=".gaia/local/example-state.json"'
 
 @test "quiet on a git revision path, which git resolves from the repo root" {
   fixture_repo
-  fixture_hook 'blob=$(git rev-parse "HEAD:.gaia/cli/templates/workflows/code-review-audit.yml.tmpl")'
+  fixture_hook 'blob=$(git rev-parse "HEAD:.gaia/manifest.json")'
   run_linter
   [ "$status" -eq 0 ]
   grep -qF -- "check.sh" <<<"$output" && return 1

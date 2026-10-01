@@ -101,7 +101,7 @@ const leakCheckBaseShape = {
 // drift away from the manifest the way a hand-maintained alternation does:
 //   - `excluded-slugs`: the release-excluded wiki-slug set (wikilink-to-excluded).
 //   - `excluded-workflows`: release-excluded `.github/workflows/*.yml` that never
-//     reach an adopter (no on-demand render template), a directory no path
+//     reach an adopter, a directory no path
 //     alternation can blanket because some workflows ship and some do not.
 //   - `excluded-titles`: the release-excluded wiki page-title set, matched as
 //     bare Title-Case prose (the leak the checks above each miss).

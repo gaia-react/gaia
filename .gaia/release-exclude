@@ -56,8 +56,7 @@
 # below, so the absent dependency would decide the withhold on its own.
 .gaia/scripts/lint-git-path-quoting.sh
 # The workflow run-interpolation lint guards GAIA's own CI workflow YAML, its
-# composite actions, and the adopter workflow templates it renders CI from,
-# against a `${{ }}` expression substituted into a `run:` script body. Withheld
+# and composite actions, against a `${{ }}` expression substituted into a `run:` script body. Withheld
 # on the same reasoning as the diff-quoting lint above: shell-lint.sh, its only
 # runner, is release-excluded wholesale via the `.gaia/tests` entry, so shipping
 # this file would ship a check nothing on an adopter clone invokes. It also
@@ -66,26 +65,23 @@
 #
 # Note what is deliberately NOT claimed here, because it is false and would be
 # the premise a future maintainer re-litigates this decision from: an adopter
-# clone does have a populated scan surface. This file excludes 11 of the 13
-# tracked workflows individually rather than excluding the directory, so
-# `tests.yml` and `chromatic.yml` ship, and `bundle:adopter` renders further
-# workflows into an adopter's `.github/workflows/` from templates the manifest
-# ships. The withhold rests on the absent runner, not on an empty surface.
+# clone does have a populated scan surface. This file excludes the
+# maintainer-only workflows individually rather than excluding the directory, so
+# `tests.yml` and `chromatic.yml` ship. The withhold rests on the absent runner, not on an empty surface.
 .gaia/scripts/lint-workflow-run-interpolation.sh
 # The errexit status-read lint guards GAIA's own framework shell, its CI workflow
-# and composite-action YAML, and the adopter workflow templates against a `$?`
+# and composite-action YAML against a `$?`
 # read that `set -e` has already made unreachable. Withheld on the same reasoning
 # as the two lints above: shell-lint.sh, its only runner, is release-excluded
 # wholesale via the `.gaia/tests` entry, so shipping this file would ship a check
 # nothing on an adopter clone invokes. It also sources guard-awk-lib.sh, withheld
 # below, so the absent dependency would decide the withhold on its own. An
-# adopter clone does have a populated scan surface, and the shipped workflow
-# templates render into their CI carrying the class's own exposure, so neither
-# withhold rests on an empty one.
+# adopter clone does have a populated scan surface, so neither withhold rests on
+# an empty one.
 .gaia/scripts/lint-errexit-status-read.sh
 # The SIGPIPE-reader lint flags a short-circuiting reader -- a `grep` or `rg` told to stop early, in whichever spelling the gate's own header enumerates -- standing downstream of a pipe where `pipefail` is armed, in a tracked shell script or in an Actions `run:` body, the shape whose pipeline status inverts on a match because the reader closes the pipe and the upstream dies of SIGPIPE. Withheld on the same reasoning as the lints above: every one of its runners is release-excluded, so shipping this file would ship a check nothing on an adopter clone invokes. Those runners are shell-lint.sh, excluded by the .gaia/tests entry below, and the sibling bats suite .gaia/scripts/tests/lint-sigpipe-readers.bats via the separate .gaia/scripts/tests entry beside it. It also sources guard-awk-lib.sh, withheld just below, so the absent dependency would decide the withhold on its own. An adopter clone does carry a populated scan surface, so neither withhold rests on an empty one.
 .gaia/scripts/lint-sigpipe-readers.sh
-# The CLI workspace-floor check reports a security floor declared in a second pnpm workspace root's pnpm-workspace.yaml that the lockfile beside it does not apply. Withheld on the absent SUBJECT, which is stronger than the absent-runner reasoning the lints above rest on: the root it checks is .gaia/cli, and every file constituting that root -- src, package.json, pnpm-lock.yaml, pnpm-workspace.yaml -- is release-excluded in the category below, so an adopter clone has no second workspace root at all and the check would exit 2 on every run rather than answer. Every runner of this check is itself release-excluded too, so the withhold holds on either ground alone. The runner set is deliberately not enumerated here: `git grep -l check-cli-workspace-floors` lists every file that references the check, which is the set the runners are read out of, and nothing holds a hand-kept list to the tree, which is how the enumeration that stood here went stale. Nothing about this reaches an adopter's own dependency hygiene: their single root is audited by the shipped `/update-deps` skill and the CI audit template exactly as before.
+# The CLI workspace-floor check reports a security floor declared in a second pnpm workspace root's pnpm-workspace.yaml that the lockfile beside it does not apply. Withheld on the absent SUBJECT, which is stronger than the absent-runner reasoning the lints above rest on: the root it checks is .gaia/cli, and every file constituting that root -- src, package.json, pnpm-lock.yaml, pnpm-workspace.yaml -- is release-excluded in the category below, so an adopter clone has no second workspace root at all and the check would exit 2 on every run rather than answer. Every runner of this check is itself release-excluded too, so the withhold holds on either ground alone. The runner set is deliberately not enumerated here: `git grep -l check-cli-workspace-floors` lists every file that references the check, which is the set the runners are read out of, and nothing holds a hand-kept list to the tree, which is how the enumeration that stood here went stale. Nothing about this reaches an adopter's own dependency hygiene: their single root is audited by the shipped `/update-deps` skill exactly as before.
 .gaia/scripts/check-cli-workspace-floors.sh
 # The awk-source library the bats-arming shell guards source; every one of those guards is itself withheld above, so nothing on an adopter clone sources it.
 .gaia/scripts/guard-awk-lib.sh

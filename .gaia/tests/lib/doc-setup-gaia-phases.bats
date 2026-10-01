@@ -327,17 +327,19 @@ run_fence() {
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$GH_LOG"
 case " $* " in
-  *" -X PUT "*) exit 0 ;;
+  *" -X PUT "*) cat >"$GH_BODY"; exit 0 ;;
 esac
 printf '%s\n' "$GH_CONTEXTS_FIXTURE"
 STUB
   chmod +x "${stub_dir}/gh"
   : >"${BATS_TEST_TMPDIR}/gh.log"
-  GH_LOG="${BATS_TEST_TMPDIR}/gh.log" GH_CONTEXTS_FIXTURE="$contexts" \
+  : >"${BATS_TEST_TMPDIR}/gh.body"
+  GH_LOG="${BATS_TEST_TMPDIR}/gh.log" GH_BODY="${BATS_TEST_TMPDIR}/gh.body" GH_CONTEXTS_FIXTURE="$contexts" \
     PATH="${stub_dir}:${PATH}" bash "$fence"
 }
 
-# put_line: the one logged PUT call, empty when none was sent.
+# put_line: the one logged PUT call, empty when none was sent. put_body is the
+# JSON the call piped to `--input -`.
 put_line() {
   grep -E -- '(^| )-X PUT ' "${BATS_TEST_TMPDIR}/gh.log" || true
 }
@@ -353,10 +355,13 @@ assert_stale_context_dropped() {
     echo "expected exactly one PUT" >&2
     return 1
   }
-  grep -qF -- 'contexts[]=GAIA-Audit' <<<"$put" || return 1
-  grep -qF -- 'contexts[]=Vitest' <<<"$put" || return 1
-  if grep -qF -- "contexts[]=${stale}" <<<"$put"; then
-    echo "the PUT still carries the stale context: ${put}" >&2
+  grep -qF -- '/protection/required_status_checks/contexts --input -' <<<"$put" || {
+    echo "the PUT does not target the /contexts endpoint: ${put}" >&2
+    return 1
+  }
+  jq -e 'any(.contexts[]; . == "GAIA-Audit") and any(.contexts[]; . == "Vitest")' "${BATS_TEST_TMPDIR}/gh.body" >/dev/null || return 1
+  if jq -e --arg stale "$stale" 'any(.contexts[]; . == $stale)' "${BATS_TEST_TMPDIR}/gh.body" >/dev/null; then
+    echo "the PUT body still carries the stale context: $(cat "${BATS_TEST_TMPDIR}/gh.body")" >&2
     return 1
   fi
 }
@@ -383,8 +388,8 @@ extract_registration_fence() {
   run_fence "${BATS_TEST_TMPDIR}/fence.sh" '["Vitest"]'
   local put
   put="$(put_line)"
-  grep -qF -- 'contexts[]=GAIA-Audit' <<<"$put"
-  grep -qF -- 'contexts[]=Vitest' <<<"$put"
+  [ -n "$put" ]
+  jq -e '.contexts == ["Vitest", "GAIA-Audit"]' "${BATS_TEST_TMPDIR}/gh.body" >/dev/null
 }
 
 @test "registration: a failed GET sends no PUT" {
@@ -406,6 +411,16 @@ extract_registration_fence() {
   sed 's/map(select(\. != "code-review-audit" and \. != "GAIA-Audit"))/map(select(. != "GAIA-Audit"))/' \
     "${BATS_TEST_TMPDIR}/fence.sh" >"$mutated"
   # The mutation must actually change the fence, or this test proves nothing.
+  cmp -s "${BATS_TEST_TMPDIR}/fence.sh" "$mutated" && return 1
+  run assert_stale_context_dropped "$mutated"
+  [ "$status" -ne 0 ]
+}
+
+@test "registration mutation: a fence that PUTs to the bare endpoint fails fixture 1" {
+  extract_registration_fence
+  local mutated="${BATS_TEST_TMPDIR}/fence-bare-endpoint.sh"
+  sed 's#"\$required_checks_endpoint/contexts"#"$required_checks_endpoint"#' \
+    "${BATS_TEST_TMPDIR}/fence.sh" >"$mutated"
   cmp -s "${BATS_TEST_TMPDIR}/fence.sh" "$mutated" && return 1
   run assert_stale_context_dropped "$mutated"
   [ "$status" -ne 0 ]

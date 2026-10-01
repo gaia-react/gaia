@@ -453,7 +453,7 @@ GitHub provisioning needs repo-admin permission and an authenticated gh (yours: 
 
 When `admin: true` and `auth_status == "ok"`:
 
-**Default-branch protection.** No CLI verb creates a protection rule, so author the full `protection` PUT payload directly. Create protection **before** the `GAIA-Audit` registration below: a bare `required_status_checks` PUT 404s when no protection rule exists. Correct order is create repo → push default branch → enable protection → register `GAIA-Audit`.
+**Default-branch protection.** No CLI verb creates a protection rule, so author the full `protection` PUT payload directly. Create protection **before** the `GAIA-Audit` registration below: a bare `required_status_checks` registration 404s when no protection rule exists. Correct order is create repo → push default branch → enable protection → register `GAIA-Audit`.
 
 ```bash
 gh api -X PUT "repos/<owner>/<repo>/branches/<default-branch>/protection" --input - <<'JSON'
@@ -474,7 +474,7 @@ JSON
 
 The merge gate is the `GAIA-Audit` commit status, which the local PR Merge Workflow posts when an audit clears; requiring it is what stops a pull request merged from the github.com button from skipping the audit. This registration runs for every admin, on every run where it is owed: `GAIA-Audit` is not a required context, or the stale `code-review-audit` context still is one. Nothing posts `code-review-audit`, so a repo that still requires it holds every pull request forever; the registration drops it.
 
-**GET the current contexts, then PUT them back with `GAIA-Audit` added and `code-review-audit` removed.** The PUT REPLACES the array, so a static PUT would drop sibling contexts (e.g. `Tests`, `Chromatic`) and let unaudited code merge. Every other context is kept. When the GET shows nothing to change, no PUT is sent:
+**GET the current contexts, then PUT the full set back to the `/contexts` endpoint with `GAIA-Audit` added and `code-review-audit` removed.** That PUT REPLACES the list, so a static PUT would drop sibling contexts (e.g. `Tests`, `Chromatic`) and let unaudited code merge. Every other context is kept. When the GET shows nothing to change, no PUT is sent:
 
 ```bash
 required_checks_endpoint="repos/<owner>/<repo>/branches/<default-branch>/protection/required_status_checks"
@@ -484,19 +484,17 @@ if ! current_contexts=$(gh api "$required_checks_endpoint" --jq '.contexts'); th
 elif printf '%s' "$current_contexts" | jq -e 'any(.[]; . == "GAIA-Audit") and all(.[]; . != "code-review-audit")' >/dev/null; then
   echo "GAIA-Audit is already the required check on <default-branch>."
 else
-  context_args=(-f 'contexts[]=GAIA-Audit')
-  while IFS= read -r context; do
-    [ -n "$context" ] && context_args+=(-f "contexts[]=$context")
-  done < <(printf '%s' "$current_contexts" | jq -r 'map(select(. != "code-review-audit" and . != "GAIA-Audit")) | .[]')
-  gh api -X PUT "$required_checks_endpoint" -f strict=true "${context_args[@]}"
+  jq -n --argjson current "$current_contexts" \
+    '{contexts: ($current | map(select(. != "code-review-audit" and . != "GAIA-Audit")) + ["GAIA-Audit"])}' \
+    | gh api -X PUT "$required_checks_endpoint/contexts" --input -
 fi
 ```
 
 Substitute `<owner>`/`<repo>` (cached earlier) and `<default-branch>` (typically `main`). If the GET or the PUT fails (403 when not admin, 404 when the branch has no protection rule or the rule requires no status checks), surface the error verbatim and tell the user:
 
 ```
-Could not register the GAIA-Audit required check (admin permission and a branch-protection rule with required status checks on the default branch are required). Run it yourself once you have admin access, adding one -f 'contexts[]=<context>' for every other required context you keep (leave out code-review-audit):
-  gh api -X PUT "repos/<owner>/<repo>/branches/<default-branch>/protection/required_status_checks" -f strict=true -f 'contexts[]=GAIA-Audit'
+Could not register the GAIA-Audit required check (admin permission and a branch-protection rule with required status checks on the default branch are required). Run it yourself once you have admin access, listing every other required context you keep in the JSON body (leave out code-review-audit):
+  printf '%s' '{"contexts":["GAIA-Audit"]}' | gh api -X PUT "repos/<owner>/<repo>/branches/<default-branch>/protection/required_status_checks/contexts" --input -
 Until GAIA-Audit is registered, GitHub does not require the audit: a pull request merged from the github.com button skips it. While code-review-audit stays a required context, every pull request on <default-branch> stays blocked, because nothing posts it.
 ```
 

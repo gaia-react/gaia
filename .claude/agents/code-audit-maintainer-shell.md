@@ -27,6 +27,7 @@ You also own the declarative half of that same subsystem: the roster your own di
 - `.gaia/scripts/tests/fixtures/**/*.jq`
 - `.gaia/scripts/tests/fixtures/**/*.sed`
 - `.gaia/scripts/tests/fixtures/**/SHA256SUMS`
+- `.gaia/tests/fixtures/**/*.allowlist`
 - `.gaia/VERSION`
 - `.claude/settings.json`
 - `.github/CODEOWNERS`

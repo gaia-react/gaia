@@ -1,7 +1,7 @@
 /**
  * Replicates Phases 1-3 of `.claude/skills/update-deps/SKILL.md` as a
- * deterministic shell primitive so the GAIA CI dependabot workflow can
- * split major bumps into per-group PRs before the LLM-driven flow runs.
+ * deterministic shell primitive so major bumps split into per-group PRs
+ * before the LLM-driven flow runs.
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
