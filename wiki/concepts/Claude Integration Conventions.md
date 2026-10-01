@@ -22,7 +22,7 @@ Conventions for GAIA's Claude Code config surface: extension points, monorepo re
 | `.claude/hooks/`        | Bash scripts wired in `settings.json`                                                                                         | Auto on matched tool events  |
 | `.claude/rules/`        | Coding rules; optionally path-scoped via `paths:` frontmatter                                                                 | Auto (global) or path-scoped |
 | `.claude/skills/`       | Skills: both context-triggered (`react-code`, `typescript`) and user-invoked (`gaia-handoff`, `new-component`, `update-deps`) | Auto on context/intent match |
-| `.claude/agent-memory/` | Ephemeral per-agent scratch (gitignored in this repo, not source of truth)                                                    | Auto per named agent         |
+| `.claude/agent-memory/` | Ephemeral per-agent scratch (gitignored by GAIA's shipped `.gitignore`, not source of truth)                                   | Auto per named agent         |
 | `wiki/`                 | Knowledge base: architecture, decisions, patterns (source of truth)                                                           | Manual (on-demand fetch)     |
 
 See [[modules/Claude Integration|the modules page]] for the inventory of current commands, rules, hooks, and skills.

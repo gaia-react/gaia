@@ -27,7 +27,7 @@ expect(screen.getByText('Hello')).toBeInTheDocument();
 
 ## Overriding a prop (callback spies)
 
-A test overriding a prop on a composed story, especially a callback it spies on, only reaches the real component if the story accepts `(args)` and spreads `{...args}` **last**, after any hardcoded default. This repo's stories hardcode structural/demo props inline and spread `{...args}` only for the controllable knobs, so ordering is load-bearing: a story that hardcodes the callback, or spreads `{...args}` before it, silently drops a render-time override. A spy assertion against a dropped override still runs, it just proves nothing: `not.toHaveBeenCalled()` passes vacuously with the callback never wired, so the test stays green even if the behavior it's meant to guard is broken.
+A test overriding a prop on a composed story, especially a callback it spies on, only reaches the real component if the story accepts `(args)` and spreads `{...args}` **last**, after any hardcoded default. GAIA's stories hardcode structural/demo props inline and spread `{...args}` only for the controllable knobs, so ordering is load-bearing: a story that hardcodes the callback, or spreads `{...args}` before it, silently drops a render-time override. A spy assertion against a dropped override still runs, it just proves nothing: `not.toHaveBeenCalled()` passes vacuously with the callback never wired, so the test stays green even if the behavior it's meant to guard is broken.
 
 ```tsx
 // GOOD - accepts args and spreads {...args} LAST, so a test can override onChange

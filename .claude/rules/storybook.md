@@ -75,7 +75,7 @@ i18n is global, no setup needed. Use `useTranslation()` inside the story functio
 
 ## Test data
 
-No `msw-storybook-addon` is configured. Pull seed data from the `@msw/data` collections via `test/mocks/database`. Reads on a `Collection` are sync, so stories can call them inline:
+GAIA's Storybook config does not wire `msw-storybook-addon`. Pull seed data from the `@msw/data` collections via `test/mocks/database`. Reads on a `Collection` are sync, so stories can call them inline:
 
 ```tsx
 import database from 'test/mocks/database';

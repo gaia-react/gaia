@@ -10,7 +10,7 @@ Authoring patterns live in `.claude/skills/tailwind/SKILL.md`. This rule covers 
 
 ## Tailwind v4
 
-Config lives in `app/styles/tailwind.css` under `@theme` / `@layer` / `@utility`. There is no `tailwind.config.ts`.
+Config lives in `app/styles/tailwind.css` under `@theme` / `@layer` / `@utility`. GAIA ships no `tailwind.config.ts`.
 
 ## Dark mode
 

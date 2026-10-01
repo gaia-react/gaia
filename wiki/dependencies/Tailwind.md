@@ -10,7 +10,7 @@ tags: [dependency, styling]
 
 # Tailwind
 
-Utility-first CSS framework. The project uses **Tailwind v4** with the Vite plugin.
+Utility-first CSS framework. GAIA ships **Tailwind v4** with the Vite plugin.
 
 ## Companion packages
 

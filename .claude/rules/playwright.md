@@ -101,6 +101,8 @@ await page.setExtraHTTPHeaders({'Accept-Language': 'ja'});
 
 ## Parallelism and CI
 
+GAIA's `playwright.config.ts` ships these defaults:
+
 - `fullyParallel: true`, all specs run in parallel by default.
 - CI: `workers: 1`, `retries: 2`, `forbidOnly: true`.
 - Locally: unlimited workers, no retries, multi-browser opt-in via `TEST_ALL_BROWSERS`.

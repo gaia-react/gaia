@@ -157,7 +157,7 @@ live `react-doctor/` ESLint rule ids. `react-doctor` is GAIA's static layer (an
 ESLint-based, always-on, pre-merge `react-doctor/`-namespaced rule set surfaced
 via the `react-doctor` skill); this runtime tool is the complementary diagnosis
 layer. But none of the three labels below is an enabled `react-doctor/` rule:
-`jsx-no-new-object-as-prop` has no literal lint-rule equivalent in this repo, and
+`jsx-no-new-object-as-prop` has no literal lint-rule equivalent in GAIA's lint config, and
 `jsx-no-constructed-context-values` / `no-unstable-nested-components` exist only
 as `eslint-plugin-react` `react/*` names that are not enabled. Present them as
 symptom-to-cause-to-fix guidance. Never claim a named lint rule catches the
