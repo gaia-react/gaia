@@ -84,3 +84,37 @@ gaia_pr_is_cross_repository() {
   GAIA_CROSS_REPO_GH_ERROR="gh pr view exited ${exit_status}${first_line:+: ${first_line}}"
   return 2
 }
+
+#   gaia_cross_repo_deny_reason <pr-number-or-empty> <directory-or-empty>
+#       <fork-lead> <undetermined-lead> <undetermined-tail> [<suffix>]
+#     Runs gaia_pr_is_cross_repository and prints the caller's complete deny
+#     reason: for a fork, <fork-lead> then the refusal message; when gh could
+#     not answer, "<undetermined-lead> comes from a fork (<gh error>),
+#     <undetermined-tail> If the pull request is a fork: " then the refusal
+#     message. <suffix> ends either reason. Returns 0 after printing a reason,
+#     1 with no output for a same-repository pull request.
+#     A non-empty <directory> is where gh is asked from; one that cannot be
+#     entered reads as gh not answering. The body runs in a subshell so that
+#     cd never reaches the caller.
+gaia_cross_repo_deny_reason() (
+  pr_number="${1-}"
+  directory="${2-}"
+  fork_lead="${3-}"
+  undetermined_lead="${4-}"
+  undetermined_tail="${5-}"
+  suffix="${6-}"
+  fork_status=0
+
+  if [ -n "$directory" ] && ! cd "$directory" 2>/dev/null; then
+    GAIA_CROSS_REPO_GH_ERROR=''
+    fork_status=2
+  else
+    gaia_pr_is_cross_repository "$pr_number" || fork_status=$?
+  fi
+
+  case "$fork_status" in
+    1) return 1 ;;
+    0) printf '%s' "${fork_lead}${GAIA_CROSS_REPO_REFUSAL_MESSAGE}${suffix}" ;;
+    *) printf '%s' "${undetermined_lead} comes from a fork (${GAIA_CROSS_REPO_GH_ERROR:-gh could not answer}), ${undetermined_tail} If the pull request is a fork: ${GAIA_CROSS_REPO_REFUSAL_MESSAGE}${suffix}" ;;
+  esac
+)

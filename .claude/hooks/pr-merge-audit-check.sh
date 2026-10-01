@@ -298,31 +298,20 @@ if type gaia_scan_gh_merge >/dev/null 2>&1 && gaia_scan_gh_merge "$cmd"; then
     *) _fork_check_ref="$GAIA_GH_MERGE_REF" ;;
   esac
 fi
-_fork_check_status=0
-gaia_pr_is_cross_repository "$_fork_check_ref" || _fork_check_status=$?
-case "$_fork_check_status" in
-  1) ;;
-  0)
-    jq -n --arg r "PR merge gate: ${GAIA_CROSS_REPO_REFUSAL_MESSAGE}${gate_arm_note}" '{
-      hookSpecificOutput: {
-        hookEventName: "PreToolUse",
-        permissionDecision: "deny",
-        permissionDecisionReason: $r
-      }
-    }'
-    exit 0
-    ;;
-  *)
-    jq -n --arg r "PR merge gate: cannot tell whether pull request ${_fork_check_ref:-for the current branch} comes from a fork (${GAIA_CROSS_REPO_GH_ERROR:-gh could not answer}), so it denies rather than risk merging one. Check gh (\`gh auth status\`, the network) and retry. If the pull request is a fork: ${GAIA_CROSS_REPO_REFUSAL_MESSAGE}${gate_arm_note}" '{
-      hookSpecificOutput: {
-        hookEventName: "PreToolUse",
-        permissionDecision: "deny",
-        permissionDecisionReason: $r
-      }
-    }'
-    exit 0
-    ;;
-esac
+if _fork_deny_reason=$(gaia_cross_repo_deny_reason "$_fork_check_ref" '' \
+  'PR merge gate: ' \
+  "PR merge gate: cannot tell whether pull request ${_fork_check_ref:-for the current branch}" \
+  "so it denies rather than risk merging one. Check gh (\`gh auth status\`, the network) and retry." \
+  "$gate_arm_note"); then
+  jq -n --arg r "$_fork_deny_reason" '{
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason: $r
+    }
+  }'
+  exit 0
+fi
 
 # Resolve HEAD SHA. If we cannot (no git, detached state we can't read),
 # fall back to permissive: this hook only enforces in repos where git answers.

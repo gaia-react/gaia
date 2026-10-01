@@ -2,9 +2,8 @@ import {z} from 'zod';
 import {mkdirSync} from 'node:fs';
 import path from 'node:path';
 import {
-  DEPENDABOT_SECURITY_UPDATES,
-  ISOLATION_POLICIES,
   projectConfigPath,
+  ProjectConfigStrictShape,
   readProjectConfig,
 } from '../schemas/project-config.js';
 import {summarizeZodError} from '../schemas/zod-error.js';
@@ -15,14 +14,7 @@ import {atomicWriteFileSync} from './atomic-write.js';
  * invalid value to absent, so only this one can refuse a bad value before
  * it lands on disk. Unknown keys pass through untouched.
  */
-const ProjectConfigWriteSchema = z.looseObject({
-  dependabot_security_updates: z
-    .literal(DEPENDABOT_SECURITY_UPDATES)
-    .optional(),
-  isolation_policy: z.literal(ISOLATION_POLICIES).optional(),
-  sandbox_recommended: z.boolean().optional(),
-  version: z.literal(1),
-});
+const ProjectConfigWriteSchema = z.looseObject(ProjectConfigStrictShape);
 
 /** `kind` tells a caller which exit-code contract the failure maps to. */
 export class ProjectConfigError extends Error {

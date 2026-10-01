@@ -16998,13 +16998,29 @@ var ISOLATION_POLICIES = [
 var isIsolationPolicy = (value) => ISOLATION_POLICIES.includes(value);
 var DEPENDABOT_SECURITY_UPDATES = ["on", "off"];
 var isDependabotSecurityUpdates = (value) => DEPENDABOT_SECURITY_UPDATES.includes(value);
+var ProjectConfigStrictShape = {
+  dependabot_security_updates: external_exports.literal(DEPENDABOT_SECURITY_UPDATES).optional(),
+  isolation_policy: external_exports.literal(ISOLATION_POLICIES).optional(),
+  sandbox_recommended: external_exports.boolean().optional(),
+  version: external_exports.literal(1)
+};
+var withFallback = (schema2, fallback) => schema2.catch(fallback);
 var ProjectConfigSchema = external_exports.object({
-  dependabot_security_updates: external_exports.literal(DEPENDABOT_SECURITY_UPDATES).optional().catch(void 0),
-  isolation_policy: external_exports.literal(ISOLATION_POLICIES).optional().catch(void 0),
-  sandbox_recommended: external_exports.boolean().optional().catch(void 0),
+  dependabot_security_updates: withFallback(
+    ProjectConfigStrictShape.dependabot_security_updates,
+    void 0
+  ),
+  isolation_policy: withFallback(
+    ProjectConfigStrictShape.isolation_policy,
+    void 0
+  ),
+  sandbox_recommended: withFallback(
+    ProjectConfigStrictShape.sandbox_recommended,
+    void 0
+  ),
   // An unrecognized or absent version degrades to 1 rather than malforming
   // the config.
-  version: external_exports.literal(1).catch(1)
+  version: withFallback(ProjectConfigStrictShape.version, 1)
 });
 var projectConfigPath = (repoRoot) => path13.join(repoRoot, ".gaia", "project.json");
 var readProjectConfig = (repoRoot) => {
@@ -17045,12 +17061,7 @@ var readProjectConfig = (repoRoot) => {
 // src/util/project-config-write.ts
 import { mkdirSync as mkdirSync5 } from "node:fs";
 import path14 from "node:path";
-var ProjectConfigWriteSchema = external_exports.looseObject({
-  dependabot_security_updates: external_exports.literal(DEPENDABOT_SECURITY_UPDATES).optional(),
-  isolation_policy: external_exports.literal(ISOLATION_POLICIES).optional(),
-  sandbox_recommended: external_exports.boolean().optional(),
-  version: external_exports.literal(1)
-});
+var ProjectConfigWriteSchema = external_exports.looseObject(ProjectConfigStrictShape);
 var ProjectConfigError = class extends Error {
   kind;
   constructor(kind, message) {
@@ -29791,7 +29802,7 @@ var commitDetails = (sinceSha, cwd) => {
 };
 
 // src/wiki/util/statusline-cache.ts
-import { existsSync as existsSync29, readFileSync as readFileSync35, renameSync as renameSync4, writeFileSync as writeFileSync9 } from "node:fs";
+import { existsSync as existsSync29, readFileSync as readFileSync35 } from "node:fs";
 import path42 from "node:path";
 var CACHE_RELATIVE_PATH = path42.join(
   ".gaia",
@@ -29810,14 +29821,11 @@ var invalidateStatuslineCache = (repoRoot) => {
     const parsed = JSON.parse(readFileSync35(cachePath, "utf8"));
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
       return;
-    const temporaryPath2 = `${cachePath}.${process.pid}.tmp`;
-    writeFileSync9(
-      temporaryPath2,
+    atomicWriteFileSync(
+      cachePath,
       `${JSON.stringify({ ...parsed, checkedAt: 0 }, null, 2)}
-`,
-      "utf8"
+`
     );
-    renameSync4(temporaryPath2, cachePath);
   } catch {
   }
 };
@@ -31114,7 +31122,7 @@ var run55 = (argv, options = {}) => {
 };
 
 // src/wiki/log-prepend.ts
-import { existsSync as existsSync31, readFileSync as readFileSync40, renameSync as renameSync5, writeFileSync as writeFileSync10 } from "node:fs";
+import { existsSync as existsSync31, readFileSync as readFileSync40, renameSync as renameSync4, writeFileSync as writeFileSync9 } from "node:fs";
 import path49 from "node:path";
 var HELP_TEXT55 = `Usage: gaia wiki log-prepend --sha <h> --decision <WORTHY|SKIP|RE_ANCHOR> --reason "..."
 
@@ -31245,8 +31253,8 @@ var run56 = (argv, options = {}) => {
     ...lines.slice(insertionIndex)
   ].join("\n");
   const tmpPath = `${logPath}.tmp`;
-  writeFileSync10(tmpPath, next, "utf8");
-  renameSync5(tmpPath, logPath);
+  writeFileSync9(tmpPath, next, "utf8");
+  renameSync4(tmpPath, logPath);
   return EXIT_CODES.OK;
 };
 

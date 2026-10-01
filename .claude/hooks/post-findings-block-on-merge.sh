@@ -3,9 +3,10 @@
 # post-findings-block.sh. Under local audit mode no code path posted the
 # machine-readable findings block, only a hand-run snippet did, so a local
 # merge contributed nothing to the finding-recurrence tally. This hook closes
-# that gap: on a real `gh pr merge` invocation whose resolved audit mode is
-# `local`, it resolves the pull request and calls the existing producer. Pure
-# side effect: it never blocks the merge and never emits a permission decision.
+# that gap: on a real `gh pr merge` invocation it resolves the pull request
+# and calls the existing producer. Every audit is local, so no audit mode is
+# resolved first. Pure side effect: it never blocks the merge and never emits
+# a permission decision.
 
 set -euo pipefail
 trap 'exit 0' ERR
@@ -59,19 +60,9 @@ case "${GAIA_GH_MERGE_REF:-}" in
 esac
 [ -n "$PR" ] || exit 0
 
-# Ask the shared resolver who audits this author's PR. Every audit is local, so
-# it answers `local`; the equality below stays as a defensive check, and any
-# other value or any resolution failure exits without posting.
-author="$(gh pr view "$PR" --json author --jq .author.login 2>/dev/null || true)"
-[ -n "$author" ] || exit 0
-
-# Rooted through the location resolved for the arming load above, never named cwd-relatively, so a failure here degrades to the same silent `exit 0` the arms below take rather than a name resolved against the wrong directory.
+# Rooted through the location resolved for the arming load above, never named cwd-relatively, so a failure here degrades to the same silent `exit 0` the arms above take rather than a name resolved against the wrong directory.
 _gaia_scripts="${_va_lib:+$_va_lib/../../../.gaia/scripts}"
 [ -n "$_gaia_scripts" ] || exit 0
-
-resolved_mode=""
-eval "$(bash "$_gaia_scripts/read-audit-ci-config.sh" --resolve-author "$author" 2>/dev/null)" || true
-[ "$resolved_mode" = "local" ] || exit 0
 
 # Best-effort: post-findings-block.sh always exits 0 and declines cleanly
 # when no sidecars exist, so an early merge attempt before the audit ran

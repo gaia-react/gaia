@@ -113,6 +113,41 @@ reason() {
   [ ! -s "$GH_LOG" ]
 }
 
+# run_prefilter_probe <command> [hook]: drives the hook with jq and gh stubs
+# first on PATH that each touch a sentinel, so a run that spawns either leaves
+# it behind.
+run_prefilter_probe() {
+  local payload probe_bin="$BATS_TEST_TMPDIR/probe-bin"
+  payload="$(jq -n -c --arg c "$1" '{tool_name: "Bash", tool_input: {command: $c}}')"
+  PROBE_SENTINEL="$BATS_TEST_TMPDIR/probe-spawned"
+  mkdir -p "$probe_bin"
+  for tool in jq gh; do
+    cat >"$probe_bin/$tool" <<EOF
+#!/usr/bin/env bash
+echo $tool >>"$PROBE_SENTINEL"
+EOF
+    chmod +x "$probe_bin/$tool"
+  done
+  run env PATH="$probe_bin:$PATH" bash -c 'printf %s "$1" | bash "$2"' _ "$payload" "${2:-$HOOK}"
+}
+
+@test "a command naming neither checkout nor pull exits before spawning jq or gh" {
+  run_prefilter_probe 'ls -la'
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ ! -e "$PROBE_SENTINEL" ]
+}
+
+@test "mutation: without the prefilter exit the same command spawns jq, so the prefilter test can fail" {
+  local d="$BATS_TEST_TMPDIR/no-prefilter"
+  mkdir -p "$d"
+  ln -s "$REPO_ROOT/.claude/hooks/lib" "$d/lib"
+  sed '/^  \*) exit 0 ;;$/d' "$HOOK" >"$d/block-fork-pr-checkout.sh"
+  cmp -s "$HOOK" "$d/block-fork-pr-checkout.sh" && return 1
+  run_prefilter_probe 'ls -la' "$d/block-fork-pr-checkout.sh"
+  grep -qxF -- jq "$PROBE_SENTINEL"
+}
+
 @test "an ordinary fetch with no pull-request refspec is allowed without calling gh" {
   run_guard 'git fetch origin main'
   [ "$status" -eq 0 ]
@@ -145,11 +180,11 @@ reason() {
   reason | grep -qF -- 'cross-repo-refusal.sh'
 }
 
-@test "mutation: without the gaia_pr_is_cross_repository call the fork checkout is allowed, so the denial test can fail" {
+@test "mutation: without the gaia_cross_repo_deny_reason call the fork checkout is allowed, so the denial test can fail" {
   local d="$BATS_TEST_TMPDIR/mutant"
   mkdir -p "$d"
   ln -s "$REPO_ROOT/.claude/hooks/lib" "$d/lib"
-  sed 's/gaia_pr_is_cross_repository "\$pr_number" || fork_status=\$?/fork_status=1/' "$HOOK" >"$d/block-fork-pr-checkout.sh"
+  sed 's/if fork_reason=\$(gaia_cross_repo_deny_reason/if false \&\& fork_reason=$(gaia_cross_repo_deny_reason/' "$HOOK" >"$d/block-fork-pr-checkout.sh"
   cmp -s "$HOOK" "$d/block-fork-pr-checkout.sh" && return 1
   run_guard 'gh pr checkout 34' "$d/block-fork-pr-checkout.sh"
   [ "$status" -eq 0 ]

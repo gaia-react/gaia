@@ -820,7 +820,7 @@ fork_mutant() {
 }
 
 @test "UAT-010 mutation: without the refusal call the fork dispatch is allowed, so the denial test can fail" {
-  fork_mutant "s/gaia_pr_is_cross_repository '' \\|\\| fork_status=\\\$\\?/fork_status=1/"
+  fork_mutant 's/if fork_reason=\$\(gaia_cross_repo_deny_reason/if false && fork_reason=\$(gaia_cross_repo_deny_reason/'
   printf '{"number":34,"state":"OPEN"}\n' >"$GH_DIR/branch.json"
   printf 'true\n' >"$GH_DIR/cross-repository"
   dispatch
@@ -829,7 +829,7 @@ fork_mutant() {
 }
 
 @test "UAT-010 mutation: treating an unanswerable gh as allow lets the dispatch through, so the fail-closed test can fail" {
-  fork_mutant 's/\n      1\) ;;\n      0\) finish_deny "BLOCKED: \$GAIA_CROSS_REPO_REFUSAL_MESSAGE" ;;/\n      1 | 2) ;;\n      0) finish_deny "BLOCKED: \$GAIA_CROSS_REPO_REFUSAL_MESSAGE" ;;/'
+  fork_mutant 's/finish_deny "\$fork_reason"/case "\$fork_reason" in *"cannot tell"*) ;; *) finish_deny "\$fork_reason" ;; esac/'
   printf 'fail\n' >"$GH_DIR/cross-repository"
   dispatch
   assert_allowed

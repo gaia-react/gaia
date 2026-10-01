@@ -28,16 +28,24 @@ set -uo pipefail
 
 input=$(cat)
 
+# Every call this hook binds carries `checkout` (gh pr checkout) or `pull/`
+# (the fetch refspec), so a payload holding neither word is outside its remit.
+# This runs on every Bash call, so it decides that in bash alone, before any
+# library load or jq spawn. `pull` rather than `pull/` because the payload is
+# JSON, which may escape the slash.
+case "$input" in
+  *checkout* | *pull*) ;;
+  *) exit 0 ;;
+esac
+
 # jq-availability arm: refuse loudly rather than fail open when the interpreter
 # this hook reads its payload with is absent. What that buys, and the contract
 # the literals below satisfy, live in .claude/hooks/lib/jq-availability.sh.
-# Every call this hook binds carries `checkout` (gh pr checkout) or `pull/`
-# (the fetch refspec), so the absence of both proves the call is outside its
-# remit. A refspec spelled without that literal (assembled by the shell) is
-# outside what the arming below reads anyway.
-_jq_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _jq_lib_dir=''
+# A refspec spelled without `pull/` (assembled by the shell) is outside what
+# the arming below reads anyway.
+_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _lib_dir=''
 # shellcheck source=lib/jq-availability.sh
-[ -n "$_jq_lib_dir" ] && [ -f "$_jq_lib_dir/jq-availability.sh" ] && . "$_jq_lib_dir/jq-availability.sh" 2>/dev/null
+[ -n "$_lib_dir" ] && [ -f "$_lib_dir/jq-availability.sh" ] && . "$_lib_dir/jq-availability.sh" 2>/dev/null
 if ! type gaia_require_jq >/dev/null 2>&1; then
   printf 'BLOCKED: block-fork-pr-checkout.sh cannot load lib/jq-availability.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
   exit 2
@@ -55,9 +63,8 @@ deny() {
   exit 0
 }
 
-tool_name=$(printf '%s' "$input" | jq -r '.tool_name // ""' 2>/dev/null)
-[ "$tool_name" = "Bash" ] || exit 0
-cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
+# Empty for any tool but Bash, so one read covers both checks.
+cmd=$(printf '%s' "$input" | jq -r 'if .tool_name == "Bash" then .tool_input.command // "" else "" end' 2>/dev/null)
 [ -n "$cmd" ] || exit 0
 
 checkout_fragment='gh[[:space:]]+pr[[:space:]]+checkout([[:space:]]|$)'
@@ -68,7 +75,6 @@ pull_ref_pattern='pull/[0-9]+/(head|merge)'
 # body, a commit message) does not arm. Without it the raw match decides, which
 # over-arms: a library that cannot load must deny an armed call rather than let
 # it through, and the raw match is the widest reading available.
-_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _lib_dir=''
 verb_arming_loaded=0
 if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/verb-arming.sh" ]; then
   # shellcheck source=lib/verb-arming.sh
@@ -98,7 +104,7 @@ fi
 cross_repo_loaded=0
 if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/cross-repo-refusal.sh" ]; then
   # shellcheck source=lib/cross-repo-refusal.sh
-  if . "$_lib_dir/cross-repo-refusal.sh" 2>/dev/null && type gaia_pr_is_cross_repository >/dev/null 2>&1; then
+  if . "$_lib_dir/cross-repo-refusal.sh" 2>/dev/null && type gaia_cross_repo_deny_reason >/dev/null 2>&1; then
     cross_repo_loaded=1
   fi
 fi
@@ -174,13 +180,12 @@ while IFS= read -r pr_number; do
   [ -n "$pr_number" ] || continue
   case "$checked" in *" $pr_number "*) continue ;; esac
   checked="${checked}${pr_number} "
-  fork_status=0
-  gaia_pr_is_cross_repository "$pr_number" || fork_status=$?
-  case "$fork_status" in
-    1) ;;
-    0) deny "Fork pull request checkout guard: pull request ${pr_number}. ${GAIA_CROSS_REPO_REFUSAL_MESSAGE}" ;;
-    *) deny "Fork pull request checkout guard: cannot tell whether pull request ${pr_number} comes from a fork (${GAIA_CROSS_REPO_GH_ERROR:-gh could not answer}), so it denies rather than let a fork's head into this checkout. Check gh (gh auth status, the network) and retry. If the pull request is a fork: ${GAIA_CROSS_REPO_REFUSAL_MESSAGE}" ;;
-  esac
+  if fork_reason=$(gaia_cross_repo_deny_reason "$pr_number" '' \
+    "Fork pull request checkout guard: pull request ${pr_number}. " \
+    "Fork pull request checkout guard: cannot tell whether pull request ${pr_number}" \
+    "so it denies rather than let a fork's head into this checkout. Check gh (gh auth status, the network) and retry."); then
+    deny "$fork_reason"
+  fi
 done <<EOF
 $pr_numbers
 EOF

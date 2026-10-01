@@ -16,8 +16,8 @@
 #
 # Setup drives the REAL hook (by absolute path, never copied) against a
 # sandbox git repo carrying real copies of the scripts it calls by
-# repo-relative path (read-audit-ci-config.sh, post-findings-block.sh,
-# audit-key-lib.sh, repo-scope.sh), and a fake `gh`
+# repo-relative path (post-findings-block.sh, audit-key-lib.sh,
+# repo-scope.sh), and a fake `gh`
 # on PATH that
 # answers the hook's own PR lookups plus the producer's comment-post/patch
 # calls, tracking state in files under $FAKE_GH_STATE so a test can assert
@@ -32,7 +32,6 @@ setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/post-findings-block-on-merge.sh
   SETTINGS_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude" && pwd)/settings.json
-  CI_CONFIG_RESOLVER_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/read-audit-ci-config.sh
   PRODUCER_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/post-findings-block.sh
   KEY_LIB_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/audit-key-lib.sh
   REPO_SCOPE_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/repo-scope.sh
@@ -56,14 +55,12 @@ setup() {
   git -C "$REPO" commit --quiet -m "feature change"
 
   mkdir -p "$REPO/.gaia/scripts" "$REPO/.claude/hooks/lib" "$REPO/.gaia/local/audit"
-  cp "$CI_CONFIG_RESOLVER_ABS" "$REPO/.gaia/scripts/read-audit-ci-config.sh"
   cp "$PRODUCER_ABS" "$REPO/.gaia/scripts/post-findings-block.sh"
   cp "$KEY_LIB_ABS" "$REPO/.gaia/scripts/audit-key-lib.sh"
   cp "$REPO_SCOPE_ABS" "$REPO/.claude/hooks/lib/repo-scope.sh"
   cp "$VERB_ARMING_ABS" "$REPO/.claude/hooks/lib/verb-arming.sh"
   cp "$VERB_ARMING_WALK_ABS" "$REPO/.claude/hooks/lib/verb-arming-walk.sh"
-  chmod +x "$REPO/.gaia/scripts/read-audit-ci-config.sh" \
-    "$REPO/.gaia/scripts/post-findings-block.sh"
+  chmod +x "$REPO/.gaia/scripts/post-findings-block.sh"
 
   GH_BIN="$BATS_TEST_TMPDIR/bin"
   mkdir -p "$GH_BIN"
@@ -84,7 +81,7 @@ teardown() {
 }
 
 # Write a fake `gh` that answers exactly the calls this hook and
-# post-findings-block.sh make: PR lookups (author),
+# post-findings-block.sh make: PR number lookups,
 # `gh auth status`, `gh repo view`, and the comment list/POST/PATCH trio.
 # State (posted body, call counts) lives under $FAKE_GH_STATE so a test can
 # assert on it after run_merge_hook.
@@ -124,7 +121,6 @@ case "$1" in
       esac
     done
     case "$json_field" in
-      author) printf '%s\n' "${FAKE_GH_AUTHOR:-alice}" ;;
       # `--json number` with no selector is the current-branch default; with a
       # selector it is gh resolving a URL or a branch name against the
       # repository that selector names. The two answer from different variables
@@ -240,7 +236,7 @@ write_sidecar() {
 
 @test "UAT-005: a registered gh pr merge posts one non-empty findings block with auditor local" {
   write_sidecar
-  export FAKE_GH_STATE FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_STATE
 
   run_merge_hook
   [ "$status" -eq 0 ]
@@ -267,7 +263,7 @@ write_sidecar() {
   # The final, cleared round: present, empty, and the only one a base resolved
   # at merge time could ever have selected.
   write_sidecar "$(git -C "$REPO" rev-parse HEAD)" code-audit-frontend '[]'
-  export FAKE_GH_STATE FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_STATE
 
   run_merge_hook
   [ "$status" -eq 0 ]
@@ -280,7 +276,7 @@ write_sidecar() {
 
 @test "UAT-005: a second invocation UPDATES the single comment rather than duplicating it" {
   write_sidecar
-  export FAKE_GH_STATE FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_STATE
 
   run_merge_hook
   [ "$status" -eq 0 ]
@@ -325,7 +321,7 @@ write_sidecar() {
 }
 
 @test "no sidecars: the hook runs but posts nothing, and still exits 0" {
-  export FAKE_GH_STATE FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_STATE
   run_merge_hook
   [ "$status" -eq 0 ]
   [ ! -s "$FAKE_GH_STATE/post_count" ]
@@ -344,7 +340,7 @@ write_sidecar() {
 # onto THIS repository's pull request of that number.
 @test "a same-named sibling repo posts nothing" {
   write_sidecar
-  export FAKE_GH_STATE FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_STATE
 
   run_merge_hook "gh pr merge 42 -R other-org/$(basename "$REPO") --squash"
   [ "$status" -eq 0 ]
@@ -356,7 +352,7 @@ write_sidecar() {
   # misses; missing it here means posting to the wrong repository's pull
   # request rather than merely over-enforcing.
   write_sidecar
-  export FAKE_GH_STATE FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_STATE
 
   run_merge_hook "gh pr merge 42 -Rother-org/$(basename "$REPO")"
   [ "$status" -eq 0 ]
@@ -367,7 +363,7 @@ write_sidecar() {
   # The boundary's other direction: tightening it must not cost the posting it
   # exists to let through.
   write_sidecar
-  export FAKE_GH_STATE FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_STATE
 
   run_merge_hook "gh pr merge 42 --repo acme/repo --squash"
   [ "$status" -eq 0 ]
@@ -378,7 +374,7 @@ write_sidecar() {
   # GitHub resolves OWNER/REPO case-insensitively, so this lands on the home
   # repository and a case-sensitive comparison would cost the posting.
   write_sidecar
-  export FAKE_GH_STATE FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_STATE
 
   run_merge_hook "gh pr merge 42 --repo ACME/Repo --squash"
   [ "$status" -eq 0 ]
@@ -392,7 +388,7 @@ write_sidecar() {
 # on either half alone.
 @test "from a non-root cwd, a foreign merge still posts nothing" {
   write_sidecar
-  export FAKE_GH_STATE FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_STATE
 
   mkdir -p "$REPO/sub/dir"
   local json
@@ -410,7 +406,7 @@ write_sidecar() {
 # a correct post by every other assertion in this file.
 @test "the merge's own reference decides, even when its flags come first" {
   write_sidecar
-  export FAKE_GH_STATE FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_STATE
   # A pattern anchored to a number right after the verb misses this spelling
   # entirely and falls back to the current branch's pull request.
   export FAKE_GH_BRANCH_PR="99"
@@ -424,7 +420,7 @@ write_sidecar() {
 
 @test "a later command's own merge reference does not decide this one" {
   write_sidecar
-  export FAKE_GH_STATE FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_STATE
 
   # A regex takes its first match anywhere in the string, so with this merge
   # spelling its flags first the only text it matches is the trailing mention
@@ -438,7 +434,7 @@ write_sidecar() {
 
 @test "a merge naming no reference falls back to the current branch's PR" {
   write_sidecar
-  export FAKE_GH_STATE FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_STATE
   export FAKE_GH_BRANCH_PR="77"
 
   run_merge_hook "gh pr merge --squash"
@@ -455,7 +451,7 @@ write_sidecar() {
 # already answers both for the identical scanned value.
 @test "a foreign repository's pull-request URL posts nothing" {
   write_sidecar
-  export FAKE_GH_STATE FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_STATE
   export FAKE_GH_REPO="acme/repo"
   # gh would resolve this URL against other-org/other-repo and hand back THAT
   # repository's number, which the post would then apply to this one.
@@ -469,7 +465,7 @@ write_sidecar() {
 
 @test "a pull-request URL naming the home repository still posts, reduced to its number" {
   write_sidecar
-  export FAKE_GH_STATE FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_STATE
   export FAKE_GH_REPO="acme/repo"
 
   run_merge_hook "gh pr merge https://github.com/acme/repo/pull/7"
@@ -481,7 +477,7 @@ write_sidecar() {
 
 @test "a named reference gh cannot resolve declines rather than falling back" {
   write_sidecar
-  export FAKE_GH_STATE FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_STATE
   # The merge named a branch; gh resolves no pull request for it (a typo, one
   # not opened yet, a transient failure). The current branch's pull request is
   # a DIFFERENT one, so falling back to it acts on something the merge never
@@ -497,7 +493,7 @@ write_sidecar() {
 
 @test "a pull-request URL on another host posts nothing, even naming the home slug" {
   write_sidecar
-  export FAKE_GH_STATE FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_STATE
   export FAKE_GH_REPO="acme/repo" FAKE_GH_HOST="github.com"
 
   # The same OWNER/REPO served from another host is another repository, which a
@@ -516,7 +512,7 @@ write_sidecar() {
 # reaches them, which is the half a lib-only suite cannot see.
 @test "a home pull-request URL carrying a /files suffix still posts" {
   write_sidecar
-  export FAKE_GH_STATE FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_STATE
   export FAKE_GH_REPO="acme/repo"
 
   # The spelling a human actually produces, by copying the address bar off the
@@ -530,7 +526,7 @@ write_sidecar() {
 
 @test "a home pull-request URL carrying the default port still posts" {
   write_sidecar
-  export FAKE_GH_STATE FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_STATE
   export FAKE_GH_REPO="acme/repo"
 
   run_merge_hook "gh pr merge https://github.com:443/acme/repo/pull/7"
@@ -542,7 +538,7 @@ write_sidecar() {
 
 @test "a suffix does not carry a foreign pull-request URL past the boundary" {
   write_sidecar
-  export FAKE_GH_STATE FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_STATE
   export FAKE_GH_REPO="acme/repo"
 
   # The relaxation is to the shape, never to the repository comparison.
@@ -556,7 +552,7 @@ write_sidecar() {
 
 @test "a heredoc body carrying the verb produces no post, and the same text without the heredoc does" {
   write_sidecar
-  export FAKE_GH_STATE FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_STATE
 
   heredoc_cmd=$'cat > /tmp/notes.txt <<EOF\ngh pr merge 42\nEOF'
   run_merge_hook "$heredoc_cmd"
@@ -581,7 +577,7 @@ write_sidecar() {
 # becomes a spurious post for the wrong reason.
 @test "the same heredoc-body payload padded past the arming bound still posts nothing (boundary, not masking)" {
   write_sidecar
-  export FAKE_GH_STATE FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_STATE
 
   local pad heredoc_cmd
   pad=$(printf 'x%.0s' $(seq 1 16400))
@@ -595,7 +591,7 @@ write_sidecar() {
 
 @test "a quoted verb in the first command produces the post (tokenizer arm)" {
   write_sidecar
-  export FAKE_GH_STATE FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_STATE
 
   run_merge_hook 'gh pr "merge" 42'
   [ "$status" -eq 0 ]
@@ -609,7 +605,7 @@ write_sidecar() {
 # multi-statement shape that already worked and must keep working.
 @test "a trailing statement after the merge does not cost the post" {
   write_sidecar
-  export FAKE_GH_STATE FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_STATE
 
   run_merge_hook "gh pr merge 42 --squash && echo done"
   [ "$status" -eq 0 ]
@@ -661,7 +657,7 @@ run_staged_merge_hook() {
 # staging has to be shown posting normally first.
 @test "staged hook, every lib usable: posts the findings block (control)" {
   write_sidecar
-  export FAKE_GH_STATE FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_STATE
   stage_merge_hook
 
   run_staged_merge_hook
@@ -680,7 +676,7 @@ run_staged_merge_hook() {
 @test "staged hook under stock /bin/bash, every lib usable: posts the findings block (control)" {
   [ -x /bin/bash ] || skip "no /bin/bash"
   write_sidecar
-  export FAKE_GH_STATE FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_STATE
   stage_merge_hook
 
   local json
@@ -698,7 +694,7 @@ run_staged_merge_hook() {
 # to emit.
 @test "repo-scope.sh holds conflict markers: exit 0, the merge is not denied" {
   write_sidecar
-  export FAKE_GH_STATE FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_STATE
   stage_merge_hook
   write_conflicted_lib "$REPO/.claude/hooks/lib/repo-scope.sh"
 
@@ -720,7 +716,7 @@ run_staged_merge_hook() {
 # arm's `2>/dev/null` suppressed the syntax error naming the broken file.
 @test "verb-arming.sh holds conflict markers: exit 0, the merge is not denied" {
   write_sidecar
-  export FAKE_GH_STATE FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_STATE
   stage_merge_hook
   write_conflicted_lib "$REPO/.claude/hooks/lib/verb-arming.sh"
 
@@ -733,7 +729,7 @@ run_staged_merge_hook() {
 @test "verb-arming.sh holds conflict markers, under stock /bin/bash: exit 0, the merge is not denied" {
   [ -x /bin/bash ] || skip "no /bin/bash"
   write_sidecar
-  export FAKE_GH_STATE FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_STATE
   stage_merge_hook
   write_conflicted_lib "$REPO/.claude/hooks/lib/verb-arming.sh"
 

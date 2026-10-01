@@ -335,7 +335,7 @@ run_decision() {
     finish_deny "BLOCKED: the audit loop checkpoint cannot load its libraries from $scripts. Fail-loud, not fail-open: restore audit-loop-state-lib.sh and audit-loop-eval.sh."
   # shellcheck source=lib/cross-repo-refusal.sh
   . "$(dirname "${BASH_SOURCE[0]}")/lib/cross-repo-refusal.sh" 2>/dev/null || libs_failed=1
-  if [ "$libs_failed" -ne 0 ] || ! type gaia_pr_is_cross_repository >/dev/null 2>&1; then
+  if [ "$libs_failed" -ne 0 ] || ! type gaia_cross_repo_deny_reason >/dev/null 2>&1; then
     finish_deny 'BLOCKED: the audit loop checkpoint cannot load .claude/hooks/lib/cross-repo-refusal.sh, so it cannot tell whether this pull request comes from a fork. Fail-loud, not fail-open: restore the library and retry.'
   fi
 
@@ -391,21 +391,13 @@ run_decision() {
       *) finish_deny "BLOCKED: the audit loop checkpoint could not check $root for uncommitted changes. Fail-loud, not fail-open: check the checkout and retry." ;;
     esac
     # Asked from the audited checkout, whose current branch is the pull
-    # request in question. The subshell keeps the cd from leaking, so it
-    # prints the exit status and the failure wording back for this shell.
-    fork_answer=$(cd "$root" 2>/dev/null || exit 2
-      fork_status=0
-      gaia_pr_is_cross_repository '' || fork_status=$?
-      printf '%s\n%s' "$fork_status" "$GAIA_CROSS_REPO_GH_ERROR") || fork_answer=2
-    case "${fork_answer%%$'\n'*}" in
-      1) ;;
-      0) finish_deny "BLOCKED: $GAIA_CROSS_REPO_REFUSAL_MESSAGE" ;;
-      *)
-        fork_reason=''
-        case "$fork_answer" in *$'\n'*) fork_reason="${fork_answer#*$'\n'}" ;; esac
-        finish_deny "BLOCKED: the audit loop checkpoint cannot tell whether the pull request for $root comes from a fork (${fork_reason:-gh could not answer}), so it refuses the dispatch rather than audit one. Check gh (gh auth status, the network) and retry. If the pull request is a fork: $GAIA_CROSS_REPO_REFUSAL_MESSAGE"
-        ;;
-    esac
+    # request in question.
+    if fork_reason=$(gaia_cross_repo_deny_reason '' "$root" \
+      'BLOCKED: ' \
+      "BLOCKED: the audit loop checkpoint cannot tell whether the pull request for $root" \
+      'so it refuses the dispatch rather than audit one. Check gh (gh auth status, the network) and retry.'); then
+      finish_deny "$fork_reason"
+    fi
     gh_lookup
   fi
 

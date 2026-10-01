@@ -1,5 +1,6 @@
-import {existsSync, readFileSync, renameSync, writeFileSync} from 'node:fs';
+import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
+import {atomicWriteFileSync} from '../../util/atomic-write.js';
 import {resolveMainWorktreeRoot} from '../../util/main-root.js';
 
 const CACHE_RELATIVE_PATH = path.join(
@@ -30,15 +31,10 @@ export const invalidateStatuslineCache = (repoRoot: string): void => {
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))
       return;
 
-    // Temp file beside the target so the rename stays on one filesystem.
-    const temporaryPath = `${cachePath}.${process.pid}.tmp`;
-
-    writeFileSync(
-      temporaryPath,
-      `${JSON.stringify({...parsed, checkedAt: 0}, null, 2)}\n`,
-      'utf8'
+    atomicWriteFileSync(
+      cachePath,
+      `${JSON.stringify({...parsed, checkedAt: 0}, null, 2)}\n`
     );
-    renameSync(temporaryPath, cachePath);
   } catch {
     // Best-effort: a stale nudge is recoverable, a failed land is not.
   }

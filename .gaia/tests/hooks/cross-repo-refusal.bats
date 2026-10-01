@@ -197,7 +197,7 @@ refusal_message() {
 @test "UAT-010 mutation: with the fork check neutralized the canaries do run, so their silence above is evidence" {
   local mutant
   fork_head_fixture
-  mutant="$(mgf_scratch_hook 's/gaia_pr_is_cross_repository "\$_fork_check_ref" \|\| _fork_check_status=\$\?/_fork_check_status=1/')"
+  mutant="$(mgf_scratch_hook 's/if _fork_deny_reason=\$\(gaia_cross_repo_deny_reason/if false && _fork_deny_reason=\$(gaia_cross_repo_deny_reason/')"
 
   mgf_run_merge "gh pr merge 34 --squash" "$mutant"
   [ -s "$CANARY_LOG" ]

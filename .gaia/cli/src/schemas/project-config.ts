@@ -31,6 +31,27 @@ export const isDependabotSecurityUpdates = (
   (DEPENDABOT_SECURITY_UPDATES as readonly string[]).includes(value);
 
 /**
+ * The strict shape of every known field, defined once. The write boundary
+ * (`updateProjectConfig`) validates against it as is; `ProjectConfigSchema`
+ * wraps each field so a bad value degrades instead of failing the read.
+ */
+export const ProjectConfigStrictShape = {
+  dependabot_security_updates: z
+    .literal(DEPENDABOT_SECURITY_UPDATES)
+    .optional(),
+  isolation_policy: z.literal(ISOLATION_POLICIES).optional(),
+  sandbox_recommended: z.boolean().optional(),
+  version: z.literal(1),
+};
+
+// A call rather than `field.catch(...)` at the top level, which
+// unicorn/prefer-top-level-await misreads as a promise chain.
+const withFallback = <Schema extends z.ZodType>(
+  schema: Schema,
+  fallback: z.output<Schema>
+) => schema.catch(fallback);
+
+/**
  * Every field is read permissively: an absent key, an unrecognized string,
  * and a wrong-typed value all leave the config parsing `ok` with the field
  * `undefined`, so a typo or a value a newer binary wrote never malforms the
@@ -39,15 +60,21 @@ export const isDependabotSecurityUpdates = (
  * consumer can compare against a literal without re-validating.
  */
 export const ProjectConfigSchema = z.object({
-  dependabot_security_updates: z
-    .literal(DEPENDABOT_SECURITY_UPDATES)
-    .optional()
-    .catch(undefined),
-  isolation_policy: z.literal(ISOLATION_POLICIES).optional().catch(undefined),
-  sandbox_recommended: z.boolean().optional().catch(undefined),
+  dependabot_security_updates: withFallback(
+    ProjectConfigStrictShape.dependabot_security_updates,
+    undefined
+  ),
+  isolation_policy: withFallback(
+    ProjectConfigStrictShape.isolation_policy,
+    undefined
+  ),
+  sandbox_recommended: withFallback(
+    ProjectConfigStrictShape.sandbox_recommended,
+    undefined
+  ),
   // An unrecognized or absent version degrades to 1 rather than malforming
   // the config.
-  version: z.literal(1).catch(1),
+  version: withFallback(ProjectConfigStrictShape.version, 1),
 });
 
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
