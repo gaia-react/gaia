@@ -162,7 +162,9 @@ audit_resolve_base_provenance() {
 # is why the tr cannot move out of the substitution). The 2>/dev/null is
 # required: without it a failed diff writes `fatal: ...` to the caller's
 # stderr, which collides with the merge gate's pinned single-line stderr
-# assertion for a permit diagnostic.
+# assertion for a permit diagnostic. --no-renames keeps a rename's old path in
+# the list, so moving app/ source to an out-of-scope path cannot read as an
+# out-of-scope-only change set.
 #
 # return: 0 iff the diff command exited zero; 1 on any diff failure and on an
 # empty <root> or <base>. Empty stdout with return 0 is a real empty change
@@ -173,7 +175,7 @@ audit_provenance_changed_files() {
   [ -n "$root" ] || return 1
   [ -n "$base" ] || return 1
 
-  out="$(set -o pipefail; git -C "$root" diff --name-only -z "${base}...HEAD" 2>/dev/null | tr '\0' '\n')" || return 1
+  out="$(set -o pipefail; git -C "$root" diff --name-only -z --no-renames "${base}...HEAD" 2>/dev/null | tr '\0' '\n')" || return 1
   printf '%s' "$out"
   return 0
 }
