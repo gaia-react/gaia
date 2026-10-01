@@ -573,7 +573,7 @@
       "kind": "dir",
       "scope": "ephemeral",
       "keyed_by": null,
-      "why": "/health-audit per-run bucket-executor output and its Comprehensive-phase sibling, keyed by run stamp, self-pruned to a bounded number of recent runs by the health-audit runbook, in the shared audit directory.",
+      "why": "Maintainer health-audit per-run bucket-executor output and its Comprehensive-phase sibling, keyed by run stamp, self-pruned to a bounded number of recent runs by the health-audit runbook, in the shared audit directory.",
       "writer": "code",
       "reaped_by": null,
       "source": "SPEC-061 §ephemeral"

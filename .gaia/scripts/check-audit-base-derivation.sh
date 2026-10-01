@@ -30,10 +30,9 @@
 # .gaia/scripts/tests/audit-base-agreement.bats.
 # gaia:maintainer-only:end
 #
-# Over `.claude/agents/`, the maintainer members' shared protocol file
-# (`.claude/hooks/lib/audit-member-protocol.md`, which carries their handshake
-# and sidecar commands; the release scrub strips that entry along with the
-# file, so an adopter clone scans the definitions alone), and `.gaia/scripts/audit-resolve-scope.sh`, THREE
+# Over `.claude/agents/`, the maintainer members' shared protocol file where
+# one exists (it carries their handshake and sidecar commands; an adopter
+# clone has none, so it scans the definitions alone), and `.gaia/scripts/audit-resolve-scope.sh`, THREE
 # assertions. The resolver script is scanned because it is where every
 # specialist's membership base, review base, key base, and both changed-file
 # diffs are derived: a definition resolves its scope by invoking it rather

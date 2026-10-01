@@ -54,8 +54,7 @@ fi
 # to the pipeline's status -- so the `if` would take the FALSE branch BECAUSE a
 # wiki path matched. A session's whole changed-path set is exactly the input
 # that outruns the pipe buffer, and an early `wiki/` match is exactly the
-# session this reminder exists for. `.gaia/scripts/lint-sigpipe-readers.sh` is
-# the gate that keeps the shape from coming back.
+# session this reminder exists for.
 session_paths="$(git log "$start_sha..HEAD" --name-only --pretty=format: 2>/dev/null || true)"
 if grep -q '^wiki/' <<<"$session_paths"; then
   echo 'WIKI_CHANGED: Wiki pages were modified this session. Please update wiki/hot.md with a brief summary of what changed (under 200 words). Use the hot cache format: Last Updated, Key Recent Facts, Recent Changes, Active Threads. Keep it factual. Overwrite the file completely. It is a cache, not a journal.'

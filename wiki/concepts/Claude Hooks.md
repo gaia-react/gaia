@@ -170,7 +170,11 @@ The arm refuses **narrowly** where the hook's matcher can reach the `jq` install
 
 An **advisory** hook takes the opposite arm and stands down, because a lost reminder costs less than a blocked session.
 
-`.claude/hooks/lib/jq-availability.sh` owns the arm and the literal contract; each hook states beside its own call which spellings its literals cannot reach. `.gaia/scripts/lint-hook-jq-availability.sh` holds the layer to it, deriving its subject set from the PreToolUse registrations so a newly registered hook carries the obligation the moment it is registered, and carrying the blocking-versus-advisory question in the same shared oracle the advisory-classification gate reads.
+`.claude/hooks/lib/jq-availability.sh` owns the arm and the literal contract; each hook states beside its own call which spellings its literals cannot reach.
+
+<!-- gaia:maintainer-only:start -->
+GAIA maintainers: `.gaia/scripts/lint-hook-jq-availability.sh` holds the layer to it, deriving its subject set from the PreToolUse registrations so a newly registered hook carries the obligation the moment it is registered, and carrying the blocking-versus-advisory question in the same shared oracle the advisory-classification gate reads.
+<!-- gaia:maintainer-only:end -->
 
 ### Which tools a command-reading hook binds
 

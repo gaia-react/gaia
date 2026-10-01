@@ -135,8 +135,7 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 # `"app/caf\303\251.test.ts"`, matches no `app/*` case, and the gate exits
 # having verified nothing. The records are translated back to newlines because
 # the consumer reads them from a here-doc; a path holding a literal newline is
-# the separate, far rarer class .gaia/scripts/lint-git-path-quoting.sh declares
-# out of its scope.
+# a separate, far rarer class, out of scope here.
 # ---------------------------------------------------------------------------
 staged=$(git diff --cached --name-only -z --diff-filter=ACM 2>/dev/null | tr '\0' '\n' || true)
 [ -n "$staged" ] || exit 0
