@@ -67,6 +67,32 @@ take_digests() {
   BSHA="$(sha "$BASE")"
 }
 
+# Commit the real audit roster and digest library into the fixture, so the
+# verifier can resolve member content digests there. The fixture then has
+# member digests a marker's file name can collide with.
+with_harness() {
+  mkdir -p "$REPO/.gaia" "$REPO/.claude/hooks"
+  cp "$BATS_TEST_DIRNAME/../../audit-ci.yml" "$REPO/.gaia/audit-ci.yml"
+  cp -R "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" "$REPO/.claude/hooks/lib"
+  git -C "$REPO" add -A
+  git -C "$REPO" commit -q -m harness
+}
+
+# member_digest [<ref>]: one member content digest of the fixture at <ref>.
+member_digest() {
+  bash -c '. "$1/.claude/hooks/lib/audit-digest.sh" && audit_digests_all "$1" "$2"' _ "$REPO" "${1:-HEAD}" |
+    cut -f2 | sort -u | head -1
+}
+
+# forge <name> <body-json>: an audit file written after the baseline.
+forge() {
+  mkdir -p "$REPO/.gaia/local/audit"
+  printf '%s\n' "$2" >"$REPO/.gaia/local/audit/$1"
+  touch -t 203001010000 "$REPO/.gaia/local/audit/$1"
+}
+
+foreign_tree() { printf 'f%.0s' {1..40}; }
+
 # Standard setup: dispositions, baseline, digests.
 prepare() {
   disp "$(default_entries)" "${1:-[]}"
@@ -354,17 +380,84 @@ enforcement_case() {
 }
 
 @test "a foreign root's marker and refusal written after the baseline still pass" {
+  with_harness
   prepare
   edit a.txt
   edit b.txt
-  mkdir -p "$REPO/.gaia/local/audit"
-  printf '{"tree":"%s","sha":"%s"}\n' "$(printf 'f%.0s' {1..40})" "$(printf 'e%.0s' {1..40})" \
-    >"$REPO/.gaia/local/audit/foreign.ok"
-  cp "$REPO/.gaia/local/audit/foreign.ok" "$REPO/.gaia/local/audit/foreign.refused"
-  touch -t 203001010000 "$REPO/.gaia/local/audit/foreign.ok" "$REPO/.gaia/local/audit/foreign.refused"
+  body="$(printf '{"tree":"%s","sha":"%s"}' "$(foreign_tree)" "$(printf 'e%.0s' {1..40})")"
+  forge foreign.ok "$body"
+  forge foreign.refused "$body"
   default_result >"$RES"
   do_check
   [ "$status" -eq 0 ]
+}
+
+@test "a marker whose body has neither a tree nor a sha fails audit-artifact-written" {
+  with_harness
+  prepare
+  edit a.txt
+  edit b.txt
+  forge "$(printf 'a%.0s' {1..64}).ok" '{"digest":"x","member":"code-audit-frontend","provenance":"earned"}'
+  default_result >"$RES"
+  do_check
+  assert_fail_kind audit-artifact-written
+}
+
+@test "a marker whose tree is not a well-formed object id fails audit-artifact-written" {
+  with_harness
+  prepare
+  edit a.txt
+  edit b.txt
+  forge bad-tree.ok '{"tree":"not-a-tree","sha":"abc"}'
+  default_result >"$RES"
+  do_check
+  assert_fail_kind audit-artifact-written bad-tree.ok
+}
+
+@test "a foreign-tree marker named by one of this root's member digests fails audit-artifact-written" {
+  with_harness
+  prepare
+  edit a.txt
+  edit b.txt
+  d="$(member_digest HEAD)"
+  [ -n "$d" ]
+  forge "$d.ok" "$(printf '{"digest":"%s","tree":"%s","sha":"abc"}' "$d" "$(foreign_tree)")"
+  forge "$d.code-audit-frontend.refused" "$(printf '{"digest":"%s","tree":"%s","sha":"abc"}' "$d" "$(foreign_tree)")"
+  default_result >"$RES"
+  do_check
+  assert_fail_kind audit-artifact-written "$d"
+}
+
+@test "a foreign-tree marker named by a member digest of the working content fails audit-artifact-written" {
+  with_harness
+  prepare
+  edit a.txt
+  edit b.txt
+  # A change to the shared machinery rotates every member digest.
+  printf '# fixer edit\n' >>"$REPO/.claude/hooks/lib/audit-digest.sh"
+  idx="$BATS_TEST_TMPDIR/wt-index"
+  GIT_INDEX_FILE="$idx" git -C "$REPO" read-tree HEAD
+  GIT_INDEX_FILE="$idx" git -C "$REPO" add -A
+  wt="$(GIT_INDEX_FILE="$idx" git -C "$REPO" write-tree)"
+  d="$(member_digest "$wt")"
+  [ -n "$d" ]
+  [ "$d" != "$(member_digest HEAD)" ]
+  forge "$d.ok" "$(printf '{"digest":"%s","tree":"%s","sha":"abc"}' "$d" "$(foreign_tree)")"
+  default_result >"$RES"
+  jq '.changed_paths += [".claude/hooks/lib/audit-digest.sh"]' "$RES" >"$RES.n"
+  mv "$RES.n" "$RES"
+  do_check
+  assert_fail_kind audit-artifact-written "$d"
+}
+
+@test "when member digests cannot be resolved a foreign-tree marker counts" {
+  prepare
+  edit a.txt
+  edit b.txt
+  forge foreign.ok "$(printf '{"tree":"%s","sha":"abc"}' "$(foreign_tree)")"
+  default_result >"$RES"
+  do_check
+  assert_fail_kind audit-artifact-written foreign.ok
 }
 
 @test "a marker carrying this root's HEAD tree fails audit-artifact-written" {
@@ -644,4 +737,65 @@ enforcement_case() {
   [ "$status" -eq 1 ]
   jq -e '.schema == 1 and .round == 1 and .attempt == 1 and .pass == false and (.errors | length > 0)' "$OUTV" >/dev/null
   [ -z "$(find "$RF" -name 'verifier-1-1.json.*')" ]
+}
+
+# --- the pinned verifier ---
+
+@test "baseline pins the verifier and its libraries beside the baseline file and records their digest" {
+  prepare
+  for f in audit-fix-verify.sh main-root-lib.sh audit-key-lib.sh; do
+    cmp "$RF/verifier-bin-1/$f" "$BATS_TEST_DIRNAME/../$f"
+  done
+  jq -e '(.verifier_files | sort) == ["audit-fix-verify.sh","audit-key-lib.sh","main-root-lib.sh"]
+    and (.verifier_digest | test("^[0-9a-f]{64}$"))' "$BASE" >/dev/null
+}
+
+@test "check, drift and round-check run from the pinned copy and pass" {
+  prepare
+  edit a.txt
+  edit b.txt
+  default_result >"$RES"
+  run bash "$RF/verifier-bin-1/audit-fix-verify.sh" check --root "$REPO" --round 1 --attempt 1 \
+    --dispositions "$DISP" --dispositions-sha "$DSHA" --baseline "$BASE" --baseline-sha "$BSHA" \
+    --result "$RES" --out "$OUTV"
+  [ "$status" -eq 0 ]
+  run bash "$RF/verifier-bin-1/audit-fix-verify.sh" round-check --run-folder "$RF" --round 1
+  [ "$status" -eq 0 ]
+}
+
+@test "a tampered pinned copy fails check with bad-input" {
+  prepare
+  edit a.txt
+  edit b.txt
+  default_result >"$RES"
+  printf '# edited\n' >>"$RF/verifier-bin-1/audit-fix-verify.sh"
+  run bash "$RF/verifier-bin-1/audit-fix-verify.sh" check --root "$REPO" --round 1 --attempt 1 \
+    --dispositions "$DISP" --dispositions-sha "$DSHA" --baseline "$BASE" --baseline-sha "$BSHA" \
+    --result "$RES" --out "$OUTV"
+  [ "$status" -eq 1 ]
+  jq -e '[.errors[].kind] | index("bad-input") != null' "$OUTV" >/dev/null
+  [[ "$output" == *"pinned"* ]]
+}
+
+@test "a tampered pinned library fails drift and round-check" {
+  prepare
+  printf '# edited\n' >>"$RF/verifier-bin-1/main-root-lib.sh"
+  run bash "$RF/verifier-bin-1/audit-fix-verify.sh" drift --root "$REPO" --baseline "$BASE"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"pinned"* ]]
+  run bash "$RF/verifier-bin-1/audit-fix-verify.sh" round-check --run-folder "$RF" --round 1
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"pinned"* ]]
+}
+
+@test "a baseline that records no pin fails check with bad-input" {
+  prepare
+  jq 'del(.verifier_digest)' "$BASE" >"$BASE.n"
+  mv "$BASE.n" "$BASE"
+  take_digests
+  edit a.txt
+  edit b.txt
+  default_result >"$RES"
+  do_check
+  assert_fail_kind bad-input pinned
 }

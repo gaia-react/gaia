@@ -9,8 +9,19 @@
 # A member's self-heal edits sit in the baseline, so only the fixer's delta is
 # judged.
 #
+# The verifier judges the fixer from a pinned copy of itself. The baseline
+# subcommand copies this script and the libraries it sources into
+# <run-folder>/verifier-bin-<r>/ (beside the baseline file) and records their
+# digest in the baseline; the main thread runs check, round-check and drift from
+# that copy by its run-folder path, never from the working tree the fixer edits.
+# Each of those subcommands refuses (bad-input, or exit 1 for drift and
+# round-check) when the files beside it no longer hash to the recorded digest.
+# An edit to the working-tree verifier therefore takes effect from the next
+# round's baseline, not within the round that made it.
+#
 # Usage:
 #   audit-fix-verify.sh baseline    --root <R> --round <r> --out <baseline-file>
+#                                   (also writes verifier-bin-<r>/ beside it)
 #   audit-fix-verify.sh check       --root <R> --round <r> --attempt <k>
 #                                   --dispositions <f> --dispositions-sha <hex>
 #                                   --baseline <f> --baseline-sha <hex>
@@ -55,6 +66,8 @@
 #   baseline-<r>.json (the baseline subcommand):
 #     {"schema":1,"round":r,"root":"...","head":"<commit>",
 #      "index_digest":"<sha256 of git ls-files -s -z output>",
+#      "verifier_files":["<file name in verifier-bin-<r>/>"],
+#      "verifier_digest":"<sha256 over each pinned file's sha256 and name>",
 #      "dirty":{"<path>":"<blob hash of working content, or deleted>"},
 #      "untracked":["<path>"]}
 #
@@ -71,10 +84,16 @@
 #     forbidden-path, enforcement-path, head-moved, index-changed,
 #     audit-artifact-written, bad-input.
 #     audit-artifact-written fires on a file under the shared audit directory
-#     newer than the baseline that belongs to this branch only: its name
-#     carries this branch's slug, or (a marker or refusal) its body names this
-#     root's HEAD tree or commit. Another branch's concurrent audit never fails
-#     this branch's round.
+#     newer than the baseline unless it provably belongs to another branch.
+#     A sidecar, ledger or scope file is skipped when its name lacks this
+#     branch's slug. A marker or refusal is skipped only when its body's tree is
+#     a well-formed object id that differs from this root's HEAD tree and from
+#     the tree of its working content, its sha differs from HEAD, and the digest
+#     in its file name is none of the member content digests this root resolves
+#     to (at HEAD and for the working content). A body with no tree, a malformed
+#     tree, or a digest this root's members own counts, as does every marker
+#     when the member digests cannot be resolved. Another branch's concurrent
+#     audit never fails this branch's round.
 #
 # Known limits: an untracked path is judged on presence only, never content,
 # and a mode-only change on a baseline-dirty path is invisible because the
@@ -84,7 +103,9 @@
 
 # Paths a fixer may touch only when the dispositions file lists them in
 # enforcement_paths_allowed (and a fix entry names them): the code that bounds
-# the loop must not be editable by the actor the loop bounds.
+# the loop must not be editable by the actor the loop bounds. That holds for
+# this verifier through its pinned copy (see the header): the working-tree file
+# is protected here, and the copy that judges the round is out of the tree.
 ENFORCEMENT_PATHS=(
   '.claude/hooks/audit-loop-bound.sh'         # denies a dispatch past the allowance
   '.claude/hooks/audit-loop-grant.sh'         # records the human's grant or accept line
@@ -97,6 +118,14 @@ ENFORCEMENT_PATHS=(
   '.gaia/scripts/main-root-lib.sh'            # main-checkout resolution for every state path
   '.claude/settings.json'                     # hook registrations and env knobs
   '.claude/settings.local.json'               # machine-local overrides of the same
+)
+
+# Files the baseline pins into the run folder: this script and every library it
+# sources from its own directory.
+PIN_FILES=(
+  audit-fix-verify.sh
+  main-root-lib.sh
+  audit-key-lib.sh
 )
 
 # Paths a fixer may never touch, declared or not.
@@ -158,6 +187,35 @@ _sha256() {
   fi
 }
 
+# Prints the pin digest of the named files in directory $1: the sha256 of one
+# `<file sha256>  <name>` line per file, in the order given.
+_pin_digest() {
+  local dir="$1" f h
+  shift
+  for f in "$@"; do
+    h="$(_sha256 <"$dir/$f")" || return 1
+    printf '%s  %s\n' "$h" "$f"
+  done | _sha256
+}
+
+# Succeeds when the files beside this script hash to the digest the baseline
+# file $1 recorded. Fails closed on a baseline with no pin record or a pinned
+# name that is not a plain file name.
+_verify_pin() {
+  local base="$1" want got f files=()
+  want="$(jq -r '.verifier_digest // empty' "$base" 2>/dev/null)" || return 1
+  [ -n "$want" ] || return 1
+  while IFS= read -r f; do
+    case "$f" in
+      '' | */* | .*) return 1 ;;
+    esac
+    files+=("$f")
+  done < <(jq -r '(.verifier_files // [])[]' "$base" 2>/dev/null)
+  [ "${#files[@]}" -gt 0 ] || return 1
+  got="$(_pin_digest "$_here" "${files[@]}")" || return 1
+  [ "$got" = "$want" ]
+}
+
 # Atomic write: stdin to a temp file beside the destination, then mv.
 _atomic_write() {
   local dest="$1" tmp
@@ -175,6 +233,17 @@ _is_uint() {
     '' | *[!0-9]*) return 1 ;;
   esac
   return 0
+}
+
+# Prints the tree id of the root's working content (tracked files as they are
+# on disk plus untracked, unignored ones), built in a throwaway index so the
+# real index is untouched.
+_working_tree_id() {
+  local idx="$T/wt-index"
+  rm -f "$idx"
+  env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR GIT_INDEX_FILE="$idx" git -C "$ROOT" read-tree HEAD >/dev/null 2>&1 || return 1
+  env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR GIT_INDEX_FILE="$idx" git -C "$ROOT" add -A >/dev/null 2>&1 || return 1
+  env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR GIT_INDEX_FILE="$idx" git -C "$ROOT" write-tree 2>/dev/null
 }
 
 # Snapshot the current repo state into directory $1: head, index digest, a
@@ -276,6 +345,7 @@ finish_check() {
 }
 
 cmd_baseline() {
+  local pin_dir pin_digest f
   if [ -z "$ROOT" ] || [ -z "$OUT" ] || ! _is_uint "$ROUND"; then
     die_usage 'baseline needs --root, --round <int> and --out'
   fi
@@ -288,12 +358,28 @@ cmd_baseline() {
     printf 'audit-fix-verify: baseline refused: cannot read repo state (or a path contains a newline) in %s\n' "$ROOT" >&2
     exit 3
   fi
+  pin_dir="$(dirname "$OUT")/verifier-bin-$ROUND"
+  rm -rf "$pin_dir"
+  mkdir -p "$pin_dir" || exit 1
+  for f in "${PIN_FILES[@]}"; do
+    cp "$_here/$f" "$pin_dir/$f" || {
+      printf 'audit-fix-verify: cannot pin %s into %s\n' "$f" "$pin_dir" >&2
+      exit 1
+    }
+  done
+  pin_digest="$(_pin_digest "$pin_dir" "${PIN_FILES[@]}")" || {
+    printf 'audit-fix-verify: cannot hash the pinned verifier in %s\n' "$pin_dir" >&2
+    exit 1
+  }
   jq -n --argjson r "$ROUND" --arg root "$ROOT" \
     --arg head "$(cat "$T/cur/head")" --arg idx "$(cat "$T/cur/index_digest")" \
     --slurpfile d "$T/cur/dirty.json" \
     --rawfile u "$T/cur/untracked.txt" \
+    --arg pd "$pin_digest" \
     '{schema: 1, round: $r, root: $root, head: $head, index_digest: $idx,
-      dirty: $d[0], untracked: ($u | split("\n") | map(select(. != "")))}' |
+      verifier_files: $ARGS.positional, verifier_digest: $pd,
+      dirty: $d[0], untracked: ($u | split("\n") | map(select(. != "")))}' \
+    --args "${PIN_FILES[@]}" |
     _atomic_write "$OUT" || {
     printf 'audit-fix-verify: cannot write %s\n' "$OUT" >&2
     exit 1
@@ -309,6 +395,10 @@ cmd_drift() {
   T="$(mktemp -d)" || exit 1
   jq -e '.schema == 1 and (.dirty | type == "object") and (.untracked | type == "array")' "$BASE" >/dev/null 2>&1 || {
     printf 'bad-input: baseline does not parse: %s\n' "$BASE" >&2
+    exit 1
+  }
+  _verify_pin "$BASE" || {
+    printf 'bad-input: the verifier files beside this script differ from the digest pinned in %s\n' "$BASE" >&2
     exit 1
   }
   snapshot_state "$T/cur" || {
@@ -336,6 +426,10 @@ cmd_round_check() {
   local rc=0 f k
   if [ -z "$RUNFOLDER" ] || ! _is_uint "$ROUND"; then
     die_usage 'round-check needs --run-folder and --round <int>'
+  fi
+  if [ -e "$RUNFOLDER/baseline-$ROUND.json" ] && ! _verify_pin "$RUNFOLDER/baseline-$ROUND.json"; then
+    printf 'bad-input: the verifier files beside this script differ from the digest pinned in baseline-%s.json\n' "$ROUND" >&2
+    exit 1
   fi
   for f in "$RUNFOLDER"/gate-"$ROUND"-*.log; do
     [ -e "$f" ] || continue
@@ -427,6 +521,9 @@ cmd_check() {
         and all(.untracked[]; type == "string")' "$BASE" >/dev/null 2>&1; then
       add_err bad-input "baseline file has the wrong shape: $BASE"
       bok=0
+    elif ! _verify_pin "$BASE"; then
+      add_err bad-input "the verifier files beside this script differ from the digest pinned in the baseline (or it records none): $BASE"
+      bok=0
     fi
   fi
 
@@ -516,25 +613,52 @@ EOF
   if main="$(gaia_resolve_main_root "$ROOT" 2>/dev/null)" && [ -n "$main" ]; then
     if [ -d "$main/.gaia/local/audit" ]; then
       # The audit directory is shared by every linked worktree, so a file
-      # newer than the baseline counts only when it belongs to this branch: a
-      # sidecar, ledger or scope file carries this branch's slug in its name,
-      # and a marker or refusal (named by digest only) carries this root's
-      # HEAD tree or commit in its body. A slug that cannot be resolved, or a
-      # marker body that does not parse, counts the file, so the check never
-      # narrows silently.
+      # newer than the baseline is skipped only when it provably belongs to
+      # another branch. A sidecar, ledger or scope file is skipped when its
+      # name lacks this branch's slug. A marker or refusal (named by digest
+      # only) is skipped when its body carries a well-formed tree that is
+      # neither this root's HEAD tree nor its working-content tree, a sha other
+      # than HEAD, and its name's digest is none of this root's member content
+      # digests: the merge gate reads a marker by that name and never reads
+      # the body's tree, so a body that merely differs from HEAD proves
+      # nothing. Anything that cannot be proven foreign counts, so the check
+      # never narrows silently.
       slug=''
       # shellcheck source=audit-key-lib.sh
       . "$_here/audit-key-lib.sh"
       slug="$(gaia_branch_slug "$ROOT" 2>/dev/null)" || slug=''
       head_tree="$(git -C "$ROOT" rev-parse 'HEAD^{tree}' 2>/dev/null)" || head_tree=''
       head_sha="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null)" || head_sha=''
+      wt_tree="$(_working_tree_id)" || wt_tree=''
+      : >"$T/member-digests"
+      digests_ok=0
+      if [ -n "$wt_tree" ] && [ -f "$ROOT/.claude/hooks/lib/audit-digest.sh" ]; then
+        digests_ok=1
+        for ref in HEAD "$wt_tree"; do
+          # The batch form prints `<member><TAB><digest>` lines and nothing at
+          # all when it cannot resolve the roster.
+          # shellcheck source=/dev/null
+          if ! digs="$( (. "$ROOT/.claude/hooks/lib/audit-digest.sh" && audit_digests_all "$ROOT" "$ref") 2>/dev/null)" ||
+            [ -z "$digs" ]; then
+            digests_ok=0
+            break
+          fi
+          printf '%s\n' "$digs" | cut -f2 >>"$T/member-digests"
+        done
+      fi
       find "$main/.gaia/local/audit" -type f -newer "$BASE" >"$T/audit-new" 2>/dev/null
       while IFS= read -r p; do
         [ -n "$p" ] || continue
         case "$p" in
           *.ok | *.refused)
-            if [ -n "$head_tree" ] && jq -e --arg t "$head_tree" --arg s "$head_sha" \
-              '(type == "object") and (((.tree // "") != $t) and ((.sha // "") != $s))' "$p" >/dev/null 2>&1; then
+            key="${p##*/}"
+            key="${key%%.*}"
+            if [ "$digests_ok" = 1 ] && [ -n "$head_tree" ] && [ -n "$wt_tree" ] &&
+              ! grep -Fxq -- "$key" "$T/member-digests" &&
+              jq -e --arg t "$head_tree" --arg w "$wt_tree" --arg s "$head_sha" \
+                '(type == "object") and ((.tree | type) == "string")
+                  and (.tree | test("^[0-9a-f]{40}([0-9a-f]{24})?$"))
+                  and (.tree != $t) and (.tree != $w) and ((.sha // "") != $s)' "$p" >/dev/null 2>&1; then
               continue
             fi
             ;;

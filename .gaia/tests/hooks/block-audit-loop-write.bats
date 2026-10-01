@@ -7,7 +7,8 @@
 # calls that resolve into it (including through a linked worktree's `.gaia/local`
 # symlink and a `..` segment) and Bash / Monitor commands that name it alongside
 # a write, move or delete spelling, while allowing reads and the audit loop
-# scripts, which never name `audit-loop/`.
+# scripts, which never name the state directory. A path segment that merely ends
+# in `audit-loop` (a worktree named like `spec-091-audit-loop`) does not arm it.
 
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
@@ -218,6 +219,21 @@ run_bash() {
 @test "the record script is allowed" {
   run_bash "bash .gaia/scripts/audit-loop-record.sh --pr 1 --values-json -"
   assert_allowed_by_json
+}
+
+@test "rm of a file under a worktree whose name ends in audit-loop is allowed" {
+  run_bash "rm -f $FIX/spec-091-audit-loop/notes.txt"
+  assert_allowed_by_json
+}
+
+@test "a redirect into a worktree whose name ends in audit-loop is allowed" {
+  run_bash "echo x > $FIX/spec-091-audit-loop/app/file.ts"
+  assert_allowed_by_json
+}
+
+@test "the state path inside a worktree named like audit-loop is still denied" {
+  run_bash "rm -f $FIX/spec-091-audit-loop/.gaia/local/audit-loop/feat/x.json"
+  assert_denied_by_json
 }
 
 @test "an unrelated rm is allowed" {

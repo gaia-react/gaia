@@ -232,7 +232,7 @@ The main thread decides what happens to every finding, and a fresh fixer sub-age
 
 The procedure the main thread runs for every round, in this order. It decides, dispatches, verifies, gates, and commits; one fresh fixer sub-agent per round repairs; a deterministic script checks the fixer's work against a baseline recorded before it ran, so nothing rests on the fixer's own account of what it did.
 
-The round's files live in the run folder `.claude/doctrine/execution.md` names for this branch, written `<RUN_FOLDER>` below: the main checkout's `.gaia/local/runs/<branch>/`, at its absolute path. Per round `r` and attempt `k` it holds `dispositions-<r>.json` (main thread), `baseline-<r>.json` and `verifier-<r>-<k>.json` (the verifier script), `fixer-<r>-audit.json` (the fixer, the round's one dispatch artifact), and `gate-<r>-<k>.log` and `gate-<r>-<k>.paths` (main thread). `.gaia/scripts/audit-fix-verify.sh`'s header owns the four JSON shapes. In a linked worktree, write each run-folder file with Bash at the main checkout's absolute path and read it back, never with Edit or Write.
+The round's files live in the run folder `.claude/doctrine/execution.md` names for this branch, written `<RUN_FOLDER>` below: the main checkout's `.gaia/local/runs/<branch>/`, at its absolute path. Per round `r` and attempt `k` it holds `dispositions-<r>.json` (main thread), `baseline-<r>.json`, `verifier-bin-<r>/` and `verifier-<r>-<k>.json` (the verifier script), `fixer-<r>-audit.json` (the fixer, the round's one dispatch artifact), and `gate-<r>-<k>.log` and `gate-<r>-<k>.paths` (main thread). `.gaia/scripts/audit-fix-verify.sh`'s header owns the four JSON shapes. In a linked worktree, write each run-folder file with Bash at the main checkout's absolute path and read it back, never with Edit or Write.
 
 **Round index.** Before writing any run-folder file, read `r` from the branch history:
 
@@ -251,7 +251,7 @@ bash .gaia/scripts/audit-fix-verify.sh baseline --root <RESOLVED_ROOT> --round <
 shasum -a 256 <RUN_FOLDER>/dispositions-<r>.json <RUN_FOLDER>/baseline-<r>.json
 ```
 
-It refuses (exit 3) when the index differs from HEAD. A member's self-heal edit sits in the baseline, so the verifier judges only the fixer's delta from it and the round's one commit carries both. The baseline also closes the round's evidence: a findings sidecar written after it is never read as that round's finding set. Record both hashes in STATE.md (`sha256sum` gives the same digest where `shasum` is absent); the verifier takes them as `--dispositions-sha` and `--baseline-sha`, so a fixer that rewrites either file fails verification instead of widening its own bounds.
+It refuses (exit 3) when the index differs from HEAD. It also copies the verifier and the libraries it sources into `<RUN_FOLDER>/verifier-bin-<r>/` and records their digest in the baseline, so the verifier that judges the fixer is a copy outside the tree the fixer edits. Run `check`, `round-check` and `drift` below from that copy by its run-folder path, never from `.gaia/scripts/`; each refuses when the copy no longer hashes to the digest the baseline recorded. A member's self-heal edit sits in the baseline, so the verifier judges only the fixer's delta from it and the round's one commit carries both. The baseline also closes the round's evidence: a findings sidecar written after it is never read as that round's finding set. Record both hashes in STATE.md (`sha256sum` gives the same digest where `shasum` is absent); the verifier takes them as `--dispositions-sha` and `--baseline-sha`, so a fixer that rewrites either file fails verification instead of widening its own bounds.
 
 **Fixer dispatch.** Exactly one fresh `general-purpose` sub-agent per round, on `model: "sonnet"` (the scoped-implementation row of [[Workflow Doctrine]]'s model table: the dispositions file carries the judgment and the verifier stands behind it), dispatched with the checkout path it edits. Pre-clear its artifact first, `rm -f <RUN_FOLDER>/fixer-<r>-audit.json`, and capture the expected tree as for a member wave:
 
@@ -282,7 +282,7 @@ bash .gaia/scripts/audit-noop-detect.sh --shape agent-report-file --path <RUN_FO
 **Verify.**
 
 ```bash
-bash .gaia/scripts/audit-fix-verify.sh check --root <RESOLVED_ROOT> --round <r> --attempt <k> \
+bash <RUN_FOLDER>/verifier-bin-<r>/audit-fix-verify.sh check --root <RESOLVED_ROOT> --round <r> --attempt <k> \
   --dispositions <RUN_FOLDER>/dispositions-<r>.json --dispositions-sha <DISPOSITIONS_SHA> \
   --baseline <RUN_FOLDER>/baseline-<r>.json --baseline-sha <BASELINE_SHA> \
   --result <RUN_FOLDER>/fixer-<r>-audit.json --out <RUN_FOLDER>/verifier-<r>-<k>.json
@@ -333,7 +333,7 @@ A path lands in `gate-<r>-<k>.paths` when the gate added it to the list or chang
 **Round check.** Before the commit, and after any stopped round:
 
 ```bash
-bash .gaia/scripts/audit-fix-verify.sh round-check --run-folder <RUN_FOLDER> --round <r>
+bash <RUN_FOLDER>/verifier-bin-<r>/audit-fix-verify.sh round-check --run-folder <RUN_FOLDER> --round <r>
 ```
 
 A non-zero exit means a gate ran on an attempt the verifier did not pass, and the round does not commit.
@@ -364,7 +364,7 @@ NEXT: <the next step above, by name>
 On resume, one state overrides the execution doctrine's generic rule to re-dispatch any dispatch whose artifact is missing: a round with `baseline-<r>.json` and no `fixer-<r>-audit.json`. Check the tree against the baseline first:
 
 ```bash
-bash .gaia/scripts/audit-fix-verify.sh drift --root <RESOLVED_ROOT> --baseline <RUN_FOLDER>/baseline-<r>.json
+bash <RUN_FOLDER>/verifier-bin-<r>/audit-fix-verify.sh drift --root <RESOLVED_ROOT> --baseline <RUN_FOLDER>/baseline-<r>.json
 ```
 
 Exit 0 means the tree equals the baseline, and re-dispatching the fixer is safe. Exit 1 (it prints `head-moved`, `index-changed`, or one `drift: <path>` line per path that differs) means a fixer edited and never wrote its result: do not re-dispatch the fixer. An interactive run asks the human, an unattended run stops and reports. A second fixer on top of those edits would hand the verifier a delta neither fixer declared.

@@ -20,16 +20,18 @@
 #     `/.gaia/local/audit-loop/` or ends in `/.gaia/local/audit-loop` (catches a
 #     worktree spelling whose symlink target cannot be resolved).
 #   Bash / Monitor: .tool_input.command. Cheap pre-filter first: allowed unless
-#     the command contains `audit-loop/` or a token ending in
-#     `.gaia/local/audit-loop`. A command that names the directory is denied
+#     the command contains `.gaia/local/audit-loop` followed by a slash, a
+#     delimiter or the end of the command. A path segment that merely ends in
+#     `audit-loop` elsewhere (a worktree named like `spec-091-audit-loop`) does
+#     not arm it. A command that names the directory is denied
 #     when it also carries a write, move or delete spelling: a `>` or `>>`
 #     redirect (a redirect to /dev/null or a descriptor duplication such as
 #     2>&1 is not one), rm, mv, cp, tee, ln, install, dd, touch, truncate,
 #     chmod, rsync, unlink, shred, `sed -i`, `perl -i`, or python/node/perl/ruby
 #     given -c or -e. Read-only commands naming the path (cat, jq, ls) are
 #     allowed. The scripts audit-loop-eval.sh and audit-loop-record.sh and the
-#     audit-loop hooks contain `audit-loop-` but never `audit-loop/`, so running
-#     them is not denied. A `cp` or `mv` that only READS the directory is denied
+#     audit-loop hooks never name `.gaia/local/audit-loop`, so running them is
+#     not denied. A `cp` or `mv` that only READS the directory is denied
 #     too: the verb is armed, the direction is not parsed, and the over-deny is
 #     the safe side.
 #
@@ -197,13 +199,8 @@ case "$tool_name" in
     [[ -n "$cmd" ]] || exit 0
 
     # Pre-filter: does the command name the directory at all?
-    names_re='\.gaia/local/audit-loop([[:space:]"'\'';|&)<>]|$)'
-    case "$cmd" in
-      *audit-loop/*) ;;
-      *)
-        [[ "$cmd" =~ $names_re ]] || exit 0
-        ;;
-    esac
+    names_re='\.gaia/local/audit-loop(/|[[:space:]"'\'';|&)<>]|$)'
+    [[ "$cmd" =~ $names_re ]] || exit 0
 
     # Drop redirects that cannot write the directory: descriptor duplication
     # (2>&1, >&2) and a redirect to /dev/null.

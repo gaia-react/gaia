@@ -30,7 +30,7 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 
 | Script | Ships | Invoker | What it is |
 |---|---|---|---|
-| `audit-fix-verify.sh` | yes | the PR Merge Workflow fix round | Records the working-tree baseline before a fixer runs and checks the fixer's changes against the dispositions afterward. |
+| `audit-fix-verify.sh` | yes | the PR Merge Workflow fix round | Records the working-tree baseline before a fixer runs, pins a copy of itself beside it, and checks the fixer's changes against the dispositions afterward from that copy. |
 | `audit-key-lib.sh` | yes | sourced | Mints the worktree-partitioned key every audit artifact path is built from, and the general slug rule those keys share. |
 | `audit-loop-eval.sh` | yes | `audit-loop-bound.sh` (sourced), the PR Merge Workflow checkpoint (CLI) | Judges each audit round's findings and prints the verdict and the checkpoint brief; read-only. |
 | `audit-loop-record.sh` | yes | the PR Merge Workflow fix round, the CI audit workflow | Writes the marker-delimited `## Audit rounds` section into a pull request body. |

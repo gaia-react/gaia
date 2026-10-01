@@ -933,9 +933,24 @@ fix_fixture() {
   run bash -c "cd '$REPO_ROOT' && bash '$script'"
   [ "$status" -eq 0 ]
   jq -e '.dirty | has("a.txt")' "${FIX_RF}/baseline-1.json" >/dev/null
+  # The pinned verifier the later fences run sits beside the baseline.
+  [ -f "${FIX_RF}/verifier-bin-1/audit-fix-verify.sh" ]
+  jq -e '.verifier_digest | test("^[0-9a-f]{64}$")' "${FIX_RF}/baseline-1.json" >/dev/null
   [ "$(grep -cE '^[0-9a-f]{64} ' <<<"$output")" -eq 2 ]
   grep -qF -- 'dispositions-1.json' <<<"$output"
   grep -qF -- 'baseline-1.json' <<<"$output"
+}
+
+@test "fence fix-verify: check, round-check and drift run the pinned copy and no fence runs the working-tree verifier except baseline" {
+  local body runs
+  body="$(all_fence_bodies)"
+  runs="$(grep -E 'audit-fix-verify\.sh (baseline|check|round-check|drift)' <<<"$body")"
+  [ "$(wc -l <<<"$runs" | tr -d ' ')" -eq 4 ]
+  [ "$(grep -c '^bash <RUN_FOLDER>/verifier-bin-<r>/audit-fix-verify.sh ' <<<"$runs")" -eq 3 ]
+  [ "$(grep -c '^bash .gaia/scripts/audit-fix-verify.sh baseline ' <<<"$runs")" -eq 1 ]
+  for sub in check round-check drift; do
+    grep -qE "^bash <RUN_FOLDER>/verifier-bin-<r>/audit-fix-verify.sh $sub " <<<"$runs"
+  done
 }
 
 @test "fence fixer-classify: a complete fixer result is real and a short one is a no-op" {
@@ -1000,6 +1015,8 @@ fix_fixture() {
 
 @test "fence fix-round-check: a gate log without a passing verifier output fails the round" {
   fix_fixture
+  bash "${REPO_ROOT}/.gaia/scripts/audit-fix-verify.sh" baseline --root "$FIX_ROOT" --round 1 \
+    --out "${FIX_RF}/baseline-1.json"
   : >"${FIX_RF}/gate-1-1.log"
   script="$(materialize 'audit-fix-verify.sh round-check')"
   sub_literal "$script" '<RUN_FOLDER>' "$FIX_RF"

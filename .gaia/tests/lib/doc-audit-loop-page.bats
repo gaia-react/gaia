@@ -126,7 +126,7 @@ hand_edit_sentences() {
 @test "UAT-027: the fix round's resume rule runs drift and overrides the generic re-dispatch rule" {
   local s
   s="$(section "$FIXROUND")" || return 1
-  grep -qF -- 'bash .gaia/scripts/audit-fix-verify.sh drift --root <RESOLVED_ROOT> --baseline <RUN_FOLDER>/baseline-<r>.json' <<<"$s" || return 1
+  grep -qF -- 'bash <RUN_FOLDER>/verifier-bin-<r>/audit-fix-verify.sh drift --root <RESOLVED_ROOT> --baseline <RUN_FOLDER>/baseline-<r>.json' <<<"$s" || return 1
   sentences <<<"$s" | grep -qF -- "overrides the execution doctrine's generic rule to re-dispatch any dispatch whose artifact is missing: a round with \`baseline-<r>.json\` and no \`fixer-<r>-audit.json\`" || return 1
   sentences <<<"$s" | grep -qF -- 'means a fixer edited and never wrote its result: do not re-dispatch the fixer' || return 1
   grep -qF -- 'An interactive run asks the human, an unattended run stops and reports. A second fixer on top of those edits' <<<"$(sentences <<<"$s" | tr '\n' ' ')"
