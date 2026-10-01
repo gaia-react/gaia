@@ -31,103 +31,57 @@ _usage_money() {
   LC_ALL=C printf '$%.2f' "$1" 2>/dev/null || printf 'unavailable'
 }
 
-# usage_pr_scope: the sessions the per-PR view must resolve to know every
-# segment that can land in $N (a usage_set of the branch key and each root's
-# closure). A segment's resolution reads only its own session's bindings, cost
-# rows, and non-inherit segments, so a candidate session is passed whole and in
-# file order: usage_intervals lets each start claim the earliest unclaimed cost
-# row and the usd sums add in order, so filtering a candidate's rows to those
-# keyed in $N, or keeping only the matching segments, would change a figure.
-# A session is a candidate through a research or declare binding whose ref is
-# in $N, a cost row keyed in $N, or a segment whose raw key is in $N. The id is
-# grouped as `tojson` so a non-string id compares as usage_by_sid treats it.
 # shellcheck disable=SC2034,SC2016  # consumed by usage.sh; jq source, no shell expansion
-GAIA_USAGE_PRUNE_JQ='
-def usage_pr_scope($urows; $cost; $N):
-  (reduce ((($urows[] | select(.kind == "binding" and (.type == "research" or .type == "declare")
-                and (.ref | type) == "string" and $N[.ref] == true)),
-            ($urows[] | select(.kind == "segment" and (.key | type) == "string" and $N[.key] == true)),
-            ($cost[] | select(usage_row_key(.) as $rk | $rk != null and $N[$rk] == true)))
-           | .session_id | tojson) as $s ({}; .[$s] = true)) as $R
-  | {segs: [$urows[] | select(.kind == "segment" and $R[.session_id | tojson] == true)],
-     bindings: [$urows[] | select(.kind == "binding" and $R[.session_id | tojson] == true)],
-     cost: [$cost[] | select($R[.session_id | tojson] == true)]};
-'
-
-# shellcheck disable=SC2034,SC2016  # consumed by usage.sh; jq source, no shell expansion
-GAIA_USAGE_VIEW_BODY_JQ='
+GAIA_USAGE_VIEW_JQ='
 def usage_unattributed: (.rkey | type) != "string" or (.rkey | startswith("session:"));
 # $cs is usage_set of a closure: a lookup per segment, not a scan of the closure.
 def usage_set($refs): reduce $refs[] as $r ({}; .[$r] = true);
 def usage_in($cs): (.rkey | type) == "string" and $cs[.rkey] == true;
 
-# The views read rows and keys only through their parameters; the wrappers
-# below bind the globals $u, $l, $c, and $keys for the filters that still use
-# the old names. A $keys parameter also defines a filter named keys that
-# shadows the builtin inside the def, so these bodies spell it to_entries.
-def usage_view_pr_of($urows; $links; $cost; $pr; $key; $keys):
-  usage_edges($links; $cost; $keys) as $edges
-  | ([$urows[] | select(.kind == "segment") | {t: (.first_ts | usage_epoch), iso: .first_ts} | select(.t != null)]
-      | min_by(.t)) as $cov
-  | (if $cov == null then null else $cov.iso[0:10] end) as $coverage
+def usage_view_pr($pr; $key):
+  usage_model_base as $m
   | ($key // (if $pr == null then null
-       else usage_pr_branch($links; $edges; $pr)
-         // ([$links[] | select(.kind == "merge" and .pr == $pr) | .key | strings] | last) end)) as $k
-  | if $k == null then {pr: $pr, key: null, coverage: $coverage}
-    else usage_window($links; $k; $pr) as $w
-      | [usage_roots($edges; $k)[] | select(. != $k) | {root: ., cs: usage_set(usage_closure($edges; .))}] as $rc
-      | usage_pr_scope($urows; $cost; usage_set([$k] + [$rc[].cs | to_entries[] | .key])) as $sc
-      | usage_resolve_t($sc.segs; $sc.bindings; usage_intervals($sc.bindings; $sc.cost)) as $segs
-      | [$segs[] | select(.rkey == $k)] as $mine
+       else usage_pr_branch($m.links; $m.edges; $pr)
+         // ([$m.links[] | select(.kind == "merge" and .pr == $pr) | .key | strings] | last) end)) as $k
+  | if $k == null then {pr: $pr, key: null, coverage: $m.coverage}
+    else usage_window($m.links; $k; $pr) as $w
+      | [$m.segs[] | select(.rkey == $k)] as $mine
       | [$mine[] | ._t as $t
           | select($t != null and ($w.from == null or $w.from < $t) and ($w.to == null or $t <= $w.to))] as $in
       | ([$mine[] | ._t | select(. != null)] | min) as $earliest
-      | {pr: $pr, key: $k, window: $w, sum: usage_sum($in | map(usage_priced)), coverage: $coverage,
-         lower_bound: ($earliest != null and $cov != null and ($earliest - $cov.t) < 86400),
-         roots: [$rc[] | . as $x
-           | {root: $x.root, sum: usage_sum([$segs[] | select(usage_in($x.cs)) | usage_priced])}]}
+      | {pr: $pr, key: $k, window: $w, sum: usage_sum($in | map(usage_priced)), coverage: $m.coverage,
+         lower_bound: ($earliest != null and $m.coverage_t != null and ($earliest - $m.coverage_t) < 86400),
+         roots: [usage_roots($m.edges; $k)[] | select(. != $k) | . as $r
+           | usage_set(usage_closure($m.edges; $r)) as $cs
+           | {root: $r, sum: usage_sum([$m.segs[] | select(usage_in($cs)) | usage_priced])}]}
     end;
-
-def usage_view_pr($pr; $key):
-  usage_view_pr_of(usage_rows($u); usage_rows($l); usage_rows($c); $pr; $key; $keys);
 
 # A node is listed when it owns resolved spend, or when an explicit edge from
 # inside the closure reaches it; only the second kind is marked.
-def usage_view_initiative_of($urows; $links; $cost; $ref; $keys):
-  usage_model_base_of($urows; $links; $cost; $keys) as $m
+def usage_view_initiative($ref):
+  usage_model as $m
   | {coverage: $m.coverage,
      roots: [usage_roots($m.edges; $ref)[] | . as $r
        | usage_closure($m.edges; $r) as $cl | usage_set($cl) as $cs
-       | [$m.segs[] | select(usage_in($cs)) | usage_priced] as $ss
-       | (reduce $ss[] as $s ({}; .[$s.rkey] += [$s])) as $byref
-       | usage_set([$m.edges[] | select(.explicit and $cs[.parent] == true) | .child]) as $exc
+       | [$m.segs[] | select(usage_in($cs))] as $ss
        | {root: $r, sum: usage_sum($ss),
           nodes: ([$cl[] | . as $n
-            | ($byref[$n] // []) as $own
-            | ($n != $r and $exc[$n] == true) as $ex
+            | [$ss[] | select(.rkey == $n)] as $own
+            | ($n != $r and any($m.edges[]; .explicit and .child == $n and (.parent as $p | any($cl[]; . == $p))))
+              as $ex
             | select(($own | length) > 0 or $ex)
             | {ref: $n, sum: usage_sum($own), explicit: $ex}] | sort_by(.ref))}]};
 
-def usage_view_initiative($ref):
-  usage_view_initiative_of(usage_rows($u); usage_rows($l); usage_rows($c); $ref; $keys);
-
 # "No initiative link" counts attributed spend whose key is a branch, command,
 # or PR with no live parent: the lineage kinds are initiatives themselves.
-def usage_view_reconcile_of($urows; $links; $cost; $keys):
-  usage_model_of($urows; $links; $cost; $keys) as $m
-  | usage_set([$m.edges[].child | strings]) as $kids
+def usage_view_reconcile:
+  usage_model as $m
   | [$m.segs[] | select(usage_unattributed)] as $un
   | [$m.segs[] | select(usage_unattributed | not)] as $at
   | {coverage: $m.coverage, attributed: usage_sum($at), unattributed: usage_sum($un), all: usage_sum($m.segs),
      nolink: usage_sum([$at[] | select(.rkey | test("^(branch|command|pr):")) | .rkey as $k
-       | select($kids[$k] != true)])};
-
-def usage_view_reconcile:
-  usage_view_reconcile_of(usage_rows($u); usage_rows($l); usage_rows($c); $keys);
+       | select(any($m.edges[]; .child == $k) | not)])};
 '
-
-# shellcheck disable=SC2034  # consumed by usage.sh
-GAIA_USAGE_VIEW_JQ="$GAIA_USAGE_PRUNE_JQ$GAIA_USAGE_VIEW_BODY_JQ"
 
 # usage_rates_load <override> <main_root> <models_json>: sets USAGE_RATES to the
 # rate table JSON, or null when none loads. Call it in the caller's own shell,

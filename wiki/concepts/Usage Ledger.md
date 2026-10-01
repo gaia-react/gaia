@@ -3,7 +3,7 @@ type: concept
 title: Usage Ledger
 status: active
 created: 2026-09-30
-updated: 2026-09-30
+updated: 2026-10-01
 tags: [concept, cost, usage, data-contract]
 ---
 
@@ -22,6 +22,7 @@ Everything lives under `.gaia/local/telemetry/` of the main checkout, resolved t
 | `usage.jsonl` | `segment`, `binding`, and `cursor` rows |
 | `links.jsonl` | `edge`, `unlink`, and `merge` rows |
 | `usage-cursors.json` | A regenerable cache of the latest cursor per transcript file. Only the flusher writes it. |
+| `usage-branch-memo.json` | A regenerable cache of branch-name derivations, the segment model list, and per-store read offsets. The readouts write it without the ledger lock (temp file then rename). Deleting it only costs the next readout time; it never holds an attribution decision. |
 
 Row shapes, abridged:
 

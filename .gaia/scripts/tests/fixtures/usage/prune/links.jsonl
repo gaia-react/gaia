@@ -1,0 +1,9 @@
+{"schema_version":1,"kind":"edge","child":"branch:feat/a","parent":"research:topic","source":"link-command","ts":"2026-09-09T00:00:00Z","session_id":null,"sidechain":false}
+{"schema_version":1,"kind":"edge","child":"branch:feat/b","parent":"research:topic","source":"link-command","ts":"2026-09-09T00:01:00Z","session_id":null,"sidechain":false}
+{"schema_version":1,"kind":"edge","child":"branch:feat/c","parent":"research:topic","source":"link-command","ts":"2026-09-09T00:02:00Z","session_id":null,"sidechain":false}
+{"schema_version":1,"kind":"unlink","child":"branch:feat/c","parent":"research:topic","source":"link-command","ts":"2026-09-09T00:03:00Z","session_id":null,"sidechain":false}
+{"schema_version":1,"kind":"edge","child":"branch:feat/d","parent":"research:topic","source":"link-command","ts":"2026-09-09T00:04:00Z","session_id":null,"sidechain":false}
+{"schema_version":1,"kind":"unlink","child":"branch:feat/d","parent":"research:topic","source":"link-command","ts":"2026-09-09T00:05:00Z","session_id":null,"sidechain":false}
+{"schema_version":1,"kind":"edge","child":"branch:feat/d","parent":"research:topic","source":"link-command","ts":"2026-09-09T00:06:00Z","session_id":null,"sidechain":false}
+{"schema_version":1,"kind":"merge","pr":11,"key":"branch:feat/a","merged_at":"2026-09-12T00:00:00Z","source":"link-command","ts":"2026-09-12T00:00:00Z","session_id":null}
+{"schema_version":1,"kind":"merge","pr":12,"key":"branch:feat/a","merged_at":"2026-09-20T00:00:00Z","source":"link-command","ts":"2026-09-20T00:00:00Z","session_id":null}

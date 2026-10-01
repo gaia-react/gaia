@@ -195,6 +195,18 @@
       "source": "SPEC-087 §shared"
     },
     {
+      "id": "telemetry-usage-branch-memo",
+      "path": "telemetry/usage-branch-memo.json",
+      "match": "exact",
+      "kind": "file",
+      "scope": "shared",
+      "keyed_by": "singleton per clone; temp-file-then-rename, lock-free, last writer wins",
+      "why": "Regenerable cache of branch-name derivations and per-store read offsets for the usage readouts. Deleting it, or any corruption, only makes the next readout derive from scratch; it holds no attribution.",
+      "writer": "code",
+      "reaped_by": null,
+      "source": "SPEC-089 §shared"
+    },
+    {
       "id": "telemetry-usage-sweep-lock",
       "path": "telemetry/usage-sweep.lock.d/",
       "match": "prefix",
@@ -213,9 +225,9 @@
       "kind": "file",
       "scope": "shared",
       "keyed_by": "one mktemp name per write, never reused",
-      "why": "In-flight temp files of the usage writers, present between creation and the rename or append. A process killed mid-write can leave one behind; it is inert (nothing reads it) and has no reaper.",
+      "why": "In-flight temp files of the usage writers, present between creation and the rename or append. A process killed mid-write can leave one behind; it is inert (nothing reads it). Only the branch memo's temps have a reaper; every other writer's temps have none.",
       "writer": "code",
-      "reaped_by": null,
+      "reaped_by": "usage.sh readouts reap .usage-branch-memo.tmp.* older than 60 s; other writers' temps have none",
       "source": "SPEC-087 §shared"
     },
     {
