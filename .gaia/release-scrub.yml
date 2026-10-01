@@ -162,8 +162,6 @@ transforms:
           # Identifier fragments inside variable names: uat_id, uats_block,
           # seen_uat_files, --uat-id CLI flag form.
           - "uat[-_]id|uats_block|seen_uat_files"
-          # Filename literals like uat-001.spec.ts.
-          - "uat-[0-9]+\\.spec\\.[a-z]+"
           # Frontmatter-style fixture: `uat_id: 'UAT-099'` or `uat_id: UAT-099`.
           - "uat_id\\s*[:=]\\s*['\"]?UAT-"
 

@@ -175,7 +175,10 @@ if [ "$skip_full_base" -eq 0 ]; then
     fi
     exit 1
   fi
-  if ! git -C "$root" diff --name-only -z "${FULL_BASE}...HEAD" > "$ars_tmp/full" 2>"$ars_tmp/full.err"; then
+  # `--no-renames` on each listing below: under rename detection a move lists only
+  # its new path, so a rename out of a member's scope would read as out of scope
+  # here while resolve-audit-members.sh, which lists the old path, dispatched it.
+  if ! git -C "$root" diff --name-only -z --no-renames "${FULL_BASE}...HEAD" > "$ars_tmp/full" 2>"$ars_tmp/full.err"; then
     printf 'could not list the whole pull request (%s...HEAD): %s; membership scope is unresolvable, do NOT self-skip\n' \
       "$FULL_BASE" "$(head -1 "$ars_tmp/full.err")" >&2
     exit 1
@@ -265,7 +268,7 @@ if [ "$eligibility" -eq 1 ]; then
   if [ -z "$ELIG_BASE" ]; then
     printf 'no eligibility base against %s or %s: the machinery waive disengages\n' \
       "$primary_ref" "$fallback_ref" >&2
-  elif ! git -C "$root" diff --name-only -z "${ELIG_BASE}...HEAD" > "$ars_tmp/elig" 2>"$ars_tmp/elig.err"; then
+  elif ! git -C "$root" diff --name-only -z --no-renames "${ELIG_BASE}...HEAD" > "$ars_tmp/elig" 2>"$ars_tmp/elig.err"; then
     printf 'could not list the eligibility set (%s...HEAD): %s; the machinery waive disengages\n' \
       "$ELIG_BASE" "$(head -1 "$ars_tmp/elig.err")" >&2
     ELIG_BASE=""
@@ -282,7 +285,7 @@ fi
 # and not an advanced ref tip's.
 changed=()
 if [ -n "$BASE_SHA" ]; then
-  if ! git -C "$root" diff --name-only -z "${BASE_SHA}...HEAD" -- ${review_paths[@]+"${review_paths[@]}"} > "$ars_tmp/review" 2>"$ars_tmp/review.err"; then
+  if ! git -C "$root" diff --name-only -z --no-renames "${BASE_SHA}...HEAD" -- ${review_paths[@]+"${review_paths[@]}"} > "$ars_tmp/review" 2>"$ars_tmp/review.err"; then
     printf 'could not list the review increment (%s...HEAD): %s; review scope is unresolvable\n' \
       "$BASE_SHA" "$(head -1 "$ars_tmp/review.err")" >&2
     exit 1
@@ -299,9 +302,10 @@ fi
 # under the argument-length limit and exits non-zero when any batch fails.
 # -z keeps each path raw, matching the CHANGED lines a member filters by the
 # same globs; without it a path holding a space or a non-ASCII byte is quoted.
-# A rename record, which carries its original path as a second record, cannot
-# arise: status reports one only when both paths are in the pathspec, and a
-# staged rename's new path is not in HEAD, so it is never in the review list.
+# A rename record, which carries its original path as a second record, can arise:
+# the review list names a rename's old and new path, so a staged rename of the
+# pair reports as one. Each record is kept as read, so the dirty tree still
+# surfaces, only the original path shows as its own line.
 dirty=()
 if [ "${#changed[@]}" -gt 0 ]; then
   if ! printf '%s\0' "${changed[@]}" | xargs -0 git -C "$root" status --porcelain -z -- > "$ars_tmp/dirty"; then

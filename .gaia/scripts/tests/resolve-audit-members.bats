@@ -208,6 +208,22 @@ code-audit-maintainer-shell"
 
 # 6. Framework CONFIG/DATA only (.gaia/audit-ci.yml, VERSION, manifest) → empty
 
+@test "a rename out of app/ still dispatches the app/ owner" {
+  # Rename detection would list only the new out-of-scope path and dispatch
+  # nobody for the app/ source the branch removed.
+  write_full_roster
+  mkdir -p "$SANDBOX/app"
+  printf 'export const moved = "a line long enough to be detected as a rename";\n' > "$SANDBOX/app/moved.tsx"
+  git -C "$SANDBOX" add app/moved.tsx
+  commit "app source"
+  git -C "$SANDBOX" branch -f main HEAD
+  git -C "$SANDBOX" mv app/moved.tsx wiki-moved.md
+  commit "move"
+  run run_resolver
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-frontend" ]
+}
+
 @test "framework config/data only diff dispatches nothing (out of scope)" {
   write_full_roster
   # Commit the config change plus VERSION + manifest so all three land in the
