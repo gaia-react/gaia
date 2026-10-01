@@ -35,11 +35,10 @@
 #                           clean-no-push path's proven-clean check.
 #   --self-mod-rerender     The workflow self-modification path. Post nothing
 #                           unless the PR is a verbatim re-render of the bundled
-#                           audit workflow template (is_verbatim_rerender
-#                           below) and no other changed path has a roster owner
-#                           (rerender_other_owners below); when both hold, success
-#                           is stamped. The flag clears nothing by itself: this
-#                           script re-proves the condition.
+#                           audit workflow template that nothing else needs
+#                           audited (rerender_decline_reason below); when it
+#                           is, success is stamped. The flag clears nothing by
+#                           itself: this script re-proves the condition.
 #
 # Step outputs. When $GITHUB_OUTPUT is set this writes `members_pending`,
 # `success_stamped`, `post_failed`, and, from the shared non-clobber read,
@@ -204,89 +203,29 @@ repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 # ---------------------------------------------------------------------------
 # 1c. The verbatim re-render predicate, for --self-mod-rerender.
 #
-# CI's mirror of the local merge gate's self-mod-only bypass
-# (check_self_mod_only_update_pr in .claude/hooks/pr-merge-audit-check.sh), on
-# its terms: every path the PR changes is out of audit scope except
-# .github/workflows/code-review-audit.yml, and that file's bytes on the stamped
-# sha are the bundled template's (equal blob ids mean identical bytes). This is
-# the PR /update-gaia produces when it refreshes a stale audit workflow. CI
+# The PR /update-gaia produces when it refreshes a stale audit workflow. CI
 # cannot audit it, since claude-code-action refuses a workflow that differs
 # from the default branch's, and without a status from somewhere the required
-# GAIA-Audit check deadlocks the merge (gaia-react/gaia#2400). The scope
-# question goes to the shared classifier (audit_self_mod_classify), so the two
-# gates cannot disagree about what is out of scope.
+# GAIA-Audit check deadlocks the merge (gaia-react/gaia#2400). Whether a PR is
+# that shape is asked of audit_verbatim_rerender in
+# .claude/hooks/lib/audit-scope.sh, the definition the local merge gate's
+# self-mod-only bypass also calls, so the two gates cannot disagree about it.
 #
-# Exit 0 when the predicate holds, 1 otherwise. Fails closed: an unresolvable
-# or empty range, a missing file on either side, or an unloadable classifier
-# all answer 1.
-#
-# Honest limit, adversarial half: the template is read from the same sha, so a
-# PR that rewrites both files identically passes. That grants nothing new,
-# because a pull_request run already executes the PR's own copy of this
-# workflow, which could post any status it liked.
-#
-# Honest limit, scope half: the local bypass clears every dispatched member of
-# a PR that passes this predicate, and this predicate cannot see which members
-# a re-render dispatches beyond the audit workflow's own owner. So the stamp
-# adds a second condition, rerender_other_owners below: it clears only when no
-# other changed path has a roster owner. On an adopter roster the .claude/** and
-# .gaia/** paths have no owner, so an /update-gaia PR still stamps. In a repo
-# whose roster owns machinery paths (GAIA's own), a PR that also changes one
-# declines, and a local audit supplies the status.
+# Prints the predicate's decline reason and exits non-zero when it does not
+# hold, including when the library or the roster cannot be loaded.
 # ---------------------------------------------------------------------------
-is_verbatim_rerender() (
-  audit_workflow=".github/workflows/code-review-audit.yml"
-  audit_template=".gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
+rerender_decline_reason() (
   # shellcheck source=/dev/null
-  . "$repo_root/.claude/hooks/lib/audit-scope.sh" 2>/dev/null || return 1
-  command -v audit_self_mod_classify >/dev/null 2>&1 || return 1
-
-  # Three-dot: what the PR changed since it forked, the range the local bypass
-  # classifies. -z and --no-renames for the reasons the workflow's scope gate
-  # gives: a C-quoted path is an unrecognized string to the classifier, and a
-  # rename out of an in-scope directory must still list its old path.
-  changed="$(set -o pipefail; git -C "$repo_root" diff --name-only -z --no-renames \
-    "${base}...${sha}" | tr '\0' '\n')" || return 1
-  [ -n "$changed" ] || return 1
-
-  seen_audit_workflow=0
-  while IFS= read -r path; do
-    [ -n "$path" ] || continue
-    case "$(audit_self_mod_classify "$path")" in
-      out-of-scope) ;;
-      audit-workflow) seen_audit_workflow=1 ;;
-      *) return 1 ;;
-    esac
-  done <<EOF
-$changed
-EOF
-  [ "$seen_audit_workflow" -eq 1 ] || return 1
-
-  workflow_blob="$(git -C "$repo_root" rev-parse --verify --quiet "${sha}:${audit_workflow}")" || return 1
-  template_blob="$(git -C "$repo_root" rev-parse --verify --quiet "${sha}:${audit_template}")" || return 1
-  [ "$workflow_blob" = "$template_blob" ]
-)
-
-# Prints the roster owners of every changed path except the audit workflow
-# itself, one per line, sorted and unique; prints nothing when none has an owner.
-# Non-zero when the range, the roster, or the classifier cannot be loaded, which
-# the caller treats as a decline. The audit workflow is excluded because its
-# owner is the member whose clearance the re-render proof stands in for. The
-# filter is awk, not grep -v, because grep exits 1 when nothing survives and
-# pipefail would turn a workflow-only PR into a decline.
-rerender_other_owners() (
-  audit_workflow=".github/workflows/code-review-audit.yml"
-  # shellcheck source=/dev/null
-  . "$repo_root/.claude/hooks/lib/audit-scope.sh" 2>/dev/null || return 1
-  audit_scope_init "$repo_root" || return 1
-
-  set -o pipefail
-  git -C "$repo_root" diff --name-only -z --no-renames "${base}...${sha}" \
-    | tr '\0' '\n' \
-    | awk -v skip="$audit_workflow" '$0 != skip' \
-    | audit_owners_for_paths \
-    | awk -F '\t' '$2 != "-" { print $2 }' \
-    | sort -u
+  if ! . "$repo_root/.claude/hooks/lib/audit-scope.sh" 2>/dev/null \
+    || ! command -v audit_verbatim_rerender >/dev/null 2>&1; then
+    printf 'the ownership classifier could not be loaded\n'
+    return 1
+  fi
+  if ! audit_scope_init "$repo_root" 2>/dev/null; then
+    printf 'the audit roster could not be read\n'
+    return 1
+  fi
+  audit_verbatim_rerender "$repo_root" "$base" "$sha"
 )
 
 # ---------------------------------------------------------------------------
@@ -306,18 +245,11 @@ rerender_other_owners() (
 #
 # The re-render path skips the member query. It declines on a PR that fails
 # the predicate, which keeps what that path has always done: post nothing and
-# leave the status to a local audit. It also declines when any other changed
-# path has a roster owner, since that member's clearance is not proven here.
+# leave the status to a local audit.
 # ---------------------------------------------------------------------------
 if [ "$self_mod_rerender" -eq 1 ]; then
-  if ! is_verbatim_rerender; then
-    decline "the workflow self-modification is not a verbatim re-render of the bundled template; CI posts no status, a local audit supplies it."
-  fi
-  if ! other_owners="$(rerender_other_owners)"; then
-    decline "could not resolve roster owners for the re-render's changed paths; CI posts no status, a local audit supplies it."
-  fi
-  if [ -n "$other_owners" ]; then
-    decline "the verbatim re-render also changes paths owned by $(printf '%s' "$other_owners" | tr '\n' ' ')and CI cannot clear them; CI posts no status, a local audit supplies it."
+  if ! rerender_reason="$(rerender_decline_reason)"; then
+    decline "not a verbatim re-render CI can clear: ${rerender_reason:-no reason given}; CI posts no status, a local audit supplies it."
   fi
   pending=""
   emit "members_pending="

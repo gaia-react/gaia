@@ -22,6 +22,9 @@
 #                                  member's own declared globs; otherwise
 #                                  ownerless
 #
+# audit_verbatim_rerender asks the last two together, each answered by its own
+# function, and is the one place they combine.
+#
 # Conflating any two of these is a merge-gate bypass. In particular, the
 # out-of-scope allowlist is NOT an audit-skip predicate: a path can be both
 # allowlisted here (reached only when the roster dispatches nobody) and
@@ -381,6 +384,105 @@ audit_owner_for_path() {
   [ -n "$_AUDIT_SCOPE_OWNER_RESULT" ] && printf '%s\n' "$_AUDIT_SCOPE_OWNER_RESULT"
   return 0
 }
+
+# --- audit_verbatim_rerender <root> <base> <head> ----------------------------
+#
+# The one definition of "this PR is a verbatim re-render of the bundled audit
+# workflow template and nothing else needs auditing", shared by the local merge
+# gate's self-mod-only bypass and CI's --self-mod-rerender stamp. Two hand-kept
+# copies drifted apart once, leaving CI stamping a shape the local gate declined
+# (gaia-react/gaia#2410), which is why neither caller restates any conjunct here.
+#
+# Holds when every path in <base>...<head> classifies out-of-scope except the
+# audit workflow, the workflow is among them, no out-of-scope path has a roster
+# owner, <head> does not track .gaia/cli/src, and the workflow's blob at <head>
+# equals the template's. Requires audit_scope_init to have run.
+#
+# Exit 0 when it holds. Otherwise exit 1 with a one-line reason on stdout, for
+# a caller that reports why it declined. Fails closed: an unreadable or empty
+# range and a missing file on either side all decline.
+#
+# Each conjunct, and why:
+#   --no-renames: a rename out of an in-scope directory must still list its old
+#     path, or moving app/x.ts to .gaia/x.ts would read as out-of-scope only.
+#   roster owners: the re-render proof stands in for the audit workflow's owner
+#     alone, so an owned path (GAIA's own gate machinery) still needs its
+#     member. An adopter roster owns no .claude/** or .gaia/** path, so an
+#     /update-gaia PR still clears.
+#   .gaia/cli/src: a tree carrying the CLI source builds the template FROM the
+#     workflow (.gaia/cli/package.json bundle:adopter), so there blob identity
+#     proves nothing. That source is release-excluded, so no adopter tree has it.
+#
+# Honest limit: the template is read from the same <head>, so a PR rewriting
+# both files identically passes in an adopter tree. That grants nothing CI did
+# not already hand the PR, since a pull_request run executes the PR's own copy
+# of the workflow.
+audit_verbatim_rerender() (
+  root="$1" base="$2" head="$3"
+  audit_workflow=".github/workflows/code-review-audit.yml"
+  audit_template=".gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
+
+  if [ -z "$root" ] || [ -z "$base" ] || [ -z "$head" ]; then
+    printf 'the re-render check was given no root, base, or head\n'
+    return 1
+  fi
+
+  # $(...) discards NUL bytes, so the tr stays inside the substitution, under
+  # pipefail so a failed diff is not read as an empty one.
+  if ! changed="$(set -o pipefail; git -C "$root" diff --name-only -z --no-renames \
+    "${base}...${head}" 2>/dev/null | tr '\0' '\n')"; then
+    printf 'the change set %s...%s could not be read\n' "$base" "$head"
+    return 1
+  fi
+  if [ -z "$changed" ]; then
+    printf 'the change set %s...%s is empty\n' "$base" "$head"
+    return 1
+  fi
+
+  seen_audit_workflow=0
+  owners=""
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    case "$(audit_self_mod_classify "$path")" in
+      out-of-scope)
+        _audit_scope_owner_of "$path"
+        [ -n "$_AUDIT_SCOPE_OWNER_RESULT" ] \
+          && owners="${owners}${_AUDIT_SCOPE_OWNER_RESULT}
+"
+        ;;
+      audit-workflow) seen_audit_workflow=1 ;;
+      *)
+        printf 'the change set holds an in-scope path other than the audit workflow (%s)\n' "$path"
+        return 1
+        ;;
+    esac
+  done <<EOT
+$changed
+EOT
+
+  if [ "$seen_audit_workflow" -ne 1 ]; then
+    printf 'the change set does not touch the audit workflow\n'
+    return 1
+  fi
+
+  if [ -n "$owners" ]; then
+    printf 'the change set also changes paths owned by %s\n' \
+      "$(printf '%s' "$owners" | sort -u | tr '\n' ' ' | sed 's/ $//')"
+    return 1
+  fi
+
+  if git -C "$root" rev-parse --verify --quiet "${head}:.gaia/cli/src" >/dev/null 2>&1; then
+    printf 'the tree tracks .gaia/cli/src, which builds the template from the workflow, so byte identity proves nothing\n'
+    return 1
+  fi
+
+  workflow_blob="$(git -C "$root" rev-parse --verify --quiet "${head}:${audit_workflow}" 2>/dev/null)" \
+    && template_blob="$(git -C "$root" rev-parse --verify --quiet "${head}:${audit_template}" 2>/dev/null)" \
+    && [ "$workflow_blob" = "$template_blob" ] && return 0
+
+  printf 'the audit workflow is not a verbatim re-render of the bundled template\n'
+  return 1
+)
 
 # --- audit_owners_for_paths ---------------------------------------------------
 #

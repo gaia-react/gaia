@@ -1097,9 +1097,6 @@ check_out_of_scope_pr() {
 # first sight. No CI stamp; the merge base comes from gate_resolve_base() above,
 # on the same terms as the sibling bypass.
 check_self_mod_only_update_pr() {
-  audit_wf=".github/workflows/code-review-audit.yml"
-  audit_tmpl=".gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
-
   # Bind to the pull request the COMMAND names, for the reason the chore(deps)
   # bypass above gives. This arm earns the conjunct more than that one rather
   # than less: it is reachable from the member-aware gate, where
@@ -1108,65 +1105,18 @@ check_self_mod_only_update_pr() {
   resolve_pr_record
   gate_cmd_names_the_record_pr || return 1
 
-  # A tree that tracks the CLI source builds the bundled template FROM the
-  # workflow in that same tree (.gaia/cli/package.json bundle:adopter), so blob
-  # identity below proves nothing there: the template is a build output of the
-  # change under review, not an independent copy. .gaia/cli/src is
-  # release-excluded, so an adopter tree, whose /update-gaia PR may refresh the
-  # workflow and the template together, never trips this.
-  git rev-parse --verify --quiet "HEAD:.gaia/cli/src" >/dev/null 2>&1 && return 1
-
   gate_resolve_base
   [ -n "$gate_base" ] || return 1
 
-  # Newline-delimited, derived NUL-delimited for the reason the sibling
-  # derivation above gives: a C-quoted path is an unrecognized string to the
-  # classifier. A non-zero return is a diff that never ran.
-  changed="$(audit_provenance_changed_files "$tree_root" "$gate_base")" || return 1
-  # Deliberately NOT relaxed, unlike the sibling bypass. That one is reached
-  # only once the dispatched member set is already empty, so treating a decisive
-  # empty range as clearance there stays contained. This one is reachable from
-  # the member-aware gate, where self_mod_only_pr() below clears EVERY
-  # dispatched member at once, and it would do so across mismatched anchors:
-  # the member set comes from a default-branch-anchored derivation while this
-  # range is record-anchored. An empty range must never fire this bypass.
-  [ -n "$changed" ] || return 1
-
-  # Classify every changed path via the shared ORDERED THREE-WAY classifier
-  # (audit_self_mod_classify): the ONE permitted in-scope path is the audit
-  # workflow itself; any other in-scope path (app/, test/, configs, a different
-  # workflow) denies immediately. An out-of-scope path passes only while no
-  # roster member owns it: the re-render proof stands in for the audit
-  # workflow's owner alone, so an owned path (GAIA's own gate machinery under
-  # .claude/hooks/** or .gaia/**) still needs its member's marker. On an adopter
-  # roster those paths have no owner, so an /update-gaia PR still clears. The
-  # owner lookup reads the roster parsed once at the top of this hook.
-  seen_audit_wf=0
-  while IFS= read -r path; do
-    [ -n "$path" ] || continue
-    class="$(audit_self_mod_classify "$path")"
-    case "$class" in
-      out-of-scope)
-        [ -z "$(audit_owner_for_path "$path")" ] || return 1
-        continue
-        ;;
-      audit-workflow) seen_audit_wf=1 ;;
-      *) return 1 ;;
-    esac
-  done <<< "$changed"
-
-  # The audit workflow must actually be the in-scope change (otherwise this is a
-  # pure out-of-scope PR the earlier bypass already cleared) AND its committed
-  # bytes must be a verbatim copy of the bundled template. Git stores blobs by
-  # content hash, so equal blob SHAs mean byte-identical files. Comparing HEAD's
-  # blobs (not the working tree) keeps the check fail-closed against local dirt;
-  # a missing file makes rev-parse fail and the merge denies.
-  [ "$seen_audit_wf" -eq 1 ] || return 1
-  wf_blob=$(git rev-parse "HEAD:${audit_wf}" 2>/dev/null) || return 1
-  tmpl_blob=$(git rev-parse "HEAD:${audit_tmpl}" 2>/dev/null) || return 1
-  [ "$wf_blob" = "$tmpl_blob" ] || return 1
-
-  return 0
+  # The predicate itself is audit_verbatim_rerender, the definition CI's
+  # --self-mod-rerender stamp also calls, so the two gates cannot disagree. It
+  # declines an empty range on its own, which this arm needs and the sibling
+  # bypass deliberately does not: self_mod_only_pr() below clears EVERY
+  # dispatched member at once, across mismatched anchors (the member set is
+  # default-branch-anchored, this range record-anchored), so an empty range
+  # must never fire it. The roster it reads is the one parsed at the top of
+  # this hook.
+  audit_verbatim_rerender "$tree_root" "$gate_base" HEAD >/dev/null
 }
 
 # code-audit-frontend clearance: a live refusal for the current digest is

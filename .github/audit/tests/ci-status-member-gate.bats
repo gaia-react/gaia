@@ -1095,6 +1095,44 @@ commit_rerender_diff() {
   grep -qF "success_stamped=false" "$STEP_OUTPUT"
 }
 
+# The maintainer shape (gaia-react/gaia#2410): a tree that tracks .gaia/cli/src
+# builds the template FROM the workflow, so blob identity proves nothing there.
+# .gaia/cli/templates/** and CHANGELOG.md are unowned, so nothing else declines.
+@test "verbatim re-render: workflow, identical template and CHANGELOG.md in a tree that tracks the CLI source posts nothing" {
+  body="$(extract_step_body "$RERENDER_STEP")"
+  mkdir -p "$SANDBOX/.gaia/cli/src"
+  printf 'export {};\n' > "$SANDBOX/.gaia/cli/src/index.ts"
+  git -C "$SANDBOX" add .gaia/cli/src/index.ts
+  git -C "$SANDBOX" commit --quiet -m "track the CLI source on base"
+  commit_rerender_diff
+  echo "entry" > "$SANDBOX/CHANGELOG.md"
+  git -C "$SANDBOX" add CHANGELOG.md
+  git -C "$SANDBOX" commit --quiet -m "changelog"
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ ! -f "$POST_LOG" ]
+  grep -qF "success_stamped=false" "$STEP_OUTPUT"
+}
+
+@test "verbatim re-render: workflow, identical template and CHANGELOG.md without the CLI source posts success" {
+  body="$(extract_step_body "$RERENDER_STEP")"
+  commit_rerender_diff
+  echo "entry" > "$SANDBOX/CHANGELOG.md"
+  git -C "$SANDBOX" add CHANGELOG.md
+  git -C "$SANDBOX" commit --quiet -m "changelog"
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ -f "$POST_LOG" ]
+  grep -qF "state=success" "$POST_LOG"
+  grep -qF "success_stamped=true" "$STEP_OUTPUT"
+}
+
 # -----------------------------------------------------------------------------
 # Non-clobbering pending POST
 #
