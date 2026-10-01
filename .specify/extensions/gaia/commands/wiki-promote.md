@@ -5,7 +5,7 @@ description: Promote merged SPEC or plan content into the GAIA wiki.
 
 # Wiki Promote, `after_implement` hook
 
-Fires automatically on `/speckit-implement` completion for the spec arm (`SPEC-NNN`); also invokable directly with a `PLAN-NNN` id for the plan arm (from `plan-close`, on an accepted promotion offer). Reads the consolidated `SUMMARY.md`, detects whether the implementing PR has merged, and either promotes content into `gaia/wiki/` or persists a defer flag.
+Fires automatically on `/speckit-implement` completion for the spec arm (`SPEC-NNN`); also invokable directly with a `PLAN-NNN` id for the plan arm (from `plan-close`, on an accepted promotion offer). Reads the consolidated `SUMMARY.md`, detects whether the implementing PR has merged, and either promotes content into `wiki/` or persists a defer flag.
 
 ## Step 1 - Resolve the source
 

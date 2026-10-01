@@ -18,7 +18,7 @@ Conventions for GAIA's Claude Code config surface: extension points, monorepo re
 | Directory / File        | Purpose                                                                                                                       | Loaded                       |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
 | `.claude/agents/`       | Named subagents (`.md` per agent); extension dirs for review-type agents                                                      | Manual (Task tool)           |
-| `.claude/commands/`     | Maintainer-only slash commands (`/gaia-init`, `/gaia-release`)                                                                | Manual (slash invocation)    |
+| `.claude/commands/`     | Slash commands (e.g. `/gaia-init`, `/gaia-plan`)                                                                              | Manual (slash invocation)    |
 | `.claude/hooks/`        | Bash scripts wired in `settings.json`                                                                                         | Auto on matched tool events  |
 | `.claude/rules/`        | Coding rules; optionally path-scoped via `paths:` frontmatter                                                                 | Auto (global) or path-scoped |
 | `.claude/skills/`       | Skills: both context-triggered (`react-code`, `typescript`) and user-invoked (`gaia-handoff`, `new-component`, `update-deps`) | Auto on context/intent match |
@@ -35,8 +35,8 @@ What this means in practice:
 
 - **Wiki mode** is declared as `Mode: B (Codebase) + E (Research)` in `wiki/README.md`. The string matches upstream's `skills/wiki/references/modes.md` catalog so any agent reading the upstream skill picks the right scaffolding rules. Mode is a documentation contract; there is no runtime toggle in the plugin.
 - **Wiki hooks are GAIA-owned** (in `.claude/hooks/wiki-*.sh`), not delegated to the upstream plugin's `hooks.json`. Reasons: upstream auto-commits on every Write/Edit; GAIA squashes those via `wiki-squash-autocommits.sh` for cleaner git history. Upstream's Stop-hook prompt assumes a 500-word hot cache; GAIA enforces ~200 words.
-- **DragonScale is opt-out.** The v1.6.0 release adds an optional memory layer (fold operator, deterministic addresses, semantic tiling, boundary-first autoresearch). GAIA declines all four. See [[DragonScale Opt-Out]] for the per-mechanism reasoning and the reversal path for any adopter who wants it.
-- **Plugin upgrades require uninstall + install.** A plain `claude plugin marketplace update` does not re-pin the cache. Use `claude plugin uninstall claude-obsidian@claude-obsidian-marketplace` followed by `claude plugin install claude-obsidian@claude-obsidian-marketplace` to flip `installPath` to the new version. This is a Claude Code plugin CLI quirk worth remembering when bumping the baseline.
+- **DragonScale is opt-out.** The v1.6.0 release adds an optional memory layer (fold operator, deterministic addresses, semantic tiling, boundary-first autoresearch). GAIA declines all four. See [[DragonScale Opt-Out]] for the per-mechanism reasoning and the opt-in path for a project that wants it.
+- **Plugin upgrades require uninstall + install.** A plain `claude plugin marketplace update` does not re-pin the cache. Use `claude plugin uninstall claude-obsidian@claude-obsidian-marketplace` followed by `claude plugin install claude-obsidian@claude-obsidian-marketplace` to flip `installPath` to the new version. This is a Claude Code plugin CLI quirk worth remembering when upgrading the plugin.
 
 ## 2. Rules vs. skills vs. hooks: decision criteria
 

@@ -18,10 +18,10 @@ fix it re-captures to confirm the targeted finding goes to zero, then stops.
   43K tokens) for a trivial flow. Only the reduced summary is read. Any
   drill-down is a targeted query (for example `jq`) against the on-disk raw, not
   a full read.
-- **Deferred surfacing is NOT part of v1.** The trip-wire offer, the local
-  audit prompt, the CI label plus merge-gate, and decline persistence are
-  designed but unbuilt. The reduced summary's `findings` array is the unit a
-  future surfacing flow would consume; reserve that seam, do not build it.
+- **Surfacing is out of scope.** The skill reports a diagnosis and stops: no
+  trip-wire offer, audit prompt, CI label, or decline persistence. The reduced
+  summary's `findings` array is the seam a surfacing flow would consume;
+  reserve it, do not build one here.
 
 ## Step 1: Confirm intent and target
 

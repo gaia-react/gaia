@@ -112,7 +112,7 @@ The auxiliary skills GAIA leans on:
 - `claude-obsidian:save`: file the current chat or a specific insight as a structured wiki note.
 - `claude-obsidian:obsidian-markdown`: write correct Obsidian Flavored Markdown (wikilinks, embeds, callouts, properties, math, canvas syntax).
 
-The plugin ships more `claude-obsidian:*` skills than these (canvas, autoresearch, defuddle, obsidian-bases, plus the wiki-cli / wiki-mode / wiki-retrieve / think additions among them); GAIA pulls any of them in only when a task matches. The skill source lives in the upstream plugin cache (`~/.claude/plugins/cache/claude-obsidian-marketplace/claude-obsidian/<version>/skills/`), informational reference only: adopters should not edit these files. See [[Claude Integration Conventions]] § Wiki vendor relationship and [[DragonScale Opt-Out]] for the v1.9.2 baseline policy and why DragonScale's `wiki-fold` skill is dormant in our environment.
+The plugin ships more `claude-obsidian:*` skills than these (canvas, autoresearch, defuddle, obsidian-bases, plus the wiki-cli / wiki-mode / wiki-retrieve / think additions among them); GAIA pulls any of them in only when a task matches. The skill source lives in the upstream plugin cache (`~/.claude/plugins/cache/claude-obsidian-marketplace/claude-obsidian/<version>/skills/`), informational reference only: adopters should not edit these files. See [[Claude Integration Conventions]] § Wiki vendor relationship and [[DragonScale Opt-Out]] for the baseline policy and why DragonScale's `wiki-fold` skill is dormant under GAIA's default configuration.
 
 ## Playwright CLI vs. MCP
 

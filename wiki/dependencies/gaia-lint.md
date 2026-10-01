@@ -22,13 +22,13 @@ GAIA's lint config, extracted to a standalone package under `github.com/gaia-rea
 
 ## Where rules live
 
-Source of truth: `gaia-lint/src/configs/*.ts` (per export: `base.ts`, `react.ts`, `style-hygiene.ts`, `guardrails.ts`, `testing.ts`, `storybook.ts`, `playwright.ts`, `prettier.ts`, `better-tailwind.ts`, `ignores.ts`). Custom plugins (`no-enum`, `no-switch`, `no-jsx-iife`) live in `gaia-lint/src/plugins/`.
+Source of truth: the package's `src/configs/*.ts` (per export: `base.ts`, `react.ts`, `style-hygiene.ts`, `guardrails.ts`, `testing.ts`, `storybook.ts`, `playwright.ts`, `prettier.ts`, `better-tailwind.ts`, `ignores.ts`). Custom plugins (`no-enum`, `no-switch`, `no-jsx-iife`) live in its `src/plugins/`.
 
-GAIA's `eslint.config.mjs` is a thin consumer: it spreads the package's exported arrays and adds GAIA-specific overrides last.
+The project's `eslint.config.mjs` is a thin consumer: it spreads the package's exported arrays and adds project-specific overrides last.
 
 ## Override pattern
 
-The default export is a factory: call it once to get the config bundle, spread the bundle's arrays first, then add GAIA-specific overrides last (flat-config last-write-wins). `gaiaLint(opts?)` accepts `{sourceDir}` (default `'app'`) to scope file-path-based rules; pass `{sourceDir: 'src'}` when source lives elsewhere.
+The default export is a factory: call it once to get the config bundle, spread the bundle's arrays first, then add project-specific overrides last (flat-config last-write-wins). `gaiaLint(opts?)` accepts `{sourceDir}` (default `'app'`) to scope file-path-based rules; pass `{sourceDir: 'src'}` when source lives elsewhere.
 
 ```js
 import gaiaLint from '@gaia-react/lint';
@@ -75,14 +75,14 @@ The `resources.*` and `actions.*` carve-out means UI-layer files may import type
 
 ## When to edit
 
-- Edit `@gaia-react/lint` when the rule should propagate to **all** consumers.
-- Edit GAIA's `eslint.config.mjs` only when the override is **GAIA-specific** (folder layout, app-only relaxations).
+- Change `@gaia-react/lint` upstream when the rule should propagate to **all** consumers.
+- Override in the project's `eslint.config.mjs` when the change is **project-specific** (folder layout, app-only relaxations).
 
+<!-- gaia:maintainer-only:start -->
 ## CLI consumer
 
 `.gaia/cli` (`@gaia-react/cli`) is a second consumer, with its own `.gaia/cli/eslint.config.mjs` in its separate pnpm workspace. It consumes `base`/`react`/`testing`/`styleHygiene`/`guardrails`/`prettier` with `sourceDir: 'src'`, omitting the React-app-only presets (`storybook`, `playwright`, `reactRouter`, `betterTailwind`). It spreads `react` only because `base` transitively references `react/*` rules; the ruleset is inert on the CLI's non-JSX TypeScript. It disables a small Node/CLI set (`sonarjs/no-os-command-from-path`, `no-relative-import-paths`, `check-file/folder-match-with-fex`, `testing-library/render-result-naming-convention`) and extends the `unicorn/prevent-abbreviations` ignore list for CLI idioms. `.gaia/cli/eslint.config.mjs` is the source of truth for the full rule table.
 
-<!-- gaia:maintainer-only:start -->
 Because `.gaia/cli` pins `@gaia-react/lint` independently in its own lockfile, nothing keeps its version in step with the root workspace's pin automatically. `/update-deps`'s Phase 6b raises `.gaia/cli`'s shared devDependency pins, `@gaia-react/lint` included, to match root's after every dependency run. See [[pnpm]] for the full cross-workspace hardening.
 <!-- gaia:maintainer-only:end -->
 

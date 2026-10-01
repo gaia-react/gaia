@@ -72,7 +72,7 @@ The adopter-tunable knobs live at `.gaia/audit-ci.yml`. The workflow reads the f
 
 | Knob                  | Default              | Purpose                                                                                                                                                                                                                                                                                                     |
 | --------------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gate_label`          | `null`               | Run the audit only when the PR carries this label. `null` runs on every PR. Maintainer recommendation: leave `null` until the audit is stable in CI; flip to `ready-for-review` once it is.                                                                                                                 |
+| `gate_label`          | `null`               | Run the audit only when the PR carries this label. `null` runs on every PR. GAIA recommends leaving `null` until the audit is stable in CI, then flipping to `ready-for-review`.                                                                                                                             |
 | `budget_seconds`      | `1800`               | Hard wall-clock budget for the audit invocation. The workflow times out the agent step at this value and reports `audit aborted: budget` rather than failing red.                                                                                                                                           |
 | `max_turns`           | `30`                 | Maximum fix turns the agent is allowed inside CI. Maps to `claude_args`'s `--max-turns`. Lower = cheaper. Higher = more chance to self-heal. `30` is the script fallback when the key is missing; the bundled `.gaia/audit-ci.yml` ships `60`.                                                                |
 | `push_fixes`          | `true`               | Whether the agent may push self-heal commits to the PR branch. Set `false` to make the audit advisory-only (it comments findings but does not push).                                                                                                                                                        |
@@ -152,7 +152,7 @@ A job that reaches its own `timeout-minutes` is cancelled rather than failed, so
 
 ## How to enable as a required check
 
-After the workflow lands on `main`, the maintainer (or an adopter applying the same posture on their fork) configures branch protection:
+After the workflow lands on `main`, configure branch protection:
 
 1. Repo **Settings** → **Branches** → **Branch protection rules**.
 2. Edit the rule for `main` (or add one if none exists).

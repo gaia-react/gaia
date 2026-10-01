@@ -95,7 +95,9 @@ The threshold is calibrated so cross-page redundancy is detectable: one SPEC pro
 - After landing a meaningful change yourself
 - Before opening a PR with substantive code changes
 - When `/gaia-wiki lint` reports drift WARN or ERROR
+<!-- gaia:maintainer-only:start -->
 - Before `/gaia-release` (which refuses to bump version on non-zero drift)
+<!-- gaia:maintainer-only:end -->
 
 You don't need to run it after every commit. The hooks let you defer with full visibility.
 

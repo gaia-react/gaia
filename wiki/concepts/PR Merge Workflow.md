@@ -637,7 +637,11 @@ Then wait. The wait is the reusable part, and it ships as a script: a caller tha
 bash .gaia/scripts/pr-wait-merge.sh --pr <N>
 ```
 
-It prints one verdict token on stdout and exits on it: `MERGED` (0), `CONFLICTING` (3), `CHECK_FAILED` (4), `TIMEOUT` (5), `CLOSED` (6). `--attempts` changes the default bound of five and `--interval` the default thirty-second spacing, which together are the ~2-3 minutes every caller here cites; a release or a full CI run passes `--attempts 20`. `--repo owner/name` waits on another repository's pull request, which is what the `create-gaia` lockstep wait in `/gaia-release` needs; omitted, `gh` resolves the repository from the working directory.
+It prints one verdict token on stdout and exits on it: `MERGED` (0), `CONFLICTING` (3), `CHECK_FAILED` (4), `TIMEOUT` (5), `CLOSED` (6). `--attempts` changes the default bound of five and `--interval` the default thirty-second spacing, which together are the ~2-3 minutes every caller here cites; a release or a full CI run passes `--attempts 20`. `--repo owner/name` waits on another repository's pull request; omitted, `gh` resolves the repository from the working directory.
+
+<!-- gaia:maintainer-only:start -->
+`/gaia-release`'s `create-gaia` lockstep wait uses `--repo`.
+<!-- gaia:maintainer-only:end -->
 
 **Exit 2 is a refusal rather than a verdict, and a caller must not read it as "still pending".** It covers a usage error, a `gh` that is not on PATH, and a `gh` that is present but never answered across the whole bound: expired auth, a rate limit, a network outage, or a pull-request number that does not exist. That last case is the one worth naming, because a `gh` that cannot answer returns the same blank state a live pending merge does; without the distinction the wait would report `TIMEOUT` and assert the pull request is still open, having established neither that pull request nor any state of it. A refusal prints no verdict token at all, so nothing on stdout reads as an answer. One transient failure still keeps waiting; the refusal needs every read in the bound to have failed.
 

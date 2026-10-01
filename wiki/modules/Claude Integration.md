@@ -20,7 +20,7 @@ GAIA ships with [Claude Code](https://claude.ai/) support out of the box. Everyt
 - `settings.local.json`: gitignored; personal overrides
 - `agent-memory/`: gitignored scratch path created on demand by named agents; **not** a source of truth; durable knowledge belongs in the wiki
 - `agents/`: sub-agent definitions
-- `commands/`: maintainer-only slash commands
+- `commands/`: slash commands
 - `hooks/`: bash hooks invoked by `settings.json`
 - `instructions/`: parameterized one-shot runbooks dispatched by commands like `/gaia-init`; self-deleting after use
 - `rules/`: auto-attached guidance, file-path scoped
@@ -28,7 +28,7 @@ GAIA ships with [Claude Code](https://claude.ai/) support out of the box. Everyt
 
 ## Commands vs. skills
 
-GAIA workflows are split between slash commands under `.claude/commands/` (`/gaia-plan`, `/gaia-spec`, `/gaia-audit`, `/gaia-fitness`, `/gaia-forensics`, `/gaia-harden`, `/gaia-init`, `/gaia-release`, and more) and standalone skills under `.claude/skills/` (`gaia-handoff`, `gaia-pickup`, `gaia-wiki`, each with its own `SKILL.md`). There is no `/gaia` router; each command and skill reads a shared reference file in `.claude/skills/gaia/references/`. For the current inventory, query Serena or list the folder directly.
+GAIA workflows are split between slash commands under `.claude/commands/` (`/gaia-plan`, `/gaia-spec`, `/gaia-audit`, `/gaia-fitness`, `/gaia-forensics`, `/gaia-harden`, `/gaia-init`, and more) and standalone skills under `.claude/skills/` (`gaia-handoff`, `gaia-pickup`, `gaia-wiki`, each with its own `SKILL.md`). There is no `/gaia` router; each command and skill reads a shared reference file in `.claude/skills/gaia/references/`. For the current inventory, query Serena or list the folder directly.
 
 ## Rules: auto-attached
 

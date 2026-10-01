@@ -79,7 +79,7 @@ Permission-glob semantics: the rule the auditor applies for the strict-subset ch
 
 Checks the GAIA installation:
 
-- Per-file drift between the current contents of files tracked by `.gaia/manifest.json` and the contents the installed GAIA version shipped. When a reference snapshot of the installed version's shipped contents is present, each drifted file is one `warning` finding. This check needs that snapshot; when none is present (a fresh clone or after a cache clear), the per-file diff is skipped rather than treated as drift, and version-currency plus `gaia-maintainer release manifest --check` carry installation freshness instead. Provided both of those pass, the no-snapshot case records no finding at all for this bullet, not even `info`; it is a pass, not an unresolved question.
+- Per-file drift between the current contents of files tracked by `.gaia/manifest.json` and the contents the installed GAIA version shipped. When a reference snapshot of the installed version's shipped contents is present, each drifted file is one `warning` finding. This check needs that snapshot; when none is present (a fresh clone or after a cache clear), the per-file diff is skipped rather than treated as drift, and version-currency carries installation freshness instead. Provided it passes, the no-snapshot case records no finding at all for this bullet, not even `info`; it is a pass, not an unresolved question.
 - Installed GAIA version vs. latest release: if behind, one `info` finding recommending `/update-gaia`. This is the only `info` this category emits; a version-current install with no snapshot present still records no finding.
 
 ### 7. Wiki fitness

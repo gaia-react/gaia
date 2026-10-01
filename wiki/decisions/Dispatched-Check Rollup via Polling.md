@@ -59,5 +59,7 @@ The listener fires for `push`- and `pull_request`-triggered Chromatic / Tests co
 
 ## Reference
 
+<!-- gaia:maintainer-only:start -->
 - Verification fixture: the `test/verify-audit-retrigger` test branch fires the audit self-heal chain end-to-end. Both the listener failure mode and the in-loop polling resolution are verified against this fixture.
+<!-- gaia:maintainer-only:end -->
 - Related: [[Code Review Audit CI]] for the dispatch half.

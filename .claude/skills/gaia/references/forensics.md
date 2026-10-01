@@ -144,7 +144,7 @@ command -v gh
     exit "$rc"
     ```
 
-    Use `--body-file` so multiline bodies survive shell escaping intact. At this point, before `gh_issue_url` is added back to the local frontmatter, the GH-issue body must be byte-identical to the local file body (frontmatter included) so the deterministic parser at `.github/forensics/parse-issue-body.sh` extracts the same `class` from either input.
+    Use `--body-file` so multiline bodies survive shell escaping intact. At this point, before `gh_issue_url` is added back to the local frontmatter, the GH-issue body must be byte-identical to the local file body (frontmatter included) so GAIA's upstream triage parser extracts the same `class` from either input.
 
     On failure (`rc != 0`), the cost record is written right here with no `--github-*` flags (there is no issue), and the non-zero status reaches the caller unchanged. On success (`rc = 0`), this line emits nothing; the run continues below and step 9 emits the one record carrying the issue pass-through. Exactly one record either way.
 

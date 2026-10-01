@@ -39,7 +39,7 @@ A deterministic check fails when more than one `doctor.config.*` or `react-docto
 Findings fall into three buckets:
 
 1. **Real issue**: fix the code. Security and correctness rules take priority over performance and a11y.
-2. **Domain mismatch**: a rule that does not apply to a path (e.g. a web-input rule firing on maintainer CLI tooling, or a generated artifact). Add a scoped `ignore.overrides` entry naming the rule and files, or `ignore.files` for output that should never be scanned (e.g. `build/**`).
+2. **Domain mismatch**: a rule that does not apply to a path (e.g. a web-input rule firing on Node CLI tooling, or a generated artifact). Add a scoped `ignore.overrides` entry naming the rule and files, or `ignore.files` for output that should never be scanned (e.g. `build/**`).
 3. **Tool overlap**: dead-code analysis (`deslop`) duplicates [[knip]], the single dead-code authority. `deadCode: false` disables it.
 
 Suppress with the narrowest control: prefer a per-path `ignore.overrides` entry over a blanket rule-off. Every suppression carries a comment with the evidence so it can be re-evaluated when the ruleset changes (rules also drift between versions, since the scan runs at `npx ...@latest`).

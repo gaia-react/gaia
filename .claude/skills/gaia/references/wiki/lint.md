@@ -212,7 +212,11 @@ Run the orphans primitive and append a `## #14: Orphan pages` section, replacing
 
 Returns `{ "orphans": [{ "path": "...", "title": "...", "domain": "..." }, ...] }`. Empty array means clean.
 
-Intentionally-unlinked maintainer-only pages are kept reachable via marker-wrapped links in `wiki/index.md`, so a page that shows up here is a genuine orphan: it signals a missing cross-reference, not a maintainer page.
+A page that shows up here is a genuine orphan: it signals a missing cross-reference.
+
+<!-- gaia:maintainer-only:start -->
+Intentionally-unlinked maintainer-only pages are kept reachable via marker-wrapped links in `wiki/index.md`, so an orphan here is never a maintainer page.
+<!-- gaia:maintainer-only:end -->
 
 ### 5b. Append the section
 
