@@ -363,16 +363,16 @@
       "source": "SPEC-081 §main-only"
     },
     {
-      "id": "audit-round-counter",
-      "path": "cache/audit-rounds-*.json|cache/audit-rounds-*.json.*",
-      "match": "glob",
-      "kind": "file",
+      "id": "audit-loop-state",
+      "path": "audit-loop/",
+      "match": "prefix",
+      "kind": "dir",
       "scope": "main-only",
       "keyed_by": null,
-      "why": "The pre-merge audit gate's per-session round counter, deliberately resolved to main and keyed by session id, so the count follows one session across a tree switch and a fresh session starts a fresh three.",
+      "why": "Per-branch audit loop history and allowance, resolved to main so every session, sub-agent, fork and linked worktree on the branch reads one record; written only by the audit loop hooks.",
       "writer": "code",
       "reaped_by": null,
-      "source": "PLAN-020 §main-only, applied to the pre-merge audit gate's per-session round counter"
+      "source": "SPEC-090 §State"
     },
     {
       "id": "project-id",

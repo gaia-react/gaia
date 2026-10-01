@@ -231,17 +231,86 @@ readonly INSTALL_CMD="brew install jq"
   assert_allowed_by_exit
 }
 
-@test "jq absent: block-fourth-audit-round refuses a member dispatch" {
+# The Agent payload keeps the harness key order: ambient head first, then the
+# tool call. The bound hook's binding literal is the member-name prefix, which
+# no ambient path carries.
+agent_payload() {
+  jq -n --argjson a "$(ambient)" --arg s "$1" \
+    '$a + {tool_name: "Agent", tool_input: {subagent_type: $s}}'
+}
+
+@test "jq absent: audit-loop-bound refuses a member dispatch" {
   local json
-  json=$(jq -n '{hook_event_name: "PreToolUse", tool_name: "Agent", tool_input: {subagent_type: "code-audit-frontend"}}')
-  without_jq block-fourth-audit-round.sh "$json"
+  json=$(agent_payload "code-audit-frontend")
+  without_jq audit-loop-bound.sh "$json"
   assert_blocked_by_exit
 }
 
-@test "jq absent: block-fourth-audit-round allows a dispatch naming no member" {
+@test "jq absent: audit-loop-bound allows a dispatch naming no member" {
   local json
-  json=$(jq -n '{hook_event_name: "PreToolUse", tool_name: "Agent", tool_input: {subagent_type: "general-purpose"}}')
-  without_jq block-fourth-audit-round.sh "$json"
+  json=$(agent_payload "general-purpose")
+  without_jq audit-loop-bound.sh "$json"
+  assert_allowed_by_exit
+}
+
+write_payload() {
+  jq -n --argjson a "$(ambient)" --arg p "$1" \
+    '$a + {tool_name: "Write", tool_input: {file_path: $p, content: "x"}}'
+}
+
+@test "jq absent: block-audit-loop-write refuses a write under the loop state" {
+  local json
+  json=$(write_payload ".gaia/local/audit-loop/feature.json")
+  without_jq block-audit-loop-write.sh "$json"
+  assert_blocked_by_exit
+}
+
+@test "jq absent: block-audit-loop-write allows the jq install" {
+  local json
+  json=$(bash_payload "$INSTALL_CMD")
+  without_jq block-audit-loop-write.sh "$json"
+  assert_allowed_by_exit
+}
+
+@test "jq absent: block-audit-loop-write allows an unrelated write" {
+  local json
+  json=$(write_payload "app/foo.ts")
+  without_jq block-audit-loop-write.sh "$json"
+  assert_allowed_by_exit
+}
+
+# The grant hook runs on UserPromptSubmit, so its payload carries that head and
+# a prompt rather than a tool call. The ambient path noise stays in cwd and
+# transcript_path.
+grant_payload() {
+  jq -n --arg c "$AMBIENT_CWD" --arg t "$AMBIENT_TRANSCRIPT" --arg p "$1" \
+    '{session_id: "0193-fixture", transcript_path: $t, cwd: $c, hook_event_name: "UserPromptSubmit", prompt: $p}'
+}
+
+state_listing() {
+  local dir
+  dir="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/local/audit-loop"
+  if [ -d "$dir" ]; then
+    find "$dir" -print | sort
+  fi
+  true
+}
+
+@test "jq absent: audit-loop-grant says so and records nothing for a grant line" {
+  local json before after
+  json=$(grant_payload "audit-grant 2")
+  before=$(state_listing)
+  without_jq audit-loop-grant.sh "$json"
+  after=$(state_listing)
+  [ "$status" -eq 0 ]
+  grep -qF -- 'jq is missing' <<<"$output"
+  [ "$before" = "$after" ]
+}
+
+@test "jq absent: audit-loop-grant stays silent for a prompt without the keyword" {
+  local json
+  json=$(grant_payload "please continue")
+  without_jq audit-loop-grant.sh "$json"
   assert_allowed_by_exit
 }
 

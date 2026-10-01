@@ -54,6 +54,17 @@ set -euo pipefail
 
 payload=$(cat)
 
+# A missing jq-availability library refuses before the pre-filter below: the
+# pre-filter's silent allow is only sound while the arm it skips is loadable,
+# and a guard that exits 0 with its library gone fails open. A plain file test
+# keeps this free of a fork on the common path.
+_self_dir="${BASH_SOURCE[0]%/*}"
+[ "$_self_dir" != "${BASH_SOURCE[0]}" ] || _self_dir=.
+if [ ! -f "$_self_dir/lib/jq-availability.sh" ]; then
+  printf 'BLOCKED: block-audit-loop-write.sh cannot load lib/jq-availability.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
+  exit 2
+fi
+
 # Raw pre-filter. Every call this guard can bind carries the literal
 # `audit-loop` in its payload (JSON never escapes those characters), so a
 # payload without it is outside the remit with no jq read at all. This is the

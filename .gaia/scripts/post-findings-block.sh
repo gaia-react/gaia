@@ -366,7 +366,7 @@ n="$(printf '%s' "$merged_findings" | jq 'length' 2>/dev/null || echo 0)"
 # The member count is DISTINCT `.member` values, not the sidecar file count.
 # The two agreed while the glob selected one base, because a member writes one
 # sidecar per key; across bases one member writes one per round, so counting
-# files would report a three-round solo audit as "3 member(s)", which is the
+# files would report a solo audit across several rounds as "3 member(s)", which is the
 # same file-for-member confusion the widened read exists to survive.
 #
 # Absent and empty `.member` collapse into ONE bucket, so several unnamed
