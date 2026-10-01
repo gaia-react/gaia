@@ -1,6 +1,6 @@
 ---
 name: typescript
-description: Patterns and conventions for all TypeScript code. Use this skill whenever writing or reviewing TypeScript, naming identifiers, typing exports, choosing between type and interface, using Zod schemas, structuring function parameters, or enforcing code patterns like avoiding switch statements and enums.
+description: Patterns and conventions for all TypeScript code. Use this skill whenever writing or reviewing TypeScript, naming identifiers, typing exports, choosing between type and interface, using Zod schemas, defining a constant list, union type, or lookup map that other code shares, structuring function parameters, or enforcing code patterns like avoiding switch statements and enums.
 model: haiku
 ---
 
@@ -72,6 +72,30 @@ export const formatDate = (date: Date): string => format(date, 'yyyy-MM-dd');
 - Max 3 function parameters, use an options object beyond that; call sites with 4+ positional args are hard to read and argument order mistakes are common
 - Inline boolean coercion uses `!!x`, never `Boolean(x)`; reserve `Boolean` for point-free use (e.g. `array.filter(Boolean)`), and coerce per operand in a nullable `||` chain (`!!a || !!b`), since `!!(a || b)` trips `@typescript-eslint/prefer-nullish-coalescing`
 - Prefer `undefined` over `null` for GAIA-controlled absence (state, optional fields, internal sentinels); reserve `null` for external contracts that require it: DOM `useRef(null)`, ref-callback params, React Router `data(null)`, Zod `.nullable()`, and platform/library APIs that return `null`
+
+## One Source of Truth
+
+A set of values (statuses, roles, locales, route paths, config keys) or a shared helper has exactly one definition. A second copy drifts: a later change updates one copy, and the other goes stale with no error.
+
+- **Search before you define.** Before writing a constant list, union type, schema, lookup map, or helper, search `app/` and `test/` for an existing one and import it. Search by its values, not only its name: a duplicate usually has a different name.
+- **Derive, don't restate.** Every other shape of the set is computed from the one source, so adding a member reaches all of them:
+
+```ts
+// the one source
+export const orderStatuses = ['cancelled', 'pending', 'shipped'] as const;
+
+// derived, never retyped
+export type OrderStatus = (typeof orderStatuses)[number];
+export const orderStatusSchema = z.literal(orderStatuses);
+export const orderStatusColors = {
+  cancelled: 'text-red-600',
+  pending: 'text-amber-600',
+  shipped: 'text-green-600',
+} satisfies Record<OrderStatus, string>;
+```
+
+- **Key maps by the union with `satisfies Record<Union, ...>`**, so a new member is a type error at every map that does not handle it. `Record<string, ...>` or `Partial<...>` accepts the gap silently.
+- Tests, stories, and MSW mocks import the source rather than retyping its values.
 
 ## Zod
 
