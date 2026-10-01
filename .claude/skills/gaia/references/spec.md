@@ -135,7 +135,7 @@ The self-review (step 6) and adversarial audit (step 7) route their finding, ver
 - `findings/<LENS>.json` — one per dispatched lens, written even when the findings array is empty (so the file count equals the dispatched-lens count deterministically).
 - `findings/self-review.json` — the step-6 self-review (6a schema).
 - `findings/completeness.json` — the Deep completeness critic (7a findings schema).
-- `verdicts/<finding-id>.json` — a Standard single-refuter verdict.
+- `verdicts/<finding-id>.json` — a Standard single-refuter verdict, or a batched refuter's verdict on either tier (7b-i, above the cap).
 - `verdicts/<finding-id>-<refuter-lens>.json` — a Deep verdict, one per refuter lens. The refuter lens is **slugified**: `correctness` stays `correctness`, `security/safety` maps to `security-safety`, `reproduces-as-described` stays as is. The completeness critic's single-refuter verdicts use the same naming.
 
 Per-lens and per-finding-plus-lens filenames avoid write collisions in the parallel fan-out: each agent owns exactly one path, so many agents write the cache concurrently without contending.
@@ -592,7 +592,7 @@ This phase complements, never replaces, step 6: the single-agent self-review is 
 - **Rigor tier**, by stakes: weigh reversibility cost (an immutable artifact bound for autonomous downstream implementation is higher), blast radius (files and consumers the change touches), ground-truth claim density, and whether any risk surface is present. Low stakes with narrow scope and few claims → **Standard**; high stakes, or any security or migration surface → **Deep**.
 - **Specialist lens set**, by content: scan `intent`, `scope_boundaries`, `success_criteria`, the required-reading list, and the touched paths against the specialist trigger column in 7a, and select every specialist whose trigger fires. The four core lenses always run; specialists are additive.
 
-Record the gauged tier as `audit_intensity` (`standard` | `deep`) and the selected lens set; 7a records both in the cost-ledger breadcrumb. **Standard** verifies every checkable claim against ground truth with one refuter per material finding (7b-i); **Deep** adds perspective-diverse refuters (correctness, security, reproducibility) per material finding plus a completeness critic (7b-ii).
+Record the gauged tier as `audit_intensity` (`standard` | `deep`) and the selected lens set; 7a records both in the cost-ledger breadcrumb. **Standard** verifies every checkable claim against ground truth with one refuter per material finding (7b-i); **Deep** adds perspective-diverse refuters (correctness, security, reproducibility) per material finding plus a completeness critic (7b-ii). Above the 7b-i refuter cap, either tier refutes with one batched refuter per lens and Deep skips the critic.
 
 **Auto-mode.** Auto mode gauges and runs the audit exactly as interactive does; the prompt is gone from both. The two auto-specific differences (Auto-mode rule 12) are in the fold, not the run: auto mode reads **no finding body** during the audit and fold phase (the transcript carries only ids, severities, titles, verdicts, and dispositions), and it applies every disposition non-interactively at 7c. It never skips the audit.
 
@@ -665,10 +665,13 @@ This heading covers three distinct dispatch sites, delimited below by their own 
 
 ##### 7b-i. Refutation
 
-From the 7a thin digests, main selects every **material** finding id (severity ≠ `low`) across all selected lenses; low-severity findings skip refutation and carry forward unchanged. Each refuter defaults to "refuted" unless it can substantiate the defect from ground truth, so this pass is severity discipline as much as false-positive killing (in the pilot it refuted none outright but correctly downgraded every `high` to `medium`). The refuter count scales with `audit_intensity`:
+From the 7a thin digests, main selects every **material** finding id (severity ≠ `low`) across all selected lenses; low-severity findings skip refutation and carry forward unchanged. Each refuter defaults to "refuted" unless it can substantiate the defect from ground truth, so this pass is severity discipline as much as false-positive killing (in the pilot it refuted none outright but correctly downgraded every `high` to `medium`). The refuter count scales with `audit_intensity`, up to a cap:
 
 - **Standard:** one refuter per material finding, all in parallel.
 - **Deep:** three refuters per material finding, all in parallel, each given a distinct verification lens, prepend one of `correctness`, `security/safety`, or `reproduces-as-described` to the refuter prompt below. A finding is refuted only on a ≥2-of-3 majority; its corrected severity is the median of the non-refuting refuters.
+- **Batched (either tier, above the cap):** when the shape above would dispatch more than **24** refuters (Standard: more than 24 material findings; Deep: more than 8), dispatch instead **one refuter per lens** that raised a material finding, all in parallel, each covering every material finding in that lens's findings file. On Deep, prepend all three verification lenses to that one refuter's prompt; its single verdict decides each finding, with no majority.
+
+The cap exists because the per-finding shapes grow with finding volume: a broad Deep audit that raises 87 material findings would pay 261 refuters. High volume is also where per-finding refutation buys least, since a defect several lenses raised independently already carries the cross-check the extra refuters add. Batched, the dispatch count is bounded by the lens count however many findings the lenses raise.
 
 Main dispatches each refuter keyed by `{ finding_id, findings_file, refuter_lens? }` — **no finding fields interpolated** — where `findings_file` is the lens's `.gaia/local/cache/audit-<spec_id>/findings/<LENS>.json` and `verdict_file` is the refuter's output path (`verdicts/<finding-id>.json` for Standard, `verdicts/<finding-id>-<slug-lens>.json` for Deep, slug per the frozen mapping). The refuter reads the finding body from the file itself. Before dispatch, pre-clear `<verdict_file>` (`rm -f`) so its presence is a fresh-write signal.
 
@@ -682,6 +685,8 @@ Refuter prompt (interpolate `<finding_id>`, `<findings_file>`, `<verdict_file>`,
 >
 > **Write** your verdict to `<verdict_file>` under the verdict schema below, then **return** only the thin verdict line `{ "id": "<finding_id>", "verdict": "confirmed"|"partial"|"refuted", "corrected_severity": "...", "disposition": "plan_directive"|"spec_defect" }`.
 
+A batched refuter is keyed by `{ finding_ids, findings_file }` and uses the same prompt with three substitutions: it verifies every id in `<finding_ids>` rather than one, it writes one verdict file per id to `verdicts/<finding-id>.json` (the Standard naming, on either tier), and it returns a JSON array of thin verdict lines, one per id. Pre-clear every one of those verdict files before dispatch. Main counts the returned lines against the batch's ids, re-dispatches the batch once for any id missing a line, and carries an id still missing one forward unrefuted at its auditor severity.
+
 Verdict schema — the **file** the refuter writes to `verdicts/<finding-id>.json` (Standard) or `verdicts/<finding-id>-<slug-lens>.json` (Deep). `disposition` is consulted only for surviving findings:
 
     {
@@ -692,13 +697,13 @@ Verdict schema — the **file** the refuter writes to `verdicts/<finding-id>.jso
       "evidence": "<file:line or SPEC quote actually checked>"
     }
 
-Main computes the Deep ≥2/3 majority and the median severity **from the returned thin verdict lines only** and **never opens the per-refuter verdict files**, so verdict reasoning bodies never reach main. Surviving findings = the low-severity findings (carried forward) plus every material finding not refuted (Standard: a single `refuted` verdict kills it; Deep: a ≥2-of-3 majority kills it), each stamped with its `corrected_severity` and `disposition`.
+Main computes the Deep ≥2/3 majority and the median severity **from the returned thin verdict lines only** and **never opens the per-refuter verdict files**, so verdict reasoning bodies never reach main. Surviving findings = the low-severity findings (carried forward) plus every material finding not refuted (Standard and batched: a single `refuted` verdict kills it; Deep: a ≥2-of-3 majority kills it), each stamped with its `corrected_severity` and `disposition`.
 
-Append one `coverage.jsonl` record (`phase: "refuter"`, `disposition: "first_pass"|"not_applicable"`) per material finding refuted.
+Append one `coverage.jsonl` record (`phase: "refuter"`, `disposition: "first_pass"|"not_applicable"`) per material finding refuted, or, batched, one per lens batch carrying `lens: "<LENS>"`, so the report's `## Coverage` shows which shape ran.
 
 ##### 7b-ii. Completeness critic
 
-**Deep only.** After the refutation pass, dispatch one more `general-purpose` Agent over the draft plus the surviving findings, and ask what the lenses missed: an unverified load-bearing claim, an untested UAT, a `success_criteria` with no covering UAT, a consumer or blast-radius site the SPEC overlooked. Before dispatch, pre-clear `.gaia/local/cache/audit-<spec_id>/findings/completeness.json`.
+**Deep only, and skipped when 7b-i ran batched.** The cap fires on finding volume, and that much volume across low-overlap lenses already supplies the gap-hunting the critic adds; when skipped, append its coverage record with `disposition: "not_applicable"` and do not run 7b-iii. Otherwise, after the refutation pass, dispatch one more `general-purpose` Agent over the draft plus the surviving findings, and ask what the lenses missed: an unverified load-bearing claim, an untested UAT, a `success_criteria` with no covering UAT, a consumer or blast-radius site the SPEC overlooked. Before dispatch, pre-clear `.gaia/local/cache/audit-<spec_id>/findings/completeness.json`.
 
 Dispatch prompt (interpolate `<DRAFT_PATH>`, `<spec_id>`, `<surviving_findings>` = the 7b-i survivor ids/severities/titles, no bodies):
 
