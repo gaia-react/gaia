@@ -2000,6 +2000,7 @@ const REFS_EXCLUDE_FIXTURE = [
   '.gaia/cli/src',
   '.gaia/scripts/lint-hook-jq-availability.sh',
   '.github/CODEOWNERS',
+  '.gaia/local',
   '.serena',
 ].join('\n');
 
@@ -2014,6 +2015,7 @@ const seedRefsSource = (sandbox: Sandbox): void => {
   sandbox.writeSource('.github/CODEOWNERS', '* @maintainer\n');
   // Present on disk but untracked, the way a maintainer's local state is.
   sandbox.writeSource('.serena/project.yml', 'languages: []\n');
+  sandbox.writeSource('.gaia/local/plans/notes.md', '# notes\n');
   execFileSync('git', ['init', '-q'], {cwd: sandbox.rootDir});
   execFileSync(
     'git',
@@ -2087,6 +2089,11 @@ describe('excluded-refs derived check', () => {
       'Serena reads `.serena/project.yml`.\n',
     ],
     [
+      'a nested untracked excluded entry',
+      'wiki/concepts/A.md',
+      'Plans live under `.gaia/local/plans/`.\n',
+    ],
+    [
       'a code basename outside Markdown',
       '.claude/hooks/a.sh',
       '# mirrors chain.ts\n',
@@ -2116,6 +2123,13 @@ describe('excluded-refs derived check', () => {
 
     expect(run([sandbox.stagingDir], {cwd: sandbox.rootDir})).toBe(1);
     expect(stdio.outputs.join('')).toContain('.gaia/scripts/brand-new-lint.sh');
+  });
+
+  test('does not warn about allowlist and opt-out entries that are in use', () => {
+    sandbox.writeStaged('.claude/rules/a.md', "  - '.gaia/cli/src/**'\n");
+
+    expect(run([sandbox.stagingDir], {cwd: sandbox.rootDir})).toBe(0);
+    expect(stdio.outputs.join('')).not.toContain('unused allowlist entries');
   });
 
   test('warns, without failing, on unused allowlist and opt-out entries', () => {
