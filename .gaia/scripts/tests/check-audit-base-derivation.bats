@@ -754,7 +754,7 @@ mutate_resolver() {
   local repo
   repo="$(make_fixture_repo resolver-two-dot)"
   copy_resolver "$repo"
-  mutate_resolver "$repo" 's/"\$\{BASE_SHA\}\.\.\.HEAD"/"\${BASE_SHA}"/' 'diff --name-only -z "${BASE_SHA}" --'
+  mutate_resolver "$repo" 's/"\$\{BASE_SHA\}\.\.\.HEAD"/"\${BASE_SHA}"/' 'diff --name-only -z --no-renames "${BASE_SHA}" --'
   commit_fixture_repo "$repo"
   run gaia_check_audit_base_derivation "$repo"
   [ "$status" -eq 1 ]

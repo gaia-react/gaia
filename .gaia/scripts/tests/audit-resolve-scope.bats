@@ -162,6 +162,24 @@ value_of() {
   printf '%s\n' "$output" | grep -qxF 'CHANGED=docs/b.md'
 }
 
+@test "FULL_CHANGED lists a rename's old path so a moved-out file still reaches its member" {
+  local repo i
+  repo="$(make_repo renamed)"
+  mkdir -p "$repo/.gaia/scripts" "$repo/wiki"
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    printf 'echo line number %s of a script long enough for rename detection\n' "$i"
+  done > "$repo/.gaia/scripts/movable.sh"
+  git -C "$repo" add -A
+  git -C "$repo" commit -q -m "add movable"
+  git -C "$repo" checkout -q -b feat
+  git -C "$repo" mv .gaia/scripts/movable.sh wiki/movable.md
+  git -C "$repo" commit -q -m "move out"
+  run --separate-stderr "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-maintainer-shell --root "$repo"
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" | grep -qxF 'FULL_CHANGED=.gaia/scripts/movable.sh'
+  printf '%s\n' "$output" | grep -qxF 'FULL_CHANGED=wiki/movable.md'
+}
+
 @test "KEY_BASE matches what the argument-less resolver yields" {
   local repo reader_ref reader_base
   repo="$(make_repo key-agreement)"
