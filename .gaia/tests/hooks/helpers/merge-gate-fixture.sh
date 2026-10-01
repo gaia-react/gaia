@@ -27,6 +27,11 @@ mgf_init() {
   REPO="$BATS_TEST_TMPDIR/repo"
   mkdir -p "$REPO/.gaia"
 
+  # The stamp library prefers GITHUB_REPOSITORY over `gh repo view`, and a
+  # GitHub Actions runner sets it to the real repository, which would route the
+  # POST away from the stubbed test-owner/test-repo every assertion expects.
+  unset GITHUB_REPOSITORY
+
   git -C "$REPO" init --quiet --initial-branch=main
   git -C "$REPO" config user.email "test@example.com"
   git -C "$REPO" config user.name "Test"
