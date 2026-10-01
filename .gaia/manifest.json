@@ -248,6 +248,7 @@
     ".gaia/scripts/token-tally.sh": "owned",
     ".gaia/scripts/usage-flush.sh": "owned",
     ".gaia/scripts/usage-lib.sh": "owned",
+    ".gaia/scripts/usage-memo-lib.sh": "owned",
     ".gaia/scripts/usage-merge.sh": "owned",
     ".gaia/scripts/usage-parse-lib.sh": "owned",
     ".gaia/scripts/usage-render-lib.sh": "owned",
@@ -653,7 +654,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-10-01T01:57:09.938Z",
+  "generated": "2026-10-01T05:27:27.815Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

@@ -111,7 +111,7 @@ Analyze the changed code across these dimensions. Focus on cross-cutting concern
 - **Consistency**: Patterns that deviate from established project conventions without good reason
 - **Testability**: Tightly coupled code that's hard to test, side effects in pure functions
 - **State placement**: Context vs. URL state vs. local, used appropriately per `.claude/rules/state-pattern.md`
-- **Module-level duplication**: Repeated logic across files that should be extracted (line-level duplication is for the subagents)
+- **Module-level duplication**: Repeated logic across files that should be extracted (line-level duplication is for the subagents). For each constant list, union type, schema, lookup map, or helper the diff adds, search the whole repo for an existing definition of the same set or behavior, matching on values and not only on names; the copy a diff duplicates usually sits outside the diff. A hit is `holistic/drifting-duplicate`, repaired by importing or deriving from the existing source (typescript skill, "One Source of Truth")
 
 ### 4. Robustness & Edge Cases
 

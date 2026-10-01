@@ -14,6 +14,11 @@ A release change that requires the adopter to act, run a command or hand-migrate
 
 ## [Unreleased]
 
+### Changed
+
+- Claude now keeps one definition of a shared set of values in your app code instead of writing a fresh copy wherever it needs one, since copies drift apart silently. The `typescript` skill tells it to search for an existing list, union, schema, or lookup map before defining one, and to derive the type, Zod schema, and maps from a single `as const` array so a new member is a type error at every map that misses it. The frontend auditor now searches the whole repo for the copy a diff duplicates, not just the diff. Both ship, so the change reaches adopters on their next `/update-gaia` (#2392)
+- the per-PR usage block printed at `gh pr merge` now renders in about half the time or less on a long-lived clone, with the output unchanged, and on a long history it no longer fails on Linux, where it previously could not read the ledger. It keeps a regenerable cache beside the usage stores, `usage-branch-memo.json`, which is safe to delete and is rebuilt on the next readout. The scripts ship, so the change reaches adopters on their next `/update-gaia` (#2390)
+
 ### Fixed
 
 - the token cost roll-up's "unpriced model(s)" marker now filters model names through the same character allowlist every other cost readout uses, so a model name read from a transcript can no longer carry control characters into the output (#2383)
