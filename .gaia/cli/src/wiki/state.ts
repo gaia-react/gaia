@@ -134,7 +134,7 @@ const printHuman = (state: WikiState, write: (chunk: string) => void): void => {
     `  HEAD:           ${state.head_short}`,
     `  Last evaluated: ${state.state_sha}`,
     `  Reachable:      ${state.reachable ? 'yes' : 'no'}`,
-    `  Drift:          ${state.drift_count} commits (${state.drift_severity})`,
+    `  Drift:          ${state.drift_count} commits (${classifySeverity(state.drift_count)})`,
   ];
 
   if (state.suggested_base !== '') {

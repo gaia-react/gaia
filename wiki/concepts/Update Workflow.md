@@ -101,7 +101,7 @@ The load-bearing guarantee: a dependency the adopter removed is **never re-added
 
 ## Audit configuration merge
 
-`/update-gaia` re-renders no workflow and nudges for no audit mode: the audit runs locally, so there is no audit workflow to refresh. The one audit-related file it merges is `.gaia/audit-ci.yml`, a `shared` file handled field-aware (Step 7c of the command) because it mixes GAIA-authored values with adopter-extensible ones. The merge covers the `auditors` roster, `push_fixes`, and `retrigger_workflows`; keys an older adopter file still carries beyond those are ignored. A conflict or suggestion is recorded in `.gaia-merge/audit-ci.yml.notes` rather than written over the adopter's value, mirroring the `package.json` rule above.
+`/update-gaia` re-renders no workflow and nudges for no audit mode: the audit runs locally, so there is no audit workflow to refresh. The one audit-related file it merges is `.gaia/audit-ci.yml`, a `shared` file handled field-aware (Step 7c of the command) because it mixes GAIA-authored values with adopter-extensible ones. The merge covers the `auditors` roster; top-level keys an older adopter file still carries are ignored. A conflict or suggestion is recorded in `.gaia-merge/audit-ci.yml.notes` rather than written over the adopter's value, mirroring the `package.json` rule above.
 
 `.gaia/project.json` is not in the manifest, so the merge walk never sees it; see [[Project Config]].
 

@@ -28044,9 +28044,8 @@ var parseValueFlags = (argv, valueFlags) => {
 var HELP_TEXT45 = `Usage: gaia update merge-audit-ci --baseline <file> --latest <file> --current <file> [--json]
 
   Field-aware three-way verdict for .gaia/audit-ci.yml. Reads three YAML files
-  (baseline / latest tarball + working-tree current), classifies the GAIA-managed
-  scalar knobs and the auditors roster members, and emits a JSON report of {applied, conflicts,
-  suggestions}.
+  (baseline / latest tarball + working-tree current), classifies the auditors
+  roster members, and emits a JSON report of {applied, conflicts, suggestions}.
 
   Read-only: never writes the file. The /update-gaia skill applies the 'applied'
   entries with the Edit tool to preserve comments and order.
@@ -28056,10 +28055,6 @@ var HELP_TEXT45 = `Usage: gaia update merge-audit-ci --baseline <file> --latest 
     1  user-correctable error (missing flag / file, malformed YAML)
 `;
 var HELP_TOKENS43 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var MANAGED_WHOLE_VALUE_KEYS = [
-  "push_fixes",
-  "retrigger_workflows"
-];
 var ROSTER_SECTION = "auditors";
 var VALUE_FLAGS = {
   "--baseline": "baseline",
@@ -28102,7 +28097,6 @@ var deepEqual = (a, b) => {
   }
   return false;
 };
-var lookup = (root, key) => Object.hasOwn(root, key) ? { has: true, value: root[key] } : { has: false, value: void 0 };
 var asRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
 var omitName = (item) => {
   const config2 = {};
@@ -28155,15 +28149,6 @@ var computeReport = (baseline, latest, current) => {
   const conflicts = [];
   const suggestions = [];
   const triples = [];
-  for (const key of MANAGED_WHOLE_VALUE_KEYS) {
-    triples.push({
-      a: lookup(current, key),
-      b: lookup(baseline, key),
-      key,
-      kind: "key",
-      l: lookup(latest, key)
-    });
-  }
   const baseRoster = parseRoster(baseline[ROSTER_SECTION]);
   const latestRoster = parseRoster(latest[ROSTER_SECTION]);
   const currentRoster = parseRoster(current[ROSTER_SECTION]);
@@ -28536,7 +28521,7 @@ var HELP_TEXT47 = `Usage: gaia update merge-workspace --baseline <file> --latest
     1  user-correctable error (missing flag / file, malformed YAML)
 `;
 var HELP_TOKENS45 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
-var MANAGED_WHOLE_VALUE_KEYS2 = [
+var MANAGED_WHOLE_VALUE_KEYS = [
   "minimumReleaseAge",
   "minimumReleaseAgeStrict",
   "trustPolicy",
@@ -28588,7 +28573,7 @@ var deepEqual2 = (a, b) => {
   }
   return false;
 };
-var lookup2 = (root, key) => Object.hasOwn(root, key) ? { has: true, value: root[key] } : { has: false, value: void 0 };
+var lookup = (root, key) => Object.hasOwn(root, key) ? { has: true, value: root[key] } : { has: false, value: void 0 };
 var asRecord2 = (value) => typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
 var computeVerdict2 = (b, l, a) => {
   if (b.has && l.has) {
@@ -28610,12 +28595,12 @@ var buildItem2 = (triple) => {
 };
 var sortKey2 = (item) => `${item.section ?? ""}\0${item.key}`;
 var bySortKey2 = (a, b) => sortKey2(a).localeCompare(sortKey2(b));
-var buildManagedKeyTriples = (baseline, latest, current) => MANAGED_WHOLE_VALUE_KEYS2.map((key) => ({
-  a: lookup2(current, key),
-  b: lookup2(baseline, key),
+var buildManagedKeyTriples = (baseline, latest, current) => MANAGED_WHOLE_VALUE_KEYS.map((key) => ({
+  a: lookup(current, key),
+  b: lookup(baseline, key),
   key,
   kind: "key",
-  l: lookup2(latest, key)
+  l: lookup(latest, key)
 }));
 var buildMapEntryTriples = ({
   baseline,
@@ -28630,11 +28615,11 @@ var buildMapEntryTriples = ({
     .../* @__PURE__ */ new Set([...Object.keys(baseSection), ...Object.keys(latestSection)])
   ];
   return entryKeys.map((key) => ({
-    a: lookup2(currentSection, key),
-    b: lookup2(baseSection, key),
+    a: lookup(currentSection, key),
+    b: lookup(baseSection, key),
     key,
     kind: "entry",
-    l: lookup2(latestSection, key),
+    l: lookup(latestSection, key),
     section
   }));
 };
@@ -31930,7 +31915,7 @@ var printHuman11 = (state, write) => {
     `  HEAD:           ${state.head_short}`,
     `  Last evaluated: ${state.state_sha}`,
     `  Reachable:      ${state.reachable ? "yes" : "no"}`,
-    `  Drift:          ${state.drift_count} commits (${state.drift_severity})`
+    `  Drift:          ${state.drift_count} commits (${classifySeverity(state.drift_count)})`
   ];
   if (state.suggested_base !== "") {
     lines.push(`  Recovery base:  ${state.suggested_base}`);

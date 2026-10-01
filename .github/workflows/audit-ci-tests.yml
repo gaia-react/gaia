@@ -385,8 +385,7 @@ jobs:
               # one alone matches no pattern here, every bats step skips, and
               # the job greens having run that suite's assertions zero times.
               # The glob self-maintains as workflows are added, the same
-              # reasoning as the code-audit-*.md glob above. `.gaia/audit-ci.yml`
-              # below is a source the same way, for read-audit-ci-config.bats.
+              # reasoning as the code-audit-*.md glob above.
               - '.github/workflows/**'
               # The composite action the Node setup step below `uses:`. It lives
               # outside .github/workflows/, so it matches nothing else here, and

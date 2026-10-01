@@ -3,15 +3,14 @@
  * handler.
  *
  * Field-aware verdict oracle for `.gaia/audit-ci.yml`, the audit analog of the
- * `pnpm-workspace.yaml` step in `/update-gaia`. The file is mixed: GAIA-authored
- * scalar knobs (`push_fixes`, the `retrigger_workflows` list), and the
+ * `pnpm-workspace.yaml` step in `/update-gaia`. The one managed section is the
  * `auditors` roster list, GAIA-authored **and** adopter-extensible at once (a
  * member GAIA ships alongside any member an adopter has added of their own). A
  * whole-file three-way merge produces a full-file conflict patch the moment an
  * adopter adds one roster member, so this command merges at key / per-entry
- * granularity instead. A key an older version of the file carried and this one
- * no longer manages is neither applied nor flagged: it is not in the managed
- * list, so the adopter's copy of it is never visited.
+ * granularity instead. A top-level key an older version of the file carried
+ * (the retired scalar knobs among them) is neither applied nor flagged: only
+ * the roster is read, so the adopter's copy of any other key is never visited.
  *
  * It is READ-ONLY: it parses the baseline, latest and current YAML files with
  * js-yaml and emits a JSON verdict report. It never writes the file; the
@@ -19,8 +18,7 @@
  * order, and quote style survive.
  *
  * Verdict table (identical to the package.json / pnpm-workspace steps), per
- * managed scalar key and per roster member, with baseline `B` /
- * latest `L` / adopter `A`:
+ * roster member, with baseline `B` / latest `L` / adopter `A`:
  *
  *   in B and L, B == L                     → no-op  (adopter's value stands)
  *   in B and L, B != L, A present, A == B  → apply  (take latest)
@@ -48,9 +46,8 @@ import type {ValueFlagMap} from '../util/parse-value-flags.js';
 const HELP_TEXT = `Usage: gaia update merge-audit-ci --baseline <file> --latest <file> --current <file> [--json]
 
   Field-aware three-way verdict for .gaia/audit-ci.yml. Reads three YAML files
-  (baseline / latest tarball + working-tree current), classifies the GAIA-managed
-  scalar knobs and the auditors roster members, and emits a JSON report of {applied, conflicts,
-  suggestions}.
+  (baseline / latest tarball + working-tree current), classifies the auditors
+  roster members, and emits a JSON report of {applied, conflicts, suggestions}.
 
   Read-only: never writes the file. The /update-gaia skill applies the 'applied'
   entries with the Edit tool to preserve comments and order.
@@ -61,16 +58,6 @@ const HELP_TEXT = `Usage: gaia update merge-audit-ci --baseline <file> --latest 
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
-
-/**
- * GAIA-managed top-level keys, merged whole-value (the adopter's whole value
- * for the key is compared / applied as a unit; the `retrigger_workflows` list
- * included).
- */
-const MANAGED_WHOLE_VALUE_KEYS: readonly string[] = [
-  'push_fixes',
-  'retrigger_workflows',
-];
 
 /** The GAIA-authored-and-adopter-extensible roster list. */
 const ROSTER_SECTION = 'auditors';
@@ -158,11 +145,6 @@ const deepEqual = (a: unknown, b: unknown): boolean => {
 };
 
 type Presence = {has: boolean; value: unknown};
-
-const lookup = (root: Record<string, unknown>, key: string): Presence =>
-  Object.hasOwn(root, key) ?
-    {has: true, value: root[key]}
-  : {has: false, value: undefined};
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value) ?
@@ -291,25 +273,15 @@ const computeReport = (
 
   const triples: Triple[] = [];
 
-  for (const key of MANAGED_WHOLE_VALUE_KEYS) {
-    triples.push({
-      a: lookup(current, key),
-      b: lookup(baseline, key),
-      key,
-      kind: 'key',
-      l: lookup(latest, key),
-    });
-  }
-
   // auditors: the roster is GAIA-authored and adopter-extensible at once. It
   // merges over keys(B) ∪ keys(L), keyed on member `name` exactly, with exactly
   // one changed row: `in L, not in B` (a GAIA-authored member the adopter's file
   // has never seen) resolves to `apply`, not `suggest-add`. Every other
   // section treats that row as an opt-in suggestion, surfaced but never
   // written; a roster member is a capability the adopter cannot opt into if
-  // it never arrives, unlike a scalar knob they already have a value for, so
-  // leaving it a suggestion would mean a new GAIA-authored member (e.g.
-  // code-audit-github-workflows) reaches no existing adopter. This is a
+  // it never arrives, so leaving it a suggestion would mean a new
+  // GAIA-authored member (e.g. code-audit-github-workflows) reaches no
+  // existing adopter. This is a
   // named, deliberate divergence from every other section's added-row
   // semantics, not an inconsistency to "fix". Bounded precisely: an
   // adopter's *edit* to a GAIA-authored member is still a conflict below, and

@@ -33,6 +33,7 @@ if [ -f "$stub_dir/fail" ]; then
   exit 1
 fi
 case "$*" in
+  "repo view --json nameWithOwner --jq .nameWithOwner") echo o/r ;;
   "pr view 34 --json isCrossRepository --jq .isCrossRepository") echo true ;;
   "pr view 12 --json isCrossRepository --jq .isCrossRepository") echo false ;;
   *) echo "Could not resolve to a PullRequest" >&2; exit 1 ;;
@@ -76,6 +77,62 @@ reason() {
   run_guard 'gh pr checkout https://github.com/o/r/pull/34'
   assert_denied_by_json
   grep -qxF -- 'pr view 34 --json isCrossRepository --jq .isCrossRepository' "$GH_LOG"
+}
+
+@test "a --repo placed after the target is denied, not asked about in the working directory" {
+  run_guard 'gh pr checkout 12 --repo other/repo'
+  assert_denied_by_json
+  reason | grep -qF -- 'names another repository (--repo)'
+  [ ! -s "$GH_LOG" ]
+}
+
+@test "a -R placed after the target is denied" {
+  run_guard 'gh pr checkout 12 -R other/repo'
+  assert_denied_by_json
+  reason | grep -qF -- 'names another repository (-R)'
+}
+
+@test "a pull-request URL naming another repository is denied" {
+  run_guard 'gh pr checkout https://github.com/other/repo/pull/12'
+  assert_denied_by_json
+  reason | grep -qF -- 'other/repo'
+  ! grep -qF -- 'pr view 12' "$GH_LOG"
+}
+
+@test "a pull-request URL naming this repository is allowed" {
+  run_guard 'gh pr checkout https://github.com/o/r/pull/12'
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  grep -qxF -- 'pr view 12 --json isCrossRepository --jq .isCrossRepository' "$GH_LOG"
+}
+
+@test "a pull-request URL is denied when gh cannot name this repository" {
+  : >"$STUB_DIR/fail"
+  run_guard 'gh pr checkout https://github.com/o/r/pull/12'
+  assert_denied_by_json
+  reason | grep -qF -- 'could not say which repository'
+}
+
+@test "mutation: stopping the flag scan at the target lets a trailing --repo through, so the trailing-flag test can fail" {
+  local d="$BATS_TEST_TMPDIR/mutant-scan"
+  mkdir -p "$d"
+  ln -s "$REPO_ROOT/.claude/hooks/lib" "$d/lib"
+  sed 's/\[ -n "\$target" \] || target="\$token"/target="$token"; break/' "$HOOK" >"$d/block-fork-pr-checkout.sh"
+  cmp -s "$HOOK" "$d/block-fork-pr-checkout.sh" && return 1
+  run_guard 'gh pr checkout 12 --repo other/repo' "$d/block-fork-pr-checkout.sh"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "mutation: without the URL repository comparison a foreign URL is allowed, so the foreign-URL test can fail" {
+  local d="$BATS_TEST_TMPDIR/mutant-url"
+  mkdir -p "$d"
+  ln -s "$REPO_ROOT/.claude/hooks/lib" "$d/lib"
+  sed 's/if \[ "\$url_repository" != "\$current_repository" \]/if false/' "$HOOK" >"$d/block-fork-pr-checkout.sh"
+  cmp -s "$HOOK" "$d/block-fork-pr-checkout.sh" && return 1
+  run_guard 'gh pr checkout https://github.com/other/repo/pull/12' "$d/block-fork-pr-checkout.sh"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
 }
 
 @test "UAT-010: gh pr checkout of a same-repo pull request is allowed" {

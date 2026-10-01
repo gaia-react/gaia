@@ -10,7 +10,7 @@ tags: [decision, ci, github-actions]
 
 # Decision: Workflow Naming Convention
 
-Every in-tree workflow's file name, workflow `name:`, and job names follow one convention, so a check-run list, an Actions-tab filter, and a `retrigger_workflows` entry all read the same way.
+Every in-tree workflow's file name, workflow `name:`, and job names follow one convention, so a check-run list and an Actions-tab filter both read the same way.
 
 ## The rules
 
@@ -27,7 +27,7 @@ The maintainer-only workflows exist because this repository is the GAIA project 
 
 ## Quoting
 
-`GAIA: X` contains `": "`, so an unquoted plain scalar is a YAML error in a workflow `name:` and parses as a one-key mapping inside a list. Every prefixed value is single-quoted (`name: 'GAIA: CLI Tests'`), and a `retrigger_workflows` entry naming a prefixed workflow is quoted the same way.
+`GAIA: X` contains `": "`, so an unquoted plain scalar is a YAML error in a workflow `name:` and parses as a one-key mapping inside a list. Every prefixed value is single-quoted (`name: 'GAIA: CLI Tests'`).
 
 ## Exceptions
 
@@ -41,4 +41,4 @@ Blocking means the job's `name:` is a context in the `main` branch ruleset, mirr
 
 `.gaia/cli/src/release/workflow-prefix.test.ts` asserts that the set of workflows whose `name:` starts `GAIA: ` equals the release-exclude derive in `.gaia/cli/src/release/scrub.ts`. Rules 3 through 5 are convention with no automated check: the `code-audit-github-workflows` auditor's holistic dangling-reference lens catches a pointer left stale by a rename, not a case, shape, or advisory-tag mismatch.
 
-A renamed workflow `name:` lands with its `.gaia/audit-ci.yml` `retrigger_workflows` entry in the same commit. A required job's `name:` is a live branch-ruleset cutover: ask-first, maintainer-run.
+A required job's `name:` is a live branch-ruleset cutover: ask-first, maintainer-run.

@@ -72,7 +72,7 @@ For every in-remit changed file, the workflow-security core:
 - **Unpinned third-party actions.** `uses:` on a tag or branch rather than a full commit SHA. GAIA's shipped workflows pin by SHA with a trailing `# vN` comment; hold new code to that convention.
 - **Over-broad `permissions:`.** A job granting more than it needs, or a workflow omitting `permissions:` and inheriting the default.
 - **Secret handling.** A secret echoed, written to an output, passed into a third-party action, or exposed to a step that does not need it.
-- **`GITHUB_TOKEN` recursion and required-check interaction.** A token-authored push does not fire `push`/`pull_request` events, so a required check on the new HEAD is absent and branch protection blocks the merge. `.gaia/audit-ci.yml`'s `retrigger_workflows` knob exists for exactly this; a workflow change that breaks the assumption is a real finding.
+- **`GITHUB_TOKEN` recursion and required-check interaction.** A token-authored push does not fire `push`/`pull_request` events, so a required check on the new HEAD is absent and branch protection blocks the merge. The manual `workflow_dispatch` lane is the recovery; a workflow change that breaks it (a required job whose `if:` rejects a dispatch) is a real finding.
 - **Composite-action-specific.** `shell:` declared on every `run:` step (Actions requires it and the failure mode is confusing), inputs interpolated into shell without an `env:` binding, and a token passed further than the step that needs it.
 - **Concurrency and `if:` correctness.** A gate that fails open, a condition that reads a step output from a skipped step.
 
@@ -88,7 +88,7 @@ GAIA maintainers: before grading, Read `.claude/rules/maintainers/harness-triage
 
 No auditor may rewrite the workflow that runs auditors. A bad repair to the pipeline can disable the thing that would catch it, which is exactly why the domains governing the pipeline, the gate, the roster, and the tests are advisory by construction. **The working tree you return is byte-identical to the tree you read.** Report the finding; the orchestrator owns the repair.
 
-This is belt-and-braces: the one refusal set (`AUDIT_SELFHEAL_REFUSE_ERE` in `.claude/hooks/lib/audit-selfheal-paths.sh`) is the boundary, and it reaches well past `.github/**` to the tests, the `.gaia/` gate and roster machinery, the instruction surfaces, and root build config, regardless of what any member's prompt says. The ERE is the boundary; read it rather than any prose summary of it, this sentence included. A boundary that is documented but not enforced is the same failure as a default that disagrees with an intent, wearing different clothes. Your prose is the member-error guard; the set is the boundary, and the per-branch audit loop and its checkpoint bound a self-heal that strays.
+This is belt-and-braces: the one refusal set (`AUDIT_SELFHEAL_REFUSE_ERE` in `.claude/hooks/lib/audit-selfheal-paths.sh`) is the boundary, and it reaches well past `.github/**` to the tests, the `.gaia/` gate and roster machinery, the instruction surfaces, and root build config. No script enforces it: it is the written boundary every member's instructions cite, held by those instructions and by the orchestrator owning every commit. The ERE is the boundary; read it rather than any prose summary of it, this sentence included. Your prose is the member-error guard; the set is the boundary, and the per-branch audit loop and its checkpoint bound a self-heal that strays.
 
 ## Cross-remit findings
 

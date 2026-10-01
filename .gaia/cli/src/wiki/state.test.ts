@@ -659,5 +659,33 @@ describe('wiki state', () => {
       expect(run([], {cwd: sandbox.root})).toBe(0);
       expect(stdio.outputs.join('')).toContain('Drift:          1 commits');
     }, 30_000);
+
+    test('grades the human Drift line by the count it prints, not by commits_ahead', () => {
+      sandbox.commitAt('A', {'app/a.ts': 'a\n'}, '2026-01-01T00:00:00Z');
+      const shaB = sandbox.commitAt(
+        'B',
+        {'app/b.ts': 'b\n'},
+        '2026-01-02T00:00:00Z'
+      );
+      sandbox.commitAt('C', {'app/c.ts': 'c\n'}, '2026-01-03T00:00:00Z');
+      sandbox.commitAt('E', {'app/e.ts': 'e\n'}, '2026-01-05T00:00:00Z');
+
+      execFileSync('git', ['checkout', '-q', '-b', 'feat', shaB], {
+        cwd: sandbox.root,
+      });
+      const orphan = sandbox.commitAt(
+        'O',
+        {'app/o.ts': 'o\n'},
+        '2026-01-02T12:00:00Z'
+      );
+      execFileSync('git', ['checkout', '-q', 'main'], {cwd: sandbox.root});
+      writeStateFileAt(sandbox.root, orphan, '2026-01-02T12:00:00Z');
+
+      stdio.outputs.length = 0;
+      expect(run([], {cwd: sandbox.root})).toBe(0);
+      const out = stdio.outputs.join('');
+      expect(out).toContain('Drift:          2 commits (low)');
+      expect(out).not.toContain('(none)');
+    }, 30_000);
   });
 });

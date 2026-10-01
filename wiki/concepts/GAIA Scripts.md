@@ -121,7 +121,6 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 | `plan-resume-point.sh` | yes | `/gaia-plan` | Deterministic phase-level resume point for a plan picked up mid-flight. |
 | `post-findings-block.sh` | yes | agent definitions, `post-findings-block-on-merge.sh` hook | Merges every dispatched member's findings sidecar into one machine-readable block and posts it on the pull request. |
 | `pr-wait-merge.sh` | yes | the merge workflow, every flow that merges | The merge wait: polls a pull request to `MERGED` and exits early on every state that means it never will. |
-| `read-audit-ci-config.sh` | yes | the merge workflow, audit hooks | Reader for the audit roster file's settings (`push_fixes`, `retrigger_workflows`). Its author resolver always answers `local`, because every audit runs locally. |
 | `resolve-audit-members.sh` | yes | the merge workflow, audit hooks, CI | Resolves which Code Audit Team members a diff dispatches. |
 | `state-registry-lib.sh` | yes | sourced | Reader for the state registry, the record of every runtime path GAIA writes. |
 | `summary-verify.sh` | yes | the spec and plan close flows | Fail-closed verify gate for the consolidated summary artifact, run before the irreversible removal of the layers it replaces. |

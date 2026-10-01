@@ -139,7 +139,7 @@ fork_head_fixture() {
   CANARY_LOG="$BATS_TEST_TMPDIR/canary.log"
   local canary
   for canary in .gaia/scripts/resolve-audit-members.sh .gaia/scripts/chore-deps-skip.sh \
-    .gaia/scripts/read-audit-ci-config.sh .gaia/scripts/main-root-lib.sh \
+    .gaia/scripts/main-root-lib.sh \
     .claude/hooks/lib/audit-scope.sh .claude/hooks/lib/audit-digest.sh; do
     mkdir -p "$REPO/$(dirname "$canary")"
     printf '#!/usr/bin/env bash\nprintf "%%s\\n" %q >> %q\n' "$canary" "$CANARY_LOG" > "$REPO/$canary"

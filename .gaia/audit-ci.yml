@@ -1,39 +1,6 @@
-# .gaia/audit-ci.yml: the Code Audit Team roster and the local audit knobs.
+# .gaia/audit-ci.yml: the Code Audit Team roster.
 # This file ships in the GAIA template; adopters edit values to tune behavior.
-# The local audit reads it on every run; a missing file falls back to the
-# defaults below.
-
-# Whether the audit may push self-heal commits to the PR branch. Set false to make
-# the audit advisory-only (it reports findings but does not push).
-push_fixes: true
-
-# Workflows the audit re-dispatches against the PR branch after a self-heal
-# push. GitHub does not fire push / pull_request events for commits made with
-# GITHUB_TOKEN (its recursion guard), so required check runs on the new HEAD
-# would otherwise be absent and branch protection would block the merge. The
-# audit calls `gh workflow run --ref <branch>` for each name, producing fresh
-# check runs on the new HEAD.
-#
-# Each entry is the workflow's `name:` field (top of its YAML file), not the
-# filename. The first two entries match the GAIA template's required-check-
-# producing workflows. Adopters who require additional workflows (e.g. a
-# custom lint or security scan) add them here; adopters who do not require
-# Chromatic / Tests can remove them.
-#
-# Workflows listed here must declare `workflow_dispatch:` in their `on:`
-# triggers, and the job producing the required check must admit that event in
-# its `if:` -- a job gated to `pull_request` skips on a dispatch, and the audit
-# stamps `skipped`, which satisfies no required check.
-retrigger_workflows:
-  - Chromatic
-  - Tests
-  # gaia:maintainer-only:start
-  # The two maintainer-only required checks. Their workflows are
-  # release-excluded, so naming them on an adopter clone would dispatch
-  # workflows that do not exist there; the release scrub strips this block.
-  - 'GAIA: CLI Tests'
-  - 'GAIA: Audit CI Tests'
-  # gaia:maintainer-only:end
+# The local audit reads it on every run.
 
 # Code Audit Team roster. Each entry maps file-globs to a specialized auditor
 # member; the dispatch resolver (.gaia/scripts/resolve-audit-members.sh) reads

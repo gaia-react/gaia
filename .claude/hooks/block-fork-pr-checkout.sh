@@ -18,10 +18,11 @@
 #     `git remote add` of the fork, `git pull`, a refspec assembled from a
 #     variable. Only the forms above name the pull request this hook can ask
 #     gh about.
-#   - A pull request in another repository (`-R`/`--repo`, a `cd` into a
-#     sibling checkout): gh is asked about the number in the repository of the
-#     working directory. A `-R`/`--repo` checkout is denied outright for that
-#     reason; a `cd` is not modelled.
+#   - A pull request in another repository by a `cd` into a sibling checkout:
+#     gh is asked about the number in the repository of the working directory,
+#     and a `cd` is not modelled. A `-R`/`--repo` anywhere in the call, before
+#     or after the target, is denied outright, and so is a pull-request URL
+#     naming a repository other than the working directory's.
 # The fail direction for a `gh pr checkout` whose target is not a number or a
 # pull-request URL is deny, with the by-number spelling named.
 set -uo pipefail
@@ -115,6 +116,7 @@ fi
 # Collect every pull request number the call names, one per line.
 pr_numbers=''
 unreadable_target=''
+url_repositories=''
 
 if [ "$checkout_armed" -eq 1 ]; then
   # Each `gh pr checkout` occurrence up to the next separator; its first
@@ -138,8 +140,10 @@ if [ "$checkout_armed" -eq 1 ]; then
         -b | --branch) [ "$#" -gt 0 ] && shift ;;
         -*) ;;
         *)
-          target="$token"
-          break
+          # The first positional is the target; the scan goes on past it
+          # because gh takes its flags on either side of the target, and a
+          # `-R`/`--repo` after it must still be seen.
+          [ -n "$target" ] || target="$token"
           ;;
       esac
     done
@@ -148,8 +152,9 @@ if [ "$checkout_armed" -eq 1 ]; then
       \#*[!0-9]* | \#) unreadable_target="$target" ;;
       \#*) pr_numbers="${pr_numbers}${target#\#}"$'\n' ;;
       *[!0-9]*)
-        if [[ "$target" =~ /pull/([0-9]+)(/|$|[?#]) ]]; then
-          pr_numbers="${pr_numbers}${BASH_REMATCH[1]}"$'\n'
+        if [[ "$target" =~ ^https?://[^/]+/([^/]+/[^/]+)/pull/([0-9]+)(/|$|[?#]) ]]; then
+          url_repositories="${url_repositories}${BASH_REMATCH[1]}"$'\n'
+          pr_numbers="${pr_numbers}${BASH_REMATCH[2]}"$'\n'
         else
           unreadable_target="$target"
         fi
@@ -173,6 +178,26 @@ fi
 
 if [ -n "$unreadable_target" ]; then
   deny "Fork pull request checkout guard: cannot read which pull request this \`gh pr checkout\` targets (${unreadable_target}), so it cannot ask gh whether it comes from a fork, and it denies rather than guess. Name the pull request by number: \`gh pr checkout <number>\`."
+fi
+
+# A pull request URL names its own repository, but the number is asked about in
+# the repository of the working directory, so a URL naming any other repository
+# is denied, and so is one whose own repository cannot be read from gh.
+if [ -n "$url_repositories" ]; then
+  current_repository=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null)
+  current_repository=$(printf '%s' "$current_repository" | tr '[:upper:]' '[:lower:]')
+  while IFS= read -r url_repository; do
+    [ -n "$url_repository" ] || continue
+    url_repository=$(printf '%s' "$url_repository" | tr '[:upper:]' '[:lower:]')
+    if [ -z "$current_repository" ]; then
+      deny "Fork pull request checkout guard: this \`gh pr checkout\` names a pull request URL (${url_repository}), and gh could not say which repository this checkout belongs to, so the guard cannot tell whether the URL is another repository's. It denies. Check gh (gh auth status, the network) and retry, or name the pull request by number: \`gh pr checkout <number>\`."
+    fi
+    if [ "$url_repository" != "$current_repository" ]; then
+      deny "Fork pull request checkout guard: this \`gh pr checkout\` names a pull request URL in ${url_repository}, not this repository (${current_repository}), and this guard can only ask gh about pull requests in the repository of the working directory, so it denies. Check out that pull request from a clone of its own repository."
+    fi
+  done <<EOF
+$url_repositories
+EOF
 fi
 
 checked=' '

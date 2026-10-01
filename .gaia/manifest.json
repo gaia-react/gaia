@@ -231,7 +231,6 @@
     ".gaia/scripts/plan-resume-point.sh": "owned",
     ".gaia/scripts/post-findings-block.sh": "owned",
     ".gaia/scripts/pr-wait-merge.sh": "owned",
-    ".gaia/scripts/read-audit-ci-config.sh": "owned",
     ".gaia/scripts/red-ledger/extract-test-signals.mjs": "owned",
     ".gaia/scripts/red-ledger/README.md": "owned",
     ".gaia/scripts/resolve-audit-members.sh": "owned",
@@ -644,7 +643,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-10-01T16:40:50.998Z",
+  "generated": "2026-10-01T17:51:10.720Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

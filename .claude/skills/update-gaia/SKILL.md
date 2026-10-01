@@ -306,9 +306,9 @@ Track seven lists plus a `package.json` sub-report internally (`UpdateMergeRepor
     notes_path?: string;    // .gaia-merge/pnpm-workspace.yaml.notes when conflicts or suggestions exist
   };
   auditCiYml: {          // field-aware result for .gaia/audit-ci.yml (Step 7c)
-    applied: string[];      // managed scalar knobs GAIA changed that the adopter still tracked, PLUS any auditors roster member GAIA added or changed that the adopter hasn't diverged (a roster addition is applied here, not suggested, see Step 7c), written to the working tree
-    conflicts: string[];    // knobs / entries / roster members GAIA changed but the adopter independently diverged, left as the adopter's, noted
-    suggestions: string[];  // scalar knobs GAIA added, or changed but the adopter had removed, surfaced opt-in, never applied
+    applied: string[];      // any auditors roster member GAIA added or changed that the adopter hasn't diverged (a roster addition is applied here, not suggested, see Step 7c), written to the working tree
+    conflicts: string[];    // roster members GAIA changed but the adopter independently diverged, left as the adopter's, noted
+    suggestions: string[];  // roster members GAIA changed but the adopter had removed, surfaced opt-in, never applied
     notes_path?: string;    // .gaia-merge/audit-ci.yml.notes when conflicts or suggestions exist
   };
   regions: {             // declared generated regions (Step 6 load, Step 7 oracle, Step 7d regeneration)
@@ -523,7 +523,7 @@ The JSON report is `{ applied, conflicts, suggestions }`. Each item is `{ kind: 
 
 ### Step 7c: Field-aware `.gaia/audit-ci.yml` merge
 
-`.gaia/audit-ci.yml` is classed `shared`, but it is a **mixed** file like `pnpm-workspace.yaml`, carrying two kinds of content: GAIA-authored scalar knobs (`push_fixes`, the `retrigger_workflows` list); and the `auditors` roster list, GAIA-authored **and** adopter-extensible at once (GAIA ships and updates its own members, an adopter can add their own alongside them). A whole-file three-way merge emits a full-file conflict patch the moment an adopter adds their own roster member, so merge it at YAML-key / per-entry granularity instead, acting only on the genuine upstream delta `B → L`.
+`.gaia/audit-ci.yml` is classed `shared`, but it is a **mixed** file like `pnpm-workspace.yaml`, carrying one managed section: the `auditors` roster list, GAIA-authored **and** adopter-extensible at once (GAIA ships and updates its own members, an adopter can add their own alongside them). A whole-file three-way merge emits a full-file conflict patch the moment an adopter adds their own roster member, so merge it at YAML-key / per-entry granularity instead, acting only on the genuine upstream delta `B → L`.
 
 Let `A` = working-tree `.gaia/audit-ci.yml`, `B` = `$BASELINE_DIR/.gaia/audit-ci.yml`, `L` = `$LATEST_DIR/.gaia/audit-ci.yml`.
 
@@ -541,7 +541,7 @@ Let `A` = working-tree `.gaia/audit-ci.yml`, `B` = `$BASELINE_DIR/.gaia/audit-ci
 
 The command exits non-zero with a structured error if any file is missing or not valid YAML. On a non-zero exit, fall back to a whole-file conflict patch (`diff -u A L > .gaia-merge/audit-ci.yml.patch`) and surface it as a conflict; do not proceed with the JSON path.
 
-The JSON report is `{ applied, conflicts, suggestions }`. Each item is `{ kind: 'key' | 'entry', section?, key, baseline?, latest?, adopter?, reason? }`. The CLI iterates only `keys(B) ∪ keys(L)` per managed scalar key and per `auditors` roster member name, so an adopter-added roster member is never visited, never clobbered, and a key an older version of the file carried that this version no longer manages (a legacy mode, author map, or override label) is neither applied nor flagged. The two managed knobs are compared whole-value; `auditors` is parsed into per-member entries (the name compared exactly, not case-folded, a member name is an agent filename) and each member's whole mapping (`globs`, `scope`, `push_fixes`, `default`) is compared and applied as a unit, never glob-by-glob. Both sections use the identical verdict table (`apply` / `conflict` / `suggest-add` / `suggest-removed`), **with one deliberate exception**: for `auditors` only, a member present in latest and absent from baseline resolves to `apply`, not `suggest-add`. The scalar knobs treat that row as an opt-in suggestion the adopter must act on; a roster member is a capability the adopter cannot opt into if it never arrives, so a new GAIA-authored member (e.g. `code-audit-github-workflows`) is written straight into the adopter's file rather than surfaced as something they might miss. An adopter's own roster member is still never visited, and an adopter's *edit* to a GAIA-authored member is still a `conflict`, not silently overwritten.
+The JSON report is `{ applied, conflicts, suggestions }`. Each item is `{ kind: 'key' | 'entry', section?, key, baseline?, latest?, adopter?, reason? }`. The CLI iterates only `keys(B) ∪ keys(L)` per `auditors` roster member name, so an adopter-added roster member is never visited, never clobbered, and a top-level key an older version of the file carried (a legacy mode, author map, override label, or the retired `push_fixes` and re-dispatch list) is neither applied nor flagged. `auditors` is parsed into per-member entries (the name compared exactly, not case-folded, a member name is an agent filename) and each member's whole mapping (`globs`, `scope`, `push_fixes`, `default`) is compared and applied as a unit, never glob-by-glob. The verdict table is the same as Step 7b's (`apply` / `conflict` / `suggest-add` / `suggest-removed`), **with one deliberate exception**: a member present in latest and absent from baseline resolves to `apply`, not `suggest-add`. Step 7b treats that row as an opt-in suggestion the adopter must act on; a roster member is a capability the adopter cannot opt into if it never arrives, so a new GAIA-authored member (e.g. `code-audit-github-workflows`) is written straight into the adopter's file rather than surfaced as something they might miss. An adopter's own roster member is still never visited, and an adopter's *edit* to a GAIA-authored member is still a `conflict`, not silently overwritten.
 
 **Apply clean changes (`applied[]`):** for each item, edit the working-tree `.gaia/audit-ci.yml` so the key's (or entry's) value becomes `latest`, using the **Edit** tool. Preserve the file's comments, key order, and quote style; change only the value text. For an `auditors` roster item: if the member already exists in the working tree, edit its `globs:` / `scope:` / `push_fixes:` / `default:` fields in place to match latest; if it is a new member (the added-row exception above), append a whole new `- name: ...` list item to the `auditors:` list, matching the indentation and key order of its neighbors. Do **not** reserialize the file.
 
@@ -549,8 +549,8 @@ The JSON report is `{ applied, conflicts, suggestions }`. Each item is `{ kind: 
 
 **Net effect:**
 
-- **No managed-key delta** (knobs and the roster unchanged by the release) → zero applied/conflicts/suggestions → **clean skip, no notes file.** An adopter whose only divergence is their own added roster member or a legacy key never sees a conflict.
-- **A GAIA-authored roster addition always lands in `applied[]`, not `suggestions[]`.** This is the one section whose added-row verdict diverges from every other merged section (the scalar knobs), by design (see above): the alternative would mean a new GAIA-authored auditor never reaches an existing adopter's file at all.
+- **No managed-key delta** (the roster unchanged by the release) → zero applied/conflicts/suggestions → **clean skip, no notes file.** An adopter whose only divergence is their own added roster member or a legacy key never sees a conflict.
+- **A GAIA-authored roster addition always lands in `applied[]`, not `suggestions[]`.** This is the one section whose added-row verdict diverges from every other merged section, by design (see above): the alternative would mean a new GAIA-authored auditor never reaches an existing adopter's file at all.
 
 ### Step 7d: Regenerate declared regions
 

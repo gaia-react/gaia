@@ -105,8 +105,9 @@ describe('update merge-audit-ci', () => {
     vi.restoreAllMocks();
   });
 
-  test('version-only release: managed keys identical → all buckets empty', () => {
-    const yaml = 'push_fixes: true\nretrigger_workflows:\n  - Tests\n';
+  test('version-only release: roster identical → all buckets empty', () => {
+    const yaml =
+      'auditors:\n  - name: code-audit-frontend\n    globs:\n      - "app/**"\n    audience: adopter\n    default: true\n';
     sandbox.write('baseline', yaml);
     sandbox.write('latest', yaml);
     sandbox.write('current', yaml);
@@ -120,88 +121,21 @@ describe('update merge-audit-ci', () => {
     expect(report.suggestions).toEqual([]);
   });
 
-  test('applies an upstream scalar delta the adopter kept at baseline', () => {
-    sandbox.write('baseline', 'push_fixes: true\n');
-    sandbox.write('latest', 'push_fixes: false\n');
-    sandbox.write('current', 'push_fixes: true\n');
-
-    const exit = run(argv(sandbox));
-    expect(exit).toBe(0);
-
-    const report = parseJson(stdio.outputs);
-    expect(report.applied).toEqual([
-      {
-        adopter: true,
-        baseline: true,
-        key: 'push_fixes',
-        kind: 'key',
-        latest: false,
-      },
-    ]);
-    expect(report.conflicts).toEqual([]);
-    expect(report.suggestions).toEqual([]);
-  });
-
-  test('conflicts a key the adopter diverged that upstream also changed', () => {
-    sandbox.write('baseline', 'retrigger_workflows:\n  - Tests\n');
-    sandbox.write('latest', 'retrigger_workflows:\n  - Tests\n  - Lint\n');
-    sandbox.write('current', 'retrigger_workflows:\n  - Custom\n');
-
-    const exit = run(argv(sandbox));
-    expect(exit).toBe(0);
-
-    const report = parseJson(stdio.outputs);
-    expect(report.applied).toEqual([]);
-    expect(report.conflicts).toEqual([
-      {
-        adopter: ['Custom'],
-        baseline: ['Tests'],
-        key: 'retrigger_workflows',
-        kind: 'key',
-        latest: ['Tests', 'Lint'],
-      },
-    ]);
-    expect(report.suggestions).toEqual([]);
-  });
-
-  test('legacy keys in the adopter file are neither applied nor flagged', () => {
+  test('legacy top-level keys in the adopter file are neither applied nor flagged', () => {
     // An adopter file written by an older version still carries the keys that
-    // version managed. The new latest drops them, so they are not in the
-    // managed list: zero items for them, and a changed push_fixes still applies.
+    // version managed. The new latest drops them, so they are not read at all:
+    // zero items for them, even when the adopter edited one.
     const legacy = [
       'gate_label: null',
       'budget_seconds: 1800',
-      'max_turns: 60',
       'default_mode: ci',
-      'override_label: run-audit',
       'audit_authors: "bob=ci"',
+      'retrigger_workflows:',
+      '  - Tests',
     ].join('\n');
     sandbox.write('baseline', `${legacy}\npush_fixes: true\n`);
-    sandbox.write('latest', 'push_fixes: false\n');
-    sandbox.write('current', `${legacy}\npush_fixes: true\n`);
-
-    const exit = run(argv(sandbox));
-    expect(exit).toBe(0);
-
-    const report = parseJson(stdio.outputs);
-    expect(report.conflicts).toEqual([]);
-    expect(report.suggestions).toEqual([]);
-    expect(report.applied).toEqual([
-      {
-        adopter: true,
-        baseline: true,
-        key: 'push_fixes',
-        kind: 'key',
-        latest: false,
-      },
-    ]);
-  });
-
-  test('legacy keys alone yield no item for themselves', () => {
-    const legacy = 'default_mode: ci\naudit_authors: "bob=ci"\n';
-    sandbox.write('baseline', legacy);
-    sandbox.write('latest', 'push_fixes: true\n');
-    sandbox.write('current', legacy);
+    sandbox.write('latest', '{}\n');
+    sandbox.write('current', `${legacy}\npush_fixes: false\n`);
 
     const exit = run(argv(sandbox));
     expect(exit).toBe(0);
@@ -209,9 +143,21 @@ describe('update merge-audit-ci', () => {
     const report = parseJson(stdio.outputs);
     expect(report.applied).toEqual([]);
     expect(report.conflicts).toEqual([]);
-    expect(report.suggestions).toEqual([
-      {key: 'push_fixes', kind: 'key', latest: true, reason: 'added'},
-    ]);
+    expect(report.suggestions).toEqual([]);
+  });
+
+  test('a top-level key only latest carries is not suggested', () => {
+    sandbox.write('baseline', 'default_mode: ci\n');
+    sandbox.write('latest', 'push_fixes: true\n');
+    sandbox.write('current', 'default_mode: ci\n');
+
+    const exit = run(argv(sandbox));
+    expect(exit).toBe(0);
+
+    const report = parseJson(stdio.outputs);
+    expect(report.applied).toEqual([]);
+    expect(report.conflicts).toEqual([]);
+    expect(report.suggestions).toEqual([]);
   });
 
   test('a new GAIA-authored roster member the adopter never saw lands in applied[], not suggestions[]', () => {
@@ -469,8 +415,8 @@ describe('update merge-audit-ci', () => {
   });
 
   test('missing file exits non-zero with a structured error', () => {
-    sandbox.write('baseline', 'push_fixes: true\n');
-    sandbox.write('latest', 'push_fixes: true\n');
+    sandbox.write('baseline', 'auditors: []\n');
+    sandbox.write('latest', 'auditors: []\n');
     // current is never written.
 
     const exit = run(argv(sandbox));
@@ -479,9 +425,9 @@ describe('update merge-audit-ci', () => {
   });
 
   test('an unknown flag exits non-zero with invalid_arguments', () => {
-    sandbox.write('baseline', 'push_fixes: true\n');
-    sandbox.write('latest', 'push_fixes: true\n');
-    sandbox.write('current', 'push_fixes: true\n');
+    sandbox.write('baseline', 'auditors: []\n');
+    sandbox.write('latest', 'auditors: []\n');
+    sandbox.write('current', 'auditors: []\n');
 
     const exit = run([...argv(sandbox), '--nope']);
 

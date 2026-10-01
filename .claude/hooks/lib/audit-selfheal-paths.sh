@@ -8,8 +8,9 @@
 # that would catch its own bad repair, the whole .github/ tree, the gate
 # machinery and roster under .gaia/, the instruction/convention surfaces, and
 # root-level build/lint/test/typecheck configuration. A repair reaching any
-# of these is confined by a deterministic gate, not by an instruction alone,
-# whether or not the member was told not to.
+# of these is confined by the member's instructions and by the orchestrator
+# owning every commit, not by a deterministic gate (see the note below on who
+# reads this set).
 #
 # .github/ is refused WHOLE, not narrowed to .github/workflows/. The workflow
 # YAML is not the only thing there that decides a gate outcome:

@@ -108,7 +108,6 @@
 # References
 #   Audit-marker handshake: .claude/agents/code-audit-frontend.md "Audit marker (gate handshake)"
 #   Dispatch resolver:      .gaia/scripts/resolve-audit-members.sh
-#   Per-author resolver:    .gaia/scripts/read-audit-ci-config.sh
 #   State-aware readers:    .claude/hooks/pr-merge-audit-check.sh
 #
 # Notes

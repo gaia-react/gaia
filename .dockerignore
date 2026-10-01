@@ -49,6 +49,7 @@ storybook-static
 .claude/skills/react-doctor
 **/.claude-pr
 .claude/wiki-recompact-pending
+.claude/wiki-*-checked
 .gaia/local
 .gaia/local.bak.*
 .gaia/statusline/.use-vendored-base

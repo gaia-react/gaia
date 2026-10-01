@@ -186,10 +186,6 @@ The gate is local-only: no GitHub Actions workflow runs the audit. Two things po
 
 A status-based gate has known limits that exist whatever produces the status. A hand-posted `GAIA-Audit` status, an admin bypass of the repository ruleset, and a forgeable `GAIA-Audit` commit trailer each pass the gate without the attested audit. They are accepted, pre-existing limits of a status-based gate, not defects to close here.
 
-## Ruleset-aware required-check confirmation
-
-`read-audit-ci-config.sh`'s `required_check_confirmed` helper (used by the author resolution, which always answers `local`) confirms the `GAIA-Audit` required check under either branch-protection model: classic branch protection (`required_status_checks` context, tried first, the only path an adopter repo with classic protection ever needs) or a repository ruleset (`GET repos/{owner}/{repo}/rules/branches/<branch>`). The ruleset read ships to every clone, adopter and maintainer alike, so a repository protected by a ruleset rather than classic branch protection confirms correctly too; a repo protected by classic branch protection alone never reaches the ruleset read. The confirmation is advisory only: whichever model confirms, or neither does, the resolved mode is always `local`.
-
 ## Pairs with
 
 - [[Code Review Audit Agent]]: the `code-audit-frontend` member's own review dimensions, proof gate, and disposition contract.
