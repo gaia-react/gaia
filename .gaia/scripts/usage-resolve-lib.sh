@@ -77,9 +77,16 @@ gaia_usage_derive_map() {
     _gaia_usage_branch_parents "${k#branch:}" "$k" "$f"
   done
   rm -f "$f"
-  jq -nc '$ARGS.positional as $p
+  # The pairs reach jq NUL-separated on stdin, not as --args: argv has a total
+  # cap (about 2 MiB on Linux, 1 MiB on macOS) that the branch history grows
+  # toward. NUL is the one byte a shell string cannot hold, so no ref can split.
+  # Each value is led by a NUL and an `x` jq strips, so the input never ends in
+  # NUL: jq 1.6 drops a trailing NUL from raw input, and with it an empty last
+  # value. With no pairs nothing is printed, since printf would still print one.
+  { [ "${#flat[@]}" -eq 0 ] || printf '\0x%s' "${flat[@]}"; } |
+    jq -Rsc 'split("\u0000")[1:] | map(.[1:]) as $p
     | reduce range(0; $p | length; 2) as $i ({}; .[$p[$i]] += [$p[$i + 1]])
-    | map_values(unique)' --args ${flat[@]+"${flat[@]}"}
+    | map_values(unique)'
 }
 
 # gaia_usage_keys_json <main_root> <usage> <links> <cost> [extra-ref...]: the
@@ -108,8 +115,13 @@ gaia_usage_keys_json() {
   bmap="$(gaia_usage_branch_map ${raws[@]+"${raws[@]}"})" || return 1
   while IFS= read -r line; do bkeys[${#bkeys[@]}]="$line"; done < <(jq -r '.[].key | strings' <<<"$bmap")
   derive="$(gaia_usage_derive_map ${bkeys[@]+"${bkeys[@]}"} "$@")" || return 1
-  jq -c --argjson d "$derive" --argjson b "$bmap" --arg def "$def" \
-    '{derive: $d, bmap: $b, default: $def, models: .models}' <<<"$scan"
+  # The maps reach jq as a JSON stream on stdin, not --argjson: Linux refuses
+  # any one argument over 128 KiB, a size a long branch history passes, and the
+  # legacy readout would then run on empty keys and print wrong figures.
+  jq -nc --arg def "$def" 'input as $s | input as $d | input as $b
+    | {derive: $d, bmap: $b, default: $def, models: $s.models}' <<<"$scan
+$derive
+$bmap"
 }
 
 # gaia_usage_spec_lineage <SPEC.md>: the frontmatter spec_id on the first line,

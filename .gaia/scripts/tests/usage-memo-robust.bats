@@ -666,7 +666,31 @@ forced_failure_tree() {
   assert_trace "fallback=legacy"
 }
 
-# --- 13. memo model superset -------------------------------------------------
+# --- 13. a memo too large for one argument -----------------------------------
+
+# A body past 1 MiB is over both limits a memo on argv would hit: Linux refuses
+# any single argument over 128 KiB, and macOS refuses a whole command line over
+# 1 MiB. The padding is bmap entries for raws no store names, which no view
+# reads. The sum is hashed in a subshell rather than a child bash, whose argv
+# would hit the very limit under test.
+@test "large memo: a body over the argument limits still reads warm and prints the pre-change bytes" {
+  local hdr body size sum
+  warm
+  hdr="$(sed -n 1p "$MEMO")"
+  body="$(memo_body | jq -c '.bmap += ([range(0; 6000)] | map({key: "pad/\(.)-\("x" * 80)", value: {norm: "pad/\(.)-\("x" * 80)", key: null}}) | from_entries)')"
+  size="${#body}"
+  [ "$size" -gt 1048576 ] || { printf 'the padded body is %s bytes, want over 1048576\n' "$size" >&2; return 1; }
+  sum="$(. "$UM_NEW/.gaia/scripts/usage-lib.sh" && _gaia_usage_hash16 "$body")"
+  [ -n "$sum" ]
+  printf '{"schema_version":1,"stamp":"%s","sum":"%s"}\n%s\n' "$(jq -r '.stamp' <<<"$hdr")" "$sum" "$body" >"$MEMO"
+
+  check_same pr "$PR"
+  assert_trace "path=warm"
+  assert_no_trace '^(path=cold|fallback=legacy)'
+  [ "$(memo_body | wc -c | tr -d '[:space:]')" -gt 1048576 ]
+}
+
+# --- 14. memo model superset -------------------------------------------------
 
 @test "models superset: a model only a non-schema line names is dropped from the memo, with a rate reload" {
   local row z=claude-zeta-1

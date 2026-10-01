@@ -131,9 +131,13 @@ _jq_store() {
   # stand-in that prices nothing; RATES stays null and the readout says so.
   local pricing="${GAIA_PRICING_JQ_DEFS-}"
   [ -n "$pricing" ] || pricing='def priced_row($r): {dollars: 0, unpriced: []};'
-  jq -n --rawfile u "$u" --rawfile l "$l" --rawfile c "$c" --argjson keys "$KEYS" --argjson rates "$RATES" \
+  # $keys grows with the branch history, so it reaches jq on fd 3 rather than
+  # argv, where Linux refuses any one argument over 128 KiB. Bound ahead of the
+  # defs, it is the $keys their bodies name, as the global was.
+  jq -n --rawfile u "$u" --rawfile l "$l" --rawfile c "$c" --rawfile _keysraw /dev/fd/3 --argjson rates "$RATES" \
     --argjson pr "$PR_JSON" --arg key "$KEY" --arg ref "${ARGS[0]-}" "$@" \
-    "$GAIA_USAGE_JQ_DEFS$pricing$GAIA_USAGE_RESOLVE_JQ$GAIA_USAGE_MODEL_JQ$GAIA_USAGE_VIEW_JQ $filter"
+    "(\$_keysraw | fromjson) as \$keys | $GAIA_USAGE_JQ_DEFS$pricing$GAIA_USAGE_RESOLVE_JQ$GAIA_USAGE_MODEL_JQ$GAIA_USAGE_VIEW_JQ $filter" \
+    3<<<"$KEYS"
 }
 
 _live_edges() {

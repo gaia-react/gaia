@@ -16,7 +16,7 @@ A release change that requires the adopter to act, run a command or hand-migrate
 
 ### Changed
 
-- the per-PR usage block printed at `gh pr merge` now renders in about half the time or less on a long-lived clone, with the output unchanged. It keeps a regenerable cache beside the usage stores, `usage-branch-memo.json`, which is safe to delete and is rebuilt on the next readout. The scripts ship, so the change reaches adopters on their next `/update-gaia` (#2381)
+- the per-PR usage block printed at `gh pr merge` now renders in about half the time or less on a long-lived clone, with the output unchanged, and on a long history it no longer fails on Linux, where it previously could not read the ledger. It keeps a regenerable cache beside the usage stores, `usage-branch-memo.json`, which is safe to delete and is rebuilt on the next readout. The scripts ship, so the change reaches adopters on their next `/update-gaia` (#2381)
 
 ### Fixed
 

@@ -430,7 +430,7 @@ _GAIA_USAGE_MEMO_PRELUDE_JQ='
 | usage_rows($_lraw) as $links | usage_rows($_craw) as $cost
 | usage_present($urows; $links; $cost) as $present
 | if $present.models == null then {legacy: true}
-  else usage_memo_gap($present; $_memo) as $gap
+  else ($_memoraw | fromjson) as $_memo | usage_memo_gap($present; $_memo) as $gap
   | if $gap != null then {miss: $gap}
     else usage_memo_keys($present; $_memo; $_default) as $mk | '
 
@@ -441,6 +441,11 @@ _GAIA_USAGE_MEMO_PRELUDE_JQ='
 # dropped before jq, since no view reads them; only the flusher's own spelling
 # is dropped, so any other line reaches jq and is kept or skipped as before.
 # The globals the defs name are bound empty: no view the filter calls reads them.
+# The memo reaches jq on fd 3, never argv: Linux refuses any one argument over
+# 128 KiB (MAX_ARG_STRLEN), which a year of memo passes, so --argjson would fail
+# every readout over to the legacy path. A here-string costs no fork, and
+# stderr is redirected ahead of it so a here-string temp that cannot be made
+# stays silent too.
 # shellcheck disable=SC2016  # jq source, no shell expansion
 gaia_usage_memo_view() {
   local u="$1" l="$2" c="$3" def="$4" filter="$5" pricing="${GAIA_PRICING_JQ_DEFS-}" ps
@@ -450,10 +455,10 @@ gaia_usage_memo_view() {
   [ -f "$c" ] || c=/dev/null
   [ -n "$pricing" ] || pricing='def priced_row($r): {dollars: 0, unpriced: []};'
   LC_ALL=C grep -v '^{"schema_version":1,"kind":"cursor",' "$u" 2>/dev/null |
-    jq -nRc --rawfile _lraw "$l" --rawfile _craw "$c" --argjson _memo "${GAIA_USAGE_MEMO:-null}" \
+    jq -nRc --rawfile _lraw "$l" --rawfile _craw "$c" --rawfile _memoraw /dev/fd/3 \
       --arg _default "$def" --arg u "" --arg l "" --arg c "" --argjson keys '{}' "$@" \
       "$GAIA_USAGE_JQ_DEFS$pricing$GAIA_USAGE_RESOLVE_JQ$GAIA_USAGE_MODEL_JQ$GAIA_USAGE_VIEW_JQ$GAIA_USAGE_MEMO_JQ$_GAIA_USAGE_MEMO_PRELUDE_JQ$filter end end" \
-      2>/dev/null
+      2>/dev/null 3<<<"${GAIA_USAGE_MEMO:-null}"
   ps="${PIPESTATUS[0]} ${PIPESTATUS[1]}"
   # grep exits 1 when it selects no line (an empty store, or only cursor rows).
   case "$ps" in "0 0" | "1 0") return 0 ;; *) return 1 ;; esac
