@@ -91,6 +91,7 @@
     ".claude/rules/guards-must-fail.md": "owned",
     ".claude/rules/i18n.md": "owned",
     ".claude/rules/issue-claim.md": "owned",
+    ".claude/rules/no-abbreviations.md": "owned",
     ".claude/rules/playwright.md": "owned",
     ".claude/rules/pr-merge.md": "owned",
     ".claude/rules/quality-gate.md": "owned",
@@ -132,6 +133,8 @@
     ".claude/skills/gaia/references/wiki/consolidate.md": "owned",
     ".claude/skills/gaia/references/wiki/lint.md": "owned",
     ".claude/skills/gaia/references/wiki/sync.md": "owned",
+    ".claude/skills/naming-conventions/references/examples.md": "owned",
+    ".claude/skills/naming-conventions/SKILL.md": "owned",
     ".claude/skills/new-component/SKILL.md": "owned",
     ".claude/skills/new-hook/SKILL.md": "owned",
     ".claude/skills/new-route/SKILL.md": "owned",
@@ -156,7 +159,6 @@
     ".claude/skills/tdd/refactoring.md": "owned",
     ".claude/skills/tdd/references/tests-react.md": "owned",
     ".claude/skills/tdd/SKILL.md": "owned",
-    ".claude/skills/typescript/references/naming-conventions.md": "owned",
     ".claude/skills/typescript/references/zod.md": "owned",
     ".claude/skills/typescript/SKILL.md": "owned",
     ".claude/skills/update-deps/SKILL.md": "owned",
@@ -660,7 +662,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-10-01T07:33:01.234Z",
+  "generated": "2026-10-01T09:07:46.907Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

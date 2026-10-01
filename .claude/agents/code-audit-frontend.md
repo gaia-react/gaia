@@ -811,7 +811,7 @@ Prompt the subagent with these rules to check:
 - `import type {}` for type-only imports: `import type {FC} from 'react'`
 - Array syntax: `string[]` not `Array<string>`
 - camelCase for all identifiers (Zod fields, form `name`/`id`/`htmlFor`, props, state, params). Exceptions: `types/database.ts` (mirrors DB column names), dynamic template-literal names, env variable names (SCREAMING_SNAKE_CASE)
-- **Descriptive and self-documenting names** (Swift API Design Guidelines style, names read like prose at the point of use):
+- **Descriptive and self-documenting names** (from the naming-conventions skill, `.claude/skills/naming-conventions/SKILL.md`, and `.claude/rules/no-abbreviations.md`; Swift API Design Guidelines style, names read like prose at the point of use):
   - Functions/methods: imperative verb phrases describing what they do and what they act on (e.g. `calculateProgressPercentageFromCompletedSets` not `calc`). Exception: React event handlers follow `handle{Action}{Element}` from the react-code skill.
   - Parameters: named for their role, not their type (e.g. `totalSeconds` not `n`, `emailAddress` not `s`)
   - Variables/constants: describe what they hold (e.g. `restDurationInSeconds` not `temp`, `maximumRetryAttemptCount` not `MAX`)
