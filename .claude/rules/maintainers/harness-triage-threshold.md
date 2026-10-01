@@ -33,4 +33,4 @@ Otherwise **workable**: the close names Claude's signal and recovery. No signal:
 - Outranks `guards-must-fail.md`, `bats-assertions.md` when grading: a violation needs a criterion too.
 - /gaia-debt re-triages a harness issue before fixing and proposes closing workable ones. /gaia-residue never promotes a waived one. /gaia-harden drafts no check for a waived class. /gaia-audit and /health-audit apply this before filing.
 - Waived findings: one line each under `## Waived below triage threshold (not filed)` in the PR body (no gaia-debt-key; /gaia-residue ignores it). Never waive silently.
-- Unchanged: markers, refusals, three-round cap, GAIA-Audit posting. A Critical still withholds its marker until resolved.
+- Unchanged: markers, refusals, the branch checkpoint, GAIA-Audit posting. A Critical still withholds its marker until resolved.

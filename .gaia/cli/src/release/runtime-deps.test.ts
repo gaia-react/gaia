@@ -211,6 +211,21 @@ describe('extractPathRefs', () => {
     );
   });
 
+  test('skips the allowlisted per-machine settings path in an enforcement-set array', () => {
+    // audit-fix-verify.sh lists the gitignored local settings file among the
+    // paths a fixer must not edit. It is compared against a changed-path list,
+    // never sourced, and can never have a manifest entry, so the exact token is
+    // allowlisted.
+    const refs = extractPathRefs(
+      '.gaia/scripts/audit-fix-verify.sh',
+      'ENFORCEMENT_SET=(.claude/settings.json .claude/settings.local.json)\n'
+    );
+    expect(refs.map((r) => r.path)).not.toContain(
+      '.claude/settings.local.json'
+    );
+    expect(refs.map((r) => r.path)).toContain('.claude/settings.json');
+  });
+
   test('reduces a pattern that truncates mid-basename to its directory', () => {
     // A pattern with a non-empty basename prefix before the `*` expanded to the
     // fragment `.claude/agents/code-audit-`, which names no manifest entry and
@@ -423,10 +438,10 @@ describe('release runtime-deps CLI', () => {
     // legitimate and must not cost a release.
     sandbox.writeManifest({
       '.claude/agents/code-audit-frontend.md': 'owned',
-      '.claude/hooks/block-fourth-audit-round.sh': 'owned',
+      '.claude/hooks/audit-loop-bound.sh': 'owned',
     });
     sandbox.writeFile(
-      '.claude/hooks/block-fourth-audit-round.sh',
+      '.claude/hooks/audit-loop-bound.sh',
       [
         '#!/usr/bin/env bash',
         'deny "rewrites .claude/agents/code-audit-*.md, which are machinery"',

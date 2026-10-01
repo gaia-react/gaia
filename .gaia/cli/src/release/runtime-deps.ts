@@ -157,9 +157,16 @@ const PATH_PREFIXES = ['.gaia/', '.claude/', '.specify/', '.github/'] as const;
  *     regex literal in `spec-session-lock.sh` that MATCHES/REJECTS the
  *     wrapper's command line. It is never sourced or executed, just compared
  *     against, so it cannot be a runtime dependency.
+ *   - `.claude/settings.local.json`: named by `audit-fix-verify.sh` in its
+ *     enforcement-set array, as a path the audit fixer must not edit. It is
+ *     compared against a changed-path list, never sourced or executed, and it
+ *     is per-machine and gitignored, so it can never have a manifest entry.
+ *     This module has no inline-ignore channel, so the allowlist is the
+ *     documented one.
  */
 export const PROSE_PATH_ALLOWLIST: ReadonlySet<string> = new Set([
   '.claude/projects',
+  '.claude/settings.local.json',
   '.claude/shell-snapshots',
   '.github/workflows',
   '.github/workflows/code-review-audit.yml',

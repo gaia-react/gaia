@@ -414,7 +414,8 @@ scenario_ctx() {
         "steps.chore-deps.outputs.skip=false" \
         "steps.source-changes.outputs.has_source=true" \
         "steps.workflow-self-mod.outputs.self_modified=false" \
-        "steps.decision.outputs.should_run=false"
+        "steps.decision.outputs.should_run=false" \
+        "steps.decision.outputs.resolved_mode=local"
       ;;
     aborted)
       printf '%s\n' \
@@ -423,6 +424,7 @@ scenario_ctx() {
         "steps.source-changes.outputs.has_source=true" \
         "steps.workflow-self-mod.outputs.self_modified=false" \
         "steps.decision.outputs.should_run=true" \
+        "steps.decision.outputs.resolved_mode=ci" \
         "steps.config.outputs.push_fixes=true" \
         "steps.audit.outcome=failure" \
         "failed_at=Status - audit aborted"
@@ -434,6 +436,7 @@ scenario_ctx() {
         "steps.source-changes.outputs.has_source=true" \
         "steps.workflow-self-mod.outputs.self_modified=false" \
         "steps.decision.outputs.should_run=true" \
+        "steps.decision.outputs.resolved_mode=ci" \
         "steps.config.outputs.push_fixes=true" \
         "steps.audit.outcome=success" \
         "steps.push-fixes.outputs.pushed=true" \
@@ -446,6 +449,7 @@ scenario_ctx() {
         "steps.source-changes.outputs.has_source=true" \
         "steps.workflow-self-mod.outputs.self_modified=false" \
         "steps.decision.outputs.should_run=true" \
+        "steps.decision.outputs.resolved_mode=ci" \
         "steps.config.outputs.push_fixes=true" \
         "steps.audit.outcome=success" \
         "steps.push-fixes.outputs.pushed=false" \
@@ -461,6 +465,11 @@ scenario_ctx() {
 # The failed-run backstop: the one writer that runs after a failure rather than
 # on a terminal path of its own.
 BACKSTOP="Write GAIA-Audit commit status (failed run)"
+
+# The audit-rounds record step: gated on always() and the resolved mode, and
+# continue-on-error, so it is the one other step that runs after a failure. It
+# is a publisher, not a status writer, and the backstop-only rule exempts it.
+RECORD="Record audit rounds in the PR body"
 
 SCENARIOS="gated chore-deps no-source self-modified stand-down aborted complete-pushed complete-clean"
 
@@ -586,6 +595,7 @@ Install dependencies
 Compute audit step timeout
 Run code-review-audit (claude-code-action)
 Status - audit aborted
+${RECORD}
 ${BACKSTOP}"
 }
 
@@ -615,7 +625,8 @@ Compute audit step timeout
 Run code-review-audit (claude-code-action)
 Commit and push self-heal
 Write GAIA-Audit commit status
-Re-trigger and stamp required checks on new HEAD"
+Re-trigger and stamp required checks on new HEAD
+${RECORD}"
 }
 
 @test "terminal path: audit complete, clean with no push" {
@@ -630,7 +641,8 @@ Install dependencies
 Compute audit step timeout
 Run code-review-audit (claude-code-action)
 Commit and push self-heal
-Write GAIA-Audit commit status (clean, no push)"
+Write GAIA-Audit commit status (clean, no push)
+${RECORD}"
 }
 
 # ---------------------------------------------------------------------------
@@ -900,7 +912,7 @@ PAIRS
   done < "$GUARD_TABLE"
 }
 
-@test "failed run: the backstop is the only step after a failure at any step that runs" {
+@test "failed run: the backstop and the record step are the only steps after a failure at any step that runs" {
   # Derived per element: every non-gated scenario, every step that runs on it.
   # A step's failure must leave the steps before it as they were and fire
   # exactly the backstop after it. The gated path is excluded here because it
@@ -925,12 +937,18 @@ PAIRS
       [ "$step" = "$BACKSTOP" ] && continue
       fired="$( fired_after_failure "$scenario" "$step" )" || return 1
       # The guarded steps that ran up to and including the failed one, in file
-      # order, then the backstop.
+      # order, then the record step when it runs on this path (the one other
+      # `always()` step, exempt from the backstop-only rule), then the backstop.
       expected=""
       pos_seen=no
       while IFS=$'\t' read -r s guard; do
         [ -n "$s" ] || continue
-        [ "$pos_seen" = yes ] && break
+        if [ "$pos_seen" = yes ]; then
+          if [ "$s" = "$RECORD" ] && in_list "$s" "$ran"; then
+            expected="${expected}${s}"$'\n'
+          fi
+          continue
+        fi
         if [ -n "$guard" ] && in_list "$s" "$ran"; then
           expected="${expected}${s}"$'\n'
         fi

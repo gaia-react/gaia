@@ -499,8 +499,8 @@ extract_payload() {
   run run_script
   [ "$status" -eq 0 ]
   # Three sidecars, TWO members: code-audit-maintainer-shell wrote one per
-  # round. The count is distinct members, so a solo member's three rounds never
-  # read as three members.
+  # round. The count is distinct members, so a solo member's several rounds
+  # never read as one member per sidecar.
   [ "$output" = "findings: posted 2 finding(s) from 2 member(s) to PR #42" ]
   payload="$(extract_payload)"
   [ "$(jq '.findings | length' <<<"$payload")" = "2" ]
@@ -513,7 +513,7 @@ extract_payload() {
   [ "$(jq '.review_bases | length' <<<"$payload")" = "0" ]
 }
 
-@test "one member across three rounds reports one member, not three sidecars" {
+@test "one member across several rounds reports one member, not one per sidecar" {
   # The direction the multi-base widening makes reachable and the single-base
   # glob never could: file count and member count agreed only while a member
   # could write at most one matching sidecar.

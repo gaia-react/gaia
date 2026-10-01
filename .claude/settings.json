@@ -98,15 +98,6 @@
         ]
       },
       {
-        "matcher": "clear",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-fourth-audit-round.sh\""
-          }
-        ]
-      },
-      {
         "matcher": "startup|resume|clear|compact",
         "hooks": [
           {
@@ -150,6 +141,10 @@
           {
             "type": "command",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/wiki-recompact-inject.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/audit-loop-grant.sh\""
           }
         ]
       }
@@ -188,6 +183,10 @@
           {
             "type": "command",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-worktree-path-mismatch.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-audit-loop-write.sh\""
           }
         ]
       },
@@ -242,6 +241,11 @@
             "type": "command",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-secrets-read.sh\"",
             "statusMessage": "Checking secret-path read guard…"
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-audit-loop-write.sh\"",
+            "statusMessage": "Checking audit loop state guard…"
           }
         ]
       },
@@ -293,8 +297,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-fourth-audit-round.sh\"",
-            "statusMessage": "Checking audit round cap…"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/audit-loop-bound.sh\"",
+            "timeout": 30,
+            "statusMessage": "Checking audit loop checkpoint…"
           }
         ]
       }

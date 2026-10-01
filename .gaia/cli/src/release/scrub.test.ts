@@ -785,7 +785,7 @@ describe('json-strip-array-element transform', () => {
           {
             hooks: [
               {
-                command: '.claude/hooks/block-fourth-audit-round.sh',
+                command: '.claude/hooks/audit-loop-bound.sh',
                 type: 'command',
               },
             ],
@@ -815,9 +815,7 @@ describe('json-strip-array-element transform', () => {
     expect(preToolUse[1]?.matcher).toBe('Bash');
     expect(preToolUse[1]?.hooks).toEqual([]);
     // Sibling matcher entry is untouched.
-    expect(commandsIn(0)).toEqual([
-      '.claude/hooks/block-fourth-audit-round.sh',
-    ]);
+    expect(commandsIn(0)).toEqual(['.claude/hooks/audit-loop-bound.sh']);
   });
 
   test('removes only the targeted element across multiple matcher entries', () => {

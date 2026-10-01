@@ -112,7 +112,7 @@ usage: audit-scope-digest.sh --capture [--recapture] --root <path> --member <nam
        audit-scope-digest.sh --read    --root <path> --member <name> --base <key-base>
        audit-scope-digest.sh --release --root <path> --member <name> --base <key-base>
 
-  --release    remove this member's stored capture, so the next round captures
+  --release    remove this member's stored capture, so the next round recaptures
                fresh. For a round that self-healed and so ends publishing
                nothing while the repair commit rotates the digest.
   --recapture  valid only with --capture; replace an existing capture for this
@@ -298,7 +298,7 @@ fi
 # A self-heal is the common case and does not pay that round. The member knows
 # it self-healed and that the orchestrator's repair commit will rotate its
 # digest, so it releases its own capture with --release on the way out, and the
-# post-repair round captures fresh and clears on its first try. Releasing is safe
+# post-repair round recaptures fresh and clears on its first try. Releasing is safe
 # there for the reason it is unsafe after a forfeiture: a self-healed round
 # writes no marker, so no fresh capture it could take afterwards attests
 # anything.

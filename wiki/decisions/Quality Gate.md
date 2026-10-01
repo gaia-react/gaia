@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-04-20
 created: 2026-04-20
-updated: 2026-06-02
+updated: 2026-10-01
 tags: [decision, ci, quality]
 ---
 
@@ -23,7 +23,7 @@ Every change must pass the Quality Gate. Pre-commit hooks enforce a subset; Clau
 7. **Dev smoke test**: start `pnpm dev`, curl a route, verify HTTP 200.
 8. `pnpm build`: confirms production build.
 9. **Fix all warnings before reporting**: never hand off with known warnings.
-10. **Stop and report**: wait for user approval.
+10. **Stop and report**: wait for user approval, except inside the PR Merge Workflow's fix round ([[PR Merge Workflow#The fix round: fixer, verifier, gate]]).
 
 | Step          | Result |
 | ------------- | ------ |
@@ -55,7 +55,7 @@ git diff --cached --name-only -z | tr '\0' '\n' | grep -E '\.(ts|tsx|js|jsx|mjs|
 
 - **Fix issues as you encounter them** rather than just reporting them.
 - All warnings/issues (typecheck errors, lint errors/warnings, test console warnings like missing i18n keys or HydrateFallback, runtime errors) must be resolved before the commit; never commit with known warnings.
-- After fixing, **STOP and report results to the user**; do not commit until the user reviews and approves.
+- After fixing, **STOP and report results to the user**; do not commit until the user reviews and approves. That step governs an ordinary commit. Inside the PR Merge Workflow's fix round the commit proceeds on a clean gate, because the branch checkpoint is where the human reviews ([[PR Merge Workflow#The fix round: fixer, verifier, gate]]).
 
 Localization: all user-facing strings must be localized; no hardcoded strings in JSX, no keys without values.
 
