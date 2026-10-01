@@ -21,6 +21,9 @@ setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SCRIPTS="${AUDIT_LOOP_SCRIPTS_DIR:-$REPO_ROOT/.gaia/scripts}"
   unset GAIA_AUDIT_CHECKPOINT_ROUND GAIA_AUDIT_GRANT_ROUNDS
+  # brief reads spend through usage.sh, which reaches the pricing path.
+  export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state"
+  export GAIA_RATES_FEED_DISABLE=1
   # shellcheck source=/dev/null
   . "$SCRIPTS/audit-loop-eval.sh"
   # shellcheck source=/dev/null
