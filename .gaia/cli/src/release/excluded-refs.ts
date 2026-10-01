@@ -2,9 +2,9 @@
  * The `excluded-refs` derived leak check: references in shipped files to
  * paths, slash commands, agents, and code files that `.gaia/release-exclude`
  * withholds from adopters. The token set is derived from the exclude list at
- * scan time, so a newly excluded file is covered with no config edit; the
- * hand-kept `maintainer-paths` alternation this replaces had drifted to miss
- * most of the excluded set while naming three paths that no longer existed.
+ * scan time, so a newly excluded file is covered with no config edit. A
+ * hand-kept alternation cannot keep up: it misses each newly excluded file
+ * and keeps naming paths that are gone.
  *
  * Pure: the caller supplies the exclude lines, the tracked file list, the
  * shipped basenames, and an executable-bit probe, so the derivation is

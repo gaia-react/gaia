@@ -193,10 +193,8 @@ transforms:
       # excluded path, a slash command for each excluded command or skill, each
       # excluded agent name, and, in Markdown only, the basename of each
       # excluded code file no shipped file shares. A newly excluded file is
-      # covered with no edit here. It replaced the hand-kept `maintainer-paths`
-      # alternation, which had drifted to miss most of the excluded set
-      # (excluded `.gaia/scripts/*.sh`, the `.gaia/cli` config files, every
-      # slash command) while naming three paths that no longer existed.
+      # covered with no edit here, which a hand-kept alternation cannot match:
+      # it misses each newly excluded file and keeps naming paths that are gone.
       #
       # Derived, so skipped: untracked local state (`.serena`, `.gaia/local`),
       # root governance files adopters have their own of (`README.md`), and

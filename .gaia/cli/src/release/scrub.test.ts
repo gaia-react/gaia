@@ -1943,10 +1943,9 @@ const shippedLeakCheck = (
   throw new Error(`no ${id} check in .gaia/release-scrub.yml`);
 };
 
-// The trees the retired hand-kept `maintainer-paths` alternation named that
-// still exist. The derived check must keep covering every one of them, or
-// retiring the alternation narrowed the guard.
-const RETIRED_MAINTAINER_PATHS = [
+// Release-excluded trees the derived check must always cover; a derivation
+// change that drops one of them narrows the guard.
+const ALWAYS_EXCLUDED_TREES = [
   '.gaia/cli/src',
   '.gaia/cli/test-fixtures',
   '.gaia/cli/health',
@@ -1967,7 +1966,7 @@ describe('shipped excluded-refs check', () => {
     expect(check.scope).toEqual(['**']);
   });
 
-  test('derives every tree the retired maintainer-paths alternation named', () => {
+  test('derives every long-standing release-excluded tree', () => {
     const {paths} = deriveExcludedRefTokens({
       excludeLines: parseExcludeLines(
         readFileSync(path.join(repoRoot, '.gaia', 'release-exclude'), 'utf8')
@@ -1978,7 +1977,7 @@ describe('shipped excluded-refs check', () => {
       tracked: listGitFiles(repoRoot),
     });
 
-    expect(paths).toEqual(expect.arrayContaining(RETIRED_MAINTAINER_PATHS));
+    expect(paths).toEqual(expect.arrayContaining(ALWAYS_EXCLUDED_TREES));
   });
 });
 
