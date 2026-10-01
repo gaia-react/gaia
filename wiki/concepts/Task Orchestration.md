@@ -2,11 +2,13 @@
 type: concept
 status: active
 created: 2026-04-21
-updated: 2026-09-20
+updated: 2026-10-01
 tags: [concept, claude, workflow]
 ---
 
 # Task Orchestration
+
+This page is the plan-specific case of [[Workflow Doctrine]], which owns the general roles, git ownership, the checkpoint and resume rule, and model choice.
 
 Invoked via `/gaia-plan [description]`; see [[GAIA Plan]] for the skill surface. For implementation work involving multiple files or subsystems, Claude generates a plan + orchestrator structure so each piece of work runs in a fresh-context sub-agent and the orchestrator drives the whole thing end-to-end. A spec-less one-off plan's artifacts live under `.gaia/local/plans/PLAN-NNN/` (allocated from `.gaia/local/plans/ledger.json`); a plan derived from a SPEC colocates inside the SPEC's own folder at `.gaia/local/specs/<SPEC-ID>/plan/` (`plan-2`, `plan-3`, … for a revision).
 
@@ -34,7 +36,7 @@ When the user pastes the resume prompt, the orchestrator runs through:
 
 ## Topology
 
-GAIA orchestration is a depth-1 star: the main thread is the only agent that spawns, and every worker it dispatches is a leaf. Claude Code sub-agents cannot spawn further sub-agents and cannot prompt the user, so a worker never owns a team and never runs an interactive gate.
+Plan runs follow the topology in [[Workflow Doctrine]]; what is specific to plans:
 
 - **`/gaia-plan`** runs its thin orchestration on the invoking thread and spawns one planner leaf for the deep synthesis. The planner investigates with parallel tool calls and writes the plan files; it does not spawn sub-agents.
 - **The execution orchestrator** (a fresh session started from `KICKOFF.md`) is itself a main thread, so it dispatches the per-phase implementation sub-agents as leaves and runs the pre-merge `code-review-audit`.
@@ -48,6 +50,6 @@ Models pin at spawn, so the main thread, even on Sonnet, puts the synthesis on a
 - Avoids massive multi-file edits in one pass.
 - User can review the plan before committing compute.
 - Individual tasks are resumable / re-runnable.
-- The orchestrator owning git means commit history reflects phase boundaries cleanly, and broken state never reaches the remote.
+- The general rationale for the orchestrator owning git lives in [[Workflow Doctrine]]; in a plan run it also keeps commit history on phase boundaries.
 
-See [[GAIA Plan]], [[Quality Gate]], [[PR Merge Workflow]], [[Token Cost Readout]].
+See [[Workflow Doctrine]], [[GAIA Plan]], [[Quality Gate]], [[PR Merge Workflow]], [[Token Cost Readout]].

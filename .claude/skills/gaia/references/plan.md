@@ -2,6 +2,8 @@
 
 Plan a complex feature using the task orchestration pattern. Do not implement anything.
 
+This command is the plan-specific case of the Workflow Doctrine (`wiki/concepts/Workflow Doctrine.md`), which defines roles, git ownership, checkpoint and resume, and model choice. For plan runs, this file's own contract (per-phase commits and gates, `PROGRESS.md`, the orchestrator's executor pins) governs where the two differ.
+
 ## Steps
 
 ### 1. Get description

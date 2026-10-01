@@ -63,7 +63,7 @@ Localization: all user-facing strings must be localized; no hardcoded strings in
 
 This page is the source of truth for quality gate steps. The always-loaded `.claude/rules/quality-gate.md` rule points commits at this page.
 
-See [[Pre-commit Hooks]], [[PR Merge Workflow]], [[Task Orchestration]], [[Claude Hooks]] (the source-edit and Bash safeguards keep `.env`, lockfile, secrets, and destructive-git footguns out of the staged surface before the gate ever runs).
+See [[Pre-commit Hooks]], [[Workflow Doctrine]] (the gate runs once per commit, on the main thread), [[PR Merge Workflow]], [[Task Orchestration]], [[Claude Hooks]] (the source-edit and Bash safeguards keep `.env`, lockfile, secrets, and destructive-git footguns out of the staged surface before the gate ever runs).
 
 <!-- gaia:maintainer-only:start -->
 The Forensics Triage Workflow runs its own CI gate (`.github/forensics/run-quality-gate.sh`: install → typecheck → lint → test → knip) on every auto-fix branch; gate failure abandons the branch and demotes the issue to `needs-human` instead of opening a partial PR. That gate is distinct from the developer Quality Gate above: it adds `pnpm knip` because it runs post-task against a complete tree, whereas the dev gate omits knip (see `wiki/dependencies/knip.md`).

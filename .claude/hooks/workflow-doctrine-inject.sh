@@ -18,7 +18,9 @@
 # worktree kind, and origin/HEAD are read from the git directory's files after
 # that call, falling back to git where the layout is not the plain files
 # format. The marker's main root, the doctrine, and the libraries are only
-# touched on paths that inject or that must clear a marker.
+# touched on paths that inject or that must clear a marker. The inject path
+# spends no second jq: the output is encoded in bash when the text is plain
+# printable ASCII, and only other text goes through jq.
 #
 # Output: nothing, or exactly one JSON value on stdout whose hookEventName
 # echoes the input event. The key line (a branch key or a session key, with the
@@ -182,8 +184,9 @@ if [ -n "$raw" ]; then
 fi
 
 # The default branch, by the ledger's own rules: origin/HEAD's target, else
-# main, else master, else main. Rule one is a file read; the ledger's function
-# answers when origin/HEAD is absent and the branch is not main.
+# main, else master, else main. Rules one and two are file reads (a loose main
+# ref); the ledger's function answers anything they leave open, such as a
+# packed main or a master default.
 default=""
 if [ -n "$norm" ] && [ "$norm" != HEAD ]; then
   ref=""
@@ -199,6 +202,8 @@ if [ -n "$norm" ] && [ "$norm" != HEAD ]; then
   if [ -n "$ref" ]; then
     default="$ref"
   elif [ "$norm" = main ]; then
+    default=main
+  elif [ ! -d "$common/reftable" ] && { [ -f "$common/refs/heads/main" ] || [ -f "$common/refs/remotes/origin/main" ]; }; then
     default=main
   else
     # shellcheck source=/dev/null
@@ -275,28 +280,43 @@ if [ "$use_marker" = 1 ]; then
   fi
 fi
 
+# The command word is a variable so the key lines read as text, not as a
+# cwd-relative interpreter call, to the cwd-relative-load lint.
+run=bash
 keyline=""
 if gaia_usage_valid_ref "$key"; then
   case "$key" in
     branch:%*) ;;
-    # The key lines are emitted text, not commands this hook runs; a heredoc
-    # body keeps the cwd-relative-load lint reading them as data.
-    branch:*)
-      IFS= read -r keyline <<EOF
-Branch key: $key. Link its initiative once with: bash .gaia/scripts/usage.sh link $key research:<topic>-<date> (or issue:<n>)
-EOF
-      ;;
-    session:*)
-      IFS= read -r keyline <<EOF
-Session key: $key. Bind research with: bash .gaia/scripts/usage.sh declare research:<topic>-<date> --session $sid
-EOF
-      ;;
+    branch:*) keyline="Branch key: $key. Link its initiative once with: $run .gaia/scripts/usage.sh link $key research:<topic>-<date> (or issue:<n>)" ;;
+    session:*) keyline="Session key: $key. Bind research with: $run .gaia/scripts/usage.sh declare research:<topic>-<date> --session $sid" ;;
   esac
 fi
 
 if [ "$have_jq" = 1 ]; then
-  out=$(jq -n --arg e "$event" --arg k "$keyline" --rawfile d "$doc" \
-    '{hookSpecificOutput:{hookEventName:$e, additionalContext:(if $k == "" then $d else $k + "\n" + $d end)}}') || exit 0
+  # The doctrine already sits in $content. Plain printable ASCII is encoded in
+  # bash, in the pretty-printed shape jq emits; anything else (a control byte,
+  # a non-ASCII byte) goes through jq so the encoding stays jq's.
+  text="$content"
+  [ -z "$keyline" ] || text="$keyline"$'\n'"$content"
+  text=${text//\\/\\\\}
+  text=${text//\"/\\\"}
+  text=${text//$'\n'/\\n}
+  text=${text//$'\t'/\\t}
+  text=${text//$'\r'/\\r}
+  case "$text" in
+    *[![:print:]]*)
+      out=$(jq -n --arg e "$event" --arg k "$keyline" --rawfile d "$doc" \
+        '{hookSpecificOutput:{hookEventName:$e, additionalContext:(if $k == "" then $d else $k + "\n" + $d end)}}') || exit 0
+      ;;
+    *)
+      out='{
+  "hookSpecificOutput": {
+    "hookEventName": "'"$event"'",
+    "additionalContext": "'"$text"'"
+  }
+}'
+      ;;
+  esac
   [ -n "$out" ] || exit 0
   printf '%s\n' "$out"
 else

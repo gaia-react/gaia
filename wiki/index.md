@@ -145,6 +145,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Git Workflow]]
 - [[PR Merge Workflow]]
 - [[Task Orchestration]]
+- [[Workflow Doctrine]]: the one execution doctrine (roles, git ownership, checkpoint and resume, model choice) and the hook that injects it on a branch.
 - [[Code Review Audit Agent]]
 - [[Code Review Audit CI]]: pre-merge GitHub Actions gate; `GAIA-Audit:` trailer skip logic; adopter-tunable knobs at `.gaia/audit-ci.yml`.
 - [[Registering a Code Audit Team Member]]: how-to for adding a new roster member: agent def, roster entry, machinery wiring, finding_class bucket, recurrence-tally integration, and the local-gate checklist.
