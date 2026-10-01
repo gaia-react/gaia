@@ -20090,6 +20090,7 @@ var PROSE_PATH_ALLOWLIST = /* @__PURE__ */ new Set([
   ".claude/projects",
   ".claude/settings.local.json",
   ".claude/shell-snapshots",
+  ".gaia/cli/src",
   ".github/workflows",
   ".github/workflows/code-review-audit.yml"
 ]);

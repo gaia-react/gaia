@@ -603,6 +603,25 @@ assert_not_in_set() {
   [[ "$output" != *'"permissionDecision": "deny"'* ]]
 }
 
+@test "denies a verbatim workflow re-render riding with a file renamed out of app/" {
+  # With rename detection on, the diff lists only the new root-level .md path,
+  # which is out of scope and unowned, so the app/ source the PR moved would
+  # vanish from the change set and the bypass would clear it.
+  git -C "$REPO" checkout --quiet main
+  mkdir -p "$REPO/app"
+  printf 'export const moved = "a line long enough to be detected as a rename";\n' > "$REPO/app/moved.ts"
+  git -C "$REPO" add app/moved.ts
+  git -C "$REPO" commit --quiet -m "app source on base"
+  seed_base_template
+  git -C "$REPO" mv app/moved.ts wiki-moved.md
+  commit_files ".github/workflows/code-review-audit.yml" "name: Code Review Audit"
+  run git -C "$REPO" diff --name-only -z main...HEAD
+  grep -qF "app/moved.ts" <<<"$output" && return 1
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"permissionDecision": "deny"'* ]]
+}
+
 @test "denies a second workflow alongside the matching audit re-render" {
   # Only the audit workflow is a permitted in-scope path; any other workflow
   # file keeps the marker mandatory.

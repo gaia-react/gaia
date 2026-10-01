@@ -235,6 +235,12 @@ transforms:
           # nothing and never fires. Anchored to a bare quoted YAML sequence
           # entry, so a prose mention of the same tree still trips the check.
           - "^\\s*-\\s*'\\.gaia/cli/src/\\*\\*'$"
+          # The shared verbatim re-render predicate declines in a tree that
+          # carries the CLI source, because that tree builds the bundled
+          # template from the audit workflow. The path is load-bearing, and on
+          # an adopter clone its absence is what lets /update-gaia clear.
+          # Anchored to the one assignment line that holds it.
+          - "^\\s*cli_source_tree=\"\\.gaia/cli/src\"$"
 
       # ---- Code Audit Team maintainer-only member names ----
       # A mis-wrapped roster entry or resolver block would leave a

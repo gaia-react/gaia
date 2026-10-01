@@ -226,6 +226,26 @@ describe('extractPathRefs', () => {
     expect(refs.map((r) => r.path)).toContain('.claude/settings.json');
   });
 
+  test('skips the allowlisted CLI-source path constant in the re-render predicate', () => {
+    // audit-scope.sh hands the CLI source directory to `git rev-parse` to ask
+    // whether the tree builds the bundled template from the audit workflow. It
+    // is never sourced or executed, and its absence on an adopter clone is the
+    // branch that lets /update-gaia clear, so the exact token is allowlisted.
+    const refs = extractPathRefs(
+      '.claude/hooks/lib/audit-scope.sh',
+      '  cli_source_tree=".gaia/cli/src"\n'
+    );
+    expect(refs.map((r) => r.path)).not.toContain('.gaia/cli/src');
+  });
+
+  test('still flags a genuine file leak under the CLI-source directory', () => {
+    const refs = extractPathRefs(
+      '.claude/hooks/lib/audit-scope.sh',
+      'node .gaia/cli/src/index.ts\n'
+    );
+    expect(refs.map((r) => r.path)).toContain('.gaia/cli/src/index.ts');
+  });
+
   test('reduces a pattern that truncates mid-basename to its directory', () => {
     // A pattern with a non-empty basename prefix before the `*` expanded to the
     // fragment `.claude/agents/code-audit-`, which names no manifest entry and
@@ -657,7 +677,7 @@ describe('release runtime-deps CLI', () => {
       [
         '#!/usr/bin/env bash',
         '# gaia:maintainer-only:start',
-        'echo .gaia/cli/src',
+        'echo .gaia/cli/src/index.ts',
         '# gaia:maintainer-only:end',
         '',
       ].join('\n')
@@ -677,12 +697,12 @@ describe('release runtime-deps CLI', () => {
     });
     sandbox.writeFile(
       '.gaia/scripts/resolve-audit-members.sh',
-      ['#!/usr/bin/env bash', 'echo .gaia/cli/src', ''].join('\n')
+      ['#!/usr/bin/env bash', 'echo .gaia/cli/src/index.ts', ''].join('\n')
     );
 
     const exit = run([], {cwd: sandbox.rootDir});
     expect(exit).toBe(1);
-    expect(stdio.outputs.join('')).toContain('.gaia/cli/src');
+    expect(stdio.outputs.join('')).toContain('.gaia/cli/src/index.ts');
   });
 
   test('skips self-references', () => {
