@@ -559,6 +559,19 @@ assert_not_in_set() {
   [[ "$output" == *'"permissionDecision": "deny"'* ]]
 }
 
+@test "denies a verbatim workflow re-render riding with roster-owned gate machinery" {
+  # .claude/hooks/** is out of audit scope but owned by a roster member, so the
+  # re-render proof cannot stand in for that member's clearance. Without this
+  # the bypass clears every dispatched member of a PR that edits the gate itself.
+  seed_base_template
+  commit_files \
+    ".github/workflows/code-review-audit.yml" "name: Code Review Audit" \
+    ".claude/hooks/pr-merge-audit-check.sh" "exit 0"
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"permissionDecision": "deny"'* ]]
+}
+
 @test "denies a second workflow alongside the matching audit re-render" {
   # Only the audit workflow is a permitted in-scope path; any other workflow
   # file keeps the marker mandatory.

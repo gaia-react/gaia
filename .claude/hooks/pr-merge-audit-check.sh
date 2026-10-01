@@ -1074,7 +1074,7 @@ check_out_of_scope_pr() {
 # the PR changes is .github/workflows/code-review-audit.yml AND its committed
 # bytes are a verbatim re-render of the bundled template
 # (.gaia/cli/templates/workflows/code-review-audit.yml.tmpl), with every other
-# changed path out of audit scope. This is the self-mod-only case /update-gaia
+# changed path out of audit scope and owned by no roster member. This is the self-mod-only case /update-gaia
 # Step 12 produces: it refreshes a stale installed audit workflow by copying the
 # release template verbatim, which makes the update PR self-modifying.
 # claude-code-action's workflow-validation guardrail then refuses to run CI's
@@ -1122,15 +1122,24 @@ check_self_mod_only_update_pr() {
   [ -n "$changed" ] || return 1
 
   # Classify every changed path via the shared ORDERED THREE-WAY classifier
-  # (audit_self_mod_classify): out-of-scope surfaces are always fine; the ONE
-  # permitted in-scope path is the audit workflow itself; any other in-scope
-  # path (app/, test/, configs, a different workflow) denies immediately.
+  # (audit_self_mod_classify): the ONE permitted in-scope path is the audit
+  # workflow itself; any other in-scope path (app/, test/, configs, a different
+  # workflow) denies immediately. An out-of-scope path passes only while no
+  # roster member owns it: the re-render proof stands in for the audit
+  # workflow's owner alone, so an owned path (GAIA's own gate machinery under
+  # .claude/hooks/** or .gaia/**) still needs its member's marker. On an adopter
+  # roster those paths have no owner, so an /update-gaia PR still clears. CI's
+  # re-render stamp declines on the same condition. The owner lookup reads the
+  # roster parsed once at the top of this hook.
   seen_audit_wf=0
   while IFS= read -r path; do
     [ -n "$path" ] || continue
     class="$(audit_self_mod_classify "$path")"
     case "$class" in
-      out-of-scope) continue ;;
+      out-of-scope)
+        [ -z "$(audit_owner_for_path "$path")" ] || return 1
+        continue
+        ;;
       audit-workflow) seen_audit_wf=1 ;;
       *) return 1 ;;
     esac
