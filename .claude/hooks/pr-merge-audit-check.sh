@@ -1158,7 +1158,8 @@ github_status_cleared() {
 # request, so the record's number is the one to stamp. The record's head must
 # also be local HEAD, the content the classification read; otherwise the
 # status would attest a head nobody classified, so it is skipped with the
-# manual command instead.
+# manual command instead. The POST goes to that verified sha ($sha), never to a
+# second read of the pull request head, which a push could have moved.
 gate_post_bypass_stamp() {
   local description="$1"
   resolve_pr_record
@@ -1167,7 +1168,7 @@ gate_post_bypass_stamp() {
       "${pr_record_number:-<unknown>}" "${pr_record_head:-<unknown>}" "$sha" "$description" >&2
     return 0
   fi
-  audit_post_bypass_status "$pr_record_number" "$description"
+  audit_post_bypass_status "$pr_record_number" "$sha" "$description"
 }
 
 # --- Dispatch: resolve the Code Audit Team member set for this diff ---------

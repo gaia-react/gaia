@@ -88,6 +88,12 @@ case "$1 ${2-}" in
       cat "$stub_dir/pr-view-fails" >&2
       exit 1
     fi
+    # A numbered read answers from numbered-record.json when a case planted
+    # one, modelling a head that moved after the unnumbered record read.
+    if [[ "${3-}" =~ ^[0-9]+$ ]] && [ -f "$stub_dir/numbered-record.json" ]; then
+      answer "$(cat "$stub_dir/numbered-record.json")"
+      exit 0
+    fi
     [ -f "$stub_dir/record.json" ] || { echo 'no pull requests found for branch "feature"' >&2; exit 1; }
     answer "$(cat "$stub_dir/record.json")"
     exit 0

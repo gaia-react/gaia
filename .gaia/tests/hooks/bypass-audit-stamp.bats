@@ -172,6 +172,38 @@ wiki_pr_with_stale_marker() {
   grep -qF -- 'gh api -X POST' <<<"$stderr" || return 1
 }
 
+# The head GitHub reports on a numbered read after the classification is a
+# commit nobody classified: the stamp must still land on local HEAD.
+moved_head_after_record() {
+  jq -c '.headRefOid = "0123456789abcdef0123456789abcdef01234567"' "$MGF_STUB_DIR/record.json" \
+    > "$MGF_STUB_DIR/numbered-record.json"
+}
+
+@test "the stamp posts on the classified local HEAD even when a numbered head read would answer a moved head" {
+  mgf_commit "wiki/page.md" "doc"
+  mgf_record 12 false "docs: page" "wiki/page.md"
+  moved_head_after_record
+
+  mgf_run_merge "gh pr merge 12 --squash"
+  assert_allowed_silently
+  assert_one_post 'skipped: out of scope'
+  ! grep -qF -- '0123456789abcdef0123456789abcdef01234567' "$MGF_GH_LOG"
+}
+
+@test "mutation: re-reading the pull request head for the stamp moves the POST onto the unclassified head" {
+  local mutant
+  mutant="$(mgf_scratch_hook 's/audit_post_bypass_status "\$pr_record_number" "\$sha" "\$description"/audit_post_bypass_status "\$pr_record_number" "\$(gh pr view "\$pr_record_number" --json headRefOid --jq .headRefOid)" "\$description"/')"
+  mgf_commit "wiki/page.md" "doc"
+  mgf_record 12 false "docs: page" "wiki/page.md"
+  moved_head_after_record
+
+  mgf_run_merge "gh pr merge 12 --squash" "$mutant"
+  assert_allowed_silently
+  # The real hook posts on local HEAD (the test above); the mutant posts on the
+  # moved head, so that test's assertion is red against it.
+  mgf_post_lines | grep -qF -- 'statuses/0123456789abcdef0123456789abcdef01234567'
+}
+
 @test "a rejected POST still allows the bypass and names the manual command on stderr" {
   mgf_commit "wiki/page.md" "doc"
   mgf_record 12 false "docs: page" "wiki/page.md"
