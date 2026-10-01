@@ -615,8 +615,8 @@ assert_not_in_set() {
   seed_base_template
   git -C "$REPO" mv app/moved.ts wiki-moved.md
   commit_files ".github/workflows/code-review-audit.yml" "name: Code Review Audit"
-  run git -C "$REPO" diff --name-only main...HEAD
-  [[ "$output" != *"app/moved.ts"* ]]
+  run git -C "$REPO" diff --name-only -z main...HEAD
+  grep -qF "app/moved.ts" <<<"$output" && return 1
   run_merge_hook
   [ "$status" -eq 0 ]
   [[ "$output" == *'"permissionDecision": "deny"'* ]]
