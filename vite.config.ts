@@ -2,6 +2,10 @@ import {reactRouter} from '@react-router/dev/vite';
 import tailwindcss from '@tailwindcss/vite';
 import {defineConfig} from 'vite';
 
+// Open the browser only when a person runs `pnpm dev` in a terminal. Tools that
+// spawn the dev server (Playwright, agents, CI) pipe stdout, so they get no tab.
+const canOpenBrowser = !!process.stdout.isTTY && !process.env.CI;
+
 export default defineConfig({
   build: {
     emptyOutDir: true,
@@ -40,6 +44,6 @@ export default defineConfig({
     tsconfigPaths: true,
   },
   server: {
-    open: false,
+    open: canOpenBrowser,
   },
 });
