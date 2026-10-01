@@ -4,16 +4,21 @@
 # .github/workflows/code-review-audit.yml, and the shared gate script
 # .github/audit/gate-pending-members.sh that all three consult.
 #
-# FOUR steps can POST `state=success`, and each is a way to clear the required
+# FIVE steps can POST `state=success`, and each is a way to clear the required
 # GAIA-Audit check and open the github.com merge button:
 #
 #   1. "Write GAIA-Audit commit status"                  (self-heal push path)
 #   2. "Write GAIA-Audit commit status (clean, no push)" (clean-no-commit path)
 #   3. "Write GAIA-Audit commit status (out-of-scope skip)" (has_source == false)
 #   4. "Write GAIA-Audit commit status (chore-deps skip)" (chore-deps.skip == true)
+#   5. "Write GAIA-Audit commit status (verbatim re-render)" (self_modified == true)
+#
+# Step 5 is the deliberate exception to the member gate: it stamps only the
+# verbatim template re-render the local merge gate's self-mod-only bypass
+# already clears for every member, and it never posts `pending`.
 #
 # FIVE steps can POST `state=pending`, which is the other half of the gate and a
-# different set: the four above, PLUS
+# different set: the first four above, PLUS
 #
 #   5. "Stand down (local-mode, no override)"            (should_run == false)
 #
@@ -519,10 +524,11 @@ run_step() {
     "Write GAIA-Audit commit status" \
     "Write GAIA-Audit commit status (clean, no push)" \
     "Write GAIA-Audit commit status (out-of-scope skip)" \
-    "Write GAIA-Audit commit status (chore-deps skip)"
+    "Write GAIA-Audit commit status (chore-deps skip)" \
+    "Write GAIA-Audit commit status (verbatim re-render)"
   do
     body="$(extract_step_body "$step")"
-    # The four gated writers hand the base to write-audit-status.sh, which is
+    # The gated writers hand the base to write-audit-status.sh, which is
     # the only caller of gate-pending-members.sh now. Both halves are asserted:
     # the step passes the FULL-PR base, and (below the loop) the shared writer
     # is what feeds it to the gate.
@@ -534,7 +540,7 @@ run_step() {
     # step's own block rather than as a whole-file tally. A file-wide count of
     # the literal would silently encode "no other step may ever bind this
     # payload value", and other steps legitimately do; scoping it per step
-    # checks the four that must carry it and stays correct as the file grows.
+    # checks the steps that must carry it and stays correct as the file grows.
     block="$(extract_step_block "$step")"
     grep -qF 'PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}' "$block" || return 1
   done
@@ -559,20 +565,20 @@ run_step() {
   for step in \
     "Stand down (local-mode, no override)" \
     "Write GAIA-Audit commit status (out-of-scope skip)" \
-    "Write GAIA-Audit commit status (chore-deps skip)"
+    "Write GAIA-Audit commit status (chore-deps skip)" \
+    "Write GAIA-Audit commit status (verbatim re-render)"
   do
     body="$(extract_step_body "$step")"
     grep -qF -- '--sha "${HEAD_SHA}"' "$body" || return 1
     grep -qF 'git rev-parse HEAD)"' "$body" && return 1
   done
 
-  # One HEAD_SHA event-payload binding for each of the three steps in the loop
-  # above (the local-mode stand-down and the two skip-path stamps, out-of-scope
-  # and chore-deps), plus the workflow-self-modification check, the pre-existing
-  # clean-no-push stamp, and the failed-run backstop, which falls back to it
-  # when no self-heal resolved an audit_sha.
+  # One HEAD_SHA event-payload binding for each step in the loop above, plus
+  # the workflow-self-modification check, the pre-existing clean-no-push stamp,
+  # and the failed-run backstop, which falls back to it when no self-heal
+  # resolved an audit_sha.
   run grep -cF 'HEAD_SHA: ${{ github.event.pull_request.head.sha }}' "$WORKFLOW"
-  [ "$output" -eq 6 ]
+  [ "$output" -eq 7 ]
 }
 
 # -----------------------------------------------------------------------------
@@ -910,6 +916,177 @@ run_step() {
   commit_app_only_diff
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
   rm -f "$SANDBOX/.gaia/scripts/audit-member-digest.sh"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ ! -f "$POST_LOG" ]
+  grep -qF "success_stamped=false" "$STEP_OUTPUT"
+}
+
+# -----------------------------------------------------------------------------
+# verbatim re-render stamp: the self-modification path's one CI writer
+#
+# A PR that edits the audit workflow cannot be audited in CI, and the local
+# merge gate's self-mod-only bypass clears it when the workflow is a verbatim
+# copy of the bundled template and nothing else in scope changed. Without a CI
+# stamp for that same shape the required GAIA-Audit check has no writer and the
+# merge deadlocks behind branch protection (gaia-react/gaia#2400). The step must
+# stamp exactly that shape and post nothing for any other self-modifying PR.
+# -----------------------------------------------------------------------------
+
+RERENDER_STEP='Write GAIA-Audit commit status (verbatim re-render)'
+
+# commit_rerender_diff [<workflow-bytes>]: a feature branch writing the bundled
+# template and the installed workflow, plus an out-of-scope wiki page, the
+# shape /update-gaia's refresh produces. Workflow bytes default to the
+# template's, so the re-render is verbatim unless a caller passes others.
+commit_rerender_diff() {
+  local template_bytes="name: Code Review Audit
+# release template
+"
+  git -C "$SANDBOX" checkout --quiet -b feature
+  mkdir -p "$SANDBOX/.github/workflows" "$SANDBOX/.gaia/cli/templates/workflows" "$SANDBOX/wiki"
+  printf '%s' "$template_bytes" > "$SANDBOX/.gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
+  printf '%s' "${1-$template_bytes}" > "$SANDBOX/.github/workflows/code-review-audit.yml"
+  echo "# notes" > "$SANDBOX/wiki/notes.md"
+  git -C "$SANDBOX" add .github/workflows/code-review-audit.yml \
+    .gaia/cli/templates/workflows/code-review-audit.yml.tmpl wiki/notes.md
+  git -C "$SANDBOX" commit --quiet -m "chore: re-render code-review-audit.yml"
+}
+
+@test "verbatim re-render: the stamp step exists and its if: is exactly the self-modification condition" {
+  block="$(extract_step_block "$RERENDER_STEP")"
+
+  grep -qF 'id: rerender-status' "$block" || return 1
+  grep -qF -- '--self-mod-rerender' "$block" || return 1
+
+  condition="$(awk '
+    /^        if: \|[[:space:]]*$/ { inif=1; next }
+    inif && /^        [a-z]/ { exit }
+    inif { sub(/^          /, ""); print }
+  ' "$block")"
+
+  [ "$condition" = "$(printf '%s\n%s' \
+    "steps.gate.outputs.gated == 'false' &&" \
+    "steps.workflow-self-mod.outputs.self_modified == 'true'")" ]
+}
+
+@test "verbatim re-render: posts success although the member gate alone would hold it pending" {
+  body="$(extract_step_body "$RERENDER_STEP")"
+  commit_rerender_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+
+  # The premise: the workflows member owns the changed workflow, so the plain
+  # gated path would post pending and the merge would stay deadlocked.
+  run run_gate --base "$(base_sha)"
+  [ "$status" -eq 0 ]
+  grep -qF "code-audit-github-workflows" <<<"$output"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ -f "$POST_LOG" ]
+  tree="$(git -C "$SANDBOX" rev-parse "HEAD^{tree}")"
+  digest="$(sandbox_frontend_digest)"
+  grep -qF "statuses/${sha}" "$POST_LOG"
+  grep -qF "state=success" "$POST_LOG"
+  grep -qF "description=1.2.3 ${digest} ${tree}" "$POST_LOG"
+  grep -qxF "members_pending=" "$STEP_OUTPUT"
+  grep -qF "success_stamped=true" "$STEP_OUTPUT"
+}
+
+@test "verbatim re-render: an adopter-edited workflow posts nothing" {
+  body="$(extract_step_body "$RERENDER_STEP")"
+  commit_rerender_diff "name: Code Review Audit
+# adopter customization
+"
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ ! -f "$POST_LOG" ]
+  grep -qF "success_stamped=false" "$STEP_OUTPUT"
+}
+
+@test "verbatim re-render: a second in-scope path posts nothing" {
+  body="$(extract_step_body "$RERENDER_STEP")"
+  commit_rerender_diff
+  mkdir -p "$SANDBOX/app"
+  echo "export const x = 1;" > "$SANDBOX/app/x.ts"
+  git -C "$SANDBOX" add app/x.ts
+  git -C "$SANDBOX" commit --quiet -m "app change riding along"
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ ! -f "$POST_LOG" ]
+  grep -qF "success_stamped=false" "$STEP_OUTPUT"
+}
+
+@test "verbatim re-render: a roster-owned machinery path riding along posts nothing and names its owner" {
+  body="$(extract_step_body "$RERENDER_STEP")"
+  commit_rerender_diff
+  mkdir -p "$SANDBOX/.gaia/scripts"
+  echo "echo changed" > "$SANDBOX/.gaia/scripts/x.sh"
+  git -C "$SANDBOX" add .gaia/scripts/x.sh
+  git -C "$SANDBOX" commit --quiet -m "machinery change riding along"
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ ! -f "$POST_LOG" ]
+  grep -qF "success_stamped=false" "$STEP_OUTPUT"
+  grep -qF "code-audit-maintainer-shell" <<<"$output"
+}
+
+@test "verbatim re-render: a PR changing only the workflow, template already on the base, posts success" {
+  body="$(extract_step_body "$RERENDER_STEP")"
+  template_bytes="name: Code Review Audit
+# release template
+"
+  mkdir -p "$SANDBOX/.gaia/cli/templates/workflows"
+  printf '%s' "$template_bytes" > "$SANDBOX/.gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
+  git -C "$SANDBOX" add .gaia/cli/templates/workflows/code-review-audit.yml.tmpl
+  git -C "$SANDBOX" commit --quiet -m "template already current on the base"
+  git -C "$SANDBOX" checkout --quiet -b feature
+  mkdir -p "$SANDBOX/.github/workflows"
+  printf '%s' "$template_bytes" > "$SANDBOX/.github/workflows/code-review-audit.yml"
+  git -C "$SANDBOX" add .github/workflows/code-review-audit.yml
+  git -C "$SANDBOX" commit --quiet -m "chore: refresh code-review-audit.yml"
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ -f "$POST_LOG" ]
+  grep -qF "state=success" "$POST_LOG"
+  grep -qF "success_stamped=true" "$STEP_OUTPUT"
+}
+
+@test "verbatim re-render: a stale-base self-modification that never touched the workflow posts nothing" {
+  # self_modified compares against the default branch, so a PR that never
+  # edited the workflow reaches this step too; its own diff holds no workflow.
+  body="$(extract_step_body "$RERENDER_STEP")"
+  commit_docs_only_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ ! -f "$POST_LOG" ]
+  grep -qF "success_stamped=false" "$STEP_OUTPUT"
+}
+
+@test "verbatim re-render: an absent template posts nothing" {
+  body="$(extract_step_body "$RERENDER_STEP")"
+  commit_rerender_diff
+  git -C "$SANDBOX" rm --quiet .gaia/cli/templates/workflows/code-review-audit.yml.tmpl
+  git -C "$SANDBOX" commit --quiet -m "drop the template"
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
 
   run run_step "$body" "$sha"
   [ "$status" -eq 0 ]

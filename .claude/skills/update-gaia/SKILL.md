@@ -886,7 +886,7 @@ case "$audit_state" in
       echo "Refreshed $audit_wf from the $LATEST_TAG template; commit and push it to the update PR manually."
     fi
     cat <<EOF
-Expectation: re-rendering $audit_wf makes this update PR self-modifying, so claude-code-action's workflow-validation guardrail refuses to run the audit on it. CI self-mod-skips the audit, one expected skip instead of a wasted full audit under the stale workflow plus a manual /setup-gaia step. This does NOT earn a clean CI GAIA-Audit stamp; the merge still relies on a local audit marker / trailer or the out-of-scope bypass (see PR Merge Workflow). This is a UX/ordering cleanup, not a path to a clean stamp.
+Expectation: re-rendering $audit_wf makes this update PR self-modifying, so claude-code-action's workflow-validation guardrail refuses to run the audit on it. CI self-mod-skips the audit, one expected skip instead of a wasted full audit under the stale workflow plus a manual /setup-gaia step. When the workflow is the only in-scope change, CI stamps GAIA-Audit for the verbatim re-render and the merge needs no local audit. When this PR also changes other in-scope files, CI posts no GAIA-Audit status; a local audit clears the merge and posts it (see PR Merge Workflow).
 EOF
     ;;
   conflict)
