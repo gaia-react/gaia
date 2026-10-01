@@ -2,8 +2,7 @@
 # Structural tests for the adversarial-audit dispatch wiring: the no-op
 # detection/retry/inline-fallback wiring that survives in
 # code-audit-frontend.md's own internal specialist/refuter fan-out, and the
-# shared clearance-writer invocation across every Code Audit Team member and
-# the CI workflow that dispatches them.
+# shared clearance-writer invocation across every Code Audit Team member.
 #
 # The detection predicate itself is deterministic and unit-tested by the
 # sibling suite `audit-noop-detect.bats`. The orchestration wiring still
@@ -26,8 +25,6 @@ setup() {
   WORKFLOWS_MD="$REPO_ROOT/.claude/agents/code-audit-github-workflows.md"
   # The maintainer members' shared handshake; both maintainer definitions point here.
   PROTOCOL_MD="$REPO_ROOT/.claude/hooks/lib/audit-member-protocol.md"
-  AUDIT_WORKFLOW="$REPO_ROOT/.github/workflows/code-review-audit.yml"
-  WF_TMPL_ARTIFACT="$REPO_ROOT/.gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
 }
 
 # section_between FILE START END: prints the lines from the first line
@@ -117,25 +114,4 @@ assert_predicate_retry_fallback() {
     grep -qF -- ".claude/hooks/lib/audit-member-protocol.md" "$md" || return 1
   done
   return 0
-}
-
-# 7b. The self-heal push arm must prove the marker the same way the no-push
-#     arm does. An earned clearance write refuses and writes nothing whenever
-#     the reviewer's scope digest no longer matches its write-time digest,
-#     which a self-heal commit can cause; without --require-marker on this
-#     arm, write-audit-status.sh never opens the marker at all and CI stamps
-#     GAIA-Audit success on a pushed head no member ever attested. Nothing
-#     re-runs after a GITHUB_TOKEN push, so that success is final. Pinned in
-#     both copies because the two must stay byte-identical anyway, and a flag
-#     dropped from one of them is invisible to a reader of the other.
-
-@test "the self-heal push status writer passes --require-marker, in both workflow copies" {
-  local f block
-  for f in "$AUDIT_WORKFLOW" "$WF_TMPL_ARTIFACT"; do
-    # The push arm is the one writer whose --sha comes from a step output
-    # rather than the event payload, so AUDIT_SHA identifies it unambiguously.
-    block="$(grep -A 3 -F -- '--sha "${AUDIT_SHA:-}"' "$f")"
-    [ -n "$block" ] || return 1
-    grep -qF -- '--require-marker' <<<"$block" || return 1
-  done
 }

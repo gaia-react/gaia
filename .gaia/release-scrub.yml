@@ -199,7 +199,7 @@ transforms:
       # Derived, so skipped: untracked local state (`.serena`, `.gaia/local`),
       # root governance files adopters have their own of (`README.md`), and
       # `.github/workflows/*`, which `excluded-workflow-ref` below owns because
-      # some excluded workflows are installed from a render template.
+      # `.github/workflows/` is partly shipped.
       #
       # What this does NOT catch is prose that names a maintainer-only concept
       # with no token in it, or a glob over a partly-shipped tree
@@ -288,15 +288,14 @@ transforms:
       # alternation cannot blanket it, and enumerating
       # each excluded workflow by hand drifts. This derived check reads
       # `.gaia/release-exclude` at scan time and flags references to any excluded
-      # `.github/workflows/*.yml` that has NO render template under
-      # `.gaia/cli/templates/workflows/`, i.e. is never installable on an adopter
-      # (unlike `code-review-audit.yml`, which `/setup-gaia` renders from its
-      # `.tmpl`, so references to it are legitimate). A newly excluded maintainer
-      # workflow is covered with no edit here; the set cannot drift from the
-      # exclude list. Mirrors `wikilink-to-excluded`. Prior occurrence: a shipped
-      # workflow-template comment cross-referenced `forensics-triage.yml`.
+      # `.github/workflows/*.yml`: no excluded workflow is ever present on an
+      # adopter, so a shipped reference to one points at nothing. A newly
+      # excluded maintainer workflow is covered with no edit here; the set
+      # cannot drift from the exclude list. Mirrors `wikilink-to-excluded`.
+      # Prior occurrence: a shipped workflow-template comment cross-referenced
+      # `forensics-triage.yml`.
       - id: excluded-workflow-ref
-        description: "References to release-excluded, never-installed workflows in shipped surfaces"
+        description: "References to release-excluded, never-present workflows in shipped surfaces"
         derive: excluded-workflows
         scope:
           - "**"

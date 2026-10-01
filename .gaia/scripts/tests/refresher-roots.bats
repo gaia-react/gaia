@@ -154,6 +154,30 @@ STUB
   [ "$count" = "3" ]
 }
 
+@test "update refresher asks the MAIN checkout for wiki drift, not the worktree it runs in" {
+  make_pair check-updates.sh
+
+  # Wiki drift is a fact about the main checkout's wiki/.state.json, so the
+  # CLI call is rooted on main even though the script lives in the worktree.
+  mkdir -p "$WT/.gaia/cli"
+  cat > "$WT/.gaia/cli/gaia" <<STUB
+#!/usr/bin/env bash
+if [ "\$1" = "wiki" ] && [ "\$2" = "state" ]; then
+  pwd -P > "$BATS_TEST_TMPDIR/wiki-state-cwd"
+  printf '{"drift_count":7}'
+  exit 0
+fi
+exit 1
+STUB
+  chmod +x "$WT/.gaia/cli/gaia"
+
+  PATH="$MAIN/bin:$PATH" run bash "$WT/.gaia/scripts/check-updates.sh"
+  [ "$status" -eq 0 ]
+
+  [ "$(cat "$BATS_TEST_TMPDIR/wiki-state-cwd")" = "$MAIN" ]
+  [ "$(jq -r '.wikiDriftCount' "$MAIN/.gaia/local/cache/shared/update-check.json")" = "7" ]
+}
+
 @test "update refresher with no resolver present degrades to its own root" {
   make_pair check-updates.sh --no-resolver
 

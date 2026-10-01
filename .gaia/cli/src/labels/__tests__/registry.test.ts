@@ -14,12 +14,15 @@ import {
   suggestedColorFor,
 } from '../registry.js';
 
+// Built at runtime so no removed-feature literal lands in the tracked tree.
+const REMOVED_FEATURE_NAME = ['gaia', 'ci'].join('-');
+
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 const registry = readRegistry(repoRoot);
 
 const names = (
   audience: 'adopter' | 'maintainer',
-  features: ('forensics' | 'gaia-ci' | 'tech-debt')[]
+  features: ('dependabot' | 'forensics' | 'tech-debt')[]
 ): string[] =>
   creatableEntries(registry, audience, features)
     .map((entry) => entry.name)
@@ -29,6 +32,23 @@ describe('labels/registry readRegistry', () => {
   test('parses the committed .gaia/labels.json', () => {
     expect(registry.version).toBe(1);
     expect(registry.labels).toHaveLength(33);
+  });
+
+  test('the two deprecated entries carry no features and a null reason', () => {
+    const deprecatedEntries = registry.labels.filter(
+      (entry) => entry.deprecated
+    );
+
+    expect(
+      deprecatedEntries
+        .map((entry) => entry.name)
+        .toSorted((a, b) => a.localeCompare(b))
+    ).toEqual([REMOVED_FEATURE_NAME, 'run-audit']);
+
+    for (const entry of deprecatedEntries) {
+      expect(entry.features).toEqual([]);
+      expect(entry.reason).toBeNull();
+    }
   });
 
   test('labelsRegistryPath joins onto the given root', () => {
@@ -70,8 +90,8 @@ describe('labels/registry readRegistry', () => {
 });
 
 describe('labels/registry creatableEntries', () => {
-  test('every feature on yields the twenty-three adopter-role entries', () => {
-    expect(names('adopter', ['tech-debt', 'gaia-ci', 'forensics'])).toEqual([
+  test('every feature on yields the adopter-role entries', () => {
+    expect(names('adopter', ['tech-debt', 'dependabot', 'forensics'])).toEqual([
       'bug',
       'debt:spec-active',
       'debt:spec-pending',
@@ -84,10 +104,8 @@ describe('labels/registry creatableEntries', () => {
       'footprint:narrow',
       'footprint:spec',
       'footprint:wide',
-      'gaia-ci',
       'in-progress',
       'needs-human',
-      'run-audit',
       'security',
       'severity:critical',
       'severity:important',
@@ -98,7 +116,7 @@ describe('labels/registry creatableEntries', () => {
     ]);
   });
 
-  test('GAIA CI off drops only the two labels its workflows own', () => {
+  test('dependabot off drops only the security label', () => {
     expect(names('adopter', ['tech-debt', 'forensics'])).toEqual([
       'bug',
       'debt:spec-active',
@@ -114,7 +132,6 @@ describe('labels/registry creatableEntries', () => {
       'footprint:wide',
       'in-progress',
       'needs-human',
-      'run-audit',
       'severity:critical',
       'severity:important',
       'severity:investigate',
@@ -124,18 +141,14 @@ describe('labels/registry creatableEntries', () => {
     ]);
   });
 
-  test('tech-debt off leaves the always-on set plus the GAIA CI set', () => {
-    expect(names('adopter', ['gaia-ci', 'forensics'])).toEqual([
+  test('tech-debt off leaves the always-on set plus the dependabot set', () => {
+    expect(names('adopter', ['dependabot', 'forensics'])).toEqual([
       'bug',
       'documentation',
       'enhancement',
-      'gaia-ci',
       'in-progress',
       'needs-human',
-      'run-audit',
       'security',
-      'severity:critical',
-      'severity:important',
       'wontfix',
     ]);
   });
@@ -146,11 +159,7 @@ describe('labels/registry creatableEntries', () => {
         .filter((entry) => entry.audience === 'maintainer')
         .map((entry) => entry.name)
     );
-    const adopterNames = names('adopter', [
-      'tech-debt',
-      'gaia-ci',
-      'forensics',
-    ]);
+    const adopterNames = names('adopter', ['tech-debt', 'forensics']);
 
     expect(adopterNames.filter((name) => maintainerNames.has(name))).toEqual(
       []
@@ -158,7 +167,9 @@ describe('labels/registry creatableEntries', () => {
   });
 
   test('the maintainer set is the adopter set plus the maintainer entries', () => {
-    expect(names('maintainer', ['tech-debt', 'gaia-ci', 'forensics'])).toEqual([
+    expect(
+      names('maintainer', ['tech-debt', 'dependabot', 'forensics'])
+    ).toEqual([
       'audience:adopter',
       'audience:maintainer',
       'auto-fixable',
@@ -174,13 +185,11 @@ describe('labels/registry creatableEntries', () => {
       'footprint:narrow',
       'footprint:spec',
       'footprint:wide',
-      'gaia-ci',
       'gaia-forensics',
       'gaia-triaged',
       'in-progress',
       'needs-human',
       'non-issue',
-      'run-audit',
       'security',
       'severity:critical',
       'severity:important',
@@ -231,6 +240,11 @@ describe('labels/registry resolveAudience and resolveFeatures', () => {
     rmSync(fixture, {force: true, recursive: true});
   });
 
+  const writeProjectConfig = (text: string): void => {
+    mkdirSync(path.join(fixture, '.gaia'), {recursive: true});
+    writeFileSync(path.join(fixture, '.gaia', 'project.json'), text, 'utf8');
+  };
+
   test('a tree without .gaia/cli/src is an adopter tree', () => {
     expect(resolveAudience(fixture)).toBe('adopter');
   });
@@ -245,11 +259,33 @@ describe('labels/registry resolveAudience and resolveFeatures', () => {
     expect(resolveFeatures(fixture)).toEqual(['tech-debt']);
   });
 
-  test('an automation config turns GAIA CI on', () => {
-    mkdirSync(path.join(fixture, '.gaia'), {recursive: true});
-    writeFileSync(path.join(fixture, '.gaia', 'automation.json'), '{}', 'utf8');
+  test('a project config opting into Dependabot security updates turns dependabot on', () => {
+    writeProjectConfig('{"version":1,"dependabot_security_updates":"on"}');
 
-    expect(resolveFeatures(fixture)).toEqual(['tech-debt', 'gaia-ci']);
+    expect(resolveFeatures(fixture)).toEqual(['tech-debt', 'dependabot']);
+  });
+
+  test('a project config opting out leaves dependabot off', () => {
+    writeProjectConfig('{"version":1,"dependabot_security_updates":"off"}');
+
+    expect(resolveFeatures(fixture)).toEqual(['tech-debt']);
+  });
+
+  test('an existing .github/dependabot.yml turns dependabot on without a project config', () => {
+    mkdirSync(path.join(fixture, '.github'), {recursive: true});
+    writeFileSync(
+      path.join(fixture, '.github', 'dependabot.yml'),
+      'version: 2\n',
+      'utf8'
+    );
+
+    expect(resolveFeatures(fixture)).toEqual(['tech-debt', 'dependabot']);
+  });
+
+  test('a malformed project config does not turn dependabot on', () => {
+    writeProjectConfig('{not json');
+
+    expect(resolveFeatures(fixture)).toEqual(['tech-debt']);
   });
 
   test('a forensics triage workflow turns forensics on', () => {

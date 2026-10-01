@@ -26,7 +26,7 @@ export type SandboxOutcome = 'declined' | 'enabled' | 'incapable';
 
 // Canonical enum vocabularies, used to reject a present-but-off-vocabulary
 // hand-edited marker, matching the enum validation the sibling
-// automation-config reader gets from Zod.
+// project-config reader gets from Zod.
 const CAPABILITIES: readonly Capability[] = [
   'needs-deps',
   'ready',
@@ -70,7 +70,7 @@ export const readSandboxMarker = (repoRoot: string): null | SandboxMarker => {
     !(CAPABILITIES as readonly string[]).includes(parsed.capability)
   ) {
     // Present but off-vocabulary (e.g. a hand-edited marker): fail loud,
-    // matching the enum validation the automation-config reader gets from Zod.
+    // matching the enum validation the project-config reader gets from Zod.
     throw new TypeError('sandbox.json has an unknown outcome or capability');
   }
 

@@ -11,8 +11,10 @@
 #
 # Division of responsibility between the two recipes:
 #   - setup-gaia.md REGISTERS the check: it owns the literal
-#     `required_status_checks` PUT with `contexts[]=GAIA-Audit`, run after the
-#     first push once CI is being wired up.
+#     `required_status_checks` PUT with `contexts[]=GAIA-Audit`, inside
+#     Phase 3's admin-gated recommended defaults, right after the
+#     default-branch protection PUT, for every admin with no other
+#     precondition.
 #   - gaia-init.md DELEGATES that registration to /setup-gaia rather than
 #     inlining the command; it touches nothing on GitHub and must NOT carry
 #     the PUT itself.
@@ -73,5 +75,82 @@ setup() {
 
 @test "setup-gaia does not register the bare code-review-audit job name as the required check" {
   run grep -F "contexts[]=code-review-audit" "$SETUP_CI"
+  [ "$status" -ne 0 ]
+}
+
+# -----------------------------------------------------------------------------
+# setup-gaia registration placement: Phase 3, after the protection PUT, with
+# no CI decision between the admin probe and the registration.
+# -----------------------------------------------------------------------------
+
+# phase3_section <file>: the lines under "## Phase 3:" up to the next "## ".
+phase3_section() {
+  awk '/^## /{inside = ($0 ~ /^## Phase 3:/)} inside' "$1"
+}
+
+# check_registration_placement <file>: every registration line sits in
+# Phase 3, after the protection PUT, and the text from the admin probe to the
+# registration names no CI decision.
+check_registration_placement() {
+  local file="$1" section in_file in_section between
+  section="$(phase3_section "$file")"
+  in_file="$(grep -cF 'contexts[]=GAIA-Audit' "$file" || true)"
+  in_section="$(grep -cF 'contexts[]=GAIA-Audit' <<<"$section" || true)"
+  [ "$in_section" -ge 1 ] || {
+    echo "no registration inside Phase 3" >&2
+    return 1
+  }
+  [ "$in_section" -eq "$in_file" ] || {
+    echo "a registration sits outside Phase 3 (${in_section} of ${in_file} inside)" >&2
+    return 1
+  }
+  awk '
+    /branches\/<default-branch>\/protection" --input -/ && !protection { protection = NR }
+    /contexts\[\]=GAIA-Audit/ && !registration { registration = NR }
+    END { exit !(protection && registration && protection < registration) }
+  ' <<<"$section" || {
+    echo "the registration does not follow the protection PUT" >&2
+    return 1
+  }
+  between="$(awk '
+    /setup-ci check-admin/ { inside = 1 }
+    /contexts\[\]=GAIA-Audit/ { inside = 0 }
+    inside
+  ' <<<"$section")"
+  [ -n "$between" ] || {
+    echo "no admin probe precedes the registration in Phase 3" >&2
+    return 1
+  }
+  if grep -nE '(^|[^A-Za-z])CI([^A-Za-z]|$)|setup_complete|ci mode' <<<"$between"; then
+    echo "a CI decision gates the registration" >&2
+    return 1
+  fi
+}
+
+@test "setup-gaia registers GAIA-Audit in Phase 3, after the protection PUT, with no CI precondition" {
+  check_registration_placement "$SETUP_CI"
+}
+
+@test "the placement check fails when the registration moves out of Phase 3" {
+  local copy="${BATS_TEST_TMPDIR}/moved.md"
+  awk '/^#### Register GAIA-Audit as the required check/ { print "## Phase 3.4: Moved"; print "" } { print }' \
+    "$SETUP_CI" >"$copy"
+  grep -qF '## Phase 3.4: Moved' "$copy"
+  run check_registration_placement "$copy"
+  [ "$status" -ne 0 ]
+}
+
+@test "the placement check fails when a CI decision gates the registration" {
+  local copy="${BATS_TEST_TMPDIR}/gated.md"
+  awk '/^#### Register GAIA-Audit as the required check/ { print "Only when GAIA CI is enabled:"; print "" } { print }' \
+    "$SETUP_CI" >"$copy"
+  run check_registration_placement "$copy"
+  [ "$status" -ne 0 ]
+}
+
+@test "the placement check fails when the protection PUT is gone" {
+  local copy="${BATS_TEST_TMPDIR}/unprotected.md"
+  grep -vF '/protection" --input -' "$SETUP_CI" >"$copy"
+  run check_registration_placement "$copy"
   [ "$status" -ne 0 ]
 }

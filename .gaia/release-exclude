@@ -241,33 +241,25 @@ wiki/decisions/Dependabot Security Updates.md
 # .gaia/cli/ vitest suite; adopters receive only the bundled binary, so
 # the test workflow has nothing to test on their side.
 # `audit-ci-tests.yml` runs the bats suites for the `.github/audit/`
-# helpers (resolve-audit-base.sh, resolve-check-base.sh) that
-# code-review-audit.yml consumes; adopters receive those scripts as
-# GAIA-controlled code they never edit, so the suite guards only
-# maintainer changes. `forensics-triage.yml` runs autonomous Claude Code
+# helpers (resolve-audit-base.sh, resolve-check-base.sh); adopters receive
+# those scripts as GAIA-controlled code they never edit, so the suite guards
+# only maintainer changes. `forensics-triage.yml` runs autonomous Claude Code
 # triage against `gaia-forensics`-labeled issues on the upstream
 # `gaia-react/gaia` repo; the workflow's helpers under `.github/forensics/`
 # include scope checks, classifier prompts, fixtures, and bats tests that
-# only matter on the maintainer's clone. `code-review-audit.yml` installs
-# on demand via `/setup-gaia` (like the cron workflows) rather than
-# shipping by default, so adopters who have not enabled GAIA CI never carry
-# a credential-less audit that blocks every merge. `shell-lint.yml` runs
+# only matter on the maintainer's clone. `shell-lint.yml` runs
 # shellcheck over GAIA's framework bash via the `.gaia/tests/shell-lint.sh`
 # harness (already excluded by the `.gaia/tests` entry in category 3); adopters
 # run that bash but never author it, so the linter guarding it has no adopter
 # surface. All would be silent passengers at best and confusing CI failures
 # at worst on adopter clones.
-# Every workflow excluded here that has no
-# `.gaia/cli/templates/workflows/<file>.tmpl` must carry the `GAIA: ` prefix
-# on its workflow `name:`, enforced by
-# `.gaia/cli/src/release/workflow-prefix.test.ts`. Quote the value: an
-# unquoted `GAIA: X` does not parse. `code-review-audit.yml` is the declared
-# exception because adopters receive a rendered twin.
+# Every workflow excluded here must carry the `GAIA: ` prefix on its workflow
+# `name:`, enforced by `.gaia/cli/src/release/workflow-prefix.test.ts`. Quote
+# the value: an unquoted `GAIA: X` does not parse.
 .github/workflows/release.yml
 .github/workflows/cli-tests.yml
 .github/workflows/audit-ci-tests.yml
 .github/workflows/forensics-triage.yml
-.github/workflows/code-review-audit.yml
 .github/workflows/shell-lint.yml
 # `cli-advisory-scan.yml` runs the advisory arm of
 # .gaia/scripts/check-cli-workspace-floors.sh on a schedule, against .gaia/cli's

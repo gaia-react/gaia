@@ -1,7 +1,7 @@
 name: 'GAIA: Audit CI Tests'
 
 # Runs the bats suites for the .github/audit/ helpers,
-# resolve-audit-base.sh (code-review-audit.yml's incremental review base) and
+# resolve-audit-base.sh (the audit's incremental review base) and
 # resolve-check-base.sh (tests.yml's check base), plus the
 # pr-merge-audit-check.sh PreToolUse merge hook (GAIA-Audit status reader).
 # Maintainer-only:
@@ -20,16 +20,13 @@ name: 'GAIA: Audit CI Tests'
 #   pnpm/action-setup   @ ea17c68df8912ef543352723c149a84f56e3d413 (v6.1.0)
 #   actions/setup-node  @ 820762786026740c76f36085b0efc47a31fe5020 (v7.0.0)
 
-# `workflow_dispatch:` is the CI-mode self-heal lane. A GITHUB_TOKEN-authored
-# self-heal push fires no `pull_request` event, so code-review-audit.yml
-# re-dispatches the workflows named in `.gaia/audit-ci.yml`'s
-# `retrigger_workflows` and stamps each dispatched run's per-JOB conclusion onto
-# the new HEAD. `Audit CI Tests` below is a declared-required context, so
-# without this trigger -- and without the job admitting it in its `if:` -- the
-# check is absent on the self-heal HEAD and branch protection blocks the merge.
-# Same shape as cli-tests.yml. GitHub honors the trigger only for the
-# default-branch copy of this file, so a dispatch fails with 422 until it
-# lands on main.
+# `workflow_dispatch:` is the manual re-run lane. A push made with a
+# GITHUB_TOKEN fires no `pull_request` event, so a head moved that way carries
+# no `Audit CI Tests` run. `Audit CI Tests` below is a declared-required
+# context, so dispatching this workflow, with the job admitting the event in its
+# `if:`, is how a maintainer produces the check on such a head. Same shape as
+# cli-tests.yml. GitHub honors the trigger only for the default-branch copy of
+# this file, so a dispatch fails with 422 until it lands on main.
 on:
   push:
     branches: [ main ]
@@ -62,14 +59,10 @@ jobs:
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     # 13 minutes is sized to the heaviest leg, `concurrency`: it runs the two
-    # full pnpm workspace installs and the meter's real git worktrees, the
-    # work today's shared 15-minute cap was sized for. A matrix takes ONE
-    # integer cap for every leg, so the lighter shards inherit it too. Paired
-    # with the aggregator's 2-minute cap this sums to 15 over the 2-hop
-    # `needs:` chain `.gaia/tests/lib/audit-ci-shards.bats` W5 checks, which is
-    # the maximum this repo's 25-minute self-heal poller window allows at 2
-    # hops -- zero headroom, so raising either cap or adding a third hop reds
-    # that check immediately.
+    # full pnpm workspace installs and the meter's real worktrees. A matrix
+    # takes ONE integer cap for every leg, so the lighter shards inherit it too.
+    # `.gaia/tests/lib/audit-ci-shards.bats` W5 checks every job declares an
+    # integer literal cap.
     timeout-minutes: 13
     # Read-only token: the job checks out, resolves changed files via
     # dorny/paths-filter, and runs bats or the sandbox/concurrency runners; it
@@ -102,8 +95,8 @@ jobs:
       # paths-filter resolves changed files from the pull-request context, which
       # a `workflow_dispatch` run does not have, so the dispatch lane skips this
       # step and every step below falls back to running unconditionally. That is
-      # the intent of a re-trigger: it exists to produce a real green on the
-      # self-heal HEAD, and a full run is the only thing that proves one.
+      # the intent of a manual re-run: it exists to produce a real green on the
+      # dispatched HEAD, and a full run is the only thing that proves one.
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         if: github.event_name == 'pull_request'
         id: filter
@@ -119,17 +112,6 @@ jobs:
               # narrowing that glob later cannot silently drop this file. It is
               # documentation of the self-coverage, not the thing arming it.
               - '.github/workflows/audit-ci-tests.yml'
-              # ci-status-member-gate.bats EXECUTES `run:` bodies extracted from
-              # code-review-audit.yml, so that workflow is a source this suite
-              # guards, not just a consumer of it. Its structural lock pins the
-              # set of steps that POST a `pending` GAIA-Audit status and fails on
-              # an unguarded new one. Redundant today: the `.github/workflows/**`
-              # catch-all below already matches it. Listed deliberately anyway,
-              # so that narrowing that glob later cannot silently drop this
-              # source. It is documentation of the test-dir/source-dir
-              # pairing, the same pairing as the three instruction files
-              # below, not the thing arming it.
-              - '.github/workflows/code-review-audit.yml'
               # '.claude/hooks/**' is the superset of the specific hooks this
               # suite used to filter on (repo-scope.sh, pr-merge-audit-check.sh,
               # post-audit-status.sh); it now also covers every hook exercised

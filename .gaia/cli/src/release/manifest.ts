@@ -42,8 +42,8 @@ export const ADOPTER_OWNED_SENTINELS: ReadonlySet<string> = new Set([
 // but special-cased out of the generic /update-gaia walk: all three are
 // field-aware merged (package.json at JSON-key granularity, pnpm-workspace.yaml
 // at YAML-key / map-entry granularity, audit-ci.yml at YAML-key granularity
-// with its `audit_authors` login=mode string merged entry-by-entry) so adopter
-// drift never forces a full-file conflict patch.
+// with its `auditors` roster merged member-by-member) so adopter drift never
+// forces a full-file conflict patch.
 const SHARED = new Set([
   '.claude/settings.json',
   '.gaia/audit-ci.yml',

@@ -102,9 +102,8 @@ setup() {
 # Matches the `- name:` line EXACTLY, and stops at the NEXT step boundary at
 # the same indent regardless of that step's own first key (`- name:`,
 # `- uses:`, `- if:`), since not every step in every workflow leads with
-# `name:`. Mirrors .github/audit/tests/ci-status-member-gate.bats's own copy,
-# kept independent per that file's own note: no bats file shares this across
-# files, each keeps its own copy of what "extract the real step body" means.
+# `name:`. No bats file shares this across files, each keeps its own copy of
+# what "extract the real step body" means.
 extract_step_body() {
   local workflow="$1" step_name="$2" out="$BATS_TEST_TMPDIR/step-$$.sh"
   awk -v want="      - name: ${step_name}" '
@@ -157,33 +156,17 @@ commit_file() {
   git -C "$SANDBOX" commit --quiet -m "$message"
 }
 
-@test "code-review-audit.yml and tests.yml 'Check chore-deps title' bodies are non-empty and execute" {
-  cra_body="$(extract_step_body "$REPO_ROOT/.github/workflows/code-review-audit.yml" "Check chore-deps title")"
+@test "tests.yml 'Check chore-deps title' body is non-empty and executes" {
   tests_body="$(extract_step_body "$REPO_ROOT/.github/workflows/tests.yml" "Check chore-deps title")"
-  [ -n "$cra_body" ]
   [ -n "$tests_body" ]
 }
 
-@test "code-review-audit.yml 'Check chore-deps title': manifest-only diff skips, an app/ change does not" {
-  body="$(extract_step_body "$REPO_ROOT/.github/workflows/code-review-audit.yml" "Check chore-deps title")"
-  [ -n "$body" ]
-  setup_sandbox_repo
-  base="$(git -C "$SANDBOX" rev-parse HEAD)"
-  commit_file package.json '{}'
-  result="$(run_step_capture "$body" PR_TITLE="chore(deps): bump x" "PR_BASE_SHA=$base")"
-  [ "$(field "$result" skip)" = "true" ]
-
-  commit_file app/x.ts "export const x = 1;"
-  result="$(run_step_capture "$body" PR_TITLE="chore(deps): bump x" "PR_BASE_SHA=$base")"
-  [ "$(field "$result" skip)" = "false" ]
-}
-
-@test "code-review-audit.yml 'Check chore-deps title': an unknown PR_BASE_SHA exits 0 with skip=false" {
-  body="$(extract_step_body "$REPO_ROOT/.github/workflows/code-review-audit.yml" "Check chore-deps title")"
+@test "tests.yml 'Check chore-deps title': an unknown PR_BASE_SHA exits 0 with skip=false" {
+  body="$(extract_step_body "$REPO_ROOT/.github/workflows/tests.yml" "Check chore-deps title")"
   [ -n "$body" ]
   setup_sandbox_repo
   commit_file package.json '{}'
-  result="$(run_step_capture "$body" PR_TITLE="chore(deps): bump x" "PR_BASE_SHA=0000000000000000000000000000000000dead")"
+  result="$(run_step_capture "$body" PR_TITLE="chore(deps): bump x" "PR_BASE_SHA=0000000000000000000000000000000000dead" "EVENT_NAME=pull_request")"
   [ "$(field "$result" rc)" -eq 0 ]
   [ "$(field "$result" skip)" = "false" ]
 }

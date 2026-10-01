@@ -20074,7 +20074,7 @@ var HELP_TOKENS8 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var UNEXPECTED_EXIT7 = 2;
 var ADOPTER_OWNED_SENTINELS2 = /* @__PURE__ */ new Set([
   ...ADOPTER_OWNED_SENTINELS,
-  ".gaia/automation.json"
+  ".gaia/project.json"
 ]);
 var RUNTIME_PREFIXES = [
   ".gaia/local",
@@ -20084,20 +20084,17 @@ var RUNTIME_PREFIXES = [
   ".claude/audit"
 ];
 var RUNTIME_MARKERS = /* @__PURE__ */ new Set([
-  ".claude/wiki-drift-checked",
   // Runtime-created sentinel: wiki-recompact-sentinel.sh (PostCompact) writes
   // this file and wiki-recompact-inject.sh (UserPromptSubmit) reads and clears
   // it. Created on first compaction event; never a shipped dependency.
-  ".claude/wiki-recompact-pending",
-  ".claude/wiki-safety-checked"
+  ".claude/wiki-recompact-pending"
 ]);
 var PATH_PREFIXES = [".gaia/", ".claude/", ".specify/", ".github/"];
 var PROSE_PATH_ALLOWLIST = /* @__PURE__ */ new Set([
   ".claude/projects",
   ".claude/settings.local.json",
   ".claude/shell-snapshots",
-  ".github/workflows",
-  ".github/workflows/code-review-audit.yml"
+  ".github/workflows"
 ]);
 var PATH_BODY_CHAR = /[a-zA-Z0-9._/-]/;
 var PATH_TRUNCATING_METACHAR = /[$*?[{]/;
@@ -20576,7 +20573,7 @@ var run9 = (argv, options = {}) => {
 };
 
 // src/release/scrub.ts
-import { existsSync as existsSync10, readFileSync as readFileSync13, statSync as statSync3 } from "node:fs";
+import { readFileSync as readFileSync13, statSync as statSync3 } from "node:fs";
 import path14 from "node:path";
 
 // src/wiki/util/wikilinks.ts
@@ -20714,7 +20711,6 @@ var UNEXPECTED_EXIT9 = 2;
 var DEFAULT_CONFIG_PATH = ".gaia/release-scrub.yml";
 var RELEASE_EXCLUDE_PATH = ".gaia/release-exclude";
 var WORKFLOWS_DIR = ".github/workflows";
-var SHIPPED_WORKFLOW_TEMPLATES_DIR = ".gaia/cli/templates/workflows";
 var MarkerStripSchema = external_exports.object({
   end: external_exports.string().min(1),
   paths: external_exports.array(external_exports.string().min(1)).min(1),
@@ -21189,14 +21185,7 @@ var buildNeverPresentWorkflowSet = (cwd) => {
   const paths = /* @__PURE__ */ new Set();
   for (const line of lines) {
     if (line.startsWith(`${WORKFLOWS_DIR}/`) && line.endsWith(".yml")) {
-      const templatePath = path14.join(
-        cwd,
-        SHIPPED_WORKFLOW_TEMPLATES_DIR,
-        `${path14.basename(line)}.tmpl`
-      );
-      if (!existsSync10(templatePath)) {
-        paths.add(line);
-      }
+      paths.add(line);
     }
   }
   return paths;

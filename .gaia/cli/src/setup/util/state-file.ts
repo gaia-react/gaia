@@ -36,7 +36,6 @@ export const SETUP_STEPS = [
   'init-speckit',
   'chmod-statusline',
   'bootstrap-env',
-  'audit-mode-decision',
 ] as const;
 
 export type SetupState = {

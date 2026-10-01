@@ -1,172 +1,91 @@
 #!/usr/bin/env bash
-# read-audit-ci-config.sh: reader + per-author resolver for .gaia/audit-ci.yml.
+# read-audit-ci-config.sh: reader + author resolver for .gaia/audit-ci.yml.
 #
 # Two invocation forms:
 #
 #   read-audit-ci-config.sh
 #     Argument-less emit. Resolves the config file at
 #     `$(git rev-parse --show-toplevel)/.gaia/audit-ci.yml` (falls back to
-#     `./.gaia/audit-ci.yml` if not in a git repo). Emits one `key=value`
-#     line per known knob on stdout, in deterministic order, suitable for
-#     piping into `>> $GITHUB_OUTPUT`.
+#     `./.gaia/audit-ci.yml` if not in a git repo). Emits the known knobs on
+#     stdout, in deterministic order.
 #
 #   read-audit-ci-config.sh --resolve-author "<login>"
-#     Per-author resolve. Resolves the effective audit mode for a single
-#     author login and emits the resolved decision (see "Resolve output"
-#     below). Both the CI Resolve-audit-decision step and the local merge
-#     path call this identical entrypoint, so the effective mode for an
-#     author is deterministic and can never diverge between producers.
+#     Resolve entrypoint kept for the callers that ask who audits a PR. Every
+#     audit is local, so the answer is always `local`; see "Resolve output".
 #
 # Why a hand-rolled flat-YAML parser (no `yq`): the schema is flat scalar
-# and list keys with no nesting. Pulling in `yq` adds an install step on
-# every adopter's CI image and at most saves us ~20 lines of awk. If the
-# schema ever grows nested values, swap the parser for `yq` without
-# changing the CLI surface.
+# and list keys with no nesting. Pulling in `yq` adds an install step and at
+# most saves us ~20 lines of awk. If the schema ever grows nested values,
+# swap the parser for `yq` without changing the CLI surface.
 #
 # Bash 3.2 compatible (macOS default). No associative arrays, no
 # `mapfile`. No `cd` (per `.claude/rules/shell-cwd.md`).
 #
 # Emit-all output shape (always all keys, always this order):
-#   gate_label=<string-or-empty>
-#   budget_seconds=<integer>
-#   max_turns=<integer>
 #   push_fixes=<true|false>
-#   default_mode=<ci|local>
-#   override_label=<string>
-#   audit_authors=<raw string or empty>
 #   retrigger_workflows<<__GAIA_END__
 #   <name-1>
 #   <name-2>
 #   __GAIA_END__
 #
-# The three new keys (`default_mode`, `override_label`, `audit_authors`)
-# emit after `push_fixes` and before the `retrigger_workflows` heredoc; the
-# heredoc must stay last so its multiline delimiter is not mis-parsed.
-#
-# The `retrigger_workflows` value uses GitHub Actions' multiline-output
-# heredoc syntax so consumers receive a newline-separated string (workflow
-# display names may contain spaces; single-line separators are ambiguous).
+# The `retrigger_workflows` value uses a multiline heredoc so consumers
+# receive a newline-separated string (workflow display names may contain
+# spaces; single-line separators are ambiguous). The heredoc stays last so
+# its delimiter is not mis-parsed.
 #
 # Resolve output (--resolve-author):
-#   resolved_mode=<ci|local>
-#   should_run=<true|false>
-#   (followed by the scalar key lines for caller convenience)
+#   resolved_mode=local
+#   should_run=false
+#   push_fixes=<true|false>
 #
-#   `resolved_mode` and `should_run` are the mandatory contract. Both CI
-#   (which stands down on `local`) and the local hook (which runs locally
-#   on `local`) read the SAME `resolved_mode` and interpret it for their
-#   own side, so they never disagree about WHO runs.
-#
-#   `resolved_mode` is a pure function of four inputs, and every producer
-#   reads all four identically: this config file, the author login, the
-#   override label, and whether the PR comes from a fork. None of the four
-#   depends on who is asking, so CI and a local session can never disagree.
-#
-#   Override-label presence is a PR property this script cannot read on its
-#   own (no gh PR query here). The caller supplies it via the env var
-#   `OVERRIDE_LABEL_PRESENT=true` (any case; `1`/`yes` accepted). Absent or
-#   anything else → treated as not present.
-#
-#   Fork presence is likewise a PR property this script cannot read on its
-#   own. The caller supplies it via the env var `PR_IS_FORK=true` (any case;
-#   `1`/`yes` accepted). Absent or anything else → treated as not a fork.
-#   There is no `gh` query on this resolve path for the same reason
-#   OVERRIDE_LABEL_PRESENT has none: the resolved mode must never depend on
-#   API reachability or on the caller's authority.
-#
-# Resolution precedence (first-match-wins, single source of truth):
-#   0. fork PR (PR_IS_FORK present) → resolved_mode=ci, should_run=true.
-#      Ahead of everything, so an audit_authors pin can never route a fork
-#      PR to a local producer.
-#   1. else override label present → resolved_mode=ci, should_run=true.
-#   2. else first matching `audit_authors` login (case-insensitive) → that
-#      pair's mode.
-#   3. else `default_mode`.
-#
-# Normalization:
-#   - Login: lowercase both sides before comparison.
-#   - Mode token: trim whitespace, case-fold (`CI` → `ci`, `Local ` → local).
-#   - Unknown mode (`remote`, etc.) or the literal `off`: coerce to a valid
-#     non-off mode by workflow presence (audit workflow file present → ci,
-#     absent → local) with a stderr warning.
-#   - Malformed pair (`bob=`, `=ci`, a bare token with no `=`): skip with a
-#     stderr warning; do not crash; continue scanning remaining pairs.
-#   - Duplicate logins: first match wins.
+#   The audit always runs on the developer's machine, so `resolved_mode` is
+#   `local` whatever the config file holds, whatever files exist under
+#   `.github/workflows/`, and whatever the caller's environment says. A key
+#   left over from an older version of the file (a mode, an author map,
+#   an override label) is ignored without a warning.
 #
 # Required-check confirmation, advisory only:
-#   When the resolved mode (after precedence + normalization) is `local`,
-#   report whether `GAIA-Audit` is a registered required status check on the
+#   Report whether `GAIA-Audit` is a registered required status check on the
 #   default branch. Confirmation honors EITHER protection model: classic
 #   branch protection (`required_status_checks` context) or a repository
 #   ruleset (`required_status_checks[].context` under
-#   `rules/branches/<branch>`) -- see `required_check_confirmed`. The
-#   ruleset read ships to adopters too; registering `GAIA-Audit` remains a
-#   one-time, human-run step regardless of which model confirms it. If
-#   neither model confirms (API error, branch unprotected, context absent,
-#   `gh` absent or unauthenticated, no repo slug), the resolver warns on
-#   stderr naming both models it tried. The warning never changes
-#   `resolved_mode` and never fails the run: a resolver whose answer depends
-#   on the caller's API authority cannot support an invariant that one
-#   producer runs the whole job, because producers do not share authority.
-#
-# Off-coercion (argument-less emit): an invalid/`off` `default_mode` coerces
-# to a valid non-off mode by workflow presence (`.github/workflows/
-# code-review-audit.yml` present → ci, absent → local) with a stderr warning.
+#   `rules/branches/<branch>`) -- see `required_check_confirmed`. Registering
+#   `GAIA-Audit` remains a one-time, human-run step regardless of which model
+#   confirms it. If neither model confirms (API error, branch unprotected,
+#   context absent, `gh` absent or unauthenticated, no repo slug), the
+#   resolver warns on stderr naming both models it tried. The warning never
+#   changes `resolved_mode` and never fails the run.
 #
 # Resilience:
 #   - Missing file        → all defaults.
 #   - Missing key         → that key's default.
 #   - Commented-out key   → that key's default.
 #   - Unrecognized key    → ignored (forward-compat for future knobs).
-#   - Invalid integer     → default + stderr warning.
 #   - Invalid boolean     → default + stderr warning.
-#   - `null` (any case) for `gate_label` → empty.
 #   - Empty / `null` `retrigger_workflows` → default list.
 #   - Scalar in place of `retrigger_workflows` list → single-item list.
 #
-# Defaults when a new key is absent / commented / null:
-#   - default_mode   → local
-#   - override_label → run-audit
-#   - audit_authors  → empty string
-#
-# Exit code: 0 always. Consumers parse the output lines.
+# Exit code: 0 on success, 2 on a usage error. Consumers parse the output lines.
 
 set -euo pipefail
 
-# --- Defaults (frozen by README "Adopter config knobs (frozen)") --------------
-#
-# `gate_label`'s default is the empty string; it is hard-coded inline in
-# the normalize/emit step rather than declared here (a constant would be
-# unused; there's no fallback path that needs it because the
-# normalizer's only "no value" branch already emits empty).
+# --- Defaults -----------------------------------------------------------------
 
-DEFAULT_BUDGET_SECONDS="1800"
-DEFAULT_MAX_TURNS="30"
 DEFAULT_PUSH_FIXES="true"
-# Built-in fallback for the `default_mode` knob when it is absent or empty. Named
-# for its role rather than the sibling `DEFAULT_<key>` pattern: the config key is
-# itself `default_mode`, so `DEFAULT_DEFAULT_MODE` would stutter. Agrees with the
-# mode the product ships: a repository with no config file at all resolves the
-# same `local` as one that ships `default_mode: local` explicitly.
-FALLBACK_MODE="local"
-DEFAULT_OVERRIDE_LABEL="run-audit"
-# `audit_authors`'s default is the empty string; it passes through verbatim
-# so the resolver sees exactly what the adopter wrote (or nothing).
 # `retrigger_workflows` ships defaulted to the GAIA template's required
 # check-producing workflows (matching the `name:` field at the top of each
 # YAML file). Adopters who rename or replace those workflows update the knob
 # to match. Items are newline-separated because workflow display names may
-# contain spaces (e.g. "Code Review Audit").
+# contain spaces.
 DEFAULT_RETRIGGER_WORKFLOWS="Chromatic
 Tests"
 
 # --- Parse arguments ----------------------------------------------------------
 #
 # No args        → emit-all path (backward-compatible).
-# --resolve-author <login> → per-author resolve path.
+# --resolve-author <login> → resolve path.
 
 RESOLVE_AUTHOR=0
-RESOLVE_AUTHOR_LOGIN=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -176,7 +95,8 @@ while [ "$#" -gt 0 ]; do
         echo "read-audit-ci-config: --resolve-author requires a <login> argument" >&2
         exit 2
       fi
-      RESOLVE_AUTHOR_LOGIN="$2"
+      # The login is required for the CLI surface but never read: every
+      # author resolves the same way.
       shift 2
       ;;
     *)
@@ -192,7 +112,7 @@ config_file=""
 if repo_root=$(git rev-parse --show-toplevel 2>/dev/null); then
   config_file="$repo_root/.gaia/audit-ci.yml"
 else
-  # Defensive: not in a git repo (should never happen in CI). Fall back
+  # Defensive: not in a git repo (should never happen). Fall back
   # to the cwd-relative path.
   config_file="./.gaia/audit-ci.yml"
 fi
@@ -206,7 +126,7 @@ fi
 #   Matches lines of the form:    `^[[:space:]]*<key>[[:space:]]*:[[:space:]]*VALUE`
 #   Strips trailing `# comment` (only when the `#` is preceded by whitespace,
 #   this avoids eating a `#` that appears inside a string label like
-#   `gate_label: needs-review#urgent`, since YAML comment syntax requires
+#   `some_key: needs-review#urgent`, since YAML comment syntax requires
 #   a leading space before the `#`).
 #   Trims leading/trailing whitespace.
 #   Strips surrounding single or double quotes.
@@ -317,43 +237,6 @@ extract_list_value() {
   ' "$config_file"
 }
 
-# normalize_gate_label <raw>
-#   Empty / `null` (any case) → empty. Anything else → as-is.
-normalize_gate_label() {
-  local raw="$1"
-  if [ -z "$raw" ]; then
-    printf ''
-    return 0
-  fi
-  # Lowercase compare for `null`.
-  local lower
-  lower=$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]')
-  if [ "$lower" = "null" ] || [ "$lower" = "~" ]; then
-    printf ''
-    return 0
-  fi
-  printf '%s' "$raw"
-}
-
-# normalize_integer <raw> <default> <key-name-for-warning>
-normalize_integer() {
-  local raw="$1"
-  local default="$2"
-  local key="$3"
-  if [ -z "$raw" ]; then
-    printf '%s' "$default"
-    return 0
-  fi
-  case "$raw" in
-    ''|*[!0-9]*)
-      echo "read-audit-ci-config: $key=$raw is not a non-negative integer; using default $default" >&2
-      printf '%s' "$default"
-      ;;
-    *)
-      printf '%s' "$raw"
-      ;;
-  esac
-}
 
 # normalize_boolean <raw> <default> <key-name-for-warning>
 #   Accepts: true/True/TRUE/yes/Yes/YES/1 → true
@@ -384,123 +267,6 @@ normalize_boolean() {
   esac
 }
 
-# workflow_presence_mode
-#   Echoes the valid non-off mode dictated by audit-workflow presence:
-#   `.github/workflows/code-review-audit.yml` present → `ci`; absent →
-#   `local`. The path is resolved against the repo root the script already
-#   computes (dirname of `$config_file`'s `.gaia` parent), NOT cwd, so the
-#   coercion is stable regardless of where the script is invoked from.
-workflow_presence_mode() {
-  local root
-  if [ -n "${repo_root:-}" ]; then
-    root="$repo_root"
-  else
-    # config_file is `<root>/.gaia/audit-ci.yml`; strip the trailing
-    # `/.gaia/audit-ci.yml` to recover the root for the non-git fallback.
-    root="${config_file%/.gaia/audit-ci.yml}"
-    [ "$root" = "$config_file" ] && root="."
-  fi
-  if [ -f "$root/.github/workflows/code-review-audit.yml" ]; then
-    printf 'ci'
-  else
-    printf 'local'
-  fi
-}
-
-# normalize_mode <raw> <default> <key-name-for-warning>
-#   Trim + case-fold the mode token. `ci`/`local` pass through. Empty → the
-#   supplied default (silent). `off` or any unknown token → coerced to a
-#   valid non-off mode by workflow presence, with a stderr warning naming
-#   the coerced target.
-normalize_mode() {
-  local raw="$1"
-  local default="$2"
-  local key="$3"
-  if [ -z "$raw" ]; then
-    printf '%s' "$default"
-    return 0
-  fi
-  local lower
-  lower=$(printf '%s' "$raw" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')
-  case "$lower" in
-    ci|local)
-      printf '%s' "$lower"
-      ;;
-    *)
-      local coerced
-      coerced=$(workflow_presence_mode)
-      local reason
-      if [ "$lower" = "off" ]; then
-        reason="is not a valid audit mode"
-      else
-        reason="is not a recognized audit mode"
-      fi
-      local presence
-      if [ "$coerced" = "ci" ]; then
-        presence="audit workflow present"
-      else
-        presence="audit workflow absent"
-      fi
-      echo "read-audit-ci-config: $key=$lower $reason; coercing to $coerced ($presence)" >&2
-      printf '%s' "$coerced"
-      ;;
-  esac
-}
-
-# resolve_author_mode <login> <audit_authors-raw> <default_mode>
-#   First-match-wins scan of the space-separated `login=mode` pairs.
-#   Login comparison is case-insensitive. Mode token is normalized
-#   (case-folded, unknown/off coerced by workflow presence). Malformed
-#   pairs (`bob=`, `=ci`, a bare token with no `=`) are skipped with a
-#   stderr warning. If no pair matches, falls back to <default_mode>
-#   (already normalized by the caller). Echoes the resolved mode.
-resolve_author_mode() {
-  local login="$1"
-  local raw_authors="$2"
-  local default_mode="$3"
-
-  local login_lc
-  login_lc=$(printf '%s' "$login" | tr '[:upper:]' '[:lower:]')
-
-  # Iterate over whitespace-separated tokens. `set --` splits on IFS;
-  # default IFS handles spaces, tabs, and newlines. `set -f` disables pathname
-  # expansion first so a glob metacharacter in the value (e.g. a hand-edit typo
-  # `*=local`) is never expanded against the cwd before tokenization.
-  local pair pair_login pair_mode pair_login_lc
-  set -f
-  # shellcheck disable=SC2086
-  set -- $raw_authors
-  set +f
-  for pair in "$@"; do
-    case "$pair" in
-      *=*)
-        pair_login=${pair%%=*}
-        pair_mode=${pair#*=}
-        ;;
-      *)
-        echo "read-audit-ci-config: audit_authors entry '$pair' is malformed (no '=' login=mode pair); skipping" >&2
-        continue
-        ;;
-    esac
-    if [ -z "$pair_login" ]; then
-      echo "read-audit-ci-config: audit_authors entry '$pair' is malformed (empty login); skipping" >&2
-      continue
-    fi
-    if [ -z "$pair_mode" ]; then
-      echo "read-audit-ci-config: audit_authors entry '$pair' is malformed (empty mode); skipping" >&2
-      continue
-    fi
-    pair_login_lc=$(printf '%s' "$pair_login" | tr '[:upper:]' '[:lower:]')
-    if [ "$pair_login_lc" = "$login_lc" ]; then
-      # First match wins. Normalize the mode token (coerces unknown/off).
-      normalize_mode "$pair_mode" "$default_mode" "audit_authors[$pair_login]"
-      return 0
-    fi
-  done
-
-  # No author pair matched → default_mode.
-  printf '%s' "$default_mode"
-}
 
 # required_check_confirmed
 #   Returns 0 (success) only when `GAIA-Audit` is a registered required
@@ -564,120 +330,42 @@ required_check_confirmed() {
   return 1
 }
 
+
 # --- Extract + normalize ------------------------------------------------------
 
-raw_gate_label=$(extract_raw_value "gate_label")
-raw_budget_seconds=$(extract_raw_value "budget_seconds")
-raw_max_turns=$(extract_raw_value "max_turns")
 raw_push_fixes=$(extract_raw_value "push_fixes")
-raw_default_mode=$(extract_raw_value "default_mode")
-raw_override_label=$(extract_raw_value "override_label")
-raw_audit_authors=$(extract_raw_value "audit_authors")
 raw_retrigger_workflows=$(extract_list_value "retrigger_workflows")
 
-gate_label=$(normalize_gate_label "$raw_gate_label")
-budget_seconds=$(normalize_integer "$raw_budget_seconds" "$DEFAULT_BUDGET_SECONDS" "budget_seconds")
-max_turns=$(normalize_integer "$raw_max_turns" "$DEFAULT_MAX_TURNS" "max_turns")
 push_fixes=$(normalize_boolean "$raw_push_fixes" "$DEFAULT_PUSH_FIXES" "push_fixes")
-# default_mode: empty → ci; invalid/off → coerced by workflow presence.
-default_mode=$(normalize_mode "$raw_default_mode" "$FALLBACK_MODE" "default_mode")
-if [ -z "$raw_override_label" ]; then
-  override_label="$DEFAULT_OVERRIDE_LABEL"
-else
-  override_label="$raw_override_label"
-fi
-# audit_authors passes through verbatim (the resolver tokenizes it).
-audit_authors="$raw_audit_authors"
 if [ -z "$raw_retrigger_workflows" ]; then
   retrigger_workflows="$DEFAULT_RETRIGGER_WORKFLOWS"
 else
   retrigger_workflows="$raw_retrigger_workflows"
 fi
 
-# emit_scalar_keys
-#   Emits the scalar key=value lines (everything except the retrigger
-#   heredoc), shared between the emit-all path and the resolve path.
-emit_scalar_keys() {
-  printf 'gate_label=%s\n' "$gate_label"
-  printf 'budget_seconds=%s\n' "$budget_seconds"
-  printf 'max_turns=%s\n' "$max_turns"
-  printf 'push_fixes=%s\n' "$push_fixes"
-  printf 'default_mode=%s\n' "$default_mode"
-  printf 'override_label=%s\n' "$override_label"
-  printf 'audit_authors=%s\n' "$audit_authors"
-}
-
 # --- Dispatch: resolve path vs emit-all path ----------------------------------
 
 if [ "$RESOLVE_AUTHOR" -eq 1 ]; then
-  # --- Per-author resolve -----------------------------------------------------
-
-  # Precedence rule 0: a fork pull request resolves to ci, ahead of every
-  # other rule. A local audit of an untrusted branch would run that branch's
-  # own audit machinery under the maintainer's full credentials, where CI
-  # runs it on a sandboxed runner with a scoped token. An audit_authors pin
-  # must never override this, so this rule sits ahead of the author map.
-  #
-  # The flag is a PR property this script cannot read on its own (there is
-  # no gh query here, by design: the resolved mode must never depend on API
-  # reachability or on the caller's authority). The caller supplies it,
-  # exactly as it supplies OVERRIDE_LABEL_PRESENT.
-  is_fork=$(normalize_boolean "${PR_IS_FORK:-}" "false" "PR_IS_FORK")
-  if [ "$is_fork" = "true" ]; then
-    resolved_mode="ci"
-  else
-    # Precedence rule 1: override label present → ci, run.
-    override_present=$(normalize_boolean "${OVERRIDE_LABEL_PRESENT:-}" "false" "OVERRIDE_LABEL_PRESENT")
-    if [ "$override_present" = "true" ]; then
-      resolved_mode="ci"
-    else
-      # Rules 2 + 3: first matching author pair, else default_mode.
-      resolved_mode=$(resolve_author_mode "$RESOLVE_AUTHOR_LOGIN" "$audit_authors" "$default_mode")
+  # Every audit is local: the answer does not depend on the login, the file,
+  # or the environment.
+  if ! required_check_confirmed; then
+    default_branch_for_warn=""
+    if [ -n "${repo_root:-}" ]; then
+      default_branch_for_warn=$(git -C "$repo_root" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null | sed 's#^refs/remotes/origin/##') || true
     fi
+    [ -n "$default_branch_for_warn" ] || default_branch_for_warn="main"
+    echo "read-audit-ci-config: GAIA-Audit registration not confirmed on $default_branch_for_warn (tried classic branch protection and the repository ruleset); resolved_mode is unchanged" >&2
   fi
 
-  # Required-check confirmation, ADVISORY ONLY. It reports whether the merge
-  # gate is registered and names what it tried; it never changes
-  # resolved_mode and never fails the run. Mode resolution depends only on
-  # inputs every producer reads identically (the config, the author map, the
-  # override label, the fork flag), so CI and a local session can never
-  # disagree about who audits. A resolver whose answer depends on the
-  # authority of the caller cannot support an invariant that one producer
-  # runs the whole job, because the two producers do not have the same
-  # authority and never will.
-  if [ "$resolved_mode" = "local" ]; then
-    if ! required_check_confirmed; then
-      default_branch_for_warn=""
-      if [ -n "${repo_root:-}" ]; then
-        default_branch_for_warn=$(git -C "$repo_root" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null | sed 's#^refs/remotes/origin/##') || true
-      fi
-      [ -n "$default_branch_for_warn" ] || default_branch_for_warn="main"
-      echo "read-audit-ci-config: GAIA-Audit registration not confirmed on $default_branch_for_warn (tried classic branch protection and the repository ruleset); resolved_mode is unchanged" >&2
-    fi
-  fi
-
-  # should_run: true when the resolved mode means "the audit runs on the
-  # producer being asked". `ci` → run; `local` → stand down (the local hook
-  # runs it instead).
-  if [ "$resolved_mode" = "local" ]; then
-    should_run="false"
-  else
-    should_run="true"
-  fi
-
-  printf 'resolved_mode=%s\n' "$resolved_mode"
-  printf 'should_run=%s\n' "$should_run"
-  emit_scalar_keys
+  printf 'resolved_mode=local\n'
+  printf 'should_run=false\n'
+  printf 'push_fixes=%s\n' "$push_fixes"
   exit 0
 fi
 
 # --- Emit (deterministic order) -----------------------------------------------
 
-emit_scalar_keys
-# Multiline output: GitHub Actions reads this via the `<<DELIMITER` heredoc
-# syntax and exposes it as a newline-separated string. Workflow display
-# names may contain spaces, so a single-line separator (space, comma) would
-# be ambiguous. The heredoc stays last so its delimiter is not mis-parsed.
+printf 'push_fixes=%s\n' "$push_fixes"
 printf 'retrigger_workflows<<__GAIA_END__\n'
 printf '%s\n' "$retrigger_workflows"
 printf '__GAIA_END__\n'

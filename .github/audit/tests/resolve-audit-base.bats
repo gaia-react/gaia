@@ -7,9 +7,8 @@ bats_require_minimum_version 1.5.0
 
 # Tests for .github/audit/resolve-audit-base.sh.
 #
-# The helper is consumed by the code-review-audit CI workflow's "Resolve
-# audit base" step, by the merge-time findings hook, and by the Code Audit
-# Team's agent definitions on local runs. Two invocation forms:
+# The helper is consumed by the Code Audit Team's agent definitions on local
+# runs. Two invocation forms:
 #
 #   argument-less   ONE stdout line: the most recent PR ancestor of HEAD that
 #                   passed a clean whole-team audit under the current
@@ -803,7 +802,7 @@ assert_global_reset_for() {
   add_commit a
   base="$(stamp_anchor)"
   commit_append ".claude/hooks/lib/audit-selfheal-paths.sh"
-  commit_append ".github/workflows/code-review-audit.yml"
+  commit_append ".github/audit/resolve-check-base.sh"
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]

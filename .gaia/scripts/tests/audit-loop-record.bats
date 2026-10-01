@@ -1,21 +1,17 @@
 #!/usr/bin/env bats
 # Guards .gaia/scripts/audit-loop-record.sh, the one writer of the PR body's
-# `## Audit rounds` section, and the one workflow step that calls it in CI.
+# `## Audit rounds` section.
 #
-# Two things matter beyond the happy path. A refusal must be reachable: each
-# malformed-marker body below is driven to exit 1 with no output file created.
-# And the CI step is a control-flow claim over a YAML file no unit test can run,
-# so the step is extracted from the live workflow and its structure asserted.
+# A refusal must be reachable: each malformed-marker body below is driven to
+# exit 1 with no output file created.
 #
 # `gh` is a stub on PATH serving fixture JSON and logging its argv, so the
-# `--from-ci` counting and the "body never on a command line" claim run against
-# the real script. Assertion style follows .claude/rules/bats-assertions.md.
+# "body never on a command line" claim runs against the real script. Assertion
+# style follows .claude/rules/bats-assertions.md.
 
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SCRIPT="$REPO_ROOT/.gaia/scripts/audit-loop-record.sh"
-  WORKFLOW="${AUDIT_LOOP_RECORD_TEST_WORKFLOW:-$REPO_ROOT/.github/workflows/code-review-audit.yml}"
-  STEP_NAME='Record audit rounds in the PR body'
   START='<!-- gaia:audit-rounds:start -->'
   END='<!-- gaia:audit-rounds:end -->'
   T="$BATS_TEST_TMPDIR"
@@ -335,22 +331,22 @@ assert_usage() {
   : > "$T/in.md"
   run bash "$SCRIPT" --pr 12 --body-in "$T/in.md" --body-out "$T/out.md"
   [ "$status" -eq 2 ]
-  run bash "$SCRIPT" --pr 12 --from-ci --values-json "$T/values.json" --body-in "$T/in.md" --body-out "$T/out.md"
-  [ "$status" -eq 2 ]
   run bash "$SCRIPT" --pr 12 --values-json "$T/values.json" --body-in "$T/in.md"
-  [ "$status" -eq 2 ]
-  run bash "$SCRIPT" --pr 12 --values-json "$T/values.json" --current-sha aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --body-in "$T/in.md" --body-out "$T/out.md"
   [ "$status" -eq 2 ]
 }
 
-@test "invalid: --current-sha and --current-audited are validated" {
+@test "invalid: the removed CI-computed flags are unknown arguments" {
+  values 1 '{"code-audit-frontend":1}' 0
   : > "$T/in.md"
-  run bash "$SCRIPT" --pr 12 --from-ci --current-sha 'zz' --body-in "$T/in.md" --body-out "$T/out.md"
+  run bash "$SCRIPT" --pr 12 --from-ci --body-in "$T/in.md" --body-out "$T/out.md"
   [ "$status" -eq 2 ]
-  run bash "$SCRIPT" --pr 12 --from-ci --current-audited maybe --body-in "$T/in.md" --body-out "$T/out.md"
+  grep -qF "unknown argument: --from-ci" <<<"$output"
+  run bash "$SCRIPT" --pr 12 --values-json "$T/values.json" --current-sha aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --body-in "$T/in.md" --body-out "$T/out.md"
   [ "$status" -eq 2 ]
-  run bash "$SCRIPT" --pr 12 --from-ci --current-audited true --body-in "$T/in.md" --body-out "$T/out.md"
+  grep -qF "unknown argument: --current-sha" <<<"$output"
+  run bash "$SCRIPT" --pr 12 --values-json "$T/values.json" --current-audited true --body-in "$T/in.md" --body-out "$T/out.md"
   [ "$status" -eq 2 ]
+  [ ! -e "$T/out.md" ]
 }
 
 # ---------------------------------------------------------------------------
@@ -367,10 +363,7 @@ printf '%s\n' "$*" >> "$STUB_DIR/argv.log"
 [ -z "${STUB_FAIL:-}" ] || exit 1
 case "$1 $2" in
   "pr view")
-    case "$*" in
-      *headRefName*) printf 'feature-branch\n' ;;
-      *) cat "$STUB_DIR/body.txt"; printf '\n' ;;
-    esac
+    cat "$STUB_DIR/body.txt"; printf '\n'
     ;;
   "pr edit")
     prev=""
@@ -379,124 +372,12 @@ case "$1 $2" in
       prev="$a"
     done
     ;;
-  "api "*)
-    # Like the real gh: a -f field without --method GET turns the call into a
-    # POST, which the runs endpoint rejects.
-    case " $* " in
-      *" -f "*)
-        case " $* " in
-          *" --method GET "*) ;;
-          *) exit 1 ;;
-        esac
-        ;;
-    esac
-    case "$2" in
-      *"/actions/workflows/"*) cat "$STUB_DIR/runs.json" ;;
-      repos/*/actions/runs/*/jobs)
-        id="${2%/jobs}"
-        id="${id##*/}"
-        cat "$STUB_DIR/jobs-$id.json"
-        ;;
-      *) exit 1 ;;
-    esac
-    ;;
   *) exit 1 ;;
 esac
 STUBEOF
   chmod +x "$STUB/bin/gh"
   export STUB_DIR="$STUB"
   PATH="$STUB/bin:$PATH"
-}
-
-sha_of() { printf '%s' "$1" | awk '{ s = ""; for (i = 0; i < 40; i++) s = s $0; print substr(s, 1, 40) }'; }
-
-# job_fixture <run-id> <audit-step-conclusion>
-job_fixture() {
-  printf '{"jobs":[{"steps":[{"name":"Checkout PR head","conclusion":"success"},{"name":"Run code-review-audit (claude-code-action)","conclusion":"%s"}]}]}\n' \
-    "$2" > "$STUB/jobs-$1.json"
-}
-
-# run_json <id> <sha-char> <event> <status> <conclusion> <pr>
-run_json() {
-  printf '{"id":%s,"head_sha":"%s","event":"%s","status":"%s","conclusion":"%s","pull_requests":[{"number":%s}]}' \
-    "$1" "$(sha_of "$2")" "$3" "$4" "$5" "$6"
-}
-
-seed_runs() {
-  make_stub
-  # Two pages, concatenated the way `gh api --paginate` prints them.
-  {
-    printf '{"total_count":8,"workflow_runs":[%s,%s,%s,%s]}\n' \
-      "$(run_json 101 a pull_request completed success 12)" \
-      "$(run_json 102 b pull_request completed failure 12)" \
-      "$(run_json 104 d pull_request completed cancelled 12)" \
-      "$(run_json 106 f workflow_dispatch completed success 12)"
-    printf '{"total_count":8,"workflow_runs":[%s,%s,%s,%s]}\n' \
-      "$(run_json 103 c pull_request completed success 12)" \
-      "$(run_json 105 e pull_request completed success 12)" \
-      "$(run_json 107 g pull_request completed success 99)" \
-      "$(run_json 108 a pull_request completed success 12)"
-  } > "$STUB/runs.json"
-  job_fixture 101 success
-  job_fixture 102 failure
-  job_fixture 103 success
-  # A run cancelled after its audit step finished: the run's own conclusion is
-  # the only thing that excludes it.
-  job_fixture 104 success
-  job_fixture 105 skipped
-  job_fixture 106 success
-  job_fixture 107 success
-  job_fixture 108 success
-  printf 'PR body text\n' > "$STUB/body.txt"
-}
-
-@test "from-ci: counts distinct head SHAs of completed audited pull_request runs for the PR" {
-  seed_runs
-  run bash "$SCRIPT" --pr 12 --repo o/r --from-ci --body-in "$STUB/body.txt" --body-out "$T/out.md"
-  [ "$status" -eq 0 ] || { printf '%s\n' "$output" >&2; return 1; }
-  parse_section "$T/out.md" > "$T/parsed"
-  [ "$(cat "$T/parsed")" = "3 0 code-audit-frontend=3" ]
-}
-
-@test "from-ci: the current run adds one when its audit step ran, and nothing when it did not" {
-  seed_runs
-  run bash "$SCRIPT" --pr 12 --repo o/r --from-ci --current-sha "$(sha_of 1)" --current-audited true \
-    --body-in "$STUB/body.txt" --body-out "$T/out.md"
-  [ "$status" -eq 0 ]
-  parse_section "$T/out.md" > "$T/parsed"
-  [ "$(cat "$T/parsed")" = "4 0 code-audit-frontend=4" ]
-  run bash "$SCRIPT" --pr 12 --repo o/r --from-ci --current-sha "$(sha_of 1)" --current-audited false \
-    --body-in "$STUB/body.txt" --body-out "$T/out2.md"
-  [ "$status" -eq 0 ]
-  parse_section "$T/out2.md" > "$T/parsed"
-  [ "$(cat "$T/parsed")" = "3 0 code-audit-frontend=3" ]
-}
-
-@test "from-ci: the current sha already seen in a completed run is not counted twice" {
-  seed_runs
-  run bash "$SCRIPT" --pr 12 --repo o/r --from-ci --current-sha "$(sha_of a)" --current-audited true \
-    --body-in "$STUB/body.txt" --body-out "$T/out.md"
-  [ "$status" -eq 0 ]
-  parse_section "$T/out.md" > "$T/parsed"
-  [ "$(cat "$T/parsed")" = "3 0 code-audit-frontend=3" ]
-}
-
-@test "from-ci: a failing gh exits 1 with one stderr line and writes nothing" {
-  seed_runs
-  rm -f "$T/out.md"
-  STUB_FAIL=1 run bash "$SCRIPT" --pr 12 --repo o/r --from-ci --body-in "$STUB/body.txt" --body-out "$T/out.md"
-  [ "$status" -eq 1 ]
-  [ ! -e "$T/out.md" ]
-  [ "$(printf '%s\n' "$output" | wc -l | tr -d ' ')" -eq 1 ]
-}
-
-@test "from-ci: a failing jobs listing exits 1 rather than undercounting" {
-  seed_runs
-  rm -f "$STUB/jobs-103.json"
-  rm -f "$T/out.md"
-  run bash "$SCRIPT" --pr 12 --repo o/r --from-ci --body-in "$STUB/body.txt" --body-out "$T/out.md"
-  [ "$status" -eq 1 ]
-  [ ! -e "$T/out.md" ]
 }
 
 # ---------------------------------------------------------------------------
@@ -547,84 +428,4 @@ seed_runs() {
   values 1 '{"code-audit-frontend":1}' 0
   run env STUB_FAIL=1 bash "$SCRIPT" --pr 12 --values-json "$T/values.json"
   [ "$status" -eq 1 ]
-}
-
-# ---------------------------------------------------------------------------
-# The workflow step
-# ---------------------------------------------------------------------------
-
-step_block() {
-  awk -v want="      - name: ${STEP_NAME}" '
-    !grab && $0 == want { grab = 1; print; next }
-    grab && /^      - name: / { exit }
-    grab { print }
-  ' "$WORKFLOW"
-}
-
-step_run_body() {
-  step_block | awk '
-    !inrun && /^        run: \|[[:space:]]*$/ { inrun = 1; next }
-    inrun { print }
-  '
-}
-
-@test "workflow: the record step is gated on always() and the ci resolved mode, and cannot redden the job" {
-  local block
-  block="$(step_block)"
-  [ -n "$block" ] || { printf 'step missing: %s\n' "$STEP_NAME" >&2; return 1; }
-  [ "$(grep -c "^      - name: ${STEP_NAME}\$" "$WORKFLOW")" -eq 1 ]
-  printf '%s\n' "$block" | grep -qF 'always()'
-  printf '%s\n' "$block" | grep -qF "steps.decision.outputs.resolved_mode == 'ci'"
-  printf '%s\n' "$block" | grep -qx '        continue-on-error: true'
-  printf '%s\n' "$block" | grep -Eq '^        id:' && return 1
-  printf '%s\n' "$block" | grep -q 'permissions:' && return 1
-  true
-}
-
-@test "workflow: the record step passes its values through env and none through run" {
-  local block body
-  block="$(step_block)"
-  body="$(step_run_body)"
-  [ -n "$body" ]
-  printf '%s\n' "$block" | grep -qF 'PR_NUMBER: ${{ github.event.pull_request.number }}'
-  printf '%s\n' "$block" | grep -qF 'PR_IS_FORK: ${{ github.event.pull_request.head.repo.fork }}'
-  printf '%s\n' "$block" | grep -qF 'AUDITED_SHA: ${{ github.event.pull_request.head.sha }}'
-  printf '%s\n' "$block" | grep -qF 'AUDIT_STEP_OUTCOME: ${{ steps.audit.outcome }}'
-  printf '%s\n' "$body" | grep -qF '${{' && return 1
-  printf '%s\n' "$body" | grep -qF 'audit-loop-record.sh'
-  printf '%s\n' "$body" | grep -qF -- '--from-ci'
-  printf '%s\n' "$body" | grep -qF -- '--current-sha "$AUDITED_SHA"'
-}
-
-@test "workflow: a fork PR gets a notice and a clean exit before the writer runs" {
-  local body arm
-  body="$(step_run_body)"
-  # The fork arm: from `true)` to its `;;`, which must notice and exit 0.
-  arm="$(printf '%s\n' "$body" | awk '
-    /^ +true\) *$/ { on = 1; next }
-    on && /;;/ { exit }
-    on { print }
-  ')"
-  [ -n "$arm" ]
-  printf '%s\n' "$arm" | grep -qF '::notice::'
-  printf '%s\n' "$arm" | grep -qE '^ +exit 0$'
-  # and it precedes the writer call
-  [ "$(printf '%s\n' "$body" | grep -n 'true) *$' | head -n 1 | cut -d: -f1)" -lt "$(printf '%s\n' "$body" | grep -n 'audit-loop-record.sh' | head -n 1 | cut -d: -f1)" ]
-}
-
-@test "workflow: the job's permissions are untouched by the record step" {
-  # The top-level default-deny block and the one job block, nothing else.
-  [ "$(grep -c '^ *permissions:' "$WORKFLOW")" -eq 2 ]
-  awk '/^    permissions:/ { on = 1; next } on && /^    [a-z]/ { exit } on && /^      [a-z-]+:/ { print $1 $2 }' "$WORKFLOW" \
-    | sort > "$T/perms"
-  printf '%s\n' actions:write checks:write contents:write id-token:write issues:write pull-requests:write statuses:write \
-    | sort > "$T/perms.want"
-  cmp -s "$T/perms" "$T/perms.want"
-}
-
-@test "workflow: the template regenerated from the live workflow matches it byte for byte" {
-  local tmpl="$REPO_ROOT/.gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
-  [ -f "$tmpl" ] || skip "no CLI template in this tree"
-  [ -z "${AUDIT_LOOP_RECORD_TEST_WORKFLOW:-}" ] || skip "workflow overridden"
-  cmp -s "$WORKFLOW" "$tmpl"
 }

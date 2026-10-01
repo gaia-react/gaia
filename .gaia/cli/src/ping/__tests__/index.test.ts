@@ -67,31 +67,21 @@ describe('gaia ping', () => {
     return JSON.parse(init.body as string) as Record<string, unknown>;
   };
 
-  test('init event: sends mode, i18n (as a number), and ci', async () => {
+  test('init event: sends mode and i18n (as a number)', async () => {
     const exit = await run(
-      [
-        '--event',
-        'init',
-        '--mode',
-        'interactive',
-        '--i18n',
-        '2',
-        '--ci',
-        'custom',
-      ],
+      ['--event', 'init', '--mode', 'interactive', '--i18n', '2'],
       {cwd: sandbox.root}
     );
 
     expect(exit).toBe(0);
     expect(parsedBody()).toMatchObject({
-      ci: 'custom',
       event: 'init',
       i18n: 2,
       mode: 'interactive',
     });
   });
 
-  test('setup event: sends all four setup fields', async () => {
+  test('setup event: sends the type, repo, and sandbox fields', async () => {
     const exit = await run(
       [
         '--event',
@@ -100,20 +90,17 @@ describe('gaia ping', () => {
         'clone',
         '--repo',
         'adopt',
-        '--ci',
+        '--sandbox',
         'on',
-        '--audit',
-        'local',
       ],
       {cwd: sandbox.root}
     );
 
     expect(exit).toBe(0);
     expect(parsedBody()).toMatchObject({
-      audit: 'local',
-      ci: 'on',
       event: 'setup',
       repo: 'adopt',
+      sandbox: 'on',
       type: 'clone',
     });
   });
@@ -127,8 +114,7 @@ describe('gaia ping', () => {
     const body = parsedBody();
     expect(body.type).toBe('init');
     expect(body.repo).toBeUndefined();
-    expect(body.ci).toBeUndefined();
-    expect(body.audit).toBeUndefined();
+    expect(body.sandbox).toBeUndefined();
   });
 
   test('update event: sends from and to as free-form strings', async () => {
@@ -158,12 +144,20 @@ describe('gaia ping', () => {
     ],
     ['an unknown flag exits 1', ['--event', 'update', '--bogus', 'x']],
     [
-      '--ci enums are per-event distinct: init rejects setup-only value "on"',
-      ['--event', 'init', '--ci', 'on'],
+      'the removed --ci flag is rejected on init',
+      ['--event', 'init', '--ci', 'local'],
     ],
     [
-      '--ci enums are per-event distinct: setup rejects init-only value "custom"',
-      ['--event', 'setup', '--ci', 'custom'],
+      'the removed --ci flag is rejected on setup',
+      ['--event', 'setup', '--ci', 'on'],
+    ],
+    [
+      'the removed --audit flag is rejected on setup',
+      ['--event', 'setup', '--audit', 'local'],
+    ],
+    [
+      '--sandbox is setup-only: init rejects it',
+      ['--event', 'init', '--sandbox', 'on'],
     ],
   ])('%s', async (_label, argv) => {
     const exit = await run(argv, {cwd: sandbox.root});

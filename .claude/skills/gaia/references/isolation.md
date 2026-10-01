@@ -51,7 +51,7 @@ Read the team's isolation policy, once. This runs after the forced-worktree arm 
 can reach or relax that correctness rule, and before the arms below, so the policy can steer them:
 
 ```bash
-POLICY="$(jq -r '.isolation_policy // "prefer-branch"' .gaia/automation.json 2>/dev/null || echo prefer-branch)"
+POLICY="$(jq -r '.isolation_policy // "prefer-branch"' .gaia/project.json 2>/dev/null || echo prefer-branch)"
 ```
 
 The `2>/dev/null || echo prefer-branch` tail is load-bearing, not decoration. jq's `//` fires only on `null`
@@ -159,7 +159,7 @@ Every GAIA reader of a branch name normalizes this spelling back to the requeste
 `.gaia/scripts/branch-name-lib.sh`, so both the prefix and the `+` separator are load-bearing and change only in
 lockstep with that library.
 
-Provisioning the worktree — the shared-state symlinks and the generated typed routes — is a separate
+Provisioning the worktree (the shared-state symlinks and the generated typed routes) is a separate
 concern from creating it, and it runs on entry rather than at creation: `.claude/hooks/provision-worktree.sh`
 fires on session start and on entering a worktree, and repairs whatever it finds. So a worktree whose links
 were broken by hand, and one made with a plain `git worktree add` outside this flow, are both provisioned

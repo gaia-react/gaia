@@ -815,8 +815,7 @@ GAIA_GUARD_SCAN_FILES=()
 #              extension glob. `.husky/_/h` runs each one as `sh -e`, so a
 #              caller that arms them differently from an ordinary script asks
 #              for this set separately rather than folding it into `shell`.
-#   workflows  the Actions workflows and composite actions, plus the adopter
-#              workflow templates, which are `.tmpl` rather than `.yml`.
+#   workflows  the Actions workflows and composite actions.
 #
 # One set per call rather than one call carrying every pathspec: a `:(exclude)`
 # magic pathspec applies to the whole call, so `shell`'s exclude would also
@@ -831,8 +830,7 @@ _gaia_guard_scan_set() {
     workflows)
       git -c core.quotepath=false ls-files -z \
         '.github/workflows/*.yml' '.github/workflows/*.yaml' \
-        '.github/actions/*/action.yml' '.github/actions/*/action.yaml' \
-        '.gaia/cli/src/automation/templates/workflows/*.tmpl'
+        '.github/actions/*/action.yml' '.github/actions/*/action.yaml'
       ;;
     *) return 2 ;;
   esac

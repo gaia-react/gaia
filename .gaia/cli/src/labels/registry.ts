@@ -2,12 +2,10 @@
  * Reader and resolvers for `.gaia/labels.json`, shared by every `gaia labels`
  * subcommand.
  *
- * Feature resolution answers "which labels does a tree owe", and `gaia-ci`
- * resolves OFF in the GAIA repository itself because `.gaia/automation.json`
- * is not part of it. That is the correct answer rather than a gap to repair:
- * the `gaia-ci` and `security` labels serve the workflows GAIA renders into
- * adopter repositories, not GAIA's own CI. A tree that has never run
- * `/gaia-setup`'s automation step owes neither label.
+ * Feature resolution answers "which labels does a tree owe". The `dependabot`
+ * feature turns on for a tree that opted into Dependabot security updates or
+ * already carries `.github/dependabot.yml`, because only then does a
+ * `security`-labelled pull request reach it.
  *
  * Every helper takes an explicit `repoRoot` and none calls `process.cwd()`.
  * Each `run(argv)` handler resolves its own default once with
@@ -15,7 +13,6 @@
  */
 import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
-import {automationConfigPath} from '../automation/paths.js';
 import type {
   LabelAudience,
   LabelEntry,
@@ -23,6 +20,7 @@ import type {
   LabelRegistry,
 } from '../schemas/labels.js';
 import {isCreatable, LabelRegistrySchema} from '../schemas/labels.js';
+import {readProjectConfig} from '../schemas/project-config.js';
 import {summarizeZodError} from '../schemas/zod-error.js';
 
 /** Repo-relative registry path, joined onto an explicit `repoRoot`. */
@@ -31,6 +29,19 @@ export const labelsRegistryPath = (repoRoot: string): string =>
 
 const forensicsWorkflowPath = (repoRoot: string): string =>
   path.join(repoRoot, '.github', 'workflows', 'forensics-triage.yml');
+
+const hasDependabot = (repoRoot: string): boolean => {
+  const projectConfig = readProjectConfig(repoRoot);
+
+  if (
+    projectConfig.status === 'ok' &&
+    projectConfig.config.dependabot_security_updates === 'on'
+  ) {
+    return true;
+  }
+
+  return existsSync(path.join(repoRoot, '.github', 'dependabot.yml'));
+};
 
 /** Reads and validates `.gaia/labels.json`; throws naming the file on failure. */
 export const readRegistry = (repoRoot: string): LabelRegistry => {
@@ -125,7 +136,7 @@ export const resolveFeatures = (repoRoot: string): readonly LabelFeature[] => {
   // GAIA, so its labels are owed by every tree.
   const features: LabelFeature[] = ['tech-debt'];
 
-  if (existsSync(automationConfigPath(repoRoot))) features.push('gaia-ci');
+  if (hasDependabot(repoRoot)) features.push('dependabot');
   if (existsSync(forensicsWorkflowPath(repoRoot))) features.push('forensics');
 
   return features;

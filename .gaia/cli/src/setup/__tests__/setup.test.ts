@@ -201,6 +201,49 @@ describe('gaia setup finalize', () => {
     expect(parsed.completed_at).toBe('2026-05-07T12:00:00.000Z');
   });
 
+  test('finalizes a version-1 state file that still lists the retired audit step', () => {
+    const stateDirectory = path.dirname(sandbox.statePath);
+    execFileSync('mkdir', ['-p', stateDirectory]);
+    writeFileSync(
+      sandbox.statePath,
+      JSON.stringify({
+        completed_at: null,
+        completed_steps: [...SETUP_STEPS, 'audit-mode-decision'],
+        started_at: '2026-05-07T11:00:00.000Z',
+        version: 1,
+      }),
+      'utf8'
+    );
+
+    const fixedNow = new Date('2026-05-07T12:00:00.000Z');
+    const exit = runFinalize([], {cwd: sandbox.root, now: () => fixedNow});
+    expect(exit).toBe(0);
+
+    const parsed = JSON.parse(
+      readFileSync(sandbox.statePath, 'utf8')
+    ) as Record<string, unknown>;
+    expect(parsed.completed_at).toBe('2026-05-07T12:00:00.000Z');
+    expect(parsed.completed_steps).toEqual([...SETUP_STEPS]);
+  });
+
+  test.each(SETUP_STEPS)(
+    'refuses to finalize with %s missing and leaves completed_at unset',
+    (missing) => {
+      for (const step of SETUP_STEPS) {
+        if (step !== missing) runMarkStep([step], {cwd: sandbox.root});
+      }
+
+      const exit = runFinalize([], {cwd: sandbox.root});
+      expect(exit).toBe(1);
+      expect(stdio.errors.join('')).toContain('setup_steps_pending');
+
+      const parsed = JSON.parse(
+        readFileSync(sandbox.statePath, 'utf8')
+      ) as Record<string, unknown>;
+      expect(parsed.completed_at).toBeNull();
+    }
+  );
+
   test('--force allows finalize with pending steps', () => {
     runMarkStep(['install-tools'], {cwd: sandbox.root});
 

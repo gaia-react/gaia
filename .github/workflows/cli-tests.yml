@@ -1,19 +1,15 @@
 name: 'GAIA: CLI Tests'
 
-# `workflow_dispatch:` is the CI-mode self-heal lane, not a convenience. When
-# the Code Review Audit pushes a self-heal commit, GitHub's GITHUB_TOKEN
-# recursion guard fires no `pull_request` event for the new HEAD, so
-# code-review-audit.yml re-dispatches the workflows named in
-# `.gaia/audit-ci.yml`'s `retrigger_workflows` and stamps each dispatched run's
-# per-JOB conclusion onto that HEAD. `Vitest (.gaia/cli)` below is a declared-
-# required context, so without this trigger -- and without the jobs admitting it
-# in their `if:` -- a self-heal commit leaves the check absent and branch
+# `workflow_dispatch:` is the manual re-run lane, not a convenience. A push made
+# with a GITHUB_TOKEN fires no `pull_request` event for the new HEAD, so that
+# HEAD carries no `Vitest (.gaia/cli)` run. `Vitest (.gaia/cli)` below is a
+# declared-required context, so without this trigger -- and without the jobs
+# admitting it in their `if:` -- such a HEAD leaves the check absent and branch
 # protection blocks the merge with no bypass short of an admin override.
 #
 # GitHub honors `workflow_dispatch` only for the copy of a workflow on the
 # DEFAULT branch, so a dispatch of this file fails with 422 until it lands on
-# main; the audit logs and tolerates that failure. Expect it on the branch that
-# introduces the trigger, not after.
+# main. Expect it on the branch that introduces the trigger, not after.
 on:
   push:
     branches: [ main ]
@@ -63,8 +59,8 @@ jobs:
       # paths-filter resolves changed files from the pull-request context, which
       # a `workflow_dispatch` run does not have, so the dispatch lane skips this
       # step entirely and every step below falls back to running unconditionally.
-      # That is the intent of a re-trigger: it exists to produce a real green on
-      # the self-heal HEAD, and a full run is the only thing that proves one.
+      # That is the intent of a manual re-run: it exists to produce a real green
+      # on the dispatched HEAD, and a full run is the only thing that proves one.
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         if: github.event_name == 'pull_request'
         id: filter
@@ -136,11 +132,6 @@ jobs:
               # shellcheck can see, and a semantic weakening -- dropping the
               # template `diff -rq`, inverting a `cmp` -- is invisible to it.
               - '.gaia/scripts/verify-cli-bundle-fresh.sh'
-              # bundle:adopter builds the shipped audit-workflow template from
-              # the live workflow, so a pull request touching only that file
-              # changes the template the freshness gate above diffs; without
-              # this line it resolves `code=false` and greens a stale template.
-              - '.github/workflows/code-review-audit.yml'
               # The workspace-floor check below is this script, so an edit to it
               # must re-run the check on its own pull request, exactly as the
               # bundle-freshness entry above does. The two subjects it reads,
@@ -175,10 +166,9 @@ jobs:
               # src/release/workflow-prefix.test.ts reads every workflow's
               # `name:` against the release-exclude derive, so a pull request
               # that only adds or renames a workflow must re-run this job.
-              # Redundant with the
-              # `.github/workflows/cli-tests.yml` and `code-review-audit.yml`
-              # entries above for those two files specifically; listed anyway
-              # so the whole directory is covered, not just those two.
+              # Redundant with the `.github/workflows/cli-tests.yml` entry
+              # above for that file specifically; listed anyway so the whole
+              # directory is covered, not just that one.
               - '.github/workflows/**'
               # The same test derives its expected set from this file, so an
               # edit to it alone must also re-run the job.
@@ -399,9 +389,9 @@ jobs:
   distribution-harness:
     name: Distribution harness (no-Docker) (advisory)
     # Advisory, not a required context, but it shares this workflow with the
-    # required sibling above: one dispatch runs both, and the audit stamps a
-    # check run per JOB. Left gated to `pull_request` it would stamp a bare
-    # `skipped` onto the self-heal HEAD, which reads as a regression rather than
+    # required sibling above: one dispatch runs both, and each job reports a
+    # check run. Left gated to `pull_request` it would report a bare
+    # `skipped` on the dispatched HEAD, which reads as a regression rather than
     # the "not evaluated" it actually is.
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -533,9 +523,9 @@ jobs:
     name: Shipped-surface leak check (advisory)
     # Advisory, not a declared-required context, and it must not become one. It
     # admits `workflow_dispatch` for the same reason the harness above does: one
-    # dispatch runs every job in this workflow and the audit stamps a check run
-    # per JOB, so a job left gated to `pull_request` alone stamps a bare
-    # `skipped` onto the self-heal HEAD, which reads as a regression rather than
+    # dispatch runs every job in this workflow and each job reports its own
+    # check run, so a job left gated to `pull_request` alone reports a bare
+    # `skipped` on the dispatched HEAD, which reads as a regression rather than
     # the "not evaluated" it actually is.
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest

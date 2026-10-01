@@ -9,16 +9,12 @@
  * nothing notices.
  *
  * The authoritative set of "release-excluded workflows an adopter never has"
- * already exists: `buildNeverPresentWorkflowSet` reads `.gaia/release-exclude`
- * and drops any workflow that has a render template under
- * `.gaia/cli/templates/workflows/`, because adopters receive those rendered
- * from the template rather than never at all. `code-review-audit.yml` is the
- * one such workflow today, and it is the declared exception: it stays
- * `name: Code Review Audit`, unprefixed, on purpose.
+ * already exists: `buildNeverPresentWorkflowSet` reads `.gaia/release-exclude`.
+ * No excluded workflow is installed on an adopter from a template, so every
+ * excluded workflow is in that set.
  *
  * The invariant: the set of workflows whose `name:` starts with `GAIA: `
- * equals `buildNeverPresentWorkflowSet(root)` minus the declared exception,
- * and the declared exception is never prefixed. This test calls the real
+ * equals `buildNeverPresentWorkflowSet(root)`. This test calls the real
  * derive rather than a second copy of it, so the two can never drift apart
  * silently.
  */
@@ -36,15 +32,13 @@ import {
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {resolveRepoRootFromImportMeta} from '../util/repo-root-fixture.js';
-import {parseExcludeLines, resolveExcludePath} from './manifest.js';
+import {resolveExcludePath} from './manifest.js';
 import {buildNeverPresentWorkflowSet} from './scrub.js';
 
 const REPO_ROOT = resolveRepoRootFromImportMeta(import.meta.url);
 
 const GAIA_PREFIX = 'GAIA: ';
-const DECLARED_EXCEPTION = '.github/workflows/code-review-audit.yml';
 const WORKFLOWS_DIR = '.github/workflows';
-const WORKFLOW_TEMPLATES_DIR = '.gaia/cli/templates/workflows';
 const RELEASE_EXCLUDE_WORKFLOW_LINE = /^\.github\/workflows\/[^/]+\.yml$/;
 
 // Minimal workflow body for fixtures; `name` is written verbatim, so a caller
@@ -137,50 +131,16 @@ const collectStrayViolations = (
 ): string[] =>
   [...prefixed]
     .filter((relativePath) => !expected.has(relativePath))
-    .map((relativePath) =>
-      relativePath === DECLARED_EXCEPTION ?
-        `${relativePath}: is the declared exception and must stay ` +
-        "'Code Review Audit' because adopters get a rendered twin"
-      : `${relativePath}: carries the 'GAIA: ' prefix but is not release-` +
-        'excluded without a .tmpl render template; a prefixed workflow ' +
-        'must be release-excluded in .gaia/release-exclude and have no ' +
-        '.tmpl render template, otherwise drop the prefix'
+    .map(
+      (relativePath) =>
+        `${relativePath}: carries the 'GAIA: ' prefix but is not release-` +
+        'excluded; a prefixed workflow must be listed in ' +
+        '.gaia/release-exclude, otherwise drop the prefix'
     );
-
-// The declared exception must stay listed in release-exclude with its
-// render template present; either failing would silently pull it into (or
-// keep it out of) the derived set for the wrong reason.
-const collectExceptionViolation = (root: string): string | undefined => {
-  if (!existsSync(path.join(root, DECLARED_EXCEPTION))) return undefined;
-
-  const excludeLines = parseExcludeLines(
-    readFileSync(resolveExcludePath(root), 'utf8')
-  );
-  const templateAbsolute = path.join(
-    root,
-    WORKFLOW_TEMPLATES_DIR,
-    `${path.basename(DECLARED_EXCEPTION)}.tmpl`
-  );
-
-  if (
-    excludeLines.includes(DECLARED_EXCEPTION) &&
-    existsSync(templateAbsolute)
-  ) {
-    return undefined;
-  }
-
-  return (
-    `${DECLARED_EXCEPTION}: exception broken; it must be listed in ` +
-    '.gaia/release-exclude and have its .tmpl render template present, or ' +
-    'it is either a shipped workflow or wrongly excluded from the derived ' +
-    'GAIA: prefix set'
-  );
-};
 
 // Throws an Error whose message names every violation and the fix for each.
 const assertWorkflowPrefixInvariant = (root: string): void => {
   const expected = buildNeverPresentWorkflowSet(root);
-  expected.delete(DECLARED_EXCEPTION);
 
   if (expected.size === 0) {
     throw new Error(
@@ -190,11 +150,9 @@ const assertWorkflowPrefixInvariant = (root: string): void => {
   }
 
   const prefixed = buildPrefixedWorkflowSet(root);
-  const exceptionViolation = collectExceptionViolation(root);
   const violations = [
     ...collectMissingViolations(root, expected, prefixed),
     ...collectStrayViolations(expected, prefixed),
-    ...(exceptionViolation ? [exceptionViolation] : []),
   ];
 
   if (violations.length > 0) {
@@ -206,7 +164,6 @@ const assertWorkflowPrefixInvariant = (root: string): void => {
 };
 
 type Fixture = {
-  removeTemplate: (fileName: string) => void;
   root: string;
   writeReleaseExclude: (lines: string[]) => void;
   writeWorkflow: (fileName: string, contents: string) => void;
@@ -215,26 +172,14 @@ type Fixture = {
 const BASE_RELEASE_EXCLUDE = [
   '.github/workflows/release.yml',
   '.github/workflows/shell-lint.yml',
-  '.github/workflows/code-review-audit.yml',
 ];
 
 const setupFixture = (): Fixture => {
   const root = mkdtempSync(path.join(tmpdir(), 'wf-prefix-'));
   mkdirSync(path.join(root, '.gaia'), {recursive: true});
-  mkdirSync(path.join(root, WORKFLOW_TEMPLATES_DIR), {recursive: true});
   mkdirSync(path.join(root, WORKFLOWS_DIR), {recursive: true});
-  writeFileSync(
-    path.join(root, WORKFLOW_TEMPLATES_DIR, 'code-review-audit.yml.tmpl'),
-    workflowYaml('Code Review Audit'),
-    'utf8'
-  );
 
   const fixture: Fixture = {
-    removeTemplate: (fileName) => {
-      rmSync(path.join(root, WORKFLOW_TEMPLATES_DIR, `${fileName}.tmpl`), {
-        force: true,
-      });
-    },
     root,
     writeReleaseExclude: (lines) => {
       writeFileSync(resolveExcludePath(root), `${lines.join('\n')}\n`, 'utf8');
@@ -247,10 +192,6 @@ const setupFixture = (): Fixture => {
   fixture.writeReleaseExclude(BASE_RELEASE_EXCLUDE);
   fixture.writeWorkflow('release.yml', workflowYaml("'GAIA: Release'", 'push'));
   fixture.writeWorkflow('shell-lint.yml', workflowYaml("'GAIA: Shell Lint'"));
-  fixture.writeWorkflow(
-    'code-review-audit.yml',
-    workflowYaml('Code Review Audit')
-  );
   fixture.writeWorkflow('tests.yml', workflowYaml('Tests'));
 
   return fixture;
@@ -273,20 +214,10 @@ describe('assertWorkflowPrefixInvariant', () => {
       .split('\n')
       .map((line) => line.trim())
       .filter((line) => RELEASE_EXCLUDE_WORKFLOW_LINE.test(line));
-    const withoutTemplate = excludeLines.filter(
-      (line) =>
-        !existsSync(
-          path.join(
-            REPO_ROOT,
-            WORKFLOW_TEMPLATES_DIR,
-            `${path.basename(line)}.tmpl`
-          )
-        )
-    );
 
-    expect(withoutTemplate.length).toBeGreaterThanOrEqual(1);
+    expect(excludeLines.length).toBeGreaterThanOrEqual(1);
     expect(buildNeverPresentWorkflowSet(REPO_ROOT).size).toBe(
-      withoutTemplate.length
+      excludeLines.length
     );
   });
 
@@ -311,17 +242,6 @@ describe('assertWorkflowPrefixInvariant', () => {
     );
   });
 
-  test('refuses a prefixed declared exception', () => {
-    fixture = setupFixture();
-    fixture.writeWorkflow(
-      'code-review-audit.yml',
-      workflowYaml("'GAIA: Code Review Audit'")
-    );
-    expect(() => assertWorkflowPrefixInvariant(fixture!.root)).toThrow(
-      /declared exception/
-    );
-  });
-
   test('refuses an unquoted prefix (YAML parse error)', () => {
     fixture = setupFixture();
     fixture.writeWorkflow('release.yml', workflowYaml('GAIA: Release', 'push'));
@@ -343,17 +263,9 @@ describe('assertWorkflowPrefixInvariant', () => {
 
   test('refuses an empty derived set', () => {
     fixture = setupFixture();
-    fixture.writeReleaseExclude(['.github/workflows/code-review-audit.yml']);
+    fixture.writeReleaseExclude([]);
     expect(() => assertWorkflowPrefixInvariant(fixture!.root)).toThrow(
       /empty maintainer-only workflow set/
-    );
-  });
-
-  test('refuses a broken declared exception', () => {
-    fixture = setupFixture();
-    fixture.removeTemplate('code-review-audit.yml');
-    expect(() => assertWorkflowPrefixInvariant(fixture!.root)).toThrow(
-      /code-review-audit\.yml/
     );
   });
 

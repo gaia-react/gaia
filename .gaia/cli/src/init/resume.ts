@@ -23,7 +23,6 @@ import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {takeValue} from '../util/argv.js';
 import {run as runBootstrapEnv} from './bootstrap-env.js';
-import {run as runConfigureAutomation} from './configure-automation.js';
 import {run as runConfigureI18n} from './configure-i18n.js';
 import {run as runFinalize} from './finalize.js';
 import {run as runRename} from './rename.js';
@@ -31,6 +30,7 @@ import {run as runStripBranding} from './strip-branding.js';
 import {readState, STEP_ORDER} from './util/state.js';
 import type {StepName} from './util/state.js';
 import {run as runWireStatusline} from './wire-statusline.js';
+import {run as runWriteProjectConfig} from './write-project-config.js';
 
 const HELP_TEXT = `Usage: gaia init resume [--from-step <N>]
 
@@ -46,7 +46,7 @@ const HELP_TEXT = `Usage: gaia init resume [--from-step <N>]
     3. rename
     4. wire-statusline
     5. bootstrap-env
-    6. configure-automation
+    6. write-project-config
     7. finalize
 
   Exit codes:
@@ -113,12 +113,12 @@ type StepRunner = (
 
 const STEP_RUNNERS: Readonly<Record<StepName, StepRunner>> = {
   'bootstrap-env': runBootstrapEnv,
-  'configure-automation': runConfigureAutomation,
   'configure-i18n': runConfigureI18n,
   finalize: runFinalize,
   rename: runRename,
   'strip-branding': runStripBranding,
   'wire-statusline': runWireStatusline,
+  'write-project-config': runWriteProjectConfig,
 };
 
 type StepArgvBuilder = (
@@ -164,16 +164,20 @@ const buildRenameArgv: StepArgvBuilder = (saved) => {
   return ['--title', title, '--kebab', kebab];
 };
 
-const isToolModeValue = (value: unknown): boolean =>
-  value === 'ci' || value === 'local' || value === 'off';
-
-const buildConfigureAutomationArgv: StepArgvBuilder = (saved) => {
+const buildWriteProjectConfigArgv: StepArgvBuilder = (saved) => {
   if (saved === undefined) return null;
-  const {wiki} = saved;
+  const {isolation_policy: isolationPolicy, sandbox_recommended: sandbox} =
+    saved;
 
-  if (!isToolModeValue(wiki)) return null;
+  if (typeof sandbox !== 'boolean') return null;
 
-  return ['--wiki', wiki as string];
+  const argv = ['--sandbox-recommended', sandbox ? 'true' : 'false'];
+
+  if (isolationPolicy === undefined) return argv;
+
+  if (typeof isolationPolicy !== 'string') return null;
+
+  return [...argv, '--isolation-policy', isolationPolicy];
 };
 
 const buildWireStatuslineArgv: StepArgvBuilder = (saved) => {
@@ -187,12 +191,12 @@ const buildWireStatuslineArgv: StepArgvBuilder = (saved) => {
 
 const STEP_ARGV_BUILDERS: Readonly<Record<StepName, StepArgvBuilder>> = {
   'bootstrap-env': () => [],
-  'configure-automation': buildConfigureAutomationArgv,
   'configure-i18n': buildConfigureI18nArgv,
   finalize: () => [],
   rename: buildRenameArgv,
   'strip-branding': buildStripBrandingArgv,
   'wire-statusline': buildWireStatuslineArgv,
+  'write-project-config': buildWriteProjectConfigArgv,
 };
 
 /**

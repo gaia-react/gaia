@@ -18,35 +18,11 @@ The gate is a roster, not a single agent. `bash .gaia/scripts/resolve-audit-memb
 
 ## Marker-first: check before you audit
 
-The hook requires a **clearance to exist** for each dispatched member's own content, not that you personally run the audit. `code-audit-frontend`'s clearance comes from one of two producers: CI (`code-review-audit.yml` stamps the `GAIA-Audit` status itself) or the local `code-audit-frontend` agent (writes `.gaia/local/audit/<frontend-digest>.ok` through the one shared clearance writer, stamps a `GAIA-Audit:` trailer, and pushes the stamp commit only when the stamp created one). On an already-pushed HEAD the stamp makes no commit at all. In local mode a clean member pass never posts the `GAIA-Audit` status itself; the orchestrator posts it last, after every dispatched member holds a marker and every finding is disposed (see [[#3. Marker handshake]]). Which producer runs is a **per-author mode**, `ci` or `local`, resolved by the shared helper both sides call identically:
+The hook requires a **clearance to exist** for each dispatched member's own content, not that you personally run the audit. The producer is always local: each dispatched `code-audit-*` agent writes `.gaia/local/audit/<digest>.<member>.ok` through the one shared clearance writer, stamps a `GAIA-Audit:` trailer, and pushes the stamp commit only when the stamp created one. On an already-pushed HEAD the stamp makes no commit at all. A clean member pass never posts the `GAIA-Audit` status itself; the orchestrator posts it last, after every dispatched member holds a marker and every finding is disposed (see [[#3. Marker handshake]]). No CI workflow audits a pull request, so no CI stamp is awaited.
 
-```bash
-eval "$(
-  PR_IS_FORK="$(gh pr view <N> --json isCrossRepository --jq .isCrossRepository)" \
-  bash .gaia/scripts/read-audit-ci-config.sh --resolve-author "$(gh pr view <N> --json author --jq .author.login)"
-)"
-# resolved_mode (ci|local) and should_run (true|false) are now in scope
-```
+The audit is local for every author. A **fork** pull request is the one case it does not run for: a local audit would execute the fork branch's own audit machinery under the maintainer's full local credentials, so a cross-repository PR is refused rather than audited.
 
-The `gh` read for the fork flag lives here, on the caller's own path, deliberately: the resolver performs no `gh` call of its own, which keeps the resolved mode independent of API reachability and of the caller's authority. CI supplies the same flag from `${{ github.event.pull_request.head.repo.fork }}`, no `gh` call needed there either. Simplifying this by moving the read into the script would reintroduce exactly the dependency this design deletes.
-
-CI and the local path read the same `resolved_mode`, so they never disagree about who audits. `default_mode` is `local`, and the resolver's built-in fallback (no config file present at all) agrees, so an unconfigured repo resolves the same `local` as one that ships `default_mode: local` explicitly. A **fork** pull request resolves to `ci` regardless of `default_mode` or any `audit_authors` pin, ahead of every other precedence rule: a local audit would run the fork branch's own audit machinery under the maintainer's full local credentials, where CI runs it on a sandboxed runner with a scoped token. Required-check confirmation runs whenever the resolution is `local` and is **advisory only**: it reports whether `GAIA-Audit` is registered as a required check under either branch-protection model (classic branch protection, then a repository ruleset), names what it tried on stderr when it can't tell, and never changes the resolved mode.
-
-The mode decides who produces the **default member's** signal, CI or a local run; it says nothing about which Code Audit Team members are owed a signal at all, that is the roster's call (see "Who audits" above). Under the one-producer invariant, if CI cannot clear every dispatched member it stands down **entirely** and the local producer owns the whole audit, rather than each producer covering part of the roster. That invariant holds under `resolved_mode=local`, the default. It does not hold under the fork path: a fork PR resolves to `ci`, and if its diff also dispatches a member CI cannot run, the PR reaches no complete producer and waits for a maintainer to handle by hand, rare in practice (see [[Code Audit Team]]). The mode lives in `.gaia/audit-ci.yml`, a team `default_mode` plus per-developer `audit_authors` overrides and a sticky `override_label` that forces `ci`; it is per-author and never `off`. The audit has no `automation.json` entry, so don't look for one. Resolve the mode first:
-
-- `resolved_mode == ci` with the workflow present, or the override label set → **wait for CI's `GAIA-Audit` success** (the check states below).
-- `resolved_mode == local`, or the workflow absent → **run the local agent** as the producer; on a clean pass it writes the marker and stamps the trailer (pushing the stamp commit only when the stamp created one), then completes its own post-stamp bookkeeping (for some members, a ledger cleanup) without posting a status. The orchestrator posts the `GAIA-Audit` success status last, once every dispatched member holds a marker and every finding is disposed, so the github.com button clears (see [[#3. Marker handshake]]).
-
-For the `ci` branch, **start with the cheapest deterministic signal: the workflow file:**
-
-```bash
-test -f .github/workflows/code-review-audit.yml && echo present || echo absent
-git rev-parse HEAD   # the SHA the marker must match
-```
-
-`test -f .github/workflows/code-review-audit.yml`: **present** → the CI audit is configured (it installs only via `/setup-gaia`); trust / wait for the `GAIA-Audit` marker. **Absent** → the CI audit is not set up; run the local `code-audit-frontend` agent. The `GAIA-Audit` check state stays authoritative for the final go/no-go (it handles secret-rotated and `gate_label` edge cases where the file is present but no marker lands).
-
-When the file is **present**, consult the PR's check state:
+Start with the cheapest deterministic signal, the PR's check state:
 
 ```bash
 gh pr checks <N> | grep GAIA-Audit   # what state the audit is in, if any
@@ -54,21 +30,12 @@ gh pr checks <N> | grep GAIA-Audit   # what state the audit is in, if any
 
 Read the whole output before narrowing to that row: the rows this grep discards answer a question the pre-dispatch verification asks anyway (see [[#Before the first dispatch: verify your own work]]), and discarding them means finding a red check after a round has been spent rather than before it. One note if this call is ever restructured to branch on its result: `gh pr checks` exits non-zero when a check fails, and piping it into `grep` swallows that status, so a version that tests the exit code has to capture the output first and test `$?` on the `gh` invocation itself, not on the tail of a pipeline.
 
-| `gh pr checks` result            | Meaning                             | Action                                                    |
-| -------------------------------- | ----------------------------------- | --------------------------------------------------------- |
-| `GAIA-Audit … pass`              | marker present for HEAD             | skip to **step 4 (merge)**                                |
-| `GAIA-Audit … pending`           | CI is enabled and running the audit | wait for it to finish, then merge; a conflict ends the wait, see [[#Conflict found mid-wait]] |
-| no `GAIA-Audit` row, or it fails | CI is not auditing this PR          | run the local agent (**step 1**), mandatory, not optional |
+| `gh pr checks` result            | Meaning                                  | Action                                                    |
+| -------------------------------- | ---------------------------------------- | --------------------------------------------------------- |
+| `GAIA-Audit … pass`              | a success is already posted for HEAD     | skip to **step 4 (merge)**                                |
+| no `GAIA-Audit` row, or it fails | no audit has cleared this HEAD           | run the local agents (**step 1**), mandatory, not optional |
 
-The third row covers cases where the workflow file is present but CI is not stamping: Actions disabled, the workflow inactive, or a `gate_label` in `.gaia/audit-ci.yml` this PR lacks. To tell "CI is off" apart from "CI just hasn't registered the check yet," confirm the workflow is live before deciding to wait:
-
-```bash
-gh api repos/{owner}/{repo}/actions/workflows \
-  --jq '.workflows[] | select(.path | endswith("code-review-audit.yml")) | .state'   # active → CI will stamp; wait
-gh api repos/{owner}/{repo}/actions/permissions --jq .enabled                          # false → CI cannot run; go local
-```
-
-Spawning the local agent when CI has already stamped the marker is redundant; skipping it when CI will never stamp leaves the merge permanently blocked. The exception is a PR whose entire diff is out of audit scope: the hook's out-of-scope bypass (see step 3) clears those with no marker at all, so no local run is needed even when CI never stamps.
+The exception is a PR whose entire diff is out of audit scope: the hook's out-of-scope bypass (see step 3) clears those with no marker at all, so no local run is needed.
 
 ## Four-step protocol
 

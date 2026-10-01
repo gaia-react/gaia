@@ -10,9 +10,8 @@
 #   every round is fixed or recorded, passing any one current member's own
 #   marker path. Posts a GAIA-Audit commit status of state=success on HEAD, but
 #   only once EVERY member dispatched against HEAD's diff has cleared, so the
-#   same server-side gate the CI path satisfies is satisfied here too, letting
-#   the github.com button and the per-author resolver's required-check
-#   verification clear. The passed marker file is a literal precondition
+#   server-side required-check gate is satisfied, letting the github.com
+#   button and the required-check verification clear. The passed marker file is a literal precondition
 #   for the call; the member-aware gate below is the precondition for the
 #   POST itself.
 #
@@ -24,8 +23,8 @@
 #   merge hook honors a refusal over any same-digest earned marker, but
 #   GitHub's auto-merge merges on the required status alone and never runs that
 #   hook, so without a compensating post a refusal written after a success
-#   status already landed for this head (the orchestrator's own earlier post,
-#   or CI's) leaves that success standing. The writer making this call itself
+#   status already landed for this head (the orchestrator's own earlier post)
+#   leaves that success standing. The writer making this call itself
 #   is what makes the signal a mechanism rather than a step anyone has to
 #   remember.
 #
@@ -119,9 +118,8 @@
 #   - The success description "<version> <frontend-digest> <tree-sha>" (three
 #     positional fields; field 2 is the digest) matches what every
 #     state-aware GAIA-Audit reader accepts as cleared, and state=success
-#     distinguishes it from the CI local-mode stand-down's pending sentinel.
-#     The refusal description carries neither shape, for the same reason that
-#     sentinel does not.
+#     distinguishes it from a pending status.
+#     The refusal description carries neither shape, for the same reason.
 
 set -euo pipefail
 
@@ -213,7 +211,7 @@ fi
 # path. GitHub's auto-merge consults the required GAIA-Audit status alone and
 # never reaches the hook that honors refusal precedence, so a refusal written
 # after a success status already landed for this head (the orchestrator's own
-# earlier post, or CI's) would leave that success standing and the pull
+# earlier post) would leave that success standing and the pull
 # request merging over a live refusal. Posting failure for the same head
 # retracts it; the latest status for a context wins, and a later success post
 # once the orchestrator's own preconditions are met again overwrites this in
@@ -310,7 +308,7 @@ fi
 # The sha branch protection checks is the PR head on the REMOTE, not local HEAD.
 # On the empty-commit stamp path local HEAD is an un-pushed commit origin has
 # never seen, so a status posted there 422s and never lands (gaia-react/gaia#726). Target the
-# pushed PR head instead (mirrors CI, which posts on pull_request.head.sha).
+# pushed PR head instead (the same sha a pull_request event reports as head.sha).
 #
 # `gh` resolves BOTH the repository and the current branch from its working
 # directory, so it runs anchored on $repo_root. Be precise about what that
@@ -437,8 +435,8 @@ fi
 
 # The chore(deps) waiver, mirroring audit-stamp-trailer.sh's: a dep-bump pull
 # request whose recorded file list is confined to a dependency manifest waives
-# code-audit-frontend, through the same predicate the merge hook and CI
-# already read, so a co-dispatched member's earned marker completes the
+# code-audit-frontend, through the same predicate the merge hook
+# already reads, so a co-dispatched member's earned marker completes the
 # handshake. It waives the missing frontend marker only and sits after the
 # loop's refusal read, so a frontend refusal stays pending under a dep-bump
 # title. Fail-closed: no pull request, an unreadable title, an empty or
@@ -501,7 +499,7 @@ fi
 #
 # The refusal description deliberately does NOT carry that cleared shape (its
 # field 1 is a fixed word that can never be a version, field 2 a member name
-# that can never be a 64-hex digest), mirroring the CI stand-down's sentinel:
+# that can never be a 64-hex digest), so it cannot pass for a cleared status:
 # defense in depth behind the state-aware readers, which already reject any
 # non-success state. It names the refusing member and the exact content digest,
 # which is what an operator needs to find the artifact on disk.

@@ -37,7 +37,7 @@ setup() {
   run audit_path_is_global_rule ".claude/hooks/lib/audit-selfheal-paths.sh"
   [ "$status" -ne 0 ]
 
-  run audit_path_is_global_rule ".github/workflows/code-review-audit.yml"
+  run audit_path_is_global_rule ".github/audit/resolve-check-base.sh"
   [ "$status" -ne 0 ]
 
   run audit_path_is_global_rule ".gaia/scripts/audit-write-findings.sh"

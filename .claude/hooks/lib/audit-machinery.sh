@@ -45,8 +45,6 @@ AUDIT_MACHINERY_PATHS="$(cat <<'EOF'
 .gaia/scripts/link-worktree.sh
 .gaia/scripts/read-audit-ci-config.sh
 .github/audit/**
-.github/workflows/code-review-audit.yml
-.gaia/cli/templates/workflows/code-review-audit.yml.tmpl
 .claude/agents/code-audit-frontend.md
 # gaia:maintainer-only:start
 .claude/agents/code-audit-maintainer-shell.md

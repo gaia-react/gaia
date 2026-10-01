@@ -76,22 +76,12 @@
 #     such files. Arming unconditionally would demand a rewrite of every one of
 #     them with no defect behind any.
 #
-#   `.github/workflows/`, the composite actions under `.github/actions/`, and
-#     the adopter workflow templates under .gaia/cli/src/automation/templates/workflows/ --
+#   `.github/workflows/` and the composite actions under `.github/actions/` --
 #     `run:` bodies only, armed BY DEFAULT. GitHub Actions runs a step body as
 #     `bash -e {0}` (and `bash -eo pipefail {0}` under an explicit
 #     `shell: bash`), so errexit is on whether or not the body says so, which is
 #     precisely why both shipped instances were live. A `set +e` inside the body
 #     still disarms from that point.
-#
-# The templates render into an ADOPTER's CI, where a status read the author
-# expected to run is skipped on a machine neither this repo's review nor the
-# adopter's ever watches. That is this class one distribution hop further out,
-# and it is the same reason the sibling run-interpolation gate scans them.
-#
-# `.gaia/cli/templates/workflows/` is a build artifact copied from `src/` by
-# `bundle:adopter` and is deliberately NOT scanned, so no hit is reported twice
-# and no report names a file the repair must not hand-edit.
 #
 #   tracked `*.bats` -- its own arm, armed BY DEFAULT, because bats runs every
 #     test body under errexit while a suite file carries no `set -e` of its own.
@@ -397,7 +387,7 @@ function walk(line,   n, i, c, j, ch, delim, prev) {
     # skips itself. That is inert in the one direction nobody notices: every line
     # of a YAML `run:` body carries indentation, and that surface is the one
     # armed by DEFAULT, so the exclusion was dead across every workflow,
-    # composite action, and adopter template, plus any shell inside a function or
+    # or composite action, plus any shell inside a function or
     # a loop.
     if (W_depth == 0 && W_q == "" && !W_tick) {
       if (c == " " || c == "\t") {
@@ -951,16 +941,16 @@ BEGIN { armed = armed_init; gaia_scan_reset(); reset_state() }
 END { check_desync("the file") }
 '
 
-# scan_yaml: the workflow / composite-action / template half. The `run:` body is
+# scan_yaml: the workflow / composite-action half. The `run:` body is
 # located structurally rather than by scanning the whole file, because the shape
 # is only shell inside a body; the surrounding YAML is not shell at all. The
-# locator is the one the sibling lint-workflow-run-interpolation.sh uses,
-# including its mustache-section handling, for the same reasons its comments
-# give. Errexit starts ON for every body, per `bash -e {0}`.
+# locator is the one the sibling lint-workflow-run-interpolation.sh uses, for
+# the same reasons its comments give. Errexit starts ON for every body, per
+# `bash -e {0}`.
 readonly YAML_AWK='
-# yfeed: the run:-body feed point. Three call sites below reach it, so the
+# yfeed: the run:-body feed point. The call sites below reach it, so the
 # discriminator hand-off lives here rather than being repeated at each of them
-# and forgotten at the fourth one somebody adds.
+# and forgotten at the next one somebody adds.
 function yfeed(line, n) {
   gaia_scan_feed(line, is_bats)
   pragma_offsurface(n)
@@ -971,18 +961,6 @@ BEGIN { inrun = 0 }
   if (inrun) {
     # A blank line belongs to the block scalar rather than ending it.
     if ($0 ~ /^[[:space:]]*$/) { yfeed($0, FNR); next }
-    # A mustache SECTION tag sits at column 1 in the adopter templates and
-    # renders as a blank line, so reading it as a dedent would end the block and
-    # leave the rest of the body unscanned while this gate still printed clean.
-    # A partial include is deliberately not given the same treatment: it splices
-    # a whole document region, so latching across one would carry `inrun` into
-    # the mappings that follow it.
-    tag = $0
-    sub(/^[[:space:]]+/, "", tag)
-    if (substr(tag, 1, 2) == "{{") {
-      c = substr(tag, 3, 1)
-      if (c == "#" || c == "^" || c == "/") { yfeed($0, FNR); next }
-    }
     col = match($0, /[^ ]/)
     if (col > runcol) { yfeed($0, FNR); next }
     inrun = 0

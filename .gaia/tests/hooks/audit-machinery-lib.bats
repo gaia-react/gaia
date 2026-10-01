@@ -44,10 +44,6 @@ setup() {
 .claude/hooks/post-audit-status.sh
 .claude/hooks/audit-stamp-trailer.sh
 .github/audit/resolve-audit-base.sh
-.github/audit/audit-success-present.sh
-.github/audit/gate-pending-members.sh
-.github/workflows/code-review-audit.yml
-.gaia/cli/templates/workflows/code-review-audit.yml.tmpl
 .claude/agents/code-audit-frontend.md
 .claude/agents/code-audit-maintainer-shell.md
 .claude/agents/code-audit-maintainer-node.md

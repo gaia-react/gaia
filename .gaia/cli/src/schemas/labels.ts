@@ -25,7 +25,7 @@ export const LABEL_AXES = [
   'blocked',
 ] as const;
 
-export const LABEL_FEATURES = ['tech-debt', 'gaia-ci', 'forensics'] as const;
+export const LABEL_FEATURES = ['tech-debt', 'dependabot', 'forensics'] as const;
 
 export const LABEL_AUDIENCES = ['adopter', 'maintainer'] as const;
 

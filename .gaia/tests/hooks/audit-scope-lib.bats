@@ -275,15 +275,6 @@ last_definition() {
   true
 }
 
-@test "CI's has_source gate is not replaced by a call into the classifier module" {
-  wf="$REPO_ROOT/.github/workflows/code-review-audit.yml"
-  [ -f "$wf" ]
-  grep -qF "has_source" "$wf" || return 1
-  grep -qF "audit-scope.sh" "$wf" && return 1
-  grep -qF "audit_out_of_scope_allowlisted" "$wf" && return 1
-  true
-}
-
 @test "no routing decision consults a hardcoded auditable-base literal, and the symbol is gone" {
   body="$(extract_function "$SCOPE_LIB" _audit_scope_owner_of)"
   [ -n "$body" ] || return 1
@@ -375,10 +366,10 @@ golden_setup() {
   # self-modification bypass used to clear, which the table pins as a deny.
   mkdir -p "$GREPO/.gaia/cli/templates/workflows"
   printf 'name: Code Review Audit\n' \
-    > "$GREPO/.gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
+    > "$GREPO/.gaia/cli/templates/workflows/fixture-audit.yml.tmpl"
   seed_audit_roster "$GREPO"
   git -C "$GREPO" add .gaia/VERSION .gaia/audit-ci.yml README.md \
-    .gaia/cli/templates/workflows/code-review-audit.yml.tmpl
+    .gaia/cli/templates/workflows/fixture-audit.yml.tmpl
   git -C "$GREPO" commit --quiet -m "init"
   git -C "$GREPO" checkout --quiet -b feature
 
@@ -509,7 +500,7 @@ golden_run_hook() {
   # The template on the base and the installed workflow carry identical bytes,
   # which is exactly what the removed self-modification bypass cleared on.
   # The workflow is in scope, so with no marker the merge denies.
-  golden_commit ".github/workflows/code-review-audit.yml" "name: Code Review Audit"
+  golden_commit ".github/workflows/fixture-audit.yml" "name: Code Review Audit"
   golden_run_hook
   golden_teardown
   [ "$status" -eq 0 ]
@@ -563,19 +554,11 @@ golden_run_hook() {
 # SEC-007: every machinery path is claimed by the committed .gaia/audit-ci.yml
 # roster, the only roster the module loads. Bats suites are release-excluded,
 # so this only ever runs where the maintainer members exist.
-#
-# One named exception: `.gaia/cli/templates/workflows/code-review-audit.yml.tmpl`
-# is machinery (its bytes must still rotate every member's digest) but
-# deliberately owns no reviewer. It is a pure byte-identical copy of the
-# live .github/workflows/code-review-audit.yml; a reviewer reading it decides
-# nothing the live workflow's review did not already decide. The drift guard covering every workflow template
-# under `.gaia/cli/templates/workflows/`, partials included, is the pin that
-# keeps this carve-out honest: it fails if any of them drifts from its source.
 # ---------------------------------------------------------------------------
 
 # Assert audit_owner_for_path returns a non-empty owner for every machinery
 # path in $AUDIT_MACHINERY_PATHS, against the roster the caller already
-# init'd, except the one named ownerless-by-design artifact above. Real files
+# init'd. Real files
 # under a `/**` prefix are enumerated from $REPO_ROOT. Ends in the pass/fail
 # check, so it is safe as a @test's final command.
 assert_every_machinery_path_owned() {
@@ -601,10 +584,6 @@ assert_every_machinery_path_owned() {
           fi
         done < <(git -C "$REPO_ROOT" ls-files -z "$prefix")
         ;;
-      ".gaia/cli/templates/workflows/code-review-audit.yml.tmpl")
-        # Named exactly, not a relaxed `*)` arm: every OTHER machinery path
-        # still fails closed on a gap. See the SEC-007 header above.
-        ;;
       *)
         owner="$(audit_owner_for_path "$entry")"
         if [ -z "$owner" ]; then
@@ -619,7 +598,7 @@ EOF
   [ "$fail" -eq 0 ]
 }
 
-@test "SEC-007: audit_owner_for_path returns a non-empty member for every machinery path (one named carve-out)" {
+@test "SEC-007: audit_owner_for_path returns a non-empty member for every machinery path" {
   # shellcheck source=/dev/null
   . "$SCOPE_LIB"
   # shellcheck source=/dev/null

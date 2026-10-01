@@ -119,13 +119,6 @@ jobs:
               # explicit record that this gate re-runs on a change to itself,
               # which survives any later narrowing of that glob.
               - '.github/workflows/shell-lint.yml'
-              # The run-interpolation, status-read and sigpipe-reader guards
-              # also scan the adopter workflow templates. Those render into an
-              # adopter's own CI, so a
-              # template-only PR resolving `shell=false` would green the check
-              # having left unscanned the one surface whose defects this repo's
-              # review is the last place able to see.
-              - '.gaia/cli/src/automation/templates/workflows/**'
               # The path-quoting guard additionally scans the fenced blocks of
               # every tracked markdown file, so its scan surface reaches a file
               # type nothing above matches. Without this line a PR whose only

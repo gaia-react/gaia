@@ -8,7 +8,7 @@ import {mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {argvFromStepArgs, run} from './resume.js';
-import {writeState} from './util/state.js';
+import {STEP_ORDER, writeState} from './util/state.js';
 
 type Sandbox = {
   cleanup: () => void;
@@ -87,26 +87,43 @@ describe('argvFromStepArgs', () => {
     ]);
   });
 
-  test('reconstructs configure-automation argv', () => {
-    expect(argvFromStepArgs('configure-automation', {wiki: 'ci'})).toEqual([
-      '--wiki',
-      'ci',
-    ]);
-    expect(argvFromStepArgs('configure-automation', {})).toBeNull();
+  test('reconstructs write-project-config argv', () => {
     expect(
-      argvFromStepArgs('configure-automation', {wiki: 'bogus'})
+      argvFromStepArgs('write-project-config', {sandbox_recommended: true})
+    ).toEqual(['--sandbox-recommended', 'true']);
+    expect(
+      argvFromStepArgs('write-project-config', {
+        isolation_policy: 'always-worktree',
+        sandbox_recommended: false,
+      })
+    ).toEqual([
+      '--sandbox-recommended',
+      'false',
+      '--isolation-policy',
+      'always-worktree',
+    ]);
+  });
+
+  test('write-project-config argv is null when its saved args cannot replay', () => {
+    expect(argvFromStepArgs('write-project-config', {})).toBeNull();
+    expect(argvFromStepArgs('write-project-config', undefined)).toBeNull();
+    expect(
+      argvFromStepArgs('write-project-config', {sandbox_recommended: 'true'})
+    ).toBeNull();
+    expect(
+      argvFromStepArgs('write-project-config', {
+        isolation_policy: 7,
+        sandbox_recommended: true,
+      })
     ).toBeNull();
   });
 
-  test('configure-automation argv replays only wiki, ignoring legacy update_deps/pnpm_audit/stale_branches', () => {
-    expect(
-      argvFromStepArgs('configure-automation', {
-        pnpm_audit: 'ci',
-        stale_branches: 'off',
-        update_deps: 'ci',
-        wiki: 'ci',
-      })
-    ).toEqual(['--wiki', 'ci']);
+  test('STEP_ORDER keeps seven steps with write-project-config at index 5', () => {
+    expect(STEP_ORDER).toHaveLength(7);
+    expect(STEP_ORDER.indexOf('write-project-config')).toBe(5);
+    expect(STEP_ORDER as readonly string[]).not.toContain(
+      ['configure', 'automation'].join('-')
+    );
   });
 
   test('finalize requires no args', () => {
@@ -137,16 +154,11 @@ describe('init resume', () => {
     writeState(sandbox.root, {
       completed_steps: ['strip-branding', 'configure-i18n'],
       step_args: {
-        'configure-automation': {
-          pnpm_audit: 'ci',
-          stale_branches: 'ci',
-          update_deps: 'ci',
-          wiki: 'ci',
-        },
         'configure-i18n': {locales: ['en'], strip: false},
         rename: {kebab: 'hello', title: 'Hello'},
         'strip-branding': {title: 'Hello'},
         'wire-statusline': {mode: 'skip'},
+        'write-project-config': {sandbox_recommended: true},
       },
     });
 
@@ -161,12 +173,12 @@ describe('init resume', () => {
     const exit = await run(['--from-step', '3'], {
       cwd: sandbox.root,
       runners: {
-        'configure-automation': stub('configure-automation'),
         'configure-i18n': stub('configure-i18n'),
         finalize: stub('finalize'),
         rename: stub('rename'),
         'strip-branding': stub('strip-branding'),
         'wire-statusline': stub('wire-statusline'),
+        'write-project-config': stub('write-project-config'),
       },
     });
     expect(exit).toBe(0);
@@ -176,7 +188,7 @@ describe('init resume', () => {
     expect(calls.map((c) => c.step)).toEqual([
       'rename',
       'wire-statusline',
-      'configure-automation',
+      'write-project-config',
       'finalize',
     ]);
     expect(calls[0]?.argv).toEqual(['--title', 'Hello', '--kebab', 'hello']);
@@ -187,16 +199,11 @@ describe('init resume', () => {
     writeState(sandbox.root, {
       completed_steps: ['strip-branding'],
       step_args: {
-        'configure-automation': {
-          pnpm_audit: 'ci',
-          stale_branches: 'ci',
-          update_deps: 'ci',
-          wiki: 'ci',
-        },
         'configure-i18n': {locales: ['en'], strip: true},
         rename: {kebab: 'x', title: 'X'},
         'strip-branding': {title: 'X'},
         'wire-statusline': {mode: 'skip'},
+        'write-project-config': {sandbox_recommended: false},
       },
     });
 
@@ -211,18 +218,18 @@ describe('init resume', () => {
     const exit = await run([], {
       cwd: sandbox.root,
       runners: {
-        'configure-automation': stub('configure-automation'),
         'configure-i18n': stub('configure-i18n'),
         finalize: stub('finalize'),
         rename: stub('rename'),
         'strip-branding': stub('strip-branding'),
         'wire-statusline': stub('wire-statusline'),
+        'write-project-config': stub('write-project-config'),
       },
     });
     expect(exit).toBe(0);
     expect(ran).not.toContain('strip-branding');
     expect(ran).toContain('configure-i18n');
-    expect(ran).toContain('configure-automation');
+    expect(ran).toContain('write-project-config');
     expect(ran).toContain('finalize');
   });
 
@@ -256,6 +263,53 @@ describe('init resume', () => {
     const exit = await run(['--from-step', '99'], {cwd: sandbox.root});
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('--from-step must be');
+  });
+
+  test('--from-step 8 is refused because only seven steps exist', async () => {
+    sandbox = setupSandbox();
+    const exit = await run(['--from-step', '8'], {cwd: sandbox.root});
+    expect(exit).toBe(1);
+    expect(stdio.errors.join('')).toContain('--from-step must be');
+  });
+
+  test('--from-step 6 replays write-project-config from its saved args', async () => {
+    sandbox = setupSandbox();
+    writeState(sandbox.root, {
+      completed_steps: [],
+      step_args: {
+        'write-project-config': {
+          isolation_policy: 'prefer-branch',
+          sandbox_recommended: true,
+        },
+      },
+    });
+
+    const calls: {argv: readonly string[]; step: string}[] = [];
+
+    const stub = (step: string) => (argv: readonly string[]) => {
+      calls.push({argv, step});
+
+      return 0;
+    };
+
+    const exit = await run(['--from-step', '6'], {
+      cwd: sandbox.root,
+      runners: {
+        finalize: stub('finalize'),
+        'write-project-config': stub('write-project-config'),
+      },
+    });
+    expect(exit).toBe(0);
+    expect(calls.map((call) => call.step)).toEqual([
+      'write-project-config',
+      'finalize',
+    ]);
+    expect(calls[0]?.argv).toEqual([
+      '--sandbox-recommended',
+      'true',
+      '--isolation-policy',
+      'prefer-branch',
+    ]);
   });
 
   test('--from-step 0 exits 1', async () => {

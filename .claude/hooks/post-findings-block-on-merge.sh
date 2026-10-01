@@ -59,12 +59,9 @@ case "${GAIA_GH_MERGE_REF:-}" in
 esac
 [ -n "$PR" ] || exit 0
 
-# Resolve the audit mode via the shared resolver: the SAME resolved_mode CI
-# reads for this author, so the two producers can never disagree about who
-# posts. Proceed ONLY when resolved_mode is exactly `local`; any other value,
-# or any resolution failure/ambiguity, means posting here could clobber CI's
-# own findings block, so this exits without posting.
-is_fork="$(gh pr view "$PR" --json isCrossRepository --jq .isCrossRepository 2>/dev/null || true)"
+# Ask the shared resolver who audits this author's PR. Every audit is local, so
+# it answers `local`; the equality below stays as a defensive check, and any
+# other value or any resolution failure exits without posting.
 author="$(gh pr view "$PR" --json author --jq .author.login 2>/dev/null || true)"
 [ -n "$author" ] || exit 0
 
@@ -73,7 +70,7 @@ _gaia_scripts="${_va_lib:+$_va_lib/../../../.gaia/scripts}"
 [ -n "$_gaia_scripts" ] || exit 0
 
 resolved_mode=""
-eval "$(PR_IS_FORK="$is_fork" bash "$_gaia_scripts/read-audit-ci-config.sh" --resolve-author "$author" 2>/dev/null)" || true
+eval "$(bash "$_gaia_scripts/read-audit-ci-config.sh" --resolve-author "$author" 2>/dev/null)" || true
 [ "$resolved_mode" = "local" ] || exit 0
 
 # Best-effort: post-findings-block.sh always exits 0 and declines cleanly

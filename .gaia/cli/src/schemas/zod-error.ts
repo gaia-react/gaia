@@ -3,8 +3,7 @@ import type {z} from 'zod';
 /**
  * Render a `ZodError` into a single-line, human-readable summary prefixed
  * with the offending file path. Shared by the schema `read*` helpers
- * (`automation-config`, `automation-state`, `local-automation`,
- * `decline-ledger`) so the malformed-file message format stays consistent.
+ * (`project-config`, `decline-ledger`) so the malformed-file message format stays consistent.
  */
 export const summarizeZodError = (
   filePath: string,

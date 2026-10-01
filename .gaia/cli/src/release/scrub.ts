@@ -39,7 +39,7 @@
  */
 import {load as parseYaml} from 'js-yaml';
 import {z} from 'zod';
-import {existsSync, readFileSync, statSync} from 'node:fs';
+import {readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
@@ -78,7 +78,6 @@ const UNEXPECTED_EXIT = 2;
 const DEFAULT_CONFIG_PATH = '.gaia/release-scrub.yml';
 const RELEASE_EXCLUDE_PATH = '.gaia/release-exclude';
 const WORKFLOWS_DIR = '.github/workflows';
-const SHIPPED_WORKFLOW_TEMPLATES_DIR = '.gaia/cli/templates/workflows';
 
 // Config schema
 
@@ -1034,12 +1033,9 @@ const runDerivedWikilinkCheck = ({
  * `.github/workflows/` is the one distribution-boundary directory where some
  * files ship and some do not, so a curated path alternation
  * cannot blanket it (most workflows ship) and cannot enumerate every excluded
- * one without drifting. This set is derived instead: an excluded workflow whose
- * on-demand render template is absent from `.gaia/cli/templates/workflows/` is
- * never installable on an adopter, so a shipped-surface reference to it is a
- * dangling pointer. `code-review-audit.yml` is excluded from the tarball yet
- * DOES have a `.tmpl` (installed on demand by `/setup-gaia`), so references to
- * it are legitimate and it is intentionally kept out of this set.
+ * one without drifting. This set is derived instead: no adopter installs a
+ * workflow from a template, so every excluded workflow is never present on an
+ * adopter and a shipped-surface reference to it is a dangling pointer.
  *
  * Reading the exclude list from `cwd` mirrors `buildExcludedSlugSet`: the file
  * excludes itself, so it never reaches the staging tree the other checks scan.
@@ -1052,15 +1048,7 @@ export const buildNeverPresentWorkflowSet = (cwd: string): Set<string> => {
 
   for (const line of lines) {
     if (line.startsWith(`${WORKFLOWS_DIR}/`) && line.endsWith('.yml')) {
-      const templatePath = path.join(
-        cwd,
-        SHIPPED_WORKFLOW_TEMPLATES_DIR,
-        `${path.basename(line)}.tmpl`
-      );
-
-      if (!existsSync(templatePath)) {
-        paths.add(line);
-      }
+      paths.add(line);
     }
   }
 

@@ -133,7 +133,9 @@ const axisSections = (entries: readonly LabelEntry[]): string[] =>
 
 /** The generated body, exclusive of the markers themselves. */
 export const renderGeneratedSpan = (registry: LabelRegistry): string => {
-  const documented = registry.labels.filter((entry) => !entry.blocked);
+  const documented = registry.labels.filter(
+    (entry) => !entry.blocked && !entry.deprecated
+  );
   const adopter = documented.filter((entry) => entry.audience === 'adopter');
   const maintainer = documented.filter(
     (entry) => entry.audience === 'maintainer'

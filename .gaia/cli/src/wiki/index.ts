@@ -10,7 +10,6 @@ import {lookupOwn} from '../util/argv.js';
 import {run as runChain} from './chain.js';
 import {run as runCommitClassify} from './commit-classify.js';
 import {run as runDeadPaths} from './dead-paths.js';
-import {run as runDiffSize} from './diff-size.js';
 import {run as runEmptySections} from './empty-sections.js';
 import {run as runFrontmatter} from './frontmatter.js';
 import {run as runLogPrepend} from './log-prepend.js';
@@ -36,8 +35,6 @@ const HELP_TEXT = `Usage: gaia wiki <subcommand> [args]
   dead-paths [--json]                         Backticked repo paths in wiki/ that don't exist.
   frontmatter [--json]                        Pages missing required frontmatter (type, status).
   empty-sections [--json]                     Headings with no content before the next heading.
-  diff-size --threshold-pct N [--base <ref>] [--json]
-                                              Gate auto-merge on wiki byte-delta vs base.
   sync land [--branch-aware]                  Branch-aware landing of staged wiki changes.
   chain <begin|commit|finish>                 One-branch / one-PR orchestration of the
                                               full /gaia-wiki chain.
@@ -84,7 +81,6 @@ const SUBCOMMAND_HANDLERS: Readonly<
   chain: runChain,
   'commit-classify': runCommitClassify,
   'dead-paths': runDeadPaths,
-  'diff-size': runDiffSize,
   'empty-sections': runEmptySections,
   frontmatter: runFrontmatter,
   'log-prepend': runLogPrepend,

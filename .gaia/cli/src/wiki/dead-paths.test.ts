@@ -171,8 +171,8 @@ describe('wiki dead-paths', () => {
 
   test('ignores adopter-owned sentinels absent from the GAIA source repo', () => {
     sandbox.writeFile(
-      'wiki/concepts/Automation.md',
-      '# Automation\n\nThe policy lives in `.gaia/automation.json`.\n'
+      'wiki/concepts/Project Policy.md',
+      '# Project Policy\n\nThe policy lives in `.gaia/project.json`.\n'
     );
 
     expect(scanWikiPaths(sandbox.root).dead).toEqual([]);
@@ -183,12 +183,12 @@ describe('wiki dead-paths', () => {
     // must still flag. Loosening the `.has()` membership check to a prefix
     // match would suppress it, so this pins the exemption's exactness.
     sandbox.writeFile(
-      'wiki/concepts/Automation.md',
-      '# Automation\n\nSee `.gaia/automation.json` and `.gaia/automation.json.bak`.\n'
+      'wiki/concepts/Project Policy.md',
+      '# Project Policy\n\nSee `.gaia/project.json` and `.gaia/project.json.bak`.\n'
     );
 
     expect(scanWikiPaths(sandbox.root).dead.map((d) => d.path)).toEqual([
-      '.gaia/automation.json.bak',
+      '.gaia/project.json.bak',
     ]);
   });
 

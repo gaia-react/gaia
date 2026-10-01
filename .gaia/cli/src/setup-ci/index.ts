@@ -1,54 +1,31 @@
 /**
- * The Phase B remote-integration surface for GAIA CI. Every primitive
- * the `/setup-gaia` slash command shells out to lives under this
- * namespace: remote detection, admin permission probe,
- * workflow_dispatch verification, and the `setup_complete` flip.
- *
- * Mirrors the shape of `setup/index.ts` and `automation/index.ts`.
+ * The `gaia setup-ci` namespace: the remote-integration and repository-policy
+ * primitives `/setup-gaia` shells out to (remote detection, admin probe,
+ * branch and Dependabot settings, project policy writers).
  */
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {lookupOwn} from '../util/argv.js';
 import {run as runCheckAdmin} from './check-admin.js';
-import {run as runCheckAuditDrift} from './check-audit-drift.js';
-import {run as runCheckDrift} from './check-drift.js';
 import {run as runDetectRemote} from './detect-remote.js';
-import {run as runDismissPersonal} from './dismiss-personal.js';
 import {run as runEnableDeleteBranch} from './enable-delete-branch.js';
 import {run as runEnableDependabotSecurity} from './enable-dependabot-security.js';
-import {run as runFinalize} from './finalize.js';
-import {run as runOptOutTeam} from './opt-out-team.js';
-import {run as runStatus} from './status.js';
-import {run as runVerifyRun} from './verify-run.js';
 import {run as runWarnExistingTools} from './warn-existing-tools.js';
 import {run as runWriteDependabotConfig} from './write-dependabot-config.js';
 import {run as runWriteDependabotPolicy} from './write-dependabot-policy.js';
 import {run as runWriteIsolationPolicy} from './write-isolation-policy.js';
-import {run as runWriteToolMode} from './write-tool-mode.js';
 
 const HELP_TEXT = `Usage: gaia setup-ci <subcommand> [args]
 
-  status [--json]                          Print Phase B configuration status.
-  check-drift [--workflows-dir <p>] [--json]
-                                           Compare rendered workflows vs template render.
-  check-audit-drift [--workflows-dir <p>] [--baseline <p> [--latest <p>]] [--json]
-                                           Compare installed audit workflow vs template
-                                           (2-way), or 3-way classify vs baseline+latest.
   detect-remote [--json]                   Read git remote get-url origin.
   warn-existing-tools [--json]             Detect Dependabot / Renovate configs.
   check-admin --owner <o> --repo <r> [--json]
                                            Probe repo admin permission via gh.
-  dismiss-personal                         Write nudge_dismissed=true (per-machine).
-  opt-out-team                             Write setup_opted_out=true (committed).
   enable-delete-branch --owner <o> --repo <r>
                                            PATCH delete_branch_on_merge=true.
-  verify-run <workflow-file> [--timeout-seconds N] [--json]
-                                           Trigger workflow_dispatch and watch run.
-  finalize                                 Flip setup_complete=true.
-  write-tool-mode <tool> <mode>            Set a tool's mode in .gaia/automation.json.
-  write-isolation-policy <policy>          Set the team's git isolation policy in .gaia/automation.json.
+  write-isolation-policy <policy>          Set the team's git isolation policy in .gaia/project.json.
   write-dependabot-config [--json]         Render or merge the npm security-updates entry into .github/dependabot.yml.
-  write-dependabot-policy <on|off>         Record the Dependabot security-updates opt-in in .gaia/automation.json.
+  write-dependabot-policy <on|off>         Record the Dependabot security-updates opt-in in .gaia/project.json.
   enable-dependabot-security --owner <o> --repo <r> [--json]
                                            Enable and verify Dependabot alerts + security updates via gh.
 `;
@@ -61,21 +38,13 @@ const SUBCOMMAND_HANDLERS: Readonly<
   Partial<Record<string, SubcommandHandler>>
 > = {
   'check-admin': runCheckAdmin,
-  'check-audit-drift': runCheckAuditDrift,
-  'check-drift': runCheckDrift,
   'detect-remote': runDetectRemote,
-  'dismiss-personal': runDismissPersonal,
   'enable-delete-branch': runEnableDeleteBranch,
   'enable-dependabot-security': runEnableDependabotSecurity,
-  finalize: runFinalize,
-  'opt-out-team': runOptOutTeam,
-  status: runStatus,
-  'verify-run': runVerifyRun,
   'warn-existing-tools': runWarnExistingTools,
   'write-dependabot-config': runWriteDependabotConfig,
   'write-dependabot-policy': runWriteDependabotPolicy,
   'write-isolation-policy': runWriteIsolationPolicy,
-  'write-tool-mode': runWriteToolMode,
 };
 
 export const run = async (argv: readonly string[]): Promise<number> => {

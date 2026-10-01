@@ -11,7 +11,6 @@
 
 import {realpathSync} from 'node:fs';
 import {pathToFileURL} from 'node:url';
-import {run as runAutomation} from './automation/index.js';
 import {EXIT_CODES} from './exit.js';
 import {run as runFitness} from './fitness/index.js';
 import {run as runHardenLedger} from './harden/ledger.js';
@@ -37,17 +36,16 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
 
   scaffold component|hook|route|service
   react-perf reduce <raw.json> [--frame-budget-ms N]
-  wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|frontmatter|empty-sections|diff-size|chain|sync land
+  wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|frontmatter|empty-sections|chain|sync land
   fitness render-card [--cols N]
   labels docs|sync
   harden-ledger list|record|is-suppressed|prune|snapshot
   harden-tally
-  automation read-config|cron-decide|render-workflows|install-audit-workflow
   update merge-workspace|merge-audit-ci|merge-region|regen-regions
   update-deps run|decline
-  init strip-branding|configure-i18n|rename|wire-statusline|bootstrap-env|configure-automation|finalize|resume
+  init strip-branding|configure-i18n|rename|wire-statusline|bootstrap-env|write-project-config|finalize|resume
   setup status|mark-step|finalize
-  setup-ci status|check-drift|check-audit-drift|detect-remote|warn-existing-tools|check-admin|dismiss-personal|opt-out-team|enable-delete-branch|verify-run|finalize|write-tool-mode|write-isolation-policy|write-dependabot-config|write-dependabot-policy|enable-dependabot-security
+  setup-ci detect-remote|warn-existing-tools|check-admin|enable-delete-branch|write-isolation-policy|write-dependabot-config|write-dependabot-policy|enable-dependabot-security
   sandbox detect|apply|record|status
   ping --event <init|setup|update> [--field value ...]
   residue-tally [--count-only] [--attribute-only] [--cap N] [--no-cap] [--json]
@@ -68,7 +66,6 @@ const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 const SUBCOMMAND_HANDLERS: Readonly<
   Partial<Record<string, SubcommandHandler>>
 > = {
-  automation: runAutomation,
   fitness: runFitness,
   'harden-ledger': runHardenLedger,
   'harden-tally': runHardenTally,

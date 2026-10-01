@@ -101,7 +101,7 @@ export const STEP_ORDER = [
   'rename',
   'wire-statusline',
   'bootstrap-env',
-  'configure-automation',
+  'write-project-config',
   'finalize',
 ] as const;
 

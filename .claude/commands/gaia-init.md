@@ -52,13 +52,13 @@ Every gate is one of two tiers. The tier is fixed here, do not reclassify by jud
 | CODEOWNERS GitHub handle (HARD-BLOCK only when `gh` can't detect it) | Step 2, Q3 |
 | Project title | Step 2, Q4 |
 | kebab-case slug | Step 2, Q5 |
-| CI intent (Configure-CI decision) | Step 8, Configure CI integrations |
 
-**SAFE-DEFAULT** (reversible, the recommended default is the safe outcome). On non-response in interactive mode: re-ask once; if still no answer, apply the stated default, name it plainly ("Defaulting the maintenance tool to its recommended run mode, you can reconfigure later"), and continue. Do not claim the user is absent.
+**SAFE-DEFAULT** (reversible, the recommended default is the safe outcome). On non-response in interactive mode: re-ask once; if still no answer, apply the stated default, name it plainly ("Defaulting the sandbox recommendation to not recommended, you can reconfigure later"), and continue. Do not claim the user is absent.
 
 | Gate | Default on non-response | Where |
 |---|---|---|
-| Maintenance-tool run mode | `ci` (CI enabled) or `local` (CI declined) | Step 9 |
+| Sandbox recommendation | `false` (don't recommend) | Step 9 |
+| Team git isolation policy | flag omitted (key stays unset) | Step 9 |
 
 ### Free-text identity values are never fabricated
 
@@ -92,9 +92,8 @@ When the user chose Automatic, first detect the project folder name (`basename "
 > | Project title | {title-cased folder name} | Yes, re-run rename |
 > | Slug | {folder name} | Yes, re-run rename |
 > | CODEOWNERS handle | {gh-detected handle when available, else `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder} | Placeholder: one-line edit required. Detected handle: none |
-> | GAIA CI intent | Enabled, activate later via /setup-gaia | Yes, /setup-gaia --reconfigure |
-> | Maintenance tools | Wiki sync in `ci` mode | Yes, reconfigure |
 > | Sandbox recommendation | Not recommended | Yes, reconfigure |
+> | Team git isolation policy | Left unset, `/setup-gaia` asks later | Yes, reconfigure |
 
 Exactly one row per setting. For the CODEOWNERS row, show the gh-detected handle when detection succeeds (it is the user's own authenticated identity, not a guess), otherwise the `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder. **Never** put a guessed or git-config-derived handle there: the only non-placeholder value allowed is the gh-detected login.
 
@@ -106,9 +105,8 @@ Then apply the defaults and proceed without stopping (the user chose Automatic; 
 - CODEOWNERS (Q3): the gh-detected handle when available; otherwise the `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder, flagged as a required Step 11 follow-up. Never a guessed or git-derived handle.
 - Project title (Q4): title-cased folder name.
 - kebab slug (Q5): folder name.
-- CI intent (Step 8): "Yes, I'll enable CI after pushing" (records intent only).
-- Maintenance tools (Step 9): `ci`.
 - Sandbox recommendation (Step 9): not recommended (`false`).
+- Team git isolation policy (Step 9): omitted (the key stays unset).
 
 ## Step 0: Ensure pnpm is available (and new enough)
 
@@ -337,10 +335,10 @@ GAIA bundles project-scoped skills at `.claude/skills/` (`eslint-fixes`, `playwr
 - [React Doctor](https://github.com/millionco/react-doctor): `npx -y react-doctor@latest install --yes`
   Installs the `react-doctor` skill for detected agents (Claude Code included). Scans the project for React-specific issues (47+ rules: security, performance, correctness, architecture). Auto-runs after code edits in a `CLAUDECODE` environment and is invoked by the `code-audit-frontend` agent pre-merge.
 
-  **Then strip React Doctor's bundled extras so GAIA stays the sole controller of when react-doctor runs.** The installer adds five things beyond the Claude Code skill: a standalone GitHub Actions workflow, a commit-hook block, a `doctor` package script, a pinned `react-doctor` devDependency, and a `.agents/skills/react-doctor/` copy of the skill for any other agents it detects (GitHub Copilot, Warp). There is no skill-only install flag, so install (above) then remove them. GAIA already triggers react-doctor two ways it owns, the Claude Code skill (auto-run after edits) and the `code-audit-frontend` agent pre-merge (always at `@latest`), so the bundled trigger points are redundant and they collide with GAIA's husky `pre-commit` hook and GAIA CI. Because GAIA sets `core.hooksPath=.husky/_`, the installer writes its hook into husky's generated (gitignored) stub at `.husky/_/pre-commit`, not GAIA's `.husky/pre-commit`; regenerating the husky stubs wipes it.
+  **Then strip React Doctor's bundled extras so GAIA stays the sole controller of when react-doctor runs.** The installer adds five things beyond the Claude Code skill: a standalone GitHub Actions workflow, a commit-hook block, a `doctor` package script, a pinned `react-doctor` devDependency, and a `.agents/skills/react-doctor/` copy of the skill for any other agents it detects (GitHub Copilot, Warp). There is no skill-only install flag, so install (above) then remove them. GAIA already triggers react-doctor two ways it owns, the Claude Code skill (auto-run after edits) and the `code-audit-frontend` agent pre-merge (always at `@latest`), so the bundled trigger points are redundant and they collide with GAIA's husky `pre-commit` hook and GAIA's own audit gate. Because GAIA sets `core.hooksPath=.husky/_`, the installer writes its hook into husky's generated (gitignored) stub at `.husky/_/pre-commit`, not GAIA's `.husky/pre-commit`; regenerating the husky stubs wipes it.
 
   ```bash
-  # 1. Drop the standalone workflow (GAIA CI is the only CI surface).
+  # 1. Drop the standalone workflow (GAIA ships no CI workflow of its own for it).
   rm -f .github/workflows/react-doctor.yml
   # 2. Remove the non-Claude skill copy. The installer writes .agents/skills/react-doctor/ for
   #    any other agents it detects (Copilot, Warp); GAIA drives react-doctor through the Claude
@@ -422,40 +420,6 @@ After install, `.specify/extensions/.registry` lists the `gaia` extension with a
 
 If any step fails, surface the error verbatim and halt, do not silently continue. The user can re-run the failing command manually and resume `/gaia-init` once spec-kit is in place.
 
-### Configure CI integrations
-
-GAIA CI has two parts: a pre-merge **audit gate** (the `code-audit-frontend` agent run against every PR) and an optional **maintenance job** on a smart cron (wiki sync).
-
-**No `.github/workflows/` files ship in this project.** They are generated and installed on demand by `/setup-gaia` after your first `git push origin main` (Phase B). This step (Phase A) is local-only: it records your CI intent so Step 9 can offer the right maintenance-tool mode, and it sets the local audit baseline. It does not create, move, or push any workflow file, and it touches nothing on GitHub.
-
-(`forensics-triage.yml` is maintainer-only and never ships to or installs on an adopter project. The adopter-side `/gaia-forensics` command files reports to the upstream GAIA repo, which owns the `gaia-forensics` label; nothing about forensics needs configuring here.)
-
-_Non-response: HARD-BLOCK. Re-ask; never auto-decide CI intent on a timeout. Automatic mode: "Yes, I'll enable CI after pushing" (records intent only)._
-
-Use AskUserQuestion (in the user's language; this configuration block stays in English). Include the docs link in the question text so the user can Cmd/Ctrl+click to read what GAIA CI is before answering:
-
-> Do you plan to run GAIA CI (GitHub Actions) for this project?
->
-> New to GAIA CI? Read https://docs.gaiareact.com/maintenance/gaia-ci/ before deciding (Cmd/Ctrl+click to open).
->
-> - **Yes, I'll enable CI after pushing** (Recommended). Records the intent; Step 9 then offers `ci` / `local` / `off` for wiki maintenance. After your first push, run `/setup-gaia` to install the audit gate and cron workflows, store the bot token, and register the `GAIA-Audit` required check.
-> - **No, local only.** GAIA's audit and maintenance tools run only when you invoke them on this machine. Step 9 offers `local` / `off` only.
-
-Record the answer as the **Configure-CI decision** (`enabled` or `declined`); Step 9 reads it. This is held as init-state only; it neither probes nor writes any workflow file.
-
-Then set the audit baseline in `.gaia/audit-ci.yml` regardless of the answer. Until `/setup-gaia` wires CI, the local `code-audit-frontend` agent is the only producer of the `GAIA-Audit` stamp, so `local` is the only valid baseline. `/setup-gaia`'s team audit-mode step sets `default_mode: ci` later if you choose CI-audits-every-PR. Never set this to `off` or any other disabled value, the audit gate is non-negotiable.
-
-```bash
-# Idempotent: rewrite an existing default_mode line, or append the key if absent.
-if [ -f .gaia/audit-ci.yml ] && grep -qE '^default_mode:' .gaia/audit-ci.yml; then
-  sed -i.bak -E 's/^default_mode:.*/default_mode: local/' .gaia/audit-ci.yml && rm -f .gaia/audit-ci.yml.bak
-else
-  printf '\n# Team baseline audit mode. Until /setup-gaia wires CI, the local audit\n# agent is the only GAIA-Audit producer; local is the only valid value here.\ndefault_mode: local\n' >> .gaia/audit-ci.yml
-fi
-```
-
-To enable CI later: push to GitHub, then run `/setup-gaia`. It installs `.github/workflows/code-review-audit.yml` (the PR gate) plus any cron workflows, stores your bot token as a repo secret, registers the `GAIA-Audit` required check, and sets the team audit `default_mode`. `/update-gaia` keeps the installed audit workflow in sync with its template thereafter.
-
 ### Make the statusline executable
 
 The CLI in Step 3 wired the statusline command into Claude settings; the wrapper still needs the executable bit:
@@ -489,58 +453,15 @@ If all probes pass, print the full table and continue to Step 9.
 
 The same probe set applies when setting up from an existing clone, `/setup-gaia` runs it after registering external tools.
 
-## Step 9: Configure GAIA CI (Phase A)
+## Step 9: Project settings
 
-GAIA CI is an optional automated maintenance system that runs a wiki-sync job on a smart schedule, opens labeled PRs, and auto-merges on green CI. Phase A, this step, is local-only: it writes `.gaia/automation.json` with your tool selection and `setup_complete: false`. No GitHub repo or workflow files are involved here. After you push to GitHub for the first time, you'll run `/setup-gaia` to wire up tokens and activate CI (Phase B).
+Record two team-level settings in `.gaia/project.json`: the sandbox recommendation and the git isolation policy. The file is committed and team-shared, and `/update-gaia` never overwrites it.
 
-_Non-response (the run-mode question in Branch A or B): SAFE-DEFAULT. Re-ask once, then apply the recommended default (`ci` when CI was enabled, `local` when CI was declined), name it plainly, and continue to the terminal `configure-automation` write. Automatic mode: same defaults, no re-ask. This never claims the user is absent, and it never skips the mandatory terminal write._
-
-**Carry the Configure-CI decision forward.** The Configure CI integrations block above already recorded whether the user intends to enable CI (`enabled`) or run local only (`declined`). Hold that decision as init-state for this step, do NOT re-probe the filesystem (no workflow files exist at init time, so there is nothing to detect). Step 9 branches on it: a CI decline means CI is not a valid target for any maintenance tool, so the contradictory "Enable in CI mode" recommendation is never shown.
-
-**The unconditional terminal action of Step 9, on every exit path (the enumerated recommendation, a free-text answer, a CI decline, or a resumed run), is a single `gaia init configure-automation` call with the tool mode set to a valid value.** No branch may end Step 9 with a half-written or absent `.gaia/automation.json`. The CLI handler writes a complete, schema-valid config (`setup_complete: false`, `update_gaia.mode: local`, the tool mode) in one atomic write; the prose's only job is to guarantee that call always runs with a derived mode.
-
-### Branch A, CI was enabled
-
-Tell the user (in their language; the table headers stay English):
-
-> Configure GAIA's automated wiki maintenance. Recommended: enable it in CI mode so it runs unattended.
-
-Use AskUserQuestion to confirm the recommendation OR pick another mode. Include the run-mode docs link in the question text so the user can Cmd/Ctrl+click to read it before answering:
-
-> How should GAIA CI's wiki sync run?
->
-> Run-mode reference: https://docs.gaiareact.com/maintenance/gaia-ci/#run-modes (Cmd/Ctrl+click to open).
->
-> - **Enable in CI mode (Recommended).** Sets `wiki` to `ci`: smart-cron wiki sync against `app/**` changes. Phase B (`/setup-gaia`) activates it.
-> - **Local only.** Sets `wiki` to `local`.
-> - **Off.** Sets `wiki` to `off`.
-
-### Branch B, CI was declined
-
-Do NOT show the "Enable in CI mode" recommendation, CI is not a valid target. Auto-derive the tool's mode to `local` (the only producer is the adopter's local invocation) and tell the user (in their language; table headers stay English):
-
-> You declined GAIA CI, so wiki maintenance defaults to `local`, it runs only when you invoke it on this machine. Set it to `off` if you don't want it at all.
-
-Use AskUserQuestion to confirm the `local` derivation OR choose `off` instead (never `ci`). Include the run-mode docs link in the question text so the user can Cmd/Ctrl+click to read it before answering:
-
-> How should GAIA's wiki maintenance run? (CI is unavailable.)
->
-> Run-mode reference: https://docs.gaiareact.com/maintenance/gaia-ci/#run-modes (Cmd/Ctrl+click to open).
->
-> - **Local (Recommended).** Sets `wiki` to `local`. It runs only when you invoke it here.
-> - **Off.** Sets `wiki` to `off`.
-
-Mode meanings:
-
-- `ci`, runs in GitHub Actions on the documented cadence; PRs auto-merge on green CI. (Only offered when CI was enabled.)
-- `local`, does not run in CI; only the adopter's local invocation runs the tool.
-- `off`, never runs (neither in CI nor locally via the smart entrypoints).
-
-The `update_gaia.mode` config key is fixed to `local` and not surfaced as a question, `/update-gaia` is a per-machine command by design.
+**The unconditional terminal action of Step 9, on every exit path (an enumerated answer, a free-text answer, a non-response, or a resumed run), is a single `gaia init write-project-config` call.** No branch may end Step 9 without it.
 
 ### Sandbox recommendation
 
-Independent of the tool-mode branch above, record whether this project recommends Claude Code's OS-level Bash sandbox. This is a committed **recommendation** only, never an enablement, each machine still resolves it for itself at `/setup-gaia`.
+Record whether this project recommends Claude Code's OS-level Bash sandbox. This is a committed **recommendation** only, never an enablement, each machine still resolves it for itself at `/setup-gaia`.
 
 _Non-response: SAFE-DEFAULT. Default to "No, don't recommend" (`false`). Automatic mode: same default, no re-ask._
 
@@ -555,7 +476,7 @@ Hold the answer as `true` (recommend) or `false` (don't recommend, including the
 
 ### Team git isolation policy
 
-Independent of the tool-mode branch and the sandbox recommendation above, record how this team wants `/gaia-plan` and `/gaia-debt` to isolate their work: a feature branch cut in the current checkout, or a separate git worktree. Unlike the sandbox recommendation, this is a **committed, team-level setting**, not something every machine resolves for itself.
+Independent of the sandbox recommendation above, record how this team wants `/gaia-plan` and `/gaia-debt` to isolate their work: a feature branch cut in the current checkout, or a separate git worktree. Unlike the sandbox recommendation, this is a **committed, team-level setting**, not something every machine resolves for itself.
 
 Worktrees buy you the ability to run a GAIA task without touching your current checkout, so you can keep coding, or run a second GAIA task, while it works. They cost:
 
@@ -580,16 +501,15 @@ Hold the answer as `prefer-branch`, `prefer-worktree`, or `always-worktree`, or 
 
 ### Apply the answer
 
-Once you have the wiki mode (from Branch A, Branch B, or a resumed run's saved arguments), the sandbox recommendation, and the isolation-policy answer above, run, ALWAYS, the terminal write:
+Once you have the sandbox recommendation and the isolation-policy answer above (or a resumed run's saved arguments), run, ALWAYS, the terminal write:
 
 ```bash
-.gaia/cli/gaia init configure-automation \
-  --wiki <wiki-mode> \
+.gaia/cli/gaia init write-project-config \
   --sandbox-recommended <true|false> \
   [--isolation-policy <always-worktree|prefer-worktree|prefer-branch>]
 ```
 
-Substitute `<wiki-mode>` with the derived selection (`ci` is only valid on the CI-enabled branch; the CI-declined branch substitutes `local` or `off`) and `<true|false>` with the sandbox recommendation. Append `--isolation-policy <value>` **only** when the user chose one of the three labels above. On a non-response, on "Other", or in Automatic mode, **omit the flag entirely**: omitting it omits the key, which leaves the team policy unset and leaves `/setup-gaia`'s question live for the owner to answer later. Never substitute a default value for a missing answer here. This call is mandatory on every exit path, there is no Step 9 branch that skips it.
+Substitute `<true|false>` with the sandbox recommendation. Append `--isolation-policy <value>` **only** when the user chose one of the three labels above. On a non-response, on "Other", or in Automatic mode, **omit the flag entirely**: omitting it omits the key, which leaves the team policy unset and leaves `/setup-gaia`'s question live for the owner to answer later. Never substitute a default value for a missing answer here. The command writes `.gaia/project.json` (creating it when absent), which is committed and team-shared. This call is mandatory on every exit path, there is no Step 9 branch that skips it.
 
 If the CLI exits non-zero, surface the structured-error JSON verbatim and stop. The user can re-run the failing command manually after addressing the cause, then resume `/gaia-init` with `.gaia/cli/gaia init resume`.
 
@@ -671,14 +591,13 @@ Then run the CLI's init finalize step, it removes the `/init` interceptor hook, 
 Send a fire-and-forget adoption ping. This is its own Bash call, separate from the `init finalize` call above, and it never gates `/gaia-init`'s success or failure, run it even though `init finalize` just deleted this command file, the instructions are already loaded for the rest of this run:
 
 ```bash
-.gaia/cli/gaia ping --event init --mode "$MODE" --i18n "$I18N_COUNT" --ci "$CI_CATEGORY" || true
+.gaia/cli/gaia ping --event init --mode "$MODE" --i18n "$I18N_COUNT" || true
 ```
 
-Derive the three values from state this run already holds, never from a state file:
+Derive the two values from state this run already holds, never from a state file:
 
 - **`$MODE`** is the run-mode answer from the very first gate ("Interactive gates: run mode and non-response policy" above): `interactive` or `automatic`. Held for the whole run.
 - **`$I18N_COUNT`** is `0` when `STRIP_I18N` is `true` (Step 2 Q2, i18n stripped); otherwise the number of locales in `LOCALES` (the count passed to `gaia init configure-i18n --locales`). Automatic mode keeps i18n with only the detected primary language, so `$I18N_COUNT` is `1` there.
-- **`$CI_CATEGORY`** is the `--wiki` mode passed to `gaia init configure-automation` in Step 9 (`ci` / `local` / `off`). Automatic mode sets it to `ci`, so `$CI_CATEGORY` is `ci` there.
 
 Then output the message below verbatim. Output the `cd` line exactly as written, even though Claude is currently running inside the project folder: when the user exits Claude back to the terminal, their shell returns to the directory they launched from (the parent), not the project folder. Do not tell the user they are "already inside" the folder or that they can skip the `cd`.
 
@@ -690,7 +609,7 @@ Then output the message below verbatim. Output the `cd` line exactly as written,
 > cd <project-folder-name>
 > ```
 >
-> Then start Claude again, and run `/setup-gaia`.
+> Then start Claude again, and run `/setup-gaia`. After your first push, `/setup-gaia` registers the `GAIA-Audit` required check.
 
 ## On failure: resume
 
@@ -700,4 +619,4 @@ If any `gaia init <step>` invocation exits non-zero, the structured-error JSON o
 .gaia/cli/gaia init resume
 ```
 
-Resume reads `.gaia/init-state.json`, skips already-complete steps, and replays remaining steps using the saved arguments. Use `--from-step <N>` to force restart from a specific step (1-indexed: 1=strip-branding, 2=configure-i18n, 3=rename, 4=wire-statusline, 5=configure-automation, 6=finalize).
+Resume reads `.gaia/init-state.json`, skips already-complete steps, and replays remaining steps using the saved arguments. Use `--from-step <N>` to force restart from a specific step (1-indexed: 1=strip-branding, 2=configure-i18n, 3=rename, 4=wire-statusline, 5=bootstrap-env, 6=write-project-config, 7=finalize).

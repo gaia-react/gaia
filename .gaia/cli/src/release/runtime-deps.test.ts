@@ -174,20 +174,6 @@ describe('extractPathRefs', () => {
     expect(refs.map((r) => r.path)).toContain('.github/workflows/deploy.yml');
   });
 
-  test('skips the allowlisted audit-workflow path constant', () => {
-    // pr-merge-audit-check.sh's check_self_mod_only_update_pr() assigns the
-    // audit workflow path to compare against the PR diff and template blob; it
-    // never sources or executes the file. The path is release-excluded, so the
-    // exact full-path token is allowlisted as a non-dependency.
-    const refs = extractPathRefs(
-      '.claude/hooks/pr-merge-audit-check.sh',
-      'audit_wf=".github/workflows/code-review-audit.yml"\n'
-    );
-    expect(refs.map((r) => r.path)).not.toContain(
-      '.github/workflows/code-review-audit.yml'
-    );
-  });
-
   test('skips the allowlisted shell-snapshots regex-literal token', () => {
     // spec-session-lock.sh assigns Claude Code's snapshot-wrapper directory to
     // a regex literal that a `ps` command line is matched against; it is never
@@ -395,14 +381,13 @@ describe('release runtime-deps CLI', () => {
 
   test('allowlists per-session marker files', () => {
     sandbox.writeManifest({
-      '.claude/hooks/wiki-drift-check.sh': 'owned',
+      '.claude/hooks/wiki-recompact-inject.sh': 'owned',
     });
     sandbox.writeFile(
-      '.claude/hooks/wiki-drift-check.sh',
+      '.claude/hooks/wiki-recompact-inject.sh',
       [
         '#!/usr/bin/env bash',
-        'touch ".claude/wiki-drift-checked"',
-        'echo > ".claude/wiki-safety-checked"',
+        'touch ".claude/wiki-recompact-pending"',
         '',
       ].join('\n')
     );

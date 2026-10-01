@@ -133,6 +133,17 @@ fixture_action() {
 $( indent 8 "$2" )"
 }
 
+# surface_has_workflow_and_action <repo> <lib>: the `workflows` set, as <lib>
+# resolves it inside <repo>, holds at least one workflow and one composite
+# action. A set pointing at a directory that no longer exists would answer from
+# the other half alone and still look populated.
+surface_has_workflow_and_action() {
+  run bash -c "cd '$1' && . '$2' && gaia_guard_scan_files probe workflows && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  [ "$status" -eq 0 ] || return 1
+  grep -qE -- '^\.github/workflows/[^/]+\.ya?ml$' <<<"$output" || return 1
+  grep -qE -- '^\.github/actions/[^/]+/action\.ya?ml$' <<<"$output" || return 1
+}
+
 # run_linter: run the gate from inside the fixture repo.
 run_linter() {
   run bash -c "cd '$TMP' && bash '$LINTER' 2>&1"
@@ -798,23 +809,6 @@ printf "%s" "$a" | grep -q needle'
   grep -qF -- ".github/workflows/probe.yml:7:" <<<"$output"
 }
 
-# The adopter workflow templates render into somebody else's CI, so they are the
-# one surface whose defects this repository's review is the last place able to
-# see. `.tmpl` matches no `*.yml` glob, hence its own pathspec in the set.
-@test "flags a reader in an adopter workflow template" {
-  fixture_repo
-  fixture_file .gaia/cli/src/automation/templates/workflows/probe.yml.tmpl 'jobs:
-  j:
-    steps:
-      - name: probe
-        run: |
-          set -euo pipefail
-          printf "%s" "$a" | grep -q needle'
-  run_linter
-  [ "$status" -eq 1 ]
-  grep -qF -- "templates/workflows/probe.yml.tmpl:7:" <<<"$output"
-}
-
 # The INLINE `run:` spelling, which is its own one-line block. Grading only the
 # block-scalar form left this unscanned at every arming, and the composite
 # actions are where it bites: the Actions schema makes `shell:` mandatory there,
@@ -1132,4 +1126,23 @@ YAML'
 @test "the real scanned tree passes the lint" {
   run bash -c "cd '$REPO_ROOT' && bash '$LINTER'"
   [ "$status" -eq 0 ]
+}
+
+# --- no phantom coverage ----------------------------------------------------
+
+@test "the real scan surface holds a workflow and a composite action" {
+  surface_has_workflow_and_action "$REPO_ROOT" "$REPO_ROOT/.gaia/scripts/guard-awk-lib.sh"
+}
+
+@test "the surface check fails when the composite-action directory is absent" {
+  local scratch
+  scratch="$(mktemp -d -t surface-probe-XXXXXX)"
+  mkdir -p "$scratch/.github/workflows"
+  git -C "$scratch" init -q .
+  printf 'x\n' > "$scratch/.github/workflows/only.yml"
+  git -C "$scratch" add -A
+  local verdict=0
+  surface_has_workflow_and_action "$scratch" "$REPO_ROOT/.gaia/scripts/guard-awk-lib.sh" || verdict=$?
+  rm -rf "$scratch"
+  [ "$verdict" -eq 1 ]
 }

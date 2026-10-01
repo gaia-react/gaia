@@ -71,8 +71,8 @@ const RUNTIME_PREFIXES = ['.gaia/local/'] as const;
 
 /**
  * Exact repo-relative paths that are adopter-owned and legitimately absent
- * on a checkout that hasn't opted in: `.gaia/automation.json` is written by
- * `/setup-gaia`, not shipped by GAIA itself, so it is correctly missing here
+ * on a checkout that hasn't opted in: `.gaia/project.json` is written by
+ * `/gaia-init` and `/setup-gaia`, not shipped by GAIA itself, so it is correctly missing here
  * on the GAIA source repo.
  *
  * `release/runtime-deps.ts` keeps its own `ADOPTER_OWNED_SENTINELS` naming the
@@ -86,7 +86,7 @@ const RUNTIME_PREFIXES = ['.gaia/local/'] as const;
  * belongs only in the release-side set.
  */
 export const ADOPTER_OWNED_SENTINELS: ReadonlySet<string> = new Set([
-  '.gaia/automation.json',
+  '.gaia/project.json',
 ]);
 
 const PATH_TOKEN_PATTERN = /`([^`\n]+?)`/g;

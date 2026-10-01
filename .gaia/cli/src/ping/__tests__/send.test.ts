@@ -63,7 +63,6 @@ describe('postPing', () => {
 
   test('preserves event-specific payload keys alongside the injected fields', async () => {
     await postPing(root, {
-      ci: 'custom',
       event: 'init',
       i18n: 2,
       mode: 'interactive',
@@ -72,7 +71,6 @@ describe('postPing', () => {
     const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(init.body as string) as Record<string, unknown>;
     expect(body).toMatchObject({
-      ci: 'custom',
       event: 'init',
       i18n: 2,
       mode: 'interactive',

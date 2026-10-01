@@ -1,6 +1,0 @@
-      - name: Quality Gate
-        if: steps.pre_run.outputs.decision == 'run'
-        run: |
-          set -euo pipefail
-          pnpm typecheck
-          pnpm lint

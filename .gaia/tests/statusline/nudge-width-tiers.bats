@@ -7,7 +7,7 @@
 # lower-priority one (a nudge with no Medium form, such as /gaia-audit,
 # shows its Small text at that step). This suite pins the exact boundaries
 # and the priority order
-# (update-gaia, serena-sync, update-deps, audit, harden, debt, residue)
+# (update-gaia, serena-sync, update-deps, audit, harden, debt, residue, wiki)
 # against exact widths, so a regression in the arithmetic reds here rather
 # than silently shifting a boundary.
 #
@@ -435,5 +435,117 @@ JSON
   grep -qF -- "🌍" <<<"$plain" && return 1
   grep -qF -- "🔭" <<<"$plain" && return 1
   grep -qF -- "+" <<<"$plain" && return 1
+  true
+}
+
+# The /gaia-wiki nudge is the lowest-priority slot, so it is the first to give
+# up width. Its Medium is the commit count, its icon is the brain.
+arm_wiki_nudge() {
+  local cache="$MAIN/.gaia/local/cache/shared/update-check.json"
+  jq --argjson drift "$1" '. + {wikiDriftCount: $drift}' "$cache" > "$cache.tmp"
+  mv "$cache.tmp" "$cache"
+}
+
+@test "wiki renders last at Large and is the first nudge to shrink" {
+  arm_wiki_nudge 20
+
+  render_at 336
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"Run /gaia-residue (15 aged residuals)  Run /gaia-wiki (20 commits behind)") ;;
+    *) return 1 ;;
+  esac
+
+  render_at 335
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"Run /gaia-residue (15 aged residuals)  Run /gaia-wiki (20)") ;;
+    *) return 1 ;;
+  esac
+}
+
+@test "a lone wiki nudge steps through Large, Medium, Small, icon, +N" {
+  printf '{"wikiDriftCount":20}' > "$MAIN/.gaia/local/cache/shared/update-check.json"
+  rm -f "$MAIN/.gaia/local/debt/count.json"
+
+  render_at 47
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"Run /gaia-wiki (20 commits behind)") ;;
+    *) return 1 ;;
+  esac
+
+  render_at 46
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"Run /gaia-wiki (20)") ;;
+    *) return 1 ;;
+  esac
+
+  render_at 32
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"Run /gaia-wiki (20)") ;;
+    *) return 1 ;;
+  esac
+
+  render_at 31
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"Run /gaia-wiki") ;;
+    *) return 1 ;;
+  esac
+
+  render_at 30
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"Run /gaia-wiki") ;;
+    *) return 1 ;;
+  esac
+
+  render_at 27
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"Run /gaia-wiki") ;;
+    *) return 1 ;;
+  esac
+
+  render_at 26
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"🧠20") ;;
+    *) return 1 ;;
+  esac
+  grep -qF -- "Run /" <<<"$plain" && return 1
+
+  render_at 17
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"🧠20") ;;
+    *) return 1 ;;
+  esac
+
+  render_at 16
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"+1") ;;
+    *) return 1 ;;
+  esac
+  grep -qF -- "🧠" <<<"$plain" && return 1
+  true
+}
+
+@test "the wiki text form carries its own color and the icon renders uncolored" {
+  printf '{"wikiDriftCount":20}' > "$MAIN/.gaia/local/cache/shared/update-check.json"
+  rm -f "$MAIN/.gaia/local/debt/count.json"
+
+  render_at 300
+  [ "$status" -eq 0 ]
+  grep -qF -- $'\033[01;96mRun /gaia-wiki (20 commits behind)\033[00m' <<<"$output"
+
+  render_at 20
+  [ "$status" -eq 0 ]
+  after_left="${output#*Claude Code}"
+  grep -qF -- $'\033' <<<"$after_left" && return 1
   true
 }

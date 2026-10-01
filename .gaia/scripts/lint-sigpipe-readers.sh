@@ -25,9 +25,8 @@
 # .gaia/scripts/tests/lint-sigpipe-readers.bats, which the `Audit CI Tests`
 # scripts shard runs, and folded into .gaia/tests/shell-lint.sh. Its arming
 # takes MORE than that gate's `**/*.sh` paths-filter entry, which reaches only
-# half of what this gate reads: the workflow, composite-action and adopter
-# template entries beside it are what arm the other half, and each names this
-# guard. A pull request touching only a workflow that skipped this gate would
+# half of what this gate reads: the workflow and composite-action entries
+# beside it are what arm the other half, and each names this guard. A pull request touching only a workflow that skipped this gate would
 # green it having read the very file it changed zero times. Also runnable
 # directly: `bats .gaia/scripts/tests/lint-sigpipe-readers.bats`.
 # gaia:maintainer-only:end
@@ -64,7 +63,7 @@
 #
 # Provenance: four known occurrences before this gate existed, three of them in
 # guard machinery, where the failure mode is a guard reporting clean over a live
-# defect. gaia-react/gaia#745 (`audit-success-present.sh`, fixed by
+# defect. gaia-react/gaia#745 (an audit-success check, fixed by
 # gaia-react/gaia#748), gaia-react/gaia#757 and gaia-react/gaia#761 (two shapes
 # in `audit-noop-detect.sh`), and a hook-classification guard whose first draft
 # classified with a filtering grep feeding a quiet one and reported clean over
@@ -119,9 +118,9 @@
 # ---------------------------------------------------------------------------
 #
 # Two sets the shared library defines, read as two arms because they decide
-# arming differently: tracked `*.sh` (`shell`), and the Actions workflows,
-# composite actions and adopter workflow templates (`workflows`). Two surfaces
-# are deliberately outside both:
+# arming differently: tracked `*.sh` (`shell`), and the Actions workflows
+# and composite actions (`workflows`). Two surfaces are deliberately outside
+# both:
 #
 #   *.bats            bats-core arms no pipefail by DEFAULT, so an ordinary
 #                     suite does not run the class. A suite that arms pipefail
@@ -625,9 +624,9 @@ function yaml_key(l,   col, rest) {
     if (col > blockcol) return 0
     blockcol = -1
   }
-  # A mustache section tag sits at column 1 in the adopter templates and renders
-  # as a blank line, so it is neither a key nor a dedent. A partial include is
-  # deliberately not spared: it splices a whole document region.
+  # A mustache section tag at column 1 renders as a blank line, so it is neither
+  # a key nor a dedent. A partial include is deliberately not spared: it splices
+  # a whole document region.
   rest = substr(l, col)
   if (substr(rest, 1, 3) ~ /^\{\{[#^\/]/) return 0
   # A list item opens a step, and the key after its dash is the first key of

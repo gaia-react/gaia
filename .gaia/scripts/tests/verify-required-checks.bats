@@ -17,6 +17,9 @@ assert_contains() {
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   SCRIPT="$THIS_DIR/../verify-required-checks.sh"
+  WORKFLOWS_DIR="$THIS_DIR/../../../.github/workflows"
+  # Built at runtime so this file never names the deleted workflow literally.
+  DELETED_WORKFLOW="code-review-audit"".yml"
   [ -x "$SCRIPT" ] || skip "verify-required-checks.sh not executable"
   FULL_RULESET="GAIA-Audit
 Audit CI Tests
@@ -131,4 +134,73 @@ EOF
   run env PATH="$BATS_TEST_TMPDIR/bin:$PATH" "$SCRIPT" --repo gaia-react/gaia --branch main
   [ "$status" -eq 2 ]
   assert_contains "could not read the live ruleset"
+}
+
+# The declared contexts must each be posted by something that still exists
+
+# declared_contexts: the contexts the script declares, one per line, read off
+# its own drift report against an empty live ruleset.
+declared_contexts() {
+  "$SCRIPT" --repo gaia-react/gaia --branch main --ruleset-contexts <(printf '') \
+    | sed -n 's/^  - //p'
+}
+
+# unmapped_contexts <workflows-dir>: the declared contexts other than
+# GAIA-Audit (a status posted locally, so no job carries it) that no job
+# `name:` under <workflows-dir> equals. Prints one per line; empty means every
+# one maps.
+unmapped_contexts() {
+  local workflows_dir="$1" job_names context
+  job_names="$(awk '/^    name:/ { sub(/^    name:[ ]*/, ""); gsub(/^["'"'"']|["'"'"']$/, ""); print }' \
+    "$workflows_dir"/*.yml)"
+  while IFS= read -r context; do
+    [ "$context" = "GAIA-Audit" ] && continue
+    grep -qxF -- "$context" <<<"$job_names" || printf '%s\n' "$context"
+  done < <(declared_contexts)
+}
+
+@test "the maintainer Claude review workflow is gone" {
+  [ ! -e "$WORKFLOWS_DIR/${DELETED_WORKFLOW}" ]
+}
+
+@test "the declared contexts are exactly the five the maintainer ruleset requires" {
+  local actual expected
+  actual="$(declared_contexts | LC_ALL=C sort)"
+  expected="$(printf '%s\n' "GAIA-Audit" "Audit CI Tests" "Run Chromatic" "Vitest and Playwright" "Vitest (.gaia/cli)" | LC_ALL=C sort)"
+  [ -n "$actual" ]
+  [ "$actual" = "$expected" ]
+}
+
+@test "every declared context except GAIA-Audit equals a job name in a real workflow" {
+  local unmapped
+  unmapped="$(unmapped_contexts "$WORKFLOWS_DIR")"
+  [ -z "$unmapped" ] || { printf 'declared context with no job: %s\n' "$unmapped" >&2; return 1; }
+}
+
+@test "the context-to-job check fails when a job name is removed" {
+  local fixture="$BATS_TEST_TMPDIR/workflows" name
+  mkdir -p "$fixture"
+  for name in audit-ci-tests chromatic cli-tests tests; do
+    cp "$WORKFLOWS_DIR/${name}.yml" "$fixture/"
+  done
+  # Control: the untouched copy maps every context, so the failure below is
+  # caused by the removal and not by a fixture that never mapped.
+  [ -z "$(unmapped_contexts "$fixture")" ]
+  sed -i.bak '/^    name: Run Chromatic$/d' "$fixture/chromatic.yml"
+  local unmapped
+  unmapped="$(unmapped_contexts "$fixture")"
+  [ "$unmapped" = "Run Chromatic" ]
+}
+
+@test "audit-ci-tests.yml triggers on pull_request, covers every shard, and names no deleted workflow" {
+  local workflow="$WORKFLOWS_DIR/audit-ci-tests.yml" shard shard_count=0
+  grep -qE '^  pull_request:' "$workflow"
+  while IFS= read -r shard; do
+    [ -n "$shard" ] || continue
+    shard_count=$((shard_count + 1))
+    grep -E '^ +shard: \[' "$workflow" | grep -qE "[[,] ?${shard}[],]" \
+      || { printf 'matrix is missing shard %s\n' "$shard" >&2; return 1; }
+  done < <(bash "$THIS_DIR/../../tests/bats-shards.sh" shards)
+  [ "$shard_count" -gt 0 ]
+  ! grep -qF -- "$DELETED_WORKFLOW" "$workflow"
 }
