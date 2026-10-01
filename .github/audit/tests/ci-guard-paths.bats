@@ -571,7 +571,8 @@ Write GAIA-Audit commit status (out-of-scope skip)"
   assert_scenario self-modified "Check chore-deps title
 Resolve audit base
 Check for source-code changes
-Check workflow self-modification"
+Check workflow self-modification
+Write GAIA-Audit commit status (verbatim re-render)"
 }
 
 @test "terminal path: local-mode stand-down" {

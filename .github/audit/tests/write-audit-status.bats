@@ -1,14 +1,14 @@
 #!/usr/bin/env bats
 
 # Tests for .github/audit/write-audit-status.sh, the single GAIA-Audit commit
-# status writer the five terminal paths in code-review-audit.yml route through
+# status writer every terminal path in code-review-audit.yml routes through
 # (#1286).
 #
 # SCOPE, STATED SO NOBODY ADDS A SECOND COPY OF THE SANDBOX HARNESS HERE. This
 # suite owns the writer's ARGUMENT CONTRACT and its pre-git guard: the surface
 # that decides whether an invocation is well-formed at all. It deliberately owns
 # nothing else, because .github/audit/tests/ci-status-member-gate.bats already
-# executes this writer through every one of its five real call sites, against a
+# executes this writer through every one of its real call sites, against a
 # git sandbox and a `gh` mock, with the member gate and the non-clobber read
 # wired up for real. Duplicating that fixture to re-assert the same outcomes
 # would be two instruments measuring one population and drifting apart.
@@ -106,6 +106,19 @@ run_writer() {
 
   # ...and it stays legal in the mode that has a success path.
   run run_writer --sha "" --base cafebabe --require-marker
+  [ "$status" -eq 0 ]
+}
+
+@test "the re-render modifier is refused in stand-down mode and beside the marker modifier" {
+  run run_writer --sha deadbeef --force-pending "local mode" --self-mod-rerender
+  [ "$status" -eq 2 ]
+  grep -qF "combines with neither --force-pending nor --require-marker" <<<"$output"
+
+  run run_writer --sha deadbeef --base cafebabe --require-marker --self-mod-rerender
+  [ "$status" -eq 2 ]
+  grep -qF "combines with neither --force-pending nor --require-marker" <<<"$output"
+
+  run run_writer --sha "" --base cafebabe --self-mod-rerender
   [ "$status" -eq 0 ]
 }
 
