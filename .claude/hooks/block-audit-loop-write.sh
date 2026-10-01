@@ -33,9 +33,8 @@
 #     too: the verb is armed, the direction is not parsed, and the over-deny is
 #     the safe side.
 #
-# WHAT IS NOT COVERED (exotic spellings, outside the guarantee; see
-# .claude/rules/maintainers/harness-triage-threshold.md): a `cd` into the
-# directory followed by relative names; `eval` or `bash -c` wrappers that build
+# WHAT IS NOT COVERED (exotic spellings, outside the guarantee):
+# a `cd` into the directory followed by relative names; `eval` or `bash -c` wrappers that build
 # the path at run time; glob spellings such as `.gaia/local/audit-*`; paths
 # built from variables or command substitutions; a verb joined to the path by
 # quoting tricks; a symlink alias to the directory whose own path never says
