@@ -1082,8 +1082,9 @@ settings() {
   assert_pinned context
   nonce="$(sj '.history.checkpoints[-1].nonce')"
   elig="$(sj '.history.rounds[1].snapshot.accept_eligible // false')"
-  want="$(gaia_loop_pinned_question feat/loop "$nonce" 2 "$GAIA_CTX_UNIT_ROUNDS" "$elig" false context)"
+  want="$(gaia_loop_pinned_question feat/loop "$nonce" 2 "$GAIA_CTX_UNIT_ROUNDS" "$elig" false context "fresh $GAIA_CTX_ASK_TOKENS_DEFAULT 1000000")"
   [ "$(sj '.history.checkpoints[-1].question | tojson')" = "$want" ]
+  [[ "$(sj '.history.checkpoints[-1].question.questions[0].question')" == *"(context), context "[0-9]*"% ("[0-9]*"k of 1000k). How should"* ]]
   [ "$(sj '.history.checkpoints[-1].at_round')" -eq 2 ]
   reason | grep -qF -- "never ask; stop, leave the PR open, print the typed grant line above, and print no continuation prompt"
   [ "$(sj '.history.units // [] | length')" -eq 0 ]

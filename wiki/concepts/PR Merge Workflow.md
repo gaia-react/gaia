@@ -475,7 +475,7 @@ Each evaluated round gets one verdict, built on `A(r)`, the round's count of fin
 bash .gaia/scripts/audit-loop-eval.sh brief --root <RESOLVED_ROOT>
 ```
 
-The evidence is the rounds run, `A(r)` per round, the verdict and its evidence, the remaining findings by severity, and the spend, labeled information only (or `unavailable`); spend never grants and never blocks. The options, quoted as the evaluator builds them, each present only when it applies:
+The evidence is the rounds run, `A(r)` per round, the verdict and its evidence, the remaining findings by severity, and the spend, labeled information only (or `unavailable`); spend never grants and never blocks. The question text itself carries the main session's context reading from the moment the checkpoint was pinned (percent and tokens of the window, or `context unavailable` when the reading is missing or stale), because the statusline is hidden while a question shows and never visible over Remote Control. The options, quoted as the evaluator builds them, each present only when it applies:
 
 - `Grant <K>, continue here` and `Grant <K>, new session`, with K from `.gaia/scripts/context-checkpoint-lib.sh`; absent at the hard cap.
 - `Accept the remainder`, only when the evaluator reports the branch accept-eligible: a rubric signal holds, no remaining finding is Critical or security-class, and the verdict is not `unknown`.

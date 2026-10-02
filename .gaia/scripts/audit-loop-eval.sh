@@ -121,11 +121,13 @@
 #                 set disjoint between consecutive rounds (it moved each round).
 #   small-tail    r >= 6, 1 <= A(r) <= 2, no A(r) entry is severity error,
 #                 A(r-1) non-null and A(r) >= A(r-1) (no progress last round).
+# gaia:maintainer-only:start
 #   waiver-drift  maintainer repo only (<main>/.claude/rules/maintainers/
 #                 harness-triage-threshold.md exists), r >= 2, and in each of
 #                 rounds r and r-1 at least half of F's entries (raw_count > 0)
 #                 are disposed waive-out-of-scope with basis triage-threshold
 #                 in that round's own dispositions file (waived_count).
+# gaia:maintainer-only:end
 # accept_eligible: some signal holds, no A(r) entry is severity error or
 # security true, the verdict is not unknown, and no stored snapshot a signal
 # reads is legacy. accept_reasons: exactly the signals that hold. Severity is
@@ -455,7 +457,9 @@ gaia_loop_eval_round() {
   fi
   disposed="$(_gaia_loop_disposed "$main" "$b" "$r" | jq -c --argjson v "$vetoed" 'map(select(. as $k | any($v[]; . == $k) | not))')" || return 5
   waived="$(_gaia_loop_waived_keys "$main" "$b" "$r")"
+  # gaia:maintainer-only:start
   [ -f "$main/.claude/rules/maintainers/harness-triage-threshold.md" ] && maint=true
+  # gaia:maintainer-only:end
   jq -n -c --argjson F "$fs" --argjson ehunks "$ehunks" --argjson disposed "$disposed" \
     --argjson prevkeys "$(printf '%s' "$ctx" | jq -c '.prevkeys')" \
     --argjson series "$(printf '%s' "$ctx" | jq -c '.series')" \

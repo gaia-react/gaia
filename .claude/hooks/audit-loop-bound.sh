@@ -672,7 +672,7 @@ run_decision() {
       fi
       nonce=$(gaia_loop_new_nonce) ||
         finish_deny 'BLOCKED: the audit loop checkpoint could not draw a checkpoint nonce. Fail-loud, not fail-open: retry the dispatch.'
-      question=$(gaia_loop_pinned_question "$B" "$nonce" "$used" "$GAIA_CTX_UNIT_ROUNDS" "$elig" "$cap" "$trigger") && [ -n "$question" ] ||
+      question=$(gaia_loop_pinned_question "$B" "$nonce" "$used" "$GAIA_CTX_UNIT_ROUNDS" "$elig" "$cap" "$trigger" "$reading") && [ -n "$question" ] ||
         finish_deny "BLOCKED: the audit loop checkpoint could not build its pinned question (trigger $trigger). Fail-loud, not fail-open: retry the dispatch."
       # Every checkpoint deny appends a new checkpoint; the latest is the one
       # pending, so this supersedes any earlier one, legacy ones included.

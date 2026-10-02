@@ -326,13 +326,17 @@ gaia_loop_session_is_interactive() {
 }
 
 # gaia_loop_pinned_question <branch> <nonce> <rounds_used> <k>
-# <accept_eligible:true|false> <cap:true|false> <trigger>: the whole pinned
-# AskUserQuestion tool_input, compact JSON, one question. The only builder of
-# these strings (the recorder compares a payload against its output). rc 2 and
-# nothing printed on a bad input.
+# <accept_eligible:true|false> <cap:true|false> <trigger> [<context_reading>]:
+# the whole pinned AskUserQuestion tool_input, compact JSON, one question. The
+# only builder of these strings (the bound hook stores the result, and the
+# recorder compares a payload against that stored copy). rc 2 and nothing
+# printed on a bad input. The optional reading is a `gaia_ctx_read` line: the
+# question carries it because the statusline is hidden while a question shows
+# and never visible over Remote Control. A missing, stale, future, unparseable
+# or absent reading, or a zero-size window, reads "context unavailable".
 gaia_loop_pinned_question() {
-  local branch="${1-}" nonce="${2-}" used="${3-}" k="${4-}" elig="${5-}" cap="${6-}" trigger="${7-}"
-  local LC_ALL=C typed_g typed_a
+  local branch="${1-}" nonce="${2-}" used="${3-}" k="${4-}" elig="${5-}" cap="${6-}" trigger="${7-}" reading="${8-}"
+  local LC_ALL=C typed_g typed_a ctx_tokens ctx_window ctx=", context unavailable"
   command -v jq >/dev/null 2>&1 || return 6
   _gaia_loop_keyable "$branch" || return 2
   [[ "$nonce" =~ ^[0-9a-f]{16}$ ]] || return 2
@@ -342,6 +346,17 @@ gaia_loop_pinned_question() {
   case "$elig" in true | false) ;; *) return 2 ;; esac
   case "$cap" in true | false) ;; *) return 2 ;; esac
   [[ "$trigger" =~ ^(context|cap|fallback|rubric:[A-Za-z0-9_.-]+)$ ]] || return 2
+  case "$reading" in
+    '' | missing | stale | future | unparseable) ;;
+    *)
+      [[ "$reading" =~ ^fresh\ ([0-9]{1,12})\ ([0-9]{1,12})$ ]] || return 2
+      ctx_tokens="${BASH_REMATCH[1]}"
+      ctx_window="${BASH_REMATCH[2]}"
+      if [ "$((10#$ctx_window))" -gt 0 ]; then
+        ctx=", context $((10#$ctx_tokens * 100 / 10#$ctx_window))% ($((10#$ctx_tokens / 1000))k of $((10#$ctx_window / 1000))k)"
+      fi
+      ;;
+  esac
   typed_g=""
   typed_a=""
   if [ "$_GAIA_LOOP_ASK_RECORDER" = 0 ]; then
@@ -349,7 +364,7 @@ gaia_loop_pinned_question() {
     typed_a=" Selecting this records nothing; type \`audit-accept\` as the whole prompt."
   fi
   jq -n -c --arg branch "$branch" --arg nonce "$nonce" --arg used "$used" --arg k "$k" \
-    --arg trigger "$trigger" --argjson elig "$elig" --argjson cap "$cap" \
+    --arg trigger "$trigger" --arg ctx "$ctx" --argjson elig "$elig" --argjson cap "$cap" \
     --arg tg "$typed_g" --arg ta "$typed_a" '
     ("Grant " + $k + ", continue here") as $g1
     | ("Grant " + $k + ", new session") as $g2
@@ -367,7 +382,7 @@ gaia_loop_pinned_question() {
         {label: "Stop and file the remainder", description: "Records nothing, leaves the PR open, and files the remainder as tech debt."}
       ] as $opts
     | {questions: [{
-        question: ("Audit checkpoint " + $nonce + " on " + $branch + ": " + $used + " rounds used (" + $trigger + "). How should the audit loop continue?"),
+        question: ("Audit checkpoint " + $nonce + " on " + $branch + ": " + $used + " rounds used (" + $trigger + ")" + $ctx + ". How should the audit loop continue?"),
         header: "Audit loop",
         multiSelect: false,
         options: $opts}]}'

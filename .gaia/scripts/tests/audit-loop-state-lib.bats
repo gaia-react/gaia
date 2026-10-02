@@ -393,6 +393,33 @@ labels() { printf '%s' "$1" | jq -r '[.questions[0].options[].label] | join("|")
   [ -z "$output" ]
 }
 
+question_text() { printf '%s' "$1" | jq -r '.questions[0].question'; }
+
+@test "pinned question: a fresh reading puts the percent and k-token figures in the text" {
+  local q
+  q="$(gaia_loop_pinned_question feat/x 0123456789abcdef 6 3 true false context "fresh 123456 400000")"
+  [ "$(question_text "$q")" = "Audit checkpoint 0123456789abcdef on feat/x: 6 rounds used (context), context 30% (123k of 400k). How should the audit loop continue?" ]
+}
+
+@test "pinned question: no reading, or an unusable one, reads context unavailable" {
+  local r q
+  q="$(gaia_loop_pinned_question feat/x 0123456789abcdef 6 3 true false context)"
+  [ "$(question_text "$q")" = "Audit checkpoint 0123456789abcdef on feat/x: 6 rounds used (context), context unavailable. How should the audit loop continue?" ]
+  for r in missing stale future unparseable "fresh 5 0"; do
+    q="$(gaia_loop_pinned_question feat/x 0123456789abcdef 6 3 true false context "$r")"
+    [[ "$(question_text "$q")" == *"(context), context unavailable. How"* ]]
+  done
+}
+
+@test "pinned question: a malformed context reading is rc 2 with empty stdout" {
+  local r
+  for r in "fresh 12" "fresh a b" "fresh 1 2 3" "bogus" "fresh -1 5"; do
+    run gaia_loop_pinned_question feat/x 0123456789abcdef 6 3 true false context "$r"
+    [ "$status" -eq 2 ]
+    [ -z "$output" ]
+  done
+}
+
 @test "nonce: two calls differ, are 16 hex, and pin different questions" {
   local a b qa qb
   a="$(gaia_loop_new_nonce)"
