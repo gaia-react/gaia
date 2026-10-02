@@ -18,3 +18,4 @@ seed2_count() { local c; c=$(wc -l < "$1") || return 1; printf '%s\n' "$((c))"; 
 seed2_join() { local IFS=,; printf '%s\n' "$*"; }
 
 # End of seed layer 2.
+# Gate V: tree move for the inline fallback dispatch.
