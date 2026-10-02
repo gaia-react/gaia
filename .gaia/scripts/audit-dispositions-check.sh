@@ -5,7 +5,7 @@
 # Inside an audit-loop unit the Opus orchestrator disposes every finding of a
 # round in <run-folder>/dispositions-<r>.json. The main thread no longer reads
 # each disposition, so this script forbids the dispositions only a human may
-# make (SPEC-093 D4). The orchestrator writes the dispositions file and is the
+# make. The orchestrator writes the dispositions file and is the
 # actor this check bounds, which is why nothing it grades comes from that file:
 # severity, the security flag, cross-remit and authorship are read from the
 # members' findings sidecars by identity key (member, finding_class, path,

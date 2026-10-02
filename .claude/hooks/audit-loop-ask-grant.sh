@@ -61,7 +61,7 @@
 set -u
 
 # The `permission_mode` values under which AskUserQuestion waited for a human
-# in the probe run (probes/evidence/p4/PostToolUse.jsonl, SPEC-093 probe P4).
+# in a measured probe run of Claude Code 2.1.287.
 # An unlisted or absent mode is a decline.
 _GAIA_ASK_MODES=" default acceptEdits plan auto bypassPermissions "
 
