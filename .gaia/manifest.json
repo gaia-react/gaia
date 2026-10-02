@@ -1,5 +1,6 @@
 {
   "files": {
+    ".claude/agents/audit-loop-unit.md": "owned",
     ".claude/agents/code-audit-frontend.md": "owned",
     ".claude/agents/code-audit-frontend/conform.md": "owned",
     ".claude/agents/code-audit-frontend/form-components.md": "owned",
@@ -20,6 +21,7 @@
     ".claude/commands/gaia-spec.md": "owned",
     ".claude/commands/setup-gaia.md": "owned",
     ".claude/doctrine/execution.md": "owned",
+    ".claude/hooks/audit-loop-ask-grant.sh": "owned",
     ".claude/hooks/audit-loop-bound.sh": "owned",
     ".claude/hooks/audit-loop-grant.sh": "owned",
     ".claude/hooks/audit-stamp-trailer.sh": "owned",
@@ -198,11 +200,13 @@
     ".gaia/cli/templates/service/urls.ts.tmpl": "owned",
     ".gaia/labels.json": "owned",
     ".gaia/scripts/a11y-structural/check-a11y-triviality.mjs": "owned",
+    ".gaia/scripts/audit-dispositions-check.sh": "owned",
     ".gaia/scripts/audit-fix-verify.sh": "owned",
     ".gaia/scripts/audit-key-lib.sh": "owned",
     ".gaia/scripts/audit-ledger/append-worthiness.mjs": "owned",
     ".gaia/scripts/audit-loop-eval.sh": "owned",
     ".gaia/scripts/audit-loop-record.sh": "owned",
+    ".gaia/scripts/audit-loop-signals-lib.sh": "owned",
     ".gaia/scripts/audit-loop-state-lib.sh": "owned",
     ".gaia/scripts/audit-member-digest.sh": "owned",
     ".gaia/scripts/audit-noop-detect.sh": "owned",
@@ -221,6 +225,7 @@
     ".gaia/scripts/check-updates.sh": "owned",
     ".gaia/scripts/chore-deps-skip.sh": "owned",
     ".gaia/scripts/classifier/classify-determinism.mjs": "owned",
+    ".gaia/scripts/context-checkpoint-lib.sh": "owned",
     ".gaia/scripts/cost-represented.sh": "owned",
     ".gaia/scripts/debt-count-refresh.sh": "owned",
     ".gaia/scripts/debt-stale-claims.sh": "owned",
@@ -258,7 +263,9 @@
     ".gaia/scripts/verify-audit-roster.sh": "owned",
     ".gaia/scripts/write-audit-remits.sh": "owned",
     ".gaia/state-registry.json": "owned",
+    ".gaia/statusline/context-reading.sh": "owned",
     ".gaia/statusline/gaia-statusline.sh": "owned",
+    ".gaia/statusline/left-side.sh": "owned",
     ".gaia/templates/README.md": "owned",
     ".github/actions/gaia-setup-node/action.yml": "owned",
     ".github/audit/resolve-audit-base.sh": "owned",
@@ -648,7 +655,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-10-01T20:03:17.627Z",
+  "generated": "2026-10-02T06:44:02.672Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",
