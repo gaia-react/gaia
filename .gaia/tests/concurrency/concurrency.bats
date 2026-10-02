@@ -20,14 +20,14 @@ teardown() {
   gaia_teardown
 }
 
-# count_autocommits <dir>: how many consecutive `wiki: auto-commit *` commits
-# sit at <dir>'s current HEAD. Used by C5-02's squash-hook check.
+# count_autocommits <checkout_directory>: how many consecutive `wiki: auto-commit *` commits
+# sit at <checkout_directory>'s current HEAD. Used by C5-02's squash-hook check.
 count_autocommits() {
-  local dir="$1" n=0
-  while git -C "$dir" log "HEAD~$n" -1 --format=%s 2>/dev/null | grep -q '^wiki: auto-commit '; do
-    n=$((n + 1))
+  local checkout_directory="$1" autocommit_count=0
+  while git -C "$checkout_directory" log "HEAD~$autocommit_count" -1 --format=%s 2>/dev/null | grep -q '^wiki: auto-commit '; do
+    autocommit_count=$((autocommit_count + 1))
   done
-  printf '%s' "$n"
+  printf '%s' "$autocommit_count"
 }
 
 # ---------------------------------------------------------------------------
@@ -44,11 +44,11 @@ count_autocommits() {
     .gaia/scripts/main-root-lib.sh
   gaia_commit_all "$MAIN" "add plan allocator"
 
-  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+  WORKTREE_B="$(gaia_add_worktree "$MAIN" treeB treeB)"
 
   # Mirrors the real invocation in .claude/skills/gaia/references/plan.md:
   # ROOT="$(git rev-parse --show-toplevel)"; plan-allocator.sh next "$ROOT".
-  root_b="$(run_in "$B" -- git rev-parse --show-toplevel)"
+  root_b="$(run_in "$WORKTREE_B" -- git rev-parse --show-toplevel)"
   run bash "$MAIN/.specify/extensions/gaia/lib/plan-allocator.sh" next "$root_b" "feature from B"
   [ "$status" -eq 0 ]
 
@@ -62,19 +62,19 @@ count_autocommits() {
 
 @test "C3-05: the project id is one value per clone" {
   MAIN="$(gaia_new_main gaia-c305-main)"
-  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+  WORKTREE_B="$(gaia_add_worktree "$MAIN" treeB treeB)"
 
   # Drives the real production functions directly (readOrCreateProjectId /
   # resolveStorageRoots) via tsx against the real source: the module resolves
   # through node_modules, not a relative `source`, so a throwaway fixture
   # cannot carry a working copy the way a bash script can.
-  storage_dir="$GAIA_REPO_ROOT_REAL/.gaia/cli/src/storage"
+  storage_directory="$GAIA_REPO_ROOT_REAL/.gaia/cli/src/storage"
   tsx="$GAIA_REPO_ROOT_REAL/.gaia/cli/node_modules/.bin/tsx"
 
   read_id() {
     local repo_root="$1"
     "$tsx" --eval "
-      import {readOrCreateProjectId, resolveStorageRoots} from '$storage_dir/index.ts';
+      import {readOrCreateProjectId, resolveStorageRoots} from '$storage_directory/index.ts';
       process.stdout.write(readOrCreateProjectId(resolveStorageRoots({repoRoot: '$repo_root'})));
     "
   }
@@ -84,7 +84,7 @@ count_autocommits() {
 
   # Mirrors the real caller (ping/send.ts's postPing): cwd defaults to
   # process.cwd(), which for a session running in B is B's own directory.
-  b_id="$(read_id "$B")"
+  b_id="$(read_id "$WORKTREE_B")"
 
   # Target: reading .project-id "from" B yields main's id. Today B mints its
   # own separate id (sha256 of B's own root path) -- a second identity for
@@ -121,23 +121,23 @@ setup_c4_base_sha_pair() {
   gaia_copy_registry "$MAIN"
   gaia_commit_all "$MAIN" "add link-worktree deps"
 
-  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
-  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
-  gaia_link_worktree "$A"
-  gaia_link_worktree "$B"
+  WORKTREE_A="$(gaia_add_worktree "$MAIN" treeA treeA)"
+  WORKTREE_B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+  gaia_link_worktree "$WORKTREE_A"
+  gaia_link_worktree "$WORKTREE_B"
 
-  echo a > "$A/a.txt"
-  git -C "$A" add a.txt
-  git -C "$A" commit -q -m "a work"
-  echo b > "$B/b.txt"
-  git -C "$B" add b.txt
-  git -C "$B" commit -q -m "b work"
+  echo a > "$WORKTREE_A/a.txt"
+  git -C "$WORKTREE_A" add a.txt
+  git -C "$WORKTREE_A" commit -q -m "a work"
+  echo b > "$WORKTREE_B/b.txt"
+  git -C "$WORKTREE_B" add b.txt
+  git -C "$WORKTREE_B" commit -q -m "b work"
 
-  BASE_SHA_A="$(run_in "$A" -- git merge-base main HEAD)"
-  BASE_SHA_B="$(run_in "$B" -- git merge-base main HEAD)"
+  BASE_SHA_A="$(run_in "$WORKTREE_A" -- git merge-base main HEAD)"
+  BASE_SHA_B="$(run_in "$WORKTREE_B" -- git merge-base main HEAD)"
 
-  KEY_A="$(run_in "$A" -- bash -c '. .gaia/scripts/audit-key-lib.sh; gaia_audit_key "$1"' _ "$BASE_SHA_A")"
-  KEY_B="$(run_in "$B" -- bash -c '. .gaia/scripts/audit-key-lib.sh; gaia_audit_key "$1"' _ "$BASE_SHA_B")"
+  KEY_A="$(run_in "$WORKTREE_A" -- bash -c '. .gaia/scripts/audit-key-lib.sh; gaia_audit_key "$1"' _ "$BASE_SHA_A")"
+  KEY_B="$(run_in "$WORKTREE_B" -- bash -c '. .gaia/scripts/audit-key-lib.sh; gaia_audit_key "$1"' _ "$BASE_SHA_B")"
 }
 
 @test "C4-01: findings sidecar isolated across worktrees" {
@@ -150,8 +150,8 @@ setup_c4_base_sha_pair() {
   [ -n "$KEY_A" ]
   [ -n "$KEY_B" ]
 
-  sidecar_a="$A/.gaia/local/audit/${KEY_A}.code-audit-frontend.findings.json"
-  sidecar_b="$B/.gaia/local/audit/${KEY_B}.code-audit-frontend.findings.json"
+  sidecar_a="$WORKTREE_A/.gaia/local/audit/${KEY_A}.code-audit-frontend.findings.json"
+  sidecar_b="$WORKTREE_B/.gaia/local/audit/${KEY_B}.code-audit-frontend.findings.json"
 
   # The fixture creates its own parent, the way the real writers do
   # (audit-write-findings.sh:238, audit-write-clearance.sh:407). Before the
@@ -184,14 +184,14 @@ setup_c4_base_sha_pair() {
   [ -n "$KEY_A" ]
   [ -n "$KEY_B" ]
 
-  ledger_a="$A/.gaia/local/audit/${KEY_A}.rerun.json"
-  ledger_b="$B/.gaia/local/audit/${KEY_B}.rerun.json"
+  ledger_a="$WORKTREE_A/.gaia/local/audit/${KEY_A}.rerun.json"
+  ledger_b="$WORKTREE_B/.gaia/local/audit/${KEY_B}.rerun.json"
 
   # Its own parent, as the real writers do and as C4-01 explains.
   mkdir -p "$(dirname "$ledger_a")" "$(dirname "$ledger_b")"
 
-  jq -n --arg br treeA --arg base "$BASE_SHA_A" '{schema: 1, branch: $br, base_sha: $base, round: 1}' > "$ledger_a"
-  jq -n --arg br treeB --arg base "$BASE_SHA_B" '{schema: 1, branch: $br, base_sha: $base, round: 1}' > "$ledger_b"
+  jq -n --arg branch treeA --arg base "$BASE_SHA_A" '{schema: 1, branch: $branch, base_sha: $base, round: 1}' > "$ledger_a"
+  jq -n --arg branch treeB --arg base "$BASE_SHA_B" '{schema: 1, branch: $branch, base_sha: $base, round: 1}' > "$ledger_b"
 
   # The frozen assertion: the ledger is partitioned by base-sha plus branch, so
   # one tree's rerun record never overwrites the other's.
@@ -212,32 +212,32 @@ setup_c4_base_sha_pair() {
     .gaia/scripts/audit-key-lib.sh
   gaia_commit_all "$MAIN" "add gh-artifact lib"
 
-  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
-  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+  WORKTREE_A="$(gaia_add_worktree "$MAIN" treeA treeA)"
+  WORKTREE_B="$(gaia_add_worktree "$MAIN" treeB treeB)"
 
   # Tree A's session opens PR #100 for its own branch...
-  run run_in "$A" -- bash -c '
+  run run_in "$WORKTREE_A" -- bash -c '
     . .gaia/scripts/gh-artifact-lib.sh
-    cache_dir="$(gaia_gh_artifact_cache_directory)"
-    path="$(gaia_gh_artifact_path "$cache_dir" treeA)"
+    cache_directory="$(gaia_gh_artifact_cache_directory)"
+    path="$(gaia_gh_artifact_path "$cache_directory" treeA)"
     gaia_gh_artifact_write "$path" 100 owner/repo treeA sessA
   '
   [ "$status" -eq 0 ]
 
   # ...then tree B's session, concurrently, opens PR #200 for ITS branch.
-  run run_in "$B" -- bash -c '
+  run run_in "$WORKTREE_B" -- bash -c '
     . .gaia/scripts/gh-artifact-lib.sh
-    cache_dir="$(gaia_gh_artifact_cache_directory)"
-    path="$(gaia_gh_artifact_path "$cache_dir" treeB)"
+    cache_directory="$(gaia_gh_artifact_cache_directory)"
+    path="$(gaia_gh_artifact_path "$cache_directory" treeB)"
     gaia_gh_artifact_write "$path" 200 owner/repo treeB sessB
   '
   [ "$status" -eq 0 ]
 
   # Tree A's own reader then asks for its own artifact back.
-  run run_in "$A" -- bash -c '
+  run run_in "$WORKTREE_A" -- bash -c '
     . .gaia/scripts/gh-artifact-lib.sh
-    cache_dir="$(gaia_gh_artifact_cache_directory)"
-    path="$(gaia_gh_artifact_path "$cache_dir" treeA)"
+    cache_directory="$(gaia_gh_artifact_cache_directory)"
+    path="$(gaia_gh_artifact_path "$cache_directory" treeA)"
     gaia_gh_artifact_read "$path" sessA treeA
   '
   [ "$status" -eq 0 ]
@@ -261,19 +261,19 @@ setup_c4_base_sha_pair() {
   gaia_copy_registry "$MAIN"
   gaia_commit_all "$MAIN" "add link-worktree deps"
 
-  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
-  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
-  gaia_link_worktree "$A"
-  gaia_link_worktree "$B"
+  WORKTREE_A="$(gaia_add_worktree "$MAIN" treeA treeA)"
+  WORKTREE_B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+  gaia_link_worktree "$WORKTREE_A"
+  gaia_link_worktree "$WORKTREE_B"
 
-  mkdir -p "$A/test" "$B/test"
-  cat > "$A/test/a.test.ts" <<'JS'
+  mkdir -p "$WORKTREE_A/test" "$WORKTREE_B/test"
+  cat > "$WORKTREE_A/test/a.test.ts" <<'JS'
 import { test, expect } from 'vitest';
 test('a only test', () => {
   expect(1).toBe(1);
 });
 JS
-  cat > "$B/test/b.test.ts" <<'JS'
+  cat > "$WORKTREE_B/test/b.test.ts" <<'JS'
 import { test, expect } from 'vitest';
 test('b only test', () => {
   expect(2).toBe(2);
@@ -281,9 +281,9 @@ test('b only test', () => {
 JS
 
   append_script="$GAIA_REPO_ROOT_REAL/.gaia/scripts/audit-ledger/append-worthiness.mjs"
-  run run_in "$A" -- node "$append_script" test/a.test.ts "a only test" keep
+  run run_in "$WORKTREE_A" -- node "$append_script" test/a.test.ts "a only test" keep
   [ "$status" -eq 0 ]
-  run run_in "$B" -- node "$append_script" test/b.test.ts "b only test" keep
+  run run_in "$WORKTREE_B" -- node "$append_script" test/b.test.ts "b only test" keep
   [ "$status" -eq 0 ]
 
   # Target: each tree's own ledger, at worthiness-ledger/ (scope "per-tree",
@@ -308,8 +308,8 @@ JS
   # observation; (c) neither ledger contains the other tree's observation
   # (both directions); (d) the old shared location under audit/ is written in
   # neither tree.
-  A_LEDGER="$(run_in "$A" -- bash -c '. .claude/hooks/lib/worthiness-ledger.sh; worthiness_ledger_path')"
-  B_LEDGER="$(run_in "$B" -- bash -c '. .claude/hooks/lib/worthiness-ledger.sh; worthiness_ledger_path')"
+  A_LEDGER="$(run_in "$WORKTREE_A" -- bash -c '. .claude/hooks/lib/worthiness-ledger.sh; worthiness_ledger_path')"
+  B_LEDGER="$(run_in "$WORKTREE_B" -- bash -c '. .claude/hooks/lib/worthiness-ledger.sh; worthiness_ledger_path')"
   [ -n "$A_LEDGER" ]
   [ -n "$B_LEDGER" ]
 
@@ -326,11 +326,11 @@ JS
     echo "tree B's ledger contains tree A's observation" >&2
     return 1
   fi
-  if [ -e "$A/.gaia/local/audit/worthiness.jsonl" ]; then
+  if [ -e "$WORKTREE_A/.gaia/local/audit/worthiness.jsonl" ]; then
     echo "the old shared worthiness path was written in tree A" >&2
     return 1
   fi
-  if [ -e "$B/.gaia/local/audit/worthiness.jsonl" ]; then
+  if [ -e "$WORKTREE_B/.gaia/local/audit/worthiness.jsonl" ]; then
     echo "the old shared worthiness path was written in tree B" >&2
     return 1
   fi
@@ -346,11 +346,11 @@ JS
     .gaia/scripts/main-root-lib.sh
   gaia_commit_all "$MAIN" "add plan allocator"
 
-  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
-  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+  WORKTREE_A="$(gaia_add_worktree "$MAIN" treeA treeA)"
+  WORKTREE_B="$(gaia_add_worktree "$MAIN" treeB treeB)"
 
-  root_a="$(run_in "$A" -- git rev-parse --show-toplevel)"
-  root_b="$(run_in "$B" -- git rev-parse --show-toplevel)"
+  root_a="$(run_in "$WORKTREE_A" -- git rev-parse --show-toplevel)"
+  root_b="$(run_in "$WORKTREE_B" -- git rev-parse --show-toplevel)"
 
   id_a="$(bash "$MAIN/.specify/extensions/gaia/lib/plan-allocator.sh" next "$root_a" "feature A")"
   id_b="$(bash "$MAIN/.specify/extensions/gaia/lib/plan-allocator.sh" next "$root_b" "feature B")"
@@ -373,10 +373,10 @@ JS
   gaia_copy_registry "$MAIN"
   gaia_commit_all "$MAIN" "add link-worktree deps"
 
-  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
-  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
-  gaia_link_worktree "$A"
-  gaia_link_worktree "$B"
+  WORKTREE_A="$(gaia_add_worktree "$MAIN" treeA treeA)"
+  WORKTREE_B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+  gaia_link_worktree "$WORKTREE_A"
+  gaia_link_worktree "$WORKTREE_B"
 
   # WHY the RED ledger is not symlinked, asked of the shipped code rather than
   # asserted by hand: the registry classifies it per-tree, and the linker's own
@@ -384,11 +384,11 @@ JS
   # registry entry that started calling it shared -- the precise Phase-6
   # cutover risk this scenario guards -- fails here rather than silently
   # sharing the ledger.
-  classify="$(run_in "$A" -- bash -c \
+  classify="$(run_in "$WORKTREE_A" -- bash -c \
     '. .gaia/scripts/state-registry-lib.sh; gaia_registry_classify red-ledger/observations.jsonl' 2>/dev/null)"
   [ "$classify" = "per-tree" ]
 
-  linkable="$(run_in "$A" -- bash -c \
+  linkable="$(run_in "$WORKTREE_A" -- bash -c \
     '. .gaia/scripts/state-registry-lib.sh; gaia_registry_linkable_paths' 2>/dev/null)"
   [ -n "$linkable" ]
   grep -qxF red-ledger <<<"$linkable" && return 1
@@ -412,20 +412,20 @@ JS
   # It fails, as it must, on a linker that linked nothing: .gaia/local would
   # then be each tree's own real directory and resolve somewhere else.
   MAIN_LOCAL="$(cd "$MAIN/.gaia/local" && pwd -P)"
-  [ "$(cd "$A/.gaia/local" && pwd -P)" = "$MAIN_LOCAL" ]
-  [ "$(cd "$B/.gaia/local" && pwd -P)" = "$MAIN_LOCAL" ]
+  [ "$(cd "$WORKTREE_A/.gaia/local" && pwd -P)" = "$MAIN_LOCAL" ]
+  [ "$(cd "$WORKTREE_B/.gaia/local" && pwd -P)" = "$MAIN_LOCAL" ]
 
   # No shared-state symlink exists for the per-tree entry in either tree. This
   # is the mechanism check for TODAY's per-entry linking; the physical-path
   # checks further down are what carry the guarantee across the cutover.
-  [ -L "$A/.gaia/local/red-ledger" ] && return 1
-  [ -L "$B/.gaia/local/red-ledger" ] && return 1
+  [ -L "$WORKTREE_A/.gaia/local/red-ledger" ] && return 1
+  [ -L "$WORKTREE_B/.gaia/local/red-ledger" ] && return 1
 
   # The shipped path function decides where each tree's ledger lives -- the
   # capture hook and the commit gate both address it through this one function
   # -- so the fixture asks GAIA where to write instead of hand-building a path.
-  LEDGER_A="$(run_in "$A" -- bash -c '. .claude/hooks/lib/red-ledger.sh; red_ledger_path')"
-  LEDGER_B="$(run_in "$B" -- bash -c '. .claude/hooks/lib/red-ledger.sh; red_ledger_path')"
+  LEDGER_A="$(run_in "$WORKTREE_A" -- bash -c '. .claude/hooks/lib/red-ledger.sh; red_ledger_path')"
+  LEDGER_B="$(run_in "$WORKTREE_B" -- bash -c '. .claude/hooks/lib/red-ledger.sh; red_ledger_path')"
   [ -n "$LEDGER_A" ]
   [ -n "$LEDGER_B" ]
 
@@ -439,11 +439,11 @@ JS
   # checks above stop being sufficient on their own. Physical resolution is
   # what catches that: the two ledgers must sit in different real directories,
   # and neither in main's.
-  PHYS_A="$(cd "$(dirname "$LEDGER_A")" && pwd -P)"
-  PHYS_B="$(cd "$(dirname "$LEDGER_B")" && pwd -P)"
-  [ "$PHYS_A" != "$PHYS_B" ]
-  [ "$PHYS_A" != "$MAIN/.gaia/local/red-ledger" ]
-  [ "$PHYS_B" != "$MAIN/.gaia/local/red-ledger" ]
+  PHYSICAL_PATH_A="$(cd "$(dirname "$LEDGER_A")" && pwd -P)"
+  PHYSICAL_PATH_B="$(cd "$(dirname "$LEDGER_B")" && pwd -P)"
+  [ "$PHYSICAL_PATH_A" != "$PHYSICAL_PATH_B" ]
+  [ "$PHYSICAL_PATH_A" != "$MAIN/.gaia/local/red-ledger" ]
+  [ "$PHYSICAL_PATH_B" != "$MAIN/.gaia/local/red-ledger" ]
 
   # Each tree's own observation is still there (a write that landed elsewhere,
   # or that the peer overwrote, fails here -- an absence check alone would pass
@@ -485,32 +485,32 @@ JS
 
   gaia_commit_all "$MAIN" "add RED-verify gate deps"
 
-  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
-  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
-  gaia_link_worktree "$A"
-  gaia_link_worktree "$B"
+  WORKTREE_A="$(gaia_add_worktree "$MAIN" treeA treeA)"
+  WORKTREE_B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+  gaia_link_worktree "$WORKTREE_A"
+  gaia_link_worktree "$WORKTREE_B"
 
   # A test under app/utils/** so the determinism classifier (scoped to
   # app/utils, app/services, app/hooks, and .ts under app/components) returns
   # "strict" for it rather than "emergent" -- an emergent verdict would make
   # the check hook skip the file outright, and the deny in check 2 below would
   # never fire, for a reason that has nothing to do with tree isolation.
-  test_rel="app/utils/c407/index.test.ts"
+  test_relative_path="app/utils/c407/index.test.ts"
   full_name="adds two numbers c407"
   test_body='import {expect, test} from "vitest";
 test("adds two numbers c407", () => {
   expect(1 + 1).toBe(2);
 });
 '
-  mkdir -p "$A/app/utils/c407" "$B/app/utils/c407"
+  mkdir -p "$WORKTREE_A/app/utils/c407" "$WORKTREE_B/app/utils/c407"
   # Both trees write the IDENTICAL body: same fullName, same content signal.
   # That identity is the whole point -- it is what makes tree A's observation
   # a candidate to satisfy tree B's gate for a test B never ran.
-  printf '%s' "$test_body" > "$A/$test_rel"
-  printf '%s' "$test_body" > "$B/$test_rel"
+  printf '%s' "$test_body" > "$WORKTREE_A/$test_relative_path"
+  printf '%s' "$test_body" > "$WORKTREE_B/$test_relative_path"
 
-  canned="$(gaia_mk_tmp gaia-c407-json)/canned.json"
-  jq -nc --arg name "$test_rel" --arg full "$full_name" '{
+  canned="$(gaia_make_temporary_directory gaia-c407-json)/canned.json"
+  jq -nc --arg name "$test_relative_path" --arg full "$full_name" '{
     numTotalTestSuites: 1, numFailedTests: 1, numPassedTests: 0,
     numTotalTests: 1, success: false,
     testResults: [{
@@ -533,8 +533,8 @@ test("adds two numbers c407", () => {
   capture_in() {
     local tree="$1"
     local payload
-    payload=$(jq -nc --arg c "pnpm test --run $test_rel" --arg d "$tree" \
-      '{tool_name:"Bash", tool_input:{command:$c}, cwd:$d, tool_response:{stdout:"", stderr:"", interrupted:false}}')
+    payload=$(jq -nc --arg command_line "pnpm test --run $test_relative_path" --arg working_directory "$tree" \
+      '{tool_name:"Bash", tool_input:{command:$command_line}, cwd:$working_directory, tool_response:{stdout:"", stderr:"", interrupted:false}}')
     run run_in "$tree" -- run_with RED_CAPTURE_JSON_OVERRIDE="$canned" -- \
       gaia_deliver_hook "$payload" "$tree/.claude/hooks/capture-red-observations.sh"
   }
@@ -546,8 +546,8 @@ test("adds two numbers c407", () => {
   check_in() {
     local tree="$1"
     local payload
-    payload=$(jq -nc --arg c "git commit -m change" --arg d "$tree" \
-      '{tool_name:"Bash", tool_input:{command:$c}, cwd:$d}')
+    payload=$(jq -nc --arg command_line "git commit -m change" --arg working_directory "$tree" \
+      '{tool_name:"Bash", tool_input:{command:$command_line}, cwd:$working_directory}')
     run run_in "$tree" -- gaia_deliver_hook "$payload" "$tree/.claude/hooks/red-verify-commit-check.sh"
   }
 
@@ -557,11 +557,11 @@ test("adds two numbers c407", () => {
   # run from A allows. Without this, a deny anywhere below could just as
   # easily be this fixture never producing an allow at all.
   # ---------------------------------------------------------------------------
-  capture_in "$A"
+  capture_in "$WORKTREE_A"
   [ "$status" -eq 0 ]
 
-  git -C "$A" add "$test_rel"
-  check_in "$A"
+  git -C "$WORKTREE_A" add "$test_relative_path"
+  check_in "$WORKTREE_A"
   [ "$status" -eq 0 ]
   grep -qF -- '"permissionDecision": "deny"' <<<"$output" && return 1
 
@@ -576,8 +576,8 @@ test("adds two numbers c407", () => {
   # falsely pass, and no assertion shaped like C4-06's catches that, so this
   # is a distinct scenario, not a variant folded into it.
   # ---------------------------------------------------------------------------
-  git -C "$B" add "$test_rel"
-  check_in "$B"
+  git -C "$WORKTREE_B" add "$test_relative_path"
+  check_in "$WORKTREE_B"
   [ "$status" -eq 0 ]
   grep -qF -- '"permissionDecision": "deny"' <<<"$output" || return 1
 
@@ -592,10 +592,10 @@ test("adds two numbers c407", () => {
   # vacuity is exactly what C4-06 was repaired for; omitting it here would
   # reintroduce the same hole this suite exists to catch.
   # ---------------------------------------------------------------------------
-  capture_in "$B"
+  capture_in "$WORKTREE_B"
   [ "$status" -eq 0 ]
 
-  check_in "$B"
+  check_in "$WORKTREE_B"
   [ "$status" -eq 0 ]
   # Not the assertion's final statement: a `grep ... && return 1` whose good
   # case is grep failing (nothing found) would otherwise hand grep's own
@@ -616,10 +616,10 @@ test("adds two numbers c407", () => {
   gaia_copy_registry "$MAIN"
   gaia_commit_all "$MAIN" "add link-worktree deps"
 
-  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
-  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
-  gaia_link_worktree "$A"
-  gaia_link_worktree "$B"
+  WORKTREE_A="$(gaia_add_worktree "$MAIN" treeA treeA)"
+  WORKTREE_B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+  gaia_link_worktree "$WORKTREE_A"
+  gaia_link_worktree "$WORKTREE_B"
 
   # WHY this scenario exists and why it is not folded into C4-06 or C4-04:
   # those two guard the RED ledger and the worthiness ledger, each of which is
@@ -638,10 +638,10 @@ test("adds two numbers c407", () => {
   # forensics.md step 7 and handoff.md step 0 actually invoke, so a regression
   # in the CLI dispatch (as opposed to the function) is a real break for these
   # two surfaces and must fail here.
-  run run_in "$A" -- bash .gaia/scripts/main-root-lib.sh --tree-key
+  run run_in "$WORKTREE_A" -- bash .gaia/scripts/main-root-lib.sh --tree-key
   [ "$status" -eq 0 ]
   KEY_A="$output"
-  run run_in "$B" -- bash .gaia/scripts/main-root-lib.sh --tree-key
+  run run_in "$WORKTREE_B" -- bash .gaia/scripts/main-root-lib.sh --tree-key
   [ "$status" -eq 0 ]
   KEY_B="$output"
 
@@ -657,12 +657,12 @@ test("adds two numbers c407", () => {
   # that started calling either one shared -- the precise cutover risk -- fails
   # here rather than silently merging two trees' reports.
   for entry in forensics handoff; do
-    classify="$(run_in "$A" -- bash -c \
+    classify="$(run_in "$WORKTREE_A" -- bash -c \
       ". .gaia/scripts/state-registry-lib.sh; gaia_registry_classify $entry/x.md" 2>/dev/null)"
     [ "$classify" = "per-tree" ]
   done
 
-  linkable="$(run_in "$A" -- bash -c \
+  linkable="$(run_in "$WORKTREE_A" -- bash -c \
     '. .gaia/scripts/state-registry-lib.sh; gaia_registry_linkable_paths' 2>/dev/null)"
   [ -n "$linkable" ]
   grep -qxF forensics <<<"$linkable" && return 1
@@ -677,18 +677,18 @@ test("adds two numbers c407", () => {
   # carries, for the same reason and with the same non-vacuity: a linker that
   # linked nothing leaves each tree its own real directory, resolving elsewhere.
   MAIN_LOCAL="$(cd "$MAIN/.gaia/local" && pwd -P)"
-  [ "$(cd "$A/.gaia/local" && pwd -P)" = "$MAIN_LOCAL" ]
-  [ "$(cd "$B/.gaia/local" && pwd -P)" = "$MAIN_LOCAL" ]
+  [ "$(cd "$WORKTREE_A/.gaia/local" && pwd -P)" = "$MAIN_LOCAL" ]
+  [ "$(cd "$WORKTREE_B/.gaia/local" && pwd -P)" = "$MAIN_LOCAL" ]
 
   # Both trees do what the prose tells an agent to do: resolve the key, then
   # write under it. The paths are built from the key the SHIPPED code just
   # returned, never from a literal the fixture invented -- a fixture that
   # hand-built the keyed shape would be re-stating the thing under test, which
   # is the defect M-1 was written to remove from C4-06.
-  HANDOFF_A="$A/.gaia/local/handoff/$KEY_A/HANDOFF-2026-07-25-treeA.md"
-  HANDOFF_B="$B/.gaia/local/handoff/$KEY_B/HANDOFF-2026-07-25-treeB.md"
-  FORENSICS_A="$A/.gaia/local/forensics/$KEY_A/20260725T120000Z-hook-misfire.md"
-  FORENSICS_B="$B/.gaia/local/forensics/$KEY_B/20260725T120000Z-hook-misfire.md"
+  HANDOFF_A="$WORKTREE_A/.gaia/local/handoff/$KEY_A/HANDOFF-2026-07-25-treeA.md"
+  HANDOFF_B="$WORKTREE_B/.gaia/local/handoff/$KEY_B/HANDOFF-2026-07-25-treeB.md"
+  FORENSICS_A="$WORKTREE_A/.gaia/local/forensics/$KEY_A/20260725T120000Z-hook-misfire.md"
+  FORENSICS_B="$WORKTREE_B/.gaia/local/forensics/$KEY_B/20260725T120000Z-hook-misfire.md"
   mkdir -p "$(dirname "$HANDOFF_A")" "$(dirname "$HANDOFF_B")" \
     "$(dirname "$FORENSICS_A")" "$(dirname "$FORENSICS_B")"
   printf '%s\n' 'handoff-body-treeA' > "$HANDOFF_A"
@@ -703,16 +703,16 @@ test("adds two numbers c407", () => {
   # through the very flip it guards. Physical resolution is what catches a lost
   # key: the two trees' directories must be different real directories, and
   # neither may be the unkeyed parent that the pre-cutover prose named.
-  PHYS_HANDOFF_A="$(cd "$(dirname "$HANDOFF_A")" && pwd -P)"
-  PHYS_HANDOFF_B="$(cd "$(dirname "$HANDOFF_B")" && pwd -P)"
-  PHYS_FOR_A="$(cd "$(dirname "$FORENSICS_A")" && pwd -P)"
-  PHYS_FOR_B="$(cd "$(dirname "$FORENSICS_B")" && pwd -P)"
-  [ "$PHYS_HANDOFF_A" != "$PHYS_HANDOFF_B" ]
-  [ "$PHYS_FOR_A" != "$PHYS_FOR_B" ]
-  [ "$PHYS_HANDOFF_A" != "$MAIN/.gaia/local/handoff" ]
-  [ "$PHYS_HANDOFF_B" != "$MAIN/.gaia/local/handoff" ]
-  [ "$PHYS_FOR_A" != "$MAIN/.gaia/local/forensics" ]
-  [ "$PHYS_FOR_B" != "$MAIN/.gaia/local/forensics" ]
+  PHYSICAL_HANDOFF_PATH_A="$(cd "$(dirname "$HANDOFF_A")" && pwd -P)"
+  PHYSICAL_HANDOFF_PATH_B="$(cd "$(dirname "$HANDOFF_B")" && pwd -P)"
+  PHYSICAL_FORENSICS_PATH_A="$(cd "$(dirname "$FORENSICS_A")" && pwd -P)"
+  PHYSICAL_FORENSICS_PATH_B="$(cd "$(dirname "$FORENSICS_B")" && pwd -P)"
+  [ "$PHYSICAL_HANDOFF_PATH_A" != "$PHYSICAL_HANDOFF_PATH_B" ]
+  [ "$PHYSICAL_FORENSICS_PATH_A" != "$PHYSICAL_FORENSICS_PATH_B" ]
+  [ "$PHYSICAL_HANDOFF_PATH_A" != "$MAIN/.gaia/local/handoff" ]
+  [ "$PHYSICAL_HANDOFF_PATH_B" != "$MAIN/.gaia/local/handoff" ]
+  [ "$PHYSICAL_FORENSICS_PATH_A" != "$MAIN/.gaia/local/forensics" ]
+  [ "$PHYSICAL_FORENSICS_PATH_B" != "$MAIN/.gaia/local/forensics" ]
 
   # ---------------------------------------------------------------------------
   # The harm, driven rather than described. handoff.md step 0 is a DELETE:
@@ -725,7 +725,7 @@ test("adds two numbers c407", () => {
   # from that line -- or from the permission glob, which would push an agent
   # toward the unkeyed form -- this is what reds.
   # ---------------------------------------------------------------------------
-  run run_in "$A" -- bash -c "rm -f .gaia/local/handoff/$KEY_A/HANDOFF-*.md"
+  run run_in "$WORKTREE_A" -- bash -c "rm -f .gaia/local/handoff/$KEY_A/HANDOFF-*.md"
   [ "$status" -eq 0 ]
 
   if [ -e "$HANDOFF_A" ]; then
@@ -741,7 +741,7 @@ test("adds two numbers c407", () => {
   # holds nothing in either tree.
   grep -qF forensics-body-treeB "$FORENSICS_A" && return 1
   grep -qF forensics-body-treeA "$FORENSICS_B" && return 1
-  for tree in "$A" "$B" "$MAIN"; do
+  for tree in "$WORKTREE_A" "$WORKTREE_B" "$MAIN"; do
     if find "$tree/.gaia/local/forensics" -maxdepth 1 -type f -name '*.md' 2>/dev/null | grep -q .; then
       echo "a forensics report landed at the unkeyed path in $tree" >&2
       return 1
@@ -764,15 +764,15 @@ test("adds two numbers c407", () => {
     .gaia/scripts/main-root-lib.sh
   gaia_commit_all "$MAIN" "add statusline + resolver"
 
-  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+  WORKTREE_B="$(gaia_add_worktree "$MAIN" treeB treeB)"
 
   # The setup marker, the debt count and the update-check cache are registry
   # scope "shared", so they live under MAIN's .gaia/local -- one physical copy
   # for every tree. B is left deliberately UNPROVISIONED (no symlinks back to
   # main), so a segment can only render if the statusline resolved main for
   # itself.
-  home_dir="$(gaia_mk_tmp gaia-c501-home)"
-  json="$(jq -n --arg d "$B" '{workspace: {current_dir: $d}}')"
+  home_directory="$(gaia_make_temporary_directory gaia-c501-home)"
+  json="$(jq -n --arg current_directory "$WORKTREE_B" '{workspace: {current_dir: $current_directory}}')"
 
   # Target: the one blocking per-clone precondition, setup, renders from B
   # regardless; everything else is a main-checkout task queue and stays dark
@@ -781,7 +781,7 @@ test("adds two numbers c407", () => {
   # Half A, the kept nudge.
   mkdir -p "$MAIN/.gaia/local"
   jq -n '{completed_at: null}' > "$MAIN/.gaia/local/setup-state.json"
-  run run_with HOME="$home_dir" -- gaia_deliver_hook "$json" "$B/.gaia/statusline/gaia-statusline.sh"
+  run run_with HOME="$home_directory" -- gaia_deliver_hook "$json" "$WORKTREE_B/.gaia/statusline/gaia-statusline.sh"
   [ "$status" -eq 0 ]
   grep -qF 'setup-gaia' <<< "$output"
 
@@ -790,7 +790,7 @@ test("adds two numbers c407", () => {
   jq -n '{completed_at: "2026-01-01T00:00:00Z"}' > "$MAIN/.gaia/local/setup-state.json"
   jq -n '{schema: 1, openCount: 3, computedAt: 0}' > "$MAIN/.gaia/local/debt/count.json"
   jq -n '{outdatedCount: 3}' > "$MAIN/.gaia/local/cache/shared/update-check.json"
-  run run_with HOME="$home_dir" -- gaia_deliver_hook "$json" "$B/.gaia/statusline/gaia-statusline.sh"
+  run run_with HOME="$home_directory" -- gaia_deliver_hook "$json" "$WORKTREE_B/.gaia/statusline/gaia-statusline.sh"
   [ "$status" -eq 0 ]
   grep -qF 'gaia-debt' <<< "$output" && return 1
   grep -qF 'update-deps' <<< "$output" && return 1
@@ -810,14 +810,14 @@ test("adds two numbers c407", () => {
     > "$MAIN/wiki/.state.json"
   gaia_commit_all "$MAIN" "add wiki hooks"
 
-  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+  WORKTREE_B="$(gaia_add_worktree "$MAIN" treeB treeB)"
 
   # Advance treeB by one commit and remember this point as the session-start
   # marker for hook 2 below.
-  echo more >> "$B/README.md"
-  git -C "$B" add README.md
-  git -C "$B" commit -q -m "drift commit"
-  session_start_sha="$(git -C "$B" rev-parse HEAD)"
+  echo more >> "$WORKTREE_B/README.md"
+  git -C "$WORKTREE_B" add README.md
+  git -C "$WORKTREE_B" commit -q -m "drift commit"
+  session_start_sha="$(git -C "$WORKTREE_B" rev-parse HEAD)"
 
   dead=""
 
@@ -826,33 +826,33 @@ test("adds two numbers c407", () => {
   mkdir -p "$MAIN/.gaia/local/cache/shared"
   printf '[wiki base] seeded report line\n' > "$MAIN/.gaia/local/cache/shared/wiki-base-catchup.report"
   json="$(jq -n '{session_id: "S1"}')"
-  out="$(run_in "$B" -- gaia_deliver_hook "$json" "$MAIN/.claude/hooks/janitor-report-drain.sh")"
-  grep -qF '[wiki base] seeded report line' <<< "$out" || dead="$dead janitor-report-drain"
+  hook_output="$(run_in "$WORKTREE_B" -- gaia_deliver_hook "$json" "$MAIN/.claude/hooks/janitor-report-drain.sh")"
+  grep -qF '[wiki base] seeded report line' <<< "$hook_output" || dead="$dead janitor-report-drain"
 
   # 2. wiki-session-stop.sh: a session-start marker recording HEAD before a
   # commit that touched wiki/ was made; a live hook nudges to refresh hot.md.
-  git_dir_b="$(run_in "$B" -- git rev-parse --git-dir)"
-  echo "$session_start_sha" > "$git_dir_b/claude-session-start"
-  echo page > "$B/wiki/page.md"
-  git -C "$B" add wiki/page.md
-  git -C "$B" commit -q -m "wiki page"
+  git_directory_b="$(run_in "$WORKTREE_B" -- git rev-parse --git-dir)"
+  echo "$session_start_sha" > "$git_directory_b/claude-session-start"
+  echo page > "$WORKTREE_B/wiki/page.md"
+  git -C "$WORKTREE_B" add wiki/page.md
+  git -C "$WORKTREE_B" commit -q -m "wiki page"
   json="$(jq -n '{session_id: "S1"}')"
-  out="$(run_in "$B" -- gaia_deliver_hook "$json" "$MAIN/.claude/hooks/wiki-session-stop.sh")"
-  grep -qF 'WIKI_CHANGED' <<< "$out" || dead="$dead wiki-session-stop"
+  hook_output="$(run_in "$WORKTREE_B" -- gaia_deliver_hook "$json" "$MAIN/.claude/hooks/wiki-session-stop.sh")"
+  grep -qF 'WIKI_CHANGED' <<< "$hook_output" || dead="$dead wiki-session-stop"
 
   # 3. wiki-squash-autocommits.sh: two consecutive `wiki: auto-commit` commits
   # at HEAD; a live hook squashes them into one.
-  echo a1 > "$B/wiki/auto.md"
-  git -C "$B" add wiki/auto.md
-  git -C "$B" commit -q -m "wiki: auto-commit 1"
-  echo a2 >> "$B/wiki/auto.md"
-  git -C "$B" add wiki/auto.md
-  git -C "$B" commit -q -m "wiki: auto-commit 2"
-  before_n="$(count_autocommits "$B")"
-  run_in "$B" -- bash "$MAIN/.claude/hooks/wiki-squash-autocommits.sh" >/dev/null 2>&1
-  after_n="$(count_autocommits "$B")"
-  [ "$before_n" -eq 2 ]
-  [ "$after_n" -eq 1 ] || dead="$dead wiki-squash-autocommits"
+  echo a1 > "$WORKTREE_B/wiki/auto.md"
+  git -C "$WORKTREE_B" add wiki/auto.md
+  git -C "$WORKTREE_B" commit -q -m "wiki: auto-commit 1"
+  echo a2 >> "$WORKTREE_B/wiki/auto.md"
+  git -C "$WORKTREE_B" add wiki/auto.md
+  git -C "$WORKTREE_B" commit -q -m "wiki: auto-commit 2"
+  before_count="$(count_autocommits "$WORKTREE_B")"
+  run_in "$WORKTREE_B" -- bash "$MAIN/.claude/hooks/wiki-squash-autocommits.sh" >/dev/null 2>&1
+  after_count="$(count_autocommits "$WORKTREE_B")"
+  [ "$before_count" -eq 2 ]
+  [ "$after_count" -eq 1 ] || dead="$dead wiki-squash-autocommits"
 
   # Target: none silently dead -- each either fires correctly or refuses out
   # loud. A hook that still gated repository detection on a bare
@@ -875,21 +875,21 @@ test("adds two numbers c407", () => {
     .gaia/scripts/main-root-lib.sh \
     .gaia/scripts/main-only-lib.sh
   gaia_commit_all "$MAIN" "add resolver + refusal helper"
-  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+  WORKTREE_B="$(gaia_add_worktree "$MAIN" treeB treeB)"
 
   # The fixture really is a linked worktree, before anything is asserted about
   # what a flow does from inside one.
-  run run_in "$B" -- bash "$MAIN/.gaia/scripts/main-root-lib.sh" --is-worktree
+  run run_in "$WORKTREE_B" -- bash "$MAIN/.gaia/scripts/main-root-lib.sh" --is-worktree
   [ "$status" -eq 0 ]
 
   # Target, part 1 -- the refusal is real and it is LOUD. It refuses (non-zero),
   # names the tree it refused from AND the main checkout to use instead, and
   # hands back the command to get there. A refusal that does not say where to go
   # is the silent-death shape this tranche exists to reject.
-  run run_in "$B" -- bash -c '. .gaia/scripts/main-only-lib.sh; gaia_refuse_if_worktree "/gaia-release"'
+  run run_in "$WORKTREE_B" -- bash -c '. .gaia/scripts/main-only-lib.sh; gaia_refuse_if_worktree "/gaia-release"'
   [ "$status" -eq 1 ]
   grep -qxF -- "/gaia-release must run from the main checkout, not a worktree." <<<"$output"
-  grep -qxF -- "Worktree:       $B" <<<"$output"
+  grep -qxF -- "Worktree:       $WORKTREE_B" <<<"$output"
   grep -qxF -- "Main checkout:  $MAIN" <<<"$output"
   grep -qxF -- "Run \`cd $MAIN\` then re-invoke /gaia-release." <<<"$output"
 
@@ -914,10 +914,10 @@ test("adds two numbers c407", () => {
   gaia_copy_registry "$MAIN"
   gaia_commit_all "$MAIN" "add debt refresher + link-worktree deps"
 
-  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
-  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
-  gaia_link_worktree "$A"
-  gaia_link_worktree "$B"
+  WORKTREE_A="$(gaia_add_worktree "$MAIN" treeA treeA)"
+  WORKTREE_B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+  gaia_link_worktree "$WORKTREE_A"
+  gaia_link_worktree "$WORKTREE_B"
 
   # debt/ is a state-registry "shared" path, so both A's and B's own copy of
   # the refresher resolve the SAME physical cache through their own symlink.
@@ -926,7 +926,7 @@ test("adds two numbers c407", () => {
   # single-symlink cutover the per-entry linker created it as a symlink target
   # and the fixture inherited that, which the cutover deliberately removed.
   mkdir -p "$MAIN/.gaia/local/debt"
-  jq -n --argjson t "$(date +%s)" '{schema: 1, openCount: 2, computedAt: $t}' \
+  jq -n --argjson computed_at "$(date +%s)" '{schema: 1, openCount: 2, computedAt: $computed_at}' \
     > "$MAIN/.gaia/local/debt/count.json"
   computed_before="$(jq -r '.computedAt' "$MAIN/.gaia/local/debt/count.json")"
 
@@ -935,8 +935,8 @@ test("adds two numbers c407", () => {
   # invocation; simulate two such invocations landing back-to-back, one per
   # tree, driving the refresher directly rather than through a statusline
   # render.
-  run_in "$A" -- bash .gaia/scripts/debt-count-refresh.sh
-  run_in "$B" -- bash .gaia/scripts/debt-count-refresh.sh
+  run_in "$WORKTREE_A" -- bash .gaia/scripts/debt-count-refresh.sh
+  run_in "$WORKTREE_B" -- bash .gaia/scripts/debt-count-refresh.sh
 
   computed_after="$(jq -r '.computedAt' "$MAIN/.gaia/local/debt/count.json")"
 
@@ -985,8 +985,8 @@ test("adds two numbers c407", () => {
   gaia_copy_registry "$MAIN"
   gaia_commit_all "$MAIN" "add link-worktree deps"
 
-  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
-  gaia_link_worktree "$B"
+  WORKTREE_B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+  gaia_link_worktree "$WORKTREE_B"
 
   # RESTATED AT THE CUTOVER (see README, Published assertion changes). This
   # asserted `-L` on .gaia/local/audit, which was one of six individually
@@ -998,14 +998,14 @@ test("adds two numbers c407", () => {
   # broken has moved up one level, because that is now the only thing there is
   # to break. Breaking audit/ instead would reach through the symlink and
   # damage the main checkout's own state, which is not what this measures.
-  [ -L "$B/.gaia/local" ]
+  [ -L "$WORKTREE_B/.gaia/local" ]
 
   # Deliberately break the shared-state symlink: replace it with a plain dir
   # holding content that belongs to nobody, which is what a hand-broken link or
   # a plain `git worktree add` leaves behind.
-  rm -f "$B/.gaia/local"
-  mkdir -p "$B/.gaia/local/audit"
-  echo orphaned > "$B/.gaia/local/audit/orphan.txt"
+  rm -f "$WORKTREE_B/.gaia/local"
+  mkdir -p "$WORKTREE_B/.gaia/local/audit"
+  echo orphaned > "$WORKTREE_B/.gaia/local/audit/orphan.txt"
 
   # Re-entry, driven through the real provisioning hook rather than through the
   # linker it delegates to: entering a worktree is a PostToolUse EnterWorktree
@@ -1017,14 +1017,14 @@ test("adds two numbers c407", () => {
   # is why the rooting fix (#1740) could not use $CLAUDE_PROJECT_DIR, which
   # holds the session's original project directory and would have sent this
   # case to the main checkout's copy instead.
-  reentry_payload="$(jq -nc --arg p "$B" \
-    '{tool_name: "EnterWorktree", cwd: $p, tool_response: {worktreePath: $p}}')"
-  run_in "$B" -- gaia_deliver_hook "$reentry_payload" "$B/.claude/hooks/provision-worktree.sh" >/dev/null 2>&1
+  reentry_payload="$(jq -nc --arg worktree_path "$WORKTREE_B" \
+    '{tool_name: "EnterWorktree", cwd: $worktree_path, tool_response: {worktreePath: $worktree_path}}')"
+  run_in "$WORKTREE_B" -- gaia_deliver_hook "$reentry_payload" "$WORKTREE_B/.claude/hooks/provision-worktree.sh" >/dev/null 2>&1
 
   # Target: repaired to a correct symlink at main's real .gaia/local, on
   # re-entry, without manual intervention.
-  [ -L "$B/.gaia/local" ] || return 1
-  target_real="$(cd "$B/.gaia/local" && pwd -P)"
+  [ -L "$WORKTREE_B/.gaia/local" ] || return 1
+  target_real="$(cd "$WORKTREE_B/.gaia/local" && pwd -P)"
   main_real="$(cd "$MAIN/.gaia/local" && pwd -P)"
   [ "$target_real" = "$main_real" ]
 }
@@ -1066,18 +1066,18 @@ SH
   # (worktree-<name>), with nothing GAIA-specific done to it at creation time.
   # That is also what a hand-rolled `git worktree add` leaves behind, so this
   # covers the tree nobody's tooling created as well as the one the harness did.
-  wt="$(gaia_add_worktree "$MAIN" "feat/types" "worktree-feat/types")"
+  worktree_path="$(gaia_add_worktree "$MAIN" "feat/types" "worktree-feat/types")"
 
   # Entering the tree is what provisions it, so the property is asserted after
   # the event that has to hold it. Same payload shape as C6-02: the one the
   # harness emits on PostToolUse/EnterWorktree, whose cwd is already the
   # worktree and whose tool_response names the path outright.
-  entry_payload="$(jq -nc --arg p "$wt" \
-    '{tool_name: "EnterWorktree", cwd: $p, tool_response: {worktreePath: $p}}')"
-  run_in "$wt" -- gaia_deliver_hook "$entry_payload" "$wt/.claude/hooks/provision-worktree.sh" >/dev/null 2>&1
+  entry_payload="$(jq -nc --arg worktree_path "$worktree_path" \
+    '{tool_name: "EnterWorktree", cwd: $worktree_path, tool_response: {worktreePath: $worktree_path}}')"
+  run_in "$worktree_path" -- gaia_deliver_hook "$entry_payload" "$worktree_path/.claude/hooks/provision-worktree.sh" >/dev/null 2>&1
 
   # Target: generated build types are present and current before first use.
-  [ -f "$wt/.react-router/types/.stamp" ]
+  [ -f "$worktree_path/.react-router/types/.stamp" ]
 }
 
 # ---------------------------------------------------------------------------
@@ -1108,16 +1108,16 @@ SH
   echo '{"name":"left-pad","version":"1.0.0"}' > "$MAIN/node_modules/left-pad/package.json"
   echo "module.exports = '1.0.0';" > "$MAIN/node_modules/left-pad/index.js"
 
-  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+  WORKTREE_B="$(gaia_add_worktree "$MAIN" treeB treeB)"
 
   # Tree B's branch commits a real divergence: not a dropped dependency but a
   # different pinned version. It never gets its own node_modules except
   # through the provisioning hook fired below.
-  jq '.dependencies = {"left-pad": "2.0.0"}' "$B/package.json" > "$B/package.json.tmp"
-  mv "$B/package.json.tmp" "$B/package.json"
-  git -C "$B" add package.json
-  git -C "$B" commit -q -m "pin left-pad 2.0.0"
-  [ ! -e "$B/node_modules" ]
+  jq '.dependencies = {"left-pad": "2.0.0"}' "$WORKTREE_B/package.json" > "$WORKTREE_B/package.json.tmp"
+  mv "$WORKTREE_B/package.json.tmp" "$WORKTREE_B/package.json"
+  git -C "$WORKTREE_B" add package.json
+  git -C "$WORKTREE_B" commit -q -m "pin left-pad 2.0.0"
+  [ ! -e "$WORKTREE_B/node_modules" ]
 
   # A pnpm stand-in: reads the CURRENT directory's own package.json (the tree
   # the hook cd'd into before invoking it) and materializes node_modules/<dep>
@@ -1126,8 +1126,8 @@ SH
   # install. It does not fake the property under test: if the hook never runs
   # this in B, B gets no node_modules of its own, exactly as a real install's
   # absence would leave it.
-  stub_dir="$(gaia_mk_tmp gaia-c702-pnpm-stub)"
-  cat > "$stub_dir/pnpm" <<'SH'
+  stub_directory="$(gaia_make_temporary_directory gaia-c702-pnpm-stub)"
+  cat > "$stub_directory/pnpm" <<'SH'
 #!/bin/sh
 if [ "$1" = "install" ]; then
   jq -r '.dependencies // {} | to_entries[] | "\(.key) \(.value)"' package.json |
@@ -1138,16 +1138,16 @@ if [ "$1" = "install" ]; then
     done
 fi
 SH
-  chmod +x "$stub_dir/pnpm"
+  chmod +x "$stub_directory/pnpm"
 
   # Fire the real EnterWorktree provisioning payload against B -- same
   # payload shape as C6-02 and C6-03: cwd already switched, tool_response
   # naming the path -- with the stub pnpm on PATH for the hook's own install
   # step.
-  entry_payload="$(jq -nc --arg p "$B" \
-    '{tool_name: "EnterWorktree", cwd: $p, tool_response: {worktreePath: $p}}')"
-  run_in "$B" -- run_with PATH="$stub_dir:$PATH" -- \
-    gaia_deliver_hook "$entry_payload" "$B/.claude/hooks/provision-worktree.sh" >/dev/null 2>&1
+  entry_payload="$(jq -nc --arg worktree_path "$WORKTREE_B" \
+    '{tool_name: "EnterWorktree", cwd: $worktree_path, tool_response: {worktreePath: $worktree_path}}')"
+  run_in "$WORKTREE_B" -- run_with PATH="$stub_directory:$PATH" -- \
+    gaia_deliver_hook "$entry_payload" "$WORKTREE_B/.claude/hooks/provision-worktree.sh" >/dev/null 2>&1
 
   # Target: a test run inside B resolves its dependencies from B's own tree,
   # never silently against main's when they differ. A bare "resolution
@@ -1156,11 +1156,11 @@ SH
   # whether B has one of its own -- it resolves and succeeds either way. The
   # property that matters is WHICH tree answers, so the assertion reads the
   # resolved path and the resolved version rather than the exit status alone.
-  run run_in "$B" -- node -e "console.log(require.resolve('left-pad')); console.log(require('left-pad/package.json').version);"
+  run run_in "$WORKTREE_B" -- node -e "console.log(require.resolve('left-pad')); console.log(require('left-pad/package.json').version);"
   [ "$status" -eq 0 ] || return 1
 
   case "${lines[0]}" in
-    "$B"/node_modules/*) ;;
+    "$WORKTREE_B"/node_modules/*) ;;
     *) return 1 ;;
   esac
   [ "${lines[1]}" = "2.0.0" ]
@@ -1174,26 +1174,26 @@ SH
     > "$MAIN/wiki/.state.json"
   gaia_commit_all "$MAIN" "add wiki state"
 
-  A="$(gaia_add_worktree "$MAIN" treeA treeA)"
-  B="$(gaia_add_worktree "$MAIN" treeB treeB)"
+  WORKTREE_A="$(gaia_add_worktree "$MAIN" treeA treeA)"
+  WORKTREE_B="$(gaia_add_worktree "$MAIN" treeB treeB)"
 
-  echo "a work" > "$A/a.txt"
-  git -C "$A" add a.txt
-  git -C "$A" commit -q -m "a work"
-  a_sha="$(git -C "$A" rev-parse HEAD)"
-  jq --arg sha "$a_sha" '.last_evaluated_sha = $sha' "$A/wiki/.state.json" > "$A/wiki/.state.json.tmp"
-  mv "$A/wiki/.state.json.tmp" "$A/wiki/.state.json"
-  git -C "$A" add wiki/.state.json
-  git -C "$A" commit -q -m "wiki: bump state to a"
+  echo "a work" > "$WORKTREE_A/a.txt"
+  git -C "$WORKTREE_A" add a.txt
+  git -C "$WORKTREE_A" commit -q -m "a work"
+  a_sha="$(git -C "$WORKTREE_A" rev-parse HEAD)"
+  jq --arg sha "$a_sha" '.last_evaluated_sha = $sha' "$WORKTREE_A/wiki/.state.json" > "$WORKTREE_A/wiki/.state.json.tmp"
+  mv "$WORKTREE_A/wiki/.state.json.tmp" "$WORKTREE_A/wiki/.state.json"
+  git -C "$WORKTREE_A" add wiki/.state.json
+  git -C "$WORKTREE_A" commit -q -m "wiki: bump state to a"
 
-  echo "b work" > "$B/b.txt"
-  git -C "$B" add b.txt
-  git -C "$B" commit -q -m "b work"
-  b_sha="$(git -C "$B" rev-parse HEAD)"
-  jq --arg sha "$b_sha" '.last_evaluated_sha = $sha' "$B/wiki/.state.json" > "$B/wiki/.state.json.tmp"
-  mv "$B/wiki/.state.json.tmp" "$B/wiki/.state.json"
-  git -C "$B" add wiki/.state.json
-  git -C "$B" commit -q -m "wiki: bump state to b"
+  echo "b work" > "$WORKTREE_B/b.txt"
+  git -C "$WORKTREE_B" add b.txt
+  git -C "$WORKTREE_B" commit -q -m "b work"
+  b_sha="$(git -C "$WORKTREE_B" rev-parse HEAD)"
+  jq --arg sha "$b_sha" '.last_evaluated_sha = $sha' "$WORKTREE_B/wiki/.state.json" > "$WORKTREE_B/wiki/.state.json.tmp"
+  mv "$WORKTREE_B/wiki/.state.json.tmp" "$WORKTREE_B/wiki/.state.json"
+  git -C "$WORKTREE_B" add wiki/.state.json
+  git -C "$WORKTREE_B" commit -q -m "wiki: bump state to b"
 
   # Tree A's session lands first.
   git -C "$MAIN" merge -q --no-ff treeA -m "merge A"

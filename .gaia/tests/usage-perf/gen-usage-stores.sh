@@ -46,7 +46,7 @@ die() {
   exit 2
 }
 
-months="" outdir="" seed=89 scale=1
+months="" output_directory="" seed=89 scale=1
 while [ $# -gt 0 ]; do
   case "$1" in
     -h | --help) usage; exit 0 ;;
@@ -57,575 +57,575 @@ while [ $# -gt 0 ]; do
     -*) usage >&2; die "unknown flag $1" ;;
     *)
       if [ -z "$months" ]; then months="$1"
-      elif [ -z "$outdir" ]; then outdir="$1"
+      elif [ -z "$output_directory" ]; then output_directory="$1"
       else usage >&2; die "unexpected argument $1"; fi
       shift ;;
   esac
 done
-[ -n "$months" ] && [ -n "$outdir" ] || { usage >&2; die "months and outdir are required"; }
+[ -n "$months" ] && [ -n "$output_directory" ] || { usage >&2; die "months and outdir are required"; }
 [[ "$months" =~ ^[1-9][0-9]{0,2}$ ]] || die "months must be a whole number from 1 to 999"
 [[ "$seed" =~ ^[0-9]{1,15}$ ]] || die "--seed must be a non-negative integer"
 [[ "$scale" =~ ^[0-9]*\.?[0-9]+$ ]] || die "--scale must be a decimal in (0, 1]"
 awk_bin="${GAIA_PERF_AWK:-awk}"
-LC_ALL=C "$awk_bin" -v s="$scale" 'BEGIN { exit !(s > 0 && s <= 1) }' || die "--scale must be a decimal in (0, 1]"
+LC_ALL=C "$awk_bin" -v scale_candidate="$scale" 'BEGIN { exit !(scale_candidate > 0 && scale_candidate <= 1) }' || die "--scale must be a decimal in (0, 1]"
 
-mkdir -p "$outdir"
-tmp="$(mktemp -d "${TMPDIR:-/tmp}/gen-usage-stores.XXXXXX")"
-trap 'rm -rf "$tmp"' EXIT
+mkdir -p "$output_directory"
+temporary_directory="$(mktemp -d "${TMPDIR:-/tmp}/gen-usage-stores.XXXXXX")"
+trap 'rm -rf "$temporary_directory"' EXIT
 
 IFS= read -r -d '' GEN_PROGRAM <<'AWK' || true
-function rnd(n) {
+function random_below(limit) {
   SEED = (16807 * SEED) % 2147483647
-  return int((SEED - 1) * n / 2147483646)
+  return int((SEED - 1) * limit / 2147483646)
 }
-function rr(a, b) { return a + rnd(b - a + 1) }
-function cnt(n, fr,   v) {
-  v = int(n * fr * SCALE + 0.5)
-  return v < 1 ? 1 : v
+function random_between(low, high) { return low + random_below(high - low + 1) }
+function scaled_count(base_count, fraction,   scaled) {
+  scaled = int(base_count * fraction * SCALE + 0.5)
+  return scaled < 1 ? 1 : scaled
 }
 
 # Civil date from epoch seconds (Hinnant), so no strftime is needed.
-function civ(sec,   z, sod, era, doe, yoe, doy, mp) {
-  z = int(sec / 86400)
-  sod = sec - z * 86400
-  z += 719468
-  era = int(z / 146097)
-  doe = z - era * 146097
-  yoe = int((doe - int(doe / 1460) + int(doe / 36524) - int(doe / 146096)) / 365)
-  CY = yoe + era * 400
-  doy = doe - (365 * yoe + int(yoe / 4) - int(yoe / 100))
-  mp = int((5 * doy + 2) / 153)
-  CD = doy - int((153 * mp + 2) / 5) + 1
-  CM = mp < 10 ? mp + 3 : mp - 9
-  if (CM <= 2) CY++
-  CH = int(sod / 3600)
-  CN = int((sod - CH * 3600) / 60)
-  CS = sod - CH * 3600 - CN * 60
+function civil_date(epoch_seconds,   shifted_days, seconds_of_day, era, day_of_era, year_of_era, day_of_year, shifted_month) {
+  shifted_days = int(epoch_seconds / 86400)
+  seconds_of_day = epoch_seconds - shifted_days * 86400
+  shifted_days += 719468
+  era = int(shifted_days / 146097)
+  day_of_era = shifted_days - era * 146097
+  year_of_era = int((day_of_era - int(day_of_era / 1460) + int(day_of_era / 36524) - int(day_of_era / 146096)) / 365)
+  CIVIL_YEAR = year_of_era + era * 400
+  day_of_year = day_of_era - (365 * year_of_era + int(year_of_era / 4) - int(year_of_era / 100))
+  shifted_month = int((5 * day_of_year + 2) / 153)
+  CIVIL_DAY = day_of_year - int((153 * shifted_month + 2) / 5) + 1
+  CIVIL_MONTH = shifted_month < 10 ? shifted_month + 3 : shifted_month - 9
+  if (CIVIL_MONTH <= 2) CIVIL_YEAR++
+  CIVIL_HOUR = int(seconds_of_day / 3600)
+  CIVIL_MINUTE = int((seconds_of_day - CIVIL_HOUR * 3600) / 60)
+  CIVIL_SECOND = seconds_of_day - CIVIL_HOUR * 3600 - CIVIL_MINUTE * 60
 }
-function iso(sec, ms) {
-  civ(sec)
-  if (ms < 0) return sprintf("%04d-%02d-%02dT%02d:%02d:%02dZ", CY, CM, CD, CH, CN, CS)
-  return sprintf("%04d-%02d-%02dT%02d:%02d:%02d.%03dZ", CY, CM, CD, CH, CN, CS, ms)
+function iso(epoch_seconds, milliseconds) {
+  civil_date(epoch_seconds)
+  if (milliseconds < 0) return sprintf("%04d-%02d-%02dT%02d:%02d:%02dZ", CIVIL_YEAR, CIVIL_MONTH, CIVIL_DAY, CIVIL_HOUR, CIVIL_MINUTE, CIVIL_SECOND)
+  return sprintf("%04d-%02d-%02dT%02d:%02d:%02d.%03dZ", CIVIL_YEAR, CIVIL_MONTH, CIVIL_DAY, CIVIL_HOUR, CIVIL_MINUTE, CIVIL_SECOND, milliseconds)
 }
-function stamp(sec,   v) {
-  civ(sec)
-  return sprintf("%04d%02d%02dT%02d%02d%02dZ", CY, CM, CD, CH, CN, CS)
+function stamp(epoch_seconds,   v) {
+  civil_date(epoch_seconds)
+  return sprintf("%04d%02d%02dT%02d%02d%02dZ", CIVIL_YEAR, CIVIL_MONTH, CIVIL_DAY, CIVIL_HOUR, CIVIL_MINUTE, CIVIL_SECOND)
 }
 
 # Every row leaves here as <store letter><13-digit sort key><TAB><json>; the
 # wrapper sorts on that prefix and strips it.
-function out(st, sec, ms, json) {
-  if (ms < 0) ms = 0
-  printf "%s%010d%03d\t%s\n", st, sec, ms, json
+function emit_row(store_letter, epoch_seconds, milliseconds, json) {
+  if (milliseconds < 0) milliseconds = 0
+  printf "%s%010d%03d\t%s\n", store_letter, epoch_seconds, milliseconds, json
 }
 
-function sid(   a, b, c, d, e, f, g, h) {
-  a = rnd(65536); b = rnd(65536); c = rnd(65536); d = rnd(65536)
-  e = rnd(65536); f = rnd(65536); g = rnd(65536); h = rnd(65536)
-  return sprintf("%04x%04x-%04x-%04x-%04x-%04x%04x%04x", a, b, c, d, e, f, g, h)
+function random_session_id(   first_word, second_word, third_word, fourth_word, fifth_word, sixth_word, seventh_word, eighth_word) {
+  first_word = random_below(65536); second_word = random_below(65536); third_word = random_below(65536); fourth_word = random_below(65536)
+  fifth_word = random_below(65536); sixth_word = random_below(65536); seventh_word = random_below(65536); eighth_word = random_below(65536)
+  return sprintf("%04x%04x-%04x-%04x-%04x-%04x%04x%04x", first_word, second_word, third_word, fourth_word, fifth_word, sixth_word, seventh_word, eighth_word)
 }
-function msgid(   a, b, c, d) {
-  a = rnd(4096); b = rnd(4096); c = rnd(4096); d = rnd(4096)
-  return "msg_011C" CH5[a] CH5[b] CH5[c] CH5[d]
+function random_message_id(   first_index, second_index, third_index, fourth_index) {
+  first_index = random_below(4096); second_index = random_below(4096); third_index = random_below(4096); fourth_index = random_below(4096)
+  return "msg_011C" MESSAGE_SUFFIXES[first_index] MESSAGE_SUFFIXES[second_index] MESSAGE_SUFFIXES[third_index] MESSAGE_SUFFIXES[fourth_index]
 }
-function hwids(   i, s, m) {
-  s = ""
-  for (i = 0; i < 8; i++) { m = msgid(); s = s (i ? "," : "") "\"" m "\"" }
-  return "[" s "]"
+function random_high_water_ids(   i, id_list, message_id) {
+  id_list = ""
+  for (i = 0; i < 8; i++) { message_id = random_message_id(); id_list = id_list (i ? "," : "") "\"" message_id "\"" }
+  return "[" id_list "]"
 }
-function mval(   a, b, c, d, e, h) {
-  a = rnd(401); h = rnd(2); b = h ? rnd(90001) : 0
-  c = rnd(120001); d = rr(10000, 3000000); e = rr(100, 30000)
-  return sprintf("{\"fresh_input\":%d,\"cache_write_5m\":%d,\"cache_write_1h\":%d,\"cache_read\":%d,\"output\":%d}", a, b, c, d, e)
+function random_model_value(   fresh_input_tokens, cache_write_five_minute_tokens, cache_write_one_hour_tokens, cache_read_tokens, output_tokens, has_five_minute_write) {
+  fresh_input_tokens = random_below(401); has_five_minute_write = random_below(2); cache_write_five_minute_tokens = has_five_minute_write ? random_below(90001) : 0
+  cache_write_one_hour_tokens = random_below(120001); cache_read_tokens = random_between(10000, 3000000); output_tokens = random_between(100, 30000)
+  return sprintf("{\"fresh_input\":%d,\"cache_write_5m\":%d,\"cache_write_1h\":%d,\"cache_read\":%d,\"output\":%d}", fresh_input_tokens, cache_write_five_minute_tokens, cache_write_one_hour_tokens, cache_read_tokens, output_tokens)
 }
-# Sets BMV to the first model's value object, returns the by_model object.
-function bmodels(n,   i, j, s) {
-  i = rnd(4)
-  BMV = mval()
-  s = "{\"" MD[i] "\":" BMV
-  if (n == 2) {
-    j = (i + 1 + rnd(3)) % 4
-    s = s ",\"" MD[j] "\":" mval()
+# Sets FIRST_MODEL_VALUE to the first model's value object, returns the by_model object.
+function by_model_object(model_count,   first_model_index, second_model_index, object_text) {
+  first_model_index = random_below(4)
+  FIRST_MODEL_VALUE = random_model_value()
+  object_text = "{\"" MODEL_NAMES[first_model_index] "\":" FIRST_MODEL_VALUE
+  if (model_count == 2) {
+    second_model_index = (first_model_index + 1 + random_below(3)) % 4
+    object_text = object_text ",\"" MODEL_NAMES[second_model_index] "\":" random_model_value()
   }
-  return s "}"
+  return object_text "}"
 }
-function dollars(   a, b) {
-  a = rnd(20); b = rnd(1000000)
-  return sprintf("%d.%06d", a, b)
+function dollars(   whole_dollars, micro_dollars) {
+  whole_dollars = random_below(20); micro_dollars = random_below(1000000)
+  return sprintf("%d.%06d", whole_dollars, micro_dollars)
 }
-function nmodels(   v) { v = rnd(5); return v == 0 ? 2 : 1 }
+function random_model_count(   draw) { draw = random_below(5); return draw == 0 ? 2 : 1 }
 
-function segrow(key, s, inh, t, ms, t2, ms2,   n, nm, bm) {
-  n = rr(1, 40)
-  nm = nmodels()
-  bm = bmodels(nm)
-  out("u", t, ms, "{\"schema_version\":1,\"kind\":\"segment\",\"key\":\"" key "\",\"session_id\":\"" s "\",\"inherit\":" (inh ? "true" : "false") ",\"first_ts\":\"" iso(t, ms) "\",\"last_ts\":\"" iso(t2, ms2) "\",\"messages\":" n ",\"by_model\":" bm "}")
+function segment_row(key, session_id, inherit, start_seconds, milliseconds, end_seconds, end_milliseconds,   message_count, model_count, by_model_json) {
+  message_count = random_between(1, 40)
+  model_count = random_model_count()
+  by_model_json = by_model_object(model_count)
+  emit_row("u", start_seconds, milliseconds, "{\"schema_version\":1,\"kind\":\"segment\",\"key\":\"" key "\",\"session_id\":\"" session_id "\",\"inherit\":" (inherit ? "true" : "false") ",\"first_ts\":\"" iso(start_seconds, milliseconds) "\",\"last_ts\":\"" iso(end_seconds, end_milliseconds) "\",\"messages\":" message_count ",\"by_model\":" by_model_json "}")
 }
-# One segment of ~10 minutes at second t.
-function pseg(key, s, inh, t,   ms, ms2) {
-  ms = rnd(1000); ms2 = rnd(1000)
-  segrow(key, s, inh, t, ms, t + 600, ms2)
+# One segment of ~10 minutes at second epoch_seconds.
+function probe_segment(key, session_id, inherit, epoch_seconds,   milliseconds, end_milliseconds) {
+  milliseconds = random_below(1000); end_milliseconds = random_below(1000)
+  segment_row(key, session_id, inherit, epoch_seconds, milliseconds, epoch_seconds + 600, end_milliseconds)
 }
-function binding_start(s, t, wf) {
-  out("u", t, 0, "{\"schema_version\":1,\"kind\":\"binding\",\"type\":\"start\",\"session_id\":\"" s "\",\"ts\":\"" iso(t, 0) "\",\"workflow\":\"" wf "\",\"source\":\"transcript\"}")
+function binding_start(session_id, epoch_seconds, workflow) {
+  emit_row("u", epoch_seconds, 0, "{\"schema_version\":1,\"kind\":\"binding\",\"type\":\"start\",\"session_id\":\"" session_id "\",\"ts\":\"" iso(epoch_seconds, 0) "\",\"workflow\":\"" workflow "\",\"source\":\"transcript\"}")
 }
-function binding_research(s, t, ref) {
-  out("u", t, 0, "{\"schema_version\":1,\"kind\":\"binding\",\"type\":\"research\",\"session_id\":\"" s "\",\"ts\":\"" iso(t, 0) "\",\"ref\":\"" ref "\",\"source\":\"transcript\"}")
+function binding_research(session_id, epoch_seconds, reference) {
+  emit_row("u", epoch_seconds, 0, "{\"schema_version\":1,\"kind\":\"binding\",\"type\":\"research\",\"session_id\":\"" session_id "\",\"ts\":\"" iso(epoch_seconds, 0) "\",\"ref\":\"" reference "\",\"source\":\"transcript\"}")
 }
-function binding_declare(s, t, ref) {
-  out("u", t, 0, "{\"schema_version\":1,\"kind\":\"binding\",\"type\":\"declare\",\"session_id\":\"" s "\",\"ts\":\"" iso(t, -1) "\",\"ref\":\"" ref "\",\"source\":\"declare-command\",\"invoking_session_id\":\"" s "\",\"sidechain\":false}")
+function binding_declare(session_id, epoch_seconds, reference) {
+  emit_row("u", epoch_seconds, 0, "{\"schema_version\":1,\"kind\":\"binding\",\"type\":\"declare\",\"session_id\":\"" session_id "\",\"ts\":\"" iso(epoch_seconds, -1) "\",\"ref\":\"" reference "\",\"source\":\"declare-command\",\"invoking_session_id\":\"" session_id "\",\"sidechain\":false}")
 }
-function cursorrow(s, t,   r, role, path, off, ms, a, b, c, d) {
-  r = rnd(10)
-  ms = rnd(1000)
-  if (r < 3) {
+function cursorrow(session_id, epoch_seconds,   roll, role, path, offset, milliseconds, first_word, second_word, third_word, fourth_word) {
+  roll = random_below(10)
+  milliseconds = random_below(1000)
+  if (roll < 3) {
     role = "main"
-    path = "/Users/dev/.claude/projects/-Users-dev-repo/" s ".jsonl"
+    path = "/Users/dev/.claude/projects/-Users-dev-repo/" session_id ".jsonl"
   } else {
-    a = rnd(65536); b = rnd(65536); c = rnd(65536); d = rnd(4096)
-    role = sprintf("subagents/agent-a%04x%04x%04x%03x.jsonl", a, b, c, d)
-    path = "/Users/dev/.claude/projects/-Users-dev-repo/" s "/" role
+    first_word = random_below(65536); second_word = random_below(65536); third_word = random_below(65536); fourth_word = random_below(4096)
+    role = sprintf("subagents/agent-a%04x%04x%04x%03x.jsonl", first_word, second_word, third_word, fourth_word)
+    path = "/Users/dev/.claude/projects/-Users-dev-repo/" session_id "/" role
   }
-  off = rr(10000, 3000000)
-  out("u", t, ms, "{\"schema_version\":1,\"kind\":\"cursor\",\"session_id\":\"" s "\",\"role\":\"" role "\",\"path\":\"" path "\",\"offset\":" off ",\"size\":" off ",\"hw_ts\":\"" iso(t, ms) "\",\"hw_ids\":" hwids() ",\"ts\":\"" iso(t, -1) "\"}")
+  offset = random_between(10000, 3000000)
+  emit_row("u", epoch_seconds, milliseconds, "{\"schema_version\":1,\"kind\":\"cursor\",\"session_id\":\"" session_id "\",\"role\":\"" role "\",\"path\":\"" path "\",\"offset\":" offset ",\"size\":" offset ",\"hw_ts\":\"" iso(epoch_seconds, milliseconds) "\",\"hw_ids\":" random_high_water_ids() ",\"ts\":\"" iso(epoch_seconds, -1) "\"}")
 }
-# ex is a pre-formatted run of members, no braces and no trailing comma.
-function costrow(kind, s, te, ex, gb, cwd,   bm, dl, nb) {
-  bm = bmodels(1)
-  dl = dollars()
-  out("c", te, 0, "{\"schema_version\":1,\"kind\":\"" kind "\"," ex ",\"plan_slug\":null,\"session_id\":\"" s "\",\"buckets\":{\"fresh_input\":1,\"cache_write\":2,\"cache_read\":3,\"output\":4},\"total\":10,\"by_model\":" bm ",\"by_agent_type\":{\"main\":" BMV ",\"general-purpose\":" BMV "},\"dollars\":" dl ",\"rate_table_id\":\"sha256:6d17ab141d05c333\",\"partial\":false,\"started_at\":\"" iso(te - 900, 0) "\",\"ended_at\":\"" iso(te, 0) "\",\"duration_seconds\":900,\"duration_available\":true,\"git_branch\":\"" gb "\",\"project\":\"sha256:e8a9fc325f102fc0\",\"seq\":0,\"final\":true,\"ts\":\"" iso(te, -1) "\",\"session_cwd\":\"" cwd "\",\"source\":\"orchestrator\"}")
+# extra_members is a pre-formatted run of members, no braces and no trailing comma.
+function costrow(kind, session_id, cost_end_seconds, extra_members, git_branch, cwd,   by_model_json, dollars_text, nb) {
+  by_model_json = by_model_object(1)
+  dollars_text = dollars()
+  emit_row("c", cost_end_seconds, 0, "{\"schema_version\":1,\"kind\":\"" kind "\"," extra_members ",\"plan_slug\":null,\"session_id\":\"" session_id "\",\"buckets\":{\"fresh_input\":1,\"cache_write\":2,\"cache_read\":3,\"output\":4},\"total\":10,\"by_model\":" by_model_json ",\"by_agent_type\":{\"main\":" FIRST_MODEL_VALUE ",\"general-purpose\":" FIRST_MODEL_VALUE "},\"dollars\":" dollars_text ",\"rate_table_id\":\"sha256:6d17ab141d05c333\",\"partial\":false,\"started_at\":\"" iso(cost_end_seconds - 900, 0) "\",\"ended_at\":\"" iso(cost_end_seconds, 0) "\",\"duration_seconds\":900,\"duration_available\":true,\"git_branch\":\"" git_branch "\",\"project\":\"sha256:e8a9fc325f102fc0\",\"seq\":0,\"final\":true,\"ts\":\"" iso(cost_end_seconds, -1) "\",\"session_cwd\":\"" cwd "\",\"source\":\"orchestrator\"}")
 }
-function cost_plain(kind, s, te, ex, gb) { costrow(kind, s, te, ex, gb, "/Users/dev/repo") }
-function wtname(b,   g) {
-  g = b
-  gsub(/\//, "+", g)
-  return "worktree-" g
+function cost_plain(kind, session_id, cost_end_seconds, extra_members, git_branch) { costrow(kind, session_id, cost_end_seconds, extra_members, git_branch, "/Users/dev/repo") }
+function worktree_name(branch_name,   encoded_branch) {
+  encoded_branch = branch_name
+  gsub(/\//, "+", encoded_branch)
+  return "worktree-" encoded_branch
 }
 
-function edge(child, parent, src, t, sess,   sv) {
-  sv = sess == "" ? "null" : "\"" sess "\""
-  out("l", t, 0, "{\"schema_version\":1,\"kind\":\"edge\",\"child\":\"" child "\",\"parent\":\"" parent "\",\"source\":\"" src "\",\"ts\":\"" iso(t, -1) "\",\"session_id\":" sv ",\"sidechain\":false}")
+function edge(child, parent, source, epoch_seconds, session_id,   session_json) {
+  session_json = session_id == "" ? "null" : "\"" session_id "\""
+  emit_row("l", epoch_seconds, 0, "{\"schema_version\":1,\"kind\":\"edge\",\"child\":\"" child "\",\"parent\":\"" parent "\",\"source\":\"" source "\",\"ts\":\"" iso(epoch_seconds, -1) "\",\"session_id\":" session_json ",\"sidechain\":false}")
 }
-function mergerow(pr, key, t, sess,   sv) {
-  sv = sess == "" ? "null" : "\"" sess "\""
-  out("l", t, 0, "{\"schema_version\":1,\"kind\":\"merge\",\"pr\":" pr ",\"key\":\"" key "\",\"merged_at\":\"" iso(t, -1) "\",\"source\":\"gh-pr-merge\",\"ts\":\"" iso(t, -1) "\",\"session_id\":" sv "}")
+function mergerow(pr, key, epoch_seconds, session_id,   session_json) {
+  session_json = session_id == "" ? "null" : "\"" session_id "\""
+  emit_row("l", epoch_seconds, 0, "{\"schema_version\":1,\"kind\":\"merge\",\"pr\":" pr ",\"key\":\"" key "\",\"merged_at\":\"" iso(epoch_seconds, -1) "\",\"source\":\"gh-pr-merge\",\"ts\":\"" iso(epoch_seconds, -1) "\",\"session_id\":" session_json "}")
 }
-function unlinkrow(child, parent, t) {
-  out("l", t, 0, "{\"schema_version\":1,\"kind\":\"unlink\",\"child\":\"" child "\",\"parent\":\"" parent "\",\"source\":\"link-command\",\"ts\":\"" iso(t, -1) "\",\"session_id\":null,\"sidechain\":false}")
+function unlinkrow(child, parent, epoch_seconds) {
+  emit_row("l", epoch_seconds, 0, "{\"schema_version\":1,\"kind\":\"unlink\",\"child\":\"" child "\",\"parent\":\"" parent "\",\"source\":\"link-command\",\"ts\":\"" iso(epoch_seconds, -1) "\",\"session_id\":null,\"sidechain\":false}")
 }
 # A PR's rows: the create edge, the merge row, and the merge edge.
-function prrows(pr, key, tc, tm, sess) {
-  edge("pr:" pr, key, "gh-pr-create", tc, sess)
-  mergerow(pr, key, tm, sess)
-  edge("pr:" pr, key, "gh-pr-merge", tm, sess)
+function prrows(pr, key, create_seconds, merge_seconds, session_id) {
+  edge("pr:" pr, key, "gh-pr-create", create_seconds, session_id)
+  mergerow(pr, key, merge_seconds, session_id)
+  edge("pr:" pr, key, "gh-pr-merge", merge_seconds, session_id)
 }
 
-function newbranch(t0, len,   r, b, k, sl, t) {
-  r = rnd(100)
-  if (r < 45) {
-    ISS++
-    k = rnd(5)
-    b = "debt/" ISS "-" SLG[k]
-    k = rnd(10)
-    if (k == 0) { ISS++; b = "debt/" (ISS - 1) "-" ISS "-batch" }
-  } else if (r < 60) {
-    SPN++
-    k = rnd(4)
-    b = sprintf("plan/spec-%03d-%s", SPN, SLP[k])
-    SPO[++NSPO] = SPN
-  } else if (r < 65) {
-    PLN++
-    b = sprintf("plan/plan-%03d-x", PLN)
-  } else if (r < 80) {
-    ISS++
-    k = rnd(3); sl = rnd(3)
-    b = TY1[k] "/" ISS "-" SLA[sl]
-  } else if (r < 88) {
-    t = t0 + rnd(len)
-    civ(t)
-    b = sprintf("chore/task-%04d-%02d-%02d-%02d%02d", CY, CM, CD, CH, CN)
-  } else if (r < 93) {
-    SPN++
-    k = rnd(2)
-    b = sprintf("spec-%03d-%s", SPN, SLF[k])
+function newbranch(period_start_seconds, period_length_seconds,   roll, branch_name, pick, slug_pick, epoch_seconds) {
+  roll = random_below(100)
+  if (roll < 45) {
+    LAST_ISSUE_NUMBER++
+    pick = random_below(5)
+    branch_name = "debt/" LAST_ISSUE_NUMBER "-" DEBT_SLUGS[pick]
+    pick = random_below(10)
+    if (pick == 0) { LAST_ISSUE_NUMBER++; branch_name = "debt/" (LAST_ISSUE_NUMBER - 1) "-" LAST_ISSUE_NUMBER "-batch" }
+  } else if (roll < 60) {
+    LAST_SPEC_NUMBER++
+    pick = random_below(4)
+    branch_name = sprintf("plan/spec-%03d-%s", LAST_SPEC_NUMBER, SPEC_SLUGS[pick])
+    SPEC_ROOT_NUMBERS[++SPEC_ROOT_COUNT] = LAST_SPEC_NUMBER
+  } else if (roll < 65) {
+    LAST_PLAN_NUMBER++
+    branch_name = sprintf("plan/plan-%03d-x", LAST_PLAN_NUMBER)
+  } else if (roll < 80) {
+    LAST_ISSUE_NUMBER++
+    pick = random_below(3); slug_pick = random_below(3)
+    branch_name = BRANCH_TYPES[pick] "/" LAST_ISSUE_NUMBER "-" ISSUE_SLUGS[slug_pick]
+  } else if (roll < 88) {
+    epoch_seconds = period_start_seconds + random_below(period_length_seconds)
+    civil_date(epoch_seconds)
+    branch_name = sprintf("chore/task-%04d-%02d-%02d-%02d%02d", CIVIL_YEAR, CIVIL_MONTH, CIVIL_DAY, CIVIL_HOUR, CIVIL_MINUTE)
+  } else if (roll < 93) {
+    LAST_SPEC_NUMBER++
+    pick = random_below(2)
+    branch_name = sprintf("spec-%03d-%s", LAST_SPEC_NUMBER, BARE_SPEC_SLUGS[pick])
   } else {
-    k = rnd(3); sl = rnd(1000001)
-    b = "feat/" SLW[k] "-" sl
+    pick = random_below(3); slug_pick = random_below(1000001)
+    branch_name = "feat/" FEATURE_SLUGS[pick] "-" slug_pick
   }
-  ACT[++AN] = b
+  ACTIVE_BRANCHES[++ACTIVE_BRANCH_COUNT] = branch_name
 }
-function actpick(   lo) {
-  lo = AN > 300 ? AN - 299 : 1
-  return ACT[lo + rnd(AN - lo + 1)]
+function pick_active_branch(   low_index) {
+  low_index = ACTIVE_BRANCH_COUNT > 300 ? ACTIVE_BRANCH_COUNT - 299 : 1
+  return ACTIVE_BRANCHES[low_index + random_below(ACTIVE_BRANCH_COUNT - low_index + 1)]
 }
 
-# One stretch of history [t0, t0 + len) holding fr of a month's activity.
-function gen_period(t0, len, fr,   tend, nb, i, ns, nseg, nbs, nbr, nbd, nclosed, nextra, nm, j, k, n, s, t, t2, sbr, key, inh, r, wf, te, b, gb, pr, tc, tm, tw, kind, ex, run, ncur, nlin, sp, ms, ms2, base, nsl) {
-  tend = t0 + len
-  nb = cnt(150, fr)
-  for (i = 0; i < nb; i++) newbranch(t0, len)
-  ns = cnt(700, fr)
-  split("", S); split("", PER); split("", SL); split("", SFT)
-  for (i = 0; i < ns; i++) { S[i] = sid(); PER[i] = 0 }
-  nseg = cnt(4191, fr)
-  for (i = 0; i < nseg; i++) { k = rnd(ns); PER[k]++ }
-  nsl = 0
-  for (i = 0; i < ns; i++) {
-    n = PER[i]
-    if (n == 0) continue
-    s = S[i]
-    k = len - n * 1500
-    if (k < 0) k = 0
-    t = t0 + rnd(k + 1)
-    r = rnd(10)
-    sbr = r < 6 ? actpick() : ""
-    SL[++nsl] = i
-    for (j = 0; j < n; j++) {
-      k = rr(20, 1800)
-      t += k
-      k = rr(5, 900)
-      t2 = t + k
-      if (t2 >= tend) t2 = tend - 1
-      if (t > t2) t = t2
-      if (j == 0) SFT[i] = t
-      r = rnd(100)
-      inh = r < 6
-      r = rnd(100)
-      if (inh) key = "session:" s
-      else if (sbr != "" && r < 85) key = "branch:" sbr
-      else key = "session:" s
-      ms = rnd(1000); ms2 = rnd(1000)
-      segrow(key, s, inh, t, ms, t2, ms2)
-      t = t2
+# One stretch of history [period_start_seconds, period_start_seconds + period_length_seconds) holding fraction of a month's activity.
+function generate_period(period_start_seconds, period_length_seconds, fraction,   period_end_seconds, branch_count, i, session_count, segment_count, binding_start_count, binding_research_count, binding_declare_count, closed_interval_count, extra_cost_count, merge_count, j, scratch_value, session_segment_count, session_id, epoch_seconds, end_seconds, session_branch, key, inherit, roll, workflow, cost_end_seconds, subject_name, git_branch, pr, create_seconds, merge_seconds, wide_root, kind, extra_members, run_id, cursor_count, link_count, spec_number, milliseconds, end_milliseconds, session_start_seconds, segmented_session_count) {
+  period_end_seconds = period_start_seconds + period_length_seconds
+  branch_count = scaled_count(150, fraction)
+  for (i = 0; i < branch_count; i++) newbranch(period_start_seconds, period_length_seconds)
+  session_count = scaled_count(700, fraction)
+  split("", SESSION_IDS); split("", SEGMENTS_PER_SESSION); split("", SEGMENTED_SESSIONS); split("", SESSION_FIRST_SECONDS)
+  for (i = 0; i < session_count; i++) { SESSION_IDS[i] = random_session_id(); SEGMENTS_PER_SESSION[i] = 0 }
+  segment_count = scaled_count(4191, fraction)
+  for (i = 0; i < segment_count; i++) { scratch_value = random_below(session_count); SEGMENTS_PER_SESSION[scratch_value]++ }
+  segmented_session_count = 0
+  for (i = 0; i < session_count; i++) {
+    session_segment_count = SEGMENTS_PER_SESSION[i]
+    if (session_segment_count == 0) continue
+    session_id = SESSION_IDS[i]
+    scratch_value = period_length_seconds - session_segment_count * 1500
+    if (scratch_value < 0) scratch_value = 0
+    epoch_seconds = period_start_seconds + random_below(scratch_value + 1)
+    roll = random_below(10)
+    session_branch = roll < 6 ? pick_active_branch() : ""
+    SEGMENTED_SESSIONS[++segmented_session_count] = i
+    for (j = 0; j < session_segment_count; j++) {
+      scratch_value = random_between(20, 1800)
+      epoch_seconds += scratch_value
+      scratch_value = random_between(5, 900)
+      end_seconds = epoch_seconds + scratch_value
+      if (end_seconds >= period_end_seconds) end_seconds = period_end_seconds - 1
+      if (epoch_seconds > end_seconds) epoch_seconds = end_seconds
+      if (j == 0) SESSION_FIRST_SECONDS[i] = epoch_seconds
+      roll = random_below(100)
+      inherit = roll < 6
+      roll = random_below(100)
+      if (inherit) key = "session:" session_id
+      else if (session_branch != "" && roll < 85) key = "branch:" session_branch
+      else key = "session:" session_id
+      milliseconds = random_below(1000); end_milliseconds = random_below(1000)
+      segment_row(key, session_id, inherit, epoch_seconds, milliseconds, end_seconds, end_milliseconds)
+      epoch_seconds = end_seconds
     }
   }
-  nbs = cnt(280, fr); nbr = cnt(270, fr); nbd = cnt(75, fr)
-  nclosed = 0
-  for (i = 0; i < nbs; i++) {
-    k = 1 + rnd(nsl); s = S[SL[k]]; base = SFT[SL[k]]
-    t = base - rnd(601)
-    if (t < t0) t = t0
-    wf = WF[rnd(6)]
-    binding_start(s, t, wf)
-    r = rnd(100)
-    if (r < 85) {
-      te = t + rr(300, 5400)
-      if (te >= tend) te = tend - 1
-      nclosed++
-      if (wf == "gaia-spec") {
-        SPN++
-        cost_plain("spec", s, te, sprintf("\"spec_id\":\"SPEC-%03d\",\"plan_id\":null", SPN), "main")
-      } else if (wf == "gaia-plan") {
-        k = rnd(21)
-        k = SPN - k
-        if (k < 101) k = 101
-        cost_plain("plan", s, te, sprintf("\"spec_id\":\"SPEC-%03d\",\"plan_id\":null", k), "main")
+  binding_start_count = scaled_count(280, fraction); binding_research_count = scaled_count(270, fraction); binding_declare_count = scaled_count(75, fraction)
+  closed_interval_count = 0
+  for (i = 0; i < binding_start_count; i++) {
+    scratch_value = 1 + random_below(segmented_session_count); session_id = SESSION_IDS[SEGMENTED_SESSIONS[scratch_value]]; session_start_seconds = SESSION_FIRST_SECONDS[SEGMENTED_SESSIONS[scratch_value]]
+    epoch_seconds = session_start_seconds - random_below(601)
+    if (epoch_seconds < period_start_seconds) epoch_seconds = period_start_seconds
+    workflow = WORKFLOW_NAMES[random_below(6)]
+    binding_start(session_id, epoch_seconds, workflow)
+    roll = random_below(100)
+    if (roll < 85) {
+      cost_end_seconds = epoch_seconds + random_between(300, 5400)
+      if (cost_end_seconds >= period_end_seconds) cost_end_seconds = period_end_seconds - 1
+      closed_interval_count++
+      if (workflow == "gaia-spec") {
+        LAST_SPEC_NUMBER++
+        cost_plain("spec", session_id, cost_end_seconds, sprintf("\"spec_id\":\"SPEC-%03d\",\"plan_id\":null", LAST_SPEC_NUMBER), "main")
+      } else if (workflow == "gaia-plan") {
+        scratch_value = random_below(21)
+        scratch_value = LAST_SPEC_NUMBER - scratch_value
+        if (scratch_value < 101) scratch_value = 101
+        cost_plain("plan", session_id, cost_end_seconds, sprintf("\"spec_id\":\"SPEC-%03d\",\"plan_id\":null", scratch_value), "main")
       } else {
-        RUNI++
-        run = sprintf("%s-%s-%04x", wf, stamp(te), RUNI)
-        ex = "\"spec_id\":null,\"plan_id\":null,\"command\":\"" wf "\",\"run_id\":\"" run "\""
-        r = rnd(10)
-        if (wf == "gaia-debt" && r < 7) {
-          PRN++
-          ex = ex ",\"github\":{\"type\":\"pr\",\"number\":" PRN ",\"repo\":\"x/y\"}"
+        LAST_RUN_INDEX++
+        run_id = sprintf("%s-%s-%04x", workflow, stamp(cost_end_seconds), LAST_RUN_INDEX)
+        extra_members = "\"spec_id\":null,\"plan_id\":null,\"command\":\"" workflow "\",\"run_id\":\"" run_id "\""
+        roll = random_below(10)
+        if (workflow == "gaia-debt" && roll < 7) {
+          LAST_PR_NUMBER++
+          extra_members = extra_members ",\"github\":{\"type\":\"pr\",\"number\":" LAST_PR_NUMBER ",\"repo\":\"x/y\"}"
         }
-        cost_plain("command", s, te, ex, "main")
+        cost_plain("command", session_id, cost_end_seconds, extra_members, "main")
       }
     }
   }
-  for (i = 0; i < nbr; i++) {
-    k = 1 + rnd(nsl); s = S[SL[k]]; base = SFT[SL[k]]
-    t = base - rnd(601)
-    if (t < t0) t = t0
-    r = rnd(1000)
-    if (r < 110) b = "research:wide-a"
-    else if (r < 165) b = "research:wide-b"
-    else { k = rnd(401); b = "research:topic-" k }
-    binding_research(s, t, b)
+  for (i = 0; i < binding_research_count; i++) {
+    scratch_value = 1 + random_below(segmented_session_count); session_id = SESSION_IDS[SEGMENTED_SESSIONS[scratch_value]]; session_start_seconds = SESSION_FIRST_SECONDS[SEGMENTED_SESSIONS[scratch_value]]
+    epoch_seconds = session_start_seconds - random_below(601)
+    if (epoch_seconds < period_start_seconds) epoch_seconds = period_start_seconds
+    roll = random_below(1000)
+    if (roll < 110) subject_name = "research:wide-a"
+    else if (roll < 165) subject_name = "research:wide-b"
+    else { scratch_value = random_below(401); subject_name = "research:topic-" scratch_value }
+    binding_research(session_id, epoch_seconds, subject_name)
   }
-  for (i = 0; i < nbd; i++) {
-    k = 1 + rnd(nsl); s = S[SL[k]]; base = SFT[SL[k]]
-    t = base - rnd(601)
-    if (t < t0) t = t0
-    r = rnd(2)
-    k = rnd(101)
-    b = (r ? "research" : "init") ":slug-" k
-    binding_declare(s, t, b)
+  for (i = 0; i < binding_declare_count; i++) {
+    scratch_value = 1 + random_below(segmented_session_count); session_id = SESSION_IDS[SEGMENTED_SESSIONS[scratch_value]]; session_start_seconds = SESSION_FIRST_SECONDS[SEGMENTED_SESSIONS[scratch_value]]
+    epoch_seconds = session_start_seconds - random_below(601)
+    if (epoch_seconds < period_start_seconds) epoch_seconds = period_start_seconds
+    roll = random_below(2)
+    scratch_value = random_below(101)
+    subject_name = (roll ? "research" : "init") ":slug-" scratch_value
+    binding_declare(session_id, epoch_seconds, subject_name)
   }
-  ncur = cnt(3155, fr)
-  for (i = 0; i < ncur; i++) {
-    s = S[rnd(ns)]
-    t = t0 + rnd(len)
-    cursorrow(s, t)
+  cursor_count = scaled_count(3155, fraction)
+  for (i = 0; i < cursor_count; i++) {
+    session_id = SESSION_IDS[random_below(session_count)]
+    epoch_seconds = period_start_seconds + random_below(period_length_seconds)
+    cursorrow(session_id, epoch_seconds)
   }
-  nextra = cnt(480, fr) - nclosed
-  for (i = 0; i < nextra; i++) {
-    s = S[rnd(ns)]
-    te = t0 + rnd(len)
-    r = rnd(100)
-    if (r < 55) {
-      b = actpick()
-      k = rnd(10)
-      gb = k < 3 ? wtname(b) : b
-      k = rnd(31)
-      k = SPN - k
-      if (k < 101) k = 101
-      cost_plain("execute", s, te, sprintf("\"spec_id\":\"SPEC-%03d\",\"plan_id\":null", k), gb)
-    } else if (r < 75) {
-      b = actpick()
-      cost_plain("review", s, te, "\"spec_id\":null,\"plan_id\":null", b)
+  extra_cost_count = scaled_count(480, fraction) - closed_interval_count
+  for (i = 0; i < extra_cost_count; i++) {
+    session_id = SESSION_IDS[random_below(session_count)]
+    cost_end_seconds = period_start_seconds + random_below(period_length_seconds)
+    roll = random_below(100)
+    if (roll < 55) {
+      subject_name = pick_active_branch()
+      scratch_value = random_below(10)
+      git_branch = scratch_value < 3 ? worktree_name(subject_name) : subject_name
+      scratch_value = random_below(31)
+      scratch_value = LAST_SPEC_NUMBER - scratch_value
+      if (scratch_value < 101) scratch_value = 101
+      cost_plain("execute", session_id, cost_end_seconds, sprintf("\"spec_id\":\"SPEC-%03d\",\"plan_id\":null", scratch_value), git_branch)
+    } else if (roll < 75) {
+      subject_name = pick_active_branch()
+      cost_plain("review", session_id, cost_end_seconds, "\"spec_id\":null,\"plan_id\":null", subject_name)
     } else {
-      RUNI++
-      run = sprintf("gaia-wiki-%s-%04x", stamp(te), RUNI)
-      cost_plain("command", s, te, "\"spec_id\":null,\"plan_id\":null,\"command\":\"gaia-wiki\",\"run_id\":\"" run "\"", "main")
+      LAST_RUN_INDEX++
+      run_id = sprintf("gaia-wiki-%s-%04x", stamp(cost_end_seconds), LAST_RUN_INDEX)
+      cost_plain("command", session_id, cost_end_seconds, "\"spec_id\":null,\"plan_id\":null,\"command\":\"gaia-wiki\",\"run_id\":\"" run_id "\"", "main")
     }
   }
-  nm = cnt(60, fr)
-  for (j = 0; j < nm; j++) {
-    b = actpick()
-    PRN++; pr = PRN
-    tc = t0 + rnd(len)
-    k = rr(1, 72)
-    tm = tc + k * 3600
-    if (tm >= tend) tm = tend - 1
-    if (tc > tm) tc = tm
-    s = S[rnd(ns)]
-    prrows(pr, "branch:" b, tc, tm, s)
-    if (j % 6 == 0) tw = "research:wide-a"
-    else if (j % 12 == 1) tw = "research:wide-b"
-    else tw = ""
-    if (tw != "") {
-      k = rnd(3600)
-      t = tm + k
-      if (t >= tend) t = tend - 1
-      edge("branch:" b, tw, "link-command", t, "")
-      WIDEN[tw]++
+  merge_count = scaled_count(60, fraction)
+  for (j = 0; j < merge_count; j++) {
+    subject_name = pick_active_branch()
+    LAST_PR_NUMBER++; pr = LAST_PR_NUMBER
+    create_seconds = period_start_seconds + random_below(period_length_seconds)
+    scratch_value = random_between(1, 72)
+    merge_seconds = create_seconds + scratch_value * 3600
+    if (merge_seconds >= period_end_seconds) merge_seconds = period_end_seconds - 1
+    if (create_seconds > merge_seconds) create_seconds = merge_seconds
+    session_id = SESSION_IDS[random_below(session_count)]
+    prrows(pr, "branch:" subject_name, create_seconds, merge_seconds, session_id)
+    if (j % 6 == 0) wide_root = "research:wide-a"
+    else if (j % 12 == 1) wide_root = "research:wide-b"
+    else wide_root = ""
+    if (wide_root != "") {
+      scratch_value = random_below(3600)
+      epoch_seconds = merge_seconds + scratch_value
+      if (epoch_seconds >= period_end_seconds) epoch_seconds = period_end_seconds - 1
+      edge("branch:" subject_name, wide_root, "link-command", epoch_seconds, "")
+      WIDE_ROOT_LINK_COUNTS[wide_root]++
     }
   }
-  nlin = cnt(10, fr)
-  for (i = 0; i < nlin; i++) {
-    t = t0 + rnd(len)
-    sp = NSPO > 0 ? SPO[1 + rnd(NSPO)] : 101
-    k = rnd(401)
-    edge(sprintf("spec:SPEC-%03d", sp), "research:topic-" k, "spec-frontmatter", t, "")
+  link_count = scaled_count(10, fraction)
+  for (i = 0; i < link_count; i++) {
+    epoch_seconds = period_start_seconds + random_below(period_length_seconds)
+    spec_number = SPEC_ROOT_COUNT > 0 ? SPEC_ROOT_NUMBERS[1 + random_below(SPEC_ROOT_COUNT)] : 101
+    scratch_value = random_below(401)
+    edge(sprintf("spec:SPEC-%03d", spec_number), "research:topic-" scratch_value, "spec-frontmatter", epoch_seconds, "")
   }
-  nlin = cnt(2, fr)
-  for (i = 0; i < nlin; i++) {
-    t = t0 + rnd(len)
-    b = actpick()
-    unlinkrow("branch:" b, "issue:1", t)
+  link_count = scaled_count(2, fraction)
+  for (i = 0; i < link_count; i++) {
+    epoch_seconds = period_start_seconds + random_below(period_length_seconds)
+    subject_name = pick_active_branch()
+    unlinkrow("branch:" subject_name, "issue:1", epoch_seconds)
   }
 }
 
-function addprobe(pr, key, raw, cat, expect,   kj, rj) {
-  kj = key == "" ? "null" : "\"" key "\""
-  rj = raw == "" ? "null" : "\"" raw "\""
-  PROBES = PROBES (NPROBE ? ",\n" : "") "  {\"pr\":" pr ",\"key\":" kj ",\"raw\":" rj ",\"category\":\"" cat "\",\"expect\":{" expect "}}"
-  NPROBE++
+function addprobe(pr, key, raw, category, expect,   key_json, raw_json) {
+  key_json = key == "" ? "null" : "\"" key "\""
+  raw_json = raw == "" ? "null" : "\"" raw "\""
+  PROBES = PROBES (PROBE_COUNT ? ",\n" : "") "  {\"pr\":" pr ",\"key\":" key_json ",\"raw\":" raw_json ",\"category\":\"" category "\",\"expect\":{" expect "}}"
+  PROBE_COUNT++
 }
 
-# The probe structures, built around the day that starts at d0. Eight
+# The probe structures, built around the day that starts at day_start_seconds. Eight
 # categories land in every set; the final set also carries the cursor probe and
 # names the typical, widest, and initiative probes.
-function pset(d0, fin, planvar,   I, K, s, s2, pr, pra, prb, sr, R, N, P, E, ref, k, t) {
-  I = PI++
-  K = "debt/" I "-first"
-  s = sid()
-  PRN++; pr = PRN
-  pseg("branch:" K, s, 0, d0 + 3600)
-  pseg("branch:" K, s, 0, d0 + 7200)
-  pseg("branch:" K, s, 0, d0 + 10800)
-  pseg("branch:" K, s, 0, d0 + 25200)
-  prrows(pr, "branch:" K, d0 + 1800, d0 + 21600, s)
-  addprobe(pr, "branch:" K, "worktree-debt+" I "-first", "first_merge", "\"merges\":1")
-  if (fin) { TYPICAL = pr; ISSUE_ROOT = "issue:" I }
+function probe_set(day_start_seconds, is_final, uses_plan_variant,   issue_number, branch_name, session_id, second_session_id, pr, first_pr, second_pr, research_session_id, research_reference, plan_number, plan_session_id, execute_session_id, reference, k, epoch_seconds) {
+  issue_number = NEXT_PROBE_ISSUE++
+  branch_name = "debt/" issue_number "-first"
+  session_id = random_session_id()
+  LAST_PR_NUMBER++; pr = LAST_PR_NUMBER
+  probe_segment("branch:" branch_name, session_id, 0, day_start_seconds + 3600)
+  probe_segment("branch:" branch_name, session_id, 0, day_start_seconds + 7200)
+  probe_segment("branch:" branch_name, session_id, 0, day_start_seconds + 10800)
+  probe_segment("branch:" branch_name, session_id, 0, day_start_seconds + 25200)
+  prrows(pr, "branch:" branch_name, day_start_seconds + 1800, day_start_seconds + 21600, session_id)
+  addprobe(pr, "branch:" branch_name, "worktree-debt+" issue_number "-first", "first_merge", "\"merges\":1")
+  if (is_final) { TYPICAL = pr; ISSUE_ROOT = "issue:" issue_number }
 
-  I = PI++
-  K = "fix/" I "-repeat"
-  s = sid(); s2 = sid()
-  PRN++; pra = PRN
-  PRN++; prb = PRN
-  pseg("branch:" K, s, 0, d0 - 180000)
-  pseg("branch:" K, s, 0, d0 - 176400)
-  prrows(pra, "branch:" K, d0 - 259200, d0 - 172800, s)
-  pseg("branch:" K, s2, 0, d0 + 7200)
-  pseg("branch:" K, s2, 0, d0 + 10800)
-  prrows(prb, "branch:" K, d0 + 3600, d0 + 32400, s2)
-  addprobe(pra, "branch:" K, K, "repeat_merge", "\"merges\":2")
-  addprobe(prb, "branch:" K, K, "repeat_merge", "\"merges\":2")
+  issue_number = NEXT_PROBE_ISSUE++
+  branch_name = "fix/" issue_number "-repeat"
+  session_id = random_session_id(); second_session_id = random_session_id()
+  LAST_PR_NUMBER++; first_pr = LAST_PR_NUMBER
+  LAST_PR_NUMBER++; second_pr = LAST_PR_NUMBER
+  probe_segment("branch:" branch_name, session_id, 0, day_start_seconds - 180000)
+  probe_segment("branch:" branch_name, session_id, 0, day_start_seconds - 176400)
+  prrows(first_pr, "branch:" branch_name, day_start_seconds - 259200, day_start_seconds - 172800, session_id)
+  probe_segment("branch:" branch_name, second_session_id, 0, day_start_seconds + 7200)
+  probe_segment("branch:" branch_name, second_session_id, 0, day_start_seconds + 10800)
+  prrows(second_pr, "branch:" branch_name, day_start_seconds + 3600, day_start_seconds + 32400, second_session_id)
+  addprobe(first_pr, "branch:" branch_name, branch_name, "repeat_merge", "\"merges\":2")
+  addprobe(second_pr, "branch:" branch_name, branch_name, "repeat_merge", "\"merges\":2")
 
-  I = PI++
-  K = "debt/" I "-multi"
-  R = "research:multi-" I
-  s = sid(); sr = sid()
-  PRN++; pr = PRN
-  binding_research(sr, d0 + 1800, R)
-  pseg("session:" sr, sr, 0, d0 + 3000)
-  pseg("branch:" K, s, 0, d0 + 3600)
-  pseg("branch:" K, s, 0, d0 + 7200)
-  edge("branch:" K, R, "link-command", d0 + 1800, "")
-  prrows(pr, "branch:" K, d0 + 1800, d0 + 28800, s)
-  addprobe(pr, "branch:" K, K, "multi_root", "\"roots_min\":2")
-  if (fin) RESEARCH_ROOT = R
+  issue_number = NEXT_PROBE_ISSUE++
+  branch_name = "debt/" issue_number "-multi"
+  research_reference = "research:multi-" issue_number
+  session_id = random_session_id(); research_session_id = random_session_id()
+  LAST_PR_NUMBER++; pr = LAST_PR_NUMBER
+  binding_research(research_session_id, day_start_seconds + 1800, research_reference)
+  probe_segment("session:" research_session_id, research_session_id, 0, day_start_seconds + 3000)
+  probe_segment("branch:" branch_name, session_id, 0, day_start_seconds + 3600)
+  probe_segment("branch:" branch_name, session_id, 0, day_start_seconds + 7200)
+  edge("branch:" branch_name, research_reference, "link-command", day_start_seconds + 1800, "")
+  prrows(pr, "branch:" branch_name, day_start_seconds + 1800, day_start_seconds + 28800, session_id)
+  addprobe(pr, "branch:" branch_name, branch_name, "multi_root", "\"roots_min\":2")
+  if (is_final) RESEARCH_ROOT = research_reference
 
-  I = PI++
-  K = "feat/" I "-inherit"
-  s = sid()
-  PRN++; pr = PRN
-  pseg("branch:" K, s, 0, d0 + 3600)
-  pseg("session:" s, s, 1, d0 + 7200)
-  pseg("branch:" K, s, 0, d0 + 10800)
-  prrows(pr, "branch:" K, d0 + 1800, d0 + 28800, s)
-  addprobe(pr, "branch:" K, K, "inherit", "\"inherit\":true")
+  issue_number = NEXT_PROBE_ISSUE++
+  branch_name = "feat/" issue_number "-inherit"
+  session_id = random_session_id()
+  LAST_PR_NUMBER++; pr = LAST_PR_NUMBER
+  probe_segment("branch:" branch_name, session_id, 0, day_start_seconds + 3600)
+  probe_segment("session:" session_id, session_id, 1, day_start_seconds + 7200)
+  probe_segment("branch:" branch_name, session_id, 0, day_start_seconds + 10800)
+  prrows(pr, "branch:" branch_name, day_start_seconds + 1800, day_start_seconds + 28800, session_id)
+  addprobe(pr, "branch:" branch_name, branch_name, "inherit", "\"inherit\":true")
 
-  N = PN++
-  P = sid(); E = sid()
-  PRN++; pr = PRN
-  if (planvar) {
-    K = sprintf("plan/plan-%03d-int", N)
-    ref = sprintf("plan:PLAN-%03d", N)
-    binding_start(P, d0 + 1800, "gaia-plan")
-    cost_plain("plan", P, d0 + 7200, sprintf("\"spec_id\":null,\"plan_id\":\"PLAN-%03d\"", N), "main")
+  plan_number = NEXT_PROBE_PLAN++
+  plan_session_id = random_session_id(); execute_session_id = random_session_id()
+  LAST_PR_NUMBER++; pr = LAST_PR_NUMBER
+  if (uses_plan_variant) {
+    branch_name = sprintf("plan/plan-%03d-int", plan_number)
+    reference = sprintf("plan:PLAN-%03d", plan_number)
+    binding_start(plan_session_id, day_start_seconds + 1800, "gaia-plan")
+    cost_plain("plan", plan_session_id, day_start_seconds + 7200, sprintf("\"spec_id\":null,\"plan_id\":\"PLAN-%03d\"", plan_number), "main")
   } else {
-    K = sprintf("plan/spec-%03d-int", N)
-    ref = sprintf("spec:SPEC-%03d", N)
-    binding_start(P, d0 + 1800, "gaia-spec")
-    cost_plain("spec", P, d0 + 7200, sprintf("\"spec_id\":\"SPEC-%03d\",\"plan_id\":null", N), "main")
+    branch_name = sprintf("plan/spec-%03d-int", plan_number)
+    reference = sprintf("spec:SPEC-%03d", plan_number)
+    binding_start(plan_session_id, day_start_seconds + 1800, "gaia-spec")
+    cost_plain("spec", plan_session_id, day_start_seconds + 7200, sprintf("\"spec_id\":\"SPEC-%03d\",\"plan_id\":null", plan_number), "main")
   }
-  pseg("session:" P, P, 0, d0 + 2400)
-  pseg("session:" P, P, 0, d0 + 3600)
-  pseg("branch:" K, E, 0, d0 + 10800)
-  pseg("branch:" K, E, 0, d0 + 14400)
-  prrows(pr, "branch:" K, d0 + 9000, d0 + 32400, E)
-  addprobe(pr, "branch:" K, K, "interval", "\"interval\":true")
-  if (fin) SPEC_ROOT = ref
+  probe_segment("session:" plan_session_id, plan_session_id, 0, day_start_seconds + 2400)
+  probe_segment("session:" plan_session_id, plan_session_id, 0, day_start_seconds + 3600)
+  probe_segment("branch:" branch_name, execute_session_id, 0, day_start_seconds + 10800)
+  probe_segment("branch:" branch_name, execute_session_id, 0, day_start_seconds + 14400)
+  prrows(pr, "branch:" branch_name, day_start_seconds + 9000, day_start_seconds + 32400, execute_session_id)
+  addprobe(pr, "branch:" branch_name, branch_name, "interval", "\"interval\":true")
+  if (is_final) SPEC_ROOT = reference
 
-  I = PI++
-  K = "docs/" I "-nospend"
-  s = sid()
-  PRN++; pr = PRN
-  prrows(pr, "branch:" K, d0 + 1800, d0 + 21600, s)
-  addprobe(pr, "branch:" K, K, "no_spend", "\"no_spend\":true")
+  issue_number = NEXT_PROBE_ISSUE++
+  branch_name = "docs/" issue_number "-nospend"
+  session_id = random_session_id()
+  LAST_PR_NUMBER++; pr = LAST_PR_NUMBER
+  prrows(pr, "branch:" branch_name, day_start_seconds + 1800, day_start_seconds + 21600, session_id)
+  addprobe(pr, "branch:" branch_name, branch_name, "no_spend", "\"no_spend\":true")
 
-  I = PI++
-  K = "debt/" I "-wide"
-  s = sid()
-  PRN++; pr = PRN
-  pseg("branch:" K, s, 0, d0 + 3600)
-  pseg("branch:" K, s, 0, d0 + 7200)
-  edge("branch:" K, "research:wide-a", "link-command", d0 + 1800, "")
-  WIDEN["research:wide-a"]++
-  prrows(pr, "branch:" K, d0 + 1800, d0 + 28800, s)
-  addprobe(pr, "branch:" K, K, "wide_root", "\"roots_min\":1")
-  if (fin) WIDEST = pr
+  issue_number = NEXT_PROBE_ISSUE++
+  branch_name = "debt/" issue_number "-wide"
+  session_id = random_session_id()
+  LAST_PR_NUMBER++; pr = LAST_PR_NUMBER
+  probe_segment("branch:" branch_name, session_id, 0, day_start_seconds + 3600)
+  probe_segment("branch:" branch_name, session_id, 0, day_start_seconds + 7200)
+  edge("branch:" branch_name, "research:wide-a", "link-command", day_start_seconds + 1800, "")
+  WIDE_ROOT_LINK_COUNTS["research:wide-a"]++
+  prrows(pr, "branch:" branch_name, day_start_seconds + 1800, day_start_seconds + 28800, session_id)
+  addprobe(pr, "branch:" branch_name, branch_name, "wide_root", "\"roots_min\":1")
+  if (is_final) WIDEST = pr
 
-  if (fin) {
-    K = "fix/cursor-drift"
-    s = sid()
-    PRN++; pr = PRN
-    pseg("branch:" K, s, 0, d0 + 3600)
-    pseg("branch:" K, s, 0, d0 + 7200)
-    costrow("execute", s, d0 + 7500, "\"spec_id\":null,\"plan_id\":null", K, "/Users/dev/{\\\"schema_version\\\":1,\\\"kind\\\":\\\"cursor\\\",\\\"x\\\":1}")
-    out("u", d0 + 7600, 0, "{\"kind\":\"cursor\",\"schema_version\":1,\"session_id\":\"" s "\",\"role\":\"main\",\"path\":\"/Users/dev/.claude/projects/-Users-dev-repo/" s ".jsonl\",\"offset\":4096,\"size\":4096,\"hw_ts\":\"" iso(d0 + 7600, 0) "\",\"hw_ids\":[],\"ts\":\"" iso(d0 + 7600, -1) "\"}")
-    prrows(pr, "branch:" K, d0 + 1800, d0 + 28800, s)
-    addprobe(pr, "branch:" K, K, "cursor_adversarial", "\"nonzero\":true")
+  if (is_final) {
+    branch_name = "fix/cursor-drift"
+    session_id = random_session_id()
+    LAST_PR_NUMBER++; pr = LAST_PR_NUMBER
+    probe_segment("branch:" branch_name, session_id, 0, day_start_seconds + 3600)
+    probe_segment("branch:" branch_name, session_id, 0, day_start_seconds + 7200)
+    costrow("execute", session_id, day_start_seconds + 7500, "\"spec_id\":null,\"plan_id\":null", branch_name, "/Users/dev/{\\\"schema_version\\\":1,\\\"kind\\\":\\\"cursor\\\",\\\"x\\\":1}")
+    emit_row("u", day_start_seconds + 7600, 0, "{\"kind\":\"cursor\",\"schema_version\":1,\"session_id\":\"" session_id "\",\"role\":\"main\",\"path\":\"/Users/dev/.claude/projects/-Users-dev-repo/" session_id ".jsonl\",\"offset\":4096,\"size\":4096,\"hw_ts\":\"" iso(day_start_seconds + 7600, 0) "\",\"hw_ids\":[],\"ts\":\"" iso(day_start_seconds + 7600, -1) "\"}")
+    prrows(pr, "branch:" branch_name, day_start_seconds + 1800, day_start_seconds + 28800, session_id)
+    addprobe(pr, "branch:" branch_name, branch_name, "cursor_adversarial", "\"nonzero\":true")
   }
 }
 
 BEGIN {
-  SEED = (seed0 % 2147483646) + 1
-  for (i = 0; i < 16; i++) rnd(2)
+  SEED = (seed_input % 2147483646) + 1
+  for (i = 0; i < 16; i++) random_below(2)
   SCALE = scale + 0
-  split("claude-opus-5-5 claude-sonnet-5-5 claude-haiku-4-5 claude-opus-4-8", MD, " ")
-  for (i = 1; i <= 4; i++) MD[i - 1] = MD[i]
-  split("gaia-spec gaia-plan gaia-debt gaia-wiki gaia-audit update-deps", WFT, " ")
-  for (i = 1; i <= 6; i++) WF[i - 1] = WFT[i]
-  split("fix-x guard lint docs quote", SGT, " ")
-  for (i = 1; i <= 5; i++) SLG[i - 1] = SGT[i]
-  split("cost usage ledger ui", SPT, " ")
-  for (i = 1; i <= 4; i++) SLP[i - 1] = SPT[i]
-  split("fix feat chore", TYT, " ")
-  for (i = 1; i <= 3; i++) TY1[i - 1] = TYT[i]
-  split("a bb ccc", SAT, " ")
-  for (i = 1; i <= 3; i++) SLA[i - 1] = SAT[i]
-  split("foo bar", SFT2, " ")
-  for (i = 1; i <= 2; i++) SLF[i - 1] = SFT2[i]
-  split("widget page hook", SWT, " ")
-  for (i = 1; i <= 3; i++) SLW[i - 1] = SWT[i]
+  split("claude-opus-5-5 claude-sonnet-5-5 claude-haiku-4-5 claude-opus-4-8", MODEL_NAMES, " ")
+  for (i = 1; i <= 4; i++) MODEL_NAMES[i - 1] = MODEL_NAMES[i]
+  split("gaia-spec gaia-plan gaia-debt gaia-wiki gaia-audit update-deps", WORKFLOW_NAMES_ONE_BASED, " ")
+  for (i = 1; i <= 6; i++) WORKFLOW_NAMES[i - 1] = WORKFLOW_NAMES_ONE_BASED[i]
+  split("fix-x guard lint docs quote", DEBT_SLUGS_ONE_BASED, " ")
+  for (i = 1; i <= 5; i++) DEBT_SLUGS[i - 1] = DEBT_SLUGS_ONE_BASED[i]
+  split("cost usage ledger ui", SPEC_SLUGS_ONE_BASED, " ")
+  for (i = 1; i <= 4; i++) SPEC_SLUGS[i - 1] = SPEC_SLUGS_ONE_BASED[i]
+  split("fix feat chore", BRANCH_TYPES_ONE_BASED, " ")
+  for (i = 1; i <= 3; i++) BRANCH_TYPES[i - 1] = BRANCH_TYPES_ONE_BASED[i]
+  split("a bb ccc", ISSUE_SLUGS_ONE_BASED, " ")
+  for (i = 1; i <= 3; i++) ISSUE_SLUGS[i - 1] = ISSUE_SLUGS_ONE_BASED[i]
+  split("foo bar", BARE_SPEC_SLUGS_ONE_BASED, " ")
+  for (i = 1; i <= 2; i++) BARE_SPEC_SLUGS[i - 1] = BARE_SPEC_SLUGS_ONE_BASED[i]
+  split("widget page hook", FEATURE_SLUGS_ONE_BASED, " ")
+  for (i = 1; i <= 3; i++) FEATURE_SLUGS[i - 1] = FEATURE_SLUGS_ONE_BASED[i]
   ALPHA = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz0123456789"
   for (i = 0; i < 4096; i++) {
-    c = ""
-    for (j = 0; j < 5; j++) { k = rnd(length(ALPHA)); c = c substr(ALPHA, k + 1, 1) }
-    CH5[i] = c
+    suffix = ""
+    for (j = 0; j < 5; j++) { alphabet_index = random_below(length(ALPHA)); suffix = suffix substr(ALPHA, alphabet_index + 1, 1) }
+    MESSAGE_SUFFIXES[i] = suffix
   }
-  ISS = 3000; SPN = 100; PLN = 10; PRN = 5000; RUNI = 0; AN = 0; NSPO = 0
-  PI = 90001; PN = 901; NPROBE = 0; PROBES = ""
-  DAY = 86400
-  END_T = base_end + 0
-  START_T = END_T - 30 * months * DAY
-  for (m = 0; m < months - 1; m++) gen_period(START_T + m * 30 * DAY, 30 * DAY, 1)
-  gen_period(START_T + (months - 1) * 30 * DAY, 29 * DAY, 29 / 30)
-  gen_period(END_T - DAY, DAY, 1 / 30)
+  LAST_ISSUE_NUMBER = 3000; LAST_SPEC_NUMBER = 100; LAST_PLAN_NUMBER = 10; LAST_PR_NUMBER = 5000; LAST_RUN_INDEX = 0; ACTIVE_BRANCH_COUNT = 0; SPEC_ROOT_COUNT = 0
+  NEXT_PROBE_ISSUE = 90001; NEXT_PROBE_PLAN = 901; PROBE_COUNT = 0; PROBES = ""
+  SECONDS_PER_DAY = 86400
+  END_SECONDS = base_end + 0
+  START_SECONDS = END_SECONDS - 30 * months * SECONDS_PER_DAY
+  for (month_index = 0; month_index < months - 1; month_index++) generate_period(START_SECONDS + month_index * 30 * SECONDS_PER_DAY, 30 * SECONDS_PER_DAY, 1)
+  generate_period(START_SECONDS + (months - 1) * 30 * SECONDS_PER_DAY, 29 * SECONDS_PER_DAY, 29 / 30)
+  generate_period(END_SECONDS - SECONDS_PER_DAY, SECONDS_PER_DAY, 1 / 30)
 
   # The first segment of the ledger, so the earliest-spend probe sits inside
   # the coverage window by construction.
-  s = sid()
-  pseg("session:" s, s, 0, START_T + 120)
-  I = PI++
-  K = "fix/" I "-early"
-  s = sid()
-  PRN++; pr = PRN
-  pseg("branch:" K, s, 0, START_T + 7200)
-  pseg("branch:" K, s, 0, START_T + 10800)
-  prrows(pr, "branch:" K, START_T + 14400, START_T + 3 * DAY, s)
-  addprobe(pr, "branch:" K, K, "lower_bound", "\"lower_bound\":true")
+  session_id = random_session_id()
+  probe_segment("session:" session_id, session_id, 0, START_SECONDS + 120)
+  issue_number = NEXT_PROBE_ISSUE++
+  branch_name = "fix/" issue_number "-early"
+  session_id = random_session_id()
+  LAST_PR_NUMBER++; pr = LAST_PR_NUMBER
+  probe_segment("branch:" branch_name, session_id, 0, START_SECONDS + 7200)
+  probe_segment("branch:" branch_name, session_id, 0, START_SECONDS + 10800)
+  prrows(pr, "branch:" branch_name, START_SECONDS + 14400, START_SECONDS + 3 * SECONDS_PER_DAY, session_id)
+  addprobe(pr, "branch:" branch_name, branch_name, "lower_bound", "\"lower_bound\":true")
 
-  pset(START_T + 8 * DAY, 0, 0)
-  pset(START_T + int(months * 15) * DAY, 0, 1)
-  pset(END_T - DAY, 1, 0)
+  probe_set(START_SECONDS + 8 * SECONDS_PER_DAY, 0, 0)
+  probe_set(START_SECONDS + int(months * 15) * SECONDS_PER_DAY, 0, 1)
+  probe_set(END_SECONDS - SECONDS_PER_DAY, 1, 0)
 
   addprobe(7777777, "", "", "unresolvable", "\"unresolvable\":true")
 
-  printf "{\"typical_pr\":%d,\"widest_pr\":%d,\"probes\":[\n%s\n],\"initiative_roots\":{\"research\":\"%s\",\"issue\":\"%s\",\"spec\":\"%s\"},\"cut\":__CUT__}\n", TYPICAL, WIDEST, PROBES, RESEARCH_ROOT, ISSUE_ROOT, SPEC_ROOT > pfile
-  close(pfile)
+  printf "{\"typical_pr\":%d,\"widest_pr\":%d,\"probes\":[\n%s\n],\"initiative_roots\":{\"research\":\"%s\",\"issue\":\"%s\",\"spec\":\"%s\"},\"cut\":__CUT__}\n", TYPICAL, WIDEST, PROBES, RESEARCH_ROOT, ISSUE_ROOT, SPEC_ROOT > probes_file
+  close(probes_file)
 }
 AWK
 
 IFS= read -r -d '' SPLIT_PROGRAM <<'AWK' || true
 BEGIN {
-  f["u"] = ufile; f["l"] = lfile; f["c"] = cfile
-  ck = cutkey ""
+  store_files["u"] = usage_file; store_files["l"] = links_file; store_files["c"] = cost_file
+  cut_key_text = cutkey ""
 }
 {
-  st = substr($0, 1, 1)
+  store_letter = substr($0, 1, 1)
   key = substr($0, 2, 13)
   line = substr($0, 16)
-  if (!(st in cut) && (key "") >= ck) cut[st] = bytes[st] + 0
-  print line > f[st]
-  bytes[st] += length(line) + 1
+  if (!(store_letter in cut) && (key "") >= cut_key_text) cut[store_letter] = bytes[store_letter] + 0
+  print line > store_files[store_letter]
+  bytes[store_letter] += length(line) + 1
 }
 END {
-  for (st in f) {
-    close(f[st])
-    if (!(st in cut)) cut[st] = bytes[st] + 0
+  for (store_letter in store_files) {
+    close(store_files[store_letter])
+    if (!(store_letter in cut)) cut[store_letter] = bytes[store_letter] + 0
   }
   printf "%d %d %d\n", cut["u"], cut["l"], cut["c"] > cutfile
   close(cutfile)
 }
 AWK
 
-: >"$outdir/usage.jsonl"
-: >"$outdir/links.jsonl"
-: >"$outdir/cost.jsonl"
+: >"$output_directory/usage.jsonl"
+: >"$output_directory/links.jsonl"
+: >"$output_directory/cost.jsonl"
 cut_key="$(printf '%010d000' $((BASE_END_EPOCH - 86400)))"
 
-LC_ALL=C "$awk_bin" -v months="$months" -v seed0="$seed" -v scale="$scale" -v base_end="$BASE_END_EPOCH" \
-  -v pfile="$tmp/probes.frag" "$GEN_PROGRAM" |
+LC_ALL=C "$awk_bin" -v months="$months" -v seed_input="$seed" -v scale="$scale" -v base_end="$BASE_END_EPOCH" \
+  -v probes_file="$temporary_directory/probes.frag" "$GEN_PROGRAM" |
   LC_ALL=C sort -s -k1,1 |
-  LC_ALL=C "$awk_bin" -v ufile="$outdir/usage.jsonl" -v lfile="$outdir/links.jsonl" -v cfile="$outdir/cost.jsonl" \
-    -v cutkey="$cut_key" -v cutfile="$tmp/cuts" "$SPLIT_PROGRAM"
+  LC_ALL=C "$awk_bin" -v usage_file="$output_directory/usage.jsonl" -v links_file="$output_directory/links.jsonl" -v cost_file="$output_directory/cost.jsonl" \
+    -v cutkey="$cut_key" -v cutfile="$temporary_directory/cuts" "$SPLIT_PROGRAM"
 
-read -r cut_u cut_l cut_c <"$tmp/cuts"
-frag="$(cat "$tmp/probes.frag")"
-cut_json="{\"u\":$cut_u,\"l\":$cut_l,\"c\":$cut_c}"
-printf '%s\n' "${frag/__CUT__/$cut_json}" >"$outdir/probes.json"
+read -r cut_usage cut_links cut_cost <"$temporary_directory/cuts"
+fragment="$(cat "$temporary_directory/probes.frag")"
+cut_json="{\"u\":$cut_usage,\"l\":$cut_links,\"c\":$cut_cost}"
+printf '%s\n' "${fragment/__CUT__/$cut_json}" >"$output_directory/probes.json"

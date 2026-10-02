@@ -467,7 +467,7 @@ next_allowed() {
   jq '.pr = 77' "$ALF_STATE" >"$ALF_STATE.t" && mv "$ALF_STATE.t" "$ALF_STATE"
   old_state="$ALF_STATE"
   alf_git branch -m new/name
-  ALF_B=new/name
+  ALF_NORMALIZED_BRANCH=new/name
   ALF_STATE="$ALF_ROOT/.gaia/local/audit-loop/new/name.json"
   printf '{"number":77,"state":"OPEN"}\n' >"$GH_STUB_STATE_DIRECTORY/branch.json"
   new_tree
@@ -577,7 +577,7 @@ next_allowed() {
 @test "a cwd on main with a prompt naming a feature worktree records under the feature branch" {
   alf_git checkout -q main
   linked_worktree wt2 feat/from-wt
-  ALF_B=feat/from-wt
+  ALF_NORMALIZED_BRANCH=feat/from-wt
   ALF_STATE="$ALF_ROOT/.gaia/local/audit-loop/feat/from-wt.json"
   commit_in_worktree 1
   run_payload "$(payload "$FRONTEND_MEMBER" "$SID" "$WORKTREE_PATH" "$ALF_ROOT")"
@@ -632,8 +632,8 @@ next_allowed() {
 @test "a denied dispatch from the main checkout records the session and the worktree it audited" {
   alf_git checkout -q main
   linked_worktree wt3 feat/denied-wt
-  ALF_B=feat/denied-wt
-  ALF_STATE="$ALF_ROOT/.gaia/local/audit-loop/$ALF_B.json"
+  ALF_NORMALIZED_BRANCH=feat/denied-wt
+  ALF_STATE="$ALF_ROOT/.gaia/local/audit-loop/$ALF_NORMALIZED_BRANCH.json"
   local fake_object_id
   fake_object_id="$(printf 'a%.0s' $(seq 1 39))"
   alf_seed_state "$(jq -n -c --arg fake_object_id "$fake_object_id" '{rounds: [range(1; 6) | {round: ., tree: ($fake_object_id + (. | tostring)), commit: ($fake_object_id + (. | tostring)),
@@ -1250,7 +1250,7 @@ veto_rounds() {
   veto_rounds
   alf_sidecar "$FRONTEND_MEMBER" '[{"path":"f.txt","line":1,"security":false}]' 21
   jq -n -c --argjson finding "$FINDING_X" '{version: 1, keys: [$finding + {vetoed_at: "2026-01-01T00:00:00Z", unit: 1, effective_from_round: 2}]}' \
-    >"$ALF_ROOT/.gaia/local/runs/$ALF_B/vetoes.json"
+    >"$ALF_ROOT/.gaia/local/runs/$ALF_NORMALIZED_BRANCH/vetoes.json"
   below
   unit_dispatch
   assert_allowed
@@ -1293,9 +1293,9 @@ veto_rounds() {
   alf_sequence 6 5
   alf_state_edit '.history.units = [{unit: 1, start_round: 3, k: 3, through_round: 5, admitted_on: "context",
     after_checkpoint: 0, recorded_at: "2026-01-01T00:00:00Z", session_id: $session_id}]' --arg session_id "$SIDU"
-  mkdir -p "$ALF_ROOT/.gaia/local/runs/$ALF_B"
+  mkdir -p "$ALF_ROOT/.gaia/local/runs/$ALF_NORMALIZED_BRANCH"
   printf '{"version":1,"unit":1,"start_round":3,"through_round":5,"k":3,"rounds":[{"round":3,"opened":false,"reason":"nesting-unavailable"}],"stop_reason":"nesting-unavailable"}\n' \
-    >"$ALF_ROOT/.gaia/local/runs/$ALF_B/unit-1.json"
+    >"$ALF_ROOT/.gaia/local/runs/$ALF_NORMALIZED_BRANCH/unit-1.json"
   new_tree
   above
   main_member
@@ -1379,7 +1379,7 @@ veto_rounds() {
   alf_dispositions 2 '[{"member":"code-audit-frontend","finding_class":"rule/x","path":"f.txt","line":1,"disposition":"file","reason":""}]'
   unit_dispatch
   deny_prefix "BLOCKED: audit dispositions"
-  rm -f "$ALF_ROOT/.gaia/local/runs/$ALF_B/dispositions-2.json"
+  rm -f "$ALF_ROOT/.gaia/local/runs/$ALF_NORMALIZED_BRANCH/dispositions-2.json"
   printf 'edit\n' >>"$ALF_ROOT/base.txt"
   dispatch
   denial_reasons="$(reason)"
@@ -1423,8 +1423,8 @@ veto_rounds() {
   deny_prefix "BLOCKED: audit dispositions"
   reason | grep -qF -- "(exit 3)"
   HOOK="$BOUND_HOOK"
-  mkdir -p "$ALF_ROOT/.gaia/local/runs/$ALF_B"
-  printf '{broken' >"$ALF_ROOT/.gaia/local/runs/$ALF_B/vetoes.json"
+  mkdir -p "$ALF_ROOT/.gaia/local/runs/$ALF_NORMALIZED_BRANCH"
+  printf '{broken' >"$ALF_ROOT/.gaia/local/runs/$ALF_NORMALIZED_BRANCH/vetoes.json"
   unit_dispatch
   deny_prefix "BLOCKED: audit dispositions"
   reason | grep -qF -- "vetoes.json"
@@ -1456,7 +1456,7 @@ veto_rounds() {
     alf_dispositions "$round_number" "$(alf_entries f.txt 1 1 | jq -c 'map(. + {member: "code-audit-frontend", disposition: "fix", reason: ""})')"
   done
   bash "$REPO_ROOT/.gaia/scripts/audit-dispositions-check.sh" check-all --root "$ALF_ROOT" \
-    --run-folder "$ALF_ROOT/.gaia/local/runs/$ALF_B" --snapshot-dir "${ALF_STATE%.json}.d"
+    --run-folder "$ALF_ROOT/.gaia/local/runs/$ALF_NORMALIZED_BRANCH" --snapshot-dir "${ALF_STATE%.json}.d"
   [ "$(find "${ALF_STATE%.json}.d" -name 'dispositions-*.checked.json' | wc -l | tr -d ' ')" -eq 9 ]
   below
   for i in 1 2 3 4 5; do

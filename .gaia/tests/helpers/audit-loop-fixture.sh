@@ -14,7 +14,7 @@
 # filesystem and at every find(1) precision.
 #
 # Variables set: ALF_ROOT (physical repo root, also the main checkout),
-# ALF_ORIGIN, ALF_BRANCH (raw), ALF_B (normalized branch), ALF_SLUG (raw
+# ALF_ORIGIN, ALF_BRANCH (raw), ALF_NORMALIZED_BRANCH (normalized branch), ALF_SLUG (raw
 # branch slug), ALF_COMMIT and ALF_TREE (HEAD after alf_commit), ALF_STATE
 # (the branch state file path).
 
@@ -49,31 +49,31 @@ alf_init() {
 alf_branch() {
   ALF_BRANCH="$1"
   alf_git checkout -q -b "$1" || return 1
-  ALF_B="${1#worktree-}"
-  ALF_B="${ALF_B//+//}"
+  ALF_NORMALIZED_BRANCH="${1#worktree-}"
+  ALF_NORMALIZED_BRANCH="${ALF_NORMALIZED_BRANCH//+//}"
   ALF_SLUG="$(gaia_key_slug "$1")"
-  ALF_STATE="$ALF_ROOT/.gaia/local/audit-loop/$ALF_B.json"
+  ALF_STATE="$ALF_ROOT/.gaia/local/audit-loop/$ALF_NORMALIZED_BRANCH.json"
 }
 
 # alf_set_line <path> <line> <text>: set one line, padding the file to it.
 alf_set_line() {
-  local f="$ALF_ROOT/$1" n="$2" text="$3" have
-  mkdir -p "${f%/*}"
-  [ -f "$f" ] || : >"$f"
-  have="$(wc -l <"$f" | tr -d ' ')"
-  while [ "$have" -lt "$n" ]; do
+  local file_path="$ALF_ROOT/$1" line_number="$2" text="$3" have
+  mkdir -p "${file_path%/*}"
+  [ -f "$file_path" ] || : >"$file_path"
+  have="$(wc -l <"$file_path" | tr -d ' ')"
+  while [ "$have" -lt "$line_number" ]; do
     have=$((have + 1))
-    printf 'pad %s\n' "$have" >>"$f"
+    printf 'pad %s\n' "$have" >>"$file_path"
   done
-  awk -v n="$n" -v t="$text" 'NR == n { print t; next } { print }' "$f" >"$f.alf" && mv "$f.alf" "$f"
+  awk -v line_number="$line_number" -v replacement_text="$text" 'NR == line_number { print replacement_text; next } { print }' "$file_path" >"$file_path.alf" && mv "$file_path.alf" "$file_path"
 }
 
 # alf_fill <path> <count> <tag>: write <count> fresh lines `<tag> <i>`.
 alf_fill() {
-  local f="$ALF_ROOT/$1" i=1
-  mkdir -p "${f%/*}"
-  : >"$f"
-  while [ "$i" -le "$2" ]; do printf '%s %s\n' "$3" "$i" >>"$f"; i=$((i + 1)); done
+  local file_path="$ALF_ROOT/$1" i=1
+  mkdir -p "${file_path%/*}"
+  : >"$file_path"
+  while [ "$i" -le "$2" ]; do printf '%s %s\n' "$3" "$i" >>"$file_path"; i=$((i + 1)); done
 }
 
 # alf_commit [message]: commit everything; sets ALF_COMMIT and ALF_TREE.
@@ -103,98 +103,98 @@ alf_time() {
 # alf_sidecar <member> <entries-json> <minutes> [base]: write a findings
 # sidecar for the current branch; entries default finding_class and severity.
 alf_sidecar() {
-  local base="${4:-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}" f
-  f="$ALF_ROOT/.gaia/local/audit/$base.$ALF_SLUG.$1.findings.json"
-  jq -n -c --arg m "$1" --argjson e "$2" '{schema: 1, member: $m,
-    findings: ($e | map({finding_class: "rule/x", severity: "warning", title: "t", failure_mode: "f",
-                         verified_by: "v", suggested_fix: "s"} + .))}' >"$f" || return 1
-  touch -t "$(alf_time "$3")" "$f"
+  local base="${4:-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}" file_path
+  file_path="$ALF_ROOT/.gaia/local/audit/$base.$ALF_SLUG.$1.findings.json"
+  jq -n -c --arg member "$1" --argjson entries "$2" '{schema: 1, member: $member,
+    findings: ($entries | map({finding_class: "rule/x", severity: "warning", title: "t", failure_mode: "f",
+                         verified_by: "v", suggested_fix: "s"} + .))}' >"$file_path" || return 1
+  touch -t "$(alf_time "$3")" "$file_path"
 }
 
-# alf_stamp <r> <minutes>: write round r's dispatch stamp.
+# alf_stamp <round> <minutes>: write round r's dispatch stamp.
 alf_stamp() {
-  local f="$ALF_ROOT/.gaia/local/audit-loop/$ALF_B.d/round-$1.stamp"
-  mkdir -p "${f%/*}" && : >"$f" && touch -t "$(alf_time "$2")" "$f"
+  local file_path="$ALF_ROOT/.gaia/local/audit-loop/$ALF_NORMALIZED_BRANCH.d/round-$1.stamp"
+  mkdir -p "${file_path%/*}" && : >"$file_path" && touch -t "$(alf_time "$2")" "$file_path"
 }
 
-# alf_baseline <r> <minutes>: write round r's verifier baseline file.
+# alf_baseline <round> <minutes>: write round r's verifier baseline file.
 alf_baseline() {
-  local f="$ALF_ROOT/.gaia/local/runs/$ALF_B/baseline-$1.json"
-  mkdir -p "${f%/*}" && printf '{"schema":1,"round":%s}\n' "$1" >"$f" && touch -t "$(alf_time "$2")" "$f"
+  local file_path="$ALF_ROOT/.gaia/local/runs/$ALF_NORMALIZED_BRANCH/baseline-$1.json"
+  mkdir -p "${file_path%/*}" && printf '{"schema":1,"round":%s}\n' "$1" >"$file_path" && touch -t "$(alf_time "$2")" "$file_path"
 }
 
 # alf_dispositions <k> <entries-json>: write dispositions-<k>.json.
 alf_dispositions() {
-  local f="$ALF_ROOT/.gaia/local/runs/$ALF_B/dispositions-$1.json"
-  mkdir -p "${f%/*}" && jq -n -c --argjson k "$1" --argjson e "$2" '{schema: 1, round: $k, entries: $e}' >"$f"
+  local file_path="$ALF_ROOT/.gaia/local/runs/$ALF_NORMALIZED_BRANCH/dispositions-$1.json"
+  mkdir -p "${file_path%/*}" && jq -n -c --argjson round "$1" --argjson entries "$2" '{schema: 1, round: $round, entries: $entries}' >"$file_path"
 }
 
 # alf_seed_state <spec-json>: write the state file from a compact spec
 # {pr, knobs, rounds, checkpoints, answers}; omitted parts take defaults.
 alf_seed_state() {
   mkdir -p "${ALF_STATE%/*}"
-  jq -n --arg b "$ALF_B" --argjson s "$1" '{schema: 1, key: ("branch:" + $b), branch: $b,
-    pr: ($s.pr // null), created_at: "2026-01-01T00:00:00Z",
-    history: ({rounds: ($s.rounds // []), checkpoints: ($s.checkpoints // [])}
-              + (if (($s.rounds // []) | length) > 0 or $s.knobs != null
-                 then {knobs: ($s.knobs // {checkpoint_round: 5, grant_rounds: 3})} else {} end)),
-    allowance: {answers: ($s.answers // [])}}' >"$ALF_STATE"
+  jq -n --arg normalized_branch "$ALF_NORMALIZED_BRANCH" --argjson spec "$1" '{schema: 1, key: ("branch:" + $normalized_branch), branch: $normalized_branch,
+    pr: ($spec.pr // null), created_at: "2026-01-01T00:00:00Z",
+    history: ({rounds: ($spec.rounds // []), checkpoints: ($spec.checkpoints // [])}
+              + (if (($spec.rounds // []) | length) > 0 or $spec.knobs != null
+                 then {knobs: ($spec.knobs // {checkpoint_round: 5, grant_rounds: 3})} else {} end)),
+    allowance: {answers: ($spec.answers // [])}}' >"$ALF_STATE"
 }
 
 # alf_state_edit <jq-filter> [jq-args...]: rewrite the state file in place.
 alf_state_edit() {
-  local f="$1"
+  local jq_filter="$1"
   shift
-  jq "$@" "$f" "$ALF_STATE" >"$ALF_STATE.alf" && mv "$ALF_STATE.alf" "$ALF_STATE"
+  jq "$@" "$jq_filter" "$ALF_STATE" >"$ALF_STATE.alf" && mv "$ALF_STATE.alf" "$ALF_STATE"
 }
 
 # alf_add_round <members-json> [closing]: record HEAD as the next round.
 alf_add_round() {
   [ -f "$ALF_STATE" ] || alf_seed_state '{}'
   alf_state_edit '.history.knobs //= {checkpoint_round: 5, grant_rounds: 3}
-    | .history.rounds += [{round: ((.history.rounds | length) + 1), tree: $t, commit: $c, raw_branch_slug: $s,
-        dispatched_at: "2026-01-01T00:00:00Z", members: $m, closing: $cl, snapshot: null}]' \
-    --arg t "$ALF_TREE" --arg c "$ALF_COMMIT" --arg s "$ALF_SLUG" --argjson m "$1" --argjson cl "${2:-false}"
+    | .history.rounds += [{round: ((.history.rounds | length) + 1), tree: $tree, commit: $commit, raw_branch_slug: $raw_branch_slug,
+        dispatched_at: "2026-01-01T00:00:00Z", members: $members, closing: $closing, snapshot: null}]' \
+    --arg tree "$ALF_TREE" --arg commit "$ALF_COMMIT" --arg raw_branch_slug "$ALF_SLUG" --argjson members "$1" --argjson closing "${2:-false}"
 }
 
-# alf_set_snapshot <r> <snapshot-json>: store round r's snapshot.
+# alf_set_snapshot <round> <snapshot-json>: store round r's snapshot.
 alf_set_snapshot() {
-  alf_state_edit '.history.rounds[$r - 1].snapshot = $s' --argjson r "$1" --argjson s "$2"
+  alf_state_edit '.history.rounds[$round - 1].snapshot = $snapshot' --argjson round "$1" --argjson snapshot "$2"
 }
 
 # alf_add_checkpoint <at-round> <reason>: append a checkpoint.
 alf_add_checkpoint() {
-  alf_state_edit '.history.checkpoints += [{index: ((.history.checkpoints | length) + 1), at_round: $a,
-    reason: $why, recorded_at: "2026-01-01T00:00:00Z", session_id: "s1", audited_root: "/x"}]' \
-    --argjson a "$1" --arg why "$2"
+  alf_state_edit '.history.checkpoints += [{index: ((.history.checkpoints | length) + 1), at_round: $at_round,
+    reason: $reason, recorded_at: "2026-01-01T00:00:00Z", session_id: "s1", audited_root: "/x"}]' \
+    --argjson at_round "$1" --arg reason "$2"
 }
 
 # alf_add_answer <checkpoint-index> grant <n> | accept: append an answer.
 alf_add_answer() {
   if [ "$2" = grant ]; then
-    alf_state_edit '.allowance.answers += [{checkpoint: $i, kind: "grant", n: $n, at: "2026-01-01T00:00:00Z", session_id: "s1"}]' \
-      --argjson i "$1" --argjson n "$3"
+    alf_state_edit '.allowance.answers += [{checkpoint: $checkpoint_index, kind: "grant", n: $grant_rounds, at: "2026-01-01T00:00:00Z", session_id: "s1"}]' \
+      --argjson checkpoint_index "$1" --argjson grant_rounds "$3"
   else
-    alf_state_edit '.allowance.answers += [{checkpoint: $i, kind: "accept", at: "2026-01-01T00:00:00Z", session_id: "s1"}]' \
-      --argjson i "$1"
+    alf_state_edit '.allowance.answers += [{checkpoint: $checkpoint_index, kind: "accept", at: "2026-01-01T00:00:00Z", session_id: "s1"}]' \
+      --argjson checkpoint_index "$1"
   fi
 }
 
 # alf_entries <path> <first> <last> [class]: entries on lines first..last.
 alf_entries() {
-  jq -n -c --arg p "$1" --argjson a "$2" --argjson b "$3" --arg c "${4:-rule/x}" \
-    '[range($a; $b + 1) | {path: $p, line: ., finding_class: $c}]'
+  jq -n -c --arg path "$1" --argjson first_line "$2" --argjson last_line "$3" --arg finding_class "${4:-rule/x}" \
+    '[range($first_line; $last_line + 1) | {path: $path, line: ., finding_class: $finding_class}]'
 }
 
-# alf_store_snapshot <r>: evaluate round r and store it, as the bound hook
+# alf_store_snapshot <round>: evaluate round r and store it, as the bound hook
 # does at the next new-tree dispatch (needs audit-loop-eval.sh sourced).
 alf_store_snapshot() {
-  local snap
-  snap="$(gaia_loop_evaluate_round "$ALF_ROOT" "$(cat "$ALF_STATE")" "$1")" || return 1
-  alf_set_snapshot "$1" "$snap"
+  local snapshot
+  snapshot="$(gaia_loop_evaluate_round "$ALF_ROOT" "$(cat "$ALF_STATE")" "$1")" || return 1
+  alf_set_snapshot "$1" "$snapshot"
 }
 
-# alf_round <r> <member> <entries-json>: one round on the current HEAD:
+# alf_round <round> <member> <entries-json>: one round on the current HEAD:
 # store round r-1's snapshot, record round r, stamp it, write the sidecar.
 alf_round() {
   if [ "$1" -gt 1 ]; then alf_store_snapshot $(($1 - 1)) || return 1; fi
@@ -205,12 +205,12 @@ alf_round() {
 # on branch-added f.txt lines 1..A_r; every round's commit touches only
 # other.txt, so no entry ever sits on a repaired line.
 alf_sequence() {
-  local r=1 a
+  local round_number=1 reported_count
   alf_fill f.txt 12 feature
-  for a in "$@"; do
-    alf_set_line other.txt "$r" "round $r"
-    alf_commit "round $r" || return 1
-    alf_round "$r" code-audit-frontend "$(alf_entries f.txt 1 "$a")" || return 1
-    r=$((r + 1))
+  for reported_count in "$@"; do
+    alf_set_line other.txt "$round_number" "round $round_number"
+    alf_commit "round $round_number" || return 1
+    alf_round "$round_number" code-audit-frontend "$(alf_entries f.txt 1 "$reported_count")" || return 1
+    round_number=$((round_number + 1))
   done
 }

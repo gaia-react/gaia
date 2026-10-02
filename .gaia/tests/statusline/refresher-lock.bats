@@ -12,11 +12,11 @@
 # than blocking every future refresh.
 
 setup() {
-  CHECK_UPDATES_SRC=$(cd "$BATS_TEST_DIRNAME/../../scripts" && pwd)/check-updates.sh
+  CHECK_UPDATES_SOURCE=$(cd "$BATS_TEST_DIRNAME/../../scripts" && pwd)/check-updates.sh
 
   REFRESH_ROOT=$(mktemp -d -t gaia-cu-lock-XXXXXX)
   mkdir -p "$REFRESH_ROOT/.gaia/scripts" "$REFRESH_ROOT/.gaia/cli" "$REFRESH_ROOT/.gaia/local/cache/shared"
-  cp "$CHECK_UPDATES_SRC" "$REFRESH_ROOT/.gaia/scripts/check-updates.sh"
+  cp "$CHECK_UPDATES_SOURCE" "$REFRESH_ROOT/.gaia/scripts/check-updates.sh"
   chmod +x "$REFRESH_ROOT/.gaia/scripts/check-updates.sh"
   write_mock_gaia "$REFRESH_ROOT/.gaia/cli/gaia"
 
@@ -26,7 +26,7 @@ setup() {
   export PATH="$GH_BIN:$PATH"
 
   CACHE_FILE="$REFRESH_ROOT/.gaia/local/cache/shared/update-check.json"
-  LOCK_DIR="$REFRESH_ROOT/.gaia/local/cache/shared/.update-check.lock"
+  LOCK_DIRECTORY="$REFRESH_ROOT/.gaia/local/cache/shared/.update-check.lock"
   export MOCK_LOG="$BATS_TEST_TMPDIR/tally.log"
   export MOCK_HOLD="$BATS_TEST_TMPDIR/hold"
   export MOCK_ENTERED="$BATS_TEST_TMPDIR/entered"
@@ -46,14 +46,14 @@ write_mock_gaia() {
 #!/usr/bin/env bash
 case "$1" in
   update-deps)
-    out=""
+    output_path=""
     while [ "$#" -gt 0 ]; do
       case "$1" in
-        --emit-updates) out="$2"; shift 2 ;;
+        --emit-updates) output_path="$2"; shift 2 ;;
         *) shift ;;
       esac
     done
-    [ -n "$out" ] && printf '{"actionable_count":0}' > "$out"
+    [ -n "$output_path" ] && printf '{"actionable_count":0}' > "$output_path"
     exit 0
     ;;
   harden-tally)
@@ -117,24 +117,24 @@ wait_for_entered() {
   run bash "$REFRESH_ROOT/.gaia/scripts/check-updates.sh"
   [ "$status" -eq 0 ]
   [ -f "$CACHE_FILE" ]
-  [ ! -e "$LOCK_DIR" ]
+  [ ! -e "$LOCK_DIRECTORY" ]
 }
 
 @test "a run inside the TTL neither takes nor leaves the lock" {
   printf '{"checkedAt":%s}' "$(date +%s)" > "$CACHE_FILE"
   run bash "$REFRESH_ROOT/.gaia/scripts/check-updates.sh"
   [ "$status" -eq 0 ]
-  [ ! -e "$LOCK_DIR" ]
+  [ ! -e "$LOCK_DIRECTORY" ]
   [ ! -e "$MOCK_LOG" ]
 }
 
 @test "a fresh lock held by another run blocks this one" {
-  mkdir "$LOCK_DIR"
+  mkdir "$LOCK_DIRECTORY"
   run bash "$REFRESH_ROOT/.gaia/scripts/check-updates.sh"
   [ "$status" -eq 0 ]
   [ ! -f "$CACHE_FILE" ]
   [ ! -e "$MOCK_LOG" ]
-  [ -d "$LOCK_DIR" ]
+  [ -d "$LOCK_DIRECTORY" ]
 }
 
 @test "a run whose lock was reclaimed leaves its successor's lock in place on exit" {
@@ -145,13 +145,13 @@ wait_for_entered() {
 
   # A successor reclaimed the held run's lock as stale and took its own,
   # writing its own owner file as every real successor does.
-  rm -rf "$LOCK_DIR"
-  mkdir "$LOCK_DIR"
-  printf 'other\n' > "$LOCK_DIR/owner"
+  rm -rf "$LOCK_DIRECTORY"
+  mkdir "$LOCK_DIRECTORY"
+  printf 'other\n' > "$LOCK_DIRECTORY/owner"
 
   rm -f "$MOCK_HOLD"
   wait "$held_pid"
-  [ -d "$LOCK_DIR" ]
+  [ -d "$LOCK_DIRECTORY" ]
 }
 
 # Two contenders saw the same stale lock; the other already reclaimed it, so
@@ -174,21 +174,21 @@ esac
 exec "$real_find" "\$@"
 EOF
   chmod +x "$GH_BIN/find"
-  mkdir "$LOCK_DIR"
-  printf 'other\n' > "$LOCK_DIR/owner"
+  mkdir "$LOCK_DIRECTORY"
+  printf 'other\n' > "$LOCK_DIRECTORY/owner"
 
   run bash "$REFRESH_ROOT/.gaia/scripts/check-updates.sh"
   [ "$status" -eq 0 ]
   [ ! -e "$MOCK_LOG" ]
   [ ! -f "$CACHE_FILE" ]
-  [ "$(cat "$LOCK_DIR/owner")" = "other" ]
+  [ "$(cat "$LOCK_DIRECTORY/owner")" = "other" ]
 }
 
 @test "a stale lock left by a killed run is reclaimed and the refresh proceeds" {
-  mkdir "$LOCK_DIR"
-  touch -t 200001010000 "$LOCK_DIR"
+  mkdir "$LOCK_DIRECTORY"
+  touch -t 200001010000 "$LOCK_DIRECTORY"
   run bash "$REFRESH_ROOT/.gaia/scripts/check-updates.sh"
   [ "$status" -eq 0 ]
   [ "$(jq -r '.hardenCandidateCount' "$CACHE_FILE")" -eq 2 ]
-  [ ! -e "$LOCK_DIR" ]
+  [ ! -e "$LOCK_DIRECTORY" ]
 }

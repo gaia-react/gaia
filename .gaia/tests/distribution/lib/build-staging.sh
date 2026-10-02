@@ -24,16 +24,16 @@ if [ "$#" -ne 1 ]; then
   printf 'Usage: %s <output-dir>\n' "$0" >&2
   exit 1
 fi
-OUTPUT_DIR="$1"
+OUTPUT_DIRECTORY="$1"
 PROJECT_ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 
 # Sanity: <output-dir> must exist and be empty.
-if [ ! -d "$OUTPUT_DIR" ]; then
-  printf 'Output dir does not exist: %s\n' "$OUTPUT_DIR" >&2
+if [ ! -d "$OUTPUT_DIRECTORY" ]; then
+  printf 'Output dir does not exist: %s\n' "$OUTPUT_DIRECTORY" >&2
   exit 1
 fi
-if [ -n "$(ls -A "$OUTPUT_DIR" 2>/dev/null)" ]; then
-  printf 'Output dir not empty: %s\n' "$OUTPUT_DIR" >&2
+if [ -n "$(ls -A "$OUTPUT_DIRECTORY" 2>/dev/null)" ]; then
+  printf 'Output dir not empty: %s\n' "$OUTPUT_DIRECTORY" >&2
   exit 1
 fi
 
@@ -79,7 +79,7 @@ else
   cp "$ALL_TRACKED" "$INCLUDE"
 fi
 
-rsync -a --files-from="$INCLUDE" "$PROJECT_ROOT/" "$OUTPUT_DIR/"
+rsync -a --files-from="$INCLUDE" "$PROJECT_ROOT/" "$OUTPUT_DIRECTORY/"
 
 # Phase 2; Scrub-wiki. Resets wiki/hot.md and wiki/log.md to release-
 # baseline state. release.yml does NOT do this; it runs in the local
@@ -98,13 +98,13 @@ rsync -a --files-from="$INCLUDE" "$PROJECT_ROOT/" "$OUTPUT_DIR/"
 # Resetting first lets the leak-check see the same adopter-shaped tree the
 # tarball ships, so the harness is green on any branch instead of tripping
 # on log content the adopter never receives.
-( cd "$OUTPUT_DIR" && "$PROJECT_ROOT/.gaia/cli/gaia-maintainer" release scrub-wiki )
+( cd "$OUTPUT_DIRECTORY" && "$PROJECT_ROOT/.gaia/cli/gaia-maintainer" release scrub-wiki )
 
 # Phase 3; Scrub. Same invocation as release.yml's "Bundle-time scrub
 # (marker-strip + leak-check)" step. Runs after scrub-wiki so the leak-check
 # scans the reset log.md/hot.md (see above).
-"$PROJECT_ROOT/.gaia/cli/gaia-maintainer" release scrub "$OUTPUT_DIR"
+"$PROJECT_ROOT/.gaia/cli/gaia-maintainer" release scrub "$OUTPUT_DIRECTORY"
 
 # Phase 4; Runtime-deps. Same invocation as release.yml's "Verify runtime
 # dependencies" step.
-"$PROJECT_ROOT/.gaia/cli/gaia-maintainer" release runtime-deps --staging "$OUTPUT_DIR"
+"$PROJECT_ROOT/.gaia/cli/gaia-maintainer" release runtime-deps --staging "$OUTPUT_DIRECTORY"

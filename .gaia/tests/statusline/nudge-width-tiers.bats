@@ -19,7 +19,7 @@
 # a harden reason with 6 candidates, 1 open debt issue, 15 aged residuals.
 
 setup() {
-  STATUSLINE_SRC=$(cd "$BATS_TEST_DIRNAME/../../statusline" && pwd)
+  STATUSLINE_SOURCE=$(cd "$BATS_TEST_DIRNAME/../../statusline" && pwd)
 
   MAIN=$(mktemp -d -t gaia-sl-tiers-XXXXXX)
   git -C "$MAIN" init --quiet --initial-branch=main
@@ -27,7 +27,7 @@ setup() {
   git -C "$MAIN" config user.name "Test"
   git -C "$MAIN" config commit.gpgsign false
   mkdir -p "$MAIN/.gaia/statusline" "$MAIN/.gaia/local/cache/shared"
-  cp "$STATUSLINE_SRC/gaia-statusline.sh" "$MAIN/.gaia/statusline/gaia-statusline.sh"
+  cp "$STATUSLINE_SOURCE/gaia-statusline.sh" "$MAIN/.gaia/statusline/gaia-statusline.sh"
   echo "x" > "$MAIN/README.md"
   git -C "$MAIN" add -A
   git -C "$MAIN" commit --quiet -m "init"
@@ -50,22 +50,22 @@ JSON
   mkdir -p "$MAIN/.gaia/local/debt"
   printf '{"openCount":1}' > "$MAIN/.gaia/local/debt/count.json"
 
-  TMP_HOME=$(mktemp -d -t gaia-sl-tiers-home-XXXXXX)
+  TEMPORARY_HOME=$(mktemp -d -t gaia-sl-tiers-home-XXXXXX)
 }
 
 teardown() {
   [ -n "${MAIN:-}" ] && rm -rf "$MAIN" || true
-  [ -n "${TMP_HOME:-}" ] && rm -rf "$TMP_HOME" || true
+  [ -n "${TEMPORARY_HOME:-}" ] && rm -rf "$TEMPORARY_HOME" || true
   return 0
 }
 
 # Renders at the given COLUMNS. Sets $output/$status (bats `run` convention)
 # and $plain (the same output with ANSI color codes stripped).
 render_at() {
-  local cols="$1"
+  local columns="$1"
   local json
-  json=$(jq -n --arg d "$MAIN" '{workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
-  run env HOME="$TMP_HOME" COLUMNS="$cols" bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
+  json=$(jq -n --arg current_directory "$MAIN" '{workspace: {current_dir: $current_directory}, cwd: $current_directory, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
+  run env HOME="$TEMPORARY_HOME" COLUMNS="$columns" bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
   plain=$(printf '%s' "$output" | sed 's/\x1b\[[0-9;]*m//g')
 }
 
@@ -242,20 +242,20 @@ render_at() {
 }
 
 @test "a block-character left side is measured in characters, not bytes" {
-  mkdir -p "$TMP_HOME/.claude"
-  cat > "$TMP_HOME/.claude/settings.json" <<'JSON'
+  mkdir -p "$TEMPORARY_HOME/.claude"
+  cat > "$TEMPORARY_HOME/.claude/settings.json" <<'JSON'
 {"statusLine": {"command": "printf '▓▓░░░░░░░░'"}}
 JSON
   local json
-  json=$(jq -n --arg d "$MAIN" '{workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
+  json=$(jq -n --arg current_directory "$MAIN" '{workspace: {current_dir: $current_directory}, cwd: $current_directory, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
 
-  run env HOME="$TMP_HOME" LC_ALL=C.UTF-8 COLUMNS=299 bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
+  run env HOME="$TEMPORARY_HOME" LC_ALL=C.UTF-8 COLUMNS=299 bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
   [ "$status" -eq 0 ]
   plain=$(printf '%s' "$output" | sed 's/\x1b\[[0-9;]*m//g')
   expected="▓▓░░░░░░░░  Run /update-gaia (GAIA 9.9.9 available)  Run /gaia-serena-sync (Serena missing: go, rust)  Run /update-deps (28 outdated)  Run /gaia-audit (34 days since review)  Run /gaia-harden (1 new pattern, dangling-reference rising)  Run /gaia-debt (1 issue)  Run /gaia-residue (15 aged residuals)"
   [ "$plain" = "$expected" ]
 
-  run env HOME="$TMP_HOME" LC_ALL=C.UTF-8 COLUMNS=298 bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
+  run env HOME="$TEMPORARY_HOME" LC_ALL=C.UTF-8 COLUMNS=298 bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
   [ "$status" -eq 0 ]
   plain=$(printf '%s' "$output" | sed 's/\x1b\[[0-9;]*m//g')
   case "$plain" in
@@ -265,20 +265,20 @@ JSON
 }
 
 @test "an emoji in the left side is measured as two columns, not one" {
-  mkdir -p "$TMP_HOME/.claude"
-  cat > "$TMP_HOME/.claude/settings.json" <<'JSON'
+  mkdir -p "$TEMPORARY_HOME/.claude"
+  cat > "$TEMPORARY_HOME/.claude/settings.json" <<'JSON'
 {"statusLine": {"command": "printf '🚀'"}}
 JSON
   local json
-  json=$(jq -n --arg d "$MAIN" '{workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
+  json=$(jq -n --arg current_directory "$MAIN" '{workspace: {current_dir: $current_directory}, cwd: $current_directory, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
 
-  run env HOME="$TMP_HOME" LC_ALL=C.UTF-8 COLUMNS=291 bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
+  run env HOME="$TEMPORARY_HOME" LC_ALL=C.UTF-8 COLUMNS=291 bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
   [ "$status" -eq 0 ]
   plain=$(printf '%s' "$output" | sed 's/\x1b\[[0-9;]*m//g')
   expected="🚀  Run /update-gaia (GAIA 9.9.9 available)  Run /gaia-serena-sync (Serena missing: go, rust)  Run /update-deps (28 outdated)  Run /gaia-audit (34 days since review)  Run /gaia-harden (1 new pattern, dangling-reference rising)  Run /gaia-debt (1 issue)  Run /gaia-residue (15 aged residuals)"
   [ "$plain" = "$expected" ]
 
-  run env HOME="$TMP_HOME" LC_ALL=C.UTF-8 COLUMNS=290 bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
+  run env HOME="$TEMPORARY_HOME" LC_ALL=C.UTF-8 COLUMNS=290 bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
   [ "$status" -eq 0 ]
   plain=$(printf '%s' "$output" | sed 's/\x1b\[[0-9;]*m//g')
   case "$plain" in
@@ -288,22 +288,22 @@ JSON
 }
 
 @test "a two-line left sizes the right side against the last line's width" {
-  mkdir -p "$TMP_HOME/.claude"
-  cat > "$TMP_HOME/.claude/settings.json" <<'JSON'
+  mkdir -p "$TEMPORARY_HOME/.claude"
+  cat > "$TEMPORARY_HOME/.claude/settings.json" <<'JSON'
 {"statusLine": {"command": "printf 'line one\\n%s' \"$(printf '%052d' 0 | tr 0 x)\""}}
 JSON
   local json last_line_x
   last_line_x=$(printf '%052d' 0 | tr 0 x)
-  json=$(jq -n --arg d "$MAIN" '{workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
+  json=$(jq -n --arg current_directory "$MAIN" '{workspace: {current_dir: $current_directory}, cwd: $current_directory, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
 
-  run env HOME="$TMP_HOME" COLUMNS=341 bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
+  run env HOME="$TEMPORARY_HOME" COLUMNS=341 bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
   [ "$status" -eq 0 ]
   plain=$(printf '%s' "$output" | sed 's/\x1b\[[0-9;]*m//g')
   last_line="${plain##*$'\n'}"
   expected_right="Run /update-gaia (GAIA 9.9.9 available)  Run /gaia-serena-sync (Serena missing: go, rust)  Run /update-deps (28 outdated)  Run /gaia-audit (34 days since review)  Run /gaia-harden (1 new pattern, dangling-reference rising)  Run /gaia-debt (1 issue)  Run /gaia-residue (15 aged residuals)"
   [ "$last_line" = "${last_line_x}  ${expected_right}" ]
 
-  run env HOME="$TMP_HOME" COLUMNS=340 bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
+  run env HOME="$TEMPORARY_HOME" COLUMNS=340 bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
   [ "$status" -eq 0 ]
   plain=$(printf '%s' "$output" | sed 's/\x1b\[[0-9;]*m//g')
   last_line="${plain##*$'\n'}"

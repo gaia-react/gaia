@@ -759,7 +759,7 @@ drift_fixture() {
   alf_add_round '["code-audit-frontend","code-audit-maintainer-shell"]'
   alf_stamp 3 30
   alf_sidecar "$MEMBER" "$(non_security_entries "$(alf_entries f.txt 1 4)")" 31
-  alf_dispositions 3 "$(jq -c '.entries' "$ALF_ROOT/.gaia/local/runs/$ALF_B/dispositions-2.json")"
+  alf_dispositions 3 "$(jq -c '.entries' "$ALF_ROOT/.gaia/local/runs/$ALF_NORMALIZED_BRANCH/dispositions-2.json")"
   snapshot="$(evaluate_round 3)"
   [ "$(read_json "$snapshot" '.verdict')" = unknown ]
   [ "$(read_json "$snapshot" '.accept_reasons | tojson')" = '["waiver-drift"]' ]
@@ -954,7 +954,7 @@ drift_fixture() {
 }
 
 @test "vetoes: a vetoed key re-enters A from its effective round, whatever was disposed" {
-  local vetoes="$ALF_ROOT/.gaia/local/runs/$ALF_B/vetoes.json" key
+  local vetoes="$ALF_ROOT/.gaia/local/runs/$ALF_NORMALIZED_BRANCH/vetoes.json" key
   authored_count_sequence warning 3 3 3
   alf_dispositions 1 '[{"member":"code-audit-frontend","finding_class":"rule/x","path":"f.txt","line":1,"disposition":"waive-out-of-scope","basis":"triage-threshold","reason":"r"}]'
   key='{"member":"code-audit-frontend","finding_class":"rule/x","path":"f.txt","line":1,"vetoed_at":"x","unit":1'
@@ -972,7 +972,7 @@ drift_fixture() {
 }
 
 @test "red: an unreadable or malformed vetoes.json fails the evaluation" {
-  local vetoes="$ALF_ROOT/.gaia/local/runs/$ALF_B/vetoes.json" body
+  local vetoes="$ALF_ROOT/.gaia/local/runs/$ALF_NORMALIZED_BRANCH/vetoes.json" body
   authored_count_sequence warning 3 3
   mkdir -p "${vetoes%/*}"
   for body in 'not json' '{"version":1,"keys":[]} {"version":1,"keys":[]}' '{"version":2,"keys":[]}' \

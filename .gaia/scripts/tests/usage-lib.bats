@@ -81,16 +81,16 @@ key_json() {
 # ---------- 2. branch map and hash parity ----------
 
 @test "branch map: every spelling's norm equals gaia_branch_normalize, and the fixture is non-trivial" {
-  local -a raws=('fix/foo' 'worktree-debt+123-slug' 'worktree-worktree-x' 'a+b+c' 'HEAD' ''
+  local -a raw_branches=('fix/foo' 'worktree-debt+123-slug' 'worktree-worktree-x' 'a+b+c' 'HEAD' ''
     'release/v2.0.0-rc.1' 'worktree-agent-a109ec9e' 'feat/has space' 'feat/dollar$x'
     'main' 'worktree-plan+spec-087-x' 'a.b.c/d' "$(printf 'z%.0s' $(seq 1 130))")
-  [ "${#raws[@]}" -ge 12 ]
+  [ "${#raw_branches[@]}" -ge 12 ]
   # shellcheck disable=SC1091
   source "$SCRIPTS/branch-name-lib.sh"
   local branch_map raw_branch want got
-  branch_map="$(gaia_usage_branch_map "${raws[@]}")"
-  [ "$(jq 'length' <<<"$branch_map")" -eq "${#raws[@]}" ]
-  for raw_branch in "${raws[@]}"; do
+  branch_map="$(gaia_usage_branch_map "${raw_branches[@]}")"
+  [ "$(jq 'length' <<<"$branch_map")" -eq "${#raw_branches[@]}" ]
+  for raw_branch in "${raw_branches[@]}"; do
     want="$(gaia_branch_normalize "$raw_branch")"
     got="$(jq -r --arg raw_branch "$raw_branch" '.[$raw_branch].norm' <<<"$branch_map")"
     [ "$got" = "$want" ] || { printf 'norm of [%s]: got [%s] want [%s]\n' "$raw_branch" "$got" "$want" >&2; return 1; }
@@ -310,10 +310,10 @@ slug_of() {
 
 # ---------- 8. locked append ----------
 
-# append_proc <dir> <target> <rows>: the append in a fresh process. with_ledger_lock
+# append_in_fresh_process <dir> <target> <rows>: the append in a fresh process. with_ledger_lock
 # installs EXIT/INT/TERM traps in its caller, which inside a bats test body
 # displaces bats' own EXIT handler.
-append_proc() {
+append_in_fresh_process() {
   bash -c 'source "$1"; gaia_usage_append "$2" "$3" "$4"' _ "$USAGE_LIBRARY" "$@"
 }
 
@@ -321,17 +321,17 @@ append_proc() {
   local telemetry_directory="$TEMPORARY_DIRECTORY/tel" rows="$TEMPORARY_DIRECTORY/rows.jsonl"
   mkdir -p "$telemetry_directory"
   printf '{"n":1}\n' >"$rows"
-  run append_proc "$telemetry_directory" usage.jsonl "$rows"
+  run append_in_fresh_process "$telemetry_directory" usage.jsonl "$rows"
   [ "$status" -eq 0 ]
   cp "$telemetry_directory/usage.jsonl" "$TEMPORARY_DIRECTORY/before"
   mkdir "$telemetry_directory/specs.lock.d"
   printf '{"n":2}\n' >"$rows"
   GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 GAIA_LEDGER_LOCK_TIMEOUT_SECONDS=1 GAIA_LEDGER_LOCK_POLL_SECONDS=0.1 \
-    run append_proc "$telemetry_directory" usage.jsonl "$rows"
+    run append_in_fresh_process "$telemetry_directory" usage.jsonl "$rows"
   [ "$status" -eq 75 ]
   cmp "$telemetry_directory/usage.jsonl" "$TEMPORARY_DIRECTORY/before"
   rmdir "$telemetry_directory/specs.lock.d"
-  GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 run append_proc "$telemetry_directory" usage.jsonl "$rows"
+  GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 run append_in_fresh_process "$telemetry_directory" usage.jsonl "$rows"
   [ "$status" -eq 0 ]
   [ "$(cat "$telemetry_directory/usage.jsonl")" = "$(printf '{"n":1}\n{"n":2}')" ]
 }
@@ -341,7 +341,7 @@ append_proc() {
   mkdir -p "$telemetry_directory/specs.lock.d"
   printf '{"n":1}\n' >"$rows"
   GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 GAIA_LEDGER_LOCK_TIMEOUT_SECONDS=1 GAIA_LEDGER_LOCK_POLL_SECONDS=0.1 \
-    run append_proc "$telemetry_directory" links.jsonl "$rows"
+    run append_in_fresh_process "$telemetry_directory" links.jsonl "$rows"
   [ "$status" -eq 75 ]
   [ ! -e "$telemetry_directory/links.jsonl" ]
 }
@@ -349,10 +349,10 @@ append_proc() {
 @test "append: any other target basename returns 2 and writes nothing" {
   local telemetry_directory="$TEMPORARY_DIRECTORY/tel3" rows="$TEMPORARY_DIRECTORY/rows3.jsonl"
   printf '{"n":1}\n' >"$rows"
-  run append_proc "$telemetry_directory" cost.jsonl "$rows"
+  run append_in_fresh_process "$telemetry_directory" cost.jsonl "$rows"
   [ "$status" -eq 2 ]
   [ ! -e "$telemetry_directory/cost.jsonl" ]
-  run append_proc "$telemetry_directory" ../usage.jsonl "$rows"
+  run append_in_fresh_process "$telemetry_directory" ../usage.jsonl "$rows"
   [ "$status" -eq 2 ]
   [ ! -e "$telemetry_directory" ] || [ -z "$(ls -A "$telemetry_directory")" ]
 }

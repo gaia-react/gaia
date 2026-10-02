@@ -9,31 +9,31 @@
 # FAIL or if no scenarios were found.
 set -u
 
-DIST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DISTRIBUTION_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 shopt -s nullglob
-candidates=("$DIST_DIR"/*.sh)
+candidates=("$DISTRIBUTION_DIRECTORY"/*.sh)
 shopt -u nullglob
 
 scenarios=()
-for s in ${candidates[@]+"${candidates[@]}"}; do
-  name="$(basename "$s")"
+for scenario in ${candidates[@]+"${candidates[@]}"}; do
+  name="$(basename "$scenario")"
   [ "$name" = "run-all.sh" ] && continue
-  scenarios+=("$s")
+  scenarios+=("$scenario")
 done
 
 if [ ${#scenarios[@]} -eq 0 ]; then
-  echo "No scenarios found in $DIST_DIR" >&2
+  echo "No scenarios found in $DISTRIBUTION_DIRECTORY" >&2
   exit 1
 fi
 
 results=()
 overall=0
 
-for s in ${scenarios[@]+"${scenarios[@]}"}; do
-  name="$(basename "$s")"
+for scenario in ${scenarios[@]+"${scenarios[@]}"}; do
+  name="$(basename "$scenario")"
   printf '\n=== %s ===\n' "$name"
-  if bash "$s"; then
+  if bash "$scenario"; then
     results+=("PASS  $name")
   else
     results+=("FAIL  $name")
@@ -42,8 +42,8 @@ for s in ${scenarios[@]+"${scenarios[@]}"}; do
 done
 
 printf '\n=== Summary ===\n'
-for r in ${results[@]+"${results[@]}"}; do
-  printf '%s\n' "$r"
+for result in ${results[@]+"${results[@]}"}; do
+  printf '%s\n' "$result"
 done
 
 exit "$overall"

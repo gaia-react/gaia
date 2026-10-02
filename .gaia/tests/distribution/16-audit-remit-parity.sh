@@ -22,9 +22,9 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/lib/lib.sh"
 
-require_cmd jq "jq required for manifest parsing"
-require_cmd rsync "rsync required for staging build"
-require_cmd shasum "shasum required for the byte-exact repair check"
+require_command jq "jq required for manifest parsing"
+require_command rsync "rsync required for staging build"
+require_command shasum "shasum required for the byte-exact repair check"
 
 CLI="$PROJECT_ROOT/.gaia/cli/gaia-maintainer"
 if [ ! -x "$CLI" ]; then
@@ -71,14 +71,14 @@ if grep -qxF ".gaia/scripts" "$PROJECT_ROOT/.gaia/release-exclude"; then
 fi
 
 # --- Assertion 3: the writer's manifest class equals the check's -------
-w=$(jq -r '.files[".gaia/scripts/write-audit-remits.sh"] // empty' "$STAGING/.gaia/manifest.json")
-c=$(jq -r '.files[".gaia/scripts/verify-audit-roster.sh"] // empty' "$STAGING/.gaia/manifest.json")
-if [ -z "$w" ]; then
+writer_class=$(jq -r '.files[".gaia/scripts/write-audit-remits.sh"] // empty' "$STAGING/.gaia/manifest.json")
+check_class=$(jq -r '.files[".gaia/scripts/verify-audit-roster.sh"] // empty' "$STAGING/.gaia/manifest.json")
+if [ -z "$writer_class" ]; then
   fail "writer unanswered in staged manifest.json (.gaia/scripts/write-audit-remits.sh has no class)"
   exit 1
 fi
-if [ "$w" != "$c" ]; then
-  fail "manifest class mismatch: writer=$w check=$c (want equal per UAT-012)"
+if [ "$writer_class" != "$check_class" ]; then
+  fail "manifest class mismatch: writer=$writer_class check=$check_class (want equal per UAT-012)"
   exit 1
 fi
 
@@ -88,13 +88,13 @@ fi
 # staged tree, the real path verify-audit-roster.sh:151 computes. If that
 # classifier library is absent from the bundle, this is a real distribution
 # finding, not a harness bug.
-CHECK_OUT=""
-CHECK_RC=0
-CHECK_OUT="$(bash "$CHECK" --root "$STAGING" --config "$ROSTER" 2>&1)" || CHECK_RC=$?
-if [ "$CHECK_RC" -ne 0 ]; then
+CHECK_OUTPUT=""
+CHECK_EXIT_STATUS=0
+CHECK_OUTPUT="$(bash "$CHECK" --root "$STAGING" --config "$ROSTER" 2>&1)" || CHECK_EXIT_STATUS=$?
+if [ "$CHECK_EXIT_STATUS" -ne 0 ]; then
   log "verify-audit-roster.sh failed on scrubbed tree, full output:"
-  printf '%s\n' "$CHECK_OUT" >&2
-  fail "roster check exited $CHECK_RC on scrubbed adopter tree, expected 0"
+  printf '%s\n' "$CHECK_OUTPUT" >&2
+  fail "roster check exited $CHECK_EXIT_STATUS on scrubbed adopter tree, expected 0"
   exit 1
 fi
 
@@ -113,20 +113,20 @@ if grep -q '^code-audit-maintainer-' <<<"$staged_members"; then
   exit 1
 fi
 shopt -s nullglob
-staged_maintainer_defs=("$STAGING"/.claude/agents/code-audit-maintainer-*.md)
+staged_maintainer_definitions=("$STAGING"/.claude/agents/code-audit-maintainer-*.md)
 shopt -u nullglob
-if [ "${#staged_maintainer_defs[@]}" -gt 0 ]; then
-  fail "staged .claude/agents/ still ships ${#staged_maintainer_defs[@]} code-audit-maintainer-*.md file(s): ${staged_maintainer_defs[*]}"
+if [ "${#staged_maintainer_definitions[@]}" -gt 0 ]; then
+  fail "staged .claude/agents/ still ships ${#staged_maintainer_definitions[@]} code-audit-maintainer-*.md file(s): ${staged_maintainer_definitions[*]}"
   exit 1
 fi
 
 # --- Assertion 6: no shipped region names a stripped member's glob -----
-src_globs="$(bash "$PROJECT_ROOT/.gaia/scripts/verify-audit-roster.sh" --emit-roster \
+source_globs="$(bash "$PROJECT_ROOT/.gaia/scripts/verify-audit-roster.sh" --emit-roster \
   --root "$PROJECT_ROOT" --config "$PROJECT_ROOT/.gaia/audit-ci.yml" \
   | awk -F'\t' '$1=="RAW"{print $3}' | sort -u)"
 staged_globs="$(bash "$CHECK" --emit-roster --root "$STAGING" --config "$ROSTER" \
   | awk -F'\t' '$1=="RAW"{print $3}' | sort -u)"
-stripped_globs="$(comm -23 <(printf '%s\n' "$src_globs") <(printf '%s\n' "$staged_globs"))"
+stripped_globs="$(comm -23 <(printf '%s\n' "$source_globs") <(printf '%s\n' "$staged_globs"))"
 
 # Guard against a vacuous pass: if the scrub stripped no globs, the
 # comparison below proves nothing.
@@ -136,24 +136,24 @@ if [ -z "$stripped_globs" ]; then
 fi
 
 shopt -s nullglob
-staged_agent_defs=("$STAGING"/.claude/agents/code-audit-*.md)
+staged_agent_definitions=("$STAGING"/.claude/agents/code-audit-*.md)
 shopt -u nullglob
-# A bare "${staged_agent_defs[@]}" expansion of an empty array aborts under
+# A bare "${staged_agent_definitions[@]}" expansion of an empty array aborts under
 # `set -u` on bash 3.2 (stock macOS /bin/bash). An empty array here would
 # also mean assertion 6 scans nothing, so failing explicitly is correct on
 # both counts, not just a portability guard.
-if [ "${#staged_agent_defs[@]}" -eq 0 ]; then
+if [ "${#staged_agent_definitions[@]}" -eq 0 ]; then
   fail "no .claude/agents/code-audit-*.md shipped in the staged tree; assertion 6 has nothing to scan"
   exit 1
 fi
 LEAKED_GLOBS=()
-for def in ${staged_agent_defs[@]+"${staged_agent_defs[@]}"}; do
-  while IFS= read -r g; do
-    [ -z "$g" ] && continue
-    if grep -qxF "$g" <<<"$stripped_globs"; then
-      LEAKED_GLOBS+=("$(basename "$def"): $g")
+for agent_definition in ${staged_agent_definitions[@]+"${staged_agent_definitions[@]}"}; do
+  while IFS= read -r glob; do
+    [ -z "$glob" ] && continue
+    if grep -qxF "$glob" <<<"$stripped_globs"; then
+      LEAKED_GLOBS+=("$(basename "$agent_definition"): $glob")
     fi
-  done < <(region_globs "$def")
+  done < <(region_globs "$agent_definition")
 done
 if [ "${#LEAKED_GLOBS[@]}" -gt 0 ]; then
   log "Shipped regions naming a stripped member's glob:"
@@ -165,7 +165,7 @@ fi
 # --- Assertion 7: the bundled writer repairs a drifted shipped definition
 TARGET="$STAGING/.claude/agents/code-audit-github-workflows.md"
 [ -f "$TARGET" ] || { fail "expected shipped definition missing: .claude/agents/code-audit-github-workflows.md"; exit 1; }
-orig_sha="$(shasum -a 256 "$TARGET" | awk '{print $1}')"
+original_sha="$(shasum -a 256 "$TARGET" | awk '{print $1}')"
 
 # Delete the first bullet line inside the remit region.
 DRIFTED="$(mktemp)"
@@ -177,44 +177,44 @@ awk '
 ' "$TARGET" > "$DRIFTED"
 mv "$DRIFTED" "$TARGET"
 
-DRIFT_OUT=""
-DRIFT_RC=0
-DRIFT_OUT="$(bash "$CHECK" --root "$STAGING" --config "$ROSTER" 2>&1)" || DRIFT_RC=$?
-if [ "$DRIFT_RC" -ne 1 ]; then
+DRIFT_OUTPUT=""
+DRIFT_EXIT_STATUS=0
+DRIFT_OUTPUT="$(bash "$CHECK" --root "$STAGING" --config "$ROSTER" 2>&1)" || DRIFT_EXIT_STATUS=$?
+if [ "$DRIFT_EXIT_STATUS" -ne 1 ]; then
   log "drifted-check output:"
-  printf '%s\n' "$DRIFT_OUT" >&2
-  fail "roster check exited $DRIFT_RC against a drifted region, expected 1"
+  printf '%s\n' "$DRIFT_OUTPUT" >&2
+  fail "roster check exited $DRIFT_EXIT_STATUS against a drifted region, expected 1"
   exit 1
 fi
 for needle in "remit-glob-missing" "code-audit-github-workflows" "bash .gaia/scripts/write-audit-remits.sh"; do
-  if ! grep -qF "$needle" <<<"$DRIFT_OUT"; then
+  if ! grep -qF "$needle" <<<"$DRIFT_OUTPUT"; then
     log "drifted-check output:"
-    printf '%s\n' "$DRIFT_OUT" >&2
+    printf '%s\n' "$DRIFT_OUTPUT" >&2
     fail "drifted-check output missing expected substring: $needle"
     exit 1
   fi
 done
 
-WRITER_RC=0
-bash "$WRITER" --root "$STAGING" --config "$ROSTER" >/dev/null 2>&1 || WRITER_RC=$?
-if [ "$WRITER_RC" -ne 0 ]; then
-  fail "bundled writer exited $WRITER_RC repairing the drifted region, expected 0"
+WRITER_EXIT_STATUS=0
+bash "$WRITER" --root "$STAGING" --config "$ROSTER" >/dev/null 2>&1 || WRITER_EXIT_STATUS=$?
+if [ "$WRITER_EXIT_STATUS" -ne 0 ]; then
+  fail "bundled writer exited $WRITER_EXIT_STATUS repairing the drifted region, expected 0"
   exit 1
 fi
 
-REPAIRED_RC=0
-REPAIRED_OUT=""
-REPAIRED_OUT="$(bash "$CHECK" --root "$STAGING" --config "$ROSTER" 2>&1)" || REPAIRED_RC=$?
-if [ "$REPAIRED_RC" -ne 0 ]; then
+REPAIRED_EXIT_STATUS=0
+REPAIRED_OUTPUT=""
+REPAIRED_OUTPUT="$(bash "$CHECK" --root "$STAGING" --config "$ROSTER" 2>&1)" || REPAIRED_EXIT_STATUS=$?
+if [ "$REPAIRED_EXIT_STATUS" -ne 0 ]; then
   log "post-repair check output:"
-  printf '%s\n' "$REPAIRED_OUT" >&2
-  fail "roster check exited $REPAIRED_RC after the bundled writer repaired the region, expected 0"
+  printf '%s\n' "$REPAIRED_OUTPUT" >&2
+  fail "roster check exited $REPAIRED_EXIT_STATUS after the bundled writer repaired the region, expected 0"
   exit 1
 fi
 
 repaired_sha="$(shasum -a 256 "$TARGET" | awk '{print $1}')"
-if [ "$repaired_sha" != "$orig_sha" ]; then
-  fail "repaired definition bytes ($repaired_sha) do not match pre-drift snapshot ($orig_sha)"
+if [ "$repaired_sha" != "$original_sha" ]; then
+  fail "repaired definition bytes ($repaired_sha) do not match pre-drift snapshot ($original_sha)"
   exit 1
 fi
 

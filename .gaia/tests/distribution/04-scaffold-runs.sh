@@ -11,7 +11,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/lib/lib.sh"
 
-require_cmd pnpm "pnpm required for scaffold-runs scenario (Layer 0)"
+require_command pnpm "pnpm required for scaffold-runs scenario (Layer 0)"
 
 STAGING="$(mktemp -d -t gaia-dist-scaffold-XXXXXX)"
 trap 'rm -rf "$STAGING"' EXIT

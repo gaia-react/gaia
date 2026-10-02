@@ -19,9 +19,9 @@
 # network call.
 
 setup() {
-  STATUSLINE_SRC=$(cd "$BATS_TEST_DIRNAME/../../statusline" && pwd)
-  CHECK_UPDATES_SRC=$(cd "$BATS_TEST_DIRNAME/../../scripts" && pwd)/check-updates.sh
-  HARDEN_MD=$(cd "$BATS_TEST_DIRNAME/../../../.claude/skills/gaia/references" && pwd)/harden.md
+  STATUSLINE_SOURCE=$(cd "$BATS_TEST_DIRNAME/../../statusline" && pwd)
+  CHECK_UPDATES_SOURCE=$(cd "$BATS_TEST_DIRNAME/../../scripts" && pwd)/check-updates.sh
+  HARDEN_MARKDOWN=$(cd "$BATS_TEST_DIRNAME/../../../.claude/skills/gaia/references" && pwd)/harden.md
 
   # ---- statusline fixture ----
   MAIN=$(mktemp -d -t gaia-sl-harden-XXXXXX)
@@ -30,18 +30,18 @@ setup() {
   git -C "$MAIN" config user.name "Test"
   git -C "$MAIN" config commit.gpgsign false
   mkdir -p "$MAIN/.gaia/statusline" "$MAIN/.gaia/local/cache/shared"
-  cp "$STATUSLINE_SRC/gaia-statusline.sh" "$MAIN/.gaia/statusline/gaia-statusline.sh"
+  cp "$STATUSLINE_SOURCE/gaia-statusline.sh" "$MAIN/.gaia/statusline/gaia-statusline.sh"
   echo "x" > "$MAIN/README.md"
   git -C "$MAIN" add -A
   git -C "$MAIN" commit --quiet -m "init"
   printf '{"completed_at":"2026-01-01T00:00:00Z"}' > "$MAIN/.gaia/local/setup-state.json"
 
-  TMP_HOME=$(mktemp -d -t gaia-sl-harden-home-XXXXXX)
+  TEMPORARY_HOME=$(mktemp -d -t gaia-sl-harden-home-XXXXXX)
 
   # ---- refresher fixture ----
   REFRESH_ROOT=$(mktemp -d -t gaia-cu-harden-XXXXXX)
   mkdir -p "$REFRESH_ROOT/.gaia/scripts" "$REFRESH_ROOT/.gaia/cli" "$REFRESH_ROOT/.gaia/local/cache/shared"
-  cp "$CHECK_UPDATES_SRC" "$REFRESH_ROOT/.gaia/scripts/check-updates.sh"
+  cp "$CHECK_UPDATES_SOURCE" "$REFRESH_ROOT/.gaia/scripts/check-updates.sh"
   chmod +x "$REFRESH_ROOT/.gaia/scripts/check-updates.sh"
   write_mock_gaia "$REFRESH_ROOT/.gaia/cli/gaia"
 
@@ -53,7 +53,7 @@ setup() {
 
 teardown() {
   [ -n "${MAIN:-}" ] && rm -rf "$MAIN" || true
-  [ -n "${TMP_HOME:-}" ] && rm -rf "$TMP_HOME" || true
+  [ -n "${TEMPORARY_HOME:-}" ] && rm -rf "$TEMPORARY_HOME" || true
   [ -n "${REFRESH_ROOT:-}" ] && rm -rf "$REFRESH_ROOT" || true
   return 0
 }
@@ -71,14 +71,14 @@ write_mock_gaia() {
 #!/usr/bin/env bash
 case "$1" in
   update-deps)
-    out=""
+    output_path=""
     while [ "$#" -gt 0 ]; do
       case "$1" in
-        --emit-updates) out="$2"; shift 2 ;;
+        --emit-updates) output_path="$2"; shift 2 ;;
         *) shift ;;
       esac
     done
-    [ -n "$out" ] && printf '{"actionable_count":0}' > "$out"
+    [ -n "$output_path" ] && printf '{"actionable_count":0}' > "$output_path"
     exit 0
     ;;
   harden-tally)
@@ -116,8 +116,8 @@ run_statusline_with_cache() {
   local candidate="$1" unclassified="$2" json
   printf '{"hardenCandidateCount":%s,"hardenUnclassifiedCount":%s}' "$candidate" "$unclassified" \
     > "$MAIN/.gaia/local/cache/shared/update-check.json"
-  json=$(jq -n --arg d "$MAIN" '{workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
-  run env HOME="$TMP_HOME" bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
+  json=$(jq -n --arg current_directory "$MAIN" '{workspace: {current_dir: $current_directory}, cwd: $current_directory, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
+  run env HOME="$TEMPORARY_HOME" bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
 }
 
 @test "statusline renders the unclassified segment when hardenUnclassifiedCount > 0" {
@@ -177,8 +177,8 @@ run_statusline_with_cache() {
   # not a hand-built one, so the assertion covers the field the refresher
   # actually wrote rather than a synthetic stand-in.
   cp "$CACHE_FILE" "$MAIN/.gaia/local/cache/shared/update-check.json"
-  json=$(jq -n --arg d "$MAIN" '{workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
-  run env HOME="$TMP_HOME" bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
+  json=$(jq -n --arg current_directory "$MAIN" '{workspace: {current_dir: $current_directory}, cwd: $current_directory, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
+  run env HOME="$TEMPORARY_HOME" bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
   [ "$status" -eq 0 ]
   grep -qF -- "unclassified" <<<"$output" && return 1
   true
@@ -187,20 +187,20 @@ run_statusline_with_cache() {
 # --- doc-grep: harden.md presents the unclassified signal (UAT-008, review half) ---
 
 @test "harden.md binds the top-level unclassified field alongside the candidate fields" {
-  grep -Fq "bind the top-level \`unclassified\` field" "$HARDEN_MD"
+  grep -Fq "bind the top-level \`unclassified\` field" "$HARDEN_MARKDOWN"
 }
 
 @test "harden.md presents the unclassified signal in its own seed-a-class-or-investigate section" {
-  grep -Fq "## Unclassified recurrence signal (seed-a-class-or-investigate)" "$HARDEN_MD"
+  grep -Fq "## Unclassified recurrence signal (seed-a-class-or-investigate)" "$HARDEN_MARKDOWN"
 }
 
 @test "harden.md states the unclassified signal is excluded from the draftable candidate set" {
-  grep -Fq "It is NEVER placed in the draftable candidate set." "$HARDEN_MD"
+  grep -Fq "It is NEVER placed in the draftable candidate set." "$HARDEN_MARKDOWN"
 }
 
 # --- doc-grep: directive-#6 sweep of check-updates.sh (swept in Phase 2) ---
 
 @test "check-updates.sh drops the stale 'at error/warning severity' phrasing" {
-  grep -Fq "at error/warning severity" "$CHECK_UPDATES_SRC" && return 1
+  grep -Fq "at error/warning severity" "$CHECK_UPDATES_SOURCE" && return 1
   return 0
 }

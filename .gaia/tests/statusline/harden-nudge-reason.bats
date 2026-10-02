@@ -21,8 +21,8 @@ setup() {
   # shellcheck source=.gaia/tests/helpers/path.sh
   . "$REPO_ROOT/.gaia/tests/helpers/path.sh"
 
-  STATUSLINE_SRC=$(cd "$BATS_TEST_DIRNAME/../../statusline" && pwd)
-  CHECK_UPDATES_SRC=$(cd "$BATS_TEST_DIRNAME/../../scripts" && pwd)/check-updates.sh
+  STATUSLINE_SOURCE=$(cd "$BATS_TEST_DIRNAME/../../statusline" && pwd)
+  CHECK_UPDATES_SOURCE=$(cd "$BATS_TEST_DIRNAME/../../scripts" && pwd)/check-updates.sh
 
   # ---- statusline fixture ----
   MAIN=$(mktemp -d -t gaia-sl-hreason-XXXXXX)
@@ -31,19 +31,19 @@ setup() {
   git -C "$MAIN" config user.name "Test"
   git -C "$MAIN" config commit.gpgsign false
   mkdir -p "$MAIN/.gaia/statusline" "$MAIN/.gaia/local/cache/shared"
-  cp "$STATUSLINE_SRC/gaia-statusline.sh" "$MAIN/.gaia/statusline/gaia-statusline.sh"
+  cp "$STATUSLINE_SOURCE/gaia-statusline.sh" "$MAIN/.gaia/statusline/gaia-statusline.sh"
   echo "x" > "$MAIN/README.md"
   git -C "$MAIN" add -A
   git -C "$MAIN" commit --quiet -m "init"
   printf '{"completed_at":"2026-01-01T00:00:00Z"}' > "$MAIN/.gaia/local/setup-state.json"
 
-  TMP_HOME=$(mktemp -d -t gaia-sl-hreason-home-XXXXXX)
+  TEMPORARY_HOME=$(mktemp -d -t gaia-sl-hreason-home-XXXXXX)
 
   # ---- refresher fixture ----
   REFRESH_ROOT=$(mktemp -d -t gaia-cu-hreason-XXXXXX)
   mkdir -p "$REFRESH_ROOT/.gaia/scripts" "$REFRESH_ROOT/.gaia/cli" \
     "$REFRESH_ROOT/.gaia/local/cache/shared" "$REFRESH_ROOT/.gaia/local/harden"
-  cp "$CHECK_UPDATES_SRC" "$REFRESH_ROOT/.gaia/scripts/check-updates.sh"
+  cp "$CHECK_UPDATES_SOURCE" "$REFRESH_ROOT/.gaia/scripts/check-updates.sh"
   chmod +x "$REFRESH_ROOT/.gaia/scripts/check-updates.sh"
   write_mock_gaia "$REFRESH_ROOT/.gaia/cli/gaia"
 
@@ -58,7 +58,7 @@ setup() {
 
 teardown() {
   [ -n "${MAIN:-}" ] && rm -rf "$MAIN" || true
-  [ -n "${TMP_HOME:-}" ] && rm -rf "$TMP_HOME" || true
+  [ -n "${TEMPORARY_HOME:-}" ] && rm -rf "$TEMPORARY_HOME" || true
   [ -n "${REFRESH_ROOT:-}" ] && rm -rf "$REFRESH_ROOT" || true
   return 0
 }
@@ -74,14 +74,14 @@ write_mock_gaia() {
 #!/usr/bin/env bash
 case "$1" in
   update-deps)
-    out=""
+    output_path=""
     while [ "$#" -gt 0 ]; do
       case "$1" in
-        --emit-updates) out="$2"; shift 2 ;;
+        --emit-updates) output_path="$2"; shift 2 ;;
         *) shift ;;
       esac
     done
-    [ -n "$out" ] && printf '{"actionable_count":0}' > "$out"
+    [ -n "$output_path" ] && printf '{"actionable_count":0}' > "$output_path"
     exit 0
     ;;
   harden-tally)
@@ -140,8 +140,8 @@ harden_reason_for() {
 # Render MAIN's statusline with a payload whose current_dir is MAIN.
 render_statusline() {
   local json
-  json=$(jq -n --arg d "$MAIN" '{workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
-  run env HOME="$TMP_HOME" bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
+  json=$(jq -n --arg current_directory "$MAIN" '{workspace: {current_dir: $current_directory}, cwd: $current_directory, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
+  run env HOME="$TEMPORARY_HOME" bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
 }
 
 # Copy the refresher's own written cache into MAIN, then render against it.
@@ -195,24 +195,24 @@ render_statusline_against_refresher_cache() {
 # 4. Exact trigger texts -------------------------------------------------------
 
 @test "exact trigger texts, joined in the fixed order" {
-  local snap='{"reviewed_at":"T"}'
+  local snapshot_json='{"reviewed_at":"T"}'
 
-  [ "$(harden_reason_for '{"candidate_count":0,"unclassified":null,"gh_ok":true,"window_days":90,"snapshot_present":true,"snapshot_reviewed_at":"T","triggers":[{"type":"new_class","finding_class":"holistic/a"}]}' "$snap")" = "1 new pattern" ]
-  [ "$(harden_reason_for '{"candidate_count":0,"unclassified":null,"gh_ok":true,"window_days":90,"snapshot_present":true,"snapshot_reviewed_at":"T","triggers":[{"type":"new_class","finding_class":"holistic/a"},{"type":"new_class","finding_class":"holistic/b"}]}' "$snap")" = "2 new patterns" ]
-  [ "$(harden_reason_for '{"candidate_count":0,"unclassified":null,"gh_ok":true,"window_days":90,"snapshot_present":true,"snapshot_reviewed_at":"T","triggers":[{"type":"rising_class","finding_class":"holistic/overclaimed-guarantee"}]}' "$snap")" = "overclaimed-guarantee rising" ]
-  [ "$(harden_reason_for '{"candidate_count":0,"unclassified":null,"gh_ok":true,"window_days":90,"snapshot_present":true,"snapshot_reviewed_at":"T","triggers":[{"type":"rising_class","finding_class":"holistic/swallowed-error"}]}' "$snap")" = "swallowed-error rising" ]
-  [ "$(harden_reason_for '{"candidate_count":0,"unclassified":null,"gh_ok":true,"window_days":90,"snapshot_present":true,"snapshot_reviewed_at":"T","triggers":[{"type":"rising_unclassified"}]}' "$snap")" = "unclassified rising" ]
-  [ "$(harden_reason_for '{"candidate_count":0,"unclassified":null,"gh_ok":true,"window_days":90,"snapshot_present":true,"snapshot_reviewed_at":"T","triggers":[{"type":"schema_change"}]}' "$snap")" = "tally changed" ]
-  [ "$(harden_reason_for '{"candidate_count":0,"unclassified":null,"gh_ok":true,"window_days":90,"snapshot_present":true,"snapshot_reviewed_at":"T","triggers":[{"type":"rising_class","finding_class":"A"}]}' "$snap")" = "A rising" ]
+  [ "$(harden_reason_for '{"candidate_count":0,"unclassified":null,"gh_ok":true,"window_days":90,"snapshot_present":true,"snapshot_reviewed_at":"T","triggers":[{"type":"new_class","finding_class":"holistic/a"}]}' "$snapshot_json")" = "1 new pattern" ]
+  [ "$(harden_reason_for '{"candidate_count":0,"unclassified":null,"gh_ok":true,"window_days":90,"snapshot_present":true,"snapshot_reviewed_at":"T","triggers":[{"type":"new_class","finding_class":"holistic/a"},{"type":"new_class","finding_class":"holistic/b"}]}' "$snapshot_json")" = "2 new patterns" ]
+  [ "$(harden_reason_for '{"candidate_count":0,"unclassified":null,"gh_ok":true,"window_days":90,"snapshot_present":true,"snapshot_reviewed_at":"T","triggers":[{"type":"rising_class","finding_class":"holistic/overclaimed-guarantee"}]}' "$snapshot_json")" = "overclaimed-guarantee rising" ]
+  [ "$(harden_reason_for '{"candidate_count":0,"unclassified":null,"gh_ok":true,"window_days":90,"snapshot_present":true,"snapshot_reviewed_at":"T","triggers":[{"type":"rising_class","finding_class":"holistic/swallowed-error"}]}' "$snapshot_json")" = "swallowed-error rising" ]
+  [ "$(harden_reason_for '{"candidate_count":0,"unclassified":null,"gh_ok":true,"window_days":90,"snapshot_present":true,"snapshot_reviewed_at":"T","triggers":[{"type":"rising_unclassified"}]}' "$snapshot_json")" = "unclassified rising" ]
+  [ "$(harden_reason_for '{"candidate_count":0,"unclassified":null,"gh_ok":true,"window_days":90,"snapshot_present":true,"snapshot_reviewed_at":"T","triggers":[{"type":"schema_change"}]}' "$snapshot_json")" = "tally changed" ]
+  [ "$(harden_reason_for '{"candidate_count":0,"unclassified":null,"gh_ok":true,"window_days":90,"snapshot_present":true,"snapshot_reviewed_at":"T","triggers":[{"type":"rising_class","finding_class":"A"}]}' "$snapshot_json")" = "A rising" ]
 
-  [ "$(harden_reason_for '{"candidate_count":0,"unclassified":null,"gh_ok":true,"window_days":90,"snapshot_present":true,"snapshot_reviewed_at":"T","triggers":[{"type":"new_class","finding_class":"C"},{"type":"rising_class","finding_class":"holistic/drifting-duplicate"}]}' "$snap")" = "1 new pattern, drifting-duplicate rising" ]
+  [ "$(harden_reason_for '{"candidate_count":0,"unclassified":null,"gh_ok":true,"window_days":90,"snapshot_present":true,"snapshot_reviewed_at":"T","triggers":[{"type":"new_class","finding_class":"C"},{"type":"rising_class","finding_class":"holistic/drifting-duplicate"}]}' "$snapshot_json")" = "1 new pattern, drifting-duplicate rising" ]
 
   render_statusline_against_refresher_cache
   [ "$status" -eq 0 ]
   grep -qF -- "Run /gaia-harden (1 new pattern, drifting-duplicate rising)" <<<"$output"
   [ "$(grep -oF -- "Run /gaia-harden" <<<"$output" | wc -l | tr -d ' ')" -eq 1 ]
 
-  [ "$(harden_reason_for '{"candidate_count":0,"unclassified":null,"gh_ok":true,"window_days":90,"snapshot_present":true,"snapshot_reviewed_at":"T","triggers":[{"type":"schema_change"},{"type":"new_class","finding_class":"C"},{"type":"rising_class","finding_class":"a"},{"type":"rising_unclassified"}]}' "$snap")" = "tally changed, 1 new pattern, a rising, unclassified rising" ]
+  [ "$(harden_reason_for '{"candidate_count":0,"unclassified":null,"gh_ok":true,"window_days":90,"snapshot_present":true,"snapshot_reviewed_at":"T","triggers":[{"type":"schema_change"},{"type":"new_class","finding_class":"C"},{"type":"rising_class","finding_class":"a"},{"type":"rising_unclassified"}]}' "$snapshot_json")" = "tally changed, 1 new pattern, a rising, unclassified rising" ]
 }
 
 # 5. Positive control (directive 13) ------------------------------------------
@@ -295,8 +295,8 @@ render_statusline_against_refresher_cache() {
   count=$(grep -cF -- "$search" "$REFRESH_ROOT/.gaia/scripts/check-updates.sh")
   [ "$count" -eq 1 ]
   broken="$REFRESH_ROOT/.gaia/scripts/check-updates-broken.sh"
-  awk -v s="$search" -v new="$neutered_line" \
-    '{ if (index($0, s) > 0) print new; else print }' \
+  awk -v search_text="$search" -v new="$neutered_line" \
+    '{ if (index($0, search_text) > 0) print new; else print }' \
     "$REFRESH_ROOT/.gaia/scripts/check-updates.sh" > "$broken"
   chmod +x "$broken"
 
@@ -369,24 +369,24 @@ render_statusline_against_refresher_cache() {
 
 @test "a rising_class segment sanitizes an injected escape sequence, newline, and parenthetical text" {
   local malicious_tally='{"candidate_count":0,"unclassified":null,"gh_ok":true,"window_days":90,"snapshot_present":true,"snapshot_reviewed_at":"T","triggers":[{"type":"rising_class","finding_class":"holistic/evil\u001b[31mFAKE\n) Run fake ("}]}'
-  local snap='{"reviewed_at":"T"}'
+  local snapshot_json='{"reviewed_at":"T"}'
   # The injected color sequence, distinct from any color GAIA's own segments
   # use (they are all "ESC[01;<n>m"), so this needle cannot collide with the
   # statusline's legitimate escape codes.
-  local esc injected_seq
-  esc=$(printf '\033')
-  injected_seq=$(printf '\033[31m')
+  local escape_character injected_sequence
+  escape_character=$(printf '\033')
+  injected_sequence=$(printf '\033[31m')
 
-  run_refresher "$malicious_tally" "$snap"
+  run_refresher "$malicious_tally" "$snapshot_json"
   [ "$status" -eq 0 ]
   reason=$(jq -r '.hardenNudgeReason' "$CACHE_FILE")
-  grep -qF -- "$esc" <<<"$reason" && return 1
+  grep -qF -- "$escape_character" <<<"$reason" && return 1
   [ "$(printf '%s' "$reason" | wc -l | tr -d ' ')" -eq 0 ]
   grep -qF -- ') Run fake (' <<<"$reason" && return 1
 
   render_statusline_against_refresher_cache
   [ "$status" -eq 0 ]
-  grep -qF -- "$injected_seq" <<<"$output" && return 1
+  grep -qF -- "$injected_sequence" <<<"$output" && return 1
   grep -qF -- ') Run fake (' <<<"$output" && return 1
   [ "$(grep -oF -- "Run /gaia-harden" <<<"$output" | wc -l | tr -d ' ')" -eq 1 ]
 
@@ -401,17 +401,17 @@ render_statusline_against_refresher_cache() {
   count=$(grep -cF -- "$search" "$REFRESH_ROOT/.gaia/scripts/check-updates.sh")
   [ "$count" -eq 1 ]
   broken="$REFRESH_ROOT/.gaia/scripts/check-updates-broken.sh"
-  awk -v s="$search" -v new="$unsanitized_line" \
-    '{ if (index($0, s) > 0) print new; else print }' \
+  awk -v search_text="$search" -v new="$unsanitized_line" \
+    '{ if (index($0, search_text) > 0) print new; else print }' \
     "$REFRESH_ROOT/.gaia/scripts/check-updates.sh" > "$broken"
   chmod +x "$broken"
 
   rm -f "$CACHE_FILE"
-  printf '%s' "$snap" > "$MOCK_SNAPSHOT_FILE"
+  printf '%s' "$snapshot_json" > "$MOCK_SNAPSHOT_FILE"
   run env MOCK_TALLY_JSON="$malicious_tally" bash "$broken"
   [ "$status" -eq 0 ]
   broken_reason=$(jq -r '.hardenNudgeReason' "$CACHE_FILE")
-  grep -qF -- "$esc" <<<"$broken_reason"
+  grep -qF -- "$escape_character" <<<"$broken_reason"
 }
 
 # 15. A cached reason already carrying control bytes strips them at render ------
@@ -422,14 +422,14 @@ render_statusline_against_refresher_cache() {
   # like "FAKE" or stray parentheses is the composition layer's job (test 14),
   # so this fixture carries only a control-byte payload: an injected color
   # escape and a newline.
-  local injected_seq
-  injected_seq=$(printf '\033[31m')
+  local injected_sequence
+  injected_sequence=$(printf '\033[31m')
   printf '%s' '{"hardenNudgeReason":"1 new pattern\u001b[31mFAKE\n more"}' \
     > "$MAIN/.gaia/local/cache/shared/update-check.json"
 
   render_statusline
   [ "$status" -eq 0 ]
-  grep -qF -- "$injected_seq" <<<"$output" && return 1
+  grep -qF -- "$injected_sequence" <<<"$output" && return 1
   [ "${#lines[@]}" -eq 1 ]
   grep -qF -- "Run /gaia-harden (1 new pattern" <<<"$output"
   [ "$(grep -oF -- "Run /gaia-harden" <<<"$output" | wc -l | tr -d ' ')" -eq 1 ]
@@ -446,14 +446,14 @@ render_statusline_against_refresher_cache() {
   count=$(grep -cF -- "$search" "$MAIN/.gaia/statusline/gaia-statusline.sh")
   [ "$count" -eq 1 ]
   broken="$MAIN/.gaia/statusline/gaia-statusline-broken.sh"
-  awk -v s="$search" -v new="$broken_line" \
-    '{ if (index($0, s) > 0) print new; else print }' \
+  awk -v search_text="$search" -v new="$broken_line" \
+    '{ if (index($0, search_text) > 0) print new; else print }' \
     "$MAIN/.gaia/statusline/gaia-statusline.sh" > "$broken"
   chmod +x "$broken"
 
-  json=$(jq -n --arg d "$MAIN" '{workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
-  run env HOME="$TMP_HOME" bash -c "printf '%s' '$json' | bash '$broken'"
+  json=$(jq -n --arg current_directory "$MAIN" '{workspace: {current_dir: $current_directory}, cwd: $current_directory, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
+  run env HOME="$TEMPORARY_HOME" bash -c "printf '%s' '$json' | bash '$broken'"
   [ "$status" -eq 0 ]
-  grep -qF -- "$injected_seq" <<<"$output"
+  grep -qF -- "$injected_sequence" <<<"$output"
 }
 

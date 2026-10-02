@@ -64,7 +64,7 @@ die() {
 here="$(cd "${BASH_SOURCE[0]%/*}" && pwd -P)" || exit 2
 repo="$(cd "$here/../../.." && pwd -P)" || exit 2
 
-baseline="" stores="" probe="" runs=5 mode=warm-day interp="$BASH" sub="" out_dir=""
+baseline="" stores="" probe="" runs=5 mode=warm-day interpreter="$BASH" subcommand="" output_directory=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -h | --help) usage; exit 0 ;;
@@ -72,8 +72,8 @@ while [ $# -gt 0 ]; do
       [ $# -ge 2 ] || die "$1 needs a value"
       case "$1" in
         --baseline-rev) baseline="$2" ;; --stores) stores="$2" ;; --probe) probe="$2" ;;
-        --runs) runs="$2" ;; --mode) mode="$2" ;; --bash) interp="$2" ;; --sub) sub="$2" ;;
-        --repo) repo="$2" ;; --out-dir) out_dir="$2" ;;
+        --runs) runs="$2" ;; --mode) mode="$2" ;; --bash) interpreter="$2" ;; --sub) subcommand="$2" ;;
+        --repo) repo="$2" ;; --out-dir) output_directory="$2" ;;
       esac
       shift 2 ;;
     *) usage >&2; die "unknown argument $1" ;;
@@ -84,42 +84,42 @@ done
 [ -n "$stores" ] || die "--stores is required"
 [[ "$runs" =~ ^[1-9][0-9]{0,2}$ ]] || die "--runs takes a whole number from 1 to 999"
 case "$mode" in warm-day | cold) ;; *) die "--mode takes warm-day or cold" ;; esac
-if [ -z "$sub" ]; then
+if [ -z "$subcommand" ]; then
   [ -n "$probe" ] || die "--probe (or --sub) is required"
   [[ "$probe" =~ ^[1-9][0-9]{0,9}$ ]] || die "--probe takes a PR number"
-  sub="pr $probe"
+  subcommand="pr $probe"
 fi
-read -r -a sub_args <<<"$sub"
-case "${sub_args[0]:-}" in
+read -r -a subcommand_args <<<"$subcommand"
+case "${subcommand_args[0]:-}" in
   pr) figures='^  tokens: ' ;;
   initiative) figures='^  total \(distinct segments\): tokens ' ;;
   reconcile) figures='^  all segments: +tokens ' ;;
   *) die "--sub takes \"pr <N>\", \"initiative <ref>\", or reconcile" ;;
 esac
-for f in usage.jsonl links.jsonl cost.jsonl; do
-  [ -f "$stores/$f" ] || die "--stores has no $f"
+for store_file in usage.jsonl links.jsonl cost.jsonl; do
+  [ -f "$stores/$store_file" ] || die "--stores has no $store_file"
 done
 [ -d "$repo" ] || die "--repo is not a directory"
 command -v jq >/dev/null 2>&1 || die "jq is required"
 git -C "$repo" rev-parse --verify --quiet "$baseline^{commit}" >/dev/null || die "--baseline-rev $baseline names no commit in $repo"
-[ -x "$interp" ] || command -v "$interp" >/dev/null 2>&1 || die "--bash $interp is not runnable"
+[ -x "$interpreter" ] || command -v "$interpreter" >/dev/null 2>&1 || die "--bash $interpreter is not runnable"
 
-cut_u="" cut_l="" cut_c=""
+cut_usage="" cut_links="" cut_cost=""
 if [ "$mode" = warm-day ]; then
   [ -f "$stores/probes.json" ] || die "warm-day mode reads the cut offsets from $stores/probes.json"
-  read -r cut_u cut_l cut_c < <(jq -r '[.cut.u, .cut.l, .cut.c] | map(tostring) | join(" ")' "$stores/probes.json") ||
+  read -r cut_usage cut_links cut_cost < <(jq -r '[.cut.u, .cut.l, .cut.c] | map(tostring) | join(" ")' "$stores/probes.json") ||
     die "probes.json has no cut offsets"
-  [[ "$cut_u$cut_l$cut_c" =~ ^[0-9]+$ ]] || die "probes.json has no cut offsets"
+  [[ "$cut_usage$cut_links$cut_cost" =~ ^[0-9]+$ ]] || die "probes.json has no cut offsets"
 fi
 
 scratch="$(mktemp -d "${TMPDIR:-/tmp}/usage-perf.XXXXXX")" || die "no scratch directory"
 trap 'rm -rf "$scratch"' EXIT
-if [ -z "$out_dir" ]; then out_dir="$(mktemp -d "${TMPDIR:-/tmp}/usage-perf-out.XXXXXX")" || die "no output directory"; fi
-mkdir -p "$out_dir" || die "cannot create --out-dir"
+if [ -z "$output_directory" ]; then output_directory="$(mktemp -d "${TMPDIR:-/tmp}/usage-perf-out.XXXXXX")" || die "no output directory"; fi
+mkdir -p "$output_directory" || die "cannot create --out-dir"
 
 old="$scratch/old" new="$scratch/new" main="$scratch/main"
-tel_old="$scratch/tel-old" tel_new="$scratch/tel-new" projects="$scratch/projects"
-mkdir -p "$old" "$new" "$main/.claude" "$tel_old" "$tel_new" "$projects"
+telemetry_directory_old="$scratch/tel-old" telemetry_directory_new="$scratch/tel-new" projects="$scratch/projects"
+mkdir -p "$old" "$new" "$main/.claude" "$telemetry_directory_old" "$telemetry_directory_new" "$projects"
 git -C "$repo" archive "$baseline" .gaia/scripts .specify/extensions/gaia/lib | tar -x -C "$old" || die "git archive of $baseline failed"
 mkdir -p "$new/.gaia" "$new/.specify/extensions/gaia"
 cp -R "$repo/.gaia/scripts" "$new/.gaia/scripts"
@@ -138,70 +138,70 @@ EOF
 export GAIA_RATES_FEED_DISABLE=1 GAIA_RATES_STATE_DIRECTORY="$scratch/rates-state"
 unset CLAUDE_CODE_SESSION_ID GAIA_TALLY_PROJECTS_ROOT GITHUB_ACTIONS GAIA_USAGE_MEMO_TRACE GAIA_USAGE_MEMO_SEAM
 
-memo="$tel_new/usage-branch-memo.json"
+memo="$telemetry_directory_new/usage-branch-memo.json"
 saved_memo="$scratch/memo.saved"
 
-# run_readout <tree> <telemetry dir> <out prefix>: sets ELAPSED_US.
+# run_readout <tree> <telemetry dir> <out prefix>: sets ELAPSED_MICROSECONDS.
 run_readout() {
-  local tree="$1" tel="$2" prefix="$3" t0 t1 rc=0
-  t0="${EPOCHREALTIME/./}"
-  "$interp" "$tree/.gaia/scripts/usage.sh" ${sub_args[@]+"${sub_args[@]}"} --main-root "$main" --telemetry-dir "$tel" \
-    --rate-table "$rates" --projects-root "$projects" >"$prefix.out" 2>"$prefix.err" || rc=$?
-  t1="${EPOCHREALTIME/./}"
-  ELAPSED_US=$((t1 - t0))
-  return "$rc"
+  local tree="$1" telemetry_directory="$2" prefix="$3" start_microseconds end_microseconds exit_status=0
+  start_microseconds="${EPOCHREALTIME/./}"
+  "$interpreter" "$tree/.gaia/scripts/usage.sh" ${subcommand_args[@]+"${subcommand_args[@]}"} --main-root "$main" --telemetry-dir "$telemetry_directory" \
+    --rate-table "$rates" --projects-root "$projects" >"$prefix.out" 2>"$prefix.err" || exit_status=$?
+  end_microseconds="${EPOCHREALTIME/./}"
+  ELAPSED_MICROSECONDS=$((end_microseconds - start_microseconds))
+  return "$exit_status"
 }
 
-cp "$stores/usage.jsonl" "$stores/links.jsonl" "$stores/cost.jsonl" "$tel_old/"
+cp "$stores/usage.jsonl" "$stores/links.jsonl" "$stores/cost.jsonl" "$telemetry_directory_old/"
 
 memo_state=deleted
 if [ "$mode" = warm-day ]; then
   memo_state=absent
-  head -c "$cut_u" "$stores/usage.jsonl" >"$tel_new/usage.jsonl"
-  head -c "$cut_l" "$stores/links.jsonl" >"$tel_new/links.jsonl"
-  head -c "$cut_c" "$stores/cost.jsonl" >"$tel_new/cost.jsonl"
-  run_readout "$new" "$tel_new" "$scratch/warmup" || die "the warm-up readout failed"
+  head -c "$cut_usage" "$stores/usage.jsonl" >"$telemetry_directory_new/usage.jsonl"
+  head -c "$cut_links" "$stores/links.jsonl" >"$telemetry_directory_new/links.jsonl"
+  head -c "$cut_cost" "$stores/cost.jsonl" >"$telemetry_directory_new/cost.jsonl"
+  run_readout "$new" "$telemetry_directory_new" "$scratch/warmup" || die "the warm-up readout failed"
   if [ -f "$memo" ]; then cp "$memo" "$saved_memo"; memo_state=present; fi
 fi
-cp "$stores/usage.jsonl" "$stores/links.jsonl" "$stores/cost.jsonl" "$tel_new/"
+cp "$stores/usage.jsonl" "$stores/links.jsonl" "$stores/cost.jsonl" "$telemetry_directory_new/"
 
 pre_times=() new_times=()
 i=1
 while [ "$i" -le "$runs" ]; do
-  run_readout "$old" "$tel_old" "$out_dir/pre-$i" || die "pre-change run $i failed (see $out_dir/pre-$i.err)"
-  pre_times[${#pre_times[@]}]="$ELAPSED_US"
+  run_readout "$old" "$telemetry_directory_old" "$output_directory/pre-$i" || die "pre-change run $i failed (see $output_directory/pre-$i.err)"
+  pre_times[${#pre_times[@]}]="$ELAPSED_MICROSECONDS"
   rm -f "$memo"
   if [ "$mode" = warm-day ] && [ -f "$saved_memo" ]; then cp "$saved_memo" "$memo"; fi
-  run_readout "$new" "$tel_new" "$out_dir/new-$i" || die "changed run $i failed (see $out_dir/new-$i.err)"
-  new_times[${#new_times[@]}]="$ELAPSED_US"
+  run_readout "$new" "$telemetry_directory_new" "$output_directory/new-$i" || die "changed run $i failed (see $output_directory/new-$i.err)"
+  new_times[${#new_times[@]}]="$ELAPSED_MICROSECONDS"
   i=$((i + 1))
 done
 
-median_us() {
-  printf '%s\n' "$@" | sort -n | awk '{ a[NR] = $1 }
-    END { if (NR % 2) print a[(NR + 1) / 2]; else printf "%d\n", (a[NR / 2] + a[NR / 2 + 1]) / 2 }'
+median_microseconds() {
+  printf '%s\n' "$@" | sort -n | awk '{ sorted_values[NR] = $1 }
+    END { if (NR % 2) print sorted_values[(NR + 1) / 2]; else printf "%d\n", (sorted_values[NR / 2] + sorted_values[NR / 2 + 1]) / 2 }'
 }
-pre_us="$(median_us ${pre_times[@]+"${pre_times[@]}"})"
-new_us="$(median_us ${new_times[@]+"${new_times[@]}"})"
-pre_s="$(awk -v u="$pre_us" 'BEGIN { printf "%.3f", u / 1000000 }')"
-new_s="$(awk -v u="$new_us" 'BEGIN { printf "%.3f", u / 1000000 }')"
-ratio="$(awk -v a="$pre_us" -v b="$new_us" 'BEGIN { if (a > 0) printf "%.3f", b / a; else print "n/a" }')"
+pre_microseconds="$(median_microseconds ${pre_times[@]+"${pre_times[@]}"})"
+new_microseconds="$(median_microseconds ${new_times[@]+"${new_times[@]}"})"
+pre_seconds="$(awk -v microseconds="$pre_microseconds" 'BEGIN { printf "%.3f", microseconds / 1000000 }')"
+new_seconds="$(awk -v microseconds="$new_microseconds" 'BEGIN { printf "%.3f", microseconds / 1000000 }')"
+ratio="$(awk -v baseline_microseconds="$pre_microseconds" -v changed_microseconds="$new_microseconds" 'BEGIN { if (baseline_microseconds > 0) printf "%.3f", changed_microseconds / baseline_microseconds; else print "n/a" }')"
 
-last_pre="$out_dir/pre-$runs"
+last_pre="$output_directory/pre-$runs"
 identical=yes stderr_identical=yes degenerate=0
 grep -Eq -- "$figures" "$last_pre.out" || degenerate=1
 i=1
 while [ "$i" -le "$runs" ]; do
-  grep -Eq -- "$figures" "$out_dir/new-$i.out" || degenerate=1
-  cmp -s "$last_pre.out" "$out_dir/new-$i.out" || identical=no
-  cmp -s "$last_pre.err" "$out_dir/new-$i.err" || stderr_identical=no
+  grep -Eq -- "$figures" "$output_directory/new-$i.out" || degenerate=1
+  cmp -s "$last_pre.out" "$output_directory/new-$i.out" || identical=no
+  cmp -s "$last_pre.err" "$output_directory/new-$i.err" || stderr_identical=no
   i=$((i + 1))
 done
 [ "$degenerate" = 1 ] && identical=degenerate
 
-printf 'pre_median=%s new_median=%s ratio=%s identical=%s\n' "$pre_s" "$new_s" "$ratio" "$identical"
+printf 'pre_median=%s new_median=%s ratio=%s identical=%s\n' "$pre_seconds" "$new_seconds" "$ratio" "$identical"
 printf 'stderr_identical=%s\n' "$stderr_identical"
-printf 'mode=%s memo=%s sub=%s runs=%s\n' "$mode" "$memo_state" "$sub" "$runs"
-printf 'pre_output=%s\nnew_output=%s\n' "$last_pre.out" "$out_dir/new-$runs.out"
+printf 'mode=%s memo=%s sub=%s runs=%s\n' "$mode" "$memo_state" "$subcommand" "$runs"
+printf 'pre_output=%s\nnew_output=%s\n' "$last_pre.out" "$output_directory/new-$runs.out"
 [ "$identical" != degenerate ] || exit 1
 exit 0

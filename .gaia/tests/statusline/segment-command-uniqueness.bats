@@ -25,7 +25,7 @@
 # empty dir so left-side delegation stays inert.
 
 setup() {
-  STATUSLINE_SRC=$(cd "$BATS_TEST_DIRNAME/../../statusline" && pwd)
+  STATUSLINE_SOURCE=$(cd "$BATS_TEST_DIRNAME/../../statusline" && pwd)
 
   MAIN=$(mktemp -d -t gaia-sl-unique-XXXXXX)
   git -C "$MAIN" init --quiet --initial-branch=main
@@ -33,18 +33,18 @@ setup() {
   git -C "$MAIN" config user.name "Test"
   git -C "$MAIN" config commit.gpgsign false
   mkdir -p "$MAIN/.gaia/statusline" "$MAIN/.gaia/local/cache/shared"
-  cp "$STATUSLINE_SRC/gaia-statusline.sh" "$MAIN/.gaia/statusline/gaia-statusline.sh"
+  cp "$STATUSLINE_SOURCE/gaia-statusline.sh" "$MAIN/.gaia/statusline/gaia-statusline.sh"
   echo "x" > "$MAIN/README.md"
   git -C "$MAIN" add -A
   git -C "$MAIN" commit --quiet -m "init"
   printf '{"completed_at":"2026-01-01T00:00:00Z"}' > "$MAIN/.gaia/local/setup-state.json"
 
-  TMP_HOME=$(mktemp -d -t gaia-sl-unique-home-XXXXXX)
+  TEMPORARY_HOME=$(mktemp -d -t gaia-sl-unique-home-XXXXXX)
 }
 
 teardown() {
   [ -n "${MAIN:-}" ] && rm -rf "$MAIN" || true
-  [ -n "${TMP_HOME:-}" ] && rm -rf "$TMP_HOME" || true
+  [ -n "${TEMPORARY_HOME:-}" ] && rm -rf "$TEMPORARY_HOME" || true
   return 0
 }
 
@@ -68,8 +68,8 @@ run_saturated_statusline() {
 JSON
   mkdir -p "$MAIN/.gaia/local/debt"
   printf '{"openCount":4}' > "$MAIN/.gaia/local/debt/count.json"
-  json=$(jq -n --arg d "$MAIN" '{workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
-  run env HOME="$TMP_HOME" COLUMNS=400 bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
+  json=$(jq -n --arg current_directory "$MAIN" '{workspace: {current_dir: $current_directory}, cwd: $current_directory, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
+  run env HOME="$TEMPORARY_HOME" COLUMNS=400 bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
 }
 
 # Every slash command the rendered line names, one per line, sorted. The
@@ -103,8 +103,8 @@ rendered_commands() {
 @test "no slash command appears in more than one rendered statusline segment" {
   run_saturated_statusline
   [ "$status" -eq 0 ]
-  dupes=$(rendered_commands "$output" | uniq -d)
-  [ -z "$dupes" ]
+  duplicate_commands=$(rendered_commands "$output" | uniq -d)
+  [ -z "$duplicate_commands" ]
 }
 
 # Same invariant, but with the cache carrying hardenNudgeReason: the harden
@@ -126,11 +126,11 @@ rendered_commands() {
 JSON
   mkdir -p "$MAIN/.gaia/local/debt"
   printf '{"openCount":4}' > "$MAIN/.gaia/local/debt/count.json"
-  json=$(jq -n --arg d "$MAIN" '{workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
-  run env HOME="$TMP_HOME" COLUMNS=400 bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
+  json=$(jq -n --arg current_directory "$MAIN" '{workspace: {current_dir: $current_directory}, cwd: $current_directory, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
+  run env HOME="$TEMPORARY_HOME" COLUMNS=400 bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
   [ "$status" -eq 0 ]
   grep -qF -- "Run /gaia-harden (1 new pattern, drifting-duplicate rising)" <<<"$output"
   [ "$(grep -oF -- "Run /gaia-harden" <<<"$output" | wc -l | tr -d ' ')" -eq 1 ]
-  dupes=$(rendered_commands "$output" | uniq -d)
-  [ -z "$dupes" ]
+  duplicate_commands=$(rendered_commands "$output" | uniq -d)
+  [ -z "$duplicate_commands" ]
 }

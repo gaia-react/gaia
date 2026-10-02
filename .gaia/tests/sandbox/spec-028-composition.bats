@@ -60,15 +60,15 @@ setup() {
   # pair the two tiers would disagree about a monorepo dotenv such as
   # `apps/web/.env.local`, which no test would have reported.
   run jq -e '
-    .sandbox.filesystem.denyRead as $d
-    | ($d | index(".env")) != null
-      and ($d | index(".env.*")) != null
-      and ($d | index("**/.env")) != null
-      and ($d | index("**/.env.*")) != null
-      and ($d | index("**/*.key")) != null
-      and ($d | index("**/*.pem")) != null
-      and ($d | index("**/*credential*")) != null
-      and ($d | index("**/secrets/**")) != null
+    .sandbox.filesystem.denyRead as $denied_read_paths
+    | ($denied_read_paths | index(".env")) != null
+      and ($denied_read_paths | index(".env.*")) != null
+      and ($denied_read_paths | index("**/.env")) != null
+      and ($denied_read_paths | index("**/.env.*")) != null
+      and ($denied_read_paths | index("**/*.key")) != null
+      and ($denied_read_paths | index("**/*.pem")) != null
+      and ($denied_read_paths | index("**/*credential*")) != null
+      and ($denied_read_paths | index("**/secrets/**")) != null
   ' "$SETTINGS"
   [ "$status" -eq 0 ]
 
@@ -77,9 +77,9 @@ setup() {
   # exemption is depth-qualified alongside the deny that made it necessary, or a
   # nested `.env.example` is denied where the root one is allowed.
   run jq -e '
-    .sandbox.filesystem.allowRead as $a
-    | ($a | index(".env.example")) != null
-      and ($a | index("**/.env.example")) != null
+    .sandbox.filesystem.allowRead as $allowed_read_paths
+    | ($allowed_read_paths | index(".env.example")) != null
+      and ($allowed_read_paths | index("**/.env.example")) != null
   ' "$SETTINGS"
   [ "$status" -eq 0 ]
 
@@ -98,14 +98,14 @@ setup() {
   # behaviors SPEC-028 added to it are intact.
   local hook="$REPO_ROOT/.claude/hooks/block-env-read.sh"
   local secrets_hook="$REPO_ROOT/.claude/hooks/block-secrets-read.sh"
-  local lib="$REPO_ROOT/.claude/hooks/lib/reader-operands.sh"
+  local reader_operands_library="$REPO_ROOT/.claude/hooks/lib/reader-operands.sh"
   local matcher event
 
   [ -f "$hook" ]
   [ -x "$hook" ]
   [ -f "$secrets_hook" ]
   [ -x "$secrets_hook" ]
-  [ -f "$lib" ]
+  [ -f "$reader_operands_library" ]
 
   # Registered on every tool surface it guards. Asserted per matcher rather than
   # as a count of registrations: a count says nothing about WHICH surfaces are
@@ -137,7 +137,7 @@ setup() {
   # guard that cannot load it must deny rather than exit non-zero: only exit 2
   # or a structured deny blocks a PreToolUse call, so an exit 1 there would let
   # every read through with a stderr line as the only trace.
-  grep -qF 'gaia_reader_operands' "$lib"
+  grep -qF 'gaia_reader_operands' "$reader_operands_library"
   grep -qF 'gaia_reader_operands' "$hook"
   grep -qF 'gaia_reader_operands' "$secrets_hook"
 }

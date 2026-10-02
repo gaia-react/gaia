@@ -73,8 +73,8 @@ SH
 
   [ -z "${STUBVAR:-}" ] || return 1
   # The helper's own loop variables are contained by the same `( )`.
-  [ -z "${_rw_found:-}" ] || return 1
-  [ -z "${_rw_arg:-}" ] || return 1
+  [ -z "${_run_with_separator_found:-}" ] || return 1
+  [ -z "${_run_with_argument:-}" ] || return 1
   return 0
 }
 

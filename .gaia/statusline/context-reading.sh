@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 #
 # Context-reading writer for the GAIA statusline. Sourced by
-# gaia-statusline.sh as "$GAIA_DIR/statusline/context-reading.sh"; defines one
+# gaia-statusline.sh as "$GAIA_DIRECTORY/statusline/context-reading.sh"; defines one
 # function and runs nothing at source time.
 #
 # Why it exists: only the statusline receives the main session's context
@@ -19,15 +19,15 @@
 # used_tokens is pinned by the caller as the percentage-derived value, never
 # total_input_tokens. Returns 0 when a file was written, 1 otherwise.
 gaia_statusline_write_context() {
-  local root="${1:-}" sid="${2:-}" pct="${3:-}" window="${4:-}" tokens="${5:-}" now frac
+  local root="${1:-}" session_id="${2:-}" used_percentage="${3:-}" window="${4:-}" tokens="${5:-}" now fraction
   command -v gaia_context_write >/dev/null 2>&1 || return 1
-  [ -n "$root" ] && [ -n "$sid" ] && [ -n "$pct" ] && [ -n "$window" ] && [ -n "$tokens" ] || return 1
-  gaia_context_is_session_id "$sid" || return 1
+  [ -n "$root" ] && [ -n "$session_id" ] && [ -n "$used_percentage" ] && [ -n "$window" ] && [ -n "$tokens" ] || return 1
+  gaia_context_is_session_id "$session_id" || return 1
   # The lib accepts at most six decimals; a longer fraction is truncated, not refused.
-  case "$pct" in
-    *.*) frac="${pct#*.}"; pct="${pct%%.*}.${frac:0:6}" ;;
+  case "$used_percentage" in
+    *.*) fraction="${used_percentage#*.}"; used_percentage="${used_percentage%%.*}.${fraction:0:6}" ;;
   esac
   now="${EPOCHSECONDS:-}"
   [ -n "$now" ] || now=$(date +%s 2>/dev/null) || return 1
-  gaia_context_write "$root" "$sid" "$pct" "$tokens" "$window" "$now" 2>/dev/null
+  gaia_context_write "$root" "$session_id" "$used_percentage" "$tokens" "$window" "$now" 2>/dev/null
 }
