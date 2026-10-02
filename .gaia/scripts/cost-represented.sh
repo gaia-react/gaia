@@ -4,16 +4,16 @@
 # Public function (sourced by every forward-delete path and the one-time
 # backlog migration):
 #
-#   cost_folder_represented <folder_abs> <attr_field> <attr_val> <ledger_path>
+#   cost_folder_represented <folder_absolute_path> <attribute_field> <attribute_value> <ledger_path>
 #
-# It answers one question: is every cost phase record under <folder_abs>
+# It answers one question: is every cost phase record under <folder_absolute_path>
 # provably captured in <ledger_path> (cost.jsonl) with matching values? It is
 # the guard that authorizes deleting a folder, so it is deliberately strict.
 #
-#   <folder_abs>   absolute path to the folder whose deletion is being gated.
-#   <attr_field>   the identity field every row for this folder carries, one of
+#   <folder_absolute_path>   absolute path to the folder whose deletion is being gated.
+#   <attribute_field>   the identity field every row for this folder carries, one of
 #                  spec_id | plan_id | plan_slug.
-#   <attr_val>     the identity value (a spec id, or a plan id / slug).
+#   <attribute_value>     the identity value (a spec id, or a plan id / slug).
 #   <ledger_path>  absolute path to cost.jsonl. The caller resolves the
 #                  main-checkout ledger; tests pass an isolated one.
 #
@@ -51,21 +51,21 @@
 
 if ! declare -f cost_folder_represented >/dev/null 2>&1; then
 
-  # _cost_repr_is_uint <s>: true iff <s> is a non-empty run of decimal digits.
+  # _cost_represented_is_unsigned_integer <s>: true iff <s> is a non-empty run of decimal digits.
   # POSIX case, so it fails correctly on every bash the callers run.
-  _cost_repr_is_uint() {
+  _cost_represented_is_unsigned_integer() {
     case "$1" in
       '' | *[!0-9]*) return 1 ;;
       *) return 0 ;;
     esac
   }
 
-  # _cost_repr_parse_sidecar <cost.json>: emit one tab line per keyed record:
-  #   kind \t fresh \t cwrite \t cread \t output \t session
-  # A missing bucket yields an empty field, which _cost_repr_is_uint reads as
+  # _cost_represented_parse_sidecar <cost.json>: emit one tab line per keyed record:
+  #   kind \t fresh_input \t cache_write \t cache_read \t output \t session
+  # A missing bucket yields an empty field, which _cost_represented_is_unsigned_integer reads as
   # non-numeric and blocks (fail closed). The caller validates the file is a
   # JSON object before calling this.
-  _cost_repr_parse_sidecar() {
+  _cost_represented_parse_sidecar() {
     jq -r '
       to_entries[]
       | [ (.value.kind // .key),
@@ -78,29 +78,29 @@ if ! declare -f cost_folder_represented >/dev/null 2>&1; then
     ' "$1" 2>/dev/null
   }
 
-  # _cost_repr_row_match <ledger> <field> <val> <kind> <session> \
-  #                      <fresh> <cwrite> <cread> <output> <sum>
+  # _cost_represented_row_match <ledger> <field> <attribute_value> <kind> <session> \
+  #                      <fresh_input> <cache_write> <cache_read> <output> <sum>
   # Prints "true"/"false": whether <ledger> carries a JSON-object row matching
   # identity + kind + session AND (four bucket values OR total). Corrupt-line
   # tolerant: a non-JSON ledger line is skipped, never fatal.
-  _cost_repr_row_match() {
-    local ledger="$1" field="$2" val="$3" kind="$4" session="$5"
-    local fresh="$6" cwrite="$7" cread="$8" output="$9" sum="${10}"
+  _cost_represented_row_match() {
+    local ledger="$1" field="$2" attribute_value="$3" kind="$4" session="$5"
+    local fresh_input="$6" cache_write="$7" cache_read="$8" output="$9" sum="${10}"
     jq -R -n \
-      --arg field "$field" --arg val "$val" --arg kind "$kind" --arg sid "$session" \
-      --argjson fresh "$fresh" --argjson cwrite "$cwrite" \
-      --argjson cread "$cread" --argjson output "$output" --argjson sum "$sum" '
-      def sid_match(f): if $sid == "" then f == null else f == $sid end;
+      --arg field "$field" --arg attribute_value "$attribute_value" --arg kind "$kind" --arg session_id "$session" \
+      --argjson fresh_input "$fresh_input" --argjson cache_write "$cache_write" \
+      --argjson cache_read "$cache_read" --argjson output "$output" --argjson sum "$sum" '
+      def session_id_match(row_session_id): if $session_id == "" then row_session_id == null else row_session_id == $session_id end;
       [ inputs
         | (try fromjson catch empty)
         | select(type == "object")
         | select(.kind == $kind)
-        | select(.[$field] == $val)
-        | select(sid_match(.session_id))
+        | select(.[$field] == $attribute_value)
+        | select(session_id_match(.session_id))
         | select(
-            ( (.buckets.fresh_input == $fresh)
-              and (.buckets.cache_write == $cwrite)
-              and (.buckets.cache_read == $cread)
+            ( (.buckets.fresh_input == $fresh_input)
+              and (.buckets.cache_write == $cache_write)
+              and (.buckets.cache_read == $cache_read)
               and (.buckets.output == $output) )
             or (.total == $sum)
           )
@@ -109,57 +109,57 @@ if ! declare -f cost_folder_represented >/dev/null 2>&1; then
   }
 
   cost_folder_represented() {
-    local folder_abs="$1" attr_field="$2" attr_val="$3" ledger_path="$4"
+    local folder_absolute_path="$1" attribute_field="$2" attribute_value="$3" ledger_path="$4"
 
-    if [ -z "$folder_abs" ] || [ -z "$attr_field" ] || [ -z "$attr_val" ] || [ -z "$ledger_path" ]; then
+    if [ -z "$folder_absolute_path" ] || [ -z "$attribute_field" ] || [ -z "$attribute_value" ] || [ -z "$ledger_path" ]; then
       printf 'cost-represented: usage: cost_folder_represented <folder_abs> <attr_field> <attr_val> <ledger_path>\n' >&2
       return 2
     fi
 
     # Nothing to gate if the folder is already gone.
-    [ -d "$folder_abs" ] || return 0
+    [ -d "$folder_absolute_path" ] || return 0
 
     local blocking=0 saw_section=0
     local -a sidecar_files=()
-    local f kind fresh cwrite cread output session sum matched
+    local sidecar_file kind fresh_input cache_write cache_read output session sum matched
 
-    while IFS= read -r -d '' f; do
-      sidecar_files+=("$f")
-    done < <(find "$folder_abs" -maxdepth 2 -type f -name cost.json -print0 2>/dev/null)
+    while IFS= read -r -d '' sidecar_file; do
+      sidecar_files+=("$sidecar_file")
+    done < <(find "$folder_absolute_path" -maxdepth 2 -type f -name cost.json -print0 2>/dev/null)
 
     if [ "${#sidecar_files[@]}" -gt 0 ]; then
-      for f in "${sidecar_files[@]}"; do
-        if ! jq -e 'type=="object"' "$f" >/dev/null 2>&1; then
+      for sidecar_file in "${sidecar_files[@]}"; do
+        if ! jq -e 'type=="object"' "$sidecar_file" >/dev/null 2>&1; then
           saw_section=1
           blocking=1
           printf 'unparseable\tBLOCKING\tunparseable cost.json\n'
           continue
         fi
-        while IFS=$'\t' read -r kind fresh cwrite cread output session; do
+        while IFS=$'\t' read -r kind fresh_input cache_write cache_read output session; do
           [ -n "$kind" ] || continue
           saw_section=1
 
           # Fail closed: any bucket that is missing or non-numeric blocks.
-          if _cost_repr_is_uint "$fresh" \
-            && _cost_repr_is_uint "$cwrite" \
-            && _cost_repr_is_uint "$cread" \
-            && _cost_repr_is_uint "$output"; then
-            fresh=$((10#$fresh)); cwrite=$((10#$cwrite))
-            cread=$((10#$cread)); output=$((10#$output))
-            sum=$((fresh + cwrite + cread + output))
-            matched="$(_cost_repr_row_match "$ledger_path" "$attr_field" "$attr_val" \
-              "$kind" "$session" "$fresh" "$cwrite" "$cread" "$output" "$sum")"
+          if _cost_represented_is_unsigned_integer "$fresh_input" \
+            && _cost_represented_is_unsigned_integer "$cache_write" \
+            && _cost_represented_is_unsigned_integer "$cache_read" \
+            && _cost_represented_is_unsigned_integer "$output"; then
+            fresh_input=$((10#$fresh_input)); cache_write=$((10#$cache_write))
+            cache_read=$((10#$cache_read)); output=$((10#$output))
+            sum=$((fresh_input + cache_write + cache_read + output))
+            matched="$(_cost_represented_row_match "$ledger_path" "$attribute_field" "$attribute_value" \
+              "$kind" "$session" "$fresh_input" "$cache_write" "$cache_read" "$output" "$sum")"
             if [ "$matched" = "true" ]; then
-              printf '%s\tREPRESENTED\tmatched ledger row for %s=%s\n' "$kind" "$attr_field" "$attr_val"
+              printf '%s\tREPRESENTED\tmatched ledger row for %s=%s\n' "$kind" "$attribute_field" "$attribute_value"
             else
               blocking=1
-              printf '%s\tBLOCKING\tno matching ledger row for %s=%s\n' "$kind" "$attr_field" "$attr_val"
+              printf '%s\tBLOCKING\tno matching ledger row for %s=%s\n' "$kind" "$attribute_field" "$attribute_value"
             fi
           else
             blocking=1
             printf '%s\tBLOCKING\tincomplete or non-numeric buckets\n' "$kind"
           fi
-        done < <(_cost_repr_parse_sidecar "$f")
+        done < <(_cost_represented_parse_sidecar "$sidecar_file")
       done
     else
       return 0

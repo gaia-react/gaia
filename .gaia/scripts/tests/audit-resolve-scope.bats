@@ -38,18 +38,18 @@ setup() {
 # everything it reaches for.
 make_repo() {
   local name="$1" branch="${2:-main}"
-  local dir="$BATS_TEST_TMPDIR/$name"
-  mkdir -p "$dir/.gaia/scripts" "$dir/.gaia/local/audit" \
-    "$dir/.github/audit" "$dir/.claude/hooks/lib"
+  local repository_directory="$BATS_TEST_TMPDIR/$name"
+  mkdir -p "$repository_directory/.gaia/scripts" "$repository_directory/.gaia/local/audit" \
+    "$repository_directory/.github/audit" "$repository_directory/.claude/hooks/lib"
   cp "$REPO_ROOT/.gaia/scripts/audit-resolve-scope.sh" \
     "$REPO_ROOT/.gaia/scripts/audit-scope-digest.sh" \
     "$REPO_ROOT/.gaia/scripts/audit-key-lib.sh" \
     "$REPO_ROOT/.gaia/scripts/audit-member-digest.sh" \
-    "$dir/.gaia/scripts/"
-  chmod +x "$dir/.gaia/scripts/audit-resolve-scope.sh" "$dir/.gaia/scripts/audit-scope-digest.sh"
-  cp "$REPO_ROOT/.github/audit/resolve-audit-base.sh" "$dir/.github/audit/"
-  chmod +x "$dir/.github/audit/resolve-audit-base.sh"
-  cp "$REPO_ROOT/.gaia/audit-ci.yml" "$dir/.gaia/"
+    "$repository_directory/.gaia/scripts/"
+  chmod +x "$repository_directory/.gaia/scripts/audit-resolve-scope.sh" "$repository_directory/.gaia/scripts/audit-scope-digest.sh"
+  cp "$REPO_ROOT/.github/audit/resolve-audit-base.sh" "$repository_directory/.github/audit/"
+  chmod +x "$repository_directory/.github/audit/resolve-audit-base.sh"
+  cp "$REPO_ROOT/.gaia/audit-ci.yml" "$repository_directory/.gaia/"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-scope.sh" \
     "$REPO_ROOT/.claude/hooks/lib/audit-base-provenance.sh" \
     "$REPO_ROOT/.claude/hooks/lib/audit-rules-changed.sh" \
@@ -57,15 +57,15 @@ make_repo() {
     "$REPO_ROOT/.claude/hooks/lib/audit-digest.sh" \
     "$REPO_ROOT/.claude/hooks/lib/audit-machinery.sh" \
     "$REPO_ROOT/.claude/hooks/lib/gaia-version.sh" \
-    "$dir/.claude/hooks/lib/"
-  printf '2.0.0\n' > "$dir/.gaia/VERSION"
-  git -C "$dir" init -q --initial-branch="$branch"
-  git -C "$dir" config user.email t@example.com
-  git -C "$dir" config user.name T
-  git -C "$dir" config commit.gpgsign false
-  git -C "$dir" add -A
-  git -C "$dir" commit -q -m init
-  printf '%s' "$(cd "$dir" && pwd -P)"
+    "$repository_directory/.claude/hooks/lib/"
+  printf '2.0.0\n' > "$repository_directory/.gaia/VERSION"
+  git -C "$repository_directory" init -q --initial-branch="$branch"
+  git -C "$repository_directory" config user.email t@example.com
+  git -C "$repository_directory" config user.name T
+  git -C "$repository_directory" config commit.gpgsign false
+  git -C "$repository_directory" add -A
+  git -C "$repository_directory" commit -q -m init
+  printf '%s' "$(cd "$repository_directory" && pwd -P)"
 }
 
 commit_file() {
@@ -181,12 +181,12 @@ value_of() {
 }
 
 @test "KEY_BASE matches what the argument-less resolver yields" {
-  local repo reader_ref reader_base
+  local repo reader_reference reader_base
   repo="$(make_repo key-agreement)"
   git -C "$repo" checkout -q -b feat
   commit_file "$repo" app/a.ts
-  reader_ref="$(cd "$repo" && ./.github/audit/resolve-audit-base.sh 2>/dev/null)"
-  reader_base="$(git -C "$repo" merge-base "$reader_ref" HEAD)"
+  reader_reference="$(cd "$repo" && ./.github/audit/resolve-audit-base.sh 2>/dev/null)"
+  reader_base="$(git -C "$repo" merge-base "$reader_reference" HEAD)"
   run --separate-stderr "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-maintainer-node --root "$repo"
   [ "$status" -eq 0 ]
   [ "$(value_of "$output" KEY_BASE)" = "$reader_base" ]
@@ -229,7 +229,7 @@ value_of() {
 }
 
 @test "--base-override replaces the review base and leaves the key base to the resolver" {
-  local repo first key_ref
+  local repo first key_reference
   repo="$(make_repo override)"
   git -C "$repo" checkout -q -b feat
   commit_file "$repo" app/a.ts
@@ -240,8 +240,8 @@ value_of() {
   [ "$status" -eq 0 ]
   [ "$(value_of "$output" BASE_REF)" = "$first" ]
   [ "$(value_of "$output" BASE_SHA)" = "$first" ]
-  key_ref="$(value_of "$output" KEY_REF)"
-  [ "$(value_of "$output" KEY_BASE)" = "$(git -C "$repo" merge-base "$key_ref" HEAD)" ]
+  key_reference="$(value_of "$output" KEY_REF)"
+  [ "$(value_of "$output" KEY_BASE)" = "$(git -C "$repo" merge-base "$key_reference" HEAD)" ]
   [ "$(printf '%s\n' "$output" | grep -c '^CHANGED=')" -eq 1 ]
   printf '%s\n' "$output" | grep -qxF 'CHANGED=app/b.ts'
 }
@@ -325,7 +325,7 @@ value_of() {
   # for real and the sentinel can only come from the dirty check.
   cat > "$shim/git" <<EOF
 #!/usr/bin/env bash
-for a in "\$@"; do [ "\$a" = status ] && exit 128; done
+for argument in "\$@"; do [ "\$argument" = status ] && exit 128; done
 exec $(command -v git) "\$@"
 EOF
   chmod +x "$shim/git"
@@ -374,7 +374,7 @@ fail_git_diff() {
   mkdir -p "$1"
   cat > "$1/git" <<EOF
 #!/usr/bin/env bash
-for a in "\$@"; do [ "\$a" = diff ] && exit 128; done
+for argument in "\$@"; do [ "\$argument" = diff ] && exit 128; done
 exec $(command -v git) "\$@"
 EOF
   chmod +x "$1/git"
@@ -543,9 +543,9 @@ SHIM
   mkdir -p "$shim"
   cat > "$shim/git" <<SHIM
 #!/usr/bin/env bash
-has_diff=0; has_sep=0
-for a in "\$@"; do [ "\$a" = diff ] && has_diff=1; [ "\$a" = -- ] && has_sep=1; done
-[ "\$has_diff" -eq 1 ] && [ "\$has_sep" -eq 0 ] && exit 128
+has_diff=0; has_separator=0
+for argument in "\$@"; do [ "\$argument" = diff ] && has_diff=1; [ "\$argument" = -- ] && has_separator=1; done
+[ "\$has_diff" -eq 1 ] && [ "\$has_separator" -eq 0 ] && exit 128
 exec $(command -v git) "\$@"
 SHIM
   chmod +x "$shim/git"

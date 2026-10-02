@@ -11,10 +11,10 @@ set -uo pipefail
 
 # Source the digest lib from THIS script's own on-disk location, never cwd:
 # .gaia/scripts -> ../../.claude/hooks/lib.
-_self_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.claude/hooks/lib" 2>/dev/null && pwd)" || true
-if [ -n "${_self_lib_dir:-}" ] && [ -f "$_self_lib_dir/audit-digest.sh" ]; then
+_self_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.claude/hooks/lib" 2>/dev/null && pwd)" || true
+if [ -n "${_self_library_directory:-}" ] && [ -f "$_self_library_directory/audit-digest.sh" ]; then
   # shellcheck source=/dev/null
-  . "$_self_lib_dir/audit-digest.sh"
+  . "$_self_library_directory/audit-digest.sh"
 fi
 
 usage() {
@@ -25,7 +25,7 @@ EOF
 
 root=""
 member=""
-ref="HEAD"
+git_reference="HEAD"
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --root)
@@ -37,7 +37,7 @@ while [ "$#" -gt 0 ]; do
       shift 2 2>/dev/null || shift
       ;;
     --ref)
-      ref="${2:-}"
+      git_reference="${2:-}"
       shift 2 2>/dev/null || shift
       ;;
     --help | -h)
@@ -69,7 +69,7 @@ if ! command -v audit_member_digest >/dev/null 2>&1; then
 fi
 
 # Fail closed: propagate the digest's non-zero exit verbatim (never swallow).
-digest="$(audit_member_digest "$root" "$member" "$ref")" || exit 1
+digest="$(audit_member_digest "$root" "$member" "$git_reference")" || exit 1
 if [ -z "$digest" ]; then
   exit 1
 fi

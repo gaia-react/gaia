@@ -83,7 +83,7 @@ _ars_usage() {
 }
 
 member=""
-root_arg=""
+root_argument=""
 root_given=0
 skip_full_base=0
 base_override=""
@@ -96,7 +96,7 @@ while [ "$#" -gt 0 ]; do
       member="$2"; shift 2 ;;
     --root)
       [ "$#" -ge 2 ] || { _ars_usage; exit 2; }
-      root_arg="$2"; root_given=1; shift 2 ;;
+      root_argument="$2"; root_given=1; shift 2 ;;
     --review-path)
       [ "$#" -ge 2 ] || { _ars_usage; exit 2; }
       review_paths+=("$2"); shift 2 ;;
@@ -122,20 +122,20 @@ fi
 
 # An empty --root is refused before the cd below: `cd ""` returns 0 on bash
 # 3.2 (macOS /bin/bash) and would resolve the ambient directory.
-if [ -z "$root_arg" ]; then
+if [ -z "$root_argument" ]; then
   printf 'audit-resolve-scope: --root is empty; refusing rather than resolving the ambient directory\n' >&2
   exit 2
 fi
 
 self_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd -P)"
-root="$(cd "$root_arg" 2>/dev/null && pwd -P)"
+root="$(cd "$root_argument" 2>/dev/null && pwd -P)"
 if [ -z "$self_root" ] || [ -z "$root" ]; then
-  printf "audit-resolve-scope: --root '%s' does not resolve to a directory\n" "$root_arg" >&2
+  printf "audit-resolve-scope: --root '%s' does not resolve to a directory\n" "$root_argument" >&2
   exit 2
 fi
 if [ "$root" != "$self_root" ]; then
   printf "audit-resolve-scope: --root '%s' resolves to %s, not to %s, the tree this script belongs to; run the copy under the root you are auditing\n" \
-    "$root_arg" "$root" "$self_root" >&2
+    "$root_argument" "$root" "$self_root" >&2
   exit 2
 fi
 
@@ -144,11 +144,11 @@ printf 'AUDIT_ROOT=%s\n' "$root"
 # Each diff and the status write to a file first, so their exit status is read.
 # A process substitution discards it, and a failed diff then yields an empty
 # list at status 0.
-ars_tmp="$(mktemp -d "${TMPDIR:-/tmp}/audit-resolve-scope.XXXXXX")" || {
+ars_temporary_directory="$(mktemp -d "${TMPDIR:-/tmp}/audit-resolve-scope.XXXXXX")" || {
   printf 'audit-resolve-scope: could not create a temporary directory\n' >&2
   exit 1
 }
-trap 'rm -rf "$ars_tmp"' EXIT
+trap 'rm -rf "$ars_temporary_directory"' EXIT
 
 full_changed=()
 if [ "$skip_full_base" -eq 0 ]; then
@@ -157,44 +157,44 @@ if [ "$skip_full_base" -eq 0 ]; then
   # with this anchor request): membership is resolved over the whole pull
   # request diff, never over the review increment, and a self-skip base that
   # disagreed with membership could skip a member membership still demands.
-  prov_lib="$self_root/.claude/hooks/lib/audit-base-provenance.sh"
+  provenance_library_path="$self_root/.claude/hooks/lib/audit-base-provenance.sh"
   FULL_BASE=""
-  if [ -f "$prov_lib" ]; then
+  if [ -f "$provenance_library_path" ]; then
     # shellcheck source=/dev/null
-    . "$prov_lib"
-    prov="$(audit_resolve_base_provenance "$root" default-branch)" || prov=""
+    . "$provenance_library_path"
+    provenance="$(audit_resolve_base_provenance "$root" default-branch)" || provenance=""
     # shellcheck disable=SC2034 # trust and anchor are part of the pinned three-field idiom
-    IFS=$'\t' read -r prov_trust prov_anchor FULL_BASE <<< "$prov" || true
+    IFS=$'\t' read -r provenance_trust provenance_anchor FULL_BASE <<< "$provenance" || true
   fi
   printf 'FULL_BASE=%s\n' "$FULL_BASE"
   if [ -z "$FULL_BASE" ]; then
-    if [ -f "$prov_lib" ]; then
+    if [ -f "$provenance_library_path" ]; then
       printf 'no merge-base against the default branch: membership scope is unresolvable, do NOT self-skip\n' >&2
     else
-      printf 'base-provenance resolver missing at %s: membership scope is unresolvable, do NOT self-skip\n' "$prov_lib" >&2
+      printf 'base-provenance resolver missing at %s: membership scope is unresolvable, do NOT self-skip\n' "$provenance_library_path" >&2
     fi
     exit 1
   fi
   # `--no-renames` on each listing below: under rename detection a move lists only
   # its new path, so a rename out of a member's scope would read as out of scope
   # here while resolve-audit-members.sh, which lists the old path, dispatched it.
-  if ! git -C "$root" diff --name-only -z --no-renames "${FULL_BASE}...HEAD" > "$ars_tmp/full" 2>"$ars_tmp/full.err"; then
+  if ! git -C "$root" diff --name-only -z --no-renames "${FULL_BASE}...HEAD" > "$ars_temporary_directory/full" 2>"$ars_temporary_directory/full.err"; then
     printf 'could not list the whole pull request (%s...HEAD): %s; membership scope is unresolvable, do NOT self-skip\n' \
-      "$FULL_BASE" "$(head -1 "$ars_tmp/full.err")" >&2
+      "$FULL_BASE" "$(head -1 "$ars_temporary_directory/full.err")" >&2
     exit 1
   fi
   while IFS= read -r -d '' path; do
     full_changed+=("$path")
-  done < "$ars_tmp/full"
+  done < "$ars_temporary_directory/full"
 fi
 
 # The resolver reads its tree from the working directory, so it runs from the
 # root rather than from wherever this script was invoked.
-BASE_OUT="$(cd "$root" && "$root/.github/audit/resolve-audit-base.sh" --member "$member")"
-BASE_REF="$(printf '%s\n' "$BASE_OUT" | sed -n 1p)"
-BASE_REASON="$(printf '%s\n' "$BASE_OUT" | sed -n 2p)"
-KEY_REF="$(printf '%s\n' "$BASE_OUT" | sed -n 3p)"
-ANCHOR_TREE="$(printf '%s\n' "$BASE_OUT" | sed -n 4p)"
+BASE_OUTPUT="$(cd "$root" && "$root/.github/audit/resolve-audit-base.sh" --member "$member")"
+BASE_REF="$(printf '%s\n' "$BASE_OUTPUT" | sed -n 1p)"
+BASE_REASON="$(printf '%s\n' "$BASE_OUTPUT" | sed -n 2p)"
+KEY_REF="$(printf '%s\n' "$BASE_OUTPUT" | sed -n 3p)"
+ANCHOR_TREE="$(printf '%s\n' "$BASE_OUTPUT" | sed -n 4p)"
 [ -z "$base_override" ] || BASE_REF="$base_override"
 
 BASE_SHA=""
@@ -248,7 +248,7 @@ printf 'AUDIT_KEY=%s\n' "$AUDIT_KEY"
 # resolves an empty left side to HEAD, so an unresolved base and a resolved
 # base with no differences both yield an empty diff, and only one of them
 # means "unknown".
-elig_changed=()
+eligibility_changed=()
 if [ "$eligibility" -eq 1 ]; then
   pr_branch=""
   if [ "${GITHUB_ACTIONS:-}" = "true" ] && [ -n "${GITHUB_BASE_REF:-}" ]; then
@@ -256,26 +256,26 @@ if [ "$eligibility" -eq 1 ]; then
   elif command -v gh >/dev/null 2>&1; then
     pr_branch="$( (cd "$root" && gh pr view --json baseRefName --jq '.baseRefName') 2>/dev/null || true)"
   fi
-  elig_ref=""
+  eligibility_reference=""
   if [ -n "$pr_branch" ] && git -C "$root" rev-parse --verify --quiet "refs/remotes/origin/${pr_branch}" >/dev/null 2>&1; then
-    elig_ref="refs/remotes/origin/${pr_branch}"
+    eligibility_reference="refs/remotes/origin/${pr_branch}"
   fi
   default_branch="$(git -C "$root" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')"
   [ -n "$default_branch" ] || default_branch="main"
-  primary_ref="${elig_ref:-refs/remotes/origin/${default_branch}}"
-  fallback_ref="${elig_ref:-${default_branch}}"
-  ELIG_BASE="$(git -C "$root" merge-base HEAD "$primary_ref" 2>/dev/null || git -C "$root" merge-base HEAD "$fallback_ref" 2>/dev/null || true)"
+  primary_reference="${eligibility_reference:-refs/remotes/origin/${default_branch}}"
+  fallback_reference="${eligibility_reference:-${default_branch}}"
+  ELIG_BASE="$(git -C "$root" merge-base HEAD "$primary_reference" 2>/dev/null || git -C "$root" merge-base HEAD "$fallback_reference" 2>/dev/null || true)"
   if [ -z "$ELIG_BASE" ]; then
     printf 'no eligibility base against %s or %s: the machinery waive disengages\n' \
-      "$primary_ref" "$fallback_ref" >&2
-  elif ! git -C "$root" diff --name-only -z --no-renames "${ELIG_BASE}...HEAD" > "$ars_tmp/elig" 2>"$ars_tmp/elig.err"; then
+      "$primary_reference" "$fallback_reference" >&2
+  elif ! git -C "$root" diff --name-only -z --no-renames "${ELIG_BASE}...HEAD" > "$ars_temporary_directory/elig" 2>"$ars_temporary_directory/elig.err"; then
     printf 'could not list the eligibility set (%s...HEAD): %s; the machinery waive disengages\n' \
-      "$ELIG_BASE" "$(head -1 "$ars_tmp/elig.err")" >&2
+      "$ELIG_BASE" "$(head -1 "$ars_temporary_directory/elig.err")" >&2
     ELIG_BASE=""
   else
     while IFS= read -r -d '' path; do
-      elig_changed+=("$path")
-    done < "$ars_tmp/elig"
+      eligibility_changed+=("$path")
+    done < "$ars_temporary_directory/elig"
   fi
   printf 'ELIG_BASE=%s\n' "$ELIG_BASE"
 fi
@@ -285,14 +285,14 @@ fi
 # and not an advanced ref tip's.
 changed=()
 if [ -n "$BASE_SHA" ]; then
-  if ! git -C "$root" diff --name-only -z --no-renames "${BASE_SHA}...HEAD" -- ${review_paths[@]+"${review_paths[@]}"} > "$ars_tmp/review" 2>"$ars_tmp/review.err"; then
+  if ! git -C "$root" diff --name-only -z --no-renames "${BASE_SHA}...HEAD" -- ${review_paths[@]+"${review_paths[@]}"} > "$ars_temporary_directory/review" 2>"$ars_temporary_directory/review.err"; then
     printf 'could not list the review increment (%s...HEAD): %s; review scope is unresolvable\n' \
-      "$BASE_SHA" "$(head -1 "$ars_tmp/review.err")" >&2
+      "$BASE_SHA" "$(head -1 "$ars_temporary_directory/review.err")" >&2
     exit 1
   fi
   while IFS= read -r -d '' path; do
     changed+=("$path")
-  done < "$ars_tmp/review"
+  done < "$ars_temporary_directory/review"
 fi
 
 # `Read` returns working-tree bytes while the clearance attests to HEAD, so a
@@ -308,13 +308,13 @@ fi
 # surfaces, only the original path shows as its own line.
 dirty=()
 if [ "${#changed[@]}" -gt 0 ]; then
-  if ! printf '%s\0' "${changed[@]}" | xargs -0 git -C "$root" status --porcelain -z -- > "$ars_tmp/dirty"; then
+  if ! printf '%s\0' "${changed[@]}" | xargs -0 git -C "$root" status --porcelain -z -- > "$ars_temporary_directory/dirty"; then
     printf 'dirty-scope check could not run; refusing rather than assuming a clean tree\n' >&2
     dirty=("dirty-scope check failed")
   else
-    while IFS= read -r -d '' rec; do
-      dirty+=("$rec")
-    done < "$ars_tmp/dirty"
+    while IFS= read -r -d '' record; do
+      dirty+=("$record")
+    done < "$ars_temporary_directory/dirty"
   fi
 fi
 
@@ -331,7 +331,7 @@ done
 for path in ${changed[@]+"${changed[@]}"}; do
   printf 'CHANGED=%s\n' "$path"
 done
-for path in ${elig_changed[@]+"${elig_changed[@]}"}; do
+for path in ${eligibility_changed[@]+"${eligibility_changed[@]}"}; do
   printf 'ELIG_CHANGED=%s\n' "$path"
 done
 if [ "${#dirty[@]}" -gt 0 ]; then

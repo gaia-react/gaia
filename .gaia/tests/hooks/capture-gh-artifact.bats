@@ -3,7 +3,7 @@
 # Bats suite for .claude/hooks/capture-gh-artifact.sh, the PostToolUse hook
 # that drops a breadcrumb when `gh pr create` succeeds. Every test runs the
 # hook with cwd = a tmp git repo, never the real repo root, and points
-# GAIA_GH_ARTIFACT_CACHE_DIR at a per-test tmp dir so no test ever touches the
+# GAIA_GH_ARTIFACT_CACHE_DIRECTORY at a per-test tmp dir so no test ever touches the
 # real .gaia/local/cache/.
 
 setup() {
@@ -22,7 +22,7 @@ setup() {
 
   CACHE="$BATS_TEST_TMPDIR/cache"
   mkdir -p "$CACHE"
-  export GAIA_GH_ARTIFACT_CACHE_DIR="$CACHE"
+  export GAIA_GH_ARTIFACT_CACHE_DIRECTORY="$CACHE"
   # This suite runs the REAL hook, so the PR-to-branch edge would be written
   # into the real tree's ledger from every case. The seam keeps the existing
   # breadcrumb cases exactly as they were; the edge cases unset it.
@@ -37,7 +37,7 @@ teardown() {
 # Scaffolds a tmp git repo with the real lib copied in at its repo-relative
 # path, so the hook's `source .gaia/scripts/gh-artifact-lib.sh` resolves.
 # Also copies audit-key-lib.sh beside it: gaia_gh_artifact_path sources it via
-# BASH_SOURCE (the same idiom gaia_gh_artifact_cache_dir uses for
+# BASH_SOURCE (the same idiom gaia_gh_artifact_cache_directory uses for
 # main-root-lib.sh), so without its sibling present the hook's own internal
 # source would fail and no breadcrumb would ever be written, breaking every
 # "writes the breadcrumb" test below for a reason unrelated to what they mean
@@ -405,7 +405,7 @@ edge_file() { printf '%s/.gaia/local/telemetry/links.jsonl' "$REPO"; }
   unset GAIA_USAGE_HOOKS_DISABLE
   git checkout -b feat/edge --quiet
   : >"$BATS_TEST_TMPDIR/not-a-dir"
-  export GAIA_GH_ARTIFACT_CACHE_DIR="$BATS_TEST_TMPDIR/not-a-dir/cache"
+  export GAIA_GH_ARTIFACT_CACHE_DIRECTORY="$BATS_TEST_TMPDIR/not-a-dir/cache"
 
   run_hook "gh pr create --title x --body y" "https://github.com/gaia-react/gaia/pull/78"
   [ "$status" -eq 0 ]

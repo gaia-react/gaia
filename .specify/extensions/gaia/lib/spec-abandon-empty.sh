@@ -48,7 +48,7 @@ GUARD_AGE_SECONDS=86400
 # main's, because the state registry declares specs/ main-only. Best-effort
 # by contract: an unresolvable main is one diagnostic and exit 0, nothing
 # touched.
-if ! specs_directory="$(gaia_resolve_specs_dir "$repo_root" 2>/dev/null)" || [ -z "$specs_directory" ]; then
+if ! specs_directory="$(gaia_resolve_specs_directory "$repo_root" 2>/dev/null)" || [ -z "$specs_directory" ]; then
   echo "spec-abandon-empty: cannot resolve the main checkout for '$repo_root'; nothing swept" >&2
   exit 0
 fi

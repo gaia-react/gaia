@@ -18,8 +18,8 @@ setup() {
   SCRIPT="$REPO_ROOT/.gaia/cli/health/comprehensive/gauge.sh"
   [ -x "$SCRIPT" ] || skip "gauge.sh not executable"
 
-  TMPROOT_RAW="$(mktemp -d "${TMPDIR:-/tmp}/gaia-gauge-XXXXXX")"
-  REPO="$(cd "$TMPROOT_RAW" && pwd -P)"
+  TEMPORARY_ROOT_RAW="$(mktemp -d "${TMPDIR:-/tmp}/gaia-gauge-XXXXXX")"
+  REPO="$(cd "$TEMPORARY_ROOT_RAW" && pwd -P)"
 
   export GIT_AUTHOR_NAME="GAIA Test"
   export GIT_AUTHOR_EMAIL="gaia-test@example.com"
@@ -40,8 +40,8 @@ teardown() {
   if [ -n "${REPO:-}" ] && [ -d "$REPO" ]; then
     rm -rf "$REPO"
   fi
-  if [ -n "${TMPROOT_RAW:-}" ] && [ "$TMPROOT_RAW" != "${REPO:-}" ] && [ -d "$TMPROOT_RAW" ]; then
-    rm -rf "$TMPROOT_RAW"
+  if [ -n "${TEMPORARY_ROOT_RAW:-}" ] && [ "$TEMPORARY_ROOT_RAW" != "${REPO:-}" ] && [ -d "$TEMPORARY_ROOT_RAW" ]; then
+    rm -rf "$TEMPORARY_ROOT_RAW"
   fi
 }
 
@@ -57,11 +57,11 @@ run_gauge() {
 }
 
 commit_file() {
-  local rel="$1"
-  mkdir -p "$REPO/$(dirname "$rel")"
-  echo "change-$$-$RANDOM" >> "$REPO/$rel"
+  local relative_path="$1"
+  mkdir -p "$REPO/$(dirname "$relative_path")"
+  echo "change-$$-$RANDOM" >> "$REPO/$relative_path"
   git -C "$REPO" add -A
-  git -C "$REPO" commit -q -m "change $rel"
+  git -C "$REPO" commit -q -m "change $relative_path"
 }
 
 tag_now() {
@@ -77,14 +77,14 @@ tag_now() {
   run_gauge
   [ "$status" -eq 0 ]
   first="$(jq -S '{depth,lenses}' "$GAUGE_JSON")"
-  depth1="$(jq -r '.depth' "$GAUGE_JSON")"
+  first_depth="$(jq -r '.depth' "$GAUGE_JSON")"
 
   run_gauge
   [ "$status" -eq 0 ]
   second="$(jq -S '{depth,lenses}' "$GAUGE_JSON")"
 
   [ "$first" = "$second" ]
-  if [ "$depth1" = "skip" ]; then return 1; fi
+  if [ "$first_depth" = "skip" ]; then return 1; fi
 }
 
 # ---------- AC-2 (UAT-002 skip) ----------

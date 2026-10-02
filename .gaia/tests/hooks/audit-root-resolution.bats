@@ -713,7 +713,7 @@ run_audit_root_block() {
     return 1
   fi
 
-  start=$(grep -n '^_root_phys="\$(cd "\$ROOT"' "$SCRIPT_WRITE_CLEARANCE" | head -1 | cut -d: -f1)
+  start=$(grep -n '^_root_physical_path="\$(cd "\$ROOT"' "$SCRIPT_WRITE_CLEARANCE" | head -1 | cut -d: -f1)
   if [ -z "$start" ]; then
     echo "could not locate the toplevel-equals-ROOT validation" >&2
     restore_file "$SCRIPT_WRITE_CLEARANCE" "$orig_sum"

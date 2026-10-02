@@ -59,7 +59,7 @@ code-audit-maintainer-shell"
   # purpose: a wrapped command cannot be asserted with a fixed-string grep. The
   # behavioural tests below are what prove it runs over the right list; this
   # pin is what makes a change to the status call itself visible.
-  CHECK_LINE='if ! printf '"'"'%s\0'"'"' "${changed[@]}" | xargs -0 git -C "$root" status --porcelain -z -- > "$ars_tmp/dirty"; then'
+  CHECK_LINE='if ! printf '"'"'%s\0'"'"' "${changed[@]}" | xargs -0 git -C "$root" status --porcelain -z -- > "$ars_temporary_directory/dirty"; then'
 
   # The print of the result to stderr, beside the DIRTY= lines on stdout.
   PRINT_LINE='printf '"'"'%s\n'"'"' "${dirty[@]}" >&2'
@@ -100,7 +100,7 @@ member_path() {
 # fences, one per line. Fence-scoped so a prose mention of the script cannot
 # stand in for the command the member actually runs.
 resolver_invocation() {
-  awk '/^```bash$/ { f = 1; next } /^```$/ { f = 0 } f && /^<root>\/\.gaia\/scripts\/audit-resolve-scope\.sh --member / { print }' "$1"
+  awk '/^```bash$/ { in_bash_fence = 1; next } /^```$/ { in_bash_fence = 0 } in_bash_fence && /^<root>\/\.gaia\/scripts\/audit-resolve-scope\.sh --member / { print }' "$1"
 }
 
 # --- Behavioural fixture -----------------------------------------------------
@@ -110,19 +110,19 @@ resolver_invocation() {
 # other/untouched.md committed on the base. SCRIPT_SRC overrides the resolver
 # copied in, which is how the behavioural non-vacuity control runs a mutant.
 make_repo() {
-  local name="$1" script_src="${2:-$SCRIPT}"
-  local dir="$BATS_TEST_TMPDIR/$name"
-  mkdir -p "$dir/.gaia/scripts" "$dir/.gaia/local/audit" \
-    "$dir/.github/audit" "$dir/.claude/hooks/lib" "$dir/other" "$dir/app"
-  cp "$script_src" "$dir/.gaia/scripts/audit-resolve-scope.sh"
+  local name="$1" script_source_path="${2:-$SCRIPT}"
+  local repository_directory="$BATS_TEST_TMPDIR/$name"
+  mkdir -p "$repository_directory/.gaia/scripts" "$repository_directory/.gaia/local/audit" \
+    "$repository_directory/.github/audit" "$repository_directory/.claude/hooks/lib" "$repository_directory/other" "$repository_directory/app"
+  cp "$script_source_path" "$repository_directory/.gaia/scripts/audit-resolve-scope.sh"
   cp "$REPO_ROOT/.gaia/scripts/audit-scope-digest.sh" \
     "$REPO_ROOT/.gaia/scripts/audit-key-lib.sh" \
     "$REPO_ROOT/.gaia/scripts/audit-member-digest.sh" \
-    "$dir/.gaia/scripts/"
-  chmod +x "$dir/.gaia/scripts/audit-resolve-scope.sh" "$dir/.gaia/scripts/audit-scope-digest.sh"
-  cp "$REPO_ROOT/.github/audit/resolve-audit-base.sh" "$dir/.github/audit/"
-  chmod +x "$dir/.github/audit/resolve-audit-base.sh"
-  cp "$REPO_ROOT/.gaia/audit-ci.yml" "$dir/.gaia/"
+    "$repository_directory/.gaia/scripts/"
+  chmod +x "$repository_directory/.gaia/scripts/audit-resolve-scope.sh" "$repository_directory/.gaia/scripts/audit-scope-digest.sh"
+  cp "$REPO_ROOT/.github/audit/resolve-audit-base.sh" "$repository_directory/.github/audit/"
+  chmod +x "$repository_directory/.github/audit/resolve-audit-base.sh"
+  cp "$REPO_ROOT/.gaia/audit-ci.yml" "$repository_directory/.gaia/"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-scope.sh" \
     "$REPO_ROOT/.claude/hooks/lib/audit-base-provenance.sh" \
     "$REPO_ROOT/.claude/hooks/lib/audit-rules-changed.sh" \
@@ -130,31 +130,31 @@ make_repo() {
     "$REPO_ROOT/.claude/hooks/lib/audit-digest.sh" \
     "$REPO_ROOT/.claude/hooks/lib/audit-machinery.sh" \
     "$REPO_ROOT/.claude/hooks/lib/gaia-version.sh" \
-    "$dir/.claude/hooks/lib/"
-  printf '2.0.0\n' > "$dir/.gaia/VERSION"
-  printf 'base\n' > "$dir/other/untouched.md"
-  git -C "$dir" init -q --initial-branch=main
-  git -C "$dir" config user.email t@example.com
-  git -C "$dir" config user.name T
-  git -C "$dir" config commit.gpgsign false
-  git -C "$dir" add -A
-  git -C "$dir" commit -q -m init
-  git -C "$dir" checkout -q -b feat
-  printf 'change\n' > "$dir/app/a.ts"
-  git -C "$dir" add -A
-  git -C "$dir" commit -q -m "touch app/a.ts"
-  printf '%s' "$(cd "$dir" && pwd -P)"
+    "$repository_directory/.claude/hooks/lib/"
+  printf '2.0.0\n' > "$repository_directory/.gaia/VERSION"
+  printf 'base\n' > "$repository_directory/other/untouched.md"
+  git -C "$repository_directory" init -q --initial-branch=main
+  git -C "$repository_directory" config user.email t@example.com
+  git -C "$repository_directory" config user.name T
+  git -C "$repository_directory" config commit.gpgsign false
+  git -C "$repository_directory" add -A
+  git -C "$repository_directory" commit -q -m init
+  git -C "$repository_directory" checkout -q -b feat
+  printf 'change\n' > "$repository_directory/app/a.ts"
+  git -C "$repository_directory" add -A
+  git -C "$repository_directory" commit -q -m "touch app/a.ts"
+  printf '%s' "$(cd "$repository_directory" && pwd -P)"
 }
 
 # run_member_resolver MEMBER REPO: runs MEMBER's own resolver invocation, as its
 # definition spells it, with <root> substituted by REPO. Output lands in bats'
 # $output / $stderr / $status.
 run_member_resolver() {
-  local member="$1" repo="$2" cmd
-  cmd="$(resolver_invocation "$(member_path "$member")")"
-  [ -n "$cmd" ] || { echo "no resolver invocation in $member" >&2; return 1; }
-  cmd="${cmd//<root>/$repo}"
-  run --separate-stderr bash -c "$cmd"
+  local member="$1" repo="$2" resolver_command
+  resolver_command="$(resolver_invocation "$(member_path "$member")")"
+  [ -n "$resolver_command" ] || { echo "no resolver invocation in $member" >&2; return 1; }
+  resolver_command="${resolver_command//<root>/$repo}"
+  run --separate-stderr bash -c "$resolver_command"
 }
 
 # failing_status_shim DIR: a git that fails only `status`, so every other call
@@ -164,7 +164,7 @@ failing_status_shim() {
   mkdir -p "$shim"
   cat > "$shim/git" <<EOF
 #!/usr/bin/env bash
-for a in "\$@"; do [ "\$a" = status ] && exit 128; done
+for argument in "\$@"; do [ "\$argument" = status ] && exit 128; done
 exec $(command -v git) "\$@"
 EOF
   chmod +x "$shim/git"
@@ -173,31 +173,31 @@ EOF
 # --- Structural pins ----------------------------------------------------------
 
 @test "every member file exists" {
-  for m in $MEMBERS; do
-    [ -f "$(member_path "$m")" ] || return 1
+  for member_name in $MEMBERS; do
+    [ -f "$(member_path "$member_name")" ] || return 1
   done
 }
 
 @test "every member runs the scope resolver, exactly once, under its own member name" {
-  local m cmd n
-  for m in $MEMBERS; do
-    cmd="$(resolver_invocation "$(member_path "$m")")"
-    n="$(printf '%s' "$cmd" | grep -c 'audit-resolve-scope' || true)"
-    [ "$n" -eq 1 ] || { echo "$m: expected one resolver invocation in a bash fence, found $n" >&2; return 1; }
-    grep -qF -- "--member $m --root <root>" <<<"$cmd" || {
-      echo "$m: resolver invocation does not name its own member and root: $cmd" >&2
+  local member_name resolver_command invocation_count
+  for member_name in $MEMBERS; do
+    resolver_command="$(resolver_invocation "$(member_path "$member_name")")"
+    invocation_count="$(printf '%s' "$resolver_command" | grep -c 'audit-resolve-scope' || true)"
+    [ "$invocation_count" -eq 1 ] || { echo "$member_name: expected one resolver invocation in a bash fence, found $invocation_count" >&2; return 1; }
+    grep -qF -- "--member $member_name --root <root>" <<<"$resolver_command" || {
+      echo "$member_name: resolver invocation does not name its own member and root: $resolver_command" >&2
       return 1
     }
   done
 }
 
 @test "the dirty-scope check lives once, in the resolver, and no member carries a private copy" {
-  local m n
-  n="$(grep -cF -- "$CHECK_LINE" "$SCRIPT" || true)"
-  [ "$n" -eq 1 ] || { echo "resolver carries the dirty-scope check $n times" >&2; return 1; }
-  for m in $MEMBERS; do
-    grep -qE 'status --porcelain' "$(member_path "$m")" && {
-      echo "$m derives its own dirty-scope check beside the resolver's" >&2
+  local member_name check_copy_count
+  check_copy_count="$(grep -cF -- "$CHECK_LINE" "$SCRIPT" || true)"
+  [ "$check_copy_count" -eq 1 ] || { echo "resolver carries the dirty-scope check $check_copy_count times" >&2; return 1; }
+  for member_name in $MEMBERS; do
+    grep -qE 'status --porcelain' "$(member_path "$member_name")" && {
+      echo "$member_name derives its own dirty-scope check beside the resolver's" >&2
       return 1
     }
   done
@@ -205,34 +205,34 @@ EOF
 }
 
 @test "every GATING member carries the byte-identical withhold contract" {
-  for m in $GATING; do
-    assert_carries "$(member_path "$m")" "$REFUSAL" || {
-      echo "missing or drifted refusal contract: $m" >&2
+  for member_name in $GATING; do
+    assert_carries "$(member_path "$member_name")" "$REFUSAL" || {
+      echo "missing or drifted refusal contract: $member_name" >&2
       return 1
     }
   done
 }
 
 @test "the resolver runs before the dirty contract that reads its output" {
-  local m f needle invocation_line contract_line
-  for m in $MEMBERS; do
-    f="$(member_path "$m")"
+  local member_name member_file needle invocation_line contract_line
+  for member_name in $MEMBERS; do
+    member_file="$(member_path "$member_name")"
     needle="$REFUSAL"
-    invocation_line="$(grep -nF -- "<root>/.gaia/scripts/audit-resolve-scope.sh --member $m" "$f" | head -1 | cut -d: -f1)"
-    contract_line="$(grep -nF -- "$needle" "$f" | head -1 | cut -d: -f1)"
-    [ -n "$invocation_line" ] || { echo "no resolver invocation found: $m" >&2; return 1; }
-    [ -n "$contract_line" ] || { echo "no dirty contract found: $m" >&2; return 1; }
+    invocation_line="$(grep -nF -- "<root>/.gaia/scripts/audit-resolve-scope.sh --member $member_name" "$member_file" | head -1 | cut -d: -f1)"
+    contract_line="$(grep -nF -- "$needle" "$member_file" | head -1 | cut -d: -f1)"
+    [ -n "$invocation_line" ] || { echo "no resolver invocation found: $member_name" >&2; return 1; }
+    [ -n "$contract_line" ] || { echo "no dirty contract found: $member_name" >&2; return 1; }
     [ "$contract_line" -gt "$invocation_line" ] || {
-      echo "dirty contract precedes the resolver it reads: $m" >&2
+      echo "dirty contract precedes the resolver it reads: $member_name" >&2
       return 1
     }
   done
 }
 
 @test "every GATING member names the refusal in its run order" {
-  for m in $GATING; do
-    assert_carries "$(member_path "$m")" "$METHOD_ANCHOR" || {
-      echo "run order does not name the refusal: $m" >&2
+  for member_name in $GATING; do
+    assert_carries "$(member_path "$member_name")" "$METHOD_ANCHOR" || {
+      echo "run order does not name the refusal: $member_name" >&2
       return 1
     }
   done
@@ -253,27 +253,27 @@ EOF
 }
 
 @test "every GATING member exempts the failure sentinel from the remit filter" {
-  for m in $GATING; do
-    assert_carries "$(member_path "$m")" "$SENTINEL_CARVEOUT" || {
-      echo "fail-closed sentinel is filterable away: $m" >&2
+  for member_name in $GATING; do
+    assert_carries "$(member_path "$member_name")" "$SENTINEL_CARVEOUT" || {
+      echo "fail-closed sentinel is filterable away: $member_name" >&2
       return 1
     }
   done
 }
 
 @test "every GATING member withholds without stranding a refusal artifact" {
-  for m in $GATING; do
-    assert_carries "$(member_path "$m")" "$NO_REFUSAL_ARTIFACT" || {
-      echo "does not forbid the digest-keyed refusal artifact: $m" >&2
+  for member_name in $GATING; do
+    assert_carries "$(member_path "$member_name")" "$NO_REFUSAL_ARTIFACT" || {
+      echo "does not forbid the digest-keyed refusal artifact: $member_name" >&2
       return 1
     }
   done
 }
 
 @test "the refusal briefs: every member owes the sidecar on the dirty path" {
-  for m in $MEMBERS; do
-    assert_carries "$(member_path "$m")" "$SIDECAR_CLAUSE" || {
-      echo "refusal does not oblige the findings sidecar: $m" >&2
+  for member_name in $MEMBERS; do
+    assert_carries "$(member_path "$member_name")" "$SIDECAR_CLAUSE" || {
+      echo "refusal does not oblige the findings sidecar: $member_name" >&2
       return 1
     }
   done
@@ -282,49 +282,49 @@ EOF
 # --- Behavioural: each member's own invocation --------------------------------
 
 @test "every member's resolver reports a dirty in-scope file as a DIRTY line" {
-  local m repo
+  local member_name repo
   repo="$(make_repo dirty-in-scope)"
   printf 'edit\n' >> "$repo/app/a.ts"
-  for m in $MEMBERS; do
-    run_member_resolver "$m" "$repo" || return 1
-    [ "$status" -eq 0 ] || { echo "$m: resolver exited $status: $stderr" >&2; return 1; }
-    grep -qxF 'DIRTY= M app/a.ts' <<<"$output" || { echo "$m: no DIRTY line for a dirty in-scope file" >&2; return 1; }
-    grep -qF 'DIRTY IN REVIEW SCOPE:' <<<"$stderr" || { echo "$m: dirty set never reached stderr" >&2; return 1; }
+  for member_name in $MEMBERS; do
+    run_member_resolver "$member_name" "$repo" || return 1
+    [ "$status" -eq 0 ] || { echo "$member_name: resolver exited $status: $stderr" >&2; return 1; }
+    grep -qxF 'DIRTY= M app/a.ts' <<<"$output" || { echo "$member_name: no DIRTY line for a dirty in-scope file" >&2; return 1; }
+    grep -qF 'DIRTY IN REVIEW SCOPE:' <<<"$stderr" || { echo "$member_name: dirty set never reached stderr" >&2; return 1; }
   done
 }
 
 @test "every member's resolver reports nothing on a clean review list" {
-  local m repo
+  local member_name repo
   repo="$(make_repo clean)"
-  for m in $MEMBERS; do
-    run_member_resolver "$m" "$repo" || return 1
-    [ "$status" -eq 0 ] || { echo "$m: resolver exited $status: $stderr" >&2; return 1; }
-    grep -q '^DIRTY=' <<<"$output" && { echo "$m: DIRTY line on a clean tree" >&2; return 1; }
+  for member_name in $MEMBERS; do
+    run_member_resolver "$member_name" "$repo" || return 1
+    [ "$status" -eq 0 ] || { echo "$member_name: resolver exited $status: $stderr" >&2; return 1; }
+    grep -q '^DIRTY=' <<<"$output" && { echo "$member_name: DIRTY line on a clean tree" >&2; return 1; }
     true
   done
 }
 
 @test "a dirty file outside the review list cannot refuse the pass" {
-  local m repo
+  local member_name repo
   repo="$(make_repo dirty-out-of-scope)"
   printf 'edit\n' >> "$repo/other/untouched.md"
-  for m in $MEMBERS; do
-    run_member_resolver "$m" "$repo" || return 1
-    [ "$status" -eq 0 ] || { echo "$m: resolver exited $status: $stderr" >&2; return 1; }
-    grep -q '^DIRTY=' <<<"$output" && { echo "$m: a sibling's dirt outside the review list reached DIRTY" >&2; return 1; }
+  for member_name in $MEMBERS; do
+    run_member_resolver "$member_name" "$repo" || return 1
+    [ "$status" -eq 0 ] || { echo "$member_name: resolver exited $status: $stderr" >&2; return 1; }
+    grep -q '^DIRTY=' <<<"$output" && { echo "$member_name: a sibling's dirt outside the review list reached DIRTY" >&2; return 1; }
     true
   done
 }
 
 @test "every member's resolver fails closed to the sentinel when status cannot run" {
-  local m repo shim="$BATS_TEST_TMPDIR/shim"
+  local member_name repo shim="$BATS_TEST_TMPDIR/shim"
   repo="$(make_repo status-fails)"
   failing_status_shim "$shim"
-  for m in $MEMBERS; do
-    PATH="$shim:$PATH" run_member_resolver "$m" "$repo" || return 1
-    [ "$status" -eq 0 ] || { echo "$m: resolver exited $status: $stderr" >&2; return 1; }
+  for member_name in $MEMBERS; do
+    PATH="$shim:$PATH" run_member_resolver "$member_name" "$repo" || return 1
+    [ "$status" -eq 0 ] || { echo "$member_name: resolver exited $status: $stderr" >&2; return 1; }
     grep -qxF 'DIRTY=dirty-scope check failed' <<<"$output" || {
-      echo "$m: a status that could not run read as a clean tree" >&2
+      echo "$member_name: a status that could not run read as a clean tree" >&2
       return 1
     }
   done
@@ -349,21 +349,21 @@ assert_carries() {
   grep -qF -- "$2" "$1"
 }
 
-# mutate_copy SRC TAG SED_EXPR NEEDLE: copy SRC, confirm the copy satisfies
+# mutate_copy SOURCE_PATH TAG SED_EXPR NEEDLE: copy SOURCE_PATH, confirm the copy satisfies
 # NEEDLE before the edit (so a red is the mutation talking, not a broken
 # fixture), apply the edit, and print the mutant's path.
 mutate_copy() {
-  local src="$1" tag="$2" expr="$3" needle="$4" tmp="$BATS_TEST_TMPDIR/mutant-$2"
-  cp "$src" "$tmp"
-  assert_carries "$tmp" "$needle" || {
+  local source_path="$1" tag="$2" sed_expression="$3" needle="$4" mutant_path="$BATS_TEST_TMPDIR/mutant-$2"
+  cp "$source_path" "$mutant_path"
+  assert_carries "$mutant_path" "$needle" || {
     echo "fixture broken: pin does not hold before mutation ($tag)" >&2
     return 1
   }
-  sed "$expr" "$tmp" > "$tmp.new" && mv "$tmp.new" "$tmp"
-  printf '%s' "$tmp"
+  sed "$sed_expression" "$mutant_path" > "$mutant_path.new" && mv "$mutant_path.new" "$mutant_path"
+  printf '%s' "$mutant_path"
 }
 
-# assert_pin_breaks SRC TAG SED_EXPR NEEDLE: the whole shape in one line.
+# assert_pin_breaks SOURCE_PATH TAG SED_EXPR NEEDLE: the whole shape in one line.
 assert_pin_breaks() {
   local mutant
   mutant="$(mutate_copy "$1" "$2" "$3" "$4")" || return 1

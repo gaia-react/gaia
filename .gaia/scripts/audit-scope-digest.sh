@@ -93,10 +93,10 @@ _self_directory="$(dirname "${BASH_SOURCE[0]}")"
 # way audit-member-digest.sh and audit-write-clearance.sh resolve it: the
 # BASH_SOURCE dirhop inline, in one assignment, rather than through the
 # `_self_directory` variable below.
-_scope_digest_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.claude/hooks/lib" 2>/dev/null && pwd)" || true
-if [ -n "${_scope_digest_lib_dir:-}" ] && [ -f "${_scope_digest_lib_dir}/audit-digest.sh" ]; then
+_scope_digest_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.claude/hooks/lib" 2>/dev/null && pwd)" || true
+if [ -n "${_scope_digest_library_directory:-}" ] && [ -f "${_scope_digest_library_directory}/audit-digest.sh" ]; then
   # shellcheck source=/dev/null
-  . "${_scope_digest_lib_dir}/audit-digest.sh"
+  . "${_scope_digest_library_directory}/audit-digest.sh"
 fi
 
 # The shared key rule: base sha plus branch, the same partition the findings
@@ -122,7 +122,7 @@ usage: audit-scope-digest.sh --capture [--recapture] --root <path> --member <nam
 EOF
 }
 
-err() {
+emit_error() {
   printf 'audit-scope-digest: %s\n' "$1" >&2
 }
 
@@ -167,7 +167,7 @@ while [ "$#" -gt 0 ]; do
       exit 0
       ;;
     *)
-      err "unrecognized argument: $1"
+      emit_error "unrecognized argument: $1"
       usage
       exit 2
       ;;
@@ -177,50 +177,50 @@ done
 case "$MODE" in
   capture | read | release) ;;
   "")
-    err "exactly one of --capture, --read, or --release is required"
+    emit_error "exactly one of --capture, --read, or --release is required"
     usage
     exit 2
     ;;
 esac
 
 if [ "$RECAPTURE" -eq 1 ] && [ "$MODE" != "capture" ]; then
-  err "--recapture is valid only with --capture"
+  emit_error "--recapture is valid only with --capture"
   usage
   exit 2
 fi
 
 if [ -z "$ROOT" ]; then
-  err "--root is required"
+  emit_error "--root is required"
   usage
   exit 2
 fi
 if [ -z "$MEMBER" ]; then
-  err "--member is required"
+  emit_error "--member is required"
   usage
   exit 2
 fi
 if [ -z "$BASE" ]; then
-  err "--base is required"
+  emit_error "--base is required"
   usage
   exit 2
 fi
 command -v jq >/dev/null 2>&1 || {
-  err "jq is required"
+  emit_error "jq is required"
   exit 1
 }
 
 command -v gaia_audit_key >/dev/null 2>&1 || {
-  err "cannot load the audit key lib (.gaia/scripts/audit-key-lib.sh)"
+  emit_error "cannot load the audit key lib (.gaia/scripts/audit-key-lib.sh)"
   exit 1
 }
 AUDIT_KEY="$(gaia_audit_key "$BASE" "$ROOT" 2>/dev/null || true)"
 if [ -z "$AUDIT_KEY" ]; then
-  err "cannot resolve the audit key for --root '$ROOT' --base '$BASE'"
+  emit_error "cannot resolve the audit key for --root '$ROOT' --base '$BASE'"
   exit 1
 fi
 
-audit_dir="${ROOT}/.gaia/local/audit"
-scope_file="${audit_dir}/${AUDIT_KEY}.${MEMBER}.scope.json"
+audit_directory="${ROOT}/.gaia/local/audit"
+scope_file="${audit_directory}/${AUDIT_KEY}.${MEMBER}.scope.json"
 
 if [ "$MODE" = "read" ]; then
   [ -f "$scope_file" ] || exit 1
@@ -240,7 +240,7 @@ if [ "$MODE" = "release" ]; then
   [ -e "$scope_file" ] || exit 0
   rm -f "$scope_file" 2>/dev/null
   if [ -e "$scope_file" ]; then
-    err "cannot release the capture at '$scope_file'; the next round inherits it and forfeits"
+    emit_error "cannot release the capture at '$scope_file'; the next round inherits it and forfeits"
     exit 1
   fi
   exit 0
@@ -331,8 +331,8 @@ _scope_capture_is_spent() {
   else
     infix=".${MEMBER}"
   fi
-  [ -f "${audit_dir}/${captured}${infix}.ok" ] && return 0
-  [ -f "${audit_dir}/${captured}${infix}.refused" ] && return 0
+  [ -f "${audit_directory}/${captured}${infix}.ok" ] && return 0
+  [ -f "${audit_directory}/${captured}${infix}.refused" ] && return 0
   return 1
 }
 
@@ -349,17 +349,17 @@ if [ "$RECAPTURE" -ne 1 ] && [ -f "$scope_file" ]; then
 fi
 
 command -v audit_member_digest >/dev/null 2>&1 || {
-  err "cannot load the digest engine (.claude/hooks/lib/audit-digest.sh)"
+  emit_error "cannot load the digest engine (.claude/hooks/lib/audit-digest.sh)"
   exit 1
 }
 digest="$(audit_member_digest "$ROOT" "$MEMBER" 2>/dev/null || true)"
 if [ -z "$digest" ]; then
-  err "cannot derive a content digest for member '$MEMBER' at --root '$ROOT'"
+  emit_error "cannot derive a content digest for member '$MEMBER' at --root '$ROOT'"
   exit 1
 fi
 
-mkdir -p "$audit_dir" || {
-  err "cannot create audit directory '$audit_dir'"
+mkdir -p "$audit_directory" || {
+  emit_error "cannot create audit directory '$audit_directory'"
   exit 1
 }
 
@@ -369,9 +369,9 @@ captured_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 # Atomic write: temp file in the SAME directory as the target, then mv. A
 # torn scope file read by a concurrent member is the one shape that would
 # make the writer's comparison attest a wrong digest.
-tmp="$(mktemp "${audit_dir}/.audit-scope-digest.XXXXXX" 2>/dev/null || true)"
-if [ -z "$tmp" ]; then
-  err "cannot create temp file in '$audit_dir'"
+temporary_file="$(mktemp "${audit_directory}/.audit-scope-digest.XXXXXX" 2>/dev/null || true)"
+if [ -z "$temporary_file" ]; then
+  emit_error "cannot create temp file in '$audit_directory'"
   exit 1
 fi
 
@@ -383,15 +383,15 @@ jq -cn \
   --arg captured_at "$captured_at" \
   '{schema: $schema, member: $member, scope_digest: $scope_digest,
     head: $head, captured_at: $captured_at}' \
-  >"$tmp" || {
-  rm -f "$tmp"
-  err "cannot build the scope body"
+  >"$temporary_file" || {
+  rm -f "$temporary_file"
+  emit_error "cannot build the scope body"
   exit 1
 }
 
-mv -f "$tmp" "$scope_file" 2>/dev/null || {
-  rm -f "$tmp"
-  err "cannot publish scope file to '$scope_file'"
+mv -f "$temporary_file" "$scope_file" 2>/dev/null || {
+  rm -f "$temporary_file"
+  emit_error "cannot publish scope file to '$scope_file'"
   exit 1
 }
 

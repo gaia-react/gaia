@@ -26,34 +26,34 @@
 # is not used: it strips leading zeros, and a two-digit SPEC ref fails the ref
 # grammar and never joins the zero-padded ref the SPEC was minted under.
 _gaia_usage_branch_parents() {
-  local b="$1" k="$2" f="$3" cls unit m pad
-  local -a ps=()
-  _gaia_usage_capture "$f" gaia_branch_classify "$b"
+  local branch_name="$1" branch_key="$2" scratch_file="$3" classification unit member parent_reference pad
+  local -a parent_references=()
+  _gaia_usage_capture "$scratch_file" gaia_branch_classify "$branch_name"
   # shellcheck disable=SC2154  # set by _gaia_usage_capture (usage-lib.sh)
-  cls="$_gaia_usage_text"
-  unit="${cls#* }"
+  classification="$_gaia_usage_text"
+  unit="${classification#* }"
   # gaia_branch_members prints only for a branch that classifies as a drain.
-  if [ "${cls%% *}" = drain ]; then
-    gaia_branch_members "$b" >"$f"
-    while IFS= read -r m; do
-      [ -n "$m" ] && ps[${#ps[@]}]="issue:$m"
-    done <"$f"
+  if [ "${classification%% *}" = drain ]; then
+    gaia_branch_members "$branch_name" >"$scratch_file"
+    while IFS= read -r member; do
+      [ -n "$member" ] && parent_references[${#parent_references[@]}]="issue:$member"
+    done <"$scratch_file"
   fi
-  case "$cls" in
-    "plan SPEC-"*) _gaia_usage_pad3 "${unit#SPEC-}"; ps[${#ps[@]}]="spec:SPEC-$pad" ;;
-    "plan plan-"*) _gaia_usage_pad3 "${unit#plan-}"; ps[${#ps[@]}]="plan:PLAN-$pad" ;;
+  case "$classification" in
+    "plan SPEC-"*) _gaia_usage_pad3 "${unit#SPEC-}"; parent_references[${#parent_references[@]}]="spec:SPEC-$pad" ;;
+    "plan plan-"*) _gaia_usage_pad3 "${unit#plan-}"; parent_references[${#parent_references[@]}]="plan:PLAN-$pad" ;;
   esac
-  if [[ "$b" =~ ^spec-([0-9]+)(-|$) ]]; then
+  if [[ "$branch_name" =~ ^spec-([0-9]+)(-|$) ]]; then
     _gaia_usage_pad3 "${BASH_REMATCH[1]}"
-    ps[${#ps[@]}]="spec:SPEC-$pad"
+    parent_references[${#parent_references[@]}]="spec:SPEC-$pad"
   fi
-  if [[ "$b" =~ ^(fix|feat|chore|docs|refactor)/([0-9]+)- ]]; then
-    ps[${#ps[@]}]="issue:${BASH_REMATCH[2]}"
+  if [[ "$branch_name" =~ ^(fix|feat|chore|docs|refactor)/([0-9]+)- ]]; then
+    parent_references[${#parent_references[@]}]="issue:${BASH_REMATCH[2]}"
   fi
-  for m in ${ps[@]+"${ps[@]}"}; do
-    gaia_usage_valid_ref "$m" || continue
-    flat[${#flat[@]}]="$k"
-    flat[${#flat[@]}]="$m"
+  for parent_reference in ${parent_references[@]+"${parent_references[@]}"}; do
+    gaia_usage_valid_reference "$parent_reference" || continue
+    flat[${#flat[@]}]="$branch_key"
+    flat[${#flat[@]}]="$parent_reference"
   done
 }
 
@@ -68,15 +68,15 @@ _gaia_usage_pad3() {
 # parent refs its name implies. A hashed ref cannot be read back and maps to
 # nothing; a derived ref failing the grammar is dropped.
 gaia_usage_derive_map() {
-  local k f
+  local branch_key scratch_file
   local -a flat=()
   _gaia_usage_load gaia_branch_classify branch-name-lib.sh || return 1
-  f="$(mktemp "${TMPDIR:-/tmp}/gaia-usage-derive.XXXXXX")" || return 1
-  for k in "$@"; do
-    case "$k" in branch:%*) continue ;; branch:?*) ;; *) continue ;; esac
-    _gaia_usage_branch_parents "${k#branch:}" "$k" "$f"
+  scratch_file="$(mktemp "${TMPDIR:-/tmp}/gaia-usage-derive.XXXXXX")" || return 1
+  for branch_key in "$@"; do
+    case "$branch_key" in branch:%*) continue ;; branch:?*) ;; *) continue ;; esac
+    _gaia_usage_branch_parents "${branch_key#branch:}" "$branch_key" "$scratch_file"
   done
-  rm -f "$f"
+  rm -f "$scratch_file"
   # The pairs reach jq NUL-separated on stdin, not as --args: argv has a total
   # cap (about 2 MiB on Linux, 1 MiB on macOS) that the branch history grows
   # toward. NUL is the one byte a shell string cannot hold, so no ref can split.
@@ -84,8 +84,8 @@ gaia_usage_derive_map() {
   # NUL: jq 1.6 drops a trailing NUL from raw input, and with it an empty last
   # value. With no pairs nothing is printed, since printf would still print one.
   { [ "${#flat[@]}" -eq 0 ] || printf '\0x%s' "${flat[@]}"; } |
-    jq -Rsc 'split("\u0000")[1:] | map(.[1:]) as $p
-    | reduce range(0; $p | length; 2) as $i ({}; .[$p[$i]] += [$p[$i + 1]])
+    jq -Rsc 'split("\u0000")[1:] | map(.[1:]) as $flat_pairs
+    | reduce range(0; $flat_pairs | length; 2) as $i ({}; .[$flat_pairs[$i]] += [$flat_pairs[$i + 1]])
     | map_values(unique)'
 }
 
@@ -96,55 +96,55 @@ gaia_usage_derive_map() {
 # when they cannot be listed), so a readout prices from the same one pass over
 # the ledger rather than parsing it again.
 gaia_usage_keys_json() {
-  local main="$1" u="$2" l="$3" c="$4" scan def bmap derive line
+  local main_root="$1" usage_file="$2" links_file="$3" cost_file="$4" scan_json default_branch branch_map derive line
   shift 4
-  local -a raws=() bkeys=()
-  [ -f "$u" ] || u=/dev/null
-  [ -f "$l" ] || l=/dev/null
-  [ -f "$c" ] || c=/dev/null
-  scan="$(jq -n --rawfile u "$u" --rawfile l "$l" --rawfile c "$c" "$GAIA_USAGE_JQ_DEFS$GAIA_USAGE_RESOLVE_JQ"'
-    [usage_rows($u)[] | select(.kind == "segment")] as $segs
-    | {raws: ([usage_rows($c)[] | select(.kind == "plan" or .kind == "execute") | .git_branch | strings] | unique),
-       bkeys: ([($segs[] | .key), (usage_rows($l)[] | .child, .parent, .key)]
+  local -a raw_branches=() branch_keys=()
+  [ -f "$usage_file" ] || usage_file=/dev/null
+  [ -f "$links_file" ] || links_file=/dev/null
+  [ -f "$cost_file" ] || cost_file=/dev/null
+  scan_json="$(jq -n --rawfile usage_store "$usage_file" --rawfile links_store "$links_file" --rawfile cost_store "$cost_file" "$GAIA_USAGE_JQ_DEFS$GAIA_USAGE_RESOLVE_JQ"'
+    [usage_rows($usage_store)[] | select(.kind == "segment")] as $segments
+    | {raws: ([usage_rows($cost_store)[] | select(.kind == "plan" or .kind == "execute") | .git_branch | strings] | unique),
+       bkeys: ([($segments[] | .key), (usage_rows($links_store)[] | .child, .parent, .key)]
          | map(strings | select(startswith("branch:"))) | unique),
-       models: (try ([$segs[] | (.by_model // {}) | keys[]] | unique) catch null)}')" ||
+       models: (try ([$segments[] | (.by_model // {}) | keys[]] | unique) catch null)}')" ||
     return 1
-  while IFS= read -r line; do raws[${#raws[@]}]="$line"; done < <(jq -r '.raws[]' <<<"$scan")
-  while IFS= read -r line; do bkeys[${#bkeys[@]}]="$line"; done < <(jq -r '.bkeys[]' <<<"$scan")
-  def="$(gaia_usage_default_branch "$main")"
-  bmap="$(gaia_usage_branch_map ${raws[@]+"${raws[@]}"})" || return 1
-  while IFS= read -r line; do bkeys[${#bkeys[@]}]="$line"; done < <(jq -r '.[].key | strings' <<<"$bmap")
-  derive="$(gaia_usage_derive_map ${bkeys[@]+"${bkeys[@]}"} "$@")" || return 1
+  while IFS= read -r line; do raw_branches[${#raw_branches[@]}]="$line"; done < <(jq -r '.raws[]' <<<"$scan_json")
+  while IFS= read -r line; do branch_keys[${#branch_keys[@]}]="$line"; done < <(jq -r '.bkeys[]' <<<"$scan_json")
+  default_branch="$(gaia_usage_default_branch "$main_root")"
+  branch_map="$(gaia_usage_branch_map ${raw_branches[@]+"${raw_branches[@]}"})" || return 1
+  while IFS= read -r line; do branch_keys[${#branch_keys[@]}]="$line"; done < <(jq -r '.[].key | strings' <<<"$branch_map")
+  derive="$(gaia_usage_derive_map ${branch_keys[@]+"${branch_keys[@]}"} "$@")" || return 1
   # The maps reach jq as a JSON stream on stdin, not --argjson: Linux refuses
   # any one argument over 128 KiB, a size a long branch history passes, and the
   # legacy readout would then run on empty keys and print wrong figures.
-  jq -nc --arg def "$def" 'input as $s | input as $d | input as $b
-    | {derive: $d, bmap: $b, default: $def, models: $s.models}' <<<"$scan
+  jq -nc --arg default_branch "$default_branch" 'input as $scan | input as $derive_map | input as $branch_map
+    | {derive: $derive_map, bmap: $branch_map, default: $default_branch, models: $scan.models}' <<<"$scan_json
 $derive
-$bmap"
+$branch_map"
 }
 
 # gaia_usage_spec_lineage <SPEC.md>: the frontmatter spec_id on the first line,
 # then each lineage: entry (flow or block list) trimmed of spaces and quotes.
 # The same two list forms the SPEC lint accepts; nothing is validated here.
 gaia_usage_spec_lineage() {
-  local fm id inline entries e
-  fm="$(awk 'NR == 1 && $0 != "---" { exit } NR > 1 && $0 == "---" { exit } NR > 1 { print }' "$1")"
-  id="$(printf '%s\n' "$fm" | sed -n 's/^spec_id:[[:space:]]*//p' | head -n 1)"
-  inline="$(printf '%s\n' "$fm" | sed -n 's/^lineage:[[:space:]]*//p' | head -n 1)"
+  local frontmatter id inline entries entry
+  frontmatter="$(awk 'NR == 1 && $0 != "---" { exit } NR > 1 && $0 == "---" { exit } NR > 1 { print }' "$1")"
+  id="$(printf '%s\n' "$frontmatter" | sed -n 's/^spec_id:[[:space:]]*//p' | head -n 1)"
+  inline="$(printf '%s\n' "$frontmatter" | sed -n 's/^lineage:[[:space:]]*//p' | head -n 1)"
   inline="${inline%"${inline##*[![:space:]]}"}"
   if [ -n "$inline" ]; then
     entries="${inline#\[}"
     entries="$(printf '%s' "${entries%\]}" | tr ',' '\n')"
   else
-    entries="$(printf '%s\n' "$fm" | awk '/^lineage:/ { c = 1; next } c && /^[A-Za-z_][A-Za-z0-9_]*:/ { c = 0 }
-      c && /^[[:space:]]*-[[:space:]]/ { sub(/^[[:space:]]*-[[:space:]]+/, ""); print }')"
+    entries="$(printf '%s\n' "$frontmatter" | awk '/^lineage:/ { in_lineage = 1; next } in_lineage && /^[A-Za-z_][A-Za-z0-9_]*:/ { in_lineage = 0 }
+      in_lineage && /^[[:space:]]*-[[:space:]]/ { sub(/^[[:space:]]*-[[:space:]]+/, ""); print }')"
   fi
-  while IFS= read -r e; do
-    e="${e#"${e%%[![:space:]]*}"}"
-    e="${e%"${e##*[![:space:]]}"}"
-    e="${e#[\"\']}" e="${e%[\"\']}"
-    printf '%s\n' "$e"
+  while IFS= read -r entry; do
+    entry="${entry#"${entry%%[![:space:]]*}"}"
+    entry="${entry%"${entry##*[![:space:]]}"}"
+    entry="${entry#[\"\']}" entry="${entry%[\"\']}"
+    printf '%s\n' "$entry"
   done <<EOF_LINEAGE
 $id
 $entries
@@ -167,8 +167,8 @@ def usage_rows($raw):
 def usage_epoch_slow:
   if type != "string" then null
   elif test("\\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\\z") then fromdateiso8601
-  else [capture("^(?<b>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})(?<f>\\.[0-9]+)?(Z|[+]00:?00)$")?
-      | ((.b + "Z") | fromdateiso8601) + (if .f == null then 0 else ("0" + .f | tonumber) end)] | first
+  else [capture("^(?<date_time>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})(?<fraction>\\.[0-9]+)?(Z|[+]00:?00)$")?
+      | ((.date_time + "Z") | fromdateiso8601) + (if .fraction == null then 0 else ("0" + .fraction | tonumber) end)] | first
   end;
 
 def usage_epoch:
@@ -177,79 +177,79 @@ def usage_epoch:
   then ((.[0:19] + "Z") | fromdateiso8601) + (if length > 20 then ("0" + .[19:-1] | tonumber) else 0 end)
   else usage_epoch_slow end;
 
-def usage_row_key($r):
-  (if ($r.spec_id | type) == "string" and $r.spec_id != "" then "spec:" + ($r.spec_id | ascii_upcase)
-   elif ($r.plan_id | type) == "string" and $r.plan_id != "" then "plan:" + ($r.plan_id | ascii_upcase)
-   elif $r.kind == "command" and ($r.run_id | type) == "string" then "command:" + $r.run_id
+def usage_row_key($row):
+  (if ($row.spec_id | type) == "string" and $row.spec_id != "" then "spec:" + ($row.spec_id | ascii_upcase)
+   elif ($row.plan_id | type) == "string" and $row.plan_id != "" then "plan:" + ($row.plan_id | ascii_upcase)
+   elif $row.kind == "command" and ($row.run_id | type) == "string" then "command:" + $row.run_id
    else null end)
-  | if . != null and usage_valid_ref(.) then . else null end;
+  | if . != null and usage_valid_reference(.) then . else null end;
 
-def usage_closes($w):
-  if $w == "gaia-spec" then .kind == "spec"
-  elif $w == "gaia-plan" then .kind == "plan"
-  else .kind == "command" and .command == $w end;
+def usage_closes($workflow):
+  if $workflow == "gaia-spec" then .kind == "spec"
+  elif $workflow == "gaia-plan" then .kind == "plan"
+  else .kind == "command" and .command == $workflow end;
 
 # The rows of an array grouped by session_id, input order kept, so a per-row
 # lookup of the rows of one session is one index rather than a scan of every
 # row (a scan per segment made the readout quadratic in ledger size). A string
-# id keys "s<id>"; any other id shares bucket "o", which usage_of_sid filters
+# id keys "s<id>"; any other id shares bucket "o", which usage_of_session_id filters
 # by ==, so the grouping never changes which rows compare equal.
-def usage_by_sid:
-  reduce .[] as $x ({}; (if ($x.session_id | type) == "string" then "s" + $x.session_id else "o" end) as $k
-    | .[$k] += [$x]);
-def usage_of_sid($idx; $sid):
-  if ($sid | type) == "string" then $idx["s" + $sid] // []
-  else [($idx.o // [])[] | select(.session_id == $sid)] end;
+def usage_by_session_id:
+  reduce .[] as $row ({}; (if ($row.session_id | type) == "string" then "s" + $row.session_id else "o" end) as $bucket_key
+    | .[$bucket_key] += [$row]);
+def usage_of_session_id($buckets; $session_id):
+  if ($session_id | type) == "string" then $buckets["s" + $session_id] // []
+  else [($buckets.o // [])[] | select(.session_id == $session_id)] end;
 
 # Starts are taken in time order and each claims the earliest unclaimed
 # matching row, so two runs of one workflow in a session never share a row.
 def usage_intervals($bindings; $costrows):
   ($costrows | to_entries | map(.value + {_i: .key, _t: (.value.ts | usage_epoch)}) | map(select(._t != null))
-    | usage_by_sid) as $rows
+    | usage_by_session_id) as $rows
   | [$bindings[] | select(.kind == "binding" and .type == "start") | . + {_t: (.ts | usage_epoch)} | select(._t != null)]
   | sort_by(._t)
-  | reduce .[] as $b ({claimed: {}, out: []};
-      . as $st
-      | ([usage_of_sid($rows; $b.session_id)[] | select(._t >= $b._t
-            and ($st.claimed[._i | tostring] | not) and usage_closes($b.workflow))] | sort_by(._t, ._i) | first) as $r
-      | if $r == null then .
-        else .claimed[$r._i | tostring] = true
-          | usage_row_key($r) as $k
-          | if $k == null then . else .out += [{session_id: $b.session_id, t0: $b._t, t1: $r._t, key: $k}] end
+  | reduce .[] as $binding ({claimed: {}, out: []};
+      . as $state
+      | ([usage_of_session_id($rows; $binding.session_id)[] | select(._t >= $binding._t
+            and ($state.claimed[._i | tostring] | not) and usage_closes($binding.workflow))] | sort_by(._t, ._i) | first) as $cost_row
+      | if $cost_row == null then .
+        else .claimed[$cost_row._i | tostring] = true
+          | usage_row_key($cost_row) as $interval_key
+          | if $interval_key == null then . else .out += [{session_id: $binding.session_id, t0: $binding._t, t1: $cost_row._t, key: $interval_key}] end
         end)
   | .out;
 
 # usage_resolve with the epoch of each segment kept as `_t`, for callers that
 # order or window by it.
 def usage_resolve_t($segments; $bindings; $intervals):
-  ([$bindings[] | select(.kind == "binding" and (.type == "research" or .type == "declare") and usage_valid_ref(.ref))
+  ([$bindings[] | select(.kind == "binding" and (.type == "research" or .type == "declare") and usage_valid_reference(.ref))
     | . + {_t: (.ts | usage_epoch), _d: (if .type == "declare" then 1 else 0 end)} | select(._t != null)]
-    | sort_by(._t, ._d) | usage_by_sid) as $rbi
-  | ($intervals | usage_by_sid) as $ivi
-  | def within($s): select($s._t != null and .t0 <= $s._t and $s._t <= .t1);
-    def session_key($s):
-      ([usage_of_sid($ivi; $s.session_id)[] | within($s)] | sort_by(.t0) | last) as $iv
-      | if $iv != null then $iv.key
-        else usage_of_sid($rbi; $s.session_id) as $mine
-          | if ($mine | length) == 0 then "session:" + ($s.session_id // "")
-            else ([$mine[] | select($s._t != null and ._t <= $s._t)] | last) as $b
-              | if $b != null then $b.ref else ($mine | map(select(._t == $mine[0]._t)) | last | .ref) end
+    | sort_by(._t, ._d) | usage_by_session_id) as $research_by_session
+  | ($intervals | usage_by_session_id) as $intervals_by_session
+  | def within($segment): select($segment._t != null and .t0 <= $segment._t and $segment._t <= .t1);
+    def session_key($segment):
+      ([usage_of_session_id($intervals_by_session; $segment.session_id)[] | within($segment)] | sort_by(.t0) | last) as $interval
+      | if $interval != null then $interval.key
+        else usage_of_session_id($research_by_session; $segment.session_id) as $mine
+          | if ($mine | length) == 0 then "session:" + ($segment.session_id // "")
+            else ([$mine[] | select($segment._t != null and ._t <= $segment._t)] | last) as $binding
+              | if $binding != null then $binding.ref else ($mine | map(select(._t == $mine[0]._t)) | last | .ref) end
             end
         end;
-    def base_key($s):
-      if ($s.key | type) == "string" and ($s.key | startswith("branch:")) then
-        ([usage_of_sid($ivi; $s.session_id)[] | within($s) | select(.key | startswith("command:"))] | sort_by(.t0) | last) as $iv
-        | if $iv != null then $iv.key else $s.key end
-      elif ($s.key | type) == "string" and ($s.key | startswith("session:")) then session_key($s)
-      else $s.key end;
+    def base_key($segment):
+      if ($segment.key | type) == "string" and ($segment.key | startswith("branch:")) then
+        ([usage_of_session_id($intervals_by_session; $segment.session_id)[] | within($segment) | select(.key | startswith("command:"))] | sort_by(.t0) | last) as $interval
+        | if $interval != null then $interval.key else $segment.key end
+      elif ($segment.key | type) == "string" and ($segment.key | startswith("session:")) then session_key($segment)
+      else $segment.key end;
   ($segments | map(. + {_t: (.first_ts | usage_epoch)})
-    | map(if .inherit == true then . else . + {rkey: base_key(.)} end)) as $p1
-  | ([$p1[] | select(.inherit != true)] | usage_by_sid) as $mains
-  | $p1 | map(if .inherit == true then
-      . as $s
-      | ([usage_of_sid($mains; $s.session_id)[] | select(._t != null and $s._t != null and ._t <= $s._t)]
-          | sort_by(._t) | last) as $m
-      | . + {rkey: (if $m != null then $m.rkey else session_key($s) end)}
+    | map(if .inherit == true then . else . + {rkey: base_key(.)} end)) as $keyed_segments
+  | ([$keyed_segments[] | select(.inherit != true)] | usage_by_session_id) as $mains
+  | $keyed_segments | map(if .inherit == true then
+      . as $segment
+      | ([usage_of_session_id($mains; $segment.session_id)[] | select(._t != null and $segment._t != null and ._t <= $segment._t)]
+          | sort_by(._t) | last) as $main_segment
+      | . + {rkey: (if $main_segment != null then $main_segment.rkey else session_key($segment) end)}
     else . end);
 
 def usage_resolve($segments; $bindings; $intervals):
@@ -259,87 +259,87 @@ def usage_resolve($segments; $bindings; $intervals):
 # row (file order: the ledger is append-only) is an unlink is dead, derived or
 # not; an explicit edge row after that unlink revives it.
 def usage_edges($links; $costrows; $keys):
-  ($keys.bmap // {}) as $bm | ($keys.default // "main") as $def
-  | ([($keys.derive // {}) | to_entries[] | .key as $ch | .value[] | {child: $ch, parent: ., explicit: false}]
+  ($keys.bmap // {}) as $branch_map | ($keys.default // "main") as $default_branch
+  | ([($keys.derive // {}) | to_entries[] | .key as $child_key | .value[] | {child: $child_key, parent: ., explicit: false}]
     + [$costrows[] | select(.kind == "plan" or .kind == "execute")
-        | usage_row_key(.) as $p | select($p != null and ($p | startswith("command:") | not))
-        | ($bm[.git_branch // ""] // {}) as $m | ($m.norm // "") as $n
-        | select($n != "" and $n != "HEAD" and $n != $def and $m.key != null)
-        | {child: $m.key, parent: $p, explicit: false}]
+        | usage_row_key(.) as $parent_key | select($parent_key != null and ($parent_key | startswith("command:") | not))
+        | ($branch_map[.git_branch // ""] // {}) as $branch_entry | ($branch_entry.norm // "") as $normalized_branch
+        | select($normalized_branch != "" and $normalized_branch != "HEAD" and $normalized_branch != $default_branch and $branch_entry.key != null)
+        | {child: $branch_entry.key, parent: $parent_key, explicit: false}]
     + [$costrows[] | select(.kind == "command" and (.github | type) == "object" and .github.type == "pr" and (.run_id | type) == "string")
         | {child: ("pr:" + (.github.number | tostring)), parent: ("command:" + .run_id), explicit: false}]
-    | map(select(usage_valid_ref(.child) and usage_valid_ref(.parent) and .child != .parent))) as $derived
-  | [$links[] | select((.kind == "edge" or .kind == "unlink") and usage_valid_ref(.child) and usage_valid_ref(.parent))] as $ex
-  | ($ex | reduce .[] as $r ({}; .[$r.child + " " + $r.parent] = $r.kind)) as $last
-  | ([$ex[] | select($last[.child + " " + .parent] == "edge") | {child, parent, explicit: true}]
+    | map(select(usage_valid_reference(.child) and usage_valid_reference(.parent) and .child != .parent))) as $derived
+  | [$links[] | select((.kind == "edge" or .kind == "unlink") and usage_valid_reference(.child) and usage_valid_reference(.parent))] as $explicit_rows
+  | ($explicit_rows | reduce .[] as $row ({}; .[$row.child + " " + $row.parent] = $row.kind)) as $last
+  | ([$explicit_rows[] | select($last[.child + " " + .parent] == "edge") | {child, parent, explicit: true}]
     + [$derived[] | select($last[.child + " " + .parent] == null)])
   | unique_by([.child, .parent]);
 
 # Breadth-first from $start; the queue is the suffix of `seen` from `i`, and
 # adjacency is indexed once, so a walk is linear in the edges it crosses.
 def usage_walk($edges; $start; $up):
-  (reduce $edges[] as $e ({}; if $up then .[$e.child] += [$e.parent] else .[$e.parent] += [$e.child] end)) as $adj
+  (reduce $edges[] as $edge ({}; if $up then .[$edge.child] += [$edge.parent] else .[$edge.parent] += [$edge.child] end)) as $adjacency
   | {seen: [$start], set: {($start | tojson): true}, i: 0, ends: []}
   | until(.i >= (.seen | length);
-      .seen[.i] as $n | .i += 1
-      | (if ($n | type) == "string" then $adj[$n] // [] else [] end) as $next
-      | (if ($next | length) == 0 then .ends += [$n] else . end)
-      | reduce $next[] as $x (.; ($x | tojson) as $j | if .set[$j] then . else .seen += [$x] | .set[$j] = true end));
+      .seen[.i] as $node | .i += 1
+      | (if ($node | type) == "string" then $adjacency[$node] // [] else [] end) as $neighbors
+      | (if ($neighbors | length) == 0 then .ends += [$node] else . end)
+      | reduce $neighbors[] as $neighbor (.; ($neighbor | tojson) as $neighbor_key | if .set[$neighbor_key] then . else .seen += [$neighbor] | .set[$neighbor_key] = true end));
 
-def usage_roots($edges; $ref): usage_walk($edges; $ref; true) | if (.ends | length) == 0 then [$ref] else .ends | unique end;
+def usage_roots($edges; $reference): usage_walk($edges; $reference; true) | if (.ends | length) == 0 then [$reference] else .ends | unique end;
 def usage_closure($edges; $root): usage_walk($edges; $root; false) | .seen;
 
 # The chain from $from up to $to following child-to-parent edges, or null.
 def usage_path($edges; $from; $to):
   {q: [[$from]], seen: [$from], found: null}
   | until((.q | length) == 0 or .found != null;
-      .q[0] as $p | .q |= .[1:] | ($p | last) as $n
-      | if $n == $to then .found = $p
-        else reduce ([$edges[] | select(.child == $n) | .parent][]) as $x (.;
-          if any(.seen[]; . == $x) then . else .seen += [$x] | .q += [$p + [$x]] end) end)
+      .q[0] as $walk_path | .q |= .[1:] | ($walk_path | last) as $node
+      | if $node == $to then .found = $walk_path
+        else reduce ([$edges[] | select(.child == $node) | .parent][]) as $parent_node (.;
+          if any(.seen[]; . == $parent_node) then . else .seen += [$parent_node] | .q += [$walk_path + [$parent_node]] end) end)
   | .found;
 
 def usage_window($links; $key; $pr):
-  [$links[] | select(.kind == "merge") | . + {_t: (.merged_at | usage_epoch)} | select(._t != null)] as $m
-  | (if $pr == null then null else ([$m[] | select(.pr == $pr)] | last) end) as $mine
+  [$links[] | select(.kind == "merge") | . + {_t: (.merged_at | usage_epoch)} | select(._t != null)] as $merges
+  | (if $pr == null then null else ([$merges[] | select(.pr == $pr)] | last) end) as $mine
   | (if $mine == null then null else $mine._t end) as $to
-  | ([$m[] | select(.key == $key and ($to == null or ._t < $to))] | max_by(._t)) as $prev
-  | {from: (if $prev == null then null else $prev._t end), to: $to,
-     from_iso: (if $prev == null then null else $prev.merged_at end),
+  | ([$merges[] | select(.key == $key and ($to == null or ._t < $to))] | max_by(._t)) as $previous
+  | {from: (if $previous == null then null else $previous._t end), to: $to,
+     from_iso: (if $previous == null then null else $previous.merged_at end),
      to_iso: (if $mine == null then null else $mine.merged_at end)};
 
 # The branch parent of the latest live pr:<N> edge row, or null.
 def usage_pr_branch($links; $edges; $pr):
-  ("pr:" + ($pr | tostring)) as $c
-  | [$links[] | select(.kind == "edge" and .child == $c and (.parent | type) == "string" and (.parent | startswith("branch:")))
-      | .parent as $p | select(any($edges[]; .child == $c and .parent == $p)) | $p] | last;
+  ("pr:" + ($pr | tostring)) as $child
+  | [$links[] | select(.kind == "edge" and .child == $child and (.parent | type) == "string" and (.parent | startswith("branch:")))
+      | .parent as $parent | select(any($edges[]; .child == $child and .parent == $parent)) | $parent] | last;
 
 '
 
-# Needs the globals $u, $l, $c (raw store text), $keys, and $rates (null when
+# Needs the globals $usage_store, $links_store, $cost_store (raw store text), $keys, and $rates (null when
 # no rate table loaded), plus GAIA_PRICING_JQ_DEFS ahead of it.
 # shellcheck disable=SC2034,SC2016  # consumed by sourcing scripts; jq source, no shell expansion
 GAIA_USAGE_MODEL_JQ='
-def usage_tok:
-  [(.by_model // {}) | to_entries[] | .value | select(type == "object")] as $v
-  | {fresh: ([$v[] | .fresh_input // 0] | add // 0),
-     cw: ([$v[] | (.cache_write_5m // 0) + (.cache_write_1h // 0)] | add // 0),
-     cr: ([$v[] | .cache_read // 0] | add // 0),
-     out: ([$v[] | .output // 0] | add // 0)}
+def usage_tokens:
+  [(.by_model // {}) | to_entries[] | .value | select(type == "object")] as $buckets
+  | {fresh: ([$buckets[] | .fresh_input // 0] | add // 0),
+     cw: ([$buckets[] | (.cache_write_5m // 0) + (.cache_write_1h // 0)] | add // 0),
+     cr: ([$buckets[] | .cache_read // 0] | add // 0),
+     out: ([$buckets[] | .output // 0] | add // 0)}
   | .total = .fresh + .cw + .cr + .out;
 
-def usage_sum($ss):
-  {fresh: ([$ss[].tok.fresh] | add // 0), cw: ([$ss[].tok.cw] | add // 0),
-   cr: ([$ss[].tok.cr] | add // 0), out: ([$ss[].tok.out] | add // 0),
-   total: ([$ss[].tok.total] | add // 0),
-   usd: (if $rates == null then null else ([$ss[].usd] | add // 0) end),
-   unpriced: ([$ss[].unpriced[]] | unique),
-   sessions: ([$ss[].session_id] | unique | length),
-   span_from: ([$ss[].first_ts | strings] | min | if . == null then null else .[0:10] end),
-   span_to: ([$ss[] | (.last_ts // .first_ts) | strings] | max | if . == null then null else .[0:10] end)};
+def usage_sum($segments):
+  {fresh: ([$segments[].tok.fresh] | add // 0), cw: ([$segments[].tok.cw] | add // 0),
+   cr: ([$segments[].tok.cr] | add // 0), out: ([$segments[].tok.out] | add // 0),
+   total: ([$segments[].tok.total] | add // 0),
+   usd: (if $rates == null then null else ([$segments[].usd] | add // 0) end),
+   unpriced: ([$segments[].unpriced[]] | unique),
+   sessions: ([$segments[].session_id] | unique | length),
+   span_from: ([$segments[].first_ts | strings] | min | if . == null then null else .[0:10] end),
+   span_to: ([$segments[] | (.last_ts // .first_ts) | strings] | max | if . == null then null else .[0:10] end)};
 
 def usage_priced:
-  . + {tok: usage_tok}
+  . + {tok: usage_tokens}
   + (if $rates == null then {usd: null, unpriced: []}
      else priced_row({ts: .first_ts, by_model: (.by_model // {})}) | {usd: .dollars, unpriced} end);
 
@@ -350,18 +350,18 @@ def usage_priced:
 # def that names the global $keys can never be handed another object.
 # usage_model_base_of leaves the segments unpriced so a view that sums a few of
 # them prices only those; usage_model_of prices every one.
-def usage_model_base_of($urows; $links; $cost; $keys):
-  [$urows[] | select(.kind == "binding")] as $bindings
-  | usage_resolve_t([$urows[] | select(.kind == "segment")]; $bindings; usage_intervals($bindings; $cost)) as $segs
-  | ([$segs[] | {t: ._t, iso: .first_ts} | select(.t != null)] | min_by(.t)) as $cov
-  | {segs: $segs, links: $links, edges: usage_edges($links; $cost; $keys),
-     coverage: (if $cov == null then null else $cov.iso[0:10] end),
-     coverage_t: (if $cov == null then null else $cov.t end)};
+def usage_model_base_of($usage_records; $links; $cost; $keys):
+  [$usage_records[] | select(.kind == "binding")] as $bindings
+  | usage_resolve_t([$usage_records[] | select(.kind == "segment")]; $bindings; usage_intervals($bindings; $cost)) as $segments
+  | ([$segments[] | {epoch: ._t, iso: .first_ts} | select(.epoch != null)] | min_by(.epoch)) as $coverage_start
+  | {segs: $segments, links: $links, edges: usage_edges($links; $cost; $keys),
+     coverage: (if $coverage_start == null then null else $coverage_start.iso[0:10] end),
+     coverage_t: (if $coverage_start == null then null else $coverage_start.epoch end)};
 
-def usage_model_of($urows; $links; $cost; $keys):
-  usage_model_base_of($urows; $links; $cost; $keys) | .segs |= map(usage_priced);
+def usage_model_of($usage_records; $links; $cost; $keys):
+  usage_model_base_of($usage_records; $links; $cost; $keys) | .segs |= map(usage_priced);
 
-def usage_model_base: usage_model_base_of(usage_rows($u); usage_rows($l); usage_rows($c); $keys);
+def usage_model_base: usage_model_base_of(usage_rows($usage_store); usage_rows($links_store); usage_rows($cost_store); $keys);
 
-def usage_model: usage_model_of(usage_rows($u); usage_rows($l); usage_rows($c); $keys);
+def usage_model: usage_model_of(usage_rows($usage_store); usage_rows($links_store); usage_rows($cost_store); $keys);
 '

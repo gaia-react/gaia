@@ -17,66 +17,66 @@ bats_require_minimum_version 1.5.0
 setup() {
   SCRIPTS="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   FLUSH="$SCRIPTS/usage-flush.sh"
-  FIXDIR="$BATS_TEST_DIRNAME/fixtures/usage/flush"
-  TMP="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
-  export GAIA_RATES_FEED_DISABLE=1 GAIA_RATES_STATE_DIR="$TMP/rates-state"
+  FIXTURES_DIRECTORY="$BATS_TEST_DIRNAME/fixtures/usage/flush"
+  TEMPORARY_DIRECTORY="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
+  export GAIA_RATES_FEED_DISABLE=1 GAIA_RATES_STATE_DIRECTORY="$TEMPORARY_DIRECTORY/rates-state"
   unset GITHUB_ACTIONS GAIA_USAGE_TEST_BARRIER GAIA_USAGE_DEBUG_HOLD GAIA_TALLY_PROJECTS_ROOT
   unset GAIA_LEDGER_LOCK_FORCE_FALLBACK GAIA_LEDGER_LOCK_TIMEOUT_SECONDS
-  use_repo "$TMP/repo"
+  use_repo "$TEMPORARY_DIRECTORY/repo"
 }
 
 # ---------- helpers ----------
 
-mk_repo() {
+make_repo() {
   mkdir -p "$1"
   git -C "$1" init -q -b "${2:-main}"
   git -C "$1" -c user.email=t@example.com -c user.name=T -c commit.gpgsign=false \
     commit -q --allow-empty -m init
 }
 
-# use_repo <dir> [branch]: a fresh repo as ROOT, with PROJ and TEL beside it.
+# use_repo <dir> [branch]: a fresh repo as ROOT, with PROJECTS_DIRECTORY and TEL beside it.
 use_repo() {
-  mk_repo "$1" "${2:-main}"
+  make_repo "$1" "${2:-main}"
   ROOT="$1"
-  PROJ="${1%/*}/projects-${1##*/}"
+  PROJECTS_DIRECTORY="${1%/*}/projects-${1##*/}"
   TEL="$ROOT/.gaia/local/telemetry"
-  mkdir -p "$PROJ"
+  mkdir -p "$PROJECTS_DIRECTORY"
 }
 
-enc() { printf '%s' "$1" | LC_ALL=C sed 's/[^A-Za-z0-9]/-/g'; }
+encode_project_path() { printf '%s' "$1" | LC_ALL=C sed 's/[^A-Za-z0-9]/-/g'; }
 
 subst() { sed -e "s|@ROOT@|$ROOT|g" -e "s|@SIB@|${SIB:-}|g" "$1"; }
 
-# install <scenario> [live]: the scenario's projects tree into PROJ. Files are
+# install <scenario> [live]: the scenario's projects tree into PROJECTS_DIRECTORY. Files are
 # aged past every quiet window unless `live` is passed.
 install() {
-  local src="$FIXDIR/$1/projects" rel out e
-  e="$(enc "$ROOT")"
-  while IFS= read -r rel; do
-    out="$PROJ/${rel#./}"
-    out="${out//@MAIN@/$e}"
-    mkdir -p "${out%/*}"
-    subst "$src/$rel" >"$out"
-    [ "${2:-}" = live ] || touch -t 202001010000 "$out"
-  done < <(cd "$src" && find . -type f -name '*.jsonl')
+  local source_directory="$FIXTURES_DIRECTORY/$1/projects" relative_path destination_path encoded_root
+  encoded_root="$(encode_project_path "$ROOT")"
+  while IFS= read -r relative_path; do
+    destination_path="$PROJECTS_DIRECTORY/${relative_path#./}"
+    destination_path="${destination_path//@MAIN@/$encoded_root}"
+    mkdir -p "${destination_path%/*}"
+    subst "$source_directory/$relative_path" >"$destination_path"
+    [ "${2:-}" = live ] || touch -t 202001010000 "$destination_path"
+  done < <(cd "$source_directory" && find . -type f -name '*.jsonl')
 }
 
-main_dir() { printf '%s/%s' "$PROJ" "$(enc "$ROOT")"; }
+main_projects_directory() { printf '%s/%s' "$PROJECTS_DIRECTORY" "$(encode_project_path "$ROOT")"; }
 
-flush() { bash "${FLUSHER:-$FLUSH}" --projects-root "$PROJ" --main-root "$ROOT" "$@"; }
+flush() { bash "${FLUSHER:-$FLUSH}" --projects-root "$PROJECTS_DIRECTORY" --main-root "$ROOT" "$@"; }
 
-fsize() { wc -c <"$1" | tr -d ' '; }
+file_size() { wc -c <"$1" | tr -d ' '; }
 
 totals() {
   jq -S -s '[.[] | select(.kind == "segment")]
-    | reduce .[] as $s ({}; reduce ($s.by_model | to_entries[]) as $m (.;
-        reduce ($m.value | to_entries[]) as $b (.; .[$s.key][$m.key][$b.key] += $b.value)))' "$TEL/usage.jsonl"
+    | reduce .[] as $segment ({}; reduce ($segment.by_model | to_entries[]) as $model (.;
+        reduce ($model.value | to_entries[]) as $bucket (.; .[$segment.key][$model.key][$bucket.key] += $bucket.value)))' "$TEL/usage.jsonl"
 }
 
 # assert_golden <scenario> [jq filter over the golden file]
 assert_golden() {
   local want got
-  want="$(jq -S "${2:-.}" "$FIXDIR/$1/golden.json")"
+  want="$(jq -S "${2:-.}" "$FIXTURES_DIRECTORY/$1/golden.json")"
   got="$(totals)"
   [ "$got" = "$want" ] || { printf 'want:\n%s\ngot:\n%s\n' "$want" "$got" >&2; return 1; }
 }
@@ -84,18 +84,18 @@ assert_golden() {
 # scratch_flusher <sed-expr> <file>: a copy of the flusher and its libraries
 # with one mutation applied to <file>; fails when the sed changed nothing.
 scratch_flusher() {
-  local d="$TMP/scratch"
-  mkdir -p "$d/.gaia/scripts" "$d/.specify/extensions/gaia/lib"
+  local scratch_directory="$TEMPORARY_DIRECTORY/scratch"
+  mkdir -p "$scratch_directory/.gaia/scripts" "$scratch_directory/.specify/extensions/gaia/lib"
   cp "$SCRIPTS"/usage-flush.sh "$SCRIPTS"/usage-parse-lib.sh "$SCRIPTS"/usage-lib.sh "$SCRIPTS"/main-root-lib.sh \
-    "$SCRIPTS"/branch-name-lib.sh "$SCRIPTS"/ledger-path-lib.sh "$d/.gaia/scripts/"
-  cp "$SCRIPTS/../../.specify/extensions/gaia/lib/with-ledger-lock.sh" "$d/.specify/extensions/gaia/lib/"
-  sed "$1" "$SCRIPTS/$2" >"$d/.gaia/scripts/$2.m"
-  if cmp -s "$SCRIPTS/$2" "$d/.gaia/scripts/$2.m"; then
+    "$SCRIPTS"/branch-name-lib.sh "$SCRIPTS"/ledger-path-lib.sh "$scratch_directory/.gaia/scripts/"
+  cp "$SCRIPTS/../../.specify/extensions/gaia/lib/with-ledger-lock.sh" "$scratch_directory/.specify/extensions/gaia/lib/"
+  sed "$1" "$SCRIPTS/$2" >"$scratch_directory/.gaia/scripts/$2.m"
+  if cmp -s "$SCRIPTS/$2" "$scratch_directory/.gaia/scripts/$2.m"; then
     echo "mutation did not apply to $2" >&2
     return 1
   fi
-  mv "$d/.gaia/scripts/$2.m" "$d/.gaia/scripts/$2"
-  FLUSHER="$d/.gaia/scripts/usage-flush.sh"
+  mv "$scratch_directory/.gaia/scripts/$2.m" "$scratch_directory/.gaia/scripts/$2"
+  FLUSHER="$scratch_directory/.gaia/scripts/usage-flush.sh"
 }
 
 wait_for() {
@@ -112,10 +112,10 @@ wait_for() {
   [ "$status" -eq 0 ]
   [ -z "$output" ]
   assert_golden branch
-  local f off
-  f="$(main_dir)/s-branch.jsonl"
-  off="$(jq --arg p "$f" '.files[$p].offset' "$TEL/usage-cursors.json")"
-  [ "$off" -eq "$(fsize "$f")" ]
+  local transcript_file offset
+  transcript_file="$(main_projects_directory)/s-branch.jsonl"
+  offset="$(jq --arg transcript_path "$transcript_file" '.files[$transcript_path].offset' "$TEL/usage-cursors.json")"
+  [ "$offset" -eq "$(file_size "$transcript_file")" ]
 }
 
 # ---------- UAT-002 ----------
@@ -136,7 +136,7 @@ wait_for() {
   install research
   run flush --session s-res --finished-main
   [ "$status" -eq 0 ]
-  subst "$FIXDIR/research/append.jsonl" >>"$(main_dir)/s-res.jsonl"
+  subst "$FIXTURES_DIRECTORY/research/append.jsonl" >>"$(main_projects_directory)/s-res.jsonl"
   run flush --session s-res --finished-main
   [ "$status" -eq 0 ]
   assert_golden research
@@ -151,17 +151,17 @@ wait_for() {
 
 # holdback_run: the two-flush sequence on a live file, then quiescence.
 holdback_run() {
-  local f
+  local transcript_file
   install holdback live
-  f="$(main_dir)/s-hold.jsonl"
+  transcript_file="$(main_projects_directory)/s-hold.jsonl"
   flush --sweep 2>/dev/null
   HB_FIRST_SEGMENTS="$(jq -s '[.[] | select(.kind == "segment")] | length' "$TEL/usage.jsonl")"
-  HB_FIRST_OFFSET="$(jq --arg p "$f" '.files[$p].offset' "$TEL/usage-cursors.json")"
-  HB_LINE1="$(head -n 1 "$f" | wc -c | tr -d ' ')"
-  subst "$FIXDIR/holdback/append.jsonl" >>"$f"
+  HB_FIRST_OFFSET="$(jq --arg transcript_path "$transcript_file" '.files[$transcript_path].offset' "$TEL/usage-cursors.json")"
+  HB_LINE1="$(head -n 1 "$transcript_file" | wc -c | tr -d ' ')"
+  subst "$FIXTURES_DIRECTORY/holdback/append.jsonl" >>"$transcript_file"
   flush --sweep 2>/dev/null
   HB_SECOND_OUTPUT="$(jq -s '[.[] | select(.kind == "segment") | .by_model[].output] | add' "$TEL/usage.jsonl")"
-  touch -t 202001010000 "$f"
+  touch -t 202001010000 "$transcript_file"
   flush --sweep 2>/dev/null
 }
 
@@ -174,7 +174,7 @@ holdback_run() {
 }
 
 @test "UAT-014 guard: with the holdback disabled in a scratch copy the total no longer equals golden" {
-  scratch_flusher 's/| (if $finished then null else $a end) as $hold/| null as $hold/' usage-parse-lib.sh
+  scratch_flusher 's/| (if $finished then null else $trailing_line end) as $hold/| null as $hold/' usage-parse-lib.sh
   holdback_run
   run assert_golden holdback
   [ "$status" -ne 0 ]
@@ -187,29 +187,29 @@ holdback_run() {
   install reloc
   run flush --session s-rel --finished-main
   [ "$status" -eq 0 ]
-  local wt
-  wt="$(main_dir)--claude-worktrees-rel"
-  mkdir -p "$wt"
-  { cat "$FIXDIR/reloc/header.jsonl"; cat "$(main_dir)/s-rel.jsonl"; subst "$FIXDIR/reloc/new.jsonl"; } >"$wt/s-rel.jsonl"
+  local worktree_directory
+  worktree_directory="$(main_projects_directory)--claude-worktrees-rel"
+  mkdir -p "$worktree_directory"
+  { cat "$FIXTURES_DIRECTORY/reloc/header.jsonl"; cat "$(main_projects_directory)/s-rel.jsonl"; subst "$FIXTURES_DIRECTORY/reloc/new.jsonl"; } >"$worktree_directory/s-rel.jsonl"
   run flush --session s-rel --finished-main
   [ "$status" -eq 0 ]
   assert_golden reloc '{"branch:fix/rel": .["branch:fix/rel"]}'
-  jq -e --arg p "$wt/s-rel.jsonl" '.files[$p].offset > 0' "$TEL/usage-cursors.json"
+  jq -e --arg transcript_path "$worktree_directory/s-rel.jsonl" '.files[$transcript_path].offset > 0' "$TEL/usage-cursors.json"
 }
 
 @test "truncation: a file rewritten shorter than its cursor is reread from 0 and adds only its new message" {
   install reloc
-  local f off
-  f="$(main_dir)/s-trunc.jsonl"
+  local transcript_file offset
+  transcript_file="$(main_projects_directory)/s-trunc.jsonl"
   run flush --session s-trunc --finished-main
   [ "$status" -eq 0 ]
-  off="$(jq --arg p "$f" '.files[$p].offset' "$TEL/usage-cursors.json")"
-  subst "$FIXDIR/reloc/rewrite.jsonl" >"$f"
-  [ "$(fsize "$f")" -lt "$off" ]
+  offset="$(jq --arg transcript_path "$transcript_file" '.files[$transcript_path].offset' "$TEL/usage-cursors.json")"
+  subst "$FIXTURES_DIRECTORY/reloc/rewrite.jsonl" >"$transcript_file"
+  [ "$(file_size "$transcript_file")" -lt "$offset" ]
   run flush --session s-trunc --finished-main
   [ "$status" -eq 0 ]
   assert_golden reloc '{"branch:fix/trunc": .["branch:fix/trunc"]}'
-  [ "$(jq --arg p "$f" '.files[$p].offset' "$TEL/usage-cursors.json")" -eq "$(fsize "$f")" ]
+  [ "$(jq --arg transcript_path "$transcript_file" '.files[$transcript_path].offset' "$TEL/usage-cursors.json")" -eq "$(file_size "$transcript_file")" ]
 }
 
 # ---------- UAT-012 / PERF-006 ----------
@@ -217,11 +217,11 @@ holdback_run() {
 @test "UAT-012: a cold sweep reads every file from byte 0, leaves cost.jsonl byte-identical, and equals golden" {
   install sweep
   mkdir -p "$TEL"
-  subst "$FIXDIR/sweep/cost.jsonl" >"$TEL/cost.jsonl"
-  cp "$TEL/cost.jsonl" "$TMP/cost.before"
+  subst "$FIXTURES_DIRECTORY/sweep/cost.jsonl" >"$TEL/cost.jsonl"
+  cp "$TEL/cost.jsonl" "$TEMPORARY_DIRECTORY/cost.before"
   run flush --sweep
   [ "$status" -eq 0 ]
-  cmp "$TEL/cost.jsonl" "$TMP/cost.before"
+  cmp "$TEL/cost.jsonl" "$TEMPORARY_DIRECTORY/cost.before"
   assert_golden sweep
   # The cost.jsonl row between s-sw2's two messages is a split point.
   [ "$(jq -s '[.[] | select(.kind == "segment" and .session_id == "s-sw2")] | length' "$TEL/usage.jsonl")" -eq 2 ]
@@ -232,9 +232,9 @@ holdback_run() {
   install sweep
   local pid
   # The flusher itself, not a function subshell, so the signal reaches it.
-  GAIA_USAGE_TEST_BARRIER="$TMP/bar" bash "$FLUSH" --projects-root "$PROJ" --main-root "$ROOT" --sweep 2>/dev/null 3>&- &
+  GAIA_USAGE_TEST_BARRIER="$TEMPORARY_DIRECTORY/bar" bash "$FLUSH" --projects-root "$PROJECTS_DIRECTORY" --main-root "$ROOT" --sweep 2>/dev/null 3>&- &
   pid=$!
-  wait_for "$TMP/bar.parsed"
+  wait_for "$TEMPORARY_DIRECTORY/bar.parsed"
   kill -TERM "$pid"
   wait "$pid" || true
   [ -e "$TEL/usage-sweep.lock.d" ] && return 1
@@ -255,15 +255,15 @@ member_run() {
 }
 
 @test "UAT-020: sibling-repo lines in a shared encoded dir, a -web decoy, and an unrelated dir add zero tokens" {
-  member_run "$TMP/m1"
+  member_run "$TEMPORARY_DIRECTORY/m1"
   assert_golden member
   grep -F -e 'fix/decoy' -e 'fix/web' -e 'fix/other' "$TEL/usage.jsonl" && return 1
   true
 }
 
 @test "UAT-020 guard: with membership bypassed in a scratch copy the sibling's tokens are counted" {
-  scratch_flusher 's/(usage_member(\$x.cwd; \$roots) | not)/false/' usage-parse-lib.sh
-  member_run "$TMP/m2"
+  scratch_flusher 's/(usage_member(\$record.cwd; \$roots) | not)/false/' usage-parse-lib.sh
+  member_run "$TEMPORARY_DIRECTORY/m2"
   run assert_golden member
   [ "$status" -ne 0 ]
   jq -e -s 'any(.[]; .kind == "segment" and .key == "branch:fix/decoy")' "$TEL/usage.jsonl"
@@ -272,7 +272,7 @@ member_run() {
 # ---------- UAT-024 ----------
 
 @test "UAT-024: with origin/HEAD at master, master and HEAD lines key session:<sid>" {
-  use_repo "$TMP/repo-master" master
+  use_repo "$TEMPORARY_DIRECTORY/repo-master" master
   git -C "$ROOT" branch main
   git -C "$ROOT" update-ref refs/remotes/origin/master HEAD
   git -C "$ROOT" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/master
@@ -300,14 +300,14 @@ member_run() {
 
 @test "SEC-005: a shell-bearing gitBranch and a quoted slug reach jq as data; the branch is hash-keyed" {
   install sec
-  run bash -c 'cd "$1" && shift && bash "$@"' _ "$TMP" "$FLUSH" --projects-root "$PROJ" --main-root "$ROOT" \
+  run bash -c 'cd "$1" && shift && bash "$@"' _ "$TEMPORARY_DIRECTORY" "$FLUSH" --projects-root "$PROJECTS_DIRECTORY" --main-root "$ROOT" \
     --session s-sec --finished-main
   [ "$status" -eq 0 ]
   [ -z "$(find "$BATS_TEST_TMPDIR" -name pwn)" ]
   jq -c . "$TEL/usage.jsonl" >/dev/null
   local want
   want="branch:%$(printf '%s' 'x$(touch${IFS}pwn)' | shasum -a 256 | cut -c1-16)"
-  jq -e -s --arg k "$want" '[.[] | select(.kind == "segment") | .key] == [$k]' "$TEL/usage.jsonl"
+  jq -e -s --arg expected_key "$want" '[.[] | select(.kind == "segment") | .key] == [$expected_key]' "$TEL/usage.jsonl"
   [ "$(jq -s '[.[] | select(.kind == "binding")] | length' "$TEL/usage.jsonl")" -eq 0 ]
 }
 
@@ -315,8 +315,8 @@ member_run() {
 
 @test "UAT-013: with jq absent from PATH the flusher exits 0 and creates no telemetry dir" {
   install branch
-  mkdir -p "$TMP/nojq"
-  run env PATH="$TMP/nojq" "$BASH" "$FLUSH" --projects-root "$PROJ" --main-root "$ROOT" --session s-branch --finished-main
+  mkdir -p "$TEMPORARY_DIRECTORY/nojq"
+  run env PATH="$TEMPORARY_DIRECTORY/nojq" "$BASH" "$FLUSH" --projects-root "$PROJECTS_DIRECTORY" --main-root "$ROOT" --session s-branch --finished-main
   [ "$status" -eq 0 ]
   [ -e "$ROOT/.gaia/local/telemetry" ] && return 1
   true
@@ -352,11 +352,11 @@ member_run() {
 cas_run() {
   local pid
   install branch
-  GAIA_USAGE_TEST_BARRIER="$TMP/bar" flush --session s-branch --finished-main 2>/dev/null 3>&- &
+  GAIA_USAGE_TEST_BARRIER="$TEMPORARY_DIRECTORY/bar" flush --session s-branch --finished-main 2>/dev/null 3>&- &
   pid=$!
-  wait_for "$TMP/bar.parsed"
+  wait_for "$TEMPORARY_DIRECTORY/bar.parsed"
   FLUSHER="" flush --session s-branch --finished-main 2>/dev/null
-  : >"$TMP/bar"
+  : >"$TEMPORARY_DIRECTORY/bar"
   wait "$pid"
 }
 
@@ -366,7 +366,7 @@ cas_run() {
 }
 
 @test "UAT-010 guard: with the compare-and-swap removed in a scratch copy the parked flusher double counts" {
-  scratch_flusher '/_uf_cas_conflict "\$sid"/d' usage-flush.sh
+  scratch_flusher '/_uf_cas_conflict "\$session_id"/d' usage-flush.sh
   cas_run
   run assert_golden branch
   [ "$status" -ne 0 ]
@@ -394,14 +394,14 @@ cas_run() {
 @test "sweep singleton: a second sweep exits 0 without writing while the first holds the lock" {
   install sweep
   local pid
-  GAIA_USAGE_TEST_BARRIER="$TMP/bar" flush --sweep 2>/dev/null 3>&- &
+  GAIA_USAGE_TEST_BARRIER="$TEMPORARY_DIRECTORY/bar" flush --sweep 2>/dev/null 3>&- &
   pid=$!
-  wait_for "$TMP/bar.parsed"
+  wait_for "$TEMPORARY_DIRECTORY/bar.parsed"
   [ -d "$TEL/usage-sweep.lock.d" ]
   run flush --sweep
   [ "$status" -eq 0 ]
   [ -e "$TEL/usage.jsonl" ] && return 1
-  : >"$TMP/bar"
+  : >"$TEMPORARY_DIRECTORY/bar"
   wait "$pid"
   assert_golden sweep
 }

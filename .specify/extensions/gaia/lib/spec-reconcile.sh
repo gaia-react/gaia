@@ -48,7 +48,7 @@ git -C "$repo_root" rev-parse --git-dir >/dev/null 2>&1 || exit 0
 # is main's, because the state registry declares specs/ main-only. Best-
 # effort by contract: an unresolvable main takes the same silent-exit-0 shape
 # as the git-tree check above, nothing touched.
-specs_directory="$(gaia_resolve_specs_dir "$repo_root" 2>/dev/null)" || exit 0
+specs_directory="$(gaia_resolve_specs_directory "$repo_root" 2>/dev/null)" || exit 0
 [ -n "$specs_directory" ] || exit 0
 ledger_path="${specs_directory}/ledger.json"
 

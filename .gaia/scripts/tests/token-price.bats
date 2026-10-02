@@ -75,13 +75,13 @@
 
 setup() {
   # Isolate pricing from the developer's real rate table and the network.
-  export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state"
+  export GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
   export GAIA_RATES_FEED_DISABLE=1
-  SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
-  SCRIPT="$SCRIPT_DIR/token-rollup.sh"
-  FIX="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-price" && pwd)"
-  FIX_ROLLUP="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-rollup" && pwd)"
-  RATES="$FIX/rates.json"
+  SCRIPT_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
+  SCRIPT="$SCRIPT_DIRECTORY/token-rollup.sh"
+  FIXTURES="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-price" && pwd)"
+  FIXTURES_ROLLUP="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-rollup" && pwd)"
+  RATES="$FIXTURES/rates.json"
 
   export GIT_AUTHOR_NAME="GAIA Test"
   export GIT_AUTHOR_EMAIL="gaia-test@example.com"
@@ -91,7 +91,7 @@ setup() {
 
 # ---------- 1. UAT-004: per-TTL cache-write pricing ----------
 @test "cache-ttl: per-TTL cache-write and cache-read multipliers all price correctly" {
-  run bash "$SCRIPT" --spec-id SPEC-301 --ledger "$FIX/cache-ttl.jsonl" --rate-table "$RATES"
+  run bash "$SCRIPT" --spec-id SPEC-301 --ledger "$FIXTURES/cache-ttl.jsonl" --rate-table "$RATES"
   [ "$status" -eq 0 ]
   [[ "$output" == *'execute:   $5.00'* ]]
   [[ "$output" == *'Total:     $5.00'* ]]
@@ -99,7 +99,7 @@ setup() {
 
 # ---------- 2. UAT-003: multi-model divergence, never a blended rate ----------
 @test "multi-model: per-model sum, not a blended rate across models" {
-  run bash "$SCRIPT" --spec-id SPEC-302 --ledger "$FIX/multi-model.jsonl" --rate-table "$RATES"
+  run bash "$SCRIPT" --spec-id SPEC-302 --ledger "$FIXTURES/multi-model.jsonl" --rate-table "$RATES"
   [ "$status" -eq 0 ]
   [[ "$output" == *'spec:      $18.00'* ]]
   [[ "$output" == *'Total:     $18.00'* ]]
@@ -109,7 +109,7 @@ setup() {
 
 # ---------- 3. UAT-008 Total + grand_dollars, COV-002 ----------
 @test "multi-action: spec/plan/execute all priced, Total equals the cross-action sum" {
-  run bash "$SCRIPT" --spec-id SPEC-303 --ledger "$FIX/multi-action.jsonl" --rate-table "$RATES"
+  run bash "$SCRIPT" --spec-id SPEC-303 --ledger "$FIXTURES/multi-action.jsonl" --rate-table "$RATES"
   [ "$status" -eq 0 ]
   [[ "$output" == *'spec:      $1.00'* ]]
   [[ "$output" == *'plan:      $2.00'* ]]
@@ -119,7 +119,7 @@ setup() {
 
 # ---------- 4. UAT-007: effective-dated selection + missing-anchor short-circuit ----------
 @test "intro-boundary: intro vs sticker rate selection, null ts is a lower bound not a guess" {
-  run bash "$SCRIPT" --spec-id SPEC-304 --ledger "$FIX/intro-boundary.jsonl" --rate-table "$RATES"
+  run bash "$SCRIPT" --spec-id SPEC-304 --ledger "$FIXTURES/intro-boundary.jsonl" --rate-table "$RATES"
   [ "$status" -eq 0 ]
   [[ "$output" == *'execute:   $5.00'* ]]
   [[ "$output" == *'Total:     $5.00'* ]]
@@ -129,7 +129,7 @@ setup() {
 
 # ---------- 5. UAT-005: unknown claude model + stray non-claude key ----------
 @test "unknown-model: unpriced claude model is named and zeroed; non-claude key is silently ignored" {
-  run bash "$SCRIPT" --spec-id SPEC-305 --ledger "$FIX/unknown-model.jsonl" --rate-table "$RATES"
+  run bash "$SCRIPT" --spec-id SPEC-305 --ledger "$FIXTURES/unknown-model.jsonl" --rate-table "$RATES"
   [ "$status" -eq 0 ]
   [[ "$output" == *'spec:      $0.00'* ]]
   [[ "$output" == *'Total:     $0.00'* ]]
@@ -142,7 +142,7 @@ setup() {
 # and `;`, all outside the _usage_safe allowlist: each prints as `?`.
 @test "unknown-model: unpriced model name outside the allowlist is filtered before printing" {
   jq -c '.by_model |= with_entries(if .key == "claude-ghost-9" then .key = "claude-ghost\u001b[31m;9" else . end)' \
-    "$FIX/unknown-model.jsonl" >"$BATS_TEST_TMPDIR/ledger.jsonl"
+    "$FIXTURES/unknown-model.jsonl" >"$BATS_TEST_TMPDIR/ledger.jsonl"
   run bash "$SCRIPT" --spec-id SPEC-305 --ledger "$BATS_TEST_TMPDIR/ledger.jsonl" --rate-table "$RATES"
   [ "$status" -eq 0 ]
   [[ "$output" == *'(lower bound: unpriced model(s) claude-ghost??31m?9)'* ]]
@@ -151,7 +151,7 @@ setup() {
 
 # ---------- 6. UAT-006: pre-attribution only ----------
 @test "pre-attribution-only: unavailable (records predate attribution), token lines unaffected" {
-  run bash "$SCRIPT" --spec-id SPEC-306 --ledger "$FIX/pre-attribution-only.jsonl" --rate-table "$RATES"
+  run bash "$SCRIPT" --spec-id SPEC-306 --ledger "$FIXTURES/pre-attribution-only.jsonl" --rate-table "$RATES"
   [ "$status" -eq 0 ]
   [[ "$output" == *'Est. cost (USD): unavailable (records predate per-model attribution)'* ]]
   [[ "$output" == *'spec:      1,000   (elapsed 1m0s)'* ]]
@@ -161,7 +161,7 @@ setup() {
 
 # ---------- 7. UAT-010 + UAT-002, COV-003: mixed provenance ----------
 @test "mixed-provenance: attributed portion priced, legacy row's token total is byte-unchanged" {
-  run bash "$SCRIPT" --spec-id SPEC-307 --ledger "$FIX/mixed-provenance.jsonl" --rate-table "$RATES"
+  run bash "$SCRIPT" --spec-id SPEC-307 --ledger "$FIXTURES/mixed-provenance.jsonl" --rate-table "$RATES"
   [ "$status" -eq 0 ]
   # Legacy row's aggregate token total is unchanged by the by_model addition.
   [[ "$output" == *'execute:   1,634,567   (elapsed 20m0s)'* ]]
@@ -177,7 +177,7 @@ setup() {
 
 # ---------- 8. UAT-009 arm 1: rate table unreadable ----------
 @test "rate table unreadable: dollar figure degrades to unavailable, token lines still render, exit 0" {
-  run bash "$SCRIPT" --spec-id SPEC-301 --ledger "$FIX/cache-ttl.jsonl" --rate-table "$FIX/does-not-exist.json"
+  run bash "$SCRIPT" --spec-id SPEC-301 --ledger "$FIXTURES/cache-ttl.jsonl" --rate-table "$FIXTURES/does-not-exist.json"
   [ "$status" -eq 0 ]
   [[ "$output" == *'Est. cost (USD): unavailable (rate table unreadable)'* ]]
   [[ "$output" == *'execute:   2,500,000   (elapsed 5m0s)'* ]]
@@ -185,7 +185,7 @@ setup() {
 
 # ---------- 9. UAT-009 arm 2 + SC8, COV-001: corrupt ledger line alongside priceable rows ----------
 @test "corrupt ledger: priceable rows still price, marked a partial lower bound, token partial marker intact" {
-  run bash "$SCRIPT" --spec-id SPEC-308 --ledger "$FIX/corrupt-with-price.jsonl" --rate-table "$RATES"
+  run bash "$SCRIPT" --spec-id SPEC-308 --ledger "$FIXTURES/corrupt-with-price.jsonl" --rate-table "$RATES"
   [ "$status" -eq 0 ]
   [[ "$output" == *'execute:   200,000   (elapsed 5m0s)'* ]]
   [[ "$output" == *'(partial: some ledger input was unreadable or lacked timing; figures are a lower bound)'* ]]
@@ -196,7 +196,7 @@ setup() {
 
 # ---------- 10. UAT-008, DP-002: byte-unchanged token render, exact prefix ----------
 @test "byte-unchanged (clean fixture): existing token output is an exact prefix of the new output" {
-  run bash "$SCRIPT" --spec-id SPEC-220 --ledger "$FIX_ROLLUP/full-cycle.jsonl" --rate-table "$RATES"
+  run bash "$SCRIPT" --spec-id SPEC-220 --ledger "$FIXTURES_ROLLUP/full-cycle.jsonl" --rate-table "$RATES"
   [ "$status" -eq 0 ]
   expected_prefix=$'Cycle cost (SPEC-220):\n  spec:       37,000   (elapsed 10m0s)\n  plan:       38,300   (elapsed 11m40s)\n  execute:    39,600   (elapsed 13m20s)\n  Total:     114,900   (elapsed 35m0s)\n    Fresh input:   3,300\n    Cache write:   6,300\n    Cache read:   93,000\n    Output:       12,300\n'
   [[ "$output" == "$expected_prefix"* ]]
@@ -204,7 +204,7 @@ setup() {
 }
 
 @test "byte-unchanged (partial fixture): dollar block appends AFTER the trailing token partial marker" {
-  run bash "$SCRIPT" --spec-id SPEC-230 --ledger "$FIX_ROLLUP/corrupt.jsonl" --rate-table "$RATES"
+  run bash "$SCRIPT" --spec-id SPEC-230 --ledger "$FIXTURES_ROLLUP/corrupt.jsonl" --rate-table "$RATES"
   [ "$status" -eq 0 ]
   expected_prefix=$'Cycle cost (SPEC-230):\n  spec:       5,000   (elapsed 1m0s)\n  plan:       6,000   (elapsed 1m30s)\n  Total:     11,000   (elapsed 2m30s)\n    Fresh input:  1,100\n    Cache write:  2,200\n    Cache read:   6,600\n    Output:       1,100\n  (partial: some ledger input was unreadable or lacked timing; figures are a lower bound)\n'
   [[ "$output" == "$expected_prefix"* ]]

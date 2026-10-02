@@ -89,7 +89,7 @@
 # once a round has been recorded after that checkpoint (decision input only;
 # nothing is written), and the next dispatch is judged afresh.
 #
-# THE CONTEXT READING. gaia_ctx_read for this payload's session_id at the main
+# THE CONTEXT READING. gaia_context_read for this payload's session_id at the main
 # checkout. Anything but a fresh reading (missing, stale, future-dated,
 # unparseable, or a session id that is not one) falls back to the round count
 # allowance, never past it. Honest limits: the reading changes only when the
@@ -433,8 +433,8 @@ adopt_renamed() {
   source_path="${old_file%.json}.d"
   destination_path="${file%.json}.d"
   [ ! -d "$source_path" ] || [ -e "$destination_path" ] || mv "$source_path" "$destination_path" 2>/dev/null
-  source_path=$(gaia_loop_run_dir "$main" "$old_branch")
-  destination_path=$(gaia_loop_run_dir "$main" "$BRANCH_KEY")
+  source_path=$(gaia_loop_run_directory "$main" "$old_branch")
+  destination_path=$(gaia_loop_run_directory "$main" "$BRANCH_KEY")
   [ ! -d "$source_path" ] || [ -e "$destination_path" ] || { mkdir -p "${destination_path%/*}" && mv "$source_path" "$destination_path" 2>/dev/null; }
   return 0
 }
@@ -493,7 +493,7 @@ run_decision() {
   fi
   file=$(gaia_loop_state_file "$main" "$BRANCH_KEY")
   snapshot_directory="${file%.json}.d"
-  run_directory=$(gaia_loop_run_dir "$main" "$BRANCH_KEY")
+  run_directory=$(gaia_loop_run_directory "$main" "$BRANCH_KEY")
 
   lookup_exit_status=0
   state_before_lock=$(gaia_loop_read_state "$file") || lookup_exit_status=$?
@@ -627,7 +627,7 @@ run_decision() {
   else
     snapshot=$(jq -c --argjson i "$((used - 1))" '.history.rounds[$i].snapshot' <<<"$WORKING_STATE")
     if [ "$snapshot" = null ]; then
-      snapshot=$(gaia_loop_eval_round "$main" "$WORKING_STATE" "$used") ||
+      snapshot=$(gaia_loop_evaluate_round "$main" "$WORKING_STATE" "$used") ||
         finish_deny "BLOCKED: the audit loop checkpoint could not evaluate round $used on branch $BRANCH_KEY. Fail-loud, not fail-open: run \`bash $scripts/audit-loop-eval.sh eval --root $root\` to see why."
       WORKING_STATE=$(jq -c --argjson round_index "$((used - 1))" --argjson snapshot "$snapshot" '.history.rounds[$round_index].snapshot = $snapshot' <<<"$WORKING_STATE")
     fi
@@ -636,7 +636,7 @@ run_decision() {
   config=$(gaia_loop_context_config_effective "$main" "$WORKING_STATE") ||
     finish_deny 'BLOCKED: the audit loop checkpoint could not compute its context line config. Fail-loud, not fail-open: retry the dispatch.'
   read -r ask_tokens ask_percent <<<"$config"
-  reading=$(gaia_ctx_read "$main" "$session" "$(date +%s)")
+  reading=$(gaia_context_read "$main" "$session" "$(date +%s)")
   [ -n "$reading" ] || reading=unparseable
 
   in_unit=false
@@ -677,9 +677,9 @@ run_decision() {
       recommended=$(gaia_loop_recommended "$trigger" "$snapshot") || recommended=''
       context_line=''
       if [[ $reading =~ ^fresh\ [0-9]+\ ([0-9]+)$ ]]; then
-        context_line=$(gaia_ctx_line "${BASH_REMATCH[1]}" "$ask_tokens" "$ask_percent") || context_line=''
+        context_line=$(gaia_context_line "${BASH_REMATCH[1]}" "$ask_tokens" "$ask_percent") || context_line=''
       fi
-      question=$(gaia_loop_pinned_question "$BRANCH_KEY" "$nonce" "$used" "$GAIA_CTX_UNIT_ROUNDS" "$accept_is_eligible" "$cap" "$trigger" "$reading" "$recommended" "$context_line") && [ -n "$question" ] ||
+      question=$(gaia_loop_pinned_question "$BRANCH_KEY" "$nonce" "$used" "$GAIA_CONTEXT_UNIT_ROUNDS" "$accept_is_eligible" "$cap" "$trigger" "$reading" "$recommended" "$context_line") && [ -n "$question" ] ||
         finish_deny "BLOCKED: the audit loop checkpoint could not build its pinned question (trigger $trigger). Fail-loud, not fail-open: retry the dispatch."
       # Every checkpoint deny appends a new checkpoint; the latest is the one
       # pending, so this supersedes any earlier one, legacy ones included.
@@ -707,7 +707,7 @@ run_decision() {
       [ "$start_round" -ne $((used + 1)) ] || [ "$through_round" -lt "$start_round" ]; then
       finish_deny 'BLOCKED: the audit loop checkpoint got an unreadable decision. Fail-loud, not fail-open: retry the dispatch.'
     fi
-    NEXT_STATE=$(jq -c --arg admitted_on_trigger "$admitted_on" --argjson start_round "$start_round" --argjson through_round "$through_round" --argjson unit_rounds "$GAIA_CTX_UNIT_ROUNDS" \
+    NEXT_STATE=$(jq -c --arg admitted_on_trigger "$admitted_on" --argjson start_round "$start_round" --argjson through_round "$through_round" --argjson unit_rounds "$GAIA_CONTEXT_UNIT_ROUNDS" \
       --arg now "$now" --arg session_id "$session" \
       '.history.units = ((.history.units // []) + [{unit: (((.history.units // []) | length) + 1),
         start_round: $start_round, k: $unit_rounds, through_round: $through_round, admitted_on: $admitted_on_trigger,

@@ -25,7 +25,7 @@
 # Every containment compare below strips `\.[0-9]+Z$` -> `Z` on BOTH sides
 # first (the same normalization the elapsed_seconds computation already
 # applies), so a lexical ...Z string compare is chronologically correct. Each
-# jq program below defines its own local `norm` filter (never string-
+# jq program below defines its own local `normalize` filter (never string-
 # interpolated across functions) so a bash-side interpolation mistake can
 # never silently corrupt the jq program text.
 #
@@ -42,10 +42,10 @@
 # parses as a JSON object carrying string started_at and string ended_at;
 # otherwise echoes nothing. Never errors, always returns 0.
 gaia_audit_window_read() {
-  local bc_path="${1:-}"
-  [[ -n "$bc_path" && -f "$bc_path" ]] || return 0
+  local breadcrumb_path="${1:-}"
+  [[ -n "$breadcrumb_path" && -f "$breadcrumb_path" ]] || return 0
   local content
-  content="$(cat "$bc_path" 2>/dev/null)" || return 0
+  content="$(cat "$breadcrumb_path" 2>/dev/null)" || return 0
   [[ -z "$content" ]] && return 0
   if jq -e 'type == "object" and (.started_at | type) == "string" and (.ended_at | type) == "string"' \
       >/dev/null 2>&1 <<<"$content"; then
@@ -75,43 +75,43 @@ gaia_window_subset() {
   # The optional 4th arg, a JSON array of file_ids (gaia_review_windows'
   # partition), narrows the time-range selection to exactly those sidecars.
   jq -e 'type == "array"' >/dev/null 2>&1 <<<"$file_ids" || file_ids="null"
-  local out
-  out="$(jq -cs --arg ws "$started_at" --arg we "$ended_at" --argjson ids "$file_ids" '
-    def norm: if type=="string" then sub("\\.[0-9]+Z$"; "Z") else . end;
-    ($ws | norm) as $s
-    | ($we | norm) as $e
+  local subset_output
+  subset_output="$(jq -cs --arg started_at "$started_at" --arg ended_at "$ended_at" --argjson file_ids "$file_ids" '
+    def normalize: if type=="string" then sub("\\.[0-9]+Z$"; "Z") else . end;
+    ($started_at | normalize) as $normalized_start
+    | ($ended_at | normalize) as $normalized_end
     | ( map(select((.file_agent // "main") != "main"))
         | map(select(.tmin != null and .tmax != null))
-        | map(. + {ntmin: (.tmin | norm), ntmax: (.tmax | norm)})
-        | map(select(.ntmin >= $s and .ntmax <= $e))
-        | if $ids == null then . else map(select((.file_id // "") as $f | any($ids[]; . == $f))) end
-      ) as $sel
-    | ($sel | length) as $count
-    | ($sel | map(.usage // []) | add // []) as $allusage
-    | ($allusage | reduce .[] as $x ({}; .[$x.id] = {u: $x.u, m: $x.m}) | [.[]]) as $u
+        | map(. + {normalized_tmin: (.tmin | normalize), normalized_tmax: (.tmax | normalize)})
+        | map(select(.normalized_tmin >= $normalized_start and .normalized_tmax <= $normalized_end))
+        | if $file_ids == null then . else map(select((.file_id // "") as $record_file_id | any($file_ids[]; . == $record_file_id))) end
+      ) as $selected
+    | ($selected | length) as $count
+    | ($selected | map(.usage // []) | add // []) as $all_usage
+    | ($all_usage | reduce .[] as $usage_entry ({}; .[$usage_entry.id] = {u: $usage_entry.u, m: $usage_entry.m}) | [.[]]) as $usage_entries
     | {
         count: $count,
         buckets: {
-          fresh_input: ($u | map(.u.input_tokens // 0) | add // 0),
-          cache_write: ($u | map(
+          fresh_input: ($usage_entries | map(.u.input_tokens // 0) | add // 0),
+          cache_write: ($usage_entries | map(
               (.u.cache_creation.ephemeral_5m_input_tokens // 0)
               + (.u.cache_creation.ephemeral_1h_input_tokens // (.u.cache_creation_input_tokens // 0))
             ) | add // 0),
-          cache_read: ($u | map(.u.cache_read_input_tokens // 0) | add // 0),
-          output: ($u | map(.u.output_tokens // 0) | add // 0)
+          cache_read: ($usage_entries | map(.u.cache_read_input_tokens // 0) | add // 0),
+          output: ($usage_entries | map(.u.output_tokens // 0) | add // 0)
         },
         by_model: (
-          ($u | map(select(.m != null and .m != "")))
+          ($usage_entries | map(select(.m != null and .m != "")))
           | group_by(.m)
           | map({
               key: .[0].m,
-              value: (reduce .[] as $r (
+              value: (reduce .[] as $model_entry (
                 {fresh_input: 0, cache_write_5m: 0, cache_write_1h: 0, cache_read: 0, output: 0};
-                .fresh_input      += ($r.u.input_tokens // 0)
-                | .cache_write_5m += ($r.u.cache_creation.ephemeral_5m_input_tokens // 0)
-                | .cache_write_1h += ($r.u.cache_creation.ephemeral_1h_input_tokens // ($r.u.cache_creation_input_tokens // 0))
-                | .cache_read     += ($r.u.cache_read_input_tokens // 0)
-                | .output         += ($r.u.output_tokens // 0)
+                .fresh_input      += ($model_entry.u.input_tokens // 0)
+                | .cache_write_5m += ($model_entry.u.cache_creation.ephemeral_5m_input_tokens // 0)
+                | .cache_write_1h += ($model_entry.u.cache_creation.ephemeral_1h_input_tokens // ($model_entry.u.cache_creation_input_tokens // 0))
+                | .cache_read     += ($model_entry.u.cache_read_input_tokens // 0)
+                | .output         += ($model_entry.u.output_tokens // 0)
               ))
             })
           | map(select(([.value[]] | add) > 0))
@@ -121,15 +121,15 @@ gaia_window_subset() {
           if $count == 0 then 0
           else
             ( try (
-                ($sel | map(.ntmax | fromdateiso8601) | max)
-                - ($sel | map(.ntmin | fromdateiso8601) | min)
+                ($selected | map(.normalized_tmax | fromdateiso8601) | max)
+                - ($selected | map(.normalized_tmin | fromdateiso8601) | min)
               ) catch 0 )
           end
         )
       }
   ' "$records_file" 2>/dev/null)"
-  if [[ -n "$out" ]] && jq -e 'type == "object" and has("count")' >/dev/null 2>&1 <<<"$out"; then
-    printf '%s' "$out"
+  if [[ -n "$subset_output" ]] && jq -e 'type == "object" and has("count")' >/dev/null 2>&1 <<<"$subset_output"; then
+    printf '%s' "$subset_output"
   else
     printf '%s' "$zero"
   fi
@@ -155,31 +155,31 @@ gaia_window_subset() {
 # never blocks them; it just stops converting a recoverable error into silent
 # data loss.
 gaia_audit_window_write() {
-  local bc_path="${1:-}" session_id="${2:-}" started_at="${3:-}" ended_at="${4:-}" lenses_json="${5:-}" intensity="${6:-}"
-  if [[ -z "$bc_path" ]]; then
+  local breadcrumb_path="${1:-}" session_id="${2:-}" started_at="${3:-}" ended_at="${4:-}" lenses_json="${5:-}" intensity="${6:-}"
+  if [[ -z "$breadcrumb_path" ]]; then
     printf 'gaia_audit_window_write: no breadcrumb path given; nothing written\n' >&2
     return 1
   fi
   if ! command -v jq >/dev/null 2>&1; then
-    printf 'gaia_audit_window_write: jq not found on PATH; breadcrumb %s not written\n' "$bc_path" >&2
+    printf 'gaia_audit_window_write: jq not found on PATH; breadcrumb %s not written\n' "$breadcrumb_path" >&2
     return 1
   fi
   local json
   if [[ -z "$intensity" ]]; then
-    json="$(jq -n --arg sid "$session_id" --arg st "$started_at" --arg en "$ended_at" --argjson lenses "$lenses_json" '
-      {session_id: $sid, started_at: $st, ended_at: $en, lenses: $lenses}
+    json="$(jq -n --arg session_id "$session_id" --arg started_at "$started_at" --arg ended_at "$ended_at" --argjson lenses "$lenses_json" '
+      {session_id: $session_id, started_at: $started_at, ended_at: $ended_at, lenses: $lenses}
     ')" || json=""
   else
-    json="$(jq -n --arg sid "$session_id" --arg st "$started_at" --arg en "$ended_at" --argjson lenses "$lenses_json" --arg it "$intensity" '
-      {session_id: $sid, started_at: $st, ended_at: $en, lenses: $lenses, intensity: $it}
+    json="$(jq -n --arg session_id "$session_id" --arg started_at "$started_at" --arg ended_at "$ended_at" --argjson lenses "$lenses_json" --arg intensity "$intensity" '
+      {session_id: $session_id, started_at: $started_at, ended_at: $ended_at, lenses: $lenses, intensity: $intensity}
     ')" || json=""
   fi
   if [[ -z "$json" ]] || ! jq -e 'type == "object"' >/dev/null 2>&1 <<<"$json"; then
-    printf 'gaia_audit_window_write: could not build a valid breadcrumb for %s; nothing written\n' "$bc_path" >&2
+    printf 'gaia_audit_window_write: could not build a valid breadcrumb for %s; nothing written\n' "$breadcrumb_path" >&2
     return 1
   fi
-  if ! printf '%s\n' "$json" >"$bc_path" 2>/dev/null; then
-    printf 'gaia_audit_window_write: cannot write breadcrumb to %s\n' "$bc_path" >&2
+  if ! printf '%s\n' "$json" >"$breadcrumb_path" 2>/dev/null; then
+    printf 'gaia_audit_window_write: cannot write breadcrumb to %s\n' "$breadcrumb_path" >&2
     return 1
   fi
   return 0
@@ -193,10 +193,10 @@ gaia_audit_window_write() {
 # reads the roster that shipped with this lib. An unreadable roster degrades to
 # the default member's name alone, the member the gate falls back to spawning.
 _gaia_review_agents_json() {
-  local lib_dir names=""
-  lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || lib_dir=""
-  if [[ -n "$lib_dir" ]] && . "$lib_dir/../../.claude/hooks/lib/audit-scope.sh" 2>/dev/null; then
-    names="$(audit_roster_member_names "$lib_dir/../audit-ci.yml" 2>/dev/null)" || names=""
+  local library_directory names=""
+  library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || library_directory=""
+  if [[ -n "$library_directory" ]] && . "$library_directory/../../.claude/hooks/lib/audit-scope.sh" 2>/dev/null; then
+    names="$(audit_roster_member_names "$library_directory/../audit-ci.yml" 2>/dev/null)" || names=""
   fi
   [[ -n "$names" ]] || names="code-audit-frontend"
   jq -Rnc '[inputs | select(length > 0)]' <<<"$names" 2>/dev/null || printf '%s' '["code-audit-frontend"]'
@@ -223,37 +223,37 @@ gaia_review_windows() {
     printf '%s' "$empty"
     return 0
   fi
-  local out agents
+  local windows_output agents
   agents="$(_gaia_review_agents_json)"
-  out="$(jq -cs --argjson agents "$agents" '
-    def norm: if type=="string" then sub("\\.[0-9]+Z$"; "Z") else . end;
-    def span: try ((.e | fromdateiso8601) - (.s | fromdateiso8601)) catch 0;
+  windows_output="$(jq -cs --argjson agents "$agents" '
+    def normalize: if type=="string" then sub("\\.[0-9]+Z$"; "Z") else . end;
+    def span: try ((.normalized_end | fromdateiso8601) - (.normalized_start | fromdateiso8601)) catch 0;
     . as $all
     | [ $all[]
-        | select((.file_agent // "") as $a | any($agents[]; . == $a))
+        | select((.file_agent // "") as $agent | any($agents[]; . == $agent))
         | {review_id: (.file_id // ""), started_at: .tmin, ended_at: .tmax,
-           s: (.tmin | norm), e: (.tmax | norm)}
-      ] as $wins
+           normalized_start: (.tmin | normalize), normalized_end: (.tmax | normalize)}
+      ] as $review_windows
     | [ $all[]
         | select((.file_agent // "main") != "main" and .tmin != null and .tmax != null)
-        | (.file_id // "") as $fid
-        | (.tmin | norm) as $s
-        | (.tmax | norm) as $e
-        | ( [ $wins[] | select(.s != null and .e != null and .s <= $s and $e <= .e) ]
+        | (.file_id // "") as $file_id
+        | (.tmin | normalize) as $normalized_start
+        | (.tmax | normalize) as $normalized_end
+        | ( [ $review_windows[] | select(.normalized_start != null and .normalized_end != null and .normalized_start <= $normalized_start and $normalized_end <= .normalized_end) ]
             | if length == 0 then empty
-              elif any(.[]; .review_id == $fid) then $fid
+              elif any(.[]; .review_id == $file_id) then $file_id
               else (sort_by(span) | .[0].review_id)
               end
-          ) as $rid
-        | {fid: $fid, rid: $rid}
+          ) as $assigned_review_id
+        | {file_id: $file_id, assigned_review_id: $assigned_review_id}
       ] as $assign
-    | $wins
-    | map(.review_id as $r
+    | $review_windows
+    | map(.review_id as $review_id
           | {review_id, started_at, ended_at,
-             file_ids: [ $assign[] | select(.rid == $r) | .fid ]})
+             file_ids: [ $assign[] | select(.assigned_review_id == $review_id) | .file_id ]})
   ' "$records_file" 2>/dev/null)"
-  if [[ -n "$out" ]] && jq -e 'type == "array"' >/dev/null 2>&1 <<<"$out"; then
-    printf '%s' "$out"
+  if [[ -n "$windows_output" ]] && jq -e 'type == "array"' >/dev/null 2>&1 <<<"$windows_output"; then
+    printf '%s' "$windows_output"
   else
     printf '%s' "$empty"
   fi
@@ -273,25 +273,25 @@ gaia_exclude_review_windows() {
   [[ -z "$records_file" || ! -f "$records_file" ]] && return 0
   local review_count agents
   agents="$(_gaia_review_agents_json)"
-  review_count="$(jq -sc --argjson agents "$agents" '[.[] | select((.file_agent // "") as $a | any($agents[]; . == $a))] | length' "$records_file" 2>/dev/null)"
+  review_count="$(jq -sc --argjson agents "$agents" '[.[] | select((.file_agent // "") as $agent | any($agents[]; . == $agent))] | length' "$records_file" 2>/dev/null)"
   if ! [[ "$review_count" =~ ^[1-9][0-9]*$ ]]; then
     cat "$records_file" 2>/dev/null
     return 0
   fi
   jq -rs --argjson agents "$agents" '
-    def norm: if type=="string" then sub("\\.[0-9]+Z$"; "Z") else . end;
-    def contained($s; $e; $windows): $windows | any(.s <= $s and $e <= .e);
-    def member: (.file_agent // "") as $a | any($agents[]; . == $a);
+    def normalize: if type=="string" then sub("\\.[0-9]+Z$"; "Z") else . end;
+    def contained($normalized_start; $normalized_end; $windows): $windows | any(.normalized_start <= $normalized_start and $normalized_end <= .normalized_end);
+    def member: (.file_agent // "") as $agent | any($agents[]; . == $agent);
     . as $all
     | ( [ $all[]
           | select(member and .tmin != null and .tmax != null)
-          | {s: (.tmin | norm), e: (.tmax | norm)}
+          | {normalized_start: (.tmin | normalize), normalized_end: (.tmax | normalize)}
         ] ) as $windows
     | $all
     | map(select(member | not))
     | map(select(
         (.tmin == null or .tmax == null)
-        or ( (.tmin | norm) as $s | (.tmax | norm) as $e | (contained($s; $e; $windows) | not) )
+        or ( (.tmin | normalize) as $normalized_start | (.tmax | normalize) as $normalized_end | (contained($normalized_start; $normalized_end; $windows) | not) )
       ))
     | .[]
     | tojson

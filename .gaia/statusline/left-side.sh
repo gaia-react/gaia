@@ -53,7 +53,7 @@ gaia_statusline_left() {
 
   # The bar needs the percentage for fill and the percentage-derived token
   # count plus the window for color; without all three there is no honest bar.
-  if [ -n "$pct" ] && [ -n "$window" ] && [ -n "$tokens" ] && command -v gaia_ctx_bands >/dev/null 2>&1; then
+  if [ -n "$pct" ] && [ -n "$window" ] && [ -n "$tokens" ] && command -v gaia_context_bands >/dev/null 2>&1; then
     int_part="${pct%%.*}"
     frac_part=""
     case "$pct" in *.*) frac_part="${pct#*.}" ;; esac
@@ -68,9 +68,9 @@ gaia_statusline_left() {
       i=$((i + 1))
     done
     color="${esc}[01;32m"
-    if cfg=$(gaia_ctx_override "$root") && read -r ask_t ask_p <<<"$cfg" &&
-      line=$(gaia_ctx_line "$window" "$ask_t" "$ask_p") &&
-      bands=$(gaia_ctx_bands "$window" "$line") && read -r yellow red fire skull <<<"$bands"; then
+    if cfg=$(gaia_context_override "$root") && read -r ask_t ask_p <<<"$cfg" &&
+      line=$(gaia_context_line "$window" "$ask_t" "$ask_p") &&
+      bands=$(gaia_context_bands "$window" "$line") && read -r yellow red fire skull <<<"$bands"; then
       if [ "$tokens" -ge "$skull" ]; then
         color="${esc}[01;31m"
         marker=" 💀"

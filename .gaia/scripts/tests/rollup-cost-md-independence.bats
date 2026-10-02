@@ -13,11 +13,11 @@
 
 setup() {
   # Isolate pricing from the developer's real rate table and the network.
-  export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state"
+  export GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
   export GAIA_RATES_FEED_DISABLE=1
-  SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
-  SCRIPT="$SCRIPT_DIR/token-rollup.sh"
-  FIX="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-rollup" && pwd)"
+  SCRIPT_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
+  SCRIPT="$SCRIPT_DIRECTORY/token-rollup.sh"
+  FIXTURE_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-rollup" && pwd)"
 }
 
 # committed-rate-smoke.jsonl (SPEC-260) is a hand-verified oracle already used
@@ -48,7 +48,7 @@ setup() {
 **Est. cost (USD):** $999.99
 EOF
 
-  run bash "$SCRIPT" --spec-id SPEC-260 --ledger "$FIX/committed-rate-smoke.jsonl" --rate-table "$SCRIPT_DIR/token-rates.json"
+  run bash "$SCRIPT" --spec-id SPEC-260 --ledger "$FIXTURE_DIRECTORY/committed-rate-smoke.jsonl" --rate-table "$SCRIPT_DIRECTORY/token-rates.json"
   [ "$status" -eq 0 ]
 
   # The real cost.jsonl-derived token and dollar figures render.
@@ -78,13 +78,13 @@ EOF
 }
 
 @test "UAT-006: by_model is recoverable directly from cost.jsonl (token-rollup prints no per-model line)" {
-  by_model_opus="$(jq -r '.by_model["claude-opus-4-8"].fresh_input' "$FIX/committed-rate-smoke.jsonl")"
+  by_model_opus="$(jq -r '.by_model["claude-opus-4-8"].fresh_input' "$FIXTURE_DIRECTORY/committed-rate-smoke.jsonl")"
   [ "$by_model_opus" = "200000" ]
-  by_model_sonnet="$(jq -r '.by_model["claude-sonnet-4-6"].fresh_input' "$FIX/committed-rate-smoke.jsonl")"
+  by_model_sonnet="$(jq -r '.by_model["claude-sonnet-4-6"].fresh_input' "$FIXTURE_DIRECTORY/committed-rate-smoke.jsonl")"
   [ "$by_model_sonnet" = "100000" ]
 
   # token-rollup itself never prints a per-model breakdown line.
-  run bash "$SCRIPT" --spec-id SPEC-260 --ledger "$FIX/committed-rate-smoke.jsonl"
+  run bash "$SCRIPT" --spec-id SPEC-260 --ledger "$FIXTURE_DIRECTORY/committed-rate-smoke.jsonl"
   [ "$status" -eq 0 ]
   if grep -qF -- "claude-opus-4-8" <<<"$output"; then
     echo "unexpected: token-rollup printed a by_model line; it should not" >&2

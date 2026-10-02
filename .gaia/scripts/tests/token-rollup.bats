@@ -116,11 +116,11 @@ bats_require_minimum_version 1.5.0
 
 setup() {
   # Isolate pricing from the developer's real rate table and the network.
-  export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state"
+  export GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
   export GAIA_RATES_FEED_DISABLE=1
-  SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
-  SCRIPT="$SCRIPT_DIR/token-rollup.sh"
-  FIX="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-rollup" && pwd)"
+  SCRIPT_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
+  SCRIPT="$SCRIPT_DIRECTORY/token-rollup.sh"
+  FIXTURE_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-rollup" && pwd)"
   # The hermetic price table the full-cycle case pins, resolved from the test
   # file's own location like every other fixture path here. bats runs each test
   # in whatever directory bats was invoked from, so a path written relative to
@@ -135,7 +135,7 @@ setup() {
 
 # ---------- 1. UAT-004 (lower) + directive 2 (missing `partial` is final) ----------
 @test "dedup-lower: later partial row with a lower total cannot lower the winner; missing partial key can win" {
-  run bash "$SCRIPT" --spec-id SPEC-201 --ledger "$FIX/dedup-lower.jsonl"
+  run bash "$SCRIPT" --spec-id SPEC-201 --ledger "$FIXTURE_DIRECTORY/dedup-lower.jsonl"
   [ "$status" -eq 0 ]
   [[ "$output" == *"execute:   1,400,000   (elapsed 11m40s)"* ]]
   [[ "$output" == *"Total:     1,400,000   (elapsed 11m40s)"* ]]
@@ -144,7 +144,7 @@ setup() {
 
 # ---------- 2. UAT-004 (inflate direction) ----------
 @test "dedup-inflate: a partial row with the HIGHEST total cannot inflate the winner" {
-  run bash "$SCRIPT" --spec-id SPEC-202 --ledger "$FIX/dedup-inflate.jsonl"
+  run bash "$SCRIPT" --spec-id SPEC-202 --ledger "$FIXTURE_DIRECTORY/dedup-inflate.jsonl"
   [ "$status" -eq 0 ]
   [[ "$output" == *"execute:   700,000   (elapsed 6m40s)"* ]]
   [[ "$output" == *"Total:     700,000   (elapsed 6m40s)"* ]]
@@ -153,7 +153,7 @@ setup() {
 
 # ---------- 3. Tiebreak: equal totals, latest ended_at wins ----------
 @test "dedup-tiebreak: equal-total non-partial rows break on latest ended_at" {
-  run bash "$SCRIPT" --spec-id SPEC-203 --ledger "$FIX/dedup-tiebreak.jsonl"
+  run bash "$SCRIPT" --spec-id SPEC-203 --ledger "$FIXTURE_DIRECTORY/dedup-tiebreak.jsonl"
   [ "$status" -eq 0 ]
   [[ "$output" == *"execute:   500,000   (elapsed 3m20s)"* ]]
   [[ "$output" != *"1m40s"* ]]
@@ -161,7 +161,7 @@ setup() {
 
 # ---------- 4. All-partial session (fallback pool branch) ----------
 @test "dedup-all-partial: a session with only partial rows falls back to max-total and flags partial" {
-  run bash "$SCRIPT" --spec-id SPEC-204 --ledger "$FIX/dedup-all-partial.jsonl"
+  run bash "$SCRIPT" --spec-id SPEC-204 --ledger "$FIXTURE_DIRECTORY/dedup-all-partial.jsonl"
   [ "$status" -eq 0 ]
   [[ "$output" == *"execute:   500,000   (elapsed 4m10s)"* ]]
   [[ "$output" == *"(partial: some ledger input was unreadable or lacked timing"* ]]
@@ -169,7 +169,7 @@ setup() {
 
 # ---------- 4b. FC-3 execute dedup: the final:true row wins, no per-commit overcount ----------
 @test "dedup-final-seq: the final:true row wins the session, not a sum across seq 0/1/2" {
-  run bash "$SCRIPT" --spec-id SPEC-205 --ledger "$FIX/dedup-final-seq.jsonl"
+  run bash "$SCRIPT" --spec-id SPEC-205 --ledger "$FIXTURE_DIRECTORY/dedup-final-seq.jsonl"
   [ "$status" -eq 0 ]
   grep -qF -- "execute:   1,400,000   (elapsed 15m0s)" <<<"$output"
   grep -qF -- "Total:     1,400,000   (elapsed 15m0s)" <<<"$output"
@@ -189,7 +189,7 @@ setup() {
 
 # ---------- 5. UAT-003 cross-session sum + UAT-005 halted-session inclusion ----------
 @test "cross-session: execute total sums deduped contributions from two sessions, including the halted one" {
-  run bash "$SCRIPT" --spec-id SPEC-210 --ledger "$FIX/cross-session.jsonl"
+  run bash "$SCRIPT" --spec-id SPEC-210 --ledger "$FIXTURE_DIRECTORY/cross-session.jsonl"
   [ "$status" -eq 0 ]
   [[ "$output" == *"execute:   4,100,000   (elapsed 45m0s)"* ]]
   [[ "$output" == *"Total:     4,100,000   (elapsed 45m0s)"* ]]
@@ -200,7 +200,7 @@ setup() {
 
 # ---------- 6. Missing action never errors (reuses cross-session: execute-only feature) ----------
 @test "cross-session: no spec/plan rows for the feature -> only execute + Total render, no crash" {
-  run bash "$SCRIPT" --spec-id SPEC-210 --ledger "$FIX/cross-session.jsonl"
+  run bash "$SCRIPT" --spec-id SPEC-210 --ledger "$FIXTURE_DIRECTORY/cross-session.jsonl"
   [ "$status" -eq 0 ]
   [[ "$output" != *$'\n  spec:'* ]]
   [[ "$output" != *$'\n  plan:'* ]]
@@ -217,7 +217,7 @@ setup() {
   # why $RATES is absolute: the reader `cat`s the --rate-table value as given,
   # so a relative one makes the assertion depend on the caller's directory.
   # These fixture rows have no by_model either way (SPEC-019).
-  run bash "$SCRIPT" --spec-id SPEC-220 --ledger "$FIX/full-cycle.jsonl" --rate-table "$RATES"
+  run bash "$SCRIPT" --spec-id SPEC-220 --ledger "$FIXTURE_DIRECTORY/full-cycle.jsonl" --rate-table "$RATES"
   [ "$status" -eq 0 ]
   [[ "$output" == *"spec:       37,000   (elapsed 10m0s)"* ]]
   [[ "$output" == *"plan:       38,300   (elapsed 11m40s)"* ]]
@@ -236,7 +236,7 @@ setup() {
 
 # ---------- 8. UAT-007 spec-less plan omits the spec line ----------
 @test "spec-less: plan-slug feature key with no spec row omits the spec line" {
-  run bash "$SCRIPT" --spec-id spec-less-slug-example --ledger "$FIX/spec-less.jsonl"
+  run bash "$SCRIPT" --spec-id spec-less-slug-example --ledger "$FIXTURE_DIRECTORY/spec-less.jsonl"
   [ "$status" -eq 0 ]
   [[ "$output" != *$'\n  spec:'* ]]
   [[ "$output" == *"plan:      370   (elapsed 1m0s)"* ]]
@@ -246,7 +246,7 @@ setup() {
 
 # ---------- 8b. OR-filter: --spec-id value matches a record's plan_id ----------
 @test "plan-id-filter: a PLAN-NNN feature key matches records via plan_id, not just spec_id" {
-  run bash "$SCRIPT" --spec-id PLAN-007 --ledger "$FIX/plan-id-filter.jsonl"
+  run bash "$SCRIPT" --spec-id PLAN-007 --ledger "$FIXTURE_DIRECTORY/plan-id-filter.jsonl"
   [ "$status" -eq 0 ]
   grep -qF -- "plan:      370   (elapsed 1m0s)" <<<"$output"
   grep -qF -- "execute:   407   (elapsed 1m30s)" <<<"$output"
@@ -255,7 +255,7 @@ setup() {
 
 # ---------- 9. UAT-010 corrupt line tolerated ----------
 @test "corrupt: one unparseable line among good rows is skipped, not fatal; good rows still sum" {
-  run bash "$SCRIPT" --spec-id SPEC-230 --ledger "$FIX/corrupt.jsonl"
+  run bash "$SCRIPT" --spec-id SPEC-230 --ledger "$FIXTURE_DIRECTORY/corrupt.jsonl"
   [ "$status" -eq 0 ]
   [[ "$output" == *"spec:       5,000   (elapsed 1m0s)"* ]]
   [[ "$output" == *"plan:       6,000   (elapsed 1m30s)"* ]]
@@ -265,7 +265,7 @@ setup() {
 
 # ---------- 9b. Valid-JSON non-object line tolerated (guards the .spec_id throw) ----------
 @test "corrupt-nonobject: a valid-JSON non-object line (bare scalar / array) is skipped, not fatal; good rows still sum" {
-  run bash "$SCRIPT" --spec-id SPEC-231 --ledger "$FIX/corrupt-nonobject.jsonl"
+  run bash "$SCRIPT" --spec-id SPEC-231 --ledger "$FIXTURE_DIRECTORY/corrupt-nonobject.jsonl"
   [ "$status" -eq 0 ]
   [[ "$output" == *"spec:      3,000   (elapsed 1m0s)"* ]]
   [[ "$output" == *"plan:      4,000   (elapsed 2m0s)"* ]]
@@ -275,21 +275,21 @@ setup() {
 
 # ---------- 10. Unknown feature key ----------
 @test "unknown feature key: no records line, exit 0, no crash" {
-  run bash "$SCRIPT" --spec-id NOPE-999 --ledger "$FIX/full-cycle.jsonl"
+  run bash "$SCRIPT" --spec-id NOPE-999 --ledger "$FIXTURE_DIRECTORY/full-cycle.jsonl"
   [ "$status" -eq 0 ]
   [ "$output" = "Cycle cost (NOPE-999): no ledger records found." ]
 }
 
 # ---------- 11. Missing ledger file ----------
 @test "missing ledger file: no records line, exit 0, no crash" {
-  run bash "$SCRIPT" --spec-id SPEC-999 --ledger "$FIX/does-not-exist.jsonl"
+  run bash "$SCRIPT" --spec-id SPEC-999 --ledger "$FIXTURE_DIRECTORY/does-not-exist.jsonl"
   [ "$status" -eq 0 ]
   [ "$output" = "Cycle cost (SPEC-999): no ledger records found." ]
 }
 
 # ---------- 12. Missing --spec-id degrades gracefully ----------
 @test "missing --spec-id: exit 0, degrades to an empty readout, no crash" {
-  run --separate-stderr bash "$SCRIPT" --ledger "$FIX/full-cycle.jsonl"
+  run --separate-stderr bash "$SCRIPT" --ledger "$FIXTURE_DIRECTORY/full-cycle.jsonl"
   [ "$status" -eq 0 ]
   [ "$output" = "Cycle cost (): no ledger records found." ]
 }
@@ -297,39 +297,39 @@ setup() {
 # ---------- 13. UAT-009 default ledger resolves to the main checkout under a worktree ----------
 @test "no --ledger: resolves the main checkout's ledger from inside a linked worktree" {
   MAIN="$(cd "$BATS_TEST_TMPDIR" && pwd -P)/main"
-  WT="$(cd "$BATS_TEST_TMPDIR" && pwd -P)/wt"
+  WORKTREE="$(cd "$BATS_TEST_TMPDIR" && pwd -P)/wt"
   mkdir -p "$MAIN"
   git -C "$MAIN" init -q
   git -C "$MAIN" commit --allow-empty -q -m "init"
-  git -C "$MAIN" worktree add -q "$WT" -b "feature/kickoff"
+  git -C "$MAIN" worktree add -q "$WORKTREE" -b "feature/kickoff"
 
   mkdir -p "$MAIN/.gaia/local/telemetry"
-  cp "$FIX/dedup-lower.jsonl" "$MAIN/.gaia/local/telemetry/cost.jsonl"
+  cp "$FIXTURE_DIRECTORY/dedup-lower.jsonl" "$MAIN/.gaia/local/telemetry/cost.jsonl"
 
-  run bash -c "cd '$WT' && bash '$SCRIPT' --spec-id SPEC-201"
+  run bash -c "cd '$WORKTREE' && bash '$SCRIPT' --spec-id SPEC-201"
   [ "$status" -eq 0 ]
   # if the reader mis-resolved to the worktree (which has no ledger at all),
   # this would read "no ledger records found" instead of the real total.
   [[ "$output" == *"execute:   1,400,000   (elapsed 11m40s)"* ]]
 
-  git -C "$MAIN" worktree remove --force "$WT" 2>/dev/null || rm -rf "$WT"
+  git -C "$MAIN" worktree remove --force "$WORKTREE" 2>/dev/null || rm -rf "$WORKTREE"
 }
 
 # ---------- 14. Always exit 0 / diagnostics on stderr, not stdout ----------
 @test "diagnostics go to stderr, not stdout, even when input is corrupt or --spec-id is missing" {
-  run --separate-stderr bash "$SCRIPT" --ledger "$FIX/full-cycle.jsonl"
+  run --separate-stderr bash "$SCRIPT" --ledger "$FIXTURE_DIRECTORY/full-cycle.jsonl"
   [ "$status" -eq 0 ]
   [[ "$stderr" == *"token-rollup: missing --spec-id"* ]]
   [[ "$output" != *"token-rollup:"* ]]
 
-  run --separate-stderr bash "$SCRIPT" --spec-id SPEC-230 --ledger "$FIX/corrupt.jsonl"
+  run --separate-stderr bash "$SCRIPT" --spec-id SPEC-230 --ledger "$FIXTURE_DIRECTORY/corrupt.jsonl"
   [ "$status" -eq 0 ]
   [[ "$output" != *"token-rollup:"* ]]
 }
 
 # ---------- 15. Never-fabricate: unavailable elapsed renders "unavailable", never "0s" ----------
 @test "unavailable-elapsed: real totals render but elapsed shows 'unavailable', never a fabricated 0s" {
-  run bash "$SCRIPT" --spec-id SPEC-250 --ledger "$FIX/unavailable-elapsed.jsonl"
+  run bash "$SCRIPT" --spec-id SPEC-250 --ledger "$FIXTURE_DIRECTORY/unavailable-elapsed.jsonl"
   [ "$status" -eq 0 ]
   [[ "$output" == *"execute:   8,000   (elapsed unavailable)"* ]]
   [[ "$output" == *"Total:     8,000   (elapsed unavailable)"* ]]
@@ -353,28 +353,28 @@ setup() {
 #   Total = $1.30
 # Keep this expected value in sync if the committed seed rates ever change.
 @test "committed-rate-smoke: prices the committed token-rates.json seed rates through --rate-table" {
-  run bash "$SCRIPT" --spec-id SPEC-260 --ledger "$FIX/committed-rate-smoke.jsonl" --rate-table "$SCRIPT_DIR/token-rates.json"
+  run bash "$SCRIPT" --spec-id SPEC-260 --ledger "$FIXTURE_DIRECTORY/committed-rate-smoke.jsonl" --rate-table "$SCRIPT_DIRECTORY/token-rates.json"
   [ "$status" -eq 0 ]
   [[ "$output" == *'execute:   $1.30'* ]]
   [[ "$output" == *'Total:     $1.30'* ]]
 }
 
-# Builds MAIN (a repo whose committed table is the real shipped one) and WT (a
+# Builds MAIN (a repo whose committed table is the real shipped one) and WORKTREE (a
 # linked worktree whose branch raises the opus input rate from $5 to $7/MTok).
 # Priced against the smoke ledger: the shipped table gives $1.30, the branch's
 # row gives 200,000 * 7 / 1e6 + $0.30 = $1.70.
 _make_worktree_with_changed_row() {
   MAIN="$(cd "$BATS_TEST_TMPDIR" && pwd -P)/main"
-  WT="$(cd "$BATS_TEST_TMPDIR" && pwd -P)/wt"
+  WORKTREE="$(cd "$BATS_TEST_TMPDIR" && pwd -P)/wt"
   mkdir -p "$MAIN/.gaia/scripts"
   git -C "$MAIN" init -q
-  cp "$SCRIPT_DIR/token-rates.json" "$MAIN/.gaia/scripts/token-rates.json"
+  cp "$SCRIPT_DIRECTORY/token-rates.json" "$MAIN/.gaia/scripts/token-rates.json"
   git -C "$MAIN" add .gaia/scripts/token-rates.json
   git -C "$MAIN" commit -q -m "seed committed rate table"
-  git -C "$MAIN" worktree add -q "$WT" -b "feature/kickoff"
-  jq '.models["claude-opus-4-8"][0].input = 7' "$WT/.gaia/scripts/token-rates.json" >"$WT/.gaia/scripts/token-rates.json.new"
-  mv "$WT/.gaia/scripts/token-rates.json.new" "$WT/.gaia/scripts/token-rates.json"
-  git -C "$WT" commit -q -am "raise the opus rate on the branch"
+  git -C "$MAIN" worktree add -q "$WORKTREE" -b "feature/kickoff"
+  jq '.models["claude-opus-4-8"][0].input = 7' "$WORKTREE/.gaia/scripts/token-rates.json" >"$WORKTREE/.gaia/scripts/token-rates.json.new"
+  mv "$WORKTREE/.gaia/scripts/token-rates.json.new" "$WORKTREE/.gaia/scripts/token-rates.json"
+  git -C "$WORKTREE" commit -q -am "raise the opus rate on the branch"
 }
 
 # ---------- 17. Rate table follows the main checkout, not the linked worktree ----------
@@ -387,28 +387,28 @@ _make_worktree_with_changed_row() {
 @test "worktree-rate-table: a bare run from a linked worktree prices the main checkout's table, not the branch's changed row" {
   _make_worktree_with_changed_row
 
-  run bash -c "cd '$WT' && bash '$SCRIPT' --spec-id SPEC-260 --ledger '$FIX/committed-rate-smoke.jsonl'"
+  run bash -c "cd '$WORKTREE' && bash '$SCRIPT' --spec-id SPEC-260 --ledger '$FIXTURE_DIRECTORY/committed-rate-smoke.jsonl'"
   [ "$status" -eq 0 ]
   [[ "$output" == *'execute:   $1.30'* ]]
   [[ "$output" == *'Total:     $1.30'* ]]
   [[ "$output" != *'$1.70'* ]]
   [[ "$output" != *'unavailable (rate table unreadable)'* ]]
   # The local table was seeded under the state dir from main's file.
-  [ -s "$GAIA_RATES_STATE_DIR/token-rates.json" ]
-  [ "$(jq -r '.models["claude-opus-4-8"][0].input' "$GAIA_RATES_STATE_DIR/token-rates.json")" = "5" ]
+  [ -s "$GAIA_RATES_STATE_DIRECTORY/token-rates.json" ]
+  [ "$(jq -r '.models["claude-opus-4-8"][0].input' "$GAIA_RATES_STATE_DIRECTORY/token-rates.json")" = "5" ]
 
-  git -C "$MAIN" worktree remove --force "$WT" 2>/dev/null || rm -rf "$WT"
+  git -C "$MAIN" worktree remove --force "$WORKTREE" 2>/dev/null || rm -rf "$WORKTREE"
 }
 
 @test "worktree-rate-table-override: --rate-table naming the worktree's table prices the branch's changed row" {
   _make_worktree_with_changed_row
 
-  run bash -c "cd '$WT' && bash '$SCRIPT' --spec-id SPEC-260 --ledger '$FIX/committed-rate-smoke.jsonl' --rate-table '$WT/.gaia/scripts/token-rates.json'"
+  run bash -c "cd '$WORKTREE' && bash '$SCRIPT' --spec-id SPEC-260 --ledger '$FIXTURE_DIRECTORY/committed-rate-smoke.jsonl' --rate-table '$WORKTREE/.gaia/scripts/token-rates.json'"
   [ "$status" -eq 0 ]
   [[ "$output" == *'execute:   $1.70'* ]]
   [[ "$output" == *'Total:     $1.70'* ]]
   # An override prices in place: nothing is seeded.
-  [ ! -e "$GAIA_RATES_STATE_DIR/token-rates.json" ]
+  [ ! -e "$GAIA_RATES_STATE_DIRECTORY/token-rates.json" ]
 
-  git -C "$MAIN" worktree remove --force "$WT" 2>/dev/null || rm -rf "$WT"
+  git -C "$MAIN" worktree remove --force "$WORKTREE" 2>/dev/null || rm -rf "$WORKTREE"
 }

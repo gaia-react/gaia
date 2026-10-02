@@ -50,7 +50,7 @@ _library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # rather than trust: a per-tree fallback would patch a forked ledger copy
 # while the caller believes the row moved. Refuse when main is unresolvable,
 # the same shape this chokepoint already uses for a missing ledger/row.
-if ! plans_directory="$(gaia_resolve_plans_dir "$repo_root" 2>/dev/null)" || [ -z "$plans_directory" ]; then
+if ! plans_directory="$(gaia_resolve_plans_directory "$repo_root" 2>/dev/null)" || [ -z "$plans_directory" ]; then
   echo "plan-ledger-update: cannot resolve the main checkout for '$repo_root'; refuse to patch (would risk a forked ledger write)" >&2
   exit 4
 fi

@@ -599,7 +599,7 @@ hop_guard() {
   if command -v gaia_gh_artifact_read >/dev/null 2>&1; then
     session_id=$(printf '%s' "$payload" | jq -r '.session_id // empty' 2>/dev/null) || session_id=""
     if [ -n "$session_id" ]; then
-      breadcrumb_path=$(gaia_gh_artifact_path "$(gaia_gh_artifact_cache_dir)" "$branch")
+      breadcrumb_path=$(gaia_gh_artifact_path "$(gaia_gh_artifact_cache_directory)" "$branch")
       # A year, not the lib's one-day default: session ids never repeat, so a
       # match proves ownership at any age, however long the file lives.
       [ -n "$(gaia_gh_artifact_read "$breadcrumb_path" "$session_id" "$branch" 31536000)" ] && return 0

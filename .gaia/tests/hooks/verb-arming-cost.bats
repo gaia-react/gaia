@@ -151,7 +151,7 @@ bats_require_minimum_version 1.5.0
 
 setup() {
   # Isolate pricing from the developer's real rate table and the network.
-  export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state"
+  export GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
   export GAIA_RATES_FEED_DISABLE=1
   # HOOKS_DIRECTORY is the real hooks dir, so the real usage-merge.sh would run in
   # every armed row below and, with the shared gh stub answering MERGED, drive
@@ -541,7 +541,7 @@ CEILING_USAGE_MERGE_MS=4000
   chmod +x "$GH_BIN/gh"
 
   unset GAIA_USAGE_HOOKS_DISABLE
-  export GAIA_USAGE_MERGE_CAP_SECS=1
+  export GAIA_USAGE_MERGE_CAP_SECONDS=1
   time_hook_ms "$REPO/.claude/hooks/token-rollup-merge.sh" "gh pr merge 30 --squash"
   echo "token-rollup-merge.sh with the usage block live, gh failing, cap 1s: ${REPLY_MS}ms (ceiling ${CEILING_USAGE_MERGE_MS}ms)" >&2
   [ "$REPLY_MS" -le "$CEILING_USAGE_MERGE_MS" ]

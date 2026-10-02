@@ -145,7 +145,7 @@ exit 0 = written (path on stdout) or declined; 2 = usage/validation error.
 EOF
 }
 
-err() {
+error() {
   printf 'audit-write-findings: %s\n' "$1" >&2
 }
 
@@ -198,7 +198,7 @@ while [ "$#" -gt 0 ]; do
       exit 0
       ;;
     *)
-      err "unrecognized argument: $1"
+      error "unrecognized argument: $1"
       usage
       exit 2
       ;;
@@ -207,7 +207,7 @@ done
 
 for _pair in "root:$ROOT" "member:$MEMBER" "base:$BASE" "findings:$FINDINGS_INPUT"; do
   if [ -z "${_pair#*:}" ]; then
-    err "--${_pair%%:*} is required"
+    error "--${_pair%%:*} is required"
     usage
     exit 2
   fi
@@ -220,16 +220,16 @@ done
 # empty value omits the review_base key.
 if [ "$REVIEW_BASE_SET" -ne "$BASE_REASON_SET" ]; then
   if [ "$REVIEW_BASE_SET" -eq 1 ]; then
-    err "--base-reason is required when --review-base is present"
+    error "--base-reason is required when --review-base is present"
   else
-    err "--review-base is required when --base-reason is present"
+    error "--review-base is required when --base-reason is present"
   fi
   usage
   exit 2
 fi
 
 command -v jq >/dev/null 2>&1 || {
-  err "jq is required to write a findings sidecar"
+  error "jq is required to write a findings sidecar"
   exit 2
 }
 
@@ -242,14 +242,14 @@ if [ "$FINDINGS_INPUT" = "-" ]; then
   raw="$(cat)"
 else
   if [ ! -f "$FINDINGS_INPUT" ]; then
-    err "--findings file does not exist: $FINDINGS_INPUT"
+    error "--findings file does not exist: $FINDINGS_INPUT"
     exit 2
   fi
   raw="$(cat "$FINDINGS_INPUT")"
 fi
 
 if ! printf '%s' "$raw" | jq -e 'type == "array"' >/dev/null 2>&1; then
-  err "--findings must hold a JSON array of finding objects"
+  error "--findings must hold a JSON array of finding objects"
   exit 2
 fi
 
@@ -263,7 +263,7 @@ fi
 #    and avoids re-parsing the array once per finding.
 # -----------------------------------------------------------------------------
 
-#    The finding is bound to $f before any field is read. Without the binding,
+#    The finding is bound to $finding before any field is read. Without the binding,
 #    a `.severity` inside a `["error",...] | index(...)` pipe resolves against
 #    the LITERAL ARRAY rather than the finding, which is a jq runtime error, and
 #    an error swallowed by `2>/dev/null` would silently accept every finding.
@@ -271,40 +271,40 @@ fi
 if ! violation="$(printf '%s' "$raw" | jq -r '
   def nonempty_string: type == "string" and (length > 0);
   def reason:
-    . as $f
-    | if ($f | type) != "object" then "not a JSON object"
-      elif ($f.finding_class | nonempty_string | not) then "finding_class must be a non-empty string"
-      elif (($f.severity | type) != "string")
-        or ((["error","warning","suggestion"] | index($f.severity)) == null)
+    . as $finding
+    | if ($finding | type) != "object" then "not a JSON object"
+      elif ($finding.finding_class | nonempty_string | not) then "finding_class must be a non-empty string"
+      elif (($finding.severity | type) != "string")
+        or ((["error","warning","suggestion"] | index($finding.severity)) == null)
         then "severity must be one of error|warning|suggestion"
-      elif ($f.path | nonempty_string | not) then "path must be a non-empty repo-relative path"
-      elif (($f.line | type) != "number") or ($f.line != ($f.line | floor)) or ($f.line < 1)
+      elif ($finding.path | nonempty_string | not) then "path must be a non-empty repo-relative path"
+      elif (($finding.line | type) != "number") or ($finding.line != ($finding.line | floor)) or ($finding.line < 1)
         then "line must be an integer >= 1"
-      elif ($f.title | nonempty_string | not) then "title must be a non-empty string"
-      elif ($f.failure_mode | nonempty_string | not) then "failure_mode must be a non-empty string"
-      elif ($f.verified_by | nonempty_string | not) then "verified_by must be a non-empty string (how the finding was verified)"
-      elif ($f.suggested_fix | nonempty_string | not) then "suggested_fix must be a non-empty string"
-      elif (($f | has("area_tags"))
-            and ((($f.area_tags | type) != "array")
-                 or (any($f.area_tags[]; type != "string"))))
+      elif ($finding.title | nonempty_string | not) then "title must be a non-empty string"
+      elif ($finding.failure_mode | nonempty_string | not) then "failure_mode must be a non-empty string"
+      elif ($finding.verified_by | nonempty_string | not) then "verified_by must be a non-empty string (how the finding was verified)"
+      elif ($finding.suggested_fix | nonempty_string | not) then "suggested_fix must be a non-empty string"
+      elif (($finding | has("area_tags"))
+            and ((($finding.area_tags | type) != "array")
+                 or (any($finding.area_tags[]; type != "string"))))
         then "area_tags, when present, must be an array of strings"
-      elif ($f | has("security")) and (($f.security | type) != "boolean")
+      elif ($finding | has("security")) and (($finding.security | type) != "boolean")
         then "security, when present, must be a boolean"
-      elif ($f | has("cross_remit")) and (($f.cross_remit | type) != "boolean")
+      elif ($finding | has("cross_remit")) and (($finding.cross_remit | type) != "boolean")
         then "cross_remit, when present, must be a boolean"
       else empty
       end;
   first(to_entries[] | select((.value | [reason] | length) > 0) | "\(.key)\t\(.value | reason)") // empty
 ' 2>&1)"; then
-  err "cannot validate the findings input: $violation"
+  error "cannot validate the findings input: $violation"
   exit 2
 fi
 
 if [ -n "$violation" ]; then
   _bad_index="${violation%%$'\t'*}"
   _bad_reason="${violation#*$'\t'}"
-  err "findings[${_bad_index}]: ${_bad_reason}"
-  err "a finding that cannot name its file, line, defect, verification, and repair cannot brief the fix that would clear it"
+  error "findings[${_bad_index}]: ${_bad_reason}"
+  error "a finding that cannot name its file, line, defect, verification, and repair cannot brief the fix that would clear it"
   exit 2
 fi
 
@@ -319,11 +319,11 @@ if [ -z "$AUDIT_KEY" ]; then
   exit 0
 fi
 
-audit_dir="${ROOT}/.gaia/local/audit"
-target="${audit_dir}/${AUDIT_KEY}.${MEMBER}.findings.json"
+audit_directory="${ROOT}/.gaia/local/audit"
+target="${audit_directory}/${AUDIT_KEY}.${MEMBER}.findings.json"
 
-mkdir -p "$audit_dir" || {
-  err "cannot create audit directory '$audit_dir'"
+mkdir -p "$audit_directory" || {
+  error "cannot create audit directory '$audit_directory'"
   exit 2
 }
 
@@ -348,9 +348,9 @@ if [ "$ANCHOR_TREE_SET" -eq 1 ] && [ -n "$ANCHOR_TREE" ]; then
   HAS_ANCHOR_TREE=true
 fi
 
-tmp="$(mktemp "${audit_dir}/.audit-write-findings.XXXXXX" 2>/dev/null || true)"
-if [ -z "$tmp" ]; then
-  err "cannot create temp file in '$audit_dir'"
+temporary_file="$(mktemp "${audit_directory}/.audit-write-findings.XXXXXX" 2>/dev/null || true)"
+if [ -z "$temporary_file" ]; then
+  error "cannot create temp file in '$audit_directory'"
   exit 2
 fi
 
@@ -373,15 +373,15 @@ if ! printf '%s' "$raw" | jq -c \
       then {review_base: ({sha: $review_base, reason: $base_reason}
             + (if $has_anchor_tree then {anchor_tree: $anchor_tree} else {} end))}
       else {} end)' \
-  > "$tmp"; then
-  rm -f "$tmp"
-  err "cannot render the findings sidecar"
+  > "$temporary_file"; then
+  rm -f "$temporary_file"
+  error "cannot render the findings sidecar"
   exit 2
 fi
 
-mv -f "$tmp" "$target" || {
-  rm -f "$tmp"
-  err "cannot publish the findings sidecar to '$target'"
+mv -f "$temporary_file" "$target" || {
+  rm -f "$temporary_file"
+  error "cannot publish the findings sidecar to '$target'"
   exit 2
 }
 

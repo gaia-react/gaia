@@ -94,19 +94,19 @@
 
 setup() {
   # Isolate pricing from the developer's real rate table and the network.
-  export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state"
+  export GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
   export GAIA_RATES_FEED_DISABLE=1
-  SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
-  SCRIPT="$SCRIPT_DIR/token-tally.sh"
-  FIX="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-tally" && pwd)"
+  SCRIPT_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
+  SCRIPT="$SCRIPT_DIRECTORY/token-tally.sh"
+  FIXTURE_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-tally" && pwd)"
 
-  ANCHOR="$FIX/projects"
+  ANCHOR="$FIXTURE_DIRECTORY/projects"
   SESSION="fixturesession0001"
-  MULTIMODEL="$FIX/multimodel/projects"
-  MULTIMODEL_SPLITLESS="$FIX/multimodel/splitless/projects"
-  BYAGENT="$FIX/byagent/projects"
+  MULTIMODEL="$FIXTURE_DIRECTORY/multimodel/projects"
+  MULTIMODEL_SPLITLESS="$FIXTURE_DIRECTORY/multimodel/splitless/projects"
+  BY_AGENT_PROJECTS="$FIXTURE_DIRECTORY/byagent/projects"
 
-  OUTDIR="$BATS_TEST_TMPDIR/out"
+  OUTPUT_DIRECTORY="$BATS_TEST_TMPDIR/out"
   LEDGER="$BATS_TEST_TMPDIR/ledger.jsonl"
 
   # Isolated, empty audit-window cache for spec/plan tallies. --action spec/plan
@@ -115,7 +115,7 @@ setup() {
   # .gaia/local/cache, which it would otherwise fall through to and DELETE a
   # developer's live breadcrumb when a fixture id matches. Add --cache-dir
   # "$CACHE" to every new spec/plan invocation that runs from the repo cwd. (The
-  # SPEC-032 audit-nesting tests pass their own fixture $AR_CACHE and are
+  # SPEC-032 audit-nesting tests pass their own fixture $AUDIT_REVIEW_CACHE and are
   # unaffected; execute never reads a breadcrumb.)
   CACHE="$BATS_TEST_TMPDIR/cache"
   mkdir -p "$CACHE"
@@ -133,11 +133,11 @@ setup() {
 run_anchor() {
   run bash "$SCRIPT" \
     --action execute --spec-id SPEC-013 --plan-slug spec-013-token-accounting \
-    --out-dir "$OUTDIR" --session-id "$SESSION" \
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "$SESSION" \
     --projects-root "$ANCHOR" --ledger "$LEDGER" "$@"
 }
 
-led() { jq -r "$1" "$LEDGER"; }
+ledger_field() { jq -r "$1" "$LEDGER"; }
 
 # ---------- 1. UAT-006 exact sums + UAT-004 non-zero, distinct ----------
 @test "anchor: exact per-bucket sums across main + sidecars (UAT-006/UAT-004)" {
@@ -152,26 +152,26 @@ led() { jq -r "$1" "$LEDGER"; }
   [[ "$output" == *"Total:        11110"* ]]
 
   # Ledger record carries the same five figures.
-  [ "$(led '.buckets.fresh_input')" -eq 100 ]
-  [ "$(led '.buckets.cache_write')" -eq 1000 ]
-  [ "$(led '.buckets.cache_read')" -eq 10000 ]
-  [ "$(led '.buckets.output')" -eq 10 ]
-  [ "$(led '.total')" -eq 11110 ]
+  [ "$(ledger_field '.buckets.fresh_input')" -eq 100 ]
+  [ "$(ledger_field '.buckets.cache_write')" -eq 1000 ]
+  [ "$(ledger_field '.buckets.cache_read')" -eq 10000 ]
+  [ "$(ledger_field '.buckets.output')" -eq 10 ]
+  [ "$(ledger_field '.total')" -eq 11110 ]
 
   # cost.json carries the same five figures under the execute key.
-  [ "$(jq -r '.execute.buckets.fresh_input' "$OUTDIR/cost.json")" -eq 100 ]
-  [ "$(jq -r '.execute.buckets.cache_write' "$OUTDIR/cost.json")" -eq 1000 ]
-  [ "$(jq -r '.execute.buckets.cache_read' "$OUTDIR/cost.json")" -eq 10000 ]
-  [ "$(jq -r '.execute.buckets.output' "$OUTDIR/cost.json")" -eq 10 ]
-  [ "$(jq -r '.execute.total' "$OUTDIR/cost.json")" -eq 11110 ]
+  [ "$(jq -r '.execute.buckets.fresh_input' "$OUTPUT_DIRECTORY/cost.json")" -eq 100 ]
+  [ "$(jq -r '.execute.buckets.cache_write' "$OUTPUT_DIRECTORY/cost.json")" -eq 1000 ]
+  [ "$(jq -r '.execute.buckets.cache_read' "$OUTPUT_DIRECTORY/cost.json")" -eq 10000 ]
+  [ "$(jq -r '.execute.buckets.output' "$OUTPUT_DIRECTORY/cost.json")" -eq 10 ]
+  [ "$(jq -r '.execute.total' "$OUTPUT_DIRECTORY/cost.json")" -eq 11110 ]
 
   # UAT-004: every bucket non-zero and mutually distinct (kills hardcoded-zero,
   # single-collapsed-input, and wrong-field-mapping helpers).
-  f="$(led '.buckets.fresh_input')"; w="$(led '.buckets.cache_write')"
-  r="$(led '.buckets.cache_read')";  o="$(led '.buckets.output')"
-  for v in "$f" "$w" "$r" "$o"; do [ "$v" -ne 0 ]; done
-  [ "$f" -ne "$w" ]; [ "$f" -ne "$r" ]; [ "$f" -ne "$o" ]
-  [ "$w" -ne "$r" ]; [ "$w" -ne "$o" ]; [ "$r" -ne "$o" ]
+  fresh_input_value="$(ledger_field '.buckets.fresh_input')"; cache_write_value="$(ledger_field '.buckets.cache_write')"
+  cache_read_value="$(ledger_field '.buckets.cache_read')";  output_value="$(ledger_field '.buckets.output')"
+  for bucket_value in "$fresh_input_value" "$cache_write_value" "$cache_read_value" "$output_value"; do [ "$bucket_value" -ne 0 ]; done
+  [ "$fresh_input_value" -ne "$cache_write_value" ]; [ "$fresh_input_value" -ne "$cache_read_value" ]; [ "$fresh_input_value" -ne "$output_value" ]
+  [ "$cache_write_value" -ne "$cache_read_value" ]; [ "$cache_write_value" -ne "$output_value" ]; [ "$cache_read_value" -ne "$output_value" ]
 }
 
 # ---------- 2. Dedup (documented) ----------
@@ -180,16 +180,16 @@ led() { jq -r "$1" "$LEDGER"; }
   [ "$status" -eq 0 ]
   # m1 is streamed 3x with identical usage; deduped output is 1+2+3+4 = 10.
   # A naive per-line sum would count m1 three times -> output 12, total 13332.
-  [ "$(led '.buckets.output')" -eq 10 ]
-  [ "$(led '.total')" -eq 11110 ]
-  [ "$(led '.total')" -ne 13332 ]
+  [ "$(ledger_field '.buckets.output')" -eq 10 ]
+  [ "$(ledger_field '.total')" -eq 11110 ]
+  [ "$(ledger_field '.total')" -ne 13332 ]
 }
 
 # ---------- 3. Sidecar inclusion (UAT-003) ----------
 @test "anchor: total includes sidecars (>= sidecar-only, > main-only)" {
   run_anchor
   [ "$status" -eq 0 ]
-  total="$(led '.total')"
+  total="$(ledger_field '.total')"
   # hand-computed sub-sums: main-only 3333, sidecar-only 7777
   [ "$total" -ge 7777 ]   # >= sidecar-only sum (UAT-003)
   [ "$total" -gt 3333 ]   # strictly > main-only sum -> sidecars contributed
@@ -199,20 +199,20 @@ led() { jq -r "$1" "$LEDGER"; }
 # ---------- 4. agent-*.meta.json excluded ----------
 @test "meta.json sibling is never read (adding one does not change the tally)" {
   cp -R "$ANCHOR" "$BATS_TEST_TMPDIR/projcopy"
-  sub="$BATS_TEST_TMPDIR/projcopy/proj-hash-a/$SESSION/subagents"
+  subagents_directory="$BATS_TEST_TMPDIR/projcopy/proj-hash-a/$SESSION/subagents"
 
   run bash "$SCRIPT" --action execute --spec-id SPEC-013 --plan-slug slug \
-    --out-dir "$OUTDIR" --session-id "$SESSION" \
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "$SESSION" \
     --projects-root "$BATS_TEST_TMPDIR/projcopy" --ledger "$BATS_TEST_TMPDIR/l1.jsonl"
   [ "$status" -eq 0 ]
   before="$(jq -r '.total' "$BATS_TEST_TMPDIR/l1.jsonl")"
 
   # Add a second .meta.json full of usage; the glob must still ignore it.
   printf '%s\n' '{"type":"assistant","uuid":"x","message":{"id":"meta2","usage":{"input_tokens":999999,"cache_creation_input_tokens":999999,"cache_read_input_tokens":999999,"output_tokens":999999}}}' \
-    > "$sub/agent-9999.meta.json"
+    > "$subagents_directory/agent-9999.meta.json"
 
   run bash "$SCRIPT" --action execute --spec-id SPEC-013 --plan-slug slug \
-    --out-dir "$OUTDIR" --session-id "$SESSION" \
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "$SESSION" \
     --projects-root "$BATS_TEST_TMPDIR/projcopy" --ledger "$BATS_TEST_TMPDIR/l2.jsonl"
   [ "$status" -eq 0 ]
   after="$(jq -r '.total' "$BATS_TEST_TMPDIR/l2.jsonl")"
@@ -229,36 +229,36 @@ led() { jq -r "$1" "$LEDGER"; }
 # must stay out, exactly like the plain-sidecar meta.json decoy.
 @test "workflow sidecars under subagents/workflows/wf_*/ are tallied" {
   cp -R "$ANCHOR" "$BATS_TEST_TMPDIR/projcopy"
-  wf="$BATS_TEST_TMPDIR/projcopy/proj-hash-a/$SESSION/subagents/workflows/wf_fixture0001"
-  mkdir -p "$wf"
+  workflow_directory="$BATS_TEST_TMPDIR/projcopy/proj-hash-a/$SESSION/subagents/workflows/wf_fixture0001"
+  mkdir -p "$workflow_directory"
   printf '%s\n' '{"type":"assistant","uuid":"u-m5-a","timestamp":"2026-07-02T17:01:00.000Z","message":{"id":"m5","role":"assistant","usage":{"input_tokens":50,"cache_creation_input_tokens":500,"cache_read_input_tokens":5000,"output_tokens":5}}}' \
-    > "$wf/agent-0005.jsonl"
-  printf '%s\n' '{"agentType":"workflow-subagent"}' > "$wf/agent-0005.meta.json"
+    > "$workflow_directory/agent-0005.jsonl"
+  printf '%s\n' '{"agentType":"workflow-subagent"}' > "$workflow_directory/agent-0005.meta.json"
   printf '%s\n' '{"type":"assistant","uuid":"j","message":{"id":"journal1","usage":{"input_tokens":999999,"cache_creation_input_tokens":999999,"cache_read_input_tokens":999999,"output_tokens":999999}}}' \
-    > "$wf/journal.jsonl"
+    > "$workflow_directory/journal.jsonl"
 
   run bash "$SCRIPT" --action execute --spec-id SPEC-013 --plan-slug slug \
-    --out-dir "$OUTDIR" --session-id "$SESSION" \
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "$SESSION" \
     --projects-root "$BATS_TEST_TMPDIR/projcopy" --ledger "$LEDGER"
   [ "$status" -eq 0 ]
-  [ "$(led '.partial')" = "false" ]
-  [ "$(led '.total')" -eq 16665 ]
-  [ "$(led '.duration_seconds')" -eq 125 ]
-  [ "$(led '.by_agent_type["workflow-subagent"].fresh_input')" -eq 50 ]
+  [ "$(ledger_field '.partial')" = "false" ]
+  [ "$(ledger_field '.total')" -eq 16665 ]
+  [ "$(ledger_field '.duration_seconds')" -eq 125 ]
+  [ "$(ledger_field '.by_agent_type["workflow-subagent"].fresh_input')" -eq 50 ]
 }
 
 # ---------- 5. cost.json content (UAT-001) ----------
 @test "cost.json exists in --out-dir with all five figures (not empty/placeholder)" {
   run_anchor
   [ "$status" -eq 0 ]
-  [ -f "$OUTDIR/cost.json" ]
-  [ -s "$OUTDIR/cost.json" ]
+  [ -f "$OUTPUT_DIRECTORY/cost.json" ]
+  [ -s "$OUTPUT_DIRECTORY/cost.json" ]
   # all five figures present under the execute key
-  [ "$(jq -r '.execute.buckets.fresh_input' "$OUTDIR/cost.json")" -eq 100 ]
-  [ "$(jq -r '.execute.buckets.cache_write' "$OUTDIR/cost.json")" -eq 1000 ]
-  [ "$(jq -r '.execute.buckets.cache_read' "$OUTDIR/cost.json")" -eq 10000 ]
-  [ "$(jq -r '.execute.buckets.output' "$OUTDIR/cost.json")" -eq 10 ]
-  [ "$(jq -r '.execute.total' "$OUTDIR/cost.json")" -eq 11110 ]
+  [ "$(jq -r '.execute.buckets.fresh_input' "$OUTPUT_DIRECTORY/cost.json")" -eq 100 ]
+  [ "$(jq -r '.execute.buckets.cache_write' "$OUTPUT_DIRECTORY/cost.json")" -eq 1000 ]
+  [ "$(jq -r '.execute.buckets.cache_read' "$OUTPUT_DIRECTORY/cost.json")" -eq 10000 ]
+  [ "$(jq -r '.execute.buckets.output' "$OUTPUT_DIRECTORY/cost.json")" -eq 10 ]
+  [ "$(jq -r '.execute.total' "$OUTPUT_DIRECTORY/cost.json")" -eq 11110 ]
 }
 
 # ---------- 5b. plan + execute keys coexist in one cost.json ----------
@@ -269,28 +269,28 @@ led() { jq -r "$1" "$LEDGER"; }
 # clobbered-vs-preserved or a summed regression is unambiguous.
 @test "plan then execute: cost.json keeps independent plan + execute keys (no overwrite, no sum)" {
   run bash "$SCRIPT" --action plan --spec-id SPEC-013 --plan-slug my-plan \
-    --out-dir "$OUTDIR" --session-id "fixturesingle0001" \
-    --projects-root "$FIX/single/projects" --ledger "$BATS_TEST_TMPDIR/l-plan.jsonl" \
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "fixturesingle0001" \
+    --projects-root "$FIXTURE_DIRECTORY/single/projects" --ledger "$BATS_TEST_TMPDIR/l-plan.jsonl" \
     --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
-  [ "$(jq -r '.plan.total' "$OUTDIR/cost.json")" -eq 562 ]
-  [ "$(jq -r '.execute // "absent"' "$OUTDIR/cost.json")" = "absent" ]
+  [ "$(jq -r '.plan.total' "$OUTPUT_DIRECTORY/cost.json")" -eq 562 ]
+  [ "$(jq -r '.execute // "absent"' "$OUTPUT_DIRECTORY/cost.json")" = "absent" ]
 
-  before="$(jq -c '.plan' "$OUTDIR/cost.json")"
+  before="$(jq -c '.plan' "$OUTPUT_DIRECTORY/cost.json")"
 
   # Execution tally into the SAME out-dir must add a key, not replace the file.
   run bash "$SCRIPT" --action execute --spec-id SPEC-013 --plan-slug my-plan \
-    --out-dir "$OUTDIR" --session-id "$SESSION" \
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "$SESSION" \
     --projects-root "$ANCHOR" --ledger "$BATS_TEST_TMPDIR/l-exec.jsonl"
   [ "$status" -eq 0 ]
 
   # Both keys present; plan is byte-unchanged, execute reflects its own tally.
-  after="$(jq -c '.plan' "$OUTDIR/cost.json")"
+  after="$(jq -c '.plan' "$OUTPUT_DIRECTORY/cost.json")"
   [ "$before" = "$after" ]
-  [ "$(jq -r '.execute.total' "$OUTDIR/cost.json")" -eq 11110 ]
+  [ "$(jq -r '.execute.total' "$OUTPUT_DIRECTORY/cost.json")" -eq 11110 ]
 
   # No summed figure anywhere (562 + 11110 = 11672 must never appear).
-  grep -qF "11672" <(jq -c '.' "$OUTDIR/cost.json") && return 1
+  grep -qF "11672" <(jq -c '.' "$OUTPUT_DIRECTORY/cost.json") && return 1
   return 0
 }
 
@@ -299,28 +299,28 @@ led() { jq -r "$1" "$LEDGER"; }
 # written once upstream, and the file stays a two-key object (no duplication).
 @test "repeated execute writes preserve the plan key and never duplicate keys" {
   run bash "$SCRIPT" --action plan --spec-id SPEC-013 --plan-slug my-plan \
-    --out-dir "$OUTDIR" --session-id "fixturesingle0001" \
-    --projects-root "$FIX/single/projects" --ledger "$BATS_TEST_TMPDIR/lp.jsonl" \
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "fixturesingle0001" \
+    --projects-root "$FIXTURE_DIRECTORY/single/projects" --ledger "$BATS_TEST_TMPDIR/lp.jsonl" \
     --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
 
   for _ in 1 2 3; do
     run bash "$SCRIPT" --action execute --spec-id SPEC-013 --plan-slug my-plan \
-      --out-dir "$OUTDIR" --session-id "$SESSION" \
+      --out-dir "$OUTPUT_DIRECTORY" --session-id "$SESSION" \
       --projects-root "$ANCHOR" --ledger "$BATS_TEST_TMPDIR/le.jsonl"
     [ "$status" -eq 0 ]
   done
 
-  [ "$(jq -r 'keys | sort | join(",")' "$OUTDIR/cost.json")" = "execute,plan" ]
-  [ "$(jq -r '.plan.total' "$OUTDIR/cost.json")" -eq 562 ]
-  [ "$(jq -r '.execute.total' "$OUTDIR/cost.json")" -eq 11110 ]
+  [ "$(jq -r 'keys | sort | join(",")' "$OUTPUT_DIRECTORY/cost.json")" = "execute,plan" ]
+  [ "$(jq -r '.plan.total' "$OUTPUT_DIRECTORY/cost.json")" -eq 562 ]
+  [ "$(jq -r '.execute.total' "$OUTPUT_DIRECTORY/cost.json")" -eq 11110 ]
 }
 
 # ---------- 6. Ledger keyed + durable (UAT-005) ----------
 @test "ledger record is valid JSON, keyed, and survives out-dir (plan folder) deletion" {
   run bash "$SCRIPT" \
     --action plan --spec-id SPEC-013 --plan-slug spec-013-token-accounting \
-    --out-dir "$OUTDIR" --session-id "$SESSION" \
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "$SESSION" \
     --projects-root "$ANCHOR" --ledger "$BATS_TEST_TMPDIR/durable.jsonl" \
     --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
@@ -336,7 +336,7 @@ led() { jq -r "$1" "$LEDGER"; }
   [ "$(jq -r '.total' "$BATS_TEST_TMPDIR/durable.jsonl")" -eq 11110 ]
 
   # deleting the plan folder (out-dir) leaves the ledger record intact (UAT-005)
-  rm -rf "$OUTDIR"
+  rm -rf "$OUTPUT_DIRECTORY"
   [ -f "$BATS_TEST_TMPDIR/durable.jsonl" ]
   [ "$(jq -r '.total' "$BATS_TEST_TMPDIR/durable.jsonl")" -eq 11110 ]
 }
@@ -346,25 +346,25 @@ led() { jq -r "$1" "$LEDGER"; }
 # throwaway tmp git repo, so the "real" ledger is the tmp repo's, not the machine's.
 @test "worktree run writes the ledger to the main checkout, not the worktree" {
   MAIN="$(cd "$BATS_TEST_TMPDIR" && pwd -P)/main"
-  WT="$(cd "$BATS_TEST_TMPDIR" && pwd -P)/wt"
+  WORKTREE="$(cd "$BATS_TEST_TMPDIR" && pwd -P)/wt"
   mkdir -p "$MAIN"
   git -C "$MAIN" init -q
   git -C "$MAIN" commit --allow-empty -q -m "init"
-  git -C "$MAIN" worktree add -q "$WT" -b "feature/kickoff"
+  git -C "$MAIN" worktree add -q "$WORKTREE" -b "feature/kickoff"
 
-  run bash -c "cd '$WT' && bash '$SCRIPT' \
+  run bash -c "cd '$WORKTREE' && bash '$SCRIPT' \
     --action execute --spec-id SPEC-013 --plan-slug spec-013-token-accounting \
-    --out-dir '$WT/out' --session-id '$SESSION' --projects-root '$ANCHOR'"
+    --out-dir '$WORKTREE/out' --session-id '$SESSION' --projects-root '$ANCHOR'"
   [ "$status" -eq 0 ]
 
   # Ledger landed in the MAIN checkout ...
   [ -f "$MAIN/.gaia/local/telemetry/cost.jsonl" ]
   [ "$(jq -r '.total' "$MAIN/.gaia/local/telemetry/cost.jsonl")" -eq 11110 ]
   # ... and NOT under the worktree.
-  [ ! -f "$WT/.gaia/local/telemetry/cost.jsonl" ]
+  [ ! -f "$WORKTREE/.gaia/local/telemetry/cost.jsonl" ]
 
   # Ledger survives worktree removal (UAT-008 durability).
-  git -C "$MAIN" worktree remove --force "$WT" 2>/dev/null || rm -rf "$WT"
+  git -C "$MAIN" worktree remove --force "$WORKTREE" 2>/dev/null || rm -rf "$WORKTREE"
   [ -f "$MAIN/.gaia/local/telemetry/cost.jsonl" ]
 }
 
@@ -372,7 +372,7 @@ led() { jq -r "$1" "$LEDGER"; }
 @test "non-existent session: exit 0, partial, buckets 0, marker in all surfaces" {
   run bash "$SCRIPT" \
     --action spec --spec-id SPEC-013 \
-    --out-dir "$OUTDIR" --session-id "no-such-session-9999" \
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "no-such-session-9999" \
     --projects-root "$ANCHOR" --ledger "$LEDGER" \
     --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
@@ -382,36 +382,36 @@ led() { jq -r "$1" "$LEDGER"; }
   [[ "$output" == *"Total:        0"* ]]
 
   # ledger partial:true, buckets 0
-  [ "$(led '.partial')" = "true" ]
-  [ "$(led '.total')" -eq 0 ]
+  [ "$(ledger_field '.partial')" = "true" ]
+  [ "$(ledger_field '.total')" -eq 0 ]
 
   # cost.json carries the same partial:true marker (same $rec as the ledger)
-  [ "$(jq -r '.spec.partial' "$OUTDIR/cost.json")" = "true" ]
+  [ "$(jq -r '.spec.partial' "$OUTPUT_DIRECTORY/cost.json")" = "true" ]
 }
 
 @test "malformed sidecar line: exit 0, partial, still tallies the readable files" {
   cp -R "$ANCHOR" "$BATS_TEST_TMPDIR/projcopy"
-  sub="$BATS_TEST_TMPDIR/projcopy/proj-hash-a/$SESSION/subagents"
+  subagents_directory="$BATS_TEST_TMPDIR/projcopy/proj-hash-a/$SESSION/subagents"
   # A NEW sidecar whose line is not valid JSON: it must flip partial and
   # contribute nothing, while the good main + sidecars still sum to 11110.
-  printf '%s\n' 'this is not json {{{' > "$sub/agent-0009.jsonl"
+  printf '%s\n' 'this is not json {{{' > "$subagents_directory/agent-0009.jsonl"
 
   run bash "$SCRIPT" --action execute --spec-id SPEC-013 --plan-slug slug \
-    --out-dir "$OUTDIR" --session-id "$SESSION" \
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "$SESSION" \
     --projects-root "$BATS_TEST_TMPDIR/projcopy" --ledger "$LEDGER"
   [ "$status" -eq 0 ]
-  [ "$(led '.partial')" = "true" ]
-  [ "$(led '.total')" -eq 11110 ]   # readable files still tallied, nothing fabricated
+  [ "$(ledger_field '.partial')" = "true" ]
+  [ "$(ledger_field '.total')" -eq 11110 ]   # readable files still tallied, nothing fabricated
 }
 
 @test "empty session id (no --session-id, unset env): exit 0, partial, no crash" {
   run env -u CLAUDE_CODE_SESSION_ID bash "$SCRIPT" \
     --action spec --spec-id SPEC-013 \
-    --out-dir "$OUTDIR" --projects-root "$ANCHOR" --ledger "$LEDGER" \
+    --out-dir "$OUTPUT_DIRECTORY" --projects-root "$ANCHOR" --ledger "$LEDGER" \
     --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
-  [ "$(led '.partial')" = "true" ]
-  [ "$(led '.total')" -eq 0 ]
+  [ "$(ledger_field '.partial')" = "true" ]
+  [ "$(ledger_field '.total')" -eq 0 ]
 }
 
 # ---------- 10. Elapsed exact span (PL-001) ----------
@@ -422,15 +422,15 @@ led() { jq -r "$1" "$LEDGER"; }
 @test "anchor: elapsed span 125s/2m5s, ledger raw UTC, human surfaces local (TZ=UTC)" {
   run env TZ=UTC bash "$SCRIPT" \
     --action execute --spec-id SPEC-013 --plan-slug spec-013-token-accounting \
-    --out-dir "$OUTDIR" --session-id "$SESSION" \
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "$SESSION" \
     --projects-root "$ANCHOR" --ledger "$LEDGER"
   [ "$status" -eq 0 ]
 
   # ledger: raw UTC endpoints (durable machine record)
-  [ "$(led '.duration_seconds')" -eq 125 ]
-  [ "$(led '.duration_available')" = "true" ]
-  [ "$(led '.started_at')" = "2026-07-02T17:00:00.000Z" ]
-  [ "$(led '.ended_at')" = "2026-07-02T17:02:05.000Z" ]
+  [ "$(ledger_field '.duration_seconds')" -eq 125 ]
+  [ "$(ledger_field '.duration_available')" = "true" ]
+  [ "$(ledger_field '.started_at')" = "2026-07-02T17:00:00.000Z" ]
+  [ "$(ledger_field '.ended_at')" = "2026-07-02T17:02:05.000Z" ]
 
   # stdout pinned human format + LOCAL window (kills 0, ms=125000, all-lines=630s,
   # main-only=30s, deduped-min=124s). TZ=UTC -> local clock == UTC, labelled UTC.
@@ -438,8 +438,8 @@ led() { jq -r "$1" "$LEDGER"; }
 
   # cost.json carries the raw UTC endpoints under the execute key (no
   # human-rendered duration string; that surface is stdout-only).
-  [ "$(jq -r '.execute.started_at' "$OUTDIR/cost.json")" = "2026-07-02T17:00:00.000Z" ]
-  [ "$(jq -r '.execute.ended_at' "$OUTDIR/cost.json")" = "2026-07-02T17:02:05.000Z" ]
+  [ "$(jq -r '.execute.started_at' "$OUTPUT_DIRECTORY/cost.json")" = "2026-07-02T17:00:00.000Z" ]
+  [ "$(jq -r '.execute.ended_at' "$OUTPUT_DIRECTORY/cost.json")" = "2026-07-02T17:02:05.000Z" ]
 }
 
 # ---------- 10b. Endpoints render in the machine's LOCAL zone (owner request) ----------
@@ -451,14 +451,14 @@ led() { jq -r "$1" "$LEDGER"; }
 @test "human surfaces render endpoints in the local zone; ledger stays UTC (TZ=JST-9)" {
   run env TZ=JST-9 bash "$SCRIPT" \
     --action execute --spec-id SPEC-013 --plan-slug spec-013-token-accounting \
-    --out-dir "$OUTDIR" --session-id "$SESSION" \
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "$SESSION" \
     --projects-root "$ANCHOR" --ledger "$LEDGER"
   [ "$status" -eq 0 ]
 
   # ledger unchanged: raw UTC, span unchanged
-  [ "$(led '.started_at')" = "2026-07-02T17:00:00.000Z" ]
-  [ "$(led '.ended_at')" = "2026-07-02T17:02:05.000Z" ]
-  [ "$(led '.duration_seconds')" -eq 125 ]
+  [ "$(ledger_field '.started_at')" = "2026-07-02T17:00:00.000Z" ]
+  [ "$(ledger_field '.ended_at')" = "2026-07-02T17:02:05.000Z" ]
+  [ "$(ledger_field '.duration_seconds')" -eq 125 ]
 
   # human surfaces: +0900 local, crossing midnight into 2026-07-03
   grep -qF "first to last model turn: 2026-07-03 02:00:00 JST to 2026-07-03 02:02:05 JST" <<<"$output"
@@ -466,8 +466,8 @@ led() { jq -r "$1" "$LEDGER"; }
 
   # cost.json keeps the raw UTC endpoints regardless of TZ (no local rendering
   # in the sidecar; that is stdout-only).
-  [ "$(jq -r '.execute.started_at' "$OUTDIR/cost.json")" = "2026-07-02T17:00:00.000Z" ]
-  [ "$(jq -r '.execute.ended_at' "$OUTDIR/cost.json")" = "2026-07-02T17:02:05.000Z" ]
+  [ "$(jq -r '.execute.started_at' "$OUTPUT_DIRECTORY/cost.json")" = "2026-07-02T17:00:00.000Z" ]
+  [ "$(jq -r '.execute.ended_at' "$OUTPUT_DIRECTORY/cost.json")" = "2026-07-02T17:02:05.000Z" ]
 }
 
 # ---------- 11. Max in a sidecar (documents sidecar inclusion) ----------
@@ -476,160 +476,160 @@ led() { jq -r "$1" "$LEDGER"; }
   rm -f "$BATS_TEST_TMPDIR/projcopy/proj-hash-a/$SESSION/subagents/agent-0002.jsonl"
 
   run bash "$SCRIPT" --action execute --spec-id SPEC-013 --plan-slug slug \
-    --out-dir "$OUTDIR" --session-id "$SESSION" \
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "$SESSION" \
     --projects-root "$BATS_TEST_TMPDIR/projcopy" --ledger "$LEDGER"
   [ "$status" -eq 0 ]
   # global max was 17:02:05 (agent-0002); removing it leaves m3 (agent-0001) at
   # 17:01:00 as the new max -> span 60s < 125s.
-  [ "$(led '.duration_seconds')" -eq 60 ]
-  [ "$(led '.ended_at')" = "2026-07-02T17:01:00.000Z" ]
+  [ "$(ledger_field '.duration_seconds')" -eq 60 ]
+  [ "$(ledger_field '.ended_at')" = "2026-07-02T17:01:00.000Z" ]
 }
 
 # ---------- 12. Single / zero ----------
 @test "single usage line: duration 0, available true" {
   run bash "$SCRIPT" --action spec --spec-id SPEC-000 \
-    --out-dir "$OUTDIR" --session-id "fixturesingle0001" \
-    --projects-root "$FIX/single/projects" --ledger "$LEDGER" \
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "fixturesingle0001" \
+    --projects-root "$FIXTURE_DIRECTORY/single/projects" --ledger "$LEDGER" \
     --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
-  [ "$(led '.duration_seconds')" -eq 0 ]
-  [ "$(led '.duration_available')" = "true" ]
-  [ "$(led '.total')" -eq 562 ]
+  [ "$(ledger_field '.duration_seconds')" -eq 0 ]
+  [ "$(ledger_field '.duration_available')" = "true" ]
+  [ "$(ledger_field '.total')" -eq 562 ]
 }
 
 @test "zero usage lines (timestamped non-usage only): unavailable/null, buckets 0, partial false" {
   run bash "$SCRIPT" --action spec --spec-id SPEC-000 \
-    --out-dir "$OUTDIR" --session-id "fixturezero0001" \
-    --projects-root "$FIX/zero/projects" --ledger "$LEDGER" \
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "fixturezero0001" \
+    --projects-root "$FIXTURE_DIRECTORY/zero/projects" --ledger "$LEDGER" \
     --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
-  [ "$(led '.duration_available')" = "false" ]
-  [ "$(led '.duration_seconds')" = "null" ]
-  [ "$(led '.total')" -eq 0 ]
-  [ "$(led '.partial')" = "false" ]
+  [ "$(ledger_field '.duration_available')" = "false" ]
+  [ "$(ledger_field '.duration_seconds')" = "null" ]
+  [ "$(ledger_field '.total')" -eq 0 ]
+  [ "$(ledger_field '.partial')" = "false" ]
   [[ "$output" == *"Elapsed:      unavailable (no readable turn timestamps)"* ]]
 }
 
 # ---------- 13. Malformed timestamp + flag independence ----------
 @test "malformed extremal timestamp: unavailable, buckets intact, partial false (flag independence)" {
   run bash "$SCRIPT" --action spec --spec-id SPEC-000 \
-    --out-dir "$OUTDIR" --session-id "fixturemalformed0001" \
-    --projects-root "$FIX/malformed/projects" --ledger "$LEDGER" \
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "fixturemalformed0001" \
+    --projects-root "$FIXTURE_DIRECTORY/malformed/projects" --ledger "$LEDGER" \
     --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
 
   # duration unavailable ...
-  [ "$(led '.duration_available')" = "false" ]
-  [ "$(led '.duration_seconds')" = "null" ]
-  [ "$(led '.started_at')" = "null" ]
-  [ "$(led '.ended_at')" = "null" ]
+  [ "$(ledger_field '.duration_available')" = "false" ]
+  [ "$(ledger_field '.duration_seconds')" = "null" ]
+  [ "$(ledger_field '.started_at')" = "null" ]
+  [ "$(ledger_field '.ended_at')" = "null" ]
 
   # ... while the four buckets equal their hand-computed sums and partial is FALSE.
   # Only this case falsifies a helper that conflates partial with duration_available.
-  [ "$(led '.partial')" = "false" ]
-  [ "$(led '.buckets.fresh_input')" -eq 11 ]
-  [ "$(led '.buckets.cache_write')" -eq 22 ]
-  [ "$(led '.buckets.cache_read')" -eq 33 ]
-  [ "$(led '.buckets.output')" -eq 44 ]
+  [ "$(ledger_field '.partial')" = "false" ]
+  [ "$(ledger_field '.buckets.fresh_input')" -eq 11 ]
+  [ "$(ledger_field '.buckets.cache_write')" -eq 22 ]
+  [ "$(ledger_field '.buckets.cache_read')" -eq 33 ]
+  [ "$(ledger_field '.buckets.output')" -eq 44 ]
 }
 
 # ---------- 14. Multi-model attribution (FC-1, SPEC-019) ----------
 @test "multimodel: by_model attributes each model, sentinel excluded" {
   run bash "$SCRIPT" --action execute --spec-id SPEC-019 --plan-slug spec-019-dollar-cost \
-    --out-dir "$OUTDIR" --session-id "fixturemultimodel0001" \
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "fixturemultimodel0001" \
     --projects-root "$MULTIMODEL" --ledger "$LEDGER"
   [ "$status" -eq 0 ]
 
-  [ "$(led '.by_model | keys | join(",")')" = "claude-opus-4-8,claude-sonnet-4-6" ]
-  [ "$(led '.by_model["<synthetic>"]')" = "null" ]
+  [ "$(ledger_field '.by_model | keys | join(",")')" = "claude-opus-4-8,claude-sonnet-4-6" ]
+  [ "$(ledger_field '.by_model["<synthetic>"]')" = "null" ]
 
-  [ "$(led '.by_model["claude-opus-4-8"].fresh_input')" -eq 300 ]
-  [ "$(led '.by_model["claude-opus-4-8"].cache_write_5m')" -eq 40 ]
-  [ "$(led '.by_model["claude-opus-4-8"].cache_write_1h')" -eq 360 ]
-  [ "$(led '.by_model["claude-opus-4-8"].cache_read')" -eq 3000 ]
-  [ "$(led '.by_model["claude-opus-4-8"].output')" -eq 30 ]
+  [ "$(ledger_field '.by_model["claude-opus-4-8"].fresh_input')" -eq 300 ]
+  [ "$(ledger_field '.by_model["claude-opus-4-8"].cache_write_5m')" -eq 40 ]
+  [ "$(ledger_field '.by_model["claude-opus-4-8"].cache_write_1h')" -eq 360 ]
+  [ "$(ledger_field '.by_model["claude-opus-4-8"].cache_read')" -eq 3000 ]
+  [ "$(ledger_field '.by_model["claude-opus-4-8"].output')" -eq 30 ]
 
-  [ "$(led '.by_model["claude-sonnet-4-6"].fresh_input')" -eq 30 ]
-  [ "$(led '.by_model["claude-sonnet-4-6"].cache_write_5m')" -eq 10 ]
-  [ "$(led '.by_model["claude-sonnet-4-6"].cache_write_1h')" -eq 20 ]
-  [ "$(led '.by_model["claude-sonnet-4-6"].cache_read')" -eq 3000 ]
-  [ "$(led '.by_model["claude-sonnet-4-6"].output')" -eq 3 ]
+  [ "$(ledger_field '.by_model["claude-sonnet-4-6"].fresh_input')" -eq 30 ]
+  [ "$(ledger_field '.by_model["claude-sonnet-4-6"].cache_write_5m')" -eq 10 ]
+  [ "$(ledger_field '.by_model["claude-sonnet-4-6"].cache_write_1h')" -eq 20 ]
+  [ "$(ledger_field '.by_model["claude-sonnet-4-6"].cache_read')" -eq 3000 ]
+  [ "$(ledger_field '.by_model["claude-sonnet-4-6"].output')" -eq 3 ]
 }
 
 @test "multimodel: per-model buckets reconcile to the aggregate" {
   run bash "$SCRIPT" --action execute --spec-id SPEC-019 --plan-slug spec-019-dollar-cost \
-    --out-dir "$OUTDIR" --session-id "fixturemultimodel0001" \
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "fixturemultimodel0001" \
     --projects-root "$MULTIMODEL" --ledger "$LEDGER"
   [ "$status" -eq 0 ]
 
   # Reconciliation invariant (FC-1): Σ per-model == aggregate buckets.
-  [ "$(led '([.by_model[].fresh_input] | add) == .buckets.fresh_input')" = "true" ]
-  [ "$(led '([.by_model[] | (.cache_write_5m + .cache_write_1h)] | add) == .buckets.cache_write')" = "true" ]
-  [ "$(led '([.by_model[].cache_read] | add) == .buckets.cache_read')" = "true" ]
-  [ "$(led '([.by_model[].output] | add) == .buckets.output')" = "true" ]
+  [ "$(ledger_field '([.by_model[].fresh_input] | add) == .buckets.fresh_input')" = "true" ]
+  [ "$(ledger_field '([.by_model[] | (.cache_write_5m + .cache_write_1h)] | add) == .buckets.cache_write')" = "true" ]
+  [ "$(ledger_field '([.by_model[].cache_read] | add) == .buckets.cache_read')" = "true" ]
+  [ "$(ledger_field '([.by_model[].output] | add) == .buckets.output')" = "true" ]
 }
 
 @test "multimodel: cache-write TTL split captured per model" {
   run bash "$SCRIPT" --action execute --spec-id SPEC-019 --plan-slug spec-019-dollar-cost \
-    --out-dir "$OUTDIR" --session-id "fixturemultimodel0001" \
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "fixturemultimodel0001" \
     --projects-root "$MULTIMODEL" --ledger "$LEDGER"
   [ "$status" -eq 0 ]
 
-  [ "$(led '.by_model["claude-opus-4-8"].cache_write_5m')" -eq 40 ]
-  [ "$(led '.by_model["claude-opus-4-8"].cache_write_1h')" -eq 360 ]
-  [ "$(led '.by_model["claude-sonnet-4-6"].cache_write_5m')" -eq 10 ]
-  [ "$(led '.by_model["claude-sonnet-4-6"].cache_write_1h')" -eq 20 ]
+  [ "$(ledger_field '.by_model["claude-opus-4-8"].cache_write_5m')" -eq 40 ]
+  [ "$(ledger_field '.by_model["claude-opus-4-8"].cache_write_1h')" -eq 360 ]
+  [ "$(ledger_field '.by_model["claude-sonnet-4-6"].cache_write_5m')" -eq 10 ]
+  [ "$(ledger_field '.by_model["claude-sonnet-4-6"].cache_write_1h')" -eq 20 ]
 
   # 5m + 1h summed across models equals the aggregate cache_write bucket.
-  [ "$(led '(([.by_model[].cache_write_5m] | add) + ([.by_model[].cache_write_1h] | add)) == .buckets.cache_write')" = "true" ]
+  [ "$(ledger_field '(([.by_model[].cache_write_5m] | add) + ([.by_model[].cache_write_1h] | add)) == .buckets.cache_write')" = "true" ]
 }
 
 @test "split-less usage falls back to 1h and still reconciles" {
   run bash "$SCRIPT" --action execute --spec-id SPEC-019 --plan-slug spec-019-dollar-cost \
-    --out-dir "$OUTDIR" --session-id "fixturemultimodelsplitless0001" \
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "fixturemultimodelsplitless0001" \
     --projects-root "$MULTIMODEL_SPLITLESS" --ledger "$LEDGER"
   [ "$status" -eq 0 ]
 
-  [ "$(led '.by_model["claude-sonnet-4-6"].cache_write_5m')" -eq 0 ]
-  [ "$(led '.by_model["claude-sonnet-4-6"].cache_write_1h')" -eq 500 ]
-  [ "$(led '.buckets.cache_write')" -eq 500 ]
+  [ "$(ledger_field '.by_model["claude-sonnet-4-6"].cache_write_5m')" -eq 0 ]
+  [ "$(ledger_field '.by_model["claude-sonnet-4-6"].cache_write_1h')" -eq 500 ]
+  [ "$(ledger_field '.buckets.cache_write')" -eq 500 ]
 }
 
 @test "legacy-shaped (model-less) session omits by_model" {
   run_anchor
   [ "$status" -eq 0 ]
-  [ "$(led '.by_model')" = "null" ]
-  [ "$(led '.total')" -eq 11110 ]
+  [ "$(ledger_field '.by_model')" = "null" ]
+  [ "$(ledger_field '.total')" -eq 11110 ]
 }
 
 # ---------- 15. Shared ledger-path lib (FC-1) ----------
 @test "ledger-path-lib: resolves cost.jsonl, honors override, fails without git; token-tally sources it" {
-  LIB="$SCRIPT_DIR/ledger-path-lib.sh"
-  [ -f "$LIB" ]
+  LIBRARY_FILE="$SCRIPT_DIRECTORY/ledger-path-lib.sh"
+  [ -f "$LIBRARY_FILE" ]
 
   # override is echoed verbatim
-  got="$(bash -c '. "$1"; gaia_resolve_ledger_path "/x/y/cost.jsonl"' _ "$LIB")"
+  got="$(bash -c '. "$1"; gaia_resolve_ledger_path "/x/y/cost.jsonl"' _ "$LIBRARY_FILE")"
   [ "$got" = "/x/y/cost.jsonl" ]
 
   # inside a real git repo -> a main-checkout cost.jsonl path
   repo="$BATS_TEST_TMPDIR/librepo"
   mkdir -p "$repo"
   git -C "$repo" init -q
-  got2="$(bash -c 'cd "$1" && . "$2"; gaia_resolve_ledger_path ""' _ "$repo" "$LIB")"
-  case "$got2" in
+  repo_ledger_path="$(bash -c 'cd "$1" && . "$2"; gaia_resolve_ledger_path ""' _ "$repo" "$LIBRARY_FILE")"
+  case "$repo_ledger_path" in
     */.gaia/local/telemetry/cost.jsonl) : ;;
-    *) echo "unexpected ledger path: $got2" >&2; return 1 ;;
+    *) echo "unexpected ledger path: $repo_ledger_path" >&2; return 1 ;;
   esac
   # Differential oracle, exact match: the shared resolver behind this function
   # physically resolves (pwd -P), so the expected side must too, or this drifts
   # on a $BATS_TEST_TMPDIR under a symlinked component (e.g. macOS /var).
-  repo_abs="$(cd "$repo" && pwd -P)"
-  [ "$got2" = "$repo_abs/.gaia/local/telemetry/cost.jsonl" ]
+  repo_absolute_path="$(cd "$repo" && pwd -P)"
+  [ "$repo_ledger_path" = "$repo_absolute_path/.gaia/local/telemetry/cost.jsonl" ]
 
   # outside any git repo -> non-zero, no output
   nongit="$BATS_TEST_TMPDIR/nongit"
   mkdir -p "$nongit"
-  run bash -c 'cd "$1" && . "$2"; gaia_resolve_ledger_path ""' _ "$nongit" "$LIB"
+  run bash -c 'cd "$1" && . "$2"; gaia_resolve_ledger_path ""' _ "$nongit" "$LIBRARY_FILE"
   [ "$status" -ne 0 ]
 
   # token-tally.sh sources the lib rather than inlining the derivation
@@ -643,30 +643,30 @@ led() { jq -r "$1" "$LEDGER"; }
 # ---------- 16. spec doc: schema_version, spec key, no legacy md (AC2) ----------
 @test "spec: schema_version 1, kind spec, seq 0/final, cost.json keyed by spec, only cost.json written" {
   run bash "$SCRIPT" --action spec --spec-id SPEC-013 \
-    --out-dir "$OUTDIR" --session-id "$SESSION" \
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "$SESSION" \
     --projects-root "$ANCHOR" --ledger "$LEDGER" \
     --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
 
-  [ "$(led '.schema_version')" -eq 1 ]
-  [ "$(led '.kind')" = "spec" ]
-  [ "$(led '.spec_id')" = "SPEC-013" ]
-  [ "$(led '.plan_id')" = "null" ]
-  [ "$(led '.seq')" -eq 0 ]
-  [ "$(led '.final')" = "true" ]
+  [ "$(ledger_field '.schema_version')" -eq 1 ]
+  [ "$(ledger_field '.kind')" = "spec" ]
+  [ "$(ledger_field '.spec_id')" = "SPEC-013" ]
+  [ "$(ledger_field '.plan_id')" = "null" ]
+  [ "$(ledger_field '.seq')" -eq 0 ]
+  [ "$(ledger_field '.final')" = "true" ]
 
-  [ "$(jq -r '.spec.kind' "$OUTDIR/cost.json")" = "spec" ]
-  [ "$(jq -r '.spec.spec_id' "$OUTDIR/cost.json")" = "SPEC-013" ]
-  [ "$(jq -r '.spec.total' "$OUTDIR/cost.json")" -eq 11110 ]
+  [ "$(jq -r '.spec.kind' "$OUTPUT_DIRECTORY/cost.json")" = "spec" ]
+  [ "$(jq -r '.spec.spec_id' "$OUTPUT_DIRECTORY/cost.json")" = "SPEC-013" ]
+  [ "$(jq -r '.spec.total' "$OUTPUT_DIRECTORY/cost.json")" -eq 11110 ]
 
   # FC-1 acceptance shape (UAT-001): kind, spec_id, session_id present, buckets
   # shaped, total present, all under the top-level `spec` key.
-  run jq -e '.spec | (.kind=="spec") and (.spec_id=="SPEC-013") and (.session_id!=null) and (.buckets|has("fresh_input")) and has("total")' "$OUTDIR/cost.json"
+  run jq -e '.spec | (.kind=="spec") and (.spec_id=="SPEC-013") and (.session_id!=null) and (.buckets|has("fresh_input")) and has("total")' "$OUTPUT_DIRECTORY/cost.json"
   [ "$status" -eq 0 ]
 
   # cost.json is the ONLY sidecar written (no legacy cost.md sibling remains)
-  [ -f "$OUTDIR/cost.json" ]
-  [ ! -f "$OUTDIR/cost.md" ]
+  [ -f "$OUTPUT_DIRECTORY/cost.json" ]
+  [ ! -f "$OUTPUT_DIRECTORY/cost.md" ]
 }
 
 # ---------- 17. spec_id XOR plan_id -- the single source-of-truth gate (AC3) ----------
@@ -677,8 +677,8 @@ led() { jq -r "$1" "$LEDGER"; }
 @test "spec_id XOR plan_id across plan and execute kinds; no record carries both" {
   # spec-derived plan: --spec-id SPEC-* -> spec_id set, plan_id null
   run bash "$SCRIPT" --action plan --spec-id SPEC-023 --plan-slug p \
-    --out-dir "$OUTDIR/sd-plan" --session-id fixturesingle0001 \
-    --projects-root "$FIX/single/projects" --ledger "$BATS_TEST_TMPDIR/sd-plan.jsonl" \
+    --out-dir "$OUTPUT_DIRECTORY/sd-plan" --session-id fixturesingle0001 \
+    --projects-root "$FIXTURE_DIRECTORY/single/projects" --ledger "$BATS_TEST_TMPDIR/sd-plan.jsonl" \
     --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
   [ "$(jq -r '.kind' "$BATS_TEST_TMPDIR/sd-plan.jsonl")" = "plan" ]
@@ -687,8 +687,8 @@ led() { jq -r "$1" "$LEDGER"; }
 
   # spec-less plan: --plan-id PLAN-* -> plan_id set, spec_id null
   run bash "$SCRIPT" --action plan --plan-id PLAN-007 --plan-slug p \
-    --out-dir "$OUTDIR/sl-plan" --session-id fixturesingle0001 \
-    --projects-root "$FIX/single/projects" --ledger "$BATS_TEST_TMPDIR/sl-plan.jsonl" \
+    --out-dir "$OUTPUT_DIRECTORY/sl-plan" --session-id fixturesingle0001 \
+    --projects-root "$FIXTURE_DIRECTORY/single/projects" --ledger "$BATS_TEST_TMPDIR/sl-plan.jsonl" \
     --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
   [ "$(jq -r '.kind' "$BATS_TEST_TMPDIR/sl-plan.jsonl")" = "plan" ]
@@ -697,7 +697,7 @@ led() { jq -r "$1" "$LEDGER"; }
 
   # spec-derived execute
   run bash "$SCRIPT" --action execute --spec-id SPEC-023 --plan-slug p \
-    --out-dir "$OUTDIR/sd-exec" --session-id "$SESSION" \
+    --out-dir "$OUTPUT_DIRECTORY/sd-exec" --session-id "$SESSION" \
     --projects-root "$ANCHOR" --ledger "$BATS_TEST_TMPDIR/sd-exec.jsonl"
   [ "$status" -eq 0 ]
   [ "$(jq -r '.spec_id' "$BATS_TEST_TMPDIR/sd-exec.jsonl")" = "SPEC-023" ]
@@ -705,15 +705,15 @@ led() { jq -r "$1" "$LEDGER"; }
 
   # spec-less execute
   run bash "$SCRIPT" --action execute --plan-id PLAN-007 --plan-slug p \
-    --out-dir "$OUTDIR/sl-exec" --session-id "$SESSION" \
+    --out-dir "$OUTPUT_DIRECTORY/sl-exec" --session-id "$SESSION" \
     --projects-root "$ANCHOR" --ledger "$BATS_TEST_TMPDIR/sl-exec.jsonl"
   [ "$status" -eq 0 ]
   [ "$(jq -r '.spec_id' "$BATS_TEST_TMPDIR/sl-exec.jsonl")" = "null" ]
   [ "$(jq -r '.plan_id' "$BATS_TEST_TMPDIR/sl-exec.jsonl")" = "PLAN-007" ]
 
   # invariant: never both ids set on any of the four records
-  for f in sd-plan sl-plan sd-exec sl-exec; do
-    both="$(jq -r 'select(.spec_id != null and .plan_id != null) | "BOTH"' "$BATS_TEST_TMPDIR/$f.jsonl")"
+  for ledger_name in sd-plan sl-plan sd-exec sl-exec; do
+    both="$(jq -r 'select(.spec_id != null and .plan_id != null) | "BOTH"' "$BATS_TEST_TMPDIR/$ledger_name.jsonl")"
     [ -z "$both" ]
   done
 }
@@ -726,21 +726,21 @@ led() { jq -r "$1" "$LEDGER"; }
 #   aggregate buckets       fresh=70 cwrite=700 cread=7000 out=7  total=7777
 @test "by_agent_type: each sidecar's agentType is a bucket; collapsed sum reconciles to buckets" {
   run bash "$SCRIPT" --action execute --spec-id SPEC-023 --plan-slug ba \
-    --out-dir "$OUTDIR" --session-id fixturebyagent0001 \
-    --projects-root "$BYAGENT" --ledger "$LEDGER"
+    --out-dir "$OUTPUT_DIRECTORY" --session-id fixturebyagent0001 \
+    --projects-root "$BY_AGENT_PROJECTS" --ledger "$LEDGER"
   [ "$status" -eq 0 ]
 
   # one bucket per sidecar agentType, plus the main-transcript bucket
-  [ "$(led '.by_agent_type | keys | join(",")')" = "main,planner,researcher" ]
-  [ "$(led '.by_agent_type.researcher.fresh_input')" -eq 20 ]
-  [ "$(led '.by_agent_type.planner.fresh_input')" -eq 40 ]
-  [ "$(led '.by_agent_type.main.fresh_input')" -eq 10 ]
+  [ "$(ledger_field '.by_agent_type | keys | join(",")')" = "main,planner,researcher" ]
+  [ "$(ledger_field '.by_agent_type.researcher.fresh_input')" -eq 20 ]
+  [ "$(ledger_field '.by_agent_type.planner.fresh_input')" -eq 40 ]
+  [ "$(ledger_field '.by_agent_type.main.fresh_input')" -eq 10 ]
 
   # reconcile-by-equality: collapse 5m+1h -> cache_write; Sigma buckets == aggregate.
-  [ "$(led '([.by_agent_type[].fresh_input] | add) == .buckets.fresh_input')" = "true" ]
-  [ "$(led '([.by_agent_type[] | (.cache_write_5m + .cache_write_1h)] | add) == .buckets.cache_write')" = "true" ]
-  [ "$(led '([.by_agent_type[].cache_read] | add) == .buckets.cache_read')" = "true" ]
-  [ "$(led '([.by_agent_type[].output] | add) == .buckets.output')" = "true" ]
+  [ "$(ledger_field '([.by_agent_type[].fresh_input] | add) == .buckets.fresh_input')" = "true" ]
+  [ "$(ledger_field '([.by_agent_type[] | (.cache_write_5m + .cache_write_1h)] | add) == .buckets.cache_write')" = "true" ]
+  [ "$(ledger_field '([.by_agent_type[].cache_read] | add) == .buckets.cache_read')" = "true" ]
+  [ "$(ledger_field '([.by_agent_type[].output] | add) == .buckets.output')" = "true" ]
 }
 
 # ---------- 19. git_branch + project identity (AC6) ----------
@@ -748,88 +748,88 @@ led() { jq -r "$1" "$LEDGER"; }
 # repo's own origin remote. The https and ssh forms of ONE repo normalize to the
 # same id; a different repo (different owner) differs.
 @test "every record carries git_branch + project; same remote shares id, distinct remotes differ" {
-  mkrepo() {
+  make_repo() {
     git -C "$1" init -q
     git -C "$1" remote add origin "$2"
     git -C "$1" commit --allow-empty -q -m init
   }
-  runproj() {
-    # Deliberately no --cache-dir: this cd's into a fresh mkrepo'd git repo, so
+  run_project() {
+    # Deliberately no --cache-dir: this cd's into a fresh make_repo'd git repo, so
     # token-tally.sh derives its cache from THAT repo's git-common-dir, never the
     # real .gaia/local/cache. Isolated by construction.
     ( cd "$1" && bash "$SCRIPT" --action spec --spec-id SPEC-013 \
         --out-dir "$1/out" --session-id fixturesingle0001 \
-        --projects-root "$FIX/single/projects" --ledger "$1/cost.jsonl" >/dev/null 2>&1 )
+        --projects-root "$FIXTURE_DIRECTORY/single/projects" --ledger "$1/cost.jsonl" >/dev/null 2>&1 )
     jq -r '.project' "$1/cost.jsonl"
   }
   mkdir -p "$BATS_TEST_TMPDIR/rhttps" "$BATS_TEST_TMPDIR/rssh" "$BATS_TEST_TMPDIR/rother"
-  mkrepo "$BATS_TEST_TMPDIR/rhttps" "https://github.com/acme/widgets.git"
-  mkrepo "$BATS_TEST_TMPDIR/rssh"   "git@github.com:acme/widgets.git"
-  mkrepo "$BATS_TEST_TMPDIR/rother" "https://github.com/other/widgets.git"
+  make_repo "$BATS_TEST_TMPDIR/rhttps" "https://github.com/acme/widgets.git"
+  make_repo "$BATS_TEST_TMPDIR/rssh"   "git@github.com:acme/widgets.git"
+  make_repo "$BATS_TEST_TMPDIR/rother" "https://github.com/other/widgets.git"
 
-  A="$(runproj "$BATS_TEST_TMPDIR/rhttps")"
-  B="$(runproj "$BATS_TEST_TMPDIR/rssh")"
-  C="$(runproj "$BATS_TEST_TMPDIR/rother")"
+  HTTPS_PROJECT_ID="$(run_project "$BATS_TEST_TMPDIR/rhttps")"
+  SSH_PROJECT_ID="$(run_project "$BATS_TEST_TMPDIR/rssh")"
+  OTHER_PROJECT_ID="$(run_project "$BATS_TEST_TMPDIR/rother")"
 
-  case "$A" in sha256:*) : ;; *) echo "bad project id: $A" >&2; return 1 ;; esac
-  [ "$A" = "$B" ]     # https and ssh forms of one repo -> one id
-  [ "$A" != "$C" ]    # a different repo -> a different id
+  case "$HTTPS_PROJECT_ID" in sha256:*) : ;; *) echo "bad project id: $HTTPS_PROJECT_ID" >&2; return 1 ;; esac
+  [ "$HTTPS_PROJECT_ID" = "$SSH_PROJECT_ID" ]     # https and ssh forms of one repo -> one id
+  [ "$HTTPS_PROJECT_ID" != "$OTHER_PROJECT_ID" ]    # a different repo -> a different id
 
   # git_branch recorded (the repo's committed default branch)
-  br="$(jq -r '.git_branch' "$BATS_TEST_TMPDIR/rhttps/cost.jsonl")"
-  [ -n "$br" ]
-  [ "$br" != "null" ]
+  branch_name="$(jq -r '.git_branch' "$BATS_TEST_TMPDIR/rhttps/cost.jsonl")"
+  [ -n "$branch_name" ]
+  [ "$branch_name" != "null" ]
 }
 
 # ---------- 20. seq/final over repeated execute writes (AC7) ----------
 @test "three execute writes: seq 0,1,2, only the last final:true, final row is cumulative" {
-  L="$BATS_TEST_TMPDIR/seq.jsonl"
+  SEQUENCE_LEDGER="$BATS_TEST_TMPDIR/seq.jsonl"
   for _ in 1 2 3; do
     run bash "$SCRIPT" --action execute --spec-id SPEC-013 --plan-slug s \
-      --out-dir "$OUTDIR" --session-id "$SESSION" \
-      --projects-root "$ANCHOR" --ledger "$L"
+      --out-dir "$OUTPUT_DIRECTORY" --session-id "$SESSION" \
+      --projects-root "$ANCHOR" --ledger "$SEQUENCE_LEDGER"
     [ "$status" -eq 0 ]
   done
 
-  [ "$(wc -l < "$L" | tr -d ' ')" -eq 3 ]
-  [ "$(jq -r '.seq' "$L" | tr '\n' ',')" = "0,1,2," ]
-  [ "$(jq -c 'select(.final == true)' "$L" | wc -l | tr -d ' ')" -eq 1 ]
-  [ "$(jq -r 'select(.final == true).seq' "$L")" -eq 2 ]
+  [ "$(wc -l < "$SEQUENCE_LEDGER" | tr -d ' ')" -eq 3 ]
+  [ "$(jq -r '.seq' "$SEQUENCE_LEDGER" | tr '\n' ',')" = "0,1,2," ]
+  [ "$(jq -c 'select(.final == true)' "$SEQUENCE_LEDGER" | wc -l | tr -d ' ')" -eq 1 ]
+  [ "$(jq -r 'select(.final == true).seq' "$SEQUENCE_LEDGER")" -eq 2 ]
   # the final:true row is the true cumulative total (no per-commit overcount)
-  [ "$(jq -r 'select(.final == true).total' "$L")" -eq 11110 ]
+  [ "$(jq -r 'select(.final == true).total' "$SEQUENCE_LEDGER")" -eq 11110 ]
 }
 
 # ---------- 21. cutover: fresh cost.jsonl, old ledger moved aside (AC8) ----------
 @test "cutover: first cost.jsonl append moves tokens.jsonl aside; second run does not re-trigger" {
-  dir="$BATS_TEST_TMPDIR/cut"
-  mkdir -p "$dir"
-  printf '%s\n' '{"schema_version":0,"legacy":"row"}' > "$dir/tokens.jsonl"
+  cutover_directory="$BATS_TEST_TMPDIR/cut"
+  mkdir -p "$cutover_directory"
+  printf '%s\n' '{"schema_version":0,"legacy":"row"}' > "$cutover_directory/tokens.jsonl"
 
   run bash "$SCRIPT" --action spec --spec-id SPEC-013 \
-    --out-dir "$dir/out" --session-id fixturesingle0001 \
-    --projects-root "$FIX/single/projects" --ledger "$dir/cost.jsonl" \
+    --out-dir "$cutover_directory/out" --session-id fixturesingle0001 \
+    --projects-root "$FIXTURE_DIRECTORY/single/projects" --ledger "$cutover_directory/cost.jsonl" \
     --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
 
   # old ledger moved to .bak (never read, never deleted); fresh cost.jsonl holds
   # ONLY the new schema_version-1 row, no mixed-vintage legacy row
-  [ -f "$dir/tokens.jsonl.bak" ]
-  [ "$(jq -r '.legacy' "$dir/tokens.jsonl.bak")" = "row" ]
-  [ ! -f "$dir/tokens.jsonl" ]
-  [ "$(wc -l < "$dir/cost.jsonl" | tr -d ' ')" -eq 1 ]
-  [ "$(jq -r '.schema_version' "$dir/cost.jsonl")" -eq 1 ]
-  [ "$(jq -r '.legacy // "absent"' "$dir/cost.jsonl")" = "absent" ]
+  [ -f "$cutover_directory/tokens.jsonl.bak" ]
+  [ "$(jq -r '.legacy' "$cutover_directory/tokens.jsonl.bak")" = "row" ]
+  [ ! -f "$cutover_directory/tokens.jsonl" ]
+  [ "$(wc -l < "$cutover_directory/cost.jsonl" | tr -d ' ')" -eq 1 ]
+  [ "$(jq -r '.schema_version' "$cutover_directory/cost.jsonl")" -eq 1 ]
+  [ "$(jq -r '.legacy // "absent"' "$cutover_directory/cost.jsonl")" = "absent" ]
 
   # second run must NOT re-trigger the rename (idempotent once cost.jsonl exists)
-  printf '%s\n' '{"stray":"do-not-move"}' > "$dir/tokens.jsonl"
+  printf '%s\n' '{"stray":"do-not-move"}' > "$cutover_directory/tokens.jsonl"
   run bash "$SCRIPT" --action spec --spec-id SPEC-013 \
-    --out-dir "$dir/out" --session-id fixturesingle0001 \
-    --projects-root "$FIX/single/projects" --ledger "$dir/cost.jsonl" \
+    --out-dir "$cutover_directory/out" --session-id fixturesingle0001 \
+    --projects-root "$FIXTURE_DIRECTORY/single/projects" --ledger "$cutover_directory/cost.jsonl" \
     --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
-  [ -f "$dir/tokens.jsonl" ]
-  [ "$(jq -r '.stray' "$dir/tokens.jsonl")" = "do-not-move" ]
-  [ "$(wc -l < "$dir/cost.jsonl" | tr -d ' ')" -eq 2 ]
+  [ -f "$cutover_directory/tokens.jsonl" ]
+  [ "$(jq -r '.stray' "$cutover_directory/tokens.jsonl")" = "do-not-move" ]
+  [ "$(wc -l < "$cutover_directory/cost.jsonl" | tr -d ' ')" -eq 2 ]
 }
 
 # ---------- 22. session_cwd (U1): live $PWD, never --out-dir/--ledger (UAT-001) ----------
@@ -837,57 +837,57 @@ led() { jq -r "$1" "$LEDGER"; }
   # Canonicalize up front (cd && pwd, no -P) so the expected value matches the
   # tally's own $PWD byte-for-byte even if $BATS_TEST_TMPDIR resolves through a
   # /tmp -> /private/tmp symlink on macOS.
-  workdir_raw="$BATS_TEST_TMPDIR/wd"
-  mkdir -p "$workdir_raw"
-  workdir="$(cd "$workdir_raw" && pwd)"
+  work_directory_raw="$BATS_TEST_TMPDIR/wd"
+  mkdir -p "$work_directory_raw"
+  work_directory="$(cd "$work_directory_raw" && pwd)"
 
-  ( cd "$workdir" && bash "$SCRIPT" \
+  ( cd "$work_directory" && bash "$SCRIPT" \
       --action execute --spec-id SPEC-013 --plan-slug s \
-      --out-dir "$OUTDIR" --session-id "$SESSION" \
+      --out-dir "$OUTPUT_DIRECTORY" --session-id "$SESSION" \
       --projects-root "$ANCHOR" --ledger "$LEDGER" )
 
   got="$(jq -r 'select(.spec_id=="SPEC-013") | .session_cwd' "$LEDGER" | tail -1)"
-  [ "$got" = "$workdir" ] || return 1
+  [ "$got" = "$work_directory" ] || return 1
   # Pin the worktree divergence UAT-001 rests on: session_cwd is the LIVE cwd,
   # never the out-dir or the ledger's directory (both resolve to the main
-  # checkout in worktree mode). $workdir is deliberately distinct from both.
-  [ "$got" != "$OUTDIR" ] || return 1
+  # checkout in worktree mode). $work_directory is deliberately distinct from both.
+  [ "$got" != "$OUTPUT_DIRECTORY" ] || return 1
   [ "$got" != "$(dirname "$LEDGER")" ] || return 1
 }
 
 @test "22b: session_cwd forward-encodes cleanly (/ and . -> -, no / or . survive)" {
-  workdir_raw="$BATS_TEST_TMPDIR/wd"
-  mkdir -p "$workdir_raw"
-  workdir="$(cd "$workdir_raw" && pwd)"
+  work_directory_raw="$BATS_TEST_TMPDIR/wd"
+  mkdir -p "$work_directory_raw"
+  work_directory="$(cd "$work_directory_raw" && pwd)"
 
-  ( cd "$workdir" && bash "$SCRIPT" \
+  ( cd "$work_directory" && bash "$SCRIPT" \
       --action execute --spec-id SPEC-013 --plan-slug s \
-      --out-dir "$OUTDIR" --session-id "$SESSION" \
+      --out-dir "$OUTPUT_DIRECTORY" --session-id "$SESSION" \
       --projects-root "$ANCHOR" --ledger "$LEDGER" )
 
   got="$(jq -r 'select(.spec_id=="SPEC-013") | .session_cwd' "$LEDGER" | tail -1)"
-  enc="$(printf '%s' "$got" | tr './' '-')"
-  case "$enc" in
-    *[./]*) echo "forward-encoded session_cwd still contains / or .: $enc" >&2; return 1 ;;
+  encoded_session_cwd="$(printf '%s' "$got" | tr './' '-')"
+  case "$encoded_session_cwd" in
+    *[./]*) echo "forward-encoded session_cwd still contains / or .: $encoded_session_cwd" >&2; return 1 ;;
   esac
 }
 
 @test "23: session_cwd is still emitted (set to the run cwd) on the degraded path" {
-  workdir_raw="$BATS_TEST_TMPDIR/wd"
-  mkdir -p "$workdir_raw"
-  workdir="$(cd "$workdir_raw" && pwd)"
+  work_directory_raw="$BATS_TEST_TMPDIR/wd"
+  mkdir -p "$work_directory_raw"
+  work_directory="$(cd "$work_directory_raw" && pwd)"
 
   # missing/unresolvable session id -> partial run, record still built.
   # Deliberately no --cache-dir: this cd's into a non-repo tmpdir, so
-  # git-common-dir resolution fails and token-tally.sh leaves CACHE_DIR empty,
+  # git-common-dir resolution fails and token-tally.sh leaves CACHE_DIRECTORY empty,
   # skipping the breadcrumb block entirely. Never touches the real cache.
-  run bash -c "cd '$workdir' && bash '$SCRIPT' \
+  run bash -c "cd '$work_directory' && bash '$SCRIPT' \
     --action spec --spec-id SPEC-013 \
-    --out-dir '$OUTDIR' --session-id no-such-session-9999 \
+    --out-dir '$OUTPUT_DIRECTORY' --session-id no-such-session-9999 \
     --projects-root '$ANCHOR' --ledger '$LEDGER'"
   [ "$status" -eq 0 ]
-  [ "$(led '.partial')" = "true" ]
-  [ "$(led '.session_cwd')" = "$workdir" ]
+  [ "$(ledger_field '.partial')" = "true" ]
+  [ "$(ledger_field '.session_cwd')" = "$work_directory" ]
 }
 
 # 24. FC-2 adversarial-audit nesting + FC-4 double-count guard (SPEC-032)
@@ -897,138 +897,138 @@ led() { jq -r "$1" "$LEDGER"; }
 # running directly against the checked-in fixture would mutate it in place.
 
 setup_auditreview() {
-  AR="$FIX/auditreview/projects"
-  AR_SESSION="fixtureauditreview0001"
-  AR_CACHE_SRC="$FIX/auditreview/cache"
-  AR_CACHE="$BATS_TEST_TMPDIR/ar-cache"
-  mkdir -p "$AR_CACHE"
+  AUDIT_REVIEW_PROJECTS="$FIXTURE_DIRECTORY/auditreview/projects"
+  AUDIT_REVIEW_SESSION="fixtureauditreview0001"
+  AUDIT_REVIEW_CACHE_SOURCE="$FIXTURE_DIRECTORY/auditreview/cache"
+  AUDIT_REVIEW_CACHE="$BATS_TEST_TMPDIR/ar-cache"
+  mkdir -p "$AUDIT_REVIEW_CACHE"
 }
 
 @test "24.1: spec action nests audit.adversarial identically on ledger row and cost.json sidecar (UAT-001/002)" {
   setup_auditreview
-  cp "$AR_CACHE_SRC/audit-window-SPEC-032.json" "$AR_CACHE/"
+  cp "$AUDIT_REVIEW_CACHE_SOURCE/audit-window-SPEC-032.json" "$AUDIT_REVIEW_CACHE/"
 
   run bash "$SCRIPT" --action spec --spec-id SPEC-032 \
-    --out-dir "$OUTDIR" --session-id "$AR_SESSION" \
-    --projects-root "$AR" --ledger "$LEDGER" --cache-dir "$AR_CACHE"
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "$AUDIT_REVIEW_SESSION" \
+    --projects-root "$AUDIT_REVIEW_PROJECTS" --ledger "$LEDGER" --cache-dir "$AUDIT_REVIEW_CACHE"
   [ "$status" -eq 0 ]
 
   # phase totals: hand-computed 22/43/64/85/214 (main + aud-a + aud-b only;
   # the review window is excluded even though this fixture has no review
   # action running, proving the exclusion is unconditional on the phase path).
-  [ "$(led '.buckets.fresh_input')" -eq 22 ]
-  [ "$(led '.buckets.cache_write')" -eq 43 ]
-  [ "$(led '.buckets.cache_read')" -eq 64 ]
-  [ "$(led '.buckets.output')" -eq 85 ]
-  [ "$(led '.total')" -eq 214 ]
+  [ "$(ledger_field '.buckets.fresh_input')" -eq 22 ]
+  [ "$(ledger_field '.buckets.cache_write')" -eq 43 ]
+  [ "$(ledger_field '.buckets.cache_read')" -eq 64 ]
+  [ "$(ledger_field '.buckets.output')" -eq 85 ]
+  [ "$(ledger_field '.total')" -eq 214 ]
 
   # audit.adversarial: hand-computed 21/41/61/81, elapsed 50, full lens set,
   # intensity present (spec).
-  [ "$(led '.audit.adversarial.buckets.fresh_input')" -eq 21 ]
-  [ "$(led '.audit.adversarial.buckets.cache_write')" -eq 41 ]
-  [ "$(led '.audit.adversarial.buckets.cache_read')" -eq 61 ]
-  [ "$(led '.audit.adversarial.buckets.output')" -eq 81 ]
-  [ "$(led '.audit.adversarial.elapsed_seconds')" -eq 50 ]
-  [ "$(led '.audit.adversarial.dollars')" = "null" ]
-  [ "$(led '.audit.adversarial.intensity')" = "standard" ]
-  [ "$(led '.audit.adversarial.lenses | sort | join(",")')" = "COV,FG,RT,TST" ]
+  [ "$(ledger_field '.audit.adversarial.buckets.fresh_input')" -eq 21 ]
+  [ "$(ledger_field '.audit.adversarial.buckets.cache_write')" -eq 41 ]
+  [ "$(ledger_field '.audit.adversarial.buckets.cache_read')" -eq 61 ]
+  [ "$(ledger_field '.audit.adversarial.buckets.output')" -eq 81 ]
+  [ "$(ledger_field '.audit.adversarial.elapsed_seconds')" -eq 50 ]
+  [ "$(ledger_field '.audit.adversarial.dollars')" = "null" ]
+  [ "$(ledger_field '.audit.adversarial.intensity')" = "standard" ]
+  [ "$(ledger_field '.audit.adversarial.lenses | sort | join(",")')" = "COV,FG,RT,TST" ]
 
   # identical on the cost.json sidecar's .spec value (UAT-001). Both sides use
-  # `jq -c` (never the shared `led()` helper's `-r`, which pretty-prints an
+  # `jq -c` (never the shared `ledger_field()` helper's `-r`, which pretty-prints an
   # object instead of leaving it compact) so the comparison is byte-exact.
-  sidecar="$OUTDIR/cost.json"
+  sidecar="$OUTPUT_DIRECTORY/cost.json"
   ledger_audit="$(jq -c '.audit' "$LEDGER")"
   sidecar_audit="$(jq -c '.spec.audit' "$sidecar")"
   [ "$ledger_audit" = "$sidecar_audit" ]
 
   # the breadcrumb is consumed (deleted) once the phase tally has read it.
-  [ ! -f "$AR_CACHE/audit-window-SPEC-032.json" ]
+  [ ! -f "$AUDIT_REVIEW_CACHE/audit-window-SPEC-032.json" ]
 }
 
 @test "24.2: UAT-003 subset invariant -- every audit bucket <= the phase bucket, phase total unaffected" {
   setup_auditreview
-  cp "$AR_CACHE_SRC/audit-window-SPEC-032.json" "$AR_CACHE/"
+  cp "$AUDIT_REVIEW_CACHE_SOURCE/audit-window-SPEC-032.json" "$AUDIT_REVIEW_CACHE/"
 
   run bash "$SCRIPT" --action spec --spec-id SPEC-032 \
-    --out-dir "$OUTDIR" --session-id "$AR_SESSION" \
-    --projects-root "$AR" --ledger "$LEDGER" --cache-dir "$AR_CACHE"
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "$AUDIT_REVIEW_SESSION" \
+    --projects-root "$AUDIT_REVIEW_PROJECTS" --ledger "$LEDGER" --cache-dir "$AUDIT_REVIEW_CACHE"
   [ "$status" -eq 0 ]
 
-  [ "$(led '.audit.adversarial.buckets.fresh_input <= .buckets.fresh_input')" = "true" ]
-  [ "$(led '.audit.adversarial.buckets.cache_write <= .buckets.cache_write')" = "true" ]
-  [ "$(led '.audit.adversarial.buckets.cache_read <= .buckets.cache_read')" = "true" ]
-  [ "$(led '.audit.adversarial.buckets.output <= .buckets.output')" = "true" ]
+  [ "$(ledger_field '.audit.adversarial.buckets.fresh_input <= .buckets.fresh_input')" = "true" ]
+  [ "$(ledger_field '.audit.adversarial.buckets.cache_write <= .buckets.cache_write')" = "true" ]
+  [ "$(ledger_field '.audit.adversarial.buckets.cache_read <= .buckets.cache_read')" = "true" ]
+  [ "$(ledger_field '.audit.adversarial.buckets.output <= .buckets.output')" = "true" ]
 
   # the phase total is the same 214 whether or not the audit key is present
   # (it is never summed into total/buckets/dollars).
-  [ "$(led '.total')" -eq 214 ]
+  [ "$(ledger_field '.total')" -eq 214 ]
 }
 
 @test "24.3: plan action (spec-derived) nests audit.adversarial with no intensity key (UAT-005)" {
   setup_auditreview
-  cp "$AR_CACHE_SRC/audit-window-SPEC-032-plan.json" "$AR_CACHE/"
+  cp "$AUDIT_REVIEW_CACHE_SOURCE/audit-window-SPEC-032-plan.json" "$AUDIT_REVIEW_CACHE/"
 
   run bash "$SCRIPT" --action plan --spec-id SPEC-032 --plan-slug spec-032-audit-cost \
-    --out-dir "$OUTDIR" --session-id "$AR_SESSION" \
-    --projects-root "$AR" --ledger "$LEDGER" --cache-dir "$AR_CACHE"
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "$AUDIT_REVIEW_SESSION" \
+    --projects-root "$AUDIT_REVIEW_PROJECTS" --ledger "$LEDGER" --cache-dir "$AUDIT_REVIEW_CACHE"
   [ "$status" -eq 0 ]
 
-  [ "$(led '.buckets.fresh_input')" -eq 22 ]
-  [ "$(led '.total')" -eq 214 ]
+  [ "$(ledger_field '.buckets.fresh_input')" -eq 22 ]
+  [ "$(ledger_field '.total')" -eq 214 ]
 
-  [ "$(led '.audit.adversarial.buckets.fresh_input')" -eq 21 ]
-  [ "$(led '.audit.adversarial.buckets.output')" -eq 81 ]
-  [ "$(led '.audit.adversarial.elapsed_seconds')" -eq 50 ]
-  [ "$(led '.audit.adversarial.lenses | sort | join(",")')" = "CG,COV,DP" ]
+  [ "$(ledger_field '.audit.adversarial.buckets.fresh_input')" -eq 21 ]
+  [ "$(ledger_field '.audit.adversarial.buckets.output')" -eq 81 ]
+  [ "$(ledger_field '.audit.adversarial.elapsed_seconds')" -eq 50 ]
+  [ "$(ledger_field '.audit.adversarial.lenses | sort | join(",")')" = "CG,COV,DP" ]
 
   # plan audits carry no intensity key at all (UAT-005), not a null value.
   run jq -e '.audit.adversarial | has("intensity")' "$LEDGER"
   [ "$status" -eq 1 ]
   [ "$output" = "false" ]
 
-  [ ! -f "$AR_CACHE/audit-window-SPEC-032-plan.json" ]
+  [ ! -f "$AUDIT_REVIEW_CACHE/audit-window-SPEC-032-plan.json" ]
 }
 
 @test "24.4: degrade -- absent breadcrumb omits .audit, phase record still written (UAT-009)" {
   setup_auditreview
-  # AR_CACHE is intentionally left empty: no breadcrumb for SPEC-032 exists.
+  # AUDIT_REVIEW_CACHE is intentionally left empty: no breadcrumb for SPEC-032 exists.
 
   run bash "$SCRIPT" --action spec --spec-id SPEC-032 \
-    --out-dir "$OUTDIR" --session-id "$AR_SESSION" \
-    --projects-root "$AR" --ledger "$LEDGER" --cache-dir "$AR_CACHE"
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "$AUDIT_REVIEW_SESSION" \
+    --projects-root "$AUDIT_REVIEW_PROJECTS" --ledger "$LEDGER" --cache-dir "$AUDIT_REVIEW_CACHE"
   [ "$status" -eq 0 ]
 
   run jq -e 'has("audit")' "$LEDGER"
   [ "$status" -eq 1 ]
   [ "$output" = "false" ]
-  [ "$(led '.total')" -eq 214 ]
+  [ "$(ledger_field '.total')" -eq 214 ]
 }
 
 @test "24.5: degrade -- breadcrumb session_id mismatch omits .audit and still consumes the breadcrumb (UAT-009)" {
   setup_auditreview
-  jq '.session_id = "some-other-session"' "$AR_CACHE_SRC/audit-window-SPEC-032.json" \
-    > "$AR_CACHE/audit-window-SPEC-032.json"
+  jq '.session_id = "some-other-session"' "$AUDIT_REVIEW_CACHE_SOURCE/audit-window-SPEC-032.json" \
+    > "$AUDIT_REVIEW_CACHE/audit-window-SPEC-032.json"
 
   run bash "$SCRIPT" --action spec --spec-id SPEC-032 \
-    --out-dir "$OUTDIR" --session-id "$AR_SESSION" \
-    --projects-root "$AR" --ledger "$LEDGER" --cache-dir "$AR_CACHE"
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "$AUDIT_REVIEW_SESSION" \
+    --projects-root "$AUDIT_REVIEW_PROJECTS" --ledger "$LEDGER" --cache-dir "$AUDIT_REVIEW_CACHE"
   [ "$status" -eq 0 ]
 
   run jq -e 'has("audit")' "$LEDGER"
   [ "$status" -eq 1 ]
   [ "$output" = "false" ]
-  [ "$(led '.total')" -eq 214 ]
-  [ ! -f "$AR_CACHE/audit-window-SPEC-032.json" ]
+  [ "$(ledger_field '.total')" -eq 214 ]
+  [ ! -f "$AUDIT_REVIEW_CACHE/audit-window-SPEC-032.json" ]
 }
 
 @test "24.6: degrade -- a window catching zero sidecar activity omits .audit (never a zero-filled object)" {
   setup_auditreview
   jq '.started_at = "2099-01-01T00:00:00Z" | .ended_at = "2099-01-02T00:00:00Z"' \
-    "$AR_CACHE_SRC/audit-window-SPEC-032.json" > "$AR_CACHE/audit-window-SPEC-032.json"
+    "$AUDIT_REVIEW_CACHE_SOURCE/audit-window-SPEC-032.json" > "$AUDIT_REVIEW_CACHE/audit-window-SPEC-032.json"
 
   run bash "$SCRIPT" --action spec --spec-id SPEC-032 \
-    --out-dir "$OUTDIR" --session-id "$AR_SESSION" \
-    --projects-root "$AR" --ledger "$LEDGER" --cache-dir "$AR_CACHE"
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "$AUDIT_REVIEW_SESSION" \
+    --projects-root "$AUDIT_REVIEW_PROJECTS" --ledger "$LEDGER" --cache-dir "$AUDIT_REVIEW_CACHE"
   [ "$status" -eq 0 ]
 
   run jq -e 'has("audit")' "$LEDGER"
@@ -1040,18 +1040,18 @@ setup_auditreview() {
   setup_auditreview
 
   run bash "$SCRIPT" --action execute --spec-id SPEC-032 --plan-slug spec-032-audit-cost \
-    --out-dir "$OUTDIR" --session-id "$AR_SESSION" \
-    --projects-root "$AR" --ledger "$LEDGER"
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "$AUDIT_REVIEW_SESSION" \
+    --projects-root "$AUDIT_REVIEW_PROJECTS" --ledger "$LEDGER"
   [ "$status" -eq 0 ]
 
   # hand-computed: main+aud-a+aud-b only (214), NEVER the session-wide 1303
   # (which would double-count the review sidecar's own spend).
-  [ "$(led '.buckets.fresh_input')" -eq 22 ]
-  [ "$(led '.buckets.cache_write')" -eq 43 ]
-  [ "$(led '.buckets.cache_read')" -eq 64 ]
-  [ "$(led '.buckets.output')" -eq 85 ]
-  [ "$(led '.total')" -eq 214 ]
-  [ "$(led '.total')" -ne 1303 ]
+  [ "$(ledger_field '.buckets.fresh_input')" -eq 22 ]
+  [ "$(ledger_field '.buckets.cache_write')" -eq 43 ]
+  [ "$(ledger_field '.buckets.cache_read')" -eq 64 ]
+  [ "$(ledger_field '.buckets.output')" -eq 85 ]
+  [ "$(ledger_field '.total')" -eq 214 ]
+  [ "$(ledger_field '.total')" -ne 1303 ]
 
   # the FC-2 nesting gate is spec/plan only, never execute (the SPEC's own
   # words): no audit key at all, even though a breadcrumb-shaped fixture
@@ -1063,25 +1063,25 @@ setup_auditreview() {
 
 @test "24.8: back-compat -- a nested .spec.audit sidecar still passes cost_folder_represented" {
   setup_auditreview
-  cp "$AR_CACHE_SRC/audit-window-SPEC-032.json" "$AR_CACHE/"
+  cp "$AUDIT_REVIEW_CACHE_SOURCE/audit-window-SPEC-032.json" "$AUDIT_REVIEW_CACHE/"
 
   run bash "$SCRIPT" --action spec --spec-id SPEC-032 \
-    --out-dir "$OUTDIR" --session-id "$AR_SESSION" \
-    --projects-root "$AR" --ledger "$LEDGER" --cache-dir "$AR_CACHE"
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "$AUDIT_REVIEW_SESSION" \
+    --projects-root "$AUDIT_REVIEW_PROJECTS" --ledger "$LEDGER" --cache-dir "$AUDIT_REVIEW_CACHE"
   [ "$status" -eq 0 ]
-  run jq -e '.spec | has("audit")' "$OUTDIR/cost.json"
+  run jq -e '.spec | has("audit")' "$OUTPUT_DIRECTORY/cost.json"
   [ "$status" -eq 0 ]
 
-  GATE="$SCRIPT_DIR/cost-represented.sh"
+  GATE="$SCRIPT_DIRECTORY/cost-represented.sh"
   # shellcheck source=/dev/null
   . "$GATE"
-  run cost_folder_represented "$OUTDIR" spec_id SPEC-032 "$LEDGER"
+  run cost_folder_represented "$OUTPUT_DIRECTORY" spec_id SPEC-032 "$LEDGER"
   [ "$status" -eq 0 ]
   grep -qF "$(printf 'spec\tREPRESENTED')" <<<"$output"
 }
 
 # 25. Task 3.5 differential oracle: compute_project_id's path fallback and the
-# CACHE_DIR derivation now both resolve main_root through the shared resolver
+# CACHE_DIRECTORY derivation now both resolve main_root through the shared resolver
 # (.gaia/scripts/main-root-lib.sh) instead of hand-deriving it from
 # git-common-dir. Both fixtures deliberately sit under $BATS_TEST_TMPDIR,
 # which resolves through a symlinked component on macOS (/var -> private/var):
@@ -1095,20 +1095,20 @@ setup_auditreview() {
   git -C "$repo" init -q
   git -C "$repo" commit --allow-empty -q -m init
 
-  repo_abs="$(cd "$repo" && pwd -P)"
-  expected_hash="$(printf '%s' "$repo_abs" | shasum -a 256 | awk '{print substr($1,1,16)}')"
+  repo_absolute_path="$(cd "$repo" && pwd -P)"
+  expected_hash="$(printf '%s' "$repo_absolute_path" | shasum -a 256 | awk '{print substr($1,1,16)}')"
 
   run bash -c "cd '$repo' && bash '$SCRIPT' \
     --action spec --spec-id SPEC-013 \
     --out-dir '$repo/out' --session-id fixturesingle0001 \
-    --projects-root '$FIX/single/projects' --ledger '$repo/cost.jsonl' \
+    --projects-root '$FIXTURE_DIRECTORY/single/projects' --ledger '$repo/cost.jsonl' \
     --cache-dir '$repo/.gaia/local/cache'"
   [ "$status" -eq 0 ]
 
   [ "$(jq -r '.project' "$repo/cost.jsonl")" = "path:$expected_hash" ]
 }
 
-@test "25.2: CACHE_DIR with no --cache-dir flag resolves through the shared resolver (FC-6 github breadcrumb)" {
+@test "25.2: CACHE_DIRECTORY with no --cache-dir flag resolves through the shared resolver (FC-6 github breadcrumb)" {
   repo="$BATS_TEST_TMPDIR/cachedir-repo"
   mkdir -p "$repo"
   git -C "$repo" init -q -b feature/cache-dir-test
@@ -1118,10 +1118,10 @@ setup_auditreview() {
   # <main_root>/.gaia/local/cache/gh-artifact-pr.<branch-slug>.json,
   # main_root == $repo here (an ordinary checkout, no worktree involved).
   # shellcheck source=/dev/null
-  source "$SCRIPT_DIR/gh-artifact-lib.sh"
-  bc_dir="$repo/.gaia/local/cache"
-  mkdir -p "$bc_dir"
-  gaia_gh_artifact_write "$(gaia_gh_artifact_path "$bc_dir" "feature/cache-dir-test")" \
+  source "$SCRIPT_DIRECTORY/gh-artifact-lib.sh"
+  breadcrumb_directory="$repo/.gaia/local/cache"
+  mkdir -p "$breadcrumb_directory"
+  gaia_gh_artifact_write "$(gaia_gh_artifact_path "$breadcrumb_directory" "feature/cache-dir-test")" \
     999 "acme/widgets" "feature/cache-dir-test" "$SESSION"
 
   # Deliberately no --cache-dir: token-tally.sh must derive it itself.

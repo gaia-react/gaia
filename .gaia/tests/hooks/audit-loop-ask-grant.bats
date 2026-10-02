@@ -10,7 +10,7 @@
 # AUDIT_LOOP_ASK_GRANT_HOOK points the suite at a scratch copy of the hook (its
 # libraries reached through a `.gaia` symlink beside it), which is how a mutant
 # is run against it without touching the working file. UNIT_ROUNDS and the grant labels
-# come from GAIA_CTX_UNIT_ROUNDS in the shared lib, never a literal.
+# come from GAIA_CONTEXT_UNIT_ROUNDS in the shared lib, never a literal.
 #
 # Run: .gaia/scripts/bats5.sh .gaia/tests/hooks/audit-loop-ask-grant.bats < /dev/null
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
@@ -33,7 +33,7 @@ setup() {
   . "$REPO_ROOT/.gaia/scripts/context-checkpoint-lib.sh"
   # shellcheck source=/dev/null
   . "$REPO_ROOT/.gaia/tests/helpers/audit-loop-fixture.sh"
-  UNIT_ROUNDS="$GAIA_CTX_UNIT_ROUNDS"
+  UNIT_ROUNDS="$GAIA_CONTEXT_UNIT_ROUNDS"
   NONCE=0123456789abcdef
   alf_init
   alf_branch feat/ask

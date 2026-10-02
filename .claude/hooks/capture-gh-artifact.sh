@@ -137,7 +137,7 @@ if [ "${GAIA_USAGE_HOOKS_DISABLE:-}" != 1 ] && [ -n "$branch" ] && [ "$_gh_forei
   fi
 fi
 
-cache_directory="$(gaia_gh_artifact_cache_dir)"
+cache_directory="$(gaia_gh_artifact_cache_directory)"
 [ -n "$cache_directory" ] || exit 0
 breadcrumb_path="$(gaia_gh_artifact_path "$cache_directory" "$branch")"
 [ -n "$breadcrumb_path" ] || exit 0

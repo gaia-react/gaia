@@ -135,7 +135,7 @@ cat >"$main/.claude/settings.json" <<'EOF'
 }}
 EOF
 
-export GAIA_RATES_FEED_DISABLE=1 GAIA_RATES_STATE_DIR="$scratch/rates-state"
+export GAIA_RATES_FEED_DISABLE=1 GAIA_RATES_STATE_DIRECTORY="$scratch/rates-state"
 unset CLAUDE_CODE_SESSION_ID GAIA_TALLY_PROJECTS_ROOT GITHUB_ACTIONS GAIA_USAGE_MEMO_TRACE GAIA_USAGE_MEMO_SEAM
 
 memo="$tel_new/usage-branch-memo.json"

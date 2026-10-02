@@ -14,14 +14,14 @@ bats_require_minimum_version 1.5.0
 
 setup() {
   SCRIPTS="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
-  TMP="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
-  TD="$TMP/tel"
-  mkdir -p "$TD"
-  U="$TD/usage.jsonl"
-  L="$TD/links.jsonl"
-  C="$TD/cost.jsonl"
-  MEMO="$TD/usage-branch-memo.json"
-  TRACE="$TMP/trace"
+  TEMPORARY_DIRECTORY="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
+  TELEMETRY_DIRECTORY="$TEMPORARY_DIRECTORY/tel"
+  mkdir -p "$TELEMETRY_DIRECTORY"
+  USAGE_STORE="$TELEMETRY_DIRECTORY/usage.jsonl"
+  LINKS_STORE="$TELEMETRY_DIRECTORY/links.jsonl"
+  COST_STORE="$TELEMETRY_DIRECTORY/cost.jsonl"
+  MEMO="$TELEMETRY_DIRECTORY/usage-branch-memo.json"
+  TRACE="$TEMPORARY_DIRECTORY/trace"
   : >"$TRACE"
   export GAIA_USAGE_MEMO_TRACE="$TRACE"
   unset GAIA_USAGE_MEMO_SEAM
@@ -34,18 +34,18 @@ setup() {
 }
 
 teardown() {
-  chmod -R u+rwx "$TMP" 2>/dev/null || true
+  chmod -R u+rwx "$TEMPORARY_DIRECTORY" 2>/dev/null || true
 }
 
 # ---------- fixtures ----------
 
-seg() {
+segment_row() {
   printf '{"schema_version":1,"kind":"segment","key":"%s","session_id":"s1","inherit":false,"first_ts":"2026-09-30T12:00:00.000Z","last_ts":"2026-09-30T12:01:00.000Z","messages":1,"by_model":{"%s":{"fresh_input":1,"cache_write_5m":0,"cache_write_1h":0,"cache_read":0,"output":1}}}\n' "$1" "$2"
 }
-lnk() {
+link_row() {
   printf '{"schema_version":1,"kind":"edge","child":"%s","parent":"%s","source":"link-command","ts":"2026-09-30T12:00:00Z","session_id":"s1"}\n' "$1" "$2"
 }
-cst() {
+cost_row() {
   printf '{"schema_version":1,"kind":"plan","spec_id":"%s","plan_id":null,"session_id":"s1","by_model":{},"git_branch":"%s"}\n' "$1" "$2"
 }
 
@@ -53,23 +53,23 @@ cst() {
 # the default branch, the empty raw, and a link-only key.
 base_stores() {
   {
-    seg session:s1 m-one
-    seg branch:fix/12-foo m-one
-    seg branch:chore/update-deps m-two
-  } >"$U"
+    segment_row session:s1 m-one
+    segment_row branch:fix/12-foo m-one
+    segment_row branch:chore/update-deps m-two
+  } >"$USAGE_STORE"
   {
-    lnk pr:5 branch:fix/12-foo
-    lnk pr:6 branch:feat/3-link
-  } >"$L"
+    link_row pr:5 branch:fix/12-foo
+    link_row pr:6 branch:feat/3-link
+  } >"$LINKS_STORE"
   {
-    cst SPEC-024 worktree-plan+spec-024-x
-    cst SPEC-025 "has space"
-    cst SPEC-026 main
-    cst SPEC-027 ""
-  } >"$C"
+    cost_row SPEC-024 worktree-plan+spec-024-x
+    cost_row SPEC-025 "has space"
+    cost_row SPEC-026 main
+    cost_row SPEC-027 ""
+  } >"$COST_STORE"
 }
 
-warm_all() { gaia_usage_memo_warm "$U" "$L" "$C"; }
+warm_all() { gaia_usage_memo_warm "$USAGE_STORE" "$LINKS_STORE" "$COST_STORE"; }
 
 # init_memo: stamp, a cold load of the (absent) memo, then a warm-up.
 init_memo() {
@@ -82,10 +82,10 @@ memo_get() { jq -r "$1" <<<"$GAIA_USAGE_MEMO"; }
 
 last_trace() { tail -n 1 "$TRACE"; }
 
-fsize() {
-  local n
-  n="$(wc -c <"$1")"
-  printf '%s' "${n//[[:space:]]/}"
+file_size() {
+  local byte_count
+  byte_count="$(wc -c <"$1")"
+  printf '%s' "${byte_count//[[:space:]]/}"
 }
 
 # subst_file <file> <old> <new>: replaces the first literal occurrence, failing
@@ -95,25 +95,25 @@ subst_file() {
   local before after
   before="$(cat "$1")"
   after="$(S_OLD="$2" S_NEW="$3" awk '
-    BEGIN { o = ENVIRON["S_OLD"]; n = ENVIRON["S_NEW"] }
-    !done && (i = index($0, o)) { $0 = substr($0, 1, i - 1) n substr($0, i + length(o)); done = 1 }
+    BEGIN { old_text = ENVIRON["S_OLD"]; new_text = ENVIRON["S_NEW"] }
+    !done && (match_position = index($0, old_text)) { $0 = substr($0, 1, match_position - 1) new_text substr($0, match_position + length(old_text)); done = 1 }
     { print }' "$1")"
   [ "$before" != "$after" ] || return 1
   printf '%s\n' "$after" >"$1"
 }
 
-# scratch_libs <dir>: the four libs the stamp reads, copied beside one another.
-scratch_libs() {
+# scratch_libraries <dir>: the four libs the stamp reads, copied beside one another.
+scratch_libraries() {
   mkdir -p "$1"
   cp "$SCRIPTS/usage-lib.sh" "$SCRIPTS/usage-resolve-lib.sh" "$SCRIPTS/branch-name-lib.sh" "$SCRIPTS/usage-memo-lib.sh" "$1/"
 }
 
-# in_libs <interp> <libdir> <script> [arg...]: runs <script> in a child shell
+# in_libraries <interp> <libdir> <script> [arg...]: runs <script> in a child shell
 # that has sourced the libs from <libdir>; the args are its $1, $2, ...
-in_libs() {
-  local sh="$1"
+in_libraries() {
+  local shell_path="$1"
   shift
-  "$sh" -c 'd="$1"; s="$2"; shift 2; source "$d/usage-lib.sh"; source "$d/usage-resolve-lib.sh"; source "$d/usage-memo-lib.sh"; eval "$s"' _ "$@"
+  "$shell_path" -c 'library_directory="$1"; script_text="$2"; shift 2; source "$library_directory/usage-lib.sh"; source "$library_directory/usage-resolve-lib.sh"; source "$library_directory/usage-memo-lib.sh"; eval "$script_text"' _ "$@"
 }
 
 # ---------- 1. stamp closure ----------
@@ -121,109 +121,109 @@ in_libs() {
 # closure <name>...: every function reachable from the names, to a fixed point,
 # through the words of each `declare -f` body that `declare -F` knows.
 closure() {
-  local acc=$'\n' n w word changed=1
-  for n in "$@"; do acc="$acc$n"$'\n'; done
+  local reachable_names=$'\n' seed_name visiting_name word changed=1
+  for seed_name in "$@"; do reachable_names="$reachable_names$seed_name"$'\n'; done
   while [ "$changed" = 1 ]; do
     changed=0
-    for w in $acc; do
-      for word in $(declare -f "$w" | grep -oE '[A-Za-z_][A-Za-z0-9_]*' | sort -u); do
-        case "$acc" in *$'\n'"$word"$'\n'*) continue ;; esac
+    for visiting_name in $reachable_names; do
+      for word in $(declare -f "$visiting_name" | grep -oE '[A-Za-z_][A-Za-z0-9_]*' | sort -u); do
+        case "$reachable_names" in *$'\n'"$word"$'\n'*) continue ;; esac
         declare -F "$word" >/dev/null 2>&1 || continue
-        acc="$acc$word"$'\n'
+        reachable_names="$reachable_names$word"$'\n'
         changed=1
       done
     done
   done
-  printf '%s' "$acc" | sed '/^$/d' | sort
+  printf '%s' "$reachable_names" | sed '/^$/d' | sort
 }
 
 # reach_set: the closure from the derivation entry points plus every stamped
 # memo-lib function, after branch-name-lib.sh is loaded.
 reach_set() {
-  local n entries="gaia_usage_branch_map gaia_usage_derive_map _gaia_usage_branch_parents"
-  for n in $GAIA_USAGE_MEMO_FNS; do
-    case "$n" in *memo*) entries="$entries $n" ;; esac
+  local function_name entries="gaia_usage_branch_map gaia_usage_derive_map _gaia_usage_branch_parents"
+  for function_name in $GAIA_USAGE_MEMO_FUNCTIONS; do
+    case "$function_name" in *memo*) entries="$entries $function_name" ;; esac
   done
   _gaia_usage_load gaia_branch_classify branch-name-lib.sh
   # shellcheck disable=SC2086  # a space-separated name list, split on purpose
   closure $entries
 }
 
-# closure_missing <fnlist>: the reachable names <fnlist> does not carry.
+# closure_missing <function_names>: the reachable names <function_names> does not carry.
 closure_missing() {
-  local n
-  for n in $(reach_set); do
-    case " $1 " in *" $n "*) ;; *) printf '%s\n' "$n" ;; esac
+  local reachable_name
+  for reachable_name in $(reach_set); do
+    case " $1 " in *" $reachable_name "*) ;; *) printf '%s\n' "$reachable_name" ;; esac
   done
 }
 
 @test "stamp closure: every function reachable from the derivation entry points is stamped" {
-  local missing reach n
+  local missing reach function_name
   _gaia_usage_load gaia_branch_classify branch-name-lib.sh
   reach="$(reach_set)"
   [ "$(printf '%s\n' "$reach" | wc -l | tr -d ' ')" -gt 10 ]
   case $'\n'"$reach"$'\n' in *$'\n'_gaia_branch_set_class$'\n'*) ;; *) return 1 ;; esac
-  missing="$(closure_missing "$GAIA_USAGE_MEMO_FNS")"
+  missing="$(closure_missing "$GAIA_USAGE_MEMO_FUNCTIONS")"
   [ -z "$missing" ] || { printf 'reachable but unstamped:\n%s\n' "$missing" >&2; return 1; }
   # Every stamped name is a defined function, so a rename cannot hide in the list.
-  for n in $GAIA_USAGE_MEMO_FNS; do
-    declare -F "$n" >/dev/null || { printf 'stamped but undefined: %s\n' "$n" >&2; return 1; }
+  for function_name in $GAIA_USAGE_MEMO_FUNCTIONS; do
+    declare -F "$function_name" >/dev/null || { printf 'stamped but undefined: %s\n' "$function_name" >&2; return 1; }
   done
 }
 
 @test "stamp closure guard red: a list missing one reachable name is reported" {
   local trimmed missing
-  trimmed=" $GAIA_USAGE_MEMO_FNS "
+  trimmed=" $GAIA_USAGE_MEMO_FUNCTIONS "
   trimmed="${trimmed/ _gaia_branch_set_class / }"
-  [ "$trimmed" != " $GAIA_USAGE_MEMO_FNS " ]
+  [ "$trimmed" != " $GAIA_USAGE_MEMO_FUNCTIONS " ]
   missing="$(closure_missing "$trimmed")"
   [ "$missing" = "_gaia_branch_set_class" ]
 }
 
 # ---------- 2-4. stamp ----------
 
-stamp_in() { in_libs "${2:-$BASH}" "$1" 'gaia_usage_memo_stamp; printf "%s %s" "$_gaia_usage_memo_stamp_rc" "$_gaia_usage_memo_stamp"'; }
+stamp_in() { in_libraries "${2:-$BASH}" "$1" 'gaia_usage_memo_stamp; printf "%s %s" "$_gaia_usage_memo_stamp_exit_status" "$_gaia_usage_memo_stamp"'; }
 
 @test "stamp sensitivity: a stamped function's body changes it, an unstamped one's does not" {
   local base edited other
-  scratch_libs "$TMP/libs-a"
-  base="$(stamp_in "$TMP/libs-a")"
+  scratch_libraries "$TEMPORARY_DIRECTORY/libs-a"
+  base="$(stamp_in "$TEMPORARY_DIRECTORY/libs-a")"
   case "$base" in "0 "*) ;; *) return 1 ;; esac
-  scratch_libs "$TMP/libs-b"
-  subst_file "$TMP/libs-b/branch-name-lib.sh" 'local nb mode="adhoc"' 'local nb mode="adhoc2"'
-  edited="$(stamp_in "$TMP/libs-b")"
+  scratch_libraries "$TEMPORARY_DIRECTORY/libs-b"
+  subst_file "$TEMPORARY_DIRECTORY/libs-b/branch-name-lib.sh" 'local normalized_name mode="adhoc"' 'local normalized_name mode="adhoc2"'
+  edited="$(stamp_in "$TEMPORARY_DIRECTORY/libs-b")"
   [ "$edited" != "$base" ]
-  scratch_libs "$TMP/libs-c"
-  subst_file "$TMP/libs-c/usage-lib.sh" 'if [ -n "${GAIA_TALLY_PROJECTS_ROOT:-}" ]; then' 'if [ -n "${GAIA_TALLY_PROJECTS_ROOT:-}" ] && :; then'
-  other="$(stamp_in "$TMP/libs-c")"
+  scratch_libraries "$TEMPORARY_DIRECTORY/libs-c"
+  subst_file "$TEMPORARY_DIRECTORY/libs-c/usage-lib.sh" 'if [ -n "${GAIA_TALLY_PROJECTS_ROOT:-}" ]; then' 'if [ -n "${GAIA_TALLY_PROJECTS_ROOT:-}" ] && :; then'
+  other="$(stamp_in "$TEMPORARY_DIRECTORY/libs-c")"
   [ "$other" = "$base" ]
 }
 
 @test "stamp shell independence: bash 3.2 and bash 5 compute the same stamp" {
-  local sh seen="" first="" got n=0
-  for sh in /bin/bash "$BASH" /opt/homebrew/bin/bash /usr/local/bin/bash; do
-    [ -x "$sh" ] || continue
-    case " $seen " in *" $sh "*) continue ;; esac
-    seen="$seen $sh"
-    got="$(stamp_in "$SCRIPTS" "$sh")"
+  local shell_path seen="" first="" got shell_count=0
+  for shell_path in /bin/bash "$BASH" /opt/homebrew/bin/bash /usr/local/bin/bash; do
+    [ -x "$shell_path" ] || continue
+    case " $seen " in *" $shell_path "*) continue ;; esac
+    seen="$seen $shell_path"
+    got="$(stamp_in "$SCRIPTS" "$shell_path")"
     case "$got" in "0 "*) ;; *) return 1 ;; esac
     if [ -z "$first" ]; then first="$got"; fi
     [ "$got" = "$first" ]
-    n=$((n + 1))
+    shell_count=$((shell_count + 1))
   done
-  [ "$n" -ge 1 ]
-  printf '# stamp shell independence covered %s shell(s):%s\n' "$n" "$seen" >&3
+  [ "$shell_count" -ge 1 ]
+  printf '# stamp shell independence covered %s shell(s):%s\n' "$shell_count" "$seen" >&3
 }
 
 @test "stamp unavailable: a stamped name that extracts empty returns 1, and save writes nothing" {
-  scratch_libs "$TMP/libs-d"
-  subst_file "$TMP/libs-d/branch-name-lib.sh" 'gaia_branch_members() {' 'gaia_branch_members_renamed() {'
-  run in_libs "$BASH" "$TMP/libs-d" 'gaia_usage_memo_stamp; echo "rc=$? sr=$_gaia_usage_memo_stamp_rc"; GAIA_USAGE_MEMO="{}"; gaia_usage_memo_save "$1/memo.json"' "$TD"
+  scratch_libraries "$TEMPORARY_DIRECTORY/libs-d"
+  subst_file "$TEMPORARY_DIRECTORY/libs-d/branch-name-lib.sh" 'gaia_branch_members() {' 'gaia_branch_members_renamed() {'
+  run in_libraries "$BASH" "$TEMPORARY_DIRECTORY/libs-d" 'gaia_usage_memo_stamp; echo "rc=$? sr=$_gaia_usage_memo_stamp_exit_status"; GAIA_USAGE_MEMO="{}"; gaia_usage_memo_save "$1/memo.json"' "$TELEMETRY_DIRECTORY"
   [ "$status" -eq 0 ]
   [ "$output" = "rc=1 sr=1" ]
   [ "$(last_trace)" = "write=skip" ]
-  [ ! -e "$TD/memo.json" ]
-  [ -z "$(find "$TD" -name '.usage-branch-memo.tmp.*')" ]
+  [ ! -e "$TELEMETRY_DIRECTORY/memo.json" ]
+  [ -z "$(find "$TELEMETRY_DIRECTORY" -name '.usage-branch-memo.tmp.*')" ]
 }
 
 # ---------- 5. load reasons ----------
@@ -247,7 +247,7 @@ load_reason() {
 }
 
 @test "load: each cold reason is produced by a memo crafted for it, and a valid memo loads warm" {
-  local body='{"bmap":{},"derive":{},"models":[],"stores":{}}' h
+  local body='{"bmap":{},"derive":{},"models":[],"stores":{}}' first_model
   gaia_usage_memo_stamp
   rm -f "$MEMO"
   [ "$(load_reason)" = "path=cold reason=missing" ]
@@ -278,8 +278,8 @@ load_reason() {
   [ "$(last_trace)" = "path=warm" ]
   [ "$GAIA_USAGE_MEMO_STATE" = warm ]
   [ "$GAIA_USAGE_MEMO" = "$body" ]
-  h="$(jq -r '.models[0]' <<<"$GAIA_USAGE_MEMO")"
-  [ "$h" = m ]
+  first_model="$(jq -r '.models[0]' <<<"$GAIA_USAGE_MEMO")"
+  [ "$first_model" = m ]
 }
 
 @test "load guard red: a derive entry edited without recomputing the sum loads cold on the sum" {
@@ -299,10 +299,10 @@ load_reason() {
 wrap_derivations() {
   eval "orig_branch_map$(declare -f gaia_usage_branch_map | sed '1s/^gaia_usage_branch_map//')"
   eval "orig_derive_map$(declare -f gaia_usage_derive_map | sed '1s/^gaia_usage_derive_map//')"
-  gaia_usage_branch_map() { printf '%s\n' "$@" >>"$TMP/bmap.args"; orig_branch_map "$@"; }
-  gaia_usage_derive_map() { printf '%s\n' "$@" >>"$TMP/derive.args"; orig_derive_map "$@"; }
-  : >"$TMP/bmap.args"
-  : >"$TMP/derive.args"
+  gaia_usage_branch_map() { printf '%s\n' "$@" >>"$TEMPORARY_DIRECTORY/bmap.args"; orig_branch_map "$@"; }
+  gaia_usage_derive_map() { printf '%s\n' "$@" >>"$TEMPORARY_DIRECTORY/derive.args"; orig_derive_map "$@"; }
+  : >"$TEMPORARY_DIRECTORY/bmap.args"
+  : >"$TEMPORARY_DIRECTORY/derive.args"
 }
 
 @test "warm-up tail: appended rows derive exactly the new raw, key, and model, and the offset advances" {
@@ -313,18 +313,18 @@ wrap_derivations() {
   gaia_usage_memo_save "$MEMO"
   gaia_usage_memo_load "$MEMO"
   wrap_derivations
-  seg branch:topic/77-new m-three >>"$U"
-  cst SPEC-090 worktree-plan+spec-090-q >>"$C"
+  segment_row branch:topic/77-new m-three >>"$USAGE_STORE"
+  cost_row SPEC-090 worktree-plan+spec-090-q >>"$COST_STORE"
   : >"$TRACE"
   warm_all
-  [ "$(cat "$TMP/bmap.args")" = "worktree-plan+spec-090-q" ]
-  [ "$(cat "$TMP/derive.args")" = $'branch:plan/spec-090-q\nbranch:topic/77-new' ]
+  [ "$(cat "$TEMPORARY_DIRECTORY/bmap.args")" = "worktree-plan+spec-090-q" ]
+  [ "$(cat "$TEMPORARY_DIRECTORY/derive.args")" = $'branch:plan/spec-090-q\nbranch:topic/77-new' ]
   [ "$(memo_get '.derive["branch:topic/77-new"] | length')" = 0 ]
   [ "$(memo_get '.derive["branch:plan/spec-090-q"] | join(",")')" = "spec:SPEC-090" ]
   [ "$(memo_get '.models | join(",")')" = "m-one,m-three,m-two" ]
-  [ "$(memo_get '.stores.u.off')" = "$(fsize "$U")" ]
-  [ "$(memo_get '.stores.c.off')" = "$(fsize "$C")" ]
-  [ "$(memo_get '.stores.l.off')" = "$(fsize "$L")" ]
+  [ "$(memo_get '.stores.u.off')" = "$(file_size "$USAGE_STORE")" ]
+  [ "$(memo_get '.stores.c.off')" = "$(file_size "$COST_STORE")" ]
+  [ "$(memo_get '.stores.l.off')" = "$(file_size "$LINKS_STORE")" ]
   [ "$GAIA_USAGE_MEMO_DIRTY" = 1 ]
   grep -qF 'scan=full' "$TRACE" && return 1
   true
@@ -334,21 +334,21 @@ wrap_derivations() {
   base_stores
   init_memo
   local size
-  size="$(fsize "$U")"
-  printf '{"schema_version":1,"kind":"segment","key":"branch:torn/1-x"' >>"$U"
+  size="$(file_size "$USAGE_STORE")"
+  printf '{"schema_version":1,"kind":"segment","key":"branch:torn/1-x"' >>"$USAGE_STORE"
   warm_all
   [ "$(memo_get '.stores.u.off')" = "$size" ]
   [ "$(memo_get '.derive | has("branch:torn/1-x")')" = false ]
-  printf ',"by_model":{"m-torn":{"fresh_input":1}}}\n' >>"$U"
+  printf ',"by_model":{"m-torn":{"fresh_input":1}}}\n' >>"$USAGE_STORE"
   warm_all
-  [ "$(memo_get '.stores.u.off')" = "$(fsize "$U")" ]
+  [ "$(memo_get '.stores.u.off')" = "$(file_size "$USAGE_STORE")" ]
   [ "$(memo_get '.derive | has("branch:torn/1-x")')" = true ]
   [ "$(memo_get '.models | index("m-torn") != null')" = true ]
 }
 
 @test "warm-up: every model of a multi-model segment is picked up, and a model that needs an escape is left to the coverage check" {
   base_stores
-  printf '{"schema_version":1,"kind":"segment","key":"session:s2","session_id":"s2","inherit":false,"first_ts":"2026-09-30T12:00:00.000Z","messages":1,"by_model":{"m-a":{"fresh_input":1,"output":1},"m-b":{"fresh_input":2,"output":1},"m-c":{"fresh_input":3,"output":1},"m\\"q":{"fresh_input":4,"output":1}}}\n' >>"$U"
+  printf '{"schema_version":1,"kind":"segment","key":"session:s2","session_id":"s2","inherit":false,"first_ts":"2026-09-30T12:00:00.000Z","messages":1,"by_model":{"m-a":{"fresh_input":1,"output":1},"m-b":{"fresh_input":2,"output":1},"m-c":{"fresh_input":3,"output":1},"m\\"q":{"fresh_input":4,"output":1}}}\n' >>"$USAGE_STORE"
   init_memo
   [ "$(memo_get '.models | join(",")')" = "m-a,m-b,m-c,m-one,m-two" ]
 }
@@ -358,9 +358,9 @@ wrap_derivations() {
 @test "full scan: a changed store path traces path" {
   base_stores
   init_memo
-  cp "$U" "$TMP/usage-moved.jsonl"
+  cp "$USAGE_STORE" "$TEMPORARY_DIRECTORY/usage-moved.jsonl"
   : >"$TRACE"
-  gaia_usage_memo_warm "$TMP/usage-moved.jsonl" "$L" "$C"
+  gaia_usage_memo_warm "$TEMPORARY_DIRECTORY/usage-moved.jsonl" "$LINKS_STORE" "$COST_STORE"
   [ "$(cat "$TRACE")" = "scan=full store=u reason=path" ]
 }
 
@@ -368,12 +368,12 @@ wrap_derivations() {
   base_stores
   init_memo
   {
-    seg branch:other/2-y m-other
-    seg branch:other/3-z m-other
-    seg branch:other/4-z m-other
-    seg branch:other/5-z m-other
-  } >"$U"
-  [ "$(fsize "$U")" -ge "$(memo_get '.stores.u.off')" ]
+    segment_row branch:other/2-y m-other
+    segment_row branch:other/3-z m-other
+    segment_row branch:other/4-z m-other
+    segment_row branch:other/5-z m-other
+  } >"$USAGE_STORE"
+  [ "$(file_size "$USAGE_STORE")" -ge "$(memo_get '.stores.u.off')" ]
   : >"$TRACE"
   warm_all
   [ "$(cat "$TRACE")" = "scan=full store=u reason=head" ]
@@ -383,8 +383,8 @@ wrap_derivations() {
 @test "full scan: a shrunk store traces shrunk, and a full scan of usage rebuilds the models" {
   base_stores
   init_memo
-  seg branch:only/1-x m-solo >"$U"
-  [ "$(fsize "$U")" -lt "$(memo_get '.stores.u.off')" ]
+  segment_row branch:only/1-x m-solo >"$USAGE_STORE"
+  [ "$(file_size "$USAGE_STORE")" -lt "$(memo_get '.stores.u.off')" ]
   : >"$TRACE"
   warm_all
   [ "$(cat "$TRACE")" = "scan=full store=u reason=shrunk" ]
@@ -396,13 +396,13 @@ wrap_derivations() {
   init_memo
   [ "$(memo_get '.stores.u.hn')" -lt 4096 ]
   local i
-  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do seg "branch:grow/$i-x" m-one >>"$U"; done
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do segment_row "branch:grow/$i-x" m-one >>"$USAGE_STORE"; done
   : >"$TRACE"
   warm_all
   grep -qF 'scan=full' "$TRACE" && return 1
   [ "$(memo_get '.stores.u.hn')" = 4096 ]
   : >"$TRACE"
-  seg branch:grow/99-x m-one >>"$U"
+  segment_row branch:grow/99-x m-one >>"$USAGE_STORE"
   warm_all
   grep -qF 'scan=full' "$TRACE" && return 1
   [ "$(memo_get '.derive | has("branch:grow/99-x")')" = true ]
@@ -416,62 +416,62 @@ inode_of() { ls -i "$1" | awk '{print $1}'; }
 @test "save: every save replaces the file, the temp matches the registered glob, and none remains" {
   base_stores
   init_memo
-  mktemp() { printf '%s\n' "$*" >>"$TMP/mktemp.log"; command mktemp "$@"; }
+  mktemp() { printf '%s\n' "$*" >>"$TEMPORARY_DIRECTORY/mktemp.log"; command mktemp "$@"; }
   gaia_usage_memo_save "$MEMO"
-  local i1 i2
-  i1="$(inode_of "$MEMO")"
-  seg branch:more/1-x m-one >>"$U"
+  local inode_before_first_save inode_after_second_save
+  inode_before_first_save="$(inode_of "$MEMO")"
+  segment_row branch:more/1-x m-one >>"$USAGE_STORE"
   warm_all
   gaia_usage_memo_save "$MEMO"
-  i2="$(inode_of "$MEMO")"
-  [ "$i1" != "$i2" ]
-  [ "$(head -n 1 "$TMP/mktemp.log")" = "$TD/.usage-branch-memo.tmp.XXXXXX" ]
-  [ -z "$(find "$TD" -name '.usage-branch-memo.tmp.*')" ]
+  inode_after_second_save="$(inode_of "$MEMO")"
+  [ "$inode_before_first_save" != "$inode_after_second_save" ]
+  [ "$(head -n 1 "$TEMPORARY_DIRECTORY/mktemp.log")" = "$TELEMETRY_DIRECTORY/.usage-branch-memo.tmp.XXXXXX" ]
+  [ -z "$(find "$TELEMETRY_DIRECTORY" -name '.usage-branch-memo.tmp.*')" ]
   [ "$(last_trace)" = "write=ok" ]
   [ "$GAIA_USAGE_MEMO_DIRTY" = 0 ]
   [ "$(wc -l <"$MEMO" | tr -d ' ')" = 2 ]
   # Guard red: an in-place write keeps the inode, so the comparison above can fail.
-  local i3
-  i3="$(inode_of "$MEMO")"
+  local inode_before_in_place_write
+  inode_before_in_place_write="$(inode_of "$MEMO")"
   printf '%s\n' "$(cat "$MEMO")" >"$MEMO"
-  [ "$(inode_of "$MEMO")" = "$i3" ]
+  [ "$(inode_of "$MEMO")" = "$inode_before_in_place_write" ]
 }
 
 @test "save: an unwritable directory prints nothing, leaves no temp, and returns 0" {
   base_stores
   init_memo
-  chmod a-w "$TD"
-  if touch "$TD/probe" 2>/dev/null; then
-    chmod u+w "$TD"
+  chmod a-w "$TELEMETRY_DIRECTORY"
+  if touch "$TELEMETRY_DIRECTORY/probe" 2>/dev/null; then
+    chmod u+w "$TELEMETRY_DIRECTORY"
     printf 'directory is still writable (running as root?)\n' >&2
     return 1
   fi
-  local out rc=0
-  out="$(gaia_usage_memo_save "$MEMO" 2>"$TMP/err")" || rc=$?
-  chmod u+w "$TD"
-  [ "$rc" -eq 0 ]
-  [ -z "$out" ]
-  [ ! -s "$TMP/err" ]
+  local save_output exit_status=0
+  save_output="$(gaia_usage_memo_save "$MEMO" 2>"$TEMPORARY_DIRECTORY/err")" || exit_status=$?
+  chmod u+w "$TELEMETRY_DIRECTORY"
+  [ "$exit_status" -eq 0 ]
+  [ -z "$save_output" ]
+  [ ! -s "$TEMPORARY_DIRECTORY/err" ]
   [ ! -e "$MEMO" ]
-  [ -z "$(find "$TD" -name '.usage-branch-memo.tmp.*')" ]
+  [ -z "$(find "$TELEMETRY_DIRECTORY" -name '.usage-branch-memo.tmp.*')" ]
   [ "$(last_trace)" = "write=fail" ]
 }
 
 # ---------- 9. reap ----------
 
 @test "reap: a temp older than 60 s is removed, a fresh one and an unrelated name are kept" {
-  : >"$TD/.usage-branch-memo.tmp.OLD123"
-  touch -t 202001010000 "$TD/.usage-branch-memo.tmp.OLD123"
-  : >"$TD/.usage-branch-memo.tmp.NEW123"
-  : >"$TD/.usage-other.tmp.OLD123"
-  touch -t 202001010000 "$TD/.usage-other.tmp.OLD123"
-  gaia_usage_memo_reap "$TD"
-  [ ! -e "$TD/.usage-branch-memo.tmp.OLD123" ]
-  [ -e "$TD/.usage-branch-memo.tmp.NEW123" ]
-  [ -e "$TD/.usage-other.tmp.OLD123" ]
+  : >"$TELEMETRY_DIRECTORY/.usage-branch-memo.tmp.OLD123"
+  touch -t 202001010000 "$TELEMETRY_DIRECTORY/.usage-branch-memo.tmp.OLD123"
+  : >"$TELEMETRY_DIRECTORY/.usage-branch-memo.tmp.NEW123"
+  : >"$TELEMETRY_DIRECTORY/.usage-other.tmp.OLD123"
+  touch -t 202001010000 "$TELEMETRY_DIRECTORY/.usage-other.tmp.OLD123"
+  gaia_usage_memo_reap "$TELEMETRY_DIRECTORY"
+  [ ! -e "$TELEMETRY_DIRECTORY/.usage-branch-memo.tmp.OLD123" ]
+  [ -e "$TELEMETRY_DIRECTORY/.usage-branch-memo.tmp.NEW123" ]
+  [ -e "$TELEMETRY_DIRECTORY/.usage-other.tmp.OLD123" ]
   [ "$(last_trace)" = "reap=1" ]
   : >"$TRACE"
-  gaia_usage_memo_reap "$TD"
+  gaia_usage_memo_reap "$TELEMETRY_DIRECTORY"
   [ ! -s "$TRACE" ]
 }
 
@@ -480,50 +480,50 @@ inode_of() { ls -i "$1" | awk '{print $1}'; }
 # cover <memo-json> <keys-json>: the gap, the restricted-keys edges, and the
 # full-keys edges, computed over the fixture stores.
 cover() {
-  jq -nc --rawfile u "$U" --rawfile l "$L" --rawfile c "$C" --argjson memo "$1" --argjson keys "$2" --arg def main \
+  jq -nc --rawfile usage_store "$USAGE_STORE" --rawfile links_store "$LINKS_STORE" --rawfile cost_store "$COST_STORE" --argjson memo "$1" --argjson keys "$2" --arg default_branch main \
     "$GAIA_USAGE_JQ_DEFS$GAIA_USAGE_RESOLVE_JQ$GAIA_USAGE_MEMO_JQ"'
-    usage_rows($u) as $ur | usage_rows($l) as $ln | usage_rows($c) as $co
-    | usage_present($ur; $ln; $co) as $p
-    | usage_memo_gap($p; $memo) as $gap
-    | usage_memo_keys($p; $memo; $def) as $mk
-    | {present: $p, gap: $gap, e1: usage_edges($ln; $co; $mk), e2: usage_edges($ln; $co; $keys), mk: $mk}'
+    usage_rows($usage_store) as $usage_records | usage_rows($links_store) as $links | usage_rows($cost_store) as $cost
+    | usage_present($usage_records; $links; $cost) as $present
+    | usage_memo_gap($present; $memo) as $gap
+    | usage_memo_keys($present; $memo; $default_branch) as $memo_keys
+    | {present: $present, gap: $gap, restricted_edges: usage_edges($links; $cost; $memo_keys), full_edges: usage_edges($links; $cost; $keys), memo_keys: $memo_keys}'
 }
 
 @test "coverage jq: the restricted keys give today's edges, and a covering memo has no gap" {
   base_stores
   init_memo
-  local keys out
-  keys="$(gaia_usage_keys_json "$TMP/nogit" "$U" "$L" "$C")"
-  out="$(cover "$GAIA_USAGE_MEMO" "$keys")"
-  [ "$(jq -c '.gap' <<<"$out")" = null ]
-  [ "$(jq '.e1 | length' <<<"$out")" -ge 4 ]
-  [ "$(jq '.e1 == .e2' <<<"$out")" = true ]
-  [ "$(jq -c '.present.raws' <<<"$out")" = '["","has space","main","worktree-plan+spec-024-x"]' ]
-  [ "$(jq -c --argjson k "$keys" '.present.models == $k.models and .present.raws == ($k.bmap | keys)' <<<"$out")" = true ]
-  [ "$(jq -c '.mk.models' <<<"$out")" = '["m-one","m-two"]' ]
+  local keys cover_output
+  keys="$(gaia_usage_keys_json "$TEMPORARY_DIRECTORY/nogit" "$USAGE_STORE" "$LINKS_STORE" "$COST_STORE")"
+  cover_output="$(cover "$GAIA_USAGE_MEMO" "$keys")"
+  [ "$(jq -c '.gap' <<<"$cover_output")" = null ]
+  [ "$(jq '.restricted_edges | length' <<<"$cover_output")" -ge 4 ]
+  [ "$(jq '.restricted_edges == .full_edges' <<<"$cover_output")" = true ]
+  [ "$(jq -c '.present.raws' <<<"$cover_output")" = '["","has space","main","worktree-plan+spec-024-x"]' ]
+  [ "$(jq -c --argjson store_keys "$keys" '.present.models == $store_keys.models and .present.raws == ($store_keys.bmap | keys)' <<<"$cover_output")" = true ]
+  [ "$(jq -c '.memo_keys.models' <<<"$cover_output")" = '["m-one","m-two"]' ]
   # Every non-empty memo derive entry the stores name is in the restricted keys.
-  [ "$(jq -c '.mk.derive | keys' <<<"$out")" = '["branch:feat/3-link","branch:fix/12-foo","branch:plan/spec-024-x"]' ]
+  [ "$(jq -c '.memo_keys.derive | keys' <<<"$cover_output")" = '["branch:feat/3-link","branch:fix/12-foo","branch:plan/spec-024-x"]' ]
 }
 
 @test "coverage jq: the gap names exactly what the memo lacks, in each direction" {
   base_stores
   init_memo
-  local keys memo out
-  keys="$(gaia_usage_keys_json "$TMP/nogit" "$U" "$L" "$C")"
+  local keys memo cover_output
+  keys="$(gaia_usage_keys_json "$TEMPORARY_DIRECTORY/nogit" "$USAGE_STORE" "$LINKS_STORE" "$COST_STORE")"
   memo="$(jq -c 'del(.bmap["worktree-plan+spec-024-x"])' <<<"$GAIA_USAGE_MEMO")"
-  out="$(cover "$memo" "$keys")"
-  [ "$(jq -c '.gap' <<<"$out")" = '{"raws":["worktree-plan+spec-024-x"],"bkeys":[],"models":[],"models_extra":[]}' ]
+  cover_output="$(cover "$memo" "$keys")"
+  [ "$(jq -c '.gap' <<<"$cover_output")" = '{"raws":["worktree-plan+spec-024-x"],"bkeys":[],"models":[],"models_extra":[]}' ]
   memo="$(jq -c 'del(.derive["branch:plan/spec-024-x"])' <<<"$GAIA_USAGE_MEMO")"
-  out="$(cover "$memo" "$keys")"
-  [ "$(jq -c '.gap' <<<"$out")" = '{"raws":[],"bkeys":["branch:plan/spec-024-x"],"models":[],"models_extra":[]}' ]
+  cover_output="$(cover "$memo" "$keys")"
+  [ "$(jq -c '.gap' <<<"$cover_output")" = '{"raws":[],"bkeys":["branch:plan/spec-024-x"],"models":[],"models_extra":[]}' ]
   memo="$(jq -c 'del(.derive["branch:feat/3-link"]) | .models = ["m-one"]' <<<"$GAIA_USAGE_MEMO")"
-  out="$(cover "$memo" "$keys")"
-  [ "$(jq -c '.gap' <<<"$out")" = '{"raws":[],"bkeys":["branch:feat/3-link"],"models":["m-two"],"models_extra":[]}' ]
+  cover_output="$(cover "$memo" "$keys")"
+  [ "$(jq -c '.gap' <<<"$cover_output")" = '{"raws":[],"bkeys":["branch:feat/3-link"],"models":["m-two"],"models_extra":[]}' ]
   memo="$(jq -c '.models += ["ghost-model"]' <<<"$GAIA_USAGE_MEMO")"
-  out="$(cover "$memo" "$keys")"
-  [ "$(jq -c '.gap' <<<"$out")" = '{"raws":[],"bkeys":[],"models":[],"models_extra":["ghost-model"]}' ]
+  cover_output="$(cover "$memo" "$keys")"
+  [ "$(jq -c '.gap' <<<"$cover_output")" = '{"raws":[],"bkeys":[],"models":[],"models_extra":["ghost-model"]}' ]
   GAIA_USAGE_MEMO="$memo"
-  gaia_usage_memo_merge_gap "$(jq -c '.gap' <<<"$out")"
+  gaia_usage_memo_merge_gap "$(jq -c '.gap' <<<"$cover_output")"
   [ "$(memo_get '.models | join(",")')" = "m-one,m-two" ]
   [ "$GAIA_USAGE_MEMO_DIRTY" = 1 ]
 }
@@ -545,14 +545,14 @@ cover() {
 @test "no lock: warm and save complete while the ledger lock is held" {
   base_stores
   export GAIA_LEDGER_LOCK_FORCE_FALLBACK=1
-  mkdir "$TD/specs.lock.d"
-  local t0 t1
-  t0="$(date +%s)"
+  mkdir "$TELEMETRY_DIRECTORY/specs.lock.d"
+  local start_seconds end_seconds
+  start_seconds="$(date +%s)"
   init_memo
   gaia_usage_memo_save "$MEMO"
-  t1="$(date +%s)"
-  rmdir "$TD/specs.lock.d"
-  [ "$((t1 - t0))" -le 3 ]
+  end_seconds="$(date +%s)"
+  rmdir "$TELEMETRY_DIRECTORY/specs.lock.d"
+  [ "$((end_seconds - start_seconds))" -le 3 ]
   [ -s "$MEMO" ]
   [ "$(last_trace)" = "write=ok" ]
 }
@@ -568,15 +568,15 @@ escaped_absent() {
 escaped_stores() {
   {
     printf '{"schema_version":1,"kind":"plan","spec_id":"SPEC-030","git_branch":"plan\\/spec-030-esc"}\n'
-    cst SPEC-031 worktree-plan+spec-031-ok
-  } >"$C"
-  : >"$U"
-  : >"$L"
+    cost_row SPEC-031 worktree-plan+spec-031-ok
+  } >"$COST_STORE"
+  : >"$USAGE_STORE"
+  : >"$LINKS_STORE"
 }
 
 @test "escape-blind grep: an escaped git_branch is left to the coverage check, a plain one is picked up" {
   escaped_stores
-  grep -qF 'plan\/spec-030-esc' "$C"
+  grep -qF 'plan\/spec-030-esc' "$COST_STORE"
   init_memo
   [ "$(memo_get '.bmap | has("worktree-plan+spec-031-ok")')" = true ]
   escaped_absent "$GAIA_USAGE_MEMO"
@@ -584,11 +584,11 @@ escaped_stores() {
 
 @test "escape-blind grep guard red: a decoding cost grep puts the escaped raw into bmap, and the absence check fails on it" {
   escaped_stores
-  scratch_libs "$TMP/libs-e"
-  subst_file "$TMP/libs-e/usage-memo-lib.sh" "grep -oE '\"git_branch\":\"[^\"\\\\]*\"'" "grep -oE '\"git_branch\":\"([^\"\\\\]|\\\\.)*\"'"
-  subst_file "$TMP/libs-e/usage-memo-lib.sh" "r: [inputs]}'" "r: [inputs | (\"\\\"\" + . + \"\\\"\" | fromjson)]}'"
+  scratch_libraries "$TEMPORARY_DIRECTORY/libs-e"
+  subst_file "$TEMPORARY_DIRECTORY/libs-e/usage-memo-lib.sh" "grep -oE '\"git_branch\":\"[^\"\\\\]*\"'" "grep -oE '\"git_branch\":\"([^\"\\\\]|\\\\.)*\"'"
+  subst_file "$TEMPORARY_DIRECTORY/libs-e/usage-memo-lib.sh" "r: [inputs]}'" "r: [inputs | (\"\\\"\" + . + \"\\\"\" | fromjson)]}'"
   local body
-  body="$(in_libs "$BASH" "$TMP/libs-e" 'gaia_usage_memo_stamp; gaia_usage_memo_load "$1/m.json"; gaia_usage_memo_warm "$2" "$3" "$4"; printf "%s" "$GAIA_USAGE_MEMO"' "$TD" "$U" "$L" "$C" 2>/dev/null)" || true
+  body="$(in_libraries "$BASH" "$TEMPORARY_DIRECTORY/libs-e" 'gaia_usage_memo_stamp; gaia_usage_memo_load "$1/m.json"; gaia_usage_memo_warm "$2" "$3" "$4"; printf "%s" "$GAIA_USAGE_MEMO"' "$TELEMETRY_DIRECTORY" "$USAGE_STORE" "$LINKS_STORE" "$COST_STORE" 2>/dev/null)" || true
   [ -n "$body" ]
   if escaped_absent "$body"; then return 1; fi
   [ "$(jq 'has("plan/spec-030-esc")' <<<"$(jq -c .bmap <<<"$body")")" = true ]
@@ -609,7 +609,7 @@ escaped_stores() {
   [ "$GAIA_USAGE_MEMO_DIRTY" = 0 ]
   warm_all
   [ "$GAIA_USAGE_MEMO_DIRTY" = 0 ]
-  seg branch:dirty/1-x m-one >>"$U"
+  segment_row branch:dirty/1-x m-one >>"$USAGE_STORE"
   warm_all
   [ "$GAIA_USAGE_MEMO_DIRTY" = 1 ]
   gaia_usage_memo_save "$MEMO"
@@ -621,72 +621,72 @@ escaped_stores() {
   init_memo
   gaia_usage_memo_save "$MEMO"
   eval "orig_hash16$(declare -f _gaia_usage_hash16 | sed '1s/^_gaia_usage_hash16//')"
-  _gaia_usage_hash16() { printf '%.20s\n' "$1" >>"$TMP/hash.log"; orig_hash16 "$@"; }
-  : >"$TMP/hash.log"
+  _gaia_usage_hash16() { printf '%.20s\n' "$1" >>"$TEMPORARY_DIRECTORY/hash.log"; orig_hash16 "$@"; }
+  : >"$TEMPORARY_DIRECTORY/hash.log"
   : >"$TRACE"
   gaia_usage_memo_load "$MEMO"
   [ "$(last_trace)" = "path=warm" ]
-  [ "$(wc -l <"$TMP/hash.log" | tr -d ' ')" = 1 ]
-  grep -qF 'usage-branch-memo/1' "$TMP/hash.log" && return 1
-  unset _gaia_usage_memo_stamp_rc
+  [ "$(wc -l <"$TEMPORARY_DIRECTORY/hash.log" | tr -d ' ')" = 1 ]
+  grep -qF 'usage-branch-memo/1' "$TEMPORARY_DIRECTORY/hash.log" && return 1
+  unset _gaia_usage_memo_stamp_exit_status
   [ "$(load_reason)" = "path=cold reason=stamp-unavailable" ]
 }
 
 # ---------- 14. seam ----------
 
 @test "seam: runs the script when enabled, ignores its status, and does nothing when either gate is empty" {
-  printf '#!/bin/sh\ntouch "%s/marker"\nexit 1\n' "$TMP" >"$TMP/seam.sh"
-  export GAIA_USAGE_MEMO_SEAM="$TMP/seam.sh"
-  local out
-  out="$(gaia_usage_memo_seam 2>&1)"
-  [ -z "$out" ]
-  [ -e "$TMP/marker" ]
-  rm -f "$TMP/marker"
+  printf '#!/bin/sh\ntouch "%s/marker"\nexit 1\n' "$TEMPORARY_DIRECTORY" >"$TEMPORARY_DIRECTORY/seam.sh"
+  export GAIA_USAGE_MEMO_SEAM="$TEMPORARY_DIRECTORY/seam.sh"
+  local seam_output
+  seam_output="$(gaia_usage_memo_seam 2>&1)"
+  [ -z "$seam_output" ]
+  [ -e "$TEMPORARY_DIRECTORY/marker" ]
+  rm -f "$TEMPORARY_DIRECTORY/marker"
   BATS_TEST_TMPDIR='' gaia_usage_memo_seam
-  if [ -e "$TMP/marker" ]; then return 1; fi
+  if [ -e "$TEMPORARY_DIRECTORY/marker" ]; then return 1; fi
   GAIA_USAGE_MEMO_SEAM='' gaia_usage_memo_seam
-  if [ -e "$TMP/marker" ]; then return 1; fi
+  if [ -e "$TEMPORARY_DIRECTORY/marker" ]; then return 1; fi
   gaia_usage_memo_seam
-  [ -e "$TMP/marker" ]
+  [ -e "$TEMPORARY_DIRECTORY/marker" ]
 }
 
 # ---------- 15. silence ----------
 
 @test "silent stderr: every function stays quiet against broken inputs" {
-  local err="$TMP/err" bad="$TMP/dir-as-store"
+  local error_file="$TEMPORARY_DIRECTORY/err" bad="$TEMPORARY_DIRECTORY/dir-as-store"
   mkdir "$bad"
   base_stores
-  gaia_usage_memo_stamp 2>"$err"
-  [ ! -s "$err" ]
+  gaia_usage_memo_stamp 2>"$error_file"
+  [ ! -s "$error_file" ]
   # An unreadable memo, and one whose body is not JSON.
   printf '%s\n%s\n' "$(valid_header 'not json')" 'not json' >"$MEMO"
-  gaia_usage_memo_load "$MEMO" 2>"$err"
-  [ ! -s "$err" ]
+  gaia_usage_memo_load "$MEMO" 2>"$error_file"
+  [ ! -s "$error_file" ]
   [ "$GAIA_USAGE_MEMO_STATE" = cold ]
   chmod 000 "$MEMO"
-  gaia_usage_memo_load "$MEMO" 2>"$err"
-  [ ! -s "$err" ]
+  gaia_usage_memo_load "$MEMO" 2>"$error_file"
+  [ ! -s "$error_file" ]
   chmod 600 "$MEMO"
   # A store path that is a directory, and one that does not exist.
-  gaia_usage_memo_warm "$bad" "$TD/absent-l" "$bad" 2>"$err"
-  [ ! -s "$err" ]
-  chmod 000 "$U"
-  gaia_usage_memo_warm "$U" "$L" "$C" 2>"$err"
-  [ ! -s "$err" ]
-  chmod 600 "$U"
-  gaia_usage_memo_merge_gap 'not json' 2>"$err"
-  [ ! -s "$err" ]
+  gaia_usage_memo_warm "$bad" "$TELEMETRY_DIRECTORY/absent-l" "$bad" 2>"$error_file"
+  [ ! -s "$error_file" ]
+  chmod 000 "$USAGE_STORE"
+  gaia_usage_memo_warm "$USAGE_STORE" "$LINKS_STORE" "$COST_STORE" 2>"$error_file"
+  [ ! -s "$error_file" ]
+  chmod 600 "$USAGE_STORE"
+  gaia_usage_memo_merge_gap 'not json' 2>"$error_file"
+  [ ! -s "$error_file" ]
   GAIA_USAGE_MEMO='garbage'
-  gaia_usage_memo_warm "$U" "$L" "$C" 2>"$err"
-  [ ! -s "$err" ]
-  gaia_usage_memo_merge_gap '{"raws":["x"],"bkeys":[],"models":[],"models_extra":[]}' 2>"$err"
-  [ ! -s "$err" ]
-  gaia_usage_memo_save "$TMP/no-such-dir/memo.json" 2>"$err"
-  [ ! -s "$err" ]
-  gaia_usage_memo_reap "$TMP/no-such-dir" 2>"$err"
-  [ ! -s "$err" ]
-  GAIA_USAGE_MEMO_TRACE="$TMP/no-such-dir/trace" gaia_usage_memo_trace "x" 2>"$err"
-  [ ! -s "$err" ]
-  gaia_usage_memo_seam 2>"$err"
-  [ ! -s "$err" ]
+  gaia_usage_memo_warm "$USAGE_STORE" "$LINKS_STORE" "$COST_STORE" 2>"$error_file"
+  [ ! -s "$error_file" ]
+  gaia_usage_memo_merge_gap '{"raws":["x"],"bkeys":[],"models":[],"models_extra":[]}' 2>"$error_file"
+  [ ! -s "$error_file" ]
+  gaia_usage_memo_save "$TEMPORARY_DIRECTORY/no-such-dir/memo.json" 2>"$error_file"
+  [ ! -s "$error_file" ]
+  gaia_usage_memo_reap "$TEMPORARY_DIRECTORY/no-such-dir" 2>"$error_file"
+  [ ! -s "$error_file" ]
+  GAIA_USAGE_MEMO_TRACE="$TEMPORARY_DIRECTORY/no-such-dir/trace" gaia_usage_memo_trace "x" 2>"$error_file"
+  [ ! -s "$error_file" ]
+  gaia_usage_memo_seam 2>"$error_file"
+  [ ! -s "$error_file" ]
 }

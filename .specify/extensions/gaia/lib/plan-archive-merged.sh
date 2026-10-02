@@ -148,7 +148,7 @@ _library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # -- that fallback is the forked-ledger defect this task removes. Resolving
 # still needs git; the delete itself remains a plain filesystem rm, never a
 # git op (plans are local/gitignored).
-if ! plans_directory="$(gaia_resolve_plans_dir "$repo_root" 2>/dev/null)" || [ -z "$plans_directory" ]; then
+if ! plans_directory="$(gaia_resolve_plans_directory "$repo_root" 2>/dev/null)" || [ -z "$plans_directory" ]; then
   echo "plan-archive-merged: cannot resolve the main checkout for '$repo_root'; skipping sweep" >&2
   exit 0
 fi

@@ -1,9 +1,9 @@
 
-def usage_pr_scope($urows; $cost; $N):
-  (reduce ((($urows[] | select(.kind == "binding" and (.type == "research" or .type == "declare")
-                and (.ref | type) == "string" and $N[.ref] == true)),
-            ($urows[] | select(.kind == "segment" and (.key | type) == "string" and $N[.key] == true)))
-           | .session_id | tojson) as $s ({}; .[$s] = true)) as $R
-  | {segs: [$urows[] | select(.kind == "segment" and $R[.session_id | tojson] == true)],
-     bindings: [$urows[] | select(.kind == "binding" and $R[.session_id | tojson] == true)],
-     cost: [$cost[] | select($R[.session_id | tojson] == true)]};
+def usage_pr_scope($usage_records; $cost; $reference_set):
+  (reduce ((($usage_records[] | select(.kind == "binding" and (.type == "research" or .type == "declare")
+                and (.ref | type) == "string" and $reference_set[.ref] == true)),
+            ($usage_records[] | select(.kind == "segment" and (.key | type) == "string" and $reference_set[.key] == true)))
+           | .session_id | tojson) as $session ({}; .[$session] = true)) as $session_set
+  | {segs: [$usage_records[] | select(.kind == "segment" and $session_set[.session_id | tojson] == true)],
+     bindings: [$usage_records[] | select(.kind == "binding" and $session_set[.session_id | tojson] == true)],
+     cost: [$cost[] | select($session_set[.session_id | tojson] == true)]};

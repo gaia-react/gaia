@@ -16,14 +16,14 @@
 
 setup() {
   # Isolate pricing from the developer's real rate table and the network.
-  export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state"
+  export GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
   export GAIA_RATES_FEED_DISABLE=1
-  SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
-  TALLY="$SCRIPT_DIR/token-tally.sh"
-  LEDGER_LIB="$SCRIPT_DIR/ledger-path-lib.sh"
+  SCRIPT_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
+  TALLY="$SCRIPT_DIRECTORY/token-tally.sh"
+  LEDGER_LIBRARY="$SCRIPT_DIRECTORY/ledger-path-lib.sh"
 
-  FIX="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-tally" && pwd)"
-  ANCHOR="$FIX/projects"
+  FIXTURE_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-tally" && pwd)"
+  ANCHOR="$FIXTURE_DIRECTORY/projects"
   SESSION="fixturesession0001"
 
   # Git identity for the throwaway worktree sandbox (CI without a configured user).
@@ -48,9 +48,9 @@ seed_one_execute() {
 # ledger is contended. The lock mode (flock vs forced fallback) is inherited
 # from the caller's exported environment.
 race_writers() {
-  local n="$1" ledger="$2" barrier="$3" i p
+  local writer_count="$1" ledger="$2" barrier="$3" i writer_pid
   local pids=()
-  for i in $(seq 1 "$n"); do
+  for i in $(seq 1 "$writer_count"); do
     ( until [ -f "$barrier" ]; do :; done
       bash "$TALLY" --action execute --spec-id SPEC-026 --plan-slug spec-026-cost-lock-folder-delete \
         --out-dir "$BATS_TEST_TMPDIR/out-$i" --session-id "$SESSION" \
@@ -58,7 +58,7 @@ race_writers() {
     pids+=("$!")
   done
   : > "$barrier"
-  for p in "${pids[@]}"; do wait "$p"; done
+  for writer_pid in "${pids[@]}"; do wait "$writer_pid"; done
 }
 
 # The ledger has exactly `expected` lines, every line is a JSON object (no
@@ -121,47 +121,47 @@ assert_all_landed() {
   # compares byte-for-byte (macOS /tmp -> /private/tmp symlink otherwise diverges).
   local base
   base="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
-  local MAIN="$base/main" WT="$base/wt"
+  local MAIN="$base/main" WORKTREE="$base/wt"
   mkdir -p "$MAIN"
   git -C "$MAIN" init -q
   git -C "$MAIN" commit --allow-empty -q -m "init"
-  git -C "$MAIN" worktree add -q "$WT" -b "feature/kickoff"
+  git -C "$MAIN" worktree add -q "$WORKTREE" -b "feature/kickoff"
 
   # Both checkouts resolve the ledger to the SAME main-checkout path (the lock
   # key is dirname of this). A worktree-relative key would diverge here.
-  local main_ledger wt_ledger expected_ledger
-  main_ledger="$(cd "$MAIN" && bash -c '. "$1"; gaia_resolve_ledger_path ""' _ "$LEDGER_LIB")"
-  wt_ledger="$(cd "$WT" && bash -c '. "$1"; gaia_resolve_ledger_path ""' _ "$LEDGER_LIB")"
+  local main_ledger worktree_ledger expected_ledger
+  main_ledger="$(cd "$MAIN" && bash -c '. "$1"; gaia_resolve_ledger_path ""' _ "$LEDGER_LIBRARY")"
+  worktree_ledger="$(cd "$WORKTREE" && bash -c '. "$1"; gaia_resolve_ledger_path ""' _ "$LEDGER_LIBRARY")"
   expected_ledger="$MAIN/.gaia/local/telemetry/cost.jsonl"
   [ "$main_ledger" = "$expected_ledger" ]
-  [ "$wt_ledger" = "$expected_ledger" ]
+  [ "$worktree_ledger" = "$expected_ledger" ]
 
   # One write from each checkout, NO --ledger override, so resolution is live.
   run bash -c "cd '$MAIN' && bash '$TALLY' \
     --action execute --spec-id SPEC-026 --plan-slug spec-026-cost-lock-folder-delete \
     --out-dir '$MAIN/out' --session-id '$SESSION' --projects-root '$ANCHOR'"
   [ "$status" -eq 0 ]
-  run bash -c "cd '$WT' && bash '$TALLY' \
+  run bash -c "cd '$WORKTREE' && bash '$TALLY' \
     --action execute --spec-id SPEC-026 --plan-slug spec-026-cost-lock-folder-delete \
-    --out-dir '$WT/out' --session-id '$SESSION' --projects-root '$ANCHOR'"
+    --out-dir '$WORKTREE/out' --session-id '$SESSION' --projects-root '$ANCHOR'"
   [ "$status" -eq 0 ]
 
   # The shared main-checkout cost.jsonl gained BOTH rows ...
   [ -f "$expected_ledger" ]
   [ "$(wc -l < "$expected_ledger" | tr -d ' ')" -eq 2 ]
   # ... and no per-worktree telemetry dir (hence no second lock) was ever created.
-  [ ! -e "$WT/.gaia/local/telemetry" ]
+  [ ! -e "$WORKTREE/.gaia/local/telemetry" ]
 
-  git -C "$MAIN" worktree remove --force "$WT" 2>/dev/null || rm -rf "$WT"
+  git -C "$MAIN" worktree remove --force "$WORKTREE" 2>/dev/null || rm -rf "$WORKTREE"
 }
 
 # ---------- UAT-003: timeout degradation appends without the rewrite ----------
 
 @test "UAT-003: a held lock past the timeout degrades to append-without-rewrite; row still lands, exit 0" {
   export GAIA_LEDGER_LOCK_FORCE_FALLBACK=1
-  local tel="$BATS_TEST_TMPDIR/tel"
-  local ledger="$tel/ledger.jsonl"
-  mkdir -p "$tel"
+  local telemetry_directory="$BATS_TEST_TMPDIR/tel"
+  local ledger="$telemetry_directory/ledger.jsonl"
+  mkdir -p "$telemetry_directory"
 
   # A prior valid row, written before the lock is held.
   seed_one_execute "$ledger"
@@ -170,8 +170,8 @@ assert_all_landed() {
   # Pin the atomic-mkdir lock artifact directly (freshly created, so it is not
   # stale-reclaimed inside the blocked writer's 1s window). No background process
   # to signal: the hold lasts exactly until the explicit rmdir below.
-  mkdir "$tel/specs.lock.d"
-  [ -d "$tel/specs.lock.d" ]
+  mkdir "$telemetry_directory/specs.lock.d"
+  [ -d "$telemetry_directory/specs.lock.d" ]
 
   # The blocked writer cannot acquire within 1s; it must degrade to the append.
   run env GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 GAIA_LEDGER_LOCK_TIMEOUT_SECONDS=1 \
@@ -179,7 +179,7 @@ assert_all_landed() {
     --out-dir "$BATS_TEST_TMPDIR/out-blocked" --session-id "$SESSION" \
     --projects-root "$ANCHOR" --ledger "$ledger"
 
-  rmdir "$tel/specs.lock.d" 2>/dev/null || true
+  rmdir "$telemetry_directory/specs.lock.d" 2>/dev/null || true
 
   # Degraded success: exit 0, the row landed (1 -> 2), ledger stays valid JSON.
   [ "$status" -eq 0 ]

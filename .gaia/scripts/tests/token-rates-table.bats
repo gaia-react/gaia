@@ -16,17 +16,17 @@
 # (own exit code) for every non-final JSON assertion.
 
 setup() {
-  SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
-  TABLE="$SCRIPT_DIR/token-rates.json"
-  PRICING_LIB="$SCRIPT_DIR/token-pricing-lib.sh"
+  SCRIPT_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
+  TABLE="$SCRIPT_DIRECTORY/token-rates.json"
+  PRICING_LIBRARY="$SCRIPT_DIRECTORY/token-pricing-lib.sh"
 
   # Both files are tracked and non-optional, and this suite is release-excluded
   # so it only ever runs where they exist. A `skip` here would green the shipped
   # table's ONLY coverage on a future rename instead of reddening it.
   [ -f "$TABLE" ] || { echo "shipped rate table not found: $TABLE" >&2; return 1; }
-  [ -f "$PRICING_LIB" ] || { echo "pricing lib not found: $PRICING_LIB" >&2; return 1; }
+  [ -f "$PRICING_LIBRARY" ] || { echo "pricing lib not found: $PRICING_LIBRARY" >&2; return 1; }
   # shellcheck source=.gaia/scripts/token-pricing-lib.sh
-  . "$PRICING_LIB"
+  . "$PRICING_LIBRARY"
 }
 
 # rate_for <model> <date> -> "<input> <output>" via the REAL rate_window, so a
@@ -39,19 +39,19 @@ setup() {
 # a quoted rate does not degrade one model, it makes `priced_row` yield null for
 # every run against the table, which reads as `cost unavailable` everywhere.
 rate_for() {
-  jq -r --arg m "$1" --arg d "$2" --slurpfile t "$TABLE" \
-    '$t[0] as $rates | '"$GAIA_PRICING_JQ_DEFS"'
-     rate_window($m; $d) | if . == null then "NULL" else "\(.input) \(.output)" end' \
+  jq -r --arg model "$1" --arg date "$2" --slurpfile table "$TABLE" \
+    '$table[0] as $rates | '"$GAIA_PRICING_JQ_DEFS"'
+     rate_window($model; $date) | if . == null then "NULL" else "\(.input) \(.output)" end' \
     <<<'null' 2>/dev/null
 }
 
 @test "shipped table: the fleet's live model keys all resolve to a rate window" {
   # Every model key that has appeared in a real ledger. An absent row here is
   # the #1088 failure: silently priced at zero.
-  for m in claude-opus-5-5 claude-opus-5 claude-opus-4-8 claude-sonnet-5-5 claude-sonnet-5 \
+  for model in claude-opus-5-5 claude-opus-5 claude-opus-4-8 claude-sonnet-5-5 claude-sonnet-5 \
            claude-fable-5-1 claude-haiku-4-5-20251001; do
-    got="$(rate_for "$m" 2026-07-30)"
-    [ "$got" != "NULL" ] || { echo "no rate window for $m" >&2; return 1; }
+    got="$(rate_for "$model" 2026-07-30)"
+    [ "$got" != "NULL" ] || { echo "no rate window for $model" >&2; return 1; }
   done
 }
 
@@ -101,9 +101,9 @@ rate_for() {
 # the REAL priced_row, so a per-window cache-read multiplier the lib ignores
 # fails here rather than passing a has-key check on the table.
 price_cache_read() {
-  jq -r --arg m "$1" --argjson n "$2" --slurpfile t "$TABLE" \
-    '$t[0] as $rates | '"$GAIA_PRICING_JQ_DEFS"'
-     priced_row({ts: "2026-09-30T00:00:00Z", by_model: {($m): {cache_read: $n}}}) | .dollars' \
+  jq -r --arg model "$1" --argjson token_count "$2" --slurpfile table "$TABLE" \
+    '$table[0] as $rates | '"$GAIA_PRICING_JQ_DEFS"'
+     priced_row({ts: "2026-09-30T00:00:00Z", by_model: {($model): {cache_read: $token_count}}}) | .dollars' \
     <<<'null' 2>/dev/null
 }
 

@@ -30,7 +30,7 @@ setup() {
   TEMPORARY_DIRECTORY="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
   # The real scripts copied below reach the pricing path; the hermetic
   # suite holds every usage suite to this isolation.
-  export GAIA_RATES_FEED_DISABLE=1 GAIA_RATES_STATE_DIR="$TEMPORARY_DIRECTORY/rates-state"
+  export GAIA_RATES_FEED_DISABLE=1 GAIA_RATES_STATE_DIRECTORY="$TEMPORARY_DIRECTORY/rates-state"
   unset GITHUB_ACTIONS CLAUDE_CODE_SESSION_ID GAIA_TALLY_PROJECTS_ROOT GAIA_USAGE_TEST_BARRIER
   REPO="$TEMPORARY_DIRECTORY/repo"
   PROJECTS_DIRECTORY="$TEMPORARY_DIRECTORY/projects"
@@ -106,13 +106,13 @@ mutated_hook() {
 
 @test "UAT-015: Stop launches the flusher detached, returns under 2s, stdin is /dev/null" {
   stub_repo
-  local transcript_path="$PROJECT_DIRECTORY/S1.jsonl" t0 t1
-  t0="$(now_ms)"
+  local transcript_path="$PROJECT_DIRECTORY/S1.jsonl" started_at_milliseconds ended_at_milliseconds
+  started_at_milliseconds="$(now_ms)"
   fire "$(payload Stop S1 "$transcript_path")"
-  t1="$(now_ms)"
+  ended_at_milliseconds="$(now_ms)"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
-  [ $((t1 - t0)) -lt 2000 ]
+  [ $((ended_at_milliseconds - started_at_milliseconds)) -lt 2000 ]
   [ ! -e "$STUB_DONE" ]
   wait_for "$STUB_DONE" 80
   [ "$(sed -n 1p "$STUB_LOG")" = "--session S1 --transcript $transcript_path --finished-main --projects-root $PROJECTS_DIRECTORY" ]
@@ -121,13 +121,13 @@ mutated_hook() {
 
 @test "UAT-015: SessionStart launches the sweep detached, returns under 2s, stdin is /dev/null" {
   stub_repo
-  local transcript_path="$PROJECT_DIRECTORY/S2.jsonl" t0 t1
-  t0="$(now_ms)"
+  local transcript_path="$PROJECT_DIRECTORY/S2.jsonl" started_at_milliseconds ended_at_milliseconds
+  started_at_milliseconds="$(now_ms)"
   fire "$(payload SessionStart S2 "$transcript_path")"
-  t1="$(now_ms)"
+  ended_at_milliseconds="$(now_ms)"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
-  [ $((t1 - t0)) -lt 2000 ]
+  [ $((ended_at_milliseconds - started_at_milliseconds)) -lt 2000 ]
   [ ! -e "$STUB_DONE" ]
   wait_for "$STUB_DONE" 80
   [ "$(sed -n 1p "$STUB_LOG")" = "--sweep --self-session S2 --projects-root $PROJECTS_DIRECTORY" ]
@@ -155,12 +155,12 @@ mutated_hook() {
 @test "a transcript_path that would block on open does not stall the hook" {
   stub_repo
   mkfifo "$PROJECT_DIRECTORY/S4.jsonl"
-  local t0 t1
-  t0="$(now_ms)"
+  local started_at_milliseconds ended_at_milliseconds
+  started_at_milliseconds="$(now_ms)"
   fire "$(payload Stop S4 "$PROJECT_DIRECTORY/S4.jsonl")"
-  t1="$(now_ms)"
+  ended_at_milliseconds="$(now_ms)"
   [ "$status" -eq 0 ]
-  [ $((t1 - t0)) -lt 2000 ]
+  [ $((ended_at_milliseconds - started_at_milliseconds)) -lt 2000 ]
 }
 
 @test "guard can fail: a hook that reads the transcript is killed by the watchdog on a FIFO" {
@@ -187,12 +187,12 @@ mutated_hook() {
 @test "guard can fail: without the redirects the hook holds its pipes for the flusher's whole run" {
   stub_repo
   mutated_hook 's| </dev/null >/dev/null 2>&1 &$| \&|'
-  local t0 t1
-  t0="$(now_ms)"
+  local started_at_milliseconds ended_at_milliseconds
+  started_at_milliseconds="$(now_ms)"
   fire "$(payload Stop S6 "$PROJECT_DIRECTORY/S6.jsonl")"
-  t1="$(now_ms)"
+  ended_at_milliseconds="$(now_ms)"
   [ "$status" -eq 0 ]
-  [ $((t1 - t0)) -ge 4000 ]
+  [ $((ended_at_milliseconds - started_at_milliseconds)) -ge 4000 ]
 }
 
 # ---------- UAT-028 ----------
@@ -249,17 +249,17 @@ mutated_hook() {
 
 # ---------- UAT-011: real flusher ----------
 
-# message_line <sid> <id> <k>: one assistant usage line of factor k (fresh k,
+# message_line <session_id> <id> <factor>: one assistant usage line of factor k (fresh k,
 # 5m write 10k, 1h write 100k, cache read 1000k, output 10k).
 message_line() {
-  jq -nc --arg session_id "$1" --arg id "$2" --arg cwd "$REPO" --argjson k "$3" \
+  jq -nc --arg session_id "$1" --arg id "$2" --arg cwd "$REPO" --argjson factor "$3" \
     '{type: "assistant", uuid: ("u-" + $id),
-      timestamp: ("2026-10-01T00:00:0" + ($k | tostring) + ".000Z"),
+      timestamp: ("2026-10-01T00:00:0" + ($factor | tostring) + ".000Z"),
       cwd: $cwd, sessionId: $session_id, gitBranch: "main",
       message: {id: $id, model: "claude-opus-5-5", role: "assistant",
-        usage: {input_tokens: $k, cache_creation_input_tokens: (110 * $k),
-          cache_read_input_tokens: (1000 * $k), output_tokens: (10 * $k),
-          cache_creation: {ephemeral_5m_input_tokens: (10 * $k), ephemeral_1h_input_tokens: (100 * $k)}},
+        usage: {input_tokens: $factor, cache_creation_input_tokens: (110 * $factor),
+          cache_read_input_tokens: (1000 * $factor), output_tokens: (10 * $factor),
+          cache_creation: {ephemeral_5m_input_tokens: (10 * $factor), ephemeral_1h_input_tokens: (100 * $factor)}},
         content: [{type: "text", text: "x"}]}}'
 }
 
@@ -285,7 +285,7 @@ wait_cursor() {
   local transcript_file="$1" i=0 want
   want="$(wc -c <"$transcript_file" | tr -d ' ')"
   while [ "$i" -lt 200 ]; do
-    [ "$(jq -r --arg p "$transcript_file" '.files[$p].offset // -1' "$REPO/.gaia/local/telemetry/usage-cursors.json" 2>/dev/null)" = "$want" ] && return 0
+    [ "$(jq -r --arg transcript_path "$transcript_file" '.files[$transcript_path].offset // -1' "$REPO/.gaia/local/telemetry/usage-cursors.json" 2>/dev/null)" = "$want" ] && return 0
     sleep 0.1
     i=$((i + 1))
   done

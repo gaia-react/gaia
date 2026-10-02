@@ -188,18 +188,18 @@ command -v jq >/dev/null 2>&1 || {
 ROOT=''
 ROUND=''
 ATTEMPT=''
-OUT=''
-DISP=''
-DSHA=''
-BASE=''
-BSHA=''
+OUTPUT_FILE=''
+DISPOSITIONS_FILE=''
+DISPOSITIONS_SHA=''
+BASELINE_FILE=''
+BASELINE_SHA=''
 RESULT=''
 RUNFOLDER=''
-EXTRAS=''
+EXTRA_DECLARED_FILES=''
 
-T=''
+TEMPORARY_DIRECTORY=''
 # shellcheck disable=SC2329 # invoked through the EXIT trap
-cleanup() { if [ -n "$T" ]; then rm -rf "$T"; fi; }
+cleanup() { if [ -n "$TEMPORARY_DIRECTORY" ]; then rm -rf "$TEMPORARY_DIRECTORY"; fi; }
 trap cleanup EXIT
 
 _git() { env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git -C "$ROOT" "$@"; }
@@ -219,11 +219,11 @@ _sha256() {
 # Prints the pin digest of the named files in directory $1: the sha256 of one
 # `<file sha256>  <name>` line per file, in the order given.
 _pin_digest() {
-  local dir="$1" f h
+  local directory="$1" file_name file_digest
   shift
-  for f in "$@"; do
-    h="$(_sha256 <"$dir/$f")" || return 1
-    printf '%s  %s\n' "$h" "$f"
+  for file_name in "$@"; do
+    file_digest="$(_sha256 <"$directory/$file_name")" || return 1
+    printf '%s  %s\n' "$file_digest" "$file_name"
   done | _sha256
 }
 
@@ -231,15 +231,15 @@ _pin_digest() {
 # file $1 recorded. Fails closed on a baseline with no pin record or a pinned
 # name that is not a plain file name.
 _verify_pin() {
-  local base="$1" want got f files=()
-  want="$(jq -r '.verifier_digest // empty' "$base" 2>/dev/null)" || return 1
+  local baseline_file="$1" want got file_name files=()
+  want="$(jq -r '.verifier_digest // empty' "$baseline_file" 2>/dev/null)" || return 1
   [ -n "$want" ] || return 1
-  while IFS= read -r f; do
-    case "$f" in
+  while IFS= read -r file_name; do
+    case "$file_name" in
       '' | */* | .*) return 1 ;;
     esac
-    files+=("$f")
-  done < <(jq -r '(.verifier_files // [])[]' "$base" 2>/dev/null)
+    files+=("$file_name")
+  done < <(jq -r '(.verifier_files // [])[]' "$baseline_file" 2>/dev/null)
   [ "${#files[@]}" -gt 0 ] || return 1
   got="$(_pin_digest "$_here" "${files[@]}")" || return 1
   [ "$got" = "$want" ]
@@ -247,13 +247,13 @@ _verify_pin() {
 
 # Atomic write: stdin to a temp file beside the destination, then mv.
 _atomic_write() {
-  local dest="$1" tmp
-  mkdir -p "$(dirname "$dest")" || return 1
-  tmp="$(mktemp "$dest.XXXXXX")" || return 1
-  if cat >"$tmp" && mv "$tmp" "$dest"; then
+  local destination="$1" temporary_file
+  mkdir -p "$(dirname "$destination")" || return 1
+  temporary_file="$(mktemp "$destination.XXXXXX")" || return 1
+  if cat >"$temporary_file" && mv "$temporary_file" "$destination"; then
     return 0
   fi
-  rm -f "$tmp"
+  rm -f "$temporary_file"
   return 1
 }
 
@@ -268,48 +268,48 @@ _is_uint() {
 # on disk plus untracked, unignored ones), built in a throwaway index so the
 # real index is untouched.
 _working_tree_id() {
-  local idx="$T/wt-index"
-  rm -f "$idx"
-  env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR GIT_INDEX_FILE="$idx" git -C "$ROOT" read-tree HEAD >/dev/null 2>&1 || return 1
-  env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR GIT_INDEX_FILE="$idx" git -C "$ROOT" add -A >/dev/null 2>&1 || return 1
-  env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR GIT_INDEX_FILE="$idx" git -C "$ROOT" write-tree 2>/dev/null
+  local index_file="$TEMPORARY_DIRECTORY/wt-index"
+  rm -f "$index_file"
+  env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR GIT_INDEX_FILE="$index_file" git -C "$ROOT" read-tree HEAD >/dev/null 2>&1 || return 1
+  env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR GIT_INDEX_FILE="$index_file" git -C "$ROOT" add -A >/dev/null 2>&1 || return 1
+  env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR GIT_INDEX_FILE="$index_file" git -C "$ROOT" write-tree 2>/dev/null
 }
 
 # Snapshot the current repo state into directory $1: head, index digest, a
 # dirty map (path to working-content blob hash, or "deleted") and the
 # untracked list.
 snapshot_state() {
-  local d="$1" p h
-  mkdir -p "$d" || return 1
-  _git rev-parse HEAD >"$d/head" 2>/dev/null || return 1
-  _git ls-files -s -z >"$d/index.raw" 2>/dev/null || return 1
-  _sha256 <"$d/index.raw" >"$d/index_digest" || return 1
+  local snapshot_directory="$1" file_path content_hash
+  mkdir -p "$snapshot_directory" || return 1
+  _git rev-parse HEAD >"$snapshot_directory/head" 2>/dev/null || return 1
+  _git ls-files -s -z >"$snapshot_directory/index.raw" 2>/dev/null || return 1
+  _sha256 <"$snapshot_directory/index.raw" >"$snapshot_directory/index_digest" || return 1
   # --no-renames: a rename would otherwise list only the new name and hide
   # the deleted old path.
-  _git diff --no-ext-diff --no-renames --name-only -z HEAD -- >"$d/dirty.raw" 2>/dev/null || return 1
-  : >"$d/dirty.tsv"
-  while IFS= read -r -d '' p; do
-    case "$p" in
+  _git diff --no-ext-diff --no-renames --name-only -z HEAD -- >"$snapshot_directory/dirty.raw" 2>/dev/null || return 1
+  : >"$snapshot_directory/dirty.tsv"
+  while IFS= read -r -d '' file_path; do
+    case "$file_path" in
       *$'\n'*) return 1 ;;
     esac
-    if [ -e "$ROOT/$p" ] || [ -L "$ROOT/$p" ]; then
-      h="$(_git hash-object -- "$p" 2>/dev/null)" || h='unreadable'
+    if [ -e "$ROOT/$file_path" ] || [ -L "$ROOT/$file_path" ]; then
+      content_hash="$(_git hash-object -- "$file_path" 2>/dev/null)" || content_hash='unreadable'
     else
-      h='deleted'
+      content_hash='deleted'
     fi
-    printf '%s\t%s\n' "$h" "$p" >>"$d/dirty.tsv"
-  done <"$d/dirty.raw"
-  jq -Rn '[inputs | capture("^(?<h>[^\t]*)\t(?<p>.*)$")] | map({key: .p, value: .h}) | from_entries' \
-    <"$d/dirty.tsv" >"$d/dirty.json" || return 1
-  _git ls-files --others --exclude-standard -z >"$d/untracked.raw" 2>/dev/null || return 1
-  : >"$d/untracked.txt"
-  while IFS= read -r -d '' p; do
-    case "$p" in
+    printf '%s\t%s\n' "$content_hash" "$file_path" >>"$snapshot_directory/dirty.tsv"
+  done <"$snapshot_directory/dirty.raw"
+  jq -Rn '[inputs | capture("^(?<content_hash>[^\t]*)\t(?<file_path>.*)$")] | map({key: .file_path, value: .content_hash}) | from_entries' \
+    <"$snapshot_directory/dirty.tsv" >"$snapshot_directory/dirty.json" || return 1
+  _git ls-files --others --exclude-standard -z >"$snapshot_directory/untracked.raw" 2>/dev/null || return 1
+  : >"$snapshot_directory/untracked.txt"
+  while IFS= read -r -d '' file_path; do
+    case "$file_path" in
       *$'\n'*) return 1 ;;
     esac
-    printf '%s\n' "$p" >>"$d/untracked.txt"
-  done <"$d/untracked.raw"
-  LC_ALL=C sort -u "$d/untracked.txt" -o "$d/untracked.txt"
+    printf '%s\n' "$file_path" >>"$snapshot_directory/untracked.txt"
+  done <"$snapshot_directory/untracked.raw"
+  LC_ALL=C sort -u "$snapshot_directory/untracked.txt" -o "$snapshot_directory/untracked.txt"
   return 0
 }
 
@@ -318,141 +318,141 @@ snapshot_state() {
 # baseline-dirty path now equal to HEAD) and $2/d_unt (an untracked path added
 # or removed).
 compute_delta() {
-  local base="$1" cur="$2"
-  jq -r --slurpfile c "$cur/dirty.json" \
-    '.dirty as $b | $c[0] | to_entries[] | select($b[.key] != .value) | .key' "$base" |
-    LC_ALL=C sort -u >"$cur/d_mod" || return 1
-  jq -r --slurpfile c "$cur/dirty.json" \
-    '.dirty | keys[] as $k | select(($c[0] | has($k)) | not) | $k' "$base" |
-    LC_ALL=C sort -u >"$cur/d_rev" || return 1
-  jq -r '.untracked[]' "$base" | LC_ALL=C sort -u >"$cur/base_untracked.txt" || return 1
+  local baseline_file="$1" current_directory="$2"
+  jq -r --slurpfile current_dirty "$current_directory/dirty.json" \
+    '.dirty as $baseline_dirty | $current_dirty[0] | to_entries[] | select($baseline_dirty[.key] != .value) | .key' "$baseline_file" |
+    LC_ALL=C sort -u >"$current_directory/d_mod" || return 1
+  jq -r --slurpfile current_dirty "$current_directory/dirty.json" \
+    '.dirty | keys[] as $dirty_path | select(($current_dirty[0] | has($dirty_path)) | not) | $dirty_path' "$baseline_file" |
+    LC_ALL=C sort -u >"$current_directory/d_rev" || return 1
+  jq -r '.untracked[]' "$baseline_file" | LC_ALL=C sort -u >"$current_directory/base_untracked.txt" || return 1
   {
-    LC_ALL=C comm -13 "$cur/base_untracked.txt" "$cur/untracked.txt"
-    LC_ALL=C comm -23 "$cur/base_untracked.txt" "$cur/untracked.txt"
-  } | LC_ALL=C sort -u >"$cur/d_unt"
+    LC_ALL=C comm -13 "$current_directory/base_untracked.txt" "$current_directory/untracked.txt"
+    LC_ALL=C comm -23 "$current_directory/base_untracked.txt" "$current_directory/untracked.txt"
+  } | LC_ALL=C sort -u >"$current_directory/d_unt"
   return 0
 }
 
-ERRS=''
-add_err() {
-  local d="$2"
-  d=${d//$'\t'/ }
-  d=${d//$'\n'/ }
-  printf '%s\t%s\n' "$1" "$d" >>"$ERRS"
-  printf '%s: %s\n' "$1" "$d" >&2
+ERRORS_FILE=''
+add_error() {
+  local detail="$2"
+  detail=${detail//$'\t'/ }
+  detail=${detail//$'\n'/ }
+  printf '%s\t%s\n' "$1" "$detail" >>"$ERRORS_FILE"
+  printf '%s: %s\n' "$1" "$detail" >&2
 }
 
-has_err() { [ -s "$ERRS" ]; }
+has_errors() { [ -s "$ERRORS_FILE" ]; }
 
 # Reads paths on stdin and reports each one that is empty, absolute, starts
 # with a dash, or carries a `..` segment.
 validate_paths() {
-  local label="$1" p
-  while IFS= read -r p; do
-    case "$p" in
+  local label="$1" file_path
+  while IFS= read -r file_path; do
+    case "$file_path" in
       '' | /* | -*)
-        add_err bad-input "path in $label is empty, absolute or starts with a dash: $p"
+        add_error bad-input "path in $label is empty, absolute or starts with a dash: $file_path"
         continue
         ;;
     esac
-    case "/$p/" in
-      */../*) add_err bad-input "path in $label has a .. segment: $p" ;;
+    case "/$file_path/" in
+      */../*) add_error bad-input "path in $label has a .. segment: $file_path" ;;
     esac
   done
 }
 
 finish_check() {
-  jq -Rn --argjson r "$ROUND" --argjson k "$ATTEMPT" \
-    '[inputs | split("\t") | {kind: .[0], detail: (.[1:] | join("\t"))}] as $e
-     | {schema: 1, round: $r, attempt: $k, pass: ($e | length == 0), errors: $e}' \
-    <"$ERRS" | _atomic_write "$OUT" || {
-    printf 'audit-fix-verify: cannot write %s\n' "$OUT" >&2
+  jq -Rn --argjson round "$ROUND" --argjson attempt "$ATTEMPT" \
+    '[inputs | split("\t") | {kind: .[0], detail: (.[1:] | join("\t"))}] as $errors
+     | {schema: 1, round: $round, attempt: $attempt, pass: ($errors | length == 0), errors: $errors}' \
+    <"$ERRORS_FILE" | _atomic_write "$OUTPUT_FILE" || {
+    printf 'audit-fix-verify: cannot write %s\n' "$OUTPUT_FILE" >&2
     exit 1
   }
-  if has_err; then exit 1; fi
+  if has_errors; then exit 1; fi
   exit 0
 }
 
-cmd_baseline() {
-  local pin_dir pin_digest f
-  if [ -z "$ROOT" ] || [ -z "$OUT" ] || ! _is_uint "$ROUND"; then
+command_baseline() {
+  local pin_directory pin_digest file_name
+  if [ -z "$ROOT" ] || [ -z "$OUTPUT_FILE" ] || ! _is_uint "$ROUND"; then
     die_usage 'baseline needs --root, --round <int> and --out'
   fi
-  T="$(mktemp -d)" || exit 1
+  TEMPORARY_DIRECTORY="$(mktemp -d)" || exit 1
   if ! _git diff --cached --quiet 2>/dev/null; then
     printf 'audit-fix-verify: baseline refused: the index differs from HEAD (staged change or unreadable repo) in %s\n' "$ROOT" >&2
     exit 3
   fi
-  if ! snapshot_state "$T/cur"; then
+  if ! snapshot_state "$TEMPORARY_DIRECTORY/cur"; then
     printf 'audit-fix-verify: baseline refused: cannot read repo state (or a path contains a newline) in %s\n' "$ROOT" >&2
     exit 3
   fi
-  pin_dir="$(dirname "$OUT")/verifier-bin-$ROUND"
-  rm -rf "$pin_dir"
-  mkdir -p "$pin_dir" || exit 1
-  for f in "${PIN_FILES[@]}"; do
-    cp "$_here/$f" "$pin_dir/$f" || {
-      printf 'audit-fix-verify: cannot pin %s into %s\n' "$f" "$pin_dir" >&2
+  pin_directory="$(dirname "$OUTPUT_FILE")/verifier-bin-$ROUND"
+  rm -rf "$pin_directory"
+  mkdir -p "$pin_directory" || exit 1
+  for file_name in "${PIN_FILES[@]}"; do
+    cp "$_here/$file_name" "$pin_directory/$file_name" || {
+      printf 'audit-fix-verify: cannot pin %s into %s\n' "$file_name" "$pin_directory" >&2
       exit 1
     }
   done
-  pin_digest="$(_pin_digest "$pin_dir" "${PIN_FILES[@]}")" || {
-    printf 'audit-fix-verify: cannot hash the pinned verifier in %s\n' "$pin_dir" >&2
+  pin_digest="$(_pin_digest "$pin_directory" "${PIN_FILES[@]}")" || {
+    printf 'audit-fix-verify: cannot hash the pinned verifier in %s\n' "$pin_directory" >&2
     exit 1
   }
-  jq -n --argjson r "$ROUND" --arg root "$ROOT" \
-    --arg head "$(cat "$T/cur/head")" --arg idx "$(cat "$T/cur/index_digest")" \
-    --slurpfile d "$T/cur/dirty.json" \
-    --rawfile u "$T/cur/untracked.txt" \
-    --arg pd "$pin_digest" \
-    '{schema: 1, round: $r, root: $root, head: $head, index_digest: $idx,
-      verifier_files: $ARGS.positional, verifier_digest: $pd,
-      dirty: $d[0], untracked: ($u | split("\n") | map(select(. != "")))}' \
+  jq -n --argjson round "$ROUND" --arg root "$ROOT" \
+    --arg head "$(cat "$TEMPORARY_DIRECTORY/cur/head")" --arg index_digest "$(cat "$TEMPORARY_DIRECTORY/cur/index_digest")" \
+    --slurpfile dirty "$TEMPORARY_DIRECTORY/cur/dirty.json" \
+    --rawfile untracked "$TEMPORARY_DIRECTORY/cur/untracked.txt" \
+    --arg pin_digest "$pin_digest" \
+    '{schema: 1, round: $round, root: $root, head: $head, index_digest: $index_digest,
+      verifier_files: $ARGS.positional, verifier_digest: $pin_digest,
+      dirty: $dirty[0], untracked: ($untracked | split("\n") | map(select(. != "")))}' \
     --args "${PIN_FILES[@]}" |
-    _atomic_write "$OUT" || {
-    printf 'audit-fix-verify: cannot write %s\n' "$OUT" >&2
+    _atomic_write "$OUTPUT_FILE" || {
+    printf 'audit-fix-verify: cannot write %s\n' "$OUTPUT_FILE" >&2
     exit 1
   }
   exit 0
 }
 
-cmd_drift() {
-  local rc=0 p
-  if [ -z "$ROOT" ] || [ -z "$BASE" ]; then
+command_drift() {
+  local exit_status=0 file_path
+  if [ -z "$ROOT" ] || [ -z "$BASELINE_FILE" ]; then
     die_usage 'drift needs --root and --baseline'
   fi
-  T="$(mktemp -d)" || exit 1
-  jq -e '.schema == 1 and (.dirty | type == "object") and (.untracked | type == "array")' "$BASE" >/dev/null 2>&1 || {
-    printf 'bad-input: baseline does not parse: %s\n' "$BASE" >&2
+  TEMPORARY_DIRECTORY="$(mktemp -d)" || exit 1
+  jq -e '.schema == 1 and (.dirty | type == "object") and (.untracked | type == "array")' "$BASELINE_FILE" >/dev/null 2>&1 || {
+    printf 'bad-input: baseline does not parse: %s\n' "$BASELINE_FILE" >&2
     exit 1
   }
-  _verify_pin "$BASE" || {
-    printf 'bad-input: the verifier files beside this script differ from the digest pinned in %s\n' "$BASE" >&2
+  _verify_pin "$BASELINE_FILE" || {
+    printf 'bad-input: the verifier files beside this script differ from the digest pinned in %s\n' "$BASELINE_FILE" >&2
     exit 1
   }
-  snapshot_state "$T/cur" || {
+  snapshot_state "$TEMPORARY_DIRECTORY/cur" || {
     printf 'bad-input: cannot read repo state in %s\n' "$ROOT" >&2
     exit 1
   }
-  compute_delta "$BASE" "$T/cur" || exit 1
-  if [ "$(cat "$T/cur/head")" != "$(jq -r '.head' "$BASE")" ]; then
+  compute_delta "$BASELINE_FILE" "$TEMPORARY_DIRECTORY/cur" || exit 1
+  if [ "$(cat "$TEMPORARY_DIRECTORY/cur/head")" != "$(jq -r '.head' "$BASELINE_FILE")" ]; then
     printf 'head-moved\n' >&2
-    rc=1
+    exit_status=1
   fi
-  if [ "$(cat "$T/cur/index_digest")" != "$(jq -r '.index_digest' "$BASE")" ]; then
+  if [ "$(cat "$TEMPORARY_DIRECTORY/cur/index_digest")" != "$(jq -r '.index_digest' "$BASELINE_FILE")" ]; then
     printf 'index-changed\n' >&2
-    rc=1
+    exit_status=1
   fi
-  while IFS= read -r p; do
-    [ -n "$p" ] || continue
-    printf 'drift: %s\n' "$p" >&2
-    rc=1
-  done < <(cat "$T/cur/d_mod" "$T/cur/d_rev" "$T/cur/d_unt")
-  exit "$rc"
+  while IFS= read -r file_path; do
+    [ -n "$file_path" ] || continue
+    printf 'drift: %s\n' "$file_path" >&2
+    exit_status=1
+  done < <(cat "$TEMPORARY_DIRECTORY/cur/d_mod" "$TEMPORARY_DIRECTORY/cur/d_rev" "$TEMPORARY_DIRECTORY/cur/d_unt")
+  exit "$exit_status"
 }
 
-cmd_round_check() {
-  local rc=0 f k
+command_round_check() {
+  local exit_status=0 log_file attempt_number
   if [ -z "$RUNFOLDER" ] || ! _is_uint "$ROUND"; then
     die_usage 'round-check needs --run-folder and --round <int>'
   fi
@@ -460,187 +460,187 @@ cmd_round_check() {
     printf 'bad-input: the verifier files beside this script differ from the digest pinned in baseline-%s.json\n' "$ROUND" >&2
     exit 1
   fi
-  for f in "$RUNFOLDER"/gate-"$ROUND"-*.log; do
-    [ -e "$f" ] || continue
-    k="${f##*/gate-"$ROUND"-}"
-    k="${k%.log}"
-    _is_uint "$k" || continue
-    if ! jq -e '.pass == true' "$RUNFOLDER/verifier-$ROUND-$k.json" >/dev/null 2>&1; then
-      printf 'gate-%s-%s.log exists without a passing verifier-%s-%s.json\n' "$ROUND" "$k" "$ROUND" "$k" >&2
-      rc=1
+  for log_file in "$RUNFOLDER"/gate-"$ROUND"-*.log; do
+    [ -e "$log_file" ] || continue
+    attempt_number="${log_file##*/gate-"$ROUND"-}"
+    attempt_number="${attempt_number%.log}"
+    _is_uint "$attempt_number" || continue
+    if ! jq -e '.pass == true' "$RUNFOLDER/verifier-$ROUND-$attempt_number.json" >/dev/null 2>&1; then
+      printf 'gate-%s-%s.log exists without a passing verifier-%s-%s.json\n' "$ROUND" "$attempt_number" "$ROUND" "$attempt_number" >&2
+      exit_status=1
     fi
   done
-  exit "$rc"
+  exit "$exit_status"
 }
 
-cmd_check() {
-  local p dok=1 rok=1 bok=1 f main sha
-  if [ -z "$ROOT" ] || [ -z "$OUT" ] || [ -z "$DISP" ] || [ -z "$DSHA" ] || [ -z "$BASE" ] ||
-    [ -z "$BSHA" ] || [ -z "$RESULT" ] || ! _is_uint "$ROUND" || ! _is_uint "$ATTEMPT"; then
+command_check() {
+  local file_path input_label dispositions_ok=1 result_ok=1 baseline_ok=1 input_spec extra_declared_file protected_path main_checkout_root sha
+  if [ -z "$ROOT" ] || [ -z "$OUTPUT_FILE" ] || [ -z "$DISPOSITIONS_FILE" ] || [ -z "$DISPOSITIONS_SHA" ] || [ -z "$BASELINE_FILE" ] ||
+    [ -z "$BASELINE_SHA" ] || [ -z "$RESULT" ] || ! _is_uint "$ROUND" || ! _is_uint "$ATTEMPT"; then
     die_usage 'check is missing a required option (or --round/--attempt is not an integer)'
   fi
-  T="$(mktemp -d)" || exit 1
-  ERRS="$T/errs"
-  : >"$ERRS"
+  TEMPORARY_DIRECTORY="$(mktemp -d)" || exit 1
+  ERRORS_FILE="$TEMPORARY_DIRECTORY/errs"
+  : >"$ERRORS_FILE"
 
   # Input validation. Anything wrong here ends the check before the delta is
   # computed: a file the fixer could have altered is never analysed.
-  for f in "$DISP:dispositions:$DSHA" "$BASE:baseline:$BSHA"; do
-    sha="${f##*:}"
-    f="${f%:*}"
-    p="${f##*:}"
-    f="${f%:*}"
-    if [ ! -r "$f" ]; then
-      add_err bad-input "$p file unreadable: $f"
-    elif [ "$(_sha256 <"$f")" != "$sha" ]; then
-      add_err bad-input "$p file digest differs from the recorded digest: $f"
-      [ "$p" = dispositions ] && dok=0 || bok=0
+  for input_spec in "$DISPOSITIONS_FILE:dispositions:$DISPOSITIONS_SHA" "$BASELINE_FILE:baseline:$BASELINE_SHA"; do
+    sha="${input_spec##*:}"
+    input_spec="${input_spec%:*}"
+    input_label="${input_spec##*:}"
+    input_spec="${input_spec%:*}"
+    if [ ! -r "$input_spec" ]; then
+      add_error bad-input "$input_label file unreadable: $input_spec"
+    elif [ "$(_sha256 <"$input_spec")" != "$sha" ]; then
+      add_error bad-input "$input_label file digest differs from the recorded digest: $input_spec"
+      [ "$input_label" = dispositions ] && dispositions_ok=0 || baseline_ok=0
     fi
   done
   if [ ! -r "$RESULT" ]; then
-    add_err bad-input "result file unreadable: $RESULT"
-    rok=0
+    add_error bad-input "result file unreadable: $RESULT"
+    result_ok=0
   fi
-  [ -r "$DISP" ] || dok=0
-  [ -r "$BASE" ] || bok=0
+  [ -r "$DISPOSITIONS_FILE" ] || dispositions_ok=0
+  [ -r "$BASELINE_FILE" ] || baseline_ok=0
 
-  if [ "$dok" = 1 ]; then
-    if ! jq -e 'type == "object"' "$DISP" >/dev/null 2>&1; then
-      add_err bad-input "dispositions file does not parse as a JSON object: $DISP"
-      dok=0
-    elif ! jq -e --argjson r "$ROUND" '.round == $r' "$DISP" >/dev/null 2>&1; then
-      add_err bad-input "dispositions file carries the wrong round (want $ROUND)"
-      dok=0
+  if [ "$dispositions_ok" = 1 ]; then
+    if ! jq -e 'type == "object"' "$DISPOSITIONS_FILE" >/dev/null 2>&1; then
+      add_error bad-input "dispositions file does not parse as a JSON object: $DISPOSITIONS_FILE"
+      dispositions_ok=0
+    elif ! jq -e --argjson round "$ROUND" '.round == $round' "$DISPOSITIONS_FILE" >/dev/null 2>&1; then
+      add_error bad-input "dispositions file carries the wrong round (want $ROUND)"
+      dispositions_ok=0
     elif ! jq -e '(.entries | type == "array") and all(.entries[]; type == "object" and (.path | type == "string"))
         and ((.enforcement_paths_allowed // []) | type == "array")
-        and all((.enforcement_paths_allowed // [])[]; type == "string")' "$DISP" >/dev/null 2>&1; then
-      add_err bad-input "dispositions file has the wrong shape: $DISP"
-      dok=0
+        and all((.enforcement_paths_allowed // [])[]; type == "string")' "$DISPOSITIONS_FILE" >/dev/null 2>&1; then
+      add_error bad-input "dispositions file has the wrong shape: $DISPOSITIONS_FILE"
+      dispositions_ok=0
     fi
   fi
-  if [ "$rok" = 1 ]; then
+  if [ "$result_ok" = 1 ]; then
     if ! jq -e 'type == "object"' "$RESULT" >/dev/null 2>&1; then
-      add_err bad-input "result file does not parse as a JSON object: $RESULT"
-      rok=0
-    elif ! jq -e --argjson r "$ROUND" '.round == $r' "$RESULT" >/dev/null 2>&1; then
-      add_err bad-input "result file carries the wrong round (want $ROUND)"
-      rok=0
-    elif ! jq -e --argjson k "$ATTEMPT" '.attempt == $k' "$RESULT" >/dev/null 2>&1; then
-      add_err bad-input "result attempt differs from --attempt $ATTEMPT"
-      rok=0
+      add_error bad-input "result file does not parse as a JSON object: $RESULT"
+      result_ok=0
+    elif ! jq -e --argjson round "$ROUND" '.round == $round' "$RESULT" >/dev/null 2>&1; then
+      add_error bad-input "result file carries the wrong round (want $ROUND)"
+      result_ok=0
+    elif ! jq -e --argjson attempt "$ATTEMPT" '.attempt == $attempt' "$RESULT" >/dev/null 2>&1; then
+      add_error bad-input "result attempt differs from --attempt $ATTEMPT"
+      result_ok=0
     elif ! jq -e '(.results | type == "array")
         and all(.results[]; type == "object" and ((.changed_paths // []) | type == "array")
           and all((.changed_paths // [])[]; type == "string"))
         and ((.changed_paths // []) | type == "array") and all((.changed_paths // [])[]; type == "string")
         and ((.reverted_paths // []) | type == "array") and all((.reverted_paths // [])[]; type == "string")' \
       "$RESULT" >/dev/null 2>&1; then
-      add_err bad-input "result file has the wrong shape: $RESULT"
-      rok=0
+      add_error bad-input "result file has the wrong shape: $RESULT"
+      result_ok=0
     fi
   fi
-  if [ "$bok" = 1 ]; then
-    if ! jq -e 'type == "object"' "$BASE" >/dev/null 2>&1; then
-      add_err bad-input "baseline file does not parse as a JSON object: $BASE"
-      bok=0
-    elif ! jq -e --argjson r "$ROUND" '.round == $r' "$BASE" >/dev/null 2>&1; then
-      add_err bad-input "baseline file carries the wrong round (want $ROUND)"
-      bok=0
+  if [ "$baseline_ok" = 1 ]; then
+    if ! jq -e 'type == "object"' "$BASELINE_FILE" >/dev/null 2>&1; then
+      add_error bad-input "baseline file does not parse as a JSON object: $BASELINE_FILE"
+      baseline_ok=0
+    elif ! jq -e --argjson round "$ROUND" '.round == $round' "$BASELINE_FILE" >/dev/null 2>&1; then
+      add_error bad-input "baseline file carries the wrong round (want $ROUND)"
+      baseline_ok=0
     elif ! jq -e '(.head | type == "string") and (.index_digest | type == "string")
         and (.dirty | type == "object") and (.untracked | type == "array")
-        and all(.untracked[]; type == "string")' "$BASE" >/dev/null 2>&1; then
-      add_err bad-input "baseline file has the wrong shape: $BASE"
-      bok=0
-    elif ! _verify_pin "$BASE"; then
-      add_err bad-input "the verifier files beside this script differ from the digest pinned in the baseline (or it records none): $BASE"
-      bok=0
+        and all(.untracked[]; type == "string")' "$BASELINE_FILE" >/dev/null 2>&1; then
+      add_error bad-input "baseline file has the wrong shape: $BASELINE_FILE"
+      baseline_ok=0
+    elif ! _verify_pin "$BASELINE_FILE"; then
+      add_error bad-input "the verifier files beside this script differ from the digest pinned in the baseline (or it records none): $BASELINE_FILE"
+      baseline_ok=0
     fi
   fi
 
-  if [ "$dok" = 1 ]; then
-    jq -r '.entries[].path, (.enforcement_paths_allowed // [])[]' "$DISP" | validate_paths dispositions
-    jq -r '(.enforcement_paths_allowed // [])[]' "$DISP" >"$T/allowed"
-    while IFS= read -r p; do
-      jq -e --arg p "$p" '[.entries[] | select(.disposition == "fix" and .path == $p)] | length > 0' "$DISP" >/dev/null 2>&1 ||
-        add_err bad-input "enforcement_paths_allowed names a path no fix entry names: $p"
-    done <"$T/allowed"
+  if [ "$dispositions_ok" = 1 ]; then
+    jq -r '.entries[].path, (.enforcement_paths_allowed // [])[]' "$DISPOSITIONS_FILE" | validate_paths dispositions
+    jq -r '(.enforcement_paths_allowed // [])[]' "$DISPOSITIONS_FILE" >"$TEMPORARY_DIRECTORY/allowed"
+    while IFS= read -r file_path; do
+      jq -e --arg file_path "$file_path" '[.entries[] | select(.disposition == "fix" and .path == $file_path)] | length > 0' "$DISPOSITIONS_FILE" >/dev/null 2>&1 ||
+        add_error bad-input "enforcement_paths_allowed names a path no fix entry names: $file_path"
+    done <"$TEMPORARY_DIRECTORY/allowed"
   fi
-  if [ "$rok" = 1 ]; then
+  if [ "$result_ok" = 1 ]; then
     jq -r '(.changed_paths // [])[], (.results[] | (.changed_paths // [])[]), (.reverted_paths // [])[], (.results[].path | select(type == "string"))' \
       "$RESULT" | validate_paths result
   fi
-  if [ "$bok" = 1 ]; then
-    jq -r '(.dirty | keys[]), .untracked[]' "$BASE" | validate_paths baseline
+  if [ "$baseline_ok" = 1 ]; then
+    jq -r '(.dirty | keys[]), .untracked[]' "$BASELINE_FILE" | validate_paths baseline
   fi
-  : >"$T/extra"
-  while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    if [ ! -r "$f" ]; then
-      add_err bad-input "extra-declared file unreadable: $f"
+  : >"$TEMPORARY_DIRECTORY/extra"
+  while IFS= read -r extra_declared_file; do
+    [ -n "$extra_declared_file" ] || continue
+    if [ ! -r "$extra_declared_file" ]; then
+      add_error bad-input "extra-declared file unreadable: $extra_declared_file"
       continue
     fi
-    grep -v '^$' "$f" | validate_paths extra-declared
-    grep -v '^$' "$f" >>"$T/extra"
+    grep -v '^$' "$extra_declared_file" | validate_paths extra-declared
+    grep -v '^$' "$extra_declared_file" >>"$TEMPORARY_DIRECTORY/extra"
   done <<EOF
-$EXTRAS
+$EXTRA_DECLARED_FILES
 EOF
 
-  if has_err; then finish_check; fi
+  if has_errors; then finish_check; fi
 
-  if ! snapshot_state "$T/cur"; then
-    add_err bad-input "cannot read repo state in $ROOT (or a path contains a newline)"
+  if ! snapshot_state "$TEMPORARY_DIRECTORY/cur"; then
+    add_error bad-input "cannot read repo state in $ROOT (or a path contains a newline)"
     finish_check
   fi
-  compute_delta "$BASE" "$T/cur" || {
-    add_err bad-input "cannot compute the delta from $BASE"
+  compute_delta "$BASELINE_FILE" "$TEMPORARY_DIRECTORY/cur" || {
+    add_error bad-input "cannot compute the delta from $BASELINE_FILE"
     finish_check
   }
 
-  [ "$(cat "$T/cur/head")" = "$(jq -r '.head' "$BASE")" ] ||
-    add_err head-moved "HEAD is $(cat "$T/cur/head"), baseline recorded $(jq -r '.head' "$BASE")"
-  [ "$(cat "$T/cur/index_digest")" = "$(jq -r '.index_digest' "$BASE")" ] ||
-    add_err index-changed 'the index differs from the baseline index digest'
+  [ "$(cat "$TEMPORARY_DIRECTORY/cur/head")" = "$(jq -r '.head' "$BASELINE_FILE")" ] ||
+    add_error head-moved "HEAD is $(cat "$TEMPORARY_DIRECTORY/cur/head"), baseline recorded $(jq -r '.head' "$BASELINE_FILE")"
+  [ "$(cat "$TEMPORARY_DIRECTORY/cur/index_digest")" = "$(jq -r '.index_digest' "$BASELINE_FILE")" ] ||
+    add_error index-changed 'the index differs from the baseline index digest'
 
-  while IFS= read -r p; do
-    [ -n "$p" ] && add_err missing-disposition "$p"
-  done < <(jq -r --slurpfile res "$RESULT" '
-    ($res[0].results) as $R
-    | .entries[] | select(.disposition == "fix") as $e
-    | select([$R[] | select(.member == $e.member and .finding_class == $e.finding_class
-        and .path == $e.path and .line == $e.line
+  while IFS= read -r file_path; do
+    [ -n "$file_path" ] && add_error missing-disposition "$file_path"
+  done < <(jq -r --slurpfile result "$RESULT" '
+    ($result[0].results) as $results
+    | .entries[] | select(.disposition == "fix") as $fix_entry
+    | select([$results[] | select(.member == $fix_entry.member and .finding_class == $fix_entry.finding_class
+        and .path == $fix_entry.path and .line == $fix_entry.line
         and (.disposition == "fixed" or .disposition == "disputed" or .disposition == "cannot_fix"))] | length == 0)
-    | "\($e.member) \($e.finding_class) \($e.path) \($e.line)"' "$DISP")
+    | "\($fix_entry.member) \($fix_entry.finding_class) \($fix_entry.path) \($fix_entry.line)"' "$DISPOSITIONS_FILE")
 
   jq -r '(.changed_paths // [])[], (.results[] | (.changed_paths // [])[])' "$RESULT" |
-    cat - "$T/extra" | LC_ALL=C sort -u >"$T/declared"
-  jq -r '(.reverted_paths // [])[]' "$RESULT" | LC_ALL=C sort -u >"$T/reverted"
+    cat - "$TEMPORARY_DIRECTORY/extra" | LC_ALL=C sort -u >"$TEMPORARY_DIRECTORY/declared"
+  jq -r '(.reverted_paths // [])[]' "$RESULT" | LC_ALL=C sort -u >"$TEMPORARY_DIRECTORY/reverted"
 
-  cat "$T/cur/d_mod" "$T/cur/d_unt" | LC_ALL=C sort -u >"$T/d_au"
-  LC_ALL=C comm -23 "$T/d_au" "$T/declared" >"$T/undeclared"
-  while IFS= read -r p; do
-    [ -n "$p" ] && add_err undeclared-path "$p"
-  done <"$T/undeclared"
-  LC_ALL=C comm -23 "$T/cur/d_rev" "$T/reverted" >"$T/unrev"
-  while IFS= read -r p; do
-    [ -n "$p" ] && add_err undeclared-revert "$p"
-  done <"$T/unrev"
+  cat "$TEMPORARY_DIRECTORY/cur/d_mod" "$TEMPORARY_DIRECTORY/cur/d_unt" | LC_ALL=C sort -u >"$TEMPORARY_DIRECTORY/d_au"
+  LC_ALL=C comm -23 "$TEMPORARY_DIRECTORY/d_au" "$TEMPORARY_DIRECTORY/declared" >"$TEMPORARY_DIRECTORY/undeclared"
+  while IFS= read -r file_path; do
+    [ -n "$file_path" ] && add_error undeclared-path "$file_path"
+  done <"$TEMPORARY_DIRECTORY/undeclared"
+  LC_ALL=C comm -23 "$TEMPORARY_DIRECTORY/cur/d_rev" "$TEMPORARY_DIRECTORY/reverted" >"$TEMPORARY_DIRECTORY/unrev"
+  while IFS= read -r file_path; do
+    [ -n "$file_path" ] && add_error undeclared-revert "$file_path"
+  done <"$TEMPORARY_DIRECTORY/unrev"
 
-  cat "$T/cur/d_mod" "$T/cur/d_rev" "$T/cur/d_unt" | LC_ALL=C sort -u >"$T/d_all"
-  while IFS= read -r p; do
-    [ -n "$p" ] || continue
-    for f in "${FORBIDDEN_PATHS[@]}"; do
-      [ "$p" = "$f" ] && add_err forbidden-path "$p"
+  cat "$TEMPORARY_DIRECTORY/cur/d_mod" "$TEMPORARY_DIRECTORY/cur/d_rev" "$TEMPORARY_DIRECTORY/cur/d_unt" | LC_ALL=C sort -u >"$TEMPORARY_DIRECTORY/d_all"
+  while IFS= read -r file_path; do
+    [ -n "$file_path" ] || continue
+    for protected_path in "${FORBIDDEN_PATHS[@]}"; do
+      [ "$file_path" = "$protected_path" ] && add_error forbidden-path "$file_path"
     done
-    for f in "${ENFORCEMENT_PATHS[@]}"; do
-      if [ "$p" = "$f" ] && ! grep -Fxq -- "$p" "$T/allowed" 2>/dev/null; then
-        add_err enforcement-path "$p"
+    for protected_path in "${ENFORCEMENT_PATHS[@]}"; do
+      if [ "$file_path" = "$protected_path" ] && ! grep -Fxq -- "$file_path" "$TEMPORARY_DIRECTORY/allowed" 2>/dev/null; then
+        add_error enforcement-path "$file_path"
       fi
     done
-  done <"$T/d_all"
+  done <"$TEMPORARY_DIRECTORY/d_all"
 
   # shellcheck source=main-root-lib.sh
   . "$_here/main-root-lib.sh"
-  if main="$(gaia_resolve_main_root "$ROOT" 2>/dev/null)" && [ -n "$main" ]; then
-    if [ -d "$main/.gaia/local/audit" ]; then
+  if main_checkout_root="$(gaia_resolve_main_root "$ROOT" 2>/dev/null)" && [ -n "$main_checkout_root" ]; then
+    if [ -d "$main_checkout_root/.gaia/local/audit" ]; then
       # The audit directory is shared by every linked worktree, so a file
       # newer than the baseline is skipped only when it provably belongs to
       # another branch. A sidecar, ledger or scope file is skipped when its
@@ -658,60 +658,60 @@ EOF
       slug="$(gaia_branch_slug "$ROOT" 2>/dev/null)" || slug=''
       head_tree="$(git -C "$ROOT" rev-parse 'HEAD^{tree}' 2>/dev/null)" || head_tree=''
       head_sha="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null)" || head_sha=''
-      wt_tree="$(_working_tree_id)" || wt_tree=''
-      : >"$T/member-digests"
+      worktree_tree="$(_working_tree_id)" || worktree_tree=''
+      : >"$TEMPORARY_DIRECTORY/member-digests"
       digests_ok=0
-      if [ -n "$wt_tree" ] && [ -f "$ROOT/.claude/hooks/lib/audit-digest.sh" ]; then
+      if [ -n "$worktree_tree" ] && [ -f "$ROOT/.claude/hooks/lib/audit-digest.sh" ]; then
         digests_ok=1
-        for ref in HEAD "$wt_tree"; do
+        for tree_reference in HEAD "$worktree_tree"; do
           # The batch form prints `<member><TAB><digest>` lines and nothing at
           # all when it cannot resolve the roster.
           # shellcheck source=/dev/null
-          if ! digs="$( (. "$ROOT/.claude/hooks/lib/audit-digest.sh" && audit_digests_all "$ROOT" "$ref") 2>/dev/null)" ||
-            [ -z "$digs" ]; then
+          if ! member_digest_lines="$( (. "$ROOT/.claude/hooks/lib/audit-digest.sh" && audit_digests_all "$ROOT" "$tree_reference") 2>/dev/null)" ||
+            [ -z "$member_digest_lines" ]; then
             digests_ok=0
             break
           fi
-          printf '%s\n' "$digs" | cut -f2 >>"$T/member-digests"
+          printf '%s\n' "$member_digest_lines" | cut -f2 >>"$TEMPORARY_DIRECTORY/member-digests"
         done
       fi
-      find "$main/.gaia/local/audit" -type f -newer "$BASE" >"$T/audit-new" 2>/dev/null
-      while IFS= read -r p; do
-        [ -n "$p" ] || continue
-        case "$p" in
+      find "$main_checkout_root/.gaia/local/audit" -type f -newer "$BASELINE_FILE" >"$TEMPORARY_DIRECTORY/audit-new" 2>/dev/null
+      while IFS= read -r file_path; do
+        [ -n "$file_path" ] || continue
+        case "$file_path" in
           *.ok | *.refused)
-            key="${p##*/}"
+            key="${file_path##*/}"
             key="${key%%.*}"
-            if [ "$digests_ok" = 1 ] && [ -n "$head_tree" ] && [ -n "$wt_tree" ] &&
-              ! grep -Fxq -- "$key" "$T/member-digests" &&
-              jq -e --arg t "$head_tree" --arg w "$wt_tree" --arg s "$head_sha" \
+            if [ "$digests_ok" = 1 ] && [ -n "$head_tree" ] && [ -n "$worktree_tree" ] &&
+              ! grep -Fxq -- "$key" "$TEMPORARY_DIRECTORY/member-digests" &&
+              jq -e --arg head_tree "$head_tree" --arg worktree_tree "$worktree_tree" --arg head_sha "$head_sha" \
                 '(type == "object") and ((.tree | type) == "string")
                   and (.tree | test("^[0-9a-f]{40}([0-9a-f]{24})?$"))
-                  and (.tree != $t) and (.tree != $w) and ((.sha // "") != $s)' "$p" >/dev/null 2>&1; then
+                  and (.tree != $head_tree) and (.tree != $worktree_tree) and ((.sha // "") != $head_sha)' "$file_path" >/dev/null 2>&1; then
               continue
             fi
             ;;
           *)
             if [ -n "$slug" ]; then
-              case "${p##*/}" in
+              case "${file_path##*/}" in
                 *".$slug."*) ;;
                 *) continue ;;
               esac
             fi
             ;;
         esac
-        add_err audit-artifact-written "$p"
-      done <"$T/audit-new"
+        add_error audit-artifact-written "$file_path"
+      done <"$TEMPORARY_DIRECTORY/audit-new"
     fi
   else
-    add_err bad-input "cannot resolve the main checkout root from $ROOT"
+    add_error bad-input "cannot resolve the main checkout root from $ROOT"
   fi
 
   finish_check
 }
 
 [ $# -ge 1 ] || usage
-SUB="$1"
+SUBCOMMAND="$1"
 shift
 while [ $# -gt 0 ]; do
   [ $# -ge 2 ] || die_usage "option $1 needs a value"
@@ -719,23 +719,23 @@ while [ $# -gt 0 ]; do
     --root) ROOT="$2" ;;
     --round) ROUND="$2" ;;
     --attempt) ATTEMPT="$2" ;;
-    --out) OUT="$2" ;;
-    --dispositions) DISP="$2" ;;
-    --dispositions-sha) DSHA="$2" ;;
-    --baseline) BASE="$2" ;;
-    --baseline-sha) BSHA="$2" ;;
+    --out) OUTPUT_FILE="$2" ;;
+    --dispositions) DISPOSITIONS_FILE="$2" ;;
+    --dispositions-sha) DISPOSITIONS_SHA="$2" ;;
+    --baseline) BASELINE_FILE="$2" ;;
+    --baseline-sha) BASELINE_SHA="$2" ;;
     --result) RESULT="$2" ;;
     --run-folder) RUNFOLDER="$2" ;;
-    --extra-declared) EXTRAS="$EXTRAS$2"$'\n' ;;
+    --extra-declared) EXTRA_DECLARED_FILES="$EXTRA_DECLARED_FILES$2"$'\n' ;;
     *) die_usage "unknown option $1" ;;
   esac
   shift 2
 done
 
-case "$SUB" in
-  baseline) cmd_baseline ;;
-  check) cmd_check ;;
-  drift) cmd_drift ;;
-  round-check) cmd_round_check ;;
-  *) die_usage "unknown subcommand $SUB" ;;
+case "$SUBCOMMAND" in
+  baseline) command_baseline ;;
+  check) command_check ;;
+  drift) command_drift ;;
+  round-check) command_round_check ;;
+  *) die_usage "unknown subcommand $SUBCOMMAND" ;;
 esac

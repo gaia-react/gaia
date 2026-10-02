@@ -59,9 +59,9 @@ die_fail() {
 
 PR=""
 REPO=""
-VALUES_SRC=""
-BODY_IN=""
-BODY_OUT=""
+VALUES_SOURCE=""
+BODY_INPUT=""
+BODY_OUTPUT=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -70,9 +70,9 @@ while [ $# -gt 0 ]; do
       case "$1" in
         --pr) PR="$2" ;;
         --repo) REPO="$2" ;;
-        --values-json) VALUES_SRC="$2" ;;
-        --body-in) BODY_IN="$2" ;;
-        --body-out) BODY_OUT="$2" ;;
+        --values-json) VALUES_SOURCE="$2" ;;
+        --body-in) BODY_INPUT="$2" ;;
+        --body-out) BODY_OUTPUT="$2" ;;
       esac
       shift 2
       ;;
@@ -88,10 +88,10 @@ if [ -n "$REPO" ]; then
     || die_usage "--repo must be <owner>/<name>"
 fi
 
-if [ -z "$VALUES_SRC" ]; then
+if [ -z "$VALUES_SOURCE" ]; then
   die_usage "--values-json is required"
 fi
-if { [ -n "$BODY_IN" ] && [ -z "$BODY_OUT" ]; } || { [ -z "$BODY_IN" ] && [ -n "$BODY_OUT" ]; }; then
+if { [ -n "$BODY_INPUT" ] && [ -z "$BODY_OUTPUT" ]; } || { [ -z "$BODY_INPUT" ] && [ -n "$BODY_OUTPUT" ]; }; then
   die_usage "--body-in and --body-out go together"
 fi
 
@@ -108,11 +108,11 @@ require_gh() {
 # Values
 # ---------------------------------------------------------------------------
 
-if [ "$VALUES_SRC" = "-" ]; then
+if [ "$VALUES_SOURCE" = "-" ]; then
   cat > "$WORK/values.json"
 else
-  [ -f "$VALUES_SRC" ] || die_usage "--values-json file not found: $VALUES_SRC"
-  cp "$VALUES_SRC" "$WORK/values.json"
+  [ -f "$VALUES_SOURCE" ] || die_usage "--values-json file not found: $VALUES_SOURCE"
+  cp "$VALUES_SOURCE" "$WORK/values.json"
 fi
 
 # \A and \z, not ^ and $: jq's regex engine reads ^ and $ as line anchors, so a
@@ -145,9 +145,9 @@ printf '%s\n%s\n\n%s\n%s\n' \
 # Body in
 # ---------------------------------------------------------------------------
 
-if [ -n "$BODY_IN" ]; then
-  [ -f "$BODY_IN" ] || die_usage "--body-in file not found: $BODY_IN"
-  cp "$BODY_IN" "$WORK/body.md"
+if [ -n "$BODY_INPUT" ]; then
+  [ -f "$BODY_INPUT" ] || die_usage "--body-in file not found: $BODY_INPUT"
+  cp "$BODY_INPUT" "$WORK/body.md"
 else
   require_gh
   if [ -n "$REPO" ]; then
@@ -170,48 +170,48 @@ fi
 #   starts ends start-line end-line fenced-marker-lines not-alone-lines
 # ---------------------------------------------------------------------------
 
-SCAN="$(LC_ALL=C awk -v S="$START_MARKER" -v E="$END_MARKER" '
+SCAN="$(LC_ALL=C awk -v start_marker="$START_MARKER" -v end_marker="$END_MARKER" '
   {
     line = $0
-    t = line
-    sub(/[ \t\r]+$/, "", t)
-    hasS = index(line, S) > 0
-    hasE = index(line, E) > 0
-    if (hasS || hasE) {
+    trimmed_line = line
+    sub(/[ \t\r]+$/, "", trimmed_line)
+    hasStart = index(line, start_marker) > 0
+    hasEnd = index(line, end_marker) > 0
+    if (hasStart || hasEnd) {
       if (infence) fenced++
-      if (hasS) { ns++; if (!sl) sl = NR; if (t != S) alone++ }
-      if (hasE) { ne++; if (!el) el = NR; if (t != E) alone++ }
+      if (hasStart) { start_count++; if (!start_line) start_line = NR; if (trimmed_line != start_marker) alone++ }
+      if (hasEnd) { end_count++; if (!end_line) end_line = NR; if (trimmed_line != end_marker) alone++ }
       next
     }
-    p = line
-    sub(/^ ? ? ?/, "", p)
-    c = substr(p, 1, 1)
-    if ((c == "`" || c == "~") && substr(p, 1, 3) == c c c) {
-      if (!infence) { infence = 1; fc = c }
-      else if (c == fc) { infence = 0 }
+    stripped_line = line
+    sub(/^ ? ? ?/, "", stripped_line)
+    first_character = substr(stripped_line, 1, 1)
+    if ((first_character == "`" || first_character == "~") && substr(stripped_line, 1, 3) == first_character first_character first_character) {
+      if (!infence) { infence = 1; fence_character = first_character }
+      else if (first_character == fence_character) { infence = 0 }
     }
   }
-  END { printf "%d %d %d %d %d %d\n", ns, ne, sl, el, fenced, alone }
+  END { printf "%d %d %d %d %d %d\n", start_count, end_count, start_line, end_line, fenced, alone }
 ' "$WORK/body.md")"
 
 # shellcheck disable=SC2034  # the fields are named for the reader
-read -r N_START N_END L_START L_END N_FENCED N_ALONE <<SCANEOF
+read -r START_MARKER_COUNT END_MARKER_COUNT START_MARKER_LINE END_MARKER_LINE FENCED_MARKER_COUNT NOT_ALONE_MARKER_COUNT <<SCANEOF
 $SCAN
 SCANEOF
 
-if [ "$N_FENCED" -gt 0 ]; then
+if [ "$FENCED_MARKER_COUNT" -gt 0 ]; then
   die_fail "refusing: an audit-rounds marker sits inside a fenced code block"
 fi
-if [ "$N_ALONE" -gt 0 ]; then
+if [ "$NOT_ALONE_MARKER_COUNT" -gt 0 ]; then
   die_fail "refusing: an audit-rounds marker is not alone on its line"
 fi
-if [ "$N_START" -gt 1 ] || [ "$N_END" -gt 1 ]; then
+if [ "$START_MARKER_COUNT" -gt 1 ] || [ "$END_MARKER_COUNT" -gt 1 ]; then
   die_fail "refusing: duplicate audit-rounds markers"
 fi
-if [ "$N_START" -ne "$N_END" ]; then
+if [ "$START_MARKER_COUNT" -ne "$END_MARKER_COUNT" ]; then
   die_fail "refusing: unbalanced audit-rounds markers (one without the other)"
 fi
-if [ "$N_START" -eq 1 ] && [ "$L_END" -lt "$L_START" ]; then
+if [ "$START_MARKER_COUNT" -eq 1 ] && [ "$END_MARKER_LINE" -lt "$START_MARKER_LINE" ]; then
   die_fail "refusing: the audit-rounds end marker comes before the start marker"
 fi
 
@@ -220,11 +220,11 @@ fi
 # missing final newline.
 # ---------------------------------------------------------------------------
 
-if [ "$N_START" -eq 1 ]; then
+if [ "$START_MARKER_COUNT" -eq 1 ]; then
   {
-    head -n "$(( L_START - 1 ))" "$WORK/body.md"
+    head -n "$(( START_MARKER_LINE - 1 ))" "$WORK/body.md"
     cat "$WORK/section.md"
-    tail -n "+$(( L_END + 1 ))" "$WORK/body.md"
+    tail -n "+$(( END_MARKER_LINE + 1 ))" "$WORK/body.md"
   } > "$WORK/body.new"
 else
   {
@@ -244,8 +244,8 @@ fi
 # Body out
 # ---------------------------------------------------------------------------
 
-if [ -n "$BODY_OUT" ]; then
-  cat "$WORK/body.new" > "$BODY_OUT" || die_fail "could not write $BODY_OUT"
+if [ -n "$BODY_OUTPUT" ]; then
+  cat "$WORK/body.new" > "$BODY_OUTPUT" || die_fail "could not write $BODY_OUTPUT"
 else
   if [ -n "$REPO" ]; then
     gh pr edit "$PR" --repo "$REPO" --body-file "$WORK/body.new" >/dev/null 2>&1 \

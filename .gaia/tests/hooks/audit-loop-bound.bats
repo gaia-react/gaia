@@ -866,8 +866,8 @@ fork_mutant() {
 # --- the unit gate ----------------------------------------------------------------
 #
 # K, the line defaults and the hard cap come from the libs the suite sources in
-# setup (GAIA_CTX_UNIT_ROUNDS, GAIA_CTX_ASK_TOKENS_DEFAULT,
-# GAIA_CTX_ASK_WINDOW_PCT_DEFAULT, _GAIA_LOOP_HARD_CAP), never from literals.
+# setup (GAIA_CONTEXT_UNIT_ROUNDS, GAIA_CONTEXT_ASK_TOKENS_DEFAULT,
+# GAIA_CONTEXT_ASK_WINDOW_PERCENT_DEFAULT, _GAIA_LOOP_HARD_CAP), never from literals.
 # A context reading is keyed by a UUID session id; the plain ids the cases
 # above use read as `missing`, which is the round-count fallback.
 
@@ -878,12 +878,12 @@ IN_UNIT='{"agent_id":"a0b1c2d3e4f5a6b7c","agent_type":"audit-loop-unit"}'
 # write_context_reading <tokens> <window> [age-seconds] [session]: write that session's reading.
 write_context_reading() {
   local token_count="$1" window_size="$2" age="${3:-0}" session_id="${4:-$SIDU}"
-  gaia_ctx_write "$ALF_ROOT" "$session_id" "$((token_count * 100 / window_size))" "$token_count" "$window_size" "$(($(date +%s) - age))"
+  gaia_context_write "$ALF_ROOT" "$session_id" "$((token_count * 100 / window_size))" "$token_count" "$window_size" "$(($(date +%s) - age))"
 }
 
 # below / above: a fresh 1M-window reading one token either side of the default line.
-below() { write_context_reading $((GAIA_CTX_ASK_TOKENS_DEFAULT - 1)) 1000000 0 "${1:-$SIDU}"; }
-above() { write_context_reading "$GAIA_CTX_ASK_TOKENS_DEFAULT" 1000000 0 "${1:-$SIDU}"; }
+below() { write_context_reading $((GAIA_CONTEXT_ASK_TOKENS_DEFAULT - 1)) 1000000 0 "${1:-$SIDU}"; }
+above() { write_context_reading "$GAIA_CONTEXT_ASK_TOKENS_DEFAULT" 1000000 0 "${1:-$SIDU}"; }
 
 # unit_payload <session> [extra-json]: an audit-loop-unit dispatch whose brief
 # carries the fixture root.
@@ -983,7 +983,7 @@ settings() {
 
 @test "fast path: a general-purpose dispatch exits 0 silently without touching the context directory" {
   local context_directory
-  context_directory="$(dirname "$(gaia_ctx_file "$ALF_ROOT" "$SIDU")")"
+  context_directory="$(dirname "$(gaia_context_file "$ALF_ROOT" "$SIDU")")"
   mkdir -p "$context_directory"
   chmod 000 "$context_directory"
   run_payload "$(payload general-purpose "$SIDU" "$ALF_ROOT" "$ALF_ROOT")"
@@ -1012,11 +1012,11 @@ settings() {
   [ "$(nrounds)" -eq 0 ]
   [ "$(state_field '.pr')" -eq 51 ]
   [ "$(state_field '.history.knobs.checkpoint_round')" -eq 6 ]
-  [ "$(state_field '.history.context_config.ask_tokens')" -eq "$GAIA_CTX_ASK_TOKENS_DEFAULT" ]
-  [ "$(state_field '.history.context_config.ask_window_pct')" -eq "$GAIA_CTX_ASK_WINDOW_PCT_DEFAULT" ]
+  [ "$(state_field '.history.context_config.ask_tokens')" -eq "$GAIA_CONTEXT_ASK_TOKENS_DEFAULT" ]
+  [ "$(state_field '.history.context_config.ask_window_pct')" -eq "$GAIA_CONTEXT_ASK_WINDOW_PERCENT_DEFAULT" ]
   [ "$(state_field '.history.units | length')" -eq 1 ]
   [ "$(state_field '.history.units[0].start_round')" -eq 1 ]
-  [ "$(state_field '.history.units[0].through_round')" -eq "$GAIA_CTX_UNIT_ROUNDS" ]
+  [ "$(state_field '.history.units[0].through_round')" -eq "$GAIA_CONTEXT_UNIT_ROUNDS" ]
   [ "$(state_field '.history.units[0].admitted_on')" = context ]
   [ "$(state_field '.history.units[0].session_id')" = "$SIDU" ]
 }
@@ -1031,7 +1031,7 @@ settings() {
 }
 
 @test "a unit after 6 rounds below the line gets a K-round window; its members open exactly those rounds, then the window denies" {
-  local unit_rounds="$GAIA_CTX_UNIT_ROUNDS" through round_number
+  local unit_rounds="$GAIA_CONTEXT_UNIT_ROUNDS" through round_number
   through="$(minimum_of $((6 + unit_rounds)) "$_GAIA_LOOP_HARD_CAP")"
   alf_sequence 6 5 4 3 2 1
   alf_state_edit '.history.knobs.checkpoint_round = 6'
@@ -1082,7 +1082,7 @@ settings() {
   assert_pinned context
   nonce="$(state_field '.history.checkpoints[-1].nonce')"
   elig="$(state_field '.history.rounds[1].snapshot.accept_eligible // false')"
-  want="$(gaia_loop_pinned_question feat/loop "$nonce" 2 "$GAIA_CTX_UNIT_ROUNDS" "$elig" false context "fresh $GAIA_CTX_ASK_TOKENS_DEFAULT 1000000" grant "$(gaia_ctx_line 1000000 "$GAIA_CTX_ASK_TOKENS_DEFAULT" "$GAIA_CTX_ASK_WINDOW_PCT_DEFAULT")")"
+  want="$(gaia_loop_pinned_question feat/loop "$nonce" 2 "$GAIA_CONTEXT_UNIT_ROUNDS" "$elig" false context "fresh $GAIA_CONTEXT_ASK_TOKENS_DEFAULT 1000000" grant "$(gaia_context_line 1000000 "$GAIA_CONTEXT_ASK_TOKENS_DEFAULT" "$GAIA_CONTEXT_ASK_WINDOW_PERCENT_DEFAULT")")"
   [ "$(state_field '.history.checkpoints[-1].question | tojson')" = "$want" ]
   [[ "$(state_field '.history.checkpoints[-1].question.questions[0].question')" == *"(context), context "[0-9]*"% ("[0-9]*"k of 1000k). How should"* ]]
   [ "$(state_field '.history.checkpoints[-1].at_round')" -eq 2 ]
@@ -1092,14 +1092,14 @@ settings() {
 
 @test "missing, stale, future-dated and garbage readings fall back to the round count: allowed at 5 used, denied at 6" {
   local mode reading_file
-  reading_file="$(gaia_ctx_file "$ALF_ROOT" "$SIDU")"
+  reading_file="$(gaia_context_file "$ALF_ROOT" "$SIDU")"
   for mode in missing stale future garbage; do
     rm -f "$reading_file" "$ALF_STATE"
     rm -rf "${ALF_STATE%.json}.d"
     seed_rounds 5 '{"verdict":"continue","A":1}'
     case "$mode" in
       missing) ;;
-      stale) write_context_reading 1000 1000000 $((GAIA_CTX_FRESH_SECONDS + 60)) ;;
+      stale) write_context_reading 1000 1000000 $((GAIA_CONTEXT_FRESH_SECONDS + 60)) ;;
       future) write_context_reading 1000 1000000 -3600 ;;
       garbage) mkdir -p "${reading_file%/*}" && printf '{garbage' >"$reading_file" ;;
     esac
@@ -1137,7 +1137,7 @@ settings() {
 first_pinned_label() { state_field '.history.checkpoints | last | .question.questions[0].options[0].label'; }
 
 @test "the pinned question leads with the evaluator's recommendation, and the band picks the grant when it is a grant" {
-  local unit_rounds="$GAIA_CTX_UNIT_ROUNDS"
+  local unit_rounds="$GAIA_CONTEXT_UNIT_ROUNDS"
   below
   seed_rounds 6 "$(sig_snap nitpicky true)"
   unit_dispatch
@@ -1157,7 +1157,7 @@ first_pinned_label() { state_field '.history.checkpoints | last | .question.ques
 }
 
 @test "an ask grant admits one K-round unit over the line; the next unit asks again; a new session below the line continues" {
-  local unit_rounds="$GAIA_CTX_UNIT_ROUNDS" checkpoint_index nonce
+  local unit_rounds="$GAIA_CONTEXT_UNIT_ROUNDS" checkpoint_index nonce
   alf_sequence 6 5
   above
   unit_dispatch
@@ -1347,7 +1347,7 @@ veto_rounds() {
     below
     unit_dispatch
     assert_allowed
-    [ "$(state_field '.history.context_config | "\(.ask_tokens) \(.ask_window_pct)"')" = "$GAIA_CTX_ASK_TOKENS_DEFAULT $GAIA_CTX_ASK_WINDOW_PCT_DEFAULT" ]
+    [ "$(state_field '.history.context_config | "\(.ask_tokens) \(.ask_window_pct)"')" = "$GAIA_CONTEXT_ASK_TOKENS_DEFAULT $GAIA_CONTEXT_ASK_WINDOW_PERCENT_DEFAULT" ]
     above
     unit_dispatch
     assert_pinned context

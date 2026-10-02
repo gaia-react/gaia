@@ -23,8 +23,8 @@
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
-  SCRIPTS_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
-  RESOLVER="$SCRIPTS_DIR/main-root-lib.sh"
+  SCRIPTS_DIRECTORY="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  RESOLVER="$SCRIPTS_DIRECTORY/main-root-lib.sh"
   [ -f "$RESOLVER" ] || skip "main-root-lib.sh missing"
   command -v jq >/dev/null 2>&1 || skip "jq required"
   command -v git >/dev/null 2>&1 || skip "git required"
@@ -35,7 +35,7 @@ setup() {
 # Builds a committed main checkout holding the named refresher plus the
 # resolver, adds a linked worktree at the real .claude/worktrees/<name> layout,
 # and gives that worktree its own REAL .gaia/local (see the header note).
-# Sets MAIN and WT. With --no-resolver the resolver is never copied in, which
+# Sets MAIN and WORKTREE. With --no-resolver the resolver is never copied in, which
 # is the degrade-to-local path the shipped idiom must still honour.
 make_pair() {
   local script="$1"
@@ -46,7 +46,7 @@ make_pair() {
   MAIN="$(cd "$MAIN" && pwd -P)"
 
   mkdir -p "$MAIN/.gaia/scripts" "$MAIN/.gaia/local" "$MAIN/bin"
-  cp "$SCRIPTS_DIR/$script" "$MAIN/.gaia/scripts/$script"
+  cp "$SCRIPTS_DIRECTORY/$script" "$MAIN/.gaia/scripts/$script"
   chmod +x "$MAIN/.gaia/scripts/$script"
   if [ "$with_resolver" -eq 1 ]; then
     cp "$RESOLVER" "$MAIN/.gaia/scripts/main-root-lib.sh"
@@ -60,10 +60,10 @@ make_pair() {
   git -C "$MAIN" commit -qm fixture
 
   git -C "$MAIN" worktree add -q "$MAIN/.claude/worktrees/wt" -b wt
-  WT="$MAIN/.claude/worktrees/wt"
+  WORKTREE="$MAIN/.claude/worktrees/wt"
 
   # The worktree owns a real state directory, not main's symlink.
-  mkdir -p "$WT/.gaia/local"
+  mkdir -p "$WORKTREE/.gaia/local"
 }
 
 # stub_gh <count>: a `gh` whose `issue list` reports <count> open issues and
@@ -84,18 +84,18 @@ STUB
 @test "debt refresher run from a worktree writes the MAIN checkout's count cache" {
   make_pair debt-count-refresh.sh
   stub_gh 7
-  mkdir -p "$WT/.gaia/local/debt"
-  touch "$WT/.gaia/local/debt/refresh-requested"
+  mkdir -p "$WORKTREE/.gaia/local/debt"
+  touch "$WORKTREE/.gaia/local/debt/refresh-requested"
 
-  PATH="$MAIN/bin:$PATH" run bash "$WT/.gaia/scripts/debt-count-refresh.sh"
+  PATH="$MAIN/bin:$PATH" run bash "$WORKTREE/.gaia/scripts/debt-count-refresh.sh"
   [ "$status" -eq 0 ]
 
   # The one physical copy the statusline reads lives under main.
   [ -f "$MAIN/.gaia/local/debt/count.json" ]
 
   # And nothing forked a per-tree copy beside it.
-  if [ -f "$WT/.gaia/local/debt/count.json" ]; then
-    printf 'forked a per-tree count cache at %s\n' "$WT/.gaia/local/debt/count.json" >&2
+  if [ -f "$WORKTREE/.gaia/local/debt/count.json" ]; then
+    printf 'forked a per-tree count cache at %s\n' "$WORKTREE/.gaia/local/debt/count.json" >&2
     return 1
   fi
 }
@@ -103,15 +103,15 @@ STUB
 @test "debt refresher with no resolver present degrades to its own root" {
   make_pair debt-count-refresh.sh --no-resolver
   stub_gh 3
-  mkdir -p "$WT/.gaia/local/debt"
-  touch "$WT/.gaia/local/debt/refresh-requested"
+  mkdir -p "$WORKTREE/.gaia/local/debt"
+  touch "$WORKTREE/.gaia/local/debt/refresh-requested"
 
-  PATH="$MAIN/bin:$PATH" run bash "$WT/.gaia/scripts/debt-count-refresh.sh"
+  PATH="$MAIN/bin:$PATH" run bash "$WORKTREE/.gaia/scripts/debt-count-refresh.sh"
   [ "$status" -eq 0 ]
 
   # No resolver to ask, so the local root is the honest answer rather than a
   # failure: the refresher still refreshes something.
-  [ -f "$WT/.gaia/local/debt/count.json" ]
+  [ -f "$WORKTREE/.gaia/local/debt/count.json" ]
 }
 
 # ---------- check-updates.sh ----------
@@ -119,13 +119,13 @@ STUB
 @test "update refresher run from a worktree writes the MAIN checkout's shared cache" {
   make_pair check-updates.sh
 
-  PATH="$MAIN/bin:$PATH" run bash "$WT/.gaia/scripts/check-updates.sh"
+  PATH="$MAIN/bin:$PATH" run bash "$WORKTREE/.gaia/scripts/check-updates.sh"
   [ "$status" -eq 0 ]
 
   [ -f "$MAIN/.gaia/local/cache/shared/update-check.json" ]
 
-  if [ -f "$WT/.gaia/local/cache/shared/update-check.json" ]; then
-    printf 'forked a per-tree update cache at %s\n' "$WT/.gaia/local/cache/shared/update-check.json" >&2
+  if [ -f "$WORKTREE/.gaia/local/cache/shared/update-check.json" ]; then
+    printf 'forked a per-tree update cache at %s\n' "$WORKTREE/.gaia/local/cache/shared/update-check.json" >&2
     return 1
   fi
 }
@@ -140,14 +140,14 @@ STUB
   # here means the shared cache is stating a fact about the worktree, and the
   # audit nudge silently stops tracking the clone.
   main_slug="${MAIN//\//-}"
-  wt_slug="${WT//\//-}"
+  worktree_slug="${WORKTREE//\//-}"
   mkdir -p "$BATS_TEST_TMPDIR/home/.claude/projects/$main_slug/memory"
-  mkdir -p "$BATS_TEST_TMPDIR/home/.claude/projects/$wt_slug/memory"
+  mkdir -p "$BATS_TEST_TMPDIR/home/.claude/projects/$worktree_slug/memory"
   touch "$BATS_TEST_TMPDIR/home/.claude/projects/$main_slug/memory/"{a,b,c}.md
-  touch "$BATS_TEST_TMPDIR/home/.claude/projects/$wt_slug/memory/only.md"
+  touch "$BATS_TEST_TMPDIR/home/.claude/projects/$worktree_slug/memory/only.md"
 
   HOME="$BATS_TEST_TMPDIR/home" PATH="$MAIN/bin:$PATH" \
-    run bash "$WT/.gaia/scripts/check-updates.sh"
+    run bash "$WORKTREE/.gaia/scripts/check-updates.sh"
   [ "$status" -eq 0 ]
 
   count="$(jq -r '.auditMemoryCount' "$MAIN/.gaia/local/cache/shared/update-check.json")"
@@ -159,8 +159,8 @@ STUB
 
   # Wiki drift is a fact about the main checkout's wiki/.state.json, so the
   # CLI call is rooted on main even though the script lives in the worktree.
-  mkdir -p "$WT/.gaia/cli"
-  cat > "$WT/.gaia/cli/gaia" <<STUB
+  mkdir -p "$WORKTREE/.gaia/cli"
+  cat > "$WORKTREE/.gaia/cli/gaia" <<STUB
 #!/usr/bin/env bash
 if [ "\$1" = "wiki" ] && [ "\$2" = "state" ]; then
   pwd -P > "$BATS_TEST_TMPDIR/wiki-state-cwd"
@@ -169,9 +169,9 @@ if [ "\$1" = "wiki" ] && [ "\$2" = "state" ]; then
 fi
 exit 1
 STUB
-  chmod +x "$WT/.gaia/cli/gaia"
+  chmod +x "$WORKTREE/.gaia/cli/gaia"
 
-  PATH="$MAIN/bin:$PATH" run bash "$WT/.gaia/scripts/check-updates.sh"
+  PATH="$MAIN/bin:$PATH" run bash "$WORKTREE/.gaia/scripts/check-updates.sh"
   [ "$status" -eq 0 ]
 
   [ "$(cat "$BATS_TEST_TMPDIR/wiki-state-cwd")" = "$MAIN" ]
@@ -181,8 +181,8 @@ STUB
 @test "update refresher with no resolver present degrades to its own root" {
   make_pair check-updates.sh --no-resolver
 
-  PATH="$MAIN/bin:$PATH" run bash "$WT/.gaia/scripts/check-updates.sh"
+  PATH="$MAIN/bin:$PATH" run bash "$WORKTREE/.gaia/scripts/check-updates.sh"
   [ "$status" -eq 0 ]
 
-  [ -f "$WT/.gaia/local/cache/shared/update-check.json" ]
+  [ -f "$WORKTREE/.gaia/local/cache/shared/update-check.json" ]
 }

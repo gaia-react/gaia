@@ -134,7 +134,7 @@ _library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # sweeps are main's, because the state registry declares specs/ main-only.
 # Best-effort by contract: an unresolvable main is one diagnostic and exit 0,
 # nothing touched.
-if ! specs_directory="$(gaia_resolve_specs_dir "$repo_root" 2>/dev/null)" || [ -z "$specs_directory" ]; then
+if ! specs_directory="$(gaia_resolve_specs_directory "$repo_root" 2>/dev/null)" || [ -z "$specs_directory" ]; then
   echo "spec-archive-merged: cannot resolve the main checkout for '$repo_root'; nothing swept" >&2
   exit 0
 fi

@@ -12,10 +12,10 @@
 
 setup() {
   THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  LIB="$THIS_DIRECTORY/../cost-represented.sh"
-  [ -f "$LIB" ] || skip "cost-represented.sh missing"
+  LIBRARY_FILE="$THIS_DIRECTORY/../cost-represented.sh"
+  [ -f "$LIBRARY_FILE" ] || skip "cost-represented.sh missing"
   # shellcheck source=/dev/null
-  . "$LIB"
+  . "$LIBRARY_FILE"
 
   SANDBOX_RAW="$(mktemp -d "${BATS_TEST_TMPDIR}/sandbox.XXXXXX")"
   SANDBOX="$(cd "$SANDBOX_RAW" && pwd -P)"
@@ -26,59 +26,59 @@ setup() {
   : > "$LEDGER"
 }
 
-# add_row <kind> <attr_field> <attr_val> <session> <fresh> <cwrite> <cread> <output> [total]
+# add_row <kind> <attribute_field> <attribute_value> <session> <fresh_input> <cache_write> <cache_read> <output> [total]
 # Appends one ledger row mirroring the token-tally schema. With no
 # explicit <total>, total is the bucket sum (as the writers compute it); pass an
 # explicit total to exercise the total-equality fallback. An empty <session>
 # yields session_id:null.
 add_row() {
-  local kind="$1" field="$2" val="$3" sid="$4"
-  local fresh="$5" cwrite="$6" cread="$7" output="$8" total="${9:-}"
+  local kind="$1" field="$2" attribute_value="$3" session_id="$4"
+  local fresh_input="$5" cache_write="$6" cache_read="$7" output="$8" total="${9:-}"
   jq -cn \
-    --arg kind "$kind" --arg field "$field" --arg val "$val" --arg sid "$sid" \
-    --argjson fresh "$fresh" --argjson cwrite "$cwrite" \
-    --argjson cread "$cread" --argjson output "$output" --arg total "$total" '
+    --arg kind "$kind" --arg field "$field" --arg attribute_value "$attribute_value" --arg session_id "$session_id" \
+    --argjson fresh_input "$fresh_input" --argjson cache_write "$cache_write" \
+    --argjson cache_read "$cache_read" --argjson output "$output" --arg total "$total" '
     {
       schema_version: 1,
       kind: $kind,
       spec_id: null, plan_id: null, plan_slug: null,
-      session_id: (if $sid == "" then null else $sid end),
-      buckets: {fresh_input: $fresh, cache_write: $cwrite, cache_read: $cread, output: $output},
-      total: (if $total == "" then ($fresh + $cwrite + $cread + $output) else ($total | tonumber) end),
+      session_id: (if $session_id == "" then null else $session_id end),
+      buckets: {fresh_input: $fresh_input, cache_write: $cache_write, cache_read: $cache_read, output: $output},
+      total: (if $total == "" then ($fresh_input + $cache_write + $cache_read + $output) else ($total | tonumber) end),
       seq: 0, final: true, source: "test"
-    } | .[$field] = $val
+    } | .[$field] = $attribute_value
   ' >> "$LEDGER"
 }
 
-# seed_cost_json <rel_dir_under_sandbox> <kind> <attr_field> <attr_val> <session> \
-#                 <fresh> <cwrite> <cread> <output>
-# Writes (or merges into) <dir>/cost.json a single record keyed by <kind>,
-# matching FC-1's shape: {"<kind>": {kind, <attr_field>, session_id, buckets,
+# seed_cost_json <rel_dir_under_sandbox> <kind> <attribute_field> <attribute_value> <session> \
+#                 <fresh_input> <cache_write> <cache_read> <output>
+# Writes (or merges into) <directory>/cost.json a single record keyed by <kind>,
+# matching FC-1's shape: {"<kind>": {kind, <attribute_field>, session_id, buckets,
 # total}}. A second call against the same dir merges in the new key and
 # preserves the sibling already on disk, mirroring token-tally.sh's own
 # replace-mine-preserve-sibling write.
 seed_cost_json() {
-  local dir="$SANDBOX/$1" kind="$2" field="$3" val="$4" sid="$5"
-  local fresh="$6" cwrite="$7" cread="$8" output="$9"
-  mkdir -p "$dir"
-  local rec
-  rec="$(jq -cn \
-    --arg kind "$kind" --arg field "$field" --arg val "$val" --arg sid "$sid" \
-    --argjson fresh "$fresh" --argjson cwrite "$cwrite" \
-    --argjson cread "$cread" --argjson output "$output" '
+  local directory="$SANDBOX/$1" kind="$2" field="$3" attribute_value="$4" session_id="$5"
+  local fresh_input="$6" cache_write="$7" cache_read="$8" output="$9"
+  mkdir -p "$directory"
+  local record
+  record="$(jq -cn \
+    --arg kind "$kind" --arg field "$field" --arg attribute_value "$attribute_value" --arg session_id "$session_id" \
+    --argjson fresh_input "$fresh_input" --argjson cache_write "$cache_write" \
+    --argjson cache_read "$cache_read" --argjson output "$output" '
     {
       schema_version: 1,
       kind: $kind,
-      session_id: (if $sid == "" then null else $sid end),
-      buckets: {fresh_input: $fresh, cache_write: $cwrite, cache_read: $cread, output: $output},
-      total: ($fresh + $cwrite + $cread + $output)
-    } | .[$field] = $val
+      session_id: (if $session_id == "" then null else $session_id end),
+      buckets: {fresh_input: $fresh_input, cache_write: $cache_write, cache_read: $cache_read, output: $output},
+      total: ($fresh_input + $cache_write + $cache_read + $output)
+    } | .[$field] = $attribute_value
   ')"
-  if [ -f "$dir/cost.json" ]; then
-    jq -c --argjson rec "$rec" --arg k "$kind" '. + {($k): $rec}' "$dir/cost.json" > "$dir/cost.json.tmp"
-    mv "$dir/cost.json.tmp" "$dir/cost.json"
+  if [ -f "$directory/cost.json" ]; then
+    jq -c --argjson record "$record" --arg phase_kind "$kind" '. + {($phase_kind): $record}' "$directory/cost.json" > "$directory/cost.json.tmp"
+    mv "$directory/cost.json.tmp" "$directory/cost.json"
   else
-    jq -cn --argjson rec "$rec" --arg k "$kind" '{($k): $rec}' > "$dir/cost.json"
+    jq -cn --argjson record "$record" --arg phase_kind "$kind" '{($phase_kind): $record}' > "$directory/cost.json"
   fi
 }
 

@@ -1,46 +1,46 @@
 #!/usr/bin/env bats
 # audit-fix-verify.sh: the deterministic gate between a fixer sub-agent and the
 # Quality Gate. Every case builds a scratch git repo under BATS_TEST_TMPDIR and
-# drives the script into its refusal; AFV_SCRIPT points the suite at a mutant
+# drives the script into its refusal; AUDIT_FIX_VERIFY_SCRIPT points the suite at a mutant
 # copy for the mutation proofs.
 
-SCRIPT="${AFV_SCRIPT:-$BATS_TEST_DIRNAME/../audit-fix-verify.sh}"
+SCRIPT="${AUDIT_FIX_VERIFY_SCRIPT:-$BATS_TEST_DIRNAME/../audit-fix-verify.sh}"
 REAL_SCRIPT="$BATS_TEST_DIRNAME/../audit-fix-verify.sh"
 
 sha() { shasum -a 256 <"$1" | cut -d' ' -f1; }
 
-mkrepo() {
-  local dir="$1"
-  mkdir -p "$dir"
-  git -C "$dir" init -q
-  git -C "$dir" config user.email t@example.com
-  git -C "$dir" config user.name t
-  git -C "$dir" config commit.gpgsign false
-  printf '.gaia/local/\n' >"$dir/.gitignore"
-  local f
-  for f in a.txt b.txt c.txt selfheal.txt "with space.txt" CHANGELOG.md; do
-    printf 'base %s\n' "$f" >"$dir/$f"
+make_repo() {
+  local directory="$1"
+  mkdir -p "$directory"
+  git -C "$directory" init -q
+  git -C "$directory" config user.email t@example.com
+  git -C "$directory" config user.name t
+  git -C "$directory" config commit.gpgsign false
+  printf '.gaia/local/\n' >"$directory/.gitignore"
+  local file_name
+  for file_name in a.txt b.txt c.txt selfheal.txt "with space.txt" CHANGELOG.md; do
+    printf 'base %s\n' "$file_name" >"$directory/$file_name"
   done
-  git -C "$dir" add -A
-  git -C "$dir" commit -q -m base
+  git -C "$directory" add -A
+  git -C "$directory" commit -q -m base
 }
 
 setup() {
   REPO="$BATS_TEST_TMPDIR/repo"
-  mkrepo "$REPO"
-  RF="$REPO/.gaia/local/runs/b"
-  mkdir -p "$RF"
-  DISP="$RF/dispositions-1.json"
-  BASE="$RF/baseline-1.json"
-  RES="$RF/fixer-1-audit.json"
-  OUTV="$RF/verifier-1-1.json"
+  make_repo "$REPO"
+  RUN_FOLDER="$REPO/.gaia/local/runs/b"
+  mkdir -p "$RUN_FOLDER"
+  DISPOSITIONS_FILE="$RUN_FOLDER/dispositions-1.json"
+  BASELINE_FILE="$RUN_FOLDER/baseline-1.json"
+  RESULT_FILE="$RUN_FOLDER/fixer-1-audit.json"
+  VERIFIER_OUTPUT_FILE="$RUN_FOLDER/verifier-1-1.json"
   ATTEMPT=1
 }
 
-# disp <entries-json> [allowed-json]
-disp() {
-  jq -n --argjson e "$1" --argjson a "${2:-[]}" \
-    '{schema: 1, round: 1, tree: "abc", root: "x", enforcement_paths_allowed: $a, entries: $e}' >"$DISP"
+# write_dispositions <entries-json> [allowed-json]
+write_dispositions() {
+  jq -n --argjson entries "$1" --argjson allowed_paths "${2:-[]}" \
+    '{schema: 1, round: 1, tree: "abc", root: "x", enforcement_paths_allowed: $allowed_paths, entries: $entries}' >"$DISPOSITIONS_FILE"
 }
 
 # Two fix entries (a.txt, b.txt) and one accepted residual.
@@ -59,12 +59,12 @@ default_result() {
 }
 
 take_baseline() {
-  bash "$SCRIPT" baseline --root "$REPO" --round 1 --out "$BASE"
+  bash "$SCRIPT" baseline --root "$REPO" --round 1 --out "$BASELINE_FILE"
 }
 
 take_digests() {
-  DSHA="$(sha "$DISP")"
-  BSHA="$(sha "$BASE")"
+  DISPOSITIONS_SHA="$(sha "$DISPOSITIONS_FILE")"
+  BASELINE_SHA="$(sha "$BASELINE_FILE")"
 }
 
 # Commit the real audit roster and digest library into the fixture, so the
@@ -95,16 +95,16 @@ foreign_tree() { printf 'f%.0s' {1..40}; }
 
 # Standard setup: dispositions, baseline, digests.
 prepare() {
-  disp "$(default_entries)" "${1:-[]}"
+  write_dispositions "$(default_entries)" "${1:-[]}"
   take_baseline
   take_digests
 }
 
 do_check() {
   run bash "$SCRIPT" check --root "$REPO" --round 1 --attempt "$ATTEMPT" \
-    --dispositions "$DISP" --dispositions-sha "$DSHA" \
-    --baseline "$BASE" --baseline-sha "$BSHA" \
-    --result "$RES" --out "$OUTV" "$@"
+    --dispositions "$DISPOSITIONS_FILE" --dispositions-sha "$DISPOSITIONS_SHA" \
+    --baseline "$BASELINE_FILE" --baseline-sha "$BASELINE_SHA" \
+    --result "$RESULT_FILE" --out "$VERIFIER_OUTPUT_FILE" "$@"
 }
 
 edit() { printf 'fixer edit\n' >>"$REPO/$1"; }
@@ -115,9 +115,9 @@ assert_fail_kind() {
     echo "status=$status output=$output"
     return 1
   }
-  [ "$(jq -r '.pass' "$OUTV")" = false ] || return 1
-  jq -e --arg k "$kind" '[.errors[].kind] | index($k) != null' "$OUTV" >/dev/null || {
-    echo "no $kind error: $(cat "$OUTV")"
+  [ "$(jq -r '.pass' "$VERIFIER_OUTPUT_FILE")" = false ] || return 1
+  jq -e --arg kind "$kind" '[.errors[].kind] | index($kind) != null' "$VERIFIER_OUTPUT_FILE" >/dev/null || {
+    echo "no $kind error: $(cat "$VERIFIER_OUTPUT_FILE")"
     return 1
   }
   case "$output" in
@@ -144,17 +144,17 @@ assert_fail_kind() {
   prepare
   edit a.txt
   edit b.txt
-  default_result >"$RES"
+  default_result >"$RESULT_FILE"
   do_check
   [ "$status" -eq 0 ]
-  [ "$(jq -r '.pass' "$OUTV")" = true ]
-  [ "$(jq -r '.errors | length' "$OUTV")" = 0 ]
+  [ "$(jq -r '.pass' "$VERIFIER_OUTPUT_FILE")" = true ]
+  [ "$(jq -r '.errors | length' "$VERIFIER_OUTPUT_FILE")" = 0 ]
 }
 
 @test "UAT-002a: a result omitting one fix entry fails missing-disposition naming the key" {
   prepare
   edit a.txt
-  default_result | jq 'del(.results[1])' >"$RES"
+  default_result | jq 'del(.results[1])' >"$RESULT_FILE"
   do_check
   assert_fail_kind missing-disposition "m c2 b.txt 5"
 }
@@ -163,7 +163,7 @@ assert_fail_kind() {
   prepare
   edit a.txt
   edit b.txt
-  default_result | jq '.results[0].disposition = "done"' >"$RES"
+  default_result | jq '.results[0].disposition = "done"' >"$RESULT_FILE"
   do_check
   assert_fail_kind missing-disposition "m c1 a.txt 3"
 }
@@ -173,7 +173,7 @@ assert_fail_kind() {
   edit a.txt
   edit b.txt
   edit c.txt
-  default_result >"$RES"
+  default_result >"$RESULT_FILE"
   do_check
   assert_fail_kind undeclared-path c.txt
 }
@@ -183,7 +183,7 @@ assert_fail_kind() {
   edit a.txt
   edit b.txt
   printf 'new\n' >"$REPO/new.txt"
-  default_result >"$RES"
+  default_result >"$RESULT_FILE"
   do_check
   assert_fail_kind undeclared-path new.txt
 }
@@ -193,7 +193,7 @@ assert_fail_kind() {
   edit a.txt
   edit b.txt
   printf 'new\n' >"$REPO/new.txt"
-  default_result | jq '.changed_paths += ["new.txt"]' >"$RES"
+  default_result | jq '.changed_paths += ["new.txt"]' >"$RESULT_FILE"
   do_check
   [ "$status" -eq 0 ]
 }
@@ -204,7 +204,7 @@ assert_fail_kind() {
   edit a.txt
   edit b.txt
   printf 'base selfheal.txt\n' >"$REPO/selfheal.txt"
-  default_result >"$RES"
+  default_result >"$RESULT_FILE"
   do_check
   assert_fail_kind undeclared-revert selfheal.txt
 }
@@ -215,7 +215,7 @@ assert_fail_kind() {
   edit a.txt
   edit b.txt
   printf 'base selfheal.txt\n' >"$REPO/selfheal.txt"
-  default_result | jq '.reverted_paths = ["selfheal.txt"]' >"$RES"
+  default_result | jq '.reverted_paths = ["selfheal.txt"]' >"$RESULT_FILE"
   do_check
   [ "$status" -eq 0 ]
 }
@@ -226,7 +226,7 @@ assert_fail_kind() {
   edit a.txt
   edit b.txt
   edit selfheal.txt
-  default_result >"$RES"
+  default_result >"$RESULT_FILE"
   do_check
   assert_fail_kind undeclared-path selfheal.txt
 }
@@ -237,7 +237,7 @@ assert_fail_kind() {
   edit b.txt
   git -C "$REPO" add -A
   git -C "$REPO" commit -q -m fixer
-  default_result >"$RES"
+  default_result >"$RESULT_FILE"
   do_check
   assert_fail_kind head-moved
 }
@@ -247,7 +247,7 @@ assert_fail_kind() {
   edit a.txt
   edit b.txt
   git -C "$REPO" add a.txt
-  default_result >"$RES"
+  default_result >"$RESULT_FILE"
   do_check
   assert_fail_kind index-changed
 }
@@ -257,7 +257,7 @@ assert_fail_kind() {
   edit a.txt
   edit b.txt
   edit CHANGELOG.md
-  default_result | jq '.changed_paths += ["CHANGELOG.md"]' >"$RES"
+  default_result | jq '.changed_paths += ["CHANGELOG.md"]' >"$RESULT_FILE"
   do_check
   assert_fail_kind forbidden-path CHANGELOG.md
 }
@@ -283,12 +283,12 @@ spec093_enforcement_paths() {
 }
 
 @test "UAT-032: the enforcement set holds every existing SPEC-093 path and grew by exactly that count" {
-  local repo_root="$BATS_TEST_DIRNAME/../../.." p added=0
-  while IFS= read -r p; do
-    [ -e "$repo_root/$p" ] || continue
+  local repo_root="$BATS_TEST_DIRNAME/../../.." file_path added=0
+  while IFS= read -r file_path; do
+    [ -e "$repo_root/$file_path" ] || continue
     added=$((added + 1))
-    enforcement_paths | grep -Fxq "$p" || {
-      echo "missing from ENFORCEMENT_PATHS: $p"
+    enforcement_paths | grep -Fxq "$file_path" || {
+      echo "missing from ENFORCEMENT_PATHS: $file_path"
       return 1
     }
   done < <(spec093_enforcement_paths)
@@ -299,83 +299,83 @@ spec093_enforcement_paths() {
 
 # One fixture repo per enforcement path: seed it, baseline, edit it, check.
 enforcement_case() {
-  local p="$1" i="$2"
-  REPO="$BATS_TEST_TMPDIR/enf$i"
-  mkrepo "$REPO"
-  mkdir -p "$REPO/$(dirname "$p")"
-  printf 'orig\n' >"$REPO/$p"
+  local file_path="$1" case_label="$2"
+  REPO="$BATS_TEST_TMPDIR/enf$case_label"
+  make_repo "$REPO"
+  mkdir -p "$REPO/$(dirname "$file_path")"
+  printf 'orig\n' >"$REPO/$file_path"
   git -C "$REPO" add -f -A
   git -C "$REPO" commit -q -m enforcement
-  RF="$REPO/.gaia/local/runs/b"
-  mkdir -p "$RF"
-  DISP="$RF/dispositions-1.json"
-  BASE="$RF/baseline-1.json"
-  RES="$RF/fixer-1-audit.json"
-  OUTV="$RF/verifier-1-1.json"
-  disp '[{"member":"m","finding_class":"c1","path":"'"$p"'","line":1,"disposition":"fix"}]'
+  RUN_FOLDER="$REPO/.gaia/local/runs/b"
+  mkdir -p "$RUN_FOLDER"
+  DISPOSITIONS_FILE="$RUN_FOLDER/dispositions-1.json"
+  BASELINE_FILE="$RUN_FOLDER/baseline-1.json"
+  RESULT_FILE="$RUN_FOLDER/fixer-1-audit.json"
+  VERIFIER_OUTPUT_FILE="$RUN_FOLDER/verifier-1-1.json"
+  write_dispositions '[{"member":"m","finding_class":"c1","path":"'"$file_path"'","line":1,"disposition":"fix"}]'
   take_baseline
   take_digests
-  edit "$p"
-  printf '%s' '{"schema":1,"round":1,"attempt":1,"results":[{"member":"m","finding_class":"c1","path":"'"$p"'","line":1,"disposition":"fixed","reason":"r","changed_paths":["'"$p"'"]}],"changed_paths":["'"$p"'"],"reverted_paths":[]}' >"$RES"
+  edit "$file_path"
+  printf '%s' '{"schema":1,"round":1,"attempt":1,"results":[{"member":"m","finding_class":"c1","path":"'"$file_path"'","line":1,"disposition":"fixed","reason":"r","changed_paths":["'"$file_path"'"]}],"changed_paths":["'"$file_path"'"],"reverted_paths":[]}' >"$RESULT_FILE"
   do_check
   [ "$status" -eq 1 ] || {
-    echo "$p did not fail: $output"
+    echo "$file_path did not fail: $output"
     return 1
   }
-  jq -e '[.errors[].kind] | index("enforcement-path") != null' "$OUTV" >/dev/null || {
-    echo "$p: no enforcement-path error"
+  jq -e '[.errors[].kind] | index("enforcement-path") != null' "$VERIFIER_OUTPUT_FILE" >/dev/null || {
+    echo "$file_path: no enforcement-path error"
     return 1
   }
   case "$output" in
-    *"$p"*) return 0 ;;
+    *"$file_path"*) return 0 ;;
   esac
-  echo "$p not named: $output"
+  echo "$file_path not named: $output"
   return 1
 }
 
 @test "directive 2: a declared edit to every enforcement-set path fails enforcement-path" {
-  local n=0 p
-  while IFS= read -r p; do
-    n=$((n + 1))
-    enforcement_case "$p" "$n" || return 1
+  local path_count=0 file_path
+  while IFS= read -r file_path; do
+    path_count=$((path_count + 1))
+    enforcement_case "$file_path" "$path_count" || return 1
   done < <(enforcement_paths)
-  [ "$n" -eq "$(enforcement_paths | wc -l | tr -d ' ')" ]
-  [ "$n" -gt "$PRE_SPEC093_ENFORCEMENT_COUNT" ]
+  [ "$path_count" -eq "$(enforcement_paths | wc -l | tr -d ' ')" ]
+  [ "$path_count" -gt "$PRE_SPEC093_ENFORCEMENT_COUNT" ]
 }
 
 @test "UAT-032: an unlisted edit to each SPEC-093 enforcement path fails enforcement-path" {
-  local repo_root="$BATS_TEST_DIRNAME/../../.." n=0 p
-  while IFS= read -r p; do
-    [ -e "$repo_root/$p" ] || continue
-    n=$((n + 1))
-    enforcement_case "$p" "s$n" || return 1
+  local repo_root="$BATS_TEST_DIRNAME/../../.." path_count=0 file_path
+  while IFS= read -r file_path; do
+    [ -e "$repo_root/$file_path" ] || continue
+    path_count=$((path_count + 1))
+    enforcement_case "$file_path" "s$path_count" || return 1
   done < <(spec093_enforcement_paths)
-  [ "$n" -ge 1 ]
+  [ "$path_count" -ge 1 ]
 }
 
 @test "UAT-032 control: a listed edit to a SPEC-093 enforcement path with a fix entry passes" {
-  local p='.gaia/scripts/audit-dispositions-check.sh'
+  local file_path='.gaia/scripts/audit-dispositions-check.sh'
   mkdir -p "$REPO/.gaia/scripts"
-  printf 'orig\n' >"$REPO/$p"
+  printf 'orig\n' >"$REPO/$file_path"
   git -C "$REPO" add -A
   git -C "$REPO" commit -q -m enforcement
-  disp '[{"member":"m","finding_class":"c1","path":"'"$p"'","line":1,"disposition":"fix"}]' '["'"$p"'"]'
+  write_dispositions '[{"member":"m","finding_class":"c1","path":"'"$file_path"'","line":1,"disposition":"fix"}]' '["'"$file_path"'"]'
   take_baseline
   take_digests
-  edit "$p"
-  printf '%s' '{"schema":1,"round":1,"attempt":1,"results":[{"member":"m","finding_class":"c1","path":"'"$p"'","line":1,"disposition":"fixed","reason":"r","changed_paths":["'"$p"'"]}],"changed_paths":["'"$p"'"],"reverted_paths":[]}' >"$RES"
+  edit "$file_path"
+  printf '%s' '{"schema":1,"round":1,"attempt":1,"results":[{"member":"m","finding_class":"c1","path":"'"$file_path"'","line":1,"disposition":"fixed","reason":"r","changed_paths":["'"$file_path"'"]}],"changed_paths":["'"$file_path"'"],"reverted_paths":[]}' >"$RESULT_FILE"
   do_check
   [ "$status" -eq 0 ]
 }
 
 @test "a waive-out-of-scope entry carrying basis cross-remit passes the shape check" {
-  disp '[
+  write_dispositions '[
     {"member":"m","finding_class":"c1","path":"a.txt","line":3,"disposition":"fix"},
     {"member":"m","finding_class":"c2","path":"b.txt","line":5,"disposition":"waive-out-of-scope","basis":"cross-remit","reason":"r"}]'
   take_baseline
   take_digests
   edit a.txt
-  printf '%s' '{"schema":1,"round":1,"attempt":1,"results":[{"member":"m","finding_class":"c1","path":"a.txt","line":3,"disposition":"fixed","reason":"r","changed_paths":["a.txt"]}],"changed_paths":["a.txt"],"reverted_paths":[]}' >"$RES"
+  printf '%s' '{"schema":1,"round":1,"attempt":1,"results":[{"member":"m","finding_class":"c1","path":"a.txt","line":3,"disposition":"fixed","reason":"r","changed_paths":["a.txt"]}],"changed_paths":["a.txt"],"reverted_paths":[]}' >"$RESULT_FILE"
   do_check
   [ "$status" -eq 0 ]
 }
@@ -385,37 +385,37 @@ enforcement_case() {
     echo "stale writer label still present"
     return 1
   fi
-  local lit
-  for lit in basis vetoes.json 'unit-<u>.json' effective_from_round stop_reason; do
-    grep -Fq -- "$lit" "$REAL_SCRIPT" || {
-      echo "header lacks $lit"
+  local literal
+  for literal in basis vetoes.json 'unit-<u>.json' effective_from_round stop_reason; do
+    grep -Fq -- "$literal" "$REAL_SCRIPT" || {
+      echo "header lacks $literal"
       return 1
     }
   done
 }
 
 @test "directive 3: an enforcement edit passes when allowed and a fix entry names it" {
-  local p='.gaia/scripts/audit-loop-eval.sh'
+  local file_path='.gaia/scripts/audit-loop-eval.sh'
   mkdir -p "$REPO/.gaia/scripts"
-  printf 'orig\n' >"$REPO/$p"
+  printf 'orig\n' >"$REPO/$file_path"
   git -C "$REPO" add -A
   git -C "$REPO" commit -q -m enforcement
-  disp '[{"member":"m","finding_class":"c1","path":"'"$p"'","line":1,"disposition":"fix"}]' '["'"$p"'"]'
+  write_dispositions '[{"member":"m","finding_class":"c1","path":"'"$file_path"'","line":1,"disposition":"fix"}]' '["'"$file_path"'"]'
   take_baseline
   take_digests
-  edit "$p"
-  printf '%s' '{"schema":1,"round":1,"attempt":1,"results":[{"member":"m","finding_class":"c1","path":"'"$p"'","line":1,"disposition":"fixed","reason":"r","changed_paths":["'"$p"'"]}],"changed_paths":["'"$p"'"],"reverted_paths":[]}' >"$RES"
+  edit "$file_path"
+  printf '%s' '{"schema":1,"round":1,"attempt":1,"results":[{"member":"m","finding_class":"c1","path":"'"$file_path"'","line":1,"disposition":"fixed","reason":"r","changed_paths":["'"$file_path"'"]}],"changed_paths":["'"$file_path"'"],"reverted_paths":[]}' >"$RESULT_FILE"
   do_check
   [ "$status" -eq 0 ]
 }
 
 @test "directive 3: an enforcement_paths_allowed entry no fix entry names fails bad-input" {
-  disp "$(default_entries)" '[".gaia/scripts/audit-loop-eval.sh"]'
+  write_dispositions "$(default_entries)" '[".gaia/scripts/audit-loop-eval.sh"]'
   take_baseline
   take_digests
   edit a.txt
   edit b.txt
-  default_result >"$RES"
+  default_result >"$RESULT_FILE"
   do_check
   assert_fail_kind bad-input "no fix entry names"
 }
@@ -427,7 +427,7 @@ enforcement_case() {
   mkdir -p "$REPO/.gaia/local/audit"
   printf 'ok\n' >"$REPO/.gaia/local/audit/x.ok"
   touch -t 203001010000 "$REPO/.gaia/local/audit/x.ok"
-  default_result >"$RES"
+  default_result >"$RESULT_FILE"
   do_check
   assert_fail_kind audit-artifact-written x.ok
 }
@@ -440,7 +440,7 @@ enforcement_case() {
   slug="$(git -C "$REPO" branch --show-current)"
   printf '{}\n' >"$REPO/.gaia/local/audit/t.$slug.m.findings.json"
   touch -t 203001010000 "$REPO/.gaia/local/audit/t.$slug.m.findings.json"
-  default_result >"$RES"
+  default_result >"$RESULT_FILE"
   do_check
   assert_fail_kind audit-artifact-written findings.json
 }
@@ -452,7 +452,7 @@ enforcement_case() {
   mkdir -p "$REPO/.gaia/local/audit"
   printf '{}\n' >"$REPO/.gaia/local/audit/t.other-branch.m.findings.json"
   touch -t 203001010000 "$REPO/.gaia/local/audit/t.other-branch.m.findings.json"
-  default_result >"$RES"
+  default_result >"$RESULT_FILE"
   do_check
   [ "$status" -eq 0 ]
 }
@@ -465,7 +465,7 @@ enforcement_case() {
   body="$(printf '{"tree":"%s","sha":"%s"}' "$(foreign_tree)" "$(printf 'e%.0s' {1..40})")"
   forge foreign.ok "$body"
   forge foreign.refused "$body"
-  default_result >"$RES"
+  default_result >"$RESULT_FILE"
   do_check
   [ "$status" -eq 0 ]
 }
@@ -476,7 +476,7 @@ enforcement_case() {
   edit a.txt
   edit b.txt
   forge "$(printf 'a%.0s' {1..64}).ok" '{"digest":"x","member":"code-audit-frontend","provenance":"earned"}'
-  default_result >"$RES"
+  default_result >"$RESULT_FILE"
   do_check
   assert_fail_kind audit-artifact-written
 }
@@ -487,7 +487,7 @@ enforcement_case() {
   edit a.txt
   edit b.txt
   forge bad-tree.ok '{"tree":"not-a-tree","sha":"abc"}'
-  default_result >"$RES"
+  default_result >"$RESULT_FILE"
   do_check
   assert_fail_kind audit-artifact-written bad-tree.ok
 }
@@ -497,13 +497,13 @@ enforcement_case() {
   prepare
   edit a.txt
   edit b.txt
-  d="$(member_digest HEAD)"
-  [ -n "$d" ]
-  forge "$d.ok" "$(printf '{"digest":"%s","tree":"%s","sha":"abc"}' "$d" "$(foreign_tree)")"
-  forge "$d.code-audit-frontend.refused" "$(printf '{"digest":"%s","tree":"%s","sha":"abc"}' "$d" "$(foreign_tree)")"
-  default_result >"$RES"
+  digest="$(member_digest HEAD)"
+  [ -n "$digest" ]
+  forge "$digest.ok" "$(printf '{"digest":"%s","tree":"%s","sha":"abc"}' "$digest" "$(foreign_tree)")"
+  forge "$digest.code-audit-frontend.refused" "$(printf '{"digest":"%s","tree":"%s","sha":"abc"}' "$digest" "$(foreign_tree)")"
+  default_result >"$RESULT_FILE"
   do_check
-  assert_fail_kind audit-artifact-written "$d"
+  assert_fail_kind audit-artifact-written "$digest"
 }
 
 @test "a foreign-tree marker named by a member digest of the working content fails audit-artifact-written" {
@@ -513,19 +513,19 @@ enforcement_case() {
   edit b.txt
   # A change to the shared machinery rotates every member digest.
   printf '# fixer edit\n' >>"$REPO/.claude/hooks/lib/audit-digest.sh"
-  idx="$BATS_TEST_TMPDIR/wt-index"
-  GIT_INDEX_FILE="$idx" git -C "$REPO" read-tree HEAD
-  GIT_INDEX_FILE="$idx" git -C "$REPO" add -A
-  wt="$(GIT_INDEX_FILE="$idx" git -C "$REPO" write-tree)"
-  d="$(member_digest "$wt")"
-  [ -n "$d" ]
-  [ "$d" != "$(member_digest HEAD)" ]
-  forge "$d.ok" "$(printf '{"digest":"%s","tree":"%s","sha":"abc"}' "$d" "$(foreign_tree)")"
-  default_result >"$RES"
-  jq '.changed_paths += [".claude/hooks/lib/audit-digest.sh"]' "$RES" >"$RES.n"
-  mv "$RES.n" "$RES"
+  index_file="$BATS_TEST_TMPDIR/wt-index"
+  GIT_INDEX_FILE="$index_file" git -C "$REPO" read-tree HEAD
+  GIT_INDEX_FILE="$index_file" git -C "$REPO" add -A
+  worktree_tree="$(GIT_INDEX_FILE="$index_file" git -C "$REPO" write-tree)"
+  digest="$(member_digest "$worktree_tree")"
+  [ -n "$digest" ]
+  [ "$digest" != "$(member_digest HEAD)" ]
+  forge "$digest.ok" "$(printf '{"digest":"%s","tree":"%s","sha":"abc"}' "$digest" "$(foreign_tree)")"
+  default_result >"$RESULT_FILE"
+  jq '.changed_paths += [".claude/hooks/lib/audit-digest.sh"]' "$RESULT_FILE" >"$RESULT_FILE.n"
+  mv "$RESULT_FILE.n" "$RESULT_FILE"
   do_check
-  assert_fail_kind audit-artifact-written "$d"
+  assert_fail_kind audit-artifact-written "$digest"
 }
 
 @test "when member digests cannot be resolved a foreign-tree marker counts" {
@@ -533,7 +533,7 @@ enforcement_case() {
   edit a.txt
   edit b.txt
   forge foreign.ok "$(printf '{"tree":"%s","sha":"abc"}' "$(foreign_tree)")"
-  default_result >"$RES"
+  default_result >"$RESULT_FILE"
   do_check
   assert_fail_kind audit-artifact-written foreign.ok
 }
@@ -545,7 +545,7 @@ enforcement_case() {
   mkdir -p "$REPO/.gaia/local/audit"
   printf '{"tree":"%s","sha":"x"}\n' "$(git -C "$REPO" rev-parse 'HEAD^{tree}')" >"$REPO/.gaia/local/audit/own.ok"
   touch -t 203001010000 "$REPO/.gaia/local/audit/own.ok"
-  default_result >"$RES"
+  default_result >"$RESULT_FILE"
   do_check
   assert_fail_kind audit-artifact-written own.ok
 }
@@ -557,7 +557,7 @@ enforcement_case() {
   prepare
   edit a.txt
   edit b.txt
-  default_result >"$RES"
+  default_result >"$RESULT_FILE"
   do_check
   [ "$status" -eq 0 ]
 }
@@ -566,9 +566,9 @@ enforcement_case() {
   prepare
   edit a.txt
   edit b.txt
-  default_result >"$RES"
-  jq '.enforcement_paths_allowed += [".claude/settings.json"]' "$DISP" >"$DISP.new"
-  mv "$DISP.new" "$DISP"
+  default_result >"$RESULT_FILE"
+  jq '.enforcement_paths_allowed += [".claude/settings.json"]' "$DISPOSITIONS_FILE" >"$DISPOSITIONS_FILE.new"
+  mv "$DISPOSITIONS_FILE.new" "$DISPOSITIONS_FILE"
   do_check
   assert_fail_kind bad-input "dispositions file digest"
 }
@@ -578,9 +578,9 @@ enforcement_case() {
   prepare
   edit a.txt
   edit b.txt
-  default_result >"$RES"
-  jq '.dirty = {}' "$BASE" >"$BASE.new"
-  mv "$BASE.new" "$BASE"
+  default_result >"$RESULT_FILE"
+  jq '.dirty = {}' "$BASELINE_FILE" >"$BASELINE_FILE.new"
+  mv "$BASELINE_FILE.new" "$BASELINE_FILE"
   do_check
   assert_fail_kind bad-input "baseline file digest"
 }
@@ -589,9 +589,9 @@ enforcement_case() {
   prepare
   edit a.txt
   edit b.txt
-  default_result >"$RES"
-  jq '.enforcement_paths_allowed += [".claude/settings.json"]' "$DISP" >"$DISP.new"
-  mv "$DISP.new" "$DISP"
+  default_result >"$RESULT_FILE"
+  jq '.enforcement_paths_allowed += [".claude/settings.json"]' "$DISPOSITIONS_FILE" >"$DISPOSITIONS_FILE.new"
+  mv "$DISPOSITIONS_FILE.new" "$DISPOSITIONS_FILE"
   take_digests
   do_check
   assert_fail_kind bad-input "no fix entry names"
@@ -602,22 +602,22 @@ enforcement_case() {
   edit a.txt
   edit b.txt
   edit c.txt
-  default_result >"$RES"
-  printf 'c.txt\n' >"$RF/gate-1-1.paths"
+  default_result >"$RESULT_FILE"
+  printf 'c.txt\n' >"$RUN_FOLDER/gate-1-1.paths"
   do_check
   assert_fail_kind undeclared-path c.txt
-  do_check --extra-declared "$RF/gate-1-1.paths"
+  do_check --extra-declared "$RUN_FOLDER/gate-1-1.paths"
   [ "$status" -eq 0 ]
-  [ "$(jq -r '.pass' "$OUTV")" = true ]
+  [ "$(jq -r '.pass' "$VERIFIER_OUTPUT_FILE")" = true ]
 }
 
 @test "baseline refuses with exit 3 and writes nothing when the index has a staged change" {
   edit a.txt
   git -C "$REPO" add a.txt
-  disp "$(default_entries)"
-  run bash "$SCRIPT" baseline --root "$REPO" --round 1 --out "$BASE"
+  write_dispositions "$(default_entries)"
+  run bash "$SCRIPT" baseline --root "$REPO" --round 1 --out "$BASELINE_FILE"
   [ "$status" -eq 3 ]
-  [ ! -e "$BASE" ]
+  [ ! -e "$BASELINE_FILE" ]
   case "$output" in
     *"index differs from HEAD"*) ;;
     *)
@@ -631,18 +631,18 @@ enforcement_case() {
   prepare
   edit a.txt
   edit b.txt
-  default_result | jq '.round = 2' >"$RES"
+  default_result | jq '.round = 2' >"$RESULT_FILE"
   do_check
   assert_fail_kind bad-input "wrong round"
 }
 
 @test "bad-input: a dispositions file with the wrong round fails" {
-  disp "$(default_entries)"
-  jq '.round = 2' "$DISP" >"$DISP.new"
-  mv "$DISP.new" "$DISP"
+  write_dispositions "$(default_entries)"
+  jq '.round = 2' "$DISPOSITIONS_FILE" >"$DISPOSITIONS_FILE.new"
+  mv "$DISPOSITIONS_FILE.new" "$DISPOSITIONS_FILE"
   take_baseline
   take_digests
-  default_result >"$RES"
+  default_result >"$RESULT_FILE"
   do_check
   assert_fail_kind bad-input "wrong round"
 }
@@ -651,18 +651,18 @@ enforcement_case() {
   prepare
   edit a.txt
   edit b.txt
-  default_result >"$RES"
+  default_result >"$RESULT_FILE"
   ATTEMPT=2
-  OUTV="$RF/verifier-1-2.json"
+  VERIFIER_OUTPUT_FILE="$RUN_FOLDER/verifier-1-2.json"
   do_check
   assert_fail_kind bad-input "attempt"
-  [ "$(jq -r '.attempt' "$OUTV")" = 2 ]
+  [ "$(jq -r '.attempt' "$VERIFIER_OUTPUT_FILE")" = 2 ]
 }
 
 @test "bad-input: unparseable JSON fails" {
   prepare
   edit a.txt
-  printf '{not json' >"$RES"
+  printf '{not json' >"$RESULT_FILE"
   do_check
   assert_fail_kind bad-input "result file"
 }
@@ -671,7 +671,7 @@ enforcement_case() {
   prepare
   edit a.txt
   edit b.txt
-  default_result | jq '.changed_paths += ["../x"]' >"$RES"
+  default_result | jq '.changed_paths += ["../x"]' >"$RESULT_FILE"
   do_check
   assert_fail_kind bad-input "../x"
 }
@@ -680,7 +680,7 @@ enforcement_case() {
   prepare
   edit a.txt
   edit b.txt
-  default_result | jq '.changed_paths += ["/etc/passwd", "-rf"]' >"$RES"
+  default_result | jq '.changed_paths += ["/etc/passwd", "-rf"]' >"$RESULT_FILE"
   do_check
   assert_fail_kind bad-input "/etc/passwd"
   case "$output" in
@@ -694,12 +694,12 @@ enforcement_case() {
 
 @test "paths with spaces are hashed and compared correctly" {
   edit "with space.txt"
-  disp '[{"member":"m","finding_class":"c1","path":"with space.txt","line":1,"disposition":"fix"}]'
+  write_dispositions '[{"member":"m","finding_class":"c1","path":"with space.txt","line":1,"disposition":"fix"}]'
   take_baseline
   take_digests
-  [ "$(jq -r '.dirty | keys[0]' "$BASE")" = "with space.txt" ]
+  [ "$(jq -r '.dirty | keys[0]' "$BASELINE_FILE")" = "with space.txt" ]
   edit "with space.txt"
-  printf '%s' '{"schema":1,"round":1,"attempt":1,"results":[{"member":"m","finding_class":"c1","path":"with space.txt","line":1,"disposition":"fixed","reason":"r","changed_paths":["with space.txt"]}],"changed_paths":["with space.txt"],"reverted_paths":[]}' >"$RES"
+  printf '%s' '{"schema":1,"round":1,"attempt":1,"results":[{"member":"m","finding_class":"c1","path":"with space.txt","line":1,"disposition":"fixed","reason":"r","changed_paths":["with space.txt"]}],"changed_paths":["with space.txt"],"reverted_paths":[]}' >"$RESULT_FILE"
   do_check
   [ "$status" -eq 0 ]
   printf 'x\n' >"$REPO/other space.txt"
@@ -708,16 +708,16 @@ enforcement_case() {
 }
 
 @test "round-check: gate logs with passing verifiers exit 0, a missing or failing verifier exits 1 naming the log" {
-  local d="$BATS_TEST_TMPDIR/runs" k
-  mkdir -p "$d"
-  for k in 1 2 3; do
-    : >"$d/gate-3-$k.log"
-    printf '{"pass":true}\n' >"$d/verifier-3-$k.json"
+  local runs_directory="$BATS_TEST_TMPDIR/runs" attempt_number
+  mkdir -p "$runs_directory"
+  for attempt_number in 1 2 3; do
+    : >"$runs_directory/gate-3-$attempt_number.log"
+    printf '{"pass":true}\n' >"$runs_directory/verifier-3-$attempt_number.json"
   done
-  run bash "$SCRIPT" round-check --run-folder "$d" --round 3
+  run bash "$SCRIPT" round-check --run-folder "$runs_directory" --round 3
   [ "$status" -eq 0 ]
-  rm "$d/verifier-3-2.json"
-  run bash "$SCRIPT" round-check --run-folder "$d" --round 3
+  rm "$runs_directory/verifier-3-2.json"
+  run bash "$SCRIPT" round-check --run-folder "$runs_directory" --round 3
   [ "$status" -eq 1 ]
   case "$output" in
     *gate-3-2.log*) ;;
@@ -726,8 +726,8 @@ enforcement_case() {
       return 1
       ;;
   esac
-  printf '{"pass":false}\n' >"$d/verifier-3-2.json"
-  run bash "$SCRIPT" round-check --run-folder "$d" --round 3
+  printf '{"pass":false}\n' >"$runs_directory/verifier-3-2.json"
+  run bash "$SCRIPT" round-check --run-folder "$runs_directory" --round 3
   [ "$status" -eq 1 ]
   case "$output" in
     *gate-3-2.log*) ;;
@@ -739,12 +739,12 @@ enforcement_case() {
 }
 
 @test "round-check: no gate logs, or logs of another round, exit 0" {
-  local d="$BATS_TEST_TMPDIR/runs"
-  mkdir -p "$d"
-  run bash "$SCRIPT" round-check --run-folder "$d" --round 3
+  local runs_directory="$BATS_TEST_TMPDIR/runs"
+  mkdir -p "$runs_directory"
+  run bash "$SCRIPT" round-check --run-folder "$runs_directory" --round 3
   [ "$status" -eq 0 ]
-  : >"$d/gate-2-1.log"
-  run bash "$SCRIPT" round-check --run-folder "$d" --round 3
+  : >"$runs_directory/gate-2-1.log"
+  run bash "$SCRIPT" round-check --run-folder "$runs_directory" --round 3
   [ "$status" -eq 0 ]
 }
 
@@ -752,7 +752,7 @@ enforcement_case() {
   edit selfheal.txt
   printf 'u\n' >"$REPO/untracked.txt"
   take_baseline
-  run bash "$SCRIPT" drift --root "$REPO" --baseline "$BASE"
+  run bash "$SCRIPT" drift --root "$REPO" --baseline "$BASELINE_FILE"
   [ "$status" -eq 0 ]
 }
 
@@ -760,7 +760,7 @@ enforcement_case() {
   edit selfheal.txt
   take_baseline
   edit selfheal.txt
-  run bash "$SCRIPT" drift --root "$REPO" --baseline "$BASE"
+  run bash "$SCRIPT" drift --root "$REPO" --baseline "$BASELINE_FILE"
   [ "$status" -eq 1 ]
   case "$output" in
     *selfheal.txt*) ;;
@@ -774,7 +774,7 @@ enforcement_case() {
 @test "drift: exit 1 naming the path after a new untracked file" {
   take_baseline
   printf 'n\n' >"$REPO/fresh.txt"
-  run bash "$SCRIPT" drift --root "$REPO" --baseline "$BASE"
+  run bash "$SCRIPT" drift --root "$REPO" --baseline "$BASELINE_FILE"
   [ "$status" -eq 1 ]
   case "$output" in
     *fresh.txt*) ;;
@@ -789,7 +789,7 @@ enforcement_case() {
   take_baseline
   edit a.txt
   git -C "$REPO" add a.txt
-  run bash "$SCRIPT" drift --root "$REPO" --baseline "$BASE"
+  run bash "$SCRIPT" drift --root "$REPO" --baseline "$BASELINE_FILE"
   [ "$status" -eq 1 ]
   case "$output" in
     *index-changed*) ;;
@@ -810,34 +810,34 @@ enforcement_case() {
 @test "the verifier output is written atomically with the C9 shape on failure" {
   prepare
   edit c.txt
-  default_result >"$RES"
+  default_result >"$RESULT_FILE"
   do_check
   [ "$status" -eq 1 ]
-  jq -e '.schema == 1 and .round == 1 and .attempt == 1 and .pass == false and (.errors | length > 0)' "$OUTV" >/dev/null
-  [ -z "$(find "$RF" -name 'verifier-1-1.json.*')" ]
+  jq -e '.schema == 1 and .round == 1 and .attempt == 1 and .pass == false and (.errors | length > 0)' "$VERIFIER_OUTPUT_FILE" >/dev/null
+  [ -z "$(find "$RUN_FOLDER" -name 'verifier-1-1.json.*')" ]
 }
 
 # --- the pinned verifier ---
 
 @test "baseline pins the verifier and its libraries beside the baseline file and records their digest" {
   prepare
-  for f in audit-fix-verify.sh main-root-lib.sh audit-key-lib.sh; do
-    cmp "$RF/verifier-bin-1/$f" "$BATS_TEST_DIRNAME/../$f"
+  for file_name in audit-fix-verify.sh main-root-lib.sh audit-key-lib.sh; do
+    cmp "$RUN_FOLDER/verifier-bin-1/$file_name" "$BATS_TEST_DIRNAME/../$file_name"
   done
   jq -e '(.verifier_files | sort) == ["audit-fix-verify.sh","audit-key-lib.sh","main-root-lib.sh"]
-    and (.verifier_digest | test("^[0-9a-f]{64}$"))' "$BASE" >/dev/null
+    and (.verifier_digest | test("^[0-9a-f]{64}$"))' "$BASELINE_FILE" >/dev/null
 }
 
 @test "check, drift and round-check run from the pinned copy and pass" {
   prepare
   edit a.txt
   edit b.txt
-  default_result >"$RES"
-  run bash "$RF/verifier-bin-1/audit-fix-verify.sh" check --root "$REPO" --round 1 --attempt 1 \
-    --dispositions "$DISP" --dispositions-sha "$DSHA" --baseline "$BASE" --baseline-sha "$BSHA" \
-    --result "$RES" --out "$OUTV"
+  default_result >"$RESULT_FILE"
+  run bash "$RUN_FOLDER/verifier-bin-1/audit-fix-verify.sh" check --root "$REPO" --round 1 --attempt 1 \
+    --dispositions "$DISPOSITIONS_FILE" --dispositions-sha "$DISPOSITIONS_SHA" --baseline "$BASELINE_FILE" --baseline-sha "$BASELINE_SHA" \
+    --result "$RESULT_FILE" --out "$VERIFIER_OUTPUT_FILE"
   [ "$status" -eq 0 ]
-  run bash "$RF/verifier-bin-1/audit-fix-verify.sh" round-check --run-folder "$RF" --round 1
+  run bash "$RUN_FOLDER/verifier-bin-1/audit-fix-verify.sh" round-check --run-folder "$RUN_FOLDER" --round 1
   [ "$status" -eq 0 ]
 }
 
@@ -845,35 +845,35 @@ enforcement_case() {
   prepare
   edit a.txt
   edit b.txt
-  default_result >"$RES"
-  printf '# edited\n' >>"$RF/verifier-bin-1/audit-fix-verify.sh"
-  run bash "$RF/verifier-bin-1/audit-fix-verify.sh" check --root "$REPO" --round 1 --attempt 1 \
-    --dispositions "$DISP" --dispositions-sha "$DSHA" --baseline "$BASE" --baseline-sha "$BSHA" \
-    --result "$RES" --out "$OUTV"
+  default_result >"$RESULT_FILE"
+  printf '# edited\n' >>"$RUN_FOLDER/verifier-bin-1/audit-fix-verify.sh"
+  run bash "$RUN_FOLDER/verifier-bin-1/audit-fix-verify.sh" check --root "$REPO" --round 1 --attempt 1 \
+    --dispositions "$DISPOSITIONS_FILE" --dispositions-sha "$DISPOSITIONS_SHA" --baseline "$BASELINE_FILE" --baseline-sha "$BASELINE_SHA" \
+    --result "$RESULT_FILE" --out "$VERIFIER_OUTPUT_FILE"
   [ "$status" -eq 1 ]
-  jq -e '[.errors[].kind] | index("bad-input") != null' "$OUTV" >/dev/null
+  jq -e '[.errors[].kind] | index("bad-input") != null' "$VERIFIER_OUTPUT_FILE" >/dev/null
   [[ "$output" == *"pinned"* ]]
 }
 
 @test "a tampered pinned library fails drift and round-check" {
   prepare
-  printf '# edited\n' >>"$RF/verifier-bin-1/main-root-lib.sh"
-  run bash "$RF/verifier-bin-1/audit-fix-verify.sh" drift --root "$REPO" --baseline "$BASE"
+  printf '# edited\n' >>"$RUN_FOLDER/verifier-bin-1/main-root-lib.sh"
+  run bash "$RUN_FOLDER/verifier-bin-1/audit-fix-verify.sh" drift --root "$REPO" --baseline "$BASELINE_FILE"
   [ "$status" -eq 1 ]
   [[ "$output" == *"pinned"* ]]
-  run bash "$RF/verifier-bin-1/audit-fix-verify.sh" round-check --run-folder "$RF" --round 1
+  run bash "$RUN_FOLDER/verifier-bin-1/audit-fix-verify.sh" round-check --run-folder "$RUN_FOLDER" --round 1
   [ "$status" -eq 1 ]
   [[ "$output" == *"pinned"* ]]
 }
 
 @test "a baseline that records no pin fails check with bad-input" {
   prepare
-  jq 'del(.verifier_digest)' "$BASE" >"$BASE.n"
-  mv "$BASE.n" "$BASE"
+  jq 'del(.verifier_digest)' "$BASELINE_FILE" >"$BASELINE_FILE.n"
+  mv "$BASELINE_FILE.n" "$BASELINE_FILE"
   take_digests
   edit a.txt
   edit b.txt
-  default_result >"$RES"
+  default_result >"$RESULT_FILE"
   do_check
   assert_fail_kind bad-input pinned
 }

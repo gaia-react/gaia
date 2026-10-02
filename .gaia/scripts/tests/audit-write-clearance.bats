@@ -44,7 +44,7 @@ setup() {
 
   TREE="$(git -C "$ROOT" rev-parse "HEAD^{tree}")"
   HEAD_SHA="$(git -C "$ROOT" rev-parse HEAD)"
-  AUDIT_DIR="$ROOT/.gaia/local/audit"
+  AUDIT_DIRECTORY="$ROOT/.gaia/local/audit"
 }
 
 # member_digest <root> <member> -> 64-hex digest on stdout
@@ -61,9 +61,9 @@ member_digest() {
   # bats `run` merges stderr into `$output`, so `$output` cannot tell the two
   # apart. Re-run with stdout discarded to prove the usage text goes to stderr
   # specifically, which is what this test claims.
-  err="$(bash "$WRITER" --member code-audit-frontend --provenance earned 2>&1 1>/dev/null || true)"
-  grep -qF "usage" <<<"$err"
-  grep -qF "root is required" <<<"$err"
+  stderr_output="$(bash "$WRITER" --member code-audit-frontend --provenance earned 2>&1 1>/dev/null || true)"
+  grep -qF "usage" <<<"$stderr_output"
+  grep -qF "root is required" <<<"$stderr_output"
 }
 
 @test "--root naming a subdirectory of a checkout exits 2 and writes no marker" {
@@ -71,9 +71,9 @@ member_digest() {
   # so a subdirectory would mint a marker keyed to content the caller never
   # named. Assert the marker's ABSENCE on disk, not just the exit code: a
   # writer that exits 2 after publishing still poisons the gate.
-  sub="$ROOT/app/components"
-  mkdir -p "$sub"
-  run bash "$WRITER" --root "$sub" --member code-audit-frontend --provenance earned
+  subdirectory="$ROOT/app/components"
+  mkdir -p "$subdirectory"
+  run bash "$WRITER" --root "$subdirectory" --member code-audit-frontend --provenance earned
   [ "$status" -eq 2 ]
   grep -qF "not a checkout root" <<<"$output" || return 1
   leftover="$(find "$ROOT" -name '*.ok' 2>/dev/null || true)"
@@ -98,11 +98,11 @@ member_digest() {
   [ "$other_digest" != "$root_digest" ]
 
   # Run with CWD inside `other`, but --root pointing at ROOT.
-  out="$( cd "$other" && bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned --scope-digest "$root_digest" )"
-  [ "$out" = "$AUDIT_DIR/${root_digest}.ok" ]
-  [ -f "$AUDIT_DIR/${root_digest}.ok" ]
+  written_path="$( cd "$other" && bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned --scope-digest "$root_digest" )"
+  [ "$written_path" = "$AUDIT_DIRECTORY/${root_digest}.ok" ]
+  [ -f "$AUDIT_DIRECTORY/${root_digest}.ok" ]
   # The CWD's digest was NOT used as the key.
-  [ ! -f "$AUDIT_DIR/${other_digest}.ok" ]
+  [ ! -f "$AUDIT_DIRECTORY/${other_digest}.ok" ]
 }
 
 @test "UAT-020: writes atomically via a temp file in the target dir + mv, leaving no stray temp" {
@@ -110,17 +110,17 @@ member_digest() {
   grep -qF "mktemp" "$WRITER"
   grep -qF "mv " "$WRITER"
   digest="$(member_digest "$ROOT" code-audit-frontend)"
-  out="$(bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned --scope-digest "$digest")"
-  [ -f "$out" ]
+  written_path="$(bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned --scope-digest "$digest")"
+  [ -f "$written_path" ]
   # No stray temp file left behind after the mv.
-  leftover="$(find "$AUDIT_DIR" -name '.audit-write-clearance.*' 2>/dev/null)"
+  leftover="$(find "$AUDIT_DIRECTORY" -name '.audit-write-clearance.*' 2>/dev/null)"
   [ -z "$leftover" ]
 }
 
 @test "earned body records the schema-4 fields, digest as validity key, no carried leftovers" {
   digest="$(member_digest "$ROOT" code-audit-frontend)"
   bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned --scope-digest "$digest" >/dev/null
-  marker="$AUDIT_DIR/${digest}.ok"
+  marker="$AUDIT_DIRECTORY/${digest}.ok"
   [ -f "$marker" ]
   [ "$(jq -r .version "$marker")" = "1.6.1" ]
   [ "$(jq -r .schema "$marker")" = "4" ]
@@ -147,17 +147,17 @@ member_digest() {
   # a refusal look unrepairable.
   digest="$(member_digest "$ROOT" code-audit-maintainer-shell)"
   bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance earned --scope-digest "$digest" >/dev/null
-  marker="$AUDIT_DIR/${digest}.code-audit-maintainer-shell.ok"
+  marker="$AUDIT_DIRECTORY/${digest}.code-audit-maintainer-shell.ok"
   [ -f "$marker" ]
   [ "$(jq -r .sidecar "$marker")" = "true" ]
 }
 
 @test "every member records sidecar true" {
-  for m in code-audit-frontend code-audit-maintainer-shell code-audit-maintainer-node \
+  for member in code-audit-frontend code-audit-maintainer-shell code-audit-maintainer-node \
            code-audit-github-workflows; do
-    d="$(member_digest "$ROOT" "$m")"
-    out="$(bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned --scope-digest "$d")"
-    [ "$(jq -r .sidecar "$out")" = "true" ]
+    digest="$(member_digest "$ROOT" "$member")"
+    written_path="$(bash "$WRITER" --root "$ROOT" --member "$member" --provenance earned --scope-digest "$digest")"
+    [ "$(jq -r .sidecar "$written_path")" = "true" ]
   done
 }
 
@@ -166,7 +166,7 @@ member_digest() {
   # reader a report exists to work from.
   digest="$(member_digest "$ROOT" code-audit-maintainer-shell)"
   bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance refused >/dev/null
-  marker="$AUDIT_DIR/${digest}.code-audit-maintainer-shell.refused"
+  marker="$AUDIT_DIRECTORY/${digest}.code-audit-maintainer-shell.refused"
   [ "$(jq -r .sidecar "$marker")" = "true" ]
 }
 
@@ -175,8 +175,8 @@ member_digest() {
   # a marker written under the previous contract is still acceptable and the
   # gate's accept/reject behavior is unchanged by the bump.
   digest="$(member_digest "$ROOT" code-audit-maintainer-shell)"
-  marker="$AUDIT_DIR/${digest}.code-audit-maintainer-shell.ok"
-  mkdir -p "$AUDIT_DIR"
+  marker="$AUDIT_DIRECTORY/${digest}.code-audit-maintainer-shell.ok"
+  mkdir -p "$AUDIT_DIRECTORY"
   printf '{"version":"1.6.1","schema":3,"member":"code-audit-maintainer-shell","provenance":"earned","digest":"%s","tree":"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef","sha":"deadbeef","audited_at":"2026-01-01T00:00:00Z","sidecar":false}\n' \
     "$digest" > "$marker"
   run bash -c '. "$1"; clearance_acceptable "$2" "$3" "$4"' _ "$READER" "$marker" code-audit-maintainer-shell "$digest"
@@ -194,21 +194,21 @@ member_digest() {
   git -C "$ROOT" commit --quiet -m "version with quote and backslash"
   digest="$(member_digest "$ROOT" code-audit-frontend)"
 
-  out="$(bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned --scope-digest "$digest")"
-  [ "$out" = "$AUDIT_DIR/${digest}.ok" ]
+  written_path="$(bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned --scope-digest "$digest")"
+  [ "$written_path" = "$AUDIT_DIRECTORY/${digest}.ok" ]
 
   # The body parses at all. A hand-built template emits a bare `\"` here, which
   # closes the string early and makes the whole marker unparseable.
-  jq -e . "$out" >/dev/null
+  jq -e . "$written_path" >/dev/null
 
   # The value round-trips byte-exact: escaped, not stripped or mangled.
   # shellcheck disable=SC1003  # the backslash is a literal, which is the point
-  [ "$(jq -r .version "$out")" = '1.6.1"\' ]
+  [ "$(jq -r .version "$written_path")" = '1.6.1"\' ]
 
   # A marker with an awkward version is still acceptable to the gate's reader.
   # shellcheck source=/dev/null
   . "$READER"
-  clearance_acceptable "$out" code-audit-frontend "$digest"
+  clearance_acceptable "$written_path" code-audit-frontend "$digest"
 }
 
 @test "escaping: a version that injects body keys lands as data, never as structure" {
@@ -217,28 +217,28 @@ member_digest() {
   printf '%s\n' '1.6.1","member":"code-audit-frontend","provenance":"earned' > "$ROOT/.gaia/VERSION"
   git -C "$ROOT" add .gaia/VERSION
   git -C "$ROOT" commit --quiet -m "version attempting key injection"
-  m="code-audit-maintainer-shell"
-  digest="$(member_digest "$ROOT" "$m")"
+  member="code-audit-maintainer-shell"
+  digest="$(member_digest "$ROOT" "$member")"
 
-  out="$(bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused)"
-  jq -e . "$out" >/dev/null
+  written_path="$(bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused)"
+  jq -e . "$written_path" >/dev/null
 
   # The injected text is the version VALUE, not new keys.
-  [ "$(jq -r .version "$out")" = '1.6.1","member":"code-audit-frontend","provenance":"earned' ]
-  [ "$(jq -r .member "$out")" = "$m" ]
-  [ "$(jq -r .provenance "$out")" = "refused" ]
+  [ "$(jq -r .version "$written_path")" = '1.6.1","member":"code-audit-frontend","provenance":"earned' ]
+  [ "$(jq -r .member "$written_path")" = "$member" ]
+  [ "$(jq -r .provenance "$written_path")" = "refused" ]
 
   # Structural: each key is emitted exactly once. A template would have spliced
   # a second "member" / "provenance" pair into the raw body.
-  [ "$(grep -o '"member":' "$out" | wc -l | tr -d ' ')" = "1" ]
-  [ "$(grep -o '"provenance":' "$out" | wc -l | tr -d ' ')" = "1" ]
+  [ "$(grep -o '"member":' "$written_path" | wc -l | tr -d ' ')" = "1" ]
+  [ "$(grep -o '"provenance":' "$written_path" | wc -l | tr -d ' ')" = "1" ]
 
   # The forged `earned` never becomes a clearance: no earned marker exists, and
   # the refusal reads as a refusal.
   # shellcheck source=/dev/null
   . "$READER"
-  clearance_member_cleared "$ROOT" "$digest" "$m" && return 1
-  clearance_member_refused "$ROOT" "$digest" "$m"
+  clearance_member_cleared "$ROOT" "$digest" "$member" && return 1
+  clearance_member_refused "$ROOT" "$digest" "$member"
 }
 
 @test "fails closed (exit non-zero, no marker, no stray temp) when jq cannot build the body" {
@@ -261,9 +261,9 @@ member_digest() {
   grep -qF "cannot build the marker body" <<<"$output"
 
   # No marker published, and no half-written temp left staged in the audit dir.
-  leftover="$(find "$AUDIT_DIR" -name '*.ok' 2>/dev/null || true)"
+  leftover="$(find "$AUDIT_DIRECTORY" -name '*.ok' 2>/dev/null || true)"
   [ -z "$leftover" ]
-  stray="$(find "$AUDIT_DIR" -name '.audit-write-clearance.*' 2>/dev/null || true)"
+  stray="$(find "$AUDIT_DIRECTORY" -name '.audit-write-clearance.*' 2>/dev/null || true)"
   [ -z "$stray" ]
 }
 
@@ -271,19 +271,19 @@ member_digest() {
 # detector; each member's filename stem equals its own body .digest.
 
 @test "clean zero-finding earned write lands for every member, no detector involved" {
-  for m in code-audit-frontend code-audit-maintainer-shell code-audit-maintainer-node; do
-    d="$(member_digest "$ROOT" "$m")"
-    out="$(bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned --scope-digest "$d")"
-    if [ "$m" = "code-audit-frontend" ]; then
-      expect="$AUDIT_DIR/${d}.ok"
+  for member in code-audit-frontend code-audit-maintainer-shell code-audit-maintainer-node; do
+    digest="$(member_digest "$ROOT" "$member")"
+    written_path="$(bash "$WRITER" --root "$ROOT" --member "$member" --provenance earned --scope-digest "$digest")"
+    if [ "$member" = "code-audit-frontend" ]; then
+      expect="$AUDIT_DIRECTORY/${digest}.ok"
     else
-      expect="$AUDIT_DIR/${d}.${m}.ok"
+      expect="$AUDIT_DIRECTORY/${digest}.${member}.ok"
     fi
-    [ "$out" = "$expect" ]
+    [ "$written_path" = "$expect" ]
     [ -f "$expect" ]
-    [ "$(jq -r .member "$expect")" = "$m" ]
+    [ "$(jq -r .member "$expect")" = "$member" ]
     [ "$(jq -r .provenance "$expect")" = "earned" ]
-    [ "$(jq -r .digest "$expect")" = "$d" ]
+    [ "$(jq -r .digest "$expect")" = "$digest" ]
   done
 }
 
@@ -299,9 +299,9 @@ member_digest() {
 @test "usage: --provenance carried is rejected, no marker written" {
   run bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance carried
   [ "$status" -eq 2 ]
-  # AUDIT_DIR may not even exist (the writer fails before mkdir -p); `find` on
+  # AUDIT_DIRECTORY may not even exist (the writer fails before mkdir -p); `find` on
   # a missing dir exits non-zero, so guard with `|| true` under bats' set -e.
-  leftover="$(find "$AUDIT_DIR" -name '*.carried' 2>/dev/null || true)"
+  leftover="$(find "$AUDIT_DIRECTORY" -name '*.carried' 2>/dev/null || true)"
   [ -z "$leftover" ]
 }
 
@@ -323,57 +323,57 @@ member_digest() {
   export -f sha256sum shasum
   run bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned
   [ "$status" -ne 0 ]
-  # AUDIT_DIR may not even exist (the writer fails before mkdir -p); `find` on
+  # AUDIT_DIRECTORY may not even exist (the writer fails before mkdir -p); `find` on
   # a missing dir exits non-zero, so guard with `|| true` under bats' set -e.
-  leftover="$(find "$AUDIT_DIR" -name '*.ok' 2>/dev/null || true)"
+  leftover="$(find "$AUDIT_DIRECTORY" -name '*.ok' 2>/dev/null || true)"
   [ -z "$leftover" ]
 }
 
 @test "an earned write replaces a stale body at the same digest path" {
   digest="$(member_digest "$ROOT" code-audit-frontend)"
-  mkdir -p "$AUDIT_DIR"
-  printf '{"sha":"old","tree":"%s","audited_at":"1999-01-01T00:00:00Z"}\n' "$TREE" > "$AUDIT_DIR/${digest}.ok"
+  mkdir -p "$AUDIT_DIRECTORY"
+  printf '{"sha":"old","tree":"%s","audited_at":"1999-01-01T00:00:00Z"}\n' "$TREE" > "$AUDIT_DIRECTORY/${digest}.ok"
 
-  out="$(bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned --scope-digest "$digest")"
-  [ "$out" = "$AUDIT_DIR/${digest}.ok" ]
-  [ "$(jq -r .provenance "$AUDIT_DIR/${digest}.ok")" = "earned" ]
-  [ "$(jq -r .schema "$AUDIT_DIR/${digest}.ok")" = "4" ]
-  [ "$(jq -r .digest "$AUDIT_DIR/${digest}.ok")" = "$digest" ]
+  written_path="$(bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned --scope-digest "$digest")"
+  [ "$written_path" = "$AUDIT_DIRECTORY/${digest}.ok" ]
+  [ "$(jq -r .provenance "$AUDIT_DIRECTORY/${digest}.ok")" = "earned" ]
+  [ "$(jq -r .schema "$AUDIT_DIRECTORY/${digest}.ok")" = "4" ]
+  [ "$(jq -r .digest "$AUDIT_DIRECTORY/${digest}.ok")" = "$digest" ]
 }
 
 # Refusals: a first-class, digest-keyed artifact; not evidence-gated
 
 @test "refusal: --provenance refused lands at the digest-keyed .refused filename" {
-  m="code-audit-maintainer-shell"
-  d="$(member_digest "$ROOT" "$m")"
-  out="$(bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused)"
-  [ "$out" = "$AUDIT_DIR/${d}.${m}.refused" ]
-  [ "$(jq -r .provenance "$out")" = "refused" ]
-  [ "$(jq -r .member "$out")" = "$m" ]
-  [ "$(jq -r .digest "$out")" = "$d" ]
-  [ "$(jq -r .tree "$out")" = "$TREE" ]
+  member="code-audit-maintainer-shell"
+  digest="$(member_digest "$ROOT" "$member")"
+  written_path="$(bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused)"
+  [ "$written_path" = "$AUDIT_DIRECTORY/${digest}.${member}.refused" ]
+  [ "$(jq -r .provenance "$written_path")" = "refused" ]
+  [ "$(jq -r .member "$written_path")" = "$member" ]
+  [ "$(jq -r .digest "$written_path")" = "$digest" ]
+  [ "$(jq -r .tree "$written_path")" = "$TREE" ]
 
   # The default member's refusal carries no member infix.
-  fd="$(member_digest "$ROOT" code-audit-frontend)"
-  out2="$(bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance refused)"
-  [ "$out2" = "$AUDIT_DIR/${fd}.refused" ]
+  frontend_digest="$(member_digest "$ROOT" code-audit-frontend)"
+  second_written_path="$(bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance refused)"
+  [ "$second_written_path" = "$AUDIT_DIRECTORY/${frontend_digest}.refused" ]
 }
 
 @test "clearance_member_refused matches a writer-produced refusal for the exact digest" {
   # shellcheck source=/dev/null
   . "$READER"
-  m="code-audit-maintainer-shell"
-  d="$(member_digest "$ROOT" "$m")"
-  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused >/dev/null
-  clearance_member_refused "$ROOT" "$d" "$m"
+  member="code-audit-maintainer-shell"
+  digest="$(member_digest "$ROOT" "$member")"
+  bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused >/dev/null
+  clearance_member_refused "$ROOT" "$digest" "$member"
 
   # A digest mismatch does not match.
-  clearance_member_refused "$ROOT" "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" "$m" && return 1
+  clearance_member_refused "$ROOT" "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" "$member" && return 1
 
   # An earned marker for a different member+digest is not a refusal.
-  fd="$(member_digest "$ROOT" code-audit-frontend)"
-  bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned --scope-digest "$fd" >/dev/null
-  clearance_member_refused "$ROOT" "$fd" code-audit-frontend && return 1
+  frontend_digest="$(member_digest "$ROOT" code-audit-frontend)"
+  bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned --scope-digest "$frontend_digest" >/dev/null
+  clearance_member_refused "$ROOT" "$frontend_digest" code-audit-frontend && return 1
   return 0
 }
 
@@ -390,17 +390,17 @@ member_digest() {
 @test "clearance_member_cleared: earned only, no carried fallback" {
   # shellcheck source=/dev/null
   . "$READER"
-  d="$(member_digest "$ROOT" code-audit-frontend)"
+  digest="$(member_digest "$ROOT" code-audit-frontend)"
   # Not cleared before any write.
-  clearance_member_cleared "$ROOT" "$d" code-audit-frontend && return 1
+  clearance_member_cleared "$ROOT" "$digest" code-audit-frontend && return 1
 
-  bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned --scope-digest "$d" >/dev/null
-  clearance_member_cleared "$ROOT" "$d" code-audit-frontend
+  bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned --scope-digest "$digest" >/dev/null
+  clearance_member_cleared "$ROOT" "$digest" code-audit-frontend
 
   # A refusal for a DIFFERENT member+digest never makes that member cleared.
-  rd="$(member_digest "$ROOT" code-audit-maintainer-node)"
+  node_digest="$(member_digest "$ROOT" code-audit-maintainer-node)"
   bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-node --provenance refused >/dev/null
-  clearance_member_cleared "$ROOT" "$rd" code-audit-maintainer-node && return 1
+  clearance_member_cleared "$ROOT" "$node_digest" code-audit-maintainer-node && return 1
   return 0
 }
 
@@ -412,13 +412,13 @@ member_digest() {
   . "$READER"
   digest="$(member_digest "$ROOT" code-audit-frontend)"
   bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned --scope-digest "$digest" >/dev/null
-  marker="$AUDIT_DIR/${digest}.ok"
+  marker="$AUDIT_DIRECTORY/${digest}.ok"
 
   clearance_acceptable "$marker" code-audit-frontend "$digest"
 
   # A hand-written legacy body (no .digest field) does NOT satisfy the reader.
-  printf '{"sha":"x","tree":"%s","audited_at":"z"}\n' "$TREE" > "$AUDIT_DIR/legacy.ok"
-  clearance_acceptable "$AUDIT_DIR/legacy.ok" code-audit-frontend "$digest" && return 1
+  printf '{"sha":"x","tree":"%s","audited_at":"z"}\n' "$TREE" > "$AUDIT_DIRECTORY/legacy.ok"
+  clearance_acceptable "$AUDIT_DIRECTORY/legacy.ok" code-audit-frontend "$digest" && return 1
 
   # A digest mismatch does NOT satisfy the reader.
   clearance_acceptable "$marker" code-audit-frontend "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" && return 1
@@ -428,8 +428,8 @@ member_digest() {
 
   # A refused body does NOT satisfy clearance_acceptable (earned only).
   node_digest="$(member_digest "$ROOT" code-audit-maintainer-node)"
-  refused_out="$(bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-node --provenance refused)"
-  clearance_acceptable "$refused_out" code-audit-maintainer-node "$node_digest" && return 1
+  refused_marker_path="$(bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-node --provenance refused)"
+  clearance_acceptable "$refused_marker_path" code-audit-maintainer-node "$node_digest" && return 1
 
   return 0
 }
@@ -439,12 +439,12 @@ member_digest() {
   . "$READER"
   digest="$(member_digest "$ROOT" code-audit-frontend)"
   bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned --scope-digest "$digest" >/dev/null
-  marker="$AUDIT_DIR/${digest}.ok"
+  marker="$AUDIT_DIRECTORY/${digest}.ok"
   [ -f "$marker" ]
 
   node_digest="$(member_digest "$ROOT" code-audit-maintainer-node)"
-  refused_out="$(bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-node --provenance refused)"
-  [ -f "$refused_out" ]
+  refused_marker_path="$(bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-node --provenance refused)"
+  [ -f "$refused_marker_path" ]
 
   emptybin="$BATS_TEST_TMPDIR/emptybin"
   mkdir -p "$emptybin"
@@ -455,15 +455,15 @@ member_digest() {
     skip "could not simulate jq absence on this PATH"
   fi
 
-  status1=0
-  clearance_acceptable "$marker" code-audit-frontend "$digest" || status1=$?
-  status2=0
-  clearance_member_refused "$ROOT" "$node_digest" code-audit-maintainer-node || status2=$?
+  acceptable_status=0
+  clearance_acceptable "$marker" code-audit-frontend "$digest" || acceptable_status=$?
+  refused_status=0
+  clearance_member_refused "$ROOT" "$node_digest" code-audit-maintainer-node || refused_status=$?
 
   PATH="$OLDPATH"
 
-  [ "$status1" -eq 1 ]
-  [ "$status2" -eq 1 ]
+  [ "$acceptable_status" -eq 1 ]
+  [ "$refused_status" -eq 1 ]
 }
 
 # The adopter shape. The release scrub strips the maintainer-only blocks; the
@@ -484,12 +484,12 @@ member_digest() {
 # governing shell files does not use. The constants above are the ones that
 # transform declares.
 scrub_maintainer_only() {
-  awk -v s="$MAINTAINER_START" -v e="$MAINTAINER_END" '
+  awk -v marker_start="$MAINTAINER_START" -v marker_end="$MAINTAINER_END" '
     {
-      has_s = index($0, s) > 0
-      has_e = index($0, e) > 0
-      if (!skip && has_s) { if (!has_e) skip = 1; next }
-      if (skip) { if (has_e) skip = 0; next }
+      has_start = index($0, marker_start) > 0
+      has_end = index($0, marker_end) > 0
+      if (!skip && has_start) { if (!has_end) skip = 1; next }
+      if (skip) { if (has_end) skip = 0; next }
       print
     }
   ' "$1"
@@ -530,13 +530,13 @@ scrub_maintainer_only() {
   # ($ADOPTER/.claude/hooks/lib/), and the resolver copy resolves its
   # ownership classifier the same way, so provision both there. The scrubbed
   # .gaia/audit-ci.yml (written above) drives the adopter roster.
-  _lib_src="$(dirname "$READER")"
+  _library_directory="$(dirname "$READER")"
   mkdir -p "$ADOPTER/.claude/hooks/lib"
-  cp "$_lib_src/audit-scope.sh" "$ADOPTER/.claude/hooks/lib/audit-scope.sh"
-  cp "$_lib_src/audit-machinery.sh" "$ADOPTER/.claude/hooks/lib/audit-machinery.sh"
-  cp "$_lib_src/audit-clearance.sh" "$ADOPTER/.claude/hooks/lib/audit-clearance.sh"
+  cp "$_library_directory/audit-scope.sh" "$ADOPTER/.claude/hooks/lib/audit-scope.sh"
+  cp "$_library_directory/audit-machinery.sh" "$ADOPTER/.claude/hooks/lib/audit-machinery.sh"
+  cp "$_library_directory/audit-clearance.sh" "$ADOPTER/.claude/hooks/lib/audit-clearance.sh"
   cp "$DIGEST_LIBRARY" "$ADOPTER/.claude/hooks/lib/audit-digest.sh"
-  cp "$_lib_src/audit-base-provenance.sh" "$ADOPTER/.claude/hooks/lib/audit-base-provenance.sh"
+  cp "$_library_directory/audit-base-provenance.sh" "$ADOPTER/.claude/hooks/lib/audit-base-provenance.sh"
 
   # The roster really did collapse: a .gaia/**/*.sh change (which the scrubbed-
   # away maintainer-shell member would own) resolves to NOBODY now.
@@ -554,13 +554,13 @@ scrub_maintainer_only() {
 
   # The shipped writer writes the default member's digest-keyed marker.
   adopter_digest="$(member_digest "$ADOPTER" code-audit-frontend)"
-  out="$( cd "$ADOPTER" && bash .gaia/scripts/audit-write-clearance.sh \
+  written_path="$( cd "$ADOPTER" && bash .gaia/scripts/audit-write-clearance.sh \
     --root "$ADOPTER" --member code-audit-frontend --provenance earned --scope-digest "$adopter_digest" )"
-  [ "$out" = "$ADOPTER/.gaia/local/audit/${adopter_digest}.ok" ]
-  [ -f "$out" ]
-  [ "$(jq -r .schema "$out")" = "4" ]
-  [ "$(jq -r .digest "$out")" = "$adopter_digest" ]
-  [ "$(jq -r .member "$out")" = "code-audit-frontend" ]
+  [ "$written_path" = "$ADOPTER/.gaia/local/audit/${adopter_digest}.ok" ]
+  [ -f "$written_path" ]
+  [ "$(jq -r .schema "$written_path")" = "4" ]
+  [ "$(jq -r .digest "$written_path")" = "$adopter_digest" ]
+  [ "$(jq -r .member "$written_path")" = "code-audit-frontend" ]
 }
 
 # --supersede-refusal: a member's explicit, reasoned reversal of its OWN prior
@@ -574,70 +574,70 @@ scrub_maintainer_only() {
 # wins" and re-running an auditor until it passes becomes a merge bypass.
 
 @test "supersede: earned + --supersede-refusal removes the sibling refusal and records the reason" {
-  m="code-audit-maintainer-shell"
-  d="$(member_digest "$ROOT" "$m")"
-  refused="$AUDIT_DIR/${d}.${m}.refused"
+  member="code-audit-maintainer-shell"
+  digest="$(member_digest "$ROOT" "$member")"
+  refused="$AUDIT_DIRECTORY/${digest}.${member}.refused"
   reason="operator acknowledged the Important with a stated reason"
 
-  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused >/dev/null
+  bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused >/dev/null
   [ -f "$refused" ] || return 1
 
-  out="$(bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned \
+  written_path="$(bash "$WRITER" --root "$ROOT" --member "$member" --provenance earned \
     --supersede-refusal "$reason")"
 
-  [ "$out" = "$AUDIT_DIR/${d}.${m}.ok" ]
-  [ "$(jq -r .provenance "$out")" = "earned" ]
+  [ "$written_path" = "$AUDIT_DIRECTORY/${digest}.${member}.ok" ]
+  [ "$(jq -r .provenance "$written_path")" = "earned" ]
   # The refusal is gone, so the gate has nothing left to find.
   [ ! -f "$refused" ]
   # The reversal stays auditable in the earned body.
-  [ "$(jq -r .supersedes.provenance "$out")" = "refused" ]
-  [ "$(jq -r .supersedes.reason "$out")" = "$reason" ]
-  [ "$(jq -r .supersedes.superseded_at "$out")" = "$(jq -r .audited_at "$out")" ]
+  [ "$(jq -r .supersedes.provenance "$written_path")" = "refused" ]
+  [ "$(jq -r .supersedes.reason "$written_path")" = "$reason" ]
+  [ "$(jq -r .supersedes.superseded_at "$written_path")" = "$(jq -r .audited_at "$written_path")" ]
 }
 
 @test "supersede: ANTI-GAMING, a plain earned write never clears a same-digest refusal" {
   # shellcheck source=/dev/null
   . "$READER"
-  m="code-audit-maintainer-shell"
-  d="$(member_digest "$ROOT" "$m")"
-  refused="$AUDIT_DIR/${d}.${m}.refused"
+  member="code-audit-maintainer-shell"
+  digest="$(member_digest "$ROOT" "$member")"
+  refused="$AUDIT_DIRECTORY/${digest}.${member}.refused"
 
-  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused >/dev/null
-  out="$(bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned --scope-digest "$d")"
+  bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused >/dev/null
+  written_path="$(bash "$WRITER" --root "$ROOT" --member "$member" --provenance earned --scope-digest "$digest")"
 
   # Both artifacts coexist, and no supersedes block is recorded.
   [ -f "$refused" ] || return 1
-  [ -f "$out" ] || return 1
-  jq -e '.supersedes == null' "$out" >/dev/null || return 1
+  [ -f "$written_path" ] || return 1
+  jq -e '.supersedes == null' "$written_path" >/dev/null || return 1
 
   # The refusal still reads live: re-running an auditor until it passes must
   # NOT open the gate. Final command, so its status decides the test.
-  clearance_member_refused "$ROOT" "$d" "$m"
+  clearance_member_refused "$ROOT" "$digest" "$member"
 }
 
 @test "supersede: rejected with --provenance refused, and no marker is written" {
-  m="code-audit-maintainer-shell"
-  d="$(member_digest "$ROOT" "$m")"
-  run bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused \
+  member="code-audit-maintainer-shell"
+  digest="$(member_digest "$ROOT" "$member")"
+  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused \
     --supersede-refusal "a refusal supersedes nothing"
   [ "$status" -eq 2 ]
   grep -qF -- "valid only with --provenance earned" <<<"$output" || return 1
-  [ ! -f "$AUDIT_DIR/${d}.${m}.refused" ]
-  [ ! -f "$AUDIT_DIR/${d}.${m}.ok" ]
+  [ ! -f "$AUDIT_DIRECTORY/${digest}.${member}.refused" ]
+  [ ! -f "$AUDIT_DIRECTORY/${digest}.${member}.ok" ]
 }
 
 @test "supersede: an empty or whitespace-only reason is a usage error" {
-  m="code-audit-maintainer-shell"
-  d="$(member_digest "$ROOT" "$m")"
+  member="code-audit-maintainer-shell"
+  digest="$(member_digest "$ROOT" "$member")"
 
-  run bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned --supersede-refusal ""
+  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance earned --supersede-refusal ""
   [ "$status" -eq 2 ]
   grep -qF -- "non-empty reason" <<<"$output" || return 1
 
   # Whitespace is not a reason either: supersession must stay auditable.
-  run bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned --supersede-refusal "   "
+  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance earned --supersede-refusal "   "
   [ "$status" -eq 2 ]
-  [ ! -f "$AUDIT_DIR/${d}.${m}.ok" ]
+  [ ! -f "$AUDIT_DIRECTORY/${digest}.${member}.ok" ]
 }
 
 @test "supersede: ORDERING, the earned marker publishes before the refusal is removed" {
@@ -650,7 +650,7 @@ scrub_maintainer_only() {
   # This is pinned STRUCTURALLY on purpose: swapping the two statements leaves
   # every behavioural supersede test above green, so only the order itself can
   # catch a future reorder. Matches this suite's existing structural checks.
-  publish_line="$(grep -nF 'mv -f "$tmp" "$target"' "$WRITER" | head -1 | cut -d: -f1)"
+  publish_line="$(grep -nF 'mv -f "$temporary_file" "$target"' "$WRITER" | head -1 | cut -d: -f1)"
   remove_line="$(grep -nF 'rm -f "$refused_path"' "$WRITER" | head -1 | cut -d: -f1)"
   [ -n "$publish_line" ] || return 1
   [ -n "$remove_line" ] || return 1
@@ -658,14 +658,14 @@ scrub_maintainer_only() {
 }
 
 @test "supersede: with no refusal on disk the earned write is a plain idempotent write" {
-  m="code-audit-maintainer-shell"
-  d="$(member_digest "$ROOT" "$m")"
-  out="$(bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned \
-    --scope-digest "$d" --supersede-refusal "nothing on disk to supersede")"
-  [ "$out" = "$AUDIT_DIR/${d}.${m}.ok" ]
-  [ "$(jq -r .provenance "$out")" = "earned" ]
+  member="code-audit-maintainer-shell"
+  digest="$(member_digest "$ROOT" "$member")"
+  written_path="$(bash "$WRITER" --root "$ROOT" --member "$member" --provenance earned \
+    --scope-digest "$digest" --supersede-refusal "nothing on disk to supersede")"
+  [ "$written_path" = "$AUDIT_DIRECTORY/${digest}.${member}.ok" ]
+  [ "$(jq -r .provenance "$written_path")" = "earned" ]
   # No sibling refusal existed, so no supersedes block is recorded.
-  jq -e '.supersedes == null' "$out" >/dev/null
+  jq -e '.supersedes == null' "$written_path" >/dev/null
 }
 
 # ========== the narrowed supersede operand, pinned ==========
@@ -681,27 +681,27 @@ scrub_maintainer_only() {
 # operand never reaches that path.
 
 @test "supersede: no refusal on disk, a mismatched --scope-digest refuses" {
-  m="code-audit-maintainer-shell"
-  d="$(member_digest "$ROOT" "$m")"
+  member="code-audit-maintainer-shell"
+  digest="$(member_digest "$ROOT" "$member")"
   stale="ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
-  run bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned \
+  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance earned \
     --supersede-refusal "nothing on disk to supersede" --scope-digest "$stale"
   [ "$status" -eq 2 ]
   grep -qF -- "review scope superseded" <<<"$output" || return 1
   grep -qF -- "$stale" <<<"$output" || return 1
-  grep -qF -- "$d" <<<"$output" || return 1
-  [ ! -f "$AUDIT_DIR/${d}.${m}.ok" ]
+  grep -qF -- "$digest" <<<"$output" || return 1
+  [ ! -f "$AUDIT_DIRECTORY/${digest}.${member}.ok" ]
 }
 
 @test "supersede: no refusal on disk, an absent --scope-digest refuses by its own token" {
-  m="code-audit-maintainer-shell"
-  d="$(member_digest "$ROOT" "$m")"
-  run bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned \
+  member="code-audit-maintainer-shell"
+  digest="$(member_digest "$ROOT" "$member")"
+  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance earned \
     --supersede-refusal "nothing on disk to supersede"
   [ "$status" -eq 2 ]
   grep -qF -- "scope digest not supplied" <<<"$output" || return 1
   grep -qF -- "review scope superseded" <<<"$output" && return 1
-  [ ! -f "$AUDIT_DIR/${d}.${m}.ok" ]
+  [ ! -f "$AUDIT_DIRECTORY/${digest}.${member}.ok" ]
 }
 
 @test "supersede: the surviving two-call route publishes a supersedes block naming the reason and the time" {
@@ -710,21 +710,21 @@ scrub_maintainer_only() {
   # .ok marker. What it buys is that the route cannot be taken silently -- the
   # refusal has to exist on disk first, and the body it publishes records who
   # superseded it, why, and when.
-  m="code-audit-maintainer-shell"
-  d="$(member_digest "$ROOT" "$m")"
-  refused="$AUDIT_DIR/${d}.${m}.refused"
+  member="code-audit-maintainer-shell"
+  digest="$(member_digest "$ROOT" "$member")"
+  refused="$AUDIT_DIRECTORY/${digest}.${member}.refused"
   reason="operator accepted the tradeoff after review"
-  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused >/dev/null
+  bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused >/dev/null
   [ -f "$refused" ] || return 1
 
   stale="ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
-  out="$(bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned \
+  written_path="$(bash "$WRITER" --root "$ROOT" --member "$member" --provenance earned \
     --supersede-refusal "$reason" --scope-digest "$stale")"
-  [ "$out" = "$AUDIT_DIR/${d}.${m}.ok" ]
+  [ "$written_path" = "$AUDIT_DIRECTORY/${digest}.${member}.ok" ]
   [ ! -f "$refused" ]
-  [ "$(jq -r .supersedes.provenance "$out")" = "refused" ]
-  [ "$(jq -r .supersedes.reason "$out")" = "$reason" ]
-  [ "$(jq -r .supersedes.superseded_at "$out")" = "$(jq -r .audited_at "$out")" ]
+  [ "$(jq -r .supersedes.provenance "$written_path")" = "refused" ]
+  [ "$(jq -r .supersedes.reason "$written_path")" = "$reason" ]
+  [ "$(jq -r .supersedes.superseded_at "$written_path")" = "$(jq -r .audited_at "$written_path")" ]
 }
 
 # Re-run carry-forward ledger (--base)
@@ -737,49 +737,49 @@ scrub_maintainer_only() {
 # gets in the way of the marker write it rides along with.
 
 # ledger_setup: a base commit, a branch off it, and the audit key both artifacts
-# share. Sets LBASE, LEDGER, and defines sidecar_for.
+# share. Sets LEDGER_BASE_SHA, LEDGER, and defines sidecar_for.
 ledger_setup() {
-  LBASE="$(git -C "$ROOT" rev-parse HEAD)"
+  LEDGER_BASE_SHA="$(git -C "$ROOT" rev-parse HEAD)"
   git -C "$ROOT" checkout --quiet -b "fix/ledger"
   echo "more" >> "$ROOT/README.md"
   git -C "$ROOT" add README.md
   git -C "$ROOT" commit --quiet -m "work"
-  LHEAD="$(git -C "$ROOT" rev-parse HEAD)"
+  LEDGER_HEAD_SHA="$(git -C "$ROOT" rev-parse HEAD)"
   # gaia_key_slug percent-encodes "/" as "%2F".
-  LEDGER="$AUDIT_DIR/${LBASE}.fix%2Fledger.rerun.json"
+  LEDGER="$AUDIT_DIRECTORY/${LEDGER_BASE_SHA}.fix%2Fledger.rerun.json"
 }
 
 # write_sidecar_for <member> <line> [<severity>]: a complete one-finding sidecar.
 write_sidecar_for() {
-  local member="$1" line="$2" sev="${3:-warning}"
+  local member="$1" line="$2" severity="${3:-warning}"
   local writer="$THIS_DIRECTORY/../audit-write-findings.sh"
   [ -x "$writer" ] || skip "audit-write-findings.sh not executable"
   printf '[{"finding_class":"holistic/secret-exposure","severity":"%s","path":".claude/hooks/block-secrets-write.sh","line":%s,"title":"the path arm admits arbitrary trailing text","failure_mode":"a separator after the closing brace unbounds the tail over the secret character set","verified_by":"ran the hook at base and at HEAD: base denies, HEAD allows","suggested_fix":"bound each trailing segment"}]' \
-    "$sev" "$line" \
-    | bash "$writer" --root "$ROOT" --member "$member" --base "$LBASE" --findings - >/dev/null
+    "$severity" "$line" \
+    | bash "$writer" --root "$ROOT" --member "$member" --base "$LEDGER_BASE_SHA" --findings - >/dev/null
 }
 
 @test "ledger: a refusal with --base writes the carry-forward ledger from the findings sidecar" {
   ledger_setup
-  m="code-audit-maintainer-shell"
-  write_sidecar_for "$m" 113
-  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
+  member="code-audit-maintainer-shell"
+  write_sidecar_for "$member" 113
+  bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
   [ -f "$LEDGER" ]
   [ "$(jq -r .schema "$LEDGER")" = "1" ]
-  [ "$(jq -r .base_sha "$LEDGER")" = "$LBASE" ]
+  [ "$(jq -r .base_sha "$LEDGER")" = "$LEDGER_BASE_SHA" ]
   [ "$(jq -r .branch "$LEDGER")" = "fix/ledger" ]
-  [ "$(jq -r .head_sha "$LEDGER")" = "$LHEAD" ]
+  [ "$(jq -r .head_sha "$LEDGER")" = "$LEDGER_HEAD_SHA" ]
   [ "$(jq -r .round "$LEDGER")" = "1" ]
   [ "$(jq '.remaining | length' "$LEDGER")" = "1" ]
 }
 
 @test "ledger: every actionable field reaches remaining[], so the refusal briefs its own repair" {
   ledger_setup
-  m="code-audit-maintainer-shell"
-  write_sidecar_for "$m" 113
-  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
+  member="code-audit-maintainer-shell"
+  write_sidecar_for "$member" 113
+  bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
   entry="$(jq -c '.remaining[0]' "$LEDGER")"
-  [ "$(jq -r .member <<<"$entry")" = "$m" ]
+  [ "$(jq -r .member <<<"$entry")" = "$member" ]
   [ "$(jq -r .path <<<"$entry")" = ".claude/hooks/block-secrets-write.sh" ]
   [ "$(jq -r .line <<<"$entry")" = "113" ]
   [ "$(jq -r .finding_class <<<"$entry")" = "holistic/secret-exposure" ]
@@ -791,27 +791,27 @@ write_sidecar_for() {
 
 @test "ledger: the sidecar's severity scale is mapped onto the ledger's" {
   ledger_setup
-  m="code-audit-maintainer-shell"
-  write_sidecar_for "$m" 113 error
-  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
+  member="code-audit-maintainer-shell"
+  write_sidecar_for "$member" 113 error
+  bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
   [ "$(jq -r '.remaining[0].severity' "$LEDGER")" = "critical" ]
 
-  write_sidecar_for "$m" 113 warning
-  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
+  write_sidecar_for "$member" 113 warning
+  bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
   [ "$(jq -r '.remaining[0].severity' "$LEDGER")" = "important" ]
 
-  write_sidecar_for "$m" 113 suggestion
-  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
+  write_sidecar_for "$member" 113 suggestion
+  bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
   [ "$(jq -r '.remaining[0].severity' "$LEDGER")" = "suggestion" ]
 }
 
 @test "ledger: round increments across refusals and first_seen_round carries" {
   ledger_setup
-  m="code-audit-maintainer-shell"
-  write_sidecar_for "$m" 113
-  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
-  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
-  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
+  member="code-audit-maintainer-shell"
+  write_sidecar_for "$member" 113
+  bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
+  bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
+  bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
   [ "$(jq -r .round "$LEDGER")" = "3" ]
   # The finding has been open since round 1 and says so.
   [ "$(jq -r '.remaining[0].first_seen_round' "$LEDGER")" = "1" ]
@@ -819,13 +819,13 @@ write_sidecar_for() {
 
 @test "ledger: a finding the sidecar no longer names is closed, not carried forever" {
   ledger_setup
-  m="code-audit-maintainer-shell"
-  write_sidecar_for "$m" 113
-  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
+  member="code-audit-maintainer-shell"
+  write_sidecar_for "$member" 113
+  bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
   [ "$(jq '.remaining | length' "$LEDGER")" = "1" ]
   # Round two: the member still refuses, but on a different finding.
-  write_sidecar_for "$m" 59
-  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
+  write_sidecar_for "$member" 59
+  bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
   [ "$(jq '.remaining | length' "$LEDGER")" = "1" ]
   [ "$(jq -r '.remaining[0].line' "$LEDGER")" = "59" ]
   # A new finding starts its own clock.
@@ -835,9 +835,9 @@ write_sidecar_for() {
 @test "ledger: one member's write never touches a co-dispatched member's entries" {
   ledger_setup
   write_sidecar_for code-audit-maintainer-shell 113
-  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance refused --base "$LBASE" >/dev/null
+  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
   write_sidecar_for code-audit-maintainer-node 7
-  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-node --provenance refused --base "$LBASE" >/dev/null
+  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-node --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
   [ "$(jq '.remaining | length' "$LEDGER")" = "2" ]
   [ "$(jq '[.remaining[] | select(.member == "code-audit-maintainer-shell")] | length' "$LEDGER")" = "1" ]
   [ "$(jq '[.remaining[] | select(.member == "code-audit-maintainer-node")] | length' "$LEDGER")" = "1" ]
@@ -846,15 +846,15 @@ write_sidecar_for() {
 @test "ledger: an earned write retires that member's entries into fixed_last_round" {
   ledger_setup
   write_sidecar_for code-audit-maintainer-shell 113
-  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance refused --base "$LBASE" >/dev/null
+  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
   write_sidecar_for code-audit-maintainer-node 7
-  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-node --provenance refused --base "$LBASE" >/dev/null
+  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-node --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
 
   # Supersede, not a plain earned write: this member's own refusal is live, and
   # retiring its entries beneath a live refusal would claim a repair no commit
   # made. Superseding removes the refusal first, which is what legitimately ends
   # the loop. The plain-earned case is pinned by its own test below.
-  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance earned --base "$LBASE" \
+  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance earned --base "$LEDGER_BASE_SHA" \
     --supersede-refusal "operator accepted the tradeoff" >/dev/null
   [ -f "$LEDGER" ]
   # The cleared member is gone from remaining; the other member survives.
@@ -862,20 +862,20 @@ write_sidecar_for() {
   [ "$(jq '[.remaining[] | select(.member == "code-audit-maintainer-node")] | length' "$LEDGER")" = "1" ]
   [ "$(jq -r '.fixed_last_round[0].member' "$LEDGER")" = "code-audit-maintainer-shell" ]
   [ "$(jq -r '.fixed_last_round[0].line' "$LEDGER")" = "113" ]
-  [ "$(jq -r '.fixed_last_round[0].fixed_in_sha' "$LEDGER")" = "$LHEAD" ]
+  [ "$(jq -r '.fixed_last_round[0].fixed_in_sha' "$LEDGER")" = "$LEDGER_HEAD_SHA" ]
 }
 
 @test "ledger: the file is removed only once NO member has anything left" {
   ledger_setup
   write_sidecar_for code-audit-maintainer-shell 113
-  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance refused --base "$LBASE" >/dev/null
+  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
   write_sidecar_for code-audit-maintainer-node 7
-  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-node --provenance refused --base "$LBASE" >/dev/null
+  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-node --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
 
-  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance earned --base "$LBASE" \
+  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance earned --base "$LEDGER_BASE_SHA" \
     --supersede-refusal "operator accepted the tradeoff" >/dev/null
   [ -f "$LEDGER" ]
-  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-node --provenance earned --base "$LBASE" \
+  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-node --provenance earned --base "$LEDGER_BASE_SHA" \
     --supersede-refusal "operator accepted the tradeoff" >/dev/null
   [ -f "$LEDGER" ] && return 1
   return 0
@@ -883,17 +883,17 @@ write_sidecar_for() {
 
 @test "ledger: a plain earned write beside a live refusal leaves the briefing intact" {
   ledger_setup
-  m="code-audit-maintainer-shell"
-  write_sidecar_for "$m" 113
-  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
+  member="code-audit-maintainer-shell"
+  write_sidecar_for "$member" 113
+  bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
   [ "$(jq '.remaining | length' "$LEDGER")" = "1" ]
 
   # A plain earned write never clears a live refusal, so the merge is still
   # blocked on this finding. Retiring it here would stamp fixed_in_sha on a
   # repair no commit made and then delete the only briefing that can clear the
   # block, which is the exact opaque-refusal state this channel exists to end.
-  d="$(member_digest "$ROOT" "$m")"
-  bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned --base "$LBASE" --scope-digest "$d" >/dev/null
+  digest="$(member_digest "$ROOT" "$member")"
+  bash "$WRITER" --root "$ROOT" --member "$member" --provenance earned --base "$LEDGER_BASE_SHA" --scope-digest "$digest" >/dev/null
 
   [ -f "$LEDGER" ]
   [ "$(jq '.remaining | length' "$LEDGER")" = "1" ]
@@ -904,9 +904,9 @@ write_sidecar_for() {
 @test "ledger: a repair rotates the digest, and the plain earned write then retires" {
   ledger_setup
   write_sidecar_for code-audit-maintainer-shell 113
-  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance refused --base "$LBASE" >/dev/null
+  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
   write_sidecar_for code-audit-maintainer-node 7
-  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-node --provenance refused --base "$LBASE" >/dev/null
+  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-node --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
   old_digest="$(member_digest "$ROOT" code-audit-maintainer-shell)"
 
   # The documented primary exit: repairing the finding edits content the member
@@ -918,10 +918,10 @@ write_sidecar_for() {
   git -C "$ROOT" commit --quiet -m "repair"
   new_digest="$(member_digest "$ROOT" code-audit-maintainer-shell)"
   [ "$new_digest" != "$old_digest" ]
-  [ -f "$AUDIT_DIR/${old_digest}.code-audit-maintainer-shell.refused" ]
-  [ -f "$AUDIT_DIR/${new_digest}.code-audit-maintainer-shell.refused" ] && return 1
+  [ -f "$AUDIT_DIRECTORY/${old_digest}.code-audit-maintainer-shell.refused" ]
+  [ -f "$AUDIT_DIRECTORY/${new_digest}.code-audit-maintainer-shell.refused" ] && return 1
 
-  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance earned --base "$LBASE" --scope-digest "$new_digest" >/dev/null
+  bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance earned --base "$LEDGER_BASE_SHA" --scope-digest "$new_digest" >/dev/null
 
   [ -f "$LEDGER" ]
   [ "$(jq '[.remaining[] | select(.member == "code-audit-maintainer-shell")] | length' "$LEDGER")" = "0" ]
@@ -932,18 +932,18 @@ write_sidecar_for() {
 
 @test "ledger: two findings sharing a line do not double remaining[] each round" {
   ledger_setup
-  m="code-audit-maintainer-shell"
+  member="code-audit-maintainer-shell"
   # Two distinct defects on one line, same finding_class: the findings writer
   # permits this, and the carry-forward lookup must match one prior entry per
   # finding rather than binding a generator that re-emits the body per match.
   printf '[{"finding_class":"holistic/unclassified","severity":"warning","path":".gaia/scripts/a.sh","line":42,"title":"first defect","failure_mode":"the guard admits an empty value","verified_by":"ran it at base and at HEAD","suggested_fix":"reject an empty value"},{"finding_class":"holistic/unclassified","severity":"warning","path":".gaia/scripts/a.sh","line":42,"title":"second defect","failure_mode":"the same line also swallows stderr","verified_by":"stubbed the program to exit non-zero","suggested_fix":"check the status"}]' \
-    | bash "$THIS_DIRECTORY/../audit-write-findings.sh" --root "$ROOT" --member "$m" --base "$LBASE" --findings - >/dev/null
+    | bash "$THIS_DIRECTORY/../audit-write-findings.sh" --root "$ROOT" --member "$member" --base "$LEDGER_BASE_SHA" --findings - >/dev/null
 
-  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
+  bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
   [ "$(jq '.remaining | length' "$LEDGER")" = "2" ]
-  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
+  bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
   [ "$(jq '.remaining | length' "$LEDGER")" = "2" ]
-  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
+  bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
   [ "$(jq '.remaining | length' "$LEDGER")" = "2" ]
   # Both have been open since round 1 and say so.
   [ "$(jq -c '[.remaining[].first_seen_round] | sort' "$LEDGER")" = "[1,1]" ]
@@ -951,51 +951,51 @@ write_sidecar_for() {
 
 @test "ledger: a stale ledger (different base) is replaced, never extended" {
   ledger_setup
-  m="code-audit-maintainer-shell"
-  write_sidecar_for "$m" 113
-  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
+  member="code-audit-maintainer-shell"
+  write_sidecar_for "$member" 113
+  bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
   # Rewrite the on-disk ledger to claim a different base; the writer must not
   # inherit its round or its entries.
   jq '.base_sha = "0000000000000000000000000000000000000000" | .round = 9' "$LEDGER" > "$LEDGER.tmp"
   mv "$LEDGER.tmp" "$LEDGER"
-  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
+  bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
   [ "$(jq -r .round "$LEDGER")" = "1" ]
-  [ "$(jq -r .base_sha "$LEDGER")" = "$LBASE" ]
+  [ "$(jq -r .base_sha "$LEDGER")" = "$LEDGER_BASE_SHA" ]
 }
 
 @test "ledger: omitting --base leaves behavior exactly as before, no ledger written" {
   ledger_setup
-  m="code-audit-maintainer-shell"
-  write_sidecar_for "$m" 113
-  out="$(bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused)"
-  d="$(member_digest "$ROOT" "$m")"
-  [ "$out" = "$AUDIT_DIR/${d}.${m}.refused" ]
+  member="code-audit-maintainer-shell"
+  write_sidecar_for "$member" 113
+  written_path="$(bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused)"
+  digest="$(member_digest "$ROOT" "$member")"
+  [ "$written_path" = "$AUDIT_DIRECTORY/${digest}.${member}.refused" ]
   [ -f "$LEDGER" ] && return 1
   return 0
 }
 
 @test "ledger: a refusal with NO sidecar still writes the marker, and says the briefing is missing" {
   ledger_setup
-  m="code-audit-maintainer-shell"
-  run bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE"
+  member="code-audit-maintainer-shell"
+  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA"
   [ "$status" -eq 0 ]
   grep -qF "no findings sidecar" <<<"$output"
-  d="$(member_digest "$ROOT" "$m")"
-  [ -f "$AUDIT_DIR/${d}.${m}.refused" ]
+  digest="$(member_digest "$ROOT" "$member")"
+  [ -f "$AUDIT_DIRECTORY/${digest}.${member}.refused" ]
   [ -f "$LEDGER" ] && return 1
   return 0
 }
 
 @test "ledger: an unresolvable audit key warns and never fails the marker write" {
   ledger_setup
-  m="code-audit-maintainer-shell"
-  write_sidecar_for "$m" 113
+  member="code-audit-maintainer-shell"
+  write_sidecar_for "$member" 113
   git -C "$ROOT" checkout --quiet --detach HEAD
-  d="$(member_digest "$ROOT" "$m")"
-  run bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE"
+  digest="$(member_digest "$ROOT" "$member")"
+  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA"
   [ "$status" -eq 0 ]
   grep -qF "audit key does not resolve" <<<"$output"
-  [ -f "$AUDIT_DIR/${d}.${m}.refused" ]
+  [ -f "$AUDIT_DIRECTORY/${digest}.${member}.refused" ]
 }
 
 @test "ledger: the marker is published BEFORE any ledger work, so a ledger failure cannot lose it" {
@@ -1003,7 +1003,7 @@ write_sidecar_for() {
   # the order is load-bearing: reversing it would let a ledger problem abort a
   # write that must always land. Every behavioural test above stays green under a
   # reorder, so only this can catch one.
-  publish_line="$(grep -nF 'mv -f "$tmp" "$target"' "$WRITER" | head -1 | cut -d: -f1)"
+  publish_line="$(grep -nF 'mv -f "$temporary_file" "$target"' "$WRITER" | head -1 | cut -d: -f1)"
   ledger_line="$(grep -nF 'Re-run carry-forward ledger (only with --base)' "$WRITER" | head -1 | cut -d: -f1)"
   [ -n "$publish_line" ] || return 1
   [ -n "$ledger_line" ] || return 1
@@ -1030,7 +1030,7 @@ write_sidecar_for() {
 
 # Install a post-audit-status.sh stub under ROOT that records its argv.
 install_status_hook_stub() {
-  local rc="${1:-0}"
+  local exit_status="${1:-0}"
   mkdir -p "$ROOT/.claude/hooks"
   STATUS_CALLS="$BATS_TEST_TMPDIR/status-calls"
   : > "$STATUS_CALLS"
@@ -1038,7 +1038,7 @@ install_status_hook_stub() {
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> "$STATUS_CALLS"
 echo "status: stub"
-exit $rc
+exit $exit_status
 EOF
   chmod +x "$ROOT/.claude/hooks/post-audit-status.sh"
 }
@@ -1093,10 +1093,10 @@ EOF
 
   # stdout is the writer's marker-path contract; the hook's chatter goes to
   # stderr so a caller capturing the path gets the path and nothing else.
-  out="$(env -u GITHUB_ACTIONS -u CI bash "$WRITER" \
+  written_path="$(env -u GITHUB_ACTIONS -u CI bash "$WRITER" \
     --root "$ROOT" --member code-audit-frontend --provenance refused 2>/dev/null)"
-  [ "$out" = "$AUDIT_DIR/${digest}.refused" ]
-  [ -f "$AUDIT_DIR/${digest}.refused" ]
+  [ "$written_path" = "$AUDIT_DIRECTORY/${digest}.refused" ]
+  [ -f "$AUDIT_DIRECTORY/${digest}.refused" ]
   grep -qF -- "${digest}.refused" "$STATUS_CALLS" || return 1
 }
 
@@ -1108,7 +1108,7 @@ EOF
   run env -u GITHUB_ACTIONS -u CI bash "$WRITER" \
     --root "$ROOT" --member code-audit-frontend --provenance refused
   [ "$status" -eq 0 ]
-  [ -f "$AUDIT_DIR/${digest}.refused" ]
+  [ -f "$AUDIT_DIRECTORY/${digest}.refused" ]
 }
 
 # -----------------------------------------------------------------------------
@@ -1126,13 +1126,13 @@ EOF
   # A legitimately earned prior marker for a DIFFERENT member+digest, so the
   # byte-identity assertion below proves the refusal leaves it alone rather
   # than merely finding an empty directory.
-  other_m="code-audit-maintainer-shell"
-  bash "$WRITER" --root "$ROOT" --member "$other_m" --provenance earned \
-    --scope-digest "$(member_digest "$ROOT" "$other_m")" >/dev/null
+  other_member="code-audit-maintainer-shell"
+  bash "$WRITER" --root "$ROOT" --member "$other_member" --provenance earned \
+    --scope-digest "$(member_digest "$ROOT" "$other_member")" >/dev/null
 
   snapshot="$BATS_TEST_TMPDIR/audit-snapshot"
   rm -rf "$snapshot"
-  cp -a "$AUDIT_DIR" "$snapshot"
+  cp -a "$AUDIT_DIRECTORY" "$snapshot"
 
   # Rotate every member's digest: a machinery-path change, not an owned-file
   # change, so the rotation is not specific to this member's own globs.
@@ -1150,16 +1150,16 @@ EOF
 
   # Nothing on disk moved: no artifact of either family created, modified, or
   # removed, and the prior marker written above is untouched.
-  diff -r "$snapshot" "$AUDIT_DIR"
+  diff -r "$snapshot" "$AUDIT_DIRECTORY"
 }
 
 @test "UAT-002: a matching scope digest publishes exactly as before" {
   digest="$(member_digest "$ROOT" code-audit-frontend)"
-  out="$(bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned --scope-digest "$digest")"
-  [ "$out" = "$AUDIT_DIR/${digest}.ok" ]
-  [ -f "$out" ]
-  [ "$(jq -r .provenance "$out")" = "earned" ]
-  [ "$(jq -r .digest "$out")" = "$digest" ]
+  written_path="$(bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned --scope-digest "$digest")"
+  [ "$written_path" = "$AUDIT_DIRECTORY/${digest}.ok" ]
+  [ -f "$written_path" ]
+  [ "$(jq -r .provenance "$written_path")" = "earned" ]
+  [ "$(jq -r .digest "$written_path")" = "$digest" ]
 }
 
 @test "UAT-003a: an out-of-glob commit does not rotate the digest; the captured scope digest still publishes" {
@@ -1169,9 +1169,9 @@ EOF
   git -C "$ROOT" commit --quiet -m "changelog"
   [ "$(member_digest "$ROOT" code-audit-frontend)" = "$digest" ]
 
-  out="$(bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned --scope-digest "$digest")"
-  [ "$out" = "$AUDIT_DIR/${digest}.ok" ]
-  [ -f "$out" ]
+  written_path="$(bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned --scope-digest "$digest")"
+  [ "$written_path" = "$AUDIT_DIRECTORY/${digest}.ok" ]
+  [ -f "$written_path" ]
 }
 
 @test "UAT-003b: an empty commit does not rotate the digest; the captured scope digest still publishes" {
@@ -1179,9 +1179,9 @@ EOF
   git -C "$ROOT" commit --quiet --allow-empty -m "empty"
   [ "$(member_digest "$ROOT" code-audit-frontend)" = "$digest" ]
 
-  out="$(bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned --scope-digest "$digest")"
-  [ "$out" = "$AUDIT_DIR/${digest}.ok" ]
-  [ -f "$out" ]
+  written_path="$(bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned --scope-digest "$digest")"
+  [ "$written_path" = "$AUDIT_DIRECTORY/${digest}.ok" ]
+  [ -f "$written_path" ]
 }
 
 @test "UAT-004: an absent --scope-digest refuses by its own distinct token" {
@@ -1251,9 +1251,9 @@ removal itself failed"
   returns="$(grep -oE 'return [0-9]+' <<<"$helper" | sed 's/^return //')"
   [ -n "$returns" ]
   uncaught=0
-  while IFS= read -r st; do
-    [ -n "$st" ] || continue
-    grep -qxF -- "$st" <<<"$arms" || uncaught=$((uncaught + 1))
+  while IFS= read -r return_status; do
+    [ -n "$return_status" ] || continue
+    grep -qxF -- "$return_status" <<<"$arms" || uncaught=$((uncaught + 1))
   done <<<"$returns"
   [ "$uncaught" -eq "$(grep -c . <<<"$causes")" ]
 
@@ -1269,27 +1269,27 @@ removal itself failed"
 }
 
 @test "UAT-012: --provenance refused ignores a stale --scope-digest and behaves exactly as before" {
-  m="code-audit-maintainer-shell"
-  d="$(member_digest "$ROOT" "$m")"
+  member="code-audit-maintainer-shell"
+  digest="$(member_digest "$ROOT" "$member")"
   stale="ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
-  out="$(bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --scope-digest "$stale")"
-  [ "$out" = "$AUDIT_DIR/${d}.${m}.refused" ]
-  [ -f "$out" ]
-  [ "$(jq -r .provenance "$out")" = "refused" ]
+  written_path="$(bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --scope-digest "$stale")"
+  [ "$written_path" = "$AUDIT_DIRECTORY/${digest}.${member}.refused" ]
+  [ -f "$written_path" ]
+  [ "$(jq -r .provenance "$written_path")" = "refused" ]
 }
 
 @test "UAT-012: an earned write carrying --supersede-refusal ignores a stale --scope-digest, publishes, and removes the sibling refusal" {
-  m="code-audit-maintainer-shell"
-  d="$(member_digest "$ROOT" "$m")"
-  refused="$AUDIT_DIR/${d}.${m}.refused"
-  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused >/dev/null
+  member="code-audit-maintainer-shell"
+  digest="$(member_digest "$ROOT" "$member")"
+  refused="$AUDIT_DIRECTORY/${digest}.${member}.refused"
+  bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused >/dev/null
   [ -f "$refused" ] || return 1
 
   stale="ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
-  out="$(bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned \
+  written_path="$(bash "$WRITER" --root "$ROOT" --member "$member" --provenance earned \
     --supersede-refusal "operator accepted the tradeoff" --scope-digest "$stale")"
-  [ "$out" = "$AUDIT_DIR/${d}.${m}.ok" ]
-  [ "$(jq -r .provenance "$out")" = "earned" ]
+  [ "$written_path" = "$AUDIT_DIRECTORY/${digest}.${member}.ok" ]
+  [ "$(jq -r .provenance "$written_path")" = "earned" ]
   [ ! -f "$refused" ]
 }
 
@@ -1297,7 +1297,7 @@ removal itself failed"
   run bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned --scope-digest "not-a-digest"
   [ "$status" -eq 2 ]
   grep -qF -- "--scope-digest must be a 64-hex digest" <<<"$output" || return 1
-  leftover="$(find "$AUDIT_DIR" -name '*.ok' 2>/dev/null || true)"
+  leftover="$(find "$AUDIT_DIRECTORY" -name '*.ok' 2>/dev/null || true)"
   [ -z "$leftover" ]
 }
 
@@ -1314,6 +1314,6 @@ removal itself failed"
     --provenance earned --scope-digest ""
   [ "$status" -eq 2 ]
   grep -qF -- "--scope-digest must be a 64-hex digest" <<<"$output" || return 1
-  leftover="$(find "$AUDIT_DIR" -name '*.ok' 2>/dev/null || true)"
+  leftover="$(find "$AUDIT_DIRECTORY" -name '*.ok' 2>/dev/null || true)"
   [ -z "$leftover" ]
 }

@@ -12,7 +12,7 @@ bats_require_minimum_version 1.5.0
 # Conventions. Every test builds a temp git repo with the repository's real
 # .gitignore and a distributed table (fixtures/rates-feed-e2e/dist-table.json)
 # committed at .gaia/scripts/token-rates.json, and runs the real scripts from
-# inside it. setup() points GAIA_RATES_STATE_DIR at a per-test dir and sets
+# inside it. setup() points GAIA_RATES_STATE_DIRECTORY at a per-test dir and sets
 # GAIA_RATES_FEED_DISABLE=1, so no test reaches the network by accident; a test
 # that expects a request calls feed_on, which unsets the variable (CI exports
 # =1 workflow-wide) and sets GAIA_RATES_FEED_URL. The one test that leaves the
@@ -50,7 +50,7 @@ REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
 SCRIPTS="$REPO_ROOT/.gaia/scripts"
 TALLY="$SCRIPTS/token-tally.sh"
 ROLLUP="$SCRIPTS/token-rollup.sh"
-FX="$BATS_TEST_DIRNAME/fixtures/rates-feed-e2e"
+FIXTURES="$BATS_TEST_DIRNAME/fixtures/rates-feed-e2e"
 STUBLIB="$BATS_TEST_DIRNAME/fixtures/rates-feed/stub-lib.sh"
 
 OPUS6_MARKER='(lower bound: unpriced model(s) claude-opus-6)'
@@ -61,9 +61,9 @@ setup() {
   # shellcheck source=fixtures/rates-feed/stub-lib.sh
   source "$STUBLIB"
   unset GAIA_RATES_FEED_URL
-  export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state"
+  export GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
   export GAIA_RATES_FEED_DISABLE=1
-  use_state "$GAIA_RATES_STATE_DIR"
+  use_state "$GAIA_RATES_STATE_DIRECTORY"
 
   LEDGER="$BATS_TEST_TMPDIR/ledger.jsonl"
   REVLEDGER="$BATS_TEST_TMPDIR/review-ledger.jsonl"
@@ -79,7 +79,7 @@ setup() {
   mkdir -p "$FIXREPO/.gaia/scripts"
   git -C "$FIXREPO" init -q
   cp "$REPO_ROOT/.gitignore" "$FIXREPO/.gitignore"
-  cp "$FX/dist-table.json" "$FIXREPO/.gaia/scripts/token-rates.json"
+  cp "$FIXTURES/dist-table.json" "$FIXREPO/.gaia/scripts/token-rates.json"
   git -C "$FIXREPO" add -A
   git -C "$FIXREPO" commit -q -m "fixture: distributed table"
   cd "$FIXREPO" || return 1
@@ -96,8 +96,8 @@ use_state() {
   STATE="$1"
   LOCAL="$STATE/token-rates.json"
   BASE="$STATE/token-rates.base.json"
-  FSTATE="$STATE/token-rates.feed-state.json"
-  export GAIA_RATES_STATE_DIR="$STATE"
+  FEED_STATE_FILE="$STATE/token-rates.feed-state.json"
+  export GAIA_RATES_STATE_DIRECTORY="$STATE"
 }
 
 feed_on() {
@@ -109,7 +109,7 @@ start_stub() {
   rates_stub_start_or_skip tls "$@"
 }
 
-now_ms() {
+now_milliseconds() {
   python3 -c 'import time; print(int(time.time() * 1000))'
 }
 
@@ -128,22 +128,22 @@ table_id() {
 
 # jq_edit <file> <filter> [jq args...]: rewrite a JSON file in place.
 jq_edit() {
-  local file="$1" filter="$2" tmp
+  local file="$1" filter="$2" temporary_file
   shift 2
-  tmp="$file.edit"
-  jq "$@" "$filter" "$file" >"$tmp" && mv "$tmp" "$file"
+  temporary_file="$file.edit"
+  jq "$@" "$filter" "$file" >"$temporary_file" && mv "$temporary_file" "$file"
 }
 
 set_feed_state() {
-  printf '%s' "$1" >"$FSTATE"
+  printf '%s' "$1" >"$FEED_STATE_FILE"
 }
 
 # tally <projects-dir> <session> [extra args]: one `--action command` run.
 tally() {
-  local proj="$1" sess="$2"
+  local projects_fixture="$1" session_id="$2"
   shift 2
   run --separate-stderr bash "$TALLY" --action command --command gaia-audit \
-    --session-id "$sess" --projects-root "$FX/$proj" --ledger "$LEDGER" \
+    --session-id "$session_id" --projects-root "$FIXTURES/$projects_fixture" --ledger "$LEDGER" \
     --cache-dir "$CACHE" "$@"
 }
 
@@ -154,19 +154,19 @@ tally_opus6() {
 
 review_tally() {
   run --separate-stderr bash "$TALLY" --action review \
-    --session-id e2ereview0001 --projects-root "$FX/projects-review" \
+    --session-id e2ereview0001 --projects-root "$FIXTURES/projects-review" \
     --ledger "$REVLEDGER" --cache-dir "$CACHE"
 }
 
 rollup() {
-  run --separate-stderr bash "$ROLLUP" --spec-id SPEC-290 --ledger "$FX/ledger-opus67.jsonl"
+  run --separate-stderr bash "$ROLLUP" --spec-id SPEC-290 --ledger "$FIXTURES/ledger-opus67.jsonl"
 }
 
-out_has() {
+output_has() {
   grep -qF -- "$1" <<<"$output"
 }
 
-err_lines() {
+error_lines() {
   grep -c -- "$1" <<<"$stderr" || true
 }
 
@@ -175,7 +175,7 @@ feed_lines() {
 }
 
 local_has() {
-  jq -e --arg m "$1" '.models | has($m)' "$LOCAL" >/dev/null
+  jq -e --arg model "$1" '.models | has($model)' "$LOCAL" >/dev/null
 }
 
 last_ledger() {
@@ -187,11 +187,11 @@ last_ledger() {
 # `unpriced`. Args: <printed figure, e.g. $10.50> <ledger dollars, e.g. 10.5>.
 assert_priced_command() {
   [ "$status" -eq 0 ] || { echo "status=$status" >&2; return 1; }
-  out_has "$1" || { echo "no $1 in: $output" >&2; return 1; }
-  out_has 'lower bound' && { echo "marker in: $output" >&2; return 1; }
-  out_has 'unavailable' && { echo "unavailable in: $output" >&2; return 1; }
-  last_ledger | jq -e --argjson d "$2" \
-    '.dollars == $d and .dollars != 0 and (has("unpriced") | not)' >/dev/null \
+  output_has "$1" || { echo "no $1 in: $output" >&2; return 1; }
+  output_has 'lower bound' && { echo "marker in: $output" >&2; return 1; }
+  output_has 'unavailable' && { echo "unavailable in: $output" >&2; return 1; }
+  last_ledger | jq -e --argjson dollars "$2" \
+    '.dollars == $dollars and .dollars != 0 and (has("unpriced") | not)' >/dev/null \
     || { echo "ledger row not priced: $(last_ledger)" >&2; return 1; }
   return 0
 }
@@ -199,21 +199,21 @@ assert_priced_command() {
 # The lower-bound run: exit 0 and the marker on stdout.
 assert_marked() {
   [ "$status" -eq 0 ] || { echo "status=$status" >&2; return 1; }
-  out_has "$1" || { echo "no marker $1 in: $output" >&2; return 1; }
+  output_has "$1" || { echo "no marker $1 in: $output" >&2; return 1; }
   return 0
 }
 
 # ---------- UAT-006 ----------
 
 @test "UAT-006: one request heals claude-opus-6 into the local table and the same run is a priced line" {
-  start_stub serve "$FX/feed-opus6.json"
+  start_stub serve "$FIXTURES/feed-opus6.json"
   feed_on "$RATES_STUB_URL"
   tally projects-mixed e2emixed0001
   # $20.50 = opus-5 $10.00 + opus-6 $10.50, so the figure includes opus-6's share.
   assert_priced_command '$20.50' 20.5 || return 1
   [ "$(rates_stub_count)" = "1" ] || return 1
-  jq -e --slurpfile f "$FX/feed-opus6.json" \
-    '.models["claude-opus-6"] == ($f[0].models["claude-opus-6"] | map(. + {source: "feed"}))' \
+  jq -e --slurpfile feed_file "$FIXTURES/feed-opus6.json" \
+    '.models["claude-opus-6"] == ($feed_file[0].models["claude-opus-6"] | map(. + {source: "feed"}))' \
     "$LOCAL" >/dev/null || { echo "local row: $(jq -c '.models["claude-opus-6"]' "$LOCAL")" >&2; return 1; }
   [ "$(last_ledger | jq -r '.rate_table_id')" = "$(table_id "$LOCAL")" ] || return 1
   true
@@ -222,7 +222,7 @@ assert_marked() {
 # ---------- UAT-007 ----------
 
 @test "UAT-007: a model the feed does not price stays a lower bound and refetches nothing within the hour" {
-  start_stub serve "$FX/feed-opus6.json"
+  start_stub serve "$FIXTURES/feed-opus6.json"
   feed_on "$RATES_STUB_URL"
   tally projects-preview9 e2epreview90001
   assert_marked "$PREVIEW9_MARKER" || return 1
@@ -238,23 +238,23 @@ assert_marked() {
 # state. Exit 0, the marker, the local table byte-identical, and a stalling case
 # within 6 s of a feed-disabled run of the same fixture.
 uat008_case() {
-  local mode="$1" base_t0 base_t1 t0 t1 baseline elapsed
-  start_stub "$mode" "$FX/feed-opus6.json"
+  local mode="$1" baseline_start_milliseconds baseline_end_milliseconds start_milliseconds end_milliseconds baseline elapsed
+  start_stub "$mode" "$FIXTURES/feed-opus6.json"
   seed_state || return 1
   cp "$LOCAL" "$BATS_TEST_TMPDIR/local.before"
 
-  base_t0="$(now_ms)"
+  baseline_start_milliseconds="$(now_milliseconds)"
   tally_opus6
-  base_t1="$(now_ms)"
-  baseline=$((base_t1 - base_t0))
+  baseline_end_milliseconds="$(now_milliseconds)"
+  baseline=$((baseline_end_milliseconds - baseline_start_milliseconds))
   assert_marked "$OPUS6_MARKER" || return 1
 
   feed_on "$RATES_STUB_URL"
-  rm -f "$FSTATE"
-  t0="$(now_ms)"
+  rm -f "$FEED_STATE_FILE"
+  start_milliseconds="$(now_milliseconds)"
   tally_opus6
-  t1="$(now_ms)"
-  elapsed=$((t1 - t0))
+  end_milliseconds="$(now_milliseconds)"
+  elapsed=$((end_milliseconds - start_milliseconds))
 
   assert_marked "$OPUS6_MARKER" || return 1
   cmp -s "$BATS_TEST_TMPDIR/local.before" "$LOCAL" || { echo "local table changed" >&2; return 1; }
@@ -266,17 +266,17 @@ uat008_case() {
 
 @test "UAT-008: a refused connection leaves the table byte-identical and the readout a lower bound" {
   local url
-  start_stub serve "$FX/feed-opus6.json"
+  start_stub serve "$FIXTURES/feed-opus6.json"
   url="$(rates_stub_refuse_url)" || return 1
   seed_state || return 1
   cp "$LOCAL" "$BATS_TEST_TMPDIR/local.before"
   feed_on "$url"
-  rm -f "$FSTATE"
+  rm -f "$FEED_STATE_FILE"
   tally_opus6
   assert_marked "$OPUS6_MARKER" || return 1
   cmp -s "$BATS_TEST_TMPDIR/local.before" "$LOCAL" || return 1
   # No listener sees the attempt, so the feed state is where it shows.
-  jq -e '.failed_at | type == "number"' "$FSTATE" >/dev/null || return 1
+  jq -e '.failed_at | type == "number"' "$FEED_STATE_FILE" >/dev/null || return 1
   true
 }
 
@@ -308,7 +308,7 @@ uat008_case() {
 
 @test "UAT-009: GAIA_RATES_FEED_DISABLE=1 makes no request on any path; unset or =true it does" {
   local plain_count
-  start_stub serve "$FX/feed-opus6.json"
+  start_stub serve "$FIXTURES/feed-opus6.json"
   export GAIA_RATES_FEED_URL="$RATES_STUB_URL"
   # GAIA_RATES_FEED_DISABLE=1 stays exported from setup.
 
@@ -347,13 +347,13 @@ uat008_case() {
 
 @test "UAT-010: an invalid claude-opus-6 row is never written, in each of the eleven shapes" {
   local cases name count fails="" before
-  cases="$(jq -r 'keys[]' "$FX/invalid-rows.json")"
+  cases="$(jq -r 'keys[]' "$FIXTURES/invalid-rows.json")"
   count="$(printf '%s\n' "$cases" | grep -c .)"
   # The SPEC names eleven invalid-row shapes; a short read of the fixture must
   # fail here, not quietly drive a subset.
   [ "$count" -eq 11 ] || { echo "invalid-rows.json has $count cases, expected 11" >&2; return 1; }
 
-  start_stub serve "$FX/feed-opus6.json"
+  start_stub serve "$FIXTURES/feed-opus6.json"
 
   # Control: the same path with a valid row does heal, so a rejection below is
   # the validator's, not a dead stub or URL.
@@ -364,14 +364,14 @@ uat008_case() {
   local_has claude-opus-6 || return 1
 
   for name in $cases; do
-    jq -c --arg n "$name" '{models: {"claude-opus-6": .[$n]}}' "$FX/invalid-rows.json" \
+    jq -c --arg case_name "$name" '{models: {"claude-opus-6": .[$case_name]}}' "$FIXTURES/invalid-rows.json" \
       >"$BATS_TEST_TMPDIR/body-$name.json"
     rates_stub_set_mode serve "$BATS_TEST_TMPDIR/body-$name.json"
     use_state "$BATS_TEST_TMPDIR/rates-state-$name"
     before="$(rates_stub_count)"
     tally_opus6
     if [ "$status" -ne 0 ]; then fails="$fails $name(status=$status)"; continue; fi
-    out_has "$OPUS6_MARKER" || { fails="$fails $name(no-marker)"; continue; }
+    output_has "$OPUS6_MARKER" || { fails="$fails $name(no-marker)"; continue; }
     if local_has claude-opus-6; then fails="$fails $name(row-written)"; continue; fi
     [ "$(($(rates_stub_count) - before))" -eq 1 ] || fails="$fails $name(no-request)"
   done
@@ -385,8 +385,8 @@ uat008_case() {
 # ---------- UAT-016 ----------
 
 @test "UAT-016: the request is one plain GET with default headers only, whatever .curlrc says" {
-  local home path names bad fixp projid
-  start_stub serve "$FX/feed-opus6.json"
+  local home path names bad fixture_repo_path project_id
+  start_stub serve "$FIXTURES/feed-opus6.json"
   feed_on "$RATES_STUB_URL"
   home="$BATS_TEST_TMPDIR/home"
   mkdir -p "$home"
@@ -398,32 +398,32 @@ uat008_case() {
   [ "$(rates_stub_count)" = "1" ] || return 1
 
   path="/${RATES_STUB_URL#*://*/}"
-  [ "$(head -n 1 "$RATES_STUB_REQS")" = "GET $path HTTP/1.1" ] \
-    || { echo "request line: $(head -n 1 "$RATES_STUB_REQS")" >&2; return 1; }
+  [ "$(head -n 1 "$RATES_STUB_REQUESTS")" = "GET $path HTTP/1.1" ] \
+    || { echo "request line: $(head -n 1 "$RATES_STUB_REQUESTS")" >&2; return 1; }
 
-  names="$(awk '{n = $2; sub(/:$/, "", n); print n}' "$RATES_STUB_HDRS" | sort -u)"
+  names="$(awk '{header_name = $2; sub(/:$/, "", header_name); print header_name}' "$RATES_STUB_HEADERS" | sort -u)"
   [ -n "$names" ] || { echo "no headers logged" >&2; return 1; }
   bad="$(printf '%s\n' "$names" | grep -v -x -e Host -e User-Agent -e Accept || true)"
   [ -z "$bad" ] || { echo "unexpected headers: $bad" >&2; return 1; }
-  grep -qi 'x-leak' "$RATES_STUB_HDRS" && return 1
+  grep -qi 'x-leak' "$RATES_STUB_HEADERS" && return 1
   # No request body: no Content-Length, or a zero one.
-  if grep -qi '^[0-9]* content-length:' "$RATES_STUB_HDRS"; then
-    grep -i '^[0-9]* content-length:' "$RATES_STUB_HDRS" | grep -qv ': 0$' && return 1
+  if grep -qi '^[0-9]* content-length:' "$RATES_STUB_HEADERS"; then
+    grep -i '^[0-9]* content-length:' "$RATES_STUB_HEADERS" | grep -qv ': 0$' && return 1
   fi
 
-  fixp="$(cd "$FIXREPO" && pwd -P)"
-  projid="$(last_ledger | jq -r '.project')"
-  [ -n "$projid" ] && [ "$projid" != "null" ] || { echo "no project id in ledger row" >&2; return 1; }
-  grep -qF -- "$FIXREPO" "$RATES_STUB_HDRS" && return 1
-  grep -qF -- "$fixp" "$RATES_STUB_HDRS" && return 1
-  grep -qF -- "$projid" "$RATES_STUB_HDRS" && return 1
+  fixture_repo_path="$(cd "$FIXREPO" && pwd -P)"
+  project_id="$(last_ledger | jq -r '.project')"
+  [ -n "$project_id" ] && [ "$project_id" != "null" ] || { echo "no project id in ledger row" >&2; return 1; }
+  grep -qF -- "$FIXREPO" "$RATES_STUB_HEADERS" && return 1
+  grep -qF -- "$fixture_repo_path" "$RATES_STUB_HEADERS" && return 1
+  grep -qF -- "$project_id" "$RATES_STUB_HEADERS" && return 1
   true
 }
 
 # ---------- UAT-019 ----------
 
 @test "UAT-019: with no URL override the shipped default URL is fetched once with the pinned curl argv" {
-  local shim="$BATS_TEST_TMPDIR/shim" argv="$BATS_TEST_TMPDIR/curl-argv" default_url joined arg
+  local shim="$BATS_TEST_TMPDIR/shim" argv="$BATS_TEST_TMPDIR/curl-argv" default_url joined curl_argument
   mkdir -p "$shim"
   cat >"$shim/curl" <<'SHIM'
 #!/bin/sh
@@ -432,7 +432,7 @@ printf '%s\n' "$@" >>"$SHIM_ARGV"
 cat "$SHIM_BODY"
 SHIM
   chmod +x "$shim/curl"
-  export SHIM_ARGV="$argv" SHIM_BODY="$FX/feed-opus6.json"
+  export SHIM_ARGV="$argv" SHIM_BODY="$FIXTURES/feed-opus6.json"
   export PATH="$shim:$PATH"
   unset GAIA_RATES_FEED_URL GAIA_RATES_FEED_DISABLE
   default_url="$(bash -c '. "$1"; printf %s "$GAIA_RATES_FEED_DEFAULT_URL"' _ "$SCRIPTS/token-pricing-lib.sh")"
@@ -444,11 +444,11 @@ SHIM
   [ "$(grep -c -x -e '--CALL--' "$argv")" = "1" ] || { cat "$argv" >&2; return 1; }
   [ "$(tail -n 1 "$argv")" = "$default_url" ] || { echo "last arg: $(tail -n 1 "$argv")" >&2; return 1; }
   joined=" $(grep -v -x -e '--CALL--' "$argv" | tr '\n' ' ')"
-  for arg in ' -q ' ' -fsS ' ' --proto =https ' ' --connect-timeout 2 ' ' --max-time 4 ' ' --max-filesize 262144 '; do
-    grep -qF -- "$arg" <<<"$joined" || { echo "missing '$arg' in:$joined" >&2; return 1; }
+  for curl_argument in ' -q ' ' -fsS ' ' --proto =https ' ' --connect-timeout 2 ' ' --max-time 4 ' ' --max-filesize 262144 '; do
+    grep -qF -- "$curl_argument" <<<"$joined" || { echo "missing '$curl_argument' in:$joined" >&2; return 1; }
   done
-  for arg in -L --location -H --header -A --user-agent -d --data --data-raw -o --output; do
-    grep -qx -e "$arg" "$argv" && { echo "forbidden argument $arg" >&2; return 1; }
+  for curl_argument in -L --location -H --header -A --user-agent -d --data --data-raw -o --output; do
+    grep -qx -e "$curl_argument" "$argv" && { echo "forbidden argument $curl_argument" >&2; return 1; }
   done
   grep -qF '?' "$argv" && { echo "query string in argv" >&2; return 1; }
   true
@@ -461,33 +461,33 @@ SHIM
 scheme_refused() {
   local scheme="$1"
   [ "$status" -eq 0 ] || return 1
-  out_has "$OPUS6_MARKER" || return 1
-  [ "$(err_lines "scheme '$scheme'")" = "1" ] \
+  output_has "$OPUS6_MARKER" || return 1
+  [ "$(error_lines "scheme '$scheme'")" = "1" ] \
     || { echo "stderr: $stderr" >&2; return 1; }
   if local_has claude-opus-6; then return 1; fi
-  [ "$(wc -l <"$RATES_PLAIN_REQS" | tr -d ' ')" = "0" ] || return 1
+  [ "$(wc -l <"$RATES_PLAIN_REQUESTS" | tr -d ' ')" = "0" ] || return 1
   # Control: the listener does log a request when one is made.
   curl -fsS "$RATES_PLAIN_URL" >/dev/null || return 1
-  [ "$(wc -l <"$RATES_PLAIN_REQS" | tr -d ' ')" = "1" ] || return 1
+  [ "$(wc -l <"$RATES_PLAIN_REQUESTS" | tr -d ' ')" = "1" ] || return 1
   true
 }
 
 @test "UAT-020: an http:// URL makes no request and names the scheme once" {
-  rates_stub_start_or_skip plain "$FX/feed-opus6.json"
+  rates_stub_start_or_skip plain "$FIXTURES/feed-opus6.json"
   feed_on "$RATES_PLAIN_URL"
   tally_opus6
   scheme_refused http
 }
 
 @test "UAT-020: an ftp:// URL makes no request and names the scheme once" {
-  rates_stub_start_or_skip plain "$FX/feed-opus6.json"
+  rates_stub_start_or_skip plain "$FIXTURES/feed-opus6.json"
   feed_on "ftp://127.0.0.1:1/token-rates.json"
   tally_opus6
   scheme_refused ftp
 }
 
 @test "UAT-020: a file:// URL of a fixture table heals and prices" {
-  feed_on "file://$FX/feed-opus6.json"
+  feed_on "file://$FIXTURES/feed-opus6.json"
   tally_opus6
   assert_priced_command '$10.50' 10.5 || return 1
   local_has claude-opus-6 || return 1
@@ -496,37 +496,37 @@ scheme_refused() {
 # ---------- UAT-021 ----------
 
 @test "UAT-021: a refused feed backs off for the hour, then retries once and heals" {
-  local url b0 b1 t0 t1 baseline elapsed
-  start_stub serve "$FX/feed-opus6.json"
+  local url baseline_start_milliseconds baseline_end_milliseconds start_milliseconds end_milliseconds baseline elapsed
+  start_stub serve "$FIXTURES/feed-opus6.json"
   url="$(rates_stub_refuse_url)" || return 1
 
-  b0="$(now_ms)"
+  baseline_start_milliseconds="$(now_milliseconds)"
   tally_opus6
-  b1="$(now_ms)"
-  baseline=$((b1 - b0))
+  baseline_end_milliseconds="$(now_milliseconds)"
+  baseline=$((baseline_end_milliseconds - baseline_start_milliseconds))
   assert_marked "$OPUS6_MARKER" || return 1
 
   # Run 1: one attempt, seen through the feed state (nothing listens).
   feed_on "$url"
-  if [ -f "$FSTATE" ]; then
-    jq -e '.failed_at == null' "$FSTATE" >/dev/null || return 1
+  if [ -f "$FEED_STATE_FILE" ]; then
+    jq -e '.failed_at == null' "$FEED_STATE_FILE" >/dev/null || return 1
   fi
   tally_opus6
   assert_marked "$OPUS6_MARKER" || return 1
-  jq -e '.failed_at | type == "number"' "$FSTATE" >/dev/null || return 1
+  jq -e '.failed_at | type == "number"' "$FEED_STATE_FILE" >/dev/null || return 1
 
   # Run 2: within the hour, the stub now serves, and still no request.
   feed_on "$RATES_STUB_URL"
-  t0="$(now_ms)"
+  start_milliseconds="$(now_milliseconds)"
   tally_opus6
-  t1="$(now_ms)"
-  elapsed=$((t1 - t0))
+  end_milliseconds="$(now_milliseconds)"
+  elapsed=$((end_milliseconds - start_milliseconds))
   assert_marked "$OPUS6_MARKER" || return 1
   [ "$(rates_stub_count)" = "0" ] || return 1
   [ $((elapsed - baseline)) -lt 1000 ] || { echo "elapsed ${elapsed}ms vs baseline ${baseline}ms" >&2; return 1; }
 
   # Run 3: the record backdated past the hour: exactly one request, healed.
-  jq_edit "$FSTATE" '.failed_at -= 7200' || return 1
+  jq_edit "$FEED_STATE_FILE" '.failed_at -= 7200' || return 1
   tally_opus6
   assert_priced_command '$10.50' 10.5 || return 1
   [ "$(rates_stub_count)" = "1" ] || return 1
@@ -537,7 +537,7 @@ scheme_refused() {
 
 @test "UAT-022: a stale not-found record refetches, and a fresh one does not block a different model" {
   local now
-  start_stub serve "$FX/feed-opus6.json"
+  start_stub serve "$FIXTURES/feed-opus6.json"
   feed_on "$RATES_STUB_URL"
   now="$(date +%s)"
 
@@ -562,7 +562,7 @@ scheme_refused() {
 
 @test "UAT-023: a present but expired row is not absent: no request, still a lower bound, row unchanged" {
   local row_before
-  start_stub serve "$FX/feed-opus6.json"
+  start_stub serve "$FIXTURES/feed-opus6.json"
   feed_on "$RATES_STUB_URL"
   seed_state || return 1
   jq_edit "$LOCAL" '.models["claude-opus-6"] = [{"input": 7, "output": 35, "effective_through": "2020-01-01"}]' || return 1
@@ -585,7 +585,7 @@ scheme_refused() {
 # ---------- UAT-024 ----------
 
 @test "UAT-024: a feed refresh replaces an unedited fed row, spares an edited one, and adds the new model" {
-  start_stub serve "$FX/feed-corrected.json"
+  start_stub serve "$FIXTURES/feed-corrected.json"
   feed_on "$RATES_STUB_URL"
   seed_state || return 1
   # claude-opus-6 still equals its base; claude-opus-6-1 was edited (input 6 vs
@@ -610,15 +610,15 @@ scheme_refused() {
 # ---------- UAT-029 ----------
 
 @test "UAT-029: the roll-up heals both models once and prices the ledger row" {
-  start_stub serve "$FX/feed-opus67.json"
+  start_stub serve "$FIXTURES/feed-opus67.json"
   feed_on "$RATES_STUB_URL"
   rollup
   [ "$status" -eq 0 ] || return 1
   [ "$(rates_stub_count)" = "1" ] || return 1
   local_has claude-opus-6 || return 1
   local_has claude-opus-7 || return 1
-  out_has '$24.00' || { echo "$output" >&2; return 1; }
-  out_has 'unpriced model' && { echo "$output" >&2; return 1; }
+  output_has '$24.00' || { echo "$output" >&2; return 1; }
+  output_has 'unpriced model' && { echo "$output" >&2; return 1; }
   true
 }
 
@@ -628,12 +628,12 @@ scheme_refused() {
   feed_on "$url"
   rollup
   assert_marked "$BOTH_MARKER" || return 1
-  jq -e '.failed_at | type == "number"' "$FSTATE" >/dev/null || return 1
+  jq -e '.failed_at | type == "number"' "$FEED_STATE_FILE" >/dev/null || return 1
   true
 }
 
 @test "UAT-029: the roll-up over an HTTP 500 exits 0 and names both models" {
-  start_stub status500 "$FX/feed-opus67.json"
+  start_stub status500 "$FIXTURES/feed-opus67.json"
   feed_on "$RATES_STUB_URL"
   rollup
   assert_marked "$BOTH_MARKER" || return 1
@@ -645,7 +645,7 @@ scheme_refused() {
 # ---------- UAT-030 ----------
 
 @test "UAT-030: a healed review run writes priced rows against the post-heal table" {
-  start_stub serve "$FX/feed-opus6.json"
+  start_stub serve "$FIXTURES/feed-opus6.json"
   feed_on "$RATES_STUB_URL"
   review_tally
   [ "$status" -eq 0 ] || return 1
@@ -681,7 +681,7 @@ scheme_refused() {
   unset GAIA_RATES_FEED_DISABLE GAIA_RATES_FEED_URL
 
   run --separate-stderr env PATH="$farm" "$farm/bash" "$TALLY" --action command --command gaia-audit \
-    --session-id e2eopus60001 --projects-root "$FX/projects-opus6" --ledger "$LEDGER" --cache-dir "$CACHE"
+    --session-id e2eopus60001 --projects-root "$FIXTURES/projects-opus6" --ledger "$LEDGER" --cache-dir "$CACHE"
   assert_marked "$OPUS6_MARKER" || return 1
   grep -qi -e 'feed' -e 'curl' <<<"$output" && { echo "feed text on stdout: $output" >&2; return 1; }
   [ "$(feed_lines)" -le 1 ] || { echo "stderr: $stderr" >&2; return 1; }

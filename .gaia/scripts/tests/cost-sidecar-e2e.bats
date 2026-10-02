@@ -33,17 +33,17 @@ refute_contains() {
 
 setup() {
   # Isolate pricing from the developer's real rate table and the network.
-  export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state"
+  export GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
   export GAIA_RATES_FEED_DISABLE=1
-  SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
-  TALLY="$SCRIPT_DIR/token-tally.sh"
-  GATE="$SCRIPT_DIR/cost-represented.sh"
-  FIX="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-tally" && pwd)"
+  SCRIPT_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
+  TALLY="$SCRIPT_DIRECTORY/token-tally.sh"
+  GATE="$SCRIPT_DIRECTORY/cost-represented.sh"
+  FIXTURE_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-tally" && pwd)"
 
-  SINGLE="$FIX/single/projects"
-  MULTIMODEL="$FIX/multimodel/projects"
+  SINGLE="$FIXTURE_DIRECTORY/single/projects"
+  MULTIMODEL="$FIXTURE_DIRECTORY/multimodel/projects"
 
-  OUTDIR="$BATS_TEST_TMPDIR/out"
+  OUTPUT_DIRECTORY="$BATS_TEST_TMPDIR/out"
   LEDGER="$BATS_TEST_TMPDIR/cost.jsonl"
 
   # Isolated, empty audit-window cache. --action spec/plan consume-on-tally a
@@ -64,27 +64,27 @@ setup() {
 # ---------- 1. Sidecar shape from a real tally (UAT-001) ----------
 @test "spec action: real tally writes a well-shaped cost.json sidecar, no cost.md" {
   run bash "$TALLY" --action spec --spec-id SPEC-X \
-    --out-dir "$OUTDIR" --session-id "fixturesingle0001" \
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "fixturesingle0001" \
     --projects-root "$SINGLE" --ledger "$LEDGER" --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
 
-  [ -f "$OUTDIR/cost.json" ]
-  [ ! -f "$OUTDIR/cost.md" ]
+  [ -f "$OUTPUT_DIRECTORY/cost.json" ]
+  [ ! -f "$OUTPUT_DIRECTORY/cost.md" ]
 
   jq -e '.spec.kind=="spec" and .spec.spec_id=="SPEC-X"
-    and (.spec.buckets|has("fresh_input")) and (.spec|has("total"))' "$OUTDIR/cost.json"
+    and (.spec.buckets|has("fresh_input")) and (.spec|has("total"))' "$OUTPUT_DIRECTORY/cost.json"
 }
 
 # ---------- 2. Round-trip pass (UAT-003) ----------
 @test "spec action: gate passes when the real sidecar matches the real ledger row" {
   run bash "$TALLY" --action spec --spec-id SPEC-X \
-    --out-dir "$OUTDIR" --session-id "fixturesingle0001" \
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "fixturesingle0001" \
     --projects-root "$SINGLE" --ledger "$LEDGER" --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
 
   # shellcheck source=/dev/null
   . "$GATE"
-  run cost_folder_represented "$OUTDIR" spec_id SPEC-X "$LEDGER"
+  run cost_folder_represented "$OUTPUT_DIRECTORY" spec_id SPEC-X "$LEDGER"
   [ "$status" -eq 0 ]
   assert_contains "$(printf 'spec\tREPRESENTED')"
 }
@@ -92,7 +92,7 @@ setup() {
 # ---------- 3. Round-trip block: mutated bucket, then unparseable (UAT-004) ----------
 @test "spec action: gate blocks on a mutated bucket and on unparseable JSON" {
   run bash "$TALLY" --action spec --spec-id SPEC-X \
-    --out-dir "$OUTDIR" --session-id "fixturesingle0001" \
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "fixturesingle0001" \
     --projects-root "$SINGLE" --ledger "$LEDGER" --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
 
@@ -101,15 +101,15 @@ setup() {
 
   # Mutate one bucket so the sidecar record no longer matches the appended
   # ledger row (its total shifts too, so neither match branch can save it).
-  mutated="$(jq '.spec.buckets.output += 1' "$OUTDIR/cost.json")"
-  printf '%s' "$mutated" >"$OUTDIR/cost.json"
-  run cost_folder_represented "$OUTDIR" spec_id SPEC-X "$LEDGER"
+  mutated="$(jq '.spec.buckets.output += 1' "$OUTPUT_DIRECTORY/cost.json")"
+  printf '%s' "$mutated" >"$OUTPUT_DIRECTORY/cost.json"
+  run cost_folder_represented "$OUTPUT_DIRECTORY" spec_id SPEC-X "$LEDGER"
   [ "$status" -ne 0 ]
   assert_contains "$(printf 'spec\tBLOCKING\tno matching ledger row')"
 
   # A cost.json that is present but not valid JSON is unparseable -> blocking.
-  printf 'not json' >"$OUTDIR/cost.json"
-  run cost_folder_represented "$OUTDIR" spec_id SPEC-X "$LEDGER"
+  printf 'not json' >"$OUTPUT_DIRECTORY/cost.json"
+  run cost_folder_represented "$OUTPUT_DIRECTORY" spec_id SPEC-X "$LEDGER"
   [ "$status" -ne 0 ]
   assert_contains "$(printf 'unparseable\tBLOCKING\tunparseable cost.json')"
 }
@@ -117,24 +117,24 @@ setup() {
 # ---------- 4. Plan sibling preservation round-trip (UAT-002) ----------
 @test "plan then execute: gate passes for both sidecar keys, plan key byte-unchanged" {
   run bash "$TALLY" --action plan --plan-id PLAN-X --plan-slug my-plan \
-    --out-dir "$OUTDIR" --session-id "fixturesingle0001" \
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "fixturesingle0001" \
     --projects-root "$SINGLE" --ledger "$LEDGER" --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
 
-  before="$(jq -c '.plan' "$OUTDIR/cost.json")"
+  before="$(jq -c '.plan' "$OUTPUT_DIRECTORY/cost.json")"
 
   run bash "$TALLY" --action execute --plan-id PLAN-X --plan-slug my-plan \
-    --out-dir "$OUTDIR" --session-id "fixturemultimodel0001" \
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "fixturemultimodel0001" \
     --projects-root "$MULTIMODEL" --ledger "$LEDGER"
   [ "$status" -eq 0 ]
 
-  after="$(jq -c '.plan' "$OUTDIR/cost.json")"
+  after="$(jq -c '.plan' "$OUTPUT_DIRECTORY/cost.json")"
   [ "$before" = "$after" ]
-  [ "$(jq -r 'keys | sort | join(",")' "$OUTDIR/cost.json")" = "execute,plan" ]
+  [ "$(jq -r 'keys | sort | join(",")' "$OUTPUT_DIRECTORY/cost.json")" = "execute,plan" ]
 
   # shellcheck source=/dev/null
   . "$GATE"
-  run cost_folder_represented "$OUTDIR" plan_slug my-plan "$LEDGER"
+  run cost_folder_represented "$OUTPUT_DIRECTORY" plan_slug my-plan "$LEDGER"
   [ "$status" -eq 0 ]
   assert_contains "$(printf 'plan\tREPRESENTED')"
   assert_contains "$(printf 'execute\tREPRESENTED')"

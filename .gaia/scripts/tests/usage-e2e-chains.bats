@@ -9,13 +9,13 @@
 # Run under bash 5 (.claude/rules/bats-assertions.md):
 #   .gaia/scripts/bats5.sh .gaia/scripts/tests/usage-e2e-chains.bats
 #
-# Golden literals are added up by hand from the asst arguments: a message with
+# Golden literals are added up by hand from the write_assistant_message arguments: a message with
 # factor k and output o is worth 1111k + o tokens (see helpers.sh).
 
 bats_require_minimum_version 1.5.0
 
 setup() {
-  export GAIA_RATES_FEED_DISABLE=1 GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state"
+  export GAIA_RATES_FEED_DISABLE=1 GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
   # shellcheck source=fixtures/usage/e2e/helpers.sh
   . "$BATS_TEST_DIRNAME/fixtures/usage/e2e/helpers.sh"
   build_repo
@@ -23,16 +23,16 @@ setup() {
 
 # cost_row <kind> <sid> <ts> <spec_id|null> <plan_id|null>: one cost.jsonl row.
 cost_row() {
-  mkdir -p "$TD"
-  jq -nc --arg k "$1" --arg s "$2" --arg t "$3" --arg sp "$4" --arg pl "$5" \
-    '{schema_version:1,kind:$k,session_id:$s,ts:$t,spec_id:(if $sp == "null" then null else $sp end),
-      plan_id:(if $pl == "null" then null else $pl end),git_branch:"main"}' >>"$TD/cost.jsonl"
+  mkdir -p "$TELEMETRY_DIRECTORY"
+  jq -nc --arg kind "$1" --arg session_id "$2" --arg timestamp "$3" --arg spec_id "$4" --arg plan_id "$5" \
+    '{schema_version:1,kind:$kind,session_id:$session_id,ts:$timestamp,spec_id:(if $spec_id == "null" then null else $spec_id end),
+      plan_id:(if $plan_id == "null" then null else $plan_id end),git_branch:"main"}' >>"$TELEMETRY_DIRECTORY/cost.jsonl"
 }
 
 # ---------- UAT-023 (full path) ----------
 
 @test "UAT-023: a SPEC filled from the template lints, the verbatim step-9 block records its lineage, and the initiative readout includes the SPEC and its branch with no link command" {
-  local id=SPEC-095 spec fence tp
+  local id=SPEC-095 spec fence transcript_path
   spec="$REPO/.gaia/local/specs/$id/SPEC.md"
   mkdir -p "${spec%/*}"
   sed -e "s/SPEC-NNN/$id/g" -e 's/UAT-NNN/UAT-001/g' \
@@ -43,25 +43,25 @@ cost_row() {
   [ "$output" = '{"ok":true,"findings":[]}' ]
 
   fence="$(awk '
-    /^```bash$/ { buf = ""; inb = 1; next }
-    /^```$/ && inb { if (buf ~ /usage\.sh lineage/) printf "%s", buf; inb = 0; next }
-    inb { buf = buf $0 "\n" }
+    /^```bash$/ { buffer = ""; in_block = 1; next }
+    /^```$/ && in_block { if (buffer ~ /usage\.sh lineage/) printf "%s", buffer; in_block = 0; next }
+    in_block { buffer = buffer $0 "\n" }
   ' "$REPO/.claude/skills/gaia/references/spec.md" | sed "s/SPEC-NNN/$id/g")"
   [ -n "$fence" ]
   run env -u SPEC_PATH bash -c 'cd "$1" && bash -c "$2"' _ "$REPO" "$fence"
   [ "$status" -eq 0 ]
-  [ "$(jq -s '[.[] | select(.kind == "edge" and .child == "spec:SPEC-095" and .parent == "research:topic-a-2026-10-01" and .source == "spec-frontmatter")] | length' "$TD/links.jsonl")" -eq 1 ]
+  [ "$(jq -s '[.[] | select(.kind == "edge" and .child == "spec:SPEC-095" and .parent == "research:topic-a-2026-10-01" and .source == "spec-frontmatter")] | length' "$TELEMETRY_DIRECTORY/links.jsonl")" -eq 1 ]
   rm -rf "${spec%/*}"
 
-  tp="$(tpath s-p)"
-  asst "$tp" s-p "$REPO" plan/spec-095-foo p1 2026-10-01T09:00:01.000Z 1 1
-  tp="$(tpath s-sp)"
-  asst "$tp" s-sp "$REPO" main q1 2026-10-01T10:00:01.000Z 2 2 "$(skill_tool gaia-spec)"
-  asst "$tp" s-sp "$REPO" main q2 2026-10-01T10:00:05.000Z 3 3
+  transcript_path="$(transcript_path_for_session s-p)"
+  write_assistant_message "$transcript_path" s-p "$REPO" plan/spec-095-foo p1 2026-10-01T09:00:01.000Z 1 1
+  transcript_path="$(transcript_path_for_session s-sp)"
+  write_assistant_message "$transcript_path" s-sp "$REPO" main q1 2026-10-01T10:00:01.000Z 2 2 "$(skill_tool gaia-spec)"
+  write_assistant_message "$transcript_path" s-sp "$REPO" main q2 2026-10-01T10:00:05.000Z 3 3
   cost_row spec s-sp 2026-10-01T10:00:10Z SPEC-095 null
-  flush1 s-p
-  flush1 s-sp
-  run u initiative research:topic-a-2026-10-01
+  flush_session s-p
+  flush_session s-sp
+  run run_usage initiative research:topic-a-2026-10-01
   grep -Eq '^  spec:SPEC-095  tokens 5,560  est\. ' <<<"$output"
   grep -Eq '^  branch:plan/spec-095-foo  tokens 1,112  est\. ' <<<"$output"
   grep -Eq '^  total \(distinct segments\): tokens 6,672  est\. ' <<<"$output"
@@ -83,41 +83,41 @@ corpus() {
     plan:PLAN-022 plan:PLAN-1000 plan:PLAN-12 plan:plan-022 plan:PLAN-00a specs:SPEC-001
 }
 
-# parity <lint.sh>: prints one line per ref the lint and gaia_usage_valid_ref
+# parity <lint.sh>: prints one line per ref the lint and gaia_usage_valid_reference
 # disagree on; returns 1 when any.
 parity() {
-  local lint="$1" spec="$TMP/parity-spec.md" refs r lint_bad bad=0 lint_ok lib_ok
-  refs="$TMP/refs.txt"
-  corpus >"$refs"
-  awk -v rf="$refs" '/^lineage: \[\]$/ { print "lineage:"; while ((getline l < rf) > 0) print "  - " l; next } { print }' \
+  local lint="$1" spec="$TEMPORARY_DIRECTORY/parity-spec.md" references_file reference lint_bad bad=0 lint_ok library_ok
+  references_file="$TEMPORARY_DIRECTORY/refs.txt"
+  corpus >"$references_file"
+  awk -v references_file="$references_file" '/^lineage: \[\]$/ { print "lineage:"; while ((getline reference_line < references_file) > 0) print "  - " reference_line; next } { print }' \
     "$REPO/.specify/extensions/gaia/templates/spec-template.md" | sed -e 's/SPEC-NNN/SPEC-001/g' -e 's/UAT-NNN/UAT-001/g' >"$spec"
-  lint_bad="$(bash "$lint" "$spec" | jq -r '.findings[] | select(.code == "invalid_lineage") | .message | capture("'"'"'(?<r>.*)'"'"'$").r')"
+  lint_bad="$(bash "$lint" "$spec" | jq -r '.findings[] | select(.code == "invalid_lineage") | .message | capture("'"'"'(?<reference>.*)'"'"'$").reference')"
   # shellcheck source=/dev/null
   . "$REPO/.gaia/scripts/usage-lib.sh"
-  while IFS= read -r r; do
-    if grep -qxF -- "$r" <<<"$lint_bad"; then lint_ok=no; else lint_ok=yes; fi
-    if gaia_usage_valid_ref "$r"; then lib_ok=yes; else lib_ok=no; fi
-    [ "$lint_ok" = "$lib_ok" ] || { printf 'MISMATCH %s lint-accepts=%s lib-accepts=%s\n' "$r" "$lint_ok" "$lib_ok"; bad=1; }
-  done <"$refs"
+  while IFS= read -r reference; do
+    if grep -qxF -- "$reference" <<<"$lint_bad"; then lint_ok=no; else lint_ok=yes; fi
+    if gaia_usage_valid_reference "$reference"; then library_ok=yes; else library_ok=no; fi
+    [ "$lint_ok" = "$library_ok" ] || { printf 'MISMATCH %s lint-accepts=%s lib-accepts=%s\n' "$reference" "$lint_ok" "$library_ok"; bad=1; }
+  done <"$references_file"
   return "$bad"
 }
 
-@test "grammar parity: lint.sh and gaia_usage_valid_ref accept and reject the same refs over a corpus of at least 20 per-kind refs" {
-  local n k
-  n="$(corpus | wc -l | tr -d ' ')"
-  [ "$n" -ge 20 ]
-  for k in research init issue spec plan; do
-    [ "$(corpus | grep -c "^$k:")" -ge 4 ]
+@test "grammar parity: lint.sh and gaia_usage_valid_reference accept and reject the same refs over a corpus of at least 20 per-kind refs" {
+  local corpus_count key_prefix
+  corpus_count="$(corpus | wc -l | tr -d ' ')"
+  [ "$corpus_count" -ge 20 ]
+  for key_prefix in research init issue spec plan; do
+    [ "$(corpus | grep -c "^$key_prefix:")" -ge 4 ]
   done
   run parity "$REPO/.specify/extensions/gaia/lib/lint.sh"
   [ "$status" -eq 0 ] || { printf '%s\n' "$output" >&2; return 1; }
 }
 
 @test "guards-must-fail (grammar parity): a lint.sh copy that loosens the SPEC digits is reported with the offending ref" {
-  local m="$TMP/lint-mutant.sh"
-  sed 's/\^spec:SPEC-\[0-9\]{3,}\$/^spec:SPEC-[0-9]{2,}$/' "$REPO/.specify/extensions/gaia/lib/lint.sh" >"$m"
-  if cmp -s "$m" "$REPO/.specify/extensions/gaia/lib/lint.sh"; then echo "mutation did not apply" >&2; return 1; fi
-  run parity "$m"
+  local mutant_script="$TEMPORARY_DIRECTORY/lint-mutant.sh"
+  sed 's/\^spec:SPEC-\[0-9\]{3,}\$/^spec:SPEC-[0-9]{2,}$/' "$REPO/.specify/extensions/gaia/lib/lint.sh" >"$mutant_script"
+  if cmp -s "$mutant_script" "$REPO/.specify/extensions/gaia/lib/lint.sh"; then echo "mutation did not apply" >&2; return 1; fi
+  run parity "$mutant_script"
   [ "$status" -eq 1 ]
   grep -qF 'MISMATCH spec:SPEC-01 lint-accepts=yes lib-accepts=no' <<<"$output"
 }
@@ -125,24 +125,24 @@ parity() {
 # ---------- coverage and markers on every readout ----------
 
 @test "every readout prints the earliest first_ts date as coverage start, and capture hooks not registered replaces its figures when the registrations are gone" {
-  local cmd
+  local usage_arguments
   seed_debt
   seed_early
-  flush1 s-m
-  flush1 s-w
-  flush1 s-early
-  u link --merge 88 --branch debt/123-slug --merged-at 2026-10-02T00:00:00Z
-  for cmd in "pr 88" "initiative issue:123" "reconcile"; do
+  flush_session s-m
+  flush_session s-w
+  flush_session s-early
+  run_usage link --merge 88 --branch debt/123-slug --merged-at 2026-10-02T00:00:00Z
+  for usage_arguments in "pr 88" "initiative issue:123" "reconcile"; do
     # shellcheck disable=SC2086  # the argument list is split on purpose
-    run u $cmd
-    grep -qF 'coverage start: 2026-09-28' <<<"$output" || { printf '%s: %s\n' "$cmd" "$output" >&2; return 1; }
+    run run_usage $usage_arguments
+    grep -qF 'coverage start: 2026-09-28' <<<"$output" || { printf '%s: %s\n' "$usage_arguments" "$output" >&2; return 1; }
     lacks "capture hooks not registered"
   done
   printf '{}\n' >"$REPO/.claude/settings.json"
-  for cmd in "pr 88" "initiative issue:123" "reconcile"; do
+  for usage_arguments in "pr 88" "initiative issue:123" "reconcile"; do
     # shellcheck disable=SC2086  # the argument list is split on purpose
-    run u $cmd
-    grep -qF 'coverage start: 2026-09-28' <<<"$output" || { printf '%s: %s\n' "$cmd" "$output" >&2; return 1; }
+    run run_usage $usage_arguments
+    grep -qF 'coverage start: 2026-09-28' <<<"$output" || { printf '%s: %s\n' "$usage_arguments" "$output" >&2; return 1; }
     has_line "  ! capture hooks not registered"
     lacks "tokens"
   done
@@ -151,93 +151,93 @@ parity() {
 # ---------- flush-then-resolve chains ----------
 
 @test "UAT-005: a discussion-only main session, flushed per turn, is all unattributed and the totals add up" {
-  local tp
-  tp="$(tpath s05)"
-  asst "$tp" s05 "$REPO" main d1 2026-10-01T09:00:01.000Z 1 1
-  flush1 s05
-  asst "$tp" s05 "$REPO" main d2 2026-10-01T09:00:02.000Z 2 2
-  flush1 s05
-  asst "$tp" s05 "$REPO" main d3 2026-10-01T09:00:03.000Z 3 3
-  flush1 s05
-  run u reconcile
+  local transcript_path
+  transcript_path="$(transcript_path_for_session s05)"
+  write_assistant_message "$transcript_path" s05 "$REPO" main d1 2026-10-01T09:00:01.000Z 1 1
+  flush_session s05
+  write_assistant_message "$transcript_path" s05 "$REPO" main d2 2026-10-01T09:00:02.000Z 2 2
+  flush_session s05
+  write_assistant_message "$transcript_path" s05 "$REPO" main d3 2026-10-01T09:00:03.000Z 3 3
+  flush_session s05
+  run run_usage reconcile
   grep -Eq '^  all segments: tokens 6,672  est\. ' <<<"$output"
   grep -Eq '^  unattributed: tokens 6,672  est\. ' <<<"$output"
   grep -Eq '^  attributed:   tokens 0  est\. ' <<<"$output"
 }
 
 @test "UAT-006: a /gaia-spec Skill line at T0 stays unattributed until the spec row lands, then [T0,T1] resolves to the spec with the split at the row's timestamp and the usage ledger bytes unchanged" {
-  local tp before after
-  tp="$(tpath s06)"
-  asst "$tp" s06 "$REPO" main g1 2026-10-01T10:00:01.000Z 1 1 "$(skill_tool gaia-spec)"
-  flush1 s06
-  asst "$tp" s06 "$REPO" main g2 2026-10-01T10:00:05.000Z 2 2
-  flush1 s06
-  asst "$tp" s06 "$REPO" main g3 2026-10-01T10:00:10.000Z 3 3
-  flush1 s06
-  run u reconcile
+  local transcript_path before after
+  transcript_path="$(transcript_path_for_session s06)"
+  write_assistant_message "$transcript_path" s06 "$REPO" main g1 2026-10-01T10:00:01.000Z 1 1 "$(skill_tool gaia-spec)"
+  flush_session s06
+  write_assistant_message "$transcript_path" s06 "$REPO" main g2 2026-10-01T10:00:05.000Z 2 2
+  flush_session s06
+  write_assistant_message "$transcript_path" s06 "$REPO" main g3 2026-10-01T10:00:10.000Z 3 3
+  flush_session s06
+  run run_usage reconcile
   grep -Eq '^  unattributed: tokens 6,672  est\. ' <<<"$output"
   grep -Eq '^  attributed:   tokens 0  est\. ' <<<"$output"
-  before="$(cksum <"$TD/usage.jsonl")"
+  before="$(cksum <"$TELEMETRY_DIRECTORY/usage.jsonl")"
 
   cost_row spec s06 2026-10-01T10:00:10Z SPEC-096 null
-  run u reconcile
+  run run_usage reconcile
   grep -Eq '^  attributed:   tokens 6,672  est\. ' <<<"$output"
   grep -Eq '^  unattributed: tokens 0  est\. ' <<<"$output"
-  run u initiative spec:SPEC-096
+  run run_usage initiative spec:SPEC-096
   grep -Eq '^  spec:SPEC-096  tokens 6,672  est\. ' <<<"$output"
-  after="$(cksum <"$TD/usage.jsonl")"
+  after="$(cksum <"$TELEMETRY_DIRECTORY/usage.jsonl")"
   [ "$before" = "$after" ]
 
-  asst "$tp" s06 "$REPO" main g4 2026-10-01T10:00:11.000Z 4 4
-  flush1 s06
-  run u reconcile
+  write_assistant_message "$transcript_path" s06 "$REPO" main g4 2026-10-01T10:00:11.000Z 4 4
+  flush_session s06
+  run run_usage reconcile
   grep -Eq '^  attributed:   tokens 6,672  est\. ' <<<"$output"
   grep -Eq '^  unattributed: tokens 4,448  est\. ' <<<"$output"
   grep -Eq '^  all segments: tokens 11,120  est\. ' <<<"$output"
 }
 
 @test "UAT-018 (reduced): declare, research writes, and a closed gaia-plan interval each resolve their own span, and spend after the interval returns to the latest research" {
-  local tp rz="$REPO/.gaia/local/research"
-  tp="$(tpath s18)"
-  run u declare research:x --session s18 --at 2026-10-01T11:00:00Z
+  local transcript_path research_root="$REPO/.gaia/local/research"
+  transcript_path="$(transcript_path_for_session s18)"
+  run run_usage declare research:x --session s18 --at 2026-10-01T11:00:00Z
   [ "$status" -eq 0 ]
-  asst "$tp" s18 "$REPO" main r1 2026-10-01T11:00:00.000Z 1 1 "$(write_tool "$rz/topic-y/README.md")"
-  flush1 s18
-  asst "$tp" s18 "$REPO" main r2 2026-10-01T11:00:30.000Z 2 2
-  flush1 s18
-  asst "$tp" s18 "$REPO" main r3 2026-10-01T11:01:00.000Z 3 3 "$(write_tool "$rz/topic-z/README.md")"
-  flush1 s18
-  asst "$tp" s18 "$REPO" main r4 2026-10-01T11:01:30.000Z 4 4
-  flush1 s18
-  asst "$tp" s18 "$REPO" main r5 2026-10-01T11:02:00.000Z 5 5 "$(skill_tool gaia-plan)"
-  flush1 s18
-  asst "$tp" s18 "$REPO" main r6 2026-10-01T11:02:30.000Z 6 6
-  flush1 s18
+  write_assistant_message "$transcript_path" s18 "$REPO" main r1 2026-10-01T11:00:00.000Z 1 1 "$(write_tool "$research_root/topic-y/README.md")"
+  flush_session s18
+  write_assistant_message "$transcript_path" s18 "$REPO" main r2 2026-10-01T11:00:30.000Z 2 2
+  flush_session s18
+  write_assistant_message "$transcript_path" s18 "$REPO" main r3 2026-10-01T11:01:00.000Z 3 3 "$(write_tool "$research_root/topic-z/README.md")"
+  flush_session s18
+  write_assistant_message "$transcript_path" s18 "$REPO" main r4 2026-10-01T11:01:30.000Z 4 4
+  flush_session s18
+  write_assistant_message "$transcript_path" s18 "$REPO" main r5 2026-10-01T11:02:00.000Z 5 5 "$(skill_tool gaia-plan)"
+  flush_session s18
+  write_assistant_message "$transcript_path" s18 "$REPO" main r6 2026-10-01T11:02:30.000Z 6 6
+  flush_session s18
   cost_row plan s18 2026-10-01T11:03:00Z null PLAN-022
-  asst "$tp" s18 "$REPO" main r7 2026-10-01T11:04:00.000Z 7 7
-  flush1 s18
-  run u initiative research:x
+  write_assistant_message "$transcript_path" s18 "$REPO" main r7 2026-10-01T11:04:00.000Z 7 7
+  flush_session s18
+  run run_usage initiative research:x
   grep -Eq '^  research:x  tokens 3,336  est\. ' <<<"$output"
-  run u initiative research:topic-z
+  run run_usage initiative research:topic-z
   grep -Eq '^  research:topic-z  tokens 15,568  est\. ' <<<"$output"
-  run u initiative plan:PLAN-022
+  run run_usage initiative plan:PLAN-022
   grep -Eq '^  plan:PLAN-022  tokens 12,232  est\. ' <<<"$output"
 }
 
 # ---------- unflushed marker against real flusher output ----------
 
 @test "a sweep over a live file holds its last message: reconcile names the held bytes, and the marker is gone after the next flush" {
-  local tp held
-  tp="$(tpath s-live)"
-  asst "$tp" s-live "$REPO" fix/live l1 2026-10-01T09:00:01.000Z 1 1
-  asst "$tp" s-live "$REPO" fix/live l2 2026-10-01T09:00:02.000Z 2 2
-  held="$(tail -n 1 "$tp" | wc -c | tr -d ' ')"
-  run bash "$REPO/.gaia/scripts/usage-flush.sh" --sweep --projects-root "$PROJ" --main-root "$REPO"
+  local transcript_path held
+  transcript_path="$(transcript_path_for_session s-live)"
+  write_assistant_message "$transcript_path" s-live "$REPO" fix/live l1 2026-10-01T09:00:01.000Z 1 1
+  write_assistant_message "$transcript_path" s-live "$REPO" fix/live l2 2026-10-01T09:00:02.000Z 2 2
+  held="$(tail -n 1 "$transcript_path" | wc -c | tr -d ' ')"
+  run bash "$REPO/.gaia/scripts/usage-flush.sh" --sweep --projects-root "$PROJECTS_DIRECTORY" --main-root "$REPO"
   [ "$status" -eq 0 ]
-  run u reconcile
+  run run_usage reconcile
   has_line "  ! unflushed: 1 file(s), $held bytes not yet recorded"
-  flush1 s-live
-  run u reconcile
+  flush_session s-live
+  run run_usage reconcile
   lacks "unflushed:"
   grep -Eq '^  all segments: tokens 3,336  est\. ' <<<"$output"
 }

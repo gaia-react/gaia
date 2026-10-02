@@ -65,7 +65,7 @@
 #   Prints the SPEC number a `plan/spec-<nnn>` branch names, leading zeros
 #   stripped (`plan/spec-005-x` prints 5). Prints nothing otherwise. Returns 0.
 #
-# gaia_branch_list [dir]
+# gaia_branch_list [directory]
 #   Prints every local branch and every remote-tracking branch of the
 #   repository at [dir] (default `.`), the remote-tracking ones with their
 #   `<remote>/` prefix removed, one per line. A symbolic `<remote>/HEAD` is
@@ -96,9 +96,9 @@
 #   bash .gaia/scripts/branch-name-lib.sh classify worktree-debt+42-fix
 #   bash .gaia/scripts/branch-name-lib.sh members debt/41-42-batch
 #   bash .gaia/scripts/branch-name-lib.sh spec-number plan/spec-005-cards
-#   bash .gaia/scripts/branch-name-lib.sh list [dir]
+#   bash .gaia/scripts/branch-name-lib.sh list [directory]
 
-GAIA_BRANCH_NAME_MAX=64
+GAIA_BRANCH_NAME_MAXIMUM_LENGTH=64
 
 # _gaia_branch_is_digits <text>: 0 when <text> is one or more ASCII digits.
 _gaia_branch_is_digits() {
@@ -132,16 +132,16 @@ _gaia_branch_is_members() {
 # after the colon as a history modifier and aborts the walk.
 _gaia_branch_set_leading_digits() {
   local LC_ALL=C
-  local text="${1-}" out="" i len c
-  len="${#text}"
-  for ((i = 0; i < len; i++)); do
-    c="${text:$i:1}"
-    case "$c" in
-      [0-9]) out="${out}${c}" ;;
+  local text="${1-}" leading_digits="" i length character
+  length="${#text}"
+  for ((i = 0; i < length; i++)); do
+    character="${text:$i:1}"
+    case "$character" in
+      [0-9]) leading_digits="${leading_digits}${character}" ;;
       *) break ;;
     esac
   done
-  _gaia_branch_digits="$out"
+  _gaia_branch_digits="$leading_digits"
 }
 
 # _gaia_branch_strip_zeros <digits>: <digits> without leading zeros, `0` for
@@ -154,35 +154,35 @@ _gaia_branch_strip_zeros() {
   printf '%s' "$text"
 }
 
-# _gaia_branch_set_normalized <branch>: sets _gaia_branch_nb.
+# _gaia_branch_set_normalized <branch>: sets _gaia_branch_normalized_name.
 _gaia_branch_set_normalized() {
   local text="${1-}"
   text="${text#worktree-}"
   # `\+`: an escaped literal means the same thing in bash and zsh.
   text="${text//\+//}"
-  _gaia_branch_nb="$text"
+  _gaia_branch_normalized_name="$text"
 }
 
 gaia_branch_normalize() {
   _gaia_branch_set_normalized "${1-}"
-  printf '%s' "$_gaia_branch_nb"
+  printf '%s' "$_gaia_branch_normalized_name"
 }
 
 # _gaia_branch_set_class <branch>: sets _gaia_branch_mode and _gaia_branch_unit.
 _gaia_branch_set_class() {
-  local nb mode="adhoc" unit="" rest="" id="" lead=""
+  local normalized_name mode="adhoc" unit="" rest="" id="" lead=""
   _gaia_branch_set_normalized "${1-}"
-  nb="$_gaia_branch_nb"
+  normalized_name="$_gaia_branch_normalized_name"
   # Trailing newlines dropped, as a command substitution of the normalized
   # name would drop them, so a name git would refuse still classifies the same.
   while :; do
-    case "$nb" in *$'\n') nb="${nb%$'\n'}" ;; *) break ;; esac
+    case "$normalized_name" in *$'\n') normalized_name="${normalized_name%$'\n'}" ;; *) break ;; esac
   done
 
-  case "$nb" in
+  case "$normalized_name" in
     debt/*)
       mode="drain"
-      rest="${nb#debt/}"
+      rest="${normalized_name#debt/}"
       # The batch row is tested first: a batch's unit is every member, and
       # falling through would record only the first.
       case "$rest" in
@@ -199,7 +199,7 @@ _gaia_branch_set_class() {
       ;;
     plan/*)
       mode="plan"
-      rest="${nb#plan/}"
+      rest="${normalized_name#plan/}"
       case "$rest" in
         spec-* | plan-*)
           id="${rest%%-*}"
@@ -217,7 +217,7 @@ _gaia_branch_set_class() {
       ;;
     chore/* | release/* | wiki-sync/*)
       mode="maintenance"
-      unit="${nb#*/}"
+      unit="${normalized_name#*/}"
       ;;
   esac
 
@@ -261,11 +261,11 @@ gaia_branch_spec_number() {
 }
 
 gaia_branch_list() {
-  local dir="${1:-.}"
-  git -C "$dir" for-each-ref --format='%(refname:lstrip=2)' refs/heads 2>/dev/null || true
+  local directory="${1:-.}"
+  git -C "$directory" for-each-ref --format='%(refname:lstrip=2)' refs/heads 2>/dev/null || true
   # A remote-tracking ref is refs/remotes/<remote>/<branch>; lstrip=3 drops
   # the remote. `<remote>/HEAD` is a symbolic pointer, not a branch.
-  git -C "$dir" for-each-ref --format='%(refname:lstrip=3)' refs/remotes 2>/dev/null \
+  git -C "$directory" for-each-ref --format='%(refname:lstrip=3)' refs/remotes 2>/dev/null \
     | grep -vx 'HEAD' || true
   return 0
 }
@@ -278,11 +278,11 @@ _gaia_branch_kebab() {
 }
 
 # _gaia_branch_emit <prefix> <slug>: <prefix>[-<slug>], the slug cut so the
-# whole name fits GAIA_BRANCH_NAME_MAX, then the result validated as a ref.
+# whole name fits GAIA_BRANCH_NAME_MAXIMUM_LENGTH, then the result validated as a ref.
 _gaia_branch_emit() {
   local prefix="$1" slug="$2" name room
   if [ -n "$slug" ]; then
-    room=$((GAIA_BRANCH_NAME_MAX - ${#prefix} - 1))
+    room=$((GAIA_BRANCH_NAME_MAXIMUM_LENGTH - ${#prefix} - 1))
     if [ "$room" -gt 0 ]; then
       slug="${slug:0:$room}"
       slug="$(printf '%s' "$slug" | LC_ALL=C sed -E 's/-+$//')"
@@ -292,8 +292,8 @@ _gaia_branch_emit() {
   fi
   name="$prefix"
   [ -z "$slug" ] || name="${prefix}-${slug}"
-  if [ "${#name}" -gt "$GAIA_BRANCH_NAME_MAX" ]; then
-    printf 'gaia_branch_name: %s is longer than %s bytes\n' "$name" "$GAIA_BRANCH_NAME_MAX" >&2
+  if [ "${#name}" -gt "$GAIA_BRANCH_NAME_MAXIMUM_LENGTH" ]; then
+    printf 'gaia_branch_name: %s is longer than %s bytes\n' "$name" "$GAIA_BRANCH_NAME_MAXIMUM_LENGTH" >&2
     return 2
   fi
   if ! git check-ref-format --branch "$name" >/dev/null 2>&1; then
@@ -304,15 +304,15 @@ _gaia_branch_emit() {
 }
 
 gaia_branch_name() {
-  local kind="${1-}" slug="" arg="" members="" id="" task="" version="" count=0
+  local kind="${1-}" slug="" argument="" members="" id="" task="" version="" count=0
   [ "$#" -gt 0 ] && shift
 
   case "$kind" in
     debt)
       while [ "$#" -gt 0 ]; do
-        arg="$1"
+        argument="$1"
         shift
-        case "$arg" in
+        case "$argument" in
           --slug)
             [ "$#" -gt 0 ] || { echo "gaia_branch_name: --slug needs a value" >&2; return 2; }
             slug="$(_gaia_branch_kebab "$1")"
@@ -320,12 +320,12 @@ gaia_branch_name() {
             ;;
           --batch) ;;
           *)
-            arg="${arg#\#}"
-            _gaia_branch_is_digits "$arg" || {
-              printf 'gaia_branch_name: %s is not an issue number\n' "$arg" >&2
+            argument="${argument#\#}"
+            _gaia_branch_is_digits "$argument" || {
+              printf 'gaia_branch_name: %s is not an issue number\n' "$argument" >&2
               return 2
             }
-            members="${members}$(_gaia_branch_strip_zeros "$arg")
+            members="${members}$(_gaia_branch_strip_zeros "$argument")
 "
             count=$((count + 1))
             ;;
@@ -392,9 +392,9 @@ gaia_branch_name() {
 }
 
 if [ "${BASH_SOURCE[0]:-}" = "$0" ]; then
-  sub="${1-}"
+  subcommand="${1-}"
   [ "$#" -gt 0 ] && shift
-  case "$sub" in
+  case "$subcommand" in
     name) gaia_branch_name "$@"; exit $? ;;
     classify) gaia_branch_classify "${1-}" ;;
     members) gaia_branch_members "${1-}" ;;

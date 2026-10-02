@@ -32,7 +32,7 @@ setup() {
   # writes is deterministic across machines rather than riding whatever
   # `init.defaultBranch` the host has configured.
   git -C "$SANDBOX" init --quiet --initial-branch=main
-  AUDIT_DIR="$SANDBOX/.gaia/local/audit"
+  AUDIT_DIRECTORY="$SANDBOX/.gaia/local/audit"
   BASE="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   # The real tag (gaia_audit_key, audit-key-lib.sh) is base-sha + branch
   # slug; "main" has nothing to percent-encode, so the slug is the branch
@@ -58,7 +58,7 @@ write_sidecar() {
 write_sidecar_at() {
   local key="$1" member="$2" findings="$3"
   printf '{"schema":1,"member":"%s","findings":%s}\n' "$member" "$findings" \
-    > "$AUDIT_DIR/${key}.${member}.findings.json"
+    > "$AUDIT_DIRECTORY/${key}.${member}.findings.json"
 }
 
 # stub_gh <comments-json>: a fake `gh` supporting `auth status` (ok), `pr view`
@@ -94,30 +94,30 @@ case "\$1" in
   api)
     method=""
     filter=""
-    prev=""
-    for a in "\$@"; do
-      [ "\$prev" = "--method" ] && method="\$a"
-      [ "\$prev" = "--jq" ] && filter="\$a"
-      prev="\$a"
+    previous_argument=""
+    for argument in "\$@"; do
+      [ "\$previous_argument" = "--method" ] && method="\$argument"
+      [ "\$previous_argument" = "--jq" ] && filter="\$argument"
+      previous_argument="\$argument"
     done
     if [ -z "\$method" ]; then
       printf '%s' '$comments_json' | jq -r "\$filter"
     else
-      prev=""
-      for a in "\$@"; do
-        case "\$prev" in
+      previous_argument=""
+      for argument in "\$@"; do
+        case "\$previous_argument" in
           -F|--field)
-            case "\$a" in
-              body=@*) cp "\${a#body=@}" "$SANDBOX/posted_body.txt" ;;
+            case "\$argument" in
+              body=@*) cp "\${argument#body=@}" "$SANDBOX/posted_body.txt" ;;
             esac
             ;;
           -f|--raw-field)
-            case "\$a" in
-              body=*) printf '%s' "\${a#body=}" > "$SANDBOX/posted_body.txt" ;;
+            case "\$argument" in
+              body=*) printf '%s' "\${argument#body=}" > "$SANDBOX/posted_body.txt" ;;
             esac
             ;;
         esac
-        prev="\$a"
+        previous_argument="\$argument"
       done
       echo "\$method" > "$SANDBOX/last_method.txt"
       echo '{"id":999}'
@@ -139,8 +139,8 @@ stub_jq_merge_fails() {
   real="$(command -v jq)"
   cat > "$SANDBOX/bin/jq" <<STUB
 #!/usr/bin/env bash
-for a in "\$@"; do
-  if [ "\$a" = "-s" ]; then
+for argument in "\$@"; do
+  if [ "\$argument" = "-s" ]; then
     echo "jq: error: simulated merge failure" >&2
     exit 5
   fi
@@ -186,11 +186,11 @@ STUB
 # last for sourcing audit-key-lib.sh, .gaia/scripts/audit-key-lib.sh).
 minimal_path() {
   local omit="$1"
-  local cmd
+  local command_name
   local names=()
-  for cmd in bash jq git mktemp sort cat head sed rm mkdir printf gh dirname; do
-    [ "$cmd" = "$omit" ] && continue
-    names+=("$cmd")
+  for command_name in bash jq git mktemp sort cat head sed rm mkdir printf gh dirname; do
+    [ "$command_name" = "$omit" ] && continue
+    names+=("$command_name")
   done
   path_allowlist "${names[@]}"
 }
@@ -295,7 +295,7 @@ extract_payload() {
   grep -qF "block-secrets-write.sh" "$SANDBOX/posted_body.txt" && return 1
   grep -qF "bound each path segment" "$SANDBOX/posted_body.txt" && return 1
   # The sidecar itself still holds everything.
-  sidecar="$AUDIT_DIR/${AUDIT_KEY}.code-audit-maintainer-shell.findings.json"
+  sidecar="$AUDIT_DIRECTORY/${AUDIT_KEY}.code-audit-maintainer-shell.findings.json"
   [ "$(jq -r '.findings[0].line' "$sidecar")" = "113" ]
   [ "$(jq -r '.findings[0].suggested_fix' "$sidecar")" = "bound each path segment" ]
 }
@@ -366,7 +366,7 @@ extract_payload() {
 
 @test "a malformed sidecar (invalid JSON) is skipped, named on stderr, and the rest still posts" {
   write_sidecar code-audit-frontend '[{"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["app/services"]}]'
-  echo 'not json at all' > "$AUDIT_DIR/${AUDIT_KEY}.code-audit-maintainer-shell.findings.json"
+  echo 'not json at all' > "$AUDIT_DIRECTORY/${AUDIT_KEY}.code-audit-maintainer-shell.findings.json"
   stub_gh '[]'
   run run_script
   [ "$status" -eq 0 ]
@@ -377,7 +377,7 @@ extract_payload() {
 
 @test "a sidecar with a non-array findings field is malformed and skipped" {
   printf '{"schema":1,"member":"code-audit-maintainer-node","findings":"oops"}\n' \
-    > "$AUDIT_DIR/${AUDIT_KEY}.code-audit-maintainer-node.findings.json"
+    > "$AUDIT_DIRECTORY/${AUDIT_KEY}.code-audit-maintainer-node.findings.json"
   write_sidecar code-audit-frontend '[]'
   stub_gh '[]'
   run run_script
@@ -387,7 +387,7 @@ extract_payload() {
 }
 
 @test "when every matched sidecar is malformed, declines no sidecars (each still named on stderr)" {
-  echo 'not json' > "$AUDIT_DIR/${AUDIT_KEY}.code-audit-frontend.findings.json"
+  echo 'not json' > "$AUDIT_DIRECTORY/${AUDIT_KEY}.code-audit-frontend.findings.json"
   stub_gh '[]'
   run run_script
   [ "$status" -eq 0 ]
@@ -467,9 +467,9 @@ extract_payload() {
   # direction: they neither get merged nor even get treated as a malformed
   # sidecar (they are never named on stderr, because the glob never matches
   # them at all).
-  : > "$AUDIT_DIR/${BASE}.ok"
-  : > "$AUDIT_DIR/${BASE}.refused"
-  : > "$AUDIT_DIR/${AUDIT_KEY}.rerun.json"
+  : > "$AUDIT_DIRECTORY/${BASE}.ok"
+  : > "$AUDIT_DIRECTORY/${BASE}.refused"
+  : > "$AUDIT_DIRECTORY/${AUDIT_KEY}.rerun.json"
   write_sidecar code-audit-frontend '[]'
   stub_gh '[]'
   run run_script
@@ -534,9 +534,9 @@ extract_payload() {
   # and over-stating the count is the defect being repaired. Two nameless plus
   # one named reads as 2, where counting files would read 3.
   printf '{"schema":1,"findings":[{"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["a"]}]}\n' \
-    > "$AUDIT_DIR/${AUDIT_KEY}.nameless-one.findings.json"
+    > "$AUDIT_DIRECTORY/${AUDIT_KEY}.nameless-one.findings.json"
   printf '{"schema":1,"member":"","findings":[]}\n' \
-    > "$AUDIT_DIR/${BASE_ROUND2}.main.nameless-two.findings.json"
+    > "$AUDIT_DIRECTORY/${BASE_ROUND2}.main.nameless-two.findings.json"
   write_sidecar_at "${BASE_ROUND3}.main" code-audit-frontend '[]'
   stub_gh '[]'
   run run_script
@@ -602,13 +602,13 @@ extract_payload() {
 # review_bases: the merged per-member decision record (task-findings-record
 # contract D). Always present in the payload, possibly [].
 
-# write_sidecar_rb <member> <findings-json-array> <review_base-json-or-empty>
-write_sidecar_rb() {
+# write_sidecar_with_review_base <member> <findings-json-array> <review_base-json-or-empty>
+write_sidecar_with_review_base() {
   local member="$1" findings="$2" review_base="$3"
   if [ -n "$review_base" ]; then
-    jq -cn --arg m "$member" --argjson f "$findings" --argjson rb "$review_base" \
-      '{schema:1, member:$m, findings:$f, review_base:$rb}' \
-      > "$AUDIT_DIR/${AUDIT_KEY}.${member}.findings.json"
+    jq -cn --arg member "$member" --argjson findings "$findings" --argjson review_base "$review_base" \
+      '{schema:1, member:$member, findings:$findings, review_base:$review_base}' \
+      > "$AUDIT_DIRECTORY/${AUDIT_KEY}.${member}.findings.json"
   else
     write_sidecar "$member" "$findings"
   fi
@@ -625,8 +625,8 @@ write_sidecar_rb() {
 }
 
 @test "review_bases carries one entry per sidecar carrying review_base, in sorted sidecar order" {
-  write_sidecar_rb code-audit-frontend '[]' '{"sha":"aaa111","reason":"member-clearance","anchor_tree":"treeA"}'
-  write_sidecar_rb code-audit-maintainer-shell '[]' '{"sha":"bbb222","reason":"team-signal","anchor_tree":""}'
+  write_sidecar_with_review_base code-audit-frontend '[]' '{"sha":"aaa111","reason":"member-clearance","anchor_tree":"treeA"}'
+  write_sidecar_with_review_base code-audit-maintainer-shell '[]' '{"sha":"bbb222","reason":"team-signal","anchor_tree":""}'
   stub_gh '[]'
   run run_script
   [ "$status" -eq 0 ]
@@ -644,7 +644,7 @@ write_sidecar_rb() {
 }
 
 @test "a sidecar with no review_base key contributes no review_bases entry" {
-  write_sidecar_rb code-audit-frontend '[]' '{"sha":"aaa111","reason":"member-clearance","anchor_tree":""}'
+  write_sidecar_with_review_base code-audit-frontend '[]' '{"sha":"aaa111","reason":"member-clearance","anchor_tree":""}'
   write_sidecar code-audit-maintainer-shell '[]'
   stub_gh '[]'
   run run_script
@@ -657,9 +657,9 @@ write_sidecar_rb() {
 @test "a malformed review_base (string instead of object) is skipped, named on stderr, findings still merge" {
   member="code-audit-frontend"
   findings='[{"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["app/services"]}]'
-  jq -cn --arg m "$member" --argjson f "$findings" \
-    '{schema:1, member:$m, findings:$f, review_base:"not-an-object"}' \
-    > "$AUDIT_DIR/${AUDIT_KEY}.${member}.findings.json"
+  jq -cn --arg member "$member" --argjson findings "$findings" \
+    '{schema:1, member:$member, findings:$findings, review_base:"not-an-object"}' \
+    > "$AUDIT_DIRECTORY/${AUDIT_KEY}.${member}.findings.json"
   stub_gh '[]'
   run run_script
   [ "$status" -eq 0 ]
@@ -670,7 +670,7 @@ write_sidecar_rb() {
 }
 
 @test "a malformed review_base (object missing sha) is skipped, named on stderr, findings still merge" {
-  write_sidecar_rb code-audit-frontend '[{"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["app/services"]}]' '{"reason":"member-clearance"}'
+  write_sidecar_with_review_base code-audit-frontend '[{"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["app/services"]}]' '{"reason":"member-clearance"}'
   stub_gh '[]'
   run run_script
   [ "$status" -eq 0 ]
@@ -681,7 +681,7 @@ write_sidecar_rb() {
 }
 
 @test "review_bases never leaks finding text (only member/sha/reason/anchor_tree)" {
-  write_sidecar_rb code-audit-frontend '[]' '{"sha":"aaa111","reason":"member-clearance","anchor_tree":"treeA"}'
+  write_sidecar_with_review_base code-audit-frontend '[]' '{"sha":"aaa111","reason":"member-clearance","anchor_tree":"treeA"}'
   stub_gh '[]'
   run run_script
   [ "$status" -eq 0 ]

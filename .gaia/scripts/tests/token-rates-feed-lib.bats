@@ -6,7 +6,7 @@
 # tracked on main.
 #
 # Every test builds a throwaway state dir under $BATS_TEST_TMPDIR through the
-# GAIA_RATES_STATE_DIR seam and calls gaia_rates_prepare then gaia_rates_heal in
+# GAIA_RATES_STATE_DIRECTORY seam and calls gaia_rates_prepare then gaia_rates_heal in
 # one shell (the libs keep per-process state). CI exports
 # GAIA_RATES_FEED_DISABLE=1 workflow-wide, so setup unsets it: a test that wants
 # the switch on sets it back. Most validation tests read the feed through a
@@ -16,7 +16,7 @@
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
-FEED_LIB="$REPO_ROOT/.gaia/scripts/token-rates-feed-lib.sh"
+FEED_LIBRARY="$REPO_ROOT/.gaia/scripts/token-rates-feed-lib.sh"
 FIXTURES="$BATS_TEST_DIRNAME/fixtures/rates-feed"
 
 setup() {
@@ -27,8 +27,8 @@ setup() {
   STATE="$BATS_TEST_TMPDIR/state"
   LOCAL="$STATE/token-rates.json"
   BASE="$STATE/token-rates.base.json"
-  FSTATE="$STATE/token-rates.feed-state.json"
-  ERR="$BATS_TEST_TMPDIR/err"
+  FEED_STATE_FILE="$STATE/token-rates.feed-state.json"
+  ERROR_FILE="$BATS_TEST_TMPDIR/err"
   mkdir -p "$FIXREPO/.gaia/scripts" "$STATE"
   cat >"$FIXREPO/.gaia/scripts/token-rates.json" <<'JSON'
 {
@@ -40,10 +40,10 @@ setup() {
   }
 }
 JSON
-  export GAIA_RATES_STATE_DIR="$STATE"
+  export GAIA_RATES_STATE_DIRECTORY="$STATE"
   # shellcheck disable=SC1091
   source "$REPO_ROOT/.gaia/scripts/token-pricing-lib.sh"
-  rc=0
+  heal_exit_status=0
 }
 
 teardown() {
@@ -57,10 +57,10 @@ prepare_local() {
   [[ "$GAIA_RATES_MODE" == "local" ]] || return 1
 }
 
-# Run heal in this shell; its exit status lands in $rc, its stderr in $ERR.
+# Run heal in this shell; its exit status lands in $heal_exit_status, its stderr in $ERROR_FILE.
 heal() {
-  rc=0
-  gaia_rates_heal "$1" 2>"$ERR" || rc=$?
+  heal_exit_status=0
+  gaia_rates_heal "$1" 2>"$ERROR_FILE" || heal_exit_status=$?
 }
 
 # A second process: the per-process attempt and warning latches reset.
@@ -81,28 +81,28 @@ feed_file() {
 
 # fixture_body <key>...: a feed body carrying only those rows of feed-rows.json.
 fixture_body() {
-  jq -c '{models: (.models | with_entries(select(.key as $k | $ARGS.positional | index($k))))}' \
+  jq -c '{models: (.models | with_entries(select(.key as $model_key | $ARGS.positional | index($model_key))))}' \
     "$FIXTURES/feed-rows.json" --args "$@"
 }
 
 local_row() {
-  jq -c --arg m "$1" '.models[$m]' "$LOCAL"
+  jq -c --arg model "$1" '.models[$model]' "$LOCAL"
 }
 
 base_row() {
-  jq -c --arg m "$1" '.models[$m]' "$BASE"
+  jq -c --arg model "$1" '.models[$model]' "$BASE"
 }
 
 local_has() {
-  jq -e --arg m "$1" '.models | has($m)' "$LOCAL" >/dev/null
+  jq -e --arg model "$1" '.models | has($model)' "$LOCAL" >/dev/null
 }
 
 state_failed_at() {
-  jq -r '.failed_at' "$FSTATE"
+  jq -r '.failed_at' "$FEED_STATE_FILE"
 }
 
 set_state() {
-  printf '%s' "$1" >"$FSTATE"
+  printf '%s' "$1" >"$FEED_STATE_FILE"
 }
 
 feed_body_leftovers() {
@@ -110,7 +110,7 @@ feed_body_leftovers() {
 }
 
 stderr_lines() {
-  grep -c '^token-pricing:' "$ERR" || true
+  grep -c '^token-pricing:' "$ERROR_FILE" || true
 }
 
 # The row assertions the C6 tests share.
@@ -121,15 +121,15 @@ assert_row_rejected() {
   before="$BATS_TEST_TMPDIR/local.before"
   cp "$LOCAL" "$before"
   heal "[\"$key\"]"
-  [[ "$rc" -eq 1 ]] || { echo "rc=$rc, expected 1 for $key" >&2; return 1; }
+  [[ "$heal_exit_status" -eq 1 ]] || { echo "heal_exit_status=$heal_exit_status, expected 1 for $key" >&2; return 1; }
   cmp -s "$before" "$LOCAL" || { echo "local table changed for $key" >&2; return 1; }
   if local_has "$key"; then echo "$key was written" >&2; return 1; fi
   # The same response still heals a valid neighbour.
   new_process
-  rm -f "$FSTATE"
+  rm -f "$FEED_STATE_FILE"
   feed_file "$(fixture_body claude-good-1 "$key")"
   heal "[\"claude-good-1\",\"$key\"]"
-  [[ "$rc" -eq 0 ]] || { echo "neighbour did not heal (rc=$rc) for $key" >&2; return 1; }
+  [[ "$heal_exit_status" -eq 0 ]] || { echo "neighbour did not heal (heal_exit_status=$heal_exit_status) for $key" >&2; return 1; }
   local_has claude-good-1 || return 1
   if local_has "$key"; then echo "$key was written beside a valid row" >&2; return 1; fi
   return 0
@@ -142,7 +142,7 @@ assert_row_rejected() {
   export GAIA_RATES_FEED_URL="$RATES_STUB_URL"
   prepare_local
   heal '["claude-opus-6"]'
-  [ "$rc" -eq 0 ]
+  [ "$heal_exit_status" -eq 0 ]
   [ "$(rates_stub_count)" = "1" ]
   [ "$(local_row claude-opus-6)" = '[{"input":7,"output":35,"source":"feed"}]' ]
   [ "$(base_row claude-opus-6)" = '[{"input":7,"output":35,"source":"feed"}]' ]
@@ -153,7 +153,7 @@ assert_row_rejected() {
   export GAIA_RATES_FEED_URL="$RATES_STUB_URL"
   prepare_local
   heal '["claude-opus-6"]'
-  [ "$rc" -eq 0 ]
+  [ "$heal_exit_status" -eq 0 ]
   [ "$(local_row claude-opus-5)" = '[{"input":5,"output":25}]' ]
   jq -e '.cache_multipliers == {"read":0.1,"write_5m":1.25,"write_1h":2}' "$LOCAL" >/dev/null
   if local_has claude-sonnet-6; then return 1; fi
@@ -165,11 +165,11 @@ assert_row_rejected() {
   export GAIA_RATES_FEED_URL="$RATES_STUB_URL"
   prepare_local
   heal '["claude-opus-6"]'
-  [ "$rc" -eq 0 ]
-  [ "$(cat "$RATES_STUB_REQS")" = "GET /gaia-react/gaia/main/.gaia/scripts/token-rates.json HTTP/1.1" ]
+  [ "$heal_exit_status" -eq 0 ]
+  [ "$(cat "$RATES_STUB_REQUESTS")" = "GET /gaia-react/gaia/main/.gaia/scripts/token-rates.json HTTP/1.1" ]
   # Host, User-Agent, Accept and nothing that names a model or the caller.
-  [ "$(awk '{print $2}' "$RATES_STUB_HDRS" | sort | tr '\n' ' ')" = "Accept: Host: User-Agent: " ]
-  if grep -qi 'opus' "$RATES_STUB_HDRS"; then return 1; fi
+  [ "$(awk '{print $2}' "$RATES_STUB_HEADERS" | sort | tr '\n' ' ')" = "Accept: Host: User-Agent: " ]
+  if grep -qi 'opus' "$RATES_STUB_HEADERS"; then return 1; fi
   true
 }
 
@@ -177,7 +177,7 @@ assert_row_rejected() {
   feed_file "$(cat "$FIXTURES/feed-valid.json")"
   prepare_local
   heal '["claude-opus-6"]'
-  [ "$rc" -eq 0 ]
+  [ "$heal_exit_status" -eq 0 ]
   [ "$(local_row claude-opus-6)" = '[{"input":7,"output":35,"source":"feed"}]' ]
 }
 
@@ -185,7 +185,7 @@ assert_row_rejected() {
   prepare_local
   feed_file "$(fixture_body claude-future-window claude-mixed-windows)"
   heal '["claude-future-window","claude-mixed-windows"]'
-  [ "$rc" -eq 0 ]
+  [ "$heal_exit_status" -eq 0 ]
   local_has claude-future-window
   local_has claude-mixed-windows
   [ "$(local_row claude-mixed-windows | jq -c 'map(.source)')" = '["feed","feed"]' ]
@@ -196,7 +196,7 @@ assert_row_rejected() {
   rm -f "$BASE"
   feed_file "$(cat "$FIXTURES/feed-valid.json")"
   heal '["claude-opus-6"]'
-  [ "$rc" -eq 0 ]
+  [ "$heal_exit_status" -eq 0 ]
   [ "$(base_row claude-opus-6)" = '[{"input":7,"output":35,"source":"feed"}]' ]
 }
 
@@ -204,12 +204,12 @@ assert_row_rejected() {
   prepare_local
   feed_file "$(cat "$FIXTURES/feed-valid.json")"
   heal '["claude-opus-6"]'
-  [ "$rc" -eq 0 ]
+  [ "$heal_exit_status" -eq 0 ]
   [ "$(feed_body_leftovers)" = "0" ]
   new_process
   feed_file 'not json'
   heal '["claude-newer-1"]'
-  [ "$rc" -eq 1 ]
+  [ "$heal_exit_status" -eq 1 ]
   [ "$(feed_body_leftovers)" = "0" ]
 }
 
@@ -272,18 +272,18 @@ assert_row_rejected() {
 }
 
 @test "C6 tests cover every claude-bad row the fixture carries" {
-  local fixture_n tested_n
-  fixture_n="$(jq '[.models | keys[] | select(startswith("claude-bad-"))] | length' "$FIXTURES/feed-rows.json")"
-  tested_n="$(grep -c '^@test "C6 rejects' "$BATS_TEST_FILENAME")"
-  [ "$fixture_n" -gt 0 ]
-  [ "$fixture_n" -eq "$tested_n" ]
+  local fixture_row_count tested_row_count
+  fixture_row_count="$(jq '[.models | keys[] | select(startswith("claude-bad-"))] | length' "$FIXTURES/feed-rows.json")"
+  tested_row_count="$(grep -c '^@test "C6 rejects' "$BATS_TEST_FILENAME")"
+  [ "$fixture_row_count" -gt 0 ]
+  [ "$fixture_row_count" -eq "$tested_row_count" ]
 }
 
 @test "C6 never writes a model id outside the claude- namespace or with upper-case, whatever the feed offers" {
   prepare_local
   feed_file "$(fixture_body claude-good-1 claude-Bad-Upper gpt-5)"
   heal '["claude-good-1","claude-Bad-Upper","gpt-5"]'
-  [ "$rc" -eq 0 ]
+  [ "$heal_exit_status" -eq 0 ]
   local_has claude-good-1
   if local_has claude-Bad-Upper; then return 1; fi
   if local_has gpt-5; then return 1; fi
@@ -298,9 +298,9 @@ assert_row_rejected() {
   ids="$(jq -c '. + ["claude-good-1","claude-future-window","claude-mixed-windows"]' <<<"$bad_ids")"
   feed_file "$(jq -c . "$FIXTURES/feed-rows.json")"
   heal "$ids"
-  [ "$rc" -eq 0 ]
+  [ "$heal_exit_status" -eq 0 ]
   expected='["claude-future-window","claude-good-1","claude-mixed-windows"]'
-  [ "$(jq -c --argjson ids "$ids" '[.models | keys[] | select(. as $k | $ids | index($k))] | sort' "$LOCAL")" = "$expected" ]
+  [ "$(jq -c --argjson ids "$ids" '[.models | keys[] | select(. as $model_key | $ids | index($model_key))] | sort' "$LOCAL")" = "$expected" ]
 }
 
 @test "a model the feed does not price is recorded as not found and the table is untouched" {
@@ -308,10 +308,10 @@ assert_row_rejected() {
   cp "$LOCAL" "$BATS_TEST_TMPDIR/local.before"
   feed_file "$(cat "$FIXTURES/feed-valid.json")"
   heal '["claude-preview-9"]'
-  [ "$rc" -eq 1 ]
+  [ "$heal_exit_status" -eq 1 ]
   cmp -s "$BATS_TEST_TMPDIR/local.before" "$LOCAL"
-  [ "$(jq -r '.failed_at' "$FSTATE")" = "null" ]
-  jq -e '.not_found["claude-preview-9"] | type == "number"' "$FSTATE" >/dev/null
+  [ "$(jq -r '.failed_at' "$FEED_STATE_FILE")" = "null" ]
+  jq -e '.not_found["claude-preview-9"] | type == "number"' "$FEED_STATE_FILE" >/dev/null
 }
 
 # ---------- C5 early exits: zero requests ----------
@@ -322,7 +322,7 @@ assert_row_rejected() {
   prepare_local
   GAIA_RATES_MODE="readonly"
   heal '["claude-opus-6"]'
-  [ "$rc" -eq 1 ]
+  [ "$heal_exit_status" -eq 1 ]
   [ "$(rates_stub_count)" = "0" ]
 }
 
@@ -333,7 +333,7 @@ assert_row_rejected() {
   gaia_rates_prepare "$BATS_TEST_TMPDIR/override.json" "$FIXREPO"
   [ "$GAIA_RATES_MODE" = "override" ]
   heal '["claude-opus-6"]'
-  [ "$rc" -eq 1 ]
+  [ "$heal_exit_status" -eq 1 ]
   [ "$(rates_stub_count)" = "0" ]
 }
 
@@ -342,7 +342,7 @@ assert_row_rejected() {
   export GAIA_RATES_FEED_URL="$RATES_STUB_URL"
   prepare_local
   heal '["claude-opus-5","claude-sonnet-5"]'
-  [ "$rc" -eq 1 ]
+  [ "$heal_exit_status" -eq 1 ]
   [ "$(rates_stub_count)" = "0" ]
 }
 
@@ -351,11 +351,11 @@ assert_row_rejected() {
   export GAIA_RATES_FEED_URL="$RATES_STUB_URL"
   prepare_local
   heal '["gpt-5","claude-Upper-1","claude-a;b","claude-",""]'
-  [ "$rc" -eq 1 ]
+  [ "$heal_exit_status" -eq 1 ]
   heal '[]'
-  [ "$rc" -eq 1 ]
+  [ "$heal_exit_status" -eq 1 ]
   heal 'not json'
-  [ "$rc" -eq 1 ]
+  [ "$heal_exit_status" -eq 1 ]
   [ "$(rates_stub_count)" = "0" ]
 }
 
@@ -365,7 +365,7 @@ assert_row_rejected() {
   prepare_local
   local_has claude-old-1
   heal '["claude-old-1"]'
-  [ "$rc" -eq 1 ]
+  [ "$heal_exit_status" -eq 1 ]
   [ "$(rates_stub_count)" = "0" ]
 }
 
@@ -376,7 +376,7 @@ assert_row_rejected() {
   prepare_local
   cp "$LOCAL" "$BATS_TEST_TMPDIR/local.before"
   heal '["claude-opus-6"]'
-  [ "$rc" -eq 1 ]
+  [ "$heal_exit_status" -eq 1 ]
   [ "$(rates_stub_count)" = "0" ]
   cmp -s "$BATS_TEST_TMPDIR/local.before" "$LOCAL"
 }
@@ -387,7 +387,7 @@ assert_row_rejected() {
   export GAIA_RATES_FEED_DISABLE=true
   prepare_local
   heal '["claude-opus-6"]'
-  [ "$rc" -eq 0 ]
+  [ "$heal_exit_status" -eq 0 ]
   [ "$(rates_stub_count)" = "1" ]
 }
 
@@ -396,10 +396,10 @@ assert_row_rejected() {
   export GAIA_RATES_FEED_URL="$RATES_STUB_URL"
   prepare_local
   heal '["claude-preview-9"]'
-  [ "$rc" -eq 1 ]
+  [ "$heal_exit_status" -eq 1 ]
   [ "$(rates_stub_count)" = "1" ]
   heal '["claude-preview-10"]'
-  [ "$rc" -eq 1 ]
+  [ "$heal_exit_status" -eq 1 ]
   [ "$(rates_stub_count)" = "1" ]
 }
 
@@ -408,10 +408,10 @@ assert_row_rejected() {
   export GAIA_RATES_FEED_URL="$RATES_PLAIN_URL"
   prepare_local
   heal '["claude-opus-6"]'
-  [ "$rc" -eq 1 ]
-  [ "$(wc -l <"$RATES_PLAIN_REQS" | tr -d ' ')" = "0" ]
+  [ "$heal_exit_status" -eq 1 ]
+  [ "$(wc -l <"$RATES_PLAIN_REQUESTS" | tr -d ' ')" = "0" ]
   [ "$(stderr_lines)" = "1" ]
-  grep -qF "scheme 'http' not accepted" "$ERR"
+  grep -qF "scheme 'http' not accepted" "$ERROR_FILE"
   if local_has claude-opus-6; then return 1; fi
   true
 }
@@ -420,14 +420,14 @@ assert_row_rejected() {
   prepare_local
   export GAIA_RATES_FEED_URL='FTP;$(touch pwned):x'
   heal '["claude-opus-6"]'
-  [ "$rc" -eq 1 ]
+  [ "$heal_exit_status" -eq 1 ]
   [ "$(stderr_lines)" = "1" ]
-  grep -qF "scheme 'ftptouchpwned' not accepted" "$ERR"
+  grep -qF "scheme 'ftptouchpwned' not accepted" "$ERROR_FILE"
   new_process
   export GAIA_RATES_FEED_URL='nonsense'
   heal '["claude-opus-6"]'
-  [ "$rc" -eq 1 ]
-  grep -qF "scheme 'none' not accepted" "$ERR"
+  [ "$heal_exit_status" -eq 1 ]
+  grep -qF "scheme 'none' not accepted" "$ERROR_FILE"
 }
 
 @test "an empty GAIA_RATES_FEED_URL falls back to the default URL, which is https" {
@@ -438,7 +438,7 @@ assert_row_rejected() {
   printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$@" >"%s"\ncat "%s"\n' "$BATS_TEST_TMPDIR/argv" "$FIXTURES/feed-valid.json" >"$shim/curl"
   chmod +x "$shim/curl"
   PATH="$shim:$PATH" heal '["claude-opus-6"]'
-  [ "$rc" -eq 0 ]
+  [ "$heal_exit_status" -eq 0 ]
   [ "$(tail -1 "$BATS_TEST_TMPDIR/argv")" = "$GAIA_RATES_FEED_DEFAULT_URL" ]
 }
 
@@ -451,11 +451,11 @@ assert_row_rejected() {
   prepare_local
   export GAIA_RATES_FEED_URL="file://$FIXTURES/feed-valid.json"
   cp "$LOCAL" "$BATS_TEST_TMPDIR/local.before"
-  rc=0
-  PATH="$bin" gaia_rates_heal '["claude-opus-6"]' 2>"$ERR" || rc=$?
-  [ "$rc" -eq 1 ]
+  heal_exit_status=0
+  PATH="$bin" gaia_rates_heal '["claude-opus-6"]' 2>"$ERROR_FILE" || heal_exit_status=$?
+  [ "$heal_exit_status" -eq 1 ]
   [ "$(stderr_lines)" = "1" ]
-  grep -qF "curl not found" "$ERR"
+  grep -qF "curl not found" "$ERROR_FILE"
   cmp -s "$BATS_TEST_TMPDIR/local.before" "$LOCAL"
 }
 
@@ -465,11 +465,11 @@ assert_row_rejected() {
   prepare_local
   set_state "{\"failed_at\": $(($(date +%s) - 100)), \"not_found\": {}}"
   heal '["claude-opus-6"]'
-  [ "$rc" -eq 1 ]
+  [ "$heal_exit_status" -eq 1 ]
   [ "$(rates_stub_count)" = "0" ]
   set_state "{\"failed_at\": $(($(date +%s) - 4000)), \"not_found\": {}}"
   heal '["claude-opus-6"]'
-  [ "$rc" -eq 0 ]
+  [ "$heal_exit_status" -eq 0 ]
   [ "$(rates_stub_count)" = "1" ]
   [ "$(state_failed_at)" = "null" ]
 }
@@ -480,10 +480,10 @@ assert_row_rejected() {
   prepare_local
   set_state "{\"failed_at\": null, \"not_found\": {\"claude-preview-9\": $(($(date +%s) - 100))}}"
   heal '["claude-preview-9"]'
-  [ "$rc" -eq 1 ]
+  [ "$heal_exit_status" -eq 1 ]
   [ "$(rates_stub_count)" = "0" ]
   heal '["claude-preview-9","claude-opus-6"]'
-  [ "$rc" -eq 0 ]
+  [ "$heal_exit_status" -eq 0 ]
   [ "$(rates_stub_count)" = "1" ]
 }
 
@@ -493,7 +493,7 @@ assert_row_rejected() {
   prepare_local
   set_state "{\"failed_at\": null, \"not_found\": {\"claude-opus-6\": $(($(date +%s) - 4000))}}"
   heal '["claude-opus-6"]'
-  [ "$rc" -eq 0 ]
+  [ "$heal_exit_status" -eq 0 ]
   [ "$(rates_stub_count)" = "1" ]
 }
 
@@ -503,18 +503,18 @@ assert_row_rejected() {
   prepare_local
   set_state 'this is {not json'
   heal '["claude-opus-6"]'
-  [ "$rc" -eq 0 ]
+  [ "$heal_exit_status" -eq 0 ]
   [ "$(rates_stub_count)" = "1" ]
 }
 
 # ---------- failure paths: failed_at set, table byte-identical ----------
 
 assert_failed_untouched() {
-  [[ "$rc" -eq 1 ]] || { echo "rc=$rc, expected 1" >&2; return 1; }
+  [[ "$heal_exit_status" -eq 1 ]] || { echo "heal_exit_status=$heal_exit_status, expected 1" >&2; return 1; }
   cmp -s "$BATS_TEST_TMPDIR/local.before" "$LOCAL" || { echo "local table changed" >&2; return 1; }
   [[ "$(state_failed_at)" =~ ^[0-9]+$ ]] || { echo "failed_at not an integer" >&2; return 1; }
   [[ "$(stderr_lines)" = "1" ]] || { echo "expected exactly one token-pricing line" >&2; return 1; }
-  if grep -q 'claude-' "$ERR"; then echo "a model id reached stderr" >&2; return 1; fi
+  if grep -q 'claude-' "$ERROR_FILE"; then echo "a model id reached stderr" >&2; return 1; fi
   [[ "$(feed_body_leftovers)" = "0" ]] || { echo "body temp file left behind" >&2; return 1; }
   return 0
 }
@@ -600,19 +600,19 @@ assert_failed_untouched() {
   export GAIA_RATES_FEED_URL="$RATES_STUB_URL"
   prepare_local
   heal '["claude-opus-6"]'
-  [ "$rc" -eq 1 ]
+  [ "$heal_exit_status" -eq 1 ]
   [ "$(rates_stub_count)" = "1" ]
   new_process
   rates_stub_set_mode serve "$FIXTURES/feed-valid.json"
   heal '["claude-opus-6"]'
-  [ "$rc" -eq 1 ]
+  [ "$heal_exit_status" -eq 1 ]
   [ "$(rates_stub_count)" = "1" ]
   if local_has claude-opus-6; then return 1; fi
   true
 }
 
 @test "a stalled handshake or body costs no more than the bounded ceiling over a feed-disabled baseline" {
-  local t0 t1 t2 baseline stalled mode
+  local start_seconds first_end_seconds second_end_seconds baseline stalled mode
   start_stub stall-handshake
   export GAIA_RATES_FEED_URL="$RATES_STUB_URL"
   prepare_local
@@ -620,18 +620,18 @@ assert_failed_untouched() {
   for mode in stall-handshake stall-body; do
     rates_stub_set_mode "$mode" "$FIXTURES/feed-valid.json"
     new_process
-    rm -f "$FSTATE"
+    rm -f "$FEED_STATE_FILE"
     export GAIA_RATES_FEED_DISABLE=1
-    t0="$(date +%s)"
+    start_seconds="$(date +%s)"
     heal '["claude-opus-6"]'
-    t1="$(date +%s)"
+    first_end_seconds="$(date +%s)"
     unset GAIA_RATES_FEED_DISABLE
     new_process
     heal '["claude-opus-6"]'
-    t2="$(date +%s)"
-    baseline=$((t1 - t0))
-    stalled=$((t2 - t1))
-    [ "$rc" -eq 1 ]
+    second_end_seconds="$(date +%s)"
+    baseline=$((first_end_seconds - start_seconds))
+    stalled=$((second_end_seconds - first_end_seconds))
+    [ "$heal_exit_status" -eq 1 ]
     [ "$((stalled - baseline))" -le 6 ]
     cmp -s "$BATS_TEST_TMPDIR/local.before" "$LOCAL"
   done
@@ -644,12 +644,12 @@ assert_failed_untouched() {
   prepare_local
   feed_file "$(cat "$FIXTURES/feed-valid.json")"
   heal '["claude-opus-6"]'
-  [ "$rc" -eq 0 ]
+  [ "$heal_exit_status" -eq 0 ]
   new_process
-  rm -f "$FSTATE"
+  rm -f "$FEED_STATE_FILE"
   feed_file '{"models":{"claude-opus-6":[{"input":8,"output":40}]}}'
   heal '["claude-opus-6","claude-zzz-1"]'
-  [ "$rc" -eq 0 ]
+  [ "$heal_exit_status" -eq 0 ]
   [ "$(local_row claude-opus-6)" = '[{"input":8,"output":40,"source":"feed"}]' ]
   [ "$(base_row claude-opus-6)" = '[{"input":8,"output":40,"source":"feed"}]' ]
 }
@@ -659,14 +659,14 @@ assert_failed_untouched() {
   prepare_local
   feed_file "$(cat "$FIXTURES/feed-valid.json")"
   heal '["claude-opus-6"]'
-  [ "$rc" -eq 0 ]
+  [ "$heal_exit_status" -eq 0 ]
   edited="$(jq -c '.models["claude-opus-6"][0].input = 99' "$LOCAL")"
   printf '%s' "$edited" >"$LOCAL"
   new_process
-  rm -f "$FSTATE"
+  rm -f "$FEED_STATE_FILE"
   feed_file '{"models":{"claude-opus-6":[{"input":8,"output":40}]}}'
   heal '["claude-opus-6","claude-zzz-1"]'
-  [ "$rc" -eq 1 ]
+  [ "$heal_exit_status" -eq 1 ]
   [ "$(jq -c '.models["claude-opus-6"][0].input' "$LOCAL")" = "99" ]
 }
 
@@ -674,7 +674,7 @@ assert_failed_untouched() {
   prepare_local
   feed_file '{"models":{"claude-opus-5":[{"input":1,"output":1}]}}'
   heal '["claude-zzz-1"]'
-  [ "$rc" -eq 1 ]
+  [ "$heal_exit_status" -eq 1 ]
   [ "$(local_row claude-opus-5)" = '[{"input":5,"output":25}]' ]
 }
 
@@ -682,12 +682,12 @@ assert_failed_untouched() {
   prepare_local
   feed_file "$(cat "$FIXTURES/feed-valid.json")"
   heal '["claude-opus-6"]'
-  [ "$rc" -eq 0 ]
+  [ "$heal_exit_status" -eq 0 ]
   new_process
-  rm -f "$FSTATE"
+  rm -f "$FEED_STATE_FILE"
   feed_file '{"models":{"claude-opus-6":[{"input":-8,"output":40}]}}'
   heal '["claude-opus-6","claude-zzz-1"]'
-  [ "$rc" -eq 1 ]
+  [ "$heal_exit_status" -eq 1 ]
   [ "$(local_row claude-opus-6)" = '[{"input":7,"output":35,"source":"feed"}]' ]
 }
 
@@ -706,7 +706,7 @@ make_curl_shim() {
   make_curl_shim
   prepare_local
   PATH="$SHIM:$PATH" heal '["claude-opus-6"]'
-  [ "$rc" -eq 0 ]
+  [ "$heal_exit_status" -eq 0 ]
   argv="$(tr '\n' ' ' <"$BATS_TEST_TMPDIR/argv")"
   [ "$argv" = "-q -fsS --proto =https --connect-timeout 2 --max-time 4 --max-filesize 262144 $GAIA_RATES_FEED_DEFAULT_URL " ]
   grep -qx -- '-q' "$BATS_TEST_TMPDIR/argv"
@@ -731,7 +731,7 @@ make_curl_shim() {
   prepare_local
   export GAIA_RATES_FEED_URL="file://$FIXTURES/feed-valid.json"
   PATH="$SHIM:$PATH" heal '["claude-opus-6"]'
-  [ "$rc" -eq 0 ]
+  [ "$heal_exit_status" -eq 0 ]
   argv="$(tr '\n' ' ' <"$BATS_TEST_TMPDIR/argv")"
   [ "$argv" = "-q -fsS --proto =file --connect-timeout 2 --max-time 4 --max-filesize 262144 file://$FIXTURES/feed-valid.json " ]
 }
@@ -741,8 +741,8 @@ make_curl_shim() {
 # 0 only when the path after /gaia-react/gaia/main/ in the lib's default URL
 # constant is a file tracked in this repository.
 feed_path_tracked() {
-  local lib="$1" url path
-  url="$(grep -E "^GAIA_RATES_FEED_DEFAULT_URL='" "$lib" | head -1 | sed -E "s/^GAIA_RATES_FEED_DEFAULT_URL='([^']*)'.*/\\1/")"
+  local library_file="$1" url path
+  url="$(grep -E "^GAIA_RATES_FEED_DEFAULT_URL='" "$library_file" | head -1 | sed -E "s/^GAIA_RATES_FEED_DEFAULT_URL='([^']*)'.*/\\1/")"
   [[ -n "$url" ]] || return 1
   case "$url" in
     *"/gaia-react/gaia/main/"?*) ;;
@@ -753,13 +753,13 @@ feed_path_tracked() {
 }
 
 @test "UAT-018: the default feed URL names a file tracked in the repository" {
-  run feed_path_tracked "$FEED_LIB"
+  run feed_path_tracked "$FEED_LIBRARY"
   [ "$status" -eq 0 ]
 }
 
 @test "UAT-018: the guard fails when the constant names an untracked path" {
   local copy="$BATS_TEST_TMPDIR/feed-lib-untracked.sh"
-  sed "s#/gaia-react/gaia/main/.gaia/scripts/token-rates.json#/gaia-react/gaia/main/.gaia/scripts/token-rates-never-tracked.json#" "$FEED_LIB" >"$copy"
+  sed "s#/gaia-react/gaia/main/.gaia/scripts/token-rates.json#/gaia-react/gaia/main/.gaia/scripts/token-rates-never-tracked.json#" "$FEED_LIBRARY" >"$copy"
   grep -qF 'token-rates-never-tracked.json' "$copy"
   run feed_path_tracked "$copy"
   [ "$status" -eq 1 ]
@@ -767,7 +767,7 @@ feed_path_tracked() {
 
 @test "UAT-018: the guard fails when the distributed table has moved" {
   local copy="$BATS_TEST_TMPDIR/feed-lib-moved.sh"
-  sed "s#/gaia-react/gaia/main/.gaia/scripts/token-rates.json#/gaia-react/gaia/main/.gaia/scripts/token-rates-moved.json#" "$FEED_LIB" >"$copy"
+  sed "s#/gaia-react/gaia/main/.gaia/scripts/token-rates.json#/gaia-react/gaia/main/.gaia/scripts/token-rates-moved.json#" "$FEED_LIBRARY" >"$copy"
   grep -qF 'token-rates-moved.json' "$copy"
   run feed_path_tracked "$copy"
   [ "$status" -eq 1 ]
@@ -775,10 +775,10 @@ feed_path_tracked() {
 
 @test "UAT-018: the guard fails when the constant is missing or names another repository" {
   local copy="$BATS_TEST_TMPDIR/feed-lib-missing.sh"
-  grep -v '^GAIA_RATES_FEED_DEFAULT_URL=' "$FEED_LIB" >"$copy"
+  grep -v '^GAIA_RATES_FEED_DEFAULT_URL=' "$FEED_LIBRARY" >"$copy"
   run feed_path_tracked "$copy"
   [ "$status" -eq 1 ]
-  sed "s#/gaia-react/gaia/main/#/someone/else/main/#" "$FEED_LIB" >"$copy"
+  sed "s#/gaia-react/gaia/main/#/someone/else/main/#" "$FEED_LIBRARY" >"$copy"
   run feed_path_tracked "$copy"
   [ "$status" -eq 1 ]
 }

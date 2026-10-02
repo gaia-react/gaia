@@ -219,7 +219,7 @@ command -v jq >/dev/null 2>&1 || {
 
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 [ -n "$repo_root" ] || repo_root="."
-audit_dir="${repo_root}/.gaia/local/audit"
+audit_directory="${repo_root}/.gaia/local/audit"
 
 # The branch half of the sidecar key (gaia_branch_slug, audit-key-lib.sh),
 # which is the whole selector here: see "Which sidecars this reads" in the
@@ -239,9 +239,9 @@ BRANCH_SLUG="$(gaia_branch_slug "$repo_root" 2>/dev/null || true)"
 
 sidecars=()
 if [ -n "$BRANCH_SLUG" ]; then
-  for f in "${audit_dir}"/*."${BRANCH_SLUG}".*.findings.json; do
-    [ -e "$f" ] || continue
-    sidecars+=("$f")
+  for sidecar_path in "${audit_directory}"/*."${BRANCH_SLUG}".*.findings.json; do
+    [ -e "$sidecar_path" ] || continue
+    sidecars+=("$sidecar_path")
   done
 fi
 
@@ -264,16 +264,16 @@ fi
 # -----------------------------------------------------------------------------
 
 valid_files=()
-for f in ${sidecars[@]+"${sidecars[@]}"}; do
-  if ! jq -e . "$f" >/dev/null 2>&1; then
-    emit_error "malformed sidecar (invalid JSON), skipping: $f"
+for sidecar_path in ${sidecars[@]+"${sidecars[@]}"}; do
+  if ! jq -e . "$sidecar_path" >/dev/null 2>&1; then
+    emit_error "malformed sidecar (invalid JSON), skipping: $sidecar_path"
     continue
   fi
-  if ! jq -e '(.findings | type) == "array"' "$f" >/dev/null 2>&1; then
-    emit_error "malformed sidecar (missing or non-array findings), skipping: $f"
+  if ! jq -e '(.findings | type) == "array"' "$sidecar_path" >/dev/null 2>&1; then
+    emit_error "malformed sidecar (missing or non-array findings), skipping: $sidecar_path"
     continue
   fi
-  valid_files+=("$f")
+  valid_files+=("$sidecar_path")
 done
 
 if [ "${#valid_files[@]}" -eq 0 ]; then
@@ -290,15 +290,15 @@ fi
 # -----------------------------------------------------------------------------
 
 review_base_entries=()
-for f in ${valid_files[@]+"${valid_files[@]}"}; do
-  jq -e 'has("review_base")' "$f" >/dev/null 2>&1 || continue
-  if ! jq -e '(.review_base | type) == "object" and ((.review_base.sha // "") != "")' "$f" >/dev/null 2>&1; then
-    emit_error "malformed review_base, skipping entry: $f"
+for sidecar_path in ${valid_files[@]+"${valid_files[@]}"}; do
+  jq -e 'has("review_base")' "$sidecar_path" >/dev/null 2>&1 || continue
+  if ! jq -e '(.review_base | type) == "object" and ((.review_base.sha // "") != "")' "$sidecar_path" >/dev/null 2>&1; then
+    emit_error "malformed review_base, skipping entry: $sidecar_path"
     continue
   fi
   entry="$(jq -c '{member: (.member // ""), sha: .review_base.sha,
                    reason: (.review_base.reason // ""),
-                   anchor_tree: (.review_base.anchor_tree // "")}' "$f" 2>/dev/null || true)"
+                   anchor_tree: (.review_base.anchor_tree // "")}' "$sidecar_path" 2>/dev/null || true)"
   [ -n "$entry" ] && review_base_entries+=("$entry")
 done
 
@@ -357,7 +357,7 @@ if ! merged_findings="$(jq -s '[.[] | .findings[]? | {finding_class, severity, a
   emit_decline "post failed"
   exit 0
 fi
-n="$(printf '%s' "$merged_findings" | jq 'length' 2>/dev/null || echo 0)"
+finding_count="$(printf '%s' "$merged_findings" | jq 'length' 2>/dev/null || echo 0)"
 
 # The member count is DISTINCT `.member` values, not the sidecar file count.
 # The two agreed while the glob selected one base, because a member writes one
@@ -371,9 +371,9 @@ n="$(printf '%s' "$merged_findings" | jq 'length' 2>/dev/null || echo 0)"
 # unnamed sidecar cannot be shown to be a DIFFERENT member from another unnamed
 # one. audit-write-findings.sh always writes the field, so the bucket exists for
 # malformed input rather than for anything the writer produces.
-m="$(jq -s '[.[] | (.member // "") ] | unique | length' \
+member_count="$(jq -s '[.[] | (.member // "") ] | unique | length' \
   ${valid_files[@]+"${valid_files[@]}"} 2>/dev/null || printf '%s' "${#valid_files[@]}")"
-[ -n "$m" ] || m="${#valid_files[@]}"
+[ -n "$member_count" ] || member_count="${#valid_files[@]}"
 
 payload="$(jq -nc \
   --argjson pr "$PR" \
@@ -427,7 +427,7 @@ existing_id="$(gh api "repos/${repo}/issues/${PR}/comments" --paginate \
 if [ -n "$existing_id" ]; then
   if gh api --method PATCH "repos/${repo}/issues/comments/${existing_id}" \
     -F body=@"$body_file" >/dev/null 2>&1; then
-    printf 'findings: updated %s finding(s) from %s member(s) on PR #%s\n' "$n" "$m" "$PR"
+    printf 'findings: updated %s finding(s) from %s member(s) on PR #%s\n' "$finding_count" "$member_count" "$PR"
     exit 0
   fi
   emit_decline "post failed"
@@ -436,7 +436,7 @@ fi
 
 if gh api --method POST "repos/${repo}/issues/${PR}/comments" \
   -F body=@"$body_file" >/dev/null 2>&1; then
-  printf 'findings: posted %s finding(s) from %s member(s) to PR #%s\n' "$n" "$m" "$PR"
+  printf 'findings: posted %s finding(s) from %s member(s) to PR #%s\n' "$finding_count" "$member_count" "$PR"
   exit 0
 fi
 

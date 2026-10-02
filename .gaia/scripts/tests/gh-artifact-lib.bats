@@ -7,11 +7,11 @@
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
-  SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
-  LIB="$SCRIPT_DIR/gh-artifact-lib.sh"
+  SCRIPT_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
+  LIBRARY="$SCRIPT_DIRECTORY/gh-artifact-lib.sh"
   # shellcheck source=.gaia/scripts/gh-artifact-lib.sh
-  source "$LIB"
-  unset GAIA_GH_ARTIFACT_CACHE_DIR
+  source "$LIBRARY"
+  unset GAIA_GH_ARTIFACT_CACHE_DIRECTORY
 }
 
 # ========== source-time purity ==========
@@ -20,25 +20,25 @@ setup() {
 @test "sourcing the lib has no side effects: succeeds under set -u with no git repo and no external PATH" {
   scratch="$BATS_TEST_TMPDIR/no-side-effects"
   mkdir -p "$scratch"
-  run bash -c "cd '$scratch' && PATH='' && set -u && source '$LIB' && echo sourced-ok"
+  run bash -c "cd '$scratch' && PATH='' && set -u && source '$LIBRARY' && echo sourced-ok"
   [ "$status" -eq 0 ]
   grep -qF "sourced-ok" <<<"$output"
   [ -z "$(ls -A "$scratch")" ]
 }
 
-# ========== gaia_gh_artifact_cache_dir ==========
+# ========== gaia_gh_artifact_cache_directory ==========
 
 # ---------- 2 ----------
-@test "gaia_gh_artifact_cache_dir: GAIA_GH_ARTIFACT_CACHE_DIR test seam wins" {
-  GAIA_GH_ARTIFACT_CACHE_DIR=/x/y
-  export GAIA_GH_ARTIFACT_CACHE_DIR
-  run gaia_gh_artifact_cache_dir
+@test "gaia_gh_artifact_cache_directory: GAIA_GH_ARTIFACT_CACHE_DIRECTORY test seam wins" {
+  GAIA_GH_ARTIFACT_CACHE_DIRECTORY=/x/y
+  export GAIA_GH_ARTIFACT_CACHE_DIRECTORY
+  run gaia_gh_artifact_cache_directory
   [ "$status" -eq 0 ]
   [ "$output" = "/x/y" ]
 }
 
 # ---------- 3 ----------
-@test "gaia_gh_artifact_cache_dir: inside a real repo, echoes <repo-root>/.gaia/local/cache" {
+@test "gaia_gh_artifact_cache_directory: inside a real repo, echoes <repo-root>/.gaia/local/cache" {
   repo="$BATS_TEST_TMPDIR/repo3"
   mkdir -p "$repo"
   git init -q "$repo"
@@ -46,13 +46,13 @@ setup() {
   # worktree-safe test below); $BATS_TEST_TMPDIR itself can sit under a
   # symlinked component (e.g. macOS /var -> private/var), so the comparison
   # side must canonicalize too or this drifts from the resolver's own answer.
-  repo_abs="$(cd "$repo" && pwd -P)"
-  out="$(cd "$repo" && gaia_gh_artifact_cache_dir)"
-  [ "$out" = "$repo_abs/.gaia/local/cache" ]
+  repo_absolute_path="$(cd "$repo" && pwd -P)"
+  resolved_cache_directory="$(cd "$repo" && gaia_gh_artifact_cache_directory)"
+  [ "$resolved_cache_directory" = "$repo_absolute_path/.gaia/local/cache" ]
 }
 
 # ---------- 4 ----------
-@test "gaia_gh_artifact_cache_dir: worktree-safe, resolves the MAIN checkout's cache dir" {
+@test "gaia_gh_artifact_cache_directory: worktree-safe, resolves the MAIN checkout's cache dir" {
   main="$BATS_TEST_TMPDIR/wtmain"
   linked="$BATS_TEST_TMPDIR/wtlinked"
   mkdir -p "$main"
@@ -62,22 +62,22 @@ setup() {
   # pwd -P: macOS resolves /var -> /private/var inside `git rev-parse`, and
   # the function's output comes back through that canonical form, so the
   # comparison side must canonicalize too.
-  main_abs="$(cd "$main" && pwd -P)"
-  wt_abs="$(cd "$linked" && pwd -P)"
-  out="$(cd "$linked" && gaia_gh_artifact_cache_dir)"
-  [ "$out" = "$main_abs/.gaia/local/cache" ]
-  [ "$out" != "$wt_abs/.gaia/local/cache" ]
+  main_absolute_path="$(cd "$main" && pwd -P)"
+  worktree_absolute_path="$(cd "$linked" && pwd -P)"
+  resolved_cache_directory="$(cd "$linked" && gaia_gh_artifact_cache_directory)"
+  [ "$resolved_cache_directory" = "$main_absolute_path/.gaia/local/cache" ]
+  [ "$resolved_cache_directory" != "$worktree_absolute_path/.gaia/local/cache" ]
 }
 
 # ---------- 5 ----------
-@test "gaia_gh_artifact_cache_dir: outside any git repo, echoes nothing on stdout and returns 0" {
+@test "gaia_gh_artifact_cache_directory: outside any git repo, echoes nothing on stdout and returns 0" {
   plain="$BATS_TEST_TMPDIR/no-git"
   mkdir -p "$plain"
   # The shared resolver behind this function writes one diagnostic to STDERR
   # on failure (by design, unlike the old silent-on-both-streams derivation);
   # this function's own contract is stdout-silence only, so the inner stderr
   # is redirected away rather than merged into $output.
-  run bash -c "cd '$plain' && source '$LIB' && gaia_gh_artifact_cache_dir 2>/dev/null"
+  run bash -c "cd '$plain' && source '$LIBRARY' && gaia_gh_artifact_cache_directory 2>/dev/null"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -85,7 +85,7 @@ setup() {
 # ========== gaia_gh_artifact_path ==========
 
 # ---------- 5b ----------
-@test "gaia_gh_artifact_path: cache_dir and branch both present yields the keyed filename" {
+@test "gaia_gh_artifact_path: cache_directory and branch both present yields the keyed filename" {
   run gaia_gh_artifact_path "/x/y" "some-branch"
   [ "$status" -eq 0 ]
   [ "$output" = "/x/y/gh-artifact-pr.some-branch.json" ]
@@ -103,7 +103,7 @@ setup() {
 }
 
 # ---------- 5d ----------
-@test "gaia_gh_artifact_path: an empty cache_dir OR an empty branch echoes nothing and returns 0" {
+@test "gaia_gh_artifact_path: an empty cache_directory OR an empty branch echoes nothing and returns 0" {
   run gaia_gh_artifact_path "" "some-branch"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
@@ -118,7 +118,7 @@ setup() {
 }
 
 # A failing slug is the third way this path is undeterminable, alongside an
-# empty cache_dir and an empty branch, and it takes the same empty-output exit.
+# empty cache_directory and an empty branch, and it takes the same empty-output exit.
 # The slug is captured and checked rather than interpolated into the printf,
 # because a command substitution discards its own status: an unchecked failure
 # would echo "gh-artifact-pr..json", the unkeyed shared path this function's
@@ -132,7 +132,7 @@ setup() {
 @test "gaia_gh_artifact_path: a failing slug echoes nothing, never an unkeyed shared path" {
   local scratch="$BATS_TEST_TMPDIR/failing-slug"
   mkdir -p "$scratch"
-  cp "$LIB" "$scratch/gh-artifact-lib.sh"
+  cp "$LIBRARY" "$scratch/gh-artifact-lib.sh"
   printf 'gaia_key_slug() { return 1; }\n' >"$scratch/audit-key-lib.sh"
 
   run bash -c "source '$scratch/gh-artifact-lib.sh'; gaia_gh_artifact_path '/x/y' 'some-branch'"
@@ -143,7 +143,7 @@ setup() {
 }
 
 # ---------- 5e ----------
-@test "gaia_gh_artifact_path: two different branches under the same cache_dir yield two different paths" {
+@test "gaia_gh_artifact_path: two different branches under the same cache_directory yield two different paths" {
   path_a="$(gaia_gh_artifact_path "/x/y" "branch-a")"
   path_b="$(gaia_gh_artifact_path "/x/y" "branch-b")"
   [ -n "$path_a" ]
@@ -152,12 +152,12 @@ setup() {
 }
 
 # ---------- 5f ----------
-@test "gaia_gh_artifact_path: end-to-end -- tree A's write-then-read survives a same-cache_dir write from tree B" {
-  cache_dir="$BATS_TEST_TMPDIR/shared-cache"
-  mkdir -p "$cache_dir"
+@test "gaia_gh_artifact_path: end-to-end -- tree A's write-then-read survives a same-cache_directory write from tree B" {
+  cache_directory="$BATS_TEST_TMPDIR/shared-cache"
+  mkdir -p "$cache_directory"
 
-  path_a="$(gaia_gh_artifact_path "$cache_dir" "tree-a")"
-  path_b="$(gaia_gh_artifact_path "$cache_dir" "tree-b")"
+  path_a="$(gaia_gh_artifact_path "$cache_directory" "tree-a")"
+  path_b="$(gaia_gh_artifact_path "$cache_directory" "tree-b")"
   [ "$path_a" != "$path_b" ]
 
   gaia_gh_artifact_write "$path_a" 100 "gaia-react/gaia" "tree-a" "sess-a"
@@ -227,15 +227,15 @@ setup() {
 
 # ---------- 10 ----------
 @test "gaia_gh_artifact_write: a valid write has exactly the FC-1 key set" {
-  bc="$BATS_TEST_TMPDIR/write-valid.json"
-  run gaia_gh_artifact_write "$bc" 712 "gaia-react/gaia" "spec-040-command-cost-telemetry" "sess-abc"
+  breadcrumb_path="$BATS_TEST_TMPDIR/write-valid.json"
+  run gaia_gh_artifact_write "$breadcrumb_path" 712 "gaia-react/gaia" "spec-040-command-cost-telemetry" "sess-abc"
   [ "$status" -eq 0 ]
-  [ -f "$bc" ]
-  [ "$(jq -r 'keys | @csv' "$bc")" = '"branch","number","repo","session_id","ts","type"' ]
-  [ "$(jq -r '.type' "$bc")" = "pr" ]
-  jq -e '.number | type == "number"' >/dev/null 2>&1 <"$bc" || return 1
-  ts_val="$(jq -r '.ts' "$bc")"
-  case "$ts_val" in
+  [ -f "$breadcrumb_path" ]
+  [ "$(jq -r 'keys | @csv' "$breadcrumb_path")" = '"branch","number","repo","session_id","ts","type"' ]
+  [ "$(jq -r '.type' "$breadcrumb_path")" = "pr" ]
+  jq -e '.number | type == "number"' >/dev/null 2>&1 <"$breadcrumb_path" || return 1
+  timestamp_value="$(jq -r '.ts' "$breadcrumb_path")"
+  case "$timestamp_value" in
     [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) ;;
     *) return 1 ;;
   esac
@@ -243,81 +243,81 @@ setup() {
 
 # ---------- 11 ----------
 @test "gaia_gh_artifact_write: empty branch refuses and writes nothing" {
-  bc="$BATS_TEST_TMPDIR/write-nobranch.json"
-  run gaia_gh_artifact_write "$bc" 712 "gaia-react/gaia" "" "sess-abc"
+  breadcrumb_path="$BATS_TEST_TMPDIR/write-nobranch.json"
+  run gaia_gh_artifact_write "$breadcrumb_path" 712 "gaia-react/gaia" "" "sess-abc"
   [ "$status" -ne 0 ]
-  [ ! -e "$bc" ]
+  [ ! -e "$breadcrumb_path" ]
 }
 
 # ---------- 12 ----------
 @test "gaia_gh_artifact_write: empty session_id refuses and writes nothing" {
-  bc="$BATS_TEST_TMPDIR/write-nosession.json"
-  run gaia_gh_artifact_write "$bc" 712 "gaia-react/gaia" "some-branch" ""
+  breadcrumb_path="$BATS_TEST_TMPDIR/write-nosession.json"
+  run gaia_gh_artifact_write "$breadcrumb_path" 712 "gaia-react/gaia" "some-branch" ""
   [ "$status" -ne 0 ]
-  [ ! -e "$bc" ]
+  [ ! -e "$breadcrumb_path" ]
 }
 
 # ---------- 13 ----------
 @test "gaia_gh_artifact_write: a repo outside the safe class refuses and writes nothing" {
-  bc1="$BATS_TEST_TMPDIR/write-badrepo1.json"
-  run gaia_gh_artifact_write "$bc1" 712 "o;rm -rf /" "some-branch" "sess-abc"
+  first_breadcrumb_path="$BATS_TEST_TMPDIR/write-badrepo1.json"
+  run gaia_gh_artifact_write "$first_breadcrumb_path" 712 "o;rm -rf /" "some-branch" "sess-abc"
   [ "$status" -ne 0 ]
-  [ ! -e "$bc1" ]
+  [ ! -e "$first_breadcrumb_path" ]
 
-  bc2="$BATS_TEST_TMPDIR/write-badrepo2.json"
-  run gaia_gh_artifact_write "$bc2" 712 "owner/na me" "some-branch" "sess-abc"
+  second_breadcrumb_path="$BATS_TEST_TMPDIR/write-badrepo2.json"
+  run gaia_gh_artifact_write "$second_breadcrumb_path" 712 "owner/na me" "some-branch" "sess-abc"
   [ "$status" -ne 0 ]
-  [ ! -e "$bc2" ]
+  [ ! -e "$second_breadcrumb_path" ]
 }
 
 # ---------- 14 ----------
 @test "gaia_gh_artifact_write: a non-positive-integer number refuses and writes nothing" {
-  bc1="$BATS_TEST_TMPDIR/write-badnum1.json"
-  run gaia_gh_artifact_write "$bc1" "1x" "gaia-react/gaia" "some-branch" "sess-abc"
+  first_breadcrumb_path="$BATS_TEST_TMPDIR/write-badnum1.json"
+  run gaia_gh_artifact_write "$first_breadcrumb_path" "1x" "gaia-react/gaia" "some-branch" "sess-abc"
   [ "$status" -ne 0 ]
-  [ ! -e "$bc1" ]
+  [ ! -e "$first_breadcrumb_path" ]
 
-  bc2="$BATS_TEST_TMPDIR/write-badnum2.json"
-  run gaia_gh_artifact_write "$bc2" "" "gaia-react/gaia" "some-branch" "sess-abc"
+  second_breadcrumb_path="$BATS_TEST_TMPDIR/write-badnum2.json"
+  run gaia_gh_artifact_write "$second_breadcrumb_path" "" "gaia-react/gaia" "some-branch" "sess-abc"
   [ "$status" -ne 0 ]
-  [ ! -e "$bc2" ]
+  [ ! -e "$second_breadcrumb_path" ]
 
-  bc3="$BATS_TEST_TMPDIR/write-badnum3.json"
-  run gaia_gh_artifact_write "$bc3" "-3" "gaia-react/gaia" "some-branch" "sess-abc"
+  third_breadcrumb_path="$BATS_TEST_TMPDIR/write-badnum3.json"
+  run gaia_gh_artifact_write "$third_breadcrumb_path" "-3" "gaia-react/gaia" "some-branch" "sess-abc"
   [ "$status" -ne 0 ]
-  [ ! -e "$bc3" ]
+  [ ! -e "$third_breadcrumb_path" ]
 }
 
 # ---------- 15 ----------
 @test "gaia_gh_artifact_write: a second write overwrites, last writer wins" {
-  bc="$BATS_TEST_TMPDIR/write-overwrite.json"
-  run gaia_gh_artifact_write "$bc" 100 "gaia-react/gaia" "branch-one" "sess-one"
+  breadcrumb_path="$BATS_TEST_TMPDIR/write-overwrite.json"
+  run gaia_gh_artifact_write "$breadcrumb_path" 100 "gaia-react/gaia" "branch-one" "sess-one"
   [ "$status" -eq 0 ]
-  run gaia_gh_artifact_write "$bc" 200 "gaia-react/gaia" "branch-two" "sess-two"
+  run gaia_gh_artifact_write "$breadcrumb_path" 200 "gaia-react/gaia" "branch-two" "sess-two"
   [ "$status" -eq 0 ]
-  [ "$(jq -r '.number' "$bc")" -eq 200 ]
-  [ "$(jq -r '.branch' "$bc")" = "branch-two" ]
+  [ "$(jq -r '.number' "$breadcrumb_path")" -eq 200 ]
+  [ "$(jq -r '.branch' "$breadcrumb_path")" = "branch-two" ]
   # exactly one JSON object left in the file, not two concatenated (jq's
   # writer is not required to be single-line; FC-1's own example is
   # pretty-printed, so "one object" is checked structurally, not by wc -l)
-  [ "$(jq -s 'length' "$bc")" -eq 1 ]
+  [ "$(jq -s 'length' "$breadcrumb_path")" -eq 1 ]
 }
 
 # ---------- 16 ----------
 @test "gaia_gh_artifact_write: a repo name with legal dot/dash characters succeeds" {
-  bc="$BATS_TEST_TMPDIR/write-dotdash.json"
-  run gaia_gh_artifact_write "$bc" 5 "my-org/my.repo" "some-branch" "sess-abc"
+  breadcrumb_path="$BATS_TEST_TMPDIR/write-dotdash.json"
+  run gaia_gh_artifact_write "$breadcrumb_path" 5 "my-org/my.repo" "some-branch" "sess-abc"
   [ "$status" -eq 0 ]
-  [ "$(jq -r '.repo' "$bc")" = "my-org/my.repo" ]
+  [ "$(jq -r '.repo' "$breadcrumb_path")" = "my-org/my.repo" ]
 }
 
 # ========== gaia_gh_artifact_read ==========
 
 # ---------- 17 ----------
 @test "gaia_gh_artifact_read: session_id and branch match, returns the type/number/repo triple" {
-  bc="$BATS_TEST_TMPDIR/read-valid.json"
-  gaia_gh_artifact_write "$bc" 712 "gaia-react/gaia" "spec-040-command-cost-telemetry" "sess-abc"
-  run gaia_gh_artifact_read "$bc" "sess-abc" "spec-040-command-cost-telemetry"
+  breadcrumb_path="$BATS_TEST_TMPDIR/read-valid.json"
+  gaia_gh_artifact_write "$breadcrumb_path" 712 "gaia-react/gaia" "spec-040-command-cost-telemetry" "sess-abc"
+  run gaia_gh_artifact_read "$breadcrumb_path" "sess-abc" "spec-040-command-cost-telemetry"
   [ "$status" -eq 0 ]
   [ "$(jq -r 'keys | @csv' <<<"$output")" = '"number","repo","type"' ]
   [ "$(jq -r '.type' <<<"$output")" = "pr" ]
@@ -327,36 +327,36 @@ setup() {
 
 # ---------- 18 ----------
 @test "gaia_gh_artifact_read: never deletes the breadcrumb" {
-  bc="$BATS_TEST_TMPDIR/read-nodelete.json"
-  gaia_gh_artifact_write "$bc" 712 "gaia-react/gaia" "some-branch" "sess-abc"
-  gaia_gh_artifact_read "$bc" "sess-abc" "some-branch" >/dev/null
-  [ -f "$bc" ]
+  breadcrumb_path="$BATS_TEST_TMPDIR/read-nodelete.json"
+  gaia_gh_artifact_write "$breadcrumb_path" 712 "gaia-react/gaia" "some-branch" "sess-abc"
+  gaia_gh_artifact_read "$breadcrumb_path" "sess-abc" "some-branch" >/dev/null
+  [ -f "$breadcrumb_path" ]
 }
 
 # ---------- 19 ----------
 @test "gaia_gh_artifact_read: reading twice returns identical output" {
-  bc="$BATS_TEST_TMPDIR/read-twice.json"
-  gaia_gh_artifact_write "$bc" 42 "gaia-react/gaia" "some-branch" "sess-xyz"
-  first="$(gaia_gh_artifact_read "$bc" "sess-xyz" "some-branch")"
-  second="$(gaia_gh_artifact_read "$bc" "sess-xyz" "some-branch")"
+  breadcrumb_path="$BATS_TEST_TMPDIR/read-twice.json"
+  gaia_gh_artifact_write "$breadcrumb_path" 42 "gaia-react/gaia" "some-branch" "sess-xyz"
+  first="$(gaia_gh_artifact_read "$breadcrumb_path" "sess-xyz" "some-branch")"
+  second="$(gaia_gh_artifact_read "$breadcrumb_path" "sess-xyz" "some-branch")"
   [ -n "$first" ]
   [ "$first" = "$second" ]
 }
 
 # ---------- 20 ----------
 @test "gaia_gh_artifact_read: branch mismatch echoes nothing" {
-  bc="$BATS_TEST_TMPDIR/read-branchmismatch.json"
-  gaia_gh_artifact_write "$bc" 42 "gaia-react/gaia" "branch-a" "sess-xyz"
-  run gaia_gh_artifact_read "$bc" "sess-xyz" "branch-b"
+  breadcrumb_path="$BATS_TEST_TMPDIR/read-branchmismatch.json"
+  gaia_gh_artifact_write "$breadcrumb_path" 42 "gaia-react/gaia" "branch-a" "sess-xyz"
+  run gaia_gh_artifact_read "$breadcrumb_path" "sess-xyz" "branch-b"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
 
 # ---------- 21 ----------
 @test "gaia_gh_artifact_read: session mismatch echoes nothing" {
-  bc="$BATS_TEST_TMPDIR/read-sessionmismatch.json"
-  gaia_gh_artifact_write "$bc" 42 "gaia-react/gaia" "branch-a" "sess-xyz"
-  run gaia_gh_artifact_read "$bc" "sess-other" "branch-a"
+  breadcrumb_path="$BATS_TEST_TMPDIR/read-sessionmismatch.json"
+  gaia_gh_artifact_write "$breadcrumb_path" 42 "gaia-react/gaia" "branch-a" "sess-xyz"
+  run gaia_gh_artifact_read "$breadcrumb_path" "sess-other" "branch-a"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -382,9 +382,9 @@ setup() {
   # wants -d '+2 hours', and the losing form exits non-zero, which aborts the
   # test under bats' set -e before any fallback runs. jq is already the reader's
   # own clock, so this matches what it parses.
-  future_ts="$(jq -rn '(now + 7200) | todateiso8601')"
+  future_timestamp="$(jq -rn '(now + 7200) | todateiso8601')"
   future="$BATS_TEST_TMPDIR/read-future.json"
-  printf '{"type":"pr","number":1,"repo":"gaia-react/gaia","branch":"branch-a","session_id":"sess-xyz","ts":"%s"}' "$future_ts" >"$future"
+  printf '{"type":"pr","number":1,"repo":"gaia-react/gaia","branch":"branch-a","session_id":"sess-xyz","ts":"%s"}' "$future_timestamp" >"$future"
   run gaia_gh_artifact_read "$future" "sess-xyz" "branch-a"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
@@ -408,28 +408,28 @@ setup() {
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 
-  arr="$BATS_TEST_TMPDIR/read-array.json"
-  printf '[1,2,3]' >"$arr"
-  run gaia_gh_artifact_read "$arr" "sess-xyz" "branch-a"
+  array_breadcrumb_path="$BATS_TEST_TMPDIR/read-array.json"
+  printf '[1,2,3]' >"$array_breadcrumb_path"
+  run gaia_gh_artifact_read "$array_breadcrumb_path" "sess-xyz" "branch-a"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 
-  now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  missing_num="$BATS_TEST_TMPDIR/read-missingnum.json"
-  printf '{"type":"pr","repo":"gaia-react/gaia","branch":"branch-a","session_id":"sess-xyz","ts":"%s"}' "$now_ts" >"$missing_num"
-  run gaia_gh_artifact_read "$missing_num" "sess-xyz" "branch-a"
+  now_timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  missing_number="$BATS_TEST_TMPDIR/read-missingnum.json"
+  printf '{"type":"pr","repo":"gaia-react/gaia","branch":"branch-a","session_id":"sess-xyz","ts":"%s"}' "$now_timestamp" >"$missing_number"
+  run gaia_gh_artifact_read "$missing_number" "sess-xyz" "branch-a"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
 
 # ---------- 25 ----------
 @test "gaia_gh_artifact_read: jq unavailable on PATH echoes nothing and returns 0" {
-  bc="$BATS_TEST_TMPDIR/read-nojq.json"
-  gaia_gh_artifact_write "$bc" 1 "gaia-react/gaia" "branch-a" "sess-xyz"
+  breadcrumb_path="$BATS_TEST_TMPDIR/read-nojq.json"
+  gaia_gh_artifact_write "$breadcrumb_path" 1 "gaia-react/gaia" "branch-a" "sess-xyz"
   saved_path="$PATH"
   # shellcheck disable=SC2123 # deliberately blank PATH to make jq unfindable; restored right after the call
   PATH=""
-  run gaia_gh_artifact_read "$bc" "sess-xyz" "branch-a"
+  run gaia_gh_artifact_read "$breadcrumb_path" "sess-xyz" "branch-a"
   PATH="$saved_path"
   [ "$status" -eq 0 ]
   [ -z "$output" ]

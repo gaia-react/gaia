@@ -39,7 +39,7 @@ _library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # aborts before the arm is ever evaluated: the refusal written below would never
 # run. An interrupted update, an unresolved merge conflict, and a truncated
 # write all leave exactly that state on disk. No probe of its own here, because
-# the gaia_resolve_specs_dir call below already refuses when the function is
+# the gaia_resolve_specs_directory call below already refuses when the function is
 # absent, which is the degrade this load owes.
 # shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
 set +e; [ -f "${_library_directory}/../../../../.gaia/scripts/ledger-path-lib.sh" ] && . "${_library_directory}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null; set -e
@@ -63,7 +63,7 @@ fi
 # Resolve rather than trust: using repo_root directly could rename a folder
 # in one tree while the ledger row lands in main's, forking the two. Refuse
 # rather than fall back to the unresolved operand.
-if ! specs_directory="$(gaia_resolve_specs_dir "$repo_root" 2>/dev/null)" || [ -z "$specs_directory" ]; then
+if ! specs_directory="$(gaia_resolve_specs_directory "$repo_root" 2>/dev/null)" || [ -z "$specs_directory" ]; then
   echo "spec-renumber: cannot resolve the main checkout for '$repo_root'; refuse to renumber (would fork the ledger across worktrees)" >&2
   exit 3
 fi

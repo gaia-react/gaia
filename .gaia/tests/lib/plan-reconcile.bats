@@ -12,7 +12,7 @@
 # test plus its runtime deps (plan-ledger-update.sh, with-ledger-lock.sh,
 # ledger-path-lib.sh, main-root-lib.sh) into a sibling lib dir so the
 # ${BASH_SOURCE[0]}-relative source resolves, `git init` the sandbox so
-# plan-ledger-update.sh's main-checkout resolver (gaia_resolve_plans_dir) has
+# plan-ledger-update.sh's main-checkout resolver (gaia_resolve_plans_directory) has
 # a real repository to resolve against, and seed the plans ledger explicitly.
 
 setup() {
