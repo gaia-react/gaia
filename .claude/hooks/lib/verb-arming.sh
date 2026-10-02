@@ -10,8 +10,8 @@
 # boundary group, plus any further capture groups the caller wants. It is
 # composed, byte for byte, into this pattern pair:
 #
-#   start_re = '^[[:space:]]*'                       + <verb_fragment>
-#   sep_re   = $'(\\&\\&|;|\\|\\||\\||\n|\\$\\(|\140|<\\(|>\\()'
+#   start_regex = '^[[:space:]]*'                       + <verb_fragment>
+#   separator_regex   = $'(\\&\\&|;|\\|\\||\\||\n|\\$\\(|\140|<\\(|>\\()'
 #              + '[[:space:]]*' + <verb_fragment>
 #
 # The separator group holds the list operators, a newline, and every
@@ -97,7 +97,7 @@
 # call that armed ran longer, and two ran past 8,192. The walker defaults the
 # same value so it stays sourceable on its own under `set -u`.
 # shellcheck disable=SC2034 # read by the walker, which defaults it when sourced alone
-GAIA_VERB_ARM_MAX_CHARS=16384
+GAIA_VERB_ARM_MAXIMUM_CHARACTERS=16384
 # How much of the text pass 3 reads. CHARACTERS, not bytes. The scanner it
 # calls walks a character at a time, so its cost grows faster than the input,
 # and this bound sits far past the twenty-odd characters a real invocation
@@ -120,7 +120,7 @@ GAIA_VERB_ARM_LIVE=""
 _gaia_va_walk=0
 # Pre-filter cache, keyed on the words spec it was derived from.
 _gaia_va_lead_key=""
-_gaia_va_lead_re=""
+_gaia_va_lead_regex=""
 
 # Derive pass 3's pre-filter from the distinct first words of <words_spec>.
 #
@@ -141,13 +141,13 @@ _gaia_va_lead_re=""
 # A leading character that is not alphanumeric is left to the scan: a filter
 # built around one would have to know how the character behaves inside a
 # bracket expression, and getting that wrong drops an arm silently.
-_gaia_va_build_lead_re() {
+_gaia_va_build_lead_regex() {
   local spec="$1"
-  local rest tuple w c0 c1 alts seen
+  local rest tuple word first_character second_character alternatives seen
   [ "$_gaia_va_lead_key" = "$spec" ] && return 0
   _gaia_va_lead_key="$spec"
-  _gaia_va_lead_re=""
-  alts=""
+  _gaia_va_lead_regex=""
+  alternatives=""
   seen=" "
   rest="$spec"
   while [ -n "$rest" ]; do
@@ -156,24 +156,24 @@ _gaia_va_build_lead_re() {
       *) tuple="$rest"; rest="" ;;
     esac
     case "$tuple" in
-      *' '*) w="${tuple%% *}" ;;
-      *) w="$tuple" ;;
+      *' '*) word="${tuple%% *}" ;;
+      *) word="$tuple" ;;
     esac
-    [ -n "$w" ] || continue
-    case "$seen" in *" $w "*) continue ;; esac
-    seen="$seen$w "
-    c0="${w:0:1}"
-    c1="${w:1:1}"
-    case "$c0" in [A-Za-z0-9]) ;; *) return 0 ;; esac
-    if [ -n "$c1" ]; then
-      case "$c1" in [A-Za-z0-9]) ;; *) return 0 ;; esac
-      alts="${alts}[$c0][\"'\\$c1]|"
+    [ -n "$word" ] || continue
+    case "$seen" in *" $word "*) continue ;; esac
+    seen="$seen$word "
+    first_character="${word:0:1}"
+    second_character="${word:1:1}"
+    case "$first_character" in [A-Za-z0-9]) ;; *) return 0 ;; esac
+    if [ -n "$second_character" ]; then
+      case "$second_character" in [A-Za-z0-9]) ;; *) return 0 ;; esac
+      alternatives="${alternatives}[$first_character][\"'\\$second_character]|"
     else
-      alts="${alts}[$c0]|"
+      alternatives="${alternatives}[$first_character]|"
     fi
   done
-  [ -n "$alts" ] || return 0
-  _gaia_va_lead_re="^[[:space:]]*(${alts}[\"'\\])"
+  [ -n "$alternatives" ] || return 0
+  _gaia_va_lead_regex="^[[:space:]]*(${alternatives}[\"'\\])"
   return 0
 }
 
@@ -181,8 +181,8 @@ _gaia_va_build_lead_re() {
 # the scanned word list never matches.
 _gaia_va_words_match() {
   local spec="$1"
-  local rest tuple wrest w i n ok
-  n="${#GAIA_FIRST_COMMAND_WORDS[@]}"
+  local rest tuple remaining_words word i word_count ok
+  word_count="${#GAIA_FIRST_COMMAND_WORDS[@]}"
   rest="$spec"
   while [ -n "$rest" ]; do
     case "$rest" in
@@ -190,17 +190,17 @@ _gaia_va_words_match() {
       *) tuple="$rest"; rest="" ;;
     esac
     [ -n "$tuple" ] || continue
-    wrest="$tuple"
+    remaining_words="$tuple"
     i=0
     ok=1
-    while [ -n "$wrest" ]; do
-      case "$wrest" in
-        *' '*) w="${wrest%% *}"; wrest="${wrest#* }" ;;
-        *) w="$wrest"; wrest="" ;;
+    while [ -n "$remaining_words" ]; do
+      case "$remaining_words" in
+        *' '*) word="${remaining_words%% *}"; remaining_words="${remaining_words#* }" ;;
+        *) word="$remaining_words"; remaining_words="" ;;
       esac
-      [ -n "$w" ] || continue
-      if [ "$i" -ge "$n" ]; then ok=0; break; fi
-      if [ "$w" != '*' ] && [ "$w" != "${GAIA_FIRST_COMMAND_WORDS[$i]}" ]; then ok=0; break; fi
+      [ -n "$word" ] || continue
+      if [ "$i" -ge "$word_count" ]; then ok=0; break; fi
+      if [ "$word" != '*' ] && [ "$word" != "${GAIA_FIRST_COMMAND_WORDS[$i]}" ]; then ok=0; break; fi
       i=$(( i + 1 ))
     done
     if [ "$ok" = 1 ] && [ "$i" -gt 0 ]; then return 0; fi
@@ -213,19 +213,19 @@ _gaia_va_words_match() {
 # an unmodelled flag shape is right for a relaxation deciding whether to permit
 # and wrong here, because arming must be strictly broader than clearing.
 _gaia_va_first_command() {
-  local words_spec="$1" text="$2" dir errexit_was
+  local words_spec="$1" text="$2" directory errexit_was
   [ -n "$words_spec" ] || return 1
-  _gaia_va_build_lead_re "$words_spec"
-  if [ -n "$_gaia_va_lead_re" ]; then
-    [[ "$text" =~ $_gaia_va_lead_re ]] || return 1
+  _gaia_va_build_lead_regex "$words_spec"
+  if [ -n "$_gaia_va_lead_regex" ]; then
+    [[ "$text" =~ $_gaia_va_lead_regex ]] || return 1
   fi
   # From this library's OWN on-disk location, never cwd: the suites run the
   # hooks by absolute path from a sandbox cwd that has no .claude/, so a
   # cwd-relative source would leave this pass silently dead exactly where the
   # tests believe they are exercising it.
   if ! type gaia_scan_first_command >/dev/null 2>&1; then
-    dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
-    [ -n "$dir" ] && [ -f "$dir/repo-scope.sh" ] || return 1
+    directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+    [ -n "$directory" ] && [ -f "$directory/repo-scope.sh" ] || return 1
     # Suspend errexit across the load, then RESTORE WHAT WAS THERE. Under errexit
     # an unparseable copy abandons the shell here before the type check below can
     # degrade, and in the errexit consumers that exit is 2, the deny code; no
@@ -238,7 +238,7 @@ _gaia_va_first_command() {
     case $- in *e*) errexit_was=1 ;; esac
     set +e
     # shellcheck source=/dev/null
-    . "$dir/repo-scope.sh" 2>/dev/null
+    . "$directory/repo-scope.sh" 2>/dev/null
     if [ "$errexit_was" = 1 ]; then set -e; fi
     type gaia_scan_first_command >/dev/null 2>&1 || return 1
   fi
@@ -249,11 +249,11 @@ _gaia_va_first_command() {
 # Loads the walker at most once per process, from this library's own
 # directory. Both views below fall back to the identity when it cannot.
 _gaia_va_load_walk() {
-  local dir errexit_was
+  local directory errexit_was
   if [ "$_gaia_va_walk" = 0 ]; then
     _gaia_va_walk=2
-    dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
-    if [ -n "$dir" ] && [ -f "$dir/verb-arming-walk.sh" ]; then
+    directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+    if [ -n "$directory" ] && [ -f "$directory/verb-arming-walk.sh" ]; then
       # Same state-preserving bracket as the repo-scope load above, and for the
       # same reason. The `if . X; then` this replaced did NOT cover it: a parse
       # error abandons the shell from a condition context too, measured on
@@ -263,7 +263,7 @@ _gaia_va_load_walk() {
       case $- in *e*) errexit_was=1 ;; esac
       set +e
       # shellcheck source=/dev/null
-      . "$dir/verb-arming-walk.sh" 2>/dev/null
+      . "$directory/verb-arming-walk.sh" 2>/dev/null
       if [ "$errexit_was" = 1 ]; then set -e; fi
       if type gaia_verb_arm_view >/dev/null 2>&1; then _gaia_va_walk=1; fi
     fi
@@ -292,15 +292,15 @@ _gaia_va_live() {
 }
 
 gaia_verb_armed() {
-  local frag="$1" words_spec="$2" text="$3"
-  local start_re sep_re list_re opener_re raw nl=$'\n'
+  local verb_pattern="$1" words_spec="$2" text="$3"
+  local start_regex separator_regex list_regex opener_regex raw newline=$'\n'
 
   GAIA_VERB_ARM_KIND=""
   GAIA_VERB_ARM_MATCH=()
   GAIA_VERB_ARM_VIEW="$text"
   GAIA_VERB_ARM_SUPPRESSED=0
 
-  start_re='^[[:space:]]*'"$frag"
+  start_regex='^[[:space:]]*'"$verb_pattern"
   # The substitution openers ride the separator group rather than a pass of
   # their own: the shell runs what follows each one, and group 1 stays the one
   # group this pattern adds, which is what keeps the fragment's own numbering.
@@ -308,17 +308,17 @@ gaia_verb_armed() {
   # The walker's condition 7 carries the command-substitution openers as glob
   # needles, and its liveness scan carries every opener's first character; an
   # opener added here needs both there too.
-  sep_re=$'(\\&\\&|;|\\|\\||\\||\n|\\$\\(|\140|<\\(|>\\()[[:space:]]*'"$frag"
+  separator_regex=$'(\\&\\&|;|\\|\\||\\||\n|\\$\\(|\140|<\\(|>\\()[[:space:]]*'"$verb_pattern"
   # The same group split in two, for the view stage: a list operator arms as
   # it stands, an opener only where the liveness view leaves it live. Each
   # keeps group 1 as its separator, so numbering is the same whichever decides.
-  list_re=$'(\\&\\&|;|\\|\\||\\||\n)[[:space:]]*'"$frag"
-  opener_re=$'(\\$\\(|\140|<\\(|>\\()[[:space:]]*'"$frag"
+  list_regex=$'(\\&\\&|;|\\|\\||\\||\n)[[:space:]]*'"$verb_pattern"
+  opener_regex=$'(\\$\\(|\140|<\\(|>\\()[[:space:]]*'"$verb_pattern"
 
   raw=0
-  if [[ "$text" =~ $start_re ]]; then
+  if [[ "$text" =~ $start_regex ]]; then
     raw=1
-  elif [[ "$text" =~ $sep_re ]]; then
+  elif [[ "$text" =~ $separator_regex ]]; then
     raw=1
   fi
 
@@ -326,14 +326,14 @@ gaia_verb_armed() {
     _gaia_va_view "$text"
     # shellcheck disable=SC2034
     [ "$GAIA_VERB_ARM_VIEW" = "$text" ] || GAIA_VERB_ARM_SUPPRESSED=1
-    if [[ "$GAIA_VERB_ARM_VIEW" =~ $start_re ]]; then
+    if [[ "$GAIA_VERB_ARM_VIEW" =~ $start_regex ]]; then
       GAIA_VERB_ARM_KIND=start
       GAIA_VERB_ARM_MATCH=(${BASH_REMATCH[@]+"${BASH_REMATCH[@]}"})
       return 0
     fi
-    if [[ "$GAIA_VERB_ARM_VIEW" =~ $sep_re ]]; then
+    if [[ "$GAIA_VERB_ARM_VIEW" =~ $separator_regex ]]; then
       case "${BASH_REMATCH[1]}" in
-        '&&'|';'|'||'|'|'|"$nl")
+        '&&'|';'|'||'|'|'|"$newline")
           GAIA_VERB_ARM_KIND=sep
           GAIA_VERB_ARM_MATCH=(${BASH_REMATCH[@]+"${BASH_REMATCH[@]}"})
           return 0
@@ -344,7 +344,7 @@ gaia_verb_armed() {
       # separately rather than composed, so an opener live in each but at
       # different places arms: that direction over-arms and never under-arms.
       _gaia_va_live "$text"
-      if [[ "$GAIA_VERB_ARM_LIVE" =~ $opener_re ]]; then
+      if [[ "$GAIA_VERB_ARM_LIVE" =~ $opener_regex ]]; then
         GAIA_VERB_ARM_KIND=sep
         GAIA_VERB_ARM_MATCH=(${BASH_REMATCH[@]+"${BASH_REMATCH[@]}"})
         GAIA_VERB_ARM_VIEW="$GAIA_VERB_ARM_LIVE"
@@ -352,7 +352,7 @@ gaia_verb_armed() {
         [ "$GAIA_VERB_ARM_VIEW" = "$text" ] || GAIA_VERB_ARM_SUPPRESSED=1
         return 0
       fi
-      if [[ "$GAIA_VERB_ARM_VIEW" =~ $list_re ]]; then
+      if [[ "$GAIA_VERB_ARM_VIEW" =~ $list_regex ]]; then
         GAIA_VERB_ARM_KIND=sep
         GAIA_VERB_ARM_MATCH=(${BASH_REMATCH[@]+"${BASH_REMATCH[@]}"})
         return 0

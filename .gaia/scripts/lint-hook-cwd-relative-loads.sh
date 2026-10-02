@@ -43,8 +43,8 @@
 # The repair, which the tree already used correctly in several places before
 # this gate existed, roots the path at the hook's own on-disk location:
 #
-#     _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _lib_dir=''
-#     [ -n "$_lib_dir" ] && [ -f "$_lib_dir/red-ledger.sh" ] && . "$_lib_dir/red-ledger.sh"
+#     _library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _library_directory=''
+#     [ -n "$_library_directory" ] && [ -f "$_library_directory/red-ledger.sh" ] && . "$_library_directory/red-ledger.sh"
 #
 # `${BASH_SOURCE[0]}` is the path the registration invoked, so it names the
 # ACTING tree: a worktree session loads that worktree's libraries, and the main
@@ -61,7 +61,7 @@
 # Both the quoted and the unquoted spelling of each position are read. The
 # distinction that decides a hit is literal-versus-variable-rooted, never
 # quoted-versus-unquoted: `[ -f ".claude/hooks/lib/x.sh" ]` is the same defect
-# as its bare spelling, while `[ -f "$_lib_dir/x.sh" ]` is the repair.
+# as its bare spelling, while `[ -f "$_library_directory/x.sh" ]` is the repair.
 #
 # The file-test position is read on a second axis too: a NEGATED spelling is
 # the same defect as its unnegated twin, so `[ ! -f .claude/hooks/lib/x.sh ]
@@ -305,7 +305,7 @@ readonly OWN_AWK='
     # bare_operand(s, pat): 1 when `pat` is followed by a repository-root-
     # relative LITERAL. The distinction this gate enforces is literal versus
     # variable-rooted, NOT quoted versus unquoted: `[ -f ".claude/x.sh" ]` is
-    # the same defect as its unquoted spelling, while `[ -f "$_lib_dir/x.sh" ]`
+    # the same defect as its unquoted spelling, while `[ -f "$_library_directory/x.sh" ]`
     # is the repair. So every arm admits an optional surrounding quote and then
     # requires a literal dot, which a variable-rooted path can never satisfy
     # because a `$` stands where that dot would be.
@@ -413,7 +413,7 @@ if [ -n "$report" ]; then
   # printf, not echo: the format string is single-quoted so the sample code
   # inside stays literal -- it is being printed, not run.
   # shellcheck disable=SC2016
-  printf 'Fix by deriving the directory from the hook file itself, never from the working directory:\n    _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _lib_dir=%s%s\n    [ -n "$_lib_dir" ] && [ -f "$_lib_dir/x.sh" ] && . "$_lib_dir/x.sh"\n' \
+  printf 'Fix by deriving the directory from the hook file itself, never from the working directory:\n    _library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _library_directory=%s%s\n    [ -n "$_library_directory" ] && [ -f "$_library_directory/x.sh" ] && . "$_library_directory/x.sh"\n' \
     "'" "'" >&2
   exit 1
 fi

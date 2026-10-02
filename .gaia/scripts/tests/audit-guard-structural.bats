@@ -15,8 +15,8 @@
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
   CRA_MD="$REPO_ROOT/.claude/agents/code-audit-frontend.md"
 
   # SPEC-042 clearance-writer surfaces (UAT-020 structural half + PLAN-001).

@@ -34,8 +34,8 @@
 bats_require_minimum_version 1.5.0
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
   SCRIPT="$REPO_ROOT/.gaia/scripts/audit-resolve-scope.sh"
 
   # The Code Audit Team members. The list is spelled out rather than

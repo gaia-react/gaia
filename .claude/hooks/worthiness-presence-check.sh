@@ -70,16 +70,16 @@ input=$(cat)
 # `set -e`: this one deliberately does not, per the header above.
 #
 # The literal is `gh`, read off this gate's own arming predicate
-# (`gate_verb_frag` below, `gh[[:space:]]+pr[[:space:]]+merge`): every call this
+# (`gate_verb_fragment` below, `gh[[:space:]]+pr[[:space:]]+merge`): every call this
 # gate binds invokes `gh`, so the ABSENCE of `gh` from the command proves the
 # call sits outside the remit and it is allowed, exactly as a parsed non-merge
 # is. Presence is not proof of membership -- an ordinary command carrying `gh`
 # inside a word satisfies it too -- and that over-deny is the safe direction.
 # What it cannot reach is a spelling the shell assembles (`g\h pr merge`), which
 # the arm's own header already names as the accepted residual.
-_jq_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _jq_lib_dir=''
+_jq_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _jq_library_directory=''
 # shellcheck source=lib/jq-availability.sh
-[ -n "$_jq_lib_dir" ] && [ -f "$_jq_lib_dir/jq-availability.sh" ] && . "$_jq_lib_dir/jq-availability.sh" 2>/dev/null
+[ -n "$_jq_library_directory" ] && [ -f "$_jq_library_directory/jq-availability.sh" ] && . "$_jq_library_directory/jq-availability.sh" 2>/dev/null
 if ! type gaia_require_jq >/dev/null 2>&1; then
   printf 'BLOCKED: worthiness-presence-check.sh cannot load lib/jq-availability.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
   exit 2
@@ -89,9 +89,7 @@ gaia_require_jq 'the worthiness presence gate' "$input" tool_input 'gh'
 tool_name=$(echo "$input" | jq -r '.tool_name // ""' 2>/dev/null)
 [ "$tool_name" = "Bash" ] || exit 0
 
-# Avoid the name `command`: it would shadow bash's `command` builtin and break
-# later `command -v ...` guards.
-cmd=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
+command=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 
 # Arm the gate when this tool call carries a `gh pr merge`, through the shared
 # arming decision (.claude/hooks/lib/verb-arming.sh): the same raw start/sep
@@ -109,15 +107,15 @@ cmd=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 # This runs BEFORE arming, ahead of even knowing whether the tool call is a
 # merge, so an unloadable library denies every Bash tool call rather than
 # merge attempts alone.
-_va_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
-_va_ok=0
-if [ -n "$_va_lib_dir" ] && [ -f "$_va_lib_dir/verb-arming.sh" ]; then
+_hook_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+_verb_arming_ok=0
+if [ -n "$_hook_library_directory" ] && [ -f "$_hook_library_directory/verb-arming.sh" ]; then
   # shellcheck source=/dev/null
-  if . "$_va_lib_dir/verb-arming.sh" && type gaia_verb_armed >/dev/null 2>&1; then
-    _va_ok=1
+  if . "$_hook_library_directory/verb-arming.sh" && type gaia_verb_armed >/dev/null 2>&1; then
+    _verb_arming_ok=1
   fi
 fi
-if [ "$_va_ok" -ne 1 ]; then
+if [ "$_verb_arming_ok" -ne 1 ]; then
   jq -n --arg r "Worthiness presence gate: cannot load the shared verb-arming decision (.claude/hooks/lib/verb-arming.sh must exist, be readable, and define gaia_verb_armed). This check runs before the gate knows whether the tool call is a gh pr merge at all, so it denies every Bash tool call rather than merge attempts alone. Restore .claude/hooks/lib/verb-arming.sh (it ships with the framework; a missing or corrupted checkout is the usual cause) and retry." '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
@@ -128,8 +126,8 @@ if [ "$_va_ok" -ne 1 ]; then
   exit 0
 fi
 
-gate_verb_frag='gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
-if gaia_verb_armed "$gate_verb_frag" 'gh pr merge' "$cmd"; then
+gate_verb_fragment='gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
+if gaia_verb_armed "$gate_verb_fragment" 'gh pr merge' "$command"; then
   : # armed
 else
   exit 0
@@ -145,17 +143,17 @@ fi
 # the repository root, and the fail-open degrades that follow each load are
 # written for a BROKEN library: they cannot tell that case from a moved working
 # directory, so a bare test would let one `cd` disarm this merge gate silently.
-[ -n "$_va_lib_dir" ] && [ -f "$_va_lib_dir/repo-scope.sh" ] && . "$_va_lib_dir/repo-scope.sh"
-if type cmd_targets_foreign_repo >/dev/null 2>&1 \
-   && cmd_targets_foreign_repo "$cmd"; then
+[ -n "$_hook_library_directory" ] && [ -f "$_hook_library_directory/repo-scope.sh" ] && . "$_hook_library_directory/repo-scope.sh"
+if type command_targets_foreign_repo >/dev/null 2>&1 \
+   && command_targets_foreign_repo "$command"; then
   exit 0
 fi
 
 # Shared RED-ledger lib: the signal-helper wrapper and repo-relative
 # normalization. The worthiness ledger writer uses the SAME helper, so signals
 # byte-match. Without it we cannot recompute identity, so fail-open.
-[ -n "$_va_lib_dir" ] && [ -f "$_va_lib_dir/red-ledger.sh" ] && . "$_va_lib_dir/red-ledger.sh"
-type red_ledger_repo_rel >/dev/null 2>&1 || exit 0
+[ -n "$_hook_library_directory" ] && [ -f "$_hook_library_directory/red-ledger.sh" ] && . "$_hook_library_directory/red-ledger.sh"
+type red_ledger_repo_relative_path >/dev/null 2>&1 || exit 0
 type red_ledger_signals >/dev/null 2>&1 || exit 0
 type red_ledger_signal_script >/dev/null 2>&1 || exit 0
 
@@ -164,7 +162,7 @@ type red_ledger_signal_script >/dev/null 2>&1 || exit 0
 # (.gaia/scripts/audit-ledger/append-worthiness.mjs) so the two never hand-
 # build the path independently. Without it we cannot locate the ledger, so
 # fail-open.
-[ -n "$_va_lib_dir" ] && [ -f "$_va_lib_dir/worthiness-ledger.sh" ] && . "$_va_lib_dir/worthiness-ledger.sh"
+[ -n "$_hook_library_directory" ] && [ -f "$_hook_library_directory/worthiness-ledger.sh" ] && . "$_hook_library_directory/worthiness-ledger.sh"
 type worthiness_ledger_path >/dev/null 2>&1 || exit 0
 
 command -v git >/dev/null 2>&1 || exit 0
@@ -227,7 +225,7 @@ ledger="$(worthiness_ledger_path "$tree_root")" || exit 0
 # Every trust level is taken as is: this gate's posture is fail-open, and an
 # unresolvable base or an empty diff means nothing in scope for it.
 # ---------------------------------------------------------------------------
-[ -n "$_va_lib_dir" ] && [ -f "$_va_lib_dir/audit-base-provenance.sh" ] && . "$_va_lib_dir/audit-base-provenance.sh"
+[ -n "$_hook_library_directory" ] && [ -f "$_hook_library_directory/audit-base-provenance.sh" ] && . "$_hook_library_directory/audit-base-provenance.sh"
 type audit_resolve_base_provenance >/dev/null 2>&1 || exit 0
 prov="$(audit_resolve_base_provenance "$tree_root" default-branch)" || prov=""
 IFS=$'\t' read -r _ _ base <<< "$prov" || true
@@ -245,16 +243,16 @@ changed=$(git -C "$tree_root" diff --name-only -z "${base}...HEAD" 2>/dev/null |
 # repo-relative path emergent; echo nothing otherwise (non-zero exit, unparseable
 # JSON, or a strict verdict). Mirrors red-verify-commit-check.sh.
 classify_emergent() {
-  local rel="$1"
-  local out
-  # Run from the ACTING TREE, not the process working directory. `$rel` stays
+  local relative_path="$1"
+  local classifier_output
+  # Run from the ACTING TREE, not the process working directory. `$relative_path` stays
   # repo-relative because the classifier's own path rules read it, but it must
   # not be resolved against a working directory nobody chose: the file read then
   # fails and the verdict stops describing the file. The `cd` is inside a
   # command substitution, so it never persists into the rest of this hook.
-  out=$( cd "$tree_root" && node "$classifier_script" "$rel" 2>/dev/null ) || return 0
-  [ -n "$out" ] || return 0
-  printf '%s' "$out" \
+  classifier_output=$( cd "$tree_root" && node "$classifier_script" "$relative_path" 2>/dev/null ) || return 0
+  [ -n "$classifier_output" ] || return 0
+  printf '%s' "$classifier_output" \
     | jq -r 'select((.classification // "") == "emergent") | "emergent"' \
         2>/dev/null \
     | head -1
@@ -276,21 +274,21 @@ while IFS= read -r path; do
     *) continue ;;
   esac
 
-  rel=$(red_ledger_repo_rel "$path")
+  relative_path=$(red_ledger_repo_relative_path "$path")
 
   # A pure deletion leaves no working-tree file to recompute from; if the file is
   # gone, there is nothing in scope for it. Tested against the ACTING TREE, not
-  # the process working directory: `$rel` is repo-relative, so from a
+  # the process working directory: `$relative_path` is repo-relative, so from a
   # subdirectory this answers "deleted" for every file that exists, and the
   # `continue` empties the offender scan into a clean pass.
-  [ -f "$tree_root/$rel" ] || continue
+  [ -f "$tree_root/$relative_path" ] || continue
 
   # Authoritative emergent membership: the determinism classifier. A `.ts` test
   # under app/components/** that the classifier proves deterministic is RED-gated,
   # not worthiness-gated; skip it. A classifier failure echoes nothing (fail-open:
   # the file is not treated as emergent, so it is not demanded here; the RED gate
   # owns the deterministic surface).
-  [ -n "$(classify_emergent "$rel")" ] || continue
+  [ -n "$(classify_emergent "$relative_path")" ] || continue
 
   # Current tests: helper over the working-tree file content on disk. Parse
   # failure (mid-edit syntax error) -> skip this file (fail-open).
@@ -299,7 +297,7 @@ while IFS= read -r path; do
   # helper reads the file from disk at the repo-relative path, so from a
   # subdirectory it finds nothing, and "no signals" is a `continue` -- the file
   # leaves the scan and the merge clears with no verdict demanded.
-  current_ndjson=$( cd "$tree_root" && red_ledger_signals "$rel" 2>/dev/null ) || { continue; }
+  current_ndjson=$( cd "$tree_root" && red_ledger_signals "$relative_path" 2>/dev/null ) || { continue; }
   # No emitted tests (only dynamic-title tests, or a no-tests file): nothing in
   # scope for this file.
   [ -n "$current_ndjson" ] || continue
@@ -307,8 +305,8 @@ while IFS= read -r path; do
   while IFS= read -r line; do
     [ -n "$line" ] || continue
     full=$(printf '%s' "$line" | jq -r '.fullName // empty' 2>/dev/null || true)
-    sig=$(printf '%s' "$line" | jq -r '.signal // empty' 2>/dev/null || true)
-    [ -n "$full" ] && [ -n "$sig" ] || continue
+    signal=$(printf '%s' "$line" | jq -r '.signal // empty' 2>/dev/null || true)
+    [ -n "$full" ] && [ -n "$signal" ] || continue
 
     # Require >=1 ledger line with schema 1, this file, this fullName, and this
     # CURRENT signal. A matching line at a stale signal (the test's executed
@@ -318,17 +316,17 @@ while IFS= read -r path; do
     # keep/fix/delete verdict stays advisory and is never read here.
     matched=""
     if [ -f "$ledger" ]; then
-      matched=$(jq -r --arg f "$rel" --arg n "$full" --arg s "$sig" '
+      matched=$(jq -r --arg test_file_path "$relative_path" --arg test_full_name "$full" --arg test_signal "$signal" '
         select((.schema // 0) == 1
-          and (.file // "") == $f
-          and (.fullName // "") == $n
-          and (.signal // "") == $s)
+          and (.file // "") == $test_file_path
+          and (.fullName // "") == $test_full_name
+          and (.signal // "") == $test_signal)
         | "1"' "$ledger" 2>/dev/null \
         | head -1 || true)
     fi
 
     if [ -z "$matched" ]; then
-      offenders="${offenders}${rel}	${full}
+      offenders="${offenders}${relative_path}	${full}
 "
     fi
   done <<EOF
@@ -349,9 +347,9 @@ reason="Worthiness presence gate: an emergent test this PR changed has no matchi
 
 if [ -n "$offenders" ]; then
   missing_list=$(printf '%s' "$offenders" \
-    | while IFS=$'\t' read -r f n; do
-        [ -n "$f" ] || continue
-        printf '  \xe2\x80\xa2 %s \xe2\x80\xba %s\n' "$f" "$n"
+    | while IFS=$'\t' read -r offender_file offender_full_name; do
+        [ -n "$offender_file" ] || continue
+        printf '  \xe2\x80\xa2 %s \xe2\x80\xba %s\n' "$offender_file" "$offender_full_name"
       done)
   reason="${reason}
 

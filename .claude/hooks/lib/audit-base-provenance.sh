@@ -170,13 +170,13 @@ audit_resolve_base_provenance() {
 # empty <root> or <base>. Empty stdout with return 0 is a real empty change
 # set; empty stdout with a non-zero return is never one.
 audit_provenance_changed_files() {
-  local root="$1" base="$2" out
+  local root="$1" base="$2" changed_paths
 
   [ -n "$root" ] || return 1
   [ -n "$base" ] || return 1
 
-  out="$(set -o pipefail; git -C "$root" diff --name-only -z --no-renames "${base}...HEAD" 2>/dev/null | tr '\0' '\n')" || return 1
-  printf '%s' "$out"
+  changed_paths="$(set -o pipefail; git -C "$root" diff --name-only -z --no-renames "${base}...HEAD" 2>/dev/null | tr '\0' '\n')" || return 1
+  printf '%s' "$changed_paths"
   return 0
 }
 

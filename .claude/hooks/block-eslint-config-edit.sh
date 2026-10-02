@@ -66,10 +66,10 @@ payload=$(cat)
 # install itself, so the refusal is unconditional within it and the call below
 # passes no binding literal; the contract lives in
 # .claude/hooks/lib/jq-availability.sh.
-_jq_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _jq_lib_dir=''
+_jq_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _jq_library_directory=''
 set +e
 # shellcheck source=lib/jq-availability.sh
-[ -n "$_jq_lib_dir" ] && [ -f "$_jq_lib_dir/jq-availability.sh" ] && . "$_jq_lib_dir/jq-availability.sh" 2>/dev/null
+[ -n "$_jq_library_directory" ] && [ -f "$_jq_library_directory/jq-availability.sh" ] && . "$_jq_library_directory/jq-availability.sh" 2>/dev/null
 set -e
 if ! type gaia_require_jq >/dev/null 2>&1; then
   printf 'BLOCKED: block-eslint-config-edit.sh cannot load lib/jq-availability.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
@@ -89,11 +89,11 @@ file_path=$(jq -r '.tool_input.file_path // ""' <<<"$payload" 2>/dev/null) || fi
 # than being bounded.
 grep -Eq '(^|/)eslint\.config\.(js|cjs|mjs|ts)$' <<<"$file_path" || exit 0
 
-jq -n --arg r "CONFIRM: this hook asks on the filename alone, whatever the edit does, because no automatic test tells a lint error being silenced here apart from a legitimate config change. Most edits here are the first kind: fix the ESLint error in the source file where it occurs, not in this file. Some are not, and adding a '...lint.<group>' preset spread is one, including the '...lint.reactRouter' migration GAIA's CHANGELOG tells adopters to make. Approve only if you meant this edit; otherwise deny it, and do not disable this hook to get past it." '{
+jq -n --arg reason "CONFIRM: this hook asks on the filename alone, whatever the edit does, because no automatic test tells a lint error being silenced here apart from a legitimate config change. Most edits here are the first kind: fix the ESLint error in the source file where it occurs, not in this file. Some are not, and adding a '...lint.<group>' preset spread is one, including the '...lint.reactRouter' migration GAIA's CHANGELOG tells adopters to make. Approve only if you meant this edit; otherwise deny it, and do not disable this hook to get past it." '{
   hookSpecificOutput: {
     hookEventName: "PreToolUse",
     permissionDecision: "ask",
-    permissionDecisionReason: $r
+    permissionDecisionReason: $reason
   }
 }'
 exit 0

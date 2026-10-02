@@ -23,7 +23,7 @@
 mgf_init() {
   MGF_REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   MGF_HOOK="$MGF_REPO_ROOT/.claude/hooks/pr-merge-audit-check.sh"
-  MGF_LIB_DIR="$MGF_REPO_ROOT/.claude/hooks/lib"
+  MGF_LIBRARY_DIRECTORY="$MGF_REPO_ROOT/.claude/hooks/lib"
   REPO="$BATS_TEST_TMPDIR/repo"
   mkdir -p "$REPO/.gaia"
 
@@ -47,9 +47,9 @@ mgf_init() {
   mkdir -p "$REPO/.gaia/scripts" "$REPO/.claude/hooks/lib"
   cp "$MGF_REPO_ROOT/.gaia/scripts/resolve-audit-members.sh" "$REPO/.gaia/scripts/"
   chmod +x "$REPO/.gaia/scripts/resolve-audit-members.sh"
-  local lib
-  for lib in audit-scope.sh audit-machinery.sh audit-clearance.sh audit-digest.sh audit-base-provenance.sh; do
-    cp "$MGF_LIB_DIR/$lib" "$REPO/.claude/hooks/lib/$lib"
+  local library_file
+  for library_file in audit-scope.sh audit-machinery.sh audit-clearance.sh audit-digest.sh audit-base-provenance.sh; do
+    cp "$MGF_LIBRARY_DIRECTORY/$library_file" "$REPO/.claude/hooks/lib/$library_file"
   done
 
   mgf_install_gh_stub
@@ -57,16 +57,16 @@ mgf_init() {
 
 # mgf_install_gh_stub: the logging gh described in the header, first on PATH.
 mgf_install_gh_stub() {
-  MGF_STUB_DIR="$BATS_TEST_TMPDIR/gh-stub"
-  MGF_GH_LOG="$MGF_STUB_DIR/gh.log"
-  mkdir -p "$MGF_STUB_DIR/bin"
+  MGF_STUB_DIRECTORY="$BATS_TEST_TMPDIR/gh-stub"
+  MGF_GH_LOG="$MGF_STUB_DIRECTORY/gh.log"
+  mkdir -p "$MGF_STUB_DIRECTORY/bin"
   : > "$MGF_GH_LOG"
-  cat > "$MGF_STUB_DIR/bin/gh" <<EOF
+  cat > "$MGF_STUB_DIRECTORY/bin/gh" <<EOF
 #!/usr/bin/env bash
-stub_dir="$MGF_STUB_DIR"
+stub_directory="$MGF_STUB_DIRECTORY"
 EOF
-  cat >> "$MGF_STUB_DIR/bin/gh" <<'EOF'
-printf '%s\n' "$*" >> "$stub_dir/gh.log"
+  cat >> "$MGF_STUB_DIRECTORY/bin/gh" <<'EOF'
+printf '%s\n' "$*" >> "$stub_directory/gh.log"
 jq_expression=''
 previous=''
 for argument in "$@"; do
@@ -84,32 +84,32 @@ case "$1 ${2-}" in
   "auth "*) exit 0 ;;
   "repo view") answer '{"nameWithOwner":"test-owner/test-repo"}'; exit 0 ;;
   "pr view")
-    if [ -f "$stub_dir/pr-view-fails" ]; then
-      cat "$stub_dir/pr-view-fails" >&2
+    if [ -f "$stub_directory/pr-view-fails" ]; then
+      cat "$stub_directory/pr-view-fails" >&2
       exit 1
     fi
     # A numbered read answers from numbered-record.json when a case planted
     # one, modelling a head that moved after the unnumbered record read.
-    if [[ "${3-}" =~ ^[0-9]+$ ]] && [ -f "$stub_dir/numbered-record.json" ]; then
-      answer "$(cat "$stub_dir/numbered-record.json")"
+    if [[ "${3-}" =~ ^[0-9]+$ ]] && [ -f "$stub_directory/numbered-record.json" ]; then
+      answer "$(cat "$stub_directory/numbered-record.json")"
       exit 0
     fi
-    [ -f "$stub_dir/record.json" ] || { echo 'no pull requests found for branch "feature"' >&2; exit 1; }
-    answer "$(cat "$stub_dir/record.json")"
+    [ -f "$stub_directory/record.json" ] || { echo 'no pull requests found for branch "feature"' >&2; exit 1; }
+    answer "$(cat "$stub_directory/record.json")"
     exit 0
     ;;
   "api "*)
     case " $* " in
       *" -X POST "*) exit 0 ;;
     esac
-    answer "$(cat "$stub_dir/statuses.json" 2>/dev/null || printf '[]')"
+    answer "$(cat "$stub_directory/statuses.json" 2>/dev/null || printf '[]')"
     exit 0
     ;;
 esac
 exit 1
 EOF
-  chmod +x "$MGF_STUB_DIR/bin/gh"
-  export PATH="$MGF_STUB_DIR/bin:$PATH"
+  chmod +x "$MGF_STUB_DIRECTORY/bin/gh"
+  export PATH="$MGF_STUB_DIRECTORY/bin:$PATH"
 }
 
 # mgf_commit <path> <content> [<path> <content>...]: one commit on the branch.
@@ -131,16 +131,16 @@ mgf_record() {
   shift 3
   head="$(git -C "$REPO" rev-parse HEAD)"
   printf '%s\n' "$@" | jq -R -s -c \
-    --argjson n "$number" --argjson x "$cross" --arg t "$title" --arg h "$head" \
-    '{number: $n, isCrossRepository: $x, title: $t, baseRefName: "", headRefOid: $h,
+    --argjson number "$number" --argjson is_cross_repository "$cross" --arg title "$title" --arg head_object_id "$head" \
+    '{number: $number, isCrossRepository: $is_cross_repository, title: $title, baseRefName: "", headRefOid: $head_object_id,
       files: (split("\n") | map(select(length > 0)) | map({path: .}))}' \
-    > "$MGF_STUB_DIR/record.json"
+    > "$MGF_STUB_DIRECTORY/record.json"
 }
 
 # mgf_member_digest <member>: the member's content digest for REPO's HEAD,
 # through the real digest engine.
 mgf_member_digest() {
-  bash -c '. "$1"; audit_member_digest "$2" "$3"' _ "$MGF_LIB_DIR/audit-digest.sh" "$REPO" "$1"
+  bash -c '. "$1"; audit_member_digest "$2" "$3"' _ "$MGF_LIBRARY_DIRECTORY/audit-digest.sh" "$REPO" "$1"
 }
 
 # mgf_marker <member>: write an earned clearance for <member> at REPO's HEAD,
@@ -163,15 +163,15 @@ mgf_marker() {
 mgf_status_success() {
   local description
   description="1.4.0 $(mgf_member_digest code-audit-frontend) $(git -C "$REPO" rev-parse 'HEAD^{tree}')"
-  jq -n -c --arg d "$description" '[{context: "GAIA-Audit", state: "success", description: $d}]' \
-    > "$MGF_STUB_DIR/statuses.json"
+  jq -n -c --arg description "$description" '[{context: "GAIA-Audit", state: "success", description: $description}]' \
+    > "$MGF_STUB_DIRECTORY/statuses.json"
 }
 
 # mgf_run_merge [command] [hook]: drive the gate from REPO with a Bash payload,
 # stdout and stderr captured separately (needs bats >= 1.5.0).
 mgf_run_merge() {
   local command="${1:-gh pr merge 12 --squash}" hook="${2:-$MGF_HOOK}" payload
-  payload="$(jq -n -c --arg c "$command" '{tool_name: "Bash", tool_input: {command: $c}}')"
+  payload="$(jq -n -c --arg command "$command" '{tool_name: "Bash", tool_input: {command: $command}}')"
   # shellcheck disable=SC2016 # the inner bash expands its own positionals
   run --separate-stderr bash -c 'cd "$1" && printf %s "$2" | bash "$3"' _ "$REPO" "$payload" "$hook"
 }
@@ -196,7 +196,7 @@ mgf_post_count() {
 mgf_scratch_hook() {
   local scratch="$BATS_TEST_TMPDIR/scratch-$RANDOM" copy
   mkdir -p "$scratch/.claude/hooks"
-  ln -s "$MGF_LIB_DIR" "$scratch/.claude/hooks/lib"
+  ln -s "$MGF_LIBRARY_DIRECTORY" "$scratch/.claude/hooks/lib"
   ln -s "$MGF_REPO_ROOT/.gaia" "$scratch/.gaia"
   copy="$scratch/.claude/hooks/pr-merge-audit-check.sh"
   perl -0pe "$1" "$MGF_HOOK" > "$copy"

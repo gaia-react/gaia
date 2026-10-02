@@ -20,9 +20,9 @@
 
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
-  HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
-  HOOK_ABS="$HOOKS_SRC/wiki-recompact-inject.sh"
-  SETTINGS_ABS="${HOOKS_SRC%/hooks}/settings.json"
+  HOOKS_SOURCE_DIRECTORY=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
+  HOOK_ABSOLUTE_PATH="$HOOKS_SOURCE_DIRECTORY/wiki-recompact-inject.sh"
+  SETTINGS_ABSOLUTE_PATH="${HOOKS_SOURCE_DIRECTORY%/hooks}/settings.json"
   WORK=$(mktemp -d -t gaia-recompact-inject-XXXXXX)
   SENTINEL="$WORK/.claude/wiki-recompact-pending"
   PAYLOAD='{"session_id":"S1","hook_event_name":"UserPromptSubmit","prompt":"carry on"}'
@@ -50,7 +50,7 @@ arm_sentinel() {
 @test "an armed sentinel re-injects wiki/hot.md on stdout" {
   seed_hot_cache
   arm_sentinel
-  invoke_hook_in "$WORK" "$PAYLOAD" "$HOOK_ABS"
+  invoke_hook_in "$WORK" "$PAYLOAD" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   grep -qF -- "the thread we were on" <<<"$output"
 }
@@ -61,7 +61,7 @@ arm_sentinel() {
   # instruction.
   seed_hot_cache
   arm_sentinel
-  invoke_hook_in "$WORK" "$PAYLOAD" "$HOOK_ABS"
+  invoke_hook_in "$WORK" "$PAYLOAD" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   grep -qF -- "Restored wiki hot cache after context compaction" <<<"$output"
 }
@@ -69,7 +69,7 @@ arm_sentinel() {
 @test "the sentinel is consumed by the injection" {
   seed_hot_cache
   arm_sentinel
-  invoke_hook_in "$WORK" "$PAYLOAD" "$HOOK_ABS"
+  invoke_hook_in "$WORK" "$PAYLOAD" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ ! -f "$SENTINEL" ]
 }
@@ -80,10 +80,10 @@ arm_sentinel() {
   # hot.md per turn.
   seed_hot_cache
   arm_sentinel
-  invoke_hook_in "$WORK" "$PAYLOAD" "$HOOK_ABS"
+  invoke_hook_in "$WORK" "$PAYLOAD" "$HOOK_ABSOLUTE_PATH"
   grep -qF -- "the thread we were on" <<<"$output"
 
-  invoke_hook_in "$WORK" "$PAYLOAD" "$HOOK_ABS"
+  invoke_hook_in "$WORK" "$PAYLOAD" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -92,13 +92,13 @@ arm_sentinel() {
 
 @test "no sentinel is a silent no-op" {
   seed_hot_cache
-  invoke_hook_in "$WORK" "$PAYLOAD" "$HOOK_ABS"
+  invoke_hook_in "$WORK" "$PAYLOAD" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
 
 @test "no sentinel and no hot cache is a silent no-op" {
-  invoke_hook_in "$WORK" "$PAYLOAD" "$HOOK_ABS"
+  invoke_hook_in "$WORK" "$PAYLOAD" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -109,7 +109,7 @@ arm_sentinel() {
   # Consuming the sentinel BEFORE reading hot.md is deliberate: a single
   # failed injection must not loop forever on every subsequent prompt.
   arm_sentinel
-  invoke_hook_in "$WORK" "$PAYLOAD" "$HOOK_ABS"
+  invoke_hook_in "$WORK" "$PAYLOAD" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
   [ ! -f "$SENTINEL" ]
@@ -123,7 +123,7 @@ arm_sentinel() {
   # silently for every user after an upstream schema change.
   seed_hot_cache
   arm_sentinel
-  invoke_hook_in "$WORK" 'not json' "$HOOK_ABS"
+  invoke_hook_in "$WORK" 'not json' "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   grep -qF -- "the thread we were on" <<<"$output"
 }
@@ -141,7 +141,7 @@ arm_sentinel() {
     echo "precondition unavailable: hot.md stayed readable at mode 000, so the fail-open path cannot be exercised (running as root?)" >&2
     return 1
   fi
-  invoke_hook_in "$WORK" "$PAYLOAD" "$HOOK_ABS"
+  invoke_hook_in "$WORK" "$PAYLOAD" "$HOOK_ABSOLUTE_PATH"
   chmod 644 "$WORK/wiki/hot.md"
   [ "$status" -eq 0 ]
 }
@@ -149,9 +149,9 @@ arm_sentinel() {
 # --- structural ---
 
 @test "wiki-recompact-inject.sh is executable" {
-  [ -x "$HOOK_ABS" ]
+  [ -x "$HOOK_ABSOLUTE_PATH" ]
 }
 
 @test "settings.json registers the hook under UserPromptSubmit" {
-  hook_registered "$SETTINGS_ABS" '.hooks.UserPromptSubmit[]' wiki-recompact-inject.sh
+  hook_registered "$SETTINGS_ABSOLUTE_PATH" '.hooks.UserPromptSubmit[]' wiki-recompact-inject.sh
 }

@@ -17,7 +17,7 @@
 #
 #   setup() {
 #     . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
-#     HOOK_ABS="$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/x.sh"
+#     HOOK_ABSOLUTE_PATH="$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/x.sh"
 #   }
 #
 # A suite keeps its own payload-building wrapper and calls the invocation here

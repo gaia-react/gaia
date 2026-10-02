@@ -25,8 +25,8 @@
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
   WRITER_SRC="$REPO_ROOT/.gaia/scripts/write-audit-remits.sh"
   CHECK_SRC="$REPO_ROOT/.gaia/scripts/verify-audit-roster.sh"
   LIB_SRC="$REPO_ROOT/.claude/hooks/lib/audit-scope.sh"

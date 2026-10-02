@@ -128,8 +128,8 @@ require_yaml_parser() {
 }
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
   WORKFLOWS_DIR="$REPO_ROOT/.github/workflows"
 
   # Workflows that gate a step on a hand-rolled `run:`-emitted output rather than

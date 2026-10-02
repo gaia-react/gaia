@@ -59,8 +59,8 @@
 
 setup() {
   . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
-  HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/audit-stamp-trailer.sh
-  DIGEST_LIB=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/audit-digest.sh
+  HOOK_ABSOLUTE_PATH=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/audit-stamp-trailer.sh
+  DIGEST_LIBRARY=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/audit-digest.sh
   REPO=$(mktemp -d -t audit-stamp-test-XXXXXX)
   REMOTE=$(mktemp -d -t audit-stamp-remote-XXXXXX)
 
@@ -112,25 +112,25 @@ trailer_on_head() {
 # .gaia/tests/hooks/audit-digest-lib.bats's digest_of), so assertions compute
 # the SAME digest the hook itself derives rather than hardcoding one.
 digest_of() {
-  local root="$1" member="$2" ref="${3:-HEAD}"
-  bash -c '. "$1"; audit_member_digest "$2" "$3" "$4"' _ "$DIGEST_LIB" "$root" "$member" "$ref"
+  local root="$1" member="$2" revision="${3:-HEAD}"
+  bash -c '. "$1"; audit_member_digest "$2" "$3" "$4"' _ "$DIGEST_LIBRARY" "$root" "$member" "$revision"
 }
 
 # Helper: copy the real resolver and the shared libs it resolves relative to
 # itself into the sandbox, so the hook's member-aware gate has something to
 # find at "$REPO/.gaia/scripts/resolve-audit-members.sh".
 install_resolver() {
-  local src lib
-  src="$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/resolve-audit-members.sh"
+  local source_script_path library_directory
+  source_script_path="$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/resolve-audit-members.sh"
   mkdir -p "$REPO/.gaia/scripts"
-  cp "$src" "$REPO/.gaia/scripts/resolve-audit-members.sh"
+  cp "$source_script_path" "$REPO/.gaia/scripts/resolve-audit-members.sh"
   chmod +x "$REPO/.gaia/scripts/resolve-audit-members.sh"
-  lib="$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)"
+  library_directory="$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)"
   mkdir -p "$REPO/.claude/hooks/lib"
-  cp "$lib/audit-scope.sh"     "$REPO/.claude/hooks/lib/audit-scope.sh"
-  cp "$lib/audit-machinery.sh" "$REPO/.claude/hooks/lib/audit-machinery.sh"
-  cp "$lib/audit-clearance.sh" "$REPO/.claude/hooks/lib/audit-clearance.sh"
-  cp "$lib/audit-base-provenance.sh" "$REPO/.claude/hooks/lib/audit-base-provenance.sh"
+  cp "$library_directory/audit-scope.sh"     "$REPO/.claude/hooks/lib/audit-scope.sh"
+  cp "$library_directory/audit-machinery.sh" "$REPO/.claude/hooks/lib/audit-machinery.sh"
+  cp "$library_directory/audit-clearance.sh" "$REPO/.claude/hooks/lib/audit-clearance.sh"
+  cp "$library_directory/audit-base-provenance.sh" "$REPO/.claude/hooks/lib/audit-base-provenance.sh"
   # Commit the resolver + libs onto the current branch: untracked, they would
   # trip the stamp hook's OWN tree-dirty precondition (unlike
   # post-audit-status.sh, this hook checks tree cleanliness). Committing here,
@@ -206,7 +206,7 @@ commit_mixed_diff() {
   expected_digest=$(digest_of "$REPO" code-audit-frontend)
 
   cd "$REPO"
-  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABSOLUTE_PATH"
 
   [ "$status" -eq 0 ]
   [ "$output" = "stamp: amended onto HEAD (un-pushed)" ]
@@ -227,7 +227,7 @@ commit_mixed_diff() {
   before_remote_sha=$(git -C "$REMOTE" rev-parse main)
 
   cd "$REPO"
-  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABSOLUTE_PATH"
 
   [ "$status" -eq 0 ]
   [ "$output" = "stamp: status only (HEAD already pushed)" ]
@@ -265,7 +265,7 @@ commit_mixed_diff() {
   git -C "$REPO" reset --hard --quiet "$before_sha"
 
   cd "$REPO"
-  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABSOLUTE_PATH"
 
   [ "$status" -eq 0 ]
   [ "$output" = "stamp: declined: HEAD behind upstream" ]
@@ -295,7 +295,7 @@ commit_mixed_diff() {
   git -C "$REPO" reset --hard --quiet "$before_sha"
 
   cd "$REPO"
-  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="true" run "$HOOK_ABS"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="true" run "$HOOK_ABSOLUTE_PATH"
 
   [ "$status" -eq 0 ]
   [ "$output" = "stamp: amended onto audit-self-heal HEAD" ]
@@ -317,7 +317,7 @@ commit_mixed_diff() {
   expected_digest=$(digest_of "$REPO" code-audit-frontend)
 
   cd "$REPO"
-  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="true" run "$HOOK_ABS"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="true" run "$HOOK_ABSOLUTE_PATH"
 
   [ "$status" -eq 0 ]
   [ "$output" = "stamp: amended onto audit-self-heal HEAD" ]
@@ -343,7 +343,7 @@ commit_mixed_diff() {
   git -C "$REPO" checkout --quiet --detach HEAD
 
   cd "$REPO"
-  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABSOLUTE_PATH"
 
   [ "$status" -eq 0 ]
   [ "$output" = "stamp: empty commit (created locally)" ]
@@ -370,7 +370,7 @@ commit_mixed_diff() {
   expected_digest=$(digest_of "$REPO" code-audit-frontend)
 
   cd "$REPO"
-  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="true" run "$HOOK_ABS"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="true" run "$HOOK_ABSOLUTE_PATH"
 
   [ "$status" -eq 0 ]
   [ "$output" = "stamp: amended onto audit-self-heal HEAD" ]
@@ -398,7 +398,7 @@ commit_mixed_diff() {
   [ "${#before_tree}" -eq 40 ]
 
   cd "$REPO"
-  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABSOLUTE_PATH"
 
   [ "$status" -eq 0 ]
   [ "$output" = "stamp: amended onto HEAD (un-pushed)" ]
@@ -425,7 +425,7 @@ commit_mixed_diff() {
   echo "uncommitted" >> "$REPO/README.md"
 
   cd "$REPO"
-  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABSOLUTE_PATH"
 
   [ "$status" -eq 0 ]
   [ "$output" = "stamp: declined: tree dirty" ]
@@ -446,7 +446,7 @@ commit_mixed_diff() {
   before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
 
   cd "$REPO"
-  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABSOLUTE_PATH"
 
   [ "$status" -eq 0 ]
   [ "$output" = "stamp: declined: version file missing" ]
@@ -465,7 +465,7 @@ commit_mixed_diff() {
   before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
 
   cd "$REPO"
-  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABSOLUTE_PATH"
 
   [ "$status" -eq 0 ]
   [ "$output" = "stamp: declined: version file empty" ]
@@ -480,7 +480,7 @@ commit_mixed_diff() {
   fake_tree="0000000000000000000000000000000000000000"
 
   cd "$REPO"
-  AUDIT_TREE_SHA="$fake_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+  AUDIT_TREE_SHA="$fake_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABSOLUTE_PATH"
 
   [ "$status" -eq 0 ]
   [ "$output" = "stamp: declined: tree changed since audit started" ]
@@ -493,7 +493,7 @@ commit_mixed_diff() {
 @test "not in a git repo: declines" {
   OUTSIDE=$(mktemp -d -t audit-stamp-outside-XXXXXX)
   cd "$OUTSIDE"
-  AUDIT_TREE_SHA="" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+  AUDIT_TREE_SHA="" AUDIT_SELF_HEALED="false" run "$HOOK_ABSOLUTE_PATH"
 
   [ "$status" -eq 0 ]
   [ "$output" = "stamp: declined: not in a git repo" ]
@@ -515,7 +515,7 @@ EOF
   chmod +x "$FAKEBIN/sha256sum"
 
   cd "$REPO"
-  PATH="$FAKEBIN:$PATH" AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+  PATH="$FAKEBIN:$PATH" AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABSOLUTE_PATH"
 
   [ "$status" -eq 0 ]
   [ "$output" = "stamp: declined: frontend digest unavailable" ]
@@ -546,7 +546,7 @@ EOF
   write_marker code-audit-frontend
 
   cd "$REPO"
-  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABSOLUTE_PATH"
 
   [ "$status" -eq 0 ]
   [ "$output" = "stamp: declined: members pending code-audit-maintainer-shell" ]
@@ -571,7 +571,7 @@ EOF
   write_marker code-audit-maintainer-shell
 
   cd "$REPO"
-  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABSOLUTE_PATH"
 
   [ "$status" -eq 0 ]
   [ "$output" = "stamp: status only (HEAD already pushed)" ]
@@ -603,7 +603,7 @@ EOF
   write_marker code-audit-maintainer-node
 
   cd "$REPO"
-  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABSOLUTE_PATH"
 
   [ "$status" -eq 0 ]
   [ "$output" = "stamp: amended onto HEAD (un-pushed)" ]
@@ -633,7 +633,7 @@ EOF
   write_refusal code-audit-maintainer-shell
 
   cd "$REPO"
-  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABSOLUTE_PATH"
 
   [ "$status" -eq 0 ]
   [ "$output" = "stamp: declined: members pending code-audit-maintainer-shell" ]
@@ -653,7 +653,7 @@ EOF
   write_refusal code-audit-frontend
 
   cd "$REPO"
-  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABSOLUTE_PATH"
 
   [ "$status" -eq 0 ]
   [ "$output" = "stamp: declined: frontend holds a live refusal" ]
@@ -669,14 +669,14 @@ EOF
   # adopter tree presents. The hook resolves its libs from its own on-disk
   # location, so this is the only way to reach the unavailable-reader arm.
   OUTSIDE=$(mktemp -d -t audit-stamp-nolib-XXXXXX)
-  real_lib="$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)"
+  real_library_directory="$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)"
   mkdir -p "$OUTSIDE/lib"
-  cp "$HOOK_ABS" "$OUTSIDE/audit-stamp-trailer.sh"
-  cp "$real_lib/audit-digest.sh"    "$OUTSIDE/lib/audit-digest.sh"
-  cp "$real_lib/audit-scope.sh"     "$OUTSIDE/lib/audit-scope.sh"
-  cp "$real_lib/audit-machinery.sh" "$OUTSIDE/lib/audit-machinery.sh"
-  cp "$real_lib/gaia-version.sh"    "$OUTSIDE/lib/gaia-version.sh"
-  cp "$real_lib/audit-base-provenance.sh" "$OUTSIDE/lib/audit-base-provenance.sh"
+  cp "$HOOK_ABSOLUTE_PATH" "$OUTSIDE/audit-stamp-trailer.sh"
+  cp "$real_library_directory/audit-digest.sh"    "$OUTSIDE/lib/audit-digest.sh"
+  cp "$real_library_directory/audit-scope.sh"     "$OUTSIDE/lib/audit-scope.sh"
+  cp "$real_library_directory/audit-machinery.sh" "$OUTSIDE/lib/audit-machinery.sh"
+  cp "$real_library_directory/gaia-version.sh"    "$OUTSIDE/lib/gaia-version.sh"
+  cp "$real_library_directory/audit-base-provenance.sh" "$OUTSIDE/lib/audit-base-provenance.sh"
 
   install_resolver
   commit_mixed_diff
@@ -709,7 +709,7 @@ EOF
   write_marker code-audit-frontend
 
   cd "$REPO"
-  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABSOLUTE_PATH"
 
   [ "$status" -eq 0 ]
   [ "$output" = "stamp: amended onto HEAD (un-pushed)" ]
@@ -735,10 +735,10 @@ EOF
 # Copy the real chore(deps) predicate into the sandbox and commit it, ahead of
 # any feature branch so it neither dirties the tree nor joins the test's diff.
 install_chore_deps_predicate() {
-  local src
-  src="$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/chore-deps-skip.sh"
+  local source_script_path
+  source_script_path="$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/chore-deps-skip.sh"
   mkdir -p "$REPO/.gaia/scripts"
-  cp "$src" "$REPO/.gaia/scripts/chore-deps-skip.sh"
+  cp "$source_script_path" "$REPO/.gaia/scripts/chore-deps-skip.sh"
   git -C "$REPO" add .gaia/scripts/chore-deps-skip.sh
   git -C "$REPO" commit --quiet -m "install chore(deps) predicate"
 }
@@ -787,7 +787,7 @@ run_waiver_case() {
   printf '%s' "$before_sha" > "$FAKEBIN/pr-head"
   write_marker code-audit-maintainer-shell
   cd "$REPO" || return 1
-  PATH="$FAKEBIN:$PATH" AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+  PATH="$FAKEBIN:$PATH" AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABSOLUTE_PATH"
 }
 
 @test "chore(deps) waiver: a dep-bump title with a manifest-only file list waives frontend, so the co-dispatched member's marker stamps (status only)" {
@@ -882,7 +882,7 @@ run_waiver_case() {
   printf '%s' "$pushed_sha" > "$FAKEBIN/pr-head"
 
   cd "$REPO"
-  PATH="$FAKEBIN:$PATH" AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+  PATH="$FAKEBIN:$PATH" AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABSOLUTE_PATH"
 
   [ "$status" -eq 0 ]
   [ "$output" = "stamp: declined: members pending code-audit-frontend" ]
@@ -904,7 +904,7 @@ run_waiver_case() {
   printf '%s' "$before_sha" > "$FAKEBIN/pr-head"
 
   cd "$REPO"
-  PATH="$FAKEBIN:$PATH" AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+  PATH="$FAKEBIN:$PATH" AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABSOLUTE_PATH"
 
   [ "$status" -eq 0 ]
   [ "$output" = "stamp: declined: members pending code-audit-maintainer-shell" ]
@@ -929,7 +929,7 @@ run_waiver_case() {
   write_marker code-audit-maintainer-shell
 
   cd "$REPO"
-  PATH="$FAKEBIN:$PATH" AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+  PATH="$FAKEBIN:$PATH" AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABSOLUTE_PATH"
 
   [ "$status" -eq 0 ]
   [ "$output" = "stamp: amended onto HEAD (un-pushed)" ]
@@ -950,7 +950,7 @@ run_waiver_case() {
   write_marker code-audit-maintainer-shell
 
   cd "$REPO"
-  PATH="$FAKEBIN:$PATH" AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+  PATH="$FAKEBIN:$PATH" AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABSOLUTE_PATH"
 
   [ "$status" -eq 0 ]
   [ "$output" = "stamp: amended onto HEAD (un-pushed)" ]
@@ -989,8 +989,8 @@ run_waiver_case() {
   # Redirect each racer's output into $REMOTE (a scratch bare-repo dir, torn
   # down by teardown()) rather than into $REPO, writing an output file inside
   # $REPO would itself dirty the tree the hook is about to check.
-  ( cd "$REPO"; AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" "$HOOK_ABS" >"$REMOTE/o1" 2>&1 ) & p1=$!
-  ( cd "$REPO"; AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" "$HOOK_ABS" >"$REMOTE/o2" 2>&1 ) & p2=$!
+  ( cd "$REPO"; AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" "$HOOK_ABSOLUTE_PATH" >"$REMOTE/o1" 2>&1 ) & p1=$!
+  ( cd "$REPO"; AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" "$HOOK_ABSOLUTE_PATH" >"$REMOTE/o2" 2>&1 ) & p2=$!
   wait "$p1"; s1=$?
   wait "$p2"; s2=$?
 

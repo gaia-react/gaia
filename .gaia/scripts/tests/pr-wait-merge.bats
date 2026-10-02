@@ -25,8 +25,8 @@
 # `$status` is compared with POSIX `[ ]`.
 
 setup() {
-  THIS_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
-  REPO_ROOT="$(cd "$THIS_DIR/../../.." && pwd)"
+  THIS_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
+  REPO_ROOT="$(cd "$THIS_DIRECTORY/../../.." && pwd)"
   WAIT="$REPO_ROOT/.gaia/scripts/pr-wait-merge.sh"
   TMP="$(mktemp -d -t pr-wait-merge-XXXXXX)"
   # Absolute, because the gh-absent test below empties PATH, and `env` could

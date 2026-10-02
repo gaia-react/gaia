@@ -11,8 +11,8 @@ setup() {
   . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/path.sh"
   HELPERS="$BATS_TEST_DIRNAME/helpers"
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
-  HOOK_ABS="$REPO_ROOT/.claude/hooks/janitor-report-drain.sh"
-  SETTINGS_ABS="$REPO_ROOT/.claude/settings.json"
+  HOOK_ABSOLUTE_PATH="$REPO_ROOT/.claude/hooks/janitor-report-drain.sh"
+  SETTINGS_ABSOLUTE_PATH="$REPO_ROOT/.claude/settings.json"
   REPORT_LINE='[wiki base] fast-forward of main to origin/main refused (divergence); local base is behind. Resolve by hand; the next qualifying session retries.'
 }
 
@@ -34,12 +34,12 @@ seed_report() {
   cd "$REPO"
   seed_report "$REPO"
   input=$("$HELPERS/mock-hook-input.sh" user-prompt-submit S1)
-  invoke_hook "$input" "$HOOK_ABS"
+  invoke_hook "$input" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ "$output" = "$REPORT_LINE" ] || return 1
   [ -f .gaia/local/cache/shared/wiki-base-catchup.report ] && return 1
 
-  invoke_hook "$input" "$HOOK_ABS"
+  invoke_hook "$input" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -54,7 +54,7 @@ seed_report() {
   # all, only symlinks to the external binaries the hook needs plus bash.
   nojq_bin="$(path_allowlist bash head rm)"
 
-  run bash -c 'PATH="$1" bash "$2" < /dev/null' _ "$nojq_bin" "$HOOK_ABS"
+  run bash -c 'PATH="$1" bash "$2" < /dev/null' _ "$nojq_bin" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   grep -qF -- '[wiki base] fast-forward of main to origin/main refused' <<<"$output" || return 1
   [ -f .gaia/local/cache/shared/wiki-base-catchup.report ] && return 1
@@ -66,7 +66,7 @@ seed_report() {
   cd "$REPO"
   rm -f .gaia/local/cache/shared/wiki-base-catchup.report
   input=$("$HELPERS/mock-hook-input.sh" user-prompt-submit S1)
-  invoke_hook "$input" "$HOOK_ABS"
+  invoke_hook "$input" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -81,7 +81,7 @@ seed_report() {
   seed_report "$REPO"
   mkdir -p "$REPO/sub/deeper"
   input=$("$HELPERS/mock-hook-input.sh" user-prompt-submit S1)
-  invoke_hook_in "$REPO/sub/deeper" "$input" "$HOOK_ABS"
+  invoke_hook_in "$REPO/sub/deeper" "$input" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ "$output" = "$REPORT_LINE" ] || return 1
   [ -f "$REPO/.gaia/local/cache/shared/wiki-base-catchup.report" ] && return 1
@@ -91,16 +91,16 @@ seed_report() {
 @test "drains a report written at the main root from a linked worktree, exactly once" {
   REPO=$("$HELPERS/tmp-git-repo.sh")
   cd "$REPO"
-  WT="$REPO/.claude/worktrees/wt"
-  git worktree add --quiet -b wt-branch "$WT" main
+  WORKTREE_PATH="$REPO/.claude/worktrees/wt"
+  git worktree add --quiet -b wt-branch "$WORKTREE_PATH" main
   seed_report "$REPO"
   input=$("$HELPERS/mock-hook-input.sh" user-prompt-submit S1)
-  invoke_hook_in "$WT" "$input" "$HOOK_ABS"
+  invoke_hook_in "$WORKTREE_PATH" "$input" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ "$output" = "$REPORT_LINE" ] || return 1
   [ -f "$REPO/.gaia/local/cache/shared/wiki-base-catchup.report" ] && return 1
 
-  invoke_hook_in "$WT" "$input" "$HOOK_ABS"
+  invoke_hook_in "$WORKTREE_PATH" "$input" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -108,12 +108,12 @@ seed_report() {
 @test "drains a report written at the main root from a subdirectory of a linked worktree" {
   REPO=$("$HELPERS/tmp-git-repo.sh")
   cd "$REPO"
-  WT="$REPO/.claude/worktrees/wt"
-  git worktree add --quiet -b wt-branch "$WT" main
-  mkdir -p "$WT/sub/deeper"
+  WORKTREE_PATH="$REPO/.claude/worktrees/wt"
+  git worktree add --quiet -b wt-branch "$WORKTREE_PATH" main
+  mkdir -p "$WORKTREE_PATH/sub/deeper"
   seed_report "$REPO"
   input=$("$HELPERS/mock-hook-input.sh" user-prompt-submit S1)
-  invoke_hook_in "$WT/sub/deeper" "$input" "$HOOK_ABS"
+  invoke_hook_in "$WORKTREE_PATH/sub/deeper" "$input" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ "$output" = "$REPORT_LINE" ] || return 1
   [ -f "$REPO/.gaia/local/cache/shared/wiki-base-catchup.report" ] && return 1
@@ -122,7 +122,7 @@ seed_report() {
 
 # An unresolved-merge-conflict body: the file opens and reads fine, so an
 # existence test passes it, and bash cannot parse it.
-write_conflicted_lib() {
+write_conflicted_library() {
   { printf '<<<<<<< HEAD\n'; printf 'x() { :; }\n'; printf '=======\n'
     printf 'y() { :; }\n'; printf '>>>>>>> other\n'; } > "$1"
 }
@@ -137,7 +137,7 @@ write_conflicted_lib() {
   mkdir -p "$staged/.claude" "$staged/.gaia"
   cp -R "$REPO_ROOT/.claude/hooks" "$staged/.claude/hooks"
   cp -R "$REPO_ROOT/.gaia/scripts" "$staged/.gaia/scripts"
-  write_conflicted_lib "$staged/.gaia/scripts/main-root-lib.sh"
+  write_conflicted_library "$staged/.gaia/scripts/main-root-lib.sh"
 
   input=$("$HELPERS/mock-hook-input.sh" user-prompt-submit S1)
   invoke_hook_in "$REPO" "$input" "$staged/.claude/hooks/janitor-report-drain.sh"
@@ -157,7 +157,7 @@ write_conflicted_lib() {
 {"version":1,"last_evaluated_sha":"$base","last_evaluated_at":"2026-01-01T00:00:00Z"}
 EOF
   input=$("$HELPERS/mock-hook-input.sh" user-prompt-submit S1)
-  invoke_hook "$input" "$HOOK_ABS"
+  invoke_hook "$input" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
   drift_marker=".claude/wiki-drift""-checked"
@@ -166,11 +166,11 @@ EOF
 }
 
 @test "the hook file is executable" {
-  [ -x "$HOOK_ABS" ]
+  [ -x "$HOOK_ABSOLUTE_PATH" ]
 }
 
 @test "the drain hook is registered under UserPromptSubmit" {
-  hook_registered "$SETTINGS_ABS" '.hooks.UserPromptSubmit[]' 'janitor-report-drain.sh'
+  hook_registered "$SETTINGS_ABSOLUTE_PATH" '.hooks.UserPromptSubmit[]' 'janitor-report-drain.sh'
 }
 
 # No wiki-drift signal is injected into the conversation by any hook.
@@ -186,8 +186,8 @@ EOF
 @test "settings.json registers neither removed wiki hook" {
   drift_hook="wiki-drift""-check.sh"
   nudge_hook="wiki-commit""-nudge.sh"
-  grep -qF -- "$drift_hook" "$SETTINGS_ABS" && return 1
-  grep -qF -- "$nudge_hook" "$SETTINGS_ABS" && return 1
+  grep -qF -- "$drift_hook" "$SETTINGS_ABSOLUTE_PATH" && return 1
+  grep -qF -- "$nudge_hook" "$SETTINGS_ABSOLUTE_PATH" && return 1
   return 0
 }
 

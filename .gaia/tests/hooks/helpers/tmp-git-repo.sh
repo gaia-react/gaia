@@ -6,8 +6,8 @@
 #   tmp-git-repo.sh --with-state SHA  # write wiki/.state.json with the given SHA
 set -euo pipefail
 
-dir=$(mktemp -d -t gaia-hook-test-XXXXXX)
-cd "$dir"
+repo_directory=$(mktemp -d -t gaia-hook-test-XXXXXX)
+cd "$repo_directory"
 
 git init --quiet --initial-branch=main
 git config user.email "test@example.com"
@@ -53,4 +53,4 @@ fi
 # .claude/ scaffold for marker writes
 mkdir -p .claude
 
-echo "$dir"
+echo "$repo_directory"

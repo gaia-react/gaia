@@ -11,17 +11,17 @@
 
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 
-n=0
-while git log "HEAD~$n" -1 --format='%s' 2>/dev/null | grep -q '^wiki: auto-commit '; do
-  n=$((n + 1))
+autocommit_count=0
+while git log "HEAD~$autocommit_count" -1 --format='%s' 2>/dev/null | grep -q '^wiki: auto-commit '; do
+  autocommit_count=$((autocommit_count + 1))
 done
 
 # Nothing to do if there are no wiki auto-commits at HEAD.
-[ "$n" -ge 1 ] || exit 0
+[ "$autocommit_count" -ge 1 ] || exit 0
 
 # Squash if 2+ consecutive auto-commits.
-if [ "$n" -ge 2 ]; then
-  git reset --soft "HEAD~$n" >/dev/null 2>&1 || exit 0
+if [ "$autocommit_count" -ge 2 ]; then
+  git reset --soft "HEAD~$autocommit_count" >/dev/null 2>&1 || exit 0
   # --no-verify: wiki-only squash, no source files changed, pre-commit gate is irrelevant here
   git commit -m "wiki: auto-commit $(date '+%Y-%m-%d %H:%M')" --no-verify >/dev/null 2>&1 || exit 0
 fi
@@ -59,7 +59,7 @@ if [ "$current_branch" = "main" ]; then
       --head "$wiki_branch" >/dev/null 2>&1 && pr_create_ok=1
 
     if [ "$pr_create_ok" = "1" ]; then
-      merge_err=$(gh pr merge "$wiki_branch" --squash --auto 2>&1)
+      merge_error_output=$(gh pr merge "$wiki_branch" --squash --auto 2>&1)
       merge_status=$?
 
       if [ "$merge_status" -eq 0 ]; then
@@ -68,10 +68,10 @@ if [ "$current_branch" = "main" ]; then
         should_reset=1
       else
         # Auto-merge failed. Don't reset, preserve local state.
-        if echo "$merge_err" | grep -qi 'auto merge\|autoMerge\|auto-merge'; then
+        if echo "$merge_error_output" | grep -qi 'auto merge\|autoMerge\|auto-merge'; then
           echo "WIKI_NEEDS_MANUAL_MERGE: Wiki changes are on branch '$wiki_branch' and a PR was created, but auto-merge is not enabled on this repository. Please either merge the PR manually or enable auto-merge in the repository settings (Settings → General → Allow auto-merge). Local working tree preserved." >&2
         else
-          echo "WIKI_PR_MERGE_FAILED: branch '$wiki_branch' / PR was opened but merge failed: $merge_err. Local working tree preserved." >&2
+          echo "WIKI_PR_MERGE_FAILED: branch '$wiki_branch' / PR was opened but merge failed: $merge_error_output. Local working tree preserved." >&2
         fi
       fi
     else

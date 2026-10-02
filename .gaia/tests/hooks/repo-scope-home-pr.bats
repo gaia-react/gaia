@@ -1,11 +1,11 @@
 #!/usr/bin/env bats
 
-# Tests for `gaia_gh_merge_ref_to_home_pr` in
+# Tests for `gaia_gh_merge_reference_to_home_pr` in
 # `.claude/hooks/lib/repo-scope.sh`, the URL half of the act-on-home boundary.
 #
 # `-R`/`--repo` cannot qualify a URL: gh resolves the repository from the URL
 # itself and ignores the flag, so the scanned repository is empty and
-# `cmd_targets_foreign_repo_slug` reads it as home. This function is what the
+# `command_targets_foreign_repo_slug` reads it as home. This function is what the
 # two acting consumers ask instead, and it lives in the lib so they cannot
 # answer it differently.
 #
@@ -32,7 +32,7 @@
 
 setup() {
   command -v jq >/dev/null 2>&1 || skip "jq required"
-  LIB_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/repo-scope.sh
+  LIBRARY_ABSOLUTE_PATH=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/repo-scope.sh
 
   REPO=$(mktemp -d -t repo-scope-home-pr-test-XXXXXX)
   git -C "$REPO" init --quiet --initial-branch=main
@@ -52,8 +52,8 @@ HOME_REPO="${FAKE_GH_HOME_REPO:-acme/widgets}"
 HOME_HOST="${FAKE_GH_HOME_HOST:-github.com}"
 case "$1 $2" in
   "repo view")
-    jq -n --arg n "$HOME_REPO" --arg u "https://$HOME_HOST/$HOME_REPO" \
-      '{nameWithOwner: $n, url: $u}'
+    jq -n --arg name_with_owner "$HOME_REPO" --arg url "https://$HOME_HOST/$HOME_REPO" \
+      '{nameWithOwner: $name_with_owner, url: $url}'
     exit 0
     ;;
 esac
@@ -79,8 +79,8 @@ resolve() {
   ( cd "$REPO" || exit 1
     set -u
     # shellcheck source=/dev/null
-    . "$LIB_ABS"
-    if gaia_gh_merge_ref_to_home_pr "$1"; then
+    . "$LIBRARY_ABSOLUTE_PATH"
+    if gaia_gh_merge_reference_to_home_pr "$1"; then
       echo "$GAIA_HOME_PR_NUMBER"
     else
       echo decline
@@ -227,9 +227,9 @@ resolve() {
   run bash -c '
     cd "'"$REPO"'" || exit 1
     set -u
-    . "'"$LIB_ABS"'"
-    gaia_gh_merge_ref_to_home_pr "https://github.com/acme/widgets/pull/7" || true
-    gaia_gh_merge_ref_to_home_pr "https://github.com/other-org/other-repo/pull/9" || true
+    . "'"$LIBRARY_ABSOLUTE_PATH"'"
+    gaia_gh_merge_reference_to_home_pr "https://github.com/acme/widgets/pull/7" || true
+    gaia_gh_merge_reference_to_home_pr "https://github.com/other-org/other-repo/pull/9" || true
     printf "[%s]" "$GAIA_HOME_PR_NUMBER"
   '
   [ "$status" -eq 0 ]

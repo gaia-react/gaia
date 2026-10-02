@@ -9,7 +9,7 @@
 #
 # AUDIT_LOOP_ASK_GRANT_HOOK points the suite at a scratch copy of the hook (its
 # libraries reached through a `.gaia` symlink beside it), which is how a mutant
-# is run against it without touching the working file. K and the grant labels
+# is run against it without touching the working file. UNIT_ROUNDS and the grant labels
 # come from GAIA_CTX_UNIT_ROUNDS in the shared lib, never a literal.
 #
 # Run: .gaia/scripts/bats5.sh .gaia/tests/hooks/audit-loop-ask-grant.bats < /dev/null
@@ -33,7 +33,7 @@ setup() {
   . "$REPO_ROOT/.gaia/scripts/context-checkpoint-lib.sh"
   # shellcheck source=/dev/null
   . "$REPO_ROOT/.gaia/tests/helpers/audit-loop-fixture.sh"
-  K="$GAIA_CTX_UNIT_ROUNDS"
+  UNIT_ROUNDS="$GAIA_CTX_UNIT_ROUNDS"
   NONCE=0123456789abcdef
   alf_init
   alf_branch feat/ask
@@ -45,11 +45,11 @@ setup() {
 
 # seed_rounds <n>: n recorded rounds on the feature branch.
 seed_rounds() {
-  local r
+  local round_number
   alf_fill f.txt 5 x
-  for r in $(seq 1 "$1"); do
-    alf_set_line other.txt "$r" "round $r"
-    alf_commit "round $r"
+  for round_number in $(seq 1 "$1"); do
+    alf_set_line other.txt "$round_number" "round $round_number"
+    alf_commit "round $round_number"
     alf_add_round '["code-audit-frontend"]'
   done
 }
@@ -57,10 +57,10 @@ seed_rounds() {
 # pin_latest <nonce> <rounds> <eligible> <cap> <trigger>: pin the question on
 # the latest checkpoint, as the bound hook does.
 pin_latest() {
-  local q
-  q="$(gaia_loop_pinned_question "$ALF_B" "$1" "$2" "$K" "$3" "$4" "$5")"
-  alf_state_edit '.history.checkpoints[-1] += {nonce: $n, trigger: $t, accept_eligible: $e, question: $q}' \
-    --arg n "$1" --arg t "$5" --argjson e "$3" --argjson q "$q"
+  local pinned_question
+  pinned_question="$(gaia_loop_pinned_question "$ALF_B" "$1" "$2" "$UNIT_ROUNDS" "$3" "$4" "$5")"
+  alf_state_edit '.history.checkpoints[-1] += {nonce: $nonce, trigger: $trigger, accept_eligible: $accept_eligible, question: $question}' \
+    --arg nonce "$1" --arg trigger "$5" --argjson accept_eligible "$3" --argjson question "$pinned_question"
 }
 
 # seed_pinned [eligible] [cap]: five rounds and a pending, pinned checkpoint.
@@ -75,9 +75,9 @@ state_pin() { jq -c '.history.checkpoints[-1].question' "$ALF_STATE"; }
 # stored_label <base>: the label of the pinned option named <base>, with the
 # (Recommended) suffix when the pin carries it; <base> itself when no option has it.
 stored_label() {
-  local pin="${PIN_USE:-$(state_pin)}" out
-  out="$(printf '%s' "$pin" | jq -r --arg b "$1" '[.questions[0].options[].label | select(. == $b or . == ($b + " (Recommended)"))][0] // empty')"
-  printf '%s' "${out:-$1}"
+  local pin="${PIN_USE:-$(state_pin)}" matched_label
+  matched_label="$(printf '%s' "$pin" | jq -r --arg base_label "$1" '[.questions[0].options[].label | select(. == $base_label or . == ($base_label + " (Recommended)"))][0] // empty')"
+  printf '%s' "${matched_label:-$1}"
 }
 continue_label() { stored_label "Continue audit in this session"; }
 session_label() { stored_label "Continue audit in a new session"; }
@@ -87,14 +87,14 @@ session_label() { stored_label "Continue audit in a new session"; }
 # then <jq-filter> applied.
 mk_payload() {
   local pin="${PIN_USE:-$(state_pin)}"
-  jq -c --argjson i "$1" --argjson pin "$pin" --arg label "$2" --arg sid "${SID:-s1}" \
-    --arg tx "${TX:-$TX_CLI}" --arg cwd "$ALF_ROOT" '
-    .[$i]
-    | .session_id = $sid | .transcript_path = $tx | .cwd = $cwd
+  jq -c --argjson fixture_index "$1" --argjson pin "$pin" --arg label "$2" --arg session_id "${SID:-s1}" \
+    --arg transcript_path "${TX:-$TX_CLI}" --arg cwd "$ALF_ROOT" '
+    .[$fixture_index]
+    | .session_id = $session_id | .transcript_path = $transcript_path | .cwd = $cwd
     | .scratchpad_dir = "/scratch" | .prompt_id = "p"
-    | ($pin.questions[0].question) as $q
-    | .tool_input = ($pin + {answers: {($q): $label}, annotations: {}})
-    | .tool_response = ($pin + {answers: {($q): $label}, annotations: {}})
+    | ($pin.questions[0].question) as $question
+    | .tool_input = ($pin + {answers: {($question): $label}, annotations: {}})
+    | .tool_response = ($pin + {answers: {($question): $label}, annotations: {}})
     | '"${3:-.}" "$FIXTURE"
 }
 
@@ -108,7 +108,7 @@ send() {
   send_payload "$(mk_payload 0 "$1" "${2:-.}")"
 }
 
-snap() { cp "$ALF_STATE" "$BATS_TEST_TMPDIR/before.json"; }
+snapshot() { cp "$ALF_STATE" "$BATS_TEST_TMPDIR/before.json"; }
 unchanged() { cmp -s "$BATS_TEST_TMPDIR/before.json" "$ALF_STATE"; }
 
 # declined <why>: the hook exited 0, left the state byte-identical, said
@@ -129,10 +129,10 @@ declined() {
   send "$(continue_label)"
   [ "$status" -eq 0 ]
   [ "$(jq '.allowance.answers | length' "$ALF_STATE")" -eq 1 ]
-  jq -e --argjson k "$K" --arg n "$NONCE" --arg o "$(continue_label)" \
-    '.allowance.answers[0] | .checkpoint == 1 and .kind == "grant" and .n == $k and .source == "ask" and .option == $o and .nonce == $n' "$ALF_STATE"
+  jq -e --argjson unit_rounds "$UNIT_ROUNDS" --arg nonce "$NONCE" --arg option_label "$(continue_label)" \
+    '.allowance.answers[0] | .checkpoint == 1 and .kind == "grant" and .n == $unit_rounds and .source == "ask" and .option == $option_label and .nonce == $nonce' "$ALF_STATE"
   printf '%s' "$output" | jq -e '(.systemMessage | length) > 0 and .hookSpecificOutput.hookEventName == "PostToolUse" and (.hookSpecificOutput.additionalContext | length) > 0'
-  [ "$(gaia_loop_allowed "$(cat "$ALF_STATE")")" = "$((5 + K))" ]
+  [ "$(gaia_loop_allowed "$(cat "$ALF_STATE")")" = "$((5 + UNIT_ROUNDS))" ]
 }
 
 @test "every recorded answer carries at and the payload's session id" {
@@ -146,8 +146,8 @@ declined() {
   seed_pinned
   send "$(session_label)"
   [ "$status" -eq 0 ]
-  jq -e --argjson k "$K" --arg o "$(session_label)" \
-    '.allowance.answers[0] | .kind == "grant" and .n == $k and .source == "ask" and .option == $o and (keys | sort) == ["at","checkpoint","kind","n","nonce","option","session_id","source"]' "$ALF_STATE"
+  jq -e --argjson unit_rounds "$UNIT_ROUNDS" --arg option_label "$(session_label)" \
+    '.allowance.answers[0] | .kind == "grant" and .n == $unit_rounds and .source == "ask" and .option == $option_label and (keys | sort) == ["at","checkpoint","kind","n","nonce","option","session_id","source"]' "$ALF_STATE"
   printf '%s' "$output" | jq -e '.hookSpecificOutput.additionalContext | contains("Run `/clear`, then paste the prompt below.") and contains("Kill this session with Ctrl+C, start a new one") and contains("only a fresh launch provides") and contains("fenced continuation prompt") and contains("and stop")'
 }
 
@@ -156,14 +156,14 @@ declined() {
   [ "$(session_label)" = "Continue audit in a new session (Recommended)" ]
   send "$(session_label)"
   [ "$status" -eq 0 ]
-  jq -e --argjson k "$K" --arg o "Continue audit in a new session (Recommended)" \
-    '.allowance.answers | length == 1 and .[0].kind == "grant" and .[0].n == $k and .[0].option == $o' "$ALF_STATE"
-  printf '%s' "$output" | jq -e --argjson k "$K" '(.systemMessage | startswith("Recorded: Continue audit in a new session on branch")) and (.hookSpecificOutput.additionalContext | contains("fenced continuation prompt"))'
+  jq -e --argjson unit_rounds "$UNIT_ROUNDS" --arg option_label "Continue audit in a new session (Recommended)" \
+    '.allowance.answers | length == 1 and .[0].kind == "grant" and .[0].n == $unit_rounds and .[0].option == $option_label' "$ALF_STATE"
+  printf '%s' "$output" | jq -e --argjson unit_rounds "$UNIT_ROUNDS" '(.systemMessage | startswith("Recorded: Continue audit in a new session on branch")) and (.hookSpecificOutput.additionalContext | contains("fenced continuation prompt"))'
 }
 
 @test "an unsuffixed label the pin carries as recommended, and a suffix the pin does not carry, both decline" {
   seed_pinned
-  snap
+  snapshot
   send "Continue audit in a new session"
   declined "base label while the pin carries the suffixed one"
   send "Continue audit in this session (Recommended)"
@@ -181,11 +181,11 @@ declined() {
 
 @test "an accept selected against a pin without it declines, and an accept option the pin lacks declines" {
   seed_pinned false
-  snap
+  snapshot
   send "Accept the remainder"
   declined "accept selected, not in the pin"
   local eligible_pin
-  eligible_pin="$(gaia_loop_pinned_question "$ALF_B" "$NONCE" 5 "$K" true false context)"
+  eligible_pin="$(gaia_loop_pinned_question "$ALF_B" "$NONCE" 5 "$UNIT_ROUNDS" true false context)"
   PIN_USE="$eligible_pin" send "Accept the remainder"
   declined "payload offers an accept option the pin lacks"
 }
@@ -194,7 +194,7 @@ declined() {
   seed_rounds 10
   alf_add_checkpoint 10 cap
   pin_latest "$NONCE" 10 false true cap
-  snap
+  snapshot
   send "Type audit-accept instead"
   [ "$status" -eq 0 ]
   unchanged
@@ -207,14 +207,14 @@ declined() {
   seed_rounds 10
   alf_add_checkpoint 10 cap
   pin_latest "$NONCE" 10 false true cap
-  snap
+  snapshot
   send "$(continue_label)"
   declined "grant label against a cap pin"
 }
 
 @test "UAT-030: Stop and file the remainder records nothing and names the file-and-report step" {
   seed_pinned
-  snap
+  snapshot
   send "Stop and file the remainder"
   [ "$status" -eq 0 ]
   unchanged
@@ -228,7 +228,7 @@ declined() {
 
 @test "UAT-012: Other free text records nothing" {
   seed_pinned
-  snap
+  snapshot
   send_payload "$(mk_payload 1 "free text probe")"
   declined "Other free text"
   send "free text probe"
@@ -237,7 +237,7 @@ declined() {
 
 @test "UAT-012: a label that is not in the pin records nothing" {
   seed_pinned
-  snap
+  snapshot
   send "Continue audit for 99 rounds"
   declined "label not in the pin"
   send "grant"
@@ -250,7 +250,7 @@ declined() {
   old_pin="$(state_pin)"
   alf_add_checkpoint 5 context
   pin_latest fedcba9876543210 5 false false context
-  snap
+  snapshot
   PIN_USE="$old_pin" send "$(continue_label)"
   declined "stale nonce"
   [ "$(jq '.allowance.answers | length' "$ALF_STATE")" -eq 0 ]
@@ -258,14 +258,14 @@ declined() {
 
 @test "UAT-012: a wrong nonce records nothing" {
   seed_pinned
-  snap
-  PIN_USE="$(gaia_loop_pinned_question "$ALF_B" fedcba9876543210 5 "$K" false false context)" send "$(continue_label)"
+  snapshot
+  PIN_USE="$(gaia_loop_pinned_question "$ALF_B" fedcba9876543210 5 "$UNIT_ROUNDS" false false context)" send "$(continue_label)"
   declined "wrong nonce"
 }
 
 @test "UAT-012: any change to the question the payload carries records nothing" {
   seed_pinned
-  snap
+  snapshot
   local name filter
   while IFS='|' read -r name filter; do
     send "$(continue_label)" "$filter"
@@ -283,7 +283,7 @@ CASES
 
 @test "UAT-012: an agent_id on the payload records nothing" {
   seed_pinned
-  snap
+  snapshot
   send "$(continue_label)" '.agent_id = "agent-1"'
   declined "agent_id present"
   printf '%s' "$output" | grep -qF 'sub-agent'
@@ -291,7 +291,7 @@ CASES
 
 @test "UAT-012: CLAUDE_CODE_ENTRYPOINT other than cli, or unset, records nothing" {
   seed_pinned
-  snap
+  snapshot
   CLAUDE_CODE_ENTRYPOINT=sdk-cli send "$(continue_label)"
   declined "sdk-cli entrypoint"
   printf '%s' "$output" | grep -qF 'not interactive'
@@ -302,7 +302,7 @@ CASES
 
 @test "UAT-012: a transcript with a non-cli entrypoint, or none, records nothing" {
   seed_pinned
-  snap
+  snapshot
   TX="$TX_SDK" send "$(continue_label)"
   declined "sdk-cli transcript"
   TX="$BATS_TEST_TMPDIR/no-such.jsonl" send "$(continue_label)"
@@ -311,7 +311,7 @@ CASES
 
 @test "UAT-012: a permission mode outside the allowlist, an unmeasured one, or none records nothing" {
   seed_pinned
-  snap
+  snapshot
   send "$(continue_label)" '.permission_mode = "dontAsk"'
   declined "dontAsk"
   send "$(continue_label)" '.permission_mode = "somethingNew"'
@@ -338,8 +338,8 @@ CASES
 @test "a checkpoint without a pinned question records nothing and says so" {
   seed_rounds 5
   alf_add_checkpoint 5 allowance
-  snap
-  PIN_USE="$(gaia_loop_pinned_question "$ALF_B" "$NONCE" 5 "$K" false false context)" send "$(continue_label)"
+  snapshot
+  PIN_USE="$(gaia_loop_pinned_question "$ALF_B" "$NONCE" 5 "$UNIT_ROUNDS" false false context)" send "$(continue_label)"
   declined "no pinned question"
   printf '%s' "$output" | grep -qF 'no pinned question'
 }
@@ -348,13 +348,13 @@ CASES
 
 @test "replay: the same valid payload sent twice records once and the second says nothing is pending" {
   seed_pinned
-  local p
-  p="$(mk_payload 0 "$(continue_label)")"
-  send_payload "$p"
+  local payload_json
+  payload_json="$(mk_payload 0 "$(continue_label)")"
+  send_payload "$payload_json"
   [ "$status" -eq 0 ]
   [ "$(jq '.allowance.answers | length' "$ALF_STATE")" -eq 1 ]
-  snap
-  send_payload "$p"
+  snapshot
+  send_payload "$payload_json"
   declined "replay"
   printf '%s' "$output" | grep -qF 'no audit checkpoint is pending'
   [ "$(jq '.allowance.answers | length' "$ALF_STATE")" -eq 1 ]
@@ -371,7 +371,7 @@ CASES
 @test "a different session id on the main checkout records nothing and stays silent about an unrelated question" {
   seed_pinned
   alf_git checkout -q main
-  snap
+  snapshot
   SID=other-session send "$(continue_label)"
   [ "$status" -eq 0 ]
   unchanged
@@ -382,7 +382,7 @@ CASES
   seed_pinned
   jq '.key = "branch:feat/second" | .branch = "feat/second"' "$ALF_STATE" >"$ALF_ROOT/.gaia/local/audit-loop/feat/second.json"
   alf_git checkout -q main
-  snap
+  snapshot
   cp "$ALF_ROOT/.gaia/local/audit-loop/feat/second.json" "$BATS_TEST_TMPDIR/second-before.json"
   send "$(continue_label)"
   declined "ambiguous"
@@ -393,7 +393,7 @@ CASES
   seed_pinned
   local valid
   valid="$(mk_payload 0 "$(continue_label)")"
-  snap
+  snapshot
   send_payload "$(mk_payload 0 "$(continue_label)" '.tool_name = "Bash"')"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
@@ -406,7 +406,7 @@ CASES
 
 @test "invocation with argv, or with empty stdin, exits 1 and records nothing" {
   seed_pinned
-  snap
+  snapshot
   run bash -c 'printf %s "$1" | "$2" extra' _ "$(mk_payload 0 "$(continue_label)")" "$HOOK"
   [ "$status" -eq 1 ]
   run bash -c 'printf "" | "$1"' _ "$HOOK"
@@ -416,7 +416,7 @@ CASES
 
 @test "jq absent: the hook records nothing, says jq is missing and names the typed fallback" {
   seed_pinned
-  snap
+  snapshot
   local empty="$BATS_TEST_TMPDIR/nopath"
   mkdir -p "$empty"
   run bash -c 'printf %s "$1" | PATH="$3" "$(command -v bash)" "$2"' _ "$(mk_payload 0 "$(continue_label)")" "$HOOK" "$empty"
@@ -428,11 +428,11 @@ CASES
 
 @test "corrupt state: the message names the file and the file is untouched" {
   seed_pinned
-  local p
-  p="$(mk_payload 0 "$(continue_label)")"
+  local payload_json
+  payload_json="$(mk_payload 0 "$(continue_label)")"
   printf '{ not json' >"$ALF_STATE"
-  snap
-  send_payload "$p"
+  snapshot
+  send_payload "$payload_json"
   [ "$status" -eq 0 ]
   unchanged
   printf '%s' "$output" | grep -qF 'corrupt'
@@ -442,11 +442,11 @@ CASES
 
 @test "two recorders racing the same payload record at most once" {
   seed_pinned
-  local p
-  p="$(mk_payload 0 "$(continue_label)")"
-  bash -c 'printf %s "$1" | "$2" >"$3/out-a" 2>&1' _ "$p" "$HOOK" "$BATS_TEST_TMPDIR" &
+  local payload_json
+  payload_json="$(mk_payload 0 "$(continue_label)")"
+  bash -c 'printf %s "$1" | "$2" >"$3/out-a" 2>&1' _ "$payload_json" "$HOOK" "$BATS_TEST_TMPDIR" &
   local pid_a=$!
-  bash -c 'printf %s "$1" | "$2" >"$3/out-b" 2>&1' _ "$p" "$HOOK" "$BATS_TEST_TMPDIR" &
+  bash -c 'printf %s "$1" | "$2" >"$3/out-b" 2>&1' _ "$payload_json" "$HOOK" "$BATS_TEST_TMPDIR" &
   local pid_b=$!
   wait "$pid_a"
   wait "$pid_b"
@@ -457,7 +457,7 @@ CASES
 
 @test "a held lock past the deadline records nothing and is a visible decline" {
   seed_pinned
-  snap
+  snapshot
   mkdir "$ALF_STATE.lock"
   send "$(continue_label)"
   rmdir "$ALF_STATE.lock"
@@ -499,13 +499,13 @@ header_has_literals() {
 # reached through a `.gaia` symlink beside it; sets HOOK and proves the edit
 # changed the copy.
 scratch_hook() {
-  local dir="$BATS_TEST_TMPDIR/scratch"
-  mkdir -p "$dir/.claude/hooks"
-  ln -s "$REPO_ROOT/.gaia" "$dir/.gaia"
-  sed "$1" "$REPO_ROOT/.claude/hooks/audit-loop-ask-grant.sh" >"$dir/.claude/hooks/audit-loop-ask-grant.sh"
-  chmod +x "$dir/.claude/hooks/audit-loop-ask-grant.sh"
-  cmp -s "$REPO_ROOT/.claude/hooks/audit-loop-ask-grant.sh" "$dir/.claude/hooks/audit-loop-ask-grant.sh" && return 1
-  HOOK="$dir/.claude/hooks/audit-loop-ask-grant.sh"
+  local scratch_directory="$BATS_TEST_TMPDIR/scratch"
+  mkdir -p "$scratch_directory/.claude/hooks"
+  ln -s "$REPO_ROOT/.gaia" "$scratch_directory/.gaia"
+  sed "$1" "$REPO_ROOT/.claude/hooks/audit-loop-ask-grant.sh" >"$scratch_directory/.claude/hooks/audit-loop-ask-grant.sh"
+  chmod +x "$scratch_directory/.claude/hooks/audit-loop-ask-grant.sh"
+  cmp -s "$REPO_ROOT/.claude/hooks/audit-loop-ask-grant.sh" "$scratch_directory/.claude/hooks/audit-loop-ask-grant.sh" && return 1
+  HOOK="$scratch_directory/.claude/hooks/audit-loop-ask-grant.sh"
 }
 
 @test "mutant: with the question-equality check disabled, a changed question records" {

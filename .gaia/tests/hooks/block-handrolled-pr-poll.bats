@@ -30,23 +30,23 @@
 
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
-  HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
-  HOOK="$HOOKS_SRC/block-handrolled-pr-poll.sh"
-  SETTINGS_ABS="${HOOKS_SRC%/hooks}/settings.json"
+  HOOKS_SOURCE_DIRECTORY=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
+  HOOK="$HOOKS_SOURCE_DIRECTORY/block-handrolled-pr-poll.sh"
+  SETTINGS_ABSOLUTE_PATH="${HOOKS_SOURCE_DIRECTORY%/hooks}/settings.json"
 }
 
 # Pipe a Bash PreToolUse payload for $1 to the hook and capture status/output.
 run_hook() {
-  local cmd="$1" payload
-  payload=$(jq -nc --arg c "$cmd" '{tool_name: "Bash", tool_input: {command: $c}}')
+  local command_line="$1" payload
+  payload=$(jq -nc --arg command "$command_line" '{tool_name: "Bash", tool_input: {command: $command}}')
   invoke_hook "$payload" "$HOOK"
 }
 
 # The same, for a Monitor payload. Monitor carries its shell command in the
 # same `tool_input.command` field, so the two differ only in `tool_name`.
 run_hook_monitor() {
-  local cmd="$1" payload
-  payload=$(jq -nc --arg c "$cmd" '{tool_name: "Monitor", tool_input: {command: $c}}')
+  local command_line="$1" payload
+  payload=$(jq -nc --arg command "$command_line" '{tool_name: "Monitor", tool_input: {command: $command}}')
   invoke_hook "$payload" "$HOOK"
 }
 
@@ -189,7 +189,7 @@ done'
   # verdict without amending the denial goes red. The denial is the only
   # contract an agent reads before taking the blessed path, so a caller
   # branching on a stale list falls through silently on the missing state.
-  local wait_script verdicts v
+  local wait_script verdicts verdict
   wait_script="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/scripts/pr-wait-merge.sh"
   [ -f "$wait_script" ] || return 1
   # The header's exit table lines, e.g. "#   6   CLOSED        the pull ...".
@@ -201,22 +201,22 @@ done'
   # `-ge <n>` still passes, and the test then greens over a denial that no
   # longer names it. Count the script's own verdict arms instead and require
   # equality, so losing one line from either side reds.
-  local arms n_verdicts n_arms
+  local arms verdict_count arm_count
   arms=$(sed -n 's/^  \([A-Z_]\{3,\}\))$/\1/p' "$wait_script")
-  n_verdicts=$(printf '%s\n' "$verdicts" | grep -c .)
-  n_arms=$(printf '%s\n' "$arms" | grep -c .)
-  [ "$n_arms" -ge 2 ] || return 1
+  verdict_count=$(printf '%s\n' "$verdicts" | grep -c .)
+  arm_count=$(printf '%s\n' "$arms" | grep -c .)
+  [ "$arm_count" -ge 2 ] || return 1
   # +1 for TIMEOUT, which is the `*)` default arm and so carries no uppercase
   # case label for the derivation above to count. Giving it an explicit arm
   # keeps both sides honest and reds this line, which is the moment to drop
   # the offset rather than to widen it.
-  [ "$n_verdicts" -eq "$((n_arms + 1))" ] || return 1
+  [ "$verdict_count" -eq "$((arm_count + 1))" ] || return 1
 
   run_hook 'until [ "$(gh pr view 5 --json state --jq .state)" != "OPEN" ]; do sleep 30; done'
   [ "$status" -eq 2 ]
-  while IFS= read -r v; do
-    [ -n "$v" ] || continue
-    grep -qF -- "$v" <<<"$output" || return 1
+  while IFS= read -r verdict; do
+    [ -n "$verdict" ] || continue
+    grep -qF -- "$verdict" <<<"$output" || return 1
   done <<<"$verdicts"
 }
 
@@ -357,5 +357,5 @@ done'
   # back to one tool, with the guard inert for the other in every real session.
   # One matcher names both rather than a row per tool: two rows registering one
   # hook run it twice wherever both matchers select the same tool.
-  hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor")' block-handrolled-pr-poll.sh
+  hook_registered "$SETTINGS_ABSOLUTE_PATH" '.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor")' block-handrolled-pr-poll.sh
 }

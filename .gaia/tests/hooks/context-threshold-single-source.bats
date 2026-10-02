@@ -49,48 +49,48 @@ build_scratch() {
 
 # set_line <tokens>: change the default line in the scratch lib, exactly once.
 set_line() {
-  local lib="$SCRATCH/.gaia/scripts/context-checkpoint-lib.sh"
-  [ "$(grep -c '^GAIA_CTX_ASK_TOKENS_DEFAULT=' "$lib")" -eq 1 ]
-  sed "s/^GAIA_CTX_ASK_TOKENS_DEFAULT=.*/GAIA_CTX_ASK_TOKENS_DEFAULT=$1/" "$lib" >"$lib.new"
-  mv "$lib.new" "$lib"
-  grep -qx "GAIA_CTX_ASK_TOKENS_DEFAULT=$1" "$lib"
+  local library_path="$SCRATCH/.gaia/scripts/context-checkpoint-lib.sh"
+  [ "$(grep -c '^GAIA_CTX_ASK_TOKENS_DEFAULT=' "$library_path")" -eq 1 ]
+  sed "s/^GAIA_CTX_ASK_TOKENS_DEFAULT=.*/GAIA_CTX_ASK_TOKENS_DEFAULT=$1/" "$library_path" >"$library_path.new"
+  mv "$library_path.new" "$library_path"
+  grep -qx "GAIA_CTX_ASK_TOKENS_DEFAULT=$1" "$library_path"
 }
 
-# bar_is_red <tokens>: rc 0 when the scratch statusline colors the bar red, 1
+# bar_is_red <tokens>: exit_status 0 when the scratch statusline colors the bar red, 1
 # when it renders another color, 2 when it renders nothing.
 bar_is_red() {
-  local out esc=$'\033'
-  out="$(bash -c '. "$1/.gaia/scripts/context-checkpoint-lib.sh" && . "$1/.gaia/statusline/left-side.sh" &&
+  local statusline_output escape_character=$'\033'
+  statusline_output="$(bash -c '. "$1/.gaia/scripts/context-checkpoint-lib.sh" && . "$1/.gaia/statusline/left-side.sh" &&
     gaia_statusline_left "$2" "" false "" "" "$3" "$4" "$5" && printf "%s" "$_GAIA_SL_LEFT"' \
     _ "$SCRATCH" "$ALF_ROOT" "$(($1 * 100 / WINDOW))" "$WINDOW" "$1")" || return 2
-  [ -n "$out" ] || return 2
-  if [[ $out == *"${esc}[01;31m"* ]]; then return 0; fi
+  [ -n "$statusline_output" ] || return 2
+  if [[ $statusline_output == *"${escape_character}[01;31m"* ]]; then return 0; fi
   return 1
 }
 
-# hook_denies <tokens>: rc 0 when the scratch hook denies a unit dispatch at
+# hook_denies <tokens>: exit_status 0 when the scratch hook denies a unit dispatch at
 # that reading with a context checkpoint, 1 when it allows, 2 on any other
 # deny; the branch state is reset first.
 hook_denies() {
-  local payload out
+  local payload hook_output
   rm -rf "$ALF_ROOT/.gaia/local/audit-loop"
   gaia_ctx_write "$ALF_ROOT" "$SID" "$(($1 * 100 / WINDOW))" "$1" "$WINDOW" "$(date +%s)"
   payload="$(jq -n -c --arg s "$SID" --arg root "$ALF_ROOT" '{session_id: $s, tool_name: "Agent", cwd: $root,
     tool_input: {subagent_type: "audit-loop-unit", prompt: ("Run one audit unit.\nWorking root: " + $root)}}')"
-  out="$(printf '%s' "$payload" | env PATH="$STUB_BIN:$PATH" bash "$SCRATCH/.claude/hooks/audit-loop-bound.sh")"
-  if [ -z "$out" ]; then return 1; fi
-  jq -r '.hookSpecificOutput.permissionDecisionReason' <<<"$out" | grep -q '^BLOCKED: audit checkpoint .*(context)' ||
-    { printf 'denied for another reason: %s\n' "$out" >&2; return 2; }
+  hook_output="$(printf '%s' "$payload" | env PATH="$STUB_BIN:$PATH" bash "$SCRATCH/.claude/hooks/audit-loop-bound.sh")"
+  if [ -z "$hook_output" ]; then return 1; fi
+  jq -r '.hookSpecificOutput.permissionDecisionReason' <<<"$hook_output" | grep -q '^BLOCKED: audit checkpoint .*(context)' ||
+    { printf 'denied for another reason: %s\n' "$hook_output" >&2; return 2; }
 }
 
 @test "one change to the default line moves both the statusline red boundary and the hook's context decision" {
-  local probe=$((ORIGINAL_LINE * 3 / 4)) rc
-  rc=0
-  bar_is_red "$probe" || rc=$?
-  [ "$rc" -eq 1 ]
-  rc=0
-  hook_denies "$probe" || rc=$?
-  [ "$rc" -eq 1 ]
+  local probe=$((ORIGINAL_LINE * 3 / 4)) exit_status
+  exit_status=0
+  bar_is_red "$probe" || exit_status=$?
+  [ "$exit_status" -eq 1 ]
+  exit_status=0
+  hook_denies "$probe" || exit_status=$?
+  [ "$exit_status" -eq 1 ]
   bar_is_red "$ORIGINAL_LINE"
   hook_denies "$ORIGINAL_LINE"
   set_line $((ORIGINAL_LINE / 2))

@@ -20,8 +20,8 @@
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
   # shellcheck source=.gaia/tests/helpers/path.sh
   . "$REPO_ROOT/.gaia/tests/helpers/path.sh"
   CHECK="$REPO_ROOT/.gaia/scripts/check-cli-workspace-floors.sh"

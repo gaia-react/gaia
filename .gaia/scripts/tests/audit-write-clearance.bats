@@ -16,18 +16,18 @@
 
 setup() {
   . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  WRITER="$THIS_DIR/../audit-write-clearance.sh"
-  READER="$THIS_DIR/../../../.claude/hooks/lib/audit-clearance.sh"
-  DIGEST_LIB="$THIS_DIR/../../../.claude/hooks/lib/audit-digest.sh"
-  RESOLVER="$THIS_DIR/../resolve-audit-members.sh"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  WRITER="$THIS_DIRECTORY/../audit-write-clearance.sh"
+  READER="$THIS_DIRECTORY/../../../.claude/hooks/lib/audit-clearance.sh"
+  DIGEST_LIBRARY="$THIS_DIRECTORY/../../../.claude/hooks/lib/audit-digest.sh"
+  RESOLVER="$THIS_DIRECTORY/../resolve-audit-members.sh"
   # The delimiters of the marker-strip transform in .gaia/release-scrub.yml that
   # governs shell files and .gaia/audit-ci.yml, the two shapes scrub_maintainer_only
   # below is pointed at.
   MAINTAINER_START='# gaia:maintainer-only:start'
   MAINTAINER_END='# gaia:maintainer-only:end'
   [ -x "$WRITER" ] || skip "audit-write-clearance.sh not executable"
-  [ -f "$DIGEST_LIB" ] || skip "audit-digest.sh not present"
+  [ -f "$DIGEST_LIBRARY" ] || skip "audit-digest.sh not present"
   command -v jq >/dev/null 2>&1 || skip "jq not available"
 
   ROOT="$BATS_TEST_TMPDIR/root"
@@ -50,7 +50,7 @@ setup() {
 # member_digest <root> <member> -> 64-hex digest on stdout
 member_digest() {
   local root="$1" member="$2"
-  bash -c '. "$1"; audit_member_digest "$2" "$3"' _ "$DIGEST_LIB" "$root" "$member"
+  bash -c '. "$1"; audit_member_digest "$2" "$3"' _ "$DIGEST_LIBRARY" "$root" "$member"
 }
 
 # Required --root, digest resolved from the root, atomic write, body
@@ -520,7 +520,7 @@ scrub_maintainer_only() {
   #  1. scrub the maintainer-only block from the roster config,
   #  2. copy the resolver through the same scrub the release applies, and
   #  3. omit the two maintainer agent definitions.
-  scrub_maintainer_only "$THIS_DIR/../../audit-ci.yml" > "$ADOPTER/.gaia/audit-ci.yml"
+  scrub_maintainer_only "$THIS_DIRECTORY/../../audit-ci.yml" > "$ADOPTER/.gaia/audit-ci.yml"
   scrub_maintainer_only "$RESOLVER" > "$ADOPTER/.gaia/scripts/resolve-audit-members.sh"
   chmod +x "$ADOPTER/.gaia/scripts/resolve-audit-members.sh"
   cp "$WRITER" "$ADOPTER/.gaia/scripts/audit-write-clearance.sh"
@@ -535,7 +535,7 @@ scrub_maintainer_only() {
   cp "$_lib_src/audit-scope.sh" "$ADOPTER/.claude/hooks/lib/audit-scope.sh"
   cp "$_lib_src/audit-machinery.sh" "$ADOPTER/.claude/hooks/lib/audit-machinery.sh"
   cp "$_lib_src/audit-clearance.sh" "$ADOPTER/.claude/hooks/lib/audit-clearance.sh"
-  cp "$DIGEST_LIB" "$ADOPTER/.claude/hooks/lib/audit-digest.sh"
+  cp "$DIGEST_LIBRARY" "$ADOPTER/.claude/hooks/lib/audit-digest.sh"
   cp "$_lib_src/audit-base-provenance.sh" "$ADOPTER/.claude/hooks/lib/audit-base-provenance.sh"
 
   # The roster really did collapse: a .gaia/**/*.sh change (which the scrubbed-
@@ -752,7 +752,7 @@ ledger_setup() {
 # write_sidecar_for <member> <line> [<severity>]: a complete one-finding sidecar.
 write_sidecar_for() {
   local member="$1" line="$2" sev="${3:-warning}"
-  local writer="$THIS_DIR/../audit-write-findings.sh"
+  local writer="$THIS_DIRECTORY/../audit-write-findings.sh"
   [ -x "$writer" ] || skip "audit-write-findings.sh not executable"
   printf '[{"finding_class":"holistic/secret-exposure","severity":"%s","path":".claude/hooks/block-secrets-write.sh","line":%s,"title":"the path arm admits arbitrary trailing text","failure_mode":"a separator after the closing brace unbounds the tail over the secret character set","verified_by":"ran the hook at base and at HEAD: base denies, HEAD allows","suggested_fix":"bound each trailing segment"}]' \
     "$sev" "$line" \
@@ -937,7 +937,7 @@ write_sidecar_for() {
   # permits this, and the carry-forward lookup must match one prior entry per
   # finding rather than binding a generator that re-emits the body per match.
   printf '[{"finding_class":"holistic/unclassified","severity":"warning","path":".gaia/scripts/a.sh","line":42,"title":"first defect","failure_mode":"the guard admits an empty value","verified_by":"ran it at base and at HEAD","suggested_fix":"reject an empty value"},{"finding_class":"holistic/unclassified","severity":"warning","path":".gaia/scripts/a.sh","line":42,"title":"second defect","failure_mode":"the same line also swallows stderr","verified_by":"stubbed the program to exit non-zero","suggested_fix":"check the status"}]' \
-    | bash "$THIS_DIR/../audit-write-findings.sh" --root "$ROOT" --member "$m" --base "$LBASE" --findings - >/dev/null
+    | bash "$THIS_DIRECTORY/../audit-write-findings.sh" --root "$ROOT" --member "$m" --base "$LBASE" --findings - >/dev/null
 
   bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused --base "$LBASE" >/dev/null
   [ "$(jq '.remaining | length' "$LEDGER")" = "2" ]

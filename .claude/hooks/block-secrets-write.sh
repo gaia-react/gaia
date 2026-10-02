@@ -33,10 +33,10 @@ payload=$(cat)
 # install itself, so the refusal is unconditional within it and the call below
 # passes no binding literal; the contract lives in
 # .claude/hooks/lib/jq-availability.sh.
-_jq_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _jq_lib_dir=''
+_jq_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _jq_library_directory=''
 set +e
 # shellcheck source=lib/jq-availability.sh
-[ -n "$_jq_lib_dir" ] && [ -f "$_jq_lib_dir/jq-availability.sh" ] && . "$_jq_lib_dir/jq-availability.sh" 2>/dev/null
+[ -n "$_jq_library_directory" ] && [ -f "$_jq_library_directory/jq-availability.sh" ] && . "$_jq_library_directory/jq-availability.sh" 2>/dev/null
 set -e
 if ! type gaia_require_jq >/dev/null 2>&1; then
   printf 'BLOCKED: block-secrets-write.sh cannot load lib/jq-availability.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
@@ -60,11 +60,11 @@ content=$(jq -r '
 [[ -n "$content" && "$content" != $'\n\n\n' ]] || exit 0
 
 deny() {
-  jq -n --arg r "$1" '{
+  jq -n --arg reason "$1" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: $r
+      permissionDecisionReason: $reason
     }
   }'
   exit 0
@@ -130,17 +130,17 @@ secret_shaped() {
 # substitution arm admits both; separating them needs reading the command, and
 # this allowlist does not claim to.
 value_allowed() {
-  local v="$1"
-  if [ -z "$v" ]; then
+  local candidate_value="$1"
+  if [ -z "$candidate_value" ]; then
     return 0
   fi
-  case "$v" in
+  case "$candidate_value" in
     x|xx|xxx|xxxx|changeme|CHANGEME|REPLACE_ME|TODO|PLACEHOLDER|placeholder)
       return 0 ;;
   esac
   if grep -Eqi \
     '^\$\{[A-Za-z_][A-Za-z0-9_]*\}$|^\$[A-Za-z_][A-Za-z0-9_]*$|^\$\([^)]+\)$|^<.+>$|^(your|fake|dummy)[-_]|^example' \
-    <<<"$v"; then
+    <<<"$candidate_value"; then
     return 0
   fi
   # A shell declaration (`export FOO_KEY=…`) reaches this rule too, and those
@@ -168,7 +168,7 @@ value_allowed() {
   # inside a substitution body would otherwise re-open the splice bypass the
   # `$(…)` arm above exists to close, since `$(echo ${X})<secret>` contains a
   # reference like any other.
-  if grep -Eq '^\$[0-9]$|^\$\{[0-9]+\}$|^\$\{[A-Za-z_][A-Za-z0-9_]*:?[-+?=]\}$|^(\$\{[A-Za-z_][A-Za-z0-9_]*\})+$|^\$\{[A-Za-z_][A-Za-z0-9_]*\}([/.][A-Za-z0-9_-]{1,12})+$' <<<"$v"; then
+  if grep -Eq '^\$[0-9]$|^\$\{[0-9]+\}$|^\$\{[A-Za-z_][A-Za-z0-9_]*:?[-+?=]\}$|^(\$\{[A-Za-z_][A-Za-z0-9_]*\})+$|^\$\{[A-Za-z_][A-Za-z0-9_]*\}([/.][A-Za-z0-9_-]{1,12})+$' <<<"$candidate_value"; then
     return 0
   fi
   return 1
@@ -266,8 +266,8 @@ while IFS= read -r line; do
 
   # Now the value itself, with the tail off. The comment separator has to be
   # preceded by whitespace so a `#` inside the value itself is not read as one.
-  val=$(trim_value "$(sed -E 's/[[:space:]]+#.*$//; s/[[:space:]]+([|][|]|&&|;).*$//' <<<"$rest")")
-  if value_allowed "$val"; then
+  assigned_value=$(trim_value "$(sed -E 's/[[:space:]]+#.*$//; s/[[:space:]]+([|][|]|&&|;).*$//' <<<"$rest")")
+  if value_allowed "$assigned_value"; then
     continue
   fi
   deny "BLOCKED: write contains a non-placeholder secret assignment: '$line'. Use environment variables / .env (gitignored), not committed source."

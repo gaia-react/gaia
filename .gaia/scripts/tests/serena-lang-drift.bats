@@ -42,11 +42,11 @@ refute_contains() {
 }
 
 setup() {
-  THIS_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
+  THIS_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
   # shellcheck source=.gaia/tests/helpers/path.sh
-  . "$( cd "$THIS_DIR/../../.." && pwd )/.gaia/tests/helpers/path.sh"
-  LIB="$THIS_DIR/../lib/serena-lang.sh"
-  CHECK_SRC="$THIS_DIR/../check-updates.sh"
+  . "$( cd "$THIS_DIRECTORY/../../.." && pwd )/.gaia/tests/helpers/path.sh"
+  LIB="$THIS_DIRECTORY/../lib/serena-lang.sh"
+  CHECK_SRC="$THIS_DIRECTORY/../check-updates.sh"
   [ -f "$LIB" ] || skip "serena-lang.sh missing"
   command -v jq >/dev/null 2>&1 || skip "jq required"
 

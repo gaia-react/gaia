@@ -27,7 +27,7 @@ setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/path.sh"
   HELPERS="$BATS_TEST_DIRNAME/helpers"
-  HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/issue-claim-release.sh
+  HOOK_ABSOLUTE_PATH=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/issue-claim-release.sh
   command -v jq >/dev/null 2>&1 || skip "jq required"
 
   PARENT=$(mktemp -d -t issue-claim-release-test-XXXXXX)
@@ -81,8 +81,8 @@ case "$1" in
       # gh identifies a repo as [HOST/]OWNER/REPO, so the hook reads the slug
       # and the URL's authority from one call; the stub answers both.
       view)
-        jq -n --arg n "$HOME_REPO" --arg u "https://$HOME_HOST/$HOME_REPO" \
-          '{nameWithOwner: $n, url: $u}'
+        jq -n --arg name_with_owner "$HOME_REPO" --arg url "https://$HOME_HOST/$HOME_REPO" \
+          '{nameWithOwner: $name_with_owner, url: $url}'
         exit 0
         ;;
       *) exit 1 ;;
@@ -93,39 +93,39 @@ case "$1" in
     case "$1" in
       view)
         shift
-        ref=""
+        pr_reference=""
         repo=""
         while [ "$#" -gt 0 ]; do
           case "$1" in
             --json|-q|--jq) shift 2 ;;
             -R|--repo) repo="$2"; shift 2 ;;
             -*) shift ;;
-            *) ref="$1"; shift ;;
+            *) pr_reference="$1"; shift ;;
           esac
         done
-        case "$ref" in
+        case "$pr_reference" in
           *://*)
-            stripped="${ref#*://}"
+            stripped="${pr_reference#*://}"
             stripped="${stripped#*/}"
             repo="${stripped%%/pull/*}"
             ;;
         esac
         [ -n "$repo" ] || repo="$HOME_REPO"
-        printf '%s' "$ref" > "$STATE/pr_view_ref"
+        printf '%s' "$pr_reference" > "$STATE/pr_view_ref"
         printf '%s' "$repo" > "$STATE/pr_view_repo"
         echo x >> "$STATE/pr_view_calls"
         calls=$(wc -l < "$STATE/pr_view_calls" | tr -d ' ')
-        # FAKE_GH_PR_STATE_SEQ answers successive `pr view` calls from a
+        # FAKE_GH_PR_STATE_SEQUENCE answers successive `pr view` calls from a
         # whitespace-separated list, so a test can put a state that changes
         # between reads in front of the hook. Past the end of the list the
         # last entry repeats, which is what a state that never settles looks
         # like. Unset, every call answers FAKE_GH_PR_STATE, as before.
         state="${FAKE_GH_PR_STATE:-MERGED}"
-        if [ -n "${FAKE_GH_PR_STATE_SEQ:-}" ]; then
+        if [ -n "${FAKE_GH_PR_STATE_SEQUENCE:-}" ]; then
           i=0
-          for s in $FAKE_GH_PR_STATE_SEQ; do
+          for sequence_state in $FAKE_GH_PR_STATE_SEQUENCE; do
             i=$((i + 1))
-            state="$s"
+            state="$sequence_state"
             [ "$i" -ge "$calls" ] && break
           done
         fi
@@ -134,8 +134,8 @@ case "$1" in
         if [ "$calls" -le "${FAKE_GH_PR_VIEW_FAIL_CALLS:-0}" ]; then
           exit 1
         fi
-        jq -n --arg s "$state" --arg b "${FAKE_GH_PR_BODY:-}" \
-          '{state: $s, body: $b}'
+        jq -n --arg state "$state" --arg body "${FAKE_GH_PR_BODY:-}" \
+          '{state: $state, body: $body}'
         exit "${FAKE_GH_PR_VIEW_EXIT:-0}"
         ;;
       *) exit 1 ;;
@@ -146,17 +146,17 @@ case "$1" in
     case "$1" in
       edit)
         shift
-        n=""
+        issue_number=""
         repo=""
         while [ "$#" -gt 0 ]; do
           case "$1" in
             -R|--repo) repo="$2"; shift 2 ;;
             --remove-label|--add-label) shift 2 ;;
             -*) shift ;;
-            *) n="$1"; shift ;;
+            *) issue_number="$1"; shift ;;
           esac
         done
-        echo "$n" >> "$STATE/issue_edits"
+        echo "$issue_number" >> "$STATE/issue_edits"
         echo "$repo" >> "$STATE/issue_edit_repos"
         exit 0
         ;;
@@ -172,7 +172,7 @@ STUBEOF
 run_hook() {
   local input
   input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Bash "$1")
-  invoke_hook_in "$REPO" "$input" "$HOOK_ABS"
+  invoke_hook_in "$REPO" "$input" "$HOOK_ABSOLUTE_PATH"
 }
 
 pr_view_calls() { wc -l < "$FAKE_GH_STATE/pr_view_calls" | tr -d ' '; }
@@ -216,7 +216,7 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
 # GitHub answers the state from a replica, so a merge that landed can still
 # read OPEN on the first look. Deciding there is silent and costs the release.
 @test "4a: a state that reads not-MERGED and then MERGED releases the issue" {
-  export FAKE_GH_PR_STATE_SEQ="OPEN MERGED"
+  export FAKE_GH_PR_STATE_SEQUENCE="OPEN MERGED"
   export FAKE_GH_PR_BODY="Closes #12"
   run_hook 'gh pr merge 42'
   [ "$status" -eq 0 ]
@@ -224,7 +224,7 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
 }
 
 @test "4b: a state that never settles on MERGED releases nothing, and the re-reads stop" {
-  export FAKE_GH_PR_STATE_SEQ="OPEN"
+  export FAKE_GH_PR_STATE_SEQUENCE="OPEN"
   export FAKE_GH_PR_BODY="Closes #12"
   run_hook 'gh pr merge 42'
   [ "$status" -eq 0 ]
@@ -565,7 +565,7 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
   export FAKE_GH_PR_BODY="Closes #77"
   local pad
   pad=$(printf 'x%.0s' $(seq 1 600))
-  run_hook "gh pr merge --body \"$pad\" 1508"
+  run_hook "gh pr merge --body \"$padding\" 1508"
   [ "$status" -eq 0 ]
   [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "1508" ]
   assert_released_once "77"
@@ -579,10 +579,10 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
 # pull request outright.
 @test "7ad: the reference resolves wherever it straddles a block boundary" {
   export FAKE_GH_PR_BODY="Closes #77"
-  local n pad
-  for n in $(seq 230 262); do
-    pad=$(printf 'x%.0s' $(seq 1 "$n"))
-    run_hook "gh pr merge --body \"$pad\" 1508"
+  local padding_length padding
+  for padding_length in $(seq 230 262); do
+    padding=$(printf 'x%.0s' $(seq 1 "$padding_length"))
+    run_hook "gh pr merge --body \"$padding\" 1508"
     [ "$status" -eq 0 ]
     [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "1508" ]
   done
@@ -638,7 +638,7 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
   nogh_bin="$(path_allowlist bash jq git grep sort cat)"
 
   input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Bash 'gh pr merge 42')
-  PATH="$nogh_bin" invoke_hook_in "$REPO" "$input" "$HOOK_ABS"
+  PATH="$nogh_bin" invoke_hook_in "$REPO" "$input" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   assert_nothing_released
 }
@@ -648,7 +648,7 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
   nojq_bin="$(path_allowlist bash cat)"
 
   input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Bash 'gh pr merge 42')
-  PATH="$nojq_bin" invoke_hook_in "$REPO" "$input" "$HOOK_ABS"
+  PATH="$nojq_bin" invoke_hook_in "$REPO" "$input" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   assert_nothing_released
 }
@@ -684,7 +684,7 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
 
 # Test 6 proves the matcher rejects a mention inside a string. This proves the
 # other half: a real invocation after a shell separator DOES arm. Without it,
-# sep_re could silently stop matching and every compound-command merge would
+# separator_regex could silently stop matching and every compound-command merge would
 # release nothing with the suite still green.
 # gh's flag library accepts a shorthand with its value attached, so this is
 # the same invocation as the spaced form two cases up. Read as a bare boolean
@@ -901,7 +901,7 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
 # ---------- Shared arming decision (tokenizer, and the bound past 6d) ----------
 
 # The generic past-bound pairing (6d's heredoc, padded past
-# GAIA_VERB_ARM_MAX_CHARS, arms because the walker abstains above the bound)
+# GAIA_VERB_ARM_MAXIMUM_CHARACTERS, arms because the walker abstains above the bound)
 # cannot discriminate through this hook's own release: the heredoc's first
 # command is necessarily `cat`, never `gh`, so the first-command boundary (6d,
 # 9) declines here regardless of arming or masking, above the bound or below
@@ -917,7 +917,7 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
   assert_nothing_released
 }
 @test "the hook file is executable" {
-  [ -x "$HOOK_ABS" ]
+  [ -x "$HOOK_ABSOLUTE_PATH" ]
 }
 
 # 7av-7ay: the boundary is read from the SCANNED value rather than from a

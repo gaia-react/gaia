@@ -21,17 +21,17 @@ setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HELPERS="$BATS_TEST_DIRNAME/helpers"
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
-  HOOK_ABS="$REPO_ROOT/.claude/hooks/token-rollup-merge.sh"
-  LIB_SRC="$REPO_ROOT/.claude/hooks/lib/gaia-active-plan.sh"
-  ROLLUP_SRC="$REPO_ROOT/.gaia/scripts/token-rollup.sh"
-  LIB_PRICING_SRC="$REPO_ROOT/.gaia/scripts/token-pricing-lib.sh"
-  LIB_RATES_LOCAL_SRC="$REPO_ROOT/.gaia/scripts/token-rates-local-lib.sh"
-  LIB_RATES_FEED_SRC="$REPO_ROOT/.gaia/scripts/token-rates-feed-lib.sh"
-  LIB_LEDGER_SRC="$REPO_ROOT/.gaia/scripts/ledger-path-lib.sh"
-  LIB_MAIN_ROOT_SRC="$REPO_ROOT/.gaia/scripts/main-root-lib.sh"
-  VERB_ARMING_SRC="$REPO_ROOT/.claude/hooks/lib/verb-arming.sh"
-  VERB_ARMING_WALK_SRC="$REPO_ROOT/.claude/hooks/lib/verb-arming-walk.sh"
-  REPO_SCOPE_SRC="$REPO_ROOT/.claude/hooks/lib/repo-scope.sh"
+  HOOK_ABSOLUTE_PATH="$REPO_ROOT/.claude/hooks/token-rollup-merge.sh"
+  LIBRARY_SOURCE="$REPO_ROOT/.claude/hooks/lib/gaia-active-plan.sh"
+  ROLLUP_SOURCE="$REPO_ROOT/.gaia/scripts/token-rollup.sh"
+  LIBRARY_PRICING_SOURCE="$REPO_ROOT/.gaia/scripts/token-pricing-lib.sh"
+  LIBRARY_RATES_LOCAL_SOURCE="$REPO_ROOT/.gaia/scripts/token-rates-local-lib.sh"
+  LIBRARY_RATES_FEED_SOURCE="$REPO_ROOT/.gaia/scripts/token-rates-feed-lib.sh"
+  LIBRARY_LEDGER_SOURCE="$REPO_ROOT/.gaia/scripts/ledger-path-lib.sh"
+  LIBRARY_MAIN_ROOT_SOURCE="$REPO_ROOT/.gaia/scripts/main-root-lib.sh"
+  VERB_ARMING_SOURCE="$REPO_ROOT/.claude/hooks/lib/verb-arming.sh"
+  VERB_ARMING_WALK_SOURCE="$REPO_ROOT/.claude/hooks/lib/verb-arming-walk.sh"
+  REPO_SCOPE_SOURCE="$REPO_ROOT/.claude/hooks/lib/repo-scope.sh"
 
   export GIT_AUTHOR_NAME="GAIA Test"
   export GIT_AUTHOR_EMAIL="gaia-test@example.com"
@@ -50,28 +50,28 @@ teardown() {
 build_repo() {
   REPO="$("$HELPERS/tmp-git-repo.sh")"
   mkdir -p "$REPO/.claude/hooks/lib" "$REPO/.gaia/scripts"
-  cp "$LIB_SRC" "$REPO/.claude/hooks/lib/gaia-active-plan.sh"
+  cp "$LIBRARY_SOURCE" "$REPO/.claude/hooks/lib/gaia-active-plan.sh"
   chmod +x "$REPO/.claude/hooks/lib/gaia-active-plan.sh"
-  cp "$ROLLUP_SRC" "$REPO/.gaia/scripts/token-rollup.sh"
+  cp "$ROLLUP_SOURCE" "$REPO/.gaia/scripts/token-rollup.sh"
   chmod +x "$REPO/.gaia/scripts/token-rollup.sh"
-  cp "$LIB_PRICING_SRC" "$REPO/.gaia/scripts/token-pricing-lib.sh"
-  cp "$LIB_RATES_LOCAL_SRC" "$REPO/.gaia/scripts/token-rates-local-lib.sh"
-  cp "$LIB_RATES_FEED_SRC" "$REPO/.gaia/scripts/token-rates-feed-lib.sh"
-  cp "$LIB_LEDGER_SRC" "$REPO/.gaia/scripts/ledger-path-lib.sh"
-  cp "$LIB_MAIN_ROOT_SRC" "$REPO/.gaia/scripts/main-root-lib.sh"
-  cp "$VERB_ARMING_SRC" "$REPO/.claude/hooks/lib/verb-arming.sh"
-  cp "$VERB_ARMING_WALK_SRC" "$REPO/.claude/hooks/lib/verb-arming-walk.sh"
-  cp "$REPO_SCOPE_SRC" "$REPO/.claude/hooks/lib/repo-scope.sh"
+  cp "$LIBRARY_PRICING_SOURCE" "$REPO/.gaia/scripts/token-pricing-lib.sh"
+  cp "$LIBRARY_RATES_LOCAL_SOURCE" "$REPO/.gaia/scripts/token-rates-local-lib.sh"
+  cp "$LIBRARY_RATES_FEED_SOURCE" "$REPO/.gaia/scripts/token-rates-feed-lib.sh"
+  cp "$LIBRARY_LEDGER_SOURCE" "$REPO/.gaia/scripts/ledger-path-lib.sh"
+  cp "$LIBRARY_MAIN_ROOT_SOURCE" "$REPO/.gaia/scripts/main-root-lib.sh"
+  cp "$VERB_ARMING_SOURCE" "$REPO/.claude/hooks/lib/verb-arming.sh"
+  cp "$VERB_ARMING_WALK_SOURCE" "$REPO/.claude/hooks/lib/verb-arming-walk.sh"
+  cp "$REPO_SCOPE_SOURCE" "$REPO/.claude/hooks/lib/repo-scope.sh"
 }
 
 write_running() {
-  # write_running <plan_dir> <branch> <started>
+  # write_running <plan_directory> <branch> <started>
   mkdir -p "$1"
   { printf 'branch: %s\n' "$2"; printf 'slug: %s\n' "$(basename "$1")"; printf 'started: %s\n' "$3"; } > "$1/RUNNING"
 }
 
 write_readme_with_spec() {
-  # write_readme_with_spec <plan_dir> <spec_path>
+  # write_readme_with_spec <plan_directory> <spec_path>
   mkdir -p "$1"
   {
     printf '# Plan\n\n'
@@ -89,24 +89,24 @@ ledger_path() {
   printf '%s/.gaia/local/telemetry/cost.jsonl' "$REPO"
 }
 
-# write_record <action> <spec_id> <session_id> <total> <ts> [<ended_at>]
+# write_record <action> <spec_id> <session_id> <total> <timestamp> [<ended_at>]
 write_record() {
-  local action="$1" spec_id="$2" sid="$3" total="$4" ts="$5"
-  local ended="${6:-$ts}"
+  local action="$1" spec_id="$2" session_id="$3" total="$4" timestamp="$5"
+  local ended="${6:-$timestamp}"
   mkdir -p "$(dirname "$(ledger_path)")"
-  jq -nc --arg kind "$action" --arg spec_id "$spec_id" --arg sid "$sid" \
-    --argjson total "$total" --arg ts "$ts" --arg ended "$ended" \
-    '{kind:$kind, spec_id:$spec_id, plan_slug:"my-plan", session_id:$sid,
+  jq -nc --arg kind "$action" --arg spec_id "$spec_id" --arg session_id "$session_id" \
+    --argjson total "$total" --arg timestamp "$timestamp" --arg ended "$ended" \
+    '{kind:$kind, spec_id:$spec_id, plan_slug:"my-plan", session_id:$session_id,
       buckets:{fresh_input:$total, cache_write:0, cache_read:0, output:0},
       total:$total, partial:false, started_at:$ended, ended_at:$ended,
-      duration_seconds:10, duration_available:true, ts:$ts}' >> "$(ledger_path)"
+      duration_seconds:10, duration_available:true, ts:$timestamp}' >> "$(ledger_path)"
 }
 
 run_hook() {
   # run_hook <command>
-  local cmd="$1" input
-  input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Bash "$cmd")
-  invoke_hook "$input" "$HOOK_ABS"
+  local command="$1" input
+  input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Bash "$command")
+  invoke_hook "$input" "$HOOK_ABSOLUTE_PATH"
 }
 
 # ---------- 1. Renders spec+plan+execute+Total at merge (UAT-006) ----------
@@ -114,9 +114,9 @@ run_hook() {
   build_repo
   cd "$REPO"
   branch="$(git branch --show-current)"
-  plan_dir="$REPO/.gaia/local/plans/my-plan"
-  write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-042/SPEC.md"
-  write_running "$plan_dir" "$branch" "2026-07-01T00:00:00Z"
+  plan_directory="$REPO/.gaia/local/plans/my-plan"
+  write_readme_with_spec "$plan_directory" "/abs/root/.gaia/local/specs/SPEC-042/SPEC.md"
+  write_running "$plan_directory" "$branch" "2026-07-01T00:00:00Z"
 
   write_record spec SPEC-042 sess-spec 100 "2026-06-01T00:00:00Z"
   write_record plan SPEC-042 sess-plan 200 "2026-06-02T00:00:00Z"
@@ -149,9 +149,9 @@ run_hook() {
   build_repo
   cd "$REPO"
   branch="$(git branch --show-current)"
-  plan_dir="$REPO/.gaia/local/specs/SPEC-042/plan"
-  write_readme_with_spec "$plan_dir" ".gaia/local/specs/SPEC-042/SPEC.md"
-  write_running "$plan_dir" "$branch" "2026-07-01T00:00:00Z"
+  plan_directory="$REPO/.gaia/local/specs/SPEC-042/plan"
+  write_readme_with_spec "$plan_directory" ".gaia/local/specs/SPEC-042/SPEC.md"
+  write_running "$plan_directory" "$branch" "2026-07-01T00:00:00Z"
 
   write_record spec SPEC-042 sess-spec 100 "2026-06-01T00:00:00Z"
   write_record plan SPEC-042 sess-plan 200 "2026-06-02T00:00:00Z"
@@ -171,9 +171,9 @@ run_hook() {
   build_repo
   cd "$REPO"
   branch="$(git branch --show-current)"
-  plan_dir="$REPO/.gaia/local/plans/spec-less-plan"
-  write_readme_spec_less "$plan_dir"
-  write_running "$plan_dir" "$branch" "2026-07-01T00:00:00Z"
+  plan_directory="$REPO/.gaia/local/plans/spec-less-plan"
+  write_readme_spec_less "$plan_directory"
+  write_running "$plan_directory" "$branch" "2026-07-01T00:00:00Z"
 
   write_record plan spec-less-plan sess-plan 150 "2026-06-02T00:00:00Z"
   write_record execute spec-less-plan sess-exec 250 "2026-06-03T00:00:00Z"
@@ -219,9 +219,9 @@ run_hook() {
   build_repo
   cd "$REPO"
   branch="$(git branch --show-current)"
-  plan_dir="$REPO/.gaia/local/plans/my-plan"
-  write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-042/SPEC.md"
-  write_running "$plan_dir" "$branch" "2026-07-01T00:00:00Z"
+  plan_directory="$REPO/.gaia/local/plans/my-plan"
+  write_readme_with_spec "$plan_directory" "/abs/root/.gaia/local/specs/SPEC-042/SPEC.md"
+  write_running "$plan_directory" "$branch" "2026-07-01T00:00:00Z"
 
   # SPEC-042's own (older) execute record.
   write_record execute SPEC-042 sess-a 300 "2026-06-01T00:00:00Z"
@@ -279,13 +279,13 @@ run_hook() {
   build_repo
   cd "$REPO"
   branch="$(git branch --show-current)"
-  plan_dir="$REPO/.gaia/local/plans/my-plan"
-  write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-042/SPEC.md"
-  write_running "$plan_dir" "$branch" "2026-07-01T00:00:00Z"
+  plan_directory="$REPO/.gaia/local/plans/my-plan"
+  write_readme_with_spec "$plan_directory" "/abs/root/.gaia/local/specs/SPEC-042/SPEC.md"
+  write_running "$plan_directory" "$branch" "2026-07-01T00:00:00Z"
   write_record execute SPEC-042 sess-a 300 "2026-06-01T00:00:00Z"
 
-  heredoc_cmd=$'cat <<EOF\nPlease remember to gh pr merge later.\nEOF'
-  run_hook "$heredoc_cmd"
+  heredoc_command=$'cat <<EOF\nPlease remember to gh pr merge later.\nEOF'
+  run_hook "$heredoc_command"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -304,7 +304,7 @@ run_hook() {
 # none", the other two being the heredoc-body payload and the past-bound
 # payload. UAT-005 requires the past-bound call to arm and deny (for the
 # deny-capable siblings) or, here, to arm and render, because the SPEC's own
-# identity-above-bound rule says the view past GAIA_VERB_ARM_MAX_CHARS is the
+# identity-above-bound rule says the view past GAIA_VERB_ARM_MAXIMUM_CHARACTERS is the
 # identity and the raw match stands. UAT-005 and the identity rule win;
 # UAT-010's "other two" clause is superseded as to the past-bound half only.
 # See plan/README.md, "Where UAT-010 and UAT-005 conflict, and which wins".
@@ -312,9 +312,9 @@ run_hook() {
   build_repo
   cd "$REPO"
   branch="$(git branch --show-current)"
-  plan_dir="$REPO/.gaia/local/plans/my-plan"
-  write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-042/SPEC.md"
-  write_running "$plan_dir" "$branch" "2026-07-01T00:00:00Z"
+  plan_directory="$REPO/.gaia/local/plans/my-plan"
+  write_readme_with_spec "$plan_directory" "/abs/root/.gaia/local/specs/SPEC-042/SPEC.md"
+  write_running "$plan_directory" "$branch" "2026-07-01T00:00:00Z"
   write_record spec SPEC-042 sess-spec 100 "2026-06-01T00:00:00Z"
   write_record plan SPEC-042 sess-plan 200 "2026-06-02T00:00:00Z"
   write_record execute SPEC-042 sess-exec 300 "2026-06-03T00:00:00Z"
@@ -325,19 +325,19 @@ run_hook() {
   grep -qF -- "[cycle cost at merge]" <<<"$output" || return 1
 
   # 2. Heredoc-body payload (cat-to-file, proven data): no readout.
-  heredoc_cmd=$'cat > /tmp/notes.txt <<EOF\ngh pr merge 7\nEOF'
-  run_hook "$heredoc_cmd"
+  heredoc_command=$'cat > /tmp/notes.txt <<EOF\ngh pr merge 7\nEOF'
+  run_hook "$heredoc_command"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 
   # 3. The same heredoc-body payload padded past the arming bound: renders
-  # again. The walker abstains above GAIA_VERB_ARM_MAX_CHARS, so the raw
+  # again. The walker abstains above GAIA_VERB_ARM_MAXIMUM_CHARACTERS, so the raw
   # match stands unmasked.
-  local pad over_cmd
+  local pad over_limit_command
   pad=$(printf 'x%.0s' $(seq 1 16400))
-  over_cmd=$'cat > /tmp/notes.txt <<EOF\n'"$pad"$'\ngh pr merge 7\nEOF'
-  [ "${#over_cmd}" -gt 16384 ] || return 1
-  run_hook "$over_cmd"
+  over_limit_command=$'cat > /tmp/notes.txt <<EOF\n'"$pad"$'\ngh pr merge 7\nEOF'
+  [ "${#over_limit_command}" -gt 16384 ] || return 1
+  run_hook "$over_limit_command"
   [ "$status" -eq 0 ]
   [[ "$output" == *"[cycle cost at merge]"* ]]
 }
@@ -346,9 +346,9 @@ run_hook() {
   build_repo
   cd "$REPO"
   branch="$(git branch --show-current)"
-  plan_dir="$REPO/.gaia/local/plans/my-plan"
-  write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-042/SPEC.md"
-  write_running "$plan_dir" "$branch" "2026-07-01T00:00:00Z"
+  plan_directory="$REPO/.gaia/local/plans/my-plan"
+  write_readme_with_spec "$plan_directory" "/abs/root/.gaia/local/specs/SPEC-042/SPEC.md"
+  write_running "$plan_directory" "$branch" "2026-07-01T00:00:00Z"
   write_record execute SPEC-042 sess-exec 300 "2026-06-03T00:00:00Z"
 
   run_hook 'gh pr "merge" 7'
@@ -360,9 +360,9 @@ run_hook() {
   build_repo
   cd "$REPO"
   branch="$(git branch --show-current)"
-  plan_dir="$REPO/.gaia/local/plans/my-plan"
-  write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-042/SPEC.md"
-  write_running "$plan_dir" "$branch" "2026-07-01T00:00:00Z"
+  plan_directory="$REPO/.gaia/local/plans/my-plan"
+  write_readme_with_spec "$plan_directory" "/abs/root/.gaia/local/specs/SPEC-042/SPEC.md"
+  write_running "$plan_directory" "$branch" "2026-07-01T00:00:00Z"
   write_record execute SPEC-042 sess-exec 300 "2026-06-03T00:00:00Z"
 
   run_hook "echo start && gh pr merge 7"
@@ -375,22 +375,22 @@ run_hook() {
   build_repo
   cd "$REPO"
   branch="$(git branch --show-current)"
-  plan_dir="$REPO/.gaia/local/plans/my-plan"
-  write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-042/SPEC.md"
-  write_running "$plan_dir" "$branch" "2026-07-01T00:00:00Z"
+  plan_directory="$REPO/.gaia/local/plans/my-plan"
+  write_readme_with_spec "$plan_directory" "/abs/root/.gaia/local/specs/SPEC-042/SPEC.md"
+  write_running "$plan_directory" "$branch" "2026-07-01T00:00:00Z"
   write_record execute SPEC-042 sess-a 300 "2026-06-01T00:00:00Z"
 
-  input=$(jq -n --arg sid "S1" --arg cmd "gh pr merge 7 --squash" \
-    '{session_id:$sid, transcript_path:"/tmp/t.jsonl", cwd:".", hook_event_name:"PostToolUse",
-      tool_name:"Bash", tool_input:{command:$cmd},
+  input=$(jq -n --arg session_id "S1" --arg command "gh pr merge 7 --squash" \
+    '{session_id:$session_id, transcript_path:"/tmp/t.jsonl", cwd:".", hook_event_name:"PostToolUse",
+      tool_name:"Bash", tool_input:{command:$command},
       tool_response:{stdout:"", stderr:"merge failed", exit_code:1, interrupted:false}}')
-  invoke_hook "$input" "$HOOK_ABS"
+  invoke_hook "$input" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Cycle cost (SPEC-042)"* ]]
 }
 
 @test "the hook file is executable" {
-  [ -x "$HOOK_ABS" ]
+  [ -x "$HOOK_ABSOLUTE_PATH" ]
 }
 
 # ---------- 10. The per-PR usage block and the jq-absent marker ----------
@@ -400,9 +400,9 @@ run_hook() {
   cd "$REPO"
   unset GAIA_USAGE_HOOKS_DISABLE
   branch="$(git branch --show-current)"
-  plan_dir="$REPO/.gaia/local/plans/my-plan"
-  write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-042/SPEC.md"
-  write_running "$plan_dir" "$branch" "2026-07-01T00:00:00Z"
+  plan_directory="$REPO/.gaia/local/plans/my-plan"
+  write_readme_with_spec "$plan_directory" "/abs/root/.gaia/local/specs/SPEC-042/SPEC.md"
+  write_running "$plan_directory" "$branch" "2026-07-01T00:00:00Z"
   write_record execute SPEC-042 sess-exec 300 "2026-06-03T00:00:00Z"
   mkdir -p "$BATS_TEST_TMPDIR/ghbin"
   cat >"$BATS_TEST_TMPDIR/ghbin/gh" <<'EOF'
@@ -423,27 +423,27 @@ EOF
 # run_nojq <hook> <command>: the hook under a PATH that carries cat and grep
 # and no jq.
 run_nojq() {
-  local dir="$BATS_TEST_TMPDIR/nojq-bin" input
-  mkdir -p "$dir"
-  ln -sf "$(command -v cat)" "$dir/cat"
-  ln -sf "$(command -v grep)" "$dir/grep"
+  local directory="$BATS_TEST_TMPDIR/nojq-bin" input
+  mkdir -p "$directory"
+  ln -sf "$(command -v cat)" "$directory/cat"
+  ln -sf "$(command -v grep)" "$directory/grep"
   input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Bash "$2")
-  run bash -c 'printf %s "$1" | PATH="$2" /bin/bash "$3"' _ "$input" "$dir" "$1"
+  run bash -c 'printf %s "$1" | PATH="$2" /bin/bash "$3"' _ "$input" "$directory" "$1"
 }
 
 @test "jq absent: an armed merge prints the inactive marker and exits 0; a non-merge prints nothing" {
-  run_nojq "$HOOK_ABS" "gh pr merge 101"
+  run_nojq "$HOOK_ABSOLUTE_PATH" "gh pr merge 101"
   [ "$status" -eq 0 ]
   [ "$output" = "usage tracking inactive: jq not found" ]
-  run_nojq "$HOOK_ABS" "gh pr view 101"
+  run_nojq "$HOOK_ABSOLUTE_PATH" "gh pr view 101"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
 
 @test "guards-must-fail: a copy of the hook without the raw-grep branch stays silent for the same merge payload" {
   local mutant="$BATS_TEST_TMPDIR/rollup-noraw.sh"
-  sed 's/^  if grep -Eq .*<<<"$payload"; then$/  if false; then/' "$HOOK_ABS" >"$mutant"
-  cmp -s "$HOOK_ABS" "$mutant" && return 1
+  sed 's/^  if grep -Eq .*<<<"$payload"; then$/  if false; then/' "$HOOK_ABSOLUTE_PATH" >"$mutant"
+  cmp -s "$HOOK_ABSOLUTE_PATH" "$mutant" && return 1
   run_nojq "$mutant" "gh pr merge 101"
   [ "$status" -eq 0 ]
   [ -z "$output" ]

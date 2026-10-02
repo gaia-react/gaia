@@ -13,8 +13,8 @@
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  SCRIPT="$THIS_DIR/../ledger-status-migrate.sh"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  SCRIPT="$THIS_DIRECTORY/../ledger-status-migrate.sh"
   [ -x "$SCRIPT" ] || skip "ledger-status-migrate.sh not executable"
 
   SANDBOX_RAW="$(mktemp -d "${BATS_TEST_TMPDIR}/sandbox.XXXXXX")"

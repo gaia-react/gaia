@@ -22,7 +22,7 @@ payload=$(cat)
 tool_name=$(jq -r '.tool_name // ""' <<<"$payload")
 [ "$tool_name" = "Bash" ] || exit 0
 
-cmd=$(jq -r '.tool_input.command // ""' <<<"$payload")
+command=$(jq -r '.tool_input.command // ""' <<<"$payload")
 
 # Uses the shared arming decision, the same one token-rollup-merge.sh uses
 # (.claude/hooks/lib/verb-arming.sh). Deliberately does NOT match `gh issue
@@ -61,13 +61,13 @@ cmd=$(jq -r '.tool_input.command // ""' <<<"$payload")
 # Tracked as its own issue rather than this one, because gaia-react/gaia#1556
 # closes when this change merges and a pointer needs a live destination:
 # gaia-react/gaia#1564.
-_va_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+_hook_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 # shellcheck source=/dev/null
-[ -n "${_va_lib:-}" ] && "${BASH:-bash}" -n "$_va_lib/verb-arming.sh" 2>/dev/null && . "$_va_lib/verb-arming.sh" 2>/dev/null || true
+[ -n "${_hook_library_directory:-}" ] && "${BASH:-bash}" -n "$_hook_library_directory/verb-arming.sh" 2>/dev/null && . "$_hook_library_directory/verb-arming.sh" 2>/dev/null || true
 type gaia_verb_armed >/dev/null 2>&1 || exit 0
 
-frag='gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)'
-if gaia_verb_armed "$frag" 'gh pr create' "$cmd"; then
+verb_pattern='gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)'
+if gaia_verb_armed "$verb_pattern" 'gh pr create' "$command"; then
   :
 else
   exit 0
@@ -91,16 +91,16 @@ fi
 # Rooted through the location resolved for the arming load above rather than
 # the process working directory: the parse check answers false for a library it
 # cannot see, and the `type` degrade below reads that as an unusable lib.
-# Three levels up, not two: $_va_lib is the `lib` DIRECTORY
+# Three levels up, not two: $_hook_library_directory is the `lib` DIRECTORY
 # (<root>/.claude/hooks/lib), so the repository root is ../../.. from it.
 # Empty when the rooting above failed, and guarded rather than defaulted to a
 # bare `.claude/hooks/lib`: that default resolves against the process working
 # directory, so the one branch where the rooting fails would revert to exactly
 # the resolution this rooting exists to remove, indistinguishably from an
 # absent library. Same shape as the arming load above.
-_gh_lib="${_va_lib:+$_va_lib/../../../.gaia/scripts/gh-artifact-lib.sh}"
+_gh_artifact_library="${_hook_library_directory:+$_hook_library_directory/../../../.gaia/scripts/gh-artifact-lib.sh}"
 # shellcheck source=/dev/null
-[ -n "$_gh_lib" ] && "${BASH:-bash}" -n "$_gh_lib" 2>/dev/null && . "$_gh_lib" 2>/dev/null || true
+[ -n "$_gh_artifact_library" ] && "${BASH:-bash}" -n "$_gh_artifact_library" 2>/dev/null && . "$_gh_artifact_library" 2>/dev/null || true
 type gaia_gh_artifact_parse_url >/dev/null 2>&1 || exit 0
 
 stdout_text=$(jq -r '.tool_response.stdout // ""' <<<"$payload")
@@ -109,7 +109,7 @@ parsed="$(gaia_gh_artifact_parse_url "$stdout_text")"
 
 number="$(jq -r '.number' <<<"$parsed" 2>/dev/null)"
 repo="$(jq -r '.repo' <<<"$parsed" 2>/dev/null)"
-sid="$(jq -r '.session_id // ""' <<<"$payload")"
+session_id="$(jq -r '.session_id // ""' <<<"$payload")"
 branch="$(git branch --show-current 2>/dev/null || true)"
 
 # The PR-to-branch edge is written before the cache and breadcrumb exits below,
@@ -123,25 +123,25 @@ branch="$(git branch --show-current 2>/dev/null || true)"
 # command, also skips the edge, which fails toward no edge. The created URL is
 # not compared with origin, because a fork workflow creates a PR in the
 # upstream repository from the local branch.
-_gh_frag='gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)'
+_gh_fragment='gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)'
 _gh_foreign=0
-if [[ $cmd =~ $_gh_frag ]]; then
-  _gh_rest="${cmd#*"${BASH_REMATCH[0]}"}"
-  _gh_frx='(^|[[:space:]])(-R|--repo)'
-  if [[ $_gh_rest =~ $_gh_frx ]]; then _gh_foreign=1; fi
+if [[ $command =~ $_gh_fragment ]]; then
+  _gh_rest="${command#*"${BASH_REMATCH[0]}"}"
+  _gh_repo_flag_pattern='(^|[[:space:]])(-R|--repo)'
+  if [[ $_gh_rest =~ $_gh_repo_flag_pattern ]]; then _gh_foreign=1; fi
 fi
 if [ "${GAIA_USAGE_HOOKS_DISABLE:-}" != 1 ] && [ -n "$branch" ] && [ "$_gh_foreign" = 0 ]; then
-  _usage_sh="${_va_lib:+$_va_lib/../../../.gaia/scripts/usage.sh}"
+  _usage_sh="${_hook_library_directory:+$_hook_library_directory/../../../.gaia/scripts/usage.sh}"
   if [ -n "$_usage_sh" ] && [ -f "$_usage_sh" ]; then
-    bash "$_usage_sh" link --pr "$number" --branch "$branch" --source gh-pr-create --session "$sid" >/dev/null 2>&1 || true
+    bash "$_usage_sh" link --pr "$number" --branch "$branch" --source gh-pr-create --session "$session_id" >/dev/null 2>&1 || true
   fi
 fi
 
-cache_dir="$(gaia_gh_artifact_cache_dir)"
-[ -n "$cache_dir" ] || exit 0
-bc_path="$(gaia_gh_artifact_path "$cache_dir" "$branch")"
-[ -n "$bc_path" ] || exit 0
+cache_directory="$(gaia_gh_artifact_cache_dir)"
+[ -n "$cache_directory" ] || exit 0
+breadcrumb_path="$(gaia_gh_artifact_path "$cache_directory" "$branch")"
+[ -n "$breadcrumb_path" ] || exit 0
 
-gaia_gh_artifact_write "$bc_path" "$number" "$repo" "$branch" "$sid" >/dev/null 2>&1 || true
+gaia_gh_artifact_write "$breadcrumb_path" "$number" "$repo" "$branch" "$session_id" >/dev/null 2>&1 || true
 
 exit 0

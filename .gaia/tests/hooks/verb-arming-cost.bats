@@ -51,7 +51,7 @@
 #
 #   Trace against the row's OWN fixture, not an approximation of it. A 16KB
 #   heredoc and a 32KB one answer differently: the walker takes the identity
-#   path once the text is longer than GAIA_VERB_ARM_MAX_CHARS (16,384
+#   path once the text is longer than GAIA_VERB_ARM_MAXIMUM_CHARACTERS (16,384
 #   characters; the guard is verb-arming-walk.sh:283, the first thing
 #   gaia_verb_arm_view does), so past it the body is never proven data and hooks
 #   that would otherwise stand down can arm. That is the past-bound 32KB row's
@@ -118,7 +118,7 @@
 # what this budget actually measures: the arming library's own cost.
 #
 # WHICH repo-scope FUNCTION THAT COST BELONGED TO. An earlier reading of this
-# named `cmd_targets_foreign_repo` and put the figure at 1.2-3.4s on a 32KB
+# named `command_targets_foreign_repo` and put the figure at 1.2-3.4s on a 32KB
 # armed command. Measured in isolation that function is flat at ~0.02s across
 # payload shapes and does not grow from 16KB to 32KB: it runs a few sed/grep
 # subprocesses over the text rather than walking it. The cost was
@@ -153,12 +153,12 @@ setup() {
   # Isolate pricing from the developer's real rate table and the network.
   export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state"
   export GAIA_RATES_FEED_DISABLE=1
-  # HOOKS_DIR is the real hooks dir, so the real usage-merge.sh would run in
+  # HOOKS_DIRECTORY is the real hooks dir, so the real usage-merge.sh would run in
   # every armed row below and, with the shared gh stub answering MERGED, drive
   # ledger writes during timing. The seam keeps every existing row timing what
   # it timed before; the usage-merge row unsets it.
   export GAIA_USAGE_HOOKS_DISABLE=1
-  HOOKS_DIR=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
+  HOOKS_DIRECTORY=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
 
   REPO=$(mktemp -d -t verb-arming-cost-XXXXXX)
   git -C "$REPO" init --quiet --initial-branch=main
@@ -206,7 +206,7 @@ teardown() {
 # line, padded with 'y' filler to exactly TOTAL characters (best-effort at the
 # smallest sizes, where the fixed overhead dominates). Raw-matches via the
 # separator arm (the newline ahead of VERB), pays for the walk, and -- below
-# GAIA_VERB_ARM_MAX_CHARS -- ends up correctly unarmed once the body is
+# GAIA_VERB_ARM_MAXIMUM_CHARACTERS -- ends up correctly unarmed once the body is
 # proven data.
 build_armed_payload() {
   local verb="$1" total="$2"
@@ -229,9 +229,9 @@ build_armed_payload() {
 # turns 'echo' away is that no admitted word begins 'ec'.
 build_nonmatch_payload() {
   local total="$1" prefix='echo '
-  local n=$(( total - ${#prefix} ))
-  [ "$n" -lt 0 ] && n=0
-  printf '%s%s' "$prefix" "$(head -c "$n" < /dev/zero | tr '\0' 'x')"
+  local filler_length=$(( total - ${#prefix} ))
+  [ "$filler_length" -lt 0 ] && filler_length=0
+  printf '%s%s' "$prefix" "$(head -c "$filler_length" < /dev/zero | tr '\0' 'x')"
 }
 
 # A plain (non-heredoc) armed payload: raw-matches at the very start, so it
@@ -240,9 +240,9 @@ build_nonmatch_payload() {
 # circuits BEFORE the walker does any real work at all.
 build_plain_armed_payload() {
   local verb="$1" total="$2"
-  local n=$(( total - ${#verb} - 1 ))
-  [ "$n" -lt 0 ] && n=0
-  printf '%s %s' "$verb" "$(head -c "$n" < /dev/zero | tr '\0' 'y')"
+  local filler_length=$(( total - ${#verb} - 1 ))
+  [ "$filler_length" -lt 0 ] && filler_length=0
+  printf '%s %s' "$verb" "$(head -c "$filler_length" < /dev/zero | tr '\0' 'y')"
 }
 
 # ---------------------------------------------------------------------------
@@ -252,14 +252,14 @@ build_plain_armed_payload() {
 # Writes a PreToolUse Bash JSON envelope for CMD to a tmp file and prints its
 # path. --rawfile keeps this argv-free for a 16-32KB payload, unlike --arg.
 json_envelope_for() {
-  local cmd="$1" cmdfile jsonfile
-  cmdfile=$(mktemp)
+  local command_text="$1" command_file jsonfile
+  command_file=$(mktemp)
   jsonfile=$(mktemp)
-  printf '%s' "$cmd" > "$cmdfile"
-  jq -n --rawfile c "$cmdfile" \
-    '{tool_name:"Bash", tool_input:{command:$c}, tool_response:{stdout:"",stderr:"",interrupted:false}, hook_event_name:"PreToolUse", session_id:"cost-budget", stop_hook_active:false}' \
+  printf '%s' "$command_text" > "$command_file"
+  jq -n --rawfile command_text "$command_file" \
+    '{tool_name:"Bash", tool_input:{command:$command_text}, tool_response:{stdout:"",stderr:"",interrupted:false}, hook_event_name:"PreToolUse", session_id:"cost-budget", stop_hook_active:false}' \
     > "$jsonfile"
-  rm -f "$cmdfile"
+  rm -f "$command_file"
   printf '%s' "$jsonfile"
 }
 
@@ -270,9 +270,9 @@ json_envelope_for() {
 # BSD-only `date` flag (acceptance criterion 5), unlike `date +%s%N` (GNU
 # only) or `date -v`/`date -d` (BSD/GNU split).
 time_hook_ms() {
-  local hook="$1" cmd="$2" jsonfile t
-  jsonfile=$(json_envelope_for "$cmd")
-  t=$(
+  local hook="$1" command_text="$2" jsonfile elapsed_seconds
+  jsonfile=$(json_envelope_for "$command_text")
+  elapsed_seconds=$(
     cd "$REPO" || exit 1
     PATH="$GH_BIN:$PATH"
     export GAIA_TALLY_PROJECTS_ROOT="$TALLY_ROOT"
@@ -299,7 +299,7 @@ time_hook_ms() {
     { time bash "$hook" < "$jsonfile" >/dev/null 2>&1; } 2>&1
   )
   rm -f "$jsonfile"
-  REPLY_MS=$(LC_ALL=C awk -v s="$t" 'BEGIN{printf "%d", (s*1000)+0.5}')
+  REPLY_MS=$(LC_ALL=C awk -v seconds="$elapsed_seconds" 'BEGIN{printf "%d", (seconds*1000)+0.5}')
   # Fail closed rather than let an unparseable timing read as a fast one.
   [ "$REPLY_MS" -gt 0 ] || return 1
 }
@@ -317,12 +317,12 @@ time_hook_ms() {
 # reds only on CI. The read happens outside the timed region, so the file
 # round-trip does not enter the measurement.
 time_view_ms() {
-  local text="$1" lib walk t textfile
-  lib=$(cd "$HOOKS_DIR/lib" && pwd)/verb-arming.sh
-  walk=$(cd "$HOOKS_DIR/lib" && pwd)/verb-arming-walk.sh
+  local text="$1" library_file walk elapsed_seconds textfile
+  library_file=$(cd "$HOOKS_DIRECTORY/lib" && pwd)/verb-arming.sh
+  walk=$(cd "$HOOKS_DIRECTORY/lib" && pwd)/verb-arming-walk.sh
   textfile=$(mktemp)
   printf '%s' "$text" > "$textfile"
-  t=$(bash -c '
+  elapsed_seconds=$(bash -c '
     # Radix pin, for the reason time_hook_ms above gives.
     LC_ALL=C
     TIMEFORMAT="%R"
@@ -333,9 +333,9 @@ time_view_ms() {
     # bound is being measured against. Non-zero at EOF is expected.
     IFS= read -r -d "" _text < "$3" || :
     { time gaia_verb_arm_view "$_text" >/dev/null; } 2>&1
-  ' _ "$lib" "$walk" "$textfile")
+  ' _ "$library_file" "$walk" "$textfile")
   rm -f "$textfile"
-  REPLY_MS=$(LC_ALL=C awk -v s="$t" 'BEGIN{printf "%d", (s*1000)+0.5}')
+  REPLY_MS=$(LC_ALL=C awk -v seconds="$elapsed_seconds" 'BEGIN{printf "%d", (seconds*1000)+0.5}')
   [ "$REPLY_MS" -gt 0 ] || return 1
 }
 
@@ -405,11 +405,11 @@ CEILING_PAST_BOUND_MS=300
 # costs. A 256KB single-heredoc payload is chosen (rather than the smaller
 # 32KB above) because the separation is what makes this ceiling ROBUST rather
 # than borderline: measured identity cost at this size is ~6-21ms, while
-# measured real-walk cost at this size (GAIA_VERB_ARM_MAX_CHARS raised past
+# measured real-walk cost at this size (GAIA_VERB_ARM_MAXIMUM_CHARACTERS raised past
 # it) is ~760ms on bash 3.2 -- a ~36x gap, wide enough that ordinary run-to-
 # run jitter cannot cross it by accident. Headroom: 150/21 ~= 7.1x. Margin
 # below the measured real-walk failure mode (760ms): 760/150 ~= 5.1x. This is
-# the ceiling that demonstrably reds when GAIA_VERB_ARM_MAX_CHARS is removed
+# the ceiling that demonstrably reds when GAIA_VERB_ARM_MAXIMUM_CHARACTERS is removed
 # or raised past this payload's size (see the plan's red-first discipline;
 # proven by hand, not committed as a self-mutating test).
 CEILING_VIEW_PAST_BOUND_MS=150
@@ -424,35 +424,35 @@ CEILING_VIEW_16K_MS=100
 # ---------------------------------------------------------------------------
 
 @test "cost: gaia_verb_arm_view alone stays inside the span-skipping ceiling at 16KB" {
-  local p
-  p=$(build_armed_payload "gh pr merge 1" 16384)
-  time_view_ms "$p"
+  local payload
+  payload=$(build_armed_payload "gh pr merge 1" 16384)
+  time_view_ms "$payload"
   echo "gaia_verb_arm_view at 16KB: ${REPLY_MS}ms (ceiling ${CEILING_VIEW_16K_MS}ms)" >&2
   [ "$REPLY_MS" -le "$CEILING_VIEW_16K_MS" ]
 }
 
 @test "cost: a raw-matching payload's per-hook cost stays inside the span-skipping envelope, 200B through 16KB" {
-  local sz p
-  for sz in 200 2048 8192 16384; do
-    p=$(build_armed_payload "gh pr merge 1" "$sz")
-    time_hook_ms "$HOOKS_DIR/pr-merge-audit-check.sh" "$p"
-    echo "raw-matching size=$sz: ${REPLY_MS}ms (ceiling ${CEILING_ONE_HOOK_RAWMATCH_MS}ms)" >&2
+  local payload_size payload
+  for payload_size in 200 2048 8192 16384; do
+    payload=$(build_armed_payload "gh pr merge 1" "$payload_size")
+    time_hook_ms "$HOOKS_DIRECTORY/pr-merge-audit-check.sh" "$payload"
+    echo "raw-matching size=$payload_size: ${REPLY_MS}ms (ceiling ${CEILING_ONE_HOOK_RAWMATCH_MS}ms)" >&2
     [ "$REPLY_MS" -le "$CEILING_ONE_HOOK_RAWMATCH_MS" ]
   done
 }
 
 @test "cost: a non-matching payload never pays the walk, 200B through 16KB" {
-  local sz p
-  for sz in 200 2048 8192 16384; do
-    p=$(build_nonmatch_payload "$sz")
-    time_hook_ms "$HOOKS_DIR/pr-merge-audit-check.sh" "$p"
-    echo "non-matching size=$sz: ${REPLY_MS}ms (ceiling ${CEILING_ONE_HOOK_NONMATCH_MS}ms)" >&2
+  local payload_size payload
+  for payload_size in 200 2048 8192 16384; do
+    payload=$(build_nonmatch_payload "$payload_size")
+    time_hook_ms "$HOOKS_DIRECTORY/pr-merge-audit-check.sh" "$payload"
+    echo "non-matching size=$payload_size: ${REPLY_MS}ms (ceiling ${CEILING_ONE_HOOK_NONMATCH_MS}ms)" >&2
     [ "$REPLY_MS" -le "$CEILING_ONE_HOOK_NONMATCH_MS" ]
   done
 }
 
 @test "cost: a payload past the character bound never pays the walk, so only the hook body's own cost is left" {
-  local hook="$HOOKS_DIR/token-tally-git-op.sh"
+  local hook="$HOOKS_DIRECTORY/token-tally-git-op.sh"
   local armed nonmatch
   armed=$(build_plain_armed_payload "git commit -m x" 32768)
   nonmatch=$(build_nonmatch_payload 32768)
@@ -471,19 +471,19 @@ CEILING_VIEW_16K_MS=100
   # 256KB, not 32KB: see CEILING_VIEW_PAST_BOUND_MS's comment for why the
   # larger size is what makes this assertion able to actually red rather
   # than merely pass.
-  local p
-  p=$(build_armed_payload "gh pr merge 1" 262144)
-  time_view_ms "$p"
+  local payload
+  payload=$(build_armed_payload "gh pr merge 1" 262144)
+  time_view_ms "$payload"
   echo "gaia_verb_arm_view past bound (256KB): ${REPLY_MS}ms (ceiling ${CEILING_VIEW_PAST_BOUND_MS}ms)" >&2
   [ "$REPLY_MS" -le "$CEILING_VIEW_PAST_BOUND_MS" ]
 }
 
 @test "cost: every adopting hook processes one ordinary 200-byte git-commit tool call within budget" {
-  local cmd
-  cmd="git commit -m x $(head -c 180 < /dev/zero | tr '\0' 'y')"
-  local total=0 h armed=0
-  while IFS= read -r h; do
-    time_hook_ms "$HOOKS_DIR/$h" "$cmd"
+  local command_text
+  command_text="git commit -m x $(head -c 180 < /dev/zero | tr '\0' 'y')"
+  local total=0 hook_name armed=0
+  while IFS= read -r hook_name; do
+    time_hook_ms "$HOOKS_DIRECTORY/$hook_name" "$command_text"
     total=$(( total + REPLY_MS ))
     armed=$(( armed + 1 ))
   done < <(adopting_hooks)
@@ -496,11 +496,11 @@ CEILING_VIEW_16K_MS=100
 }
 
 @test "cost: every adopting hook processes one 16KB raw-matching gh-pr-merge tool call within budget" {
-  local cmd
-  cmd=$(build_armed_payload "gh pr merge 1" 16384)
-  local total=0 h armed=0
-  while IFS= read -r h; do
-    time_hook_ms "$HOOKS_DIR/$h" "$cmd"
+  local command_text
+  command_text=$(build_armed_payload "gh pr merge 1" 16384)
+  local total=0 hook_name armed=0
+  while IFS= read -r hook_name; do
+    time_hook_ms "$HOOKS_DIRECTORY/$hook_name" "$command_text"
     total=$(( total + REPLY_MS ))
     armed=$(( armed + 1 ))
   done < <(adopting_hooks)
@@ -524,19 +524,19 @@ CEILING_VIEW_16K_MS=100
 CEILING_USAGE_MERGE_MS=4000
 
 @test "cost: the merge hook with the usage block live stays inside the cap plus headroom when gh cannot answer" {
-  local f
+  local copied_file
   mkdir -p "$REPO/.claude/hooks/lib" "$REPO/.gaia/scripts" "$REPO/.specify/extensions/gaia/lib"
-  cp "$HOOKS_DIR/token-rollup-merge.sh" "$REPO/.claude/hooks/"
-  for f in verb-arming.sh verb-arming-walk.sh repo-scope.sh gaia-active-plan.sh; do
-    cp "$HOOKS_DIR/lib/$f" "$REPO/.claude/hooks/lib/"
+  cp "$HOOKS_DIRECTORY/token-rollup-merge.sh" "$REPO/.claude/hooks/"
+  for copied_file in verb-arming.sh verb-arming-walk.sh repo-scope.sh gaia-active-plan.sh; do
+    cp "$HOOKS_DIRECTORY/lib/$copied_file" "$REPO/.claude/hooks/lib/"
   done
-  for f in "$HOOKS_DIR"/../../.gaia/scripts/usage*.sh "$HOOKS_DIR"/../../.gaia/scripts/token-pricing-lib.sh \
-    "$HOOKS_DIR"/../../.gaia/scripts/token-rates-local-lib.sh "$HOOKS_DIR"/../../.gaia/scripts/token-rates-feed-lib.sh \
-    "$HOOKS_DIR"/../../.gaia/scripts/ledger-path-lib.sh "$HOOKS_DIR"/../../.gaia/scripts/main-root-lib.sh \
-    "$HOOKS_DIR"/../../.gaia/scripts/branch-name-lib.sh "$HOOKS_DIR"/../../.gaia/scripts/token-rollup.sh; do
-    cp "$f" "$REPO/.gaia/scripts/"
+  for copied_file in "$HOOKS_DIRECTORY"/../../.gaia/scripts/usage*.sh "$HOOKS_DIRECTORY"/../../.gaia/scripts/token-pricing-lib.sh \
+    "$HOOKS_DIRECTORY"/../../.gaia/scripts/token-rates-local-lib.sh "$HOOKS_DIRECTORY"/../../.gaia/scripts/token-rates-feed-lib.sh \
+    "$HOOKS_DIRECTORY"/../../.gaia/scripts/ledger-path-lib.sh "$HOOKS_DIRECTORY"/../../.gaia/scripts/main-root-lib.sh \
+    "$HOOKS_DIRECTORY"/../../.gaia/scripts/branch-name-lib.sh "$HOOKS_DIRECTORY"/../../.gaia/scripts/token-rollup.sh; do
+    cp "$copied_file" "$REPO/.gaia/scripts/"
   done
-  cp "$HOOKS_DIR/../../.specify/extensions/gaia/lib/with-ledger-lock.sh" "$REPO/.specify/extensions/gaia/lib/"
+  cp "$HOOKS_DIRECTORY/../../.specify/extensions/gaia/lib/with-ledger-lock.sh" "$REPO/.specify/extensions/gaia/lib/"
   printf '#!/usr/bin/env bash\nexit 1\n' >"$GH_BIN/gh"
   chmod +x "$GH_BIN/gh"
 

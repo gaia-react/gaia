@@ -11,7 +11,7 @@
 # ownership classifier and machinery matcher, never by git pathspec.
 #
 # Recipe (recipe-version sentinel `gaia-audit-digest-v1`):
-#   git -C <root> -c core.quotepath=false ls-tree -z -r <ref> yields NUL-
+#   git -C <root> -c core.quotepath=false ls-tree -z -r <git_reference> yields NUL-
 #   terminated `<mode> SP <type> SP <object> TAB <path>` records for every
 #   tracked file. Classify each path once through the classifier; select the
 #   member's set; frame each selected record as `<mode> <object> <path>`, emit
@@ -39,8 +39,8 @@
 # caller $root, so a run from a scratch sandbox finds the real modules. `|| true`
 # on the `cd` command substitution: a failing command substitution in a plain
 # assignment trips errexit in a caller running under `set -e`.
-_audit_digest_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || true
-if [ -n "${_audit_digest_lib_dir:-}" ]; then
+_audit_digest_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || true
+if [ -n "${_audit_digest_library_directory:-}" ]; then
   # Suspend errexit across both loads, then RESTORE WHAT WAS THERE. A sibling
   # module that is present but unparseable abandons the shell AT the source, so
   # an `-f` test ahead of it proves nothing and no caller can guard it from
@@ -52,9 +52,9 @@ if [ -n "${_audit_digest_lib_dir:-}" ]; then
   case $- in *e*) _audit_digest_errexit_was=1 ;; esac
   set +e
   # shellcheck source=/dev/null
-  [ -f "$_audit_digest_lib_dir/audit-scope.sh" ] && . "$_audit_digest_lib_dir/audit-scope.sh" 2>/dev/null
+  [ -f "$_audit_digest_library_directory/audit-scope.sh" ] && . "$_audit_digest_library_directory/audit-scope.sh" 2>/dev/null
   # shellcheck source=/dev/null
-  [ -f "$_audit_digest_lib_dir/audit-machinery.sh" ] && . "$_audit_digest_lib_dir/audit-machinery.sh" 2>/dev/null
+  [ -f "$_audit_digest_library_directory/audit-machinery.sh" ] && . "$_audit_digest_library_directory/audit-machinery.sh" 2>/dev/null
   if [ "$_audit_digest_errexit_was" = 1 ]; then set -e; fi
   unset _audit_digest_errexit_was
 fi
@@ -71,14 +71,14 @@ _audit_sha256_hex() {
   fi
 }
 
-# audit_digests_all <root> [<ref>]
+# audit_digests_all <root> [<git_reference>]
 #
 # The single-walk / single-classify batch form (directive PERF-001). Prints one
 # `<member>\t<digest>` line per roster member (the default member and every
 # specialist audit_scope_init populated). Fail-closed conditions emit NOTHING
 # and return non-zero, atomically (never some members and not others).
 audit_digests_all() {
-  local root="$1" ref="${2:-HEAD}"
+  local root="$1" git_reference="${2:-HEAD}"
 
   # Fail closed: the classifier + machinery batch predicates must be loaded.
   command -v audit_scope_init >/dev/null 2>&1 || return 1
@@ -99,10 +99,10 @@ audit_digests_all() {
   # (command substitution strips them), so the records go to a temp file that
   # preserves them AND lets us fail closed on a non-zero git exit. An empty tree
   # (exit 0, no records) is NOT fail-closed.
-  local tmp
-  tmp="$(mktemp 2>/dev/null)" || return 1
-  if ! git -C "$root" -c core.quotepath=false ls-tree -z -r "$ref" >"$tmp" 2>/dev/null; then
-    rm -f "$tmp"
+  local temporary_file
+  temporary_file="$(mktemp 2>/dev/null)" || return 1
+  if ! git -C "$root" -c core.quotepath=false ls-tree -z -r "$git_reference" >"$temporary_file" 2>/dev/null; then
+    rm -f "$temporary_file"
     return 1
   fi
 
@@ -110,44 +110,44 @@ audit_digests_all() {
   # classifiers. Split each record at the FIRST tab: `meta` is
   # `<mode> <type> <object>`, `path` is everything after (a path may itself
   # contain a tab, which %%/# split at the first tab handles).
-  local record meta path mode rest obj
-  local D_PATH=() D_MODE=() D_OBJ=()
-  local paths_nl=""
+  local record meta path mode rest object
+  local D_PATH=() D_MODE=() D_OBJECT=()
+  local paths_newline_separated=""
   while IFS= read -r -d '' record; do
     meta="${record%%$'\t'*}"
     path="${record#*$'\t'}"
     mode="${meta%% *}"
     rest="${meta#* }"
-    obj="${rest#* }"
+    object="${rest#* }"
     D_PATH[${#D_PATH[@]}]="$path"
     D_MODE[${#D_MODE[@]}]="$mode"
-    D_OBJ[${#D_OBJ[@]}]="$obj"
-    paths_nl="${paths_nl}${path}"$'\n'
-  done <"$tmp"
-  rm -f "$tmp"
+    D_OBJECT[${#D_OBJECT[@]}]="$object"
+    paths_newline_separated="${paths_newline_separated}${path}"$'\n'
+  done <"$temporary_file"
+  rm -f "$temporary_file"
 
-  local n=${#D_PATH[@]}
+  local path_count=${#D_PATH[@]}
 
   # Batch owner + machinery classification, aligned line-for-line to the arrays.
   # Both classifiers skip empty input lines and preserve order, so the i-th
   # output line describes D_PATH[i]. `printf '%s'` (no trailing newline added)
-  # feeds them so the read loop consumes exactly n lines.
-  local D_OWNER=() D_MACH=()
+  # feeds them so the read loop consumes exactly path_count lines.
+  local D_OWNER=() D_MACHINERY=()
   local line
-  if [ "$n" -gt 0 ]; then
+  if [ "$path_count" -gt 0 ]; then
     while IFS= read -r line; do
       D_OWNER[${#D_OWNER[@]}]="${line##*$'\t'}"
-    done < <(printf '%s' "$paths_nl" | audit_owners_for_paths)
+    done < <(printf '%s' "$paths_newline_separated" | audit_owners_for_paths)
     while IFS= read -r line; do
-      D_MACH[${#D_MACH[@]}]="${line##*$'\t'}"
-    done < <(printf '%s' "$paths_nl" | audit_machinery_flags)
+      D_MACHINERY[${#D_MACHINERY[@]}]="${line##*$'\t'}"
+    done < <(printf '%s' "$paths_newline_separated" | audit_machinery_flags)
   fi
 
   # A count mismatch means a classifier saw a different number of lines than the
   # walk produced. The only way that happens is a path whose name embeds a
   # newline (out-of-fixture / best-effort); rather than hash a mis-aligned set,
   # fail closed. Space-containing paths do NOT trip this (no extra newlines).
-  if [ "${#D_OWNER[@]}" -ne "$n" ] || [ "${#D_MACH[@]}" -ne "$n" ]; then
+  if [ "${#D_OWNER[@]}" -ne "$path_count" ] || [ "${#D_MACHINERY[@]}" -ne "$path_count" ]; then
     return 1
   fi
 
@@ -156,17 +156,17 @@ audit_digests_all() {
   local default_member="${_AUDIT_SCOPE_DEFAULT_MEMBER:-}"
   local roster=()
   [ -n "$default_member" ] && roster[${#roster[@]}]="$default_member"
-  local si=0 sm seen ri
-  while [ "$si" -lt "${_AUDIT_SCOPE_SPEC_COUNT:-0}" ]; do
-    sm="${_AUDIT_SCOPE_SPEC_MEMBER[$si]}"
+  local spec_index=0 spec_member seen roster_index
+  while [ "$spec_index" -lt "${_AUDIT_SCOPE_SPEC_COUNT:-0}" ]; do
+    spec_member="${_AUDIT_SCOPE_SPEC_MEMBER[$spec_index]}"
     seen=0
-    ri=0
-    while [ "$ri" -lt "${#roster[@]}" ]; do
-      [ "${roster[$ri]}" = "$sm" ] && { seen=1; break; }
-      ri=$((ri + 1))
+    roster_index=0
+    while [ "$roster_index" -lt "${#roster[@]}" ]; do
+      [ "${roster[$roster_index]}" = "$spec_member" ] && { seen=1; break; }
+      roster_index=$((roster_index + 1))
     done
-    [ "$seen" -eq 0 ] && roster[${#roster[@]}]="$sm"
-    si=$((si + 1))
+    [ "$seen" -eq 0 ] && roster[${#roster[@]}]="$spec_member"
+    spec_index=$((spec_index + 1))
   done
 
   # Per member: select this member's records into a temp file, then frame the
@@ -176,17 +176,17 @@ audit_digests_all() {
   # `$( )`, so the substitution that hashes contains no arithmetic and no loop.
   # Accumulate all lines and print only at the end, so any fail-closed return
   # emits nothing.
-  local out="" member digest j owner ismach selected mi=0 frametmp
-  while [ "$mi" -lt "${#roster[@]}" ]; do
-    member="${roster[$mi]}"
+  local member_digest_lines="" member digest j owner is_machinery selected member_index=0 frame_temporary_file
+  while [ "$member_index" -lt "${#roster[@]}" ]; do
+    member="${roster[$member_index]}"
 
-    frametmp="$(mktemp 2>/dev/null)" || return 1
+    frame_temporary_file="$(mktemp 2>/dev/null)" || return 1
     j=0
-    while [ "$j" -lt "$n" ]; do
+    while [ "$j" -lt "$path_count" ]; do
       owner="${D_OWNER[$j]}"
-      ismach="${D_MACH[$j]}"
+      is_machinery="${D_MACHINERY[$j]}"
       selected=0
-      if [ "$ismach" = "1" ]; then
+      if [ "$is_machinery" = "1" ]; then
         selected=1
       elif [ "$owner" = "$member" ]; then
         selected=1
@@ -197,13 +197,13 @@ audit_digests_all() {
         fi
       fi
       if [ "$selected" = "1" ]; then
-        printf '%s %s %s\0' "${D_MODE[$j]}" "${D_OBJ[$j]}" "${D_PATH[$j]}" >>"$frametmp"
+        printf '%s %s %s\0' "${D_MODE[$j]}" "${D_OBJECT[$j]}" "${D_PATH[$j]}" >>"$frame_temporary_file"
       fi
       j=$((j + 1))
     done
 
-    digest="$( { printf 'gaia-audit-digest-v1\0'; LC_ALL=C sort -z <"$frametmp"; } | _audit_sha256_hex )"
-    rm -f "$frametmp"
+    digest="$( { printf 'gaia-audit-digest-v1\0'; LC_ALL=C sort -z <"$frame_temporary_file"; } | _audit_sha256_hex )"
+    rm -f "$frame_temporary_file"
 
     # Validate a 64-hex lowercase digest, or fail closed for the whole call
     # (a masked/failing sha256 tool yields an empty or malformed value here).
@@ -212,31 +212,31 @@ audit_digests_all() {
     esac
     [ "${#digest}" -eq 64 ] || return 1
 
-    out="${out}${member}"$'\t'"${digest}"$'\n'
-    mi=$((mi + 1))
+    member_digest_lines="${member_digest_lines}${member}"$'\t'"${digest}"$'\n'
+    member_index=$((member_index + 1))
   done
 
-  printf '%s' "$out"
+  printf '%s' "$member_digest_lines"
   return 0
 }
 
-# audit_member_digest <root> <member> [<ref>]
+# audit_member_digest <root> <member> [<git_reference>]
 #
 # Single-member convenience. Prints the 64-hex digest for <member>, returns 0;
 # on any fail-closed condition (or an absent member) emits nothing, returns 1.
 # Shares audit_digests_all's single walk and fail-closed posture.
 audit_member_digest() {
-  local root="$1" member="$2" ref="${3:-HEAD}"
-  local all line m d
+  local root="$1" member="$2" git_reference="${3:-HEAD}"
+  local all line line_member line_digest
 
-  all="$(audit_digests_all "$root" "$ref")" || return 1
+  all="$(audit_digests_all "$root" "$git_reference")" || return 1
 
   while IFS= read -r line; do
-    m="${line%%$'\t'*}"
-    if [ "$m" = "$member" ]; then
-      d="${line#*$'\t'}"
-      [ -n "$d" ] || return 1
-      printf '%s\n' "$d"
+    line_member="${line%%$'\t'*}"
+    if [ "$line_member" = "$member" ]; then
+      line_digest="${line#*$'\t'}"
+      [ -n "$line_digest" ] || return 1
+      printf '%s\n' "$line_digest"
       return 0
     fi
   done <<EOF

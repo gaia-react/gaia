@@ -22,69 +22,69 @@ setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
   . "$BATS_TEST_DIRNAME/helpers/merge-gate-fixture.sh"
-  LIB="$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/cross-repo-refusal.sh"
+  LIBRARY_FILE="$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/cross-repo-refusal.sh"
 }
 
 # --- the library ----------------------------------------------------------------
 
-# lib_stub <stdout> <stderr> <exit>: a gh answering every call the same way.
-lib_stub() {
-  LIB_STUB_BIN="$BATS_TEST_TMPDIR/lib-stub"
-  mkdir -p "$LIB_STUB_BIN"
+# library_stub <stdout> <stderr> <exit>: a gh answering every call the same way.
+library_stub() {
+  LIBRARY_STUB_BIN="$BATS_TEST_TMPDIR/lib-stub"
+  mkdir -p "$LIBRARY_STUB_BIN"
   {
     printf '#!/usr/bin/env bash\n'
     printf 'printf "%%s\\n" "$*" >> %q\n' "$BATS_TEST_TMPDIR/lib-gh.log"
     printf 'printf %%s %q\n' "$1"
     printf 'printf %%s %q >&2\n' "$2"
     printf 'exit %s\n' "$3"
-  } > "$LIB_STUB_BIN/gh"
-  chmod +x "$LIB_STUB_BIN/gh"
+  } > "$LIBRARY_STUB_BIN/gh"
+  chmod +x "$LIBRARY_STUB_BIN/gh"
 }
 
 # ask <pr-argument>: the library's exit status, then its error line, on stdout.
 ask() {
-  run bash -c '. "$1"; s=0; gaia_pr_is_cross_repository "$2" || s=$?; printf "%s\n%s" "$s" "$GAIA_CROSS_REPO_GH_ERROR"' \
-    _ "$LIB" "$1"
+  run bash -c '. "$1"; exit_status=0; gaia_pr_is_cross_repository "$2" || exit_status=$?; printf "%s\n%s" "$exit_status" "$GAIA_CROSS_REPO_GH_ERROR"' \
+    _ "$LIBRARY_FILE" "$1"
 }
 
 ask_with_stub() {
   local saved="$PATH"
-  PATH="$LIB_STUB_BIN:$PATH"
+  PATH="$LIBRARY_STUB_BIN:$PATH"
   ask "$1"
   PATH="$saved"
 }
 
 @test "library: true is a fork (0), false is not (1), and the pull request number reaches gh" {
-  lib_stub 'true' '' 0
+  library_stub 'true' '' 0
   ask_with_stub 34
   [ "${lines[0]}" = 0 ]
   grep -qxF -- 'pr view 34 --json isCrossRepository --jq .isCrossRepository' "$BATS_TEST_TMPDIR/lib-gh.log"
-  lib_stub 'false' '' 0
+  library_stub 'false' '' 0
   ask_with_stub 34
   [ "${lines[0]}" = 1 ]
 }
 
 @test "library: an empty argument asks about the current branch and passes gh no empty positional" {
-  lib_stub 'false' '' 0
+  library_stub 'false' '' 0
   ask_with_stub ''
   [ "${lines[0]}" = 1 ]
   grep -qxF -- 'pr view --json isCrossRepository --jq .isCrossRepository' "$BATS_TEST_TMPDIR/lib-gh.log"
 }
 
 @test "library: no pull request for the current branch is exit 1, read off gh's own wording" {
-  lib_stub '' 'no pull requests found for branch "feature"' 1
+  library_stub '' 'no pull requests found for branch "feature"' 1
   ask_with_stub ''
   [ "${lines[0]}" = 1 ]
 }
 
 @test "library: that wording for a NUMBERED pull request is exit 2, never a same-repo answer" {
-  lib_stub '' 'no pull requests found for branch "feature"' 1
+  library_stub '' 'no pull requests found for branch "feature"' 1
   ask_with_stub 34
   [ "${lines[0]}" = 2 ]
 }
 
 @test "library: any other gh failure is exit 2 and the error names it" {
-  lib_stub '' 'HTTP 502: Bad Gateway' 1
+  library_stub '' 'HTTP 502: Bad Gateway' 1
   ask_with_stub 34
   [ "${lines[0]}" = 2 ]
   grep -qF -- 'HTTP 502: Bad Gateway' <<<"${lines[1]}"
@@ -92,7 +92,7 @@ ask_with_stub() {
 }
 
 @test "library: an answer that is neither true nor false is exit 2" {
-  lib_stub '{"isCrossRepository":false}' '' 0
+  library_stub '{"isCrossRepository":false}' '' 0
   ask_with_stub 34
   [ "${lines[0]}" = 2 ]
   grep -qF -- 'neither true nor false' <<<"${lines[1]}"
@@ -102,20 +102,20 @@ ask_with_stub() {
   local bin="$BATS_TEST_TMPDIR/no-gh-bin"
   mkdir -p "$bin"
   ln -s "$(command -v bash)" "$bin/bash"
-  run env PATH="$bin" bash -c '. "$1"; s=0; gaia_pr_is_cross_repository 34 || s=$?; printf "%s\n%s" "$s" "$GAIA_CROSS_REPO_GH_ERROR"' _ "$LIB"
+  run env PATH="$bin" bash -c '. "$1"; exit_status=0; gaia_pr_is_cross_repository 34 || exit_status=$?; printf "%s\n%s" "$exit_status" "$GAIA_CROSS_REPO_GH_ERROR"' _ "$LIBRARY_FILE"
   [ "${lines[0]}" = 2 ]
   [ "${lines[1]}" = 'gh is not on PATH' ]
 }
 
 @test "library: a non-numeric argument is exit 2 without asking gh" {
-  lib_stub 'false' '' 0
+  library_stub 'false' '' 0
   ask_with_stub 'feature-branch'
   [ "${lines[0]}" = 2 ]
   [ ! -s "$BATS_TEST_TMPDIR/lib-gh.log" ]
 }
 
 @test "library: the refusal message names the manual path, and sourcing twice is safe" {
-  run bash -c '. "$1"; . "$1"; printf "%s" "$GAIA_CROSS_REPO_REFUSAL_MESSAGE"' _ "$LIB"
+  run bash -c '. "$1"; . "$1"; printf "%s" "$GAIA_CROSS_REPO_REFUSAL_MESSAGE"' _ "$LIBRARY_FILE"
   [ "$status" -eq 0 ]
   grep -qF -- 'This pull request comes from a fork (cross-repository).' <<<"$output"
   grep -qF -- "would run the fork's own harness code with your credentials" <<<"$output"
@@ -125,8 +125,8 @@ ask_with_stub() {
 }
 
 @test "library: sourcing does no work (no gh call)" {
-  lib_stub 'true' '' 0
-  PATH="$LIB_STUB_BIN:$PATH" bash -c '. "$1"' _ "$LIB"
+  library_stub 'true' '' 0
+  PATH="$LIBRARY_STUB_BIN:$PATH" bash -c '. "$1"' _ "$LIBRARY_FILE"
   [ ! -s "$BATS_TEST_TMPDIR/lib-gh.log" ]
 }
 
@@ -152,7 +152,7 @@ fork_head_fixture() {
 }
 
 refusal_message() {
-  bash -c '. "$1"; printf "%s" "$GAIA_CROSS_REPO_REFUSAL_MESSAGE"' _ "$LIB"
+  bash -c '. "$1"; printf "%s" "$GAIA_CROSS_REPO_REFUSAL_MESSAGE"' _ "$LIBRARY_FILE"
 }
 
 @test "UAT-010: a fork pull request's merge is denied with the refusal, and no fork-supplied code runs" {
@@ -182,7 +182,7 @@ refusal_message() {
 @test "UAT-010: when gh cannot say whether the pull request is a fork, the merge is denied and nothing is posted" {
   local reason
   fork_head_fixture
-  printf 'HTTP 502: Bad Gateway (https://api.github.com/graphql)\n' > "$MGF_STUB_DIR/pr-view-fails"
+  printf 'HTTP 502: Bad Gateway (https://api.github.com/graphql)\n' > "$MGF_STUB_DIRECTORY/pr-view-fails"
 
   mgf_run_merge "gh pr merge 34 --squash"
   assert_denied_by_json

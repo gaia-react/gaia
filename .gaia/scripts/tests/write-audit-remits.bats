@@ -8,8 +8,8 @@
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
   # snapshot_file + assert_files_identical: byte identity without `$(cat …)`.
   . "$REPO_ROOT/.gaia/tests/helpers/files.sh"
   WRITER="$REPO_ROOT/.gaia/scripts/write-audit-remits.sh"

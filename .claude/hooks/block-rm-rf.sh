@@ -30,7 +30,7 @@
 # form is what .claude/rules/shell-cwd.md requires of every Bash call, and a guard
 # that took only the relative one denied the form the rule mandates. The relative
 # spelling needs no explicit arm: it is caught by no deny arm and reaches the
-# catch-all allow. The absolute spelling is matched by `_rm_whitelisted_abs`
+# catch-all allow. The absolute spelling is matched by `_rm_whitelisted_absolute`
 # against the registry-read list, once per invocation.
 #
 # Anything that does not match a denied pattern AND is not on the whitelist
@@ -154,21 +154,21 @@
 # Escaped quotes inside a quoted span are not tracked. The guard is a heuristic
 # matcher; mis-tracking there misplaces a space, which fails safe.
 neutralize_quoted_separators() {
-  local s=$1 out='' quote='' ch i len=${#1}
-  for ((i = 0; i < len; i++)); do
-    ch=${s:i:1}
+  local text=$1 neutralized_text='' quote='' character i length=${#1}
+  for ((i = 0; i < length; i++)); do
+    character=${text:i:1}
     if [[ -n "$quote" ]]; then
-      if [[ "$ch" == "$quote" ]]; then
+      if [[ "$character" == "$quote" ]]; then
         quote=''
       else
-        case "$ch" in ';'|'&'|'|') ch=' ' ;; esac
+        case "$character" in ';'|'&'|'|') character=' ' ;; esac
       fi
     else
-      case "$ch" in '"'|"'") quote=$ch ;; esac
+      case "$character" in '"'|"'") quote=$character ;; esac
     fi
-    out+=$ch
+    neutralized_text+=$character
   done
-  printf '%s' "$out"
+  printf '%s' "$neutralized_text"
 }
 
 # The `rm` command word, matched the way bash RESOLVES it rather than the way it
@@ -228,18 +228,18 @@ rm_flag_boundary="([^;&|]*[\\\"'[:space:]])?"
 rm_flag="(-[a-zA-Z]*[rRfF]|--recursive|--force|--no-preserve-root)"
 
 deny() {
-  jq -n --arg r "$1" '{
+  jq -n --arg reason "$1" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: $r
+      permissionDecisionReason: $reason
     }
   }'
   exit 0
 }
 
-# _rm_whitelisted_abs <tok> <whitelist_tsv>
-# True when <tok> is the ABSOLUTE spelling of a registry-declared safe-scratch path:
+# _rm_whitelisted_absolute <token> <whitelist_tsv>
+# True when <token> is the ABSOLUTE spelling of a registry-declared safe-scratch path:
 #   /<non-empty parent>/<base>/<child>   for any base, or
 #   /<non-empty parent>/<base>           for a base whose whole directory is deletable.
 # <whitelist_tsv> is `path<TAB>children_only` lines, read once per invocation and passed
@@ -249,16 +249,16 @@ deny() {
 # direction for this deny guard. Absolute-only by construction: a relative scratch path is
 # not caught by any deny arm and reaches the catch-all allow, so it needs no arm here (and
 # this is what preserves the abs-allows / rel-denies asymmetry on <base>/node_modules).
-_rm_whitelisted_abs() {
-  local tok="$1" tsv="$2" base children_only
+_rm_whitelisted_absolute() {
+  local token="$1" tsv="$2" base children_only
   [[ -n "$tsv" ]] || return 1
   while IFS=$'\t' read -r base children_only; do
     [[ -n "$base" ]] || continue
-    case "$tok" in
+    case "$token" in
       /?*/"$base"/*) return 0 ;;
     esac
     if [[ "$children_only" != true ]]; then
-      case "$tok" in
+      case "$token" in
         /?*/"$base") return 0 ;;
       esac
     fi
@@ -269,29 +269,29 @@ _rm_whitelisted_abs() {
 main() {
   set -euo pipefail
 
-  # Declared, not assigned: `local x=$(cmd)` would mask a non-zero status behind
+  # Declared, not assigned: `local value=$(command)` would mask a non-zero status behind
   # `local`'s own exit code and defeat the errexit above, so a jq that failed for
   # a reason the arm below does not cover would read as a successful empty parse.
   # The file is sourceable, so scoping these also keeps a caller that invokes
   # `main` from having its own globals clobbered.
-  local payload cmd rm_segments rm_segment tokens tok i first_seg _jq_lib_dir
+  local payload command rm_segments rm_segment tokens token i first_segment _jq_library_directory
   # rm_whitelist is INITIALIZED, not merely declared: it is assigned only inside the
   # `command -v` branch below, so an unreadable registry left it unset and the read at
   # the absolute-path arm died on `set -u` before any deny arm ran. That made the
   # best-effort promise above false in the worst direction -- exit 1 is not a deny, so
   # the guard stopped guarding rather than losing only the carve-outs. Empty is the
-  # degrade _rm_whitelisted_abs is already written for: it matches nothing, so an
+  # degrade _rm_whitelisted_absolute is already written for: it matches nothing, so an
   # absolute scratch path falls to the absolute-path deny.
-  local gaia_scripts rm_whitelist=""
+  local repository_root rm_whitelist=""
 
   payload=$(cat)
   # jq-availability arm: refuse loudly rather than fail open when the interpreter
   # this hook reads its payload with is absent. What that buys, and the contract
   # the literals below satisfy, live in .claude/hooks/lib/jq-availability.sh.
-  _jq_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _jq_lib_dir=''
+  _jq_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _jq_library_directory=''
   set +e
   # shellcheck source=lib/jq-availability.sh
-  [ -n "$_jq_lib_dir" ] && [ -f "$_jq_lib_dir/jq-availability.sh" ] && . "$_jq_lib_dir/jq-availability.sh" 2>/dev/null
+  [ -n "$_jq_library_directory" ] && [ -f "$_jq_library_directory/jq-availability.sh" ] && . "$_jq_library_directory/jq-availability.sh" 2>/dev/null
   set -e
   if ! type gaia_require_jq >/dev/null 2>&1; then
     printf 'BLOCKED: block-rm-rf.sh cannot load lib/jq-availability.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
@@ -303,11 +303,11 @@ main() {
   # absent. Strictly better than the status quo it replaces, which allowed every
   # spelling, and closing it needs the tokenizer this arm runs ahead of.
 
-  cmd=$(jq -r '.tool_input.command // empty' <<<"$payload")
+  command=$(jq -r '.tool_input.command // empty' <<<"$payload")
 
-  [[ -n "$cmd" ]] || exit 0
+  [[ -n "$command" ]] || exit 0
 
-  # Splice backslash-newline continuations before anything else looks at $cmd.
+  # Splice backslash-newline continuations before anything else looks at $command.
   # Both greps below are line-oriented, so a target on a continuation line carries
   # no `rm` token of its own, no segment is ever extracted for it, and it becomes
   # invisible to the guard, while the byte-identical one-line command is denied.
@@ -320,7 +320,7 @@ main() {
   # fragments that match no pattern, which is the bypass rather than the fix. The
   # space that already precedes a normal continuation's backslash is what keeps
   # the token boundary in the idiomatic case, so nothing is lost here.
-  cmd=${cmd//\\$'\n'/}
+  command=${command//\\$'\n'/}
 
   # Only pay for the character walk when it could change an outcome. This hook runs
   # on EVERY Bash call, and the walk is O(n) bash over the command string, so a long
@@ -339,8 +339,8 @@ main() {
   # the walk for `RM -rf ";" $HOME`, segment extraction then stops at the quoted `;`,
   # and `$HOME` is never tokenized, so widening the greps alone leaves this site
   # blind and the whole fix hollow.
-  if [[ "${cmd//[\"\'\\]/}" == *[Rr][Mm]* && "$cmd" == *[\"\']* && "$cmd" == *[\;\&\|]* ]]; then
-    cmd=$(neutralize_quoted_separators "$cmd")
+  if [[ "${command//[\"\'\\]/}" == *[Rr][Mm]* && "$command" == *[\"\']* && "$command" == *[\;\&\|]* ]]; then
+    command=$(neutralize_quoted_separators "$command")
   fi
 
   # Short-circuit: only act on commands containing `rm` with `-rf`/`-fr`/`-r -f`/etc.
@@ -358,12 +358,12 @@ main() {
   # false-deny surface: `git rm --cached -r .` now denies (the canonical
   # `git rm -r --cached .` already did), which is annoying but safe. Widen this
   # regex only with that asymmetry in mind.
-  if ! grep -Eq "${rm_anchor}${rm_flag_boundary}${rm_flag}" <<<"$cmd"; then
+  if ! grep -Eq "${rm_anchor}${rm_flag_boundary}${rm_flag}" <<<"$command"; then
     exit 0
   fi
 
   # 1. --no-preserve-root is always denied.
-  if grep -Eq -- '--no-preserve-root' <<<"$cmd"; then
+  if grep -Eq -- '--no-preserve-root' <<<"$command"; then
     deny "BLOCKED: rm with --no-preserve-root is forbidden."
   fi
 
@@ -392,7 +392,7 @@ main() {
   # A flagged segment is unaffected: `rm -rf dist && rm -rf /` is still denied, and
   # so is a flagged `rm` sitting inside a quoted string. That false deny is the
   # deliberate one documented in the header, and narrowing by flag does not touch it.
-  rm_segments=$(grep -oE "${rm_anchor}${rm_flag_boundary}${rm_flag}[^;&|]*" <<<"$cmd" || true)
+  rm_segments=$(grep -oE "${rm_anchor}${rm_flag_boundary}${rm_flag}[^;&|]*" <<<"$command" || true)
   [[ -n "$rm_segments" ]] || exit 0
 
   # The registry-declared safe-scratch whitelist (block-rm-rf's only registry read),
@@ -408,12 +408,12 @@ main() {
   # The `|| true` arms do not cover it: on stock bash 3.2 an unparseable lib
   # abandons the shell before the arm on that line runs. The command -v gate below
   # is what degrades, exactly as it already did for an absent lib.
-  if gaia_scripts="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"; then
+  if repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"; then
     set +e
     # shellcheck source=/dev/null
-    source "$gaia_scripts/.gaia/scripts/main-root-lib.sh" 2>/dev/null
+    source "$repository_root/.gaia/scripts/main-root-lib.sh" 2>/dev/null
     # shellcheck source=/dev/null
-    source "$gaia_scripts/.gaia/scripts/state-registry-lib.sh" 2>/dev/null
+    source "$repository_root/.gaia/scripts/state-registry-lib.sh" 2>/dev/null
     set -e
     if command -v gaia_registry_rm_whitelist >/dev/null 2>&1; then
       rm_whitelist="$(gaia_registry_rm_whitelist 2>/dev/null || true)"
@@ -465,10 +465,10 @@ main() {
     # (tokens is provably non-empty here anyway: rm_segment is guarded non-empty above
     # and always carries the word.)
     for ((i = 1; i < ${#tokens[@]}; i++)); do
-      tok=${tokens[i]}
+      token=${tokens[i]}
 
       # Skip flag tokens.
-      [[ "$tok" == -* ]] && continue
+      [[ "$token" == -* ]] && continue
 
       # Drop every quote character before matching. `read -r -a` word-splits but
       # does not remove quotes, so the token for `rm -rf "$HOME"` is the literal
@@ -479,29 +479,29 @@ main() {
       # covers `rm -rf "$HOME"/projects`, where the quotes sit mid-token. A path
       # whose real name contains a quote character is not a case worth protecting
       # here: the cost is a false deny, which fails safe.
-      tok=${tok//\"/}
-      tok=${tok//\'/}
+      token=${token//\"/}
+      token=${token//\'/}
       # Backslash goes for the same reason, and it is the same defect: bash strips
       # a backslash before an ordinary character, so `\/` reassembles into `/` and
       # hands root to rm while matching no pattern here. Stripping quotes but not
       # escapes would be half a fix.
-      tok=${tok//\\/}
-      [[ -n "$tok" ]] || continue
+      token=${token//\\/}
+      [[ -n "$token" ]] || continue
 
       # `$PWD` spells the cwd, so `$PWD/.git` IS `.git` and a bare `$PWD` IS `.`.
       # Rewrite the prefix and let the arms below judge whatever is left, rather
       # than growing a parallel set of $PWD arms that would drift from them. This
       # is why `$PWD/dist` stays on the dist whitelist while `$PWD/.git` reaches
       # the .git arm: denying every $PWD path would be the easy over-fix.
-      case "$tok" in
+      case "$token" in
         # `$PWD/` with nothing after it is still the cwd. It has to be caught here,
         # ahead of the prefix strips below, or the strip yields an empty token that
         # falls through to the catch-all and allows it.
-        '$PWD'|'${PWD}'|'$PWD/'|'${PWD}/') tok='.' ;;
-        '$PWD/'*) tok=${tok#'$PWD/'} ;;
-        '${PWD}/'*) tok=${tok#'${PWD}/'} ;;
+        '$PWD'|'${PWD}'|'$PWD/'|'${PWD}/') token='.' ;;
+        '$PWD/'*) token=${token#'$PWD/'} ;;
+        '${PWD}/'*) token=${token#'${PWD}/'} ;;
       esac
-      [[ -n "$tok" ]] || continue
+      [[ -n "$token" ]] || continue
 
       # Normalize the way bash reads the path, so every arm below sees one spelling
       # of a target rather than an unbounded family of them. Bash collapses `//` to
@@ -528,12 +528,12 @@ main() {
       # two sequential loops would each terminate on a token the other still
       # reduces. `..` is deliberately NOT collapsed: it depends on the tree, and the
       # traversal arm below denies it rather than guessing where it lands.
-      while [[ "$tok" == *//* || "$tok" == */./* ]]; do
-        tok=${tok//\/\//\/}
-        tok=${tok//\/.\//\/}
+      while [[ "$token" == *//* || "$token" == */./* ]]; do
+        token=${token//\/\//\/}
+        token=${token//\/.\//\/}
       done
-      while [[ "$tok" == ./?* ]]; do
-        tok=${tok#./}
+      while [[ "$token" == ./?* ]]; do
+        token=${token#./}
       done
 
       # Unscoped expansions in the FIRST path segment. These expand in the cwd, so
@@ -552,9 +552,9 @@ main() {
       # an ordinary cleanup rather than this. The normalization above already
       # removed any `./` prefix, so the first segment is whatever precedes the
       # first slash.
-      first_seg=${tok%%/*}
-      if [[ "$first_seg" == .* && "$first_seg" == *[*?\[]* ]]; then
-        deny "BLOCKED: rm -rf of a dotfile glob ('$tok') is forbidden, it removes .git and .claude."
+      first_segment=${token%%/*}
+      if [[ "$first_segment" == .* && "$first_segment" == *[*?\[]* ]]; then
+        deny "BLOCKED: rm -rf of a dotfile glob ('$token') is forbidden, it removes .git and .claude."
       fi
 
       # `{.,}*` expands to `.* *`, the dotfile glob and the unscoped glob at once,
@@ -563,8 +563,8 @@ main() {
       # expansion arms below still own it. The `*` requirement keeps a scoped
       # `dist/{a,b}` allowed, and anchoring on the first segment keeps the brace
       # group that reaches the cwd distinct from one nested under a named dir.
-      if [[ "$first_seg" == *'{'*','*'}'* && "$tok" == *'*'* ]]; then
-        deny "BLOCKED: rm -rf of an unscoped brace glob ('$tok') is forbidden, it removes .git and .claude."
+      if [[ "$first_segment" == *'{'*','*'}'* && "$token" == *'*'* ]]; then
+        deny "BLOCKED: rm -rf of an unscoped brace glob ('$token') is forbidden, it removes .git and .claude."
       fi
 
       # Traversal escapes resolve somewhere the spelling does not name, so they can
@@ -579,9 +579,9 @@ main() {
       # cannot reach them: `/../x` has nothing between the root slash and the `..`
       # for a `/*/` prefix to match, so it would otherwise fall through to the
       # whitelist check with `..` serving as its non-empty parent segment.
-      case "$tok" in
+      case "$token" in
         /../*|/..|/*/../*|/*/..)
-          deny "BLOCKED: rm -rf of absolute path '$tok' is forbidden."
+          deny "BLOCKED: rm -rf of absolute path '$token' is forbidden."
           ;;
       esac
 
@@ -613,11 +613,11 @@ main() {
       # under ANY parent, not just the current repo. The relative spelling already
       # did that, since it resolves against whatever the cwd happens to be.
       #
-      # `/?*/` (inside `_rm_whitelisted_abs`) requires a non-empty parent segment,
+      # `/?*/` (inside `_rm_whitelisted_absolute`) requires a non-empty parent segment,
       # so `/dist` and `/.gaia/local/audit/x` stay denied. Those are
       # filesystem-root removals that merely share a name with project scratch,
       # and the whitelist is about scratch inside a project.
-      if _rm_whitelisted_abs "$tok" "$rm_whitelist"; then
+      if _rm_whitelisted_absolute "$token" "$rm_whitelist"; then
         continue
       fi
 
@@ -627,9 +627,9 @@ main() {
       # token is exactly what must be caught; expanding here would break the guard.
       # The directive has to sit in front of the `case` itself, not the branch (SC1124).
       # shellcheck disable=SC2088
-      case "$tok" in
+      case "$token" in
         /|/*)
-          deny "BLOCKED: rm -rf of absolute path '$tok' is forbidden."
+          deny "BLOCKED: rm -rf of absolute path '$token' is forbidden."
           ;;
         # The brace form is matched alongside the bare one. `${HOME}` is if anything
         # the more careful spelling of the expansion, and leaving it out reproduced

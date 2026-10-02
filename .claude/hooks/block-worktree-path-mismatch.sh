@@ -47,10 +47,10 @@ payload=$(cat)
 # install itself, so the refusal is unconditional within it and the call below
 # passes no binding literal; the contract lives in
 # .claude/hooks/lib/jq-availability.sh.
-_jq_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _jq_lib_dir=''
+_jq_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _jq_library_directory=''
 set +e
 # shellcheck source=lib/jq-availability.sh
-[ -n "$_jq_lib_dir" ] && [ -f "$_jq_lib_dir/jq-availability.sh" ] && . "$_jq_lib_dir/jq-availability.sh" 2>/dev/null
+[ -n "$_jq_library_directory" ] && [ -f "$_jq_library_directory/jq-availability.sh" ] && . "$_jq_library_directory/jq-availability.sh" 2>/dev/null
 set -e
 if ! type gaia_require_jq >/dev/null 2>&1; then
   printf 'BLOCKED: block-worktree-path-mismatch.sh cannot load lib/jq-availability.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
@@ -61,11 +61,11 @@ gaia_require_jq 'the worktree path guard' "$payload" tool_input
 tool_name=$(jq -r '.tool_name // empty' <<<"$payload")
 
 deny() {
-  jq -n --arg r "$1" '{
+  jq -n --arg reason "$1" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: $r
+      permissionDecisionReason: $reason
     }
   }'
   exit 0
@@ -156,9 +156,9 @@ main_root="$(gaia_resolve_main_root "$source_cwd")" || exit 0
 current_root="$(gaia_resolve_tree_root "$source_cwd")" || exit 0
 [[ -n "$current_root" ]] || exit 0
 
-target_dir=$(dirname -- "$file_path")
-resolved_target_dir="$(CDPATH='' cd "$target_dir" 2>/dev/null && pwd -P)" || exit 0
-[[ -n "$resolved_target_dir" ]] || exit 0
+target_directory=$(dirname -- "$file_path")
+resolved_target_directory="$(CDPATH='' cd "$target_directory" 2>/dev/null && pwd -P)" || exit 0
+[[ -n "$resolved_target_directory" ]] || exit 0
 
 # A linked worktree's whole .gaia/local is one symlink to the main checkout's
 # own .gaia/local (see wiki/concepts/Worktrees.md). `git -C` resolves that
@@ -178,7 +178,7 @@ resolved_target_dir="$(CDPATH='' cd "$target_dir" 2>/dev/null && pwd -P)" || exi
 # protecting, and the ephemeral cache entries (spec-session locks,
 # audit-window breadcrumbs, and the rest) never had one either -- denying
 # them would block the sole correct write, not catch a wrong one (tech-debt
-# gaia-react/gaia#934's class). A relpath the registry does not recognize at all (typo,
+# gaia-react/gaia#934's class). A relative path the registry does not recognize at all (typo,
 # stray, or genuinely unclassified) is NOT exempted here and falls through
 # to the ordinary cross-tree deny below, the same as before the cutover.
 #
@@ -200,10 +200,10 @@ resolved_target_dir="$(CDPATH='' cd "$target_dir" 2>/dev/null && pwd -P)" || exi
 # key. Designing a replacement is a later phase's job; naming the loss here
 # is this one's.
 gaia_local="$main_root/.gaia/local"
-case "$resolved_target_dir" in
+case "$resolved_target_directory" in
   "$gaia_local" | "$gaia_local"/*)
-    relpath="${resolved_target_dir#"$gaia_local"}"
-    relpath="${relpath#/}"
+    relative_path="${resolved_target_directory#"$gaia_local"}"
+    relative_path="${relative_path#/}"
     # The registry reader, loaded here rather than beside the resolver above:
     # this arm is the only place it is used, and the gate in front of it is a
     # write under .gaia/local from a linked worktree, which is far narrower
@@ -221,15 +221,15 @@ case "$resolved_target_dir" in
     # shellcheck source=/dev/null
     "${BASH:-bash}" -n "$gaia_scripts/state-registry-lib.sh" 2>/dev/null && . "$gaia_scripts/state-registry-lib.sh" 2>/dev/null || true
     type gaia_registry_recognizes >/dev/null 2>&1 || exit 0
-    if (cd "$main_root" 2>/dev/null && gaia_registry_recognizes "$relpath" d); then
-      scope="$(cd "$main_root" 2>/dev/null && gaia_registry_classify "$relpath" 2>/dev/null)" || scope=""
+    if (cd "$main_root" 2>/dev/null && gaia_registry_recognizes "$relative_path" d); then
+      scope="$(cd "$main_root" 2>/dev/null && gaia_registry_classify "$relative_path" 2>/dev/null)" || scope=""
       if [[ "$scope" != "per-tree" ]]; then
         exit 0
       fi
       acting_key="$(gaia_tree_key "$current_root" 2>/dev/null)" || exit 0
       [[ -n "$acting_key" ]] || exit 0
-      container="${relpath%%/*}"
-      case "$relpath" in
+      container="${relative_path%%/*}"
+      case "$relative_path" in
         "$container/$acting_key" | "$container/$acting_key"/*) exit 0 ;;
       esac
       # Both messages name the local-state root through $gaia_local rather than
@@ -238,9 +238,9 @@ case "$resolved_target_dir" in
       # well as to logic, and it makes the advice better: the caller is told the
       # absolute path to use, not a repo-relative fragment they have to rebuild
       # from a root the symlink has already moved out from under them.
-      wg_local_reason="'$file_path' is per-tree state under '$container/', which is addressed by the writing tree's own key. This session's tree key is '$acting_key', so the correct path is '$gaia_local/$container/$acting_key/'. The path given carries a different tree's key, or none at all, and every reader looks only under the key -- so this write would be invisible to the tree that made it and could shadow another tree's."
+      local_state_reason="'$file_path' is per-tree state under '$container/', which is addressed by the writing tree's own key. This session's tree key is '$acting_key', so the correct path is '$gaia_local/$container/$acting_key/'. The path given carries a different tree's key, or none at all, and every reader looks only under the key -- so this write would be invisible to the tree that made it and could shadow another tree's."
     else
-      wg_local_reason="'$file_path' is under '$gaia_local', which a linked worktree reaches through one symlink to the main checkout, but no entry in .gaia/state-registry.json recognizes it. Because it is unregistered, this guard cannot tell whether it is state the whole clone shares or state this tree must keep to itself, and re-resolving the repository root will not change the answer -- the symlink resolves to the main checkout either way. Register it in .gaia/state-registry.json with its scope, or write it under an entry that already exists."
+      local_state_reason="'$file_path' is under '$gaia_local', which a linked worktree reaches through one symlink to the main checkout, but no entry in .gaia/state-registry.json recognizes it. Because it is unregistered, this guard cannot tell whether it is state the whole clone shares or state this tree must keep to itself, and re-resolving the repository root will not change the answer -- the symlink resolves to the main checkout either way. Register it in .gaia/state-registry.json with its scope, or write it under an entry that already exists."
     fi
     ;;
 esac
@@ -248,7 +248,7 @@ esac
 # The target's own checkout, physically resolved so the comparison against the
 # physically-resolved current_root is symmetric: a symlinked path cannot make a
 # same-tree write look cross-tree, or the reverse.
-file_root="$(gaia_resolve_tree_root "$target_dir")" || exit 0
+file_root="$(gaia_resolve_tree_root "$target_directory")" || exit 0
 [[ -n "$file_root" ]] || exit 0
 
 # The target resolves into a checkout other than the acting tree: the main
@@ -264,8 +264,8 @@ if [[ "$file_root" != "$current_root" ]]; then
   # a loop it cannot exit. The branch above sets the specific reason; the
   # generic one still covers every path outside .gaia/local, where the stale
   # pre-switch absolute path really is the cause.
-  if [[ -n "${wg_local_reason:-}" ]]; then
-    deny "BLOCKED: $wg_local_reason"
+  if [[ -n "${local_state_reason:-}" ]]; then
+    deny "BLOCKED: $local_state_reason"
   fi
   deny "BLOCKED: '$file_path' resolves to a different checkout ('$file_root') than the linked worktree this session works inside ('$current_root'). This is the silent-wrong-write footgun from tech-debt gaia-react/gaia#841: a stale pre-switch absolute path is a real, valid file in another checkout (the main checkout or a sibling worktree), so the edit tools would apply it with no error. Resolve RESOLVED_ROOT fresh (git rev-parse --show-toplevel) and prefix file_path with it."
 fi

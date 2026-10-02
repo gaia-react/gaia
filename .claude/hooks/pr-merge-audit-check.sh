@@ -119,16 +119,16 @@ input=$(cat)
 # interpreter cleared the merge silently.
 #
 # The literal is `gh`, read off this gate's own arming predicate
-# (`gate_verb_frag` below, `gh[[:space:]]+pr[[:space:]]+merge`): every call this
+# (`gate_verb_fragment` below, `gh[[:space:]]+pr[[:space:]]+merge`): every call this
 # gate binds invokes `gh`, so the ABSENCE of `gh` from the command proves the
 # call sits outside the remit and it is allowed, exactly as a parsed non-merge
 # is. Presence is not proof of membership -- an ordinary command carrying `gh`
 # inside a word satisfies it too -- and that over-deny is the safe direction.
 # What it cannot reach is a spelling the shell assembles (`g\h pr merge`), which
 # the arm's own header already names as the accepted residual.
-_jq_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _jq_lib_dir=''
+_jq_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _jq_library_directory=''
 # shellcheck source=lib/jq-availability.sh
-[ -n "$_jq_lib_dir" ] && [ -f "$_jq_lib_dir/jq-availability.sh" ] && . "$_jq_lib_dir/jq-availability.sh" 2>/dev/null
+[ -n "$_jq_library_directory" ] && [ -f "$_jq_library_directory/jq-availability.sh" ] && . "$_jq_library_directory/jq-availability.sh" 2>/dev/null
 if ! type gaia_require_jq >/dev/null 2>&1; then
   printf 'BLOCKED: pr-merge-audit-check.sh cannot load lib/jq-availability.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
   exit 2
@@ -140,7 +140,7 @@ tool_name=$(echo "$input" | jq -r '.tool_name // ""' 2>/dev/null)
 
 # Note: avoid naming this `command`, it would shadow bash's `command` builtin
 # and make any later `command -v ...` calls in this script silently misbehave.
-cmd=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
+command_line=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 
 # Arm the gate when this tool call carries a `gh pr merge`, through the shared
 # arming decision (.claude/hooks/lib/verb-arming.sh): the same raw start/sep
@@ -159,27 +159,27 @@ cmd=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 # merge, so an unloadable library denies every Bash tool call here, not merge
 # attempts alone, unlike the five-lib deny further down which only ever denies
 # a merge once armed.
-_va_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
-_va_ok=0
-if [ -n "$_va_lib_dir" ] && [ -f "$_va_lib_dir/verb-arming.sh" ]; then
+_hook_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+_verb_arming_ok=0
+if [ -n "$_hook_library_directory" ] && [ -f "$_hook_library_directory/verb-arming.sh" ]; then
   # shellcheck source=/dev/null
-  if . "$_va_lib_dir/verb-arming.sh" && type gaia_verb_armed >/dev/null 2>&1; then
-    _va_ok=1
+  if . "$_hook_library_directory/verb-arming.sh" && type gaia_verb_armed >/dev/null 2>&1; then
+    _verb_arming_ok=1
   fi
 fi
-if [ "$_va_ok" -ne 1 ]; then
-  jq -n --arg r "PR merge gate: cannot load the shared verb-arming decision (.claude/hooks/lib/verb-arming.sh must exist, be readable, and define gaia_verb_armed). This check runs before the gate knows whether the tool call is a gh pr merge at all, so it denies every Bash tool call rather than merge attempts alone. Restore .claude/hooks/lib/verb-arming.sh (it ships with the framework; a missing or corrupted checkout is the usual cause) and retry." '{
+if [ "$_verb_arming_ok" -ne 1 ]; then
+  jq -n --arg reason "PR merge gate: cannot load the shared verb-arming decision (.claude/hooks/lib/verb-arming.sh must exist, be readable, and define gaia_verb_armed). This check runs before the gate knows whether the tool call is a gh pr merge at all, so it denies every Bash tool call rather than merge attempts alone. Restore .claude/hooks/lib/verb-arming.sh (it ships with the framework; a missing or corrupted checkout is the usual cause) and retry." '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: $r
+      permissionDecisionReason: $reason
     }
   }'
   exit 0
 fi
 
-gate_verb_frag='gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
-if gaia_verb_armed "$gate_verb_frag" 'gh pr merge' "$cmd"; then
+gate_verb_fragment='gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
+if gaia_verb_armed "$gate_verb_fragment" 'gh pr merge' "$command_line"; then
   : # armed
 else
   exit 0
@@ -203,9 +203,9 @@ fi
 # the reason the clearance load below states: a cwd-relative source misses the
 # lib from any directory that has no `.claude/`, and the `type` check that
 # follows reads that as a library the checkout does not carry.
-[ -n "$_va_lib_dir" ] && [ -f "$_va_lib_dir/repo-scope.sh" ] && . "$_va_lib_dir/repo-scope.sh"
-if type cmd_targets_foreign_repo >/dev/null 2>&1 \
-   && cmd_targets_foreign_repo "$cmd"; then
+[ -n "$_hook_library_directory" ] && [ -f "$_hook_library_directory/repo-scope.sh" ] && . "$_hook_library_directory/repo-scope.sh"
+if type command_targets_foreign_repo >/dev/null 2>&1 \
+   && command_targets_foreign_repo "$command_line"; then
   exit 0
 fi
 
@@ -214,18 +214,18 @@ fi
 # path from a sandbox cwd that has no .claude/, so a cwd-relative source would
 # miss the lib and flip every clearance check. Loaded lazily here, after the
 # early exits above, because this hook fires on every Bash tool call.
-_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
-if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-clearance.sh" ]; then
+_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+if [ -n "$_library_directory" ] && [ -f "$_library_directory/audit-clearance.sh" ]; then
   # shellcheck source=/dev/null
-  . "$_lib_dir/audit-clearance.sh"
+  . "$_library_directory/audit-clearance.sh"
 fi
 
 # Load the shared main-root resolver the same guarded way, from this hook's
 # own on-disk location. Backs the main-anchored `root` derivation below.
-_root_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
-if [ -n "$_root_lib_dir" ] && [ -f "$_root_lib_dir/.gaia/scripts/main-root-lib.sh" ]; then
+_repository_root_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
+if [ -n "$_repository_root_directory" ] && [ -f "$_repository_root_directory/.gaia/scripts/main-root-lib.sh" ]; then
   # shellcheck source=/dev/null
-  . "$_root_lib_dir/.gaia/scripts/main-root-lib.sh"
+  . "$_repository_root_directory/.gaia/scripts/main-root-lib.sh"
 fi
 
 # Load the shared ownership classifier + machinery list + digest engine + base
@@ -241,7 +241,7 @@ fi
 #
 # repo-scope.sh joined this list when the command-binding predicate stopped
 # being a bypass relaxation and became a conjunct on EVERY clearance permit.
-# Its absence makes gate_cmd_names_the_record_pr return 1 above the scanner
+# Its absence makes gate_command_names_the_record_pr return 1 above the scanner
 # run, which used to mean only "this relaxation does not fire" and now means
 # every permit denies. Left out of this guard the denial surfaces through the
 # binding's own spelling arm, which blames the command's spelling and closes by
@@ -252,38 +252,38 @@ fi
 # The fork check is on this list because a missing one must not read as "not a
 # fork", and the stamp because a bypass allow without it leaves the pull
 # request waiting forever on a status nothing posts.
-_scope_lib="$_lib_dir/audit-scope.sh"
-_machinery_lib="$_lib_dir/audit-machinery.sh"
-_digest_lib="$_lib_dir/audit-digest.sh"
-_version_lib="$_lib_dir/gaia-version.sh"
-_provenance_lib="$_lib_dir/audit-base-provenance.sh"
-_repo_scope_lib="$_lib_dir/repo-scope.sh"
-_cross_repo_lib="$_lib_dir/cross-repo-refusal.sh"
-_bypass_stamp_lib="$_lib_dir/audit-bypass-stamp.sh"
-if [ -z "$_lib_dir" ] || [ ! -f "$_scope_lib" ] || [ ! -f "$_machinery_lib" ] || [ ! -f "$_digest_lib" ] || [ ! -f "$_version_lib" ] || [ ! -f "$_provenance_lib" ] || [ ! -f "$_repo_scope_lib" ] || [ ! -f "$_cross_repo_lib" ] || [ ! -f "$_bypass_stamp_lib" ]; then
-  jq -n --arg r "PR merge gate: cannot load the ownership classifier, the digest engine, the version normalizer, the base provenance resolver, the command scanner, the fork check, or the bypass stamp (.claude/hooks/lib/audit-scope.sh, .claude/hooks/lib/audit-machinery.sh, .claude/hooks/lib/audit-digest.sh, .claude/hooks/lib/gaia-version.sh, .claude/hooks/lib/audit-base-provenance.sh, .claude/hooks/lib/repo-scope.sh, .claude/hooks/lib/cross-repo-refusal.sh, and .claude/hooks/lib/audit-bypass-stamp.sh must all exist and be readable). Every marker check below is keyed to a member's content digest and to a version literal this gate compares for equality against the stamped one; this gate's out-of-scope bypass depends on the classifier to know what a changed path is, and on the provenance resolver to know what base its change set is read against; every permit this gate issues is bound to the pull request the merge names, which it reads through the command scanner; a fork pull request is refused through the fork check; and a bypass allow posts its GAIA-Audit status through the stamp. So it denies rather than guess. Restore all eight files (they ship with the framework; a missing or corrupted checkout is the usual cause) and retry.${gate_arm_note}" '{
+_repo_scope_library="$_library_directory/audit-scope.sh"
+_machinery_library="$_library_directory/audit-machinery.sh"
+_digest_library="$_library_directory/audit-digest.sh"
+_version_library="$_library_directory/gaia-version.sh"
+_provenance_library="$_library_directory/audit-base-provenance.sh"
+_repo_scope_library="$_library_directory/repo-scope.sh"
+_cross_repo_library="$_library_directory/cross-repo-refusal.sh"
+_bypass_stamp_library="$_library_directory/audit-bypass-stamp.sh"
+if [ -z "$_library_directory" ] || [ ! -f "$_repo_scope_library" ] || [ ! -f "$_machinery_library" ] || [ ! -f "$_digest_library" ] || [ ! -f "$_version_library" ] || [ ! -f "$_provenance_library" ] || [ ! -f "$_repo_scope_library" ] || [ ! -f "$_cross_repo_library" ] || [ ! -f "$_bypass_stamp_library" ]; then
+  jq -n --arg reason "PR merge gate: cannot load the ownership classifier, the digest engine, the version normalizer, the base provenance resolver, the command scanner, the fork check, or the bypass stamp (.claude/hooks/lib/audit-scope.sh, .claude/hooks/lib/audit-machinery.sh, .claude/hooks/lib/audit-digest.sh, .claude/hooks/lib/gaia-version.sh, .claude/hooks/lib/audit-base-provenance.sh, .claude/hooks/lib/repo-scope.sh, .claude/hooks/lib/cross-repo-refusal.sh, and .claude/hooks/lib/audit-bypass-stamp.sh must all exist and be readable). Every marker check below is keyed to a member's content digest and to a version literal this gate compares for equality against the stamped one; this gate's out-of-scope bypass depends on the classifier to know what a changed path is, and on the provenance resolver to know what base its change set is read against; every permit this gate issues is bound to the pull request the merge names, which it reads through the command scanner; a fork pull request is refused through the fork check; and a bypass allow posts its GAIA-Audit status through the stamp. So it denies rather than guess. Restore all eight files (they ship with the framework; a missing or corrupted checkout is the usual cause) and retry.${gate_arm_note}" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: $r
+      permissionDecisionReason: $reason
     }
   }'
   exit 0
 fi
 # shellcheck source=/dev/null
-. "$_scope_lib"
+. "$_repo_scope_library"
 # shellcheck source=/dev/null
-. "$_machinery_lib"
+. "$_machinery_library"
 # shellcheck source=/dev/null
-. "$_digest_lib"
+. "$_digest_library"
 # shellcheck source=/dev/null
-. "$_version_lib"
+. "$_version_library"
 # shellcheck source=/dev/null
-. "$_provenance_lib"
+. "$_provenance_library"
 # shellcheck source=/dev/null
-. "$_cross_repo_lib"
+. "$_cross_repo_library"
 # shellcheck source=/dev/null
-. "$_bypass_stamp_lib"
+. "$_bypass_stamp_library"
 
 # Fork refusal, ahead of every read of the acting tree below: audit_scope_init
 # reads its roster, the member resolver and the chore(deps) predicate run from
@@ -291,23 +291,23 @@ fi
 # is the one the merge names when it names a bare number, and otherwise the
 # current branch's, which is the only other pull request any permit below can
 # clear (every permit binds to the record of the current branch).
-_fork_check_ref=''
-if type gaia_scan_gh_merge >/dev/null 2>&1 && gaia_scan_gh_merge "$cmd"; then
-  case "${GAIA_GH_MERGE_REF:-}" in
+_fork_check_reference=''
+if type gaia_scan_gh_merge >/dev/null 2>&1 && gaia_scan_gh_merge "$command_line"; then
+  case "${GAIA_GH_MERGE_REFERENCE:-}" in
     '' | *[!0-9]*) ;;
-    *) _fork_check_ref="$GAIA_GH_MERGE_REF" ;;
+    *) _fork_check_reference="$GAIA_GH_MERGE_REFERENCE" ;;
   esac
 fi
-if _fork_deny_reason=$(gaia_cross_repo_deny_reason "$_fork_check_ref" '' \
+if _fork_deny_reason=$(gaia_cross_repo_deny_reason "$_fork_check_reference" '' \
   'PR merge gate: ' \
-  "PR merge gate: cannot tell whether pull request ${_fork_check_ref:-for the current branch}" \
+  "PR merge gate: cannot tell whether pull request ${_fork_check_reference:-for the current branch}" \
   "so it denies rather than risk merging one. Check gh (\`gh auth status\`, the network) and retry." \
   "$gate_arm_note"); then
-  jq -n --arg r "$_fork_deny_reason" '{
+  jq -n --arg reason "$_fork_deny_reason" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: $r
+      permissionDecisionReason: $reason
     }
   }'
   exit 0
@@ -366,11 +366,11 @@ tree_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 # roster fails here with its own named remedy, ahead of the digest-batch deny
 # below, whose text would otherwise blame a missing sha256 tool.
 if ! audit_scope_init "$tree_root" 2>/dev/null; then
-  jq -n --arg r "PR merge gate: ${tree_root}/.gaia/audit-ci.yml has no auditors: roster, so no Code Audit Team member can be resolved or cleared for HEAD ${sha:0:12}. There is no fallback roster. Restore the auditors: block from the GAIA template's .gaia/audit-ci.yml, commit it, and retry.${gate_arm_note}" '{
+  jq -n --arg reason "PR merge gate: ${tree_root}/.gaia/audit-ci.yml has no auditors: roster, so no Code Audit Team member can be resolved or cleared for HEAD ${sha:0:12}. There is no fallback roster. Restore the auditors: block from the GAIA template's .gaia/audit-ci.yml, commit it, and retry.${gate_arm_note}" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: $r
+      permissionDecisionReason: $reason
     }
   }'
   exit 0
@@ -387,11 +387,11 @@ fi
 # digest set.
 _digest_batch="$(audit_digests_all "$tree_root" 2>/dev/null)" || _digest_batch=""
 if [ -z "$_digest_batch" ]; then
-  jq -n --arg r "PR merge gate: cannot derive per-member content digests for HEAD ${sha:0:12} (audit_digests_all failed or returned nothing). This usually means a missing sha256 tool (sha256sum / shasum -a 256), a git failure, or a corrupted checkout. Every Code Audit Team marker is keyed to a member's content digest, so this gate denies rather than match against an empty or partial digest. Restore the missing tool/checkout and retry.${gate_arm_note}" '{
+  jq -n --arg reason "PR merge gate: cannot derive per-member content digests for HEAD ${sha:0:12} (audit_digests_all failed or returned nothing). This usually means a missing sha256 tool (sha256sum / shasum -a 256), a git failure, or a corrupted checkout. Every Code Audit Team marker is keyed to a member's content digest, so this gate denies rather than match against an empty or partial digest. Restore the missing tool/checkout and retry.${gate_arm_note}" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: $r
+      permissionDecisionReason: $reason
     }
   }'
   exit 0
@@ -462,7 +462,7 @@ marker_state() {
 
 # The C3 shared trailer regex (POSIX ERE): version, 64-hex frontend digest,
 # 40-hex tree, in that order after the colon. $1=version, $2=digest, $3=tree.
-GAIA_AUDIT_TRAILER_RE='^GAIA-Audit:[[:space:]]+([^[:space:]]+)[[:space:]]+([0-9a-f]{64})[[:space:]]+([0-9a-f]{40})[[:space:]]*$'
+GAIA_AUDIT_TRAILER_REGEX='^GAIA-Audit:[[:space:]]+([^[:space:]]+)[[:space:]]+([0-9a-f]{64})[[:space:]]+([0-9a-f]{40})[[:space:]]*$'
 
 # _gate_current_version -> the trimmed .gaia/VERSION literal on stdout, or
 # empty. Shared by check_trailer and check_github_status: both compare a
@@ -489,11 +489,11 @@ check_trailer() {
     | head -1)
   trailer_status="missing"
   if [ -n "$trailer_line" ]; then
-    if [[ "$trailer_line" =~ $GAIA_AUDIT_TRAILER_RE ]]; then
+    if [[ "$trailer_line" =~ $GAIA_AUDIT_TRAILER_REGEX ]]; then
       trailer_version="${BASH_REMATCH[1]}"
       trailer_digest="${BASH_REMATCH[2]}"
-      cur_version="$(_gate_current_version)"
-      if [ -n "$cur_version" ] && [ "$trailer_version" = "$cur_version" ] \
+      current_version="$(_gate_current_version)"
+      if [ -n "$current_version" ] && [ "$trailer_version" = "$current_version" ] \
          && [ -n "$frontend_digest" ] && [ "$trailer_digest" = "$frontend_digest" ]; then
         return 0
       fi
@@ -533,23 +533,23 @@ check_github_status() {
   fi
 
   # Read .gaia/VERSION (same "no stamp without VERSION" invariant as CI).
-  cur_version="$(_gate_current_version)"
-  [ -n "$cur_version" ] || return 1
+  current_version="$(_gate_current_version)"
+  [ -n "$current_version" ] || return 1
 
   [ -n "$frontend_digest" ] || return 1
 
-  status_desc=$(gh api \
+  status_description=$(gh api \
     "repos/${repo}/commits/${sha}/statuses" \
     --jq 'map(select(.context == "GAIA-Audit")) | first | select(.state == "success") | .description' \
     2>/dev/null || true)
 
-  [ -n "$status_desc" ] && [ "$status_desc" != "null" ] || return 1
+  [ -n "$status_description" ] && [ "$status_description" != "null" ] || return 1
 
-  status_version=$(printf '%s' "$status_desc" | awk '{print $1}')
-  status_digest=$(printf '%s' "$status_desc" | awk '{print $2}')
+  status_version=$(printf '%s' "$status_description" | awk '{print $1}')
+  status_digest=$(printf '%s' "$status_description" | awk '{print $2}')
 
   [ -n "$status_version" ] && [ -n "$status_digest" ] || return 1
-  [ "$status_version" = "$cur_version" ] || return 1
+  [ "$status_version" = "$current_version" ] || return 1
   [ "$status_digest" = "$frontend_digest" ] || return 1
 
   return 0
@@ -567,7 +567,7 @@ check_github_status() {
 # field empty and each consumer takes its own no-answer path.
 #
 # The consumers are the two record-based bypasses, the legacy deny reason, and
-# gate_cmd_names_the_record_pr, which every permit reaches through
+# gate_command_names_the_record_pr, which every permit reaches through
 # gate_permit_binds_to_named_pr. That last one is the reason this read is no
 # longer confined to the uncleared path: a permit issued off a purely local
 # clearance still has to establish which pull request it is a permit FOR. See
@@ -633,7 +633,7 @@ check_chore_deps_pr() {
   # since that is gh's current-branch default and therefore the very pull
   # request the title was read for, which is what leaves the turnkey
   # `gh pr merge --squash` dep-bump path unaffected.
-  gate_cmd_names_the_record_pr || return 1
+  gate_command_names_the_record_pr || return 1
   # tree_root, not root: the predicate is executable code, so it comes from the
   # ACTING tree that carries it. root is the main checkout, which from a linked
   # worktree is a different branch entirely and need not have the script at all.
@@ -711,24 +711,24 @@ check_chore_deps_pr() {
 # (see gate_permit_binds_to_named_pr) but must not pay this one. Call it only
 # from inside the two bypasses and the legacy deny reason, never at the top
 # level of this script.
-gate_prov_read=""
+gate_provenance_read=""
 gate_trust=""
 gate_anchor=""
 gate_base=""
 gate_resolve_base() {
-  [ -z "$gate_prov_read" ] || return 0
-  gate_prov_read=yes
+  [ -z "$gate_provenance_read" ] || return 0
+  gate_provenance_read=yes
 
   resolve_pr_record
 
-  local prov
-  prov="$(audit_resolve_base_provenance "$tree_root" pr-record "" "$pr_record_base")" || prov=""
-  # An empty $prov leaves all three fields empty, which every guard below reads
+  local base_provenance
+  base_provenance="$(audit_resolve_base_provenance "$tree_root" pr-record "" "$pr_record_base")" || base_provenance=""
+  # An empty $base_provenance leaves all three fields empty, which every guard below reads
   # as unresolvable and fails closed on.
-  IFS=$'\t' read -r gate_trust gate_anchor gate_base <<< "$prov" || true
+  IFS=$'\t' read -r gate_trust gate_anchor gate_base <<< "$base_provenance" || true
 }
 
-# gate_cmd_names_the_record_pr: is the pull request the gated `gh pr merge`
+# gate_command_names_the_record_pr: is the pull request the gated `gh pr merge`
 # names the same one whose record the conjuncts around this were checked
 # against? The record comes from `gh pr view` with no number, which describes
 # the CURRENT BRANCH's pull request, so without this the record conjuncts prove
@@ -753,22 +753,22 @@ gate_resolve_base() {
 # answers it; this function rules it out lexically instead, by admitting only
 # the characters a merge invocation needs and denying every other byte. Every
 # abstention denies.
-gate_cmd_names_the_record_pr() {
+gate_command_names_the_record_pr() {
   # The scanner is normally already loaded, from the repo-scope source near the
   # top of this hook. That source is cwd-relative, so it can miss from a
   # non-root cwd; reload from this hook's OWN on-disk location and deny if the
   # scanner still cannot be had. A relaxation that cannot read the command it
   # is relaxing has nothing to relax on.
   if ! type gaia_scan_gh_merge >/dev/null 2>&1; then
-    [ -n "$_lib_dir" ] && [ -f "$_lib_dir/repo-scope.sh" ] || return 1
+    [ -n "$_library_directory" ] && [ -f "$_library_directory/repo-scope.sh" ] || return 1
     # shellcheck source=/dev/null
-    . "$_lib_dir/repo-scope.sh" || return 1
+    . "$_library_directory/repo-scope.sh" || return 1
     type gaia_scan_gh_merge >/dev/null 2>&1 || return 1
   fi
 
   # Abstains unless the tool call's FIRST command is the merge and every flag
   # on it is a shape the scanner models.
-  gaia_scan_gh_merge "$cmd" || return 1
+  gaia_scan_gh_merge "$command_line" || return 1
 
   # And no SEPARATOR puts a second command beside it. The scanner sets this
   # while reading the same command the call above just read, so it is that
@@ -805,17 +805,17 @@ gate_cmd_names_the_record_pr() {
   #
   # Blunt in the deny direction only: a merge carrying a quoted subject denies
   # and costs a marker requirement, which is this arm's whole downside.
-  case "$cmd" in
+  case "$command_line" in
     *[!A-Za-z0-9_\ /.,:@=+-]*) return 1 ;;
   esac
 
   # No positional at all: the command targets the current branch, which is the
   # branch the record was read for, so the record conjuncts already bind it.
-  [ -n "$GAIA_GH_MERGE_REF" ] || return 0
+  [ -n "$GAIA_GH_MERGE_REFERENCE" ] || return 0
   # A bare number is the only spelling this gate can confirm without a second
   # network read. A branch name or a URL denies rather than resolve one: this
   # arm is a relaxation, so an unconfirmable target must not clear it.
-  case "$GAIA_GH_MERGE_REF" in
+  case "$GAIA_GH_MERGE_REFERENCE" in
     *[!0-9]*) return 1 ;;
   esac
   # The record is needed from HERE DOWN and nowhere above it, so resolve it at
@@ -830,7 +830,7 @@ gate_cmd_names_the_record_pr() {
   # free for the callers that already made the read.
   resolve_pr_record
   [ -n "$pr_record_number" ] || return 1
-  [ "$GAIA_GH_MERGE_REF" = "$pr_record_number" ]
+  [ "$GAIA_GH_MERGE_REFERENCE" = "$pr_record_number" ]
 }
 
 # gate_permit_binds_to_named_pr: the last conjunct on every permit this gate
@@ -871,7 +871,7 @@ gate_cmd_names_the_record_pr() {
 # Prints the deny JSON and returns 1 when the binding does not hold; returns 0
 # silently when it does.
 gate_permit_binds_to_named_pr() {
-  gate_cmd_names_the_record_pr && return 0
+  gate_command_names_the_record_pr && return 0
 
   local named record reason
   # Four of the predicate's five failure arms return ABOVE its own record read,
@@ -883,7 +883,7 @@ gate_permit_binds_to_named_pr() {
   # this is a deny path, so the read costs nothing the refused merge would not
   # have cost anyway, and it buys a reason that can name the real number.
   resolve_pr_record
-  named="${GAIA_GH_MERGE_REF:-}"
+  named="${GAIA_GH_MERGE_REFERENCE:-}"
   record="${pr_record_number:-}"
 
   local unreadable=0
@@ -983,11 +983,11 @@ another clearance.
 
 See wiki/concepts/PR Merge Workflow.md for the full contract."
 
-  jq -n --arg r "$reason$gate_arm_note" '{
+  jq -n --arg reason "$reason$gate_arm_note" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: $r
+      permissionDecisionReason: $reason
     }
   }'
   return 1
@@ -1038,7 +1038,7 @@ gate_empty_is_decisive() {
   [ "$gate_anchor" = "pr-record" ] || return 1
   [ -n "$pr_record_head" ] || return 1
   [ "$pr_record_head" = "$sha" ] || return 1
-  gate_cmd_names_the_record_pr || return 1
+  gate_command_names_the_record_pr || return 1
   return 0
 }
 
@@ -1107,7 +1107,7 @@ check_out_of_scope_pr() {
   # gate_empty_is_decisive, which owns a strictly larger conjunct set including
   # this one, so hoisting would duplicate that call and blur which arm answers
   # for which conjuncts.
-  gate_cmd_names_the_record_pr || return 1
+  gate_command_names_the_record_pr || return 1
 
   return 0
 }
@@ -1154,7 +1154,7 @@ github_status_cleared() {
 
 # gate_post_bypass_stamp <description>: post the GAIA-Audit bypass status for
 # the pull request this run classified. Every caller has already established,
-# through gate_cmd_names_the_record_pr, that the merge names the record's pull
+# through gate_command_names_the_record_pr, that the merge names the record's pull
 # request, so the record's number is the one to stamp. The record's head must
 # also be local HEAD, the content the classification read; otherwise the
 # status would attest a head nobody classified, so it is skipped with the
@@ -1188,16 +1188,16 @@ gate_post_bypass_stamp() {
 # empty-set branch below hands the legacy single-signal gate a diff whose
 # dispatched members are unknown.
 members=""
-resolver_rc=0
+resolver_exit_status=0
 if [ -x "${tree_root}/.gaia/scripts/resolve-audit-members.sh" ]; then
   members="$( cd "$tree_root" && bash .gaia/scripts/resolve-audit-members.sh 2>/dev/null )" \
-    || resolver_rc=$?
+    || resolver_exit_status=$?
 fi
 
-if [ "$resolver_rc" -ne 0 ]; then
+if [ "$resolver_exit_status" -ne 0 ]; then
   reason="PR merge gate: the Code Audit Team member resolver cannot answer for HEAD ${sha:0:12}.
 
-.gaia/scripts/resolve-audit-members.sh exited ${resolver_rc} for the tree at
+.gaia/scripts/resolve-audit-members.sh exited ${resolver_exit_status} for the tree at
 ${tree_root}, so which members this diff dispatches is unknown. An unanswerable
 member query is not an empty member set, and this gate denies rather than fall
 back to the single-signal path and clear a diff a required auditor may never
@@ -1211,11 +1211,11 @@ To unblock:
 
 See wiki/concepts/PR Merge Workflow.md for the full contract."
 
-  jq -n --arg r "$reason$gate_arm_note" '{
+  jq -n --arg reason "$reason$gate_arm_note" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: $r
+      permissionDecisionReason: $reason
     }
   }'
 
@@ -1291,11 +1291,11 @@ See wiki/concepts/PR Merge Workflow.md for the full contract."
 
   # --arg safely escapes $reason; never interpolate dynamic values directly into
   # the JSON template string.
-  jq -n --arg r "$reason$gate_arm_note" '{
+  jq -n --arg reason "$reason$gate_arm_note" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: $r
+      permissionDecisionReason: $reason
     }
   }'
 
@@ -1317,38 +1317,38 @@ report=""
 # code-audit-frontend: the one member-aware allow that earns a bypass stamp.
 frontend_chore_deps_waived=0
 
-while IFS= read -r m; do
-  [ -n "$m" ] || continue
+while IFS= read -r roster_member; do
+  [ -n "$roster_member" ] || continue
 
   member_cleared=0
-  if [ "$m" = "code-audit-frontend" ]; then
-    m_digest="$frontend_digest"
-    m_refused="$frontend_refused"
+  if [ "$roster_member" = "code-audit-frontend" ]; then
+    member_content_digest="$frontend_digest"
+    member_refused="$frontend_refused"
     if frontend_cleared; then
       member_cleared=1
       [ "$frontend_cleared_by" != chore-deps ] || frontend_chore_deps_waived=1
     fi
   else
-    m_digest="$(member_digest "$m")" || m_digest=""
-    m_refused=0
-    if [ -n "$m_digest" ] && clearance_member_refused "$root" "$m_digest" "$m"; then
-      m_refused=1
+    member_content_digest="$(member_digest "$roster_member")" || member_content_digest=""
+    member_refused=0
+    if [ -n "$member_content_digest" ] && clearance_member_refused "$root" "$member_content_digest" "$roster_member"; then
+      member_refused=1
     fi
-    if [ "$m_refused" -eq 0 ] && [ -n "$m_digest" ]; then
-      clearance_member_cleared "$root" "$m_digest" "$m" && member_cleared=1
+    if [ "$member_refused" -eq 0 ] && [ -n "$member_content_digest" ]; then
+      clearance_member_cleared "$root" "$member_content_digest" "$roster_member" && member_cleared=1
     fi
   fi
 
   if [ "$member_cleared" -eq 1 ]; then
-    report="${report}  - ${m}: CLEARED
+    report="${report}  - ${roster_member}: CLEARED
 "
   else
     all_cleared=0
-    if [ "$m_refused" -eq 1 ]; then
-      refused_path="$(clearance_refused_path "$root" "$m_digest" "$m")"
-      report="${report}  - ${m}: REFUSED (a live refusal exists for this exact content at ${refused_path}; a bare re-spawn does not clear it, the member must supersede it, see below)
+    if [ "$member_refused" -eq 1 ]; then
+      refused_path="$(clearance_refused_path "$root" "$member_content_digest" "$roster_member")"
+      report="${report}  - ${roster_member}: REFUSED (a live refusal exists for this exact content at ${refused_path}; a bare re-spawn does not clear it, the member must supersede it, see below)
 "
-    elif [ "$m" = "code-audit-frontend" ]; then
+    elif [ "$roster_member" = "code-audit-frontend" ]; then
       report="${report}  - code-audit-frontend: PENDING
       Local marker:    ${marker} $(marker_state "$marker")
       Commit trailer:  ${trailer_status:-missing}
@@ -1356,8 +1356,8 @@ while IFS= read -r m; do
       chore(deps) PR:  PR title does not match \`chore(deps):\`/\`chore(deps-dev):\`, or the PR changes a path other than a dependency manifest
 "
     else
-      member_marker="$root/.gaia/local/audit/${m_digest:-<unavailable>}.${m}.ok"
-      report="${report}  - ${m}: PENDING (marker ${member_marker} $(marker_state "$member_marker"))
+      member_marker="$root/.gaia/local/audit/${member_content_digest:-<unavailable>}.${roster_member}.ok"
+      report="${report}  - ${roster_member}: PENDING (marker ${member_marker} $(marker_state "$member_marker"))
 "
     fi
   fi
@@ -1396,11 +1396,11 @@ the merge.
 
 See wiki/concepts/PR Merge Workflow.md for the full contract."
 
-jq -n --arg r "$reason$gate_arm_note" '{
+jq -n --arg reason "$reason$gate_arm_note" '{
   hookSpecificOutput: {
     hookEventName: "PreToolUse",
     permissionDecision: "deny",
-    permissionDecisionReason: $r
+    permissionDecisionReason: $reason
   }
 }'
 

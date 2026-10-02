@@ -13,47 +13,47 @@
 
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
-  HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
+  HOOKS_SOURCE_DIRECTORY=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
   # HOOK_UNDER_TEST lets a mutation proof point the suite at a scratch copy.
-  HOOK_ABS="${HOOK_UNDER_TEST:-$HOOKS_SRC/block-audit-loop-write.sh}"
+  HOOK_ABSOLUTE_PATH="${HOOK_UNDER_TEST:-$HOOKS_SOURCE_DIRECTORY/block-audit-loop-write.sh}"
 
   FIX=$(cd "$(mktemp -d "$BATS_TEST_TMPDIR/fix.XXXXXX")" && pwd -P)
   MAIN="$FIX/main"
-  WT="$FIX/wt"
+  WORKTREE="$FIX/wt"
   mkdir -p "$MAIN"
   git -C "$MAIN" init -q -b main
   git -C "$MAIN" -c user.email=t@example.com -c user.name=t commit -q --allow-empty -m init
   mkdir -p "$MAIN/.gaia/local/audit-loop/feat"
-  git -C "$MAIN" worktree add -q "$WT" -b feat
-  mkdir -p "$WT/.gaia"
-  ln -s "$MAIN/.gaia/local" "$WT/.gaia/local"
+  git -C "$MAIN" worktree add -q "$WORKTREE" -b feat
+  mkdir -p "$WORKTREE/.gaia"
+  ln -s "$MAIN/.gaia/local" "$WORKTREE/.gaia/local"
   STATE="$MAIN/.gaia/local/audit-loop/feat/x.json"
-  WSTATE="$WT/.gaia/local/audit-loop/feat/x.json"
+  WORKTREE_STATE="$WORKTREE/.gaia/local/audit-loop/feat/x.json"
   mkdir -p "$MAIN/.gaia/local/cache/shared/context"
-  CTX_NAME=0a1b2c3d-0000-4000-8000-000000000001.json
-  CTX="$MAIN/.gaia/local/cache/shared/context/$CTX_NAME"
-  WCTX="$WT/.gaia/local/cache/shared/context/$CTX_NAME"
-  printf '{"version":1}' >"$CTX"
+  CONTEXT_FILE_NAME=0a1b2c3d-0000-4000-8000-000000000001.json
+  CONTEXT_FILE="$MAIN/.gaia/local/cache/shared/context/$CONTEXT_FILE_NAME"
+  WORKTREE_CONTEXT_FILE="$WORKTREE/.gaia/local/cache/shared/context/$CONTEXT_FILE_NAME"
+  printf '{"version":1}' >"$CONTEXT_FILE"
   OVERRIDE="$MAIN/.gaia/local/checkpoint-override.json"
-  WOVERRIDE="$WT/.gaia/local/checkpoint-override.json"
+  WORKTREE_OVERRIDE="$WORKTREE/.gaia/local/checkpoint-override.json"
   ASK_RECORDER="$MAIN/.claude/hooks/audit-loop-ask-grant.sh"
   GRANT_RECORDER="$MAIN/.claude/hooks/audit-loop-grant.sh"
 }
 
 edit_payload() {
-  jq -n --arg t "$1" --arg p "$2" --arg c "$3" '{tool_name: $t, cwd: $c, tool_input: {file_path: $p}}'
+  jq -n --arg tool_name "$1" --arg file_path "$2" --arg cwd "$3" '{tool_name: $tool_name, cwd: $cwd, tool_input: {file_path: $file_path}}'
 }
 
-cmd_payload() {
-  jq -n --arg t "$1" --arg c "$2" --arg d "$3" '{tool_name: $t, cwd: $d, tool_input: {command: $c}}'
+command_payload() {
+  jq -n --arg tool_name "$1" --arg command "$2" --arg cwd "$3" '{tool_name: $tool_name, cwd: $cwd, tool_input: {command: $command}}'
 }
 
 run_edit() {
-  invoke_hook "$(edit_payload "$1" "$2" "${3:-$MAIN}")" "$HOOK_ABS"
+  invoke_hook "$(edit_payload "$1" "$2" "${3:-$MAIN}")" "$HOOK_ABSOLUTE_PATH"
 }
 
 run_bash() {
-  invoke_hook "$(cmd_payload Bash "$1" "${2:-$MAIN}")" "$HOOK_ABS"
+  invoke_hook "$(command_payload Bash "$1" "${2:-$MAIN}")" "$HOOK_ABSOLUTE_PATH"
 }
 
 # --- denied: edit tools ---
@@ -74,13 +74,13 @@ run_bash() {
 }
 
 @test "Write through the worktree symlink spelling is denied" {
-  run_edit Write "$WSTATE" "$WT"
+  run_edit Write "$WORKTREE_STATE" "$WORKTREE"
   assert_denied_by_json
 }
 
 @test "Write through the worktree symlink with a .. segment is denied" {
   mkdir -p "$MAIN/.gaia/local/runs"
-  run_edit Write "$WT/.gaia/local/runs/../audit-loop/feat/x.json" "$WT"
+  run_edit Write "$WORKTREE/.gaia/local/runs/../audit-loop/feat/x.json" "$WORKTREE"
   assert_denied_by_json
 }
 
@@ -163,17 +163,17 @@ run_bash() {
 }
 
 @test "Bash redirect through the worktree spelling is denied" {
-  run_bash "printf '{}' > $WSTATE" "$WT"
+  run_bash "printf '{}' > $WORKTREE_STATE" "$WORKTREE"
   assert_denied_by_json
 }
 
 @test "Bash rm through the worktree spelling is denied" {
-  run_bash "rm -f $WSTATE" "$WT"
+  run_bash "rm -f $WORKTREE_STATE" "$WORKTREE"
   assert_denied_by_json
 }
 
 @test "Bash mv through the worktree spelling is denied" {
-  run_bash "mv $WSTATE /tmp/y" "$WT"
+  run_bash "mv $WORKTREE_STATE /tmp/y" "$WORKTREE"
   assert_denied_by_json
 }
 
@@ -183,7 +183,7 @@ run_bash() {
 }
 
 @test "Monitor with a deny-worthy command is denied" {
-  invoke_hook "$(cmd_payload Monitor "rm -f $STATE" "$MAIN")" "$HOOK_ABS"
+  invoke_hook "$(command_payload Monitor "rm -f $STATE" "$MAIN")" "$HOOK_ABSOLUTE_PATH"
   assert_denied_by_json
 }
 
@@ -199,9 +199,9 @@ run_bash() {
 # A note that quotes a guarded path as text and is redirected elsewhere is the
 # shape an audit member stages a findings sidecar with.
 @test "printf of quoted text naming each guarded path, redirected to a /tmp file, is allowed" {
-  local checked=0 p
-  for p in "$STATE" "$CTX" "$OVERRIDE"; do
-    run_bash "printf '%s\n' 'the hook trusts $p as written' > $BATS_TEST_TMPDIR/note.txt"
+  local checked=0 guarded_path
+  for guarded_path in "$STATE" "$CONTEXT_FILE" "$OVERRIDE"; do
+    run_bash "printf '%s\n' 'the hook trusts $guarded_path as written' > $BATS_TEST_TMPDIR/note.txt"
     assert_allowed_by_json
     [ -z "$output" ]
     checked=$((checked + 1))
@@ -342,7 +342,7 @@ echo '{}' > $STATE
 }
 
 @test "a non-Bash, non-edit tool is allowed" {
-  invoke_hook "$(jq -n --arg p "$STATE" '{tool_name: "Read", tool_input: {file_path: $p}}')" "$HOOK_ABS"
+  invoke_hook "$(jq -n --arg file_path "$STATE" '{tool_name: "Read", tool_input: {file_path: $file_path}}')" "$HOOK_ABSOLUTE_PATH"
   assert_allowed_by_json
 }
 
@@ -351,12 +351,12 @@ echo '{}' > $STATE
 # A fresh `bash -c` with a scrubbed PATH: under stock bash 3.2 a command-scoped
 # PATH does not drop an already-hashed jq.
 run_without_jq() {
-  local payload="$1" bin="$FIX/nojq-bin" t
+  local payload="$1" bin="$FIX/nojq-bin" tool_name
   mkdir -p "$bin"
-  for t in bash cat dirname tr; do
-    ln -sf "$(command -v "$t")" "$bin/$t"
+  for tool_name in bash cat dirname tr; do
+    ln -sf "$(command -v "$tool_name")" "$bin/$tool_name"
   done
-  run /bin/bash -c 'PATH="$1"; printf %s "$2" | /bin/bash "$3"' _ "$bin" "$payload" "$HOOK_ABS"
+  run /bin/bash -c 'PATH="$1"; printf %s "$2" | /bin/bash "$3"' _ "$bin" "$payload" "$HOOK_ABSOLUTE_PATH"
 }
 
 @test "jq absent: a Write to the state path is refused" {
@@ -366,12 +366,12 @@ run_without_jq() {
 }
 
 @test "jq absent: a command that rewrites the state path is refused" {
-  run_without_jq "$(cmd_payload Bash "rm $STATE" "$MAIN")"
+  run_without_jq "$(command_payload Bash "rm $STATE" "$MAIN")"
   [ "$status" -eq 2 ]
 }
 
 @test "jq absent: installing jq is allowed" {
-  run_without_jq "$(cmd_payload Bash "brew install jq" "$MAIN")"
+  run_without_jq "$(command_payload Bash "brew install jq" "$MAIN")"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -389,7 +389,7 @@ assert_denied_class() {
 }
 
 run_monitor() {
-  invoke_hook "$(cmd_payload Monitor "$1" "${2:-$MAIN}")" "$HOOK_ABS"
+  invoke_hook "$(command_payload Monitor "$1" "${2:-$MAIN}")" "$HOOK_ABSOLUTE_PATH"
 }
 
 # scratch_hook <sed-script>: write a mutated copy of the hook under test into a
@@ -399,10 +399,10 @@ run_monitor() {
 scratch_hook() {
   local root="$BATS_TEST_TMPDIR/scratch-hook"
   mkdir -p "$root/.claude/hooks" "$root/.gaia"
-  ln -sfn "$HOOKS_SRC/lib" "$root/.claude/hooks/lib"
-  ln -sfn "$HOOKS_SRC/../../.gaia/scripts" "$root/.gaia/scripts"
-  sed -E "$1" "$HOOK_ABS" >"$root/.claude/hooks/block-audit-loop-write.sh"
-  if cmp -s "$HOOK_ABS" "$root/.claude/hooks/block-audit-loop-write.sh"; then
+  ln -sfn "$HOOKS_SOURCE_DIRECTORY/lib" "$root/.claude/hooks/lib"
+  ln -sfn "$HOOKS_SOURCE_DIRECTORY/../../.gaia/scripts" "$root/.gaia/scripts"
+  sed -E "$1" "$HOOK_ABSOLUTE_PATH" >"$root/.claude/hooks/block-audit-loop-write.sh"
+  if cmp -s "$HOOK_ABSOLUTE_PATH" "$root/.claude/hooks/block-audit-loop-write.sh"; then
     return 1
   fi
   printf '%s' "$root/.claude/hooks/block-audit-loop-write.sh"
@@ -411,12 +411,12 @@ scratch_hook() {
 # --- context readings: edit tools ---
 
 @test "Write to a context file is denied naming the guard" {
-  run_edit Write "$CTX"
+  run_edit Write "$CONTEXT_FILE"
   assert_denied_class 'context readings'
 }
 
 @test "Edit of a context file is denied" {
-  run_edit Edit "$CTX"
+  run_edit Edit "$CONTEXT_FILE"
   assert_denied_class 'context readings'
 }
 
@@ -426,34 +426,34 @@ scratch_hook() {
 }
 
 @test "Write to a context file through the worktree symlink spelling is denied" {
-  run_edit Write "$WCTX" "$WT"
+  run_edit Write "$WORKTREE_CONTEXT_FILE" "$WORKTREE"
   assert_denied_class 'context readings'
 }
 
 @test "Edit of a context file through the worktree symlink spelling is denied" {
-  run_edit Edit "$WCTX" "$WT"
+  run_edit Edit "$WORKTREE_CONTEXT_FILE" "$WORKTREE"
   assert_denied_class 'context readings'
 }
 
 @test "Write to a context file with a .. segment is denied" {
-  run_edit Write "$MAIN/.gaia/local/cache/../cache/shared/context/$CTX_NAME"
+  run_edit Write "$MAIN/.gaia/local/cache/../cache/shared/context/$CONTEXT_FILE_NAME"
   assert_denied_class 'context readings'
 }
 
 # --- context readings: Bash natural spellings ---
 
 @test "Bash redirect into a context file is denied" {
-  run_bash "printf x > $CTX"
+  run_bash "printf x > $CONTEXT_FILE"
   assert_denied_class 'context readings'
 }
 
 @test "Bash mv of a context file is denied" {
-  run_bash "mv $CTX /tmp/x"
+  run_bash "mv $CONTEXT_FILE /tmp/x"
   assert_denied_class 'context readings'
 }
 
 @test "Bash rm -f of a context file is denied" {
-  run_bash "rm -f $CTX"
+  run_bash "rm -f $CONTEXT_FILE"
   assert_denied_class 'context readings'
 }
 
@@ -463,33 +463,33 @@ scratch_hook() {
 }
 
 @test "Bash redirect into a context file through the worktree spelling is denied" {
-  run_bash "printf x > $WCTX" "$WT"
+  run_bash "printf x > $WORKTREE_CONTEXT_FILE" "$WORKTREE"
   assert_denied_class 'context readings'
 }
 
 @test "Bash mv of a context file through the worktree spelling is denied" {
-  run_bash "mv $WCTX /tmp/x" "$WT"
+  run_bash "mv $WORKTREE_CONTEXT_FILE /tmp/x" "$WORKTREE"
   assert_denied_class 'context readings'
 }
 
 @test "Bash rm -f of a context file through the worktree spelling is denied" {
-  run_bash "rm -f $WCTX" "$WT"
+  run_bash "rm -f $WORKTREE_CONTEXT_FILE" "$WORKTREE"
   assert_denied_class 'context readings'
 }
 
 @test "Monitor writing a context file is denied" {
-  run_monitor "rm -f $CTX"
+  run_monitor "rm -f $CONTEXT_FILE"
   assert_denied_class 'context readings'
 }
 
 @test "Bash cat of a context file is allowed" {
-  run_bash "cat $CTX"
+  run_bash "cat $CONTEXT_FILE"
   assert_allowed_by_json
   [ -z "$output" ]
 }
 
 @test "Bash jq read of a context file is allowed" {
-  run_bash "jq . $CTX"
+  run_bash "jq . $CONTEXT_FILE"
   assert_allowed_by_json
   [ -z "$output" ]
 }
@@ -501,9 +501,9 @@ scratch_hook() {
 }
 
 @test "a process outside the tool path still writes a context file" {
-  run bash -c 'printf "{\"version\":1,\"n\":2}" > "$1.tmp" && mv "$1.tmp" "$1"' _ "$CTX"
+  run bash -c 'printf "{\"version\":1,\"n\":2}" > "$1.tmp" && mv "$1.tmp" "$1"' _ "$CONTEXT_FILE"
   [ "$status" -eq 0 ]
-  grep -qF -- '"n":2' "$CTX"
+  grep -qF -- '"n":2' "$CONTEXT_FILE"
 }
 
 # --- override file: edit tools and Bash ---
@@ -521,7 +521,7 @@ scratch_hook() {
 }
 
 @test "Write creating the override file through the worktree spelling is denied" {
-  run_edit Write "$WOVERRIDE" "$WT"
+  run_edit Write "$WORKTREE_OVERRIDE" "$WORKTREE"
   assert_denied_class 'only a human edits the override'
 }
 
@@ -531,7 +531,7 @@ scratch_hook() {
 }
 
 @test "Bash redirect creating the override file through the worktree spelling is denied" {
-  run_bash "echo '{}' > $WOVERRIDE" "$WT"
+  run_bash "echo '{}' > $WORKTREE_OVERRIDE" "$WORKTREE"
   assert_denied_class 'only a human edits the override'
 }
 
@@ -597,7 +597,7 @@ scratch_hook() {
 }
 
 @test "Write to the opt-ins file through the worktree spelling is allowed" {
-  run_edit Write "$WT/.gaia/local/settings.json" "$WT"
+  run_edit Write "$WORKTREE/.gaia/local/settings.json" "$WORKTREE"
   assert_allowed_by_json
   [ -z "$output" ]
 }
@@ -778,10 +778,10 @@ bash $GRANT_RECORDER"
   local checked=0 payload
   for payload in \
     "$(edit_payload Write "$STATE" "$MAIN")" \
-    "$(edit_payload Write "$CTX" "$MAIN")" \
+    "$(edit_payload Write "$CONTEXT_FILE" "$MAIN")" \
     "$(edit_payload Write "$OVERRIDE" "$MAIN")" \
-    "$(cmd_payload Bash "bash $ASK_RECORDER" "$MAIN")"; do
-    invoke_hook "$payload" "$HOOK_ABS"
+    "$(command_payload Bash "bash $ASK_RECORDER" "$MAIN")"; do
+    invoke_hook "$payload" "$HOOK_ABSOLUTE_PATH"
     assert_denied_by_json
     grep -qF -- 'block-audit-loop-write.sh' <<<"$output"
     grep -qF -- 'AskUserQuestion' <<<"$output"
@@ -795,8 +795,8 @@ bash $GRANT_RECORDER"
 
 @test "red twin: without the execution rule a piped forgery to the recorder is allowed" {
   local twin
-  twin=$(scratch_hook '/^    runs_recorder "\$cmd" && deny recorder$/d')
-  invoke_hook "$(cmd_payload Bash "printf x | bash $ASK_RECORDER" "$MAIN")" "$twin"
+  twin=$(scratch_hook '/^    runs_recorder "\$command_line" && deny recorder$/d')
+  invoke_hook "$(command_payload Bash "printf x | bash $ASK_RECORDER" "$MAIN")" "$twin"
   assert_allowed_by_json
   # The unmutated hook denies the same payload.
   run_bash "printf x | bash $ASK_RECORDER"
@@ -805,8 +805,8 @@ bash $GRANT_RECORDER"
 
 @test "red twin: a rule widened to any command naming the recorder denies git add" {
   local twin
-  twin=$(scratch_hook 's/^    runs_recorder "\$cmd" && deny recorder$/    case "$cmd" in *audit-loop-grant.sh* | *audit-loop-ask-grant.sh*) deny recorder ;; esac/')
-  invoke_hook "$(cmd_payload Bash "git -C $MAIN add -- .claude/hooks/audit-loop-grant.sh" "$MAIN")" "$twin"
+  twin=$(scratch_hook 's/^    runs_recorder "\$command_line" && deny recorder$/    case "$command_line" in *audit-loop-grant.sh* | *audit-loop-ask-grant.sh*) deny recorder ;; esac/')
+  invoke_hook "$(command_payload Bash "git -C $MAIN add -- .claude/hooks/audit-loop-grant.sh" "$MAIN")" "$twin"
   assert_denied_by_json
   # The unmutated hook allows the same payload.
   run_bash "git -C $MAIN add -- .claude/hooks/audit-loop-grant.sh"
@@ -816,12 +816,12 @@ bash $GRANT_RECORDER"
 @test "red twin: without the widened pre-filter a context redirect and an override redirect are allowed" {
   local twin
   twin=$(scratch_hook 's/^  \*audit-loop\* \| \*cache\/shared\/context\* \| \*local\/checkpoint-override\.json\*\) ;;$/  *audit-loop*) ;;/')
-  invoke_hook "$(cmd_payload Bash "printf x > $CTX" "$MAIN")" "$twin"
+  invoke_hook "$(command_payload Bash "printf x > $CONTEXT_FILE" "$MAIN")" "$twin"
   assert_allowed_by_json
-  invoke_hook "$(cmd_payload Bash "echo '{}' > $OVERRIDE" "$MAIN")" "$twin"
+  invoke_hook "$(command_payload Bash "echo '{}' > $OVERRIDE" "$MAIN")" "$twin"
   assert_allowed_by_json
   # The unmutated hook denies both.
-  run_bash "printf x > $CTX"
+  run_bash "printf x > $CONTEXT_FILE"
   assert_denied_by_json
   run_bash "echo '{}' > $OVERRIDE"
   assert_denied_by_json
@@ -830,11 +830,11 @@ bash $GRANT_RECORDER"
 # --- jq absent, new spellings ---
 
 @test "jq absent: a Write to a context file is refused" {
-  run_without_jq "$(edit_payload Write "$CTX" "$MAIN")"
+  run_without_jq "$(edit_payload Write "$CONTEXT_FILE" "$MAIN")"
   [ "$status" -eq 2 ]
 }
 
 @test "jq absent: a command that rewrites the override file is refused" {
-  run_without_jq "$(cmd_payload Bash "echo '{}' > $OVERRIDE" "$MAIN")"
+  run_without_jq "$(command_payload Bash "echo '{}' > $OVERRIDE" "$MAIN")"
   [ "$status" -eq 2 ]
 }

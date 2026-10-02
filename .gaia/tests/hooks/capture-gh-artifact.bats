@@ -11,9 +11,9 @@ setup() {
   HELPERS="$BATS_TEST_DIRNAME/helpers"
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   . "$REPO_ROOT/.gaia/tests/helpers/path.sh"
-  HOOK_ABS="$REPO_ROOT/.claude/hooks/capture-gh-artifact.sh"
-  LIB_SRC="$REPO_ROOT/.gaia/scripts/gh-artifact-lib.sh"
-  AKL_SRC="$REPO_ROOT/.gaia/scripts/audit-key-lib.sh"
+  HOOK_ABSOLUTE_PATH="$REPO_ROOT/.claude/hooks/capture-gh-artifact.sh"
+  LIBRARY_SOURCE="$REPO_ROOT/.gaia/scripts/gh-artifact-lib.sh"
+  AUDIT_KEY_LIBRARY_SOURCE="$REPO_ROOT/.gaia/scripts/audit-key-lib.sh"
 
   export GIT_AUTHOR_NAME="GAIA Test"
   export GIT_AUTHOR_EMAIL="gaia-test@example.com"
@@ -45,22 +45,22 @@ teardown() {
 build_repo() {
   REPO="$("$HELPERS/tmp-git-repo.sh")"
   mkdir -p "$REPO/.gaia/scripts"
-  cp "$LIB_SRC" "$REPO/.gaia/scripts/gh-artifact-lib.sh"
-  cp "$AKL_SRC" "$REPO/.gaia/scripts/audit-key-lib.sh"
+  cp "$LIBRARY_SOURCE" "$REPO/.gaia/scripts/gh-artifact-lib.sh"
+  cp "$AUDIT_KEY_LIBRARY_SOURCE" "$REPO/.gaia/scripts/audit-key-lib.sh"
 }
 
 # run_hook <command> [stdout] [session_id]
 run_hook() {
-  local cmd="$1" out="${2:-}" sid="${3:-S1}" input
-  input=$("$HELPERS/mock-hook-input.sh" post-tool-use "$sid" Bash "$cmd" "$out")
-  invoke_hook "$input" "$HOOK_ABS"
+  local command="$1" tool_output="${2:-}" session_id="${3:-S1}" input
+  input=$("$HELPERS/mock-hook-input.sh" post-tool-use "$session_id" Bash "$command" "$tool_output")
+  invoke_hook "$input" "$HOOK_ABSOLUTE_PATH"
 }
 
 # run_hook_raw <json> - for payloads the helper's required-param mock cannot
 # express (an empty session_id).
 run_hook_raw() {
   local input="$1"
-  invoke_hook "$input" "$HOOK_ABS"
+  invoke_hook "$input" "$HOOK_ABSOLUTE_PATH"
 }
 
 # breadcrumb_path <branch>: the exact keyed filename the hook (and the real
@@ -96,16 +96,16 @@ any_breadcrumb_exists() {
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 
-  bc="$(breadcrumb_path "feat/x")"
-  [ -f "$bc" ]
-  jq -e '.number | type == "number"' "$bc" >/dev/null
-  [ "$(jq -r '.type' "$bc")" = "pr" ]
-  [ "$(jq -r '.number' "$bc")" = "712" ]
-  [ "$(jq -r '.repo' "$bc")" = "gaia-react/gaia" ]
-  [ "$(jq -r '.branch' "$bc")" = "feat/x" ]
-  [ "$(jq -r '.session_id' "$bc")" = "S1" ]
-  jq -e '.ts | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")' "$bc" >/dev/null
-  [ "$(jq -r 'keys | @csv' "$bc")" = '"branch","number","repo","session_id","ts","type"' ]
+  breadcrumb_file="$(breadcrumb_path "feat/x")"
+  [ -f "$breadcrumb_file" ]
+  jq -e '.number | type == "number"' "$breadcrumb_file" >/dev/null
+  [ "$(jq -r '.type' "$breadcrumb_file")" = "pr" ]
+  [ "$(jq -r '.number' "$breadcrumb_file")" = "712" ]
+  [ "$(jq -r '.repo' "$breadcrumb_file")" = "gaia-react/gaia" ]
+  [ "$(jq -r '.branch' "$breadcrumb_file")" = "feat/x" ]
+  [ "$(jq -r '.session_id' "$breadcrumb_file")" = "S1" ]
+  jq -e '.ts | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")' "$breadcrumb_file" >/dev/null
+  [ "$(jq -r 'keys | @csv' "$breadcrumb_file")" = '"branch","number","repo","session_id","ts","type"' ]
 }
 
 @test "a separator form (cd /tmp && gh pr create) also matches and writes" {
@@ -116,9 +116,9 @@ any_breadcrumb_exists() {
   run_hook "cd /tmp && gh pr create --title x" "https://github.com/gaia-react/gaia/pull/900"
   [ "$status" -eq 0 ]
 
-  bc="$(breadcrumb_path "feat/y")"
-  [ -f "$bc" ]
-  [ "$(jq -r '.number' "$bc")" = "900" ]
+  breadcrumb_file="$(breadcrumb_path "feat/y")"
+  [ -f "$breadcrumb_file" ]
+  [ "$(jq -r '.number' "$breadcrumb_file")" = "900" ]
 }
 
 # ---------- It does NOT write when it should not ----------
@@ -140,7 +140,7 @@ any_breadcrumb_exists() {
   build_repo
   cd "$REPO"
   input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Edit "gh pr create")
-  invoke_hook "$input" "$HOOK_ABS"
+  invoke_hook "$input" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
 
   any_breadcrumb_exists && return 1
@@ -164,8 +164,8 @@ any_breadcrumb_exists() {
   cd "$REPO"
   git checkout -b feat/heredoc --quiet
 
-  heredoc_cmd=$'cat > /tmp/notes.txt <<EOF\ngh pr create --title x\nEOF'
-  run_hook "$heredoc_cmd" "https://github.com/gaia-react/gaia/pull/712"
+  heredoc_command=$'cat > /tmp/notes.txt <<EOF\ngh pr create --title x\nEOF'
+  run_hook "$heredoc_command" "https://github.com/gaia-react/gaia/pull/712"
   [ "$status" -eq 0 ]
   any_breadcrumb_exists && return 1
 
@@ -179,12 +179,12 @@ any_breadcrumb_exists() {
   cd "$REPO"
   git checkout -b feat/overbound --quiet
 
-  local pad heredoc_cmd
+  local pad heredoc_command
   pad=$(printf 'x%.0s' $(seq 1 16400))
-  heredoc_cmd=$'cat > /tmp/notes.txt <<EOF\n'"$pad"$'\ngh pr create --title x\nEOF'
-  [ "${#heredoc_cmd}" -gt 16384 ] || return 1
+  heredoc_command=$'cat > /tmp/notes.txt <<EOF\n'"$pad"$'\ngh pr create --title x\nEOF'
+  [ "${#heredoc_command}" -gt 16384 ] || return 1
 
-  run_hook "$heredoc_cmd" "https://github.com/gaia-react/gaia/pull/712"
+  run_hook "$heredoc_command" "https://github.com/gaia-react/gaia/pull/712"
   [ "$status" -eq 0 ]
   [ -f "$(breadcrumb_path "feat/overbound")" ]
 }
@@ -267,7 +267,7 @@ any_breadcrumb_exists() {
 
   input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Bash "gh pr create --title x" \
     "https://github.com/gaia-react/gaia/pull/712")
-  PATH="$nojq_bin" invoke_hook "$input" "$HOOK_ABS"
+  PATH="$nojq_bin" invoke_hook "$input" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 
@@ -278,7 +278,7 @@ any_breadcrumb_exists() {
 @test "lib absent: exit 0, no file, no output" {
   # The hook resolves gh-artifact-lib.sh off its OWN location, so an absent lib
   # is expressed by staging a copy of the hook in a tree that does not carry
-  # one. Running $HOOK_ABS from a lib-less working directory would not express
+  # one. Running $HOOK_ABSOLUTE_PATH from a lib-less working directory would not express
   # it: that reaches the real checkout's lib and records normally, which is the
   # whole point of the rooting. `stage_hook_repo` is reused rather than a bare
   # tmp repo so the verb-arming load still resolves and the hook reaches the
@@ -332,11 +332,11 @@ any_breadcrumb_exists() {
 }
 
 @test "the hook file is executable" {
-  [ -x "$HOOK_ABS" ]
+  [ -x "$HOOK_ABSOLUTE_PATH" ]
 }
 
 # The verb-arming load resolves off the hook's own BASH_SOURCE, so corrupting
-# it needs a COPY of the hook staged inside the tmp repo. $HOOK_ABS would
+# it needs a COPY of the hook staged inside the tmp repo. $HOOK_ABSOLUTE_PATH would
 # always reach the real checkout's lib, where the case cannot be expressed.
 stage_hook_repo() {
   build_repo
@@ -345,15 +345,15 @@ stage_hook_repo() {
   cp "$REPO_ROOT/.claude/hooks/lib/verb-arming-walk.sh" "$REPO/.claude/hooks/lib/"
   cp "$REPO_ROOT/.claude/hooks/lib/repo-scope.sh" "$REPO/.claude/hooks/lib/"
   STAGED_HOOK="$REPO/.claude/hooks/capture-gh-artifact.sh"
-  cp "$HOOK_ABS" "$STAGED_HOOK"
+  cp "$HOOK_ABSOLUTE_PATH" "$STAGED_HOOK"
   chmod +x "$STAGED_HOOK"
 }
 
 # run_staged_hook <command> <stdout> [interpreter]
 run_staged_hook() {
-  local input interp="${3:-bash}"
+  local input interpreter="${3:-bash}"
   input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Bash "$1" "$2")
-  run bash -c 'printf %s "$1" | "$3" "$2"' _ "$input" "$STAGED_HOOK" "$interp"
+  run bash -c 'printf %s "$1" | "$3" "$2"' _ "$input" "$STAGED_HOOK" "$interpreter"
 }
 
 # ---------- The PR-to-branch edge in the usage ledger ----------
@@ -436,7 +436,7 @@ edge_file() { printf '%s/.gaia/local/telemetry/links.jsonl' "$REPO"; }
   nojq_bin="$(path_allowlist bash cat git)"
   input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Bash "gh pr create --title x" \
     "https://github.com/gaia-react/gaia/pull/80")
-  PATH="$nojq_bin" invoke_hook "$input" "$HOOK_ABS"
+  PATH="$nojq_bin" invoke_hook "$input" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 

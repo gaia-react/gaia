@@ -62,7 +62,7 @@
 # is the tier split `wiki/concepts/OS Sandbox.md` describes.
 set -euo pipefail
 
-_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _lib_dir=''
+_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _library_directory=''
 # Bracketed against an unparseable target, not merely a missing one: under
 # errexit a library carrying a syntax error aborts the hook mid-source, and a
 # hook that dies before reading its payload denies nothing while looking like it
@@ -70,7 +70,7 @@ _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _lib
 # single place that decides.
 set +e
 # shellcheck source=lib/reader-operands.sh
-[ -n "$_lib_dir" ] && [ -f "$_lib_dir/reader-operands.sh" ] && . "$_lib_dir/reader-operands.sh" 2>/dev/null
+[ -n "$_library_directory" ] && [ -f "$_library_directory/reader-operands.sh" ] && . "$_library_directory/reader-operands.sh" 2>/dev/null
 set -e
 if ! type gaia_reader_operands >/dev/null 2>&1 \
   || ! type gaia_reader_strip_quotes >/dev/null 2>&1; then
@@ -105,10 +105,10 @@ payload=$(cat)
 # jq-availability arm: refuse loudly rather than fail open when the interpreter
 # this hook reads its payload with is absent. What that buys, and the contract
 # the literals below satisfy, live in .claude/hooks/lib/jq-availability.sh.
-_jq_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _jq_lib_dir=''
+_jq_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _jq_library_directory=''
 set +e
 # shellcheck source=lib/jq-availability.sh
-[ -n "$_jq_lib_dir" ] && [ -f "$_jq_lib_dir/jq-availability.sh" ] && . "$_jq_lib_dir/jq-availability.sh" 2>/dev/null
+[ -n "$_jq_library_directory" ] && [ -f "$_jq_library_directory/jq-availability.sh" ] && . "$_jq_library_directory/jq-availability.sh" 2>/dev/null
 set -e
 if ! type gaia_require_jq >/dev/null 2>&1; then
   printf 'BLOCKED: block-secrets-read.sh cannot load lib/jq-availability.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
@@ -125,22 +125,22 @@ DENY_READ_TOOL="BLOCKED: reading key, certificate, and credential files is denie
 DENY_READ="BLOCKED: a command here reads a key, certificate, or credential path ('*.key', '*.pem', a name containing 'credential', or anything under a 'secrets/' directory). Denied to protect local secrets. Heuristic defense-in-depth, not a sandbox."
 
 deny() {
-  jq -n --arg r "$1" '{
+  jq -n --arg reason "$1" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: $r
+      permissionDecisionReason: $reason
     }
   }'
   exit 0
 }
 
 is_secret_path() {
-  local p="$1" base lower
-  p=$(gaia_reader_strip_quotes "$p")
-  [[ -n "$p" ]] || return 1
+  local candidate_path="$1" base lower
+  candidate_path=$(gaia_reader_strip_quotes "$candidate_path")
+  [[ -n "$candidate_path" ]] || return 1
 
-  base=$(basename -- "$p")
+  base=$(basename -- "$candidate_path")
   case "$base" in
     *.key | *.pem) return 0 ;;
   esac
@@ -153,7 +153,7 @@ is_secret_path() {
   # A `secrets` directory anywhere on the path. The leading and trailing slashes
   # make the comparison segment-bounded, so `mysecrets/` and `secrets-old/` do
   # not match while `a/secrets/b/c` does.
-  case "/$p/" in
+  case "/$candidate_path/" in
     */secrets/*) return 0 ;;
   esac
 
@@ -161,14 +161,14 @@ is_secret_path() {
 }
 
 process_segment() {
-  local seg="$1"
+  local segment="$1"
   local operand
 
   while IFS= read -r operand; do
     if is_secret_path "$operand"; then
       deny "$DENY_READ"
     fi
-  done < <(gaia_reader_operands "$seg")
+  done < <(gaia_reader_operands "$segment")
   return 0
 }
 
@@ -196,12 +196,12 @@ case "$tool_name" in
     ;;
 
   Bash)
-    cmd=$(jq -r '.tool_input.command // empty' <<<"$payload")
-    [[ -n "$cmd" ]] || exit 0
+    command_line=$(jq -r '.tool_input.command // empty' <<<"$payload")
+    [[ -n "$command_line" ]] || exit 0
 
-    while IFS= read -r seg; do
-      process_segment "$seg"
-    done < <(printf '%s\n' "$cmd" | tr '|&;()' '\n')
+    while IFS= read -r segment; do
+      process_segment "$segment"
+    done < <(printf '%s\n' "$command_line" | tr '|&;()' '\n')
 
     exit 0
     ;;

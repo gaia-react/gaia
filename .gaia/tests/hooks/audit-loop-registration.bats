@@ -6,7 +6,7 @@
 # changes a branch's audit state.
 #
 # GAIA_REGISTRATION_SETTINGS points the settings cases at a scratch copy of
-# settings.json, and GAIA_REGISTRATION_HOOKS_DIR points the SessionStart case at
+# settings.json, and GAIA_REGISTRATION_HOOKS_DIRECTORY points the SessionStart case at
 # a scratch hooks directory; each is how a mutant is run without touching the
 # working file. Both default to the real ones.
 #
@@ -22,7 +22,7 @@ bats_require_minimum_version 1.5.0
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SETTINGS="${GAIA_REGISTRATION_SETTINGS:-$REPO_ROOT/.claude/settings.json}"
-  HOOKS_DIR="${GAIA_REGISTRATION_HOOKS_DIR:-$REPO_ROOT/.claude/hooks}"
+  HOOKS_DIRECTORY="${GAIA_REGISTRATION_HOOKS_DIRECTORY:-$REPO_ROOT/.claude/hooks}"
   REGISTRY="$REPO_ROOT/.gaia/state-registry.json"
   BOUND_HOOK="$REPO_ROOT/.claude/hooks/audit-loop-bound.sh"
   # shellcheck source=/dev/null
@@ -121,7 +121,7 @@ setup() {
   alf_add_checkpoint 5 allowance
   cp "$ALF_STATE" "$BATS_TEST_TMPDIR/state.saved"
 
-  local stub="$BATS_TEST_TMPDIR/stubbin" home="$BATS_TEST_TMPDIR/home" names name src
+  local stub="$BATS_TEST_TMPDIR/stubbin" home="$BATS_TEST_TMPDIR/home" names name session_source
   mkdir -p "$stub" "$home"
   # gh's own wording for a branch with no pull request: the audit loop
   # checkpoint reads it as "no PR" and proceeds to its checkpoint, where a
@@ -133,15 +133,15 @@ setup() {
   [ -n "$names" ]
 
   for name in $names; do
-    [ -f "$HOOKS_DIR/$name" ] || { printf 'registered SessionStart hook is missing: %s\n' "$name" >&2; return 1; }
-    for src in clear compact startup resume; do
+    [ -f "$HOOKS_DIRECTORY/$name" ] || { printf 'registered SessionStart hook is missing: %s\n' "$name" >&2; return 1; }
+    for session_source in clear compact startup resume; do
       run env HOME="$home" PATH="$stub:$PATH" CLAUDE_PROJECT_DIR="$ALF_ROOT" \
         GAIA_DISABLE_NETWORK=1 GH_TOKEN= GITHUB_TOKEN= \
         bash -c 'cd "$1" && printf "%s" "$2" | bash "$3" >/dev/null 2>&1; exit 0' _ "$ALF_ROOT" \
-        "$(jq -n -c --arg s "$src" --arg c "$ALF_ROOT" --arg t "$BATS_TEST_TMPDIR/transcript.jsonl" \
+        "$(jq -n -c --arg s "$session_source" --arg c "$ALF_ROOT" --arg t "$BATS_TEST_TMPDIR/transcript.jsonl" \
           '{session_id: "sess-a", transcript_path: $t, cwd: $c, hook_event_name: "SessionStart", source: $s}')" \
-        "$HOOKS_DIR/$name"
-      cmp "$ALF_STATE" "$BATS_TEST_TMPDIR/state.saved" || { printf 'state changed after %s source=%s\n' "$name" "$src" >&2; return 1; }
+        "$HOOKS_DIRECTORY/$name"
+      cmp "$ALF_STATE" "$BATS_TEST_TMPDIR/state.saved" || { printf 'state changed after %s source=%s\n' "$name" "$session_source" >&2; return 1; }
     done
   done
 

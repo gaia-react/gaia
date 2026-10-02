@@ -44,9 +44,9 @@ esac
 # the literals below satisfy, live in .claude/hooks/lib/jq-availability.sh.
 # A refspec spelled without `pull/` (assembled by the shell) is outside what
 # the arming below reads anyway.
-_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _lib_dir=''
+_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _library_directory=''
 # shellcheck source=lib/jq-availability.sh
-[ -n "$_lib_dir" ] && [ -f "$_lib_dir/jq-availability.sh" ] && . "$_lib_dir/jq-availability.sh" 2>/dev/null
+[ -n "$_library_directory" ] && [ -f "$_library_directory/jq-availability.sh" ] && . "$_library_directory/jq-availability.sh" 2>/dev/null
 if ! type gaia_require_jq >/dev/null 2>&1; then
   printf 'BLOCKED: block-fork-pr-checkout.sh cannot load lib/jq-availability.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
   exit 2
@@ -54,32 +54,32 @@ fi
 gaia_require_jq 'the fork pull request checkout guard' "$input" tool_input 'checkout' 'pull/'
 
 deny() {
-  jq -n --arg r "$1" '{
+  jq -n --arg reason "$1" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: $r
+      permissionDecisionReason: $reason
     }
   }'
   exit 0
 }
 
 # Empty for any tool but Bash, so one read covers both checks.
-cmd=$(printf '%s' "$input" | jq -r 'if .tool_name == "Bash" then .tool_input.command // "" else "" end' 2>/dev/null)
-[ -n "$cmd" ] || exit 0
+command_line=$(printf '%s' "$input" | jq -r 'if .tool_name == "Bash" then .tool_input.command // "" else "" end' 2>/dev/null)
+[ -n "$command_line" ] || exit 0
 
 checkout_fragment='gh[[:space:]]+pr[[:space:]]+checkout([[:space:]]|$)'
 fetch_fragment='git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+fetch([[:space:]]|$)'
-pull_ref_pattern='pull/[0-9]+/(head|merge)'
+pull_reference_pattern='pull/[0-9]+/(head|merge)'
 
 # Arming. With the shared decision loaded, a verb only cited in data (a heredoc
 # body, a commit message) does not arm. Without it the raw match decides, which
 # over-arms: a library that cannot load must deny an armed call rather than let
 # it through, and the raw match is the widest reading available.
 verb_arming_loaded=0
-if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/verb-arming.sh" ]; then
+if [ -n "$_library_directory" ] && [ -f "$_library_directory/verb-arming.sh" ]; then
   # shellcheck source=lib/verb-arming.sh
-  if . "$_lib_dir/verb-arming.sh" 2>/dev/null && type gaia_verb_armed >/dev/null 2>&1; then
+  if . "$_library_directory/verb-arming.sh" 2>/dev/null && type gaia_verb_armed >/dev/null 2>&1; then
     verb_arming_loaded=1
   fi
 fi
@@ -87,15 +87,15 @@ fi
 checkout_armed=0
 fetch_armed=0
 if [ "$verb_arming_loaded" -eq 1 ]; then
-  if gaia_verb_armed "$checkout_fragment" 'gh pr checkout' "$cmd"; then
+  if gaia_verb_armed "$checkout_fragment" 'gh pr checkout' "$command_line"; then
     checkout_armed=1
   fi
-  if gaia_verb_armed "$fetch_fragment" 'git fetch;git -C * fetch' "$cmd" && [[ "$cmd" =~ $pull_ref_pattern ]]; then
+  if gaia_verb_armed "$fetch_fragment" 'git fetch;git -C * fetch' "$command_line" && [[ "$command_line" =~ $pull_reference_pattern ]]; then
     fetch_armed=1
   fi
 else
-  [[ "$cmd" =~ $checkout_fragment ]] && checkout_armed=1
-  [[ "$cmd" =~ $fetch_fragment ]] && [[ "$cmd" =~ $pull_ref_pattern ]] && fetch_armed=1
+  [[ "$command_line" =~ $checkout_fragment ]] && checkout_armed=1
+  [[ "$command_line" =~ $fetch_fragment ]] && [[ "$command_line" =~ $pull_reference_pattern ]] && fetch_armed=1
 fi
 [ "$checkout_armed" -eq 1 ] || [ "$fetch_armed" -eq 1 ] || exit 0
 
@@ -103,9 +103,9 @@ if [ "$verb_arming_loaded" -ne 1 ]; then
   deny "Fork pull request checkout guard: cannot load .claude/hooks/lib/verb-arming.sh, so it cannot tell whether this call checks out a pull request. It denies rather than let a fork's head into this checkout. Restore the library (it ships with the framework) and retry."
 fi
 cross_repo_loaded=0
-if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/cross-repo-refusal.sh" ]; then
+if [ -n "$_library_directory" ] && [ -f "$_library_directory/cross-repo-refusal.sh" ]; then
   # shellcheck source=lib/cross-repo-refusal.sh
-  if . "$_lib_dir/cross-repo-refusal.sh" 2>/dev/null && type gaia_cross_repo_deny_reason >/dev/null 2>&1; then
+  if . "$_library_directory/cross-repo-refusal.sh" 2>/dev/null && type gaia_cross_repo_deny_reason >/dev/null 2>&1; then
     cross_repo_loaded=1
   fi
 fi
@@ -162,7 +162,7 @@ if [ "$checkout_armed" -eq 1 ]; then
       *) pr_numbers="${pr_numbers}${target}"$'\n' ;;
     esac
   done <<EOF
-$(printf '%s\n' "$cmd" | grep -oE 'gh[[:space:]]+pr[[:space:]]+checkout([[:space:]]+[^;&|]*)?')
+$(printf '%s\n' "$command_line" | grep -oE 'gh[[:space:]]+pr[[:space:]]+checkout([[:space:]]+[^;&|]*)?')
 EOF
 fi
 
@@ -172,7 +172,7 @@ if [ "$fetch_armed" -eq 1 ]; then
     reference="${reference#pull/}"
     pr_numbers="${pr_numbers}${reference%%/*}"$'\n'
   done <<EOF
-$(printf '%s\n' "$cmd" | grep -oE "$pull_ref_pattern")
+$(printf '%s\n' "$command_line" | grep -oE "$pull_reference_pattern")
 EOF
 fi
 

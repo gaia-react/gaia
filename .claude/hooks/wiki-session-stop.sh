@@ -13,9 +13,9 @@ set -euo pipefail
 trap 'exit 0' ERR
 
 [ -d wiki ] || exit 0
-GIT_DIR=$(git rev-parse --git-dir 2>/dev/null) || exit 0
+git_directory=$(git rev-parse --git-dir 2>/dev/null) || exit 0
 
-session_marker="$GIT_DIR/claude-session-start"
+session_marker="$git_directory/claude-session-start"
 [ -f "$session_marker" ] || exit 0
 
 start_sha=$(cat "$session_marker" 2>/dev/null) || exit 0

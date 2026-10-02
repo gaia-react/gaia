@@ -35,7 +35,7 @@
 #
 # The function was already dependency-light and location-independent by design
 # -- it needs `GAIA_HOOK_NAME_RE` and its three arguments, and takes SETTINGS as
-# an argument rather than reading the ambient `SETTINGS_ABS` every hooks suite
+# an argument rather than reading the ambient `SETTINGS_ABSOLUTE_PATH` every hooks suite
 # resolves -- so lifting it here moves nothing it depended on.
 # `run-hook.sh` sources this file and re-exports the function, so every suite
 # converted onto it keeps calling it exactly as before.
@@ -83,7 +83,7 @@
 # selects nothing, and when nothing it selects runs the hook, so an assertion
 # cannot pass over an empty set.
 #
-# SETTINGS is an argument rather than the `SETTINGS_ABS` every hooks suite
+# SETTINGS is an argument rather than the `SETTINGS_ABSOLUTE_PATH` every hooks suite
 # already resolves, because a suite whose only remaining read of that variable
 # happened inside this function would assign it and never mention it again,
 # which is an unused-variable warning at the `.bats` severity floor. That choice

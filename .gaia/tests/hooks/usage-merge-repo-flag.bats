@@ -15,23 +15,23 @@ bats_require_minimum_version 1.5.0
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/usage-merge-env.sh"
   # shellcheck disable=SC2034  # read by build_repo in the helper
-  SRC="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
-  TMP="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
+  SOURCE_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
+  TEMPORARY_DIRECTORY="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
   export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state" GAIA_RATES_FEED_DISABLE=1
   unset CLAUDE_CODE_SESSION_ID GAIA_TALLY_PROJECTS_ROOT GITHUB_ACTIONS GAIA_USAGE_HOOKS_DISABLE
   unset GAIA_LEDGER_LOCK_FORCE_FALLBACK GAIA_LEDGER_LOCK_TIMEOUT_SECONDS GAIA_USAGE_MERGE_CAP_SECS GAIA_USAGE_RENDER_CAP_SECS
   export GAIA_LEDGER_LOCK_POLL_SECONDS=0.1
   export GIT_AUTHOR_NAME="GAIA Test" GIT_AUTHOR_EMAIL="gaia-test@example.com"
   export GIT_COMMITTER_NAME="GAIA Test" GIT_COMMITTER_EMAIL="gaia-test@example.com"
-  GHSTUB_DIR="$TMP/ghstub"
-  mkdir -p "$GHSTUB_DIR" "$TMP/bin"
-  export GHSTUB_DIR
+  GH_STUB_DIRECTORY="$TEMPORARY_DIRECTORY/ghstub"
+  mkdir -p "$GH_STUB_DIRECTORY" "$TEMPORARY_DIRECTORY/bin"
+  export GH_STUB_DIRECTORY
   make_stubs
-  export PATH="$TMP/bin:$PATH"
+  export PATH="$TEMPORARY_DIRECTORY/bin:$PATH"
   build_repo
   {
-    seg branch:fix/foo s74 2026-09-23T09:00:00Z 400000 40000
-  } >"$TD/usage.jsonl"
+    segment_row branch:fix/foo s74 2026-09-23T09:00:00Z 400000 40000
+  } >"$TELEMETRY_DIRECTORY/usage.jsonl"
   gh_view 45 45 fix/foo MERGED 2026-09-25T02:00:00Z
 }
 
@@ -41,9 +41,9 @@ assert_foreign_ignored() {
   [ "$status" -eq 0 ]
   lacks "pr:45"
   lacks "tokens:"
-  [ ! -f "$TD/links.jsonl" ] || [ "$(merge_rows 45)" -eq 0 ] || return 1
-  [ ! -f "$TD/links.jsonl" ] || ! grep -q '"pr:45"' "$TD/links.jsonl" || return 1
-  [ ! -f "$GHSTUB_DIR/argv.log" ] || ! grep -q 'pr view 45' "$GHSTUB_DIR/argv.log" || return 1
+  [ ! -f "$TELEMETRY_DIRECTORY/links.jsonl" ] || [ "$(merge_rows 45)" -eq 0 ] || return 1
+  [ ! -f "$TELEMETRY_DIRECTORY/links.jsonl" ] || ! grep -q '"pr:45"' "$TELEMETRY_DIRECTORY/links.jsonl" || return 1
+  [ ! -f "$GH_STUB_DIRECTORY/argv.log" ] || ! grep -q 'pr view 45' "$GH_STUB_DIRECTORY/argv.log" || return 1
 }
 
 @test "a repo flag after the number leaves no resolvable operand" {
@@ -79,7 +79,7 @@ assert_foreign_ignored() {
 
 @test "a PR URL for the origin repository still resolves, https and ssh remotes" {
   # The stub answers a URL operand from view.json.
-  cp "$GHSTUB_DIR/view-45.json" "$GHSTUB_DIR/view.json"
+  cp "$GH_STUB_DIRECTORY/view-45.json" "$GH_STUB_DIRECTORY/view.json"
   git -C "$REPO" remote add origin git@github.com:O/R.git
   run_merge "gh pr merge https://github.com/o/r/pull/45"
   [ "$status" -eq 0 ]
@@ -91,7 +91,7 @@ assert_foreign_ignored() {
   [ "$(merge_rows 45)" -eq 2 ]
   # The stub's view.json fallback answers an operand-less read too, so the
   # operand itself must have reached gh.
-  [ "$(grep -c '^pr view https://github.com/o/r/pull/45 ' "$GHSTUB_DIR/argv.log")" -eq 2 ]
+  [ "$(grep -c '^pr view https://github.com/o/r/pull/45 ' "$GH_STUB_DIRECTORY/argv.log")" -eq 2 ]
 }
 
 # ---------- A merge aimed at another repository is terminal ----------
@@ -106,13 +106,13 @@ use_feature_branch() {
 }
 
 # argv_has <pattern>: the gh stub's argv log holds a line matching the pattern.
-argv_has() { [ -f "$GHSTUB_DIR/argv.log" ] && grep -q -- "$1" "$GHSTUB_DIR/argv.log"; }
+argv_has() { [ -f "$GH_STUB_DIRECTORY/argv.log" ] && grep -q -- "$1" "$GH_STUB_DIRECTORY/argv.log"; }
 
 # no_trace_of_12: neither a merge row nor a pr edge was written for PR 12.
 no_trace_of_12() {
-  [ -f "$TD/links.jsonl" ] || return 0
+  [ -f "$TELEMETRY_DIRECTORY/links.jsonl" ] || return 0
   [ "$(merge_rows 12)" -eq 0 ] || return 1
-  grep -q '"pr:12"' "$TD/links.jsonl" && return 1
+  grep -q '"pr:12"' "$TELEMETRY_DIRECTORY/links.jsonl" && return 1
   return 0
 }
 
@@ -121,9 +121,9 @@ assert_nothing_touched() {
   lacks "[PR cost]" || return 1
   lacks "pr:12" || return 1
   lacks "pr:45" || return 1
-  if [ -f "$TD/links.jsonl" ]; then
-    [ "$(jq -s '[.[] | select(.kind == "merge")] | length' "$TD/links.jsonl")" -eq 0 ] || return 1
-    grep -q '"pr:' "$TD/links.jsonl" && return 1
+  if [ -f "$TELEMETRY_DIRECTORY/links.jsonl" ]; then
+    [ "$(jq -s '[.[] | select(.kind == "merge")] | length' "$TELEMETRY_DIRECTORY/links.jsonl")" -eq 0 ] || return 1
+    grep -q '"pr:' "$TELEMETRY_DIRECTORY/links.jsonl" && return 1
   fi
   argv_has '^pr view' && return 1
   return 0
@@ -147,15 +147,15 @@ foreign_spellings() {
 }
 
 run_foreign_spellings() {
-  local c
+  local foreign_command
   git -C "$REPO" remote add origin https://github.com/o/r.git
-  while IFS= read -r c; do
-    rm -f "$GHSTUB_DIR/argv.log"
-    run_merge "$c"
-    assert_nothing_touched || { printf 'failed for: %s\n%s\n' "$c" "$output" >&2; return 1; }
+  while IFS= read -r foreign_command; do
+    rm -f "$GH_STUB_DIRECTORY/argv.log"
+    run_merge "$foreign_command"
+    assert_nothing_touched || { printf 'failed for: %s\n%s\n' "$foreign_command" "$output" >&2; return 1; }
   done < <(foreign_spellings)
   # A multi-line body ahead of the flag cannot hide it.
-  rm -f "$GHSTUB_DIR/argv.log"
+  rm -f "$GH_STUB_DIRECTORY/argv.log"
   run_merge $'gh pr merge 45 --body "line one\nline two" --repo x/y'
   assert_nothing_touched
 }
@@ -218,7 +218,7 @@ run_foreign_spellings() {
   no_trace_of_12
   argv_has '^pr view' && return 1
   # A multi-line body cuts the statement inside a quote, hiding the operand.
-  rm -f "$GHSTUB_DIR/argv.log"
+  rm -f "$GH_STUB_DIRECTORY/argv.log"
   run_merge $'gh pr merge --body "line one\nline two" 45'
   [ "$status" -eq 0 ]
   lacks "pr:12"
@@ -229,16 +229,16 @@ run_foreign_spellings() {
 
 @test "a flag value that looks like a number never becomes the operand" {
   use_feature_branch OPEN
-  local c
-  for c in "--subject 99" "-t 99" "--body 99" "-b 99" "--match-head-commit 99" "-A 99" "--author-email 99"; do
-    rm -f "$GHSTUB_DIR/argv.log"
-    run_merge "gh pr merge $c"
+  local flag_spelling
+  for flag_spelling in "--subject 99" "-t 99" "--body 99" "-b 99" "--match-head-commit 99" "-A 99" "--author-email 99"; do
+    rm -f "$GH_STUB_DIRECTORY/argv.log"
+    run_merge "gh pr merge $flag_spelling"
     [ "$status" -eq 0 ]
-    has_line "[PR cost] pr:12 branch:feat/cur" || { printf 'failed for: %s\n' "$c" >&2; return 1; }
+    has_line "[PR cost] pr:12 branch:feat/cur" || { printf 'failed for: %s\n' "$flag_spelling" >&2; return 1; }
     argv_has '^pr view 99' && return 1
     argv_has '^pr view --json' || return 1
   done
-  rm -f "$GHSTUB_DIR/argv.log"
+  rm -f "$GH_STUB_DIRECTORY/argv.log"
   run_merge "gh pr merge -t 99 45"
   argv_has '^pr view 45 '
   argv_has '^pr view 99' && return 1
@@ -298,7 +298,7 @@ slow_render() {
   run_merge "gh pr merge 108"
   grep -qF -- '--branch x$(touch pwn)' <<<"$output"
 
-  cp "$SRC/.gaia/scripts/usage-render-lib.sh" "$REPO/.gaia/scripts/usage-render-lib.sh"
+  cp "$SOURCE_ROOT/.gaia/scripts/usage-render-lib.sh" "$REPO/.gaia/scripts/usage-render-lib.sh"
   git -C "$REPO" checkout -q -b 'x$(touch-pwn)'
   slow_render 8
   export GAIA_USAGE_RENDER_CAP_SECS=1

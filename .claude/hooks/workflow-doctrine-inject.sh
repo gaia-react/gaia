@@ -58,13 +58,13 @@ LC_ALL=C
 
 here="${BASH_SOURCE[0]}"
 case "$here" in */*) here="${here%/*}" ;; *) here=. ;; esac
-doc="$here/../doctrine/execution.md"
+doctrine_document="$here/../doctrine/execution.md"
 scripts="$here/../../.gaia/scripts"
-max_bytes=3584
+maximum_bytes=3584
 
 payload=$(cat)
 
-event="" sid="" source="" tool="" wt="" cwd="" cmd=""
+event="" session_id="" source="" tool="" worktree_path="" cwd="" tool_command=""
 have_jq=0
 if command -v jq >/dev/null 2>&1; then
   have_jq=1
@@ -73,11 +73,11 @@ if command -v jq >/dev/null 2>&1; then
     [ s(.hook_event_name), s(.session_id), s(.source), s(.tool_name),
       s(.tool_response.worktreePath), s(.cwd), s(.tool_input.command) ]
     | join("\u001f")' <<<"$payload") || exit 0
-  IFS=$'\037' read -r -d '' event sid source tool wt cwd cmd <<<"$fields" || true
+  IFS=$'\037' read -r -d '' event session_id source tool worktree_path cwd tool_command <<<"$fields" || true
 else
   event=$(printf '%s\n' "$payload" | sed -n 's/.*"hook_event_name"[[:space:]]*:[[:space:]]*"\([A-Za-z]*\)".*/\1/p' | sed -n 1p)
   [ "$event" = SessionStart ] || exit 0
-  sid=$(printf '%s\n' "$payload" | sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([A-Za-z0-9_-]*\)".*/\1/p' | sed -n 1p)
+  session_id=$(printf '%s\n' "$payload" | sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([A-Za-z0-9_-]*\)".*/\1/p' | sed -n 1p)
   source=$(printf '%s\n' "$payload" | sed -n 's/.*"source"[[:space:]]*:[[:space:]]*"\([A-Za-z]*\)".*/\1/p' | sed -n 1p)
 fi
 
@@ -87,12 +87,12 @@ case "$event" in
     case "$tool" in
       EnterWorktree) ;;
       Bash)
-        _va="$here/lib/verb-arming.sh"
+        _verb_arming_library="$here/lib/verb-arming.sh"
         # shellcheck source=/dev/null
-        [ -f "$_va" ] && . "$_va" 2>/dev/null
+        [ -f "$_verb_arming_library" ] && . "$_verb_arming_library" 2>/dev/null
         type gaia_verb_armed >/dev/null 2>&1 || exit 0
-        frag='(git([[:space:]]+-C[[:space:]]+("[^"]*"|'"'"'[^'"'"']*'"'"'|[^[:space:]]+))?[[:space:]]+(checkout|switch)|gh[[:space:]]+pr[[:space:]]+checkout)([[:space:]]|$)'
-        if gaia_verb_armed "$frag" 'git checkout;git switch;git -C * checkout;git -C * switch;gh pr checkout' "$cmd"; then
+        verb_pattern='(git([[:space:]]+-C[[:space:]]+("[^"]*"|'"'"'[^'"'"']*'"'"'|[^[:space:]]+))?[[:space:]]+(checkout|switch)|gh[[:space:]]+pr[[:space:]]+checkout)([[:space:]]|$)'
+        if gaia_verb_armed "$verb_pattern" 'git checkout;git switch;git -C * checkout;git -C * switch;gh pr checkout' "$tool_command"; then
           :
         else
           exit 0
@@ -106,7 +106,7 @@ esac
 
 # Which tree the session is in.
 tree=""
-if [ "$event" = PostToolUse ] && [ "$tool" = EnterWorktree ]; then tree="$wt"; fi
+if [ "$event" = PostToolUse ] && [ "$tool" = EnterWorktree ]; then tree="$worktree_path"; fi
 [ -n "$tree" ] || tree="$cwd"
 [ -n "$tree" ] || tree="$PWD"
 case "$tree" in
@@ -118,21 +118,21 @@ esac
 # Repository state is read from git's on-disk layout after one git call, which
 # costs a third of the git processes the plumbing commands would. A reftable
 # repository or any HEAD this reader does not recognize falls back to git.
-gd=$(git -C "$tree" rev-parse --absolute-git-dir 2>/dev/null) || exit 0
-[ -n "$gd" ] || exit 0
+git_directory=$(git -C "$tree" rev-parse --absolute-git-dir 2>/dev/null) || exit 0
+[ -n "$git_directory" ] || exit 0
 
 # A linked worktree's git dir carries a commondir file; the main checkout's
 # does not.
 linked=0
-common="$gd"
-if [ -f "$gd/commondir" ]; then
+common="$git_directory"
+if [ -f "$git_directory/commondir" ]; then
   linked=1
-  cdir=""
-  IFS= read -r cdir <"$gd/commondir" || true
-  case "$cdir" in
+  commondir_content=""
+  IFS= read -r commondir_content <"$git_directory/commondir" || true
+  case "$commondir_content" in
     "") exit 0 ;;
-    /*) common="$cdir" ;;
-    *) common="$gd/$cdir" ;;
+    /*) common="$commondir_content" ;;
+    *) common="$git_directory/$commondir_content" ;;
   esac
 fi
 
@@ -141,7 +141,7 @@ raw=""
 head_ok=0
 if [ ! -d "$common/reftable" ]; then
   headline=""
-  IFS= read -r headline <"$gd/HEAD" || true
+  IFS= read -r headline <"$git_directory/HEAD" || true
   case "$headline" in
     "ref: refs/heads/.invalid") ;;
     "ref: refs/heads/"?*) raw="${headline#ref: refs/heads/}"; head_ok=1 ;;
@@ -152,9 +152,9 @@ if [ ! -d "$common/reftable" ]; then
 fi
 if [ "$head_ok" = 0 ]; then
   # symbolic-ref exits 1 on a detached HEAD and 128 outside a repository.
-  rc=0
-  raw=$(git -C "$tree" symbolic-ref --quiet --short HEAD 2>/dev/null) || rc=$?
-  case "$rc" in
+  exit_status=0
+  raw=$(git -C "$tree" symbolic-ref --quiet --short HEAD 2>/dev/null) || exit_status=$?
+  case "$exit_status" in
     0) ;;
     1) raw="" ;;
     *) exit 0 ;;
@@ -163,23 +163,23 @@ fi
 
 # Marker work is possible only with jq and a valid session id.
 use_marker=0
-if [ "$have_jq" = 1 ] && [[ "$sid" =~ ^[A-Za-z0-9_-]{1,64}$ ]]; then use_marker=1; fi
+if [ "$have_jq" = 1 ] && [[ "$session_id" =~ ^[A-Za-z0-9_-]{1,64}$ ]]; then use_marker=1; fi
 refresh=0
 if [ "$event" = SessionStart ]; then
   case "$source" in clear | compact | resume) refresh=1 ;; esac
 fi
 
 # Names that survive normalization unchanged skip the library.
-norm=""
+normalized_branch_name=""
 if [ -n "$raw" ]; then
   case "$raw" in
     worktree-* | *+*)
       # shellcheck source=/dev/null
       . "$scripts/branch-name-lib.sh" 2>/dev/null || exit 0
       type gaia_branch_normalize >/dev/null 2>&1 || exit 0
-      norm=$(gaia_branch_normalize "$raw")
+      normalized_branch_name=$(gaia_branch_normalize "$raw")
       ;;
-    *) norm="$raw" ;;
+    *) normalized_branch_name="$raw" ;;
   esac
 fi
 
@@ -188,20 +188,20 @@ fi
 # ref); the ledger's function answers anything they leave open, such as a
 # packed main or a master default.
 default=""
-if [ -n "$norm" ] && [ "$norm" != HEAD ]; then
-  ref=""
+if [ -n "$normalized_branch_name" ] && [ "$normalized_branch_name" != HEAD ]; then
+  default_branch_reference=""
   if [ -d "$common/reftable" ]; then
-    ref=$(git -C "$tree" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null) || ref=""
+    default_branch_reference=$(git -C "$tree" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null) || default_branch_reference=""
   else
     if [ -f "$common/refs/remotes/origin/HEAD" ]; then
-      IFS= read -r ref <"$common/refs/remotes/origin/HEAD" || ref=""
+      IFS= read -r default_branch_reference <"$common/refs/remotes/origin/HEAD" || default_branch_reference=""
     fi
-    case "$ref" in "ref: "*) ref="${ref#ref: }" ;; *) ref="" ;; esac
+    case "$default_branch_reference" in "ref: "*) default_branch_reference="${default_branch_reference#ref: }" ;; *) default_branch_reference="" ;; esac
   fi
-  ref="${ref#refs/remotes/origin/}"
-  if [ -n "$ref" ]; then
-    default="$ref"
-  elif [ "$norm" = main ]; then
+  default_branch_reference="${default_branch_reference#refs/remotes/origin/}"
+  if [ -n "$default_branch_reference" ]; then
+    default="$default_branch_reference"
+  elif [ "$normalized_branch_name" = main ]; then
     default=main
   elif [ ! -d "$common/reftable" ] && { [ -f "$common/refs/heads/main" ] || [ -f "$common/refs/remotes/origin/main" ]; }; then
     default=main
@@ -215,7 +215,7 @@ fi
 
 # A linked worktree injects whatever its branch.
 inject="$linked"
-if [ -n "$norm" ] && [ "$norm" != HEAD ] && [ "$norm" != "$default" ]; then inject=1; fi
+if [ -n "$normalized_branch_name" ] && [ "$normalized_branch_name" != HEAD ] && [ "$normalized_branch_name" != "$default" ]; then inject=1; fi
 
 # The main checkout's root, which anchors the marker. A standard layout (git
 # dir named .git) reads straight off the common directory; any other layout
@@ -223,10 +223,10 @@ if [ -n "$norm" ] && [ "$norm" != HEAD ] && [ "$norm" != "$default" ]; then inje
 marker=""
 main_root=""
 resolve_marker() {
-  local c="$common"
-  if [ "$linked" = 1 ]; then c=$(cd "$common" 2>/dev/null && pwd -P) || c=""; fi
-  case "$c" in
-    /?*/.git) main_root="${c%/.git}" ;;
+  local resolved_common_directory="$common"
+  if [ "$linked" = 1 ]; then resolved_common_directory=$(cd "$common" 2>/dev/null && pwd -P) || resolved_common_directory=""; fi
+  case "$resolved_common_directory" in
+    /?*/.git) main_root="${resolved_common_directory%/.git}" ;;
     *)
       type gaia_resolve_main_root >/dev/null 2>&1 || {
         # shellcheck source=/dev/null
@@ -236,7 +236,7 @@ resolve_marker() {
       ;;
   esac
   [ -n "$main_root" ] || return 1
-  marker="$main_root/.gaia/local/cache/doctrine-injected.$sid"
+  marker="$main_root/.gaia/local/cache/doctrine-injected.$session_id"
 }
 
 if [ "$inject" = 0 ]; then
@@ -248,10 +248,10 @@ fi
 
 # Doctrine file: present, readable, and within the byte cap. At most one byte
 # past the cap is read, so an oversize file costs the same as a full one.
-[ -f "$doc" ] && [ -r "$doc" ] || exit 0
+[ -f "$doctrine_document" ] && [ -r "$doctrine_document" ] || exit 0
 content=""
-IFS= read -r -d '' -n $((max_bytes + 1)) content <"$doc" || true
-[ "${#content}" -le "$max_bytes" ] || exit 0
+IFS= read -r -d '' -n $((maximum_bytes + 1)) content <"$doctrine_document" || true
+[ "${#content}" -le "$maximum_bytes" ] || exit 0
 
 # Key, mirroring the ledger's key derivation: detached, an agent worktree
 # branch, and the default branch are session spend.
@@ -261,12 +261,12 @@ type gaia_usage_valid_ref >/dev/null 2>&1 || {
 }
 type gaia_usage_valid_ref >/dev/null 2>&1 || exit 0
 case "$raw" in
-  "" | worktree-agent-*) key="session:$sid" ;;
+  "" | worktree-agent-*) key="session:$session_id" ;;
   *)
-    if [ -z "$norm" ] || [ "$norm" = HEAD ] || [ "$norm" = "$default" ]; then
-      key="session:$sid"
+    if [ -z "$normalized_branch_name" ] || [ "$normalized_branch_name" = HEAD ] || [ "$normalized_branch_name" = "$default" ]; then
+      key="session:$session_id"
     else
-      key=$(gaia_usage_branch_key "$norm") || exit 0
+      key=$(gaia_usage_branch_key "$normalized_branch_name") || exit 0
     fi
     ;;
 esac
@@ -288,7 +288,7 @@ if gaia_usage_valid_ref "$key"; then
   case "$key" in
     branch:%*) ;;
     branch:*) keyline="Branch key: $key. Link its initiative once with: $run .gaia/scripts/usage.sh link $key research:<topic>-<date> (or issue:<n>)" ;;
-    session:*) keyline="Session key: $key. Bind research with: $run .gaia/scripts/usage.sh declare research:<topic>-<date> --session $sid" ;;
+    session:*) keyline="Session key: $key. Bind research with: $run .gaia/scripts/usage.sh declare research:<topic>-<date> --session $session_id" ;;
   esac
 fi
 
@@ -305,11 +305,11 @@ if [ "$have_jq" = 1 ]; then
   text=${text//$'\r'/\\r}
   case "$text" in
     *[![:print:]]*)
-      out=$(jq -n --arg e "$event" --arg k "$keyline" --rawfile d "$doc" \
-        '{hookSpecificOutput:{hookEventName:$e, additionalContext:(if $k == "" then $d else $k + "\n" + $d end)}}') || exit 0
+      hook_output=$(jq -n --arg event_name "$event" --arg keyline "$keyline" --rawfile doctrine "$doctrine_document" \
+        '{hookSpecificOutput:{hookEventName:$event_name, additionalContext:(if $keyline == "" then $doctrine else $keyline + "\n" + $doctrine end)}}') || exit 0
       ;;
     *)
-      out='{
+      hook_output='{
   "hookSpecificOutput": {
     "hookEventName": "'"$event"'",
     "additionalContext": "'"$text"'"
@@ -317,21 +317,21 @@ if [ "$have_jq" = 1 ]; then
 }'
       ;;
   esac
-  [ -n "$out" ] || exit 0
-  printf '%s\n' "$out"
+  [ -n "$hook_output" ] || exit 0
+  printf '%s\n' "$hook_output"
 else
-  body=$({ [ -z "$keyline" ] || printf '%s\n' "$keyline"; cat "$doc"; } | awk '
-    function esc(s,   i, c, o) {
-      o = ""
-      for (i = 1; i <= length(s); i++) {
-        c = substr(s, i, 1)
-        if (c == "\\") o = o "\\\\"
-        else if (c == "\"") o = o "\\\""
-        else if (c == "\t") o = o "\\t"
-        else if (c == "\r") o = o "\\r"
-        else o = o c
+  body=$({ [ -z "$keyline" ] || printf '%s\n' "$keyline"; cat "$doctrine_document"; } | awk '
+    function esc(text,   i, character, escaped_text) {
+      escaped_text = ""
+      for (i = 1; i <= length(text); i++) {
+        character = substr(text, i, 1)
+        if (character == "\\") escaped_text = escaped_text "\\\\"
+        else if (character == "\"") escaped_text = escaped_text "\\\""
+        else if (character == "\t") escaped_text = escaped_text "\\t"
+        else if (character == "\r") escaped_text = escaped_text "\\r"
+        else escaped_text = escaped_text character
       }
-      return o
+      return escaped_text
     }
     { printf "%s\\n", esc($0) }') || exit 0
   [ -n "$body" ] || exit 0
@@ -343,11 +343,11 @@ fi
 if [ "$use_marker" = 1 ]; then
   cache="${marker%/*}"
   if [ -d "$cache" ] || mkdir -p "$cache" 2>/dev/null; then
-    tmp="$cache/.doctrine-injected.$sid.$$"
-    if printf '%s\n' "$key" >"$tmp" 2>/dev/null; then
-      mv -f "$tmp" "$marker" 2>/dev/null || rm -f "$tmp" 2>/dev/null
+    temporary_marker_file="$cache/.doctrine-injected.$session_id.$$"
+    if printf '%s\n' "$key" >"$temporary_marker_file" 2>/dev/null; then
+      mv -f "$temporary_marker_file" "$marker" 2>/dev/null || rm -f "$temporary_marker_file" 2>/dev/null
     else
-      rm -f "$tmp" 2>/dev/null
+      rm -f "$temporary_marker_file" 2>/dev/null
     fi
   fi
 fi

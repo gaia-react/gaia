@@ -18,7 +18,7 @@ payload=$(cat)
 tool_name=$(jq -r '.tool_name // ""' <<<"$payload")
 [ "$tool_name" = "Bash" ] || exit 0
 
-cmd=$(jq -r '.tool_input.command // ""' <<<"$payload")
+command=$(jq -r '.tool_input.command // ""' <<<"$payload")
 
 # The verb fragment mirrors the mandated `git -C <path> commit|push` form
 # (.claude/rules/shell-cwd.md): an optional `-C <path>` group between `git`
@@ -30,14 +30,14 @@ cmd=$(jq -r '.tool_input.command // ""' <<<"$payload")
 # spaces, which the fragment's space-free group misses, still arms. Broader
 # arming here is the safe direction; this hook only records a tally row. A
 # quoted verb inside prose still arms; fail-closed, no safe narrowing.
-_va_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+_hook_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 # shellcheck source=/dev/null
-[ -n "${_va_lib:-}" ] && "${BASH:-bash}" -n "$_va_lib/verb-arming.sh" 2>/dev/null && . "$_va_lib/verb-arming.sh" 2>/dev/null || true
+[ -n "${_hook_library_directory:-}" ] && "${BASH:-bash}" -n "$_hook_library_directory/verb-arming.sh" 2>/dev/null && . "$_hook_library_directory/verb-arming.sh" 2>/dev/null || true
 type gaia_verb_armed >/dev/null 2>&1 || exit 0
 
-frag='git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+(commit|push)([[:space:]]|$)'
+verb_pattern='git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+(commit|push)([[:space:]]|$)'
 words='git commit;git push;git -C * commit;git -C * push'
-if gaia_verb_armed "$frag" "$words" "$cmd"; then
+if gaia_verb_armed "$verb_pattern" "$words" "$command"; then
   :
 else
   exit 0
@@ -45,9 +45,9 @@ fi
 
 # Source the shared resolver first, from this hook's own checkout via
 # BASH_SOURCE (never the process cwd): the cheap gate below needs
-# gaia_resolve_main_root before resolve_active_plan_dir (which defers its own
+# gaia_resolve_main_root before resolve_active_plan_directory (which defers its own
 # copy of this same source into its body) ever runs. Then the plan-folder lib,
-# off the same $_va_lib the verb-arming load above resolved.
+# off the same $_hook_library_directory the verb-arming load above resolved.
 # Sourcing is side-effect-free and near-free; the expensive work
 # (token-tally.sh's transcript parse) still runs only past the gate.
 #
@@ -109,8 +109,8 @@ gaia_scripts="$gaia_scripts/.gaia/scripts"
 # shellcheck source=/dev/null
 "${BASH:-bash}" -n "$gaia_scripts/main-root-lib.sh" 2>/dev/null && . "$gaia_scripts/main-root-lib.sh" 2>/dev/null || true
 # shellcheck source=/dev/null
-"${BASH:-bash}" -n "${_va_lib:-}/gaia-active-plan.sh" 2>/dev/null && . "${_va_lib:-}/gaia-active-plan.sh" 2>/dev/null || true
-type resolve_active_plan_dir >/dev/null 2>&1 || exit 0
+"${BASH:-bash}" -n "${_hook_library_directory:-}/gaia-active-plan.sh" 2>/dev/null && . "${_hook_library_directory:-}/gaia-active-plan.sh" 2>/dev/null || true
+type resolve_active_plan_directory >/dev/null 2>&1 || exit 0
 
 # Cheap negative gate: no live plan RUNNING sentinel at all, skip before paying
 # for token-tally.sh's transcript parse. Anchored to the MAIN checkout: a plan
@@ -120,19 +120,19 @@ type resolve_active_plan_dir >/dev/null 2>&1 || exit 0
 # worktree would find nothing and silently lose the execute row.
 main_root="$(gaia_resolve_main_root 2>/dev/null)" || exit 0
 has_plan=0
-for rf in "$main_root"/.gaia/local/plans/*/RUNNING "$main_root"/.gaia/local/specs/*/plan/RUNNING "$main_root"/.gaia/local/specs/*/plan-*/RUNNING; do
-  [ -f "$rf" ] || continue
+for running_file in "$main_root"/.gaia/local/plans/*/RUNNING "$main_root"/.gaia/local/specs/*/plan/RUNNING "$main_root"/.gaia/local/specs/*/plan-*/RUNNING; do
+  [ -f "$running_file" ] || continue
   has_plan=1
   break
 done
 [ "$has_plan" -eq 1 ] || exit 0
 
-plan_dir="$(resolve_active_plan_dir)"
-[ -n "$plan_dir" ] || exit 0
+plan_directory="$(resolve_active_plan_directory)"
+[ -n "$plan_directory" ] || exit 0
 
-feature_key="$(resolve_feature_key "$plan_dir")"
-slug="$(basename "$plan_dir")"
-sid=$(jq -r '.session_id // ""' <<<"$payload")
+feature_key="$(resolve_feature_key "$plan_directory")"
+slug="$(basename "$plan_directory")"
+session_id=$(jq -r '.session_id // ""' <<<"$payload")
 
 # Route the feature key to the flag matching its shape. An unclassifiable key
 # (neither SPEC- nor PLAN-, e.g. a bare `plan`/`plan-2` basename from a failed
@@ -156,7 +156,7 @@ esac
 # `|| true`, so the tally is silently dropped); bash 4.4+ tolerates it.
 bash "$gaia_scripts/token-tally.sh" \
   --action execute ${id_flag[@]+"${id_flag[@]}"} --plan-slug "$slug" \
-  --out-dir "$plan_dir" --session-id "$sid" \
+  --out-dir "$plan_directory" --session-id "$session_id" \
   ${GAIA_TALLY_PROJECTS_ROOT:+--projects-root "$GAIA_TALLY_PROJECTS_ROOT"} >/dev/null 2>&1 || true
 
 exit 0

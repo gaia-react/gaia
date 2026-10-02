@@ -26,10 +26,10 @@ payload=$(cat)
 # jq-availability arm: refuse loudly rather than fail open when the interpreter
 # this hook reads its payload with is absent. What that buys, and the contract
 # the literals below satisfy, live in .claude/hooks/lib/jq-availability.sh.
-_jq_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _jq_lib_dir=''
+_jq_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _jq_library_directory=''
 set +e
 # shellcheck source=lib/jq-availability.sh
-[ -n "$_jq_lib_dir" ] && [ -f "$_jq_lib_dir/jq-availability.sh" ] && . "$_jq_lib_dir/jq-availability.sh" 2>/dev/null
+[ -n "$_jq_library_directory" ] && [ -f "$_jq_library_directory/jq-availability.sh" ] && . "$_jq_library_directory/jq-availability.sh" 2>/dev/null
 set -e
 if ! type gaia_require_jq >/dev/null 2>&1; then
   printf 'BLOCKED: block-main-destructive-git.sh cannot load lib/jq-availability.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
@@ -37,11 +37,11 @@ if ! type gaia_require_jq >/dev/null 2>&1; then
 fi
 gaia_require_jq 'the main-branch destructive-git guard' "$payload" tool_input 'git'
 
-cmd=$(echo "$payload" | jq -r '.tool_input.command // empty')
+command=$(echo "$payload" | jq -r '.tool_input.command // empty')
 
 # Only act on git commands, short-circuit everything else. (Fast path only;
 # correctness comes from the command-position scan below.)
-[[ "$cmd" =~ (^|[[:space:]&;|()])git([[:space:]]|$) ]] || exit 0
+[[ "$command" =~ (^|[[:space:]&;|()])git([[:space:]]|$) ]] || exit 0
 
 # Repo-scope: this repo's main-branch policy governs this repo only. A git
 # command aimed at a different repo (e.g. `git -C ../other push origin main`
@@ -78,16 +78,16 @@ cmd=$(echo "$payload" | jq -r '.tool_input.command // empty')
 # stale, and a corrected one would start the same decay again.
 # gaia:maintainer-only:end
 _hook_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || _hook_root=''
-_scope_lib="$_hook_root/.claude/hooks/lib/repo-scope.sh"
-set +e; [ -n "$_hook_root" ] && [ -f "$_scope_lib" ] && . "$_scope_lib" 2>/dev/null; set -e
+_repo_scope_library="$_hook_root/.claude/hooks/lib/repo-scope.sh"
+set +e; [ -n "$_hook_root" ] && [ -f "$_repo_scope_library" ] && . "$_repo_scope_library" 2>/dev/null; set -e
 #
 # A verdict for the commit and push rules only, never for the hop guard below.
 # The helper answers "same repository", and every linked worktree of THIS
 # repository is the same repository. The hop guard asks a narrower question,
 # whether the target is the main checkout itself, so it makes its own test.
 foreign_repo=0
-if type cmd_targets_foreign_repo >/dev/null 2>&1 \
-   && cmd_targets_foreign_repo "$cmd"; then
+if type command_targets_foreign_repo >/dev/null 2>&1 \
+   && command_targets_foreign_repo "$command"; then
   foreign_repo=1
 fi
 
@@ -98,14 +98,14 @@ fi
 # must not weaken this guard's deny logic below, so it falls back to the prior
 # bare-relative (process-cwd) derivation rather than exiting -- this guard is
 # fail-closed on ambiguity, never fail-open.
-gaia_scripts="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || true
+repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || true
 # The `|| true` arm is not enough on stock bash 3.2: an unparseable lib abandons
 # the shell before the arm on that line runs. Same errexit bracket as the
 # repo-scope load above, for the same reason.
 set +e
-if [ -n "${gaia_scripts:-}" ] && [ -f "$gaia_scripts/.gaia/scripts/main-root-lib.sh" ]; then
+if [ -n "${repository_root:-}" ] && [ -f "$repository_root/.gaia/scripts/main-root-lib.sh" ]; then
   # shellcheck source=/dev/null
-  . "$gaia_scripts/.gaia/scripts/main-root-lib.sh" 2>/dev/null
+  . "$repository_root/.gaia/scripts/main-root-lib.sh" 2>/dev/null
 fi
 set -e
 main_root=""
@@ -135,11 +135,11 @@ if [ -f "$main_root/.gaia/local/setup-in-progress" ] \
 fi
 
 deny() {
-  jq -n --arg r "$1" '{
+  jq -n --arg reason "$1" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: $r
+      permissionDecisionReason: $reason
     }
   }'
   exit 0
@@ -154,17 +154,17 @@ current_branch() {
   fi
 }
 
-# resolve_dir_kind <dir>: classify a directory WORD the command scan produced,
+# resolve_directory_kind <directory>: classify a directory WORD the command scan produced,
 # and print the classification. One of:
 #
-#   same <dir>      the word names THIS repository
-#   foreign <dir>   the word names a readable directory inside ANOTHER
+#   same <directory>      the word names THIS repository
+#   foreign <directory>   the word names a readable directory inside ANOTHER
 #                   repository
 #   unknown         the word names no readable repository at all: it carries a
 #                   variable or a substitution the scan cannot expand, it
 #                   points nowhere, or there is no resolver to ask
 #
-# Both readable answers carry <dir> in its tilde-expanded form, which is what a
+# Both readable answers carry <directory> in its tilde-expanded form, which is what a
 # caller reads a branch out of. A caller that read the raw word instead would
 # resolve a tilde path here and then read a branch out of the literal `~`
 # spelling, which answers nothing and allows.
@@ -182,26 +182,26 @@ current_branch() {
 # foreign stand-down below is a WHOLE-CALL verdict and answers home there.
 # What each caller then does with a `foreign` word is what it did before the
 # ambiguity arm existed; the classification is the only thing restored here.
-resolve_dir_kind() {
-  local dir="$1" a b
-  [ -n "$dir" ] || { printf 'unknown'; return 0; }
+resolve_directory_kind() {
+  local directory="$1" given_common_directory own_common_directory
+  [ -n "$directory" ] || { printf 'unknown'; return 0; }
   # The tilde arrives as a literal character, never expanded, because it reached
   # this hook as text inside the tool call rather than through a shell. SC2088
   # fires on the quoted tilde, but these are case PATTERNS matching that literal
   # character, not an expansion attempt.
   # shellcheck disable=SC2088
-  case "$dir" in
-    '~') dir="$HOME" ;;
-    '~/'*) dir="$HOME/${dir:2}" ;;
+  case "$directory" in
+    '~') directory="$HOME" ;;
+    '~/'*) directory="$HOME/${directory:2}" ;;
   esac
   command -v gaia_resolve_common_dir >/dev/null 2>&1 || { printf 'unknown'; return 0; }
-  a=$(gaia_resolve_common_dir "$dir" 2>/dev/null) || { printf 'unknown'; return 0; }
-  [ -n "$a" ] || { printf 'unknown'; return 0; }
-  b=$(gaia_resolve_common_dir 2>/dev/null) || { printf 'unknown'; return 0; }
-  if [ -n "$b" ] && [ "$a" = "$b" ]; then
-    printf 'same %s' "$dir"
+  given_common_directory=$(gaia_resolve_common_dir "$directory" 2>/dev/null) || { printf 'unknown'; return 0; }
+  [ -n "$given_common_directory" ] || { printf 'unknown'; return 0; }
+  own_common_directory=$(gaia_resolve_common_dir 2>/dev/null) || { printf 'unknown'; return 0; }
+  if [ -n "$own_common_directory" ] && [ "$given_common_directory" = "$own_common_directory" ]; then
+    printf 'same %s' "$directory"
   else
-    printf 'foreign %s' "$dir"
+    printf 'foreign %s' "$directory"
   fi
   return 0
 }
@@ -223,20 +223,20 @@ resolve_dir_kind() {
 # whenever this function is consulted it holds the same value the tracked `cd`
 # does, so a third probe would spend a subprocess to ask a settled question.
 ambiguous_main_branch() {
-  local b
-  b=$(current_branch "")
-  if [ "$b" = main ] || [ "$b" = master ]; then
-    printf '%s' "$b"
+  local candidate_branch
+  candidate_branch=$(current_branch "")
+  if [ "$candidate_branch" = main ] || [ "$candidate_branch" = master ]; then
+    printf '%s' "$candidate_branch"
     return 0
   fi
-  b=$(current_branch "$main_root")
-  if [ "$b" = main ] || [ "$b" = master ]; then
-    printf '%s' "$b"
+  candidate_branch=$(current_branch "$main_root")
+  if [ "$candidate_branch" = main ] || [ "$candidate_branch" = master ]; then
+    printf '%s' "$candidate_branch"
   fi
   return 0
 }
 
-# cmd_has_unquoted_group <string>: 0 when the command carries a `(` or `)`
+# command_has_unquoted_group <string>: 0 when the command carries a `(` or `)`
 # outside quotes.
 #
 # A `cd` inside a subshell moves nothing once the group closes, and the segment
@@ -259,29 +259,29 @@ ambiguous_main_branch() {
 #
 # The leading `case` is a fast path for the ordinary command that carries no
 # parenthesis at all, which keeps the character walk off every invocation.
-cmd_has_unquoted_group() {
-  local s="$1" BLOCK=256 base=0 n_s block n_b k c q="" esc=0
-  case "$s" in
+command_has_unquoted_group() {
+  local text="$1" BLOCK=256 base=0 text_length block block_length k character quote_character="" escape_pending=0
+  case "$text" in
     *'('* | *')'*) ;;
     *) return 1 ;;
   esac
-  n_s=${#s}
-  while [ "$base" -lt "$n_s" ]; do
-    block="${s:$base:$BLOCK}"
+  text_length=${#text}
+  while [ "$base" -lt "$text_length" ]; do
+    block="${text:$base:$BLOCK}"
     base=$((base + BLOCK))
     k=0
-    n_b=${#block}
-    while [ "$k" -lt "$n_b" ]; do
-      c="${block:$k:1}"
+    block_length=${#block}
+    while [ "$k" -lt "$block_length" ]; do
+      character="${block:$k:1}"
       k=$((k + 1))
-      if [ "$esc" = 1 ]; then esc=0; continue; fi
-      if [ "$c" = "\\" ] && [ "$q" != "'" ]; then esc=1; continue; fi
-      if [ -n "$q" ]; then
-        [ "$c" = "$q" ] && q=""
+      if [ "$escape_pending" = 1 ]; then escape_pending=0; continue; fi
+      if [ "$character" = "\\" ] && [ "$quote_character" != "'" ]; then escape_pending=1; continue; fi
+      if [ -n "$quote_character" ]; then
+        [ "$character" = "$quote_character" ] && quote_character=""
         continue
       fi
-      case "$c" in
-        '"' | "'") q="$c" ;;
+      case "$character" in
+        '"' | "'") quote_character="$character" ;;
         '(' | ')') return 0 ;;
       esac
     done
@@ -290,54 +290,54 @@ cmd_has_unquoted_group() {
 }
 
 # split_git_words <string>: split one segment into shell-like words in the
-# array `w`, modelling quoting the way the shell does -- a quote opens a span in
+# array `words`, modelling quoting the way the shell does -- a quote opens a span in
 # which whitespace is ordinary text, and a backslash escapes the character after
 # it -- and handing the words back unquoted.
 #
 # `read -ra` splits on whitespace alone, so a quoted global-option value
 # carrying whitespace arrived as fragments and the fragment after the space
 # landed in the slot the subcommand is read from, leaving every rule armed on
-# git_sub reading a subcommand that was never spelled (gaia-react/gaia#2020).
+# git_subcommand reading a subcommand that was never spelled (gaia-react/gaia#2020).
 #
 # A word accumulates into `chunk` and reaches `word` once per block rather than
 # once per character, and the walk indexes inside a block rather than into the
-# whole string. `word="$word$c"` costs O(word) and a quoted span has no length
+# whole string. `word="$word$character"` costs O(word) and a quoted span has no length
 # bound, so a multi-kilobyte commit message made the naive walk quadratic: a
 # synchronous stall on a blocking hook, at a size an ordinary `-m` body reaches.
 split_git_words() {
-  local s="$1" NL=$'\n' TAB=$'\t'
-  local BLOCK=256 base=0 n_s block n_b k c
-  local q="" esc=0 word="" chunk="" have=0
-  w=()
-  n_s=${#s}
-  while [ "$base" -lt "$n_s" ]; do
-    block="${s:$base:$BLOCK}"
+  local text="$1" NEWLINE=$'\n' TAB=$'\t'
+  local BLOCK=256 base=0 text_length block block_length k character
+  local quote_character="" escape_pending=0 word="" chunk="" have=0
+  words=()
+  text_length=${#text}
+  while [ "$base" -lt "$text_length" ]; do
+    block="${text:$base:$BLOCK}"
     base=$((base + BLOCK))
     k=0
-    n_b=${#block}
-    while [ "$k" -lt "$n_b" ]; do
-      c="${block:$k:1}"
+    block_length=${#block}
+    while [ "$k" -lt "$block_length" ]; do
+      character="${block:$k:1}"
       k=$((k + 1))
-      if [ "$esc" = 1 ]; then esc=0; chunk="$chunk$c"; have=1; continue; fi
+      if [ "$escape_pending" = 1 ]; then escape_pending=0; chunk="$chunk$character"; have=1; continue; fi
       # A backslash is literal inside single quotes, as in the shell itself.
-      if [ "$c" = "\\" ] && [ "$q" != "'" ]; then esc=1; continue; fi
-      if [ -n "$q" ]; then
-        if [ "$c" = "$q" ]; then q=""; else chunk="$chunk$c"; fi
+      if [ "$character" = "\\" ] && [ "$quote_character" != "'" ]; then escape_pending=1; continue; fi
+      if [ -n "$quote_character" ]; then
+        if [ "$character" = "$quote_character" ]; then quote_character=""; else chunk="$chunk$character"; fi
         have=1
         continue
       fi
-      case "$c" in
-        '"' | "'") q="$c"; have=1 ;;
-        ' ' | "$TAB" | "$NL")
-          [ "$have" = 1 ] && w+=("$word$chunk")
+      case "$character" in
+        '"' | "'") quote_character="$character"; have=1 ;;
+        ' ' | "$TAB" | "$NEWLINE")
+          [ "$have" = 1 ] && words+=("$word$chunk")
           word=""; chunk=""; have=0 ;;
-        *) chunk="$chunk$c"; have=1 ;;
+        *) chunk="$chunk$character"; have=1 ;;
       esac
     done
     word="$word$chunk"
     chunk=""
   done
-  [ "$have" = 1 ] && w+=("$word$chunk")
+  [ "$have" = 1 ] && words+=("$word$chunk")
   return 0
 }
 
@@ -348,11 +348,11 @@ split_git_words() {
 # and reading it as one aimed every check at a directory named for a branch or
 # a commit, so both of those passed. Sets git_cwd (the last global `-C` path, so
 # `git -C <a> -C <b> commit` cannot slip past the commit and push rules on the
-# first one), norm (the segment minus its global `-C` pairs, for the commit and
-# push regexes), git_sub (the subcommand word), and git_args (the words after
+# first one), normalized_segment (the segment minus its global `-C` pairs, for the commit and
+# push regexes), git_subcommand (the subcommand word), and git_args (the words after
 # it).
 #
-# Honest limits, and they bind every rule armed on git_sub below rather than any
+# Honest limits, and they bind every rule armed on git_subcommand below rather than any
 # one of them. These spellings reach the subcommand slot carrying something
 # other than the subcommand, so the guard reads no subcommand and allows:
 #
@@ -368,17 +368,17 @@ split_git_words() {
 # Closing any of them needs the shell's own evaluation of the command, which a
 # PreToolUse hook reading `tool_input.command` as text does not have.
 parse_git_globals() {
-  local -a w kept
-  local i=0 n t globals=0
-  git_cwd="" git_sub=""
+  local -a words kept
+  local i=0 word_count current_word globals=0
+  git_cwd="" git_subcommand=""
   git_args=()
   split_git_words "$1"
-  n=${#w[@]}
-  while [ "$i" -lt "$n" ]; do
-    t="${w[$i]}"
+  word_count=${#words[@]}
+  while [ "$i" -lt "$word_count" ]; do
+    current_word="${words[$i]}"
     if [ "$globals" -eq 1 ]; then
-      case "$t" in
-        -C) git_cwd="${w[$((i + 1))]:-}"; i=$((i + 2)); continue ;;
+      case "$current_word" in
+        -C) git_cwd="${words[$((i + 1))]:-}"; i=$((i + 2)); continue ;;
         # Every global git takes a SEPARATED value for. An option missing here
         # falls to the `-*` arm and its value reaches the catch-all that assigns
         # the subcommand, which is the disarm, so this table tracking git's own
@@ -387,18 +387,18 @@ parse_git_globals() {
         # `--exec-path` is deliberately absent: without `=` it takes no value,
         # git prints its exec path and exits, and nothing after it runs.
         -c | --git-dir | --work-tree | --namespace | --config-env | --attr-source)
-          kept+=("$t" "${w[$((i + 1))]:-}"); i=$((i + 2)); continue ;;
+          kept+=("$current_word" "${words[$((i + 1))]:-}"); i=$((i + 2)); continue ;;
         -*) ;;
-        *) globals=2; git_sub="$t"; git_args=("${w[@]:$((i + 1))}") ;;
+        *) globals=2; git_subcommand="$current_word"; git_args=("${words[@]:$((i + 1))}") ;;
       esac
-    elif [ "$globals" -eq 0 ] && [ "$t" = git ]; then
+    elif [ "$globals" -eq 0 ] && [ "$current_word" = git ]; then
       globals=1
     fi
-    kept+=("$t")
+    kept+=("$current_word")
     i=$((i + 1))
   done
-  norm=""
-  [ "${#kept[@]}" -eq 0 ] || norm="${kept[*]}"
+  normalized_segment=""
+  [ "${#kept[@]}" -eq 0 ] || normalized_segment="${kept[*]}"
 }
 
 # push_refspec_names_main: 0 when the words after a `push` subcommand carry a
@@ -422,18 +422,18 @@ parse_git_globals() {
 # has always had, and narrowing or widening it is a separate question from where
 # the ref sits.
 push_refspec_names_main() {
-  local t seen_remote=0 skip_next=0 ref
-  for t in ${git_args[@]+"${git_args[@]}"}; do
+  local argument seen_remote=0 skip_next=0 refspec
+  for argument in ${git_args[@]+"${git_args[@]}"}; do
     if [ "$skip_next" -eq 1 ]; then skip_next=0; continue; fi
-    case "$t" in
+    case "$argument" in
       --) continue ;;
       -o | --push-option | --repo | --receive-pack | --exec)
         skip_next=1; continue ;;
       -*) continue ;;
     esac
     if [ "$seen_remote" -eq 0 ]; then seen_remote=1; continue; fi
-    ref="${t#+}"
-    case "$ref" in
+    refspec="${argument#+}"
+    case "$refspec" in
       HEAD | main | master) return 0 ;;
       HEAD:* | main:* | master:*) return 0 ;;
     esac
@@ -454,17 +454,17 @@ push_refspec_names_main() {
 # against the payload's cwd when relative), else the payload's cwd, else this
 # process's.
 hop_target() {
-  local dir="$1" base
+  local directory="$1" base
   base=$(printf '%s' "$payload" | jq -r '.cwd // empty' 2>/dev/null) || base=""
   [ -n "$base" ] || base="$PWD"
-  case "$dir" in
-    \"*\") dir="${dir#\"}"; dir="${dir%\"}" ;;
-    \'*\') dir="${dir#\'}"; dir="${dir%\'}" ;;
+  case "$directory" in
+    \"*\") directory="${directory#\"}"; directory="${directory%\"}" ;;
+    \'*\') directory="${directory#\'}"; directory="${directory%\'}" ;;
   esac
-  case "$dir" in
+  case "$directory" in
     '') printf '%s' "$base" ;;
-    /*) printf '%s' "$dir" ;;
-    *) printf '%s/%s' "$base" "$dir" ;;
+    /*) printf '%s' "$directory" ;;
+    *) printf '%s/%s' "$base" "$directory" ;;
   esac
 }
 
@@ -489,43 +489,43 @@ hop_target() {
 # whose own value then lands in the slot the subcommand is read from; and
 # `gh pr checkout`, whose command word is not `git`.
 hop_moves_head() {
-  local target="$1" operand="" n=0 t skip_next=0 cur ref
+  local target="$1" operand="" operand_count=0 argument skip_next=0 head_reference operand_reference
   # The two subcommands spell their branch-creating flags differently, and the
   # difference is why they are read apart rather than together: `-c`/`-C` create
   # a branch for `switch` and mean something else entirely for `checkout`, where
   # `-C` is commit's reuse-message option. Past this point the operand analysis
   # is shared, so a switch naming the branch HEAD already holds reaches the same
   # no-op carve-out a checkout naming it does.
-  case "$git_sub" in
+  case "$git_subcommand" in
     switch)
-      for t in ${git_args[@]+"${git_args[@]}"}; do
-        case "$t" in
+      for argument in ${git_args[@]+"${git_args[@]}"}; do
+        case "$argument" in
           -c | -C | --create | --force-create | --orphan | --detach) return 0 ;;
         esac
       done
       ;;
     checkout)
-      for t in ${git_args[@]+"${git_args[@]}"}; do
-        case "$t" in -b | -B | --orphan | --detach) return 0 ;; esac
+      for argument in ${git_args[@]+"${git_args[@]}"}; do
+        case "$argument" in -b | -B | --orphan | --detach) return 0 ;; esac
       done
-      for t in ${git_args[@]+"${git_args[@]}"}; do
-        case "$t" in -- | -p | --patch | --pathspec-from-file*) return 1 ;; esac
+      for argument in ${git_args[@]+"${git_args[@]}"}; do
+        case "$argument" in -- | -p | --patch | --pathspec-from-file*) return 1 ;; esac
       done
       ;;
     *) return 1 ;;
   esac
   # Redirections are not operands: `git checkout main 2>/dev/null` names one.
-  for t in ${git_args[@]+"${git_args[@]}"}; do
+  for argument in ${git_args[@]+"${git_args[@]}"}; do
     if [ "$skip_next" -eq 1 ]; then skip_next=0; continue; fi
-    case "$t" in
+    case "$argument" in
       *'>' | *'<') skip_next=1; continue ;;
       *[\<\>]*) continue ;;
-      -*) [ "$t" = - ] || continue ;;
+      -*) [ "$argument" = - ] || continue ;;
     esac
-    [ "$n" -eq 0 ] && operand="$t"
-    n=$((n + 1))
+    [ "$operand_count" -eq 0 ] && operand="$argument"
+    operand_count=$((operand_count + 1))
   done
-  [ "$n" -eq 1 ] || return 1
+  [ "$operand_count" -eq 1 ] || return 1
   [ "$operand" = - ] && return 0
   case "$operand" in
     \"*\") operand="${operand#\"}"; operand="${operand%\"}" ;;
@@ -540,7 +540,7 @@ hop_moves_head() {
     # anyway, which is the safe direction. `checkout` keeps the opposite answer,
     # the DWIM limit its honest-limits block above records
     # (gaia-react/gaia#2018).
-    if [ "$git_sub" = switch ]; then return 0; fi
+    if [ "$git_subcommand" = switch ]; then return 0; fi
     return 1
   fi
 
@@ -549,9 +549,9 @@ hop_moves_head() {
   # no-op, and the session most likely to hit it is the branch owner's own
   # after a restart, whose new session id no longer matches the breadcrumb.
   [ "$operand" = HEAD ] && return 1
-  cur=$(git -C "$target" symbolic-ref -q HEAD 2>/dev/null) || cur=""
-  ref=$(git -C "$target" rev-parse --symbolic-full-name "$operand" 2>/dev/null) || ref=""
-  [ -n "$cur" ] && [ "$ref" = "$cur" ] && return 1
+  head_reference=$(git -C "$target" symbolic-ref -q HEAD 2>/dev/null) || head_reference=""
+  operand_reference=$(git -C "$target" rev-parse --symbolic-full-name "$operand" 2>/dev/null) || operand_reference=""
+  [ -n "$head_reference" ] && [ "$operand_reference" = "$head_reference" ] && return 1
   return 0
 }
 
@@ -572,7 +572,7 @@ hop_unchecked() {
 # because its pull request is no longer open by then, and subagents share their
 # parent's session id, so they count as the owner too.
 hop_guard() {
-  local target="$1" branch default out rc sid bc errexit_was tmp
+  local target="$1" branch default pull_request_number exit_status session_id breadcrumb_path errexit_was temporary_file
   if ! command -v gaia_is_linked_worktree >/dev/null 2>&1 \
      || ! command -v gaia_resolve_main_root >/dev/null 2>&1; then
     hop_unchecked "could not check whether $target is this repository's main checkout (main-root-lib.sh did not load)"
@@ -597,12 +597,12 @@ hop_guard() {
   fi
   if [ "$errexit_was" = 1 ]; then set -e; fi
   if command -v gaia_gh_artifact_read >/dev/null 2>&1; then
-    sid=$(printf '%s' "$payload" | jq -r '.session_id // empty' 2>/dev/null) || sid=""
-    if [ -n "$sid" ]; then
-      bc=$(gaia_gh_artifact_path "$(gaia_gh_artifact_cache_dir)" "$branch")
+    session_id=$(printf '%s' "$payload" | jq -r '.session_id // empty' 2>/dev/null) || session_id=""
+    if [ -n "$session_id" ]; then
+      breadcrumb_path=$(gaia_gh_artifact_path "$(gaia_gh_artifact_cache_dir)" "$branch")
       # A year, not the lib's one-day default: session ids never repeat, so a
       # match proves ownership at any age, however long the file lives.
-      [ -n "$(gaia_gh_artifact_read "$bc" "$sid" "$branch" 31536000)" ] && return 0
+      [ -n "$(gaia_gh_artifact_read "$breadcrumb_path" "$session_id" "$branch" 31536000)" ] && return 0
     fi
   fi
 
@@ -619,14 +619,14 @@ hop_guard() {
   # real binary WITHOUT `exec` leaves that grandchild alive still holding the
   # pipe, and a substitution waits for every process holding it: the bound
   # would not hold, and the diagnostic would claim one that had.
-  tmp=$(mktemp -t gaia-hop-pr-XXXXXX 2>/dev/null) || tmp=""
-  if [ -z "$tmp" ]; then
+  temporary_file=$(mktemp -t gaia-hop-pr-XXXXXX 2>/dev/null) || temporary_file=""
+  if [ -z "$temporary_file" ]; then
     hop_unchecked "could not check whether '$branch' has an open pull request (no temporary file could be created for the gh pr list output)"
     return 0
   fi
   (
     cd "$target" || exit 125
-    gh pr list --head "$branch" --state open --json number --jq '.[0].number // empty' >"$tmp" 2>/dev/null &
+    gh pr list --head "$branch" --state open --json number --jq '.[0].number // empty' >"$temporary_file" 2>/dev/null &
     pid=$!
     ticks=0
     while kill -0 "$pid" 2>/dev/null; do
@@ -638,17 +638,17 @@ hop_guard() {
       ticks=$((ticks + 1))
     done
     wait "$pid"
-  ) && rc=0 || rc=$?
-  out=$(cat "$tmp" 2>/dev/null) || out=""
-  rm -f "$tmp"
-  case "$rc" in
+  ) && exit_status=0 || exit_status=$?
+  pull_request_number=$(cat "$temporary_file" 2>/dev/null) || pull_request_number=""
+  rm -f "$temporary_file"
+  case "$exit_status" in
     0) ;;
     124) hop_unchecked "could not check whether '$branch' has an open pull request (gh pr list timed out after 5s)"; return 0 ;;
     125) hop_unchecked "could not check whether '$branch' has an open pull request ($target could not be entered to run gh pr list)"; return 0 ;;
-    *) hop_unchecked "could not check whether '$branch' has an open pull request (the open pull-request lookup, gh pr list, exited $rc)"; return 0 ;;
+    *) hop_unchecked "could not check whether '$branch' has an open pull request (the open pull-request lookup, gh pr list, exited $exit_status)"; return 0 ;;
   esac
-  [ -n "$out" ] || return 0
-  if ! [[ "$out" =~ ^[0-9]+$ ]]; then
+  [ -n "$pull_request_number" ] || return 0
+  if ! [[ "$pull_request_number" =~ ^[0-9]+$ ]]; then
     hop_unchecked "could not check whether '$branch' has an open pull request (gh pr list answered with something other than a pull-request number)"
     return 0
   fi
@@ -659,7 +659,7 @@ hop_guard() {
     return 0
   fi
 
-  deny "The main checkout is holding branch '$branch', which has open pull request #$out: another session is working there, and moving this checkout's HEAD would pull the branch out from under it and forfeit its audit round. If you are cleaning up after a merge, take the worktree arm in wiki/concepts/PR Merge Workflow.md, which runs no git checkout. If this is your own branch, run the command yourself with the ! prefix."
+  deny "The main checkout is holding branch '$branch', which has open pull request #$pull_request_number: another session is working there, and moving this checkout's HEAD would pull the branch pull_request_number from under it and forfeit its audit round. If you are cleaning up after a merge, take the worktree arm in wiki/concepts/PR Merge Workflow.md, which runs no git checkout. If this is your own branch, run the command yourself with the ! prefix."
 }
 
 # Walk each command-position segment. Separators (`| & ; ( )`, newlines) become
@@ -692,13 +692,13 @@ hop_guard() {
 # block-no-verify.sh carries the same function, and block-no-verify.bats pins
 # the copies identical.
 collapsed_substitutions() {
-  local text="$1" prev pass=0
+  local text="$1" previous_text pass=0
   # shellcheck disable=SC2016 # a literal opener matched in the text, not an expansion
   case "$text" in *'$('*) ;; *) return 0 ;; esac
   while [ "$pass" -lt 8 ]; do
-    prev="$text"
+    previous_text="$text"
     text=$(printf '%s' "$text" | sed -E 's/\$\([^()]*\)/_/g')
-    [ "$text" = "$prev" ] && break
+    [ "$text" = "$previous_text" ] && break
     pass=$((pass + 1))
   done
   [ "$text" = "$1" ] || printf '%s\n' "$text"
@@ -715,8 +715,8 @@ lead_cd=""
 cd_ambiguous=0
 cd_tracking=1
 hop_checked=0
-checked_hop_dir=""
-if cmd_has_unquoted_group "$cmd"; then cd_tracking=0; fi
+checked_hop_directory=""
+if command_has_unquoted_group "$command"; then cd_tracking=0; fi
 
 # The collapsed line is a second reading of the WHOLE command, its own `cd`
 # segments included, so the walk enters it with no tracked directory standing
@@ -738,10 +738,10 @@ if cmd_has_unquoted_group "$cmd"; then cd_tracking=0; fi
 # The spelling carries none of `| & ; ( )`, so the `tr` below leaves it
 # standing on a line of its own, and it is not a command word any rule arms on.
 walk_reset="__gaia_walk_reset_${$}_${RANDOM}__"
-collapsed=$(collapsed_substitutions "$cmd")
+collapsed=$(collapsed_substitutions "$command")
 
-while IFS= read -r seg; do
-  if [ "$seg" = "$walk_reset" ]; then
+while IFS= read -r segment; do
+  if [ "$segment" = "$walk_reset" ]; then
     lead_cd=""
     cd_ambiguous=0
     continue
@@ -778,7 +778,7 @@ while IFS= read -r seg; do
   # block-no-verify.sh carries this expression too, and block-no-verify.bats
   # pins the copies identical: a widening applied to one and not the rest
   # leaves the gap open in whichever copy was missed.
-  seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*\+?=([^[:space:]"'"'"']+|"[^"]*"|'"'"'[^'"'"']*'"'"')*|[0-9]*[<>][^[:space:]]*|[{!]|coproc|elif|else|while|until|then|time([[:space:]]+(-p|--))?|do|if)[[:space:]]+)*//')
+  segment_command=$(printf '%s' "$segment" | sed -E 's/^[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*\+?=([^[:space:]"'"'"']+|"[^"]*"|'"'"'[^'"'"']*'"'"')*|[0-9]*[<>][^[:space:]]*|[{!]|coproc|elif|else|while|until|then|time([[:space:]]+(-p|--))?|do|if)[[:space:]]+)*//')
 
   # A target the scan cannot READ leaves the previously tracked directory
   # STANDING and marks the checkout ambiguous; it does not clear the target,
@@ -796,9 +796,9 @@ while IFS= read -r seg; do
   # simply somewhere this repository's policy does not govern. Such a target
   # drops the tracked directory and leaves the segments after it reading this
   # hook's own, which is what they did before the ambiguity arm existed.
-  if [ "$cd_tracking" -eq 1 ] && [[ "$seg_cmd" =~ ^cd([[:space:]]|$) ]]; then
-    split_git_words "$seg_cmd"
-    cd_kind=$(resolve_dir_kind "${w[1]:-}")
+  if [ "$cd_tracking" -eq 1 ] && [[ "$segment_command" =~ ^cd([[:space:]]|$) ]]; then
+    split_git_words "$segment_command"
+    cd_kind=$(resolve_directory_kind "${words[1]:-}")
     case "$cd_kind" in
       'same '*)
         lead_cd="${cd_kind#same }"
@@ -815,9 +815,9 @@ while IFS= read -r seg; do
     continue
   fi
 
-  [[ "$seg_cmd" =~ ^git([[:space:]]|$) ]] || continue
+  [[ "$segment_command" =~ ^git([[:space:]]|$) ]] || continue
 
-  parse_git_globals "$seg"
+  parse_git_globals "$segment"
 
   # The hop check is the one arm here that can spend a bounded network lookup,
   # and the collapsed line re-emits the whole command, so a checkout whose
@@ -837,14 +837,14 @@ while IFS= read -r seg; do
   # checkout of the branch HEAD already holds both move nothing, and either one
   # memoised as the answer for its target would stand in for the branch switch
   # beside it in the same command.
-  case "$git_sub" in
+  case "$git_subcommand" in
     checkout | switch)
-      hop_dir=$(hop_target "$git_cwd")
-      if hop_moves_head "$hop_dir"; then
-        if [ "$hop_checked" -eq 0 ] || [ "$hop_dir" != "$checked_hop_dir" ]; then
+      hop_directory=$(hop_target "$git_cwd")
+      if hop_moves_head "$hop_directory"; then
+        if [ "$hop_checked" -eq 0 ] || [ "$hop_directory" != "$checked_hop_directory" ]; then
           hop_checked=1
-          checked_hop_dir="$hop_dir"
-          hop_guard "$hop_dir"
+          checked_hop_directory="$hop_directory"
+          hop_guard "$hop_directory"
         fi
       fi
       ;;
@@ -902,24 +902,24 @@ while IFS= read -r seg; do
   # A `-C` that DOES resolve names the checkout outright, so it settles the
   # question whatever a preceding `cd` left behind.
   if [ -n "$git_cwd" ]; then
-    cwd_kind=$(resolve_dir_kind "$git_cwd")
+    cwd_kind=$(resolve_directory_kind "$git_cwd")
     case "$cwd_kind" in
       'same '*)
-        branch_dir="${cwd_kind#same }"
-        seg_ambiguous=0
+        branch_directory="${cwd_kind#same }"
+        segment_ambiguous=0
         ;;
       'foreign '*)
-        branch_dir="${cwd_kind#foreign }"
-        seg_ambiguous=0
+        branch_directory="${cwd_kind#foreign }"
+        segment_ambiguous=0
         ;;
       *)
-        branch_dir="$lead_cd"
-        seg_ambiguous=1
+        branch_directory="$lead_cd"
+        segment_ambiguous=1
         ;;
     esac
   else
-    branch_dir="$lead_cd"
-    seg_ambiguous="$cd_ambiguous"
+    branch_directory="$lead_cd"
+    segment_ambiguous="$cd_ambiguous"
   fi
 
   # The words after the subcommand, where a push's own refspec lives. The
@@ -936,22 +936,22 @@ while IFS= read -r seg; do
   # lands in, the second does not and denies because one it could reach is on
   # main. Answering the known case first keeps the ordinary deny's message
   # unchanged for the operator who is simply standing on main.
-  if [ "$git_sub" = commit ]; then
-    branch=$(current_branch "$branch_dir")
+  if [ "$git_subcommand" = commit ]; then
+    branch=$(current_branch "$branch_directory")
     if [[ "$branch" == "main" || "$branch" == "master" ]]; then
       deny "Commits to '$branch' are forbidden (wiki/concepts/Git Workflow.md). Create a feature branch first."
     fi
-    if [ "$seg_ambiguous" -eq 1 ]; then
-      amb_branch=$(ambiguous_main_branch)
-      if [ -n "$amb_branch" ]; then
-        deny "This command names a directory this guard cannot read, so which checkout the commit lands in is unknown, and one it could reach is on '$amb_branch'. Commits to '$amb_branch' are forbidden (wiki/concepts/Git Workflow.md). Spell the directory literally so the guard can read it, or create a feature branch first. If this text only QUOTES a command rather than running one, the guard cannot tell the two apart: pass it through a file (--body-file, git commit -F) instead of an inline argument."
+    if [ "$segment_ambiguous" -eq 1 ]; then
+      ambiguous_branch=$(ambiguous_main_branch)
+      if [ -n "$ambiguous_branch" ]; then
+        deny "This command names a directory this guard cannot read, so which checkout the commit lands in is unknown, and one it could reach is on '$ambiguous_branch'. Commits to '$ambiguous_branch' are forbidden (wiki/concepts/Git Workflow.md). Spell the directory literally so the guard can read it, or create a feature branch first. If this text only QUOTES a command rather than running one, the guard cannot tell the two apart: pass it through a file (--body-file, git commit -F) instead of an inline argument."
       fi
     fi
   fi
 
   # 2. Block force-push when target mentions main or master.
-  if [ "$git_sub" = push ] \
-     && [[ "$norm" =~ (--force|--force-with-lease|[[:space:]]-f([[:space:]]|$)) ]] \
+  if [ "$git_subcommand" = push ] \
+     && [[ "$normalized_segment" =~ (--force|--force-with-lease|[[:space:]]-f([[:space:]]|$)) ]] \
      && [[ "$push_args" =~ (main|master)([[:space:]]|$|:) ]]; then
     deny "Force-push to main/master is forbidden (wiki/concepts/Git Workflow.md)."
   fi
@@ -960,8 +960,8 @@ while IFS= read -r seg; do
   #    Triggers when HEAD is on main/master OR when the push refspec explicitly
   #    names main/master/HEAD as the source. Closes the "forgot to switch
   #    branches" footgun.
-  if [ "$git_sub" = push ]; then
-    branch=$(current_branch "$branch_dir")
+  if [ "$git_subcommand" = push ]; then
+    branch=$(current_branch "$branch_directory")
     on_main=0
     [[ "$branch" == "main" || "$branch" == "master" ]] && on_main=1
 
@@ -982,11 +982,11 @@ while IFS= read -r seg; do
     # answered, because it is the only one that costs subprocesses: up to two
     # `symbolic-ref` reads whose answer the deny chain below would discard
     # whenever a cause it consults earlier holds.
-    amb_main=0
-    if [ "$seg_ambiguous" -eq 1 ] && [ "$on_main" -eq 0 ] && [ "$refspec_main" -eq 0 ]; then
-      amb_branch=$(ambiguous_main_branch)
-      if [ -n "$amb_branch" ]; then
-        amb_main=1
+    ambiguous_main=0
+    if [ "$segment_ambiguous" -eq 1 ] && [ "$on_main" -eq 0 ] && [ "$refspec_main" -eq 0 ]; then
+      ambiguous_branch=$(ambiguous_main_branch)
+      if [ -n "$ambiguous_branch" ]; then
+        ambiguous_main=1
       fi
     fi
 
@@ -1009,12 +1009,12 @@ while IFS= read -r seg; do
       deny "Plain 'git push' from main/master is forbidden (wiki/concepts/Git Workflow.md). Create a feature branch and open a PR."
     elif [ "$refspec_main" -eq 1 ]; then
       deny "This push's refspec names main, master or HEAD, which is forbidden from any branch (wiki/concepts/Git Workflow.md). Name the branch you are pushing explicitly and open a PR."
-    elif [ "$amb_main" -eq 1 ]; then
-      deny "This command names a directory this guard cannot read, so which checkout the push runs from is unknown, and one it could reach is on '$amb_branch'. Plain 'git push' from main/master is forbidden (wiki/concepts/Git Workflow.md). Spell the directory literally so the guard can read it, or create a feature branch and open a PR. If this text only QUOTES a command rather than running one, the guard cannot tell the two apart: pass it through a file (--body-file, git commit -F) instead of an inline argument."
+    elif [ "$ambiguous_main" -eq 1 ]; then
+      deny "This command names a directory this guard cannot read, so which checkout the push runs from is unknown, and one it could reach is on '$ambiguous_branch'. Plain 'git push' from main/master is forbidden (wiki/concepts/Git Workflow.md). Spell the directory literally so the guard can read it, or create a feature branch and open a PR. If this text only QUOTES a command rather than running one, the guard cannot tell the two apart: pass it through a file (--body-file, git commit -F) instead of an inline argument."
     fi
   fi
 done < <({
-  printf '%s\n' "$cmd"
+  printf '%s\n' "$command"
   if [ -n "$collapsed" ]; then printf '%s\n%s\n' "$walk_reset" "$collapsed"; fi
 } | tr '|&;()' '\n')
 

@@ -24,7 +24,7 @@
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/path.sh"
-  HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
+  HOOKS_SOURCE_DIRECTORY=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
 }
 
 # The mirroring rebuild rather than the dropping one: jq shares a directory with
@@ -43,7 +43,7 @@ scrub_jq_from_path() {
 without_jq() {
   scrub_jq_from_path
   [ -z "$(command -v jq)" ]
-  invoke_hook "$2" "$HOOKS_SRC/$1"
+  invoke_hook "$2" "$HOOKS_SOURCE_DIRECTORY/$1"
 }
 
 # THE AMBIENT FIELDS ARE THE POINT, not padding. A PreToolUse payload carries
@@ -110,7 +110,7 @@ edit_payload() {
 # The command that repairs the machine. Every literal set below is checked
 # against it, because a hook whose refusal catches this one leaves the session
 # with no way out from inside it.
-readonly INSTALL_CMD="brew install jq"
+readonly INSTALL_COMMAND="brew install jq"
 
 # --- the matcher cannot reach the jq install, so the refusal is unconditional -
 
@@ -156,7 +156,7 @@ readonly INSTALL_CMD="brew install jq"
 
 @test "jq absent: block-env-read allows the jq install" {
   local json
-  json=$(bash_payload "$INSTALL_CMD")
+  json=$(bash_payload "$INSTALL_COMMAND")
   without_jq block-env-read.sh "$json"
   assert_allowed_by_exit
 }
@@ -170,7 +170,7 @@ readonly INSTALL_CMD="brew install jq"
 
 @test "jq absent: block-main-destructive-git allows the jq install" {
   local json
-  json=$(bash_payload "$INSTALL_CMD")
+  json=$(bash_payload "$INSTALL_COMMAND")
   without_jq block-main-destructive-git.sh "$json"
   assert_allowed_by_exit
 }
@@ -184,7 +184,7 @@ readonly INSTALL_CMD="brew install jq"
 
 @test "jq absent: block-no-verify allows the jq install" {
   local json
-  json=$(bash_payload "$INSTALL_CMD")
+  json=$(bash_payload "$INSTALL_COMMAND")
   without_jq block-no-verify.sh "$json"
   assert_allowed_by_exit
 }
@@ -212,7 +212,7 @@ readonly INSTALL_CMD="brew install jq"
 
 @test "jq absent: block-rm-rf allows the jq install" {
   local json
-  json=$(bash_payload "$INSTALL_CMD")
+  json=$(bash_payload "$INSTALL_COMMAND")
   without_jq block-rm-rf.sh "$json"
   assert_allowed_by_exit
 }
@@ -267,7 +267,7 @@ write_payload() {
 
 @test "jq absent: block-audit-loop-write allows the jq install" {
   local json
-  json=$(bash_payload "$INSTALL_CMD")
+  json=$(bash_payload "$INSTALL_COMMAND")
   without_jq block-audit-loop-write.sh "$json"
   assert_allowed_by_exit
 }
@@ -288,10 +288,10 @@ grant_payload() {
 }
 
 state_listing() {
-  local dir
-  dir="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/local/audit-loop"
-  if [ -d "$dir" ]; then
-    find "$dir" -print | sort
+  local audit_loop_directory
+  audit_loop_directory="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/local/audit-loop"
+  if [ -d "$audit_loop_directory" ]; then
+    find "$audit_loop_directory" -print | sort
   fi
   true
 }
@@ -327,7 +327,7 @@ state_listing() {
 
 @test "jq absent: pr-merge-audit-check allows the jq install" {
   local json
-  json=$(bash_payload "$INSTALL_CMD")
+  json=$(bash_payload "$INSTALL_COMMAND")
   without_jq pr-merge-audit-check.sh "$json"
   assert_allowed_by_exit
 }
@@ -341,7 +341,7 @@ state_listing() {
 
 @test "jq absent: worthiness-presence-check allows the jq install" {
   local json
-  json=$(bash_payload "$INSTALL_CMD")
+  json=$(bash_payload "$INSTALL_COMMAND")
   without_jq worthiness-presence-check.sh "$json"
   assert_allowed_by_exit
 }
@@ -354,9 +354,9 @@ state_listing() {
   # PreToolUse reads as a NON-BLOCKING error: the same fail-open a missing call
   # produces, reached by a different edit. The arm checks its own arity so a
   # wrong call is loud.
-  local lib
-  lib="$HOOKS_SRC/lib/jq-availability.sh"
-  run bash -c 'set -euo pipefail; . "$1"; gaia_require_jq "only one arg"' _ "$lib"
+  local library_path
+  library_path="$HOOKS_SOURCE_DIRECTORY/lib/jq-availability.sh"
+  run bash -c 'set -euo pipefail; . "$1"; gaia_require_jq "only one arg"' _ "$library_path"
   [ "$status" -eq 2 ]
   grep -qF -- 'BLOCKED' <<<"$output"
   grep -qF -- 'needs at least 3' <<<"$output"
@@ -367,13 +367,13 @@ state_listing() {
   # tree with an empty lib/ reproduces a broken install without touching the
   # real one. jq stays on PATH here: the claim is about the load, not about the
   # interpreter.
-  local dir json
-  dir="$BATS_TEST_TMPDIR/no-lib"
-  mkdir -p "$dir/lib"
-  cp "$HOOKS_SRC/block-eslint-config-edit.sh" "$dir/block-eslint-config-edit.sh"
+  local scratch_directory json
+  scratch_directory="$BATS_TEST_TMPDIR/no-lib"
+  mkdir -p "$scratch_directory/lib"
+  cp "$HOOKS_SOURCE_DIRECTORY/block-eslint-config-edit.sh" "$scratch_directory/block-eslint-config-edit.sh"
 
   json=$(edit_payload "eslint.config.ts")
-  invoke_hook "$json" "$dir/block-eslint-config-edit.sh"
+  invoke_hook "$json" "$scratch_directory/block-eslint-config-edit.sh"
   [ "$status" -eq 2 ]
   grep -qF -- 'cannot load lib/jq-availability.sh' <<<"$output"
 }

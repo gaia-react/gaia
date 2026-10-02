@@ -32,19 +32,19 @@
 # commit acts on, so a linked worktree lacking it emits no signals and drops
 # out of the offender scan.
 install_tree_links() {
-  local dir="$1"
-  mkdir -p "$dir/.claude/hooks/lib" "$dir/.gaia/scripts"
-  ln -sfn "$HOME_ROOT/.claude/hooks/lib/red-ledger.sh" "$dir/.claude/hooks/lib/red-ledger.sh"
-  ln -sfn "$HOME_ROOT/.claude/hooks/lib/repo-scope.sh" "$dir/.claude/hooks/lib/repo-scope.sh"
-  ln -sfn "$HOME_ROOT/.gaia/scripts/red-ledger" "$dir/.gaia/scripts/red-ledger"
+  local directory="$1"
+  mkdir -p "$directory/.claude/hooks/lib" "$directory/.gaia/scripts"
+  ln -sfn "$HOME_ROOT/.claude/hooks/lib/red-ledger.sh" "$directory/.claude/hooks/lib/red-ledger.sh"
+  ln -sfn "$HOME_ROOT/.claude/hooks/lib/repo-scope.sh" "$directory/.claude/hooks/lib/repo-scope.sh"
+  ln -sfn "$HOME_ROOT/.gaia/scripts/red-ledger" "$directory/.gaia/scripts/red-ledger"
   # red_ledger_path (inside the symlinked red-ledger.sh above) sources this
   # relative to ITS OWN location to reach gaia_tree_key, so it needs to
   # resolve inside the tree too, not just from the hook's own BASH_SOURCE.
-  ln -sfn "$HOME_ROOT/.gaia/scripts/main-root-lib.sh" "$dir/.gaia/scripts/main-root-lib.sh"
+  ln -sfn "$HOME_ROOT/.gaia/scripts/main-root-lib.sh" "$directory/.gaia/scripts/main-root-lib.sh"
   # The determinism carve-out classifies the test file via this helper; symlink
   # it so the hook resolves it from the tree exactly as in production. The
   # symlinked helper resolves `typescript` from the home repo's node_modules.
-  ln -sfn "$HOME_ROOT/.gaia/scripts/classifier" "$dir/.gaia/scripts/classifier"
+  ln -sfn "$HOME_ROOT/.gaia/scripts/classifier" "$directory/.gaia/scripts/classifier"
 }
 
 setup() {
@@ -55,7 +55,7 @@ setup() {
   # precondition the job installs; see the helper for why.
   . "$BATS_TEST_DIRNAME/helpers/require-node-typescript.sh"
   require_node_typescript "$HOME_ROOT"
-  HOOK_ABS="$HOME_ROOT/.claude/hooks/red-verify-commit-check.sh"
+  HOOK_ABSOLUTE_PATH="$HOME_ROOT/.claude/hooks/red-verify-commit-check.sh"
   HELPER="$HOME_ROOT/.gaia/scripts/red-ledger/extract-test-signals.mjs"
 
   REPO=$(mktemp -d -t red-verify-test-XXXXXX)
@@ -101,8 +101,8 @@ commit_file_at_head() {
 # Compute the (fullName,signal) NDJSON for a repo-relative path's CURRENT
 # on-disk content, using the same helper the hook uses, run from the tmp repo.
 signals_for() {
-  local rel="$1" root="${2:-$REPO}"
-  ( cd "$root" && node "$HELPER" "$rel" )
+  local relative_path="$1" root="${2:-$REPO}"
+  ( cd "$root" && node "$HELPER" "$relative_path" )
 }
 
 # Append a ledger line. Args: file fullName signal [failureKind]. Writes to
@@ -110,11 +110,11 @@ signals_for() {
 # exactly where the hook itself will look, rather than a second hardcoded
 # copy of the keyed literal.
 seed_ledger() {
-  local file="$1" full="$2" sig="$3" kind="${4:-assertion}" root="${5:-$REPO}"
+  local file="$1" full="$2" signal="$3" kind="${4:-assertion}" root="${5:-$REPO}"
   local ledger
   ledger="$( . "$root/.claude/hooks/lib/red-ledger.sh" && red_ledger_path "$root" )"
   mkdir -p "$(dirname "$ledger")"
-  jq -nc --arg f "$file" --arg n "$full" --arg s "$sig" --arg k "$kind" \
+  jq -nc --arg f "$file" --arg n "$full" --arg s "$signal" --arg k "$kind" \
     '{schema:1, file:$f, fullName:$n, signal:$s, failureKind:$k, observedAt:"2026-06-04T00:00:00Z"}' \
     >> "$ledger"
 }
@@ -122,21 +122,21 @@ seed_ledger() {
 # Seed a matching valid RED for one test of a staged file (computes the real
 # current signal so the match is exact).
 seed_matching_red() {
-  local rel="$1" want_full="$2" root="${3:-$REPO}"
-  local ndjson sig
-  ndjson=$(signals_for "$rel" "$root")
-  sig=$(printf '%s\n' "$ndjson" \
+  local relative_path="$1" want_full="$2" root="${3:-$REPO}"
+  local ndjson signal
+  ndjson=$(signals_for "$relative_path" "$root")
+  signal=$(printf '%s\n' "$ndjson" \
     | jq -r --arg n "$want_full" 'select(.fullName == $n) | .signal' | head -1)
-  [ -n "$sig" ] || { echo "no signal for '$want_full' in $rel" >&2; return 1; }
-  seed_ledger "$rel" "$want_full" "$sig" assertion "$root"
+  [ -n "$signal" ] || { echo "no signal for '$want_full' in $relative_path" >&2; return 1; }
+  seed_ledger "$relative_path" "$want_full" "$signal" assertion "$root"
 }
 
 # Run the hook with a `git commit` command, from inside the tmp repo.
 run_commit_hook() {
-  local cmd="${1:-git commit -m change}"
+  local command="${1:-git commit -m change}"
   local json
-  json=$(jq -nc --arg c "$cmd" '{tool_name:"Bash", tool_input:{command:$c}}')
-  invoke_hook_in "$REPO" "$json" "$HOOK_ABS"
+  json=$(jq -nc --arg c "$command" '{tool_name:"Bash", tool_input:{command:$c}}')
+  invoke_hook_in "$REPO" "$json" "$HOOK_ABSOLUTE_PATH"
 }
 
 # The same, from a subdirectory of the tmp repo. The agent's working directory
@@ -144,11 +144,11 @@ run_commit_hook() {
 # gate depends on has to resolve from a depth nobody chose.
 run_commit_hook_from() {
   local sub="$1"
-  local cmd="${2:-git commit -m change}"
+  local command="${2:-git commit -m change}"
   local json
   mkdir -p "$REPO/$sub"
-  json=$(jq -nc --arg c "$cmd" '{tool_name:"Bash", tool_input:{command:$c}}')
-  invoke_hook_in "$REPO/$sub" "$json" "$HOOK_ABS"
+  json=$(jq -nc --arg c "$command" '{tool_name:"Bash", tool_input:{command:$c}}')
+  invoke_hook_in "$REPO/$sub" "$json" "$HOOK_ABSOLUTE_PATH"
 }
 
 denied() { [[ "$output" == *'"permissionDecision": "deny"'* ]]; }
@@ -487,12 +487,12 @@ test("mixed assertions", () => {
 @test "ignores a ledger line with an unrecognized schema version" {
   stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
   # Compute the real current signal but record it under schema 2 (unknown).
-  local ndjson sig ledger
+  local ndjson signal ledger
   ndjson=$(signals_for "app/utils/x/index.test.ts")
-  sig=$(printf '%s\n' "$ndjson" | jq -r 'select(.fullName=="adds two numbers") | .signal' | head -1)
+  signal=$(printf '%s\n' "$ndjson" | jq -r 'select(.fullName=="adds two numbers") | .signal' | head -1)
   ledger="$( . "$REPO/.claude/hooks/lib/red-ledger.sh" && red_ledger_path "$REPO" )"
   mkdir -p "$(dirname "$ledger")"
-  jq -nc --arg s "$sig" \
+  jq -nc --arg s "$signal" \
     '{schema:2, file:"app/utils/x/index.test.ts", fullName:"adds two numbers", signal:$s, failureKind:"assertion", observedAt:"2026-06-04T00:00:00Z"}' \
     >> "$ledger"
   run_commit_hook

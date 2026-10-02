@@ -29,11 +29,11 @@ trap 'exit 0' ERR
 # The fallback chain ends at `pwd`, so a checkout where neither the resolver nor
 # git answers still drains the path a bare relative literal would name.
 _hook_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || _hook_root=''
-_main_root_lib="$_hook_root/.gaia/scripts/main-root-lib.sh"
+_main_root_library="$_hook_root/.gaia/scripts/main-root-lib.sh"
 trap - ERR
 set +e
 # shellcheck source=/dev/null
-[ -n "$_hook_root" ] && [ -f "$_main_root_lib" ] && . "$_main_root_lib" 2>/dev/null
+[ -n "$_hook_root" ] && [ -f "$_main_root_library" ] && . "$_main_root_library" 2>/dev/null
 set -e
 trap 'exit 0' ERR
 main_root=''

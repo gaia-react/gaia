@@ -19,21 +19,21 @@
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
-  THIS_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
-  REPO_ROOT="$(git -C "$THIS_DIR" rev-parse --show-toplevel)"
-  LIB="$REPO_ROOT/.claude/hooks/lib/audit-base-provenance.sh"
+  THIS_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
+  REPO_ROOT="$(git -C "$THIS_DIRECTORY" rev-parse --show-toplevel)"
+  PROVENANCE_LIBRARY="$REPO_ROOT/.claude/hooks/lib/audit-base-provenance.sh"
 }
 
 # make_repo <name>: an isolated repo with an initial commit on main.
 make_repo() {
   local name="$1"
-  local dir="$BATS_TEST_TMPDIR/$name"
-  git init -q --initial-branch=main "$dir"
-  git -C "$dir" config user.email t@example.com
-  git -C "$dir" config user.name T
-  git -C "$dir" config commit.gpgsign false
-  commit_file "$dir" "root.txt" "init"
-  printf '%s' "$dir"
+  local repository_directory="$BATS_TEST_TMPDIR/$name"
+  git init -q --initial-branch=main "$repository_directory"
+  git -C "$repository_directory" config user.email t@example.com
+  git -C "$repository_directory" config user.name T
+  git -C "$repository_directory" config commit.gpgsign false
+  commit_file "$repository_directory" "root.txt" "init"
+  printf '%s' "$repository_directory"
 }
 
 # commit_file <repo> <path> <message>: writes a line into <path> and commits.
@@ -53,7 +53,7 @@ commit_file() {
 # would otherwise make a usage error look like non-empty stdout.
 resolve() {
   run bash -c '. "$1"; audit_resolve_base_provenance "$2" "$3" "$4" "$5" 2>/dev/null' _ \
-    "$LIB" "$1" "$2" "${3:-}" "${4:-}"
+    "$PROVENANCE_LIBRARY" "$1" "$2" "${3:-}" "${4:-}"
 }
 
 # --- the remote-vs-local-vs-shadow default-branch ladder ---------------------
@@ -224,10 +224,10 @@ resolve() {
 }
 
 @test "a root that is not a work tree returns 2 with empty stdout" {
-  local dir="$BATS_TEST_TMPDIR/not-a-repo"
-  mkdir -p "$dir"
+  local non_repository_directory="$BATS_TEST_TMPDIR/not-a-repo"
+  mkdir -p "$non_repository_directory"
 
-  resolve "$dir" default-branch
+  resolve "$non_repository_directory" default-branch
   [ "$status" -eq 2 ]
   [ -z "$output" ]
 }
@@ -256,7 +256,7 @@ resolve() {
   base_sha="$(git -C "$repo" rev-parse HEAD)"
   git -C "$repo" update-ref refs/remotes/origin/main refs/heads/main
 
-  run bash -c '. "$1"; audit_provenance_changed_files "$2" "$3"' _ "$LIB" "$repo" "$base_sha"
+  run bash -c '. "$1"; audit_provenance_changed_files "$2" "$3"' _ "$PROVENANCE_LIBRARY" "$repo" "$base_sha"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -265,7 +265,7 @@ resolve() {
   local repo
   repo="$(make_repo changed-nobase)"
 
-  run bash -c '. "$1"; audit_provenance_changed_files "$2" "$3"' _ "$LIB" "$repo" ""
+  run bash -c '. "$1"; audit_provenance_changed_files "$2" "$3"' _ "$PROVENANCE_LIBRARY" "$repo" ""
   [ "$status" -ne 0 ]
 }
 
@@ -273,7 +273,7 @@ resolve() {
   local repo
   repo="$(make_repo changed-baddiff)"
 
-  run bash -c '. "$1"; audit_provenance_changed_files "$2" "$3"' _ "$LIB" "$repo" \
+  run bash -c '. "$1"; audit_provenance_changed_files "$2" "$3"' _ "$PROVENANCE_LIBRARY" "$repo" \
     "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
   [ "$status" -ne 0 ]
   [ -z "$output" ]
@@ -285,7 +285,7 @@ resolve() {
   base_sha="$(git -C "$repo" rev-parse HEAD)"
   commit_file "$repo" "$(printf 'docs/caf\xc3\xa9.md')" "non-ascii path"
 
-  run bash -c '. "$1"; audit_provenance_changed_files "$2" "$3"' _ "$LIB" "$repo" "$base_sha"
+  run bash -c '. "$1"; audit_provenance_changed_files "$2" "$3"' _ "$PROVENANCE_LIBRARY" "$repo" "$base_sha"
   [ "$status" -eq 0 ]
   grep -qF "$(printf 'docs/caf\xc3\xa9.md')" <<<"$output"
 }
@@ -301,7 +301,7 @@ resolve() {
   git -C "$repo" mv app/moved.ts wiki-moved.md
   git -C "$repo" commit --quiet -m "move"
 
-  run bash -c '. "$1"; audit_provenance_changed_files "$2" "$3"' _ "$LIB" "$repo" "$base_sha"
+  run bash -c '. "$1"; audit_provenance_changed_files "$2" "$3"' _ "$PROVENANCE_LIBRARY" "$repo" "$base_sha"
   [ "$status" -eq 0 ]
   grep -qxF "app/moved.ts" <<<"$output"
   grep -qxF "wiki-moved.md" <<<"$output"
@@ -310,16 +310,16 @@ resolve() {
 # --- audit_provenance_empty_is_decisive --------------------------------------
 
 @test "empty_is_decisive: 0 for remote and supplied, 1 for local, unresolvable, empty, and unrecognized" {
-  run bash -c '. "$1"; audit_provenance_empty_is_decisive remote' _ "$LIB"
+  run bash -c '. "$1"; audit_provenance_empty_is_decisive remote' _ "$PROVENANCE_LIBRARY"
   [ "$status" -eq 0 ]
-  run bash -c '. "$1"; audit_provenance_empty_is_decisive supplied' _ "$LIB"
+  run bash -c '. "$1"; audit_provenance_empty_is_decisive supplied' _ "$PROVENANCE_LIBRARY"
   [ "$status" -eq 0 ]
-  run bash -c '. "$1"; audit_provenance_empty_is_decisive local' _ "$LIB"
+  run bash -c '. "$1"; audit_provenance_empty_is_decisive local' _ "$PROVENANCE_LIBRARY"
   [ "$status" -eq 1 ]
-  run bash -c '. "$1"; audit_provenance_empty_is_decisive unresolvable' _ "$LIB"
+  run bash -c '. "$1"; audit_provenance_empty_is_decisive unresolvable' _ "$PROVENANCE_LIBRARY"
   [ "$status" -eq 1 ]
-  run bash -c '. "$1"; audit_provenance_empty_is_decisive ""' _ "$LIB"
+  run bash -c '. "$1"; audit_provenance_empty_is_decisive ""' _ "$PROVENANCE_LIBRARY"
   [ "$status" -eq 1 ]
-  run bash -c '. "$1"; audit_provenance_empty_is_decisive nonsense' _ "$LIB"
+  run bash -c '. "$1"; audit_provenance_empty_is_decisive nonsense' _ "$PROVENANCE_LIBRARY"
   [ "$status" -eq 1 ]
 }

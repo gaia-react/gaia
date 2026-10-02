@@ -16,9 +16,9 @@
 
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
-  HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
-  HOOK_ABS="$HOOKS_SRC/wiki-recompact-sentinel.sh"
-  SETTINGS_ABS="${HOOKS_SRC%/hooks}/settings.json"
+  HOOKS_SOURCE_DIRECTORY=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
+  HOOK_ABSOLUTE_PATH="$HOOKS_SOURCE_DIRECTORY/wiki-recompact-sentinel.sh"
+  SETTINGS_ABSOLUTE_PATH="${HOOKS_SOURCE_DIRECTORY%/hooks}/settings.json"
   WORK=$(mktemp -d -t gaia-recompact-sentinel-XXXXXX)
   SENTINEL="$WORK/.claude/wiki-recompact-pending"
 }
@@ -39,7 +39,7 @@ seed_hot_cache() {
 
 @test "a hot cache present drops the sentinel" {
   seed_hot_cache
-  invoke_hook_in "$WORK" '' "$HOOK_ABS"
+  invoke_hook_in "$WORK" '' "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -f "$SENTINEL" ]
 }
@@ -48,7 +48,7 @@ seed_hot_cache() {
   # PostCompact output reaches nobody useful, and a chatty hook on the
   # compaction path is pure noise. Silence is the contract.
   seed_hot_cache
-  invoke_hook_in "$WORK" '' "$HOOK_ABS"
+  invoke_hook_in "$WORK" '' "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -58,22 +58,22 @@ seed_hot_cache() {
   # rather than failing into a no-op, which would lose the restoration.
   seed_hot_cache
   [ ! -d "$WORK/.claude" ]
-  invoke_hook_in "$WORK" '' "$HOOK_ABS"
+  invoke_hook_in "$WORK" '' "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -f "$SENTINEL" ]
 }
 
 @test "a second compaction leaves the sentinel in place" {
   seed_hot_cache
-  invoke_hook_in "$WORK" '' "$HOOK_ABS"
-  invoke_hook_in "$WORK" '' "$HOOK_ABS"
+  invoke_hook_in "$WORK" '' "$HOOK_ABSOLUTE_PATH"
+  invoke_hook_in "$WORK" '' "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -f "$SENTINEL" ]
 }
 
 @test "the sentinel is a marker, not a carrier: it holds no content" {
   seed_hot_cache
-  invoke_hook_in "$WORK" '' "$HOOK_ABS"
+  invoke_hook_in "$WORK" '' "$HOOK_ABSOLUTE_PATH"
   [ ! -s "$SENTINEL" ]
 }
 
@@ -82,7 +82,7 @@ seed_hot_cache() {
 @test "no wiki/hot.md means no sentinel" {
   # Dropping one here would arm the inject hook to consume a sentinel and
   # deliver nothing, burning the single-shot handshake for no reason.
-  invoke_hook_in "$WORK" '' "$HOOK_ABS"
+  invoke_hook_in "$WORK" '' "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
   [ ! -f "$SENTINEL" ]
@@ -90,7 +90,7 @@ seed_hot_cache() {
 
 @test "a wiki/ directory with no hot.md still means no sentinel" {
   mkdir -p "$WORK/wiki"
-  invoke_hook_in "$WORK" '' "$HOOK_ABS"
+  invoke_hook_in "$WORK" '' "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ ! -f "$SENTINEL" ]
 }
@@ -113,7 +113,7 @@ seed_hot_cache() {
     echo "precondition unavailable: \$WORK stayed writable at mode 555, so the fail-open path cannot be exercised (running as root?)" >&2
     return 1
   fi
-  invoke_hook_in "$WORK" '' "$HOOK_ABS"
+  invoke_hook_in "$WORK" '' "$HOOK_ABSOLUTE_PATH"
   chmod 755 "$WORK"
   # Exit status is the whole contract here. The failing mkdir writes its own
   # "Permission denied" to stderr, which bats' `run` merges into $output, so
@@ -126,17 +126,17 @@ seed_hot_cache() {
 # --- structural ---
 
 @test "wiki-recompact-sentinel.sh is executable" {
-  [ -x "$HOOK_ABS" ]
+  [ -x "$HOOK_ABSOLUTE_PATH" ]
 }
 
 @test "settings.json registers the hook under PostCompact" {
-  hook_registered "$SETTINGS_ABS" '.hooks.PostCompact[]' wiki-recompact-sentinel.sh
+  hook_registered "$SETTINGS_ABSOLUTE_PATH" '.hooks.PostCompact[]' wiki-recompact-sentinel.sh
 }
 
 @test "the sentinel path matches the one wiki-recompact-inject.sh consumes" {
   # The two hooks share no library; the path is spelled out in each. A rename
   # in one alone breaks the handshake silently, with both halves still exiting
   # 0 forever.
-  grep -qF -- '.claude/wiki-recompact-pending' "$HOOK_ABS"
-  grep -qF -- '.claude/wiki-recompact-pending' "$HOOKS_SRC/wiki-recompact-inject.sh"
+  grep -qF -- '.claude/wiki-recompact-pending' "$HOOK_ABSOLUTE_PATH"
+  grep -qF -- '.claude/wiki-recompact-pending' "$HOOKS_SOURCE_DIRECTORY/wiki-recompact-inject.sh"
 }

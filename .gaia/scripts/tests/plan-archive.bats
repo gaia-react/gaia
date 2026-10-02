@@ -11,10 +11,10 @@
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  SCRIPT="$THIS_DIR/../plan-archive.sh"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  SCRIPT="$THIS_DIRECTORY/../plan-archive.sh"
   [ -x "$SCRIPT" ] || skip "plan-archive.sh not executable"
-  REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
+  REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
   # snapshot_file + assert_files_identical: byte identity without `$(cat …)`.
   . "$REPO_ROOT/.gaia/tests/helpers/files.sh"
 

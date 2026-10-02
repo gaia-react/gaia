@@ -15,35 +15,35 @@
 
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
-  HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
-  HOOK_ABS="$HOOKS_SRC/block-secrets-read.sh"
-  SETTINGS_ABS="${HOOKS_SRC%/hooks}/settings.json"
+  HOOKS_SOURCE_DIRECTORY=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
+  HOOK_ABSOLUTE_PATH="$HOOKS_SOURCE_DIRECTORY/block-secrets-read.sh"
+  SETTINGS_ABSOLUTE_PATH="${HOOKS_SOURCE_DIRECTORY%/hooks}/settings.json"
 }
 
 run_hook_read() {
   local path="$1"
   local json
-  json=$(jq -n --arg p "$path" '{tool_name: "Read", tool_input: {file_path: $p}}')
-  invoke_hook "$json" "$HOOK_ABS"
+  json=$(jq -n --arg file_path "$path" '{tool_name: "Read", tool_input: {file_path: $file_path}}')
+  invoke_hook "$json" "$HOOK_ABSOLUTE_PATH"
 }
 
 run_hook_bash() {
-  local cmd="$1"
+  local command_line="$1"
   local json
-  json=$(jq -n --arg c "$cmd" '{tool_name: "Bash", tool_input: {command: $c}}')
-  invoke_hook "$json" "$HOOK_ABS"
+  json=$(jq -n --arg command "$command_line" '{tool_name: "Bash", tool_input: {command: $command}}')
+  invoke_hook "$json" "$HOOK_ABSOLUTE_PATH"
 }
 
 run_hook_grep() {
   local path="$1" glob="$2"
   local json
-  json=$(jq -n --arg p "$path" --arg g "$glob" '{
+  json=$(jq -n --arg search_path "$path" --arg glob "$glob" '{
     tool_name: "Grep",
     tool_input: ({pattern: "x"}
-      + (if $p == "" then {} else {path: $p} end)
-      + (if $g == "" then {} else {glob: $g} end))
+      + (if $search_path == "" then {} else {path: $search_path} end)
+      + (if $glob == "" then {} else {glob: $glob} end))
   }')
-  invoke_hook "$json" "$HOOK_ABS"
+  invoke_hook "$json" "$HOOK_ABSOLUTE_PATH"
 }
 
 # Run the hook with lib/reader-operands.sh absent, to exercise the grammar-load
@@ -68,12 +68,12 @@ run_hook_grep() {
 # than an unresolvable lib dir; both deny, and pinning the narrower one is what
 # makes this a test of the probe instead of a test of `cd`.
 run_hook_without_library() {
-  local json dir
-  dir="$BATS_TEST_TMPDIR/nolib"
-  mkdir -p "$dir/lib"
-  cp "$HOOK_ABS" "$dir/"
+  local json directory
+  directory="$BATS_TEST_TMPDIR/nolib"
+  mkdir -p "$directory/lib"
+  cp "$HOOK_ABSOLUTE_PATH" "$directory/"
   json=$(jq -n '{tool_name: "Bash", tool_input: {command: "cat README.md"}}')
-  invoke_hook "$json" "$dir/$(basename "$HOOK_ABS")"
+  invoke_hook "$json" "$directory/$(basename "$HOOK_ABSOLUTE_PATH")"
 }
 
 # --- Read-tool denies, one per path class the removed Read() globs covered ---
@@ -245,9 +245,9 @@ run_hook_without_library() {
 }
 
 @test "every select flag reader-operands.sh carries denies a secret passed as its value" {
-  local lib="$HOOKS_SRC/lib/reader-operands.sh"
+  local library_path="$HOOKS_SOURCE_DIRECTORY/lib/reader-operands.sh"
   # shellcheck source=.claude/hooks/lib/reader-operands.sh disable=SC1091
-  . "$lib"
+  . "$library_path"
 
   # Which tables exist is the library's to say, so read it rather than restate
   # it. Each table needs its own grammar arm below, so one added there and not
@@ -255,7 +255,7 @@ run_hook_without_library() {
   # set; comparing the two reds instead, and names the arm to write.
   #
   local declared mentioned missed found known
-  declared=$(grep -oE '^_GAIA_RO_[A-Z0-9_]+=' "$lib" | sed 's/=$//' | sort -u)
+  declared=$(grep -oE '^_GAIA_RO_[A-Z0-9_]+=' "$library_path" | sed 's/=$//' | sort -u)
 
   # That anchor reads a bare column-0 assignment, which is how this library
   # declares every table today. Rather than widen it once per declaration
@@ -263,7 +263,7 @@ run_hook_without_library() {
   # mentions at all and require the anchor to have reached each one. A table
   # declared in a shape the anchor cannot read then reds here, rather than
   # sitting outside the comparison below with nothing left to notice it.
-  mentioned=$(grep -ohE '_GAIA_RO_[A-Z0-9_]+' "$lib" | sort -u)
+  mentioned=$(grep -ohE '_GAIA_RO_[A-Z0-9_]+' "$library_path" | sort -u)
   missed=$(comm -23 <(printf '%s\n' "$mentioned") <(printf '%s\n' "$declared"))
   if [ -n "$missed" ]; then
     echo "lib/reader-operands.sh names tables this test's discovery cannot read:" >&2
@@ -312,23 +312,23 @@ run_hook_without_library() {
   # command word spells every member and the mismatches below are deliberate.
   # What is under test is the flag's grammar, which the guard reads the same way
   # for every word in its grep family, so one word per grammar is enough.
-  local cmds=() f c i=0
+  local command_lines=() long_flag flag_letter i=0
   while [ "$i" -lt "${#_GAIA_RO_SHORT_SELECT}" ]; do
-    c="${_GAIA_RO_SHORT_SELECT:$i:1}"
-    cmds+=("rg -$c '*.key' TOKEN")
-    cmds+=("rg -$c*.key TOKEN")
+    flag_letter="${_GAIA_RO_SHORT_SELECT:$i:1}"
+    command_lines+=("rg -$flag_letter '*.key' TOKEN")
+    command_lines+=("rg -$flag_letter*.key TOKEN")
     i=$((i + 1))
   done
-  for f in $_GAIA_RO_LONG_SELECT; do
-    cmds+=("rg $f '*.key' TOKEN")
-    cmds+=("rg $f='*.key' TOKEN")
+  for long_flag in $_GAIA_RO_LONG_SELECT; do
+    command_lines+=("rg $long_flag '*.key' TOKEN")
+    command_lines+=("rg $long_flag='*.key' TOKEN")
   done
 
-  local cmd allowed=0
-  for cmd in "${cmds[@]}"; do
-    run_hook_bash "$cmd"
+  local command_line allowed=0
+  for command_line in "${command_lines[@]}"; do
+    run_hook_bash "$command_line"
     if [ "$status" -ne 0 ] || ! grep -qF -- '"permissionDecision": "deny"' <<<"$output"; then
-      echo "not denied: $cmd" >&2
+      echo "not denied: $command_line" >&2
       allowed=1
     fi
   done
@@ -336,9 +336,9 @@ run_hook_without_library() {
 }
 
 @test "every select flag reader-operands.sh carries allows a negated glob naming the secret class" {
-  local lib="$HOOKS_SRC/lib/reader-operands.sh"
+  local library_path="$HOOKS_SOURCE_DIRECTORY/lib/reader-operands.sh"
   # shellcheck source=.claude/hooks/lib/reader-operands.sh disable=SC1091
-  . "$lib"
+  . "$library_path"
 
   # The test above holds the select tables to the library's declarations, so
   # this one only refuses a table emptied in place before deriving from it.
@@ -347,23 +347,23 @@ run_hook_without_library() {
     return 1
   fi
 
-  local cmds=() f c i=0
+  local command_lines=() long_flag flag_letter i=0
   while [ "$i" -lt "${#_GAIA_RO_SHORT_SELECT}" ]; do
-    c="${_GAIA_RO_SHORT_SELECT:$i:1}"
-    cmds+=("rg -$c '!*.key' TOKEN")
-    cmds+=("rg -$c!*.key TOKEN")
+    flag_letter="${_GAIA_RO_SHORT_SELECT:$i:1}"
+    command_lines+=("rg -$flag_letter '!*.key' TOKEN")
+    command_lines+=("rg -$flag_letter!*.key TOKEN")
     i=$((i + 1))
   done
-  for f in $_GAIA_RO_LONG_SELECT; do
-    cmds+=("rg $f '!*.key' TOKEN")
-    cmds+=("rg $f='!*.key' TOKEN")
+  for long_flag in $_GAIA_RO_LONG_SELECT; do
+    command_lines+=("rg $long_flag '!*.key' TOKEN")
+    command_lines+=("rg $long_flag='!*.key' TOKEN")
   done
 
-  local cmd denied=0
-  for cmd in "${cmds[@]}"; do
-    run_hook_bash "$cmd"
+  local command_line denied=0
+  for command_line in "${command_lines[@]}"; do
+    run_hook_bash "$command_line"
     if [ "$status" -ne 0 ] || grep -qF -- '"permissionDecision": "deny"' <<<"$output"; then
-      echo "not allowed: $cmd" >&2
+      echo "not allowed: $command_line" >&2
       denied=1
     fi
   done
@@ -423,19 +423,19 @@ run_hook_without_library() {
 # --- Structural ---
 
 @test "block-secrets-read.sh is executable" {
-  [ -x "$HOOK_ABS" ]
+  [ -x "$HOOK_ABSOLUTE_PATH" ]
 }
 
 @test "settings.json registers block-secrets-read.sh under the Read matcher" {
-  hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Read")' block-secrets-read.sh
+  hook_registered "$SETTINGS_ABSOLUTE_PATH" '.hooks.PreToolUse[] | select(.matcher == "Read")' block-secrets-read.sh
 }
 
 @test "settings.json registers block-secrets-read.sh on the Bash|Monitor matcher" {
-  hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor")' block-secrets-read.sh
+  hook_registered "$SETTINGS_ABSOLUTE_PATH" '.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor")' block-secrets-read.sh
 }
 
 @test "permissions.deny carries none of the four replaced Read() globs" {
-  run jq -e '[.permissions.deny[] | select(startswith("Read("))] | length == 0' "$SETTINGS_ABS"
+  run jq -e '[.permissions.deny[] | select(startswith("Read("))] | length == 0' "$SETTINGS_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
 }
 
@@ -505,7 +505,7 @@ run_hook_without_library() {
 }
 
 @test "settings.json registers block-secrets-read.sh under the Grep matcher" {
-  hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Grep")' block-secrets-read.sh
+  hook_registered "$SETTINGS_ABSOLUTE_PATH" '.hooks.PreToolUse[] | select(.matcher == "Grep")' block-secrets-read.sh
 }
 
 # --- Fail-closed on a grammar-load failure ---
@@ -528,7 +528,7 @@ run_hook_without_library() {
     .sandbox.filesystem.denyRead as $d
     | ["**/*.key", "**/*.pem", "**/*credential*", "**/secrets/**"]
     | all(. as $needle | $d | index($needle) != null)
-  ' "$SETTINGS_ABS"
+  ' "$SETTINGS_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
 }
 

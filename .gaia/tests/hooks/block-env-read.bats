@@ -18,10 +18,10 @@
 
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
-  HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
-  HOOK_ABS="$HOOKS_SRC/block-env-read.sh"
-  WRITE_HOOK_ABS="$HOOKS_SRC/block-env-write.sh"
-  SETTINGS_ABS="${HOOKS_SRC%/hooks}/settings.json"
+  HOOKS_SOURCE_DIRECTORY=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
+  HOOK_ABSOLUTE_PATH="$HOOKS_SOURCE_DIRECTORY/block-env-read.sh"
+  WRITE_HOOK_ABSOLUTE_PATH="$HOOKS_SOURCE_DIRECTORY/block-env-write.sh"
+  SETTINGS_ABSOLUTE_PATH="${HOOKS_SOURCE_DIRECTORY%/hooks}/settings.json"
 }
 
 # Several payloads below carry Bash commands with single quotes of their own
@@ -30,27 +30,27 @@ setup() {
 run_hook_read() {
   local path="$1"
   local json
-  json=$(jq -n --arg p "$path" '{tool_name: "Read", tool_input: {file_path: $p}}')
-  invoke_hook "$json" "$HOOK_ABS"
+  json=$(jq -n --arg file_path "$path" '{tool_name: "Read", tool_input: {file_path: $file_path}}')
+  invoke_hook "$json" "$HOOK_ABSOLUTE_PATH"
 }
 
 run_hook_bash() {
-  local cmd="$1"
+  local command_line="$1"
   local json
-  json=$(jq -n --arg c "$cmd" '{tool_name: "Bash", tool_input: {command: $c}}')
-  invoke_hook "$json" "$HOOK_ABS"
+  json=$(jq -n --arg command "$command_line" '{tool_name: "Bash", tool_input: {command: $command}}')
+  invoke_hook "$json" "$HOOK_ABSOLUTE_PATH"
 }
 
 run_hook_grep() {
   local path="$1" glob="$2"
   local json
-  json=$(jq -n --arg p "$path" --arg g "$glob" '{
+  json=$(jq -n --arg search_path "$path" --arg glob "$glob" '{
     tool_name: "Grep",
     tool_input: ({pattern: "x"}
-      + (if $p == "" then {} else {path: $p} end)
-      + (if $g == "" then {} else {glob: $g} end))
+      + (if $search_path == "" then {} else {path: $search_path} end)
+      + (if $glob == "" then {} else {glob: $glob} end))
   }')
-  invoke_hook "$json" "$HOOK_ABS"
+  invoke_hook "$json" "$HOOK_ABSOLUTE_PATH"
 }
 
 # Run the hook with lib/reader-operands.sh absent, to exercise the grammar-load
@@ -75,19 +75,19 @@ run_hook_grep() {
 # than an unresolvable lib dir; both deny, and pinning the narrower one is what
 # makes this a test of the probe instead of a test of `cd`.
 run_hook_without_library() {
-  local json dir
-  dir="$BATS_TEST_TMPDIR/nolib"
-  mkdir -p "$dir/lib"
-  cp "$HOOK_ABS" "$dir/"
+  local json directory
+  directory="$BATS_TEST_TMPDIR/nolib"
+  mkdir -p "$directory/lib"
+  cp "$HOOK_ABSOLUTE_PATH" "$directory/"
   json=$(jq -n '{tool_name: "Bash", tool_input: {command: "cat README.md"}}')
-  invoke_hook "$json" "$dir/$(basename "$HOOK_ABS")"
+  invoke_hook "$json" "$directory/$(basename "$HOOK_ABSOLUTE_PATH")"
 }
 
 run_write_hook_edit() {
   local tool="$1" path="$2"
   local json
-  json=$(jq -n --arg t "$tool" --arg p "$path" '{tool_name: $t, tool_input: {file_path: $p}}')
-  invoke_hook "$json" "$WRITE_HOOK_ABS"
+  json=$(jq -n --arg tool_name "$tool" --arg file_path "$path" '{tool_name: $tool_name, tool_input: {file_path: $file_path}}')
+  invoke_hook "$json" "$WRITE_HOOK_ABSOLUTE_PATH"
 }
 
 
@@ -349,20 +349,20 @@ run_write_hook_edit() {
 # --- Structural ---
 
 @test "block-env-read.sh is executable" {
-  [ -x "$HOOK_ABS" ]
+  [ -x "$HOOK_ABSOLUTE_PATH" ]
 }
 
 @test "settings.json is valid JSON" {
-  run jq empty "$SETTINGS_ABS"
+  run jq empty "$SETTINGS_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
 }
 
 @test "settings.json registers block-env-read.sh under the Read matcher (UAT-008)" {
-  hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Read")' block-env-read.sh
+  hook_registered "$SETTINGS_ABSOLUTE_PATH" '.hooks.PreToolUse[] | select(.matcher == "Read")' block-env-read.sh
 }
 
 @test "settings.json registers block-env-read.sh on the Bash|Monitor matcher (UAT-008)" {
-  hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor")' block-env-read.sh
+  hook_registered "$SETTINGS_ABSOLUTE_PATH" '.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor")' block-env-read.sh
 }
 
 @test "permissions.deny carries no Read() rule at all" {
@@ -370,7 +370,7 @@ run_write_hook_edit() {
   # deniedPathInsideDirectory breaker, so the guarantee this hook is paid to
   # provide is the empty set, and a well-meaning re-addition of any one of them
   # silently reinstates the prompt storm this suite exists to keep away.
-  run jq -e '[.permissions.deny[] | select(startswith("Read("))] | length == 0' "$SETTINGS_ABS"
+  run jq -e '[.permissions.deny[] | select(startswith("Read("))] | length == 0' "$SETTINGS_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
 }
 
@@ -379,12 +379,12 @@ run_write_hook_edit() {
   # NotebookEdit), so a separate Write(.env) deny is redundant and is
   # intentionally absent. Only the READ half moved to the hook layer; an Edit()
   # rule arms no read breaker and therefore costs nothing to keep.
-  run jq -e '.permissions.deny | index("Edit(.env)")' "$SETTINGS_ABS"
+  run jq -e '.permissions.deny | index("Edit(.env)")' "$SETTINGS_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
 }
 
 @test "permissions.deny adds no .env.example deny and no .env.* glob" {
-  run jq -e '[.permissions.deny[] | select(contains(".env.example") or contains(".env.*"))] | length == 0' "$SETTINGS_ABS"
+  run jq -e '[.permissions.deny[] | select(contains(".env.example") or contains(".env.*"))] | length == 0' "$SETTINGS_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
 }
 
@@ -455,7 +455,7 @@ run_write_hook_edit() {
 }
 
 @test "settings.json registers block-env-read.sh under the Grep matcher" {
-  hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Grep")' block-env-read.sh
+  hook_registered "$SETTINGS_ABSOLUTE_PATH" '.hooks.PreToolUse[] | select(.matcher == "Grep")' block-env-read.sh
 }
 
 # --- Fail-closed on a grammar-load failure ---
@@ -481,7 +481,7 @@ run_write_hook_edit() {
   run jq -e '
     .sandbox.filesystem.denyRead as $d
     | ($d | index(".env")) != null and ($d | index(".env.*")) != null
-  ' "$SETTINGS_ABS"
+  ' "$SETTINGS_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
 }
 
@@ -494,7 +494,7 @@ run_write_hook_edit() {
   run jq -e '
     .sandbox.filesystem.denyRead as $d
     | ($d | index("**/.env")) != null and ($d | index("**/.env.*")) != null
-  ' "$SETTINGS_ABS"
+  ' "$SETTINGS_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
 }
 
@@ -503,7 +503,7 @@ run_write_hook_edit() {
     .sandbox.filesystem.allowRead as $a
     | ($a | index(".env.example")) != null
       and ($a | index("**/.env.example")) != null
-  ' "$SETTINGS_ABS"
+  ' "$SETTINGS_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
 }
 

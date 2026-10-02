@@ -85,14 +85,14 @@
 
 set -uo pipefail
 
-_self_dir="$(dirname "${BASH_SOURCE[0]}")"
+_self_directory="$(dirname "${BASH_SOURCE[0]}")"
 
 # The digest engine, for --capture. Sourced defensively: an unloadable lib
 # must fail THIS call closed, not silently degrade, since a member that
 # cannot capture must learn now rather than at write time. Resolved the same
 # way audit-member-digest.sh and audit-write-clearance.sh resolve it: the
 # BASH_SOURCE dirhop inline, in one assignment, rather than through the
-# `_self_dir` variable below.
+# `_self_directory` variable below.
 _scope_digest_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.claude/hooks/lib" 2>/dev/null && pwd)" || true
 if [ -n "${_scope_digest_lib_dir:-}" ] && [ -f "${_scope_digest_lib_dir}/audit-digest.sh" ]; then
   # shellcheck source=/dev/null
@@ -101,9 +101,9 @@ fi
 
 # The shared key rule: base sha plus branch, the same partition the findings
 # sidecar and the re-run ledger already key on.
-if [ -f "${_self_dir}/audit-key-lib.sh" ]; then
+if [ -f "${_self_directory}/audit-key-lib.sh" ]; then
   # shellcheck source=/dev/null
-  . "${_self_dir}/audit-key-lib.sh"
+  . "${_self_directory}/audit-key-lib.sh"
 fi
 
 usage() {

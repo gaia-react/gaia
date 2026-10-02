@@ -17,10 +17,10 @@
 
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
-  HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
-  HOOK_ABS="$HOOKS_SRC/block-worktree-path-mismatch.sh"
-  SETTINGS_ABS="${HOOKS_SRC%/hooks}/settings.json"
-  MAIN_ROOT_LIB="$(cd "$HOOKS_SRC/../.." && pwd)/.gaia/scripts/main-root-lib.sh"
+  HOOKS_SOURCE_DIRECTORY=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
+  HOOK_ABSOLUTE_PATH="$HOOKS_SOURCE_DIRECTORY/block-worktree-path-mismatch.sh"
+  SETTINGS_ABSOLUTE_PATH="${HOOKS_SOURCE_DIRECTORY%/hooks}/settings.json"
+  MAIN_ROOT_LIBRARY="$(cd "$HOOKS_SOURCE_DIRECTORY/../.." && pwd)/.gaia/scripts/main-root-lib.sh"
 }
 
 teardown() {
@@ -89,18 +89,18 @@ JSON
 # layout, never on the registry). Used to construct a per-tree write the
 # guard must recognize as this tree's own.
 own_tree_key() {
-  bash "$MAIN_ROOT_LIB" --tree-key "$1"
+  bash "$MAIN_ROOT_LIBRARY" --tree-key "$1"
 }
 
-# make_worktree <rel> <branch>: a real linked worktree at
-# <REPO>/.claude/worktrees/<rel>, mirroring how GAIA creates plan/debt
-# worktrees. Sets WT to the worktree's absolute path.
+# make_worktree <worktree_name> <branch>: a real linked worktree at
+# <REPO>/.claude/worktrees/<worktree_name>, mirroring how GAIA creates plan/debt
+# worktrees. Sets WORKTREE to the worktree's absolute path.
 make_worktree() {
-  local rel="$1" br="$2"
-  git -C "$REPO" branch "$br"
+  local worktree_name="$1" branch_name="$2"
+  git -C "$REPO" branch "$branch_name"
   mkdir -p "$REPO/.claude/worktrees"
-  git -C "$REPO" worktree add -q "$REPO/.claude/worktrees/$rel" "$br"
-  WT="$REPO/.claude/worktrees/$rel"
+  git -C "$REPO" worktree add -q "$REPO/.claude/worktrees/$worktree_name" "$branch_name"
+  WORKTREE="$REPO/.claude/worktrees/$worktree_name"
 }
 
 # A payload path can carry quotes of its own, so delivery goes through
@@ -108,8 +108,8 @@ make_worktree() {
 run_hook_edit() {
   local tool="$1" path="$2"
   local json
-  json=$(jq -n --arg t "$tool" --arg p "$path" '{tool_name: $t, tool_input: {file_path: $p}}')
-  invoke_hook "$json" "$HOOK_ABS"
+  json=$(jq -n --arg tool_name "$tool" --arg file_path "$path" '{tool_name: $tool_name, tool_input: {file_path: $file_path}}')
+  invoke_hook "$json" "$HOOK_ABSOLUTE_PATH"
 }
 
 # --- allowed: editing inside the current worktree ---
@@ -117,25 +117,25 @@ run_hook_edit() {
 @test "Edit on a tracked file inside the current worktree is allowed" {
   make_repo
   make_worktree "debt/1-foo" "debt/1-foo"
-  cd "$WT"
-  run_hook_edit "Edit" "$WT/f"
+  cd "$WORKTREE"
+  run_hook_edit "Edit" "$WORKTREE/f"
   assert_allowed_by_json
 }
 
 @test "Write on a new file under an existing subdirectory of the current worktree is allowed" {
   make_repo
   make_worktree "debt/2-foo" "debt/2-foo"
-  mkdir -p "$WT/sub"
-  cd "$WT"
-  run_hook_edit "Write" "$WT/sub/new.ts"
+  mkdir -p "$WORKTREE/sub"
+  cd "$WORKTREE"
+  run_hook_edit "Write" "$WORKTREE/sub/new.ts"
   assert_allowed_by_json
 }
 
 @test "MultiEdit on a tracked file inside the current worktree is allowed" {
   make_repo
   make_worktree "debt/3-foo" "debt/3-foo"
-  cd "$WT"
-  run_hook_edit "MultiEdit" "$WT/f"
+  cd "$WORKTREE"
+  run_hook_edit "MultiEdit" "$WORKTREE/f"
   assert_allowed_by_json
 }
 
@@ -144,7 +144,7 @@ run_hook_edit() {
 @test "Edit targeting the main checkout while the session is inside the worktree is denied" {
   make_repo
   make_worktree "debt/4-foo" "debt/4-foo"
-  cd "$WT"
+  cd "$WORKTREE"
   run_hook_edit "Edit" "$REPO/f"
   assert_denied_by_json
 }
@@ -152,7 +152,7 @@ run_hook_edit() {
 @test "Write targeting the main checkout while the session is inside the worktree is denied" {
   make_repo
   make_worktree "debt/5-foo" "debt/5-foo"
-  cd "$WT"
+  cd "$WORKTREE"
   run_hook_edit "Write" "$REPO/new.ts"
   assert_denied_by_json
 }
@@ -160,7 +160,7 @@ run_hook_edit() {
 @test "MultiEdit targeting the main checkout while the session is inside the worktree is denied" {
   make_repo
   make_worktree "debt/6-foo" "debt/6-foo"
-  cd "$WT"
+  cd "$WORKTREE"
   run_hook_edit "MultiEdit" "$REPO/f"
   assert_denied_by_json
 }
@@ -171,7 +171,7 @@ run_hook_edit() {
   make_repo
   make_worktree "debt/7-foo" "debt/7-foo"
   cd "$REPO"
-  run_hook_edit "Edit" "$WT/f"
+  run_hook_edit "Edit" "$WORKTREE/f"
   assert_allowed_by_json
 }
 
@@ -188,7 +188,7 @@ run_hook_edit() {
   SYMLINK_REPO="${REPO}-symlink"
   ln -s "$REPO" "$SYMLINK_REPO"
   cd "$SYMLINK_REPO"
-  run_hook_edit "Edit" "$WT/f"
+  run_hook_edit "Edit" "$WORKTREE/f"
   assert_allowed_by_json
 }
 
@@ -205,10 +205,10 @@ run_hook_edit() {
   make_repo
   make_worktree "debt/12-foo" "debt/12-foo"
   mkdir -p "$REPO/.gaia/local/audit"
-  mkdir -p "$WT/.gaia/local"
-  ln -s "$REPO/.gaia/local/audit" "$WT/.gaia/local/audit"
-  cd "$WT"
-  run_hook_edit "Write" "$WT/.gaia/local/audit/issue-body-abc123.md"
+  mkdir -p "$WORKTREE/.gaia/local"
+  ln -s "$REPO/.gaia/local/audit" "$WORKTREE/.gaia/local/audit"
+  cd "$WORKTREE"
+  run_hook_edit "Write" "$WORKTREE/.gaia/local/audit/issue-body-abc123.md"
   assert_allowed_by_json
 }
 
@@ -218,7 +218,7 @@ run_hook_edit() {
   make_repo
   make_worktree "debt/13-foo" "debt/13-foo"
   mkdir -p "$REPO/.gaia/localish"
-  cd "$WT"
+  cd "$WORKTREE"
   run_hook_edit "Write" "$REPO/.gaia/localish/notes.md"
   assert_denied_by_json
 }
@@ -237,9 +237,9 @@ run_hook_edit() {
 @test "a worktree-mode write to its own keyed handoff subtree in the main checkout is allowed" {
   make_repo
   make_worktree "debt/15-foo" "debt/15-foo"
-  own_key="$(own_tree_key "$WT")"
+  own_key="$(own_tree_key "$WORKTREE")"
   mkdir -p "$REPO/.gaia/local/handoff/$own_key"
-  cd "$WT"
+  cd "$WORKTREE"
   run_hook_edit "Write" "$REPO/.gaia/local/handoff/$own_key/HANDOFF-2026-01-01.md"
   assert_allowed_by_json
 }
@@ -248,10 +248,10 @@ run_hook_edit() {
   make_repo
   make_worktree "debt/15b-foo" "debt/15b-foo"
   peer_key="deadbeefdeadbeef"
-  own_key="$(own_tree_key "$WT")"
+  own_key="$(own_tree_key "$WORKTREE")"
   [ "$peer_key" != "$own_key" ]
   mkdir -p "$REPO/.gaia/local/handoff/$peer_key"
-  cd "$WT"
+  cd "$WORKTREE"
   run_hook_edit "Write" "$REPO/.gaia/local/handoff/$peer_key/HANDOFF-2026-01-01.md"
   assert_denied_by_json
   # The refusal has to name the key, not repeat the generic stale-path advice.
@@ -268,7 +268,7 @@ run_hook_edit() {
   make_repo
   make_worktree "debt/15c-foo" "debt/15c-foo"
   mkdir -p "$REPO/.gaia/local/handoff"
-  cd "$WT"
+  cd "$WORKTREE"
   run_hook_edit "Write" "$REPO/.gaia/local/handoff/HANDOFF-2026-01-01.md"
   assert_denied_by_json
 }
@@ -284,7 +284,7 @@ run_hook_edit() {
   make_repo
   make_worktree "debt/31-foo" "debt/31-foo"
   mkdir -p "$REPO/.gaia/local/plans/PLAN-001"
-  cd "$WT"
+  cd "$WORKTREE"
   run_hook_edit "Write" "$REPO/.gaia/local/plans/PLAN-001/PROGRESS.md"
   assert_allowed_by_json
 }
@@ -296,7 +296,7 @@ run_hook_edit() {
   make_repo
   make_worktree "debt/32-foo" "debt/32-foo"
   mkdir -p "$REPO/.gaia/local/specs/SPEC-009/plan"
-  cd "$WT"
+  cd "$WORKTREE"
   run_hook_edit "Write" "$REPO/.gaia/local/specs/SPEC-009/plan/PROGRESS.md"
   assert_allowed_by_json
 }
@@ -307,7 +307,7 @@ run_hook_edit() {
   make_repo
   make_worktree "debt/33-foo" "debt/33-foo"
   mkdir -p "$REPO/.gaia/local/plansible"
-  cd "$WT"
+  cd "$WORKTREE"
   run_hook_edit "Write" "$REPO/.gaia/local/plansible/notes.md"
   assert_denied_by_json
 }
@@ -330,7 +330,7 @@ use_real_registry() {
   make_worktree "feat/9-sample" "feat/9-sample"
   mkdir -p "$REPO/.gaia/local/runs/feat/9-sample"
   echo state >"$REPO/.gaia/local/runs/feat/9-sample/STATE.md"
-  cd "$WT"
+  cd "$WORKTREE"
   run_hook_edit "Write" "$REPO/.gaia/local/runs/feat/9-sample/STATE.md"
   assert_allowed_by_json
 }
@@ -343,7 +343,7 @@ use_real_registry() {
   make_worktree "feat/9-sample-b" "feat/9-sample-b"
   mkdir -p "$REPO/.gaia/local/runsx/feat/9-sample"
   echo state >"$REPO/.gaia/local/runsx/feat/9-sample/STATE.md"
-  cd "$WT"
+  cd "$WORKTREE"
   run_hook_edit "Write" "$REPO/.gaia/local/runsx/feat/9-sample/STATE.md"
   assert_denied_by_json
   grep -qF -- "no entry in .gaia/state-registry.json recognizes it" <<<"$output" || return 1
@@ -355,10 +355,10 @@ use_real_registry() {
   make_repo
   make_worktree "debt/17-foo" "debt/17-foo"
   mkdir -p "$REPO/.gaia/local/debt"
-  mkdir -p "$WT/.gaia/local"
-  ln -s "$REPO/.gaia/local/debt" "$WT/.gaia/local/debt"
-  cd "$WT"
-  run_hook_edit "Write" "$WT/.gaia/local/debt/refresh-requested"
+  mkdir -p "$WORKTREE/.gaia/local"
+  ln -s "$REPO/.gaia/local/debt" "$WORKTREE/.gaia/local/debt"
+  cd "$WORKTREE"
+  run_hook_edit "Write" "$WORKTREE/.gaia/local/debt/refresh-requested"
   assert_allowed_by_json
 }
 
@@ -366,10 +366,10 @@ use_real_registry() {
   make_repo
   make_worktree "debt/20-foo" "debt/20-foo"
   mkdir -p "$REPO/.gaia/local/telemetry"
-  mkdir -p "$WT/.gaia/local"
-  ln -s "$REPO/.gaia/local/telemetry" "$WT/.gaia/local/telemetry"
-  cd "$WT"
-  run_hook_edit "Write" "$WT/.gaia/local/telemetry/tally.jsonl"
+  mkdir -p "$WORKTREE/.gaia/local"
+  ln -s "$REPO/.gaia/local/telemetry" "$WORKTREE/.gaia/local/telemetry"
+  cd "$WORKTREE"
+  run_hook_edit "Write" "$WORKTREE/.gaia/local/telemetry/tally.jsonl"
   assert_allowed_by_json
 }
 
@@ -377,10 +377,10 @@ use_real_registry() {
   make_repo
   make_worktree "debt/18-foo" "debt/18-foo"
   mkdir -p "$REPO/.gaia/local/cache/shared"
-  mkdir -p "$WT/.gaia/local/cache"
-  ln -s "$REPO/.gaia/local/cache/shared" "$WT/.gaia/local/cache/shared"
-  cd "$WT"
-  run_hook_edit "Write" "$WT/.gaia/local/cache/shared/blob.json"
+  mkdir -p "$WORKTREE/.gaia/local/cache"
+  ln -s "$REPO/.gaia/local/cache/shared" "$WORKTREE/.gaia/local/cache/shared"
+  cd "$WORKTREE"
+  run_hook_edit "Write" "$WORKTREE/.gaia/local/cache/shared/blob.json"
   assert_allowed_by_json
 }
 
@@ -394,7 +394,7 @@ use_real_registry() {
   make_repo
   make_worktree "debt/21-foo" "debt/21-foo"
   mkdir -p "$REPO/.gaia/local/cache"
-  cd "$WT"
+  cd "$WORKTREE"
   run_hook_edit "Write" "$REPO/.gaia/local/cache/draft-SPEC-001.md"
   assert_allowed_by_json
 }
@@ -407,10 +407,10 @@ use_real_registry() {
   make_worktree "debt/19-foo" "debt/19-foo"
   mkdir -p "$REPO/.gaia/local"
   echo '{}' >"$REPO/.gaia/local/setup-state.json"
-  mkdir -p "$WT/.gaia/local"
-  ln -s "$REPO/.gaia/local/setup-state.json" "$WT/.gaia/local/setup-state.json"
-  cd "$WT"
-  run_hook_edit "Write" "$WT/.gaia/local/setup-state.json"
+  mkdir -p "$WORKTREE/.gaia/local"
+  ln -s "$REPO/.gaia/local/setup-state.json" "$WORKTREE/.gaia/local/setup-state.json"
+  cd "$WORKTREE"
+  run_hook_edit "Write" "$WORKTREE/.gaia/local/setup-state.json"
   assert_allowed_by_json
 }
 
@@ -424,7 +424,7 @@ use_real_registry() {
   make_repo
   make_worktree "debt/40-foo" "debt/40-foo"
   mkdir -p "$REPO/.gaia/local/fixture-main-dir/some-lock"
-  cd "$WT"
+  cd "$WORKTREE"
   run_hook_edit "Write" "$REPO/.gaia/local/fixture-main-dir/some-lock/lock"
   assert_allowed_by_json
 }
@@ -444,10 +444,10 @@ use_real_registry() {
     "$REPO/.gaia/state-registry.json" >"$REPO/.gaia/state-registry.json.tmp"
   mv "$REPO/.gaia/state-registry.json.tmp" "$REPO/.gaia/state-registry.json"
   mkdir -p "$REPO/.gaia/local/newshared"
-  mkdir -p "$WT/.gaia/local"
-  ln -s "$REPO/.gaia/local/newshared" "$WT/.gaia/local/newshared"
-  cd "$WT"
-  run_hook_edit "Write" "$WT/.gaia/local/newshared/marker"
+  mkdir -p "$WORKTREE/.gaia/local"
+  ln -s "$REPO/.gaia/local/newshared" "$WORKTREE/.gaia/local/newshared"
+  cd "$WORKTREE"
+  run_hook_edit "Write" "$WORKTREE/.gaia/local/newshared/marker"
   assert_allowed_by_json
 }
 
@@ -461,7 +461,7 @@ use_real_registry() {
   make_repo
   make_worktree "debt/42-foo" "debt/42-foo"
   mkdir -p "$REPO/.gaia/local/unregistered"
-  cd "$WT"
+  cd "$WORKTREE"
   run_hook_edit "Write" "$REPO/.gaia/local/unregistered/notes.md"
   assert_denied_by_json
   # An unregistered path under .gaia/local is denied because the guard cannot
@@ -484,10 +484,10 @@ use_real_registry() {
 @test "an edit to a sibling worktree is denied while cwd sits in another worktree" {
   make_repo
   make_worktree "debt/14-a" "debt/14-a"
-  WT_A="$WT"
+  SIBLING_WORKTREE="$WORKTREE"
   make_worktree "debt/14-b" "debt/14-b"
-  cd "$WT"
-  run_hook_edit "Edit" "$WT_A/f"
+  cd "$WORKTREE"
+  run_hook_edit "Edit" "$SIBLING_WORKTREE/f"
   assert_denied_by_json
 }
 
@@ -496,7 +496,7 @@ use_real_registry() {
 @test "a Read tool call is ignored" {
   make_repo
   make_worktree "debt/8-foo" "debt/8-foo"
-  cd "$WT"
+  cd "$WORKTREE"
   run_hook_edit "Read" "$REPO/f"
   assert_allowed_by_json
 }
@@ -506,7 +506,7 @@ use_real_registry() {
 @test "a target directory that does not exist yet fails open (allowed)" {
   make_repo
   make_worktree "debt/9-foo" "debt/9-foo"
-  cd "$WT"
+  cd "$WORKTREE"
   run_hook_edit "Write" "/no-such-parent-dir-xyz/new.ts"
   assert_allowed_by_json
 }
@@ -515,7 +515,7 @@ use_real_registry() {
   make_repo
   make_worktree "debt/10-foo" "debt/10-foo"
   NONREPO=$(mktemp -d -t gaia-wt-mismatch-nonrepo-XXXXXX)
-  cd "$WT"
+  cd "$WORKTREE"
   run_hook_edit "Edit" "$NONREPO/scratch.txt"
   assert_allowed_by_json
 }
@@ -556,8 +556,8 @@ use_real_registry() {
   make_repo
   make_worktree "debt/34-foo" "debt/34-foo"
   mkdir -p "$REPO/.gaia/local/audit/inner"
-  ln -s "$REPO" "$WT/inner"
-  cd "$WT"
+  ln -s "$REPO" "$WORKTREE/inner"
+  cd "$WORKTREE"
   export CDPATH="$REPO/.gaia/local/audit"
   run_hook_edit "Write" "inner/f"
   assert_denied_by_json
@@ -572,7 +572,7 @@ use_real_registry() {
 @test "a file_path whose dirname component leads with a dash fails open cleanly" {
   make_repo
   make_worktree "debt/35-foo" "debt/35-foo"
-  cd "$WT"
+  cd "$WORKTREE"
   run_hook_edit "Write" "-x/f"
   assert_allowed_by_json
 }
@@ -580,16 +580,16 @@ use_real_registry() {
 # --- structural ---
 
 @test "block-worktree-path-mismatch.sh is executable" {
-  [ -x "$HOOK_ABS" ]
+  [ -x "$HOOK_ABSOLUTE_PATH" ]
 }
 
 @test "settings.json registers the hook under the Edit|Write|MultiEdit matcher" {
-  hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Edit|Write|MultiEdit")' block-worktree-path-mismatch.sh
+  hook_registered "$SETTINGS_ABSOLUTE_PATH" '.hooks.PreToolUse[] | select(.matcher == "Edit|Write|MultiEdit")' block-worktree-path-mismatch.sh
 }
 
 # --- library-load degradation (gaia-react/gaia#1556) ------------------------
 # These run a COPY of the hook staged inside the tmp repo, so the .gaia/scripts
-# it resolves off BASH_SOURCE is one the test controls. Running $HOOK_ABS would
+# it resolves off BASH_SOURCE is one the test controls. Running $HOOK_ABSOLUTE_PATH would
 # always resolve the real checkout's libs, where neither the absent nor the
 # unparseable case can be expressed.
 #
@@ -613,13 +613,13 @@ stage_hook_repo() {
   make_repo
   mkdir -p "$REPO/.claude/hooks/lib" "$REPO/.gaia/scripts"
   STAGED_HOOK="$REPO/.claude/hooks/block-worktree-path-mismatch.sh"
-  cp "$HOOK_ABS" "$STAGED_HOOK"
+  cp "$HOOK_ABSOLUTE_PATH" "$STAGED_HOOK"
   chmod +x "$STAGED_HOOK"
   # The jq-availability arm loads ahead of both libraries these cases degrade,
   # and refuses when it cannot find its own, so a staging without it answers
   # every case below with that refusal rather than the degrade under test.
-  cp "${HOOK_ABS%/*}/lib/jq-availability.sh" "$REPO/.claude/hooks/lib/"
-  cp "${MAIN_ROOT_LIB%/*}/main-root-lib.sh" "${MAIN_ROOT_LIB%/*}/state-registry-lib.sh" \
+  cp "${HOOK_ABSOLUTE_PATH%/*}/lib/jq-availability.sh" "$REPO/.claude/hooks/lib/"
+  cp "${MAIN_ROOT_LIBRARY%/*}/main-root-lib.sh" "${MAIN_ROOT_LIBRARY%/*}/state-registry-lib.sh" \
     "$REPO/.gaia/scripts/"
   make_worktree "debt/lib-degrade" "debt/lib-degrade"
 }
@@ -627,21 +627,21 @@ stage_hook_repo() {
 # run_staged_hook <path> <cwd> [interpreter]: runs the staged hook with its
 # process cwd at <cwd>, which is what the acting tree now resolves from.
 run_staged_hook() {
-  local json interp="${3:-bash}"
-  json=$(jq -n --arg p "$1" '{tool_name: "Edit", tool_input: {file_path: $p}}')
-  run bash -c 'cd "$1" && printf %s "$2" | "$3" "$4"' _ "$2" "$json" "$interp" "$STAGED_HOOK"
+  local json interpreter="${3:-bash}"
+  json=$(jq -n --arg file_path "$1" '{tool_name: "Edit", tool_input: {file_path: $file_path}}')
+  run bash -c 'cd "$1" && printf %s "$2" | "$3" "$4"' _ "$2" "$json" "$interpreter" "$STAGED_HOOK"
 }
 
 # Overwrites <path> with an unresolved-merge-conflict body: the file opens and
 # reads fine, so an existence test passes it, and bash cannot parse it.
-write_conflicted_lib() {
+write_conflicted_library() {
   { printf '<<<<<<< HEAD\n'; printf 'x() { :; }\n'; printf '=======\n'
     printf 'y() { :; }\n'; printf '>>>>>>> other\n'; } > "$1"
 }
 
 @test "staged hook, both libs usable: still denies the cross-tree write (control)" {
   stage_hook_repo
-  run_staged_hook "$REPO/f" "$WT"
+  run_staged_hook "$REPO/f" "$WORKTREE"
   assert_denied_by_json
 }
 
@@ -650,7 +650,7 @@ write_conflicted_lib() {
 @test "staged hook under stock /bin/bash, both libs usable: still denies (control)" {
   [ -x /bin/bash ] || skip "no /bin/bash"
   stage_hook_repo
-  run_staged_hook "$REPO/f" "$WT" /bin/bash
+  run_staged_hook "$REPO/f" "$WORKTREE" /bin/bash
   assert_denied_by_json
 }
 
@@ -666,7 +666,7 @@ write_conflicted_lib() {
   stage_hook_repo
   rm -f "$REPO/.gaia/scripts/main-root-lib.sh"
 
-  run_staged_hook "$REPO/f" "$WT" /bin/bash
+  run_staged_hook "$REPO/f" "$WORKTREE" /bin/bash
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -677,8 +677,8 @@ write_conflicted_lib() {
 # aimed anywhere else never loads the lib at all, and a case written that way
 # would green against any spelling of this load, including no load whatsoever.
 stage_unregistered_local_target() {
-  UNREG_DIR="$REPO/.gaia/local/fixture-unregistered"
-  mkdir -p "$UNREG_DIR"
+  UNREGISTERED_DIRECTORY="$REPO/.gaia/local/fixture-unregistered"
+  mkdir -p "$UNREGISTERED_DIRECTORY"
 }
 
 # The control for the pair below: with the reader usable, this exact path is
@@ -686,7 +686,7 @@ stage_unregistered_local_target() {
 @test "staged hook, registry usable: an unregistered .gaia/local write is denied (control)" {
   stage_hook_repo
   stage_unregistered_local_target
-  run_staged_hook "$UNREG_DIR/x" "$WT"
+  run_staged_hook "$UNREGISTERED_DIRECTORY/x" "$WORKTREE"
   assert_denied_by_json
 }
 
@@ -694,7 +694,7 @@ stage_unregistered_local_target() {
   [ -x /bin/bash ] || skip "no /bin/bash"
   stage_hook_repo
   stage_unregistered_local_target
-  run_staged_hook "$UNREG_DIR/x" "$WT" /bin/bash
+  run_staged_hook "$UNREGISTERED_DIRECTORY/x" "$WORKTREE" /bin/bash
   assert_denied_by_json
 }
 
@@ -704,7 +704,7 @@ stage_unregistered_local_target() {
   stage_unregistered_local_target
   rm -f "$REPO/.gaia/scripts/state-registry-lib.sh"
 
-  run_staged_hook "$UNREG_DIR/x" "$WT" /bin/bash
+  run_staged_hook "$UNREGISTERED_DIRECTORY/x" "$WORKTREE" /bin/bash
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -712,9 +712,9 @@ stage_unregistered_local_target() {
 @test "staged hook whose main-root-lib.sh holds conflict markers, under stock /bin/bash: fails open, silently" {
   [ -x /bin/bash ] || skip "no /bin/bash"
   stage_hook_repo
-  write_conflicted_lib "$REPO/.gaia/scripts/main-root-lib.sh"
+  write_conflicted_library "$REPO/.gaia/scripts/main-root-lib.sh"
 
-  run_staged_hook "$REPO/f" "$WT" /bin/bash
+  run_staged_hook "$REPO/f" "$WORKTREE" /bin/bash
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -723,9 +723,9 @@ stage_unregistered_local_target() {
   [ -x /bin/bash ] || skip "no /bin/bash"
   stage_hook_repo
   stage_unregistered_local_target
-  write_conflicted_lib "$REPO/.gaia/scripts/state-registry-lib.sh"
+  write_conflicted_library "$REPO/.gaia/scripts/state-registry-lib.sh"
 
-  run_staged_hook "$UNREG_DIR/x" "$WT" /bin/bash
+  run_staged_hook "$UNREGISTERED_DIRECTORY/x" "$WORKTREE" /bin/bash
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }

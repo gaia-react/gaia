@@ -17,68 +17,68 @@ setup() {
   export GAIA_RATES_FEED_DISABLE=1
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   RULE="$REPO_ROOT/.claude/rules/context-discipline.md"
-  DOC="$REPO_ROOT/.claude/doctrine/execution.md"
+  DOCTRINE_PATH="$REPO_ROOT/.claude/doctrine/execution.md"
   HOOK="$REPO_ROOT/.claude/hooks/workflow-doctrine-inject.sh"
   WIKI="$REPO_ROOT/wiki/concepts/Workflow Doctrine.md"
   SETTINGS="$REPO_ROOT/.claude/settings.json"
   REGISTRY="$REPO_ROOT/.gaia/state-registry.json"
   EXCLUDE="$REPO_ROOT/.gaia/release-exclude"
-  TASKORCH="$REPO_ROOT/wiki/concepts/Task Orchestration.md"
+  TASK_ORCHESTRATION="$REPO_ROOT/wiki/concepts/Task Orchestration.md"
   PLANMD="$REPO_ROOT/.claude/skills/gaia/references/plan.md"
   DEBTMD="$REPO_ROOT/.claude/skills/gaia/references/debt.md"
   MODEL_RE='\b(opus|sonnet|haiku|fable)\b|claude-(opus|sonnet|haiku|fable)'
   BAN_TERMS=("executor" "commit" "git" "worktree" "branch" "quality gate" "push" "merge" "pull request")
-  T="$BATS_TEST_TMPDIR"
+  TEMPORARY_DIRECTORY="$BATS_TEST_TMPDIR"
 }
 
 # ---------------------------------------------------------------- helpers
 
 rule_budget_ok() {
-  local f="$1" n
-  [ -f "$f" ] || return 1
-  [ "$(head -n 1 "$f")" = "---" ] && return 1
-  grep -q '^paths:' "$f" && return 1
-  n="$(grep -c '[^[:space:]]' "$f")"
-  [ "$n" -le 8 ] || return 1
-  [ "$(wc -c <"$f" | tr -d ' ')" -le 1200 ] || return 1
+  local file_path="$1" nonblank_line_count
+  [ -f "$file_path" ] || return 1
+  [ "$(head -n 1 "$file_path")" = "---" ] && return 1
+  grep -q '^paths:' "$file_path" && return 1
+  nonblank_line_count="$(grep -c '[^[:space:]]' "$file_path")"
+  [ "$nonblank_line_count" -le 8 ] || return 1
+  [ "$(wc -c <"$file_path" | tr -d ' ')" -le 1200 ] || return 1
   return 0
 }
 
 BAN_VISITED=0
 rule_ban_ok() {
-  local f="$1" t
+  local file_path="$1" ban_term
   BAN_VISITED=0
-  [ -f "$f" ] || return 1
-  for t in "${BAN_TERMS[@]}"; do
+  [ -f "$file_path" ] || return 1
+  for ban_term in "${BAN_TERMS[@]}"; do
     BAN_VISITED=$((BAN_VISITED + 1))
-    grep -qiF -- "$t" "$f" && return 1
+    grep -qiF -- "$ban_term" "$file_path" && return 1
   done
-  grep -qiE '\bPR\b' "$f" && return 1
+  grep -qiE '\bPR\b' "$file_path" && return 1
   return 0
 }
 
 rule_directives_ok() {
-  local f="$1" l
-  [ -f "$f" ] || return 1
-  for l in '.claude/rules/subagent-dispatch.md' 'wiki/concepts/Workflow Doctrine.md' \
+  local file_path="$1" required_phrase
+  [ -f "$file_path" ] || return 1
+  for required_phrase in '.claude/rules/subagent-dispatch.md' 'wiki/concepts/Workflow Doctrine.md' \
     '.gaia/local/research/<topic>-<date>/' 'rewritten in place'; do
-    grep -qF -- "$l" "$f" || return 1
+    grep -qF -- "$required_phrase" "$file_path" || return 1
   done
-  grep -qiF -- 'never appended' "$f" || return 1
+  grep -qiF -- 'never appended' "$file_path" || return 1
   return 0
 }
 
-doc_shape_ok() {
-  local f="$1"
-  [ -f "$f" ] || return 1
-  [ "$(wc -c <"$f" | tr -d ' ')" -le 3584 ] || return 1
-  [ "$(tail -c 1 "$f" | od -An -tx1 | tr -d ' \n')" = "0a" ] || return 1
-  [ "$(tail -c 2 "$f" | od -An -tx1 | tr -d ' \n')" = "0a0a" ] && return 1
-  LC_ALL=C grep -q $'[\x01-\x09\x0b-\x1f\x7f]' "$f" && return 1
+document_shape_ok() {
+  local file_path="$1"
+  [ -f "$file_path" ] || return 1
+  [ "$(wc -c <"$file_path" | tr -d ' ')" -le 3584 ] || return 1
+  [ "$(tail -c 1 "$file_path" | od -An -tx1 | tr -d ' \n')" = "0a" ] || return 1
+  [ "$(tail -c 2 "$file_path" | od -An -tx1 | tr -d ' \n')" = "0a0a" ] && return 1
+  LC_ALL=C grep -q $'[\x01-\x09\x0b-\x1f\x7f]' "$file_path" && return 1
   return 0
 }
 
-doc_placement_ok() {
+document_placement_ok() {
   local root="$1"
   [ -f "$root/.claude/doctrine/execution.md" ] || return 1
   [ -z "$(find "$root/.claude/rules" -name 'execution.md' 2>/dev/null)" ] || return 1
@@ -87,11 +87,11 @@ doc_placement_ok() {
 
 # key line the hook emits for a branch name, then the payload size with a doctrine file
 payload_ok() {
-  local f="$1" name keyline total
+  local file_path="$1" name keyline total
   name="feat/$(head -c 123 /dev/zero | tr '\0' a)"
   [ "${#name}" = 128 ] || return 1
   keyline="Branch key: branch:$name. Link its initiative once with: bash .gaia/scripts/usage.sh link branch:$name research:<topic>-<date> (or issue:<n>)"
-  total=$(($(printf '%s\n' "$keyline" | wc -c) + $(wc -c <"$f")))
+  total=$(($(printf '%s\n' "$keyline" | wc -c) + $(wc -c <"$file_path")))
   PAYLOAD_TOTAL="$total"
   [ "$total" -le 4096 ] || return 1
   return 0
@@ -133,15 +133,15 @@ ANCHORS=(
 )
 
 anchors_ok() {
-  local f="$1" a kind pat
-  [ -f "$f" ] || return 1
-  for a in "${ANCHORS[@]}"; do
-    kind="${a%%|*}"
-    pat="${a#*|}"
+  local file_path="$1" anchor kind pattern
+  [ -f "$file_path" ] || return 1
+  for anchor in "${ANCHORS[@]}"; do
+    kind="${anchor%%|*}"
+    pattern="${anchor#*|}"
     case "$kind" in
-      F) grep -qF -- "$pat" "$f" || return 1 ;;
-      I) grep -qiF -- "$pat" "$f" || return 1 ;;
-      R) grep -qiE -- "$pat" "$f" || return 1 ;;
+      F) grep -qF -- "$pattern" "$file_path" || return 1 ;;
+      I) grep -qiF -- "$pattern" "$file_path" || return 1 ;;
+      R) grep -qiE -- "$pattern" "$file_path" || return 1 ;;
       *) return 1 ;;
     esac
   done
@@ -149,9 +149,9 @@ anchors_ok() {
 }
 
 no_model_names_ok() {
-  local f="$1"
-  [ -f "$f" ] || return 1
-  grep -niE "$MODEL_RE" "$f" >/dev/null && return 1
+  local file_path="$1"
+  [ -f "$file_path" ] || return 1
+  grep -niE "$MODEL_RE" "$file_path" >/dev/null && return 1
   return 0
 }
 
@@ -160,25 +160,25 @@ wiki_model_block() {
   awk '
     $0 == "## Model table" { on = 1; next }
     on && /^## / { exit }
-    on && /^\|/ { if (!s) s = NR; e = NR; next }
-    on && s && !/^\|/ { exit }
-    END { print s, e }
+    on && /^\|/ { if (!block_start) block_start = NR; block_end = NR; next }
+    on && block_start && !/^\|/ { exit }
+    END { print block_start, block_end }
   ' "$1"
 }
 
 WIKI_MATCHES=0
 wiki_models_ok() {
-  local f="$1" s e ln rows
-  [ -f "$f" ] || return 1
-  read -r s e <<<"$(wiki_model_block "$f")"
-  [ -n "$s" ] && [ -n "$e" ] || return 1
+  local file_path="$1" block_start_line block_end_line line_number rows
+  [ -f "$file_path" ] || return 1
+  read -r block_start_line block_end_line <<<"$(wiki_model_block "$file_path")"
+  [ -n "$block_start_line" ] && [ -n "$block_end_line" ] || return 1
   WIKI_MATCHES=0
-  while IFS= read -r ln; do
+  while IFS= read -r line_number; do
     WIKI_MATCHES=$((WIKI_MATCHES + 1))
-    [ "$ln" -ge "$s" ] && [ "$ln" -le "$e" ] || return 1
-  done < <(grep -niE "$MODEL_RE" "$f" | cut -d: -f1)
-  [ $((e - s + 1 - 2)) -eq 3 ] || return 1
-  rows="$(sed -n "${s},${e}p" "$f" | awk -F'|' 'NR > 2 { gsub(/^ +| +$/, "", $2); print $2 }')"
+    [ "$line_number" -ge "$block_start_line" ] && [ "$line_number" -le "$block_end_line" ] || return 1
+  done < <(grep -niE "$MODEL_RE" "$file_path" | cut -d: -f1)
+  [ $((block_end_line - block_start_line + 1 - 2)) -eq 3 ] || return 1
+  rows="$(sed -n "${block_start_line},${block_end_line}p" "$file_path" | awk -F'|' 'NR > 2 { gsub(/^ +| +$/, "", $2); print $2 }')"
   [ "$rows" = "$(printf 'sweep\nscoped implementation\nsynthesis')" ] || return 1
   return 0
 }
@@ -194,74 +194,74 @@ END_MARK='<!-- gaia:maintainer-only:end -->'
 line_of() { grep -nxF -- "$2" "$1" | head -n 1 | cut -d: -f1; }
 
 wiki_structure_ok() {
-  local f="$1" h prev=0 ln ms me sl el
-  [ -f "$f" ] || return 1
-  for h in "${WIKI_HEADINGS[@]}"; do
-    ln="$(line_of "$f" "$h")"
-    [ -n "$ln" ] || return 1
-    [ "$ln" -gt "$prev" ] || return 1
-    prev="$ln"
+  local file_path="$1" heading previous_line_number=0 line_number measurements_heading_line success_check_heading_line start_marker_line end_marker_line
+  [ -f "$file_path" ] || return 1
+  for heading in "${WIKI_HEADINGS[@]}"; do
+    line_number="$(line_of "$file_path" "$heading")"
+    [ -n "$line_number" ] || return 1
+    [ "$line_number" -gt "$previous_line_number" ] || return 1
+    previous_line_number="$line_number"
   done
-  grep -qF '.claude/doctrine/execution.md' "$f" || return 1
-  grep -qF '.claude/rules/context-discipline.md' "$f" || return 1
-  [ "$(grep -cxF -- "$START_MARK" "$f")" = 1 ] || return 1
-  [ "$(grep -cxF -- "$END_MARK" "$f")" = 1 ] || return 1
-  sl="$(line_of "$f" "$START_MARK")"
-  el="$(line_of "$f" "$END_MARK")"
-  ms="$(line_of "$f" '## Measurements')"
-  me="$(line_of "$f" '## Post-landing success check')"
-  [ "$sl" -lt "$ms" ] || return 1
-  [ "$ms" -lt "$me" ] || return 1
-  [ "$me" -lt "$el" ] || return 1
+  grep -qF '.claude/doctrine/execution.md' "$file_path" || return 1
+  grep -qF '.claude/rules/context-discipline.md' "$file_path" || return 1
+  [ "$(grep -cxF -- "$START_MARK" "$file_path")" = 1 ] || return 1
+  [ "$(grep -cxF -- "$END_MARK" "$file_path")" = 1 ] || return 1
+  start_marker_line="$(line_of "$file_path" "$START_MARK")"
+  end_marker_line="$(line_of "$file_path" "$END_MARK")"
+  measurements_heading_line="$(line_of "$file_path" '## Measurements')"
+  success_check_heading_line="$(line_of "$file_path" '## Post-landing success check')"
+  [ "$start_marker_line" -lt "$measurements_heading_line" ] || return 1
+  [ "$measurements_heading_line" -lt "$success_check_heading_line" ] || return 1
+  [ "$success_check_heading_line" -lt "$end_marker_line" ] || return 1
   return 0
 }
 
 wiki_exception_ok() {
-  local f="$1"
-  [ -f "$f" ] || return 1
-  grep -qiF 'sanctioned depth-2 orchestrator' "$f" || return 1
-  grep -qF 'audit-loop-unit' "$f" || return 1
-  grep -qiF 'state-changing git' "$f" || return 1
+  local file_path="$1"
+  [ -f "$file_path" ] || return 1
+  grep -qiF 'sanctioned depth-2 orchestrator' "$file_path" || return 1
+  grep -qF 'audit-loop-unit' "$file_path" || return 1
+  grep -qiF 'state-changing git' "$file_path" || return 1
   return 0
 }
 
 no_ids_ok() {
-  local f="$1"
-  [ -f "$f" ] || return 1
-  grep -nE 'UAT-[0-9]+|SPEC-[0-9]+' "$f" >/dev/null && return 1
+  local file_path="$1"
+  [ -f "$file_path" ] || return 1
+  grep -nE 'UAT-[0-9]+|SPEC-[0-9]+' "$file_path" >/dev/null && return 1
   return 0
 }
 
 presence_ok() {
-  local root="$1" p
+  local root="$1" relative_path
   shift
   [ "$#" -gt 0 ] || return 1
-  for p in "$@"; do
-    [ -e "$root/$p" ] || return 1
+  for relative_path in "$@"; do
+    [ -e "$root/$relative_path" ] || return 1
   done
   return 0
 }
 
 ledger_names_ok() {
-  local f
+  local file_path
   [ "$#" -gt 0 ] || return 1
-  for f in "$@"; do
-    [ -f "$f" ] || return 1
-    grep -nE 'links\.jsonl|usage\.jsonl' "$f" >/dev/null && return 1
+  for file_path in "$@"; do
+    [ -f "$file_path" ] || return 1
+    grep -nE 'links\.jsonl|usage\.jsonl' "$file_path" >/dev/null && return 1
   done
   return 0
 }
 
 settings_ok() {
-  local f="$1"
-  [ -f "$f" ] || return 1
+  local file_path="$1"
+  [ -f "$file_path" ] || return 1
   jq -e '[.hooks.SessionStart[]
       | select(((.matcher // "") as $m
           | ($m == "" or ((["startup","resume","clear","compact"] - ($m | split("|"))) | length == 0)))
-        and any(.hooks[]; .command | contains("workflow-doctrine-inject.sh")))] | length == 1' "$f" >/dev/null || return 1
-  jq -e '[.hooks.SessionStart[] | select(any(.hooks[]; .command | contains("workflow-doctrine-inject.sh")))] | length == 1' "$f" >/dev/null || return 1
-  jq -e '[.hooks.PostToolUse[] | select(.matcher == "EnterWorktree" and any(.hooks[]; .command | contains("workflow-doctrine-inject.sh")))] | length == 1' "$f" >/dev/null || return 1
-  jq -e '[.hooks.PostToolUse[] | select(.matcher == "Bash" and any(.hooks[]; .command | contains("workflow-doctrine-inject.sh")))] | length == 1' "$f" >/dev/null || return 1
+        and any(.hooks[]; .command | contains("workflow-doctrine-inject.sh")))] | length == 1' "$file_path" >/dev/null || return 1
+  jq -e '[.hooks.SessionStart[] | select(any(.hooks[]; .command | contains("workflow-doctrine-inject.sh")))] | length == 1' "$file_path" >/dev/null || return 1
+  jq -e '[.hooks.PostToolUse[] | select(.matcher == "EnterWorktree" and any(.hooks[]; .command | contains("workflow-doctrine-inject.sh")))] | length == 1' "$file_path" >/dev/null || return 1
+  jq -e '[.hooks.PostToolUse[] | select(.matcher == "Bash" and any(.hooks[]; .command | contains("workflow-doctrine-inject.sh")))] | length == 1' "$file_path" >/dev/null || return 1
   return 0
 }
 
@@ -280,47 +280,47 @@ not_excluded_ok() {
 }
 
 registry_ok() {
-  local f="$1"
-  [ -f "$f" ] || return 1
+  local file_path="$1"
+  [ -f "$file_path" ] || return 1
   jq -e '[.entries[] | select(.path == "runs/" and .scope == "shared"
-      and (.keyed_by | type == "string" and length > 0) and has("reaped_by"))] | length == 1' "$f" >/dev/null || return 1
+      and (.keyed_by | type == "string" and length > 0) and has("reaped_by"))] | length == 1' "$file_path" >/dev/null || return 1
   jq -e '[.entries[] | select(.path == "cache/doctrine-injected.*" and .scope == "main-only"
-      and .keyed_by == null and has("reaped_by"))] | length == 1' "$f" >/dev/null || return 1
+      and .keyed_by == null and has("reaped_by"))] | length == 1' "$file_path" >/dev/null || return 1
   return 0
 }
 
-taskorch_links_ok() {
-  local f="$1" para
-  [ -f "$f" ] || return 1
-  para="$(awk '
-    !h && /^# / { h = 1; next }
-    h && !p && /^[[:space:]]*$/ { next }
-    h && /^[[:space:]]*$/ { exit }
-    h { p = 1; print }
-  ' "$f")"
-  [ -n "$para" ] || return 1
-  case "$para" in *'[[Workflow Doctrine]]'*) ;; *) return 1 ;; esac
-  grep -qxF '## Plan artifacts' "$f" || return 1
-  grep -qxF '## Execution lifecycle' "$f" || return 1
+task_orchestration_links_ok() {
+  local file_path="$1" first_paragraph
+  [ -f "$file_path" ] || return 1
+  first_paragraph="$(awk '
+    !in_heading && /^# / { in_heading = 1; next }
+    in_heading && !in_paragraph && /^[[:space:]]*$/ { next }
+    in_heading && /^[[:space:]]*$/ { exit }
+    in_heading { in_paragraph = 1; print }
+  ' "$file_path")"
+  [ -n "$first_paragraph" ] || return 1
+  case "$first_paragraph" in *'[[Workflow Doctrine]]'*) ;; *) return 1 ;; esac
+  grep -qxF '## Plan artifacts' "$file_path" || return 1
+  grep -qxF '## Execution lifecycle' "$file_path" || return 1
   return 0
 }
 
 plan_pointer_ok() {
-  local f="$1" first rule
-  [ -f "$f" ] || return 1
-  first="$(grep -n 'Workflow Doctrine' "$f" | head -n 1 | cut -d: -f1)"
-  rule="$(grep -n '^---$' "$f" | head -n 1 | cut -d: -f1)"
+  local file_path="$1" first rule
+  [ -f "$file_path" ] || return 1
+  first="$(grep -n 'Workflow Doctrine' "$file_path" | head -n 1 | cut -d: -f1)"
+  rule="$(grep -n '^---$' "$file_path" | head -n 1 | cut -d: -f1)"
   [ -n "$first" ] || return 1
   if [ -n "$rule" ]; then [ "$first" -lt "$rule" ] || return 1; fi
   return 0
 }
 
 no_model_rows_ok() {
-  local f="$1" r
-  [ -f "$f" ] || return 1
-  grep -qF 'Workflow Doctrine' "$f" || return 1
-  for r in '| sweep' '| scoped implementation' '| synthesis'; do
-    grep -qF -- "$r" "$f" && return 1
+  local file_path="$1" row_prefix
+  [ -f "$file_path" ] || return 1
+  grep -qF 'Workflow Doctrine' "$file_path" || return 1
+  for row_prefix in '| sweep' '| scoped implementation' '| synthesis'; do
+    grep -qF -- "$row_prefix" "$file_path" && return 1
   done
   return 0
 }
@@ -338,17 +338,17 @@ pad_to() { # pad_to <src> <dst> <total bytes>: src plus filler so dst ends in on
 }
 
 @test "rule budget red twins: frontmatter, 1201 bytes, and 9 lines each fail" {
-  printf -- '---\npaths:\n  - "x"\n---\n' | cat - "$RULE" >"$T/fm.md"
-  if rule_budget_ok "$T/fm.md"; then return 1; fi
-  printf 'paths: x\n' | cat - "$RULE" >"$T/paths.md"
-  if rule_budget_ok "$T/paths.md"; then return 1; fi
-  pad_to "$RULE" "$T/big.md" 1201
-  [ "$(wc -c <"$T/big.md" | tr -d ' ')" -eq 1201 ]
-  if rule_budget_ok "$T/big.md"; then return 1; fi
-  cp "$RULE" "$T/nine.md"
-  while [ "$(grep -c '[^[:space:]]' "$T/nine.md")" -lt 9 ]; do printf '%s\n' '- x' >>"$T/nine.md"; done
-  [ "$(grep -c '[^[:space:]]' "$T/nine.md")" -eq 9 ]
-  if rule_budget_ok "$T/nine.md"; then return 1; fi
+  printf -- '---\npaths:\n  - "x"\n---\n' | cat - "$RULE" >"$TEMPORARY_DIRECTORY/fm.md"
+  if rule_budget_ok "$TEMPORARY_DIRECTORY/fm.md"; then return 1; fi
+  printf 'paths: x\n' | cat - "$RULE" >"$TEMPORARY_DIRECTORY/paths.md"
+  if rule_budget_ok "$TEMPORARY_DIRECTORY/paths.md"; then return 1; fi
+  pad_to "$RULE" "$TEMPORARY_DIRECTORY/big.md" 1201
+  [ "$(wc -c <"$TEMPORARY_DIRECTORY/big.md" | tr -d ' ')" -eq 1201 ]
+  if rule_budget_ok "$TEMPORARY_DIRECTORY/big.md"; then return 1; fi
+  cp "$RULE" "$TEMPORARY_DIRECTORY/nine.md"
+  while [ "$(grep -c '[^[:space:]]' "$TEMPORARY_DIRECTORY/nine.md")" -lt 9 ]; do printf '%s\n' '- x' >>"$TEMPORARY_DIRECTORY/nine.md"; done
+  [ "$(grep -c '[^[:space:]]' "$TEMPORARY_DIRECTORY/nine.md")" -eq 9 ]
+  if rule_budget_ok "$TEMPORARY_DIRECTORY/nine.md"; then return 1; fi
 }
 
 # ------------------------------------------------------------ 2. ban list
@@ -360,18 +360,18 @@ pad_to() { # pad_to <src> <dst> <total bytes>: src plus filler so dst ends in on
 }
 
 @test "rule ban list red twins: every term, a PR token, and the substring 'digit' are each caught" {
-  local t i=0
+  local ban_term i=0
   [ "${#BAN_TERMS[@]}" -eq 9 ]
-  for t in "${BAN_TERMS[@]}"; do
+  for ban_term in "${BAN_TERMS[@]}"; do
     i=$((i + 1))
-    { cat "$RULE"; printf 'a line about %s here\n' "$t"; } >"$T/ban-$i.md"
-    if rule_ban_ok "$T/ban-$i.md"; then return 1; fi
+    { cat "$RULE"; printf 'a line about %s here\n' "$ban_term"; } >"$TEMPORARY_DIRECTORY/ban-$i.md"
+    if rule_ban_ok "$TEMPORARY_DIRECTORY/ban-$i.md"; then return 1; fi
   done
   [ "$i" -eq 9 ]
-  { cat "$RULE"; printf 'a line about PR here\n'; } >"$T/pr.md"
-  if rule_ban_ok "$T/pr.md"; then return 1; fi
-  { cat "$RULE"; printf 'the digit seven\n'; } >"$T/digit.md"
-  if rule_ban_ok "$T/digit.md"; then return 1; fi
+  { cat "$RULE"; printf 'a line about PR here\n'; } >"$TEMPORARY_DIRECTORY/pr.md"
+  if rule_ban_ok "$TEMPORARY_DIRECTORY/pr.md"; then return 1; fi
+  { cat "$RULE"; printf 'the digit seven\n'; } >"$TEMPORARY_DIRECTORY/digit.md"
+  if rule_ban_ok "$TEMPORARY_DIRECTORY/digit.md"; then return 1; fi
 }
 
 # ------------------------------------------------------- 3. rule directives
@@ -381,104 +381,104 @@ pad_to() { # pad_to <src> <dst> <total bytes>: src plus filler so dst ends in on
 }
 
 @test "rule directives red twin: dropping the dispatch pointer line fails" {
-  grep -vF 'subagent-dispatch.md' "$RULE" >"$T/nodispatch.md"
-  [ "$(wc -l <"$T/nodispatch.md" | tr -d ' ')" -lt "$(wc -l <"$RULE" | tr -d ' ')" ]
-  if rule_directives_ok "$T/nodispatch.md"; then return 1; fi
+  grep -vF 'subagent-dispatch.md' "$RULE" >"$TEMPORARY_DIRECTORY/nodispatch.md"
+  [ "$(wc -l <"$TEMPORARY_DIRECTORY/nodispatch.md" | tr -d ' ')" -lt "$(wc -l <"$RULE" | tr -d ' ')" ]
+  if rule_directives_ok "$TEMPORARY_DIRECTORY/nodispatch.md"; then return 1; fi
 }
 
 # ------------------------------------------------- 4. execution.md budget
 
 @test "execution.md: size, single trailing newline, no control characters" {
-  doc_shape_ok "$DOC"
+  document_shape_ok "$DOCTRINE_PATH"
 }
 
 @test "execution.md placement: lives under .claude/doctrine, not under .claude/rules" {
-  doc_placement_ok "$REPO_ROOT"
-  mkdir -p "$T/bad/.claude/rules" "$T/bad/.claude/doctrine"
-  cp "$DOC" "$T/bad/.claude/doctrine/execution.md"
-  cp "$DOC" "$T/bad/.claude/rules/execution.md"
-  if doc_placement_ok "$T/bad"; then return 1; fi
-  mkdir -p "$T/moved/.claude/rules"
-  cp "$DOC" "$T/moved/.claude/rules/execution.md"
-  if doc_placement_ok "$T/moved"; then return 1; fi
+  document_placement_ok "$REPO_ROOT"
+  mkdir -p "$TEMPORARY_DIRECTORY/bad/.claude/rules" "$TEMPORARY_DIRECTORY/bad/.claude/doctrine"
+  cp "$DOCTRINE_PATH" "$TEMPORARY_DIRECTORY/bad/.claude/doctrine/execution.md"
+  cp "$DOCTRINE_PATH" "$TEMPORARY_DIRECTORY/bad/.claude/rules/execution.md"
+  if document_placement_ok "$TEMPORARY_DIRECTORY/bad"; then return 1; fi
+  mkdir -p "$TEMPORARY_DIRECTORY/moved/.claude/rules"
+  cp "$DOCTRINE_PATH" "$TEMPORARY_DIRECTORY/moved/.claude/rules/execution.md"
+  if document_placement_ok "$TEMPORARY_DIRECTORY/moved"; then return 1; fi
 }
 
 @test "execution.md red twins: 3585 bytes, trailing blank line, and a control character each fail" {
-  pad_to "$DOC" "$T/over.md" 3585
-  [ "$(wc -c <"$T/over.md" | tr -d ' ')" -eq 3585 ]
-  if doc_shape_ok "$T/over.md"; then return 1; fi
-  { cat "$DOC"; printf '\n'; } >"$T/blank.md"
-  if doc_shape_ok "$T/blank.md"; then return 1; fi
-  { cat "$DOC"; printf 'tab\there\n'; } >"$T/tab.md"
-  if doc_shape_ok "$T/tab.md"; then return 1; fi
+  pad_to "$DOCTRINE_PATH" "$TEMPORARY_DIRECTORY/over.md" 3585
+  [ "$(wc -c <"$TEMPORARY_DIRECTORY/over.md" | tr -d ' ')" -eq 3585 ]
+  if document_shape_ok "$TEMPORARY_DIRECTORY/over.md"; then return 1; fi
+  { cat "$DOCTRINE_PATH"; printf '\n'; } >"$TEMPORARY_DIRECTORY/blank.md"
+  if document_shape_ok "$TEMPORARY_DIRECTORY/blank.md"; then return 1; fi
+  { cat "$DOCTRINE_PATH"; printf 'tab\there\n'; } >"$TEMPORARY_DIRECTORY/tab.md"
+  if document_shape_ok "$TEMPORARY_DIRECTORY/tab.md"; then return 1; fi
 }
 
 # -------------------------------------------------------- 5. payload cap
 
 @test "payload cap: key line for a 128-character branch plus execution.md is at most 4096 bytes" {
-  payload_ok "$DOC"
-  [ "$PAYLOAD_TOTAL" -gt "$(wc -c <"$DOC" | tr -d ' ')" ]
+  payload_ok "$DOCTRINE_PATH"
+  [ "$PAYLOAD_TOTAL" -gt "$(wc -c <"$DOCTRINE_PATH" | tr -d ' ')" ]
 }
 
 @test "payload cap red twin: an oversize doctrine copy fails the same check" {
-  pad_to "$DOC" "$T/big.md" 3800
-  [ "$(wc -c <"$T/big.md" | tr -d ' ')" -eq 3800 ]
-  if payload_ok "$T/big.md"; then return 1; fi
+  pad_to "$DOCTRINE_PATH" "$TEMPORARY_DIRECTORY/big.md" 3800
+  [ "$(wc -c <"$TEMPORARY_DIRECTORY/big.md" | tr -d ' ')" -eq 3800 ]
+  if payload_ok "$TEMPORARY_DIRECTORY/big.md"; then return 1; fi
 }
 
 # ----------------------------------------------------------- 6. anchors
 
 @test "execution.md anchors: all 32 C3 literals are present" {
   [ "${#ANCHORS[@]}" -eq 32 ]
-  anchors_ok "$DOC"
+  anchors_ok "$DOCTRINE_PATH"
 }
 
 @test "execution.md anchors red twins: NEXT:, the never-read line, and the Edit-or-Write clause each fail" {
-  sed 's/NEXT://g' "$DOC" >"$T/nonext.md"
-  if cmp -s "$DOC" "$T/nonext.md"; then return 1; fi
-  if anchors_ok "$T/nonext.md"; then return 1; fi
-  grep -viE 'never read.*log\.md' "$DOC" >"$T/noread.md"
-  if cmp -s "$DOC" "$T/noread.md"; then return 1; fi
-  if anchors_ok "$T/noread.md"; then return 1; fi
-  sed 's/never through Edit or Write//g' "$DOC" >"$T/noewr.md"
-  if cmp -s "$DOC" "$T/noewr.md"; then return 1; fi
-  if anchors_ok "$T/noewr.md"; then return 1; fi
+  sed 's/NEXT://g' "$DOCTRINE_PATH" >"$TEMPORARY_DIRECTORY/nonext.md"
+  if cmp -s "$DOCTRINE_PATH" "$TEMPORARY_DIRECTORY/nonext.md"; then return 1; fi
+  if anchors_ok "$TEMPORARY_DIRECTORY/nonext.md"; then return 1; fi
+  grep -viE 'never read.*log\.md' "$DOCTRINE_PATH" >"$TEMPORARY_DIRECTORY/noread.md"
+  if cmp -s "$DOCTRINE_PATH" "$TEMPORARY_DIRECTORY/noread.md"; then return 1; fi
+  if anchors_ok "$TEMPORARY_DIRECTORY/noread.md"; then return 1; fi
+  sed 's/never through Edit or Write//g' "$DOCTRINE_PATH" >"$TEMPORARY_DIRECTORY/noewr.md"
+  if cmp -s "$DOCTRINE_PATH" "$TEMPORARY_DIRECTORY/noewr.md"; then return 1; fi
+  if anchors_ok "$TEMPORARY_DIRECTORY/noewr.md"; then return 1; fi
 }
 
 @test "execution.md exception red twin: dropping the audit-loop-unit sentence fails the anchors, and the real file names it" {
-  grep -qF 'audit-loop-unit' "$DOC"
-  grep -vF 'audit-loop-unit' "$DOC" >"$T/noexc.md"
-  [ "$(wc -c <"$T/noexc.md" | tr -d ' ')" -lt "$(wc -c <"$DOC" | tr -d ' ')" ]
-  if anchors_ok "$T/noexc.md"; then return 1; fi
-  sed 's/sanctioned depth-2 orchestrator/orchestrator/' "$DOC" >"$T/nosanction.md"
-  if cmp -s "$DOC" "$T/nosanction.md"; then return 1; fi
-  if anchors_ok "$T/nosanction.md"; then return 1; fi
+  grep -qF 'audit-loop-unit' "$DOCTRINE_PATH"
+  grep -vF 'audit-loop-unit' "$DOCTRINE_PATH" >"$TEMPORARY_DIRECTORY/noexc.md"
+  [ "$(wc -c <"$TEMPORARY_DIRECTORY/noexc.md" | tr -d ' ')" -lt "$(wc -c <"$DOCTRINE_PATH" | tr -d ' ')" ]
+  if anchors_ok "$TEMPORARY_DIRECTORY/noexc.md"; then return 1; fi
+  sed 's/sanctioned depth-2 orchestrator/orchestrator/' "$DOCTRINE_PATH" >"$TEMPORARY_DIRECTORY/nosanction.md"
+  if cmp -s "$DOCTRINE_PATH" "$TEMPORARY_DIRECTORY/nosanction.md"; then return 1; fi
+  if anchors_ok "$TEMPORARY_DIRECTORY/nosanction.md"; then return 1; fi
 }
 
 @test "wiki exception: Workflow Doctrine names audit-loop-unit as the sanctioned depth-2 exception, twin without it fails" {
   wiki_exception_ok "$WIKI"
-  grep -vF 'audit-loop-unit' "$WIKI" >"$T/wiki-noexc.md"
-  if wiki_exception_ok "$T/wiki-noexc.md"; then return 1; fi
+  grep -vF 'audit-loop-unit' "$WIKI" >"$TEMPORARY_DIRECTORY/wiki-noexc.md"
+  if wiki_exception_ok "$TEMPORARY_DIRECTORY/wiki-noexc.md"; then return 1; fi
 }
 
 # -------------------------------------------------------- 7. model names
 
 @test "model names: none in the rule or execution.md; wiki mentions sit in the three-row table" {
   no_model_names_ok "$RULE"
-  no_model_names_ok "$DOC"
+  no_model_names_ok "$DOCTRINE_PATH"
   wiki_models_ok "$WIKI"
   [ "$WIKI_MATCHES" -gt 0 ]
 }
 
 @test "model names red twins: Opus under Resume, Haiku in the rule, and a fourth table row each fail" {
-  awk '{ print } /^## Resume$/ { print "Opus is mentioned here." }' "$WIKI" >"$T/wiki-opus.md"
-  if cmp -s "$WIKI" "$T/wiki-opus.md"; then return 1; fi
-  if wiki_models_ok "$T/wiki-opus.md"; then return 1; fi
-  { cat "$RULE"; printf 'Haiku\n'; } >"$T/rule-haiku.md"
-  if no_model_names_ok "$T/rule-haiku.md"; then return 1; fi
-  awk '{ print } /^\| synthesis/ { print "| extra | Sonnet | why | note |" }' "$WIKI" >"$T/wiki-row.md"
-  if cmp -s "$WIKI" "$T/wiki-row.md"; then return 1; fi
-  if wiki_models_ok "$T/wiki-row.md"; then return 1; fi
+  awk '{ print } /^## Resume$/ { print "Opus is mentioned here." }' "$WIKI" >"$TEMPORARY_DIRECTORY/wiki-opus.md"
+  if cmp -s "$WIKI" "$TEMPORARY_DIRECTORY/wiki-opus.md"; then return 1; fi
+  if wiki_models_ok "$TEMPORARY_DIRECTORY/wiki-opus.md"; then return 1; fi
+  { cat "$RULE"; printf 'Haiku\n'; } >"$TEMPORARY_DIRECTORY/rule-haiku.md"
+  if no_model_names_ok "$TEMPORARY_DIRECTORY/rule-haiku.md"; then return 1; fi
+  awk '{ print } /^\| synthesis/ { print "| extra | Sonnet | why | note |" }' "$WIKI" >"$TEMPORARY_DIRECTORY/wiki-row.md"
+  if cmp -s "$WIKI" "$TEMPORARY_DIRECTORY/wiki-row.md"; then return 1; fi
+  if wiki_models_ok "$TEMPORARY_DIRECTORY/wiki-row.md"; then return 1; fi
 }
 
 # ------------------------------------------------ 8. wiki headings and markers
@@ -489,29 +489,29 @@ pad_to() { # pad_to <src> <dst> <total bytes>: src plus filler so dst ends in on
 }
 
 @test "wiki structure red twin: the end marker moved above Post-landing success check fails" {
-  awk -v em="$END_MARK" '
-    $0 == em { next }
-    $0 == "## Post-landing success check" { print em }
+  awk -v end_marker="$END_MARK" '
+    $0 == end_marker { next }
+    $0 == "## Post-landing success check" { print end_marker }
     { print }
-  ' "$WIKI" >"$T/wiki-marker.md"
-  [ "$(grep -cxF -- "$END_MARK" "$T/wiki-marker.md")" -eq 1 ]
-  if wiki_structure_ok "$T/wiki-marker.md"; then return 1; fi
+  ' "$WIKI" >"$TEMPORARY_DIRECTORY/wiki-marker.md"
+  [ "$(grep -cxF -- "$END_MARK" "$TEMPORARY_DIRECTORY/wiki-marker.md")" -eq 1 ]
+  if wiki_structure_ok "$TEMPORARY_DIRECTORY/wiki-marker.md"; then return 1; fi
 }
 
 # ------------------------------------------------------- 9. no working-doc ids
 
 @test "no working-doc ids: rule, execution.md, wiki page, and hook carry no SPEC or UAT id" {
   no_ids_ok "$RULE"
-  no_ids_ok "$DOC"
+  no_ids_ok "$DOCTRINE_PATH"
   no_ids_ok "$WIKI"
   no_ids_ok "$HOOK"
 }
 
 @test "no working-doc ids red twin: a hook copy with a SPEC reference fails" {
-  { cat "$HOOK"; printf '# see SPEC-123\n'; } >"$T/hook-id.sh"
-  if no_ids_ok "$T/hook-id.sh"; then return 1; fi
-  { cat "$DOC"; printf 'see UAT-9\n'; } >"$T/doc-id.md"
-  if no_ids_ok "$T/doc-id.md"; then return 1; fi
+  { cat "$HOOK"; printf '# see SPEC-123\n'; } >"$TEMPORARY_DIRECTORY/hook-id.sh"
+  if no_ids_ok "$TEMPORARY_DIRECTORY/hook-id.sh"; then return 1; fi
+  { cat "$DOCTRINE_PATH"; printf 'see UAT-9\n'; } >"$TEMPORARY_DIRECTORY/doc-id.md"
+  if no_ids_ok "$TEMPORARY_DIRECTORY/doc-id.md"; then return 1; fi
 }
 
 # ------------------------------------------ 10. presence and ledger internals
@@ -550,21 +550,21 @@ PRESENCE_PATHS=(
 }
 
 @test "ledger names: files this change creates never name links.jsonl or usage.jsonl" {
-  local created=("${PRESENCE_PATHS[@]:0:7}") files=() p f
+  local created=("${PRESENCE_PATHS[@]:0:7}") files=() relative_path file_path
   [ "${#created[@]}" -eq 7 ]
-  for p in "${created[@]}"; do files+=("$REPO_ROOT/$p"); done
+  for relative_path in "${created[@]}"; do files+=("$REPO_ROOT/$relative_path"); done
   if [ -d "$REPO_ROOT/.gaia/scripts/tests/fixtures/usage/research-binding" ]; then
-    while IFS= read -r f; do files+=("$f"); done < <(find "$REPO_ROOT/.gaia/scripts/tests/fixtures/usage/research-binding" -type f)
+    while IFS= read -r file_path; do files+=("$file_path"); done < <(find "$REPO_ROOT/.gaia/scripts/tests/fixtures/usage/research-binding" -type f)
   fi
   [ "${#files[@]}" -ge 7 ]
   ledger_names_ok "${files[@]}"
 }
 
 @test "ledger names red twin: execution.md with usage.jsonl appended fails" {
-  { cat "$DOC"; printf 'reads usage.jsonl directly\n'; } >"$T/doc-ledger.md"
-  if ledger_names_ok "$T/doc-ledger.md"; then return 1; fi
-  { cat "$DOC"; printf 'reads links.jsonl directly\n'; } >"$T/doc-links.md"
-  if ledger_names_ok "$T/doc-links.md"; then return 1; fi
+  { cat "$DOCTRINE_PATH"; printf 'reads usage.jsonl directly\n'; } >"$TEMPORARY_DIRECTORY/doc-ledger.md"
+  if ledger_names_ok "$TEMPORARY_DIRECTORY/doc-ledger.md"; then return 1; fi
+  { cat "$DOCTRINE_PATH"; printf 'reads links.jsonl directly\n'; } >"$TEMPORARY_DIRECTORY/doc-links.md"
+  if ledger_names_ok "$TEMPORARY_DIRECTORY/doc-links.md"; then return 1; fi
   if ledger_names_ok; then return 1; fi
 }
 
@@ -579,35 +579,35 @@ PRESENCE_PATHS=(
 }
 
 @test "registrations red twins: a three-source matcher and a Bash-group removal each fail" {
-  jq '(.hooks.SessionStart[] | select(.matcher == "startup|resume|clear|compact") | .matcher) = "startup|resume|clear"' "$SETTINGS" >"$T/settings-matcher.json"
-  if cmp -s "$SETTINGS" "$T/settings-matcher.json"; then return 1; fi
-  if settings_ok "$T/settings-matcher.json"; then return 1; fi
-  jq '.hooks.PostToolUse |= map(if .matcher == "Bash" then .hooks |= map(select(.command | contains("workflow-doctrine-inject.sh") | not)) else . end)' "$SETTINGS" >"$T/settings-bash.json"
-  if cmp -s "$SETTINGS" "$T/settings-bash.json"; then return 1; fi
-  if settings_ok "$T/settings-bash.json"; then return 1; fi
-  jq '.hooks.PostToolUse |= map(if .matcher == "EnterWorktree" then .hooks |= map(select(.command | contains("workflow-doctrine-inject.sh") | not)) else . end)' "$SETTINGS" >"$T/settings-ew.json"
-  if settings_ok "$T/settings-ew.json"; then return 1; fi
+  jq '(.hooks.SessionStart[] | select(.matcher == "startup|resume|clear|compact") | .matcher) = "startup|resume|clear"' "$SETTINGS" >"$TEMPORARY_DIRECTORY/settings-matcher.json"
+  if cmp -s "$SETTINGS" "$TEMPORARY_DIRECTORY/settings-matcher.json"; then return 1; fi
+  if settings_ok "$TEMPORARY_DIRECTORY/settings-matcher.json"; then return 1; fi
+  jq '.hooks.PostToolUse |= map(if .matcher == "Bash" then .hooks |= map(select(.command | contains("workflow-doctrine-inject.sh") | not)) else . end)' "$SETTINGS" >"$TEMPORARY_DIRECTORY/settings-bash.json"
+  if cmp -s "$SETTINGS" "$TEMPORARY_DIRECTORY/settings-bash.json"; then return 1; fi
+  if settings_ok "$TEMPORARY_DIRECTORY/settings-bash.json"; then return 1; fi
+  jq '.hooks.PostToolUse |= map(if .matcher == "EnterWorktree" then .hooks |= map(select(.command | contains("workflow-doctrine-inject.sh") | not)) else . end)' "$SETTINGS" >"$TEMPORARY_DIRECTORY/settings-ew.json"
+  if settings_ok "$TEMPORARY_DIRECTORY/settings-ew.json"; then return 1; fi
 }
 
 # ----------------------------------------------------- 12. release exclusion
 
 @test "release-exclude: none of the four source paths is excluded" {
-  local p n=0
-  for p in .claude/rules/context-discipline.md .claude/doctrine/execution.md \
+  local source_path checked_count=0
+  for source_path in .claude/rules/context-discipline.md .claude/doctrine/execution.md \
     .claude/hooks/workflow-doctrine-inject.sh "wiki/concepts/Workflow Doctrine.md"; do
-    n=$((n + 1))
-    not_excluded_ok "$EXCLUDE" "$p"
+    checked_count=$((checked_count + 1))
+    not_excluded_ok "$EXCLUDE" "$source_path"
   done
-  [ "$n" -eq 4 ]
+  [ "$checked_count" -eq 4 ]
 }
 
 @test "release-exclude red twin: a .claude/doctrine entry, or the exact path, is caught" {
-  { cat "$EXCLUDE"; printf '.claude/doctrine\n'; } >"$T/exclude-dir"
-  if not_excluded_ok "$T/exclude-dir" .claude/doctrine/execution.md; then return 1; fi
-  { cat "$EXCLUDE"; printf 'wiki/concepts/Workflow Doctrine.md\n'; } >"$T/exclude-exact"
-  if not_excluded_ok "$T/exclude-exact" "wiki/concepts/Workflow Doctrine.md"; then return 1; fi
-  { cat "$EXCLUDE"; printf '# .claude/doctrine\n'; } >"$T/exclude-comment"
-  not_excluded_ok "$T/exclude-comment" .claude/doctrine/execution.md
+  { cat "$EXCLUDE"; printf '.claude/doctrine\n'; } >"$TEMPORARY_DIRECTORY/exclude-dir"
+  if not_excluded_ok "$TEMPORARY_DIRECTORY/exclude-dir" .claude/doctrine/execution.md; then return 1; fi
+  { cat "$EXCLUDE"; printf 'wiki/concepts/Workflow Doctrine.md\n'; } >"$TEMPORARY_DIRECTORY/exclude-exact"
+  if not_excluded_ok "$TEMPORARY_DIRECTORY/exclude-exact" "wiki/concepts/Workflow Doctrine.md"; then return 1; fi
+  { cat "$EXCLUDE"; printf '# .claude/doctrine\n'; } >"$TEMPORARY_DIRECTORY/exclude-comment"
+  not_excluded_ok "$TEMPORARY_DIRECTORY/exclude-comment" .claude/doctrine/execution.md
 }
 
 # ------------------------------------------------------------- 13. registry
@@ -617,18 +617,18 @@ PRESENCE_PATHS=(
 }
 
 @test "registry red twins: dropping either entry fails" {
-  jq '.entries |= map(select(.path != "runs/"))' "$REGISTRY" >"$T/reg-runs.json"
-  if registry_ok "$T/reg-runs.json"; then return 1; fi
-  jq '.entries |= map(select(.path != "cache/doctrine-injected.*"))' "$REGISTRY" >"$T/reg-marker.json"
-  if registry_ok "$T/reg-marker.json"; then return 1; fi
-  jq '.entries |= map(if .path == "runs/" then del(.reaped_by) else . end)' "$REGISTRY" >"$T/reg-reaped.json"
-  if registry_ok "$T/reg-reaped.json"; then return 1; fi
+  jq '.entries |= map(select(.path != "runs/"))' "$REGISTRY" >"$TEMPORARY_DIRECTORY/reg-runs.json"
+  if registry_ok "$TEMPORARY_DIRECTORY/reg-runs.json"; then return 1; fi
+  jq '.entries |= map(select(.path != "cache/doctrine-injected.*"))' "$REGISTRY" >"$TEMPORARY_DIRECTORY/reg-marker.json"
+  if registry_ok "$TEMPORARY_DIRECTORY/reg-marker.json"; then return 1; fi
+  jq '.entries |= map(if .path == "runs/" then del(.reaped_by) else . end)' "$REGISTRY" >"$TEMPORARY_DIRECTORY/reg-reaped.json"
+  if registry_ok "$TEMPORARY_DIRECTORY/reg-reaped.json"; then return 1; fi
 }
 
 # --------------------------------------------------------------- 14. links
 
 @test "links: Task Orchestration opens with the doctrine link and keeps its plan sections" {
-  taskorch_links_ok "$TASKORCH"
+  task_orchestration_links_ok "$TASK_ORCHESTRATION"
 }
 
 @test "links: plan.md and debt.md point at the doctrine, plan.md above its first rule, no model rows" {
@@ -639,13 +639,13 @@ PRESENCE_PATHS=(
 }
 
 @test "links red twins: link removed, pointer below a rule, and a model row each fail" {
-  sed 's/\[\[Workflow Doctrine\]\]/the doctrine/g' "$TASKORCH" >"$T/to-nolink.md"
-  if cmp -s "$TASKORCH" "$T/to-nolink.md"; then return 1; fi
-  if taskorch_links_ok "$T/to-nolink.md"; then return 1; fi
-  { printf -- '---\n'; cat "$PLANMD"; } >"$T/plan-rule.md"
-  if plan_pointer_ok "$T/plan-rule.md"; then return 1; fi
-  { cat "$DEBTMD"; printf '| sweep | x |\n'; } >"$T/debt-row.md"
-  if no_model_rows_ok "$T/debt-row.md"; then return 1; fi
-  grep -v 'Workflow Doctrine' "$DEBTMD" >"$T/debt-nolink.md"
-  if no_model_rows_ok "$T/debt-nolink.md"; then return 1; fi
+  sed 's/\[\[Workflow Doctrine\]\]/the doctrine/g' "$TASK_ORCHESTRATION" >"$TEMPORARY_DIRECTORY/to-nolink.md"
+  if cmp -s "$TASK_ORCHESTRATION" "$TEMPORARY_DIRECTORY/to-nolink.md"; then return 1; fi
+  if task_orchestration_links_ok "$TEMPORARY_DIRECTORY/to-nolink.md"; then return 1; fi
+  { printf -- '---\n'; cat "$PLANMD"; } >"$TEMPORARY_DIRECTORY/plan-rule.md"
+  if plan_pointer_ok "$TEMPORARY_DIRECTORY/plan-rule.md"; then return 1; fi
+  { cat "$DEBTMD"; printf '| sweep | x |\n'; } >"$TEMPORARY_DIRECTORY/debt-row.md"
+  if no_model_rows_ok "$TEMPORARY_DIRECTORY/debt-row.md"; then return 1; fi
+  grep -v 'Workflow Doctrine' "$DEBTMD" >"$TEMPORARY_DIRECTORY/debt-nolink.md"
+  if no_model_rows_ok "$TEMPORARY_DIRECTORY/debt-nolink.md"; then return 1; fi
 }

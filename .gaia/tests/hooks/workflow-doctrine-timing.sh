@@ -62,35 +62,35 @@ for tool in jq perl git; do
 done
 
 repo=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "run from inside the repo" >&2; exit 2; }
-for f in .claude/hooks/workflow-doctrine-inject.sh .claude/doctrine/execution.md \
+for required_file in .claude/hooks/workflow-doctrine-inject.sh .claude/doctrine/execution.md \
   .claude/settings.json .claude/rules/context-discipline.md; do
-  [ -f "$repo/$f" ] || { echo "missing $f" >&2; exit 2; }
+  [ -f "$repo/$required_file" ] || { echo "missing $required_file" >&2; exit 2; }
 done
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
-fx="$work/fx"
+fixture="$work/fixture"
 long_branch="feat/$(printf 'a%.0s' $(seq 1 123))"
 
 # Fixture: real hook, libs, doctrine, settings.
-mkdir -p "$fx/.claude/hooks" "$fx/.claude/doctrine" "$fx/.gaia/scripts"
-cp "$repo/.claude/hooks/workflow-doctrine-inject.sh" "$fx/.claude/hooks/"
-cp -R "$repo/.claude/hooks/lib" "$fx/.claude/hooks/lib"
-cp "$repo/.claude/doctrine/execution.md" "$fx/.claude/doctrine/"
-cp "$repo/.claude/settings.json" "$fx/.claude/settings.json"
-for lib in usage-lib.sh branch-name-lib.sh main-root-lib.sh; do
-  cp "$repo/.gaia/scripts/$lib" "$fx/.gaia/scripts/"
+mkdir -p "$fixture/.claude/hooks" "$fixture/.claude/doctrine" "$fixture/.gaia/scripts"
+cp "$repo/.claude/hooks/workflow-doctrine-inject.sh" "$fixture/.claude/hooks/"
+cp -R "$repo/.claude/hooks/lib" "$fixture/.claude/hooks/lib"
+cp "$repo/.claude/doctrine/execution.md" "$fixture/.claude/doctrine/"
+cp "$repo/.claude/settings.json" "$fixture/.claude/settings.json"
+for library_file in usage-lib.sh branch-name-lib.sh main-root-lib.sh; do
+  cp "$repo/.gaia/scripts/$library_file" "$fixture/.gaia/scripts/"
 done
-git -C "$fx" init -q -b main
-git -C "$fx" -c user.email=t@example.com -c user.name=T -c commit.gpgsign=false \
+git -C "$fixture" init -q -b main
+git -C "$fixture" -c user.email=t@example.com -c user.name=T -c commit.gpgsign=false \
   commit -q --allow-empty -m init
-git -C "$fx" branch feat/9-sample
-git -C "$fx" branch "$long_branch"
+git -C "$fixture" branch feat/9-sample
+git -C "$fixture" branch "$long_branch"
 
 # The registered command string, read from the copied settings.
-cmd=$(jq -r '.hooks.SessionStart[] | select(.matcher == "startup|resume|clear|compact")
-  | .hooks[] | .command | select(contains("workflow-doctrine-inject.sh"))' "$fx/.claude/settings.json" | sed -n 1p)
-[ -n "$cmd" ] || { echo "no registered doctrine hook command in settings.json" >&2; exit 2; }
+registered_command=$(jq -r '.hooks.SessionStart[] | select(.matcher == "startup|resume|clear|compact")
+  | .hooks[] | .command | select(contains("workflow-doctrine-inject.sh"))' "$fixture/.claude/settings.json" | sed -n 1p)
+[ -n "$registered_command" ] || { echo "no registered doctrine hook command in settings.json" >&2; exit 2; }
 
 # Bash 3.2 shim.
 shim="$work/shim"
@@ -107,85 +107,85 @@ fi
 bash_used=$(PATH="$hook_path" bash --version | sed -n 1p)
 [ "$json" = 1 ] || echo "bash used for the hook: $bash_used"
 
-# Sets $sid in the caller shell; RANDOM keeps ids unique across the subshells that run each input.
+# Sets $session_id in the caller shell; RANDOM keeps ids unique across the subshells that run each input.
 now_tag=0
-sid=""
-next_sid() { now_tag=$((now_tag + 1)); sid="sess-$$-$RANDOM$RANDOM-$now_tag"; }
+session_id=""
+next_session_id() { now_tag=$((now_tag + 1)); session_id="sess-$$-$RANDOM$RANDOM-$now_tag"; }
 
-ss_payload() { jq -nc --arg s "$1" --arg c "$fx" '{hook_event_name:"SessionStart",session_id:$s,source:"startup",cwd:$c}'; }
-bash_payload() { jq -nc --arg s "$1" --arg c "$fx" --arg k "$2" \
-  '{hook_event_name:"PostToolUse",session_id:$s,tool_name:"Bash",tool_input:{command:$k},cwd:$c}'; }
+session_start_payload() { jq -nc --arg session_id "$1" --arg working_directory "$fixture" '{hook_event_name:"SessionStart",session_id:$session_id,source:"startup",cwd:$working_directory}'; }
+bash_payload() { jq -nc --arg session_id "$1" --arg working_directory "$fixture" --arg command_text "$2" \
+  '{hook_event_name:"PostToolUse",session_id:$session_id,tool_name:"Bash",tool_input:{command:$command_text},cwd:$working_directory}'; }
 
 # time_one <payload file> <stdout file>: wall ms of the registered command.
 time_one() {
-  (cd "$fx" && PATH="$hook_path" perl -MTime::HiRes=time -e '
-    my ($in, $out, $cmd) = @ARGV;
+  (cd "$fixture" && PATH="$hook_path" perl -MTime::HiRes=time -e '
+    my ($in, $out, $registered_command) = @ARGV;
     open(STDIN, "<", $in) or die; open(STDOUT, ">", $out) or die;
     open(STDERR, ">", "/dev/null") or die;
-    my $t = time; system("/bin/sh", "-c", $cmd); my $e = (time - $t) * 1000;
-    open(my $res, ">", "$out.ms") or die; printf $res "%.3f\n", $e;' "$1" "$2" "$cmd")
+    my $start = time; system("/bin/sh", "-c", $registered_command); my $elapsed = (time - $start) * 1000;
+    open(my $milliseconds_file, ">", "$out.ms") or die; printf $milliseconds_file "%.3f\n", $elapsed;' "$1" "$2" "$registered_command")
 }
 
 # measure <name> <builder> <branch> <arg>: prints "p50 p90".
 measure() {
-  local n=0 builder="$2" branch="$3" arg="$4" ms times=""
-  git -C "$fx" checkout -q "$branch"
-  while [ "$((n += 1))" -le "$runs" ]; do
-    next_sid
-    "$builder" "$sid" "$arg" >"$work/in.json"
+  local iteration_count=0 builder="$2" branch="$3" argument="$4" milliseconds times=""
+  git -C "$fixture" checkout -q "$branch"
+  while [ "$((iteration_count += 1))" -le "$runs" ]; do
+    next_session_id
+    "$builder" "$session_id" "$argument" >"$work/in.json"
     time_one "$work/in.json" "$work/out.json"
-    ms=$(cat "$work/out.json.ms")
-    times="$times$ms
+    milliseconds=$(cat "$work/out.json.ms")
+    times="$times$milliseconds
 "
   done
-  printf '%s' "$times" | sed '/^$/d' | sort -n | awk -v n="$runs" '
-    { a[NR] = $1 } END { p50 = a[int((NR + 1) / 2)]; i90 = int(NR * 0.9); if (i90 < 1) i90 = 1;
-      printf "%.1f %.1f\n", p50, a[i90] }'
+  printf '%s' "$times" | sed '/^$/d' | sort -n | awk -v run_count="$runs" '
+    { sorted_milliseconds[NR] = $1 } END { p50 = sorted_milliseconds[int((NR + 1) / 2)]; p90_index = int(NR * 0.9); if (p90_index < 1) p90_index = 1;
+      printf "%.1f %.1f\n", p50, sorted_milliseconds[p90_index] }'
 }
 
-# payload_len <branch>: decoded additionalContext byte length for one startup run.
-payload_len() {
+# payload_length <branch>: decoded additionalContext byte length for one startup run.
+payload_length() {
   local branch="$1"
-  git -C "$fx" checkout -q "$branch"
-  next_sid
-  ss_payload "$sid" >"$work/in.json"
+  git -C "$fixture" checkout -q "$branch"
+  next_session_id
+  session_start_payload "$session_id" >"$work/in.json"
   time_one "$work/in.json" "$work/out.json"
   jq -j '.hookSpecificOutput.additionalContext // ""' "$work/out.json" 2>/dev/null | wc -c | tr -d ' '
 }
 
-read -r d50 d90 < <(measure sessionstart_default ss_payload main "")
-read -r b50 b90 < <(measure sessionstart_branch ss_payload feat/9-sample "")
-read -r n50 n90 < <(measure posttooluse_bash_nonarming bash_payload feat/9-sample "ls -la")
-read -r a50 a90 < <(measure posttooluse_bash_arming bash_payload feat/9-sample "git switch feat/9-sample")
+read -r sessionstart_default_p50 sessionstart_default_p90 < <(measure sessionstart_default session_start_payload main "")
+read -r sessionstart_branch_p50 sessionstart_branch_p90 < <(measure sessionstart_branch session_start_payload feat/9-sample "")
+read -r posttooluse_bash_nonarming_p50 posttooluse_bash_nonarming_p90 < <(measure posttooluse_bash_nonarming bash_payload feat/9-sample "ls -la")
+read -r posttooluse_bash_arming_p50 posttooluse_bash_arming_p90 < <(measure posttooluse_bash_arming bash_payload feat/9-sample "git switch feat/9-sample")
 
-injected=$(payload_len feat/9-sample)
-maxpay=$(payload_len "$long_branch")
+injected=$(payload_length feat/9-sample)
+maximum_payload_bytes=$(payload_length "$long_branch")
 rule=$(wc -c <"$repo/.claude/rules/context-discipline.md" | tr -d ' ')
-inj_tok=$((injected / 4))
-rule_tok=$((rule / 4))
+injected_tokens=$((injected / 4))
+rule_tokens=$((rule / 4))
 
 if [ "$json" = 1 ]; then
   jq -n \
-    --argjson d "$d50" --argjson b "$b50" --argjson n "$n50" --argjson a "$a50" \
-    --argjson inj "$injected" --argjson itok "$inj_tok" --argjson mx "$maxpay" \
-    --argjson rule "$rule" --argjson rtok "$rule_tok" '
-    [ {metric:"p50_sessionstart_default_ms",value:$d,unit:"ms",budget:50},
-      {metric:"p50_sessionstart_branch_ms",value:$b,unit:"ms",budget:50},
-      {metric:"p50_posttooluse_bash_nonarming_ms",value:$n,unit:"ms",budget:50},
-      {metric:"p50_posttooluse_bash_arming_ms",value:$a,unit:"ms",budget:50},
-      {metric:"injected_bytes",value:$inj,unit:"bytes",budget:4096},
-      {metric:"injected_tokens_est",value:$itok,unit:"tokens",budget:null},
-      {metric:"payload_max_bytes_128char_branch",value:$mx,unit:"bytes",budget:4096},
+    --argjson sessionstart_default_p50 "$sessionstart_default_p50" --argjson sessionstart_branch_p50 "$sessionstart_branch_p50" --argjson posttooluse_bash_nonarming_p50 "$posttooluse_bash_nonarming_p50" --argjson posttooluse_bash_arming_p50 "$posttooluse_bash_arming_p50" \
+    --argjson injected_bytes "$injected" --argjson injected_tokens "$injected_tokens" --argjson maximum_payload_bytes "$maximum_payload_bytes" \
+    --argjson rule "$rule" --argjson rule_tokens "$rule_tokens" '
+    [ {metric:"p50_sessionstart_default_ms",value:$sessionstart_default_p50,unit:"ms",budget:50},
+      {metric:"p50_sessionstart_branch_ms",value:$sessionstart_branch_p50,unit:"ms",budget:50},
+      {metric:"p50_posttooluse_bash_nonarming_ms",value:$posttooluse_bash_nonarming_p50,unit:"ms",budget:50},
+      {metric:"p50_posttooluse_bash_arming_ms",value:$posttooluse_bash_arming_p50,unit:"ms",budget:50},
+      {metric:"injected_bytes",value:$injected_bytes,unit:"bytes",budget:4096},
+      {metric:"injected_tokens_est",value:$injected_tokens,unit:"tokens",budget:null},
+      {metric:"payload_max_bytes_128char_branch",value:$maximum_payload_bytes,unit:"bytes",budget:4096},
       {metric:"rule_bytes",value:$rule,unit:"bytes",budget:1200},
-      {metric:"rule_tokens_est",value:$rtok,unit:"tokens",budget:null} ]'
+      {metric:"rule_tokens_est",value:$rule_tokens,unit:"tokens",budget:null} ]'
 else
   echo "runs per input: $runs"
-  printf '%-30s p50 %7s ms   p90 %7s ms\n' sessionstart_default "$d50" "$d90"
-  printf '%-30s p50 %7s ms   p90 %7s ms\n' sessionstart_branch "$b50" "$b90"
-  printf '%-30s p50 %7s ms   p90 %7s ms\n' posttooluse_bash_nonarming "$n50" "$n90"
-  printf '%-30s p50 %7s ms   p90 %7s ms\n' posttooluse_bash_arming "$a50" "$a90"
-  echo "injected_bytes: $injected (tokens est $inj_tok)"
-  echo "payload_max_bytes_128char_branch: $maxpay"
-  echo "rule_bytes: $rule (tokens est $rule_tok)"
+  printf '%-30s p50 %7s ms   p90 %7s ms\n' sessionstart_default "$sessionstart_default_p50" "$sessionstart_default_p90"
+  printf '%-30s p50 %7s ms   p90 %7s ms\n' sessionstart_branch "$sessionstart_branch_p50" "$sessionstart_branch_p90"
+  printf '%-30s p50 %7s ms   p90 %7s ms\n' posttooluse_bash_nonarming "$posttooluse_bash_nonarming_p50" "$posttooluse_bash_nonarming_p90"
+  printf '%-30s p50 %7s ms   p90 %7s ms\n' posttooluse_bash_arming "$posttooluse_bash_arming_p50" "$posttooluse_bash_arming_p90"
+  echo "injected_bytes: $injected (tokens est $injected_tokens)"
+  echo "payload_max_bytes_128char_branch: $maximum_payload_bytes"
+  echo "rule_bytes: $rule (tokens est $rule_tokens)"
   [ "$injected" -gt 0 ] || echo "FAIL: the registered command injected nothing on the branch path"
 fi

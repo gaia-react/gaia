@@ -31,17 +31,17 @@ tool_name=$(echo "$input" | jq -r '.tool_name // ""' 2>/dev/null)
 [ "$tool_name" = "Bash" ] || exit 0
 
 # Avoid the name `command`: it would shadow bash's `command` builtin.
-cmd=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
+tool_command=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 
 # Shared arming decision; see .claude/hooks/lib/verb-arming.sh. A quoted verb
 # inside prose still arms here, fail-closed, with no safe narrowing.
-_va_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+_hook_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 # shellcheck source=/dev/null
-[ -n "${_va_lib:-}" ] && [ -f "$_va_lib/verb-arming.sh" ] && . "$_va_lib/verb-arming.sh"
+[ -n "${_hook_library_directory:-}" ] && [ -f "$_hook_library_directory/verb-arming.sh" ] && . "$_hook_library_directory/verb-arming.sh"
 type gaia_verb_armed >/dev/null 2>&1 || exit 0
 
-frag='gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
-if gaia_verb_armed "$frag" 'gh pr merge' "$cmd"; then
+verb_pattern='gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
+if gaia_verb_armed "$verb_pattern" 'gh pr merge' "$tool_command"; then
   : # match
 else
   exit 0
@@ -61,12 +61,12 @@ fi
 # precisely, and it is the only boundary read this hook needs: a `cd` or
 # `git -C` redirection puts the merge behind an earlier command, which the
 # scan's first-command contract already declines.
-_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 # shellcheck source=/dev/null
-[ -n "${_lib:-}" ] && [ -f "$_lib/repo-scope.sh" ] && . "$_lib/repo-scope.sh"
+[ -n "${_library_directory:-}" ] && [ -f "$_library_directory/repo-scope.sh" ] && . "$_library_directory/repo-scope.sh"
 type repo_slug_is_foreign >/dev/null 2>&1 || exit 0
 type gaia_scan_gh_merge >/dev/null 2>&1 || exit 0
-type gaia_gh_merge_ref_to_home_pr >/dev/null 2>&1 || exit 0
+type gaia_gh_merge_reference_to_home_pr >/dev/null 2>&1 || exit 0
 
 # Read the merge invocation with the lib's shared first-command scan, which
 # hands back the pull-request reference and the `-R`/`--repo` value the merge
@@ -80,9 +80,9 @@ type gaia_gh_merge_ref_to_home_pr >/dev/null 2>&1 || exit 0
 # repository that the merge never closed, silently and pointing at the wrong
 # issue. `.claude/rules/issue-claim.md` documents the first cost to the reader
 # who has to pay it.
-gaia_scan_gh_merge "$cmd" || exit 0
-ref="$GAIA_GH_MERGE_REF"
-cmd_repo="$GAIA_GH_MERGE_REPO"
+gaia_scan_gh_merge "$tool_command" || exit 0
+pr_reference="$GAIA_GH_MERGE_REFERENCE"
+command_repo="$GAIA_GH_MERGE_REPO"
 
 # Pin the read and the write to THIS repository so the two can never
 # straddle. Resolved once, from the hook's own cwd, which a `cd` inside the
@@ -102,7 +102,7 @@ home="$GAIA_REPO_SCOPE_HOME_SLUG"
 # comparison would read it as another one. Every comparison against `home`
 # below uses this form; only the label write uses the exact spelling gh
 # reported.
-home_lc=$(printf '%s' "$home" | tr '[:upper:]' '[:lower:]')
+home_lowercase=$(printf '%s' "$home" | tr '[:upper:]' '[:lower:]')
 
 # `--repo owner/repo` names the target itself, and gh honors it over cwd, so
 # it decides the boundary alone. The value compared is the SCANNED one, which
@@ -116,7 +116,7 @@ home_lc=$(printf '%s' "$home" | tr '[:upper:]' '[:lower:]')
 #
 # The comparison itself is the shared act-on-home one, host half included: an
 # empty value means no explicit target, which is home.
-repo_slug_is_foreign "$cmd_repo" && exit 0
+repo_slug_is_foreign "$command_repo" && exit 0
 
 # A URL reference is the one form --repo cannot contain: gh resolves the
 # repository from the URL and ignores the flag. Left alone, a merged
@@ -129,10 +129,10 @@ repo_slug_is_foreign "$cmd_repo" && exit 0
 # `--repo` one above is: `post-findings-block-on-merge.sh` asks this of the
 # identical scanned value, and a boundary answering the same question two ways
 # depending on which hook asks it is what one definition rules out.
-case "$ref" in
+case "$pr_reference" in
   *://*)
-    gaia_gh_merge_ref_to_home_pr "$ref" || exit 0
-    ref="$GAIA_HOME_PR_NUMBER"
+    gaia_gh_merge_reference_to_home_pr "$pr_reference" || exit 0
+    pr_reference="$GAIA_HOME_PR_NUMBER"
     ;;
 esac
 
@@ -160,8 +160,8 @@ esac
 # every rejected merge.
 attempt=1
 while :; do
-  if [ -n "$ref" ]; then
-    pr_json=$(gh pr view --repo "$home" "$ref" --json state,body 2>/dev/null) || pr_json=""
+  if [ -n "$pr_reference" ]; then
+    pr_json=$(gh pr view --repo "$home" "$pr_reference" --json state,body 2>/dev/null) || pr_json=""
   else
     pr_json=$(gh pr view --json state,body 2>/dev/null) || pr_json=""
   fi
@@ -196,22 +196,22 @@ body=$(printf '%s' "$pr_json" | jq -r '.body // ""' 2>/dev/null)
 # is out of this hook's reach by construction and is dropped rather than
 # followed.
 issue_re='(^|[^[:alnum:]_])(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved):?[[:space:]]+([A-Za-z0-9._-]+/[A-Za-z0-9._-]+)?#[0-9]+'
-nums=$(printf '%s' "$body" | grep -oiE "$issue_re" 2>/dev/null | while IFS= read -r m; do
+issue_numbers=$(printf '%s' "$body" | grep -oiE "$issue_re" 2>/dev/null | while IFS= read -r closing_reference; do
   # Everything after the last whitespace and before the `#` is the
   # qualifier, and it is empty for both unqualified spellings.
-  qual="${m%#*}"
-  qual="${qual##*[[:space:]]}"
-  if [ -n "$qual" ]; then
-    [ "$(printf '%s' "$qual" | tr '[:upper:]' '[:lower:]')" = "$home_lc" ] || continue
+  qualifier="${closing_reference%#*}"
+  qualifier="${qualifier##*[[:space:]]}"
+  if [ -n "$qualifier" ]; then
+    [ "$(printf '%s' "$qualifier" | tr '[:upper:]' '[:lower:]')" = "$home_lowercase" ] || continue
   fi
-  printf '%s\n' "${m##*#}"
+  printf '%s\n' "${closing_reference##*#}"
 done | sort -u)
 
-[ -n "$nums" ] || exit 0
+[ -n "$issue_numbers" ] || exit 0
 
-echo "$nums" | while IFS= read -r n; do
-  [ -n "$n" ] || continue
-  gh issue edit "$n" --repo "$home" --remove-label in-progress >/dev/null 2>&1 || true
+echo "$issue_numbers" | while IFS= read -r issue_number; do
+  [ -n "$issue_number" ] || continue
+  gh issue edit "$issue_number" --repo "$home" --remove-label in-progress >/dev/null 2>&1 || true
 done
 
 exit 0

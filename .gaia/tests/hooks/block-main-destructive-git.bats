@@ -12,8 +12,8 @@
 
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
-  HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
-  HOOK_ABS="$HOOKS_SRC/block-main-destructive-git.sh"
+  HOOKS_SOURCE_DIRECTORY=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
+  HOOK_ABSOLUTE_PATH="$HOOKS_SOURCE_DIRECTORY/block-main-destructive-git.sh"
 
   REPO=$(mktemp -d -t block-main-test-XXXXXX)
   git -C "$REPO" init --quiet --initial-branch=main
@@ -42,18 +42,18 @@ on_feature() { git -C "$REPO" checkout --quiet -B feature; }
 
 # Run the hook with a given command, from inside the home repo.
 run_hook() {
-  local cmd="$1"
+  local command="$1"
   local json
-  json=$(jq -n --arg c "$cmd" '{tool_name: "Bash", tool_input: {command: $c}}')
-  invoke_hook_in "$REPO" "$json" "$HOOK_ABS"
+  json=$(jq -n --arg command "$command" '{tool_name: "Bash", tool_input: {command: $command}}')
+  invoke_hook_in "$REPO" "$json" "$HOOK_ABSOLUTE_PATH"
 }
 
 # Same, for a case whose verdict turns on the directory the command runs in:
 # the payload carries that directory as its cwd and the hook is invoked there.
 run_hook_from() {
   local json
-  json=$(jq -n --arg c "$1" --arg d "$2" '{tool_name: "Bash", cwd: $d, tool_input: {command: $c}}')
-  invoke_hook_in "$2" "$json" "$HOOK_ABS"
+  json=$(jq -n --arg command "$1" --arg directory "$2" '{tool_name: "Bash", cwd: $directory, tool_input: {command: $command}}')
+  invoke_hook_in "$2" "$json" "$HOOK_ABSOLUTE_PATH"
 }
 
 
@@ -371,19 +371,19 @@ git commit -m y"
 # enforced against the branch the command runs on rather than the session's.
 @test "cd into a linked worktree on its own branch, from a main checkout on main: commit and push are allowed" {
   on_main
-  local wt="$BATS_TEST_TMPDIR/wt"
-  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
-  run_hook_from "cd '$wt' && git commit -m x" "$REPO"
+  local worktree_directory="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$worktree_directory"
+  run_hook_from "cd '$worktree_directory' && git commit -m x" "$REPO"
   assert_allowed_by_json
-  run_hook_from "cd '$wt' && git push origin wt-branch" "$REPO"
+  run_hook_from "cd '$worktree_directory' && git push origin wt-branch" "$REPO"
   assert_allowed_by_json
 }
 
 @test "cd into the main checkout on main, from a linked worktree: commit is denied" {
   on_main
-  local wt="$BATS_TEST_TMPDIR/wt"
-  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
-  run_hook_from "cd '$REPO' && git commit -m x" "$wt"
+  local worktree_directory="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$worktree_directory"
+  run_hook_from "cd '$REPO' && git commit -m x" "$worktree_directory"
   assert_denied_by_json
 }
 
@@ -394,11 +394,11 @@ git commit -m y"
 # the fixed spelling must not move the verdict.
 @test "command text spelling the walk-reset boundary does not clear the tracked directory" {
   on_main
-  local wt="$BATS_TEST_TMPDIR/wt"
-  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
-  run_hook_from "cd '$REPO';__gaia_walk_reset__;git commit -m x" "$wt"
+  local worktree_directory="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$worktree_directory"
+  run_hook_from "cd '$REPO';__gaia_walk_reset__;git commit -m x" "$worktree_directory"
   assert_denied_by_json
-  run_hook_from "cd '$REPO';__gaia_walk_reset__;git push" "$wt"
+  run_hook_from "cd '$REPO';__gaia_walk_reset__;git push" "$worktree_directory"
   assert_denied_by_json
 }
 
@@ -427,14 +427,14 @@ git commit -m y"
 # the keep by itself.
 @test "a second cd whose target does not resolve keeps the checkout the first one moved into" {
   on_main
-  local wt="$BATS_TEST_TMPDIR/wt"
-  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
-  run_hook_from "cd '$REPO'; cd /nonexistent; git commit -m x" "$wt"
+  local worktree_directory="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$worktree_directory"
+  run_hook_from "cd '$REPO'; cd /nonexistent; git commit -m x" "$worktree_directory"
   assert_denied_by_json
-  run_hook_from "cd '$REPO'; cd /nonexistent; git push" "$wt"
+  run_hook_from "cd '$REPO'; cd /nonexistent; git push" "$worktree_directory"
   assert_denied_by_json
   # shellcheck disable=SC2016 # the hook must receive the unexpanded variable
-  run_hook_from "cd '$REPO'; cd \"\$UNSET_VAR\"; git commit -m x" "$wt"
+  run_hook_from "cd '$REPO'; cd \"\$UNSET_VAR\"; git commit -m x" "$worktree_directory"
   assert_denied_by_json
 }
 
@@ -442,9 +442,9 @@ git commit -m y"
 # target on a failed resolve does not pin the walk to the leading `cd`.
 @test "a second cd that does resolve still replaces the checkout the first one moved into" {
   on_main
-  local wt="$BATS_TEST_TMPDIR/wt"
-  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
-  run_hook_from "cd '$REPO'; cd '$wt'; git commit -m x" "$wt"
+  local worktree_directory="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$worktree_directory"
+  run_hook_from "cd '$REPO'; cd '$worktree_directory'; git commit -m x" "$worktree_directory"
   assert_allowed_by_json
 }
 
@@ -456,14 +456,14 @@ git commit -m y"
 # reading is knowable here, so a candidate standing on main arms the rule.
 @test "a second cd that may have stepped back into the main checkout is denied" {
   on_main
-  local wt="$BATS_TEST_TMPDIR/wt"
-  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
-  run_hook_from "cd '$wt' && cd - && git commit -m x" "$REPO"
+  local worktree_directory="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$worktree_directory"
+  run_hook_from "cd '$worktree_directory' && cd - && git commit -m x" "$REPO"
   assert_denied_by_json
-  run_hook_from "cd '$wt' && cd - && git push" "$REPO"
+  run_hook_from "cd '$worktree_directory' && cd - && git push" "$REPO"
   assert_denied_by_json
   # shellcheck disable=SC2016 # the hook must receive the unexpanded variable
-  run_hook_from "cd '$wt'; cd \"\$BACK\"; git commit -m x" "$REPO"
+  run_hook_from "cd '$worktree_directory'; cd \"\$BACK\"; git commit -m x" "$REPO"
   assert_denied_by_json
 }
 
@@ -472,9 +472,9 @@ git commit -m y"
 # and stays allowed, so the arm above is not a blanket deny on `cd -`.
 @test "an unresolvable second cd is allowed when no candidate checkout is on main" {
   on_feature
-  local wt="$BATS_TEST_TMPDIR/wt"
-  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
-  run_hook_from "cd '$wt' && cd - && git commit -m x" "$REPO"
+  local worktree_directory="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$worktree_directory"
+  run_hook_from "cd '$worktree_directory' && cd - && git commit -m x" "$REPO"
   assert_allowed_by_json
 }
 
@@ -485,15 +485,15 @@ git commit -m y"
 # against the worktree's own branch and allowed.
 @test "an unreadable cd target is read against the main checkout from a worktree" {
   on_main
-  local wt="$BATS_TEST_TMPDIR/wt"
-  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  local worktree_directory="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$worktree_directory"
   # shellcheck disable=SC2016 # the hook must receive the unexpanded variable
-  run_hook_from 'cd "$MAIN" && git commit -m x' "$wt"
+  run_hook_from 'cd "$MAIN" && git commit -m x' "$worktree_directory"
   assert_denied_by_json
   # shellcheck disable=SC2016
-  run_hook_from 'cd "$MAIN" && git push' "$wt"
+  run_hook_from 'cd "$MAIN" && git push' "$worktree_directory"
   assert_denied_by_json
-  run_hook_from 'cd - && git commit -m x' "$wt"
+  run_hook_from 'cd - && git commit -m x' "$worktree_directory"
   assert_denied_by_json
 }
 
@@ -502,10 +502,10 @@ git commit -m y"
 # candidate on main and is allowed.
 @test "an unreadable cd target from a worktree is allowed when the main checkout is off main" {
   on_feature
-  local wt="$BATS_TEST_TMPDIR/wt"
-  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  local worktree_directory="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$worktree_directory"
   # shellcheck disable=SC2016 # the hook must receive the unexpanded variable
-  run_hook_from 'cd "$MAIN" && git commit -m x' "$wt"
+  run_hook_from 'cd "$MAIN" && git commit -m x' "$worktree_directory"
   assert_allowed_by_json
 }
 
@@ -528,22 +528,22 @@ foreign_on_sidebranch() {
 @test "a readable foreign -C beside a home command is not ambiguous" {
   on_main
   foreign_on_sidebranch
-  local wt="$BATS_TEST_TMPDIR/wt"
-  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
-  run_hook_from "git status && git -C $FOREIGN commit -m x" "$wt"
+  local worktree_directory="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$worktree_directory"
+  run_hook_from "git status && git -C $FOREIGN commit -m x" "$worktree_directory"
   assert_allowed_by_json
-  run_hook_from "git status && git -C $FOREIGN push" "$wt"
+  run_hook_from "git status && git -C $FOREIGN push" "$worktree_directory"
   assert_allowed_by_json
 }
 
 @test "a readable foreign cd beside a home command is not ambiguous" {
   on_main
   foreign_on_sidebranch
-  local wt="$BATS_TEST_TMPDIR/wt"
-  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
-  run_hook_from "git status && cd $FOREIGN && git commit -m x" "$wt"
+  local worktree_directory="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$worktree_directory"
+  run_hook_from "git status && cd $FOREIGN && git commit -m x" "$worktree_directory"
   assert_allowed_by_json
-  run_hook_from "git status && cd $FOREIGN && git push" "$wt"
+  run_hook_from "git status && cd $FOREIGN && git push" "$worktree_directory"
   assert_allowed_by_json
 }
 
@@ -553,9 +553,9 @@ foreign_on_sidebranch() {
 # the checkout as unreadable.
 @test "a readable foreign -C on main beside a home command denies on its own branch" {
   on_main
-  local wt="$BATS_TEST_TMPDIR/wt"
-  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
-  run_hook_from "git status && git -C $FOREIGN commit -m x" "$wt"
+  local worktree_directory="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$worktree_directory"
+  run_hook_from "git status && git -C $FOREIGN commit -m x" "$worktree_directory"
   assert_denied_by_json
   grep -qF -- 'cannot read' <<<"$output" && return 1
   grep -qF -- "Commits to 'main' are forbidden" <<<"$output"
@@ -568,10 +568,10 @@ foreign_on_sidebranch() {
 # depend on which checkout the push runs from, so it is answered first.
 @test "a refspec naming main is reported ahead of an unreadable directory" {
   on_main
-  local wt="$BATS_TEST_TMPDIR/wt"
-  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  local worktree_directory="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$worktree_directory"
   # shellcheck disable=SC2016 # the hook must receive the unexpanded variable
-  run_hook_from 'cd "$MAIN" && git push origin main' "$wt"
+  run_hook_from 'cd "$MAIN" && git push origin main' "$worktree_directory"
   assert_denied_by_json
   grep -qF -- 'refspec names main' <<<"$output"
 }
@@ -610,8 +610,8 @@ three_checkouts() {
 # HOME, so this isolates that one arm.
 run_hook_from_home() {
   local json
-  json=$(jq -n --arg c "$1" --arg d "$2" '{tool_name: "Bash", cwd: $d, tool_input: {command: $c}}')
-  run bash -c 'cd "$1" && printf %s "$2" | HOME="$4" bash "$3"' _ "$2" "$json" "$HOOK_ABS" "$3"
+  json=$(jq -n --arg command "$1" --arg directory "$2" '{tool_name: "Bash", cwd: $directory, tool_input: {command: $command}}')
+  run bash -c 'cd "$1" && printf %s "$2" | HOME="$4" bash "$3"' _ "$2" "$json" "$HOOK_ABSOLUTE_PATH" "$3"
 }
 
 # A tilde reaches the directory read as a literal character: it arrived as text
@@ -667,9 +667,9 @@ run_hook_from_home() {
 
 @test "a -C into a linked worktree does not lend its branch to a later bare commit on main" {
   on_main
-  local wt="$BATS_TEST_TMPDIR/wt"
-  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
-  run_hook_from "git -C $wt status && git commit -m x" "$REPO"
+  local worktree_directory="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$worktree_directory"
+  run_hook_from "git -C $worktree_directory status && git commit -m x" "$REPO"
   assert_denied_by_json
 }
 
@@ -699,13 +699,13 @@ run_hook_from_home() {
 # the rule even when that tracked `cd` is a worktree on its own branch.
 @test "an unresolvable -C value is read against every checkout it could name" {
   on_main
-  local wt="$BATS_TEST_TMPDIR/wt"
-  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  local worktree_directory="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$worktree_directory"
   # shellcheck disable=SC2016 # the hook must receive the unexpanded variable
-  run_hook_from "cd '$wt'; git -C \"\$UNSET_VAR\" commit -m x" "$REPO"
+  run_hook_from "cd '$worktree_directory'; git -C \"\$UNSET_VAR\" commit -m x" "$REPO"
   assert_denied_by_json
   # shellcheck disable=SC2016
-  run_hook_from "cd '$REPO'; git -C \"\$UNSET_VAR\" commit -m x" "$wt"
+  run_hook_from "cd '$REPO'; git -C \"\$UNSET_VAR\" commit -m x" "$worktree_directory"
   assert_denied_by_json
 }
 
@@ -714,10 +714,10 @@ run_hook_from_home() {
 # by a candidate on main rather than by unresolvability alone.
 @test "an unresolvable -C value is allowed when no candidate checkout is on main" {
   on_feature
-  local wt="$BATS_TEST_TMPDIR/wt"
-  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  local worktree_directory="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$worktree_directory"
   # shellcheck disable=SC2016 # the hook must receive the unexpanded variable
-  run_hook_from "cd '$wt'; git -C \"\$UNSET_VAR\" commit -m x" "$REPO"
+  run_hook_from "cd '$worktree_directory'; git -C \"\$UNSET_VAR\" commit -m x" "$REPO"
   assert_allowed_by_json
 }
 
@@ -726,19 +726,19 @@ run_hook_from_home() {
 # worktree's branch and allowed a commit that landed on main (#2014).
 @test "a later cd in the same command decides the checkout a commit is read against" {
   on_main
-  local wt="$BATS_TEST_TMPDIR/wt"
-  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
-  run_hook_from "cd '$wt' && git status && cd '$REPO' && git commit -m x" "$REPO"
+  local worktree_directory="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$worktree_directory"
+  run_hook_from "cd '$worktree_directory' && git status && cd '$REPO' && git commit -m x" "$REPO"
   assert_denied_by_json
-  run_hook_from "cd '$wt' && git status && cd '$REPO' && git push" "$REPO"
+  run_hook_from "cd '$worktree_directory' && git status && cd '$REPO' && git push" "$REPO"
   assert_denied_by_json
 }
 
 @test "a later cd into a linked worktree is read in place of the leading one" {
   on_main
-  local wt="$BATS_TEST_TMPDIR/wt"
-  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
-  run_hook_from "cd '$REPO' && git status && cd '$wt' && git commit -m x" "$REPO"
+  local worktree_directory="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$worktree_directory"
+  run_hook_from "cd '$REPO' && git status && cd '$worktree_directory' && git commit -m x" "$REPO"
   assert_allowed_by_json
 }
 
@@ -747,9 +747,9 @@ run_hook_from_home() {
 # whole command and the commit is read against the hook's own directory (#2014).
 @test "a cd inside a subshell does not lend its branch to a later commit on main" {
   on_main
-  local wt="$BATS_TEST_TMPDIR/wt"
-  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
-  run_hook_from "(cd '$wt' && git status) && git commit -m x" "$REPO"
+  local worktree_directory="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$worktree_directory"
+  run_hook_from "(cd '$worktree_directory' && git status) && git commit -m x" "$REPO"
   assert_denied_by_json
 }
 
@@ -758,9 +758,9 @@ run_hook_from_home() {
 # would deny an ordinary commit made after a `cd` into a worktree (#2014).
 @test "a parenthesis inside a quoted commit subject does not stand down cd tracking" {
   on_main
-  local wt="$BATS_TEST_TMPDIR/wt"
-  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
-  run_hook_from "cd '$wt' && git commit -m 'debt(hooks): x'" "$REPO"
+  local worktree_directory="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$worktree_directory"
+  run_hook_from "cd '$worktree_directory' && git commit -m 'debt(hooks): x'" "$REPO"
   assert_allowed_by_json
 }
 
@@ -857,12 +857,12 @@ run_hook_from_home() {
 #
 # Each library load in this hook resolves off BASH_SOURCE, never off the process
 # working directory, so expressing a degraded library needs a COPY of the hook in
-# a tree the test controls: running the real $HOOK_ABS leaves it resolving the
+# a tree the test controls: running the real $HOOK_ABSOLUTE_PATH leaves it resolving the
 # real checkout's libraries whatever a fixture does to a copy anywhere else.
 
 # Overwrites <path> with an unresolved-merge-conflict body: the file opens and
 # reads fine, so an existence test passes it, and bash cannot parse it.
-write_conflicted_lib() {
+write_conflicted_library() {
   { printf '<<<<<<< HEAD\n'; printf 'x() { :; }\n'; printf '=======\n'
     printf 'y() { :; }\n'; printf '>>>>>>> other\n'; } > "$1"
 }
@@ -881,12 +881,12 @@ stage_hook_tree() {
   # the loads under test and refuses when it cannot find its own library,
   # answering every case with that refusal instead of with the decision under
   # test.
-  cp -R "$HOOKS_SRC" "$STAGED_ROOT/.claude/hooks"
+  cp -R "$HOOKS_SOURCE_DIRECTORY" "$STAGED_ROOT/.claude/hooks"
   # Outside the hooks directory, so the wholesale copy above does not reach it.
   # This line stays a hand-maintained list for that reason: a further
   # .gaia/scripts load the hook's live path gains has to be added here, or it
   # goes short with nothing red.
-  cp "${HOOKS_SRC%/.claude/hooks}/.gaia/scripts/main-root-lib.sh" "$STAGED_ROOT/.gaia/scripts/"
+  cp "${HOOKS_SOURCE_DIRECTORY%/.claude/hooks}/.gaia/scripts/main-root-lib.sh" "$STAGED_ROOT/.gaia/scripts/"
   git -C "$STAGED_ROOT" init --quiet --initial-branch=main
   git -C "$STAGED_ROOT" config user.email "test@example.com"
   git -C "$STAGED_ROOT" config user.name "Test"
@@ -899,23 +899,23 @@ stage_hook_tree() {
 
 # run_staged <command> [interpreter]
 run_staged() {
-  local json interp="${2:-}"
-  json=$(jq -n --arg c "$1" '{tool_name: "Bash", tool_input: {command: $c}}')
-  run bash -c 'cd "$1" && printf %s "$2" | $4 "$3"' _ "$STAGED_ROOT" "$json" "$STAGED_HOOK" "$interp"
+  local json interpreter="${2:-}"
+  json=$(jq -n --arg command "$1" '{tool_name: "Bash", tool_input: {command: $command}}')
+  run bash -c 'cd "$1" && printf %s "$2" | $4 "$3"' _ "$STAGED_ROOT" "$json" "$STAGED_HOOK" "$interpreter"
 }
 
 # --- an unparseable repo-scope.sh degrades, it does not deny ---
 #
 # The repo-scope load sits under this hook's `set -euo pipefail`, so before the
 # fix an unparseable copy abandoned the shell ahead of the `type
-# cmd_targets_foreign_repo` check on the next line, exiting 2 -- the PreToolUse
+# command_targets_foreign_repo` check on the next line, exiting 2 -- the PreToolUse
 # deny code -- for every git command the hook matches. That holds on bash 5 as
 # well as on 3.2, so neither conflict-marker case below needs a /bin/bash pin to
 # have teeth.
 #
 # The conflict-marker pair discriminates: the allow case alone is satisfied by a
 # hook that stopped enforcing, so the deny twin proves the degrade kept the
-# main-branch floor. Without cmd_targets_foreign_repo the foreign-repo carve-out
+# main-branch floor. Without command_targets_foreign_repo the foreign-repo carve-out
 # does not fire, which is the fail-closed direction the hook's own repo-scope
 # comment documents.
 #
@@ -929,14 +929,14 @@ run_staged() {
 @test "repo-scope.sh holding conflict markers: an ordinary git command is still allowed" {
   stage_hook_tree
   git -C "$STAGED_ROOT" checkout --quiet -B feature
-  write_conflicted_lib "$STAGED_ROOT/.claude/hooks/lib/repo-scope.sh"
+  write_conflicted_library "$STAGED_ROOT/.claude/hooks/lib/repo-scope.sh"
   run_staged 'git status'
   assert_allowed_by_json
 }
 
 @test "repo-scope.sh holding conflict markers: a commit on main is still denied" {
   stage_hook_tree
-  write_conflicted_lib "$STAGED_ROOT/.claude/hooks/lib/repo-scope.sh"
+  write_conflicted_library "$STAGED_ROOT/.claude/hooks/lib/repo-scope.sh"
   run_staged 'git commit -m "x"'
   assert_denied_by_json
 }
@@ -965,7 +965,7 @@ run_staged() {
 @test "main-root-lib.sh holding conflict markers: a commit on main is still denied, on stock /bin/bash" {
   [ -x /bin/bash ] || skip "no /bin/bash"
   stage_hook_tree
-  write_conflicted_lib "$STAGED_ROOT/.gaia/scripts/main-root-lib.sh"
+  write_conflicted_library "$STAGED_ROOT/.gaia/scripts/main-root-lib.sh"
   run_staged 'git commit -m "x"' /bin/bash
   assert_denied_by_json
 }
@@ -974,7 +974,7 @@ run_staged() {
   [ -x /bin/bash ] || skip "no /bin/bash"
   stage_hook_tree
   git -C "$STAGED_ROOT" checkout --quiet -B feature
-  write_conflicted_lib "$STAGED_ROOT/.gaia/scripts/main-root-lib.sh"
+  write_conflicted_library "$STAGED_ROOT/.gaia/scripts/main-root-lib.sh"
   run_staged 'git status' /bin/bash
   assert_allowed_by_json
 }
@@ -1021,19 +1021,19 @@ hold_feature_with_pr() {
 }
 
 write_breadcrumb() {
-  local branch="$1" sid="$2" bc_path
+  local branch="$1" session_id="$2" breadcrumb_path
   # shellcheck source=/dev/null
-  . "${HOOKS_SRC%/.claude/hooks}/.gaia/scripts/gh-artifact-lib.sh"
-  bc_path="$(gaia_gh_artifact_path "$REPO/.gaia/local/cache" "$branch")"
-  gaia_gh_artifact_write "$bc_path" 42 example/repo "$branch" "$sid"
+  . "${HOOKS_SOURCE_DIRECTORY%/.claude/hooks}/.gaia/scripts/gh-artifact-lib.sh"
+  breadcrumb_path="$(gaia_gh_artifact_path "$REPO/.gaia/local/cache" "$branch")"
+  gaia_gh_artifact_write "$breadcrumb_path" 42 example/repo "$branch" "$session_id"
 }
 
 # run_hop <command> [session_id] [cwd]
 run_hop() {
   local json
-  json=$(jq -n --arg c "$1" --arg s "${2:-sid-peer}" --arg d "${3:-$REPO}" \
-    '{tool_name: "Bash", session_id: $s, cwd: $d, tool_input: {command: $c}}')
-  invoke_hook_in "${3:-$REPO}" "$json" "$HOOK_ABS"
+  json=$(jq -n --arg command "$1" --arg session_id "${2:-sid-peer}" --arg directory "${3:-$REPO}" \
+    '{tool_name: "Bash", session_id: $session_id, cwd: $directory, tool_input: {command: $command}}')
+  invoke_hook_in "${3:-$REPO}" "$json" "$HOOK_ABSOLUTE_PATH"
 }
 
 @test "hop guard: a peer switching the main checkout off a branch with an open PR is denied" {
@@ -1080,9 +1080,9 @@ run_hop() {
   assert_denied_by_json
   run_hop 'git switch -C main main' sid-peer
   assert_denied_by_json
-  local wt="$BATS_TEST_TMPDIR/wt"
-  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
-  run_hop "git -C $REPO switch -C other" sid-peer "$wt"
+  local worktree_directory="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$worktree_directory"
+  run_hop "git -C $REPO switch -C other" sid-peer "$worktree_directory"
   assert_denied_by_json
 }
 
@@ -1105,9 +1105,9 @@ run_hop() {
 
 @test "hop guard: a worktree session aiming git -C at the peer-held main checkout is denied" {
   hold_feature_with_pr 42
-  local wt="$BATS_TEST_TMPDIR/wt"
-  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
-  run_hop "git -C $REPO checkout main" sid-peer "$wt"
+  local worktree_directory="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$worktree_directory"
+  run_hop "git -C $REPO checkout main" sid-peer "$worktree_directory"
   assert_denied_by_json
 }
 
@@ -1187,12 +1187,12 @@ run_hop() {
 @test "hop guard: gh missing from PATH fails open with the named cause" {
   hold_feature_with_pr 42
   # A PATH holding every tool the hook and its libraries call, and no gh.
-  local tools="$BATS_TEST_TMPDIR/tools" tool src
+  local tools="$BATS_TEST_TMPDIR/tools" tool tool_path
   mkdir -p "$tools"
   for tool in bash cat jq git sed tr dirname basename find env mkdir grep head \
       wc date sleep rm shasum sha256sum perl awk; do
-    src=$(command -v "$tool" 2>/dev/null) || continue
-    ln -s "$src" "$tools/$tool"
+    tool_path=$(command -v "$tool" 2>/dev/null) || continue
+    ln -s "$tool_path" "$tools/$tool"
   done
   PATH="$tools" run_hop 'git checkout main' sid-peer
   assert_allowed_by_json
@@ -1294,9 +1294,9 @@ run_hop() {
 
 @test "hop guard: a checkout run inside a linked worktree is allowed" {
   hold_feature_with_pr 42
-  local wt="$BATS_TEST_TMPDIR/wt"
-  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
-  run_hop 'git switch other' sid-peer "$wt"
+  local worktree_directory="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$worktree_directory"
+  run_hop 'git switch other' sid-peer "$worktree_directory"
   assert_allowed_by_json
 }
 
@@ -1378,9 +1378,9 @@ run_hop() {
 # then read against a checkout the command reaches only afterwards.
 @test "the collapsed re-emission is not governed by a cd that follows the segment it re-reads" {
   on_feature
-  local wt="$BATS_TEST_TMPDIR/wt"
-  git -C "$REPO" worktree add --quiet "$wt" main
-  run_hook_from "git commit -m \"\$(date)\" && cd '$wt'" "$REPO"
+  local worktree_directory="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet "$worktree_directory" main
+  run_hook_from "git commit -m \"\$(date)\" && cd '$worktree_directory'" "$REPO"
   assert_allowed_by_json
 }
 

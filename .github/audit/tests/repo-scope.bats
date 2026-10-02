@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 
-# Tests for .claude/hooks/lib/repo-scope.sh's cmd_targets_foreign_repo().
+# Tests for .claude/hooks/lib/repo-scope.sh's command_targets_foreign_repo().
 #
 # The helper decides whether a `git`/`gh` command targets a SIBLING repo
 # (return 0 = foreign, allow) versus the HOME repo (return 1 = enforce the
@@ -48,7 +48,7 @@ init_repo() {
 # Evaluate a command string as if issued from inside the HOME repo, so the
 # helper's cwd-based home-repo lookup resolves to HOME_REPO.
 in_home() {
-  ( cd "$HOME_REPO" && cmd_targets_foreign_repo "$1" )
+  ( cd "$HOME_REPO" && command_targets_foreign_repo "$1" )
 }
 
 @test "quoted git -C sibling push: foreign (allow)" {
@@ -113,7 +113,7 @@ add_worktree() {
 }
 
 in_directory() {
-  ( cd "$1" && cmd_targets_foreign_repo "$2" )
+  ( cd "$1" && command_targets_foreign_repo "$2" )
 }
 
 @test "--repo <home> from a checkout not named for the repository: home (enforce)" {
@@ -178,12 +178,12 @@ in_directory() {
 
 @test "a leading cd target is published for the caller, and cleared when there is none" {
   add_worktree
-  run bash -c 'cd "$1" && . "$2" && cmd_targets_foreign_repo "cd '"'"'$3'"'"' && git commit -m x"; printf "%s" "$GAIA_REPO_SCOPE_LEAD_CD"' _ "$HOME_REPO" "$LIBRARY_FILE" "$WORKTREE"
+  run bash -c 'cd "$1" && . "$2" && command_targets_foreign_repo "cd '"'"'$3'"'"' && git commit -m x"; printf "%s" "$GAIA_REPO_SCOPE_LEAD_CD"' _ "$HOME_REPO" "$LIBRARY_FILE" "$WORKTREE"
   [ "$output" = "$WORKTREE" ]
-  run bash -c 'cd "$1" && . "$2" && GAIA_REPO_SCOPE_LEAD_CD=stale && cmd_targets_foreign_repo "git commit -m x"; printf "%s" "$GAIA_REPO_SCOPE_LEAD_CD"' _ "$HOME_REPO" "$LIBRARY_FILE"
+  run bash -c 'cd "$1" && . "$2" && GAIA_REPO_SCOPE_LEAD_CD=stale && command_targets_foreign_repo "git commit -m x"; printf "%s" "$GAIA_REPO_SCOPE_LEAD_CD"' _ "$HOME_REPO" "$LIBRARY_FILE"
   [ -z "$output" ]
   # A -C target belongs to its own segment, never to the command as a whole.
-  run bash -c 'cd "$1" && . "$2" && cmd_targets_foreign_repo "git -C $3 status && git commit -m x"; printf "%s" "$GAIA_REPO_SCOPE_LEAD_CD"' _ "$HOME_REPO" "$LIBRARY_FILE" "$WORKTREE"
+  run bash -c 'cd "$1" && . "$2" && command_targets_foreign_repo "git -C $3 status && git commit -m x"; printf "%s" "$GAIA_REPO_SCOPE_LEAD_CD"' _ "$HOME_REPO" "$LIBRARY_FILE" "$WORKTREE"
   [ -z "$output" ]
 }
 
@@ -256,7 +256,7 @@ in_directory() {
   local stage="$BATS_TEST_TMPDIR/stage"
   mkdir -p "$stage/.claude/hooks/lib"
   cp "$LIBRARY_FILE" "$stage/.claude/hooks/lib/repo-scope.sh"
-  run bash -c 'cd "$1" && . "$2" && cmd_targets_foreign_repo "$3"' _ \
+  run bash -c 'cd "$1" && . "$2" && command_targets_foreign_repo "$3"' _ \
     "$HOME_REPO" "$stage/.claude/hooks/lib/repo-scope.sh" \
     "git -C $SIBLING_REPO push origin main"
   [ "$status" -ne 0 ]
@@ -265,7 +265,7 @@ in_directory() {
 # An exported GIT_DIR answers every git call regardless of -C, so read
 # through it the sibling and home would share one common directory.
 @test "git -C <sibling> with GIT_DIR exported for the home repo: foreign (allow)" {
-  run bash -c 'cd "$1" && . "$2" && GIT_DIR="$1/.git" && export GIT_DIR && cmd_targets_foreign_repo "$3"' _ \
+  run bash -c 'cd "$1" && . "$2" && GIT_DIR="$1/.git" && export GIT_DIR && command_targets_foreign_repo "$3"' _ \
     "$HOME_REPO" "$LIBRARY_FILE" "git -C $SIBLING_REPO push origin main"
   [ "$status" -eq 0 ]
 }
@@ -319,7 +319,7 @@ in_directory() {
 # be cut off from by any `-R` in the tool call.
 @test "a leading cd is published even when a later command carries a -R" {
   add_worktree
-  run bash -c 'cd "$1" && . "$2" && cmd_targets_foreign_repo "cd '"'"'$3'"'"' && git commit -m x && grep -R TODO app"; printf "%s" "$GAIA_REPO_SCOPE_LEAD_CD"' _ "$HOME_REPO" "$LIBRARY_FILE" "$WORKTREE"
+  run bash -c 'cd "$1" && . "$2" && command_targets_foreign_repo "cd '"'"'$3'"'"' && git commit -m x && grep -R TODO app"; printf "%s" "$GAIA_REPO_SCOPE_LEAD_CD"' _ "$HOME_REPO" "$LIBRARY_FILE" "$WORKTREE"
   [ "$output" = "$WORKTREE" ]
 }
 
@@ -608,7 +608,7 @@ git status"
   local utf8
   utf8=$(locale -a 2>/dev/null | grep -i -m1 -E '^(C|en_US)\.utf-?8$') || skip "no UTF-8 locale"
   add_widget_remote "$HOME_REPO"
-  run bash -c 'export LC_ALL="$4"; cd "$1" && . "$2" && cmd_targets_foreign_repo "$3"' _ \
+  run bash -c 'export LC_ALL="$4"; cd "$1" && . "$2" && command_targets_foreign_repo "$3"' _ \
     "$HOME_REPO" "$LIBRARY_FILE" "gh pr merge 5 -R other/x --body 'éééééééééé' # see git log" "$utf8"
   [ "$status" -eq 0 ]
 }

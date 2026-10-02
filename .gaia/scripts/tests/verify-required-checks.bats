@@ -15,9 +15,9 @@ assert_contains() {
 }
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  SCRIPT="$THIS_DIR/../verify-required-checks.sh"
-  WORKFLOWS_DIR="$THIS_DIR/../../../.github/workflows"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  SCRIPT="$THIS_DIRECTORY/../verify-required-checks.sh"
+  WORKFLOWS_DIR="$THIS_DIRECTORY/../../../.github/workflows"
   # Built at runtime so this file never names the deleted workflow literally.
   DELETED_WORKFLOW="code-review-audit"".yml"
   [ -x "$SCRIPT" ] || skip "verify-required-checks.sh not executable"
@@ -200,7 +200,7 @@ unmapped_contexts() {
     shard_count=$((shard_count + 1))
     grep -E '^ +shard: \[' "$workflow" | grep -qE "[[,] ?${shard}[],]" \
       || { printf 'matrix is missing shard %s\n' "$shard" >&2; return 1; }
-  done < <(bash "$THIS_DIR/../../tests/bats-shards.sh" shards)
+  done < <(bash "$THIS_DIRECTORY/../../tests/bats-shards.sh" shards)
   [ "$shard_count" -gt 0 ]
   ! grep -qF -- "$DELETED_WORKFLOW" "$workflow"
 }

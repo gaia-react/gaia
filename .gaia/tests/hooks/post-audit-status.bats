@@ -70,8 +70,8 @@
 
 setup() {
   . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
-  HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/post-audit-status.sh
-  DIGEST_LIB=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/audit-digest.sh
+  HOOK_ABSOLUTE_PATH=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/post-audit-status.sh
+  DIGEST_LIBRARY=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/audit-digest.sh
   REPO=$(mktemp -d -t post-audit-status-test-XXXXXX)
   REMOTE=$(mktemp -d -t post-audit-status-remote-XXXXXX)
 
@@ -109,8 +109,8 @@ push_head_to_upstream() {
 # audit-stamp-trailer.bats), so a fixture marker carries the SAME digest the
 # hook itself derives rather than a hardcoded one.
 digest_of() {
-  local root="$1" member="$2" ref="${3:-HEAD}"
-  bash -c '. "$1"; audit_member_digest "$2" "$3" "$4"' _ "$DIGEST_LIB" "$root" "$member" "$ref"
+  local root="$1" member="$2" reference="${3:-HEAD}"
+  bash -c '. "$1"; audit_member_digest "$2" "$3" "$4"' _ "$DIGEST_LIBRARY" "$root" "$member" "$reference"
 }
 
 # Write a writer-shaped schema-3 EARNED clearance for MEMBER, keyed to MEMBER's
@@ -161,35 +161,35 @@ write_refusal() {
 # Every `gh api` invocation is appended to $API_CALLS, so a test can assert a
 # POST happened on the expected sha, or that none happened at all.
 install_gh_stub() {
-  local pr_head="${1:-}" api_rc="${2:-0}"
-  GH_BIN="$BATS_TEST_TMPDIR/bin"
-  mkdir -p "$GH_BIN"
+  local pr_head="${1:-}" api_exit_status="${2:-0}"
+  STUB_BINARY_DIRECTORY="$BATS_TEST_TMPDIR/bin"
+  mkdir -p "$STUB_BINARY_DIRECTORY"
   printf '%s' "$pr_head" > "$BATS_TEST_TMPDIR/pr-head"
-  printf '%s' "$api_rc" > "$BATS_TEST_TMPDIR/api-rc"
+  printf '%s' "$api_exit_status" > "$BATS_TEST_TMPDIR/api-rc"
   : > "$API_CALLS"
-  cat > "$GH_BIN/gh" <<EOF
+  cat > "$STUB_BINARY_DIRECTORY/gh" <<EOF
 #!/usr/bin/env bash
-stub_dir="$BATS_TEST_TMPDIR"
+stub_directory="$BATS_TEST_TMPDIR"
 EOF
-  cat >> "$GH_BIN/gh" <<'EOF'
+  cat >> "$STUB_BINARY_DIRECTORY/gh" <<'EOF'
 case "$1" in
   auth) exit 0 ;;
   pr)
-    pr_head="$(cat "$stub_dir/pr-head")"
+    pr_head="$(cat "$stub_directory/pr-head")"
     [ -n "$pr_head" ] || exit 1
     printf '%s\n' "$pr_head"
     exit 0
     ;;
   repo) printf 'gaia-react/gaia\n'; exit 0 ;;
   api)
-    printf '%s\n' "$*" >> "$stub_dir/api-calls"
-    exit "$(cat "$stub_dir/api-rc")"
+    printf '%s\n' "$*" >> "$stub_directory/api-calls"
+    exit "$(cat "$stub_directory/api-rc")"
     ;;
   *) exit 0 ;;
 esac
 EOF
-  chmod +x "$GH_BIN/gh"
-  export PATH="$GH_BIN:$PATH"
+  chmod +x "$STUB_BINARY_DIRECTORY/gh"
+  export PATH="$STUB_BINARY_DIRECTORY:$PATH"
 }
 
 # Mirror the empty-commit stamp shape: HEAD advances, every blob stays
@@ -201,11 +201,11 @@ stamp_empty_commit() {
 # Mirror the amend stamp shape on an already-pushed commit: the trailer joins
 # HEAD's message, HEAD's sha rotates, the tree is untouched.
 stamp_amend() {
-  local msg digest tree
-  msg="$(git -C "$REPO" log -1 --format='%B')"
+  local message digest tree
+  message="$(git -C "$REPO" log -1 --format='%B')"
   digest="$(digest_of "$REPO" code-audit-frontend)"
   tree="$(git -C "$REPO" rev-parse 'HEAD^{tree}')"
-  git -C "$REPO" commit --quiet --amend -m "${msg}
+  git -C "$REPO" commit --quiet --amend -m "${message}
 GAIA-Audit: 1.2.3 ${digest} ${tree}"
 }
 
@@ -224,11 +224,11 @@ assert_no_post() {
   install_gh_stub "$(git -C "$REPO" rev-parse HEAD)"
 
   cd "$REPO"
-  run bash -c "'$HOOK_ABS' 2>/dev/null"
+  run bash -c "'$HOOK_ABSOLUTE_PATH' 2>/dev/null"
   [ "$status" -eq 2 ]
   [ -z "$output" ]
 
-  run bash -c "'$HOOK_ABS' 2>&1"
+  run bash -c "'$HOOK_ABSOLUTE_PATH' 2>&1"
   [ "$status" -eq 2 ]
   grep -qF -- "usage: post-audit-status.sh <marker-path>" <<<"$output" || return 1
   assert_no_post
@@ -239,7 +239,7 @@ assert_no_post() {
   digest=$(digest_of "$REPO" code-audit-frontend)
 
   cd "$REPO"
-  run "$HOOK_ABS" "$REPO/.gaia/local/audit/${digest}.ok"
+  run "$HOOK_ABSOLUTE_PATH" "$REPO/.gaia/local/audit/${digest}.ok"
 
   [ "$status" -eq 0 ]
   [ "$output" = "status: declined: marker absent" ]
@@ -256,7 +256,7 @@ assert_no_post() {
   printf 'audited, trust me\n' > "$marker"
 
   cd "$REPO"
-  run "$HOOK_ABS" "$marker"
+  run "$HOOK_ABSOLUTE_PATH" "$marker"
 
   [ "$status" -eq 0 ]
   [ "$output" = "status: declined: marker not a valid clearance" ]
@@ -287,7 +287,7 @@ assert_no_post() {
   [ "$(git -C "$REPO" rev-parse 'HEAD^{tree}')" != "$(git -C "$REPO" rev-parse "${pushed_sha}^{tree}")" ]
 
   cd "$REPO"
-  run "$HOOK_ABS" "$marker"
+  run "$HOOK_ABSOLUTE_PATH" "$marker"
 
   [ "$status" -eq 0 ]
   [ "$output" = "status: declined: audited tree not on pushed head" ]
@@ -308,7 +308,7 @@ assert_no_post() {
   [ "$(git -C "$REPO" rev-parse HEAD)" != "$pushed_sha" ]
 
   cd "$REPO"
-  run "$HOOK_ABS" "$marker"
+  run "$HOOK_ABSOLUTE_PATH" "$marker"
 
   [ "$status" -eq 0 ]
   [ "$output" = "status: declined: stamp not pushed" ]
@@ -327,7 +327,7 @@ assert_no_post() {
   [ "$(git -C "$REPO" rev-parse HEAD)" != "$pushed_sha" ]
 
   cd "$REPO"
-  run "$HOOK_ABS" "$marker"
+  run "$HOOK_ABSOLUTE_PATH" "$marker"
 
   [ "$status" -eq 0 ]
   [ "$output" = "status: declined: stamp not pushed" ]
@@ -349,7 +349,7 @@ assert_no_post() {
   short=$(git -C "$REPO" rev-parse --short "$pushed_sha")
 
   cd "$REPO"
-  run "$HOOK_ABS" "$marker"
+  run "$HOOK_ABSOLUTE_PATH" "$marker"
 
   [ "$status" -eq 0 ]
   [ "$output" = "status: posted GAIA-Audit success ${short}" ]
@@ -365,12 +365,12 @@ assert_no_post() {
   # No remote at all and no PR resolvable, so both fallbacks land on local
   # HEAD. head_sha then equals local HEAD by construction and the sha guard
   # must stay silent; the run reaches the POST, which fails on its own here
-  # (api_rc 1) and declines "post failed", unchanged by the sha guard.
+  # (api_exit_status 1) and declines "post failed", unchanged by the sha guard.
   install_gh_stub "" 1
   marker=$(write_marker code-audit-frontend)
 
   cd "$REPO"
-  run "$HOOK_ABS" "$marker"
+  run "$HOOK_ABSOLUTE_PATH" "$marker"
 
   [ "$status" -eq 0 ]
   [ "$output" = "status: declined: post failed" ]
@@ -390,7 +390,7 @@ assert_no_post() {
   short=$(git -C "$REPO" rev-parse --short "$pushed_sha")
 
   cd "$REPO"
-  run "$HOOK_ABS" "$marker"
+  run "$HOOK_ABSOLUTE_PATH" "$marker"
 
   [ "$status" -eq 0 ]
   [ "$output" = "status: posted GAIA-Audit success ${short}" ]
@@ -416,7 +416,7 @@ assert_no_post() {
   short=$(git -C "$REPO" rev-parse --short "$pushed_sha")
 
   cd "$REPO"
-  run "$HOOK_ABS" "$refusal"
+  run "$HOOK_ABSOLUTE_PATH" "$refusal"
 
   [ "$status" -eq 0 ]
   [ "$output" = "status: posted GAIA-Audit failure ${short}" ]
@@ -439,7 +439,7 @@ assert_no_post() {
   short=$(git -C "$REPO" rev-parse --short "$pushed_sha")
 
   cd "$REPO"
-  run "$HOOK_ABS" "$refusal"
+  run "$HOOK_ABSOLUTE_PATH" "$refusal"
 
   [ "$status" -eq 0 ]
   [ "$output" = "status: posted GAIA-Audit failure ${short}" ]
@@ -456,7 +456,7 @@ assert_no_post() {
   tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
 
   cd "$REPO"
-  run "$HOOK_ABS" "$refusal"
+  run "$HOOK_ABSOLUTE_PATH" "$refusal"
 
   [ "$status" -eq 0 ]
   # Names the refusing member and the exact content, so an operator can find
@@ -485,7 +485,7 @@ assert_no_post() {
   # installs the real resolver.
 
   cd "$REPO"
-  run "$HOOK_ABS" "$refusal"
+  run "$HOOK_ABSOLUTE_PATH" "$refusal"
 
   [ "$status" -eq 0 ]
   [ "$output" = "status: posted GAIA-Audit failure ${short}" ]
@@ -505,7 +505,7 @@ assert_no_post() {
     "$digest" > "$path"
 
   cd "$REPO"
-  run "$HOOK_ABS" "$path"
+  run "$HOOK_ABSOLUTE_PATH" "$path"
 
   [ "$status" -eq 0 ]
   [ "$output" = "status: declined: marker not a valid clearance" ]
@@ -526,7 +526,7 @@ assert_no_post() {
   refusal=$(write_refusal code-audit-frontend)
 
   cd "$REPO"
-  run "$HOOK_ABS" "$refusal"
+  run "$HOOK_ABSOLUTE_PATH" "$refusal"
 
   [ "$status" -eq 0 ]
   [ "$output" = "status: declined: audited tree not on pushed head" ]
@@ -549,7 +549,7 @@ assert_no_post() {
   write_refusal code-audit-frontend >/dev/null
 
   cd "$REPO"
-  run "$HOOK_ABS" "$marker"
+  run "$HOOK_ABSOLUTE_PATH" "$marker"
 
   [ "$status" -eq 0 ]
   [ "$output" = "status: declined: caller holds a live refusal" ]
@@ -570,8 +570,8 @@ assert_no_post() {
 
   mirror="$BATS_TEST_TMPDIR/hooks"
   mkdir -p "$mirror/lib"
-  cp "$HOOK_ABS" "$mirror/post-audit-status.sh"
-  cp "$(dirname "$HOOK_ABS")"/lib/*.sh "$mirror/lib/"
+  cp "$HOOK_ABSOLUTE_PATH" "$mirror/post-audit-status.sh"
+  cp "$(dirname "$HOOK_ABSOLUTE_PATH")"/lib/*.sh "$mirror/lib/"
   # Rename the function out of the lib copy; every other reader stays intact.
   sed -i.bak 's/^clearance_member_refused()/_disabled_clearance_member_refused()/' \
     "$mirror/lib/audit-clearance.sh"

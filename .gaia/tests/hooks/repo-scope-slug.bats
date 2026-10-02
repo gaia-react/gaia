@@ -1,9 +1,9 @@
 #!/usr/bin/env bats
 
-# Tests for `cmd_targets_foreign_repo_slug` in
+# Tests for `command_targets_foreign_repo_slug` in
 # `.claude/hooks/lib/repo-scope.sh`, the act-on-home entry point.
 #
-# The sibling `cmd_targets_foreign_repo` serves BLOCKING consumers, where
+# The sibling `command_targets_foreign_repo` serves BLOCKING consumers, where
 # "home" means enforce, so it resolves every ambiguity to "home" and compares
 # only the repo-NAME half of a `-R`/`--repo` value against the repository
 # names the home repo's remotes point at. A consumer that ACTS on the home
@@ -28,20 +28,20 @@
 
 setup() {
   command -v jq >/dev/null 2>&1 || skip "jq required"
-  LIB_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/repo-scope.sh
+  LIBRARY_ABSOLUTE_PATH=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/repo-scope.sh
 
   PARENT=$(mktemp -d -t repo-scope-slug-test-XXXXXX)
   REPO="$PARENT/gaia"
   SIBLING="$PARENT/other"
-  for d in "$REPO" "$SIBLING"; do
-    mkdir -p "$d"
-    git -C "$d" init --quiet --initial-branch=main
-    git -C "$d" config user.email "test@example.com"
-    git -C "$d" config user.name "Test"
-    git -C "$d" config commit.gpgsign false
-    echo "# readme" > "$d/README.md"
-    git -C "$d" add README.md
-    git -C "$d" commit --quiet -m "init"
+  for repository_directory in "$REPO" "$SIBLING"; do
+    mkdir -p "$repository_directory"
+    git -C "$repository_directory" init --quiet --initial-branch=main
+    git -C "$repository_directory" config user.email "test@example.com"
+    git -C "$repository_directory" config user.name "Test"
+    git -C "$repository_directory" config commit.gpgsign false
+    echo "# readme" > "$repository_directory/README.md"
+    git -C "$repository_directory" add README.md
+    git -C "$repository_directory" commit --quiet -m "init"
   done
   git -C "$REPO" remote add origin https://github.com/me/gaia.git
 
@@ -54,8 +54,8 @@ HOME_REPO="${FAKE_GH_HOME_REPO:-acme/widgets}"
 HOME_HOST="${FAKE_GH_HOME_HOST:-github.com}"
 case "$1 $2" in
   "repo view")
-    jq -n --arg n "$HOME_REPO" --arg u "https://$HOME_HOST/$HOME_REPO" \
-      '{nameWithOwner: $n, url: $u}'
+    jq -n --arg name_with_owner "$HOME_REPO" --arg url "https://$HOME_HOST/$HOME_REPO" \
+      '{nameWithOwner: $name_with_owner, url: $url}'
     exit 0
     ;;
 esac
@@ -84,8 +84,8 @@ verdict() {
   ( cd "$REPO" || exit 1
     set -u
     # shellcheck source=/dev/null
-    . "$LIB_ABS"
-    if cmd_targets_foreign_repo_slug "$1"; then echo foreign; else echo home; fi )
+    . "$LIBRARY_ABSOLUTE_PATH"
+    if command_targets_foreign_repo_slug "$1"; then echo foreign; else echo home; fi )
 }
 
 # The name-half verdict of the blocking guard, for the fixtures whose whole
@@ -93,8 +93,8 @@ verdict() {
 name_half_verdict() {
   ( cd "$REPO" || exit 1
     # shellcheck source=/dev/null
-    . "$LIB_ABS"
-    if cmd_targets_foreign_repo "$1"; then echo foreign; else echo home; fi )
+    . "$LIBRARY_ABSOLUTE_PATH"
+    if command_targets_foreign_repo "$1"; then echo foreign; else echo home; fi )
 }
 
 @test "s1: a same-named sibling is foreign, where the name-half guard says home" {

@@ -13,11 +13,11 @@
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
-  SCOPE_LIB="$REPO_ROOT/.claude/hooks/lib/audit-scope.sh"
-  MACHINERY_LIB="$REPO_ROOT/.claude/hooks/lib/audit-machinery.sh"
-  PROVENANCE_LIB="$REPO_ROOT/.claude/hooks/lib/audit-base-provenance.sh"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
+  SCOPE_LIBRARY="$REPO_ROOT/.claude/hooks/lib/audit-scope.sh"
+  MACHINERY_LIBRARY="$REPO_ROOT/.claude/hooks/lib/audit-machinery.sh"
+  PROVENANCE_LIBRARY="$REPO_ROOT/.claude/hooks/lib/audit-base-provenance.sh"
   RESOLVER="$REPO_ROOT/.gaia/scripts/resolve-audit-members.sh"
   HOOK="$REPO_ROOT/.claude/hooks/pr-merge-audit-check.sh"
   # One entry per arm of the allowlist, not just the first. The uniqueness
@@ -90,8 +90,8 @@ extract_function() {
     # name no file on disk has. Command substitution discards NUL bytes, so the
     # records are accumulated in the loop instead of captured from one.
     matches=""
-    while IFS= read -r -d '' m; do
-      matches="${matches}${m}
+    while IFS= read -r -d '' matched_file; do
+      matches="${matches}${matched_file}
 "
     done < <(git -C "$REPO_ROOT" grep -lF -z -- "$lit" -- '*.sh')
     count="$(printf '%s' "$matches" | grep -c .)"
@@ -108,8 +108,8 @@ EOF
 # ---------------------------------------------------------------------------
 
 @test "surfaces exist: the classifier, the machinery list, and every consumer" {
-  [ -f "$SCOPE_LIB" ]
-  [ -f "$MACHINERY_LIB" ]
+  [ -f "$SCOPE_LIBRARY" ]
+  [ -f "$MACHINERY_LIBRARY" ]
   [ -f "$RESOLVER" ]
   [ -f "$HOOK" ]
 }
@@ -225,8 +225,8 @@ last_definition() {
   [ -n "$probed_scope" ]
   [ -n "$probed_prov" ]
 
-  last_scope="$(last_definition "$SCOPE_LIB")"
-  last_prov="$(last_definition "$PROVENANCE_LIB")"
+  last_scope="$(last_definition "$SCOPE_LIBRARY")"
+  last_prov="$(last_definition "$PROVENANCE_LIBRARY")"
   [ -n "$last_scope" ]
   [ -n "$last_prov" ]
 
@@ -248,8 +248,8 @@ last_definition() {
   # re-source or re-init. Grep each consumer's post-init body for a second
   # audit_scope_init call is already covered above (count -eq 1); this test
   # additionally proves the dispatch loop itself never calls it.
-  for f in "$RESOLVER" "$HOOK"; do
-    dispatch_loop="$(awk '/while IFS= read -r path; do/,/^done/' "$f")"
+  for consumer_file in "$RESOLVER" "$HOOK"; do
+    dispatch_loop="$(awk '/while IFS= read -r path; do/,/^done/' "$consumer_file")"
     [ -z "$dispatch_loop" ] && continue
     grep -qF "audit_scope_init" <<<"$dispatch_loop" && return 1
   done
@@ -269,17 +269,17 @@ last_definition() {
 # ---------------------------------------------------------------------------
 
 @test "the out-of-scope allowlist is defined, and the self-modification classifier is gone from the library and the gate" {
-  grep -qF "audit_out_of_scope_allowlisted() {" "$SCOPE_LIB" || return 1
-  grep -qF "audit_self_mod_classify" "$SCOPE_LIB" && return 1
+  grep -qF "audit_out_of_scope_allowlisted() {" "$SCOPE_LIBRARY" || return 1
+  grep -qF "audit_self_mod_classify" "$SCOPE_LIBRARY" && return 1
   grep -qE "audit_self_mod_classify|check_self_mod_only_update_pr|self_mod_only" "$HOOK" && return 1
   true
 }
 
 @test "no routing decision consults a hardcoded auditable-base literal, and the symbol is gone" {
-  body="$(extract_function "$SCOPE_LIB" _audit_scope_owner_of)"
+  body="$(extract_function "$SCOPE_LIBRARY" _audit_scope_owner_of)"
   [ -n "$body" ] || return 1
   grep -qF "audit_in_auditable_base" <<<"$body" && return 1
-  grep -qF "audit_in_auditable_base" "$SCOPE_LIB" && return 1
+  grep -qF "audit_in_auditable_base" "$SCOPE_LIBRARY" && return 1
   true
 }
 
@@ -334,7 +334,7 @@ YAML
     audit_owner_for_path "app/special/x.ts"
     audit_scope_init "$3"
     audit_owner_for_path "app/special/x.ts"
-  ' _ "$SCOPE_LIB" "$ROOT_DEFAULT_FIRST" "$ROOT_DEFAULT_LAST"
+  ' _ "$SCOPE_LIBRARY" "$ROOT_DEFAULT_FIRST" "$ROOT_DEFAULT_LAST"
 
   rm -rf "$ROOT_DEFAULT_FIRST" "$ROOT_DEFAULT_LAST"
 
@@ -382,8 +382,8 @@ golden_setup() {
   mkdir -p "$GREPO/.gaia/scripts" "$GREPO/.claude/hooks/lib"
   cp "$RESOLVER" "$GREPO/.gaia/scripts/resolve-audit-members.sh"
   chmod +x "$GREPO/.gaia/scripts/resolve-audit-members.sh"
-  cp "$SCOPE_LIB" "$GREPO/.claude/hooks/lib/audit-scope.sh"
-  cp "$MACHINERY_LIB" "$GREPO/.claude/hooks/lib/audit-machinery.sh"
+  cp "$SCOPE_LIBRARY" "$GREPO/.claude/hooks/lib/audit-scope.sh"
+  cp "$MACHINERY_LIBRARY" "$GREPO/.claude/hooks/lib/audit-machinery.sh"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-base-provenance.sh" "$GREPO/.claude/hooks/lib/audit-base-provenance.sh"
 
   # A gh that answers the gate's fork query (`--json isCrossRepository`) with
@@ -600,9 +600,9 @@ EOF
 
 @test "SEC-007: audit_owner_for_path returns a non-empty member for every machinery path" {
   # shellcheck source=/dev/null
-  . "$SCOPE_LIB"
+  . "$SCOPE_LIBRARY"
   # shellcheck source=/dev/null
-  . "$MACHINERY_LIB"
+  . "$MACHINERY_LIBRARY"
   audit_scope_init "$REPO_ROOT"
 
   assert_every_machinery_path_owned
@@ -619,7 +619,7 @@ EOF
     . "$1"
     audit_scope_init "$2" || { echo "rc=$?"; audit_owner_for_path "app/x.ts"; exit 0; }
     echo "rc=0"
-  ' _ "$SCOPE_LIB" "$EMPTY_ROOT"
+  ' _ "$SCOPE_LIBRARY" "$EMPTY_ROOT"
   rm -rf "$EMPTY_ROOT"
 
   [ "$status" -eq 0 ]
@@ -643,7 +643,7 @@ EOF
   # commits, not audits, so SEC-007 does not reach it and this test is the pin.
 
   # shellcheck source=/dev/null
-  . "$SCOPE_LIB"
+  . "$SCOPE_LIBRARY"
   audit_scope_init "$REPO_ROOT"
   [ "$(audit_owner_for_path '.husky/pre-commit')" = "code-audit-maintainer-shell" ]
 }
@@ -666,7 +666,7 @@ EOF
   # test is the pin.
 
   # shellcheck source=/dev/null
-  . "$SCOPE_LIB"
+  . "$SCOPE_LIBRARY"
   audit_scope_init "$REPO_ROOT"
   [ "$(audit_owner_for_path '.gaia/cli/pnpm-workspace.yaml')" = "code-audit-maintainer-node" ]
   # The default member's own `pnpm-workspace.yaml` glob never crosses a `/`,
@@ -688,7 +688,7 @@ EOF
   # run.
 
   # shellcheck source=/dev/null
-  . "$SCOPE_LIB"
+  . "$SCOPE_LIBRARY"
   audit_scope_init "$REPO_ROOT"
   [ "$(audit_owner_for_path '.gaia/cli/vitest.config.ts')" = "code-audit-maintainer-node" ]
   [ "$(audit_owner_for_path '.gaia/cli/eslint.config.mjs')" = "code-audit-maintainer-node" ]
@@ -704,7 +704,7 @@ EOF
   # is deleted (harness triage P3-09); nothing replaces its lens, so both
   # a skills .md file and a non-.md helper under skills are ownerless.
   # shellcheck source=/dev/null
-  . "$SCOPE_LIB"
+  . "$SCOPE_LIBRARY"
   audit_scope_init "$REPO_ROOT"
   [ -z "$(audit_owner_for_path '.claude/skills/gaia/references/debt.md')" ]
   [ -z "$(audit_owner_for_path '.claude/skills/gaia/helper.py')" ]
@@ -716,9 +716,9 @@ EOF
   # That is a claim in the file's own prose, and a second copy would reintroduce
   # the silent-drift failure the sharing exists to prevent while every test here
   # still passed, so it is asserted rather than trusted.
-  local lib="$REPO_ROOT/.claude/hooks/lib/audit-scope.sh"
-  [ "$(grep -c '^ *function glob_to_regex(' "$lib")" -eq 1 ]
-  [ "$(grep -c '^ *function unq(' "$lib")" -eq 1 ]
+  local scope_library_path="$REPO_ROOT/.claude/hooks/lib/audit-scope.sh"
+  [ "$(grep -c '^ *function glob_to_regex(' "$scope_library_path")" -eq 1 ]
+  [ "$(grep -c '^ *function unq(' "$scope_library_path")" -eq 1 ]
 }
 
 @test "the unowned: reader compiles a glob to the same regex the roster reader does" {
@@ -727,7 +727,7 @@ EOF
   # through each parser, must compile identically.
   local yaml_roster yaml_unowned from_roster from_unowned
   # shellcheck source=/dev/null
-  . "$SCOPE_LIB"
+  . "$SCOPE_LIBRARY"
   yaml_roster="$(printf 'auditors:\n  - name: code-audit-x\n    globs:\n      - ".gaia/**/*.sh"\n')"
   yaml_unowned="$(printf 'unowned:\n  - ".gaia/**/*.sh"\n')"
   from_roster="$(printf '%s\n' "$yaml_roster" | _audit_scope_parse_auditors | awk '$1 == "GLOB" { print $3 }')"

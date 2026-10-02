@@ -18,10 +18,10 @@
 #            Code Audit Team roster member. The roster is read out of
 #            .gaia/audit-ci.yml, so a member added there is a member this
 #            suite drives.
-#   WT       a real linked worktree of MAIN, on its own branch, with every
-#            roster member's file changed to DIFFERENT content, so MAIN and WT
+#   WORKTREE       a real linked worktree of MAIN, on its own branch, with every
+#            roster member's file changed to DIFFERENT content, so MAIN and WORKTREE
 #            produce genuinely different per-member content digests. MAIN and
-#            WT never share a `.gaia/local` (no symlink): the two clearance
+#            WORKTREE never share a `.gaia/local` (no symlink): the two clearance
 #            stores stay physically separate, matching an unprovisioned
 #            worktree, so a root derivation that quietly collapsed onto the
 #            wrong tree is observable rather than papered over.
@@ -50,7 +50,7 @@
 # Stages 5 and 6 take no root argument at all (Phase 2 was explicitly
 # forbidden from adding one, that is option A, ruled out in #1053), so there
 # is no line inside them to mutate. Their non-vacuity control is an
-# INVOCATION control instead: the same hook, anchored on MAIN instead of WT,
+# INVOCATION control instead: the same hook, anchored on MAIN instead of WORKTREE,
 # must name MAIN, and the same hook with no anchor at all, from OUTSIDE, must
 # decline out loud and write nothing.
 #
@@ -129,7 +129,7 @@
 # a value held over to the next line, and `- name:  # deferred` each reach the
 # count as an unread entry. Counting a bare `name:` key instead would satisfy
 # the count while contributing an EMPTY name, which the caller's per-entry
-# `[ -n "$m" ]` then drops: the short-but-non-empty roster above, arrived at
+# `[ -n "$member_name" ]` then drops: the short-but-non-empty roster above, arrived at
 # through the check meant to forbid it.
 #
 # The count is what guards it here. `.gaia/scripts/verify-audit-roster.sh`
@@ -174,12 +174,12 @@ setup() {
 
   MAIN=$(mktemp -d -t audit-root-main-XXXXXX)
   OUTSIDE=$(mktemp -d -t audit-root-outside-XXXXXX)
-  WT="${MAIN}-wt"
-  rm -rf "$WT"
+  WORKTREE="${MAIN}-wt"
+  rm -rf "$WORKTREE"
 
   # Keeps OUTSIDE genuinely non-repository regardless of where the system
   # tempdir happens to sit, mirroring resolve-audit-members.bats's own idiom.
-  # Harmless to MAIN/WT: the ceiling only limits upward search FROM a given
+  # Harmless to MAIN/WORKTREE: the ceiling only limits upward search FROM a given
   # cwd, and neither tree's path sits under OUTSIDE.
   export GIT_CEILING_DIRECTORIES="$OUTSIDE"
 
@@ -193,20 +193,20 @@ setup() {
   echo ".gaia/local/" > "$MAIN/.gitignore"
   cp "$REPO_ROOT/.gaia/audit-ci.yml" "$MAIN/.gaia/audit-ci.yml"
 
-  local f
-  for f in resolve-audit-members.sh audit-member-digest.sh \
+  local script_name
+  for script_name in resolve-audit-members.sh audit-member-digest.sh \
            audit-write-clearance.sh main-root-lib.sh audit-key-lib.sh; do
-    cp "$REPO_ROOT/.gaia/scripts/$f" "$MAIN/.gaia/scripts/$f"
-    chmod +x "$MAIN/.gaia/scripts/$f"
+    cp "$REPO_ROOT/.gaia/scripts/$script_name" "$MAIN/.gaia/scripts/$script_name"
+    chmod +x "$MAIN/.gaia/scripts/$script_name"
   done
-  for f in pr-merge-audit-check.sh post-audit-status.sh audit-stamp-trailer.sh; do
-    cp "$REPO_ROOT/.claude/hooks/$f" "$MAIN/.claude/hooks/$f"
-    chmod +x "$MAIN/.claude/hooks/$f"
+  for script_name in pr-merge-audit-check.sh post-audit-status.sh audit-stamp-trailer.sh; do
+    cp "$REPO_ROOT/.claude/hooks/$script_name" "$MAIN/.claude/hooks/$script_name"
+    chmod +x "$MAIN/.claude/hooks/$script_name"
   done
-  for f in audit-scope.sh audit-machinery.sh audit-clearance.sh audit-digest.sh gaia-version.sh audit-base-provenance.sh \
+  for script_name in audit-scope.sh audit-machinery.sh audit-clearance.sh audit-digest.sh gaia-version.sh audit-base-provenance.sh \
            jq-availability.sh verb-arming.sh verb-arming-walk.sh repo-scope.sh \
            cross-repo-refusal.sh audit-bypass-stamp.sh; do
-    cp "$REPO_ROOT/.claude/hooks/lib/$f" "$MAIN/.claude/hooks/lib/$f"
+    cp "$REPO_ROOT/.claude/hooks/lib/$script_name" "$MAIN/.claude/hooks/lib/$script_name"
   done
   # The maintainer members' shared handshake, which stage 8b reads through
   # their definitions' pointer.
@@ -217,19 +217,19 @@ setup() {
   # the array does not grow, the loops silently skip the newcomer, and the
   # names keep saying "every" with nothing red. Deliberately no count here or
   # in any name below, for the same reason.
-  local m roster_out
+  local member_name roster_output
   # Captured rather than piped into the loop: a process substitution discards
   # roster_members' exit status, which is the whole signal when an entry is
   # spelled in a way the scan cannot read.
-  roster_out="$(roster_members "$REPO_ROOT/.gaia/audit-ci.yml")" || {
+  roster_output="$(roster_members "$REPO_ROOT/.gaia/audit-ci.yml")" || {
     echo "roster_members could not read .gaia/audit-ci.yml's auditors block; see its message above" >&2
     return 1
   }
   ALL_MEMBERS=()
-  while IFS= read -r m; do
-    [ -n "$m" ] || continue
-    ALL_MEMBERS+=("$m")
-  done <<<"$roster_out"
+  while IFS= read -r member_name; do
+    [ -n "$member_name" ] || continue
+    ALL_MEMBERS+=("$member_name")
+  done <<<"$roster_output"
   [ "${#ALL_MEMBERS[@]}" -gt 0 ] || {
     echo "no auditors read out of .gaia/audit-ci.yml; every member loop below would run over an empty set. Either the auditors: block is empty, or its entries are not indented under it (roster_members reads only indented entries; see its header)" >&2
     return 1
@@ -241,8 +241,8 @@ setup() {
   # across them (FC-5), which is exactly what driving each one independently
   # proves. A roster name with no definition to copy reds here, which is the
   # answer that suite wants for a roster and a tree that disagree.
-  for m in "${ALL_MEMBERS[@]}"; do
-    cp "$REPO_ROOT/.claude/agents/${m}.md" "$MAIN/.claude/agents/${m}.md"
+  for member_name in "${ALL_MEMBERS[@]}"; do
+    cp "$REPO_ROOT/.claude/agents/${member_name}.md" "$MAIN/.claude/agents/${member_name}.md"
   done
 
   SCRIPT_RESOLVE_MEMBERS="$MAIN/.gaia/scripts/resolve-audit-members.sh"
@@ -252,7 +252,7 @@ setup() {
   HOOK_POST="$MAIN/.claude/hooks/post-audit-status.sh"
   HOOK_MERGE="$MAIN/.claude/hooks/pr-merge-audit-check.sh"
   AGENT_MD="$MAIN/.claude/agents/code-audit-frontend.md"
-  DIGEST_LIB="$MAIN/.claude/hooks/lib/audit-digest.sh"
+  DIGEST_LIBRARY="$MAIN/.claude/hooks/lib/audit-digest.sh"
 
   # Roster-owned, non-machinery seed files: one per roster member (per
   # .gaia/audit-ci.yml's globs), none of them listed in
@@ -269,27 +269,27 @@ setup() {
   git -C "$MAIN" add -A
   git -C "$MAIN" commit --quiet -m "seed audit-root-resolution fixture"
 
-  git -C "$MAIN" worktree add --quiet -b feature "$WT" main
+  git -C "$MAIN" worktree add --quiet -b feature "$WORKTREE" main
 
-  # Diverge every roster member's owned file so MAIN and WT produce genuinely
+  # Diverge every roster member's owned file so MAIN and WORKTREE produce genuinely
   # different per-member content digests (verified by the fixture-sanity test
   # below). No symlink between the two `.gaia/local` directories: they stay
   # physically separate stores throughout this file.
-  printf 'export const x = 2;\n' > "$WT/app/x.ts"
-  printf 'name: ci-changed\n' > "$WT/.github/workflows/ci.yml"
-  printf '#!/bin/bash\necho shell-changed\n' > "$WT/.gaia/scripts/fixture-example.sh"
-  printf 'export const y = 2;\n' > "$WT/.gaia/cli/src/foo.ts"
-  printf '# fixture skill changed\n' > "$WT/.claude/skills/audit-root-fixture/SKILL.md"
-  git -C "$WT" add -A
-  git -C "$WT" commit --quiet -m "worktree change: diverge every roster member's owned file"
+  printf 'export const x = 2;\n' > "$WORKTREE/app/x.ts"
+  printf 'name: ci-changed\n' > "$WORKTREE/.github/workflows/ci.yml"
+  printf '#!/bin/bash\necho shell-changed\n' > "$WORKTREE/.gaia/scripts/fixture-example.sh"
+  printf 'export const y = 2;\n' > "$WORKTREE/.gaia/cli/src/foo.ts"
+  printf '# fixture skill changed\n' > "$WORKTREE/.claude/skills/audit-root-fixture/SKILL.md"
+  git -C "$WORKTREE" add -A
+  git -C "$WORKTREE" commit --quiet -m "worktree change: diverge every roster member's owned file"
 
   cd "$OUTSIDE" || return 1
 }
 
 teardown() {
   cd "$REPO_ROOT" 2>/dev/null || true
-  if [ -n "${WT:-}" ]; then
-    git -C "$MAIN" worktree remove --force "$WT" 2>/dev/null || rm -rf "$WT"
+  if [ -n "${WORKTREE:-}" ]; then
+    git -C "$MAIN" worktree remove --force "$WORKTREE" 2>/dev/null || rm -rf "$WORKTREE"
     git -C "$MAIN" worktree prune 2>/dev/null || true
   fi
   [ -n "${MAIN:-}" ] && rm -rf "$MAIN"
@@ -302,10 +302,10 @@ teardown() {
 # Shared helpers
 # -----------------------------------------------------------------------------
 
-# phys <dir>: symlink-resolved absolute path, the same physical form
+# physical_path <dir>: symlink-resolved absolute path, the same physical form
 # main-root-lib.sh's own resolver prints, so a comparison against it never
 # trips on a /tmp-vs-/private/tmp style difference.
-phys() {
+physical_path() {
   ( cd "$1" 2>/dev/null && pwd -P )
 }
 
@@ -315,8 +315,8 @@ phys() {
 # against the SAME computation the hooks themselves perform, never a
 # hand-derived value.
 digest_of() {
-  local root="$1" member="$2" ref="${3:-HEAD}"
-  bash -c '. "$1"; audit_member_digest "$2" "$3" "$4"' _ "$DIGEST_LIB" "$root" "$member" "$ref"
+  local root="$1" member="$2" git_reference="${3:-HEAD}"
+  bash -c '. "$1"; audit_member_digest "$2" "$3" "$4"' _ "$DIGEST_LIBRARY" "$root" "$member" "$git_reference"
 }
 
 # run_stdout_only <cmd...>: runs `bats run` with stderr discarded, so $output
@@ -371,16 +371,16 @@ mutate_lines() {
 # pool_snapshot <root>: name + content hash of every file under <root>'s audit
 # pool, to prove a run wrote nothing (mirrors pr-merge-audit-check.bats).
 pool_snapshot() {
-  local dir="$1/.gaia/local/audit"
-  [ -d "$dir" ] || { printf '<no-pool>'; return 0; }
-  ( cd "$dir" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do printf '%s ' "$f"; shasum "$f" 2>/dev/null; done )
+  local audit_directory="$1/.gaia/local/audit"
+  [ -d "$audit_directory" ] || { printf '<no-pool>'; return 0; }
+  ( cd "$audit_directory" && find . -type f | LC_ALL=C sort | while IFS= read -r pool_file; do printf '%s ' "$pool_file"; shasum "$pool_file" 2>/dev/null; done )
 }
 
 # write_marker_at <store_root> <digest_root> <member> -> the digest on stdout.
 # Writes a writer-shaped schema-4 earned clearance directly (mirrors
 # pr-merge-audit-check.bats's write_marker), keyed to <digest_root>'s content
 # but LANDING under <store_root>. The two roots are independent parameters on
-# purpose: stage 7 needs a marker keyed to WT's content but stored under
+# purpose: stage 7 needs a marker keyed to WORKTREE's content but stored under
 # MAIN's separate pool, which the real writer script cannot produce (its
 # --root controls both digest and storage location together).
 write_marker_at() {
@@ -400,9 +400,9 @@ write_marker_at() {
 # provision_all_members <root>: an earned marker for every roster member,
 # keyed to and stored under <root> itself (self-consistent, single-root use).
 provision_all_members() {
-  local root="$1" m
-  for m in "${ALL_MEMBERS[@]}"; do
-    write_marker_at "$root" "$root" "$m" >/dev/null
+  local root="$1" member_name
+  for member_name in "${ALL_MEMBERS[@]}"; do
+    write_marker_at "$root" "$root" "$member_name" >/dev/null
   done
 }
 
@@ -466,11 +466,11 @@ invoke_merge_hook_in() {
 # binding permits outright without reaching the network, so root anchoring is
 # what decides each case again.
 write_merge_payload() {
-  local f
-  f="$(mktemp "$BATS_TEST_TMPDIR/merge-payload-XXXXXX")"
-  jq -n --arg c "gh pr merge --squash --delete-branch" \
-    '{tool_name: "Bash", tool_input: {command: $c}}' > "$f"
-  printf '%s' "$f"
+  local payload_file
+  payload_file="$(mktemp "$BATS_TEST_TMPDIR/merge-payload-XXXXXX")"
+  jq -n --arg command "gh pr merge --squash --delete-branch" \
+    '{tool_name: "Bash", tool_input: {command: $command}}' > "$payload_file"
+  printf '%s' "$payload_file"
 }
 
 # extract_audit_root_block <file>: pulls the fenced code block containing the
@@ -537,18 +537,18 @@ run_audit_root_block() {
 # Fixture sanity (acceptance criterion 6)
 # -----------------------------------------------------------------------------
 
-@test "fixture: every roster member's digest differs between MAIN and WT" {
-  local m main_d wt_d all_differ=1
-  for m in "${ALL_MEMBERS[@]}"; do
-    main_d="$(digest_of "$MAIN" "$m")"
-    wt_d="$(digest_of "$WT" "$m")"
-    [ -n "$main_d" ] || { echo "$m: MAIN digest empty" >&2; return 1; }
-    [ -n "$wt_d" ] || { echo "$m: WT digest empty" >&2; return 1; }
-    if [ "$main_d" = "$wt_d" ]; then
-      echo "$m: MAIN and WT digests are identical ($main_d); fixture is not discriminating" >&2
+@test "fixture: every roster member's digest differs between MAIN and WORKTREE" {
+  local member_name main_d worktree_digest all_differ=1
+  for member_name in "${ALL_MEMBERS[@]}"; do
+    main_d="$(digest_of "$MAIN" "$member_name")"
+    worktree_digest="$(digest_of "$WORKTREE" "$member_name")"
+    [ -n "$main_d" ] || { echo "$member_name: MAIN digest empty" >&2; return 1; }
+    [ -n "$worktree_digest" ] || { echo "$member_name: WORKTREE digest empty" >&2; return 1; }
+    if [ "$main_d" = "$worktree_digest" ]; then
+      echo "$member_name: MAIN and WORKTREE digests are identical ($main_d); fixture is not discriminating" >&2
       all_differ=0
     else
-      echo "$m: MAIN=$main_d WT=$wt_d" >&2
+      echo "$member_name: MAIN=$main_d WORKTREE=$worktree_digest" >&2
     fi
   done
   [ "$all_differ" -eq 1 ]
@@ -558,10 +558,10 @@ run_audit_root_block() {
 # Stage 1: resolve-audit-members.sh (flag: --root). Instance 5.
 # -----------------------------------------------------------------------------
 
-@test "stage 1 (flag: --root) supplied, from OUTSIDE: emits WT's dispatched member set" {
+@test "stage 1 (flag: --root) supplied, from OUTSIDE: emits WORKTREE's dispatched member set" {
   local expected_set
   expected_set="$(printf '%s\n' "${ALL_MEMBERS[@]}" | LC_ALL=C sort -u)"
-  run_stdout_only bash "$SCRIPT_RESOLVE_MEMBERS" --root "$WT"
+  run_stdout_only bash "$SCRIPT_RESOLVE_MEMBERS" --root "$WORKTREE"
   [ "$status" -eq 0 ]
   [ "$output" = "$expected_set" ]
 }
@@ -577,7 +577,7 @@ run_audit_root_block() {
   orig_sum="$(backup_file "$SCRIPT_RESOLVE_MEMBERS")"
   expected_set="$(printf '%s\n' "${ALL_MEMBERS[@]}" | LC_ALL=C sort -u)"
 
-  run_stdout_only bash "$SCRIPT_RESOLVE_MEMBERS" --root "$WT"
+  run_stdout_only bash "$SCRIPT_RESOLVE_MEMBERS" --root "$WORKTREE"
   if [ "$status" -ne 0 ] || [ "$output" != "$expected_set" ]; then
     echo "baseline (unmutated) stage 1 check failed" >&2
     restore_file "$SCRIPT_RESOLVE_MEMBERS" "$orig_sum"
@@ -598,7 +598,7 @@ run_audit_root_block() {
     return 1
   fi
 
-  run_stdout_only bash "$SCRIPT_RESOLVE_MEMBERS" --root "$WT"
+  run_stdout_only bash "$SCRIPT_RESOLVE_MEMBERS" --root "$WORKTREE"
   { [ "$status" -eq 0 ] && [ "$output" = "$expected_set" ]; } || went_red=1
 
   restore_file "$SCRIPT_RESOLVE_MEMBERS" "$orig_sum"
@@ -611,29 +611,29 @@ run_audit_root_block() {
 # Stage 3: audit-member-digest.sh (flag: --root). Instance 2.
 # -----------------------------------------------------------------------------
 
-@test "stage 3 (flag: --root) supplied, from OUTSIDE: equals the ground-truth digest for WT and differs from --root MAIN" {
-  local wt_ground_truth wt_out main_out
-  wt_ground_truth="$(digest_of "$WT" code-audit-frontend)"
+@test "stage 3 (flag: --root) supplied, from OUTSIDE: equals the ground-truth digest for WORKTREE and differs from --root MAIN" {
+  local worktree_ground_truth worktree_output main_output
+  worktree_ground_truth="$(digest_of "$WORKTREE" code-audit-frontend)"
 
-  run_stdout_only bash "$SCRIPT_MEMBER_DIGEST" --root "$WT" --member code-audit-frontend
+  run_stdout_only bash "$SCRIPT_MEMBER_DIGEST" --root "$WORKTREE" --member code-audit-frontend
   [ "$status" -eq 0 ]
-  wt_out="$output"
-  [ "$wt_out" = "$wt_ground_truth" ]
+  worktree_output="$output"
+  [ "$worktree_output" = "$worktree_ground_truth" ]
 
   run_stdout_only bash "$SCRIPT_MEMBER_DIGEST" --root "$MAIN" --member code-audit-frontend
   [ "$status" -eq 0 ]
-  main_out="$output"
+  main_output="$output"
 
-  [ "$wt_out" != "$main_out" ]
+  [ "$worktree_output" != "$main_output" ]
 }
 
 @test "stage 3 non-vacuity (source mutation): dropping --root forwarding in the digest call path turns the assertion red; byte-identical restore verified" {
-  local orig_sum wt_ground_truth start mutated_sum went_red=0 restored_sum
+  local orig_sum worktree_ground_truth start mutated_sum went_red=0 restored_sum
   orig_sum="$(backup_file "$SCRIPT_MEMBER_DIGEST")"
-  wt_ground_truth="$(digest_of "$WT" code-audit-frontend)"
+  worktree_ground_truth="$(digest_of "$WORKTREE" code-audit-frontend)"
 
-  run_stdout_only bash "$SCRIPT_MEMBER_DIGEST" --root "$WT" --member code-audit-frontend
-  if [ "$status" -ne 0 ] || [ "$output" != "$wt_ground_truth" ]; then
+  run_stdout_only bash "$SCRIPT_MEMBER_DIGEST" --root "$WORKTREE" --member code-audit-frontend
+  if [ "$status" -ne 0 ] || [ "$output" != "$worktree_ground_truth" ]; then
     echo "baseline (unmutated) stage 3 check failed" >&2
     restore_file "$SCRIPT_MEMBER_DIGEST" "$orig_sum"
     return 1
@@ -653,8 +653,8 @@ run_audit_root_block() {
     return 1
   fi
 
-  run_stdout_only bash "$SCRIPT_MEMBER_DIGEST" --root "$WT" --member code-audit-frontend
-  { [ "$status" -eq 0 ] && [ "$output" = "$wt_ground_truth" ]; } || went_red=1
+  run_stdout_only bash "$SCRIPT_MEMBER_DIGEST" --root "$WORKTREE" --member code-audit-frontend
+  { [ "$status" -eq 0 ] && [ "$output" = "$worktree_ground_truth" ]; } || went_red=1
 
   restore_file "$SCRIPT_MEMBER_DIGEST" "$orig_sum"
   restored_sum="$(sha_of "$SCRIPT_MEMBER_DIGEST")"
@@ -666,39 +666,39 @@ run_audit_root_block() {
 # Stage 4: audit-write-clearance.sh (flag: --root). Instance 2.
 # -----------------------------------------------------------------------------
 
-@test "stage 4 (flag: --root) supplied, from OUTSIDE: the marker's digest key matches WT's content" {
-  local wt_ground_truth marker_path body_digest
-  wt_ground_truth="$(digest_of "$WT" code-audit-frontend)"
-  run_stdout_only bash "$SCRIPT_WRITE_CLEARANCE" --root "$WT" --member code-audit-frontend --provenance earned \
-    --scope-digest "$wt_ground_truth"
+@test "stage 4 (flag: --root) supplied, from OUTSIDE: the marker's digest key matches WORKTREE's content" {
+  local worktree_ground_truth marker_path body_digest
+  worktree_ground_truth="$(digest_of "$WORKTREE" code-audit-frontend)"
+  run_stdout_only bash "$SCRIPT_WRITE_CLEARANCE" --root "$WORKTREE" --member code-audit-frontend --provenance earned \
+    --scope-digest "$worktree_ground_truth"
   [ "$status" -eq 0 ]
   marker_path="$output"
   [ -f "$marker_path" ]
   body_digest="$(jq -r '.digest' "$marker_path")"
-  [ "$body_digest" = "$wt_ground_truth" ]
+  [ "$body_digest" = "$worktree_ground_truth" ]
 }
 
-@test "stage 4 (flag: --root) a subdirectory of WT, from OUTSIDE: exits 2 and writes nothing" {
+@test "stage 4 (flag: --root) a subdirectory of WORKTREE, from OUTSIDE: exits 2 and writes nothing" {
   local subdir before_snapshot after_snapshot
-  subdir="$WT/app"
-  before_snapshot="$(pool_snapshot "$WT")"
+  subdir="$WORKTREE/app"
+  before_snapshot="$(pool_snapshot "$WORKTREE")"
   run_stdout_only bash "$SCRIPT_WRITE_CLEARANCE" --root "$subdir" --member code-audit-frontend --provenance earned
   [ "$status" -eq 2 ]
   [ -z "$output" ]
-  after_snapshot="$(pool_snapshot "$WT")"
+  after_snapshot="$(pool_snapshot "$WORKTREE")"
   [ "$before_snapshot" = "$after_snapshot" ]
 }
 
 @test "stage 4 non-vacuity (source mutation): removing the toplevel-equals-ROOT validation turns the subdirectory-rejection assertion red; byte-identical restore verified" {
   local orig_sum subdir before_snapshot after_snapshot start mutated_sum went_red=0 restored_sum
   orig_sum="$(backup_file "$SCRIPT_WRITE_CLEARANCE")"
-  subdir="$WT/app"
+  subdir="$WORKTREE/app"
   # The mutated writer treats the subdirectory as the root and reads its roster
   # from there, so seed one: without it the mutated run fails on the missing
   # roster and stays green for the wrong reason.
   seed_audit_roster "$subdir"
 
-  before_snapshot="$(pool_snapshot "$WT")"
+  before_snapshot="$(pool_snapshot "$WORKTREE")"
   run_stdout_only bash "$SCRIPT_WRITE_CLEARANCE" --root "$subdir" --member code-audit-frontend --provenance earned \
     --scope-digest "$(digest_of "$subdir" code-audit-frontend)"
   if [ "$status" -ne 2 ] || [ -n "$output" ]; then
@@ -706,7 +706,7 @@ run_audit_root_block() {
     restore_file "$SCRIPT_WRITE_CLEARANCE" "$orig_sum"
     return 1
   fi
-  after_snapshot="$(pool_snapshot "$WT")"
+  after_snapshot="$(pool_snapshot "$WORKTREE")"
   if [ "$before_snapshot" != "$after_snapshot" ]; then
     echo "baseline (unmutated) stage 4 check wrote to the pool unexpectedly" >&2
     restore_file "$SCRIPT_WRITE_CLEARANCE" "$orig_sum"
@@ -727,7 +727,7 @@ run_audit_root_block() {
     return 1
   fi
 
-  before_snapshot="$(pool_snapshot "$WT")"
+  before_snapshot="$(pool_snapshot "$WORKTREE")"
   run_stdout_only bash "$SCRIPT_WRITE_CLEARANCE" --root "$subdir" --member code-audit-frontend --provenance earned \
     --scope-digest "$(digest_of "$subdir" code-audit-frontend)"
   { [ "$status" -eq 2 ] && [ -z "$output" ]; } || went_red=1
@@ -744,16 +744,16 @@ run_audit_root_block() {
 # option C put the anchoring in the caller, not in this hook).
 # -----------------------------------------------------------------------------
 
-@test "stage 5 (anchor: caller cd) anchored on WT, from OUTSIDE: stamps or declines WT's own HEAD; MAIN's HEAD and branch are untouched" {
-  local before_wt_tree before_main_sha before_main_branch wt_frontend_digest after_main_sha after_main_branch wt_trailer_digest
-  provision_all_members "$WT"
-  before_wt_tree=$(git -C "$WT" rev-parse "HEAD^{tree}")
+@test "stage 5 (anchor: caller cd) anchored on WORKTREE, from OUTSIDE: stamps or declines WORKTREE's own HEAD; MAIN's HEAD and branch are untouched" {
+  local before_worktree_tree before_main_sha before_main_branch worktree_frontend_digest after_main_sha after_main_branch worktree_trailer_digest
+  provision_all_members "$WORKTREE"
+  before_worktree_tree=$(git -C "$WORKTREE" rev-parse "HEAD^{tree}")
   before_main_sha=$(git -C "$MAIN" rev-parse HEAD)
   before_main_branch=$(git -C "$MAIN" branch --show-current)
-  wt_frontend_digest="$(digest_of "$WT" code-audit-frontend)"
+  worktree_frontend_digest="$(digest_of "$WORKTREE" code-audit-frontend)"
 
   run bash -c '( cd "$1" && AUDIT_TREE_SHA="$2" AUDIT_SELF_HEALED=false bash "$3" )' \
-    _ "$WT" "$before_wt_tree" "$HOOK_STAMP"
+    _ "$WORKTREE" "$before_worktree_tree" "$HOOK_STAMP"
   [ "$status" -eq 0 ]
   case "$output" in
     "stamp: amended"*|"stamp: empty commit"*|"stamp: status only"*|"stamp: declined:"*) ;;
@@ -765,22 +765,22 @@ run_audit_root_block() {
   [ "$after_main_sha" = "$before_main_sha" ]
   [ "$after_main_branch" = "$before_main_branch" ]
 
-  # When it stamped (the member-aware gate cleared), the trailer names WT's
+  # When it stamped (the member-aware gate cleared), the trailer names WORKTREE's
   # own frontend digest, never MAIN's.
-  wt_trailer_digest="$(trailer_digest_on "$WT")"
-  if [ -n "$wt_trailer_digest" ]; then
-    [ "$wt_trailer_digest" = "$wt_frontend_digest" ]
+  worktree_trailer_digest="$(trailer_digest_on "$WORKTREE")"
+  if [ -n "$worktree_trailer_digest" ]; then
+    [ "$worktree_trailer_digest" = "$worktree_frontend_digest" ]
   fi
 }
 
-@test "stage 5 control A (invocation: anchored on MAIN instead of WT): the WT-shaped assertion goes red, naming MAIN instead" {
-  local before_wt_sha before_main_tree main_frontend_digest wt_frontend_digest main_trailer_digest after_wt_sha wt_trailer_digest_after
+@test "stage 5 control A (invocation: anchored on MAIN instead of WORKTREE): the WORKTREE-shaped assertion goes red, naming MAIN instead" {
+  local before_worktree_sha before_main_tree main_frontend_digest worktree_frontend_digest main_trailer_digest after_worktree_sha worktree_trailer_digest_after
   provision_all_members "$MAIN"
-  provision_all_members "$WT"
-  before_wt_sha=$(git -C "$WT" rev-parse HEAD)
+  provision_all_members "$WORKTREE"
+  before_worktree_sha=$(git -C "$WORKTREE" rev-parse HEAD)
   before_main_tree=$(git -C "$MAIN" rev-parse "HEAD^{tree}")
   main_frontend_digest="$(digest_of "$MAIN" code-audit-frontend)"
-  wt_frontend_digest="$(digest_of "$WT" code-audit-frontend)"
+  worktree_frontend_digest="$(digest_of "$WORKTREE" code-audit-frontend)"
 
   run bash -c '( cd "$1" && AUDIT_TREE_SHA="$2" AUDIT_SELF_HEALED=false bash "$3" )' \
     _ "$MAIN" "$before_main_tree" "$HOOK_STAMP"
@@ -792,29 +792,29 @@ run_audit_root_block() {
     [ "$main_trailer_digest" = "$main_frontend_digest" ]
   fi
 
-  # WT never moved.
-  after_wt_sha=$(git -C "$WT" rev-parse HEAD)
-  [ "$after_wt_sha" = "$before_wt_sha" ]
+  # WORKTREE never moved.
+  after_worktree_sha=$(git -C "$WORKTREE" rev-parse HEAD)
+  [ "$after_worktree_sha" = "$before_worktree_sha" ]
 
-  # The main test's own assertion ("WT's trailer names WT's digest"),
-  # re-applied here, is now FALSE: nothing ran against WT in this control.
-  wt_trailer_digest_after="$(trailer_digest_on "$WT")"
-  if [ "$wt_trailer_digest_after" = "$wt_frontend_digest" ] && [ -n "$wt_trailer_digest_after" ]; then
-    echo "stage 5 control A: WT's trailer unexpectedly reflects WT's own digest; anchoring on MAIN had no effect" >&2
+  # The main test's own assertion ("WORKTREE's trailer names WORKTREE's digest"),
+  # re-applied here, is now FALSE: nothing ran against WORKTREE in this control.
+  worktree_trailer_digest_after="$(trailer_digest_on "$WORKTREE")"
+  if [ "$worktree_trailer_digest_after" = "$worktree_frontend_digest" ] && [ -n "$worktree_trailer_digest_after" ]; then
+    echo "stage 5 control A: WORKTREE's trailer unexpectedly reflects WORKTREE's own digest; anchoring on MAIN had no effect" >&2
     return 1
   fi
 }
 
-@test "stage 5 control B (invocation: no anchor at all, from OUTSIDE): declines 'not in a git repo', writes nothing to MAIN or WT" {
-  local before_wt_sha before_main_sha
-  before_wt_sha=$(git -C "$WT" rev-parse HEAD)
+@test "stage 5 control B (invocation: no anchor at all, from OUTSIDE): declines 'not in a git repo', writes nothing to MAIN or WORKTREE" {
+  local before_worktree_sha before_main_sha
+  before_worktree_sha=$(git -C "$WORKTREE" rev-parse HEAD)
   before_main_sha=$(git -C "$MAIN" rev-parse HEAD)
 
   run bash "$HOOK_STAMP"
   [ "$status" -eq 0 ]
   [ "$output" = "stamp: declined: not in a git repo" ]
 
-  [ "$(git -C "$WT" rev-parse HEAD)" = "$before_wt_sha" ]
+  [ "$(git -C "$WORKTREE" rev-parse HEAD)" = "$before_worktree_sha" ]
   [ "$(git -C "$MAIN" rev-parse HEAD)" = "$before_main_sha" ]
 }
 
@@ -823,15 +823,15 @@ run_audit_root_block() {
 # Instance 4. Non-vacuity is an INVOCATION control, same reason as stage 5.
 # -----------------------------------------------------------------------------
 
-@test "stage 6 (anchor: caller cd) anchored on WT, from OUTSIDE: every gh invocation ran with WT as its working directory" {
-  local marker wt_phys pwd_col rest_col
-  marker=$(bash "$SCRIPT_WRITE_CLEARANCE" --root "$WT" --member code-audit-frontend --provenance earned \
-    --scope-digest "$(digest_of "$WT" code-audit-frontend)" 2>/dev/null)
-  chmod -x "$WT/.gaia/scripts/resolve-audit-members.sh"
+@test "stage 6 (anchor: caller cd) anchored on WORKTREE, from OUTSIDE: every gh invocation ran with WORKTREE as its working directory" {
+  local marker worktree_physical_path pwd_col rest_col
+  marker=$(bash "$SCRIPT_WRITE_CLEARANCE" --root "$WORKTREE" --member code-audit-frontend --provenance earned \
+    --scope-digest "$(digest_of "$WORKTREE" code-audit-frontend)" 2>/dev/null)
+  chmod -x "$WORKTREE/.gaia/scripts/resolve-audit-members.sh"
   install_gh_stub
 
   run bash -c 'export PATH="$1:$PATH"; ( cd "$2" && bash "$3" "$4" )' \
-    _ "$GH_BIN" "$WT" "$HOOK_POST" "$marker"
+    _ "$GH_BIN" "$WORKTREE" "$HOOK_POST" "$marker"
   [ "$status" -eq 0 ]
   [ -s "$GH_LOG" ]
 
@@ -839,17 +839,17 @@ run_audit_root_block() {
   # status` on whatever cwd the hook process inherited (unresolved, logical),
   # but `gh pr view` / `gh repo view` re-anchor via `git rev-parse
   # --show-toplevel`, which physically resolves. The two gh calls in one run
-  # can therefore log different string forms of the SAME tree; phys() on both
+  # can therefore log different string forms of the SAME tree; physical_path() on both
   # sides normalizes that away rather than assuming one form throughout.
-  wt_phys="$(phys "$WT")"
+  worktree_physical_path="$(physical_path "$WORKTREE")"
   while IFS=$'\t' read -r pwd_col rest_col; do
     [ -n "$pwd_col" ] || continue
-    [ "$(phys "$pwd_col")" = "$wt_phys" ] || { echo "gh call ran with PWD=$pwd_col ($rest_col), expected $wt_phys" >&2; return 1; }
+    [ "$(physical_path "$pwd_col")" = "$worktree_physical_path" ] || { echo "gh call ran with PWD=$pwd_col ($rest_col), expected $worktree_physical_path" >&2; return 1; }
   done < "$GH_LOG"
 }
 
-@test "stage 6 control A (invocation: anchored on MAIN instead of WT): every gh call names MAIN; the WT-shaped assertion goes red" {
-  local marker main_phys wt_phys pwd_col rest_col resolved found_wt=0
+@test "stage 6 control A (invocation: anchored on MAIN instead of WORKTREE): every gh call names MAIN; the WORKTREE-shaped assertion goes red" {
+  local marker main_physical_path worktree_physical_path pwd_col rest_col resolved found_worktree=0
   marker=$(bash "$SCRIPT_WRITE_CLEARANCE" --root "$MAIN" --member code-audit-frontend --provenance earned \
     --scope-digest "$(digest_of "$MAIN" code-audit-frontend)" 2>/dev/null)
   chmod -x "$MAIN/.gaia/scripts/resolve-audit-members.sh"
@@ -860,27 +860,27 @@ run_audit_root_block() {
   [ "$status" -eq 0 ]
   [ -s "$GH_LOG" ]
 
-  main_phys="$(phys "$MAIN")"
-  wt_phys="$(phys "$WT")"
+  main_physical_path="$(physical_path "$MAIN")"
+  worktree_physical_path="$(physical_path "$WORKTREE")"
   while IFS=$'\t' read -r pwd_col rest_col; do
     [ -n "$pwd_col" ] || continue
-    resolved="$(phys "$pwd_col")"
-    [ "$resolved" = "$main_phys" ] || { echo "gh call ran with PWD=$pwd_col ($rest_col), expected $main_phys" >&2; return 1; }
-    [ "$resolved" = "$wt_phys" ] && found_wt=1
+    resolved="$(physical_path "$pwd_col")"
+    [ "$resolved" = "$main_physical_path" ] || { echo "gh call ran with PWD=$pwd_col ($rest_col), expected $main_physical_path" >&2; return 1; }
+    [ "$resolved" = "$worktree_physical_path" ] && found_worktree=1
   done < "$GH_LOG"
 
-  # The main test's own assertion ("every call names WT"), re-applied here,
-  # is now FALSE: no logged call resolved to WT's cwd.
-  if [ "$found_wt" -eq 1 ]; then
-    echo "stage 6 control A: a gh call unexpectedly ran with WT's cwd; anchoring on MAIN had no effect" >&2
+  # The main test's own assertion ("every call names WORKTREE"), re-applied here,
+  # is now FALSE: no logged call resolved to WORKTREE's cwd.
+  if [ "$found_worktree" -eq 1 ]; then
+    echo "stage 6 control A: a gh call unexpectedly ran with WORKTREE's cwd; anchoring on MAIN had no effect" >&2
     return 1
   fi
 }
 
 @test "stage 6 control B (invocation: no anchor at all, from OUTSIDE): declines 'repo slug unresolved', posts nothing" {
   local marker
-  marker=$(bash "$SCRIPT_WRITE_CLEARANCE" --root "$WT" --member code-audit-frontend --provenance earned \
-    --scope-digest "$(digest_of "$WT" code-audit-frontend)" 2>/dev/null)
+  marker=$(bash "$SCRIPT_WRITE_CLEARANCE" --root "$WORKTREE" --member code-audit-frontend --provenance earned \
+    --scope-digest "$(digest_of "$WORKTREE" code-audit-frontend)" 2>/dev/null)
   install_gh_stub
 
   run bash -c 'export PATH="$1:$PATH"; bash "$2" "$3"' _ "$GH_BIN" "$HOOK_POST" "$marker"
@@ -895,54 +895,54 @@ run_audit_root_block() {
 # per README.md FC-4 / task doc "Stage 7 in particular".
 # -----------------------------------------------------------------------------
 
-@test "stage 7 acting-tree root (digest), anchored on WT from OUTSIDE: the computed content digest is WT's, independent of where the store resolves" {
-  local wt_frontend_digest main_frontend_digest payload
-  wt_frontend_digest="$(digest_of "$WT" code-audit-frontend)"
+@test "stage 7 acting-tree root (digest), anchored on WORKTREE from OUTSIDE: the computed content digest is WORKTREE's, independent of where the store resolves" {
+  local worktree_frontend_digest main_frontend_digest payload
+  worktree_frontend_digest="$(digest_of "$WORKTREE" code-audit-frontend)"
   main_frontend_digest="$(digest_of "$MAIN" code-audit-frontend)"
   payload="$(write_merge_payload)"
 
-  invoke_merge_hook_in "$WT" "$payload"
+  invoke_merge_hook_in "$WORKTREE" "$payload"
   [ "$status" -eq 0 ]
-  grep -qF -- "$wt_frontend_digest" <<<"$output" || { echo "deny output does not name WT's frontend digest ($wt_frontend_digest): $output" >&2; return 1; }
-  grep -qF -- "$main_frontend_digest" <<<"$output" && { echo "deny output names MAIN's digest instead of WT's" >&2; return 1; }
+  grep -qF -- "$worktree_frontend_digest" <<<"$output" || { echo "deny output does not name WORKTREE's frontend digest ($worktree_frontend_digest): $output" >&2; return 1; }
+  grep -qF -- "$main_frontend_digest" <<<"$output" && { echo "deny output names MAIN's digest instead of WORKTREE's" >&2; return 1; }
   return 0
 }
 
-@test "stage 7 main-anchored root (store), anchored on WT from OUTSIDE: a marker in MAIN's separate store, keyed to WT's digest, clears the merge" {
-  local m digest payload
-  for m in "${ALL_MEMBERS[@]}"; do
-    digest="$(write_marker_at "$MAIN" "$WT" "$m")"
+@test "stage 7 main-anchored root (store), anchored on WORKTREE from OUTSIDE: a marker in MAIN's separate store, keyed to WORKTREE's digest, clears the merge" {
+  local member_name digest payload
+  for member_name in "${ALL_MEMBERS[@]}"; do
+    digest="$(write_marker_at "$MAIN" "$WORKTREE" "$member_name")"
   done
   payload="$(write_merge_payload)"
 
-  invoke_merge_hook_in "$WT" "$payload"
+  invoke_merge_hook_in "$WORKTREE" "$payload"
   [ "$status" -eq 0 ]
   grep -qF -- '"permissionDecision": "deny"' <<<"$output" && { echo "expected allow, got deny: $output" >&2; return 1; }
   return 0
 }
 
-@test "stage 7 main-anchored root (store), negative isolation: a marker keyed to MAIN's own content does not clear the WT-anchored merge" {
-  local m digest payload
-  for m in "${ALL_MEMBERS[@]}"; do
-    digest="$(write_marker_at "$MAIN" "$MAIN" "$m")"
+@test "stage 7 main-anchored root (store), negative isolation: a marker keyed to MAIN's own content does not clear the WORKTREE-anchored merge" {
+  local member_name digest payload
+  for member_name in "${ALL_MEMBERS[@]}"; do
+    digest="$(write_marker_at "$MAIN" "$MAIN" "$member_name")"
   done
   payload="$(write_merge_payload)"
 
-  invoke_merge_hook_in "$WT" "$payload"
+  invoke_merge_hook_in "$WORKTREE" "$payload"
   [ "$status" -eq 0 ]
   grep -qF -- '"permissionDecision": "deny"' <<<"$output" || { echo "expected deny (wrong-digest marker must not clear), got allow: $output" >&2; return 1; }
 }
 
 @test "stage 7 non-vacuity (source mutation): collapsing the main-anchored root onto the acting tree turns the store assertion red while the digest assertion stays green; byte-identical restore verified" {
-  local orig_sum m digest payload start mutated_sum store_went_red=0 digest_stayed_green=0 restored_sum wt_frontend_digest
+  local orig_sum member_name digest payload start mutated_sum store_went_red=0 digest_stayed_green=0 restored_sum worktree_frontend_digest
   orig_sum="$(backup_file "$HOOK_MERGE")"
 
   # Baseline (unmutated): the store assertion holds.
-  for m in "${ALL_MEMBERS[@]}"; do
-    digest="$(write_marker_at "$MAIN" "$WT" "$m")"
+  for member_name in "${ALL_MEMBERS[@]}"; do
+    digest="$(write_marker_at "$MAIN" "$WORKTREE" "$member_name")"
   done
   payload="$(write_merge_payload)"
-  invoke_merge_hook_in "$WT" "$payload"
+  invoke_merge_hook_in "$WORKTREE" "$payload"
   if grep -qF -- '"permissionDecision": "deny"' <<<"$output"; then
     echo "baseline (unmutated) stage 7 store assertion failed: $output" >&2
     restore_file "$HOOK_MERGE" "$orig_sum"
@@ -950,12 +950,12 @@ run_audit_root_block() {
   fi
 
   # Baseline (unmutated): the digest assertion holds, from a fresh empty
-  # store (a deny naming WT's own digest).
+  # store (a deny naming WORKTREE's own digest).
   rm -rf "$MAIN/.gaia/local"
-  wt_frontend_digest="$(digest_of "$WT" code-audit-frontend)"
+  worktree_frontend_digest="$(digest_of "$WORKTREE" code-audit-frontend)"
   payload="$(write_merge_payload)"
-  invoke_merge_hook_in "$WT" "$payload"
-  if ! grep -qF -- "$wt_frontend_digest" <<<"$output"; then
+  invoke_merge_hook_in "$WORKTREE" "$payload"
+  if ! grep -qF -- "$worktree_frontend_digest" <<<"$output"; then
     echo "baseline (unmutated) stage 7 digest assertion failed: $output" >&2
     restore_file "$HOOK_MERGE" "$orig_sum"
     return 1
@@ -977,22 +977,22 @@ run_audit_root_block() {
     return 1
   fi
 
-  # Store assertion, mutated: must now go red (deny), root collapses to WT's
+  # Store assertion, mutated: must now go red (deny), root collapses to WORKTREE's
   # own empty store instead of MAIN's populated one.
   rm -rf "$MAIN/.gaia/local"
-  for m in "${ALL_MEMBERS[@]}"; do
-    digest="$(write_marker_at "$MAIN" "$WT" "$m")"
+  for member_name in "${ALL_MEMBERS[@]}"; do
+    digest="$(write_marker_at "$MAIN" "$WORKTREE" "$member_name")"
   done
   payload="$(write_merge_payload)"
-  invoke_merge_hook_in "$WT" "$payload"
+  invoke_merge_hook_in "$WORKTREE" "$payload"
   grep -qF -- '"permissionDecision": "deny"' <<<"$output" && store_went_red=1
 
   # Digest assertion, mutated: must stay green -- tree_root's own derivation
-  # is untouched by this mutation and still walks WT.
+  # is untouched by this mutation and still walks WORKTREE.
   rm -rf "$MAIN/.gaia/local"
   payload="$(write_merge_payload)"
-  invoke_merge_hook_in "$WT" "$payload"
-  grep -qF -- "$wt_frontend_digest" <<<"$output" && digest_stayed_green=1
+  invoke_merge_hook_in "$WORKTREE" "$payload"
+  grep -qF -- "$worktree_frontend_digest" <<<"$output" && digest_stayed_green=1
 
   restore_file "$HOOK_MERGE" "$orig_sum"
   restored_sum="$(sha_of "$HOOK_MERGE")"
@@ -1013,7 +1013,7 @@ run_audit_root_block() {
 # -----------------------------------------------------------------------------
 
 # Stage 8b: the machinery a definition INVOKES, not just the root it derives.
-# Stage 8 proves each definition's root block prints WT. That says nothing
+# Stage 8 proves each definition's root block prints WORKTREE. That says nothing
 # about which copy of a script the definition then runs, and the two came
 # apart once: the scope-digest capture was root-anchored while the clearance
 # and findings writers were spelled as bare relative paths, so on a worktree
@@ -1032,14 +1032,14 @@ run_audit_root_block() {
 # happened, and deadlock the gate with no in-band recovery.
 
 @test "stage 8b: every clearance/findings writer invocation in every definition is anchored at the literal <root>" {
-  local m file bad
-  for m in "${ALL_MEMBERS[@]}"; do
-    file="$MAIN/.claude/agents/${m}.md"
-    [ -f "$file" ] || { echo "$m: no definition at $file" >&2; return 1; }
+  local member_name file bad
+  for member_name in "${ALL_MEMBERS[@]}"; do
+    file="$MAIN/.claude/agents/${member_name}.md"
+    [ -f "$file" ] || { echo "$member_name: no definition at $file" >&2; return 1; }
     # Every invocation must carry the anchor between `bash ` and the path.
     bad="$(grep -nE 'bash[[:space:]]+\.gaia/scripts/audit-write-(clearance|findings)\.sh' "$file" || true)"
     [ -z "$bad" ] || {
-      echo "$m: unanchored writer invocation(s), which run the ambient cwd's copy:" >&2
+      echo "$member_name: unanchored writer invocation(s), which run the ambient cwd's copy:" >&2
       echo "$bad" >&2
       return 1
     }
@@ -1051,16 +1051,16 @@ run_audit_root_block() {
     local carrier="$file"
     if grep -qF '.claude/hooks/lib/audit-member-protocol.md' "$file"; then
       carrier="$MAIN/.claude/hooks/lib/audit-member-protocol.md"
-      [ -f "$carrier" ] || { echo "$m: points at a protocol file that does not exist" >&2; return 1; }
+      [ -f "$carrier" ] || { echo "$member_name: points at a protocol file that does not exist" >&2; return 1; }
       bad="$(grep -nE 'bash[[:space:]]+\.gaia/scripts/audit-write-(clearance|findings)\.sh' "$carrier" || true)"
       [ -z "$bad" ] || {
-        echo "$m: unanchored writer invocation(s) in the protocol file:" >&2
+        echo "$member_name: unanchored writer invocation(s) in the protocol file:" >&2
         echo "$bad" >&2
         return 1
       }
     fi
     grep -qE 'bash[[:space:]]+<root>/\.gaia/scripts/audit-write-clearance\.sh' "$carrier" || {
-      echo "$m: no anchored clearance-writer invocation found at all" >&2
+      echo "$member_name: no anchored clearance-writer invocation found at all" >&2
       return 1
     }
   done
@@ -1092,46 +1092,46 @@ run_audit_root_block() {
   [ "$went_red" -eq 1 ] || { echo "stage 8b stayed green under its mutation control; the assertion is vacuous" >&2; return 1; }
 }
 
-@test "stage 8 (flag/anchor: AUDIT_ROOT supplied) from OUTSIDE: every definition resolves to WT, never MAIN" {
-  local m block main_phys wt_phys
-  wt_phys="$(phys "$WT")"
-  main_phys="$(phys "$MAIN")"
+@test "stage 8 (flag/anchor: AUDIT_ROOT supplied) from OUTSIDE: every definition resolves to WORKTREE, never MAIN" {
+  local member_name block main_physical_path worktree_physical_path
+  worktree_physical_path="$(physical_path "$WORKTREE")"
+  main_physical_path="$(physical_path "$MAIN")"
 
-  for m in "${ALL_MEMBERS[@]}"; do
-    block="$(extract_audit_root_block "$MAIN/.claude/agents/${m}.md")"
-    [ -n "$block" ] || { echo "$m: extractor found no fenced block containing the AUDIT_ROOT derivation" >&2; return 1; }
+  for member_name in "${ALL_MEMBERS[@]}"; do
+    block="$(extract_audit_root_block "$MAIN/.claude/agents/${member_name}.md")"
+    [ -n "$block" ] || { echo "$member_name: extractor found no fenced block containing the AUDIT_ROOT derivation" >&2; return 1; }
 
-    run run_audit_root_block "$WT" "$OUTSIDE" "$block"
-    [ "$status" -eq 0 ] || { echo "$m: the block exited $status" >&2; return 1; }
-    [ "$output" = "$wt_phys" ] || { echo "$m: resolved '$output', expected the supplied root '$wt_phys'" >&2; return 1; }
-    [ "$output" != "$main_phys" ] || { echo "$m: resolved MAIN, so the supplied root lost to the ambient fallback" >&2; return 1; }
+    run run_audit_root_block "$WORKTREE" "$OUTSIDE" "$block"
+    [ "$status" -eq 0 ] || { echo "$member_name: the block exited $status" >&2; return 1; }
+    [ "$output" = "$worktree_physical_path" ] || { echo "$member_name: resolved '$output', expected the supplied root '$worktree_physical_path'" >&2; return 1; }
+    [ "$output" != "$main_physical_path" ] || { echo "$member_name: resolved MAIN, so the supplied root lost to the ambient fallback" >&2; return 1; }
   done
 }
 
-@test "stage 8 (flag/anchor: AUDIT_ROOT fallback) unset, run inside WT: every definition's fallback resolves WT, not MAIN" {
-  local m block wt_phys main_phys
-  wt_phys="$(phys "$WT")"
-  main_phys="$(phys "$MAIN")"
+@test "stage 8 (flag/anchor: AUDIT_ROOT fallback) unset, run inside WORKTREE: every definition's fallback resolves WORKTREE, not MAIN" {
+  local member_name block worktree_physical_path main_physical_path
+  worktree_physical_path="$(physical_path "$WORKTREE")"
+  main_physical_path="$(physical_path "$MAIN")"
 
-  for m in "${ALL_MEMBERS[@]}"; do
-    block="$(extract_audit_root_block "$MAIN/.claude/agents/${m}.md")"
-    [ -n "$block" ] || { echo "$m: extractor found no fenced block containing the AUDIT_ROOT derivation" >&2; return 1; }
+  for member_name in "${ALL_MEMBERS[@]}"; do
+    block="$(extract_audit_root_block "$MAIN/.claude/agents/${member_name}.md")"
+    [ -n "$block" ] || { echo "$member_name: extractor found no fenced block containing the AUDIT_ROOT derivation" >&2; return 1; }
 
-    run run_audit_root_block "" "$WT" "$block"
-    [ "$status" -eq 0 ] || { echo "$m: the block exited $status" >&2; return 1; }
-    [ "$output" = "$wt_phys" ] || { echo "$m: resolved '$output', expected the ambient tree '$wt_phys'" >&2; return 1; }
-    [ "$output" != "$main_phys" ] || { echo "$m: resolved MAIN from inside WT" >&2; return 1; }
+    run run_audit_root_block "" "$WORKTREE" "$block"
+    [ "$status" -eq 0 ] || { echo "$member_name: the block exited $status" >&2; return 1; }
+    [ "$output" = "$worktree_physical_path" ] || { echo "$member_name: resolved '$output', expected the ambient tree '$worktree_physical_path'" >&2; return 1; }
+    [ "$output" != "$main_physical_path" ] || { echo "$member_name: resolved MAIN from inside WORKTREE" >&2; return 1; }
   done
 }
 
 @test "stage 8 non-vacuity (source mutation): restoring an ambient-cwd derivation in one agent file turns the supplied-AUDIT_ROOT assertion red; byte-identical restore verified" {
-  local orig_sum wt_phys block start mutated_sum went_red=0 restored_sum
+  local orig_sum worktree_physical_path block start mutated_sum went_red=0 restored_sum
   orig_sum="$(backup_file "$AGENT_MD")"
-  wt_phys="$(phys "$WT")"
+  worktree_physical_path="$(physical_path "$WORKTREE")"
 
   block="$(extract_audit_root_block "$AGENT_MD")"
-  run run_audit_root_block "$WT" "$OUTSIDE" "$block"
-  if [ "$status" -ne 0 ] || [ "$output" != "$wt_phys" ]; then
+  run run_audit_root_block "$WORKTREE" "$OUTSIDE" "$block"
+  if [ "$status" -ne 0 ] || [ "$output" != "$worktree_physical_path" ]; then
     echo "baseline (unmutated) stage 8 check failed" >&2
     restore_file "$AGENT_MD" "$orig_sum"
     return 1
@@ -1157,8 +1157,8 @@ run_audit_root_block() {
     restore_file "$AGENT_MD" "$orig_sum"
     return 1
   fi
-  run run_audit_root_block "$WT" "$OUTSIDE" "$block"
-  { [ "$status" -eq 0 ] && [ "$output" = "$wt_phys" ]; } || went_red=1
+  run run_audit_root_block "$WORKTREE" "$OUTSIDE" "$block"
+  { [ "$status" -eq 0 ] && [ "$output" = "$worktree_physical_path" ]; } || went_red=1
 
   restore_file "$AGENT_MD" "$orig_sum"
   restored_sum="$(sha_of "$AGENT_MD")"

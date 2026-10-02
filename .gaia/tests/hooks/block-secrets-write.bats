@@ -30,8 +30,8 @@
 
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
-  HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
-  HOOK_ABS="$HOOKS_SRC/block-secrets-write.sh"
+  HOOKS_SOURCE_DIRECTORY=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
+  HOOK_ABSOLUTE_PATH="$HOOKS_SOURCE_DIRECTORY/block-secrets-write.sh"
 }
 
 # The payloads below carry shell snippets with quotes of their own, so
@@ -40,15 +40,15 @@ setup() {
 run_hook_write() {
   local body="$1"
   local json
-  json=$(jq -n --arg c "$body" '{tool_name: "Write", tool_input: {content: $c}}')
-  invoke_hook "$json" "$HOOK_ABS"
+  json=$(jq -n --arg content "$body" '{tool_name: "Write", tool_input: {content: $content}}')
+  invoke_hook "$json" "$HOOK_ABSOLUTE_PATH"
 }
 
 run_hook_edit() {
   local body="$1"
   local json
-  json=$(jq -n --arg s "$body" '{tool_name: "Edit", tool_input: {new_string: $s}}')
-  invoke_hook "$json" "$HOOK_ABS"
+  json=$(jq -n --arg new_string "$body" '{tool_name: "Edit", tool_input: {new_string: $new_string}}')
+  invoke_hook "$json" "$HOOK_ABSOLUTE_PATH"
 }
 
 # The two above carry no file_path, which is what every test written before the
@@ -57,18 +57,18 @@ run_hook_write_path() {
   local path="$1"
   local body="$2"
   local json
-  json=$(jq -n --arg p "$path" --arg c "$body" \
-    '{tool_name: "Write", tool_input: {file_path: $p, content: $c}}')
-  invoke_hook "$json" "$HOOK_ABS"
+  json=$(jq -n --arg file_path "$path" --arg content "$body" \
+    '{tool_name: "Write", tool_input: {file_path: $file_path, content: $content}}')
+  invoke_hook "$json" "$HOOK_ABSOLUTE_PATH"
 }
 
 run_hook_edit_path() {
   local path="$1"
   local body="$2"
   local json
-  json=$(jq -n --arg p "$path" --arg s "$body" \
-    '{tool_name: "Edit", tool_input: {file_path: $p, new_string: $s}}')
-  invoke_hook "$json" "$HOOK_ABS"
+  json=$(jq -n --arg file_path "$path" --arg new_string "$body" \
+    '{tool_name: "Edit", tool_input: {file_path: $file_path, new_string: $new_string}}')
+  invoke_hook "$json" "$HOOK_ABSOLUTE_PATH"
 }
 
 # MultiEdit sits on the same `Edit|Write|MultiEdit` matcher as the two above and
@@ -80,9 +80,9 @@ run_hook_multiedit_path() {
   local path="$1"
   local body="$2"
   local json
-  json=$(jq -n --arg p "$path" --arg s "$body" \
-    '{tool_name: "MultiEdit", tool_input: {file_path: $p, edits: [{new_string: $s}]}}')
-  invoke_hook "$json" "$HOOK_ABS"
+  json=$(jq -n --arg file_path "$path" --arg new_string "$body" \
+    '{tool_name: "MultiEdit", tool_input: {file_path: $file_path, edits: [{new_string: $new_string}]}}')
+  invoke_hook "$json" "$HOOK_ABSOLUTE_PATH"
 }
 
 assert_denied() {
@@ -535,8 +535,8 @@ assert_denied() {
 # allowlist has already cleared.
 
 @test "an allowed assignment in a secret-shaped executable tail is allowed" {
-  local ref="LONGVARNAME""1234567"
-  run_hook_write "$(printf 'API_KEY=%s\n' "\$X ; OTHER_TOKEN=\${$ref}")"
+  local long_variable_name="LONGVARNAME""1234567"
+  run_hook_write "$(printf 'API_KEY=%s\n' "\$X ; OTHER_TOKEN=\${$long_variable_name}")"
   assert_allowed_by_json
 }
 
