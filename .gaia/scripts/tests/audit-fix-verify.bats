@@ -266,8 +266,34 @@ enforcement_paths() {
   sed -n '/^ENFORCEMENT_PATHS=(/,/^)/p' "$REAL_SCRIPT" | sed -n "s/^  '\([^']*\)'.*/\1/p"
 }
 
-@test "directive 2: the script's enforcement set has the eleven C9 entries" {
-  [ "$(enforcement_paths | wc -l | tr -d ' ')" -eq 11 ]
+# The size of the set before the SPEC-093 append.
+PRE_SPEC093_ENFORCEMENT_COUNT=11
+
+# The SPEC-093 additions; each is expected on the list when it exists in the tree.
+spec093_enforcement_paths() {
+  printf '%s\n' \
+    '.claude/hooks/audit-loop-ask-grant.sh' \
+    '.gaia/scripts/context-checkpoint-lib.sh' \
+    '.gaia/scripts/audit-dispositions-check.sh' \
+    '.gaia/scripts/audit-loop-signals-lib.sh' \
+    '.claude/agents/audit-loop-unit.md' \
+    '.gaia/statusline/gaia-statusline.sh' \
+    '.gaia/statusline/context-reading.sh' \
+    '.gaia/statusline/left-side.sh'
+}
+
+@test "UAT-032: the enforcement set holds every existing SPEC-093 path and grew by exactly that count" {
+  local repo_root="$BATS_TEST_DIRNAME/../../.." p added=0
+  while IFS= read -r p; do
+    [ -e "$repo_root/$p" ] || continue
+    added=$((added + 1))
+    enforcement_paths | grep -Fxq "$p" || {
+      echo "missing from ENFORCEMENT_PATHS: $p"
+      return 1
+    }
+  done < <(spec093_enforcement_paths)
+  [ "$added" -ge 1 ]
+  [ "$(enforcement_paths | wc -l | tr -d ' ')" -eq $((PRE_SPEC093_ENFORCEMENT_COUNT + added)) ]
   enforcement_paths | grep -Fxq '.claude/settings.local.json'
 }
 
@@ -313,7 +339,59 @@ enforcement_case() {
     n=$((n + 1))
     enforcement_case "$p" "$n" || return 1
   done < <(enforcement_paths)
-  [ "$n" -eq 11 ]
+  [ "$n" -eq "$(enforcement_paths | wc -l | tr -d ' ')" ]
+  [ "$n" -gt "$PRE_SPEC093_ENFORCEMENT_COUNT" ]
+}
+
+@test "UAT-032: an unlisted edit to each SPEC-093 enforcement path fails enforcement-path" {
+  local repo_root="$BATS_TEST_DIRNAME/../../.." n=0 p
+  while IFS= read -r p; do
+    [ -e "$repo_root/$p" ] || continue
+    n=$((n + 1))
+    enforcement_case "$p" "s$n" || return 1
+  done < <(spec093_enforcement_paths)
+  [ "$n" -ge 1 ]
+}
+
+@test "UAT-032 control: a listed edit to a SPEC-093 enforcement path with a fix entry passes" {
+  local p='.gaia/scripts/audit-dispositions-check.sh'
+  mkdir -p "$REPO/.gaia/scripts"
+  printf 'orig\n' >"$REPO/$p"
+  git -C "$REPO" add -A
+  git -C "$REPO" commit -q -m enforcement
+  disp '[{"member":"m","finding_class":"c1","path":"'"$p"'","line":1,"disposition":"fix"}]' '["'"$p"'"]'
+  take_baseline
+  take_digests
+  edit "$p"
+  printf '%s' '{"schema":1,"round":1,"attempt":1,"results":[{"member":"m","finding_class":"c1","path":"'"$p"'","line":1,"disposition":"fixed","reason":"r","changed_paths":["'"$p"'"]}],"changed_paths":["'"$p"'"],"reverted_paths":[]}' >"$RES"
+  do_check
+  [ "$status" -eq 0 ]
+}
+
+@test "a waive-out-of-scope entry carrying basis cross-remit passes the shape check" {
+  disp '[
+    {"member":"m","finding_class":"c1","path":"a.txt","line":3,"disposition":"fix"},
+    {"member":"m","finding_class":"c2","path":"b.txt","line":5,"disposition":"waive-out-of-scope","basis":"cross-remit","reason":"r"}]'
+  take_baseline
+  take_digests
+  edit a.txt
+  printf '%s' '{"schema":1,"round":1,"attempt":1,"results":[{"member":"m","finding_class":"c1","path":"a.txt","line":3,"disposition":"fixed","reason":"r","changed_paths":["a.txt"]}],"changed_paths":["a.txt"],"reverted_paths":[]}' >"$RES"
+  do_check
+  [ "$status" -eq 0 ]
+}
+
+@test "the run-folder header drops the stale writer label and names the new shapes" {
+  if grep -Fq 'dispositions-<r>.json (main thread)' "$REAL_SCRIPT"; then
+    echo "stale writer label still present"
+    return 1
+  fi
+  local lit
+  for lit in basis vetoes.json 'unit-<u>.json' effective_from_round stop_reason; do
+    grep -Fq -- "$lit" "$REAL_SCRIPT" || {
+      echo "header lacks $lit"
+      return 1
+    }
+  done
 }
 
 @test "directive 3: an enforcement edit passes when allowed and a fix entry names it" {

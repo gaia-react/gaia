@@ -94,7 +94,7 @@ This is belt-and-braces: the one refusal set (`AUDIT_SELFHEAL_REFUSE_ERE` in `.c
 
 **Cross-remit findings.** A defect you find in a file your own declared domain does not cover is a **cross-remit finding**. Report it to the orchestrator, and apply **no** repair to it. This holds whether or not the file's owner has already cleared it, and whether or not the fix looks trivial. You are not the owner of that file and you do not know what its owner knows.
 
-The orchestrator owns the disposition, under `wiki/concepts/PR Merge Workflow.md`'s `#### Cross-remit findings` section, and either way the finding is **recorded rather than lost**. Because the orchestrator's commit rotates the owning member's digest, that member's marker invalidates and it is re-dispatched, so the owner reviews the repair made to its own file.
+The orchestrator owns the disposition, under `wiki/concepts/PR Merge Workflow.md`'s `#### Cross-remit findings` section, and either way the finding is **recorded rather than lost**. Because the orchestrator's commit rotates the owning member's digest, that member's marker invalidates and it is re-dispatched, so the owner reviews the repair made to its own file. A cross-remit finding is also written to your findings sidecar as an ordinary entry carrying `cross_remit: true` (a boolean, omitted on every other finding), in addition to the report above; it still never gates your own marker.
 
 Cross-remit and out-of-scope are **not the same axis**: out-of-scope means outside the pull request's changed line ranges; cross-remit means outside **your domain**. A finding can be in-scope for the PR and cross-remit for you. Give a cross-remit finding a named place in your return (see "Cross-remit Findings" under Output Format below) so the orchestrator can act on it.
 
@@ -137,7 +137,7 @@ Same format. Advisory: never block the marker on their own.
 - **Issue**: the concrete failure mode
 - **Owner**: the member whose declared domain covers this file, if known
 
-Never gates your own marker; the orchestrator decides the disposition.
+Never gates your own marker; the orchestrator decides the disposition. Also write it to your findings sidecar with `cross_remit: true`.
 
 ## Gate handshake (per-member marker)
 
@@ -333,7 +333,7 @@ Shape (one entry per finding; the writer rejects the write and names the offendi
 ]
 ```
 
-Field contract. `severity` maps from your grading: Critical → `error`, Important → `warning`, Suggestion → `suggestion`. `finding_class` comes from the closed audit vocabulary, never a second vocabulary of your own, and counts at any severity: a workflow-security finding takes a `WORKFLOW_FINDING_CLASSES` member, and `## Workflow class assignment` above says which one; a cross-cutting finding takes a `HOLISTIC_FINDING_CLASSES` member: `## Holistic class assignment` above says which one for the root causes it separates, and `.claude/agents/code-audit-frontend.md` under "Per-bucket `finding_class` convention" enumerates the full set for anything else. A finding that maps to no seeded class is stamped `holistic/unclassified` and **included**, never omitted, surfacing as the distinct unclassified recurrence signal.
+Field contract. `severity` maps from your grading: Critical → `error`, Important → `warning`, Suggestion → `suggestion`. `finding_class` comes from the closed audit vocabulary, never a second vocabulary of your own, and counts at any severity: a workflow-security finding takes a `WORKFLOW_FINDING_CLASSES` member, and `## Workflow class assignment` above says which one; a cross-cutting finding takes a `HOLISTIC_FINDING_CLASSES` member: `## Holistic class assignment` above says which one for the root causes it separates, and `.claude/agents/code-audit-frontend.md` under "Per-bucket `finding_class` convention" enumerates the full set for anything else. A finding that maps to no seeded class is stamped `holistic/unclassified` and **included**, never omitted, surfacing as the distinct unclassified recurrence signal. Every finding carries `security`, a boolean: workflow-security dimension findings (supply-chain, injection, permission, secret-handling) are `security: true`; any other finding is `true` when its content or severity reads as a security concern (never judged on `finding_class`) and `false` only when you are sure it is not; when unsure, `true`. A missing or non-boolean `security` is read as `true`. `cross_remit` is optional and `true` only for a defect in a file outside your declared domain.
 
 <!-- gaia:maintainer-only:start -->
 The authoritative, machine-checked vocabulary lives in `.gaia/cli/src/schemas/finding-class.ts` (`HOLISTIC_FINDING_CLASSES`, `WORKFLOW_FINDING_CLASSES`, and the oracle prefixes); the two assignment sections above say which member to reach for, they do not define the set.

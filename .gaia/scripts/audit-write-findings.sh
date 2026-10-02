@@ -77,6 +77,12 @@
 #   area_tags      OPTIONAL array of strings. Defaults to the `path`'s
 #                  directory, which is what the recurrence tally reads; supply
 #                  it only to say something the dirname does not.
+#   security       OPTIONAL boolean. Members set it from their security
+#                  classification (content and severity, never finding_class).
+#                  A present non-boolean is rejected; readers treat an absent
+#                  or non-boolean value as true, so the writer invents none.
+#   cross_remit    OPTIONAL boolean. true for a defect in a file outside the
+#                  reporting member's remit. A present non-boolean is rejected.
 #
 # Written shape (schema 1; the shape post-findings-block.sh merges)
 #   {"schema":1,"member":"<name>","findings":[ {<finding>}, ... ]}
@@ -282,6 +288,10 @@ if ! violation="$(printf '%s' "$raw" | jq -r '
             and ((($f.area_tags | type) != "array")
                  or (any($f.area_tags[]; type != "string"))))
         then "area_tags, when present, must be an array of strings"
+      elif ($f | has("security")) and (($f.security | type) != "boolean")
+        then "security, when present, must be a boolean"
+      elif ($f | has("cross_remit")) and (($f.cross_remit | type) != "boolean")
+        then "cross_remit, when present, must be a boolean"
       else empty
       end;
   first(to_entries[] | select((.value | [reason] | length) > 0) | "\(.key)\t\(.value | reason)") // empty

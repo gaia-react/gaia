@@ -109,7 +109,7 @@ line_starting() {
 # --- wiki inventories -------------------------------------------------------
 
 @test "Claude Hooks.md's table has a row for each audit-loop hook and none for the removed one" {
-  for hook in audit-loop-bound.sh audit-loop-grant.sh block-audit-loop-write.sh; do
+  for hook in audit-loop-ask-grant.sh audit-loop-bound.sh audit-loop-grant.sh block-audit-loop-write.sh; do
     grep -qF -- "| \`$hook\` |" "$HOOKS_WIKI" || { echo "missing table row: $hook" >&2; return 1; }
   done
   grep -qE -- 'block-fourth[-]audit-round' "$HOOKS_WIKI" && return 1
@@ -125,13 +125,15 @@ line_starting() {
 # --- COV-007: the fixer is not briefed from the ledger ---------------------
 
 @test "COV-007: Code Review Audit Agent.md says the ledger briefs the re-audit and the fixer reads dispositions" {
-  grep -qF -- 'the fixer is briefed from the main thread' "$REVIEW_WIKI"
+  grep -qF -- "the fixer is briefed from the dispositions file the round's orchestrator writes" "$REVIEW_WIKI"
+  grep -qF -- "the fixer is briefed from the main thread's dispositions file" "$REVIEW_WIKI" && return 1
   grep -qF -- 'the fixer read the ledger' "$REVIEW_WIKI" && return 1
   true
 }
 
 @test "COV-007: code-audit-frontend.md no longer has the fixer reading the ledger" {
-  [ "$(grep -cF -- "the fixer is briefed from the main thread's dispositions file" "$FRONTEND_AGENT")" -ge 2 ]
+  [ "$(grep -cF -- "the fixer is briefed from the dispositions file the round's orchestrator writes" "$FRONTEND_AGENT")" -ge 2 ]
+  grep -qF -- "the fixer is briefed from the main thread's dispositions file" "$FRONTEND_AGENT" && return 1
   grep -qF -- 'and the fixer read' "$FRONTEND_AGENT" && return 1
   grep -qF -- 'the next re-audit and the fixer' "$FRONTEND_AGENT" && return 1
   true

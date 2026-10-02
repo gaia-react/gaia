@@ -32,6 +32,7 @@ You also own the declarative half of that same subsystem: the roster your own di
 - `.claude/settings.json`
 - `.github/CODEOWNERS`
 - `.claude/agents/code-audit-*.md`
+- `.claude/agents/audit-loop-unit.md`
 - `.claude/hooks/lib/audit-member-protocol.md`
 - `.claude/rules/**`
 - `.claude/doctrine/**`

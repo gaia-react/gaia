@@ -36,6 +36,10 @@ setup() {
   CHECKPOINT='^#### The branch checkpoint'
   WHENSTOP='^#### When rounds stop: pre-commit a disposition for every branch'
   CROSSREMIT='^#### Cross-remit findings'
+  UNIT='^#### The audit loop unit'
+  UNIT_AGENT="${GAIA_AUDIT_LOOP_UNIT_AGENT:-$ROOT/.claude/agents/audit-loop-unit.md}"
+  PR_MERGE_RULE="${GAIA_PR_MERGE_RULE:-$ROOT/.claude/rules/pr-merge.md}"
+  FIX_VERIFY="${GAIA_AUDIT_FIX_VERIFY:-$ROOT/.gaia/scripts/audit-fix-verify.sh}"
 }
 
 # section <start_ERE>: the page from the heading matching <start_ERE> up to,
@@ -98,7 +102,7 @@ hand_edit_sentences() {
 
 @test "UAT-010: the loop sections carry no clear-and-paste handoff" {
   local anchor s
-  for anchor in "$STEP2" "$FIXROUND" "$CHECKPOINT"; do
+  for anchor in "$STEP2" "$UNIT" "$FIXROUND"; do
     s="$(section "$anchor")" || return 1
     grep -qiE -- '/clear|continuation prompt' <<<"$s" && {
       echo "a loop section names a clear-and-paste handoff: $anchor" >&2
@@ -108,10 +112,13 @@ hand_edit_sentences() {
   true
 }
 
-@test "UAT-010: a checkpoint selection changes nothing until the human types the line" {
+@test "UAT-010: a checkpoint selection records only through the pinned question, and Claude never types the line" {
   local s
   s="$(section "$CHECKPOINT")" || return 1
-  sentences <<<"$s" | grep -qF -- 'Selecting an option changes nothing until the human types that line as the whole prompt, in this same session;' || return 1
+  grep -qF -- 'Selecting an option changes nothing until the human types that line' <<<"$s" && return 1
+  sentences <<<"$s" | grep -qF -- 'records a selection as the answer only when the question came from the main thread of an interactive session' || return 1
+  sentences <<<"$s" | grep -qF -- "the call's \`tool_input\` equals the pinned question exactly" || return 1
+  sentences <<<"$s" | grep -qF -- 'Any other answer records nothing and leaves the state byte-identical' || return 1
   grep -qF -- 'Claude never types, writes, or simulates the line, and never writes the branch state file.' <<<"$s"
 }
 
@@ -168,4 +175,242 @@ hand_edit_sentences() {
 
 @test "the Quality Gate page's stop-and-report step carries the fix-round clause" {
   grep -qF -- '10. **Stop and report**: wait for user approval, except inside the PR Merge Workflow'"'"'s fix round ([[PR Merge Workflow#The fix round: fixer, verifier, gate]]).' "$QG"
+}
+
+# --- the audit loop unit ----------------------------------------------------
+
+# anchors_resolve <page> <agent>: every `#### ...` anchor the agent names
+# resolves to exactly one heading line in the page. Derived from the agent
+# file; an empty derivation is a failure, never a pass.
+anchors_resolve() {
+  local page="$1" agent="$2" anchors anchor count=0
+  anchors="$(grep -oE '`#### [^`]+`' "$agent" | tr -d '`')"
+  [ -n "$anchors" ] || {
+    echo "no #### anchor derived from $agent" >&2
+    return 1
+  }
+  while IFS= read -r anchor; do
+    count=$((count + 1))
+    [ "$(grep -cxF -- "$anchor" "$page")" -eq 1 ] || {
+      echo "anchor does not resolve to exactly one heading: $anchor" >&2
+      return 1
+    }
+  done <<<"$anchors"
+  [ "$count" -ge 4 ] || {
+    echo "derived only $count anchors from $agent" >&2
+    return 1
+  }
+}
+
+@test "UAT-021: the audit loop unit heading exists exactly once" {
+  [ "$(grep -cxF -- '#### The audit loop unit' "$PAGE")" -eq 1 ]
+}
+
+@test "DP-018: every anchor the unit agent names resolves to exactly one heading, and the check has a red twin" {
+  anchors_resolve "$PAGE" "$UNIT_AGENT" || return 1
+  grep -qxF -- '#### The audit loop unit' "$PAGE" || return 1
+  local copy="$BATS_TEST_TMPDIR/page-renamed.md"
+  sed 's/^#### The audit loop unit$/#### The audit loop unit renamed/' "$PAGE" >"$copy"
+  anchors_resolve "$copy" "$UNIT_AGENT" 2>/dev/null && return 1
+  copy="$BATS_TEST_TMPDIR/page-duplicated.md"
+  { cat "$PAGE"; printf '\n#### The audit loop unit\n'; } >"$copy"
+  anchors_resolve "$copy" "$UNIT_AGENT" 2>/dev/null && return 1
+  true
+}
+
+@test "the unit section states the main thread's loop: next-unit, pre-clear, one blocking wait, the classifier call" {
+  local s
+  s="$(section "$UNIT")" || return 1
+  grep -qF -- 'audit-loop-eval.sh next-unit --root <RESOLVED_ROOT>' <<<"$s" || return 1
+  grep -qF -- 'rm -f <RUN_FOLDER>/unit-<u>.json' <<<"$s" || return 1
+  grep -qF -- 'one blocking Monitor until-loop on `<RUN_FOLDER>/unit-<u>.json`' <<<"$s" || return 1
+  grep -qF -- 'audit-noop-detect.sh --shape agent-report-file --path <RUN_FOLDER>/unit-<u>.json --report-key rounds --min-count 1' <<<"$s" || return 1
+  grep -qF -- 'subagent_type: "audit-loop-unit"' <<<"$s" || return 1
+  grep -qF -- 'Claude Code 2.1.287 or later' <<<"$s" || return 1
+}
+
+@test "the unit section maps every stop_reason and every deny class the agent classifies" {
+  local s reason
+  s="$(section "$UNIT")" || return 1
+  for reason in clean window-end checkpoint-deny dispositions-check-failed needs-human failure nesting-unavailable; do
+    grep -qF -- "\`$reason\`" <<<"$s" || { echo "stop_reason missing: $reason" >&2; return 1; }
+  done
+  grep -qF -- 'PreToolUse:Agent hook error: BLOCKED: ...' <<<"$s" || return 1
+  grep -qF -- '`BLOCKED: audit checkpoint` maps to `checkpoint-deny`, `BLOCKED: audit window` to `window-end`, `BLOCKED: audit dispositions` to `dispositions-check-failed`, and any other `BLOCKED:` to `failure`' <<<"$s" || return 1
+  grep -qF -- "audit-loop-bound.sh\`'s header owns the deny text" <<<"$s" || return 1
+  grep -qF -- 'audit-dispositions-check.sh check-all --root <RESOLVED_ROOT> --run-folder <RUN_FOLDER>' <<<"$s" || return 1
+}
+
+@test "the unit section states the in-unit rule: agent_id and agent_type, anything else is a one-round unit" {
+  local s
+  s="$(section "$UNIT")" || return 1
+  grep -qF -- 'only when its payload carries an `agent_id` and its `agent_type` is `audit-loop-unit`' <<<"$s" || return 1
+  sentences <<<"$s" | grep -qF -- "Any other member dispatch, the main thread's included, is judged inline as a one-round unit" || return 1
+  sentences <<<"$s" | grep -qF -- 'An answered checkpoint is spent once a later round is recorded, so in the fallback one grant admits the next round, not every dispatch up to the cap.' || return 1
+}
+
+@test "the unit section builds the waiver table from the dispositions files and binds a veto to the next unit's rounds" {
+  local s
+  s="$(section "$UNIT")" || return 1
+  grep -qF -- 'audit-dispositions-check.sh waiver-table --root <RESOLVED_ROOT> --run-folder <RUN_FOLDER> --rounds <a>-<b>' <<<"$s" || return 1
+  grep -qF -- 'never from the informational `waiver_table` in `unit-<u>.json`' <<<"$s" || return 1
+  grep -qF -- '`<RUN_FOLDER>/vetoes.json` with Bash at the main checkout' <<<"$s" || return 1
+  sentences <<<"$s" | grep -qF -- 'Each veto'"'"'s `effective_from_round` is the `<s>` that `next-unit` prints at that moment, so a veto binds the next unit'"'"'s rounds and never re-grades the round that held the waiver.' || return 1
+  sentences <<<"$s" | grep -qF -- 'its commit rotates the owning member'"'"'s digest' || return 1
+}
+
+@test "the unit section assigns the three PR-body sections to the unit and the rewrite after a veto to the main thread" {
+  local s heading
+  s="$(section "$UNIT")" || return 1
+  for heading in '## Accepted residuals (recorded, not fixed)' '## Out-of-scope machinery findings (recorded, not filed)' '## Waived below triage threshold (not filed)'; do
+    grep -qF -- "$heading" <<<"$s" || { echo "heading missing: $heading" >&2; return 1; }
+  done
+  sentences <<<"$s" | grep -qF -- 'The main thread rewrites those sections after a veto' || return 1
+  grep -qF -- 'audit-dispositions-check.sh pr-sections' <<<"$s"
+}
+
+@test "the unit section never lets the unit merge, and a missing unit file stops for the human" {
+  local s
+  s="$(section "$UNIT")" || return 1
+  sentences <<<"$s" | grep -qF -- 'It runs no `gh pr merge`, posts no `GAIA-Audit` status, writes no marker, edits no `CHANGELOG.md`, and never writes the loop state or `vetoes.json`.' || return 1
+  sentences <<<"$s" | grep -qF -- 'A unit that returns with no `unit-<u>.json` stops the main thread for the human; it never falls back inline on its own.' || return 1
+  grep -qF -- 'the main thread reads this section, [[#The branch checkpoint]], [[#Posting the status last]] and the CHANGELOG gate, and does not read the round procedure' <<<"$(sentences <<<"$s" | tr '\n' ' ')" || return 1
+}
+
+@test "the fix round runs the dispositions check before the baseline, and states unit recovery beside the resume override" {
+  local s check_line baseline_line
+  s="$(section "$FIXROUND")" || return 1
+  check_line="$(grep -nF -- 'audit-dispositions-check.sh check --root <RESOLVED_ROOT> --run-folder <RUN_FOLDER> --round <r>' <<<"$s" | head -1 | cut -d: -f1)"
+  baseline_line="$(grep -nF -- '**Baseline.**' <<<"$s" | head -1 | cut -d: -f1)"
+  [ -n "$check_line" ] && [ -n "$baseline_line" ] || return 1
+  [ "$check_line" -lt "$baseline_line" ] || return 1
+  grep -qF -- 'with no `--snapshot-dir` (only the bound hook writes snapshots;' <<<"$s" || return 1
+  sentences <<<"$s" | grep -qF -- 'runs the `drift` check above on any `baseline-<r>.json` that has no `fixer-<r>-audit.json`: exit 1 stops it `needs-human`.' || return 1
+  grep -qF -- '**Unit recovery.**' <<<"$s" || return 1
+  sentences <<<"$s" | grep -qF -- 'the unit calls `audit-loop-record.sh` itself' || return 1
+  sentences <<<"$s" | grep -qF -- 'The procedure each round runs, inside the unit (or on the main thread in the nesting-unavailable fallback), in this order.' || return 1
+}
+
+# pinned_labels: the option labels the evaluator's pinned question can carry,
+# one per line, without the (Recommended) suffix. Derived from the builder, not retyped.
+pinned_labels() {
+  bash -c '
+    . "$1/.gaia/scripts/context-checkpoint-lib.sh"
+    . "$1/.gaia/scripts/audit-loop-state-lib.sh"
+    k="$GAIA_CTX_UNIT_ROUNDS"
+    { gaia_loop_pinned_question feat/x 0123456789abcdef 6 "$k" true false context
+      gaia_loop_pinned_question feat/x 0123456789abcdef 10 "$k" false true cap
+    } | jq -r ".questions[0].options[].label" | sed "s/ (Recommended)$//" | sort -u
+  ' _ "$ROOT"
+}
+
+@test "the checkpoint section quotes every pinned option label and says the recommended one leads" {
+  local s labels label n=0
+  s="$(section "$CHECKPOINT")" || return 1
+  labels="$(pinned_labels)"
+  [ -n "$labels" ] || { echo "no labels derived from the pinned question builder" >&2; return 1; }
+  while IFS= read -r label; do
+    n=$((n + 1))
+    grep -qF -- "\`$label\`" <<<"$s" || { echo "label not quoted: $label" >&2; return 1; }
+  done <<<"$labels"
+  [ "$n" -eq 5 ] || { echo "expected 5 distinct labels, derived $n" >&2; return 1; }
+  grep -qF -- '(Recommended)' <<<"$s" || return 1
+  grep -qF -- 'leads' <<<"$s" || return 1
+  grep -qF -- 'context-checkpoint-lib.sh' <<<"$s" || return 1
+  true
+}
+
+@test "the checkpoint section names the recorder, the pinned-question printer and both owners of the numbers" {
+  local s
+  s="$(section "$CHECKPOINT")" || return 1
+  grep -qF -- 'audit-loop-ask-grant.sh' <<<"$s" || return 1
+  grep -qF -- 'audit-loop-eval.sh pinned-question --root <RESOLVED_ROOT>' <<<"$s" || return 1
+  grep -qF -- "\`.gaia/scripts/audit-loop-eval.sh\`'s header" <<<"$s" || return 1
+  grep -qF -- '.gaia/scripts/context-checkpoint-lib.sh' <<<"$s" || return 1
+  sentences <<<"$s" | grep -qF -- 'This page restates none of them.' || return 1
+  grep -qE -- '(300000|200000|1800) ' <<<"$s" && return 1
+  true
+}
+
+@test "UAT-014: the new-session option prints a fenced continuation prompt and an unattended run prints the typed line and none" {
+  local s fence
+  s="$(section "$CHECKPOINT")" || return 1
+  sentences <<<"$s" | grep -qF -- 'for the human to paste into a fresh session' || return 1
+  grep -qF -- 'Run `/clear`, then paste the prompt below.' <<<"$s" || return 1
+  grep -qF -- 'Kill this session with Ctrl+C, start a new one (`claude`, with any needed environment variable), then paste the prompt below.' <<<"$s" || return 1
+  grep -qF -- 'only a fresh launch provides' <<<"$s" || return 1
+  fence="$(awk '/^```text$/ { open = 1; next } /^```$/ { open = 0 } open { print }' <<<"$s")"
+  grep -qF -- 'Resume the PR merge workflow for PR #<N>' <<<"$fence" || return 1
+  grep -qF -- 'audit-loop-eval.sh next-unit --root <RESOLVED_ROOT>' <<<"$fence" || return 1
+  sentences <<<"$s" | grep -qF -- "It prints the typed \`audit-grant <n>\` line from the brief's \`grant_line\` and no continuation prompt" || return 1
+  sentences <<<"$s" | grep -qF -- 'An unattended run never asks and never grants.' || return 1
+}
+
+@test "the clean-stop last guard is read-only and reads the branch's frozen snapshots" {
+  local row
+  row="$(grep -F -- 'audit-dispositions-check.sh check-all --root <RESOLVED_ROOT> --run-folder <RUN_FOLDER>` once more as a last guard' "$PAGE")" || return 1
+  grep -qF -- 'read-only: with no `--snapshot-dir` it re-grades each round from the branch'"'"'s frozen snapshots' <<<"$row" || return 1
+  grep -qF -- 'it writes nothing' <<<"$row" || return 1
+  grep -qF -- 'no snapshot directory)' <<<"$row" && return 1
+  true
+}
+
+@test "the checkpoint section states the context gate, the fallback, the cap, one grant per unit, and the guard's false-deny" {
+  local s
+  s="$(section "$CHECKPOINT")" || return 1
+  grep -qF -- '**The context gate.**' <<<"$s" || return 1
+  sentences <<<"$s" | grep -qF -- 'A reading that is missing, stale, future-dated or unparseable falls back to the round-count checkpoint and never allows past it.' || return 1
+  sentences <<<"$s" | grep -qF -- 'a dispatch that would open a round past the hard cap is denied whatever was granted' || return 1
+  sentences <<<"$s" | grep -qF -- 'A grant answering the latest checkpoint admits exactly one unit of K rounds' || return 1
+  grep -qF -- 'a Bash heredoc or inline script whose text merely names those paths or a recorder' <<<"$s" || return 1
+  grep -qF -- 'write such files with the Write or Edit tools' <<<"$s" || return 1
+}
+
+# --- UAT-021: sentences the unit made false stay out of the loop prose -------
+
+# stale_present <file> <literal>: rc 0 when the fixed string is in the file.
+stale_present() {
+  grep -qF -- "$2" "$1"
+}
+
+# stale_pairs: `<file-key>|<literal>` lines, one per retired sentence.
+stale_pairs() {
+  cat <<'PAIRS'
+page|Nothing raises the allowance from a PR-body edit, an environment knob above the default, or an AskUserQuestion selection
+page|Selecting an option changes nothing until the human types that line
+page|The main thread writes it locally at every round end
+page|The checkpoint round sits where the normal branch has already finished
+page|on every `Agent` dispatch of a `code-audit-*` member
+page|The procedure the main thread runs for every round
+page|`dispositions-<r>.json` (main thread)
+page|dispositions-<r>.json (main thread)
+page|The main thread stages, commits, and pushes the verified round
+rule|only a human typing the grant or accept line raises it
+verify|dispositions-<r>.json (main thread)
+PAIRS
+}
+
+# stale_file <file-key>: the path a pair's key names.
+stale_file() {
+  case "$1" in
+    page) printf '%s\n' "$PAGE" ;;
+    rule) printf '%s\n' "$PR_MERGE_RULE" ;;
+    verify) printf '%s\n' "$FIX_VERIFY" ;;
+    *) return 1 ;;
+  esac
+}
+
+@test "UAT-021: no sentence the unit made false survives, and restoring any one of them fails the check" {
+  local pairs key literal file n=0 copy
+  pairs="$(stale_pairs)"
+  while IFS='|' read -r key literal; do
+    n=$((n + 1))
+    file="$(stale_file "$key")" || return 1
+    [ -f "$file" ] || { echo "file missing for $key: $file" >&2; return 1; }
+    stale_present "$file" "$literal" && { echo "retired sentence present in $key: $literal" >&2; return 1; }
+    copy="$BATS_TEST_TMPDIR/stale-$n.txt"
+    { cat "$file"; printf '%s\n' "$literal"; } >"$copy"
+    stale_present "$copy" "$literal" || { echo "red twin did not fail for: $literal" >&2; return 1; }
+  done <<<"$pairs"
+  [ "$n" -eq 11 ] || { echo "expected 11 pairs, read $n" >&2; return 1; }
 }

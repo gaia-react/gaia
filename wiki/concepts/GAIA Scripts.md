@@ -30,10 +30,12 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 
 | Script | Ships | Invoker | What it is |
 |---|---|---|---|
+| `audit-dispositions-check.sh` | yes | `audit-loop-bound.sh`, the `audit-loop-unit` agent (CLI) | The deterministic check on an audit round's dispositions file and the renderer of its pull request body records; severity and security are read from the findings sidecars, never from the dispositions. The header states the rules. |
 | `audit-fix-verify.sh` | yes | the PR Merge Workflow fix round | Records the working-tree baseline before a fixer runs, pins a copy of itself beside it, and checks the fixer's changes against the dispositions afterward from that copy. |
 | `audit-key-lib.sh` | yes | sourced | Mints the worktree-partitioned key every audit artifact path is built from, and the general slug rule those keys share. |
 | `audit-loop-eval.sh` | yes | `audit-loop-bound.sh` (sourced), the PR Merge Workflow checkpoint (CLI) | Judges each audit round's findings and prints the verdict and the checkpoint brief; read-only. |
 | `audit-loop-record.sh` | yes | the PR Merge Workflow fix round | Writes the marker-delimited `## Audit rounds` section into a pull request body. |
+| `audit-loop-signals-lib.sh` | yes | sourced by `audit-loop-eval.sh` | The rubric signals and the unit and member gate decision functions; reads no file. |
 | `audit-loop-state-lib.sh` | yes | sourced | Reads, validates and writes the per-branch audit loop state, and parses the typed grant and accept lines. |
 | `audit-member-digest.sh` | yes | CI, audit hooks, agent definitions | Prints one Code Audit Team member's content digest, and exits non-zero printing nothing on any condition it cannot resolve. |
 | `audit-noop-detect.sh` | yes | `.claude/rules/subagent-dispatch.md`, the audit fan-out surfaces | Decides whether a dispatched agent's report artifact is a real result or a silent no-op. |
@@ -54,7 +56,7 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 | `check-hook-command-rooting.sh` | yes | GAIA's own invariant harness (maintainer-side) | Asserts every hook command in `.claude/settings.json` is rooted at the repository top level rather than at the working directory. |
 | `check-hook-scope-manifest.sh` | yes | GAIA's own invariant harness (maintainer-side) | Scans every hook for a `.gaia/local` path built without a resolved root. |
 | `check-main-root-derivation.sh` | no | GAIA's own invariant harness | Catches a hand-rolled main-checkout derivation inlined into a consumer that declares no resolver at all. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
-| `check-updates.sh` | yes | `SessionStart`, the statusline | Background check that feeds the statusline nudges: a newer GAIA release, the residue candidate count, and `wikiDriftCount` (commits the wiki trails HEAD by, from `gaia wiki state`). |
+| `check-updates.sh` | yes | `SessionStart`, the statusline | Background check that feeds the statusline nudges: a newer GAIA release, the residue candidate count, and `wikiDriftCount` (commits the wiki trails HEAD by, from `gaia wiki state`). It also sweeps stale per-session context files. |
 
 ### `cost-`
 
@@ -108,6 +110,7 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 | `awk-interp-lib.sh` | no | sourced | Resolves `GAIA_AWK`, the sanctioned awk interpreter (mawk or BWK one-true-awk) the awk-tokenizer guards run under. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `bats5.sh` | yes | the bats runners | Runs bats under a bash 5 when one is available, so local matches CI. |
 | `branch-name-lib.sh` | yes | sourced, and run as a command by the skills | GAIA's branch-naming convention: the one place a branch or worktree name is minted and read back. |
+| `context-checkpoint-lib.sh` | yes | sourced | The one place the context checkpoint line, the statusline bands, the unit round count and the per-session context file are defined, so the bar color and the checkpoint cannot disagree. The header states the override rule. |
 | `chore-deps-skip.sh` | yes | `git grep chore-deps-skip` | The chore(deps) predicate: a dep-bump subject plus a manifest-only changed-file list on stdin. |
 | `gh-artifact-lib.sh` | yes | sourced | Shared breadcrumb for the GitHub pull request a run produced. |
 | `guard-awk-lib.sh` | no | sourced | Shared awk scaffolding the guard lints build their detectors on. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->

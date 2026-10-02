@@ -64,7 +64,7 @@ cli_copy() {
   local f
   CLI="$BATS_TEST_TMPDIR/scripts"
   mkdir -p "$CLI"
-  for f in audit-loop-eval.sh audit-loop-state-lib.sh branch-name-lib.sh main-root-lib.sh audit-key-lib.sh; do
+  for f in audit-loop-eval.sh audit-loop-state-lib.sh audit-loop-signals-lib.sh context-checkpoint-lib.sh branch-name-lib.sh main-root-lib.sh audit-key-lib.sh; do
     cp "$SCRIPTS/$f" "$CLI/$f"
   done
   cat >"$CLI/usage.sh" <<'EOF'
@@ -422,8 +422,8 @@ seq_case() {
 
 @test "knobs: frozen at round 1, capped at the defaults" {
   [ "$(GAIA_AUDIT_CHECKPOINT_ROUND=2 GAIA_AUDIT_GRANT_ROUNDS=1 gaia_loop_knobs_initial)" = '{"checkpoint_round":2,"grant_rounds":1}' ]
-  [ "$(gaia_loop_knobs_initial)" = '{"checkpoint_round":5,"grant_rounds":3}' ]
-  [ "$(GAIA_AUDIT_CHECKPOINT_ROUND=9 gaia_loop_knobs_initial | jq -r '.checkpoint_round')" = 5 ]
+  [ "$(gaia_loop_knobs_initial)" = '{"checkpoint_round":6,"grant_rounds":3}' ]
+  [ "$(GAIA_AUDIT_CHECKPOINT_ROUND=9 gaia_loop_knobs_initial | jq -r '.checkpoint_round')" = 6 ]
   [ "$(GAIA_AUDIT_GRANT_ROUNDS=7 gaia_loop_knobs_initial | jq -r '.grant_rounds')" = 3 ]
 }
 
@@ -557,4 +557,557 @@ brief_check() {
   [ "$status" -eq 4 ]
   [ "$(printf '%s\n' "$stderr" | wc -l | tr -d ' ')" = 1 ]
   case "$stderr" in *detached*) ;; *) return 1 ;; esac
+}
+
+# --- rubric signals, accept eligibility, gate decisions ----------------------
+
+# K comes from the shared lib, so a change of K needs no edit here.
+K_ROUNDS() { printf '%s\n' "$GAIA_CTX_UNIT_ROUNDS"; }
+
+LOW="fresh 100000 1000000"
+HIGH="fresh 400000 1000000"
+
+# sec <entries-json> [severity]: the entries with security false and a severity.
+sec() {
+  jq -c --arg s "${2:-warning}" 'map(. + {security: false, severity: $s})' <<<"$1"
+}
+
+# rounds_seq <entries-json>...: one round per argument on branch-added f.txt;
+# every round's commit touches only other.txt, so no entry sits on a repaired line.
+rounds_seq() {
+  local r=1 e
+  alf_fill f.txt 12 feature
+  for e in "$@"; do
+    alf_set_line other.txt "$r" "round $r"
+    alf_commit "round $r" || return 1
+    alf_round "$r" "$M" "$e" || return 1
+    r=$((r + 1))
+  done
+}
+
+# a_seq <severity> <A...>: rounds_seq whose round r holds f.txt lines 1..A_r.
+a_seq() {
+  local sev="$1" a
+  local -a rows=()
+  shift
+  for a in "$@"; do rows+=("$(sec "$(alf_entries f.txt 1 "$a")" "$sev")"); done
+  rounds_seq "${rows[@]}"
+}
+
+# maintainer: make the fixture a maintainer repo (the triage rule present),
+# kept out of every round commit.
+maintainer() {
+  mkdir -p "$ALF_ROOT/.claude/rules/maintainers"
+  : >"$ALF_ROOT/.claude/rules/maintainers/harness-triage-threshold.md"
+  printf '.claude/\n' >>"$ALF_ROOT/.git/info/exclude"
+}
+
+# only_signal <r> <signal> <decision>: round r raises exactly <signal>, is
+# accept-eligible, and the unit decision on a fresh low reading is <decision>.
+only_signal() {
+  local snap dec
+  snap="$(ev "$1")" || { echo "eval of round $1 failed"; return 1; }
+  [ "$(jf "$snap" '.accept_reasons | tojson')" = "[\"$2\"]" ] ||
+    { echo "reasons $(jf "$snap" '.accept_reasons | tojson'), verdict $(jf "$snap" '.verdict')"; return 1; }
+  [ "$(jf "$snap" '.accept_eligible')" = true ] || { echo "not eligible"; return 1; }
+  [ "$(jf "$snap" '[.signals | to_entries[] | select(.value) | .key] | tojson')" = "[\"$2\"]" ] || return 1
+  dec="$(gaia_loop_decide_unit "$(cat "$ALF_STATE")" "$snap" "$LOW" 300000 50)"
+  [ "$dec" = "$3" ] || { echo "decision '$dec', want '$3'"; return 1; }
+}
+
+# mkstate <used> [jq-filter]: a synthetic state with <used> rounds and knobs 6/3.
+mkstate() {
+  jq -n -c --argjson u "$1" '{schema: 1, key: "branch:feat/loop", branch: "feat/loop", pr: null,
+    created_at: "2026-01-01T00:00:00Z",
+    history: {rounds: [range(0; $u) | {round: (. + 1), tree: ("a" * 40), commit: ("b" * 40),
+                raw_branch_slug: "feat-loop", dispatched_at: "2026-01-01T00:00:00Z", members: [], closing: false,
+                snapshot: null}],
+              checkpoints: [], knobs: {checkpoint_round: 6, grant_rounds: 3}},
+    allowance: {answers: []}}' | jq -c "${2:-.}"
+}
+
+# unit_entry <unit> <start> <through> <after_checkpoint>: a units[] element.
+unit_entry() {
+  jq -n -c --argjson u "$1" --argjson s "$2" --argjson t "$3" --argjson a "$4" --argjson k "$(K_ROUNDS)" \
+    '{unit: $u, start_round: $s, k: $k, through_round: $t, admitted_on: "context", after_checkpoint: $a,
+      recorded_at: "2026-01-01T00:00:00Z", session_id: "s1"}'
+}
+
+# checkpoint_entry <index> <at_round> <trigger>: a checkpoints[] element.
+checkpoint_entry() {
+  jq -n -c --argjson i "$1" --argjson a "$2" --arg t "$3" '{index: $i, at_round: $a, reason: $t, trigger: $t,
+    recorded_at: "2026-01-01T00:00:00Z", session_id: "s1", audited_root: "/x"}'
+}
+
+# override_file: the per-machine line override of the fixture's main checkout.
+override_file() {
+  printf '%s/.gaia/local/%s\n' "$ALF_ROOT" settings.json
+}
+
+@test "signal cap: round 10 of a converging branch raises only cap; the unit dispatch is denied cap" {
+  maintainer
+  a_seq warning 10 9 8 7 6 5 4 3 2 1
+  only_signal 10 cap "deny cap true true"
+}
+
+@test "signal quiet: an empty A raises only quiet, which never denies" {
+  maintainer
+  rounds_seq '[]'
+  only_signal 1 quiet "allow context 2 $((2 + $(K_ROUNDS) - 1))"
+}
+
+@test "signal enriching: a new key on a repaired line raises only enriching and denies" {
+  maintainer
+  a_seq warning 6 5
+  alf_set_line f.txt 8 repaired
+  next_round 3 "$(sec "$(plus "$(alf_entries f.txt 1 3)" f.txt 8)")"
+  only_signal 3 enriching "deny rubric:enriching true false"
+}
+
+@test "signal stalled: A 5,5,5 raises only stalled and denies" {
+  maintainer
+  a_seq warning 5 5 5
+  only_signal 3 stalled "deny rubric:stalled true false"
+}
+
+@test "signal nitpicky: two all-Suggestion rounds at round 6 raise only nitpicky and deny" {
+  maintainer
+  a_seq suggestion 8 7 6 5 4 3
+  only_signal 6 nitpicky "deny rubric:nitpicky true false"
+}
+
+@test "signal nitpicky needs both rounds: a Suggestion-only round after a warning round raises nothing" {
+  local snap
+  maintainer
+  a_seq warning 8 7 6 5 4
+  alf_set_line other.txt 6 "round 6"
+  next_round 6 "$(sec "$(alf_entries f.txt 1 3)" suggestion)"
+  snap="$(ev 6)"
+  [ "$(jf "$snap" '.accept_reasons | tojson')" = '[]' ]
+}
+
+@test "signal reintroduced: a key that vanished and came back raises only reintroduced and denies" {
+  maintainer
+  a_seq warning 3 2 3
+  only_signal 3 reintroduced "deny rubric:reintroduced true false"
+}
+
+@test "signal reintroduced: a finding whose line moves three rounds running raises only reintroduced" {
+  maintainer
+  rounds_seq "$(sec "$(alf_entries f.txt 1 3)" suggestion)" "$(sec "$(alf_entries f.txt 4 5)" suggestion)" \
+    "$(sec "$(alf_entries f.txt 6 6)" suggestion)"
+  only_signal 3 reintroduced "deny rubric:reintroduced true false"
+}
+
+@test "signal small-tail: two findings with no progress at round 6 raise only small-tail and deny" {
+  maintainer
+  a_seq warning 6 5 4 3 2 2
+  only_signal 6 small-tail "deny rubric:small-tail true false"
+}
+
+# drift_fixture: two rounds, each with half its four findings waived on the
+# triage threshold in that round's own dispositions file.
+drift_fixture() {
+  local waive='[{"member":"code-audit-frontend","finding_class":"rule/x","path":"f.txt","line":3,"disposition":"waive-out-of-scope","basis":"triage-threshold","reason":"below threshold"},
+                {"member":"code-audit-frontend","finding_class":"rule/x","path":"f.txt","line":4,"disposition":"waive-out-of-scope","basis":"triage-threshold","reason":"below threshold"}]'
+  alf_fill f.txt 12 feature
+  alf_set_line other.txt 1 "round 1"
+  alf_commit "round 1"
+  alf_round 1 "$M" "$(sec "$(alf_entries f.txt 1 4)")"
+  alf_dispositions 1 "$waive"
+  alf_set_line other.txt 2 "round 2"
+  alf_commit "round 2"
+  alf_round 2 "$M" "$(sec "$(alf_entries f.txt 1 4)")"
+  alf_dispositions 2 "$waive"
+}
+
+@test "signal waiver-drift: half of each of two rounds waived on the triage threshold raises only waiver-drift and denies" {
+  local snap
+  maintainer
+  drift_fixture
+  only_signal 2 waiver-drift "deny rubric:waiver-drift true false"
+  snap="$(ev 2)"
+  [ "$(jf "$snap" '"\(.raw_count) \(.waived_count) \(.A)"')" = "4 2 2" ]
+}
+
+@test "red: waiver-drift is never raised outside a maintainer repo" {
+  local snap
+  drift_fixture
+  snap="$(ev 2)"
+  [ "$(jf "$snap" '.signals["waiver-drift"]')" = false ]
+  [ "$(jf "$snap" '.accept_reasons | tojson')" = '[]' ]
+  [ "$(jf "$snap" '.accept_eligible')" = false ]
+}
+
+@test "red: no signal is not accept-eligible and the unit dispatch is allowed" {
+  local snap
+  maintainer
+  a_seq warning 5 4
+  snap="$(ev 2)"
+  [ "$(jf "$snap" '.accept_reasons | tojson')" = '[]' ]
+  [ "$(jf "$snap" '.accept_eligible')" = false ]
+  [ "$(gaia_loop_decide_unit "$(cat "$ALF_STATE")" "$snap" "$LOW" 300000 50)" = "allow context 3 $((3 + $(K_ROUNDS) - 1))" ]
+}
+
+@test "red: an unknown verdict with a signal holding is not accept-eligible" {
+  local snap
+  maintainer
+  drift_fixture
+  alf_store_snapshot 2
+  alf_set_line other.txt 3 "round 3"
+  alf_commit "round 3"
+  alf_add_round '["code-audit-frontend","code-audit-maintainer-shell"]'
+  alf_stamp 3 30
+  alf_sidecar "$M" "$(sec "$(alf_entries f.txt 1 4)")" 31
+  alf_dispositions 3 "$(jq -c '.entries' "$ALF_ROOT/.gaia/local/runs/$ALF_B/dispositions-2.json")"
+  snap="$(ev 3)"
+  [ "$(jf "$snap" '.verdict')" = unknown ]
+  [ "$(jf "$snap" '.accept_reasons | tojson')" = '["waiver-drift"]' ]
+  [ "$(jf "$snap" '.accept_eligible')" = false ]
+}
+
+@test "red: a security:true Suggestion in A(r) makes a signalling round ineligible" {
+  local snap
+  maintainer
+  rounds_seq "$(sec "$(alf_entries f.txt 1 3)" suggestion)" "$(sec "$(alf_entries f.txt 4 5)" suggestion)" \
+    '[{"path":"f.txt","line":6,"finding_class":"rule/x","severity":"suggestion","security":true}]'
+  snap="$(ev 3)"
+  [ "$(jf "$snap" '.accept_reasons | tojson')" = '["reintroduced"]' ]
+  [ "$(jf "$snap" '.accept_eligible')" = false ]
+  [ "$(gaia_loop_decide_unit "$(cat "$ALF_STATE")" "$snap" "$LOW" 300000 50)" = "deny rubric:reintroduced false false" ]
+}
+
+@test "red: a Critical in A(r) makes a signalling round ineligible" {
+  local snap
+  maintainer
+  a_seq warning 5 5
+  alf_set_line other.txt 3 "round 3"
+  next_round 3 "$(jq -c '.[0].severity = "error"' <<<"$(sec "$(alf_entries f.txt 1 5)")")"
+  snap="$(ev 3)"
+  [ "$(jf "$snap" '.accept_reasons | tojson')" = '["stalled"]' ]
+  [ "$(jf "$snap" '.accept_eligible')" = false ]
+}
+
+@test "security normalization: absent reads true, false stays false, a non-boolean reads true; cross_remit only on true" {
+  local fs
+  alf_fill f.txt 12 feature
+  alf_set_line other.txt 1 "round 1"
+  alf_commit "round 1"
+  alf_round 1 "$M" '[{"path":"f.txt","line":1},
+    {"path":"f.txt","line":2,"security":false,"cross_remit":true},
+    {"path":"f.txt","line":3,"security":"no","cross_remit":"yes"},
+    {"path":"untouched.txt","line":4,"security":true}]'
+  fs="$(gaia_loop_findings "$ALF_ROOT" "$(cat "$ALF_STATE")" 1)"
+  [ "$(jf "$fs" '[.entries[] | .security] | tojson')" = '[true,false,true,true]' ]
+  [ "$(jf "$fs" '[.entries[] | .cross_remit] | tojson')" = '[false,true,false,false]' ]
+  [ "$(jf "$fs" '[.entries[] | .authored] | tojson')" = '[true,true,true,false]' ]
+  [ "$(jf "$fs" '.entries[0] | keys | join(",")')" = "authored,cross_remit,finding_class,line,member,path,security,severity" ]
+}
+
+@test "security normalization: a round whose only A(r) entry is a security:false Suggestion stays eligible" {
+  local snap
+  maintainer
+  rounds_seq "$(sec "$(alf_entries f.txt 1 3)" suggestion)" "$(sec "$(alf_entries f.txt 4 5)" suggestion)" \
+    '[{"path":"f.txt","line":6,"finding_class":"rule/x","severity":"suggestion","security":false}]'
+  snap="$(ev 3)"
+  [ "$(jf "$snap" '.A')" = 1 ]
+  [ "$(jf "$snap" '.counted_keys[0].security')" = false ]
+  [ "$(jf "$snap" '.accept_eligible')" = true ]
+}
+
+@test "red twin: the alternative-operator spelling turns security:false into true" {
+  local copy="$BATS_TEST_TMPDIR/twin" out
+  mkdir -p "$copy"
+  cp "$SCRIPTS"/*.sh "$copy"/
+  grep -qF '(if (.security | type) == "boolean" then .security else true end)' "$copy/audit-loop-eval.sh"
+  sed -i.bak 's/(if (.security | type) == "boolean" then .security else true end)/(.security \/\/ true)/' "$copy/audit-loop-eval.sh"
+  grep -qF '(.security // true)' "$copy/audit-loop-eval.sh"
+  alf_fill f.txt 12 feature
+  alf_set_line other.txt 1 "round 1"
+  alf_commit "round 1"
+  alf_round 1 "$M" '[{"path":"f.txt","line":2,"security":false}]'
+  out="$(bash -c '. "$1/audit-loop-eval.sh"; gaia_loop_findings "$2" "$(cat "$3")" 1' _ "$copy" "$ALF_ROOT" "$ALF_STATE")"
+  [ "$(jf "$out" '.entries[0].security')" = true ]
+  [ "$(jf "$(gaia_loop_findings "$ALF_ROOT" "$(cat "$ALF_STATE")" 1)" '.entries[0].security')" = false ]
+}
+
+@test "decision: 6 rounds used, a fresh reading below the line and no signal admit a unit past the fallback checkpoint" {
+  local st
+  st="$(mkstate 6)"
+  [ "$(gaia_loop_decide_unit "$st" null "$LOW" 300000 50)" = "allow context 7 $((6 + $(K_ROUNDS)))" ]
+  # red: the round-count decision on the same state denies.
+  [ "$(gaia_loop_decide "$st" null)" = "deny allowance" ]
+}
+
+@test "decision: a missing, stale, future or unparseable reading falls back to the round count" {
+  local reading
+  for reading in missing stale future unparseable "fresh abc 1" "fresh 0100 1000000" ""; do
+    [ "$(gaia_loop_decide_unit "$(mkstate 5)" null "$reading" 300000 50)" = "allow fallback 6 6" ] ||
+      { echo "5 used, '$reading': $(gaia_loop_decide_unit "$(mkstate 5)" null "$reading" 300000 50)"; return 1; }
+    [ "$(gaia_loop_decide_unit "$(mkstate 6)" null "$reading" 300000 50)" = "deny fallback false false" ] ||
+      { echo "6 used, '$reading'"; return 1; }
+  done
+}
+
+@test "decision: over the line denies context; an answer to the latest checkpoint admits exactly one unit" {
+  local st k cp
+  k="$(K_ROUNDS)"
+  cp="$(checkpoint_entry 1 3 context)"
+  st="$(mkstate 3)"
+  [ "$(gaia_loop_decide_unit "$st" null "$HIGH" 300000 50)" = "deny context false false" ]
+  st="$(mkstate 3 ".history.checkpoints = [$cp] | .allowance.answers = [{checkpoint: 1, kind: \"grant\", n: $k, source: \"ask\", at: \"x\", session_id: \"s1\"}]")"
+  [ "$(gaia_loop_decide_unit "$st" null "$HIGH" 300000 50)" = "allow grant 4 $((3 + k))" ]
+  st="$(jq -c --argjson u "$(unit_entry 1 4 $((3 + k)) 1)" '.history.units = [$u]' <<<"$st")"
+  [ "$(gaia_loop_decide_unit "$st" null "$HIGH" 300000 50)" = "deny context false false" ]
+  st="$(mkstate 3 ".history.checkpoints = [$cp] | .allowance.answers = [{checkpoint: 1, kind: \"accept\", at: \"x\", session_id: \"s1\"}]")"
+  [ "$(gaia_loop_decide_unit "$st" null "$HIGH" 300000 50)" = "allow accept 4 4" ]
+}
+
+@test "decision: an accept admits its closing round even on a fresh reading below the line" {
+  local st
+  st="$(mkstate 3 ".history.checkpoints = [$(checkpoint_entry 1 3 fallback)]
+    | .allowance.answers = [{checkpoint: 1, kind: \"accept\", at: \"x\", session_id: \"s1\"}]")"
+  [ "$(gaia_loop_decide_unit "$st" null "$LOW" 300000 50)" = "allow accept 4 4" ]
+  [ "$(gaia_loop_decide_member "$st" null false "$LOW" 300000 50)" = "allow accept 4 4" ]
+}
+
+@test "red: once the accepted closing round is recorded, a fresh reading below the line admits nothing" {
+  local st
+  st="$(mkstate 4 ".history.checkpoints = [$(checkpoint_entry 1 3 fallback)]
+    | .allowance.answers = [{checkpoint: 1, kind: \"accept\", at: \"x\", session_id: \"s1\"}]
+    | .history.units = [$(unit_entry 1 4 4 1)]")"
+  [ "$(gaia_loop_decide_unit "$st" null "$LOW" 300000 50)" = "deny fallback false false" ]
+  [ "$(gaia_loop_decide_member "$st" null false "$LOW" 300000 50)" = "deny fallback false false" ]
+  # The checkpoint that deny records stays unanswered, and the spent accept
+  # still denies on the next dispatch.
+  st="$(jq -c --argjson c "$(checkpoint_entry 2 4 fallback)" '.history.checkpoints += [$c]' <<<"$st")"
+  [ "$(gaia_loop_decide_unit "$st" null "$LOW" 300000 50)" = "deny fallback false false" ]
+  # A grant answering that checkpoint admits again.
+  st="$(jq -c '.allowance.answers += [{checkpoint: 2, kind: "grant", n: 3, at: "x", session_id: "s1"}]' <<<"$st")"
+  [ "$(gaia_loop_decide_unit "$st" null "$LOW" 300000 50)" = "allow grant 5 $((4 + $(K_ROUNDS)))" ]
+}
+
+@test "red: a grant answering an older checkpoint, not the latest, admits nothing" {
+  local st
+  st="$(mkstate 3 ".history.checkpoints = [$(checkpoint_entry 1 2 context), $(checkpoint_entry 2 3 context)]
+    | .allowance.answers = [{checkpoint: 1, kind: \"grant\", n: 3, at: \"x\", session_id: \"s1\"}]")"
+  [ "$(gaia_loop_decide_unit "$st" null "$HIGH" 300000 50)" = "deny context false false" ]
+}
+
+@test "decision: the effective line config is the frozen value lowered by the live override" {
+  local settings st eff
+  settings="$(override_file)"
+  mkdir -p "${settings%/*}"
+  st="$(mkstate 3 '.history.context_config = {ask_tokens: 300000, ask_window_pct: 50}')"
+  printf '{"version":1,"context_checkpoint":{"ask_tokens":600000,"ask_window_pct":50}}\n' >"$settings"
+  eff="$(gaia_loop_context_config_effective "$ALF_ROOT" "$st")"
+  [ "$eff" = "300000 50" ]
+  [ "$(gaia_loop_decide_unit "$st" null "fresh 350000 1000000" $eff)" = "deny context false false" ]
+  [ "$(gaia_loop_decide_unit "$st" null "fresh 290000 1000000" $eff)" = "allow context 4 $((3 + $(K_ROUNDS)))" ]
+  printf '{"version":1,"context_checkpoint":{"ask_tokens":250000,"ask_window_pct":50}}\n' >"$settings"
+  eff="$(gaia_loop_context_config_effective "$ALF_ROOT" "$st")"
+  [ "$eff" = "250000 50" ]
+  [ "$(gaia_loop_decide_unit "$st" null "fresh 260000 1000000" $eff)" = "deny context false false" ]
+  [ "$(gaia_loop_decide_unit "$st" null "fresh 240000 1000000" $eff)" = "allow context 4 $((3 + $(K_ROUNDS)))" ]
+  rm "$settings"
+  eff="$(gaia_loop_context_config_effective "$ALF_ROOT" "$st")"
+  [ "$(gaia_loop_decide_unit "$st" null "fresh 120000 200000" $eff)" = "deny context false false" ]
+  [ "$(gaia_loop_decide_unit "$st" null "fresh 90000 200000" $eff)" = "allow context 4 $((3 + $(K_ROUNDS)))" ]
+  st="$(mkstate 3 '.history.context_config = {ask_tokens: 250000, ask_window_pct: 50}')"
+  eff="$(gaia_loop_context_config_effective "$ALF_ROOT" "$st")"
+  [ "$eff" = "250000 50" ]
+  [ "$(gaia_loop_decide_unit "$st" null "fresh 260000 1000000" $eff)" = "deny context false false" ]
+}
+
+@test "decision: at 10 rounds every path denies cap, though the fold itself stays uncapped" {
+  local st reading
+  st="$(mkstate 10 ".history.checkpoints = [$(checkpoint_entry 1 10 fallback)]
+    | .allowance.answers = [{checkpoint: 1, kind: \"grant\", n: 3, at: \"x\", session_id: \"s1\"}]
+    | .history.units = [$(unit_entry 1 8 10 0)]")"
+  [ "$(gaia_loop_allowed "$st")" = 13 ]
+  for reading in "$LOW" "$HIGH" missing; do
+    [ "$(gaia_loop_decide_unit "$st" null "$reading" 300000 50)" = "deny cap false true" ] || { echo "unit, $reading"; return 1; }
+    [ "$(gaia_loop_decide_member "$st" null true "$reading" 300000 50)" = "deny cap false true" ] || { echo "member in-unit, $reading"; return 1; }
+    [ "$(gaia_loop_decide_member "$st" null false "$reading" 300000 50)" = "deny cap false true" ] || { echo "member inline, $reading"; return 1; }
+  done
+  [ "$(gaia_loop_decide "$st" null)" = "deny cap" ]
+}
+
+@test "decision: a member in a unit is allowed only inside the unit's window" {
+  local k used st
+  k="$(K_ROUNDS)"
+  used=6
+  while [ "$used" -le $((6 + k)) ]; do
+    st="$(mkstate "$used" ".history.units = [$(unit_entry 1 7 $((6 + k)) 0)]")"
+    if [ "$used" -lt $((6 + k)) ]; then
+      [ "$(gaia_loop_decide_member "$st" null true "$LOW" 300000 50)" = allow ] || { echo "used $used"; return 1; }
+    else
+      [ "$(gaia_loop_decide_member "$st" null true "$LOW" 300000 50)" = "deny window false false" ] || { echo "used $used"; return 1; }
+    fi
+    used=$((used + 1))
+  done
+  [ "$(gaia_loop_decide_member "$(mkstate 6)" null true "$LOW" 300000 50)" = "deny window false false" ]
+  st="$(mkstate 7 ".history.units = [$(unit_entry 1 7 $((6 + k)) 0)]")"
+  [ "$(gaia_loop_decide_member "$st" '{"round":7,"verdict":"continue","signals":{"stalled":true}}' true "$LOW" 300000 50)" = "deny rubric:stalled false false" ]
+  [ "$(gaia_loop_decide_member "$(mkstate 5)" null false "$HIGH" 300000 50)" = "deny context false false" ]
+  [ "$(gaia_loop_decide_member "$(mkstate 5)" null false missing 300000 50)" = "allow fallback 6 6" ]
+}
+
+@test "vetoes: a vetoed key re-enters A from its effective round, whatever was disposed" {
+  local vetoes="$ALF_ROOT/.gaia/local/runs/$ALF_B/vetoes.json" key
+  a_seq warning 3 3 3
+  alf_dispositions 1 '[{"member":"code-audit-frontend","finding_class":"rule/x","path":"f.txt","line":1,"disposition":"waive-out-of-scope","basis":"triage-threshold","reason":"r"}]'
+  key='{"member":"code-audit-frontend","finding_class":"rule/x","path":"f.txt","line":1,"vetoed_at":"x","unit":1'
+  [ "$(jf "$(ev 1)" '.A')" = 3 ]
+  [ "$(jf "$(ev 2)" '.A')" = 2 ]
+  printf '{"version":1,"keys":[%s,"effective_from_round":3}]}\n' "$key" >"$vetoes"
+  [ "$(jf "$(ev 2)" '.A')" = 2 ]
+  [ "$(jf "$(ev 3)" '.A')" = 3 ]
+  printf '{"version":1,"keys":[%s,"effective_from_round":2}]}\n' "$key" >"$vetoes"
+  [ "$(jf "$(ev 1)" '.A')" = 3 ]
+  [ "$(jf "$(ev 2)" '.A')" = 3 ]
+  # red: without the veto the waiver holds again.
+  printf '{"version":1,"keys":[]}\n' >"$vetoes"
+  [ "$(jf "$(ev 3)" '.A')" = 2 ]
+}
+
+@test "red: an unreadable or malformed vetoes.json fails the evaluation" {
+  local vetoes="$ALF_ROOT/.gaia/local/runs/$ALF_B/vetoes.json" body
+  a_seq warning 3 3
+  mkdir -p "${vetoes%/*}"
+  for body in 'not json' '{"version":1,"keys":[]} {"version":1,"keys":[]}' '{"version":2,"keys":[]}' \
+    '{"version":1,"keys":[{"member":"m","finding_class":"c","path":"p","line":1}]}'; do
+    printf '%s\n' "$body" >"$vetoes"
+    run ev 2
+    [ "$status" -ne 0 ] || { echo "accepted: $body"; return 1; }
+  done
+  rm "$vetoes"
+  run ev 2
+  [ "$status" -eq 0 ]
+}
+
+@test "legacy: a frozen checkpoint of 5 keeps 5; no frozen line config reads min(default, override)" {
+  local settings
+  settings="$(override_file)"
+  [ "$(gaia_loop_allowed "$(mkstate 2 '.history.knobs.checkpoint_round = 5')")" = 5 ]
+  [ "$(gaia_loop_allowed "$(mkstate 2)")" = 6 ]
+  [ "$(gaia_loop_context_config_effective "$ALF_ROOT" "$(mkstate 3)")" = "300000 50" ]
+  mkdir -p "${settings%/*}"
+  printf '{"version":1,"context_checkpoint":{"ask_tokens":250000,"ask_window_pct":40}}\n' >"$settings"
+  [ "$(gaia_loop_context_config_effective "$ALF_ROOT" "$(mkstate 3)")" = "250000 40" ]
+  [ "$(gaia_loop_context_config_initial "$ALF_ROOT")" = '{"ask_tokens":250000,"ask_window_pct":40}' ]
+}
+
+@test "legacy: a stored snapshot without counted_keys turns the history signals off and eligibility false" {
+  local snap
+  maintainer
+  a_seq warning 6 5 4 3 2 2
+  [ "$(jf "$(ev 6)" '.signals["small-tail"]')" = true ]
+  alf_state_edit 'del(.history.rounds[4].snapshot.counted_keys)'
+  snap="$(ev 6)"
+  [ "$(jf "$snap" '[.signals["small-tail"], .signals.nitpicky, .signals.reintroduced, .signals["waiver-drift"]] | tojson')" = '[false,false,false,false]' ]
+  [ "$(jf "$snap" '.accept_eligible')" = false ]
+}
+
+@test "legacy: a legacy round r-2 turns reintroduced off; waiver-drift needs a new round r-1" {
+  local snap
+  maintainer
+  a_seq warning 3 2 3
+  alf_state_edit 'del(.history.rounds[0].snapshot.counted_keys)'
+  snap="$(ev 3)"
+  [ "$(jf "$snap" '.signals.reintroduced')" = false ]
+  [ "$(jf "$snap" '.accept_eligible')" = false ]
+  rm -rf "$BATS_TEST_TMPDIR/repo" "$BATS_TEST_TMPDIR/origin.git"
+  alf_init
+  alf_branch feat/loop
+  maintainer
+  drift_fixture
+  alf_state_edit 'del(.history.rounds[0].snapshot.counted_keys)'
+  [ "$(jf "$(ev 2)" '.signals["waiver-drift"]')" = false ]
+}
+
+@test "legacy: the enriching verdict still reads the stored keys of round r-1" {
+  local snap
+  a_seq warning 6 5
+  alf_set_line f.txt 8 repaired
+  next_round 3 "$(sec "$(plus "$(alf_entries f.txt 1 3)" f.txt 8)")"
+  alf_state_edit 'del(.history.rounds[1].snapshot.counted_keys)'
+  snap="$(ev 3)"
+  [ "$(jf "$snap" '.verdict')" = enriching ]
+  [ "$(jf "$snap" '.signals.enriching')" = true ]
+  [ "$(jf "$snap" '.accept_eligible')" = false ]
+  # a legacy snapshot with no signals still denies on its verdict.
+  [ "$(gaia_loop_decide_unit "$(cat "$ALF_STATE")" '{"round":3,"verdict":"enriching"}' "$LOW" 300000 50)" = "deny rubric:enriching false false" ]
+}
+
+@test "CLI: next-unit, unit-window and pinned-question" {
+  local q='{"questions":[{"question":"q","header":"Audit loop","multiSelect":false,"options":[{"label":"Stop and file the remainder","description":"d"},{"label":"Accept the remainder","description":"d"}]}]}'
+  cli_copy
+  run "$CLI/audit-loop-eval.sh" next-unit --root "$ALF_ROOT"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1 1" ]
+  run "$CLI/audit-loop-eval.sh" unit-window --root "$ALF_ROOT"
+  [ "$status" -eq 2 ]
+  run "$CLI/audit-loop-eval.sh" pinned-question --root "$ALF_ROOT"
+  [ "$status" -eq 2 ]
+  alf_sequence 4 3
+  run "$CLI/audit-loop-eval.sh" next-unit --root "$ALF_ROOT"
+  [ "$output" = "1 3" ]
+  run "$CLI/audit-loop-eval.sh" unit-window --root "$ALF_ROOT"
+  [ "$status" -eq 2 ]
+  alf_state_edit '.history.units = [$u]' --argjson u "$(unit_entry 1 3 $((2 + $(K_ROUNDS))) 0)"
+  run "$CLI/audit-loop-eval.sh" next-unit --root "$ALF_ROOT"
+  [ "$output" = "2 3" ]
+  run "$CLI/audit-loop-eval.sh" unit-window --root "$ALF_ROOT"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1 3 $((2 + $(K_ROUNDS)))" ]
+  alf_add_checkpoint 2 context
+  run "$CLI/audit-loop-eval.sh" pinned-question --root "$ALF_ROOT"
+  [ "$status" -eq 2 ]
+  alf_state_edit '.history.checkpoints[-1].question = $q' --argjson q "$q"
+  run "$CLI/audit-loop-eval.sh" pinned-question --root "$ALF_ROOT"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(jq -c . <<<"$q")" ]
+  alf_add_answer 1 accept
+  run "$CLI/audit-loop-eval.sh" pinned-question --root "$ALF_ROOT"
+  [ "$status" -eq 2 ]
+}
+
+@test "CLI: the unit subcommands leave the state byte-identical and take no lock" {
+  local snap sub
+  cli_copy
+  alf_sequence 4 3
+  alf_state_edit '.history.units = [$u]' --argjson u "$(unit_entry 1 3 4 0)"
+  snap="$(snapshot_file "$ALF_STATE")"
+  for sub in next-unit unit-window pinned-question; do
+    run "$CLI/audit-loop-eval.sh" "$sub" --root "$ALF_ROOT"
+    assert_files_identical "$snap" "$ALF_STATE" || { echo "$sub changed the state"; return 1; }
+    [ -e "$ALF_STATE.lock" ] && { echo "$sub took the lock"; return 1; }
+  done
+  true
+}
+
+@test "brief: reports the signals and the cap; a context checkpoint recommends grant unless a denying signal holds" {
+  cli_copy
+  rounds_seq '[]'
+  alf_add_checkpoint 1 context
+  alf_state_edit '.history.checkpoints[-1].trigger = "context"'
+  run "$CLI/audit-loop-eval.sh" brief --root "$ALF_ROOT"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(jf "$output" '.verdict')" = quiet ]
+  [ "$(jf "$output" '.recommended')" = grant ]
+  [ "$(jf "$output" '.rounds_cap')" = 10 ]
+  [ "$(jf "$output" '.accept_eligible')" = true ]
+  [ "$(jf "$output" '.accept_reasons | tojson')" = '["quiet"]' ]
+  [ "$(jf "$output" '.signals.quiet')" = true ]
+  rm -rf "$BATS_TEST_TMPDIR/repo" "$BATS_TEST_TMPDIR/origin.git"
+  alf_init
+  alf_branch feat/loop
+  cli_copy
+  a_seq warning 5 5 5
+  alf_add_checkpoint 3 context
+  alf_state_edit '.history.checkpoints[-1].trigger = "context"'
+  run "$CLI/audit-loop-eval.sh" brief --root "$ALF_ROOT"
+  [ "$(jf "$output" '.verdict')" = stalled ]
+  [ "$(jf "$output" '.recommended')" = stop ]
 }

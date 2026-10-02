@@ -230,6 +230,19 @@ fi
 printf '%s\n' "$$" > "$LOCK_DIR/owner" 2>/dev/null
 trap '[ "$(cat "$LOCK_DIR/owner" 2>/dev/null)" = "$$" ] && rm -rf "$LOCK_DIR" 2>/dev/null' EXIT
 
+# ---------- context-reading sweep ----------
+# The statusline writes one context file per session and no SessionEnd hook
+# reaps them (the SPEC forbids one), so this TTL-gated pass does: regular files
+# (never symlinks or directories) directly in the context directory, older than
+# the age below. Orphaned writer tmp files (<id>.json.tmp.<pid>) go with them.
+# 7 days: far past the statusline's freshness window, so a live session's file
+# is never swept. A failed sweep never fails this script.
+CONTEXT_SWEEP_DAYS=7
+CONTEXT_DIR="$CACHE_DIR/context"
+if [ -d "$CONTEXT_DIR" ] && [ ! -L "$CONTEXT_DIR" ]; then
+  find "$CONTEXT_DIR" -maxdepth 1 -type f \( -name '*.json' -o -name '*.json.tmp.*' \) -mtime +"$CONTEXT_SWEEP_DAYS" -exec rm -f {} + 2>/dev/null || true
+fi
+
 # ---------- outdatedCount ----------
 # Count only the updates /update-deps will actually apply. The `update-deps
 # run` primitive runs the same Phase 1-3 filtering the skill does; the ESLint

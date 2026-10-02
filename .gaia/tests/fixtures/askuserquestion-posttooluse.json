@@ -1,0 +1,124 @@
+[
+  {
+    "session_id": "__SESSION_ID__",
+    "transcript_path": "__TRANSCRIPT_PATH__",
+    "cwd": "__CWD__",
+    "scratchpad_dir": "__SCRATCHPAD__",
+    "prompt_id": "__PROMPT_ID__",
+    "permission_mode": "bypassPermissions",
+    "effort": {
+      "level": "medium"
+    },
+    "hook_event_name": "PostToolUse",
+    "tool_name": "AskUserQuestion",
+    "tool_input": {
+      "questions": [
+        {
+          "question": "Probe P3: pick one",
+          "header": "Probe P3",
+          "options": [
+            {
+              "label": "Alpha",
+              "description": "First probe option."
+            },
+            {
+              "label": "Beta",
+              "description": "Second probe option."
+            }
+          ],
+          "multiSelect": false
+        }
+      ],
+      "answers": {
+        "Probe P3: pick one": "Alpha"
+      },
+      "annotations": {}
+    },
+    "tool_response": {
+      "questions": [
+        {
+          "question": "Probe P3: pick one",
+          "header": "Probe P3",
+          "options": [
+            {
+              "label": "Alpha",
+              "description": "First probe option."
+            },
+            {
+              "label": "Beta",
+              "description": "Second probe option."
+            }
+          ],
+          "multiSelect": false
+        }
+      ],
+      "answers": {
+        "Probe P3: pick one": "Alpha"
+      },
+      "annotations": {}
+    },
+    "tool_use_id": "toolu_PLACEHOLDER",
+    "duration_ms": 0
+  },
+  {
+    "session_id": "__SESSION_ID__",
+    "transcript_path": "__TRANSCRIPT_PATH__",
+    "cwd": "__CWD__",
+    "scratchpad_dir": "__SCRATCHPAD__",
+    "prompt_id": "__PROMPT_ID__",
+    "permission_mode": "bypassPermissions",
+    "effort": {
+      "level": "medium"
+    },
+    "hook_event_name": "PostToolUse",
+    "tool_name": "AskUserQuestion",
+    "tool_input": {
+      "questions": [
+        {
+          "question": "Probe P3: pick one",
+          "header": "Probe P3",
+          "options": [
+            {
+              "label": "Alpha",
+              "description": "First probe option."
+            },
+            {
+              "label": "Beta",
+              "description": "Second probe option."
+            }
+          ],
+          "multiSelect": false
+        }
+      ],
+      "answers": {
+        "Probe P3: pick one": "free text probe"
+      },
+      "annotations": {}
+    },
+    "tool_response": {
+      "questions": [
+        {
+          "question": "Probe P3: pick one",
+          "header": "Probe P3",
+          "options": [
+            {
+              "label": "Alpha",
+              "description": "First probe option."
+            },
+            {
+              "label": "Beta",
+              "description": "Second probe option."
+            }
+          ],
+          "multiSelect": false
+        }
+      ],
+      "answers": {
+        "Probe P3: pick one": "free text probe"
+      },
+      "annotations": {}
+    },
+    "tool_use_id": "toolu_PLACEHOLDER",
+    "duration_ms": 0
+  }
+]

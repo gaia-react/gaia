@@ -1,19 +1,29 @@
 #!/usr/bin/env bash
 # PreToolUse hook on Agent|Task: bound the pre-merge audit loop per BRANCH.
-# At each Code Audit Team dispatch on a HEAD tree not yet audited on the
-# branch, it evaluates the previous round, records that round's snapshot,
-# and denies when the branch's allowance is reached or the previous round's
-# verdict is `stalled` or `enriching` with no human answer since. The
-# numbers, formulas and defaults live in .gaia/scripts/audit-loop-eval.sh's
-# header; the state file shape and its writers live in
-# .gaia/scripts/audit-loop-state-lib.sh's header. This file restates neither.
+# It gates two dispatches. An `audit-loop-unit` dispatch asks to run a unit of
+# up to K audit rounds off the main thread; the hook admits it against the
+# main session's context reading, the rubric signals, the round cap and the
+# round-count fallback, and records the unit's window. A Code Audit Team
+# member dispatch on a HEAD tree not yet audited opens a round; the hook
+# evaluates the previous round, records the new one, and allows it only
+# inside the window of the unit that made it, or, made from the main thread,
+# only where a one-round unit would be admitted. The numbers, formulas,
+# defaults and the order of the decision steps live in
+# .gaia/scripts/audit-loop-eval.sh's header (DECISION); the context line and K
+# live in .gaia/scripts/context-checkpoint-lib.sh; the state file shape and
+# its writers live in .gaia/scripts/audit-loop-state-lib.sh's header. This
+# file restates none of them.
 #
 # WHY A HOOK AND NOT PROSE. The audit loop's fix-and-re-audit cycle has no
 # stop of its own: every round's fixes buy the next dispatch, so an
 # unattended run spends without bound, and the judgement "is another round
-# worth it" gets made mid-loop by the session least able to make it. Prose
-# cannot hold a boundary an agent has a standing reason to cross. The only
-# way past a checkpoint is a line a human types (see audit-loop-grant.sh).
+# worth it" gets made mid-loop by the session least able to make it. Running
+# the loop inside a unit keeps the rounds off the main thread, but the main
+# thread's context still grows with every unit it reads back, which is why
+# the gate reads that context. Prose cannot hold a boundary an agent has a
+# standing reason to cross. The only ways past a checkpoint are a selection of
+# the pinned question recorded by audit-loop-ask-grant.sh and a line a human
+# types (audit-loop-grant.sh).
 #
 # WHAT IS BOUNDED. The branch, not the session. The history lives in one
 # state file under the main checkout's local state directory, keyed by the
@@ -21,8 +31,15 @@
 # worktree on the branch reads and extends one record. session_id is NOT part
 # of the key. /clear, compaction, a new session, a fork and a sub-agent leave
 # history and allowance untouched, and no SessionStart registration exists.
-# session_id is recorded only on a checkpoint, so the grant hook can find the
-# checkpoint a session hit when its working directory is on another branch.
+# session_id is recorded on a checkpoint, so the grant hooks can find the
+# checkpoint a session hit when its working directory is on another branch,
+# and on a unit, and it selects the context reading the gate consults.
+#
+# WRITER CONTRACT. This hook writes every part of the state file except
+# `allowance` (the grant hooks own that), under the per-branch lock, and the
+# dispositions snapshots under the state's `<branch>.d/` directory through the
+# audit-dispositions-check.sh invocation it makes with --snapshot-dir. The
+# full contract is in audit-loop-state-lib.sh's header.
 #
 # WAVE IDENTITY: the audited checkout's HEAD tree. A round is one dispatch
 # wave, whatever that wave spawns. Every member in a wave is dispatched
@@ -36,13 +53,68 @@
 # dispatched member", and .claude/rules/subagent-dispatch.md) shares its
 # wave's unmoved tree and is therefore free, which is correct: it is the
 # first round finishing, not a new one. A dispatch on an already-audited tree
-# is always allowed, at a checkpoint too.
+# is allowed at a checkpoint and past a window too, but it still runs the
+# dispositions check below. A unit dispatch never records a round.
+#
+# THE ORDER OF ONE DECISION. Resolve the audited checkout and the branch; on a
+# dispatch that may change the state (a unit, or a member on a new tree),
+# check for uncommitted work (a member always; a unit only when the branch has
+# no state yet), refuse a fork, and look the pull request up; take the lock and
+# re-read the state; run the dispositions check (every path, joins included);
+# join an already-recorded wave; link, close or carry over the pull request
+# record; freeze the knobs and the line config when absent; evaluate the
+# previous round when its snapshot is missing; read the context; decide. On an
+# allowed unit the hook appends its window to `history.units`; on an allowed
+# member it records the round.
+#
+# THE UNIT WINDOW. An admitted unit owns rounds start_round..through_round as
+# recorded in its `history.units` entry. A member dispatch the unit makes is
+# allowed on a new tree only while the next round falls inside the latest
+# window; past it the deny is the window class below and the unit stops.
+#
+# IN-UNIT OR MAIN THREAD. A member dispatch counts as made inside a unit only
+# when the payload carries an `agent_id` and its `agent_type` is
+# `audit-loop-unit`; the harness sets both on a sub-agent's call and neither on
+# the main thread's, and the same session_id reaches both. Any other member
+# dispatch (the main thread, or some other sub-agent) is judged as a one-round
+# unit: the cap, the rubric, a fresh grant, a spent accept, then the context
+# line or the fallback, and it appends no `history.units` entry. Limit: the check trusts
+# the harness's payload fields; a harness that stops sending them makes every
+# dispatch read as the main thread's, which is the stricter judgement.
+#
+# AN ANSWER IS SPENT BY THE ROUND AFTER IT. The decision functions admit on
+# an answered checkpoint until a unit consumes it. A main-thread member
+# dispatch appends no unit, so on its own it would spend the same answer every
+# round. This hook therefore treats the latest checkpoint's answer as spent
+# once a round has been recorded after that checkpoint (decision input only;
+# nothing is written), and the next dispatch is judged afresh.
+#
+# THE CONTEXT READING. gaia_ctx_read for this payload's session_id at the main
+# checkout. Anything but a fresh reading (missing, stale, future-dated,
+# unparseable, or a session id that is not one) falls back to the round count
+# allowance, never past it. Honest limits: the reading changes only when the
+# statusline renders, which is on main-thread turns, so the spend of the
+# rounds a unit runs off the thread is invisible to it until the unit
+# returns; that is why the rubric signals and the round cap stay independent
+# bounds. The line config is frozen per branch and only lowered live.
+#
+# DENY CLASSES. Every deny reason starts with one of these, and a unit and the
+# main thread branch on the prefix (a harness prefix may precede it):
+#   `BLOCKED: audit checkpoint`    a context, cap, fallback or rubric
+#                                  checkpoint; always records a checkpoint with
+#                                  a fresh nonce and a pinned question,
+#                                  superseding any pending one.
+#   `BLOCKED: audit window`        a member dispatch past its unit's window;
+#                                  records nothing new.
+#   `BLOCKED: audit dispositions`  the dispositions check failed; its
+#                                  violation lines follow; records nothing.
+#   any other `BLOCKED:`           a fail-loud deny (below).
 #
 # STATED FAILURE MODES, honestly:
 # - A dispatch cancelled at the permission prompt has already counted: the
 #   count is taken at PreToolUse, and the round is recorded `unknown` when no
 #   findings arrive. Refunding on absent evidence would make deleting a
-#   sidecar a way to buy rounds. The recovery is a grant line a human types.
+#   sidecar a way to buy rounds. The recovery is a human answer.
 # - A commit that leaves the tree byte-identical (an empty commit, a
 #   message-only amend) reads as the same round. A deliberate re-dispatch on
 #   an unmoved tree is likewise free; the guard cannot tell it from the
@@ -54,14 +126,15 @@
 # FAIL LOUD, NOT FAIL OPEN. Every unknown denies with a message, never allows.
 # Deny causes: a corrupt state file (never rewritten, with the human-run
 # repair in the message), a missing jq (exit 2 through the shared arm, only
-# for a call that names a member) or git, a library that will not load, an
-# audited checkout that cannot be resolved, a detached HEAD or an unkeyable
-# branch name, an unreadable HEAD, a dirty audited checkout on a new tree
-# (commit the round first), a lock that could not be taken, an evaluation or
-# state write that failed, and an internal deadline that passed. A harness
-# that never delivers this event leaves the guard inert, and "inert" and
-# "working" are indistinguishable from this file alone; the registration is
-# checked by the registration suite, not here.
+# for a call that names a member or a unit) or git, a library or the
+# dispositions check script that will not load, an audited checkout that
+# cannot be resolved, a detached HEAD or an unkeyable branch name, an
+# unreadable HEAD, a dirty audited checkout where a round or the first unit
+# would start (commit the round first), a lock that could not be taken, an
+# evaluation, pinned question or state write that failed, and an internal
+# deadline that passed. A harness that never delivers this event leaves the
+# guard inert, and "inert" and "working" are indistinguishable from this file
+# alone; the registration is checked by the registration suite, not here.
 #
 # DEADLINE. The whole decision runs in a background process group while this
 # shell waits, with a watchdog that signals this shell after the deadline
@@ -74,37 +147,41 @@
 # answer; the measured basis for both numbers is recorded with the
 # registration.
 #
-# SCOPE: only tool_input.subagent_type matching code-audit-* counts, checked
-# before any git or filesystem work because the overwhelming majority of
-# dispatches are not members. The roster does not pin the subagent_type a
-# member's own internal fan-out carries; the filter does not need that pin: a
-# nested dispatch shares its wave's HEAD tree and is free whatever it is
-# named. A payload's top-level agent_type names the agent MAKING the call, the
-# opposite question, and folding it in would count a member's own nested
-# dispatches as top-level rounds, so only tool_input.subagent_type is read.
+# SCOPE: only tool_input.subagent_type matching code-audit-* or naming
+# audit-loop-unit counts, checked before any git, filesystem, context or
+# settings read because the overwhelming majority of dispatches are neither.
+# The roster does not pin the subagent_type a member's own internal fan-out
+# carries; the filter does not need that pin: a nested dispatch shares its
+# wave's HEAD tree and is free whatever it is named. A payload's top-level
+# agent_type names the agent MAKING the call, the opposite question, and
+# folding it into the scope would count a member's own nested dispatches as
+# top-level rounds; it is read only to tell a unit's member dispatch from a
+# main-thread one (IN-UNIT above).
 #
 # AUDITED ROOT. The dispatch prompt's `Working root:` path wins over the
 # payload cwd (the orchestrator audits a linked worktree from the main
-# checkout); a named path that does not resolve to a checkout denies rather
-# than falling back to cwd, which would charge a tree other than the one the
-# member audits. The state file is resolved to the main checkout through
-# gaia_resolve_main_root in main-root-lib.sh, so a worktree and the main
-# checkout name one record.
+# checkout, and a unit brief carries one); a named path that does not resolve
+# to a checkout denies rather than falling back to cwd, which would charge a
+# tree other than the one the member audits. The state file is resolved to
+# the main checkout through gaia_resolve_main_root in main-root-lib.sh, so a
+# worktree and the main checkout name one record.
 #
-# FORK REFUSAL. A dispatch that would record a new round is denied when the
-# audited checkout's pull request is a fork (cross-repository), and also when
-# gh cannot say whether it is one; a branch with no pull request yet proceeds.
-# The check and the message live in .claude/hooks/lib/cross-repo-refusal.sh.
-# A dispatch joining an already-recorded round skips it: that round was
-# recorded past this same check. This is a refusal, not a defense: on a fork
-# head this file is itself the fork's copy, and only the pre-checkout guard
-# acts before that.
+# FORK REFUSAL. A dispatch that would record a new round or admit a unit is
+# denied when the audited checkout's pull request is a fork
+# (cross-repository), and also when gh cannot say whether it is one; a branch
+# with no pull request yet proceeds. The check and the message live in
+# .claude/hooks/lib/cross-repo-refusal.sh. A dispatch joining an
+# already-recorded round skips it: that round was recorded past this same
+# check. This is a refusal, not a defense: on a fork head this file is itself
+# the fork's copy, and only the pre-checkout guard acts before that.
 set -uo pipefail
 
 payload=$(cat)
 # jq-availability arm: refuse loudly rather than fail open when the interpreter
 # this hook reads its payload with is absent. What that buys, and the contract
 # the literals below satisfy, live in .claude/hooks/lib/jq-availability.sh.
+# The literals are the two scope spellings; a subagent_type that reaches the
+# scope check only through JSON escapes inside the name is not matched.
 _jq_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _jq_lib_dir=''
 # shellcheck source=lib/jq-availability.sh
 [ -n "$_jq_lib_dir" ] && [ -f "$_jq_lib_dir/jq-availability.sh" ] && . "$_jq_lib_dir/jq-availability.sh" 2>/dev/null
@@ -112,7 +189,7 @@ if ! type gaia_require_jq >/dev/null 2>&1; then
   printf 'BLOCKED: audit-loop-bound.sh cannot load lib/jq-availability.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
   exit 2
 fi
-gaia_require_jq 'the audit loop checkpoint' "$payload" tool_input 'code-audit-'
+gaia_require_jq 'the audit loop checkpoint' "$payload" tool_input 'code-audit-' 'audit-loop-unit'
 
 deny() {
   # A deny can fire while a killed job is still being reported on stderr
@@ -129,18 +206,22 @@ deny() {
 }
 
 # Cheapest discriminators first: the tool name, then only
-# tool_input.subagent_type (see SCOPE above).
+# tool_input.subagent_type (see SCOPE above). The caller's agent fields ride
+# along in the same jq call.
 fields=$(jq -r '[(.tool_name // "" | if type == "string" then . else "" end),
   ((.tool_input | objects | .subagent_type) // "" | if type == "string" then . else "" end),
-  (.session_id // "" | if type == "string" then . else "" end)] | join("\u001f")' <<<"$payload" 2>/dev/null) ||
+  (.session_id // "" | if type == "string" then . else "" end),
+  (.agent_id // "" | if type == "string" then . else "" end),
+  (.agent_type // "" | if type == "string" then . else "" end)] | join("\u001f")' <<<"$payload" 2>/dev/null) ||
   deny 'BLOCKED: the audit loop checkpoint could not parse this tool call payload. Fail-loud, not fail-open: retry the dispatch.'
-IFS=$'\037' read -r tool member session <<<"$fields"
+IFS=$'\037' read -r tool member session caller_id caller_type <<<"$fields"
 case "$tool" in
   Agent | Task) ;;
   *) exit 0 ;;
 esac
 case "$member" in
-  code-audit-*) ;;
+  audit-loop-unit) kind=unit ;;
+  code-audit-*) kind=member ;;
   *) exit 0 ;;
 esac
 
@@ -214,20 +295,35 @@ corrupt_msg() {
     "$B" "$why" "$f" "$f" "$f" "$stamp"
 }
 
-# checkpoint_msg <state-json> <used> <reason>
+# checkpoint_msg <state-json> <used> <trigger> <question-json>
 checkpoint_msg() {
-  local s="$1" used="$2" reason="$3" grant_n
+  local s="$1" used="$2" trigger="$3" question="$4" grant_n
   grant_n=$(jq -r '.history.knobs.grant_rounds // 3' <<<"$s")
-  printf 'BLOCKED: audit checkpoint on branch %s after %s rounds (%s).\n' "$B" "$used" "$reason"
+  printf 'BLOCKED: audit checkpoint on branch %s after %s rounds (%s).\n' "$B" "$used" "$trigger"
   jq -r '.history.rounds | to_entries[]
     | "  round \(.key + 1): A=\(.value.snapshot.A // "n/a") verdict=\(.value.snapshot.verdict // "unevaluated")"' <<<"$s"
-  printf '\nThis stops the loop for a human decision; it is not a defect and not a merge blocker. The human types one of these lines as the whole prompt, in this same session (the grant hook resolves the checkpoint by this session id when the session working directory is on another branch):\n'
+  printf '\nThis stops the loop for a human decision; it is not a defect and not a merge blocker.\n'
+  printf 'Interactive run: on the main thread of this session, ask this question with AskUserQuestion exactly as printed, passing the JSON below as the whole tool input (do not reword, reorder, add or drop an option). Inside an audit-loop-unit: stop with stop_reason checkpoint-deny and return; the main thread asks.\n'
+  # shellcheck disable=SC2016 # the backticks are a literal Markdown fence
+  printf '```json\n%s\n```\n' "$question"
+  printf 'The human may instead type one of these lines as the whole prompt, in this same session (the grant hook resolves the checkpoint by this session id when the session working directory is on another branch):\n'
   printf 'Grant (type exactly as the whole prompt): %s\n' "$(gaia_loop_grant_line "$grant_n")"
   printf 'Accept (type exactly as the whole prompt): %s\n' "$(gaia_loop_accept_line)"
+  printf 'Unattended run (a /gaia-debt drain): never ask; stop, leave the PR open, print the typed grant line above, and print no continuation prompt.\n'
   printf '\nClaude never writes the state file and never types or simulates these lines. A dispatch on an already-audited tree is still allowed.\n'
   # shellcheck disable=SC2016 # the backticks are literal text in the message
-  printf 'Interactive run: ask the human the checkpoint question from `bash %s/audit-loop-eval.sh brief --root %s`. Unattended run (/gaia-debt drain or CI): stop, push the round'"'"'s fix, leave the PR open and report this message.\n' "$scripts" "$root"
+  printf 'Evidence and recommendation: `bash %s/audit-loop-eval.sh brief --root %s`.\n' "$scripts" "$root"
   printf 'State file: %s\n' "$file"
+}
+
+# window_msg <state-json> <used>
+window_msg() {
+  local window
+  window=$(jq -r '((.history.units // []) | last) as $u
+    | if $u == null then "no unit window is recorded on this branch"
+      else "unit \($u.unit) was admitted for rounds \($u.start_round) through \($u.through_round)" end' <<<"$1")
+  printf 'BLOCKED: audit window on branch %s: %s, and this wave would open round %s. Inside an audit-loop-unit: do not dispatch this wave; stop with stop_reason window-end and return, and the main thread admits the next unit. No round and no checkpoint were recorded.\n' \
+    "$B" "$window" "$(($2 + 1))"
 }
 
 # set_member <state-json> <index> : append $member to round <index> when absent.
@@ -240,6 +336,31 @@ add_member() {
 tree_index() {
   jq -r --arg t "$tree" \
     '[.history.rounds | to_entries[] | select(.value.tree == $t) | .key] | first // empty' <<<"$1"
+}
+
+# answer_view <state-json>: the decision input. When a round has been recorded
+# after the latest checkpoint, its answer is spent (header, AN ANSWER IS
+# SPENT); the view carries an in-memory unit marker past that checkpoint so
+# the grant-admission step skips it. Never written.
+answer_view() {
+  jq -c '(.history.checkpoints | last) as $c
+    | if $c != null and (.history.rounds | length) > $c.at_round
+         and (((.history.units // []) | last | .after_checkpoint?) // -1) < $c.index
+      then .history.units = ((.history.units // []) + [{unit: 0, start_round: 0, k: 0, through_round: 0,
+             admitted_on: "context", after_checkpoint: $c.index}])
+      else . end' <<<"$1"
+}
+
+# check_dispositions: the dispositions check over every round of the run
+# folder; any non-zero exit denies with its violation lines.
+check_dispositions() {
+  local out rc=0
+  out=$(bash "$scripts/audit-dispositions-check.sh" check-all --root "$root" --run-folder "$rundir" --snapshot-dir "$snapdir" 2>&1 </dev/null) || rc=$?
+  [ "$rc" -eq 0 ] && return 0
+  [ -n "$out" ] || out='(the check printed nothing)'
+  out=$(printf '%s\n' "$out" | head -n 40)
+  finish_deny "$(printf 'BLOCKED: audit dispositions on branch %s: the dispositions check failed (exit %s), so no audit dispatch proceeds until every dispositions file in %s passes. Nothing was recorded. A Critical or security finding is disposed fix (or file, when the branch did not author it), every non-fix disposition carries a reason, and a vetoed key is fix. Inside an audit-loop-unit: stop with stop_reason dispositions-check-failed and return. To see the violations again (read-only): bash %s/audit-dispositions-check.sh check-all --root %s --run-folder %s\n%s' \
+    "$B" "$rc" "$rundir" "$scripts" "$root" "$rundir" "$out")"
 }
 
 # close_state <pr>: move the state file (and its stamps) under .closed/.
@@ -319,7 +440,9 @@ adopt_renamed() {
 }
 
 run_decision() {
-  local libs_failed=0 scripts rc dirty_rc s0 used idx snap dec reason now stampf slug closing S2 cur_pr old_file closed=0
+  local libs_failed=0 rc dirty_rc s0 used idx snap dec now stampf slug closing S2 cur_pr old_file closed=0
+  local verb trigger elig cap extra nonce question in_unit reading ask_tokens ask_pct config view recommended ctx_line
+  local admitted_on start_round through_round
   HELD=''
   trap 'exit 143' TERM INT HUP
   trap '[ -z "$HELD" ] || gaia_loop_unlock "$HELD"' EXIT
@@ -332,9 +455,12 @@ run_decision() {
   # shellcheck source=/dev/null
   . "$scripts/audit-loop-state-lib.sh" 2>/dev/null || libs_failed=1
   # shellcheck source=/dev/null
+  [ "$libs_failed" -eq 1 ] || . "$scripts/context-checkpoint-lib.sh" 2>/dev/null || libs_failed=1
+  # shellcheck source=/dev/null
   [ "$libs_failed" -eq 1 ] || . "$scripts/audit-loop-eval.sh" 2>/dev/null || libs_failed=1
+  [ "$libs_failed" -eq 1 ] || [ -f "$scripts/audit-dispositions-check.sh" ] || libs_failed=1
   [ "$libs_failed" -eq 0 ] ||
-    finish_deny "BLOCKED: the audit loop checkpoint cannot load its libraries from $scripts. Fail-loud, not fail-open: restore audit-loop-state-lib.sh and audit-loop-eval.sh."
+    finish_deny "BLOCKED: the audit loop checkpoint cannot load its libraries from $scripts. Fail-loud, not fail-open: restore audit-loop-state-lib.sh, context-checkpoint-lib.sh, audit-loop-eval.sh (with audit-loop-signals-lib.sh) and audit-dispositions-check.sh."
   # shellcheck source=lib/cross-repo-refusal.sh
   . "$(dirname "${BASH_SOURCE[0]}")/lib/cross-repo-refusal.sh" 2>/dev/null || libs_failed=1
   if [ "$libs_failed" -ne 0 ] || ! type gaia_cross_repo_deny_reason >/dev/null 2>&1; then
@@ -366,6 +492,8 @@ run_decision() {
     finish_deny "BLOCKED: the audit loop checkpoint cannot read HEAD of $root. Fail-loud, not fail-open: check the checkout and retry."
   fi
   file=$(gaia_loop_state_file "$main" "$B")
+  snapdir="${file%.json}.d"
+  rundir=$(gaia_loop_run_dir "$main" "$B")
 
   rc=0
   state0=$(gaia_loop_read_state "$file") || rc=$?
@@ -377,26 +505,28 @@ run_decision() {
   esac
 
   # Same wave: a parallel sibling, or the one hardened re-dispatch of a no-op'd
-  # member. Neither burns a round.
+  # member. Neither burns a round, and neither needs the prechecks below; the
+  # join still takes the lock for the dispositions check.
   prechecked=0
-  if [ -n "$state0" ]; then
+  idx=''
+  if [ "$kind" = member ] && [ -n "$state0" ]; then
     idx=$(tree_index "$state0")
-    if [ -n "$idx" ]; then
-      [ "$(jq -r --argjson i "$idx" --arg m "$member" '.history.rounds[$i].members | index($m) | if . == null then "no" else "yes" end' <<<"$state0")" = no ] || finish_allow
-    fi
   fi
 
-  if [ -z "${idx:-}" ]; then
+  if [ -z "$idx" ]; then
     prechecked=1
     # A new tree on a dirty audited checkout would audit work the round's
-    # commit does not contain.
-    dirty_rc=0
-    _gaia_loop_git -C "$root" diff --quiet HEAD -- 2>/dev/null || dirty_rc=$?
-    case "$dirty_rc" in
-      0) ;;
-      1) finish_deny "BLOCKED: the audited checkout $root has uncommitted tracked changes (modified or staged), so a new audit round on it would audit work that is not in the round's commit. Commit the round first, then dispatch the next one." ;;
-      *) finish_deny "BLOCKED: the audit loop checkpoint could not check $root for uncommitted changes. Fail-loud, not fail-open: check the checkout and retry." ;;
-    esac
+    # commit does not contain. A unit on a branch with history commits its
+    # own rounds, and its member dispatches meet this check.
+    if [ "$kind" = member ] || [ -z "$state0" ]; then
+      dirty_rc=0
+      _gaia_loop_git -C "$root" diff --quiet HEAD -- 2>/dev/null || dirty_rc=$?
+      case "$dirty_rc" in
+        0) ;;
+        1) finish_deny "BLOCKED: the audited checkout $root has uncommitted tracked changes (modified or staged), so a new audit round on it would audit work that is not in the round's commit. Commit the round first, then dispatch the next one." ;;
+        *) finish_deny "BLOCKED: the audit loop checkpoint could not check $root for uncommitted changes. Fail-loud, not fail-open: check the checkout and retry." ;;
+      esac
+    fi
     # Asked from the audited checkout, whose current branch is the pull
     # request in question.
     if fork_reason=$(gaia_cross_repo_deny_reason '' "$root" \
@@ -421,9 +551,14 @@ run_decision() {
     *) finish_deny 'BLOCKED: the audit loop state could not be read because jq is unavailable. Fail-loud, not fail-open: install jq and retry.' ;;
   esac
 
+  # Every unit and member dispatch, a join included: a zero-fix round leaves
+  # the tree unmoved, so its re-dispatch is a join and would otherwise skip
+  # the check. Under the lock because a pass writes snapshots.
+  check_dispositions
+
   # Re-check the wave under the lock: a parallel member may have recorded it
   # while this call waited.
-  if [ -n "$s0" ]; then
+  if [ "$kind" = member ] && [ -n "$s0" ]; then
     idx=$(tree_index "$s0")
     if [ -n "$idx" ]; then
       S2=$(add_member "$s0" "$idx") || finish_deny 'BLOCKED: the audit loop checkpoint could not record this member. Fail-loud, not fail-open: retry the dispatch.'
@@ -472,11 +607,22 @@ run_decision() {
     fi
   fi
 
-  used=$(jq -r '.history.rounds | length' <<<"$S")
-  if [ "$used" -eq 0 ]; then
+  # Frozen at the first unit or round-1 dispatch, and on first sight of a
+  # legacy file that predates either field.
+  if [ "$(jq -r '.history.knobs | type' <<<"$S")" != object ]; then
     S=$(jq -c --argjson k "$(gaia_loop_knobs_initial)" --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
       '.history.knobs = $k | .created_at = $now' <<<"$S") ||
       finish_deny 'BLOCKED: the audit loop checkpoint could not freeze its knobs. Fail-loud, not fail-open: retry the dispatch.'
+  fi
+  if [ "$(jq -r '.history.context_config | type' <<<"$S")" != object ]; then
+    config=$(gaia_loop_context_config_initial "$main") ||
+      finish_deny 'BLOCKED: the audit loop checkpoint could not freeze its context line config. Fail-loud, not fail-open: retry the dispatch.'
+    S=$(jq -c --argjson c "$config" '.history.context_config = $c' <<<"$S") ||
+      finish_deny 'BLOCKED: the audit loop checkpoint could not freeze its context line config. Fail-loud, not fail-open: retry the dispatch.'
+  fi
+
+  used=$(jq -r '.history.rounds | length' <<<"$S")
+  if [ "$used" -eq 0 ]; then
     snap=null
   else
     snap=$(jq -c --argjson i "$((used - 1))" '.history.rounds[$i].snapshot' <<<"$S")
@@ -487,29 +633,91 @@ run_decision() {
     fi
   fi
 
-  dec=$(gaia_loop_decide "$S" "$snap") ||
+  config=$(gaia_loop_context_config_effective "$main" "$S") ||
+    finish_deny 'BLOCKED: the audit loop checkpoint could not compute its context line config. Fail-loud, not fail-open: retry the dispatch.'
+  read -r ask_tokens ask_pct <<<"$config"
+  reading=$(gaia_ctx_read "$main" "$session" "$(date +%s)")
+  [ -n "$reading" ] || reading=unparseable
+
+  in_unit=false
+  if [ "$kind" = member ] && [ -n "$caller_id" ] && [ "$caller_type" = audit-loop-unit ]; then
+    in_unit=true
+  fi
+  view="$S"
+  [ "$in_unit" = true ] || view=$(answer_view "$S") ||
     finish_deny 'BLOCKED: the audit loop checkpoint could not compute its decision. Fail-loud, not fail-open: retry the dispatch.'
-  case "$dec" in
+  if [ "$kind" = unit ]; then
+    dec=$(gaia_loop_decide_unit "$view" "$snap" "$reading" "$ask_tokens" "$ask_pct")
+  else
+    dec=$(gaia_loop_decide_member "$view" "$snap" "$in_unit" "$reading" "$ask_tokens" "$ask_pct")
+  fi || finish_deny 'BLOCKED: the audit loop checkpoint could not compute its decision. Fail-loud, not fail-open: retry the dispatch.'
+  # A deny reads `deny <trigger> <accept_eligible> <cap>`; a unit allow reads
+  # `allow <admitted_on> <start_round> <through_round>`.
+  read -r verb trigger elig cap extra <<<"$dec"
+  [ -z "$extra" ] ||
+    finish_deny 'BLOCKED: the audit loop checkpoint got an unreadable decision. Fail-loud, not fail-open: retry the dispatch.'
+  case "$verb" in
     allow) ;;
-    "deny "*)
-      reason="${dec#deny }"
-      if [ -z "$(gaia_loop_pending_checkpoint "$S" | jq -r --argjson u "$used" 'select(.at_round == $u) | .index')" ]; then
-        S=$(jq -c --argjson u "$used" --arg why "$reason" --arg sid "$session" --arg r "$root" \
-          --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-          '.history.checkpoints += [{index: ((.history.checkpoints | length) + 1), at_round: $u, reason: $why,
-            recorded_at: $now, session_id: $sid, audited_root: $r}]' <<<"$S")
+    deny)
+      case "$elig $cap" in
+        "true true" | "true false" | "false true" | "false false") ;;
+        *) finish_deny 'BLOCKED: the audit loop checkpoint got an unreadable decision. Fail-loud, not fail-open: retry the dispatch.' ;;
+      esac
+      if [ "$trigger" = window ]; then
+        [ "$S" = "$s0" ] ||
+          gaia_loop_write_state "$file" "$S" ||
+          finish_deny "BLOCKED: the audit loop checkpoint could not write $file. Fail-loud, not fail-open: check the directory and retry."
+        carry_over
+        finish_deny "$(window_msg "$S" "$used")"
       fi
-      [ "$S" = "$s0" ] ||
-        gaia_loop_write_state "$file" "$S" ||
+      nonce=$(gaia_loop_new_nonce) ||
+        finish_deny 'BLOCKED: the audit loop checkpoint could not draw a checkpoint nonce. Fail-loud, not fail-open: retry the dispatch.'
+      recommended=$(gaia_loop_recommended "$trigger" "$snap") || recommended=''
+      ctx_line=''
+      if [[ $reading =~ ^fresh\ [0-9]+\ ([0-9]+)$ ]]; then
+        ctx_line=$(gaia_ctx_line "${BASH_REMATCH[1]}" "$ask_tokens" "$ask_pct") || ctx_line=''
+      fi
+      question=$(gaia_loop_pinned_question "$B" "$nonce" "$used" "$GAIA_CTX_UNIT_ROUNDS" "$elig" "$cap" "$trigger" "$reading" "$recommended" "$ctx_line") && [ -n "$question" ] ||
+        finish_deny "BLOCKED: the audit loop checkpoint could not build its pinned question (trigger $trigger). Fail-loud, not fail-open: retry the dispatch."
+      # Every checkpoint deny appends a new checkpoint; the latest is the one
+      # pending, so this supersedes any earlier one, legacy ones included.
+      S=$(jq -c --argjson u "$used" --arg why "$trigger" --arg sid "$session" --arg r "$root" \
+        --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg nonce "$nonce" --argjson elig "$elig" --argjson q "$question" \
+        '.history.checkpoints += [{index: ((.history.checkpoints | length) + 1), at_round: $u, reason: $why,
+          recorded_at: $now, session_id: $sid, audited_root: $r, nonce: $nonce, trigger: $why,
+          accept_eligible: $elig, question: $q}]' <<<"$S") ||
+        finish_deny 'BLOCKED: the audit loop checkpoint could not build the checkpoint record. Fail-loud, not fail-open: retry the dispatch.'
+      gaia_loop_write_state "$file" "$S" ||
         finish_deny "BLOCKED: the audit loop checkpoint could not write $file. Fail-loud, not fail-open: check the directory and retry."
       carry_over
-      finish_deny "$(checkpoint_msg "$S" "$used" "$reason")"
+      finish_deny "$(checkpoint_msg "$S" "$used" "$trigger" "$question")"
       ;;
     *) finish_deny 'BLOCKED: the audit loop checkpoint got an unreadable decision. Fail-loud, not fail-open: retry the dispatch.' ;;
   esac
 
-  # Allow: record round used + 1.
   now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  if [ "$kind" = unit ]; then
+    admitted_on="$trigger"
+    start_round="$elig"
+    through_round="$cap"
+    case "$admitted_on" in context | grant | accept | fallback) ;; *) admitted_on='' ;; esac
+    if [ -z "$admitted_on" ] || ! gaia_loop_is_uint "$start_round" || ! gaia_loop_is_uint "$through_round" ||
+      [ "$start_round" -ne $((used + 1)) ] || [ "$through_round" -lt "$start_round" ]; then
+      finish_deny 'BLOCKED: the audit loop checkpoint got an unreadable decision. Fail-loud, not fail-open: retry the dispatch.'
+    fi
+    S2=$(jq -c --arg a "$admitted_on" --argjson s "$start_round" --argjson t "$through_round" --argjson k "$GAIA_CTX_UNIT_ROUNDS" \
+      --arg now "$now" --arg sid "$session" \
+      '.history.units = ((.history.units // []) + [{unit: (((.history.units // []) | length) + 1),
+        start_round: $s, k: $k, through_round: $t, admitted_on: $a,
+        after_checkpoint: (.history.checkpoints | length), recorded_at: $now, session_id: $sid}])' <<<"$S") ||
+      finish_deny 'BLOCKED: the audit loop checkpoint could not build the unit record. Fail-loud, not fail-open: retry the dispatch.'
+    gaia_loop_write_state "$file" "$S2" ||
+      finish_deny "BLOCKED: the audit loop checkpoint could not write $file. Fail-loud, not fail-open: check the directory and retry."
+    carry_over
+    finish_allow
+  fi
+
+  # Member allow: record round used + 1.
   slug=$(gaia_branch_slug "$root") ||
     finish_deny "BLOCKED: the audit loop checkpoint cannot derive the findings key of $root. Fail-loud, not fail-open: check the checkout and retry."
   closing=$(gaia_loop_next_closing "$S")

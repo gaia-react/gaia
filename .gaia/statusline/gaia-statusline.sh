@@ -13,7 +13,12 @@
 # Left-side resolution (first match wins):
 #   1. User has `statusLine.command` in `~/.claude/settings.json` → run that
 #      (so the adopter's existing global statusline appears unchanged).
-#   2. Fallback → bare "Claude Code" label.
+#   2. No global command → the default left side (project, branch with a
+#      linked-worktree marker, model and effort, a colored context bar).
+#   3. Last resort, when that cannot render → bare "Claude Code" label.
+#
+# Every render also writes the session's context reading for the audit-loop
+# bound hook (see context-reading.sh), whatever the left side is.
 #
 # Right side in linked worktrees: the one blocking, per-clone nudge
 # (`/setup-gaia`) still renders from every tree, so the statusline does not go
@@ -51,23 +56,6 @@ PROJECT_ROOT="$(cd "$GAIA_DIR/.." && pwd)"
 # Read JSON input once.
 input=$(cat)
 
-# ---------- Left side (delegated) ----------
-left=""
-if [ "$GAIA_STATUSLINE_NESTED" != "1" ]; then
-  user_cmd=""
-  if [ -f "$HOME/.claude/settings.json" ] && command -v jq >/dev/null 2>&1; then
-    user_cmd=$(jq -r '.statusLine.command // empty' "$HOME/.claude/settings.json" 2>/dev/null)
-  fi
-  # Skip if it points back at this wrapper (avoid recursion).
-  case "$user_cmd" in
-    *gaia-statusline.sh*) user_cmd="" ;;
-  esac
-  if [ -n "$user_cmd" ]; then
-    left=$(printf '%s' "$input" | GAIA_STATUSLINE_NESTED=1 bash -c "$user_cmd" 2>/dev/null)
-  fi
-fi
-
-[ -z "$left" ] && left="Claude Code"
 
 # Sets cols and left_visible; called only where a right side is about to be
 # composed (the setup-gaia branch and the nudges-present branch), so a render
@@ -105,7 +93,37 @@ measure_left() {
 # fall back to this script's own checkout. A tree git cannot resolve has no
 # linked worktrees either, so the install path is the only checkout there --
 # which keeps a scaffolded-but-not-yet-`git init` project rendering.
-session_dir="$(printf '%s' "$input" | jq -r '.workspace.current_dir // .cwd // empty' 2>/dev/null)"
+# One jq call extracts every stdin field this script uses (session directory,
+# the context reading, model and effort); fields are joined by a control
+# character no value contains. `used_tokens` is pinned as
+# round(used_percentage / 100 * context_window_size), never the payload's
+# total_input_tokens, which counts something else. The percentage is rounded to
+# six decimals so the writer's validation accepts it; a field that is absent or
+# the wrong type comes out empty. Silent on jq failure: every field then reads
+# empty, nothing is written, and the render continues.
+session_id=""
+session_dir=""
+ctx_pct=""
+ctx_window=""
+ctx_tokens=""
+model_name=""
+effort_level=""
+fields=$(printf '%s' "$input" | jq -r '
+  def str: if type == "string" then gsub("[\u0000-\u001f]"; "") else "" end;
+  (.context_window | if type == "object" then . else {} end) as $c
+  | (if ($c.used_percentage | type) == "number" and $c.used_percentage >= 0 and $c.used_percentage <= 999
+     then ($c.used_percentage * 1000000 | round) / 1000000 else null end) as $pct
+  | (if ($c.context_window_size | type) == "number" and $c.context_window_size >= 1 and $c.context_window_size <= 999999999999
+     then ($c.context_window_size | floor) else null end) as $win
+  | [ (.session_id | str),
+      ((.workspace.current_dir // .cwd) | str),
+      (if $pct != null and $win != null then ($pct | if . < 0.001 then "0" else tostring end) else "" end),
+      (if $pct != null and $win != null then ($win | tostring) else "" end),
+      (if $pct != null and $win != null then ($pct / 100 * $win | round | tostring) else "" end),
+      (.model.display_name | str),
+      (.effort.level | str) ]
+  | join("\u001f")' 2>/dev/null) || fields=""
+IFS=$'\037' read -r session_id session_dir ctx_pct ctx_window ctx_tokens model_name effort_level <<<"$fields"
 [ -n "$session_dir" ] || session_dir="$PROJECT_ROOT"
 
 if [ -f "$GAIA_DIR/scripts/main-root-lib.sh" ]; then
@@ -128,6 +146,56 @@ if command -v gaia_is_linked_worktree >/dev/null 2>&1; then
     IS_WORKTREE="true"
   fi
 fi
+
+# ---------- Context reading (written on every render) ----------
+# The audit-loop bound hook reads the main session's context from a file only
+# this script can produce, so the write comes first: before the left side,
+# before any early exit, and regardless of IS_WORKTREE, GAIA_STATUSLINE_NESTED
+# or the setup-gaia gating below. A sibling that is absent (an older checkout)
+# or a write that fails never prints and never stops the render. The lib is
+# sourced as "$GAIA_DIR/scripts/...", not from SCRIPT_DIR: a maintainer wrapper
+# execs a patched copy that sits in a different directory.
+if [ -f "$GAIA_DIR/scripts/context-checkpoint-lib.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$GAIA_DIR/scripts/context-checkpoint-lib.sh" 2>/dev/null || true
+fi
+if [ -f "$GAIA_DIR/statusline/context-reading.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$GAIA_DIR/statusline/context-reading.sh" 2>/dev/null || true
+fi
+if command -v gaia_statusline_write_context >/dev/null 2>&1; then
+  gaia_statusline_write_context "$STATE_ROOT" "$session_id" "$ctx_pct" "$ctx_window" "$ctx_tokens" >/dev/null 2>&1 || true
+fi
+
+# ---------- Left side ----------
+# First match wins: the user's own global `statusLine.command`, then the ported
+# default (project, branch, model and effort, context bar), then the bare label.
+left=""
+if [ "$GAIA_STATUSLINE_NESTED" != "1" ]; then
+  user_cmd=""
+  if [ -f "$HOME/.claude/settings.json" ] && command -v jq >/dev/null 2>&1; then
+    user_cmd=$(jq -r '.statusLine.command // empty' "$HOME/.claude/settings.json" 2>/dev/null)
+  fi
+  # Skip if it points back at this wrapper (avoid recursion).
+  case "$user_cmd" in
+    *gaia-statusline.sh*) user_cmd="" ;;
+  esac
+  if [ -n "$user_cmd" ]; then
+    left=$(printf '%s' "$input" | GAIA_STATUSLINE_NESTED=1 bash -c "$user_cmd" 2>/dev/null)
+  fi
+fi
+
+if [ -z "$left" ] && [ -f "$GAIA_DIR/statusline/left-side.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$GAIA_DIR/statusline/left-side.sh" 2>/dev/null || true
+  if command -v gaia_statusline_left >/dev/null 2>&1; then
+    if gaia_statusline_left "$STATE_ROOT" "$session_dir" "$IS_WORKTREE" "$model_name" "$effort_level" "$ctx_pct" "$ctx_window" "$ctx_tokens" 2>/dev/null; then
+      left="$_GAIA_SL_LEFT"
+    fi
+  fi
+fi
+
+[ -z "$left" ] && left="Claude Code"
 
 CACHE_FILE="$STATE_ROOT/.gaia/local/cache/shared/update-check.json"
 DEBT_CACHE="$STATE_ROOT/.gaia/local/debt/count.json"

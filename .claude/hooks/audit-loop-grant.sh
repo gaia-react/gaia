@@ -4,11 +4,13 @@
 # UserPromptSubmit hook: record a human's answer to an audit checkpoint.
 #
 # At a checkpoint the audit loop stops and only a person may raise the
-# allowance. This hook is the only writer of the state file's `allowance`
-# section, and the only human recovery path at a checkpoint: nothing else, not
-# the bound hook, the evaluator or any sub-agent, records a grant or an
-# accept. It records one when ALL of these hold, and says so out loud when it
-# declines (a silent decline reads as a recorded grant):
+# allowance. The state file's `allowance` section has two writers: this hook,
+# which records the typed lines, and audit-loop-ask-grant.sh, which records a
+# selection of the question the bound hook pinned (see "Other channels"
+# below). Nothing else, not the bound hook, the evaluator or any sub-agent,
+# records a grant or an accept. This hook records one when ALL of these hold,
+# and says so out loud when it declines (a silent decline reads as a recorded
+# grant):
 #
 #   1. The whole submitted prompt is exactly the line `audit-grant <n>` or
 #      `audit-accept`. A line pasted inside longer text, quoted in a question
@@ -32,11 +34,21 @@
 #      appends records whose entrypoint is not `cli` to the same transcript.
 #      The UserPromptSubmit event alone is not proof a person typed the line.
 #
-# Channels that are deliberately absent. An AskUserQuestion selection attests
-# nothing: Claude authors the options and the question text, so a "selected"
-# option is Claude's own words. A `!` command a user types and a command
-# Claude's Bash tool runs are indistinguishable to a script, so neither can be
-# trusted to carry the grant; only a submitted prompt, seen by this hook, can.
+# Other channels. An AskUserQuestion selection is recorded only by
+# audit-loop-ask-grant.sh, and only against a question the bound hook pinned
+# whole in guarded state: Claude authors no option, so a selection is the
+# pinned text and nothing else. Any other AskUserQuestion attests nothing and
+# is never read here. A `!` command a user types and a command Claude's Bash
+# tool runs are indistinguishable to a script, so neither can be trusted to
+# carry the grant; only a submitted prompt, seen by this hook, can.
+#
+# The typed lines stay as the fallback and as the deliberate human override:
+# a typed `audit-accept` is accepted whether or not the pinned question offered
+# an accept option (it overrides the eligibility gate), while a typed
+# `audit-grant <n>` is declined once the branch has used the hard round cap,
+# because round 10 is the cap and only an accept or a stop ends the loop. A
+# typed `audit-grant <n>` keeps its meaning (n more rounds) and the answer it
+# writes carries `source: "typed"`.
 #
 # Invoked with arguments, with no payload on stdin, or with a payload for any
 # event other than UserPromptSubmit, the hook exits 1 and records nothing, so
@@ -137,11 +149,7 @@ esac
 
 # Interactive check.
 transcript="$(printf '%s' "$payload" | jq -r '.transcript_path // "" | strings' 2>/dev/null)" || transcript=""
-entry=""
-if [ -n "$transcript" ] && [ -f "$transcript" ]; then
-  entry="$(jq -r -n '[inputs | select(type == "object" and has("entrypoint")) | .entrypoint] | if length > 0 and all(. == "cli") then "cli" else "other" end' <"$transcript" 2>/dev/null)" || entry=""
-fi
-if [ "${CLAUDE_CODE_ENTRYPOINT-}" != cli ] || [ "$entry" != cli ]; then
+if ! gaia_loop_session_is_interactive "$transcript"; then
   printf 'audit-loop-grant: session is not interactive; nothing recorded\n' >&2
   _gl_say "Not recorded: this session is not interactive (a person must type the line in a Claude Code terminal session)."
   exit 0
@@ -230,16 +238,26 @@ if [ -z "$pending" ]; then
   exit 0
 fi
 idx="$(printf '%s' "$pending" | jq -r '.index')"
+case "$parsed" in
+  "grant "*)
+    rounds_used="$(printf '%s' "$state" | jq -r '.history.rounds | length' 2>/dev/null)" || rounds_used=0
+    if [ "$rounds_used" -ge "$_GAIA_LOOP_HARD_CAP" ] 2>/dev/null; then
+      gaia_loop_unlock "$target"
+      _gl_say "Not recorded: branch ${branch:-(none)} has used $rounds_used rounds and round $_GAIA_LOOP_HARD_CAP is the cap, so no further grant is possible. Only $(gaia_loop_accept_line) (a deliberate override) or stopping and filing the remainder ends the loop."
+      exit 0
+    fi
+    ;;
+esac
 at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 case "$parsed" in
   "grant "*)
     n="${parsed#grant }"
     new="$(printf '%s' "$state" | jq -c --argjson cp "$idx" --argjson n "$n" --arg at "$at" --arg sid "$session_id" \
-      '.allowance.answers += [{checkpoint: $cp, kind: "grant", n: $n, at: $at, session_id: $sid}]' 2>/dev/null)" || new=""
+      '.allowance.answers += [{checkpoint: $cp, kind: "grant", n: $n, source: "typed", at: $at, session_id: $sid}]' 2>/dev/null)" || new=""
     ;;
   *)
     new="$(printf '%s' "$state" | jq -c --argjson cp "$idx" --arg at "$at" --arg sid "$session_id" \
-      '.allowance.answers += [{checkpoint: $cp, kind: "accept", at: $at, session_id: $sid}]' 2>/dev/null)" || new=""
+      '.allowance.answers += [{checkpoint: $cp, kind: "accept", source: "typed", at: $at, session_id: $sid}]' 2>/dev/null)" || new=""
     ;;
 esac
 if [ -z "$new" ] || ! gaia_loop_write_state "$target" "$new"; then

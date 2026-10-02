@@ -10,7 +10,7 @@ This session is on a working branch or in a linked worktree, so it executes. The
 
 ## Inline floor
 
-Stay on the main thread when the work is small, tightly iterative (edit-run-fix), or needs the user. Sub-agents cannot prompt the user. Keep dispatch depth-1.
+Stay on the main thread when the work is small, tightly iterative (edit-run-fix), or needs the user. Sub-agents cannot prompt the user. Keep dispatch depth-1. The one exception is `audit-loop-unit`, which the main thread dispatches during the pre-merge audit: it is the sanctioned depth-2 orchestrator allowed to run state-changing git and the Quality Gate for its own rounds.
 
 ## Run folder
 
