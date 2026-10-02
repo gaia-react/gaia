@@ -12,21 +12,21 @@
 # seeded, and seeding the committed one means the suite exercises the roster
 # that ships rather than a mirror of it.
 
-# seed_audit_roster <dir>
+# seed_audit_roster <sandbox_directory>
 #   Appends the `auditors:` block of this repository's .gaia/audit-ci.yml to
-#   <dir>/.gaia/audit-ci.yml, creating the file when absent. Appends rather than
+#   <sandbox_directory>/.gaia/audit-ci.yml, creating the file when absent. Appends rather than
 #   overwrites so a fixture that already wrote other config keys keeps them.
 #   Only the `auditors:` block is copied: any other top-level key could change
 #   behavior a suite does not expect. Returns
 #   non-zero when the source block is missing, so a seed that copied nothing
 #   fails the setup instead of leaving a roster-less sandbox.
 seed_audit_roster() {
-  local dir="$1" root block
+  local sandbox_directory="$1" root block
   root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
   block="$(awk '
-    /^auditors:/ { on = 1; print; next }
-    on && /^[A-Za-z_]/ { exit }
-    on { print }
+    /^auditors:/ { in_auditors_block = 1; print; next }
+    in_auditors_block && /^[A-Za-z_]/ { exit }
+    in_auditors_block { print }
   ' "$root/.gaia/audit-ci.yml")"
   case "$block" in
     *"- name:"*) ;;
@@ -35,6 +35,6 @@ seed_audit_roster() {
       return 1
       ;;
   esac
-  mkdir -p "$dir/.gaia"
-  printf '%s\n' "$block" >> "$dir/.gaia/audit-ci.yml"
+  mkdir -p "$sandbox_directory/.gaia"
+  printf '%s\n' "$block" >> "$sandbox_directory/.gaia/audit-ci.yml"
 }

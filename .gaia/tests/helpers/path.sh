@@ -20,7 +20,7 @@
 # invocation style a file in them happens to use.
 #
 # API:
-#   path_dir_provides DIR NAME  - true when DIR/NAME is something bash's PATH
+#   path_directory_provides DIR NAME  - true when DIR/NAME is something bash's PATH
 #                                 lookup would run as a command
 #   path_without NAME           - print $PATH with every directory that
 #                                 provides NAME removed
@@ -68,7 +68,7 @@
 # is treated as providing it, and the caller drops or shims an entry over a
 # tool that was never there, taking every real tool that entry provides with
 # it. bash's own lookup accepts a regular file that is executable, which is
-# `-f` and `-x` together, and that is what `path_dir_provides` tests.
+# `-f` and `-x` together, and that is what `path_directory_provides` tests.
 #
 # The direction is safe: an over-strip removes a tool the command under test
 # needs and fails it, rather than greening a test that should be red. So the
@@ -83,10 +83,10 @@
 # `.gaia/scripts/tests/bats-path-helper.bats` pins that the two builders refuse
 # to write outside a bats per-test temp dir.
 
-# path_dir_provides <dir> <name>: true when <dir>/<name> is a command bash's
+# path_directory_provides <dir> <name>: true when <dir>/<name> is a command bash's
 # PATH lookup would accept -- a regular file with the execute bit -- and false
 # for a directory of that name, a non-executable file, or nothing at all.
-path_dir_provides() {
+path_directory_provides() {
   [ -f "$1/$2" ] && [ -x "$1/$2" ]
 }
 
@@ -95,11 +95,11 @@ path_dir_provides() {
 # result, either for the rest of the test (`PATH="$(path_without uvx)"`) or for
 # one command (`PATH="$(path_without pnpm)" run bash "$HOOK"`).
 path_without() {
-  local name="$1" kept="" dir
-  while IFS= read -r dir; do
-    [ -n "$dir" ] || continue
-    path_dir_provides "$dir" "$name" && continue
-    kept="${kept:+$kept:}$dir"
+  local name="$1" kept="" path_entry
+  while IFS= read -r path_entry; do
+    [ -n "$path_entry" ] || continue
+    path_directory_provides "$path_entry" "$name" && continue
+    kept="${kept:+$kept:}$path_entry"
   done <<<"${PATH//:/$'\n'}"
   printf '%s\n' "$kept"
 }
@@ -123,18 +123,18 @@ path_without() {
 # bats-only primitive, and it says so rather than writing somewhere a caller did
 # not ask for: sourced outside a test, it refuses.
 path_shim_without() {
-  local name="$1" shim kept="" dir bin base
+  local name="$1" shim kept="" path_entry bin base
   if [ -z "${BATS_TEST_TMPDIR:-}" ]; then
     printf 'path_shim_without: BATS_TEST_TMPDIR is unset; this primitive needs a bats per-test temp dir\n' >&2
     return 1
   fi
   shim="$BATS_TEST_TMPDIR/path-shim-without-$name"
   mkdir -p "$shim" || return 1
-  while IFS= read -r dir; do
-    [ -n "$dir" ] || continue
-    [ -d "$dir" ] || continue
-    if path_dir_provides "$dir" "$name"; then
-      for bin in "$dir"/*; do
+  while IFS= read -r path_entry; do
+    [ -n "$path_entry" ] || continue
+    [ -d "$path_entry" ] || continue
+    if path_directory_provides "$path_entry" "$name"; then
+      for bin in "$path_entry"/*; do
         base="${bin##*/}"
         [ "$base" = "$name" ] && continue
         # First writer wins, so among the MIRRORED directories an earlier one
@@ -146,7 +146,7 @@ path_shim_without() {
         [ -e "$shim/$base" ] || ln -s "$bin" "$shim/$base" 2>/dev/null || true
       done
     else
-      kept="${kept:+$kept:}$dir"
+      kept="${kept:+$kept:}$path_entry"
     fi
   done <<<"${PATH//:/$'\n'}"
   printf '%s\n' "$shim${kept:+:$kept}"
@@ -162,7 +162,7 @@ path_shim_without() {
 # caller naming both `shasum` and `sha256sum` wants whichever the host ships,
 # and a stock macOS ships only the first while many Linux hosts ship only the
 # second; refusing would red the suite on the host rather than on the subject.
-# The safe direction is the same one `path_dir_provides` fails in: a name that
+# The safe direction is the same one `path_directory_provides` fails in: a name that
 # silently does not arrive fails the command under test rather than greening it.
 #
 # Each call builds its own directory, so a suite whose subject needs a different
@@ -173,12 +173,12 @@ path_shim_without() {
 # under the per-test temp dir, so it is torn down with the test that built it and
 # two tests cannot share one. Sourced outside a test, it refuses.
 path_allowlist() {
-  local dir name resolved d
+  local allowlist_directory name resolved path_entry
   if [ -z "${BATS_TEST_TMPDIR:-}" ]; then
     printf 'path_allowlist: BATS_TEST_TMPDIR is unset; this primitive needs a bats per-test temp dir\n' >&2
     return 1
   fi
-  dir="$(mktemp -d "$BATS_TEST_TMPDIR/path-allowlist-XXXXXX")" || return 1
+  allowlist_directory="$(mktemp -d "$BATS_TEST_TMPDIR/path-allowlist-XXXXXX")" || return 1
   for name in "$@"; do
     resolved="$(command -v "$name" 2>/dev/null)"
     # `command -v` answers a builtin, keyword or function with the bare name
@@ -190,15 +190,15 @@ path_allowlist() {
       /*) ;;
       *)
         resolved=""
-        while IFS= read -r d; do
-          [ -n "$d" ] || continue
-          path_dir_provides "$d" "$name" && { resolved="$d/$name"; break; }
+        while IFS= read -r path_entry; do
+          [ -n "$path_entry" ] || continue
+          path_directory_provides "$path_entry" "$name" && { resolved="$path_entry/$name"; break; }
         done <<<"${PATH//:/$'\n'}"
         ;;
     esac
     if [ -n "$resolved" ]; then
-      ln -sf "$resolved" "$dir/$name"
+      ln -sf "$resolved" "$allowlist_directory/$name"
     fi
   done
-  printf '%s\n' "$dir"
+  printf '%s\n' "$allowlist_directory"
 }

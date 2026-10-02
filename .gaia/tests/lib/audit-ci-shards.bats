@@ -1438,7 +1438,7 @@ seed_seam_tree() {
     i=$((i + 1))
   done
   # local-janitor.bats goes in BOTH trees because hooks-1 pins it by name and
-  # the sharder exits 2 for a shard it cannot resolve: whichever tree HOOKS_DIR
+  # the sharder exits 2 for a shard it cannot resolve: whichever tree HOOKS_DIRECTORY
   # is pointed at has to carry it, and the scripts-seam fixtures below point it
   # at the clean one. Its body is plain in both, so hooks-1 never joins the
   # reported set either way.
@@ -1470,9 +1470,9 @@ seam_tree_scan() {
       return 2
       ;;
   esac
-  HOOKS_DIR="$hooks_directory" SCRIPTS_TESTS_DIR="$scripts_directory" \
-    AUDIT_TESTS_DIR="$root/clean" LIB_DIR="$root/clean" \
-    FORENSICS_DIR="$root/clean" STATUSLINE_DIR="$root/clean" \
+  HOOKS_DIRECTORY="$hooks_directory" SCRIPTS_TESTS_DIRECTORY="$scripts_directory" \
+    AUDIT_TESTS_DIRECTORY="$root/clean" LIBRARY_DIRECTORY="$root/clean" \
+    FORENSICS_DIRECTORY="$root/clean" STATUSLINE_DIRECTORY="$root/clean" \
     "$helper_function" "$sharder" "$root"
 }
 
@@ -1593,7 +1593,7 @@ copy_sharder_without_group() {
 
   legs="$(seam_tree_legs "$root")" || return 1
 
-  # Every seam but HOOKS_DIR points at the clean tree, so no other group holds
+  # Every seam but HOOKS_DIRECTORY points at the clean tree, so no other group holds
   # a needing suite and none of their legs may appear.
   grep -qE '^(audit|lib|misc|scripts-[0-9]+)$' <<<"$legs" && {
     echo "rounding up reached a group with no needing suite:" >&2

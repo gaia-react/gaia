@@ -13,7 +13,7 @@
 #   pass MSG      - prints "PASS  <basename of $0>: MSG" to stdout; returns 0
 #   fail MSG      - prints "FAIL  <basename of $0>: MSG" to stderr; returns 1
 #   log MSG       - prints "  - MSG" to stderr (non-failing diagnostic)
-#   require_cmd CMD [MESSAGE]  - exits 1 if CMD is not on PATH
+#   require_command CMD [MESSAGE]  - exits 1 if CMD is not on PATH
 #   capture_cli_stderr PATH    - declares PATH as this scenario's stderr capture file
 #   run_cli CMD [ARG...]       - runs CMD with stderr captured; stdout passes through
 #   fail_with_stderr MSG       - reports the captured stderr, then fails and exits 1
@@ -39,13 +39,13 @@ log() {
   printf '  - %s\n' "$*" >&2
 }
 
-# require_cmd CMD MESSAGE
+# require_command CMD MESSAGE
 # If CMD not on PATH, prints MESSAGE to stderr and exits 1.
 # Used at the top of scenarios that need git/tar/rsync/pnpm.
-require_cmd() {
-  local cmd="$1"
-  local message="${2:-required command not found: $cmd}"
-  command -v "$cmd" >/dev/null 2>&1 || {
+require_command() {
+  local command_name="$1"
+  local message="${2:-required command not found: $command_name}"
+  command -v "$command_name" >/dev/null 2>&1 || {
     printf '%s\n' "$message" >&2
     exit 1
   }
@@ -63,7 +63,7 @@ require_cmd() {
 # So capture it. These three functions are the whole mechanism:
 #
 #   capture_cli_stderr "$FIXTURES/cli-stderr.txt"   # once, after the scratch dir exists
-#   out="$(cd "$SCAFFOLD" && run_cli "$GAIA" scaffold component Foo)" \
+#   output="$(cd "$SCAFFOLD" && run_cli "$GAIA" scaffold component Foo)" \
 #     || fail_with_stderr "gaia scaffold component exited non-zero on staged tree"
 #
 # The capture path is the caller's, not this library's: every scenario already

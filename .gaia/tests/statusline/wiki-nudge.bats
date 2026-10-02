@@ -5,9 +5,9 @@
 # committed CLI's `wiki state --json` `drift_count`.
 #
 # Two fixture shapes:
-#   - SL: a statusline-only main checkout (no refresher script, so a render
+#   - STATUSLINE_FIXTURE: a statusline-only main checkout (no refresher script, so a render
 #     never fires a background refresh) fed hand-written cache JSON.
-#   - FIX: a real git repository with a bare origin, `wiki/.state.json`, the
+#   - REPOSITORY_FIXTURE: a real git repository with a bare origin, `wiki/.state.json`, the
 #     real refresher and statusline, and a `gaia` wrapper that answers the
 #     refresher's non-wiki subcommands with inert stubs and hands `wiki` to the
 #     real committed bundle, so drift_count and the land are the shipped code.
@@ -22,13 +22,13 @@ setup() {
   command -v jq >/dev/null 2>&1 || skip "jq required"
   command -v node >/dev/null 2>&1 || skip "node required"
 
-  STATUSLINE_SRC="$REPO_ROOT/.gaia/statusline/gaia-statusline.sh"
-  CHECK_UPDATES_SRC="$REPO_ROOT/.gaia/scripts/check-updates.sh"
-  MAIN_ROOT_LIB_SRC="$REPO_ROOT/.gaia/scripts/main-root-lib.sh"
+  STATUSLINE_SOURCE="$REPO_ROOT/.gaia/statusline/gaia-statusline.sh"
+  CHECK_UPDATES_SOURCE="$REPO_ROOT/.gaia/scripts/check-updates.sh"
+  MAIN_ROOT_LIBRARY_SOURCE="$REPO_ROOT/.gaia/scripts/main-root-lib.sh"
   REAL_GAIA="$REPO_ROOT/.gaia/cli/gaia"
   [ -x "$REAL_GAIA" ] || skip "committed gaia bundle missing"
 
-  TMP_HOME=$(mktemp -d -t gaia-wiki-nudge-home-XXXXXX)
+  TEMPORARY_HOME=$(mktemp -d -t gaia-wiki-nudge-home-XXXXXX)
 
   # `Atomics.wait` is how the CLI's merge poll sleeps between `gh pr view`
   # checks; a deferred land would otherwise block for the whole wait budget.
@@ -39,17 +39,17 @@ setup() {
   mkdir -p "$STUB_BIN"
   GH_LOG="$BATS_TEST_TMPDIR/gh.log"
   GH_MERGED_MARKER="$BATS_TEST_TMPDIR/gh-merged"
-  ORIGIN_DIR="$BATS_TEST_TMPDIR/origin.git"
+  ORIGIN_DIRECTORY="$BATS_TEST_TMPDIR/origin.git"
   : > "$GH_LOG"
-  export GH_LOG GH_MERGED_MARKER ORIGIN_DIR
+  export GH_LOG GH_MERGED_MARKER ORIGIN_DIRECTORY
   write_stub_gh "$STUB_BIN/gh"
   export PATH="$STUB_BIN:$PATH"
 }
 
 teardown() {
-  [ -n "${SL:-}" ] && rm -rf "$SL" || true
-  [ -n "${FIX:-}" ] && rm -rf "$FIX" "${FIX}-wt" || true
-  [ -n "${TMP_HOME:-}" ] && rm -rf "$TMP_HOME" || true
+  [ -n "${STATUSLINE_FIXTURE:-}" ] && rm -rf "$STATUSLINE_FIXTURE" || true
+  [ -n "${REPOSITORY_FIXTURE:-}" ] && rm -rf "$REPOSITORY_FIXTURE" "${REPOSITORY_FIXTURE}-wt" || true
+  [ -n "${TEMPORARY_HOME:-}" ] && rm -rf "$TEMPORARY_HOME" || true
   return 0
 }
 
@@ -69,7 +69,7 @@ case "$1" in
       merge)
         [ "${MOCK_GH_MERGE:-merge}" = "defer" ] && exit 0
         branch=$(git rev-parse --abbrev-ref HEAD)
-        git --git-dir="$ORIGIN_DIR" update-ref refs/heads/main "refs/heads/$branch"
+        git --git-dir="$ORIGIN_DIRECTORY" update-ref refs/heads/main "refs/heads/$branch"
         : > "$GH_MERGED_MARKER"
         ;;
       view)
@@ -95,51 +95,51 @@ EOF
 # ---------- statusline-only fixture ----------
 
 make_statusline_fixture() {
-  SL=$(mktemp -d -t gaia-wiki-nudge-sl-XXXXXX)
-  git -C "$SL" init --quiet --initial-branch=main
-  git -C "$SL" config user.email "test@example.com"
-  git -C "$SL" config user.name "Test"
-  git -C "$SL" config commit.gpgsign false
-  mkdir -p "$SL/.gaia/statusline" "$SL/.gaia/local/cache/shared"
-  cp "$STATUSLINE_SRC" "$SL/.gaia/statusline/gaia-statusline.sh"
-  echo "x" > "$SL/README.md"
-  git -C "$SL" add -A
-  git -C "$SL" commit --quiet -m "init"
-  printf '{"completed_at":"2026-01-01T00:00:00Z"}' > "$SL/.gaia/local/setup-state.json"
+  STATUSLINE_FIXTURE=$(mktemp -d -t gaia-wiki-nudge-sl-XXXXXX)
+  git -C "$STATUSLINE_FIXTURE" init --quiet --initial-branch=main
+  git -C "$STATUSLINE_FIXTURE" config user.email "test@example.com"
+  git -C "$STATUSLINE_FIXTURE" config user.name "Test"
+  git -C "$STATUSLINE_FIXTURE" config commit.gpgsign false
+  mkdir -p "$STATUSLINE_FIXTURE/.gaia/statusline" "$STATUSLINE_FIXTURE/.gaia/local/cache/shared"
+  cp "$STATUSLINE_SOURCE" "$STATUSLINE_FIXTURE/.gaia/statusline/gaia-statusline.sh"
+  echo "x" > "$STATUSLINE_FIXTURE/README.md"
+  git -C "$STATUSLINE_FIXTURE" add -A
+  git -C "$STATUSLINE_FIXTURE" commit --quiet -m "init"
+  printf '{"completed_at":"2026-01-01T00:00:00Z"}' > "$STATUSLINE_FIXTURE/.gaia/local/setup-state.json"
 }
 
-# Render <script> with a payload whose current_dir is <dir>. Sets $output,
+# Render <script> with a payload whose current_dir is <directory>. Sets $output,
 # $status, and $plain (ANSI stripped). COLUMNS=400 keeps every nudge Large.
 render_statusline() {
-  local script="$1" dir="$2" cols="${3:-400}" json
-  json=$(jq -n --arg d "$dir" '{workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
-  run env HOME="$TMP_HOME" COLUMNS="$cols" bash -c "printf '%s' '$json' | bash '$script'"
+  local script="$1" directory="$2" columns="${3:-400}" json
+  json=$(jq -n --arg current_directory "$directory" '{workspace: {current_dir: $current_directory}, cwd: $current_directory, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
+  run env HOME="$TEMPORARY_HOME" COLUMNS="$columns" bash -c "printf '%s' '$json' | bash '$script'"
   plain=$(printf '%s' "$output" | sed 's/\x1b\[[0-9;]*m//g')
 }
 
 render_with_cache() {
-  printf '%s' "$1" > "$SL/.gaia/local/cache/shared/update-check.json"
-  render_statusline "$SL/.gaia/statusline/gaia-statusline.sh" "$SL"
+  printf '%s' "$1" > "$STATUSLINE_FIXTURE/.gaia/local/cache/shared/update-check.json"
+  render_statusline "$STATUSLINE_FIXTURE/.gaia/statusline/gaia-statusline.sh" "$STATUSLINE_FIXTURE"
 }
 
 # ---------- repository fixture ----------
 
 # The wrapper answers every subcommand check-updates.sh calls other than
 # `wiki` with an inert stub. `wiki` goes to the real bundle unless
-# MOCK_WIKI_EXIT (exit non-zero) or MOCK_WIKI_OUT (print that text) is set.
+# MOCK_WIKI_EXIT (exit non-zero) or MOCK_WIKI_OUTPUT (print that text) is set.
 write_gaia_wrapper() {
   cat > "$1" <<EOF
 #!/usr/bin/env bash
 case "\$1" in
   update-deps)
-    out=""
+    output_path=""
     while [ "\$#" -gt 0 ]; do
       case "\$1" in
-        --emit-updates) out="\$2"; shift 2 ;;
+        --emit-updates) output_path="\$2"; shift 2 ;;
         *) shift ;;
       esac
     done
-    [ -n "\$out" ] && printf '{"actionable_count":0}' > "\$out"
+    [ -n "\$output_path" ] && printf '{"actionable_count":0}' > "\$output_path"
     exit 0
     ;;
   harden-tally)
@@ -152,8 +152,8 @@ case "\$1" in
     ;;
   wiki)
     [ -n "\${MOCK_WIKI_EXIT:-}" ] && exit 1
-    if [ -n "\${MOCK_WIKI_OUT+set}" ]; then
-      printf '%s' "\$MOCK_WIKI_OUT"
+    if [ -n "\${MOCK_WIKI_OUTPUT+set}" ]; then
+      printf '%s' "\$MOCK_WIKI_OUTPUT"
       exit 0
     fi
     exec "$REAL_GAIA" "\$@"
@@ -166,24 +166,24 @@ EOF
 
 # One non-bookkeeping empty commit.
 add_commit() {
-  git -C "$FIX" commit --allow-empty --quiet -m "$1"
+  git -C "$REPOSITORY_FIXTURE" commit --allow-empty --quiet -m "$1"
 }
 
 # The four bookkeeping subjects the drift count must not include.
 add_bookkeeping_commits() {
   local sha
-  sha=$(git -C "$FIX" rev-parse --short HEAD)
+  sha=$(git -C "$REPOSITORY_FIXTURE" rev-parse --short HEAD)
   add_commit "wiki: sync through $sha"
   add_commit "wiki: maintenance chain through $sha"
   add_commit "wiki: consolidate through $sha"
   add_commit "wiki: lint through $sha"
 }
 
-# Write wiki/.state.json naming <sha> (full) and <at>.
+# Write wiki/.state.json naming <sha> (full) and <evaluated_at>.
 write_state() {
-  mkdir -p "$FIX/wiki"
-  jq -n --arg sha "$1" --arg at "${2:-2026-01-01T00:00:00Z}" \
-    '{last_evaluated_sha: $sha, last_evaluated_at: $at}' > "$FIX/wiki/.state.json"
+  mkdir -p "$REPOSITORY_FIXTURE/wiki"
+  jq -n --arg sha "$1" --arg evaluated_at "${2:-2026-01-01T00:00:00Z}" \
+    '{last_evaluated_sha: $sha, last_evaluated_at: $evaluated_at}' > "$REPOSITORY_FIXTURE/wiki/.state.json"
 }
 
 # make_repo [--no-state]: a committed main checkout with a bare origin, the
@@ -191,70 +191,70 @@ write_state() {
 # resolve-audit-members.sh, and (unless --no-state) a state file naming the
 # initial commit. Leaves HEAD on main with a clean tree.
 make_repo() {
-  FIX=$(mktemp -d -t gaia-wiki-nudge-fix-XXXXXX)
-  git init --quiet --bare "$ORIGIN_DIR"
-  git -C "$FIX" init --quiet --initial-branch=main
-  git -C "$FIX" config user.email "test@example.com"
-  git -C "$FIX" config user.name "Test"
-  git -C "$FIX" config commit.gpgsign false
-  printf '.gaia/local/\n.claude/commands/\n' >> "$FIX/.git/info/exclude"
-  mkdir -p "$FIX/.gaia/scripts" "$FIX/.gaia/statusline" "$FIX/.gaia/cli" "$FIX/.gaia/local/cache/shared" "$FIX/wiki"
-  cp "$CHECK_UPDATES_SRC" "$FIX/.gaia/scripts/check-updates.sh"
-  cp "$MAIN_ROOT_LIB_SRC" "$FIX/.gaia/scripts/main-root-lib.sh"
-  cp "$STATUSLINE_SRC" "$FIX/.gaia/statusline/gaia-statusline.sh"
-  printf '#!/usr/bin/env bash\nexit 0\n' > "$FIX/.gaia/scripts/resolve-audit-members.sh"
+  REPOSITORY_FIXTURE=$(mktemp -d -t gaia-wiki-nudge-fix-XXXXXX)
+  git init --quiet --bare "$ORIGIN_DIRECTORY"
+  git -C "$REPOSITORY_FIXTURE" init --quiet --initial-branch=main
+  git -C "$REPOSITORY_FIXTURE" config user.email "test@example.com"
+  git -C "$REPOSITORY_FIXTURE" config user.name "Test"
+  git -C "$REPOSITORY_FIXTURE" config commit.gpgsign false
+  printf '.gaia/local/\n.claude/commands/\n' >> "$REPOSITORY_FIXTURE/.git/info/exclude"
+  mkdir -p "$REPOSITORY_FIXTURE/.gaia/scripts" "$REPOSITORY_FIXTURE/.gaia/statusline" "$REPOSITORY_FIXTURE/.gaia/cli" "$REPOSITORY_FIXTURE/.gaia/local/cache/shared" "$REPOSITORY_FIXTURE/wiki"
+  cp "$CHECK_UPDATES_SOURCE" "$REPOSITORY_FIXTURE/.gaia/scripts/check-updates.sh"
+  cp "$MAIN_ROOT_LIBRARY_SOURCE" "$REPOSITORY_FIXTURE/.gaia/scripts/main-root-lib.sh"
+  cp "$STATUSLINE_SOURCE" "$REPOSITORY_FIXTURE/.gaia/statusline/gaia-statusline.sh"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$REPOSITORY_FIXTURE/.gaia/scripts/resolve-audit-members.sh"
   # Not executable on purpose: the statusline fires its refresher only when
   # `-x`, and a render-spawned background run would race the explicit
   # `refresh` calls that sequence each test (the tests run it via `bash`).
-  chmod -x "$FIX/.gaia/scripts/check-updates.sh"
-  chmod +x "$FIX/.gaia/scripts/resolve-audit-members.sh"
-  write_gaia_wrapper "$FIX/.gaia/cli/gaia"
-  printf '1.0.0\n' > "$FIX/.gaia/VERSION"
-  printf 'seed\n' > "$FIX/wiki/index.md"
-  git -C "$FIX" add -A
-  git -C "$FIX" commit --quiet -m "chore: initial"
+  chmod -x "$REPOSITORY_FIXTURE/.gaia/scripts/check-updates.sh"
+  chmod +x "$REPOSITORY_FIXTURE/.gaia/scripts/resolve-audit-members.sh"
+  write_gaia_wrapper "$REPOSITORY_FIXTURE/.gaia/cli/gaia"
+  printf '1.0.0\n' > "$REPOSITORY_FIXTURE/.gaia/VERSION"
+  printf 'seed\n' > "$REPOSITORY_FIXTURE/wiki/index.md"
+  git -C "$REPOSITORY_FIXTURE" add -A
+  git -C "$REPOSITORY_FIXTURE" commit --quiet -m "chore: initial"
   if [ "${1:-}" != "--no-state" ]; then
-    write_state "$(git -C "$FIX" rev-parse HEAD)"
-    git -C "$FIX" add wiki/.state.json
-    git -C "$FIX" commit --quiet -m "wiki: sync through $(git -C "$FIX" rev-parse --short HEAD)"
+    write_state "$(git -C "$REPOSITORY_FIXTURE" rev-parse HEAD)"
+    git -C "$REPOSITORY_FIXTURE" add wiki/.state.json
+    git -C "$REPOSITORY_FIXTURE" commit --quiet -m "wiki: sync through $(git -C "$REPOSITORY_FIXTURE" rev-parse --short HEAD)"
   fi
-  git -C "$FIX" remote add origin "$ORIGIN_DIR"
-  git -C "$FIX" push --quiet origin main
-  printf '{"completed_at":"2026-01-01T00:00:00Z"}' > "$FIX/.gaia/local/setup-state.json"
-  FIX=$(cd "$FIX" && pwd -P)
+  git -C "$REPOSITORY_FIXTURE" remote add origin "$ORIGIN_DIRECTORY"
+  git -C "$REPOSITORY_FIXTURE" push --quiet origin main
+  printf '{"completed_at":"2026-01-01T00:00:00Z"}' > "$REPOSITORY_FIXTURE/.gaia/local/setup-state.json"
+  REPOSITORY_FIXTURE=$(cd "$REPOSITORY_FIXTURE" && pwd -P)
 }
 
-# add_drift <n>: n non-bookkeeping commits, with the four bookkeeping subjects
+# add_drift <commit_count>: commit_count non-bookkeeping commits, with the four bookkeeping subjects
 # interleaved so a count that failed to filter them would overshoot.
 add_drift() {
-  local n="$1" i
-  for ((i = 1; i <= n; i++)); do
+  local commit_count="$1" i
+  for ((i = 1; i <= commit_count; i++)); do
     add_commit "feat: change $i"
     [ "$i" -eq 3 ] && add_bookkeeping_commits
   done
   return 0
 }
 
-# Run the refresher in <dir> (default FIX) against a stale cache.
+# Run the refresher in <directory> (default REPOSITORY_FIXTURE) against a stale cache.
 refresh() {
-  local dir="${1:-$FIX}" cache="$FIX/.gaia/local/cache/shared/update-check.json"
+  local directory="${1:-$REPOSITORY_FIXTURE}" cache="$REPOSITORY_FIXTURE/.gaia/local/cache/shared/update-check.json"
   if [ -f "$cache" ]; then
     jq '.checkedAt = 0' "$cache" > "$cache.tmp" && mv "$cache.tmp" "$cache"
   fi
-  run env HOME="$TMP_HOME" bash "$dir/.gaia/scripts/check-updates.sh"
+  run env HOME="$TEMPORARY_HOME" bash "$directory/.gaia/scripts/check-updates.sh"
   [ "$status" -eq 0 ]
 }
 
 cached_wiki_count() {
-  jq -r '.wikiDriftCount' "$FIX/.gaia/local/cache/shared/update-check.json"
+  jq -r '.wikiDriftCount' "$REPOSITORY_FIXTURE/.gaia/local/cache/shared/update-check.json"
 }
 
 cli_drift_count() {
-  (cd "${1:-$FIX}" && "$REAL_GAIA" wiki state --json | jq -r '.drift_count')
+  (cd "${1:-$REPOSITORY_FIXTURE}" && "$REAL_GAIA" wiki state --json | jq -r '.drift_count')
 }
 
 render_fix() {
-  render_statusline "$FIX/.gaia/statusline/gaia-statusline.sh" "${1:-$FIX}"
+  render_statusline "$REPOSITORY_FIXTURE/.gaia/statusline/gaia-statusline.sh" "${1:-$REPOSITORY_FIXTURE}"
 }
 
 # Fails (return 1) when the render names the wiki nudge.
@@ -272,26 +272,26 @@ assert_wiki_nudge() {
 # 11-column left side, 24 columns leaves the lone nudge room for `🧠<count>`
 # and nothing wider.
 render_fix_narrow() {
-  render_statusline "$FIX/.gaia/statusline/gaia-statusline.sh" "$FIX" 24
+  render_statusline "$REPOSITORY_FIXTURE/.gaia/statusline/gaia-statusline.sh" "$REPOSITORY_FIXTURE" 24
 }
 
 assert_wiki_icon() {
   grep -qF -- "🧠$1" <<<"$plain"
 }
 
-# Run the real CLI's `wiki sync land` in <dir>, with sleeps disabled.
+# Run the real CLI's `wiki sync land` in <directory>, with sleeps disabled.
 run_land() {
-  local dir="$1"
+  local directory="$1"
   shift
-  run env HOME="$TMP_HOME" NODE_OPTIONS="--require $NO_SLEEP" \
-    bash -c "cd '$dir' && '$REAL_GAIA' wiki sync land $*"
+  run env HOME="$TEMPORARY_HOME" NODE_OPTIONS="--require $NO_SLEEP" \
+    bash -c "cd '$directory' && '$REAL_GAIA' wiki sync land $*"
 }
 
 # Stage the change a sync makes: state advanced to the current HEAD.
 stage_state_advance() {
-  local dir="$1"
-  jq -n --arg sha "$(git -C "$dir" rev-parse HEAD)" \
-    '{last_evaluated_sha: $sha, last_evaluated_at: "2026-02-01T00:00:00Z"}' > "$dir/wiki/.state.json"
+  local directory="$1"
+  jq -n --arg sha "$(git -C "$directory" rev-parse HEAD)" \
+    '{last_evaluated_sha: $sha, last_evaluated_at: "2026-02-01T00:00:00Z"}' > "$directory/wiki/.state.json"
 }
 
 # ---------- UAT-005: the count and the threshold ----------
@@ -299,7 +299,7 @@ stage_state_advance() {
 @test "19 non-bookkeeping commits behind: wikiDriftCount is 19 and no nudge renders" {
   make_repo
   add_drift 19
-  [ "$(git -C "$FIX" log --format=%s | grep -c '^wiki: ')" -ge 5 ]
+  [ "$(git -C "$REPOSITORY_FIXTURE" log --format=%s | grep -c '^wiki: ')" -ge 5 ]
   refresh
   [ "$(cached_wiki_count)" = "19" ]
   render_fix
@@ -321,7 +321,7 @@ stage_state_advance() {
 @test "the cached count is a number even when the nudge is not showing" {
   make_repo
   refresh
-  jq -e '.wikiDriftCount | type == "number"' "$FIX/.gaia/local/cache/shared/update-check.json" >/dev/null
+  jq -e '.wikiDriftCount | type == "number"' "$REPOSITORY_FIXTURE/.gaia/local/cache/shared/update-check.json" >/dev/null
   [ "$(cached_wiki_count)" = "0" ]
 }
 
@@ -350,14 +350,14 @@ stage_state_advance() {
 
 @test "a missing cache file and an unavailable jq each render no segment" {
   make_statusline_fixture
-  rm -f "$SL/.gaia/local/cache/shared/update-check.json"
-  render_statusline "$SL/.gaia/statusline/gaia-statusline.sh" "$SL"
+  rm -f "$STATUSLINE_FIXTURE/.gaia/local/cache/shared/update-check.json"
+  render_statusline "$STATUSLINE_FIXTURE/.gaia/statusline/gaia-statusline.sh" "$STATUSLINE_FIXTURE"
   [ "$status" -eq 0 ]
   assert_no_wiki_nudge || return 1
 
-  printf '{"wikiDriftCount":40}' > "$SL/.gaia/local/cache/shared/update-check.json"
-  json=$(jq -n --arg d "$SL" '{workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
-  run env HOME="$TMP_HOME" PATH="$(path_shim_without jq)" bash -c "printf '%s' '$json' | bash '$SL/.gaia/statusline/gaia-statusline.sh'"
+  printf '{"wikiDriftCount":40}' > "$STATUSLINE_FIXTURE/.gaia/local/cache/shared/update-check.json"
+  json=$(jq -n --arg current_directory "$STATUSLINE_FIXTURE" '{workspace: {current_dir: $current_directory}, cwd: $current_directory, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
+  run env HOME="$TEMPORARY_HOME" PATH="$(path_shim_without jq)" bash -c "printf '%s' '$json' | bash '$STATUSLINE_FIXTURE/.gaia/statusline/gaia-statusline.sh'"
   [ "$status" -eq 0 ]
   grep -qF -- "gaia-wiki" <<<"$output" && return 1
   true
@@ -381,20 +381,20 @@ stage_state_advance() {
 }
 
 @test "the threshold is declared once as a named constant" {
-  [ "$(grep -c 'WIKI_NUDGE_THRESHOLD=' "$STATUSLINE_SRC")" -eq 1 ]
-  grep -qE '^ *WIKI_NUDGE_THRESHOLD=20$' "$STATUSLINE_SRC"
-  grep -qE 'RESIDUE_NUDGE_THRESHOLD=' "$STATUSLINE_SRC"
+  [ "$(grep -c 'WIKI_NUDGE_THRESHOLD=' "$STATUSLINE_SOURCE")" -eq 1 ]
+  grep -qE '^ *WIKI_NUDGE_THRESHOLD=20$' "$STATUSLINE_SOURCE"
+  grep -qE 'RESIDUE_NUDGE_THRESHOLD=' "$STATUSLINE_SOURCE"
 }
 
 @test "a statusline with the comparison weakened to -gt fails the 20-commit case" {
   make_statusline_fixture
-  mutant="$SL/.gaia/statusline/gaia-statusline-mutant.sh"
+  mutant="$STATUSLINE_FIXTURE/.gaia/statusline/gaia-statusline-mutant.sh"
   # shellcheck disable=SC2016  # the pattern names a literal `$`, not an expansion
-  sed 's/-ge "$WIKI_NUDGE_THRESHOLD"/-gt "$WIKI_NUDGE_THRESHOLD"/' "$STATUSLINE_SRC" > "$mutant"
-  cmp -s "$STATUSLINE_SRC" "$mutant" && return 1
+  sed 's/-ge "$WIKI_NUDGE_THRESHOLD"/-gt "$WIKI_NUDGE_THRESHOLD"/' "$STATUSLINE_SOURCE" > "$mutant"
+  cmp -s "$STATUSLINE_SOURCE" "$mutant" && return 1
 
-  printf '%s' '{"wikiDriftCount":20}' > "$SL/.gaia/local/cache/shared/update-check.json"
-  render_statusline "$mutant" "$SL"
+  printf '%s' '{"wikiDriftCount":20}' > "$STATUSLINE_FIXTURE/.gaia/local/cache/shared/update-check.json"
+  render_statusline "$mutant" "$STATUSLINE_FIXTURE"
   [ "$status" -eq 0 ]
   # The real script's 20-commit assertion is `assert_wiki_nudge 20`; the mutant
   # must not satisfy it.
@@ -412,8 +412,8 @@ stage_state_advance() {
   render_fix
   assert_wiki_nudge 25
 
-  git -C "$FIX" worktree add --quiet "${FIX}-wt" -b feature
-  render_fix "${FIX}-wt"
+  git -C "$REPOSITORY_FIXTURE" worktree add --quiet "${REPOSITORY_FIXTURE}-wt" -b feature
+  render_fix "${REPOSITORY_FIXTURE}-wt"
   [ "$status" -eq 0 ]
   assert_no_wiki_nudge
 }
@@ -425,7 +425,7 @@ stage_state_advance() {
   render_fix
   assert_wiki_nudge 25
 
-  printf '{}' > "$FIX/.gaia/local/setup-state.json"
+  printf '{}' > "$REPOSITORY_FIXTURE/.gaia/local/setup-state.json"
   render_fix
   [ "$status" -eq 0 ]
   grep -qF -- "Run /setup-gaia" <<<"$plain"
@@ -439,8 +439,8 @@ stage_state_advance() {
   render_fix
   assert_wiki_nudge 25
 
-  mkdir -p "$FIX/.claude/commands"
-  : > "$FIX/.claude/commands/gaia-init.md"
+  mkdir -p "$REPOSITORY_FIXTURE/.claude/commands"
+  : > "$REPOSITORY_FIXTURE/.claude/commands/gaia-init.md"
   render_fix
   [ "$status" -eq 0 ]
   assert_no_wiki_nudge
@@ -455,9 +455,9 @@ stage_state_advance() {
   render_fix
   assert_wiki_nudge 20
 
-  write_state "$(git -C "$FIX" rev-parse HEAD)"
-  git -C "$FIX" add wiki/.state.json
-  git -C "$FIX" commit --quiet -m "wiki: sync through $(git -C "$FIX" rev-parse --short HEAD)"
+  write_state "$(git -C "$REPOSITORY_FIXTURE" rev-parse HEAD)"
+  git -C "$REPOSITORY_FIXTURE" add wiki/.state.json
+  git -C "$REPOSITORY_FIXTURE" commit --quiet -m "wiki: sync through $(git -C "$REPOSITORY_FIXTURE" rev-parse --short HEAD)"
   refresh
   [ "$(cached_wiki_count)" -lt 20 ]
   render_fix
@@ -485,53 +485,53 @@ seed_nudge_and_stage_sync() {
   refresh
   render_fix
   assert_wiki_nudge 20
-  stage_state_advance "$FIX"
+  stage_state_advance "$REPOSITORY_FIXTURE"
 }
 
 assert_land_cleared_nudge() {
-  local dir="$1" landed_sha="$2"
-  [ "$(jq -r '.checkedAt' "$FIX/.gaia/local/cache/shared/update-check.json")" = "0" ]
+  local directory="$1" landed_sha="$2"
+  [ "$(jq -r '.checkedAt' "$REPOSITORY_FIXTURE/.gaia/local/cache/shared/update-check.json")" = "0" ]
   refresh
   [ "$(cached_wiki_count)" -lt 20 ]
   render_fix
   assert_no_wiki_nudge || return 1
   render_fix_narrow
   assert_no_wiki_nudge || return 1
-  [ "$(jq -r '.last_evaluated_sha' "$dir/wiki/.state.json")" = "$landed_sha" ]
+  [ "$(jq -r '.last_evaluated_sha' "$directory/wiki/.state.json")" = "$landed_sha" ]
 }
 
 @test "a real land on main clears the nudge and fast-forwards the main checkout's state" {
   make_repo
   seed_nudge_and_stage_sync
-  landed_sha=$(git -C "$FIX" rev-parse HEAD)
-  run_land "$FIX" --branch-aware
+  landed_sha=$(git -C "$REPOSITORY_FIXTURE" rev-parse HEAD)
+  run_land "$REPOSITORY_FIXTURE" --branch-aware
   [ "$status" -eq 0 ]
   grep -qF -- "merged PR" <<<"$output"
   grep -qF -- "statuses/" "$GH_LOG"
-  git -C "$FIX" log -1 --format=%s | grep -q '^wiki: sync through '
-  assert_land_cleared_nudge "$FIX" "$landed_sha"
+  git -C "$REPOSITORY_FIXTURE" log -1 --format=%s | grep -q '^wiki: sync through '
+  assert_land_cleared_nudge "$REPOSITORY_FIXTURE" "$landed_sha"
 }
 
 @test "a real land on a feature branch clears the nudge" {
   make_repo
-  git -C "$FIX" checkout --quiet -b feature
+  git -C "$REPOSITORY_FIXTURE" checkout --quiet -b feature
   seed_nudge_and_stage_sync
-  landed_sha=$(git -C "$FIX" rev-parse HEAD)
-  run_land "$FIX"
+  landed_sha=$(git -C "$REPOSITORY_FIXTURE" rev-parse HEAD)
+  run_land "$REPOSITORY_FIXTURE"
   [ "$status" -eq 0 ]
   grep -qF -- "in-place commit" <<<"$output"
-  git -C "$FIX" log -1 --format=%s | grep -q '^wiki: sync through '
-  assert_land_cleared_nudge "$FIX" "$landed_sha"
+  git -C "$REPOSITORY_FIXTURE" log -1 --format=%s | grep -q '^wiki: sync through '
+  assert_land_cleared_nudge "$REPOSITORY_FIXTURE" "$landed_sha"
 }
 
 @test "a deferred land leaves the nudge showing after the refresher runs" {
   make_repo
   seed_nudge_and_stage_sync
-  run env MOCK_GH_MERGE=defer HOME="$TMP_HOME" NODE_OPTIONS="--require $NO_SLEEP" \
-    bash -c "cd '$FIX' && '$REAL_GAIA' wiki sync land --branch-aware"
+  run env MOCK_GH_MERGE=defer HOME="$TEMPORARY_HOME" NODE_OPTIONS="--require $NO_SLEEP" \
+    bash -c "cd '$REPOSITORY_FIXTURE' && '$REAL_GAIA' wiki sync land --branch-aware"
   [ "$status" -eq 0 ]
   grep -qF -- "auto-merge queued" <<<"$output"
-  [ "$(jq -r '.checkedAt' "$FIX/.gaia/local/cache/shared/update-check.json")" = "0" ]
+  [ "$(jq -r '.checkedAt' "$REPOSITORY_FIXTURE/.gaia/local/cache/shared/update-check.json")" = "0" ]
   refresh
   [ "$(cached_wiki_count)" = "20" ]
   render_fix
@@ -546,26 +546,26 @@ assert_land_cleared_nudge() {
 @test "a real land from a linked worktree invalidates the shared cache and clears once the main checkout catches up" {
   make_repo
   add_drift 20
-  git -C "$FIX" checkout --quiet -b holding
-  git -C "$FIX" worktree add --quiet "${FIX}-wt" main
+  git -C "$REPOSITORY_FIXTURE" checkout --quiet -b holding
+  git -C "$REPOSITORY_FIXTURE" worktree add --quiet "${REPOSITORY_FIXTURE}-wt" main
   refresh
   render_fix
   assert_wiki_nudge 20
 
-  stage_state_advance "${FIX}-wt"
-  landed_sha=$(git -C "${FIX}-wt" rev-parse HEAD)
-  run_land "${FIX}-wt" --branch-aware
+  stage_state_advance "${REPOSITORY_FIXTURE}-wt"
+  landed_sha=$(git -C "${REPOSITORY_FIXTURE}-wt" rev-parse HEAD)
+  run_land "${REPOSITORY_FIXTURE}-wt" --branch-aware
   [ "$status" -eq 0 ]
-  [ "$(jq -r '.checkedAt' "$FIX/.gaia/local/cache/shared/update-check.json")" = "0" ]
-  [ "$(jq -r '.last_evaluated_sha' "${FIX}-wt/wiki/.state.json")" = "$landed_sha" ]
+  [ "$(jq -r '.checkedAt' "$REPOSITORY_FIXTURE/.gaia/local/cache/shared/update-check.json")" = "0" ]
+  [ "$(jq -r '.last_evaluated_sha' "${REPOSITORY_FIXTURE}-wt/wiki/.state.json")" = "$landed_sha" ]
   # The main checkout's own state file was not the one the land advanced.
-  [ "$(jq -r '.last_evaluated_sha' "$FIX/wiki/.state.json")" != "$landed_sha" ]
+  [ "$(jq -r '.last_evaluated_sha' "$REPOSITORY_FIXTURE/wiki/.state.json")" != "$landed_sha" ]
 
   refresh
   [ "$(cached_wiki_count)" = "20" ]
 
-  git -C "$FIX" merge --quiet --ff-only main
-  [ "$(jq -r '.last_evaluated_sha' "$FIX/wiki/.state.json")" = "$landed_sha" ]
+  git -C "$REPOSITORY_FIXTURE" merge --quiet --ff-only main
+  [ "$(jq -r '.last_evaluated_sha' "$REPOSITORY_FIXTURE/wiki/.state.json")" = "$landed_sha" ]
   refresh
   [ "$(cached_wiki_count)" -lt 20 ]
   render_fix
@@ -580,30 +580,30 @@ assert_land_cleared_nudge() {
 build_trailing_main_and_current_worktree() {
   make_repo
   add_drift 25
-  git -C "$FIX" worktree add --quiet "${FIX}-wt" -b feature
-  stage_state_advance "${FIX}-wt"
-  git -C "${FIX}-wt" add wiki/.state.json
-  git -C "${FIX}-wt" commit --quiet -m "wiki: sync through $(git -C "${FIX}-wt" rev-parse --short HEAD)"
-  [ "$(cli_drift_count "${FIX}-wt")" = "0" ]
-  [ "$(cli_drift_count "$FIX")" = "25" ]
+  git -C "$REPOSITORY_FIXTURE" worktree add --quiet "${REPOSITORY_FIXTURE}-wt" -b feature
+  stage_state_advance "${REPOSITORY_FIXTURE}-wt"
+  git -C "${REPOSITORY_FIXTURE}-wt" add wiki/.state.json
+  git -C "${REPOSITORY_FIXTURE}-wt" commit --quiet -m "wiki: sync through $(git -C "${REPOSITORY_FIXTURE}-wt" rev-parse --short HEAD)"
+  [ "$(cli_drift_count "${REPOSITORY_FIXTURE}-wt")" = "0" ]
+  [ "$(cli_drift_count "$REPOSITORY_FIXTURE")" = "25" ]
 }
 
 @test "a refresher run from a linked worktree reports the main checkout's drift" {
   build_trailing_main_and_current_worktree
-  run env HOME="$TMP_HOME" bash "${FIX}-wt/.gaia/scripts/check-updates.sh"
+  run env HOME="$TEMPORARY_HOME" bash "${REPOSITORY_FIXTURE}-wt/.gaia/scripts/check-updates.sh"
   [ "$status" -eq 0 ]
   [ "$(cached_wiki_count)" = "25" ]
 }
 
 @test "a refresher reading wiki state from PROJECT_ROOT fails the linked-worktree case" {
   build_trailing_main_and_current_worktree
-  mutant="${FIX}-wt/.gaia/scripts/check-updates-mutant.sh"
+  mutant="${REPOSITORY_FIXTURE}-wt/.gaia/scripts/check-updates-mutant.sh"
   # shellcheck disable=SC2016  # the pattern names a literal `$`, not an expansion
   sed 's/cd "$STATE_ROOT" \&\& "$GAIA_BIN" wiki state/cd "$PROJECT_ROOT" \&\& "$GAIA_BIN" wiki state/' \
-    "$CHECK_UPDATES_SRC" > "$mutant"
-  cmp -s "$CHECK_UPDATES_SRC" "$mutant" && return 1
+    "$CHECK_UPDATES_SOURCE" > "$mutant"
+  cmp -s "$CHECK_UPDATES_SOURCE" "$mutant" && return 1
 
-  run env HOME="$TMP_HOME" bash "$mutant"
+  run env HOME="$TEMPORARY_HOME" bash "$mutant"
   [ "$status" -eq 0 ]
   [ "$(cached_wiki_count)" != "25" ]
 }
@@ -613,7 +613,7 @@ build_trailing_main_and_current_worktree() {
 assert_count_matches_cli() {
   local expected="$1"
   refresh
-  jq -e 'has("wikiDriftCount")' "$FIX/.gaia/local/cache/shared/update-check.json" >/dev/null
+  jq -e 'has("wikiDriftCount")' "$REPOSITORY_FIXTURE/.gaia/local/cache/shared/update-check.json" >/dev/null
   [ "$(cached_wiki_count)" = "$(cli_drift_count)" ]
   [ "$(cached_wiki_count)" = "$expected" ]
 }
@@ -630,8 +630,8 @@ assert_count_matches_cli() {
 @test "an all-zero last_evaluated_sha counts the whole history, below the threshold here" {
   make_repo --no-state
   write_state 0000000000000000000000000000000000000000
-  git -C "$FIX" add wiki/.state.json
-  git -C "$FIX" commit --quiet -m "wiki: sync through 0000000"
+  git -C "$REPOSITORY_FIXTURE" add wiki/.state.json
+  git -C "$REPOSITORY_FIXTURE" commit --quiet -m "wiki: sync through 0000000"
   add_drift 5
   assert_count_matches_cli 6
   render_fix
@@ -640,9 +640,9 @@ assert_count_matches_cli() {
 
 @test "a state file with no last_evaluated_sha counts the whole history" {
   make_repo --no-state
-  printf '{}\n' > "$FIX/wiki/.state.json"
-  git -C "$FIX" add wiki/.state.json
-  git -C "$FIX" commit --quiet -m "wiki: lint through 0000000"
+  printf '{}\n' > "$REPOSITORY_FIXTURE/wiki/.state.json"
+  git -C "$REPOSITORY_FIXTURE" add wiki/.state.json
+  git -C "$REPOSITORY_FIXTURE" commit --quiet -m "wiki: lint through 0000000"
   add_drift 24
   assert_count_matches_cli 25
   render_fix
@@ -656,9 +656,9 @@ assert_count_matches_cli() {
   # is the last January commit and exactly the later commits count.
   GIT_AUTHOR_DATE="2026-01-15T00:00:00Z" GIT_COMMITTER_DATE="2026-01-15T00:00:00Z" add_commit "feat: early"
   write_state aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 2026-02-01T00:00:00Z
-  git -C "$FIX" add wiki/.state.json
+  git -C "$REPOSITORY_FIXTURE" add wiki/.state.json
   GIT_AUTHOR_DATE="2026-01-16T00:00:00Z" GIT_COMMITTER_DATE="2026-01-16T00:00:00Z" \
-    git -C "$FIX" commit --quiet -m "wiki: sync through aaaaaaa"
+    git -C "$REPOSITORY_FIXTURE" commit --quiet -m "wiki: sync through aaaaaaa"
   for i in $(seq 1 20); do
     GIT_AUTHOR_DATE="2026-03-01T00:00:00Z" GIT_COMMITTER_DATE="2026-03-01T00:00:00Z" add_commit "feat: late $i"
   done
@@ -671,17 +671,17 @@ assert_count_matches_cli() {
 
 @test "a failing wiki state call keeps the previous cached count" {
   make_repo
-  printf '{"checkedAt":0,"wikiDriftCount":30}' > "$FIX/.gaia/local/cache/shared/update-check.json"
-  run env MOCK_WIKI_EXIT=1 HOME="$TMP_HOME" bash "$FIX/.gaia/scripts/check-updates.sh"
+  printf '{"checkedAt":0,"wikiDriftCount":30}' > "$REPOSITORY_FIXTURE/.gaia/local/cache/shared/update-check.json"
+  run env MOCK_WIKI_EXIT=1 HOME="$TEMPORARY_HOME" bash "$REPOSITORY_FIXTURE/.gaia/scripts/check-updates.sh"
   [ "$status" -eq 0 ]
   [ "$(cached_wiki_count)" = "30" ]
 }
 
 @test "empty output, unparseable output, and a non-integer drift_count each keep the previous count" {
   make_repo
-  for out in '' 'not json' '{"drift_count":"many"}' '{"drift_count":-4}' '{"drift_count":null}' '{}'; do
-    printf '{"checkedAt":0,"wikiDriftCount":30}' > "$FIX/.gaia/local/cache/shared/update-check.json"
-    run env MOCK_WIKI_OUT="$out" HOME="$TMP_HOME" bash "$FIX/.gaia/scripts/check-updates.sh"
+  for wiki_state_output in '' 'not json' '{"drift_count":"many"}' '{"drift_count":-4}' '{"drift_count":null}' '{}'; do
+    printf '{"checkedAt":0,"wikiDriftCount":30}' > "$REPOSITORY_FIXTURE/.gaia/local/cache/shared/update-check.json"
+    run env MOCK_WIKI_OUTPUT="$wiki_state_output" HOME="$TEMPORARY_HOME" bash "$REPOSITORY_FIXTURE/.gaia/scripts/check-updates.sh"
     [ "$status" -eq 0 ]
     [ "$(cached_wiki_count)" = "30" ] || return 1
   done
@@ -690,33 +690,33 @@ assert_count_matches_cli() {
 
 @test "an absent gaia binary keeps the previous cached count" {
   make_repo
-  printf '{"checkedAt":0,"wikiDriftCount":30}' > "$FIX/.gaia/local/cache/shared/update-check.json"
-  rm -f "$FIX/.gaia/cli/gaia"
-  run env HOME="$TMP_HOME" bash "$FIX/.gaia/scripts/check-updates.sh"
+  printf '{"checkedAt":0,"wikiDriftCount":30}' > "$REPOSITORY_FIXTURE/.gaia/local/cache/shared/update-check.json"
+  rm -f "$REPOSITORY_FIXTURE/.gaia/cli/gaia"
+  run env HOME="$TEMPORARY_HOME" bash "$REPOSITORY_FIXTURE/.gaia/scripts/check-updates.sh"
   [ "$status" -eq 0 ]
   [ "$(cached_wiki_count)" = "30" ]
 }
 
 @test "with no prior cache and a failing binary, 0 is written rather than omitted" {
   make_repo
-  [ ! -f "$FIX/.gaia/local/cache/shared/update-check.json" ]
-  run env MOCK_WIKI_EXIT=1 HOME="$TMP_HOME" bash "$FIX/.gaia/scripts/check-updates.sh"
+  [ ! -f "$REPOSITORY_FIXTURE/.gaia/local/cache/shared/update-check.json" ]
+  run env MOCK_WIKI_EXIT=1 HOME="$TEMPORARY_HOME" bash "$REPOSITORY_FIXTURE/.gaia/scripts/check-updates.sh"
   [ "$status" -eq 0 ]
-  jq -e 'has("wikiDriftCount")' "$FIX/.gaia/local/cache/shared/update-check.json" >/dev/null
+  jq -e 'has("wikiDriftCount")' "$REPOSITORY_FIXTURE/.gaia/local/cache/shared/update-check.json" >/dev/null
   [ "$(cached_wiki_count)" = "0" ]
 }
 
 @test "a non-numeric previous cached value is read as 0, never carried" {
   make_repo
-  printf '{"checkedAt":0,"wikiDriftCount":"abc"}' > "$FIX/.gaia/local/cache/shared/update-check.json"
-  run env MOCK_WIKI_EXIT=1 HOME="$TMP_HOME" bash "$FIX/.gaia/scripts/check-updates.sh"
+  printf '{"checkedAt":0,"wikiDriftCount":"abc"}' > "$REPOSITORY_FIXTURE/.gaia/local/cache/shared/update-check.json"
+  run env MOCK_WIKI_EXIT=1 HOME="$TEMPORARY_HOME" bash "$REPOSITORY_FIXTURE/.gaia/scripts/check-updates.sh"
   [ "$status" -eq 0 ]
   [ "$(cached_wiki_count)" = "0" ]
 }
 
 @test "the no-jq printf fallback branch writes a wikiDriftCount key" {
   make_repo
-  run env PATH="$(path_shim_without jq)" HOME="$TMP_HOME" bash "$FIX/.gaia/scripts/check-updates.sh"
+  run env PATH="$(path_shim_without jq)" HOME="$TEMPORARY_HOME" bash "$REPOSITORY_FIXTURE/.gaia/scripts/check-updates.sh"
   [ "$status" -eq 0 ]
-  grep -qE '"wikiDriftCount":[0-9]+' "$FIX/.gaia/local/cache/shared/update-check.json"
+  grep -qE '"wikiDriftCount":[0-9]+' "$REPOSITORY_FIXTURE/.gaia/local/cache/shared/update-check.json"
 }

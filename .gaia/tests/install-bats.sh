@@ -109,9 +109,9 @@ if [ ! -f "$archive" ]; then
   exit 1
 fi
 
-tmpdir="$(mktemp -d)"
+temporary_directory="$(mktemp -d)"
 cleanup() {
-  rm -rf "$tmpdir"
+  rm -rf "$temporary_directory"
 }
 trap cleanup EXIT
 
@@ -121,8 +121,8 @@ else
   printf '%s  %s\n' "$BATS_SHA256" "$archive" | shasum -a 256 -c -
 fi
 
-tar -xzf "$archive" -C "$tmpdir"
-extracted="$tmpdir/bats-core-${BATS_VERSION}"
+tar -xzf "$archive" -C "$temporary_directory"
+extracted="$temporary_directory/bats-core-${BATS_VERSION}"
 
 if [ "$(id -u)" -eq 0 ]; then
   "$extracted/install.sh" /usr/local

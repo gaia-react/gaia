@@ -33,9 +33,9 @@ if ! command -v bats >/dev/null 2>&1; then
   fi
 fi
 
-for f in "$HERE"/*.bats; do
-  echo "--> $(basename "$f")"
-  bats "$f"
+for bats_file in "$HERE"/*.bats; do
+  echo "--> $(basename "$bats_file")"
+  bats "$bats_file"
 done
 
 echo "==> all sandbox conformance tests passed"

@@ -50,19 +50,19 @@
 # caller cwd. This is the script's INSTALL path, which is not necessarily the
 # session's checkout; the state paths below are anchored on the resolved main
 # root instead.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-GAIA_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-PROJECT_ROOT="$(cd "$GAIA_DIR/.." && pwd)"
+SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GAIA_DIRECTORY="$(cd "$SCRIPT_DIRECTORY/.." && pwd)"
+PROJECT_ROOT="$(cd "$GAIA_DIRECTORY/.." && pwd)"
 
 # Read JSON input once.
 input=$(cat)
 
 
-# Sets cols and left_visible; called only where a right side is about to be
+# Sets columns and left_visible; called only where a right side is about to be
 # composed (the setup-gaia branch and the nudges-present branch), so a render
 # with no right side pays no pipeline for it. Compose reads the values these
 # leave behind. `awk`'s END block reports the LAST line's length (the row the
-# right side actually joins) rather than one number per line, and `n+0`
+# right side actually joins) rather than one number per line, and `column_count+0`
 # forces a plain digit even on empty input.
 #
 # `LC_ALL=C` makes every awk (BWK, gawk, mawk) count bytes rather than
@@ -71,11 +71,11 @@ input=$(cat)
 # error on the byte-range gsub below. Deleting every UTF-8 continuation byte
 # (`\200`-`\277`) first leaves exactly one byte per character; a 4-byte lead
 # byte (`\360`-`\364`, emoji and other astral-plane glyphs) is counted a
-# second time (`w`) to match its 2-column render. Known limit: a 3-byte
+# second time (`wide_glyph_count`) to match its 2-column render. Known limit: a 3-byte
 # glyph (CJK) still counts one column but renders two.
 measure_left() {
-  cols="${COLUMNS:-120}"
-  left_visible=$(printf '%b' "$left" | sed 's/\x1b\[[0-9;]*m//g' | LC_ALL=C awk '{w = gsub(/[\360-\364]/, "&"); gsub(/[\200-\277]/, ""); n = length + w} END {print n+0}')
+  columns="${COLUMNS:-120}"
+  left_visible=$(printf '%b' "$left" | sed 's/\x1b\[[0-9;]*m//g' | LC_ALL=C awk '{wide_glyph_count = gsub(/[\360-\364]/, "&"); gsub(/[\200-\277]/, ""); column_count = length + wide_glyph_count} END {print column_count+0}')
   case "$left_visible" in
     ''|*[!0-9]*) left_visible=0 ;;
   esac
@@ -103,37 +103,37 @@ measure_left() {
 # the wrong type comes out empty. Silent on jq failure: every field then reads
 # empty, nothing is written, and the render continues.
 session_id=""
-session_dir=""
-ctx_pct=""
-ctx_window=""
-ctx_tokens=""
+session_directory=""
+context_percentage=""
+context_window_size=""
+context_used_tokens=""
 model_name=""
 effort_level=""
 fields=$(printf '%s' "$input" | jq -r '
-  def str: if type == "string" then gsub("[\u0000-\u001f]"; "") else "" end;
-  (.context_window | if type == "object" then . else {} end) as $c
-  | (if ($c.used_percentage | type) == "number" and $c.used_percentage >= 0 and $c.used_percentage <= 999
-     then ($c.used_percentage * 1000000 | round) / 1000000 else null end) as $pct
-  | (if ($c.context_window_size | type) == "number" and $c.context_window_size >= 1 and $c.context_window_size <= 999999999999
-     then ($c.context_window_size | floor) else null end) as $win
-  | [ (.session_id | str),
-      ((.workspace.current_dir // .cwd) | str),
-      (if $pct != null and $win != null then ($pct | if . < 0.001 then "0" else tostring end) else "" end),
-      (if $pct != null and $win != null then ($win | tostring) else "" end),
-      (if $pct != null and $win != null then ($pct / 100 * $win | round | tostring) else "" end),
-      (.model.display_name | str),
-      (.effort.level | str) ]
+  def printable_string: if type == "string" then gsub("[\u0000-\u001f]"; "") else "" end;
+  (.context_window | if type == "object" then . else {} end) as $context
+  | (if ($context.used_percentage | type) == "number" and $context.used_percentage >= 0 and $context.used_percentage <= 999
+     then ($context.used_percentage * 1000000 | round) / 1000000 else null end) as $percentage
+  | (if ($context.context_window_size | type) == "number" and $context.context_window_size >= 1 and $context.context_window_size <= 999999999999
+     then ($context.context_window_size | floor) else null end) as $window_size
+  | [ (.session_id | printable_string),
+      ((.workspace.current_dir // .cwd) | printable_string),
+      (if $percentage != null and $window_size != null then ($percentage | if . < 0.001 then "0" else tostring end) else "" end),
+      (if $percentage != null and $window_size != null then ($window_size | tostring) else "" end),
+      (if $percentage != null and $window_size != null then ($percentage / 100 * $window_size | round | tostring) else "" end),
+      (.model.display_name | printable_string),
+      (.effort.level | printable_string) ]
   | join("\u001f")' 2>/dev/null) || fields=""
-IFS=$'\037' read -r session_id session_dir ctx_pct ctx_window ctx_tokens model_name effort_level <<<"$fields"
-[ -n "$session_dir" ] || session_dir="$PROJECT_ROOT"
+IFS=$'\037' read -r session_id session_directory context_percentage context_window_size context_used_tokens model_name effort_level <<<"$fields"
+[ -n "$session_directory" ] || session_directory="$PROJECT_ROOT"
 
-if [ -f "$GAIA_DIR/scripts/main-root-lib.sh" ]; then
+if [ -f "$GAIA_DIRECTORY/scripts/main-root-lib.sh" ]; then
   # shellcheck source=/dev/null
-  . "$GAIA_DIR/scripts/main-root-lib.sh" 2>/dev/null || true
+  . "$GAIA_DIRECTORY/scripts/main-root-lib.sh" 2>/dev/null || true
 fi
 STATE_ROOT=""
 if command -v gaia_resolve_main_root >/dev/null 2>&1; then
-  STATE_ROOT="$(gaia_resolve_main_root "$session_dir" 2>/dev/null || true)"
+  STATE_ROOT="$(gaia_resolve_main_root "$session_directory" 2>/dev/null || true)"
 fi
 [ -n "$STATE_ROOT" ] || STATE_ROOT="$PROJECT_ROOT"
 
@@ -143,7 +143,7 @@ fi
 # command -v guard -- all three keep the right side rendering, same as today.
 IS_WORKTREE="false"
 if command -v gaia_is_linked_worktree >/dev/null 2>&1; then
-  if gaia_is_linked_worktree "$session_dir"; then
+  if gaia_is_linked_worktree "$session_directory"; then
     IS_WORKTREE="true"
   fi
 fi
@@ -154,18 +154,18 @@ fi
 # before any early exit, and regardless of IS_WORKTREE, GAIA_STATUSLINE_NESTED
 # or the setup-gaia gating below. A sibling that is absent (an older checkout)
 # or a write that fails never prints and never stops the render. The lib is
-# sourced as "$GAIA_DIR/scripts/...", not from SCRIPT_DIR: a maintainer wrapper
+# sourced as "$GAIA_DIRECTORY/scripts/...", not from SCRIPT_DIRECTORY: a maintainer wrapper
 # execs a patched copy that sits in a different directory.
-if [ -f "$GAIA_DIR/scripts/context-checkpoint-lib.sh" ]; then
+if [ -f "$GAIA_DIRECTORY/scripts/context-checkpoint-lib.sh" ]; then
   # shellcheck source=/dev/null
-  . "$GAIA_DIR/scripts/context-checkpoint-lib.sh" 2>/dev/null || true
+  . "$GAIA_DIRECTORY/scripts/context-checkpoint-lib.sh" 2>/dev/null || true
 fi
-if [ -f "$GAIA_DIR/statusline/context-reading.sh" ]; then
+if [ -f "$GAIA_DIRECTORY/statusline/context-reading.sh" ]; then
   # shellcheck source=/dev/null
-  . "$GAIA_DIR/statusline/context-reading.sh" 2>/dev/null || true
+  . "$GAIA_DIRECTORY/statusline/context-reading.sh" 2>/dev/null || true
 fi
 if command -v gaia_statusline_write_context >/dev/null 2>&1; then
-  gaia_statusline_write_context "$STATE_ROOT" "$session_id" "$ctx_pct" "$ctx_window" "$ctx_tokens" >/dev/null 2>&1 || true
+  gaia_statusline_write_context "$STATE_ROOT" "$session_id" "$context_percentage" "$context_window_size" "$context_used_tokens" >/dev/null 2>&1 || true
 fi
 
 # ---------- Left side ----------
@@ -181,25 +181,25 @@ if [ -f "$STATE_ROOT/.gaia/local/settings.json" ] && command -v jq >/dev/null 2>
   left_choice=$(jq -r 'if type == "object" and .version == 1 and (.statusline | type) == "object" and .statusline.left == "gaia" then "gaia" else empty end' "$STATE_ROOT/.gaia/local/settings.json" 2>/dev/null)
 fi
 if [ "$GAIA_STATUSLINE_NESTED" != "1" ] && [ "$left_choice" != "gaia" ]; then
-  user_cmd=""
+  user_command=""
   if [ -f "$HOME/.claude/settings.json" ] && command -v jq >/dev/null 2>&1; then
-    user_cmd=$(jq -r '.statusLine.command // empty' "$HOME/.claude/settings.json" 2>/dev/null)
+    user_command=$(jq -r '.statusLine.command // empty' "$HOME/.claude/settings.json" 2>/dev/null)
   fi
   # Skip if it points back at this wrapper (avoid recursion).
-  case "$user_cmd" in
-    *gaia-statusline.sh*) user_cmd="" ;;
+  case "$user_command" in
+    *gaia-statusline.sh*) user_command="" ;;
   esac
-  if [ -n "$user_cmd" ]; then
-    left=$(printf '%s' "$input" | GAIA_STATUSLINE_NESTED=1 bash -c "$user_cmd" 2>/dev/null)
+  if [ -n "$user_command" ]; then
+    left=$(printf '%s' "$input" | GAIA_STATUSLINE_NESTED=1 bash -c "$user_command" 2>/dev/null)
   fi
 fi
 
-if [ -z "$left" ] && [ -f "$GAIA_DIR/statusline/left-side.sh" ]; then
+if [ -z "$left" ] && [ -f "$GAIA_DIRECTORY/statusline/left-side.sh" ]; then
   # shellcheck source=/dev/null
-  . "$GAIA_DIR/statusline/left-side.sh" 2>/dev/null || true
+  . "$GAIA_DIRECTORY/statusline/left-side.sh" 2>/dev/null || true
   if command -v gaia_statusline_left >/dev/null 2>&1; then
-    if gaia_statusline_left "$STATE_ROOT" "$session_dir" "$IS_WORKTREE" "$model_name" "$effort_level" "$ctx_pct" "$ctx_window" "$ctx_tokens" 2>/dev/null; then
-      left="$_GAIA_SL_LEFT"
+    if gaia_statusline_left "$STATE_ROOT" "$session_directory" "$IS_WORKTREE" "$model_name" "$effort_level" "$context_percentage" "$context_window_size" "$context_used_tokens" 2>/dev/null; then
+      left="$_GAIA_STATUSLINE_LEFT"
     fi
   fi
 fi
@@ -387,8 +387,8 @@ else
         printf -v full 'Run /gaia-serena-sync (Serena missing: %s)' "$serena_drift"
         # Language count from the already-joined string: commas plus one.
         serena_commas="${serena_drift//[!,]/}"
-        serena_n=$(( ${#serena_commas} + 1 ))
-        nudge_set 1 '01;31' 'Run /gaia-serena-sync' "$full" "$serena_n" '🔭'
+        serena_language_count=$(( ${#serena_commas} + 1 ))
+        nudge_set 1 '01;31' 'Run /gaia-serena-sync' "$full" "$serena_language_count" '🔭'
       fi
       # Residue nudge: renders once at least RESIDUE_NUDGE_THRESHOLD keyed
       # candidates have aged past 30 days (the age dial lives in the tally,
@@ -457,24 +457,24 @@ else
         *) dense_iconcount+=("${nudge_mid[$slot]}") ;;
       esac
     done
-    n="${#dense_small[@]}"
+    nudge_count="${#dense_small[@]}"
 
-    if [ "$n" -gt 0 ]; then
+    if [ "$nudge_count" -gt 0 ]; then
       measure_left
-      # avail reserves the 2-column minimum gap Compose keeps between the
+      # available_width reserves the 2-column minimum gap Compose keeps between the
       # two sides.
-      avail=$((cols - left_visible - 2))
+      available_width=$((columns - left_visible - 2))
 
       # Per-nudge size: 0 Large, 1 Medium, 2 Small, 3 icon, 4 hidden (folded
       # into the trailing `+N`). All start Large.
-      lvl=()
-      for ((i = 0; i < n; i++)); do
-        lvl[i]=0
+      nudge_size=()
+      for ((i = 0; i < nudge_count; i++)); do
+        nudge_size[i]=0
       done
 
       # Sets right_width, hidden_count, and right (composed inline, since
       # only the last call before the shrink loop below breaks is ever
-      # printed) from the current $lvl values. A visible segment is 2
+      # printed) from the current $nudge_size values. A visible segment is 2
       # columns from its neighbor, except two adjacent icons, or an icon
       # next to the trailing `+N`, which are 1 (an icon already reads as a
       # unit with what immediately follows it). An icon's width is hardcoded
@@ -484,13 +484,13 @@ else
         right_width=0
         hidden_count=0
         right=""
-        local i len text icon_form last=-1
-        for ((i = 0; i < n; i++)); do
-          if [ "${lvl[$i]}" -eq 4 ]; then
+        local i text_length text icon_form last=-1
+        for ((i = 0; i < nudge_count; i++)); do
+          if [ "${nudge_size[$i]}" -eq 4 ]; then
             hidden_count=$((hidden_count + 1))
             continue
           fi
-          case "${lvl[$i]}" in
+          case "${nudge_size[$i]}" in
             0) text="${dense_large[$i]}"; icon_form=0 ;;
             1)
               if [ -n "${dense_mid[$i]}" ]; then
@@ -504,12 +504,12 @@ else
             3) text="${dense_icon[$i]}${dense_iconcount[$i]}"; icon_form=1 ;;
           esac
           if [ "$icon_form" -eq 1 ]; then
-            len=$((2 + ${#dense_iconcount[$i]}))
+            text_length=$((2 + ${#dense_iconcount[$i]}))
           else
-            len=${#text}
+            text_length=${#text}
           fi
           if [ "$last" -ge 0 ]; then
-            if [ "${lvl[$last]}" -eq 3 ] && [ "$icon_form" -eq 1 ]; then
+            if [ "${nudge_size[$last]}" -eq 3 ] && [ "$icon_form" -eq 1 ]; then
               right_width=$((right_width + 1))
               right="${right} "
             else
@@ -517,7 +517,7 @@ else
               right="${right}  "
             fi
           fi
-          right_width=$((right_width + len))
+          right_width=$((right_width + text_length))
           if [ "$icon_form" -eq 1 ]; then
             right="${right}${text}"
           else
@@ -538,18 +538,18 @@ else
       # Shrink the lowest-priority nudge still at the current size, one step
       # at a time: every nudge to Medium bottom-up, then Medium to Small
       # bottom-up, then Small to icon bottom-up, then icon to hidden
-      # bottom-up. s caps at 4n (every nudge through every step), the point
+      # bottom-up. shrink_step caps at 4 * nudge_count (every nudge through every step), the point
       # at which every nudge is hidden and `+N` renders alone, even past
-      # avail, rather than emitting nothing. The measure() call right before
+      # available_width, rather than emitting nothing. The measure() call right before
       # the break leaves `right` and `right_width` set to what gets printed.
-      s=0
+      shrink_step=0
       while :; do
         measure
-        if [ "$right_width" -le "$avail" ] || [ "$s" -ge $((4 * n)) ]; then
+        if [ "$right_width" -le "$available_width" ] || [ "$shrink_step" -ge $((4 * nudge_count)) ]; then
           break
         fi
-        lvl[n - 1 - s % n]=$((s / n + 1))
-        s=$((s + 1))
+        nudge_size[nudge_count - 1 - shrink_step % nudge_count]=$((shrink_step / nudge_count + 1))
+        shrink_step=$((shrink_step + 1))
       done
     fi
   fi
@@ -585,7 +585,7 @@ if [ -z "$right" ]; then
   exit 0
 fi
 
-pad=$((cols - left_visible - right_width))
+pad=$((columns - left_visible - right_width))
 if [ "$pad" -lt 2 ]; then
   pad=2
 fi

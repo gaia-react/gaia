@@ -50,7 +50,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/lib/lib.sh"
 
-require_cmd rsync "rsync required for adopter-flow scaffold copy"
+require_command rsync "rsync required for adopter-flow scaffold copy"
 
 STAGING="$(mktemp -d -t gaia-dist-init-stage-XXXXXX)"
 SCAFFOLD="$(mktemp -d -t gaia-dist-init-scaffold-XXXXXX)"
@@ -184,8 +184,8 @@ node -e "JSON.parse(require('node:fs').readFileSync('$SETTINGS','utf8'))" 2>/dev
 # command being asserted; expanding it here would assert the wrong thing.
 EXPECTED_STATUSLINE='bash "$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.gaia/statusline/gaia-statusline.sh"'
 ACTUAL_STATUSLINE="$(node -e '
-  const s = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
-  process.stdout.write((s.statusLine && s.statusLine.command) || "");
+  const parsed_settings = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+  process.stdout.write((parsed_settings.statusLine && parsed_settings.statusLine.command) || "");
 ' "$SETTINGS" 2>/dev/null)"
 [ "$ACTUAL_STATUSLINE" = "$EXPECTED_STATUSLINE" ] \
   || { fail "wire-statusline did not insert the canonical statusline command (got: ${ACTUAL_STATUSLINE:-<none>})"; exit 1; }

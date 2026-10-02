@@ -747,7 +747,7 @@ jobs:
       # than counted; the suites are the authority on how many there are.
       #
       # THE LEG LIST IS A WHOLE EXCHANGE GROUP, which is what makes it safe to
-      # write here. Every one of them lives in HOOKS_DIR and none is pinned, so
+      # write here. Every one of them lives in HOOKS_DIRECTORY and none is pinned, so
       # bats-shards.sh assigns them across HOOKS_GREEDY_IDS -- hooks-2, hooks-3
       # and hooks-4 -- and a reshuffle moves a file BETWEEN those three and
       # never out of them. The apt step above rounds its list up to whole

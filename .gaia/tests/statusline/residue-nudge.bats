@@ -20,8 +20,8 @@ setup() {
   # shellcheck source=.gaia/tests/helpers/path.sh
   . "$REPO_ROOT/.gaia/tests/helpers/path.sh"
 
-  STATUSLINE_SRC=$(cd "$BATS_TEST_DIRNAME/../../statusline" && pwd)
-  CHECK_UPDATES_SRC=$(cd "$BATS_TEST_DIRNAME/../../scripts" && pwd)/check-updates.sh
+  STATUSLINE_SOURCE=$(cd "$BATS_TEST_DIRNAME/../../statusline" && pwd)
+  CHECK_UPDATES_SOURCE=$(cd "$BATS_TEST_DIRNAME/../../scripts" && pwd)/check-updates.sh
 
   # ---- statusline fixture ----
   MAIN=$(mktemp -d -t gaia-sl-residue-XXXXXX)
@@ -30,18 +30,18 @@ setup() {
   git -C "$MAIN" config user.name "Test"
   git -C "$MAIN" config commit.gpgsign false
   mkdir -p "$MAIN/.gaia/statusline" "$MAIN/.gaia/local/cache/shared"
-  cp "$STATUSLINE_SRC/gaia-statusline.sh" "$MAIN/.gaia/statusline/gaia-statusline.sh"
+  cp "$STATUSLINE_SOURCE/gaia-statusline.sh" "$MAIN/.gaia/statusline/gaia-statusline.sh"
   echo "x" > "$MAIN/README.md"
   git -C "$MAIN" add -A
   git -C "$MAIN" commit --quiet -m "init"
   printf '{"completed_at":"2026-01-01T00:00:00Z"}' > "$MAIN/.gaia/local/setup-state.json"
 
-  TMP_HOME=$(mktemp -d -t gaia-sl-residue-home-XXXXXX)
+  TEMPORARY_HOME=$(mktemp -d -t gaia-sl-residue-home-XXXXXX)
 
   # ---- refresher fixture ----
   REFRESH_ROOT=$(mktemp -d -t gaia-cu-residue-XXXXXX)
   mkdir -p "$REFRESH_ROOT/.gaia/scripts" "$REFRESH_ROOT/.gaia/cli" "$REFRESH_ROOT/.gaia/local/cache/shared"
-  cp "$CHECK_UPDATES_SRC" "$REFRESH_ROOT/.gaia/scripts/check-updates.sh"
+  cp "$CHECK_UPDATES_SOURCE" "$REFRESH_ROOT/.gaia/scripts/check-updates.sh"
   chmod +x "$REFRESH_ROOT/.gaia/scripts/check-updates.sh"
 
   RESIDUE_ARGV_LOG="$BATS_TEST_TMPDIR/residue-argv.log"
@@ -62,7 +62,7 @@ setup() {
 
 teardown() {
   [ -n "${MAIN:-}" ] && rm -rf "$MAIN" || true
-  [ -n "${TMP_HOME:-}" ] && rm -rf "$TMP_HOME" || true
+  [ -n "${TEMPORARY_HOME:-}" ] && rm -rf "$TEMPORARY_HOME" || true
   [ -n "${REFRESH_ROOT:-}" ] && rm -rf "$REFRESH_ROOT" || true
   return 0
 }
@@ -72,20 +72,20 @@ teardown() {
 # no-op stand-ins, irrelevant to this suite's assertions), and
 # `residue-tally` (records its argv to $RESIDUE_ARGV_LOG, then answers per
 # $MOCK_RESIDUE_EXIT / $MOCK_RESIDUE_BAD_JSON / $MOCK_RESIDUE_GH_OK /
-# $MOCK_RESIDUE_COUNT / $MOCK_RESIDUE_APPROX from the test's environment).
+# $MOCK_RESIDUE_COUNT / $MOCK_RESIDUE_APPROXIMATE from the test's environment).
 write_mock_gaia() {
   cat > "$1" <<'EOF'
 #!/usr/bin/env bash
 case "$1" in
   update-deps)
-    out=""
+    output_path=""
     while [ "$#" -gt 0 ]; do
       case "$1" in
-        --emit-updates) out="$2"; shift 2 ;;
+        --emit-updates) output_path="$2"; shift 2 ;;
         *) shift ;;
       esac
     done
-    [ -n "$out" ] && printf '{"actionable_count":0}' > "$out"
+    [ -n "$output_path" ] && printf '{"actionable_count":0}' > "$output_path"
     exit 0
     ;;
   harden-tally)
@@ -105,7 +105,7 @@ case "$1" in
       exit 0
     fi
     printf '{"gh_ok":%s,"aged_candidate_count":%s,"count_approximate":%s}' \
-      "${MOCK_RESIDUE_GH_OK:-true}" "${MOCK_RESIDUE_COUNT:-0}" "${MOCK_RESIDUE_APPROX:-true}"
+      "${MOCK_RESIDUE_GH_OK:-true}" "${MOCK_RESIDUE_COUNT:-0}" "${MOCK_RESIDUE_APPROXIMATE:-true}"
     exit 0
     ;;
   *)
@@ -135,16 +135,16 @@ EOF
 # resolves a residual's cited line, and resolution is git-fetch-shaped; this
 # shim lets a test prove no `fetch` ever reaches git during the refresh.
 write_logging_git() {
-  local dest="$1" real_git
+  local destination="$1" real_git
   real_git=$(command -v git)
-  cat > "$dest" <<EOF
+  cat > "$destination" <<EOF
 #!/usr/bin/env bash
 if [ -n "\${GIT_LOG:-}" ]; then
   printf '%s\n' "\$*" >> "\$GIT_LOG"
 fi
 exec "$real_git" "\$@"
 EOF
-  chmod +x "$dest"
+  chmod +x "$destination"
 }
 
 # Write the given cache JSON verbatim, then render MAIN's statusline against
@@ -152,8 +152,8 @@ EOF
 run_statusline_with_cache() {
   local cache_json="$1" json
   printf '%s' "$cache_json" > "$MAIN/.gaia/local/cache/shared/update-check.json"
-  json=$(jq -n --arg d "$MAIN" '{workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
-  run env HOME="$TMP_HOME" bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
+  json=$(jq -n --arg current_directory "$MAIN" '{workspace: {current_dir: $current_directory}, cwd: $current_directory, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
+  run env HOME="$TEMPORARY_HOME" bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
 }
 
 # --- Rendering ---
@@ -185,8 +185,8 @@ run_statusline_with_cache() {
 
 @test "a missing cache file renders no segment and exits 0" {
   rm -f "$MAIN/.gaia/local/cache/shared/update-check.json"
-  json=$(jq -n --arg d "$MAIN" '{workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
-  run env HOME="$TMP_HOME" bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
+  json=$(jq -n --arg current_directory "$MAIN" '{workspace: {current_dir: $current_directory}, cwd: $current_directory, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
+  run env HOME="$TEMPORARY_HOME" bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
   [ "$status" -eq 0 ]
   grep -qF -- "gaia-residue" <<<"$output" && return 1
   true
@@ -194,8 +194,8 @@ run_statusline_with_cache() {
 
 @test "a present cache with jq unavailable renders no segment and exits 0" {
   printf '{"residueCandidateCount":8}' > "$MAIN/.gaia/local/cache/shared/update-check.json"
-  json=$(jq -n --arg d "$MAIN" '{workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
-  run env HOME="$TMP_HOME" PATH="$(path_shim_without jq)" bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
+  json=$(jq -n --arg current_directory "$MAIN" '{workspace: {current_dir: $current_directory}, cwd: $current_directory, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
+  run env HOME="$TEMPORARY_HOME" PATH="$(path_shim_without jq)" bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
   [ "$status" -eq 0 ]
   grep -qF -- "gaia-residue" <<<"$output" && return 1
   true
@@ -281,7 +281,7 @@ run_statusline_with_cache() {
 # --- Threshold provenance ---
 
 @test "the count threshold appears exactly once as a named constant" {
-  block=$(grep -A 10 'RESIDUE_NUDGE_THRESHOLD=5' "$STATUSLINE_SRC/gaia-statusline.sh")
+  block=$(grep -A 10 'RESIDUE_NUDGE_THRESHOLD=5' "$STATUSLINE_SOURCE/gaia-statusline.sh")
   [ -n "$block" ]
   [ "$(grep -c 'RESIDUE_NUDGE_THRESHOLD=5' <<<"$block")" -eq 1 ]
   rest=$(grep -v 'RESIDUE_NUDGE_THRESHOLD=5' <<<"$block")

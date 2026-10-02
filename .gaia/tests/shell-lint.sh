@@ -172,18 +172,18 @@ fi
 # empty. `.gaia/scripts/lint-git-path-quoting.sh` is the check that keeps this
 # whole family quoted.
 sh_scripts=()
-while IFS= read -r -d '' f; do
-  sh_scripts+=("$f")
+while IFS= read -r -d '' tracked_path; do
+  sh_scripts+=("$tracked_path")
 done < <(git -C "$REPO_ROOT" -c core.quotepath=false ls-files -z '*.sh')
 
 bats_scripts=()
-while IFS= read -r -d '' f; do
-  bats_scripts+=("$f")
+while IFS= read -r -d '' tracked_path; do
+  bats_scripts+=("$tracked_path")
 done < <(git -C "$REPO_ROOT" -c core.quotepath=false ls-files -z '*.bats')
 
 husky_hooks=()
-while IFS= read -r -d '' f; do
-  husky_hooks+=("$f")
+while IFS= read -r -d '' tracked_path; do
+  husky_hooks+=("$tracked_path")
 done < <(git -C "$REPO_ROOT" -c core.quotepath=false ls-files -z '.husky/*')
 
 # Guard the expansion below: on bash 3.2 a bare "${sh_scripts[@]}" over an EMPTY
@@ -206,24 +206,24 @@ fi
 # answers with nothing or with non-digits falls back to 2 rather than failing.
 JOBS_CAP=6
 detect_jobs() {
-  local n
-  n="$(getconf _NPROCESSORS_ONLN 2>/dev/null || true)"
-  case "$n" in
-    '' | *[!0-9]*) n=2 ;;
+  local processor_count
+  processor_count="$(getconf _NPROCESSORS_ONLN 2>/dev/null || true)"
+  case "$processor_count" in
+    '' | *[!0-9]*) processor_count=2 ;;
   esac
-  if [ "$n" -lt 1 ]; then
-    n=1
+  if [ "$processor_count" -lt 1 ]; then
+    processor_count=1
   fi
-  if [ "$n" -gt "$JOBS_CAP" ]; then
-    n="$JOBS_CAP"
+  if [ "$processor_count" -gt "$JOBS_CAP" ]; then
+    processor_count="$JOBS_CAP"
   fi
-  printf '%s\n' "$n"
+  printf '%s\n' "$processor_count"
 }
 JOBS="$(detect_jobs)"
 
 # Per-worker logs. Removed on every exit path, including the failing one.
-LINT_TMP="$(mktemp -d "${RUNNER_TEMP:-/tmp}/shell-lint.XXXXXX")"
-trap 'rm -rf "$LINT_TMP"' EXIT
+LINT_TEMPORARY_DIRECTORY="$(mktemp -d "${RUNNER_TEMP:-/tmp}/shell-lint.XXXXXX")"
+trap 'rm -rf "$LINT_TEMPORARY_DIRECTORY"' EXIT
 
 # Run one shellcheck pass over a file list, split across $JOBS concurrent
 # workers: concurrent workers cannot write to a shared stdout, or
@@ -251,68 +251,68 @@ run_shellcheck_pass() {
   local files
   files=("$@")
 
-  local total workers base rem w start len pids rc worker_rc log
+  local total workers base_chunk_size remainder worker_index start chunk_length pids exit_status worker_exit_status log
   total="${#files[@]}"
   workers="$JOBS"
   if [ "$workers" -gt "$total" ]; then
     workers="$total"
   fi
-  base=$((total / workers))
-  rem=$((total % workers))
+  base_chunk_size=$((total / workers))
+  remainder=$((total % workers))
 
   # Every worker index below $workers gets at least one file, so no chunk is
   # ever empty. An empty one would reach shellcheck as a bare invocation with no
   # file operands, which exits non-zero on usage -- loud, not lie-green.
   pids=()
-  w=0
-  while [ "$w" -lt "$workers" ]; do
-    start=$((w * base))
-    if [ "$w" -lt "$rem" ]; then
-      start=$((start + w))
-      len=$((base + 1))
+  worker_index=0
+  while [ "$worker_index" -lt "$workers" ]; do
+    start=$((worker_index * base_chunk_size))
+    if [ "$worker_index" -lt "$remainder" ]; then
+      start=$((start + worker_index))
+      chunk_length=$((base_chunk_size + 1))
     else
-      start=$((start + rem))
-      len="$base"
+      start=$((start + remainder))
+      chunk_length="$base_chunk_size"
     fi
     # Run from the repo root so the paths the linter prints are repo-relative.
     (
       cd "$REPO_ROOT" || exit 2
-      shellcheck --severity="$severity" --exclude="$TOOLING_EXCLUDE" "${files[@]:$start:$len}"
-    ) >"$LINT_TMP/$slug.$w.log" 2>&1 &
+      shellcheck --severity="$severity" --exclude="$TOOLING_EXCLUDE" "${files[@]:$start:$chunk_length}"
+    ) >"$LINT_TEMPORARY_DIRECTORY/$slug.$worker_index.log" 2>&1 &
     pids+=("$!")
-    w=$((w + 1))
+    worker_index=$((worker_index + 1))
   done
 
-  rc=0
-  w=0
-  while [ "$w" -lt "$workers" ]; do
-    worker_rc=0
-    # `|| worker_rc=$?` rather than `if ! wait ...`, because inside an `if !`
+  exit_status=0
+  worker_index=0
+  while [ "$worker_index" -lt "$workers" ]; do
+    worker_exit_status=0
+    # `|| worker_exit_status=$?` rather than `if ! wait ...`, because inside an `if !`
     # body $? is the negated status (0), not the command's. Nothing aborts
     # early: every worker is waited on and every log replays even when the
     # first one failed.
-    wait "${pids[$w]}" || worker_rc=$?
-    if [ "$worker_rc" -ne 0 ]; then
-      rc=1
+    wait "${pids[$worker_index]}" || worker_exit_status=$?
+    if [ "$worker_exit_status" -ne 0 ]; then
+      exit_status=1
     fi
-    w=$((w + 1))
+    worker_index=$((worker_index + 1))
   done
 
   # Replay in worker order, never completion order.
-  w=0
-  while [ "$w" -lt "$workers" ]; do
-    log="$LINT_TMP/$slug.$w.log"
+  worker_index=0
+  while [ "$worker_index" -lt "$workers" ]; do
+    log="$LINT_TEMPORARY_DIRECTORY/$slug.$worker_index.log"
     if [ -f "$log" ]; then
       cat "$log"
     else
       # A worker that produced no log ran no lint, so its files went unchecked.
       echo "ERROR: missing worker log $log" >&2
-      rc=1
+      exit_status=1
     fi
-    w=$((w + 1))
+    worker_index=$((worker_index + 1))
   done
 
-  return "$rc"
+  return "$exit_status"
 }
 
 # Run every pass before failing, so one invocation reports every finding across
@@ -419,11 +419,11 @@ else
         # invocation names every broken script rather than only the first.
         if ! (
           cd "$REPO_ROOT" || exit 2
-          sweep_rc=0
-          for f in ${sh_scripts[@]+"${sh_scripts[@]}"}; do
-            "$BASH32" -n "$f" || sweep_rc=1
+          sweep_exit_status=0
+          for tracked_path in ${sh_scripts[@]+"${sh_scripts[@]}"}; do
+            "$BASH32" -n "$tracked_path" || sweep_exit_status=1
           done
-          exit "$sweep_rc"
+          exit "$sweep_exit_status"
         ); then
           status=1
         fi

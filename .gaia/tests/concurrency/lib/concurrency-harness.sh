@@ -19,10 +19,10 @@ export GAIA_REPO_ROOT_REAL
 _GAIA_ROOTS=()
 _GAIA_WORKTREES=()
 
-# gaia_mk_tmp <prefix>: mktemp -d, canonicalize via cd + pwd -P (byte-exact
+# gaia_make_temporary_directory <prefix>: mktemp -d, canonicalize via cd + pwd -P (byte-exact
 # path comparisons, matching main-root-lib.sh's own physical-resolution
 # convention), register for teardown, echo the path.
-gaia_mk_tmp() {
+gaia_make_temporary_directory() {
   local prefix="$1" raw resolved
   raw="$(mktemp -d -t "${prefix}-XXXXXX")"
   resolved="$(cd "$raw" && pwd -P)"
@@ -37,7 +37,7 @@ gaia_mk_tmp() {
 # Echoes the absolute main root.
 gaia_new_main() {
   local prefix="$1" main
-  main="$(gaia_mk_tmp "$prefix")"
+  main="$(gaia_make_temporary_directory "$prefix")"
   git -C "$main" init -q --initial-branch=main
   git -C "$main" config user.email test@example.com
   git -C "$main" config user.name Test
@@ -58,7 +58,7 @@ gaia_copy_registry() {
   cp "$GAIA_REPO_ROOT_REAL/.gaia/state-registry.json" "$main/.gaia/state-registry.json"
 }
 
-# gaia_copy_real <main> <relpath> [<relpath> ...]: copies one or more real
+# gaia_copy_real <main> <relative_path> [<relative_path> ...]: copies one or more real
 # files from the real repo into the fixture at the SAME repo-relative path
 # (mkdir -p the parent first), so a copied script's own relative `source` /
 # BASH_SOURCE-derived sibling lookups resolve exactly as they do in the real
@@ -66,17 +66,17 @@ gaia_copy_registry() {
 gaia_copy_real() {
   local main="$1"
   shift
-  local rel
-  for rel in "$@"; do
-    mkdir -p "$main/$(dirname "$rel")"
-    cp "$GAIA_REPO_ROOT_REAL/$rel" "$main/$rel"
-    case "$rel" in
-      *.sh) chmod +x "$main/$rel" ;;
+  local relative_path
+  for relative_path in "$@"; do
+    mkdir -p "$main/$(dirname "$relative_path")"
+    cp "$GAIA_REPO_ROOT_REAL/$relative_path" "$main/$relative_path"
+    case "$relative_path" in
+      *.sh) chmod +x "$main/$relative_path" ;;
     esac
   done
 }
 
-# gaia_link_real <main> <repo-rel-path> [<repo-rel-path> ...]: symlinks one or
+# gaia_link_real <main> <relative_path> [<relative_path> ...]: symlinks one or
 # more real directories from the real repo into the fixture at the SAME
 # repo-relative path (mkdir -p the parent first, mirroring gaia_copy_real's own
 # signature). Reserved for the node helper dirs whose own
@@ -88,10 +88,10 @@ gaia_copy_real() {
 gaia_link_real() {
   local main="$1"
   shift
-  local rel
-  for rel in "$@"; do
-    mkdir -p "$main/$(dirname "$rel")"
-    ln -s "$GAIA_REPO_ROOT_REAL/$rel" "$main/$rel"
+  local relative_path
+  for relative_path in "$@"; do
+    mkdir -p "$main/$(dirname "$relative_path")"
+    ln -s "$GAIA_REPO_ROOT_REAL/$relative_path" "$main/$relative_path"
   done
 }
 
@@ -110,11 +110,11 @@ gaia_commit_all() {
 # plan/debt worktrees. Registers it for teardown removal. Echoes the absolute,
 # physically-resolved worktree path.
 gaia_add_worktree() {
-  local main="$1" name="$2" branch="$3" base="${4:-HEAD}" wt resolved
-  wt="$main/.claude/worktrees/$name"
-  mkdir -p "$(dirname "$wt")"
-  git -C "$main" worktree add -q "$wt" -b "$branch" "$base"
-  resolved="$(cd "$wt" && pwd -P)"
+  local main="$1" name="$2" branch="$3" base="${4:-HEAD}" worktree_path resolved
+  worktree_path="$main/.claude/worktrees/$name"
+  mkdir -p "$(dirname "$worktree_path")"
+  git -C "$main" worktree add -q "$worktree_path" -b "$branch" "$base"
+  resolved="$(cd "$worktree_path" && pwd -P)"
   _GAIA_WORKTREES+=("$main"$'\t'"$resolved")
   printf '%s\n' "$resolved"
 }
@@ -124,19 +124,19 @@ gaia_add_worktree() {
 # state-registry-lib.sh, and link-worktree.sh already copied (gaia_copy_real)
 # and committed (gaia_commit_all) on main before the worktree was added.
 gaia_link_worktree() {
-  local wt="$1"
-  ( cd "$wt" && bash .gaia/scripts/link-worktree.sh ) >/dev/null 2>&1
+  local worktree_path="$1"
+  ( cd "$worktree_path" && bash .gaia/scripts/link-worktree.sh ) >/dev/null 2>&1
 }
 
-# run_in <dir> [--] <cmd...>: run <cmd...> with <dir> as cwd, in a subshell so
+# run_in <directory> [--] <cmd...>: run <cmd...> with <directory> as cwd, in a subshell so
 # the caller's own cwd is never disturbed. The `--` separator is optional.
 run_in() {
-  local dir="$1"
+  local directory="$1"
   shift
   if [ "${1:-}" = "--" ]; then
     shift
   fi
-  ( cd "$dir" && "$@" )
+  ( cd "$directory" && "$@" )
 }
 
 # run_with <VAR=VALUE> [...] -- <cmd...>: run <cmd...> with the given
@@ -165,14 +165,14 @@ run_with() {
     # rather than a pattern over "$*", so that a missing `--` reports itself
     # instead of surfacing as whichever later word first failed to parse as an
     # assignment, and so that no word is exported on the way to that refusal.
-    _rw_found=0
-    for _rw_arg in "$@"; do
-      if [ "$_rw_arg" = "--" ]; then
-        _rw_found=1
+    _run_with_separator_found=0
+    for _run_with_argument in "$@"; do
+      if [ "$_run_with_argument" = "--" ]; then
+        _run_with_separator_found=1
         break
       fi
     done
-    [ "$_rw_found" -eq 1 ] || { printf 'run_with: missing -- separator\n' >&2; exit 64; }
+    [ "$_run_with_separator_found" -eq 1 ] || { printf 'run_with: missing -- separator\n' >&2; exit 64; }
 
     while [ "$1" != "--" ]; do
       # A bare name carrying no `=` is the one malformed shape `export` accepts:
@@ -203,10 +203,10 @@ run_with() {
 # supplies that:
 #
 #   run gaia_deliver_hook "$json" "$hook"                    status + output
-#   run run_in "$B" -- gaia_deliver_hook "$json" "$hook"     ... from a tree
+#   run run_in "$WORKTREE_B" -- gaia_deliver_hook "$json" "$hook"     ... from a tree
 #   run run_with HOME="$h" -- gaia_deliver_hook "$json" "$hook"   ... with env
-#   out="$(run_in "$B" -- gaia_deliver_hook "$json" "$hook")"     stdout alone
-#   run_in "$B" -- gaia_deliver_hook "$json" "$hook" >/dev/null   side effect
+#   captured_stdout="$(run_in "$WORKTREE_B" -- gaia_deliver_hook "$json" "$hook")"     stdout alone
+#   run_in "$WORKTREE_B" -- gaia_deliver_hook "$json" "$hook" >/dev/null   side effect
 #
 # WHY THE PAYLOAD IS POSITIONAL, which is not a style preference. The payload
 # and the hook path are ARGUMENTS to the inner `bash -c`, never interpolated
@@ -237,12 +237,12 @@ gaia_deliver_hook() {
 # dangling). Always returns 0 so a bats teardown() built on this never fails
 # the run over cleanup.
 gaia_teardown() {
-  local entry main wt
+  local entry main worktree_path
   if [ "${#_GAIA_WORKTREES[@]}" -gt 0 ]; then
     for entry in "${_GAIA_WORKTREES[@]}"; do
       main="${entry%%$'\t'*}"
-      wt="${entry#*$'\t'}"
-      git -C "$main" worktree remove --force "$wt" >/dev/null 2>&1 || true
+      worktree_path="${entry#*$'\t'}"
+      git -C "$main" worktree remove --force "$worktree_path" >/dev/null 2>&1 || true
     done
   fi
   _GAIA_WORKTREES=()

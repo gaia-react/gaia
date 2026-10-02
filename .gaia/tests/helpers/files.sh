@@ -49,17 +49,17 @@
 # test there is no correct place for these, and failing loudly beats scattering
 # copies somewhere nothing will collect them.
 snapshot_file() {
-  local src="$1" dir dest
-  dir="${BATS_TEST_TMPDIR:?snapshot_file must be called from inside a bats test}/.snapshots"
+  local source_file="$1" snapshot_directory destination_file
+  snapshot_directory="${BATS_TEST_TMPDIR:?snapshot_file must be called from inside a bats test}/.snapshots"
 
-  mkdir -p "$dir" || return 1
-  dest="$(mktemp "$dir/snapshot.XXXXXX")" || return 1
+  mkdir -p "$snapshot_directory" || return 1
+  destination_file="$(mktemp "$snapshot_directory/snapshot.XXXXXX")" || return 1
   # `cp` rather than `cat >`: it is the byte-for-byte copy, and a read failure
   # (an unreadable or absent source) fails here rather than producing an empty
   # snapshot that would later compare equal to an emptied file.
-  cp "$src" "$dest" || return 1
+  cp "$source_file" "$destination_file" || return 1
 
-  printf '%s' "$dest"
+  printf '%s' "$destination_file"
 }
 
 # assert_files_identical A B: the two files hold identical bytes.

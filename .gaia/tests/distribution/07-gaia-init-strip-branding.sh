@@ -24,7 +24,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/lib/lib.sh"
 
-require_cmd rsync "rsync required for adopter-flow scaffold copy"
+require_command rsync "rsync required for adopter-flow scaffold copy"
 
 STAGING="$(mktemp -d -t gaia-dist-init-stage-XXXXXX)"
 SCAFFOLD="$(mktemp -d -t gaia-dist-init-scaffold-XXXXXX)"

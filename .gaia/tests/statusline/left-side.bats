@@ -10,9 +10,9 @@
 # their glyphs.
 
 setup() {
-  STATUSLINE_SRC=$(cd "$BATS_TEST_DIRNAME/../../statusline" && pwd)
-  SCRIPTS_SRC=$(cd "$BATS_TEST_DIRNAME/../../scripts" && pwd)
-  SID="0a1b2c3d-1111-4222-8333-444455556666"
+  STATUSLINE_SOURCE=$(cd "$BATS_TEST_DIRNAME/../../statusline" && pwd)
+  SCRIPTS_SOURCE=$(cd "$BATS_TEST_DIRNAME/../../scripts" && pwd)
+  SESSION_ID="0a1b2c3d-1111-4222-8333-444455556666"
 
   MAIN=$(mktemp -d -t gaia-left-main-XXXXXX)
   git -C "$MAIN" init --quiet --initial-branch=main
@@ -20,20 +20,20 @@ setup() {
   git -C "$MAIN" config user.name "Test"
   git -C "$MAIN" config commit.gpgsign false
   mkdir -p "$MAIN/.gaia/statusline" "$MAIN/.gaia/scripts" "$MAIN/.gaia/local"
-  cp "$STATUSLINE_SRC"/*.sh "$MAIN/.gaia/statusline/"
-  cp "$SCRIPTS_SRC/main-root-lib.sh" "$SCRIPTS_SRC/context-checkpoint-lib.sh" "$MAIN/.gaia/scripts/"
+  cp "$STATUSLINE_SOURCE"/*.sh "$MAIN/.gaia/statusline/"
+  cp "$SCRIPTS_SOURCE/main-root-lib.sh" "$SCRIPTS_SOURCE/context-checkpoint-lib.sh" "$MAIN/.gaia/scripts/"
   echo x >"$MAIN/README.md"
   git -C "$MAIN" add -A
   git -C "$MAIN" commit --quiet -m init
   printf '{"completed_at":"2026-01-01T00:00:00Z"}' >"$MAIN/.gaia/local/setup-state.json"
-  WT="${MAIN}-wt"
-  TMP_HOME=$(mktemp -d -t gaia-left-home-XXXXXX)
-  ESC=$'\033'
+  WORKTREE="${MAIN}-wt"
+  TEMPORARY_HOME=$(mktemp -d -t gaia-left-home-XXXXXX)
+  ESCAPE_CHARACTER=$'\033'
 }
 
 teardown() {
   [ -n "${MAIN:-}" ] && rm -rf "$MAIN" "${MAIN}-wt" || true
-  [ -n "${TMP_HOME:-}" ] && rm -rf "$TMP_HOME" || true
+  [ -n "${TEMPORARY_HOME:-}" ] && rm -rf "$TEMPORARY_HOME" || true
   return 0
 }
 
@@ -41,16 +41,16 @@ teardown() {
 # token count so the pinned used_tokens equals <used_tokens> exactly.
 render_at() {
   local cwd="$1" tokens="$2" window="$3" json
-  json=$(jq -n --arg d "$cwd" --arg sid "$SID" --argjson t "$tokens" --argjson w "$window" \
-    '{session_id: $sid, workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Claude Opus"}, effort: {level: "xhigh"},
-      context_window: {used_percentage: ($t / $w * 100), context_window_size: $w}}')
-  PAYLOAD="$json" run env HOME="$TMP_HOME" COLUMNS=300 bash -c "printf '%s' \"\$PAYLOAD\" | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
+  json=$(jq -n --arg current_directory "$cwd" --arg session_id "$SESSION_ID" --argjson tokens "$tokens" --argjson window "$window" \
+    '{session_id: $session_id, workspace: {current_dir: $current_directory}, cwd: $current_directory, model: {display_name: "Claude Opus"}, effort: {level: "xhigh"},
+      context_window: {used_percentage: ($tokens / $window * 100), context_window_size: $window}}')
+  PAYLOAD="$json" run env HOME="$TEMPORARY_HOME" COLUMNS=300 bash -c "printf '%s' \"\$PAYLOAD\" | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
 }
 
 # The color digit (1, 2 or 3 of 31/32/33) immediately before the 10-cell bar.
 bar_color() {
-  local re="${ESC}\[01;3([123])m(▓|░){10}"
-  [[ $output =~ $re ]] || { echo "no 10-cell bar in: $output"; return 1; }
+  local bar_pattern="${ESCAPE_CHARACTER}\[01;3([123])m(▓|░){10}"
+  [[ $output =~ $bar_pattern ]] || { echo "no 10-cell bar in: $output"; return 1; }
   printf '%s' "${BASH_REMATCH[1]}"
 }
 
@@ -71,8 +71,8 @@ expect_band() {
 }
 
 @test "UAT-018: from a linked worktree the default left side names the main project, the marked branch, model and effort, and a 10-cell bar with a percent" {
-  git -C "$MAIN" worktree add --quiet "$WT" -b feature
-  render_at "$WT" 250000 1000000
+  git -C "$MAIN" worktree add --quiet "$WORKTREE" -b feature
+  render_at "$WORKTREE" 250000 1000000
   [ "$status" -eq 0 ]
   grep -qF "$(basename "$MAIN")" <<<"$output"
   grep -qF "🌳 feature" <<<"$output"
@@ -80,7 +80,7 @@ expect_band() {
   grep -qF " 25%" <<<"$output"
   bar_color >/dev/null
   # The worktree's own folder name must not be the project shown.
-  grep -qF "$(basename "$WT")" <<<"$output" && return 1
+  grep -qF "$(basename "$WORKTREE")" <<<"$output" && return 1
   true
 }
 
@@ -93,8 +93,8 @@ expect_band() {
 }
 
 @test "UAT-018: a user global statusLine.command replaces the default left side" {
-  mkdir -p "$TMP_HOME/.claude"
-  printf '{"statusLine":{"type":"command","command":"printf USERLEFT"}}' >"$TMP_HOME/.claude/settings.json"
+  mkdir -p "$TEMPORARY_HOME/.claude"
+  printf '{"statusLine":{"type":"command","command":"printf USERLEFT"}}' >"$TEMPORARY_HOME/.claude/settings.json"
   render_at "$MAIN" 250000 1000000
   [ "$status" -eq 0 ]
   grep -qF "USERLEFT" <<<"$output"
@@ -106,8 +106,8 @@ expect_band() {
 # user_left_with_choice <settings.json content|-> : a global statusLine.command
 # that prints USERLEFT, plus the main checkout's opt-ins file (- writes none).
 user_left_with_choice() {
-  mkdir -p "$TMP_HOME/.claude"
-  printf '{"statusLine":{"type":"command","command":"printf USERLEFT"}}' >"$TMP_HOME/.claude/settings.json"
+  mkdir -p "$TEMPORARY_HOME/.claude"
+  printf '{"statusLine":{"type":"command","command":"printf USERLEFT"}}' >"$TEMPORARY_HOME/.claude/settings.json"
   [ "$1" = "-" ] || printf '%s' "$1" >"$MAIN/.gaia/local/settings.json"
 }
 
@@ -132,8 +132,8 @@ assert_user_left() {
 
 @test "left choice gaia: a linked worktree reads the main checkout's choice" {
   user_left_with_choice '{"version":1,"statusline":{"left":"gaia"}}'
-  git -C "$MAIN" worktree add --quiet "$WT" -b feature
-  render_at "$WT" 250000 1000000
+  git -C "$MAIN" worktree add --quiet "$WORKTREE" -b feature
+  render_at "$WORKTREE" 250000 1000000
   [ "$status" -eq 0 ]
   assert_gaia_left
 }
@@ -188,8 +188,8 @@ assert_user_left() {
 }
 
 @test "a payload with no context_window renders the left side without a bar" {
-  PAYLOAD=$(jq -n --arg d "$MAIN" '{workspace: {current_dir: $d}, model: {display_name: "Claude Opus"}}') \
-    run env HOME="$TMP_HOME" COLUMNS=300 bash -c "printf '%s' \"\$PAYLOAD\" | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
+  PAYLOAD=$(jq -n --arg current_directory "$MAIN" '{workspace: {current_dir: $current_directory}, model: {display_name: "Claude Opus"}}') \
+    run env HOME="$TEMPORARY_HOME" COLUMNS=300 bash -c "printf '%s' \"\$PAYLOAD\" | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
   [ "$status" -eq 0 ]
   grep -qF "Opus" <<<"$output"
   grep -qE "(▓|░){10}" <<<"$output" && return 1
@@ -245,10 +245,10 @@ assert_user_left() {
   # Control: with the shipped lib, 250000 on a 1M window is still yellow.
   expect_band 1000000 250000 yellow none
   # Change the lib default in the sandbox copy only; the bar must follow it.
-  local lib="$MAIN/.gaia/scripts/context-checkpoint-lib.sh"
-  sed 's/^GAIA_CONTEXT_ASK_TOKENS_DEFAULT=.*/GAIA_CONTEXT_ASK_TOKENS_DEFAULT=250000/' "$lib" >"$lib.new"
-  grep -q '^GAIA_CONTEXT_ASK_TOKENS_DEFAULT=250000$' "$lib.new"
-  mv "$lib.new" "$lib"
+  local library_file="$MAIN/.gaia/scripts/context-checkpoint-lib.sh"
+  sed 's/^GAIA_CONTEXT_ASK_TOKENS_DEFAULT=.*/GAIA_CONTEXT_ASK_TOKENS_DEFAULT=250000/' "$library_file" >"$library_file.new"
+  grep -q '^GAIA_CONTEXT_ASK_TOKENS_DEFAULT=250000$' "$library_file.new"
+  mv "$library_file.new" "$library_file"
   expect_band 1000000 249999 yellow none
   expect_band 1000000 250000 red none
 }

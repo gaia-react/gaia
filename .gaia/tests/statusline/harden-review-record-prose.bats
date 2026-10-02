@@ -11,20 +11,20 @@
 # harden.md edits in .github/workflows/audit-ci-tests.yml.
 
 setup() {
-  HARDEN_MD=$(cd "$BATS_TEST_DIRNAME/../../../.claude/skills/gaia/references" && pwd)/harden.md
+  HARDEN_MARKDOWN=$(cd "$BATS_TEST_DIRNAME/../../../.claude/skills/gaia/references" && pwd)/harden.md
 }
 
-# swap_lines <file> <line1> <line2>
+# swap_lines <file> <first_line_number> <second_line_number>
 #   In-place swaps the content of two 1-indexed lines in <file>.
 swap_lines() {
-  local file="$1" l1="$2" l2="$3"
-  awk -v l1="$l1" -v l2="$l2" '
-    NR==l1 { a=$0 }
-    NR==l2 { b=$0 }
+  local file="$1" first_line_number="$2" second_line_number="$3"
+  awk -v first_line_number="$first_line_number" -v second_line_number="$second_line_number" '
+    NR==first_line_number { first_text=$0 }
+    NR==second_line_number { second_text=$0 }
     { lines[NR]=$0 }
     END {
-      lines[l1]=b
-      lines[l2]=a
+      lines[first_line_number]=second_text
+      lines[second_line_number]=first_text
       for (i=1; i<=NR; i++) print lines[i]
     }
   ' "$file" > "${file}.swap" && mv "${file}.swap" "$file"
@@ -44,15 +44,15 @@ delete_first_match_in_range() {
   ' "$file" > "${file}.del" && mv "${file}.del" "$file"
 }
 
-# insert_after <file> <line_no> <text_file>
+# insert_after <file> <line_number> <text_file>
 #   Inserts every line of <text_file> into <file> immediately after the
-#   1-indexed line <line_no>.
+#   1-indexed line <line_number>.
 insert_after() {
-  local file="$1" line_no="$2" text_file="$3"
-  awk -v line_no="$line_no" -v text_file="$text_file" '
+  local file="$1" line_number="$2" text_file="$3"
+  awk -v line_number="$line_number" -v text_file="$text_file" '
     { print }
-    NR==line_no {
-      while ((getline l < text_file) > 0) print l
+    NR==line_number {
+      while ((getline inserted_line < text_file) > 0) print inserted_line
     }
   ' "$file" > "${file}.ins" && mv "${file}.ins" "$file"
 }
@@ -111,35 +111,35 @@ check_record_prose() {
   # 4. Inside the Record section: the record literal, then the captured exit
   #    status, then the exit-0 guard, then the cache-clear literal, in that
   #    order, so the combined block reads as one runnable sequence.
-  local rs_record_rel rs_status_rel rs_guard_rel rs_clear_rel
-  rs_record_rel=$(sed -n "${record_heading_line},${publish_line}p" "$file" | grep -n "harden-ledger snapshot record --tally-file" | head -1 | cut -d: -f1)
-  if [ -z "$rs_record_rel" ]; then
+  local record_line_relative status_line_relative guard_line_relative clear_line_relative
+  record_line_relative=$(sed -n "${record_heading_line},${publish_line}p" "$file" | grep -n "harden-ledger snapshot record --tally-file" | head -1 | cut -d: -f1)
+  if [ -z "$record_line_relative" ]; then
     echo "Record section missing the snapshot record literal"
     return 1
   fi
-  rs_status_rel=$(sed -n "${record_heading_line},${publish_line}p" "$file" | grep -nF 'record_status=$?' | head -1 | cut -d: -f1)
-  if [ -z "$rs_status_rel" ]; then
+  status_line_relative=$(sed -n "${record_heading_line},${publish_line}p" "$file" | grep -nF 'record_status=$?' | head -1 | cut -d: -f1)
+  if [ -z "$status_line_relative" ]; then
     echo "Record section missing the record_status capture"
     return 1
   fi
-  rs_guard_rel=$(sed -n "${record_heading_line},${publish_line}p" "$file" | grep -nF '"$record_status" -eq 0' | head -1 | cut -d: -f1)
-  if [ -z "$rs_guard_rel" ]; then
+  guard_line_relative=$(sed -n "${record_heading_line},${publish_line}p" "$file" | grep -nF '"$record_status" -eq 0' | head -1 | cut -d: -f1)
+  if [ -z "$guard_line_relative" ]; then
     echo "Record section missing the record_status -eq 0 guard"
     return 1
   fi
-  rs_clear_rel=$(sed -n "${record_heading_line},${publish_line}p" "$file" | grep -nF '.hardenNudgeReason = ""' | head -1 | cut -d: -f1)
-  if [ -z "$rs_clear_rel" ]; then
+  clear_line_relative=$(sed -n "${record_heading_line},${publish_line}p" "$file" | grep -nF '.hardenNudgeReason = ""' | head -1 | cut -d: -f1)
+  if [ -z "$clear_line_relative" ]; then
     echo "Record section missing the cache-clear literal"
     return 1
   fi
 
-  local rs_record_abs rs_status_abs rs_guard_abs rs_clear_abs
-  rs_record_abs=$((record_heading_line + rs_record_rel - 1))
-  rs_status_abs=$((record_heading_line + rs_status_rel - 1))
-  rs_guard_abs=$((record_heading_line + rs_guard_rel - 1))
-  rs_clear_abs=$((record_heading_line + rs_clear_rel - 1))
+  local record_line_absolute status_line_absolute guard_line_absolute clear_line_absolute
+  record_line_absolute=$((record_heading_line + record_line_relative - 1))
+  status_line_absolute=$((record_heading_line + status_line_relative - 1))
+  guard_line_absolute=$((record_heading_line + guard_line_relative - 1))
+  clear_line_absolute=$((record_heading_line + clear_line_relative - 1))
 
-  if [ "$rs_status_abs" -le "$rs_record_abs" ] || [ "$rs_guard_abs" -le "$rs_status_abs" ] || [ "$rs_clear_abs" -le "$rs_guard_abs" ]; then
+  if [ "$status_line_absolute" -le "$record_line_absolute" ] || [ "$guard_line_absolute" -le "$status_line_absolute" ] || [ "$clear_line_absolute" -le "$guard_line_absolute" ]; then
     echo "Record section's record/status/guard/clear literals are out of order"
     return 1
   fi
@@ -149,7 +149,7 @@ check_record_prose() {
   #    together as one Bash call: shell variables do not persist across
   #    separate calls.
   local between_fence_count
-  between_fence_count=$(sed -n "$((rs_record_abs + 1)),$((rs_clear_abs - 1))p" "$file" | grep -c '^```')
+  between_fence_count=$(sed -n "$((record_line_absolute + 1)),$((clear_line_absolute - 1))p" "$file" | grep -c '^```')
   if [ "$between_fence_count" -ne 0 ]; then
     echo "Record section's record and clear literals are not inside one fenced bash block"
     return 1
@@ -192,12 +192,12 @@ check_no_stale_phrasing() {
 # --- (a) the real file passes ---
 
 @test "check_record_prose passes on the real harden.md" {
-  run check_record_prose "$HARDEN_MD"
+  run check_record_prose "$HARDEN_MARKDOWN"
   [ "$status" -eq 0 ]
 }
 
 @test "harden.md no longer contains the retired defer/unclassified phrasing" {
-  run check_no_stale_phrasing "$HARDEN_MD"
+  run check_no_stale_phrasing "$HARDEN_MARKDOWN"
   [ "$status" -eq 0 ]
 }
 
@@ -205,33 +205,33 @@ check_no_stale_phrasing() {
 
 @test "refuses when the Record section is moved after Publish" {
   local copy="$BATS_TEST_TMPDIR/harden-record-after-publish.md"
-  cp "$HARDEN_MD" "$copy"
-  local rec_line pub_line
-  rec_line=$(grep -n "^## Record the review (end of run)" "$copy" | head -1 | cut -d: -f1)
-  pub_line=$(grep -n "^## Publish approved changes (end of run)" "$copy" | head -1 | cut -d: -f1)
-  swap_lines "$copy" "$rec_line" "$pub_line"
+  cp "$HARDEN_MARKDOWN" "$copy"
+  local record_line publish_line
+  record_line=$(grep -n "^## Record the review (end of run)" "$copy" | head -1 | cut -d: -f1)
+  publish_line=$(grep -n "^## Publish approved changes (end of run)" "$copy" | head -1 | cut -d: -f1)
+  swap_lines "$copy" "$record_line" "$publish_line"
   run check_record_prose "$copy"
   [ "$status" -ne 0 ]
 }
 
 @test "refuses when the cache clear is placed before the record line" {
   local copy="$BATS_TEST_TMPDIR/harden-clear-before-record.md"
-  cp "$HARDEN_MD" "$copy"
-  local record_heading_line publish_line rec_rel clear_rel rec_abs clear_abs
+  cp "$HARDEN_MARKDOWN" "$copy"
+  local record_heading_line publish_line record_relative_line clear_relative_line record_absolute_line clear_absolute_line
   record_heading_line=$(grep -n "^## Record the review (end of run)" "$copy" | head -1 | cut -d: -f1)
   publish_line=$(grep -n "^## Publish approved changes (end of run)" "$copy" | head -1 | cut -d: -f1)
-  rec_rel=$(sed -n "${record_heading_line},${publish_line}p" "$copy" | grep -n "harden-ledger snapshot record --tally-file" | head -1 | cut -d: -f1)
-  clear_rel=$(sed -n "${record_heading_line},${publish_line}p" "$copy" | grep -nF '.hardenNudgeReason = ""' | head -1 | cut -d: -f1)
-  rec_abs=$((record_heading_line + rec_rel - 1))
-  clear_abs=$((record_heading_line + clear_rel - 1))
-  swap_lines "$copy" "$rec_abs" "$clear_abs"
+  record_relative_line=$(sed -n "${record_heading_line},${publish_line}p" "$copy" | grep -n "harden-ledger snapshot record --tally-file" | head -1 | cut -d: -f1)
+  clear_relative_line=$(sed -n "${record_heading_line},${publish_line}p" "$copy" | grep -nF '.hardenNudgeReason = ""' | head -1 | cut -d: -f1)
+  record_absolute_line=$((record_heading_line + record_relative_line - 1))
+  clear_absolute_line=$((record_heading_line + clear_relative_line - 1))
+  swap_lines "$copy" "$record_absolute_line" "$clear_absolute_line"
   run check_record_prose "$copy"
   [ "$status" -ne 0 ]
 }
 
 @test "refuses when the all-clear region no longer references Record the review" {
   local copy="$BATS_TEST_TMPDIR/harden-allclear-no-reference.md"
-  cp "$HARDEN_MD" "$copy"
+  cp "$HARDEN_MARKDOWN" "$copy"
   local allclear_start
   allclear_start=$(grep -n 'candidate_count.*is .0.*unclassified.*is .null' "$copy" | head -1 | cut -d: -f1)
   sed -i.bak "${allclear_start}s/Record the review/XXXXXXXXXX/" "$copy"
@@ -241,25 +241,25 @@ check_no_stale_phrasing() {
 
 @test "refuses when the all-clear region regains a duplicate copy of the record-and-clear block" {
   local copy="$BATS_TEST_TMPDIR/harden-allclear-duplicated-block.md"
-  cp "$HARDEN_MD" "$copy"
-  local allclear_start dup
+  cp "$HARDEN_MARKDOWN" "$copy"
+  local allclear_start duplicate_block_file
   allclear_start=$(grep -n 'candidate_count.*is .0.*unclassified.*is .null' "$copy" | head -1 | cut -d: -f1)
-  dup="$BATS_TEST_TMPDIR/dup-block.txt"
-  cat > "$dup" <<'EOF'
+  duplicate_block_file="$BATS_TEST_TMPDIR/duplicate_block_file-block.txt"
+  cat > "$duplicate_block_file" <<'EOF'
 .gaia/cli/gaia harden-ledger snapshot record --tally-file .gaia/local/harden/review-tally.json
 record_status=$?
 if [ "$record_status" -eq 0 ]; then
   jq '.hardenNudgeReason = "" | .checkedAt = 0' "$CACHE" > "$tmp" && mv "$tmp" "$CACHE"
 fi
 EOF
-  insert_after "$copy" "$allclear_start" "$dup"
+  insert_after "$copy" "$allclear_start" "$duplicate_block_file"
   run check_record_prose "$copy"
   [ "$status" -ne 0 ]
 }
 
 @test "refuses when the cache-clear jq expression is duplicated elsewhere in the file" {
   local copy="$BATS_TEST_TMPDIR/harden-jq-duplicated.md"
-  cp "$HARDEN_MD" "$copy"
+  cp "$HARDEN_MARKDOWN" "$copy"
   cat >> "$copy" <<'EOF'
 
 jq '.hardenNudgeReason = "" | .checkedAt = 0' "$CACHE" > "$tmp"
@@ -270,20 +270,20 @@ EOF
 
 @test "refuses when --audited-pr-count is stripped from the decline call" {
   local copy="$BATS_TEST_TMPDIR/harden-decline-no-audited.md"
-  cp "$HARDEN_MD" "$copy"
-  local decline_start defer_start line_rel line_abs
+  cp "$HARDEN_MARKDOWN" "$copy"
+  local decline_start defer_start line_relative line_absolute
   decline_start=$(grep -n "^### decline" "$copy" | head -1 | cut -d: -f1)
   defer_start=$(grep -n "^### defer" "$copy" | head -1 | cut -d: -f1)
-  line_rel=$(sed -n "${decline_start},${defer_start}p" "$copy" | grep -n -- "--audited-pr-count" | head -1 | cut -d: -f1)
-  line_abs=$((decline_start + line_rel - 1))
-  sed -i.bak "${line_abs}s/ --audited-pr-count <audited_pr_count>//" "$copy"
+  line_relative=$(sed -n "${decline_start},${defer_start}p" "$copy" | grep -n -- "--audited-pr-count" | head -1 | cut -d: -f1)
+  line_absolute=$((decline_start + line_relative - 1))
+  sed -i.bak "${line_absolute}s/ --audited-pr-count <audited_pr_count>//" "$copy"
   run check_record_prose "$copy"
   [ "$status" -ne 0 ]
 }
 
 @test "check_no_stale_phrasing refuses a copy carrying the retired unclassified phrasing" {
   local copy="$BATS_TEST_TMPDIR/harden-stale-phrasing.md"
-  cp "$HARDEN_MD" "$copy"
+  cp "$HARDEN_MARKDOWN" "$copy"
   printf '\nnagged for it for up to ninety days\n' >> "$copy"
   run check_no_stale_phrasing "$copy"
   [ "$status" -ne 0 ]
@@ -292,13 +292,13 @@ EOF
 # --- existing pins from harden-unclassified-segment.bats stay green ---
 
 @test "still binds the top-level unclassified field" {
-  grep -qF "bind the top-level \`unclassified\` field" "$HARDEN_MD"
+  grep -qF "bind the top-level \`unclassified\` field" "$HARDEN_MARKDOWN"
 }
 
 @test "still carries the Unclassified recurrence signal heading" {
-  grep -qF "## Unclassified recurrence signal (seed-a-class-or-investigate)" "$HARDEN_MD"
+  grep -qF "## Unclassified recurrence signal (seed-a-class-or-investigate)" "$HARDEN_MARKDOWN"
 }
 
 @test "still states the unclassified signal is excluded from the draftable candidate set" {
-  grep -qF "It is NEVER placed in the draftable candidate set." "$HARDEN_MD"
+  grep -qF "It is NEVER placed in the draftable candidate set." "$HARDEN_MARKDOWN"
 }

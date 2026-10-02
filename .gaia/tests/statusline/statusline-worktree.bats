@@ -25,8 +25,8 @@
 # assertions see only the right side.
 
 setup() {
-  STATUSLINE_SRC=$(cd "$BATS_TEST_DIRNAME/../../statusline" && pwd)
-  SCRIPTS_SRC=$(cd "$BATS_TEST_DIRNAME/../../scripts" && pwd)
+  STATUSLINE_SOURCE=$(cd "$BATS_TEST_DIRNAME/../../statusline" && pwd)
+  SCRIPTS_SOURCE=$(cd "$BATS_TEST_DIRNAME/../../scripts" && pwd)
 
   # The delimiters of the marker-strip transform in .gaia/release-scrub.yml
   # that governs shell files, the surface stripped_copy below is pointed at.
@@ -40,8 +40,8 @@ setup() {
   git -C "$MAIN" config commit.gpgsign false
 
   mkdir -p "$MAIN/.gaia/statusline" "$MAIN/.gaia/scripts"
-  cp "$STATUSLINE_SRC/gaia-statusline.sh" "$MAIN/.gaia/statusline/gaia-statusline.sh"
-  cp "$SCRIPTS_SRC/main-root-lib.sh" "$MAIN/.gaia/scripts/main-root-lib.sh"
+  cp "$STATUSLINE_SOURCE/gaia-statusline.sh" "$MAIN/.gaia/statusline/gaia-statusline.sh"
+  cp "$SCRIPTS_SOURCE/main-root-lib.sh" "$MAIN/.gaia/scripts/main-root-lib.sh"
   echo "x" > "$MAIN/README.md"
   git -C "$MAIN" add -A
   git -C "$MAIN" commit --quiet -m "init"
@@ -57,15 +57,15 @@ setup() {
   # symlinks back to main's .gaia/local. An unprovisioned tree is the honest
   # case to test, because a symlinked one would pass by coincidence -- the read
   # would land on main's file whatever root the script had derived.
-  WT="${MAIN}-wt"
-  git -C "$MAIN" worktree add --quiet "$WT" -b feature
+  WORKTREE="${MAIN}-wt"
+  git -C "$MAIN" worktree add --quiet "$WORKTREE" -b feature
 
-  TMP_HOME=$(mktemp -d -t gaia-sl-home-XXXXXX)
+  TEMPORARY_HOME=$(mktemp -d -t gaia-sl-home-XXXXXX)
 }
 
 teardown() {
   [ -n "${MAIN:-}" ] && rm -rf "$MAIN" "${MAIN}-wt" || true
-  [ -n "${TMP_HOME:-}" ] && rm -rf "$TMP_HOME" || true
+  [ -n "${TEMPORARY_HOME:-}" ] && rm -rf "$TEMPORARY_HOME" || true
   return 0
 }
 
@@ -76,9 +76,9 @@ teardown() {
 # which reads as suppressed to a plain `grep -qF` on its command name even
 # though the gate these tests exercise never touched it.
 run_statusline_from() {
-  local script="$1" cur="$2" json
-  json=$(jq -n --arg d "$cur" '{workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
-  run env HOME="$TMP_HOME" COLUMNS=400 bash -c "printf '%s' '$json' | bash '$script'"
+  local script="$1" current_directory="$2" json
+  json=$(jq -n --arg current_directory "$current_directory" '{workspace: {current_dir: $current_directory}, cwd: $current_directory, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
+  run env HOME="$TEMPORARY_HOME" COLUMNS=400 bash -c "printf '%s' '$json' | bash '$script'"
 }
 
 # Run MAIN's copy of the script with a payload whose current_dir is $1.
@@ -102,24 +102,24 @@ run_statusline() {
 # plain pair today, so the two agreed; nothing went red if a one-line marker
 # was ever added.
 stripped_copy() {
-  local dst="$MAIN/.gaia/statusline/gaia-statusline-stripped.sh"
-  awk -v s="$MAINTAINER_START" -v e="$MAINTAINER_END" '
+  local destination="$MAIN/.gaia/statusline/gaia-statusline-stripped.sh"
+  awk -v start_marker="$MAINTAINER_START" -v end_marker="$MAINTAINER_END" '
     {
-      has_s = index($0, s) > 0
-      has_e = index($0, e) > 0
-      if (!skip && has_s) { if (!has_e) skip = 1; next }
-      if (skip) { if (has_e) skip = 0; next }
+      has_start_marker = index($0, start_marker) > 0
+      has_end_marker = index($0, end_marker) > 0
+      if (!skip && has_start_marker) { if (!has_end_marker) skip = 1; next }
+      if (skip) { if (has_end_marker) skip = 0; next }
       print
     }
-  ' "$MAIN/.gaia/statusline/gaia-statusline.sh" > "$dst"
-  printf '%s' "$dst"
+  ' "$MAIN/.gaia/statusline/gaia-statusline.sh" > "$destination"
+  printf '%s' "$destination"
 }
 
 # Poll for up to 2 seconds for file $1 to exist. Both refreshers are
 # backgrounded through `nohup`, so a bare check races the fork.
 wait_for_file() {
-  local f="$1" waited=0
-  while [ ! -f "$f" ] && [ "$waited" -lt 20 ]; do
+  local file_path="$1" waited=0
+  while [ ! -f "$file_path" ] && [ "$waited" -lt 20 ]; do
     sleep 0.1
     waited=$((waited + 1))
   done
@@ -132,7 +132,7 @@ wait_for_file() {
 }
 
 @test "right-side indicators are suppressed when the session is in a linked worktree" {
-  run_statusline "$WT"
+  run_statusline "$WORKTREE"
   [ "$status" -eq 0 ]
   grep -qF -- "update-deps" <<<"$output" && return 1
   grep -qF -- "gaia-debt" <<<"$output" && return 1
@@ -145,14 +145,14 @@ wait_for_file() {
   # read can still report main's INCOMPLETE marker; the setup nudge is the
   # only segment that still renders from a worktree, so it is the one that can
   # prove the read is main-anchored rather than local.
-  mkdir -p "$WT/.gaia/local/cache/shared" "$WT/.gaia/local/debt"
-  printf '{"outdatedCount":99}' > "$WT/.gaia/local/cache/shared/update-check.json"
-  printf '{"openCount":77}' > "$WT/.gaia/local/debt/count.json"
-  printf '{"completed_at":"2026-01-01T00:00:00Z"}' > "$WT/.gaia/local/setup-state.json"
+  mkdir -p "$WORKTREE/.gaia/local/cache/shared" "$WORKTREE/.gaia/local/debt"
+  printf '{"outdatedCount":99}' > "$WORKTREE/.gaia/local/cache/shared/update-check.json"
+  printf '{"openCount":77}' > "$WORKTREE/.gaia/local/debt/count.json"
+  printf '{"completed_at":"2026-01-01T00:00:00Z"}' > "$WORKTREE/.gaia/local/setup-state.json"
 
   printf '{"completed_at":null}' > "$MAIN/.gaia/local/setup-state.json"
 
-  run_statusline "$WT"
+  run_statusline "$WORKTREE"
   [ "$status" -eq 0 ]
   grep -qF -- "setup-gaia" <<<"$output"
   grep -qF -- "99 outdated" <<<"$output" && return 1
@@ -166,7 +166,7 @@ wait_for_file() {
   # The setup marker is shared, so an unset-up clone is unset-up from every
   # tree. Suppressing this segment in a worktree hid a real, blocking condition.
   printf '{"completed_at":null}' > "$MAIN/.gaia/local/setup-state.json"
-  run_statusline "$WT"
+  run_statusline "$WORKTREE"
   [ "$status" -eq 0 ]
   grep -qF -- "setup-gaia" <<<"$output"
 }
@@ -185,7 +185,7 @@ wait_for_file() {
   # Set main's setup marker incomplete so setup-gaia is the nudge the worktree
   # gate would otherwise keep; only the mid-init gate suppresses it too.
   printf '{"completed_at":null}' > "$MAIN/.gaia/local/setup-state.json"
-  run_statusline "$WT"
+  run_statusline "$WORKTREE"
   [ "$status" -eq 0 ]
   grep -qF -- "update-deps" <<<"$output" && return 1
   grep -qF -- "setup-gaia" <<<"$output" && return 1
@@ -200,13 +200,13 @@ wait_for_file() {
   NOGIT=$(mktemp -d -t gaia-sl-nogit-XXXXXX)
   mkdir -p "$NOGIT/.gaia/statusline" "$NOGIT/.gaia/scripts" \
            "$NOGIT/.gaia/local/cache/shared"
-  cp "$STATUSLINE_SRC/gaia-statusline.sh" "$NOGIT/.gaia/statusline/gaia-statusline.sh"
-  cp "$SCRIPTS_SRC/main-root-lib.sh" "$NOGIT/.gaia/scripts/main-root-lib.sh"
+  cp "$STATUSLINE_SOURCE/gaia-statusline.sh" "$NOGIT/.gaia/statusline/gaia-statusline.sh"
+  cp "$SCRIPTS_SOURCE/main-root-lib.sh" "$NOGIT/.gaia/scripts/main-root-lib.sh"
   printf '{"outdatedCount":3}' > "$NOGIT/.gaia/local/cache/shared/update-check.json"
   printf '{"completed_at":"2026-01-01T00:00:00Z"}' > "$NOGIT/.gaia/local/setup-state.json"
 
-  json=$(jq -n --arg d "$NOGIT" '{workspace: {current_dir: $d}, cwd: $d}')
-  run env HOME="$TMP_HOME" bash -c "printf '%s' '$json' | bash '$NOGIT/.gaia/statusline/gaia-statusline.sh'"
+  json=$(jq -n --arg current_directory "$NOGIT" '{workspace: {current_dir: $current_directory}, cwd: $current_directory}')
+  run env HOME="$TEMPORARY_HOME" bash -c "printf '%s' '$json' | bash '$NOGIT/.gaia/statusline/gaia-statusline.sh'"
   [ "$status" -eq 0 ]
   grep -qF -- "update-deps" <<<"$output"
   rm -rf "$NOGIT"
@@ -242,7 +242,7 @@ wait_for_file() {
   # worktree gate keeps the setup-gaia nudge, so its presence here proves the
   # mid-init gate did not fire.
   printf '{"completed_at":null}' > "$MAIN/.gaia/local/setup-state.json"
-  run_statusline "$WT"
+  run_statusline "$WORKTREE"
   [ "$status" -eq 0 ]
   grep -qF -- "setup-gaia" <<<"$output"
 }
@@ -316,7 +316,7 @@ JSON
   grep -qF -- "gaia-serena-sync" <<<"$output"
   grep -qF -- "gaia-debt" <<<"$output"
 
-  run_statusline "$WT"
+  run_statusline "$WORKTREE"
   [ "$status" -eq 0 ]
   grep -qF -- "update-gaia" <<<"$output" && return 1
   grep -qF -- "update-deps" <<<"$output" && return 1
@@ -347,7 +347,7 @@ JSON
   # Negative: clear the markers, render from the worktree, wait the same
   # bound, neither fires.
   rm -f "$check_marker" "$debt_marker"
-  run_statusline "$WT"
+  run_statusline "$WORKTREE"
   [ "$status" -eq 0 ]
   sleep 2
   [ ! -f "$check_marker" ]
@@ -380,7 +380,7 @@ JSON
   # neither refresher fires. Without this test the two rows are
   # indistinguishable from every other assertion in this suite.
   rm -f "$check_marker" "$debt_marker"
-  run_statusline "$WT"
+  run_statusline "$WORKTREE"
   [ "$status" -eq 0 ]
   grep -qF -- "Run /" <<<"$output" && return 1
   sleep 2
@@ -395,7 +395,7 @@ JSON
   # segments render. This is the documented fail-open disposition, mirroring
   # the no-git sibling test above for the STATE_ROOT resolver.
   rm -f "$MAIN/.gaia/scripts/main-root-lib.sh"
-  run_statusline "$WT"
+  run_statusline "$WORKTREE"
   [ "$status" -eq 0 ]
   grep -qF -- "update-deps" <<<"$output"
 }

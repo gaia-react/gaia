@@ -60,26 +60,26 @@ fi
 
 MISSING_DELTA=()
 ZERO_BYTE=()
-while IFS= read -r rel; do
-  src="$PROJECT_ROOT/$rel"
-  staged="$STAGING/$rel"
-  [ -f "$src" ] || continue
-  grep -q 'gaia:maintainer-only:start' "$src" 2>/dev/null || continue
+while IFS= read -r relative_path; do
+  source_path="$PROJECT_ROOT/$relative_path"
+  staged="$STAGING/$relative_path"
+  [ -f "$source_path" ] || continue
+  grep -q 'gaia:maintainer-only:start' "$source_path" 2>/dev/null || continue
 
   # Source had a marker block; staged counterpart must exist and be smaller.
   if [ ! -f "$staged" ]; then
-    log "Source has marker block but staged counterpart missing: $rel"
-    MISSING_DELTA+=("$rel:missing")
+    log "Source has marker block but staged counterpart missing: $relative_path"
+    MISSING_DELTA+=("$relative_path:missing")
     continue
   fi
-  src_size=$(wc -c < "$src")
+  source_size=$(wc -c < "$source_path")
   staged_size=$(wc -c < "$staged")
-  if [ "$staged_size" -ge "$src_size" ]; then
-    MISSING_DELTA+=("$rel: src=$src_size staged=$staged_size (no shrink)")
+  if [ "$staged_size" -ge "$source_size" ]; then
+    MISSING_DELTA+=("$relative_path: src=$source_size staged=$staged_size (no shrink)")
     continue
   fi
   if [ "$staged_size" -eq 0 ]; then
-    ZERO_BYTE+=("$rel")
+    ZERO_BYTE+=("$relative_path")
     continue
   fi
 done < "$INCLUDE"

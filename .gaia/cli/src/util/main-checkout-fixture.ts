@@ -6,7 +6,7 @@
  * path on macOS (`/var/folders/…` -> `/private/var/folders/…`) and git
  * canonicalizes the path it records for a linked worktree while returning a
  * caller-relative `.git` from the main checkout. Canonicalizing here is the
- * concurrency harness's own convention (`gaia_mk_tmp` uses `pwd -P`) and
+ * concurrency harness's own convention (`gaia_make_temporary_directory` uses `pwd -P`) and
  * keeps callers measuring main-anchoring rather than path form;
  * `resolveMainWorktreeRoot` itself deliberately does NOT physically resolve
  * the path it returns (see its docblock), because that string is hashed

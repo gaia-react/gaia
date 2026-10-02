@@ -30,10 +30,10 @@ setup() {
   SCRIPT="$BATS_TEST_DIRNAME/../bats-shards.sh"
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   HOOKS_DIR_DEFAULT='.gaia/tests/hooks'
-  SCRIPTS_TESTS_DIR_DEFAULT='.gaia/scripts/tests'
+  SCRIPTS_TESTS_DIRECTORY_DEFAULT='.gaia/scripts/tests'
   AUDIT_TESTS_DIR_DEFAULT='.github/audit/tests'
   LIB_DIR_DEFAULT='.gaia/tests/lib'
-  FORENSICS_DIR_DEFAULT='.gaia/tests/forensics'
+  FORENSICS_DIRECTORY_DEFAULT='.gaia/tests/forensics'
   STATUSLINE_DIR_DEFAULT='.gaia/tests/statusline'
 }
 
@@ -65,10 +65,10 @@ discover_independent() {
 all_discovered() {
   {
     discover_independent "$HOOKS_DIR_DEFAULT"
-    discover_independent "$SCRIPTS_TESTS_DIR_DEFAULT"
+    discover_independent "$SCRIPTS_TESTS_DIRECTORY_DEFAULT"
     discover_independent "$AUDIT_TESTS_DIR_DEFAULT"
     discover_independent "$LIB_DIR_DEFAULT"
-    discover_independent "$FORENSICS_DIR_DEFAULT"
+    discover_independent "$FORENSICS_DIRECTORY_DEFAULT"
     discover_independent "$STATUSLINE_DIR_DEFAULT"
   } | LC_ALL=C sort
 }
@@ -141,7 +141,7 @@ copy_sharder() {
 # what keeps the doctored partition self-consistent rather than merely broken.
 greedy_walk_line() {
   local anchor
-  anchor="$(grep -nE 'while IFS=.*read -r size p' "$1" | head -1 | cut -d: -f1)"
+  anchor="$(grep -nE 'while IFS=.*read -r size bats_path' "$1" | head -1 | cut -d: -f1)"
   [ -n "$anchor" ] || return 1
   printf '%s\n' "$anchor"
 }
@@ -171,24 +171,24 @@ doctor_duplicated_file() {
   anchor="$(greedy_walk_line "$destination")" || return 1
   awk -v anchor_line="$anchor" '
     { print }
-    NR == anchor_line { print "    if [ \"$target_idx\" -eq 1 ] && [ -z \"${a2_seen:-}\" ]; then a2_seen=1; printf \"%s\\n\" \"$p\"; fi" }
+    NR == anchor_line { print "    if [ \"$target_index\" -eq 1 ] && [ -z \"${a2_seen:-}\" ]; then a2_seen=1; printf \"%s\\n\" \"$bats_path\"; fi" }
   ' "$destination" >"$destination.new"
   mv "$destination.new" "$destination"
   printf '%s\n' "$destination"
 }
 
-# A3 fixture: removes cmd_files' own fail-closed zero-files guard on the copy,
+# A3 fixture: removes subcommand_files' own fail-closed zero-files guard on the copy,
 # so a shard resolving to nothing still exits 0 with empty output instead of
 # exit 2. What this proves is that check_no_empty_shard itself would catch a
 # regression in that guard, not merely that the guard exists.
 doctor_bypassed_zero_guard() {
   local destination start end
   destination="$(copy_sharder a3-bypassed-guard.sh)"
-  start="$(grep -nF 'if [ -z "$out" ]; then' "$destination" | head -1 | cut -d: -f1)"
+  start="$(grep -nF 'if [ -z "$shard_files" ]; then' "$destination" | head -1 | cut -d: -f1)"
   [ -n "$start" ] || return 1
   end=$((start + 4))
   awk -v start_line="$start" -v end_line="$end" '
-    NR == start_line { print "  [ -z \"$out\" ] || printf \"%s\\n\" \"$out\""; next }
+    NR == start_line { print "  [ -z \"$shard_files\" ] || printf \"%s\\n\" \"$shard_files\""; next }
     NR > start_line && NR <= end_line { next }
     { print }
   ' "$destination" >"$destination.new"
@@ -248,14 +248,14 @@ write_trivial_bats() {
   local empty_hooks empty_forensics empty_statusline
   empty_hooks="$BATS_TEST_TMPDIR/s7-empty-hooks"
   mkdir -p "$empty_hooks"
-  HOOKS_DIR="$empty_hooks" run bash "$SCRIPT" files hooks-2
+  HOOKS_DIRECTORY="$empty_hooks" run bash "$SCRIPT" files hooks-2
   [ "$status" -eq 2 ]
   grep -qF -- 'hooks-2' <<<"$output"
 
   empty_forensics="$BATS_TEST_TMPDIR/s7-empty-forensics"
   empty_statusline="$BATS_TEST_TMPDIR/s7-empty-statusline"
   mkdir -p "$empty_forensics" "$empty_statusline"
-  FORENSICS_DIR="$empty_forensics" STATUSLINE_DIR="$empty_statusline" run bash "$SCRIPT" files misc
+  FORENSICS_DIRECTORY="$empty_forensics" STATUSLINE_DIRECTORY="$empty_statusline" run bash "$SCRIPT" files misc
   [ "$status" -eq 2 ]
   grep -qF -- 'misc' <<<"$output"
 }
@@ -404,7 +404,7 @@ within_load_bound() {
 }
 
 # A5 fixture: deletes group_for_shard's whole-directory arm on the copy, so a
-# known shard resolves to an empty group. Proves cmd_group's fail-closed guard
+# known shard resolves to an empty group. Proves subcommand_group's fail-closed guard
 # is the thing standing between that and a caller silently narrowing its set,
 # rather than the guard merely existing in the source.
 doctor_groupless_shard() {
@@ -445,7 +445,7 @@ doctor_groupless_shard() {
   run within_load_bound "$SCRIPT" "$total" "$largest" hooks-2 hooks-3 hooks-4
   [ "$status" -eq 0 ]
 
-  read -r total largest < <(discover_independent "$SCRIPTS_TESTS_DIR_DEFAULT" | weight_profile)
+  read -r total largest < <(discover_independent "$SCRIPTS_TESTS_DIRECTORY_DEFAULT" | weight_profile)
   run within_load_bound "$SCRIPT" "$total" "$largest" scripts-1 scripts-2 scripts-3
   [ "$status" -eq 0 ]
 }
@@ -458,7 +458,7 @@ doctor_groupless_shard() {
 doctor_unweighted() {
   local destination anchor
   destination="$(copy_sharder)"
-  anchor="$(grep -nF 'size="$(wc -c <"$abs" | tr -d '"'"' '"'"')"' "$destination" | head -1 | cut -d: -f1)"
+  anchor="$(grep -nF 'size="$(wc -c <"$absolute_path" | tr -d '"'"' '"'"')"' "$destination" | head -1 | cut -d: -f1)"
   [ -n "$anchor" ] || return 1
   awk -v anchor_line="$anchor" '
     NR == anchor_line { print "      size=1"; next }
@@ -496,15 +496,15 @@ seed_lopsided_tree() {
 
   # The healthy arm first, so a bound loose enough to pass anything could not
   # pass this test.
-  SCRIPTS_TESTS_DIR="$directory" run within_load_bound "$SCRIPT" "$total" "$largest" scripts-1 scripts-2 scripts-3
+  SCRIPTS_TESTS_DIRECTORY="$directory" run within_load_bound "$SCRIPT" "$total" "$largest" scripts-1 scripts-2 scripts-3
   [ "$status" -eq 0 ]
 
   copy="$(doctor_unweighted)"
   # The doctored copy still partitions the tree cleanly...
-  SCRIPTS_TESTS_DIR="$directory" run check_no_duplicates "$copy"
+  SCRIPTS_TESTS_DIRECTORY="$directory" run check_no_duplicates "$copy"
   [ "$status" -eq 0 ]
   # ...and is still caught, because the two heavy files landed together.
-  SCRIPTS_TESTS_DIR="$directory" run within_load_bound "$copy" "$total" "$largest" scripts-1 scripts-2 scripts-3
+  SCRIPTS_TESTS_DIRECTORY="$directory" run within_load_bound "$copy" "$total" "$largest" scripts-1 scripts-2 scripts-3
   [ "$status" -eq 1 ]
 }
 
@@ -539,7 +539,7 @@ doctor_outliers() {
 
 # Which scripts shard of script $1, under seam $3, holds basename $2. An empty
 # $3 leaves the seam at its default, since the script resolves an empty
-# SCRIPTS_TESTS_DIR through the same `:-` as an unset one.
+# SCRIPTS_TESTS_DIRECTORY through the same `:-` as an unset one.
 #
 # The group's ids are asked for, not spelled out, on the same reasoning S9
 # gives for the pinned set and cost_outliers gives for the anchor list. The
@@ -559,7 +559,7 @@ scripts_shard_of() {
   local script="$1" base="$2" directory="$3" id
   while IFS= read -r id; do
     [ -n "$id" ] || continue
-    if SCRIPTS_TESTS_DIR="$directory" bash "$script" files "$id" 2>/dev/null \
+    if SCRIPTS_TESTS_DIRECTORY="$directory" bash "$script" files "$id" 2>/dev/null \
       | grep -qF -- "/$base"; then
       printf '%s\n' "$id"
       return 0
@@ -632,7 +632,7 @@ seed_anchor_tree() {
 
   # And the partition is still whole, so the separation is a reassignment
   # rather than a file quietly running twice or not at all.
-  SCRIPTS_TESTS_DIR="$directory" run check_no_duplicates "$on"
+  SCRIPTS_TESTS_DIRECTORY="$directory" run check_no_duplicates "$on"
   [ "$status" -eq 0 ]
 }
 
@@ -654,13 +654,13 @@ seed_anchor_tree() {
 }
 
 # A7 second arm: the check is scoped to the default seam deliberately, so a
-# caller pointing SCRIPTS_TESTS_DIR at a fixture tree is not read as carrying a
+# caller pointing SCRIPTS_TESTS_DIRECTORY at a fixture tree is not read as carrying a
 # stale list. Without this scoping every seam-based test in this file reds.
 @test "A7: a seam override is not read as a stale anchor list" {
   local directory
   directory="$BATS_TEST_TMPDIR/a7-seam"
   seed_anchor_tree "$directory"
-  SCRIPTS_TESTS_DIR="$directory" run bash "$SCRIPT" files scripts-1
+  SCRIPTS_TESTS_DIRECTORY="$directory" run bash "$SCRIPT" files scripts-1
   [ "$status" -eq 0 ]
 }
 
@@ -673,7 +673,7 @@ seed_anchor_tree() {
   seed_anchor_tree "$directory"
   copy="$(doctor_outliers a8-over.sh \
     'fill-a.bats fill-b.bats fill-c.bats heavy-x.bats')"
-  SCRIPTS_TESTS_DIR="$directory" run bash "$copy" files scripts-1
+  SCRIPTS_TESTS_DIRECTORY="$directory" run bash "$copy" files scripts-1
   [ "$status" -eq 2 ]
   # The phrase, not a word inside it: this script prints several exit-2
   # diagnostics, and pinning a substring short enough to appear in another one
@@ -686,7 +686,7 @@ seed_anchor_tree() {
   directory="$BATS_TEST_TMPDIR/s11-hooks"
   mkdir -p "$directory"
   printf '#!/usr/bin/env bats\n@test "x" { true; }\n' >"$directory/not-the-pinned-file.bats"
-  HOOKS_DIR="$directory" run bash "$SCRIPT" files hooks-1
+  HOOKS_DIRECTORY="$directory" run bash "$SCRIPT" files hooks-1
   [ "$status" -eq 2 ]
   grep -qF -- 'local-janitor.bats' <<<"$output"
 }
@@ -699,11 +699,11 @@ seed_anchor_tree() {
   write_trivial_bats "$forensics_directory/marker-a.bats" "MARK-A"
   write_trivial_bats "$statusline_directory/marker-b.bats" "MARK-B"
 
-  FORENSICS_DIR="$forensics_directory" STATUSLINE_DIR="$statusline_directory" run bash "$SCRIPT" files misc
+  FORENSICS_DIRECTORY="$forensics_directory" STATUSLINE_DIRECTORY="$statusline_directory" run bash "$SCRIPT" files misc
   [ "$status" -eq 0 ]
   files_output="$output"
 
-  FORENSICS_DIR="$forensics_directory" STATUSLINE_DIR="$statusline_directory" run bash "$SCRIPT" run misc
+  FORENSICS_DIRECTORY="$forensics_directory" STATUSLINE_DIRECTORY="$statusline_directory" run bash "$SCRIPT" run misc
   [ "$status" -eq 0 ]
   grep -qF -- 'MARK-A' <<<"$output"
   grep -qF -- 'MARK-B' <<<"$output"
@@ -783,8 +783,8 @@ FIXTURE
 # block opens exactly once, so a second copy, or a block rewritten to overwrite
 # the ambient entries, reads as no block rather than as whichever matched.
 gate_block() {
-  [ "$(grep -c '^ *n="${GIT_CONFIG_COUNT:-0}"$' "$1")" -eq 1 ] || return 0
-  sed -n '/^ *n="${GIT_CONFIG_COUNT:-0}"$/,/^ *export GIT_CONFIG_COUNT="$n"$/p' "$1" |
+  [ "$(grep -c '^ *config_entry_count="${GIT_CONFIG_COUNT:-0}"$' "$1")" -eq 1 ] || return 0
+  sed -n '/^ *config_entry_count="${GIT_CONFIG_COUNT:-0}"$/,/^ *export GIT_CONFIG_COUNT="$config_entry_count"$/p' "$1" |
     sed 's/^ *//'
 }
 
@@ -796,9 +796,9 @@ doctor_ungated_run() {
   local destination
   destination="$(copy_sharder a9-ungated-run.sh)"
   [ -n "$(gate_block "$destination")" ] || return 1
-  sed 's/^\( *for kv in\) .*\(; do\)$/\1\2/' "$destination" >"$destination.new"
+  sed 's/^\( *for key_value_pair in\) .*\(; do\)$/\1\2/' "$destination" >"$destination.new"
   mv "$destination.new" "$destination"
-  grep -qxF '    for kv in; do' "$destination" || return 1
+  grep -qxF '    for key_value_pair in; do' "$destination" || return 1
   printf '%s\n' "$destination"
 }
 
@@ -811,7 +811,7 @@ doctor_ungated_run() {
   mkdir -p "$fixture_directory"
   write_maintenance_fixture "$fixture_directory/maintenance.bats"
 
-  GIT_CONFIG_COUNT=0 LIB_DIR="$fixture_directory" run bash "$SCRIPT" run lib
+  GIT_CONFIG_COUNT=0 LIBRARY_DIRECTORY="$fixture_directory" run bash "$SCRIPT" run lib
   [ "$status" -eq 0 ]
   grep -qE '^ok [0-9]+ control$' <<<"$output"
   grep -qE '^ok [0-9]+ subject$' <<<"$output"
@@ -826,7 +826,7 @@ doctor_ungated_run() {
   mkdir -p "$fixture_directory"
   write_maintenance_fixture "$fixture_directory/maintenance.bats"
 
-  GIT_CONFIG_COUNT=0 LIB_DIR="$fixture_directory" run bash "$copy" run lib
+  GIT_CONFIG_COUNT=0 LIBRARY_DIRECTORY="$fixture_directory" run bash "$copy" run lib
   [ "$status" -eq 1 ]
   grep -qE '^ok [0-9]+ control$' <<<"$output"
   grep -qE '^not ok [0-9]+ subject$' <<<"$output"
@@ -1072,10 +1072,10 @@ EOF
 
   # First, prove the guard itself is actually bypassed on the copy: exit 0
   # with empty output, where the real script would exit 2.
-  SCRIPTS_TESTS_DIR="$directory" run bash "$copy" files scripts-1
+  SCRIPTS_TESTS_DIRECTORY="$directory" run bash "$copy" files scripts-1
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 
-  SCRIPTS_TESTS_DIR="$directory" run check_no_empty_shard "$copy"
+  SCRIPTS_TESTS_DIRECTORY="$directory" run check_no_empty_shard "$copy"
   [ "$status" -eq 1 ]
 }

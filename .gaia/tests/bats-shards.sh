@@ -35,9 +35,9 @@
 # way in the other direction: a green "all passed" over zero work.
 #
 # Assignment rules: hooks-1 is the pinned list below; HOOKS_GREEDY_IDS split
-# the rest of HOOKS_DIR by weight, SCRIPTS_IDS split SCRIPTS_TESTS_DIR the same
-# way; audit and lib are their whole directories; misc is FORENSICS_DIR plus
-# STATUSLINE_DIR combined.
+# the rest of HOOKS_DIRECTORY by weight, SCRIPTS_IDS split SCRIPTS_TESTS_DIRECTORY the same
+# way; audit and lib are their whole directories; misc is FORENSICS_DIRECTORY plus
+# STATUSLINE_DIRECTORY combined.
 #
 # Exchange groups, which `group <shard-id>` reports. A shard's group is the set
 # of ids a file can move BETWEEN without anyone editing this script: the two
@@ -56,7 +56,7 @@
 #
 # SIZE IN BYTES is the better proxy a pure discovery pass can compute, and it
 # is a proxy rather than an identity. Timed one file at a time across
-# SCRIPTS_TESTS_DIR it predicts runtime at r=0.43 over that group as it stands
+# SCRIPTS_TESTS_DIRECTORY it predicts runtime at r=0.43 over that group as it stands
 # and at r=0.73 with SCRIPTS_COST_OUTLIERS set aside, so it is sound for the
 # ordinary members and blind to exactly the files that list names. Anchoring
 # those is what covers the gap; the weight itself stays bytes for every file.
@@ -93,26 +93,26 @@
 # the repo's detector for it.
 set -euo pipefail
 
-HOOKS_DIR="${HOOKS_DIR:-.gaia/tests/hooks}"
+HOOKS_DIRECTORY="${HOOKS_DIRECTORY:-.gaia/tests/hooks}"
 # Named as a constant as well as a default because SCRIPTS_COST_OUTLIERS below
 # describes THIS directory's contents: comparing the resolved seam against it
 # is what tells a stale entry apart from a seam a caller has pointed elsewhere.
-SCRIPTS_TESTS_DIR_DEFAULT='.gaia/scripts/tests'
-SCRIPTS_TESTS_DIR="${SCRIPTS_TESTS_DIR:-$SCRIPTS_TESTS_DIR_DEFAULT}"
-AUDIT_TESTS_DIR="${AUDIT_TESTS_DIR:-.github/audit/tests}"
-LIB_DIR="${LIB_DIR:-.gaia/tests/lib}"
-FORENSICS_DIR="${FORENSICS_DIR:-.gaia/tests/forensics}"
-STATUSLINE_DIR="${STATUSLINE_DIR:-.gaia/tests/statusline}"
+SCRIPTS_TESTS_DIRECTORY_DEFAULT='.gaia/scripts/tests'
+SCRIPTS_TESTS_DIRECTORY="${SCRIPTS_TESTS_DIRECTORY:-$SCRIPTS_TESTS_DIRECTORY_DEFAULT}"
+AUDIT_TESTS_DIRECTORY="${AUDIT_TESTS_DIRECTORY:-.github/audit/tests}"
+LIBRARY_DIRECTORY="${LIBRARY_DIRECTORY:-.gaia/tests/lib}"
+FORENSICS_DIRECTORY="${FORENSICS_DIRECTORY:-.gaia/tests/forensics}"
+STATUSLINE_DIRECTORY="${STATUSLINE_DIRECTORY:-.gaia/tests/statusline}"
 
 # Cost floor, not correctness: a file-level sharder cannot split one file, and
 # local-janitor.bats is the heaviest file in the hooks suite (38 @test, each
 # doing a full git init plus a bare origin plus a push), so it anchors hooks-1
 # alone rather than folding into the weighted split with the rest of
-# HOOKS_DIR. An array so a future maintainer can pin a second file and add a
+# HOOKS_DIRECTORY. An array so a future maintainer can pin a second file and add a
 # fifth hooks shard without archaeology.
 #
 # It is also half of the partition's floor. This one file runs about 150
-# seconds and the whole AUDIT_TESTS_DIR shard runs about the same, and neither
+# seconds and the whole AUDIT_TESTS_DIRECTORY shard runs about the same, and neither
 # splits further, so no arrangement of the weighted groups takes the slowest
 # shard below that. Group sizes are chosen against that floor rather than
 # against each other; `wiki/decisions/Sharded CI Test Matrix.md` carries the
@@ -186,9 +186,9 @@ die_usage() {
 }
 
 is_known_shard() {
-  local id="$1" s
-  for s in ${SHARD_IDS[@]+"${SHARD_IDS[@]}"}; do
-    if [ "$s" = "$id" ]; then
+  local id="$1" known_shard_id
+  for known_shard_id in ${SHARD_IDS[@]+"${SHARD_IDS[@]}"}; do
+    if [ "$known_shard_id" = "$id" ]; then
       return 0
     fi
   done
@@ -197,14 +197,14 @@ is_known_shard() {
 
 # A seam value beginning with `/` is absolute and used as-is; anything else
 # resolves against REPO_ROOT, never against $PWD.
-resolve_dir() {
+resolve_directory() {
   case "$1" in
     /*) printf '%s\n' "$1" ;;
     *) printf '%s\n' "$REPO_ROOT/$1" ;;
   esac
 }
 
-# Inverse of resolve_dir for display: a path under REPO_ROOT prints
+# Inverse of resolve_directory for display: a path under REPO_ROOT prints
 # repo-relative (".gaia/tests/hooks/x.bats"); a path outside it (an absolute
 # seam override) prints as-is.
 relativize() {
@@ -218,11 +218,11 @@ relativize() {
 # glob over an empty or missing directory leaves the pattern literal, so
 # [ -e ] filters that out rather than nullglob, which is bash 4+.
 discover_bats() {
-  local dir f
-  dir="$(resolve_dir "$1")"
-  for f in "$dir"/*.bats; do
-    if [ -e "$f" ]; then
-      relativize "$f"
+  local directory bats_file
+  directory="$(resolve_directory "$1")"
+  for bats_file in "$directory"/*.bats; do
+    if [ -e "$bats_file" ]; then
+      relativize "$bats_file"
     fi
   done | LC_ALL=C sort
 }
@@ -248,19 +248,19 @@ is_pinned_hook() {
 }
 
 files_hooks1() {
-  local p base found pinned
-  read_lines < <(discover_bats "$HOOKS_DIR")
+  local bats_path base found pinned
+  read_lines < <(discover_bats "$HOOKS_DIRECTORY")
   for pinned in ${PINNED_HOOKS[@]+"${PINNED_HOOKS[@]}"}; do
     found=0
-    for p in ${lines[@]+"${lines[@]}"}; do
-      base="${p##*/}"
+    for bats_path in ${lines[@]+"${lines[@]}"}; do
+      base="${bats_path##*/}"
       if [ "$base" = "$pinned" ]; then
-        printf '%s\n' "$p"
+        printf '%s\n' "$bats_path"
         found=1
       fi
     done
     if [ "$found" -eq 0 ]; then
-      printf 'bats-shards: pinned hook not found: %s (in %s)\n' "$pinned" "$HOOKS_DIR" >&2
+      printf 'bats-shards: pinned hook not found: %s (in %s)\n' "$pinned" "$HOOKS_DIRECTORY" >&2
       exit 2
     fi
   done
@@ -275,23 +275,23 @@ files_hooks1() {
 # one shard, so the partition stays whole and only the balance degrades. The
 # alternative fails the whole listing over a file the sharder does not read.
 weighted_list() {
-  local dir="$1" mode="$2" p base abs size
-  while IFS= read -r p || [ -n "$p" ]; do
-    [ -n "$p" ] || continue
-    base="${p##*/}"
+  local directory="$1" mode="$2" bats_path base absolute_path size
+  while IFS= read -r bats_path || [ -n "$bats_path" ]; do
+    [ -n "$bats_path" ] || continue
+    base="${bats_path##*/}"
     if [ "$mode" = pinned ] && is_pinned_hook "$base"; then
       continue
     fi
-    case "$p" in
-      /*) abs="$p" ;;
-      *) abs="$REPO_ROOT/$p" ;;
+    case "$bats_path" in
+      /*) absolute_path="$bats_path" ;;
+      *) absolute_path="$REPO_ROOT/$bats_path" ;;
     esac
     size=0
-    if [ -r "$abs" ]; then
-      size="$(wc -c <"$abs" | tr -d ' ')"
+    if [ -r "$absolute_path" ]; then
+      size="$(wc -c <"$absolute_path" | tr -d ' ')"
     fi
-    printf '%s%s%s\n' "$size" "$TAB" "$p"
-  done < <(discover_bats "$dir") | LC_ALL=C sort -t"$TAB" -k1,1nr -k2,2
+    printf '%s%s%s\n' "$size" "$TAB" "$bats_path"
+  done < <(discover_bats "$directory") | LC_ALL=C sort -t"$TAB" -k1,1nr -k2,2
 }
 
 # Greedy longest-processing-time assignment of directory $1's discovered files
@@ -314,57 +314,57 @@ weighted_list() {
 # like any other, so the partition stays whole by construction rather than by
 # the caller remembering to hold the set out and put it back.
 greedy_bucket() {
-  local dir="$1" target="$2" mode="$3" anchors="$4"
+  local directory="$1" target="$2" mode="$3" anchors="$4"
   shift 4
-  local ids n i best target_idx id size p loads base
-  local anchor_names anchor_idx a_n
+  local ids bucket_count i best target_index id size bats_path loads base
+  local anchor_names anchor_indexes anchor_count
   ids=("$@")
-  n=$#
+  bucket_count=$#
 
   # Anchors, in listed order, one per shard from the first. Read into parallel
   # indexed arrays rather than one associative array, which bash 3.2 lacks.
   anchor_names=()
-  anchor_idx=()
-  a_n=0
+  anchor_indexes=()
+  anchor_count=0
   for base in ${anchors}; do
     anchor_names+=("$base")
-    anchor_idx+=("$a_n")
-    a_n=$((a_n + 1))
+    anchor_indexes+=("$anchor_count")
+    anchor_count=$((anchor_count + 1))
   done
-  if [ "$a_n" -gt "$n" ]; then
+  if [ "$anchor_count" -gt "$bucket_count" ]; then
     printf 'bats-shards: %s anchored files over %s shards in %s\n' \
-      "$a_n" "$n" "$dir" >&2
+      "$anchor_count" "$bucket_count" "$directory" >&2
     exit 2
   fi
 
-  target_idx=-1
+  target_index=-1
   i=0
   for id in ${ids[@]+"${ids[@]}"}; do
     if [ "$id" = "$target" ]; then
-      target_idx=$i
+      target_index=$i
     fi
     i=$((i + 1))
   done
-  if [ "$target_idx" -lt 0 ]; then
+  if [ "$target_index" -lt 0 ]; then
     printf 'bats-shards: %s is not one of this group'"'"'s shards\n' "$target" >&2
     exit 2
   fi
 
   loads=()
   i=0
-  while [ "$i" -lt "$n" ]; do
+  while [ "$i" -lt "$bucket_count" ]; do
     loads+=(0)
     i=$((i + 1))
   done
 
-  while IFS="$TAB" read -r size p || [ -n "$p" ]; do
-    [ -n "$p" ] || continue
-    base="${p##*/}"
+  while IFS="$TAB" read -r size bats_path || [ -n "$bats_path" ]; do
+    [ -n "$bats_path" ] || continue
+    base="${bats_path##*/}"
     best=-1
     i=0
-    while [ "$i" -lt "$a_n" ]; do
+    while [ "$i" -lt "$anchor_count" ]; do
       if [ "$base" = "${anchor_names[$i]}" ]; then
-        best="${anchor_idx[$i]}"
+        best="${anchor_indexes[$i]}"
         break
       fi
       i=$((i + 1))
@@ -372,18 +372,18 @@ greedy_bucket() {
     if [ "$best" -lt 0 ]; then
       best=0
       i=1
-      while [ "$i" -lt "$n" ]; do
+      while [ "$i" -lt "$bucket_count" ]; do
         if [ "${loads[$i]}" -lt "${loads[$best]}" ]; then
           best=$i
         fi
         i=$((i + 1))
       done
     fi
-    if [ "$best" -eq "$target_idx" ]; then
-      printf '%s\n' "$p"
+    if [ "$best" -eq "$target_index" ]; then
+      printf '%s\n' "$bats_path"
     fi
     loads[best]=$((loads[best] + size))
-  done < <(weighted_list "$dir" "$mode")
+  done < <(weighted_list "$directory" "$mode")
 }
 
 # Fail closed when SCRIPTS_COST_OUTLIERS names a file $1's discovery does not
@@ -396,23 +396,23 @@ greedy_bucket() {
 #
 # Checked at the configuration boundary rather than inside the assignment walk,
 # and only against the default seam. The list describes one real directory; a
-# caller that points SCRIPTS_TESTS_DIR at a fixture tree is not carrying a
+# caller that points SCRIPTS_TESTS_DIRECTORY at a fixture tree is not carrying a
 # stale list, it is asking about a directory the list was never about, and the
 # anchors are simply vacuous there. Reading a seam override as a stale list
 # would fail every seam-based test in this script's own guard suite.
 require_anchors_present() {
-  local dir="$1" base found p
+  local directory="$1" base found bats_path
   for base in ${SCRIPTS_COST_OUTLIERS[@]+"${SCRIPTS_COST_OUTLIERS[@]}"}; do
     found=0
-    while IFS= read -r p || [ -n "$p" ]; do
-      if [ "${p##*/}" = "$base" ]; then
+    while IFS= read -r bats_path || [ -n "$bats_path" ]; do
+      if [ "${bats_path##*/}" = "$base" ]; then
         found=1
         break
       fi
-    done < <(discover_bats "$dir")
+    done < <(discover_bats "$directory")
     if [ "$found" -eq 0 ]; then
       printf 'bats-shards: cost-outlier file not found: %s (in %s)\n' \
-        "$base" "$dir" >&2
+        "$base" "$directory" >&2
       exit 2
     fi
   done
@@ -422,22 +422,22 @@ files_for_shard() {
   case "$1" in
     hooks-1) files_hooks1 ;;
     hooks-*)
-      greedy_bucket "$HOOKS_DIR" "$1" pinned "" \
+      greedy_bucket "$HOOKS_DIRECTORY" "$1" pinned "" \
         ${HOOKS_GREEDY_IDS[@]+"${HOOKS_GREEDY_IDS[@]}"}
       ;;
     scripts-*)
-      if [ "$SCRIPTS_TESTS_DIR" = "$SCRIPTS_TESTS_DIR_DEFAULT" ]; then
-        require_anchors_present "$SCRIPTS_TESTS_DIR"
+      if [ "$SCRIPTS_TESTS_DIRECTORY" = "$SCRIPTS_TESTS_DIRECTORY_DEFAULT" ]; then
+        require_anchors_present "$SCRIPTS_TESTS_DIRECTORY"
       fi
-      greedy_bucket "$SCRIPTS_TESTS_DIR" "$1" all \
+      greedy_bucket "$SCRIPTS_TESTS_DIRECTORY" "$1" all \
         "${SCRIPTS_COST_OUTLIERS[*]+${SCRIPTS_COST_OUTLIERS[*]}}" \
         ${SCRIPTS_IDS[@]+"${SCRIPTS_IDS[@]}"}
       ;;
-    audit) discover_bats "$AUDIT_TESTS_DIR" ;;
-    lib) discover_bats "$LIB_DIR" ;;
+    audit) discover_bats "$AUDIT_TESTS_DIRECTORY" ;;
+    lib) discover_bats "$LIBRARY_DIRECTORY" ;;
     misc)
-      discover_bats "$FORENSICS_DIR"
-      discover_bats "$STATUSLINE_DIR"
+      discover_bats "$FORENSICS_DIRECTORY"
+      discover_bats "$STATUSLINE_DIRECTORY"
       ;;
   esac
 }
@@ -445,7 +445,7 @@ files_for_shard() {
 # The ids sharing $1's exchange group, in matrix order, $1 included. Mirrors
 # files_for_shard's case structure deliberately: the two answer the same
 # question about the same boundaries, so a group added there without a case
-# here is a discrepancy cmd_group's empty-output guard fails on rather than
+# here is a discrepancy subcommand_group's empty-output guard fails on rather than
 # papering over with a default arm.
 group_for_shard() {
   local id
@@ -465,56 +465,56 @@ group_for_shard() {
   esac
 }
 
-cmd_shards() {
-  local s
-  for s in ${SHARD_IDS[@]+"${SHARD_IDS[@]}"}; do
-    printf '%s\n' "$s"
+subcommand_shards() {
+  local shard_id
+  for shard_id in ${SHARD_IDS[@]+"${SHARD_IDS[@]}"}; do
+    printf '%s\n' "$shard_id"
   done
 }
 
-cmd_files() {
-  local id="$1" out rc
+subcommand_files() {
+  local id="$1" shard_files exit_status
   if ! is_known_shard "$id"; then
     printf 'bats-shards: unknown shard id: %s\n' "$id" >&2
     printf 'bats-shards: known ids: %s\n' "${SHARD_IDS[*]+"${SHARD_IDS[*]}"}" >&2
     exit 2
   fi
-  rc=0
-  out="$(files_for_shard "$id" | LC_ALL=C sort)" || rc=$?
-  if [ "$rc" -ne 0 ]; then
-    exit "$rc"
+  exit_status=0
+  shard_files="$(files_for_shard "$id" | LC_ALL=C sort)" || exit_status=$?
+  if [ "$exit_status" -ne 0 ]; then
+    exit "$exit_status"
   fi
-  if [ -z "$out" ]; then
+  if [ -z "$shard_files" ]; then
     printf 'bats-shards: shard %s resolved zero files\n' "$id" >&2
     exit 2
   fi
-  printf '%s\n' "$out"
+  printf '%s\n' "$shard_files"
 }
 
-cmd_group() {
-  local id="$1" out
+subcommand_group() {
+  local id="$1" group_ids
   if ! is_known_shard "$id"; then
     printf 'bats-shards: unknown shard id: %s\n' "$id" >&2
     printf 'bats-shards: known ids: %s\n' "${SHARD_IDS[*]+"${SHARD_IDS[*]}"}" >&2
     exit 2
   fi
-  out="$(group_for_shard "$id")"
+  group_ids="$(group_for_shard "$id")"
   # Fail closed rather than print nothing. A known id reaching this empty means
   # group_for_shard has no case for it, and a caller rounding a set up to whole
   # groups would silently drop that shard instead of widening to it.
-  if [ -z "$out" ]; then
+  if [ -z "$group_ids" ]; then
     printf 'bats-shards: shard %s belongs to no declared exchange group\n' "$id" >&2
     exit 2
   fi
-  printf '%s\n' "$out"
+  printf '%s\n' "$group_ids"
 }
 
-cmd_run() {
-  local id="$1" out rc line argv
-  rc=0
-  out="$(cmd_files "$id")" || rc=$?
-  if [ "$rc" -ne 0 ]; then
-    exit "$rc"
+subcommand_run() {
+  local id="$1" shard_files exit_status line argv
+  exit_status=0
+  shard_files="$(subcommand_files "$id")" || exit_status=$?
+  if [ "$exit_status" -ne 0 ]; then
+    exit "$exit_status"
   fi
   # `files` prints repo-relative paths for display, but bats resolves its
   # arguments against $PWD, so handing those through unchanged would make `run`
@@ -528,7 +528,7 @@ cmd_run() {
       *) argv+=("$REPO_ROOT/$line") ;;
     esac
   done <<EOF
-$out
+$shard_files
 EOF
   # Gate git's background auto-maintenance for every git process the suites
   # spawn. Left ungated, every `git commit` into a fixture repository spawns a
@@ -544,43 +544,43 @@ EOF
   # site covers them. A test that
   # needs git's own resolution sets GIT_CONFIG_COUNT=0 for that one call.
   (
-    n="${GIT_CONFIG_COUNT:-0}"
-    for kv in gc.auto=0 maintenance.auto=false gc.autoDetach=false maintenance.autoDetach=false; do
-      export "GIT_CONFIG_KEY_$n=${kv%%=*}" "GIT_CONFIG_VALUE_$n=${kv#*=}"
-      n=$((n + 1))
+    config_entry_count="${GIT_CONFIG_COUNT:-0}"
+    for key_value_pair in gc.auto=0 maintenance.auto=false gc.autoDetach=false maintenance.autoDetach=false; do
+      export "GIT_CONFIG_KEY_$config_entry_count=${key_value_pair%%=*}" "GIT_CONFIG_VALUE_$config_entry_count=${key_value_pair#*=}"
+      config_entry_count=$((config_entry_count + 1))
     done
-    export GIT_CONFIG_COUNT="$n"
+    export GIT_CONFIG_COUNT="$config_entry_count"
     bats ${argv[@]+"${argv[@]}"}
   )
 }
 
 main() {
-  local cmd="${1:-}"
-  case "$cmd" in
+  local subcommand="${1:-}"
+  case "$subcommand" in
     -h | --help)
       usage
       exit 0
       ;;
     shards)
-      cmd_shards
+      subcommand_shards
       ;;
     files)
       [ $# -ge 2 ] || die_usage 'files needs a shard id'
-      cmd_files "$2"
+      subcommand_files "$2"
       ;;
     group)
       [ $# -ge 2 ] || die_usage 'group needs a shard id'
-      cmd_group "$2"
+      subcommand_group "$2"
       ;;
     run)
       [ $# -ge 2 ] || die_usage 'run needs a shard id'
-      cmd_run "$2"
+      subcommand_run "$2"
       ;;
     '')
       die_usage 'missing command'
       ;;
     *)
-      die_usage "unknown command: $cmd"
+      die_usage "unknown command: $subcommand"
       ;;
   esac
 }

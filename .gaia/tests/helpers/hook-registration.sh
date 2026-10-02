@@ -91,9 +91,9 @@
 # variable at all, which is how it reaches this directory.
 hook_registered() {
   local settings="$1" filter="$2" hook="$3"
-  run jq -e --arg re "$GAIA_HOOK_NAME_RE" --arg hook "$hook" \
+  run jq -e --arg hook_name_pattern "$GAIA_HOOK_NAME_RE" --arg hook "$hook" \
     "[ $filter | .hooks[] | .command // empty ] |
-       any([match(\$re; \"g\").string] | any(. == \".claude/hooks/\" + \$hook))" \
+       any([match(\$hook_name_pattern; \"g\").string] | any(. == \".claude/hooks/\" + \$hook))" \
     "$settings"
   [ "$status" -eq 0 ]
 }

@@ -73,14 +73,14 @@ S1_JSON="$(run_cli "$GAIA" update merge-region \
   || fail_with_stderr "scenario 1: gaia update merge-region exited non-zero on staged tree"
 
 printf '%s' "$S1_JSON" | node -e "
-  const r = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
-  if (r.verdict !== 'no-adopter-drift')
-    throw new Error('expected verdict no-adopter-drift, got ' + r.verdict);
-  if (r.markers.bailed !== false)
-    throw new Error('expected markers.bailed=false, got ' + r.markers.bailed);
+  const merge_result = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
+  if (merge_result.verdict !== 'no-adopter-drift')
+    throw new Error('expected verdict no-adopter-drift, got ' + merge_result.verdict);
+  if (merge_result.markers.bailed !== false)
+    throw new Error('expected markers.bailed=false, got ' + merge_result.markers.bailed);
   for (const side of ['baseline', 'latest', 'current']) {
-    if (r.markers[side].masked !== true)
-      throw new Error('expected markers.' + side + '.masked=true, got ' + r.markers[side].masked);
+    if (merge_result.markers[side].masked !== true)
+      throw new Error('expected markers.' + side + '.masked=true, got ' + merge_result.markers[side].masked);
   }
 " || { fail "scenario 1 (region-only divergence) did not match the expected no-adopter-drift shape"; exit 1; }
 log "scenario 1 (region-only divergence): OK"
@@ -104,12 +104,12 @@ S2_JSON="$(run_cli "$GAIA" update merge-region \
   || fail_with_stderr "scenario 2: gaia update merge-region exited non-zero on staged tree"
 
 printf '%s' "$S2_JSON" | node -e "
-  const r = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
-  if (r.verdict !== 'conflict')
-    throw new Error('expected verdict conflict, got ' + r.verdict);
+  const merge_result = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
+  if (merge_result.verdict !== 'conflict')
+    throw new Error('expected verdict conflict, got ' + merge_result.verdict);
   const placeholder = '$PLACEHOLDER';
   for (const side of ['current', 'latest']) {
-    const body = r.normalized[side];
+    const body = merge_result.normalized[side];
     if (!body.includes(placeholder))
       throw new Error('expected normalized.' + side + ' to contain the placeholder line');
     for (const leaked of ['region-baseline', 'region-current', 'region-latest']) {
@@ -153,18 +153,18 @@ printf '%s' "$S3_JSON" \
     GAIA_S3_CURRENT="$FIXTURES/s3-current.txt" \
     node -e '
   const fs = require("node:fs");
-  const r = JSON.parse(fs.readFileSync(0, "utf8"));
-  if (r.markers.bailed !== true)
-    throw new Error("expected markers.bailed=true, got " + r.markers.bailed);
-  if (r.markers.current.scan !== "malformed")
-    throw new Error("expected markers.current.scan=malformed, got " + r.markers.current.scan);
+  const merge_result = JSON.parse(fs.readFileSync(0, "utf8"));
+  if (merge_result.markers.bailed !== true)
+    throw new Error("expected markers.bailed=true, got " + merge_result.markers.bailed);
+  if (merge_result.markers.current.scan !== "malformed")
+    throw new Error("expected markers.current.scan=malformed, got " + merge_result.markers.current.scan);
   const raw = {
     baseline: fs.readFileSync(process.env.GAIA_S3_BASELINE, "utf8"),
     latest: fs.readFileSync(process.env.GAIA_S3_LATEST, "utf8"),
     current: fs.readFileSync(process.env.GAIA_S3_CURRENT, "utf8"),
   };
   for (const side of ["baseline", "latest", "current"]) {
-    if (r.normalized[side] !== raw[side])
+    if (merge_result.normalized[side] !== raw[side])
       throw new Error("normalized." + side + " is not byte-identical to its input file");
   }
 ' || { fail "scenario 3 (malformed markers) did not match the expected global-bail shape"; exit 1; }
@@ -188,13 +188,13 @@ S4_JSON="$(run_cli "$GAIA" update merge-region \
   || fail_with_stderr "scenario 4: gaia update merge-region exited non-zero on staged tree"
 
 printf '%s' "$S4_JSON" | node -e "
-  const r = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
-  if (r.markers.bailed !== false)
-    throw new Error('expected markers.bailed=false, got ' + r.markers.bailed);
-  if (r.markers.baseline.scan !== 'absent')
-    throw new Error('expected markers.baseline.scan=absent, got ' + r.markers.baseline.scan);
-  if (r.markers.current.scan !== 'absent')
-    throw new Error('expected markers.current.scan=absent, got ' + r.markers.current.scan);
+  const merge_result = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
+  if (merge_result.markers.bailed !== false)
+    throw new Error('expected markers.bailed=false, got ' + merge_result.markers.bailed);
+  if (merge_result.markers.baseline.scan !== 'absent')
+    throw new Error('expected markers.baseline.scan=absent, got ' + merge_result.markers.baseline.scan);
+  if (merge_result.markers.current.scan !== 'absent')
+    throw new Error('expected markers.current.scan=absent, got ' + merge_result.markers.current.scan);
 " || { fail "scenario 4 (absent markers) did not match the expected per-side shape"; exit 1; }
 log "scenario 4 (absent markers, per-side normalization): OK"
 
@@ -253,9 +253,9 @@ S6_SECOND="$(run_cli "$GAIA" ${S6_ARGS[@]+"${S6_ARGS[@]}"})" \
   || fail_with_stderr "scenario 6: second post-update invocation exited non-zero"
 
 printf '%s' "$S6_FIRST" | node -e '
-  const r = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
-  if (r.verdict !== "already-latest")
-    throw new Error("expected verdict already-latest, got " + r.verdict);
+  const merge_result = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
+  if (merge_result.verdict !== "already-latest")
+    throw new Error("expected verdict already-latest, got " + merge_result.verdict);
 ' || { fail "scenario 6: the post-update state did not resolve to already-latest"; exit 1; }
 
 [ "$S6_FIRST" = "$S6_SECOND" ] \
@@ -274,11 +274,11 @@ fi
 log "scenario 7 (missing --current file exits non-zero): OK"
 
 # --- Scenario 8: help path ---------------------------------------------------
-HELP_OUT="$("$GAIA" update --help)" \
+HELP_OUTPUT="$("$GAIA" update --help)" \
   || { fail "scenario 8: gaia update --help exited non-zero"; exit 1; }
-grep -q "merge-region" <<<"$HELP_OUT" \
+grep -q "merge-region" <<<"$HELP_OUTPUT" \
   || { fail "scenario 8: gaia update --help did not list merge-region"; exit 1; }
-grep -q "regen-regions" <<<"$HELP_OUT" \
+grep -q "regen-regions" <<<"$HELP_OUTPUT" \
   || { fail "scenario 8: gaia update --help did not list regen-regions"; exit 1; }
 log "scenario 8 (help lists merge-region and regen-regions): OK"
 

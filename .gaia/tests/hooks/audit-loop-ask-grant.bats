@@ -58,7 +58,7 @@ seed_rounds() {
 # the latest checkpoint, as the bound hook does.
 pin_latest() {
   local pinned_question
-  pinned_question="$(gaia_loop_pinned_question "$ALF_B" "$1" "$2" "$UNIT_ROUNDS" "$3" "$4" "$5")"
+  pinned_question="$(gaia_loop_pinned_question "$ALF_NORMALIZED_BRANCH" "$1" "$2" "$UNIT_ROUNDS" "$3" "$4" "$5")"
   alf_state_edit '.history.checkpoints[-1] += {nonce: $nonce, trigger: $trigger, accept_eligible: $accept_eligible, question: $question}' \
     --arg nonce "$1" --arg trigger "$5" --argjson accept_eligible "$3" --argjson question "$pinned_question"
 }
@@ -185,7 +185,7 @@ declined() {
   send "Accept the remainder"
   declined "accept selected, not in the pin"
   local eligible_pin
-  eligible_pin="$(gaia_loop_pinned_question "$ALF_B" "$NONCE" 5 "$UNIT_ROUNDS" true false context)"
+  eligible_pin="$(gaia_loop_pinned_question "$ALF_NORMALIZED_BRANCH" "$NONCE" 5 "$UNIT_ROUNDS" true false context)"
   PIN_USE="$eligible_pin" send "Accept the remainder"
   declined "payload offers an accept option the pin lacks"
 }
@@ -259,7 +259,7 @@ declined() {
 @test "UAT-012: a wrong nonce records nothing" {
   seed_pinned
   snapshot
-  PIN_USE="$(gaia_loop_pinned_question "$ALF_B" fedcba9876543210 5 "$UNIT_ROUNDS" false false context)" send "$(continue_label)"
+  PIN_USE="$(gaia_loop_pinned_question "$ALF_NORMALIZED_BRANCH" fedcba9876543210 5 "$UNIT_ROUNDS" false false context)" send "$(continue_label)"
   declined "wrong nonce"
 }
 
@@ -339,7 +339,7 @@ CASES
   seed_rounds 5
   alf_add_checkpoint 5 allowance
   snapshot
-  PIN_USE="$(gaia_loop_pinned_question "$ALF_B" "$NONCE" 5 "$UNIT_ROUNDS" false false context)" send "$(continue_label)"
+  PIN_USE="$(gaia_loop_pinned_question "$ALF_NORMALIZED_BRANCH" "$NONCE" 5 "$UNIT_ROUNDS" false false context)" send "$(continue_label)"
   declined "no pinned question"
   printf '%s' "$output" | grep -qF 'no pinned question'
 }

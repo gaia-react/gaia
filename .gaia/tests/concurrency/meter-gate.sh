@@ -37,7 +37,7 @@ tap="$work/observed.tap"
 # silent and calls bats directly.
 set +e
 bash "$ROOT/.gaia/scripts/bats5.sh" --tap "$SUITE" > "$tap" 2>&1
-bats_rc=$?
+bats_exit_status=$?
 set -e
 
 # Echo the run so a CI log carries the failure diagnostics, not just the verdict.
@@ -89,8 +89,8 @@ done < "$observed"
 
 echo "==> the meter ran $total scenario(s)"
 
-if [ "$bats_rc" -ne 0 ] && [ "$failures" -eq 0 ]; then
-  echo "==> FAILED: bats exited $bats_rc with no failing scenario; the run did" >&2
+if [ "$bats_exit_status" -ne 0 ] && [ "$failures" -eq 0 ]; then
+  echo "==> FAILED: bats exited $bats_exit_status with no failing scenario; the run did" >&2
   echo "    not complete, so scenarios after the break never reported" >&2
   exit 1
 fi
