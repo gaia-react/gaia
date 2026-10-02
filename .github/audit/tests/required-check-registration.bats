@@ -112,7 +112,7 @@ check_registration_placement() {
     return 1
   }
   awk '
-    /branches\/<default-branch>\/protection" --input -/ && !protection { protection = NR }
+    /(branches\/<default-branch>\/protection|\$protection_endpoint)" --input -/ && !protection { protection = NR }
     /\["GAIA-Audit"\]/ && !registration { registration = NR }
     END { exit !(protection && registration && protection < registration) }
   ' <<<"$section" || {
@@ -157,7 +157,9 @@ check_registration_placement() {
 
 @test "the placement check fails when the protection PUT is gone" {
   local copy="${BATS_TEST_TMPDIR}/unprotected.md"
-  grep -vF '/protection" --input -' "$SETUP_CI" >"$copy"
+  grep -vE '(/protection|\$protection_endpoint)" --input -' "$SETUP_CI" >"$copy"
+  # The mutation must actually drop a line, or this test proves nothing.
+  cmp -s "$SETUP_CI" "$copy" && return 1
   run check_registration_placement "$copy"
   [ "$status" -ne 0 ]
 }

@@ -455,8 +455,14 @@ When `admin: true` and `auth_status == "ok"`:
 
 **Default-branch protection.** No CLI verb creates a protection rule, so author the full `protection` PUT payload directly. Create protection **before** the `GAIA-Audit` registration below: a bare `required_status_checks` registration 404s when no protection rule exists. Correct order is create repo → push default branch → enable protection → register `GAIA-Audit`.
 
+Probe for an existing rule first and PUT only when there is none. The PUT replaces every setting on a rule, so on an adopted repo that already protects its default branch it would silently drop the adopter's required reviews, other required checks, and push restrictions. An existing rule is kept as it is; the registration below then edits its required contexts alone:
+
 ```bash
-gh api -X PUT "repos/<owner>/<repo>/branches/<default-branch>/protection" --input - <<'JSON'
+protection_endpoint="repos/<owner>/<repo>/branches/<default-branch>/protection"
+if gh api "$protection_endpoint" >/dev/null 2>&1; then
+  echo "<default-branch> already has a protection rule; keeping it and registering GAIA-Audit only."
+else
+  gh api -X PUT "$protection_endpoint" --input - <<'JSON'
 {
   "required_status_checks": {"strict": true, "contexts": []},
   "enforce_admins": false,
@@ -464,9 +470,10 @@ gh api -X PUT "repos/<owner>/<repo>/branches/<default-branch>/protection" --inpu
   "restrictions": null
 }
 JSON
+fi
 ```
 
-`required_status_checks.contexts` starts empty here; the registration below adds `GAIA-Audit` to it and keeps any sibling contexts.
+When the PUT runs, `required_status_checks.contexts` starts empty; the registration below adds `GAIA-Audit` to it and keeps any sibling contexts.
 
 `required_approving_review_count` is `0` and `enforce_admins` is `false` on purpose. GAIA's merge gate is the `GAIA-Audit` required status check (plus any sibling checks), not a human approval, so a review requirement would wedge a solo adopter: nobody can approve their own PR, and `enforce_admins: true` would block the admin override, leaving them unable to merge anything to the default branch. `enforce_admins: false` also lets the admin push the Phase 3.5 and Phase 3.6 team-setting commits **directly onto the default branch**, past this protection: each records one decision in `.gaia/project.json` (plus the Dependabot config when one is written), so setup-gaia lands it straight rather than through a PR + audit (it suspends the local `block-main-destructive-git.sh` hook for the single commit+push via a `.gaia/local/setup-in-progress` sentinel, see Phase 3.5's **The commit**). Do not tighten these to require approvals or enforce admins without a merge path that a solo repo can actually satisfy.
 
