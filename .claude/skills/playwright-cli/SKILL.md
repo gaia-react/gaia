@@ -40,12 +40,14 @@ If `--filename` is not provided, a new snapshot file is created with a timestamp
 
 ## Local installation fallback
 
-If running globally-available `playwright-cli` fails, prefix with `npx`:
+The skill expects the global `playwright-cli` binary (`npm install -g @playwright/cli@latest`, the install /setup-gaia lists). If it is missing, install it with that command or run through npx with the scoped package name:
 
 ```bash
-npx playwright-cli open https://example.com
-npx playwright-cli click e1
+npx -y @playwright/cli open https://example.com
+npx -y @playwright/cli click e1
 ```
+
+Do not run `npx playwright-cli`: that name resolves to a deprecated npm package, not this CLI.
 
 ## Browser sessions
 

@@ -41,19 +41,7 @@ Whether historical or live, the date comes from the CHANGELOG header or the shel
 
 Write to `../website/src/pages/changelog/releases/<version>.ts` (version with no leading `v`; `mkdir -p` the directory if it's missing). The changelog page auto-discovers every file via `import.meta.glob('../releases/*.ts')` and sorts by version, so **dropping the file in is all that's needed**, there's no index or import list to update.
 
-**The schema lives in `../website/src/pages/changelog/types.ts` (the `Release` type), read it as the source of truth before writing.** As of this writing it is:
-
-```ts
-export type Release = {
-  added?: string[]; // "New"
-  date: string; // ISO yyyy-mm-dd
-  fixed?: string[]; // "Fixed"
-  headline?: string;
-  improved?: string[]; // "Improved"
-  summary?: string; // freeform fallback for legacy/coarse entries
-  version: string; // semver, no leading 'v'
-};
-```
+**The schema lives in `../website/src/pages/changelog/types.ts` (the `Release` type), read it as the source of truth before writing.**
 
 **Match the file form of the existing release files, don't trust this skill's literal shape.** The website's convention drifts (export style and key order have both changed). Before writing, open the newest `releases/*.ts` and mirror it exactly: `types.ts` gives you the _fields_, a live sibling file gives you the _serialization_. Today that form is a bare default export with keys in **alphabetical order** (the formatter sorts them). Omit any optional key with no content:
 

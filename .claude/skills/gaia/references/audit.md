@@ -261,6 +261,7 @@ Resolved paths (Stage 2 must match these):
 ## Summary
 
 - Stores scanned: {N files, M words total}
+- Actions proposed: {count of action blocks under ## Actions}
 - Cross-store duplicates: {X}
 - Auto-load total: {Z words} (budget: {total budget})
 - Over-budget files: {list}
@@ -516,7 +517,7 @@ Before printing the summary, verify each flipped action actually landed. This is
 
 This verification is the single authority for the report's terminal `status`: after running it, `status` is `applied` only if every action is `[x]`, and `applied-partial` if any action ended `[~]` skipped or `[!]` failed (including a `promote`/`delete` downgraded to `[!]` here).
 
-### Dispose out-of-scope findings (file, do not fix)
+### Dispose out-of-scope findings (Stage 2)
 
 After applying the in-scope actions, file every finding in the report's `## Out-of-scope findings` section as a `tech-debt` issue. This is the audit's equivalent of the code-audit-frontend disposition contract: **you file, you never fix**, and never edit the working tree for one. If that report section reads `None.`, skip this step entirely.
 

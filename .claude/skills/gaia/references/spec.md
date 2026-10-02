@@ -2,6 +2,13 @@
 
 Socratic discovery wrapper around spec-kit. Produces an immutable SPEC artifact at `.gaia/local/specs/SPEC-NNN/SPEC.md` and stops. Do not implement anything, and do not plan anything, this skill produces an artifact and ends. The `/gaia-plan` handoff is a prompt you print for the human (step 11), never a command you run. See Hard constraint 6.
 
+## Contents
+
+This reference is longer than one `Read` returns. Page through it with `offset` to the end of step 11 before acting on any step.
+
+- Argument parsing, Auto mode, Hard constraints, How spec-kit fires GAIA hooks, Operational primitives
+- Steps: model gate; 1 description; 2 resume-vs-start-new; 3 initial draft; 4 gate 1; 5 Socratic loop; 6 self-review; 7 adversarial SPEC-audit; 8 gate 2; 9 save, ledger, cost; 10 immutability lint; 11 /gaia-plan handoff, then STOP
+
 ## Argument parsing
 
 Tokenize the first whitespace-separated word of `$ARGUMENTS`:
@@ -40,7 +47,7 @@ The rest of the skill, write-surface allowlist, no-machine-local-memory rule, wo
    - `.specify/**`
    - `.gaia/local/cache/**`
    - `.gaia/local/telemetry/**`
-     Never edit source files (`app/**`, `src/**`, repo root configs, etc.). No automated backstop enforces this allowlist today: the `after_specify` lint checks only the saved SPEC artifact's immutability, not which paths a session wrote. You self-police it at the agent-instruction level.
+     Never edit source files (`app/**`, `src/**`, repo root configs, etc.). No automated backstop enforces this allowlist: the `after_specify` lint checks only the saved SPEC artifact's immutability, not which paths a session wrote. You self-police it at the agent-instruction level.
 3. **One question at a time.** No multi-question forms. Closed-set questions go through `AskUserQuestion` with options ordered: recommended FIRST, then alternatives, then `Other` (free text), then `Discuss this` (escape to plain Q&A). Open-ended questions use a plain prompt with no enumerated options.
 4. **Two-gate ceremony.** Confirm intent + UATs in plain English BEFORE authoring the artifact. Confirm the rendered artifact BEFORE saving to disk. No silent advances between gates.
 5. **Coach tone, not interrogator.** Mirror back, name trade-offs, propose candidates when the human is stuck. Never punt research to the human.
@@ -152,9 +159,9 @@ The applier **reads every findings and verdict file in the cache** (not just the
 
 `directives` is optional (absent for pure draft folds); it lists finding ids routed to `AUDIT.md` as plan-time directives. The `counts` object is the pinned **fold-outcome** schema that the applier's own reporting reads.
 
-Reading the full cache (rather than only the listed ids) is what lets the applier both author `AUDIT.md` from the complete on-disk record (see 7d) and fold the **low-severity spec-defect fixes main never surfaced** — the decision list carries only the interactively-gated material survivors, and low spec-defects are folded silently by the applier from the on-disk findings files, preserving the current flow. When the fold routes any finding to a plan-time directive, the applier also writes `AUDIT.md`, at the `${SPEC_DIR}` path it was handed; it resolves no path of its own.
+Reading the full cache (rather than only the listed ids) is what lets the applier both author `AUDIT.md` from the complete on-disk record (see 7d) and fold the **low-severity spec-defect fixes main never surfaced**: the decision list carries only the interactively-gated material survivors, and low spec-defects are folded silently by the applier from the on-disk findings files. When the fold routes any finding to a plan-time directive, the applier also writes `AUDIT.md`, at the `${SPEC_DIR}` path it was handed; it resolves no path of its own.
 
-**Fallback.** If subagent dispatch is unavailable, the main thread folds inline exactly as today, writing `AUDIT.md` at that same resolved path.
+**Fallback.** If subagent dispatch is unavailable, the main thread folds inline itself, writing `AUDIT.md` at that same resolved path.
 
 ### Escape option (used in step 5 AskUserQuestion sets)
 
@@ -315,8 +322,8 @@ LOCK_STATUS="$(bash .specify/extensions/gaia/lib/spec-session-lock.sh status "$P
     - `{ label: "Override: resume SPEC-NNN anyway", description: "This draft is being authored in another session; proceeding may clobber or delete live work. Force-reclaims the lock and resumes." }`
     - `{ label: "Override: discard SPEC-NNN anyway", description: "This draft is being authored in another session; proceeding may clobber or delete live work. Releases the lock and deletes the draft cache." }`
 
-  Resume and Discard are not offered as unguarded actions for a live draft; the human must explicitly pick a guarded override to touch it. On `Override: resume SPEC-NNN anyway`, run `bash .specify/extensions/gaia/lib/spec-session-lock.sh acquire --override "$PWD" "$SPEC_ID" || true` (force-reclaims the live foreign lock for this human-consented session), then proceed straight into the Resume flow below, **skipping** its TOCTOU re-verify (that guard exists for the default dormant Resume and would bounce this override straight back to Start new, making it a dead button). On `Override: discard SPEC-NNN anyway`, run the discard handler below (which releases the lock) and then Start-new-or-exit exactly as discard does today.
-- **`error`.** The lock could not be read (missing `jq`, invalid JSON, or another lock-subsystem error) and may in fact belong to a live session. Present the existing three-option prompt, Resume / Start new / Discard, but with **Start new as the recommended default** and a warning, in place of today's Resume-first default:
+  Resume and Discard are not offered as unguarded actions for a live draft; the human must explicitly pick a guarded override to touch it. On `Override: resume SPEC-NNN anyway`, run `bash .specify/extensions/gaia/lib/spec-session-lock.sh acquire --override "$PWD" "$SPEC_ID" || true` (force-reclaims the live foreign lock for this human-consented session), then proceed straight into the Resume flow below, **skipping** its TOCTOU re-verify (that guard exists for the default dormant Resume and would bounce this override straight back to Start new, making it a dead button). On `Override: discard SPEC-NNN anyway`, run the discard handler below (which releases the lock) and continue exactly as that handler does.
+- **`error`.** The lock could not be read (missing `jq`, invalid JSON, or another lock-subsystem error) and may in fact belong to a live session. Present the existing three-option prompt, Resume / Start new / Discard, but with **Start new as the recommended default** and a warning, in place of the dormant branch's Resume-first default:
   - question: `"SPEC-NNN's session lock could not be read and may belong to a live session. Start new is recommended; resume or discard only if you know it's safe."`
   - header: `"Existing SPEC"`
   - options:
@@ -325,7 +332,7 @@ LOCK_STATUS="$(bash .specify/extensions/gaia/lib/spec-session-lock.sh status "$P
     - `{ label: "Discard SPEC-NNN draft cache", description: "Remove the working-draft cache. The lock could not be verified, discard only if you know no other session is authoring it." }`
 
   When the lock is unreadable, the pre-flight recommends Start new and warns, without surfacing the raw lock-subsystem error text to the user: an unreadable lock may in fact belong to a live session, so the accepted fail-open tradeoff here is availability over safety, not a promise that the draft is dormant. A clean "no lock file" still reads `dormant` below, and Resume/Discard remain reachable here (unlike the `live` branch above), just no longer the recommended default.
-- **`dormant`.** The Resume-first prompt below fires exactly as it does today, unaffected by the lock.
+- **`dormant`.** The Resume-first prompt below fires unchanged; the lock does not affect it.
 
 Read `$WORKING` and extract: intent first line, UAT count, frontmatter `updated` timestamp (or filesystem mtime if absent). Surface via `AskUserQuestion`:
 
@@ -665,7 +672,7 @@ This heading covers three distinct dispatch sites, delimited below by their own 
 
 ##### 7b-i. Refutation
 
-From the 7a thin digests, main selects every **material** finding id (severity ≠ `low`) across all selected lenses; low-severity findings skip refutation and carry forward unchanged. Each refuter defaults to "refuted" unless it can substantiate the defect from ground truth, so this pass is severity discipline as much as false-positive killing (in the pilot it refuted none outright but correctly downgraded every `high` to `medium`). The refuter count scales with `audit_intensity`, up to a cap:
+From the 7a thin digests, main selects every **material** finding id (severity ≠ `low`) across all selected lenses; low-severity findings skip refutation and carry forward unchanged. Each refuter defaults to "refuted" unless it can substantiate the defect from ground truth, so this pass is severity discipline as much as false-positive killing. The refuter count scales with `audit_intensity`, up to a cap:
 
 - **Standard:** one refuter per material finding, all in parallel.
 - **Deep:** three refuters per material finding, all in parallel, each given a distinct verification lens, prepend one of `correctness`, `security/safety`, or `reproduces-as-described` to the refuter prompt below. A finding is refuted only on a ≥2-of-3 majority; its corrected severity is the median of the non-refuting refuters.
@@ -743,11 +750,11 @@ Route each surviving finding by its `disposition`, read from the **thin verdict 
 - **Plan-time directive** (the SPEC's contract is already satisfied; the fix is an implementation instruction). No change folds into the draft — it stays byte-identical — but the finding gains a plan-time-directive entry in `AUDIT.md` (7d) so `/gaia-plan` and the implementer honor it.
 - **SPEC contract defect** (a UAT or the intent is itself wrong, gameable, or missing). The draft is not yet saved, so the fix folds straight into the draft cache with NO reopen ceremony.
 
-**Interactive.** Main reads only the handful of **material** (severity ≠ `low`) spec-defect survivors from the findings files to surface them to the user, mirroring step 6b's high-finding prompt (issue, evidence, recommendation; apply / keep / revise). No numeric cap or paging. This is the second bounded interactive carve-out where a finding body legitimately reaches main. Collect the user's apply/keep/revise decisions into the delegated-fold decision list. **Low** spec-defect fixes are never read into main; the applier folds them directly from the on-disk findings files (it reads the full cache), and refuter verdict text is never read into main. (Low findings skip refutation and carry no verdict line, so the sourcing of a low finding's `disposition` is a pre-existing question the audit's logic leaves unchanged here; the applier only folds the low spec-defects the current flow would have folded.)
+**Interactive.** Main reads only the handful of **material** (severity ≠ `low`) spec-defect survivors from the findings files to surface them to the user, mirroring step 6b's high-finding prompt (issue, evidence, recommendation; apply / keep / revise). No numeric cap or paging. This is the second bounded interactive carve-out where a finding body legitimately reaches main. Collect the user's apply/keep/revise decisions into the delegated-fold decision list. **Low** spec-defect fixes are never read into main; the applier folds them directly from the on-disk findings files (it reads the full cache), and refuter verdict text is never read into main. (Low findings skip refutation and carry no verdict line, so the sourcing of a low finding's `disposition` is a pre-existing question the audit's logic leaves unchanged here; the applier folds only the low spec-defects an inline fold would fold.)
 
 **Auto-mode per rule 12.** No reads; **no finding body reaches main**. The transcript carries ids, severities, titles, verdicts, and dispositions only. Unambiguous spec-defect ids apply (added to the decision list as `apply`); a defect with more than one defensible repair becomes a deferred-clarification note in `clarifications.deferred[]` with rationale `"Auto-mode audit, defer for human review."` and is not applied. Never revert intentional clarify-loop evolution.
 
-**Fold through the delegated applier.** Dispatch the applier (see "Audit cache + delegated fold") with the inputs that primitive enumerates, taking `${SPEC_DIR}` from 7c above. It reads the draft plus every findings and verdict file plus the decision list, folds every spec-defect fix in **one Write**, and **writes `AUDIT.md` itself** (7d) at the folder path it was handed, from the on-disk findings and verdicts — main never loads a finding body to produce `AUDIT.md`. **Fallback:** if subagent dispatch is unavailable, main folds inline as today, writing `AUDIT.md` at that same resolved path.
+**Fold through the delegated applier.** Dispatch the applier (see "Audit cache + delegated fold") with the inputs that primitive enumerates, taking `${SPEC_DIR}` from 7c above. It reads the draft plus every findings and verdict file plus the decision list, folds every spec-defect fix in **one Write**, and **writes `AUDIT.md` itself** (7d) at the folder path it was handed, from the on-disk findings and verdicts; main never loads a finding body to produce `AUDIT.md`. **Fallback:** if subagent dispatch is unavailable, main folds inline itself, writing `AUDIT.md` at that same resolved path.
 
 Before dispatching, finalize `.gaia/local/cache/audit-<spec_id>/coverage.jsonl`, one thin JSON-Lines record per in-scope dispatch resolved so far, `{ "phase": ..., "lens": ..., "disposition": "first_pass"|"not_applicable" }`, carrying no finding body (this is the applier's data source for `## Coverage` in 7d; the findings/verdict files cannot encode a disposition).
 
@@ -827,7 +834,7 @@ Use a plain prompt, not `AskUserQuestion`. Suggested phrasing:
 
 If the user revises:
 
-1. Route the revision through the **delegated fold** (see "Audit cache + delegated fold") in **free-text revision mode**: the decision-list entry is id-less and carries the revision text inline; the applier applies it directly with no findings-file lookup, writes the draft cache in one Write, and returns its one-line summary. Main emits no draft-body `Write` for the gate-2 fold. This completes "no full-draft Write in the main thread at a fold checkpoint." **Fallback:** when subagent dispatch is unavailable, main folds the revision inline as today.
+1. Route the revision through the **delegated fold** (see "Audit cache + delegated fold") in **free-text revision mode**: the decision-list entry is id-less and carries the revision text inline; the applier applies it directly with no findings-file lookup, writes the draft cache in one Write, and returns its one-line summary. Main emits no draft-body `Write` for the gate-2 fold. This completes "no full-draft Write in the main thread at a fold checkpoint." **Fallback:** when subagent dispatch is unavailable, main folds the revision inline itself.
 2. Increment `gate2_revisions`.
 3. Re-present until they confirm. Do not re-quote raw clarify Q&A in revision prompts, reference the draft's `clarifications.answered[]` and `clarifications.deferred[]` arrays as canonical.
 

@@ -286,8 +286,9 @@ log "scenario 8 (help lists merge-region and regen-regions): OK"
 # The skill invokes both new subcommands from the DOWNLOADED RELEASE COPY of
 # the CLI, never the adopter's already-installed working-tree copy, so a run
 # whose installed binary predates them can still reach them.
-# This is the grep-assertable half of that rule: the skill carries the
-# release-resolved form and carries no working-tree-resolved one.
+# This is the grep-assertable half of that rule: the skill's merge-execution
+# reference carries the release-resolved form, and neither it nor SKILL.md
+# carries a working-tree-resolved one.
 #
 # The two SC2016 disables below are per-line rather than file-wide on purpose.
 # Each of these patterns carries a literal `$LATEST_DIR` that is matched as
@@ -298,12 +299,12 @@ log "scenario 8 (help lists merge-region and regen-regions): OK"
 # SC2016 hit worth seeing, and a file-wide disable would swallow it silently.
 # shellcheck disable=SC2016
 grep -q '"\$LATEST_DIR/\.gaia/cli/gaia" update merge-region' \
-  "$PROJECT_ROOT/.claude/skills/update-gaia/SKILL.md" \
-  || { fail "scenario 9: SKILL.md is missing the release-resolved merge-region invocation"; exit 1; }
+  "$PROJECT_ROOT/.claude/skills/update-gaia/references/merge-execution.md" \
+  || { fail "scenario 9: references/merge-execution.md is missing the release-resolved merge-region invocation"; exit 1; }
 # shellcheck disable=SC2016
 grep -q '"\$LATEST_DIR/\.gaia/cli/gaia" update regen-regions' \
-  "$PROJECT_ROOT/.claude/skills/update-gaia/SKILL.md" \
-  || { fail "scenario 9: SKILL.md is missing the release-resolved regen-regions invocation"; exit 1; }
+  "$PROJECT_ROOT/.claude/skills/update-gaia/references/merge-execution.md" \
+  || { fail "scenario 9: references/merge-execution.md is missing the release-resolved regen-regions invocation"; exit 1; }
 # Match the invocation whether or not a quote closes the binary path, then
 # exclude the release-resolved lines by the root they name. Matching on the
 # character before `.gaia` cannot do this job: a quoted working-tree invocation
@@ -317,13 +318,16 @@ grep -q '"\$LATEST_DIR/\.gaia/cli/gaia" update regen-regions' \
 # does carry a working-tree-resolved invocation.
 # `length($0) > 0` drops the empty line `<<<` appends, which an inverted match
 # would otherwise count as an offending line on an empty capture.
+# Both skill files are scanned: grep prefixes each line with its file name,
+# which the LATEST_DIR index check below reads past.
 invocations="$(grep -nE '\.gaia/cli/gaia"? update (merge-region|regen-regions)' \
-  "$PROJECT_ROOT/.claude/skills/update-gaia/SKILL.md" || true)"
+  "$PROJECT_ROOT/.claude/skills/update-gaia/SKILL.md" \
+  "$PROJECT_ROOT/.claude/skills/update-gaia/references/merge-execution.md" || true)"
 if awk '
     length($0) > 0 && index($0, "LATEST_DIR") == 0 { found = 1 }
     END { exit(found ? 0 : 1) }
   ' <<<"$invocations"; then
-  fail "scenario 9: SKILL.md carries a working-tree-resolved invocation of merge-region or regen-regions"
+  fail "scenario 9: SKILL.md or references/merge-execution.md carries a working-tree-resolved invocation of merge-region or regen-regions"
   exit 1
 fi
 log "scenario 9 (release-resolution grep): OK"

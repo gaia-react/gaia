@@ -9,7 +9,7 @@ Conform's Zod helpers import from the `@conform-to/zod/v4` subpath, the bare `@c
 ```tsx
 const schema = z.object({
   name: z.string().min(1),
-  email: z.string().email(),
+  email: z.email(),
   role: z.literal(['admin', 'member']),
 });
 ```
@@ -17,7 +17,8 @@ const schema = z.object({
 ### 2. Action (in route file)
 
 ```tsx
-export const action = async ({request}: ActionFunctionArgs) => {
+// import type {Route} from './+types/<route-file>';
+export const action = async ({request}: Route.ActionArgs) => {
   const formData = await request.formData();
   const submission = parseWithZod(formData, {schema});
 
@@ -72,7 +73,7 @@ const MyPage: FC = () => {
         options={roleOptions}
         errors={fields.role.errors}
       />
-      <button type="submit">Save</button>
+      <button type="submit">{t('save')}</button>
     </Form>
   );
 };

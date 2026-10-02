@@ -72,7 +72,7 @@ esac
 ```
 
 An absent key, an unreadable config, a missing file, and an unrecognized value all resolve to
-`prefer-branch`, identical to today's behavior below. The `*)` arm's message names the unrecognized value so
+`prefer-branch` (below). The `*)` arm's message names the unrecognized value so
 a typo is discoverable: one line, no warning banner, no error.
 
 ### `always-worktree`
@@ -125,7 +125,7 @@ which option leads can change without editing a literal.
 Prefix the `branch` option's description with `Default. ` when, and only when, `branch` is the **lead**
 option. This is the one and only site that applies the prefix; like the marker, it is never baked into a
 description literal. The prompt then carries exactly one recommendation signal: under `prefer-branch` the
-branch option both leads and calls itself the default, which is what it renders today; under
+branch option both leads and calls itself the default; under
 `prefer-worktree` the worktree option leads and the branch option no longer contradicts it by claiming to be
 the default.
 
