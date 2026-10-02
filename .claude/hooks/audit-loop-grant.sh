@@ -137,11 +137,7 @@ esac
 
 # Interactive check.
 transcript="$(printf '%s' "$payload" | jq -r '.transcript_path // "" | strings' 2>/dev/null)" || transcript=""
-entry=""
-if [ -n "$transcript" ] && [ -f "$transcript" ]; then
-  entry="$(jq -r -n '[inputs | select(type == "object" and has("entrypoint")) | .entrypoint] | if length > 0 and all(. == "cli") then "cli" else "other" end' <"$transcript" 2>/dev/null)" || entry=""
-fi
-if [ "${CLAUDE_CODE_ENTRYPOINT-}" != cli ] || [ "$entry" != cli ]; then
+if ! gaia_loop_session_is_interactive "$transcript"; then
   printf 'audit-loop-grant: session is not interactive; nothing recorded\n' >&2
   _gl_say "Not recorded: this session is not interactive (a person must type the line in a Claude Code terminal session)."
   exit 0

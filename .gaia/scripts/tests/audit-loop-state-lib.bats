@@ -241,3 +241,168 @@ EOF
   gaia_loop_is_safe_relpath '' && return 1
   true
 }
+
+# ---- SPEC-093: optional schema fields, pinned question, nonce, interactive check
+
+full_state() {
+  valid_state | jq -c '
+    .history.context_config = {ask_tokens: 300000, ask_window_pct: 50}
+    | .history.units = [{unit: 1, start_round: 1, k: 3, through_round: 3, admitted_on: "context", after_checkpoint: 0, recorded_at: "2026-10-02T00:00:00Z", session_id: "s"}]
+    | .history.checkpoints = [{index: 1, at_round: 3, nonce: "0123456789abcdef", trigger: "context", accept_eligible: false,
+        question: {questions: [{question: "q"}]}}]
+    | .allowance.answers = [{checkpoint: 1, kind: "grant", n: 3, source: "ask", option: "Grant 3, continue here", nonce: "0123456789abcdef", at: "t", session_id: "s"}]'
+}
+
+# assert_refused <label> <json>: read returns 5 and a write refuses, file unchanged.
+assert_refused() {
+  local f="$BATS_TEST_TMPDIR/refuse.json" rc
+  valid_state >"$f"
+  cp "$f" "$f.orig"
+  printf '%s\n' "$2" >"$BATS_TEST_TMPDIR/bad.json"
+  gaia_loop_read_state "$BATS_TEST_TMPDIR/bad.json" >/dev/null && rc=0 || rc=$?
+  [ "$rc" -eq 5 ] || { echo "$1: read rc $rc, want 5"; return 1; }
+  gaia_loop_write_state "$f" "$2" && rc=0 || rc=$?
+  [ "$rc" -eq 5 ] || { echo "$1: write rc $rc, want 5"; return 1; }
+  cmp -s "$f" "$f.orig" || { echo "$1: file changed"; return 1; }
+}
+
+@test "schema: a state with every new optional field reads and writes" {
+  local f="$BATS_TEST_TMPDIR/s.json"
+  full_state >"$f"
+  run gaia_loop_read_state "$f"
+  [ "$status" -eq 0 ]
+  run gaia_loop_write_state "$BATS_TEST_TMPDIR/o.json" "$(full_state)"
+  [ "$status" -eq 0 ]
+  [ -f "$BATS_TEST_TMPDIR/o.json" ]
+}
+
+@test "schema: a legacy state round-trips byte-identically" {
+  local f="$BATS_TEST_TMPDIR/legacy.json" o="$BATS_TEST_TMPDIR/out.json"
+  valid_state | jq . >"$f"
+  gaia_loop_write_state "$o" "$(gaia_loop_read_state "$f")"
+  [ "$(jq -S -c . <"$f")" = "$(jq -S -c . <"$o")" ]
+  gaia_loop_write_state "$BATS_TEST_TMPDIR/o2.json" "$(gaia_loop_read_state "$o")"
+  cmp -s "$o" "$BATS_TEST_TMPDIR/o2.json"
+}
+
+@test "schema: red states for the new fields are corrupt and refused" {
+  assert_refused pct150 "$(full_state | jq -c '.history.context_config.ask_window_pct = 150')"
+  assert_refused tokens0 "$(full_state | jq -c '.history.context_config.ask_tokens = 0')"
+  assert_refused magic "$(full_state | jq -c '.history.units[0].admitted_on = "magic"')"
+  assert_refused inline "$(full_state | jq -c '.history.units[0].admitted_on = "inline"')"
+  assert_refused noafter "$(full_state | jq -c 'del(.history.units[0].after_checkpoint)')"
+  assert_refused badnonce "$(full_state | jq -c '.history.checkpoints[0].nonce = "XYZ"')"
+  assert_refused twoq "$(full_state | jq -c '.history.checkpoints[0].question.questions += [{}]')"
+  assert_refused badelig "$(full_state | jq -c '.history.checkpoints[0].accept_eligible = "yes"')"
+  assert_refused forged "$(full_state | jq -c '.allowance.answers[0].source = "forged"')"
+  assert_refused n11 "$(full_state | jq -c '.allowance.answers[0].n = 11')"
+  assert_refused ansnonce "$(full_state | jq -c '.allowance.answers[0].nonce = "nope"')"
+}
+
+# opt_count <json>: number of options in the first question.
+opt_count() { printf '%s' "$1" | jq '.questions[0].options | length'; }
+# at_least_two_options <json>: the invariant every pinned question must hold.
+at_least_two_options() { [ "$(opt_count "$1")" -ge 2 ]; }
+labels() { printf '%s' "$1" | jq -r '[.questions[0].options[].label] | join("|")'; }
+
+@test "pinned question: labels, order, header, single question" {
+  local n=0123456789abcdef q
+  q="$(gaia_loop_pinned_question feat/x $n 6 3 true false context)"
+  [ "$(printf '%s' "$q" | jq '.questions | length')" -eq 1 ]
+  [ "$(printf '%s' "$q" | jq -r '.questions[0].header')" = "Audit loop" ]
+  [ "$(printf '%s' "$q" | jq '.questions[0].multiSelect')" = false ]
+  [ "$(labels "$q")" = "Grant 3, continue here|Grant 3, new session|Accept the remainder|Stop and file the remainder" ]
+  case "$(printf '%s' "$q" | jq -r '.questions[0].question')" in
+    *"$n"*"feat/x"*"6 rounds used (context)"*) ;;
+    *) return 1 ;;
+  esac
+  q="$(gaia_loop_pinned_question feat/x $n 6 2 true false context)"
+  [ "$(labels "$q")" = "Grant 2, continue here|Grant 2, new session|Accept the remainder|Stop and file the remainder" ]
+}
+
+@test "pinned question: eligibility and cap shape the options, never fewer than two" {
+  local n=0123456789abcdef q
+  q="$(gaia_loop_pinned_question feat/x $n 6 3 false false context)"
+  [ "$(labels "$q")" = "Grant 3, continue here|Grant 3, new session|Stop and file the remainder" ]
+  q="$(gaia_loop_pinned_question feat/x $n 10 3 true true cap)"
+  [ "$(labels "$q")" = "Accept the remainder|Stop and file the remainder" ]
+  q="$(gaia_loop_pinned_question feat/x $n 10 3 false true cap)"
+  [ "$(labels "$q")" = "Type audit-accept instead|Stop and file the remainder" ]
+  local e c
+  for e in true false; do
+    for c in true false; do
+      q="$(gaia_loop_pinned_question feat/x $n 6 3 $e $c rubric:J2)"
+      at_least_two_options "$q"
+      [[ "$(labels "$q")" == *"Stop and file the remainder" ]]
+      [[ "$q" == *"$n"* ]]
+    done
+  done
+  # The cap-ineligible description names the typed line as a deliberate override.
+  q="$(gaia_loop_pinned_question feat/x $n 10 3 false true cap)"
+  [[ "$q" == *"audit-accept"*"deliberate override"* ]]
+}
+
+@test "pinned question red twin: a builder without the cap-ineligible option fails the two-option check" {
+  local mut="$BATS_TEST_TMPDIR/mut" q
+  mkdir -p "$mut"
+  cp "$SCRIPTS"/*.sh "$mut/"
+  sed 's/if \$cap and (\$elig | not) then/if false then/' "$SCRIPTS/audit-loop-state-lib.sh" >"$mut/audit-loop-state-lib.sh"
+  if cmp -s "$SCRIPTS/audit-loop-state-lib.sh" "$mut/audit-loop-state-lib.sh"; then return 1; fi
+  q="$(bash -c '. "$1"; gaia_loop_pinned_question feat/x 0123456789abcdef 10 3 false true cap' _ "$mut/audit-loop-state-lib.sh")"
+  [ "$(opt_count "$q")" -eq 1 ]
+  run at_least_two_options "$q"
+  [ "$status" -ne 0 ]
+}
+
+@test "pinned question: bad inputs are rc 2 with empty stdout" {
+  run gaia_loop_pinned_question feat/x ZZZZ 6 3 true false context
+  [ "$status" -eq 2 ]
+  [ -z "$output" ]
+  run gaia_loop_pinned_question a..b 0123456789abcdef 6 3 true false context
+  [ "$status" -eq 2 ]
+  [ -z "$output" ]
+  run gaia_loop_pinned_question feat/x 0123456789abcdef 6 abc true false context
+  [ "$status" -eq 2 ]
+  [ -z "$output" ]
+  run gaia_loop_pinned_question feat/x 0123456789abcdef 6 3 yes false context
+  [ "$status" -eq 2 ]
+  [ -z "$output" ]
+}
+
+@test "nonce: two calls differ, are 16 hex, and pin different questions" {
+  local a b qa qb
+  a="$(gaia_loop_new_nonce)"
+  b="$(gaia_loop_new_nonce)"
+  [[ "$a" =~ ^[0-9a-f]{16}$ ]]
+  [[ "$b" =~ ^[0-9a-f]{16}$ ]]
+  [ "$a" != "$b" ]
+  qa="$(gaia_loop_pinned_question feat/x "$a" 6 3 true false context)"
+  qb="$(gaia_loop_pinned_question feat/x "$b" 6 3 true false context)"
+  [ "$qa" != "$qb" ]
+}
+
+@test "pinned question: with the recorder off every grant and accept description names the typed line" {
+  local mut="$BATS_TEST_TMPDIR/mut0" q
+  mkdir -p "$mut"
+  cp "$SCRIPTS"/*.sh "$mut/"
+  sed 's/^_GAIA_LOOP_ASK_RECORDER=1$/_GAIA_LOOP_ASK_RECORDER=0/' "$SCRIPTS/audit-loop-state-lib.sh" >"$mut/audit-loop-state-lib.sh"
+  q="$(bash -c '. "$1"; gaia_loop_pinned_question feat/x 0123456789abcdef 6 3 true false context' _ "$mut/audit-loop-state-lib.sh")"
+  [ "$(printf '%s' "$q" | jq '[.questions[0].options[] | select(.label | startswith("Grant") or startswith("Accept")) | select(.description | test("type `audit-(grant 3|accept)`"))] | length')" -eq 3 ]
+}
+
+@test "interactive check: cli env and an all-cli transcript pass; every other shape fails" {
+  local t="$BATS_TEST_TMPDIR/t.jsonl"
+  printf '{"entrypoint":"cli"}\n{"type":"x"}\n{"entrypoint":"cli"}\n' >"$t"
+  CLAUDE_CODE_ENTRYPOINT=cli gaia_loop_session_is_interactive "$t"
+  if CLAUDE_CODE_ENTRYPOINT=sdk-cli gaia_loop_session_is_interactive "$t"; then return 1; fi
+  printf '{"entrypoint":"cli"}\n{"entrypoint":"sdk-cli"}\n' >"$BATS_TEST_TMPDIR/t2.jsonl"
+  if CLAUDE_CODE_ENTRYPOINT=cli gaia_loop_session_is_interactive "$BATS_TEST_TMPDIR/t2.jsonl"; then return 1; fi
+  if CLAUDE_CODE_ENTRYPOINT=cli gaia_loop_session_is_interactive "$BATS_TEST_TMPDIR/missing.jsonl"; then return 1; fi
+  if CLAUDE_CODE_ENTRYPOINT=cli gaia_loop_session_is_interactive ""; then return 1; fi
+}
+
+@test "sourcing the lib with PATH empty still succeeds" {
+  run env PATH= /bin/bash -c ". '$SCRIPTS/audit-loop-state-lib.sh'; echo ok"
+  [ "$status" -eq 0 ]
+  [ "$output" = ok ]
+}

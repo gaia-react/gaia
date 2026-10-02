@@ -171,7 +171,8 @@ ctx_json() {
   mkdir -p "$scratch"
   sed 's/ and \. <= \$d//' "$REPO_ROOT/.gaia/scripts/context-checkpoint-lib.sh" >"$scratch/context-checkpoint-lib.sh"
   # The mutation must actually have changed the lib.
-  ! cmp -s "$scratch/context-checkpoint-lib.sh" "$REPO_ROOT/.gaia/scripts/context-checkpoint-lib.sh"
+  run cmp -s "$scratch/context-checkpoint-lib.sh" "$REPO_ROOT/.gaia/scripts/context-checkpoint-lib.sh"
+  [ "$status" -ne 0 ]
   run env CTX_LIB_DIR="$scratch" bash "$REPO_ROOT/.gaia/scripts/bats5.sh" \
     --filter 'override: lower-only guard' "$BATS_TEST_FILENAME" </dev/null
   [ "$status" -ne 0 ]

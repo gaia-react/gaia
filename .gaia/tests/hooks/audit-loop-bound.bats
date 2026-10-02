@@ -167,7 +167,7 @@ wt_commit() {
   dispatch
   assert_allowed
   [ "$(nrounds)" -eq 1 ]
-  [ "$(sj '.history.knobs.checkpoint_round')" -eq 5 ]
+  [ "$(sj '.history.knobs.checkpoint_round')" -eq 6 ]
   [ "$(sj '.history.knobs.grant_rounds')" -eq 3 ]
   [ "$(sj '.history.rounds[0].members[0]')" = "$M" ]
   [ "$(sj '.history.rounds[0].raw_branch_slug')" = "$ALF_SLUG" ]
@@ -353,9 +353,9 @@ next_allowed() {
   [ "$(nrounds)" -eq 3 ]
 }
 
-@test "with both knobs unset the checkpoint is at 5 and the grant line is audit-grant 3" {
+@test "with both knobs unset the checkpoint is at 6 and the grant line is audit-grant 3" {
   local i
-  for i in 1 2 3 4 5; do
+  for i in 1 2 3 4 5 6; do
     new_tree
     dispatch
     assert_allowed
@@ -364,12 +364,12 @@ next_allowed() {
   dispatch
   assert_denied
   reason | grep -qxF -- "Grant (type exactly as the whole prompt): audit-grant 3"
-  [ "$(sj '.history.knobs.checkpoint_round')" -eq 5 ]
+  [ "$(sj '.history.knobs.checkpoint_round')" -eq 6 ]
 }
 
 @test "a raised knob never allows past the frozen checkpoint" {
   local i
-  for i in 1 2 3 4 5; do
+  for i in 1 2 3 4 5 6; do
     new_tree
     dispatch
     assert_allowed
@@ -378,7 +378,7 @@ next_allowed() {
   export GAIA_AUDIT_CHECKPOINT_ROUND=9
   dispatch
   assert_denied
-  [ "$(nrounds)" -eq 5 ]
+  [ "$(nrounds)" -eq 6 ]
 }
 
 @test "a live knob lowers a branch at round 3 to 4: one more tree, then denied" {
@@ -400,7 +400,7 @@ next_allowed() {
 
 @test "malformed knob values never allow past the default" {
   local i v
-  for i in 1 2 3 4 5; do
+  for i in 1 2 3 4 5 6; do
     new_tree
     dispatch
     assert_allowed
@@ -411,7 +411,7 @@ next_allowed() {
     dispatch
     assert_denied
   done
-  [ "$(nrounds)" -eq 5 ]
+  [ "$(nrounds)" -eq 6 ]
 }
 
 # --- the pull request link ------------------------------------------------------

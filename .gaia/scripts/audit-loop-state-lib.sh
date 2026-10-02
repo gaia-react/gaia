@@ -5,12 +5,15 @@
 # verdict formulas, the defaults and the allowance fold live in
 # audit-loop-eval.sh's header, not here.
 #
-# Writers. The state file has two sections with one writer each:
-# audit-loop-bound.sh writes every top-level key except `allowance`, and
-# audit-loop-grant.sh writes only `allowance`. Both take gaia_loop_lock,
-# re-read the file under it (another writer may have landed while they
-# waited), validate, and write through gaia_loop_write_state. Nothing else
-# writes the file, and audit-loop-eval.sh's CLI never calls a write function.
+# Writers. The state file has three writers: audit-loop-bound.sh writes every
+# top-level key except `allowance`; audit-loop-grant.sh (typed grant/accept
+# lines) and audit-loop-ask-grant.sh (selections of the pinned AskUserQuestion)
+# write only `allowance`. All take gaia_loop_lock, re-read the file under it
+# (another writer may have landed while they waited), validate, and write
+# through gaia_loop_write_state. Nothing else writes the file, and
+# audit-loop-eval.sh's CLI never calls a write function. A typed `audit-accept`
+# is a deliberate human override of the accept-eligibility gate that the
+# AskUserQuestion accept option carries.
 #
 # Corrupt means not valid JSON, `schema != 1`, a missing required key, or a
 # recorded tree/commit/merge base that is not a hex object id. A corrupt file
@@ -114,6 +117,16 @@ gaia_loop_run_dir() {
 _GAIA_LOOP_SCHEMA_JQ='
 def oid: type == "string" and test("^([0-9a-f]{40}|[0-9a-f]{64})$");
 def int1: type == "number" and . == floor and . >= 1 and . <= 99;
+def isint: type == "number" and . == floor;
+def opt($k; f): (has($k) | not) or (.[$k] | f);
+def hex16: type == "string" and test("^[0-9a-f]{16}$");
+def unit_ok:
+  type == "object" and (.unit | isint) and .unit >= 1 and (.start_round | isint)
+  and (.k | isint) and (.through_round | isint) and (.after_checkpoint | isint)
+  and (.admitted_on == "context" or .admitted_on == "grant" or .admitted_on == "accept" or .admitted_on == "fallback");
+def config_ok:
+  type == "object" and (.ask_tokens | isint) and .ask_tokens >= 1
+  and (.ask_window_pct | isint) and .ask_window_pct >= 1 and .ask_window_pct <= 100;
 def ok:
   type == "object" and .schema == 1
   and (.key | type == "string") and (.branch | type == "string")
@@ -123,6 +136,8 @@ def ok:
   and (.allowance | type == "object") and (.allowance.answers | type == "array")
   and ((.history.rounds | length) == 0
        or (.history.knobs | type == "object" and (.checkpoint_round | int1) and (.grant_rounds | int1)))
+  and (.history | opt("context_config"; config_ok))
+  and (.history | opt("units"; type == "array" and all(.[]; unit_ok)))
   and all(.history.rounds[];
           type == "object" and (.tree | oid) and (.commit | oid)
           and (.members | type == "array")
@@ -130,10 +145,15 @@ def ok:
                or (.snapshot | type == "object"
                    and (.merge_base == null or (.merge_base | oid)))))
   and all(.history.checkpoints[];
-          type == "object" and (.index | type == "number") and (.at_round | type == "number"))
+          type == "object" and (.index | type == "number") and (.at_round | type == "number")
+          and opt("nonce"; hex16) and opt("trigger"; type == "string")
+          and opt("accept_eligible"; type == "boolean")
+          and opt("question"; type == "object" and (.questions | type == "array" and length == 1)))
   and all(.allowance.answers[];
           type == "object" and (.checkpoint | type == "number")
-          and (.kind == "accept" or (.kind == "grant" and (.n | type == "number" and . == floor and . >= 1 and . <= 10))));
+          and (.kind == "accept" or (.kind == "grant" and (.n | type == "number" and . == floor and . >= 1 and . <= 10)))
+          and opt("source"; . == "typed" or . == "ask")
+          and opt("option"; type == "string") and opt("nonce"; hex16));
 if length == 1 and (.[0] | ok) then .[0] else error("corrupt") end
 '
 
@@ -255,6 +275,80 @@ gaia_loop_parse_line() {
     *audit-grant* | *audit-accept*) printf 'malformed\n' ;;
     *) printf 'none\n' ;;
   esac
+}
+
+# _GAIA_LOOP_ASK_RECORDER: 1 when the PostToolUse recorder
+# (audit-loop-ask-grant.sh) is built (probe P3 passed), 0 when selecting an
+# option records nothing and the human must type the line instead.
+_GAIA_LOOP_ASK_RECORDER=1
+
+# gaia_loop_new_nonce: 16 lowercase hex chars from /dev/urandom; rc 6 when it
+# cannot produce them.
+gaia_loop_new_nonce() {
+  local n
+  n="$(od -An -N8 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')" || return 6
+  [[ "$n" =~ ^[0-9a-f]{16}$ ]] || return 6
+  printf '%s\n' "$n"
+}
+
+# gaia_loop_session_is_interactive <transcript_path>: rc 0 only when
+# CLAUDE_CODE_ENTRYPOINT is `cli`, the transcript exists, and every record
+# carrying `entrypoint` holds `cli`. Shared by both recorders.
+gaia_loop_session_is_interactive() {
+  local transcript="${1-}" entry=""
+  [ "${CLAUDE_CODE_ENTRYPOINT-}" = cli ] || return 1
+  if [ -n "$transcript" ] && [ -f "$transcript" ]; then
+    entry="$(jq -r -n '[inputs | select(type == "object" and has("entrypoint")) | .entrypoint] | if length > 0 and all(. == "cli") then "cli" else "other" end' <"$transcript" 2>/dev/null)" || entry=""
+  fi
+  [ "$entry" = cli ]
+}
+
+# gaia_loop_pinned_question <branch> <nonce> <rounds_used> <k>
+# <accept_eligible:true|false> <cap:true|false> <trigger>: the whole pinned
+# AskUserQuestion tool_input, compact JSON, one question. The only builder of
+# these strings (the recorder compares a payload against its output). rc 2 and
+# nothing printed on a bad input.
+gaia_loop_pinned_question() {
+  local branch="${1-}" nonce="${2-}" used="${3-}" k="${4-}" elig="${5-}" cap="${6-}" trigger="${7-}"
+  local LC_ALL=C typed_g typed_a
+  command -v jq >/dev/null 2>&1 || return 6
+  _gaia_loop_keyable "$branch" || return 2
+  [[ "$nonce" =~ ^[0-9a-f]{16}$ ]] || return 2
+  gaia_loop_is_uint "$used" || return 2
+  gaia_loop_is_uint "$k" || return 2
+  [ "$k" -ge 1 ] || return 2
+  case "$elig" in true | false) ;; *) return 2 ;; esac
+  case "$cap" in true | false) ;; *) return 2 ;; esac
+  [[ "$trigger" =~ ^(context|cap|fallback|rubric:[A-Za-z0-9_.-]+)$ ]] || return 2
+  typed_g=""
+  typed_a=""
+  if [ "$_GAIA_LOOP_ASK_RECORDER" = 0 ]; then
+    typed_g=" Selecting this records nothing; type \`audit-grant $k\` as the whole prompt."
+    typed_a=" Selecting this records nothing; type \`audit-accept\` as the whole prompt."
+  fi
+  jq -n -c --arg branch "$branch" --arg nonce "$nonce" --arg used "$used" --arg k "$k" \
+    --arg trigger "$trigger" --argjson elig "$elig" --argjson cap "$cap" \
+    --arg tg "$typed_g" --arg ta "$typed_a" '
+    ("Grant " + $k + ", continue here") as $g1
+    | ("Grant " + $k + ", new session") as $g2
+    | [
+        (if $cap then empty else
+          {label: $g1, description: ("Records " + $k + " more rounds and keeps working in this session." + $tg)},
+          {label: $g2, description: ("Records the same " + $k + "-round grant, then prints a continuation prompt for a fresh session." + $tg)}
+        end),
+        (if $elig then
+          {label: "Accept the remainder", description: ("One closing round, then the remainder is recorded as accepted residuals." + $ta)}
+        else empty end),
+        (if $cap and ($elig | not) then
+          {label: "Type audit-accept instead", description: "Records nothing. The human may type `audit-accept` as the whole prompt, a deliberate override of the eligibility gate."}
+        else empty end),
+        {label: "Stop and file the remainder", description: "Records nothing, leaves the PR open, and files the remainder as tech debt."}
+      ] as $opts
+    | {questions: [{
+        question: ("Audit checkpoint " + $nonce + " on " + $branch + ": " + $used + " rounds used (" + $trigger + "). How should the audit loop continue?"),
+        header: "Audit loop",
+        multiSelect: false,
+        options: $opts}]}'
 }
 
 # gaia_loop_pending_checkpoint <state-json>: the pending checkpoint object, or
