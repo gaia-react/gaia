@@ -24,10 +24,10 @@ build_repo() {
   TD="$REPO/.gaia/local/telemetry"
   STUBLOG="$TMP/net.log"
   unset CLAUDE_CODE_SESSION_ID GAIA_TALLY_PROJECTS_ROOT GITHUB_ACTIONS GAIA_USAGE_HOOKS_DISABLE
-  unset GAIA_LEDGER_LOCK_TIMEOUT_SECS GAIA_USAGE_MERGE_CAP_SECS GAIA_USAGE_TEST_BARRIER
+  unset GAIA_LEDGER_LOCK_TIMEOUT_SECONDS GAIA_USAGE_MERGE_CAP_SECS GAIA_USAGE_TEST_BARRIER
   export GIT_AUTHOR_NAME="GAIA Test" GIT_AUTHOR_EMAIL="gaia-test@example.com"
   export GIT_COMMITTER_NAME="GAIA Test" GIT_COMMITTER_EMAIL="gaia-test@example.com"
-  export GAIA_LEDGER_LOCK_POLL_SECS=0.1
+  export GAIA_LEDGER_LOCK_POLL_SECONDS=0.1
   mkdir -p "$REPO" "$PROJ/$(enc "$REPO")" "$TMP/bin"
   git -C "$REPO" init -q -b main
   git -C "$REPO" -c commit.gpgsign=false commit -q --allow-empty -m init

@@ -13,23 +13,23 @@ SPEC_MD="$REPO_ROOT/.claude/skills/gaia/references/spec.md"
 # Filled SPEC from the template with the given frontmatter line(s) in place of
 # the template's "lineage: []" line. No argument drops the key entirely.
 make_spec() {
-  local out="$1" repl="${2-__DROP__}"
-  if [ "$repl" = "__DROP__" ]; then
-    sed 's/SPEC-NNN/SPEC-001/;s/UAT-NNN/UAT-001/;/^lineage: \[\]$/d' "$TEMPLATE" >"$out"
+  local output_path="$1" replacement="${2-__DROP__}"
+  if [ "$replacement" = "__DROP__" ]; then
+    sed 's/SPEC-NNN/SPEC-001/;s/UAT-NNN/UAT-001/;/^lineage: \[\]$/d' "$TEMPLATE" >"$output_path"
   else
-    local tmp="$BATS_TEST_TMPDIR/repl.txt"
-    printf '%s\n' "$repl" >"$tmp"
+    local replacement_file="$BATS_TEST_TMPDIR/repl.txt"
+    printf '%s\n' "$replacement" >"$replacement_file"
     sed 's/SPEC-NNN/SPEC-001/;s/UAT-NNN/UAT-001/' "$TEMPLATE" \
-      | awk -v rf="$tmp" '/^lineage: \[\]$/ { while ((getline l < rf) > 0) print l; next } { print }' >"$out"
+      | awk -v replacement_file_path="$replacement_file" '/^lineage: \[\]$/ { while ((getline replacement_line < replacement_file_path) > 0) print replacement_line; next } { print }' >"$output_path"
   fi
 }
 
 # Extract the fenced bash block of spec.md that contains "usage.sh lineage".
 extract_lineage_fence() {
   awk '
-    /^```bash$/ { buf = ""; inb = 1; next }
-    /^```$/ && inb { if (buf ~ /usage\.sh lineage/) printf "%s", buf; inb = 0; next }
-    inb { buf = buf $0 "\n" }
+    /^```bash$/ { block_text = ""; inside_block = 1; next }
+    /^```$/ && inside_block { if (block_text ~ /usage\.sh lineage/) printf "%s", block_text; inside_block = 0; next }
+    inside_block { block_text = block_text $0 "\n" }
   ' "$1"
 }
 
@@ -61,12 +61,12 @@ extract_lineage_fence() {
   sed -i.bak '/^research_summary: |$/,/^  Group by dispatch/d' "$BATS_TEST_TMPDIR/with.md"
   sed -i.bak '/^research_summary: |$/,/^  Group by dispatch/d' "$BATS_TEST_TMPDIR/without.md"
   run bash "$LINT" "$BATS_TEST_TMPDIR/with.md"
-  a="$(printf '%s' "$output" | jq -c '[.findings[] | select(.code == "missing_field")]')"
+  with_lineage_findings="$(printf '%s' "$output" | jq -c '[.findings[] | select(.code == "missing_field")]')"
   run bash "$LINT" "$BATS_TEST_TMPDIR/without.md"
-  b="$(printf '%s' "$output" | jq -c '[.findings[] | select(.code == "missing_field")]')"
-  [ "$a" = "$b" ]
-  [ "$(printf '%s' "$a" | jq 'length')" -ge 1 ]
-  printf '%s' "$a" | grep -q 'lineage' && return 1
+  without_lineage_findings="$(printf '%s' "$output" | jq -c '[.findings[] | select(.code == "missing_field")]')"
+  [ "$with_lineage_findings" = "$without_lineage_findings" ]
+  [ "$(printf '%s' "$with_lineage_findings" | jq 'length')" -ge 1 ]
+  printf '%s' "$with_lineage_findings" | grep -q 'lineage' && return 1
   true
 }
 

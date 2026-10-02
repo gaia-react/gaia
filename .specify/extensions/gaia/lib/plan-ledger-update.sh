@@ -39,22 +39,22 @@ repo_root="$1"
 plan_id="$2"
 patch="$3"
 
-_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
-. "${_lib_dir}/with-ledger-lock.sh"
+. "${_library_directory}/with-ledger-lock.sh"
 # shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
-. "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
+. "${_library_directory}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
 
 # repo_root names the tree this update runs in; the ledger it patches is
 # main's, because the state registry declares plans/ main-only. Resolve
 # rather than trust: a per-tree fallback would patch a forked ledger copy
 # while the caller believes the row moved. Refuse when main is unresolvable,
 # the same shape this chokepoint already uses for a missing ledger/row.
-if ! plans_dir="$(gaia_resolve_plans_dir "$repo_root" 2>/dev/null)" || [ -z "$plans_dir" ]; then
+if ! plans_directory="$(gaia_resolve_plans_dir "$repo_root" 2>/dev/null)" || [ -z "$plans_directory" ]; then
   echo "plan-ledger-update: cannot resolve the main checkout for '$repo_root'; refuse to patch (would risk a forked ledger write)" >&2
   exit 4
 fi
-ledger_path="${plans_dir}/ledger.json"
+ledger_path="${plans_directory}/ledger.json"
 
 if [ ! -f "$ledger_path" ]; then
   echo "plan-ledger-update: ledger not found at $ledger_path" >&2
@@ -81,24 +81,24 @@ if [ -n "$patch_status" ]; then
 fi
 
 apply_patch() {
-  local tmp
-  tmp="$(mktemp)"
+  local temporary_file
+  temporary_file="$(mktemp)"
   if ! jq --arg id "$plan_id" --argjson patch "$patch" \
     '.plans |= map(if .id == $id then . + $patch else . end)' \
-    "$ledger_path" > "$tmp" 2>/dev/null; then
-    rm -f "$tmp"
+    "$ledger_path" > "$temporary_file" 2>/dev/null; then
+    rm -f "$temporary_file"
     echo "plan-ledger-update: jq failed (invalid patch JSON?)" >&2
     return 5
   fi
-  mv "$tmp" "$ledger_path"
+  mv "$temporary_file" "$ledger_path"
 }
 
-rc=0
-with_ledger_lock "$plans_dir" apply_patch || rc=$?
-if [ "$rc" -ne 0 ]; then
-  if [ "$rc" -eq 75 ]; then
+exit_status=0
+with_ledger_lock "$plans_directory" apply_patch || exit_status=$?
+if [ "$exit_status" -ne 0 ]; then
+  if [ "$exit_status" -eq 75 ]; then
     echo "plan-ledger-update: could not acquire ledger lock; patch not applied" >&2
     exit 4
   fi
-  exit "$rc"
+  exit "$exit_status"
 fi

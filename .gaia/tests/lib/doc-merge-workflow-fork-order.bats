@@ -36,13 +36,13 @@ setup() {
 }
 
 # Every tag that carries shell, the same set the fence suite reads.
-FENCE_OPEN_RE='^```(bash|sh|shell)[[:space:]]*$'
+FENCE_OPEN_REGEX='^```(bash|sh|shell)[[:space:]]*$'
 
 # fenced_lines <file>: `<line-number><TAB><text>` for every line inside a shell
 # fence, fence markers excluded.
 fenced_lines() {
-  awk -v re="$FENCE_OPEN_RE" '
-    !inside && $0 ~ re { inside = 1; next }
+  awk -v regex="$FENCE_OPEN_REGEX" '
+    !inside && $0 ~ regex { inside = 1; next }
     inside && /^```[[:space:]]*$/ { inside = 0; next }
     inside { printf "%d\t%s\n", NR, $0 }
   ' "$1"
@@ -51,10 +51,10 @@ fenced_lines() {
 # fence_block_of <file> <literal>: `<open-line> <close-line>` of the first shell
 # fence whose body contains <literal>, or nothing.
 fence_block_of() {
-  awk -v re="$FENCE_OPEN_RE" -v pat="$2" '
-    !inside && $0 ~ re { inside = 1; start = NR; hit = 0; next }
+  awk -v regex="$FENCE_OPEN_REGEX" -v pattern="$2" '
+    !inside && $0 ~ regex { inside = 1; start = NR; hit = 0; next }
     inside && /^```[[:space:]]*$/ { if (hit) { print start, NR; exit } inside = 0; next }
-    inside && index($0, pat) { hit = 1 }
+    inside && index($0, pattern) { hit = 1 }
   ' "$1"
 }
 

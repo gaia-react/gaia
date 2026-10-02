@@ -384,17 +384,17 @@ EOF
 @test "016: P1 Commit reachable only from the wt branch -> --branch wt resume 2, COMPLETE 1" {
   _commit base
   git -C "$REPO" checkout --quiet -b wt
-  wtsha=$(_commit wt-only)
+  worktree_sha=$(_commit wt-only)
   cat > "$PLAN/PROGRESS.md" <<EOF
 ## Phase 1, First
-Commit: $wtsha
+Commit: $worktree_sha
 
 _No notes._
 EOF
   _run_helper --branch wt --phases 1
   [ "$status" -eq 0 ]
   [ "${lines[0]}" = "2" ]
-  [ "${lines[1]}" = "COMPLETE 1 $wtsha" ]
+  [ "${lines[1]}" = "COMPLETE 1 $worktree_sha" ]
   [ "${#lines[@]}" -eq 2 ]
 }
 
@@ -415,13 +415,13 @@ EOF
   [ "${#lines[@]}" -eq 1 ]
 }
 
-@test "016c: same wtsha fixture but --branch main -> resume 1 (ref matters, discriminator)" {
+@test "016c: same worktree_sha fixture but --branch main -> resume 1 (ref matters, discriminator)" {
   _commit base
   git -C "$REPO" checkout --quiet -b wt
-  wtsha=$(_commit wt-only)
+  worktree_sha=$(_commit wt-only)
   cat > "$PLAN/PROGRESS.md" <<EOF
 ## Phase 1, First
-Commit: $wtsha
+Commit: $worktree_sha
 
 _No notes._
 EOF

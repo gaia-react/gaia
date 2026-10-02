@@ -65,21 +65,21 @@
 
 setup() {
   ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
-  PROTOCOL_REL=".claude/hooks/lib/audit-member-protocol.md"
+  PROTOCOL_RELATIVE_PATH=".claude/hooks/lib/audit-member-protocol.md"
 
   SPECS=()
   DELEGATES=()
-  for f in "$ROOT"/.claude/agents/code-audit-*.md; do
+  for audited_file in "$ROOT"/.claude/agents/code-audit-*.md; do
     # `-s`, not `-f`: an empty file satisfies `-f` and then greens every
     # absence check below on nothing.
-    [ -s "$f" ] || continue
-    if grep -qF -- "$PROTOCOL_REL" "$f"; then
-      DELEGATES+=("$f")
+    [ -s "$audited_file" ] || continue
+    if grep -qF -- "$PROTOCOL_RELATIVE_PATH" "$audited_file"; then
+      DELEGATES+=("$audited_file")
     else
-      SPECS+=("$f")
+      SPECS+=("$audited_file")
     fi
   done
-  [ -s "$ROOT/$PROTOCOL_REL" ] && SPECS+=("$ROOT/$PROTOCOL_REL")
+  [ -s "$ROOT/$PROTOCOL_RELATIVE_PATH" ] && SPECS+=("$ROOT/$PROTOCOL_RELATIVE_PATH")
   ALL=("${SPECS[@]}" "${DELEGATES[@]}")
 }
 
@@ -103,13 +103,13 @@ setup() {
   # The floor for the SPECS/DELEGATES split: a member that loses its pointer
   # moves to SPECS and fails every positive check there, and a missing
   # protocol file leaves the delegates with no write at all.
-  [ -s "$ROOT/$PROTOCOL_REL" ] || { echo "$PROTOCOL_REL is missing or empty" >&2; return 1; }
+  [ -s "$ROOT/$PROTOCOL_RELATIVE_PATH" ] || { echo "$PROTOCOL_RELATIVE_PATH is missing or empty" >&2; return 1; }
   [ "${#DELEGATES[@]}" -ge 2 ]
   for member in \
     code-audit-maintainer-node \
     code-audit-maintainer-shell; do
-    grep -qF -- "$PROTOCOL_REL" "$ROOT/.claude/agents/${member}.md" || {
-      echo "${member}.md does not point at $PROTOCOL_REL" >&2
+    grep -qF -- "$PROTOCOL_RELATIVE_PATH" "$ROOT/.claude/agents/${member}.md" || {
+      echo "${member}.md does not point at $PROTOCOL_RELATIVE_PATH" >&2
       return 1
     }
   done
@@ -128,17 +128,17 @@ setup() {
   #
   # The offenders check runs FIRST so a drifted spec is reported by its
   # offending line rather than as "prescribes no sidecar write at all".
-  for f in "${ALL[@]}"; do
+  for audited_file in "${ALL[@]}"; do
     local offenders
-    offenders="$(grep -n -- '--findings' "$f" | grep -vE -- '^[0-9]+:[[:space:]]*--findings <scratch>/findings\.json[[:space:]]*$' || true)"
+    offenders="$(grep -n -- '--findings' "$audited_file" | grep -vE -- '^[0-9]+:[[:space:]]*--findings <scratch>/findings\.json[[:space:]]*$' || true)"
     [ -z "$offenders" ] || {
-      echo "$f: --findings appears outside the pinned staged-file form: $offenders" >&2
+      echo "$audited_file: --findings appears outside the pinned staged-file form: $offenders" >&2
       return 1
     }
   done
-  for f in "${SPECS[@]}"; do
-    grep -qE -- '^[[:space:]]*--findings <scratch>/findings\.json[[:space:]]*$' "$f" || {
-      echo "$f carries no --findings line of any shape, so it prescribes no sidecar write at all" >&2
+  for audited_file in "${SPECS[@]}"; do
+    grep -qE -- '^[[:space:]]*--findings <scratch>/findings\.json[[:space:]]*$' "$audited_file" || {
+      echo "$audited_file carries no --findings line of any shape, so it prescribes no sidecar write at all" >&2
       return 1
     }
   done
@@ -150,8 +150,8 @@ setup() {
   # by the rule above and kept anyway: it names the defect this suite exists
   # for, so a failure reads as the regression it is rather than as generic
   # drift.
-  for f in "${ALL[@]}"; do
-    grep -qF -- '--findings /path/to/findings.json' "$f" && return 1
+  for audited_file in "${ALL[@]}"; do
+    grep -qF -- '--findings /path/to/findings.json' "$audited_file" && return 1
   done
   true
 }
@@ -172,14 +172,14 @@ setup() {
   #
   # The totals are checked too, so a writer call with no producer ahead of it
   # (reading a file nothing in the spec stages) fails as well.
-  for f in "${SPECS[@]}"; do
+  for audited_file in "${SPECS[@]}"; do
     local producers writers consumers unpaired
-    producers="$(grep -cE -- "^printf '%s' '.*' > <scratch>/findings\\.json$" "$f" || true)"
-    writers="$(grep -cE -- '^bash <root>/\.gaia/scripts/audit-write-findings\.sh \\$' "$f" || true)"
-    consumers="$(grep -cE -- '^[[:space:]]*--findings <scratch>/findings\.json[[:space:]]*$' "$f" || true)"
-    [ "$producers" -gt 0 ] || { echo "$f: no staged printf producer" >&2; return 1; }
-    [ "$producers" -eq "$writers" ] || { echo "$f: $producers producers, $writers writer calls" >&2; return 1; }
-    [ "$writers" -eq "$consumers" ] || { echo "$f: $writers writer calls, $consumers staged-file consumers" >&2; return 1; }
+    producers="$(grep -cE -- "^printf '%s' '.*' > <scratch>/findings\\.json$" "$audited_file" || true)"
+    writers="$(grep -cE -- '^bash <root>/\.gaia/scripts/audit-write-findings\.sh \\$' "$audited_file" || true)"
+    consumers="$(grep -cE -- '^[[:space:]]*--findings <scratch>/findings\.json[[:space:]]*$' "$audited_file" || true)"
+    [ "$producers" -gt 0 ] || { echo "$audited_file: no staged printf producer" >&2; return 1; }
+    [ "$producers" -eq "$writers" ] || { echo "$audited_file: $producers producers, $writers writer calls" >&2; return 1; }
+    [ "$writers" -eq "$consumers" ] || { echo "$audited_file: $writers writer calls, $consumers staged-file consumers" >&2; return 1; }
     unpaired="$(awk '
       { line[NR] = $0 }
       END {
@@ -188,9 +188,9 @@ setup() {
             if (!(line[i+1] == "```" && line[i+2] == "" && line[i+3] == "```bash" && line[i+4] ~ /^bash <root>\/\.gaia\/scripts\/audit-write-findings\.sh \\$/)) print i
           }
         }
-      }' "$f")"
+      }' "$audited_file")"
     [ -z "$unpaired" ] || {
-      echo "$f: producer(s) at line(s) $unpaired are not immediately followed by the writer call" >&2
+      echo "$audited_file: producer(s) at line(s) $unpaired are not immediately followed by the writer call" >&2
       return 1
     }
   done
@@ -200,8 +200,8 @@ setup() {
   # A double-quoted payload expands `$` and backticks inside the finding text
   # before the writer validates the array, so a finding quoting shell prose
   # publishes something other than what the member wrote.
-  for f in "${ALL[@]}"; do
-    grep -qE -- "^printf '%s' \"" "$f" && return 1
+  for audited_file in "${ALL[@]}"; do
+    grep -qE -- "^printf '%s' \"" "$audited_file" && return 1
   done
   true
 }
@@ -210,8 +210,8 @@ setup() {
   # A pipe into the writer is the superseded stdin form. The confinement
   # refuses it whenever the payload carries the token `git`, which any finding
   # path under `.github/` does, so it is unrunnable from a linked worktree.
-  for f in "${ALL[@]}"; do
-    grep -qE -- '\|[[:space:]]*bash[[:space:]].*audit-write-findings\.sh' "$f" && return 1
+  for audited_file in "${ALL[@]}"; do
+    grep -qE -- '\|[[:space:]]*bash[[:space:]].*audit-write-findings\.sh' "$audited_file" && return 1
   done
   true
 }
@@ -220,9 +220,9 @@ setup() {
   # Subsumed by Group 2's anchored rule for the flag line, and extended to the
   # producer, so a revival reads as the regression it is: a heredoc form cannot
   # run at all on a pull request audited from a linked worktree.
-  for f in "${ALL[@]}"; do
-    grep -qF -- '--findings - <<' "$f" && return 1
-    grep -qE -- "^printf '%s'.*<<" "$f" && return 1
+  for audited_file in "${ALL[@]}"; do
+    grep -qF -- '--findings - <<' "$audited_file" && return 1
+    grep -qE -- "^printf '%s'.*<<" "$audited_file" && return 1
   done
   true
 }
@@ -233,21 +233,21 @@ setup() {
 # sentence must be the instruction rather than its explanation.
 
 @test "every spec states the operative staging rule" {
-  for f in "${SPECS[@]}"; do
-    grep -qF -- '**Stage the array in your own scratch directory, as a file written fresh with `printf` in the call immediately before the writer.**' "$f" || {
-      echo "$f does not state the staging rule its own command encodes" >&2
+  for audited_file in "${SPECS[@]}"; do
+    grep -qF -- '**Stage the array in your own scratch directory, as a file written fresh with `printf` in the call immediately before the writer.**' "$audited_file" || {
+      echo "$audited_file does not state the staging rule its own command encodes" >&2
       return 1
     }
-    grep -qF -- 'and a heredoc is refused outright' "$f" || {
-      echo "$f no longer states that the heredoc form is refused" >&2
+    grep -qF -- 'and a heredoc is refused outright' "$audited_file" || {
+      echo "$audited_file no longer states that the heredoc form is refused" >&2
       return 1
     }
   done
 }
 
 @test "no spec still states the superseded stdin staging rule" {
-  for f in "${ALL[@]}"; do
-    grep -qF -- 'Stage nothing: the array goes in through the single-quoted `printf` payload above, never through a file.' "$f" && return 1
+  for audited_file in "${ALL[@]}"; do
+    grep -qF -- 'Stage nothing: the array goes in through the single-quoted `printf` payload above, never through a file.' "$audited_file" && return 1
   done
   true
 }
@@ -256,8 +256,8 @@ setup() {
   # The superseded sentence, verbatim. It presented stdin as a convenience for
   # a member that would rather not stage a file, which left the staged file
   # the default reading of the placeholder above it.
-  for f in "${ALL[@]}"; do
-    grep -qF -- 'reads the array from stdin when you would rather not stage a temp file' "$f" && return 1
+  for audited_file in "${ALL[@]}"; do
+    grep -qF -- 'reads the array from stdin when you would rather not stage a temp file' "$audited_file" && return 1
   done
   true
 }
@@ -272,11 +272,11 @@ setup() {
   # sidecar writer then exits 2 on `--findings` as an unrecognized argument,
   # and no report of record is written. Observed live from a linked worktree.
   # Single quotes keep an empty value as its own `''` argument.
-  for f in "${ALL[@]}"; do
+  for audited_file in "${ALL[@]}"; do
     local offenders
-    offenders="$(grep -nE -- '--[a-z-]+ <[A-Z_]+>' "$f" || true)"
+    offenders="$(grep -nE -- '--[a-z-]+ <[A-Z_]+>' "$audited_file" || true)"
     [ -z "$offenders" ] || {
-      echo "$f passes a resolver value to a flag unquoted: $offenders" >&2
+      echo "$audited_file passes a resolver value to a flag unquoted: $offenders" >&2
       return 1
     }
   done
@@ -285,13 +285,13 @@ setup() {
 @test "every spec carries the quoted anchor-tree form and states why" {
   # The floor for the rule above: a spec that stopped prescribing the sidecar
   # write, or dropped the flag, would pass an absence check on nothing.
-  for f in "${SPECS[@]}"; do
-    grep -qF -- "--anchor-tree '<ANCHOR_TREE>'" "$f" || {
-      echo "$f carries no quoted --anchor-tree form" >&2
+  for audited_file in "${SPECS[@]}"; do
+    grep -qF -- "--anchor-tree '<ANCHOR_TREE>'" "$audited_file" || {
+      echo "$audited_file carries no quoted --anchor-tree form" >&2
       return 1
     }
-    grep -qF -- 'Keep the single quotes a command puts around a value' "$f" || {
-      echo "$f does not state why a resolver value is single-quoted" >&2
+    grep -qF -- 'Keep the single quotes a command puts around a value' "$audited_file" || {
+      echo "$audited_file does not state why a resolver value is single-quoted" >&2
       return 1
     }
   done

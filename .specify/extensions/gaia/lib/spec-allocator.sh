@@ -51,10 +51,10 @@
 # single held mutex so two same-machine `next` calls cannot interleave. A lock-
 # acquisition timeout (helper exit 75) maps to exit 4; reservation-retry exhaustion
 # also maps to exit 4; callers (the speckit preset) already handle 4 as "allocation
-# failed". Lock env knobs (GAIA_LEDGER_LOCK_TIMEOUT_SECS / _STALE_SECS / _POLL_SECS /
+# failed". Lock env knobs (GAIA_LEDGER_LOCK_TIMEOUT_SECONDS / _STALE_SECONDS / _POLL_SECONDS /
 # _FORCE_FALLBACK): see with-ledger-lock.sh. Reservation env knobs:
-#   GAIA_SPEC_REMOTE_TIMEOUT_SECS  per ls-remote / push bound (default 5)
-#   GAIA_SPEC_ALLOC_MAX_RETRIES    reservation retry bound     (default 5)
+#   GAIA_SPEC_REMOTE_TIMEOUT_SECONDS  per ls-remote / push bound (default 5)
+#   GAIA_SPEC_ALLOCATION_MAXIMUM_RETRIES    reservation retry bound     (default 5)
 #   GAIA_SPEC_FORCE_OFFLINE=1       force the unreachable path  (test knob)
 # `highest` and `in_progress` are read-only, take NO lock, and never touch the network.
 set -euo pipefail
@@ -66,18 +66,18 @@ fi
 
 mode="$1"
 repo_root="$2"
-subject_arg="${3:-}"
+subject_argument="${3:-}"
 
 EMPTY_TREE="4b825dc642cb6eb9a060e54bf8d69288fbee4904"
-remote_timeout="${GAIA_SPEC_REMOTE_TIMEOUT_SECS:-5}"
-max_retries="${GAIA_SPEC_ALLOC_MAX_RETRIES:-5}"
+remote_timeout="${GAIA_SPEC_REMOTE_TIMEOUT_SECONDS:-5}"
+maximum_retries="${GAIA_SPEC_ALLOCATION_MAXIMUM_RETRIES:-5}"
 
 # A credential prompt on an HTTPS remote would hang /gaia-spec; disabling the
 # terminal prompt makes every git remote op fail fast instead. Set for all git
 # subprocesses this script spawns; it has no effect on the local-only ops.
 export GIT_TERMINAL_PROMPT=0
 
-# Set by classify_remote; read by union_max / the reservation paths.
+# Set by classify_remote; read by union_maximum / the reservation paths.
 _remote_state=""
 _remote_tags_raw=""
 
@@ -87,7 +87,7 @@ _remote_tags_raw=""
 # lib is reached by the same own-directory hop rather than through repo_root:
 # repo_root is the value whose trustworthiness is in question here, so loading
 # a library by it would decide correctness with the input under test.
-_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 #
 # Each load is bracketed against a target that is present but UNPARSEABLE, and
 # the probe under it decides the degrade. A bare `.` under errexit abandons the
@@ -97,7 +97,7 @@ _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # interrupted update, an unresolved merge conflict, and a truncated write all
 # leave exactly that state on disk.
 # shellcheck source=/dev/null
-set +e; [ -f "${_lib_dir}/with-ledger-lock.sh" ] && . "${_lib_dir}/with-ledger-lock.sh" 2>/dev/null; set -e
+set +e; [ -f "${_library_directory}/with-ledger-lock.sh" ] && . "${_library_directory}/with-ledger-lock.sh" 2>/dev/null; set -e
 type with_ledger_lock >/dev/null 2>&1 || {
   echo "spec-allocator: the shared ledger mutex is unusable; refuse to allocate (would risk duplicate SPEC ids)" >&2
   exit 4
@@ -105,12 +105,12 @@ type with_ledger_lock >/dev/null 2>&1 || {
 # No probe of its own: the gaia_resolve_specs_dir call below already refuses
 # when the function is absent, which is the degrade this load owes.
 # shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
-set +e; [ -f "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" ] && . "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null; set -e
+set +e; [ -f "${_library_directory}/../../../../.gaia/scripts/ledger-path-lib.sh" ] && . "${_library_directory}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null; set -e
 # The branch-naming library reads a SPEC number back out of a plan branch in
 # every spelling GAIA mints, the worktree one included. Loaded the same
 # bracketed way as the ledger-path lib above, for the same reason.
 # shellcheck source=../../../../.gaia/scripts/branch-name-lib.sh
-set +e; [ -f "${_lib_dir}/../../../../.gaia/scripts/branch-name-lib.sh" ] && . "${_lib_dir}/../../../../.gaia/scripts/branch-name-lib.sh" 2>/dev/null; set -e
+set +e; [ -f "${_library_directory}/../../../../.gaia/scripts/branch-name-lib.sh" ] && . "${_library_directory}/../../../../.gaia/scripts/branch-name-lib.sh" 2>/dev/null; set -e
 if ! type gaia_branch_spec_number >/dev/null 2>&1; then
   echo "spec-allocator: the branch-naming library is unusable, so SPEC numbers held only on a branch cannot be read; refuse to allocate (would risk duplicate SPEC ids)" >&2
   exit 4
@@ -132,11 +132,11 @@ require_git() {
 # (exit 4) only when the operand is a repo whose main checkout is unresolvable
 # -- the same stance this script already takes on a lock it cannot acquire.
 require_git
-if ! specs_dir="$(gaia_resolve_specs_dir "$repo_root" 2>/dev/null)" || [ -z "$specs_dir" ]; then
+if ! specs_directory="$(gaia_resolve_specs_dir "$repo_root" 2>/dev/null)" || [ -z "$specs_directory" ]; then
   echo "spec-allocator: cannot resolve the main checkout for '$repo_root'; refuse to allocate (would risk duplicate SPEC ids across worktrees)" >&2
   exit 4
 fi
-ledger_path="${specs_dir}/ledger.json"
+ledger_path="${specs_directory}/ledger.json"
 
 # Emit one bare integer per known SPEC number, one per line, unsorted.
 # Sources (all deterministic LOCAL markers; no free-text scanning, no network):
@@ -156,23 +156,23 @@ known_spec_numbers() {
     if [[ "$branch" == *spec-* ]]; then gaia_branch_spec_number "$branch"; fi
   done
 
-  if [ -d "$specs_dir" ]; then
-    find "$specs_dir" -mindepth 2 -maxdepth 2 -type f -name 'SPEC.md' -print 2>/dev/null \
+  if [ -d "$specs_directory" ]; then
+    find "$specs_directory" -mindepth 2 -maxdepth 2 -type f -name 'SPEC.md' -print 2>/dev/null \
       | sed -nE 's|.*/SPEC-0*([0-9]+)/SPEC\.md$|\1|p' || true
   fi
 }
 
 # Highest known LOCAL SPEC number, or 0 if none. No network: the `highest`
 # subcommand and read-only callers depend on this never hitting the remote.
-highest_num() {
+highest_number() {
   require_git
-  local max=0 n
-  while IFS= read -r n; do
-    [ -z "$n" ] && continue
-    n=$((10#$n))
-    [ "$n" -gt "$max" ] && max="$n"
+  local maximum_number=0 known_number
+  while IFS= read -r known_number; do
+    [ -z "$known_number" ] && continue
+    known_number=$((10#$known_number))
+    [ "$known_number" -gt "$maximum_number" ] && maximum_number="$known_number"
   done < <(known_spec_numbers | sort -un)
-  echo "$max"
+  echo "$maximum_number"
 }
 
 # Initialize the ledger file if missing. Empty ledger; entries are appended elsewhere.
@@ -188,35 +188,35 @@ ensure_ledger() {
 # is surfaced as return 4 (mapped to exit 4 by `next`).
 append_ledger_row() {
   local id="$1" reservation="$2" subject="$3"
-  local now tmp
+  local now temporary_file
   now="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
   ensure_ledger
-  tmp="$(mktemp)"
+  temporary_file="$(mktemp)"
   if ! jq --arg id "$id" --arg now "$now" --arg reservation "$reservation" --arg subject "$subject" \
     '.specs += [{id: $id, allocated_at: $now, source: "allocated", status: "draft", reservation: $reservation, subject: $subject}]' \
-    "$ledger_path" > "$tmp"; then
-    rm -f "$tmp"
+    "$ledger_path" > "$temporary_file"; then
+    rm -f "$temporary_file"
     echo "spec-allocator: failed to update ledger at $ledger_path" >&2
     # return (not exit) so the mkdir-lock trap still releases the lock dir;
-    # allocate_next propagates this rc and `next)` re-maps it to exit 4.
+    # allocate_next propagates this exit_status and `next)` re-maps it to exit 4.
     return 4
   fi
-  mv "$tmp" "$ledger_path"
+  mv "$temporary_file" "$ledger_path"
 }
 
 # Set an existing row's reservation state in place (mutex-protected pattern,
 # NOT routed through ledger-update.sh's status guard which only vets `status`).
 # Fail-open: a jq failure warns and returns 0 so a reconcile pass never crashes.
 set_row_reservation() {
-  local id="$1" state="$2" tmp
+  local id="$1" state="$2" temporary_file
   [ -f "$ledger_path" ] || return 0
-  tmp="$(mktemp)"
-  if jq --arg id "$id" --arg st "$state" \
-    '.specs |= map(if .id == $id then .reservation = $st else . end)' \
-    "$ledger_path" > "$tmp"; then
-    mv "$tmp" "$ledger_path"
+  temporary_file="$(mktemp)"
+  if jq --arg id "$id" --arg reservation_state "$state" \
+    '.specs |= map(if .id == $id then .reservation = $reservation_state else . end)' \
+    "$ledger_path" > "$temporary_file"; then
+    mv "$temporary_file" "$ledger_path"
   else
-    rm -f "$tmp"
+    rm -f "$temporary_file"
     echo "spec-allocator: failed to update reservation for $id" >&2
   fi
   return 0
@@ -262,27 +262,27 @@ in_progress_spec() {
 # exit code (non-zero on kill/timeout). Falls through to timeout/gtimeout only
 # when present.
 _run_with_timeout() {
-  local secs="$1"
+  local command_timeout_seconds="$1"
   shift
   if command -v timeout >/dev/null 2>&1; then
-    timeout "$secs" "$@"
+    timeout "$command_timeout_seconds" "$@"
     return $?
   fi
   if command -v gtimeout >/dev/null 2>&1; then
-    gtimeout "$secs" "$@"
+    gtimeout "$command_timeout_seconds" "$@"
     return $?
   fi
   "$@" &
-  local cmd_pid=$!
+  local command_pid=$!
   # Watchdog: TERM then (after a grace) KILL. stdout redirected off the caller's
   # pipe so a command-substitution reader gets EOF as soon as the command exits.
-  { sleep "$secs"; kill -TERM "$cmd_pid" 2>/dev/null; sleep 1; kill -KILL "$cmd_pid" 2>/dev/null; } >/dev/null 2>&1 &
+  { sleep "$command_timeout_seconds"; kill -TERM "$command_pid" 2>/dev/null; sleep 1; kill -KILL "$command_pid" 2>/dev/null; } >/dev/null 2>&1 &
   local watch_pid=$!
-  local rc=0
-  wait "$cmd_pid" 2>/dev/null || rc=$?
+  local exit_status=0
+  wait "$command_pid" 2>/dev/null || exit_status=$?
   kill -TERM "$watch_pid" 2>/dev/null || true
   wait "$watch_pid" 2>/dev/null || true
-  return "$rc"
+  return "$exit_status"
 }
 
 # Classify the origin remote into none | reachable | unreachable and, when
@@ -290,7 +290,7 @@ _run_with_timeout() {
 # _remote_state and _remote_tags_raw. Order: no origin wins over FORCE_OFFLINE.
 classify_remote() {
   _remote_tags_raw=""
-  local url out rc=0
+  local url ls_remote_output exit_status=0
   url="$(git -C "$repo_root" remote get-url origin 2>/dev/null || true)"
   if [ -z "$url" ]; then
     _remote_state="none"
@@ -300,18 +300,18 @@ classify_remote() {
     _remote_state="unreachable"
     return
   fi
-  out="$(_run_with_timeout "$remote_timeout" \
-    git -C "$repo_root" ls-remote --tags origin 'refs/tags/spec/*' 2>/dev/null)" || rc=$?
-  if [ "$rc" -ne 0 ]; then
+  ls_remote_output="$(_run_with_timeout "$remote_timeout" \
+    git -C "$repo_root" ls-remote --tags origin 'refs/tags/spec/*' 2>/dev/null)" || exit_status=$?
+  if [ "$exit_status" -ne 0 ]; then
     _remote_state="unreachable"
     return
   fi
   _remote_state="reachable"
-  _remote_tags_raw="$out"
+  _remote_tags_raw="$ls_remote_output"
 }
 
 # Emit bare integers from the captured ls-remote output. Handles the annotated
-# tag's peeled ^{} line and strips leading zeros in the regex; union_max coerces
+# tag's peeled ^{} line and strips leading zeros in the regex; union_maximum coerces
 # base-10 as a second guard.
 remote_tag_numbers() {
   [ -z "$_remote_tags_raw" ] && return 0
@@ -321,17 +321,17 @@ remote_tag_numbers() {
 
 # Max over the union of local signals and (when reachable) the remote spec/*
 # tags. The union can only rise, never fall.
-union_max() {
-  local max n
-  max="$(highest_num)"
+union_maximum() {
+  local maximum_number remote_number
+  maximum_number="$(highest_number)"
   if [ "$_remote_state" = "reachable" ]; then
-    while IFS= read -r n; do
-      [ -z "$n" ] && continue
-      n=$((10#$n))
-      [ "$n" -gt "$max" ] && max="$n"
+    while IFS= read -r remote_number; do
+      [ -z "$remote_number" ] && continue
+      remote_number=$((10#$remote_number))
+      [ "$remote_number" -gt "$maximum_number" ] && maximum_number="$remote_number"
     done < <(remote_tag_numbers)
   fi
-  echo "$max"
+  echo "$maximum_number"
 }
 
 # First line of the subject arg, trimmed, truncated to <=100 chars. May be empty
@@ -358,23 +358,23 @@ delete_local_tag() {
 
 # Non-force push of the reservation ref, bounded.
 push_tag() {
-  local tag="$1" rc=0
+  local tag="$1" exit_status=0
   _run_with_timeout "$remote_timeout" \
-    git -C "$repo_root" push origin "refs/tags/$tag" >/dev/null 2>&1 || rc=$?
-  return "$rc"
+    git -C "$repo_root" push origin "refs/tags/$tag" >/dev/null 2>&1 || exit_status=$?
+  return "$exit_status"
 }
 
 # Re-check whether a specific reservation ref exists on the remote after a failed
 # push. Echoes exists | absent | error (error = remote went unreachable mid-op).
-remote_ref_state() {
-  local tag="$1" out rc=0
-  out="$(_run_with_timeout "$remote_timeout" \
-    git -C "$repo_root" ls-remote --tags origin "refs/tags/$tag" 2>/dev/null)" || rc=$?
-  if [ "$rc" -ne 0 ]; then
+remote_reference_state() {
+  local tag="$1" ls_remote_output exit_status=0
+  ls_remote_output="$(_run_with_timeout "$remote_timeout" \
+    git -C "$repo_root" ls-remote --tags origin "refs/tags/$tag" 2>/dev/null)" || exit_status=$?
+  if [ "$exit_status" -ne 0 ]; then
     echo "error"
     return
   fi
-  if [ -n "$out" ]; then
+  if [ -n "$ls_remote_output" ]; then
     echo "exists"
   else
     echo "absent"
@@ -385,37 +385,37 @@ remote_ref_state() {
 
 # Renumber an in-flight provisional spec whose number was taken on the remote
 # while offline to the next free number and reserve that number instead. Never
-# keeps the collided number. Bounded by max_retries; fail-open (returns 0,
+# keeps the collided number. Bounded by maximum_retries; fail-open (returns 0,
 # leaving the row provisional, on any snag so a later run retries).
 _renumber_and_reserve() {
   local old_id="$1" subject="$2"
-  local attempt=0 newn new_id newtag prc rstate
-  while [ "$attempt" -lt "$max_retries" ]; do
+  local attempt=0 new_number new_id new_tag push_exit_status tag_existence
+  while [ "$attempt" -lt "$maximum_retries" ]; do
     classify_remote
     if [ "$_remote_state" != "reachable" ]; then
       return 0
     fi
-    newn=$(( $(union_max) + 1 ))
-    new_id="$(printf 'SPEC-%03d' "$newn")"
-    newtag="$(printf 'spec/%03d' "$newn")"
-    if ! bash "${_lib_dir}/spec-renumber.sh" "$repo_root" "$old_id" "$new_id" >/dev/null 2>&1; then
+    new_number=$(( $(union_maximum) + 1 ))
+    new_id="$(printf 'SPEC-%03d' "$new_number")"
+    new_tag="$(printf 'spec/%03d' "$new_number")"
+    if ! bash "${_library_directory}/spec-renumber.sh" "$repo_root" "$old_id" "$new_id" >/dev/null 2>&1; then
       echo "spec-allocator: could not renumber $old_id -> $new_id after offline collision; left provisional" >&2
       return 0
     fi
-    if ! create_local_tag "$newtag" "$subject"; then
+    if ! create_local_tag "$new_tag" "$subject"; then
       set_row_reservation "$new_id" "unavailable"
       echo "spec-allocator: cross-team collision-safety unavailable (could not create reservation tag): $new_id" >&2
       return 0
     fi
-    prc=0
-    push_tag "$newtag" || prc=$?
-    if [ "$prc" -eq 0 ]; then
+    push_exit_status=0
+    push_tag "$new_tag" || push_exit_status=$?
+    if [ "$push_exit_status" -eq 0 ]; then
       set_row_reservation "$new_id" "reserved"
       return 0
     fi
-    rstate="$(remote_ref_state "$newtag")"
-    delete_local_tag "$newtag"
-    case "$rstate" in
+    tag_existence="$(remote_reference_state "$new_tag")"
+    delete_local_tag "$new_tag"
+    case "$tag_existence" in
       exists)
         old_id="$new_id"
         attempt=$((attempt + 1))
@@ -438,9 +438,9 @@ _renumber_and_reserve() {
 # it if the number was taken on the remote while offline.
 _reconcile_one_provisional() {
   local id="$1"
-  local num tag subject prc rstate
-  num=$((10#${id#SPEC-}))
-  tag="$(printf 'spec/%03d' "$num")"
+  local spec_number tag subject push_exit_status tag_existence
+  spec_number=$((10#${id#SPEC-}))
+  tag="$(printf 'spec/%03d' "$spec_number")"
   subject="$(jq -r --arg id "$id" '.specs[] | select(.id == $id) | .subject // empty' "$ledger_path" 2>/dev/null || true)"
   [ -z "$subject" ] && subject="$id"
   if ! create_local_tag "$tag" "$subject"; then
@@ -448,15 +448,15 @@ _reconcile_one_provisional() {
     echo "spec-allocator: cross-team collision-safety unavailable (could not create reservation tag): $id" >&2
     return 0
   fi
-  prc=0
-  push_tag "$tag" || prc=$?
-  if [ "$prc" -eq 0 ]; then
+  push_exit_status=0
+  push_tag "$tag" || push_exit_status=$?
+  if [ "$push_exit_status" -eq 0 ]; then
     set_row_reservation "$id" "reserved"
     return 0
   fi
-  rstate="$(remote_ref_state "$tag")"
+  tag_existence="$(remote_reference_state "$tag")"
   delete_local_tag "$tag"
-  case "$rstate" in
+  case "$tag_existence" in
     exists)
       _renumber_and_reserve "$id" "$subject"
       ;;
@@ -502,13 +502,13 @@ EOF
 # next number, exhaustion returns 4. A non-collision push failure degrades to
 # local numbering (unavailable + warn); a mid-op unreachable falls to provisional.
 reserve_reachable() {
-  local subj_arg="$1"
-  local attempt=0 n new_id tag subject prc rstate
-  while [ "$attempt" -lt "$max_retries" ]; do
-    n=$(( $(union_max) + 1 ))
-    new_id="$(printf 'SPEC-%03d' "$n")"
-    tag="$(printf 'spec/%03d' "$n")"
-    subject="$(normalize_subject "$subj_arg")"
+  local requested_subject="$1"
+  local attempt=0 candidate_number new_id tag subject push_exit_status tag_existence
+  while [ "$attempt" -lt "$maximum_retries" ]; do
+    candidate_number=$(( $(union_maximum) + 1 ))
+    new_id="$(printf 'SPEC-%03d' "$candidate_number")"
+    tag="$(printf 'spec/%03d' "$candidate_number")"
+    subject="$(normalize_subject "$requested_subject")"
     [ -z "$subject" ] && subject="$new_id"
     if ! create_local_tag "$tag" "$subject"; then
       echo "spec-allocator: cross-team collision-safety unavailable (could not create reservation tag): $new_id allocated from local numbering only" >&2
@@ -516,24 +516,24 @@ reserve_reachable() {
       printf '%s\n' "$new_id"
       return 0
     fi
-    prc=0
-    push_tag "$tag" || prc=$?
-    if [ "$prc" -eq 0 ]; then
+    push_exit_status=0
+    push_tag "$tag" || push_exit_status=$?
+    if [ "$push_exit_status" -eq 0 ]; then
       append_ledger_row "$new_id" "reserved" "$subject" || return $?
       printf '%s\n' "$new_id"
       return 0
     fi
-    rstate="$(remote_ref_state "$tag")"
+    tag_existence="$(remote_reference_state "$tag")"
     delete_local_tag "$tag"
-    case "$rstate" in
+    case "$tag_existence" in
       exists)
         # Another machine took the number; refresh the union and retry higher.
         attempt=$((attempt + 1))
         classify_remote
         if [ "$_remote_state" != "reachable" ]; then
-          n=$(( $(union_max) + 1 ))
-          new_id="$(printf 'SPEC-%03d' "$n")"
-          subject="$(normalize_subject "$subj_arg")"
+          candidate_number=$(( $(union_maximum) + 1 ))
+          new_id="$(printf 'SPEC-%03d' "$candidate_number")"
+          subject="$(normalize_subject "$requested_subject")"
           [ -z "$subject" ] && subject="$new_id"
           append_ledger_row "$new_id" "provisional" "$subject" || return $?
           echo "spec-allocator: offline: $new_id reserved provisionally; the tag pushes on the next online allocation" >&2
@@ -555,7 +555,7 @@ reserve_reachable() {
         ;;
     esac
   done
-  echo "spec-allocator: reservation retry exhausted after $max_retries attempts; refuse to allocate (would risk duplicate SPEC ids)" >&2
+  echo "spec-allocator: reservation retry exhausted after $maximum_retries attempts; refuse to allocate (would risk duplicate SPEC ids)" >&2
   return 4
 }
 
@@ -566,30 +566,30 @@ reserve_reachable() {
 # failure; reserve_reachable returns 4 on retry exhaustion; both propagate so the
 # helper passes them through and the trap still runs.
 allocate_next() {
-  local subj_arg="${1:-}"
-  local n new_id subject
+  local requested_subject="${1:-}"
+  local next_number new_id subject
   _reserve_pending_locked
   classify_remote
   case "$_remote_state" in
     none)
-      n=$(( $(union_max) + 1 ))
-      new_id="$(printf 'SPEC-%03d' "$n")"
-      subject="$(normalize_subject "$subj_arg")"
+      next_number=$(( $(union_maximum) + 1 ))
+      new_id="$(printf 'SPEC-%03d' "$next_number")"
+      subject="$(normalize_subject "$requested_subject")"
       [ -z "$subject" ] && subject="$new_id"
       append_ledger_row "$new_id" "local" "$subject" || return $?
       printf '%s\n' "$new_id"
       ;;
     unreachable)
-      n=$(( $(union_max) + 1 ))
-      new_id="$(printf 'SPEC-%03d' "$n")"
-      subject="$(normalize_subject "$subj_arg")"
+      next_number=$(( $(union_maximum) + 1 ))
+      new_id="$(printf 'SPEC-%03d' "$next_number")"
+      subject="$(normalize_subject "$requested_subject")"
       [ -z "$subject" ] && subject="$new_id"
       append_ledger_row "$new_id" "provisional" "$subject" || return $?
       echo "spec-allocator: offline: $new_id reserved provisionally; the tag pushes on the next online allocation" >&2
       printf '%s\n' "$new_id"
       ;;
     reachable)
-      reserve_reachable "$subj_arg" || return $?
+      reserve_reachable "$requested_subject" || return $?
       ;;
   esac
 }
@@ -601,35 +601,35 @@ case "$mode" in
     # C1 lock-dir precondition: the dir must exist before with_ledger_lock.
     # ensure_ledger already mkdir -p's it via the ledger parent, but make the
     # precondition explicit and independent of ledger-init ordering.
-    mkdir -p "$specs_dir"
+    mkdir -p "$specs_directory"
     # Capture rc directly, NOT `if ! with_ledger_lock …; then rc=$?`: after a
     # `!`-negated command, $? is the negation's status (0), masking the real
     # rc. `|| rc=$?` preserves the helper's actual exit code under set -e.
-    rc=0
-    with_ledger_lock "$specs_dir" allocate_next "$subject_arg" || rc=$?
-    if [ "$rc" -ne 0 ]; then
-      if [ "$rc" -eq 75 ]; then
+    exit_status=0
+    with_ledger_lock "$specs_directory" allocate_next "$subject_argument" || exit_status=$?
+    if [ "$exit_status" -ne 0 ]; then
+      if [ "$exit_status" -eq 75 ]; then
         echo "spec-allocator: could not acquire ledger lock; refuse to allocate (would risk duplicate SPEC ids)" >&2
         exit 4
       fi
-      exit "$rc"   # propagate append_ledger_row's rc 4 / retry-exhaustion 4, etc.
+      exit "$exit_status"   # propagate append_ledger_row's rc 4 / retry-exhaustion 4, etc.
     fi
     ;;
   reserve_pending)
     require_git
     ensure_ledger
-    mkdir -p "$specs_dir"
+    mkdir -p "$specs_directory"
     # Fail-open: process deferred reservations under the mutex, but always exit 0
     # (a lock timeout or reconcile snag must never fail a caller's /gaia-spec).
-    with_ledger_lock "$specs_dir" _reserve_pending_locked || true
+    with_ledger_lock "$specs_directory" _reserve_pending_locked || true
     exit 0
     ;;
   highest)
-    h="$(highest_num)"
-    if [ "$h" -eq 0 ]; then
+    highest_spec_number="$(highest_number)"
+    if [ "$highest_spec_number" -eq 0 ]; then
       echo "none"
     else
-      printf 'SPEC-%03d\n' "$h"
+      printf 'SPEC-%03d\n' "$highest_spec_number"
     fi
     ;;
   in_progress)

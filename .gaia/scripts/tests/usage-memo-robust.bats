@@ -380,7 +380,7 @@ differs() { if cmp -s "$1" "$2"; then return 1; fi; return 0; }
 
 @test "lock: a readout started while the ledger lock is held finishes first; a copy that saves under the lock waits for it" {
   local t0 elapsed rel
-  export GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 GAIA_LEDGER_LOCK_TIMEOUT_SECS=60
+  export GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 GAIA_LEDGER_LOCK_TIMEOUT_SECONDS=60
   rm -f "$MEMO"
   mkdir "$UM_TD/specs.lock.d"
   t0=$SECONDS

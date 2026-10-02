@@ -85,20 +85,20 @@ extract_section() {
 # vacuously, when the start anchor matches nothing (a renamed or deleted
 # heading).
 extract_section_or_fail() {
-  local out
-  out="$(extract_section "$1" "$2" "$3")"
-  [ -n "$out" ] || {
+  local extracted_section
+  extracted_section="$(extract_section "$1" "$2" "$3")"
+  [ -n "$extracted_section" ] || {
     echo "section anchor '${2}' matched nothing in ${1}; a scoped assertion here would pass vacuously" >&2
     return 1
   }
-  printf '%s\n' "$out"
+  printf '%s\n' "$extracted_section"
 }
 
-# normalize_ws
+# normalize_whitespace
 # Collapses newlines and runs of whitespace to single spaces and trims the
 # ends, so a paragraph wrapped at one width compares equal to the same
 # paragraph wrapped at another.
-normalize_ws() {
+normalize_whitespace() {
   tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//'
 }
 
@@ -174,10 +174,10 @@ setup() {
 # no machinery-disposition prose to sweep before this SPEC (see header).
 
 @test "Group 2: the retired offender label is absent from code-audit-frontend.md and PR Merge Workflow.md" {
-  local f
-  for f in "$FRONTEND" "$WIKI"; do
-    grep -qF -- "machinery-waived-not-machinery" "$f" && {
-      echo "retired offender label survives in $f" >&2
+  local document_file
+  for document_file in "$FRONTEND" "$WIKI"; do
+    grep -qF -- "machinery-waived-not-machinery" "$document_file" && {
+      echo "retired offender label survives in $document_file" >&2
       return 1
     }
   done
@@ -341,21 +341,21 @@ setup() {
   # FRONTEND states the same paragraph behind a `**Disqualifiers.**` label
   # (task doc F3), which is a heading for the pair rather than part of the
   # claim, so it is stripped before comparing rather than treated as drift.
-  local lead first cur f
+  local lead first current_paragraph document_file
   lead='Two disqualifiers narrow what may be waived'
   first=""
-  for f in "$WIKI" "$FRONTEND" "$DISPOSITION"; do
-    cur="$(extract_paragraph_from_lead "$f" "$lead" | normalize_ws)"
-    cur="${cur#\*\*Disqualifiers.\*\* }"
-    [ -n "$cur" ] || {
-      echo "no lead-in paragraph found in $f" >&2
+  for document_file in "$WIKI" "$FRONTEND" "$DISPOSITION"; do
+    current_paragraph="$(extract_paragraph_from_lead "$document_file" "$lead" | normalize_whitespace)"
+    current_paragraph="${current_paragraph#\*\*Disqualifiers.\*\* }"
+    [ -n "$current_paragraph" ] || {
+      echo "no lead-in paragraph found in $document_file" >&2
       return 1
     }
     if [ -z "$first" ]; then
-      first="$cur"
+      first="$current_paragraph"
     else
-      [ "$cur" = "$first" ] || {
-        echo "disqualifier lead-in in $f diverges from $WIKI after whitespace normalization" >&2
+      [ "$current_paragraph" = "$first" ] || {
+        echo "disqualifier lead-in in $document_file diverges from $WIKI after whitespace normalization" >&2
         return 1
       }
     fi
@@ -363,22 +363,22 @@ setup() {
 }
 
 @test "Group 8: both disqualifier paragraphs are identical across all three prose surfaces" {
-  local lead first cur f
+  local lead first current_paragraph document_file
   for lead in \
     '**The change authored the inconsistency.**' \
     '**A pointer written into shipped content owes a tracked destination.**'; do
     first=""
-    for f in "$WIKI" "$FRONTEND" "$DISPOSITION"; do
-      cur="$(extract_paragraph_from_lead "$f" "$lead" | normalize_ws)"
-      [ -n "$cur" ] || {
-        echo "no paragraph led by '$lead' found in $f" >&2
+    for document_file in "$WIKI" "$FRONTEND" "$DISPOSITION"; do
+      current_paragraph="$(extract_paragraph_from_lead "$document_file" "$lead" | normalize_whitespace)"
+      [ -n "$current_paragraph" ] || {
+        echo "no paragraph led by '$lead' found in $document_file" >&2
         return 1
       }
       if [ -z "$first" ]; then
-        first="$cur"
+        first="$current_paragraph"
       else
-        [ "$cur" = "$first" ] || {
-          echo "paragraph led by '$lead' in $f diverges from $WIKI after whitespace normalization" >&2
+        [ "$current_paragraph" = "$first" ] || {
+          echo "paragraph led by '$lead' in $document_file diverges from $WIKI after whitespace normalization" >&2
           return 1
         }
       fi
@@ -402,10 +402,10 @@ setup() {
 }
 
 @test "Group 9: the retired 'a heading such as' phrasing is absent from every prose file" {
-  local f
-  for f in "$WIKI" "$FRONTEND" "$DISPOSITION"; do
-    grep -qF -- "a heading such as" "$f" && {
-      echo "retired 'a heading such as' phrasing survives in $f" >&2
+  local document_file
+  for document_file in "$WIKI" "$FRONTEND" "$DISPOSITION"; do
+    grep -qF -- "a heading such as" "$document_file" && {
+      echo "retired 'a heading such as' phrasing survives in $document_file" >&2
       return 1
     }
   done
@@ -539,10 +539,10 @@ setup() {
 }
 
 @test "Group C: neither canonical literal appears as a column-0 heading in any pinned file" {
-  local f
-  for f in "$WIKI" "$DISPOSITION" "$FRONTEND"; do
-    grep -qE '^## (Accepted residuals \(recorded, not fixed\)|Out-of-scope machinery findings \(recorded, not filed\))' "$f" && {
-      echo "a canonical literal appears as a structural column-0 heading in $f" >&2
+  local document_file
+  for document_file in "$WIKI" "$DISPOSITION" "$FRONTEND"; do
+    grep -qE '^## (Accepted residuals \(recorded, not fixed\)|Out-of-scope machinery findings \(recorded, not filed\))' "$document_file" && {
+      echo "a canonical literal appears as a structural column-0 heading in $document_file" >&2
       return 1
     }
   done

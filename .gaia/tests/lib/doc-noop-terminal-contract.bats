@@ -55,16 +55,16 @@ setup() {
   ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
 
   # The owner of the general terminal action.
-  OWNER_REL='wiki/concepts/Code Review Audit Agent.md'
+  OWNER_RELATIVE_PATH='wiki/concepts/Code Review Audit Agent.md'
   # The one surface that departs from it, deliberately.
-  GATE_REL='wiki/concepts/PR Merge Workflow.md'
+  GATE_RELATIVE_PATH='wiki/concepts/PR Merge Workflow.md'
   # The maintainer-only health audit departs too, escalating rather than
   # stopping at a merge gate, for its own reason: its Orchestrator never audits.
-  HEALTH_REL='.gaia/cli/health/runbook.md'
+  HEALTH_RELATIVE_PATH='.gaia/cli/health/runbook.md'
 
-  OWNER="$ROOT/$OWNER_REL"
-  GATE="$ROOT/$GATE_REL"
-  HEALTH="$ROOT/$HEALTH_REL"
+  OWNER="$ROOT/$OWNER_RELATIVE_PATH"
+  GATE="$ROOT/$GATE_RELATIVE_PATH"
+  HEALTH="$ROOT/$HEALTH_RELATIVE_PATH"
 
   # Every surface expected to state a terminal action. The roster test
   # reconciles this against the tree in both directions.
@@ -76,7 +76,7 @@ setup() {
     'wiki/concepts/PR Merge Workflow.md'
   )
 
-  TERMINAL_RE='second( consecutive)? no-op'
+  TERMINAL_REGEX='second( consecutive)? no-op'
 }
 
 # derive_surfaces
@@ -88,8 +88,8 @@ setup() {
 # same empty result as a marker phrase that moved, and those want opposite
 # repairs. `git grep` exits 1 on no-match and above 1 on a real failure.
 derive_surfaces() {
-  local raw rc
-  # `|| rc=$?`, never a bare assignment then a `$?` read: an assignment takes
+  local raw exit_status
+  # `|| exit_status=$?`, never a bare assignment then a `$?` read: an assignment takes
   # its command substitution's status, so under the errexit bats runs each body
   # with, the bare form abandons the caller HERE and every arm below is dead.
   #
@@ -97,13 +97,13 @@ derive_surfaces() {
   # byte; the `tr` back to newlines is the boundary the newline-joined consumers
   # below cannot move. The pipeline runs under `set -o pipefail` inside the
   # substitution so the status captured is still git's own -- without it `$?`
-  # would be tr's, which is always 0, and the rc>1 arm that separates "git could
+  # would be tr's, which is always 0, and the exit_status>1 arm that separates "git could
   # not read this repository" from "the marker phrase moved" would go dead.
-  rc=0
-  raw="$(set -o pipefail; git -C "$ROOT" grep -lEI -z -- "$TERMINAL_RE" -- \
+  exit_status=0
+  raw="$(set -o pipefail; git -C "$ROOT" grep -lEI -z -- "$TERMINAL_REGEX" -- \
     ':!.gaia/tests/*' ':!.gaia/local/*' \
-    ':!wiki/log.md' ':!wiki/hot.md' ':!CHANGELOG.md' | tr '\0' '\n')" || rc=$?
-  if [ "$rc" -gt 1 ]; then
+    ':!wiki/log.md' ':!wiki/hot.md' ':!CHANGELOG.md' | tr '\0' '\n')" || exit_status=$?
+  if [ "$exit_status" -gt 1 ]; then
     return 2
   fi
   if [ -z "$raw" ]; then
@@ -116,7 +116,7 @@ derive_surfaces() {
 # terminal_lines <file>
 # Prints only the lines of <file> that state a terminal action.
 terminal_lines() {
-  grep -E -- "$TERMINAL_RE" "$1"
+  grep -E -- "$TERMINAL_REGEX" "$1"
 }
 
 # terminal_segments <file>
@@ -145,25 +145,25 @@ terminal_segments() {
   # reaches only the FIRST stage, so putting it on the left of the pipe hands
   # awk an empty pattern, which matches empty at every position and spins the
   # loop below forever. The empty-pattern guard is the backstop for that class.
-  terminal_lines "$1" | TERMINAL_RE="$TERMINAL_RE" awk '
+  terminal_lines "$1" | TERMINAL_REGEX="$TERMINAL_REGEX" awk '
     BEGIN {
-      re = ENVIRON["TERMINAL_RE"]
-      if (re == "") {
-        print "terminal_segments: TERMINAL_RE did not reach awk" > "/dev/stderr"
+      regex = ENVIRON["TERMINAL_REGEX"]
+      if (regex == "") {
+        print "terminal_segments: TERMINAL_REGEX did not reach awk" > "/dev/stderr"
         exit 2
       }
     }
     {
       rest = $0
-      while (match(rest, re)) {
+      while (match(rest, regex)) {
         start = RSTART
-        len = RLENGTH
-        seg = substr(rest, start)
-        rest = substr(rest, start + len)
+        match_length = RLENGTH
+        segment = substr(rest, start)
+        rest = substr(rest, start + match_length)
         # Cut at the first sentence break. A period with no space after it sits
         # inside a path or a section number, not at the end of a sentence.
-        if (match(seg, /\. /)) seg = substr(seg, 1, RSTART - 1)
-        print seg
+        if (match(segment, /\. /)) segment = substr(segment, 1, RSTART - 1)
+        print segment
       }
     }'
 }
@@ -171,18 +171,18 @@ terminal_segments() {
 # --- The roster: who states an ending at all --------------------------------
 
 @test "the set of surfaces stating a terminal action is the roster, in both directions" {
-  local derived expected rc
-  # `|| rc=$?` rather than a bare assignment followed by a `$?` read. bats runs
+  local derived expected exit_status
+  # `|| exit_status=$?` rather than a bare assignment followed by a `$?` read. bats runs
   # each body under errexit, and an assignment takes its command substitution's
   # status, so the bare form abandons the test ON the assignment line and every
   # branch below it, this diagnostic included, becomes unreachable.
-  rc=0
-  derived="$(derive_surfaces)" || rc=$?
-  [ "$rc" -eq 2 ] && {
+  exit_status=0
+  derived="$(derive_surfaces)" || exit_status=$?
+  [ "$exit_status" -eq 2 ] && {
     echo "the derivation could not run; git could not read this tree" >&2
     return 1
   }
-  [ "$rc" -eq 1 ] && {
+  [ "$exit_status" -eq 1 ] && {
     echo "derivation found no surface stating a terminal action; the marker phrasing moved" >&2
     return 1
   }
@@ -195,17 +195,17 @@ terminal_segments() {
 }
 
 @test "every roster surface but the two declared departures ends inline, in the terminal statement itself" {
-  local rel lines
-  for rel in "${ROSTER[@]}"; do
-    [ "$rel" = "$GATE_REL" ] && continue
-    [ "$rel" = "$HEALTH_REL" ] && continue
-    lines="$(terminal_segments "$ROOT/$rel")"
-    [ -n "$lines" ] || { echo "no terminal statement read in ${rel}" >&2; return 1; }
+  local relative_path lines
+  for relative_path in "${ROSTER[@]}"; do
+    [ "$relative_path" = "$GATE_RELATIVE_PATH" ] && continue
+    [ "$relative_path" = "$HEALTH_RELATIVE_PATH" ] && continue
+    lines="$(terminal_segments "$ROOT/$relative_path")"
+    [ -n "$lines" ] || { echo "no terminal statement read in ${relative_path}" >&2; return 1; }
     # Per statement, not per file: a file whose ending drifted at one of
     # several sites would still carry `inline` at the others and green a
     # whole-file grep.
     printf '%s\n' "$lines" | grep -qvi -- 'inline' && {
-      echo "a terminal statement in ${rel} names no inline ending:" >&2
+      echo "a terminal statement in ${relative_path} names no inline ending:" >&2
       printf '%s\n' "$lines" | grep -vi -- 'inline' >&2
       return 1
     }
@@ -214,7 +214,7 @@ terminal_segments() {
     # inline fallback it no longer takes, which is the drift direction that
     # matters: the exception is warranted only where a clearance is at stake.
     printf '%s\n' "$lines" | grep -qi -- 'stop and surface' && {
-      echo "a terminal statement in ${rel} takes the merge gate's exception, which is warranted only there:" >&2
+      echo "a terminal statement in ${relative_path} takes the merge gate's exception, which is warranted only there:" >&2
       printf '%s\n' "$lines" | grep -i -- 'stop and surface' >&2
       return 1
     }
@@ -225,9 +225,9 @@ terminal_segments() {
 @test "the merge gate's terminal statement does not fall back inline" {
   local lines
   lines="$(terminal_segments "$GATE")"
-  [ -n "$lines" ] || { echo "no terminal statement read in ${GATE_REL}" >&2; return 1; }
+  [ -n "$lines" ] || { echo "no terminal statement read in ${GATE_RELATIVE_PATH}" >&2; return 1; }
   printf '%s\n' "$lines" | grep -qi -- 'inline' && {
-    echo "${GATE_REL}'s terminal statement now names an inline ending, which is the substitution the marker gate refuses:" >&2
+    echo "${GATE_RELATIVE_PATH}'s terminal statement now names an inline ending, which is the substitution the marker gate refuses:" >&2
     printf '%s\n' "$lines" | grep -i -- 'inline' >&2
     return 1
   }
@@ -237,9 +237,9 @@ terminal_segments() {
 @test "the health-audit runbook's terminal statement escalates and does not fall back inline" {
   local lines
   lines="$(terminal_segments "$HEALTH")"
-  [ -n "$lines" ] || { echo "no terminal statement read in ${HEALTH_REL}" >&2; return 1; }
+  [ -n "$lines" ] || { echo "no terminal statement read in ${HEALTH_RELATIVE_PATH}" >&2; return 1; }
   printf '%s\n' "$lines" | grep -qi -- 'inline' && {
-    echo "${HEALTH_REL}'s terminal statement names an inline ending, which puts the Orchestrator's own context into the grade:" >&2
+    echo "${HEALTH_RELATIVE_PATH}'s terminal statement names an inline ending, which puts the Orchestrator's own context into the grade:" >&2
     printf '%s\n' "$lines" | grep -i -- 'inline' >&2
     return 1
   }
@@ -249,7 +249,7 @@ terminal_segments() {
 @test "the health-audit runbook declares its departure as deliberate and names the reason" {
   grep -qF -- 'departs from the general inline ending deliberately' "$HEALTH"
   grep -qF -- 'never audits, adjudicates, or fixes in its own context' "$HEALTH"
-  grep -qF -- "$OWNER_REL" "$HEALTH"
+  grep -qF -- "$OWNER_RELATIVE_PATH" "$HEALTH"
 }
 
 # --- The declaration: one owner, admitted exceptions ------------------------
@@ -269,13 +269,13 @@ terminal_segments() {
 }
 
 @test "the owner page admits the health audit's departure and states its reason" {
-  grep -qF -- "$HEALTH_REL" "$OWNER"
+  grep -qF -- "$HEALTH_RELATIVE_PATH" "$OWNER"
   grep -qF -- 'never audits in its own context' "$OWNER"
 }
 
 @test "the owner page no longer asserts a uniform ending across every surface" {
   grep -qF -- 'the same one-retry-then-inline-fallback shape' "$OWNER" && {
-    echo "${OWNER_REL} asserts uniformity it does not have; the merge gate does not take that ending" >&2
+    echo "${OWNER_RELATIVE_PATH} asserts uniformity it does not have; the merge gate does not take that ending" >&2
     return 1
   }
   return 0

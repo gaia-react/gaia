@@ -79,8 +79,8 @@ setup() {
   TMP="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
   export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state" GAIA_RATES_FEED_DISABLE=1
   unset CLAUDE_CODE_SESSION_ID GAIA_TALLY_PROJECTS_ROOT GITHUB_ACTIONS GAIA_USAGE_HOOKS_DISABLE
-  unset GAIA_LEDGER_LOCK_FORCE_FALLBACK GAIA_LEDGER_LOCK_TIMEOUT_SECS GAIA_USAGE_MERGE_CAP_SECS GAIA_USAGE_RENDER_CAP_SECS
-  export GAIA_LEDGER_LOCK_POLL_SECS=0.1
+  unset GAIA_LEDGER_LOCK_FORCE_FALLBACK GAIA_LEDGER_LOCK_TIMEOUT_SECONDS GAIA_USAGE_MERGE_CAP_SECS GAIA_USAGE_RENDER_CAP_SECS
+  export GAIA_LEDGER_LOCK_POLL_SECONDS=0.1
   export GIT_AUTHOR_NAME="GAIA Test" GIT_AUTHOR_EMAIL="gaia-test@example.com"
   export GIT_COMMITTER_NAME="GAIA Test" GIT_COMMITTER_EMAIL="gaia-test@example.com"
   GHSTUB_DIR="$TMP/ghstub"
@@ -235,7 +235,7 @@ seed_unflushed() {
 
 @test "the cap: a held ledger lock still returns within cap plus 3 s, marks the partial flush and the unconfirmed merge, and writes nothing" {
   seed_unflushed
-  export GAIA_USAGE_MERGE_CAP_SECS=1 GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 GAIA_LEDGER_LOCK_TIMEOUT_SECS=6
+  export GAIA_USAGE_MERGE_CAP_SECS=1 GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 GAIA_LEDGER_LOCK_TIMEOUT_SECONDS=6
   mkdir "$TD/specs.lock.d"
   local t0 t1
   t0="$(date +%s)"
@@ -251,8 +251,8 @@ seed_unflushed() {
 
 @test "guards-must-fail: a copy of usage-merge.sh without the lock-timeout bound overruns cap plus 3 s" {
   seed_unflushed
-  export GAIA_USAGE_MERGE_CAP_SECS=1 GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 GAIA_LEDGER_LOCK_TIMEOUT_SECS=6
-  sed 's/GAIA_LEDGER_LOCK_TIMEOUT_SECS="\$(_um_left)" //' "$REPO/.gaia/scripts/usage-merge.sh" >"$REPO/.gaia/scripts/usage-merge-mutant.sh"
+  export GAIA_USAGE_MERGE_CAP_SECS=1 GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 GAIA_LEDGER_LOCK_TIMEOUT_SECONDS=6
+  sed 's/GAIA_LEDGER_LOCK_TIMEOUT_SECONDS="\$(_um_left)" //' "$REPO/.gaia/scripts/usage-merge.sh" >"$REPO/.gaia/scripts/usage-merge-mutant.sh"
   cmp -s "$REPO/.gaia/scripts/usage-merge.sh" "$REPO/.gaia/scripts/usage-merge-mutant.sh" && return 1
   mkdir "$TD/specs.lock.d"
   local t0 t1

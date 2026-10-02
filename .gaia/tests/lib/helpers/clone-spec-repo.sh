@@ -18,11 +18,11 @@ if [ "$#" -ne 1 ]; then
 fi
 
 origin="$1"
-dir="$(mktemp -d -t gaia-spec-lib-test-clone-XXXXXX)"
+clone_directory="$(mktemp -d -t gaia-spec-lib-test-clone-XXXXXX)"
 
-git clone --quiet "$origin" "$dir"
-git -C "$dir" config user.email "test@example.com"
-git -C "$dir" config user.name "Test"
-git -C "$dir" config commit.gpgsign false
+git clone --quiet "$origin" "$clone_directory"
+git -C "$clone_directory" config user.email "test@example.com"
+git -C "$clone_directory" config user.name "Test"
+git -C "$clone_directory" config commit.gpgsign false
 
-echo "$dir"
+echo "$clone_directory"

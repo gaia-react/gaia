@@ -39,11 +39,11 @@ EOF
 
 # stub <name> <exit-code> [stdout-line]: put an argv-logging stub on PATH.
 stub() {
-  local name="$1" code="$2" out="${3:-}"
+  local name="$1" code="$2" stdout_line="${3:-}"
   cat > "$BIN/$name" <<EOF
 #!/usr/bin/env bash
 echo "$name \$*" >> "$CALLS"
-[ -n "$out" ] && echo "$out"
+[ -n "$stdout_line" ] && echo "$stdout_line"
 exit $code
 EOF
   chmod +x "$BIN/$name"

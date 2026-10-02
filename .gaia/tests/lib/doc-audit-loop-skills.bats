@@ -40,65 +40,65 @@ line_starting() {
 # --- UAT-011: the unattended checkpoint ending -----------------------------
 
 @test "UAT-011: debt.md's checkpoint ending pushes, keeps the PR and claim, reports, and names the typed line" {
-  para="$(line_starting "$DEBT_MD" '- **A stop at the branch checkpoint**')"
-  [ -n "$para" ]
-  grep -qF -- 'pushed' <<<"$para"
-  grep -qF -- 'the PR stays open' <<<"$para"
-  grep -qF -- '`in-progress` claim stays' <<<"$para"
-  grep -qF -- 'verdict' <<<"$para"
-  grep -qF -- 'per-round evidence' <<<"$para"
-  grep -qF -- 'recommendation' <<<"$para"
-  grep -qF -- 'audit-loop-eval.sh brief' <<<"$para"
-  grep -qF -- 'grant or accept line' <<<"$para"
-  grep -qF -- 'interactive session on that branch' <<<"$para"
-  grep -qF -- 'never grants itself rounds' <<<"$para"
+  paragraph="$(line_starting "$DEBT_MD" '- **A stop at the branch checkpoint**')"
+  [ -n "$paragraph" ]
+  grep -qF -- 'pushed' <<<"$paragraph"
+  grep -qF -- 'the PR stays open' <<<"$paragraph"
+  grep -qF -- '`in-progress` claim stays' <<<"$paragraph"
+  grep -qF -- 'verdict' <<<"$paragraph"
+  grep -qF -- 'per-round evidence' <<<"$paragraph"
+  grep -qF -- 'recommendation' <<<"$paragraph"
+  grep -qF -- 'audit-loop-eval.sh brief' <<<"$paragraph"
+  grep -qF -- 'grant or accept line' <<<"$paragraph"
+  grep -qF -- 'interactive session on that branch' <<<"$paragraph"
+  grep -qF -- 'never grants itself rounds' <<<"$paragraph"
 }
 
 @test "UAT-011: debt.md's checkpoint ending neither asks nor emits a continuation prompt" {
-  para="$(line_starting "$DEBT_MD" '- **A stop at the branch checkpoint**')"
-  [ -n "$para" ]
-  grep -qF -- 'AskUserQuestion' <<<"$para" && return 1
-  grep -qiF -- 'continuation prompt' <<<"$para" && return 1
+  paragraph="$(line_starting "$DEBT_MD" '- **A stop at the branch checkpoint**')"
+  [ -n "$paragraph" ]
+  grep -qF -- 'AskUserQuestion' <<<"$paragraph" && return 1
+  grep -qiF -- 'continuation prompt' <<<"$paragraph" && return 1
   true
 }
 
 @test "COV-010: debt.md's fix-round stop pushes nothing, keeps the PR and claim, and reports reason and paths" {
-  para="$(line_starting "$DEBT_MD" '- **A stop inside the fix round**')"
-  [ -n "$para" ]
-  grep -qF -- 'third Quality Gate failure' <<<"$para"
-  grep -qF -- 'second verifier failure' <<<"$para"
-  grep -qF -- 'second consecutive fixer no-op' <<<"$para"
-  grep -qF -- 'Push nothing uncommitted' <<<"$para"
-  grep -qF -- 'leave the PR open' <<<"$para"
-  grep -qF -- 'keep the `in-progress` claim' <<<"$para"
-  grep -qF -- 'stop reason' <<<"$para"
-  grep -qF -- 'run-folder paths' <<<"$para"
-  grep -qF -- 'AskUserQuestion' <<<"$para" && return 1
-  grep -qiF -- 'continuation prompt' <<<"$para" && return 1
+  paragraph="$(line_starting "$DEBT_MD" '- **A stop inside the fix round**')"
+  [ -n "$paragraph" ]
+  grep -qF -- 'third Quality Gate failure' <<<"$paragraph"
+  grep -qF -- 'second verifier failure' <<<"$paragraph"
+  grep -qF -- 'second consecutive fixer no-op' <<<"$paragraph"
+  grep -qF -- 'Push nothing uncommitted' <<<"$paragraph"
+  grep -qF -- 'leave the PR open' <<<"$paragraph"
+  grep -qF -- 'keep the `in-progress` claim' <<<"$paragraph"
+  grep -qF -- 'stop reason' <<<"$paragraph"
+  grep -qF -- 'run-folder paths' <<<"$paragraph"
+  grep -qF -- 'AskUserQuestion' <<<"$paragraph" && return 1
+  grep -qiF -- 'continuation prompt' <<<"$paragraph" && return 1
   true
 }
 
 # --- UAT-029: /gaia-harden asks at the checkpoint --------------------------
 
 @test "UAT-029: harden.md's audit paragraph asks the checkpoint question and emits no continuation prompt" {
-  para="$(line_starting "$HARDEN_MD" '**Run the audit, on every path.**')"
-  [ -n "$para" ]
-  grep -qF -- '#### The branch checkpoint' <<<"$para"
-  grep -qF -- 'checkpoint `AskUserQuestion`' <<<"$para"
-  grep -qF -- 'audit-loop-eval.sh brief' <<<"$para"
-  grep -qiF -- 'continuation prompt' <<<"$para" && return 1
-  grep -qiF -- 'is a stop' <<<"$para" && return 1
+  paragraph="$(line_starting "$HARDEN_MD" '**Run the audit, on every path.**')"
+  [ -n "$paragraph" ]
+  grep -qF -- '#### The branch checkpoint' <<<"$paragraph"
+  grep -qF -- 'checkpoint `AskUserQuestion`' <<<"$paragraph"
+  grep -qF -- 'audit-loop-eval.sh brief' <<<"$paragraph"
+  grep -qiF -- 'continuation prompt' <<<"$paragraph" && return 1
+  grep -qiF -- 'is a stop' <<<"$paragraph" && return 1
   true
 }
 
 # --- the always-loaded rules ------------------------------------------------
 
 @test "pr-merge.md's checkpoint paragraph says Claude never writes grants or loop state, within the old byte budget" {
-  para="$(line_starting "$PR_MERGE_MD" '**The audit loop runs on its own until the branch checkpoint.**')"
-  [ -n "$para" ]
-  grep -qF -- 'Claude never writes grants or loop state' <<<"$para"
-  grep -qF -- '#### The branch checkpoint' <<<"$para"
-  bytes="$(printf '%s\n' "$para" | wc -c | tr -d ' ')"
+  paragraph="$(line_starting "$PR_MERGE_MD" '**The audit loop runs on its own until the branch checkpoint.**')"
+  [ -n "$paragraph" ]
+  grep -qF -- 'Claude never writes grants or loop state' <<<"$paragraph"
+  grep -qF -- '#### The branch checkpoint' <<<"$paragraph"
+  bytes="$(printf '%s\n' "$paragraph" | wc -c | tr -d ' ')"
   [ "$bytes" -le 724 ]
 }
 

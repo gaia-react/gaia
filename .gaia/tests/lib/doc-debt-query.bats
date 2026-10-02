@@ -91,27 +91,27 @@ report_engines() {
 # instead, and index() then finds it nowhere on a single physical line.
 # ENVIRON values carry no such processing.
 sub_literal_once() {
-  local file="$1" out
-  out="${file}.sub"
+  local file="$1" output_path
+  output_path="${file}.sub"
   SUB_NEEDLE="$2" SUB_REPLACEMENT="$3" awk '
-    BEGIN { n = ENVIRON["SUB_NEEDLE"]; r = ENVIRON["SUB_REPLACEMENT"] }
+    BEGIN { needle_text = ENVIRON["SUB_NEEDLE"]; replacement_text = ENVIRON["SUB_REPLACEMENT"] }
     {
       line = $0
-      p = index(line, n)
-      if (p > 0) {
-        print substr(line, 1, p - 1) r substr(line, p + length(n))
+      needle_position = index(line, needle_text)
+      if (needle_position > 0) {
+        print substr(line, 1, needle_position - 1) replacement_text substr(line, needle_position + length(needle_text))
         hits++
       } else {
         print line
       }
     }
     END { exit hits ? 0 : 1 }
-  ' "$file" >"$out" || {
+  ' "$file" >"$output_path" || {
     echo "substitution needle absent from ${file}: ${2}" >&2
-    rm -f "$out"
+    rm -f "$output_path"
     return 1
   }
-  mv "$out" "$file"
+  mv "$output_path" "$file"
 }
 
 # The ordering query's whole fenced code block, anchored on the unique
@@ -120,8 +120,8 @@ sub_literal_once() {
 extract_query_fence() {
   local jq_line start end
   jq_line=$(grep -n -F -- "--jq '" "$DEBT_MD" | head -1 | cut -d: -f1)
-  start=$(awk -v n="$jq_line" 'NR < n && /^```/ { s = NR } END { print s + 0 }' "$DEBT_MD")
-  end=$(awk -v n="$jq_line" 'NR > n && /^```/ { print NR; exit }' "$DEBT_MD")
+  start=$(awk -v jq_line_number="$jq_line" 'NR < jq_line_number && /^```/ { fence_start = NR } END { print fence_start + 0 }' "$DEBT_MD")
+  end=$(awk -v jq_line_number="$jq_line" 'NR > jq_line_number && /^```/ { print NR; exit }' "$DEBT_MD")
   sed -n "${start},${end}p" "$DEBT_MD"
 }
 
@@ -129,9 +129,9 @@ extract_query_fence() {
 # the line whose only non-whitespace content is a closing `'`. Arm 2 executes
 # this directly; it is never hand-copied into the suite.
 extract_jq_program() {
-  awk -v q="'" '
-    index($0, "--jq " q) { found = 1; next }
-    found && $0 ~ "^[ \t]*" q "[ \t]*$" { exit }
+  awk -v single_quote="'" '
+    index($0, "--jq " single_quote) { found = 1; next }
+    found && $0 ~ "^[ \t]*" single_quote "[ \t]*$" { exit }
     found { print }
   ' "$DEBT_MD"
 }
@@ -211,7 +211,7 @@ render_backlog() {
   bin="$(jq_bin)"
   [ -n "$bin" ] || skip "neither jq nor gojq on PATH"
   output="$(render_backlog)"
-  investigate="$(jq --arg n 106 '.[] | select(.number == ($n | tonumber))' <<<"$output")"
+  investigate="$(jq --arg issue_number 106 '.[] | select(.number == ($issue_number | tonumber))' <<<"$output")"
   [ "$(jq '.sev' <<<"$investigate")" = "0" ]
   # Last in the whole ordering, below every suggestion and below the
   # unlabelled issue, which is what "not an ordinal severity" costs it.
@@ -222,7 +222,7 @@ render_backlog() {
   bin="$(jq_bin)"
   [ -n "$bin" ] || skip "neither jq nor gojq on PATH"
   output="$(render_backlog)"
-  unlabelled="$(jq --arg n 104 '.[] | select(.number == ($n | tonumber))' <<<"$output")"
+  unlabelled="$(jq --arg issue_number 104 '.[] | select(.number == ($issue_number | tonumber))' <<<"$output")"
   [ "$(jq '.sev' <<<"$unlabelled")" = "1" ]
 }
 
@@ -245,44 +245,44 @@ render_backlog() {
   bin="$(jq_bin)"
   [ -n "$bin" ] || skip "neither jq nor gojq on PATH"
   output="$(render_backlog)"
-  issue1="$(jq --arg n 101 '.[] | select(.number == ($n | tonumber))' <<<"$output")"
-  issue2="$(jq --arg n 102 '.[] | select(.number == ($n | tonumber))' <<<"$output")"
-  [ "$(jq '.key.line' <<<"$issue1")" = "4" ]
-  [ "$(jq -r '.key.line | type' <<<"$issue1")" = "number" ]
-  [ "$(jq '.key.line' <<<"$issue2")" = "42" ]
+  issue_101="$(jq --arg issue_number 101 '.[] | select(.number == ($issue_number | tonumber))' <<<"$output")"
+  issue_102="$(jq --arg issue_number 102 '.[] | select(.number == ($issue_number | tonumber))' <<<"$output")"
+  [ "$(jq '.key.line' <<<"$issue_101")" = "4" ]
+  [ "$(jq -r '.key.line | type' <<<"$issue_101")" = "number" ]
+  [ "$(jq '.key.line' <<<"$issue_102")" = "42" ]
 }
 
 @test "Arm 2: footprint resolves the footprint: label's value, prefix stripped" {
   bin="$(jq_bin)"
   [ -n "$bin" ] || skip "neither jq nor gojq on PATH"
   output="$(render_backlog)"
-  issue1="$(jq --arg n 101 '.[] | select(.number == ($n | tonumber))' <<<"$output")"
-  issue2="$(jq --arg n 102 '.[] | select(.number == ($n | tonumber))' <<<"$output")"
-  [ "$(jq -r '.footprint' <<<"$issue1")" = "narrow" ]
-  [ "$(jq -r '.footprint' <<<"$issue2")" = "wide" ]
+  issue_101="$(jq --arg issue_number 101 '.[] | select(.number == ($issue_number | tonumber))' <<<"$output")"
+  issue_102="$(jq --arg issue_number 102 '.[] | select(.number == ($issue_number | tonumber))' <<<"$output")"
+  [ "$(jq -r '.footprint' <<<"$issue_101")" = "narrow" ]
+  [ "$(jq -r '.footprint' <<<"$issue_102")" = "wide" ]
 }
 
 @test "Arm 2: a malformed key and an unlabelled issue both emit key: null and footprint: null" {
   bin="$(jq_bin)"
   [ -n "$bin" ] || skip "neither jq nor gojq on PATH"
   output="$(render_backlog)"
-  issue3="$(jq --arg n 103 '.[] | select(.number == ($n | tonumber))' <<<"$output")"
-  issue4="$(jq --arg n 104 '.[] | select(.number == ($n | tonumber))' <<<"$output")"
-  [ "$(jq '.key' <<<"$issue3")" = "null" ]
-  [ "$(jq '.footprint' <<<"$issue3")" = "null" ]
-  [ "$(jq '.key' <<<"$issue4")" = "null" ]
-  [ "$(jq '.footprint' <<<"$issue4")" = "null" ]
+  issue_103="$(jq --arg issue_number 103 '.[] | select(.number == ($issue_number | tonumber))' <<<"$output")"
+  issue_104="$(jq --arg issue_number 104 '.[] | select(.number == ($issue_number | tonumber))' <<<"$output")"
+  [ "$(jq '.key' <<<"$issue_103")" = "null" ]
+  [ "$(jq '.footprint' <<<"$issue_103")" = "null" ]
+  [ "$(jq '.key' <<<"$issue_104")" = "null" ]
+  [ "$(jq '.footprint' <<<"$issue_104")" = "null" ]
 }
 
 @test "Arm 2: every issue emits a non-empty string body, the security-screen contract made mechanical" {
   bin="$(jq_bin)"
   [ -n "$bin" ] || skip "neither jq nor gojq on PATH"
   output="$(render_backlog)"
-  for n in 101 102 103 104; do
-    issue="$(jq --arg n "$n" '.[] | select(.number == ($n | tonumber))' <<<"$output")"
+  for issue_number in 101 102 103 104; do
+    issue="$(jq --arg issue_number "$issue_number" '.[] | select(.number == ($issue_number | tonumber))' <<<"$output")"
     [ "$(jq -r '.body | type' <<<"$issue")" = "string" ] || return 1
-    body_len="$(jq -r '.body | length' <<<"$issue")"
-    [ "$body_len" -gt 0 ] || return 1
+    body_length="$(jq -r '.body | length' <<<"$issue")"
+    [ "$body_length" -gt 0 ] || return 1
   done
 }
 
@@ -290,13 +290,13 @@ render_backlog() {
   engines="$(report_engines)"
   [ -n "$engines" ] || skip "neither jq nor gojq on PATH"
   program="$(extract_jq_program)"
-  for eng in $engines; do
-    output="$("$eng" "$program" "$FIXTURE")"
-    issue5="$("$eng" --arg n 105 '.[] | select(.number == ($n | tonumber))' <<<"$output")"
-    path="$("$eng" -r '.key.path' <<<"$issue5")"
-    line="$("$eng" '.key.line' <<<"$issue5")"
+  for engine in $engines; do
+    output="$("$engine" "$program" "$FIXTURE")"
+    issue_105="$("$engine" --arg issue_number 105 '.[] | select(.number == ($issue_number | tonumber))' <<<"$output")"
+    path="$("$engine" -r '.key.path' <<<"$issue_105")"
+    line="$("$engine" '.key.line' <<<"$issue_105")"
     if [ "$path" != "wiki/concepts/PR Merge Workflow.md" ] || [ "$line" != "175" ]; then
-      echo "engine ${eng}: key.path=${path} key.line=${line}" >&2
+      echo "engine ${engine}: key.path=${path} key.line=${line}" >&2
       return 1
     fi
   done
@@ -305,20 +305,20 @@ render_backlog() {
 @test "Arm 2: a two-key continuation line yields the first key's own path and line, and a pre-change greedy capture would splice them" {
   engines="$(report_engines)"
   [ -n "$engines" ] || skip "neither jq nor gojq on PATH"
-  fixture2="$REPO_ROOT/.gaia/tests/fixtures/dedup-key-corpus/two-keys-one-line-issues.json"
-  [ -f "$fixture2" ] || {
-    echo "fixture absent: ${fixture2}" >&2
+  two_keys_fixture="$REPO_ROOT/.gaia/tests/fixtures/dedup-key-corpus/two-keys-one-line-issues.json"
+  [ -f "$two_keys_fixture" ] || {
+    echo "fixture absent: ${two_keys_fixture}" >&2
     return 1
   }
   program="$(extract_jq_program)"
 
-  for eng in $engines; do
-    output="$("$eng" "$program" "$fixture2")"
-    issue="$("$eng" '.[] | select(.number == 9001)' <<<"$output")"
-    path="$("$eng" -r '.key.path' <<<"$issue")"
-    line="$("$eng" '.key.line' <<<"$issue")"
+  for engine in $engines; do
+    output="$("$engine" "$program" "$two_keys_fixture")"
+    issue="$("$engine" '.[] | select(.number == 9001)' <<<"$output")"
+    path="$("$engine" -r '.key.path' <<<"$issue")"
+    line="$("$engine" '.key.line' <<<"$issue")"
     if [ "$path" != "wiki/concepts/PR Merge Workflow.md" ] || [ "$line" != "7" ]; then
-      echo "engine ${eng}: key.path=${path} key.line=${line}" >&2
+      echo "engine ${engine}: key.path=${path} key.line=${line}" >&2
       return 1
     fi
   done
@@ -332,7 +332,7 @@ render_backlog() {
   mutant_file="${BATS_TEST_TMPDIR}/debt-program-greedy.jq"
   printf '%s\n' "$program" >"$mutant_file"
   sub_literal_once "$mutant_file" 'path=(?<path>[^>\n]+)' 'path=(?<path>.+)'
-  mutant_output="$("$bin" "$(cat "$mutant_file")" "$fixture2")"
+  mutant_output="$("$bin" "$(cat "$mutant_file")" "$two_keys_fixture")"
   mutant_issue="$("$bin" '.[] | select(.number == 9001)' <<<"$mutant_output")"
   mutant_path="$("$bin" -r '.key.path' <<<"$mutant_issue")"
   case "$mutant_path" in
@@ -354,22 +354,22 @@ render_backlog() {
   }
   program="$(extract_jq_program)"
 
-  for eng in $engines; do
-    wrapped="${BATS_TEST_TMPDIR}/decoy-issue-${eng}.json"
-    "$eng" -n --rawfile body "$decoy" \
+  for engine in $engines; do
+    wrapped="${BATS_TEST_TMPDIR}/decoy-issue-${engine}.json"
+    "$engine" -n --rawfile body "$decoy" \
       '[{number: 9002, title: "decoy", createdAt: "2026-01-06T00:00:00Z", labels: [], body: $body}]' \
       >"$wrapped"
-    output="$("$eng" "$program" "$wrapped")"
-    issue="$("$eng" '.[] | select(.number == 9002)' <<<"$output")"
-    path="$("$eng" -r '.key.path' <<<"$issue")"
+    output="$("$engine" "$program" "$wrapped")"
+    issue="$("$engine" '.[] | select(.number == 9002)' <<<"$output")"
+    path="$("$engine" -r '.key.path' <<<"$issue")"
     case "$path" in
       *$'\n'*)
-        echo "engine ${eng}: the committed capture leaked a newline into the path: ${path}" >&2
+        echo "engine ${engine}: the committed capture leaked a newline into the path: ${path}" >&2
         return 1
         ;;
     esac
     if [ "$path" != "app/real.ts" ]; then
-      echo "engine ${eng}: the committed capture did not land on the real key: ${path}" >&2
+      echo "engine ${engine}: the committed capture did not land on the real key: ${path}" >&2
       return 1
     fi
   done

@@ -31,7 +31,7 @@ allocator="${repo_root%/}/.specify/extensions/gaia/lib/spec-allocator.sh"
 # through repo_root: repo_root is the value whose trustworthiness is in
 # question here, so loading a library by it would decide correctness with the
 # input under test.
-_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 #
 # Bracketed against a target that is present but UNPARSEABLE. A bare `.` under
 # errexit abandons the shell AT the load, exit 2 with no diagnostic, and a
@@ -42,12 +42,12 @@ _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # the gaia_resolve_specs_dir call below already refuses when the function is
 # absent, which is the degrade this load owes.
 # shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
-set +e; [ -f "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" ] && . "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null; set -e
+set +e; [ -f "${_library_directory}/../../../../.gaia/scripts/ledger-path-lib.sh" ] && . "${_library_directory}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null; set -e
 # The branch-naming library reads a SPEC number back out of a plan branch in
 # every spelling GAIA mints, the worktree one included. Loaded the same
 # bracketed way as the ledger-path lib above, for the same reason.
 # shellcheck source=../../../../.gaia/scripts/branch-name-lib.sh
-set +e; [ -f "${_lib_dir}/../../../../.gaia/scripts/branch-name-lib.sh" ] && . "${_lib_dir}/../../../../.gaia/scripts/branch-name-lib.sh" 2>/dev/null; set -e
+set +e; [ -f "${_library_directory}/../../../../.gaia/scripts/branch-name-lib.sh" ] && . "${_library_directory}/../../../../.gaia/scripts/branch-name-lib.sh" 2>/dev/null; set -e
 if ! type gaia_branch_spec_number >/dev/null 2>&1; then
   echo "spec-renumber: the branch-naming library is unusable, so SPEC numbers held only on a branch cannot be read; refuse to renumber" >&2
   exit 4
@@ -63,17 +63,17 @@ fi
 # Resolve rather than trust: using repo_root directly could rename a folder
 # in one tree while the ledger row lands in main's, forking the two. Refuse
 # rather than fall back to the unresolved operand.
-if ! specs_dir="$(gaia_resolve_specs_dir "$repo_root" 2>/dev/null)" || [ -z "$specs_dir" ]; then
+if ! specs_directory="$(gaia_resolve_specs_dir "$repo_root" 2>/dev/null)" || [ -z "$specs_directory" ]; then
   echo "spec-renumber: cannot resolve the main checkout for '$repo_root'; refuse to renumber (would fork the ledger across worktrees)" >&2
   exit 3
 fi
-ledger_path="${specs_dir}/ledger.json"
-# main_root: the checkout that physically owns specs_dir, derived from the
+ledger_path="${specs_directory}/ledger.json"
+# main_root: the checkout that physically owns specs_directory, derived from the
 # resolver's own contract (<main_root>/.gaia/local/specs) rather than a second
-# resolution. The git mv/ls-files calls below touch paths under specs_dir, so
+# resolution. The git mv/ls-files calls below touch paths under specs_directory, so
 # they must run against the repo that contains them, not the raw repo_root
 # operand, which can be a different worktree.
-main_root="${specs_dir%/.gaia/local/specs}"
+main_root="${specs_directory%/.gaia/local/specs}"
 
 for id in "$old_id" "$new_id"; do
   if [[ ! "$id" =~ ^SPEC-[0-9]+$ ]]; then
@@ -87,8 +87,8 @@ if [ "$old_id" = "$new_id" ]; then
   exit 2
 fi
 
-old_path="${specs_dir}/${old_id}"
-new_path="${specs_dir}/${new_id}"
+old_path="${specs_directory}/${old_id}"
+new_path="${specs_directory}/${new_id}"
 old_spec="${old_path}/SPEC.md"
 new_spec="${new_path}/SPEC.md"
 
@@ -103,13 +103,13 @@ if [ -e "$new_path" ]; then
 fi
 
 # Reject if the new id is already known to the allocator (ledger / branch / filesystem).
-new_num=$((10#${new_id#SPEC-}))
-old_num=$((10#${old_id#SPEC-}))
+new_number=$((10#${new_id#SPEC-}))
+old_number=$((10#${old_id#SPEC-}))
 if [ -x "$allocator" ] || [ -f "$allocator" ]; then
   if bash "$allocator" highest "$repo_root" >/dev/null 2>&1; then
-    while IFS= read -r n; do
-      [ -z "$n" ] && continue
-      if [ "$((10#$n))" -eq "$new_num" ]; then
+    while IFS= read -r known_number; do
+      [ -z "$known_number" ] && continue
+      if [ "$((10#$known_number))" -eq "$new_number" ]; then
         echo "spec-renumber: $new_id is already known (ledger/branch/filesystem)" >&2
         exit 4
       fi
@@ -123,7 +123,7 @@ if [ -x "$allocator" ] || [ -f "$allocator" ]; then
       gaia_branch_list "$repo_root" | while IFS= read -r branch; do
         if [[ "$branch" == *spec-* ]]; then gaia_branch_spec_number "$branch"; fi
       done
-      find "$specs_dir" -mindepth 2 -maxdepth 2 -type f -name 'SPEC.md' -print 2>/dev/null \
+      find "$specs_directory" -mindepth 2 -maxdepth 2 -type f -name 'SPEC.md' -print 2>/dev/null \
         | sed -nE 's|.*/SPEC-0*([0-9]+)/SPEC\.md$|\1|p' || true
     )
   fi
@@ -139,35 +139,35 @@ fi
 
 # 2. Rewrite frontmatter spec_id (and stamp renamed_from for traceability).
 #    Operates on the YAML frontmatter block between the first two `---` lines.
-tmp_spec="$(mktemp)"
+temporary_spec_file="$(mktemp)"
 awk -v new_id="$new_id" -v old_id="$old_id" '
-  BEGIN { in_fm = 0; fm_count = 0; stamped = 0 }
+  BEGIN { in_frontmatter = 0; frontmatter_delimiter_count = 0; stamped = 0 }
   /^---[[:space:]]*$/ {
-    fm_count++
-    if (fm_count == 1) { in_fm = 1; print; next }
-    if (fm_count == 2) {
-      if (in_fm && !stamped) { print "renamed_from: " old_id; stamped = 1 }
-      in_fm = 0; print; next
+    frontmatter_delimiter_count++
+    if (frontmatter_delimiter_count == 1) { in_frontmatter = 1; print; next }
+    if (frontmatter_delimiter_count == 2) {
+      if (in_frontmatter && !stamped) { print "renamed_from: " old_id; stamped = 1 }
+      in_frontmatter = 0; print; next
     }
   }
-  in_fm && /^spec_id:[[:space:]]/ { print "spec_id: " new_id; next }
+  in_frontmatter && /^spec_id:[[:space:]]/ { print "spec_id: " new_id; next }
   { print }
-' "$new_spec" > "$tmp_spec"
-mv "$tmp_spec" "$new_spec"
+' "$new_spec" > "$temporary_spec_file"
+mv "$temporary_spec_file" "$new_spec"
 
 # 3. Update ledger row in place.
 if [ -f "$ledger_path" ]; then
-  tmp_ledger="$(mktemp)"
+  temporary_ledger_file="$(mktemp)"
   if jq --arg old "$old_id" --arg new "$new_id" '
         .specs |= map(
           if .id == $old then
             . + { id: $new, renamed_from: $old }
           else . end
         )
-      ' "$ledger_path" > "$tmp_ledger"; then
-    mv "$tmp_ledger" "$ledger_path"
+      ' "$ledger_path" > "$temporary_ledger_file"; then
+    mv "$temporary_ledger_file" "$ledger_path"
   else
-    rm -f "$tmp_ledger"
+    rm -f "$temporary_ledger_file"
     echo "spec-renumber: failed to update ledger; reverting folder move" >&2
     if git -C "$main_root" ls-files --error-unmatch "$new_spec" >/dev/null 2>&1; then
       git -C "$main_root" mv "$new_path" "$old_path"
@@ -184,33 +184,33 @@ fi
 #    cache-move failure is logged to stderr and does not revert the
 #    folder/ledger move above; that move already succeeded and remains the
 #    source of truth.
-cache_dir="${repo_root%/}/.gaia/local/cache"
+cache_directory="${repo_root%/}/.gaia/local/cache"
 
-old_gate1="${cache_dir}/gate1-${old_id}.json"
-new_gate1="${cache_dir}/gate1-${new_id}.json"
+old_gate1="${cache_directory}/gate1-${old_id}.json"
+new_gate1="${cache_directory}/gate1-${new_id}.json"
 if [ -e "$old_gate1" ]; then
   if ! mv "$old_gate1" "$new_gate1" 2>/dev/null; then
     echo "spec-renumber: failed to re-key gate1 cache $old_gate1" >&2
   fi
 fi
 
-old_draft="${cache_dir}/draft-${old_id}.md"
-new_draft="${cache_dir}/draft-${new_id}.md"
+old_draft="${cache_directory}/draft-${old_id}.md"
+new_draft="${cache_directory}/draft-${new_id}.md"
 if [ -e "$old_draft" ]; then
   if ! mv "$old_draft" "$new_draft" 2>/dev/null; then
     echo "spec-renumber: failed to re-key draft cache $old_draft" >&2
   fi
 fi
 
-old_session="${cache_dir}/spec-session-${old_id}.json"
-new_session="${cache_dir}/spec-session-${new_id}.json"
+old_session="${cache_directory}/spec-session-${old_id}.json"
+new_session="${cache_directory}/spec-session-${new_id}.json"
 if [ -e "$old_session" ]; then
   if mv "$old_session" "$new_session" 2>/dev/null; then
-    tmp_session="$(mktemp)"
-    if jq --arg id "$new_id" '.spec_id = $id' "$new_session" > "$tmp_session" 2>/dev/null; then
-      mv "$tmp_session" "$new_session"
+    temporary_session_file="$(mktemp)"
+    if jq --arg id "$new_id" '.spec_id = $id' "$new_session" > "$temporary_session_file" 2>/dev/null; then
+      mv "$temporary_session_file" "$new_session"
     else
-      rm -f "$tmp_session"
+      rm -f "$temporary_session_file"
       echo "spec-renumber: failed to rewrite spec_id in $new_session" >&2
     fi
   else
@@ -218,15 +218,15 @@ if [ -e "$old_session" ]; then
   fi
 fi
 
-old_lock="${cache_dir}/spec-session-${old_id}.lock"
-new_lock="${cache_dir}/spec-session-${new_id}.lock"
+old_lock="${cache_directory}/spec-session-${old_id}.lock"
+new_lock="${cache_directory}/spec-session-${new_id}.lock"
 if [ -e "$old_lock" ]; then
   if mv "$old_lock" "$new_lock" 2>/dev/null; then
-    tmp_lock="$(mktemp)"
-    if jq --arg id "$new_id" '.spec_id = $id' "$new_lock" > "$tmp_lock" 2>/dev/null; then
-      mv "$tmp_lock" "$new_lock"
+    temporary_lock_file="$(mktemp)"
+    if jq --arg id "$new_id" '.spec_id = $id' "$new_lock" > "$temporary_lock_file" 2>/dev/null; then
+      mv "$temporary_lock_file" "$new_lock"
     else
-      rm -f "$tmp_lock"
+      rm -f "$temporary_lock_file"
       echo "spec-renumber: failed to rewrite spec_id in $new_lock" >&2
     fi
   else
@@ -234,8 +234,8 @@ if [ -e "$old_lock" ]; then
   fi
 fi
 
-old_audit="${cache_dir}/audit-${old_id}"
-new_audit="${cache_dir}/audit-${new_id}"
+old_audit="${cache_directory}/audit-${old_id}"
+new_audit="${cache_directory}/audit-${new_id}"
 if [ -e "$old_audit" ]; then
   if ! mv "$old_audit" "$new_audit" 2>/dev/null; then
     echo "spec-renumber: failed to re-key audit cache $old_audit" >&2
@@ -248,8 +248,8 @@ echo "Next steps (external state, not auto-updated):"
 
 # Branch name, flag if the current branch references the old id.
 current_branch="$(git -C "$repo_root" symbolic-ref --short -q HEAD || true)"
-if [ -n "$current_branch" ] && [ "$(gaia_branch_spec_number "$current_branch")" = "$old_num" ]; then
-  new_branch="${current_branch//spec-$(printf '%03d' "$old_num")/spec-$(printf '%03d' "$new_num")}"
+if [ -n "$current_branch" ] && [ "$(gaia_branch_spec_number "$current_branch")" = "$old_number" ]; then
+  new_branch="${current_branch//spec-$(printf '%03d' "$old_number")/spec-$(printf '%03d' "$new_number")}"
   echo "  - Current branch '$current_branch' references $old_id."
   echo "    Rename:   git -C $repo_root branch -m '$new_branch'"
 fi

@@ -15,13 +15,13 @@
 # the plans ledger explicitly.
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
   # snapshot_file + assert_files_identical: byte identity without `$(cat …)`.
   . "$REPO_ROOT/.gaia/tests/helpers/files.sh"
-  SRC_LIB="$REPO_ROOT/.specify/extensions/gaia/lib"
-  SRC_SCRIPTS="$REPO_ROOT/.gaia/scripts"
-  [ -x "$SRC_LIB/plan-ledger-update.sh" ] || skip "plan-ledger-update.sh not executable"
+  SOURCE_LIBRARY_DIRECTORY="$REPO_ROOT/.specify/extensions/gaia/lib"
+  SOURCE_SCRIPTS_DIRECTORY="$REPO_ROOT/.gaia/scripts"
+  [ -x "$SOURCE_LIBRARY_DIRECTORY/plan-ledger-update.sh" ] || skip "plan-ledger-update.sh not executable"
 
   SANDBOX_RAW="$(mktemp -d "${BATS_TEST_TMPDIR}/sandbox.XXXXXX")"
   SANDBOX="$(cd "$SANDBOX_RAW" && pwd -P)"
@@ -29,12 +29,12 @@ setup() {
   git -C "$SANDBOX" init --quiet --initial-branch=main
 
   mkdir -p "$SANDBOX/.specify/extensions/gaia/lib"
-  cp "$SRC_LIB/plan-ledger-update.sh" "$SANDBOX/.specify/extensions/gaia/lib/plan-ledger-update.sh"
-  cp "$SRC_LIB/with-ledger-lock.sh" "$SANDBOX/.specify/extensions/gaia/lib/with-ledger-lock.sh"
+  cp "$SOURCE_LIBRARY_DIRECTORY/plan-ledger-update.sh" "$SANDBOX/.specify/extensions/gaia/lib/plan-ledger-update.sh"
+  cp "$SOURCE_LIBRARY_DIRECTORY/with-ledger-lock.sh" "$SANDBOX/.specify/extensions/gaia/lib/with-ledger-lock.sh"
 
   mkdir -p "$SANDBOX/.gaia/scripts"
-  cp "$SRC_SCRIPTS/ledger-path-lib.sh" "$SANDBOX/.gaia/scripts/ledger-path-lib.sh"
-  cp "$SRC_SCRIPTS/main-root-lib.sh" "$SANDBOX/.gaia/scripts/main-root-lib.sh"
+  cp "$SOURCE_SCRIPTS_DIRECTORY/ledger-path-lib.sh" "$SANDBOX/.gaia/scripts/ledger-path-lib.sh"
+  cp "$SOURCE_SCRIPTS_DIRECTORY/main-root-lib.sh" "$SANDBOX/.gaia/scripts/main-root-lib.sh"
 
   mkdir -p "$SANDBOX/.gaia/local/plans"
   cat > "$SANDBOX/.gaia/local/plans/ledger.json" <<'EOF'
@@ -59,7 +59,7 @@ teardown() {
   fi
 }
 
-LEDGER_REL=".gaia/local/plans/ledger.json"
+LEDGER_RELATIVE_PATH=".gaia/local/plans/ledger.json"
 
 _update() {
   bash "$SANDBOX/.specify/extensions/gaia/lib/plan-ledger-update.sh" "$SANDBOX" "$@"
@@ -67,9 +67,9 @@ _update() {
 
 _row_field() {
   local field="$1"
-  jq -r --arg id "PLAN-001" --arg f "$field" \
-    '.plans[] | select(.id == $id) | .[$f] // "null"' \
-    "$SANDBOX/$LEDGER_REL"
+  jq -r --arg id "PLAN-001" --arg field_name "$field" \
+    '.plans[] | select(.id == $id) | .[$field_name] // "null"' \
+    "$SANDBOX/$LEDGER_RELATIVE_PATH"
 }
 
 @test "1: merged patch exits 0, sets status+merged_at, preserves other fields" {
@@ -98,10 +98,10 @@ _row_field() {
 }
 
 @test "4: patch for a non-existent row exits 4 and mutates nothing" {
-  before="$(snapshot_file "$SANDBOX/$LEDGER_REL")"
+  before="$(snapshot_file "$SANDBOX/$LEDGER_RELATIVE_PATH")"
   run _update PLAN-999 '{"status":"merged"}'
   [ "$status" -eq 4 ]
-  assert_files_identical "$SANDBOX/$LEDGER_REL" "$before"
+  assert_files_identical "$SANDBOX/$LEDGER_RELATIVE_PATH" "$before"
 }
 
 @test "5: malformed patch JSON exits 5" {
@@ -110,18 +110,18 @@ _row_field() {
 }
 
 @test "6: ready, merged, and abandoned are all accepted" {
-  for s in ready merged abandoned; do
-    run _update PLAN-001 "{\"status\":\"$s\"}"
+  for status_name in ready merged abandoned; do
+    run _update PLAN-001 "{\"status\":\"$status_name\"}"
     [ "$status" -eq 0 ]
-    [ "$(_row_field status)" = "$s" ]
+    [ "$(_row_field status)" = "$status_name" ]
   done
 }
 
 @test "6b: allocated, completed, and specified are all rejected with exit 6" {
-  for s in allocated completed specified; do
-    run _update PLAN-001 "{\"status\":\"$s\"}"
+  for status_name in allocated completed specified; do
+    run _update PLAN-001 "{\"status\":\"$status_name\"}"
     [ "$status" -eq 6 ]
-    grep -qF "non-canonical status '$s'" <<<"$output"
+    grep -qF "non-canonical status '$status_name'" <<<"$output"
   done
 }
 

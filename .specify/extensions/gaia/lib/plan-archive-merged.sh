@@ -78,11 +78,11 @@ set -uo pipefail
 
 close_flag=0
 args=()
-for a in "$@"; do
-  case "$a" in
+for argument in "$@"; do
+  case "$argument" in
     --close) close_flag=1 ;;
     --*) ;; # unknown flags tolerated
-    *) args+=("$a") ;;
+    *) args+=("$argument") ;;
   esac
 done
 
@@ -93,7 +93,7 @@ fi
 
 repo_root="${args[0]%/}"
 filter_id="${args[1]:-}"
-cache_dir="${repo_root}/.gaia/local/cache/wiki-promote"
+wiki_promote_cache_directory="${repo_root}/.gaia/local/cache/wiki-promote"
 
 # Retention knob, read once: a non-numeric override falls back to the default.
 # The same GAIA_SPEC_RETENTION_DAYS knob spec-archive-merged.sh reads.
@@ -108,7 +108,7 @@ now_epoch="$(date -u +%s 2>/dev/null || echo 0)"
 _age_past_window() {
   local iso="$1" merged_epoch age_days
   [ -n "$iso" ] || return 1
-  merged_epoch="$(jq -rn --arg t "$iso" '($t | sub("\\.[0-9]+Z$";"Z") | fromdateiso8601)' 2>/dev/null || true)"
+  merged_epoch="$(jq -rn --arg iso_timestamp "$iso" '($iso_timestamp | sub("\\.[0-9]+Z$";"Z") | fromdateiso8601)' 2>/dev/null || true)"
   case "$merged_epoch" in '' | *[!0-9]*) return 1 ;; esac
   [ "$now_epoch" -gt 0 ] || return 1
   age_days=$(( (now_epoch - merged_epoch) / 86400 ))
@@ -134,11 +134,11 @@ _consolidation_gate_pass() {
 # No jq -> nothing to do (checked first: cheap, and every other gate needs it).
 command -v jq >/dev/null 2>&1 || exit 0
 
-_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../../../.gaia/scripts/cost-represented.sh
 . "${repo_root}/.gaia/scripts/cost-represented.sh" 2>/dev/null || true
 # shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
-. "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
+. "${_library_directory}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
 
 # repo_root names the tree this sweep runs in; the ledger and plan folders it
 # reads are main's, because the state registry declares plans/ main-only.
@@ -148,11 +148,11 @@ _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # -- that fallback is the forked-ledger defect this task removes. Resolving
 # still needs git; the delete itself remains a plain filesystem rm, never a
 # git op (plans are local/gitignored).
-if ! plans_dir="$(gaia_resolve_plans_dir "$repo_root" 2>/dev/null)" || [ -z "$plans_dir" ]; then
+if ! plans_directory="$(gaia_resolve_plans_dir "$repo_root" 2>/dev/null)" || [ -z "$plans_directory" ]; then
   echo "plan-archive-merged: cannot resolve the main checkout for '$repo_root'; skipping sweep" >&2
   exit 0
 fi
-ledger_path="${plans_dir}/ledger.json"
+ledger_path="${plans_directory}/ledger.json"
 
 # No ledger -> nothing to do.
 [ -f "$ledger_path" ] || exit 0
@@ -177,13 +177,13 @@ deleted_list=""
 while IFS= read -r plan_id; do
   [ -n "$plan_id" ] || continue
 
-  folder="${plans_dir}/${plan_id}"
+  folder="${plans_directory}/${plan_id}"
   # Skip merged rows with no active folder (already gone, or never had one).
   [ -d "$folder" ] || continue
 
   # Leave plans whose wiki content has not been promoted yet; the close flow
   # owns their drain + disposition.
-  [ -f "${cache_dir}/${plan_id}.json" ] && continue
+  [ -f "${wiki_promote_cache_directory}/${plan_id}.json" ] && continue
 
   # Consolidation gate: a folder still holding SPEC.md/AUDIT.md with no
   # consolidated SUMMARY.md is never reaped; those layers are its sole record.

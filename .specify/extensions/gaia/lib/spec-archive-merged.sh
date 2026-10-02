@@ -70,11 +70,11 @@ set -uo pipefail
 
 close_flag=0
 args=()
-for a in "$@"; do
-  case "$a" in
+for argument in "$@"; do
+  case "$argument" in
     --close) close_flag=1 ;;
     --*) ;; # unknown flags tolerated
-    *) args+=("$a") ;;
+    *) args+=("$argument") ;;
   esac
 done
 
@@ -85,7 +85,7 @@ fi
 
 repo_root="${args[0]%/}"
 filter_id="${args[1]:-}"
-cache_dir="${repo_root}/.gaia/local/cache/wiki-promote"
+wiki_promote_cache_directory="${repo_root}/.gaia/local/cache/wiki-promote"
 
 # Retention knob, read once: a non-numeric override falls back to the default.
 retention_days="${GAIA_SPEC_RETENTION_DAYS:-30}"
@@ -99,7 +99,7 @@ now_epoch="$(date -u +%s 2>/dev/null || echo 0)"
 _age_past_window() {
   local iso="$1" merged_epoch age_days
   [ -n "$iso" ] || return 1
-  merged_epoch="$(jq -rn --arg t "$iso" '($t | sub("\\.[0-9]+Z$";"Z") | fromdateiso8601)' 2>/dev/null || true)"
+  merged_epoch="$(jq -rn --arg iso_timestamp "$iso" '($iso_timestamp | sub("\\.[0-9]+Z$";"Z") | fromdateiso8601)' 2>/dev/null || true)"
   case "$merged_epoch" in '' | *[!0-9]*) return 1 ;; esac
   [ "$now_epoch" -gt 0 ] || return 1
   age_days=$(( (now_epoch - merged_epoch) / 86400 ))
@@ -126,19 +126,19 @@ _consolidation_gate_pass() {
 # through repo_root: repo_root is the value whose trustworthiness is in
 # question here, so loading a library by it would decide correctness with the
 # input under test.
-_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
-. "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
+. "${_library_directory}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
 
 # repo_root names the tree this sweep runs in; the ledger and folders it
 # sweeps are main's, because the state registry declares specs/ main-only.
 # Best-effort by contract: an unresolvable main is one diagnostic and exit 0,
 # nothing touched.
-if ! specs_dir="$(gaia_resolve_specs_dir "$repo_root" 2>/dev/null)" || [ -z "$specs_dir" ]; then
+if ! specs_directory="$(gaia_resolve_specs_dir "$repo_root" 2>/dev/null)" || [ -z "$specs_directory" ]; then
   echo "spec-archive-merged: cannot resolve the main checkout for '$repo_root'; nothing swept" >&2
   exit 0
 fi
-ledger_path="${specs_dir}/ledger.json"
+ledger_path="${specs_directory}/ledger.json"
 
 # No ledger or no jq → nothing to do. (No git needed for the delete itself:
 # specs are local/gitignored, so it is a plain filesystem rm, never a git op.)
@@ -168,13 +168,13 @@ deleted_list=""
 while IFS= read -r spec_id; do
   [ -n "$spec_id" ] || continue
 
-  folder="${specs_dir}/${spec_id}"
+  folder="${specs_directory}/${spec_id}"
   # Skip merged rows with no active folder (already gone, or never had one).
   [ -d "$folder" ] || continue
 
   # Leave specs whose wiki content has not been promoted yet; the close flow
   # owns their drain + disposition.
-  [ -f "${cache_dir}/${spec_id}.json" ] && continue
+  [ -f "${wiki_promote_cache_directory}/${spec_id}.json" ] && continue
 
   # Consolidation gate: a folder still holding SPEC.md/AUDIT.md with no
   # consolidated SUMMARY.md is never reaped; those layers are its sole record.

@@ -26,9 +26,9 @@ extract_section() {
 # a pipe: a pipeline's exit status is its LAST command's, so capture first,
 # normalize second.
 extract_section_or_fail() {
-  local out start_line
-  out="$(extract_section "$1" "$2" "$3")"
-  [ -n "$out" ] || {
+  local extracted_section start_line
+  extracted_section="$(extract_section "$1" "$2" "$3")"
+  [ -n "$extracted_section" ] || {
     echo "section anchor '${2}' matched nothing in ${1}; a scoped assertion here would pass vacuously" >&2
     return 1
   }
@@ -37,27 +37,27 @@ extract_section_or_fail() {
     echo "start anchor '${2}' resolved to no line number in ${1}" >&2
     return 1
   }
-  awk -v s="$start_line" -v term="$3" 'NR > s && $0 ~ term { found = 1; exit } END { exit !found }' "$1" || {
+  awk -v start_line="$start_line" -v term="$3" 'NR > start_line && $0 ~ term { found = 1; exit } END { exit !found }' "$1" || {
     echo "terminator '${3}' matches nothing after line ${start_line} of ${1}; either the section ran to EOF and swallowed the rest of the file, or it is the file's last section, which this helper does not support" >&2
     return 1
   }
-  printf '%s\n' "$out"
+  printf '%s\n' "$extracted_section"
 }
 
-# normalize_ws
+# normalize_whitespace
 # Collapses newlines and runs of whitespace to single spaces and trims the
 # ends, so a sentence rewrapped at another width still compares equal.
-normalize_ws() {
+normalize_whitespace() {
   tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//'
 }
 
 # scoped <start_ERE> <terminator_ERE>
-# extract_section_or_fail + normalize_ws, in the two-step order that keeps
+# extract_section_or_fail + normalize_whitespace, in the two-step order that keeps
 # the guard's exit status (see its header).
 scoped() {
-  local out
-  out="$(extract_section_or_fail "$AUDIT" "$1" "$2")" || return 1
-  printf '%s\n' "$out" | normalize_ws
+  local extracted_section
+  extracted_section="$(extract_section_or_fail "$AUDIT" "$1" "$2")" || return 1
+  printf '%s\n' "$extracted_section" | normalize_whitespace
 }
 
 setup() {

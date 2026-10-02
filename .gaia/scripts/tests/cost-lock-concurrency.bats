@@ -174,7 +174,7 @@ assert_all_landed() {
   [ -d "$tel/specs.lock.d" ]
 
   # The blocked writer cannot acquire within 1s; it must degrade to the append.
-  run env GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 GAIA_LEDGER_LOCK_TIMEOUT_SECS=1 \
+  run env GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 GAIA_LEDGER_LOCK_TIMEOUT_SECONDS=1 \
     bash "$TALLY" --action execute --spec-id SPEC-026 --plan-slug spec-026-cost-lock-folder-delete \
     --out-dir "$BATS_TEST_TMPDIR/out-blocked" --session-id "$SESSION" \
     --projects-root "$ANCHOR" --ledger "$ledger"

@@ -51,41 +51,41 @@ add_finding() {
   local message="$2"
   local where="${3:-}"
   # Escape double quotes and backslashes for JSON safety.
-  local m_esc
-  local w_esc
-  m_esc=$(printf '%s' "$message" | sed 's/\\/\\\\/g; s/"/\\"/g')
-  w_esc=$(printf '%s' "$where" | sed 's/\\/\\\\/g; s/"/\\"/g')
-  findings+=("{\"code\":\"$code\",\"message\":\"$m_esc\",\"where\":\"$w_esc\"}")
+  local message_escaped
+  local where_escaped
+  message_escaped=$(printf '%s' "$message" | sed 's/\\/\\\\/g; s/"/\\"/g')
+  where_escaped=$(printf '%s' "$where" | sed 's/\\/\\\\/g; s/"/\\"/g')
+  findings+=("{\"code\":\"$code\",\"message\":\"$message_escaped\",\"where\":\"$where_escaped\"}")
 }
 
 # --- Extract frontmatter block (between first two --- lines) ---
-fm=""
+frontmatter_block=""
 body=""
 state="pre"
 while IFS= read -r line; do
   case "$state" in
     pre)
       if [ "$line" = "---" ]; then
-        state="in_fm"
+        state="in_frontmatter"
       else
         # Content before frontmatter is allowed only if it's empty; treat as missing FM.
         if [ -n "$line" ]; then
-          state="no_fm"
+          state="missing_frontmatter"
           body+="$line"$'\n'
         fi
       fi
       ;;
-    in_fm)
+    in_frontmatter)
       if [ "$line" = "---" ]; then
         state="post"
       else
-        fm+="$line"$'\n'
+        frontmatter_block+="$line"$'\n'
       fi
       ;;
     post)
       body+="$line"$'\n'
       ;;
-    no_fm)
+    missing_frontmatter)
       body+="$line"$'\n'
       ;;
   esac
@@ -96,22 +96,22 @@ if [ "$state" != "post" ]; then
 fi
 
 # --- Frontmatter field extraction (top-level keys only) ---
-get_fm_field() {
+get_frontmatter_field() {
   local key="$1"
   # Match top-level key (no leading whitespace), capture value on same line.
-  printf '%s' "$fm" | awk -v k="$key" '
+  printf '%s' "$frontmatter_block" | awk -v wanted_key="$key" '
     BEGIN { found = 0 }
     /^[A-Za-z_][A-Za-z0-9_]*:/ {
-      # New top-level key; emit prior buffer if it matched k.
+      # New top-level key; emit prior buffer if it matched wanted_key.
       if (found) { exit }
       split($0, parts, ":")
-      curkey = parts[1]
+      current_key = parts[1]
       # Reconstruct value from the rest of the line.
-      val = substr($0, length(curkey) + 2)
-      sub(/^ /, "", val)
-      if (curkey == k) {
+      field_value = substr($0, length(current_key) + 2)
+      sub(/^ /, "", field_value)
+      if (current_key == wanted_key) {
         found = 1
-        print val
+        print field_value
       }
       next
     }
@@ -120,9 +120,9 @@ get_fm_field() {
 }
 
 # Whether a top-level key exists (even if value is block-scalar / list).
-has_fm_key() {
+has_frontmatter_key() {
   local key="$1"
-  grep -qE "^${key}:" <<<"$fm" && return 0 || return 1
+  grep -qE "^${key}:" <<<"$frontmatter_block" && return 0 || return 1
 }
 
 required_keys=(
@@ -142,39 +142,39 @@ required_keys=(
   updated
 )
 
-for k in "${required_keys[@]}"; do
-  if ! has_fm_key "$k"; then
-    add_finding "missing_field" "Required frontmatter field missing: $k" "frontmatter.$k"
+for required_key in "${required_keys[@]}"; do
+  if ! has_frontmatter_key "$required_key"; then
+    add_finding "missing_field" "Required frontmatter field missing: $required_key" "frontmatter.$required_key"
   fi
 done
 
 # --- Field-value checks ---
-spec_id_val="$(get_fm_field spec_id || true)"
-status_val="$(get_fm_field status || true)"
-immutable_val="$(get_fm_field immutable || true)"
+spec_id_value="$(get_frontmatter_field spec_id || true)"
+status_value="$(get_frontmatter_field status || true)"
+immutable_value="$(get_frontmatter_field immutable || true)"
 
 # spec_id must match SPEC-NNN (one or more digits, expecting zero-padded triple).
-if [ -n "$spec_id_val" ]; then
-  if ! [[ "$spec_id_val" =~ ^SPEC-[0-9]+$ ]]; then
-    add_finding "bad_spec_id" "spec_id must match SPEC-NNN; got '$spec_id_val'" "frontmatter.spec_id"
+if [ -n "$spec_id_value" ]; then
+  if ! [[ "$spec_id_value" =~ ^SPEC-[0-9]+$ ]]; then
+    add_finding "bad_spec_id" "spec_id must match SPEC-NNN; got '$spec_id_value'" "frontmatter.spec_id"
   fi
 fi
 
 # status must be one of the enum.
-case "$status_val" in
+case "$status_value" in
   in-progress|reopened|closed) ;;
   "") ;; # already reported as missing above
-  *) add_finding "bad_status" "status must be one of in-progress|reopened|closed; got '$status_val'" "frontmatter.status" ;;
+  *) add_finding "bad_status" "status must be one of in-progress|reopened|closed; got '$status_value'" "frontmatter.status" ;;
 esac
 
 # immutable must be true.
-if [ -n "$immutable_val" ] && [ "$immutable_val" != "true" ]; then
-  add_finding "not_immutable" "immutable must be true; got '$immutable_val'" "frontmatter.immutable"
+if [ -n "$immutable_value" ] && [ "$immutable_value" != "true" ]; then
+  add_finding "not_immutable" "immutable must be true; got '$immutable_value'" "frontmatter.immutable"
 fi
 
 # --- UAT id check: every entry under uats: must have uat_id: UAT-NNN ---
 # Extract the uats: block (lines from "uats:" up to next top-level key).
-uats_block=$(printf '%s' "$fm" | awk '
+uats_block=$(printf '%s' "$frontmatter_block" | awk '
   /^uats:/ { capture = 1; next }
   capture && /^[A-Za-z_][A-Za-z0-9_]*:/ { capture = 0 }
   capture { print }
@@ -201,12 +201,12 @@ fi
 # grammar defined in .gaia/scripts/usage-lib.sh; keep them matching that file.
 # This file stays self-contained under .specify/, so it does not source the lib.
 # A SPEC's parent is never a branch, PR, session, or command, so only these kinds.
-if has_fm_key lineage; then
-  lineage_re_slug='^(research|init):[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'
-  lineage_re_issue='^issue:[1-9][0-9]{0,9}$'
-  lineage_re_spec='^spec:SPEC-[0-9]{3,}$'
-  lineage_re_plan='^plan:PLAN-[0-9]{3,}$'
-  lineage_inline="$(get_fm_field lineage || true)"
+if has_frontmatter_key lineage; then
+  lineage_regex_slug='^(research|init):[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'
+  lineage_regex_issue='^issue:[1-9][0-9]{0,9}$'
+  lineage_regex_spec='^spec:SPEC-[0-9]{3,}$'
+  lineage_regex_plan='^plan:PLAN-[0-9]{3,}$'
+  lineage_inline="$(get_frontmatter_field lineage || true)"
   lineage_inline="${lineage_inline%"${lineage_inline##*[![:space:]]}"}"
   if [ -n "$lineage_inline" ]; then
     # Flow list: [a, b]
@@ -215,7 +215,7 @@ if has_fm_key lineage; then
     lineage_entries="$(printf '%s' "$lineage_entries" | tr ',' '\n')"
   else
     # Block list: indented "- entry" lines up to the next top-level key.
-    lineage_entries="$(printf '%s' "$fm" | awk '
+    lineage_entries="$(printf '%s' "$frontmatter_block" | awk '
       /^lineage:/ { capture = 1; next }
       capture && /^[A-Za-z_][A-Za-z0-9_]*:/ { capture = 0 }
       capture && /^[[:space:]]*-[[:space:]]/ { sub(/^[[:space:]]*-[[:space:]]+/, ""); print }
@@ -227,10 +227,10 @@ if has_fm_key lineage; then
     lineage_entry="${lineage_entry#[\"\']}"
     lineage_entry="${lineage_entry%[\"\']}"
     [ -z "$lineage_entry" ] && continue
-    if ! [[ "$lineage_entry" =~ $lineage_re_slug ]] \
-      && ! [[ "$lineage_entry" =~ $lineage_re_issue ]] \
-      && ! [[ "$lineage_entry" =~ $lineage_re_spec ]] \
-      && ! [[ "$lineage_entry" =~ $lineage_re_plan ]]; then
+    if ! [[ "$lineage_entry" =~ $lineage_regex_slug ]] \
+      && ! [[ "$lineage_entry" =~ $lineage_regex_issue ]] \
+      && ! [[ "$lineage_entry" =~ $lineage_regex_spec ]] \
+      && ! [[ "$lineage_entry" =~ $lineage_regex_plan ]]; then
       add_finding "invalid_lineage" "lineage entry is not a valid parent ref: '$lineage_entry'" "frontmatter.lineage"
     fi
   done <<<"$lineage_entries"
@@ -238,16 +238,16 @@ fi
 
 # --- Placeholder text scan over the whole file ---
 # Patterns: [PLACEHOLDER], <TODO>, <TBD>, FIXME, bare TBD as standalone token.
-ph_patterns=(
+placeholder_patterns=(
   '\[PLACEHOLDER\]'
   '<TODO>'
   '<TBD>'
   'FIXME'
 )
-for pat in "${ph_patterns[@]}"; do
-  if grep -nE "$pat" "$spec_file" > /dev/null; then
-    first_hit=$(grep -nE "$pat" "$spec_file" | head -n 1 | cut -d: -f1)
-    add_finding "placeholder" "Placeholder text matching '$pat' detected" "line:$first_hit"
+for placeholder_pattern in "${placeholder_patterns[@]}"; do
+  if grep -nE "$placeholder_pattern" "$spec_file" > /dev/null; then
+    first_hit=$(grep -nE "$placeholder_pattern" "$spec_file" | head -n 1 | cut -d: -f1)
+    add_finding "placeholder" "Placeholder text matching '$placeholder_pattern' detected" "line:$first_hit"
   fi
 done
 # Bare TBD as a standalone word (not part of <TBD>, already handled).
@@ -258,7 +258,7 @@ fi
 
 # --- Reopen ceremony check ---
 # When status == reopened, body must include a rationale block AND a UAT diff capture.
-if [ "$status_val" = "reopened" ]; then
+if [ "$status_value" = "reopened" ]; then
   # Look for case-insensitive markers in the body.
   rationale_ok=0
   diff_ok=0
@@ -284,11 +284,11 @@ fi
 
 # Join findings with commas.
 joined=""
-for f in "${findings[@]}"; do
+for finding in "${findings[@]}"; do
   if [ -z "$joined" ]; then
-    joined="$f"
+    joined="$finding"
   else
-    joined="$joined,$f"
+    joined="$joined,$finding"
   fi
 done
 printf '{"ok":false,"findings":[%s]}\n' "$joined"

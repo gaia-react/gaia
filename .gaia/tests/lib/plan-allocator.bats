@@ -17,13 +17,13 @@ teardown() {
   fi
 }
 
-_alloc() {
+_run_allocator() {
   bash "$REPO/.specify/extensions/gaia/lib/plan-allocator.sh" "$@"
 }
 
 @test "1: fresh run seeds ledger + returns PLAN-001" {
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
-  run _alloc next "$REPO"
+  run _run_allocator next "$REPO"
   [ "$status" -eq 0 ]
   [ "$output" = "PLAN-001" ]
   [ -f "$REPO/.gaia/local/plans/ledger.json" ]
@@ -34,9 +34,9 @@ _alloc() {
 
 @test "2: second call returns PLAN-002 with the exact row shape" {
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
-  run _alloc next "$REPO"
+  run _run_allocator next "$REPO"
   [ "$status" -eq 0 ]
-  run _alloc next "$REPO" "my subject"
+  run _run_allocator next "$REPO" "my subject"
   [ "$status" -eq 0 ]
   [ "$output" = "PLAN-002" ]
 
@@ -56,7 +56,7 @@ _alloc() {
 
 @test "3a: no-terminator multiline subject collapses to one line" {
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
-  run _alloc next "$REPO" "$(printf 'first line\nsecond line')"
+  run _run_allocator next "$REPO" "$(printf 'first line\nsecond line')"
   [ "$status" -eq 0 ]
   [ "$(jq -r '.plans[0].subject' "$REPO/.gaia/local/plans/ledger.json")" = "first line second line" ]
 }
@@ -64,7 +64,7 @@ _alloc() {
 @test "3b: an over-bound multi-word subject is stored as a word-safe bounded prefix + ..." {
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
   long="$(printf 'alphabet%.0s ' $(seq 1 20))"
-  run _alloc next "$REPO" "$long"
+  run _run_allocator next "$REPO" "$long"
   [ "$status" -eq 0 ]
   stored="$(jq -r '.plans[0].subject' "$REPO/.gaia/local/plans/ledger.json")"
 
@@ -73,13 +73,13 @@ _alloc() {
     *) return 1 ;;
   esac
 
-  pre="${stored%...}"
-  [ "${#pre}" -le 120 ]
-  [ "${pre: -1}" != " " ]
+  bounded_prefix="${stored%...}"
+  [ "${#bounded_prefix}" -le 120 ]
+  [ "${bounded_prefix: -1}" != " " ]
 
   # word-safe: the bounded prefix ends on a complete "alphabet" token, never
   # a mid-word fragment (e.g. "...alp").
-  case "$pre" in
+  case "$bounded_prefix" in
     *alphabet) ;;
     *) return 1 ;;
   esac
@@ -87,7 +87,7 @@ _alloc() {
   # single-token (no interior space) over-bound subject hard-cuts to exactly
   # 120 chars + "...".
   single_long="$(printf 'a%.0s' $(seq 1 150))"
-  run _alloc next "$REPO" "$single_long"
+  run _run_allocator next "$REPO" "$single_long"
   [ "$status" -eq 0 ]
   single_stored="$(jq -r '.plans[1].subject' "$REPO/.gaia/local/plans/ledger.json")"
   [ "$single_stored" = "$(printf 'a%.0s' $(seq 1 120))..." ]
@@ -95,7 +95,7 @@ _alloc() {
 
 @test "3c: empty/absent subject falls back to the allocated id" {
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
-  run _alloc next "$REPO"
+  run _run_allocator next "$REPO"
   [ "$status" -eq 0 ]
   [ "$(jq -r '.plans[0].subject' "$REPO/.gaia/local/plans/ledger.json")" = "PLAN-001" ]
 }
@@ -103,7 +103,7 @@ _alloc() {
 @test "4a: a live on-disk PLAN-050 folder is consumed; next allocates PLAN-051" {
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
   mkdir -p "$REPO/.gaia/local/plans/PLAN-050"
-  run _alloc next "$REPO"
+  run _run_allocator next "$REPO"
   [ "$status" -eq 0 ]
   [ "$output" = "PLAN-051" ]
 }
@@ -111,7 +111,7 @@ _alloc() {
 @test "4b: an archived-only PLAN-050 folder is still consumed; next allocates PLAN-051" {
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
   mkdir -p "$REPO/.gaia/local/plans/archived/PLAN-050"
-  run _alloc next "$REPO"
+  run _run_allocator next "$REPO"
   [ "$status" -eq 0 ]
   [ "$output" = "PLAN-051" ]
 }
@@ -119,7 +119,7 @@ _alloc() {
 @test "5a: PLAN-999 folder expands to 4 digits with no leading zero" {
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
   mkdir -p "$REPO/.gaia/local/plans/PLAN-999"
-  run _alloc next "$REPO"
+  run _run_allocator next "$REPO"
   [ "$status" -eq 0 ]
   [ "$output" = "PLAN-1000" ]
 }
@@ -127,7 +127,7 @@ _alloc() {
 @test "5b: a leading-zero legacy PLAN-018 folder counts as 18 (base-10, not octal)" {
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
   mkdir -p "$REPO/.gaia/local/plans/PLAN-018"
-  run _alloc next "$REPO"
+  run _run_allocator next "$REPO"
   [ "$status" -eq 0 ]
   [ "$output" = "PLAN-019" ]
 }
@@ -138,18 +138,18 @@ _alloc() {
 
   for i in 1 2; do
     bash -c '
-      repo="$1"; idx="$2"
+      repo="$1"; job_index="$2"
       until [ -f "$repo/start.flag" ]; do :; done
-      GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 bash "$repo/.specify/extensions/gaia/lib/plan-allocator.sh" next "$repo" > "$repo/out.$idx" 2>/dev/null
+      GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 bash "$repo/.specify/extensions/gaia/lib/plan-allocator.sh" next "$repo" > "$repo/out.$job_index" 2>/dev/null
     ' _ "$REPO" "$i" &
   done
   touch "$REPO/start.flag"
   wait
 
-  a="$(cat "$REPO/out.1")"
-  b="$(cat "$REPO/out.2")"
-  [ "$a" != "$b" ]
-  ids="$(printf '%s\n%s\n' "$a" "$b" | sort)"
+  first_allocated_id="$(cat "$REPO/out.1")"
+  second_allocated_id="$(cat "$REPO/out.2")"
+  [ "$first_allocated_id" != "$second_allocated_id" ]
+  ids="$(printf '%s\n%s\n' "$first_allocated_id" "$second_allocated_id" | sort)"
   [ "$ids" = "$(printf 'PLAN-001\nPLAN-002\n')" ]
   [ "$(jq -r '.plans | length' "$REPO/.gaia/local/plans/ledger.json")" -eq 2 ]
 }

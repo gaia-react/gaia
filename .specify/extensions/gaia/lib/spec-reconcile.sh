@@ -31,11 +31,11 @@ if [ "$#" -lt 1 ]; then
 fi
 
 repo_root="$1"
-_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
-. "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
+. "${_library_directory}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
 # shellcheck source=../../../../.gaia/scripts/branch-name-lib.sh
-. "${_lib_dir}/../../../../.gaia/scripts/branch-name-lib.sh" 2>/dev/null || true
+. "${_library_directory}/../../../../.gaia/scripts/branch-name-lib.sh" 2>/dev/null || true
 # Without the branch-naming library no merged PR can be matched to a SPEC.
 type gaia_branch_spec_number >/dev/null 2>&1 || exit 0
 
@@ -48,9 +48,9 @@ git -C "$repo_root" rev-parse --git-dir >/dev/null 2>&1 || exit 0
 # is main's, because the state registry declares specs/ main-only. Best-
 # effort by contract: an unresolvable main takes the same silent-exit-0 shape
 # as the git-tree check above, nothing touched.
-specs_dir="$(gaia_resolve_specs_dir "$repo_root" 2>/dev/null)" || exit 0
-[ -n "$specs_dir" ] || exit 0
-ledger_path="${specs_dir}/ledger.json"
+specs_directory="$(gaia_resolve_specs_dir "$repo_root" 2>/dev/null)" || exit 0
+[ -n "$specs_directory" ] || exit 0
+ledger_path="${specs_directory}/ledger.json"
 
 # No ledger → nothing to do.
 [ -f "$ledger_path" ] || exit 0
@@ -62,36 +62,36 @@ ledger_path="${specs_dir}/ledger.json"
 # on the next housekeeping pass. Runs before the network reconcile and is
 # independent of it. An unrecognized off-vocabulary status is logged, never
 # guessed (its lifecycle position is not safely inferable).
-canon_for_status() {
+canonicalize_status() {
   case "$1" in
     shipped) printf 'merged' ;;
     *) printf '' ;;
   esac
 }
 
-offvocab_ids="$(jq -r '
+off_vocabulary_ids="$(jq -r '
   .specs[]
-  | select((.status // "") as $s
-      | ["draft","ready","merged","abandoned"] | index($s) | not)
+  | select((.status // "") as $row_status
+      | ["draft","ready","merged","abandoned"] | index($row_status) | not)
   | .id
 ' "$ledger_path" 2>/dev/null || true)"
 
-if [ -n "$offvocab_ids" ]; then
-  while IFS= read -r ov_id; do
-    [ -n "$ov_id" ] || continue
-    ov_status="$(jq -r --arg id "$ov_id" \
+if [ -n "$off_vocabulary_ids" ]; then
+  while IFS= read -r off_vocabulary_id; do
+    [ -n "$off_vocabulary_id" ] || continue
+    off_vocabulary_status="$(jq -r --arg id "$off_vocabulary_id" \
       '.specs[] | select(.id == $id) | .status // "null"' "$ledger_path" 2>/dev/null || true)"
-    canon="$(canon_for_status "$ov_status")"
-    if [ -n "$canon" ]; then
-      patch="$(jq -nc --arg s "$canon" '{status: $s}')"
-      if bash "${_lib_dir}/ledger-update.sh" "$repo_root" "$ov_id" "$patch" >/dev/null 2>&1; then
-        printf 'normalized %s: %s -> %s\n' "$ov_id" "$ov_status" "$canon"
+    canonical_status="$(canonicalize_status "$off_vocabulary_status")"
+    if [ -n "$canonical_status" ]; then
+      patch="$(jq -nc --arg canonical_status "$canonical_status" '{status: $canonical_status}')"
+      if bash "${_library_directory}/ledger-update.sh" "$repo_root" "$off_vocabulary_id" "$patch" >/dev/null 2>&1; then
+        printf 'normalized %s: %s -> %s\n' "$off_vocabulary_id" "$off_vocabulary_status" "$canonical_status"
       fi
     else
-      printf 'spec-reconcile: %s has unrecognized status %s; left as-is\n' "$ov_id" "$ov_status" >&2
+      printf 'spec-reconcile: %s has unrecognized status %s; left as-is\n' "$off_vocabulary_id" "$off_vocabulary_status" >&2
     fi
   done <<EOF
-$offvocab_ids
+$off_vocabulary_ids
 EOF
 fi
 
@@ -115,10 +115,10 @@ prs_rows="$(printf '%s' "$prs_json" \
 
 while IFS= read -r spec_id; do
   [ -n "$spec_id" ] || continue
-  n="$(printf '%s' "$spec_id" | sed -nE 's|^SPEC-0*([0-9]+)$|\1|p')"
-  [ -n "$n" ] || continue
+  spec_number="$(printf '%s' "$spec_id" | sed -nE 's|^SPEC-0*([0-9]+)$|\1|p')"
+  [ -n "$spec_number" ] || continue
 
-  # Match a merged PR whose head branch names SPEC <n>, read through the same
+  # Match a merged PR whose head branch names SPEC <spec_number>, read through the same
   # library the allocator uses, so every spelling GAIA mints (the worktree one
   # included) matches. Latest merge wins, so merged_at reflects when the work
   # fully landed; ISO-8601 timestamps sort chronologically as strings.
@@ -130,18 +130,18 @@ while IFS= read -r spec_id; do
   # newline, and `read` drops a final line that has none, which would silently
   # lose the newest merge.
   match="$(printf '%s\n' "$prs_rows" \
-    | while IFS='	' read -r at num head; do
+    | while IFS='	' read -r listed_merged_at listed_pr_number head; do
       if [[ "$head" == *spec-* ]]; then
-        [ "$(gaia_branch_spec_number "$head")" = "$n" ] && printf '%s\t%s\n' "$at" "$num"
+        [ "$(gaia_branch_spec_number "$head")" = "$spec_number" ] && printf '%s\t%s\n' "$listed_merged_at" "$listed_pr_number"
       fi
     done | LC_ALL=C sort | tail -n 1 || true)"
   [ -n "$match" ] || continue
 
   merged_at="${match%%	*}"
-  pr_num="${match##*	}"
-  patch="$(jq -nc --arg ts "$merged_at" '{status: "merged", merged_at: $ts}')"
-  if bash "${_lib_dir}/ledger-update.sh" "$repo_root" "$spec_id" "$patch" >/dev/null 2>&1; then
-    printf 'reconciled %s -> merged (PR #%s, %s)\n' "$spec_id" "$pr_num" "$merged_at"
+  pr_number="${match##*	}"
+  patch="$(jq -nc --arg timestamp "$merged_at" '{status: "merged", merged_at: $timestamp}')"
+  if bash "${_library_directory}/ledger-update.sh" "$repo_root" "$spec_id" "$patch" >/dev/null 2>&1; then
+    printf 'reconciled %s -> merged (PR #%s, %s)\n' "$spec_id" "$pr_number" "$merged_at"
   fi
 done <<EOF
 $candidates

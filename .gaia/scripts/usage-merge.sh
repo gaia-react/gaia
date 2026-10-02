@@ -266,11 +266,11 @@ confirmed=0
 if [ "$g_state" = MERGED ] && [ -n "$pr" ] && [ "${#bflag[@]}" -gt 0 ]; then
   mflag=()
   [ -z "$g_merged" ] || mflag=(--merged-at "$g_merged")
-  if GAIA_LEDGER_LOCK_TIMEOUT_SECS="$(_um_left)" bash "$UM_DIR/usage.sh" link --merge "$pr" "${bflag[@]}" \
+  if GAIA_LEDGER_LOCK_TIMEOUT_SECONDS="$(_um_left)" bash "$UM_DIR/usage.sh" link --merge "$pr" "${bflag[@]}" \
     ${mflag[@]+"${mflag[@]}"} --source gh-pr-merge </dev/null >/dev/null 2>&1; then
     confirmed=1
     if [ "$from_gh" = 1 ]; then
-      GAIA_LEDGER_LOCK_TIMEOUT_SECS="$(_um_left)" bash "$UM_DIR/usage.sh" link --pr "$pr" --branch "$branch" \
+      GAIA_LEDGER_LOCK_TIMEOUT_SECONDS="$(_um_left)" bash "$UM_DIR/usage.sh" link --pr "$pr" --branch "$branch" \
         --source gh-pr-merge </dev/null >/dev/null 2>&1 || true
     fi
   fi

@@ -22,8 +22,8 @@ teardown() {
   if [ -n "${REPO:-}" ]; then
     rm -rf "$REPO"
   fi
-  if [ -n "${STUB_DIR:-}" ]; then
-    rm -rf "$STUB_DIR"
+  if [ -n "${STUB_DIRECTORY:-}" ]; then
+    rm -rf "$STUB_DIRECTORY"
   fi
 }
 
@@ -31,12 +31,12 @@ teardown() {
 # the finalize state these tests exercise.
 _promote_to_ready() {
   local id="$1"
-  local tmp
-  tmp="$(mktemp)"
+  local temporary_file
+  temporary_file="$(mktemp)"
   jq --arg id "$id" \
     '(.specs[] | select(.id == $id) | .status) = "ready"' \
-    "$REPO/.gaia/local/specs/ledger.json" > "$tmp"
-  mv "$tmp" "$REPO/.gaia/local/specs/ledger.json"
+    "$REPO/.gaia/local/specs/ledger.json" > "$temporary_file"
+  mv "$temporary_file" "$REPO/.gaia/local/specs/ledger.json"
 }
 
 _status_of() {
@@ -49,23 +49,23 @@ _status_of() {
 # --state merged --limit 200 --json number,headRefName,mergedAt`).
 _stub_gh_echoing() {
   local body="$1"
-  STUB_DIR="$(mktemp -d)"
-  cat > "$STUB_DIR/gh" <<EOF
+  STUB_DIRECTORY="$(mktemp -d)"
+  cat > "$STUB_DIRECTORY/gh" <<EOF
 #!/usr/bin/env bash
 printf '%s\n' '$body'
 EOF
-  chmod +x "$STUB_DIR/gh"
+  chmod +x "$STUB_DIRECTORY/gh"
 }
 
 # Builds a `gh` stub that exits 0 with no stdout (the "gh returns empty" fail-
 # open case, distinct from gh being altogether absent from PATH).
 _stub_gh_empty() {
-  STUB_DIR="$(mktemp -d)"
-  cat > "$STUB_DIR/gh" <<'EOF'
+  STUB_DIRECTORY="$(mktemp -d)"
+  cat > "$STUB_DIRECTORY/gh" <<'EOF'
 #!/usr/bin/env bash
 exit 0
 EOF
-  chmod +x "$STUB_DIR/gh"
+  chmod +x "$STUB_DIRECTORY/gh"
 }
 
 # A PATH with every tool spec-reconcile.sh (and its ledger-update.sh /
@@ -81,7 +81,7 @@ _no_gh_path() {
   _promote_to_ready SPEC-006
   _stub_gh_echoing '[{"number":42,"headRefName":"plan/spec-006-x","mergedAt":"2026-05-01T00:00:00Z"}]'
 
-  run bash -c "PATH='$STUB_DIR:$PATH' bash '$REPO/$RECONCILE' '$REPO'"
+  run bash -c "PATH='$STUB_DIRECTORY:$PATH' bash '$REPO/$RECONCILE' '$REPO'"
   [ "$status" -eq 0 ]
   grep -qF "reconciled SPEC-006 -> merged (PR #42, 2026-05-01T00:00:00Z)" <<<"$output"
   [ "$(_status_of SPEC-006)" = "merged" ]
@@ -93,7 +93,7 @@ _no_gh_path() {
   _promote_to_ready SPEC-006
   _stub_gh_echoing '[{"number":40,"headRefName":"plan/spec-006-first","mergedAt":"2026-04-01T00:00:00Z"},{"number":43,"headRefName":"worktree-plan+spec-006-x","mergedAt":"2026-05-02T00:00:00Z"}]'
 
-  run bash -c "PATH='$STUB_DIR:$PATH' bash '$REPO/$RECONCILE' '$REPO'"
+  run bash -c "PATH='$STUB_DIRECTORY:$PATH' bash '$REPO/$RECONCILE' '$REPO'"
   [ "$status" -eq 0 ]
   grep -qF "reconciled SPEC-006 -> merged (PR #43, 2026-05-02T00:00:00Z)" <<<"$output"
   [ "$(_status_of SPEC-006)" = "merged" ]
@@ -106,7 +106,7 @@ _no_gh_path() {
   # names another SPEC, one carries the retired unprefixed spelling.
   _stub_gh_echoing '[{"number":7,"headRefName":"plan/spec-999-other","mergedAt":"2026-05-01T00:00:00Z"},{"number":8,"headRefName":"spec-006-legacy","mergedAt":"2026-05-01T00:00:00Z"}]'
 
-  run bash -c "PATH='$STUB_DIR:$PATH' bash '$REPO/$RECONCILE' '$REPO'"
+  run bash -c "PATH='$STUB_DIRECTORY:$PATH' bash '$REPO/$RECONCILE' '$REPO'"
   [ "$status" -eq 0 ]
   [ "$(_status_of SPEC-006)" = "ready" ]
   [ "$(jq -r '.specs[] | select(.id=="SPEC-006") | has("merged_at")' "$REPO/.gaia/local/specs/ledger.json")" = "false" ]
@@ -131,7 +131,7 @@ _no_gh_path() {
   before="$(snapshot_file "$REPO/.gaia/local/specs/ledger.json")"
   _stub_gh_empty
 
-  run bash -c "PATH='$STUB_DIR:$PATH' bash '$REPO/$RECONCILE' '$REPO'"
+  run bash -c "PATH='$STUB_DIRECTORY:$PATH' bash '$REPO/$RECONCILE' '$REPO'"
   [ "$status" -eq 0 ]
   after="$(snapshot_file "$REPO/.gaia/local/specs/ledger.json")"
   assert_files_identical "$before" "$after"
@@ -139,16 +139,16 @@ _no_gh_path() {
 
 @test "9: a retired 'specified' row is not a merge candidate; logged unrecognized, left as-is" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-inprogress SPEC-006)"
-  tmp="$(mktemp)"
+  temporary_file="$(mktemp)"
   jq '(.specs[] | select(.id == "SPEC-006") | .status) = "specified"' \
-    "$REPO/.gaia/local/specs/ledger.json" > "$tmp"
-  mv "$tmp" "$REPO/.gaia/local/specs/ledger.json"
+    "$REPO/.gaia/local/specs/ledger.json" > "$temporary_file"
+  mv "$temporary_file" "$REPO/.gaia/local/specs/ledger.json"
   # A matching merged PR exists, but a "specified" row is off-vocabulary now
   # (the finalize state migrated to "ready"), so it is never reached as a
   # candidate; the off-vocab normalizer logs it as unrecognized instead.
   _stub_gh_echoing '[{"number":42,"headRefName":"plan/spec-006-x","mergedAt":"2026-05-01T00:00:00Z"}]'
 
-  run bash -c "PATH='$STUB_DIR:$PATH' bash '$REPO/$RECONCILE' '$REPO'"
+  run bash -c "PATH='$STUB_DIRECTORY:$PATH' bash '$REPO/$RECONCILE' '$REPO'"
   [ "$status" -eq 0 ]
   grep -qF "unrecognized status specified" <<<"$output"
   [ "$(_status_of SPEC-006)" = "specified" ]

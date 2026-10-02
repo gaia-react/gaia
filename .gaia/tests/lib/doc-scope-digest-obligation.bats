@@ -52,21 +52,21 @@ setup() {
 # --- Group 1: FC-2a is byte-identical in every agent definition -----------
 
 @test "Group 1: the obligation literal is present in every agent definition" {
-  local f
-  for f in "${AGENTS[@]}"; do
-    grep -qF -- "$OBLIGATION_LITERAL" "$f" || {
-      echo "obligation literal missing from $f" >&2
+  local agent_file
+  for agent_file in "${AGENTS[@]}"; do
+    grep -qF -- "$OBLIGATION_LITERAL" "$agent_file" || {
+      echo "obligation literal missing from $agent_file" >&2
       return 1
     }
   done
 }
 
 @test "Group 1: the obligation literal appears exactly once per agent definition" {
-  local f count
-  for f in "${AGENTS[@]}"; do
-    count="$(grep -cF -- "$OBLIGATION_LITERAL" "$f")"
+  local agent_file count
+  for agent_file in "${AGENTS[@]}"; do
+    count="$(grep -cF -- "$OBLIGATION_LITERAL" "$agent_file")"
     [ "$count" -eq 1 ] || {
-      echo "obligation literal appears $count times in $f, expected exactly 1" >&2
+      echo "obligation literal appears $count times in $agent_file, expected exactly 1" >&2
       return 1
     }
   done

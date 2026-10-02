@@ -88,16 +88,16 @@ setup() {
   git -C "$MAIN" commit -q -m 'init'
   git -C "$MAIN" worktree add -q -b wt-branch "$WORKTREE" main
 
-  MAIN_PHYS="$(cd "$MAIN" && pwd -P)"
-  WORKTREE_PHYS="$(cd "$WORKTREE" && pwd -P)"
+  MAIN_PHYSICAL_PATH="$(cd "$MAIN" && pwd -P)"
+  WORKTREE_PHYSICAL_PATH="$(cd "$WORKTREE" && pwd -P)"
 
   # Fixture soundness gate. If this does not hold, everything built on the
   # fixture is meaningless, so fail here with a clear reason instead of
   # letting a downstream assertion fail for a confusing reason.
   resolved="$(cd "$WORKTREE" && bash .gaia/scripts/main-root-lib.sh)"
-  if [ "$resolved" != "$MAIN_PHYS" ]; then
+  if [ "$resolved" != "$MAIN_PHYSICAL_PATH" ]; then
     printf 'FIXTURE BROKEN: main-root-lib.sh run from the worktree resolved to "%s", expected main "%s"\n' \
-      "$resolved" "$MAIN_PHYS" >&2
+      "$resolved" "$MAIN_PHYSICAL_PATH" >&2
     return 1
   fi
 }
@@ -110,19 +110,19 @@ _anchor_line() {
 # Text between two fixed-string anchors in a file: [start_anchor, end_anchor).
 #
 # Both anchors are checked before use. Without the guards a prose reflow that
-# moves an anchor makes `$e` empty, `$((e - 1))` becomes -1, and sed aborts
+# moves an anchor makes `$end_line` empty, `$((end_line - 1))` becomes -1, and sed aborts
 # with `expected context address` BEFORE any assertion in the caller runs --
 # so the test fails for a reason that names neither the anchor nor the file,
 # and every assertion downstream of the extraction is silently not evaluated.
 # Several call sites route through here, so the diagnosis is worth the lines
 # it costs.
 range_between() {
-  local file="$1" start_pat="$2" end_pat="$3" s e
-  s="$(_anchor_line "$file" "$start_pat")"
-  e="$(_anchor_line "$file" "$end_pat")"
-  [ -n "$s" ] || { printf 'start anchor not found in %s: %s\n' "$file" "$start_pat" >&2; return 1; }
-  [ -n "$e" ] || { printf 'end anchor not found in %s: %s\n' "$file" "$end_pat" >&2; return 1; }
-  sed -n "${s},$((e - 1))p" "$file"
+  local file="$1" start_pattern="$2" end_pattern="$3" start_line end_line
+  start_line="$(_anchor_line "$file" "$start_pattern")"
+  end_line="$(_anchor_line "$file" "$end_pattern")"
+  [ -n "$start_line" ] || { printf 'start anchor not found in %s: %s\n' "$file" "$start_pattern" >&2; return 1; }
+  [ -n "$end_line" ] || { printf 'end anchor not found in %s: %s\n' "$file" "$end_pattern" >&2; return 1; }
+  sed -n "${start_line},$((end_line - 1))p" "$file"
 }
 
 @test "S1: the preset's step-2 item-3 mkdir literal executes into main, not the worktree" {
@@ -136,7 +136,7 @@ range_between() {
   # is present and fall back to the inline literal, so the extraction stays
   # agnostic to the form and the assertions below judge only WHERE the folder
   # lands.
-  create_literal="$(printf '%s\n' "$block" | awk '/^[[:space:]]*```bash/{f=1;next} /^[[:space:]]*```[[:space:]]*$/{f=0} f')"
+  create_literal="$(printf '%s\n' "$block" | awk '/^[[:space:]]*```bash/{inside_fence=1;next} /^[[:space:]]*```[[:space:]]*$/{inside_fence=0} inside_fence')"
   if [ -z "$create_literal" ]; then
     create_literal="$(printf '%s\n' "$block" | grep -oE '`mkdir -p [^`]*`' | head -1 | sed -E 's/^`//; s/`$//')"
   fi
@@ -145,14 +145,14 @@ range_between() {
     return 1
   fi
 
-  mkdir_cmd="${create_literal//<SPEC-NNN>/SPEC-999}"
+  mkdir_command="${create_literal//<SPEC-NNN>/SPEC-999}"
 
-  run bash -c "cd '$WORKTREE' && $mkdir_cmd"
+  run bash -c "cd '$WORKTREE' && $mkdir_command"
   [ "$status" -eq 0 ]
 
   # (a) main must have received the folder.
-  if [ ! -d "$MAIN_PHYS/.gaia/local/specs/SPEC-999" ]; then
-    printf 'main never received .gaia/local/specs/SPEC-999 (ran: %s)\n' "$mkdir_cmd" >&2
+  if [ ! -d "$MAIN_PHYSICAL_PATH/.gaia/local/specs/SPEC-999" ]; then
+    printf 'main never received .gaia/local/specs/SPEC-999 (ran: %s)\n' "$mkdir_command" >&2
     return 1
   fi
 
@@ -160,8 +160,8 @@ range_between() {
   # still joins a relative path cannot fake this: running a bare
   # `mkdir -p .gaia/local/specs/...` with cwd=worktree creates the folder
   # THERE, which this assertion catches even when (a) above happens to hold.
-  if [ -d "$WORKTREE_PHYS/.gaia/local/specs" ]; then
-    printf 'a forked .gaia/local/specs tree exists in the worktree: %s\n' "$WORKTREE_PHYS/.gaia/local/specs" >&2
+  if [ -d "$WORKTREE_PHYSICAL_PATH/.gaia/local/specs" ]; then
+    printf 'a forked .gaia/local/specs tree exists in the worktree: %s\n' "$WORKTREE_PHYSICAL_PATH/.gaia/local/specs" >&2
     return 1
   fi
   true
@@ -180,9 +180,9 @@ range_between() {
   # AUDIT.md path, so this test runs the block it measures and its status
   # reports on path anchoring alone.
   bash_fence="$(printf '%s\n' "$block" | awk '
-    /^```bash/ { f = 1; buf = ""; next }
-    /^```$/ { if (f && buf ~ /AUDIT\.md/) { printf "%s", buf; exit } f = 0; next }
-    f { buf = buf $0 "\n" }
+    /^```bash/ { inside_fence = 1; fence_text = ""; next }
+    /^```$/ { if (inside_fence && fence_text ~ /AUDIT\.md/) { printf "%s", fence_text; exit } inside_fence = 0; next }
+    inside_fence { fence_text = fence_text $0 "\n" }
   ')"
 
   # Legible failure: no fence mentioning AUDIT.md means 7d names the path in
@@ -193,8 +193,8 @@ range_between() {
     return 1
   fi
 
-  audit_var="$(printf '%s\n' "$bash_fence" | grep -m1 -E '^[A-Za-z_][A-Za-z0-9_]*=.*AUDIT\.md' | sed -E 's/^([A-Za-z_][A-Za-z0-9_]*)=.*/\1/')"
-  if [ -z "$audit_var" ]; then
+  audit_variable_name="$(printf '%s\n' "$bash_fence" | grep -m1 -E '^[A-Za-z_][A-Za-z0-9_]*=.*AUDIT\.md' | sed -E 's/^([A-Za-z_][A-Za-z0-9_]*)=.*/\1/')"
+  if [ -z "$audit_variable_name" ]; then
     printf 'found "AUDIT.md" text in the 7d shell block but no assignment line to read the resolved path from\n' >&2
     return 1
   fi
@@ -204,22 +204,22 @@ range_between() {
     printf 'SPEC_ID="${SPEC_ID:-SPEC-999}"\n'
     printf 'spec_id="${spec_id:-SPEC-999}"\n'
     printf '%s\n' "$bash_fence"
-    printf 'printf %%s "$%s"\n' "$audit_var"
+    printf 'printf %%s "$%s"\n' "$audit_variable_name"
   } > "$script"
 
   run bash -c "cd '$WORKTREE' && bash '$script'"
   [ "$status" -eq 0 ]
 
   case "$output" in
-    "$MAIN_PHYS"/*) : ;;
+    "$MAIN_PHYSICAL_PATH"/*) : ;;
     *)
-      printf 'emitted AUDIT.md path "%s" is not under main root "%s"\n' "$output" "$MAIN_PHYS" >&2
+      printf 'emitted AUDIT.md path "%s" is not under main root "%s"\n' "$output" "$MAIN_PHYSICAL_PATH" >&2
       return 1
       ;;
   esac
 
   case "$output" in
-    "$WORKTREE_PHYS"/*)
+    "$WORKTREE_PHYSICAL_PATH"/*)
       printf 'emitted AUDIT.md path "%s" is under the WORKTREE, not main\n' "$output" >&2
       return 1
       ;;
@@ -229,21 +229,21 @@ range_between() {
 
 # The ```bash fence inside an extracted range, as a runnable script.
 bash_fence_of() {
-  printf '%s\n' "$1" | awk '/^```bash/{f=1;next} /^```[[:space:]]*$/{f=0} f'
+  printf '%s\n' "$1" | awk '/^```bash/{inside_fence=1;next} /^```[[:space:]]*$/{inside_fence=0} inside_fence'
 }
 
 # main holds the canonical SPEC-999; the worktree holds a forked SPEC-888. A
 # read that resolves main sees 999; a read that stays relative sees 888.
 seed_decoy() {
-  mkdir -p "$MAIN_PHYS/.gaia/local/specs/SPEC-999"
-  printf '# canonical\n' > "$MAIN_PHYS/.gaia/local/specs/SPEC-999/SPEC.md"
+  mkdir -p "$MAIN_PHYSICAL_PATH/.gaia/local/specs/SPEC-999"
+  printf '# canonical\n' > "$MAIN_PHYSICAL_PATH/.gaia/local/specs/SPEC-999/SPEC.md"
   printf '{"specs":[{"id":"SPEC-999","status":"merged"}]}\n' \
-    > "$MAIN_PHYS/.gaia/local/specs/ledger.json"
+    > "$MAIN_PHYSICAL_PATH/.gaia/local/specs/ledger.json"
 
-  mkdir -p "$WORKTREE_PHYS/.gaia/local/specs/SPEC-888"
-  printf '# forked decoy\n' > "$WORKTREE_PHYS/.gaia/local/specs/SPEC-888/SPEC.md"
+  mkdir -p "$WORKTREE_PHYSICAL_PATH/.gaia/local/specs/SPEC-888"
+  printf '# forked decoy\n' > "$WORKTREE_PHYSICAL_PATH/.gaia/local/specs/SPEC-888/SPEC.md"
   printf '{"specs":[{"id":"SPEC-888","status":"merged"}]}\n' \
-    > "$WORKTREE_PHYS/.gaia/local/specs/ledger.json"
+    > "$WORKTREE_PHYSICAL_PATH/.gaia/local/specs/ledger.json"
 }
 
 @test "R1: step 2's cold-consolidation sweep reads the ledger and folders from main" {
@@ -309,15 +309,15 @@ seed_decoy() {
   [ "$status" -eq 0 ]
 
   case "$output" in
-    "$MAIN_PHYS"/*) : ;;
+    "$MAIN_PHYSICAL_PATH"/*) : ;;
     *)
-      printf 'the resume point "%s" is not under main root "%s"\n' "$output" "$MAIN_PHYS" >&2
+      printf 'the resume point "%s" is not under main root "%s"\n' "$output" "$MAIN_PHYSICAL_PATH" >&2
       return 1
       ;;
   esac
 
   case "$output" in
-    "$WORKTREE_PHYS"/*)
+    "$WORKTREE_PHYSICAL_PATH"/*)
       printf 'the resume point "%s" is under the WORKTREE, not main\n' "$output" >&2
       return 1
       ;;
@@ -326,16 +326,16 @@ seed_decoy() {
 }
 
 @test "negative space: no bare relative .gaia/local/specs/ read survives at the three converted read sites" {
-  r1="$(range_between "$SPEC_MD" 'Then, for any merged row whose folder still holds' 'Then delete any merged SPEC folder')"
-  r2="$(range_between "$SPEC_MD" 'Before prompting, gather context' 'Before presenting the resume choice')"
-  r3="$(range_between "$SPEC_MD" 'The helper reads `CLAUDE_CODE_SESSION_ID`' '**Auto-mode:** the tally fires identically')"
+  sweep_range="$(range_between "$SPEC_MD" 'Then, for any merged row whose folder still holds' 'Then delete any merged SPEC folder')"
+  resume_range="$(range_between "$SPEC_MD" 'Before prompting, gather context' 'Before presenting the resume choice')"
+  session_helper_range="$(range_between "$SPEC_MD" 'The helper reads `CLAUDE_CODE_SESSION_ID`' '**Auto-mode:** the tally fires identically')"
 
   # Ranges are scoped to the executable instructions only. Display prose that
   # names the generic path for a human to read (the draft-phase note above the
   # resume block, step 9's own narration) sits outside all three and is
   # deliberately not converted.
   bad=""
-  for site in "$r1" "$r2" "$r3"; do
+  for site in "$sweep_range" "$resume_range" "$session_helper_range"; do
     hit="$(printf '%s\n' "$site" | grep -F '.gaia/local/specs/' | grep -v -E 'MAIN_ROOT|SPEC_DIR' || true)"
     if [ -n "$hit" ]; then
       bad="${bad}${hit}
@@ -351,15 +351,15 @@ seed_decoy() {
 }
 
 @test "negative space: no bare relative .gaia/local/specs/ write survives at the converted sites" {
-  s1="$(range_between "$PRESET_MD" '3. Create the SPEC folder' '4. Stamp GAIA frontmatter')"
-  # s3 (7c) is where the AUDIT.md path is actually constructed, so it is the
+  preset_range="$(range_between "$PRESET_MD" '3. Create the SPEC folder' '4. Stamp GAIA frontmatter')"
+  # routing_range (7c) is where the AUDIT.md path is actually constructed, so it is the
   # range this negative check earns its keep on; the positive assertion in S2
-  # anchors there too. s2 (7d) is retained as a genuine no-regression range:
+  # anchors there too. persist_range (7d) is retained as a genuine no-regression range:
   # 7d writes the report at the path it was handed and must never grow a path
-  # construct of its own, relative or otherwise. Do not read s2 passing as
-  # evidence the write site is covered -- s3 and S2 are what cover it.
-  s2="$(range_between "$SPEC_MD" '#### 7d. Persist AUDIT.md' '### 8. Gate 2')"
-  s3="$(range_between "$SPEC_MD" '#### 7c. Disposition routing + apply' '#### 7d. Persist AUDIT.md')"
+  # construct of its own, relative or otherwise. Do not read persist_range passing as
+  # evidence the write site is covered -- routing_range and S2 are what cover it.
+  persist_range="$(range_between "$SPEC_MD" '#### 7d. Persist AUDIT.md' '### 8. Gate 2')"
+  routing_range="$(range_between "$SPEC_MD" '#### 7c. Disposition routing + apply' '#### 7d. Persist AUDIT.md')"
 
   # Scoped tightly to the write sites (not repo-wide): design section 2e
   # notes that display prose elsewhere (spec.md:840, :916, :920, the preset's
@@ -367,7 +367,7 @@ seed_decoy() {
   # deliberately not converted. Those lines sit outside all three ranges
   # above, so this check never has to special-case them.
   bad=""
-  for site in "$s1" "$s2" "$s3"; do
+  for site in "$preset_range" "$persist_range" "$routing_range"; do
     hit="$(printf '%s\n' "$site" | grep -F '.gaia/local/specs/' | grep -v -E 'MAIN_ROOT|SPEC_DIR' || true)"
     if [ -n "$hit" ]; then
       bad="${bad}${hit}
