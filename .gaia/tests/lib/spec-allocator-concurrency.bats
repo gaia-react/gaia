@@ -5,13 +5,13 @@
 # `next` job blocks until a shared start-flag file exists, then all race at
 # once. A passing run with no contention proves nothing; the barrier forces
 # genuine overlap, so the UNLOCKED read-modify-write would fail this test
-# (two jobs read the same highest_num, allocate a duplicate id, and the
+# (two jobs read the same highest_number, allocate a duplicate id, and the
 # second `mv` clobbers the first appended row → fewer than N rows and/or a
 # duplicate id). The lock is what makes it green.
 
 setup() {
   HELPERS="$BATS_TEST_DIRNAME/helpers"
-  ALLOC=".specify/extensions/gaia/lib/spec-allocator.sh"
+  ALLOCATOR=".specify/extensions/gaia/lib/spec-allocator.sh"
   LEDGER_UPDATE=".specify/extensions/gaia/lib/ledger-update.sh"
 }
 
@@ -25,15 +25,15 @@ teardown() {
 # Writes each job's stdout to "$REPO/out.<i>". $LOCK_ENV is prepended to each
 # job so a caller can force the mkdir fallback.
 _run_parallel_next() {
-  local n="$1"
+  local job_count="$1"
   local i
   rm -f "$REPO"/out.* "$REPO/start.flag"
-  for i in $(seq 1 "$n"); do
+  for i in $(seq 1 "$job_count"); do
     bash -c '
-      repo="$1"; alloc="$2"; idx="$3"
+      repo="$1"; allocator_script="$2"; job_index="$3"
       until [ -f "$repo/start.flag" ]; do :; done
-      '"${LOCK_ENV:-}"' bash "$repo/$alloc" next "$repo" > "$repo/out.$idx" 2>/dev/null
-    ' _ "$REPO" "$ALLOC" "$i" &
+      '"${LOCK_ENV:-}"' bash "$repo/$allocator_script" next "$repo" > "$repo/out.$job_index" 2>/dev/null
+    ' _ "$REPO" "$ALLOCATOR" "$i" &
   done
   # Release the barrier; all jobs were spinning on this file's existence.
   touch "$REPO/start.flag"
@@ -45,16 +45,16 @@ _run_parallel_next() {
 @test "8a: N-parallel next (real flock if present); N distinct ids, N rows, no dupes" {
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
   cd "$REPO"
-  N=10
-  LOCK_ENV="" _run_parallel_next "$N"
+  PARALLEL_JOB_COUNT=10
+  LOCK_ENV="" _run_parallel_next "$PARALLEL_JOB_COUNT"
 
   printed="$(cat "$REPO"/out.* | sort)"
   distinct="$(printf '%s\n' "$printed" | sort -u)"
-  [ "$(printf '%s\n' "$printed" | grep -c '^SPEC-[0-9]\{3\}$')" -eq "$N" ]
-  [ "$(printf '%s\n' "$distinct" | wc -l | tr -d ' ')" -eq "$N" ]
+  [ "$(printf '%s\n' "$printed" | grep -c '^SPEC-[0-9]\{3\}$')" -eq "$PARALLEL_JOB_COUNT" ]
+  [ "$(printf '%s\n' "$distinct" | wc -l | tr -d ' ')" -eq "$PARALLEL_JOB_COUNT" ]
 
   rows="$(jq -r '.specs[].id' "$REPO/.gaia/local/specs/ledger.json")"
-  [ "$(printf '%s\n' "$rows" | wc -l | tr -d ' ')" -eq "$N" ]
+  [ "$(printf '%s\n' "$rows" | wc -l | tr -d ' ')" -eq "$PARALLEL_JOB_COUNT" ]
   # No duplicate ids in the ledger.
   [ "$(printf '%s\n' "$rows" | sort | uniq -d | wc -l | tr -d ' ')" -eq 0 ]
   # Every printed id appears in the ledger.
@@ -66,16 +66,16 @@ _run_parallel_next() {
 @test "8b: N-parallel next (forced mkdir fallback); N distinct ids, N rows, no dupes" {
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
   cd "$REPO"
-  N=10
-  LOCK_ENV="GAIA_LEDGER_LOCK_FORCE_FALLBACK=1" _run_parallel_next "$N"
+  PARALLEL_JOB_COUNT=10
+  LOCK_ENV="GAIA_LEDGER_LOCK_FORCE_FALLBACK=1" _run_parallel_next "$PARALLEL_JOB_COUNT"
 
   printed="$(cat "$REPO"/out.* | sort)"
   distinct="$(printf '%s\n' "$printed" | sort -u)"
-  [ "$(printf '%s\n' "$printed" | grep -c '^SPEC-[0-9]\{3\}$')" -eq "$N" ]
-  [ "$(printf '%s\n' "$distinct" | wc -l | tr -d ' ')" -eq "$N" ]
+  [ "$(printf '%s\n' "$printed" | grep -c '^SPEC-[0-9]\{3\}$')" -eq "$PARALLEL_JOB_COUNT" ]
+  [ "$(printf '%s\n' "$distinct" | wc -l | tr -d ' ')" -eq "$PARALLEL_JOB_COUNT" ]
 
   rows="$(jq -r '.specs[].id' "$REPO/.gaia/local/specs/ledger.json")"
-  [ "$(printf '%s\n' "$rows" | wc -l | tr -d ' ')" -eq "$N" ]
+  [ "$(printf '%s\n' "$rows" | wc -l | tr -d ' ')" -eq "$PARALLEL_JOB_COUNT" ]
   [ "$(printf '%s\n' "$rows" | sort | uniq -d | wc -l | tr -d ' ')" -eq 0 ]
   while IFS= read -r id; do
     printf '%s\n' "$rows" | grep -qx "$id"
@@ -88,8 +88,8 @@ _run_parallel_next() {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-draft SPEC-001)"
   cd "$REPO"
   mkdir -p "$REPO/.gaia/local/specs/specs.lock.d"
-  sleep 2  # age past GAIA_LEDGER_LOCK_STALE_SECS=1
-  run bash -c "GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 GAIA_LEDGER_LOCK_STALE_SECS=1 bash '$REPO/$ALLOC' next '$REPO'"
+  sleep 2  # age past GAIA_LEDGER_LOCK_STALE_SECONDS=1
+  run bash -c "GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 GAIA_LEDGER_LOCK_STALE_SECONDS=1 bash '$REPO/$ALLOCATOR' next '$REPO'"
   [ "$status" -eq 0 ]
   [ "$output" = "SPEC-002" ]
   [ "$(jq -r '[.specs[].id] | length' "$REPO/.gaia/local/specs/ledger.json")" -eq 2 ]
@@ -100,7 +100,7 @@ _run_parallel_next() {
 @test "10: in_progress surfaces a draft ledger row (defect-2 regression)" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-draft SPEC-007)"
   cd "$REPO"
-  run bash -c "bash '$REPO/$ALLOC' in_progress '$REPO'"
+  run bash -c "bash '$REPO/$ALLOCATOR' in_progress '$REPO'"
   [ "$status" -eq 0 ]
   [ "$output" = "SPEC-007" ]
 }
@@ -112,7 +112,7 @@ _run_parallel_next() {
   # forever (the defect-2 staleness this design removes; see test 10).
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-folder SPEC-013)"
   cd "$REPO"
-  run bash -c "bash '$REPO/$ALLOC' in_progress '$REPO'"
+  run bash -c "bash '$REPO/$ALLOCATOR' in_progress '$REPO'"
   [ "$status" -eq 0 ]
   [ "$output" = "none" ]
 }
@@ -120,7 +120,7 @@ _run_parallel_next() {
 @test "12: in_progress none; empty ledger, no files" {
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
   cd "$REPO"
-  run bash -c "bash '$REPO/$ALLOC' in_progress '$REPO'"
+  run bash -c "bash '$REPO/$ALLOCATOR' in_progress '$REPO'"
   [ "$status" -eq 0 ]
   [ "$output" = "none" ]
 }
@@ -130,9 +130,9 @@ _run_parallel_next() {
 @test "13: highest and in_progress create no lock file or dir" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-draft SPEC-001)"
   cd "$REPO"
-  run bash -c "bash '$REPO/$ALLOC' highest '$REPO'"
+  run bash -c "bash '$REPO/$ALLOCATOR' highest '$REPO'"
   [ "$status" -eq 0 ]
-  run bash -c "bash '$REPO/$ALLOC' in_progress '$REPO'"
+  run bash -c "bash '$REPO/$ALLOCATOR' in_progress '$REPO'"
   [ "$status" -eq 0 ]
   [ ! -e "$REPO/.gaia/local/specs/specs.lock" ]
   [ ! -e "$REPO/.gaia/local/specs/specs.lock.d" ]
@@ -145,7 +145,7 @@ _run_parallel_next() {
   # then strip .git so require_git fails. REPO is set so teardown cleans up.
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
   rm -rf "$REPO/.git"
-  run bash -c "bash '$REPO/$ALLOC' next '$REPO'"
+  run bash -c "bash '$REPO/$ALLOCATOR' next '$REPO'"
   [ "$status" -eq 3 ]
 }
 
@@ -157,22 +157,22 @@ _run_parallel_next() {
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
   cd "$REPO"
   realjq="$(command -v jq)"
-  stubdir="$REPO/stubbin"
-  mkdir -p "$stubdir"
-  cat > "$stubdir/jq" <<EOF
+  stub_directory="$REPO/stubbin"
+  mkdir -p "$stub_directory"
+  cat > "$stub_directory/jq" <<EOF
 #!/usr/bin/env bash
 # Fail only the write (--arg id ... '.specs += ...'); pass read-side jq
-# (highest_num's '.specs[].id') through to the real jq so the script reaches
+# (highest_number's '.specs[].id') through to the real jq so the script reaches
 # the append critical section and the write jq is the one that fails.
-for a in "\$@"; do
-  case "\$a" in
+for argument in "\$@"; do
+  case "\$argument" in
     *".specs += "*) exit 1 ;;
   esac
 done
 exec "$realjq" "\$@"
 EOF
-  chmod +x "$stubdir/jq"
-  run bash -c "PATH='$stubdir:$PATH' bash '$REPO/$ALLOC' next '$REPO'"
+  chmod +x "$stub_directory/jq"
+  run bash -c "PATH='$stub_directory:$PATH' bash '$REPO/$ALLOCATOR' next '$REPO'"
   [ "$status" -eq 4 ]
   # Ledger left unchanged; no row appended on the failed write.
   [ "$(jq -r '[.specs[].id] | length' "$REPO/.gaia/local/specs/ledger.json")" -eq 0 ]
@@ -195,10 +195,10 @@ EOF
       [ -d '$REPO/.gaia/local/specs/specs.lock.d' ] && break
       sleep 0.1
     done
-    GAIA_LEDGER_LOCK_TIMEOUT_SECS=1 bash '$REPO/$ALLOC' next '$REPO'
-    rc=\$?
+    GAIA_LEDGER_LOCK_TIMEOUT_SECONDS=1 bash '$REPO/$ALLOCATOR' next '$REPO'
+    exit_status=\$?
     wait \"\$holder\" 2>/dev/null || true
-    exit \"\$rc\"
+    exit \"\$exit_status\"
   "
   [ "$status" -eq 4 ]
   after="$(jq -r '[.specs[].id] | length' "$REPO/.gaia/local/specs/ledger.json")"
@@ -221,22 +221,22 @@ EOF
 @test "15: ledger-update racing N-parallel next; ledger valid, no row lost" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-draft SPEC-001)"
   cd "$REPO"
-  N=8
+  PARALLEL_JOB_COUNT=8
   rm -f "$REPO"/out.* "$REPO/start.flag"
 
   # N barrier-gated allocator jobs.
-  for i in $(seq 1 "$N"); do
+  for i in $(seq 1 "$PARALLEL_JOB_COUNT"); do
     bash -c '
-      repo="$1"; alloc="$2"; idx="$3"
+      repo="$1"; allocator_script="$2"; job_index="$3"
       until [ -f "$repo/start.flag" ]; do :; done
-      GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 bash "$repo/$alloc" next "$repo" > "$repo/out.$idx" 2>/dev/null
-    ' _ "$REPO" "$ALLOC" "$i" &
+      GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 bash "$repo/$allocator_script" next "$repo" > "$repo/out.$job_index" 2>/dev/null
+    ' _ "$REPO" "$ALLOCATOR" "$i" &
   done
   # One barrier-gated step-9-style flip of the seeded draft row.
   bash -c '
-    repo="$1"; lu="$2"
+    repo="$1"; ledger_update_script="$2"
     until [ -f "$repo/start.flag" ]; do :; done
-    GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 bash "$repo/$lu" "$repo" SPEC-001 "{\"status\":\"ready\"}" 2>/dev/null
+    GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 bash "$repo/$ledger_update_script" "$repo" SPEC-001 "{\"status\":\"ready\"}" 2>/dev/null
   ' _ "$REPO" "$LEDGER_UPDATE" &
 
   touch "$REPO/start.flag"
@@ -249,7 +249,7 @@ EOF
   [ "$(jq -r '.specs[] | select(.id=="SPEC-001") | .status' "$REPO/.gaia/local/specs/ledger.json")" = "ready" ]
   # SPEC-001 + N freshly allocated rows, all present, no row lost.
   total="$(jq -r '[.specs[].id] | length' "$REPO/.gaia/local/specs/ledger.json")"
-  [ "$total" -eq "$((N + 1))" ]
+  [ "$total" -eq "$((PARALLEL_JOB_COUNT + 1))" ]
   # No duplicate ids.
   dupes="$(jq -r '.specs[].id' "$REPO/.gaia/local/specs/ledger.json" | sort | uniq -d | wc -l | tr -d ' ')"
   [ "$dupes" -eq 0 ]
@@ -266,17 +266,17 @@ EOF
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
   cd "$REPO"
   git -C "$REPO" branch "plan/spec-004-local"
-  run bash "$REPO/$ALLOC" highest "$REPO"
+  run bash "$REPO/$ALLOCATOR" highest "$REPO"
   [ "$status" -eq 0 ]
   [ "$output" = "SPEC-004" ]
 
   git -C "$REPO" branch "worktree-plan+spec-007-wt"
-  run bash "$REPO/$ALLOC" highest "$REPO"
+  run bash "$REPO/$ALLOCATOR" highest "$REPO"
   [ "$status" -eq 0 ]
   [ "$output" = "SPEC-007" ]
 
   git -C "$REPO" update-ref refs/remotes/origin/plan/spec-011-peer HEAD
-  run bash "$REPO/$ALLOC" highest "$REPO"
+  run bash "$REPO/$ALLOCATOR" highest "$REPO"
   [ "$status" -eq 0 ]
   [ "$output" = "SPEC-011" ]
 }
@@ -285,7 +285,7 @@ EOF
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
   cd "$REPO"
   rm "$REPO/.gaia/scripts/branch-name-lib.sh"
-  run bash "$REPO/$ALLOC" highest "$REPO"
+  run bash "$REPO/$ALLOCATOR" highest "$REPO"
   [ "$status" -eq 4 ]
   grep -qF "branch-naming library is unusable" <<<"$output"
 }
@@ -296,11 +296,11 @@ EOF
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-folder SPEC-004)"
   cd "$REPO"
 
-  run bash -c "bash '$REPO/$ALLOC' highest '$REPO'"
+  run bash -c "bash '$REPO/$ALLOCATOR' highest '$REPO'"
   [ "$status" -eq 0 ]
   [ "$output" = "SPEC-004" ]
 
-  run bash -c "bash '$REPO/$ALLOC' next '$REPO'"
+  run bash -c "bash '$REPO/$ALLOCATOR' next '$REPO'"
   [ "$status" -eq 0 ]
   [ "$output" = "SPEC-005" ]
   # `next` only appends a ledger row; it must NOT create the folder.

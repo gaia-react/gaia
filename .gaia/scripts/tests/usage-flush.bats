@@ -21,7 +21,7 @@ setup() {
   TMP="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
   export GAIA_RATES_FEED_DISABLE=1 GAIA_RATES_STATE_DIR="$TMP/rates-state"
   unset GITHUB_ACTIONS GAIA_USAGE_TEST_BARRIER GAIA_USAGE_DEBUG_HOLD GAIA_TALLY_PROJECTS_ROOT
-  unset GAIA_LEDGER_LOCK_FORCE_FALLBACK GAIA_LEDGER_LOCK_TIMEOUT_SECS
+  unset GAIA_LEDGER_LOCK_FORCE_FALLBACK GAIA_LEDGER_LOCK_TIMEOUT_SECONDS
   use_repo "$TMP/repo"
 }
 
@@ -379,7 +379,7 @@ cas_run() {
   install branch
   export GAIA_LEDGER_LOCK_FORCE_FALLBACK=1
   mkdir -p "$TEL/specs.lock.d"
-  GAIA_LEDGER_LOCK_TIMEOUT_SECS=1 GAIA_LEDGER_LOCK_POLL_SECS=0.1 run flush --session s-branch --finished-main
+  GAIA_LEDGER_LOCK_TIMEOUT_SECONDS=1 GAIA_LEDGER_LOCK_POLL_SECONDS=0.1 run flush --session s-branch --finished-main
   [ "$status" -eq 0 ]
   [ -e "$TEL/usage.jsonl" ] && return 1
   [ -e "$TEL/usage-cursors.json" ] && return 1

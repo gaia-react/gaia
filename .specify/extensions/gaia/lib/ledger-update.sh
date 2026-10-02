@@ -27,7 +27,7 @@ repo_root="$1"
 spec_id="$2"
 patch="$3"
 
-_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Each load is bracketed against a target that is present but UNPARSEABLE, and
 # the probe under it decides the degrade. A bare `.` under errexit abandons the
 # shell AT the load, exit 2 with no diagnostic, so none of the refusals written
@@ -36,7 +36,7 @@ _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # interrupted update, an unresolved merge conflict, and a truncated write all
 # leave exactly that state on disk.
 # shellcheck source=/dev/null
-set +e; [ -f "${_lib_dir}/with-ledger-lock.sh" ] && . "${_lib_dir}/with-ledger-lock.sh" 2>/dev/null; set -e
+set +e; [ -f "${_library_directory}/with-ledger-lock.sh" ] && . "${_library_directory}/with-ledger-lock.sh" 2>/dev/null; set -e
 type with_ledger_lock >/dev/null 2>&1 || {
   echo "ledger-update: the shared ledger mutex is unusable; refuse to write (an unserialized write can tear the ledger)" >&2
   exit 4
@@ -44,7 +44,7 @@ type with_ledger_lock >/dev/null 2>&1 || {
 # No probe of its own: the gaia_resolve_specs_dir call below already refuses
 # when the function is absent, which is the degrade this load owes.
 # shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
-set +e; [ -f "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" ] && . "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null; set -e
+set +e; [ -f "${_library_directory}/../../../../.gaia/scripts/ledger-path-lib.sh" ] && . "${_library_directory}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null; set -e
 
 # repo_root names the tree this write runs in; the ledger it writes is
 # main's, because the state registry declares specs/ main-only. Resolve
@@ -52,11 +52,11 @@ set +e; [ -f "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" ] && . "
 # own root, and using it would fork the ledger. Refuse when main is
 # unresolvable, mapped to this file's own ledger-missing code: a ledger this
 # script cannot locate is indistinguishable from one that is missing.
-if ! specs_dir="$(gaia_resolve_specs_dir "$repo_root" 2>/dev/null)" || [ -z "$specs_dir" ]; then
+if ! specs_directory="$(gaia_resolve_specs_dir "$repo_root" 2>/dev/null)" || [ -z "$specs_directory" ]; then
   echo "ledger-update: cannot resolve the main checkout for '$repo_root'; refuse to write (would fork the ledger across worktrees)" >&2
   exit 4
 fi
-ledger_path="${specs_dir}/ledger.json"
+ledger_path="${specs_directory}/ledger.json"
 
 if [ ! -f "$ledger_path" ]; then
   echo "ledger-update: ledger not found at $ledger_path" >&2
@@ -90,24 +90,24 @@ if [ -n "$patch_status" ]; then
 fi
 
 apply_patch() {
-  local tmp
-  tmp="$(mktemp)"
+  local temporary_file
+  temporary_file="$(mktemp)"
   if ! jq --arg id "$spec_id" --argjson patch "$patch" \
     '.specs |= map(if .id == $id then . + $patch else . end)' \
-    "$ledger_path" > "$tmp" 2>/dev/null; then
-    rm -f "$tmp"
+    "$ledger_path" > "$temporary_file" 2>/dev/null; then
+    rm -f "$temporary_file"
     echo "ledger-update: jq failed (invalid patch JSON?)" >&2
     return 5
   fi
-  mv "$tmp" "$ledger_path"
+  mv "$temporary_file" "$ledger_path"
 }
 
-rc=0
-with_ledger_lock "$specs_dir" apply_patch || rc=$?
-if [ "$rc" -ne 0 ]; then
-  if [ "$rc" -eq 75 ]; then
+exit_status=0
+with_ledger_lock "$specs_directory" apply_patch || exit_status=$?
+if [ "$exit_status" -ne 0 ]; then
+  if [ "$exit_status" -eq 75 ]; then
     echo "ledger-update: could not acquire ledger lock; patch not applied" >&2
     exit 4
   fi
-  exit "$rc"
+  exit "$exit_status"
 fi

@@ -8,7 +8,7 @@ setup() {
   HELPERS="$BATS_TEST_DIRNAME/helpers"
   REPO="$("$HELPERS/tmp-spec-repo.sh")"
   LOCK_HELPER="$REPO/.specify/extensions/gaia/lib/with-ledger-lock.sh"
-  LOCKDIR="$REPO/.gaia/local/specs"
+  LOCK_DIRECTORY="$REPO/.gaia/local/specs"
 }
 
 teardown() {
@@ -18,17 +18,17 @@ teardown() {
 }
 
 @test "1: with_ledger_lock <d> true -> status 0" {
-  run bash -c ". '$LOCK_HELPER'; with_ledger_lock '$LOCKDIR' true"
+  run bash -c ". '$LOCK_HELPER'; with_ledger_lock '$LOCK_DIRECTORY' true"
   [ "$status" -eq 0 ]
 }
 
 @test "2: passthrough; command exit 7 propagates as status 7" {
-  run bash -c ". '$LOCK_HELPER'; with_ledger_lock '$LOCKDIR' bash -c 'exit 7'"
+  run bash -c ". '$LOCK_HELPER'; with_ledger_lock '$LOCK_DIRECTORY' bash -c 'exit 7'"
   [ "$status" -eq 7 ]
 }
 
 @test "3: helper writes nothing to stdout; only command stdout passes" {
-  run bash -c ". '$LOCK_HELPER'; with_ledger_lock '$LOCKDIR' bash -c 'echo HELLO'"
+  run bash -c ". '$LOCK_HELPER'; with_ledger_lock '$LOCK_DIRECTORY' bash -c 'echo HELLO'"
   [ "$status" -eq 0 ]
   [ "$output" = "HELLO" ]
 }
@@ -40,10 +40,10 @@ teardown() {
     . '$LOCK_HELPER'
     export GAIA_LEDGER_LOCK_FORCE_FALLBACK=1
     seen=0
-    with_ledger_lock '$LOCKDIR' bash -c '[ -d \"$LOCKDIR/specs.lock.d\" ] && echo INSIDE_PRESENT; sleep 0.3'
-    [ -d '$LOCKDIR/specs.lock.d' ] && echo AFTER_PRESENT || echo AFTER_GONE
+    with_ledger_lock '$LOCK_DIRECTORY' bash -c '[ -d \"$LOCK_DIRECTORY/specs.lock.d\" ] && echo INSIDE_PRESENT; sleep 0.3'
+    [ -d '$LOCK_DIRECTORY/specs.lock.d' ] && echo AFTER_PRESENT || echo AFTER_GONE
     # mkdir path used: the flock file must NOT have been created.
-    [ -e '$LOCKDIR/specs.lock' ] && echo FLOCK_FILE_PRESENT || echo NO_FLOCK_FILE
+    [ -e '$LOCK_DIRECTORY/specs.lock' ] && echo FLOCK_FILE_PRESENT || echo NO_FLOCK_FILE
   "
   [ "$status" -eq 0 ]
   [[ "$output" == *"INSIDE_PRESENT"* ]]
@@ -57,17 +57,17 @@ teardown() {
   run bash -c "
     . '$LOCK_HELPER'
     export GAIA_LEDGER_LOCK_FORCE_FALLBACK=1
-    ( with_ledger_lock '$LOCKDIR' sleep 3 ) &
+    ( with_ledger_lock '$LOCK_DIRECTORY' sleep 3 ) &
     holder=\$!
     # Wait until the holder actually owns the lock dir.
     for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-      [ -d '$LOCKDIR/specs.lock.d' ] && break
+      [ -d '$LOCK_DIRECTORY/specs.lock.d' ] && break
       sleep 0.1
     done
-    GAIA_LEDGER_LOCK_TIMEOUT_SECS=1 with_ledger_lock '$LOCKDIR' true
-    rc=\$?
+    GAIA_LEDGER_LOCK_TIMEOUT_SECONDS=1 with_ledger_lock '$LOCK_DIRECTORY' true
+    exit_status=\$?
     wait \"\$holder\" 2>/dev/null || true
-    exit \"\$rc\"
+    exit \"\$exit_status\"
   "
   [ "$status" -eq 75 ]
   [[ "$output" == *"timed out"* ]]
@@ -77,10 +77,10 @@ teardown() {
   run bash -c "
     . '$LOCK_HELPER'
     export GAIA_LEDGER_LOCK_FORCE_FALLBACK=1
-    export GAIA_LEDGER_LOCK_STALE_SECS=1
-    mkdir -p '$LOCKDIR/specs.lock.d'
+    export GAIA_LEDGER_LOCK_STALE_SECONDS=1
+    mkdir -p '$LOCK_DIRECTORY/specs.lock.d'
     sleep 2   # age the stale lock past the 1s threshold
-    with_ledger_lock '$LOCKDIR' bash -c 'exit 3'
+    with_ledger_lock '$LOCK_DIRECTORY' bash -c 'exit 3'
   "
   # Stale dir reclaimed, command ran, its exit code (3) passed through.
   [ "$status" -eq 3 ]
@@ -93,8 +93,8 @@ teardown() {
   run bash -c "
     . '$LOCK_HELPER'
     unset GAIA_LEDGER_LOCK_FORCE_FALLBACK
-    with_ledger_lock '$LOCKDIR' true && echo ONE
-    with_ledger_lock '$LOCKDIR' true && echo TWO
+    with_ledger_lock '$LOCK_DIRECTORY' true && echo ONE
+    with_ledger_lock '$LOCK_DIRECTORY' true && echo TWO
   "
   [ "$status" -eq 0 ]
   [[ "$output" == *"ONE"* ]]

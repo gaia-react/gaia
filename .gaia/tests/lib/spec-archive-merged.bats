@@ -32,7 +32,7 @@ setup() {
   HELPERS="$BATS_TEST_DIRNAME/helpers"
   ARCHIVE=".specify/extensions/gaia/lib/spec-archive-merged.sh"
   SPECS=".gaia/local/specs"
-  LEDGER=".gaia/local/telemetry/cost.jsonl"
+  COST_LEDGER=".gaia/local/telemetry/cost.jsonl"
   # --seed-merged-folder stamps a fixed merged_at ("2026-01-02T00:00:00Z")
   # rather than "just merged", so every delete test below needs the age gate
   # collapsed to stay deterministic regardless of wall-clock time. The
@@ -70,27 +70,27 @@ _snapshot() {
          | xargs -0 shasum 2>/dev/null ) || true
 }
 
-# _seed_cost_row <spec_id> <session> <fresh> <cwrite> <cread> <output>: appends
+# _seed_cost_row <spec_id> <session> <fresh> <cache_write> <cache_read> <output>: appends
 # a cost.jsonl row matching the schema token-tally.sh writes, so the
 # representation gate finds it for <spec_id>.
 _seed_cost_row() {
-  local id="$1" session="$2" fresh="$3" cwrite="$4" cread="$5" output="$6"
-  local total=$((fresh + cwrite + cread + output))
-  jq -cn --arg id "$id" --arg sid "$session" \
-    --argjson fresh "$fresh" --argjson cwrite "$cwrite" \
-    --argjson cread "$cread" --argjson output "$output" --argjson total "$total" \
+  local id="$1" session="$2" fresh="$3" cache_write="$4" cache_read="$5" output="$6"
+  local total=$((fresh + cache_write + cache_read + output))
+  jq -cn --arg id "$id" --arg session_id "$session" \
+    --argjson fresh "$fresh" --argjson cache_write "$cache_write" \
+    --argjson cache_read "$cache_read" --argjson output "$output" --argjson total "$total" \
     '{schema_version: 1, kind: "spec", spec_id: $id, plan_id: null, plan_slug: null,
-      session_id: $sid,
-      buckets: {fresh_input: $fresh, cache_write: $cwrite, cache_read: $cread, output: $output},
+      session_id: $session_id,
+      buckets: {fresh_input: $fresh, cache_write: $cache_write, cache_read: $cache_read, output: $output},
       total: $total, seq: 0, final: true, source: "test"}' \
-    >> "$REPO/$LEDGER"
+    >> "$REPO/$COST_LEDGER"
 }
 
-# _days_ago <n>: portable ISO8601 timestamp n days in the past, computed with
+# _days_ago <days>: portable ISO8601 timestamp that many days in the past, computed with
 # jq (never `date -d`/`date -j`, matching the project's cross-platform epoch
 # rule; mirrors spec-abandon-empty.bats's old_ts/new_ts helpers).
 _days_ago() {
-  jq -rn --argjson n "$1" '(now - ($n * 86400)) | strftime("%Y-%m-%dT%H:%M:%SZ")'
+  jq -rn --argjson days "$1" '(now - ($days * 86400)) | strftime("%Y-%m-%dT%H:%M:%SZ")'
 }
 
 # _set_merged_at <repo> <spec_id> <iso>: patches the seeded ledger row's
@@ -98,22 +98,22 @@ _days_ago() {
 # fixed date.
 _set_merged_at() {
   local repo="$1" id="$2" iso="$3"
-  local tmp; tmp="$(mktemp)"
-  jq --arg id "$id" --arg ts "$iso" \
-    '.specs |= map(if .id == $id then . + {merged_at: $ts} else . end)' \
-    "$repo/$SPECS/ledger.json" > "$tmp"
-  mv "$tmp" "$repo/$SPECS/ledger.json"
+  local temporary_file; temporary_file="$(mktemp)"
+  jq --arg id "$id" --arg timestamp "$iso" \
+    '.specs |= map(if .id == $id then . + {merged_at: $timestamp} else . end)' \
+    "$repo/$SPECS/ledger.json" > "$temporary_file"
+  mv "$temporary_file" "$repo/$SPECS/ledger.json"
 }
 
 # _clear_merged_at <repo> <spec_id>: removes merged_at from the seeded ledger
 # row, for the missing-merged_at keep case.
 _clear_merged_at() {
   local repo="$1" id="$2"
-  local tmp; tmp="$(mktemp)"
+  local temporary_file; temporary_file="$(mktemp)"
   jq --arg id "$id" \
     '.specs |= map(if .id == $id then del(.merged_at) else . end)' \
-    "$repo/$SPECS/ledger.json" > "$tmp"
-  mv "$tmp" "$repo/$SPECS/ledger.json"
+    "$repo/$SPECS/ledger.json" > "$temporary_file"
+  mv "$temporary_file" "$repo/$SPECS/ledger.json"
 }
 
 # --- 1: delete happy path (cost represented) ---------------------------------
@@ -451,11 +451,11 @@ _clear_merged_at() {
 
 @test "26: prefers summary-verify.sh when present; a malformed but non-empty SUMMARY.md is kept" {
   real_root="$(cd "$BATS_TEST_DIRNAME" && git rev-parse --show-toplevel)"
-  verify_src="$real_root/.gaia/scripts/summary-verify.sh"
-  [ -f "$verify_src" ] || skip "summary-verify.sh not present yet"
+  verify_source="$real_root/.gaia/scripts/summary-verify.sh"
+  [ -f "$verify_source" ] || skip "summary-verify.sh not present yet"
 
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged-folder SPEC-001)"
-  cp "$verify_src" "$REPO/.gaia/scripts/summary-verify.sh"
+  cp "$verify_source" "$REPO/.gaia/scripts/summary-verify.sh"
   # SPEC.md is already seeded; overwrite SUMMARY.md with non-empty but
   # malformed content (no frontmatter/H1). A plain [ -s SUMMARY.md ] fallback
   # would wrongly pass this; only real delegation to summary-verify.sh

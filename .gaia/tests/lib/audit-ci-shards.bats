@@ -73,8 +73,8 @@ require_yaml_parser() {
 }
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
   WORKFLOW="$REPO_ROOT/.github/workflows/audit-ci-tests.yml"
   CLI_WORKFLOW="$REPO_ROOT/.github/workflows/cli-tests.yml"
   BATS_SHARDS="$REPO_ROOT/.gaia/tests/bats-shards.sh"
@@ -83,7 +83,7 @@ setup() {
   # each report a defensible set and W10 would compare them against each other.
   # The reasoning behind the four, and behind excluding bare `python3`, is in
   # the W10 header below.
-  PKG_PATTERN='command -v zsh|zsh -c|require_yaml_parser|import yaml'
+  PACKAGE_PATTERN='command -v zsh|zsh -c|require_yaml_parser|import yaml'
   # The matrix line the adversarial cases doctor, addressed by shape rather
   # than by text so a repack that rewrites the list stays a one-site edit in
   # the workflow. It matches exactly one line today, which sole_line_matching
@@ -114,17 +114,17 @@ setup() {
 }
 
 teardown() {
-  local p
+  local scratch_copy_path
   if [ -f "$BATS_TEST_TMPDIR/scratch-copies" ]; then
-    while IFS= read -r p || [ -n "$p" ]; do
-      if [ -n "$p" ]; then
-        rm -f "$p"
+    while IFS= read -r scratch_copy_path || [ -n "$scratch_copy_path" ]; do
+      if [ -n "$scratch_copy_path" ]; then
+        rm -f "$scratch_copy_path"
       fi
     done <"$BATS_TEST_TMPDIR/scratch-copies"
   fi
 }
 
-# read_wf <mode> <workflow-file> [arg]
+# read_workflow <mode> <workflow-file> [arg]
 #
 # Reads the file's top-level `jobs:` mapping, structurally rather than by
 # line-oriented scrape, for the same reason the sibling suites give: every
@@ -200,7 +200,7 @@ teardown() {
 #
 # Exits 2 when the file will not parse, declares no jobs mapping, or names no
 # such job. A caller must check the status.
-read_wf() {
+read_workflow() {
   python3 - "$@" <<'PY'
 import json
 import re
@@ -213,38 +213,38 @@ path = sys.argv[2]
 rest = sys.argv[3:]
 
 
-def die(msg):
-    sys.stderr.write('%s: %s\n' % (path, msg))
+def die(message):
+    sys.stderr.write('%s: %s\n' % (path, message))
     sys.exit(2)
 
 
 try:
     with open(path, encoding='utf-8') as handle:
-        doc = yaml.safe_load(handle)
-except (yaml.YAMLError, OSError) as exc:
-    die('unreadable YAML (%s)' % exc.__class__.__name__)
+        document = yaml.safe_load(handle)
+except (yaml.YAMLError, OSError) as exception:
+    die('unreadable YAML (%s)' % exception.__class__.__name__)
 
-jobs = doc.get('jobs') if isinstance(doc, dict) else None
+jobs = document.get('jobs') if isinstance(document, dict) else None
 if not isinstance(jobs, dict) or not jobs:
     die('no jobs mapping')
-jobs = {str(k): (v if isinstance(v, dict) else {}) for k, v in jobs.items()}
+jobs = {str(job_id): (job_definition if isinstance(job_definition, dict) else {}) for job_id, job_definition in jobs.items()}
 
 
-def require_job(jid):
-    if jid not in jobs:
-        die('no job id %r' % jid)
+def require_job(job_id):
+    if job_id not in jobs:
+        die('no job id %r' % job_id)
 
 
-def normalize(expr):
+def normalize(expression):
     """Collapse a gate to one comparable line, the same GitHub-equivalence
     fold every sibling suite applies: `if: <x>` and `if: ${{ <x> }}` are the
     same condition, and a folded scalar arrives already joined but irregularly
     spaced."""
-    return ' '.join(str(expr).replace('${{', ' ').replace('}}', ' ').split())
+    return ' '.join(str(expression).replace('${{', ' ').replace('}}', ' ').split())
 
 
-def needs_of(jid):
-    value = jobs[jid].get('needs')
+def needs_of(job_id):
+    value = jobs[job_id].get('needs')
     if isinstance(value, str):
         return [value]
     if isinstance(value, list):
@@ -266,36 +266,36 @@ def kind_of(mapping):
     return 'int'
 
 
-def cap_kind(jid):
-    return kind_of(jobs[jid])
+def cap_kind(job_id):
+    return kind_of(jobs[job_id])
 
 
-def filter_step_for(jid):
+def filter_step_for(job_id):
     """That job's dorny/paths-filter step, found by `uses:` identity. Shared
     by every mode that reads a property of that one step, so the identity
     check lives in one place."""
-    for step in jobs[jid].get('steps') or []:
+    for step in jobs[job_id].get('steps') or []:
         if isinstance(step, dict) and 'dorny/paths-filter' in str(step.get('uses', '')):
             return step
-    die('job %r has no dorny/paths-filter step' % jid)
+    die('job %r has no dorny/paths-filter step' % job_id)
 
 
-def code_list_for(jid):
+def code_list_for(job_id):
     """That job's dorny/paths-filter step's `code:` list, as parsed YAML
     entries (bare strings and change-type mappings alike). Shared by
     `codefilter` and `codefilterentries`, which read the same list and differ
     only in whether the change-type key survives."""
-    filter_step = filter_step_for(jid)
+    filter_step = filter_step_for(job_id)
     filters_raw = (filter_step.get('with') or {}).get('filters')
     if not isinstance(filters_raw, str):
-        die('job %r paths-filter step has no filters: string' % jid)
+        die('job %r paths-filter step has no filters: string' % job_id)
     try:
         filters_doc = yaml.safe_load(filters_raw)
-    except yaml.YAMLError as exc:
-        die('job %r filters: block is not valid YAML (%s)' % (jid, exc.__class__.__name__))
+    except yaml.YAMLError as exception:
+        die('job %r filters: block is not valid YAML (%s)' % (job_id, exception.__class__.__name__))
     code_list = (filters_doc or {}).get('code')
     if not isinstance(code_list, list):
-        die('job %r filters: block has no code: list' % jid)
+        die('job %r filters: block has no code: list' % job_id)
     return code_list
 
 
@@ -348,13 +348,13 @@ elif mode == 'filtercount':
                 count += 1
     print(count)
 elif mode == 'filterifs':
-    for jid, job in jobs.items():
+    for job_id, job in jobs.items():
         for step in job.get('steps') or []:
             if not isinstance(step, dict):
                 continue
             gate = normalize(step.get('if', ''))
             if 'steps.filter.outputs.' in gate:
-                print('%s\t%s' % (jid, gate))
+                print('%s\t%s' % (job_id, gate))
 elif mode == 'stepgates':
     # That job's steps, one `<name>\t<normalized-if>` line per step, in
     # document order. `name` falls back to `uses:` for an unnamed step, the
@@ -404,32 +404,32 @@ elif mode == 'filterwith':
     if value is not None:
         print(str(value))
 elif mode == 'runinterp':
-    for jid, job in jobs.items():
+    for job_id, job in jobs.items():
         for step in job.get('steps') or []:
             if not isinstance(step, dict):
                 continue
             body = str(step.get('run', ''))
             if '${{' in body:
                 name = str(step.get('name', '')) or str(step.get('uses', ''))
-                print('%s\t%s' % (jid, name))
+                print('%s\t%s' % (job_id, name))
 elif mode == 'aggok':
     require_job(rest[0])
-    exit_re = re.compile(r'\bexit\s+[1-9][0-9]*\b')
+    exit_pattern = re.compile(r'\bexit\s+[1-9][0-9]*\b')
     steps = [item for item in (jobs[rest[0]].get('steps') or []) if isinstance(item, dict)]
-    deps = needs_of(rest[0])
+    dependencies = needs_of(rest[0])
     # An empty `needs:` prints 'no' rather than a vacuous 'yes'. The caller
     # reads this as "the aggregator adjudicates its dependencies", and a
     # per-element claim over an empty set is the one answer that is true
     # without meaning anything.
-    covered = bool(deps)
-    for dep in deps:
-        ref = 'needs.%s.result' % dep
+    covered = bool(dependencies)
+    for dependency in dependencies:
+        needs_result_reference = 'needs.%s.result' % dependency
         hit = False
         for step in steps:
             body = str(step.get('run', ''))
             mapping = step.get('env') if isinstance(step.get('env'), dict) else {}
-            mapped = any(ref in str(value) for value in mapping.values())
-            if (ref in body or mapped) and exit_re.search(body):
+            mapped = any(needs_result_reference in str(value) for value in mapping.values())
+            if (needs_result_reference in body or mapped) and exit_pattern.search(body):
                 hit = True
                 break
         if not hit:
@@ -494,18 +494,18 @@ PY
 # sidesteps that entirely. Values travel through the environment so neither
 # argument has to survive bash's own quoting.
 replace_line() {
-  local src="$1" old="$2" new="$3" out="$4"
-  OLD_LINE="$old" NEW_LINE="$new" python3 - "$src" "$out" <<'PY'
+  local source_path="$1" old="$2" new="$3" output_path="$4"
+  OLD_LINE="$old" NEW_LINE="$new" python3 - "$source_path" "$output_path" <<'PY'
 import os
 import sys
 
-src, out = sys.argv[1], sys.argv[2]
+source_path, output_path = sys.argv[1], sys.argv[2]
 old = os.environ['OLD_LINE']
 new = os.environ['NEW_LINE']
-with open(src, encoding='utf-8') as handle:
+with open(source_path, encoding='utf-8') as handle:
     lines = handle.read().split('\n')
 lines = [new if line == old else line for line in lines]
-with open(out, 'w', encoding='utf-8') as handle:
+with open(output_path, 'w', encoding='utf-8') as handle:
     handle.write('\n'.join(lines))
 PY
 }
@@ -539,14 +539,14 @@ PY
 # either means the workflow changed shape, which this suite has to see rather
 # than doctor a line it did not mean to.
 sole_line_matching() {
-  local src="$1" pattern="$2" hits count
-  hits="$(grep -nE -- "$pattern" "$src")" || {
-    echo "sole_line_matching: no line in $src matches /$pattern/" >&2
+  local source_file="$1" pattern="$2" hits count
+  hits="$(grep -nE -- "$pattern" "$source_file")" || {
+    echo "sole_line_matching: no line in $source_file matches /$pattern/" >&2
     return 1
   }
   count="$(printf '%s\n' "$hits" | grep -c '')"
   [ "$count" -eq 1 ] || {
-    echo "sole_line_matching: /$pattern/ matches $count lines in $src, expected exactly 1" >&2
+    echo "sole_line_matching: /$pattern/ matches $count lines in $source_file, expected exactly 1" >&2
     printf '%s\n' "$hits" >&2
     return 1
   }
@@ -564,25 +564,25 @@ sole_line_matching() {
 # sole_line_matching does: either means the workflow changed shape, which this
 # suite has to see rather than doctor a line it did not mean to.
 gate_line_for_step() {
-  local src="$1" step="$2" hits count name_no open_no open_line
-  hits="$(grep -nF -- "name: $step" "$src")" || {
-    echo "gate_line_for_step: no step named '$step' in $src" >&2
+  local source_path="$1" step="$2" hits count name_line_number open_line_number open_line
+  hits="$(grep -nF -- "name: $step" "$source_path")" || {
+    echo "gate_line_for_step: no step named '$step' in $source_path" >&2
     return 1
   }
   count="$(printf '%s\n' "$hits" | grep -c '')"
   [ "$count" -eq 1 ] || {
-    echo "gate_line_for_step: 'name: $step' matches $count lines in $src, expected exactly 1" >&2
+    echo "gate_line_for_step: 'name: $step' matches $count lines in $source_path, expected exactly 1" >&2
     printf '%s\n' "$hits" >&2
     return 1
   }
-  name_no="${hits%%:*}"
+  name_line_number="${hits%%:*}"
   # Numbered against the head, whose line numbers are the file's own.
-  open_no="$(head -n "$name_no" "$src" | grep -nE '^ *- ' | tail -1 | cut -d: -f1)"
-  [ -n "$open_no" ] || {
-    echo "gate_line_for_step: the step named '$step' opens no list item in $src" >&2
+  open_line_number="$(head -n "$name_line_number" "$source_path" | grep -nE '^ *- ' | tail -1 | cut -d: -f1)"
+  [ -n "$open_line_number" ] || {
+    echo "gate_line_for_step: the step named '$step' opens no list item in $source_path" >&2
     return 1
   }
-  open_line="$(sed -n "${open_no}p" "$src")"
+  open_line="$(sed -n "${open_line_number}p" "$source_path")"
   case "$open_line" in
     *"- if: "*) printf '%s' "$open_line" ;;
     *)
@@ -608,17 +608,17 @@ assert_doctored() {
 
 # Writes a copy of $1 to $3 with every line equal to $2 removed outright.
 delete_line() {
-  local src="$1" old="$2" out="$3"
-  OLD_LINE="$old" python3 - "$src" "$out" <<'PY'
+  local source_path="$1" old="$2" output_path="$3"
+  OLD_LINE="$old" python3 - "$source_path" "$output_path" <<'PY'
 import os
 import sys
 
-src, out = sys.argv[1], sys.argv[2]
+source_path, output_path = sys.argv[1], sys.argv[2]
 old = os.environ['OLD_LINE']
-with open(src, encoding='utf-8') as handle:
+with open(source_path, encoding='utf-8') as handle:
     lines = handle.read().split('\n')
 lines = [line for line in lines if line != old]
-with open(out, 'w', encoding='utf-8') as handle:
+with open(output_path, 'w', encoding='utf-8') as handle:
     handle.write('\n'.join(lines))
 PY
 }
@@ -626,23 +626,23 @@ PY
 # Writes a copy of $1 to $3 with every line from the FIRST line equal to $2
 # through end-of-file replaced by $3's replacement text.
 replace_from() {
-  local src="$1" start="$2" replacement="$3" out="$4"
-  START_LINE="$start" REPLACEMENT="$replacement" python3 - "$src" "$out" <<'PY'
+  local source_path="$1" start="$2" replacement="$3" output_path="$4"
+  START_LINE="$start" REPLACEMENT="$replacement" python3 - "$source_path" "$output_path" <<'PY'
 import os
 import sys
 
-src, out = sys.argv[1], sys.argv[2]
+source_path, output_path = sys.argv[1], sys.argv[2]
 start = os.environ['START_LINE']
 replacement = os.environ['REPLACEMENT']
-with open(src, encoding='utf-8') as handle:
+with open(source_path, encoding='utf-8') as handle:
     lines = handle.read().split('\n')
 try:
-    i = lines.index(start)
+    start_index = lines.index(start)
 except ValueError:
     sys.stderr.write('replace_from: boundary line not found: %r\n' % start)
     sys.exit(2)
-lines[i:] = replacement.split('\n') if replacement else []
-with open(out, 'w', encoding='utf-8') as handle:
+lines[start_index:] = replacement.split('\n') if replacement else []
+with open(output_path, 'w', encoding='utf-8') as handle:
     handle.write('\n'.join(lines))
 PY
 }
@@ -650,23 +650,23 @@ PY
 # Writes a copy of $1 to $4 with $3's lines inserted immediately after the
 # first line equal to $2.
 insert_after() {
-  local src="$1" anchor="$2" insertion="$3" out="$4"
-  ANCHOR_LINE="$anchor" INSERTION="$insertion" python3 - "$src" "$out" <<'PY'
+  local source_path="$1" anchor="$2" insertion="$3" output_path="$4"
+  ANCHOR_LINE="$anchor" INSERTION="$insertion" python3 - "$source_path" "$output_path" <<'PY'
 import os
 import sys
 
-src, out = sys.argv[1], sys.argv[2]
+source_path, output_path = sys.argv[1], sys.argv[2]
 anchor = os.environ['ANCHOR_LINE']
 insertion = os.environ['INSERTION']
-with open(src, encoding='utf-8') as handle:
+with open(source_path, encoding='utf-8') as handle:
     lines = handle.read().split('\n')
 try:
-    i = lines.index(anchor)
+    anchor_index = lines.index(anchor)
 except ValueError:
     sys.stderr.write('insert_after: anchor line not found: %r\n' % anchor)
     sys.exit(2)
-lines[i + 1:i + 1] = insertion.split('\n')
-with open(out, 'w', encoding='utf-8') as handle:
+lines[anchor_index + 1:anchor_index + 1] = insertion.split('\n')
+with open(output_path, 'w', encoding='utf-8') as handle:
     handle.write('\n'.join(lines))
 PY
 }
@@ -682,7 +682,7 @@ PY
 # individual tokens rather than missed as a whole-field mismatch.
 assert_no_renamed_or_copied_tokens() {
   local workflow="$1" entries key path token bad=""
-  entries="$(read_wf codefilterentries "$workflow" shards)" || return 1
+  entries="$(read_workflow codefilterentries "$workflow" shards)" || return 1
   while IFS=$'\t' read -r key path; do
     [ -n "$key" ] || continue
     [ "$key" = "-" ] && continue
@@ -736,7 +736,7 @@ assert_paths_filter_pin_matches() {
 # sibling gate. Not itself gated.
 
 @test "the parser gate fails on a CI runner and still skips off CI" {
-  local shim="$BATS_TEST_TMPDIR/no-parser" rc
+  local shim="$BATS_TEST_TMPDIR/no-parser" exit_status
   mkdir -p "$shim"
   # python3 present, but its `import yaml` fails: the shape a runner takes when
   # python3-yaml is dropped from the apt line, not one where python3 is missing
@@ -747,16 +747,16 @@ assert_paths_filter_pin_matches() {
   # Calling the gate in a subshell is what keeps its `skip` arm from marking this
   # test skipped -- bats' `skip` exits 0, so the subshell's status is exactly the
   # discriminator wanted here: non-zero is the CI failure, 0 is the off-CI skip.
-  rc=0
-  ( PATH="$shim" GITHUB_ACTIONS=true; require_yaml_parser ) >/dev/null 2>&1 || rc=$?
-  [ "$rc" -ne 0 ] || {
+  exit_status=0
+  ( PATH="$shim" GITHUB_ACTIONS=true; require_yaml_parser ) >/dev/null 2>&1 || exit_status=$?
+  [ "$exit_status" -ne 0 ] || {
     echo "the gate skipped on a CI runner with no YAML parser; every parser-gated test here would report green" >&2
     return 1
   }
 
-  rc=0
-  ( PATH="$shim"; unset GITHUB_ACTIONS; require_yaml_parser ) >/dev/null 2>&1 || rc=$?
-  [ "$rc" -eq 0 ] || {
+  exit_status=0
+  ( PATH="$shim"; unset GITHUB_ACTIONS; require_yaml_parser ) >/dev/null 2>&1 || exit_status=$?
+  [ "$exit_status" -eq 0 ] || {
     echo "the gate failed off CI, where a missing parser must still skip" >&2
     return 1
   }
@@ -768,19 +768,19 @@ assert_paths_filter_pin_matches() {
 @test "W1: exactly one job carries the required context name" {
   require_yaml_parser
 
-  [ "$(read_wf name "$WORKFLOW" audit-ci-tests)" = "Audit CI Tests" ] || {
+  [ "$(read_workflow name "$WORKFLOW" audit-ci-tests)" = "Audit CI Tests" ] || {
     echo "job id audit-ci-tests does not carry name: Audit CI Tests" >&2
     return 1
   }
 
   local other extra=""
-  for other in $(read_wf jobs "$WORKFLOW"); do
+  for other in $(read_workflow jobs "$WORKFLOW"); do
     [ "$other" = "audit-ci-tests" ] && continue
-    [ "$(read_wf name "$WORKFLOW" "$other")" = "Audit CI Tests" ] && extra="$extra $other"
+    [ "$(read_workflow name "$WORKFLOW" "$other")" = "Audit CI Tests" ] && extra="$extra $other"
   done
   [ -z "$extra" ] || { echo "job(s) other than audit-ci-tests also carry name: Audit CI Tests:${extra}" >&2; return 1; }
 
-  read_wf needs "$WORKFLOW" audit-ci-tests | grep -qxF "shards" || {
+  read_workflow needs "$WORKFLOW" audit-ci-tests | grep -qxF "shards" || {
     echo "audit-ci-tests does not needs: shards" >&2
     return 1
   }
@@ -796,7 +796,7 @@ assert_paths_filter_pin_matches() {
   local doctored="$BATS_TEST_TMPDIR/w1a.yml"
   replace_line "$WORKFLOW" "    name: Audit CI Tests" "    name: Audit CI Tests Renamed" "$doctored"
 
-  [ "$(read_wf name "$doctored" audit-ci-tests)" != "Audit CI Tests" ] || {
+  [ "$(read_workflow name "$doctored" audit-ci-tests)" != "Audit CI Tests" ] || {
     echo "the renamed job still read back as Audit CI Tests" >&2
     return 1
   }
@@ -821,11 +821,11 @@ assert_paths_filter_pin_matches() {
 
 @test "W2: the aggregator's if: admits always() and workflow_dispatch, never negated" {
   require_yaml_parser
-  local expr
-  expr="$(read_wf if "$WORKFLOW" audit-ci-tests)"
-  printf '%s' "$expr" | grep -qF "always()" || { echo "aggregator if: missing always(): ${expr}" >&2; return 1; }
-  printf '%s' "$expr" | grep -qF "workflow_dispatch" || { echo "aggregator if: missing workflow_dispatch: ${expr}" >&2; return 1; }
-  printf '%s' "$expr" | grep -qF -- "!= 'workflow_dispatch'" && { echo "aggregator if: negates workflow_dispatch: ${expr}" >&2; return 1; }
+  local expression
+  expression="$(read_workflow if "$WORKFLOW" audit-ci-tests)"
+  printf '%s' "$expression" | grep -qF "always()" || { echo "aggregator if: missing always(): ${expression}" >&2; return 1; }
+  printf '%s' "$expression" | grep -qF "workflow_dispatch" || { echo "aggregator if: missing workflow_dispatch: ${expression}" >&2; return 1; }
+  printf '%s' "$expression" | grep -qF -- "!= 'workflow_dispatch'" && { echo "aggregator if: negates workflow_dispatch: ${expression}" >&2; return 1; }
   true
 }
 
@@ -837,9 +837,9 @@ assert_paths_filter_pin_matches() {
     "    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'" \
     "$doctored"
 
-  local expr
-  expr="$(read_wf if "$doctored" audit-ci-tests)"
-  printf '%s' "$expr" | grep -qF "always()" && { echo "doctoring failed to strip always()" >&2; return 1; }
+  local expression
+  expression="$(read_workflow if "$doctored" audit-ci-tests)"
+  printf '%s' "$expression" | grep -qF "always()" && { echo "doctoring failed to strip always()" >&2; return 1; }
   true
 }
 
@@ -851,7 +851,7 @@ assert_paths_filter_pin_matches() {
 
 @test "W3: the aggregator adjudicates every entry in its needs list" {
   require_yaml_parser
-  [ "$(read_wf aggok "$WORKFLOW" audit-ci-tests)" = "yes" ] || {
+  [ "$(read_workflow aggok "$WORKFLOW" audit-ci-tests)" = "yes" ] || {
     echo "an entry in the aggregator's needs: has no step that both references its result and exits non-zero on a bad value" >&2
     return 1
   }
@@ -860,7 +860,7 @@ assert_paths_filter_pin_matches() {
 @test "W3 non-vacuity: the aggregator's needs list is non-empty" {
   require_yaml_parser
   local count
-  count="$(read_wf needs "$WORKFLOW" audit-ci-tests | grep -c '.' || true)"
+  count="$(read_workflow needs "$WORKFLOW" audit-ci-tests | grep -c '.' || true)"
   [ "$count" -gt 0 ] || {
     echo "the aggregator declares no needs:, so W3's per-entry assertion would pass over an empty set" >&2
     return 1
@@ -873,7 +873,7 @@ assert_paths_filter_pin_matches() {
   local replacement=$'      - name: Require every dependency in needs to have concluded success\n        run: true'
   replace_from "$WORKFLOW" "      - name: Require every dependency in needs to have concluded success" "$replacement" "$doctored"
 
-  [ "$(read_wf aggok "$doctored" audit-ci-tests)" = "no" ] || {
+  [ "$(read_workflow aggok "$doctored" audit-ci-tests)" = "no" ] || {
     echo "a bare 'true' step still read as adjudicating the needs list" >&2
     return 1
   }
@@ -886,17 +886,17 @@ assert_paths_filter_pin_matches() {
 # addition lands on.
 @test "W3 adversarial: a needs entry whose result nothing reads is caught" {
   require_yaml_parser
-  local doctored="$BATS_TEST_TMPDIR/w3b.yml" dep binding
-  dep="$(read_wf needs "$WORKFLOW" audit-ci-tests | grep '.' | tail -1)"
-  [ -n "$dep" ] || { echo "the aggregator declares no needs: to doctor" >&2; return 1; }
+  local doctored="$BATS_TEST_TMPDIR/w3b.yml" dependency binding
+  dependency="$(read_workflow needs "$WORKFLOW" audit-ci-tests | grep '.' | tail -1)"
+  [ -n "$dependency" ] || { echo "the aggregator declares no needs: to doctor" >&2; return 1; }
 
-  binding="$(sole_line_matching "$WORKFLOW" "needs\.${dep}\.result")" || return 1
+  binding="$(sole_line_matching "$WORKFLOW" "needs\.${dependency}\.result")" || return 1
   delete_line "$WORKFLOW" "$binding" "$doctored"
-  assert_doctored "$binding" "$(sole_line_matching "$doctored" "needs\.${dep}\.result" 2>/dev/null || true)" \
-    "dropping the ${dep} binding" || return 1
+  assert_doctored "$binding" "$(sole_line_matching "$doctored" "needs\.${dependency}\.result" 2>/dev/null || true)" \
+    "dropping the ${dependency} binding" || return 1
 
-  [ "$(read_wf aggok "$doctored" audit-ci-tests)" = "no" ] || {
-    echo "needs entry ${dep} still read as adjudicated with nothing reading its result" >&2
+  [ "$(read_workflow aggok "$doctored" audit-ci-tests)" = "no" ] || {
+    echo "needs entry ${dependency} still read as adjudicated with nothing reading its result" >&2
     return 1
   }
 }
@@ -906,16 +906,16 @@ assert_paths_filter_pin_matches() {
 
 @test "W4: no step in the workflow is gated on steps.filter.outputs. without also admitting workflow_dispatch" {
   require_yaml_parser
-  local jid expr gaps="" count=0
-  while IFS=$'\t' read -r jid expr; do
-    [ -n "$jid" ] || continue
+  local job_id expression gaps="" count=0
+  while IFS=$'\t' read -r job_id expression; do
+    [ -n "$job_id" ] || continue
     count=$((count + 1))
-    if printf '%s' "$expr" | grep -qF -- "!= 'workflow_dispatch'"; then
-      gaps="${gaps}${jid}: negates workflow_dispatch -> ${expr}"$'\n'
+    if printf '%s' "$expression" | grep -qF -- "!= 'workflow_dispatch'"; then
+      gaps="${gaps}${job_id}: negates workflow_dispatch -> ${expression}"$'\n'
       continue
     fi
-    printf '%s' "$expr" | grep -qF -- "workflow_dispatch" || gaps="${gaps}${jid}: excludes workflow_dispatch -> ${expr}"$'\n'
-  done < <(read_wf filterifs "$WORKFLOW")
+    printf '%s' "$expression" | grep -qF -- "workflow_dispatch" || gaps="${gaps}${job_id}: excludes workflow_dispatch -> ${expression}"$'\n'
+  done < <(read_workflow filterifs "$WORKFLOW")
 
   [ "$count" -gt 0 ] || {
     echo "no step in the workflow is gated on steps.filter.outputs.; this test asserted nothing" >&2
@@ -939,11 +939,11 @@ assert_paths_filter_pin_matches() {
   # asserts, so the double replacement is not a bug here.
   replace_line "$WORKFLOW" "$line" "$mutated" "$doctored"
 
-  local jid expr found_gap=""
-  while IFS=$'\t' read -r jid expr; do
-    [ -n "$jid" ] || continue
-    printf '%s' "$expr" | grep -qF -- "workflow_dispatch" || found_gap="x"
-  done < <(read_wf filterifs "$doctored")
+  local job_id expression found_gap=""
+  while IFS=$'\t' read -r job_id expression; do
+    [ -n "$job_id" ] || continue
+    printf '%s' "$expression" | grep -qF -- "workflow_dispatch" || found_gap="x"
+  done < <(read_workflow filterifs "$doctored")
   [ -n "$found_gap" ] || { echo "doctoring the step's if: did not produce a gap" >&2; return 1; }
 }
 
@@ -951,9 +951,9 @@ assert_paths_filter_pin_matches() {
 
 @test "W5: every job declares an integer cap" {
   require_yaml_parser
-  local jid gaps=""
-  for jid in $(read_wf jobs "$WORKFLOW"); do
-    [ "$(read_wf capkind "$WORKFLOW" "$jid")" = "int" ] || gaps="${gaps}${jid} "
+  local job_id gaps=""
+  for job_id in $(read_workflow jobs "$WORKFLOW"); do
+    [ "$(read_workflow capkind "$WORKFLOW" "$job_id")" = "int" ] || gaps="${gaps}${job_id} "
   done
   [ -z "$gaps" ] || { echo "job(s) without an integer timeout-minutes:${gaps}" >&2; return 1; }
 }
@@ -963,7 +963,7 @@ assert_paths_filter_pin_matches() {
   local doctored="$BATS_TEST_TMPDIR/w5b.yml"
   delete_line "$WORKFLOW" "    timeout-minutes: 2" "$doctored"
 
-  [ "$(read_wf capkind "$doctored" audit-ci-tests)" = "missing" ] || {
+  [ "$(read_workflow capkind "$doctored" audit-ci-tests)" = "missing" ] || {
     echo "deleting timeout-minutes did not read back as missing" >&2
     return 1
   }
@@ -974,7 +974,7 @@ assert_paths_filter_pin_matches() {
   local doctored="$BATS_TEST_TMPDIR/w5c.yml"
   replace_line "$WORKFLOW" "    timeout-minutes: 13" "    timeout-minutes: \${{ github.event_name }}" "$doctored"
 
-  [ "$(read_wf capkind "$doctored" shards)" = "other" ] || {
+  [ "$(read_workflow capkind "$doctored" shards)" = "other" ] || {
     echo "an expression-valued cap still read as an integer" >&2
     return 1
   }
@@ -986,7 +986,7 @@ assert_paths_filter_pin_matches() {
 @test "W6: the matrix and the sharder agree" {
   require_yaml_parser
   local matrix_list expected
-  matrix_list="$(read_wf matrix "$WORKFLOW" shards | LC_ALL=C sort)"
+  matrix_list="$(read_workflow matrix "$WORKFLOW" shards | LC_ALL=C sort)"
   expected="$(printf '%s\nsandbox\nconcurrency\n' "$(bash "$BATS_SHARDS" shards)" | LC_ALL=C sort)"
 
   [ "$matrix_list" = "$expected" ] || {
@@ -1006,7 +1006,7 @@ assert_paths_filter_pin_matches() {
   replace_line "$WORKFLOW" "$line" "$mutated" "$doctored"
 
   local matrix_list expected
-  matrix_list="$(read_wf matrix "$doctored" shards | LC_ALL=C sort)"
+  matrix_list="$(read_workflow matrix "$doctored" shards | LC_ALL=C sort)"
   expected="$(printf '%s\nsandbox\nconcurrency\n' "$(bash "$BATS_SHARDS" shards)" | LC_ALL=C sort)"
   [ "$matrix_list" != "$expected" ] || { echo "adding a bogus shard id did not desync the matrix from the sharder" >&2; return 1; }
 }
@@ -1025,7 +1025,7 @@ assert_paths_filter_pin_matches() {
   replace_line "$WORKFLOW" "$line" "$mutated" "$doctored"
 
   local matrix_list expected
-  matrix_list="$(read_wf matrix "$doctored" shards | LC_ALL=C sort)"
+  matrix_list="$(read_workflow matrix "$doctored" shards | LC_ALL=C sort)"
   expected="$(printf '%s\nsandbox\nconcurrency\n' "$(bash "$BATS_SHARDS" shards)" | LC_ALL=C sort)"
   [ "$matrix_list" != "$expected" ] || { echo "dropping lib from the matrix did not desync it from the sharder" >&2; return 1; }
 }
@@ -1035,8 +1035,8 @@ assert_paths_filter_pin_matches() {
 
 @test "W7: exactly one dorny/paths-filter step in the whole workflow" {
   require_yaml_parser
-  [ "$(read_wf filtercount "$WORKFLOW")" -eq 1 ] || {
-    echo "expected exactly one dorny/paths-filter step, got $(read_wf filtercount "$WORKFLOW")" >&2
+  [ "$(read_workflow filtercount "$WORKFLOW")" -eq 1 ] || {
+    echo "expected exactly one dorny/paths-filter step, got $(read_workflow filtercount "$WORKFLOW")" >&2
     return 1
   }
 }
@@ -1048,7 +1048,7 @@ assert_paths_filter_pin_matches() {
   extra_job=$'  extra-filter-job:\n    runs-on: ubuntu-latest\n    timeout-minutes: 1\n    steps:\n      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3\n        id: filter2'
   insert_after "$WORKFLOW" "jobs:" "$extra_job" "$doctored"
 
-  [ "$(read_wf filtercount "$doctored")" -eq 2 ] || {
+  [ "$(read_workflow filtercount "$doctored")" -eq 2 ] || {
     echo "adding a second paths-filter step did not raise the count" >&2
     return 1
   }
@@ -1060,7 +1060,7 @@ assert_paths_filter_pin_matches() {
 @test "W8: no run: body in the workflow interpolates an expression" {
   require_yaml_parser
   local hits
-  hits="$(read_wf runinterp "$WORKFLOW")"
+  hits="$(read_workflow runinterp "$WORKFLOW")"
   [ -z "$hits" ] || {
     echo "run: body interpolates an expression:" >&2
     printf '%s\n' "$hits" >&2
@@ -1080,7 +1080,7 @@ assert_paths_filter_pin_matches() {
   assert_doctored "$line" "$mutated" "interpolating matrix.shard" || return 1
   replace_line "$WORKFLOW" "$line" "$mutated" "$doctored"
 
-  [ -n "$(read_wf runinterp "$doctored")" ] || {
+  [ -n "$(read_workflow runinterp "$doctored")" ] || {
     echo "interpolating matrix.shard into the run: body was not caught" >&2
     return 1
   }
@@ -1100,15 +1100,15 @@ assert_paths_filter_pin_matches() {
 # and a later refactor that neuters it would restore the vacuous pass with
 # this suite still green.
 sandbox_suites_present() {
-  local dir="$1" suites
-  suites=("$dir"/*.bats)
+  local directory="$1" suites
+  suites=("$directory"/*.bats)
   [ -e "${suites[0]}" ] && return 0
-  echo "no .bats suites under $dir: W9 would assert nothing" >&2
+  echo "no .bats suites under $directory: W9 would assert nothing" >&2
   return 1
 }
 
 @test "W9: no .gaia/tests/sandbox suite references zsh, python3, or require_yaml_parser" {
-  local hits rc
+  local hits exit_status
   local suites
   require_repo_path -d "$REPO_ROOT/.gaia/tests/sandbox" "sandbox suite dir" || return 1
   sandbox_suites_present "$REPO_ROOT/.gaia/tests/sandbox" || return 1
@@ -1117,10 +1117,10 @@ sandbox_suites_present() {
   # file, a bad pattern). A blanket `|| true` cannot tell those apart and
   # would report green on the error, which is the same assert-nothing pass
   # the precondition above exists to prevent, so only 1 is accepted.
-  rc=0
-  hits="$(grep -lE 'zsh|python3|require_yaml_parser' "${suites[@]}")" || rc=$?
-  [ "$rc" -le 1 ] || {
-    echo "W9: grep failed to scan the sandbox suites (exit $rc); nothing was asserted" >&2
+  exit_status=0
+  hits="$(grep -lE 'zsh|python3|require_yaml_parser' "${suites[@]}")" || exit_status=$?
+  [ "$exit_status" -le 1 ] || {
+    echo "W9: grep failed to scan the sandbox suites (exit $exit_status); nothing was asserted" >&2
     return 1
   }
   [ -z "$hits" ] || {
@@ -1131,22 +1131,22 @@ sandbox_suites_present() {
 }
 
 @test "W9 adversarial: a sandbox fixture naming zsh is caught" {
-  local dir="$BATS_TEST_TMPDIR/sandbox-fixture" at test_line
-  mkdir -p "$dir"
+  local directory="$BATS_TEST_TMPDIR/sandbox-fixture" at_sign test_line
+  mkdir -p "$directory"
   # Built from a variable rather than written literally: bats' preprocessor
   # rewrites any line matching ^[[:blank:]]*@test[[:blank:]]+...{ anywhere in
   # this suite's own source, including inside this heredoc, so a literal
   # `@test "..." {` line here would be rewritten by bats parsing THIS file.
-  at='@'
-  test_line="${at}test \"needs zsh\" {"
+  at_sign='@'
+  test_line="${at_sign}test \"needs zsh\" {"
   {
     printf '#!/usr/bin/env bats\n\n'
     printf '%s\n' "$test_line"
     printf '  command -v zsh\n'
     printf '}\n'
-  } > "$dir/fixture.bats"
+  } > "$directory/fixture.bats"
 
-  grep -qE 'zsh|python3|require_yaml_parser' "$dir"/*.bats || {
+  grep -qE 'zsh|python3|require_yaml_parser' "$directory"/*.bats || {
     echo "a fixture naming zsh was not caught" >&2
     return 1
   }
@@ -1236,41 +1236,41 @@ sandbox_suites_present() {
 # code. Accumulate into a variable and sort afterwards, in the function's own
 # shell, so the error actually reaches the caller.
 shard_package_needs() {
-  local sharder="$1" root="$2" id rel abs rc hits listing dirs dir helper found=''
+  local sharder="$1" root="$2" id relative_path absolute_path exit_status hits listing directories directory helper found=''
   for id in $(bash "$sharder" shards); do
     hits=''
-    dirs=''
+    directories=''
     # Captured, and its status checked, rather than consumed straight from a
     # process substitution: the sharder exits 2 on a shard that resolves zero
     # files, and read from a `< <(...)` that status is unobservable. The loop
     # would simply see no input and the shard would report "needs nothing",
     # which is the fail-open this whole helper is written to avoid.
-    rc=0
-    listing="$(bash "$sharder" files "$id")" || rc=$?
-    if [ "$rc" -ne 0 ]; then
-      echo "shard_package_needs: the sharder could not list $id (exit $rc)" >&2
+    exit_status=0
+    listing="$(bash "$sharder" files "$id")" || exit_status=$?
+    if [ "$exit_status" -ne 0 ]; then
+      echo "shard_package_needs: the sharder could not list $id (exit $exit_status)" >&2
       return 1
     fi
-    while IFS= read -r rel || [ -n "$rel" ]; do
-      [ -n "$rel" ] || continue
+    while IFS= read -r relative_path || [ -n "$relative_path" ]; do
+      [ -n "$relative_path" ] || continue
       # `files` prints repo-relative for a path under the sharder's own root
       # and absolute for one reached through a seam override, the same split
       # its own `run` re-absolutizes. Prefixing unconditionally would build
       # <root>/<absolute> and grep would miss every file under an override.
-      case "$rel" in
-        /*) abs="$rel" ;;
-        *) abs="$root/$rel" ;;
+      case "$relative_path" in
+        /*) absolute_path="$relative_path" ;;
+        *) absolute_path="$root/$relative_path" ;;
       esac
-      dirs="$dirs${abs%/*}
+      directories="$directories${absolute_path%/*}
 "
-      rc=0
-      grep -qE "$PKG_PATTERN" "$abs" || rc=$?
+      exit_status=0
+      grep -qE "$PACKAGE_PATTERN" "$absolute_path" || exit_status=$?
       # 0 is a match, 1 a clean miss, anything else a hard grep error. An
       # error must not read as "this shard needs nothing", so it propagates.
-      if [ "$rc" -eq 0 ]; then
+      if [ "$exit_status" -eq 0 ]; then
         hits=yes
-      elif [ "$rc" -ne 1 ]; then
-        echo "shard_package_needs: grep failed on $abs (exit $rc)" >&2
+      elif [ "$exit_status" -ne 1 ]; then
+        echo "shard_package_needs: grep failed on $absolute_path (exit $exit_status)" >&2
         return 1
       fi
     done <<EOF
@@ -1293,27 +1293,27 @@ EOF
     # missing pinned hook, a mode-000 file), while this sorts a short string
     # already in memory. The check is here for symmetry of shape, not because
     # a reachable failure is being guarded.
-    rc=0
-    dirs="$(printf '%s' "$dirs" | LC_ALL=C sort -u)" || rc=$?
-    if [ "$rc" -ne 0 ]; then
-      echo "shard_package_needs: could not sort $id's helper directories (exit $rc)" >&2
+    exit_status=0
+    directories="$(printf '%s' "$directories" | LC_ALL=C sort -u)" || exit_status=$?
+    if [ "$exit_status" -ne 0 ]; then
+      echo "shard_package_needs: could not sort $id's helper directories (exit $exit_status)" >&2
       return 1
     fi
-    while IFS= read -r dir || [ -n "$dir" ]; do
-      [ -n "$dir" ] || continue
-      for helper in "$dir/helpers" "$dir/lib"; do
+    while IFS= read -r directory || [ -n "$directory" ]; do
+      [ -n "$directory" ] || continue
+      for helper in "$directory/helpers" "$directory/lib"; do
         [ -d "$helper" ] || continue
-        rc=0
-        grep -rqE "$PKG_PATTERN" --include='*.sh' "$helper" || rc=$?
-        if [ "$rc" -eq 0 ]; then
+        exit_status=0
+        grep -rqE "$PACKAGE_PATTERN" --include='*.sh' "$helper" || exit_status=$?
+        if [ "$exit_status" -eq 0 ]; then
           hits=yes
-        elif [ "$rc" -ne 1 ]; then
-          echo "shard_package_needs: grep failed on $helper (exit $rc)" >&2
+        elif [ "$exit_status" -ne 1 ]; then
+          echo "shard_package_needs: grep failed on $helper (exit $exit_status)" >&2
           return 1
         fi
       done
     done <<EOF
-$dirs
+$directories
 EOF
     if [ -n "$hits" ]; then
       found="$found$id
@@ -1344,15 +1344,15 @@ EOF
 # refused to resolve a group would truncate the closure and still report
 # success.
 shard_package_legs() {
-  local sharder="$1" root="$2" needed id group rc legs=''
+  local sharder="$1" root="$2" needed id group exit_status legs=''
   needed="$(shard_package_needs "$sharder" "$root")" || return 1
   [ -n "$needed" ] || return 0
   while IFS= read -r id || [ -n "$id" ]; do
     [ -n "$id" ] || continue
-    rc=0
-    group="$(bash "$sharder" group "$id")" || rc=$?
-    if [ "$rc" -ne 0 ]; then
-      echo "shard_package_legs: the sharder could not resolve $id's group (exit $rc)" >&2
+    exit_status=0
+    group="$(bash "$sharder" group "$id")" || exit_status=$?
+    if [ "$exit_status" -ne 0 ]; then
+      echo "shard_package_legs: the sharder could not resolve $id's group (exit $exit_status)" >&2
       return 1
     fi
     legs="$legs$group
@@ -1365,12 +1365,12 @@ EOF
 
 @test "W10: the apt step's shard list equals the exchange groups that need zsh or a YAML parser" {
   local declared legs
-  # read_wf's reader imports yaml unconditionally, so without this gate a box
+  # read_workflow's reader imports yaml unconditionally, so without this gate a box
   # without PyYAML reports a workflow defect for a missing local dependency,
   # while every sibling check here skips. Fails rather than skips on CI, which
   # is the behavior this suite's own gate helper already defines.
   require_yaml_parser
-  declared="$(read_wf stepshards "$WORKFLOW" shards 'Install the YAML parser and zsh')" || {
+  declared="$(read_workflow stepshards "$WORKFLOW" shards 'Install the YAML parser and zsh')" || {
     echo "could not read the apt step's shard list" >&2
     return 1
   }
@@ -1402,7 +1402,7 @@ EOF
   assert_doctored "$line" "$mutated" "dropping the last shard id" || return 1
   replace_line "$WORKFLOW" "$line" "$mutated" "$doctored"
 
-  declared="$(read_wf stepshards "$doctored" shards 'Install the YAML parser and zsh')" || {
+  declared="$(read_workflow stepshards "$doctored" shards 'Install the YAML parser and zsh')" || {
     echo "the doctored workflow did not parse" >&2
     return 1
   }
@@ -1428,11 +1428,11 @@ EOF
 # Why local-janitor.bats is seeded, and into both trees, is stated at its own
 # write site below rather than restated here.
 seed_seam_tree() {
-  local root="$1" n i
+  local root="$1" shard_count i
   mkdir -p "$root/needs" "$root/clean"
-  n="$(bash "$BATS_SHARDS" shards | wc -l | tr -d ' ')"
+  shard_count="$(bash "$BATS_SHARDS" shards | wc -l | tr -d ' ')"
   i=0
-  while [ "$i" -lt "$n" ]; do
+  while [ "$i" -lt "$shard_count" ]; do
     printf '#!/usr/bin/env bats\n' >"$root/needs/plain-$i.bats"
     printf '#!/usr/bin/env bats\n' >"$root/clean/plain-$i.bats"
     i=$((i + 1))
@@ -1460,20 +1460,20 @@ seed_seam_tree() {
 # scripts arm could be reduced to a singleton with every test in this
 # repository still green.
 seam_tree_scan() {
-  local fn="$1" root="$2" group="${3:-hooks}" sharder="${4:-$BATS_SHARDS}"
-  local hooks_dir="$root/clean" scripts_dir="$root/clean"
+  local helper_function="$1" root="$2" group="${3:-hooks}" sharder="${4:-$BATS_SHARDS}"
+  local hooks_directory="$root/clean" scripts_directory="$root/clean"
   case "$group" in
-    hooks) hooks_dir="$root/needs" ;;
-    scripts) scripts_dir="$root/needs" ;;
+    hooks) hooks_directory="$root/needs" ;;
+    scripts) scripts_directory="$root/needs" ;;
     *)
       echo "seam_tree_scan: unknown group $group" >&2
       return 2
       ;;
   esac
-  HOOKS_DIR="$hooks_dir" SCRIPTS_TESTS_DIR="$scripts_dir" \
+  HOOKS_DIR="$hooks_directory" SCRIPTS_TESTS_DIR="$scripts_directory" \
     AUDIT_TESTS_DIR="$root/clean" LIB_DIR="$root/clean" \
     FORENSICS_DIR="$root/clean" STATUSLINE_DIR="$root/clean" \
-    "$fn" "$sharder" "$root"
+    "$helper_function" "$sharder" "$root"
 }
 
 # Runs shard_package_needs over a tree seeded by seed_seam_tree, with the hooks
@@ -1502,20 +1502,20 @@ seam_tree_legs() {
 # a commit. A prefix of this fixture's own would need a second .gitignore entry
 # to say the same thing.
 copy_sharder_without_group() {
-  local dest
-  dest="$(mktemp "$(dirname "$BATS_SHARDS")/.bats-shards-scratch.XXXXXX")"
+  local destination
+  destination="$(mktemp "$(dirname "$BATS_SHARDS")/.bats-shards-scratch.XXXXXX")"
   # Recorded in a FILE, not an array: this runs inside a command substitution,
   # where an array append would be made in the subshell and lost. teardown is
   # the ONLY reaper, on the passing and the failing path alike, and this record
   # is the whole mechanism it reaps by: a caller that creates a copy without
   # registering it here leaks one.
-  printf '%s\n' "$dest" >>"$BATS_TEST_TMPDIR/scratch-copies"
+  printf '%s\n' "$destination" >>"$BATS_TEST_TMPDIR/scratch-copies"
   # Renames the dispatch label rather than deleting the arm: deleting three
   # lines out of a case arm leaves a stray `;;` and a copy that fails to parse
   # at all, which is a different failure from the one under test. Renamed, the
   # command falls through to the script's own unknown-command arm.
-  sed 's/^    group)$/    group-disabled)/' "$BATS_SHARDS" >"$dest"
-  printf '%s\n' "$dest"
+  sed 's/^    group)$/    group-disabled)/' "$BATS_SHARDS" >"$destination"
+  printf '%s\n' "$destination"
 }
 
 # The defect W10's rounding exists for, reproduced end to end: one suite that
@@ -1617,7 +1617,7 @@ copy_sharder_without_group() {
 }
 
 @test "W10 adversarial: a group the sharder cannot resolve fails the closure rather than narrowing it" {
-  local root="$BATS_TEST_TMPDIR/bad-group" broken status_ok status_err
+  local root="$BATS_TEST_TMPDIR/bad-group" broken status_ok status_error
   seed_seam_tree "$root"
   printf '#!/usr/bin/env bats\ncommand -v zsh\n' >"$root/needs/uses-zsh.bats"
 
@@ -1636,13 +1636,13 @@ copy_sharder_without_group() {
   status_ok="$status"
 
   run seam_tree_legs "$root" "$broken"
-  status_err="$status"
+  status_error="$status"
 
   [ "$status_ok" -eq 0 ] || {
     echo "the readable fixture tree did not close cleanly (exit $status_ok)" >&2
     return 1
   }
-  [ "$status_err" -ne 0 ] || {
+  [ "$status_error" -ne 0 ] || {
     echo "a sharder that could not resolve a group reported a clean closure" >&2
     return 1
   }
@@ -1732,7 +1732,7 @@ copy_sharder_without_group() {
 # lists, and the check would green over the worst possible arrangement. This
 # pins that stepshards refuses the shape instead of reading it.
 @test "W10 adversarial: a negated apt gate is refused rather than read as the same list" {
-  local doctored="$BATS_TEST_TMPDIR/negated.yml" declared rc=0 line mutated
+  local doctored="$BATS_TEST_TMPDIR/negated.yml" declared exit_status=0 line mutated
   require_yaml_parser
 
   # Wrapped in ${{ }} because a bare leading `!` is a YAML tag indicator and
@@ -1744,8 +1744,8 @@ copy_sharder_without_group() {
   assert_doctored "$line" "$mutated" "negating the gate" || return 1
   replace_line "$WORKFLOW" "$line" "$mutated" "$doctored"
 
-  declared="$(read_wf stepshards "$doctored" shards 'Install the YAML parser and zsh' 2>/dev/null)" || rc=$?
-  [ "$rc" -ne 0 ] || {
+  declared="$(read_workflow stepshards "$doctored" shards 'Install the YAML parser and zsh' 2>/dev/null)" || exit_status=$?
+  [ "$exit_status" -ne 0 ] || {
     echo "a negated gate was read as a shard list rather than refused:" >&2
     printf '%s\n' "$declared" >&2
     return 1
@@ -1753,29 +1753,29 @@ copy_sharder_without_group() {
 }
 
 @test "W10 adversarial: a shard whose suite names zsh is detected wherever it lands" {
-  local root="$BATS_TEST_TMPDIR/tree" out reported
+  local root="$BATS_TEST_TMPDIR/tree" scan_output reported
   seed_seam_tree "$root"
   printf '#!/usr/bin/env bats\ncommand -v zsh\n' >"$root/needs/uses-zsh.bats"
 
-  out="$(seam_tree_needs "$root")" || return 1
+  scan_output="$(seam_tree_needs "$root")" || return 1
 
   # Asserted as "exactly one hooks leg other than the pinned one", not as a
   # named leg: which shard a file lands on is the weighted assignment's call,
   # and pinning the answer here would make this fixture a second, silent copy
   # of that assignment. What it is actually for is the claim in its own name --
   # the file is detected wherever it lands.
-  reported="$(printf '%s\n' "$out" | grep -c .)"
+  reported="$(printf '%s\n' "$scan_output" | grep -c .)"
   [ "$reported" -eq 1 ] || {
     echo "expected exactly one shard to be reported, got $reported:" >&2
-    printf '%s\n' "$out" >&2
+    printf '%s\n' "$scan_output" >&2
     return 1
   }
-  grep -qE '^hooks-[0-9]+$' <<<"$out" || {
+  grep -qE '^hooks-[0-9]+$' <<<"$scan_output" || {
     echo "the shard holding a zsh-naming suite was not a hooks leg:" >&2
-    printf '%s\n' "$out" >&2
+    printf '%s\n' "$scan_output" >&2
     return 1
   }
-  grep -qx 'hooks-1' <<<"$out" && {
+  grep -qx 'hooks-1' <<<"$scan_output" && {
     echo "hooks-1 holds only the plain pinned file, but was reported as needing a package" >&2
     return 1
   }
@@ -1783,7 +1783,7 @@ copy_sharder_without_group() {
 }
 
 @test "W10 adversarial: a helper sourced by a suite is detected, not just the suite" {
-  local root="$BATS_TEST_TMPDIR/helpers-tree" out reported
+  local root="$BATS_TEST_TMPDIR/helpers-tree" scan_output reported
   seed_seam_tree "$root"
   # No .bats file names either dependency anywhere in this tree. The only
   # mention is in a helper the suites source, which is the shape a scan of
@@ -1793,23 +1793,23 @@ copy_sharder_without_group() {
   printf '#!/usr/bin/env bash\ncommand -v zsh >/dev/null 2>&1 || return 0\n' \
     >"$root/needs/helpers/zsh-gate.sh"
 
-  out="$(seam_tree_needs "$root")" || return 1
+  scan_output="$(seam_tree_needs "$root")" || return 1
 
   # Every hooks leg draws from the directory the helper sits beside, so all of
   # them are reported: the helper is shared, and there is no way to tell from
   # the tree which suites source it. Over-inclusive is the direction this scan
   # is written to fail in.
-  reported="$(printf '%s\n' "$out" | grep -c .)"
+  reported="$(printf '%s\n' "$scan_output" | grep -c .)"
   [ "$reported" -ge 1 ] || {
     echo "a helper naming zsh was not detected at all" >&2
     return 1
   }
-  grep -qE '^hooks-[0-9]+$' <<<"$out" || {
+  grep -qE '^hooks-[0-9]+$' <<<"$scan_output" || {
     echo "the helper's own hooks legs were not reported:" >&2
-    printf '%s\n' "$out" >&2
+    printf '%s\n' "$scan_output" >&2
     return 1
   }
-  grep -qE '^(audit|lib|misc|scripts-[0-9]+)$' <<<"$out" && {
+  grep -qE '^(audit|lib|misc|scripts-[0-9]+)$' <<<"$scan_output" && {
     echo "a shard drawing only from the clean directory was reported" >&2
     return 1
   }
@@ -1843,19 +1843,19 @@ copy_sharder_without_group() {
 # both packages implicitly from the old `matrix.shard != 'sandbox'` gate and now
 # draws neither, leaving it the one leg whose package set nothing asserted.
 
-# concurrency_tree_needs_packages <dir> — 0 when some file under $1 reaches for
+# concurrency_tree_needs_packages <directory> — 0 when some file under $1 reaches for
 # zsh or a YAML parser by W10's own four patterns, 1 when none does. Same
 # argument-taking shape as the helpers above so the fixture drives this code
 # rather than a copy of it.
 concurrency_tree_needs_packages() {
-  local dir="$1" rc=0
-  grep -rqE "$PKG_PATTERN" \
-    --include='*.bats' --include='*.sh' "$dir" || rc=$?
-  [ "$rc" -le 1 ] || {
-    echo "concurrency_tree_needs_packages: grep failed on $dir (exit $rc)" >&2
+  local tree_directory="$1" exit_status=0
+  grep -rqE "$PACKAGE_PATTERN" \
+    --include='*.bats' --include='*.sh' "$tree_directory" || exit_status=$?
+  [ "$exit_status" -le 1 ] || {
+    echo "concurrency_tree_needs_packages: grep failed on $tree_directory (exit $exit_status)" >&2
     return 2
   }
-  return "$rc"
+  return "$exit_status"
 }
 
 @test "W10: the concurrency leg reaches for neither package the apt step dropped" {
@@ -1863,7 +1863,7 @@ concurrency_tree_needs_packages() {
   require_yaml_parser
   require_repo_path -d "$REPO_ROOT/.gaia/tests/concurrency" "concurrency tree" || return 1
 
-  declared="$(read_wf stepshards "$WORKFLOW" shards 'Install the YAML parser and zsh')" || return 1
+  declared="$(read_workflow stepshards "$WORKFLOW" shards 'Install the YAML parser and zsh')" || return 1
   grep -qx 'concurrency' <<<"$declared" && {
     echo "the apt step names concurrency, but W10 derives its list from the sharder, which never emits it" >&2
     return 1
@@ -1884,31 +1884,31 @@ concurrency_tree_needs_packages() {
   [ "$status" -eq 1 ] || {
     echo "a file under .gaia/tests/concurrency reaches for zsh or a YAML parser, but that leg's" >&2
     echo "steps install neither. A zsh-gated test would skip silently there." >&2
-    grep -rlE "$PKG_PATTERN" \
+    grep -rlE "$PACKAGE_PATTERN" \
       --include='*.bats' --include='*.sh' "$REPO_ROOT/.gaia/tests/concurrency" >&2
     return 1
   }
 }
 
 @test "W10 adversarial: a concurrency file reaching for zsh is caught" {
-  local dir="$BATS_TEST_TMPDIR/conc"
-  mkdir -p "$dir"
-  printf '#!/usr/bin/env bash\necho clean\n' >"$dir/clean.sh"
+  local directory="$BATS_TEST_TMPDIR/conc"
+  mkdir -p "$directory"
+  printf '#!/usr/bin/env bash\necho clean\n' >"$directory/clean.sh"
   # The healthy arm first, so a helper that always reported "needs packages"
   # could not pass this.
-  run concurrency_tree_needs_packages "$dir"
+  run concurrency_tree_needs_packages "$directory"
   [ "$status" -eq 1 ]
 
-  printf '#!/usr/bin/env bash\ncommand -v zsh >/dev/null 2>&1 || exit 0\n' >"$dir/uses-zsh.sh"
-  run concurrency_tree_needs_packages "$dir"
+  printf '#!/usr/bin/env bash\ncommand -v zsh >/dev/null 2>&1 || exit 0\n' >"$directory/uses-zsh.sh"
+  run concurrency_tree_needs_packages "$directory"
   [ "$status" -eq 0 ]
 
   # The third status, and the reason the caller has to tell it apart from 0:
   # an unreadable tree is neither "needs a package" nor "needs none".
   require_non_root
-  chmod 000 "$dir"
-  run concurrency_tree_needs_packages "$dir"
-  chmod 755 "$dir"
+  chmod 000 "$directory"
+  run concurrency_tree_needs_packages "$directory"
+  chmod 755 "$directory"
   [ "$status" -eq 2 ] || {
     echo "an unreadable tree reported $status rather than the hard-error status" >&2
     return 1
@@ -1921,7 +1921,7 @@ concurrency_tree_needs_packages() {
 # one. Nothing above catches that: the truncated list can still equal the
 # workflow's, which is exactly how it would green.
 @test "W10 adversarial: a grep hard error fails the scan rather than reporting it clean" {
-  local root="$BATS_TEST_TMPDIR/unreadable" status_ok status_err
+  local root="$BATS_TEST_TMPDIR/unreadable" status_ok status_error
   require_non_root
   seed_seam_tree "$root"
   printf '#!/usr/bin/env bats\ncommand -v zsh\n' >"$root/needs/uses-zsh.bats"
@@ -1937,14 +1937,14 @@ concurrency_tree_needs_packages() {
   printf '#!/usr/bin/env bats\n' >"$root/needs/locked.bats"
   chmod 000 "$root/needs/locked.bats"
   run seam_tree_needs "$root"
-  status_err="$status"
+  status_error="$status"
   chmod 644 "$root/needs/locked.bats"
 
   [ "$status_ok" -eq 0 ] || {
     echo "the readable fixture tree did not scan cleanly (exit $status_ok)" >&2
     return 1
   }
-  [ "$status_err" -ne 0 ] || {
+  [ "$status_error" -ne 0 ] || {
     echo "an unreadable suite reported a clean scan; the grep error did not propagate" >&2
     return 1
   }
@@ -1971,7 +1971,7 @@ concurrency_tree_needs_packages() {
 @test "W11: audit-ci-tests.yml's code filter lists release-exclude" {
   require_yaml_parser
   local list
-  list="$(read_wf codefilter "$WORKFLOW" shards)"
+  list="$(read_workflow codefilter "$WORKFLOW" shards)"
   printf '%s\n' "$list" | grep -qxF -- '.gaia/release-exclude' || {
     echo "audit-ci-tests.yml's code: filter is missing .gaia/release-exclude" >&2
     return 1
@@ -1981,7 +1981,7 @@ concurrency_tree_needs_packages() {
 @test "W11: cli-tests.yml's distribution-harness code filter lists the release manifest" {
   require_yaml_parser
   local list
-  list="$(read_wf codefilter "$CLI_WORKFLOW" distribution-harness)"
+  list="$(read_workflow codefilter "$CLI_WORKFLOW" distribution-harness)"
   printf '%s\n' "$list" | grep -qxF -- '.gaia/manifest.json' || {
     echo "cli-tests.yml's distribution-harness code: filter is missing .gaia/manifest.json" >&2
     return 1
@@ -1995,7 +1995,7 @@ concurrency_tree_needs_packages() {
   delete_line "$WORKFLOW" "$line" "$doctored"
 
   local list
-  list="$(read_wf codefilter "$doctored" shards)"
+  list="$(read_workflow codefilter "$doctored" shards)"
   printf '%s\n' "$list" | grep -qxF -- '.gaia/release-exclude' && {
     echo "deleting the .gaia/release-exclude filter line did not drop it from the parsed code: list" >&2
     return 1
@@ -2010,7 +2010,7 @@ concurrency_tree_needs_packages() {
   delete_line "$CLI_WORKFLOW" "$line" "$doctored"
 
   local list
-  list="$(read_wf codefilter "$doctored" distribution-harness)"
+  list="$(read_workflow codefilter "$doctored" distribution-harness)"
   printf '%s\n' "$list" | grep -qxF -- '.gaia/manifest.json' && {
     echo "deleting the manifest filter line did not drop it from the parsed code: list" >&2
     return 1
@@ -2018,12 +2018,12 @@ concurrency_tree_needs_packages() {
   true
 }
 
-# read_wf codefilter unwraps a change-type mapping entry (`- deleted: 'x'`)
+# read_workflow codefilter unwraps a change-type mapping entry (`- deleted: 'x'`)
 # to its bare value. Doctored onto .gaia/release-exclude, a bare entry, so the
 # doctored line always differs from the real one; W11's own adversarial case
 # above already derives that same line, so the pattern is proven.
 
-@test "read_wf codefilter unwraps a change-type mapping entry to its path" {
+@test "read_workflow codefilter unwraps a change-type mapping entry to its path" {
   require_yaml_parser
   local doctored="$BATS_TEST_TMPDIR/codefilter-unwrap.yml" line mutated list
 
@@ -2032,7 +2032,7 @@ concurrency_tree_needs_packages() {
   assert_doctored "$line" "$mutated" "wrapping the entry in a change-type mapping" || return 1
   replace_line "$WORKFLOW" "$line" "$mutated" "$doctored"
 
-  list="$(read_wf codefilter "$doctored" shards)"
+  list="$(read_workflow codefilter "$doctored" shards)"
   printf '%s\n' "$list" | grep -qxF -- '.gaia/release-exclude' || {
     echo "the unwrapped mapping entry did not print its bare path" >&2
     return 1
@@ -2044,7 +2044,7 @@ concurrency_tree_needs_packages() {
   true
 }
 
-@test "read_wf codefilter refuses a change-type mapping entry with more than one value" {
+@test "read_workflow codefilter refuses a change-type mapping entry with more than one value" {
   require_yaml_parser
   local doctored="$BATS_TEST_TMPDIR/codefilter-two-value.yml" line mutated
 
@@ -2053,7 +2053,7 @@ concurrency_tree_needs_packages() {
   assert_doctored "$line" "$mutated" "wrapping the entry in a two-value mapping" || return 1
   replace_line "$WORKFLOW" "$line" "$mutated" "$doctored"
 
-  run read_wf codefilter "$doctored" shards
+  run read_workflow codefilter "$doctored" shards
   [ "$status" -ne 0 ] || {
     echo "a two-value change-type mapping entry did not exit non-zero" >&2
     return 1

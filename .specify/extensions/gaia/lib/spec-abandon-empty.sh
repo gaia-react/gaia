@@ -37,10 +37,10 @@ if [ "$#" -lt 1 ]; then
 fi
 
 repo_root="${1%/}"
-cache_dir="${repo_root}/.gaia/local/cache"
-_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cache_directory="${repo_root}/.gaia/local/cache"
+_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
-. "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
+. "${_library_directory}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
 
 GUARD_AGE_SECONDS=86400
 
@@ -48,11 +48,11 @@ GUARD_AGE_SECONDS=86400
 # main's, because the state registry declares specs/ main-only. Best-effort
 # by contract: an unresolvable main is one diagnostic and exit 0, nothing
 # touched.
-if ! specs_dir="$(gaia_resolve_specs_dir "$repo_root" 2>/dev/null)" || [ -z "$specs_dir" ]; then
+if ! specs_directory="$(gaia_resolve_specs_dir "$repo_root" 2>/dev/null)" || [ -z "$specs_directory" ]; then
   echo "spec-abandon-empty: cannot resolve the main checkout for '$repo_root'; nothing swept" >&2
   exit 0
 fi
-ledger_path="${specs_dir}/ledger.json"
+ledger_path="${specs_directory}/ledger.json"
 
 # No ledger or no jq → nothing to do.
 [ -f "$ledger_path" ] || exit 0
@@ -62,20 +62,20 @@ command -v jq >/dev/null 2>&1 || exit 0
 # to older than the guard age. An unparseable/missing allocated_at is
 # excluded here rather than guessed at.
 aged_ids="$(jq -r --argjson guard "$GUARD_AGE_SECONDS" '
-  def toe: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
+  def to_epoch: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
   now as $now
   | .specs[]
   | select(.status == "draft")
   | select(
-      (.allocated_at // "") as $ts
-      | ($ts | try toe catch null) as $epoch
+      (.allocated_at // "") as $timestamp
+      | ($timestamp | try to_epoch catch null) as $epoch
       | $epoch != null and ($now - $epoch) > $guard
     )
   | .id
 ' "$ledger_path" 2>/dev/null || true)"
 [ -n "$aged_ids" ] || exit 0
 
-now_ts="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+now_timestamp="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 abandoned_list=""
 
 while IFS= read -r id; do
@@ -83,15 +83,15 @@ while IFS= read -r id; do
 
   # Emptiness guard: no SPEC.md, no draft cache, no gate-1 snapshot. Any one
   # present means authored content exists; leave the row alone.
-  [ -f "${specs_dir}/${id}/SPEC.md" ] && continue
-  [ -f "${cache_dir}/draft-${id}.md" ] && continue
-  [ -f "${cache_dir}/gate1-${id}.json" ] && continue
+  [ -f "${specs_directory}/${id}/SPEC.md" ] && continue
+  [ -f "${cache_directory}/draft-${id}.md" ] && continue
+  [ -f "${cache_directory}/gate1-${id}.json" ] && continue
 
-  patch="$(jq -nc --arg ts "$now_ts" '{status: "abandoned", abandoned_at: $ts}')"
-  if bash "${_lib_dir}/ledger-update.sh" "$repo_root" "$id" "$patch" >/dev/null 2>&1; then
+  patch="$(jq -nc --arg timestamp "$now_timestamp" '{status: "abandoned", abandoned_at: $timestamp}')"
+  if bash "${_library_directory}/ledger-update.sh" "$repo_root" "$id" "$patch" >/dev/null 2>&1; then
     # Third-party cleanup of a dormant-or-ghost lock this sweep does not own;
     # it only ever runs on a genuine ghost, so it never acts on a live lock.
-    rm -f "${cache_dir}/spec-session-${id}.lock" 2>/dev/null || true
+    rm -f "${cache_directory}/spec-session-${id}.lock" 2>/dev/null || true
     abandoned_list="${abandoned_list:+$abandoned_list, }${id}"
   fi
 done <<EOF

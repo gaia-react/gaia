@@ -30,9 +30,9 @@ has_literal() {
 # scratch_without <literal>: writes a copy of the agent with every line
 # carrying the literal removed and prints its path.
 scratch_without() {
-  local out="$BATS_TEST_TMPDIR/agent-without.md"
-  grep -vF -- "$1" "$AGENT" >"$out"
-  printf '%s\n' "$out"
+  local scratch_copy_path="$BATS_TEST_TMPDIR/agent-without.md"
+  grep -vF -- "$1" "$AGENT" >"$scratch_copy_path"
+  printf '%s\n' "$scratch_copy_path"
 }
 
 # assert_pinned <literal>: present in the real file, absent in the scratch
@@ -104,10 +104,10 @@ assert_pinned() {
 
 @test "agent carries the How your run ends paragraph verbatim" {
   local plan="$ROOT/.claude/skills/gaia/references/plan.md"
-  local para
-  para="$(grep -F -m1 'How your run ends:' "$plan" | sed 's/^[[:space:]>]*//')"
-  [ -n "$para" ]
-  has_literal "$AGENT" "$para"
+  local paragraph
+  paragraph="$(grep -F -m1 'How your run ends:' "$plan" | sed 's/^[[:space:]>]*//')"
+  [ -n "$paragraph" ]
+  has_literal "$AGENT" "$paragraph"
   assert_pinned 'How your run ends:'
 }
 
@@ -131,7 +131,7 @@ assert_pinned() {
   assert_pinned 'never write `vetoes.json`'
   # Each prohibition sits under the Never heading, not elsewhere.
   local never
-  never="$(awk '/^## Never$/ {f=1; next} /^## / {f=0} f' "$AGENT")"
+  never="$(awk '/^## Never$/ {inside_never_section=1; next} /^## / {inside_never_section=0} inside_never_section' "$AGENT")"
   [ -n "$never" ]
   local needle
   for needle in 'gh pr merge' 'post-audit-status.sh' 'CHANGELOG.md' 'vetoes.json'; do
@@ -140,27 +140,27 @@ assert_pinned() {
 }
 
 @test "roster: a change to the agent file routes to the shell member only" {
-  local sb="$BATS_TEST_TMPDIR/sb"
-  mkdir -p "$sb/.gaia" "$sb/.claude/agents"
-  git -C "$sb" init -q -b main
-  cp "$ROOT/.gaia/audit-ci.yml" "$sb/.gaia/audit-ci.yml"
-  printf 'x\n' >"$sb/README.md"
-  git -C "$sb" add -A
-  git -C "$sb" -c user.email=t@t -c user.name=t commit -qm base
-  git -C "$sb" checkout -q -b feat
-  printf 'y\n' >"$sb/.claude/agents/audit-loop-unit.md"
-  git -C "$sb" add -A
-  git -C "$sb" -c user.email=t@t -c user.name=t commit -qm change
+  local sandbox_repository="$BATS_TEST_TMPDIR/sb"
+  mkdir -p "$sandbox_repository/.gaia" "$sandbox_repository/.claude/agents"
+  git -C "$sandbox_repository" init -q -b main
+  cp "$ROOT/.gaia/audit-ci.yml" "$sandbox_repository/.gaia/audit-ci.yml"
+  printf 'x\n' >"$sandbox_repository/README.md"
+  git -C "$sandbox_repository" add -A
+  git -C "$sandbox_repository" -c user.email=t@t -c user.name=t commit -qm base
+  git -C "$sandbox_repository" checkout -q -b feat
+  printf 'y\n' >"$sandbox_repository/.claude/agents/audit-loop-unit.md"
+  git -C "$sandbox_repository" add -A
+  git -C "$sandbox_repository" -c user.email=t@t -c user.name=t commit -qm change
 
-  run bash "$ROOT/.gaia/scripts/resolve-audit-members.sh" --root "$sb" --base main
+  run bash "$ROOT/.gaia/scripts/resolve-audit-members.sh" --root "$sandbox_repository" --base main
   [ "$status" -eq 0 ]
   [ "$output" = "code-audit-maintainer-shell" ]
   grep -qF 'audit-loop-unit' <<<"$output" && return 1
 
   # Red twin: with the glob removed from the sandbox roster, nobody owns it.
-  grep -vF '".claude/agents/audit-loop-unit.md"' "$sb/.gaia/audit-ci.yml" >"$sb/roster.new"
-  mv "$sb/roster.new" "$sb/.gaia/audit-ci.yml"
-  run bash "$ROOT/.gaia/scripts/resolve-audit-members.sh" --root "$sb" --base main
+  grep -vF '".claude/agents/audit-loop-unit.md"' "$sandbox_repository/.gaia/audit-ci.yml" >"$sandbox_repository/roster.new"
+  mv "$sandbox_repository/roster.new" "$sandbox_repository/.gaia/audit-ci.yml"
+  run bash "$ROOT/.gaia/scripts/resolve-audit-members.sh" --root "$sandbox_repository" --base main
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }

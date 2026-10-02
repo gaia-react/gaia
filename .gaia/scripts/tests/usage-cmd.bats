@@ -88,7 +88,7 @@ seed_links() {
 
 @test "link: a held ledger lock exits 75 and writes nothing" {
   mkdir "$TD/specs.lock.d"
-  GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 GAIA_LEDGER_LOCK_TIMEOUT_SECS=1 GAIA_LEDGER_LOCK_POLL_SECS=0.1 \
+  GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 GAIA_LEDGER_LOCK_TIMEOUT_SECONDS=1 GAIA_LEDGER_LOCK_POLL_SECONDS=0.1 \
     run u link branch:fix/foo research:x
   [ "$status" -eq 75 ]
   grep -qF 'nothing was written' <<<"$output"

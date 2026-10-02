@@ -29,7 +29,7 @@ fi
 
 mode="$1"
 repo_root="$2"
-subject_arg="${3:-}"
+subject_argument="${3:-}"
 
 # Source the shared libs from this script's own directory so they resolve
 # identically from the real repo and from test copies of the lib dir (no
@@ -37,13 +37,13 @@ subject_arg="${3:-}"
 # lib is reached by the same own-directory hop rather than through repo_root:
 # repo_root is the value whose trustworthiness is in question here, so loading
 # a library by it would decide correctness with the input under test.
-_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
-. "${_lib_dir}/with-ledger-lock.sh"
+. "${_library_directory}/with-ledger-lock.sh"
 # shellcheck source=/dev/null
-. "${_lib_dir}/title-normalize.sh"
+. "${_library_directory}/title-normalize.sh"
 # shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
-. "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
+. "${_library_directory}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
 
 # repo_root names the tree this allocation runs in; the ledger it feeds is
 # main's, because the state registry declares plans/ main-only. Resolve rather
@@ -51,37 +51,37 @@ _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # and using it forks the ledger and points the mutex at a directory no peer
 # tree locks. Refuse when main is unresolvable -- the same stance this script
 # already takes on a lock it cannot acquire, and for the same reason.
-if ! plans_dir="$(gaia_resolve_plans_dir "$repo_root" 2>/dev/null)" || [ -z "$plans_dir" ]; then
+if ! plans_directory="$(gaia_resolve_plans_dir "$repo_root" 2>/dev/null)" || [ -z "$plans_directory" ]; then
   echo "plan-allocator: cannot resolve the main checkout for '$repo_root'; refuse to allocate (would risk duplicate PLAN ids across worktrees)" >&2
   exit 4
 fi
-ledger_path="${plans_dir}/ledger.json"
+ledger_path="${plans_directory}/ledger.json"
 
 # Emit one bare integer per known PLAN number, one per line, unsorted.
 # Sources: the ledger's plan ids, and on-disk PLAN-* basenames under
-# plans_dir and plans_dir/archived (live + archived).
+# plans_directory and plans_directory/archived (live + archived).
 known_plan_numbers() {
   if [ -f "$ledger_path" ]; then
     jq -r '.plans[].id // empty' "$ledger_path" 2>/dev/null \
       | sed -nE 's|^PLAN-0*([0-9]+)$|\1|p' || true
   fi
 
-  local d
-  for d in "$plans_dir"/PLAN-* "$plans_dir"/archived/PLAN-*; do
-    [ -e "$d" ] || continue
-    printf '%s\n' "${d##*/}" | sed -nE 's|^PLAN-0*([0-9]+)$|\1|p'
+  local plan_path
+  for plan_path in "$plans_directory"/PLAN-* "$plans_directory"/archived/PLAN-*; do
+    [ -e "$plan_path" ] || continue
+    printf '%s\n' "${plan_path##*/}" | sed -nE 's|^PLAN-0*([0-9]+)$|\1|p'
   done
 }
 
 # Highest known PLAN number, or 0 if none.
-highest_num() {
-  local max=0 n
-  while IFS= read -r n; do
-    [ -z "$n" ] && continue
-    n=$((10#$n))
-    [ "$n" -gt "$max" ] && max="$n"
+highest_number() {
+  local maximum_number=0 known_number
+  while IFS= read -r known_number; do
+    [ -z "$known_number" ] && continue
+    known_number=$((10#$known_number))
+    [ "$known_number" -gt "$maximum_number" ] && maximum_number="$known_number"
   done < <(known_plan_numbers | sort -un)
-  echo "$max"
+  echo "$maximum_number"
 }
 
 # Initialize the ledger file if missing. Empty ledger; rows appended elsewhere.
@@ -101,28 +101,28 @@ normalize_subject() {
 # it to exit 4.
 append_ledger_row() {
   local id="$1" subject="$2"
-  local now tmp
+  local now temporary_file
   now="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
   ensure_ledger
-  tmp="$(mktemp)"
+  temporary_file="$(mktemp)"
   if ! jq --arg id "$id" --arg now "$now" --arg subject "$subject" \
     '.plans += [{id: $id, allocated_at: $now, source: "allocated", subject: $subject, status: "ready"}]' \
-    "$ledger_path" > "$tmp"; then
-    rm -f "$tmp"
+    "$ledger_path" > "$temporary_file"; then
+    rm -f "$temporary_file"
     echo "plan-allocator: failed to update ledger at $ledger_path" >&2
     return 4   # return (not exit) so the mutex trap releases the lock dir
   fi
-  mv "$tmp" "$ledger_path"
+  mv "$temporary_file" "$ledger_path"
 }
 
 # The critical section run under the mutex: compute the next id, normalize
 # the subject, append the row, print the id.
 allocate_next() {
-  local subj_arg="${1:-}"
-  local n new_id subject
-  n=$(( $(highest_num) + 1 ))
-  new_id="$(printf 'PLAN-%03d' "$n")"
-  subject="$(normalize_subject "$subj_arg")"
+  local requested_subject="${1:-}"
+  local next_number new_id subject
+  next_number=$(( $(highest_number) + 1 ))
+  new_id="$(printf 'PLAN-%03d' "$next_number")"
+  subject="$(normalize_subject "$requested_subject")"
   [ -z "$subject" ] && subject="$new_id"
   append_ledger_row "$new_id" "$subject" || return $?
   printf '%s\n' "$new_id"
@@ -131,20 +131,20 @@ allocate_next() {
 case "$mode" in
   next)
     ensure_ledger
-    mkdir -p "$plans_dir"
+    mkdir -p "$plans_directory"
     # PLAN-scoped lock. with-ledger-lock.sh hard-names its lock specs.lock[.d]
     # regardless of dir, so it lands at .gaia/local/plans/specs.lock[.d]:
     # cosmetic only, gitignored, and does not match PLAN-*/*/RUNNING/the archiver.
     # A plan allocation is local-only, so it must NOT queue behind the shared
     # .gaia lock a spec allocation can hold ~25s across network ops.
-    rc=0
-    with_ledger_lock "$plans_dir" allocate_next "$subject_arg" || rc=$?
-    if [ "$rc" -ne 0 ]; then
-      if [ "$rc" -eq 75 ]; then
+    exit_status=0
+    with_ledger_lock "$plans_directory" allocate_next "$subject_argument" || exit_status=$?
+    if [ "$exit_status" -ne 0 ]; then
+      if [ "$exit_status" -eq 75 ]; then
         echo "plan-allocator: could not acquire ledger lock; refuse to allocate (would risk duplicate PLAN ids)" >&2
         exit 4
       fi
-      exit "$rc"
+      exit "$exit_status"
     fi
     ;;
   *)

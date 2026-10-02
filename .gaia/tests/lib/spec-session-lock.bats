@@ -46,8 +46,8 @@ assert_contains() {
 
 setup() {
   # Three `..` from .gaia/tests/lib/ up to the repo root, then into the lib dir.
-  LIB_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../../.specify/extensions/gaia/lib" && pwd)"
-  SCRIPT="$LIB_DIR/spec-session-lock.sh"
+  LIBRARY_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../../.specify/extensions/gaia/lib" && pwd)"
+  SCRIPT="$LIBRARY_DIRECTORY/spec-session-lock.sh"
   [ -f "$SCRIPT" ] || {
     echo "script under test not found: $SCRIPT" >&2
     return 1
@@ -59,17 +59,17 @@ setup() {
   # a plain directory reads as an unresolvable main root and acquire refuses.
   REPO="$BATS_TEST_TMPDIR"
   git init --quiet "$REPO"
-  # Space-separated extra pids the liveness-lock cases spawn (beyond GC/HOST),
+  # Space-separated extra pids the liveness-lock cases spawn (beyond GRANDCHILD_PID/HOST),
   # reaped by teardown below.
   EXTRA_PIDS=""
 }
 
 teardown() {
-  if [ -n "${GC:-}" ]; then kill "$GC" 2>/dev/null || true; fi
+  if [ -n "${GRANDCHILD_PID:-}" ]; then kill "$GRANDCHILD_PID" 2>/dev/null || true; fi
   if [ -n "${HOST:-}" ]; then kill "$HOST" 2>/dev/null || true; fi
-  local p
-  for p in ${EXTRA_PIDS:-}; do
-    kill "$p" 2>/dev/null || true
+  local extra_pid
+  for extra_pid in ${EXTRA_PIDS:-}; do
+    kill "$extra_pid" 2>/dev/null || true
   done
   return 0
 }
@@ -80,10 +80,10 @@ teardown() {
 # implementation). host_pid is written unquoted via --argjson so it lands as
 # a JSON number, matching the frozen lock-body shape.
 _write_lock() {
-  local repo_root="$1" spec_id="$2" hn="$3" pid="$4" lstart="$5" nonce="$6"
+  local repo_root="$1" spec_id="$2" lock_hostname="$3" host_pid="$4" host_lstart="$5" host_nonce="$6"
   mkdir -p "$repo_root/.gaia/local/cache"
-  jq -n --arg h "$hn" --argjson p "$pid" --arg l "$lstart" --arg n "$nonce" --arg id "$spec_id" \
-    '{spec_id: $id, hostname: $h, host_pid: $p, host_lstart: $l, host_nonce: $n, acquired_at: "2026-01-01T00:00:00Z"}' \
+  jq -n --arg hostname "$lock_hostname" --argjson host_pid "$host_pid" --arg host_lstart "$host_lstart" --arg host_nonce "$host_nonce" --arg id "$spec_id" \
+    '{spec_id: $id, hostname: $hostname, host_pid: $host_pid, host_lstart: $host_lstart, host_nonce: $host_nonce, acquired_at: "2026-01-01T00:00:00Z"}' \
     > "$repo_root/.gaia/local/cache/spec-session-${spec_id}.lock"
 }
 
@@ -115,31 +115,31 @@ _kill_and_reap() {
 # Spawn a real host subtree: host (a bash whose argv0 is rewritten to
 # `bats-fake-host` so its command line matches FAKE_PATTERN) -> child bash ->
 # grandchild sleeper. Records the grandchild pid so the walk starts two levels
-# below the host. Sets globals HOST and GC (read by teardown).
+# below the host. Sets globals HOST and GRANDCHILD_PID (read by teardown).
 _spawn_fake_host() {
-  export GCPF="$BATS_TEST_TMPDIR/gc.pid"
+  export GRANDCHILD_PID_FILE="$BATS_TEST_TMPDIR/gc.pid"
   export SPAWNER="$BATS_TEST_TMPDIR/spawner.sh"
-  rm -f "$GCPF"
-  # Single-quoted heredoc: $! and $GCPF are written literally and expand when
-  # the spawner runs, not now. GCPF reaches the grandchild's shell via the
+  rm -f "$GRANDCHILD_PID_FILE"
+  # Single-quoted heredoc: $! and $GRANDCHILD_PID_FILE are written literally and expand when
+  # the spawner runs, not now. GRANDCHILD_PID_FILE reaches the grandchild's shell via the
   # exported env.
   cat > "$SPAWNER" <<'SP'
 #!/usr/bin/env bash
 # Host process (argv0 rewritten to bats-fake-host by the caller's exec -a).
 # Spawn a child bash that spawns a grandchild sleeper, then wait so the whole
 # tree stays alive for the walk.
-bash -c 'sleep 300 & echo "$!" > "$GCPF"; wait' &
+bash -c 'sleep 300 & echo "$!" > "$GRANDCHILD_PID_FILE"; wait' &
 wait
 SP
   bash -c 'exec -a bats-fake-host bash "$SPAWNER"' &
   HOST=$!
   local waited=0
-  while [ ! -s "$GCPF" ] && [ "$waited" -lt 50 ]; do
+  while [ ! -s "$GRANDCHILD_PID_FILE" ] && [ "$waited" -lt 50 ]; do
     sleep 0.1
     waited=$((waited + 1))
   done
-  GC="$(cat "$GCPF" 2>/dev/null)"
-  [ -n "$GC" ] || {
+  GRANDCHILD_PID="$(cat "$GRANDCHILD_PID_FILE" 2>/dev/null)"
+  [ -n "$GRANDCHILD_PID" ] || {
     echo "fixture failed to spawn grandchild sleeper" >&2
     return 1
   }
@@ -176,7 +176,7 @@ SP
   _spawn_fake_host
 
   run env GAIA_SPEC_LOCK_HOST_PATTERN="$FAKE_PATTERN" \
-    GAIA_SPEC_LOCK_START_PID="$GC" bash "$SCRIPT" resolve-host
+    GAIA_SPEC_LOCK_START_PID="$GRANDCHILD_PID" bash "$SCRIPT" resolve-host
   [ "$status" -eq 0 ]
   # First printed line is the walked-up host pid, not the grandchild we started
   # from -- proving the walk climbed rather than recording its start.
@@ -186,7 +186,7 @@ SP
   # `ps -o lstart= -p` call (DP-003). Captured via command substitution so the
   # field's trailing padding survives intact.
   got_lstart="$(env GAIA_SPEC_LOCK_HOST_PATTERN="$FAKE_PATTERN" \
-    GAIA_SPEC_LOCK_START_PID="$GC" bash "$SCRIPT" resolve-host | sed -n '2p')"
+    GAIA_SPEC_LOCK_START_PID="$GRANDCHILD_PID" bash "$SCRIPT" resolve-host | sed -n '2p')"
   [ "$got_lstart" = "$(ps -o lstart= -p "$HOST")" ]
 }
 
@@ -200,7 +200,7 @@ SP
   # own pid would fail the kill -0 below. This is the RT-002 guarantee in seed
   # form.
   captured="$(env GAIA_SPEC_LOCK_HOST_PATTERN="$FAKE_PATTERN" \
-    GAIA_SPEC_LOCK_START_PID="$GC" bash "$SCRIPT" resolve-host | sed -n '1p')"
+    GAIA_SPEC_LOCK_START_PID="$GRANDCHILD_PID" bash "$SCRIPT" resolve-host | sed -n '1p')"
   [ "$captured" = "$HOST" ]
   kill -0 "$captured"
 }
@@ -291,22 +291,22 @@ SP
 @test "11: acquire records the fixture host pid and status reads live after the acquiring shell exits" {
   _spawn_fake_host
 
-  run env GAIA_SPEC_LOCK_HOST_PATTERN="$FAKE_PATTERN" GAIA_SPEC_LOCK_START_PID="$GC" \
+  run env GAIA_SPEC_LOCK_HOST_PATTERN="$FAKE_PATTERN" GAIA_SPEC_LOCK_START_PID="$GRANDCHILD_PID" \
     bash "$SCRIPT" acquire "$REPO" SPEC-954
   [ "$status" -eq 0 ]
   [ -f "$(_lock_file_path "$REPO" SPEC-954)" ]
   [ "$(jq -r .host_pid "$(_lock_file_path "$REPO" SPEC-954)")" = "$HOST" ]
 
-  run env GAIA_SPEC_LOCK_HOST_PATTERN="$FAKE_PATTERN" GAIA_SPEC_LOCK_START_PID="$GC" \
+  run env GAIA_SPEC_LOCK_HOST_PATTERN="$FAKE_PATTERN" GAIA_SPEC_LOCK_START_PID="$GRANDCHILD_PID" \
     bash "$SCRIPT" status "$REPO" SPEC-954
   [ "$output" = "live" ]
 
   # End-to-end leg (RT-002): acquire inside a subshell that then exits; the
   # recorded pid is the separate long-lived fixture host, not the acquiring
   # subshell, so status still reads live afterward.
-  ( env GAIA_SPEC_LOCK_HOST_PATTERN="$FAKE_PATTERN" GAIA_SPEC_LOCK_START_PID="$GC" \
+  ( env GAIA_SPEC_LOCK_HOST_PATTERN="$FAKE_PATTERN" GAIA_SPEC_LOCK_START_PID="$GRANDCHILD_PID" \
       bash "$SCRIPT" acquire "$REPO" SPEC-954 >/dev/null )
-  run env GAIA_SPEC_LOCK_HOST_PATTERN="$FAKE_PATTERN" GAIA_SPEC_LOCK_START_PID="$GC" \
+  run env GAIA_SPEC_LOCK_HOST_PATTERN="$FAKE_PATTERN" GAIA_SPEC_LOCK_START_PID="$GRANDCHILD_PID" \
     bash "$SCRIPT" status "$REPO" SPEC-954
   [ "$output" = "live" ]
 }
@@ -355,12 +355,12 @@ SP
   _kill_and_reap "$ALIVE_PID"
 
   _spawn_fake_host
-  run env GAIA_SPEC_LOCK_HOST_PATTERN="$FAKE_PATTERN" GAIA_SPEC_LOCK_START_PID="$GC" \
+  run env GAIA_SPEC_LOCK_HOST_PATTERN="$FAKE_PATTERN" GAIA_SPEC_LOCK_START_PID="$GRANDCHILD_PID" \
     bash "$SCRIPT" acquire "$REPO" SPEC-959
   [ "$status" -eq 0 ]
   [ "$(jq -r .host_pid "$(_lock_file_path "$REPO" SPEC-959)")" = "$HOST" ]
 
-  run env GAIA_SPEC_LOCK_HOST_PATTERN="$FAKE_PATTERN" GAIA_SPEC_LOCK_START_PID="$GC" \
+  run env GAIA_SPEC_LOCK_HOST_PATTERN="$FAKE_PATTERN" GAIA_SPEC_LOCK_START_PID="$GRANDCHILD_PID" \
     bash "$SCRIPT" status "$REPO" SPEC-959
   [ "$output" = "live" ]
 }
@@ -371,16 +371,16 @@ SP
   _write_lock "$REPO" "SPEC-960" "$(uname -n)" "$ALIVE_PID" "$ALIVE_LSTART" "foreign-nonce"
 
   _spawn_fake_host
-  run env GAIA_SPEC_LOCK_HOST_PATTERN="$FAKE_PATTERN" GAIA_SPEC_LOCK_START_PID="$GC" \
+  run env GAIA_SPEC_LOCK_HOST_PATTERN="$FAKE_PATTERN" GAIA_SPEC_LOCK_START_PID="$GRANDCHILD_PID" \
     bash "$SCRIPT" acquire "$REPO" SPEC-960
   [ "$status" -eq 3 ]
   [ "$(jq -r .host_pid "$(_lock_file_path "$REPO" SPEC-960)")" = "$ALIVE_PID" ]
 
   # A live lock that IS ours (same host fixture identity) re-acquires idempotently.
-  run env GAIA_SPEC_LOCK_HOST_PATTERN="$FAKE_PATTERN" GAIA_SPEC_LOCK_START_PID="$GC" \
+  run env GAIA_SPEC_LOCK_HOST_PATTERN="$FAKE_PATTERN" GAIA_SPEC_LOCK_START_PID="$GRANDCHILD_PID" \
     bash "$SCRIPT" acquire "$REPO" SPEC-961
   [ "$status" -eq 0 ]
-  run env GAIA_SPEC_LOCK_HOST_PATTERN="$FAKE_PATTERN" GAIA_SPEC_LOCK_START_PID="$GC" \
+  run env GAIA_SPEC_LOCK_HOST_PATTERN="$FAKE_PATTERN" GAIA_SPEC_LOCK_START_PID="$GRANDCHILD_PID" \
     bash "$SCRIPT" acquire "$REPO" SPEC-961
   [ "$status" -eq 0 ]
 }
@@ -392,11 +392,11 @@ SP
 
   _spawn_fake_host
   # Plain acquire (contrast case): exits 3, does not overwrite.
-  run env GAIA_SPEC_LOCK_HOST_PATTERN="$FAKE_PATTERN" GAIA_SPEC_LOCK_START_PID="$GC" \
+  run env GAIA_SPEC_LOCK_HOST_PATTERN="$FAKE_PATTERN" GAIA_SPEC_LOCK_START_PID="$GRANDCHILD_PID" \
     bash "$SCRIPT" acquire "$REPO" SPEC-962
   [ "$status" -eq 3 ]
 
-  run env GAIA_SPEC_LOCK_HOST_PATTERN="$FAKE_PATTERN" GAIA_SPEC_LOCK_START_PID="$GC" \
+  run env GAIA_SPEC_LOCK_HOST_PATTERN="$FAKE_PATTERN" GAIA_SPEC_LOCK_START_PID="$GRANDCHILD_PID" \
     bash "$SCRIPT" acquire --override "$REPO" SPEC-962
   [ "$status" -eq 0 ]
   [ "$(jq -r .host_pid "$(_lock_file_path "$REPO" SPEC-962)")" = "$HOST" ]
@@ -407,21 +407,21 @@ SP
   _spawn_fake_host
 
   run env -u CLAUDE_CODE_SESSION_ID GAIA_SPEC_LOCK_HOST_PATTERN="$FAKE_PATTERN" \
-    GAIA_SPEC_LOCK_START_PID="$GC" bash "$SCRIPT" acquire "$REPO" SPEC-963
+    GAIA_SPEC_LOCK_START_PID="$GRANDCHILD_PID" bash "$SCRIPT" acquire "$REPO" SPEC-963
   [ "$status" -eq 0 ]
 
   # A second call generates a brand-new per-call nonce (no stable session id),
   # yet must still read as OUR OWN live lock via the host_pid + host_lstart
   # fallback (DP-005), not as a foreign lock.
   run env -u CLAUDE_CODE_SESSION_ID GAIA_SPEC_LOCK_HOST_PATTERN="$FAKE_PATTERN" \
-    GAIA_SPEC_LOCK_START_PID="$GC" bash "$SCRIPT" acquire "$REPO" SPEC-963
+    GAIA_SPEC_LOCK_START_PID="$GRANDCHILD_PID" bash "$SCRIPT" acquire "$REPO" SPEC-963
   [ "$status" -eq 0 ]
 }
 
 # --- 19: release removes the lock (UAT-006 holder-path unit) ---
 @test "19: release deletes the lock file and a subsequent status reads dormant" {
   _spawn_fake_host
-  run env GAIA_SPEC_LOCK_HOST_PATTERN="$FAKE_PATTERN" GAIA_SPEC_LOCK_START_PID="$GC" \
+  run env GAIA_SPEC_LOCK_HOST_PATTERN="$FAKE_PATTERN" GAIA_SPEC_LOCK_START_PID="$GRANDCHILD_PID" \
     bash "$SCRIPT" acquire "$REPO" SPEC-964
   [ "$status" -eq 0 ]
   [ -f "$(_lock_file_path "$REPO" SPEC-964)" ]

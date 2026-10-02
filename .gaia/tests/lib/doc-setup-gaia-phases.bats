@@ -321,9 +321,9 @@ registration_fence() {
 # that logs every call to ${BATS_TEST_TMPDIR}/gh.log and answers the GET with
 # the given contexts array.
 run_fence() {
-  local fence="$1" contexts="$2" stub_dir="${BATS_TEST_TMPDIR}/stub-bin"
-  mkdir -p "$stub_dir"
-  cat >"${stub_dir}/gh" <<'STUB'
+  local fence="$1" contexts="$2" stub_directory="${BATS_TEST_TMPDIR}/stub-bin"
+  mkdir -p "$stub_directory"
+  cat >"${stub_directory}/gh" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$GH_LOG"
 case " $* " in
@@ -331,11 +331,11 @@ case " $* " in
 esac
 printf '%s\n' "$GH_CONTEXTS_FIXTURE"
 STUB
-  chmod +x "${stub_dir}/gh"
+  chmod +x "${stub_directory}/gh"
   : >"${BATS_TEST_TMPDIR}/gh.log"
   : >"${BATS_TEST_TMPDIR}/gh.body"
   GH_LOG="${BATS_TEST_TMPDIR}/gh.log" GH_BODY="${BATS_TEST_TMPDIR}/gh.body" GH_CONTEXTS_FIXTURE="$contexts" \
-    PATH="${stub_dir}:${PATH}" bash "$fence"
+    PATH="${stub_directory}:${PATH}" bash "$fence"
 }
 
 # put_line: the one logged PUT call, empty when none was sent. put_body is the
@@ -394,12 +394,12 @@ extract_registration_fence() {
 
 @test "registration: a failed GET sends no PUT" {
   extract_registration_fence
-  local stub_dir="${BATS_TEST_TMPDIR}/failing-bin"
-  mkdir -p "$stub_dir"
-  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >>"$GH_LOG"\nexit 1\n' >"${stub_dir}/gh"
-  chmod +x "${stub_dir}/gh"
+  local stub_directory="${BATS_TEST_TMPDIR}/failing-bin"
+  mkdir -p "$stub_directory"
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >>"$GH_LOG"\nexit 1\n' >"${stub_directory}/gh"
+  chmod +x "${stub_directory}/gh"
   : >"${BATS_TEST_TMPDIR}/gh.log"
-  GH_LOG="${BATS_TEST_TMPDIR}/gh.log" PATH="${stub_dir}:${PATH}" \
+  GH_LOG="${BATS_TEST_TMPDIR}/gh.log" PATH="${stub_directory}:${PATH}" \
     bash "${BATS_TEST_TMPDIR}/fence.sh" 2>/dev/null
   [ "$(wc -l <"${BATS_TEST_TMPDIR}/gh.log" | tr -d ' ')" -eq 1 ]
   [ -z "$(put_line)" ]
@@ -452,9 +452,9 @@ extract_protection_fence() {
 # stub that logs every call and answers the protection GET with the given exit
 # status (0: a rule exists, 1: none does).
 run_protection_fence() {
-  local stub_dir="${BATS_TEST_TMPDIR}/protection-bin"
-  mkdir -p "$stub_dir"
-  cat >"${stub_dir}/gh" <<'STUB'
+  local stub_directory="${BATS_TEST_TMPDIR}/protection-bin"
+  mkdir -p "$stub_directory"
+  cat >"${stub_directory}/gh" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$GH_LOG"
 case " $* " in
@@ -462,11 +462,11 @@ case " $* " in
 esac
 exit "$GH_PROTECTION_GET_STATUS"
 STUB
-  chmod +x "${stub_dir}/gh"
+  chmod +x "${stub_directory}/gh"
   : >"${BATS_TEST_TMPDIR}/gh.log"
   : >"${BATS_TEST_TMPDIR}/gh.body"
   GH_LOG="${BATS_TEST_TMPDIR}/gh.log" GH_BODY="${BATS_TEST_TMPDIR}/gh.body" GH_PROTECTION_GET_STATUS="$2" \
-    PATH="${stub_dir}:${PATH}" bash "$1" >/dev/null
+    PATH="${stub_directory}:${PATH}" bash "$1" >/dev/null
 }
 
 @test "protection fixture: an existing rule is kept and no protection PUT is sent" {

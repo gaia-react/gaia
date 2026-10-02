@@ -19,16 +19,16 @@
 assert_absent_across() {
   local pattern="$1"
   shift
-  local f
-  for f in "$@"; do
+  local audited_file
+  for audited_file in "$@"; do
     # An absence assertion has to prove it opened the file. grep exits 2 on a
     # missing or renamed path, so the `&&` arm never fires and the helper
     # returns 0, reporting a stale phrase absent from a file it never read.
     # Unconditional rather than leaning on a sibling presence test: several of
     # the paths this suite names carry no presence assertion at all.
-    [ -f "$f" ] || { echo "absence assertion target ${f} does not exist" >&2; return 1; }
-    grep -Eiq -- "$pattern" "$f" && {
-      echo "stale phrase /${pattern}/ survives in ${f}" >&2
+    [ -f "$audited_file" ] || { echo "absence assertion target ${audited_file} does not exist" >&2; return 1; }
+    grep -Eiq -- "$pattern" "$audited_file" && {
+      echo "stale phrase /${pattern}/ survives in ${audited_file}" >&2
       return 1
     }
   done
@@ -42,12 +42,12 @@ assert_absent_across() {
 assert_absent_fixed_across() {
   local needle="$1"
   shift
-  local f
-  for f in "$@"; do
+  local audited_file
+  for audited_file in "$@"; do
     # Same fail-open as the sibling helper above, same reason.
-    [ -f "$f" ] || { echo "absence assertion target ${f} does not exist" >&2; return 1; }
-    grep -Fiq -- "$needle" "$f" && {
-      echo "stale phrase '${needle}' survives in ${f}" >&2
+    [ -f "$audited_file" ] || { echo "absence assertion target ${audited_file} does not exist" >&2; return 1; }
+    grep -Fiq -- "$needle" "$audited_file" && {
+      echo "stale phrase '${needle}' survives in ${audited_file}" >&2
       return 1
     }
   done
@@ -159,21 +159,21 @@ setup() {
 # --- AC#4: every agent file's Findings sidecar section names the stamp -----
 
 @test "UAT-010: each agent file's Findings sidecar section names holistic/unclassified as the stamped key" {
-  local f section
-  for f in "${DELEGATE_FILES[@]}"; do
-    grep -Fq ".claude/hooks/lib/audit-member-protocol.md" "$f" || {
-      echo "$f carries no Findings sidecar pointer to the protocol file" >&2
+  local audited_file section
+  for audited_file in "${DELEGATE_FILES[@]}"; do
+    grep -Fq ".claude/hooks/lib/audit-member-protocol.md" "$audited_file" || {
+      echo "$audited_file carries no Findings sidecar pointer to the protocol file" >&2
       return 1
     }
   done
-  for f in "${SIDECAR_FILES[@]}"; do
-    section="$(extract_section "$f")"
+  for audited_file in "${SIDECAR_FILES[@]}"; do
+    section="$(extract_section "$audited_file")"
     [ -n "$section" ] || {
-      echo "no '## Findings sidecar' section found in $f" >&2
+      echo "no '## Findings sidecar' section found in $audited_file" >&2
       return 1
     }
     printf '%s' "$section" | grep -Fq "holistic/unclassified" || {
-      echo "Findings sidecar section in $f does not mention holistic/unclassified" >&2
+      echo "Findings sidecar section in $audited_file does not mention holistic/unclassified" >&2
       return 1
     }
   done

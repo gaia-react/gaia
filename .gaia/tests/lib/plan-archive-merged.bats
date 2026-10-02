@@ -18,11 +18,11 @@
 # Assertion style: .claude/rules/bats-assertions.md.
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
-  SRC_LIB="$REPO_ROOT/.specify/extensions/gaia/lib"
-  ARCHIVE_SRC="$SRC_LIB/plan-archive-merged.sh"
-  [ -x "$ARCHIVE_SRC" ] || skip "plan-archive-merged.sh not executable"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
+  SOURCE_LIBRARY_DIRECTORY="$REPO_ROOT/.specify/extensions/gaia/lib"
+  ARCHIVE_SOURCE="$SOURCE_LIBRARY_DIRECTORY/plan-archive-merged.sh"
+  [ -x "$ARCHIVE_SOURCE" ] || skip "plan-archive-merged.sh not executable"
 
   SANDBOX_RAW="$(mktemp -d "${BATS_TEST_TMPDIR}/sandbox.XXXXXX")"
   SANDBOX="$(cd "$SANDBOX_RAW" && pwd -P)"
@@ -32,7 +32,7 @@ setup() {
     "$SANDBOX/.gaia/local/plans" "$SANDBOX/.gaia/local/telemetry" \
     "$SANDBOX/.gaia/local/cache/wiki-promote"
 
-  cp "$ARCHIVE_SRC" "$SANDBOX/.specify/extensions/gaia/lib/plan-archive-merged.sh"
+  cp "$ARCHIVE_SOURCE" "$SANDBOX/.specify/extensions/gaia/lib/plan-archive-merged.sh"
   chmod +x "$SANDBOX/.specify/extensions/gaia/lib/plan-archive-merged.sh"
   # Representation gate deps, copied so the gate resolves against this
   # sandbox's own cost ledger instead of the real repo's.
@@ -79,11 +79,11 @@ refute_contains() {
 # happy-path fixture.
 _seed_merged_plan() {
   local id="$1"
-  local tmp; tmp="$(mktemp)"
+  local temporary_file; temporary_file="$(mktemp)"
   jq --arg id "$id" \
     '.plans += [{id: $id, allocated_at: "2026-01-01T00:00:00Z", source: "allocated", subject: $id, status: "merged", merged_at: "2026-01-02T00:00:00Z"}]' \
-    "$LEDGER" > "$tmp"
-  mv "$tmp" "$LEDGER"
+    "$LEDGER" > "$temporary_file"
+  mv "$temporary_file" "$LEDGER"
   mkdir -p "$PLANS/$id"
   cat > "$PLANS/$id/SUMMARY.md" <<EOF
 ---
@@ -100,11 +100,11 @@ EOF
 # archive-sweep skip-no-folder case).
 _seed_merged_row_only() {
   local id="$1"
-  local tmp; tmp="$(mktemp)"
+  local temporary_file; temporary_file="$(mktemp)"
   jq --arg id "$id" \
     '.plans += [{id: $id, allocated_at: "2026-01-01T00:00:00Z", source: "allocated", subject: $id, status: "merged", merged_at: "2026-01-02T00:00:00Z"}]' \
-    "$LEDGER" > "$tmp"
-  mv "$tmp" "$LEDGER"
+    "$LEDGER" > "$temporary_file"
+  mv "$temporary_file" "$LEDGER"
 }
 
 # _seed_folder_only <plan_id>: a folder with no ledger row (the sweep is
@@ -119,39 +119,39 @@ _seed_folder_only() {
 # ledger row's merged_at, for age-window and fail-closed tests.
 _set_merged_at() {
   local id="$1" iso="$2"
-  local tmp; tmp="$(mktemp)"
-  jq --arg id "$id" --arg ts "$iso" \
-    '.plans |= map(if .id == $id then . + {merged_at: $ts} else . end)' \
-    "$LEDGER" > "$tmp"
-  mv "$tmp" "$LEDGER"
+  local temporary_file; temporary_file="$(mktemp)"
+  jq --arg id "$id" --arg timestamp "$iso" \
+    '.plans |= map(if .id == $id then . + {merged_at: $timestamp} else . end)' \
+    "$LEDGER" > "$temporary_file"
+  mv "$temporary_file" "$LEDGER"
 }
 
 _clear_merged_at() {
   local id="$1"
-  local tmp; tmp="$(mktemp)"
+  local temporary_file; temporary_file="$(mktemp)"
   jq --arg id "$id" \
     '.plans |= map(if .id == $id then del(.merged_at) else . end)' \
-    "$LEDGER" > "$tmp"
-  mv "$tmp" "$LEDGER"
+    "$LEDGER" > "$temporary_file"
+  mv "$temporary_file" "$LEDGER"
 }
 
-# _days_ago <n>: portable ISO8601 timestamp n days in the past, computed with
+# _days_ago <days>: portable ISO8601 timestamp that many days in the past, computed with
 # jq (never `date -d`/`date -j`), matching spec-archive-merged.bats.
 _days_ago() {
-  jq -rn --argjson n "$1" '(now - ($n * 86400)) | strftime("%Y-%m-%dT%H:%M:%SZ")'
+  jq -rn --argjson days "$1" '(now - ($days * 86400)) | strftime("%Y-%m-%dT%H:%M:%SZ")'
 }
 
-# _seed_cost_row <plan_id> <session> <fresh> <cwrite> <cread> <output>:
+# _seed_cost_row <plan_id> <session> <fresh> <cache_write> <cache_read> <output>:
 # appends a cost.jsonl row keyed by plan_id, matching token-tally's schema.
 _seed_cost_row() {
-  local id="$1" session="$2" fresh="$3" cwrite="$4" cread="$5" output="$6"
-  local total=$((fresh + cwrite + cread + output))
-  jq -cn --arg id "$id" --arg sid "$session" \
-    --argjson fresh "$fresh" --argjson cwrite "$cwrite" \
-    --argjson cread "$cread" --argjson output "$output" --argjson total "$total" \
+  local id="$1" session="$2" fresh="$3" cache_write="$4" cache_read="$5" output="$6"
+  local total=$((fresh + cache_write + cache_read + output))
+  jq -cn --arg id "$id" --arg session_id "$session" \
+    --argjson fresh "$fresh" --argjson cache_write "$cache_write" \
+    --argjson cache_read "$cache_read" --argjson output "$output" --argjson total "$total" \
     '{schema_version: 1, kind: "execute", spec_id: null, plan_id: $id, plan_slug: null,
-      session_id: $sid,
-      buckets: {fresh_input: $fresh, cache_write: $cwrite, cache_read: $cread, output: $output},
+      session_id: $session_id,
+      buckets: {fresh_input: $fresh, cache_write: $cache_write, cache_read: $cache_read, output: $output},
       total: $total, seq: 0, final: true, source: "test"}' \
     >> "$COST_LEDGER"
 }

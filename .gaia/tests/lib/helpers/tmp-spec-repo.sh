@@ -87,13 +87,13 @@ EMPTY_TREE="4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
 # Real repo containing this helper: the helper lives at
 # .gaia/tests/lib/helpers/ inside the real repo working tree.
-_helper_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-real_repo="$(git -C "$_helper_dir" rev-parse --show-toplevel)"
-real_lib="${real_repo}/.specify/extensions/gaia/lib"
+_helper_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+real_repo="$(git -C "$_helper_directory" rev-parse --show-toplevel)"
+real_library_directory="${real_repo}/.specify/extensions/gaia/lib"
 real_scripts="${real_repo}/.gaia/scripts"
 
-dir="$(mktemp -d -t gaia-spec-lib-test-XXXXXX)"
-cd "$dir"
+repository_directory="$(mktemp -d -t gaia-spec-lib-test-XXXXXX)"
+cd "$repository_directory"
 
 git init --quiet --initial-branch=main
 git config user.email "test@example.com"
@@ -107,11 +107,11 @@ printf '{\n  "version": 1,\n  "specs": []\n}\n' > .gaia/local/specs/ledger.json
 
 # Copy (not symlink) so the scripts' ${BASH_SOURCE[0]}-relative source of
 # with-ledger-lock.sh resolves to this tmp lib dir.
-for s in spec-allocator.sh plan-allocator.sh ledger-update.sh with-ledger-lock.sh \
+for library_name in spec-allocator.sh plan-allocator.sh ledger-update.sh with-ledger-lock.sh \
          spec-renumber.sh spec-reconcile.sh \
          spec-archive-merged.sh spec-archive-abandoned.sh title-normalize.sh; do
-  cp "${real_lib}/${s}" ".specify/extensions/gaia/lib/${s}"
-  chmod +x ".specify/extensions/gaia/lib/${s}"
+  cp "${real_library_directory}/${library_name}" ".specify/extensions/gaia/lib/${library_name}"
+  chmod +x ".specify/extensions/gaia/lib/${library_name}"
 done
 
 # Copy the cost-representation gate + ledger-path resolver so
@@ -120,9 +120,9 @@ done
 # ledger-path-lib.sh sources its own sibling main-root-lib.sh by on-disk
 # location, so that sibling is copied alongside it too. branch-name-lib.sh is
 # what the SPEC allocator, renumber, and reconcile read branch names through.
-for s in cost-represented.sh ledger-path-lib.sh main-root-lib.sh branch-name-lib.sh; do
-  cp "${real_scripts}/${s}" ".gaia/scripts/${s}"
-  chmod +x ".gaia/scripts/${s}"
+for script_name in cost-represented.sh ledger-path-lib.sh main-root-lib.sh branch-name-lib.sh; do
+  cp "${real_scripts}/${script_name}" ".gaia/scripts/${script_name}"
+  chmod +x ".gaia/scripts/${script_name}"
 done
 
 # Empty cost ledger so the gate resolves; individual tests append rows to
@@ -132,10 +132,10 @@ done
 # Remote (--with-origin / --seed-remote-tag / --origin-reject-spec-tags) ops
 # are stashed here, in argument order, and executed AFTER the initial commit
 # below (they need a pushed main branch to clone/push against). Each entry is
-# "type<US>arg1<US>arg2" using the US ($'\x1f') delimiter so a flat array can
+# "type<UNIT_SEPARATOR>arg1<UNIT_SEPARATOR>arg2" using the UNIT_SEPARATOR ($'\x1f') delimiter so a flat array can
 # carry variable-arity ops without nested-array support.
 remote_ops=()
-US=$'\x1f'
+UNIT_SEPARATOR=$'\x1f'
 
 # Apply seed flags before the initial commit so the seeded state is committed
 # (require_git only needs a git-dir; committing keeps the tree clean).
@@ -143,19 +143,19 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --seed-draft)
       id="$2"; shift 2
-      tmp="$(mktemp)"
+      temporary_file="$(mktemp)"
       jq --arg id "$id" \
         '.specs += [{id: $id, allocated_at: "2026-01-01T00:00:00Z", source: "allocated", status: "draft"}]' \
-        .gaia/local/specs/ledger.json > "$tmp"
-      mv "$tmp" .gaia/local/specs/ledger.json
+        .gaia/local/specs/ledger.json > "$temporary_file"
+      mv "$temporary_file" .gaia/local/specs/ledger.json
       ;;
     --seed-inprogress)
       id="$2"; shift 2
-      tmp="$(mktemp)"
+      temporary_file="$(mktemp)"
       jq --arg id "$id" \
         '.specs += [{id: $id, allocated_at: "2026-01-01T00:00:00Z", source: "allocated", status: "in-progress"}]' \
-        .gaia/local/specs/ledger.json > "$tmp"
-      mv "$tmp" .gaia/local/specs/ledger.json
+        .gaia/local/specs/ledger.json > "$temporary_file"
+      mv "$temporary_file" .gaia/local/specs/ledger.json
       ;;
     --seed-file)
       id="$2"; shift 2
@@ -182,19 +182,19 @@ EOF
       ;;
     --seed-merged)
       id="$2"; shift 2
-      tmp="$(mktemp)"
+      temporary_file="$(mktemp)"
       jq --arg id "$id" \
         '.specs += [{id: $id, allocated_at: "2026-01-01T00:00:00Z", source: "allocated", status: "merged", merged_at: "2026-01-02T00:00:00Z"}]' \
-        .gaia/local/specs/ledger.json > "$tmp"
-      mv "$tmp" .gaia/local/specs/ledger.json
+        .gaia/local/specs/ledger.json > "$temporary_file"
+      mv "$temporary_file" .gaia/local/specs/ledger.json
       ;;
     --seed-merged-folder)
       id="$2"; shift 2
-      tmp="$(mktemp)"
+      temporary_file="$(mktemp)"
       jq --arg id "$id" \
         '.specs += [{id: $id, allocated_at: "2026-01-01T00:00:00Z", source: "allocated", status: "merged", merged_at: "2026-01-02T00:00:00Z"}]' \
-        .gaia/local/specs/ledger.json > "$tmp"
-      mv "$tmp" .gaia/local/specs/ledger.json
+        .gaia/local/specs/ledger.json > "$temporary_file"
+      mv "$temporary_file" .gaia/local/specs/ledger.json
       mkdir -p ".gaia/local/specs/${id}"
       cat > ".gaia/local/specs/${id}/SPEC.md" <<EOF
 ---
@@ -217,19 +217,19 @@ EOF
       ;;
     --seed-abandoned)
       id="$2"; shift 2
-      tmp="$(mktemp)"
+      temporary_file="$(mktemp)"
       jq --arg id "$id" \
         '.specs += [{id: $id, allocated_at: "2026-01-01T00:00:00Z", source: "allocated", status: "abandoned", abandoned_at: "2026-01-02T00:00:00Z"}]' \
-        .gaia/local/specs/ledger.json > "$tmp"
-      mv "$tmp" .gaia/local/specs/ledger.json
+        .gaia/local/specs/ledger.json > "$temporary_file"
+      mv "$temporary_file" .gaia/local/specs/ledger.json
       ;;
     --seed-abandoned-folder)
       id="$2"; shift 2
-      tmp="$(mktemp)"
+      temporary_file="$(mktemp)"
       jq --arg id "$id" \
         '.specs += [{id: $id, allocated_at: "2026-01-01T00:00:00Z", source: "allocated", status: "abandoned", abandoned_at: "2026-01-02T00:00:00Z"}]' \
-        .gaia/local/specs/ledger.json > "$tmp"
-      mv "$tmp" .gaia/local/specs/ledger.json
+        .gaia/local/specs/ledger.json > "$temporary_file"
+      mv "$temporary_file" .gaia/local/specs/ledger.json
       mkdir -p ".gaia/local/specs/${id}"
       cat > ".gaia/local/specs/${id}/AUDIT.md" <<EOF
 # ${id} Adversarial Audit
@@ -243,14 +243,14 @@ EOF
       if [[ $# -gt 0 && "$1" != --* ]]; then
         subject="$1"; shift
       fi
-      tmp="$(mktemp)"
+      temporary_file="$(mktemp)"
       jq --arg id "$id" --arg subject "$subject" \
         '.specs += [{id: $id, allocated_at: "2026-01-01T00:00:00Z", source: "allocated", status: "draft", reservation: "provisional", subject: $subject}]' \
-        .gaia/local/specs/ledger.json > "$tmp"
-      mv "$tmp" .gaia/local/specs/ledger.json
+        .gaia/local/specs/ledger.json > "$temporary_file"
+      mv "$temporary_file" .gaia/local/specs/ledger.json
       ;;
     --with-origin)
-      remote_ops+=("with-origin${US}${US}")
+      remote_ops+=("with-origin${UNIT_SEPARATOR}${UNIT_SEPARATOR}")
       shift
       ;;
     --seed-remote-tag)
@@ -259,10 +259,10 @@ EOF
       if [[ $# -gt 0 && "$1" != --* ]]; then
         subject="$1"; shift
       fi
-      remote_ops+=("seed-remote-tag${US}${tag}${US}${subject}")
+      remote_ops+=("seed-remote-tag${UNIT_SEPARATOR}${tag}${UNIT_SEPARATOR}${subject}")
       ;;
     --origin-reject-spec-tags)
-      remote_ops+=("origin-reject-spec-tags${US}${US}")
+      remote_ops+=("origin-reject-spec-tags${UNIT_SEPARATOR}${UNIT_SEPARATOR}")
       shift
       ;;
     *)
@@ -278,27 +278,27 @@ git commit --quiet -m "init"
 # Execute stashed remote ops, in argument order, now that main has a commit
 # to push. None of these touch the work-tree's tracked files, so no follow-up
 # commit is needed.
-origin_dir=""
-for op in ${remote_ops[@]+"${remote_ops[@]}"}; do
-  IFS="$US" read -r op_type op_arg1 op_arg2 <<< "$op"
-  case "$op_type" in
+origin_directory=""
+for remote_operation in ${remote_ops[@]+"${remote_ops[@]}"}; do
+  IFS="$UNIT_SEPARATOR" read -r operation_type operation_first_argument operation_second_argument <<< "$remote_operation"
+  case "$operation_type" in
     with-origin)
-      origin_dir="${dir}.git"
-      git init --quiet --bare --initial-branch=main "$origin_dir"
-      git remote add origin "$origin_dir"
+      origin_directory="${repository_directory}.git"
+      git init --quiet --bare --initial-branch=main "$origin_directory"
+      git remote add origin "$origin_directory"
       git push --quiet -u origin main
       ;;
     seed-remote-tag)
-      if [ -z "$origin_dir" ]; then
+      if [ -z "$origin_directory" ]; then
         echo "tmp-spec-repo.sh: --seed-remote-tag requires --with-origin earlier in the argument list" >&2
         exit 1
       fi
-      git tag -a "$op_arg1" "$EMPTY_TREE" -m "$op_arg2"
-      git push --quiet origin "refs/tags/$op_arg1"
-      git tag -d "$op_arg1" >/dev/null
+      git tag -a "$operation_first_argument" "$EMPTY_TREE" -m "$operation_second_argument"
+      git push --quiet origin "refs/tags/$operation_first_argument"
+      git tag -d "$operation_first_argument" >/dev/null
       ;;
     origin-reject-spec-tags)
-      if [ -z "$origin_dir" ]; then
+      if [ -z "$origin_directory" ]; then
         echo "tmp-spec-repo.sh: --origin-reject-spec-tags requires --with-origin earlier in the argument list" >&2
         exit 1
       fi
@@ -306,9 +306,9 @@ for op in ${remote_ops[@]+"${remote_ops[@]}"}; do
       # repo's local hooks/ dir; pin the bare origin's own hooksPath back to
       # its local hooks/ so the reject hook actually fires instead of being
       # silently skipped.
-      git -C "$origin_dir" config core.hooksPath "$origin_dir/hooks"
-      mkdir -p "$origin_dir/hooks"
-      cat > "$origin_dir/hooks/update" <<'HOOK'
+      git -C "$origin_directory" config core.hooksPath "$origin_directory/hooks"
+      mkdir -p "$origin_directory/hooks"
+      cat > "$origin_directory/hooks/update" <<'HOOK'
 #!/bin/sh
 # update <refname> <old-sha> <new-sha>; reject any spec/* tag reservation,
 # allow everything else (including the initial main push).
@@ -320,9 +320,9 @@ case "$1" in
 esac
 exit 0
 HOOK
-      chmod +x "$origin_dir/hooks/update"
+      chmod +x "$origin_directory/hooks/update"
       ;;
   esac
 done
 
-echo "$dir"
+echo "$repository_directory"

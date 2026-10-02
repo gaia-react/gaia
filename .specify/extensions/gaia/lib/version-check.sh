@@ -88,8 +88,8 @@ case "$pinned_spec" in
 esac
 
 # --- Cache short-circuit ---
-cache_dir="$repo_root/.gaia/local/cache"
-cache_file="$cache_dir/version-check.lock"
+cache_directory="$repo_root/.gaia/local/cache"
+cache_file="$cache_directory/version-check.lock"
 today="$(date -u +%Y-%m-%d)"
 
 # Read one `"<key>":"<value>"` pair out of the cache. The cache is single-line
@@ -124,7 +124,7 @@ fi
 # pinned ref fetchable, its self-reported version inside the pin, which catches a
 # pin naming a bad ref) rather than detecting a drifting install, which cannot
 # happen when every invocation pins the ref.
-speckit_ref="git+https://github.com/github/spec-kit.git@v$floor"
+speckit_reference="git+https://github.com/github/spec-kit.git@v$floor"
 
 installed=""
 if command -v specify > /dev/null 2>&1; then
@@ -135,7 +135,7 @@ if command -v specify > /dev/null 2>&1; then
 fi
 
 if [ -z "$installed" ] && command -v uvx > /dev/null 2>&1; then
-  installed="$(uvx --from "$speckit_ref" specify --version 2>/dev/null | head -n 1 | awk '{print $NF}' | tr -d '[:space:]' || true)"
+  installed="$(uvx --from "$speckit_reference" specify --version 2>/dev/null | head -n 1 | awk '{print $NF}' | tr -d '[:space:]' || true)"
 fi
 
 if [ -z "$installed" ]; then
@@ -143,50 +143,50 @@ if [ -z "$installed" ]; then
 spec-kit version check failed: could not determine installed version.
   Pinned:    $pinned_spec (from $extension_yml)
   Installed: <unresolved>
-  Checked:   a PATH-resident \`specify\`, then \`uvx --from $speckit_ref specify\`
-  Install:   uvx --from $speckit_ref specify --help
+  Checked:   a PATH-resident \`specify\`, then \`uvx --from $speckit_reference specify\`
+  Install:   uvx --from $speckit_reference specify --help
              (uvx ships with uv: https://docs.astral.sh/uv/)
 EOF
   exit 1
 fi
 
-installed_n="${installed#v}"
-floor_n="$floor"
+installed_bare_version="${installed#v}"
+floor_bare_version="$floor"
 
 # --- Compare. For exact pins we require equality; for `>=` we require
 #     installed >= floor. We do a coarse semver compare via sort -V, which is
 #     adequate for the spec-kit release cadence (no pre-release tags). ---
 case "$pinned_spec" in
   '=='*)
-    if [ "$installed_n" != "$floor_n" ]; then
+    if [ "$installed_bare_version" != "$floor_bare_version" ]; then
       cat >&2 <<EOF
 spec-kit version drift detected.
   Pinned:    $pinned_spec (exact, from $extension_yml)
   Installed: $installed
-  Upgrade:   uvx --from git+https://github.com/github/spec-kit.git@v$floor_n specify --help
+  Upgrade:   uvx --from git+https://github.com/github/spec-kit.git@v$floor_bare_version specify --help
 EOF
       exit 1
     fi
     ;;
   *)
-    lower="$(printf '%s\n%s\n' "$installed_n" "$floor_n" | sort -V | head -n 1)"
-    if [ "$lower" != "$floor_n" ]; then
+    lower="$(printf '%s\n%s\n' "$installed_bare_version" "$floor_bare_version" | sort -V | head -n 1)"
+    if [ "$lower" != "$floor_bare_version" ]; then
       cat >&2 <<EOF
 spec-kit version drift detected.
   Pinned:    $pinned_spec (from $extension_yml)
   Installed: $installed (below pin floor)
-  Upgrade:   uvx --from git+https://github.com/github/spec-kit.git@v$floor_n specify --help
+  Upgrade:   uvx --from git+https://github.com/github/spec-kit.git@v$floor_bare_version specify --help
 EOF
       exit 1
     fi
     if [ -n "$ceiling" ]; then
-      below_ceiling="$(printf '%s\n%s\n' "$installed_n" "$ceiling" | sort -V | head -n 1)"
+      below_ceiling="$(printf '%s\n%s\n' "$installed_bare_version" "$ceiling" | sort -V | head -n 1)"
       if [ "$below_ceiling" = "$ceiling" ]; then
         cat >&2 <<EOF
 spec-kit version drift detected.
   Pinned:    $pinned_spec (from $extension_yml)
   Installed: $installed (at or above exclusive pin ceiling <$ceiling)
-  Upgrade:   uvx --from git+https://github.com/github/spec-kit.git@v$floor_n specify --help
+  Upgrade:   uvx --from git+https://github.com/github/spec-kit.git@v$floor_bare_version specify --help
 EOF
         exit 1
       fi
@@ -195,10 +195,10 @@ EOF
 esac
 
 # --- Match, refresh cache ---
-mkdir -p "$cache_dir"
-ts="$(date -u +%Y%m%dT%H%M%SZ)"
+mkdir -p "$cache_directory"
+timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
 cat > "$cache_file" <<EOF
-{"pinned":"$pinned_spec","installed":"$installed","day":"$today","verified_at":"$ts"}
+{"pinned":"$pinned_spec","installed":"$installed","day":"$today","verified_at":"$timestamp"}
 EOF
 
 exit 0

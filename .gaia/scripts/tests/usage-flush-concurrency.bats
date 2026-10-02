@@ -30,7 +30,7 @@ setup() {
   TMP="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
   export GAIA_RATES_FEED_DISABLE=1 GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state"
   export GAIA_LEDGER_LOCK_FORCE_FALLBACK=1
-  unset GITHUB_ACTIONS GAIA_USAGE_TEST_BARRIER GAIA_USAGE_DEBUG_HOLD GAIA_TALLY_PROJECTS_ROOT GAIA_LEDGER_LOCK_TIMEOUT_SECS
+  unset GITHUB_ACTIONS GAIA_USAGE_TEST_BARRIER GAIA_USAGE_DEBUG_HOLD GAIA_TALLY_PROJECTS_ROOT GAIA_LEDGER_LOCK_TIMEOUT_SECONDS
   ROOT="$TMP/repo"
   PROJ="$TMP/projects"
   TEL="$ROOT/.gaia/local/telemetry"
@@ -132,7 +132,7 @@ holds_within() {
   [ -e "$TEL/usage.jsonl" ] && return 1
 
   t0=$SECONDS
-  GAIA_LEDGER_LOCK_TIMEOUT_SECS=2 run --separate-stderr bash "$SCRIPTS/token-tally.sh" --action command --command gaia-audit \
+  GAIA_LEDGER_LOCK_TIMEOUT_SECONDS=2 run --separate-stderr bash "$SCRIPTS/token-tally.sh" --action command --command gaia-audit \
     --session-id s-sw5 --projects-root "$PROJ" --ledger "$TEL/cost.jsonl"
   [ "$status" -eq 0 ]
   [ $((SECONDS - t0)) -le 2 ]
@@ -140,7 +140,7 @@ holds_within() {
   [ "$(jq -s '[.[] | select(.kind == "command" and .command == "gaia-audit")] | length' "$TEL/cost.jsonl")" -eq 1 ]
 
   t0=$SECONDS
-  GAIA_LEDGER_LOCK_TIMEOUT_SECS=2 run --separate-stderr bash "$REPO_ROOT/.specify/extensions/gaia/lib/spec-allocator.sh" next "$ROOT"
+  GAIA_LEDGER_LOCK_TIMEOUT_SECONDS=2 run --separate-stderr bash "$REPO_ROOT/.specify/extensions/gaia/lib/spec-allocator.sh" next "$ROOT"
   [ "$status" -eq 0 ]
   [ $((SECONDS - t0)) -le 2 ]
   [ "$output" = "SPEC-001" ]

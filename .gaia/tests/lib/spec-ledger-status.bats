@@ -51,12 +51,12 @@ _reconcile() {
 # Raw-write a status onto a row, bypassing the guard. Used to plant a
 # pre-guard off-vocabulary row that the guard itself would refuse to create.
 _plant_status() {
-  local id="$1" status="$2" tmp
-  tmp="$(mktemp)"
-  jq --arg id "$id" --arg s "$status" \
-    '.specs |= map(if .id == $id then .status = $s else . end)' \
-    "$REPO/.gaia/local/specs/ledger.json" > "$tmp"
-  mv "$tmp" "$REPO/.gaia/local/specs/ledger.json"
+  local id="$1" status="$2" temporary_file
+  temporary_file="$(mktemp)"
+  jq --arg id "$id" --arg new_status "$status" \
+    '.specs |= map(if .id == $id then .status = $new_status else . end)' \
+    "$REPO/.gaia/local/specs/ledger.json" > "$temporary_file"
+  mv "$temporary_file" "$REPO/.gaia/local/specs/ledger.json"
 }
 
 @test "1: non-canonical status is rejected with exit 6" {
@@ -76,19 +76,19 @@ _plant_status() {
 
 @test "3: every writable status (the unified vocabulary) is accepted" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-draft SPEC-001)"
-  for s in $WRITABLE; do
-    run _ledger_update "$REPO" SPEC-001 "{\"status\":\"$s\"}"
+  for writable_status in $WRITABLE; do
+    run _ledger_update "$REPO" SPEC-001 "{\"status\":\"$writable_status\"}"
     [ "$status" -eq 0 ]
-    [ "$(jq -r '.specs[0].status' "$REPO/.gaia/local/specs/ledger.json")" = "$s" ]
+    [ "$(jq -r '.specs[0].status' "$REPO/.gaia/local/specs/ledger.json")" = "$writable_status" ]
   done
 }
 
 @test "3b: every retired status is rejected with exit 6" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-draft SPEC-001)"
-  for s in $RETIRED; do
-    run _ledger_update "$REPO" SPEC-001 "{\"status\":\"$s\"}"
+  for retired_status in $RETIRED; do
+    run _ledger_update "$REPO" SPEC-001 "{\"status\":\"$retired_status\"}"
     [ "$status" -eq 6 ]
-    grep -qF "non-canonical status '$s'" <<<"$output"
+    grep -qF "non-canonical status '$retired_status'" <<<"$output"
   done
 }
 
@@ -125,7 +125,7 @@ _plant_status() {
   [ -f "$ledger" ] || skip "no project ledger at $ledger"
   bad="$(jq -r --arg writable "$WRITABLE" '
     ($writable | split(" ")) as $ok
-    | .specs[] | select(.status as $s | $ok | index($s) | not)
+    | .specs[] | select(.status as $row_status | $ok | index($row_status) | not)
     | .id + ":" + (.status // "null")
   ' "$ledger")"
   [ -z "$bad" ] || {
@@ -145,12 +145,12 @@ _plant_status() {
 # not re-tested here.
 
 _lint_fixture() {
-  local status_val="$1"
+  local status_value="$1"
   cat <<EOF
 ---
 spec_id: SPEC-999
 type: feature
-status: $status_val
+status: $status_value
 immutable: true
 wiki_promote_default: ask
 chain_trigger: none

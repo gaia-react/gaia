@@ -232,9 +232,9 @@ set -uo pipefail
 
 # Resolve own dir so main-root-lib.sh loads identically from the real repo and
 # from test copies of the lib dir (no hardcoded repo path).
-_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../../../.gaia/scripts/main-root-lib.sh
-. "${_lib_dir}/../../../../.gaia/scripts/main-root-lib.sh" 2>/dev/null || true
+. "${_library_directory}/../../../../.gaia/scripts/main-root-lib.sh" 2>/dev/null || true
 
 # Pinned default Claude-CLI host-match ERE. See the header for the anchor
 # rationale and the `.claude/` false-match trap. Single-quoted on purpose: the
@@ -251,7 +251,7 @@ HOST_PATTERN="${GAIA_SPEC_LOCK_HOST_PATTERN:-$DEFAULT_HOST_PATTERN}"
 SNAPSHOT_WRAPPER_PATTERN='\.claude/shell-snapshots/'
 
 # Bound the ancestor walk so a cycle or a pathological tree can never spin.
-MAX_HOPS=30
+MAXIMUM_HOPS=30
 
 # _match_command <command_line>: 0 if the command line is the Claude-CLI host,
 # non-zero otherwise. The single point where host identity is decided: the
@@ -271,7 +271,7 @@ _resolve_host() {
   start_pid="${1:-${GAIA_SPEC_LOCK_START_PID:-$PPID}}"
   pid="$start_pid"
   hops=0
-  while [ "$hops" -lt "$MAX_HOPS" ]; do
+  while [ "$hops" -lt "$MAXIMUM_HOPS" ]; do
     # Non-numeric / empty pid, or a pid at/above init: no host above here.
     case "$pid" in ''|*[!0-9]*) return 1 ;; esac
     [ "$pid" -gt 1 ] || return 1
@@ -400,10 +400,10 @@ _classify_lock() {
   # same-user design treats ESRCH as dead and EPERM as alive, distinguished
   # here by grepping the captured stderr text (see the header's implementation
   # note).
-  local kill_err kill_status
-  kill_err="$(kill -0 "$lock_pid" 2>&1)"
+  local kill_error kill_status
+  kill_error="$(kill -0 "$lock_pid" 2>&1)"
   kill_status=$?
-  if [ "$kill_status" -ne 0 ] && ! grep -qi 'permitted' <<<"$kill_err"; then
+  if [ "$kill_status" -ne 0 ] && ! grep -qi 'permitted' <<<"$kill_error"; then
     LOCK_VERDICT=dormant
     return 0
   fi

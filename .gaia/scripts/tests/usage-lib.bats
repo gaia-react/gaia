@@ -326,7 +326,7 @@ append_proc() {
   cp "$td/usage.jsonl" "$TMP/before"
   mkdir "$td/specs.lock.d"
   printf '{"n":2}\n' >"$rows"
-  GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 GAIA_LEDGER_LOCK_TIMEOUT_SECS=1 GAIA_LEDGER_LOCK_POLL_SECS=0.1 \
+  GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 GAIA_LEDGER_LOCK_TIMEOUT_SECONDS=1 GAIA_LEDGER_LOCK_POLL_SECONDS=0.1 \
     run append_proc "$td" usage.jsonl "$rows"
   [ "$status" -eq 75 ]
   cmp "$td/usage.jsonl" "$TMP/before"
@@ -340,7 +340,7 @@ append_proc() {
   local td="$TMP/tel2" rows="$TMP/rows2.jsonl"
   mkdir -p "$td/specs.lock.d"
   printf '{"n":1}\n' >"$rows"
-  GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 GAIA_LEDGER_LOCK_TIMEOUT_SECS=1 GAIA_LEDGER_LOCK_POLL_SECS=0.1 \
+  GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 GAIA_LEDGER_LOCK_TIMEOUT_SECONDS=1 GAIA_LEDGER_LOCK_POLL_SECONDS=0.1 \
     run append_proc "$td" links.jsonl "$rows"
   [ "$status" -eq 75 ]
   [ ! -e "$td/links.jsonl" ]

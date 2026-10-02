@@ -48,10 +48,10 @@ if [ ! -f "$spec_path" ]; then
 fi
 
 # --- Resolve script + template directory (relative to script location) ---
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-templates_dir="$script_dir/../templates"
-spec_template="$templates_dir/uat-spec.ts.tmpl"
-fixme_template="$templates_dir/uat-fixme.ts.tmpl"
+script_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+templates_directory="$script_directory/../templates"
+spec_template="$templates_directory/uat-spec.ts.tmpl"
+fixme_template="$templates_directory/uat-fixme.ts.tmpl"
 
 # Repo root for output paths is invocation pwd. Convention: invoked from repo
 # root by the slash-command body.
@@ -60,11 +60,11 @@ repo_root="$PWD"
 # --- Helpers ---
 
 # Emit an operational-failure JSON to stdout and exit 1.
-fail_op() {
-  local msg="$1"
-  local m_esc
-  m_esc=$(printf '%s' "$msg" | sed 's/\\/\\\\/g; s/"/\\"/g')
-  printf '{"ok":false,"error":"%s"}\n' "$m_esc"
+fail_operation() {
+  local failure_message="$1"
+  local message_escaped
+  message_escaped=$(printf '%s' "$failure_message" | sed 's/\\/\\\\/g; s/"/\\"/g')
+  printf '{"ok":false,"error":"%s"}\n' "$message_escaped"
   exit 1
 }
 
@@ -75,7 +75,7 @@ sha256_of_stdin() {
   elif command -v sha256sum > /dev/null 2>&1; then
     sha256sum | awk '{print $1}'
   else
-    fail_op "no sha256 tool available (need shasum or sha256sum)"
+    fail_operation "no sha256 tool available (need shasum or sha256sum)"
   fi
 }
 
@@ -85,30 +85,30 @@ sha256_of_stdin() {
 # inside `//` line comments because JS comment semantics do not interpret
 # backslash escapes, `\'` reads as the two characters \ and ' to a human, but
 # the parser is unaffected.
-sanitize_for_jstring() {
-  local s
-  s=$(printf '%s' "$1" | tr '\r\n' '  ' | tr -d '\000')
-  s="${s//\\/\\\\}"
-  s="${s//\'/\\\'}"
-  printf '%s' "$s"
+sanitize_for_javascript_string() {
+  local sanitized
+  sanitized=$(printf '%s' "$1" | tr '\r\n' '  ' | tr -d '\000')
+  sanitized="${sanitized//\\/\\\\}"
+  sanitized="${sanitized//\'/\\\'}"
+  printf '%s' "$sanitized"
 }
 
 # --- Extract frontmatter block (between first two `---` lines) ---
-fm=""
+frontmatter_block=""
 state="pre"
 while IFS= read -r line; do
   case "$state" in
     pre)
       if [ "$line" = "---" ]; then
-        state="in_fm"
+        state="in_frontmatter"
       fi
       ;;
-    in_fm)
+    in_frontmatter)
       if [ "$line" = "---" ]; then
         state="post"
         break
       else
-        fm+="$line"$'\n'
+        frontmatter_block+="$line"$'\n'
       fi
       ;;
   esac
@@ -120,7 +120,7 @@ if [ "$state" != "post" ]; then
 fi
 
 # --- spec_id ---
-spec_id_raw=$(printf '%s' "$fm" | awk -F': ' '/^spec_id:/ {print $2; exit}')
+spec_id_raw=$(printf '%s' "$frontmatter_block" | awk -F': ' '/^spec_id:/ {print $2; exit}')
 spec_id_raw="${spec_id_raw// /}"
 spec_id_raw="${spec_id_raw//\"/}"
 spec_id_raw="${spec_id_raw//\'/}"
@@ -136,22 +136,22 @@ if ! [[ "$spec_id_raw" =~ ^SPEC-[0-9]+$ ]]; then
 fi
 
 spec_id="$spec_id_raw"
-spec_id_lc=$(printf '%s' "$spec_id" | tr '[:upper:]' '[:lower:]')
+spec_id_lowercase=$(printf '%s' "$spec_id" | tr '[:upper:]' '[:lower:]')
 
 # --- Extract uats: block ---
 # Lines from "uats:" up to next top-level key (column 0, identifier:).
-uats_block=$(printf '%s' "$fm" | awk '
+uats_block=$(printf '%s' "$frontmatter_block" | awk '
   /^uats:/ { capture = 1; next }
   capture && /^[A-Za-z_][A-Za-z0-9_]*:/ { capture = 0 }
   capture { print }
 ')
 
 # --- Empty / missing UATs case (stop condition) ---
-target_dir="$repo_root/.playwright/e2e/$spec_id_lc"
+target_directory="$repo_root/.playwright/e2e/$spec_id_lowercase"
 
 # Ensure cache dir + path resolved up-front (used in both empty and populated paths).
-cache_dir="$repo_root/.gaia/local/cache/uat-write"
-cache_file="$cache_dir/$spec_id.json"
+cache_directory="$repo_root/.gaia/local/cache/uat-write"
+cache_file="$cache_directory/$spec_id.json"
 
 if [ -z "$uats_block" ] || ! grep -qE '^[[:space:]]*-[[:space:]]+uat_id:' <<<"$uats_block"; then
   echo "uat-write.sh: no UATs in $spec_path; nothing to render" >&2
@@ -159,23 +159,23 @@ if [ -z "$uats_block" ] || ! grep -qE '^[[:space:]]*-[[:space:]]+uat_id:' <<<"$u
   # target dir (resolution README #3 is symmetric: SPEC truth wins).
   deleted_details=""
   deleted_count=0
-  if [ -d "$target_dir" ]; then
-    while IFS= read -r f; do
-      [ -z "$f" ] && continue
-      rm -f -- "$f"
-      rel="${f#"$repo_root/"}"
-      base=$(basename "$f" .spec.ts)
-      uid_lc="${base#uat-}"
-      uid="UAT-${uid_lc}"
-      uid=$(printf '%s' "$uid" | tr '[:lower:]' '[:upper:]')
+  if [ -d "$target_directory" ]; then
+    while IFS= read -r candidate_file; do
+      [ -z "$candidate_file" ] && continue
+      rm -f -- "$candidate_file"
+      relative_path="${candidate_file#"$repo_root/"}"
+      base=$(basename "$candidate_file" .spec.ts)
+      deleted_uat_number="${base#uat-}"
+      deleted_uat_id="UAT-${deleted_uat_number}"
+      deleted_uat_id=$(printf '%s' "$deleted_uat_id" | tr '[:lower:]' '[:upper:]')
       if [ -n "$deleted_details" ]; then deleted_details+=","; fi
-      deleted_details+="{\"uat_id\":\"$uid\",\"action\":\"deleted\",\"path\":\"$rel\"}"
+      deleted_details+="{\"uat_id\":\"$deleted_uat_id\",\"action\":\"deleted\",\"path\":\"$relative_path\"}"
       deleted_count=$((deleted_count + 1))
-    done < <(find "$target_dir" -maxdepth 1 -type f -name 'uat-*.spec.ts' 2>/dev/null | sort)
+    done < <(find "$target_directory" -maxdepth 1 -type f -name 'uat-*.spec.ts' 2>/dev/null | sort)
   fi
-  mkdir -p "$cache_dir"
+  mkdir -p "$cache_directory"
   result=$(printf '{"ok":true,"spec_id":"%s","spec_dir":".playwright/e2e/%s","framework":"playwright","summary":{"written":0,"rewritten":0,"deleted":%d,"fixme":0,"unchanged":0},"details":[%s]}' \
-    "$spec_id" "$spec_id_lc" "$deleted_count" "$deleted_details")
+    "$spec_id" "$spec_id_lowercase" "$deleted_count" "$deleted_details")
   printf '%s\n' "$result" | tee "$cache_file" > /dev/null
   printf '%s\n' "$result"
   exit 0
@@ -183,10 +183,10 @@ fi
 
 # --- Verify templates exist ---
 if [ ! -f "$spec_template" ]; then
-  fail_op "template missing: $spec_template"
+  fail_operation "template missing: $spec_template"
 fi
 if [ ! -f "$fixme_template" ]; then
-  fail_op "template missing: $fixme_template"
+  fail_operation "template missing: $fixme_template"
 fi
 
 # --- Parse UAT entries ---
@@ -202,39 +202,39 @@ fi
 # Output: tab-separated rows: uat_id<TAB>given<TAB>when<TAB>then
 parsed=$(printf '%s\n' "$uats_block" | awk '
   function flush() {
-    if (uid != "") {
-      gsub(/\t/, " ", g); gsub(/\t/, " ", w); gsub(/\t/, " ", t)
-      printf "%s\t%s\t%s\t%s\n", uid, g, w, t
+    if (uat_id != "") {
+      gsub(/\t/, " ", given_text); gsub(/\t/, " ", when_text); gsub(/\t/, " ", then_text)
+      printf "%s\t%s\t%s\t%s\n", uat_id, given_text, when_text, then_text
     }
-    uid = ""; g = ""; w = ""; t = ""; current = ""
+    uat_id = ""; given_text = ""; when_text = ""; then_text = ""; current = ""
   }
-  function append_to(val_ref, addition,    sep) {
-    # We cannot pass val_ref by-ref in awk; caller mutates global.
+  function append_to(value_reference, addition,    separator) {
+    # We cannot pass value_reference by-ref in awk; caller mutates global.
   }
-  BEGIN { uid = ""; g = ""; w = ""; t = ""; current = "" }
+  BEGIN { uat_id = ""; given_text = ""; when_text = ""; then_text = ""; current = "" }
   /^[[:space:]]*-[[:space:]]+uat_id:/ {
     flush()
     sub(/^[[:space:]]*-[[:space:]]+uat_id:[[:space:]]*/, "", $0)
     sub(/[[:space:]]+$/, "", $0)
-    uid = $0
-    current = "uid"
+    uat_id = $0
+    current = "uat_id"
     next
   }
   /^[[:space:]]+given:/ {
     sub(/^[[:space:]]+given:[[:space:]]*/, "", $0)
-    g = $0
+    given_text = $0
     current = "g"
     next
   }
   /^[[:space:]]+when:/ {
     sub(/^[[:space:]]+when:[[:space:]]*/, "", $0)
-    w = $0
+    when_text = $0
     current = "w"
     next
   }
   /^[[:space:]]+then:/ {
     sub(/^[[:space:]]+then:[[:space:]]*/, "", $0)
-    t = $0
+    then_text = $0
     current = "t"
     next
   }
@@ -243,10 +243,10 @@ parsed=$(printf '%s\n' "$uats_block" | awk '
     # Continuation line, fold into current field with a leading space.
     line = $0
     sub(/^[[:space:]]+/, "", line)
-    if (current == "g") g = g " " line
-    else if (current == "w") w = w " " line
-    else if (current == "t") t = t " " line
-    # uid lines are single-line; ignore continuations there.
+    if (current == "g") given_text = given_text " " line
+    else if (current == "w") when_text = when_text " " line
+    else if (current == "t") then_text = then_text " " line
+    # uat_id lines are single-line; ignore continuations there.
   }
   END { flush() }
 ')
@@ -274,7 +274,7 @@ deleted=0
 fixme=0
 unchanged=0
 
-mkdir -p "$target_dir"
+mkdir -p "$target_directory"
 
 # Sort parsed rows by uat_id for deterministic output ordering.
 parsed_sorted=$(printf '%s' "$parsed" | sort -t $'\t' -k1,1)
@@ -283,15 +283,15 @@ while IFS=$'\t' read -r uat_id uat_given uat_when uat_then; do
   [ -z "$uat_id" ] && continue
 
   if ! [[ "$uat_id" =~ ^UAT-[0-9]+$ ]]; then
-    fail_op "malformed uat_id '$uat_id' in $spec_path (must match UAT-NNN)"
+    fail_operation "malformed uat_id '$uat_id' in $spec_path (must match UAT-NNN)"
   fi
 
-  uat_num="${uat_id#UAT-}"
-  uat_num_lc=$(printf '%s' "$uat_num" | tr '[:upper:]' '[:lower:]')
-  out_rel=".playwright/e2e/$spec_id_lc/uat-$uat_num_lc.spec.ts"
-  out_path="$repo_root/$out_rel"
+  uat_number="${uat_id#UAT-}"
+  uat_number_lowercase=$(printf '%s' "$uat_number" | tr '[:upper:]' '[:lower:]')
+  output_relative_path=".playwright/e2e/$spec_id_lowercase/uat-$uat_number_lowercase.spec.ts"
+  output_path="$repo_root/$output_relative_path"
 
-  seen_uat_files+="$out_rel"$'\n'
+  seen_uat_files+="$output_relative_path"$'\n'
 
   # --- Abstraction heuristic for fixme template ---
   # Trigger fixme if the `then` clause has NEITHER:
@@ -320,22 +320,22 @@ while IFS=$'\t' read -r uat_id uat_given uat_when uat_then; do
   #  - newlines collapsed to space (so single-line comments stay intact)
   # The escaped form remains valid inside `//` comments, JS comment semantics
   # do not interpret backslash escapes.
-  given_c=$(sanitize_for_jstring "$uat_given")
-  when_c=$(sanitize_for_jstring "$uat_when")
-  then_c=$(sanitize_for_jstring "$uat_then")
+  given_sanitized=$(sanitize_for_javascript_string "$uat_given")
+  when_sanitized=$(sanitize_for_javascript_string "$uat_when")
+  then_sanitized=$(sanitize_for_javascript_string "$uat_then")
 
   # Pick template + abstraction blocker line.
   if [ "$use_fixme" -eq 1 ]; then
-    tmpl="$fixme_template"
+    template_path="$fixme_template"
     blocker_raw="then-clause has no quoted UI surface and no URL/path fragment; refine UAT to reference a concrete element or route"
-    blocker_c=$(sanitize_for_jstring "$blocker_raw")
+    blocker_sanitized=$(sanitize_for_javascript_string "$blocker_raw")
   else
-    tmpl="$spec_template"
-    blocker_c=""
+    template_path="$spec_template"
+    blocker_sanitized=""
   fi
 
   # Read template.
-  tmpl_body=$(cat "$tmpl")
+  template_body=$(cat "$template_path")
 
   # Render with a sentinel for the timestamp first; hash the canonical form
   # (sans timestamp) for idempotency. The timestamp must not perturb hashes -
@@ -344,15 +344,15 @@ while IFS=$'\t' read -r uat_id uat_given uat_when uat_then; do
   # stripping the timestamp line from both rendered and existing content.
   render() {
     local stamp="$1"
-    printf '%s' "$tmpl_body" \
+    printf '%s' "$template_body" \
       | awk -v spec_id="$spec_id" \
             -v uat_id="$uat_id" \
-            -v uat_given="$given_c" \
-            -v uat_when="$when_c" \
-            -v uat_then="$then_c" \
+            -v uat_given="$given_sanitized" \
+            -v uat_when="$when_sanitized" \
+            -v uat_then="$then_sanitized" \
             -v generated_at="$stamp" \
             -v divergence_rule_path="$divergence_rule_path" \
-            -v abstraction_blocker="$blocker_c" \
+            -v abstraction_blocker="$blocker_sanitized" \
       '{
         gsub(/\$\{SPEC_ID\}/, spec_id)
         gsub(/\$\{UAT_ID\}/, uat_id)
@@ -378,19 +378,19 @@ while IFS=$'\t' read -r uat_id uat_given uat_when uat_then; do
 
   # Decide action.
   action=""
-  if [ -f "$out_path" ]; then
-    existing_canonical=$(strip_stamp < "$out_path")
+  if [ -f "$output_path" ]; then
+    existing_canonical=$(strip_stamp < "$output_path")
     existing_hash=$(printf '%s' "$existing_canonical" | sha256_of_stdin)
     if [ "$existing_hash" = "$rendered_hash" ]; then
       action="unchanged"
       unchanged=$((unchanged + 1))
     else
-      render "$generated_at" > "$out_path"
+      render "$generated_at" > "$output_path"
       action="rewritten"
       rewritten=$((rewritten + 1))
     fi
   else
-    render "$generated_at" > "$out_path"
+    render "$generated_at" > "$output_path"
     action="written"
     written=$((written + 1))
   fi
@@ -402,26 +402,26 @@ while IFS=$'\t' read -r uat_id uat_given uat_when uat_then; do
   # Append details row.
   if [ -n "$details" ]; then details+=","; fi
   details+=$(printf '{"uat_id":"%s","action":"%s","path":"%s","hash":"sha256:%s"}' \
-    "$uat_id" "$action" "$out_rel" "$rendered_hash")
+    "$uat_id" "$action" "$output_relative_path" "$rendered_hash")
 
 done <<< "$parsed_sorted"
 
 # --- Orphan deletion ---
-if [ -d "$target_dir" ]; then
-  while IFS= read -r f; do
-    [ -z "$f" ] && continue
-    rel="${f#"$repo_root/"}"
-    if grep -qxF "$rel" <<<"$seen_uat_files"; then
+if [ -d "$target_directory" ]; then
+  while IFS= read -r candidate_file; do
+    [ -z "$candidate_file" ] && continue
+    relative_path="${candidate_file#"$repo_root/"}"
+    if grep -qxF "$relative_path" <<<"$seen_uat_files"; then
       continue
     fi
-    rm -f -- "$f"
-    base=$(basename "$f" .spec.ts)
-    uid_num="${base#uat-}"
-    uid="UAT-$(printf '%s' "$uid_num" | tr '[:lower:]' '[:upper:]')"
+    rm -f -- "$candidate_file"
+    base=$(basename "$candidate_file" .spec.ts)
+    deleted_uat_number="${base#uat-}"
+    deleted_uat_id="UAT-$(printf '%s' "$deleted_uat_number" | tr '[:lower:]' '[:upper:]')"
     if [ -n "$details" ]; then details+=","; fi
-    details+=$(printf '{"uat_id":"%s","action":"deleted","path":"%s"}' "$uid" "$rel")
+    details+=$(printf '{"uat_id":"%s","action":"deleted","path":"%s"}' "$deleted_uat_id" "$relative_path")
     deleted=$((deleted + 1))
-  done < <(find "$target_dir" -maxdepth 1 -type f -name 'uat-*.spec.ts' 2>/dev/null | sort)
+  done < <(find "$target_directory" -maxdepth 1 -type f -name 'uat-*.spec.ts' 2>/dev/null | sort)
 fi
 
 # --- Sort details by uat_id for stable output ---
@@ -432,26 +432,26 @@ fi
 # `},{` object-boundary, prepend each object's uat_id as a sort key, sort,
 # strip the key, rejoin.
 if [ -n "$details" ]; then
-  sorted_objs=$(printf '%s' "$details" | awk '
-    BEGIN { buf = "" }
+  sorted_objects=$(printf '%s' "$details" | awk '
+    BEGIN { buffer = "" }
     {
-      s = $0
-      n = length(s)
+      line_text = $0
+      text_length = length(line_text)
       i = 1
-      while (i <= n) {
-        c = substr(s, i, 1)
-        if (c == "}" && substr(s, i+1, 1) == ",") {
-          buf = buf c
-          print buf
-          buf = ""
+      while (i <= text_length) {
+        character = substr(line_text, i, 1)
+        if (character == "}" && substr(line_text, i+1, 1) == ",") {
+          buffer = buffer character
+          print buffer
+          buffer = ""
           i = i + 2  # skip the close-brace+comma boundary
           continue
         }
-        buf = buf c
+        buffer = buffer character
         i = i + 1
       }
     }
-    END { if (buf != "") print buf }
+    END { if (buffer != "") print buffer }
   ' | awk '
     {
       match($0, /"uat_id":"[^"]+"/)
@@ -460,16 +460,16 @@ if [ -n "$details" ]; then
     }
   ' | sort -k1,1 | cut -f2-)
 
-  if [ -n "$sorted_objs" ]; then
-    details=$(printf '%s' "$sorted_objs" | awk 'NR==1{printf "%s",$0; next}{printf ",%s",$0}')
+  if [ -n "$sorted_objects" ]; then
+    details=$(printf '%s' "$sorted_objects" | awk 'NR==1{printf "%s",$0; next}{printf ",%s",$0}')
   fi
 fi
 
 # --- Build final JSON, mirror to cache, emit on stdout ---
-mkdir -p "$cache_dir"
+mkdir -p "$cache_directory"
 
 result=$(printf '{"ok":true,"spec_id":"%s","spec_dir":".playwright/e2e/%s","framework":"playwright","summary":{"written":%d,"rewritten":%d,"deleted":%d,"fixme":%d,"unchanged":%d},"details":[%s]}' \
-  "$spec_id" "$spec_id_lc" "$written" "$rewritten" "$deleted" "$fixme" "$unchanged" "$details")
+  "$spec_id" "$spec_id_lowercase" "$written" "$rewritten" "$deleted" "$fixme" "$unchanged" "$details")
 
 printf '%s\n' "$result" > "$cache_file"
 printf '%s\n' "$result"

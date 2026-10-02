@@ -120,7 +120,7 @@ TABLE
 # Fence extraction
 # ---------------------------------------------------------------------------
 
-# FENCE_OPEN_RE: the fence openers discovery reads. Every tag that carries
+# FENCE_OPEN_REGEX: the fence openers discovery reads. Every tag that carries
 # shell, not `bash` alone, and tolerant of trailing whitespace.
 #
 # One constant rather than the pattern written at each site. Narrowed to
@@ -128,17 +128,17 @@ TABLE
 # could not see the omission either: it reconciles the table against
 # fence_count(), so both sides of that comparison came from the same narrowed
 # pattern and agreed about a fence neither had read.
-FENCE_OPEN_RE='^```(bash|sh|shell)[[:space:]]*$'
+FENCE_OPEN_REGEX='^```(bash|sh|shell)[[:space:]]*$'
 
 # fence_count: how many shell fences the page opens.
 fence_count() {
-  awk -v re="$FENCE_OPEN_RE" '$0 ~ re { n++ } END { print n + 0 }' "$PAGE"
+  awk -v regex="$FENCE_OPEN_REGEX" '$0 ~ regex { opener_count++ } END { print opener_count + 0 }' "$PAGE"
 }
 
 # fence_body <n>: the body of the n-th shell fence, verbatim.
 fence_body() {
-  awk -v want="$1" -v re="$FENCE_OPEN_RE" '
-    $0 ~ re { n++; if (n == want) { inside = 1 } ; next }
+  awk -v want="$1" -v regex="$FENCE_OPEN_REGEX" '
+    $0 ~ regex { opener_count++; if (opener_count == want) { inside = 1 } ; next }
     /^```[[:space:]]*$/ && inside { inside = 0; next }
     inside { print }
   ' "$PAGE"
@@ -173,7 +173,7 @@ fence_indices_for() {
   i=1
   while [ "$i" -le "$total" ]; do
     body="$(fence_body "$i")"
-    if awk -v a="$anchor" 'index($0, a) { found = 1 } END { exit found ? 0 : 1 }' <<<"$body"; then
+    if awk -v anchor_text="$anchor" 'index($0, anchor_text) { found = 1 } END { exit found ? 0 : 1 }' <<<"$body"; then
       printf '%s\n' "$i"
     fi
     i=$((i + 1))
@@ -184,14 +184,14 @@ fence_indices_for() {
 # prints that path. Reading it from the page rather than restating it here is
 # what makes an edit to the page an edit to what these tests execute.
 materialize() {
-  local anchor="$1" idx script
-  idx="$(fence_indices_for "$anchor" | head -1)"
-  [ -n "$idx" ] || {
+  local anchor="$1" fence_index script
+  fence_index="$(fence_indices_for "$anchor" | head -1)"
+  [ -n "$fence_index" ] || {
     echo "no fence carries the anchor: ${anchor}" >&2
     return 1
   }
-  script="${BATS_TEST_TMPDIR}/fence-${idx}.sh"
-  fence_body "$idx" >"$script"
+  script="${BATS_TEST_TMPDIR}/fence-${fence_index}.sh"
+  fence_body "$fence_index" >"$script"
   printf '%s\n' "$script"
 }
 
@@ -200,26 +200,26 @@ materialize() {
 # stops matching after a page edit fails the test rather than running an
 # un-substituted body against the network.
 sub_literal() {
-  local file="$1" needle="$2" replacement="$3" out
-  out="${file}.sub"
-  awk -v n="$needle" -v r="$replacement" '
+  local file="$1" needle="$2" replacement="$3" substituted_file_path
+  substituted_file_path="${file}.sub"
+  awk -v needle_text="$needle" -v replacement_text="$replacement" '
     {
       line = $0
-      out = ""
-      while ((p = index(line, n)) > 0) {
-        out = out substr(line, 1, p - 1) r
-        line = substr(line, p + length(n))
+      rebuilt_line = ""
+      while ((needle_position = index(line, needle_text)) > 0) {
+        rebuilt_line = rebuilt_line substr(line, 1, needle_position - 1) replacement_text
+        line = substr(line, needle_position + length(needle_text))
         hits++
       }
-      print out line
+      print rebuilt_line line
     }
     END { exit hits ? 0 : 1 }
-  ' "$file" >"$out" || {
+  ' "$file" >"$substituted_file_path" || {
     echo "substitution needle absent from ${file}: ${needle}" >&2
-    rm -f "$out"
+    rm -f "$substituted_file_path"
     return 1
   }
-  mv "$out" "$file"
+  mv "$substituted_file_path" "$file"
 }
 
 # emit_values <script> <var>...: append a marker-prefixed print of each named
@@ -234,9 +234,9 @@ sub_literal() {
 emit_values() {
   local script="$1"
   shift
-  local v
-  for v in "$@"; do
-    printf 'printf "GAIA_FENCE_VALUE %s=%%s\\n" "$%s"\n' "$v" "$v" >>"$script"
+  local variable_name
+  for variable_name in "$@"; do
+    printf 'printf "GAIA_FENCE_VALUE %s=%%s\\n" "$%s"\n' "$variable_name" "$variable_name" >>"$script"
   done
 }
 
@@ -307,15 +307,15 @@ flags_for() {
   local script="$1"
   bodies_source "${2:-}" \
     | sed -e ':a' -e '/\\$/{N; s/\\\n[[:space:]]*/ /; ta' -e '}' \
-    | awk -v s="bash $script" '
+    | awk -v script_command="bash $script" '
         {
-          p = index($0, s)
-          if (p == 0) next
-          rest = substr($0, p + length(s))
-          q = index(rest, "$(")
-          if (q > 0) rest = substr(rest, 1, q - 1)
-          q = index(rest, ")")
-          if (q > 0) rest = substr(rest, 1, q - 1)
+          script_position = index($0, script_command)
+          if (script_position == 0) next
+          rest = substr($0, script_position + length(script_command))
+          expression_position = index(rest, "$(")
+          if (expression_position > 0) rest = substr(rest, 1, expression_position - 1)
+          expression_position = index(rest, ")")
+          if (expression_position > 0) rest = substr(rest, 1, expression_position - 1)
           print rest
         }
       ' \
@@ -372,31 +372,31 @@ jq_bin() {
 # handing jq a truncated or empty program that fails somewhere else with no
 # clue why.
 extract_enumeration_jq_program() {
-  awk -v q="'" '
+  awk -v single_quote="'" '
     !found {
-      m = index($0, "--jq " q)
-      if (m == 0) next
+      opener_position = index($0, "--jq " single_quote)
+      if (opener_position == 0) next
       found = 1
-      buf[++n] = substr($0, m + length("--jq " q))
+      program_lines[++line_count] = substr($0, opener_position + length("--jq " single_quote))
       next
     }
-    { buf[++n] = $0 }
+    { program_lines[++line_count] = $0 }
     END {
-      if (n == 0) {
-        print "extract_enumeration_jq_program: no --jq " q " opener found" > "/dev/stderr"
+      if (line_count == 0) {
+        print "extract_enumeration_jq_program: no --jq " single_quote " opener found" > "/dev/stderr"
         exit 1
       }
-      last = buf[n]
-      if (substr(last, length(last), 1) != q) {
+      last = program_lines[line_count]
+      if (substr(last, length(last), 1) != single_quote) {
         print "extract_enumeration_jq_program: the last program line does not end with a closing quote, the fence shape may have changed: " last > "/dev/stderr"
         exit 1
       }
-      buf[n] = substr(last, 1, length(last) - 1)
-      if (buf[1] != ".[] as $pr") {
-        print "extract_enumeration_jq_program: expected the program to start with .[] as $pr, got: " buf[1] > "/dev/stderr"
+      program_lines[line_count] = substr(last, 1, length(last) - 1)
+      if (program_lines[1] != ".[] as $pr") {
+        print "extract_enumeration_jq_program: expected the program to start with .[] as $pr, got: " program_lines[1] > "/dev/stderr"
         exit 1
       }
-      for (i = 1; i <= n; i++) print buf[i]
+      for (i = 1; i <= line_count; i++) print program_lines[i]
     }
   ' "$1"
 }
@@ -409,17 +409,17 @@ extract_enumeration_jq_program() {
 # residue-attribution conformance suite pins, not a second copy of it.
 residue_pr_fixture() {
   local corpus="${REPO_ROOT}/.gaia/tests/fixtures/residue-corpus/prs.json"
-  local out nums
+  local subset_file_path pull_request_numbers
   # No .json suffix on the template: macOS mktemp does not randomize the
   # X-run when a literal suffix follows it, and silently reuses the same
   # literal path on a second call in the same test, which collided here.
-  out="$(mktemp "${BATS_TEST_TMPDIR}/pr-subset-XXXXXX")"
-  nums="$(printf '%s,' "$@")"
-  nums="[${nums%,}]"
-  "$(jq_bin)" -c --argjson nums "$nums" \
-    '[.[] | select(.number as $n | $nums | index($n) != null)]' \
-    "$corpus" >"$out"
-  printf '%s\n' "$out"
+  subset_file_path="$(mktemp "${BATS_TEST_TMPDIR}/pr-subset-XXXXXX")"
+  pull_request_numbers="$(printf '%s,' "$@")"
+  pull_request_numbers="[${pull_request_numbers%,}]"
+  "$(jq_bin)" -c --argjson pull_request_numbers "$pull_request_numbers" \
+    '[.[] | select(.number as $pull_request_number | $pull_request_numbers | index($pull_request_number) != null)]' \
+    "$corpus" >"$subset_file_path"
+  printf '%s\n' "$subset_file_path"
 }
 
 # ---------------------------------------------------------------------------
@@ -450,7 +450,7 @@ residue_pr_fixture() {
 }
 
 @test "fence set: discovery reads every fence tag that can carry shell" {
-  # Standing control for FENCE_OPEN_RE, driven off a fixture because the page
+  # Standing control for FENCE_OPEN_REGEX, driven off a fixture because the page
   # itself uses one spelling and cannot exercise the others. $PAGE is a plain
   # variable and bats runs each test in its own process, so reassigning it
   # here reaches the discovery functions and leaks nowhere.
@@ -583,16 +583,16 @@ residue_pr_fixture() {
     echo "no repo paths extracted from the fences; the extractor is broken" >&2
     return 1
   }
-  printf '%s\n' "$paths" | while read -r p; do
-    [ -n "$p" ] || continue
+  printf '%s\n' "$paths" | while read -r cited_path; do
+    [ -n "$cited_path" ] || continue
     # `.gaia/local/**` is runtime state a clean checkout does not carry, and
     # the fences name it as a destination rather than as a precondition.
-    case "$p" in
+    case "$cited_path" in
       .gaia/local/*) continue ;;
       .claude/worktrees*) continue ;;
     esac
-    if [ ! -e "${REPO_ROOT}/${p}" ]; then
-      echo "a fence cites ${p}, which is not in the tree" >&2
+    if [ ! -e "${REPO_ROOT}/${cited_path}" ]; then
+      echo "a fence cites ${cited_path}, which is not in the tree" >&2
       exit 1
     fi
   done
@@ -620,21 +620,21 @@ residue_pr_fixture() {
   }
   joined="${BATS_TEST_TMPDIR}/joined"
   all_fence_bodies | sed -e ':a' -e '/\\$/{N; s/\\\n[[:space:]]*/ /; ta' -e '}' >"$joined"
-  printf '%s\n' "$scripts" | while read -r s; do
-    [ -n "$s" ] || continue
-    found="$(flags_for "$s")"
+  printf '%s\n' "$scripts" | while read -r cited_script; do
+    [ -n "$cited_script" ] || continue
+    found="$(flags_for "$cited_script")"
     # Per-element short-read guard, by a second expression rather than the
     # same one. An invocation that carries a flag at all is decidable without
     # the window truncations flags_for applies, so an extractor that collapses
     # to reading nothing is caught here per script, where a whole-set
     # non-empty check would stay satisfied on the other scripts' flags.
-    if grep -qE "bash ${s//./\\.}[^)]*--" "$joined" && [ -z "$found" ]; then
-      echo "the page hands ${s} at least one flag and the extractor read none" >&2
+    if grep -qE "bash ${cited_script//./\\.}[^)]*--" "$joined" && [ -z "$found" ]; then
+      echo "the page hands ${cited_script} at least one flag and the extractor read none" >&2
       exit 1
     fi
     for flag in $found; do
-      if ! script_parses_flag "${REPO_ROOT}/${s}" "$flag"; then
-        echo "a fence passes ${flag} to ${s}, which parses no such flag" >&2
+      if ! script_parses_flag "${REPO_ROOT}/${cited_script}" "$flag"; then
+        echo "a fence passes ${flag} to ${cited_script}, which parses no such flag" >&2
         exit 1
       fi
     done
@@ -862,10 +862,10 @@ FAKE
 # ---------------------------------------------------------------------------
 
 # fix_fixture: a committed checkout holding a.txt, b.txt and c.txt, plus an
-# empty run folder beside it. Sets FIX_ROOT and FIX_RF.
+# empty run folder beside it. Sets FIX_ROOT and FIX_RUN_FOLDER.
 fix_fixture() {
   FIX_ROOT="${BATS_TEST_TMPDIR}/fix-root"
-  FIX_RF="${BATS_TEST_TMPDIR}/run-folder"
+  FIX_RUN_FOLDER="${BATS_TEST_TMPDIR}/run-folder"
   git init -q -b feat/fence-fix "$FIX_ROOT"
   printf 'a\n' >"${FIX_ROOT}/a.txt"
   printf 'b\n' >"${FIX_ROOT}/b.txt"
@@ -873,7 +873,7 @@ fix_fixture() {
   git -C "$FIX_ROOT" add -A
   git -C "$FIX_ROOT" -c user.email=fence@example.invalid -c user.name=fence -c commit.gpgsign=false \
     commit -q -m fixture
-  mkdir -p "$FIX_RF"
+  mkdir -p "$FIX_RUN_FOLDER"
 }
 
 @test "fence loop-round-index: it prints the round count the branch history records" {
@@ -896,17 +896,17 @@ fix_fixture() {
 @test "fence fix-baseline: the baseline holds the self-heal edit and both digests print" {
   fix_fixture
   printf 'self-heal\n' >>"${FIX_ROOT}/a.txt"
-  printf '{"schema":1,"round":1,"entries":[]}\n' >"${FIX_RF}/dispositions-1.json"
+  printf '{"schema":1,"round":1,"entries":[]}\n' >"${FIX_RUN_FOLDER}/dispositions-1.json"
   script="$(materialize 'audit-fix-verify.sh baseline --root')"
   sub_literal "$script" '<RESOLVED_ROOT>' "$FIX_ROOT"
-  sub_literal "$script" '<RUN_FOLDER>' "$FIX_RF"
+  sub_literal "$script" '<RUN_FOLDER>' "$FIX_RUN_FOLDER"
   sub_literal "$script" '<r>' 1
   run bash -c "cd '$REPO_ROOT' && bash '$script'"
   [ "$status" -eq 0 ]
-  jq -e '.dirty | has("a.txt")' "${FIX_RF}/baseline-1.json" >/dev/null
+  jq -e '.dirty | has("a.txt")' "${FIX_RUN_FOLDER}/baseline-1.json" >/dev/null
   # The pinned verifier the later fences run sits beside the baseline.
-  [ -f "${FIX_RF}/verifier-bin-1/audit-fix-verify.sh" ]
-  jq -e '.verifier_digest | test("^[0-9a-f]{64}$")' "${FIX_RF}/baseline-1.json" >/dev/null
+  [ -f "${FIX_RUN_FOLDER}/verifier-bin-1/audit-fix-verify.sh" ]
+  jq -e '.verifier_digest | test("^[0-9a-f]{64}$")' "${FIX_RUN_FOLDER}/baseline-1.json" >/dev/null
   [ "$(grep -cE '^[0-9a-f]{64} ' <<<"$output")" -eq 2 ]
   grep -qF -- 'dispositions-1.json' <<<"$output"
   grep -qF -- 'baseline-1.json' <<<"$output"
@@ -927,9 +927,9 @@ fix_fixture() {
 @test "fence fixer-classify: a complete fixer result is real and a short one is a no-op" {
   fix_fixture
   printf '{"schema":1,"round":1,"attempt":1,"results":[{"member":"code-audit-frontend","finding_class":"rule/x","path":"b.txt","line":1,"disposition":"fixed","reason":"r","changed_paths":["b.txt"]}],"changed_paths":["b.txt"],"reverted_paths":[]}\n' \
-    >"${FIX_RF}/fixer-1-audit.json"
+    >"${FIX_RUN_FOLDER}/fixer-1-audit.json"
   script="$(materialize 'audit-noop-detect.sh --shape agent-report-file')"
-  sub_literal "$script" '<RUN_FOLDER>' "$FIX_RF"
+  sub_literal "$script" '<RUN_FOLDER>' "$FIX_RUN_FOLDER"
   sub_literal "$script" '<r>' 1
   short="${script}.short"
   cp "$script" "$short"
@@ -948,16 +948,16 @@ fix_fixture() {
   fix_fixture
   printf 'self-heal\n' >>"${FIX_ROOT}/a.txt"
   bash "${REPO_ROOT}/.gaia/scripts/audit-fix-verify.sh" baseline --root "$FIX_ROOT" --round 1 \
-    --out "${FIX_RF}/baseline-1.json"
+    --out "${FIX_RUN_FOLDER}/baseline-1.json"
   printf 'fixer\n' >>"${FIX_ROOT}/b.txt"
   printf 'stray\n' >>"${FIX_ROOT}/c.txt"
   printf 'autofix\n' >"${FIX_ROOT}/e.txt"
   printf '{"schema":1,"round":1,"attempt":2,"results":[],"changed_paths":["b.txt"],"reverted_paths":[]}\n' \
-    >"${FIX_RF}/fixer-1-audit.json"
-  printf 'e.txt\n' >"${FIX_RF}/gate-1-1.paths"
+    >"${FIX_RUN_FOLDER}/fixer-1-audit.json"
+  printf 'e.txt\n' >"${FIX_RUN_FOLDER}/gate-1-1.paths"
   script="$(materialize '.changed_paths[], .reverted_paths[]')"
   sub_literal "$script" '<RESOLVED_ROOT>' "$FIX_ROOT"
-  sub_literal "$script" '<RUN_FOLDER>' "$FIX_RF"
+  sub_literal "$script" '<RUN_FOLDER>' "$FIX_RUN_FOLDER"
   sub_literal "$script" '<r>' 1
   run bash "$script"
   [ "$status" -eq 0 ]
@@ -972,7 +972,7 @@ fix_fixture() {
   printf 'untouched\n' >>"${FIX_ROOT}/b.txt"
   script="$(materialize 'gate_snapshot() {')"
   sub_literal "$script" '<RESOLVED_ROOT>' "$FIX_ROOT"
-  sub_literal "$script" '<RUN_FOLDER>' "$FIX_RF"
+  sub_literal "$script" '<RUN_FOLDER>' "$FIX_RUN_FOLDER"
   sub_literal "$script" '<r>' 1
   sub_literal "$script" '<k>' 1
   # The stand-in autofix: rewrites a staged path and creates a new one. The
@@ -981,7 +981,7 @@ fix_fixture() {
   sub_literal "$script" '# run the per-round verification here' "echo fixed >>'${FIX_ROOT}/a.txt'; echo new >'${FIX_ROOT}/n.txt' #"
   run bash "$script"
   [ "$status" -eq 0 ]
-  [ "$(LC_ALL=C sort "${FIX_RF}/gate-1-1.paths" | tr '\n' ' ')" = "a.txt n.txt " ]
+  [ "$(LC_ALL=C sort "${FIX_RUN_FOLDER}/gate-1-1.paths" | tr '\n' ' ')" = "a.txt n.txt " ]
 }
 
 @test "fence gate-paths: it records the gate's paths when the before-snapshot is empty" {
@@ -994,26 +994,26 @@ fix_fixture() {
   [ -z "$(git -C "$FIX_ROOT" ls-files -z --others --exclude-standard | tr '\0' '\n')" ]
   script="$(materialize 'gate_snapshot() {')"
   sub_literal "$script" '<RESOLVED_ROOT>' "$FIX_ROOT"
-  sub_literal "$script" '<RUN_FOLDER>' "$FIX_RF"
+  sub_literal "$script" '<RUN_FOLDER>' "$FIX_RUN_FOLDER"
   sub_literal "$script" '<r>' 1
   sub_literal "$script" '<k>' 1
   sub_literal "$script" '# run the per-round verification here' "echo new >'${FIX_ROOT}/n.txt' #"
   run bash "$script"
   [ "$status" -eq 0 ]
-  [ "$(tr '\n' ' ' <"${FIX_RF}/gate-1-1.paths")" = "n.txt " ]
+  [ "$(tr '\n' ' ' <"${FIX_RUN_FOLDER}/gate-1-1.paths")" = "n.txt " ]
 }
 
 @test "fence fix-round-check: a gate log without a passing verifier output fails the round" {
   fix_fixture
   bash "${REPO_ROOT}/.gaia/scripts/audit-fix-verify.sh" baseline --root "$FIX_ROOT" --round 1 \
-    --out "${FIX_RF}/baseline-1.json"
-  : >"${FIX_RF}/gate-1-1.log"
+    --out "${FIX_RUN_FOLDER}/baseline-1.json"
+  : >"${FIX_RUN_FOLDER}/gate-1-1.log"
   script="$(materialize 'audit-fix-verify.sh round-check')"
-  sub_literal "$script" '<RUN_FOLDER>' "$FIX_RF"
+  sub_literal "$script" '<RUN_FOLDER>' "$FIX_RUN_FOLDER"
   sub_literal "$script" '<r>' 1
   run bash -c "cd '$REPO_ROOT' && bash '$script'"
   [ "$status" -eq 1 ]
-  printf '{"schema":1,"round":1,"attempt":1,"pass":true,"errors":[]}\n' >"${FIX_RF}/verifier-1-1.json"
+  printf '{"schema":1,"round":1,"attempt":1,"pass":true,"errors":[]}\n' >"${FIX_RUN_FOLDER}/verifier-1-1.json"
   run bash -c "cd '$REPO_ROOT' && bash '$script'"
   [ "$status" -eq 0 ]
 }
@@ -1021,10 +1021,10 @@ fix_fixture() {
 @test "fence resume-drift: it passes on the baseline tree and names the path a fixer edited" {
   fix_fixture
   bash "${REPO_ROOT}/.gaia/scripts/audit-fix-verify.sh" baseline --root "$FIX_ROOT" --round 1 \
-    --out "${FIX_RF}/baseline-1.json"
+    --out "${FIX_RUN_FOLDER}/baseline-1.json"
   script="$(materialize 'audit-fix-verify.sh drift --root')"
   sub_literal "$script" '<RESOLVED_ROOT>' "$FIX_ROOT"
-  sub_literal "$script" '<RUN_FOLDER>' "$FIX_RF"
+  sub_literal "$script" '<RUN_FOLDER>' "$FIX_RUN_FOLDER"
   sub_literal "$script" '<r>' 1
   run bash -c "cd '$REPO_ROOT' && bash '$script'"
   [ "$status" -eq 0 ]

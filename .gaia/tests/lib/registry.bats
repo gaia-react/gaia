@@ -13,8 +13,8 @@
 # so a broken assertion fails correctly even under macOS's bash 3.2.
 
 setup() {
-  EXT_DIR=".specify/extensions/gaia"
-  MANIFEST="$EXT_DIR/extension.yml"
+  EXTENSION_DIRECTORY=".specify/extensions/gaia"
+  MANIFEST="$EXTENSION_DIRECTORY/extension.yml"
 }
 
 # Echoes each `file:` value under provides.commands, one per line, e.g.
@@ -30,9 +30,9 @@ registered_files() {
 @test "every commands/*.md file is registered in extension.yml's provides.commands" {
   registered="$(registered_files)"
   missing=""
-  for f in "$EXT_DIR"/commands/*.md; do
-    rel="commands/$(basename "$f")"
-    grep -qxF "$rel" <<<"$registered" || missing="$missing $rel"
+  for command_file in "$EXTENSION_DIRECTORY"/commands/*.md; do
+    relative_path="commands/$(basename "$command_file")"
+    grep -qxF "$relative_path" <<<"$registered" || missing="$missing $relative_path"
   done
   if [ -n "$missing" ]; then
     echo "unregistered command file(s):$missing" >&2
@@ -43,9 +43,9 @@ registered_files() {
 @test "every extension.yml provides.commands file: value resolves to an existing file" {
   registered="$(registered_files)"
   missing=""
-  while IFS= read -r rel; do
-    [ -z "$rel" ] && continue
-    [ -f "$EXT_DIR/$rel" ] || missing="$missing $rel"
+  while IFS= read -r relative_path; do
+    [ -z "$relative_path" ] && continue
+    [ -f "$EXTENSION_DIRECTORY/$relative_path" ] || missing="$missing $relative_path"
   done <<<"$registered"
   if [ -n "$missing" ]; then
     echo "registered file(s) missing on disk:$missing" >&2

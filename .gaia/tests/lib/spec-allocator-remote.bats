@@ -12,7 +12,7 @@
 
 setup() {
   HELPERS="$BATS_TEST_DIRNAME/helpers"
-  ALLOC=".specify/extensions/gaia/lib/spec-allocator.sh"
+  ALLOCATOR=".specify/extensions/gaia/lib/spec-allocator.sh"
   CLEANUP_EXTRA=()
 }
 
@@ -21,8 +21,8 @@ teardown() {
     rm -rf "$REPO" "${REPO}.git"
   fi
   if [ "${#CLEANUP_EXTRA[@]}" -gt 0 ]; then
-    for d in "${CLEANUP_EXTRA[@]}"; do
-      rm -rf "$d"
+    for extra_directory in "${CLEANUP_EXTRA[@]}"; do
+      rm -rf "$extra_directory"
     done
   fi
 }
@@ -40,7 +40,7 @@ _tag_subject() {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --with-origin --seed-remote-tag spec/010 "seeded ten" --seed-draft SPEC-003)"
   ORIGIN="${REPO}.git"
 
-  run bash -c "bash '$REPO/$ALLOC' next '$REPO' 'uat001 subject'"
+  run bash -c "bash '$REPO/$ALLOCATOR' next '$REPO' 'uat001 subject'"
   [ "$status" -eq 0 ]
   [ "$output" = "SPEC-011" ]
 
@@ -53,7 +53,7 @@ _tag_subject() {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --with-origin --seed-remote-tag spec/010 "seeded ten" --seed-draft SPEC-003)"
   ORIGIN="${REPO}.git"
 
-  run bash -c "GAIA_SPEC_FORCE_OFFLINE=1 bash '$REPO/$ALLOC' next '$REPO' 'uat001 negative control' 2>'$REPO/err'"
+  run bash -c "GAIA_SPEC_FORCE_OFFLINE=1 bash '$REPO/$ALLOCATOR' next '$REPO' 'uat001 negative control' 2>'$REPO/err'"
   [ "$status" -eq 0 ]
   # Forced offline: the remote's N=10 is unreachable, so the union falls back
   # to the LOCAL-only max (M=3) -> SPEC-004, never SPEC-011. A silent
@@ -78,12 +78,12 @@ _tag_subject() {
   rm -f "$ORIGIN/.race-start"
   (
     until [ -f "$ORIGIN/.race-start" ]; do :; done
-    bash "$CLONE1/$ALLOC" next "$CLONE1" "clone1 subject" > "$CLONE1/out" 2>"$CLONE1/err"
+    bash "$CLONE1/$ALLOCATOR" next "$CLONE1" "clone1 subject" > "$CLONE1/out" 2>"$CLONE1/err"
   ) &
   pid1=$!
   (
     until [ -f "$ORIGIN/.race-start" ]; do :; done
-    bash "$CLONE2/$ALLOC" next "$CLONE2" "clone2 subject" > "$CLONE2/out" 2>"$CLONE2/err"
+    bash "$CLONE2/$ALLOCATOR" next "$CLONE2" "clone2 subject" > "$CLONE2/out" 2>"$CLONE2/err"
   ) &
   pid2=$!
   touch "$ORIGIN/.race-start"
@@ -96,10 +96,10 @@ _tag_subject() {
   [[ "$id2" =~ ^SPEC-[0-9]{3}$ ]]
   [ "$id1" != "$id2" ]
 
-  n1=$((10#${id1#SPEC-}))
-  n2=$((10#${id2#SPEC-}))
-  winner=$(( n1 < n2 ? n1 : n2 ))
-  loser=$(( n1 < n2 ? n2 : n1 ))
+  first_clone_number=$((10#${id1#SPEC-}))
+  second_clone_number=$((10#${id2#SPEC-}))
+  winner=$(( first_clone_number < second_clone_number ? first_clone_number : second_clone_number ))
+  loser=$(( first_clone_number < second_clone_number ? second_clone_number : first_clone_number ))
   # The two clones started from the SAME barrier-released state (a fresh
   # origin, no prior spec/* tags), so both independently computed the SAME
   # first candidate number. A duplicate id is impossible; the ONLY way the
@@ -125,11 +125,11 @@ _tag_subject() {
   CLEANUP_EXTRA=("$CLONE2")
 
   subject="a KNOWN distinctive subject for UAT-003"
-  run bash -c "bash '$REPO/$ALLOC' next '$REPO' '$subject'"
+  run bash -c "bash '$REPO/$ALLOCATOR' next '$REPO' '$subject'"
   [ "$status" -eq 0 ]
   id="$output"
-  num=$((10#${id#SPEC-}))
-  tag="spec/$(printf '%03d' "$num")"
+  spec_number=$((10#${id#SPEC-}))
+  tag="spec/$(printf '%03d' "$spec_number")"
 
   # The annotation on the origin equals the EXACT passed subject, not merely
   # a non-empty placeholder (the allocator's id-fallback would also be
@@ -159,10 +159,10 @@ _tag_subject() {
   # Immutability: the allocator's push path never issues --force (grep the
   # frozen source), and a second allocation cycle leaves the first
   # reservation's annotation untouched.
-  run bash -c "grep -nE 'push[^|]*(--force|-f[[:space:]])' '$REPO/$ALLOC'"
+  run bash -c "grep -nE 'push[^|]*(--force|-f[[:space:]])' '$REPO/$ALLOCATOR'"
   [ "$status" -ne 0 ]
 
-  run bash -c "bash '$REPO/$ALLOC' next '$REPO' 'a second, different subject'"
+  run bash -c "bash '$REPO/$ALLOCATOR' next '$REPO' 'a second, different subject'"
   [ "$status" -eq 0 ]
   [ "$output" != "$id" ]
   [ "$(_tag_subject "$ORIGIN" "$tag")" = "$subject" ]
@@ -177,7 +177,7 @@ _tag_subject() {
   rm -rf "${REPO}.git"
 
   start="$(date +%s)"
-  run bash -c "GAIA_SPEC_REMOTE_TIMEOUT_SECS=2 bash '$REPO/$ALLOC' next '$REPO' 'uat004a subject' 2>'$REPO/err'"
+  run bash -c "GAIA_SPEC_REMOTE_TIMEOUT_SECONDS=2 bash '$REPO/$ALLOCATOR' next '$REPO' 'uat004a subject' 2>'$REPO/err'"
   end="$(date +%s)"
   [ "$status" -eq 0 ]
   [ "$output" = "SPEC-001" ]
@@ -192,7 +192,7 @@ _tag_subject() {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --with-origin)"
 
   start="$(date +%s)"
-  run bash -c "GAIA_SPEC_FORCE_OFFLINE=1 bash '$REPO/$ALLOC' next '$REPO' 'uat004b subject' 2>'$REPO/err'"
+  run bash -c "GAIA_SPEC_FORCE_OFFLINE=1 bash '$REPO/$ALLOCATOR' next '$REPO' 'uat004b subject' 2>'$REPO/err'"
   end="$(date +%s)"
   [ "$status" -eq 0 ]
   [ "$output" = "SPEC-001" ]
@@ -206,7 +206,7 @@ _tag_subject() {
   # remote" and "wired but currently unreachable" into the same signature.
   NOREMOTE="$("$HELPERS/tmp-spec-repo.sh")"
   CLEANUP_EXTRA=("$NOREMOTE")
-  run bash -c "bash '$NOREMOTE/$ALLOC' next '$NOREMOTE' 'no remote subject' 2>'$NOREMOTE/err'"
+  run bash -c "bash '$NOREMOTE/$ALLOCATOR' next '$NOREMOTE' 'no remote subject' 2>'$NOREMOTE/err'"
   [ "$status" -eq 0 ]
   [ "$(jq -r '.specs[-1].reservation' "$NOREMOTE/.gaia/local/specs/ledger.json")" = "local" ]
   [ ! -s "$NOREMOTE/err" ]
@@ -230,7 +230,7 @@ _tag_subject() {
   printf '{"spec_id":"SPEC-005","phase":"discover"}\n' > "$REPO/.gaia/local/cache/spec-session-SPEC-005.json"
   echo "audit note" > "$REPO/.gaia/local/cache/audit-SPEC-005/notes.md"
 
-  run bash -c "bash '$REPO/$ALLOC' reserve_pending '$REPO'"
+  run bash -c "bash '$REPO/$ALLOCATOR' reserve_pending '$REPO'"
   [ "$status" -eq 0 ]
 
   # Renumbered to the next free number over the union (5 was taken; 6 is
@@ -269,7 +269,7 @@ _tag_subject() {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --with-origin --seed-remote-tag spec/003 "sub three" --seed-remote-tag spec/007 "sub seven")"
   ORIGIN="${REPO}.git"
 
-  run bash -c "bash '$REPO/$ALLOC' next '$REPO' 'uat006 subject'"
+  run bash -c "bash '$REPO/$ALLOCATOR' next '$REPO' 'uat006 subject'"
   [ "$status" -eq 0 ]
   [ "$output" = "SPEC-008" ]
   [ "$(git -C "$ORIGIN" tag -l 'spec/008')" = "spec/008" ]
@@ -285,7 +285,7 @@ _tag_subject() {
   # the remote, and vs UAT-001, where the remote max exceeds local).
   [ -z "$(git -C "$ORIGIN" tag -l 'spec/*')" ]
 
-  run bash -c "bash '$REPO/$ALLOC' next '$REPO' 'reachable unseeded subject'"
+  run bash -c "bash '$REPO/$ALLOCATOR' next '$REPO' 'reachable unseeded subject'"
   [ "$status" -eq 0 ]
   [ "$output" = "SPEC-005" ]
   [ "$(git -C "$ORIGIN" tag -l 'spec/005')" = "spec/005" ]
@@ -297,7 +297,7 @@ _tag_subject() {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --with-origin --origin-reject-spec-tags)"
   ORIGIN="${REPO}.git"
 
-  run bash -c "bash '$REPO/$ALLOC' next '$REPO' 'uat007 subject' 2>'$REPO/err'"
+  run bash -c "bash '$REPO/$ALLOCATOR' next '$REPO' 'uat007 subject' 2>'$REPO/err'"
   [ "$status" -eq 0 ]
   [ "$output" = "SPEC-001" ]
   [ "$(jq -r '.specs[-1].reservation' "$REPO/.gaia/local/specs/ledger.json")" = "unavailable" ]
