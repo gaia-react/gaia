@@ -41,12 +41,17 @@ A nested Agent call that errors with no `BLOCKED:` anywhere is `nesting-unavaila
 Follow the page in this order: `#### The audit loop unit` for the unit's shape, then `#### The fix round: fixer, verifier, gate`, then `#### When rounds stop: pre-commit a disposition for every branch`, and `#### Cross-remit findings` for any out-of-scope or cross-remit finding. Unit-specific rules on top:
 
 - Dispatch the round's members in parallel.
+<!-- gaia:maintainer-only:start -->
 - Dispose findings under `.claude/rules/maintainers/harness-triage-threshold.md` when that file exists.
+<!-- gaia:maintainer-only:end -->
 - Never set `enforcement_paths_allowed`. A finding that needs an ENFORCEMENT_PATHS edit means no commit for the round: stop `needs-human` and name the path.
 - Every `waive-out-of-scope` entry carries `basis`: `cross-remit` only for a finding whose sidecar entry has `cross_remit: true`, otherwise `triage-threshold`.
 - Every key in `Vetoes:` whose `effective_from_round` is at or before this round is disposed `fix`, as a synthetic `fix` entry when no member re-reports it.
 - After writing the dispositions file, run `bash <root>/.gaia/scripts/audit-dispositions-check.sh check --root <root> --run-folder <run> --round <r>` (no `--snapshot-dir`). On a non-zero exit stop `dispositions-check-failed` with no commit.
-- Then baseline, fixer, verify, gate (in this repo also `bash .gaia/tests/shell-lint.sh` and the referencing bats suites through `bats5.sh < /dev/null`), round-check, one commit, push.
+- Then baseline, fixer, verify, gate, round-check, one commit, push.
+<!-- gaia:maintainer-only:start -->
+- In this repo the gate also runs `bash .gaia/tests/shell-lint.sh` and the referencing bats suites through `bats5.sh < /dev/null`.
+<!-- gaia:maintainer-only:end -->
 - After the push, publish the record with `audit-loop-eval.sh record-values` piped to `audit-loop-record.sh`, write the residual and waiver sections into the PR body from `audit-dispositions-check.sh pr-sections`, and file every `file` disposition through the `file-tech-debt` skill.
 - Use blocking waits only. Never start a background shell, and never end your turn while waiting on a dispatch or a command.
 

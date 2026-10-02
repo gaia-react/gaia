@@ -284,7 +284,7 @@ anchors_resolve() {
   baseline_line="$(grep -nF -- '**Baseline.**' <<<"$s" | head -1 | cut -d: -f1)"
   [ -n "$check_line" ] && [ -n "$baseline_line" ] || return 1
   [ "$check_line" -lt "$baseline_line" ] || return 1
-  grep -qF -- 'with no snapshot directory (only the bound hook writes snapshots)' <<<"$s" || return 1
+  grep -qF -- 'with no `--snapshot-dir` (only the bound hook writes snapshots;' <<<"$s" || return 1
   sentences <<<"$s" | grep -qF -- 'runs the `drift` check above on any `baseline-<r>.json` that has no `fixer-<r>-audit.json`: exit 1 stops it `needs-human`.' || return 1
   grep -qF -- '**Unit recovery.**' <<<"$s" || return 1
   sentences <<<"$s" | grep -qF -- 'the unit calls `audit-loop-record.sh` itself' || return 1
@@ -292,7 +292,7 @@ anchors_resolve() {
 }
 
 # pinned_labels: the option labels the evaluator's pinned question can carry,
-# one per line, K shown as <K>. Derived from the builder, not retyped.
+# one per line, without the (Recommended) suffix. Derived from the builder, not retyped.
 pinned_labels() {
   bash -c '
     . "$1/.gaia/scripts/context-checkpoint-lib.sh"
@@ -300,11 +300,11 @@ pinned_labels() {
     k="$GAIA_CTX_UNIT_ROUNDS"
     { gaia_loop_pinned_question feat/x 0123456789abcdef 6 "$k" true false context
       gaia_loop_pinned_question feat/x 0123456789abcdef 10 "$k" false true cap
-    } | jq -r ".questions[0].options[].label" | sed "s/Grant $k,/Grant <K>,/" | sort -u
+    } | jq -r ".questions[0].options[].label" | sed "s/ (Recommended)$//" | sort -u
   ' _ "$ROOT"
 }
 
-@test "the checkpoint section quotes every pinned option label, with K as a placeholder and never a literal" {
+@test "the checkpoint section quotes every pinned option label and says the recommended one leads" {
   local s labels label n=0
   s="$(section "$CHECKPOINT")" || return 1
   labels="$(pinned_labels)"
@@ -314,7 +314,8 @@ pinned_labels() {
     grep -qF -- "\`$label\`" <<<"$s" || { echo "label not quoted: $label" >&2; return 1; }
   done <<<"$labels"
   [ "$n" -eq 5 ] || { echo "expected 5 distinct labels, derived $n" >&2; return 1; }
-  grep -qE -- 'Grant [0-9]+,' <<<"$s" && return 1
+  grep -qF -- '(Recommended)' <<<"$s" || return 1
+  grep -qF -- 'leads' <<<"$s" || return 1
   grep -qF -- 'context-checkpoint-lib.sh' <<<"$s" || return 1
   true
 }
@@ -335,11 +336,23 @@ pinned_labels() {
   local s fence
   s="$(section "$CHECKPOINT")" || return 1
   sentences <<<"$s" | grep -qF -- 'for the human to paste into a fresh session' || return 1
+  grep -qF -- 'Run `/clear`, then paste the prompt below.' <<<"$s" || return 1
+  grep -qF -- 'Kill this session with Ctrl+C, start a new one (`claude`, with any needed environment variable), then paste the prompt below.' <<<"$s" || return 1
+  grep -qF -- 'only a fresh launch provides' <<<"$s" || return 1
   fence="$(awk '/^```text$/ { open = 1; next } /^```$/ { open = 0 } open { print }' <<<"$s")"
   grep -qF -- 'Resume the PR merge workflow for PR #<N>' <<<"$fence" || return 1
   grep -qF -- 'audit-loop-eval.sh next-unit --root <RESOLVED_ROOT>' <<<"$fence" || return 1
   sentences <<<"$s" | grep -qF -- "It prints the typed \`audit-grant <n>\` line from the brief's \`grant_line\` and no continuation prompt" || return 1
   sentences <<<"$s" | grep -qF -- 'An unattended run never asks and never grants.' || return 1
+}
+
+@test "the clean-stop last guard is read-only and reads the branch's frozen snapshots" {
+  local row
+  row="$(grep -F -- 'audit-dispositions-check.sh check-all --root <RESOLVED_ROOT> --run-folder <RUN_FOLDER>` once more as a last guard' "$PAGE")" || return 1
+  grep -qF -- 'read-only: with no `--snapshot-dir` it re-grades each round from the branch'"'"'s frozen snapshots' <<<"$row" || return 1
+  grep -qF -- 'it writes nothing' <<<"$row" || return 1
+  grep -qF -- 'no snapshot directory)' <<<"$row" && return 1
+  true
 }
 
 @test "the checkpoint section states the context gate, the fallback, the cap, one grant per unit, and the guard's false-deny" {

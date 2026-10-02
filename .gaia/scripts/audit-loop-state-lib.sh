@@ -325,14 +325,47 @@ gaia_loop_session_is_interactive() {
   [ "$entry" = cli ]
 }
 
+# gaia_loop_recommended <trigger> <snap-json>: `grant`, `accept` or `stop`, the
+# evaluator's recommendation for a checkpoint on <trigger> over the last
+# round's snapshot. The brief and the pinned question both read it from here so
+# the rule has one copy: a context checkpoint with no denying signal is a grant
+# (the session is merely full), otherwise the verdict decides.
+gaia_loop_recommended() {
+  local trigger="${1-}" snap="${2:-null}"
+  printf '%s' "$snap" | jq -r --arg t "$trigger" '
+    . as $s
+    | (if ($s.signals | type) == "object" then $s.signals
+       else {enriching: ($s.verdict == "enriching"), stalled: ($s.verdict == "stalled")} end) as $sig
+    | (any($sig | to_entries[]; .key != "quiet" and .value == true)) as $denying
+    | if $t == "context" and ($denying | not) then "grant"
+      else {continue: "grant", unknown: "grant", enriching: "accept", quiet: "accept", stalled: "stop"}
+           | .[$s.verdict // "unknown"] // "grant" end'
+}
+
 # gaia_loop_pinned_question <branch> <nonce> <rounds_used> <k>
-# <accept_eligible:true|false> <cap:true|false> <trigger>: the whole pinned
-# AskUserQuestion tool_input, compact JSON, one question. The only builder of
-# these strings (the recorder compares a payload against its output). rc 2 and
-# nothing printed on a bad input.
+# <accept_eligible:true|false> <cap:true|false> <trigger> [<context_reading>
+# [<recommended> [<checkpoint_line>]]]: the whole pinned AskUserQuestion
+# tool_input, compact JSON, one question. The only builder of these strings (the
+# bound hook stores the result, and the recorder compares a payload against that
+# stored copy). rc 2 and nothing printed on a bad input. The optional reading is
+# a `gaia_ctx_read` line: the question and each grant option carry it because
+# the statusline is hidden while a question shows and never visible over Remote
+# Control, and the human reads the choices, not the text above them. A missing,
+# stale, future, unparseable or absent reading, or a zero-size window, reads
+# "context unavailable".
+# Exactly one option leads and ends in " (Recommended)". A `context` trigger
+# means the session is at or over the line, so "Continue audit in a new session" always leads and
+# "Continue audit in this session" stays offered right after it as the opt-out. For any other
+# trigger <recommended> is the gaia_loop_recommended value: accept leads when
+# Accept is offered, stop leads on stop. Otherwise, with a grant on the table, a reading below the
+# <checkpoint_line> (gaia_ctx_line) puts "Continue audit in this session" first and a reading at
+# or above it, or no usable reading or line, puts "Continue audit in a new session" first. At the
+# cap there is no grant: Accept leads when offered, else Stop. The rest keep
+# their order.
 gaia_loop_pinned_question() {
-  local branch="${1-}" nonce="${2-}" used="${3-}" k="${4-}" elig="${5-}" cap="${6-}" trigger="${7-}"
-  local LC_ALL=C typed_g typed_a
+  local branch="${1-}" nonce="${2-}" used="${3-}" k="${4-}" elig="${5-}" cap="${6-}" trigger="${7-}" reading="${8-}"
+  local rec="${9-}" line="${10-}"
+  local LC_ALL=C typed_g typed_a ctx_tokens ctx_window ctx=", context unavailable" cs="Context unavailable" band=none lead
   command -v jq >/dev/null 2>&1 || return 6
   _gaia_loop_keyable "$branch" || return 2
   [[ "$nonce" =~ ^[0-9a-f]{16}$ ]] || return 2
@@ -342,6 +375,40 @@ gaia_loop_pinned_question() {
   case "$elig" in true | false) ;; *) return 2 ;; esac
   case "$cap" in true | false) ;; *) return 2 ;; esac
   [[ "$trigger" =~ ^(context|cap|fallback|rubric:[A-Za-z0-9_.-]+)$ ]] || return 2
+  case "$rec" in '' | grant | accept | stop) ;; *) return 2 ;; esac
+  case "$line" in '') ;; *) gaia_loop_is_uint "$line" || return 2 ;; esac
+  case "$reading" in
+    '' | missing | stale | future | unparseable) ;;
+    *)
+      [[ "$reading" =~ ^fresh\ ([0-9]{1,12})\ ([0-9]{1,12})$ ]] || return 2
+      ctx_tokens="${BASH_REMATCH[1]}"
+      ctx_window="${BASH_REMATCH[2]}"
+      if [ "$((10#$ctx_window))" -gt 0 ]; then
+        ctx=", context $((10#$ctx_tokens * 100 / 10#$ctx_window))% ($((10#$ctx_tokens / 1000))k of $((10#$ctx_window / 1000))k)"
+        cs="Context $((10#$ctx_tokens * 100 / 10#$ctx_window))% ($((10#$ctx_tokens / 1000))k of $((10#$ctx_window / 1000))k)"
+        if [ -n "$line" ]; then
+          if [ "$((10#$ctx_tokens))" -lt "$((10#$line))" ]; then band=below; else band=above; fi
+        fi
+      fi
+      ;;
+  esac
+  if [ "$trigger" = context ] && [ "$cap" = false ]; then
+    lead=g2
+  else
+    case "$rec" in
+      accept) if [ "$elig" = true ]; then lead=accept; fi ;;
+      stop) lead=stop ;;
+    esac
+  fi
+  if [ -z "${lead-}" ]; then
+    if [ "$cap" = true ]; then
+      if [ "$elig" = true ]; then lead=accept; else lead=stop; fi
+    elif [ "$band" = below ]; then
+      lead=g1
+    else
+      lead=g2
+    fi
+  fi
   typed_g=""
   typed_a=""
   if [ "$_GAIA_LOOP_ASK_RECORDER" = 0 ]; then
@@ -349,25 +416,31 @@ gaia_loop_pinned_question() {
     typed_a=" Selecting this records nothing; type \`audit-accept\` as the whole prompt."
   fi
   jq -n -c --arg branch "$branch" --arg nonce "$nonce" --arg used "$used" --arg k "$k" \
-    --arg trigger "$trigger" --argjson elig "$elig" --argjson cap "$cap" \
-    --arg tg "$typed_g" --arg ta "$typed_a" '
-    ("Grant " + $k + ", continue here") as $g1
-    | ("Grant " + $k + ", new session") as $g2
+    --arg trigger "$trigger" --arg ctx "$ctx" --arg cs "$cs" --arg band "$band" --arg lead "$lead" \
+    --argjson elig "$elig" --argjson cap "$cap" --arg tg "$typed_g" --arg ta "$typed_a" '
+    ({below: " is below the checkpoint line, so this session has room: ",
+      above: " is at or above the checkpoint line, so this session is short on room: ",
+      none: ", so this session may be short on room: "}[$band]) as $here
+    | ({below: " is below the checkpoint line: ",
+        above: " is at or above the checkpoint line: ",
+        none: ", so a new session is the safe choice: "}[$band]) as $fresh
     | [
         (if $cap then empty else
-          {label: $g1, description: ("Records " + $k + " more rounds and keeps working in this session." + $tg)},
-          {label: $g2, description: ("Records the same " + $k + "-round grant, then prints a continuation prompt for a fresh session." + $tg)}
+          {key: "g1", label: "Continue audit in this session", description: ($cs + $here + "records " + $k + " more rounds and keeps working here." + $tg)},
+          {key: "g2", label: "Continue audit in a new session", description: ($cs + $fresh + "records the same " + $k + "-round grant, then prints a continuation prompt for a fresh session." + $tg)}
         end),
         (if $elig then
-          {label: "Accept the remainder", description: ("One closing round, then the remainder is recorded as accepted residuals." + $ta)}
+          {key: "accept", label: "Accept the remainder", description: ("One closing round, then the remainder is recorded as accepted residuals." + $ta)}
         else empty end),
         (if $cap and ($elig | not) then
-          {label: "Type audit-accept instead", description: "Records nothing. The human may type `audit-accept` as the whole prompt, a deliberate override of the eligibility gate."}
+          {key: "typed", label: "Type audit-accept instead", description: "Records nothing. The human may type `audit-accept` as the whole prompt, a deliberate override of the eligibility gate."}
         else empty end),
-        {label: "Stop and file the remainder", description: "Records nothing, leaves the PR open, and files the remainder as tech debt."}
-      ] as $opts
+        {key: "stop", label: "Stop and file the remainder", description: "Records nothing, leaves the PR open, and files the remainder as tech debt."}
+      ] as $all
+    | ([$all[] | select(.key == $lead) | .label = .label + " (Recommended)"]
+       + [$all[] | select(.key != $lead)] | map(del(.key))) as $opts
     | {questions: [{
-        question: ("Audit checkpoint " + $nonce + " on " + $branch + ": " + $used + " rounds used (" + $trigger + "). How should the audit loop continue?"),
+        question: ("Audit checkpoint " + $nonce + " on " + $branch + ": " + $used + " rounds used (" + $trigger + ")" + $ctx + ". How should the audit loop continue?"),
         header: "Audit loop",
         multiSelect: false,
         options: $opts}]}'

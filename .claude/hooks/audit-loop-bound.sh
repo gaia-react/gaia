@@ -441,7 +441,7 @@ adopt_renamed() {
 
 run_decision() {
   local libs_failed=0 rc dirty_rc s0 used idx snap dec now stampf slug closing S2 cur_pr old_file closed=0
-  local verb trigger elig cap extra nonce question in_unit reading ask_tokens ask_pct config view
+  local verb trigger elig cap extra nonce question in_unit reading ask_tokens ask_pct config view recommended ctx_line
   local admitted_on start_round through_round
   HELD=''
   trap 'exit 143' TERM INT HUP
@@ -672,7 +672,12 @@ run_decision() {
       fi
       nonce=$(gaia_loop_new_nonce) ||
         finish_deny 'BLOCKED: the audit loop checkpoint could not draw a checkpoint nonce. Fail-loud, not fail-open: retry the dispatch.'
-      question=$(gaia_loop_pinned_question "$B" "$nonce" "$used" "$GAIA_CTX_UNIT_ROUNDS" "$elig" "$cap" "$trigger") && [ -n "$question" ] ||
+      recommended=$(gaia_loop_recommended "$trigger" "$snap") || recommended=''
+      ctx_line=''
+      if [[ $reading =~ ^fresh\ [0-9]+\ ([0-9]+)$ ]]; then
+        ctx_line=$(gaia_ctx_line "${BASH_REMATCH[1]}" "$ask_tokens" "$ask_pct") || ctx_line=''
+      fi
+      question=$(gaia_loop_pinned_question "$B" "$nonce" "$used" "$GAIA_CTX_UNIT_ROUNDS" "$elig" "$cap" "$trigger" "$reading" "$recommended" "$ctx_line") && [ -n "$question" ] ||
         finish_deny "BLOCKED: the audit loop checkpoint could not build its pinned question (trigger $trigger). Fail-loud, not fail-open: retry the dispatch."
       # Every checkpoint deny appends a new checkpoint; the latest is the one
       # pending, so this supersedes any earlier one, legacy ones included.

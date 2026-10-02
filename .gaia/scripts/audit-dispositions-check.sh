@@ -45,8 +45,14 @@
 # sha256 plus the per-key lookup it graded), and `check-all` re-grades from
 # that snapshot, never from live sidecars and never through the evaluator. The
 # snapshot directory is in the guarded loop state directory; only the bound
-# hook's invocation passes --snapshot-dir (the unit runs without it and writes
-# nothing). An existing snapshot is never overwritten by a different file.
+# hook's invocation passes --snapshot-dir, and only that invocation writes.
+# Without --snapshot-dir, `check` and `check-all` read the frozen snapshots
+# from the branch's state directory (the state file's path minus .json, plus
+# .d), exactly as waiver-table does, and write nothing: a round with a snapshot
+# is re-graded from it, a round without one from live findings, so the
+# read-only last guard passes on a multi-round branch whose earlier sidecars
+# were overwritten. A branch with no state directory has no snapshots to read.
+# An existing snapshot is never overwritten by a different file.
 #
 # Vetoes apply forward only. vetoes.json entries carry effective_from_round, so
 # a veto recorded after a unit returned binds the rounds it applies to and
@@ -159,8 +165,17 @@ _grade() {
   return 1
 }
 
-# _snapshot_ok <round>: sets SNAP to the snapshot path when present.
-_snap_path() { printf '%s/dispositions-%s.checked.json' "$SNAPSHOT_DIR" "$1"; }
+# _default_snapshot_dir: the branch's snapshot directory, read only; empty when
+# the evaluator knows no state path for ROOT.
+_default_snapshot_dir() {
+  local sp
+  sp="$(bash "$_GAIA_DISP_DIR/audit-loop-eval.sh" state-path --root "$ROOT" 2>/dev/null)" && printf '%s.d' "${sp%.json}"
+  return 0
+}
+
+# _snap_path <round>: the snapshot of a round in READ_DIR, which is
+# --snapshot-dir when given and the branch's default directory otherwise.
+_snap_path() { printf '%s/dispositions-%s.checked.json' "$READ_DIR" "$1"; }
 
 # _write_snapshot <round> <sha> <lookup>
 _write_snapshot() {
@@ -220,6 +235,10 @@ _check_snapshot() {
 _cmd_check() {
   [[ "${ROUND:-}" =~ ^[0-9]+$ ]] && [ "$ROUND" -ge 1 ] || { _usage; return 2; }
   _load_vetoes || return 3
+  if [ -z "$SNAPSHOT_DIR" ] && [ -n "$READ_DIR" ] && [ -e "$(_snap_path "$ROUND")" ]; then
+    _check_snapshot "$ROUND"
+    return $?
+  fi
   _check_live "$ROUND"
 }
 
@@ -233,7 +252,7 @@ _cmd_check_all() {
     r="${BASH_REMATCH[1]}"
     r=$((10#$r))
     rc=0
-    if [ -n "$SNAPSHOT_DIR" ] && [ -e "$(_snap_path "$r")" ]; then
+    if [ -n "$READ_DIR" ] && [ -e "$(_snap_path "$r")" ]; then
       _check_snapshot "$r" || rc=$?
     else
       _check_live "$r" || rc=$?
@@ -256,14 +275,11 @@ def cell: tostring | gsub("\\|"; "\\|") | gsub("\\s+"; " ");
 '
 
 _cmd_waiver_table() {
-  local a b r f lookup sdir snap sp
+  local a b r f lookup sdir snap
   [[ "${ROUNDS:-}" =~ ^([0-9]+)-([0-9]+)$ ]] || { _usage; return 2; }
   a=$((10#${BASH_REMATCH[1]}))
   b=$((10#${BASH_REMATCH[2]}))
-  sdir="$SNAPSHOT_DIR"
-  if [ -z "$sdir" ]; then
-    sp="$(bash "$_GAIA_DISP_DIR/audit-loop-eval.sh" state-path --root "$ROOT" 2>/dev/null)" && sdir="${sp%.json}.d"
-  fi
+  sdir="$READ_DIR"
   printf '| key | member | severity | security | disposition | reason |\n|---|---|---|---|---|---|\n'
   r="$a"
   while [ "$r" -le "$b" ]; do
@@ -333,7 +349,7 @@ _cmd_pr_sections() {
 main() {
   local sub="${1-}"
   [ $# -gt 0 ] && shift
-  ROOT="" RUN_FOLDER="" ROUND="" ROUNDS="" SNAPSHOT_DIR=""
+  ROOT="" RUN_FOLDER="" ROUND="" ROUNDS="" SNAPSHOT_DIR="" READ_DIR=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --root) [ $# -ge 2 ] || { _usage; return 2; }; ROOT="$2"; shift 2 ;;
@@ -351,6 +367,8 @@ main() {
   [ -n "$RUN_FOLDER" ] || { _usage; return 2; }
   case "$sub" in pr-sections) ;; *) [ -n "$ROOT" ] || { _usage; return 2; } ;; esac
   command -v jq >/dev/null 2>&1 || { _err "jq is required and was not found on PATH"; return 3; }
+  READ_DIR="$SNAPSHOT_DIR"
+  case "$sub" in pr-sections) ;; *) [ -n "$READ_DIR" ] || READ_DIR="$(_default_snapshot_dir)" ;; esac
   case "$sub" in
     check) _cmd_check ;;
     check-all) _cmd_check_all ;;

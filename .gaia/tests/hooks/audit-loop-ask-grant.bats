@@ -72,8 +72,15 @@ seed_pinned() {
 
 state_pin() { jq -c '.history.checkpoints[-1].question' "$ALF_STATE"; }
 
-continue_label() { printf 'Grant %s, continue here' "$K"; }
-session_label() { printf 'Grant %s, new session' "$K"; }
+# stored_label <base>: the label of the pinned option named <base>, with the
+# (Recommended) suffix when the pin carries it; <base> itself when no option has it.
+stored_label() {
+  local pin="${PIN_USE:-$(state_pin)}" out
+  out="$(printf '%s' "$pin" | jq -r --arg b "$1" '[.questions[0].options[].label | select(. == $b or . == ($b + " (Recommended)"))][0] // empty')"
+  printf '%s' "${out:-$1}"
+}
+continue_label() { stored_label "Continue audit in this session"; }
+session_label() { stored_label "Continue audit in a new session"; }
 
 # mk_payload <fixture-index> <label> [jq-filter]: the PostToolUse payload with
 # the pinned question (PIN_USE, else the state's) asked and <label> answered,
@@ -135,13 +142,34 @@ declined() {
   jq -e '.allowance.answers[0] | (.at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]+Z$")) and .session_id == "s1" and .kind == "accept" and .source == "ask"' "$ALF_STATE"
 }
 
-@test "Grant <k>, new session records the same answer shape as continue here and tells the main thread to print a prompt" {
+@test "Continue audit in a new session records the same answer shape as Continue audit in this session and tells the main thread to print a prompt" {
   seed_pinned
   send "$(session_label)"
   [ "$status" -eq 0 ]
   jq -e --argjson k "$K" --arg o "$(session_label)" \
     '.allowance.answers[0] | .kind == "grant" and .n == $k and .source == "ask" and .option == $o and (keys | sort) == ["at","checkpoint","kind","n","nonce","option","session_id","source"]' "$ALF_STATE"
-  printf '%s' "$output" | grep -qF 'fenced continuation prompt'
+  printf '%s' "$output" | jq -e '.hookSpecificOutput.additionalContext | contains("Run `/clear`, then paste the prompt below.") and contains("Kill this session with Ctrl+C, start a new one") and contains("only a fresh launch provides") and contains("fenced continuation prompt") and contains("and stop")'
+}
+
+@test "the recommended label records the grant, with and without the suffix the pin carries, and the option keeps what was selected" {
+  seed_pinned
+  [ "$(session_label)" = "Continue audit in a new session (Recommended)" ]
+  send "$(session_label)"
+  [ "$status" -eq 0 ]
+  jq -e --argjson k "$K" --arg o "Continue audit in a new session (Recommended)" \
+    '.allowance.answers | length == 1 and .[0].kind == "grant" and .[0].n == $k and .[0].option == $o' "$ALF_STATE"
+  printf '%s' "$output" | jq -e --argjson k "$K" '(.systemMessage | startswith("Recorded: Continue audit in a new session on branch")) and (.hookSpecificOutput.additionalContext | contains("fenced continuation prompt"))'
+}
+
+@test "an unsuffixed label the pin carries as recommended, and a suffix the pin does not carry, both decline" {
+  seed_pinned
+  snap
+  send "Continue audit in a new session"
+  declined "base label while the pin carries the suffixed one"
+  send "Continue audit in this session (Recommended)"
+  declined "suffix on an option the pin does not recommend"
+  send "Accept the remainder (Recommended)"
+  declined "suffix on an option the pin lacks"
 }
 
 @test "Accept the remainder records kind accept only when it is in the pin" {
@@ -210,7 +238,7 @@ declined() {
 @test "UAT-012: a label that is not in the pin records nothing" {
   seed_pinned
   snap
-  send "Grant 99, continue here"
+  send "Continue audit for 99 rounds"
   declined "label not in the pin"
   send "grant"
   declined "partial label"
