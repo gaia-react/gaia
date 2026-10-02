@@ -448,3 +448,39 @@ write_rb() {
   [ "$(jq -e 'has("review_base")' "$EXPECTED")" = "true" ]
   [ "$(jq -e '.review_base | has("anchor_tree")' "$EXPECTED")" = "false" ]
 }
+
+# security / cross_remit: optional booleans (SPEC-093 C3). Present and
+# non-boolean is a usage error naming the index; absent is accepted and the
+# writer invents nothing.
+
+@test "security: true and false both write and are preserved" {
+  write "[$(complete_finding | jq -c '.security = true'),$(complete_finding | jq -c '.security = false')]" >/dev/null
+  [ "$(jq -c '[.findings[].security]' "$EXPECTED")" = "[true,false]" ]
+}
+
+@test "cross_remit: true writes and is preserved" {
+  write "[$(complete_finding | jq -c '.cross_remit = true')]" >/dev/null
+  [ "$(jq -c '.findings[0].cross_remit' "$EXPECTED")" = "true" ]
+}
+
+@test "cross_remit: a non-boolean is a usage error naming the index, and no sidecar is written" {
+  run write "[$(complete_finding),$(complete_finding | jq -c '.cross_remit = "x"')]"
+  [ "$status" -eq 2 ]
+  grep -qF "findings[1]: cross_remit, when present, must be a boolean" <<<"$output"
+  [ ! -f "$EXPECTED" ]
+}
+
+@test "security and cross_remit absent: writes, and the sidecar carries neither field" {
+  write "[$(complete_finding)]" >/dev/null
+  [ "$(jq -c '.findings[0] | has("security") or has("cross_remit")' "$EXPECTED")" = "false" ]
+}
+
+@test "security: a string, a number, and null each exit 2 naming the index and security, and write nothing" {
+  for bad in '"yes"' '1' 'null'; do
+    rm -f "$EXPECTED"
+    run write "[$(complete_finding | jq -c ".security = $bad")]"
+    [ "$status" -eq 2 ]
+    grep -qF "findings[0]: security, when present, must be a boolean" <<<"$output"
+    [ ! -f "$EXPECTED" ]
+  done
+}
