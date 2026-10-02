@@ -17,6 +17,7 @@ bats_require_minimum_version 1.5.0
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   HOOK="${GAIA_LOOP_BOUND_HOOK:-$REPO_ROOT/.claude/hooks/audit-loop-bound.sh}"
+  BOUND_HOOK="$HOOK"
   unset GAIA_AUDIT_CHECKPOINT_ROUND GAIA_AUDIT_GRANT_ROUNDS GAIA_AUDIT_LOOP_DEADLINE_SECONDS
   # shellcheck source=/dev/null
   . "$REPO_ROOT/.gaia/scripts/audit-loop-eval.sh"
@@ -193,13 +194,14 @@ wt_commit() {
   dispatch "$M" session-b
   assert_denied
   r="$(reason)"
-  printf '%s\n' "$r" | grep -qF -- "BLOCKED: audit checkpoint on branch feat/loop after 5 rounds (allowance)."
+  printf '%s\n' "$r" | grep -qF -- "BLOCKED: audit checkpoint on branch feat/loop after 5 rounds (fallback)."
   printf '%s\n' "$r" | grep -qF -- "round 1: A=6 verdict=continue"
   printf '%s\n' "$r" | grep -qF -- "round 5: A=2 verdict=continue"
   printf '%s\n' "$r" | grep -qxF -- "Grant (type exactly as the whole prompt): $(gaia_loop_grant_line 3)"
   printf '%s\n' "$r" | grep -qxF -- "Accept (type exactly as the whole prompt): $(gaia_loop_accept_line)"
-  printf '%s\n' "$r" | grep -qF -- "Interactive run: ask the human the checkpoint question from"
-  printf '%s\n' "$r" | grep -qF -- "Unattended run (/gaia-debt drain or CI): stop, push the round's fix, leave the PR open and report this message."
+  printf '%s\n' "$r" | grep -qF -- "Interactive run: on the main thread of this session, ask this question with AskUserQuestion exactly as printed"
+  printf '%s\n' "$r" | grep -qF -- "Unattended run (a /gaia-debt drain): never ask; stop, leave the PR open, print the typed grant line above, and print no continuation prompt."
+  printf '%s\n' "$r" | grep -qF -- "or CI" && return 1
   printf '%s\n' "$r" | grep -qF -- "never types or simulates"
   printf '%s\n' "$r" | grep -qF -- "already-audited tree is still allowed"
   printf '%s\n' "$r" | grep -qF -- "State file: $ALF_STATE"
@@ -216,17 +218,17 @@ wt_commit() {
   [ "$(sj '.history.rounds[4].members | length')" -eq 2 ]
 }
 
-@test "a new session cannot reset a checkpoint: the deny repeats and the checkpoint is recorded once" {
+@test "a new session cannot reset a checkpoint: the deny repeats with a fresh pinned checkpoint and no round" {
   alf_sequence 6 5 4 3 2
   new_tree
   dispatch "$M" session-b
   assert_denied
-  cp "$ALF_STATE" "$BATS_TEST_TMPDIR/after-first"
   dispatch "$M" session-c
   assert_denied
-  cmp "$ALF_STATE" "$BATS_TEST_TMPDIR/after-first"
-  [ "$(sj '[.history.checkpoints[] | select(.at_round == 5)] | length')" -eq 1 ]
+  [ "$(sj '[.history.checkpoints[] | select(.at_round == 5)] | length')" -eq 2 ]
   [ "$(sj '.history.checkpoints[0].session_id')" = session-b ]
+  [ "$(sj '.history.checkpoints[1].session_id')" = session-c ]
+  [ "$(sj '.history.checkpoints[0].nonce')" != "$(sj '.history.checkpoints[1].nonce')" ]
   [ "$(nrounds)" -eq 5 ]
 }
 
@@ -237,8 +239,8 @@ stalled_denied() {
   new_tree
   dispatch
   assert_denied
-  reason | grep -qF -- "(stalled)"
-  [ "$(sj '.history.checkpoints[0].reason')" = stalled ]
+  reason | grep -qF -- "(rubric:stalled)"
+  [ "$(sj '.history.checkpoints[0].reason')" = rubric:stalled ]
   [ "$(sj '.history.checkpoints[0].at_round')" -eq 3 ]
   [ "$(nrounds)" -eq 3 ]
 }
@@ -275,7 +277,7 @@ next_allowed() {
   next_allowed
 }
 
-@test "an accept answering a stalled checkpoint allows one closing round, then the allowance denies" {
+@test "an accept answering a stalled checkpoint allows one closing round, then the fallback denies" {
   alf_sequence 5 5 5
   new_tree
   dispatch
@@ -288,7 +290,7 @@ next_allowed() {
   new_tree
   dispatch
   assert_denied
-  reason | grep -qF -- "(allowance)"
+  reason | grep -qF -- "(fallback)"
   [ "$(nrounds)" -eq 4 ]
 }
 
@@ -834,4 +836,584 @@ fork_mutant() {
   dispatch
   assert_allowed
   [ "$(nrounds)" -eq 1 ]
+}
+
+# --- the unit gate ----------------------------------------------------------------
+#
+# K, the line defaults and the hard cap come from the libs the suite sources in
+# setup (GAIA_CTX_UNIT_ROUNDS, GAIA_CTX_ASK_TOKENS_DEFAULT,
+# GAIA_CTX_ASK_WINDOW_PCT_DEFAULT, _GAIA_LOOP_HARD_CAP), never from literals.
+# A context reading is keyed by a UUID session id; the plain ids the cases
+# above use read as `missing`, which is the round-count fallback.
+
+SIDU=0a1b2c3d-1111-4222-8333-444455556666
+SIDV=0a1b2c3d-2222-4222-8333-444455556666
+IN_UNIT='{"agent_id":"a0b1c2d3e4f5a6b7c","agent_type":"audit-loop-unit"}'
+
+# ctx <tokens> <window> [age-seconds] [session]: write that session's reading.
+ctx() {
+  local t="$1" w="$2" age="${3:-0}" sid="${4:-$SIDU}"
+  gaia_ctx_write "$ALF_ROOT" "$sid" "$((t * 100 / w))" "$t" "$w" "$(($(date +%s) - age))"
+}
+
+# below / above: a fresh 1M-window reading one token either side of the default line.
+below() { ctx $((GAIA_CTX_ASK_TOKENS_DEFAULT - 1)) 1000000 0 "${1:-$SIDU}"; }
+above() { ctx "$GAIA_CTX_ASK_TOKENS_DEFAULT" 1000000 0 "${1:-$SIDU}"; }
+
+# unit_payload <session> [extra-json]: an audit-loop-unit dispatch whose brief
+# carries the fixture root.
+unit_payload() {
+  local extra="${2-}"
+  [ -n "$extra" ] || extra='{}'
+  jq -n -c --arg s "$1" --arg root "$ALF_ROOT" --argjson x "$extra" \
+    '{session_id: $s, hook_event_name: "PreToolUse", tool_name: "Agent", cwd: $root,
+      tool_input: {subagent_type: "audit-loop-unit",
+        prompt: ("Run one audit unit.\nWorking root: " + $root + "\nUnit: 1\nStart round: 1")}} + $x'
+}
+
+unit_dispatch() {
+  run_payload "$(unit_payload "${1:-$SIDU}")"
+}
+
+# nested [member] [session]: a member dispatch made from inside a unit.
+nested() {
+  run_payload "$(payload "${1:-$M}" "${2:-$SIDU}" "$ALF_ROOT" "$ALF_ROOT" "$IN_UNIT")"
+}
+
+# main_member [member] [session]: a member dispatch from the main thread.
+main_member() {
+  run_payload "$(payload "${1:-$M}" "${2:-$SIDU}" "$ALF_ROOT" "$ALF_ROOT")"
+}
+
+kmin() {
+  if [ "$1" -lt "$2" ]; then printf '%s\n' "$1"; else printf '%s\n' "$2"; fi
+}
+
+# seed_rounds <n> <last-snapshot-json>: n recorded rounds on stand-in trees with
+# frozen default knobs; every earlier snapshot is a plain continue.
+seed_rounds() {
+  local t
+  t="$(printf 'a%.0s' $(seq 1 37))"
+  alf_seed_state "$(jq -n -c --arg t "$t" --argjson n "$1" --argjson last "$2" '{knobs: {checkpoint_round: 6, grant_rounds: 3},
+    rounds: [range(1; $n + 1) | {round: ., tree: ($t + ((100 + .) | tostring)), commit: ($t + ((100 + .) | tostring)),
+      raw_branch_slug: "x", dispatched_at: "2026-01-01T00:00:00Z", members: ["code-audit-frontend"], closing: false,
+      snapshot: (if . == $n then $last else {verdict: "continue", A: 1} end)}]}')"
+}
+
+# sig_snap <signal> <eligible>: a stored snapshot holding exactly one signal.
+sig_snap() {
+  jq -n -c --arg s "$1" --argjson e "$2" \
+    '{verdict: (if $s == "quiet" or $s == "enriching" or $s == "stalled" then $s else "continue" end),
+      A: (if $s == "quiet" then 0 else 1 end), counted_keys: [], raw_count: 1, waived_count: 0,
+      signals: {($s): true}, accept_eligible: $e, accept_reasons: [$s]}'
+}
+
+# assert_pinned <trigger>: the last run is a checkpoint deny; the latest
+# checkpoint carries a nonce and a pinned question for <trigger>, and the deny
+# prints that question verbatim with the asking instruction and the typed line.
+assert_pinned() {
+  local r q
+  assert_denied
+  r="$(reason)"
+  case "$r" in "BLOCKED: audit checkpoint"*) ;; *) printf 'not a checkpoint deny: %s\n' "$r" >&2; return 1 ;; esac
+  [ "$(sj '.history.checkpoints | last | .trigger')" = "$1" ]
+  [ "$(sj '.history.checkpoints | last | .reason')" = "$1" ]
+  [[ "$(sj '.history.checkpoints | last | .nonce')" =~ ^[0-9a-f]{16}$ ]] || return 1
+  [ "$(sj '.history.checkpoints | last | .question.questions[0].options | length')" -ge 2 ]
+  [ "$(sj '[.history.checkpoints | last | .question.questions[0].options[].label] | index("Stop and file the remainder") != null')" = true ]
+  q="$(sj '.history.checkpoints | last | .question | tojson')"
+  printf '%s\n' "$r" | grep -qxF -- "$q"
+  printf '%s\n' "$r" | grep -qF -- AskUserQuestion
+  printf '%s\n' "$r" | grep -qF -- audit-grant
+}
+
+# deny_prefix <prefix>: the last run denied with a reason starting <prefix>.
+deny_prefix() {
+  assert_denied
+  case "$(reason)" in "$1"*) ;; *) printf 'want prefix %s, got: %s\n' "$1" "$(reason)" >&2; return 1 ;; esac
+}
+
+# scratch_copy: point HOOK at a copy of the hook whose scripts directory is a
+# real copy of the files the hook loads, so a case can remove or stub one.
+scratch_copy() {
+  local d="$BATS_TEST_TMPDIR/scratch-copy" f
+  rm -rf "$d"
+  mkdir -p "$d/.claude/hooks" "$d/.gaia/scripts"
+  for f in audit-loop-state-lib.sh branch-name-lib.sh main-root-lib.sh audit-key-lib.sh context-checkpoint-lib.sh \
+    audit-loop-eval.sh audit-loop-signals-lib.sh audit-dispositions-check.sh; do
+    cp "$REPO_ROOT/.gaia/scripts/$f" "$d/.gaia/scripts/$f"
+  done
+  ln -sfn "$REPO_ROOT/.claude/hooks/lib" "$d/.claude/hooks/lib"
+  cp "$BOUND_HOOK" "$d/.claude/hooks/audit-loop-bound.sh"
+  HOOK="$d/.claude/hooks/audit-loop-bound.sh"
+  SCRATCH_SCRIPTS="$d/.gaia/scripts"
+}
+
+# settings <ask_tokens> <ask_window_pct>: the machine-local line override.
+settings() {
+  mkdir -p "$ALF_ROOT/.gaia/local"
+  jq -n -c --argjson t "$1" --argjson p "$2" '{version: 1, context_checkpoint: {ask_tokens: $t, ask_window_pct: $p}}' \
+    >"$ALF_ROOT/.gaia/local/settings.json"
+}
+
+@test "fast path: a general-purpose dispatch exits 0 silently without touching the context directory" {
+  local cdir
+  cdir="$(dirname "$(gaia_ctx_file "$ALF_ROOT" "$SIDU")")"
+  mkdir -p "$cdir"
+  chmod 000 "$cdir"
+  run_payload "$(payload general-purpose "$SIDU" "$ALF_ROOT" "$ALF_ROOT")"
+  chmod 755 "$cdir"
+  assert_allowed
+  [ ! -e "$ALF_ROOT/.gaia/local/audit-loop" ]
+}
+
+@test "jq absent refuses a unit dispatch with exit 2 and allows a general-purpose one; without the unit literal the unit gets through" {
+  build_path "$BATS_TEST_TMPDIR/nojq" jq
+  run env PATH="$BATS_TEST_TMPDIR/nojq" bash -c 'printf %s "$1" | /bin/bash "$2"' _ "$(unit_payload "$SIDU")" "$HOOK"
+  [ "$status" -eq 2 ]
+  grep -qF -- BLOCKED <<<"$output"
+  run env PATH="$BATS_TEST_TMPDIR/nojq" bash -c 'printf %s "$1" | /bin/bash "$2"' _ "$(payload general-purpose "$SIDU" "$ALF_ROOT" "$ALF_ROOT")" "$HOOK"
+  assert_allowed
+  fork_mutant "s/ 'code-audit-' 'audit-loop-unit'/ 'code-audit-'/"
+  run env PATH="$BATS_TEST_TMPDIR/nojq" bash -c 'printf %s "$1" | /bin/bash "$2"' _ "$(unit_payload "$SIDU")" "$HOOK"
+  assert_allowed
+}
+
+@test "the first unit on a fresh branch creates the state with knobs, line config and one unit, and no round" {
+  printf '{"number":51,"state":"OPEN"}\n' >"$GH_DIR/branch.json"
+  below
+  unit_dispatch
+  assert_allowed
+  [ "$(nrounds)" -eq 0 ]
+  [ "$(sj '.pr')" -eq 51 ]
+  [ "$(sj '.history.knobs.checkpoint_round')" -eq 6 ]
+  [ "$(sj '.history.context_config.ask_tokens')" -eq "$GAIA_CTX_ASK_TOKENS_DEFAULT" ]
+  [ "$(sj '.history.context_config.ask_window_pct')" -eq "$GAIA_CTX_ASK_WINDOW_PCT_DEFAULT" ]
+  [ "$(sj '.history.units | length')" -eq 1 ]
+  [ "$(sj '.history.units[0].start_round')" -eq 1 ]
+  [ "$(sj '.history.units[0].through_round')" -eq "$GAIA_CTX_UNIT_ROUNDS" ]
+  [ "$(sj '.history.units[0].admitted_on')" = context ]
+  [ "$(sj '.history.units[0].session_id')" = "$SIDU" ]
+}
+
+@test "the first unit on a dirty checkout is denied with the uncommitted-changes text and creates no state" {
+  below
+  printf 'edit\n' >>"$ALF_ROOT/base.txt"
+  unit_dispatch
+  assert_denied
+  reason | grep -qF -- "Commit the round first"
+  [ ! -e "$ALF_STATE" ]
+}
+
+@test "a unit after 6 rounds below the line gets a K-round window; its members open exactly those rounds, then the window denies" {
+  local K="$GAIA_CTX_UNIT_ROUNDS" through r
+  through="$(kmin $((6 + K)) "$_GAIA_LOOP_HARD_CAP")"
+  alf_sequence 6 5 4 3 2 1
+  alf_state_edit '.history.knobs.checkpoint_round = 6'
+  below
+  unit_dispatch
+  assert_allowed
+  [ "$(sj '.history.units[-1] | [.start_round, .k, .through_round, .admitted_on] | map(tostring) | join(" ")')" = "7 $K $through context" ]
+  [ "$(sj '.history.checkpoints | length')" -eq 0 ]
+  r=7
+  while [ "$r" -le "$through" ]; do
+    new_tree
+    nested
+    assert_allowed
+    [ "$(nrounds)" -eq "$r" ]
+    r=$((r + 1))
+  done
+  new_tree
+  nested
+  if [ "$through" -lt "$_GAIA_LOOP_HARD_CAP" ]; then
+    deny_prefix "BLOCKED: audit window"
+    reason | grep -qF -- "rounds 7 through $through"
+    reason | grep -qF -- "window-end"
+    [ "$(sj '.history.checkpoints | length')" -eq 0 ]
+  else
+    assert_pinned cap
+  fi
+  [ "$(nrounds)" -eq "$through" ]
+}
+
+@test "red state: deciding the in-unit member by the round-count allowance denies the round-7 dispatch" {
+  fork_mutant 's/dec=\$\(gaia_loop_decide_member "\$view" "\$snap" "\$in_unit" "\$reading" "\$ask_tokens" "\$ask_pct"\)/dec=\$(gaia_loop_decide "\$S" "\$snap")/'
+  alf_sequence 6 5 4 3 2 1
+  alf_state_edit '.history.knobs.checkpoint_round = 6'
+  below
+  unit_dispatch
+  assert_allowed
+  new_tree
+  nested
+  assert_denied
+  [ "$(nrounds)" -eq 6 ]
+}
+
+@test "a reading at the line denies the unit with a pinned context checkpoint and the unattended rule" {
+  local nonce elig want
+  alf_sequence 6 5
+  above
+  unit_dispatch
+  assert_pinned context
+  nonce="$(sj '.history.checkpoints[-1].nonce')"
+  elig="$(sj '.history.rounds[1].snapshot.accept_eligible // false')"
+  want="$(gaia_loop_pinned_question feat/loop "$nonce" 2 "$GAIA_CTX_UNIT_ROUNDS" "$elig" false context)"
+  [ "$(sj '.history.checkpoints[-1].question | tojson')" = "$want" ]
+  [ "$(sj '.history.checkpoints[-1].at_round')" -eq 2 ]
+  reason | grep -qF -- "never ask; stop, leave the PR open, print the typed grant line above, and print no continuation prompt"
+  [ "$(sj '.history.units // [] | length')" -eq 0 ]
+}
+
+@test "missing, stale, future-dated and garbage readings fall back to the round count: allowed at 5 used, denied at 6" {
+  local mode f
+  f="$(gaia_ctx_file "$ALF_ROOT" "$SIDU")"
+  for mode in missing stale future garbage; do
+    rm -f "$f" "$ALF_STATE"
+    rm -rf "${ALF_STATE%.json}.d"
+    seed_rounds 5 '{"verdict":"continue","A":1}'
+    case "$mode" in
+      missing) ;;
+      stale) ctx 1000 1000000 $((GAIA_CTX_FRESH_SECONDS + 60)) ;;
+      future) ctx 1000 1000000 -3600 ;;
+      garbage) mkdir -p "${f%/*}" && printf '{garbage' >"$f" ;;
+    esac
+    unit_dispatch
+    assert_allowed
+    [ "$(sj '.history.units[-1] | [.admitted_on, .start_round, .through_round] | map(tostring) | join(" ")')" = "fallback 6 6" ]
+    seed_rounds 6 '{"verdict":"continue","A":1}'
+    unit_dispatch
+    assert_pinned fallback
+  done
+}
+
+@test "below the line each denying signal denies the unit and quiet alone does not; the cap pins accept or type-accept with stop" {
+  local s
+  below
+  for s in enriching stalled nitpicky reintroduced small-tail waiver-drift; do
+    seed_rounds 6 "$(sig_snap "$s" true)"
+    unit_dispatch
+    assert_pinned "rubric:$s"
+  done
+  seed_rounds 6 "$(sig_snap quiet true)"
+  unit_dispatch
+  assert_allowed
+  seed_rounds "$_GAIA_LOOP_HARD_CAP" "$(sig_snap cap true)"
+  unit_dispatch
+  assert_pinned cap
+  [ "$(sj '[.history.checkpoints[-1].question.questions[0].options[].label] | join("|")')" = "Accept the remainder|Stop and file the remainder" ]
+  seed_rounds "$_GAIA_LOOP_HARD_CAP" "$(sig_snap cap false)"
+  unit_dispatch
+  assert_pinned cap
+  [ "$(sj '[.history.checkpoints[-1].question.questions[0].options[].label] | join("|")')" = "Type audit-accept instead|Stop and file the remainder" ]
+}
+
+@test "an ask grant admits one K-round unit over the line; the next unit asks again; a new session below the line continues" {
+  local K="$GAIA_CTX_UNIT_ROUNDS" idx nonce
+  alf_sequence 6 5
+  above
+  unit_dispatch
+  assert_pinned context
+  idx="$(sj '.history.checkpoints[-1].index')"
+  nonce="$(sj '.history.checkpoints[-1].nonce')"
+  alf_state_edit '.allowance.answers += [{checkpoint: $i, kind: "grant", n: $k, source: "ask", option: ("Grant " + ($k | tostring) + ", continue here"),
+    nonce: $n, at: "2026-01-01T00:00:00Z", session_id: $s}]' --argjson i "$idx" --argjson k "$K" --arg n "$nonce" --arg s "$SIDU"
+  unit_dispatch
+  assert_allowed
+  [ "$(sj '.history.units[-1] | [.admitted_on, .start_round, .through_round, .after_checkpoint] | map(tostring) | join(" ")')" = "grant 3 $(kmin $((2 + K)) "$_GAIA_LOOP_HARD_CAP") $idx" ]
+  unit_dispatch
+  assert_pinned context
+  [ "$(sj '.history.checkpoints[-1].nonce')" != "$nonce" ]
+  below "$SIDV"
+  unit_dispatch "$SIDV"
+  assert_allowed
+  [ "$(sj '.history.units[-1].admitted_on')" = context ]
+  [ "$(sj '.history.units[-1].session_id')" = "$SIDV" ]
+}
+
+@test "a pending checkpoint with no answer denies the next unit again with a new nonce" {
+  local first
+  alf_sequence 6 5
+  above
+  unit_dispatch
+  assert_pinned context
+  first="$(sj '.history.checkpoints[-1].nonce')"
+  unit_dispatch
+  assert_pinned context
+  [ "$(sj '.history.checkpoints | length')" -eq 2 ]
+  [ "$(sj '.history.checkpoints[-1].nonce')" != "$first" ]
+}
+
+@test "a legacy pending checkpoint without a nonce is superseded by a pinned one" {
+  alf_sequence 6 5
+  alf_add_checkpoint 2 allowance
+  above
+  unit_dispatch
+  assert_pinned context
+  [ "$(sj '.history.checkpoints | length')" -eq 2 ]
+  [ "$(sj '.history.checkpoints[0].nonce // "none"')" = none ]
+}
+
+@test "a failing zero-fix dispositions file denies the same-tree re-dispatch and the next unit, recording nothing" {
+  alf_sequence 6 5
+  alf_dispositions 2 '[{"member":"code-audit-frontend","finding_class":"rule/x","path":"f.txt","line":1,"disposition":"accept-residual","reason":"later"}]'
+  cp "$ALF_STATE" "$BATS_TEST_TMPDIR/before"
+  below
+  dispatch
+  deny_prefix "BLOCKED: audit dispositions"
+  reason | grep -qF -- "violation: security-not-fix"
+  cmp "$ALF_STATE" "$BATS_TEST_TMPDIR/before"
+  unit_dispatch
+  deny_prefix "BLOCKED: audit dispositions"
+  reason | grep -qF -- "violation: security-not-fix"
+  cmp "$ALF_STATE" "$BATS_TEST_TMPDIR/before"
+}
+
+@test "red state: without the dispositions check the failing zero-fix re-dispatch joins its round" {
+  fork_mutant 's/^  check_dispositions\n//m'
+  alf_sequence 6 5
+  alf_dispositions 2 '[{"member":"code-audit-frontend","finding_class":"rule/x","path":"f.txt","line":1,"disposition":"accept-residual","reason":"later"}]'
+  dispatch
+  assert_allowed
+  [ "$(nrounds)" -eq 2 ]
+}
+
+# veto_rounds: round 1 reports finding X (security false) and disposes it
+# accept-residual; round 2 is recorded by a member dispatch, which snapshots
+# round 1's dispositions.
+FINDING_X='{"member":"code-audit-frontend","finding_class":"rule/x","path":"f.txt","line":1}'
+veto_rounds() {
+  alf_fill f.txt 12 feature
+  alf_commit "round 1"
+  dispatch
+  assert_allowed
+  alf_stamp 1 10
+  alf_sidecar "$M" '[{"path":"f.txt","line":1,"security":false}]' 11
+  alf_dispositions 1 "[$(jq -c '. + {disposition: "accept-residual", reason: "minor"}' <<<"$FINDING_X")]"
+  new_tree
+  dispatch
+  assert_allowed
+  [ "$(nrounds)" -eq 2 ]
+  [ -f "${ALF_STATE%.json}.d/dispositions-1.checked.json" ]
+  alf_stamp 2 20
+}
+
+@test "a veto effective from round 2 lets the next unit through, then binds round 2's disposition of the finding" {
+  veto_rounds
+  alf_sidecar "$M" '[{"path":"f.txt","line":1,"security":false}]' 21
+  jq -n -c --argjson k "$FINDING_X" '{version: 1, keys: [$k + {vetoed_at: "2026-01-01T00:00:00Z", unit: 1, effective_from_round: 2}]}' \
+    >"$ALF_ROOT/.gaia/local/runs/$ALF_B/vetoes.json"
+  below
+  unit_dispatch
+  assert_allowed
+  alf_dispositions 2 "[$(jq -c '. + {disposition: "accept-residual", reason: "minor"}' <<<"$FINDING_X")]"
+  unit_dispatch
+  deny_prefix "BLOCKED: audit dispositions"
+  reason | grep -qF -- "violation: vetoed-not-fix"
+  alf_dispositions 2 "[$(jq -c '. + {disposition: "fix"}' <<<"$FINDING_X")]"
+  unit_dispatch
+  assert_allowed
+}
+
+@test "a dispositions snapshot outlives the overwritten sidecar; without it the same dispatch denies unknown-key" {
+  veto_rounds
+  alf_sidecar "$M" '[{"path":"f.txt","line":2,"security":false}]' 21
+  below
+  unit_dispatch
+  assert_allowed
+  rm -f "${ALF_STATE%.json}.d"/dispositions-*.checked.json
+  unit_dispatch
+  deny_prefix "BLOCKED: audit dispositions"
+  reason | grep -qF -- "violation: unknown-key"
+}
+
+@test "a main-thread member with no unit is judged as a one-round unit: over the line it pins, below it records and adds no unit" {
+  alf_sequence 6 5
+  new_tree
+  above
+  main_member
+  assert_pinned context
+  [ "$(nrounds)" -eq 2 ]
+  below
+  main_member
+  assert_allowed
+  [ "$(nrounds)" -eq 3 ]
+  [ "$(sj '.history.units // [] | length')" -eq 0 ]
+}
+
+@test "a window left by a unit that returned nesting-unavailable does not cover a main-thread or non-unit member over the line" {
+  alf_sequence 6 5
+  alf_state_edit '.history.units = [{unit: 1, start_round: 3, k: 3, through_round: 5, admitted_on: "context",
+    after_checkpoint: 0, recorded_at: "2026-01-01T00:00:00Z", session_id: $s}]' --arg s "$SIDU"
+  mkdir -p "$ALF_ROOT/.gaia/local/runs/$ALF_B"
+  printf '{"version":1,"unit":1,"start_round":3,"through_round":5,"k":3,"rounds":[{"round":3,"opened":false,"reason":"nesting-unavailable"}],"stop_reason":"nesting-unavailable"}\n' \
+    >"$ALF_ROOT/.gaia/local/runs/$ALF_B/unit-1.json"
+  new_tree
+  above
+  main_member
+  assert_pinned context
+  run_payload "$(payload "$M" "$SIDU" "$ALF_ROOT" "$ALF_ROOT" '{"agent_id":"a0b1c2d3e4f5a6b7c","agent_type":"general-purpose"}')"
+  assert_pinned context
+  [ "$(nrounds)" -eq 2 ]
+  nested
+  assert_allowed
+  [ "$(nrounds)" -eq 3 ]
+}
+
+@test "the line config: a raise never applies, a lowering applies live, the window percent caps it, a frozen lowering survives removal" {
+  below
+  unit_dispatch
+  assert_allowed
+  settings 600000 50
+  ctx 350000 1000000
+  unit_dispatch
+  assert_pinned context
+  settings 250000 50
+  ctx 260000 1000000
+  unit_dispatch
+  assert_pinned context
+  ctx 240000 1000000
+  unit_dispatch
+  assert_allowed
+  rm -f "$ALF_ROOT/.gaia/local/settings.json"
+  ctx 120000 200000
+  unit_dispatch
+  assert_pinned context
+  alf_state_edit '.history.context_config = {ask_tokens: 250000, ask_window_pct: 50}'
+  ctx 260000 1000000
+  unit_dispatch
+  assert_pinned context
+  ctx 240000 1000000
+  unit_dispatch
+  assert_allowed
+}
+
+@test "an override present before the first unit freezes only the default, raised or malformed, and the hook denies at the default line" {
+  local pair
+  # A token count of 150 is a valid lowering, so 150 is a percent fixture only.
+  for pair in "1000000 100" "0 0" "-1 -1" "1.5 1.5" "1000000 150"; do
+    rm -f "$ALF_STATE"
+    rm -rf "${ALF_STATE%.json}.d"
+    # shellcheck disable=SC2086 # the pair is two words on purpose
+    settings $pair
+    below
+    unit_dispatch
+    assert_allowed
+    [ "$(sj '.history.context_config | "\(.ask_tokens) \(.ask_window_pct)"')" = "$GAIA_CTX_ASK_TOKENS_DEFAULT $GAIA_CTX_ASK_WINDOW_PCT_DEFAULT" ]
+    above
+    unit_dispatch
+    assert_pinned context
+  done
+}
+
+@test "at the round cap a unit is denied with trigger cap and a nested member for the next round is denied" {
+  seed_rounds "$_GAIA_LOOP_HARD_CAP" '{"verdict":"continue","A":1}'
+  alf_state_edit '.history.units = [{unit: 1, start_round: 8, k: 3, through_round: 10, admitted_on: "context",
+    after_checkpoint: 0, recorded_at: "2026-01-01T00:00:00Z", session_id: $s}]' --arg s "$SIDU"
+  below
+  unit_dispatch
+  assert_pinned cap
+  new_tree
+  nested
+  assert_pinned cap
+  [ "$(nrounds)" -eq "$_GAIA_LOOP_HARD_CAP" ]
+}
+
+@test "deny classes: each gate deny carries its prefix and no fail-loud deny borrows one" {
+  local r
+  alf_sequence 6 5
+  above
+  unit_dispatch
+  deny_prefix "BLOCKED: audit checkpoint"
+  new_tree
+  nested
+  deny_prefix "BLOCKED: audit window"
+  alf_dispositions 2 '[{"member":"code-audit-frontend","finding_class":"rule/x","path":"f.txt","line":1,"disposition":"file","reason":""}]'
+  unit_dispatch
+  deny_prefix "BLOCKED: audit dispositions"
+  rm -f "$ALF_ROOT/.gaia/local/runs/$ALF_B/dispositions-2.json"
+  printf 'edit\n' >>"$ALF_ROOT/base.txt"
+  dispatch
+  r="$(reason)"
+  git -C "$ALF_ROOT" checkout -q -- base.txt
+  cp "$ALF_STATE" "$BATS_TEST_TMPDIR/good"
+  printf '{not json' >"$ALF_STATE"
+  dispatch
+  r="$r"$'\n'"$(reason)"
+  cp "$BATS_TEST_TMPDIR/good" "$ALF_STATE"
+  mk_slow_git
+  GAIA_AUDIT_LOOP_DEADLINE_SECONDS=1 run_payload "$(payload "$M" "$SID" "$ALF_ROOT" "$ALF_ROOT")" "$SLOW"
+  r="$r"$'\n'"$(reason)"
+  scratch_copy
+  rm -f "$SCRATCH_SCRIPTS/context-checkpoint-lib.sh"
+  dispatch
+  r="$r"$'\n'"$(reason)"
+  [ "$(printf '%s\n' "$r" | grep -c '^BLOCKED: ')" -eq 4 ]
+  printf '%s\n' "$r" | grep -qE '^BLOCKED: audit (checkpoint|window|dispositions)' && return 1
+  printf '%s\n' "$r" | grep -qF -- "Commit the round first"
+  printf '%s\n' "$r" | grep -qF -- "invalid JSON"
+  printf '%s\n' "$r" | grep -qF -- "internal deadline"
+  printf '%s\n' "$r" | grep -qF -- "cannot load its libraries"
+}
+
+@test "fail closed: a missing context lib, a missing or exit-3 dispositions check, and an unparseable vetoes.json each deny" {
+  alf_sequence 6 5
+  below
+  scratch_copy
+  rm -f "$SCRATCH_SCRIPTS/context-checkpoint-lib.sh"
+  unit_dispatch
+  assert_denied
+  reason | grep -qF -- "cannot load its libraries"
+  scratch_copy
+  rm -f "$SCRATCH_SCRIPTS/audit-dispositions-check.sh"
+  unit_dispatch
+  assert_denied
+  reason | grep -qF -- "cannot load its libraries"
+  scratch_copy
+  printf '#!/usr/bin/env bash\nexit 3\n' >"$SCRATCH_SCRIPTS/audit-dispositions-check.sh"
+  unit_dispatch
+  deny_prefix "BLOCKED: audit dispositions"
+  reason | grep -qF -- "(exit 3)"
+  HOOK="$BOUND_HOOK"
+  mkdir -p "$ALF_ROOT/.gaia/local/runs/$ALF_B"
+  printf '{broken' >"$ALF_ROOT/.gaia/local/runs/$ALF_B/vetoes.json"
+  unit_dispatch
+  deny_prefix "BLOCKED: audit dispositions"
+  reason | grep -qF -- "vetoes.json"
+}
+
+@test "red state: without the spent-answer view, a main-thread grant of 2 keeps buying trees" {
+  fork_mutant 's/view=\$\(answer_view "\$S"\)/view="\$S"/'
+  alf_sequence 6 5 4 3 2
+  alf_add_checkpoint 5 allowance
+  alf_add_answer 1 grant 2
+  new_tree
+  dispatch
+  assert_allowed
+  new_tree
+  dispatch
+  assert_allowed
+  new_tree
+  dispatch
+  assert_allowed
+  [ "$(nrounds)" -eq 8 ]
+}
+
+@test "a unit dispatch over 9 rounds with 9 snapshotted dispositions files decides within 5 seconds" {
+  local r t0 t1 i
+  alf_sequence 6 5 4 3 2 2 1 1 1
+  for r in 1 2 3 4 5 6 7 8 9; do
+    alf_dispositions "$r" '[]'
+  done
+  bash "$REPO_ROOT/.gaia/scripts/audit-dispositions-check.sh" check-all --root "$ALF_ROOT" \
+    --run-folder "$ALF_ROOT/.gaia/local/runs/$ALF_B" --snapshot-dir "${ALF_STATE%.json}.d"
+  [ "$(find "${ALF_STATE%.json}.d" -name 'dispositions-*.checked.json' | wc -l | tr -d ' ')" -eq 9 ]
+  below
+  for i in 1 2 3 4 5; do
+    t0="$(perl -MTime::HiRes=time -e 'printf "%d", time * 1000')"
+    unit_dispatch
+    t1="$(perl -MTime::HiRes=time -e 'printf "%d", time * 1000')"
+    [ "$status" -eq 0 ]
+    printf '# run %s: %s ms\n' "$i" $((t1 - t0)) >&3
+    [ $((t1 - t0)) -lt 5000 ]
+  done
 }
