@@ -69,12 +69,12 @@ if [ "$#" -ne 2 ]; then
   exit 2
 fi
 
-staging_dir="$1"
+staging_directory="$1"
 exclude_regex="$2"
 
-if [ ! -d "$staging_dir" ]; then
+if [ ! -d "$staging_directory" ]; then
   printf 'assert-no-release-leak: staging tree is missing or is not a directory: %s\n' \
-    "$staging_dir" >&2
+    "$staging_directory" >&2
   exit 2
 fi
 
@@ -107,10 +107,10 @@ trap 'rm -f "$staged_list"' EXIT
 # further because the operator's next step is the same for all of them: the scan
 # did not complete, so re-run the staging step and read the stderr `find`, `sed`,
 # or the shell already printed immediately above this diagnostic.
-if ! ( set -o pipefail; cd "$staging_dir" && find . -type f | sed 's|^\./||' ) \
+if ! ( set -o pipefail; cd "$staging_directory" && find . -type f | sed 's|^\./||' ) \
     > "$staged_list"; then
   printf 'assert-no-release-leak: could not enumerate the staged tree at %s;\n' \
-    "$staging_dir" >&2
+    "$staging_directory" >&2
   printf '  the scan did not complete, so leak-freedom is UNPROVEN. See the diagnostic above.\n' >&2
   exit 2
 fi
@@ -119,7 +119,7 @@ fi
 # here is the same class of repair as the status capture above: an input set
 # that is empty for a reason nobody checked reads exactly like a clean pass.
 if [ ! -s "$staged_list" ]; then
-  printf 'assert-no-release-leak: the staged tree at %s holds no files;\n' "$staging_dir" >&2
+  printf 'assert-no-release-leak: the staged tree at %s holds no files;\n' "$staging_directory" >&2
   printf '  an empty tree passes any leak scan without proving anything. Staging failed upstream.\n' >&2
   exit 2
 fi
@@ -133,7 +133,7 @@ grep_status=$?
 
 case "$grep_status" in
   0)
-    printf 'assert-no-release-leak: release-excluded path(s) leaked into %s:\n' "$staging_dir" >&2
+    printf 'assert-no-release-leak: release-excluded path(s) leaked into %s:\n' "$staging_directory" >&2
     printf '%s\n' "$leaked" >&2
     exit 1
     ;;
@@ -142,7 +142,7 @@ case "$grep_status" in
     ;;
   *)
     printf 'assert-no-release-leak: the leak scan of %s could not run (grep exit %s);\n' \
-      "$staging_dir" "$grep_status" >&2
+      "$staging_directory" "$grep_status" >&2
     printf '  leak-freedom is UNPROVEN. Check the pattern file %s.\n' "$exclude_regex" >&2
     exit 2
     ;;

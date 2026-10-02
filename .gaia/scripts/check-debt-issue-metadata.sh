@@ -42,7 +42,7 @@
 
 set -euo pipefail
 
-readonly PROG="check-debt-issue-metadata"
+readonly PROGRAM_NAME="check-debt-issue-metadata"
 
 # The permitted value sets, byte-for-byte, from steps 6 and 7 of the recipe in
 # `.claude/skills/file-tech-debt/SKILL.md`. That file owns the vocabulary and
@@ -91,7 +91,7 @@ EOF
 }
 
 fatal() {
-  echo "$PROG: ERROR: $*" >&2
+  echo "$PROGRAM_NAME: ERROR: $*" >&2
   exit 2
 }
 
@@ -108,22 +108,22 @@ finding() {
 
 # in_set <needle> <space-separated set>: exit 0 when present.
 in_set() {
-  local needle="$1" set="$2" v
-  for v in $set; do
-    [ "$v" = "$needle" ] && return 0
+  local needle="$1" set="$2" member
+  for member in $set; do
+    [ "$member" = "$needle" ] && return 0
   done
   return 1
 }
 
-# count_ns <labels-newline-list> <namespace-prefix>: how many labels carry it.
-count_ns() {
+# count_namespace_labels <labels-newline-list> <namespace-prefix>: how many labels carry it.
+count_namespace_labels() {
   printf '%s\n' "$1" | grep -c "^$2" || true
 }
 
-# values_ns <labels-newline-list> <namespace-prefix>: the values, prefix stripped.
+# namespace_label_values <labels-newline-list> <namespace-prefix>: the values, prefix stripped.
 # A label that is the bare prefix yields an empty line rather than no line, so
 # the count of lines out always equals the count of labels in.
-values_ns() {
+namespace_label_values() {
   printf '%s\n' "$1" | sed -n "s/^$2//p"
 }
 
@@ -158,7 +158,7 @@ normalize_body() {
   printf '%s\n' "$1" | tr -d '\r'
 }
 
-# check_ns_values <subject> <labels> <prefix> <permitted set> <namespace name>
+# check_namespace_values <subject> <labels> <prefix> <permitted set> <namespace name>
 #
 # Report every value in one namespace that is not in its permitted set.
 #
@@ -173,28 +173,28 @@ normalize_body() {
 # by a redirect rather than a pipe, because `finding` increments a counter in
 # the caller's shell and a piped `while` runs in a subshell that discards every
 # increment, which greens the gate while printing its own findings.
-check_ns_values() {
-  local subject="$1" labels="$2" prefix="$3" permitted="$4" ns="$5" v count
-  count="$(count_ns "$labels" "$prefix")"
+check_namespace_values() {
+  local subject="$1" labels="$2" prefix="$3" permitted="$4" label_namespace="$5" label_value count
+  count="$(count_namespace_labels "$labels" "$prefix")"
   # Nothing in this namespace: return before the loop, because an absent
   # namespace and a single empty-valued one both yield no text, and only the
   # second is a defect.
   [ "$count" -gt 0 ] || return 0
-  while IFS= read -r v; do
+  while IFS= read -r label_value; do
     # An empty value is its own defect rather than an absence. `severity:` with
     # nothing after the colon still counts as one label, so the count check
     # above passes, and a vocabulary loop that skipped empties would see nothing
     # to reject: between them the two checks would let it through. This is the
     # most reachable bad shape, because the recipe substitutes placeholders into
     # this argv and an unfilled `difficulty:<grade>` arrives in exactly it.
-    if [ -z "$v" ]; then
-      finding "$subject" "$ns-value" "\`$prefix\` carries an empty value"
+    if [ -z "$label_value" ]; then
+      finding "$subject" "$label_namespace-value" "\`$prefix\` carries an empty value"
       continue
     fi
-    if ! in_set "$v" "$permitted"; then
-      finding "$subject" "$ns-value" "\`$prefix$v\` is outside the permitted set ($permitted)"
+    if ! in_set "$label_value" "$permitted"; then
+      finding "$subject" "$label_namespace-value" "\`$prefix$label_value\` is outside the permitted set ($permitted)"
     fi
-  done < <(values_ns "$labels" "$prefix")
+  done < <(namespace_label_values "$labels" "$prefix")
   return 0
 }
 
@@ -206,7 +206,7 @@ check_ns_values() {
 
 # check_labels <subject> <labels-newline-list>
 check_labels() {
-  local subject="$1" labels="$2" n v
+  local subject="$1" labels="$2" label_count
 
   if ! grep -qx 'tech-debt' <<<"$labels"; then
     finding "$subject" "missing-tech-debt" "no \`tech-debt\` label"
@@ -216,31 +216,31 @@ check_labels() {
   # `else` branch silently files it into the suggestion band, so it never
   # surfaces as an error at drain time); two is rarer and worse, because the
   # band an issue sorts into then depends on jq's index() order.
-  n="$(count_ns "$labels" 'severity:')"
-  if [ "$n" -ne 1 ]; then
-    finding "$subject" "severity-count" "expected exactly one \`severity:\` label, found $n"
+  label_count="$(count_namespace_labels "$labels" 'severity:')"
+  if [ "$label_count" -ne 1 ]; then
+    finding "$subject" "severity-count" "expected exactly one \`severity:\` label, found $label_count"
   fi
-  check_ns_values "$subject" "$labels" 'severity:' "$SEVERITY_VALUES" "severity"
+  check_namespace_values "$subject" "$labels" 'severity:' "$SEVERITY_VALUES" "severity"
   # gaia:maintainer-only:start
 
   # Exactly one audience. Unlike severity there is no fallback band: an
   # unlabeled issue is simply unfiled against the adopter/maintainer split
   # that decides who the defect is visible to.
-  n="$(count_ns "$labels" 'audience:')"
-  if [ "$n" -ne 1 ]; then
-    finding "$subject" "audience-count" "expected exactly one \`audience:\` label, found $n"
+  label_count="$(count_namespace_labels "$labels" 'audience:')"
+  if [ "$label_count" -ne 1 ]; then
+    finding "$subject" "audience-count" "expected exactly one \`audience:\` label, found $label_count"
   fi
-  check_ns_values "$subject" "$labels" 'audience:' "$AUDIENCE_VALUES" "audience"
+  check_namespace_values "$subject" "$labels" 'audience:' "$AUDIENCE_VALUES" "audience"
   # gaia:maintainer-only:end
 
   # Difficulty is optional by design: a filing that did not read the cited code
   # omits the grade rather than guessing one. So zero is clean and two is not,
   # and a present grade must still be in the vocabulary.
-  n="$(count_ns "$labels" 'difficulty:')"
-  if [ "$n" -gt 1 ]; then
-    finding "$subject" "difficulty-count" "expected at most one \`difficulty:\` label, found $n"
+  label_count="$(count_namespace_labels "$labels" 'difficulty:')"
+  if [ "$label_count" -gt 1 ]; then
+    finding "$subject" "difficulty-count" "expected at most one \`difficulty:\` label, found $label_count"
   fi
-  check_ns_values "$subject" "$labels" 'difficulty:' "$DIFFICULTY_VALUES" "difficulty"
+  check_namespace_values "$subject" "$labels" 'difficulty:' "$DIFFICULTY_VALUES" "difficulty"
 
   # Footprint is optional here for a different reason than difficulty is. Every
   # filing route this recipe governs emits one, but nothing downstream depends
@@ -248,11 +248,11 @@ check_labels() {
   # and grades narrow-versus-wide itself, so an absent class costs one line of
   # `why` output and never a misroute. Demanding presence would demand a value
   # no decision reads, and it would make every human-filed issue a finding.
-  n="$(count_ns "$labels" 'footprint:')"
-  if [ "$n" -gt 1 ]; then
-    finding "$subject" "footprint-count" "expected at most one \`footprint:\` label, found $n"
+  label_count="$(count_namespace_labels "$labels" 'footprint:')"
+  if [ "$label_count" -gt 1 ]; then
+    finding "$subject" "footprint-count" "expected at most one \`footprint:\` label, found $label_count"
   fi
-  check_ns_values "$subject" "$labels" 'footprint:' "$FOOTPRINT_VALUES" "footprint"
+  check_namespace_values "$subject" "$labels" 'footprint:' "$FOOTPRINT_VALUES" "footprint"
 
   # Fold is optional in the strongest sense of the three: it marks a minority of
   # findings, so absence is the ordinary case rather than an omission, and
@@ -260,11 +260,11 @@ check_labels() {
   # the others are: the value reaches a display surface that reads it literally,
   # so a misspelling is silent until a drainer does not see the annotation the
   # filer thought they left.
-  n="$(count_ns "$labels" 'fold:')"
-  if [ "$n" -gt 1 ]; then
-    finding "$subject" "fold-count" "expected at most one \`fold:\` label, found $n"
+  label_count="$(count_namespace_labels "$labels" 'fold:')"
+  if [ "$label_count" -gt 1 ]; then
+    finding "$subject" "fold-count" "expected at most one \`fold:\` label, found $label_count"
   fi
-  check_ns_values "$subject" "$labels" 'fold:' "$FOLD_VALUES" "fold"
+  check_namespace_values "$subject" "$labels" 'fold:' "$FOLD_VALUES" "fold"
 
   return 0
 }
@@ -519,7 +519,7 @@ run_investigate_cap() {
   count="$(printf '%s' "$corpus" | jq 'length')"
 
   if [ "$count" -lt "$INVESTIGATE_CAP" ]; then
-    echo "$PROG: $count of $INVESTIGATE_CAP investigate slot(s) in use" >&2
+    echo "$PROGRAM_NAME: $count of $INVESTIGATE_CAP investigate slot(s) in use" >&2
     return 0
   fi
 
@@ -542,10 +542,10 @@ require_gh() {
 # check_one_issue <json-object>: one issue's worth of checks, from the JSON
 # shape both gh modes below produce.
 check_one_issue() {
-  local obj="$1" number labels body
-  number="$(printf '%s' "$obj" | jq -r '.number')"
-  labels="$(printf '%s' "$obj" | jq -r '.labels[].name')"
-  body="$(printf '%s' "$obj" | jq -r '.body // ""')"
+  local issue_json="$1" number labels body
+  number="$(printf '%s' "$issue_json" | jq -r '.number')"
+  labels="$(printf '%s' "$issue_json" | jq -r '.labels[].name')"
+  body="$(printf '%s' "$issue_json" | jq -r '.body // ""')"
 
   check_labels "#$number" "$labels"
   check_body "#$number" "$body"
@@ -558,7 +558,7 @@ fetch_corpus() {
 }
 
 run_issue() {
-  local number="$1" obj
+  local number="$1" issue_json
   require_gh
   case "$number" in
     '' | *[!0-9]*) fatal "--issue needs an issue number" ;;
@@ -569,13 +569,13 @@ run_issue() {
   # were reported" status, so an auth or network failure would read as a clean
   # run with an unlucky exit code. Routing it to 2 keeps the three-way contract
   # honest. The blocking `--pre-file` mode is unaffected, being hermetic.
-  obj="$(gh issue view "$number" --json number,labels,body)" ||
+  issue_json="$(gh issue view "$number" --json number,labels,body)" ||
     fatal "could not read issue #$number through gh"
-  check_one_issue "$obj"
+  check_one_issue "$issue_json"
 }
 
 run_sweep() {
-  local corpus count obj
+  local corpus count issue_json
   require_gh
 
   corpus="$(fetch_corpus)" || fatal "could not read the tech-debt backlog through gh"
@@ -585,7 +585,7 @@ run_sweep() {
   # nothing and a backlog that is genuinely empty look identical from the exit
   # status alone, and only one of them means "nothing to check".
   if [ "$count" -eq 0 ]; then
-    echo "$PROG: the open tech-debt backlog is empty; nothing was checked" >&2
+    echo "$PROGRAM_NAME: the open tech-debt backlog is empty; nothing was checked" >&2
     return 0
   fi
 
@@ -597,12 +597,12 @@ run_sweep() {
   # Fed by a redirect rather than a pipe, for the reason this file keeps
   # repeating: `check_one_issue` calls `finding`, which increments a counter in
   # the caller's shell, and a piped `while` runs in a subshell that discards it.
-  while IFS= read -r obj; do
-    [ -n "$obj" ] || continue
-    check_one_issue "$obj"
+  while IFS= read -r issue_json; do
+    [ -n "$issue_json" ] || continue
+    check_one_issue "$issue_json"
   done < <(printf '%s' "$corpus" | jq -c '.[]')
 
-  echo "$PROG: checked $count open tech-debt issue(s)" >&2
+  echo "$PROGRAM_NAME: checked $count open tech-debt issue(s)" >&2
 }
 
 # ---------------------------------------------------------------------------
@@ -643,10 +643,10 @@ main() {
   esac
 
   if [ "$FINDING_COUNT" -gt 0 ]; then
-    echo "$PROG: $FINDING_COUNT finding(s)" >&2
+    echo "$PROGRAM_NAME: $FINDING_COUNT finding(s)" >&2
     exit 1
   fi
-  echo "$PROG: clean" >&2
+  echo "$PROGRAM_NAME: clean" >&2
   exit 0
 }
 

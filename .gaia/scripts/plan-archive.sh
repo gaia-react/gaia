@@ -75,8 +75,8 @@ case "$raw" in
   /*)
     case "$raw" in
       "$root"|"$root"/*)
-        rel="${raw#"$root"}"
-        rel="${rel#/}"
+        relative_path="${raw#"$root"}"
+        relative_path="${relative_path#/}"
         ;;
       *)
         echo "plan-archive: $raw is outside the repo root ($root); refusing" >&2
@@ -85,11 +85,11 @@ case "$raw" in
     esac
     ;;
   *)
-    rel="$raw"
+    relative_path="$raw"
     ;;
 esac
-rel="${rel#./}"
-rel="${rel%/}"
+relative_path="${relative_path#./}"
+relative_path="${relative_path%/}"
 
 # ---------- classify path shape ----------
 # .gaia/local/plans/<slug>: exactly one segment, and <slug> is not
@@ -99,68 +99,68 @@ rel="${rel%/}"
 kind=""
 slug=""
 spec_part=""
-case "$rel" in
+case "$relative_path" in
   .gaia/local/plans/*)
-    slug="${rel#.gaia/local/plans/}"
+    slug="${relative_path#.gaia/local/plans/}"
     case "$slug" in
       ""|.|..|*/*|archived)
-        echo "plan-archive: refusing $rel (nested path or archived)" >&2
+        echo "plan-archive: refusing $relative_path (nested path or archived)" >&2
         exit 0
         ;;
     esac
     kind="plans"
     ;;
   .gaia/local/specs/*)
-    remainder="${rel#.gaia/local/specs/}"
+    remainder="${relative_path#.gaia/local/specs/}"
     case "$remainder" in
       */plan|*/plan-[0-9]*)
         spec_part="${remainder%/*}"
         case "$spec_part" in
           ""|.|..|*/*)
-            echo "plan-archive: refusing $rel (not a colocated plan folder)" >&2
+            echo "plan-archive: refusing $relative_path (not a colocated plan folder)" >&2
             exit 0
             ;;
         esac
         kind="specs"
         ;;
       *)
-        echo "plan-archive: refusing $rel (not a colocated plan folder)" >&2
+        echo "plan-archive: refusing $relative_path (not a colocated plan folder)" >&2
         exit 0
         ;;
     esac
     ;;
   *)
-    echo "plan-archive: refusing $rel (not under .gaia/local/plans or .gaia/local/specs)" >&2
+    echo "plan-archive: refusing $relative_path (not under .gaia/local/plans or .gaia/local/specs)" >&2
     exit 0
     ;;
 esac
 
-source_abs="$root/$rel"
+absolute_source_path="$root/$relative_path"
 
 # ---------- existence check ----------
-if [ ! -e "$source_abs" ]; then
-  echo "plan-archive: $rel does not exist; nothing to do" >&2
+if [ ! -e "$absolute_source_path" ]; then
+  echo "plan-archive: $relative_path does not exist; nothing to do" >&2
   exit 0
 fi
 
 # ---------- derive representation-gate identity (FC-3) ----------
-attr_field=""
-attr_val=""
+attribute_field=""
+attribute_value=""
 if [ "$kind" = "plans" ]; then
   case "$slug" in
     PLAN-*)
-      plan_num="${slug#PLAN-}"
-      case "$plan_num" in
-        ''|*[!0-9]*) attr_field="plan_slug"; attr_val="$slug" ;;
-        *) attr_field="plan_id"; attr_val="$slug" ;;
+      plan_number="${slug#PLAN-}"
+      case "$plan_number" in
+        ''|*[!0-9]*) attribute_field="plan_slug"; attribute_value="$slug" ;;
+        *) attribute_field="plan_id"; attribute_value="$slug" ;;
       esac
       ;;
     *)
-      attr_field="plan_slug"; attr_val="$slug"
+      attribute_field="plan_slug"; attribute_value="$slug"
       ;;
   esac
 else
-  attr_field="spec_id"; attr_val="$spec_part"
+  attribute_field="spec_id"; attribute_value="$spec_part"
 fi
 
 # ---- best-effort plans-ledger merge stamp (PLAN-NNN slugs only) ----
@@ -169,9 +169,9 @@ fi
 # representation gate so the terminal identity record survives even a
 # folder the gate leaves in place (a later run, once cost catches up, finds
 # the row already merged and can retry the reduce).
-if [ "$kind" = "plans" ] && [ "$attr_field" = "plan_id" ]; then
+if [ "$kind" = "plans" ] && [ "$attribute_field" = "plan_id" ]; then
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  patch="$(jq -nc --arg ts "$now" '{status: "merged", merged_at: $ts}')"
+  patch="$(jq -nc --arg timestamp "$now" '{status: "merged", merged_at: $timestamp}')"
   bash "$root/.specify/extensions/gaia/lib/plan-ledger-update.sh" "$root" "$slug" "$patch" \
     >/dev/null 2>&1 || true
 fi
@@ -188,31 +188,31 @@ if declare -f gaia_resolve_ledger_path >/dev/null 2>&1; then
 fi
 
 if [ -z "$ledger" ] || ! declare -f cost_folder_represented >/dev/null 2>&1; then
-  echo "plan-archive: could not resolve the cost-representation gate; left $rel in place" >&2
-  printf 'Retained plan (representation gate unavailable): %s\n' "$rel"
+  echo "plan-archive: could not resolve the cost-representation gate; left $relative_path in place" >&2
+  printf 'Retained plan (representation gate unavailable): %s\n' "$relative_path"
   exit 0
 fi
 
-if ! cost_folder_represented "$source_abs" "$attr_field" "$attr_val" "$ledger" >/dev/null 2>&1; then
-  echo "plan-archive: cost not fully represented; left $rel in place" >&2
-  printf 'Retained plan (cost not fully represented): %s\n' "$rel"
+if ! cost_folder_represented "$absolute_source_path" "$attribute_field" "$attribute_value" "$ledger" >/dev/null 2>&1; then
+  echo "plan-archive: cost not fully represented; left $relative_path in place" >&2
+  printf 'Retained plan (cost not fully represented): %s\n' "$relative_path"
   exit 0
 fi
 
 # ---------- disposition ----------
-if [ "$kind" = "plans" ] && [ "$attr_field" = "plan_id" ]; then
+if [ "$kind" = "plans" ] && [ "$attribute_field" = "plan_id" ]; then
   # A ledger-tracked spec-less PLAN-NNN: keep-then-age-reap. Reduce the
   # folder to its consolidated SUMMARY.md + cost.json and clear the RUNNING
   # sentinel, instead of deleting outright, so plan-archive-merged.sh can
   # reap it once merged_at clears the retention window.
-  if [ ! -s "$source_abs/SUMMARY.md" ]; then
-    echo "plan-archive: no consolidated SUMMARY.md yet under $rel; left intact for consolidation" >&2
-    printf 'Retained plan (no consolidated SUMMARY.md yet): %s\n' "$rel"
+  if [ ! -s "$absolute_source_path/SUMMARY.md" ]; then
+    echo "plan-archive: no consolidated SUMMARY.md yet under $relative_path; left intact for consolidation" >&2
+    printf 'Retained plan (no consolidated SUMMARY.md yet): %s\n' "$relative_path"
     exit 0
   fi
-  find "$source_abs" -mindepth 1 -maxdepth 1 ! -name SUMMARY.md ! -name cost.json -exec rm -rf {} +
-  rm -f "$source_abs/RUNNING"
-  printf 'Reduced plan folder to SUMMARY.md + cost.json (kept for age-reap): %s\n' "$rel"
+  find "$absolute_source_path" -mindepth 1 -maxdepth 1 ! -name SUMMARY.md ! -name cost.json -exec rm -rf {} +
+  rm -f "$absolute_source_path/RUNNING"
+  printf 'Reduced plan folder to SUMMARY.md + cost.json (kept for age-reap): %s\n' "$relative_path"
   exit 0
 fi
 
@@ -221,8 +221,8 @@ if [ "$kind" = "specs" ]; then
   # SPEC's own consolidated SUMMARY.md existing (consolidation has consumed
   # plan/PROGRESS.md). A cold invocation that races ahead of consolidation
   # keeps the subfolder rather than destroying PROGRESS.md.
-  spec_dir="$(dirname "$source_abs")"
-  spec_summary="$spec_dir/SUMMARY.md"
+  spec_directory="$(dirname "$absolute_source_path")"
+  spec_summary="$spec_directory/SUMMARY.md"
   summary_ok=1
   verify_script="$root/.gaia/scripts/summary-verify.sh"
   if [ -x "$verify_script" ] || [ -f "$verify_script" ]; then
@@ -231,14 +231,14 @@ if [ "$kind" = "specs" ]; then
     [ -s "$spec_summary" ] || summary_ok=0
   fi
   if [ "$summary_ok" -ne 1 ]; then
-    echo "plan-archive: parent SPEC has no consolidated SUMMARY.md yet; left $rel in place" >&2
-    printf 'Retained plan (parent SPEC not yet consolidated): %s\n' "$rel"
+    echo "plan-archive: parent SPEC has no consolidated SUMMARY.md yet; left $relative_path in place" >&2
+    printf 'Retained plan (parent SPEC not yet consolidated): %s\n' "$relative_path"
     exit 0
   fi
 fi
 
 # ---------- delete (legacy free-form plan slug, or a gated spec-colocated plan[-N]) ----------
-rm -rf -- "$source_abs"
-printf 'Deleted plan folder: %s (cost preserved in cost.jsonl)\n' "$rel"
+rm -rf -- "$absolute_source_path"
+printf 'Deleted plan folder: %s (cost preserved in cost.jsonl)\n' "$relative_path"
 
 exit 0

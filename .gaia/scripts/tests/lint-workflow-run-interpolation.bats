@@ -24,31 +24,31 @@ setup() {
   THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
   LINTER="$REPO_ROOT/.gaia/scripts/lint-workflow-run-interpolation.sh"
-  TMP=""
+  TEMPORARY_DIRECTORY=""
 }
 
 teardown() {
-  [ -n "$TMP" ] && [ -d "$TMP" ] && rm -rf "$TMP"
+  [ -n "$TEMPORARY_DIRECTORY" ] && [ -d "$TEMPORARY_DIRECTORY" ] && rm -rf "$TEMPORARY_DIRECTORY"
   return 0
 }
 
-# fixture_repo: an initialized git repo in $TMP with no files yet.
+# fixture_repo: an initialized git repo in $TEMPORARY_DIRECTORY with no files yet.
 fixture_repo() {
-  TMP="$(mktemp -d -t run-interp-lint-XXXXXX)"
-  git -C "$TMP" init -q .
+  TEMPORARY_DIRECTORY="$(mktemp -d -t run-interp-lint-XXXXXX)"
+  git -C "$TEMPORARY_DIRECTORY" init -q .
 }
 
-# fixture_workflow <name> <body>: write <body> to $TMP/.github/workflows/<name>
+# fixture_workflow <name> <body>: write <body> to $TEMPORARY_DIRECTORY/.github/workflows/<name>
 # and track it. Call fixture_repo first.
 fixture_workflow() {
-  mkdir -p "$TMP/.github/workflows"
-  printf '%s\n' "$2" > "$TMP/.github/workflows/$1"
-  git -C "$TMP" add -A
+  mkdir -p "$TEMPORARY_DIRECTORY/.github/workflows"
+  printf '%s\n' "$2" > "$TEMPORARY_DIRECTORY/.github/workflows/$1"
+  git -C "$TEMPORARY_DIRECTORY" add -A
 }
 
 # run_linter: run the gate from inside the fixture repo.
 run_linter() {
-  run bash -c "cd '$TMP' && bash '$LINTER' 2>&1"
+  run bash -c "cd '$TEMPORARY_DIRECTORY' && bash '$LINTER' 2>&1"
 }
 
 # surface_has_workflow_and_action <repo> <lib>: the `workflows` set, as <lib>
@@ -237,14 +237,14 @@ jobs:
 
 @test "flags an expression in a composite action run body" {
   fixture_repo
-  mkdir -p "$TMP/.github/actions/thing"
+  mkdir -p "$TEMPORARY_DIRECTORY/.github/actions/thing"
   printf '%s\n' 'runs:
   using: composite
   steps:
     - shell: bash
       run: |
-        echo "${{ steps.x.outputs.y }}"' > "$TMP/.github/actions/thing/action.yml"
-  git -C "$TMP" add -A
+        echo "${{ steps.x.outputs.y }}"' > "$TEMPORARY_DIRECTORY/.github/actions/thing/action.yml"
+  git -C "$TEMPORARY_DIRECTORY" add -A
   run_linter
   [ "$status" -eq 1 ]
   grep -qF -- "action.yml:6:" <<<"$output"
@@ -265,8 +265,8 @@ jobs:
 # rather than answering empty; that is the one discovery failure a fixture can
 # produce without a stub.
 @test "a discovery that never ran exits distinctly from a surface that came back empty" {
-  TMP="$(mktemp -d -t run-interp-lint-XXXXXX)"
-  run bash -c "cd '$TMP' && bash '$LINTER' 2>&1"
+  TEMPORARY_DIRECTORY="$(mktemp -d -t run-interp-lint-XXXXXX)"
+  run bash -c "cd '$TEMPORARY_DIRECTORY' && bash '$LINTER' 2>&1"
   [ "$status" -eq 3 ]
   grep -qF -- "discovery failed" <<<"$output" || return 1
   grep -qF -- "nothing was scanned" <<<"$output"

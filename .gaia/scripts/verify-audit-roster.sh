@@ -161,10 +161,10 @@ fi
 # .gaia/scripts -> ../../.claude/hooks/lib. Note the asymmetry with the
 # machinery list below, which resolves under --root because it is data a
 # fixture must be able to inject.
-_self_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.claude/hooks/lib" 2>/dev/null && pwd)" || true
-if [ -n "${_self_lib_dir:-}" ] && [ -f "$_self_lib_dir/audit-scope.sh" ]; then
+_self_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.claude/hooks/lib" 2>/dev/null && pwd)" || true
+if [ -n "${_self_library_directory:-}" ] && [ -f "$_self_library_directory/audit-scope.sh" ]; then
   # shellcheck source=/dev/null
-  . "$_self_lib_dir/audit-scope.sh"
+  . "$_self_library_directory/audit-scope.sh"
 fi
 
 if ! command -v _audit_scope_parse_auditors >/dev/null 2>&1; then
@@ -192,10 +192,10 @@ findings=0
 
 _verify_roster_read_globs() {
   awk '
-    function unq(s) {
-      if (s ~ /^".*"$/) return substr(s, 2, length(s) - 2)
-      if (s ~ /^'\''.*'\''$/) return substr(s, 2, length(s) - 2)
-      return s
+    function unquote(text) {
+      if (text ~ /^".*"$/) return substr(text, 2, length(text) - 2)
+      if (text ~ /^'\''.*'\''$/) return substr(text, 2, length(text) - 2)
+      return text
     }
     BEGIN { OFS = "\t"; in_auditors = 0; in_globs = 0; member = "" }
     {
@@ -210,11 +210,11 @@ _verify_roster_read_globs() {
       if (raw ~ /^[[:space:]]*#/) next
       if (raw ~ /^[[:space:]]*-[[:space:]]+name[[:space:]]*:/) {
         in_globs = 0
-        v = raw
-        sub(/^[[:space:]]*-[[:space:]]+name[[:space:]]*:[[:space:]]*/, "", v)
-        sub(/[[:space:]]+#.*$/, "", v)
-        sub(/^[[:space:]]+/, "", v); sub(/[[:space:]]+$/, "", v)
-        member = unq(v)
+        member_name_text = raw
+        sub(/^[[:space:]]*-[[:space:]]+name[[:space:]]*:[[:space:]]*/, "", member_name_text)
+        sub(/[[:space:]]+#.*$/, "", member_name_text)
+        sub(/^[[:space:]]+/, "", member_name_text); sub(/[[:space:]]+$/, "", member_name_text)
+        member = unquote(member_name_text)
         print "MEMBER", member
         next
       }
@@ -222,12 +222,12 @@ _verify_roster_read_globs() {
       # Any other member-level scalar key ends the glob sublist.
       if (raw ~ /^[[:space:]]+[A-Za-z_]+[[:space:]]*:/) { in_globs = 0; next }
       if (in_globs && raw ~ /^[[:space:]]*-[[:space:]]+/) {
-        g = raw
-        sub(/^[[:space:]]*-[[:space:]]+/, "", g)
-        sub(/[[:space:]]+#.*$/, "", g)
-        sub(/^[[:space:]]+/, "", g); sub(/[[:space:]]+$/, "", g)
-        g = unq(g)
-        if (g != "") print "RAW", member, g
+        glob = raw
+        sub(/^[[:space:]]*-[[:space:]]+/, "", glob)
+        sub(/[[:space:]]+#.*$/, "", glob)
+        sub(/^[[:space:]]+/, "", glob); sub(/[[:space:]]+$/, "", glob)
+        glob = unquote(glob)
+        if (glob != "") print "RAW", member, glob
         next
       }
     }
@@ -244,8 +244,8 @@ _verify_roster_read_globs() {
 #
 # Emits, tab-separated so a glob may legally contain a space:
 #   REGIONMISSING <name> <agent-rel>
-#   REGIONDUP <name> <agent-rel> <nstart> <nend>
-#   REGIONUNBALANCED <name> <agent-rel> <nstart> <nend>
+#   REGIONDUP <name> <agent-rel> <start_marker_count> <end_marker_count>
+#   REGIONUNBALANCED <name> <agent-rel> <start_marker_count> <end_marker_count>
 #   REGIONREVERSED <name> <agent-rel> <start-line> <end-line>
 #   REGIONOK <name>
 #   REGION <name> <glob>
@@ -255,46 +255,46 @@ REMIT_END='<!-- gaia:audit-remit:end -->'
 
 _verify_roster_read_regions() {
   # <root> <raw-records>
-  local rr="$1" recs="$2" kind name agent_rel agent nstart nend start_line end_line
+  local repo_root="$1" records="$2" kind name agent_relative_path agent start_marker_count end_marker_count start_line end_line
   while IFS=$'\t' read -r kind name; do
     [ "$kind" = "MEMBER" ] || continue
     [ -n "$name" ] || continue
-    agent_rel=".claude/agents/${name}.md"
-    agent="${rr}/${agent_rel}"
+    agent_relative_path=".claude/agents/${name}.md"
+    agent="${repo_root}/${agent_relative_path}"
     # A member with no definition at all fails loud at dispatch time, so a
     # region finding piled on top of that is noise; every fixture that deletes
     # an agent file depends on this.
     [ -f "$agent" ] || continue
     # grep -c prints 0 and exits 1 on no match, and this script carries no
     # `set -e`; the `|| true` says so rather than leaving it to be inferred.
-    nstart="$(grep -cxF -- "$REMIT_START" "$agent" || true)"
-    nend="$(grep -cxF -- "$REMIT_END" "$agent" || true)"
-    if [ "$nstart" -eq 0 ] && [ "$nend" -eq 0 ]; then
-      printf 'REGIONMISSING\t%s\t%s\n' "$name" "$agent_rel"
-    elif [ "$nstart" -gt 1 ] || [ "$nend" -gt 1 ]; then
-      printf 'REGIONDUP\t%s\t%s\t%s\t%s\n' "$name" "$agent_rel" "$nstart" "$nend"
-    elif [ "$nstart" -ne "$nend" ]; then
-      printf 'REGIONUNBALANCED\t%s\t%s\t%s\t%s\n' "$name" "$agent_rel" "$nstart" "$nend"
+    start_marker_count="$(grep -cxF -- "$REMIT_START" "$agent" || true)"
+    end_marker_count="$(grep -cxF -- "$REMIT_END" "$agent" || true)"
+    if [ "$start_marker_count" -eq 0 ] && [ "$end_marker_count" -eq 0 ]; then
+      printf 'REGIONMISSING\t%s\t%s\n' "$name" "$agent_relative_path"
+    elif [ "$start_marker_count" -gt 1 ] || [ "$end_marker_count" -gt 1 ]; then
+      printf 'REGIONDUP\t%s\t%s\t%s\t%s\n' "$name" "$agent_relative_path" "$start_marker_count" "$end_marker_count"
+    elif [ "$start_marker_count" -ne "$end_marker_count" ]; then
+      printf 'REGIONUNBALANCED\t%s\t%s\t%s\t%s\n' "$name" "$agent_relative_path" "$start_marker_count" "$end_marker_count"
     else
       start_line="$(grep -nxF -- "$REMIT_START" "$agent" | cut -d: -f1)"
       end_line="$(grep -nxF -- "$REMIT_END" "$agent" | cut -d: -f1)"
       if [ "$start_line" -gt "$end_line" ]; then
-        printf 'REGIONREVERSED\t%s\t%s\t%s\t%s\n' "$name" "$agent_rel" "$start_line" "$end_line"
+        printf 'REGIONREVERSED\t%s\t%s\t%s\t%s\n' "$name" "$agent_relative_path" "$start_line" "$end_line"
       else
         printf 'REGIONOK\t%s\n' "$name"
         # A marker state machine over the file, capturing every `- ` + backtick
         # bullet strictly between the pair, in file order. A line between the
         # markers that is not a bullet (the blank line, the canonical sentence)
         # contributes nothing.
-        awk -v s="$REMIT_START" -v e="$REMIT_END" -v m="$name" '
+        awk -v start_marker="$REMIT_START" -v end_marker="$REMIT_END" -v member="$name" '
           BEGIN { OFS = "\t" }
-          $0 == s { infl = 1; next }
-          $0 == e { infl = 0; next }
-          infl && match($0, /^- `.*`$/) { print "REGION", m, substr($0, 4, length($0) - 4) }
+          $0 == start_marker { in_region = 1; next }
+          $0 == end_marker { in_region = 0; next }
+          in_region && match($0, /^- `.*`$/) { print "REGION", member, substr($0, 4, length($0) - 4) }
         ' "$agent"
       fi
     fi
-  done < <(printf '%s\n' "$recs")
+  done < <(printf '%s\n' "$records")
 }
 
 class_records="$(_audit_scope_parse_auditors < "$config")"
@@ -332,19 +332,19 @@ unowned_records="$(_audit_scope_parse_unowned < "$config")"
 # own bats suite rather than a runtime check here, because both hold over the
 # committed roster whether or not a fixture roster is under test.
 
-machinery_lib="${root}/.claude/hooks/lib/audit-machinery.sh"
+machinery_library="${root}/.claude/hooks/lib/audit-machinery.sh"
 
 _roster_list_lines() {
   # <file> <shell-variable-name>: the heredoc list assigned to that variable.
   [ -f "$1" ] || return 0
-  awk -v v="$2" '
-    index($0, v "=") == 1 { inlist = 1; next }
+  awk -v variable_name="$2" '
+    index($0, variable_name "=") == 1 { inlist = 1; next }
     inlist && $0 == "EOF" { inlist = 0; next }
     inlist { print }
   ' "$1"
 }
 
-machinery_list="$(_roster_list_lines "$machinery_lib" AUDIT_MACHINERY_PATHS)"
+machinery_list="$(_roster_list_lines "$machinery_library" AUDIT_MACHINERY_PATHS)"
 
 _report_unreadable_list() {
   # <file> <variable-name>
@@ -357,7 +357,7 @@ _report_unreadable_list() {
   printf '\n'
 }
 
-[ -n "$machinery_list" ] || _report_unreadable_list "$machinery_lib" AUDIT_MACHINERY_PATHS
+[ -n "$machinery_list" ] || _report_unreadable_list "$machinery_library" AUDIT_MACHINERY_PATHS
 
 # --- Invariant: the remit region's SHAPE -------------------------------------
 #
@@ -367,13 +367,13 @@ _report_unreadable_list() {
 # deletes bytes outside a pair it can identify, so a human deletes the extra,
 # unbalanced, or reversed markers first and re-runs it.
 
-while IFS=$'\t' read -r kind name agent_rel nstart nend; do
+while IFS=$'\t' read -r kind name agent_relative_path start_count_or_line end_count_or_line; do
   case "$kind" in
     REGIONMISSING)
       findings=$((findings + 1))
       printf 'verify-audit-roster: FAIL missing-remit-region\n'
       printf '  member:     %s\n' "$name"
-      printf '  agent file: %s\n' "$agent_rel"
+      printf '  agent file: %s\n' "$agent_relative_path"
       printf '  This definition carries no remit region, so nothing states which\n'
       printf '  files it owns in a form the roster can be compared against. The\n'
       printf '  region is never optional and deleting the markers is never an\n'
@@ -385,9 +385,9 @@ while IFS=$'\t' read -r kind name agent_rel nstart nend; do
       findings=$((findings + 1))
       printf 'verify-audit-roster: FAIL duplicate-remit-region\n'
       printf '  member:        %s\n' "$name"
-      printf '  agent file:    %s\n' "$agent_rel"
-      printf '  start markers: %s\n' "$nstart"
-      printf '  end markers:   %s\n' "$nend"
+      printf '  agent file:    %s\n' "$agent_relative_path"
+      printf '  start markers: %s\n' "$start_count_or_line"
+      printf '  end markers:   %s\n' "$end_count_or_line"
       printf '  More than one remit region appears in this definition, so which\n'
       printf '  pair states the member remit is ambiguous: a reader and the\n'
       printf '  dispatched member could take different ones as authoritative.\n'
@@ -401,9 +401,9 @@ while IFS=$'\t' read -r kind name agent_rel nstart nend; do
       findings=$((findings + 1))
       printf 'verify-audit-roster: FAIL unbalanced-remit-region\n'
       printf '  member:        %s\n' "$name"
-      printf '  agent file:    %s\n' "$agent_rel"
-      printf '  start markers: %s\n' "$nstart"
-      printf '  end markers:   %s\n' "$nend"
+      printf '  agent file:    %s\n' "$agent_relative_path"
+      printf '  start markers: %s\n' "$start_count_or_line"
+      printf '  end markers:   %s\n' "$end_count_or_line"
       printf '  The remit markers do not pair up, so where the region ends is\n'
       printf '  ambiguous: everything from the unclosed marker to the end of the\n'
       printf '  file reads as remit, or no region opens at all. The writer will\n'
@@ -417,9 +417,9 @@ while IFS=$'\t' read -r kind name agent_rel nstart nend; do
       findings=$((findings + 1))
       printf 'verify-audit-roster: FAIL reversed-remit-region\n'
       printf '  member:      %s\n' "$name"
-      printf '  agent file:  %s\n' "$agent_rel"
-      printf '  start line:  %s\n' "$nstart"
-      printf '  end line:    %s\n' "$nend"
+      printf '  agent file:  %s\n' "$agent_relative_path"
+      printf '  start line:  %s\n' "$start_count_or_line"
+      printf '  end line:    %s\n' "$end_count_or_line"
       printf '  The end marker appears before the start marker, so nothing marks\n'
       printf '  where the region actually begins and ends in file order. The\n'
       printf '  writer will not repair this, because it never deletes bytes\n'
@@ -444,7 +444,7 @@ done < <(printf '%s\n' "$region_records")
 violation_records="$(
   {
     printf '%s\n' "$class_records" |
-      awk '{ k = $1; m = $2; r = $0; sub(/^[^ ]+[ ]+[^ ]+[ ]*/, "", r); printf "%s\t%s\t%s\n", k, m, r }'
+      awk '{ record_kind = $1; member = $2; record_remainder = $0; sub(/^[^ ]+[ ]+[^ ]+[ ]*/, "", record_remainder); printf "%s\t%s\t%s\n", record_kind, member, record_remainder }'
     printf '%s\n' "$raw_records"
     printf '%s\n' "$region_records"
     printf '%s\n' "$unowned_records"
@@ -452,58 +452,58 @@ violation_records="$(
     # --- The glob layer ------------------------------------------------------
     #
     # Splits a glob into items: "**" (a whole-segment globstar) or a segment
-    # pattern. Returns the item count, or -1 with REJ naming why the pair is
+    # pattern. Returns the item count, or -1 with REJECTION_REASON naming why the pair is
     # undecidable. Everything rejected here is either a construct the classifier
     # silently escapes into a literal or a shape the segment model cannot
     # represent; deciding either would be the fail-open this check exists to
     # delete.
-    function glob_items(g, arr,   n, i, s) {
-      REJ = ""
-      if (g == "") { REJ = "the glob is empty"; return -1 }
-      if (index(g, " ") || index(g, "\t")) { REJ = "the glob contains whitespace, which the classifier record contract cannot carry"; return -1 }
-      if (index(g, "?")) { REJ = "the glob contains `?`, which the classifier escapes into a literal"; return -1 }
-      if (index(g, "[") || index(g, "]")) { REJ = "the glob contains a bracket, which the classifier escapes into a literal"; return -1 }
-      if (index(g, "{") || index(g, "}")) { REJ = "the glob contains a brace, which the classifier escapes into a literal"; return -1 }
-      if (index(g, "\\")) { REJ = "the glob contains a backslash, which the classifier escapes into a literal"; return -1 }
-      if (index(g, "***")) { REJ = "the glob contains a run of three or more `*`"; return -1 }
-      n = split(g, arr, "/")
-      for (i = 1; i <= n; i++) {
-        s = arr[i]
-        if (s == "") { REJ = "the glob has an empty path segment"; return -1 }
-        if (s == "**") continue
-        if (index(s, "**")) { REJ = "`**` appears inside the segment \"" s "\" rather than as a whole segment"; return -1 }
+    function glob_items(glob, items,   item_count, i, segment) {
+      REJECTION_REASON = ""
+      if (glob == "") { REJECTION_REASON = "the glob is empty"; return -1 }
+      if (index(glob, " ") || index(glob, "\t")) { REJECTION_REASON = "the glob contains whitespace, which the classifier record contract cannot carry"; return -1 }
+      if (index(glob, "?")) { REJECTION_REASON = "the glob contains `?`, which the classifier escapes into a literal"; return -1 }
+      if (index(glob, "[") || index(glob, "]")) { REJECTION_REASON = "the glob contains a bracket, which the classifier escapes into a literal"; return -1 }
+      if (index(glob, "{") || index(glob, "}")) { REJECTION_REASON = "the glob contains a brace, which the classifier escapes into a literal"; return -1 }
+      if (index(glob, "\\")) { REJECTION_REASON = "the glob contains a backslash, which the classifier escapes into a literal"; return -1 }
+      if (index(glob, "***")) { REJECTION_REASON = "the glob contains a run of three or more `*`"; return -1 }
+      item_count = split(glob, items, "/")
+      for (i = 1; i <= item_count; i++) {
+        segment = items[i]
+        if (segment == "") { REJECTION_REASON = "the glob has an empty path segment"; return -1 }
+        if (segment == "**") continue
+        if (index(segment, "**")) { REJECTION_REASON = "`**` appears inside the segment \"" segment "\" rather than as a whole segment"; return -1 }
       }
-      return n
+      return item_count
     }
 
     # Only the count is read (the reader-drift comparison below); the compiled
     # regex itself is never needed.
-    $1 == "GLOB" || $1 == "DEFAULTGLOB" { nrx[$2]++; next }
-    $1 == "MEMBER" { nm++; mem[nm] = $2; next }
-    $1 == "RAW" { nraw[$2]++; raw[$2, nraw[$2]] = $3; next }
+    $1 == "GLOB" || $1 == "DEFAULTGLOB" { compiled_glob_count[$2]++; next }
+    $1 == "MEMBER" { member_count++; members[member_count] = $2; next }
+    $1 == "RAW" { raw_glob_count[$2]++; raw[$2, raw_glob_count[$2]] = $3; next }
     # An exact field compare, so REGIONOK / REGIONMISSING / REGIONDUP /
     # REGIONUNBALANCED / REGIONREVERSED never match the REGION handler. These
     # four shape records fall through every handler here and are ignored,
     # which is right: they are rendered shell-side, and a member whose region
-    # could not be read carries no hasreg entry, so the parity section below
+    # could not be read carries no has_region entry, so the parity section below
     # skips it.
-    $1 == "REGIONOK" { hasreg[$2] = 1; next }
-    $1 == "REGION" { nreg[$2]++; reg[$2, nreg[$2]] = $3; next }
+    $1 == "REGIONOK" { has_region[$2] = 1; next }
+    $1 == "REGION" { region_glob_count[$2]++; region_globs[$2, region_glob_count[$2]] = $3; next }
     # Field 3 is the compiled regex, which this pass never reads: it classifies
     # the raw glob, exactly as the claimant and region positions do.
-    $1 == "UNOWNED" { nun++; unow[nun] = $2; next }
+    $1 == "UNOWNED" { unowned_entry_count++; unowned_globs[unowned_entry_count] = $2; next }
 
     END {
       # The scrape and the classifier agree about how many globs each member
       # declares, or neither the regexes nor the raw globs below line up and no
       # verdict is produced at all.
       drift = 0
-      for (i = 1; i <= nm; i++) {
-        m = mem[i]
-        if (m in seenmm) continue
-        seenmm[m] = 1
-        if ((nraw[m] + 0) != (nrx[m] + 0)) {
-          printf "MISMATCH\t%s\t%d\t%d\n", m, nraw[m] + 0, nrx[m] + 0
+      for (i = 1; i <= member_count; i++) {
+        member = members[i]
+        if (member in seen_drift_member) continue
+        seen_drift_member[member] = 1
+        if ((raw_glob_count[member] + 0) != (compiled_glob_count[member] + 0)) {
+          printf "MISMATCH\t%s\t%d\t%d\n", member, raw_glob_count[member] + 0, compiled_glob_count[member] + 0
           drift = 1
         }
       }
@@ -521,34 +521,34 @@ violation_records="$(
       # Membership is a nested string comparison over lists of at most a dozen
       # globs. A hash keyed on the glob string would have to handle SUBSEP
       # collisions to be correct; the nested loop is clearer and fast enough.
-      split("", seenrm)
-      for (i = 1; i <= nm; i++) {
-        m = mem[i]
-        if (m in seenrm) continue
-        seenrm[m] = 1
-        if (!(m in hasreg)) continue
-        for (k = 1; k <= (nreg[m] + 0); k++) {
-          if (glob_items(reg[m, k], IR) < 0)
-            printf "REMITUNDECIDABLE\t%s\t%s\t%s\n", m, reg[m, k], REJ
+      split("", seen_region_member)
+      for (i = 1; i <= member_count; i++) {
+        member = members[i]
+        if (member in seen_region_member) continue
+        seen_region_member[member] = 1
+        if (!(member in has_region)) continue
+        for (k = 1; k <= (region_glob_count[member] + 0); k++) {
+          if (glob_items(region_globs[member, k], REGION_ITEMS) < 0)
+            printf "REMITUNDECIDABLE\t%s\t%s\t%s\n", member, region_globs[member, k], REJECTION_REASON
         }
-        nmiss = 0; nextra = 0
-        for (x = 1; x <= (nraw[m] + 0); x++) {
+        missing_count = 0; extra_count = 0
+        for (raw_index = 1; raw_index <= (raw_glob_count[member] + 0); raw_index++) {
           hit = 0
-          for (y = 1; y <= (nreg[m] + 0); y++) if (raw[m, x] == reg[m, y]) { hit = 1; break }
-          if (!hit) { printf "REMITMISSING\t%s\t%s\n", m, raw[m, x]; nmiss++ }
+          for (region_index = 1; region_index <= (region_glob_count[member] + 0); region_index++) if (raw[member, raw_index] == region_globs[member, region_index]) { hit = 1; break }
+          if (!hit) { printf "REMITMISSING\t%s\t%s\n", member, raw[member, raw_index]; missing_count++ }
         }
-        for (y = 1; y <= (nreg[m] + 0); y++) {
+        for (region_index = 1; region_index <= (region_glob_count[member] + 0); region_index++) {
           hit = 0
-          for (x = 1; x <= (nraw[m] + 0); x++) if (reg[m, y] == raw[m, x]) { hit = 1; break }
-          if (!hit) { printf "REMITEXTRA\t%s\t%s\n", m, reg[m, y]; nextra++ }
+          for (raw_index = 1; raw_index <= (raw_glob_count[member] + 0); raw_index++) if (region_globs[member, region_index] == raw[member, raw_index]) { hit = 1; break }
+          if (!hit) { printf "REMITEXTRA\t%s\t%s\n", member, region_globs[member, region_index]; extra_count++ }
         }
         # Order is only meaningful once the two lists hold the same globs; a
         # set comparison must never pass a permuted region, so the first
         # differing position is reported.
-        if (nmiss == 0 && nextra == 0 && (nreg[m] + 0) == (nraw[m] + 0)) {
-          for (p = 1; p <= (nraw[m] + 0); p++) {
-            if (raw[m, p] != reg[m, p]) {
-              printf "REMITORDER\t%s\t%d\t%s\t%s\n", m, p, raw[m, p], reg[m, p]
+        if (missing_count == 0 && extra_count == 0 && (region_glob_count[member] + 0) == (raw_glob_count[member] + 0)) {
+          for (position = 1; position <= (raw_glob_count[member] + 0); position++) {
+            if (raw[member, position] != region_globs[member, position]) {
+              printf "REMITORDER\t%s\t%d\t%s\t%s\n", member, position, raw[member, position], region_globs[member, position]
               break
             }
           }
@@ -569,21 +569,21 @@ violation_records="$(
       # Reached only past the reader-drift exit above, like every other verdict
       # here: two readers that disagree about the roster are the finding to fix
       # first, and nothing downstream of them is worth trusting.
-      for (i = 1; i <= (nun + 0); i++) {
-        if (glob_items(unow[i], IU) < 0)
-          printf "UNOWNEDUNDECIDABLE\t%s\t%s\n", unow[i], REJ
+      for (i = 1; i <= (unowned_entry_count + 0); i++) {
+        if (glob_items(unowned_globs[i], UNOWNED_ITEMS) < 0)
+          printf "UNOWNEDUNDECIDABLE\t%s\t%s\n", unowned_globs[i], REJECTION_REASON
       }
     }
   '
 )"
 
-while IFS=$'\t' read -r kind f1 f2 f3 f4; do
+while IFS=$'\t' read -r kind first_field second_field third_field fourth_field; do
   case "$kind" in
     MISMATCH)
       findings=$((findings + 1))
       printf 'verify-audit-roster: FAIL roster-reader-drift\n'
-      printf '  member: %s\n' "$f1"
-      printf '  globs scraped by this check: %s; globs compiled by the classifier: %s\n' "$f2" "$f3"
+      printf '  member: %s\n' "$first_field"
+      printf '  globs scraped by this check: %s; globs compiled by the classifier: %s\n' "$second_field" "$third_field"
       printf '  This check scrapes the raw globs while the classifier compiles\n'
       printf '  them, and the two disagree, so no remit-parity verdict was\n'
       printf '  produced: one of the two readers has drifted from the roster\n'
@@ -595,10 +595,10 @@ while IFS=$'\t' read -r kind f1 f2 f3 f4; do
     REMITMISSING)
       findings=$((findings + 1))
       printf 'verify-audit-roster: FAIL remit-glob-missing\n'
-      printf '  member:     %s\n' "$f1"
-      printf '  glob:       %s\n' "$f2"
+      printf '  member:     %s\n' "$first_field"
+      printf '  glob:       %s\n' "$second_field"
       printf '  roster:     %s\n' "$config"
-      printf '  agent file: .claude/agents/%s.md\n' "$f1"
+      printf '  agent file: .claude/agents/%s.md\n' "$first_field"
       printf '  The roster grants this member the glob above and its remit region\n'
       printf '  omits it, so the dispatched member filters the changed-file list\n'
       printf '  against a narrower remit than the one it was dispatched for and\n'
@@ -611,10 +611,10 @@ while IFS=$'\t' read -r kind f1 f2 f3 f4; do
     REMITEXTRA)
       findings=$((findings + 1))
       printf 'verify-audit-roster: FAIL remit-glob-ungranted\n'
-      printf '  member:     %s\n' "$f1"
-      printf '  glob:       %s\n' "$f2"
+      printf '  member:     %s\n' "$first_field"
+      printf '  glob:       %s\n' "$second_field"
       printf '  roster:     %s\n' "$config"
-      printf '  agent file: .claude/agents/%s.md\n' "$f1"
+      printf '  agent file: .claude/agents/%s.md\n' "$first_field"
       printf '  This remit region claims a glob the roster does not grant this\n'
       printf '  member, so a file matching it reads as covered while dispatching\n'
       printf '  nobody: no clearance is ever demanded for it and the diff clears\n'
@@ -627,10 +627,10 @@ while IFS=$'\t' read -r kind f1 f2 f3 f4; do
     REMITORDER)
       findings=$((findings + 1))
       printf 'verify-audit-roster: FAIL remit-glob-order\n'
-      printf '  member:   %s\n' "$f1"
-      printf '  position: %s\n' "$f2"
-      printf '  roster:   %s\n' "$f3"
-      printf '  region:   %s\n' "$f4"
+      printf '  member:   %s\n' "$first_field"
+      printf '  position: %s\n' "$second_field"
+      printf '  roster:   %s\n' "$third_field"
+      printf '  region:   %s\n' "$fourth_field"
       printf '  The region holds exactly the globs the roster grants, in a\n'
       printf '  different order. Ownership is first-match-wins over roster order,\n'
       printf '  so a reordered region is a different reading order and a path two\n'
@@ -642,9 +642,9 @@ while IFS=$'\t' read -r kind f1 f2 f3 f4; do
     REMITUNDECIDABLE)
       findings=$((findings + 1))
       printf 'verify-audit-roster: FAIL undecidable-remit-glob\n'
-      printf '  member:  %s\n' "$f1"
-      printf '  glob:    %s\n' "$f2"
-      printf '  reason:  %s\n' "$f3"
+      printf '  member:  %s\n' "$first_field"
+      printf '  glob:    %s\n' "$second_field"
+      printf '  reason:  %s\n' "$third_field"
       printf '  This check decides the classifier three-construct dialect only:\n'
       printf '  literals, `*` within one segment, and a whole-segment `**`. It\n'
       printf '  fails an undecidable glob rather than passing it, because a glob\n'
@@ -658,9 +658,9 @@ while IFS=$'\t' read -r kind f1 f2 f3 f4; do
     UNOWNEDUNDECIDABLE)
       findings=$((findings + 1))
       printf 'verify-audit-roster: FAIL undecidable-unowned-glob\n'
-      printf '  glob:    %s\n' "$f1"
+      printf '  glob:    %s\n' "$first_field"
       printf '  roster:  %s\n' "$config"
-      printf '  reason:  %s\n' "$f2"
+      printf '  reason:  %s\n' "$second_field"
       printf '  This check decides the classifier three-construct dialect only:\n'
       printf '  literals, `*` within one segment, and a whole-segment `**`. An\n'
       printf '  `unowned:` entry outside it compiles to something wider than it\n'
@@ -787,7 +787,7 @@ if [ -n "$coverage_universe" ]; then
       # itself: the record still splits, the segment after the first tab is read
       # as the owner, and since that is not `-` the path counts as OWNED. So a
       # genuine orphan is hidden, and every `unowned:` entry matching the
-      # segment before the tab takes an `OWNHIT` and is reported overbroad on a
+      # segment before the tab takes an `OWNED_HIT_COUNT` and is reported overbroad on a
       # witness that is not a real path. What the tag buys is that the record
       # stays a path: it cannot become a live exemption regex. Bounded
       # mis-reporting rather than tree-wide suppression, and no such path is
@@ -797,33 +797,33 @@ if [ -n "$coverage_universe" ]; then
         awk -F'\t' '{ printf "P\t%s\t%s\n", $1, $2 }'
     } | awk -F'\t' -v cap=25 '
       $1 == "UNOWNED" {
-        n++; G[n] = $2; R[n] = $3
-        OWNHIT[n] = 0
+        unowned_entry_count++; UNOWNED_GLOB[unowned_entry_count] = $2; UNOWNED_REGEX[unowned_entry_count] = $3
+        OWNED_HIT_COUNT[unowned_entry_count] = 0
         next
       }
       $1 == "P" {
-        p = $2; o = $3
-        # cnt counts the OWNERLESS matches, which is the tier the list exists
+        path = $2; owner = $3
+        # ownerless_match_count counts the OWNERLESS matches, which is the tier the list exists
         # to describe.
-        cnt = 0
-        for (i = 1; i <= n; i++) {
-          if (p ~ R[i]) {
-            if (o != "-") {
-              if (OWNHIT[i] == 0) { OWNW[i] = p; OWNO[i] = o }
-              OWNHIT[i]++
-            } else { cnt++ }
+        ownerless_match_count = 0
+        for (i = 1; i <= unowned_entry_count; i++) {
+          if (path ~ UNOWNED_REGEX[i]) {
+            if (owner != "-") {
+              if (OWNED_HIT_COUNT[i] == 0) { OWNED_WITNESS_PATH[i] = path; OWNED_WITNESS_OWNER[i] = owner }
+              OWNED_HIT_COUNT[i]++
+            } else { ownerless_match_count++ }
           }
         }
-        if (o == "-" && cnt == 0) { orphans++; if (orphans <= cap) ORPH[orphans] = p }
+        if (owner == "-" && ownerless_match_count == 0) { orphans++; if (orphans <= cap) ORPHAN_PATH[orphans] = path }
         next
       }
       END {
         if (orphans > 0) {
           printf "ORPHANCOUNT\t%d\t%d\n", orphans, cap
-          for (k = 1; k <= orphans && k <= cap; k++) printf "ORPHAN\t%s\n", ORPH[k]
+          for (k = 1; k <= orphans && k <= cap; k++) printf "ORPHAN\t%s\n", ORPHAN_PATH[k]
         }
-        for (i = 1; i <= n; i++) {
-          if (OWNHIT[i] > 0) printf "OVERBROAD\t%s\t%s\t%s\n", G[i], OWNW[i], OWNO[i]
+        for (i = 1; i <= unowned_entry_count; i++) {
+          if (OWNED_HIT_COUNT[i] > 0) printf "OVERBROAD\t%s\t%s\t%s\n", UNOWNED_GLOB[i], OWNED_WITNESS_PATH[i], OWNED_WITNESS_OWNER[i]
         }
       }
     '
@@ -853,13 +853,13 @@ if [ -n "$coverage_universe" ]; then
     printf '\n'
   fi
 
-  while IFS=$'\t' read -r kind f1 f2 f3; do
+  while IFS=$'\t' read -r kind first_field second_field third_field; do
     case "$kind" in
       OVERBROAD)
         findings=$((findings + 1))
         printf 'verify-audit-roster: FAIL overbroad-unowned-glob\n'
-        printf '  glob:    %s\n' "$f1"
-        printf '  witness: %s (owned by %s)\n' "$f2" "$f3"
+        printf '  glob:    %s\n' "$first_field"
+        printf '  witness: %s (owned by %s)\n' "$second_field" "$third_field"
         printf '  An `unowned:` entry describes a region that dispatches nobody,\n'
         printf '  so one reaching a path a member already owns is broader than the\n'
         printf '  region it exists to describe. This is what stops the list from\n'

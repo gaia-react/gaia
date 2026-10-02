@@ -45,8 +45,8 @@ setup() {
   # `version:` tracks SHELLCHECK_PIN in shell-lint.sh; a stale stub after a pin
   # bump only makes the gate emit a non-fatal version-drift WARN (stderr, no
   # exit-status change), so this suite still passes -- keep them in sync anyway.
-  STUB_DIR="$(mktemp -d -t shell-lint-stub-XXXXXX)"
-  cat > "$STUB_DIR/shellcheck" <<'STUB'
+  STUB_DIRECTORY="$(mktemp -d -t shell-lint-stub-XXXXXX)"
+  cat > "$STUB_DIRECTORY/shellcheck" <<'STUB'
 #!/usr/bin/env bash
 if [ "$1" = "--version" ]; then
   printf 'ShellCheck - shell script analysis tool\nversion: 0.11.0\n'
@@ -71,11 +71,11 @@ if [ -n "${SHELLCHECK_FAIL_ON:-}" ]; then
 fi
 exit 0
 STUB
-  chmod +x "$STUB_DIR/shellcheck"
+  chmod +x "$STUB_DIRECTORY/shellcheck"
 }
 
 teardown() {
-  [ -n "$STUB_DIR" ] && [ -d "$STUB_DIR" ] && rm -rf "$STUB_DIR"
+  [ -n "$STUB_DIRECTORY" ] && [ -d "$STUB_DIRECTORY" ] && rm -rf "$STUB_DIRECTORY"
   return 0
 }
 
@@ -94,12 +94,12 @@ teardown() {
 #
 # Args: first|last
 tracked_sh() {
-  local which_end="$1" f first="" last=""
-  while IFS= read -r -d '' f; do
+  local which_end="$1" tracked_path first="" last=""
+  while IFS= read -r -d '' tracked_path; do
     if [ -z "$first" ]; then
-      first="$f"
+      first="$tracked_path"
     fi
-    last="$f"
+    last="$tracked_path"
   done < <(git -C "$REPO_ROOT" -c core.quotepath=false ls-files -z '*.sh')
   if [ "$which_end" = "first" ]; then
     printf '%s\n' "$first"
@@ -153,7 +153,7 @@ gate_pass_headers() {
 # with the variable unset, and recording argv changes nothing else it does.
 
 @test "the gate invokes every folded guard pass and stays green on a clean tree" {
-  run env PATH="$STUB_DIR:$PATH" SHELLCHECK_LOG="$STUB_DIR/argv.log" bash "$GATE"
+  run env PATH="$STUB_DIRECTORY:$PATH" SHELLCHECK_LOG="$STUB_DIRECTORY/argv.log" bash "$GATE"
   [ "$status" -eq 0 ]
   grep -qF -- "shell-lint passed" <<<"$output"
 
@@ -161,12 +161,12 @@ gate_pass_headers() {
   # gate reached the pass, and the guard's OWN clean line, which is printed by
   # the guard script itself and so appears only if the invocation actually ran.
   # The header alone would survive exactly the edit this test exists to catch.
-  local p folded=0
-  while IFS= read -r p; do
-    case "$p" in lint-*) ;; *) continue ;; esac
+  local pass_name folded=0
+  while IFS= read -r pass_name; do
+    case "$pass_name" in lint-*) ;; *) continue ;; esac
     folded=$(( folded + 1 ))
-    grep -qF -- "--> $p" <<<"$output"
-    grep -qF -- "$p: clean" <<<"$output"
+    grep -qF -- "--> $pass_name" <<<"$output"
+    grep -qF -- "$pass_name: clean" <<<"$output"
   done < <(gate_pass_headers)
 
   # A refused or short derivation would make the loop above assert over a subset
@@ -180,7 +180,7 @@ gate_pass_headers() {
   # *.bats discovery glob and need a pass of their own. Husky runs them as
   # `sh -e`, so that pass pins the dialect: shellcheck takes one dialect per
   # invocation, which is why this cannot fold into the *.sh pass.
-  grep -qE -- '(^| )-s sh( |$).*\.husky/pre-commit' "$STUB_DIR/argv.log"
+  grep -qE -- '(^| )-s sh( |$).*\.husky/pre-commit' "$STUB_DIRECTORY/argv.log"
 }
 
 
@@ -197,7 +197,7 @@ gate_pass_headers() {
 @test "shell-lint fails closed on a finding in the FIRST worker's chunk" {
   first_sh="$(tracked_sh first)"
   [ -n "$first_sh" ]
-  run env PATH="$STUB_DIR:$PATH" SHELLCHECK_FAIL_ON="$first_sh" bash "$GATE"
+  run env PATH="$STUB_DIRECTORY:$PATH" SHELLCHECK_FAIL_ON="$first_sh" bash "$GATE"
   [ "$status" -eq 1 ]
   grep -qF -- "shell-lint FAILED" <<<"$output"
   # The failing worker's buffered log has to replay too, or the gate reds
@@ -208,7 +208,7 @@ gate_pass_headers() {
 @test "shell-lint fails closed on a finding in the LAST worker's chunk" {
   last_sh="$(tracked_sh last)"
   [ -n "$last_sh" ]
-  run env PATH="$STUB_DIR:$PATH" SHELLCHECK_FAIL_ON="$last_sh" bash "$GATE"
+  run env PATH="$STUB_DIRECTORY:$PATH" SHELLCHECK_FAIL_ON="$last_sh" bash "$GATE"
   [ "$status" -eq 1 ]
   grep -qF -- "shell-lint FAILED" <<<"$output"
   grep -qF -- "In $last_sh line 1:" <<<"$output"
@@ -233,34 +233,34 @@ gate_pass_headers() {
 # guard's real detection logic overrides that one slug again afterward, and
 # the later assignment for the same name wins.
 #
-# Args: <dir to write stub scripts into>
+# Args: <directory to write stub scripts into>
 stub_all_guards() {
-  local dir="$1" stdout_guards p script stream_redirect var
+  local directory="$1" stdout_guards pass_name script stream_redirect variable_name
   stdout_guards="lint-hook-jq-availability"
-  while IFS= read -r p; do
-    case "$p" in lint-*) ;; *) continue ;; esac
-    script="$dir/$p.stub.sh"
+  while IFS= read -r pass_name; do
+    case "$pass_name" in lint-*) ;; *) continue ;; esac
+    script="$directory/$pass_name.stub.sh"
     case " $stdout_guards " in
-      *" $p "*) stream_redirect="" ;;
+      *" $pass_name "*) stream_redirect="" ;;
       *) stream_redirect=" >&2" ;;
     esac
     cat > "$script" <<EOF
 #!/usr/bin/env bash
-printf '%s: clean\n' "$p"$stream_redirect
+printf '%s: clean\n' "$pass_name"$stream_redirect
 exit 0
 EOF
     chmod +x "$script"
-    var="SHELL_LINT_GUARD_OVERRIDE_$(printf '%s' "$p" | tr '-' '_')"
-    printf '%s=%s\n' "$var" "$script"
+    variable_name="SHELL_LINT_GUARD_OVERRIDE_$(printf '%s' "$pass_name" | tr '-' '_')"
+    printf '%s=%s\n' "$variable_name" "$script"
   done < <(gate_pass_headers)
 }
 
 @test "a failing guard fails the gate and every other guard still runs" {
-  local first override_var stub
+  local first override_variable_name stub
   first="$(gate_pass_headers | grep '^lint-' | sed -n '1p')"
   [ -n "$first" ]
-  override_var="SHELL_LINT_GUARD_OVERRIDE_$(printf '%s' "$first" | tr '-' '_')"
-  stub="$STUB_DIR/guard-fail.sh"
+  override_variable_name="SHELL_LINT_GUARD_OVERRIDE_$(printf '%s' "$first" | tr '-' '_')"
+  stub="$STUB_DIRECTORY/guard-fail.sh"
   cat > "$stub" <<'STUB'
 #!/usr/bin/env bash
 echo "stub failure: guard" >&2
@@ -270,9 +270,9 @@ STUB
   local overrides=() line
   while IFS= read -r line; do
     overrides+=("$line")
-  done < <(stub_all_guards "$STUB_DIR")
-  overrides+=("$override_var=$stub")
-  run env PATH="$STUB_DIR:$PATH" ${overrides[@]+"${overrides[@]}"} bash "$GATE"
+  done < <(stub_all_guards "$STUB_DIRECTORY")
+  overrides+=("$override_variable_name=$stub")
+  run env PATH="$STUB_DIRECTORY:$PATH" ${overrides[@]+"${overrides[@]}"} bash "$GATE"
   [ "$status" -eq 1 ]
   grep -qF -- "shell-lint FAILED" <<<"$output"
   grep -qF -- "stub failure: guard" <<<"$output"
@@ -284,10 +284,10 @@ STUB
   # for. The sibling SHELL_LINT_BASH32 seam is pinned the same
   # way, by asserting the substituted interpreter it names.
   grep -qF -- "$first: GUARD OVERRIDE" <<<"$output"
-  local p
-  while IFS= read -r p; do
-    case "$p" in lint-*) ;; *) continue ;; esac
-    [ "$p" = "$first" ] && continue
-    grep -qF -- "--> $p" <<<"$output"
+  local pass_name
+  while IFS= read -r pass_name; do
+    case "$pass_name" in lint-*) ;; *) continue ;; esac
+    [ "$pass_name" = "$first" ] && continue
+    grep -qF -- "--> $pass_name" <<<"$output"
   done < <(gate_pass_headers)
 }

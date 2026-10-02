@@ -22,18 +22,18 @@
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
-  SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
-  CHECK="$SCRIPT_DIR/check-audit-key-callers.sh"
-  REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+  SCRIPT_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
+  CHECK="$SCRIPT_DIRECTORY/check-audit-key-callers.sh"
+  REPO_ROOT="$(cd "$SCRIPT_DIRECTORY/../.." && pwd)"
   # shellcheck source=.gaia/scripts/check-audit-key-callers.sh
   source "$CHECK"
   FIXTURE_REPOS=()
 }
 
 teardown() {
-  local d
-  for d in "${FIXTURE_REPOS[@]:-}"; do
-    [ -n "$d" ] && rm -rf "$d"
+  local fixture_repository
+  for fixture_repository in "${FIXTURE_REPOS[@]:-}"; do
+    [ -n "$fixture_repository" ] && rm -rf "$fixture_repository"
   done
   return 0
 }
@@ -43,14 +43,14 @@ teardown() {
 # happen once the caller has written its fixture files (commit_fixture_repo).
 make_fixture_repo() {
   local name="$1"
-  local dir="$BATS_TEST_TMPDIR/$name"
-  mkdir -p "$dir/.claude/agents"
-  git init -q --initial-branch=main "$dir"
-  git -C "$dir" config user.email t@example.com
-  git -C "$dir" config user.name T
-  git -C "$dir" config commit.gpgsign false
-  FIXTURE_REPOS+=("$dir")
-  printf '%s' "$dir"
+  local repository_directory="$BATS_TEST_TMPDIR/$name"
+  mkdir -p "$repository_directory/.claude/agents"
+  git init -q --initial-branch=main "$repository_directory"
+  git -C "$repository_directory" config user.email t@example.com
+  git -C "$repository_directory" config user.name T
+  git -C "$repository_directory" config commit.gpgsign false
+  FIXTURE_REPOS+=("$repository_directory")
+  printf '%s' "$repository_directory"
 }
 
 # write_agent_file <repo> <basename> <content>

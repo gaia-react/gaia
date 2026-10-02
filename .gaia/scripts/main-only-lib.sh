@@ -28,11 +28,11 @@
 # derivation of its own, so it cannot count as a second resolver
 # definition.
 #
-# gaia_refuse_if_worktree <flow-name> [state_line_fn]
+# gaia_refuse_if_worktree <flow-name> [state_line_function]
 #   <flow-name>: the slash command's own name as the caller wants it printed
 #   (e.g. "/update-gaia"), used verbatim in the message.
 #
-#   [state_line_fn]: optional. The NAME of a shell function the caller
+#   [state_line_function]: optional. The NAME of a shell function the caller
 #   defines. Called with one argument, the absolute path of
 #   "<main_root>/.gaia/local/cache/shared/update-check.json", and expected to
 #   print one line on stdout summarizing cached state relevant to the flow
@@ -53,14 +53,14 @@
 #     Worktree:       <current tree root>
 #     Main checkout:  <main root>
 #
-#     <state line -- only when state_line_fn was supplied>
+#     <state line -- only when state_line_function was supplied>
 #
 #     Run `cd <main root>` then re-invoke <flow-name>.
 #
-#   When state_line_fn is supplied but prints nothing (cache file missing,
+#   When state_line_function is supplied but prints nothing (cache file missing,
 #   jq absent, fields empty), the state line falls back to:
 #   "Cached state unavailable on main; symlinks may be broken, run
-#   `bash .gaia/scripts/link-worktree.sh` to repair." When state_line_fn is
+#   `bash .gaia/scripts/link-worktree.sh` to repair." When state_line_function is
 #   not supplied at all, the state paragraph and its surrounding blank line
 #   are omitted entirely.
 #
@@ -94,28 +94,28 @@
 # the repo-relative path every call site sources, from a checkout root, where
 # the sibling is a tracked file present in every tree. Each candidate must
 # actually hold main-root-lib.sh to win, so a wrong guess cannot be adopted.
-_GAIA_MAIN_ONLY_LIB_DIR=""
-for _gaia_main_only_cand in "${BASH_SOURCE[0]:-}" "${0:-}" ".gaia/scripts/main-only-lib.sh"; do
-  case "$_gaia_main_only_cand" in */*) ;; *) continue ;; esac
-  _gaia_main_only_dir="$(cd "$(dirname "$_gaia_main_only_cand")" 2>/dev/null && pwd)" || continue
-  if [ -f "$_gaia_main_only_dir/main-root-lib.sh" ]; then
-    _GAIA_MAIN_ONLY_LIB_DIR="$_gaia_main_only_dir"
+_GAIA_MAIN_ONLY_LIBRARY_DIRECTORY=""
+for _gaia_main_only_candidate in "${BASH_SOURCE[0]:-}" "${0:-}" ".gaia/scripts/main-only-lib.sh"; do
+  case "$_gaia_main_only_candidate" in */*) ;; *) continue ;; esac
+  _gaia_main_only_directory="$(cd "$(dirname "$_gaia_main_only_candidate")" 2>/dev/null && pwd)" || continue
+  if [ -f "$_gaia_main_only_directory/main-root-lib.sh" ]; then
+    _GAIA_MAIN_ONLY_LIBRARY_DIRECTORY="$_gaia_main_only_directory"
     break
   fi
 done
-unset _gaia_main_only_cand _gaia_main_only_dir
+unset _gaia_main_only_candidate _gaia_main_only_directory
 
-if ! command -v gaia_resolve_main_root >/dev/null 2>&1 && [ -n "$_GAIA_MAIN_ONLY_LIB_DIR" ]; then
+if ! command -v gaia_resolve_main_root >/dev/null 2>&1 && [ -n "$_GAIA_MAIN_ONLY_LIBRARY_DIRECTORY" ]; then
   # shellcheck disable=SC1091
-  source "$_GAIA_MAIN_ONLY_LIB_DIR/main-root-lib.sh"
+  source "$_GAIA_MAIN_ONLY_LIBRARY_DIRECTORY/main-root-lib.sh"
 fi
 
-# The shared fallback state line, used when a supplied state_line_fn prints
+# The shared fallback state line, used when a supplied state_line_function prints
 # nothing. Byte-identical to the text both pre-existing copies used.
 _GAIA_MAIN_ONLY_FALLBACK_STATE_LINE="Cached state unavailable on main; symlinks may be broken, run \`bash .gaia/scripts/link-worktree.sh\` to repair."
 
 gaia_refuse_if_worktree() {
-  local flow_name="$1" state_line_fn="${2:-}"
+  local flow_name="$1" state_line_function="${2:-}"
 
   gaia_is_linked_worktree || return 0
 
@@ -125,26 +125,26 @@ gaia_refuse_if_worktree() {
   local current_root
   current_root="$(gaia_resolve_tree_root)"
 
-  local msg
-  msg="$flow_name must run from the main checkout, not a worktree.
+  local message
+  message="$flow_name must run from the main checkout, not a worktree.
 
 Worktree:       $current_root
 Main checkout:  $main_root"
 
-  if [ -n "$state_line_fn" ]; then
+  if [ -n "$state_line_function" ]; then
     local cache_file="$main_root/.gaia/local/cache/shared/update-check.json"
     local state_line
-    state_line="$("$state_line_fn" "$cache_file" 2>/dev/null)"
+    state_line="$("$state_line_function" "$cache_file" 2>/dev/null)"
     [ -n "$state_line" ] || state_line="$_GAIA_MAIN_ONLY_FALLBACK_STATE_LINE"
-    msg="$msg
+    message="$message
 
 $state_line"
   fi
 
-  msg="$msg
+  message="$message
 
 Run \`cd $main_root\` then re-invoke $flow_name."
 
-  printf '%s\n' "$msg"
+  printf '%s\n' "$message"
   return 1
 }

@@ -48,7 +48,7 @@ REQUIRED_CONTEXTS=(
 
 repo=""
 branch=""
-ruleset_contexts_src=""
+ruleset_contexts_source=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -60,7 +60,7 @@ while [ $# -gt 0 ]; do
       case "$1" in
         --repo)             repo="$2" ;;
         --branch)           branch="$2" ;;
-        --ruleset-contexts) ruleset_contexts_src="$2" ;;
+        --ruleset-contexts) ruleset_contexts_source="$2" ;;
       esac
       shift 2
       ;;
@@ -84,11 +84,11 @@ if [ -z "$branch" ]; then
   [ -n "$branch" ] || branch="main"
 fi
 
-if [ -n "$ruleset_contexts_src" ]; then
-  if [ "$ruleset_contexts_src" = "-" ]; then
+if [ -n "$ruleset_contexts_source" ]; then
+  if [ "$ruleset_contexts_source" = "-" ]; then
     ruleset_contexts=$(cat)
   else
-    ruleset_contexts=$(cat "$ruleset_contexts_src")
+    ruleset_contexts=$(cat "$ruleset_contexts_source")
   fi
 else
   if ! ruleset_contexts=$(gh api "repos/${repo}/rules/branches/${branch}" \
@@ -100,9 +100,9 @@ else
 fi
 
 missing=()
-for ctx in ${REQUIRED_CONTEXTS[@]+"${REQUIRED_CONTEXTS[@]}"}; do
-  if ! grep -qxF -- "$ctx" <<<"$ruleset_contexts"; then
-    missing+=("$ctx")
+for context in ${REQUIRED_CONTEXTS[@]+"${REQUIRED_CONTEXTS[@]}"}; do
+  if ! grep -qxF -- "$context" <<<"$ruleset_contexts"; then
+    missing+=("$context")
   fi
 done
 

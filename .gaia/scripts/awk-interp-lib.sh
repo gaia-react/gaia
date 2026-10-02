@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
-# GAIA_AWK_STATUS and GAIA_AWK_IDENT are read by every consumer that sources
+# GAIA_AWK_STATUS and GAIA_AWK_IDENTITY are read by every consumer that sources
 # this file (through guard-awk-lib.sh), never by this file itself, so a
 # single-file lint view reads both as unused. Disabled file-wide for that
 # reason.
@@ -63,13 +63,13 @@
 # define, so a non-zero `return` here would be silently discarded and
 # misreported as "guard-awk-lib.sh is missing". This file therefore never
 # `return`s non-zero and never `exit`s; it always returns 0, having recorded
-# what it found in GAIA_AWK_STATUS and GAIA_AWK_IDENT for the consumer to
+# what it found in GAIA_AWK_STATUS and GAIA_AWK_IDENTITY for the consumer to
 # check and refuse on in its own block, with its own message.
 #
 #   GAIA_AWK_STATUS  0 resolved and sanctioned; 5 no awk at all, neither
 #                    mawk nor /usr/bin/awk exists; 6 something resolved and
 #                    identifies as neither mawk nor BWK awk.
-#   GAIA_AWK_IDENT   the interpreter's own --version banner (status 6), the
+#   GAIA_AWK_IDENTITY   the interpreter's own --version banner (status 6), the
 #                    sanctioned tag `mawk` or `bwk` (status 0), or empty
 #                    (status 5). Carried so a consumer's status-6 message can
 #                    name what it actually found rather than only that
@@ -78,11 +78,11 @@
 # bash 3.2 safe: no `mapfile`, no `declare -A`, no `${var^^}`. Sourced, never
 # run, and a no-op to source twice.
 
-if [ -n "${GAIA_AWK_INTERP_LIB_SOURCED:-}" ]; then return 0; fi
-GAIA_AWK_INTERP_LIB_SOURCED=1
+if [ -n "${GAIA_AWK_INTERPRETER_LIBRARY_SOURCED:-}" ]; then return 0; fi
+GAIA_AWK_INTERPRETER_LIBRARY_SOURCED=1
 
 GAIA_AWK_STATUS=0
-GAIA_AWK_IDENT=""
+GAIA_AWK_IDENTITY=""
 
 # _gaia_awk_identify <path>: print "mawk" or "bwk" and return 0 when the
 # banner at that path's `--version` matches one of the two sanctioned
@@ -102,7 +102,7 @@ _gaia_awk_identify() {
 }
 
 # Two test-only seams, unset in every real invocation, matching the shape
-# .gaia/scripts/tests/guard-awk-lib.bats already uses (GAIA_GUARD_LIB,
+# .gaia/scripts/tests/guard-awk-lib.bats already uses (GAIA_GUARD_LIBRARY,
 # GAIA_GUARD_STUB) for the same reason: each end of the resolution order names
 # something a bats fixture cannot move out of its own way.
 #
@@ -131,7 +131,7 @@ if [ -z "${GAIA_AWK:-}" ] || ! command -v "$GAIA_AWK" >/dev/null 2>&1; then
   GAIA_AWK=""
 else
   GAIA_AWK="$(command -v "$GAIA_AWK")"
-  if GAIA_AWK_IDENT="$(_gaia_awk_identify "$GAIA_AWK")"; then
+  if GAIA_AWK_IDENTITY="$(_gaia_awk_identify "$GAIA_AWK")"; then
     :
   else
     GAIA_AWK_STATUS=6

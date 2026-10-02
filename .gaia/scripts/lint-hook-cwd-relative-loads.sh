@@ -76,7 +76,7 @@
 #   [ -f .claude/hooks/lib/x.sh ]        a file-test operand naming a code file
 #   . .gaia/scripts/x.sh                 a `.` or `source` operand
 #   bash .gaia/scripts/x.sh              an interpreter's script argument
-#   lib=".gaia/scripts/x.mjs"            an assignment naming a code file
+#   library=".gaia/scripts/x.mjs"            an assignment naming a code file
 #
 # WHAT IS DELIBERATELY NOT A HIT, and why each exclusion is the right call
 # rather than a gap this gate wishes it could close:
@@ -85,7 +85,7 @@
 #     `config=".gaia/local/example-state.json"`). Those name mutable state rather than
 #     code, and `${BASH_SOURCE[0]}` is the WRONG root for them: which tree a
 #     hook's state belongs to comes from a resolved root (main-root-lib.sh, or
-#     a caller-supplied root in a lib), never from the script's own directory,
+#     a caller-supplied root in a library), never from the script's own directory,
 #     so rooting one at `${BASH_SOURCE[0]}` would make a `main-only` marker
 #     follow a linked worktree. They are cwd-sensitive too, and the repair
 #     needs each site read against its own resolved root; the file-test and
@@ -112,7 +112,7 @@
 #
 # FAIL-OPEN, each a construct the line-oriented scan cannot read:
 #   - A path reached through a variable the scan cannot follow
-#     (`p=".gaia/cli/gaia-maintainer"` then `[ -x "$p" ]`). The assignment arm
+#     (`binary_path=".gaia/cli/gaia-maintainer"` then `[ -x "$binary_path" ]`). The assignment arm
 #     catches this only where the literal carries a code extension, so an
 #     extensionless binary or a data file passes. Both live instances of that
 #     shape were repaired by hand when this gate landed.
@@ -135,7 +135,7 @@
 #   - The same indirection where the variable is not assigned a literal at all
 #     but computed per iteration, which no assignment arm can reach: a
 #     repo-relative path derived from a diff listing and then tested
-#     (`rel=$(... "$path"); [ -f "$rel" ]`) resolves against the working
+#     (`relative_path=$(... "$path"); [ -f "$relative_path" ]`) resolves against the working
 #     directory exactly like a literal would. This is the shape that survived
 #     the first pass of the conversion this gate shipped with, in the
 #     worthiness gate, where the failing test read as "the file was deleted"
@@ -143,7 +143,7 @@
 #     analysis rather than a line scan, so it stays a blind spot named here;
 #     the runtime arms in .gaia/tests/hooks/ that drive each blocking hook from
 #     a subdirectory are what cover it, and they are the reason it was found.
-#   - A path assembled by expansion (`"$dir/${name}.sh"`), which is
+#   - A path assembled by expansion (`"$directory/${name}.sh"`), which is
 #     tokenizer-bound the same way every sibling gate says of its own class.
 #   - A load inside a heredoc body that a `bash -c` later executes. Heredoc
 #     bodies are skipped outright, because the tree carries the class in them
@@ -215,8 +215,8 @@ if ! git -C "$gate_root" ls-files -z -- '.claude/hooks/*.sh' >"$surface_file" 2>
 fi
 
 files=()
-while IFS= read -r -d '' f; do
-  files+=("$f")
+while IFS= read -r -d '' script_path; do
+  files+=("$script_path")
 done <"$surface_file"
 
 # An empty or short surface reads exactly like a clean pass, so it is a hard
@@ -240,84 +240,84 @@ fi
 # forms. Each tracker only ever SUPPRESSES a match, so a tracker that loses its
 # place costs a missed defect rather than a false report on correct code.
 readonly OWN_AWK='
-    # code_prefix(line): the part of the line before an unquoted `#` comment
+    # code_prefix(shell_line): the part of the line before an unquoted `#` comment
     # word, with single-quoted and double-quoted spans left in place. Used both
     # to feed the match arms and to advance the multi-line string tracker, so a
     # comment cannot open a string span that swallows the rest of the file.
-    function code_prefix(s,   i, c, sq, dq, prev) {
-      sq = 0
-      dq = 0
-      for (i = 1; i <= length(s); i++) {
-        c = substr(s, i, 1)
-        if (c == "\\") { i++; continue }
-        if (sq) { if (c == "\047") sq = 0; continue }
-        if (dq) { if (c == "\"") dq = 0; continue }
-        if (c == "\047") { sq = 1; continue }
-        if (c == "\"") { dq = 1; continue }
+    function code_prefix(shell_line,   i, character, in_single_quote, in_double_quote, previous_character) {
+      in_single_quote = 0
+      in_double_quote = 0
+      for (i = 1; i <= length(shell_line); i++) {
+        character = substr(shell_line, i, 1)
+        if (character == "\\") { i++; continue }
+        if (in_single_quote) { if (character == "\047") in_single_quote = 0; continue }
+        if (in_double_quote) { if (character == "\"") in_double_quote = 0; continue }
+        if (character == "\047") { in_single_quote = 1; continue }
+        if (character == "\"") { in_double_quote = 1; continue }
         # A `#` starts a comment word only at the start of the line or after
         # whitespace. Anywhere else it is a parameter-expansion operator
         # (`${x#y}`) or part of a word, and cutting there would truncate code.
-        if (c == "#") {
-          prev = (i > 1) ? substr(s, i - 1, 1) : " "
-          if (prev ~ /[[:space:]]/) return substr(s, 1, i - 1)
+        if (character == "#") {
+          previous_character = (i > 1) ? substr(shell_line, i - 1, 1) : " "
+          if (previous_character ~ /[[:space:]]/) return substr(shell_line, 1, i - 1)
         }
       }
-      return s
+      return shell_line
     }
 
-    # advance_dq(s): toggle the file-level double-quote tracker across a line of
+    # advance_double_quote_tracker(shell_line): toggle the file-level double-quote tracker across a line of
     # code, so a string opened on one line and closed on a later one is known to
     # be open in between. Escapes and single-quoted spans are honored; anything
     # else is ignored.
-    function advance_dq(s,   i, c, sq) {
-      sq = 0
-      for (i = 1; i <= length(s); i++) {
-        c = substr(s, i, 1)
-        if (c == "\\") { i++; continue }
-        if (in_dq) { if (c == "\"") in_dq = 0; continue }
-        if (sq) { if (c == "\047") sq = 0; continue }
-        if (c == "\047") { sq = 1; continue }
-        if (c == "\"") { in_dq = 1 }
+    function advance_double_quote_tracker(shell_line,   i, character, in_single_quote) {
+      in_single_quote = 0
+      for (i = 1; i <= length(shell_line); i++) {
+        character = substr(shell_line, i, 1)
+        if (character == "\\") { i++; continue }
+        if (in_multiline_double_quote) { if (character == "\"") in_multiline_double_quote = 0; continue }
+        if (in_single_quote) { if (character == "\047") in_single_quote = 0; continue }
+        if (character == "\047") { in_single_quote = 1; continue }
+        if (character == "\"") { in_multiline_double_quote = 1 }
       }
     }
 
-    # heredoc_delim(s): the delimiter word a heredoc opener on this line
+    # heredoc_delimiter(shell_line): the delimiter word a heredoc opener on this line
     # introduces, or the empty string when the line opens none. A `<<<` herestring
     # opens no body and is excluded by the negative lookahead the two patterns
     # spell out longhand, awk having none.
-    function heredoc_delim(s,   t, d) {
-      if (s !~ /<<-?[[:space:]]*[A-Za-z_\047"]/) return ""
-      if (s ~ /<<</) return ""
-      t = s
-      sub(/^.*<<-?[[:space:]]*/, "", t)
-      d = t
-      sub(/[^A-Za-z0-9_].*$/, "", d)
-      if (d == "") {
+    function heredoc_delimiter(shell_line,   opener_tail, delimiter_word) {
+      if (shell_line !~ /<<-?[[:space:]]*[A-Za-z_\047"]/) return ""
+      if (shell_line ~ /<<</) return ""
+      opener_tail = shell_line
+      sub(/^.*<<-?[[:space:]]*/, "", opener_tail)
+      delimiter_word = opener_tail
+      sub(/[^A-Za-z0-9_].*$/, "", delimiter_word)
+      if (delimiter_word == "") {
         # A quoted delimiter (`<<\047EOF\047`, `<<"EOF"`) disables expansion in
         # the body but names the same word.
-        d = t
-        sub(/^[\047"]/, "", d)
-        sub(/[^A-Za-z0-9_].*$/, "", d)
+        delimiter_word = opener_tail
+        sub(/^[\047"]/, "", delimiter_word)
+        sub(/[^A-Za-z0-9_].*$/, "", delimiter_word)
       }
-      return d
+      return delimiter_word
     }
 
-    # bare_operand(s, pat): 1 when `pat` is followed by a repository-root-
+    # bare_operand(shell_line, pattern): 1 when `pattern` is followed by a repository-root-
     # relative LITERAL. The distinction this gate enforces is literal versus
     # variable-rooted, NOT quoted versus unquoted: `[ -f ".claude/x.sh" ]` is
     # the same defect as its unquoted spelling, while `[ -f "$_library_directory/x.sh" ]`
     # is the repair. So every arm admits an optional surrounding quote and then
     # requires a literal dot, which a variable-rooted path can never satisfy
     # because a `$` stands where that dot would be.
-    function bare_operand(s, pat) {
-      return (s ~ pat)
+    function bare_operand(shell_line, pattern) {
+      return (shell_line ~ pattern)
     }
 
     BEGIN {
       # `[\"\047]?` is the optional opening quote, double or single. It sits
       # before the literal dot in all three arms, so the quoted and unquoted
       # spellings of one defect are read the same way.
-      # Pinned to a code extension, the same set ASSIGN_PAT requires and for the
+      # Pinned to a code extension, the same set ASSIGN_PATTERN requires and for the
       # same reason: without the pin this arm also matches a per-tree STATE path
       # (`[ -f .claude/example-session-marker ]`) and hands it the
       # `${BASH_SOURCE[0]}` remedy, which is the root the header above rules out
@@ -326,42 +326,42 @@ readonly OWN_AWK='
       # exists to prevent, so this arm gives up the operands it cannot tell
       # apart. What that costs is written under KNOWN BLIND SPOTS above.
       # The optional `(![[:space:]]+)?` admits an in-bracket negation, so
-      # `[ ! -f <lib> ] && exit 0` is read as the same defect as its unnegated
+      # `[ ! -f <library> ] && exit 0` is read as the same defect as its unnegated
       # twin. That spelling is the idiomatic capability-probe stand-down this
       # gate exists to prevent, and the negation displaces the test primary, so
       # without it the arm matched nothing at all. It sits ahead of the primary
       # and changes nothing after it, so the code-extension pin still decides
       # which operands the arm gives up: a negated state path stays as quiet as
       # its unnegated spelling.
-      TEST_PAT   = "(\\[|\\[\\[)[[:space:]]+(![[:space:]]+)?-[a-zA-Z][[:space:]]+[\"\047]?\\.(claude|gaia|specify)/[^\"\047[:space:]]*\\.(sh|bash|mjs|cjs|js|py)[\"\047]?([[:space:]]|;|$)"
+      TEST_PATTERN   = "(\\[|\\[\\[)[[:space:]]+(![[:space:]]+)?-[a-zA-Z][[:space:]]+[\"\047]?\\.(claude|gaia|specify)/[^\"\047[:space:]]*\\.(sh|bash|mjs|cjs|js|py)[\"\047]?([[:space:]]|;|$)"
       # The `^[[:space:]]*` branch is what reaches an INDENTED load, which is
       # the idiomatic spelling of this class: a `.` on its own line inside an
       # `if`/`while`/`case` body. A bare `^` would require the operator at
       # column 1, and the other branches all demand a separator token, so the
       # arm would be blind to every load nested one level deep. The sibling
       # patterns are unanchored and never had the gap.
-      SOURCE_PAT = "(^[[:space:]]*|[;&|(){}][[:space:]]*|&&[[:space:]]*|\\|\\|[[:space:]]*|then[[:space:]]+|do[[:space:]]+|else[[:space:]]+)(\\.|source)[[:space:]]+[\"\047]?\\.(claude|gaia|specify)/"
-      RUN_PAT    = "(bash|sh|zsh|node|python3?|awk[[:space:]]+-f|\\}\")[[:space:]]+(-[A-Za-z][[:space:]]+)?[\"\047]?\\.(claude|gaia|specify)/"
-      ASSIGN_PAT = "=[[:space:]]*\"?\\.(claude|gaia|specify)/[^\"[:space:]]*\\.(sh|bash|mjs|cjs|js|py)\"?([[:space:]]|;|$)"
-      in_dq = 0
-      hd = ""
+      SOURCE_PATTERN = "(^[[:space:]]*|[;&|(){}][[:space:]]*|&&[[:space:]]*|\\|\\|[[:space:]]*|then[[:space:]]+|do[[:space:]]+|else[[:space:]]+)(\\.|source)[[:space:]]+[\"\047]?\\.(claude|gaia|specify)/"
+      RUN_PATTERN    = "(bash|sh|zsh|node|python3?|awk[[:space:]]+-f|\\}\")[[:space:]]+(-[A-Za-z][[:space:]]+)?[\"\047]?\\.(claude|gaia|specify)/"
+      ASSIGN_PATTERN = "=[[:space:]]*\"?\\.(claude|gaia|specify)/[^\"[:space:]]*\\.(sh|bash|mjs|cjs|js|py)\"?([[:space:]]|;|$)"
+      in_multiline_double_quote = 0
+      open_heredoc_delimiter = ""
     }
 
-    FNR == 1 { in_dq = 0; hd = "" }
+    FNR == 1 { in_multiline_double_quote = 0; open_heredoc_delimiter = "" }
 
     # A heredoc body is data. It is skipped whole, and it cannot advance either
     # of the other trackers, which is why this arm comes first.
-    hd != "" {
+    open_heredoc_delimiter != "" {
       line = $0
       sub(/^[[:space:]]+/, "", line)
-      if ($0 == hd || line == hd) hd = ""
+      if ($0 == open_heredoc_delimiter || line == open_heredoc_delimiter) open_heredoc_delimiter = ""
       next
     }
 
     # Inside a string opened on an earlier line: prose, not code. The tracker
     # still has to advance across it to find the closing quote.
-    in_dq {
-      advance_dq($0)
+    in_multiline_double_quote {
+      advance_double_quote_tracker($0)
       next
     }
 
@@ -371,19 +371,19 @@ readonly OWN_AWK='
     {
       code = code_prefix($0)
 
-      if (bare_operand(code, TEST_PAT))
+      if (bare_operand(code, TEST_PATTERN))
         printf "%s:%d: a file-test operand names a bare repo-relative path, so it resolves against the process working directory: root it at ${BASH_SOURCE[0]} instead\n", file, FNR
-      else if (bare_operand(code, SOURCE_PAT))
+      else if (bare_operand(code, SOURCE_PATTERN))
         printf "%s:%d: a source operand names a bare repo-relative path, so a working directory below the repository root loads nothing and the capability probe behind it reads that as a missing library: root it at ${BASH_SOURCE[0]} instead\n", file, FNR
-      else if (bare_operand(code, RUN_PAT) && code !~ /(^|[[:space:]&|;(])cd[[:space:]]/)
+      else if (bare_operand(code, RUN_PATTERN) && code !~ /(^|[[:space:]&|;(])cd[[:space:]]/)
         printf "%s:%d: an interpreter argument names a bare repo-relative path, so it resolves against the process working directory: root it at ${BASH_SOURCE[0]}, or cd to the intended tree first\n", file, FNR
-      else if (bare_operand(code, ASSIGN_PAT))
+      else if (bare_operand(code, ASSIGN_PATTERN))
         printf "%s:%d: this assignment names a bare repo-relative path to a code file, so wherever it is later tested or run it resolves against the process working directory: root it at ${BASH_SOURCE[0]} instead\n", file, FNR
 
       # Advance the string tracker last, over the code part only, so a match on
       # this line is decided before the line can change the context.
-      advance_dq(code)
-      hd = heredoc_delim(code)
+      advance_double_quote_tracker(code)
+      open_heredoc_delimiter = heredoc_delimiter(code)
     }
 '
 
@@ -392,17 +392,17 @@ report=""
 # stock macOS /bin/bash 3.2 a bare expansion of an empty array aborts under
 # `set -u`. The floor check above already returns on an empty set, so this is
 # belt-and-braces against a later edit moving the loop ahead of it.
-for f in ${files[@]+"${files[@]}"}; do
-  # `$f` stays repo-relative, because that is what a report has to print; the
+for script_path in ${files[@]+"${files[@]}"}; do
+  # `$script_path` stays repo-relative, because that is what a report has to print; the
   # read is rooted at $gate_root, so it does not depend on the cwd either.
-  [ -f "$gate_root/$f" ] || continue
+  [ -f "$gate_root/$script_path" ] || continue
   # awk's status is READ, not discarded. Swallowing it would let a file awk
   # cannot open or parse count as clean, which is the same "reports clean over
   # input it never read" failure the surface floor above refuses on; leaving it
   # only here would put the whole guard's remaining blind spot in the one place
   # the floor cannot see.
-  if ! hits=$(awk -v file="$f" "$OWN_AWK" "$gate_root/$f"); then
-    printf 'lint-hook-cwd-relative-loads: ERROR: awk could not scan %s, so this file was not checked\n' "$f" >&2
+  if ! hits=$(awk -v file="$script_path" "$OWN_AWK" "$gate_root/$script_path"); then
+    printf 'lint-hook-cwd-relative-loads: ERROR: awk could not scan %s, so this file was not checked\n' "$script_path" >&2
     exit 2
   fi
   [ -z "$hits" ] || report+="$hits"$'\n'

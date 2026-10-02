@@ -195,11 +195,11 @@ fi
 # a narrowing to `pr-record` shows up as a diff to this literal rather than as
 # a silent change in behavior.
 resolve_base() {
-  local prov prov_trust prov_anchor prov_base
-  prov="$(audit_resolve_base_provenance "$repo_root" default-branch "$BASE_OVERRIDE")" || prov=""
+  local provenance provenance_trust provenance_anchor provenance_base
+  provenance="$(audit_resolve_base_provenance "$repo_root" default-branch "$BASE_OVERRIDE")" || provenance=""
   # shellcheck disable=SC2034 # trust and anchor are part of the pinned three-field idiom; this consumer's answer never changes with either
-  IFS=$'\t' read -r prov_trust prov_anchor prov_base <<< "$prov" || true
-  printf '%s' "$prov_base"
+  IFS=$'\t' read -r provenance_trust provenance_anchor provenance_base <<< "$provenance" || true
+  printf '%s' "$provenance_base"
 }
 
 base="$(resolve_base)"

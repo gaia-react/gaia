@@ -58,10 +58,10 @@
 #     with --git-dir/--plan-dir pointing at fixtures.
 set -uo pipefail
 
-PLAN_DIR=""
+PLAN_DIRECTORY=""
 PHASES=""
 BRANCH="HEAD"
-GIT_DIR="."
+GIT_DIRECTORY="."
 
 # ---------- parse args (unknown flags tolerated, never fatal) ----------
 while [ "$#" -gt 0 ]; do
@@ -69,17 +69,17 @@ while [ "$#" -gt 0 ]; do
     --plan-dir|--phases|--branch|--git-dir)
       flag="$1"
       if [ "$#" -ge 2 ]; then
-        val="$2"
+        value="$2"
         shift 2
       else
-        val=""
+        value=""
         shift 1
       fi
       case "$flag" in
-        --plan-dir) PLAN_DIR="$val" ;;
-        --phases) PHASES="$val" ;;
-        --branch) BRANCH="$val" ;;
-        --git-dir) GIT_DIR="$val" ;;
+        --plan-dir) PLAN_DIRECTORY="$value" ;;
+        --phases) PHASES="$value" ;;
+        --branch) BRANCH="$value" ;;
+        --git-dir) GIT_DIRECTORY="$value" ;;
       esac
       ;;
     *)
@@ -92,9 +92,9 @@ done
 # Any non-zero result (not-an-ancestor, bad/non-existent object, unresolvable
 # git context) reads as incomplete; only exit 0 counts as verified-complete.
 _is_ancestor() {
-  local sha="$1" ref="$2"
+  local sha="$1" reference="$2"
   [ -n "$sha" ] || return 1
-  git -C "$GIT_DIR" merge-base --is-ancestor "$sha" "$ref" >/dev/null 2>&1
+  git -C "$GIT_DIRECTORY" merge-base --is-ancestor "$sha" "$reference" >/dev/null 2>&1
 }
 
 # ---------- last-block-wins Commit: anchor extraction for phase $1 ----------
@@ -110,25 +110,25 @@ _commit_anchor() {
     {
       is_phase_heading = 0
       if ($0 ~ /^## Phase [0-9]+/) {
-        hn = $0
-        sub(/^## Phase /, "", hn)
-        sub(/[^0-9].*$/, "", hn)
+        heading_number = $0
+        sub(/^## Phase /, "", heading_number)
+        sub(/[^0-9].*$/, "", heading_number)
         is_phase_heading = 1
       }
     }
     is_phase_heading {
-      if (hn + 0 == want) { inblk = 1; firstcontent = 1; sha = ""; next }
-      else               { inblk = 0; next }
+      if (heading_number + 0 == want) { in_block = 1; firstcontent = 1; sha = ""; next }
+      else               { in_block = 0; next }
     }
-    /^## / { inblk = 0 }
-    inblk && firstcontent {
+    /^## / { in_block = 0 }
+    in_block && firstcontent {
       if ($0 ~ /^[[:space:]]*$/) next
       firstcontent = 0
       if ($0 ~ /^Commit:[[:space:]]*/) {
         line = $0
         sub(/^Commit:[[:space:]]*/, "", line)
-        split(line, a, /[[:space:]]/)
-        sha = a[1]
+        split(line, commit_fields, /[[:space:]]/)
+        sha = commit_fields[1]
       }
     }
     END { print sha }
@@ -140,11 +140,11 @@ _commit_anchor() {
 # format) is a fallback ONLY for a plan running across the rename boundary;
 # once PROGRESS.md exists it always wins.
 ledger=""
-if [ -n "$PLAN_DIR" ]; then
-  if [ -s "$PLAN_DIR/PROGRESS.md" ]; then
-    ledger="$PLAN_DIR/PROGRESS.md"
-  elif [ -s "$PLAN_DIR/SUMMARY.md" ]; then
-    ledger="$PLAN_DIR/SUMMARY.md"
+if [ -n "$PLAN_DIRECTORY" ]; then
+  if [ -s "$PLAN_DIRECTORY/PROGRESS.md" ]; then
+    ledger="$PLAN_DIRECTORY/PROGRESS.md"
+  elif [ -s "$PLAN_DIRECTORY/SUMMARY.md" ]; then
+    ledger="$PLAN_DIRECTORY/SUMMARY.md"
   fi
 fi
 
@@ -171,35 +171,35 @@ esac
 if [ "$phases_valid" = "1" ]; then
   upper="$upper_from_phases"
 else
-  recorded_max="$(awk '
+  recorded_maximum="$(awk '
     /^## Phase [0-9]+/ {
-      hn = $0
-      sub(/^## Phase /, "", hn)
-      sub(/[^0-9].*$/, "", hn)
-      if (hn + 0 > max) max = hn + 0
+      heading_number = $0
+      sub(/^## Phase /, "", heading_number)
+      sub(/[^0-9].*$/, "", heading_number)
+      if (heading_number + 0 > maximum_phase_number) maximum_phase_number = heading_number + 0
     }
-    END { print max + 0 }
+    END { print maximum_phase_number + 0 }
   ' "$ledger")"
-  [ -n "$recorded_max" ] || recorded_max=0
-  upper="$recorded_max"
+  [ -n "$recorded_maximum" ] || recorded_maximum=0
+  upper="$recorded_maximum"
 fi
 
 # ---------- walk phases 1..upper, first gap caps the resume point ----------
 resume=$((upper + 1))
 complete_lines=""
-n=1
-while [ "$n" -le "$upper" ]; do
-  sha="$(_commit_anchor "$n")"
+phase_number=1
+while [ "$phase_number" -le "$upper" ]; do
+  sha="$(_commit_anchor "$phase_number")"
   if [ -n "$sha" ] && _is_ancestor "$sha" "$BRANCH"; then
     if [ -z "$complete_lines" ]; then
-      complete_lines="COMPLETE $n $sha"
+      complete_lines="COMPLETE $phase_number $sha"
     else
       complete_lines="$complete_lines
-COMPLETE $n $sha"
+COMPLETE $phase_number $sha"
     fi
-    n=$((n + 1))
+    phase_number=$((phase_number + 1))
   else
-    resume=$n
+    resume=$phase_number
     break
   fi
 done

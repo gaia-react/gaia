@@ -84,7 +84,7 @@
 
 set -uo pipefail
 
-SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SELF_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   cat >&2 <<'USAGE'
@@ -100,7 +100,7 @@ usage: check-cli-workspace-floors.sh [--no-audit | --advisory-strict] [<workspac
 USAGE
 }
 
-# gaia_cwf_overrides <yaml-file>
+# gaia_workspace_floors_overrides <yaml-file>
 #   Print the file's top-level `overrides:` mapping as normalized
 #   <key><TAB><value> lines, sorted. Prints nothing when the file declares no
 #   overrides block. Returns 2, having said why, when the file cannot be read.
@@ -130,19 +130,19 @@ USAGE
 #   NO SILENT DEGRADATION. If node or js-yaml is missing this returns 2 and says
 #   so; it never falls back to a weaker reader, because a weaker reader is
 #   exactly what the six rounds above were about.
-gaia_cwf_overrides() {
-  local file="$1" out
+gaia_workspace_floors_overrides() {
+  local file="$1" override_lines
 
   # Matches the docblock: this returns 2, having said why. It is defence for a
-  # direct call rather than a live path, since gaia_cwf_resolve_reader runs
+  # direct call rather than a live path, since gaia_workspace_floors_resolve_reader runs
   # first and refuses on its own; `:-` because the script runs under `set -u`,
   # where a genuinely unset variable would abort before this test is reached.
-  [ -n "${GAIA_CWF_NODE:-}" ] || {
+  [ -n "${GAIA_WORKSPACE_FLOORS_NODE:-}" ] || {
     printf 'check-cli-workspace-floors: the YAML reader was not resolved before use\n' >&2
     return 2
   }
-  out="$(
-    "$GAIA_CWF_NODE" -e '
+  override_lines="$(
+    "$GAIA_WORKSPACE_FLOORS_NODE" -e '
       const path = process.argv[1];
       const yamlDir = process.argv[2];
       const fs = require("fs");
@@ -150,8 +150,8 @@ gaia_cwf_overrides() {
       let doc;
       try {
         doc = yaml.load(fs.readFileSync(path, "utf8"), { schema: yaml.FAILSAFE_SCHEMA });
-      } catch (e) {
-        process.stderr.write("check-cli-workspace-floors: " + path + " is not readable as YAML: " + e.message + "\n");
+      } catch (error) {
+        process.stderr.write("check-cli-workspace-floors: " + path + " is not readable as YAML: " + error.message + "\n");
         process.exit(2);
       }
       if (doc === null || doc === undefined) process.exit(0);
@@ -160,37 +160,37 @@ gaia_cwf_overrides() {
         process.exit(2);
       }
       if (!Object.prototype.hasOwnProperty.call(doc, "overrides")) process.exit(0);
-      const ov = doc.overrides;
+      const overridesMap = doc.overrides;
       // A declared block that is empty, or that is not a mapping of scalars, is
       // refused rather than reported as no floors. Empty compared against empty
       // agrees, and that agreement is the false clean this check exists to
       // prevent.
-      if (ov === null) {
+      if (overridesMap === null) {
         process.stderr.write("check-cli-workspace-floors: " + path + " declares an overrides block yielding no entries\n");
         process.exit(2);
       }
-      if (typeof ov !== "object" || Array.isArray(ov)) {
+      if (typeof overridesMap !== "object" || Array.isArray(overridesMap)) {
         process.stderr.write("check-cli-workspace-floors: " + path + " declares an overrides block that is not a mapping\n");
         process.exit(2);
       }
-      const keys = Object.keys(ov);
+      const keys = Object.keys(overridesMap);
       if (keys.length === 0) {
         process.stderr.write("check-cli-workspace-floors: " + path + " declares an overrides block yielding no entries\n");
         process.exit(2);
       }
       const lines = [];
-      for (const k of keys) {
-        const v = ov[k];
-        if (typeof v !== "string") {
-          process.stderr.write("check-cli-workspace-floors: " + path + " maps " + k + " to a value that is not a scalar\n");
+      for (const key of keys) {
+        const version = overridesMap[key];
+        if (typeof version !== "string") {
+          process.stderr.write("check-cli-workspace-floors: " + path + " maps " + key + " to a value that is not a scalar\n");
           process.exit(2);
         }
-        if (k === "") {
+        if (key === "") {
           process.stderr.write("check-cli-workspace-floors: " + path + " maps an empty key, which names no package\n");
           process.exit(2);
         }
-        if (v === "") {
-          process.stderr.write("check-cli-workspace-floors: " + path + " maps " + k + " to an empty version, which pins nothing\n");
+        if (version === "") {
+          process.stderr.write("check-cli-workspace-floors: " + path + " maps " + key + " to an empty version, which pins nothing\n");
           process.exit(2);
         }
         // THE TRANSPORT CONTRACT, which is wider than the field separator and is
@@ -209,27 +209,27 @@ gaia_cwf_overrides() {
         // different values, at exit 0, with the only trace a bash warning this
         // script neither owns nor reads. A carriage return is refused with them,
         // since a consumer treating it as a line end corrupts the same split.
-        if (/[\u0000\t\r\n]/.test(k) || /[\u0000\t\r\n]/.test(v)) {
+        if (/[\u0000\t\r\n]/.test(key) || /[\u0000\t\r\n]/.test(version)) {
           process.stderr.write("check-cli-workspace-floors: " + path + " has a NUL, tab, carriage return or newline inside an override key or value\n");
           process.exit(2);
         }
-        lines.push(k + "\t" + v);
+        lines.push(key + "\t" + version);
       }
       process.stdout.write(lines.join("\n") + "\n");
-    ' "$file" "$GAIA_CWF_JSYAML"
+    ' "$file" "$GAIA_WORKSPACE_FLOORS_JSYAML"
   )" || return 2
-  [ -n "$out" ] || return 0
-  printf '%s\n' "$out" | sort
+  [ -n "$override_lines" ] || return 0
+  printf '%s\n' "$override_lines" | sort
 }
 
-# gaia_cwf_resolve_reader
-#   Set GAIA_CWF_NODE and GAIA_CWF_JSYAML, or return 2 saying what is missing.
+# gaia_workspace_floors_resolve_reader
+#   Set GAIA_WORKSPACE_FLOORS_NODE and GAIA_WORKSPACE_FLOORS_JSYAML, or return 2 saying what is missing.
 #   js-yaml is resolved from THIS REPOSITORY's own .gaia/cli workspace rather
 #   than from the root under check, because the root under check is an argument
 #   and may legitimately be a fixture with no node_modules of its own.
-gaia_cwf_resolve_reader() {
-  GAIA_CWF_NODE=""
-  GAIA_CWF_JSYAML=""
+gaia_workspace_floors_resolve_reader() {
+  GAIA_WORKSPACE_FLOORS_NODE=""
+  GAIA_WORKSPACE_FLOORS_JSYAML=""
   command -v node >/dev/null 2>&1 || {
     printf 'check-cli-workspace-floors: node is required to read these files and was not found on PATH\n' >&2
     return 2
@@ -238,18 +238,18 @@ gaia_cwf_resolve_reader() {
     printf 'check-cli-workspace-floors: awk is required to compare the two maps and was not found on PATH\n' >&2
     return 2
   }
-  local candidate="$SELF_DIR/../cli/node_modules/js-yaml"
+  local candidate="$SELF_DIRECTORY/../cli/node_modules/js-yaml"
   [ -d "$candidate" ] || {
     printf 'check-cli-workspace-floors: js-yaml was not found at %s; run pnpm -C .gaia/cli install first\n' \
       "$candidate" >&2
     return 2
   }
-  GAIA_CWF_NODE="$(command -v node)"
-  GAIA_CWF_JSYAML="$(cd "$candidate" && pwd)"
+  GAIA_WORKSPACE_FLOORS_NODE="$(command -v node)"
+  GAIA_WORKSPACE_FLOORS_JSYAML="$(cd "$candidate" && pwd)"
   return 0
 }
 
-gaia_cwf_main() {
+gaia_workspace_floors_main() {
   local run_audit=1 advisory_strict=0 root=""
 
   while [ "$#" -gt 0 ]; do
@@ -278,7 +278,7 @@ gaia_cwf_main() {
     return 2
   fi
 
-  [ -n "$root" ] || root="$SELF_DIR/../cli"
+  [ -n "$root" ] || root="$SELF_DIRECTORY/../cli"
   # Canonicalize so the reported root reads as a path someone can act on. The
   # default arrives relative to this script, and a caller's argument may be
   # relative to their cwd; neither is worth printing verbatim. A root that does
@@ -297,11 +297,11 @@ gaia_cwf_main() {
     [ -n "$resolved" ] && root="$resolved"
   fi
 
-  local ws_file="$root/pnpm-workspace.yaml"
+  local workspace_file="$root/pnpm-workspace.yaml"
   local lock_file="$root/pnpm-lock.yaml"
   local missing=""
   [ -d "$root" ] || missing="the root itself"
-  [ -n "$missing" ] || [ -f "$ws_file" ] || missing="pnpm-workspace.yaml"
+  [ -n "$missing" ] || [ -f "$workspace_file" ] || missing="pnpm-workspace.yaml"
   [ -n "$missing" ] || [ -f "$lock_file" ] || missing="pnpm-lock.yaml"
   if [ -n "$missing" ]; then
     printf 'check-cli-workspace-floors: %s is missing under %s\n' "$missing" "$root" >&2
@@ -318,7 +318,7 @@ gaia_cwf_main() {
   # same class as an unenterable root, which is where it belongs: the reader
   # cannot answer the question rather than having answered it clean.
   local unreadable=""
-  [ -r "$ws_file" ] || unreadable="pnpm-workspace.yaml"
+  [ -r "$workspace_file" ] || unreadable="pnpm-workspace.yaml"
   [ -n "$unreadable" ] || [ -r "$lock_file" ] || unreadable="pnpm-lock.yaml"
   if [ -n "$unreadable" ]; then
     printf 'check-cli-workspace-floors: %s exists under %s but cannot be read\n' \
@@ -328,19 +328,19 @@ gaia_cwf_main() {
 
   printf 'workspace root: %s\n' "$root"
 
-  local configured locked rc=0
+  local configured locked exit_status=0
   # Resolved once, before either file is read, so a missing reader is reported
   # as a missing reader rather than twice as an unreadable file.
-  gaia_cwf_resolve_reader || return 2
+  gaia_workspace_floors_resolve_reader || return 2
 
   # THE STATUS IS LOAD-BEARING, and it is the only path a refusal takes. Every
   # refusal, an unparseable file, a declared block that is not a mapping, a
-  # declared block yielding no entries, is raised inside gaia_cwf_overrides, so
+  # declared block yielding no entries, is raised inside gaia_workspace_floors_overrides, so
   # a bare command substitution here would discard all of them and hand an empty
   # map to a comparison that agrees with itself. The reader has already named
   # the file and said what it could not read.
-  configured="$(gaia_cwf_overrides "$ws_file")" || return 2
-  locked="$(gaia_cwf_overrides "$lock_file")" || return 2
+  configured="$(gaia_workspace_floors_overrides "$workspace_file")" || return 2
+  locked="$(gaia_workspace_floors_overrides "$lock_file")" || return 2
 
   # An empty map here means one thing only: the file declared no overrides block
   # at all. A block that IS declared and yields no entries never reaches this
@@ -374,13 +374,13 @@ gaia_cwf_main() {
       # compared and the run reported clean. Guarding it here would hide it;
       # guarding it in the reader names it.
       $1 == "" { next }
-      NR == FNR { cfg[$1] = $2; order[++n] = $1; next }
-      { lock[$1] = $2; lorder[++m] = $1 }
+      NR == FNR { config[$1] = $2; config_order[++config_count] = $1; next }
+      { lock[$1] = $2; lock_order[++lock_count] = $1 }
       END {
-        for (i = 1; i <= n; i++) {
-          k = order[i]
-          if (!(k in lock))
-            printf "1\tFLOOR NOT APPLIED: %s is pinned to %s in pnpm-workspace.yaml and absent from the lockfile\n", k, cfg[k]
+        for (i = 1; i <= config_count; i++) {
+          key = config_order[i]
+          if (!(key in lock))
+            printf "1\tFLOOR NOT APPLIED: %s is pinned to %s in pnpm-workspace.yaml and absent from the lockfile\n", key, config[key]
           # STRING COMPARISON, FORCED. awk gives a field-derived value the
           # strnum attribute, so a bare `!=` compares two version strings
           # NUMERICALLY whenever both look like numbers, and a workspace pinning
@@ -391,21 +391,21 @@ gaia_cwf_main() {
           # on the real workspace and why it outlived the reader that used to
           # feed this comparator. Concatenating the empty string forces both
           # sides back to text.
-          else if ((lock[k] "") != (cfg[k] ""))
-            printf "1\tFLOOR NOT APPLIED: %s is pinned to %s in pnpm-workspace.yaml and locked at %s\n", k, cfg[k], lock[k]
+          else if ((lock[key] "") != (config[key] ""))
+            printf "1\tFLOOR NOT APPLIED: %s is pinned to %s in pnpm-workspace.yaml and locked at %s\n", key, config[key], lock[key]
           else
-            printf "0\tfloor applied: %s at %s\n", k, cfg[k]
+            printf "0\tfloor applied: %s at %s\n", key, config[key]
         }
-        for (j = 1; j <= m; j++) {
-          k = lorder[j]
-          if (!(k in cfg))
-            printf "1\tUNDECLARED OVERRIDE: %s is locked at %s with no entry in pnpm-workspace.yaml\n", k, lock[k]
+        for (j = 1; j <= lock_count; j++) {
+          key = lock_order[j]
+          if (!(key in config))
+            printf "1\tUNDECLARED OVERRIDE: %s is locked at %s with no entry in pnpm-workspace.yaml\n", key, lock[key]
         }
       }
     ' <(printf '%s\n' "$configured") <(printf '%s\n' "$locked"))" || {
       # THE STATUS IS CHECKED HERE FOR THE SAME REASON IT IS CHECKED ON THE
       # READER. Discarded, an awk that cannot run yields an empty report, the
-      # loop below prints nothing, `rc` stays 0, and the check reports the
+      # loop below prints nothing, `exit_status` stays 0, and the check reports the
       # workspace clean over a drift it never compared.
       printf 'check-cli-workspace-floors: the comparison could not be run\n' >&2
       return 2
@@ -414,7 +414,7 @@ gaia_cwf_main() {
     while IFS="$(printf '\t')" read -r flag line; do
       printf '%s\n' "$line"
       if [ "$flag" = "1" ]; then
-        rc=1
+        exit_status=1
       fi
     done <<<"$report"
   fi
@@ -437,10 +437,10 @@ gaia_cwf_main() {
     printf 'advisory arm skipped: --no-audit\n'
   elif ! command -v pnpm >/dev/null 2>&1; then
     printf 'advisory arm skipped: pnpm is not on PATH\n'
-    [ "$advisory_strict" -eq 1 ] && [ "$rc" -eq 0 ] && rc=2
+    [ "$advisory_strict" -eq 1 ] && [ "$exit_status" -eq 0 ] && exit_status=2
   elif ! command -v jq >/dev/null 2>&1; then
     printf 'advisory arm skipped: jq is not on PATH\n'
-    [ "$advisory_strict" -eq 1 ] && [ "$rc" -eq 0 ] && rc=2
+    [ "$advisory_strict" -eq 1 ] && [ "$exit_status" -eq 0 ] && exit_status=2
   else
     local audit_json advisories declared
     audit_json="$(pnpm -C "$root" audit --json 2>/dev/null || true)"
@@ -467,12 +467,12 @@ gaia_cwf_main() {
     if ! printf '%s' "$audit_json" \
       | jq -e 'type == "object" and has("advisories") and (has("error") | not)' >/dev/null 2>&1; then
       printf 'advisory arm: pnpm audit could not be read; this closure was NOT audited\n'
-      # Guarded on `rc` as well as the flag, at every site below that raises
+      # Guarded on `exit_status` as well as the flag, at every site below that raises
       # one of these statuses: a parity failure already has a status the caller
       # must not lose to an advisory code. See the header's note on why parity
       # outranks both.
-      [ "$advisory_strict" -eq 1 ] && [ "$rc" -eq 0 ] && rc=4
-      return "$rc"
+      [ "$advisory_strict" -eq 1 ] && [ "$exit_status" -eq 0 ] && exit_status=4
+      return "$exit_status"
     fi
     # Every entry must carry all three fields the extraction below reads, not
     # only the two it selects on: an entry missing `title` passes a two-field
@@ -491,8 +491,8 @@ gaia_cwf_main() {
         | (type == "object")
           and has("severity") and has("module_name") and has("title")))' >/dev/null 2>&1; then
       printf 'advisory arm: pnpm audit named advisories in a shape this reader cannot read; this closure was NOT audited\n'
-      [ "$advisory_strict" -eq 1 ] && [ "$rc" -eq 0 ] && rc=4
-      return "$rc"
+      [ "$advisory_strict" -eq 1 ] && [ "$exit_status" -eq 0 ] && exit_status=4
+      return "$exit_status"
     fi
     advisories="$(printf '%s' "$audit_json" | jq -r '
       .advisories | to_entries[]
@@ -521,30 +521,30 @@ gaia_cwf_main() {
         ;;
       *)
         printf 'advisory arm: the report does not state zero high or critical advisories (%s) and this reader parsed none; this closure was NOT audited\n' "${declared:-unreadable}"
-        [ "$advisory_strict" -eq 1 ] && [ "$rc" -eq 0 ] && rc=4
+        [ "$advisory_strict" -eq 1 ] && [ "$exit_status" -eq 0 ] && exit_status=4
         ;;
       esac
     else
       # Reported, and fatal only when this advisory is what decides the status:
       # see the posture note in this file's header. The label is guarded on the
-      # SAME condition as the raise below, `rc` included, rather than on the
+      # SAME condition as the raise below, `exit_status` included, rather than on the
       # flag alone. Keyed to the flag it would read `fatal` on a run whose status
       # came from a failed floor, where the advisory decided nothing, and send
       # the reader to the registry for a cause sitting in the lockfile, which is
       # the direction the header names as the wrong one.
       local fatality='not fatal here'
-      [ "$advisory_strict" -eq 1 ] && [ "$rc" -eq 0 ] && fatality='fatal under --advisory-strict'
-      printf '%s\n' "$advisories" | while IFS="$(printf '\t')" read -r sev mod title; do
-        printf 'ADVISORY (%s, %s): %s -- %s\n' "$sev" "$fatality" "$mod" "$title"
+      [ "$advisory_strict" -eq 1 ] && [ "$exit_status" -eq 0 ] && fatality='fatal under --advisory-strict'
+      printf '%s\n' "$advisories" | while IFS="$(printf '\t')" read -r severity module_name title; do
+        printf 'ADVISORY (%s, %s): %s -- %s\n' "$severity" "$fatality" "$module_name" "$title"
       done
-      [ "$advisory_strict" -eq 1 ] && [ "$rc" -eq 0 ] && rc=3
+      [ "$advisory_strict" -eq 1 ] && [ "$exit_status" -eq 0 ] && exit_status=3
     fi
   fi
 
-  return "$rc"
+  return "$exit_status"
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
-  gaia_cwf_main "$@"
+  gaia_workspace_floors_main "$@"
   exit $?
 fi

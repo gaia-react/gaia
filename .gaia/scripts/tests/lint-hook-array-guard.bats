@@ -19,45 +19,45 @@
 # One asymmetry the fixtures below cover on both sides: whether a file runs
 # under `set -u` is read from the file's own text everywhere except
 # `.claude/hooks/lib/`, whose modules are sourced into callers that already set
-# it. A lib fixture setting nothing is still scanned; a root hook setting
+# it. A library fixture setting nothing is still scanned; a root hook setting
 # nothing is still skipped.
 
 setup() {
   THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
   LINTER="$REPO_ROOT/.gaia/scripts/lint-hook-array-guard.sh"
-  TMP=""
+  TEMPORARY_DIRECTORY=""
 }
 
 teardown() {
-  [ -n "$TMP" ] && [ -d "$TMP" ] && rm -rf "$TMP"
+  [ -n "$TEMPORARY_DIRECTORY" ] && [ -d "$TEMPORARY_DIRECTORY" ] && rm -rf "$TEMPORARY_DIRECTORY"
   return 0
 }
 
 # fixture_hook <body>: a tmp repo with one .claude/hooks/probe.sh holding <body>.
-# Sets $TMP. Run the linter from $TMP so its cwd-relative scan resolves.
+# Sets $TEMPORARY_DIRECTORY. Run the linter from $TEMPORARY_DIRECTORY so its cwd-relative scan resolves.
 fixture_hook() {
-  TMP="$(mktemp -d -t array-guard-lint-XXXXXX)"
-  mkdir -p "$TMP/.claude/hooks"
-  printf '%s\n' "$1" > "$TMP/.claude/hooks/probe.sh"
+  TEMPORARY_DIRECTORY="$(mktemp -d -t array-guard-lint-XXXXXX)"
+  mkdir -p "$TEMPORARY_DIRECTORY/.claude/hooks"
+  printf '%s\n' "$1" > "$TEMPORARY_DIRECTORY/.claude/hooks/probe.sh"
 }
 
-# fixture_script <relpath> <body>: a tmp repo with one .gaia/scripts/<relpath>
-# holding <body>. Sets $TMP. <relpath> may name a subdirectory so the recursive
-# walk is exercised. Run the linter from $TMP so its cwd-relative scan resolves.
+# fixture_script <relative_path> <body>: a tmp repo with one .gaia/scripts/<relative_path>
+# holding <body>. Sets $TEMPORARY_DIRECTORY. <relative_path> may name a subdirectory so the recursive
+# walk is exercised. Run the linter from $TEMPORARY_DIRECTORY so its cwd-relative scan resolves.
 fixture_script() {
-  TMP="$(mktemp -d -t array-guard-lint-XXXXXX)"
-  mkdir -p "$TMP/.gaia/scripts/$(dirname "$1")"
-  printf '%s\n' "$2" > "$TMP/.gaia/scripts/$1"
+  TEMPORARY_DIRECTORY="$(mktemp -d -t array-guard-lint-XXXXXX)"
+  mkdir -p "$TEMPORARY_DIRECTORY/.gaia/scripts/$(dirname "$1")"
+  printf '%s\n' "$2" > "$TEMPORARY_DIRECTORY/.gaia/scripts/$1"
 }
 
-# fixture_test_script <relpath> <body>: a tmp repo with one .gaia/tests/<relpath>
-# holding <body>. Sets $TMP. <relpath> may name a subdirectory so the recursive
-# walk is exercised. Run the linter from $TMP so its cwd-relative scan resolves.
+# fixture_test_script <relative_path> <body>: a tmp repo with one .gaia/tests/<relative_path>
+# holding <body>. Sets $TEMPORARY_DIRECTORY. <relative_path> may name a subdirectory so the recursive
+# walk is exercised. Run the linter from $TEMPORARY_DIRECTORY so its cwd-relative scan resolves.
 fixture_test_script() {
-  TMP="$(mktemp -d -t array-guard-lint-XXXXXX)"
-  mkdir -p "$TMP/.gaia/tests/$(dirname "$1")"
-  printf '%s\n' "$2" > "$TMP/.gaia/tests/$1"
+  TEMPORARY_DIRECTORY="$(mktemp -d -t array-guard-lint-XXXXXX)"
+  mkdir -p "$TEMPORARY_DIRECTORY/.gaia/tests/$(dirname "$1")"
+  printf '%s\n' "$2" > "$TEMPORARY_DIRECTORY/.gaia/tests/$1"
 }
 
 # 1. The real scanned tree is clean (regression gate)
@@ -71,7 +71,7 @@ fixture_test_script() {
 
 @test "flags an unguarded bare \${arr[@]} under set -u" {
   fixture_hook $'#!/usr/bin/env bash\nset -euo pipefail\narr=()\nprintf "%s\\n" "${arr[@]}"'
-  run bash -c "cd '$TMP' && bash '$LINTER'"
+  run bash -c "cd '$TEMPORARY_DIRECTORY' && bash '$LINTER'"
   [ "$status" -eq 1 ]
   grep -qF -- ".claude/hooks/probe.sh:4" <<<"$output"
   grep -qF -- "unguarded" <<<"$output"
@@ -79,7 +79,7 @@ fixture_test_script() {
 
 @test "flags an unguarded bare \${arr[*]} under set -u" {
   fixture_hook $'#!/usr/bin/env bash\nset -u\narr=()\nprintf "%s\\n" "${arr[*]}"'
-  run bash -c "cd '$TMP' && bash '$LINTER'"
+  run bash -c "cd '$TEMPORARY_DIRECTORY' && bash '$LINTER'"
   [ "$status" -eq 1 ]
   grep -qF -- ".claude/hooks/probe.sh:4" <<<"$output"
 }
@@ -88,25 +88,25 @@ fixture_test_script() {
 
 @test "offset-guarded expansion passes" {
   fixture_hook $'#!/usr/bin/env bash\nset -euo pipefail\narr=()\nprintf "%s\\n" ${arr[@]+"${arr[@]}"}'
-  run bash -c "cd '$TMP' && bash '$LINTER'"
+  run bash -c "cd '$TEMPORARY_DIRECTORY' && bash '$LINTER'"
   [ "$status" -eq 0 ]
 }
 
 @test "count-guarded expansion passes" {
   fixture_hook $'#!/usr/bin/env bash\nset -euo pipefail\narr=()\n[ "${#arr[@]}" -eq 0 ] || printf "%s\\n" "${arr[@]}"'
-  run bash -c "cd '$TMP' && bash '$LINTER'"
+  run bash -c "cd '$TEMPORARY_DIRECTORY' && bash '$LINTER'"
   [ "$status" -eq 0 ]
 }
 
 @test "a bare expansion in a file with no set -u is not scanned" {
   fixture_hook $'#!/usr/bin/env bash\narr=()\nprintf "%s\\n" "${arr[@]}"'
-  run bash -c "cd '$TMP' && bash '$LINTER'"
+  run bash -c "cd '$TEMPORARY_DIRECTORY' && bash '$LINTER'"
   [ "$status" -eq 0 ]
 }
 
 @test "a bare expansion in a full-line comment is skipped" {
   fixture_hook $'#!/usr/bin/env bash\nset -u\n# printf "%s\\n" "${arr[@]}"'
-  run bash -c "cd '$TMP' && bash '$LINTER'"
+  run bash -c "cd '$TEMPORARY_DIRECTORY' && bash '$LINTER'"
   [ "$status" -eq 0 ]
 }
 
@@ -114,7 +114,7 @@ fixture_test_script() {
 
 @test "flags an unguarded bare \${arr[@]} in a .gaia/scripts file under set -u" {
   fixture_script probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\narr=()\nprintf "%s\\n" "${arr[@]}"'
-  run bash -c "cd '$TMP' && bash '$LINTER'"
+  run bash -c "cd '$TEMPORARY_DIRECTORY' && bash '$LINTER'"
   [ "$status" -eq 1 ]
   grep -qF -- ".gaia/scripts/probe.sh:4" <<<"$output"
   grep -qF -- "unguarded" <<<"$output"
@@ -122,14 +122,14 @@ fixture_test_script() {
 
 @test "recurses into .gaia/scripts subdirectories" {
   fixture_script sub/deep.sh $'#!/usr/bin/env bash\nset -u\narr=()\nprintf "%s\\n" "${arr[@]}"'
-  run bash -c "cd '$TMP' && bash '$LINTER'"
+  run bash -c "cd '$TEMPORARY_DIRECTORY' && bash '$LINTER'"
   [ "$status" -eq 1 ]
   grep -qF -- ".gaia/scripts/sub/deep.sh:4" <<<"$output"
 }
 
 @test "an offset-guarded expansion in a .gaia/scripts file passes" {
   fixture_script probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\narr=()\nprintf "%s\\n" ${arr[@]+"${arr[@]}"}'
-  run bash -c "cd '$TMP' && bash '$LINTER'"
+  run bash -c "cd '$TEMPORARY_DIRECTORY' && bash '$LINTER'"
   [ "$status" -eq 0 ]
 }
 
@@ -140,7 +140,7 @@ fixture_test_script() {
 
 @test "flags an unguarded bare \${arr[@]} in a .gaia/tests file under set -u" {
   fixture_test_script probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\narr=()\nprintf "%s\\n" "${arr[@]}"'
-  run bash -c "cd '$TMP' && bash '$LINTER'"
+  run bash -c "cd '$TEMPORARY_DIRECTORY' && bash '$LINTER'"
   [ "$status" -eq 1 ]
   grep -qF -- ".gaia/tests/probe.sh:4" <<<"$output"
   grep -qF -- "unguarded" <<<"$output"
@@ -148,14 +148,14 @@ fixture_test_script() {
 
 @test "recurses into .gaia/tests subdirectories" {
   fixture_test_script sub/deep.sh $'#!/usr/bin/env bash\nset -u\narr=()\nprintf "%s\\n" "${arr[@]}"'
-  run bash -c "cd '$TMP' && bash '$LINTER'"
+  run bash -c "cd '$TEMPORARY_DIRECTORY' && bash '$LINTER'"
   [ "$status" -eq 1 ]
   grep -qF -- ".gaia/tests/sub/deep.sh:4" <<<"$output"
 }
 
 @test "an offset-guarded expansion in a .gaia/tests file passes" {
   fixture_test_script probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\narr=()\nprintf "%s\\n" ${arr[@]+"${arr[@]}"}'
-  run bash -c "cd '$TMP' && bash '$LINTER'"
+  run bash -c "cd '$TEMPORARY_DIRECTORY' && bash '$LINTER'"
   [ "$status" -eq 0 ]
 }
 
@@ -166,63 +166,63 @@ fixture_test_script() {
 # it itself. scan_file's precondition asks whether the FILE sets `set -u`, the
 # right question for a standalone script and the wrong one for a sourced
 # module, so lib/ is exempt from it. Two of the cases below carry that split:
-# one lib that sets `set -u` and one that does not, because only the second
+# one library that sets `set -u` and one that does not, because only the second
 # distinguishes the exemption from the walk, and the last case pins the
 # exemption's boundary by asserting a root hook is still held to the
 # precondition.
 
-# fixture_lib <relpath> <body>: a tmp repo with one .claude/hooks/lib/<relpath>
-# holding <body>. Sets $TMP. <relpath> may name a subdirectory so the recursive
-# walk is exercised. Run the linter from $TMP so its cwd-relative scan resolves.
-fixture_lib() {
-  TMP="$(mktemp -d -t array-guard-lint-XXXXXX)"
-  mkdir -p "$TMP/.claude/hooks/lib/$(dirname "$1")"
-  printf '%s\n' "$2" > "$TMP/.claude/hooks/lib/$1"
+# fixture_library <relative_path> <body>: a tmp repo with one .claude/hooks/lib/<relative_path>
+# holding <body>. Sets $TEMPORARY_DIRECTORY. <relative_path> may name a subdirectory so the recursive
+# walk is exercised. Run the linter from $TEMPORARY_DIRECTORY so its cwd-relative scan resolves.
+fixture_library() {
+  TEMPORARY_DIRECTORY="$(mktemp -d -t array-guard-lint-XXXXXX)"
+  mkdir -p "$TEMPORARY_DIRECTORY/.claude/hooks/lib/$(dirname "$1")"
+  printf '%s\n' "$2" > "$TEMPORARY_DIRECTORY/.claude/hooks/lib/$1"
 }
 
 @test "flags an unguarded bare \${arr[@]} in a .claude/hooks/lib file that sets set -u" {
-  fixture_lib probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\narr=()\nprintf "%s\\n" "${arr[@]}"'
-  run bash -c "cd '$TMP' && bash '$LINTER'"
+  fixture_library probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\narr=()\nprintf "%s\\n" "${arr[@]}"'
+  run bash -c "cd '$TEMPORARY_DIRECTORY' && bash '$LINTER'"
   [ "$status" -eq 1 ]
   grep -qF -- ".claude/hooks/lib/probe.sh:4" <<<"$output"
   grep -qF -- "unguarded" <<<"$output"
 }
 
 @test "flags an unguarded bare \${arr[@]} in a .claude/hooks/lib file that sets no set -u of its own" {
-  fixture_lib inherits.sh $'#!/usr/bin/env bash\n# shellcheck shell=bash\narr=()\nprintf "%s\\n" "${arr[@]}"'
-  run bash -c "cd '$TMP' && bash '$LINTER'"
+  fixture_library inherits.sh $'#!/usr/bin/env bash\n# shellcheck shell=bash\narr=()\nprintf "%s\\n" "${arr[@]}"'
+  run bash -c "cd '$TEMPORARY_DIRECTORY' && bash '$LINTER'"
   [ "$status" -eq 1 ]
   grep -qF -- ".claude/hooks/lib/inherits.sh:4" <<<"$output"
   grep -qF -- "unguarded" <<<"$output"
 }
 
 @test "recurses into .claude/hooks subdirectories" {
-  fixture_lib sub/deep.sh $'#!/usr/bin/env bash\nset -u\narr=()\nprintf "%s\\n" "${arr[@]}"'
-  run bash -c "cd '$TMP' && bash '$LINTER'"
+  fixture_library sub/deep.sh $'#!/usr/bin/env bash\nset -u\narr=()\nprintf "%s\\n" "${arr[@]}"'
+  run bash -c "cd '$TEMPORARY_DIRECTORY' && bash '$LINTER'"
   [ "$status" -eq 1 ]
   grep -qF -- ".claude/hooks/lib/sub/deep.sh:4" <<<"$output"
 }
 
 @test "an offset-guarded expansion in a .claude/hooks/lib file passes" {
-  fixture_lib probe.sh $'#!/usr/bin/env bash\narr=()\nprintf "%s\\n" ${arr[@]+"${arr[@]}"}'
-  run bash -c "cd '$TMP' && bash '$LINTER'"
+  fixture_library probe.sh $'#!/usr/bin/env bash\narr=()\nprintf "%s\\n" ${arr[@]+"${arr[@]}"}'
+  run bash -c "cd '$TEMPORARY_DIRECTORY' && bash '$LINTER'"
   [ "$status" -eq 0 ]
 }
 
 @test "a count-guarded expansion in a .claude/hooks/lib file passes" {
-  fixture_lib probe.sh $'#!/usr/bin/env bash\narr=()\n[ "${#arr[@]}" -eq 0 ] || printf "%s\\n" "${arr[@]}"'
-  run bash -c "cd '$TMP' && bash '$LINTER'"
+  fixture_library probe.sh $'#!/usr/bin/env bash\narr=()\n[ "${#arr[@]}" -eq 0 ] || printf "%s\\n" "${arr[@]}"'
+  run bash -c "cd '$TEMPORARY_DIRECTORY' && bash '$LINTER'"
   [ "$status" -eq 0 ]
 }
 
 @test "a bare expansion in a full-line comment in a .claude/hooks/lib file is skipped" {
-  fixture_lib probe.sh $'#!/usr/bin/env bash\n# printf "%s\\n" "${arr[@]}"'
-  run bash -c "cd '$TMP' && bash '$LINTER'"
+  fixture_library probe.sh $'#!/usr/bin/env bash\n# printf "%s\\n" "${arr[@]}"'
+  run bash -c "cd '$TEMPORARY_DIRECTORY' && bash '$LINTER'"
   [ "$status" -eq 0 ]
 }
 
 @test "a root .claude/hooks script with no set -u of its own is still not scanned" {
   fixture_hook $'#!/usr/bin/env bash\narr=()\nprintf "%s\\n" "${arr[@]}"'
-  run bash -c "cd '$TMP' && bash '$LINTER'"
+  run bash -c "cd '$TEMPORARY_DIRECTORY' && bash '$LINTER'"
   [ "$status" -eq 0 ]
 }

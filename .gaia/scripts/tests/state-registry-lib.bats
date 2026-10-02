@@ -16,12 +16,12 @@
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
-  SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
-  LIB="$SCRIPT_DIR/state-registry-lib.sh"
-  REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+  SCRIPT_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
+  LIBRARY_SCRIPT="$SCRIPT_DIRECTORY/state-registry-lib.sh"
+  REPO_ROOT="$(cd "$SCRIPT_DIRECTORY/../.." && pwd)"
   REGISTRY="$REPO_ROOT/.gaia/state-registry.json"
   # shellcheck source=.gaia/scripts/state-registry-lib.sh
-  source "$LIB"
+  source "$LIBRARY_SCRIPT"
 }
 
 # run_in_repo <fn> [args...]: runs a sourced-lib function with cwd = the real
@@ -35,13 +35,13 @@ run_in_repo() {
     source "$2"
     shift 2
     "$@"
-  ' _ "$REPO_ROOT" "$LIB" "$@"
+  ' _ "$REPO_ROOT" "$LIBRARY_SCRIPT" "$@"
 }
 
 # ========== structural ==========
 
 @test "structural: state-registry-lib.sh is executable" {
-  [ -x "$LIB" ]
+  [ -x "$LIBRARY_SCRIPT" ]
 }
 
 @test "structural: sourcing the library defines all public functions with no side effects" {
@@ -55,7 +55,7 @@ run_in_repo() {
     type gaia_registry_recognizes >/dev/null
     type gaia_registry_classify >/dev/null
     echo OK
-  ' _ "$LIB"
+  ' _ "$LIBRARY_SCRIPT"
   [ "$status" -eq 0 ]
   [ "$output" = "OK" ]
 }
@@ -74,7 +74,7 @@ run_in_repo() {
   # The sibling test below pins that divergence against a constructed fixture
   # whose main root is known without consulting this resolver.
   local main_root
-  main_root="$(source "$SCRIPT_DIR/main-root-lib.sh" && gaia_resolve_main_root "$REPO_ROOT")"
+  main_root="$(source "$SCRIPT_DIRECTORY/main-root-lib.sh" && gaia_resolve_main_root "$REPO_ROOT")"
   run_in_repo gaia_registry_path
   [ "$status" -eq 0 ]
   [ "$output" = "$main_root/.gaia/state-registry.json" ]
@@ -105,7 +105,7 @@ run_in_repo() {
     # shellcheck disable=SC1090
     source "$2"
     gaia_registry_path
-  ' _ "$main-wt" "$LIB"
+  ' _ "$main-wt" "$LIBRARY_SCRIPT"
   [ "$status" -eq 0 ]
   [ "$output" = "$main/.gaia/state-registry.json" ]
 }
@@ -114,23 +114,23 @@ run_in_repo() {
   # bats' `run` merges stdout and stderr into one $output (see
   # main-root-lib.bats's own note on this), so stdout and stderr are captured
   # separately here rather than through `run`.
-  errfile="$BATS_TEST_TMPDIR/gaia_registry_path.stderr"
+  error_file="$BATS_TEST_TMPDIR/gaia_registry_path.stderr"
   saved_path="$PATH"
   # shellcheck disable=SC2123 # deliberately blank PATH to make jq unfindable; restored right after the call
   PATH=""
   # gaia_registry_path is expected to fail here; set +e/-e brackets the call so
   # that expected failure doesn't trip the @test body's own `set -e` before
-  # status_val can be captured (a plain, non-`local` assignment's exit status
+  # status_value can be captured (a plain, non-`local` assignment's exit status
   # IS the command substitution's, unlike the `local x=$(...)` masking case).
   set +e
-  stdout_val="$(gaia_registry_path 2>"$errfile")"
-  status_val=$?
+  stdout_value="$(gaia_registry_path 2>"$error_file")"
+  status_value=$?
   set -e
   PATH="$saved_path"
-  [ "$status_val" -eq 1 ]
-  [ -z "$stdout_val" ]
-  [ -s "$errfile" ]
-  [ "$(wc -l <"$errfile" | tr -d ' ')" -eq 1 ]
+  [ "$status_value" -eq 1 ]
+  [ -z "$stdout_value" ]
+  [ -s "$error_file" ]
+  [ "$(wc -l <"$error_file" | tr -d ' ')" -eq 1 ]
 }
 
 # ========== gaia_registry_linkable_paths ==========
@@ -188,12 +188,12 @@ run_in_repo() {
   # shellcheck disable=SC2123 # deliberately blank PATH to make jq unfindable; restored right after the call
   PATH=""
   set +e
-  stdout_val="$(gaia_registry_rm_whitelist 2>/dev/null)"
-  status_val=$?
+  stdout_value="$(gaia_registry_rm_whitelist 2>/dev/null)"
+  status_value=$?
   set -e
   PATH="$saved_path"
-  [ "$status_val" -eq 1 ]
-  [ -z "$stdout_val" ]
+  [ "$status_value" -eq 1 ]
+  [ -z "$stdout_value" ]
 }
 
 # ========== gaia_registry_integrity_snapshot ==========
@@ -216,12 +216,12 @@ run_in_repo() {
   # shellcheck disable=SC2123 # deliberately blank PATH to make jq unfindable; restored right after the call
   PATH=""
   set +e
-  stdout_val="$(gaia_registry_integrity_snapshot 2>/dev/null)"
-  status_val=$?
+  stdout_value="$(gaia_registry_integrity_snapshot 2>/dev/null)"
+  status_value=$?
   set -e
   PATH="$saved_path"
-  [ "$status_val" -eq 1 ]
-  [ -z "$stdout_val" ]
+  [ "$status_value" -eq 1 ]
+  [ -z "$stdout_value" ]
 }
 
 # ========== gaia_registry_recognizes ==========
@@ -314,7 +314,7 @@ run_in_repo() {
 }
 
 # ========== denominator spot-check (design success check 3, mechanized) ==========
-# One representative relpath per family from the top-level / audit/ / cache/
+# One representative relative_path per family from the top-level / audit/ / cache/
 # inventory tables; every one must classify, never "unknown".
 
 @test "denominator spot-check: a representative sample from every family classifies (none unknown)" {
@@ -374,18 +374,18 @@ run_in_repo() {
     "plans/archived/PLAN-001:residue"
     "specs/archived/SPEC-001:residue"
   )
-  local case_line relpath expected got
+  local case_line relative_path expected got
   for case_line in "${cases[@]}"; do
-    relpath="${case_line%%:*}"
+    relative_path="${case_line%%:*}"
     expected="${case_line##*:}"
-    run_in_repo gaia_registry_classify "$relpath"
+    run_in_repo gaia_registry_classify "$relative_path"
     got="$output"
     if [ "$got" = "unknown" ]; then
-      echo "NOT COVERED: $relpath (expected $expected)"
+      echo "NOT COVERED: $relative_path (expected $expected)"
       return 1
     fi
     if [ "$got" != "$expected" ]; then
-      echo "WRONG SCOPE: $relpath got '$got' expected '$expected'"
+      echo "WRONG SCOPE: $relative_path got '$got' expected '$expected'"
       return 1
     fi
   done
@@ -413,11 +413,11 @@ run_in_repo() {
 
 @test "schema invariant: match/kind/scope/writer enums are all within the allowed set" {
   run jq -e '
-    ([.entries[].match] | all(. as $m | ["exact","glob","prefix"] | index($m) != null))
-    and ([.entries[].kind] | all(. as $k | ["file","dir"] | index($k) != null))
-    and ([.entries[].scope] | all(. as $s | ["shared","per-tree","main-only","ephemeral"] | index($s) != null))
-    and ([.entries[].writer] | all(. as $w | ["code","hand-authored","not-yet-live"] | index($w) != null))
-    and ([.residue[].match] | all(. as $m | ["exact","glob","prefix"] | index($m) != null))
+    ([.entries[].match] | all(. as $match_type | ["exact","glob","prefix"] | index($match_type) != null))
+    and ([.entries[].kind] | all(. as $kind | ["file","dir"] | index($kind) != null))
+    and ([.entries[].scope] | all(. as $scope | ["shared","per-tree","main-only","ephemeral"] | index($scope) != null))
+    and ([.entries[].writer] | all(. as $writer | ["code","hand-authored","not-yet-live"] | index($writer) != null))
+    and ([.residue[].match] | all(. as $match_type | ["exact","glob","prefix"] | index($match_type) != null))
     and ([.residue[].writer] | all(. == "none-residue"))
   ' "$REGISTRY"
   [ "$status" -eq 0 ]

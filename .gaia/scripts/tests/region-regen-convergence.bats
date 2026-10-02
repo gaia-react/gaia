@@ -27,23 +27,23 @@
 setup() {
   THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
-  WRITER_SRC="$REPO_ROOT/.gaia/scripts/write-audit-remits.sh"
-  CHECK_SRC="$REPO_ROOT/.gaia/scripts/verify-audit-roster.sh"
-  LIB_SRC="$REPO_ROOT/.claude/hooks/lib/audit-scope.sh"
+  WRITER_SOURCE="$REPO_ROOT/.gaia/scripts/write-audit-remits.sh"
+  CHECK_SOURCE="$REPO_ROOT/.gaia/scripts/verify-audit-roster.sh"
+  LIBRARY_SOURCE="$REPO_ROOT/.claude/hooks/lib/audit-scope.sh"
   REMIT_START='<!-- gaia:audit-remit:start -->'
   REMIT_END='<!-- gaia:audit-remit:end -->'
   # Hard failures, not skips: a `skip` here would silently retire every test
   # in this suite to skipped-and-green if a committed dependency went missing.
-  if [ ! -f "$WRITER_SRC" ]; then
-    printf 'write-audit-remits.sh missing: %s\n' "$WRITER_SRC" >&2
+  if [ ! -f "$WRITER_SOURCE" ]; then
+    printf 'write-audit-remits.sh missing: %s\n' "$WRITER_SOURCE" >&2
     return 1
   fi
-  if [ ! -f "$CHECK_SRC" ]; then
-    printf 'verify-audit-roster.sh missing: %s\n' "$CHECK_SRC" >&2
+  if [ ! -f "$CHECK_SOURCE" ]; then
+    printf 'verify-audit-roster.sh missing: %s\n' "$CHECK_SOURCE" >&2
     return 1
   fi
-  if [ ! -f "$LIB_SRC" ]; then
-    printf 'audit-scope.sh missing: %s\n' "$LIB_SRC" >&2
+  if [ ! -f "$LIBRARY_SOURCE" ]; then
+    printf 'audit-scope.sh missing: %s\n' "$LIBRARY_SOURCE" >&2
     return 1
   fi
 }
@@ -53,18 +53,18 @@ setup() {
 # on-disk location (script-relative, .gaia/scripts -> ../../.claude/hooks/lib),
 # so a scratch invocation never reaches the real repository's copies.
 scaffold_scripts() {
-  local sb="$1"
-  mkdir -p "$sb/.gaia/scripts" "$sb/.claude/hooks/lib" "$sb/.claude/agents"
-  cp "$WRITER_SRC" "$sb/.gaia/scripts/write-audit-remits.sh"
-  cp "$CHECK_SRC" "$sb/.gaia/scripts/verify-audit-roster.sh"
-  cp "$LIB_SRC" "$sb/.claude/hooks/lib/audit-scope.sh"
+  local sandbox="$1"
+  mkdir -p "$sandbox/.gaia/scripts" "$sandbox/.claude/hooks/lib" "$sandbox/.claude/agents"
+  cp "$WRITER_SOURCE" "$sandbox/.gaia/scripts/write-audit-remits.sh"
+  cp "$CHECK_SOURCE" "$sandbox/.gaia/scripts/verify-audit-roster.sh"
+  cp "$LIBRARY_SOURCE" "$sandbox/.claude/hooks/lib/audit-scope.sh"
 }
 
 # One agent stub carrying the `## Remit and self-skip` anchor the writer
 # inserts a fresh region after, and no region of its own yet.
 write_agent_stub() {
-  local sb="$1" name="$2"
-  cat > "$sb/.claude/agents/$name.md" <<MD
+  local sandbox="$1" name="$2"
+  cat > "$sandbox/.claude/agents/$name.md" <<MD
 ---
 name: $name
 ---
@@ -89,14 +89,14 @@ run_check() {
 # glob, dropping every glob bullet the roster actually grants. Leaves the
 # marker lines and the canonical sentence below them untouched.
 perturb_region() {
-  local f="$1"
-  awk -v s="$REMIT_START" -v e="$REMIT_END" '
-    $0 == s { print; print "- `bogus/perturbed/**`"; infl = 1; next }
-    $0 == e { infl = 0; print; next }
-    infl && /^- `.*`$/ { next }
+  local agent_file="$1"
+  awk -v region_start="$REMIT_START" -v region_end="$REMIT_END" '
+    $0 == region_start { print; print "- `bogus/perturbed/**`"; in_region = 1; next }
+    $0 == region_end { in_region = 0; print; next }
+    in_region && /^- `.*`$/ { next }
     { print }
-  ' "$f" > "$f.tmp"
-  mv "$f.tmp" "$f"
+  ' "$agent_file" > "$agent_file.tmp"
+  mv "$agent_file.tmp" "$agent_file"
 }
 
 # Whether a remit-parity finding (missing / ungranted / order) names $2 as
@@ -110,9 +110,9 @@ remit_parity_names_member() {
 # Convergence and parity, without the process-wide exit status
 
 @test "writer repairs a perturbed region and the check's parity finding for that member is gone" {
-  local sb="$BATS_TEST_TMPDIR/sb"
-  scaffold_scripts "$sb"
-  cat > "$sb/.gaia/audit-ci.yml" <<'YAML'
+  local sandbox="$BATS_TEST_TMPDIR/sb"
+  scaffold_scripts "$sandbox"
+  cat > "$sandbox/.gaia/audit-ci.yml" <<'YAML'
 auditors:
   - name: code-audit-region-default
     globs:
@@ -124,18 +124,18 @@ auditors:
       - "docs/**"
       - "guides/*.md"
 YAML
-  write_agent_stub "$sb" code-audit-region-default
-  write_agent_stub "$sb" code-audit-region-claim
+  write_agent_stub "$sandbox" code-audit-region-default
+  write_agent_stub "$sandbox" code-audit-region-claim
 
-  run_writer "$sb"
+  run_writer "$sandbox"
   [ "$status" -eq 0 ]
 
-  perturb_region "$sb/.claude/agents/code-audit-region-claim.md"
+  perturb_region "$sandbox/.claude/agents/code-audit-region-claim.md"
 
-  run_writer "$sb"
+  run_writer "$sandbox"
   [ "$status" -eq 0 ]
 
-  run_check "$sb"
+  run_check "$sandbox"
   # A floor, before the finding check below. The check's process-wide exit
   # status cannot be read as a verdict on THIS member: it answers several
   # invariants at once (remit parity for every OTHER member too, ownerless-path
@@ -184,9 +184,9 @@ YAML
 }
 
 @test "the regenerated region's bullets equal the roster's globs for that member, in roster order" {
-  local sb="$BATS_TEST_TMPDIR/sb"
-  scaffold_scripts "$sb"
-  cat > "$sb/.gaia/audit-ci.yml" <<'YAML'
+  local sandbox="$BATS_TEST_TMPDIR/sb"
+  scaffold_scripts "$sandbox"
+  cat > "$sandbox/.gaia/audit-ci.yml" <<'YAML'
 auditors:
   - name: code-audit-region-default
     globs:
@@ -199,20 +199,20 @@ auditors:
       - "guides/*.md"
       - "examples/*.mdx"
 YAML
-  write_agent_stub "$sb" code-audit-region-default
-  write_agent_stub "$sb" code-audit-region-claim
+  write_agent_stub "$sandbox" code-audit-region-default
+  write_agent_stub "$sandbox" code-audit-region-claim
 
-  run_writer "$sb"
+  run_writer "$sandbox"
   [ "$status" -eq 0 ]
 
   # The independent ground truth is the roster literal above, not anything
   # the writer itself produced.
   local region_globs
-  region_globs="$(awk -v s="$REMIT_START" -v e="$REMIT_END" '
-    $0 == s { infl = 1; next }
-    $0 == e { infl = 0; next }
-    infl && /^- `.*`$/ { line = $0; sub(/^- `/, "", line); sub(/`$/, "", line); print line }
-  ' "$sb/.claude/agents/code-audit-region-claim.md")"
+  region_globs="$(awk -v region_start="$REMIT_START" -v region_end="$REMIT_END" '
+    $0 == region_start { in_region = 1; next }
+    $0 == region_end { in_region = 0; next }
+    in_region && /^- `.*`$/ { line = $0; sub(/^- `/, "", line); sub(/`$/, "", line); print line }
+  ' "$sandbox/.claude/agents/code-audit-region-claim.md")"
   local expected="docs/**
 guides/*.md
 examples/*.mdx"
@@ -220,30 +220,30 @@ examples/*.mdx"
 }
 
 @test "the region differs between two trees whose rosters differ" {
-  local sb_a="$BATS_TEST_TMPDIR/sb-a" sb_b="$BATS_TEST_TMPDIR/sb-b"
-  scaffold_scripts "$sb_a"
-  scaffold_scripts "$sb_b"
+  local sandbox_a="$BATS_TEST_TMPDIR/sb-a" sandbox_b="$BATS_TEST_TMPDIR/sb-b"
+  scaffold_scripts "$sandbox_a"
+  scaffold_scripts "$sandbox_b"
 
-  cat > "$sb_a/.gaia/audit-ci.yml" <<'YAML'
+  cat > "$sandbox_a/.gaia/audit-ci.yml" <<'YAML'
 auditors:
   - name: code-audit-region-only
     globs:
       - "alpha/**"
     default: true
 YAML
-  cat > "$sb_b/.gaia/audit-ci.yml" <<'YAML'
+  cat > "$sandbox_b/.gaia/audit-ci.yml" <<'YAML'
 auditors:
   - name: code-audit-region-only
     globs:
       - "beta/**"
     default: true
 YAML
-  write_agent_stub "$sb_a" code-audit-region-only
-  write_agent_stub "$sb_b" code-audit-region-only
+  write_agent_stub "$sandbox_a" code-audit-region-only
+  write_agent_stub "$sandbox_b" code-audit-region-only
 
-  run_writer "$sb_a"
+  run_writer "$sandbox_a"
   [ "$status" -eq 0 ]
-  run_writer "$sb_b"
+  run_writer "$sandbox_b"
   [ "$status" -eq 0 ]
 
   # Not a self-comparison: this fails if a bug hardcoded a fixed region body
@@ -253,8 +253,8 @@ YAML
   # all trailing newlines from both sides, so two bodies differing only there
   # would compare equal. `-s` because on this side the expected outcome is a
   # difference, and an unsuppressed `cmp` would print one on every good run.
-  local file_a="$sb_a/.claude/agents/code-audit-region-only.md"
-  local file_b="$sb_b/.claude/agents/code-audit-region-only.md"
+  local file_a="$sandbox_a/.claude/agents/code-audit-region-only.md"
+  local file_b="$sandbox_b/.claude/agents/code-audit-region-only.md"
   # The bad case written as a positive match: identical files make `cmp -s`
   # exit 0 and the test return 1. The trailing `true` is required because this
   # is the body's FINAL statement -- without it, differing files leave `cmp`'s
@@ -267,9 +267,9 @@ YAML
 # Byte-identical convergence on a second run
 
 @test "a second writer run is byte-identical to the first (idempotent)" {
-  local sb="$BATS_TEST_TMPDIR/sb"
-  scaffold_scripts "$sb"
-  cat > "$sb/.gaia/audit-ci.yml" <<'YAML'
+  local sandbox="$BATS_TEST_TMPDIR/sb"
+  scaffold_scripts "$sandbox"
+  cat > "$sandbox/.gaia/audit-ci.yml" <<'YAML'
 auditors:
   - name: code-audit-region-idem
     globs:
@@ -277,17 +277,17 @@ auditors:
       - "test/**"
     default: true
 YAML
-  write_agent_stub "$sb" code-audit-region-idem
+  write_agent_stub "$sandbox" code-audit-region-idem
 
-  local agent="$sb/.claude/agents/code-audit-region-idem.md"
+  local agent="$sandbox/.claude/agents/code-audit-region-idem.md"
   local first="$BATS_TEST_TMPDIR/first-run.md"
 
-  run_writer "$sb"
+  run_writer "$sandbox"
   [ "$status" -eq 0 ]
   # The first run's bytes, copied aside rather than captured into a variable.
   cp "$agent" "$first"
 
-  run_writer "$sb"
+  run_writer "$sandbox"
   [ "$status" -eq 0 ]
 
   # Content only, never inode or mtime: the writer's final `mv "$tmp" "$agent"`
@@ -313,40 +313,40 @@ YAML
 # that can falsify that ordering.
 
 @test "regeneration observes a roster that already carries a GAIA-authored added member" {
-  local sb="$BATS_TEST_TMPDIR/sb"
-  scaffold_scripts "$sb"
+  local sandbox="$BATS_TEST_TMPDIR/sb"
+  scaffold_scripts "$sandbox"
   # The adopter roster before this run's update: one existing member.
-  cat > "$sb/.gaia/audit-ci.yml" <<'YAML'
+  cat > "$sandbox/.gaia/audit-ci.yml" <<'YAML'
 auditors:
   - name: code-audit-region-existing
     globs:
       - "app/**"
     default: true
 YAML
-  write_agent_stub "$sb" code-audit-region-existing
+  write_agent_stub "$sandbox" code-audit-region-existing
 
   # Simulate what Step 7c's field-aware merge does to the roster BEFORE
   # Step 7d ever runs: a GAIA-authored added member always lands in
   # `applied[]`, appended to the roster with its own agent stub dropped
   # alongside it. Only after this does the writer run.
-  cat >> "$sb/.gaia/audit-ci.yml" <<'YAML'
+  cat >> "$sandbox/.gaia/audit-ci.yml" <<'YAML'
   - name: code-audit-region-added
     globs:
       - "added/**"
 YAML
-  write_agent_stub "$sb" code-audit-region-added
+  write_agent_stub "$sandbox" code-audit-region-added
 
-  run_writer "$sb"
+  run_writer "$sandbox"
   [ "$status" -eq 0 ]
 
   # An implementation that regenerated before the roster merge landed the
   # addition would have run against the roster's PRIOR state, producing a
   # region for the added member missing its globs (or no region at all).
   local added_globs
-  added_globs="$(awk -v s="$REMIT_START" -v e="$REMIT_END" '
-    $0 == s { infl = 1; next }
-    $0 == e { infl = 0; next }
-    infl && /^- `.*`$/ { line = $0; sub(/^- `/, "", line); sub(/`$/, "", line); print line }
-  ' "$sb/.claude/agents/code-audit-region-added.md")"
+  added_globs="$(awk -v region_start="$REMIT_START" -v region_end="$REMIT_END" '
+    $0 == region_start { in_region = 1; next }
+    $0 == region_end { in_region = 0; next }
+    in_region && /^- `.*`$/ { line = $0; sub(/^- `/, "", line); sub(/`$/, "", line); print line }
+  ' "$sandbox/.claude/agents/code-audit-region-added.md")"
   [ "$added_globs" = "added/**" ]
 }

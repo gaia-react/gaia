@@ -46,44 +46,44 @@ setup() {
   THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
   LINTER="$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh"
-  TMP=""
+  TEMPORARY_DIRECTORY=""
 }
 
 teardown() {
-  [ -n "$TMP" ] && [ -d "$TMP" ] && rm -rf "$TMP"
+  [ -n "$TEMPORARY_DIRECTORY" ] && [ -d "$TEMPORARY_DIRECTORY" ] && rm -rf "$TEMPORARY_DIRECTORY"
   return 0
 }
 
-# fixture_repo: an initialized git repo in $TMP, seeded with one benign tracked
+# fixture_repo: an initialized git repo in $TEMPORARY_DIRECTORY, seeded with one benign tracked
 # file of each kind the guard's two discoveries hard-error on when empty: a
 # non-bats file for the original scan_files check, and a clean `*.bats` suite
 # for gaia_guard_bats_files. A test that only cares about one surface would
 # otherwise red on the OTHER surface's now-mandatory non-emptiness.
 fixture_repo() {
-  TMP="$(mktemp -d -t git-path-quoting-lint-XXXXXX)"
-  git -C "$TMP" init -q .
+  TEMPORARY_DIRECTORY="$(mktemp -d -t git-path-quoting-lint-XXXXXX)"
+  git -C "$TEMPORARY_DIRECTORY" init -q .
   fixture_file seed.bats $'@test "seed" {\n  true\n}'
 }
 
 # fixture_repo_bare: like fixture_repo, but seeds nothing. For the tests that
 # assert on an EMPTY scan surface itself.
 fixture_repo_bare() {
-  TMP="$(mktemp -d -t git-path-quoting-lint-XXXXXX)"
-  git -C "$TMP" init -q .
+  TEMPORARY_DIRECTORY="$(mktemp -d -t git-path-quoting-lint-XXXXXX)"
+  git -C "$TEMPORARY_DIRECTORY" init -q .
 }
 
-# fixture_file <relpath> <body>: write <body> to $TMP/<relpath> and track it.
+# fixture_file <relative_path> <body>: write <body> to $TEMPORARY_DIRECTORY/<relative_path> and track it.
 # Call fixture_repo or fixture_repo_bare first.
 fixture_file() {
-  mkdir -p "$TMP/$(dirname "$1")"
-  printf '%s\n' "$2" > "$TMP/$1"
-  git -C "$TMP" add -f -- "$1"
+  mkdir -p "$TEMPORARY_DIRECTORY/$(dirname "$1")"
+  printf '%s\n' "$2" > "$TEMPORARY_DIRECTORY/$1"
+  git -C "$TEMPORARY_DIRECTORY" add -f -- "$1"
 }
 
 # run_linter: run the gate from the fixture root, where its cwd-relative
 # `git ls-files` resolves.
 run_linter() {
-  run bash -c "cd '$TMP' && bash '$LINTER'"
+  run bash -c "cd '$TEMPORARY_DIRECTORY' && bash '$LINTER'"
 }
 
 # 1. The real scanned tree is clean (regression gate)
@@ -395,7 +395,7 @@ run_linter() {
   # A tracked file is required, else the empty-scan-set guard below fires and
   # this test would pass for the wrong reason.
   fixture_file tracked.sh $'#!/usr/bin/env bash\necho hello'
-  printf '%s\n' $'#!/usr/bin/env bash\nchanged=$(git diff --name-only "${base}...HEAD")' > "$TMP/untracked.sh"
+  printf '%s\n' $'#!/usr/bin/env bash\nchanged=$(git diff --name-only "${base}...HEAD")' > "$TEMPORARY_DIRECTORY/untracked.sh"
   run_linter
   [ "$status" -eq 0 ]
 }
@@ -775,7 +775,7 @@ run_linter() {
   [ "$(grep -cF -- "malformed gaia-lint-ignore" <<<"$output")" -eq 1 ]
 }
 
-# This also pins the scripts_dir contract (README C1.3): the fixture repo
+# This also pins the scripts_directory contract (README C1.3): the fixture repo
 # carries no .gaia/scripts/ of its own, so a token resolved cwd-relative would
 # read "lint-git-path-quoting" as orphaned. Resolution against the guard's OWN
 # directory is what lets a well-formed token here succeed.

@@ -105,35 +105,35 @@ setup() {
 # `name:`. No bats file shares this across files, each keeps its own copy of
 # what "extract the real step body" means.
 extract_step_body() {
-  local workflow="$1" step_name="$2" out="$BATS_TEST_TMPDIR/step-$$.sh"
+  local workflow="$1" step_name="$2" step_body_file="$BATS_TEST_TMPDIR/step-$$.sh"
   awk -v want="      - name: ${step_name}" '
     !grab && $0 == want { grab=1; next }
     grab && /^      - / { exit }
     grab && !inrun && /^        run: \|[[:space:]]*$/ { inrun=1; next }
     inrun { print }
-  ' "$workflow" | sed 's/^          //' > "$out"
-  [ -s "$out" ] || return 1
-  printf '%s' "$out"
+  ' "$workflow" | sed 's/^          //' > "$step_body_file"
+  [ -s "$step_body_file" ] || return 1
+  printf '%s' "$step_body_file"
 }
 
 # Run an extracted step body under `bash -e` in $SANDBOX with the given
 # env assignments (NAME=value, one per remaining arg), predicate on PATH at
 # .gaia/scripts/chore-deps-skip.sh, GITHUB_OUTPUT at a fresh temp file.
-# Prints two lines, "rc=<n>" then "skip=<value>" (value may be empty when
+# Prints two lines, "exit_status=<n>" then "skip=<value>" (value may be empty when
 # GITHUB_OUTPUT never got a skip= line). Command substitution runs the whole
 # function in a subshell, so the caller reads both off the captured output
 # rather than off a variable this function sets, which a subshell cannot
 # leak back to the caller's own shell.
 run_step_capture() {
   local body="$1"; shift
-  local gh_output="$BATS_TEST_TMPDIR/gh-output-$$-$RANDOM" rc=0 skip=""
+  local gh_output="$BATS_TEST_TMPDIR/gh-output-$$-$RANDOM" exit_status=0 skip=""
   : > "$gh_output"
-  ( cd "$SANDBOX" && env "$@" GITHUB_OUTPUT="$gh_output" bash -e "$body" ) || rc=$?
-  skip="$(awk -F= '$1 == "skip" { v = $2 } END { print v }' "$gh_output")"
-  printf 'rc=%s\nskip=%s\n' "$rc" "$skip"
+  ( cd "$SANDBOX" && env "$@" GITHUB_OUTPUT="$gh_output" bash -e "$body" ) || exit_status=$?
+  skip="$(awk -F= '$1 == "skip" { skip_value = $2 } END { print skip_value }' "$gh_output")"
+  printf 'exit_status=%s\nskip=%s\n' "$exit_status" "$skip"
 }
 
-# Parse "skip=" or "rc=" out of run_step_capture's two-line output.
+# Parse "skip=" or "exit_status=" out of run_step_capture's two-line output.
 field() { sed -n "s/^${2}=//p" <<<"$1"; }
 
 setup_sandbox_repo() {
@@ -167,7 +167,7 @@ commit_file() {
   setup_sandbox_repo
   commit_file package.json '{}'
   result="$(run_step_capture "$body" PR_TITLE="chore(deps): bump x" "PR_BASE_SHA=0000000000000000000000000000000000dead" "EVENT_NAME=pull_request")"
-  [ "$(field "$result" rc)" -eq 0 ]
+  [ "$(field "$result" exit_status)" -eq 0 ]
   [ "$(field "$result" skip)" = "false" ]
 }
 

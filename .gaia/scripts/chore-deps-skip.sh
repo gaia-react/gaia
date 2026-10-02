@@ -30,14 +30,14 @@ subject="${1-}"
 
 paths=""
 if [ ! -t 0 ]; then
-  # `p=` first: a closed fd 0 (`<&-`) still passes `[ ! -t 0 ]`, and a `read`
-  # on a closed fd assigns nothing, so `[ -n "$p" ]` on an unset `p` would trip
+  # `changed_path=` first: a closed fd 0 (`<&-`) still passes `[ ! -t 0 ]`, and a `read`
+  # on a closed fd assigns nothing, so `[ -n "$changed_path" ]` on an unset `changed_path` would trip
   # `set -u`. `read`'s own stderr is silenced for the same closed-fd case:
   # bash writes a "Bad file descriptor" diagnostic there that a caller under
   # `set -eu` never asked for and this predicate's contract never promises.
-  p=
-  while IFS= read -r p 2>/dev/null || [ -n "$p" ]; do
-    paths="${paths}${p}"$'\n'
+  changed_path=
+  while IFS= read -r changed_path 2>/dev/null || [ -n "$changed_path" ]; do
+    paths="${paths}${changed_path}"$'\n'
   done
 fi
 
@@ -45,11 +45,11 @@ case "$subject" in
   'chore(deps):'* | 'chore(deps-dev):'*)
     manifest_only=1
     saw_path=0
-    p=
-    while IFS= read -r p || [ -n "$p" ]; do
-      [ -n "$p" ] || continue
+    changed_path=
+    while IFS= read -r changed_path || [ -n "$changed_path" ]; do
+      [ -n "$changed_path" ] || continue
       saw_path=1
-      case "$p" in
+      case "$changed_path" in
         package.json | pnpm-lock.yaml | pnpm-workspace.yaml) ;;
       # gaia:maintainer-only:start
         # This maintainer checkout's own package manifests, under .gaia/cli/.

@@ -16,7 +16,7 @@
 # Behavior:
 #   - Idempotent: re-running on an already-linked worktree is a no-op.
 #   - A pre-existing plain .gaia/local (file or directory) is moved to
-#     .gaia/local.bak.<ts> first; nothing under it is inspected or merged.
+#     .gaia/local.bak.<timestamp> first; nothing under it is inspected or merged.
 #   - No-op when invoked from the main checkout (not a linked worktree).
 #   - Always exits 0; a broken hook MUST NOT break worktree creation.
 #     Failures (e.g. Windows symlink permission errors) log to stderr.
@@ -37,9 +37,9 @@ log() {
   printf '%s\n' "$1" >&2
 }
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+script_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
-source "$script_dir/main-root-lib.sh"
+source "$script_directory/main-root-lib.sh"
 
 # ---------- detect worktree vs main checkout ----------
 # gaia_resolve_main_root is the one canonical main-root derivation; this hook
@@ -65,7 +65,7 @@ if [ "$main_root" = "$current_root" ]; then
 fi
 
 worktree_root="$current_root"
-ts="$(date +%Y%m%d-%H%M%S)"
+timestamp="$(date +%Y%m%d-%H%M%S)"
 
 # ---------- ensure the main-side target exists (so the symlink doesn't dangle) ----------
 mkdir -p "$main_root/.gaia/local" 2>/dev/null
@@ -74,60 +74,60 @@ mkdir -p "$main_root/.gaia/local" 2>/dev/null
 # $1 - relative path (e.g. ".gaia/local/setup-state.json")
 # $2 - parent dir on the worktree side that must exist (e.g. ".gaia/local")
 link_one() {
-  rel="$1"
-  parent_rel="$2"
-  src="$worktree_root/$rel"
-  target="$main_root/$rel"
+  relative_path="$1"
+  parent_relative_path="$2"
+  link_path="$worktree_root/$relative_path"
+  target="$main_root/$relative_path"
 
   # Ensure the worktree-side parent exists for the symlink we're about to
   # create. (`.gaia/local/` and `.gaia/` may not exist on a fresh worktree.)
-  mkdir -p "$worktree_root/$parent_rel" 2>/dev/null
+  mkdir -p "$worktree_root/$parent_relative_path" 2>/dev/null
 
   # Already a symlink?
-  if [ -L "$src" ]; then
-    existing="$(readlink "$src" 2>/dev/null)"
+  if [ -L "$link_path" ]; then
+    existing="$(readlink "$link_path" 2>/dev/null)"
     if [ "$existing" = "$target" ]; then
-      log "already-linked: $src"
+      log "already-linked: $link_path"
       return 0
     fi
     # Wrong target; back up the broken/incorrect symlink.
-    backup="$src.bak.$ts"
-    if mv "$src" "$backup" 2>/dev/null; then
-      if ln -s "$target" "$src" 2>/dev/null; then
-        log "linked-after-backup: $src (backup: $backup)"
+    backup="$link_path.bak.$timestamp"
+    if mv "$link_path" "$backup" 2>/dev/null; then
+      if ln -s "$target" "$link_path" 2>/dev/null; then
+        log "linked-after-backup: $link_path (backup: $backup)"
       else
-        log "failed: $src: ln -s after backup failed"
+        log "failed: $link_path: ln -s after backup failed"
       fi
     else
-      log "failed: $src: mv to backup failed"
+      log "failed: $link_path: mv to backup failed"
     fi
     return 0
   fi
 
   # Plain file / directory present?
-  if [ -e "$src" ]; then
-    backup="$src.bak.$ts"
-    if mv "$src" "$backup" 2>/dev/null; then
-      if ln -s "$target" "$src" 2>/dev/null; then
-        log "linked-after-backup: $src (backup: $backup)"
+  if [ -e "$link_path" ]; then
+    backup="$link_path.bak.$timestamp"
+    if mv "$link_path" "$backup" 2>/dev/null; then
+      if ln -s "$target" "$link_path" 2>/dev/null; then
+        log "linked-after-backup: $link_path (backup: $backup)"
       else
-        log "failed: $src: ln -s after backup failed"
+        log "failed: $link_path: ln -s after backup failed"
       fi
     else
-      log "failed: $src: mv to backup failed"
+      log "failed: $link_path: mv to backup failed"
     fi
     return 0
   fi
 
   # Missing: create the symlink.
-  if ln -s "$target" "$src" 2>/dev/null; then
-    log "linked: $src"
+  if ln -s "$target" "$link_path" 2>/dev/null; then
+    log "linked: $link_path"
   else
-    log "failed: $src: ln -s failed (symlink permission?)"
+    log "failed: $link_path: ln -s failed (symlink permission?)"
   fi
 }
 
-# The one shared path: .gaia/local itself. parent_rel is ".gaia" (the parent
+# The one shared path: .gaia/local itself. parent_relative_path is ".gaia" (the parent
 # directory that must exist on the worktree side before the symlink lands).
 link_one ".gaia/local" ".gaia"
 
@@ -137,11 +137,11 @@ link_one ".gaia/local" ".gaia"
 # whatever the main checkout holds so the worktree app sees the same secrets.
 # .env.example is committed (already present in the worktree) and is never linked.
 link_env_files() {
-  local f base
+  local env_file base
   local re='^\.env(\.[A-Za-z0-9_-]+)*$'
-  for f in "$main_root"/.env "$main_root"/.env.*; do
-    [ -e "$f" ] || continue
-    base="$(basename "$f")"
+  for env_file in "$main_root"/.env "$main_root"/.env.*; do
+    [ -e "$env_file" ] || continue
+    base="$(basename "$env_file")"
     [ "$base" = ".env.example" ] && continue
     [[ "$base" =~ $re ]] || continue   # identical set to CLI ENV_BASENAME_RE + read guard
     link_one "$base" "."

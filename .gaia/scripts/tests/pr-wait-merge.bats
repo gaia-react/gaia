@@ -28,14 +28,14 @@ setup() {
   THIS_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
   REPO_ROOT="$(cd "$THIS_DIRECTORY/../../.." && pwd)"
   WAIT="$REPO_ROOT/.gaia/scripts/pr-wait-merge.sh"
-  TMP="$(mktemp -d -t pr-wait-merge-XXXXXX)"
+  TEMPORARY_DIRECTORY="$(mktemp -d -t pr-wait-merge-XXXXXX)"
   # Absolute, because the gh-absent test below empties PATH, and `env` could
   # then not find the interpreter itself.
-  BASH_ABS="$(command -v bash)"
+  ABSOLUTE_BASH_PATH="$(command -v bash)"
 }
 
 teardown() {
-  [ -n "${TMP:-}" ] && [ -d "$TMP" ] && rm -rf "$TMP"
+  [ -n "${TEMPORARY_DIRECTORY:-}" ] && [ -d "$TEMPORARY_DIRECTORY" ] && rm -rf "$TEMPORARY_DIRECTORY"
   return 0
 }
 
@@ -50,29 +50,29 @@ teardown() {
 # script made. That is the only way to tell "it broke out of the loop" from
 # "it ran every attempt and timed out", since both can print the same token.
 stub_gh() {
-  mkdir -p "$TMP/bin"
-  printf '%s' "$1" >"$TMP/view.tsv"
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  printf '%s' "$1" >"$TEMPORARY_DIRECTORY/view.tsv"
   if [ "$#" -ge 2 ]; then
-    printf '%s\n' "$2" >"$TMP/checks.txt"
+    printf '%s\n' "$2" >"$TEMPORARY_DIRECTORY/checks.txt"
   else
-    rm -f "$TMP/checks.txt"
+    rm -f "$TEMPORARY_DIRECTORY/checks.txt"
   fi
-  cat >"$TMP/bin/gh" <<'EOF'
+  cat >"$TEMPORARY_DIRECTORY/bin/gh" <<'EOF'
 #!/usr/bin/env bash
-printf '%s\n' "$*" >>"$STUB_DIR/argv.log"
+printf '%s\n' "$*" >>"$STUB_DIRECTORY/argv.log"
 case "$2" in
-  view) cat "$STUB_DIR/view.tsv"; printf '\n' ;;
+  view) cat "$STUB_DIRECTORY/view.tsv"; printf '\n' ;;
   checks)
-    [ -f "$STUB_DIR/checks.txt" ] || exit 1
-    cat "$STUB_DIR/checks.txt"
+    [ -f "$STUB_DIRECTORY/checks.txt" ] || exit 1
+    cat "$STUB_DIRECTORY/checks.txt"
     ;;
   *) exit 1 ;;
 esac
 EOF
-  chmod +x "$TMP/bin/gh"
-  STUB_DIR="$TMP"
-  export STUB_DIR
-  PATH="$TMP/bin:$PATH"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/gh"
+  STUB_DIRECTORY="$TEMPORARY_DIRECTORY"
+  export STUB_DIRECTORY
+  PATH="$TEMPORARY_DIRECTORY/bin:$PATH"
   export PATH
 }
 
@@ -85,15 +85,15 @@ EOF
 # expected" instead of failing on the count. The `2>/dev/null || true` pair
 # still covers the file being absent, which is the case the fallback was for.
 view_calls() {
-  [ -f "$TMP/argv.log" ] || { printf '0\n'; return 0; }
-  grep -c 'pr view' "$TMP/argv.log" 2>/dev/null || true
+  [ -f "$TEMPORARY_DIRECTORY/argv.log" ] || { printf '0\n'; return 0; }
+  grep -c 'pr view' "$TEMPORARY_DIRECTORY/argv.log" 2>/dev/null || true
 }
 
 # The number of `gh pr checks` calls the stub logged. Same `|| true` reasoning
 # as view_calls above.
 checks_calls() {
-  [ -f "$TMP/argv.log" ] || { printf '0\n'; return 0; }
-  grep -c 'pr checks' "$TMP/argv.log" 2>/dev/null || true
+  [ -f "$TEMPORARY_DIRECTORY/argv.log" ] || { printf '0\n'; return 0; }
+  grep -c 'pr checks' "$TEMPORARY_DIRECTORY/argv.log" 2>/dev/null || true
 }
 
 # stub_sleep
@@ -103,23 +103,23 @@ checks_calls() {
 # is what the rule needs pinned -- N attempts owe N-1 waits -- and an elapsed
 # -time assertion would buy the same claim as a flake.
 stub_sleep() {
-  mkdir -p "$TMP/bin"
-  cat >"$TMP/bin/sleep" <<'EOF'
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  cat >"$TEMPORARY_DIRECTORY/bin/sleep" <<'EOF'
 #!/usr/bin/env bash
-printf '%s\n' "$*" >>"$STUB_DIR/sleep.log"
+printf '%s\n' "$*" >>"$STUB_DIRECTORY/sleep.log"
 EOF
-  chmod +x "$TMP/bin/sleep"
-  STUB_DIR="$TMP"
-  export STUB_DIR
-  PATH="$TMP/bin:$PATH"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/sleep"
+  STUB_DIRECTORY="$TEMPORARY_DIRECTORY"
+  export STUB_DIRECTORY
+  PATH="$TEMPORARY_DIRECTORY/bin:$PATH"
   export PATH
 }
 
 # The number of `sleep` calls the stub logged. Same `|| true` reasoning as
 # view_calls above: grep prints 0 and exits 1 on a file with no match.
 sleep_calls() {
-  [ -f "$TMP/sleep.log" ] || { printf '0\n'; return 0; }
-  grep -c . "$TMP/sleep.log" 2>/dev/null || true
+  [ -f "$TEMPORARY_DIRECTORY/sleep.log" ] || { printf '0\n'; return 0; }
+  grep -c . "$TEMPORARY_DIRECTORY/sleep.log" 2>/dev/null || true
 }
 
 # stub_gh_flaky <fail-first-n> <view-tsv> [checks-answer]
@@ -130,36 +130,36 @@ sleep_calls() {
 # distinguishable from a gh that never answers, because only the second is a
 # refusal.
 stub_gh_flaky() {
-  local fail_n="$1"
+  local fail_first_count="$1"
   shift
   stub_gh "$@"
-  printf '%s\n' "$fail_n" >"$TMP/fail_first"
-  cat >"$TMP/bin/gh" <<'EOF'
+  printf '%s\n' "$fail_first_count" >"$TEMPORARY_DIRECTORY/fail_first"
+  cat >"$TEMPORARY_DIRECTORY/bin/gh" <<'EOF'
 #!/usr/bin/env bash
-printf '%s\n' "$*" >>"$STUB_DIR/argv.log"
+printf '%s\n' "$*" >>"$STUB_DIRECTORY/argv.log"
 case "$2" in
   view)
-    n=$(cat "$STUB_DIR/fail_first")
-    if [ "$n" -gt 0 ]; then
-      printf '%s\n' "$((n - 1))" >"$STUB_DIR/fail_first"
+    remaining_failures=$(cat "$STUB_DIRECTORY/fail_first")
+    if [ "$remaining_failures" -gt 0 ]; then
+      printf '%s\n' "$((remaining_failures - 1))" >"$STUB_DIRECTORY/fail_first"
       exit 1
     fi
-    cat "$STUB_DIR/view.tsv"
+    cat "$STUB_DIRECTORY/view.tsv"
     printf '\n'
     ;;
   checks)
-    [ -f "$STUB_DIR/checks.txt" ] || exit 1
-    cat "$STUB_DIR/checks.txt"
+    [ -f "$STUB_DIRECTORY/checks.txt" ] || exit 1
+    cat "$STUB_DIRECTORY/checks.txt"
     ;;
   *) exit 1 ;;
 esac
 EOF
-  chmod +x "$TMP/bin/gh"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/gh"
 }
 
 # The argv line of the first logged `gh pr view` call.
 first_view_argv() {
-  grep -m 1 'pr view' "$TMP/argv.log" 2>/dev/null || true
+  grep -m 1 'pr view' "$TEMPORARY_DIRECTORY/argv.log" 2>/dev/null || true
 }
 
 tsv() {
@@ -289,13 +289,13 @@ tsv() {
 # returns, so the defect the stub cannot see reds here instead.
 
 @test "VIEW_JQ maps a null mergeable to UNKNOWN and keeps the state" {
-  local filter out
+  local filter jq_output
   filter=$(sed -n "s/^VIEW_JQ='\(.*\)'$/\1/p" "$WAIT")
   [ -n "$filter" ] || return 1
-  out=$(jq -r "$filter" <<<'{"state":"OPEN","mergeable":null}')
-  [ "$out" = "$(printf 'OPEN\tUNKNOWN')" ] || return 1
-  out=$(jq -r "$filter" <<<'{"state":"OPEN","mergeable":"CONFLICTING"}')
-  [ "$out" = "$(printf 'OPEN\tCONFLICTING')" ]
+  jq_output=$(jq -r "$filter" <<<'{"state":"OPEN","mergeable":null}')
+  [ "$jq_output" = "$(printf 'OPEN\tUNKNOWN')" ] || return 1
+  jq_output=$(jq -r "$filter" <<<'{"state":"OPEN","mergeable":"CONFLICTING"}')
+  [ "$jq_output" = "$(printf 'OPEN\tCONFLICTING')" ]
 }
 
 @test "CHECKS_JQ counts the failed and cancelled buckets and nothing else" {
@@ -466,7 +466,7 @@ tsv() {
   # wait on a failure that belongs to another PR.
   stub_gh "$(tsv OPEN MERGEABLE)" 0
   run bash "$WAIT" --pr 7 --repo gaia-react/create-gaia --attempts 1 --interval 0
-  grep -F -- 'pr checks' "$TMP/argv.log" | grep -qF -- '--repo gaia-react/create-gaia'
+  grep -F -- 'pr checks' "$TEMPORARY_DIRECTORY/argv.log" | grep -qF -- '--repo gaia-react/create-gaia'
 }
 
 @test "omitting --repo passes no repo flag, so gh resolves from the cwd" {
@@ -556,7 +556,7 @@ tsv() {
 @test "no gh on PATH refuses rather than reporting a verdict" {
   # An empty PATH: the script's own `command -v gh` must be what fails, and it
   # must say so rather than timing out against a gh that is not there.
-  run env PATH="$TMP/empty" "$BASH_ABS" "$WAIT" --pr 7 --interval 0
+  run env PATH="$TEMPORARY_DIRECTORY/empty" "$ABSOLUTE_BASH_PATH" "$WAIT" --pr 7 --interval 0
   [ "$status" -eq 2 ]
   grep -qF -- 'gh is not on PATH' <<<"$output"
   grep -qF -- 'not a verdict' <<<"$output"

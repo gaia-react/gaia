@@ -99,12 +99,12 @@ gaia_hook_command_rooting_commands() {
 #   carrying no `/`, `$`, `"` and not itself ending in `.sh`) is dropped first,
 #   so `bash <path>` is judged on <path>.
 _gaia_hookrooting_head_is_anchored() {
-  local cmd="$1" first rest
-  first="${cmd%%[[:space:]]*}"
+  local hook_command="$1" first rest
+  first="${hook_command%%[[:space:]]*}"
   case "$first" in
-    *'"'*|*'$'*|*/*|*.sh) rest="$cmd" ;;
-    "$cmd")               rest="$cmd" ;;
-    *)                    rest="${cmd#"$first"}"
+    *'"'*|*'$'*|*/*|*.sh) rest="$hook_command" ;;
+    "$hook_command")               rest="$hook_command" ;;
+    *)                    rest="${hook_command#"$first"}"
                           rest="${rest#"${rest%%[![:space:]]*}"}" ;;
   esac
   case "$rest" in
@@ -124,7 +124,7 @@ _gaia_hookrooting_head_is_anchored() {
 gaia_check_hook_command_rooting() {
   local repo_root="$1"
   local settings="$repo_root/.claude/settings.json"
-  local rc=0 count=0 cmd
+  local exit_status=0 count=0 hook_command
 
   if [ ! -f "$settings" ]; then
     printf 'check-hook-command-rooting: no such file: %s\n' "$settings" >&2
@@ -141,23 +141,23 @@ gaia_check_hook_command_rooting() {
     return 2
   fi
 
-  while IFS= read -r cmd; do
-    [ -n "$cmd" ] || continue
+  while IFS= read -r hook_command; do
+    [ -n "$hook_command" ] || continue
     count=$((count + 1))
     # Rule 1: a `.claude/` or `.gaia/` occurrence not preceded by `/` is a
     # path in its own right, so it resolves against the current directory.
-    if printf '%s' "$cmd" | grep -qE '(^|[^/])\.(claude|gaia)/'; then
-      printf 'UNROOTED: %s\n' "$cmd"
-      rc=1
+    if printf '%s' "$hook_command" | grep -qE '(^|[^/])\.(claude|gaia)/'; then
+      printf 'UNROOTED: %s\n' "$hook_command"
+      exit_status=1
       continue
     fi
     # Rule 2: a `.` or `..` segment satisfies rule 1 and still resolves
     # relatively. Matching `./` covers `../` as its suffix, so one pattern
     # closes both. The sanctioned prefix carries no such segment: its only
     # bare dot is the `:-.}` fallback, which is followed by `}`, not `/`.
-    if printf '%s' "$cmd" | grep -qF -- './'; then
-      printf 'UNROOTED: %s\n' "$cmd"
-      rc=1
+    if printf '%s' "$hook_command" | grep -qF -- './'; then
+      printf 'UNROOTED: %s\n' "$hook_command"
+      exit_status=1
       continue
     fi
     # Rule 3: the executed token has to be anchored, whatever directory it
@@ -165,9 +165,9 @@ gaia_check_hook_command_rooting() {
     # tokens: the sanctioned prefix carries `2>/dev/null` inside its own
     # substitution, and a token-wise scan reads that as a relative path and
     # fails the very form this file exists to bless.
-    if ! _gaia_hookrooting_head_is_anchored "$cmd"; then
-      printf 'UNROOTED: %s\n' "$cmd"
-      rc=1
+    if ! _gaia_hookrooting_head_is_anchored "$hook_command"; then
+      printf 'UNROOTED: %s\n' "$hook_command"
+      exit_status=1
     fi
   done <<EOF
 $commands
@@ -178,14 +178,14 @@ EOF
     return 1
   fi
 
-  if [ "$rc" -eq 0 ]; then
+  if [ "$exit_status" -eq 0 ]; then
     # The verdict names the file it read. Claude Code also runs hooks registered
     # in .claude/settings.local.json, which is gitignored, per-machine, and NOT
     # in this set, so an unqualified "every registered command" would claim a
     # surface this check never opened.
     printf '.claude/settings.json registered commands (hooks plus statusLine): every one resolves independently of cwd (%s checked)\n' "$count"
   fi
-  return $rc
+  return $exit_status
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then

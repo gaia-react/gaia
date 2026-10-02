@@ -22,10 +22,10 @@
 #
 # Bash 3.2 compatible. Never `cd`.
 
-if [ -n "${GAIA_HOOK_REGISTRATION_LIB:-}" ]; then
+if [ -n "${GAIA_HOOK_REGISTRATION_LIBRARY:-}" ]; then
   return 0
 fi
-GAIA_HOOK_REGISTRATION_LIB=1
+GAIA_HOOK_REGISTRATION_LIBRARY=1
 
 # The one spelling of a hook name inside a registration command, named once.
 # `readonly` is safe under the source guard above: a second source returns before

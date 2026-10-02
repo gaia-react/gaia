@@ -20,84 +20,84 @@ setup() {
   REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
   . "$REPO_ROOT/.gaia/tests/helpers/files.sh"
 
-  A="$BATS_TEST_TMPDIR/a"
-  B="$BATS_TEST_TMPDIR/b"
+  FIRST_FILE="$BATS_TEST_TMPDIR/a"
+  SECOND_FILE="$BATS_TEST_TMPDIR/b"
 }
 
 @test "assert_files_identical accepts two files with identical bytes" {
-  printf 'one\ntwo\n' > "$A"
-  printf 'one\ntwo\n' > "$B"
-  assert_files_identical "$A" "$B"
+  printf 'one\ntwo\n' > "$FIRST_FILE"
+  printf 'one\ntwo\n' > "$SECOND_FILE"
+  assert_files_identical "$FIRST_FILE" "$SECOND_FILE"
 }
 
 @test "assert_files_identical rejects a pair differing only in a trailing newline" {
-  printf 'one\ntwo\n' > "$A"
-  printf 'one\ntwo\n\n\n' > "$B"
+  printf 'one\ntwo\n' > "$FIRST_FILE"
+  printf 'one\ntwo\n\n\n' > "$SECOND_FILE"
 
   # Written as a positive match on the bad case per the bats-assertions rule.
-  assert_files_identical "$A" "$B" && {
+  assert_files_identical "$FIRST_FILE" "$SECOND_FILE" && {
     echo "the helper accepts a trailing-newline difference; it has decayed into the \$(cat …) comparison it replaced" >&2
     return 1
   }
 
   # And the control: that same pair IS equal through command substitution, which
   # is the defect this primitive exists to remove rather than a hypothetical.
-  [ "$(cat "$A")" = "$(cat "$B")" ] || {
+  [ "$(cat "$FIRST_FILE")" = "$(cat "$SECOND_FILE")" ] || {
     echo "control broken: the fixture pair no longer demonstrates the \$(cat …) strip" >&2
     return 1
   }
 }
 
 @test "assert_files_identical rejects a pair differing in the middle" {
-  printf 'one\ntwo\n' > "$A"
-  printf 'one\nTWO\n' > "$B"
-  assert_files_identical "$A" "$B" && return 1
+  printf 'one\ntwo\n' > "$FIRST_FILE"
+  printf 'one\nTWO\n' > "$SECOND_FILE"
+  assert_files_identical "$FIRST_FILE" "$SECOND_FILE" && return 1
   true
 }
 
 @test "assert_files_identical fails rather than passes when a file is missing" {
-  printf 'one\n' > "$A"
+  printf 'one\n' > "$FIRST_FILE"
   # An absent path must never read as "identical". `cmp` exits non-zero and says
   # which path it could not open.
-  assert_files_identical "$A" "$BATS_TEST_TMPDIR/does-not-exist" && return 1
+  assert_files_identical "$FIRST_FILE" "$BATS_TEST_TMPDIR/does-not-exist" && return 1
   true
 }
 
 @test "snapshot_file captures bytes that later writes to the source cannot change" {
-  printf 'before\n' > "$A"
-  local snap
-  snap="$(snapshot_file "$A")"
+  printf 'before\n' > "$FIRST_FILE"
+  local snapshot_path
+  snapshot_path="$(snapshot_file "$FIRST_FILE")"
 
-  [ -n "$snap" ] || { echo "snapshot_file printed no path" >&2; return 1; }
-  [ "$snap" != "$A" ] || { echo "snapshot_file returned the source path itself" >&2; return 1; }
+  [ -n "$snapshot_path" ] || { echo "snapshot_file printed no path" >&2; return 1; }
+  [ "$snapshot_path" != "$FIRST_FILE" ] || { echo "snapshot_file returned the source path itself" >&2; return 1; }
 
-  printf 'after\n' > "$A"
-  assert_files_identical "$snap" "$A" && {
+  printf 'after\n' > "$FIRST_FILE"
+  assert_files_identical "$snapshot_path" "$FIRST_FILE" && {
     echo "the snapshot tracked a later write; it is an alias, not a copy" >&2
     return 1
   }
 
-  printf 'before\n' > "$B"
-  assert_files_identical "$snap" "$B"
+  printf 'before\n' > "$SECOND_FILE"
+  assert_files_identical "$snapshot_path" "$SECOND_FILE"
 }
 
 @test "snapshot_file preserves a trailing newline exactly" {
   # The capture half of the same defect: a snapshot taken through command
   # substitution would drop these, and the comparison could never see them again.
-  printf 'row\n\n\n' > "$A"
-  local snap
-  snap="$(snapshot_file "$A")"
-  assert_files_identical "$snap" "$A"
+  printf 'row\n\n\n' > "$FIRST_FILE"
+  local snapshot_path
+  snapshot_path="$(snapshot_file "$FIRST_FILE")"
+  assert_files_identical "$snapshot_path" "$FIRST_FILE"
 }
 
 @test "two snapshots in one test do not collide" {
-  printf 'first\n' > "$A"
-  printf 'second\n' > "$B"
-  local s1 s2
-  s1="$(snapshot_file "$A")"
-  s2="$(snapshot_file "$B")"
+  printf 'first\n' > "$FIRST_FILE"
+  printf 'second\n' > "$SECOND_FILE"
+  local first_snapshot second_snapshot
+  first_snapshot="$(snapshot_file "$FIRST_FILE")"
+  second_snapshot="$(snapshot_file "$SECOND_FILE")"
 
-  [ "$s1" != "$s2" ] || { echo "both snapshots landed on one path" >&2; return 1; }
-  assert_files_identical "$s1" "$A"
-  assert_files_identical "$s2" "$B"
+  [ "$first_snapshot" != "$second_snapshot" ] || { echo "both snapshots landed on one path" >&2; return 1; }
+  assert_files_identical "$first_snapshot" "$FIRST_FILE"
+  assert_files_identical "$second_snapshot" "$SECOND_FILE"
 }

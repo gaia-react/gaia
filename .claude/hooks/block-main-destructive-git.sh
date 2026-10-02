@@ -194,10 +194,10 @@ resolve_directory_kind() {
     '~') directory="$HOME" ;;
     '~/'*) directory="$HOME/${directory:2}" ;;
   esac
-  command -v gaia_resolve_common_dir >/dev/null 2>&1 || { printf 'unknown'; return 0; }
-  given_common_directory=$(gaia_resolve_common_dir "$directory" 2>/dev/null) || { printf 'unknown'; return 0; }
+  command -v gaia_resolve_common_directory >/dev/null 2>&1 || { printf 'unknown'; return 0; }
+  given_common_directory=$(gaia_resolve_common_directory "$directory" 2>/dev/null) || { printf 'unknown'; return 0; }
   [ -n "$given_common_directory" ] || { printf 'unknown'; return 0; }
-  own_common_directory=$(gaia_resolve_common_dir 2>/dev/null) || { printf 'unknown'; return 0; }
+  own_common_directory=$(gaia_resolve_common_directory 2>/dev/null) || { printf 'unknown'; return 0; }
   if [ -n "$own_common_directory" ] && [ "$given_common_directory" = "$own_common_directory" ]; then
     printf 'same %s' "$directory"
   else

@@ -157,11 +157,11 @@ gaia_check_audit_key_callers() {
   # body assigns `missing_count` and `caller_failed`, which is the other half of
   # why this is a process substitution rather than a pipe -- a pipe would run
   # the body in a subshell and throw both away.
-  local f missing_count=0
-  while IFS= read -r -d '' f; do
-    [ -n "$f" ] || continue
-    if ! git -C "$repo_root" grep -qF 'gaia_audit_key' -- "$f" 2>/dev/null; then
-      printf 'names a sidecar/ledger but never calls gaia_audit_key: %s\n' "$f"
+  local agent_file missing_count=0
+  while IFS= read -r -d '' agent_file; do
+    [ -n "$agent_file" ] || continue
+    if ! git -C "$repo_root" grep -qF 'gaia_audit_key' -- "$agent_file" 2>/dev/null; then
+      printf 'names a sidecar/ledger but never calls gaia_audit_key: %s\n' "$agent_file"
       missing_count=$((missing_count + 1))
       caller_failed=1
     fi

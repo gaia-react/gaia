@@ -130,12 +130,12 @@ fi
 member_list="$(printf '%s\n' "$records" | awk -F'\t' '$1 == "MEMBER" { print $2 }')"
 default_name="$(printf '%s\n' "$records" | awk -F'\t' '$1 == "DEFAULT" { print $2; exit }')"
 
-if ! tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/write-audit-remits.XXXXXX")" || [ -z "$tmpdir" ]; then
+if ! temporary_directory="$(mktemp -d "${TMPDIR:-/tmp}/write-audit-remits.XXXXXX")" || [ -z "$temporary_directory" ]; then
   printf 'write-audit-remits: could not create a temporary directory; nothing modified\n' >&2
   exit 1
 fi
-tmp=""
-trap 'rm -rf "$tmpdir"; [ -n "$tmp" ] && rm -f "$tmp"' EXIT
+temporary_file=""
+trap 'rm -rf "$temporary_directory"; [ -n "$temporary_file" ] && rm -f "$temporary_file"' EXIT
 
 overall_failed=0
 
@@ -148,13 +148,13 @@ while IFS= read -r name; do
     continue
   fi
 
-  globs="$(printf '%s\n' "$records" | awk -F'\t' -v m="$name" '$1 == "RAW" && $2 == m { print $3 }')"
+  globs="$(printf '%s\n' "$records" | awk -F'\t' -v member_name="$name" '$1 == "RAW" && $2 == member_name { print $3 }')"
 
   is_default=0
   [ "$name" = "$default_name" ] && is_default=1
 
-  nstart="$(grep -cxF -- "$START_MARKER" "$agent")"
-  nend="$(grep -cxF -- "$END_MARKER" "$agent")"
+  start_marker_count="$(grep -cxF -- "$START_MARKER" "$agent")"
+  end_marker_count="$(grep -cxF -- "$END_MARKER" "$agent")"
 
   # A single balanced pair is still malformed if the end marker precedes the
   # start marker: nothing then marks where the region actually begins and
@@ -164,15 +164,15 @@ while IFS= read -r name; do
   # on disk is already behind it). Caught here, before mode selection, so
   # that shape is refused rather than silently destructive.
   reversed=0
-  if [ "$nstart" -eq 1 ] && [ "$nend" -eq 1 ]; then
+  if [ "$start_marker_count" -eq 1 ] && [ "$end_marker_count" -eq 1 ]; then
     start_line="$(grep -nxF -- "$START_MARKER" "$agent" | cut -d: -f1)"
     end_line="$(grep -nxF -- "$END_MARKER" "$agent" | cut -d: -f1)"
     [ "$start_line" -lt "$end_line" ] || reversed=1
   fi
 
-  if [ "$nstart" -eq 1 ] && [ "$nend" -eq 1 ] && [ "$reversed" -eq 0 ]; then
+  if [ "$start_marker_count" -eq 1 ] && [ "$end_marker_count" -eq 1 ] && [ "$reversed" -eq 0 ]; then
     mode="replace"
-  elif [ "$nstart" -eq 0 ] && [ "$nend" -eq 0 ]; then
+  elif [ "$start_marker_count" -eq 0 ] && [ "$end_marker_count" -eq 0 ]; then
     mode="insert"
   elif [ "$reversed" -eq 1 ]; then
     printf 'write-audit-remits: %s: remit markers in %s are reversed (end marker at line %d appears before start marker at line %d); fix the order by hand and re-run\n' \
@@ -181,7 +181,7 @@ while IFS= read -r name; do
     continue
   else
     printf 'write-audit-remits: %s: markers duplicated or unbalanced in %s (start=%d end=%d); delete the extra or unbalanced markers and re-run\n' \
-      "$name" "$agent" "$nstart" "$nend" >&2
+      "$name" "$agent" "$start_marker_count" "$end_marker_count" >&2
     overall_failed=1
     continue
   fi
@@ -189,10 +189,10 @@ while IFS= read -r name; do
   # The old region's glob bullets (REPLACE mode only), in file order.
   old_globs=""
   if [ "$mode" = "replace" ]; then
-    old_globs="$(awk -v s="$START_MARKER" -v e="$END_MARKER" '
-      $0 == s { infl = 1; next }
-      $0 == e { infl = 0; next }
-      infl && /^- `.*`$/ { line = $0; sub(/^- `/, "", line); sub(/`$/, "", line); print line }
+    old_globs="$(awk -v start_marker="$START_MARKER" -v end_marker="$END_MARKER" '
+      $0 == start_marker { in_region = 1; next }
+      $0 == end_marker { in_region = 0; next }
+      in_region && /^- `.*`$/ { line = $0; sub(/^- `/, "", line); sub(/`$/, "", line); print line }
     ' "$agent")"
   fi
 
@@ -214,11 +214,11 @@ while IFS= read -r name; do
   # order, a blank line, then the canonical sentence for this member's shape.
   # Written to a file and never through awk -v, so no character in a glob
   # (backtick, *, .) is ever interpreted.
-  body_file="$tmpdir/body"
+  body_file="$temporary_directory/body"
   : > "$body_file"
-  while IFS= read -r g; do
-    [ -n "$g" ] || continue
-    printf -- '- `%s`\n' "$g" >> "$body_file"
+  while IFS= read -r glob; do
+    [ -n "$glob" ] || continue
+    printf -- '- `%s`\n' "$glob" >> "$body_file"
   done <<EOF
 $globs
 EOF
@@ -248,10 +248,10 @@ EOF
 
   old_body=""
   if [ "$mode" = "replace" ]; then
-    old_body="$(awk -v s="$START_MARKER" -v e="$END_MARKER" '
-      $0 == s { infl = 1; next }
-      $0 == e { infl = 0; next }
-      infl { print }
+    old_body="$(awk -v start_marker="$START_MARKER" -v end_marker="$END_MARKER" '
+      $0 == start_marker { in_region = 1; next }
+      $0 == end_marker { in_region = 0; next }
+      in_region { print }
     ' "$agent")"
   fi
 
@@ -259,10 +259,10 @@ EOF
   # lacks are "+", globs the old region carried that the roster no longer
   # grants are "-". Empty for INSERT mode's old_globs (everything is "+").
   added=""
-  while IFS= read -r g; do
-    [ -n "$g" ] || continue
-    if ! grep -qxF -- "$g" <<<"$old_globs"; then
-      added="${added}+${g} "
+  while IFS= read -r glob; do
+    [ -n "$glob" ] || continue
+    if ! grep -qxF -- "$glob" <<<"$old_globs"; then
+      added="${added}+${glob} "
     fi
   done <<EOF
 $globs
@@ -270,10 +270,10 @@ EOF
   added="${added% }"
 
   removed=""
-  while IFS= read -r g; do
-    [ -n "$g" ] || continue
-    if ! grep -qxF -- "$g" <<<"$globs"; then
-      removed="${removed}-${g} "
+  while IFS= read -r glob; do
+    [ -n "$glob" ] || continue
+    if ! grep -qxF -- "$glob" <<<"$globs"; then
+      removed="${removed}-${glob} "
     fi
   done <<EOF
 $old_globs
@@ -281,32 +281,32 @@ EOF
   removed="${removed% }"
 
   # Rewrite mechanics: awk to a temp file, then mv over the original. The temp
-  # file is a sibling of $agent, not under $tmpdir (normally a different
+  # file is a sibling of $agent, not under $temporary_directory (normally a different
   # filesystem), so the mv below is a same-filesystem atomic rename rather
   # than a copy-then-unlink: a mid-copy failure (ENOSPC, EIO) can't leave
   # $agent truncated while this script still reports it "not modified". Never
   # sed -i (the BSD/GNU -i forms disagree, and the region body carries
   # backticks, *, and . a sed replacement would mangle).
-  tmp="${agent}.gaia-remit-tmp.$$"
-  if ! awk -v bodyfile="$body_file" -v start="$START_MARKER" -v end="$END_MARKER" \
+  temporary_file="${agent}.gaia-remit-tmp.$$"
+  if ! awk -v bodyfile="$body_file" -v start_marker="$START_MARKER" -v end_marker="$END_MARKER" \
       -v mode="$awk_mode" -v anchor="$REMIT_HEADING" '
     function emit_body(   line) {
       while ((getline line < bodyfile) > 0) print line
       close(bodyfile)
     }
     function emit_region() {
-      print start
+      print start_marker
       emit_body()
-      print end
+      print end_marker
     }
-    BEGIN { skip = 0; inserted = 0; ndash = 0 }
-    mode == "replace" && $0 == start && !skip {
+    BEGIN { skip = 0; inserted = 0; dash_line_count = 0 }
+    mode == "replace" && $0 == start_marker && !skip {
       print
       emit_body()
       skip = 1
       next
     }
-    mode == "replace" && $0 == end && skip {
+    mode == "replace" && $0 == end_marker && skip {
       print
       skip = 0
       next
@@ -320,9 +320,9 @@ EOF
       next
     }
     mode == "insert_frontmatter" && !inserted && $0 == "---" {
-      ndash++
+      dash_line_count++
       print
-      if (ndash == 2) {
+      if (dash_line_count == 2) {
         print ""
         emit_region()
         inserted = 1
@@ -330,27 +330,27 @@ EOF
       next
     }
     { print }
-  ' "$agent" > "$tmp"; then
+  ' "$agent" > "$temporary_file"; then
     printf 'write-audit-remits: %s: failed to generate the regenerated region for %s; not modified\n' \
       "$name" "$agent" >&2
-    rm -f "$tmp"
-    tmp=""
+    rm -f "$temporary_file"
+    temporary_file=""
     overall_failed=1
     continue
   fi
 
-  was_exec=0
-  [ -x "$agent" ] && was_exec=1
-  if ! mv "$tmp" "$agent"; then
+  was_executable=0
+  [ -x "$agent" ] && was_executable=1
+  if ! mv "$temporary_file" "$agent"; then
     printf 'write-audit-remits: %s: failed to install the regenerated %s; not modified\n' \
       "$name" "$agent" >&2
-    rm -f "$tmp"
-    tmp=""
+    rm -f "$temporary_file"
+    temporary_file=""
     overall_failed=1
     continue
   fi
-  tmp=""
-  [ "$was_exec" -eq 1 ] && chmod +x "$agent"
+  temporary_file=""
+  [ "$was_executable" -eq 1 ] && chmod +x "$agent"
 
   if [ "$mode" = "insert" ]; then
     printf '%s: region inserted %s\n' "$name" "$added"

@@ -28,18 +28,18 @@
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
-  SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
-  CHECK="$SCRIPT_DIR/check-main-root-derivation.sh"
-  REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+  SCRIPT_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
+  CHECK="$SCRIPT_DIRECTORY/check-main-root-derivation.sh"
+  REPO_ROOT="$(cd "$SCRIPT_DIRECTORY/../.." && pwd)"
   # shellcheck source=.gaia/scripts/check-main-root-derivation.sh
   source "$CHECK"
   FIXTURE_REPOS=()
 }
 
 teardown() {
-  local d
-  for d in "${FIXTURE_REPOS[@]:-}"; do
-    [ -n "$d" ] && rm -rf "$d"
+  local fixture_directory
+  for fixture_directory in "${FIXTURE_REPOS[@]:-}"; do
+    [ -n "$fixture_directory" ] && rm -rf "$fixture_directory"
   done
   return 0
 }
@@ -50,27 +50,27 @@ teardown() {
 # stdout.
 make_fixture_repo() {
   local name="$1"
-  local dir="$BATS_TEST_TMPDIR/$name"
-  mkdir -p "$dir"
-  git init -q --initial-branch=main "$dir"
-  git -C "$dir" config user.email t@example.com
-  git -C "$dir" config user.name T
-  git -C "$dir" config commit.gpgsign false
+  local directory="$BATS_TEST_TMPDIR/$name"
+  mkdir -p "$directory"
+  git init -q --initial-branch=main "$directory"
+  git -C "$directory" config user.email t@example.com
+  git -C "$directory" config user.name T
+  git -C "$directory" config commit.gpgsign false
   # Pinned for the same reason as the three above: a fixture must not take its
   # verdict from the host. `core.quotePath` defaults to true, and the non-ASCII
   # fixture below proves its repair by relying on that default, so on a host or
   # runner image whose global config sets it false that test would pass with the
   # repair reverted -- an inert guard, reporting green in exactly the case it
   # exists to catch.
-  git -C "$dir" config core.quotePath true
-  FIXTURE_REPOS+=("$dir")
-  printf '%s' "$dir"
+  git -C "$directory" config core.quotePath true
+  FIXTURE_REPOS+=("$directory")
+  printf '%s' "$directory"
 }
 
 commit_fixture() {
-  local dir="$1"
-  git -C "$dir" add -A
-  git -C "$dir" commit -q -m fixture
+  local directory="$1"
+  git -C "$directory" add -A
+  git -C "$directory" commit -q -m fixture
 }
 
 @test "structural: sourcing the script defines gaia_check_main_root_derivation with no side effects" {

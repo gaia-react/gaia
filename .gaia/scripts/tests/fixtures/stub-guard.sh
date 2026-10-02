@@ -24,13 +24,13 @@
 
 set -euo pipefail
 
-_gaia_guard_lib_dir="${BASH_SOURCE[0]%/*}"
-if [ "$_gaia_guard_lib_dir" = "${BASH_SOURCE[0]}" ]; then _gaia_guard_lib_dir="."; fi
+_gaia_guard_library_directory="${BASH_SOURCE[0]%/*}"
+if [ "$_gaia_guard_library_directory" = "${BASH_SOURCE[0]}" ]; then _gaia_guard_library_directory="."; fi
 # This fixture sits two directories below the library, where a real guard sits
 # beside it. Only the resolved directory differs from the block a guard carries.
-_gaia_guard_lib_dir="$_gaia_guard_lib_dir/../.."
+_gaia_guard_library_directory="$_gaia_guard_library_directory/../.."
 # shellcheck source=.gaia/scripts/guard-awk-lib.sh
-set +e; [ -f "$_gaia_guard_lib_dir/guard-awk-lib.sh" ] && . "$_gaia_guard_lib_dir/guard-awk-lib.sh" 2>/dev/null; set -e
+set +e; [ -f "$_gaia_guard_library_directory/guard-awk-lib.sh" ] && . "$_gaia_guard_library_directory/guard-awk-lib.sh" 2>/dev/null; set -e
 type gaia_guard_bats_files >/dev/null 2>&1 || {
   printf 'stub-guard: guard-awk-lib.sh is missing beside this script\n' >&2
   exit 2
@@ -54,10 +54,10 @@ if [ "$#" -eq 0 ]; then
 fi
 
 report=""
-for f in "$@"; do
-  [ -f "$f" ] || continue
-  hits="$(awk -v file="$f" -v is_bats=1 -v scripts_dir="$_gaia_guard_lib_dir" \
-              "$GAIA_GUARD_AWK$OWN_AWK" "$f")"
+for target_file in "$@"; do
+  [ -f "$target_file" ] || continue
+  hits="$(awk -v file="$target_file" -v is_bats=1 -v scripts_directory="$_gaia_guard_library_directory" \
+              "$GAIA_GUARD_AWK$OWN_AWK" "$target_file")"
   [ -z "$hits" ] || report+="$hits"$'\n'
 done
 

@@ -36,14 +36,14 @@ refute_contains() {
 
 setup() {
   THIS_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
-  STATUSLINE_SRC="$THIS_DIRECTORY/../../statusline/gaia-statusline.sh"
-  RESOLVER_SRC="$THIS_DIRECTORY/../main-root-lib.sh"
-  [ -f "$STATUSLINE_SRC" ] || skip "gaia-statusline.sh missing"
-  [ -f "$RESOLVER_SRC" ] || skip "main-root-lib.sh missing"
+  STATUSLINE_SOURCE="$THIS_DIRECTORY/../../statusline/gaia-statusline.sh"
+  RESOLVER_SOURCE="$THIS_DIRECTORY/../main-root-lib.sh"
+  [ -f "$STATUSLINE_SOURCE" ] || skip "gaia-statusline.sh missing"
+  [ -f "$RESOLVER_SOURCE" ] || skip "main-root-lib.sh missing"
   command -v jq >/dev/null 2>&1 || skip "jq required"
 
-  TMPROOT_RAW="$(mktemp -d "${TMPDIR:-/tmp}/gaia-serena-sl-XXXXXX")"
-  TMPROOT="$(cd "$TMPROOT_RAW" && pwd -P)"
+  TEMPORARY_ROOT_RAW="$(mktemp -d "${TMPDIR:-/tmp}/gaia-serena-sl-XXXXXX")"
+  TEMPORARY_ROOT="$(cd "$TEMPORARY_ROOT_RAW" && pwd -P)"
 
   export GIT_AUTHOR_NAME="GAIA Test"
   export GIT_AUTHOR_EMAIL="gaia-test@example.com"
@@ -52,7 +52,7 @@ setup() {
 
   # Fake, empty HOME: no ~/.claude/settings.json, so the left side falls back to
   # the bare "Claude Code" label and no user statusline command runs.
-  FAKE_HOME="$TMPROOT/home"
+  FAKE_HOME="$TEMPORARY_ROOT/home"
   mkdir -p "$FAKE_HOME"
 }
 
@@ -61,11 +61,11 @@ teardown() {
   if [ -n "${MAIN:-}" ] && [ -n "${LINKED:-}" ] && [ -d "$MAIN" ]; then
     git -C "$MAIN" worktree remove --force "$LINKED" 2>/dev/null || true
   fi
-  if [ -n "${TMPROOT:-}" ] && [ -d "$TMPROOT" ]; then
-    rm -rf "$TMPROOT"
+  if [ -n "${TEMPORARY_ROOT:-}" ] && [ -d "$TEMPORARY_ROOT" ]; then
+    rm -rf "$TEMPORARY_ROOT"
   fi
-  if [ -n "${TMPROOT_RAW:-}" ] && [ "$TMPROOT_RAW" != "${TMPROOT:-}" ] && [ -d "$TMPROOT_RAW" ]; then
-    rm -rf "$TMPROOT_RAW"
+  if [ -n "${TEMPORARY_ROOT_RAW:-}" ] && [ "$TEMPORARY_ROOT_RAW" != "${TEMPORARY_ROOT:-}" ] && [ -d "$TEMPORARY_ROOT_RAW" ]; then
+    rm -rf "$TEMPORARY_ROOT_RAW"
   fi
 }
 
@@ -74,31 +74,31 @@ teardown() {
 # The resolver library is copied too, so the fixtures exercise the shipped
 # main-root resolution rather than silently taking the no-library fallback.
 scaffold_root() {
-  local r="$1"
-  mkdir -p "$r/.gaia/statusline" "$r/.gaia/scripts" \
-           "$r/.gaia/local/cache/shared" "$r/.gaia/local"
-  cp "$STATUSLINE_SRC" "$r/.gaia/statusline/gaia-statusline.sh"
-  cp "$RESOLVER_SRC" "$r/.gaia/scripts/main-root-lib.sh"
+  local root="$1"
+  mkdir -p "$root/.gaia/statusline" "$root/.gaia/scripts" \
+           "$root/.gaia/local/cache/shared" "$root/.gaia/local"
+  cp "$STATUSLINE_SOURCE" "$root/.gaia/statusline/gaia-statusline.sh"
+  cp "$RESOLVER_SOURCE" "$root/.gaia/scripts/main-root-lib.sh"
 }
 
 # write_cache <root> <serenaLangDrift-json-or-ABSENT>
 write_cache() {
-  local r="$1" drift="$2"
+  local root="$1" drift="$2"
   if [ "$drift" = "ABSENT" ]; then
-    printf '{"outdatedCount":0,"gaiaHasUpdate":false}\n' > "$r/.gaia/local/cache/shared/update-check.json"
+    printf '{"outdatedCount":0,"gaiaHasUpdate":false}\n' > "$root/.gaia/local/cache/shared/update-check.json"
   else
     printf '{"outdatedCount":0,"gaiaHasUpdate":false,"serenaLangDrift":%s}\n' "$drift" \
-      > "$r/.gaia/local/cache/shared/update-check.json"
+      > "$root/.gaia/local/cache/shared/update-check.json"
   fi
 }
 
 # write_setup <root> <complete|null|none>
 write_setup() {
-  local r="$1" mode="$2"
+  local root="$1" mode="$2"
   case "$mode" in
-    complete) printf '{"completed_at":"2026-01-01T00:00:00Z"}\n' > "$r/.gaia/local/setup-state.json" ;;
-    null)     printf '{"completed_at":null}\n' > "$r/.gaia/local/setup-state.json" ;;
-    none)     rm -f "$r/.gaia/local/setup-state.json" ;;
+    complete) printf '{"completed_at":"2026-01-01T00:00:00Z"}\n' > "$root/.gaia/local/setup-state.json" ;;
+    null)     printf '{"completed_at":null}\n' > "$root/.gaia/local/setup-state.json" ;;
+    none)     rm -f "$root/.gaia/local/setup-state.json" ;;
   esac
 }
 
@@ -109,29 +109,29 @@ render() {
 }
 
 @test "UAT-013 statusline: serenaLangDrift [python, go], setup complete -> full segment" {
-  local r="$TMPROOT/r013"
-  scaffold_root "$r"
-  write_cache "$r" '["python","go"]'
-  write_setup "$r" complete
-  render "$r"
+  local root="$TEMPORARY_ROOT/r013"
+  scaffold_root "$root"
+  write_cache "$root" '["python","go"]'
+  write_setup "$root" complete
+  render "$root"
   [ "$status" -eq 0 ]
   assert_contains 'Run /gaia-serena-sync (Serena missing: python, go)'
 }
 
 @test "UAT-015 statusline: empty array and absent field both render no segment" {
-  local r_empty="$TMPROOT/r015empty"
-  scaffold_root "$r_empty"
-  write_cache "$r_empty" '[]'
-  write_setup "$r_empty" complete
-  render "$r_empty"
+  local root_empty="$TEMPORARY_ROOT/r015empty"
+  scaffold_root "$root_empty"
+  write_cache "$root_empty" '[]'
+  write_setup "$root_empty" complete
+  render "$root_empty"
   [ "$status" -eq 0 ]
   refute_contains "$SEGMENT"
 
-  local r_absent="$TMPROOT/r015absent"
-  scaffold_root "$r_absent"
-  write_cache "$r_absent" ABSENT
-  write_setup "$r_absent" complete
-  render "$r_absent"
+  local root_absent="$TEMPORARY_ROOT/r015absent"
+  scaffold_root "$root_absent"
+  write_cache "$root_absent" ABSENT
+  write_setup "$root_absent" complete
+  render "$root_absent"
   [ "$status" -eq 0 ]
   refute_contains "$SEGMENT"
 }
@@ -143,11 +143,11 @@ render() {
   # written only under main, so a render here that showed the segment could
   # only come from a main-anchored read that ignored the worktree gate -- the
   # case this test rules out.
-  MAIN="$TMPROOT/main"
+  MAIN="$TEMPORARY_ROOT/main"
   mkdir -p "$MAIN"
   git -C "$MAIN" init -q
   git -C "$MAIN" commit --allow-empty -q -m "init"
-  LINKED="$TMPROOT/linked"
+  LINKED="$TEMPORARY_ROOT/linked"
   git -C "$MAIN" worktree add -q "$LINKED" -b "feat/serena-sl"
 
   scaffold_root "$MAIN"
@@ -168,20 +168,20 @@ render() {
 
 @test "UAT-017 statusline: non-empty drift but setup not complete (missing or null) -> no segment" {
   # (a) setup-state.json entirely absent.
-  local r_none="$TMPROOT/r017none"
-  scaffold_root "$r_none"
-  write_cache "$r_none" '["go"]'
-  write_setup "$r_none" none
-  render "$r_none"
+  local root_none="$TEMPORARY_ROOT/r017none"
+  scaffold_root "$root_none"
+  write_cache "$root_none" '["go"]'
+  write_setup "$root_none" none
+  render "$root_none"
   [ "$status" -eq 0 ]
   refute_contains "$SEGMENT"
 
   # (b) setup-state.json present but completed_at is null.
-  local r_null="$TMPROOT/r017null"
-  scaffold_root "$r_null"
-  write_cache "$r_null" '["go"]'
-  write_setup "$r_null" null
-  render "$r_null"
+  local root_null="$TEMPORARY_ROOT/r017null"
+  scaffold_root "$root_null"
+  write_cache "$root_null" '["go"]'
+  write_setup "$root_null" null
+  render "$root_null"
   [ "$status" -eq 0 ]
   refute_contains "$SEGMENT"
 }

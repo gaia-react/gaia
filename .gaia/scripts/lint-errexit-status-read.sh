@@ -213,7 +213,7 @@
 # redirection operand that is a nested command is followed as a REGION rather
 # than broken on (eat_word() and walk() below), and the walk COUNTS top-level
 # substitutions, so a statement whose status a second one supplies is not
-# attributed to the first, which is the one this gate flags (W_nsub below).
+# attributed to the first, which is the one this gate flags (W_substitution_count below).
 #
 # What is left is one UNDECIDABLE FAMILY rather than a list of unimplemented
 # shapes, and it is undecidable in both directions at once:
@@ -295,10 +295,10 @@ set -euo pipefail
 # The `if` on the second line is load bearing for the same reason: under
 # errexit a bare `[ ... ] && ...` whose test is false returns 1 and kills the
 # script.
-_gaia_guard_lib_dir="${BASH_SOURCE[0]%/*}"
-if [ "$_gaia_guard_lib_dir" = "${BASH_SOURCE[0]}" ]; then _gaia_guard_lib_dir="."; fi
+_gaia_guard_library_directory="${BASH_SOURCE[0]%/*}"
+if [ "$_gaia_guard_library_directory" = "${BASH_SOURCE[0]}" ]; then _gaia_guard_library_directory="."; fi
 # shellcheck source=.gaia/scripts/guard-awk-lib.sh
-set +e; [ -f "$_gaia_guard_lib_dir/guard-awk-lib.sh" ] && . "$_gaia_guard_lib_dir/guard-awk-lib.sh" 2>/dev/null; set -e
+set +e; [ -f "$_gaia_guard_library_directory/guard-awk-lib.sh" ] && . "$_gaia_guard_library_directory/guard-awk-lib.sh" 2>/dev/null; set -e
 type gaia_guard_bats_files >/dev/null 2>&1 || {
   printf 'lint-errexit-status-read: guard-awk-lib.sh is missing beside this script\n' >&2
   exit 2
@@ -309,7 +309,7 @@ case "$GAIA_AWK_STATUS" in
     exit 5
     ;;
   6)
-    printf 'lint-errexit-status-read: GAIA_AWK resolved to an unsanctioned interpreter (%s); the sanctioned set is mawk and BWK one-true-awk\n' "$GAIA_AWK_IDENT" >&2
+    printf 'lint-errexit-status-read: GAIA_AWK resolved to an unsanctioned interpreter (%s); the sanctioned set is mawk and BWK one-true-awk\n' "$GAIA_AWK_IDENTITY" >&2
     exit 6
     ;;
 esac
@@ -322,18 +322,18 @@ readonly CORE_AWK='
 # Tokenizer state, carried ACROSS lines so a command substitution, a quoted
 # string, or a heredoc body spanning several lines is followed rather than
 # guessed at:
-#   W_q       the open quote character, "" outside quotes, and the sentinel "A"
+#   W_quote_state       the open quote character, "" outside quotes, and the sentinel "A"
 #             inside an ANSI-C `$\047...\047` literal, which is not a quote
 #             character of its own but is a frame with its own escape rules
-#   W_qstack  the quote state to restore as each nesting level closes
+#   W_quote_stack  the quote state to restore as each nesting level closes
 #   W_depth   open `$(` / `(` nesting depth
-#   W_tick    1 inside a legacy backtick substitution
+#   W_in_backtick    1 inside a legacy backtick substitution
 #   W_heredoc the delimiter of an open heredoc, "" when none
-#   W_hd_tabs 1 when that heredoc was opened with `<<-`, which strips tabs
-#   W_op      set by walk() when an unquoted control operator is seen at depth 0
+#   W_heredoc_tabs 1 when that heredoc was opened with `<<-`, which strips tabs
+#   W_operator      set by walk() when an unquoted control operator is seen at depth 0
 #   W_stop    offset just past a top-level `;`, so the caller can resume there
-#   W_sub     set by walk() when the line opens a real command substitution
-#   W_nsub    how many TOP-LEVEL command substitutions the line opened, which
+#   W_substitution     set by walk() when the line opens a real command substitution
+#   W_substitution_count    how many TOP-LEVEL command substitutions the line opened, which
 #             is a different question from whether it opened any. An
 #             assignment-only statement takes the status of the LAST
 #             substitution it ran, so with two or more, the one this gate flags,
@@ -364,16 +364,16 @@ readonly CORE_AWK='
 #
 # walk(line): advance the state across one line and return 1 when the statement
 # continues onto the next one.
-function walk(line,   n, i, c, j, ch, delim, prev) {
-  W_op = 0
+function walk(line,   line_length, i, character, j, delimiter_opener, delimiter, previous_character, next_character) {
+  W_operator = 0
   W_stop = 0
-  W_sub = 0
-  W_nsub = 0
-  W_space_at = 0
+  W_substitution = 0
+  W_substitution_count = 0
+  W_space_offset = 0
   W_word = 0
-  n = length(line)
-  for (i = 1; i <= n; i++) {
-    c = substr(line, i, 1)
+  line_length = length(line)
+  for (i = 1; i <= line_length; i++) {
+    character = substr(line, i, 1)
 
     # Where the first word of this statement ends, recorded only while the walk
     # is at a clean top level so whitespace inside a quoted string or a
@@ -389,16 +389,16 @@ function walk(line,   n, i, c, j, ch, delim, prev) {
     # armed by DEFAULT, so the exclusion was dead across every workflow,
     # or composite action, plus any shell inside a function or
     # a loop.
-    if (W_depth == 0 && W_q == "" && !W_tick) {
-      if (c == " " || c == "\t") {
-        if (W_word && W_space_at == 0) W_space_at = i
+    if (W_depth == 0 && W_quote_state == "" && !W_in_backtick) {
+      if (character == " " || character == "\t") {
+        if (W_word && W_space_offset == 0) W_space_offset = i
       } else {
         W_word = 1
       }
     }
 
     # ANSI-C quoting, the dollar-prefixed single-quote form, gets a frame of its
-    # own (`W_q == "A"`) because a backslash ESCAPES inside it. Read as an
+    # own (`W_quote_state == "A"`) because a backslash ESCAPES inside it. Read as an
     # ordinary single-quoted span, a literal carrying an escaped quote closes at
     # that quote and reopens at the real terminator, so the quote state is
     # inverted for the REST OF THE FILE through the carry above and every
@@ -406,22 +406,22 @@ function walk(line,   n, i, c, j, ch, delim, prev) {
     # same two decisions guard-awk-lib.sh states in its own header, deliberately
     # so: two tokenizers reading the same bytes differently is worse than either
     # bound.
-    if (W_q == "A") {
-      if (c == "\\") { if (i == n) return 1; i++; continue }
-      if (c == "\047") W_q = ""
+    if (W_quote_state == "A") {
+      if (character == "\\") { if (i == line_length) return 1; i++; continue }
+      if (character == "\047") W_quote_state = ""
       continue
     }
     # Single quotes make every byte literal, backslash included, so this test
     # comes before the escape handling below.
-    if (W_q == "\047") { if (c == "\047") W_q = ""; continue }
+    if (W_quote_state == "\047") { if (character == "\047") W_quote_state = ""; continue }
 
-    if (c == "\\") {
-      if (i == n) return 1
+    if (character == "\\") {
+      if (i == line_length) return 1
       i++
       continue
     }
 
-    if (W_tick) { if (c == "`") W_tick = 0; continue }
+    if (W_in_backtick) { if (character == "`") W_in_backtick = 0; continue }
 
     # A substitution opens from inside double quotes too, which is the ordinary
     # spelling of the very shape this gate matches (`out="$(cmd)"`). The saved
@@ -432,16 +432,16 @@ function walk(line,   n, i, c, j, ch, delim, prev) {
     # walk actually reached: an escaped `$` was consumed by the escape arm above,
     # a `$` inside single quotes never reaches here at all (so the quote after it
     # CLOSES that span rather than opening a frame), and inside double quotes
-    # bash does not expand ANSI-C quoting, so `W_q == ""` is the whole test.
-    if (c == "$" && W_q == "" && substr(line, i + 1, 1) == "\047") {
-      W_q = "A"
+    # bash does not expand ANSI-C quoting, so `W_quote_state == ""` is the whole test.
+    if (character == "$" && W_quote_state == "" && substr(line, i + 1, 1) == "\047") {
+      W_quote_state = "A"
       i++
       continue
     }
-    if (c == "$" && substr(line, i + 1, 1) == "(") {
-      W_qstack[W_depth] = W_q
+    if (character == "$" && substr(line, i + 1, 1) == "(") {
+      W_quote_stack[W_depth] = W_quote_state
       W_depth++
-      W_q = ""
+      W_quote_state = ""
       i++
       # `$((` is ARITHMETIC EXPANSION, not a command substitution. It runs no
       # command, so it cannot carry a non-zero status into the assignment and
@@ -449,26 +449,26 @@ function walk(line,   n, i, c, j, ch, delim, prev) {
       # and simply always reads zero, which is a different thing from dead code
       # and would earn a message and a repair that make no sense. Consume the
       # second paren as its own level so the closing `))` balances by
-      # construction rather than by coincidence, and leave W_sub unset.
+      # construction rather than by coincidence, and leave W_substitution unset.
       if (substr(line, i + 1, 1) == "(") {
-        W_qstack[W_depth] = ""
+        W_quote_stack[W_depth] = ""
         W_depth++
-        W_ar[W_depth] = 1
-        W_narith++
+        W_arithmetic_levels[W_depth] = 1
+        W_arithmetic_count++
         i++
       } else {
-        W_sub = 1
+        W_substitution = 1
         # Depth is already incremented, so 1 is this statement`s top level.
-        if (W_depth == 1) W_nsub++
+        if (W_depth == 1) W_substitution_count++
       }
       continue
     }
-    if (c == "`") { W_tick = 1; W_sub = 1; if (W_depth == 0) W_nsub++; continue }
+    if (character == "`") { W_in_backtick = 1; W_substitution = 1; if (W_depth == 0) W_substitution_count++; continue }
 
-    if (W_q == "\"") { if (c == "\"") W_q = ""; continue }
+    if (W_quote_state == "\"") { if (character == "\"") W_quote_state = ""; continue }
 
-    if (c == "\047") { W_q = "\047"; continue }
-    if (c == "\"")   { W_q = "\"";   continue }
+    if (character == "\047") { W_quote_state = "\047"; continue }
+    if (character == "\"")   { W_quote_state = "\"";   continue }
 
     # A heredoc body is DATA the shell hands to a command, not shell it runs, so
     # it is swallowed rather than read. Without this the body of a fixture a
@@ -488,26 +488,26 @@ function walk(line,   n, i, c, j, ch, delim, prev) {
     # that body opens a quote that never closes, so the rest of the file goes
     # unclassified. Skipped inside `$(( ))`, where `<<` is a left shift rather
     # than a redirection.
-    if (c == "<" && substr(line, i + 1, 1) == "<" && W_narith == 0) {
+    if (character == "<" && substr(line, i + 1, 1) == "<" && W_arithmetic_count == 0) {
       # `<<<` is a herestring: its operand is a word on this same line, not a
       # body on the lines below.
       if (substr(line, i + 2, 1) == "<") { i += 2; continue }
       j = i + 2
-      W_hd_tabs = 0
-      if (substr(line, j, 1) == "-") { W_hd_tabs = 1; j++ }
+      W_heredoc_tabs = 0
+      if (substr(line, j, 1) == "-") { W_heredoc_tabs = 1; j++ }
       while (substr(line, j, 1) == " " || substr(line, j, 1) == "\t") j++
-      delim = ""
-      ch = substr(line, j, 1)
+      delimiter = ""
+      delimiter_opener = substr(line, j, 1)
       # A quoted delimiter (`<<'"'"'EOF'"'"'`) suppresses expansion in the body; either
       # spelling names the same terminator.
-      if (ch == "\047" || ch == "\"") {
+      if (delimiter_opener == "\047" || delimiter_opener == "\"") {
         j++
-        while (j <= n && substr(line, j, 1) != ch) { delim = delim substr(line, j, 1); j++ }
+        while (j <= line_length && substr(line, j, 1) != delimiter_opener) { delimiter = delimiter substr(line, j, 1); j++ }
         j++
       } else {
-        while (j <= n && substr(line, j, 1) ~ /[A-Za-z0-9_.\/-]/) { delim = delim substr(line, j, 1); j++ }
+        while (j <= line_length && substr(line, j, 1) ~ /[A-Za-z0-9_.\/-]/) { delimiter = delimiter substr(line, j, 1); j++ }
       }
-      if (delim != "") W_heredoc = delim
+      if (delimiter != "") W_heredoc = delimiter
       i = j - 1
       continue
     }
@@ -517,9 +517,9 @@ function walk(line,   n, i, c, j, ch, delim, prev) {
     # inside that body reads as one of THIS statement`s own top-level
     # substitutions and the count above exempts a live defect: the body runs in
     # an async subshell and never supplies the parent statement`s status, so
-    # `out=$(false) > >(echo "$(true)")` still exits on the assignment. W_sub is
+    # `out=$(false) > >(echo "$(true)")` still exits on the assignment. W_substitution is
     # deliberately left unset, since the operand is not a substitution of this
-    # statement. Reached only with W_q empty and outside a backtick, both quote
+    # statement. Reached only with W_quote_state empty and outside a backtick, both quote
     # arms above having already continued, and only at depth 0, which is the
     # only place an operand of THIS statement can begin.
     # The bare `(( ))` arithmetic COMMAND, the sibling of the `$(( ))` form
@@ -530,34 +530,34 @@ function walk(line,   n, i, c, j, ch, delim, prev) {
     # separates it from a `(` inside an operand, and `for` belongs in the
     # keyword list because the C-style `for (( ... ))` header is the arithmetic
     # spelling with live sites in this tree.
-    if (W_depth == 0 && c == "(" && substr(line, i + 1, 1) == "(" \
+    if (W_depth == 0 && character == "(" && substr(line, i + 1, 1) == "(" \
         && (substr(line, 1, i - 1) ~ /(^|[;&|(){}[:space:]])(if|while|until|then|else|elif|do|for)[[:space:]]+$/ \
             || substr(line, 1, i - 1) ~ /(^|[;&|(){}])[[:space:]]*$/)) {
-      W_qstack[W_depth] = W_q
+      W_quote_stack[W_depth] = W_quote_state
       W_depth++
-      W_qstack[W_depth] = ""
+      W_quote_stack[W_depth] = ""
       W_depth++
-      W_ar[W_depth] = 1
-      W_narith++
-      W_q = ""
+      W_arithmetic_levels[W_depth] = 1
+      W_arithmetic_count++
+      W_quote_state = ""
       i++
       continue
     }
 
-    if (W_depth == 0 && (c == "<" || c == ">") && substr(line, i + 1, 1) == "(") {
-      W_qstack[W_depth] = W_q
+    if (W_depth == 0 && (character == "<" || character == ">") && substr(line, i + 1, 1) == "(") {
+      W_quote_stack[W_depth] = W_quote_state
       W_depth++
-      W_q = ""
+      W_quote_state = ""
       i++
       continue
     }
 
     if (W_depth > 0) {
-      if (c == "(") { W_qstack[W_depth] = ""; W_depth++; continue }
-      if (c == ")") {
-        if (W_ar[W_depth]) { delete W_ar[W_depth]; W_narith-- }
+      if (character == "(") { W_quote_stack[W_depth] = ""; W_depth++; continue }
+      if (character == ")") {
+        if (W_arithmetic_levels[W_depth]) { delete W_arithmetic_levels[W_depth]; W_arithmetic_count-- }
         W_depth--
-        W_q = W_qstack[W_depth]
+        W_quote_state = W_quote_stack[W_depth]
         continue
       }
       # Everything else inside a substitution belongs to the inner command: its
@@ -570,17 +570,17 @@ function walk(line,   n, i, c, j, ch, delim, prev) {
 
     # An unquoted `#` opens a comment only at the start of a word; mid-word it is
     # an ordinary character.
-    if (c == "#") {
+    if (character == "#") {
       if (i == 1) break
-      ch = substr(line, i - 1, 1)
-      if (ch == " " || ch == "\t" || ch == ";" || ch == "&" || ch == "|" || ch == "(") break
+      previous_character = substr(line, i - 1, 1)
+      if (previous_character == " " || previous_character == "\t" || previous_character == ";" || previous_character == "&" || previous_character == "|" || previous_character == "(") break
       continue
     }
     # `;` SEPARATES two commands rather than joining them into one, so errexit
     # still fires on the first: `out=$(cmd); rc=$?` is the same defect written on
     # one line. Stop the walk there and hand the caller the offset, so the
     # remainder is classified as the statement it is.
-    if (c == ";") { W_stop = i + 1; return 0 }
+    if (character == ";") { W_stop = i + 1; return 0 }
     # `||`, `&&`, a pipeline, and a background `&` all mean the assignment is not
     # a bare simple command whose failure kills the shell. `||` in particular is
     # what the repair this gate advertises is built from, so marking the
@@ -592,11 +592,11 @@ function walk(line,   n, i, c, j, ch, delim, prev) {
     # control operator they disqualify the statement and the defect goes
     # unreported. The three spellings are distinguishable by their neighbours:
     # `&` before a `>`, or after a `>` or `<`.
-    if (c == "&") {
-      ch = substr(line, i + 1, 1)
-      prev = (i > 1) ? substr(line, i - 1, 1) : ""
-      if (ch == ">" || prev == ">" || prev == "<") continue
-      W_op = 1
+    if (character == "&") {
+      next_character = substr(line, i + 1, 1)
+      previous_character = (i > 1) ? substr(line, i - 1, 1) : ""
+      if (next_character == ">" || previous_character == ">" || previous_character == "<") continue
+      W_operator = 1
       continue
     }
     # A `|` that belongs to a `>|` CLOBBER redirection is not a pipeline either,
@@ -604,16 +604,16 @@ function walk(line,   n, i, c, j, ch, delim, prev) {
     # The assignment still stands alone on one simple command and errexit still
     # fires on it; read as a pipeline it disqualifies the statement and the
     # defect goes unreported, which is the silent direction.
-    if (c == "|") {
+    if (character == "|") {
       if (i > 1 && substr(line, i - 1, 1) == ">") continue
-      W_op = 1
+      W_operator = 1
       continue
     }
   }
-  return (W_q != "" || W_depth > 0 || W_tick) ? 1 : 0
+  return (W_quote_state != "" || W_depth > 0 || W_in_backtick) ? 1 : 0
 }
 
-# eat_word(s): consume ONE shell word from the front of s and return what is
+# eat_word(remaining_text): consume ONE shell word from the front of remaining_text and return what is
 # left. Quote-aware, because a redirection operand may be quoted and may carry
 # whitespace: a whitespace-delimited matcher stops mid-operand, and the leftover
 # closing fragment then reads as a command word, which exempts a genuine defect
@@ -643,32 +643,32 @@ function walk(line,   n, i, c, j, ch, delim, prev) {
 # draws that distinction, and reading it as a comment here would report a line the
 # shell runs. Position 1 is the only word start this function can see, since the
 # caller hands it a tail with its leading whitespace already stripped.
-function eat_word(s,   n, i, c, q, d) {
-  n = length(s)
-  q = ""
-  d = 0
-  for (i = 1; i <= n; i++) {
-    c = substr(s, i, 1)
+function eat_word(remaining_text,   text_length, i, character, quote_character, substitution_depth) {
+  text_length = length(remaining_text)
+  quote_character = ""
+  substitution_depth = 0
+  for (i = 1; i <= text_length; i++) {
+    character = substr(remaining_text, i, 1)
     # Single quotes make every byte literal, backslash included, so this comes
     # before the escape handling, exactly as in walk().
-    if (q == "\047") { if (c == "\047") q = ""; continue }
-    if (c == "\\") { i++; continue }
-    if (q == "\"") { if (c == "\"") q = ""; continue }
-    if (c == "\047") { q = "\047"; continue }
-    if (c == "\"") { q = "\""; continue }
-    if (c == "$" && substr(s, i + 1, 1) == "(") { d++; i++; continue }
+    if (quote_character == "\047") { if (character == "\047") quote_character = ""; continue }
+    if (character == "\\") { i++; continue }
+    if (quote_character == "\"") { if (character == "\"") quote_character = ""; continue }
+    if (character == "\047") { quote_character = "\047"; continue }
+    if (character == "\"") { quote_character = "\""; continue }
+    if (character == "$" && substr(remaining_text, i + 1, 1) == "(") { substitution_depth++; i++; continue }
     # A process substitution operand, at a word start only. See the docblock.
-    if (i == 1 && (c == "<" || c == ">") && substr(s, i + 1, 1) == "(") { d++; i++; continue }
-    if (d > 0) {
-      if (c == "(") d++
-      else if (c == ")") d--
+    if (i == 1 && (character == "<" || character == ">") && substr(remaining_text, i + 1, 1) == "(") { substitution_depth++; i++; continue }
+    if (substitution_depth > 0) {
+      if (character == "(") substitution_depth++
+      else if (character == ")") substitution_depth--
       continue
     }
-    if (c == " " || c == "\t") break
-    if (c == "#") { if (i == 1) break; continue }
-    if (index(";|&()<>", c) > 0) break
+    if (character == " " || character == "\t") break
+    if (character == "#") { if (i == 1) break; continue }
+    if (index(";|&()<>", character) > 0) break
   }
-  return substr(s, i)
+  return substr(remaining_text, i)
 }
 
 # has_status_read(line): 1 when the line reads `$?`, quote-aware.
@@ -682,14 +682,14 @@ function eat_word(s,   n, i, c, q, d) {
 # tree on correct code. Inside DOUBLE quotes a `$?` does expand, so `echo "rc
 # $?"` is a read like any other, and a single quote appearing inside a
 # double-quoted string is an ordinary character rather than a quote.
-function has_status_read(line,   n, i, c, q, prev) {
-  q = ""
-  n = length(line)
-  for (i = 1; i <= n; i++) {
-    c = substr(line, i, 1)
-    if (q == "\047") { if (c == "\047") q = ""; continue }
-    if (c == "\\") { i++; continue }
-    if (q == "") {
+function has_status_read(line,   line_length, i, character, quote_character, previous_character) {
+  quote_character = ""
+  line_length = length(line)
+  for (i = 1; i <= line_length; i++) {
+    character = substr(line, i, 1)
+    if (quote_character == "\047") { if (character == "\047") quote_character = ""; continue }
+    if (character == "\\") { i++; continue }
+    if (quote_character == "") {
       # A TRAILING COMMENT is not a status read, and reading one as a hit is a
       # wrong verdict on reachable code: `some_cmd   # returns $? to the caller`
       # holds no read at all, and the line runs whenever the assignment above it
@@ -698,39 +698,39 @@ function has_status_read(line,   n, i, c, q, prev) {
       # what the line even contains. Carrying a pending assignment across
       # comment-only lines, which is deliberate, widens the window rather than
       # narrowing it.
-      if (c == "#") {
-        prev = (i > 1) ? substr(line, i - 1, 1) : " "
-        if (prev == " " || prev == "\t" || prev == ";" || prev == "&" || prev == "|" || prev == "(") return 0
+      if (character == "#") {
+        previous_character = (i > 1) ? substr(line, i - 1, 1) : " "
+        if (previous_character == " " || previous_character == "\t" || previous_character == ";" || previous_character == "&" || previous_character == "|" || previous_character == "(") return 0
       }
-      if (c == "\047") { q = "\047"; continue }
-      if (c == "\"") { q = "\""; continue }
-    } else if (c == "\"") { q = ""; continue }
-    if (c == "$" && substr(line, i + 1, 1) == "?") return 1
+      if (character == "\047") { quote_character = "\047"; continue }
+      if (character == "\"") { quote_character = "\""; continue }
+    } else if (character == "\"") { quote_character = ""; continue }
+    if (character == "$" && substr(line, i + 1, 1) == "?") return 1
   }
   return 0
 }
 
-# arm(s): update the errexit state from a `set` line. Only an `e` in a short
+# arm(set_line): update the errexit state from a `set` line. Only an `e` in a short
 # option bundle or an explicit `-o errexit` counts, so `set -u` and
 # `set -o pipefail` leave the state alone.
-function arm(s,   n, t, i, w) {
-  n = split(s, t, /[ \t]+/)
-  for (i = 2; i <= n; i++) {
-    w = t[i]
-    if (w == "-o") { if (t[i + 1] == "errexit") armed = 1; i++; continue }
-    if (w == "+o") { if (t[i + 1] == "errexit") armed = 0; i++; continue }
-    if (substr(w, 1, 2) == "--") continue
-    if (substr(w, 1, 1) == "-" && index(w, "e") > 0) armed = 1
-    if (substr(w, 1, 1) == "+" && index(w, "e") > 0) armed = 0
+function arm(set_line,   token_count, tokens, i, word) {
+  token_count = split(set_line, tokens, /[ \t]+/)
+  for (i = 2; i <= token_count; i++) {
+    word = tokens[i]
+    if (word == "-o") { if (tokens[i + 1] == "errexit") armed = 1; i++; continue }
+    if (word == "+o") { if (tokens[i + 1] == "errexit") armed = 0; i++; continue }
+    if (substr(word, 1, 2) == "--") continue
+    if (substr(word, 1, 1) == "-" && index(word, "e") > 0) armed = 1
+    if (substr(word, 1, 1) == "+" && index(word, "e") > 0) armed = 0
   }
 }
 
-function reset_state(  d) {
-  W_q = ""; W_depth = 0; W_tick = 0; W_narith = 0
-  W_heredoc = ""; W_hd_tabs = 0
-  cont = 0; pending = 0; isname = 0; stmt_op = 0; stmt_sub = 0; stmt_nsub = 0
-  for (d in W_qstack) delete W_qstack[d]
-  for (d in W_ar) delete W_ar[d]
+function reset_state(  level) {
+  W_quote_state = ""; W_depth = 0; W_in_backtick = 0; W_arithmetic_count = 0
+  W_heredoc = ""; W_heredoc_tabs = 0
+  continued = 0; pending = 0; isname = 0; statement_operator = 0; statement_substitution = 0; statement_substitution_count = 0
+  for (level in W_quote_stack) delete W_quote_stack[level]
+  for (level in W_arithmetic_levels) delete W_arithmetic_levels[level]
 }
 
 # check_desync(what): report a region the scan could not read to its end.
@@ -743,11 +743,11 @@ function reset_state(  d) {
 # opens, so this fires only where the answer is genuinely unavailable, and
 # saying so is the honest verdict.
 function check_desync(what) {
-  if (W_q != "" || W_depth > 0 || W_tick || cont || W_heredoc != "")
+  if (W_quote_state != "" || W_depth > 0 || W_in_backtick || continued || W_heredoc != "")
     printf "%s: ERROR: the scan lost track of shell state before the end of %s, so the remainder was never classified and this gate cannot certify it clean\n", file, what
 }
 
-# report(n, aline): print a hit, unless the discriminator says this line is not
+# report(line_number, assignment_line): print a hit, unless the discriminator says this line is not
 # executed shell.
 #
 # Each test answers for the line just handed to gaia_scan_feed, which the
@@ -762,27 +762,27 @@ function check_desync(what) {
 # never fire. The order matters for the same reason: a line inside a fixture
 # region or inside a run-only helper carries no instance to waive, so a pragma
 # over it is genuinely unused and must not be marked.
-function report(n, aline) {
+function report(line_number, assignment_line) {
   if (gaia_scan_skip()) return
   if (gaia_scan_run_only()) return
   if (gaia_scan_suppressed("lint-errexit-status-read")) return
-  printf "%s:%d: `$?` read after the command-substitution assignment at line %d, with errexit armed: the assignment takes the substitution status, so a failure exits there and this line and every branch it feeds are dead\n", file, n, aline
+  printf "%s:%d: `$?` read after the command-substitution assignment at line %d, with errexit armed: the assignment takes the substitution status, so a failure exits there and this line and every branch it feeds are dead\n", file, line_number, assignment_line
 }
 
-# pragma_offsurface(n): the honored-nowhere finding, emitted from the scan rule
+# pragma_offsurface(line_number): the honored-nowhere finding, emitted from the scan rule
 # rather than from report() above.
 #
 # Read at the print point it would be silently inert over every pragma sitting
 # above a CLEAN line, which is most of them: report() only runs where there is a
 # hit. A pragma on a surface where nothing can consume it is the finding whether
 # or not its target carries an instance, so it is answered per line.
-function pragma_offsurface(n) {
+function pragma_offsurface(line_number) {
   if (gaia_scan_pragma_here("lint-errexit-status-read"))
-    printf "%s:%d: gaia-lint-ignore is honored only in *.bats; this pragma waives nothing here\n", file, n
+    printf "%s:%d: gaia-lint-ignore is honored only in *.bats; this pragma waives nothing here\n", file, line_number
 }
 
-# feed(line, n): run one line of shell through the detector.
-function feed(line, n,   stripped, probe, tail) {
+# feed(line, line_number): run one line of shell through the detector.
+function feed(line, line_number,   stripped, terminator_candidate, tail) {
   # An open heredoc swallows whole lines until its terminator: the body is data,
   # so nothing in it arms, disarms, or classifies. The terminator comparison
   # tolerates trailing whitespace deliberately. Bash does not, but the two
@@ -790,10 +790,10 @@ function feed(line, n,   stripped, probe, tail) {
   # a few lines read as shell that were not, while never ending one swallows
   # every remaining line of the file and reports clean over all of them.
   if (W_heredoc != "") {
-    probe = line
-    if (W_hd_tabs) sub(/^\t+/, "", probe)
-    sub(/[ \t]+$/, "", probe)
-    if (probe == W_heredoc) W_heredoc = ""
+    terminator_candidate = line
+    if (W_heredoc_tabs) sub(/^\t+/, "", terminator_candidate)
+    sub(/[ \t]+$/, "", terminator_candidate)
+    if (terminator_candidate == W_heredoc) W_heredoc = ""
     return
   }
 
@@ -802,7 +802,7 @@ function feed(line, n,   stripped, probe, tail) {
   # the status read that follows it are seen the same way whether they sit on
   # two lines or one.
   while (1) {
-  if (cont == 0) {
+  if (continued == 0) {
     stripped = line
     sub(/^[ \t]+/, "", stripped)
 
@@ -815,7 +815,7 @@ function feed(line, n,   stripped, probe, tail) {
     if (stripped ~ /^set[ \t]/) arm(stripped)
 
     if (pending) {
-      if (has_status_read(line)) report(n, pending_line)
+      if (has_status_read(line)) report(line_number, pending_line)
       pending = 0
     }
 
@@ -826,30 +826,30 @@ function feed(line, n,   stripped, probe, tail) {
     # regex here, so `$((` arithmetic is told apart from `$(` by the same state
     # machine that has to tell them apart anyway.
     isname = (stripped ~ /^[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?\+?=/)
-    cand_line = n
-    stmt_op = 0
-    stmt_sub = 0
-    stmt_nsub = 0
-    stmt_space_at = -1
+    candidate_line = line_number
+    statement_operator = 0
+    statement_substitution = 0
+    statement_substitution_count = 0
+    statement_space_offset = -1
   }
 
   if (walk(line)) {
-    if (W_op) stmt_op = 1
-    if (W_sub) stmt_sub = 1
-    stmt_nsub += W_nsub
-    if (stmt_space_at == -1) stmt_space_at = W_space_at
-    cont = 1
+    if (W_operator) statement_operator = 1
+    if (W_substitution) statement_substitution = 1
+    statement_substitution_count += W_substitution_count
+    if (statement_space_offset == -1) statement_space_offset = W_space_offset
+    continued = 1
     return
   }
-  if (W_op) stmt_op = 1
-  if (W_sub) stmt_sub = 1
-  stmt_nsub += W_nsub
+  if (W_operator) statement_operator = 1
+  if (W_substitution) statement_substitution = 1
+  statement_substitution_count += W_substitution_count
   # Only the statement`s FIRST line contributes the word break. A continued
   # statement`s later lines have their own leading whitespace, which belongs to
   # no first word, so reading one would exempt a real defect. That a continued
   # statement is therefore never env-prefix-tested is the bound the header names.
-  if (stmt_space_at == -1) stmt_space_at = W_space_at
-  cont = 0
+  if (statement_space_offset == -1) statement_space_offset = W_space_offset
+  continued = 0
   # An ENV-PREFIX assignment (`FOO=$(cmd) run_thing`) is not this class: the
   # status the shell takes is the prefixed COMMAND, so a failing substitution in
   # the prefix does not trip errexit at all (`set -e; FOO=$(false) echo hi` runs
@@ -859,10 +859,10 @@ function feed(line, n,   stripped, probe, tail) {
   # whitespace: whatever follows is another word of the same simple command. A
   # further ASSIGNMENT or a REDIRECTION there is another prefix word of the same
   # simple command, so both are consumed and the search continues behind them.
-  # Bounded to a statement that ends on its own line, since W_space_at indexes
+  # Bounded to a statement that ends on its own line, since W_space_offset indexes
   # into that line.
-  if (isname && stmt_space_at > 0) {
-    tail = substr(line, stmt_space_at)
+  if (isname && statement_space_offset > 0) {
+    tail = substr(line, statement_space_offset)
     sub(/^[ \t]+/, "", tail)
     # One loop over the whole prefix, rather than a test that inspects the first
     # token and stops. The shell accepts an arbitrary run of assignments and
@@ -907,7 +907,7 @@ function feed(line, n,   stripped, probe, tail) {
     if (tail != "" && index(";|&#()", substr(tail, 1, 1)) == 0)
       isname = 0
   }
-  # `stmt_nsub < 2` is the last-substitution-wins term, and it states this
+  # `statement_substitution_count < 2` is the last-substitution-wins term, and it states this
   # gate`s scoping exactly: report only where the substitution the gate FLAGS is
   # the one whose status the shell takes. With one, the flagged substitution IS
   # the last one, so the message printed below names the right command and the
@@ -921,7 +921,7 @@ function feed(line, n,   stripped, probe, tail) {
   # The split is drawn where the gate`s own message stops being true, which is
   # where the env-prefix exclusion above draws it too. The header`s undecidable
   # family names what the exemption misses.
-  if (isname && stmt_sub && !stmt_op && armed && stmt_nsub < 2) { pending = 1; pending_line = cand_line }
+  if (isname && statement_substitution && !statement_operator && armed && statement_substitution_count < 2) { pending = 1; pending_line = candidate_line }
   isname = 0
 
   # The walk stopped at a `;` with text after it: that text is the next
@@ -948,21 +948,21 @@ END { check_desync("the file") }
 # the same reasons its comments give. Errexit starts ON for every body, per
 # `bash -e {0}`.
 readonly YAML_AWK='
-# yfeed: the run:-body feed point. The call sites below reach it, so the
+# yaml_feed: the run:-body feed point. The call sites below reach it, so the
 # discriminator hand-off lives here rather than being repeated at each of them
 # and forgotten at the next one somebody adds.
-function yfeed(line, n) {
+function yaml_feed(line, line_number) {
   gaia_scan_feed(line, is_bats)
-  pragma_offsurface(n)
-  feed(line, n)
+  pragma_offsurface(line_number)
+  feed(line, line_number)
 }
 BEGIN { inrun = 0 }
 {
   if (inrun) {
     # A blank line belongs to the block scalar rather than ending it.
-    if ($0 ~ /^[[:space:]]*$/) { yfeed($0, FNR); next }
-    col = match($0, /[^ ]/)
-    if (col > runcol) { yfeed($0, FNR); next }
+    if ($0 ~ /^[[:space:]]*$/) { yaml_feed($0, FNR); next }
+    column = match($0, /[^ ]/)
+    if (column > run_column) { yaml_feed($0, FNR); next }
     inrun = 0
     # The body just ended, so this is where its state has to balance. A `run:`
     # body is its own script and the state resets on entry, which means an
@@ -972,8 +972,8 @@ BEGIN { inrun = 0 }
     # Fall through: this same line may itself be the next `run:` key.
   }
   if ($0 ~ /^[[:space:]]*(-[[:space:]]+)?run:/) {
-    runcol = index($0, "run:")
-    value = substr($0, runcol + 4)
+    run_column = index($0, "run:")
+    value = substr($0, run_column + 4)
     # A block scalar header carries nothing but the indicator, its optional
     # chomping and indentation digits in either order, and an optional comment.
     # Anything else on the line is inline content, which is a single command and
@@ -1048,18 +1048,18 @@ sh_files=(${GAIA_GUARD_SCAN_FILES[@]+"${GAIA_GUARD_SCAN_FILES[@]}"})
 # for a failed discovery, a failed sort, and a scratch file that could not be
 # created, and the line held here is what names which.
 husky_files=()
-husky_err="$(mktemp -t gaia-errexit-husky-XXXXXX)"
-if gaia_guard_scan_files lint-errexit-status-read husky 2>"$husky_err"; then
+husky_error_file="$(mktemp -t gaia-errexit-husky-XXXXXX)"
+if gaia_guard_scan_files lint-errexit-status-read husky 2>"$husky_error_file"; then
   husky_files=(${GAIA_GUARD_SCAN_FILES[@]+"${GAIA_GUARD_SCAN_FILES[@]}"})
 else
   husky_status=$?
   if [ "$husky_status" -ne 1 ]; then
-    cat "$husky_err" >&2
-    rm -f "$husky_err"
+    cat "$husky_error_file" >&2
+    rm -f "$husky_error_file"
     exit "$husky_status"
   fi
 fi
-rm -f "$husky_err"
+rm -f "$husky_error_file"
 
 gaia_guard_scan_files lint-errexit-status-read workflows || exit $?
 yaml_files=(${GAIA_GUARD_SCAN_FILES[@]+"${GAIA_GUARD_SCAN_FILES[@]}"})
@@ -1073,35 +1073,35 @@ yaml_files=(${GAIA_GUARD_SCAN_FILES[@]+"${GAIA_GUARD_SCAN_FILES[@]}"})
 gaia_guard_bats_files lint-errexit-status-read || exit 1
 
 report=""
-for f in ${sh_files[@]+"${sh_files[@]}"}; do
-  [ -f "$f" ] || continue
-  hits="$("$GAIA_AWK" -v file="$f" -v armed_init=0 -v is_bats=0 -v scripts_dir="$_gaia_guard_lib_dir" \
-    "$GAIA_GUARD_AWK$CORE_AWK$SHELL_AWK" "$f")"
+for scanned_file in ${sh_files[@]+"${sh_files[@]}"}; do
+  [ -f "$scanned_file" ] || continue
+  hits="$("$GAIA_AWK" -v file="$scanned_file" -v armed_init=0 -v is_bats=0 -v scripts_directory="$_gaia_guard_library_directory" \
+    "$GAIA_GUARD_AWK$CORE_AWK$SHELL_AWK" "$scanned_file")"
   [ -z "$hits" ] || report+="$hits"$'\n'
 done
 # The husky set is allowed to be empty and is simply skipped, mirroring the way
 # .gaia/tests/shell-lint.sh treats its own *.bats set: an adopter clone may
 # legitimately carry no hooks, while every real tree carries tracked *.sh, which
 # is why only that set and the workflows are hard preconditions above.
-for f in ${husky_files[@]+"${husky_files[@]}"}; do
-  [ -f "$f" ] || continue
-  hits="$("$GAIA_AWK" -v file="$f" -v armed_init=1 -v is_bats=0 -v scripts_dir="$_gaia_guard_lib_dir" \
-    "$GAIA_GUARD_AWK$CORE_AWK$SHELL_AWK" "$f")"
+for scanned_file in ${husky_files[@]+"${husky_files[@]}"}; do
+  [ -f "$scanned_file" ] || continue
+  hits="$("$GAIA_AWK" -v file="$scanned_file" -v armed_init=1 -v is_bats=0 -v scripts_directory="$_gaia_guard_library_directory" \
+    "$GAIA_GUARD_AWK$CORE_AWK$SHELL_AWK" "$scanned_file")"
   [ -z "$hits" ] || report+="$hits"$'\n'
 done
-for f in ${yaml_files[@]+"${yaml_files[@]}"}; do
-  [ -f "$f" ] || continue
-  hits="$("$GAIA_AWK" -v file="$f" -v armed_init=1 -v is_bats=0 -v scripts_dir="$_gaia_guard_lib_dir" \
-    "$GAIA_GUARD_AWK$CORE_AWK$YAML_AWK" "$f")"
+for scanned_file in ${yaml_files[@]+"${yaml_files[@]}"}; do
+  [ -f "$scanned_file" ] || continue
+  hits="$("$GAIA_AWK" -v file="$scanned_file" -v armed_init=1 -v is_bats=0 -v scripts_directory="$_gaia_guard_library_directory" \
+    "$GAIA_GUARD_AWK$CORE_AWK$YAML_AWK" "$scanned_file")"
   [ -z "$hits" ] || report+="$hits"$'\n'
 done
 
 # The bats set, armed ON and named TWICE: the first pass accumulates the fixture
 # constants a forward-only scan cannot classify, the second one classifies.
-for f in ${GAIA_GUARD_BATS_FILES[@]+"${GAIA_GUARD_BATS_FILES[@]}"}; do
-  [ -f "$f" ] || continue
-  hits="$("$GAIA_AWK" -v file="$f" -v armed_init=1 -v is_bats=1 -v scripts_dir="$_gaia_guard_lib_dir" \
-    "$GAIA_GUARD_AWK$CORE_AWK$BATS_AWK" "$f" "$f")"
+for scanned_file in ${GAIA_GUARD_BATS_FILES[@]+"${GAIA_GUARD_BATS_FILES[@]}"}; do
+  [ -f "$scanned_file" ] || continue
+  hits="$("$GAIA_AWK" -v file="$scanned_file" -v armed_init=1 -v is_bats=1 -v scripts_directory="$_gaia_guard_library_directory" \
+    "$GAIA_GUARD_AWK$CORE_AWK$BATS_AWK" "$scanned_file" "$scanned_file")"
   [ -z "$hits" ] || report+="$hits"$'\n'
 done
 

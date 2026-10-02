@@ -17,16 +17,16 @@
 
 setup() {
   # Resolve the script under test relative to this file (repo-root agnostic).
-  SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
-  SCRIPT="$SCRIPT_DIR/link-worktree.sh"
+  SCRIPT_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
+  SCRIPT="$SCRIPT_DIRECTORY/link-worktree.sh"
 
   # Canonicalize via `pwd -P` because macOS resolves /var -> /private/var
   # inside `git rev-parse`, and the script reports absolute paths from the
   # canonical form. We compare against those reports byte-for-byte.
-  TMPROOT_RAW="$(mktemp -d "${TMPDIR:-/tmp}/gaia-link-wt-XXXXXX")"
-  TMPROOT="$(cd "$TMPROOT_RAW" && pwd -P)"
-  MAIN="$TMPROOT/main"
-  LINKED="$TMPROOT/linked"
+  TEMPORARY_ROOT_RAW="$(mktemp -d "${TMPDIR:-/tmp}/gaia-link-wt-XXXXXX")"
+  TEMPORARY_ROOT="$(cd "$TEMPORARY_ROOT_RAW" && pwd -P)"
+  MAIN="$TEMPORARY_ROOT/main"
+  LINKED="$TEMPORARY_ROOT/linked"
 
   # Git identity for commits inside the sandbox (CI without a configured user).
   export GIT_AUTHOR_NAME="GAIA Test"
@@ -41,13 +41,13 @@ setup() {
 }
 
 teardown() {
-  if [ -n "$TMPROOT" ] && [ -d "$TMPROOT" ]; then
+  if [ -n "$TEMPORARY_ROOT" ] && [ -d "$TEMPORARY_ROOT" ]; then
     # Clean the linked worktree first so git doesn't complain.
     git -C "$MAIN" worktree remove --force "$LINKED" 2>/dev/null || true
-    rm -rf "$TMPROOT"
+    rm -rf "$TEMPORARY_ROOT"
   fi
-  if [ -n "$TMPROOT_RAW" ] && [ "$TMPROOT_RAW" != "$TMPROOT" ] && [ -d "$TMPROOT_RAW" ]; then
-    rm -rf "$TMPROOT_RAW"
+  if [ -n "$TEMPORARY_ROOT_RAW" ] && [ "$TEMPORARY_ROOT_RAW" != "$TEMPORARY_ROOT" ] && [ -d "$TEMPORARY_ROOT_RAW" ]; then
+    rm -rf "$TEMPORARY_ROOT_RAW"
   fi
 }
 
@@ -108,9 +108,9 @@ run_in() {
 
   [ -L "$LINKED/.gaia/local" ]
 
-  bak="$(ls "$LINKED/.gaia/" | grep '^local\.bak\.')"
-  [ -n "$bak" ]
-  [ "$(cat "$LINKED/.gaia/$bak/red-ledger/observations.jsonl")" = "stale-content" ]
+  backup_name="$(ls "$LINKED/.gaia/" | grep '^local\.bak\.')"
+  [ -n "$backup_name" ]
+  [ "$(cat "$LINKED/.gaia/$backup_name/red-ledger/observations.jsonl")" = "stale-content" ]
 
   [[ "$output" == *"linked-after-backup: $LINKED/.gaia/local"* ]] || return 1
 }
@@ -129,10 +129,10 @@ run_in() {
 
   # The broken symlink got renamed to a .bak file (which is itself still a
   # broken symlink; `mv` of a symlink moves the link, not the target).
-  bak="$(ls "$LINKED/.gaia/" | grep '^local\.bak\.')"
-  [ -n "$bak" ]
-  [ -L "$LINKED/.gaia/$bak" ]
-  [ "$(readlink "$LINKED/.gaia/$bak")" = "/nonexistent/path/local" ]
+  backup_name="$(ls "$LINKED/.gaia/" | grep '^local\.bak\.')"
+  [ -n "$backup_name" ]
+  [ -L "$LINKED/.gaia/$backup_name" ]
+  [ "$(readlink "$LINKED/.gaia/$backup_name")" = "/nonexistent/path/local" ]
 
   [[ "$output" == *"linked-after-backup: $LINKED/.gaia/local"* ]] || return 1
 }
@@ -166,7 +166,7 @@ run_in() {
 # ---------- 7. Symlink-permission failure (simulated) ----------
 @test "ln -s failure: logs failed and exits 0 anyway" {
   # Shadow `ln` with a failing version on PATH.
-  fake_bin="$TMPROOT/fake-bin"
+  fake_bin="$TEMPORARY_ROOT/fake-bin"
   mkdir -p "$fake_bin"
   cat > "$fake_bin/ln" <<'FAKE'
 #!/bin/sh
@@ -186,7 +186,7 @@ FAKE
 
 # ---------- 8. Non-git cwd ----------
 @test "not a git repo: logs and exits 0" {
-  nogit="$TMPROOT/nogit"
+  nogit="$TEMPORARY_ROOT/nogit"
   mkdir -p "$nogit"
 
   run run_in "$nogit"
@@ -269,9 +269,9 @@ FAKE
   [ "$status" -eq 0 ]
   [ -L "$LINKED/.env" ]
 
-  bak="$(ls -a "$LINKED" | grep '^\.env\.bak\.')"
-  [ -n "$bak" ]
-  [ "$(cat "$LINKED/$bak")" = "STRAY_VAR=stray" ]
+  backup_name="$(ls -a "$LINKED" | grep '^\.env\.bak\.')"
+  [ -n "$backup_name" ]
+  [ "$(cat "$LINKED/$backup_name")" = "STRAY_VAR=stray" ]
 
   grep -qF -- "linked-after-backup: $LINKED/.env" <<<"$output" || return 1
 }

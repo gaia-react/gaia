@@ -69,8 +69,8 @@ scan_roots=(.claude/hooks .gaia/scripts)
 scan_roots+=(.gaia/tests)
 # gaia:maintainer-only:end
 scan_files=()
-while IFS= read -r f; do
-  scan_files+=("$f")
+while IFS= read -r script_path; do
+  scan_files+=("$script_path")
 done < <(find ${scan_roots[@]+"${scan_roots[@]}"} -type f -name '*.sh' 2>/dev/null | LC_ALL=C sort)
 
 # Whether a file runs under `set -u` is established one of two ways, and the
@@ -100,10 +100,10 @@ inherits_set_u() {
 }
 
 scan_file() {
-  local f="$1"
+  local script_path="$1"
   # Only files that actually run under set -u can hit the empty-array abort.
-  inherits_set_u "$f" ||
-    grep -Eq 'set +-[a-zA-Z]*u|set +-o +nounset' "$f" || return 0
+  inherits_set_u "$script_path" ||
+    grep -Eq 'set +-[a-zA-Z]*u|set +-o +nounset' "$script_path" || return 0
 
   # Flag double-quoted bare array expansions, minus the two guarded forms:
   #   - offset-guard on the same line: ${name[@]+ ... }
@@ -121,7 +121,7 @@ scan_file() {
   # as one element rather than an expansion, and it sits beside guarded
   # neighbours in this tree already. Add either pattern if your hooks rely on
   # the check to find it.
-  awk -v file="$f" '
+  awk -v file="$script_path" '
     /^[[:space:]]*#/ { next }
     {
       rest = $0
@@ -137,13 +137,13 @@ scan_file() {
         rest = substr(rest, RSTART + RLENGTH)
       }
     }
-  ' "$f"
+  ' "$script_path"
 }
 
 report=""
-for f in ${scan_files[@]+"${scan_files[@]}"}; do
-  [ -f "$f" ] || continue
-  hits=$(scan_file "$f")
+for script_path in ${scan_files[@]+"${scan_files[@]}"}; do
+  [ -f "$script_path" ] || continue
+  hits=$(scan_file "$script_path")
   [ -z "$hits" ] || report+="$hits"$'\n'
 done
 

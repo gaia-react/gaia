@@ -7,10 +7,10 @@
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
-  LIB_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../../.specify/extensions/gaia/lib" && pwd)"
+  LIBRARY_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../../.specify/extensions/gaia/lib" && pwd)"
   REPO_SCRIPTS="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../../.gaia/scripts" && pwd)"
-  SCRIPT="$LIB_DIR/spec-abandon-empty.sh"
-  LEDGER_UPDATE="$LIB_DIR/ledger-update.sh"
+  SCRIPT="$LIBRARY_DIRECTORY/spec-abandon-empty.sh"
+  LEDGER_UPDATE="$LIBRARY_DIRECTORY/ledger-update.sh"
   [ -x "$SCRIPT" ] || skip "spec-abandon-empty.sh not executable"
 
   SANDBOX="$(mktemp -d "${BATS_TEST_TMPDIR}/sandbox.XXXXXX")"
@@ -24,14 +24,14 @@ setup() {
   LEDGER="$SANDBOX/.gaia/local/specs/ledger.json"
 }
 
-# old_ts / new_ts: portable ISO8601 timestamps well outside / inside the
+# old_timestamp / new_timestamp: portable ISO8601 timestamps well outside / inside the
 # guard age, computed with jq (never `date -d`/`date -j`, matching the
 # project's cross-platform epoch rule).
-old_ts() {
+old_timestamp() {
   jq -rn '(now - 90000) | strftime("%Y-%m-%dT%H:%M:%SZ")' # ~25h ago
 }
 
-new_ts() {
+new_timestamp() {
   jq -rn '(now - 60) | strftime("%Y-%m-%dT%H:%M:%SZ")' # ~1m ago
 }
 
@@ -47,7 +47,7 @@ status_of() {
 # --- 1. Flips a fully empty, aged draft --------------------------------------
 
 @test "flips an empty draft older than the guard age to abandoned" {
-  seed_ledger "$(jq -nc --arg ts "$(old_ts)" '[{id: "SPEC-001", allocated_at: $ts, status: "draft"}]')"
+  seed_ledger "$(jq -nc --arg timestamp "$(old_timestamp)" '[{id: "SPEC-001", allocated_at: $timestamp, status: "draft"}]')"
   run bash "$SCRIPT" "$SANDBOX"
   [ "$status" -eq 0 ]
   [ "$(status_of SPEC-001)" = "abandoned" ]
@@ -55,7 +55,7 @@ status_of() {
 }
 
 @test "stamps abandoned_at on the flipped row" {
-  seed_ledger "$(jq -nc --arg ts "$(old_ts)" '[{id: "SPEC-001", allocated_at: $ts, status: "draft"}]')"
+  seed_ledger "$(jq -nc --arg timestamp "$(old_timestamp)" '[{id: "SPEC-001", allocated_at: $timestamp, status: "draft"}]')"
   run bash "$SCRIPT" "$SANDBOX"
   [ "$status" -eq 0 ]
   abandoned_at="$(jq -r '.specs[0].abandoned_at // empty' "$LEDGER")"
@@ -65,7 +65,7 @@ status_of() {
 # --- 2. Leaves a draft with a draft cache untouched (any age) ----------------
 
 @test "leaves a draft with a draft-<id>.md cache untouched" {
-  seed_ledger "$(jq -nc --arg ts "$(old_ts)" '[{id: "SPEC-002", allocated_at: $ts, status: "draft"}]')"
+  seed_ledger "$(jq -nc --arg timestamp "$(old_timestamp)" '[{id: "SPEC-002", allocated_at: $timestamp, status: "draft"}]')"
   echo "in progress" > "$SANDBOX/.gaia/local/cache/draft-SPEC-002.md"
   run bash "$SCRIPT" "$SANDBOX"
   [ "$status" -eq 0 ]
@@ -76,7 +76,7 @@ status_of() {
 # --- 3. Leaves a draft with a SPEC.md untouched ------------------------------
 
 @test "leaves a draft with a SPEC.md untouched" {
-  seed_ledger "$(jq -nc --arg ts "$(old_ts)" '[{id: "SPEC-003", allocated_at: $ts, status: "draft"}]')"
+  seed_ledger "$(jq -nc --arg timestamp "$(old_timestamp)" '[{id: "SPEC-003", allocated_at: $timestamp, status: "draft"}]')"
   mkdir -p "$SANDBOX/.gaia/local/specs/SPEC-003"
   echo "# SPEC" > "$SANDBOX/.gaia/local/specs/SPEC-003/SPEC.md"
   run bash "$SCRIPT" "$SANDBOX"
@@ -88,7 +88,7 @@ status_of() {
 # --- 4. Leaves a draft with a gate-1 snapshot untouched ----------------------
 
 @test "leaves a draft with a gate1-<id>.json snapshot untouched" {
-  seed_ledger "$(jq -nc --arg ts "$(old_ts)" '[{id: "SPEC-004", allocated_at: $ts, status: "draft"}]')"
+  seed_ledger "$(jq -nc --arg timestamp "$(old_timestamp)" '[{id: "SPEC-004", allocated_at: $timestamp, status: "draft"}]')"
   echo '{}' > "$SANDBOX/.gaia/local/cache/gate1-SPEC-004.json"
   run bash "$SCRIPT" "$SANDBOX"
   [ "$status" -eq 0 ]
@@ -99,7 +99,7 @@ status_of() {
 # --- 5. Leaves an empty draft younger than the guard age untouched ----------
 
 @test "leaves an empty draft younger than the guard age untouched" {
-  seed_ledger "$(jq -nc --arg ts "$(new_ts)" '[{id: "SPEC-005", allocated_at: $ts, status: "draft"}]')"
+  seed_ledger "$(jq -nc --arg timestamp "$(new_timestamp)" '[{id: "SPEC-005", allocated_at: $timestamp, status: "draft"}]')"
   run bash "$SCRIPT" "$SANDBOX"
   [ "$status" -eq 0 ]
   [ "$(status_of SPEC-005)" = "draft" ]
@@ -109,7 +109,7 @@ status_of() {
 # --- 6. Leaves a non-draft row untouched -------------------------------------
 
 @test "leaves a specified (non-draft) row untouched even if empty and aged" {
-  seed_ledger "$(jq -nc --arg ts "$(old_ts)" '[{id: "SPEC-006", allocated_at: $ts, status: "specified"}]')"
+  seed_ledger "$(jq -nc --arg timestamp "$(old_timestamp)" '[{id: "SPEC-006", allocated_at: $timestamp, status: "specified"}]')"
   run bash "$SCRIPT" "$SANDBOX"
   [ "$status" -eq 0 ]
   [ "$(status_of SPEC-006)" = "specified" ]
@@ -139,7 +139,7 @@ status_of() {
 # --- 9. Multiple eligible drafts flip in one pass ----------------------------
 
 @test "flips multiple eligible drafts in one pass, leaves ineligible ones" {
-  seed_ledger "$(jq -nc --arg old "$(old_ts)" --arg new "$(new_ts)" '[
+  seed_ledger "$(jq -nc --arg old "$(old_timestamp)" --arg new "$(new_timestamp)" '[
     {id: "SPEC-010", allocated_at: $old, status: "draft"},
     {id: "SPEC-011", allocated_at: $old, status: "draft"},
     {id: "SPEC-012", allocated_at: $new, status: "draft"}
@@ -166,7 +166,7 @@ status_of() {
 # --- 11. No draft rows at all: exit 0, silent --------------------------------
 
 @test "ledger with no draft rows: exit 0, silent" {
-  seed_ledger "$(jq -nc --arg ts "$(old_ts)" '[{id: "SPEC-013", allocated_at: $ts, status: "merged"}]')"
+  seed_ledger "$(jq -nc --arg timestamp "$(old_timestamp)" '[{id: "SPEC-013", allocated_at: $timestamp, status: "merged"}]')"
   run bash "$SCRIPT" "$SANDBOX"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
@@ -194,7 +194,7 @@ status_of() {
 # --- 14. Orphan lock is removed when a ghost row is abandoned ---------------
 
 @test "removes the orphan .lock file when a ghost draft is abandoned" {
-  seed_ledger "$(jq -nc --arg ts "$(old_ts)" '[{id: "SPEC-015", allocated_at: $ts, status: "draft"}]')"
+  seed_ledger "$(jq -nc --arg timestamp "$(old_timestamp)" '[{id: "SPEC-015", allocated_at: $timestamp, status: "draft"}]')"
   echo '{"spec_id":"SPEC-015"}' > "$SANDBOX/.gaia/local/cache/spec-session-SPEC-015.lock"
   run bash "$SCRIPT" "$SANDBOX"
   [ "$status" -eq 0 ]
@@ -208,7 +208,7 @@ status_of() {
   # A dead session's lock is precisely the ghost shape; the emptiness guard
   # never grows a fourth (`.lock`) check, so this row is abandoned exactly
   # like a lock-free ghost would be.
-  seed_ledger "$(jq -nc --arg ts "$(old_ts)" '[{id: "SPEC-016", allocated_at: $ts, status: "draft"}]')"
+  seed_ledger "$(jq -nc --arg timestamp "$(old_timestamp)" '[{id: "SPEC-016", allocated_at: $timestamp, status: "draft"}]')"
   echo '{"spec_id":"SPEC-016"}' > "$SANDBOX/.gaia/local/cache/spec-session-SPEC-016.lock"
   run bash "$SCRIPT" "$SANDBOX"
   [ "$status" -eq 0 ]

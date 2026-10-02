@@ -64,26 +64,26 @@ setup() {
   # Isolate pricing from the developer's real rate table and the network.
   export GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
   export GAIA_RATES_FEED_DISABLE=1
-  SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
+  SCRIPT_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
-  TALLY="$SCRIPT_DIR/token-tally.sh"
-  ROLLUP="$SCRIPT_DIR/token-rollup.sh"
-  GATE="$SCRIPT_DIR/cost-represented.sh"
-  AUDIT_LIB="$SCRIPT_DIR/audit-window-lib.sh"
+  TALLY="$SCRIPT_DIRECTORY/token-tally.sh"
+  ROLLUP="$SCRIPT_DIRECTORY/token-rollup.sh"
+  GATE="$SCRIPT_DIRECTORY/cost-represented.sh"
+  AUDIT_LIBRARY="$SCRIPT_DIRECTORY/audit-window-lib.sh"
   HELPERS="$REPO_ROOT/.gaia/tests/hooks/helpers"
 
-  FIX_TALLY="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-tally" && pwd)"
-  FIX_E2E="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/spec032-e2e" && pwd)"
+  FIXTURE_TALLY="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-tally" && pwd)"
+  FIXTURE_E2E="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/spec032-e2e" && pwd)"
 
-  AR="$FIX_TALLY/auditreview/projects"
-  AR_SESSION="fixtureauditreview0001"
-  ANCHOR="$FIX_TALLY/projects"
+  AUDIT_REVIEW_PROJECTS="$FIXTURE_TALLY/auditreview/projects"
+  AUDIT_REVIEW_SESSION="fixtureauditreview0001"
+  ANCHOR="$FIXTURE_TALLY/projects"
   ANCHOR_SESSION="fixturesession0001"
-  SPAN="$FIX_E2E/elapsed-span/projects"
+  SPAN="$FIXTURE_E2E/elapsed-span/projects"
   SPAN_SESSION="fixturespec032span0001"
 
   # shellcheck source=.gaia/scripts/audit-window-lib.sh
-  source "$AUDIT_LIB"
+  source "$AUDIT_LIBRARY"
 
   export GIT_AUTHOR_NAME="GAIA Test"
   export GIT_AUTHOR_EMAIL="gaia-test@example.com"
@@ -102,13 +102,13 @@ assert_contains() {
 
 # ---------- shared hook-integration harness (items 5b/10) ----------
 write_running() {
-  # write_running <plan_dir> <branch> <started>
+  # write_running <plan_directory> <branch> <started>
   mkdir -p "$1"
   { printf 'branch: %s\n' "$2"; printf 'slug: %s\n' "$(basename "$1")"; printf 'started: %s\n' "$3"; } > "$1/RUNNING"
 }
 
 write_readme_with_spec() {
-  # write_readme_with_spec <plan_dir> <spec_path>
+  # write_readme_with_spec <plan_directory> <spec_path>
   mkdir -p "$1"
   {
     printf '# Plan\n\n'
@@ -150,130 +150,130 @@ ledger_path() {
 @test "1+1b: gaia_audit_window_write produces the FC-1 spec breadcrumb, and the real spec tally nests audit.adversarial from it" {
   CACHE="$BATS_TEST_TMPDIR/cache-1"
   mkdir -p "$CACHE"
-  OUTDIR="$BATS_TEST_TMPDIR/out-1"
+  OUTPUT_DIRECTORY="$BATS_TEST_TMPDIR/out-1"
   LEDGER="$BATS_TEST_TMPDIR/ledger-1.jsonl"
 
   # The producer-side seam under test: the SAME function spec.md step 7
   # sources and calls, never a hand-authored breadcrumb file.
-  bc_path="$CACHE/audit-window-SPEC-032.json"
-  run gaia_audit_window_write "$bc_path" "$AR_SESSION" \
+  breadcrumb_path="$CACHE/audit-window-SPEC-032.json"
+  run gaia_audit_window_write "$breadcrumb_path" "$AUDIT_REVIEW_SESSION" \
     "2026-08-01T10:05:00Z" "2026-08-01T10:07:00Z" '["FG","TST","COV","RT"]' "standard"
   [ "$status" -eq 0 ]
 
   # FC-1 path + shape: session_id, started_at, ended_at, lenses, intensity.
-  [ -f "$bc_path" ]
-  [ "$(jq -r '.session_id' "$bc_path")" = "$AR_SESSION" ]
-  [ "$(jq -r '.started_at' "$bc_path")" = "2026-08-01T10:05:00Z" ]
-  [ "$(jq -r '.ended_at' "$bc_path")" = "2026-08-01T10:07:00Z" ]
-  [ "$(jq -c '.lenses' "$bc_path")" = '["FG","TST","COV","RT"]' ]
-  [ "$(jq -r '.intensity' "$bc_path")" = "standard" ]
+  [ -f "$breadcrumb_path" ]
+  [ "$(jq -r '.session_id' "$breadcrumb_path")" = "$AUDIT_REVIEW_SESSION" ]
+  [ "$(jq -r '.started_at' "$breadcrumb_path")" = "2026-08-01T10:05:00Z" ]
+  [ "$(jq -r '.ended_at' "$breadcrumb_path")" = "2026-08-01T10:07:00Z" ]
+  [ "$(jq -c '.lenses' "$breadcrumb_path")" = '["FG","TST","COV","RT"]' ]
+  [ "$(jq -r '.intensity' "$breadcrumb_path")" = "standard" ]
 
   # Feed THAT written file into the real spec tally.
   run bash "$TALLY" --action spec --spec-id SPEC-032 \
-    --out-dir "$OUTDIR" --session-id "$AR_SESSION" \
-    --projects-root "$AR" --ledger "$LEDGER" --cache-dir "$CACHE"
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "$AUDIT_REVIEW_SESSION" \
+    --projects-root "$AUDIT_REVIEW_PROJECTS" --ledger "$LEDGER" --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
 
-  led() { jq -r "$1" "$LEDGER"; }
-  [ "$(led '.audit.adversarial.buckets.fresh_input')" -eq 21 ]
-  [ "$(led '.audit.adversarial.buckets.cache_write')" -eq 41 ]
-  [ "$(led '.audit.adversarial.buckets.cache_read')" -eq 61 ]
-  [ "$(led '.audit.adversarial.buckets.output')" -eq 81 ]
-  [ "$(led '.audit.adversarial.elapsed_seconds')" -eq 50 ]
-  [ "$(led '.audit.adversarial.dollars')" = "null" ]
-  [ "$(led '.audit.adversarial.intensity')" = "standard" ]
-  [ "$(led '.audit.adversarial.lenses | sort | join(",")')" = "COV,FG,RT,TST" ]
+  read_ledger_field() { jq -r "$1" "$LEDGER"; }
+  [ "$(read_ledger_field '.audit.adversarial.buckets.fresh_input')" -eq 21 ]
+  [ "$(read_ledger_field '.audit.adversarial.buckets.cache_write')" -eq 41 ]
+  [ "$(read_ledger_field '.audit.adversarial.buckets.cache_read')" -eq 61 ]
+  [ "$(read_ledger_field '.audit.adversarial.buckets.output')" -eq 81 ]
+  [ "$(read_ledger_field '.audit.adversarial.elapsed_seconds')" -eq 50 ]
+  [ "$(read_ledger_field '.audit.adversarial.dollars')" = "null" ]
+  [ "$(read_ledger_field '.audit.adversarial.intensity')" = "standard" ]
+  [ "$(read_ledger_field '.audit.adversarial.lenses | sort | join(",")')" = "COV,FG,RT,TST" ]
 
   # Identical on the cost.jsonl row AND the cost.json sidecar's .spec value.
   ledger_audit="$(jq -c '.audit' "$LEDGER")"
-  sidecar_audit="$(jq -c '.spec.audit' "$OUTDIR/cost.json")"
+  sidecar_audit="$(jq -c '.spec.audit' "$OUTPUT_DIRECTORY/cost.json")"
   [ "$ledger_audit" = "$sidecar_audit" ]
 
   # The tally consumed (deleted) the breadcrumb it just read.
-  [ ! -f "$bc_path" ]
+  [ ! -f "$breadcrumb_path" ]
 }
 
 @test "1b: plan-form breadcrumb write omits intensity and is namespaced by the SPEC id, never audit-window-plan.json (DP-002/CG-001)" {
   CACHE="$BATS_TEST_TMPDIR/cache-1b"
   mkdir -p "$CACHE"
-  OUTDIR="$BATS_TEST_TMPDIR/out-1b"
+  OUTPUT_DIRECTORY="$BATS_TEST_TMPDIR/out-1b"
   LEDGER="$BATS_TEST_TMPDIR/ledger-1b.jsonl"
 
   # Empty 6th arg (no intensity) -- the plan-audit form.
-  bc_path="$CACHE/audit-window-SPEC-032-plan.json"
-  run gaia_audit_window_write "$bc_path" "$AR_SESSION" \
+  breadcrumb_path="$CACHE/audit-window-SPEC-032-plan.json"
+  run gaia_audit_window_write "$breadcrumb_path" "$AUDIT_REVIEW_SESSION" \
     "2026-08-01T10:05:00Z" "2026-08-01T10:07:00Z" '["DP","CG","COV"]' ""
   [ "$status" -eq 0 ]
-  [ -f "$bc_path" ]
-  jq -e 'has("intensity")' >/dev/null 2>&1 "$bc_path" && return 1
+  [ -f "$breadcrumb_path" ]
+  jq -e 'has("intensity")' >/dev/null 2>&1 "$breadcrumb_path" && return 1
   # Namespaced by the SPEC id, never the plan-dir basename literal "plan".
   [ ! -e "$CACHE/audit-window-plan.json" ]
 
   run bash "$TALLY" --action plan --spec-id SPEC-032 --plan-slug spec-032-e2e \
-    --out-dir "$OUTDIR" --session-id "$AR_SESSION" \
-    --projects-root "$AR" --ledger "$LEDGER" --cache-dir "$CACHE"
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "$AUDIT_REVIEW_SESSION" \
+    --projects-root "$AUDIT_REVIEW_PROJECTS" --ledger "$LEDGER" --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
 
-  led() { jq -r "$1" "$LEDGER"; }
+  read_ledger_field() { jq -r "$1" "$LEDGER"; }
   # UAT-005: plan shape carries buckets/dollars/elapsed_seconds/lenses, no intensity.
-  [ "$(led '.audit.adversarial.buckets.fresh_input')" -eq 21 ]
-  [ "$(led '.audit.adversarial.buckets.output')" -eq 81 ]
-  [ "$(led '.audit.adversarial.elapsed_seconds')" -eq 50 ]
-  [ "$(led '.audit.adversarial.lenses | sort | join(",")')" = "CG,COV,DP" ]
+  [ "$(read_ledger_field '.audit.adversarial.buckets.fresh_input')" -eq 21 ]
+  [ "$(read_ledger_field '.audit.adversarial.buckets.output')" -eq 81 ]
+  [ "$(read_ledger_field '.audit.adversarial.elapsed_seconds')" -eq 50 ]
+  [ "$(read_ledger_field '.audit.adversarial.lenses | sort | join(",")')" = "CG,COV,DP" ]
   run jq -e '.audit.adversarial | has("intensity")' "$LEDGER"
   [ "$status" -eq 1 ]
   [ "$output" = "false" ]
 
   # Phase total unaffected (item 2/UAT-003 restated for the plan form).
-  [ "$(led '.buckets.fresh_input')" -eq 22 ]
-  [ "$(led '.total')" -eq 214 ]
+  [ "$(read_ledger_field '.buckets.fresh_input')" -eq 22 ]
+  [ "$(read_ledger_field '.total')" -eq 214 ]
 }
 
 # 2. UAT-003: subset invariant, phase totals unaffected, no double-count
 @test "2: audit buckets are a strict subset, phase total/buckets are IDENTICAL with vs without the nesting, one row only" {
   # Without any breadcrumb (empty cache dir).
-  NOBC_CACHE="$BATS_TEST_TMPDIR/nobc-cache"
-  mkdir -p "$NOBC_CACHE"
-  LEDGER_A="$BATS_TEST_TMPDIR/ledger-a.jsonl"
+  NO_BREADCRUMB_CACHE="$BATS_TEST_TMPDIR/nobc-cache"
+  mkdir -p "$NO_BREADCRUMB_CACHE"
+  LEDGER_WITHOUT_BREADCRUMB="$BATS_TEST_TMPDIR/ledger-a.jsonl"
   run bash "$TALLY" --action spec --spec-id SPEC-032 \
-    --out-dir "$BATS_TEST_TMPDIR/out-a" --session-id "$AR_SESSION" \
-    --projects-root "$AR" --ledger "$LEDGER_A" --cache-dir "$NOBC_CACHE"
+    --out-dir "$BATS_TEST_TMPDIR/out-a" --session-id "$AUDIT_REVIEW_SESSION" \
+    --projects-root "$AUDIT_REVIEW_PROJECTS" --ledger "$LEDGER_WITHOUT_BREADCRUMB" --cache-dir "$NO_BREADCRUMB_CACHE"
   [ "$status" -eq 0 ]
 
   # With a freshly written breadcrumb.
-  WBC_CACHE="$BATS_TEST_TMPDIR/wbc-cache"
-  mkdir -p "$WBC_CACHE"
-  run gaia_audit_window_write "$WBC_CACHE/audit-window-SPEC-032.json" "$AR_SESSION" \
+  WITH_BREADCRUMB_CACHE="$BATS_TEST_TMPDIR/wbc-cache"
+  mkdir -p "$WITH_BREADCRUMB_CACHE"
+  run gaia_audit_window_write "$WITH_BREADCRUMB_CACHE/audit-window-SPEC-032.json" "$AUDIT_REVIEW_SESSION" \
     "2026-08-01T10:05:00Z" "2026-08-01T10:07:00Z" '["FG","TST","COV","RT"]' "standard"
   [ "$status" -eq 0 ]
-  LEDGER_B="$BATS_TEST_TMPDIR/ledger-b.jsonl"
+  LEDGER_WITH_BREADCRUMB="$BATS_TEST_TMPDIR/ledger-b.jsonl"
   run bash "$TALLY" --action spec --spec-id SPEC-032 \
-    --out-dir "$BATS_TEST_TMPDIR/out-b" --session-id "$AR_SESSION" \
-    --projects-root "$AR" --ledger "$LEDGER_B" --cache-dir "$WBC_CACHE"
+    --out-dir "$BATS_TEST_TMPDIR/out-b" --session-id "$AUDIT_REVIEW_SESSION" \
+    --projects-root "$AUDIT_REVIEW_PROJECTS" --ledger "$LEDGER_WITH_BREADCRUMB" --cache-dir "$WITH_BREADCRUMB_CACHE"
   [ "$status" -eq 0 ]
 
   # The presence of the nesting changes nothing about the phase record itself.
-  [ "$(jq -c '.buckets' "$LEDGER_A")" = "$(jq -c '.buckets' "$LEDGER_B")" ]
-  [ "$(jq -r '.total' "$LEDGER_A")" = "$(jq -r '.total' "$LEDGER_B")" ]
-  [ "$(jq -r '.total' "$LEDGER_B")" -eq 214 ]
+  [ "$(jq -c '.buckets' "$LEDGER_WITHOUT_BREADCRUMB")" = "$(jq -c '.buckets' "$LEDGER_WITH_BREADCRUMB")" ]
+  [ "$(jq -r '.total' "$LEDGER_WITHOUT_BREADCRUMB")" = "$(jq -r '.total' "$LEDGER_WITH_BREADCRUMB")" ]
+  [ "$(jq -r '.total' "$LEDGER_WITH_BREADCRUMB")" -eq 214 ]
 
-  run jq -e 'has("audit")' "$LEDGER_A"
+  run jq -e 'has("audit")' "$LEDGER_WITHOUT_BREADCRUMB"
   [ "$status" -eq 1 ]
   [ "$output" = "false" ]
 
   # Subset: every audit bucket <= the phase bucket.
-  led() { jq -r "$1" "$LEDGER_B"; }
-  [ "$(led '.audit.adversarial.buckets.fresh_input <= .buckets.fresh_input')" = "true" ]
-  [ "$(led '.audit.adversarial.buckets.cache_write <= .buckets.cache_write')" = "true" ]
-  [ "$(led '.audit.adversarial.buckets.cache_read <= .buckets.cache_read')" = "true" ]
-  [ "$(led '.audit.adversarial.buckets.output <= .buckets.output')" = "true" ]
+  read_ledger_field() { jq -r "$1" "$LEDGER_WITH_BREADCRUMB"; }
+  [ "$(read_ledger_field '.audit.adversarial.buckets.fresh_input <= .buckets.fresh_input')" = "true" ]
+  [ "$(read_ledger_field '.audit.adversarial.buckets.cache_write <= .buckets.cache_write')" = "true" ]
+  [ "$(read_ledger_field '.audit.adversarial.buckets.cache_read <= .buckets.cache_read')" = "true" ]
+  [ "$(read_ledger_field '.audit.adversarial.buckets.output <= .buckets.output')" = "true" ]
 
   # No second row re-counts the audit spend: exactly one line, and no row on
   # the ledger carries the audit subset's own total (204) as its OWN total.
-  [ "$(wc -l < "$LEDGER_B" | tr -d ' ')" -eq 1 ]
-  audit_total=$(( $(led '.audit.adversarial.buckets.fresh_input') + $(led '.audit.adversarial.buckets.cache_write') + $(led '.audit.adversarial.buckets.cache_read') + $(led '.audit.adversarial.buckets.output') ))
+  [ "$(wc -l < "$LEDGER_WITH_BREADCRUMB" | tr -d ' ')" -eq 1 ]
+  audit_total=$(( $(read_ledger_field '.audit.adversarial.buckets.fresh_input') + $(read_ledger_field '.audit.adversarial.buckets.cache_write') + $(read_ledger_field '.audit.adversarial.buckets.cache_read') + $(read_ledger_field '.audit.adversarial.buckets.output') ))
   [ "$audit_total" -eq 204 ]
-  run jq -e --argjson at "$audit_total" '[inputs | select(.total == $at)] | length' "$LEDGER_B"
+  run jq -e --argjson audit_total "$audit_total" '[inputs | select(.total == $audit_total)] | length' "$LEDGER_WITH_BREADCRUMB"
   [ "$status" -eq 0 ]
   [ "$output" -eq 0 ]
 }
@@ -286,31 +286,31 @@ ledger_path() {
     "2026-09-01T02:00:00Z" "2026-09-01T02:00:25Z" '["FG"]' "standard"
   [ "$status" -eq 0 ]
 
-  OUTDIR="$BATS_TEST_TMPDIR/out-3"
+  OUTPUT_DIRECTORY="$BATS_TEST_TMPDIR/out-3"
   LEDGER="$BATS_TEST_TMPDIR/ledger-3.jsonl"
   run bash "$TALLY" --action spec --spec-id SPEC-SPAN \
-    --out-dir "$OUTDIR" --session-id "$SPAN_SESSION" \
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "$SPAN_SESSION" \
     --projects-root "$SPAN" --ledger "$LEDGER" --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
 
-  led() { jq -r "$1" "$LEDGER"; }
+  read_ledger_field() { jq -r "$1" "$LEDGER"; }
   # Hand-computed: max(02:00:25) - min(02:00:00) = 25s.
-  [ "$(led '.audit.adversarial.elapsed_seconds')" -eq 25 ]
-  [ "$(led '.audit.adversarial.buckets.fresh_input')" -eq 26 ]
-  [ "$(led '.audit.adversarial.buckets.cache_write')" -eq 4 ]
-  [ "$(led '.audit.adversarial.buckets.cache_read')" -eq 8 ]
-  [ "$(led '.audit.adversarial.buckets.output')" -eq 12 ]
+  [ "$(read_ledger_field '.audit.adversarial.elapsed_seconds')" -eq 25 ]
+  [ "$(read_ledger_field '.audit.adversarial.buckets.fresh_input')" -eq 26 ]
+  [ "$(read_ledger_field '.audit.adversarial.buckets.cache_write')" -eq 4 ]
+  [ "$(read_ledger_field '.audit.adversarial.buckets.cache_read')" -eq 8 ]
+  [ "$(read_ledger_field '.audit.adversarial.buckets.output')" -eq 12 ]
 
   # Sum of the two sub-agents' own spans: lensa 20s + lensb 15s = 35s. The
   # union span (25s) is <= that sum, strictly less because the two sub-agents
   # OVERLAP rather than running strictly back-to-back.
-  s=35
-  elapsed="$(led '.audit.adversarial.elapsed_seconds')"
-  [ "$elapsed" -le "$s" ]
-  [ "$elapsed" -lt "$s" ]
+  individual_spans_sum_seconds=35
+  elapsed="$(read_ledger_field '.audit.adversarial.elapsed_seconds')"
+  [ "$elapsed" -le "$individual_spans_sum_seconds" ]
+  [ "$elapsed" -lt "$individual_spans_sum_seconds" ]
 
   # Phase total unaffected: main(4) + audit(50) = 54.
-  [ "$(led '.total')" -eq 54 ]
+  [ "$(read_ledger_field '.total')" -eq 54 ]
 }
 
 # 4. UAT-009 degrade: absent breadcrumb / session_id mismatch omit .audit
@@ -318,35 +318,35 @@ ledger_path() {
   # Absent: no breadcrumb file at all for SPEC-032 in this cache dir.
   EMPTY_CACHE="$BATS_TEST_TMPDIR/empty-cache"
   mkdir -p "$EMPTY_CACHE"
-  LEDGER_A="$BATS_TEST_TMPDIR/ledger-absent.jsonl"
+  LEDGER_ABSENT_BREADCRUMB="$BATS_TEST_TMPDIR/ledger-absent.jsonl"
   run bash "$TALLY" --action spec --spec-id SPEC-032 \
-    --out-dir "$BATS_TEST_TMPDIR/out-absent" --session-id "$AR_SESSION" \
-    --projects-root "$AR" --ledger "$LEDGER_A" --cache-dir "$EMPTY_CACHE"
+    --out-dir "$BATS_TEST_TMPDIR/out-absent" --session-id "$AUDIT_REVIEW_SESSION" \
+    --projects-root "$AUDIT_REVIEW_PROJECTS" --ledger "$LEDGER_ABSENT_BREADCRUMB" --cache-dir "$EMPTY_CACHE"
   [ "$status" -eq 0 ]
-  run jq -e 'has("audit")' "$LEDGER_A"
+  run jq -e 'has("audit")' "$LEDGER_ABSENT_BREADCRUMB"
   [ "$status" -eq 1 ]
   [ "$output" = "false" ]
-  [ "$(jq -r '.total' "$LEDGER_A")" -eq 214 ]
+  [ "$(jq -r '.total' "$LEDGER_ABSENT_BREADCRUMB")" -eq 214 ]
 
   # Session mismatch: the breadcrumb's session_id differs from the tally's.
   MISMATCH_CACHE="$BATS_TEST_TMPDIR/mismatch-cache"
   mkdir -p "$MISMATCH_CACHE"
-  bc_path="$MISMATCH_CACHE/audit-window-SPEC-032.json"
-  run gaia_audit_window_write "$bc_path" "some-other-session" \
+  breadcrumb_path="$MISMATCH_CACHE/audit-window-SPEC-032.json"
+  run gaia_audit_window_write "$breadcrumb_path" "some-other-session" \
     "2026-08-01T10:05:00Z" "2026-08-01T10:07:00Z" '["FG","TST","COV","RT"]' "standard"
   [ "$status" -eq 0 ]
 
-  LEDGER_B="$BATS_TEST_TMPDIR/ledger-mismatch.jsonl"
+  LEDGER_MISMATCHED_BREADCRUMB="$BATS_TEST_TMPDIR/ledger-mismatch.jsonl"
   run bash "$TALLY" --action spec --spec-id SPEC-032 \
-    --out-dir "$BATS_TEST_TMPDIR/out-mismatch" --session-id "$AR_SESSION" \
-    --projects-root "$AR" --ledger "$LEDGER_B" --cache-dir "$MISMATCH_CACHE"
+    --out-dir "$BATS_TEST_TMPDIR/out-mismatch" --session-id "$AUDIT_REVIEW_SESSION" \
+    --projects-root "$AUDIT_REVIEW_PROJECTS" --ledger "$LEDGER_MISMATCHED_BREADCRUMB" --cache-dir "$MISMATCH_CACHE"
   [ "$status" -eq 0 ]
-  run jq -e 'has("audit")' "$LEDGER_B"
+  run jq -e 'has("audit")' "$LEDGER_MISMATCHED_BREADCRUMB"
   [ "$status" -eq 1 ]
   [ "$output" = "false" ]
-  [ "$(jq -r '.total' "$LEDGER_B")" -eq 214 ]
+  [ "$(jq -r '.total' "$LEDGER_MISMATCHED_BREADCRUMB")" -eq 214 ]
   # The mismatched breadcrumb is still consumed (read once, then removed).
-  [ ! -f "$bc_path" ]
+  [ ! -f "$breadcrumb_path" ]
 }
 
 # 5/6/7/10. Review records: resolver association (UAT-008), counted once
@@ -354,7 +354,7 @@ ledger_path() {
 @test "5: --action review with no association is ad-hoc (null/null), not partial, and never surfaces under any feature's rollup (UAT-007/UAT-010)" {
   LEDGER="$BATS_TEST_TMPDIR/ledger-adhoc.jsonl"
   run bash "$TALLY" --action review \
-    --session-id "$AR_SESSION" --projects-root "$AR" --ledger "$LEDGER"
+    --session-id "$AUDIT_REVIEW_SESSION" --projects-root "$AUDIT_REVIEW_PROJECTS" --ledger "$LEDGER"
   [ "$status" -eq 0 ]
 
   [ "$(jq -r '.spec_id' "$LEDGER")" = "null" ]
@@ -374,14 +374,14 @@ ledger_path() {
   build_full_repo
   cd "$REPO"
   branch="$(git branch --show-current)"
-  plan_dir="$REPO/.gaia/local/specs/SPEC-810/plan"
-  write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-810/SPEC.md"
-  write_running "$plan_dir" "$branch" "2026-07-01T00:00:00Z"
+  plan_directory="$REPO/.gaia/local/specs/SPEC-810/plan"
+  write_readme_with_spec "$plan_directory" "/abs/root/.gaia/local/specs/SPEC-810/SPEC.md"
+  write_running "$plan_directory" "$branch" "2026-07-01T00:00:00Z"
 
   # Bash gh-pr-merge trigger: resolves via resolve_active_plan_directory +
   # resolve_feature_key (NOT --spec-id), records the review row for real.
-  input=$("$HELPERS/mock-hook-input.sh" post-tool-use "$AR_SESSION" Bash "gh pr merge 1")
-  run env GAIA_TALLY_PROJECTS_ROOT="$AR" bash -c "echo '$input' | '$REPO/.claude/hooks/token-tally-review.sh'"
+  input=$("$HELPERS/mock-hook-input.sh" post-tool-use "$AUDIT_REVIEW_SESSION" Bash "gh pr merge 1")
+  run env GAIA_TALLY_PROJECTS_ROOT="$AUDIT_REVIEW_PROJECTS" bash -c "echo '$input' | '$REPO/.claude/hooks/token-tally-review.sh'"
   [ "$status" -eq 0 ]
 
   LEDGER="$(ledger_path)"
@@ -397,8 +397,8 @@ ledger_path() {
 
   # Stop trigger for the SAME session: dedup by review_id keeps exactly one
   # row (the merge-then-Stop double-fire).
-  stop_input=$("$HELPERS/mock-hook-input.sh" stop "$AR_SESSION")
-  run env GAIA_TALLY_PROJECTS_ROOT="$AR" bash -c "echo '$stop_input' | '$REPO/.claude/hooks/token-tally-review.sh'"
+  stop_input=$("$HELPERS/mock-hook-input.sh" stop "$AUDIT_REVIEW_SESSION")
+  run env GAIA_TALLY_PROJECTS_ROOT="$AUDIT_REVIEW_PROJECTS" bash -c "echo '$stop_input' | '$REPO/.claude/hooks/token-tally-review.sh'"
   [ "$status" -eq 0 ]
   [ "$(wc -l < "$LEDGER" | tr -d ' ')" -eq 1 ]
 
@@ -407,7 +407,7 @@ ledger_path() {
   # review's own spend is not folded into any phase total.
   run bash "$REPO/.gaia/scripts/token-tally.sh" --action execute --spec-id SPEC-810 \
     --plan-slug spec-810-e2e --out-dir "$BATS_TEST_TMPDIR/out-6" \
-    --session-id "$AR_SESSION" --projects-root "$AR"
+    --session-id "$AUDIT_REVIEW_SESSION" --projects-root "$AUDIT_REVIEW_PROJECTS"
   [ "$status" -eq 0 ]
 
   exec_row="$(grep '"kind":"execute"' "$LEDGER")"
@@ -439,19 +439,19 @@ ledger_path() {
 # 9. UAT-010: back-compat -- pre-existing rows untouched, schema_version 1,
 # cost-represented and token-rollup unaffected by the new audit/review rows
 write_legacy_row() {
-  # write_legacy_row <ledger> <kind> <spec_id> <session_id> <f> <cw> <cr> <o> <ts>
-  local ledger="$1" kind="$2" spec_id="$3" sid="$4" f="$5" cw="$6" cr="$7" o="$8" ts="$9"
-  local total=$((f + cw + cr + o))
-  jq -nc --arg kind "$kind" --arg spec_id "$spec_id" --arg sid "$sid" \
-    --argjson f "$f" --argjson cw "$cw" --argjson cr "$cr" --argjson o "$o" \
-    --argjson total "$total" --arg ts "$ts" '
+  # write_legacy_row <ledger> <kind> <spec_id> <session_id> <fresh_input> <cache_write> <cache_read> <output_tokens> <timestamp>
+  local ledger="$1" kind="$2" spec_id="$3" session_id="$4" fresh_input="$5" cache_write="$6" cache_read="$7" output_tokens="$8" timestamp="$9"
+  local total=$((fresh_input + cache_write + cache_read + output_tokens))
+  jq -nc --arg kind "$kind" --arg spec_id "$spec_id" --arg session_id "$session_id" \
+    --argjson fresh_input "$fresh_input" --argjson cache_write "$cache_write" --argjson cache_read "$cache_read" --argjson output_tokens "$output_tokens" \
+    --argjson total "$total" --arg timestamp "$timestamp" '
     {
       schema_version: 1, kind: $kind, spec_id: $spec_id, plan_id: null, plan_slug: null,
-      session_id: $sid,
-      buckets: {fresh_input: $f, cache_write: $cw, cache_read: $cr, output: $o},
+      session_id: $session_id,
+      buckets: {fresh_input: $fresh_input, cache_write: $cache_write, cache_read: $cache_read, output: $output_tokens},
       total: $total, dollars: null, rate_table_id: null, partial: false,
-      started_at: $ts, ended_at: $ts, duration_seconds: 10, duration_available: true,
-      git_branch: null, project: null, seq: 0, final: true, ts: $ts, session_cwd: null
+      started_at: $timestamp, ended_at: $timestamp, duration_seconds: 10, duration_available: true,
+      git_branch: null, project: null, seq: 0, final: true, ts: $timestamp, session_cwd: null
     }' >> "$ledger"
 }
 
@@ -469,18 +469,18 @@ write_legacy_row() {
   # New row 1: a real nested-audit spec row for a DIFFERENT feature (SPEC-032).
   CACHE="$BATS_TEST_TMPDIR/cache-9"
   mkdir -p "$CACHE"
-  run gaia_audit_window_write "$CACHE/audit-window-SPEC-032.json" "$AR_SESSION" \
+  run gaia_audit_window_write "$CACHE/audit-window-SPEC-032.json" "$AUDIT_REVIEW_SESSION" \
     "2026-08-01T10:05:00Z" "2026-08-01T10:07:00Z" '["FG","TST","COV","RT"]' "standard"
   [ "$status" -eq 0 ]
-  OUTDIR="$BATS_TEST_TMPDIR/out-9"
+  OUTPUT_DIRECTORY="$BATS_TEST_TMPDIR/out-9"
   run bash "$TALLY" --action spec --spec-id SPEC-032 \
-    --out-dir "$OUTDIR" --session-id "$AR_SESSION" \
-    --projects-root "$AR" --ledger "$LEDGER" --cache-dir "$CACHE"
+    --out-dir "$OUTPUT_DIRECTORY" --session-id "$AUDIT_REVIEW_SESSION" \
+    --projects-root "$AUDIT_REVIEW_PROJECTS" --ledger "$LEDGER" --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
 
   # New row 2: a real standalone review row, associated to the same SPEC-032.
   run bash "$TALLY" --action review --spec-id SPEC-032 \
-    --session-id "$AR_SESSION" --projects-root "$AR" --ledger "$LEDGER"
+    --session-id "$AUDIT_REVIEW_SESSION" --projects-root "$AUDIT_REVIEW_PROJECTS" --ledger "$LEDGER"
   [ "$status" -eq 0 ]
 
   # ---- (a) pre-existing rows parse and are unchanged, byte for byte ----
@@ -490,22 +490,22 @@ write_legacy_row() {
   [ "$(jq -r 'select(.session_id=="sess-legacy-exec") | .total' "$LEDGER")" -eq 700 ]
 
   # ---- (b) every new row carries schema_version 1 ----
-  [ "$(jq -r 'select(.session_id=="'"$AR_SESSION"'" and .kind=="spec") | .schema_version' "$LEDGER")" -eq 1 ]
+  [ "$(jq -r 'select(.session_id=="'"$AUDIT_REVIEW_SESSION"'" and .kind=="spec") | .schema_version' "$LEDGER")" -eq 1 ]
   [ "$(jq -r 'select(.kind=="review") | .schema_version' "$LEDGER")" -eq 1 ]
 
   # ---- (c) cost_folder_represented: same verdict with vs without .audit,
   # never chokes on a kind:"review" row mixed into the same ledger ----
   # shellcheck source=/dev/null
   . "$GATE"
-  run cost_folder_represented "$OUTDIR" spec_id SPEC-032 "$LEDGER"
+  run cost_folder_represented "$OUTPUT_DIRECTORY" spec_id SPEC-032 "$LEDGER"
   [ "$status" -eq 0 ]
   assert_contains "$(printf 'spec\tREPRESENTED')"
 
-  jq 'del(.spec.audit)' "$OUTDIR/cost.json" > "$OUTDIR/cost.json.tmp"
-  mv "$OUTDIR/cost.json.tmp" "$OUTDIR/cost.json"
-  run jq -e '.spec | has("audit") | not' "$OUTDIR/cost.json"
+  jq 'del(.spec.audit)' "$OUTPUT_DIRECTORY/cost.json" > "$OUTPUT_DIRECTORY/cost.json.tmp"
+  mv "$OUTPUT_DIRECTORY/cost.json.tmp" "$OUTPUT_DIRECTORY/cost.json"
+  run jq -e '.spec | has("audit") | not' "$OUTPUT_DIRECTORY/cost.json"
   [ "$status" -eq 0 ]
-  run cost_folder_represented "$OUTDIR" spec_id SPEC-032 "$LEDGER"
+  run cost_folder_represented "$OUTPUT_DIRECTORY" spec_id SPEC-032 "$LEDGER"
   [ "$status" -eq 0 ]
   assert_contains "$(printf 'spec\tREPRESENTED')"
 

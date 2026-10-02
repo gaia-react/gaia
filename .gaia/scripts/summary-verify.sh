@@ -35,18 +35,18 @@ if [ -z "$path" ] || [ ! -s "$path" ]; then
 fi
 
 awk '
-  BEGIN { fm_open = 0; fm_closed = 0; saw_wpd = 0; saw_wpt = 0; seen_h1 = 0; body_nonempty = 0 }
+  BEGIN { frontmatter_open = 0; frontmatter_closed = 0; saw_wiki_promote_default = 0; saw_wiki_promote_targets = 0; seen_h1 = 0; body_nonempty = 0 }
   NR == 1 {
-    if ($0 == "---") fm_open = 1
+    if ($0 == "---") frontmatter_open = 1
     next
   }
-  fm_open && !fm_closed {
-    if ($0 == "---") { fm_closed = 1; next }
-    if ($0 ~ /^wiki_promote_default:/) saw_wpd = 1
-    if ($0 ~ /^wiki_promote_targets:/) saw_wpt = 1
+  frontmatter_open && !frontmatter_closed {
+    if ($0 == "---") { frontmatter_closed = 1; next }
+    if ($0 ~ /^wiki_promote_default:/) saw_wiki_promote_default = 1
+    if ($0 ~ /^wiki_promote_targets:/) saw_wiki_promote_targets = 1
     next
   }
-  fm_closed && !seen_h1 {
+  frontmatter_closed && !seen_h1 {
     if ($0 ~ /^# /) {
       text = $0
       sub(/^# /, "", text)
@@ -55,25 +55,25 @@ awk '
     }
     next
   }
-  fm_closed && seen_h1 {
+  frontmatter_closed && seen_h1 {
     line = $0
     gsub(/^[ \t]+|[ \t]+$/, "", line)
     if (line != "") body_nonempty = 1
   }
   END {
     ok = 1
-    if (!fm_open) {
+    if (!frontmatter_open) {
       print "summary-verify: missing leading frontmatter block (^---$)" > "/dev/stderr"
       ok = 0
-    } else if (!fm_closed) {
+    } else if (!frontmatter_closed) {
       print "summary-verify: unclosed frontmatter block (no closing ^---$)" > "/dev/stderr"
       ok = 0
     } else {
-      if (!saw_wpd) {
+      if (!saw_wiki_promote_default) {
         print "summary-verify: frontmatter missing wiki_promote_default:" > "/dev/stderr"
         ok = 0
       }
-      if (!saw_wpt) {
+      if (!saw_wiki_promote_targets) {
         print "summary-verify: frontmatter missing wiki_promote_targets:" > "/dev/stderr"
         ok = 0
       }

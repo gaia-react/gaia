@@ -81,9 +81,9 @@
 #   snapshot would diff clean against itself and mask a real deletion, the
 #   opposite of a deny guard's safe-empty default.
 #
-# gaia_registry_recognizes <relpath> <type: f|d>
+# gaia_registry_recognizes <relative_path> <type: f|d>
 #   A "may I reap this?" predicate. Exit 0 ("recognized",
-#   never reap) when <relpath> (a .gaia/local-relative child path) matches
+#   never reap) when <relative_path> (a .gaia/local-relative child path) matches
 #   a live entry OR a residue-block entry, by that entry's own `match` rule.
 #   Exit 1 ("unknown") only when the registry was read successfully and
 #   nothing matched.
@@ -106,7 +106,7 @@
 #   unknown on every session. A file is never a
 #   container, so this applies to <type> d (and the untyped case) only.
 #
-# gaia_registry_classify <relpath>
+# gaia_registry_classify <relative_path>
 #   Prints the scope of the matching entry ("shared" / "per-tree" /
 #   "main-only" / "ephemeral"), or "residue" for a residue-block match, or
 #   "unknown" when nothing matches -- always with exit 0 in those three
@@ -136,8 +136,8 @@ gaia_registry_path() {
     printf 'gaia_registry_path: jq not found on PATH\n' >&2
     return 1
   fi
-  local self_dir errexit_was
-  self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local script_directory errexit_was
+  script_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   # Suspend errexit across the load, then RESTORE WHAT WAS THERE. A copy that is
   # present but unparseable abandons the shell AT the source, before the resolver
   # check below can degrade, and no caller can guard it from outside because
@@ -149,7 +149,7 @@ gaia_registry_path() {
   case $- in *e*) errexit_was=1 ;; esac
   set +e
   # shellcheck disable=SC1091
-  source "$self_dir/main-root-lib.sh" 2>/dev/null
+  source "$script_directory/main-root-lib.sh" 2>/dev/null
   if [ "$errexit_was" = 1 ]; then set -e; fi
   local main_root
   main_root="$(gaia_resolve_main_root)" || {
@@ -165,44 +165,44 @@ gaia_registry_path() {
   return 0
 }
 
-# _gaia_registry_pattern_matches <relpath> <pattern> <matchtype>
+# _gaia_registry_pattern_matches <relative_path> <pattern> <match_type>
 # Core matcher shared by gaia_registry_recognizes / gaia_registry_classify.
 # <pattern> may be a "|"-joined set of alternatives; each is tested
-# independently under <matchtype> ("exact" | "glob" | "prefix"), per the
+# independently under <match_type> ("exact" | "glob" | "prefix"), per the
 # convention documented at the top of this file. Returns 0 on the first
 # alternative that matches, 1 otherwise.
 _gaia_registry_pattern_matches() {
-  local relpath="$1" pattern="$2" matchtype="$3"
+  local relative_path="$1" pattern="$2" match_type="$3"
   local saved_ifs="$IFS"
   IFS='|'
-  local -a alts
-  read -ra alts <<<"$pattern"
+  local -a alternatives
+  read -ra alternatives <<<"$pattern"
   IFS="$saved_ifs"
-  local alt lit lit_trimmed
-  for alt in "${alts[@]}"; do
-    case "$matchtype" in
+  local alternative literal_prefix literal_prefix_trimmed
+  for alternative in "${alternatives[@]}"; do
+    case "$match_type" in
       exact)
-        [ "$relpath" = "$alt" ] && return 0
+        [ "$relative_path" = "$alternative" ] && return 0
         ;;
       glob)
-        # Deliberately unquoted: $alt is a shell-glob pattern by contract
+        # Deliberately unquoted: $alternative is a shell-glob pattern by contract
         # (registry-authored, not attacker input), and case needs it bare
         # to expand as a glob rather than a literal string.
         # shellcheck disable=SC2254
-        case "$relpath" in
-          $alt) return 0 ;;
+        case "$relative_path" in
+          $alternative) return 0 ;;
         esac
         ;;
       prefix)
-        # Literal text before the first '<' (or the whole alt, unchanged,
+        # Literal text before the first '<' (or the whole alternative, unchanged,
         # when it has none). Matches the directory itself with no trailing
         # slash (a caller may hand either form) as well as any child under
         # it.
-        lit="${alt%%<*}"
-        lit_trimmed="${lit%/}"
-        case "$relpath" in
-          "$lit_trimmed") return 0 ;;
-          "$lit"*) return 0 ;;
+        literal_prefix="${alternative%%<*}"
+        literal_prefix_trimmed="${literal_prefix%/}"
+        case "$relative_path" in
+          "$literal_prefix_trimmed") return 0 ;;
+          "$literal_prefix"*) return 0 ;;
         esac
         ;;
     esac
@@ -220,7 +220,7 @@ gaia_registry_linkable_paths() {
       | select(.scope == "shared")
       | (if .match == "prefix" then (.path | rtrimstr("/")) else (.path | split("/")[0]) end)
     ]
-    | reduce .[] as $x ([]; if any(.[]; . == $x) then . else . + [$x] end)
+    | reduce .[] as $linkable_path ([]; if any(.[]; . == $linkable_path) then . else . + [$linkable_path] end)
     | .[]
   ' "$registry"
 }
@@ -241,32 +241,32 @@ gaia_registry_integrity_snapshot() {
 
 # gaia_registry_recognizes: see the header contract above.
 gaia_registry_recognizes() {
-  local relpath="${1:-}" reqtype="${2:-}"
-  [ -n "$relpath" ] || return 0
+  local relative_path="${1:-}" requested_type="${2:-}"
+  [ -n "$relative_path" ] || return 0
   local registry
   registry="$(gaia_registry_path 2>/dev/null)" || return 0
 
   local residue_lines
   residue_lines="$(jq -r '.residue[] | [.match, .path] | @tsv' "$registry" 2>/dev/null)" || return 0
-  local m p
-  while IFS=$'\t' read -r m p; do
-    [ -n "$m" ] || continue
-    _gaia_registry_pattern_matches "$relpath" "$p" "$m" && return 0
+  local entry_match_type entry_path
+  while IFS=$'\t' read -r entry_match_type entry_path; do
+    [ -n "$entry_match_type" ] || continue
+    _gaia_registry_pattern_matches "$relative_path" "$entry_path" "$entry_match_type" && return 0
   done <<<"$residue_lines"
 
   local want_kind=""
-  case "$reqtype" in
+  case "$requested_type" in
     f) want_kind="file" ;;
     d) want_kind="dir" ;;
   esac
 
   local entry_lines
-  entry_lines="$(jq -r --arg k "$want_kind" '
-    .entries[] | select($k == "" or .kind == $k) | [.match, .path] | @tsv
+  entry_lines="$(jq -r --arg wanted_kind "$want_kind" '
+    .entries[] | select($wanted_kind == "" or .kind == $wanted_kind) | [.match, .path] | @tsv
   ' "$registry" 2>/dev/null)" || return 0
-  while IFS=$'\t' read -r m p; do
-    [ -n "$m" ] || continue
-    _gaia_registry_pattern_matches "$relpath" "$p" "$m" && return 0
+  while IFS=$'\t' read -r entry_match_type entry_path; do
+    [ -n "$entry_match_type" ] || continue
+    _gaia_registry_pattern_matches "$relative_path" "$entry_path" "$entry_match_type" && return 0
   done <<<"$entry_lines"
 
   # Ancestor recognition. A directory that is not itself an entry is still
@@ -277,9 +277,9 @@ gaia_registry_recognizes() {
   # harden/, audit/security/) as unrecognized on every session. A file is
   # never a container, so this applies to a directory (and the untyped case)
   # only.
-  if [ "$reqtype" != f ]; then
-    if jq -e --arg pre "$relpath/" '
-      [ (.entries[], .residue[]).path | split("|")[] ] | any(.[]; startswith($pre))
+  if [ "$requested_type" != f ]; then
+    if jq -e --arg ancestor_prefix "$relative_path/" '
+      [ (.entries[], .residue[]).path | split("|")[] ] | any(.[]; startswith($ancestor_prefix))
     ' "$registry" >/dev/null 2>&1; then
       return 0
     fi
@@ -290,8 +290,8 @@ gaia_registry_recognizes() {
 
 # gaia_registry_classify: see the header contract above.
 gaia_registry_classify() {
-  local relpath="${1:-}"
-  [ -n "$relpath" ] || {
+  local relative_path="${1:-}"
+  [ -n "$relative_path" ] || {
     printf 'unknown\n'
     return 0
   }
@@ -300,10 +300,10 @@ gaia_registry_classify() {
 
   local residue_lines
   residue_lines="$(jq -r '.residue[] | [.match, .path] | @tsv' "$registry" 2>/dev/null)" || return 1
-  local m p
-  while IFS=$'\t' read -r m p; do
-    [ -n "$m" ] || continue
-    if _gaia_registry_pattern_matches "$relpath" "$p" "$m"; then
+  local entry_match_type entry_path
+  while IFS=$'\t' read -r entry_match_type entry_path; do
+    [ -n "$entry_match_type" ] || continue
+    if _gaia_registry_pattern_matches "$relative_path" "$entry_path" "$entry_match_type"; then
       printf 'residue\n'
       return 0
     fi
@@ -311,9 +311,9 @@ gaia_registry_classify() {
 
   local entry_lines scope
   entry_lines="$(jq -r '.entries[] | [.match, .path, .scope] | @tsv' "$registry" 2>/dev/null)" || return 1
-  while IFS=$'\t' read -r m p scope; do
-    [ -n "$m" ] || continue
-    if _gaia_registry_pattern_matches "$relpath" "$p" "$m"; then
+  while IFS=$'\t' read -r entry_match_type entry_path scope; do
+    [ -n "$entry_match_type" ] || continue
+    if _gaia_registry_pattern_matches "$relative_path" "$entry_path" "$entry_match_type"; then
       printf '%s\n' "$scope"
       return 0
     fi

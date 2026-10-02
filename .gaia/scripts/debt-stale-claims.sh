@@ -45,7 +45,7 @@
 
 set -uo pipefail
 
-dir="."
+directory="."
 grace=1800
 claims_file=""
 prs_file=""
@@ -66,7 +66,7 @@ while [ "$#" -gt 0 ]; do
     --dir | --grace | --claims-json | --prs-json | --branches | --now)
       [ "$#" -ge 2 ] || die_usage "$1 needs a value"
       case "$1" in
-        --dir) dir="$2" ;;
+        --dir) directory="$2" ;;
         --grace) grace="$2" ;;
         --claims-json) claims_file="$2" ;;
         --prs-json) prs_file="$2" ;;
@@ -84,10 +84,10 @@ case "$now" in *[!0-9]*) die_usage "--now must be epoch seconds" ;; esac
 
 command -v jq >/dev/null 2>&1 || die_input "jq is not installed"
 
-lib="$(dirname "${BASH_SOURCE[0]}")/branch-name-lib.sh"
-[ -r "$lib" ] || die_input "branch library $lib is missing or unreadable"
+branch_library="$(dirname "${BASH_SOURCE[0]}")/branch-name-lib.sh"
+[ -r "$branch_library" ] || die_input "branch library $branch_library is missing or unreadable"
 # shellcheck source=/dev/null
-. "$lib" || die_input "branch library $lib failed to load"
+. "$branch_library" || die_input "branch library $branch_library failed to load"
 
 if [ -n "$claims_file" ]; then
   claims="$(cat "$claims_file")" || die_input "cannot read $claims_file"
@@ -121,9 +121,9 @@ printf '%s' "$prs" | jq -e 'type == "array"' >/dev/null 2>&1 \
 if [ -n "$branches_file" ]; then
   branches="$(cat "$branches_file")" || die_input "cannot read $branches_file"
 else
-  git -C "$dir" rev-parse --git-dir >/dev/null 2>&1 \
-    || die_input "$dir is not a git repository, so no branch can be read"
-  branches="$(gaia_branch_list "$dir")"
+  git -C "$directory" rev-parse --git-dir >/dev/null 2>&1 \
+    || die_input "$directory is not a git repository, so no branch can be read"
+  branches="$(gaia_branch_list "$directory")"
 fi
 
 if [ -z "$now" ]; then
@@ -147,8 +147,8 @@ live="$(
   {
     printf '%s\n' "$branches"
     printf '%s\n' "$pr_heads"
-  } | while IFS= read -r b; do
-    [ -n "$b" ] && gaia_branch_members "$b"
+  } | while IFS= read -r branch_name; do
+    [ -n "$branch_name" ] && gaia_branch_members "$branch_name"
   done
   printf '%s\n' "$pr_closed"
 )" || die_input "the liveness set could not be assembled"
@@ -160,7 +160,7 @@ stale="$(printf '%s' "$claims" | jq -r \
   --arg live "$live" --argjson now "$now" --argjson grace "$grace" '
   ($live | split("\n") | map(select(. != "") | tonumber)) as $keep
   | .[]
-  | select((.number as $n | $keep | index($n)) | not)
+  | select((.number as $issue_number | $keep | index($issue_number)) | not)
   | select(($now - (.updatedAt | fromdateiso8601)) >= $grace)
   | .number')" \
   || die_input "a claim carries an unreadable number or updatedAt"

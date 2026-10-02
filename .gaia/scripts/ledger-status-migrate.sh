@@ -56,63 +56,63 @@ plans_ledger="$repo_root/.gaia/local/plans/ledger.json"
 # Rows whose .status is one of the retired values this run would remap. Used
 # only to size the printed summary; the jq rewrite below is the source of
 # truth for what actually changes.
-retired_status_pred='.status as $s | (["specified","in-progress","allocated","completed","archived"] | index($s)) != null'
+retired_status_predicate='.status as $status | (["specified","in-progress","allocated","completed","archived"] | index($status)) != null'
 
-# migrate_specs: jq-to-tmp-then-mv rewrite of specs_ledger's .status through the
+# migrate_specs: jq-to-temporary-file-then-mv rewrite of specs_ledger's .status through the
 # unified map. No field rename here (specs already key on merged_at).
 # shellcheck disable=SC2329  # invoked indirectly via `with_ledger_lock ... migrate_specs`
 migrate_specs() {
-  local tmp
-  tmp="$(mktemp)"
+  local temporary_file
+  temporary_file="$(mktemp)"
   if ! jq '
-    def m: {"specified":"ready","in-progress":"ready","allocated":"ready",
+    def migrated_status: {"specified":"ready","in-progress":"ready","allocated":"ready",
             "completed":"merged","archived":"merged"};
-    .specs |= map(.status = (m[.status] // .status))
-  ' "$specs_ledger" > "$tmp" 2>/dev/null; then
-    rm -f "$tmp"
+    .specs |= map(.status = (migrated_status[.status] // .status))
+  ' "$specs_ledger" > "$temporary_file" 2>/dev/null; then
+    rm -f "$temporary_file"
     log "ledger-status-migrate: jq failed on $specs_ledger; skipping"
     return 1
   fi
-  mv "$tmp" "$specs_ledger"
+  mv "$temporary_file" "$specs_ledger"
 }
 
-# migrate_plans: jq-to-tmp-then-mv rewrite of plans_ledger's .status through the
+# migrate_plans: jq-to-temporary-file-then-mv rewrite of plans_ledger's .status through the
 # same map, plus completed_at -> merged_at on any row that still carries it.
 # source is never named in the jq, so it passes through byte-unchanged.
 # shellcheck disable=SC2329  # invoked indirectly via `with_ledger_lock ... migrate_plans`
 migrate_plans() {
-  local tmp
-  tmp="$(mktemp)"
+  local temporary_file
+  temporary_file="$(mktemp)"
   if ! jq '
-    def m: {"specified":"ready","in-progress":"ready","allocated":"ready",
+    def migrated_status: {"specified":"ready","in-progress":"ready","allocated":"ready",
             "completed":"merged","archived":"merged"};
     .plans |= map(
-      .status = (m[.status] // .status)
+      .status = (migrated_status[.status] // .status)
       | if has("completed_at")
         then .merged_at = (.merged_at // .completed_at) | del(.completed_at)
         else . end
     )
-  ' "$plans_ledger" > "$tmp" 2>/dev/null; then
-    rm -f "$tmp"
+  ' "$plans_ledger" > "$temporary_file" 2>/dev/null; then
+    rm -f "$temporary_file"
     log "ledger-status-migrate: jq failed on $plans_ledger; skipping"
     return 1
   fi
-  mv "$tmp" "$plans_ledger"
+  mv "$temporary_file" "$plans_ledger"
 }
 
 if [ -f "$specs_ledger" ]; then
-  n_specs="$(jq "[.specs[]? | select($retired_status_pred)] | length" "$specs_ledger" 2>/dev/null)"
-  n_specs="${n_specs:-0}"
-  if with_ledger_lock "$repo_root/.gaia/local/specs" migrate_specs && [ "$n_specs" -gt 0 ]; then
-    printf 'migrated %s specs row(s)\n' "$n_specs"
+  specs_to_migrate_count="$(jq "[.specs[]? | select($retired_status_predicate)] | length" "$specs_ledger" 2>/dev/null)"
+  specs_to_migrate_count="${specs_to_migrate_count:-0}"
+  if with_ledger_lock "$repo_root/.gaia/local/specs" migrate_specs && [ "$specs_to_migrate_count" -gt 0 ]; then
+    printf 'migrated %s specs row(s)\n' "$specs_to_migrate_count"
   fi
 fi
 
 if [ -f "$plans_ledger" ]; then
-  n_plans="$(jq "[.plans[]? | select(($retired_status_pred) or has(\"completed_at\"))] | length" "$plans_ledger" 2>/dev/null)"
-  n_plans="${n_plans:-0}"
-  if with_ledger_lock "$repo_root/.gaia/local/plans" migrate_plans && [ "$n_plans" -gt 0 ]; then
-    printf 'migrated %s plans row(s)\n' "$n_plans"
+  plans_to_migrate_count="$(jq "[.plans[]? | select(($retired_status_predicate) or has(\"completed_at\"))] | length" "$plans_ledger" 2>/dev/null)"
+  plans_to_migrate_count="${plans_to_migrate_count:-0}"
+  if with_ledger_lock "$repo_root/.gaia/local/plans" migrate_plans && [ "$plans_to_migrate_count" -gt 0 ]; then
+    printf 'migrated %s plans row(s)\n' "$plans_to_migrate_count"
   fi
 fi
 

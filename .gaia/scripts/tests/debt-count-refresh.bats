@@ -8,18 +8,18 @@
 
 setup() {
   THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  SRC_SCRIPT="$THIS_DIRECTORY/../debt-count-refresh.sh"
-  [ -f "$SRC_SCRIPT" ] || skip "debt-count-refresh.sh missing"
+  SOURCE_SCRIPT="$THIS_DIRECTORY/../debt-count-refresh.sh"
+  [ -f "$SOURCE_SCRIPT" ] || skip "debt-count-refresh.sh missing"
   command -v jq >/dev/null 2>&1 || skip "jq required"
 
   SANDBOX="$BATS_TEST_TMPDIR/sandbox"
   mkdir -p "$SANDBOX/.gaia/scripts" "$SANDBOX/.gaia/local/debt" "$SANDBOX/bin"
-  cp "$SRC_SCRIPT" "$SANDBOX/.gaia/scripts/debt-count-refresh.sh"
+  cp "$SOURCE_SCRIPT" "$SANDBOX/.gaia/scripts/debt-count-refresh.sh"
   chmod +x "$SANDBOX/.gaia/scripts/debt-count-refresh.sh"
   SCRIPT="$SANDBOX/.gaia/scripts/debt-count-refresh.sh"
-  DEBT_DIR="$SANDBOX/.gaia/local/debt"
-  SENTINEL="$DEBT_DIR/refresh-requested"
-  CACHE="$DEBT_DIR/count.json"
+  DEBT_DIRECTORY="$SANDBOX/.gaia/local/debt"
+  SENTINEL="$DEBT_DIRECTORY/refresh-requested"
+  CACHE="$DEBT_DIRECTORY/count.json"
 }
 
 # write_gh_stub <json> [extra-line]: a fake `gh` that serves <json> from
@@ -40,10 +40,10 @@ write_gh_stub() {
 if [ "\$1" = "issue" ] && [ "\$2" = "list" ]; then
   $2
   filter=""
-  prev=""
-  for a in "\$@"; do
-    if [ "\$prev" = "--jq" ]; then filter="\$a"; fi
-    prev="\$a"
+  previous_argument=""
+  for argument in "\$@"; do
+    if [ "\$previous_argument" = "--jq" ]; then filter="\$argument"; fi
+    previous_argument="\$argument"
   done
   if [ -n "\$filter" ]; then
     jq -r "\$filter" "$SANDBOX/issues.json"

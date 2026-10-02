@@ -56,7 +56,7 @@ _gaia_repo_scope_repo_name() {
 # errexit consumers that exit is the deny code.
 _gaia_repo_scope_load_main_root() {
   local root errexit_was
-  type gaia_resolve_common_dir >/dev/null 2>&1 && return 0
+  type gaia_resolve_common_directory >/dev/null 2>&1 && return 0
   root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." 2>/dev/null && pwd)" || return 1
   [ -f "$root/.gaia/scripts/main-root-lib.sh" ] || return 1
   errexit_was=0
@@ -65,7 +65,7 @@ _gaia_repo_scope_load_main_root() {
   # shellcheck source=/dev/null
   . "$root/.gaia/scripts/main-root-lib.sh" 2>/dev/null
   if [ "$errexit_was" = 1 ]; then set -e; fi
-  type gaia_resolve_common_dir >/dev/null 2>&1
+  type gaia_resolve_common_directory >/dev/null 2>&1
 }
 
 # Set by command_targets_foreign_repo to the directory a `cd` earlier in the tool
@@ -506,11 +506,11 @@ _gaia_repo_scope_where() {
   local target_common_directory
   _gaia_repo_scope_load_main_root || return 2
   if [ "$home_common_read" = 0 ]; then
-    home_common=$(gaia_resolve_common_dir) || home_common=""
+    home_common=$(gaia_resolve_common_directory) || home_common=""
     home_common_read=1
   fi
   [ -n "$home_common" ] || return 2
-  target_common_directory=$(gaia_resolve_common_dir "$1") || return 2
+  target_common_directory=$(gaia_resolve_common_directory "$1") || return 2
   [ -n "$target_common_directory" ] || return 2
   [ "$target_common_directory" = "$home_common" ] && return 1
   return 0

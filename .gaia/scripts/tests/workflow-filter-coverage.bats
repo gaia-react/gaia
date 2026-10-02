@@ -130,14 +130,14 @@ require_yaml_parser() {
 setup() {
   THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
-  WORKFLOWS_DIR="$REPO_ROOT/.github/workflows"
+  WORKFLOWS_DIRECTORY="$REPO_ROOT/.github/workflows"
 
   # Workflows that gate a step on a hand-rolled `run:`-emitted output rather than
   # a dorny/paths-filter glob list. Section 4 asserts this set exactly, so adding
   # a hand-rolled gate to a new workflow reds until it is named here on purpose.
   HANDROLLED_EXEMPT='tests.yml'
 
-  require_repo_path -d "$WORKFLOWS_DIR" ".github/workflows" || return 1
+  require_repo_path -d "$WORKFLOWS_DIRECTORY" ".github/workflows" || return 1
 }
 
 # Extraction, python3 + PyYAML.
@@ -189,8 +189,8 @@ TOKEN = re.compile(r'[A-Za-z0-9_./+-]+')
 ENV_REF = re.compile(r'\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))')
 
 
-def die(msg):
-    sys.stderr.write('%s\n' % msg)
+def die(message):
+    sys.stderr.write('%s\n' % message)
     sys.exit(2)
 
 
@@ -242,27 +242,27 @@ def glob_to_re(pattern):
         or NON_SEGMENT_GLOBSTAR.search(pattern)
     ):
         die('unsupported glob syntax, this guard cannot decide coverage: %r' % pattern)
-    out = ['^']
+    regex_parts = ['^']
     i = 0
     while i < len(pattern):
         if pattern.startswith('**/', i):
             # Zero or more leading segments, so `**/*.sh` reaches `x.sh` too.
-            out.append('(?:[^/]+/)*')
+            regex_parts.append('(?:[^/]+/)*')
             i += 3
         elif pattern.startswith('**', i):
-            out.append('.*')
+            regex_parts.append('.*')
             i += 2
         elif pattern[i] == '*':
-            out.append('[^/]*')
+            regex_parts.append('[^/]*')
             i += 1
         elif pattern[i] == '?':
-            out.append('[^/]')
+            regex_parts.append('[^/]')
             i += 1
         else:
-            out.append(re.escape(pattern[i]))
+            regex_parts.append(re.escape(pattern[i]))
             i += 1
-    out.append('$')
-    return re.compile(''.join(out))
+    regex_parts.append('$')
+    return re.compile(''.join(regex_parts))
 
 
 def reaches(globs, path):
@@ -285,13 +285,13 @@ with open(sys.argv[2], encoding='utf-8') as handle:
     tracked = {line.strip() for line in handle if line.strip()}
 
 
-def normalize(expr):
+def normalize(expression):
     """Collapse a gate to one comparable line.
 
-    GitHub accepts `if: <expr>` and `if: ${{ <expr> }}` as the same condition,
+    GitHub accepts `if: <expression>` and `if: ${{ <expression> }}` as the same condition,
     and a folded scalar arrives already joined but irregularly spaced.
     """
-    return ' '.join(str(expr).replace('${{', ' ').replace('}}', ' ').split())
+    return ' '.join(str(expression).replace('${{', ' ').replace('}}', ' ').split())
 
 
 def filters_in(steps):
@@ -346,7 +346,7 @@ def expand_env(body, env):
     return ENV_REF.sub(resolve, body)
 
 
-def literal_inputs(step, workflow_rel, outer_env):
+def literal_inputs(step, workflow_relative_path, outer_env):
     """Repo-relative paths this step names literally.
 
     A `run:` body's comment lines are stripped first: a comment naming a path is
@@ -377,11 +377,11 @@ def literal_inputs(step, workflow_rel, outer_env):
             if candidate in tracked:
                 inputs.add(candidate)
     # Self-coverage: a gate must re-run on a change to its own definition.
-    inputs.add(workflow_rel)
+    inputs.add(workflow_relative_path)
     return inputs
 
 
-def rel_of(path):
+def relative_path_of(path):
     """A workflow's repo-relative path, derived from the path itself.
 
     Not `os.path.relpath(path, os.getcwd())`: that would make every emitted
@@ -396,19 +396,19 @@ def rel_of(path):
 
 rows = []
 for path in sys.argv[3:]:
-    workflow_rel = rel_of(path)
+    workflow_relative_path = relative_path_of(path)
     try:
         with open(path, encoding='utf-8') as handle:
             doc = yaml.safe_load(handle)
-    except (yaml.YAMLError, OSError) as exc:
-        die('%s: unreadable YAML (%s)' % (workflow_rel, exc.__class__.__name__))
+    except (yaml.YAMLError, OSError) as exception:
+        die('%s: unreadable YAML (%s)' % (workflow_relative_path, exception.__class__.__name__))
 
     # Strictly the top-level `jobs:` mapping, with no fallback to the document
     # itself: `on:`'s trigger keys sit at the same depth as job ids, so treating
     # the root as the job list reads `push` and `pull_request` as phantom jobs.
     jobs = doc.get('jobs') if isinstance(doc, dict) else None
     if not isinstance(jobs, dict) or not jobs:
-        die('%s: no jobs mapping' % workflow_rel)
+        die('%s: no jobs mapping' % workflow_relative_path)
 
     for job_id, job in jobs.items():
         job_id = str(job_id)
@@ -436,15 +436,15 @@ for path in sys.argv[3:]:
                 # Reported per workflow, deduped below.
                 for step_id, _ in gates:
                     if step_id == 'filter' and step_id not in filters:
-                        rows.append(workflow_rel)
+                        rows.append(workflow_relative_path)
                 continue
-            gates = [(s, n) for s, n in gates if s in filters]
+            gates = [(step_id, output) for step_id, output in gates if step_id in filters]
             if not gates:
                 continue
             if mode == 'gated':
-                rows.append('\t'.join([workflow_rel, job_id, name]))
+                rows.append('\t'.join([workflow_relative_path, job_id, name]))
                 continue
-            inputs = literal_inputs(step, workflow_rel, job_env)
+            inputs = literal_inputs(step, workflow_relative_path, job_env)
             for step_id, output in gates:
                 globs = filters[step_id].get(output)
                 # dorny/paths-filter accepts a filter value as a bare scalar, not
@@ -462,14 +462,14 @@ for path in sys.argv[3:]:
                     for item in sorted(inputs):
                         rows.append(
                             '\t'.join(
-                                ['unreached', workflow_rel, job_id, name, gate, item]
+                                ['unreached', workflow_relative_path, job_id, name, gate, item]
                             )
                         )
                     continue
                 for item in sorted(inputs):
                     status = 'ok' if reaches(globs, item) else 'unreached'
                     rows.append(
-                        '\t'.join([status, workflow_rel, job_id, name, gate, item])
+                        '\t'.join([status, workflow_relative_path, job_id, name, gate, item])
                     )
 
 for row in sorted(set(rows)) if mode == 'handrolled' else rows:
@@ -480,15 +480,15 @@ PY
 # Every tracked file, as the list the extractor reads. Written once per test into
 # that test's own tmpdir.
 tracked_list() {
-  local out="$1"
-  git -C "$REPO_ROOT" ls-files -z | tr '\0' '\n' > "$out"
+  local output_file="$1"
+  git -C "$REPO_ROOT" ls-files -z | tr '\0' '\n' > "$output_file"
 }
 
 # Every workflow file, both extensions, matching the directory scan in
 # .gaia/scripts/verify-required-checks.sh.
 workflow_files() {
-  local dir="$1" file
-  for file in "$dir"/*.yml "$dir"/*.yaml; do
+  local directory="$1" file
+  for file in "$directory"/*.yml "$directory"/*.yaml; do
     [ -f "$file" ] || continue
     printf '%s\n' "$file"
   done
@@ -502,7 +502,7 @@ workflow_files() {
 #    tests are what make that weakening red. Neither is parser-gated itself.
 
 @test "the parser gate fails on a CI runner and still skips off CI" {
-  local shim="$BATS_TEST_TMPDIR/no-parser" rc
+  local shim="$BATS_TEST_TMPDIR/no-parser" exit_status
   mkdir -p "$shim"
   # python3 present, but its `import yaml` fails: the shape a runner takes when
   # python3-yaml is dropped from the apt line, not one where python3 is missing
@@ -513,37 +513,37 @@ workflow_files() {
   # Calling the gate in a subshell is what keeps its `skip` arm from marking this
   # test skipped -- bats' `skip` exits 0, so the subshell's status is exactly the
   # discriminator wanted here: non-zero is the CI failure, 0 is the off-CI skip.
-  rc=0
-  ( PATH="$shim" GITHUB_ACTIONS=true; require_yaml_parser ) >/dev/null 2>&1 || rc=$?
-  [ "$rc" -ne 0 ] || {
+  exit_status=0
+  ( PATH="$shim" GITHUB_ACTIONS=true; require_yaml_parser ) >/dev/null 2>&1 || exit_status=$?
+  [ "$exit_status" -ne 0 ] || {
     echo "the gate skipped on a CI runner with no YAML parser; every parsing test would report green" >&2
     return 1
   }
 
-  rc=0
-  ( PATH="$shim"; unset GITHUB_ACTIONS; require_yaml_parser ) >/dev/null 2>&1 || rc=$?
-  [ "$rc" -eq 0 ] || {
+  exit_status=0
+  ( PATH="$shim"; unset GITHUB_ACTIONS; require_yaml_parser ) >/dev/null 2>&1 || exit_status=$?
+  [ "$exit_status" -eq 0 ] || {
     echo "the gate failed off CI, where a missing parser must still skip" >&2
     return 1
   }
 }
 
 @test "the path precondition gate fails on a CI runner and still skips off CI" {
-  local rc
+  local exit_status
   mkdir -p "$BATS_TEST_TMPDIR/a-dir"
 
   # Absent by construction: $BATS_TEST_TMPDIR is created empty for this test and
   # nothing puts `renamed-away` in it.
-  rc=0
-  ( GITHUB_ACTIONS=true; require_repo_path -d "$BATS_TEST_TMPDIR/renamed-away" "a renamed path" ) >/dev/null 2>&1 || rc=$?
-  [ "$rc" -ne 0 ] || {
+  exit_status=0
+  ( GITHUB_ACTIONS=true; require_repo_path -d "$BATS_TEST_TMPDIR/renamed-away" "a renamed path" ) >/dev/null 2>&1 || exit_status=$?
+  [ "$exit_status" -ne 0 ] || {
     echo "the gate skipped on a CI runner for an absent path; every test here would report green" >&2
     return 1
   }
 
-  rc=0
-  ( unset GITHUB_ACTIONS; require_repo_path -d "$BATS_TEST_TMPDIR/renamed-away" "a renamed path" ) >/dev/null 2>&1 || rc=$?
-  [ "$rc" -eq 0 ] || {
+  exit_status=0
+  ( unset GITHUB_ACTIONS; require_repo_path -d "$BATS_TEST_TMPDIR/renamed-away" "a renamed path" ) >/dev/null 2>&1 || exit_status=$?
+  [ "$exit_status" -eq 0 ] || {
     echo "the gate failed off CI, where an unsatisfied precondition must still skip" >&2
     return 1
   }
@@ -551,9 +551,9 @@ workflow_files() {
   # Present but the wrong type. This pins the runtime flag: a gate that ignored
   # it and asked only whether the path exists would pass this and prove nothing
   # about the -d/-f distinction setup() relies on.
-  rc=0
-  ( GITHUB_ACTIONS=true; require_repo_path -f "$BATS_TEST_TMPDIR/a-dir" "a renamed path" ) >/dev/null 2>&1 || rc=$?
-  [ "$rc" -ne 0 ]
+  exit_status=0
+  ( GITHUB_ACTIONS=true; require_repo_path -f "$BATS_TEST_TMPDIR/a-dir" "a renamed path" ) >/dev/null 2>&1 || exit_status=$?
+  [ "$exit_status" -ne 0 ]
 }
 
 # 1. Extraction-intact. Every assertion below loops over what the extractor
@@ -568,7 +568,7 @@ workflow_files() {
   tracked_list "$tracked"
 
   local files
-  files="$(workflow_files "$WORKFLOWS_DIR")"
+  files="$(workflow_files "$WORKFLOWS_DIRECTORY")"
   [ -n "$files" ] || { echo ".github/workflows holds no workflow files" >&2; return 1; }
 
   # shellcheck disable=SC2086
@@ -588,7 +588,7 @@ workflow_files() {
   tracked_list "$tracked"
 
   local files
-  files="$(workflow_files "$WORKFLOWS_DIR")"
+  files="$(workflow_files "$WORKFLOWS_DIRECTORY")"
 
   # shellcheck disable=SC2086
   run filter_coverage pairs "$tracked" $files
@@ -612,7 +612,7 @@ workflow_files() {
   tracked_list "$tracked"
 
   local files
-  files="$(workflow_files "$WORKFLOWS_DIR")"
+  files="$(workflow_files "$WORKFLOWS_DIRECTORY")"
 
   # shellcheck disable=SC2086
   run filter_coverage pairs "$tracked" $files
@@ -645,7 +645,7 @@ workflow_files() {
   tracked_list "$tracked"
 
   local files
-  files="$(workflow_files "$WORKFLOWS_DIR")"
+  files="$(workflow_files "$WORKFLOWS_DIRECTORY")"
 
   # shellcheck disable=SC2086
   run filter_coverage pairs "$tracked" $files
@@ -683,7 +683,7 @@ workflow_files() {
   tracked_list "$tracked"
 
   local files
-  files="$(workflow_files "$WORKFLOWS_DIR")"
+  files="$(workflow_files "$WORKFLOWS_DIRECTORY")"
 
   # shellcheck disable=SC2086
   run filter_coverage handrolled "$tracked" $files
@@ -726,8 +726,8 @@ workflow_files() {
 # Write a fixture workflow and its tracked-file list into the current test's
 # tmpdir. <globs> is the filter's glob list, one per line.
 write_fixture() {
-  local dir="$1" globs="$2" body="$3"
-  mkdir -p "$dir/.github/workflows"
+  local directory="$1" globs="$2" body="$3"
+  mkdir -p "$directory/.github/workflows"
   {
     echo "name: Fixture"
     echo "on:"
@@ -745,16 +745,16 @@ write_fixture() {
     echo "      - if: steps.filter.outputs.code == 'true'"
     echo "        name: Gated step"
     echo "        run: $body"
-  } > "$dir/.github/workflows/fixture.yml"
+  } > "$directory/.github/workflows/fixture.yml"
 }
 
 @test "negative: a gated step reading a path its filter omits is caught" {
   require_yaml_parser
-  local dir="$BATS_TEST_TMPDIR/sb"
-  write_fixture "$dir" "'.github/workflows/fixture.yml'" "bash scripts/guard.sh"
-  printf '%s\n' ".github/workflows/fixture.yml" "scripts/guard.sh" > "$dir/tracked"
+  local directory="$BATS_TEST_TMPDIR/sb"
+  write_fixture "$directory" "'.github/workflows/fixture.yml'" "bash scripts/guard.sh"
+  printf '%s\n' ".github/workflows/fixture.yml" "scripts/guard.sh" > "$directory/tracked"
 
-  run filter_coverage pairs "$dir/tracked" "$dir/.github/workflows/fixture.yml"
+  run filter_coverage pairs "$directory/tracked" "$directory/.github/workflows/fixture.yml"
   [ "$status" -eq 0 ] || { echo "extractor failed: $output" >&2; return 1; }
 
   # The omitted script reds...
@@ -771,11 +771,11 @@ write_fixture() {
 
 @test "negative: a filter blind to its own workflow file is caught" {
   require_yaml_parser
-  local dir="$BATS_TEST_TMPDIR/sb"
-  write_fixture "$dir" "'scripts/guard.sh'" "bash scripts/guard.sh"
-  printf '%s\n' ".github/workflows/fixture.yml" "scripts/guard.sh" > "$dir/tracked"
+  local directory="$BATS_TEST_TMPDIR/sb"
+  write_fixture "$directory" "'scripts/guard.sh'" "bash scripts/guard.sh"
+  printf '%s\n' ".github/workflows/fixture.yml" "scripts/guard.sh" > "$directory/tracked"
 
-  run filter_coverage pairs "$dir/tracked" "$dir/.github/workflows/fixture.yml"
+  run filter_coverage pairs "$directory/tracked" "$directory/.github/workflows/fixture.yml"
   [ "$status" -eq 0 ] || { echo "extractor failed: $output" >&2; return 1; }
 
   printf '%s\n' "$output" | grep -q "^unreached.*fixture.yml" || {
@@ -786,11 +786,11 @@ write_fixture() {
 
 @test "negative: a step gated on a filter name the filter never declares is caught" {
   require_yaml_parser
-  local dir="$BATS_TEST_TMPDIR/sb"
-  mkdir -p "$dir/.github/workflows"
+  local directory="$BATS_TEST_TMPDIR/sb"
+  mkdir -p "$directory/.github/workflows"
   # `code:` is declared; the step gates on `shell:`, which is always empty, so the
   # step never runs at all.
-  cat > "$dir/.github/workflows/fixture.yml" <<'YAML'
+  cat > "$directory/.github/workflows/fixture.yml" <<'YAML'
 name: Fixture
 on:
   pull_request:
@@ -808,9 +808,9 @@ jobs:
         name: Gated step
         run: bash scripts/guard.sh
 YAML
-  printf '%s\n' ".github/workflows/fixture.yml" "scripts/guard.sh" > "$dir/tracked"
+  printf '%s\n' ".github/workflows/fixture.yml" "scripts/guard.sh" > "$directory/tracked"
 
-  run filter_coverage pairs "$dir/tracked" "$dir/.github/workflows/fixture.yml"
+  run filter_coverage pairs "$directory/tracked" "$directory/.github/workflows/fixture.yml"
   [ "$status" -eq 0 ] || { echo "extractor failed: $output" >&2; return 1; }
 
   printf '%s\n' "$output" | grep -q "^unreached" || {
@@ -821,9 +821,9 @@ YAML
 
 @test "negative: a run-body comment naming a path does not count as an input" {
   require_yaml_parser
-  local dir="$BATS_TEST_TMPDIR/sb"
-  mkdir -p "$dir/.github/workflows"
-  cat > "$dir/.github/workflows/fixture.yml" <<'YAML'
+  local directory="$BATS_TEST_TMPDIR/sb"
+  mkdir -p "$directory/.github/workflows"
+  cat > "$directory/.github/workflows/fixture.yml" <<'YAML'
 name: Fixture
 on:
   pull_request:
@@ -843,9 +843,9 @@ jobs:
           # scripts/guard.sh explains why this step exists
           echo ok
 YAML
-  printf '%s\n' ".github/workflows/fixture.yml" "scripts/guard.sh" > "$dir/tracked"
+  printf '%s\n' ".github/workflows/fixture.yml" "scripts/guard.sh" > "$directory/tracked"
 
-  run filter_coverage pairs "$dir/tracked" "$dir/.github/workflows/fixture.yml"
+  run filter_coverage pairs "$directory/tracked" "$directory/.github/workflows/fixture.yml"
   [ "$status" -eq 0 ] || { echo "extractor failed: $output" >&2; return 1; }
 
   printf '%s\n' "$output" | grep -q "scripts/guard.sh" && {
@@ -862,13 +862,13 @@ YAML
 
 @test "negative: a hand-rolled id: filter gate is reported, a descriptive id is not" {
   require_yaml_parser
-  local dir="$BATS_TEST_TMPDIR/sb"
-  mkdir -p "$dir/.github/workflows"
-  : > "$dir/tracked"
+  local directory="$BATS_TEST_TMPDIR/sb"
+  mkdir -p "$directory/.github/workflows"
+  : > "$directory/tracked"
   # `filter` emits its output from a `run:` block, so there is no glob list to
   # read; `chore-deps` is the shape every workflow here uses for a gate that was
   # never about changed paths, and must stay out of the report.
-  cat > "$dir/.github/workflows/fixture.yml" <<'YAML'
+  cat > "$directory/.github/workflows/fixture.yml" <<'YAML'
 name: Fixture
 on:
   pull_request:
@@ -885,7 +885,7 @@ jobs:
         run: bash scripts/guard.sh
 YAML
 
-  run filter_coverage handrolled "$dir/tracked" "$dir/.github/workflows/fixture.yml"
+  run filter_coverage handrolled "$directory/tracked" "$directory/.github/workflows/fixture.yml"
   [ "$status" -eq 0 ] || { echo "extractor failed: $output" >&2; return 1; }
 
   [ "$output" = ".github/workflows/fixture.yml" ] || {
@@ -896,19 +896,19 @@ YAML
 
 @test "negative: an unparseable or job-less workflow fails the extractor" {
   require_yaml_parser
-  local dir="$BATS_TEST_TMPDIR/sb"
-  mkdir -p "$dir"
-  : > "$dir/tracked"
+  local directory="$BATS_TEST_TMPDIR/sb"
+  mkdir -p "$directory"
+  : > "$directory/tracked"
 
-  printf 'name: Broken\njobs:\n  - this: is not a mapping\n   bad indent\n' > "$dir/unparseable.yml"
-  run filter_coverage pairs "$dir/tracked" "$dir/unparseable.yml"
+  printf 'name: Broken\njobs:\n  - this: is not a mapping\n   bad indent\n' > "$directory/unparseable.yml"
+  run filter_coverage pairs "$directory/tracked" "$directory/unparseable.yml"
   [ "$status" -eq 2 ] || {
     echo "an unparseable workflow exited ${status}; empty output would read as clean" >&2
     return 1
   }
 
-  printf 'name: No jobs\non:\n  pull_request:\n' > "$dir/jobless.yml"
-  run filter_coverage pairs "$dir/tracked" "$dir/jobless.yml"
+  printf 'name: No jobs\non:\n  pull_request:\n' > "$directory/jobless.yml"
+  run filter_coverage pairs "$directory/tracked" "$directory/jobless.yml"
   [ "$status" -eq 2 ]
 }
 

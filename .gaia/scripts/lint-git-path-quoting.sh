@@ -159,10 +159,10 @@ set -euo pipefail
 # set +e/-e because this file arms errexit itself, and an unbracketed load
 # would abort the script outright if the library were ever present but
 # unparseable.
-_gaia_guard_lib_dir="${BASH_SOURCE[0]%/*}"
-if [ "$_gaia_guard_lib_dir" = "${BASH_SOURCE[0]}" ]; then _gaia_guard_lib_dir="."; fi
+_gaia_guard_library_directory="${BASH_SOURCE[0]%/*}"
+if [ "$_gaia_guard_library_directory" = "${BASH_SOURCE[0]}" ]; then _gaia_guard_library_directory="."; fi
 # shellcheck source=.gaia/scripts/guard-awk-lib.sh
-set +e; [ -f "$_gaia_guard_lib_dir/guard-awk-lib.sh" ] && . "$_gaia_guard_lib_dir/guard-awk-lib.sh" 2>/dev/null; set -e
+set +e; [ -f "$_gaia_guard_library_directory/guard-awk-lib.sh" ] && . "$_gaia_guard_library_directory/guard-awk-lib.sh" 2>/dev/null; set -e
 type gaia_guard_bats_files >/dev/null 2>&1 || {
   printf 'lint-git-path-quoting: guard-awk-lib.sh is missing beside this script\n' >&2
   exit 2
@@ -173,7 +173,7 @@ case "$GAIA_AWK_STATUS" in
     exit 5
     ;;
   6)
-    printf 'lint-git-path-quoting: GAIA_AWK resolved to an unsanctioned interpreter (%s); the sanctioned set is mawk and BWK one-true-awk\n' "$GAIA_AWK_IDENT" >&2
+    printf 'lint-git-path-quoting: GAIA_AWK resolved to an unsanctioned interpreter (%s); the sanctioned set is mawk and BWK one-true-awk\n' "$GAIA_AWK_IDENTITY" >&2
     exit 6
     ;;
 esac
@@ -196,8 +196,8 @@ esac
 # wiki/decisions/Shell Guard Fixture Discrimination.md for the convention and
 # the reasoning behind the argument-region rule and the suppression pragma.
 scan_files=()
-while IFS= read -r -d '' f; do
-  scan_files+=("$f")
+while IFS= read -r -d '' file_path; do
+  scan_files+=("$file_path")
 done < <(git -c core.quotepath=false ls-files -z '*.sh' '.husky/*' '.github/workflows/*.yml' '.github/workflows/*.yaml' '*.md' | LC_ALL=C sort -z)
 
 # An empty scan set is a hard error, never a clean tree. The loop above reads
@@ -332,16 +332,16 @@ readonly OWN_AWK='
     # deliberately global: awk has no other way to return a tuple. The walk
     # stops at the first token that is not an option, which is exactly where a
     # pathspec would begin, so a pathspec can never vouch for the call.
-    function option_walk(window,   n, i, tok, arr) {
+    function option_walk(window,   token_count, i, token, tokens) {
       has_z = 0
       has_name_only = 0
       existence_only = 0
-      n = split(window, arr, "[ \t]+")
-      for (i = 1; i <= n; i++) {
-        tok = arr[i]
+      token_count = split(window, tokens, "[ \t]+")
+      for (i = 1; i <= token_count; i++) {
+        token = tokens[i]
         # Leading whitespace in the window yields an empty first field; it is
         # not a token, and skipping it must not terminate the walk.
-        if (tok == "") continue
+        if (token == "") continue
         # Trailing shell punctuation is not part of the option. A substitution
         # that closes against its last option -- `$(git diff --cached
         # --name-only)`, `"$(git ls-files -z)"` -- yields `--name-only)` and
@@ -356,12 +356,12 @@ readonly OWN_AWK='
         # single quote is absent from the class because this awk program sits
         # inside a single-quoted shell string, and it is not needed: a command
         # substitution cannot close against one.
-        sub(/[")`;|&]+$/, "", tok)
-        if (tok == "--") break
-        if (substr(tok, 1, 1) != "-") break
-        if (tok == "-z") has_z = 1
-        if (tok == "--name-only") has_name_only = 1
-        if (tok == "--error-unmatch") existence_only = 1
+        sub(/[")`;|&]+$/, "", token)
+        if (token == "--") break
+        if (substr(token, 1, 1) != "-") break
+        if (token == "-z") has_z = 1
+        if (token == "--name-only") has_name_only = 1
+        if (token == "--error-unmatch") existence_only = 1
       }
     }
     BEGIN {
@@ -370,7 +370,7 @@ readonly OWN_AWK='
       # names. They differ for `diff` because the surface is the call PLUS the
       # --name-only the walk finds in its option region, and only the walk can
       # see that: the text between the two is an open set of selectors.
-      ncalls = 2
+      call_count = 2
       callname[1] = "diff";     calllabel[1] = "diff --name-only"
       callname[2] = "ls-files"; calllabel[2] = "ls-files"
     }
@@ -400,12 +400,12 @@ readonly OWN_AWK='
     # must be the same character and at least as long as the opener that is
     # open, the rule CommonMark itself uses, and the leading run may carry `>`.
     # No apostrophe anywhere in this block: it sits in a single-quoted string.
-    is_md {
+    is_markdown {
       if (match($0, /^[[:space:]>]*(```+|~~~+)/)) {
-        delim = substr($0, RSTART, RLENGTH)
-        sub(/^[[:space:]>]*/, "", delim)
-        dchar = substr(delim, 1, 1)
-        dlen = length(delim)
+        delimiter = substr($0, RSTART, RLENGTH)
+        sub(/^[[:space:]>]*/, "", delimiter)
+        delimiter_character = substr(delimiter, 1, 1)
+        delimiter_length = length(delimiter)
         # A closer carries no info string, which CommonMark requires and which
         # is the only thing separating a close from a nested open of the SAME
         # run length: inside a ```markdown block, a ```bash line is content.
@@ -413,27 +413,27 @@ readonly OWN_AWK='
         # body as prose, and that page renders as one well-formed block, so
         # unlike an unbalanced page it never announces itself to its reader.
         tail = substr($0, RSTART + RLENGTH)
-        if (!infence) { infence = 1; fencechar = dchar; fencelen = dlen }
-        else if (dchar == fencechar && dlen >= fencelen && tail ~ /^[[:space:]]*$/) { infence = 0 }
+        if (!infence) { infence = 1; fence_character = delimiter_character; fence_length = delimiter_length }
+        else if (delimiter_character == fence_character && delimiter_length >= fence_length && tail ~ /^[[:space:]]*$/) { infence = 0 }
         next
       }
     }
     # Outside a fence, markdown is prose in full: a paragraph naming a
     # path-listing command is documentation, not a call site, whether or not its
     # author wrapped it in a code span.
-    is_md && !infence { next }
+    is_markdown && !infence { next }
     /^[[:space:]]*#/ { next }
     {
-      for (c = 1; c <= ncalls; c++) {
-      call = callname[c]
-      label = calllabel[c]
-      calllen = length(call)
+      for (call_index = 1; call_index <= call_count; call_index++) {
+      call = callname[call_index]
+      label = calllabel[call_index]
+      call_length = length(call)
       consumed = 0
       rest = $0
-      while ((pos = index(rest, call)) > 0) {
-        abs = consumed + pos
-        prefix = substr($0, 1, abs - 1)
-        window = substr($0, abs + calllen)
+      while ((match_position = index(rest, call)) > 0) {
+        absolute_match_position = consumed + match_position
+        prefix = substr($0, 1, absolute_match_position - 1)
+        window = substr($0, absolute_match_position + call_length)
 
         # Any leading git global option, not just -c/-C: `git --no-pager diff
         # --name-only` is as much an invocation as `git -C "$root" diff`, and a
@@ -480,7 +480,7 @@ readonly OWN_AWK='
           if (!(is_bats && (gaia_scan_skip() || gaia_scan_suppressed("lint-git-path-quoting"))))
             printf "%s:%d: %s without -z: a C-quoted non-ASCII path stops matching in the consumer\n", file, FNR, label
         }
-        consumed = abs + calllen - 1
+        consumed = absolute_match_position + call_length - 1
         rest = substr($0, consumed + 1)
       }
       }
@@ -492,35 +492,35 @@ readonly OWN_AWK='
 # non-bats surface. Single pass; is_bats=0 makes every gaia_scan_* accessor the
 # library defines inert except the pragma reporter above.
 scan_file() {
-  local f="$1"
-  # Fence gating applies to markdown alone. On every other file type is_md stays
+  local file_path="$1"
+  # Fence gating applies to markdown alone. On every other file type is_markdown stays
   # 0, so infence never leaves 0 and both rules below are inert -- the shell and
   # YAML halves scan exactly the lines they always did.
-  local is_md=0
-  case "$f" in *.md) is_md=1 ;; esac
-  "$GAIA_AWK" -v file="$f" -v is_md="$is_md" -v is_bats=0 -v scripts_dir="$_gaia_guard_lib_dir" \
-      "$GAIA_GUARD_AWK$OWN_AWK" "$f"
+  local is_markdown=0
+  case "$file_path" in *.md) is_markdown=1 ;; esac
+  "$GAIA_AWK" -v file="$file_path" -v is_markdown="$is_markdown" -v is_bats=0 -v scripts_directory="$_gaia_guard_library_directory" \
+      "$GAIA_GUARD_AWK$OWN_AWK" "$file_path"
 }
 
 # scan_bats_file <path>: two-pass invocation over a tracked `*.bats` suite, the
 # file named twice so the prepass sees a fixture constant bound above the
-# helper call that consumes it. is_md is always 0: a bats file has no markdown
+# helper call that consumes it. is_markdown is always 0: a bats file has no markdown
 # fence state to track.
 scan_bats_file() {
-  local f="$1"
-  "$GAIA_AWK" -v file="$f" -v is_md=0 -v is_bats=1 -v scripts_dir="$_gaia_guard_lib_dir" \
-      "$GAIA_GUARD_AWK$OWN_AWK" "$f" "$f"
+  local file_path="$1"
+  "$GAIA_AWK" -v file="$file_path" -v is_markdown=0 -v is_bats=1 -v scripts_directory="$_gaia_guard_library_directory" \
+      "$GAIA_GUARD_AWK$OWN_AWK" "$file_path" "$file_path"
 }
 
 report=""
-for f in ${scan_files[@]+"${scan_files[@]}"}; do
-  [ -f "$f" ] || continue
-  hits=$(scan_file "$f")
+for file_path in ${scan_files[@]+"${scan_files[@]}"}; do
+  [ -f "$file_path" ] || continue
+  hits=$(scan_file "$file_path")
   [ -z "$hits" ] || report+="$hits"$'\n'
 done
-for f in ${GAIA_GUARD_BATS_FILES[@]+"${GAIA_GUARD_BATS_FILES[@]}"}; do
-  [ -f "$f" ] || continue
-  hits=$(scan_bats_file "$f")
+for file_path in ${GAIA_GUARD_BATS_FILES[@]+"${GAIA_GUARD_BATS_FILES[@]}"}; do
+  [ -f "$file_path" ] || continue
+  hits=$(scan_bats_file "$file_path")
   [ -z "$hits" ] || report+="$hits"$'\n'
 done
 

@@ -33,13 +33,13 @@ setup() {
   THIS_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
   REPO_ROOT="$(cd "$THIS_DIRECTORY/../../.." && pwd)"
   CHECK="$REPO_ROOT/.gaia/scripts/check-debt-issue-metadata.sh"
-  TMP="$(mktemp -d -t debt-issue-metadata-XXXXXX)"
-  BODY="$TMP/body.md"
+  TEMPORARY_DIRECTORY="$(mktemp -d -t debt-issue-metadata-XXXXXX)"
+  BODY="$TEMPORARY_DIRECTORY/body.md"
   good_body >"$BODY"
 }
 
 teardown() {
-  [ -n "${TMP:-}" ] && [ -d "$TMP" ] && rm -rf "$TMP"
+  [ -n "${TEMPORARY_DIRECTORY:-}" ] && [ -d "$TEMPORARY_DIRECTORY" ] && rm -rf "$TEMPORARY_DIRECTORY"
   return 0
 }
 
@@ -280,9 +280,9 @@ refute_code() {
 }
 
 @test "each permitted footprint: value is accepted" {
-  local v
-  for v in narrow wide spec; do
-    run bash "$CHECK" --pre-file --labels "tech-debt,severity:important,audience:adopter,footprint:$v" --body-file "$BODY"
+  local footprint_value
+  for footprint_value in narrow wide spec; do
+    run bash "$CHECK" --pre-file --labels "tech-debt,severity:important,audience:adopter,footprint:$footprint_value" --body-file "$BODY"
     [ "$status" -eq 0 ] || return 1
   done
 }
@@ -522,7 +522,7 @@ refute_code() {
 }
 
 @test "a missing body file exits 2 rather than reporting a clean filing" {
-  run bash "$CHECK" --pre-file --labels "$GOOD_LABELS" --body-file "$TMP/absent.md"
+  run bash "$CHECK" --pre-file --labels "$GOOD_LABELS" --body-file "$TEMPORARY_DIRECTORY/absent.md"
   [ "$status" -eq 2 ]
 }
 
@@ -555,42 +555,42 @@ refute_code() {
 # Omitting the third argument keeps the subcommand-only behaviour the --issue
 # and --sweep tests were written against.
 stub_gh() {
-  mkdir -p "$TMP/bin"
-  printf '%s\n' "$1" >"$TMP/corpus.json"
-  printf '%s\n' "${2:-[]}" >"$TMP/view.json"
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  printf '%s\n' "$1" >"$TEMPORARY_DIRECTORY/corpus.json"
+  printf '%s\n' "${2:-[]}" >"$TEMPORARY_DIRECTORY/view.json"
   if [ "$#" -ge 3 ]; then
-    printf '%s\n' "$3" >"$TMP/unfiltered.json"
+    printf '%s\n' "$3" >"$TEMPORARY_DIRECTORY/unfiltered.json"
   else
-    rm -f "$TMP/unfiltered.json"
+    rm -f "$TEMPORARY_DIRECTORY/unfiltered.json"
   fi
-  cat >"$TMP/bin/gh" <<'EOF'
+  cat >"$TEMPORARY_DIRECTORY/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 # $1 is `issue`, $2 is the subcommand. argv is also logged one call per line, as
 # a cheaper backstop to the per-argv corpus selection above.
-printf '%s\n' "$*" >>"$STUB_DIR/argv.log"
+printf '%s\n' "$*" >>"$STUB_DIRECTORY/argv.log"
 case "$2" in
   list)
-    if [ -f "$STUB_DIR/unfiltered.json" ] &&
+    if [ -f "$STUB_DIRECTORY/unfiltered.json" ] &&
       ! printf '%s\n' "$*" | grep -qF -- '--label severity:investigate'; then
-      cat "$STUB_DIR/unfiltered.json"
+      cat "$STUB_DIRECTORY/unfiltered.json"
     else
-      cat "$STUB_DIR/corpus.json"
+      cat "$STUB_DIRECTORY/corpus.json"
     fi
     ;;
-  view) cat "$STUB_DIR/view.json" ;;
+  view) cat "$STUB_DIRECTORY/view.json" ;;
   *) exit 1 ;;
 esac
 EOF
-  chmod +x "$TMP/bin/gh"
-  export STUB_DIR="$TMP"
-  export PATH="$TMP/bin:$PATH"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/gh"
+  export STUB_DIRECTORY="$TEMPORARY_DIRECTORY"
+  export PATH="$TEMPORARY_DIRECTORY/bin:$PATH"
 }
 
 stub_gh_failing() {
-  mkdir -p "$TMP/bin"
-  printf '#!/usr/bin/env bash\nexit 1\n' >"$TMP/bin/gh"
-  chmod +x "$TMP/bin/gh"
-  export PATH="$TMP/bin:$PATH"
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  printf '#!/usr/bin/env bash\nexit 1\n' >"$TEMPORARY_DIRECTORY/bin/gh"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/gh"
+  export PATH="$TEMPORARY_DIRECTORY/bin:$PATH"
 }
 
 @test "--sweep reports an empty backlog rather than reporting a clean check" {
@@ -726,7 +726,7 @@ stub_gh_failing() {
     found=1
     grep -qF -- "--label tech-debt" <<<"$line" || return 1
     grep -qF -- "--state open" <<<"$line" || return 1
-  done < <(grep -F -- "--label severity:investigate" "$TMP/argv.log")
+  done < <(grep -F -- "--label severity:investigate" "$TEMPORARY_DIRECTORY/argv.log")
   [ "$found" -eq 1 ] || return 1
 }
 
@@ -754,7 +754,7 @@ stub_gh_failing() {
 #
 # The hazard that wrap creates is a runtime one, not a syntax one. Under
 # `set -euo pipefail` a strip that took the `AUDIENCE_VALUES` declaration but
-# left its `check_ns_values` reader behind aborts on an unbound variable at the
+# left its `check_namespace_values` reader behind aborts on an unbound variable at the
 # FIRST filing, taking the severity, difficulty, footprint, and fold checks down
 # with it, and `bash -n` parses that file clean. So these tests strip through
 # the real shipped stripper (`gaia-maintainer release scrub`, never a second
@@ -779,10 +779,10 @@ require_stripper() {
     || skip "maintainer CLI absent; nothing to strip through"
 }
 
-# sh_marker_delim <start|end>: echo that delimiter, quotes included, from the
+# sh_marker_delimiter <start|end>: echo that delimiter, quotes included, from the
 # one marker-strip transform in `.gaia/release-scrub.yml` whose paths cover
 # `**/*.sh`, which is the transform that governs the script under test.
-sh_marker_delim() {
+sh_marker_delimiter() {
   awk -v want="$1" '
     /^  - type: / {in_block = ($0 == "  - type: marker-strip"); covers_sh = 0; next}
     !in_block {next}
@@ -795,11 +795,11 @@ sh_marker_delim() {
   ' "$REPO_ROOT/.gaia/release-scrub.yml"
 }
 
-# delim_missing <start|end>: name which delimiter key could not be read, and
+# delimiter_missing <start|end>: name which delimiter key could not be read, and
 # which of the two contracts moved. A literal format string, not the message in
 # a variable, so shellcheck reads it as one.
-delim_missing() {
-  printf 'sh_marker_delim: no `%s:` under the `**/*.sh` marker-strip transform in .gaia/release-scrub.yml; that YAML shape moved, not the strip\n' "$1" >&2
+delimiter_missing() {
+  printf 'sh_marker_delimiter: no `%s:` under the `**/*.sh` marker-strip transform in .gaia/release-scrub.yml; that YAML shape moved, not the strip\n' "$1" >&2
 }
 
 # stripped_check: strip the script into a throwaway staging tree and echo the
@@ -807,7 +807,7 @@ delim_missing() {
 stripped_check() {
   local cli="$REPO_ROOT/.gaia/cli/gaia-maintainer"
 
-  local stage="$TMP/stage"
+  local stage="$TEMPORARY_DIRECTORY/stage"
   mkdir -p "$stage/.gaia/scripts"
   cp "$CHECK" "$stage/.gaia/scripts/check-debt-issue-metadata.sh"
 
@@ -821,17 +821,17 @@ stripped_check() {
   # and does not cover `**/*.sh`; the block has to be the one that governs
   # this file.
   local start end
-  start="$(sh_marker_delim start)"
-  end="$(sh_marker_delim end)"
+  start="$(sh_marker_delimiter start)"
+  end="$(sh_marker_delimiter end)"
   # Say which side of the contract moved. The bare `return 1` this replaces
   # surfaced in bats as the caller's `|| return 1` and nothing else, so a
   # shape-preserving edit to that transform (re-quoting the path entry, or
   # ordering `start:`/`end:` ahead of `paths:`) read as an unexplained failure
   # of the strip itself.
-  [ -n "$start" ] || { delim_missing start; return 1; }
-  [ -n "$end" ] || { delim_missing end; return 1; }
+  [ -n "$start" ] || { delimiter_missing start; return 1; }
+  [ -n "$end" ] || { delimiter_missing end; return 1; }
 
-  cat >"$TMP/scrub.yml" <<YAML
+  cat >"$TEMPORARY_DIRECTORY/scrub.yml" <<YAML
 transforms:
   - type: marker-strip
     paths:
@@ -840,7 +840,7 @@ transforms:
     end: $end
 YAML
 
-  "$cli" release scrub "$stage" --config "$TMP/scrub.yml" >/dev/null || return 1
+  "$cli" release scrub "$stage" --config "$TEMPORARY_DIRECTORY/scrub.yml" >/dev/null || return 1
   printf '%s\n' "$stage/.gaia/scripts/check-debt-issue-metadata.sh"
 }
 
