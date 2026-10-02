@@ -30,7 +30,7 @@ usage() {
 }
 
 [ "$#" -eq 4 ] || usage
-issue_num="$1"
+issue_number="$1"
 class_slug="$2"
 fix_branch="$3"
 pr_body_file="$4"
@@ -48,13 +48,13 @@ fi
 
 # 2. Resolve the issue title for the PR title. We use --json to avoid
 #    fragile parsing of `gh issue view` text output.
-issue_title="$(gh issue view "$issue_num" --json title --jq '.title')"
+issue_title="$(gh issue view "$issue_number" --json title --jq '.title')"
 if [ -z "$issue_title" ]; then
-  echo "handle-auto-fixable.sh: could not resolve title for issue #$issue_num" >&2
+  echo "handle-auto-fixable.sh: could not resolve title for issue #$issue_number" >&2
   exit 1
 fi
 
-pr_title="[gaia-forensics] ${issue_title} (#${issue_num})"
+pr_title="[gaia-forensics] ${issue_title} (#${issue_number})"
 
 # 3. Open the draft PR. --draft is the UAT-008 hard requirement; the
 #    handler MUST NEVER mark it ready-for-review. --body-file (never
@@ -73,24 +73,24 @@ pr_url="$(gh pr create \
 #    is reserved for callers and used in the branch name; kept in the
 #    surface for forward-compat with any future per-class labelling
 #    without renegotiating the contract.
-gh issue edit "$issue_num" --add-label "auto-fixable"
+gh issue edit "$issue_number" --add-label "auto-fixable"
 
 # 5. Link the PR back from the issue. Comment last (before triaged) so
 #    a re-fire under UAT-011 sees the triaged label and exits before
 #    duplicating the link.
-work_dir=$(mktemp -d 2>/dev/null) || { echo "handle-auto-fixable.sh: mktemp failed" >&2; exit 2; }
-trap 'rm -rf "$work_dir"' EXIT
+work_directory=$(mktemp -d 2>/dev/null) || { echo "handle-auto-fixable.sh: mktemp failed" >&2; exit 2; }
+trap 'rm -rf "$work_directory"' EXIT
 
-link_file="$work_dir/link.md"
+link_file="$work_directory/link.md"
 {
   printf 'verdict: auto-fixable (class: `%s`)\n\n' "$class_slug"
   printf 'Draft PR opened: %s\n\n' "$pr_url"
   printf 'Quality Gate passed on `%s`. Branch + PR are draft pending human review per branch protection on `main`.\n' "$fix_branch"
 } > "$link_file"
 
-gh issue comment "$issue_num" --body-file "$link_file"
+gh issue comment "$issue_number" --body-file "$link_file"
 
 # 6. `gaia-triaged` LAST.
-gh issue edit "$issue_num" --add-label "gaia-triaged"
+gh issue edit "$issue_number" --add-label "gaia-triaged"
 
 exit 0

@@ -26,7 +26,7 @@ setup() {
   # `.gaia/tests/forensics/unit.bats`, so the repo root is three levels up.
   REPO_ROOT="$( cd "$( dirname "$BATS_TEST_FILENAME" )/../../.." && pwd )"
   FORENSICS_DIR="$REPO_ROOT/.github/forensics"
-  FIXTURES_DIR="$REPO_ROOT/.gaia/tests/forensics/fixtures"
+  FIXTURES_DIRECTORY="$REPO_ROOT/.gaia/tests/forensics/fixtures"
   PARSER="$FORENSICS_DIR/parse-issue-body.sh"
   SCOPE="$FORENSICS_DIR/check-scope.sh"
 }
@@ -51,21 +51,21 @@ setup() {
 # ---------------------------------------------------------------------------
 
 @test "fixture valid-init-failure parses cleanly" {
-  run "$PARSER" "$FIXTURES_DIR/valid-init-failure.md"
+  run "$PARSER" "$FIXTURES_DIRECTORY/valid-init-failure.md"
   [ "$status" -eq 0 ]
   [[ "$output" == *'"valid":true'* ]]
   [[ "$output" == *'"class":"init"'* ]]
 }
 
 @test "fixture valid-update-conflict parses cleanly" {
-  run "$PARSER" "$FIXTURES_DIR/valid-update-conflict.md"
+  run "$PARSER" "$FIXTURES_DIRECTORY/valid-update-conflict.md"
   [ "$status" -eq 0 ]
   [[ "$output" == *'"valid":true'* ]]
   [[ "$output" == *'"class":"update"'* ]]
 }
 
 @test "fixture non-issue-config parses cleanly" {
-  run "$PARSER" "$FIXTURES_DIR/non-issue-config.md"
+  run "$PARSER" "$FIXTURES_DIRECTORY/non-issue-config.md"
   [ "$status" -eq 0 ]
   [[ "$output" == *'"valid":true'* ]]
   [[ "$output" == *'"class":"dev-server"'* ]]
@@ -76,7 +76,7 @@ setup() {
 # ---------------------------------------------------------------------------
 
 @test "fixture malformed-missing-symptom returns missing-section" {
-  run "$PARSER" "$FIXTURES_DIR/malformed-missing-symptom.md"
+  run "$PARSER" "$FIXTURES_DIRECTORY/malformed-missing-symptom.md"
   [ "$status" -eq 0 ]
   [[ "$output" == *'"valid":false'* ]]
   [[ "$output" == *'"error":"missing-section"'* ]]
@@ -84,7 +84,7 @@ setup() {
 }
 
 @test "fixture malformed-frontmatter returns malformed-frontmatter" {
-  run "$PARSER" "$FIXTURES_DIR/malformed-frontmatter.md"
+  run "$PARSER" "$FIXTURES_DIRECTORY/malformed-frontmatter.md"
   [ "$status" -eq 0 ]
   [[ "$output" == *'"valid":false'* ]]
   [[ "$output" == *'"error":"malformed-frontmatter"'* ]]
@@ -99,14 +99,14 @@ setup() {
 # ---------------------------------------------------------------------------
 
 @test "fixture redaction-passthrough preserves <redacted> token verbatim" {
-  run "$PARSER" "$FIXTURES_DIR/redaction-passthrough.md"
+  run "$PARSER" "$FIXTURES_DIRECTORY/redaction-passthrough.md"
   [ "$status" -eq 0 ]
   [[ "$output" == *'<redacted>'* ]]
   [[ "$output" == *'api_key: <redacted>'* ]]
 }
 
 @test "fixture redaction-passthrough preserves repo-relative path token verbatim" {
-  run "$PARSER" "$FIXTURES_DIR/redaction-passthrough.md"
+  run "$PARSER" "$FIXTURES_DIRECTORY/redaction-passthrough.md"
   [ "$status" -eq 0 ]
   # Two distinct sites: capture (`config_path: ...`) and reproduction context.
   [[ "$output" == *'config_path: .gaia/cli/src/config/load.ts'* ]]
@@ -122,7 +122,7 @@ setup() {
 # ---------------------------------------------------------------------------
 
 @test "fixture denylist-attempt parses cleanly (boundary tested via check-scope)" {
-  run "$PARSER" "$FIXTURES_DIR/denylist-attempt.md"
+  run "$PARSER" "$FIXTURES_DIRECTORY/denylist-attempt.md"
   [ "$status" -eq 0 ]
   [[ "$output" == *'"valid":true'* ]]
 }
@@ -142,7 +142,7 @@ setup() {
 }
 
 @test "fixture unenumerated-attempt parses cleanly (boundary tested via check-scope)" {
-  run "$PARSER" "$FIXTURES_DIR/unenumerated-attempt.md"
+  run "$PARSER" "$FIXTURES_DIRECTORY/unenumerated-attempt.md"
   [ "$status" -eq 0 ]
   [[ "$output" == *'"valid":true'* ]]
 }

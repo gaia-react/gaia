@@ -19,19 +19,19 @@
 #   UAT-015   handle-auto-fixable PR body is passed via --body-file (passthrough)
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  HANDLERS="$THIS_DIR/../handlers"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  HANDLERS="$THIS_DIRECTORY/../handlers"
 
   # Per-test sandbox.
   SANDBOX="$BATS_TEST_TMPDIR/sandbox"
   mkdir -p "$SANDBOX/bin" "$SANDBOX/captured-bodies"
   GH_LOG="$SANDBOX/gh.log"
   GIT_LOG="$SANDBOX/git.log"
-  CAPTURED_BODIES_DIR="$SANDBOX/captured-bodies"
-  export GH_LOG GIT_LOG CAPTURED_BODIES_DIR
+  CAPTURED_BODIES_DIRECTORY="$SANDBOX/captured-bodies"
+  export GH_LOG GIT_LOG CAPTURED_BODIES_DIRECTORY
 
   # gh shim: records every invocation as one line per call AND snapshots
-  # every --body-file <path> argument's content under $CAPTURED_BODIES_DIR
+  # every --body-file <path> argument's content under $CAPTURED_BODIES_DIRECTORY
   # so tests can inspect the body even after the handler's trap cleans up
   # its tmpdir. Special-case `gh issue view --json title --jq .title` and
   # `gh pr create` to emit deterministic stdout.
@@ -40,23 +40,23 @@ setup() {
 # argv recording: one line, NUL-free shell-quoted via printf %q.
 {
   printf 'gh'
-  for a in "$@"; do
-    printf ' %q' "$a"
+  for argument in "$@"; do
+    printf ' %q' "$argument"
   done
   printf '\n'
 } >> "$GH_LOG"
 
 # Snapshot --body-file content (handler's tmpdir gets cleaned via trap
 # before the test can read it).
-prev=""
-for a in "$@"; do
-  if [ "$prev" = "--body-file" ] && [ -f "$a" ]; then
-    snap="$CAPTURED_BODIES_DIR/body-$(printf '%s' "$$-$RANDOM-${#a}").md"
-    cp "$a" "$snap"
+previous_argument=""
+for argument in "$@"; do
+  if [ "$previous_argument" = "--body-file" ] && [ -f "$argument" ]; then
+    snapshot_file="$CAPTURED_BODIES_DIRECTORY/body-$(printf '%s' "$$-$RANDOM-${#argument}").md"
+    cp "$argument" "$snapshot_file"
     # Append a sidecar so tests can correlate this body to its gh call.
-    printf '%s\n' "$snap" >> "$CAPTURED_BODIES_DIR/index.txt"
+    printf '%s\n' "$snapshot_file" >> "$CAPTURED_BODIES_DIRECTORY/index.txt"
   fi
-  prev="$a"
+  previous_argument="$argument"
 done
 
 # Specific stub responses needed by the handlers.
@@ -81,8 +81,8 @@ SHIM
 #!/usr/bin/env bash
 {
   printf 'git'
-  for a in "$@"; do
-    printf ' %q' "$a"
+  for argument in "$@"; do
+    printf ' %q' "$argument"
   done
   printf '\n'
 } >> "$GIT_LOG"
@@ -115,7 +115,7 @@ gh_log_count() {
 }
 
 # Helper: line-number of the first $GH_LOG line containing literal $1, or empty.
-gh_log_line_no() {
+gh_log_line_number() {
   grep -nF -- "$1" "$GH_LOG" 2>/dev/null | head -1 | cut -d: -f1
 }
 
@@ -123,7 +123,7 @@ gh_log_line_no() {
 # (Order matches the gh-shim invocation order; for the suites here all
 # handlers post exactly one comment per run, so "first" == "the comment".)
 first_captured_body() {
-  head -1 "$CAPTURED_BODIES_DIR/index.txt"
+  head -1 "$CAPTURED_BODIES_DIRECTORY/index.txt"
 }
 
 # ---------------------------------------------------------------------------
@@ -171,7 +171,7 @@ first_captured_body() {
   printf 'x\n' > "$reasoning"
   run "$HANDLERS/handle-non-issue.sh" 42 "$reasoning"
   [ "$status" -eq 0 ]
-  triaged_line="$(gh_log_line_no '--add-label gaia-triaged')"
+  triaged_line="$(gh_log_line_number '--add-label gaia-triaged')"
   total_lines="$(wc -l < "$GH_LOG" | tr -d ' ')"
   [ "$triaged_line" = "$total_lines" ]
 }
@@ -272,7 +272,7 @@ first_captured_body() {
   printf 'x\n' > "$reasoning"
   run "$HANDLERS/handle-needs-human.sh" 42 "$reasoning" out-of-scope
   [ "$status" -eq 0 ]
-  triaged_line="$(gh_log_line_no '--add-label gaia-triaged')"
+  triaged_line="$(gh_log_line_number '--add-label gaia-triaged')"
   total_lines="$(wc -l < "$GH_LOG" | tr -d ' ')"
   [ "$triaged_line" = "$total_lines" ]
 }
@@ -354,7 +354,7 @@ first_captured_body() {
   printf 'x\n' > "$body"
   run "$HANDLERS/handle-auto-fixable.sh" 42 quality-gate forensics/42-quality-gate "$body"
   [ "$status" -eq 0 ]
-  triaged_line="$(gh_log_line_no '--add-label gaia-triaged')"
+  triaged_line="$(gh_log_line_number '--add-label gaia-triaged')"
   total_lines="$(wc -l < "$GH_LOG" | tr -d ' ')"
   [ "$triaged_line" = "$total_lines" ]
 }
@@ -432,7 +432,7 @@ first_captured_body() {
   printf '{"valid":false,"error":"missing-section","missing":["symptom"],"malformed":[]}\n' > "$parser"
   run "$HANDLERS/handle-malformed-body.sh" 42 "$parser"
   [ "$status" -eq 0 ]
-  triaged_line="$(gh_log_line_no '--add-label gaia-triaged')"
+  triaged_line="$(gh_log_line_number '--add-label gaia-triaged')"
   total_lines="$(wc -l < "$GH_LOG" | tr -d ' ')"
   [ "$triaged_line" = "$total_lines" ]
 }

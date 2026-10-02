@@ -6,8 +6,8 @@
 # LLM fallback.
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  PARSER="$THIS_DIR/../parse-verdict.sh"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  PARSER="$THIS_DIRECTORY/../parse-verdict.sh"
 }
 
 # ---------------------------------------------------------------------------

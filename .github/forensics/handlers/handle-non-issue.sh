@@ -30,16 +30,16 @@ usage() {
 }
 
 [ "$#" -eq 2 ] || usage
-issue_num="$1"
+issue_number="$1"
 reasoning_file="$2"
 
 [ -f "$reasoning_file" ] || { echo "handle-non-issue.sh: reasoning file not found: $reasoning_file" >&2; exit 2; }
 
-work_dir=$(mktemp -d 2>/dev/null) || { echo "handle-non-issue.sh: mktemp failed" >&2; exit 2; }
-trap 'rm -rf "$work_dir"' EXIT
+work_directory=$(mktemp -d 2>/dev/null) || { echo "handle-non-issue.sh: mktemp failed" >&2; exit 2; }
+trap 'rm -rf "$work_directory"' EXIT
 
 # Compose the comment body: header + reasoning passthrough.
-comment_file="$work_dir/comment.md"
+comment_file="$work_directory/comment.md"
 {
   printf 'verdict: non-issue\n\n'
   cat "$reasoning_file"
@@ -54,9 +54,9 @@ comment_file="$work_dir/comment.md"
 #      mutation to land. Under UAT-011's concurrency-queued re-fire, any
 #      partial completion that lands `gaia-triaged` has, by construction,
 #      already done the rest.
-gh issue edit "$issue_num" --add-label "non-issue"
-gh issue comment "$issue_num" --body-file "$comment_file"
-gh issue close "$issue_num"
-gh issue edit "$issue_num" --add-label "gaia-triaged"
+gh issue edit "$issue_number" --add-label "non-issue"
+gh issue comment "$issue_number" --body-file "$comment_file"
+gh issue close "$issue_number"
+gh issue edit "$issue_number" --add-label "gaia-triaged"
 
 exit 0

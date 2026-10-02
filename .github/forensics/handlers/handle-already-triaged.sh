@@ -19,8 +19,8 @@ usage() {
 }
 
 [ "$#" -eq 1 ] || usage
-issue_num="$1"
+issue_number="$1"
 
-printf '::notice::issue #%s already triaged; skipping\n' "$issue_num"
+printf '::notice::issue #%s already triaged; skipping\n' "$issue_number"
 
 exit 0

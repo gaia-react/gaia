@@ -15,8 +15,8 @@
 #   - Knip is in scope (failure → demote, identical to lint/test).
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  RUNNER="$THIS_DIR/../run-quality-gate.sh"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  RUNNER="$THIS_DIRECTORY/../run-quality-gate.sh"
 
   SANDBOX="$BATS_TEST_TMPDIR/sandbox"
   mkdir -p "$SANDBOX/bin"
@@ -31,8 +31,8 @@ setup() {
 #!/usr/bin/env bash
 {
   printf 'pnpm'
-  for a in "$@"; do
-    printf ' %q' "$a"
+  for argument in "$@"; do
+    printf ' %q' "$argument"
   done
   printf '\n'
 } >> "$PNPM_LOG"
@@ -220,8 +220,8 @@ pnpm_log_count() {
   PNPM_TEST_STDOUT="$big" PNPM_TEST_EXIT=1 run "$RUNNER" "$SUMMARY"
   [ "$status" -eq 1 ]
   # Pull just the log_excerpt string value via awk; verify length.
-  excerpt_len=$(awk 'BEGIN { RS = ""; FS = "\"log_excerpt\": \"" } NR==1 { sub(/".*/, "", $2); print length($2) }' "$SUMMARY")
-  [ "$excerpt_len" -le 2000 ]
+  excerpt_length=$(awk 'BEGIN { RS = ""; FS = "\"log_excerpt\": \"" } NR==1 { sub(/".*/, "", $2); print length($2) }' "$SUMMARY")
+  [ "$excerpt_length" -le 2000 ]
 }
 
 @test "log excerpt is bounded to <= 50 lines" {
@@ -235,7 +235,7 @@ pnpm_log_count() {
   PNPM_TEST_STDOUT="$many" PNPM_TEST_EXIT=1 run "$RUNNER" "$SUMMARY"
   [ "$status" -eq 1 ]
   # The excerpt is JSON-escaped so each newline shows as \n; count those.
-  newline_count=$(awk 'BEGIN { RS = ""; FS = "\"log_excerpt\": \"" } NR==1 { sub(/".*/, "", $2); n = gsub(/\\n/, "&", $2); print n }' "$SUMMARY")
+  newline_count=$(awk 'BEGIN { RS = ""; FS = "\"log_excerpt\": \"" } NR==1 { sub(/".*/, "", $2); escaped_newline_count = gsub(/\\n/, "&", $2); print escaped_newline_count }' "$SUMMARY")
   [ "$newline_count" -le 50 ]
   # And the LAST line (line-199) must be retained, tail-50, not head-50.
   grep -qF 'line-199' "$SUMMARY"

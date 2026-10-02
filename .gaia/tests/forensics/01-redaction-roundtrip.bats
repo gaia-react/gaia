@@ -6,13 +6,13 @@
 bats_require_minimum_version 1.5.0
 
 HERE="$(cd "$(dirname "${BATS_TEST_FILENAME}")" && pwd)"
-LIB="$HERE/lib"
+LIBRARY_DIRECTORY="$HERE/lib"
 FIXTURES="$HERE/fixtures"
 
 setup() {
   # Source the redact library (defines redact_body)
   # shellcheck source=lib/redact.sh
-  source "$LIB/redact.sh"
+  source "$LIBRARY_DIRECTORY/redact.sh"
 
   # Use a synthetic project root for path-conversion tests
   FAKE_ROOT="/Users/testuser/Development/my-project"
@@ -144,12 +144,12 @@ setup() {
 }
 
 @test "SEC-3: Bearer token value is redacted, label preserved" {
-  local tok
-  tok="$(python3 -c 'print("a"*24)' 2>/dev/null || printf 'aaaaaaaaaaaaaaaaaaaaaaaa')"
-  local input="Authorization: Bearer $tok"
+  local bearer_token
+  bearer_token="$(python3 -c 'print("a"*24)' 2>/dev/null || printf 'aaaaaaaaaaaaaaaaaaaaaaaa')"
+  local input="Authorization: Bearer $bearer_token"
   local result
   result="$(redact_body "$FAKE_ROOT" "$input")"
-  [[ "$result" != *"Bearer $tok"* ]]
+  [[ "$result" != *"Bearer $bearer_token"* ]]
   [[ "$result" == *"Bearer <redacted>"* ]]
 }
 

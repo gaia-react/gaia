@@ -43,9 +43,9 @@ if ! command -v bats >/dev/null 2>&1; then
   fi
 fi
 
-for f in "$HERE"/*.bats; do
-  echo "--> $(basename "$f")"
-  bats5 "$f"
+for bats_file in "$HERE"/*.bats; do
+  echo "--> $(basename "$bats_file")"
+  bats5 "$bats_file"
 done
 
 echo "==> all forensics tests passed"

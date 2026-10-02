@@ -39,19 +39,19 @@ setup() {
 TREE_KEY_FIXTURE="deadbeefcafe1234"
 
 runbook_surrogate() {
-  local workdir="$1"
+  local work_directory="$1"
   local class="${2:-init}"
   local timestamp="20260508T143022Z"
 
-  mkdir -p "$workdir/.gaia/local/forensics/$TREE_KEY_FIXTURE"
-  mkdir -p "$workdir/.gaia/local/telemetry"
+  mkdir -p "$work_directory/.gaia/local/forensics/$TREE_KEY_FIXTURE"
+  mkdir -p "$work_directory/.gaia/local/telemetry"
 
   # Write report to allowed path (the only write the runbook may do)
-  local report_path="$workdir/.gaia/local/forensics/$TREE_KEY_FIXTURE/${timestamp}-${class}.md"
+  local report_path="$work_directory/.gaia/local/forensics/$TREE_KEY_FIXTURE/${timestamp}-${class}.md"
   printf '## Symptom\nTest report body.\n' > "$report_path"
 
   # Optionally write to telemetry (also allowed)
-  printf 'forensics_invoked\n' > "$workdir/.gaia/local/telemetry/emit.log"
+  printf 'forensics_invoked\n' > "$work_directory/.gaia/local/telemetry/emit.log"
 }
 
 # ---------------------------------------------------------------------------
@@ -60,39 +60,39 @@ runbook_surrogate() {
 # ---------------------------------------------------------------------------
 
 illegal_write_surrogate() {
-  local workdir="$1"
+  local work_directory="$1"
   # Write to an explicitly forbidden path
-  printf 'leaked\n' > "$workdir/.claude/ILLEGAL_WRITE"
+  printf 'leaked\n' > "$work_directory/.claude/ILLEGAL_WRITE"
 }
 
 # ---------------------------------------------------------------------------
-# Helper: list regular files under $workdir that are NOT in the two allowed
+# Helper: list regular files under $work_directory that are NOT in the two allowed
 # write roots, sorted for a stable set comparison. Snapshot this before and
 # after a surrogate run to detect writes by set difference.
 # ---------------------------------------------------------------------------
 
 list_write_surface() {
-  local workdir="$1"
+  local work_directory="$1"
 
-  find "$workdir" -type f \
-    ! -path "$workdir/.gaia/local/forensics/*" \
-    ! -path "$workdir/.gaia/local/telemetry/*" \
+  find "$work_directory" -type f \
+    ! -path "$work_directory/.gaia/local/forensics/*" \
+    ! -path "$work_directory/.gaia/local/telemetry/*" \
     2>/dev/null | LC_ALL=C sort
 }
 
 # ---------------------------------------------------------------------------
 # Helper: given a before-snapshot ($before, a file holding list_write_surface
-# output) and the workdir, return files created outside the allowlist since the
+# output) and the work_directory, return files created outside the allowlist since the
 # snapshot. Detection is by set difference (comm -13), independent of mtime
 # granularity: a write landing in the same clock second as the snapshot is
 # still caught.
 # ---------------------------------------------------------------------------
 
 find_write_violations() {
-  local workdir="$1"
+  local work_directory="$1"
   local before="$2"
 
-  list_write_surface "$workdir" | LC_ALL=C comm -13 "$before" -
+  list_write_surface "$work_directory" | LC_ALL=C comm -13 "$before" -
 }
 
 # ---------------------------------------------------------------------------
@@ -100,126 +100,126 @@ find_write_violations() {
 # ---------------------------------------------------------------------------
 
 @test "UAT-008: runbook surrogate writes only to allowed paths" {
-  local workdir
-  workdir="$(mktemp -d)"
+  local work_directory
+  work_directory="$(mktemp -d)"
 
   # Initialize a minimal git repo so the surrogate can operate
-  git -C "$workdir" init -q
-  mkdir -p "$workdir/app" "$workdir/wiki" "$workdir/.claude"
-  printf 'placeholder\n' > "$workdir/app/placeholder.ts"
-  printf 'placeholder\n' > "$workdir/wiki/index.md"
-  git -C "$workdir" add .
-  git -C "$workdir" commit -q -m "initial"
+  git -C "$work_directory" init -q
+  mkdir -p "$work_directory/app" "$work_directory/wiki" "$work_directory/.claude"
+  printf 'placeholder\n' > "$work_directory/app/placeholder.ts"
+  printf 'placeholder\n' > "$work_directory/wiki/index.md"
+  git -C "$work_directory" add .
+  git -C "$work_directory" commit -q -m "initial"
 
   # Snapshot the write surface before the surrogate runs
   local before
   before="$(mktemp)"
-  list_write_surface "$workdir" > "$before"
+  list_write_surface "$work_directory" > "$before"
 
   # Run the allowed surrogate
-  runbook_surrogate "$workdir" "init"
+  runbook_surrogate "$work_directory" "init"
 
   # Find any writes outside the allowlist
   local violations
-  violations="$(find_write_violations "$workdir" "$before")"
+  violations="$(find_write_violations "$work_directory" "$before")"
 
   rm -f "$before"
-  rm -rf "$workdir"
+  rm -rf "$work_directory"
 
   [[ -z "$violations" ]]
 }
 
 @test "UAT-008: writes to allowed .gaia/local/forensics/ path are detected as expected" {
-  local workdir
-  workdir="$(mktemp -d)"
-  git -C "$workdir" init -q
-  mkdir -p "$workdir/.claude"
+  local work_directory
+  work_directory="$(mktemp -d)"
+  git -C "$work_directory" init -q
+  mkdir -p "$work_directory/.claude"
 
   local before
   before="$(mktemp)"
-  list_write_surface "$workdir" > "$before"
+  list_write_surface "$work_directory" > "$before"
 
   # Write to the allowed path
-  mkdir -p "$workdir/.gaia/local/forensics/$TREE_KEY_FIXTURE"
-  printf 'report\n' > "$workdir/.gaia/local/forensics/$TREE_KEY_FIXTURE/20260508T143022Z-init.md"
+  mkdir -p "$work_directory/.gaia/local/forensics/$TREE_KEY_FIXTURE"
+  printf 'report\n' > "$work_directory/.gaia/local/forensics/$TREE_KEY_FIXTURE/20260508T143022Z-init.md"
 
   # Find violations; should be empty because the write is in the allowlist
   local violations
-  violations="$(find_write_violations "$workdir" "$before")"
+  violations="$(find_write_violations "$work_directory" "$before")"
 
   rm -f "$before"
-  rm -rf "$workdir"
+  rm -rf "$work_directory"
 
   [[ -z "$violations" ]]
 }
 
 @test "UAT-008: illegal write outside allowlist IS detected as a violation" {
-  local workdir
-  workdir="$(mktemp -d)"
-  git -C "$workdir" init -q
-  mkdir -p "$workdir/.claude"
+  local work_directory
+  work_directory="$(mktemp -d)"
+  git -C "$work_directory" init -q
+  mkdir -p "$work_directory/.claude"
 
   local before
   before="$(mktemp)"
-  list_write_surface "$workdir" > "$before"
+  list_write_surface "$work_directory" > "$before"
 
   # Simulate an illegal write (outside the allowlist)
-  illegal_write_surrogate "$workdir"
+  illegal_write_surrogate "$work_directory"
 
   local violations
-  violations="$(find_write_violations "$workdir" "$before")"
+  violations="$(find_write_violations "$work_directory" "$before")"
 
   rm -f "$before"
-  rm -rf "$workdir"
+  rm -rf "$work_directory"
 
   # Violations must be non-empty (the test validates the detection logic)
   [[ -n "$violations" ]]
 }
 
 @test "UAT-008: writes to .gaia/local/telemetry/ are in the allowlist" {
-  local workdir
-  workdir="$(mktemp -d)"
-  git -C "$workdir" init -q
+  local work_directory
+  work_directory="$(mktemp -d)"
+  git -C "$work_directory" init -q
 
   local before
   before="$(mktemp)"
-  list_write_surface "$workdir" > "$before"
+  list_write_surface "$work_directory" > "$before"
 
-  mkdir -p "$workdir/.gaia/local/telemetry"
-  printf 'telemetry\n' > "$workdir/.gaia/local/telemetry/emit.log"
+  mkdir -p "$work_directory/.gaia/local/telemetry"
+  printf 'telemetry\n' > "$work_directory/.gaia/local/telemetry/emit.log"
 
   local violations
-  violations="$(find_write_violations "$workdir" "$before")"
+  violations="$(find_write_violations "$work_directory" "$before")"
 
   rm -f "$before"
-  rm -rf "$workdir"
+  rm -rf "$work_directory"
 
   [[ -z "$violations" ]]
 }
 
 @test "UAT-008: app/ and wiki/ and .claude/ directories show no writes after surrogate run" {
-  local workdir
-  workdir="$(mktemp -d)"
-  git -C "$workdir" init -q
-  mkdir -p "$workdir/app" "$workdir/wiki" "$workdir/.claude"
-  printf 'original\n' > "$workdir/app/index.ts"
-  printf 'original\n' > "$workdir/wiki/index.md"
-  printf 'original\n' > "$workdir/.claude/settings.json"
-  git -C "$workdir" add .
-  git -C "$workdir" commit -q -m "initial"
+  local work_directory
+  work_directory="$(mktemp -d)"
+  git -C "$work_directory" init -q
+  mkdir -p "$work_directory/app" "$work_directory/wiki" "$work_directory/.claude"
+  printf 'original\n' > "$work_directory/app/index.ts"
+  printf 'original\n' > "$work_directory/wiki/index.md"
+  printf 'original\n' > "$work_directory/.claude/settings.json"
+  git -C "$work_directory" add .
+  git -C "$work_directory" commit -q -m "initial"
 
   local before
   before="$(mktemp)"
-  list_write_surface "$workdir" > "$before"
+  list_write_surface "$work_directory" > "$before"
 
   # Run the allowed surrogate (should not touch app/, wiki/, .claude/)
-  runbook_surrogate "$workdir" "init"
+  runbook_surrogate "$work_directory" "init"
 
   local violations
-  violations="$(find_write_violations "$workdir" "$before")"
+  violations="$(find_write_violations "$work_directory" "$before")"
 
   rm -f "$before"
-  rm -rf "$workdir"
+  rm -rf "$work_directory"
 
   [[ -z "$violations" ]]
 }

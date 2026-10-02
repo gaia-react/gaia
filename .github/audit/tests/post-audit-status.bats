@@ -65,10 +65,10 @@
 
 setup() {
   . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  SCRIPT="$THIS_DIR/../../../.claude/hooks/post-audit-status.sh"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  SCRIPT="$THIS_DIRECTORY/../../../.claude/hooks/post-audit-status.sh"
   [ -x "$SCRIPT" ] || skip "post-audit-status.sh not executable"
-  DIGEST_LIB="$THIS_DIR/../../../.claude/hooks/lib/audit-digest.sh"
+  DIGEST_LIBRARY="$THIS_DIRECTORY/../../../.claude/hooks/lib/audit-digest.sh"
 
   SANDBOX="$BATS_TEST_TMPDIR/sandbox"
   mkdir -p "$SANDBOX/.gaia"
@@ -187,8 +187,8 @@ current_tree() {
 # .gaia/tests/hooks/audit-digest-lib.bats's digest_of), so assertions compute
 # the SAME digest the script itself derives rather than hardcoding one.
 digest_of() {
-  local root="$1" member="$2" ref="${3:-HEAD}"
-  bash -c '. "$1"; audit_member_digest "$2" "$3" "$4"' _ "$DIGEST_LIB" "$root" "$member" "$ref"
+  local root="$1" member="$2" reference="${3:-HEAD}"
+  bash -c '. "$1"; audit_member_digest "$2" "$3" "$4"' _ "$DIGEST_LIBRARY" "$root" "$member" "$reference"
 }
 
 # Write a writer-shaped schema-3 EARNED clearance for MEMBER at PATH (an
@@ -225,21 +225,21 @@ write_refusal_body() {
 # Copy the real resolver script into SANDBOX so a test can exercise the
 # member-aware gate. Untracked, so it never appears in a git diff itself.
 install_resolver() {
-  local resolver_abs lib_dir
-  resolver_abs="$THIS_DIR/../../../.gaia/scripts/resolve-audit-members.sh"
+  local resolver_absolute_path library_directory
+  resolver_absolute_path="$THIS_DIRECTORY/../../../.gaia/scripts/resolve-audit-members.sh"
   mkdir -p "$SANDBOX/.gaia/scripts"
-  cp "$resolver_abs" "$SANDBOX/.gaia/scripts/resolve-audit-members.sh"
+  cp "$resolver_absolute_path" "$SANDBOX/.gaia/scripts/resolve-audit-members.sh"
   chmod +x "$SANDBOX/.gaia/scripts/resolve-audit-members.sh"
 
   # The resolver copy resolves its libs relative to ITSELF
   # ($SANDBOX/.claude/hooks/lib/), so provision the shared ownership
   # classifier alongside it.
-  lib_dir="$THIS_DIR/../../../.claude/hooks/lib"
+  library_directory="$THIS_DIRECTORY/../../../.claude/hooks/lib"
   mkdir -p "$SANDBOX/.claude/hooks/lib"
-  cp "$lib_dir/audit-scope.sh" "$SANDBOX/.claude/hooks/lib/audit-scope.sh"
-  cp "$lib_dir/audit-machinery.sh" "$SANDBOX/.claude/hooks/lib/audit-machinery.sh"
-  cp "$lib_dir/audit-clearance.sh" "$SANDBOX/.claude/hooks/lib/audit-clearance.sh"
-  cp "$lib_dir/audit-base-provenance.sh" "$SANDBOX/.claude/hooks/lib/audit-base-provenance.sh"
+  cp "$library_directory/audit-scope.sh" "$SANDBOX/.claude/hooks/lib/audit-scope.sh"
+  cp "$library_directory/audit-machinery.sh" "$SANDBOX/.claude/hooks/lib/audit-machinery.sh"
+  cp "$library_directory/audit-clearance.sh" "$SANDBOX/.claude/hooks/lib/audit-clearance.sh"
+  cp "$library_directory/audit-base-provenance.sh" "$SANDBOX/.claude/hooks/lib/audit-base-provenance.sh"
 }
 
 # Commit a mixed app/ + .gaia/**/*.sh change on a new `feature` branch off
@@ -398,7 +398,7 @@ commit_mixed_diff() {
 # frontend refusal still keeps frontend pending under a dep-bump title.
 install_chore_deps_predicate() {
   mkdir -p "$SANDBOX/.gaia/scripts"
-  cp "$THIS_DIR/../../../.gaia/scripts/chore-deps-skip.sh" "$SANDBOX/.gaia/scripts/chore-deps-skip.sh"
+  cp "$THIS_DIRECTORY/../../../.gaia/scripts/chore-deps-skip.sh" "$SANDBOX/.gaia/scripts/chore-deps-skip.sh"
 }
 
 # Write $@ as the PR's changed-path list the mock's `pr` case reads back, one

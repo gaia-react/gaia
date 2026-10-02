@@ -28,7 +28,7 @@ usage() {
 }
 
 [ "$#" -eq 3 ] || usage
-issue_num="$1"
+issue_number="$1"
 reasoning_file="$2"
 reason_code="$3"
 
@@ -61,12 +61,12 @@ case "$reason_code" in
     ;;
 esac
 
-work_dir=$(mktemp -d 2>/dev/null) || { echo "handle-needs-human.sh: mktemp failed" >&2; exit 2; }
-trap 'rm -rf "$work_dir"' EXIT
+work_directory=$(mktemp -d 2>/dev/null) || { echo "handle-needs-human.sh: mktemp failed" >&2; exit 2; }
+trap 'rm -rf "$work_directory"' EXIT
 
 # Compose the comment body: maintainer mention + verdict header +
 # reason-code summary + reasoning passthrough.
-comment_file="$work_dir/comment.md"
+comment_file="$work_directory/comment.md"
 {
   printf '%s: needs-human triage.\n\n' "$MAINTAINER"
   printf 'reason: `%s`\n\n' "$reason_code"
@@ -81,8 +81,8 @@ comment_file="$work_dir/comment.md"
 #   3. Apply `gaia-triaged` LAST (idempotency key).
 # The issue is NOT closed, every needs-human path keeps the issue open
 # so the maintainer can triage by hand.
-gh issue edit "$issue_num" --add-label "needs-human"
-gh issue comment "$issue_num" --body-file "$comment_file"
-gh issue edit "$issue_num" --add-label "gaia-triaged"
+gh issue edit "$issue_number" --add-label "needs-human"
+gh issue comment "$issue_number" --body-file "$comment_file"
+gh issue edit "$issue_number" --add-label "gaia-triaged"
 
 exit 0

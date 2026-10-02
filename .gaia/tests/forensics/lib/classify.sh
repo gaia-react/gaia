@@ -16,40 +16,40 @@ set -euo pipefail
 
 # classify_description DESC -> prints class tag to stdout
 classify_description() {
-  local desc
-  desc="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  local description
+  description="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
 
-  if grep -qE 'init|scaffold failed|rename|branding strip' <<<"$desc"; then
+  if grep -qE 'init|scaffold failed|rename|branding strip' <<<"$description"; then
     printf 'init'
     return 0
   fi
 
-  if grep -qE 'update|merge conflict|three-way' <<<"$desc"; then
+  if grep -qE 'update|merge conflict|three-way' <<<"$description"; then
     printf 'update'
     return 0
   fi
 
-  if grep -qE 'wiki-sync|sync|wiki commit' <<<"$desc"; then
+  if grep -qE 'wiki-sync|sync|wiki commit' <<<"$description"; then
     printf 'wiki-sync'
     return 0
   fi
 
-  if grep -qE 'quality gate|quality-gate|typecheck|lint failed' <<<"$desc"; then
+  if grep -qE 'quality gate|quality-gate|typecheck|lint failed' <<<"$description"; then
     printf 'quality-gate'
     return 0
   fi
 
-  if grep -qE 'hook|pretooluse|posttooluse|session-start|session-stop' <<<"$desc"; then
+  if grep -qE 'hook|pretooluse|posttooluse|session-start|session-stop' <<<"$description"; then
     printf 'hook'
     return 0
   fi
 
-  if grep -qE 'scaffold|new-component|skeleton|template' <<<"$desc"; then
+  if grep -qE 'scaffold|new-component|skeleton|template' <<<"$description"; then
     printf 'scaffold'
     return 0
   fi
 
-  if grep -qE 'dev server|dev-server|vite|5173|ssr error' <<<"$desc"; then
+  if grep -qE 'dev server|dev-server|vite|5173|ssr error' <<<"$description"; then
     printf 'dev-server'
     return 0
   fi
@@ -61,13 +61,13 @@ classify_description() {
 # Extracts the matching phrase from the description for the given class.
 classify_evidence() {
   local class="$1"
-  local desc
-  desc="$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')"
+  local description
+  description="$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')"
 
   case "$class" in
     init)
       for phrase in 'init' 'scaffold failed' 'rename' 'branding strip'; do
-        if grep -q "$phrase" <<<"$desc"; then
+        if grep -q "$phrase" <<<"$description"; then
           printf '"%s"' "$phrase"
           return 0
         fi
@@ -75,7 +75,7 @@ classify_evidence() {
       ;;
     update)
       for phrase in 'update' 'merge conflict' 'three-way'; do
-        if grep -q "$phrase" <<<"$desc"; then
+        if grep -q "$phrase" <<<"$description"; then
           printf '"%s"' "$phrase"
           return 0
         fi
@@ -83,7 +83,7 @@ classify_evidence() {
       ;;
     wiki-sync)
       for phrase in 'wiki-sync' 'sync' 'wiki commit'; do
-        if grep -q "$phrase" <<<"$desc"; then
+        if grep -q "$phrase" <<<"$description"; then
           printf '"%s"' "$phrase"
           return 0
         fi
@@ -91,7 +91,7 @@ classify_evidence() {
       ;;
     quality-gate)
       for phrase in 'quality gate' 'quality-gate' 'typecheck' 'lint failed'; do
-        if grep -q "$phrase" <<<"$desc"; then
+        if grep -q "$phrase" <<<"$description"; then
           printf '"%s"' "$phrase"
           return 0
         fi
@@ -99,7 +99,7 @@ classify_evidence() {
       ;;
     hook)
       for phrase in 'hook' 'pretooluse' 'posttooluse' 'session-start' 'session-stop'; do
-        if grep -q "$phrase" <<<"$desc"; then
+        if grep -q "$phrase" <<<"$description"; then
           printf '"%s"' "$phrase"
           return 0
         fi
@@ -107,7 +107,7 @@ classify_evidence() {
       ;;
     scaffold)
       for phrase in 'scaffold' 'new-component' 'skeleton' 'template'; do
-        if grep -q "$phrase" <<<"$desc"; then
+        if grep -q "$phrase" <<<"$description"; then
           printf '"%s"' "$phrase"
           return 0
         fi
@@ -115,7 +115,7 @@ classify_evidence() {
       ;;
     dev-server)
       for phrase in 'dev server' 'dev-server' 'vite' '5173' 'ssr error'; do
-        if grep -q "$phrase" <<<"$desc"; then
+        if grep -q "$phrase" <<<"$description"; then
           printf '"%s"' "$phrase"
           return 0
         fi

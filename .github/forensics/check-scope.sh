@@ -54,7 +54,7 @@ dir|deny|.github/workflows/
 #   reason = "" (when allow), "denylist", "default-deny-unenumerated"
 classify_path() {
   candidate=$1
-  best_len=0
+  best_length=0
   best_type=""
   best_reason="default-deny-unenumerated"
 
@@ -81,9 +81,9 @@ classify_path() {
     fi
 
     if [ "$matched" = "1" ]; then
-      plen=${#pattern}
-      if [ "$plen" -gt "$best_len" ]; then
-        best_len=$plen
+      pattern_length=${#pattern}
+      if [ "$pattern_length" -gt "$best_length" ]; then
+        best_length=$pattern_length
         best_type=$type
         if [ "$type" = "deny" ]; then
           best_reason="denylist"
@@ -95,7 +95,7 @@ classify_path() {
   done
   unset IFS
 
-  if [ "$best_len" -eq 0 ]; then
+  if [ "$best_length" -eq 0 ]; then
     printf 'deny|default-deny-unenumerated'
   else
     printf '%s|%s' "$best_type" "$best_reason"
@@ -111,11 +111,11 @@ classify_path() {
 # This split keeps json_escape predictable: its output is always valid
 # JSON-string content provided the input contains no control bytes.
 json_escape() {
-  s=$1
+  raw_text=$1
   # Backslash first, then double-quote.
-  s=${s//\\/\\\\}
-  s=${s//\"/\\\"}
-  printf '%s' "$s"
+  raw_text=${raw_text//\\/\\\\}
+  raw_text=${raw_text//\"/\\\"}
+  printf '%s' "$raw_text"
 }
 
 # find_control_byte <string>
@@ -129,15 +129,15 @@ json_escape() {
 # with a control byte signals upstream corruption, so we reject rather
 # than silently escape.
 find_control_byte() {
-  s=$1
+  scanned_text=$1
   i=0
-  while [ "$i" -lt "${#s}" ]; do
-    c=${s:$i:1}
+  while [ "$i" -lt "${#scanned_text}" ]; do
+    current_character=${scanned_text:$i:1}
     # POSIX trick: leading single-quote in printf %d argument yields the
     # ordinal of the first byte. Control bytes are single-byte in UTF-8.
-    ord=$(printf '%d' "'$c")
-    if [ "$ord" -lt 32 ]; then
-      printf '%02x:%d' "$ord" "$i"
+    character_ordinal=$(printf '%d' "'$current_character")
+    if [ "$character_ordinal" -lt 32 ]; then
+      printf '%02x:%d' "$character_ordinal" "$i"
       return 0
     fi
     i=$((i + 1))
@@ -145,14 +145,14 @@ find_control_byte() {
   printf ''
 }
 
-# repr_path <string>
+# build_printable_path <string>
 # Builds a printable representation of a path that contains a control
 # byte: every non-printable byte is replaced with `?`, the result is
 # truncated to 40 chars, and a trailing ellipsis is appended when
 # truncation occurred. Used only by the control-byte rejection path.
-repr_path() {
-  s=$1
-  scrubbed=$(printf '%s' "$s" | tr -c '[:print:]' '?')
+build_printable_path() {
+  path_with_control_byte=$1
+  scrubbed=$(printf '%s' "$path_with_control_byte" | tr -c '[:print:]' '?')
   if [ "${#scrubbed}" -gt 40 ]; then
     head40=$(printf '%s' "$scrubbed" | cut -c1-40)
     printf '%s%s' "$head40" '...'
@@ -185,14 +185,14 @@ fi
 # rejection envelope replaces the normal classification result; exit 0
 # is preserved per the consumer-reads-JSON contract.
 for path in "$@"; do
-  ctrl=$(find_control_byte "$path")
-  if [ -n "$ctrl" ]; then
-    hex=${ctrl%%:*}
-    pos=${ctrl#*:}
-    repr=$(repr_path "$path")
-    repr_esc=$(json_escape "$repr")
+  control_byte_location=$(find_control_byte "$path")
+  if [ -n "$control_byte_location" ]; then
+    hex=${control_byte_location%%:*}
+    position=${control_byte_location#*:}
+    printable_path=$(build_printable_path "$path")
+    escaped_printable_path=$(json_escape "$printable_path")
     printf '{"ok":false,"allowed":[],"denied":[{"path":"%s","reason":"control-byte:0x%s-at-position-%d"}]}\n' \
-      "$repr_esc" "$hex" "$pos"
+      "$escaped_printable_path" "$hex" "$position"
     exit 0
   fi
 done
@@ -203,9 +203,9 @@ done
 # whole invocation, matching the control-byte and mixed-allow+deny posture.
 for path in "$@"; do
   if has_dotdot_segment "$path"; then
-    esc=$(json_escape "$path")
+    escaped_path=$(json_escape "$path")
     printf '{"ok":false,"allowed":[],"denied":[{"path":"%s","reason":"path-traversal:contains-..-segment"}]}\n' \
-      "$esc"
+      "$escaped_path"
     exit 0
   fi
 done
@@ -218,17 +218,17 @@ for path in "$@"; do
   result=$(classify_path "$path")
   type=${result%%|*}
   reason=${result#*|}
-  esc=$(json_escape "$path")
+  escaped_path=$(json_escape "$path")
 
   if [ "$type" = "allow" ]; then
     if [ -z "$allowed_json" ]; then
-      allowed_json="\"$esc\""
+      allowed_json="\"$escaped_path\""
     else
-      allowed_json="$allowed_json,\"$esc\""
+      allowed_json="$allowed_json,\"$escaped_path\""
     fi
   else
     ok=false
-    entry="{\"path\":\"$esc\",\"reason\":\"$reason\"}"
+    entry="{\"path\":\"$escaped_path\",\"reason\":\"$reason\"}"
     if [ -z "$denied_json" ]; then
       denied_json="$entry"
     else
