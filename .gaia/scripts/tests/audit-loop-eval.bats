@@ -863,6 +863,30 @@ drift_fixture() {
   [ "$(gaia_loop_decide_unit "$st" null "$HIGH" 300000 50)" = "allow accept 4 4" ]
 }
 
+@test "decision: an accept admits its closing round even on a fresh reading below the line" {
+  local st
+  st="$(mkstate 3 ".history.checkpoints = [$(checkpoint_entry 1 3 fallback)]
+    | .allowance.answers = [{checkpoint: 1, kind: \"accept\", at: \"x\", session_id: \"s1\"}]")"
+  [ "$(gaia_loop_decide_unit "$st" null "$LOW" 300000 50)" = "allow accept 4 4" ]
+  [ "$(gaia_loop_decide_member "$st" null false "$LOW" 300000 50)" = "allow accept 4 4" ]
+}
+
+@test "red: once the accepted closing round is recorded, a fresh reading below the line admits nothing" {
+  local st
+  st="$(mkstate 4 ".history.checkpoints = [$(checkpoint_entry 1 3 fallback)]
+    | .allowance.answers = [{checkpoint: 1, kind: \"accept\", at: \"x\", session_id: \"s1\"}]
+    | .history.units = [$(unit_entry 1 4 4 1)]")"
+  [ "$(gaia_loop_decide_unit "$st" null "$LOW" 300000 50)" = "deny fallback false false" ]
+  [ "$(gaia_loop_decide_member "$st" null false "$LOW" 300000 50)" = "deny fallback false false" ]
+  # The checkpoint that deny records stays unanswered, and the spent accept
+  # still denies on the next dispatch.
+  st="$(jq -c --argjson c "$(checkpoint_entry 2 4 fallback)" '.history.checkpoints += [$c]' <<<"$st")"
+  [ "$(gaia_loop_decide_unit "$st" null "$LOW" 300000 50)" = "deny fallback false false" ]
+  # A grant answering that checkpoint admits again.
+  st="$(jq -c '.allowance.answers += [{checkpoint: 2, kind: "grant", n: 3, at: "x", session_id: "s1"}]' <<<"$st")"
+  [ "$(gaia_loop_decide_unit "$st" null "$LOW" 300000 50)" = "allow grant 5 $((4 + $(K_ROUNDS)))" ]
+}
+
 @test "red: a grant answering an older checkpoint, not the latest, admits nothing" {
   local st
   st="$(mkstate 3 ".history.checkpoints = [$(checkpoint_entry 1 2 context), $(checkpoint_entry 2 3 context)]

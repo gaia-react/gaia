@@ -79,10 +79,13 @@
 #        `allow grant s min(s+k-1, 10)`, an accept `allow accept s s`. An
 #        answer admits one unit; the next unit dispatch evaluates every
 #        trigger afresh.
-#     4. a `fresh <tokens> <window>` reading: tokens >= the line computed
+#     4. the latest answer is an accept and a round is recorded after the
+#        checkpoint it answers (its closing round is spent): `deny fallback
+#        <elig> false`, whatever the reading. An accept never re-arms the loop.
+#     5. a `fresh <tokens> <window>` reading: tokens >= the line computed
 #        against that reading's own window denies `context <elig> false`;
 #        else `allow context s min(s+k-1, 10)`.
-#     5. any other reading: the fallback fold, `deny fallback <elig> false`
+#     6. any other reading: the fallback fold, `deny fallback <elig> false`
 #        when used >= allowed, else `allow fallback s min(s+k-1, 10, allowed)`.
 #   gaia_loop_decide_member, in a unit: used >= 10 denies `cap` first; then
 #   the latest unit's through_round must reach s, else `deny window`; then a

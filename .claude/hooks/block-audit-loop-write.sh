@@ -10,11 +10,12 @@
 # human-granted allowance. Only audit-loop-bound.sh may write history, and only
 # audit-loop-grant.sh and audit-loop-ask-grant.sh may write allowance; if Claude
 # could write the files through its own tools it could forge an allowance or
-# reset the history. The bound hook also trusts the context readings (written
-# only by the statusline process) and the override (written only by a human),
-# so Claude writing either would move the checkpoint line. A checkpoint is
-# answered by the pinned AskUserQuestion or by a human typing `audit-grant <n>`
-# or `audit-accept`; both reach the state through a hook, never a tool call.
+# reset the history. The bound hook also trusts the context readings (the
+# statusline writes one per render) and the override (written only by a
+# human), so Claude writing either would move the checkpoint line. A
+# checkpoint is answered by the pinned AskUserQuestion or by a human typing
+# `audit-grant <n>` or `audit-accept`; both reach the state through a hook,
+# never a tool call.
 # The recorders read a hook payload on stdin, so a forged payload piped to one
 # from Bash would mint an answer: this guard denies executing them. The writer
 # hooks and the statusline run as their own processes, so they are not subject
@@ -76,7 +77,13 @@
 # tricks, or itself quoted (`'rm'`); `bash < <recorder>` and
 # `cat <recorder> | bash`; a recorder name inside a quoted string that the
 # split above cuts at a `;`, `|` or `&`; a symlink alias to a guarded path whose own path never names it (only a denied
-# `ln` could have made it).
+# `ln` could have made it); a context reading minted by a command that never
+# names the context directory, by running .gaia/statusline/gaia-statusline.sh
+# with a crafted stdin payload or by sourcing
+# .gaia/scripts/context-checkpoint-lib.sh and calling gaia_ctx_write, directly or
+# through a wrapper such as .gaia/statusline/context-reading.sh's
+# gaia_statusline_write_context (such a reading stands until the next real
+# statusline render overwrites it).
 #
 # THE PARENT. Deleting the parent `.gaia/local` (which would take the state with
 # it) is block-rm-rf.sh's remit, not this guard's, and is not widened here.
@@ -124,7 +131,7 @@ gaia_require_jq 'the audit loop state guard' "$payload" tool_input 'audit-loop' 
 tool_name=$(jq -r '.tool_name // empty' <<<"$payload")
 
 DENY_STATE_MSG="BLOCKED: block-audit-loop-write.sh: the audit loop state (<main>/.gaia/local/audit-loop/) is written only by the audit loop hooks. Claude never writes, edits, moves or deletes it. A human answers a checkpoint through the pinned AskUserQuestion, or by typing a whole prompt that is exactly the audit-grant <n> or audit-accept line (see wiki/concepts/PR Merge Workflow.md, #### The branch checkpoint). A corrupt state file is repaired by a human from a terminal outside Claude Code."
-DENY_CONTEXT_MSG="BLOCKED: block-audit-loop-write.sh: the context readings (<main>/.gaia/local/cache/shared/context/) are written only by the statusline process, and the audit checkpoint trusts them. Claude never writes, edits, moves or deletes them. A human answers a checkpoint through the pinned AskUserQuestion, or by typing a whole prompt that is exactly the audit-grant <n> or audit-accept line (see wiki/concepts/PR Merge Workflow.md, #### The branch checkpoint)."
+DENY_CONTEXT_MSG="BLOCKED: block-audit-loop-write.sh: the context readings (<main>/.gaia/local/cache/shared/context/) are written by the statusline on each render, and the audit checkpoint trusts them. Claude never writes, edits, moves or deletes them. A human answers a checkpoint through the pinned AskUserQuestion, or by typing a whole prompt that is exactly the audit-grant <n> or audit-accept line (see wiki/concepts/PR Merge Workflow.md, #### The branch checkpoint)."
 DENY_SETTINGS_MSG="BLOCKED: block-audit-loop-write.sh: <main>/.gaia/local/settings.json is the per-machine audit checkpoint override, and only a human edits the override, from outside Claude Code. Claude never creates, writes, edits, moves or deletes it. A human answers a checkpoint through the pinned AskUserQuestion, or by typing a whole prompt that is exactly the audit-grant <n> or audit-accept line (see wiki/concepts/PR Merge Workflow.md, #### The branch checkpoint)."
 DENY_RECORDER_MSG="BLOCKED: block-audit-loop-write.sh: audit-loop-grant.sh and audit-loop-ask-grant.sh run only as hooks. Claude never executes them from Bash or Monitor, because a piped payload would forge a checkpoint answer. A human answers a checkpoint through the pinned AskUserQuestion, or by typing a whole prompt that is exactly the audit-grant <n> or audit-accept line (see wiki/concepts/PR Merge Workflow.md, #### The branch checkpoint). Naming the files (git add, git diff, git grep -l, shellcheck, cat, bash -n) is allowed."
 DENY_BASH_TRIGGER="Trigger: the command names that path and either redirects into it or carries a write, move or delete verb (rm, mv, cp, tee, ln, touch, sed -i, an interpreter given -c or -e, and the like) outside quotes; in a command holding a heredoc, an unclosed quote, a command substitution inside double quotes, or a redirect target built from a variable or a glob, any redirect or such verb anywhere counts. A command that names the path only as quoted text and redirects elsewhere is allowed, so stage a note that mentions it with printf and a quoted string, no heredoc, or leave the literal path out of the command."
