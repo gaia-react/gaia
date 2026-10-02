@@ -59,8 +59,8 @@ summary_file="$1"
 summary_parent="$(dirname "$summary_file")"
 [ -d "$summary_parent" ] || { echo "run-quality-gate.sh: parent dir does not exist: $summary_parent" >&2; exit 2; }
 
-work_dir=$(mktemp -d 2>/dev/null) || { echo "run-quality-gate.sh: mktemp failed" >&2; exit 2; }
-trap 'rm -rf "$work_dir"' EXIT
+work_directory=$(mktemp -d 2>/dev/null) || { echo "run-quality-gate.sh: mktemp failed" >&2; exit 2; }
+trap 'rm -rf "$work_directory"' EXIT
 
 # ---------------------------------------------------------------------------
 # JSON-string escaping. Pure bash; avoids the jq dependency for a runner
@@ -69,29 +69,29 @@ trap 'rm -rf "$work_dir"' EXIT
 # bytes → \u00XX). Trailing newlines in the input are preserved.
 # ---------------------------------------------------------------------------
 json_escape() {
-  local in="$1"
-  local out=""
-  local i ch code
-  for (( i = 0; i < ${#in}; i++ )); do
-    ch="${in:i:1}"
+  local unescaped_text="$1"
+  local escaped_text=""
+  local i character code
+  for (( i = 0; i < ${#unescaped_text}; i++ )); do
+    character="${unescaped_text:i:1}"
     # shellcheck disable=SC1003  # single-quoted backslash literals in the escape map are intentional, not mis-escaped quotes
-    case "$ch" in
-      '\') out+='\\' ;;
-      '"') out+='\"' ;;
-      $'\n') out+='\n' ;;
-      $'\r') out+='\r' ;;
-      $'\t') out+='\t' ;;
+    case "$character" in
+      '\') escaped_text+='\\' ;;
+      '"') escaped_text+='\"' ;;
+      $'\n') escaped_text+='\n' ;;
+      $'\r') escaped_text+='\r' ;;
+      $'\t') escaped_text+='\t' ;;
       *)
-        printf -v code '%d' "'$ch"
+        printf -v code '%d' "'$character"
         if [ "$code" -lt 32 ]; then
-          out+="$(printf '\\u%04x' "$code")"
+          escaped_text+="$(printf '\\u%04x' "$code")"
         else
-          out+="$ch"
+          escaped_text+="$character"
         fi
         ;;
     esac
   done
-  printf '%s' "$out"
+  printf '%s' "$escaped_text"
 }
 
 # ---------------------------------------------------------------------------
@@ -110,7 +110,7 @@ json_escape() {
 run_step() {
   local step="$1"
   shift
-  local log_file="$work_dir/${step}.log"
+  local log_file="$work_directory/${step}.log"
   local exit_code=0
 
   echo "::group::quality-gate: ${step}"
@@ -129,9 +129,9 @@ run_step() {
   # where the actual error message lives).
   local excerpt
   excerpt="$(tail -n 50 "$log_file")"
-  local max_chars=2000
-  if [ "${#excerpt}" -gt "$max_chars" ]; then
-    excerpt="${excerpt: -$max_chars}"
+  local maximum_characters=2000
+  if [ "${#excerpt}" -gt "$maximum_characters" ]; then
+    excerpt="${excerpt: -$maximum_characters}"
   fi
 
   local escaped

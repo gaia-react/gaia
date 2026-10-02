@@ -214,7 +214,7 @@ set -euo pipefail
 
 # Defensive cap on the ancestry walk (PRs rarely exceed this many commits;
 # the merge-base bound usually keeps the list far shorter).
-MAX_WALK=50
+MAXIMUM_WALK_COMMIT_COUNT=50
 
 TAB="$(printf '\t')"
 
@@ -224,17 +224,17 @@ TAB="$(printf '\t')"
 
 member=""
 member_form="false"
-arg_error=""
+argument_error=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --member)
       if [ "$#" -lt 2 ]; then
-        arg_error="--member requires a value"
+        argument_error="--member requires a value"
         break
       fi
       if [ -z "$2" ]; then
-        arg_error="--member requires a non-empty value"
+        argument_error="--member requires a non-empty value"
         break
       fi
       member="$2"
@@ -242,7 +242,7 @@ while [ "$#" -gt 0 ]; do
       shift 2
       ;;
     *)
-      arg_error="unknown argument '$1'"
+      argument_error="unknown argument '$1'"
       break
       ;;
   esac
@@ -275,10 +275,10 @@ if [ -z "$repo_root" ]; then
   # Defensive: not in a git repo, so nothing can be sourced out of the
   # checkout either. Full scope; the caller's git will error loudly on the
   # broken environment.
-  main_ref="origin/main"
-  shared_base="$main_ref"
-  echo "resolve-audit-base: not inside a git checkout; resetting to full scope (${main_ref})." >&2
-  emit "$main_ref" degraded ""
+  main_reference="origin/main"
+  shared_base="$main_reference"
+  echo "resolve-audit-base: not inside a git checkout; resetting to full scope (${main_reference})." >&2
+  emit "$main_reference" degraded ""
 fi
 
 # -----------------------------------------------------------------------------
@@ -286,7 +286,7 @@ fi
 # ancestry walk via merge-base.
 # -----------------------------------------------------------------------------
 
-resolve_main_ref() {
+resolve_main_reference() {
   # The declared base ref comes first because it names the branch THIS pull
   # request merges into, which the repository default does not whenever the
   # pull request is stacked on another branch. Preferring the default there
@@ -327,16 +327,16 @@ resolve_main_ref() {
   # it truly can't resolve.
   printf 'origin/main'
 }
-main_ref="$(resolve_main_ref)"
-shared_base="$main_ref"
+main_reference="$(resolve_main_reference)"
+shared_base="$main_reference"
 
 # A mis-invocation cannot be trusted to be a member call site, so it degrades
 # to the argument-less full-scope shape rather than guessing a four-line one.
-if [ -n "$arg_error" ]; then
+if [ -n "$argument_error" ]; then
   member=""
   member_form="false"
-  echo "resolve-audit-base: ${arg_error}; resolving full scope (${main_ref})." >&2
-  emit "$main_ref" no-anchor ""
+  echo "resolve-audit-base: ${argument_error}; resolving full scope (${main_reference})." >&2
+  emit "$main_reference" no-anchor ""
 fi
 
 # -----------------------------------------------------------------------------
@@ -354,19 +354,19 @@ fi
 # scope. Dropping errexit across the load is what lets the failure reach the
 # `command -v` degrade below. The flat `set -e` restore matches this file's own
 # errexit arming above, rather than the state-preserving form a library uses.
-version_lib="${repo_root}/.claude/hooks/lib/gaia-version.sh"
+version_library="${repo_root}/.claude/hooks/lib/gaia-version.sh"
 set +e
 # shellcheck source=/dev/null
-[ -f "$version_lib" ] && . "$version_lib" 2>/dev/null
+[ -f "$version_library" ] && . "$version_library" 2>/dev/null
 set -e
 if ! command -v gaia_read_version >/dev/null 2>&1; then
-  echo "resolve-audit-base: version normalizer unavailable (gaia-version.sh); resetting to full scope (${main_ref})." >&2
-  emit "$main_ref" degraded ""
+  echo "resolve-audit-base: version normalizer unavailable (gaia-version.sh); resetting to full scope (${main_reference})." >&2
+  emit "$main_reference" degraded ""
 fi
 
-cur_version="$(gaia_read_version "${repo_root}/.gaia/VERSION")"
-if [ -z "$cur_version" ]; then
-  emit "$main_ref" no-version ""
+current_version="$(gaia_read_version "${repo_root}/.gaia/VERSION")"
+if [ -z "$current_version" ]; then
+  emit "$main_reference" no-version ""
 fi
 
 # -----------------------------------------------------------------------------
@@ -375,14 +375,14 @@ fi
 
 head_sha=$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || true)
 if [ -z "$head_sha" ]; then
-  emit "$main_ref" no-anchor ""
+  emit "$main_reference" no-anchor ""
 fi
 
-merge_base=$(git -C "$repo_root" merge-base "$main_ref" HEAD 2>/dev/null || true)
+merge_base=$(git -C "$repo_root" merge-base "$main_reference" HEAD 2>/dev/null || true)
 if [ -n "$merge_base" ]; then
-  candidates=$(git -C "$repo_root" rev-list --max-count="$MAX_WALK" "${merge_base}..HEAD" 2>/dev/null || true)
+  candidates=$(git -C "$repo_root" rev-list --max-count="$MAXIMUM_WALK_COMMIT_COUNT" "${merge_base}..HEAD" 2>/dev/null || true)
 else
-  candidates=$(git -C "$repo_root" rev-list --max-count="$MAX_WALK" HEAD 2>/dev/null || true)
+  candidates=$(git -C "$repo_root" rev-list --max-count="$MAXIMUM_WALK_COMMIT_COUNT" HEAD 2>/dev/null || true)
 fi
 
 # -----------------------------------------------------------------------------
@@ -397,21 +397,21 @@ trailer_regex='^GAIA-Audit:[[:space:]]+([^[:space:]]+)[[:space:]]+([0-9a-f]{64})
 # matched value survives in this shell (Bash 3.2 has no lastpipe). Only $1
 # (version) is read here; the base is gated by version match alone.
 trailer_version_for() {
-  local sha="$1" line ver="" tmp
-  tmp=$(mktemp -t gaia-audit-base.XXXXXX) || return 0
+  local sha="$1" line matched_version="" temporary_file
+  temporary_file=$(mktemp -t gaia-audit-base.XXXXXX) || return 0
   git -C "$repo_root" log -1 --format='%B' "$sha" 2>/dev/null \
-    | git -C "$repo_root" interpret-trailers --parse > "$tmp" 2>/dev/null || true
+    | git -C "$repo_root" interpret-trailers --parse > "$temporary_file" 2>/dev/null || true
   while IFS= read -r line; do
     case "$line" in
       GAIA-Audit:*) ;;
       *) continue ;;
     esac
     if [[ "$line" =~ $trailer_regex ]]; then
-      ver="${BASH_REMATCH[1]}"
+      matched_version="${BASH_REMATCH[1]}"
     fi
-  done < "$tmp"
-  rm -f "$tmp"
-  printf '%s' "$ver"
+  done < "$temporary_file"
+  rm -f "$temporary_file"
+  printf '%s' "$matched_version"
 }
 
 # status_version_for <sha> → echoes the GAIA-Audit commit status version, or
@@ -421,18 +421,18 @@ trailer_version_for() {
 # gh + GH_TOKEN + repo slug; a missing token / absent gh / API failure / no
 # success status all yield empty (the walk continues).
 status_version_for() {
-  local sha="$1" repo desc
+  local sha="$1" repo description
   [ -n "${GH_TOKEN:-}" ] || return 0
   command -v gh >/dev/null 2>&1 || return 0
   repo="${GITHUB_REPOSITORY:-}"
   [ -n "$repo" ] || return 0
-  desc=$(gh api "repos/${repo}/commits/${sha}/statuses" \
+  description=$(gh api "repos/${repo}/commits/${sha}/statuses" \
     --jq 'map(select(.context == "GAIA-Audit" and .state == "success")) | last | .description' \
     2>/dev/null || true)
-  if [ -z "$desc" ] || [ "$desc" = "null" ]; then
+  if [ -z "$description" ] || [ "$description" = "null" ]; then
     return 0
   fi
-  printf '%s' "$desc" | awk '{print $1}'
+  printf '%s' "$description" | awk '{print $1}'
 }
 
 # delta_for <anchor> → the anchor..HEAD delta, one path per line.
@@ -457,29 +457,29 @@ delta_for() {
 # merely qualifying it.
 # -----------------------------------------------------------------------------
 
-lib_dir="${repo_root}/.claude/hooks/lib"
-for lib_file in audit-scope.sh audit-machinery.sh audit-rules-changed.sh audit-clearance.sh; do
+library_directory="${repo_root}/.claude/hooks/lib"
+for library_file in audit-scope.sh audit-machinery.sh audit-rules-changed.sh audit-clearance.sh; do
   # Bracketed for the reason given at the version-normalizer load above: an
   # existence test admits an unparseable lib, and under errexit bash 3.2.57
   # dies at the load rather than at the `||`. Same shape, same reason.
   set +e
   # shellcheck source=/dev/null
-  [ -f "${lib_dir}/${lib_file}" ] && . "${lib_dir}/${lib_file}" 2>/dev/null
+  [ -f "${library_directory}/${library_file}" ] && . "${library_directory}/${library_file}" 2>/dev/null
   set -e
 done
 
-missing_lib=""
+missing_library=""
 if ! command -v audit_owner_for_path >/dev/null 2>&1; then
-  missing_lib="audit-scope.sh"
+  missing_library="audit-scope.sh"
 elif ! command -v audit_path_is_machinery >/dev/null 2>&1 \
   || ! command -v audit_delta_has_machinery >/dev/null 2>&1; then
-  missing_lib="audit-machinery.sh"
+  missing_library="audit-machinery.sh"
 elif ! command -v audit_rules_reset_for >/dev/null 2>&1; then
-  missing_lib="audit-rules-changed.sh"
+  missing_library="audit-rules-changed.sh"
 fi
-if [ -n "$missing_lib" ]; then
-  echo "resolve-audit-base: classifier/machinery/rules libs unavailable (${missing_lib}); resetting to full scope (${main_ref})." >&2
-  emit "$main_ref" degraded ""
+if [ -n "$missing_library" ]; then
+  echo "resolve-audit-base: classifier/machinery/rules libs unavailable (${missing_library}); resetting to full scope (${main_reference})." >&2
+  emit "$main_reference" degraded ""
 fi
 
 # -----------------------------------------------------------------------------
@@ -503,10 +503,10 @@ if [ "$member_form" = "true" ] && command -v clearance_scan >/dev/null 2>&1; the
   # empty-guard to the fields it records, so an empty recorded value must
   # never match an empty candidate value.
   if [ -n "$earned_scan" ]; then
-    while IFS="$TAB" read -r rec_tree rec_version _; do
-      [ -n "$rec_tree" ] || continue
-      [ "$rec_version" = "$cur_version" ] || continue
-      earned_trees="${earned_trees}${rec_tree}
+    while IFS="$TAB" read -r recorded_tree recorded_version _; do
+      [ -n "$recorded_tree" ] || continue
+      [ "$recorded_version" = "$current_version" ] || continue
+      earned_trees="${earned_trees}${recorded_tree}
 "
     done <<EOF
 $earned_scan
@@ -516,9 +516,9 @@ EOF
   # Version-independent, deliberately: a refusal carries no version qualifier,
   # and the conservative direction is to honour more refusals, not fewer.
   if [ -n "$refused_scan" ]; then
-    while IFS="$TAB" read -r rec_tree _; do
-      [ -n "$rec_tree" ] || continue
-      refused_trees="${refused_trees}${rec_tree}
+    while IFS="$TAB" read -r recorded_tree _; do
+      [ -n "$recorded_tree" ] || continue
+      refused_trees="${refused_trees}${recorded_tree}
 "
     done <<EOF
 $refused_scan
@@ -535,9 +535,9 @@ fi
 # per candidate would let the member anchor past its own refusal.
 if [ "$member_arm" = "true" ] && [ -n "$refused_trees" ]; then
   for sha in $candidates; do
-    cand_tree="$(git -C "$repo_root" rev-parse "${sha}^{tree}" 2>/dev/null || true)"
-    [ -n "$cand_tree" ] || continue
-    if grep -qxF -- "$cand_tree" <<<"$refused_trees"; then
+    candidate_tree="$(git -C "$repo_root" rev-parse "${sha}^{tree}" 2>/dev/null || true)"
+    [ -n "$candidate_tree" ] || continue
+    if grep -qxF -- "$candidate_tree" <<<"$refused_trees"; then
       echo "resolve-audit-base: ${member} refused content at ${sha}; per-member anchoring disabled for this run." >&2
       member_arm="false"
       break
@@ -563,20 +563,20 @@ for sha in $candidates; do
   [ "$sha" = "$head_sha" ] && continue
 
   if [ "$member_arm" = "true" ] && [ -z "$winner" ]; then
-    cand_tree="$(git -C "$repo_root" rev-parse "${sha}^{tree}" 2>/dev/null || true)"
-    if [ -n "$cand_tree" ] && grep -qxF -- "$cand_tree" <<<"$earned_trees"; then
+    candidate_tree="$(git -C "$repo_root" rev-parse "${sha}^{tree}" 2>/dev/null || true)"
+    if [ -n "$candidate_tree" ] && grep -qxF -- "$candidate_tree" <<<"$earned_trees"; then
       winner="$sha"
       winner_reason="member-clearance"
-      winner_tree="$cand_tree"
+      winner_tree="$candidate_tree"
     fi
   fi
 
-  tv="$(trailer_version_for "$sha")"
-  if [ -n "$tv" ] && [ "$tv" = "$cur_version" ]; then
+  trailer_version="$(trailer_version_for "$sha")"
+  if [ -n "$trailer_version" ] && [ "$trailer_version" = "$current_version" ]; then
     team_anchor="$sha"
   else
-    sv="$(status_version_for "$sha")"
-    if [ -n "$sv" ] && [ "$sv" = "$cur_version" ]; then
+    status_version="$(status_version_for "$sha")"
+    if [ -n "$status_version" ] && [ "$status_version" = "$current_version" ]; then
       team_anchor="$sha"
     fi
   fi
@@ -612,7 +612,7 @@ fi
 
 if [ "$member_form" != "true" ]; then
   if [ "$shared_reason" = "machinery-reset" ]; then
-    echo "resolve-audit-base: machinery changed between ${team_anchor} and HEAD; resetting to full scope (${main_ref})." >&2
+    echo "resolve-audit-base: machinery changed between ${team_anchor} and HEAD; resetting to full scope (${main_reference})." >&2
   fi
   emit "$shared_base" "$shared_reason" ""
 fi
@@ -622,7 +622,7 @@ fi
 # -----------------------------------------------------------------------------
 
 if [ -z "$winner" ]; then
-  emit "$main_ref" no-anchor ""
+  emit "$main_reference" no-anchor ""
 fi
 
 member_delta="$(delta_for "$winner")"
@@ -636,11 +636,11 @@ if [ -n "$reset_hit" ]; then
   reset_path=""
   IFS="$TAB" read -r reset_tier reset_path <<<"$reset_hit"
   if [ "$reset_tier" = "member" ]; then
-    echo "resolve-audit-base: ${member}'s own agent definition changed between ${winner} and HEAD (${reset_path}); resetting to full scope (${main_ref})." >&2
-    emit "$main_ref" rules-reset-member ""
+    echo "resolve-audit-base: ${member}'s own agent definition changed between ${winner} and HEAD (${reset_path}); resetting to full scope (${main_reference})." >&2
+    emit "$main_reference" rules-reset-member ""
   fi
-  echo "resolve-audit-base: a global rules path changed between ${winner} and HEAD (${reset_path}); resetting to full scope (${main_ref})." >&2
-  emit "$main_ref" rules-reset-global ""
+  echo "resolve-audit-base: a global rules path changed between ${winner} and HEAD (${reset_path}); resetting to full scope (${main_reference})." >&2
+  emit "$main_reference" rules-reset-global ""
 fi
 
 emit "$winner" "$winner_reason" "$winner_tree"

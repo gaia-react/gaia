@@ -55,8 +55,8 @@ input_file="$1"
 # fragile in-memory section-splitting via shell sentinels.
 # ---------------------------------------------------------------------------
 
-work_dir=$(mktemp -d 2>/dev/null) || { echo "parse-issue-body.sh: mktemp failed" >&2; exit 2; }
-trap 'rm -rf "$work_dir"' EXIT
+work_directory=$(mktemp -d 2>/dev/null) || { echo "parse-issue-body.sh: mktemp failed" >&2; exit 2; }
+trap 'rm -rf "$work_directory"' EXIT
 
 # ---------------------------------------------------------------------------
 # Step 1: opportunistically extract a YAML frontmatter block. The issue
@@ -69,10 +69,10 @@ trap 'rm -rf "$work_dir"' EXIT
 # the parser still picks up its values when present.
 # ---------------------------------------------------------------------------
 
-fm_class=""
-fm_gaia_version=""
-fm_created=""
-fm_gh_issue_url=""
+frontmatter_class=""
+frontmatter_gaia_version=""
+frontmatter_created=""
+frontmatter_gh_issue_url=""
 body_start=1
 
 first_line=$(awk 'NR==1{print; exit}' "$input_file")
@@ -84,15 +84,15 @@ if [ "$first_line" = "---" ]; then
   # open without a matching close is still malformed, emit the same
   # error as before so a hand-edited local file with a typo doesn't
   # silently drop frontmatter values.
-  fm_end=$(awk 'NR>1 && $0=="---"{print NR; exit}' "$input_file")
+  frontmatter_closing_line=$(awk 'NR>1 && $0=="---"{print NR; exit}' "$input_file")
   awk_status=$?
   [ "$awk_status" -ne 0 ] && emit_internal_error "frontmatter-extract" "$awk_status"
-  if [ -z "${fm_end:-}" ]; then
+  if [ -z "${frontmatter_closing_line:-}" ]; then
     printf '{"valid":false,"error":"malformed-frontmatter","missing":[],"malformed":["frontmatter"]}\n'
     exit 0
   fi
 
-  awk -v end="$fm_end" 'NR>1 && NR<end' "$input_file" > "$work_dir/frontmatter.txt"
+  awk -v end="$frontmatter_closing_line" 'NR>1 && NR<end' "$input_file" > "$work_directory/frontmatter.txt"
   awk_status=$?
   [ "$awk_status" -ne 0 ] && emit_internal_error "frontmatter-extract" "$awk_status"
 
@@ -109,14 +109,14 @@ if [ "$first_line" = "---" ]; then
       \'*\') value=$(printf '%s' "$value" | sed -e "s/^'//" -e "s/'$//") ;;
     esac
     case "$key" in
-      class) fm_class="$value" ;;
-      gaia_version) fm_gaia_version="$value" ;;
-      created) fm_created="$value" ;;
-      gh_issue_url) fm_gh_issue_url="$value" ;;
+      class) frontmatter_class="$value" ;;
+      gaia_version) frontmatter_gaia_version="$value" ;;
+      created) frontmatter_created="$value" ;;
+      gh_issue_url) frontmatter_gh_issue_url="$value" ;;
     esac
-  done < "$work_dir/frontmatter.txt"
+  done < "$work_directory/frontmatter.txt"
 
-  body_start=$((fm_end + 1))
+  body_start=$((frontmatter_closing_line + 1))
 fi
 
 # ---------------------------------------------------------------------------
@@ -147,26 +147,26 @@ fi
 # A section ends at the next canonical header or EOF. Lines before the
 # first canonical header are dropped (the schema places the four
 # sections back-to-back; nothing precedes them).
-awk -v start="$body_start" -v out_dir="$work_dir" '
+awk -v start="$body_start" -v output_directory="$work_directory" '
   function flush() {
-    if (cur != "" && out_path != "") {
-      print buf > out_path
-      close(out_path)
+    if (current_section_name != "" && output_path != "") {
+      print buffered_text > output_path
+      close(output_path)
     }
-    cur = ""
-    buf = ""
-    out_path = ""
+    current_section_name = ""
+    buffered_text = ""
+    output_path = ""
   }
   function buffer(line) {
-    if (cur != "") {
-      if (buf == "") buf = line
-      else buf = buf "\n" line
+    if (current_section_name != "") {
+      if (buffered_text == "") buffered_text = line
+      else buffered_text = buffered_text "\n" line
     }
   }
   BEGIN {
-    cur = ""
-    buf = ""
-    out_path = ""
+    current_section_name = ""
+    buffered_text = ""
+    output_path = ""
     in_fence = 0
     seen_symptom = 0
     seen_classification = 0
@@ -184,27 +184,27 @@ awk -v start="$body_start" -v out_dir="$work_dir" '
   !in_fence && /^## / {
     name = substr($0, 4)
     if (name == "Symptom" || name == "Classification" || name == "Capture" || name == "Reproduction context") {
-      is_dup = 0
-      if (name == "Symptom")                   { if (seen_symptom)        is_dup = 1; else seen_symptom = 1 }
-      else if (name == "Classification")       { if (seen_classification) is_dup = 1; else seen_classification = 1 }
-      else if (name == "Capture")              { if (seen_capture)        is_dup = 1; else seen_capture = 1 }
-      else if (name == "Reproduction context") { if (seen_reproduction)   is_dup = 1; else seen_reproduction = 1 }
-      if (is_dup) {
+      is_duplicate = 0
+      if (name == "Symptom")                   { if (seen_symptom)        is_duplicate = 1; else seen_symptom = 1 }
+      else if (name == "Classification")       { if (seen_classification) is_duplicate = 1; else seen_classification = 1 }
+      else if (name == "Capture")              { if (seen_capture)        is_duplicate = 1; else seen_capture = 1 }
+      else if (name == "Reproduction context") { if (seen_reproduction)   is_duplicate = 1; else seen_reproduction = 1 }
+      if (is_duplicate) {
         # Record the first duplicate canonical header (later ones
         # ignored). Do not start a new section; the body is rejected.
-        dup_path = out_dir "/duplicate-header.txt"
-        cmd = "test -f \"" dup_path "\""
-        if (system(cmd) != 0) {
-          print name > dup_path
-          close(dup_path)
+        duplicate_path = output_directory "/duplicate-header.txt"
+        command = "test -f \"" duplicate_path "\""
+        if (system(command) != 0) {
+          print name > duplicate_path
+          close(duplicate_path)
         }
         next
       }
       flush()
-      if (name == "Symptom")                   { cur = name; out_path = out_dir "/sec-symptom.txt" }
-      else if (name == "Classification")       { cur = name; out_path = out_dir "/sec-classification.txt" }
-      else if (name == "Capture")              { cur = name; out_path = out_dir "/sec-capture.txt" }
-      else                                     { cur = name; out_path = out_dir "/sec-reproduction.txt" }
+      if (name == "Symptom")                   { current_section_name = name; output_path = output_directory "/sec-symptom.txt" }
+      else if (name == "Classification")       { current_section_name = name; output_path = output_directory "/sec-classification.txt" }
+      else if (name == "Capture")              { current_section_name = name; output_path = output_directory "/sec-capture.txt" }
+      else                                     { current_section_name = name; output_path = output_directory "/sec-reproduction.txt" }
       next
     }
     # Non-canonical `## ` line: content, not a header (RT-02).
@@ -228,9 +228,9 @@ awk_status=$?
 #   3. empty-section
 # ---------------------------------------------------------------------------
 
-if [ -f "$work_dir/duplicate-header.txt" ]; then
-  dup_header=$(cat "$work_dir/duplicate-header.txt")
-  esc_header=$(printf '%s' "$dup_header" | awk '
+if [ -f "$work_directory/duplicate-header.txt" ]; then
+  duplicate_header=$(cat "$work_directory/duplicate-header.txt")
+  escaped_header=$(printf '%s' "$duplicate_header" | awk '
     {
       gsub(/\\/, "\\\\")
       gsub(/"/, "\\\"")
@@ -238,14 +238,14 @@ if [ -f "$work_dir/duplicate-header.txt" ]; then
       printf "%s", $0
     }
   ')
-  printf '{"valid":false,"error":"duplicate-section-header","missing":[],"malformed":["%s"]}\n' "$esc_header"
+  printf '{"valid":false,"error":"duplicate-section-header","missing":[],"malformed":["%s"]}\n' "$escaped_header"
   exit 0
 fi
 
-have_symptom=0;        [ -f "$work_dir/sec-symptom.txt" ]        && have_symptom=1
-have_classification=0; [ -f "$work_dir/sec-classification.txt" ] && have_classification=1
-have_capture=0;        [ -f "$work_dir/sec-capture.txt" ]        && have_capture=1
-have_reproduction=0;   [ -f "$work_dir/sec-reproduction.txt" ]   && have_reproduction=1
+have_symptom=0;        [ -f "$work_directory/sec-symptom.txt" ]        && have_symptom=1
+have_classification=0; [ -f "$work_directory/sec-classification.txt" ] && have_classification=1
+have_capture=0;        [ -f "$work_directory/sec-capture.txt" ]        && have_capture=1
+have_reproduction=0;   [ -f "$work_directory/sec-reproduction.txt" ]   && have_reproduction=1
 
 missing_list=""
 [ "$have_symptom" -eq 0 ]        && missing_list="${missing_list}\"symptom\","
@@ -272,36 +272,36 @@ trim_one_blank_each_end() {
       lines[NR] = $0
     }
     END {
-      s = 1
-      e = NR
-      if (NR >= 1 && lines[1] == "") s = 2
-      if (e >= s && lines[e] == "") e = e - 1
-      for (i = s; i <= e; i++) {
-        if (i > s) printf "\n"
+      first_index = 1
+      last_index = NR
+      if (NR >= 1 && lines[1] == "") first_index = 2
+      if (last_index >= first_index && lines[last_index] == "") last_index = last_index - 1
+      for (i = first_index; i <= last_index; i++) {
+        if (i > first_index) printf "\n"
         printf "%s", lines[i]
       }
     }
   ' "$file"
 }
 
-sec_symptom=$(trim_one_blank_each_end "$work_dir/sec-symptom.txt")
+section_symptom=$(trim_one_blank_each_end "$work_directory/sec-symptom.txt")
 awk_status=$?
 [ "$awk_status" -ne 0 ] && emit_internal_error "section-content-extract" "$awk_status"
-sec_classification=$(trim_one_blank_each_end "$work_dir/sec-classification.txt")
+section_classification=$(trim_one_blank_each_end "$work_directory/sec-classification.txt")
 awk_status=$?
 [ "$awk_status" -ne 0 ] && emit_internal_error "section-content-extract" "$awk_status"
-sec_capture=$(trim_one_blank_each_end "$work_dir/sec-capture.txt")
+section_capture=$(trim_one_blank_each_end "$work_directory/sec-capture.txt")
 awk_status=$?
 [ "$awk_status" -ne 0 ] && emit_internal_error "section-content-extract" "$awk_status"
-sec_reproduction=$(trim_one_blank_each_end "$work_dir/sec-reproduction.txt")
+section_reproduction=$(trim_one_blank_each_end "$work_directory/sec-reproduction.txt")
 awk_status=$?
 [ "$awk_status" -ne 0 ] && emit_internal_error "section-content-extract" "$awk_status"
 
 empty_list=""
-[ -z "$sec_symptom" ]        && empty_list="${empty_list}\"symptom\","
-[ -z "$sec_classification" ] && empty_list="${empty_list}\"classification\","
-[ -z "$sec_capture" ]        && empty_list="${empty_list}\"capture\","
-[ -z "$sec_reproduction" ]   && empty_list="${empty_list}\"reproduction_context\","
+[ -z "$section_symptom" ]        && empty_list="${empty_list}\"symptom\","
+[ -z "$section_classification" ] && empty_list="${empty_list}\"classification\","
+[ -z "$section_capture" ]        && empty_list="${empty_list}\"capture\","
+[ -z "$section_reproduction" ]   && empty_list="${empty_list}\"reproduction_context\","
 empty_list=${empty_list%,}
 
 if [ -n "$empty_list" ]; then
@@ -316,23 +316,23 @@ fi
 # frontmatter and not declared as `gaia_version: <ver>` in `## Capture`.
 # ---------------------------------------------------------------------------
 
-if [ -z "$fm_class" ]; then
-  fm_class=$(awk -F':[[:space:]]*' '
+if [ -z "$frontmatter_class" ]; then
+  frontmatter_class=$(awk -F':[[:space:]]*' '
     /^class:[[:space:]]/ { print $2; exit }
-  ' "$work_dir/sec-classification.txt")
+  ' "$work_directory/sec-classification.txt")
   awk_status=$?
   [ "$awk_status" -ne 0 ] && emit_internal_error "class-derive" "$awk_status"
 fi
 
-if [ -z "$fm_class" ]; then
+if [ -z "$frontmatter_class" ]; then
   printf '{"valid":false,"error":"missing-class","missing":["class"],"malformed":[]}\n'
   exit 0
 fi
 
-if [ -z "$fm_gaia_version" ]; then
-  fm_gaia_version=$(awk -F':[[:space:]]*' '
+if [ -z "$frontmatter_gaia_version" ]; then
+  frontmatter_gaia_version=$(awk -F':[[:space:]]*' '
     /^gaia_version:[[:space:]]/ { print $2; exit }
-  ' "$work_dir/sec-capture.txt")
+  ' "$work_directory/sec-capture.txt")
   awk_status=$?
   [ "$awk_status" -ne 0 ] && emit_internal_error "gaia-version-derive" "$awk_status"
 fi
@@ -351,19 +351,19 @@ json_escape_file() {
     }
     {
       if (first == 1) { first = 0 } else { printf "\\n" }
-      n = length($0)
-      for (i = 1; i <= n; i++) {
-        c = substr($0, i, 1)
-        if (c == "\\") {
+      line_length = length($0)
+      for (i = 1; i <= line_length; i++) {
+        character = substr($0, i, 1)
+        if (character == "\\") {
           printf "\\\\"
-        } else if (c == "\"") {
+        } else if (character == "\"") {
           printf "\\\""
-        } else if (c == "\t") {
+        } else if (character == "\t") {
           printf "\\t"
-        } else if (c == "\r") {
+        } else if (character == "\r") {
           printf "\\r"
         } else {
-          printf "%s", c
+          printf "%s", character
         }
       }
     }
@@ -372,33 +372,33 @@ json_escape_file() {
 
 # Frontmatter values: never multi-line, but reuse the file-based escape
 # by writing them to disk first.
-printf '%s' "$fm_class"        > "$work_dir/fm-class.txt"
-printf '%s' "$fm_gaia_version" > "$work_dir/fm-gaia-version.txt"
-printf '%s' "$fm_created"      > "$work_dir/fm-created.txt"
+printf '%s' "$frontmatter_class"        > "$work_directory/fm-class.txt"
+printf '%s' "$frontmatter_gaia_version" > "$work_directory/fm-gaia-version.txt"
+printf '%s' "$frontmatter_created"      > "$work_directory/fm-created.txt"
 
-esc_class=$(json_escape_file "$work_dir/fm-class.txt")
-esc_gaia_version=$(json_escape_file "$work_dir/fm-gaia-version.txt")
-esc_created=$(json_escape_file "$work_dir/fm-created.txt")
+escaped_class=$(json_escape_file "$work_directory/fm-class.txt")
+escaped_gaia_version=$(json_escape_file "$work_directory/fm-gaia-version.txt")
+escaped_created=$(json_escape_file "$work_directory/fm-created.txt")
 
 # Sections: write trimmed content back, then escape.
-printf '%s' "$sec_symptom"        > "$work_dir/sec-symptom-trim.txt"
-printf '%s' "$sec_classification" > "$work_dir/sec-classification-trim.txt"
-printf '%s' "$sec_capture"        > "$work_dir/sec-capture-trim.txt"
-printf '%s' "$sec_reproduction"   > "$work_dir/sec-reproduction-trim.txt"
+printf '%s' "$section_symptom"        > "$work_directory/sec-symptom-trim.txt"
+printf '%s' "$section_classification" > "$work_directory/sec-classification-trim.txt"
+printf '%s' "$section_capture"        > "$work_directory/sec-capture-trim.txt"
+printf '%s' "$section_reproduction"   > "$work_directory/sec-reproduction-trim.txt"
 
-esc_symptom=$(json_escape_file "$work_dir/sec-symptom-trim.txt")
-esc_classification=$(json_escape_file "$work_dir/sec-classification-trim.txt")
-esc_capture=$(json_escape_file "$work_dir/sec-capture-trim.txt")
-esc_reproduction=$(json_escape_file "$work_dir/sec-reproduction-trim.txt")
+escaped_symptom=$(json_escape_file "$work_directory/sec-symptom-trim.txt")
+escaped_classification=$(json_escape_file "$work_directory/sec-classification-trim.txt")
+escaped_capture=$(json_escape_file "$work_directory/sec-capture-trim.txt")
+escaped_reproduction=$(json_escape_file "$work_directory/sec-reproduction-trim.txt")
 
-if [ -z "$fm_gh_issue_url" ]; then
+if [ -z "$frontmatter_gh_issue_url" ]; then
   gh_url_field='null'
 else
-  printf '%s' "$fm_gh_issue_url" > "$work_dir/fm-gh-url.txt"
-  esc_gh=$(json_escape_file "$work_dir/fm-gh-url.txt")
-  gh_url_field="\"$esc_gh\""
+  printf '%s' "$frontmatter_gh_issue_url" > "$work_directory/fm-gh-url.txt"
+  escaped_gh_issue_url=$(json_escape_file "$work_directory/fm-gh-url.txt")
+  gh_url_field="\"$escaped_gh_issue_url\""
 fi
 
 printf '{"valid":true,"frontmatter":{"class":"%s","gaia_version":"%s","created":"%s","gh_issue_url":%s},"sections":{"symptom":"%s","classification":"%s","capture":"%s","reproduction_context":"%s"}}\n' \
-  "$esc_class" "$esc_gaia_version" "$esc_created" "$gh_url_field" \
-  "$esc_symptom" "$esc_classification" "$esc_capture" "$esc_reproduction"
+  "$escaped_class" "$escaped_gaia_version" "$escaped_created" "$gh_url_field" \
+  "$escaped_symptom" "$escaped_classification" "$escaped_capture" "$escaped_reproduction"

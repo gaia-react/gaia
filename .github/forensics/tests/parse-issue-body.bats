@@ -10,9 +10,9 @@
 #     the `## Classification` section content
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  PARSER="$THIS_DIR/../parse-issue-body.sh"
-  FIX="$THIS_DIR/fixtures"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  PARSER="$THIS_DIRECTORY/../parse-issue-body.sh"
+  FIXTURES="$THIS_DIRECTORY/fixtures"
 }
 
 # ---------------------------------------------------------------------------
@@ -21,37 +21,37 @@ setup() {
 # ---------------------------------------------------------------------------
 
 @test "valid body returns valid:true" {
-  run "$PARSER" "$FIX/valid.md"
+  run "$PARSER" "$FIXTURES/valid.md"
   [ "$status" -eq 0 ]
   [[ "$output" == *'"valid":true'* ]]
 }
 
 @test "valid body extracts class from frontmatter" {
-  run "$PARSER" "$FIX/valid.md"
+  run "$PARSER" "$FIXTURES/valid.md"
   [ "$status" -eq 0 ]
   [[ "$output" == *'"class":"quality-gate"'* ]]
 }
 
 @test "valid body extracts gaia_version from frontmatter" {
-  run "$PARSER" "$FIX/valid.md"
+  run "$PARSER" "$FIXTURES/valid.md"
   [ "$status" -eq 0 ]
   [[ "$output" == *'"gaia_version":"1.4.2"'* ]]
 }
 
 @test "valid body extracts created from frontmatter" {
-  run "$PARSER" "$FIX/valid.md"
+  run "$PARSER" "$FIXTURES/valid.md"
   [ "$status" -eq 0 ]
   [[ "$output" == *'"created":"2026-05-08"'* ]]
 }
 
 @test "valid body extracts optional gh_issue_url when present" {
-  run "$PARSER" "$FIX/valid.md"
+  run "$PARSER" "$FIXTURES/valid.md"
   [ "$status" -eq 0 ]
   [[ "$output" == *'"gh_issue_url":"https://github.com/gaia-react/gaia/issues/123"'* ]]
 }
 
 @test "valid body extracts symptom section" {
-  run "$PARSER" "$FIX/valid.md"
+  run "$PARSER" "$FIXTURES/valid.md"
   [ "$status" -eq 0 ]
   # Body contains backtick-fenced inline code; ensure it survives.
   [[ "$output" == *'pnpm typecheck'* ]]
@@ -59,21 +59,21 @@ setup() {
 }
 
 @test "valid body extracts classification section" {
-  run "$PARSER" "$FIX/valid.md"
+  run "$PARSER" "$FIXTURES/valid.md"
   [ "$status" -eq 0 ]
   [[ "$output" == *'class: quality-gate'* ]]
   [[ "$output" == *'evidence:'* ]]
 }
 
 @test "valid body extracts capture section preserving fenced block" {
-  run "$PARSER" "$FIX/valid.md"
+  run "$PARSER" "$FIXTURES/valid.md"
   [ "$status" -eq 0 ]
   [[ "$output" == *'node_version: v20.11.0'* ]]
   [[ "$output" == *'pnpm_version: 9.0.0'* ]]
 }
 
 @test "valid body extracts reproduction_context section" {
-  run "$PARSER" "$FIX/valid.md"
+  run "$PARSER" "$FIXTURES/valid.md"
   [ "$status" -eq 0 ]
   [[ "$output" == *'.claude/hooks/wiki-session-stop.sh'* ]]
   [[ "$output" == *'.claude/hooks/post-tool.sh'* ]]
@@ -85,7 +85,7 @@ setup() {
 # ---------------------------------------------------------------------------
 
 @test "missing symptom returns missing-section" {
-  run "$PARSER" "$FIX/missing-symptom.md"
+  run "$PARSER" "$FIXTURES/missing-symptom.md"
   [ "$status" -eq 0 ]
   [[ "$output" == *'"valid":false'* ]]
   [[ "$output" == *'"error":"missing-section"'* ]]
@@ -96,7 +96,7 @@ setup() {
   # Frontmatter is optional. The GH-issue body shape ships without one
   # in some workflows; `class` is derived from the `class: <tag>` line
   # inside the `## Classification` section instead.
-  run "$PARSER" "$FIX/missing-frontmatter.md"
+  run "$PARSER" "$FIXTURES/missing-frontmatter.md"
   [ "$status" -eq 0 ]
   [[ "$output" == *'"valid":true'* ]]
   [[ "$output" == *'"class":"other"'* ]]
@@ -106,7 +106,7 @@ setup() {
 # section body) is retained as section content, never flagged malformed.
 # Only the four exact canonical headers start a section.
 @test "non-canonical ## line is retained as content (RT-02)" {
-  run "$PARSER" "$FIX/noncanonical-header.md"
+  run "$PARSER" "$FIXTURES/noncanonical-header.md"
   [ "$status" -eq 0 ]
   [[ "$output" == *'"valid":true'* ]]
   # Inside a fenced block: the pasted `## Error output` line survives.
@@ -121,7 +121,7 @@ setup() {
 # RT-03: the same canonical header appearing twice is a duplicate. The
 # parser rejects loudly rather than silently corrupting the body.
 @test "duplicate canonical header returns duplicate-section-header (RT-03)" {
-  run "$PARSER" "$FIX/duplicate-section-header.md"
+  run "$PARSER" "$FIXTURES/duplicate-section-header.md"
   [ "$status" -eq 0 ]
   [[ "$output" == *'"valid":false'* ]]
   [[ "$output" == *'"error":"duplicate-section-header"'* ]]
@@ -279,13 +279,13 @@ EOF
 # ---------------------------------------------------------------------------
 
 @test "redaction tokens pass through symptom verbatim" {
-  run "$PARSER" "$FIX/redaction-passthrough.md"
+  run "$PARSER" "$FIXTURES/redaction-passthrough.md"
   [ "$status" -eq 0 ]
   [[ "$output" == *'<redacted>'* ]]
 }
 
 @test "redaction tokens pass through capture verbatim" {
-  run "$PARSER" "$FIX/redaction-passthrough.md"
+  run "$PARSER" "$FIXTURES/redaction-passthrough.md"
   [ "$status" -eq 0 ]
   # capture section contains both tokens; both must appear byte-identically.
   [[ "$output" == *'api_key: <redacted>'* ]]
@@ -294,14 +294,14 @@ EOF
 }
 
 @test "redaction tokens pass through reproduction_context verbatim" {
-  run "$PARSER" "$FIX/redaction-passthrough.md"
+  run "$PARSER" "$FIXTURES/redaction-passthrough.md"
   [ "$status" -eq 0 ]
   [[ "$output" == *'- `<repo-relative-paths>`'* ]]
   [[ "$output" == *'file at `<repo-relative-paths>` referencing `<redacted>`'* ]]
 }
 
 @test "optional gh_issue_url is null when absent from frontmatter" {
-  run "$PARSER" "$FIX/redaction-passthrough.md"
+  run "$PARSER" "$FIXTURES/redaction-passthrough.md"
   [ "$status" -eq 0 ]
   [[ "$output" == *'"gh_issue_url":null'* ]]
 }
@@ -326,9 +326,9 @@ EOF
 # ---------------------------------------------------------------------------
 
 @test "parser output is byte-identical across two runs (determinism)" {
-  run "$PARSER" "$FIX/valid.md"
+  run "$PARSER" "$FIXTURES/valid.md"
   first="$output"
-  run "$PARSER" "$FIX/valid.md"
+  run "$PARSER" "$FIXTURES/valid.md"
   [ "$output" = "$first" ]
 }
 
@@ -356,7 +356,7 @@ exit 7
 STUB
   chmod +x "$fake_bin/awk"
 
-  run env PATH="$fake_bin:$PATH" "$PARSER" "$FIX/valid.md"
+  run env PATH="$fake_bin:$PATH" "$PARSER" "$FIXTURES/valid.md"
   [ "$status" -eq 0 ]
   [[ "$output" == *'"internal_error":true'* ]]
   [[ "$output" == *'"stage":"frontmatter-extract"'* ]]
@@ -371,7 +371,7 @@ STUB
 # ---------------------------------------------------------------------------
 
 @test "success JSON contains frontmatter and sections objects" {
-  run "$PARSER" "$FIX/valid.md"
+  run "$PARSER" "$FIXTURES/valid.md"
   [ "$status" -eq 0 ]
   [[ "$output" == *'"frontmatter":{'* ]]
   [[ "$output" == *'"sections":{'* ]]

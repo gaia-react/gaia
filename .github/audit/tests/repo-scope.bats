@@ -20,12 +20,12 @@
 #
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
-  LIB="$REPO_ROOT/.claude/hooks/lib/repo-scope.sh"
-  [ -f "$LIB" ] || skip "repo-scope.sh not found"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
+  LIBRARY_FILE="$REPO_ROOT/.claude/hooks/lib/repo-scope.sh"
+  [ -f "$LIBRARY_FILE" ] || skip "repo-scope.sh not found"
   # shellcheck source=/dev/null
-  . "$LIB"
+  . "$LIBRARY_FILE"
 
   HOME_REPO="$BATS_TEST_TMPDIR/home"
   SIBLING_REPO="$BATS_TEST_TMPDIR/sibling"
@@ -34,15 +34,15 @@ setup() {
 }
 
 init_repo() {
-  local dir="$1"
-  mkdir -p "$dir"
-  git -C "$dir" init --quiet --initial-branch=main
-  git -C "$dir" config user.email "test@example.com"
-  git -C "$dir" config user.name "Test"
-  git -C "$dir" config commit.gpgsign false
-  echo "# readme" > "$dir/README.md"
-  git -C "$dir" add README.md
-  git -C "$dir" commit --quiet -m "init"
+  local directory="$1"
+  mkdir -p "$directory"
+  git -C "$directory" init --quiet --initial-branch=main
+  git -C "$directory" config user.email "test@example.com"
+  git -C "$directory" config user.name "Test"
+  git -C "$directory" config commit.gpgsign false
+  echo "# readme" > "$directory/README.md"
+  git -C "$directory" add README.md
+  git -C "$directory" commit --quiet -m "init"
 }
 
 # Evaluate a command string as if issued from inside the HOME repo, so the
@@ -108,11 +108,11 @@ add_widget_remote() {
 }
 
 add_worktree() {
-  WT="$BATS_TEST_TMPDIR/wt"
-  git -C "$HOME_REPO" worktree add --quiet -b wt "$WT" main
+  WORKTREE="$BATS_TEST_TMPDIR/wt"
+  git -C "$HOME_REPO" worktree add --quiet -b wt "$WORKTREE" main
 }
 
-in_dir() {
+in_directory() {
   ( cd "$1" && cmd_targets_foreign_repo "$2" )
 }
 
@@ -125,22 +125,22 @@ in_dir() {
 @test "--repo <home> from a linked worktree: home (enforce)" {
   add_widget_remote "$HOME_REPO"
   add_worktree
-  run in_dir "$WT" "gh pr merge 5 --repo acme/widget --squash"
+  run in_directory "$WORKTREE" "gh pr merge 5 --repo acme/widget --squash"
   [ "$status" -ne 0 ]
 }
 
 @test "-R, =, URL, .git and case spellings of <home> from a linked worktree: home (enforce)" {
   add_widget_remote "$HOME_REPO"
   add_worktree
-  run in_dir "$WT" "gh pr merge 5 -R acme/widget"
+  run in_directory "$WORKTREE" "gh pr merge 5 -R acme/widget"
   [ "$status" -ne 0 ]
-  run in_dir "$WT" "gh pr merge 5 --repo=acme/widget"
+  run in_directory "$WORKTREE" "gh pr merge 5 --repo=acme/widget"
   [ "$status" -ne 0 ]
-  run in_dir "$WT" "gh pr merge 5 --repo https://github.com/acme/widget.git"
+  run in_directory "$WORKTREE" "gh pr merge 5 --repo https://github.com/acme/widget.git"
   [ "$status" -ne 0 ]
-  run in_dir "$WT" "gh pr merge 5 --repo github.com/acme/widget"
+  run in_directory "$WORKTREE" "gh pr merge 5 --repo github.com/acme/widget"
   [ "$status" -ne 0 ]
-  run in_dir "$WT" "gh pr merge 5 --repo ACME/Widget"
+  run in_directory "$WORKTREE" "gh pr merge 5 --repo ACME/Widget"
   [ "$status" -ne 0 ]
 }
 
@@ -178,12 +178,12 @@ in_dir() {
 
 @test "a leading cd target is published for the caller, and cleared when there is none" {
   add_worktree
-  run bash -c 'cd "$1" && . "$2" && cmd_targets_foreign_repo "cd '"'"'$3'"'"' && git commit -m x"; printf "%s" "$GAIA_REPO_SCOPE_LEAD_CD"' _ "$HOME_REPO" "$LIB" "$WT"
-  [ "$output" = "$WT" ]
-  run bash -c 'cd "$1" && . "$2" && GAIA_REPO_SCOPE_LEAD_CD=stale && cmd_targets_foreign_repo "git commit -m x"; printf "%s" "$GAIA_REPO_SCOPE_LEAD_CD"' _ "$HOME_REPO" "$LIB"
+  run bash -c 'cd "$1" && . "$2" && cmd_targets_foreign_repo "cd '"'"'$3'"'"' && git commit -m x"; printf "%s" "$GAIA_REPO_SCOPE_LEAD_CD"' _ "$HOME_REPO" "$LIBRARY_FILE" "$WORKTREE"
+  [ "$output" = "$WORKTREE" ]
+  run bash -c 'cd "$1" && . "$2" && GAIA_REPO_SCOPE_LEAD_CD=stale && cmd_targets_foreign_repo "git commit -m x"; printf "%s" "$GAIA_REPO_SCOPE_LEAD_CD"' _ "$HOME_REPO" "$LIBRARY_FILE"
   [ -z "$output" ]
   # A -C target belongs to its own segment, never to the command as a whole.
-  run bash -c 'cd "$1" && . "$2" && cmd_targets_foreign_repo "git -C $3 status && git commit -m x"; printf "%s" "$GAIA_REPO_SCOPE_LEAD_CD"' _ "$HOME_REPO" "$LIB" "$WT"
+  run bash -c 'cd "$1" && . "$2" && cmd_targets_foreign_repo "git -C $3 status && git commit -m x"; printf "%s" "$GAIA_REPO_SCOPE_LEAD_CD"' _ "$HOME_REPO" "$LIBRARY_FILE" "$WORKTREE"
   [ -z "$output" ]
 }
 
@@ -198,7 +198,7 @@ in_dir() {
 @test "--repo naming another repository from a linked worktree: foreign (allow)" {
   add_widget_remote "$HOME_REPO"
   add_worktree
-  run in_dir "$WT" "gh pr merge 5 --repo acme/other --squash"
+  run in_directory "$WORKTREE" "gh pr merge 5 --repo acme/other --squash"
   [ "$status" -eq 0 ]
 }
 
@@ -221,25 +221,25 @@ in_dir() {
 
 @test "git -C <main checkout> from a linked worktree: home (enforce)" {
   add_worktree
-  run in_dir "$WT" "git -C \"$HOME_REPO\" push origin main"
+  run in_directory "$WORKTREE" "git -C \"$HOME_REPO\" push origin main"
   [ "$status" -ne 0 ]
 }
 
 @test "git -C <linked worktree> from the main checkout: home (enforce)" {
   add_worktree
-  run in_home "git -C $WT commit -m x"
+  run in_home "git -C $WORKTREE commit -m x"
   [ "$status" -ne 0 ]
 }
 
 @test "cd <main checkout> && git push from a linked worktree: home (enforce)" {
   add_worktree
-  run in_dir "$WT" "cd '$HOME_REPO' && git push origin main"
+  run in_directory "$WORKTREE" "cd '$HOME_REPO' && git push origin main"
   [ "$status" -ne 0 ]
 }
 
 @test "git -C <sibling repository> from a linked worktree: foreign (allow)" {
   add_worktree
-  run in_dir "$WT" "git -C \"$SIBLING_REPO\" push origin main"
+  run in_directory "$WORKTREE" "git -C \"$SIBLING_REPO\" push origin main"
   [ "$status" -eq 0 ]
 }
 
@@ -255,7 +255,7 @@ in_dir() {
 @test "git -C <sibling> with the main-root resolver unavailable: home (enforce, fail closed)" {
   local stage="$BATS_TEST_TMPDIR/stage"
   mkdir -p "$stage/.claude/hooks/lib"
-  cp "$LIB" "$stage/.claude/hooks/lib/repo-scope.sh"
+  cp "$LIBRARY_FILE" "$stage/.claude/hooks/lib/repo-scope.sh"
   run bash -c 'cd "$1" && . "$2" && cmd_targets_foreign_repo "$3"' _ \
     "$HOME_REPO" "$stage/.claude/hooks/lib/repo-scope.sh" \
     "git -C $SIBLING_REPO push origin main"
@@ -266,7 +266,7 @@ in_dir() {
 # through it the sibling and home would share one common directory.
 @test "git -C <sibling> with GIT_DIR exported for the home repo: foreign (allow)" {
   run bash -c 'cd "$1" && . "$2" && GIT_DIR="$1/.git" && export GIT_DIR && cmd_targets_foreign_repo "$3"' _ \
-    "$HOME_REPO" "$LIB" "git -C $SIBLING_REPO push origin main"
+    "$HOME_REPO" "$LIBRARY_FILE" "git -C $SIBLING_REPO push origin main"
   [ "$status" -eq 0 ]
 }
 
@@ -319,8 +319,8 @@ in_dir() {
 # be cut off from by any `-R` in the tool call.
 @test "a leading cd is published even when a later command carries a -R" {
   add_worktree
-  run bash -c 'cd "$1" && . "$2" && cmd_targets_foreign_repo "cd '"'"'$3'"'"' && git commit -m x && grep -R TODO app"; printf "%s" "$GAIA_REPO_SCOPE_LEAD_CD"' _ "$HOME_REPO" "$LIB" "$WT"
-  [ "$output" = "$WT" ]
+  run bash -c 'cd "$1" && . "$2" && cmd_targets_foreign_repo "cd '"'"'$3'"'"' && git commit -m x && grep -R TODO app"; printf "%s" "$GAIA_REPO_SCOPE_LEAD_CD"' _ "$HOME_REPO" "$LIBRARY_FILE" "$WORKTREE"
+  [ "$output" = "$WORKTREE" ]
 }
 
 # -----------------------------------------------------------------------------
@@ -405,49 +405,49 @@ t commit -m y"
 # foreign and the whole call is exempted.
 @test "a cd the shell scopes away does not move a later home command: home (enforce)" {
   add_widget_remote "$HOME_REPO"
-  local f="gh pr view 5 -R other/x"
-  run in_home "$f
+  local foreign_command="gh pr view 5 -R other/x"
+  run in_home "$foreign_command
 (
 cd $SIBLING_REPO
 )
 git commit -m y"
   [ "$status" -ne 0 ]
-  run in_home "$f
+  run in_home "$foreign_command
 x=\$(
 cd $SIBLING_REPO
 )
 git commit -m y"
   [ "$status" -ne 0 ]
-  run in_home "$f
+  run in_home "$foreign_command
 f() {
 cd $SIBLING_REPO
 }
 git commit -m y"
   [ "$status" -ne 0 ]
-  run in_home "$f
+  run in_home "$foreign_command
 cat <<EOF
 cd $SIBLING_REPO
 EOF
 git commit -m y"
   [ "$status" -ne 0 ]
-  run in_home "$f; if false; then cd $SIBLING_REPO; fi; git commit -m y"
+  run in_home "$foreign_command; if false; then cd $SIBLING_REPO; fi; git commit -m y"
   [ "$status" -ne 0 ]
-  run in_home "$f; cd $SIBLING_REPO & git commit -m y"
+  run in_home "$foreign_command; cd $SIBLING_REPO & git commit -m y"
   [ "$status" -ne 0 ]
-  run in_home "$f; cd $SIBLING_REPO | cat; git commit -m y"
+  run in_home "$foreign_command; cd $SIBLING_REPO | cat; git commit -m y"
   [ "$status" -ne 0 ]
-  run in_home "$f; echo | cd $SIBLING_REPO; git commit -m y"
+  run in_home "$foreign_command; echo | cd $SIBLING_REPO; git commit -m y"
   [ "$status" -ne 0 ]
 }
 
 @test "a cd that may not run does not move a later home command: home (enforce)" {
   add_widget_remote "$HOME_REPO"
-  local f="gh pr view 5 -R other/x"
-  run in_home "$f; false && cd $SIBLING_REPO; git commit -m y"
+  local foreign_command="gh pr view 5 -R other/x"
+  run in_home "$foreign_command; false && cd $SIBLING_REPO; git commit -m y"
   [ "$status" -ne 0 ]
-  run in_home "$f; cd $SIBLING_REPO || git commit -m y"
+  run in_home "$foreign_command; cd $SIBLING_REPO || git commit -m y"
   [ "$status" -ne 0 ]
-  run in_home "$f; false && cd $SIBLING_REPO # note
+  run in_home "$foreign_command; false && cd $SIBLING_REPO # note
 git commit -m y"
   [ "$status" -ne 0 ]
 }
@@ -456,16 +456,16 @@ git commit -m y"
 # trailing `&&`, `||` or `|` carries onto the next line.
 @test "a cd continued past a comment line after &&, || or | does not move a later home command: home (enforce)" {
   add_widget_remote "$HOME_REPO"
-  local f="gh pr view 5 -R other/x"
-  run in_home "$f; false && # c
+  local foreign_command="gh pr view 5 -R other/x"
+  run in_home "$foreign_command; false && # c
 cd $SIBLING_REPO
 git commit -m y"
   [ "$status" -ne 0 ]
-  run in_home "$f; true || # c
+  run in_home "$foreign_command; true || # c
 cd $SIBLING_REPO
 git commit -m y"
   [ "$status" -ne 0 ]
-  run in_home "$f; echo | # c
+  run in_home "$foreign_command; echo | # c
 cd $SIBLING_REPO
 git commit -m y"
   [ "$status" -ne 0 ]
@@ -557,18 +557,18 @@ git push"
 # The walk costs the call's length once per command, so it is bounded.
 @test "a long call ending in a home command is read home, inside the ceiling" {
   add_widget_remote "$HOME_REPO"
-  local big i t0 t1
+  local big i start_seconds end_seconds
   big="gh pr view 5 -R other/x"
   for i in $(seq 1 4000); do big="$big
 echo line $i with some ordinary prose"; done
   big="$big
 git commit -m y"
-  t0=$(date +%s)
+  start_seconds=$(date +%s)
   run in_home "$big"
-  t1=$(date +%s)
+  end_seconds=$(date +%s)
   [ "$status" -ne 0 ]
-  echo "walk 4000 lines: $((t1 - t0))s (ceiling 3s)" >&2
-  [ "$((t1 - t0))" -le 3 ]
+  echo "walk 4000 lines: $((end_seconds - start_seconds))s (ceiling 3s)" >&2
+  [ "$((end_seconds - start_seconds))" -le 3 ]
 }
 
 @test "a foreign call longer than the walk reads is enforced: home (fail closed)" {
@@ -609,7 +609,7 @@ git status"
   utf8=$(locale -a 2>/dev/null | grep -i -m1 -E '^(C|en_US)\.utf-?8$') || skip "no UTF-8 locale"
   add_widget_remote "$HOME_REPO"
   run bash -c 'export LC_ALL="$4"; cd "$1" && . "$2" && cmd_targets_foreign_repo "$3"' _ \
-    "$HOME_REPO" "$LIB" "gh pr merge 5 -R other/x --body 'éééééééééé' # see git log" "$utf8"
+    "$HOME_REPO" "$LIBRARY_FILE" "gh pr merge 5 -R other/x --body 'éééééééééé' # see git log" "$utf8"
   [ "$status" -eq 0 ]
 }
 

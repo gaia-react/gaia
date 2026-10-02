@@ -36,9 +36,9 @@
 
 setup() {
   . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  SCRIPT="$THIS_DIR/../../../.claude/hooks/pr-merge-audit-check.sh"
-  LIB_DIR="$( cd "$THIS_DIR/../../../.claude/hooks/lib" && pwd )"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  SCRIPT="$THIS_DIRECTORY/../../../.claude/hooks/pr-merge-audit-check.sh"
+  LIBRARY_DIRECTORY="$( cd "$THIS_DIRECTORY/../../../.claude/hooks/lib" && pwd )"
   [ -x "$SCRIPT" ] || skip "pr-merge-audit-check.sh not executable"
   command -v jq >/dev/null 2>&1 || skip "jq not available"
 
@@ -87,7 +87,7 @@ current_tree() {
 # computed via the real digest engine (never hand-derived), so it is always
 # the SAME value pr-merge-audit-check.sh itself would compute.
 current_frontend_digest() {
-  bash -c '. "$1"; audit_member_digest "$2" code-audit-frontend' _ "$LIB_DIR/audit-digest.sh" "$SANDBOX"
+  bash -c '. "$1"; audit_member_digest "$2" code-audit-frontend' _ "$LIBRARY_DIRECTORY/audit-digest.sh" "$SANDBOX"
 }
 
 # Install a fake `gh` on a prepended PATH. It dispatches on argv:
@@ -108,7 +108,7 @@ install_gh_array_mock() {
   cat > "$GH_BIN/gh" <<EOF
 #!/usr/bin/env bash
 statuses_file="$BATS_TEST_TMPDIR/gh-statuses.json"
-base_ref_file="$BATS_TEST_TMPDIR/gh-pr-base-ref"
+base_reference_file="$BATS_TEST_TMPDIR/gh-pr-base-ref"
 EOF
   cat >> "$GH_BIN/gh" <<'EOF'
 args="$*"
@@ -121,17 +121,17 @@ case "$args" in
     # always empty, so the chore(deps) bypass never fires; the base ref is
     # empty unless a test declared one, which makes the hook fall back to the
     # remote's advertised default exactly as it does with no PR at all.
-    jq -n --arg b "$(cat "$base_ref_file")" '{title:"", baseRefName:$b}'
+    jq -n --arg base_reference "$(cat "$base_reference_file")" '{title:"", baseRefName:$base_reference}'
     ;;
   *statuses*)
-    jq_expr=""
-    prev=""
-    for a in "$@"; do
-      if [ "$prev" = "--jq" ]; then jq_expr="$a"; break; fi
-      prev="$a"
+    jq_expression=""
+    previous_argument=""
+    for argument in "$@"; do
+      if [ "$previous_argument" = "--jq" ]; then jq_expression="$argument"; break; fi
+      previous_argument="$argument"
     done
-    [ -n "$jq_expr" ] || { printf 'null\n'; exit 0; }
-    jq -r "$jq_expr" < "$statuses_file"
+    [ -n "$jq_expression" ] || { printf 'null\n'; exit 0; }
+    jq -r "$jq_expression" < "$statuses_file"
     ;;
   *"pr view"*|*"pr"*"view"*)
     # Any other PR-record shape: no answer at all.
@@ -148,7 +148,7 @@ EOF
 }
 
 # Declare the base branch the mocked `gh pr view` reports for this PR.
-set_pr_base_ref() {
+set_pr_base_reference() {
   printf '%s\n' "$1" > "$BATS_TEST_TMPDIR/gh-pr-base-ref"
 }
 
@@ -169,7 +169,7 @@ restack_on_release() {
 @test "merge hook: the out-of-scope bypass scopes the diff to the PR's own base branch" {
   install_gh_array_mock '[]'
   restack_on_release
-  set_pr_base_ref release
+  set_pr_base_reference release
 
   run run_hook
   [ "$status" -eq 0 ]
@@ -199,7 +199,7 @@ restack_on_release() {
   # base branch, so the derivation has to widen back to the default instead.
   git -C "$SANDBOX" update-ref -d refs/remotes/origin/release
   git -C "$SANDBOX" branch release "$(git -C "$SANDBOX" rev-parse HEAD^)"
-  set_pr_base_ref release
+  set_pr_base_reference release
 
   run run_hook
   [ "$status" -eq 0 ]

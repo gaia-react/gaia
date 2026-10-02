@@ -46,8 +46,8 @@ emit_internal_error() {
 input_file="$1"
 [ -f "$input_file" ] || { echo "parse-verdict.sh: input file not found: $input_file" >&2; exit 2; }
 
-work_dir=$(mktemp -d 2>/dev/null) || { echo "parse-verdict.sh: mktemp failed" >&2; exit 2; }
-trap 'rm -rf "$work_dir"' EXIT
+work_directory=$(mktemp -d 2>/dev/null) || { echo "parse-verdict.sh: mktemp failed" >&2; exit 2; }
+trap 'rm -rf "$work_directory"' EXIT
 
 # ---------------------------------------------------------------------------
 # Step 1: locate every `GAIA-VERDICT:` line and identify the LAST non-blank
@@ -57,18 +57,18 @@ trap 'rm -rf "$work_dir"' EXIT
 
 # Count of GAIA-VERDICT lines (leading whitespace tolerated; the rest of the
 # line is the value, possibly with trailing whitespace).
-verdict_count=$(awk '/^[[:space:]]*GAIA-VERDICT:/ { c++ } END { print c+0 }' "$input_file")
+verdict_count=$(awk '/^[[:space:]]*GAIA-VERDICT:/ { verdict_line_total++ } END { print verdict_line_total+0 }' "$input_file")
 awk_status=$?
 [ "$awk_status" -ne 0 ] && emit_internal_error "verdict-count" "$awk_status"
 
 # Line number of the last non-blank line.
-last_nonblank_lineno=$(awk 'NF { last = NR } END { print last+0 }' "$input_file")
+last_nonblank_line_number=$(awk 'NF { last = NR } END { print last+0 }' "$input_file")
 awk_status=$?
 [ "$awk_status" -ne 0 ] && emit_internal_error "last-nonblank-locate" "$awk_status"
 
 # Line number of the (single) verdict line, if present. `pipefail` is on,
 # so a non-zero awk exit propagates through the `tail` stage.
-verdict_lineno=$(awk '/^[[:space:]]*GAIA-VERDICT:/ { print NR }' "$input_file" | tail -n 1)
+verdict_line_number=$(awk '/^[[:space:]]*GAIA-VERDICT:/ { print NR }' "$input_file" | tail -n 1)
 awk_status=$?
 [ "$awk_status" -ne 0 ] && emit_internal_error "verdict-line-locate" "$awk_status"
 
@@ -83,11 +83,11 @@ if [ "$verdict_count" -eq 0 ]; then
 elif [ "$verdict_count" -gt 1 ]; then
   # Strict contract: exactly one verdict line. Multiple = non-conformant.
   verdict="ambiguous"
-elif [ "$verdict_lineno" != "$last_nonblank_lineno" ]; then
+elif [ "$verdict_line_number" != "$last_nonblank_line_number" ]; then
   # Verdict line exists but is not the LAST non-blank line.
   verdict="ambiguous"
 else
-  raw=$(awk -v ln="$verdict_lineno" 'NR==ln' "$input_file")
+  raw=$(awk -v target_line_number="$verdict_line_number" 'NR==target_line_number' "$input_file")
   # Strip leading whitespace and the `GAIA-VERDICT:` prefix.
   value=$(printf '%s' "$raw" | sed -E 's/^[[:space:]]*GAIA-VERDICT:[[:space:]]*//' | awk '{$1=$1; print}')
   case "$value" in
@@ -102,10 +102,10 @@ fi
 # newline preserved as best-effort).
 # ---------------------------------------------------------------------------
 
-if [ "$verdict_count" -ge 1 ] && [ -n "${verdict_lineno:-}" ]; then
-  awk -v ln="$verdict_lineno" 'NR < ln' "$input_file" > "$work_dir/reasoning.txt"
+if [ "$verdict_count" -ge 1 ] && [ -n "${verdict_line_number:-}" ]; then
+  awk -v target_line_number="$verdict_line_number" 'NR < target_line_number' "$input_file" > "$work_directory/reasoning.txt"
 else
-  cp "$input_file" "$work_dir/reasoning.txt"
+  cp "$input_file" "$work_directory/reasoning.txt"
 fi
 
 # Trim a single trailing blank line (markdown structure between the
@@ -113,14 +113,14 @@ fi
 awk '
   { lines[NR] = $0 }
   END {
-    e = NR
-    if (e >= 1 && lines[e] == "") e = e - 1
-    for (i = 1; i <= e; i++) {
+    last_index = NR
+    if (last_index >= 1 && lines[last_index] == "") last_index = last_index - 1
+    for (i = 1; i <= last_index; i++) {
       if (i > 1) printf "\n"
       printf "%s", lines[i]
     }
   }
-' "$work_dir/reasoning.txt" > "$work_dir/reasoning-trim.txt"
+' "$work_directory/reasoning.txt" > "$work_directory/reasoning-trim.txt"
 
 # ---------------------------------------------------------------------------
 # Step 4: extract proposed_paths from a `### Proposed paths` fenced block.
@@ -195,23 +195,23 @@ awk '
       print line
     }
   }
-' "$input_file" > "$work_dir/paths-raw.txt"
+' "$input_file" > "$work_directory/paths-raw.txt"
 awk_status=$?
 [ "$awk_status" -ne 0 ] && emit_internal_error "proposed-paths-extract" "$awk_status"
 
 # Build the JSON array of proposed paths and remember whether any were found.
 paths_json=""
 paths_count=0
-while IFS= read -r p; do
-  [ -z "$p" ] && continue
+while IFS= read -r proposed_path; do
+  [ -z "$proposed_path" ] && continue
   paths_count=$((paths_count + 1))
-  esc=$(printf '%s' "$p" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
+  escaped_path=$(printf '%s' "$proposed_path" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
   if [ -z "$paths_json" ]; then
-    paths_json="\"$esc\""
+    paths_json="\"$escaped_path\""
   else
-    paths_json="$paths_json,\"$esc\""
+    paths_json="$paths_json,\"$escaped_path\""
   fi
-done < "$work_dir/paths-raw.txt"
+done < "$work_directory/paths-raw.txt"
 
 # ---------------------------------------------------------------------------
 # Step 5: downgrade `auto-fixable` to `ambiguous` when no proposed paths
@@ -232,26 +232,26 @@ json_escape_file() {
     BEGIN { first = 1 }
     {
       if (first == 1) { first = 0 } else { printf "\\n" }
-      n = length($0)
-      for (i = 1; i <= n; i++) {
-        c = substr($0, i, 1)
-        if (c == "\\") {
+      line_length = length($0)
+      for (i = 1; i <= line_length; i++) {
+        character = substr($0, i, 1)
+        if (character == "\\") {
           printf "\\\\"
-        } else if (c == "\"") {
+        } else if (character == "\"") {
           printf "\\\""
-        } else if (c == "\t") {
+        } else if (character == "\t") {
           printf "\\t"
-        } else if (c == "\r") {
+        } else if (character == "\r") {
           printf "\\r"
         } else {
-          printf "%s", c
+          printf "%s", character
         }
       }
     }
   ' "$1"
 }
 
-reasoning_esc=$(json_escape_file "$work_dir/reasoning-trim.txt")
+escaped_reasoning=$(json_escape_file "$work_directory/reasoning-trim.txt")
 
 printf '{"verdict":"%s","reasoning":"%s","proposed_paths":[%s]}\n' \
-  "$verdict" "$reasoning_esc" "$paths_json"
+  "$verdict" "$escaped_reasoning" "$paths_json"

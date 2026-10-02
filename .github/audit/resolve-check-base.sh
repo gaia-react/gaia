@@ -58,7 +58,7 @@ set -euo pipefail
 
 # Defensive cap on the ancestry walk (PRs rarely exceed this many commits; the
 # merge-base bound usually keeps the list far shorter).
-MAX_WALK=50
+MAXIMUM_WALK_COMMIT_COUNT=50
 
 check_name="${1:-}"
 
@@ -79,7 +79,7 @@ fi
 # ancestry walk via merge-base.
 # -----------------------------------------------------------------------------
 
-resolve_main_ref() {
+resolve_main_reference() {
   # The declared base ref comes first because it names the branch THIS pull
   # request merges into; the repository default does not whenever the pull
   # request is stacked on another branch, and falling back to the default
@@ -105,7 +105,7 @@ resolve_main_ref() {
   fi
   printf 'origin/main'
 }
-main_ref="$(resolve_main_ref)"
+main_reference="$(resolve_main_reference)"
 
 # -----------------------------------------------------------------------------
 # A check name is required, and the Checks API is the only signal; without
@@ -118,7 +118,7 @@ if [ -z "$check_name" ] \
   || [ -z "${GH_TOKEN:-}" ] \
   || ! command -v gh >/dev/null 2>&1 \
   || [ -z "$repo" ]; then
-  printf '%s\n' "$main_ref"
+  printf '%s\n' "$main_reference"
   exit 0
 fi
 
@@ -128,15 +128,15 @@ fi
 
 head_sha=$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || true)
 if [ -z "$head_sha" ]; then
-  printf '%s\n' "$main_ref"
+  printf '%s\n' "$main_reference"
   exit 0
 fi
 
-merge_base=$(git -C "$repo_root" merge-base "$main_ref" HEAD 2>/dev/null || true)
+merge_base=$(git -C "$repo_root" merge-base "$main_reference" HEAD 2>/dev/null || true)
 if [ -n "$merge_base" ]; then
-  candidates=$(git -C "$repo_root" rev-list --max-count="$MAX_WALK" "${merge_base}..HEAD" 2>/dev/null || true)
+  candidates=$(git -C "$repo_root" rev-list --max-count="$MAXIMUM_WALK_COMMIT_COUNT" "${merge_base}..HEAD" 2>/dev/null || true)
 else
-  candidates=$(git -C "$repo_root" rev-list --max-count="$MAX_WALK" HEAD 2>/dev/null || true)
+  candidates=$(git -C "$repo_root" rev-list --max-count="$MAXIMUM_WALK_COMMIT_COUNT" HEAD 2>/dev/null || true)
 fi
 
 # -----------------------------------------------------------------------------
@@ -147,15 +147,15 @@ fi
 # -----------------------------------------------------------------------------
 
 green_check_count() {
-  local sha="$1" filter out
+  local sha="$1" filter api_output
   # check_name is controlled by the caller (a workflow's own job name) and
   # carries no quotes; embedding it in the jq string literal is safe.
   filter="[.check_runs[] | select(.name == \"${check_name}\" and .conclusion == \"success\")] | length"
-  out=$(gh api "repos/${repo}/commits/${sha}/check-runs?per_page=100" \
+  api_output=$(gh api "repos/${repo}/commits/${sha}/check-runs?per_page=100" \
     --jq "$filter" 2>/dev/null || true)
-  case "$out" in
+  case "$api_output" in
     '' | *[!0-9]*) printf '0' ;;
-    *) printf '%s' "$out" ;;
+    *) printf '%s' "$api_output" ;;
   esac
 }
 
@@ -175,5 +175,5 @@ for sha in $candidates; do
 done
 
 # No green ancestor in range → full scope.
-printf '%s\n' "$main_ref"
+printf '%s\n' "$main_reference"
 exit 0

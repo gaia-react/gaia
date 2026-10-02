@@ -37,7 +37,7 @@ set -euo pipefail
 redact_body() {
   local root="$1"
   local body="$2"
-  local out="$body"
+  local redacted_body="$body"
 
   # -------------------------------------------------------------------------
   # Step 1: Path conversion
@@ -47,7 +47,7 @@ redact_body() {
   # Escape special regex characters in root path.
   local escaped_root
   escaped_root="$(printf '%s' "$root" | sed 's|[[\.*^$()+?{|]|\\&|g')"
-  out="$(printf '%s' "$out" | sed "s|${escaped_root}/||g")"
+  redacted_body="$(printf '%s' "$redacted_body" | sed "s|${escaped_root}/||g")"
 
   # Rule B; outside project root: collapse /Users/<name>/..., /home/<name>/...,
   # or /root/... to just the trailing filename component, then collapse a bare
@@ -55,21 +55,21 @@ redact_body() {
   # Run separate passes per prefix; BSD sed does not reliably support
   # alternation (A|B) inside groups.
   # Trailing-component pass shape: /Users/<name>(/component)*/filename -> filename
-  out="$(printf '%s' "$out" | \
+  redacted_body="$(printf '%s' "$redacted_body" | \
     sed -E 's|/Users/[^/[:space:]]+(/[^/[:space:]]+)*/([^/[:space:]]+)|\2|g')"
-  out="$(printf '%s' "$out" | \
+  redacted_body="$(printf '%s' "$redacted_body" | \
     sed -E 's|/home/[^/[:space:]]+(/[^/[:space:]]+)*/([^/[:space:]]+)|\2|g')"
   # /root has no <name> component (it is itself the home dir), so its trailing
   # collapse starts at /root directly: /root(/component)*/filename -> filename
-  out="$(printf '%s' "$out" | \
+  redacted_body="$(printf '%s' "$redacted_body" | \
     sed -E 's|/root(/[^/[:space:]]+)*/([^/[:space:]]+)|\2|g')"
 
   # Bare-home collapse: a /Users/<name>, /home/<name>, or /root with no trailing
   # component survives the passes above and would leak the OS username; collapse
   # it to the literal <home>. Runs only after the trailing-component passes.
-  out="$(printf '%s' "$out" | sed -E 's|/Users/[^/[:space:]]+|<home>|g')"
-  out="$(printf '%s' "$out" | sed -E 's|/home/[^/[:space:]]+|<home>|g')"
-  out="$(printf '%s' "$out" | sed -E 's|/root|<home>|g')"
+  redacted_body="$(printf '%s' "$redacted_body" | sed -E 's|/Users/[^/[:space:]]+|<home>|g')"
+  redacted_body="$(printf '%s' "$redacted_body" | sed -E 's|/home/[^/[:space:]]+|<home>|g')"
+  redacted_body="$(printf '%s' "$redacted_body" | sed -E 's|/root|<home>|g')"
 
   # -------------------------------------------------------------------------
   # Step 2: Token regex set (patterns 1–7 in declared order)
@@ -81,46 +81,46 @@ redact_body() {
   # fine-grained PAT form github_pat_ + 20+ alphanum/underscore (underscores are
   # legal inside the fine-grained PAT body).
   # Split into separate passes to avoid BSD sed alternation issues.
-  out="$(printf '%s' "$out" | sed -E 's/gho_[A-Za-z0-9]{20,}/<redacted>/g')"
-  out="$(printf '%s' "$out" | sed -E 's/ghp_[A-Za-z0-9]{20,}/<redacted>/g')"
-  out="$(printf '%s' "$out" | sed -E 's/ghs_[A-Za-z0-9]{20,}/<redacted>/g')"
-  out="$(printf '%s' "$out" | sed -E 's/ghr_[A-Za-z0-9]{20,}/<redacted>/g')"
-  out="$(printf '%s' "$out" | sed -E 's/ghu_[A-Za-z0-9]{20,}/<redacted>/g')"
-  out="$(printf '%s' "$out" | sed -E 's/github_pat_[A-Za-z0-9_]{20,}/<redacted>/g')"
+  redacted_body="$(printf '%s' "$redacted_body" | sed -E 's/gho_[A-Za-z0-9]{20,}/<redacted>/g')"
+  redacted_body="$(printf '%s' "$redacted_body" | sed -E 's/ghp_[A-Za-z0-9]{20,}/<redacted>/g')"
+  redacted_body="$(printf '%s' "$redacted_body" | sed -E 's/ghs_[A-Za-z0-9]{20,}/<redacted>/g')"
+  redacted_body="$(printf '%s' "$redacted_body" | sed -E 's/ghr_[A-Za-z0-9]{20,}/<redacted>/g')"
+  redacted_body="$(printf '%s' "$redacted_body" | sed -E 's/ghu_[A-Za-z0-9]{20,}/<redacted>/g')"
+  redacted_body="$(printf '%s' "$redacted_body" | sed -E 's/github_pat_[A-Za-z0-9_]{20,}/<redacted>/g')"
 
   # Pattern 2: Anthropic API key; sk-ant- followed by 20+ alphanum/dash/underscore
   # Must precede pattern 3 (sk-) because sk-ant- starts with sk-
-  out="$(printf '%s' "$out" | sed -E 's/sk-ant-[A-Za-z0-9_-]{20,}/<redacted>/g')"
+  redacted_body="$(printf '%s' "$redacted_body" | sed -E 's/sk-ant-[A-Za-z0-9_-]{20,}/<redacted>/g')"
 
   # Pattern 3: OpenAI API key; sk- followed by 20+ alphanum
   # (sk-ant- already consumed by pattern 2 above)
-  out="$(printf '%s' "$out" | sed -E 's/sk-[A-Za-z0-9]{20,}/<redacted>/g')"
+  redacted_body="$(printf '%s' "$redacted_body" | sed -E 's/sk-[A-Za-z0-9]{20,}/<redacted>/g')"
 
   # Pattern 4: GitLab personal access token; glpat- followed by 20+ alphanum/dash/underscore
-  out="$(printf '%s' "$out" | sed -E 's/glpat-[A-Za-z0-9_-]{20,}/<redacted>/g')"
+  redacted_body="$(printf '%s' "$redacted_body" | sed -E 's/glpat-[A-Za-z0-9_-]{20,}/<redacted>/g')"
 
   # Pattern 5: Slack token; xoxb/xoxa/xoxp/xoxr/xoxs + 10+ alphanum/dash, plus the
   # app-level token xapp- + 10+ alphanum/dash.
-  out="$(printf '%s' "$out" | sed -E 's/xoxb-[A-Za-z0-9-]{10,}/<redacted>/g')"
-  out="$(printf '%s' "$out" | sed -E 's/xoxa-[A-Za-z0-9-]{10,}/<redacted>/g')"
-  out="$(printf '%s' "$out" | sed -E 's/xoxp-[A-Za-z0-9-]{10,}/<redacted>/g')"
-  out="$(printf '%s' "$out" | sed -E 's/xoxr-[A-Za-z0-9-]{10,}/<redacted>/g')"
-  out="$(printf '%s' "$out" | sed -E 's/xoxs-[A-Za-z0-9-]{10,}/<redacted>/g')"
-  out="$(printf '%s' "$out" | sed -E 's/xapp-[A-Za-z0-9-]{10,}/<redacted>/g')"
+  redacted_body="$(printf '%s' "$redacted_body" | sed -E 's/xoxb-[A-Za-z0-9-]{10,}/<redacted>/g')"
+  redacted_body="$(printf '%s' "$redacted_body" | sed -E 's/xoxa-[A-Za-z0-9-]{10,}/<redacted>/g')"
+  redacted_body="$(printf '%s' "$redacted_body" | sed -E 's/xoxp-[A-Za-z0-9-]{10,}/<redacted>/g')"
+  redacted_body="$(printf '%s' "$redacted_body" | sed -E 's/xoxr-[A-Za-z0-9-]{10,}/<redacted>/g')"
+  redacted_body="$(printf '%s' "$redacted_body" | sed -E 's/xoxs-[A-Za-z0-9-]{10,}/<redacted>/g')"
+  redacted_body="$(printf '%s' "$redacted_body" | sed -E 's/xapp-[A-Za-z0-9-]{10,}/<redacted>/g')"
 
   # Pattern 6: JWT; three base64url segments (header.payload.signature).
   # The eyJ prefix (base64 of '{"') is distinctive; the . separators are literal.
-  out="$(printf '%s' "$out" | \
+  redacted_body="$(printf '%s' "$redacted_body" | \
     sed -E 's/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/<redacted>/g')"
 
   # Pattern 7: Bearer token; preserve the Bearer label, redact the value only
   # (mirrors the generic fallback keeping its keyword).
-  out="$(printf '%s' "$out" | \
+  redacted_body="$(printf '%s' "$redacted_body" | \
     sed -E 's/Bearer[[:space:]]+[A-Za-z0-9._-]{10,}/Bearer <redacted>/g')"
 
   # Pattern 8: Connection-string credentials; ://user:pass@ -> ://<redacted>@
   # Preserve scheme and host; redact only the user:password pair.
-  out="$(printf '%s' "$out" | \
+  redacted_body="$(printf '%s' "$redacted_body" | \
     sed -E 's|://[^/@:[:space:]]+:[^/@:[:space:]]+@|://<redacted>@|g')"
 
   # Pattern 9: AWS access key ID; 4 uppercase letters + 16 uppercase alphanum (20 total)
@@ -128,16 +128,16 @@ redact_body() {
   # shell mirror may over-redact a 20-char uppercase run embedded in a longer
   # mixed-case token where redaction.md's \b would not match; this fails safe
   # (over-redaction, never a leak). See redaction.md § Boundary anchors.
-  out="$(printf '%s' "$out" | sed -E 's/[A-Z]{4}[0-9A-Z]{16}/<redacted>/g')"
+  redacted_body="$(printf '%s' "$redacted_body" | sed -E 's/[A-Z]{4}[0-9A-Z]{16}/<redacted>/g')"
 
   # Pattern 10: Generic high-entropy fallback (token|key|secret + 40+ chars)
   # Preserve the label; replace only the value.
   # Three separate passes; BSD sed alternation in groups is not reliable.
-  out="$(printf '%s' "$out" | \
+  redacted_body="$(printf '%s' "$redacted_body" | \
     sed -E "s/([Tt][Oo][Kk][Ee][Nn])[[:space:]=:]+[\"']?[A-Za-z0-9+\/=_-]{40,}[\"']?/\1=<redacted>/g")"
-  out="$(printf '%s' "$out" | \
+  redacted_body="$(printf '%s' "$redacted_body" | \
     sed -E "s/([Kk][Ee][Yy])[[:space:]=:]+[\"']?[A-Za-z0-9+\/=_-]{40,}[\"']?/\1=<redacted>/g")"
-  out="$(printf '%s' "$out" | \
+  redacted_body="$(printf '%s' "$redacted_body" | \
     sed -E "s/([Ss][Ee][Cc][Rr][Ee][Tt])[[:space:]=:]+[\"']?[A-Za-z0-9+\/=_-]{40,}[\"']?/\1=<redacted>/g")"
 
   # -------------------------------------------------------------------------
@@ -145,7 +145,7 @@ redact_body() {
   # Pattern: ^([A-Za-z_][A-Za-z0-9_]*)=(.+)$  (per-line, multiline)
   # Replace: \1=<redacted>
   # -------------------------------------------------------------------------
-  out="$(printf '%s' "$out" | \
+  redacted_body="$(printf '%s' "$redacted_body" | \
     sed -E 's/^([A-Za-z_][A-Za-z0-9_]*)=.+$/\1=<redacted>/g')"
 
   # -------------------------------------------------------------------------
@@ -156,7 +156,7 @@ redact_body() {
   # grep -E supports \b on some systems, but to be portable we use the same
   # prefix-only approach as the sed passes above.
   # -------------------------------------------------------------------------
-  local recheck="$out"
+  local recheck="$redacted_body"
 
   # Recheck pattern 1: GitHub tokens (classic prefixes + fine-grained PAT)
   if grep -qE '(gho|ghp|ghs|ghr|ghu)_[A-Za-z0-9]{20,}' <<<"$recheck"; then
@@ -216,5 +216,5 @@ redact_body() {
     return 1
   fi
 
-  printf '%s' "$out"
+  printf '%s' "$redacted_body"
 }

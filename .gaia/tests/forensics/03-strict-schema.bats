@@ -21,16 +21,16 @@ assert_strict_body_schema() {
   printf '%s' "$headers" | grep -q '^## Reproduction context' || return 1
 
   # Must appear in declared order
-  local sym_line class_line cap_line repro_line
-  sym_line="$(printf '%s' "$body" | grep -n '^## Symptom' | head -1 | cut -d: -f1)"
+  local symptom_line class_line capture_line reproduction_line
+  symptom_line="$(printf '%s' "$body" | grep -n '^## Symptom' | head -1 | cut -d: -f1)"
   class_line="$(printf '%s' "$body" | grep -n '^## Classification' | head -1 | cut -d: -f1)"
-  cap_line="$(printf '%s' "$body" | grep -n '^## Capture' | head -1 | cut -d: -f1)"
-  repro_line="$(printf '%s' "$body" | grep -n '^## Reproduction context' | head -1 | cut -d: -f1)"
+  capture_line="$(printf '%s' "$body" | grep -n '^## Capture' | head -1 | cut -d: -f1)"
+  reproduction_line="$(printf '%s' "$body" | grep -n '^## Reproduction context' | head -1 | cut -d: -f1)"
 
-  [[ -n "$sym_line" && -n "$class_line" && -n "$cap_line" && -n "$repro_line" ]] || return 1
-  [[ "$sym_line" -lt "$class_line" ]]   || return 1
-  [[ "$class_line" -lt "$cap_line" ]]   || return 1
-  [[ "$cap_line" -lt "$repro_line" ]]   || return 1
+  [[ -n "$symptom_line" && -n "$class_line" && -n "$capture_line" && -n "$reproduction_line" ]] || return 1
+  [[ "$symptom_line" -lt "$class_line" ]]   || return 1
+  [[ "$class_line" -lt "$capture_line" ]]   || return 1
+  [[ "$capture_line" -lt "$reproduction_line" ]]   || return 1
 
   # Must have exactly 4 top-level (##) headers, no more.
   # Use printf '%s\n' to ensure trailing newline so wc -l counts correctly.
@@ -142,15 +142,15 @@ EOF
   local body
   body="$(cat "$golden")"
 
-  local cap_section
-  cap_section="$(printf '%s' "$body" | awk '/^## Capture/{found=1} found && /^## / && !/^## Capture/{exit} found{print}')"
-  printf '%s' "$cap_section" | grep -q '^gaia_version: '
-  printf '%s' "$cap_section" | grep -q '^node: '
-  printf '%s' "$cap_section" | grep -q '^pnpm: '
+  local capture_section
+  capture_section="$(printf '%s' "$body" | awk '/^## Capture/{found=1} found && /^## / && !/^## Capture/{exit} found{print}')"
+  printf '%s' "$capture_section" | grep -q '^gaia_version: '
+  printf '%s' "$capture_section" | grep -q '^node: '
+  printf '%s' "$capture_section" | grep -q '^pnpm: '
   # COV-7: claude_code is part of the canonical envelope and must be asserted.
-  printf '%s' "$cap_section" | grep -q '^claude_code: '
-  printf '%s' "$cap_section" | grep -q '^branch: '
-  printf '%s' "$cap_section" | grep -q '^dirty: '
+  printf '%s' "$capture_section" | grep -q '^claude_code: '
+  printf '%s' "$capture_section" | grep -q '^branch: '
+  printf '%s' "$capture_section" | grep -q '^dirty: '
 }
 
 # ---------------------------------------------------------------------------
@@ -167,9 +167,9 @@ EOF
   local golden="$FIXTURES/golden-init-redacted.md"
   [[ -f "$golden" ]] || skip "golden-init-redacted.md not found"
 
-  local body cap_section
+  local body capture_section
   body="$(cat "$golden")"
-  cap_section="$(printf '%s' "$body" | awk '/^## Capture/{found=1} found && /^## / && !/^## Capture/{exit} found{print}')"
+  capture_section="$(printf '%s' "$body" | awk '/^## Capture/{found=1} found && /^## / && !/^## Capture/{exit} found{print}')"
 
   local expected
   expected="$(cat <<'EOF'
@@ -186,7 +186,7 @@ class_state_files:
   - package.json: present, name "gaia" (rename incomplete)
 EOF
 )"
-  [[ "$cap_section" == "$expected" ]]
+  [[ "$capture_section" == "$expected" ]]
 }
 
 @test "TST-02: golden-other-class is byte-identical to the canonical empty-list rendering" {

@@ -47,9 +47,9 @@ bats_require_minimum_version 1.5.0
 #
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
-  SCRIPT="$THIS_DIR/../resolve-audit-base.sh"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
+  SCRIPT="$THIS_DIRECTORY/../resolve-audit-base.sh"
   [ -x "$SCRIPT" ] || skip "resolve-audit-base.sh not executable"
 
   SANDBOX="$BATS_TEST_TMPDIR/sandbox"
@@ -99,8 +99,8 @@ setup() {
   DEFAULT_MEMBER="code-audit-frontend"
   OTHER_MEMBER="code-audit-maintainer-shell"
 
-  MEMBER_OUT="$BATS_TEST_TMPDIR/member.out"
-  CLEARANCE_SEQ=0
+  MEMBER_OUTPUT_FILE="$BATS_TEST_TMPDIR/member.out"
+  CLEARANCE_COUNTER=0
 }
 
 # Run the script with cwd inside the sandbox so its
@@ -122,20 +122,20 @@ run_in_sandbox() {
 # shapes they tell apart behave identically on bash 5, so only the 3.2.57 stock
 # macOS ships distinguishes them.
 run_member() {
-  local interp="${2:-}"
-  if [ -n "$interp" ]; then
-    ( cd "$SANDBOX" && "$interp" "$SCRIPT" --member "$1" ) > "$MEMBER_OUT"
+  local interpreter="${2:-}"
+  if [ -n "$interpreter" ]; then
+    ( cd "$SANDBOX" && "$interpreter" "$SCRIPT" --member "$1" ) > "$MEMBER_OUTPUT_FILE"
   else
-    ( cd "$SANDBOX" && "$SCRIPT" --member "$1" ) > "$MEMBER_OUT"
+    ( cd "$SANDBOX" && "$SCRIPT" --member "$1" ) > "$MEMBER_OUTPUT_FILE"
   fi
 }
 
 # Field accessors over the filed stdout of the last run_member call.
-m_base() { sed -n 1p "$MEMBER_OUT"; }
-m_reason() { sed -n 2p "$MEMBER_OUT"; }
-m_key() { sed -n 3p "$MEMBER_OUT"; }
-m_tree() { sed -n 4p "$MEMBER_OUT"; }
-m_lines() { wc -l < "$MEMBER_OUT" | tr -d ' '; }
+member_base() { sed -n 1p "$MEMBER_OUTPUT_FILE"; }
+member_reason() { sed -n 2p "$MEMBER_OUTPUT_FILE"; }
+member_shared_base() { sed -n 3p "$MEMBER_OUTPUT_FILE"; }
+member_anchor_tree() { sed -n 4p "$MEMBER_OUTPUT_FILE"; }
+member_line_count() { wc -l < "$MEMBER_OUTPUT_FILE" | tr -d ' '; }
 
 require_jq() {
   command -v jq >/dev/null 2>&1 || skip "jq not available (the clearance reader requires it)"
@@ -240,24 +240,24 @@ main_sha() {
 # and GNU. The recorded sha is deliberately whatever HEAD is at write time,
 # because the anchor is matched on the tree and never on the sha.
 write_clearance() {
-  local member="$1" provenance="$2" tree="$3" version="$4" ext digest name dir
-  dir="$SANDBOX/.gaia/local/audit"
-  mkdir -p "$dir"
-  CLEARANCE_SEQ=$(( CLEARANCE_SEQ + 1 ))
-  digest="$(printf '%064d' "$CLEARANCE_SEQ")"
+  local member="$1" provenance="$2" tree="$3" version="$4" extension digest name directory
+  directory="$SANDBOX/.gaia/local/audit"
+  mkdir -p "$directory"
+  CLEARANCE_COUNTER=$(( CLEARANCE_COUNTER + 1 ))
+  digest="$(printf '%064d' "$CLEARANCE_COUNTER")"
   case "$provenance" in
-    earned) ext="ok" ;;
-    *) ext="refused" ;;
+    earned) extension="ok" ;;
+    *) extension="refused" ;;
   esac
   if [ "$member" = "$DEFAULT_MEMBER" ]; then
-    name="${digest}.${ext}"
+    name="${digest}.${extension}"
   else
-    name="${digest}.${member}.${ext}"
+    name="${digest}.${member}.${extension}"
   fi
   printf '{"version":"%s","schema":4,"member":"%s","provenance":"%s","digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-01-01T00:00:00Z"}\n' \
     "$version" "$member" "$provenance" "$digest" "$tree" "$(sha_of HEAD)" \
-    > "$dir/$name"
-  printf '%s\n' "$dir/$name"
+    > "$directory/$name"
+  printf '%s\n' "$directory/$name"
 }
 
 # Install a fake `gh` keyed by the commit SHA in the requested API path.
@@ -280,9 +280,9 @@ install_gh_mock() {
 args="\$*"
 while IFS= read -r line; do
   sha="\${line%%=*}"
-  desc="\${line#*=}"
+  description="\${line#*=}"
   case "\$args" in
-    *"\$sha"*) printf '%s\n' "\$desc"; exit 0 ;;
+    *"\$sha"*) printf '%s\n' "\$description"; exit 0 ;;
   esac
 done < "$MAP"
 # No GAIA-Audit status for this commit → the real --jq would yield null.
@@ -305,37 +305,37 @@ EOF
 #   $@ = "sha=<json-array>" pairs.
 install_gh_array_mock() {
   GH_BIN="$BATS_TEST_TMPDIR/bin"
-  MAP_DIR="$BATS_TEST_TMPDIR/gh-array-map"
-  mkdir -p "$GH_BIN" "$MAP_DIR"
+  MAP_DIRECTORY="$BATS_TEST_TMPDIR/gh-array-map"
+  mkdir -p "$GH_BIN" "$MAP_DIRECTORY"
   for pair in "$@"; do
     sha="${pair%%=*}"
     payload="${pair#*=}"
-    printf '%s' "$payload" > "$MAP_DIR/$sha"
+    printf '%s' "$payload" > "$MAP_DIRECTORY/$sha"
   done
   cat > "$GH_BIN/gh" <<EOF
 #!/usr/bin/env bash
 # Mock \`gh api repos/<repo>/commits/<sha>/statuses --jq <expr>\`: pull the SHA
 # and the --jq expression from argv, then run the real jq against the crafted
 # array mapped for that SHA (empty array when unmapped).
-map_dir="$MAP_DIR"
+map_directory="$MAP_DIRECTORY"
 EOF
   cat >> "$GH_BIN/gh" <<'EOF'
-jq_expr=""
-prev=""
-for a in "$@"; do
-  if [ "$prev" = "--jq" ]; then jq_expr="$a"; break; fi
-  prev="$a"
+jq_expression=""
+previous_argument=""
+for argument in "$@"; do
+  if [ "$previous_argument" = "--jq" ]; then jq_expression="$argument"; break; fi
+  previous_argument="$argument"
 done
-[ -n "$jq_expr" ] || { printf 'null\n'; exit 0; }
+[ -n "$jq_expression" ] || { printf 'null\n'; exit 0; }
 payload="[]"
-for f in "$map_dir"/*; do
-  [ -e "$f" ] || continue
-  sha="$(basename "$f")"
+for map_file in "$map_directory"/*; do
+  [ -e "$map_file" ] || continue
+  sha="$(basename "$map_file")"
   case "$*" in
-    *"$sha"*) payload="$(cat "$f")"; break ;;
+    *"$sha"*) payload="$(cat "$map_file")"; break ;;
   esac
 done
-printf '%s' "$payload" | jq -r "$jq_expr"
+printf '%s' "$payload" | jq -r "$jq_expression"
 EOF
   chmod +x "$GH_BIN/gh"
   export PATH="$GH_BIN:$PATH"
@@ -370,15 +370,15 @@ EOF
 # hand so an `origin/<ref>` can resolve.
 # -----------------------------------------------------------------------------
 
-set_origin_ref() {
+set_origin_reference() {
   git -C "$SANDBOX" update-ref "refs/remotes/origin/$1" "$(git -C "$SANDBOX" rev-parse "$2")"
 }
 
 @test "the pull request's own base ref wins over the repository default" {
   add_commit a
   add_commit b
-  set_origin_ref main main
-  set_origin_ref release main
+  set_origin_reference main main
+  set_origin_reference release main
   export GITHUB_ACTIONS=true GITHUB_BASE_REF=release
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
@@ -388,7 +388,7 @@ set_origin_ref() {
 @test "no base ref declared → the repository default" {
   add_commit a
   add_commit b
-  set_origin_ref main main
+  set_origin_reference main main
   export GITHUB_ACTIONS=true
   unset GITHUB_BASE_REF
   run --separate-stderr run_in_sandbox
@@ -399,7 +399,7 @@ set_origin_ref() {
 @test "a base ref naming no remote branch → the repository default" {
   add_commit a
   add_commit b
-  set_origin_ref main main
+  set_origin_reference main main
   export GITHUB_ACTIONS=true GITHUB_BASE_REF=deleted-branch
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
@@ -414,8 +414,8 @@ set_origin_ref() {
 @test "a base ref declared outside Actions is ignored" {
   add_commit a
   add_commit b
-  set_origin_ref main main
-  set_origin_ref release main
+  set_origin_reference main main
+  set_origin_reference release main
   unset GITHUB_ACTIONS
   export GITHUB_BASE_REF=release
   run --separate-stderr run_in_sandbox
@@ -678,61 +678,61 @@ GAIA-Audit: 1.2.3 abc123 $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')
 @test "two members resolve different bases from the same invocation shape" {
   require_jq
   add_commit a
-  c1="$(stamp_anchor)"
+  team_anchor_sha="$(stamp_anchor)"
   add_commit b
-  c2="$(sha_of HEAD)"
-  c2_tree="$(tree_of HEAD)"
-  write_clearance "$OTHER_MEMBER" earned "$c2_tree" 1.2.3 >/dev/null
+  member_clearance_sha="$(sha_of HEAD)"
+  member_clearance_tree="$(tree_of HEAD)"
+  write_clearance "$OTHER_MEMBER" earned "$member_clearance_tree" 1.2.3 >/dev/null
   add_commit c
 
   # The member holding a clearance at C2 anchors there, though no whole-team
   # signal ever certified C2 (a sibling was pending in that round).
   run --separate-stderr run_member "$OTHER_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_lines)" -eq 4 ]
-  [ "$(m_base)" = "$c2" ]
-  [ "$(m_reason)" = "member-clearance" ]
-  [ "$(m_tree)" = "$c2_tree" ]
+  [ "$(member_line_count)" -eq 4 ]
+  [ "$(member_base)" = "$member_clearance_sha" ]
+  [ "$(member_reason)" = "member-clearance" ]
+  [ "$(member_anchor_tree)" = "$member_clearance_tree" ]
 
   # A member holding no clearance newer than C1 falls back to the floor.
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_lines)" -eq 4 ]
-  [ "$(m_base)" = "$c1" ]
-  [ "$(m_reason)" = "team-signal" ]
-  [ -z "$(m_tree)" ]
+  [ "$(member_line_count)" -eq 4 ]
+  [ "$(member_base)" = "$team_anchor_sha" ]
+  [ "$(member_reason)" = "team-signal" ]
+  [ -z "$(member_anchor_tree)" ]
 }
 
 @test "a member clearance newer than the whole-team signal wins the walk" {
   require_jq
   add_commit a
-  c1="$(stamp_anchor)"
+  team_anchor_sha="$(stamp_anchor)"
   add_commit b
   write_clearance "$DEFAULT_MEMBER" earned "$(tree_of HEAD)" 1.2.3 >/dev/null
-  c2="$(sha_of HEAD)"
+  member_clearance_sha="$(sha_of HEAD)"
   add_commit c
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_base)" = "$c2" ]
-  [ "$(m_base)" != "$c1" ]
-  [ "$(m_reason)" = "member-clearance" ]
+  [ "$(member_base)" = "$member_clearance_sha" ]
+  [ "$(member_base)" != "$team_anchor_sha" ]
+  [ "$(member_reason)" = "member-clearance" ]
 }
 
 @test "a whole-team signal newer than the member clearance wins the walk" {
   require_jq
   add_commit a
   write_clearance "$DEFAULT_MEMBER" earned "$(tree_of HEAD)" 1.2.3 >/dev/null
-  c1="$(sha_of HEAD)"
+  member_clearance_sha="$(sha_of HEAD)"
   add_commit b
-  c2="$(stamp_anchor)"
+  team_anchor_sha="$(stamp_anchor)"
   add_commit c
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_base)" = "$c2" ]
-  [ "$(m_base)" != "$c1" ]
-  [ "$(m_reason)" = "team-signal" ]
+  [ "$(member_base)" = "$team_anchor_sha" ]
+  [ "$(member_base)" != "$member_clearance_sha" ]
+  [ "$(member_reason)" = "team-signal" ]
 }
 
 # -----------------------------------------------------------------------------
@@ -752,11 +752,11 @@ assert_global_reset_for() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ] || return 1
-  [ "$(m_lines)" -eq 4 ] || return 1
-  [ "$(m_base)" = "main" ] || return 1
-  [ "$(m_base)" != "$base" ] || return 1
-  [ "$(m_reason)" = "rules-reset-global" ] || return 1
-  [ -z "$(m_tree)" ] || return 1
+  [ "$(member_line_count)" -eq 4 ] || return 1
+  [ "$(member_base)" = "main" ] || return 1
+  [ "$(member_base)" != "$base" ] || return 1
+  [ "$(member_reason)" = "rules-reset-global" ] || return 1
+  [ -z "$(member_anchor_tree)" ] || return 1
   grep -qF "$path" <<<"$stderr" || return 1
   return 0
 }
@@ -788,14 +788,14 @@ assert_global_reset_for() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_base)" = "main" ]
-  [ "$(m_reason)" = "rules-reset-member" ]
+  [ "$(member_base)" = "main" ]
+  [ "$(member_reason)" = "rules-reset-member" ]
   grep -qF ".claude/agents/${DEFAULT_MEMBER}.md" <<<"$stderr"
 
   run --separate-stderr run_member "$OTHER_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_base)" = "$base" ]
-  [ "$(m_reason)" = "team-signal" ]
+  [ "$(member_base)" = "$base" ]
+  [ "$(member_reason)" = "team-signal" ]
 }
 
 @test "merely-shared machinery resets nobody in the member form" {
@@ -806,17 +806,17 @@ assert_global_reset_for() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_base)" = "$base" ]
-  [ "$(m_reason)" = "team-signal" ]
+  [ "$(member_base)" = "$base" ]
+  [ "$(member_reason)" = "team-signal" ]
 
   # The same delta legitimately resets the SHARED key base, which keeps the
   # flat machinery test. Lines 1 and 3 diverging is what the two-base split is
   # for, not a defect.
-  [ "$(m_key)" = "main" ]
+  [ "$(member_shared_base)" = "main" ]
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
   [ "$output" = "main" ]
-  [ "$output" = "$(m_key)" ]
+  [ "$output" = "$(member_shared_base)" ]
 }
 
 # A coding-convention rule is machinery, so it still rotates every digest and
@@ -831,14 +831,14 @@ assert_global_reset_for() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_base)" = "$base" ]
-  [ "$(m_reason)" = "team-signal" ]
+  [ "$(member_base)" = "$base" ]
+  [ "$(member_reason)" = "team-signal" ]
   grep -qF "rules-reset-global" <<<"$stderr" && return 1
 
   run --separate-stderr run_member "$OTHER_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_base)" = "$base" ]
-  [ "$(m_reason)" = "team-signal" ]
+  [ "$(member_base)" = "$base" ]
+  [ "$(member_reason)" = "team-signal" ]
 }
 
 # -----------------------------------------------------------------------------
@@ -856,9 +856,9 @@ assert_global_reset_for() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_base)" = "main" ]
-  [ "$(m_base)" != "$base" ]
-  [ "$(m_reason)" = "rules-reset-global" ]
+  [ "$(member_base)" = "main" ]
+  [ "$(member_base)" != "$base" ]
+  [ "$(member_reason)" = "rules-reset-global" ]
   grep -qF ".claude/rules/quality-gate.md" <<<"$stderr"
 }
 
@@ -872,8 +872,8 @@ assert_global_reset_for() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_base)" = "$base" ]
-  [ "$(m_reason)" = "team-signal" ]
+  [ "$(member_base)" = "$base" ]
+  [ "$(member_reason)" = "team-signal" ]
 }
 
 # -----------------------------------------------------------------------------
@@ -885,80 +885,80 @@ assert_global_reset_for() {
 @test "unusable clearance: a stale recorded version is not an anchor" {
   require_jq
   add_commit a
-  c1="$(stamp_anchor)"
+  team_anchor_sha="$(stamp_anchor)"
   add_commit b
-  c2="$(sha_of HEAD)"
+  unusable_clearance_sha="$(sha_of HEAD)"
   write_clearance "$DEFAULT_MEMBER" earned "$(tree_of HEAD)" 9.9.9 >/dev/null
   add_commit c
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_base)" = "$c1" ]
-  [ "$(m_base)" != "$c2" ]
-  [ "$(m_reason)" = "team-signal" ]
+  [ "$(member_base)" = "$team_anchor_sha" ]
+  [ "$(member_base)" != "$unusable_clearance_sha" ]
+  [ "$(member_reason)" = "team-signal" ]
 }
 
 @test "unusable clearance: a recorded tree matching no candidate is not an anchor" {
   require_jq
   add_commit a
-  c1="$(stamp_anchor)"
+  team_anchor_sha="$(stamp_anchor)"
   add_commit b
-  c2="$(sha_of HEAD)"
+  unusable_clearance_sha="$(sha_of HEAD)"
   write_clearance "$DEFAULT_MEMBER" earned "$(printf '%040d' 7)" 1.2.3 >/dev/null
   add_commit c
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_base)" = "$c1" ]
-  [ "$(m_base)" != "$c2" ]
-  [ "$(m_reason)" = "team-signal" ]
+  [ "$(member_base)" = "$team_anchor_sha" ]
+  [ "$(member_base)" != "$unusable_clearance_sha" ]
+  [ "$(member_reason)" = "team-signal" ]
 }
 
 @test "unusable clearance: a pruned record is not an anchor" {
   require_jq
   add_commit a
-  c1="$(stamp_anchor)"
+  team_anchor_sha="$(stamp_anchor)"
   add_commit b
-  c2="$(sha_of HEAD)"
+  unusable_clearance_sha="$(sha_of HEAD)"
   marker="$(write_clearance "$DEFAULT_MEMBER" earned "$(tree_of HEAD)" 1.2.3)"
   rm -f "$marker"
   add_commit c
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_base)" = "$c1" ]
-  [ "$(m_base)" != "$c2" ]
-  [ "$(m_reason)" = "team-signal" ]
+  [ "$(member_base)" = "$team_anchor_sha" ]
+  [ "$(member_base)" != "$unusable_clearance_sha" ]
+  [ "$(member_reason)" = "team-signal" ]
 }
 
 @test "unusable clearance: no whole-team signal in range yields the main ref" {
   require_jq
   add_commit a
   add_commit b
-  c2="$(sha_of HEAD)"
+  unusable_clearance_sha="$(sha_of HEAD)"
   write_clearance "$DEFAULT_MEMBER" earned "$(tree_of HEAD)" 9.9.9 >/dev/null
   add_commit c
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_base)" = "main" ]
-  [ "$(m_base)" != "$c2" ]
-  [ "$(m_reason)" = "no-anchor" ]
+  [ "$(member_base)" = "main" ]
+  [ "$(member_base)" != "$unusable_clearance_sha" ]
+  [ "$(member_reason)" = "no-anchor" ]
 }
 
 @test "another member's clearance is not readable as this member's anchor" {
   require_jq
   add_commit a
   add_commit b
-  c2="$(sha_of HEAD)"
+  unusable_clearance_sha="$(sha_of HEAD)"
   write_clearance "$OTHER_MEMBER" earned "$(tree_of HEAD)" 1.2.3 >/dev/null
   add_commit c
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_base)" = "main" ]
-  [ "$(m_base)" != "$c2" ]
-  [ "$(m_reason)" = "no-anchor" ]
+  [ "$(member_base)" = "main" ]
+  [ "$(member_base)" != "$unusable_clearance_sha" ]
+  [ "$(member_reason)" = "no-anchor" ]
 }
 
 # -----------------------------------------------------------------------------
@@ -969,25 +969,25 @@ assert_global_reset_for() {
 @test "a clearance still anchors after an amend rewrites the commit sha" {
   require_jq
   add_commit a
-  c1="$(stamp_anchor)"
+  team_anchor_sha="$(stamp_anchor)"
   add_commit b
-  c2_before="$(sha_of HEAD)"
-  c2_tree="$(tree_of HEAD)"
-  write_clearance "$DEFAULT_MEMBER" earned "$c2_tree" 1.2.3 >/dev/null
+  member_clearance_sha_before_amend="$(sha_of HEAD)"
+  member_clearance_tree="$(tree_of HEAD)"
+  write_clearance "$DEFAULT_MEMBER" earned "$member_clearance_tree" 1.2.3 >/dev/null
   GIT_COMMITTER_DATE="2026-01-02T00:00:00" git -C "$SANDBOX" commit \
     --amend --no-edit --no-verify --date="2026-01-02T00:00:00" >/dev/null
-  c2_after="$(sha_of HEAD)"
+  member_clearance_sha_after_amend="$(sha_of HEAD)"
   # The fixture is only meaningful if the amend really moved the sha.
-  [ "$c2_after" != "$c2_before" ]
-  [ "$(tree_of HEAD)" = "$c2_tree" ]
+  [ "$member_clearance_sha_after_amend" != "$member_clearance_sha_before_amend" ]
+  [ "$(tree_of HEAD)" = "$member_clearance_tree" ]
   add_commit c
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_base)" = "$c2_after" ]
-  [ "$(m_base)" != "$c1" ]
-  [ "$(m_reason)" = "member-clearance" ]
-  [ "$(m_tree)" = "$c2_tree" ]
+  [ "$(member_base)" = "$member_clearance_sha_after_amend" ]
+  [ "$(member_base)" != "$team_anchor_sha" ]
+  [ "$(member_reason)" = "member-clearance" ]
+  [ "$(member_anchor_tree)" = "$member_clearance_tree" ]
 }
 
 # -----------------------------------------------------------------------------
@@ -999,19 +999,19 @@ assert_global_reset_for() {
 @test "a refusal in range disables the member arm entirely" {
   require_jq
   add_commit a
-  c1="$(sha_of HEAD)"
+  refused_sha="$(sha_of HEAD)"
   write_clearance "$DEFAULT_MEMBER" refused "$(tree_of HEAD)" 1.2.3 >/dev/null
   add_commit b
-  c2="$(sha_of HEAD)"
+  earned_sha="$(sha_of HEAD)"
   write_clearance "$DEFAULT_MEMBER" earned "$(tree_of HEAD)" 1.2.3 >/dev/null
   add_commit c
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_base)" = "main" ]
-  [ "$(m_base)" != "$c1" ]
-  [ "$(m_base)" != "$c2" ]
-  [ "$(m_reason)" = "no-anchor" ]
+  [ "$(member_base)" = "main" ]
+  [ "$(member_base)" != "$refused_sha" ]
+  [ "$(member_base)" != "$earned_sha" ]
+  [ "$(member_reason)" = "no-anchor" ]
   grep -qF "refused content" <<<"$stderr"
 }
 
@@ -1026,14 +1026,14 @@ assert_global_reset_for() {
   add_commit a
   write_clearance "$DEFAULT_MEMBER" refused "$(tree_of HEAD)" 1.2.3 >/dev/null
   add_commit b
-  c2="$(stamp_anchor)"
+  team_anchor_sha="$(stamp_anchor)"
   add_commit c
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_base)" = "$c2" ]
-  [ "$(m_reason)" = "team-signal" ]
-  [ -z "$(m_tree)" ]
+  [ "$(member_base)" = "$team_anchor_sha" ]
+  [ "$(member_reason)" = "team-signal" ]
+  [ -z "$(member_anchor_tree)" ]
 }
 
 # -----------------------------------------------------------------------------
@@ -1045,20 +1045,20 @@ assert_global_reset_for() {
 # Remove one provisioned lib, then assert the member form degraded rather than
 # emitting the candidate it would otherwise have anchored on.
 assert_degraded_without() {
-  local lib="$1" base
+  local library_name="$1" base
   add_commit a
   base="$(stamp_anchor)"
   add_commit b
-  rm -f "$SANDBOX/.claude/hooks/lib/${lib}"
+  rm -f "$SANDBOX/.claude/hooks/lib/${library_name}"
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ] || return 1
-  [ "$(m_lines)" -eq 4 ] || return 1
-  [ "$(m_base)" = "main" ] || return 1
-  [ "$(m_base)" != "$base" ] || return 1
-  [ "$(m_reason)" = "degraded" ] || return 1
-  [ "$(m_key)" = "main" ] || return 1
-  grep -qF "$lib" <<<"$stderr" || return 1
+  [ "$(member_line_count)" -eq 4 ] || return 1
+  [ "$(member_base)" = "main" ] || return 1
+  [ "$(member_base)" != "$base" ] || return 1
+  [ "$(member_reason)" = "degraded" ] || return 1
+  [ "$(member_shared_base)" = "main" ] || return 1
+  grep -qF "$library_name" <<<"$stderr" || return 1
   return 0
 }
 
@@ -1107,7 +1107,7 @@ assert_degraded_without() {
 # Overwrite <lib> in place with an unresolved-merge-conflict body: the file
 # opens and reads fine, so the `[ -f ]` guard admits it, and bash cannot parse
 # it. Deliberately not a deletion -- that is the arm above.
-write_unparseable_lib() {
+write_unparseable_library() {
   { printf '<<<<<<< HEAD\n'; printf 'x() { :; }\n'; printf '=======\n'
     printf 'y() { :; }\n'; printf '>>>>>>> other\n'; } > "$SANDBOX/.claude/hooks/lib/${1}"
 }
@@ -1115,20 +1115,20 @@ write_unparseable_lib() {
 # Same assertions as assert_degraded_without, against the unparseable fixture
 # and under the pinned interpreter.
 assert_degraded_with_unparseable() {
-  local lib="$1" base
+  local library_name="$1" base
   add_commit a
   base="$(stamp_anchor)"
   add_commit b
-  write_unparseable_lib "$lib"
+  write_unparseable_library "$library_name"
 
   run --separate-stderr run_member "$DEFAULT_MEMBER" /bin/bash
   [ "$status" -eq 0 ] || return 1
-  [ "$(m_lines)" -eq 4 ] || return 1
-  [ "$(m_base)" = "main" ] || return 1
-  [ "$(m_base)" != "$base" ] || return 1
-  [ "$(m_reason)" = "degraded" ] || return 1
-  [ "$(m_key)" = "main" ] || return 1
-  grep -qF "$lib" <<<"$stderr" || return 1
+  [ "$(member_line_count)" -eq 4 ] || return 1
+  [ "$(member_base)" = "main" ] || return 1
+  [ "$(member_base)" != "$base" ] || return 1
+  [ "$(member_reason)" = "degraded" ] || return 1
+  [ "$(member_shared_base)" = "main" ] || return 1
+  grep -qF "$library_name" <<<"$stderr" || return 1
   return 0
 }
 
@@ -1145,9 +1145,9 @@ assert_degraded_with_unparseable() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER" /bin/bash
   [ "$status" -eq 0 ]
-  [ "$(m_lines)" -eq 4 ]
-  [ "$(m_base)" = "$base" ]
-  [ "$(m_reason)" = "team-signal" ]
+  [ "$(member_line_count)" -eq 4 ]
+  [ "$(member_base)" = "$base" ]
+  [ "$(member_reason)" = "team-signal" ]
   grep -qF "reason=degraded" <<<"$stderr" && return 1
   return 0
 }
@@ -1182,12 +1182,12 @@ assert_degraded_with_unparseable() {
   add_commit a
   base="$(stamp_anchor)"
   add_commit b
-  write_unparseable_lib "audit-clearance.sh"
+  write_unparseable_library "audit-clearance.sh"
 
   run --separate-stderr run_member "$DEFAULT_MEMBER" /bin/bash
   [ "$status" -eq 0 ]
-  [ "$(m_base)" = "$base" ]
-  [ "$(m_reason)" = "team-signal" ]
+  [ "$(member_base)" = "$base" ]
+  [ "$(member_reason)" = "team-signal" ]
   grep -qF "reason=degraded" <<<"$stderr" && return 1
   return 0
 }
@@ -1200,8 +1200,8 @@ assert_degraded_with_unparseable() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_base)" = "$base" ]
-  [ "$(m_reason)" = "team-signal" ]
+  [ "$(member_base)" = "$base" ]
+  [ "$(member_reason)" = "team-signal" ]
   grep -qF "reason=degraded" <<<"$stderr" && return 1
   return 0
 }
@@ -1214,9 +1214,9 @@ assert_degraded_with_unparseable() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_base)" = "$base" ]
-  [ "$(m_reason)" = "team-signal" ]
-  [ -z "$(m_tree)" ]
+  [ "$(member_base)" = "$base" ]
+  [ "$(member_reason)" = "team-signal" ]
+  [ -z "$(member_anchor_tree)" ]
 }
 
 # -----------------------------------------------------------------------------
@@ -1255,10 +1255,10 @@ assert_degraded_with_unparseable() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_lines)" -eq 4 ]
-  [ "$(m_reason)" = "member-clearance" ]
-  [ -n "$(m_tree)" ]
-  key="$(m_key)"
+  [ "$(member_line_count)" -eq 4 ]
+  [ "$(member_reason)" = "member-clearance" ]
+  [ -n "$(member_anchor_tree)" ]
+  key="$(member_shared_base)"
 
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
@@ -1273,11 +1273,11 @@ assert_degraded_with_unparseable() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_lines)" -eq 4 ]
-  [ "$(m_base)" = "main" ]
-  [ "$(m_reason)" = "no-version" ]
-  [ "$(m_key)" = "main" ]
-  [ -z "$(m_tree)" ]
+  [ "$(member_line_count)" -eq 4 ]
+  [ "$(member_base)" = "main" ]
+  [ "$(member_reason)" = "no-version" ]
+  [ "$(member_shared_base)" = "main" ]
+  [ -z "$(member_anchor_tree)" ]
 }
 
 @test "the member form prints four lines on a reset path" {
@@ -1287,9 +1287,9 @@ assert_degraded_with_unparseable() {
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_lines)" -eq 4 ]
-  [ "$(m_reason)" = "rules-reset-global" ]
-  [ -z "$(m_tree)" ]
+  [ "$(member_line_count)" -eq 4 ]
+  [ "$(member_reason)" = "rules-reset-global" ]
+  [ -z "$(member_anchor_tree)" ]
 }
 
 @test "every path writes exactly one decision line to stderr" {
@@ -1365,7 +1365,7 @@ assert_degraded_with_unparseable() {
   add_commit c
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_reason)" = "member-clearance" ]
+  [ "$(member_reason)" = "member-clearance" ]
 }
 
 @test "reason token: team-signal" {
@@ -1374,7 +1374,7 @@ assert_degraded_with_unparseable() {
   add_commit b
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_reason)" = "team-signal" ]
+  [ "$(member_reason)" = "team-signal" ]
 }
 
 @test "reason token: no-anchor" {
@@ -1382,7 +1382,7 @@ assert_degraded_with_unparseable() {
   add_commit b
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_reason)" = "no-anchor" ]
+  [ "$(member_reason)" = "no-anchor" ]
 }
 
 @test "reason token: rules-reset-global" {
@@ -1391,7 +1391,7 @@ assert_degraded_with_unparseable() {
   add_global_rules_commit
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_reason)" = "rules-reset-global" ]
+  [ "$(member_reason)" = "rules-reset-global" ]
 }
 
 @test "reason token: rules-reset-member" {
@@ -1400,7 +1400,7 @@ assert_degraded_with_unparseable() {
   commit_append ".claude/agents/${DEFAULT_MEMBER}.md"
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_reason)" = "rules-reset-member" ]
+  [ "$(member_reason)" = "rules-reset-member" ]
 }
 
 @test "reason token: machinery-reset" {
@@ -1419,7 +1419,7 @@ assert_degraded_with_unparseable() {
   rm -f "$SANDBOX/.claude/hooks/lib/audit-rules-changed.sh"
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_reason)" = "degraded" ]
+  [ "$(member_reason)" = "degraded" ]
 }
 
 @test "reason token: no-version" {
@@ -1429,5 +1429,5 @@ assert_degraded_with_unparseable() {
   rm -f "$SANDBOX/.gaia/VERSION"
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(m_reason)" = "no-version" ]
+  [ "$(member_reason)" = "no-version" ]
 }

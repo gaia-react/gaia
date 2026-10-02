@@ -7,12 +7,12 @@
 # skill body. Real end-to-end guard: integration.md "Local skill end-to-end" diff.
 
 HERE="$(cd "$(dirname "${BATS_TEST_FILENAME}")" && pwd)"
-LIB="$HERE/lib"
+LIBRARY_DIRECTORY="$HERE/lib"
 
 setup() {
   # Source the classifier library (defines classify_description, classify_evidence)
   # shellcheck source=lib/classify.sh
-  source "$LIB/classify.sh"
+  source "$LIBRARY_DIRECTORY/classify.sh"
 }
 
 # ---------------------------------------------------------------------------

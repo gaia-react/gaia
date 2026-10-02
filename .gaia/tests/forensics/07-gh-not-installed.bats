@@ -22,12 +22,12 @@
 TREE_KEY_FIXTURE="deadbeefcafe1234"
 
 no_gh_surrogate() {
-  local workdir="$1"
+  local work_directory="$1"
   local class="${2:-init}"
   local timestamp="20260508T143022Z"
 
-  mkdir -p "$workdir/.gaia/local/forensics/$TREE_KEY_FIXTURE"
-  local report_path="$workdir/.gaia/local/forensics/$TREE_KEY_FIXTURE/${timestamp}-${class}.md"
+  mkdir -p "$work_directory/.gaia/local/forensics/$TREE_KEY_FIXTURE"
+  local report_path="$work_directory/.gaia/local/forensics/$TREE_KEY_FIXTURE/${timestamp}-${class}.md"
   printf '## Symptom\nTest report body.\n' > "$report_path"
 
   # Check if gh is on PATH (in production this gates the branch)
@@ -45,7 +45,7 @@ no_gh_surrogate() {
 
 setup() {
   . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/path.sh"
-  WORKDIR="$(mktemp -d)"
+  WORK_DIRECTORY="$(mktemp -d)"
   # Build a PATH that has no gh binary. The built directory is the ONLY entry;
   # /usr/bin and /bin are deliberately excluded because GitHub Actions
   # ubuntu-latest ships gh at /usr/bin/gh, which would defeat the test.
@@ -55,7 +55,7 @@ setup() {
 }
 
 teardown() {
-  rm -rf "$WORKDIR"
+  rm -rf "$WORK_DIRECTORY"
 }
 
 # ---------------------------------------------------------------------------
@@ -64,31 +64,31 @@ teardown() {
 
 @test "UAT-013: with gh not on PATH, surrogate exits zero" {
   local result=0
-  PATH="$NO_GH_PATH" no_gh_surrogate "$WORKDIR" "init" || result=$?
+  PATH="$NO_GH_PATH" no_gh_surrogate "$WORK_DIRECTORY" "init" || result=$?
   [[ "$result" -eq 0 ]]
 }
 
 @test "UAT-013: with gh not on PATH, report is saved locally" {
-  PATH="$NO_GH_PATH" no_gh_surrogate "$WORKDIR" "hook"
-  local report="$WORKDIR/.gaia/local/forensics/$TREE_KEY_FIXTURE/20260508T143022Z-hook.md"
+  PATH="$NO_GH_PATH" no_gh_surrogate "$WORK_DIRECTORY" "hook"
+  local report="$WORK_DIRECTORY/.gaia/local/forensics/$TREE_KEY_FIXTURE/20260508T143022Z-hook.md"
   [[ -f "$report" ]]
 }
 
 @test "UAT-013: with gh not on PATH, one-line note mentions gh not installed" {
   local output
-  output="$(PATH="$NO_GH_PATH" no_gh_surrogate "$WORKDIR" "update")"
+  output="$(PATH="$NO_GH_PATH" no_gh_surrogate "$WORK_DIRECTORY" "update")"
   printf '%s' "$output" | grep -qi 'not installed'
 }
 
 @test "UAT-013: with gh not on PATH, one-line note includes the local path" {
   local output
-  output="$(PATH="$NO_GH_PATH" no_gh_surrogate "$WORKDIR" "wiki-sync")"
+  output="$(PATH="$NO_GH_PATH" no_gh_surrogate "$WORK_DIRECTORY" "wiki-sync")"
   printf '%s' "$output" | grep -q '\.gaia/local/forensics/'
 }
 
 @test "UAT-013: with gh not on PATH, output is exactly one line" {
   local output
-  output="$(PATH="$NO_GH_PATH" no_gh_surrogate "$WORKDIR" "scaffold")"
+  output="$(PATH="$NO_GH_PATH" no_gh_surrogate "$WORK_DIRECTORY" "scaffold")"
   # printf '%s\n' adds a trailing newline so wc -l counts the actual line.
   # $(command) strips trailing newlines, so we add one back for counting.
   local line_count
@@ -100,6 +100,6 @@ teardown() {
   # Run the surrogate; if it tries to invoke gh it will fail (not on PATH)
   # and the result variable will be non-zero; but we assert it IS zero.
   local result=0
-  PATH="$NO_GH_PATH" no_gh_surrogate "$WORKDIR" "quality-gate" >/dev/null 2>&1 || result=$?
+  PATH="$NO_GH_PATH" no_gh_surrogate "$WORK_DIRECTORY" "quality-gate" >/dev/null 2>&1 || result=$?
   [[ "$result" -eq 0 ]]
 }

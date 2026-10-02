@@ -36,7 +36,7 @@ usage() {
 }
 
 [ "$#" -eq 2 ] || usage
-issue_num="$1"
+issue_number="$1"
 parser_output_file="$2"
 
 [ -f "$parser_output_file" ] || { echo "handle-malformed-body.sh: parser output file not found: $parser_output_file" >&2; exit 2; }
@@ -48,10 +48,10 @@ error_code="$(jq -r '.error // "unknown"' "$parser_output_file")"
 missing_csv="$(jq -r '(.missing // []) | join(", ")' "$parser_output_file")"
 malformed_csv="$(jq -r '(.malformed // []) | join(", ")' "$parser_output_file")"
 
-work_dir=$(mktemp -d 2>/dev/null) || { echo "handle-malformed-body.sh: mktemp failed" >&2; exit 2; }
-trap 'rm -rf "$work_dir"' EXIT
+work_directory=$(mktemp -d 2>/dev/null) || { echo "handle-malformed-body.sh: mktemp failed" >&2; exit 2; }
+trap 'rm -rf "$work_directory"' EXIT
 
-comment_file="$work_dir/comment.md"
+comment_file="$work_directory/comment.md"
 {
   printf 'verdict: needs-human (malformed body).\n\n'
   printf 'Auto-triage parses the body deterministically without an LLM fallback, and this body does not match the expected schema. Triage stopped before classification.\n\n'
@@ -69,8 +69,8 @@ comment_file="$work_dir/comment.md"
 #   1. `needs-human` (classification label).
 #   2. Comment.
 #   3. `gaia-triaged` LAST (idempotency key).
-gh issue edit "$issue_num" --add-label "needs-human"
-gh issue comment "$issue_num" --body-file "$comment_file"
-gh issue edit "$issue_num" --add-label "gaia-triaged"
+gh issue edit "$issue_number" --add-label "needs-human"
+gh issue comment "$issue_number" --body-file "$comment_file"
+gh issue edit "$issue_number" --add-label "gaia-triaged"
 
 exit 0

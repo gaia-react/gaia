@@ -8,7 +8,7 @@
 # skill body. Real end-to-end guard: integration.md "Local skill end-to-end" diff.
 
 HERE="$(cd "$(dirname "${BATS_TEST_FILENAME}")" && pwd)"
-LIB="$HERE/lib"
+LIBRARY_DIRECTORY="$HERE/lib"
 
 # ---------------------------------------------------------------------------
 # Diagnose helper (mirrors taxonomy.md § Diagnose branch)
@@ -63,13 +63,13 @@ diagnose_branch() {
 TREE_KEY_FIXTURE="deadbeefcafe1234"
 
 user_config_surrogate() {
-  local workdir="$1"
+  local work_directory="$1"
   local class="${2:-init}"
   local remediation="${3:-Check your Node version and run nvm use.}"
   local timestamp="20260508T143022Z"
 
-  mkdir -p "$workdir/.gaia/local/forensics/$TREE_KEY_FIXTURE"
-  local report_path="$workdir/.gaia/local/forensics/$TREE_KEY_FIXTURE/${timestamp}-${class}.md"
+  mkdir -p "$work_directory/.gaia/local/forensics/$TREE_KEY_FIXTURE"
+  local report_path="$work_directory/.gaia/local/forensics/$TREE_KEY_FIXTURE/${timestamp}-${class}.md"
   printf '## Symptom\nUser config issue.\n' > "$report_path"
 
   # Print remediation steps (not a GH issue offer)
@@ -79,12 +79,12 @@ user_config_surrogate() {
 }
 
 setup() {
-  WORKDIR="$(mktemp -d)"
-  CAPTURE_FILE="$WORKDIR/gh-argv.txt"
+  WORK_DIRECTORY="$(mktemp -d)"
+  CAPTURE_FILE="$WORK_DIRECTORY/gh-argv.txt"
 }
 
 teardown() {
-  rm -rf "$WORKDIR"
+  rm -rf "$WORK_DIRECTORY"
 }
 
 # ---------------------------------------------------------------------------
@@ -116,27 +116,27 @@ teardown() {
 }
 
 @test "UAT-004: user-config surrogate saves report locally" {
-  user_config_surrogate "$WORKDIR" "init"
-  local report="$WORKDIR/.gaia/local/forensics/$TREE_KEY_FIXTURE/20260508T143022Z-init.md"
+  user_config_surrogate "$WORK_DIRECTORY" "init"
+  local report="$WORK_DIRECTORY/.gaia/local/forensics/$TREE_KEY_FIXTURE/20260508T143022Z-init.md"
   [[ -f "$report" ]]
 }
 
 @test "UAT-004: user-config surrogate prints remediation steps" {
   local output
-  output="$(user_config_surrogate "$WORKDIR" "init" "Run nvm use and retry.")"
+  output="$(user_config_surrogate "$WORK_DIRECTORY" "init" "Run nvm use and retry.")"
   printf '%s' "$output" | grep -q 'Remediation'
 }
 
 @test "UAT-004: user-config surrogate does NOT invoke gh" {
-  local stub_dir
-  stub_dir="$(mktemp -d)"
-  cp "$LIB/stub-gh.sh" "$stub_dir/gh"
-  chmod +x "$stub_dir/gh"
+  local stub_directory
+  stub_directory="$(mktemp -d)"
+  cp "$LIBRARY_DIRECTORY/stub-gh.sh" "$stub_directory/gh"
+  chmod +x "$stub_directory/gh"
   export STUB_GH_CAPTURE_FILE="$CAPTURE_FILE"
 
-  PATH="$stub_dir:$PATH" user_config_surrogate "$WORKDIR" "init" >/dev/null
+  PATH="$stub_directory:$PATH" user_config_surrogate "$WORK_DIRECTORY" "init" >/dev/null
 
-  rm -rf "$stub_dir"
+  rm -rf "$stub_directory"
 
   # gh stub capture file must not exist (gh was never called)
   [[ ! -f "$CAPTURE_FILE" ]]
@@ -144,7 +144,7 @@ teardown() {
 
 @test "UAT-004: user-config branch does not mention 'File a GitHub issue'" {
   local output
-  output="$(user_config_surrogate "$WORKDIR" "hook" "Check .claude/settings.json hooks.")"
+  output="$(user_config_surrogate "$WORK_DIRECTORY" "hook" "Check .claude/settings.json hooks.")"
   # The user-config branch must not offer issue creation
   ! printf '%s' "$output" | grep -qi 'github issue'
 }

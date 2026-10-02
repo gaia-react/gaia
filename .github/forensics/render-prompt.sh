@@ -48,17 +48,17 @@ if [ ! -f "$template_file" ]; then
 fi
 
 # Parallel arrays, bash 3.2 has no associative arrays. `keys[i]`,
-# `tokens[i]`, and `vals[i]` index together.
+# `tokens[i]`, and `values[i]` index together.
 keys=()
 tokens=()
-vals=()
-for arg in "$@"; do
-  case "$arg" in
+values=()
+for argument in "$@"; do
+  case "$argument" in
     *=*)
-      key="${arg%%=*}"
-      value="${arg#*=}"
+      key="${argument%%=*}"
+      value="${argument#*=}"
       if [ -z "$key" ]; then
-        echo "render-prompt.sh: malformed key=value (empty key): $arg" >&2
+        echo "render-prompt.sh: malformed key=value (empty key): $argument" >&2
         exit 2
       fi
       # Duplicate-key check: scan keys[] for this key.
@@ -70,10 +70,10 @@ for arg in "$@"; do
       done
       keys+=("$key")
       tokens+=("{{${key}}}")
-      vals+=("$value")
+      values+=("$value")
       ;;
     *)
-      echo "render-prompt.sh: malformed key=value (no '='): $arg" >&2
+      echo "render-prompt.sh: malformed key=value (no '='): $argument" >&2
       exit 2
       ;;
   esac
@@ -117,41 +117,41 @@ done
 
 result=""
 
-n="${#keys[@]}"
+key_count="${#keys[@]}"
 while :; do
   # Find leftmost token in current `content`.
-  best_pos=-1
-  best_idx=-1
-  best_token_len=0
+  best_position=-1
+  best_index=-1
+  best_token_length=0
   best_value=""
   i=0
-  while [ "$i" -lt "$n" ]; do
+  while [ "$i" -lt "$key_count" ]; do
     token="${tokens[$i]}"
     case "$content" in
       *"$token"*)
         prefix="${content%%"$token"*}"
-        pos="${#prefix}"
-        if [ "$best_pos" -eq -1 ] || [ "$pos" -lt "$best_pos" ]; then
-          best_pos="$pos"
-          best_idx="$i"
-          best_token_len="${#token}"
-          best_value="${vals[$i]}"
+        position="${#prefix}"
+        if [ "$best_position" -eq -1 ] || [ "$position" -lt "$best_position" ]; then
+          best_position="$position"
+          best_index="$i"
+          best_token_length="${#token}"
+          best_value="${values[$i]}"
         fi
         ;;
     esac
     i=$((i + 1))
   done
 
-  if [ "$best_idx" -eq -1 ]; then
+  if [ "$best_index" -eq -1 ]; then
     # No more tokens. Emit the rest of the content and stop.
     result="${result}${content}"
     break
   fi
 
   # Emit prefix + value, advance content past the matched token.
-  prefix="${content:0:best_pos}"
+  prefix="${content:0:best_position}"
   result="${result}${prefix}${best_value}"
-  content="${content:best_pos + best_token_len}"
+  content="${content:best_position + best_token_length}"
 done
 
 printf '%s\n' "$result"

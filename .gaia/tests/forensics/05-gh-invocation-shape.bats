@@ -5,7 +5,7 @@
 #          native error verbatim, leaves the local report in place, exits non-zero.
 
 HERE="$(cd "$(dirname "${BATS_TEST_FILENAME}")" && pwd)"
-LIB="$HERE/lib"
+LIBRARY_DIRECTORY="$HERE/lib"
 
 # ---------------------------------------------------------------------------
 # gh invocation surrogate
@@ -22,32 +22,32 @@ invoke_gh_surrogate() {
   local body_file="$4"
 
   # Build a temp bin dir with a "gh" stub
-  local stub_dir
-  stub_dir="$(mktemp -d)"
-  cp "$LIB/stub-gh.sh" "$stub_dir/gh"
-  chmod +x "$stub_dir/gh"
+  local stub_directory
+  stub_directory="$(mktemp -d)"
+  cp "$LIBRARY_DIRECTORY/stub-gh.sh" "$stub_directory/gh"
+  chmod +x "$stub_directory/gh"
 
   export STUB_GH_CAPTURE_FILE="$capture_file"
 
   # Simulate the runbook's gh invocation (frozen contract from forensics.md § 8)
-  PATH="$stub_dir:$PATH" gh issue create \
+  PATH="$stub_directory:$PATH" gh issue create \
     --repo "gaia-react/gaia" \
     --label "gaia-forensics" \
     --title "forensics: $class, $one_line" \
     --body-file "$body_file"
 
-  rm -rf "$stub_dir"
+  rm -rf "$stub_directory"
 }
 
 setup() {
-  WORKDIR="$(mktemp -d)"
-  CAPTURE_FILE="$WORKDIR/gh-argv.txt"
-  BODY_FILE="$WORKDIR/body.md"
+  WORK_DIRECTORY="$(mktemp -d)"
+  CAPTURE_FILE="$WORK_DIRECTORY/gh-argv.txt"
+  BODY_FILE="$WORK_DIRECTORY/body.md"
   printf '## Symptom\nTest body.\n' > "$BODY_FILE"
 }
 
 teardown() {
-  rm -rf "$WORKDIR"
+  rm -rf "$WORK_DIRECTORY"
 }
 
 # ---------------------------------------------------------------------------
@@ -114,31 +114,31 @@ teardown() {
 TREE_KEY_FIXTURE="deadbeefcafe1234"
 
 invoke_gh_failing_surrogate() {
-  local workdir="$1"
+  local work_directory="$1"
   local class="${2:-init}"
   local timestamp="20260508T143022Z"
 
   # Write the local report (always done before gh is called)
-  mkdir -p "$workdir/.gaia/local/forensics/$TREE_KEY_FIXTURE"
-  local report_path="$workdir/.gaia/local/forensics/$TREE_KEY_FIXTURE/${timestamp}-${class}.md"
+  mkdir -p "$work_directory/.gaia/local/forensics/$TREE_KEY_FIXTURE"
+  local report_path="$work_directory/.gaia/local/forensics/$TREE_KEY_FIXTURE/${timestamp}-${class}.md"
   printf '## Symptom\nTest report body.\n' > "$report_path"
 
   # Build a failing gh stub
-  local stub_dir
-  stub_dir="$(mktemp -d)"
-  local failing_gh="$stub_dir/gh"
+  local stub_directory
+  stub_directory="$(mktemp -d)"
+  local failing_gh="$stub_directory/gh"
   printf '#!/usr/bin/env bash\nprintf "ERROR: authentication required\n" >&2\nexit 1\n' > "$failing_gh"
   chmod +x "$failing_gh"
 
   local gh_exit=0
   local gh_stderr
-  gh_stderr="$(PATH="$stub_dir:$PATH" gh issue create \
+  gh_stderr="$(PATH="$stub_directory:$PATH" gh issue create \
     --repo "gaia-react/gaia" \
     --label "gaia-forensics" \
     --title "forensics: $class, test failure" \
     --body-file "$report_path" 2>&1)" || gh_exit=$?
 
-  rm -rf "$stub_dir"
+  rm -rf "$stub_directory"
 
   # Surface gh's stderr verbatim (mirrors forensics.md § 8 On non-zero gh exit)
   if [[ "$gh_exit" -ne 0 ]]; then
@@ -148,41 +148,41 @@ invoke_gh_failing_surrogate() {
 }
 
 @test "UAT-006: gh failure exits non-zero and local report is preserved" {
-  local workdir="$WORKDIR"
+  local work_directory="$WORK_DIRECTORY"
   local result=0
-  invoke_gh_failing_surrogate "$workdir" "hook" 2>/dev/null || result=$?
+  invoke_gh_failing_surrogate "$work_directory" "hook" 2>/dev/null || result=$?
   # Must exit non-zero
   [[ "$result" -ne 0 ]]
   # Local report must still exist
-  [[ -f "$workdir/.gaia/local/forensics/$TREE_KEY_FIXTURE/20260508T143022Z-hook.md" ]]
+  [[ -f "$work_directory/.gaia/local/forensics/$TREE_KEY_FIXTURE/20260508T143022Z-hook.md" ]]
 }
 
 @test "UAT-006: gh failure surfaces native error verbatim to stderr" {
-  local workdir="$WORKDIR"
-  local err_output
-  err_output="$(invoke_gh_failing_surrogate "$workdir" "init" 2>&1 || true)"
-  printf '%s' "$err_output" | grep -qi 'error\|authentication\|unauthorized\|not found'
+  local work_directory="$WORK_DIRECTORY"
+  local error_output
+  error_output="$(invoke_gh_failing_surrogate "$work_directory" "init" 2>&1 || true)"
+  printf '%s' "$error_output" | grep -qi 'error\|authentication\|unauthorized\|not found'
 }
 
 @test "UAT-006: gh failure does not retry or partially file (stub called once)" {
   # The stub writes to capture file; we use a counting stub to assert single call.
-  local stub_dir
-  stub_dir="$(mktemp -d)"
-  local count_file="$WORKDIR/gh-call-count.txt"
-  local failing_gh="$stub_dir/gh"
+  local stub_directory
+  stub_directory="$(mktemp -d)"
+  local count_file="$WORK_DIRECTORY/gh-call-count.txt"
+  local failing_gh="$stub_directory/gh"
   printf '#!/usr/bin/env bash\nprintf "1\n" >> "%s"\nexit 1\n' "$count_file" > "$failing_gh"
   chmod +x "$failing_gh"
 
-  local body_file="$WORKDIR/body.md"
+  local body_file="$WORK_DIRECTORY/body.md"
   printf '## Symptom\nTest.\n' > "$body_file"
 
-  PATH="$stub_dir:$PATH" gh issue create \
+  PATH="$stub_directory:$PATH" gh issue create \
     --repo "gaia-react/gaia" \
     --label "gaia-forensics" \
     --title "forensics: update, test" \
     --body-file "$body_file" 2>/dev/null || true
 
-  rm -rf "$stub_dir"
+  rm -rf "$stub_directory"
 
   local call_count
   call_count="$(wc -l < "$count_file" | tr -d ' ')"

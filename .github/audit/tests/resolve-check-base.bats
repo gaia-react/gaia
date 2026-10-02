@@ -19,8 +19,8 @@
 #
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  SCRIPT="$THIS_DIR/../resolve-check-base.sh"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  SCRIPT="$THIS_DIRECTORY/../resolve-check-base.sh"
   [ -x "$SCRIPT" ] || skip "resolve-check-base.sh not executable"
 
   CHECK="Vitest and Playwright"
@@ -121,15 +121,15 @@ EOF
 #     remote-tracking refs by hand so an `origin/<ref>` can resolve.
 # -----------------------------------------------------------------------------
 
-set_origin_ref() {
+set_origin_reference() {
   git -C "$SANDBOX" update-ref "refs/remotes/origin/$1" "$(git -C "$SANDBOX" rev-parse "$2")"
 }
 
 @test "the pull request's own base ref wins over the repository default" {
   add_commit a
   add_commit b
-  set_origin_ref main main
-  set_origin_ref release main
+  set_origin_reference main main
+  set_origin_reference release main
   export GITHUB_ACTIONS=true GITHUB_BASE_REF=release
   run run_in_sandbox
   [ "$status" -eq 0 ]
@@ -139,7 +139,7 @@ set_origin_ref() {
 @test "no base ref declared → the repository default" {
   add_commit a
   add_commit b
-  set_origin_ref main main
+  set_origin_reference main main
   export GITHUB_ACTIONS=true
   unset GITHUB_BASE_REF
   run run_in_sandbox
@@ -150,7 +150,7 @@ set_origin_ref() {
 @test "a base ref naming no remote branch → the repository default" {
   add_commit a
   add_commit b
-  set_origin_ref main main
+  set_origin_reference main main
   export GITHUB_ACTIONS=true GITHUB_BASE_REF=deleted-branch
   run run_in_sandbox
   [ "$status" -eq 0 ]
@@ -163,8 +163,8 @@ set_origin_ref() {
 @test "a base ref declared outside Actions is ignored" {
   add_commit a
   add_commit b
-  set_origin_ref main main
-  set_origin_ref release main
+  set_origin_reference main main
+  set_origin_reference release main
   unset GITHUB_ACTIONS
   export GITHUB_BASE_REF=release
   run run_in_sandbox

@@ -49,10 +49,10 @@ EOF
 backfill_url() {
   local body="$1" url="$2"
   printf '%s' "$body" | awk -v url="$url" '
-    BEGIN { fm = 0; done = 0 }
+    BEGIN { frontmatter_delimiter_count = 0; done = 0 }
     /^---$/ {
-      fm++
-      if (fm == 2 && !done) { print "gh_issue_url: " url; done = 1 }
+      frontmatter_delimiter_count++
+      if (frontmatter_delimiter_count == 2 && !done) { print "gh_issue_url: " url; done = 1 }
     }
     { print }
   '
@@ -60,7 +60,7 @@ backfill_url() {
 
 # Everything from the first `## ` header to the end (the four sections only).
 sections_only() {
-  printf '%s' "$1" | awk '/^## /{f=1} f{print}'
+  printf '%s' "$1" | awk '/^## /{in_sections=1} in_sections{print}'
 }
 
 @test "TST-05: issue body and local body are byte-identical at creation (no gh_issue_url)" {
@@ -88,11 +88,11 @@ sections_only() {
   [[ "$issue_body" != *"gh_issue_url:"* ]]
 
   # The gh_issue_url key lands inside the frontmatter, above the first section.
-  local url_line sym_line
+  local url_line symptom_line
   url_line="$(printf '%s' "$backfilled" | grep -n '^gh_issue_url: ' | head -1 | cut -d: -f1)"
-  sym_line="$(printf '%s' "$backfilled" | grep -n '^## Symptom' | head -1 | cut -d: -f1)"
-  [[ -n "$url_line" && -n "$sym_line" ]]
-  [[ "$url_line" -lt "$sym_line" ]]
+  symptom_line="$(printf '%s' "$backfilled" | grep -n '^## Symptom' | head -1 | cut -d: -f1)"
+  [[ -n "$url_line" && -n "$symptom_line" ]]
+  [[ "$url_line" -lt "$symptom_line" ]]
 
   # The four sections are byte-identical before and after the back-fill.
   local pre_sections post_sections

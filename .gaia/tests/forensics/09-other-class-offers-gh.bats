@@ -7,17 +7,17 @@
 # skill body. Real end-to-end guard: integration.md "Local skill end-to-end" diff.
 
 HERE="$(cd "$(dirname "${BATS_TEST_FILENAME}")" && pwd)"
-LIB="$HERE/lib"
+LIBRARY_DIRECTORY="$HERE/lib"
 FIXTURES="$HERE/fixtures"
 
 setup() {
-  source "$LIB/classify.sh"
-  WORKDIR="$(mktemp -d)"
-  CAPTURE_FILE="$WORKDIR/gh-argv.txt"
+  source "$LIBRARY_DIRECTORY/classify.sh"
+  WORK_DIRECTORY="$(mktemp -d)"
+  CAPTURE_FILE="$WORK_DIRECTORY/gh-argv.txt"
 }
 
 teardown() {
-  rm -rf "$WORKDIR"
+  rm -rf "$WORK_DIRECTORY"
 }
 
 # ---------------------------------------------------------------------------
@@ -36,12 +36,12 @@ teardown() {
 TREE_KEY_FIXTURE="deadbeefcafe1234"
 
 other_class_surrogate() {
-  local workdir="$1"
+  local work_directory="$1"
   local class="other"
   local timestamp="20260508T143022Z"
 
-  mkdir -p "$workdir/.gaia/local/forensics/$TREE_KEY_FIXTURE"
-  local report_path="$workdir/.gaia/local/forensics/$TREE_KEY_FIXTURE/${timestamp}-${class}.md"
+  mkdir -p "$work_directory/.gaia/local/forensics/$TREE_KEY_FIXTURE"
+  local report_path="$work_directory/.gaia/local/forensics/$TREE_KEY_FIXTURE/${timestamp}-${class}.md"
   printf '%s\n' "$(cat "$FIXTURES/golden-other-class.md")" > "$report_path"
 
   # Print the classification decision (no user-config remediation)
@@ -81,42 +81,42 @@ other_class_surrogate() {
 }
 
 @test "UAT-011: other-class surrogate saves report locally" {
-  other_class_surrogate "$WORKDIR"
-  local report="$WORKDIR/.gaia/local/forensics/$TREE_KEY_FIXTURE/20260508T143022Z-other.md"
+  other_class_surrogate "$WORK_DIRECTORY"
+  local report="$WORK_DIRECTORY/.gaia/local/forensics/$TREE_KEY_FIXTURE/20260508T143022Z-other.md"
   [[ -f "$report" ]]
 }
 
 @test "UAT-011: other-class surrogate does NOT print user-config remediation" {
   local output
-  output="$(other_class_surrogate "$WORKDIR")"
+  output="$(other_class_surrogate "$WORK_DIRECTORY")"
   # Must not contain remediation language
   ! printf '%s' "$output" | grep -qi 'remediation'
 }
 
 @test "UAT-011: other-class surrogate offers GH issue (probable bug path)" {
   local output
-  output="$(other_class_surrogate "$WORKDIR")"
+  output="$(other_class_surrogate "$WORK_DIRECTORY")"
   printf '%s' "$output" | grep -qi 'probable bug\|offering gh\|github issue'
 }
 
 @test "UAT-011: gh invoked with class=other in title when user confirms" {
-  local stub_dir
-  stub_dir="$(mktemp -d)"
-  cp "$LIB/stub-gh.sh" "$stub_dir/gh"
-  chmod +x "$stub_dir/gh"
+  local stub_directory
+  stub_directory="$(mktemp -d)"
+  cp "$LIBRARY_DIRECTORY/stub-gh.sh" "$stub_directory/gh"
+  chmod +x "$stub_directory/gh"
   export STUB_GH_CAPTURE_FILE="$CAPTURE_FILE"
 
-  local body_file="$WORKDIR/body.md"
+  local body_file="$WORK_DIRECTORY/body.md"
   printf '## Symptom\nTest.\n' > "$body_file"
 
   # Simulate the 'other' gh invocation
-  PATH="$stub_dir:$PATH" gh issue create \
+  PATH="$stub_directory:$PATH" gh issue create \
     --repo "gaia-react/gaia" \
     --label "gaia-forensics" \
     --title "forensics: other, unknown failure outside taxonomy" \
     --body-file "$body_file"
 
-  rm -rf "$stub_dir"
+  rm -rf "$stub_directory"
 
   grep -xF -- 'gaia-react/gaia' "$CAPTURE_FILE"
   grep -xF -- 'gaia-forensics' "$CAPTURE_FILE"
