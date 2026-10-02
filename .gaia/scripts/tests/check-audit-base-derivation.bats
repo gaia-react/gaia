@@ -19,9 +19,9 @@
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
-  SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
-  CHECK="$SCRIPT_DIR/check-audit-base-derivation.sh"
-  REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+  SCRIPT_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
+  CHECK="$SCRIPT_DIRECTORY/check-audit-base-derivation.sh"
+  REPO_ROOT="$(cd "$SCRIPT_DIRECTORY/../.." && pwd)"
   # shellcheck source=.gaia/scripts/check-audit-base-derivation.sh
   source "$CHECK"
 }
@@ -33,13 +33,13 @@ setup() {
 # inside this function lands in a subshell copy and never reaches teardown.
 make_fixture_repo() {
   local name="$1"
-  local dir="$BATS_TEST_TMPDIR/$name"
-  mkdir -p "$dir/.claude/agents"
-  git init -q --initial-branch=main "$dir"
-  git -C "$dir" config user.email t@example.com
-  git -C "$dir" config user.name T
-  git -C "$dir" config commit.gpgsign false
-  printf '%s' "$dir"
+  local directory="$BATS_TEST_TMPDIR/$name"
+  mkdir -p "$directory/.claude/agents"
+  git init -q --initial-branch=main "$directory"
+  git -C "$directory" config user.email t@example.com
+  git -C "$directory" config user.name T
+  git -C "$directory" config commit.gpgsign false
+  printf '%s' "$directory"
 }
 
 write_agent_file() {

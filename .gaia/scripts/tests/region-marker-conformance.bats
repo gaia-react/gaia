@@ -17,7 +17,7 @@
 setup() {
   THIS_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
   PROJECT_ROOT="$(git -C "$THIS_DIRECTORY" rev-parse --show-toplevel)"
-  CLI_DIR="$PROJECT_ROOT/.gaia/cli"
+  CLI_DIRECTORY="$PROJECT_ROOT/.gaia/cli"
   WRITER="$PROJECT_ROOT/.gaia/scripts/write-audit-remits.sh"
   CHECKER="$PROJECT_ROOT/.gaia/scripts/verify-audit-roster.sh"
 
@@ -41,7 +41,7 @@ setup() {
   # for an environment this suite cannot control. The binding is asserted
   # regardless by cli-tests.yml, which installs the CLI's dependencies and runs
   # this file by name, so the skip never hides it.
-  [ -d "$CLI_DIR/node_modules" ] || skip "no node_modules on this runner"
+  [ -d "$CLI_DIRECTORY/node_modules" ] || skip "no node_modules on this runner"
 
   START_MARKER='<!-- gaia:audit-remit:start -->'
   END_MARKER='<!-- gaia:audit-remit:end -->'
@@ -56,10 +56,10 @@ teardown() {
 # Writes a fresh one-member roster + agent file under $BATS_TEST_TMPDIR and
 # prints its path. $1 = unique suffix, $2 = the agent file's full body.
 make_sandbox() {
-  local suffix="$1" body="$2" dir
-  dir="$BATS_TEST_TMPDIR/sandbox-$suffix"
-  mkdir -p "$dir/.gaia" "$dir/.claude/agents"
-  cat > "$dir/.gaia/audit-ci.yml" <<'YAML'
+  local suffix="$1" body="$2" sandbox_directory
+  sandbox_directory="$BATS_TEST_TMPDIR/sandbox-$suffix"
+  mkdir -p "$sandbox_directory/.gaia" "$sandbox_directory/.claude/agents"
+  cat > "$sandbox_directory/.gaia/audit-ci.yml" <<'YAML'
 auditors:
   - name: code-audit-fixture
     globs:
@@ -69,8 +69,8 @@ auditors:
     push_fixes: true
     default: true
 YAML
-  printf '%s\n' "$body" > "$dir/.claude/agents/code-audit-fixture.md"
-  printf '%s' "$dir"
+  printf '%s\n' "$body" > "$sandbox_directory/.claude/agents/code-audit-fixture.md"
+  printf '%s' "$sandbox_directory"
 }
 
 fixture_ok() {
@@ -82,7 +82,7 @@ fixture_absent() {
   printf -- '---\nname: code-audit-fixture\n---\n\n## Remit and self-skip\n\nno markers at all here.\n'
 }
 
-fixture_dup_start() {
+fixture_duplicate_start() {
   printf -- '---\nname: code-audit-fixture\n---\n\n## Remit and self-skip\n\n%s\n- `fixture/a/**`\n%s\n- `fixture/b/**`\n%s\n' \
     "$START_MARKER" "$START_MARKER" "$END_MARKER"
 }
@@ -106,9 +106,9 @@ fixture_substring() {
 
 # Probe 1 (TypeScript): runs the real region-markers.ts module through tsx,
 # never a reimplementation. Prints `kind` (and `/reason` when malformed).
-ts_scan() {
+typescript_scan() {
   GAIA_FIXTURE_FILE="$1" GAIA_START_MARKER="$START_MARKER" GAIA_END_MARKER="$END_MARKER" \
-    pnpm --silent -C "$CLI_DIR" exec tsx -e '
+    pnpm --silent -C "$CLI_DIRECTORY" exec tsx -e '
       import {scanRegion} from "./src/update/region-markers.js";
       import {readFileSync} from "node:fs";
       const source = readFileSync(process.env.GAIA_FIXTURE_FILE, "utf8");
@@ -123,15 +123,15 @@ ts_scan() {
 
 # Probe 2 (writer): executes the real write-audit-remits.sh against the
 # sandbox and classifies its outcome for the one member from what it actually
-# did, never from a count computed here. $1 = sandbox dir.
+# did, never from a count computed here. $1 = sandbox directory.
 classify_writer() {
-  local dir="$1" out status=0
-  out="$(bash "$WRITER" --root "$dir" --config "$dir/.gaia/audit-ci.yml" 2>&1)" || status=$?
+  local sandbox_directory="$1" command_output status=0
+  command_output="$(bash "$WRITER" --root "$sandbox_directory" --config "$sandbox_directory/.gaia/audit-ci.yml" 2>&1)" || status=$?
   if [ "$status" -ne 0 ]; then
     printf 'fail'
     return 0
   fi
-  if grep -qF 'region inserted' <<<"$out"; then
+  if grep -qF 'region inserted' <<<"$command_output"; then
     printf 'insert'
     return 0
   fi
@@ -140,26 +140,26 @@ classify_writer() {
 
 # Probe 3 (check): executes the real verify-audit-roster.sh against the
 # sandbox and reads off the region-shape finding it emitted for the member,
-# never a count computed here. $1 = sandbox dir. The `unreadable-
+# never a count computed here. $1 = sandbox directory. The `unreadable-
 # machinery-list` finding is sandbox noise (no .claude/hooks/lib/
 # audit-machinery.sh in a bare fixture root) and is not asserted on; only the
 # region-shape label is.
 classify_check() {
-  local dir="$1" out
-  out="$(bash "$CHECKER" --root "$dir" --config "$dir/.gaia/audit-ci.yml" 2>&1)" || true
-  if grep -qF 'FAIL missing-remit-region' <<<"$out"; then
+  local sandbox_directory="$1" command_output
+  command_output="$(bash "$CHECKER" --root "$sandbox_directory" --config "$sandbox_directory/.gaia/audit-ci.yml" 2>&1)" || true
+  if grep -qF 'FAIL missing-remit-region' <<<"$command_output"; then
     printf 'REGIONMISSING'
     return 0
   fi
-  if grep -qF 'FAIL duplicate-remit-region' <<<"$out"; then
+  if grep -qF 'FAIL duplicate-remit-region' <<<"$command_output"; then
     printf 'REGIONDUP'
     return 0
   fi
-  if grep -qF 'FAIL unbalanced-remit-region' <<<"$out"; then
+  if grep -qF 'FAIL unbalanced-remit-region' <<<"$command_output"; then
     printf 'REGIONUNBALANCED'
     return 0
   fi
-  if grep -qF 'FAIL reversed-remit-region' <<<"$out"; then
+  if grep -qF 'FAIL reversed-remit-region' <<<"$command_output"; then
     printf 'REGIONREVERSED'
     return 0
   fi
@@ -169,21 +169,21 @@ classify_check() {
 # ok: one start, one end, in order, two bullet lines between.
 
 @test "ok fixture: TypeScript region, writer replace, check REGIONOK" {
-  local body ts_dir writer_dir check_dir
+  local body typescript_directory writer_directory check_directory
   body="$(fixture_ok)"
-  ts_dir="$(make_sandbox ok-ts "$body")"
-  writer_dir="$(make_sandbox ok-writer "$body")"
-  check_dir="$(make_sandbox ok-check "$body")"
+  typescript_directory="$(make_sandbox ok-ts "$body")"
+  writer_directory="$(make_sandbox ok-writer "$body")"
+  check_directory="$(make_sandbox ok-check "$body")"
 
-  run ts_scan "$ts_dir/.claude/agents/code-audit-fixture.md"
+  run typescript_scan "$typescript_directory/.claude/agents/code-audit-fixture.md"
   [ "$status" -eq 0 ]
   [ "$output" = "region" ]
 
-  run classify_writer "$writer_dir"
+  run classify_writer "$writer_directory"
   [ "$status" -eq 0 ]
   [ "$output" = "replace" ]
 
-  run classify_check "$check_dir"
+  run classify_check "$check_directory"
   [ "$status" -eq 0 ]
   [ "$output" = "REGIONOK" ]
 }
@@ -192,28 +192,28 @@ classify_check() {
 # pre-region adopter state, before the region is ever generated.
 
 @test "absent fixture: TypeScript absent, writer insert, check REGIONMISSING (not a failure)" {
-  local body ts_dir writer_dir check_dir
+  local body typescript_directory writer_directory check_directory
   body="$(fixture_absent)"
-  ts_dir="$(make_sandbox absent-ts "$body")"
-  writer_dir="$(make_sandbox absent-writer "$body")"
-  check_dir="$(make_sandbox absent-check "$body")"
+  typescript_directory="$(make_sandbox absent-ts "$body")"
+  writer_directory="$(make_sandbox absent-writer "$body")"
+  check_directory="$(make_sandbox absent-check "$body")"
 
-  run ts_scan "$ts_dir/.claude/agents/code-audit-fixture.md"
+  run typescript_scan "$typescript_directory/.claude/agents/code-audit-fixture.md"
   [ "$status" -eq 0 ]
   [ "$output" = "absent" ]
 
   # The writer's insert path succeeds (exit 0): a wholly absent region is its
   # normal case, not an error.
-  run classify_writer "$writer_dir"
+  run classify_writer "$writer_directory"
   [ "$status" -eq 0 ]
   [ "$output" = "insert" ]
 
   # The check reports REGIONMISSING as a routine invariant finding (exit 1,
   # one finding block), never a usage error (exit 2) or a crash.
-  run bash "$CHECKER" --root "$check_dir" --config "$check_dir/.gaia/audit-ci.yml"
+  run bash "$CHECKER" --root "$check_directory" --config "$check_directory/.gaia/audit-ci.yml"
   [ "$status" -eq 1 ]
 
-  run classify_check "$check_dir"
+  run classify_check "$check_directory"
   [ "$status" -eq 0 ]
   [ "$output" = "REGIONMISSING" ]
 }
@@ -221,21 +221,21 @@ classify_check() {
 # dup-start: two starts, one end.
 
 @test "dup-start fixture: TypeScript duplicate-start, writer fail, check REGIONDUP" {
-  local body ts_dir writer_dir check_dir
-  body="$(fixture_dup_start)"
-  ts_dir="$(make_sandbox dup-start-ts "$body")"
-  writer_dir="$(make_sandbox dup-start-writer "$body")"
-  check_dir="$(make_sandbox dup-start-check "$body")"
+  local body typescript_directory writer_directory check_directory
+  body="$(fixture_duplicate_start)"
+  typescript_directory="$(make_sandbox dup-start-ts "$body")"
+  writer_directory="$(make_sandbox dup-start-writer "$body")"
+  check_directory="$(make_sandbox dup-start-check "$body")"
 
-  run ts_scan "$ts_dir/.claude/agents/code-audit-fixture.md"
+  run typescript_scan "$typescript_directory/.claude/agents/code-audit-fixture.md"
   [ "$status" -eq 0 ]
   [ "$output" = "malformed/duplicate-start" ]
 
-  run classify_writer "$writer_dir"
+  run classify_writer "$writer_directory"
   [ "$status" -eq 0 ]
   [ "$output" = "fail" ]
 
-  run classify_check "$check_dir"
+  run classify_check "$check_directory"
   [ "$status" -eq 0 ]
   [ "$output" = "REGIONDUP" ]
 }
@@ -243,21 +243,21 @@ classify_check() {
 # unbalanced: one start, no end.
 
 @test "unbalanced fixture: TypeScript unbalanced, writer fail, check REGIONUNBALANCED" {
-  local body ts_dir writer_dir check_dir
+  local body typescript_directory writer_directory check_directory
   body="$(fixture_unbalanced)"
-  ts_dir="$(make_sandbox unbalanced-ts "$body")"
-  writer_dir="$(make_sandbox unbalanced-writer "$body")"
-  check_dir="$(make_sandbox unbalanced-check "$body")"
+  typescript_directory="$(make_sandbox unbalanced-ts "$body")"
+  writer_directory="$(make_sandbox unbalanced-writer "$body")"
+  check_directory="$(make_sandbox unbalanced-check "$body")"
 
-  run ts_scan "$ts_dir/.claude/agents/code-audit-fixture.md"
+  run typescript_scan "$typescript_directory/.claude/agents/code-audit-fixture.md"
   [ "$status" -eq 0 ]
   [ "$output" = "malformed/unbalanced" ]
 
-  run classify_writer "$writer_dir"
+  run classify_writer "$writer_directory"
   [ "$status" -eq 0 ]
   [ "$output" = "fail" ]
 
-  run classify_check "$check_dir"
+  run classify_check "$check_directory"
   [ "$status" -eq 0 ]
   [ "$output" = "REGIONUNBALANCED" ]
 }
@@ -267,21 +267,21 @@ classify_check() {
 # matching implementation (marker-strip.ts's semantics) fails here.
 
 @test "substring fixture: all three see no region (whole-line contract)" {
-  local body ts_dir writer_dir check_dir
+  local body typescript_directory writer_directory check_directory
   body="$(fixture_substring)"
-  ts_dir="$(make_sandbox substring-ts "$body")"
-  writer_dir="$(make_sandbox substring-writer "$body")"
-  check_dir="$(make_sandbox substring-check "$body")"
+  typescript_directory="$(make_sandbox substring-ts "$body")"
+  writer_directory="$(make_sandbox substring-writer "$body")"
+  check_directory="$(make_sandbox substring-check "$body")"
 
-  run ts_scan "$ts_dir/.claude/agents/code-audit-fixture.md"
+  run typescript_scan "$typescript_directory/.claude/agents/code-audit-fixture.md"
   [ "$status" -eq 0 ]
   [ "$output" = "absent" ]
 
-  run classify_writer "$writer_dir"
+  run classify_writer "$writer_directory"
   [ "$status" -eq 0 ]
   [ "$output" = "insert" ]
 
-  run classify_check "$check_dir"
+  run classify_check "$check_directory"
   [ "$status" -eq 0 ]
   [ "$output" = "REGIONMISSING" ]
 }
@@ -295,17 +295,17 @@ classify_check() {
 # an inverted pair as malformed; none judges by count alone.
 
 @test "inverted fixture: all three reject the reversed pair (convergence, not divergence)" {
-  local body ts_dir writer_dir check_dir fixture before
+  local body typescript_directory writer_directory check_directory fixture before
   body="$(fixture_inverted)"
-  ts_dir="$(make_sandbox inverted-ts "$body")"
-  writer_dir="$(make_sandbox inverted-writer "$body")"
-  check_dir="$(make_sandbox inverted-check "$body")"
+  typescript_directory="$(make_sandbox inverted-ts "$body")"
+  writer_directory="$(make_sandbox inverted-writer "$body")"
+  check_directory="$(make_sandbox inverted-check "$body")"
 
-  run ts_scan "$ts_dir/.claude/agents/code-audit-fixture.md"
+  run typescript_scan "$typescript_directory/.claude/agents/code-audit-fixture.md"
   [ "$status" -eq 0 ]
   [ "$output" = "malformed/inverted" ]
 
-  fixture="$writer_dir/.claude/agents/code-audit-fixture.md"
+  fixture="$writer_directory/.claude/agents/code-audit-fixture.md"
   before="$BATS_TEST_TMPDIR/inverted-before.md"
   # The pre-run bytes, copied aside rather than captured into a variable:
   # `$(cat …)` strips all trailing newlines from both sides, so a writer that
@@ -313,7 +313,7 @@ classify_check() {
   # byte-identity claim it had in fact broken.
   cp "$fixture" "$before"
 
-  run classify_writer "$writer_dir"
+  run classify_writer "$writer_directory"
   [ "$status" -eq 0 ]
   [ "$output" = "fail" ]
   # The writer never deletes bytes outside a pair it can identify: a reversed
@@ -321,7 +321,7 @@ classify_check() {
   # so a regression names the differing byte offset.
   cmp "$before" "$fixture" || return 1
 
-  run classify_check "$check_dir"
+  run classify_check "$check_directory"
   [ "$status" -eq 0 ]
   [ "$output" = "REGIONREVERSED" ]
 }

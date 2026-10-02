@@ -36,10 +36,10 @@ setup() {
   # diagnostic rather than on the status alone: a non-zero status is also what a
   # failed mkdir at an unwritable guessed path returns, so the status cannot
   # tell the refusal apart from the accident it exists to replace.
-  local out rc=0
-  out="$(BATS_TEST_TMPDIR="" path_shim_without uvx 2>&1)" || rc=$?
-  [ "$rc" -ne 0 ]
-  grep -qF 'BATS_TEST_TMPDIR is unset' <<<"$out"
+  local diagnostic_output exit_status=0
+  diagnostic_output="$(BATS_TEST_TMPDIR="" path_shim_without uvx 2>&1)" || exit_status=$?
+  [ "$exit_status" -ne 0 ]
+  grep -qF 'BATS_TEST_TMPDIR is unset' <<<"$diagnostic_output"
 }
 
 @test "path_allowlist refuses rather than writing outside a bats per-test temp dir" {
@@ -47,8 +47,8 @@ setup() {
   # torn down with the test that built it, so outside a test there is nowhere
   # sanctioned to build one. Asserted on the diagnostic rather than the status
   # alone, because a failed mkdir at a guessed path returns non-zero too.
-  local out rc=0
-  out="$(BATS_TEST_TMPDIR="" path_allowlist gaia-fixture-wanted 2>&1)" || rc=$?
-  [ "$rc" -ne 0 ]
-  grep -qF 'BATS_TEST_TMPDIR is unset' <<<"$out"
+  local diagnostic_output exit_status=0
+  diagnostic_output="$(BATS_TEST_TMPDIR="" path_allowlist gaia-fixture-wanted 2>&1)" || exit_status=$?
+  [ "$exit_status" -ne 0 ]
+  grep -qF 'BATS_TEST_TMPDIR is unset' <<<"$diagnostic_output"
 }

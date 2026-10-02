@@ -78,10 +78,10 @@ set -euo pipefail
 # would abort the script outright if the library were ever present but
 # unparseable. This gate reads none of the library's awk, only its
 # scan-surface discovery.
-_gaia_guard_lib_dir="${BASH_SOURCE[0]%/*}"
-if [ "$_gaia_guard_lib_dir" = "${BASH_SOURCE[0]}" ]; then _gaia_guard_lib_dir="."; fi
+_gaia_guard_library_directory="${BASH_SOURCE[0]%/*}"
+if [ "$_gaia_guard_library_directory" = "${BASH_SOURCE[0]}" ]; then _gaia_guard_library_directory="."; fi
 # shellcheck source=.gaia/scripts/guard-awk-lib.sh
-set +e; [ -f "$_gaia_guard_lib_dir/guard-awk-lib.sh" ] && . "$_gaia_guard_lib_dir/guard-awk-lib.sh" 2>/dev/null; set -e
+set +e; [ -f "$_gaia_guard_library_directory/guard-awk-lib.sh" ] && . "$_gaia_guard_library_directory/guard-awk-lib.sh" 2>/dev/null; set -e
 type gaia_guard_scan_files >/dev/null 2>&1 || {
   printf 'lint-workflow-run-interpolation: guard-awk-lib.sh is missing beside this script\n' >&2
   exit 2
@@ -92,7 +92,7 @@ case "$GAIA_AWK_STATUS" in
     exit 5
     ;;
   6)
-    printf 'lint-workflow-run-interpolation: GAIA_AWK resolved to an unsanctioned interpreter (%s); the sanctioned set is mawk and BWK one-true-awk\n' "$GAIA_AWK_IDENT" >&2
+    printf 'lint-workflow-run-interpolation: GAIA_AWK resolved to an unsanctioned interpreter (%s); the sanctioned set is mawk and BWK one-true-awk\n' "$GAIA_AWK_IDENTITY" >&2
     exit 6
     ;;
 esac
@@ -127,26 +127,26 @@ gaia_guard_scan_files lint-workflow-run-interpolation workflows || exit $?
 # Neither appears in this repository, and `actionlint` plus review
 # cover the authoring of new steps; the block form is what every step here uses.
 scan_file() {
-  local f="$1"
-  "$GAIA_AWK" -v file="$f" '
-    function report(n) {
-      printf "%s:%d: ${{ }} expression inside a run: body; bind it through an env: block and reference \"$VAR\" instead\n", file, n
+  local file_path="$1"
+  "$GAIA_AWK" -v file="$file_path" '
+    function report(line_number) {
+      printf "%s:%d: ${{ }} expression inside a run: body; bind it through an env: block and reference \"$VAR\" instead\n", file, line_number
     }
     {
-      if (inrun) {
+      if (inside_run_body) {
         # A blank line belongs to the block scalar rather than ending it.
         if ($0 ~ /^[[:space:]]*$/) next
-        col = match($0, /[^ ]/)
-        if (col > runcol) {
+        column = match($0, /[^ ]/)
+        if (column > run_column) {
           if (index($0, "${{") > 0) report(FNR)
           next
         }
-        inrun = 0
+        inside_run_body = 0
         # Fall through: this same line may itself be the next `run:` key.
       }
       if ($0 ~ /^[[:space:]]*(-[[:space:]]+)?run:/) {
-        runcol = index($0, "run:")
-        value = substr($0, runcol + 4)
+        run_column = index($0, "run:")
+        value = substr($0, run_column + 4)
         # `|`, `|-`, `>`, `>+`, `|2`, `|2-` and friends: a block scalar header
         # carries nothing but the indicator and an optional comment, so anything
         # else on the line is inline content.
@@ -167,20 +167,20 @@ scan_file() {
         # of the block scalar, so it never reaches the script text Actions
         # substitutes into.
         if (value ~ /^[[:space:]]*[|>][-+0-9]*[[:space:]]*(#.*)?$/) {
-          inrun = 1
+          inside_run_body = 1
         } else {
-          inrun = 0
+          inside_run_body = 0
           if (index($0, "${{") > 0) report(FNR)
         }
       }
     }
-  ' "$f"
+  ' "$file_path"
 }
 
 report=""
-for f in ${GAIA_GUARD_SCAN_FILES[@]+"${GAIA_GUARD_SCAN_FILES[@]}"}; do
-  [ -f "$f" ] || continue
-  hits=$(scan_file "$f")
+for file_path in ${GAIA_GUARD_SCAN_FILES[@]+"${GAIA_GUARD_SCAN_FILES[@]}"}; do
+  [ -f "$file_path" ] || continue
+  hits=$(scan_file "$file_path")
   [ -z "$hits" ] || report+="$hits"$'\n'
 done
 

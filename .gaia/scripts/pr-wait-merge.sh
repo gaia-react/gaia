@@ -71,7 +71,7 @@
 
 set -uo pipefail
 
-PROG="pr-wait-merge.sh"
+PROGRAM_NAME="pr-wait-merge.sh"
 
 # Defaults match the prose this replaces: five attempts, thirty seconds apart,
 # which is the ~2-3 minute bound its callers cite. A caller whose merge waits
@@ -83,7 +83,7 @@ DEFAULT_INTERVAL=30
 
 usage() {
   cat <<EOF
-Usage: bash .gaia/scripts/$PROG --pr <number> [--repo <[HOST/]OWNER/REPO>]
+Usage: bash .gaia/scripts/$PROGRAM_NAME --pr <number> [--repo <[HOST/]OWNER/REPO>]
                                 [--attempts <n>] [--interval <seconds>]
 
   --pr        the pull request number to wait on. Required.
@@ -113,7 +113,7 @@ INTERVAL="$DEFAULT_INTERVAL"
 # defaulted would turn a caller's deliberate 20-attempt release wait into a
 # 5-attempt one, and the only symptom is a TIMEOUT on a merge that was going
 # to land.
-is_uint() {
+is_non_negative_integer() {
   case "$1" in
     '' | *[!0-9]*) return 1 ;;
     *) return 0 ;;
@@ -123,22 +123,22 @@ is_uint() {
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --pr)
-      [ "$#" -ge 2 ] || { printf '%s: --pr needs a value\n' "$PROG" >&2; exit 2; }
+      [ "$#" -ge 2 ] || { printf '%s: --pr needs a value\n' "$PROGRAM_NAME" >&2; exit 2; }
       PR="$2"
       shift 2
       ;;
     --repo)
-      [ "$#" -ge 2 ] || { printf '%s: --repo needs a value\n' "$PROG" >&2; exit 2; }
+      [ "$#" -ge 2 ] || { printf '%s: --repo needs a value\n' "$PROGRAM_NAME" >&2; exit 2; }
       REPO="$2"
       shift 2
       ;;
     --attempts)
-      [ "$#" -ge 2 ] || { printf '%s: --attempts needs a value\n' "$PROG" >&2; exit 2; }
+      [ "$#" -ge 2 ] || { printf '%s: --attempts needs a value\n' "$PROGRAM_NAME" >&2; exit 2; }
       ATTEMPTS="$2"
       shift 2
       ;;
     --interval)
-      [ "$#" -ge 2 ] || { printf '%s: --interval needs a value\n' "$PROG" >&2; exit 2; }
+      [ "$#" -ge 2 ] || { printf '%s: --interval needs a value\n' "$PROGRAM_NAME" >&2; exit 2; }
       INTERVAL="$2"
       shift 2
       ;;
@@ -147,7 +147,7 @@ while [ "$#" -gt 0 ]; do
       exit 0
       ;;
     *)
-      printf '%s: unrecognized argument: %s\n' "$PROG" "$1" >&2
+      printf '%s: unrecognized argument: %s\n' "$PROGRAM_NAME" "$1" >&2
       usage >&2
       exit 2
       ;;
@@ -155,24 +155,24 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ -z "$PR" ]; then
-  printf '%s: --pr is required\n' "$PROG" >&2
+  printf '%s: --pr is required\n' "$PROGRAM_NAME" >&2
   usage >&2
   exit 2
 fi
-if ! is_uint "$PR"; then
-  printf '%s: --pr must be a pull request number, got: %s\n' "$PROG" "$PR" >&2
+if ! is_non_negative_integer "$PR"; then
+  printf '%s: --pr must be a pull request number, got: %s\n' "$PROGRAM_NAME" "$PR" >&2
   exit 2
 fi
-if ! is_uint "$ATTEMPTS" || [ "$ATTEMPTS" -lt 1 ]; then
-  printf '%s: --attempts must be a positive integer, got: %s\n' "$PROG" "$ATTEMPTS" >&2
+if ! is_non_negative_integer "$ATTEMPTS" || [ "$ATTEMPTS" -lt 1 ]; then
+  printf '%s: --attempts must be a positive integer, got: %s\n' "$PROGRAM_NAME" "$ATTEMPTS" >&2
   exit 2
 fi
-if ! is_uint "$INTERVAL"; then
-  printf '%s: --interval must be a non-negative integer, got: %s\n' "$PROG" "$INTERVAL" >&2
+if ! is_non_negative_integer "$INTERVAL"; then
+  printf '%s: --interval must be a non-negative integer, got: %s\n' "$PROGRAM_NAME" "$INTERVAL" >&2
   exit 2
 fi
 if ! command -v gh >/dev/null 2>&1; then
-  printf '%s: gh is not on PATH, so the merge state cannot be read. This is a\n' "$PROG" >&2
+  printf '%s: gh is not on PATH, so the merge state cannot be read. This is a\n' "$PROGRAM_NAME" >&2
   printf 'refusal, not a verdict: nothing here reports the wait succeeded or failed.\n' >&2
   exit 2
 fi
@@ -235,7 +235,7 @@ required_check_failed() {
     failed=$(gh pr checks "$PR" --required --json bucket \
       --jq "$CHECKS_JQ" 2>/dev/null) || return 1
   fi
-  is_uint "$failed" || return 1
+  is_non_negative_integer "$failed" || return 1
   [ "$failed" -gt 0 ]
 }
 
@@ -307,14 +307,14 @@ done
 # A bound spent without a single readable answer is a refusal, not a verdict.
 # It reaches here from a gh that is present but can never answer: expired auth,
 # a rate limit, a network outage, or a pull-request number that does not exist,
-# which `is_uint` accepts because it checks shape rather than existence. The
+# which `is_non_negative_integer` accepts because it checks shape rather than existence. The
 # TIMEOUT arm below would otherwise report the pull request as still open,
 # having established neither that pull request nor any state of it. Print no
 # verdict token at all: a caller reading stdout must not receive a word that
 # looks like an answer.
 if [ "$verdict" = "TIMEOUT" ] && [ "$reads_ok" -eq 0 ]; then
   printf '%s: the merge state of PR #%s could not be read on any of %s attempt(s).\n' \
-    "$PROG" "$PR" "$ATTEMPTS" >&2
+    "$PROGRAM_NAME" "$PR" "$ATTEMPTS" >&2
   printf 'This is a refusal, not a verdict: nothing here reports the merge is pending,\n' >&2
   printf 'and no local cleanup should follow it. gh is on PATH but never answered, so\n' >&2
   printf 'check gh auth status, the pull-request number, and any --repo value.\n' >&2
@@ -328,24 +328,24 @@ case "$verdict" in
     exit 0
     ;;
   CLOSED)
-    printf '%s: PR #%s is closed without having merged, so no wait can succeed.\n' "$PROG" "$PR" >&2
+    printf '%s: PR #%s is closed without having merged, so no wait can succeed.\n' "$PROGRAM_NAME" "$PR" >&2
     printf 'Reopen it, or take the change forward on a new pull request.\n' >&2
     exit 6
     ;;
   CONFLICTING)
-    printf '%s: the base branch conflicts with PR #%s, so the queued merge cannot land.\n' "$PROG" "$PR" >&2
+    printf '%s: the base branch conflicts with PR #%s, so the queued merge cannot land.\n' "$PROGRAM_NAME" "$PR" >&2
     printf 'Repair it per wiki/concepts/PR Merge Workflow.md, "### Conflict found mid-wait",\n' >&2
     printf 'then run this wait again.\n' >&2
     exit 3
     ;;
   CHECK_FAILED)
-    printf '%s: a required check on PR #%s failed or was cancelled, so the queued\n' "$PROG" "$PR" >&2
+    printf '%s: a required check on PR #%s failed or was cancelled, so the queued\n' "$PROGRAM_NAME" "$PR" >&2
     printf 'merge cannot land. Inspect it with: gh pr checks %s --required\n' "$PR" >&2
     exit 4
     ;;
   *)
     printf '%s: PR #%s was still open after %s attempt(s) %s second(s) apart.\n' \
-      "$PROG" "$PR" "$ATTEMPTS" "$INTERVAL" >&2
+      "$PROGRAM_NAME" "$PR" "$ATTEMPTS" "$INTERVAL" >&2
     printf 'This is not a failure, and it is not a report that a merge is pending: this\n' >&2
     printf 'script queues no merge and reads none, so both states arrive here alike. A\n' >&2
     printf 'merge queued with --auto completes when its checks pass; with none queued,\n' >&2

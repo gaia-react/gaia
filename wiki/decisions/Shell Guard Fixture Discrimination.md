@@ -137,7 +137,7 @@ directory, because a guard can be invoked from anywhere. It then concatenates th
 library's exported awk source ahead of its own program at call time, roughly:
 
 ```bash
-awk -v file="$f" -v is_bats="$is_bats" -v scripts_dir="$scripts_dir" \
+awk -v file="$f" -v is_bats="$is_bats" -v scripts_directory="$scripts_directory" \
   "$GAIA_GUARD_AWK$OWN_AWK" "$f"
 ```
 

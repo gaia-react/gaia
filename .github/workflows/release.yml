@@ -156,13 +156,13 @@ jobs:
           # complete (exit 2); both abort the release, and the annotation says
           # which was hit so a maintainer is not sent hunting a path that leaked
           # from a run where nothing was scanned.
-          leak_rc=0
-          bash .gaia/scripts/assert-no-release-leak.sh "$STAGING" /tmp/exclude-regex.txt || leak_rc=$?
-          if [ "$leak_rc" -eq 1 ]; then
+          leak_exit_status=0
+          bash .gaia/scripts/assert-no-release-leak.sh "$STAGING" /tmp/exclude-regex.txt || leak_exit_status=$?
+          if [ "$leak_exit_status" -eq 1 ]; then
             echo "::error::release-excluded path(s) leaked into $STAGING; see the paths above" >&2
             exit 1
-          elif [ "$leak_rc" -ne 0 ]; then
-            echo "::error::shipped-tree leak scan did not complete (exit $leak_rc); leak-freedom is unproven" >&2
+          elif [ "$leak_exit_status" -ne 0 ]; then
+            echo "::error::shipped-tree leak scan did not complete (exit $leak_exit_status); leak-freedom is unproven" >&2
             exit 1
           fi
 

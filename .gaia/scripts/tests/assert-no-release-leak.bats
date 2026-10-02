@@ -51,9 +51,9 @@ teardown() {
 
 # Stage $1 (a staging-relative path) holding a one-line body.
 stage() {
-  local rel="$1"
-  mkdir -p "$STAGING/$(dirname "$rel")"
-  printf 'content\n' > "$STAGING/$rel"
+  local relative_path="$1"
+  mkdir -p "$STAGING/$(dirname "$relative_path")"
+  printf 'content\n' > "$STAGING/$relative_path"
 }
 
 # Write the compiled exclude patterns, one per line, in the anchored form
@@ -240,17 +240,17 @@ patterns() {
   local live expected
   live="$(grep -vE '^[[:space:]]*#' "$REPO_ROOT/.github/workflows/release.yml" \
     | sed 's/^[[:space:]]*//' | tr '\n' '\001')"
-  # The pin literals below carry $STAGING, $? and $leak_rc as text, which is the
+  # The pin literals below carry $STAGING, $? and $leak_exit_status as text, which is the
   # point: expanding them in this shell would build a needle matching nothing.
   # shellcheck disable=SC2016
   expected="$(printf '%s\001' \
-    'leak_rc=0' \
-    'bash .gaia/scripts/assert-no-release-leak.sh "$STAGING" /tmp/exclude-regex.txt || leak_rc=$?' \
-    'if [ "$leak_rc" -eq 1 ]; then' \
+    'leak_exit_status=0' \
+    'bash .gaia/scripts/assert-no-release-leak.sh "$STAGING" /tmp/exclude-regex.txt || leak_exit_status=$?' \
+    'if [ "$leak_exit_status" -eq 1 ]; then' \
     'echo "::error::release-excluded path(s) leaked into $STAGING; see the paths above" >&2' \
     'exit 1' \
-    'elif [ "$leak_rc" -ne 0 ]; then' \
-    'echo "::error::shipped-tree leak scan did not complete (exit $leak_rc); leak-freedom is unproven" >&2' \
+    'elif [ "$leak_exit_status" -ne 0 ]; then' \
+    'echo "::error::shipped-tree leak scan did not complete (exit $leak_exit_status); leak-freedom is unproven" >&2' \
     'exit 1' \
     'fi')"
   grep -qF -- "$expected" <<<"$live"

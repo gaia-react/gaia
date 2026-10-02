@@ -83,7 +83,7 @@ require_jq() {
 setup() {
   THIS_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
   REPO_ROOT="$(git -C "$THIS_DIRECTORY" rev-parse --show-toplevel)"
-  AGENTS_DIR="$REPO_ROOT/.claude/agents"
+  AGENTS_DIRECTORY="$REPO_ROOT/.claude/agents"
   require_jq
 
   MEMBERS=(
@@ -109,7 +109,7 @@ setup() {
 # condition.
 
 @test "the jq gate fails on a CI runner and still skips off CI" {
-  local shim="$BATS_TEST_TMPDIR/no-jq" rc
+  local shim="$BATS_TEST_TMPDIR/no-jq" exit_status
   mkdir -p "$shim"
 
   # An empty directory is a sufficient PATH: the gate runs no command other
@@ -117,16 +117,16 @@ setup() {
   # `skip` arm from marking THIS test skipped -- bats' `skip` exits 0, so the
   # subshell's status is exactly the discriminator wanted here: non-zero is
   # the CI failure, 0 is the off-CI skip.
-  rc=0
-  ( PATH="$shim" GITHUB_ACTIONS=true; require_jq ) >/dev/null 2>&1 || rc=$?
-  [ "$rc" -ne 0 ] || {
+  exit_status=0
+  ( PATH="$shim" GITHUB_ACTIONS=true; require_jq ) >/dev/null 2>&1 || exit_status=$?
+  [ "$exit_status" -ne 0 ] || {
     echo "the gate skipped on a CI runner with no jq; every probe would report green" >&2
     return 1
   }
 
-  rc=0
-  ( PATH="$shim"; unset GITHUB_ACTIONS; require_jq ) >/dev/null 2>&1 || rc=$?
-  [ "$rc" -eq 0 ] || {
+  exit_status=0
+  ( PATH="$shim"; unset GITHUB_ACTIONS; require_jq ) >/dev/null 2>&1 || exit_status=$?
+  [ "$exit_status" -eq 0 ] || {
     echo "the gate failed off CI, where an absent jq must still skip" >&2
     return 1
   }
@@ -141,34 +141,34 @@ setup() {
 # adopter shape, not a contrivance: `git init` + `git remote add` creates no
 # `origin/HEAD` symref.
 make_no_base_repo() {
-  local dir="$BATS_TEST_TMPDIR/no-base"
-  mkdir -p "$dir/.gaia/scripts"
-  cp "$REPO_ROOT/.gaia/scripts/audit-resolve-scope.sh" "$dir/.gaia/scripts/"
-  chmod +x "$dir/.gaia/scripts/audit-resolve-scope.sh"
-  git -C "$dir" init -q --initial-branch=master
-  git -C "$dir" config user.email t@example.com
-  git -C "$dir" config user.name T
-  git -C "$dir" config commit.gpgsign false
-  printf 'x\n' > "$dir/.gaia/scripts/thing.sh"
-  git -C "$dir" add -A
-  git -C "$dir" commit -q -m init
-  printf '%s' "$dir"
+  local directory="$BATS_TEST_TMPDIR/no-base"
+  mkdir -p "$directory/.gaia/scripts"
+  cp "$REPO_ROOT/.gaia/scripts/audit-resolve-scope.sh" "$directory/.gaia/scripts/"
+  chmod +x "$directory/.gaia/scripts/audit-resolve-scope.sh"
+  git -C "$directory" init -q --initial-branch=master
+  git -C "$directory" config user.email t@example.com
+  git -C "$directory" config user.name T
+  git -C "$directory" config commit.gpgsign false
+  printf 'x\n' > "$directory/.gaia/scripts/thing.sh"
+  git -C "$directory" add -A
+  git -C "$directory" commit -q -m init
+  printf '%s' "$directory"
 }
 
 @test "every specialist stops instead of self-skipping when FULL_BASE cannot resolve" {
-  local repo member rc out
+  local repo member exit_status resolver_output
   repo="$(make_no_base_repo)"
   for member in "${SPECIALISTS[@]}"; do
-    rc=0
-    out="$(scope_eval "$member" "$repo" 2>&1)" || rc=$?
+    exit_status=0
+    resolver_output="$(evaluate_scope "$member" "$repo" 2>&1)" || exit_status=$?
     # Non-zero is the whole point: an empty FULL_BASE makes the FULL_CHANGED
     # list empty at status 0, which the self-skip arm would read as "nothing in
     # my remit" and answer with no marker at all.
-    [ "$rc" -ne 0 ] || {
+    [ "$exit_status" -ne 0 ] || {
       echo "$member continued with an unresolvable FULL_BASE; its self-skip would write no marker" >&2
       return 1
     }
-    grep -qF "do NOT self-skip" <<<"$out" || {
+    grep -qF "do NOT self-skip" <<<"$resolver_output" || {
       echo "$member exited non-zero but never said why" >&2
       return 1
     }
@@ -176,11 +176,11 @@ make_no_base_repo() {
 }
 
 @test "the FULL_BASE guard stays silent when the base does resolve" {
-  local repo member out
+  local repo member resolver_output
   repo="$(make_repo full-base-control)"
   for member in "${SPECIALISTS[@]}"; do
-    out="$(scope_eval "$member" "$repo" 2>&1)" || return 1
-    grep -qF "do NOT self-skip" <<<"$out" && {
+    resolver_output="$(evaluate_scope "$member" "$repo" 2>&1)" || return 1
+    grep -qF "do NOT self-skip" <<<"$resolver_output" && {
       echo "$member's guard fired on a repo whose base resolves fine" >&2
       return 1
     }
@@ -211,7 +211,7 @@ extract_resolver_line() {
 #
 # A repo carrying the machinery the snippets reach for, at its real
 # repo-relative path. <name> names the directory; the caller commits into it.
-# `include_machinery_lib` (arg 2, default "yes") decides whether
+# `include_machinery_library` (arg 2, default "yes") decides whether
 # .claude/hooks/lib/audit-machinery.sh is present: omitting it is what puts
 # resolve-audit-base.sh's classifier-load check into its `degraded` arm.
 # Every other predicate library the resolver and its per-member arm reach for
@@ -223,43 +223,43 @@ extract_resolver_line() {
 # that probe needs to write a real clearance with the real writer against the
 # real digest engine.
 make_repo() {
-  local name="$1" include_machinery_lib="${2:-yes}"
-  local dir="$BATS_TEST_TMPDIR/$name"
-  mkdir -p "$dir/.gaia/scripts" "$dir/.gaia/local/audit" \
-    "$dir/.github/audit" "$dir/.claude/hooks/lib" "$dir/bin"
-  cp "$REPO_ROOT/.github/audit/resolve-audit-base.sh" "$dir/.github/audit/"
-  chmod +x "$dir/.github/audit/resolve-audit-base.sh"
-  cp "$REPO_ROOT/.gaia/scripts/audit-key-lib.sh" "$dir/.gaia/scripts/"
-  cp "$REPO_ROOT/.gaia/scripts/post-findings-block.sh" "$dir/.gaia/scripts/"
-  chmod +x "$dir/.gaia/scripts/post-findings-block.sh"
-  cp "$REPO_ROOT/.gaia/scripts/audit-write-clearance.sh" "$dir/.gaia/scripts/"
-  chmod +x "$dir/.gaia/scripts/audit-write-clearance.sh"
-  cp "$REPO_ROOT/.gaia/scripts/audit-member-digest.sh" "$dir/.gaia/scripts/"
-  chmod +x "$dir/.gaia/scripts/audit-member-digest.sh"
+  local name="$1" include_machinery_library="${2:-yes}"
+  local directory="$BATS_TEST_TMPDIR/$name"
+  mkdir -p "$directory/.gaia/scripts" "$directory/.gaia/local/audit" \
+    "$directory/.github/audit" "$directory/.claude/hooks/lib" "$directory/bin"
+  cp "$REPO_ROOT/.github/audit/resolve-audit-base.sh" "$directory/.github/audit/"
+  chmod +x "$directory/.github/audit/resolve-audit-base.sh"
+  cp "$REPO_ROOT/.gaia/scripts/audit-key-lib.sh" "$directory/.gaia/scripts/"
+  cp "$REPO_ROOT/.gaia/scripts/post-findings-block.sh" "$directory/.gaia/scripts/"
+  chmod +x "$directory/.gaia/scripts/post-findings-block.sh"
+  cp "$REPO_ROOT/.gaia/scripts/audit-write-clearance.sh" "$directory/.gaia/scripts/"
+  chmod +x "$directory/.gaia/scripts/audit-write-clearance.sh"
+  cp "$REPO_ROOT/.gaia/scripts/audit-member-digest.sh" "$directory/.gaia/scripts/"
+  chmod +x "$directory/.gaia/scripts/audit-member-digest.sh"
   # The resolver refuses a --root that is not the tree it sits in, so every
   # fixture carries its own copy, plus the capture script it calls.
   cp "$REPO_ROOT/.gaia/scripts/audit-resolve-scope.sh" \
     "$REPO_ROOT/.gaia/scripts/audit-scope-digest.sh" \
-    "$dir/.gaia/scripts/"
-  chmod +x "$dir/.gaia/scripts/audit-resolve-scope.sh" "$dir/.gaia/scripts/audit-scope-digest.sh"
-  cp "$REPO_ROOT/.gaia/audit-ci.yml" "$dir/.gaia/"
-  cp "$REPO_ROOT/.claude/hooks/lib/audit-scope.sh" "$dir/.claude/hooks/lib/"
-  cp "$REPO_ROOT/.claude/hooks/lib/audit-base-provenance.sh" "$dir/.claude/hooks/lib/"
-  cp "$REPO_ROOT/.claude/hooks/lib/audit-rules-changed.sh" "$dir/.claude/hooks/lib/"
-  cp "$REPO_ROOT/.claude/hooks/lib/audit-clearance.sh" "$dir/.claude/hooks/lib/"
-  cp "$REPO_ROOT/.claude/hooks/lib/audit-digest.sh" "$dir/.claude/hooks/lib/"
-  cp "$REPO_ROOT/.claude/hooks/lib/gaia-version.sh" "$dir/.claude/hooks/lib/"
-  if [ "$include_machinery_lib" = "yes" ]; then
-    cp "$REPO_ROOT/.claude/hooks/lib/audit-machinery.sh" "$dir/.claude/hooks/lib/"
+    "$directory/.gaia/scripts/"
+  chmod +x "$directory/.gaia/scripts/audit-resolve-scope.sh" "$directory/.gaia/scripts/audit-scope-digest.sh"
+  cp "$REPO_ROOT/.gaia/audit-ci.yml" "$directory/.gaia/"
+  cp "$REPO_ROOT/.claude/hooks/lib/audit-scope.sh" "$directory/.claude/hooks/lib/"
+  cp "$REPO_ROOT/.claude/hooks/lib/audit-base-provenance.sh" "$directory/.claude/hooks/lib/"
+  cp "$REPO_ROOT/.claude/hooks/lib/audit-rules-changed.sh" "$directory/.claude/hooks/lib/"
+  cp "$REPO_ROOT/.claude/hooks/lib/audit-clearance.sh" "$directory/.claude/hooks/lib/"
+  cp "$REPO_ROOT/.claude/hooks/lib/audit-digest.sh" "$directory/.claude/hooks/lib/"
+  cp "$REPO_ROOT/.claude/hooks/lib/gaia-version.sh" "$directory/.claude/hooks/lib/"
+  if [ "$include_machinery_library" = "yes" ]; then
+    cp "$REPO_ROOT/.claude/hooks/lib/audit-machinery.sh" "$directory/.claude/hooks/lib/"
   fi
-  printf '2.0.0\n' > "$dir/.gaia/VERSION"
-  git -C "$dir" init -q --initial-branch=main
-  git -C "$dir" config user.email t@example.com
-  git -C "$dir" config user.name T
-  git -C "$dir" config commit.gpgsign false
-  git -C "$dir" add -A
-  git -C "$dir" commit -q -m "init"
-  printf '%s' "$dir"
+  printf '2.0.0\n' > "$directory/.gaia/VERSION"
+  git -C "$directory" init -q --initial-branch=main
+  git -C "$directory" config user.email t@example.com
+  git -C "$directory" config user.name T
+  git -C "$directory" config commit.gpgsign false
+  git -C "$directory" add -A
+  git -C "$directory" commit -q -m "init"
+  printf '%s' "$directory"
 }
 
 # commit_file <repo> <path> <message>: writes a line into <path> and commits.
@@ -292,15 +292,15 @@ GAIA-Audit: 2.0.0 ${digest} ${tree}"
 
 # --- snippet execution -------------------------------------------------------
 #
-# scope_eval <member> <repo>: runs that member's real resolver command against
+# evaluate_scope <member> <repo>: runs that member's real resolver command against
 # <repo> and prints its stdout, returning its status. `<root>` is replaced by
 # the fixture path textually, the substitution a member makes when it types the
 # working root in; the result runs through `bash -c` so the definition's own
 # quoting (the frontend's `'*.ts'` pathspecs) is parsed as a shell parses it.
 # stderr is left alone so a caller can read the resolver's diagnostics.
-scope_eval() {
+evaluate_scope() {
   local member="$1" repo="$2" line
-  line="$(extract_resolver_line "$AGENTS_DIR/${member}.md")" || {
+  line="$(extract_resolver_line "$AGENTS_DIRECTORY/${member}.md")" || {
     printf '%s: expected exactly one resolver command line in its definition\n' "$member" >&2
     return 1
   }
@@ -313,25 +313,25 @@ scope_eval() {
 # caller asserts against rather than trusting. Its stderr is left attached, so
 # the extractor's "expected exactly one" diagnostic reaches a failing test.
 scope_values() {
-  local out
-  out="$(scope_eval "$1" "$2")" || true
-  printf '%s\n' "$out" | sed -n "s/^$3=//p"
+  local resolver_output
+  resolver_output="$(evaluate_scope "$1" "$2")" || true
+  printf '%s\n' "$resolver_output" | sed -n "s/^$3=//p"
 }
 
-# elig_eval <member> <repo> <KEY>: runs the member's real resolver command
+# evaluate_eligibility <member> <repo> <KEY>: runs the member's real resolver command
 # against <repo> and prints every value it printed for <KEY> (`ELIG_BASE`, or
 # one `ELIG_CHANGED` line per path). Returns 1 when the resolver fails or
 # prints no `ELIG_BASE=` line at all, which is what a definition that drops
 # `--eligibility` from its command produces: an absent set must red here
 # rather than read as a resolved empty one.
-elig_eval() {
-  local member="$1" repo="$2" key="$3" out
-  out="$(scope_eval "$member" "$repo")" || return 1
-  grep -q '^ELIG_BASE=' <<<"$out" || {
+evaluate_eligibility() {
+  local member="$1" repo="$2" key="$3" resolver_output
+  resolver_output="$(evaluate_scope "$member" "$repo")" || return 1
+  grep -q '^ELIG_BASE=' <<<"$resolver_output" || {
     printf '%s: its resolver command printed no ELIG_BASE line; is --eligibility missing?\n' "$member" >&2
     return 1
   }
-  printf '%s\n' "$out" | sed -n "s/^${key}=//p"
+  printf '%s\n' "$resolver_output" | sed -n "s/^${key}=//p"
 }
 
 # base_sha_for <member> <repo>: the per-member review base, BASE_SHA.
@@ -342,8 +342,8 @@ base_sha_for() {
 # member_digest <member> <repo>: the member's content digest at repo's HEAD,
 # for the writer's --scope-digest.
 member_digest() {
-  local member="$1" repo="$2" lib="$REPO_ROOT/.claude/hooks/lib/audit-digest.sh"
-  bash -c '. "$1"; audit_member_digest "$2" "$3"' _ "$lib" "$repo" "$member"
+  local member="$1" repo="$2" library_file="$REPO_ROOT/.claude/hooks/lib/audit-digest.sh"
+  bash -c '. "$1"; audit_member_digest "$2" "$3"' _ "$library_file" "$repo" "$member"
 }
 
 # key_base_for <member> <repo>: the shared, pull-request-wide artifact key
@@ -391,7 +391,7 @@ owners_of() {
   local full_base
   full_base="$(git -C "$repo" merge-base HEAD main)"
 
-  local expected_key_base expected_key m key_base key
+  local expected_key_base expected_key member key_base key
   expected_key_base="$(key_base_for code-audit-frontend "$repo")"
   expected_key="$(audit_key_for code-audit-frontend "$repo")"
 
@@ -407,21 +407,21 @@ owners_of() {
 
   # Key agreement: every member resolves the same KEY_BASE and the same
   # gaia_audit_key. The invariant that survives per-member review bases.
-  for m in "${MEMBERS[@]}"; do
-    key_base="$(key_base_for "$m" "$repo")"
-    key="$(audit_key_for "$m" "$repo")"
+  for member in "${MEMBERS[@]}"; do
+    key_base="$(key_base_for "$member" "$repo")"
+    key="$(audit_key_for "$member" "$repo")"
     if [ "$key_base" != "$expected_key_base" ]; then
-      printf 'member %s resolved KEY_BASE %s, expected %s\n' "$m" "$key_base" "$expected_key_base"
+      printf 'member %s resolved KEY_BASE %s, expected %s\n' "$member" "$key_base" "$expected_key_base"
       return 1
     fi
     if [ "$key" != "$expected_key" ]; then
-      printf 'member %s resolved key %s, expected %s\n' "$m" "$key" "$expected_key"
+      printf 'member %s resolved key %s, expected %s\n' "$member" "$key" "$expected_key"
       return 1
     fi
     # The key a member reads its re-run ledger by is the one its resolver
     # prints, carried as a literal, so the printed value must be this same key.
-    if [ "$(scope_values "$m" "$repo" AUDIT_KEY)" != "$expected_key" ]; then
-      printf 'member %s resolver printed AUDIT_KEY %s, expected %s\n' "$m" "$(scope_values "$m" "$repo" AUDIT_KEY)" "$expected_key"
+    if [ "$(scope_values "$member" "$repo" AUDIT_KEY)" != "$expected_key" ]; then
+      printf 'member %s resolver printed AUDIT_KEY %s, expected %s\n' "$member" "$(scope_values "$member" "$repo" AUDIT_KEY)" "$expected_key"
       return 1
     fi
   done
@@ -431,9 +431,9 @@ owners_of() {
   # non-agent caller of the shared base uses. Line 3 of the --member form is
   # this exact code path's output, so equality here is what proves it, rather
   # than trusting that the two cannot drift because they are described as one.
-  local reader_ref reader_base
-  reader_ref="$(cd "$repo" && ./.github/audit/resolve-audit-base.sh)"
-  reader_base="$(git -C "$repo" merge-base "$reader_ref" HEAD)"
+  local reader_reference reader_base
+  reader_reference="$(cd "$repo" && ./.github/audit/resolve-audit-base.sh)"
+  reader_base="$(git -C "$repo" merge-base "$reader_reference" HEAD)"
   [ "$reader_base" = "$expected_key_base" ] || {
     printf 'the argument-less form resolved %s, members resolved KEY_BASE %s\n' "$reader_base" "$expected_key_base" >&2
     return 1
@@ -448,24 +448,24 @@ owners_of() {
 # artifacts identically, because KEY_BASE never reads the per-member arm.
 
 @test "two co-dispatched members resolve DIFFERENT review bases from one shared key" {
-  local repo m n c1_sha c2_sha
+  local repo shell_member workflows_member team_signal_sha member_clearance_sha
 
   repo="$(make_repo two-bases)"
   git -C "$repo" checkout -q -b feat
   commit_file "$repo" "app/a.txt" "commit A"
   stamp_clean_round "$repo"
-  c1_sha="$(git -C "$repo" rev-parse HEAD)"
+  team_signal_sha="$(git -C "$repo" rev-parse HEAD)"
 
-  m="code-audit-maintainer-shell"
-  n="code-audit-github-workflows"
+  shell_member="code-audit-maintainer-shell"
+  workflows_member="code-audit-github-workflows"
 
   # M's own review, ahead of the whole-team floor: an earned clearance
   # written by the REAL writer against the REAL digest engine, never a
   # hand-built body.
   commit_file "$repo" ".gaia/scripts/fixture-two-bases.sh" "M's own review"
-  c2_sha="$(git -C "$repo" rev-parse HEAD)"
-  run "$repo/.gaia/scripts/audit-write-clearance.sh" --root "$repo" --member "$m" --provenance earned \
-    --scope-digest "$(member_digest "$m" "$repo")"
+  member_clearance_sha="$(git -C "$repo" rev-parse HEAD)"
+  run "$repo/.gaia/scripts/audit-write-clearance.sh" --root "$repo" --member "$shell_member" --provenance earned \
+    --scope-digest "$(member_digest "$shell_member" "$repo")"
   [ "$status" -eq 0 ]
 
   # HEAD moves past C2 with no further whole-team signal and nothing in
@@ -475,52 +475,52 @@ owners_of() {
   local full_base
   full_base="$(git -C "$repo" merge-base HEAD main)"
 
-  local base_m base_n
-  base_m="$(base_sha_for "$m" "$repo")"
-  base_n="$(base_sha_for "$n" "$repo")"
-  [ "$base_m" = "$c2_sha" ] || {
-    printf 'M resolved base %s, expected its own clearance at %s\n' "$base_m" "$c2_sha" >&2
+  local shell_member_base workflows_member_base
+  shell_member_base="$(base_sha_for "$shell_member" "$repo")"
+  workflows_member_base="$(base_sha_for "$workflows_member" "$repo")"
+  [ "$shell_member_base" = "$member_clearance_sha" ] || {
+    printf 'M resolved base %s, expected its own clearance at %s\n' "$shell_member_base" "$member_clearance_sha" >&2
     return 1
   }
-  [ "$base_n" = "$c1_sha" ] || {
-    printf 'N resolved base %s, expected the whole-team floor at %s\n' "$base_n" "$c1_sha" >&2
+  [ "$workflows_member_base" = "$team_signal_sha" ] || {
+    printf 'N resolved base %s, expected the whole-team floor at %s\n' "$workflows_member_base" "$team_signal_sha" >&2
     return 1
   }
-  [ "$base_m" != "$base_n" ] || {
-    printf 'both members resolved the same base %s; the fixture proves nothing\n' "$base_m" >&2
+  [ "$shell_member_base" != "$workflows_member_base" ] || {
+    printf 'both members resolved the same base %s; the fixture proves nothing\n' "$shell_member_base" >&2
     return 1
   }
 
-  local key_m key_n
-  key_m="$(audit_key_for "$m" "$repo")"
-  key_n="$(audit_key_for "$n" "$repo")"
-  [ -n "$key_m" ]
-  [ "$key_m" = "$key_n" ] || {
-    printf 'members resolved disagreeing keys: %s vs %s\n' "$key_m" "$key_n" >&2
+  local shell_member_key workflows_member_key
+  shell_member_key="$(audit_key_for "$shell_member" "$repo")"
+  workflows_member_key="$(audit_key_for "$workflows_member" "$repo")"
+  [ -n "$shell_member_key" ]
+  [ "$shell_member_key" = "$workflows_member_key" ] || {
+    printf 'members resolved disagreeing keys: %s vs %s\n' "$shell_member_key" "$workflows_member_key" >&2
     return 1
   }
 
   # UAT-013: demonstrated by the member's OWN derivation, not by the
   # resolver's output alone. M's narrower base makes its own CHANGED set
   # strictly smaller than N's, and both smaller than the whole-PR diff.
-  local changed_m changed_n m_lines n_lines full_lines
-  changed_m="$(scope_values "$m" "$repo" CHANGED)"
-  changed_n="$(scope_values "$n" "$repo" CHANGED)"
-  m_lines="$(grep -c . <<<"$changed_m" || true)"
-  n_lines="$(grep -c . <<<"$changed_n" || true)"
+  local shell_member_changed workflows_member_changed shell_member_file_count workflows_member_file_count full_file_count
+  shell_member_changed="$(scope_values "$shell_member" "$repo" CHANGED)"
+  workflows_member_changed="$(scope_values "$workflows_member" "$repo" CHANGED)"
+  shell_member_file_count="$(grep -c . <<<"$shell_member_changed" || true)"
+  workflows_member_file_count="$(grep -c . <<<"$workflows_member_changed" || true)"
   # Counting consumer: -z plus counting the NUL separators themselves, never the
   # `tr '\0' '\n' | wc -l` round trip, which would make a path holding a literal
   # newline count twice (.gaia/scripts/lint-git-path-quoting.sh header).
-  full_lines="$(set -o pipefail; git -C "$repo" diff -z --name-only "${full_base}...HEAD" | tr -cd '\0' | wc -c | tr -d ' ')"
+  full_file_count="$(set -o pipefail; git -C "$repo" diff -z --name-only "${full_base}...HEAD" | tr -cd '\0' | wc -c | tr -d ' ')"
 
-  [ "$m_lines" -lt "$n_lines" ] || {
+  [ "$shell_member_file_count" -lt "$workflows_member_file_count" ] || {
     printf 'M (member-clearance) reviewed %s files, N (team-signal) reviewed %s; expected M strictly narrower\n' \
-      "$m_lines" "$n_lines" >&2
+      "$shell_member_file_count" "$workflows_member_file_count" >&2
     return 1
   }
-  [ "$n_lines" -lt "$full_lines" ] || {
+  [ "$workflows_member_file_count" -lt "$full_file_count" ] || {
     printf 'N reviewed %s files, the whole-PR diff is %s; expected N strictly narrower\n' \
-      "$n_lines" "$full_lines" >&2
+      "$workflows_member_file_count" "$full_file_count" >&2
     return 1
   }
 }
@@ -668,29 +668,29 @@ case "\$1" in
   repo) echo "acme/widgets" ;;
   api)
     method=""
-    prev=""
-    for a in "\$@"; do
-      [ "\$prev" = "--method" ] && method="\$a"
-      prev="\$a"
+    previous_argument=""
+    for argument in "\$@"; do
+      [ "\$previous_argument" = "--method" ] && method="\$argument"
+      previous_argument="\$argument"
     done
     if [ -z "\$method" ]; then
       printf '%s' '[]'
     else
-      prev=""
-      for a in "\$@"; do
-        case "\$prev" in
+      previous_argument=""
+      for argument in "\$@"; do
+        case "\$previous_argument" in
           -F|--field)
-            case "\$a" in
-              body=@*) cp "\${a#body=@}" "$repo/posted_body.txt" ;;
+            case "\$argument" in
+              body=@*) cp "\${argument#body=@}" "$repo/posted_body.txt" ;;
             esac
             ;;
           -f|--raw-field)
-            case "\$a" in
-              body=*) printf '%s' "\${a#body=}" > "$repo/posted_body.txt" ;;
+            case "\$argument" in
+              body=*) printf '%s' "\${argument#body=}" > "$repo/posted_body.txt" ;;
             esac
             ;;
         esac
-        prev="\$a"
+        previous_argument="\$argument"
       done
       echo '{"id":999}'
     fi
@@ -772,10 +772,10 @@ probe_deadlock() {
   # the remit globs: the member is absent from the increment's owners (it
   # would self-skip) and present in the whole-PR list's owners (membership
   # demands its marker).
-  local inc_owners full_owners
-  inc_owners="$(owners_of "$repo" "$incremental")"
+  local incremental_owners full_owners
+  incremental_owners="$(owners_of "$repo" "$incremental")"
   full_owners="$(owners_of "$repo" "$full")"
-  grep -qxF "$member" <<<"$inc_owners" && {
+  grep -qxF "$member" <<<"$incremental_owners" && {
     printf '%s: owns something in the increment, so this is not the deadlock case\n' "$member"
     return 1
   }
@@ -787,14 +787,14 @@ probe_deadlock() {
   # The two-tier split, proved on the member's own resolved reason: a
   # merely-shared machinery change resets neither reset tier, so the
   # per-member arm must never answer with a *-reset token here.
-  local member_err member_reason
-  member_err="$(cd "$repo" && ./.github/audit/resolve-audit-base.sh --member "$member" 2>&1 >/dev/null)"
-  member_reason="$(grep -oE 'reason=[a-z-]+' <<<"$member_err" | head -n1 | cut -d= -f2)"
+  local member_error member_reason
+  member_error="$(cd "$repo" && ./.github/audit/resolve-audit-base.sh --member "$member" 2>&1 >/dev/null)"
+  member_reason="$(grep -oE 'reason=[a-z-]+' <<<"$member_error" | head -n1 | cut -d= -f2)"
   case "$member_reason" in
     team-signal | member-clearance) ;;
     *)
       printf '%s: --member resolved reason %s, expected team-signal or member-clearance: %s\n' \
-        "$member" "$member_reason" "$member_err" >&2
+        "$member" "$member_reason" "$member_error" >&2
       return 1
       ;;
   esac
@@ -803,12 +803,12 @@ probe_deadlock() {
   # C keeps the flat machinery reset on the shared key. This is not a failure
   # -- it is the clearest single proof the two-tier split exists at all, the
   # same commit resets the shared base and does not reset the member's own.
-  local shared_err shared_reason
-  shared_err="$(cd "$repo" && ./.github/audit/resolve-audit-base.sh 2>&1 >/dev/null)"
-  shared_reason="$(grep -oE 'reason=[a-z-]+' <<<"$shared_err" | head -n1 | cut -d= -f2)"
+  local shared_error shared_reason
+  shared_error="$(cd "$repo" && ./.github/audit/resolve-audit-base.sh 2>&1 >/dev/null)"
+  shared_reason="$(grep -oE 'reason=[a-z-]+' <<<"$shared_error" | head -n1 | cut -d= -f2)"
   [ "$shared_reason" = "machinery-reset" ] || {
     printf 'the argument-less form resolved reason %s on the same fixture, expected machinery-reset: %s\n' \
-      "$shared_reason" "$shared_err" >&2
+      "$shared_reason" "$shared_error" >&2
     return 1
   }
   return 0
@@ -824,14 +824,14 @@ probe_deadlock() {
 }
 
 @test "deadlock: each specialist's self-skip prose is wired to the whole-PR list" {
-  local m
-  for m in "${SPECIALISTS[@]}"; do
-    grep -qF 'FULL_CHANGED=' "$AGENTS_DIR/${m}.md" || {
-      printf '%s never names the FULL_CHANGED= lines\n' "$m"
+  local member
+  for member in "${SPECIALISTS[@]}"; do
+    grep -qF 'FULL_CHANGED=' "$AGENTS_DIRECTORY/${member}.md" || {
+      printf '%s never names the FULL_CHANGED= lines\n' "$member"
       return 1
     }
-    grep -qF 'If no `FULL_CHANGED` path matches' "$AGENTS_DIR/${m}.md" || {
-      printf '%s does not key its self-skip arm on FULL_CHANGED\n' "$m"
+    grep -qF 'If no `FULL_CHANGED` path matches' "$AGENTS_DIRECTORY/${member}.md" || {
+      printf '%s does not key its self-skip arm on FULL_CHANGED\n' "$member"
       return 1
     }
   done
@@ -846,7 +846,7 @@ probe_deadlock() {
 # correct job now that RT-006's old fail-open arm no longer exists.
 
 @test "an unloadable machinery lib resets every member to full scope with reason degraded" {
-  local repo m
+  local repo member
 
   repo="$(make_repo degraded-arm no)"
   git -C "$repo" checkout -q -b feat
@@ -857,17 +857,17 @@ probe_deadlock() {
   local full_base
   full_base="$(git -C "$repo" merge-base HEAD main)"
 
-  for m in "${MEMBERS[@]}"; do
+  for member in "${MEMBERS[@]}"; do
     local base reason
-    base="$(base_sha_for "$m" "$repo")"
-    reason="$(scope_values "$m" "$repo" BASE_REASON)"
+    base="$(base_sha_for "$member" "$repo")"
+    reason="$(scope_values "$member" "$repo" BASE_REASON)"
     [ "$base" = "$full_base" ] || {
       printf '%s: BASE_SHA %s advanced past the fork point %s despite an unloadable machinery lib\n' \
-        "$m" "$base" "$full_base" >&2
+        "$member" "$base" "$full_base" >&2
       return 1
     }
     [ "$reason" = "degraded" ] || {
-      printf '%s: reason %s, expected degraded\n' "$m" "$reason" >&2
+      printf '%s: reason %s, expected degraded\n' "$member" "$reason" >&2
       return 1
     }
   done
@@ -974,7 +974,7 @@ probe_deadlock() {
 
   expected_base="$(git -C "$repo" merge-base HEAD main)"
 
-  full_base="$(elig_eval code-audit-frontend "$repo" ELIG_BASE)" || {
+  full_base="$(evaluate_eligibility code-audit-frontend "$repo" ELIG_BASE)" || {
     echo "the default member's resolver command failed to resolve an eligibility set" >&2
     return 1
   }
@@ -983,7 +983,7 @@ probe_deadlock() {
     return 1
   }
 
-  full_changed="$(elig_eval code-audit-frontend "$repo" ELIG_CHANGED)"
+  full_changed="$(evaluate_eligibility code-audit-frontend "$repo" ELIG_CHANGED)"
   [ -n "$full_changed" ] || {
     echo "full_changed came back empty" >&2
     return 1
@@ -1007,7 +1007,7 @@ probe_deadlock() {
   commit_file "$repo" "docs/readme.md" "a markdown file"
   commit_file "$repo" ".github/workflows/fixture.yml" "a yaml file"
 
-  eligibility="$(elig_eval code-audit-frontend "$repo" ELIG_CHANGED)"
+  eligibility="$(evaluate_eligibility code-audit-frontend "$repo" ELIG_CHANGED)"
   review="$(scope_values code-audit-frontend "$repo" CHANGED)"
 
   grep -qxF "bin/setup.sh" <<<"$eligibility" || {
@@ -1039,7 +1039,7 @@ probe_deadlock() {
   git -C "$repo" add -A
   git -C "$repo" commit -q -m "add a.ts"
 
-  line="$(extract_resolver_line "$AGENTS_DIR/code-audit-frontend.md")" || {
+  line="$(extract_resolver_line "$AGENTS_DIRECTORY/code-audit-frontend.md")" || {
     echo "exactly one resolver command line no longer resolves" >&2
     return 1
   }
@@ -1065,14 +1065,14 @@ probe_deadlock() {
 }
 
 @test "the eligibility derivation carries no empty-base guard" {
-  local repo rc full_changed
+  local repo exit_status full_changed
 
   repo="$(make_no_base_repo)"
 
-  rc=0
-  full_changed="$(elig_eval code-audit-frontend "$repo" ELIG_CHANGED)" || rc=$?
-  [ "$rc" -eq 0 ] || {
-    printf 'the eligibility derivation failed with %s on an unresolvable base, expected an empty set: %s\n' "$rc" "$full_changed" >&2
+  exit_status=0
+  full_changed="$(evaluate_eligibility code-audit-frontend "$repo" ELIG_CHANGED)" || exit_status=$?
+  [ "$exit_status" -eq 0 ] || {
+    printf 'the eligibility derivation failed with %s on an unresolvable base, expected an empty set: %s\n' "$exit_status" "$full_changed" >&2
     return 1
   }
   [ -z "$full_changed" ] || {
@@ -1113,7 +1113,7 @@ make_stacked_repo() {
 }
 
 @test "the eligibility set excludes what only the pull request's base branch changed" {
-  local repo write
+  local repo eligibility_changed
 
   repo="$(make_stacked_repo elig-stacked)"
 
@@ -1121,16 +1121,16 @@ make_stacked_repo() {
   export GITHUB_ACTIONS=true
   export GITHUB_BASE_REF=release
 
-  write="$(elig_eval code-audit-frontend "$repo" ELIG_CHANGED)" || {
+  eligibility_changed="$(evaluate_eligibility code-audit-frontend "$repo" ELIG_CHANGED)" || {
     echo "the default member's resolver command failed to resolve an eligibility set" >&2
     return 1
   }
-  grep -qxF "app/feat-only.ts" <<<"$write" || {
-    printf 'write side dropped the pull request own change: %s\n' "$write" >&2
+  grep -qxF "app/feat-only.ts" <<<"$eligibility_changed" || {
+    printf 'write side dropped the pull request own change: %s\n' "$eligibility_changed" >&2
     return 1
   }
-  grep -qxF "app/base-only.ts" <<<"$write" && {
-    printf 'write side still carries a base-branch-only file: %s\n' "$write" >&2
+  grep -qxF "app/base-only.ts" <<<"$eligibility_changed" && {
+    printf 'write side still carries a base-branch-only file: %s\n' "$eligibility_changed" >&2
     return 1
   }
   true
@@ -1143,14 +1143,14 @@ make_stacked_repo() {
   # describe that tree. This runs the definition's own command with its
   # `--root` emptied, from inside an unrelated repository that would otherwise
   # resolve cleanly.
-  local repo ambient line q="'"
+  local repo ambient line single_quote="'"
   repo="$(make_repo elig-unset-root)"
   ambient="$(make_repo elig-ambient)"
   git -C "$ambient" checkout -q -b feat
   commit_file "$ambient" "ambient-only.txt" "ambient change"
-  line="$(extract_resolver_line "$AGENTS_DIR/code-audit-frontend.md")"
+  line="$(extract_resolver_line "$AGENTS_DIRECTORY/code-audit-frontend.md")"
   grep -qF -- '--eligibility' <<<"$line"
-  line="${line//--root <root>/--root $q$q}"
+  line="${line//--root <root>/--root $single_quote$single_quote}"
   line="${line//<root>/$repo}"
   run --separate-stderr env -u GITHUB_ACTIONS bash -c "cd \"\$1\" && ${line}" _ "$ambient"
   [ "$status" -ne 0 ]
@@ -1160,7 +1160,7 @@ make_stacked_repo() {
 }
 
 @test "an unverifiable declared base falls back to the advertised default" {
-  local repo write expected
+  local repo eligibility_changed expected
 
   repo="$(make_stacked_repo elig-unverifiable)"
 
@@ -1172,16 +1172,16 @@ make_stacked_repo() {
   export GITHUB_BASE_REF=no-such-branch
 
   expected="$(git -C "$repo" diff --name-only -z "$(git -C "$repo" merge-base HEAD origin/main)...HEAD" | tr '\0' '\n')"
-  write="$(elig_eval code-audit-frontend "$repo" ELIG_CHANGED)" || {
+  eligibility_changed="$(evaluate_eligibility code-audit-frontend "$repo" ELIG_CHANGED)" || {
     echo "the default member's resolver command failed to resolve an eligibility set" >&2
     return 1
   }
-  [ "$write" = "$expected" ] || {
-    printf 'fallback set %s, expected the default-branch set %s\n' "$write" "$expected" >&2
+  [ "$eligibility_changed" = "$expected" ] || {
+    printf 'fallback set %s, expected the default-branch set %s\n' "$eligibility_changed" "$expected" >&2
     return 1
   }
-  grep -qxF "app/base-only.ts" <<<"$write" || {
-    printf 'the fallback narrowed rather than staying wide: %s\n' "$write" >&2
+  grep -qxF "app/base-only.ts" <<<"$eligibility_changed" || {
+    printf 'the fallback narrowed rather than staying wide: %s\n' "$eligibility_changed" >&2
     return 1
   }
   true
@@ -1196,11 +1196,11 @@ install_pr_view_mock() {
   mkdir -p "$bin"
   cat > "$bin/gh" <<EOF
 #!/usr/bin/env bash
-base_ref="$1"
+base_reference="$1"
 EOF
   cat >> "$bin/gh" <<'EOF'
 case "$1" in
-  pr) printf '%s\n' "$base_ref" ;;
+  pr) printf '%s\n' "$base_reference" ;;
   *) : ;;
 esac
 exit 0
@@ -1211,31 +1211,31 @@ EOF
 }
 
 @test "the write side takes the base from the pull request's own record when Actions declares none" {
-  local repo write
+  local repo eligibility_changed
 
   repo="$(make_stacked_repo elig-record)"
   install_pr_view_mock release
 
-  write="$(elig_eval code-audit-frontend "$repo" ELIG_CHANGED)" || {
+  eligibility_changed="$(evaluate_eligibility code-audit-frontend "$repo" ELIG_CHANGED)" || {
     echo "the default member's resolver command failed to resolve an eligibility set" >&2
     return 1
   }
-  grep -qxF "app/feat-only.ts" <<<"$write" || {
-    printf 'write side dropped the pull request own change: %s\n' "$write" >&2
+  grep -qxF "app/feat-only.ts" <<<"$eligibility_changed" || {
+    printf 'write side dropped the pull request own change: %s\n' "$eligibility_changed" >&2
     return 1
   }
-  grep -qxF "app/base-only.ts" <<<"$write" && {
-    printf 'write side still carries a base-branch-only file: %s\n' "$write" >&2
+  grep -qxF "app/base-only.ts" <<<"$eligibility_changed" && {
+    printf 'write side still carries a base-branch-only file: %s\n' "$eligibility_changed" >&2
     return 1
   }
   true
 }
 
 @test "no environment variable naming a base branch is read anywhere in the shared resolver (COV-002)" {
-  local lib hits non_comment
+  local library_file hits non_comment
 
-  lib="$REPO_ROOT/.claude/hooks/lib/audit-base-provenance.sh"
-  hits="$(grep -nE 'GITHUB_BASE_REF|GITHUB_HEAD_REF|GITHUB_REF' "$lib" || true)"
+  library_file="$REPO_ROOT/.claude/hooks/lib/audit-base-provenance.sh"
+  hits="$(grep -nE 'GITHUB_BASE_REF|GITHUB_HEAD_REF|GITHUB_REF' "$library_file" || true)"
   non_comment="$(printf '%s\n' "$hits" | grep -vE '^[0-9]+:[[:space:]]*#' || true)"
   [ -z "$non_comment" ] || {
     printf 'non-comment environment-variable reference in the shared resolver:\n%s\n' "$non_comment" >&2
@@ -1244,7 +1244,7 @@ EOF
 }
 
 @test "the write side resolves correctly under a shadowing local branch named origin/main that sits AHEAD of the remote-tracking ref (DP-002, ahead)" {
-  local repo write
+  local repo eligibility_changed
 
   # The non-Actions arm here is the one this test exercises. Under Actions
   # the job exports GITHUB_BASE_REF for the whole run, the write side's
@@ -1266,21 +1266,21 @@ EOF
   git -C "$repo" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
   git -C "$repo" branch origin/main main
 
-  write="$(elig_eval code-audit-frontend "$repo" ELIG_CHANGED)" || {
+  eligibility_changed="$(evaluate_eligibility code-audit-frontend "$repo" ELIG_CHANGED)" || {
     echo "the default member's resolver command failed to resolve an eligibility set" >&2
     return 1
   }
 
   # The write side takes the real remote-tracking ref, so it sees the advance
   # and never reads the shadowing local branch.
-  grep -qxF "docs/advance.md" <<<"$write" || {
-    printf 'write side did not see the advance past the shadowed ref: %s\n' "$write" >&2
+  grep -qxF "docs/advance.md" <<<"$eligibility_changed" || {
+    printf 'write side did not see the advance past the shadowed ref: %s\n' "$eligibility_changed" >&2
     return 1
   }
 }
 
 @test "the write side resolves correctly under a shadowing local branch named origin/main that sits BEHIND the remote-tracking ref (DP-002, behind)" {
-  local repo write
+  local repo eligibility_changed
 
   # The non-Actions, no-record arm is the only one that consults the
   # default-branch rung, so clear both ambient variables and stand in a `gh`
@@ -1301,7 +1301,7 @@ EOF
   git -C "$repo" checkout -q -b feat
   commit_file "$repo" "app/feat.ts" "the pull request's own change"
 
-  write="$(elig_eval code-audit-frontend "$repo" ELIG_CHANGED)" || {
+  eligibility_changed="$(evaluate_eligibility code-audit-frontend "$repo" ELIG_CHANGED)" || {
     echo "the default member's resolver command failed to resolve an eligibility set" >&2
     return 1
   }
@@ -1309,8 +1309,8 @@ EOF
   # A write side wider than intended is the un-clearable direction: a waive
   # on `docs/ahead.md` recorded under a shadowing branch would waive a file
   # this pull request never touched.
-  [ "$write" = "app/feat.ts" ] || {
-    printf 'write side is not the pull request own change alone: %s\n' "$write" >&2
+  [ "$eligibility_changed" = "app/feat.ts" ] || {
+    printf 'write side is not the pull request own change alone: %s\n' "$eligibility_changed" >&2
     return 1
   }
 }

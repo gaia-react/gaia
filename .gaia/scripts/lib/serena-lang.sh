@@ -52,14 +52,14 @@ serena_valid_token() {
 # _serena_clean_token <raw> — strip surrounding whitespace and a single pair of
 # matching quotes. Print the cleaned token (no trailing newline).
 _serena_clean_token() {
-  local t="$1"
-  t="${t#"${t%%[![:space:]]*}"}"
-  t="${t%"${t##*[![:space:]]}"}"
-  case "$t" in
-    \"*\") t="${t#\"}"; t="${t%\"}" ;;
-    \'*\') t="${t#\'}"; t="${t%\'}" ;;
+  local token_text="$1"
+  token_text="${token_text#"${token_text%%[![:space:]]*}"}"
+  token_text="${token_text%"${token_text##*[![:space:]]}"}"
+  case "$token_text" in
+    \"*\") token_text="${token_text#\"}"; token_text="${token_text%\"}" ;;
+    \'*\') token_text="${token_text#\'}"; token_text="${token_text%\'}" ;;
   esac
-  printf '%s' "$t"
+  printf '%s' "$token_text"
 }
 
 # --- Serena registration ----------------------------------------------------
@@ -114,12 +114,12 @@ _serena_raw_tokens() {
         inner = line
         sub(/^[[:space:]]*languages:[[:space:]]*\[/, "", inner)
         sub(/\].*$/, "", inner)
-        n = split(inner, arr, ",")
-        for (i = 1; i <= n; i++) {
-          t = arr[i]
-          sub(/[[:space:]]+#.*$/, "", t)
-          gsub(/^[[:space:]]+|[[:space:]]+$/, "", t)
-          if (t != "") print t
+        flow_item_count = split(inner, flow_items, ",")
+        for (i = 1; i <= flow_item_count; i++) {
+          flow_item = flow_items[i]
+          sub(/[[:space:]]+#.*$/, "", flow_item)
+          gsub(/^[[:space:]]+|[[:space:]]+$/, "", flow_item)
+          if (flow_item != "") print flow_item
         }
         next
       }
@@ -130,24 +130,24 @@ _serena_raw_tokens() {
       }
       # Legacy singular scalar: language: <value>
       if (line ~ /^[[:space:]]*language:[[:space:]]*[^[:space:]#]/) {
-        val = line
-        sub(/^[[:space:]]*language:[[:space:]]*/, "", val)
-        sub(/[[:space:]]+#.*$/, "", val)
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", val)
-        if (val != "") print val
+        scalar_value = line
+        sub(/^[[:space:]]*language:[[:space:]]*/, "", scalar_value)
+        sub(/[[:space:]]+#.*$/, "", scalar_value)
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", scalar_value)
+        if (scalar_value != "") print scalar_value
       }
     }
   ' "$file"
 }
 
-# _serena_file_norm_tokens <file> — cleaned + normalized + de-duplicated tokens
+# _serena_file_normalized_tokens <file> — cleaned + normalized + de-duplicated tokens
 # from a single file.
-_serena_file_norm_tokens() {
-  local file="$1" raw t
+_serena_file_normalized_tokens() {
+  local file="$1" raw cleaned_token
   _serena_raw_tokens "$file" | while IFS= read -r raw; do
-    t=$(_serena_clean_token "$raw")
-    [ -n "$t" ] || continue
-    serena_normalize_token "$t"
+    cleaned_token=$(_serena_clean_token "$raw")
+    [ -n "$cleaned_token" ] || continue
+    serena_normalize_token "$cleaned_token"
   done | awk '!seen[$0]++'
 }
 
@@ -158,10 +158,10 @@ serena_effective_languages() {
   local root="$1"
   local primary="$root/.serena/project.yml"
   [ -f "$primary" ] || return 0
-  local local_yml="$root/.serena/project.local.yml"
+  local local_yaml="$root/.serena/project.local.yml"
   {
-    _serena_file_norm_tokens "$primary"
-    [ -f "$local_yml" ] && _serena_file_norm_tokens "$local_yml"
+    _serena_file_normalized_tokens "$primary"
+    [ -f "$local_yaml" ] && _serena_file_normalized_tokens "$local_yaml"
   } | awk '!seen[$0]++'
 }
 
@@ -172,10 +172,10 @@ serena_effective_languages() {
 # vendored files never appear in `git ls-files` and are auto-excluded.
 serena_manifest_languages() {
   local root="$1"
-  local seen=" " f base token
-  while IFS= read -r -d '' f; do
-    [ -n "$f" ] || continue
-    base=${f##*/}
+  local seen=" " manifest_path base token
+  while IFS= read -r -d '' manifest_path; do
+    [ -n "$manifest_path" ] || continue
+    base=${manifest_path##*/}
     token=""
     case "$base" in
       go.mod) token=go ;;
@@ -197,11 +197,11 @@ serena_manifest_languages() {
 
 # --- Top-level drift detector -----------------------------------------------
 
-# serena_lang_drift <root> — print a compact JSON array of missing base tokens
+# serena_language_drift <root> — print a compact JSON array of missing base tokens
 # = sorted(manifest_languages - effective_languages). Print [] when jq is
 # unavailable, Serena is not registered, .serena/project.yml is absent, or there
 # is no drift. Always exit 0.
-serena_lang_drift() {
+serena_language_drift() {
   local root="$1"
   command -v jq >/dev/null 2>&1 || { printf '[]\n'; return 0; }
   serena_registered "$root" || { printf '[]\n'; return 0; }
@@ -209,31 +209,31 @@ serena_lang_drift() {
   local manifests effective
   manifests=$(serena_manifest_languages "$root")
   effective=$(serena_effective_languages "$root")
-  jq -nc --arg m "$manifests" --arg e "$effective" '
-    def toks: split("\n") | map(select(length > 0));
-    (($m | toks) - ($e | toks)) | unique
+  jq -nc --arg manifests "$manifests" --arg effective "$effective" '
+    def tokens: split("\n") | map(select(length > 0));
+    (($manifests | tokens) - ($effective | tokens)) | unique
   '
 }
 
 # --- Form classification (append safety) ------------------------------------
 
-# _serena_block_scan <file> <key_lno> — scan the block list following the
-# `languages:` key at <key_lno>. Print one tab-separated line:
-#   <status>\t<indent>\t<last_item_lno>
+# _serena_block_scan <file> <key_line_number> — scan the block list following the
+# `languages:` key at <key_line_number>. Print one tab-separated line:
+#   <status>\t<indent>\t<last_item_line_number>
 # status is one of: block (safe), complex, malformed, empty (no list items).
 _serena_block_scan() {
-  local file="$1" key_lno="$2"
-  awk -v kl="$key_lno" '
-    NR <= kl { next }
+  local file="$1" key_line_number="$2"
+  awk -v key_line_number="$key_line_number" '
+    NR <= key_line_number { next }
     status == "" {
       line = $0
-      c = line
-      sub(/[[:space:]]#.*$/, "", c)   # strip inline comment for anchor test
+      uncommented_line = line
+      sub(/[[:space:]]#.*$/, "", uncommented_line)   # strip inline comment for anchor test
       if (first == 0) {
         if (line ~ /^[[:space:]]*-[[:space:]]+[^[:space:]#]/) {
           match(line, /^[[:space:]]*/); indent = substr(line, 1, RLENGTH)
           last = NR; first = 1
-          if (c ~ /[&*]/) status = "complex"
+          if (uncommented_line ~ /[&*]/) status = "complex"
         } else {
           status = "empty"
         }
@@ -241,9 +241,9 @@ _serena_block_scan() {
       }
       if (line ~ /^[[:space:]]*$/ || line ~ /^[[:space:]]*#/) { status = "block"; next }
       if (line ~ /^[[:space:]]*-[[:space:]]/) {
-        match(line, /^[[:space:]]*/); ind2 = substr(line, 1, RLENGTH)
-        if (ind2 != indent) status = "malformed"
-        else if (c ~ /[&*]/) status = "complex"
+        match(line, /^[[:space:]]*/); item_indent = substr(line, 1, RLENGTH)
+        if (item_indent != indent) status = "malformed"
+        else if (uncommented_line ~ /[&*]/) status = "complex"
         else last = NR
         next
       }
@@ -256,18 +256,18 @@ _serena_block_scan() {
   ' "$file"
 }
 
-# serena_classify_form <project_yml> — print block:<indent> | flow |
+# serena_classify_form <project_yaml> — print block:<indent> | flow |
 # unsafe:<reason>. Exit 0 for safe forms, non-zero for unsafe.
 serena_classify_form() {
   local file="$1"
   [ -f "$file" ] || { printf 'unsafe:malformed\n'; return 1; }
-  local n_keys
-  n_keys=$(grep -cE '^[[:space:]]*languages:([[:space:]]|$|\[)' "$file" 2>/dev/null)
-  case "$n_keys" in ''|*[!0-9]*) n_keys=0 ;; esac
-  if [ "$n_keys" -gt 1 ]; then
+  local key_count
+  key_count=$(grep -cE '^[[:space:]]*languages:([[:space:]]|$|\[)' "$file" 2>/dev/null)
+  case "$key_count" in ''|*[!0-9]*) key_count=0 ;; esac
+  if [ "$key_count" -gt 1 ]; then
     printf 'unsafe:multiple-keys\n'; return 1
   fi
-  if [ "$n_keys" -eq 0 ]; then
+  if [ "$key_count" -eq 0 ]; then
     if grep -qE '^[[:space:]]*language:[[:space:]]*[^[:space:]#]' "$file" 2>/dev/null; then
       printf 'unsafe:legacy-scalar\n'; return 1
     fi
@@ -276,14 +276,14 @@ serena_classify_form() {
     fi
     printf 'unsafe:no-key\n'; return 1
   fi
-  local key_lno key_line value
-  key_lno=$(grep -nE '^[[:space:]]*languages:([[:space:]]|$|\[)' "$file" | head -1 | cut -d: -f1)
-  key_line=$(sed -n "${key_lno}p" "$file")
+  local key_line_number key_line value
+  key_line_number=$(grep -nE '^[[:space:]]*languages:([[:space:]]|$|\[)' "$file" | head -1 | cut -d: -f1)
+  key_line=$(sed -n "${key_line_number}p" "$file")
   value="${key_line#*languages:}"
   value=$(printf '%s' "$value" | sed 's/[[:space:]]#.*$//; s/^[[:space:]]*//; s/[[:space:]]*$//')
   if [ -z "$value" ]; then
     local scan status indent
-    scan=$(_serena_block_scan "$file" "$key_lno")
+    scan=$(_serena_block_scan "$file" "$key_line_number")
     status=$(printf '%s' "$scan" | cut -f1)
     indent=$(printf '%s' "$scan" | cut -f2)
     case "$status" in
@@ -315,10 +315,10 @@ serena_classify_form() {
 # list, preserving surrounding spacing and any trailing comment.
 _serena_append_flow() {
   local file="$1"; shift
-  local key_lno line prefix rest inner suffix inner_trim new_inner tok new_line tmp dir
-  key_lno=$(grep -nE '^[[:space:]]*languages:([[:space:]]|$|\[)' "$file" | head -1 | cut -d: -f1)
-  [ -n "$key_lno" ] || return 1
-  line=$(sed -n "${key_lno}p" "$file")
+  local key_line_number line prefix rest inner suffix inner_trim new_inner token new_line temporary_file directory
+  key_line_number=$(grep -nE '^[[:space:]]*languages:([[:space:]]|$|\[)' "$file" | head -1 | cut -d: -f1)
+  [ -n "$key_line_number" ] || return 1
+  line=$(sed -n "${key_line_number}p" "$file")
   prefix="${line%%\[*}"
   rest="${line#*\[}"
   inner="${rest%%\]*}"
@@ -326,99 +326,99 @@ _serena_append_flow() {
   inner_trim=$(printf '%s' "$inner" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
   if [ -z "$inner_trim" ]; then
     new_inner=""
-    for tok in "$@"; do
-      if [ -z "$new_inner" ]; then new_inner="$tok"; else new_inner="$new_inner, $tok"; fi
+    for token in "$@"; do
+      if [ -z "$new_inner" ]; then new_inner="$token"; else new_inner="$new_inner, $token"; fi
     done
   else
     new_inner="$inner"
-    for tok in "$@"; do new_inner="$new_inner, $tok"; done
+    for token in "$@"; do new_inner="$new_inner, $token"; done
   fi
   new_line="${prefix}[${new_inner}]${suffix}"
-  dir=$(dirname "$file")
-  tmp=$(mktemp "$dir/.serena-lang.XXXXXX" 2>/dev/null) || tmp="$file.tmp.$$"
+  directory=$(dirname "$file")
+  temporary_file=$(mktemp "$directory/.serena-lang.XXXXXX" 2>/dev/null) || temporary_file="$file.tmp.$$"
   {
-    head -n "$((key_lno - 1))" "$file"
+    head -n "$((key_line_number - 1))" "$file"
     printf '%s\n' "$new_line"
-    tail -n "+$((key_lno + 1))" "$file"
-  } > "$tmp" 2>/dev/null
-  if [ -s "$tmp" ]; then mv "$tmp" "$file"; else rm -f "$tmp"; return 1; fi
+    tail -n "+$((key_line_number + 1))" "$file"
+  } > "$temporary_file" 2>/dev/null
+  if [ -s "$temporary_file" ]; then mv "$temporary_file" "$file"; else rm -f "$temporary_file"; return 1; fi
 }
 
 # _serena_append_block <file> <token...> — append tokens as new list items at
 # the block list's exact indentation, immediately after the last item.
 _serena_append_block() {
   local file="$1"; shift
-  local key_lno scan status indent last_lno inserts tok tmp dir
-  key_lno=$(grep -nE '^[[:space:]]*languages:([[:space:]]|$|\[)' "$file" | head -1 | cut -d: -f1)
-  [ -n "$key_lno" ] || return 1
-  scan=$(_serena_block_scan "$file" "$key_lno")
+  local key_line_number scan status indent last_line_number inserts token temporary_file directory
+  key_line_number=$(grep -nE '^[[:space:]]*languages:([[:space:]]|$|\[)' "$file" | head -1 | cut -d: -f1)
+  [ -n "$key_line_number" ] || return 1
+  scan=$(_serena_block_scan "$file" "$key_line_number")
   status=$(printf '%s' "$scan" | cut -f1)
   indent=$(printf '%s' "$scan" | cut -f2)
-  last_lno=$(printf '%s' "$scan" | cut -f3)
+  last_line_number=$(printf '%s' "$scan" | cut -f3)
   [ "$status" = "block" ] || return 1
-  case "$last_lno" in ''|*[!0-9]*) return 1 ;; esac
+  case "$last_line_number" in ''|*[!0-9]*) return 1 ;; esac
   inserts=""
-  for tok in "$@"; do
-    inserts="${inserts}${indent}- ${tok}
+  for token in "$@"; do
+    inserts="${inserts}${indent}- ${token}
 "
   done
-  dir=$(dirname "$file")
-  tmp=$(mktemp "$dir/.serena-lang.XXXXXX" 2>/dev/null) || tmp="$file.tmp.$$"
+  directory=$(dirname "$file")
+  temporary_file=$(mktemp "$directory/.serena-lang.XXXXXX" 2>/dev/null) || temporary_file="$file.tmp.$$"
   {
-    head -n "$last_lno" "$file"
+    head -n "$last_line_number" "$file"
     printf '%s' "$inserts"
-    tail -n "+$((last_lno + 1))" "$file"
-  } > "$tmp" 2>/dev/null
-  if [ -s "$tmp" ]; then mv "$tmp" "$file"; else rm -f "$tmp"; return 1; fi
+    tail -n "+$((last_line_number + 1))" "$file"
+  } > "$temporary_file" 2>/dev/null
+  if [ -s "$temporary_file" ]; then mv "$temporary_file" "$file"; else rm -f "$temporary_file"; return 1; fi
 }
 
-# serena_lang_append <project_yml> <token> [token...] — on a safe form, append
+# serena_language_append <project_yaml> <token> [token...] — on a safe form, append
 # each not-already-present, validated token reusing the list's exact style; keep
 # every other line byte-identical. Exit 0. On any unsafe form or invalid token,
 # write nothing, print FALLBACK:<reason>, exit non-zero. Idempotent set-union
 # against THIS file's own `languages:` list.
-serena_lang_append() {
-  local project_yml="$1"; shift
-  [ -f "$project_yml" ] || { printf 'FALLBACK:malformed\n'; return 1; }
+serena_language_append() {
+  local project_yaml="$1"; shift
+  [ -f "$project_yaml" ] || { printf 'FALLBACK:malformed\n'; return 1; }
   [ "$#" -ge 1 ] || return 0
-  local form rc reason
-  form=$(serena_classify_form "$project_yml")
-  rc=$?
-  if [ "$rc" -ne 0 ]; then
+  local form classify_exit_status reason
+  form=$(serena_classify_form "$project_yaml")
+  classify_exit_status=$?
+  if [ "$classify_exit_status" -ne 0 ]; then
     reason="${form#unsafe:}"
     printf 'FALLBACK:%s\n' "$reason"
     return 1
   fi
   local existing
-  existing=$(_serena_file_norm_tokens "$project_yml")
+  existing=$(_serena_file_normalized_tokens "$project_yaml")
   local -a to_add=()
-  local tok normtok present e a
-  for tok in "$@"; do
-    normtok=$(serena_normalize_token "$tok")
+  local token normalized_token present existing_token added_token
+  for token in "$@"; do
+    normalized_token=$(serena_normalize_token "$token")
     present=0
-    while IFS= read -r e; do
-      [ "$e" = "$normtok" ] && { present=1; break; }
+    while IFS= read -r existing_token; do
+      [ "$existing_token" = "$normalized_token" ] && { present=1; break; }
     done <<EOF
 $existing
 EOF
     [ "$present" -eq 1 ] && continue
-    for a in "${to_add[@]}"; do
-      [ "$a" = "$tok" ] && { present=1; break; }
+    for added_token in "${to_add[@]}"; do
+      [ "$added_token" = "$token" ] && { present=1; break; }
     done
     [ "$present" -eq 1 ] && continue
-    if ! serena_valid_token "$tok"; then
+    if ! serena_valid_token "$token"; then
       printf 'FALLBACK:invalid-token\n'
       return 1
     fi
-    to_add+=("$tok")
+    to_add+=("$token")
   done
   [ "${#to_add[@]}" -ge 1 ] || return 0
   case "$form" in
     flow)
-      _serena_append_flow "$project_yml" "${to_add[@]}" || { printf 'FALLBACK:malformed\n'; return 1; }
+      _serena_append_flow "$project_yaml" "${to_add[@]}" || { printf 'FALLBACK:malformed\n'; return 1; }
       ;;
     block:*)
-      _serena_append_block "$project_yml" "${to_add[@]}" || { printf 'FALLBACK:malformed\n'; return 1; }
+      _serena_append_block "$project_yaml" "${to_add[@]}" || { printf 'FALLBACK:malformed\n'; return 1; }
       ;;
     *)
       printf 'FALLBACK:malformed\n'; return 1
@@ -430,15 +430,15 @@ EOF
 # --- Executable subcommand dispatch -----------------------------------------
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
-  cmd="$1"
+  subcommand="$1"
   shift 2>/dev/null
-  case "$cmd" in
+  case "$subcommand" in
     registered) serena_registered "$1"; exit $? ;;
-    drift)      serena_lang_drift "$1"; exit $? ;;
+    drift)      serena_language_drift "$1"; exit $? ;;
     effective)  serena_effective_languages "$1"; exit $? ;;
     manifests)  serena_manifest_languages "$1"; exit $? ;;
     classify)   serena_classify_form "$1"; exit $? ;;
-    append)     serena_lang_append "$@"; exit $? ;;
+    append)     serena_language_append "$@"; exit $? ;;
     normalize)  serena_normalize_token "$1"; exit $? ;;
     valid)      serena_valid_token "$1"; exit $? ;;
     *)

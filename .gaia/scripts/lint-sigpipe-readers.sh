@@ -105,7 +105,7 @@
 #
 # An edge resolves by BASENAME against the tracked set, because a load names its
 # target through a variable far more often than not
-# (`. "$lib_dir/guard-awk-lib.sh"`), and no static reader can resolve that
+# (`. "$library_directory/guard-awk-lib.sh"`), and no static reader can resolve that
 # variable. Two consequences, both stated rather than hidden. A basename shared
 # by two tracked files draws an edge to both, so one armed caller can mark a
 # same-named file it never loads: that direction costs a correct edit and never
@@ -286,28 +286,28 @@
 
 set -euo pipefail
 
-readonly PROG="lint-sigpipe-readers"
+readonly PROGRAM_NAME="lint-sigpipe-readers"
 
 # Script-relative, never cwd-relative: every fixture test runs this guard with
 # cwd inside a throwaway repo that carries no .gaia/scripts/. Bracketed with
 # set +e/-e because this file arms errexit itself, and an unbracketed load
 # would abort the script outright if the library were ever present but
 # unparseable.
-_gaia_guard_lib_dir="${BASH_SOURCE[0]%/*}"
-if [ "$_gaia_guard_lib_dir" = "${BASH_SOURCE[0]}" ]; then _gaia_guard_lib_dir="."; fi
+_gaia_guard_library_directory="${BASH_SOURCE[0]%/*}"
+if [ "$_gaia_guard_library_directory" = "${BASH_SOURCE[0]}" ]; then _gaia_guard_library_directory="."; fi
 # shellcheck source=.gaia/scripts/guard-awk-lib.sh
-set +e; [ -f "$_gaia_guard_lib_dir/guard-awk-lib.sh" ] && . "$_gaia_guard_lib_dir/guard-awk-lib.sh" 2>/dev/null; set -e
+set +e; [ -f "$_gaia_guard_library_directory/guard-awk-lib.sh" ] && . "$_gaia_guard_library_directory/guard-awk-lib.sh" 2>/dev/null; set -e
 type gaia_guard_scan_files >/dev/null 2>&1 || {
-  printf '%s: guard-awk-lib.sh is missing beside this script\n' "$PROG" >&2
+  printf '%s: guard-awk-lib.sh is missing beside this script\n' "$PROGRAM_NAME" >&2
   exit 2
 }
 case "$GAIA_AWK_STATUS" in
   5)
-    printf '%s: no awk interpreter found; install mawk (macOS: brew install mawk; Debian/Ubuntu: apt-get install mawk) or ensure /usr/bin/awk is present\n' "$PROG" >&2
+    printf '%s: no awk interpreter found; install mawk (macOS: brew install mawk; Debian/Ubuntu: apt-get install mawk) or ensure /usr/bin/awk is present\n' "$PROGRAM_NAME" >&2
     exit 5
     ;;
   6)
-    printf '%s: GAIA_AWK resolved to an unsanctioned interpreter (%s); the sanctioned set is mawk and BWK one-true-awk\n' "$PROG" "$GAIA_AWK_IDENT" >&2
+    printf '%s: GAIA_AWK resolved to an unsanctioned interpreter (%s); the sanctioned set is mawk and BWK one-true-awk\n' "$PROGRAM_NAME" "$GAIA_AWK_IDENTITY" >&2
     exit 6
     ;;
 esac
@@ -329,10 +329,10 @@ esac
 # shells. A single union call would hand both to one arm and, worse, would let a
 # non-empty `shell` set carry an empty `workflows` set past the emptiness check,
 # which is the fail-open discovery `.claude/rules/guards-must-fail.md` names.
-gaia_guard_scan_files "$PROG" shell || exit $?
+gaia_guard_scan_files "$PROGRAM_NAME" shell || exit $?
 sh_files=(${GAIA_GUARD_SCAN_FILES[@]+"${GAIA_GUARD_SCAN_FILES[@]}"})
 
-gaia_guard_scan_files "$PROG" workflows || exit $?
+gaia_guard_scan_files "$PROGRAM_NAME" workflows || exit $?
 yaml_files=(${GAIA_GUARD_SCAN_FILES[@]+"${GAIA_GUARD_SCAN_FILES[@]}"})
 
 # The class detector both arms share: what makes a reader short-circuiting,
@@ -358,21 +358,21 @@ readonly READER_AWK='
 #                     pipeline status inverts identically. The count rides
 #                     either inside the token (-m1, -nm1) or as the next
 #                     argument (-m 1), and both spellings are the same defect.
-function is_qflag(t) {
-  if (t == "--quiet" || t == "--silent" || t == "--max-count") return 1
-  if (t ~ /^--max-count=/) return 1
-  if (t ~ /^-[A-Za-z]+$/ && t ~ /q/) return 1
-  if (t ~ /^-[A-Za-z]*m[0-9]*$/) return 1
+function is_short_circuit_flag(token) {
+  if (token == "--quiet" || token == "--silent" || token == "--max-count") return 1
+  if (token ~ /^--max-count=/) return 1
+  if (token ~ /^-[A-Za-z]+$/ && token ~ /q/) return 1
+  if (token ~ /^-[A-Za-z]*m[0-9]*$/) return 1
   return 0
 }
 
 # Read one pipeline SEGMENT and answer with the reader heading it, or the empty
 # string. The command word is the segment head, so a -q sitting in the quoted
 # argument of some other command is never read as a flag of a reader.
-function segment_reader(s,   toks, m, j, t, w) {
-  sub(/;.*$/, "", s)
-  m = split(s, toks, /[[:space:]]+/)
-  j = 1
+function segment_reader(segment,   tokens, token_count, head_index, token_index, command_word) {
+  sub(/;.*$/, "", segment)
+  token_count = split(segment, tokens, /[[:space:]]+/)
+  head_index = 1
   # Everything a reader can hide behind and still be the command that runs.
   # The assignment arm is the one that matters most in this tree: a locale or
   # encoding prefix is the ordinary spelling here, and without it the command
@@ -380,19 +380,19 @@ function segment_reader(s,   toks, m, j, t, w) {
   # brace and paren arms cover a downstream compound command, where the wrapper
   # rather than the reader occupies the head: a pipeline into a brace group or
   # a subshell carries the class exactly as the bare form does.
-  while (j <= m && (toks[j] == "" || toks[j] == "!" || toks[j] == "&" ||
-                    toks[j] == "{" || toks[j] == "(" ||
-                    toks[j] == "command" || toks[j] == "env" ||
-                    toks[j] ~ /^[A-Za-z_][A-Za-z0-9_]*=/)) j++
-  if (j > m) return ""
-  w = toks[j]
+  while (head_index <= token_count && (tokens[head_index] == "" || tokens[head_index] == "!" || tokens[head_index] == "&" ||
+                    tokens[head_index] == "{" || tokens[head_index] == "(" ||
+                    tokens[head_index] == "command" || tokens[head_index] == "env" ||
+                    tokens[head_index] ~ /^[A-Za-z_][A-Za-z0-9_]*=/)) head_index++
+  if (head_index > token_count) return ""
+  command_word = tokens[head_index]
   # A subshell may open with no space after the paren, so the wrapper arrives
   # fused to the command word rather than as a token of its own.
-  sub(/^\(+/, "", w)
-  sub(/^.*\//, "", w)
-  if (w != "grep" && w != "rg") return ""
-  for (t = j + 1; t <= m; t++)
-    if (is_qflag(toks[t])) return w " " toks[t]
+  sub(/^\(+/, "", command_word)
+  sub(/^.*\//, "", command_word)
+  if (command_word != "grep" && command_word != "rg") return ""
+  for (token_index = head_index + 1; token_index <= token_count; token_index++)
+    if (is_short_circuit_flag(tokens[token_index])) return command_word " " tokens[token_index]
   return ""
 }
 
@@ -427,66 +427,66 @@ BEGIN {
   PIPEFAIL_RE = "(^|[^A-Za-z0-9_])set([[:space:]]+-[A-Za-z]+([[:space:]]+[A-Za-z]+)?)*[[:space:]]+-[A-Za-z]*o[[:space:]]+pipefail([[:space:]]|;|$)"
 }
 
-# Split one line into pipeline segments and fill hitbuf with the reader heading
+# Split one line into pipeline segments and fill hit_buffer with the reader heading
 # each downstream one, answering how many there were. A doubled bar is a logical
 # OR, not a pipe: masking it before the split is what keeps the command after
 # one from reading as a downstream segment. Segment 1 is downstream only when
-# the PREVIOUS line left a pipeline open, which the caller carries in prev_pipe.
-function scan_pipeline(l,   work, k, seg, i, hit) {
-  hitn = 0
-  work = l
-  gsub(/\|\|/, "\002", work)
-  k = split(work, seg, "|")
-  for (i = 1; i <= k; i++) {
-    if (i == 1 && !prev_pipe) continue
-    hit = segment_reader(seg[i])
-    if (hit != "") { hitn++; hitbuf[hitn] = hit }
+# the PREVIOUS line left a pipeline open, which the caller carries in previous_line_carries_pipe.
+function scan_pipeline(current_line,   masked_line, segment_count, segments, i, hit) {
+  hit_count = 0
+  masked_line = current_line
+  gsub(/\|\|/, "\002", masked_line)
+  segment_count = split(masked_line, segments, "|")
+  for (i = 1; i <= segment_count; i++) {
+    if (i == 1 && !previous_line_carries_pipe) continue
+    hit = segment_reader(segments[i])
+    if (hit != "") { hit_count++; hit_buffer[hit_count] = hit }
   }
-  return hitn
+  return hit_count
 }
 
 # Whether this line leaves a pipeline open for the next one. A trailing
 # backslash after the bar is redundant in bash but legal, so it is stripped
 # before the test.
-function carries_pipe(l,   tail) {
-  tail = l
+function carries_pipe(current_line,   tail) {
+  tail = current_line
   sub(/[[:space:]]+$/, "", tail)
   sub(/\\$/, "", tail)
   sub(/[[:space:]]+$/, "", tail)
   return (tail ~ /\|$/ && tail !~ /\|\|$/)
 }
 
-# The command-substitution nesting depth at character `upto` of `s`, starting
-# from the carried-in `subdepth` and clamped at zero. Clamped, not merely
+# The command-substitution nesting depth at character `upto` of `text`, starting
+# from the carried-in `substitution_depth` and clamped at zero. Clamped, not merely
 # bounded: the header states why that direction is the safe one. Both arms carry
-# `subdepth` from one line to the next through carry_at below, and each resets
+# `substitution_depth` from one line to the next through carry_at below, and each resets
 # it where its own unit of arming begins: the workflow arm at every run: key,
 # the shell arm never, since that arm is handed one file per awk invocation and
 # the file IS the unit.
-function depth_at(s, upto,   i, d, c) {
-  d = subdepth
+function depth_at(text, upto,   i, depth, character) {
+  depth = substitution_depth
   for (i = 1; i < upto; i++) {
-    c = substr(s, i, 1)
-    if (c == "$" && substr(s, i + 1, 1) == "(") { d++; i++ }
-    else if (c == ")" && d > 0) d--
+    character = substr(text, i, 1)
+    if (character == "$" && substr(text, i + 1, 1) == "(") { depth++; i++ }
+    else if (character == ")" && depth > 0) depth--
   }
-  return d
+  return depth
 }
 
 # The line with every single-quoted span removed, a quote through the next
 # quote. An unterminated quote stays, with everything after it, so that tail
 # counts as raw. Double-quoted text is left alone, since a `$( )` inside double
 # quotes is live.
-function strip_squoted(s,   out, q, rest, e) {
-  out = ""
-  while ((q = index(s, "\047")) > 0) {
-    rest = substr(s, q + 1)
-    e = index(rest, "\047")
-    if (e == 0) break
-    out = out substr(s, 1, q - 1)
-    s = substr(rest, e + 1)
+function strip_single_quoted(text,   stripped_text, open_quote_position, rest, close_quote_position) {
+  stripped_text = ""
+  while ((open_quote_position = index(text, "\047")) > 0) {
+    rest = substr(text, open_quote_position + 1)
+    close_quote_position = index(rest, "\047")
+    if (close_quote_position == 0) break
+    stripped_text = stripped_text substr(text, 1, open_quote_position - 1)
+    text = substr(rest, close_quote_position + 1)
   }
-  return out s
+  return stripped_text text
 }
 
 # The depth this line hands the next one: the LOWER of the raw count and the
@@ -494,11 +494,11 @@ function strip_squoted(s,   out, q, rest, e) {
 # stripped count alone can rise above the raw one; the header states why only
 # the lower of the two keeps the carry from disarming anything the raw count
 # arms.
-function carry_at(l,   raw, t, cut) {
-  raw = depth_at(l, length(l) + 1)
-  t = strip_squoted(l)
-  cut = depth_at(t, length(t) + 1)
-  return (cut < raw) ? cut : raw
+function carry_at(current_line,   raw_depth, stripped_text, stripped_depth) {
+  raw_depth = depth_at(current_line, length(current_line) + 1)
+  stripped_text = strip_single_quoted(current_line)
+  stripped_depth = depth_at(stripped_text, length(stripped_text) + 1)
+  return (stripped_depth < raw_depth) ? stripped_depth : raw_depth
 }
 
 # Whether this line arms pipefail for the file or block AROUND it, which is the
@@ -524,15 +524,15 @@ function carry_at(l,   raw, t, cut) {
 # idiom is the paren of its dollar-paren, and depth_at reads that paren only as
 # the lookahead after the dollar. Cutting one character earlier drops it and
 # reads the scoped arming as file-level.
-function arms_at_depth_zero(l,   s, off, pos, t) {
-  s = l
-  off = 0
-  while (match(s, PIPEFAIL_RE)) {
-    pos = off + RSTART
-    t = strip_squoted(substr(l, 1, pos))
-    if (depth_at(l, pos) == 0 || depth_at(t, length(t) + 1) == 0) return 1
-    off = pos
-    s = substr(l, pos + 1)
+function arms_at_depth_zero(current_line,   remaining_text, offset, position, stripped_prefix) {
+  remaining_text = current_line
+  offset = 0
+  while (match(remaining_text, PIPEFAIL_RE)) {
+    position = offset + RSTART
+    stripped_prefix = strip_single_quoted(substr(current_line, 1, position))
+    if (depth_at(current_line, position) == 0 || depth_at(stripped_prefix, length(stripped_prefix) + 1) == 0) return 1
+    offset = position
+    remaining_text = substr(current_line, position + 1)
   }
   return 0
 }
@@ -564,7 +564,7 @@ readonly SHELL_AWK='
   # reason: a substitution opened on one line and closed on another scopes every
   # arming between them.
   if (!armed && arms_at_depth_zero(line)) armed = 1
-  subdepth = carry_at(line)
+  substitution_depth = carry_at(line)
 
   # A source edge. The load token is recognized anywhere a command may start,
   # not at line start only, because the bracketed load this tree uses for an
@@ -574,11 +574,11 @@ readonly SHELL_AWK='
       printf "#source\t%s\t%s\n", file, substr(bare, RSTART, RLENGTH)
   }
 
-  n = scan_pipeline(line)
-  for (i = 1; i <= n; i++)
-    printf "#hit\t%s\t%d\t`%s` short-circuits a pipeline under pipefail\n", file, FNR, hitbuf[i]
+  line_hit_count = scan_pipeline(line)
+  for (i = 1; i <= line_hit_count; i++)
+    printf "#hit\t%s\t%d\t`%s` short-circuits a pipeline under pipefail\n", file, FNR, hit_buffer[i]
 
-  prev_pipe = carries_pipe(line)
+  previous_line_carries_pipe = carries_pipe(line)
 }
 
 # At END, not inline: a file may arm pipefail on a line BELOW a pipeline, so
@@ -599,7 +599,7 @@ END { if (armed) printf "#armed\t%s\n", file }
 readonly YAML_AWK='
 # The YAML structure both passes walk, reduced to the two questions this gate
 # asks of it: which mapping key is this line, and is this line inside a block
-# scalar rather than a key at all. Sets keyname, keycol and islist; answers 0
+# scalar rather than a key at all. Sets keyname, key_column and islist; answers 0
 # when the line carries no key to read.
 #
 # The block-scalar half is load-bearing rather than tidiness, and which cases
@@ -617,51 +617,51 @@ readonly YAML_AWK='
 # content is necessarily indented deeper than the key that opened it, and that
 # key is already deeper than the step column, so the step-column test decides
 # those two on its own and would still decide them with this half removed.
-function yaml_key(l,   col, rest) {
-  if (l ~ /^[[:space:]]*$/) return 0
-  col = match(l, /[^ ]/)
-  if (blockcol >= 0) {
-    if (col > blockcol) return 0
-    blockcol = -1
+function yaml_key(current_line,   column, rest) {
+  if (current_line ~ /^[[:space:]]*$/) return 0
+  column = match(current_line, /[^ ]/)
+  if (block_column >= 0) {
+    if (column > block_column) return 0
+    block_column = -1
   }
   # A mustache section tag at column 1 renders as a blank line, so it is neither
   # a key nor a dedent. A partial include is deliberately not spared: it splices
   # a whole document region.
-  rest = substr(l, col)
+  rest = substr(current_line, column)
   if (substr(rest, 1, 3) ~ /^\{\{[#^\/]/) return 0
   # A list item opens a step, and the key after its dash is the first key of
   # that step. The dash and its following run of spaces are part of the
   # indentation for column purposes, so the key column is measured past them.
   islist = 0
-  if (match(l, /^[[:space:]]*-[[:space:]]+/)) {
+  if (match(current_line, /^[[:space:]]*-[[:space:]]+/)) {
     islist = 1
-    col = RLENGTH + 1
-    rest = substr(l, col)
+    column = RLENGTH + 1
+    rest = substr(current_line, column)
   }
   if (rest !~ /^[A-Za-z_][A-Za-z0-9_.-]*:([[:space:]]|$)/) return 0
   keyname = rest
   sub(/:.*$/, "", keyname)
-  keycol = col
-  keyval = rest
-  sub(/^[A-Za-z_][A-Za-z0-9_.-]*:/, "", keyval)
+  key_column = column
+  key_value = rest
+  sub(/^[A-Za-z_][A-Za-z0-9_.-]*:/, "", key_value)
   # A block scalar header carries nothing but the indicator, its optional
   # chomping and indentation digits in either order, and an optional comment.
   # Anything else on the line is inline content, which is a single command and
   # so cannot carry a two-line shape.
-  isblock = (keyval ~ /^[[:space:]]*[|>][-+0-9]*[[:space:]]*(#.*)?$/)
-  if (isblock) blockcol = keycol
+  isblock = (key_value ~ /^[[:space:]]*[|>][-+0-9]*[[:space:]]*(#.*)?$/)
+  if (isblock) block_column = key_column
   return 1
 }
 
 # A step is armed by its resolved shell when it names bash outright, or names a
 # custom invocation carrying pipefail. Everything else, the absent case
 # included, is GitHub\047s bare `bash -e` default, which arms nothing.
-function shell_arms(v) {
-  sub(/^[[:space:]]+/, "", v)
-  sub(/[[:space:]]+$/, "", v)
-  gsub(/^["\047]|["\047]$/, "", v)
-  if (v == "bash") return 1
-  return (v ~ /pipefail/)
+function shell_arms(shell_value) {
+  sub(/^[[:space:]]+/, "", shell_value)
+  sub(/[[:space:]]+$/, "", shell_value)
+  gsub(/^["\047]|["\047]$/, "", shell_value)
+  if (shell_value == "bash") return 1
+  return (shell_value ~ /pipefail/)
 }
 
 # Close the step pass one is holding: a step that carried a `run:` block and
@@ -669,12 +669,12 @@ function shell_arms(v) {
 # line its `run:` sits on. An array rather than a record, because the two passes
 # are one awk invocation and pass two reads it directly.
 function flush_step() {
-  if (steprun > 0 && shell_arms(stepshell)) shellarm[steprun] = 1
-  steprun = 0
+  if (step_run_line > 0 && shell_arms(stepshell)) shellarm[step_run_line] = 1
+  step_run_line = 0
   stepshell = ""
 }
 
-BEGIN { blockcol = -1; steprun = 0; stepkeycol = -1 }
+BEGIN { block_column = -1; step_run_line = 0; step_key_column = -1 }
 
 # --- pass one: resolve each step\047s shell, and find any defaults: key ------
 NR == FNR {
@@ -682,40 +682,40 @@ NR == FNR {
   if (keyname == "defaults") printf "#defaults\t%s\t%d\n", file, FNR
   # A list item opens a step, and its own key column is the column every other
   # key of that step sits at.
-  if (islist) { flush_step(); stepkeycol = keycol }
-  if (keycol != stepkeycol) next
+  if (islist) { flush_step(); step_key_column = key_column }
+  if (key_column != step_key_column) next
   # Both `run:` spellings register, block scalar and inline alike. The resolved
   # shell of the step arms whichever one it carries, so grading only the block
   # form would leave the inline one unscanned at every arming.
-  if (keyname == "shell") stepshell = keyval
-  else if (keyname == "run") steprun = FNR
+  if (keyname == "shell") stepshell = key_value
+  else if (keyname == "run") step_run_line = FNR
   next
 }
 
 # --- pass two: scan the run: bodies -----------------------------------------
 # Reached only on pass two, because the rule above ends in `next`. The last step
 # of pass one is still open here, so this is where it closes.
-FNR == 1 { flush_step(); blockcol = -1; inrun = 0 }
+FNR == 1 { flush_step(); block_column = -1; inrun = 0 }
 
 {
   if (inrun) {
-    col = match($0, /[^ ]/)
-    tag = substr($0, col ? col : 1)
+    column = match($0, /[^ ]/)
+    tag = substr($0, column ? column : 1)
     # A blank line, and a mustache section tag rendering as one, belong to the
     # block scalar rather than ending it.
     if ($0 ~ /^[[:space:]]*$/ || substr(tag, 1, 3) ~ /^\{\{[#^\/]/) { body($0, FNR); next }
-    if (col > runcol) { body($0, FNR); next }
+    if (column > run_column) { body($0, FNR); next }
     endrun()
     # Fall through: this same line may itself be the next run: key.
   }
   if (yaml_key($0) && keyname == "run") {
     armed = shellarm[FNR]
-    subdepth = 0
-    prev_pipe = 0
-    pend = 0
+    substitution_depth = 0
+    previous_line_carries_pipe = 0
+    pending_count = 0
     if (isblock) {
       inrun = 1
-      runcol = keycol
+      run_column = key_column
     } else {
       # An inline value is a single command, so it is its own one-line block and
       # is graded on the spot. It needs the same arming as the block form and
@@ -723,7 +723,7 @@ FNR == 1 { flush_step(); blockcol = -1; inrun = 0 }
       # mandatory, is exactly where a `shell: bash` puts the class on a key\047s
       # own line. The sibling run-interpolation gate scans this arm too, so
       # skipping it here would leave the two disagreeing about the same value.
-      body(keyval, FNR)
+      body(key_value, FNR)
       endrun()
     }
   }
@@ -733,46 +733,46 @@ END { if (inrun) endrun() }
 
 # body: one line of a run: block. Hits are BUFFERED rather than printed, because
 # a block may arm pipefail on a line below a pipeline exactly as a file may.
-function body(l, n,   i, k) {
-  bare = l
+function body(current_line, line_number,   i, line_hit_count) {
+  bare = current_line
   sub(/^[[:space:]]+/, "", bare)
   # A full-line comment neither arms pipefail nor carries an executed reader,
   # and it does NOT close an open pipeline. It is skipped before the depth walk
   # too: this tree\047s comments quote `$(...)` as prose, and counting those
   # would drift the depth against real code.
   if (bare ~ /^#/) return
-  if (!armed && arms_at_depth_zero(l)) armed = 1
-  subdepth = carry_at(l)
-  k = scan_pipeline(l)
-  for (i = 1; i <= k; i++) { pend++; pline[pend] = n; ptext[pend] = hitbuf[i] }
-  prev_pipe = carries_pipe(l)
+  if (!armed && arms_at_depth_zero(current_line)) armed = 1
+  substitution_depth = carry_at(current_line)
+  line_hit_count = scan_pipeline(current_line)
+  for (i = 1; i <= line_hit_count; i++) { pending_count++; pending_line_number[pending_count] = line_number; pending_text[pending_count] = hit_buffer[i] }
+  previous_line_carries_pipe = carries_pipe(current_line)
 }
 
 # endrun: the block just ended, so this is where it is graded.
 function endrun(   i) {
   if (armed)
-    for (i = 1; i <= pend; i++)
-      printf "#hit\t%s\t%d\t`%s` short-circuits a pipeline under pipefail\n", file, pline[i], ptext[i]
+    for (i = 1; i <= pending_count; i++)
+      printf "#hit\t%s\t%d\t`%s` short-circuits a pipeline under pipefail\n", file, pending_line_number[i], pending_text[i]
   inrun = 0
-  pend = 0
+  pending_count = 0
 }
 '
 
-WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/$PROG.XXXXXX")" || {
-  printf '%s: could not create a scratch directory; nothing was scanned\n' "$PROG" >&2
+WORK_DIRECTORY="$(mktemp -d "${TMPDIR:-/tmp}/$PROGRAM_NAME.XXXXXX")" || {
+  printf '%s: could not create a scratch directory; nothing was scanned\n' "$PROGRAM_NAME" >&2
   exit 2
 }
 # Three arms, not one shared arm: bash resumes at the point of interruption once
 # a trapped handler returns, so a single arm that only cleans up would leave
 # Ctrl-C printing a verdict as if uninterrupted.
-trap 'rm -rf "$WORK_DIR"' EXIT
+trap 'rm -rf "$WORK_DIRECTORY"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
 # The basename-to-path record is emitted here rather than by the awk pass,
 # because awk is handed the file CONTENT and this is a fact about its name. It
 # rides the same stream as the awk records, so the loop opens one output file
-# and forks nothing per file: `${f##*/}` is what `basename` would have returned.
+# and forks nothing per file: `${file_path##*/}` is what `basename` would have returned.
 #
 # `LC_ALL=C` on both arms, so awk reads BYTES rather than characters. See the
 # YAML loop below for the hazard; it is if anything stronger here, because far
@@ -780,11 +780,11 @@ trap 'exit 143' TERM
 # construct either arm matches on is ASCII, so reading bytes costs neither of
 # them anything, and the two per-file invocations do not disagree about a
 # hazard this file argues is real.
-for f in ${sh_files[@]+"${sh_files[@]}"}; do
-  [ -f "$f" ] || continue
-  printf '#file\t%s\t%s\n' "${f##*/}" "$f"
-  LC_ALL=C "$GAIA_AWK" -v file="$f" "$READER_AWK$SHELL_AWK" "$f"
-done > "$WORK_DIR/records"
+for file_path in ${sh_files[@]+"${sh_files[@]}"}; do
+  [ -f "$file_path" ] || continue
+  printf '#file\t%s\t%s\n' "${file_path##*/}" "$file_path"
+  LC_ALL=C "$GAIA_AWK" -v file="$file_path" "$READER_AWK$SHELL_AWK" "$file_path"
+done > "$WORK_DIRECTORY/records"
 
 # The YAML arm, into its own record stream: its hits arrive already graded, so
 # they must not reach the closure machinery below, which grades by file rather
@@ -797,10 +797,10 @@ done > "$WORK_DIR/records"
 # failure, which would leave the arm scanning nothing and saying so only as a
 # warning on stderr. Every construct this arm matches on -- YAML indentation,
 # `run:`, `shell:`, the pipe, the reader flags -- is ASCII.
-for f in ${yaml_files[@]+"${yaml_files[@]}"}; do
-  [ -f "$f" ] || continue
-  LC_ALL=C "$GAIA_AWK" -v file="$f" "$READER_AWK$YAML_AWK" "$f" "$f"
-done > "$WORK_DIR/yaml-records"
+for file_path in ${yaml_files[@]+"${yaml_files[@]}"}; do
+  [ -f "$file_path" ] || continue
+  LC_ALL=C "$GAIA_AWK" -v file="$file_path" "$READER_AWK$YAML_AWK" "$file_path" "$file_path"
+done > "$WORK_DIRECTORY/yaml-records"
 
 # The refusal, ahead of any verdict. A `defaults:` key moves the resolved shell
 # for every step under it, which is the one thing the oracle above does not
@@ -808,11 +808,11 @@ done > "$WORK_DIR/yaml-records"
 # the wrong default. Read with a single awk pass rather than a quiet grep
 # downstream of a pipe: this file arms pipefail, and that is the class it
 # exists to catch.
-defaults_seen="$("$GAIA_AWK" -F'\t' '$1 == "#defaults" { printf "%s:%s\n", $2, $3 }' "$WORK_DIR/yaml-records")"
+defaults_seen="$("$GAIA_AWK" -F'\t' '$1 == "#defaults" { printf "%s:%s\n", $2, $3 }' "$WORK_DIRECTORY/yaml-records")"
 if [ -n "$defaults_seen" ]; then
   printf '%s\n' "$defaults_seen" >&2
   cat >&2 <<REFUSAL
-$PROG: a \`defaults:\` key is present in the scanned workflow YAML, at the
+$PROGRAM_NAME: a \`defaults:\` key is present in the scanned workflow YAML, at the
 line(s) above. It moves the resolved shell for every \`run:\` step beneath it,
 and this gate resolves a step's own \`shell:\` key only. Grading these steps
 would answer from the wrong default, so nothing was graded. Implementing the
@@ -825,10 +825,10 @@ fi
 # guard is owed on any of them: awk exits 0 over a file holding no matching
 # record, so a record kind the tree never produced yields an empty file rather
 # than a failure under this script's own errexit.
-"$GAIA_AWK" -F'\t' '$1 == "#armed"  { print $2 }' "$WORK_DIR/records" | LC_ALL=C sort -u > "$WORK_DIR/closure"
-"$GAIA_AWK" -F'\t' '$1 == "#source" { printf "%s\t%s\n", $2, $3 }' "$WORK_DIR/records" > "$WORK_DIR/edges"
-"$GAIA_AWK" -F'\t' '$1 == "#hit"    { print }' "$WORK_DIR/records" > "$WORK_DIR/hits"
-"$GAIA_AWK" -F'\t' '$1 == "#file"   { printf "%s\t%s\n", $2, $3 }' "$WORK_DIR/records" | LC_ALL=C sort -u > "$WORK_DIR/index"
+"$GAIA_AWK" -F'\t' '$1 == "#armed"  { print $2 }' "$WORK_DIRECTORY/records" | LC_ALL=C sort -u > "$WORK_DIRECTORY/closure"
+"$GAIA_AWK" -F'\t' '$1 == "#source" { printf "%s\t%s\n", $2, $3 }' "$WORK_DIRECTORY/records" > "$WORK_DIRECTORY/edges"
+"$GAIA_AWK" -F'\t' '$1 == "#hit"    { print }' "$WORK_DIRECTORY/records" > "$WORK_DIRECTORY/hits"
+"$GAIA_AWK" -F'\t' '$1 == "#file"   { printf "%s\t%s\n", $2, $3 }' "$WORK_DIRECTORY/records" | LC_ALL=C sort -u > "$WORK_DIRECTORY/index"
 
 # Transitive closure over the source edges. A fixed-point loop rather than a
 # recursive walk, because bash 3.2 has no associative array to memoize with and
@@ -836,26 +836,26 @@ fi
 # round is cheaper than the bookkeeping that would avoid it.
 while : ; do
   "$GAIA_AWK" -F'\t' 'NR == FNR { seed[$0] = 1; next } ($1 in seed) { print $2 }' \
-    "$WORK_DIR/closure" "$WORK_DIR/edges" | LC_ALL=C sort -u > "$WORK_DIR/bases"
+    "$WORK_DIRECTORY/closure" "$WORK_DIRECTORY/edges" | LC_ALL=C sort -u > "$WORK_DIRECTORY/bases"
   "$GAIA_AWK" -F'\t' 'NR == FNR { want[$0] = 1; next } ($1 in want) { print $2 }' \
-    "$WORK_DIR/bases" "$WORK_DIR/index" | LC_ALL=C sort -u > "$WORK_DIR/reached"
-  LC_ALL=C comm -13 "$WORK_DIR/closure" "$WORK_DIR/reached" > "$WORK_DIR/added"
-  [ -s "$WORK_DIR/added" ] || break
-  LC_ALL=C sort -u "$WORK_DIR/closure" "$WORK_DIR/added" > "$WORK_DIR/closure.next"
-  mv "$WORK_DIR/closure.next" "$WORK_DIR/closure"
+    "$WORK_DIRECTORY/bases" "$WORK_DIRECTORY/index" | LC_ALL=C sort -u > "$WORK_DIRECTORY/reached"
+  LC_ALL=C comm -13 "$WORK_DIRECTORY/closure" "$WORK_DIRECTORY/reached" > "$WORK_DIRECTORY/added"
+  [ -s "$WORK_DIRECTORY/added" ] || break
+  LC_ALL=C sort -u "$WORK_DIRECTORY/closure" "$WORK_DIRECTORY/added" > "$WORK_DIRECTORY/closure.next"
+  mv "$WORK_DIRECTORY/closure.next" "$WORK_DIRECTORY/closure"
 done
 
 report=""
-for f in ${sh_files[@]+"${sh_files[@]}"}; do
-  grep -qxF -- "$f" "$WORK_DIR/closure" || continue
-  hits="$("$GAIA_AWK" -F'\t' -v f="$f" '$2 == f { printf "%s:%s: %s\n", $2, $3, $4 }' "$WORK_DIR/hits")"
+for file_path in ${sh_files[@]+"${sh_files[@]}"}; do
+  grep -qxF -- "$file_path" "$WORK_DIRECTORY/closure" || continue
+  hits="$("$GAIA_AWK" -F'\t' -v file_path="$file_path" '$2 == file_path { printf "%s:%s: %s\n", $2, $3, $4 }' "$WORK_DIRECTORY/hits")"
   [ -z "$hits" ] || report+="$hits"$'\n'
 done
 
 # No closure test on this arm: a `run:` body is its own script, so it is graded
 # by its own step and inherits nothing from the file around it.
-for f in ${yaml_files[@]+"${yaml_files[@]}"}; do
-  hits="$("$GAIA_AWK" -F'\t' -v f="$f" '$1 == "#hit" && $2 == f { printf "%s:%s: %s\n", $2, $3, $4 }' "$WORK_DIR/yaml-records")"
+for file_path in ${yaml_files[@]+"${yaml_files[@]}"}; do
+  hits="$("$GAIA_AWK" -F'\t' -v file_path="$file_path" '$1 == "#hit" && $2 == file_path { printf "%s:%s: %s\n", $2, $3, $4 }' "$WORK_DIRECTORY/yaml-records")"
   [ -z "$hits" ] || report+="$hits"$'\n'
 done
 
@@ -876,5 +876,5 @@ REMEDY
   exit 1
 fi
 
-printf '%s: clean\n' "$PROG" >&2
+printf '%s: clean\n' "$PROGRAM_NAME" >&2
 exit 0

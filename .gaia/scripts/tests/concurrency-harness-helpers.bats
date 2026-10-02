@@ -79,12 +79,12 @@ SH
 }
 
 @test "run_with composes inside run_in without losing either the cwd or the env" {
-  dir="$BATS_TEST_TMPDIR/sub"
-  mkdir -p "$dir"
+  directory="$BATS_TEST_TMPDIR/sub"
+  mkdir -p "$directory"
   printf 'printf "CWD=[%%s] STUB=[%%s]\\n" "$(pwd -P)" "${STUBVAR:-unset}"\n' > "$HOOK"
 
-  run run_in "$dir" -- run_with STUBVAR=nested -- gaia_deliver_hook 'x' "$HOOK"
+  run run_in "$directory" -- run_with STUBVAR=nested -- gaia_deliver_hook 'x' "$HOOK"
   [ "$status" -eq 0 ]
-  grep -qF -- "CWD=[$(cd "$dir" && pwd -P)]" <<<"$output"
+  grep -qF -- "CWD=[$(cd "$directory" && pwd -P)]" <<<"$output"
   grep -qF -- 'STUB=[nested]' <<<"$output"
 }

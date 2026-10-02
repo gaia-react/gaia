@@ -17,7 +17,7 @@ assert_contains() {
 setup() {
   THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   SCRIPT="$THIS_DIRECTORY/../verify-required-checks.sh"
-  WORKFLOWS_DIR="$THIS_DIRECTORY/../../../.github/workflows"
+  WORKFLOWS_DIRECTORY="$THIS_DIRECTORY/../../../.github/workflows"
   # Built at runtime so this file never names the deleted workflow literally.
   DELETED_WORKFLOW="code-review-audit"".yml"
   [ -x "$SCRIPT" ] || skip "verify-required-checks.sh not executable"
@@ -104,7 +104,7 @@ Vitest (.gaia/cli)"
   # missing", retiring the specific-context reporting they exist to guard.
   # Pin the count so that desync fails loudly instead.
   local missing_bullets
-  missing_bullets=$(awk '/^MISSING/{f=1;next} f && /^  - /{c++} END{print c+0}' <<<"$output")
+  missing_bullets=$(awk '/^MISSING/{inside_missing_section=1;next} inside_missing_section && /^  - /{bullet_count++} END{print bullet_count+0}' <<<"$output")
   [ "$missing_bullets" -eq 1 ]
 }
 
@@ -150,9 +150,9 @@ declared_contexts() {
 # `name:` under <workflows-dir> equals. Prints one per line; empty means every
 # one maps.
 unmapped_contexts() {
-  local workflows_dir="$1" job_names context
+  local workflows_directory="$1" job_names context
   job_names="$(awk '/^    name:/ { sub(/^    name:[ ]*/, ""); gsub(/^["'"'"']|["'"'"']$/, ""); print }' \
-    "$workflows_dir"/*.yml)"
+    "$workflows_directory"/*.yml)"
   while IFS= read -r context; do
     [ "$context" = "GAIA-Audit" ] && continue
     grep -qxF -- "$context" <<<"$job_names" || printf '%s\n' "$context"
@@ -160,7 +160,7 @@ unmapped_contexts() {
 }
 
 @test "the maintainer Claude review workflow is gone" {
-  [ ! -e "$WORKFLOWS_DIR/${DELETED_WORKFLOW}" ]
+  [ ! -e "$WORKFLOWS_DIRECTORY/${DELETED_WORKFLOW}" ]
 }
 
 @test "the declared contexts are exactly the five the maintainer ruleset requires" {
@@ -173,7 +173,7 @@ unmapped_contexts() {
 
 @test "every declared context except GAIA-Audit equals a job name in a real workflow" {
   local unmapped
-  unmapped="$(unmapped_contexts "$WORKFLOWS_DIR")"
+  unmapped="$(unmapped_contexts "$WORKFLOWS_DIRECTORY")"
   [ -z "$unmapped" ] || { printf 'declared context with no job: %s\n' "$unmapped" >&2; return 1; }
 }
 
@@ -181,7 +181,7 @@ unmapped_contexts() {
   local fixture="$BATS_TEST_TMPDIR/workflows" name
   mkdir -p "$fixture"
   for name in audit-ci-tests chromatic cli-tests tests; do
-    cp "$WORKFLOWS_DIR/${name}.yml" "$fixture/"
+    cp "$WORKFLOWS_DIRECTORY/${name}.yml" "$fixture/"
   done
   # Control: the untouched copy maps every context, so the failure below is
   # caused by the removal and not by a fixture that never mapped.
@@ -193,7 +193,7 @@ unmapped_contexts() {
 }
 
 @test "audit-ci-tests.yml triggers on pull_request, covers every shard, and names no deleted workflow" {
-  local workflow="$WORKFLOWS_DIR/audit-ci-tests.yml" shard shard_count=0
+  local workflow="$WORKFLOWS_DIRECTORY/audit-ci-tests.yml" shard shard_count=0
   grep -qE '^  pull_request:' "$workflow"
   while IFS= read -r shard; do
     [ -n "$shard" ] || continue

@@ -35,7 +35,7 @@ setup() {
   # shellcheck disable=SC1090
   source "$SCRIPT"
   bats5 noop
-  [ -z "${d+set}" ]
+  [ -z "${candidate_directory+set}" ]
   [ -z "${resolved_bash+set}" ]
   [ -z "${major+set}" ]
 }

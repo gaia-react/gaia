@@ -26,9 +26,9 @@
 TTL=21600
 
 # Resolve project root (parent of .gaia/) so the script works regardless of cwd.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-GAIA_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-PROJECT_ROOT="$(cd "$GAIA_DIR/.." && pwd)"
+SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GAIA_DIRECTORY="$(cd "$SCRIPT_DIRECTORY/.." && pwd)"
+PROJECT_ROOT="$(cd "$GAIA_DIRECTORY/.." && pwd)"
 
 # debt/count.json and debt/refresh-requested are registry scope `shared`: one
 # physical copy per clone, which the statusline reads by resolving the main
@@ -37,9 +37,9 @@ PROJECT_ROOT="$(cd "$GAIA_DIR/.." && pwd)"
 # the resolver the same question the reader asks. Degrade-to-local rather than
 # fail (D-5.3-c), matching .gaia/statusline/gaia-statusline.sh: with no resolver
 # to ask, the local root is the honest answer and the refresher still refreshes.
-if [ -f "$GAIA_DIR/scripts/main-root-lib.sh" ]; then
+if [ -f "$GAIA_DIRECTORY/scripts/main-root-lib.sh" ]; then
   # shellcheck source=/dev/null
-  . "$GAIA_DIR/scripts/main-root-lib.sh" 2>/dev/null || true
+  . "$GAIA_DIRECTORY/scripts/main-root-lib.sh" 2>/dev/null || true
 fi
 STATE_ROOT=""
 if command -v gaia_resolve_main_root >/dev/null 2>&1; then
@@ -47,25 +47,25 @@ if command -v gaia_resolve_main_root >/dev/null 2>&1; then
 fi
 [ -n "$STATE_ROOT" ] || STATE_ROOT="$PROJECT_ROOT"
 
-DEBT_DIR="$STATE_ROOT/.gaia/local/debt"
-CACHE_FILE="$DEBT_DIR/count.json"
-SENTINEL="$DEBT_DIR/refresh-requested"
+DEBT_DIRECTORY="$STATE_ROOT/.gaia/local/debt"
+CACHE_FILE="$DEBT_DIRECTORY/count.json"
+SENTINEL="$DEBT_DIRECTORY/refresh-requested"
 
 now=$(date +%s)
 
 # Read previous cache values (used as fallbacks on partial failure).
-prev_computed_at=0
-prev_open_count=0
-have_prev_cache=false
+previous_computed_at=0
+previous_open_count=0
+have_previous_cache=false
 if [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
-  have_prev_cache=true
-  prev_computed_at=$(jq -r '.computedAt // 0' "$CACHE_FILE" 2>/dev/null)
-  prev_open_count=$(jq -r '.openCount // 0' "$CACHE_FILE" 2>/dev/null)
-  case "$prev_computed_at" in
-    ''|*[!0-9]*) prev_computed_at=0 ;;
+  have_previous_cache=true
+  previous_computed_at=$(jq -r '.computedAt // 0' "$CACHE_FILE" 2>/dev/null)
+  previous_open_count=$(jq -r '.openCount // 0' "$CACHE_FILE" 2>/dev/null)
+  case "$previous_computed_at" in
+    ''|*[!0-9]*) previous_computed_at=0 ;;
   esac
-  case "$prev_open_count" in
-    ''|*[!0-9]*) prev_open_count=0 ;;
+  case "$previous_open_count" in
+    ''|*[!0-9]*) previous_open_count=0 ;;
   esac
 fi
 
@@ -77,7 +77,7 @@ if [ -e "$SENTINEL" ]; then
 elif [ ! -f "$CACHE_FILE" ]; then
   should_recompute=true
 else
-  age=$((now - prev_computed_at))
+  age=$((now - previous_computed_at))
   if [ "$age" -ge "$TTL" ]; then
     should_recompute=true
   fi
@@ -88,7 +88,7 @@ fi
 
 # Directory creation is this writer's own responsibility: on a fresh clone or
 # in CI no statusline tick has run, so .gaia/local/debt/ may not exist yet.
-mkdir -p "$DEBT_DIR" 2>/dev/null
+mkdir -p "$DEBT_DIRECTORY" 2>/dev/null
 
 # ---------- Recompute openCount ----------
 # Count open issues carrying the `tech-debt` label via gh, excluding any that
@@ -105,23 +105,23 @@ mkdir -p "$DEBT_DIR" 2>/dev/null
 #
 # With local jq the raw issue list is pulled and filtered here; without it,
 # gh's own `--jq` computes the count server-side.
-open_count="$prev_open_count"
+open_count="$previous_open_count"
 recompute_ok=false
 # One expression, used by whichever arm runs, so the two can never drift apart.
 COUNT_FILTER='[.[] | select([.labels[].name] | (index("in-progress") or index("debt:spec-pending") or index("debt:spec-active")) | not)] | length'
 if command -v gh >/dev/null 2>&1; then
   if command -v jq >/dev/null 2>&1; then
     issues_json=$(gh issue list --label tech-debt --state open --json number,labels --limit 1000 2>/dev/null)
-    count_out=$(printf '%s' "$issues_json" | jq "$COUNT_FILTER" 2>/dev/null)
-    case "$count_out" in
+    count_result=$(printf '%s' "$issues_json" | jq "$COUNT_FILTER" 2>/dev/null)
+    case "$count_result" in
       ''|*[!0-9]*) ;;
-      *) open_count="$count_out"; recompute_ok=true ;;
+      *) open_count="$count_result"; recompute_ok=true ;;
     esac
   else
-    count_out=$(gh issue list --label tech-debt --state open --json number,labels --jq "$COUNT_FILTER" --limit 1000 2>/dev/null)
-    case "$count_out" in
+    count_result=$(gh issue list --label tech-debt --state open --json number,labels --jq "$COUNT_FILTER" --limit 1000 2>/dev/null)
+    case "$count_result" in
       ''|*[!0-9]*) ;;
-      *) open_count="$count_out"; recompute_ok=true ;;
+      *) open_count="$count_result"; recompute_ok=true ;;
     esac
   fi
 fi
@@ -130,7 +130,7 @@ fi
 # the cache untouched and keep the sentinel so the next tick retries. Only when
 # there is NO prior cache do we seed a definite openCount 0, so the statusline
 # reads 0 and renders nothing rather than inventing a count.
-if [ "$recompute_ok" != "true" ] && [ "$have_prev_cache" = "true" ]; then
+if [ "$recompute_ok" != "true" ] && [ "$have_previous_cache" = "true" ]; then
   exit 0
 fi
 if [ "$recompute_ok" != "true" ]; then
@@ -138,9 +138,9 @@ if [ "$recompute_ok" != "true" ]; then
 fi
 
 # ---------- Write cache atomically ----------
-tmp_file="$(mktemp "$DEBT_DIR/.count.XXXXXX" 2>/dev/null)"
-if [ -z "$tmp_file" ]; then
-  tmp_file="$CACHE_FILE.tmp.$$"
+temporary_file="$(mktemp "$DEBT_DIRECTORY/.count.XXXXXX" 2>/dev/null)"
+if [ -z "$temporary_file" ]; then
+  temporary_file="$CACHE_FILE.tmp.$$"
 fi
 
 if command -v jq >/dev/null 2>&1; then
@@ -148,15 +148,15 @@ if command -v jq >/dev/null 2>&1; then
     --argjson openCount "$open_count" \
     --argjson computedAt "$now" \
     '{schema: 1, openCount: $openCount, computedAt: $computedAt}' \
-    > "$tmp_file" 2>/dev/null
+    > "$temporary_file" 2>/dev/null
 else
-  printf '{"schema":1,"openCount":%s,"computedAt":%s}\n' "$open_count" "$now" > "$tmp_file" 2>/dev/null
+  printf '{"schema":1,"openCount":%s,"computedAt":%s}\n' "$open_count" "$now" > "$temporary_file" 2>/dev/null
 fi
 
-if [ -s "$tmp_file" ]; then
-  mv "$tmp_file" "$CACHE_FILE" 2>/dev/null
+if [ -s "$temporary_file" ]; then
+  mv "$temporary_file" "$CACHE_FILE" 2>/dev/null
 else
-  rm -f "$tmp_file" 2>/dev/null
+  rm -f "$temporary_file" 2>/dev/null
 fi
 
 # Clear the sentinel after a genuine recompute (not the zero-seed fallback: a

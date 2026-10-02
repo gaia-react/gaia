@@ -51,9 +51,9 @@ AUDIT_CLAUDEMD_BUDGET=500
 AUDIT_RULE_BUDGET=200
 
 # Resolve project root (parent of .gaia/) so the script works regardless of cwd.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-GAIA_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-PROJECT_ROOT="$(cd "$GAIA_DIR/.." && pwd)"
+SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GAIA_DIRECTORY="$(cd "$SCRIPT_DIRECTORY/.." && pwd)"
+PROJECT_ROOT="$(cd "$GAIA_DIRECTORY/.." && pwd)"
 
 # cache/shared/ is registry scope `shared`: one physical copy per clone, which
 # the statusline reads by resolving the main checkout. This script's own
@@ -69,9 +69,9 @@ PROJECT_ROOT="$(cd "$GAIA_DIR/.." && pwd)"
 # PROJECT_ROOT, because those are tracked files that legitimately differ per
 # branch. Repointing them wholesale would make this refresher report a fact
 # about a tree nobody is in.
-if [ -f "$GAIA_DIR/scripts/main-root-lib.sh" ]; then
+if [ -f "$GAIA_DIRECTORY/scripts/main-root-lib.sh" ]; then
   # shellcheck source=/dev/null
-  . "$GAIA_DIR/scripts/main-root-lib.sh" 2>/dev/null || true
+  . "$GAIA_DIRECTORY/scripts/main-root-lib.sh" 2>/dev/null || true
 fi
 STATE_ROOT=""
 if command -v gaia_resolve_main_root >/dev/null 2>&1; then
@@ -79,18 +79,18 @@ if command -v gaia_resolve_main_root >/dev/null 2>&1; then
 fi
 [ -n "$STATE_ROOT" ] || STATE_ROOT="$PROJECT_ROOT"
 
-CACHE_DIR="$STATE_ROOT/.gaia/local/cache/shared"
-CACHE_FILE="$CACHE_DIR/update-check.json"
-VERSION_FILE="$GAIA_DIR/VERSION"
+CACHE_DIRECTORY="$STATE_ROOT/.gaia/local/cache/shared"
+CACHE_FILE="$CACHE_DIRECTORY/update-check.json"
+VERSION_FILE="$GAIA_DIRECTORY/VERSION"
 # The review snapshot lives at registry scope "shared", same anchor as the
 # cache: one physical copy per clone, under the main checkout.
 HARDEN_SNAPSHOT_FILE="$STATE_ROOT/.gaia/local/harden/reviewed.json"
 
 # Source the Serena language-drift library (Phase 1). Guarded so a missing
 # library never breaks the refresher.
-SERENA_LIB="$GAIA_DIR/scripts/lib/serena-lang.sh"
+SERENA_LIBRARY="$GAIA_DIRECTORY/scripts/lib/serena-lang.sh"
 # shellcheck source=.gaia/scripts/lib/serena-lang.sh
-[ -f "$SERENA_LIB" ] && . "$SERENA_LIB"
+[ -f "$SERENA_LIBRARY" ] && . "$SERENA_LIBRARY"
 
 # Today's harden-nudge count text: shared by the no-snapshot composition
 # below and the upgrade-window seed for a cache written before
@@ -115,61 +115,61 @@ harden_count_reason() {
 now=$(date +%s)
 
 # Read previous cache values (used as fallbacks on partial failure).
-prev_checked_at=0
-prev_outdated_count=0
-prev_gaia_latest=""
-prev_harden_count=0
-prev_harden_unclassified=0
-prev_harden_reason=""
-prev_residue_count=0
-prev_wiki_drift_count=0
-prev_audit_last_applied_at=0
-prev_audit_memory_count=0
-prev_audit_memory_baseline=0
+previous_checked_at=0
+previous_outdated_count=0
+previous_gaia_latest=""
+previous_harden_count=0
+previous_harden_unclassified=0
+previous_harden_reason=""
+previous_residue_count=0
+previous_wiki_drift_count=0
+previous_audit_last_applied_at=0
+previous_audit_memory_count=0
+previous_audit_memory_baseline=0
 if [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
-  prev_checked_at=$(jq -r '.checkedAt // 0' "$CACHE_FILE" 2>/dev/null)
-  prev_outdated_count=$(jq -r '.outdatedCount // 0' "$CACHE_FILE" 2>/dev/null)
+  previous_checked_at=$(jq -r '.checkedAt // 0' "$CACHE_FILE" 2>/dev/null)
+  previous_outdated_count=$(jq -r '.outdatedCount // 0' "$CACHE_FILE" 2>/dev/null)
   # No prev_ seed for gaiaCurrent or gaiaHasUpdate, unlike their siblings here:
   # gaiaCurrent is read from the local .gaia/VERSION file (authoritative; a stale
   # cached value would be worse than none), and gaiaHasUpdate is derived from
   # gaia_current + gaia_latest, both of which already carry their own fallbacks.
-  prev_gaia_latest=$(jq -r '.gaiaLatest // ""' "$CACHE_FILE" 2>/dev/null)
-  prev_harden_count=$(jq -r '.hardenCandidateCount // 0' "$CACHE_FILE" 2>/dev/null)
-  prev_harden_unclassified=$(jq -r '.hardenUnclassifiedCount // 0' "$CACHE_FILE" 2>/dev/null)
+  previous_gaia_latest=$(jq -r '.gaiaLatest // ""' "$CACHE_FILE" 2>/dev/null)
+  previous_harden_count=$(jq -r '.hardenCandidateCount // 0' "$CACHE_FILE" 2>/dev/null)
+  previous_harden_unclassified=$(jq -r '.hardenUnclassifiedCount // 0' "$CACHE_FILE" 2>/dev/null)
   # A cache written before hardenNudgeReason existed (the upgrade window) has
   # no key to read, so seed it from the counts it does carry with today's
   # composition, never "": otherwise the first refresh after an upgrade that
   # fails to read harden-tally would write an empty reason and silently drop a
   # nudge the old cache was showing.
   if jq -e 'has("hardenNudgeReason")' "$CACHE_FILE" >/dev/null 2>&1; then
-    prev_harden_reason=$(jq -r '.hardenNudgeReason // ""' "$CACHE_FILE" 2>/dev/null)
+    previous_harden_reason=$(jq -r '.hardenNudgeReason // ""' "$CACHE_FILE" 2>/dev/null)
   else
-    prev_harden_reason=$(harden_count_reason "$prev_harden_count" "$prev_harden_unclassified")
+    previous_harden_reason=$(harden_count_reason "$previous_harden_count" "$previous_harden_unclassified")
   fi
-  prev_residue_count=$(jq -r '.residueCandidateCount // 0' "$CACHE_FILE" 2>/dev/null)
-  prev_wiki_drift_count=$(jq -r '.wikiDriftCount // 0' "$CACHE_FILE" 2>/dev/null)
-  prev_audit_last_applied_at=$(jq -r '.auditLastAppliedAt // 0' "$CACHE_FILE" 2>/dev/null)
-  prev_audit_memory_count=$(jq -r '.auditMemoryCount // 0' "$CACHE_FILE" 2>/dev/null)
-  prev_audit_memory_baseline=$(jq -r '.auditMemoryBaseline // 0' "$CACHE_FILE" 2>/dev/null)
-  case "$prev_checked_at" in
-    ''|*[!0-9]*) prev_checked_at=0 ;;
+  previous_residue_count=$(jq -r '.residueCandidateCount // 0' "$CACHE_FILE" 2>/dev/null)
+  previous_wiki_drift_count=$(jq -r '.wikiDriftCount // 0' "$CACHE_FILE" 2>/dev/null)
+  previous_audit_last_applied_at=$(jq -r '.auditLastAppliedAt // 0' "$CACHE_FILE" 2>/dev/null)
+  previous_audit_memory_count=$(jq -r '.auditMemoryCount // 0' "$CACHE_FILE" 2>/dev/null)
+  previous_audit_memory_baseline=$(jq -r '.auditMemoryBaseline // 0' "$CACHE_FILE" 2>/dev/null)
+  case "$previous_checked_at" in
+    ''|*[!0-9]*) previous_checked_at=0 ;;
   esac
-  case "$prev_wiki_drift_count" in
-    ''|*[!0-9]*) prev_wiki_drift_count=0 ;;
+  case "$previous_wiki_drift_count" in
+    ''|*[!0-9]*) previous_wiki_drift_count=0 ;;
   esac
-  case "$prev_audit_last_applied_at" in
-    ''|*[!0-9]*) prev_audit_last_applied_at=0 ;;
+  case "$previous_audit_last_applied_at" in
+    ''|*[!0-9]*) previous_audit_last_applied_at=0 ;;
   esac
-  case "$prev_audit_memory_count" in
-    ''|*[!0-9]*) prev_audit_memory_count=0 ;;
+  case "$previous_audit_memory_count" in
+    ''|*[!0-9]*) previous_audit_memory_count=0 ;;
   esac
-  case "$prev_audit_memory_baseline" in
-    ''|*[!0-9]*) prev_audit_memory_baseline=0 ;;
+  case "$previous_audit_memory_baseline" in
+    ''|*[!0-9]*) previous_audit_memory_baseline=0 ;;
   esac
 fi
 
 # TTL gate.
-age=$((now - prev_checked_at))
+age=$((now - previous_checked_at))
 if [ "$age" -lt "$TTL" ]; then
   exit 0
 fi
@@ -179,12 +179,12 @@ fi
 # write. Plain string equality only (a completed review clears the cache
 # directly, this is not the clock the TTL gate uses), empty on an absent,
 # unparseable, or field-missing snapshot.
-snapshot_token_t0=""
+snapshot_token_before=""
 if [ -f "$HARDEN_SNAPSHOT_FILE" ] && command -v jq >/dev/null 2>&1; then
-  snapshot_token_t0="$(jq -r '.reviewed_at // empty' "$HARDEN_SNAPSHOT_FILE" 2>/dev/null)"
+  snapshot_token_before="$(jq -r '.reviewed_at // empty' "$HARDEN_SNAPSHOT_FILE" 2>/dev/null)"
 fi
 
-mkdir -p "$CACHE_DIR" 2>/dev/null
+mkdir -p "$CACHE_DIRECTORY" 2>/dev/null
 
 # Single-flight lock. The statusline fires this script on every render, and
 # the TTL gate above reads `checkedAt`, which is only written when a run
@@ -210,25 +210,25 @@ mkdir -p "$CACHE_DIR" 2>/dev/null
 # write is an atomic mv. And a contender that renames a lock aside in the
 # instant between its taker's mkdir and owner write hands it back ownerless,
 # so no run releases it and refreshes wait out LOCK_STALE_MINUTES.
-LOCK_DIR="$CACHE_DIR/.update-check.lock"
+LOCK_DIRECTORY="$CACHE_DIRECTORY/.update-check.lock"
 LOCK_STALE_MINUTES=10
 lock_is_stale() {
   [ -n "$(find "$1" -maxdepth 0 -mmin +"$LOCK_STALE_MINUTES" 2>/dev/null)" ]
 }
-if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-  if lock_is_stale "$LOCK_DIR" && mv "$LOCK_DIR" "$LOCK_DIR.stale.$$" 2>/dev/null; then
-    if ! lock_is_stale "$LOCK_DIR.stale.$$"; then
-      mv "$LOCK_DIR.stale.$$" "$LOCK_DIR" 2>/dev/null
+if ! mkdir "$LOCK_DIRECTORY" 2>/dev/null; then
+  if lock_is_stale "$LOCK_DIRECTORY" && mv "$LOCK_DIRECTORY" "$LOCK_DIRECTORY.stale.$$" 2>/dev/null; then
+    if ! lock_is_stale "$LOCK_DIRECTORY.stale.$$"; then
+      mv "$LOCK_DIRECTORY.stale.$$" "$LOCK_DIRECTORY" 2>/dev/null
       exit 0
     fi
-    rm -rf "$LOCK_DIR.stale.$$" 2>/dev/null
-    mkdir "$LOCK_DIR" 2>/dev/null || exit 0
+    rm -rf "$LOCK_DIRECTORY.stale.$$" 2>/dev/null
+    mkdir "$LOCK_DIRECTORY" 2>/dev/null || exit 0
   else
     exit 0
   fi
 fi
-printf '%s\n' "$$" > "$LOCK_DIR/owner" 2>/dev/null
-trap '[ "$(cat "$LOCK_DIR/owner" 2>/dev/null)" = "$$" ] && rm -rf "$LOCK_DIR" 2>/dev/null' EXIT
+printf '%s\n' "$$" > "$LOCK_DIRECTORY/owner" 2>/dev/null
+trap '[ "$(cat "$LOCK_DIRECTORY/owner" 2>/dev/null)" = "$$" ] && rm -rf "$LOCK_DIRECTORY" 2>/dev/null' EXIT
 
 # ---------- context-reading sweep ----------
 # The statusline writes one context file per session and no SessionEnd hook
@@ -238,9 +238,9 @@ trap '[ "$(cat "$LOCK_DIR/owner" 2>/dev/null)" = "$$" ] && rm -rf "$LOCK_DIR" 2>
 # 7 days: far past the statusline's freshness window, so a live session's file
 # is never swept. A failed sweep never fails this script.
 CONTEXT_SWEEP_DAYS=7
-CONTEXT_DIR="$CACHE_DIR/context"
-if [ -d "$CONTEXT_DIR" ] && [ ! -L "$CONTEXT_DIR" ]; then
-  find "$CONTEXT_DIR" -maxdepth 1 -type f \( -name '*.json' -o -name '*.json.tmp.*' \) -mtime +"$CONTEXT_SWEEP_DAYS" -exec rm -f {} + 2>/dev/null || true
+CONTEXT_DIRECTORY="$CACHE_DIRECTORY/context"
+if [ -d "$CONTEXT_DIRECTORY" ] && [ ! -L "$CONTEXT_DIRECTORY" ]; then
+  find "$CONTEXT_DIRECTORY" -maxdepth 1 -type f \( -name '*.json' -o -name '*.json.tmp.*' \) -mtime +"$CONTEXT_SWEEP_DAYS" -exec rm -f {} + 2>/dev/null || true
 fi
 
 # ---------- outdatedCount ----------
@@ -251,12 +251,12 @@ fi
 # (wave members that are genuine upgrades) keeps the nudge from prodding for
 # updates that would be skipped. Falls back to the previous cached count on any
 # failure: missing binary, network error, parse error.
-outdated_count="$prev_outdated_count"
-GAIA_BIN="$GAIA_DIR/cli/gaia"
+outdated_count="$previous_outdated_count"
+GAIA_BIN="$GAIA_DIRECTORY/cli/gaia"
 if [ -x "$GAIA_BIN" ] && command -v jq >/dev/null 2>&1; then
-  updates_tmp="$(mktemp "$CACHE_DIR/.updates.XXXXXX" 2>/dev/null)"
-  if [ -n "$updates_tmp" ]; then
-    if (cd "$PROJECT_ROOT" && "$GAIA_BIN" update-deps run --emit-updates "$updates_tmp") >/dev/null 2>&1 && [ -s "$updates_tmp" ]; then
+  updates_temporary_file="$(mktemp "$CACHE_DIRECTORY/.updates.XXXXXX" 2>/dev/null)"
+  if [ -n "$updates_temporary_file" ]; then
+    if (cd "$PROJECT_ROOT" && "$GAIA_BIN" update-deps run --emit-updates "$updates_temporary_file") >/dev/null 2>&1 && [ -s "$updates_temporary_file" ]; then
       # Prefer the payload's `actionable_count`: it already excludes packages
       # the human snoozed via /update-deps (the gitignored decline ledger) and
       # counts only genuine upgrades. Older payloads without the field fall back
@@ -268,13 +268,13 @@ if [ -x "$GAIA_BIN" ] && command -v jq >/dev/null 2>&1; then
            | map(select(.current != .latest))
            | length)
         end
-      ' "$updates_tmp" 2>/dev/null)
+      ' "$updates_temporary_file" 2>/dev/null)
       case "$parsed" in
         ''|*[!0-9]*) ;;
         *) outdated_count="$parsed" ;;
       esac
     fi
-    rm -f "$updates_tmp" 2>/dev/null
+    rm -f "$updates_temporary_file" 2>/dev/null
   fi
 fi
 case "$outdated_count" in
@@ -295,7 +295,7 @@ esac
 # hardenNudgeReason is the text the /gaia-harden segment's Large form
 # renders; the statusline reads hardenCandidateCount directly for that
 # segment's Medium form and icon count, and hardenUnclassifiedCount keeps
-# being written only for the upgrade-window seed (see prev_harden_reason).
+# being written only for the upgrade-window seed (see previous_harden_reason).
 # Without a review snapshot (snapshot_present not true:
 # no snapshot yet, or a pre-SPEC/mock binary), the reason is today's count
 # text via harden_count_reason. With one, it names the trigger events
@@ -310,9 +310,9 @@ esac
 # own snapshot reading disagreeing with the file the script re-reads before
 # the write, a mismatch arm (a) cannot see because both of the script's own
 # reads of that file agree with each other.
-harden_count="$prev_harden_count"
-unclassified_count="$prev_harden_unclassified"
-harden_reason="$prev_harden_reason"
+harden_count="$previous_harden_count"
+unclassified_count="$previous_harden_unclassified"
+harden_reason="$previous_harden_reason"
 snapshot_present="false"
 snapshot_reviewed_at=""
 if [ -x "$GAIA_BIN" ] && command -v jq >/dev/null 2>&1; then
@@ -333,10 +333,10 @@ if [ -x "$GAIA_BIN" ] && command -v jq >/dev/null 2>&1; then
     if [ "$snapshot_present" = "true" ]; then
       harden_reason=$(printf '%s' "$tally_json" | jq -r '
         [.triggers[]?] as $triggers
-        | ($triggers | map(select(.type=="new_class")) | length) as $newk
+        | ($triggers | map(select(.type=="new_class")) | length) as $new_class_count
         | [
             (if ($triggers | any(.type=="schema_change")) then "tally changed" else empty end),
-            (if $newk > 0 then (if $newk == 1 then "1 new pattern" else "\($newk) new patterns" end) else empty end),
+            (if $new_class_count > 0 then (if $new_class_count == 1 then "1 new pattern" else "\($new_class_count) new patterns" end) else empty end),
             ($triggers[] | select(.type=="rising_class") | (.finding_class | split("/") | last | gsub("[^A-Za-z0-9._-]"; "") | if . == "" then "a pattern" else . end) + " rising"),
             (if ($triggers | any(.type=="rising_unclassified")) then "unclassified rising" else empty end)
           ]
@@ -370,7 +370,7 @@ esac
 # tally's own JSON, never branched on here, and never written to this cache.
 # Falls back to the previous cached count on any failure: missing binary,
 # gh/network error (gh_ok false), parse error.
-residue_count="$prev_residue_count"
+residue_count="$previous_residue_count"
 if [ -x "$GAIA_BIN" ] && command -v jq >/dev/null 2>&1; then
   residue_json="$(cd "$PROJECT_ROOT" && "$GAIA_BIN" residue-tally --count-only 2>/dev/null)"
   if [ -n "$residue_json" ]; then
@@ -394,7 +394,7 @@ esac
 # worktree would otherwise report that worktree's branch. Carries the previous
 # cached count forward on a missing binary, a non-zero exit, empty output, or a
 # non-integer drift_count, so a transient failure never clears a showing nudge.
-wiki_drift_count="$prev_wiki_drift_count"
+wiki_drift_count="$previous_wiki_drift_count"
 if [ -x "$GAIA_BIN" ] && command -v jq >/dev/null 2>&1; then
   if wiki_state_json="$(cd "$STATE_ROOT" && "$GAIA_BIN" wiki state --json 2>/dev/null)" \
     && [ -n "$wiki_state_json" ]; then
@@ -419,9 +419,9 @@ esac
 # Last-audit anchor: the newest .gaia/local/audit/KNOWLEDGE-*.md whose frontmatter
 # `status:` is `applied` (gitignored, machine-local). Its mtime is "last audit on
 # this machine". The newest whose `status:` is `draft` sets the resume signal.
-audit_last_applied_at="$prev_audit_last_applied_at"
-audit_memory_count="$prev_audit_memory_count"
-audit_memory_baseline="$prev_audit_memory_baseline"
+audit_last_applied_at="$previous_audit_last_applied_at"
+audit_memory_count="$previous_audit_memory_count"
+audit_memory_baseline="$previous_audit_memory_baseline"
 audit_nudge=false
 audit_nudge_reason=""
 
@@ -434,37 +434,37 @@ audit_nudge_reason=""
 # created worktree path has almost no memory history. Anchoring it to the main
 # checkout keeps this a fact about the clone, which is what the shared cache it
 # feeds is read as.
-MEMORY_DIR="$HOME/.claude/projects/${STATE_ROOT//\//-}/memory"
-if [ -d "$MEMORY_DIR" ]; then
-  mem_count=$(find "$MEMORY_DIR" -type f -name '*.md' 2>/dev/null | wc -l | tr -d '[:space:]')
-  case "$mem_count" in
+MEMORY_DIRECTORY="$HOME/.claude/projects/${STATE_ROOT//\//-}/memory"
+if [ -d "$MEMORY_DIRECTORY" ]; then
+  memory_count=$(find "$MEMORY_DIRECTORY" -type f -name '*.md' 2>/dev/null | wc -l | tr -d '[:space:]')
+  case "$memory_count" in
     ''|*[!0-9]*) ;;
-    *) audit_memory_count="$mem_count" ;;
+    *) audit_memory_count="$memory_count" ;;
   esac
 fi
 
 # Newest `applied` audit report → its mtime is the last-audit timestamp.
 applied_at=0
 draft_pending=false
-AUDIT_DIR="$STATE_ROOT/.gaia/local/audit"
-if [ -d "$AUDIT_DIR" ]; then
-  while IFS= read -r f; do
-    [ -f "$f" ] || continue
-    fm_status=$(sed -n '1,/^---[[:space:]]*$/p' "$f" 2>/dev/null \
+AUDIT_DIRECTORY="$STATE_ROOT/.gaia/local/audit"
+if [ -d "$AUDIT_DIRECTORY" ]; then
+  while IFS= read -r audit_report_file; do
+    [ -f "$audit_report_file" ] || continue
+    frontmatter_status=$(sed -n '1,/^---[[:space:]]*$/p' "$audit_report_file" 2>/dev/null \
       | grep -m1 -E '^status:[[:space:]]*' 2>/dev/null \
       | sed 's/^status:[[:space:]]*//' | tr -d '[:space:]')
-    if [ "$fm_status" = "applied" ] || [ "$fm_status" = "applied-partial" ]; then
+    if [ "$frontmatter_status" = "applied" ] || [ "$frontmatter_status" = "applied-partial" ]; then
       if [ "$applied_at" -eq 0 ] 2>/dev/null; then
-        m=$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null)
-        case "$m" in
+        modification_epoch=$(stat -f %m "$audit_report_file" 2>/dev/null || stat -c %Y "$audit_report_file" 2>/dev/null)
+        case "$modification_epoch" in
           ''|*[!0-9]*) ;;
-          *) applied_at="$m" ;;
+          *) applied_at="$modification_epoch" ;;
         esac
       fi
-    elif [ "$fm_status" = "draft" ]; then
+    elif [ "$frontmatter_status" = "draft" ]; then
       draft_pending=true
     fi
-  done < <(ls -t "$AUDIT_DIR"/KNOWLEDGE-*.md 2>/dev/null)
+  done < <(ls -t "$AUDIT_DIRECTORY"/KNOWLEDGE-*.md 2>/dev/null)
 fi
 # Advance the last-applied anchor (and reset the memory baseline to the count at
 # that audit) only when a newer applied report appears. This is the debounce:
@@ -476,20 +476,20 @@ if [ "$applied_at" -gt "$audit_last_applied_at" ] 2>/dev/null; then
 fi
 
 # (a) Per-machine drift, two independent arms, each surfacing its own label:
-#   - mem_drift:  memory grew by >= AUDIT_MEMORY_DELTA since the last applied audit
+#   - memory_drift:  memory grew by >= AUDIT_MEMORY_DELTA since the last applied audit
 #   - time_drift: >= AUDIT_DRIFT_DAYS elapsed since the last applied audit
 # The fire thresholds (>= 10 memories, >= 30 days) guarantee both counts are
 # plural, so the reason strings below carry no singular form.
-mem_delta=$((audit_memory_count - audit_memory_baseline))
-drift_secs=$((AUDIT_DRIFT_DAYS * 86400))
-mem_drift=false
+memory_delta=$((audit_memory_count - audit_memory_baseline))
+drift_seconds=$((AUDIT_DRIFT_DAYS * 86400))
+memory_drift=false
 time_drift=false
 days_since=0
-if [ "$mem_delta" -ge "$AUDIT_MEMORY_DELTA" ] 2>/dev/null; then
-  mem_drift=true
+if [ "$memory_delta" -ge "$AUDIT_MEMORY_DELTA" ] 2>/dev/null; then
+  memory_drift=true
 fi
 if [ "$audit_last_applied_at" -gt 0 ] 2>/dev/null \
-  && [ "$((now - audit_last_applied_at))" -ge "$drift_secs" ] 2>/dev/null; then
+  && [ "$((now - audit_last_applied_at))" -ge "$drift_seconds" ] 2>/dev/null; then
   time_drift=true
   days_since=$(( (now - audit_last_applied_at) / 86400 ))
 fi
@@ -528,9 +528,9 @@ done
 if [ "$draft_pending" = "true" ]; then
   audit_nudge=true
   audit_nudge_reason="resume draft"
-elif [ "$mem_drift" = "true" ]; then
+elif [ "$memory_drift" = "true" ]; then
   audit_nudge=true
-  audit_nudge_reason="$mem_delta new memories"
+  audit_nudge_reason="$memory_delta new memories"
 elif [ "$time_drift" = "true" ]; then
   audit_nudge=true
   audit_nudge_reason="$days_since days since review"
@@ -555,11 +555,11 @@ esac
 # lib (bash + jq + POSIX text tools; no yq). Empty array when Serena is not
 # registered, .serena/project.yml is absent, or there is no drift. The no-jq
 # write branch below hardcodes [] since the lib requires jq.
-serena_lang_drift_json="[]"
-if command -v jq >/dev/null 2>&1 && command -v serena_lang_drift >/dev/null 2>&1; then
-  computed="$(serena_lang_drift "$PROJECT_ROOT" 2>/dev/null)"
+serena_language_drift_json="[]"
+if command -v jq >/dev/null 2>&1 && command -v serena_language_drift >/dev/null 2>&1; then
+  computed="$(serena_language_drift "$PROJECT_ROOT" 2>/dev/null)"
   case "$computed" in
-    '['*']') serena_lang_drift_json="$computed" ;;
+    '['*']') serena_language_drift_json="$computed" ;;
   esac
 fi
 
@@ -589,7 +589,7 @@ fi
 gaia_latest="${gaia_latest#v}"
 # Fall back to previous value if both fetchers failed (don't blank it).
 if [ -z "$gaia_latest" ]; then
-  gaia_latest="$prev_gaia_latest"
+  gaia_latest="$previous_gaia_latest"
 fi
 
 # ---------- gaiaHasUpdate ----------
@@ -621,22 +621,22 @@ snapshot_token_now=""
 if [ -f "$HARDEN_SNAPSHOT_FILE" ] && command -v jq >/dev/null 2>&1; then
   snapshot_token_now="$(jq -r '.reviewed_at // empty' "$HARDEN_SNAPSHOT_FILE" 2>/dev/null)"
 fi
-checked_at_out="$now"
-if [ "$snapshot_token_now" != "$snapshot_token_t0" ] \
+checked_at_to_write="$now"
+if [ "$snapshot_token_now" != "$snapshot_token_before" ] \
   || { [ "$snapshot_present" = "true" ] && [ "$snapshot_token_now" != "$snapshot_reviewed_at" ]; }; then
   harden_reason=""
-  checked_at_out=0
+  checked_at_to_write=0
 fi
 
 # ---------- Write cache atomically ----------
-tmp_file="$(mktemp "$CACHE_DIR/.update-check.XXXXXX" 2>/dev/null)"
-if [ -z "$tmp_file" ]; then
-  tmp_file="$CACHE_FILE.tmp.$$"
+temporary_file="$(mktemp "$CACHE_DIRECTORY/.update-check.XXXXXX" 2>/dev/null)"
+if [ -z "$temporary_file" ]; then
+  temporary_file="$CACHE_FILE.tmp.$$"
 fi
 
 if command -v jq >/dev/null 2>&1; then
   jq -n \
-    --argjson checkedAt "$checked_at_out" \
+    --argjson checkedAt "$checked_at_to_write" \
     --argjson outdatedCount "$outdated_count" \
     --arg gaiaCurrent "$gaia_current" \
     --arg gaiaLatest "$gaia_latest" \
@@ -651,9 +651,9 @@ if command -v jq >/dev/null 2>&1; then
     --argjson auditLastAppliedAt "$audit_last_applied_at" \
     --argjson auditMemoryCount "$audit_memory_count" \
     --argjson auditMemoryBaseline "$audit_memory_baseline" \
-    --argjson serenaLangDrift "$serena_lang_drift_json" \
+    --argjson serenaLangDrift "$serena_language_drift_json" \
     '{checkedAt: $checkedAt, outdatedCount: $outdatedCount, gaiaCurrent: $gaiaCurrent, gaiaLatest: $gaiaLatest, gaiaHasUpdate: $gaiaHasUpdate, hardenCandidateCount: $hardenCandidateCount, hardenUnclassifiedCount: $hardenUnclassifiedCount, hardenNudgeReason: $hardenNudgeReason, residueCandidateCount: $residueCandidateCount, wikiDriftCount: $wikiDriftCount, auditNudge: $auditNudge, auditNudgeReason: $auditNudgeReason, auditLastAppliedAt: $auditLastAppliedAt, auditMemoryCount: $auditMemoryCount, auditMemoryBaseline: $auditMemoryBaseline, serenaLangDrift: $serenaLangDrift}' \
-    > "$tmp_file" 2>/dev/null
+    > "$temporary_file" 2>/dev/null
 else
   # jq not available; emit valid JSON via printf. serenaLangDrift is empty:
   # deriving it requires jq.
@@ -662,14 +662,14 @@ else
   # startup) require jq themselves, so neither branch ever runs without it.
   # Nothing here needs escaping.
   printf '{"checkedAt":%s,"outdatedCount":%s,"gaiaCurrent":"%s","gaiaLatest":"%s","gaiaHasUpdate":%s,"hardenCandidateCount":%s,"hardenUnclassifiedCount":%s,"hardenNudgeReason":"%s","residueCandidateCount":%s,"wikiDriftCount":%s,"auditNudge":%s,"auditNudgeReason":"%s","auditLastAppliedAt":%s,"auditMemoryCount":%s,"auditMemoryBaseline":%s,"serenaLangDrift":[]}\n' \
-    "$checked_at_out" "$outdated_count" "$gaia_current" "$gaia_latest" "$gaia_has_update" "$harden_count" "$unclassified_count" "$harden_reason" "$residue_count" "$wiki_drift_count" "$audit_nudge" "$audit_nudge_reason" "$audit_last_applied_at" "$audit_memory_count" "$audit_memory_baseline" \
-    > "$tmp_file" 2>/dev/null
+    "$checked_at_to_write" "$outdated_count" "$gaia_current" "$gaia_latest" "$gaia_has_update" "$harden_count" "$unclassified_count" "$harden_reason" "$residue_count" "$wiki_drift_count" "$audit_nudge" "$audit_nudge_reason" "$audit_last_applied_at" "$audit_memory_count" "$audit_memory_baseline" \
+    > "$temporary_file" 2>/dev/null
 fi
 
-if [ -s "$tmp_file" ]; then
-  mv "$tmp_file" "$CACHE_FILE" 2>/dev/null
+if [ -s "$temporary_file" ]; then
+  mv "$temporary_file" "$CACHE_FILE" 2>/dev/null
 else
-  rm -f "$tmp_file" 2>/dev/null
+  rm -f "$temporary_file" 2>/dev/null
 fi
 
 exit 0

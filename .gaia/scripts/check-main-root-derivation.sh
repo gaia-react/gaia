@@ -136,9 +136,9 @@ _gaia_strip_comment_matches() {
   '
 }
 
-# _gaia_scan_git_common_dir <repo_root>: prints non-comment matches of the
+# _gaia_scan_git_common_directory <repo_root>: prints non-comment matches of the
 # literal `--git-common-dir` outside the exclusion set above.
-_gaia_scan_git_common_dir() {
+_gaia_scan_git_common_directory() {
   local repo_root="$1"
   git -C "$repo_root" grep -nF -- '--git-common-dir' -- . "${GAIA_MAIN_ROOT_DERIVATION_EXCLUDE[@]}" 2>/dev/null \
     | _gaia_strip_comment_matches
@@ -185,13 +185,13 @@ _gaia_scan_porcelain_first_line() {
     || return 0
   [ -n "$matches" ] || return 0
 
-  local line file lineno window
+  local line file line_number window
   while IFS= read -r line; do
     [ -n "$line" ] || continue
     file="${line%%:*}"
-    lineno="${line#*:}"
-    lineno="${lineno%%:*}"
-    window="$(sed -n "${lineno},$((lineno + 2))p" "$repo_root/$file" 2>/dev/null)"
+    line_number="${line#*:}"
+    line_number="${line_number%%:*}"
+    window="$(sed -n "${line_number},$((line_number + 2))p" "$repo_root/$file" 2>/dev/null)"
     if printf '%s\n' "$window" | grep -qE "$GAIA_PORCELAIN_FIRST_LINE_PATTERN"; then
       printf '%s\n' "$line"
     fi
@@ -200,16 +200,16 @@ _gaia_scan_porcelain_first_line() {
 
 gaia_check_main_root_derivation() {
   local repo_root="${1:?gaia_check_main_root_derivation requires a repo_root argument}"
-  local common_dir_failed=0 surgery_failed=0 porcelain_failed=0
+  local common_directory_failed=0 surgery_failed=0 porcelain_failed=0
 
-  local common_dir_matches common_dir_count=0
-  common_dir_matches="$(_gaia_scan_git_common_dir "$repo_root")"
-  if [ -n "$common_dir_matches" ]; then
-    printf '%s\n' "$common_dir_matches"
-    common_dir_count="$(printf '%s\n' "$common_dir_matches" | wc -l | tr -d ' ')"
-    common_dir_failed=1
+  local common_directory_matches common_directory_count=0
+  common_directory_matches="$(_gaia_scan_git_common_directory "$repo_root")"
+  if [ -n "$common_directory_matches" ]; then
+    printf '%s\n' "$common_directory_matches"
+    common_directory_count="$(printf '%s\n' "$common_directory_matches" | wc -l | tr -d ' ')"
+    common_directory_failed=1
   fi
-  printf 'hand-rolled --git-common-dir uses outside the resolver: %s\n' "$common_dir_count"
+  printf 'hand-rolled --git-common-dir uses outside the resolver: %s\n' "$common_directory_count"
 
   local surgery_matches surgery_count=0
   surgery_matches="$(_gaia_scan_worktrees_surgery "$repo_root")"
@@ -229,7 +229,7 @@ gaia_check_main_root_derivation() {
   fi
   printf 'worktree list --porcelain piped to a first-record reader: %s\n' "$porcelain_count"
 
-  [ "$common_dir_failed" -eq 0 ] && [ "$surgery_failed" -eq 0 ] && [ "$porcelain_failed" -eq 0 ]
+  [ "$common_directory_failed" -eq 0 ] && [ "$surgery_failed" -eq 0 ] && [ "$porcelain_failed" -eq 0 ]
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then

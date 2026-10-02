@@ -31,9 +31,9 @@
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
-  SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
-  CHECK="$SCRIPT_DIR/check-hook-command-rooting.sh"
-  REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+  SCRIPT_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
+  CHECK="$SCRIPT_DIRECTORY/check-hook-command-rooting.sh"
+  REPO_ROOT="$(cd "$SCRIPT_DIRECTORY/../.." && pwd)"
   # shellcheck source=.gaia/scripts/check-hook-command-rooting.sh
   source "$CHECK"
 }
@@ -48,16 +48,16 @@ setup() {
 # fixture_with <command-json-array-of-strings> -> echoes a repo root whose
 # .claude/settings.json registers exactly those commands, one hook each.
 fixture_with() {
-  local commands_json="$1" dir
-  dir="$(mktemp -d "$BATS_TEST_TMPDIR/fixture.XXXXXX")"
-  mkdir -p "$dir/.claude"
-  jq -n --argjson cmds "$commands_json" '{
+  local commands_json="$1" fixture_directory
+  fixture_directory="$(mktemp -d "$BATS_TEST_TMPDIR/fixture.XXXXXX")"
+  mkdir -p "$fixture_directory/.claude"
+  jq -n --argjson commands "$commands_json" '{
     hooks: {
       PreToolUse: [ { matcher: "Bash",
-                      hooks: [ $cmds[] | { type: "command", command: . } ] } ]
+                      hooks: [ $commands[] | { type: "command", command: . } ] } ]
     }
-  }' > "$dir/.claude/settings.json"
-  printf '%s\n' "$dir"
+  }' > "$fixture_directory/.claude/settings.json"
+  printf '%s\n' "$fixture_directory"
 }
 
 @test "the sanctioned rooted form passes" {
@@ -108,18 +108,18 @@ fixture_with() {
 }
 
 @test "an empty command set is reported as a failure, never as a pass" {
-  local dir
-  dir="$(mktemp -d "$BATS_TEST_TMPDIR/fixture.XXXXXX")"
-  mkdir -p "$dir/.claude"
-  printf '%s\n' '{"hooks":{}}' > "$dir/.claude/settings.json"
-  run gaia_check_hook_command_rooting "$dir"
+  local fixture_directory
+  fixture_directory="$(mktemp -d "$BATS_TEST_TMPDIR/fixture.XXXXXX")"
+  mkdir -p "$fixture_directory/.claude"
+  printf '%s\n' '{"hooks":{}}' > "$fixture_directory/.claude/settings.json"
+  run gaia_check_hook_command_rooting "$fixture_directory"
   [ "$status" -ne 0 ]
 }
 
 @test "a missing settings.json is a usage failure, not a pass" {
-  local dir
-  dir="$(mktemp -d "$BATS_TEST_TMPDIR/fixture.XXXXXX")"
-  run gaia_check_hook_command_rooting "$dir"
+  local fixture_directory
+  fixture_directory="$(mktemp -d "$BATS_TEST_TMPDIR/fixture.XXXXXX")"
+  run gaia_check_hook_command_rooting "$fixture_directory"
   [ "$status" -ne 0 ]
 }
 

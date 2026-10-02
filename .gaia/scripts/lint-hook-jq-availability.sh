@@ -64,7 +64,7 @@
 
 set -uo pipefail
 
-readonly PROG="lint-hook-jq-availability"
+readonly PROGRAM_NAME="lint-hook-jq-availability"
 
 readonly SETTINGS=".claude/settings.json"
 
@@ -157,41 +157,41 @@ names_outside_comments() {
 main() {
   local root
   if [ "$#" -gt 1 ]; then
-    printf '%s: too many arguments\n' "$PROG" >&2
-    printf 'usage: bash .gaia/scripts/%s.sh [<repo_root>]\n' "$PROG" >&2
+    printf '%s: too many arguments\n' "$PROGRAM_NAME" >&2
+    printf 'usage: bash .gaia/scripts/%s.sh [<repo_root>]\n' "$PROGRAM_NAME" >&2
     return 2
   fi
   if [ "$#" -eq 1 ]; then
     root="$1"
     if [ ! -d "$root" ]; then
-      printf '%s: not a directory: %s\n' "$PROG" "$root" >&2
+      printf '%s: not a directory: %s\n' "$PROGRAM_NAME" "$root" >&2
       return 2
     fi
   else
     root="$(git rev-parse --show-toplevel 2>/dev/null)" || root=''
     if [ -z "$root" ]; then
-      printf '%s: not inside a git repository and no <repo_root> given\n' "$PROG" >&2
+      printf '%s: not inside a git repository and no <repo_root> given\n' "$PROGRAM_NAME" >&2
       return 2
     fi
   fi
 
   if ! command -v jq >/dev/null 2>&1; then
-    printf '%s: jq is required to read %s and is not on PATH\n' "$PROG" "$SETTINGS" >&2
+    printf '%s: jq is required to read %s and is not on PATH\n' "$PROGRAM_NAME" "$SETTINGS" >&2
     return 2
   fi
   if [ ! -f "$root/$SETTINGS" ]; then
-    printf '%s: settings file not found: %s\n' "$PROG" "$SETTINGS" >&2
+    printf '%s: settings file not found: %s\n' "$PROGRAM_NAME" "$SETTINGS" >&2
     return 2
   fi
   if ! jq -e . "$root/$SETTINGS" >/dev/null 2>&1; then
-    printf '%s: %s is missing, unreadable, or not valid JSON\n' "$PROG" "$SETTINGS" >&2
+    printf '%s: %s is missing, unreadable, or not valid JSON\n' "$PROGRAM_NAME" "$SETTINGS" >&2
     return 2
   fi
 
   local registered hook path
   registered="$(gaia_pretooluse_hooks "$root")"
   if [ -z "$registered" ]; then
-    printf '%s: discovery found no hook registered on PreToolUse in %s.\n' "$PROG" "$SETTINGS" >&2
+    printf '%s: discovery found no hook registered on PreToolUse in %s.\n' "$PROGRAM_NAME" "$SETTINGS" >&2
     printf 'This tree registers dozens; an empty set is a broken read of the registration\n' >&2
     printf 'shape, and every hook below it would then grade as correct having been compared\n' >&2
     printf 'against nothing.\n' >&2
@@ -230,14 +230,14 @@ $registered
 EOF
 
   if [ "$parsers" -eq 0 ]; then
-    printf '%s: discovery found no PreToolUse hook that parses its payload with jq.\n' "$PROG" >&2
+    printf '%s: discovery found no PreToolUse hook that parses its payload with jq.\n' "$PROGRAM_NAME" >&2
     printf 'Nearly every hook in this tree does, so this is the invocation probe failing to\n' >&2
     printf 'read a hook body rather than a layer that parses nothing. Every hook would grade\n' >&2
     printf 'as correct having been skipped.\n' >&2
     return 2
   fi
   if [ "$blocking" -eq 0 ]; then
-    printf '%s: discovery classified every jq-parsing PreToolUse hook as advisory.\n' "$PROG" >&2
+    printf '%s: discovery classified every jq-parsing PreToolUse hook as advisory.\n' "$PROGRAM_NAME" >&2
     printf 'This tree registers many that deny outright, so this is the blocking oracle in\n' >&2
     printf '.gaia/scripts/hook-registration-lib.sh failing to read a hook body. The blocking\n' >&2
     printf 'obligation would then bind nothing.\n' >&2
@@ -267,7 +267,7 @@ EOF
 
   local findings=0
   if [ -n "$unguarded" ]; then
-    printf '%s: PreToolUse hooks whose jq arm fails open:\n' "$PROG" >&2
+    printf '%s: PreToolUse hooks whose jq arm fails open:\n' "$PROGRAM_NAME" >&2
     printf '%s' "$unguarded" | while IFS= read -r entry; do
       [ -n "$entry" ] || continue
       printf '  .claude/hooks/%s\n' "$entry" >&2
@@ -275,7 +275,7 @@ EOF
     findings=1
   fi
   if [ -n "$stale" ]; then
-    printf '%s: baseline entries that no longer fail:\n' "$PROG" >&2
+    printf '%s: baseline entries that no longer fail:\n' "$PROGRAM_NAME" >&2
     printf '%s' "$stale" | while IFS= read -r entry; do
       [ -n "$entry" ] || continue
       printf '  %s\n' "$entry" >&2
@@ -286,27 +286,27 @@ EOF
   fi
 
   if [ "$findings" -ne 0 ]; then
-    printf '\n%s: a blocking PreToolUse hook that cannot read its payload must refuse, not\n' "$PROG" >&2
+    printf '\n%s: a blocking PreToolUse hook that cannot read its payload must refuse, not\n' "$PROGRAM_NAME" >&2
     printf 'stand down: exit 2 is the only status the contract reads as a block. Call\n' >&2
     printf 'gaia_require_jq (.claude/hooks/lib/jq-availability.sh) right after the payload is\n' >&2
     printf 'read, passing the literals whose absence proves the call sits outside the hook\n' >&2
     printf 'remit when its matcher can reach the jq install itself.\n' >&2
     return 1
   fi
-  printf '%s: clean\n' "$PROG"
+  printf '%s: clean\n' "$PROGRAM_NAME"
   return 0
 }
 
 # The PreToolUse registration read and the blocking oracle come from the
 # shared library rather than a private copy. Rooted at this script's own
 # on-disk location so it resolves however the gate is invoked.
-_gaia_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || _gaia_lib_dir=''
-if [ -z "$_gaia_lib_dir" ] || [ ! -f "$_gaia_lib_dir/hook-registration-lib.sh" ]; then
-  printf '%s: cannot load hook-registration-lib.sh beside this script\n' "$PROG" >&2
+_gaia_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || _gaia_library_directory=''
+if [ -z "$_gaia_library_directory" ] || [ ! -f "$_gaia_library_directory/hook-registration-lib.sh" ]; then
+  printf '%s: cannot load hook-registration-lib.sh beside this script\n' "$PROGRAM_NAME" >&2
   exit 2
 fi
 # shellcheck source=hook-registration-lib.sh
-. "$_gaia_lib_dir/hook-registration-lib.sh"
+. "$_gaia_library_directory/hook-registration-lib.sh"
 
 trap 'exit 130' INT
 trap 'exit 143' TERM

@@ -17,10 +17,10 @@
 bats5() {
   # The helper vars are locals so sourcing this file into a shell does not
   # leak them; PATH is exported on purpose, that export is the whole point.
-  local d resolved_bash major
-  for d in /opt/homebrew/bin /usr/local/bin; do
-    if [ -x "$d/bash" ]; then
-      PATH="$d:$PATH"
+  local candidate_directory resolved_bash major
+  for candidate_directory in /opt/homebrew/bin /usr/local/bin; do
+    if [ -x "$candidate_directory/bash" ]; then
+      PATH="$candidate_directory:$PATH"
       export PATH
       break
     fi
@@ -57,12 +57,12 @@ bats5() {
   # the caller's shell, which is where a sourced bats5 runs: an export there
   # would gate maintenance in every real repository that shell touches later.
   (
-    n="${GIT_CONFIG_COUNT:-0}"
-    for kv in gc.auto=0 maintenance.auto=false gc.autoDetach=false maintenance.autoDetach=false; do
-      export "GIT_CONFIG_KEY_$n=${kv%%=*}" "GIT_CONFIG_VALUE_$n=${kv#*=}"
-      n=$((n + 1))
+    config_entry_count="${GIT_CONFIG_COUNT:-0}"
+    for key_value_pair in gc.auto=0 maintenance.auto=false gc.autoDetach=false maintenance.autoDetach=false; do
+      export "GIT_CONFIG_KEY_$config_entry_count=${key_value_pair%%=*}" "GIT_CONFIG_VALUE_$config_entry_count=${key_value_pair#*=}"
+      config_entry_count=$((config_entry_count + 1))
     done
-    export GIT_CONFIG_COUNT="$n"
+    export GIT_CONFIG_COUNT="$config_entry_count"
     bats "$@"
   )
 }

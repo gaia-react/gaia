@@ -24,45 +24,45 @@
 
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
-  LIB="$REPO_ROOT/.gaia/scripts/awk-interp-lib.sh"
+  LIBRARY_SCRIPT="$REPO_ROOT/.gaia/scripts/awk-interp-lib.sh"
   BASH_BIN="$(command -v bash)"
-  TMP="$(mktemp -d -t awk-interp-lib-XXXXXX)"
+  TEMPORARY_DIRECTORY="$(mktemp -d -t awk-interp-lib-XXXXXX)"
 
-  mkdir "$TMP/mawk-bin"
-  cat >"$TMP/mawk-bin/mawk" <<'STUB'
+  mkdir "$TEMPORARY_DIRECTORY/mawk-bin"
+  cat >"$TEMPORARY_DIRECTORY/mawk-bin/mawk" <<'STUB'
 #!/bin/bash
 [ "$1" = "--version" ] && { printf 'mawk 1.3.4 test-stub\nCopyright test\n'; exit 0; }
 exit 1
 STUB
-  chmod +x "$TMP/mawk-bin/mawk"
+  chmod +x "$TEMPORARY_DIRECTORY/mawk-bin/mawk"
 
-  cat >"$TMP/bwk-awk" <<'STUB'
+  cat >"$TEMPORARY_DIRECTORY/bwk-awk" <<'STUB'
 #!/bin/bash
 [ "$1" = "--version" ] && { printf 'awk version test-stub-20260101\n'; exit 0; }
 exit 1
 STUB
-  chmod +x "$TMP/bwk-awk"
+  chmod +x "$TEMPORARY_DIRECTORY/bwk-awk"
 
-  cat >"$TMP/busybox-awk" <<'STUB'
+  cat >"$TEMPORARY_DIRECTORY/busybox-awk" <<'STUB'
 #!/bin/bash
 [ "$1" = "--version" ] && { printf 'BusyBox v1.36 awk\n'; exit 0; }
 exit 1
 STUB
-  chmod +x "$TMP/busybox-awk"
+  chmod +x "$TEMPORARY_DIRECTORY/busybox-awk"
 
-  cat >"$TMP/gawk-stub" <<'STUB'
+  cat >"$TEMPORARY_DIRECTORY/gawk-stub" <<'STUB'
 #!/bin/bash
 [ "$1" = "--version" ] && { printf 'GNU Awk 5.4.1, API 4.1, PMA Avon 8-g1\n'; exit 0; }
 exit 1
 STUB
-  chmod +x "$TMP/gawk-stub"
+  chmod +x "$TEMPORARY_DIRECTORY/gawk-stub"
 
   # A stub literally named `awk`, identifying as the unsanctioned BusyBox
   # banner: the one fixture that proves identity is decided by asking the
   # binary rather than by trusting the basename, since a basename-keyed
   # resolver would pass this one by accident.
-  mkdir "$TMP/named-awk-bin"
-  cp "$TMP/busybox-awk" "$TMP/named-awk-bin/awk"
+  mkdir "$TEMPORARY_DIRECTORY/named-awk-bin"
+  cp "$TEMPORARY_DIRECTORY/busybox-awk" "$TEMPORARY_DIRECTORY/named-awk-bin/awk"
 
   # Absence of mawk is simulated through the library's own seam, never by
   # curating PATH. Where mawk lives is a property of the host: on macOS it is
@@ -72,7 +72,7 @@ STUB
   # absence on macOS and silently proves nothing on the runner, where the
   # resolver keeps finding /usr/bin/mawk and every "no mawk" assertion below
   # passes vacuously or fails for the wrong reason.
-  NO_MAWK="$TMP/no-such-mawk-binary"
+  NO_MAWK="$TEMPORARY_DIRECTORY/no-such-mawk-binary"
 
   # A real, SANCTIONED BWK awk, identified by its banner rather than assumed
   # from its path. /usr/bin/awk is BWK one-true-awk on macOS but is gawk on
@@ -89,7 +89,7 @@ STUB
 }
 
 teardown() {
-  [ -n "${TMP:-}" ] && [ -d "$TMP" ] && rm -rf "$TMP"
+  [ -n "${TEMPORARY_DIRECTORY:-}" ] && [ -d "$TEMPORARY_DIRECTORY" ] && rm -rf "$TEMPORARY_DIRECTORY"
   return 0
 }
 
@@ -98,7 +98,7 @@ teardown() {
 # Derived from the source rather than hand-listed, so the set this suite
 # drives never drifts from the set that actually wires the sentinel.
 consumers() {
-  grep -l '\. "\$_gaia_guard_lib_dir/guard-awk-lib\.sh"' "$REPO_ROOT"/.gaia/scripts/lint-*.sh \
+  grep -l '\. "\$_gaia_guard_library_directory/guard-awk-lib\.sh"' "$REPO_ROOT"/.gaia/scripts/lint-*.sh \
     | xargs -n1 basename \
     | sed 's/\.sh$//' \
     | LC_ALL=C sort
@@ -110,17 +110,17 @@ consumers() {
 # guard makes a second source in the same process a no-op -- exercised on
 # purpose by its own dedicated test below, not by accident here.
 resolve() {
-  local path_val="$1" gaia_awk_val="${2:-}" bwk_val="${3:-}" mawk_val="${4:-}"
+  local path_value="$1" gaia_awk_value="${2:-}" bwk_value="${3:-}" mawk_value="${4:-}"
   (
-    unset -v GAIA_AWK GAIA_AWK_BWK_PATH GAIA_AWK_MAWK_PATH GAIA_AWK_STATUS GAIA_AWK_IDENT GAIA_AWK_INTERP_LIB_SOURCED
-    PATH="$path_val"
-    [ -n "$gaia_awk_val" ] && GAIA_AWK="$gaia_awk_val"
-    [ -n "$bwk_val" ] && GAIA_AWK_BWK_PATH="$bwk_val"
-    [ -n "$mawk_val" ] && GAIA_AWK_MAWK_PATH="$mawk_val"
+    unset -v GAIA_AWK GAIA_AWK_BWK_PATH GAIA_AWK_MAWK_PATH GAIA_AWK_STATUS GAIA_AWK_IDENTITY GAIA_AWK_INTERPRETER_LIBRARY_SOURCED
+    PATH="$path_value"
+    [ -n "$gaia_awk_value" ] && GAIA_AWK="$gaia_awk_value"
+    [ -n "$bwk_value" ] && GAIA_AWK_BWK_PATH="$bwk_value"
+    [ -n "$mawk_value" ] && GAIA_AWK_MAWK_PATH="$mawk_value"
     # shellcheck disable=SC1090
-    . "$LIB"
-    printf 'GAIA_AWK=%s\nGAIA_AWK_STATUS=%s\nGAIA_AWK_IDENT=%s\n' \
-      "$GAIA_AWK" "$GAIA_AWK_STATUS" "$GAIA_AWK_IDENT"
+    . "$LIBRARY_SCRIPT"
+    printf 'GAIA_AWK=%s\nGAIA_AWK_STATUS=%s\nGAIA_AWK_IDENTITY=%s\n' \
+      "$GAIA_AWK" "$GAIA_AWK_STATUS" "$GAIA_AWK_IDENTITY"
   )
 }
 
@@ -130,19 +130,19 @@ resolve() {
 # repository root before they ever reach the awk resolution this suite is
 # testing, so every drive below runs from $REPO_ROOT.
 drive_consumer() {
-  local g="$1" path_val="$2" gaia_awk_val="${3:-}" bwk_val="${4:-}" mawk_val="${5:-}"
+  local guard_name="$1" path_value="$2" gaia_awk_value="${3:-}" bwk_value="${4:-}" mawk_value="${5:-}"
   (
     cd "$REPO_ROOT" || exit 90
     unset -v GAIA_AWK GAIA_AWK_BWK_PATH GAIA_AWK_MAWK_PATH
-    export PATH="$path_val"
+    export PATH="$path_value"
     # export, not a plain assignment: this spawns a CHILD process below, and
     # an un-exported GAIA_AWK/GAIA_AWK_BWK_PATH is invisible to it, silently
     # falling through to the child's own auto-resolution instead of the pin
     # this drive intends.
-    [ -n "$gaia_awk_val" ] && export GAIA_AWK="$gaia_awk_val"
-    [ -n "$bwk_val" ] && export GAIA_AWK_BWK_PATH="$bwk_val"
-    [ -n "$mawk_val" ] && export GAIA_AWK_MAWK_PATH="$mawk_val"
-    "$BASH_BIN" ".gaia/scripts/$g.sh"
+    [ -n "$gaia_awk_value" ] && export GAIA_AWK="$gaia_awk_value"
+    [ -n "$bwk_value" ] && export GAIA_AWK_BWK_PATH="$bwk_value"
+    [ -n "$mawk_value" ] && export GAIA_AWK_MAWK_PATH="$mawk_value"
+    "$BASH_BIN" ".gaia/scripts/$guard_name.sh"
   )
 }
 
@@ -151,59 +151,59 @@ drive_consumer() {
 # ---------------------------------------------------------------------------
 
 @test "resolver: mawk on PATH resolves and identifies as mawk" {
-  run resolve "$TMP/mawk-bin:/usr/bin:/bin" "" ""
+  run resolve "$TEMPORARY_DIRECTORY/mawk-bin:/usr/bin:/bin" "" ""
   [ "$status" -eq 0 ]
-  grep -qF "GAIA_AWK=$TMP/mawk-bin/mawk" <<<"$output"
+  grep -qF "GAIA_AWK=$TEMPORARY_DIRECTORY/mawk-bin/mawk" <<<"$output"
   grep -qF 'GAIA_AWK_STATUS=0' <<<"$output"
-  grep -qF 'GAIA_AWK_IDENT=mawk' <<<"$output"
+  grep -qF 'GAIA_AWK_IDENTITY=mawk' <<<"$output"
 }
 
 @test "resolver: no mawk on PATH falls back to the BWK path and identifies as bwk" {
-  run resolve "/usr/bin:/bin" "" "$TMP/bwk-awk" "$NO_MAWK"
+  run resolve "/usr/bin:/bin" "" "$TEMPORARY_DIRECTORY/bwk-awk" "$NO_MAWK"
   [ "$status" -eq 0 ]
-  grep -qF "GAIA_AWK=$TMP/bwk-awk" <<<"$output"
+  grep -qF "GAIA_AWK=$TEMPORARY_DIRECTORY/bwk-awk" <<<"$output"
   grep -qF 'GAIA_AWK_STATUS=0' <<<"$output"
-  grep -qF 'GAIA_AWK_IDENT=bwk' <<<"$output"
+  grep -qF 'GAIA_AWK_IDENTITY=bwk' <<<"$output"
 }
 
 @test "resolver: neither mawk nor a reachable BWK path yields status 5 and an empty GAIA_AWK" {
-  run resolve "/usr/bin:/bin" "" "$TMP/does-not-exist" "$NO_MAWK"
+  run resolve "/usr/bin:/bin" "" "$TEMPORARY_DIRECTORY/does-not-exist" "$NO_MAWK"
   [ "$status" -eq 0 ]
   grep -qxF 'GAIA_AWK=' <<<"$output"
   grep -qF 'GAIA_AWK_STATUS=5' <<<"$output"
 }
 
 @test "resolver: an explicit GAIA_AWK naming a nonexistent path yields status 5" {
-  run resolve "/usr/bin:/bin" "$TMP/does-not-exist-either" ""
+  run resolve "/usr/bin:/bin" "$TEMPORARY_DIRECTORY/does-not-exist-either" ""
   [ "$status" -eq 0 ]
   grep -qxF 'GAIA_AWK=' <<<"$output"
   grep -qF 'GAIA_AWK_STATUS=5' <<<"$output"
 }
 
 @test "resolver: an explicit GAIA_AWK naming an unsanctioned interpreter yields status 6" {
-  run resolve "/usr/bin:/bin" "$TMP/busybox-awk" ""
+  run resolve "/usr/bin:/bin" "$TEMPORARY_DIRECTORY/busybox-awk" ""
   [ "$status" -eq 0 ]
-  grep -qF "GAIA_AWK=$TMP/busybox-awk" <<<"$output"
+  grep -qF "GAIA_AWK=$TEMPORARY_DIRECTORY/busybox-awk" <<<"$output"
   grep -qF 'GAIA_AWK_STATUS=6' <<<"$output"
-  grep -qF 'GAIA_AWK_IDENT=BusyBox v1.36 awk' <<<"$output"
+  grep -qF 'GAIA_AWK_IDENTITY=BusyBox v1.36 awk' <<<"$output"
 }
 
 @test "resolver: gawk is never sanctioned even when named explicitly" {
-  run resolve "/usr/bin:/bin" "$TMP/gawk-stub" ""
+  run resolve "/usr/bin:/bin" "$TEMPORARY_DIRECTORY/gawk-stub" ""
   [ "$status" -eq 0 ]
   grep -qF 'GAIA_AWK_STATUS=6' <<<"$output"
-  grep -qF 'GAIA_AWK_IDENT=GNU Awk' <<<"$output"
+  grep -qF 'GAIA_AWK_IDENTITY=GNU Awk' <<<"$output"
 }
 
 @test "resolver: a binary literally named awk is identified by its banner, not its name" {
-  run resolve "/usr/bin:/bin" "$TMP/named-awk-bin/awk" ""
+  run resolve "/usr/bin:/bin" "$TEMPORARY_DIRECTORY/named-awk-bin/awk" ""
   [ "$status" -eq 0 ]
   grep -qF 'GAIA_AWK_STATUS=6' <<<"$output"
-  grep -qF 'GAIA_AWK_IDENT=BusyBox v1.36 awk' <<<"$output"
+  grep -qF 'GAIA_AWK_IDENTITY=BusyBox v1.36 awk' <<<"$output"
 }
 
 @test "resolver: sourcing twice in the same shell is a no-op" {
-  run bash -c '. "$1"; GAIA_AWK_STATUS=99; . "$1"; printf "%s\n" "$GAIA_AWK_STATUS"' _ "$LIB"
+  run bash -c '. "$1"; GAIA_AWK_STATUS=99; . "$1"; printf "%s\n" "$GAIA_AWK_STATUS"' _ "$LIBRARY_SCRIPT"
   [ "$status" -eq 0 ]
   [ "$output" = "99" ]
 }
@@ -219,13 +219,13 @@ drive_consumer() {
 }
 
 @test "consumers: every guard-awk-lib.sh consumer refuses at status 6 on an unsanctioned interpreter, and never misreports it as the exit-2 missing-library case" {
-  local g
-  while IFS= read -r g; do
-    run drive_consumer "$g" "/usr/bin:/bin" "$TMP/busybox-awk" ""
-    [ "$status" -eq 6 ] || { echo "guard=$g expected status 6, got $status: $output"; return 1; }
-    grep -qF 'unsanctioned interpreter' <<<"$output" || { echo "guard=$g missing the unsanctioned-interpreter message: $output"; return 1; }
-    grep -qF 'BusyBox v1.36 awk' <<<"$output" || { echo "guard=$g message does not name what it found: $output"; return 1; }
-    grep -qF 'guard-awk-lib.sh is missing' <<<"$output" && { echo "guard=$g misreported status 6 as the exit-2 missing-library case: $output"; return 1; }
+  local guard_name
+  while IFS= read -r guard_name; do
+    run drive_consumer "$guard_name" "/usr/bin:/bin" "$TEMPORARY_DIRECTORY/busybox-awk" ""
+    [ "$status" -eq 6 ] || { echo "guard=$guard_name expected status 6, got $status: $output"; return 1; }
+    grep -qF 'unsanctioned interpreter' <<<"$output" || { echo "guard=$guard_name missing the unsanctioned-interpreter message: $output"; return 1; }
+    grep -qF 'BusyBox v1.36 awk' <<<"$output" || { echo "guard=$guard_name message does not name what it found: $output"; return 1; }
+    grep -qF 'guard-awk-lib.sh is missing' <<<"$output" && { echo "guard=$guard_name misreported status 6 as the exit-2 missing-library case: $output"; return 1; }
   done < <(consumers)
   # A `while read` loop's own exit status is the final (EOF-failing) `read`,
   # not the last passing iteration, so an explicit `true` is what makes a
@@ -235,13 +235,13 @@ drive_consumer() {
 }
 
 @test "consumers: every guard-awk-lib.sh consumer refuses at status 5 with no awk at all, distinct from both the status-6 and exit-2 messages" {
-  local g
-  while IFS= read -r g; do
-    run drive_consumer "$g" "/usr/bin:/bin" "" "$TMP/does-not-exist" "$NO_MAWK"
-    [ "$status" -eq 5 ] || { echo "guard=$g expected status 5, got $status: $output"; return 1; }
-    grep -qF 'no awk interpreter found' <<<"$output" || { echo "guard=$g missing the no-awk message: $output"; return 1; }
-    grep -qF 'guard-awk-lib.sh is missing' <<<"$output" && { echo "guard=$g misreported status 5 as the exit-2 missing-library case: $output"; return 1; }
-    grep -qF 'unsanctioned interpreter' <<<"$output" && { echo "guard=$g misreported status 5 as the status-6 case: $output"; return 1; }
+  local guard_name
+  while IFS= read -r guard_name; do
+    run drive_consumer "$guard_name" "/usr/bin:/bin" "" "$TEMPORARY_DIRECTORY/does-not-exist" "$NO_MAWK"
+    [ "$status" -eq 5 ] || { echo "guard=$guard_name expected status 5, got $status: $output"; return 1; }
+    grep -qF 'no awk interpreter found' <<<"$output" || { echo "guard=$guard_name missing the no-awk message: $output"; return 1; }
+    grep -qF 'guard-awk-lib.sh is missing' <<<"$output" && { echo "guard=$guard_name misreported status 5 as the exit-2 missing-library case: $output"; return 1; }
+    grep -qF 'unsanctioned interpreter' <<<"$output" && { echo "guard=$guard_name misreported status 5 as the status-6 case: $output"; return 1; }
   done < <(consumers)
   true
 }
@@ -263,24 +263,24 @@ drive_consumer() {
 # ---------------------------------------------------------------------------
 
 @test "consumers: with mawk absent from PATH, every guard-awk-lib.sh consumer degrades to the BWK fallback rather than refusing" {
-  local g out rc
+  local guard_name consumer_output exit_status
   [ -n "$REAL_BWK" ] || skip "this host carries no sanctioned BWK awk to degrade to"
-  while IFS= read -r g; do
-    # `|| rc=$?`, never a bare `rc=$?` on the next line: under errexit, a
+  while IFS= read -r guard_name; do
+    # `|| exit_status=$?`, never a bare `exit_status=$?` on the next line: under errexit, a
     # failing command-substitution assignment aborts THIS line, so a
     # non-zero drive would skip the status read entirely rather than let it
     # observe the failure (.gaia/scripts/lint-errexit-status-read.sh's own
     # class, and this suite is not exempt from it).
-    rc=0
-    out="$(drive_consumer "$g" "/usr/bin:/bin" "" "$REAL_BWK" "$NO_MAWK" 2>&1)" || rc=$?
-    [ "$rc" -eq 0 ] || { echo "guard=$g expected exit 0 under the BWK fallback, got $rc: $out"; return 1; }
-    printf '%s' "$out" | grep -qF 'no awk interpreter found' && { echo "guard=$g refused instead of degrading: $out"; return 1; }
+    exit_status=0
+    consumer_output="$(drive_consumer "$guard_name" "/usr/bin:/bin" "" "$REAL_BWK" "$NO_MAWK" 2>&1)" || exit_status=$?
+    [ "$exit_status" -eq 0 ] || { echo "guard=$guard_name expected exit 0 under the BWK fallback, got $exit_status: $consumer_output"; return 1; }
+    printf '%s' "$consumer_output" | grep -qF 'no awk interpreter found' && { echo "guard=$guard_name refused instead of degrading: $consumer_output"; return 1; }
   done < <(consumers)
   true
 }
 
 @test "consumers: stdout is byte-identical under GAIA_AWK pinned to mawk versus pinned to /usr/bin/awk" {
-  local g out_mawk out_bwk rc_mawk rc_bwk
+  local guard_name mawk_output bwk_output mawk_exit_status bwk_exit_status
   local real_mawk real_bwk
   real_mawk="$(command -v mawk || true)"
   real_bwk="$REAL_BWK"
@@ -291,16 +291,16 @@ drive_consumer() {
     # difference as a parity failure.
     skip "this host carries no sanctioned mawk/BWK pair to compare"
   fi
-  while IFS= read -r g; do
+  while IFS= read -r guard_name; do
     # Same `|| rc=$?` shape as the degradation test above, for the same
-    # reason: a bare `rc_mawk=$?` on the next line is unreachable the moment
+    # reason: a bare `mawk_exit_status=$?` on the next line is unreachable the moment
     # either drive exits non-zero under this test body's errexit.
-    rc_mawk=0
-    out_mawk="$(drive_consumer "$g" "/usr/bin:/bin" "$real_mawk" "" 2>/dev/null)" || rc_mawk=$?
-    rc_bwk=0
-    out_bwk="$(drive_consumer "$g" "/usr/bin:/bin" "$real_bwk" "" 2>/dev/null)" || rc_bwk=$?
-    [ "$rc_mawk" -eq "$rc_bwk" ] || { echo "guard=$g exit status differs: mawk=$rc_mawk bwk=$rc_bwk"; return 1; }
-    [ "$out_mawk" = "$out_bwk" ] || { echo "guard=$g stdout differs between mawk and /usr/bin/awk"; return 1; }
+    mawk_exit_status=0
+    mawk_output="$(drive_consumer "$guard_name" "/usr/bin:/bin" "$real_mawk" "" 2>/dev/null)" || mawk_exit_status=$?
+    bwk_exit_status=0
+    bwk_output="$(drive_consumer "$guard_name" "/usr/bin:/bin" "$real_bwk" "" 2>/dev/null)" || bwk_exit_status=$?
+    [ "$mawk_exit_status" -eq "$bwk_exit_status" ] || { echo "guard=$guard_name exit status differs: mawk=$mawk_exit_status bwk=$bwk_exit_status"; return 1; }
+    [ "$mawk_output" = "$bwk_output" ] || { echo "guard=$guard_name stdout differs between mawk and /usr/bin/awk"; return 1; }
   done < <(consumers)
   true
 }

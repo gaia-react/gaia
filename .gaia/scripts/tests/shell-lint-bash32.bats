@@ -27,8 +27,8 @@ setup() {
   # `version:` tracks SHELLCHECK_PIN in shell-lint.sh; a stale stub after a pin
   # bump only makes the gate emit a non-fatal version-drift WARN (stderr, no
   # exit-status change), so this suite still passes -- keep them in sync anyway.
-  STUB_DIR="$(mktemp -d -t shell-lint-stub-XXXXXX)"
-  cat > "$STUB_DIR/shellcheck" <<'STUB'
+  STUB_DIRECTORY="$(mktemp -d -t shell-lint-stub-XXXXXX)"
+  cat > "$STUB_DIRECTORY/shellcheck" <<'STUB'
 #!/usr/bin/env bash
 if [ "$1" = "--version" ]; then
   printf 'ShellCheck - shell script analysis tool\nversion: 0.11.0\n'
@@ -53,7 +53,7 @@ if [ -n "${SHELLCHECK_FAIL_ON:-}" ]; then
 fi
 exit 0
 STUB
-  chmod +x "$STUB_DIR/shellcheck"
+  chmod +x "$STUB_DIRECTORY/shellcheck"
 
   # A fake interpreter for the bash-3.2 parse pass. BASH32_MAJOR is the major
   # version it reports when the gate asks (default 3, an in-range interpreter);
@@ -63,7 +63,7 @@ STUB
   # reports EVERY broken script takes two failures in a single run; matched with
   # the same quoted `case` shape the shellcheck stub above uses, so a path is
   # compared literally rather than as a glob.
-  cat > "$STUB_DIR/bash32" <<'STUB'
+  cat > "$STUB_DIRECTORY/bash32" <<'STUB'
 #!/usr/bin/env bash
 if [ "$1" = "-c" ]; then
   printf '%s\n' "${BASH32_MAJOR-3}"
@@ -82,11 +82,11 @@ if [ "$1" = "-n" ]; then
 fi
 exit 0
 STUB
-  chmod +x "$STUB_DIR/bash32"
+  chmod +x "$STUB_DIRECTORY/bash32"
 }
 
 teardown() {
-  [ -n "$STUB_DIR" ] && [ -d "$STUB_DIR" ] && rm -rf "$STUB_DIR"
+  [ -n "$STUB_DIRECTORY" ] && [ -d "$STUB_DIRECTORY" ] && rm -rf "$STUB_DIRECTORY"
   return 0
 }
 
@@ -105,12 +105,12 @@ teardown() {
 #
 # Args: first|last
 tracked_sh() {
-  local which_end="$1" f first="" last=""
-  while IFS= read -r -d '' f; do
+  local which_end="$1" tracked_path first="" last=""
+  while IFS= read -r -d '' tracked_path; do
     if [ -z "$first" ]; then
-      first="$f"
+      first="$tracked_path"
     fi
-    last="$f"
+    last="$tracked_path"
   done < <(git -C "$REPO_ROOT" -c core.quotepath=false ls-files -z '*.sh')
   if [ "$which_end" = "first" ]; then
     printf '%s\n' "$first"
@@ -156,17 +156,17 @@ gate_pass_headers() {
 # the bare gate buys no assertion and costs about 68 seconds.
 
 @test "the bash-3.2 parse pass runs and stays green when every script parses" {
-  run env PATH="$STUB_DIR:$PATH" SHELL_LINT_BASH32="$STUB_DIR/bash32" \
+  run env PATH="$STUB_DIRECTORY:$PATH" SHELL_LINT_BASH32="$STUB_DIRECTORY/bash32" \
     bash "$GATE" --only bash32-parse
   [ "$status" -eq 0 ]
-  grep -qF -- "bash-3.2 parse ($STUB_DIR/bash32 -n)" <<<"$output"
+  grep -qF -- "bash-3.2 parse ($STUB_DIRECTORY/bash32 -n)" <<<"$output"
   grep -qF -- "shell-lint passed" <<<"$output"
 }
 
 @test "the bash-3.2 parse pass fails the gate on a script the interpreter cannot parse" {
   first_sh="$(tracked_sh first)"
   [ -n "$first_sh" ]
-  run env PATH="$STUB_DIR:$PATH" SHELL_LINT_BASH32="$STUB_DIR/bash32" \
+  run env PATH="$STUB_DIRECTORY:$PATH" SHELL_LINT_BASH32="$STUB_DIRECTORY/bash32" \
     BASH32_FAIL_ON="$first_sh" bash "$GATE" --only bash32-parse
   [ "$status" -eq 1 ]
   grep -qF -- "shell-lint FAILED" <<<"$output"
@@ -188,7 +188,7 @@ gate_pass_headers() {
   [ -n "$first_sh" ]
   [ -n "$last_sh" ]
   [ "$first_sh" != "$last_sh" ]
-  run env PATH="$STUB_DIR:$PATH" SHELL_LINT_BASH32="$STUB_DIR/bash32" \
+  run env PATH="$STUB_DIRECTORY:$PATH" SHELL_LINT_BASH32="$STUB_DIRECTORY/bash32" \
     BASH32_FAIL_ON="$first_sh $last_sh" bash "$GATE" --only bash32-parse
   [ "$status" -eq 1 ]
   grep -qF -- "shell-lint FAILED" <<<"$output"
@@ -203,7 +203,7 @@ gate_pass_headers() {
   # this file and red.
   first_sh="$(tracked_sh first)"
   [ -n "$first_sh" ]
-  run env PATH="$STUB_DIR:$PATH" SHELL_LINT_BASH32="$STUB_DIR/bash32" \
+  run env PATH="$STUB_DIRECTORY:$PATH" SHELL_LINT_BASH32="$STUB_DIRECTORY/bash32" \
     BASH32_MAJOR=5 BASH32_FAIL_ON="$first_sh" bash "$GATE" --only bash32-parse
   # A skip is not a failure: an ubuntu runner has no bash 3.2 and must still be
   # able to clear the rest of the gate.
@@ -220,7 +220,7 @@ gate_pass_headers() {
 }
 
 @test "the bash-3.2 parse pass fails closed when the interpreter is missing" {
-  run env PATH="$STUB_DIR:$PATH" SHELL_LINT_BASH32="$STUB_DIR/no-such-bash" \
+  run env PATH="$STUB_DIRECTORY:$PATH" SHELL_LINT_BASH32="$STUB_DIRECTORY/no-such-bash" \
     bash "$GATE" --only bash32-parse
   [ "$status" -eq 1 ]
   grep -qF -- "is not executable; the bash-3.2 parse pass cannot run" <<<"$output"
@@ -228,7 +228,7 @@ gate_pass_headers() {
 }
 
 @test "the bash-3.2 parse pass fails closed when the interpreter reports no version" {
-  run env PATH="$STUB_DIR:$PATH" SHELL_LINT_BASH32="$STUB_DIR/bash32" \
+  run env PATH="$STUB_DIRECTORY:$PATH" SHELL_LINT_BASH32="$STUB_DIRECTORY/bash32" \
     BASH32_MAJOR= bash "$GATE" --only bash32-parse
   # Fail closed rather than skip: an interpreter whose version cannot be read is
   # one this pass cannot place on either side of the 3.2 line, and reporting
@@ -247,10 +247,10 @@ gate_pass_headers() {
 # has to reach the parse pass without shellcheck present at all.
 
 @test "--only bash32-parse runs the parse pass and skips every other pass" {
-  run env PATH="$STUB_DIR:$PATH" SHELL_LINT_BASH32="$STUB_DIR/bash32" \
+  run env PATH="$STUB_DIRECTORY:$PATH" SHELL_LINT_BASH32="$STUB_DIRECTORY/bash32" \
     bash "$GATE" --only bash32-parse
   [ "$status" -eq 0 ]
-  grep -qF -- "bash-3.2 parse ($STUB_DIR/bash32 -n)" <<<"$output"
+  grep -qF -- "bash-3.2 parse ($STUB_DIRECTORY/bash32 -n)" <<<"$output"
   grep -qF -- "shell-lint passed" <<<"$output"
   # Each absence is asserted against the pass's own header line, so a pass that
   # ran is caught whether or not it found anything. Written as the bad case plus
@@ -261,12 +261,12 @@ gate_pass_headers() {
   # the early exit and leave the test green while the 10x-billed macOS leg
   # started paying for a pass whose verdict does not depend on the host
   # interpreter -- the exact short read .claude/rules/bats-assertions.md names.
-  local p seen=0
-  while IFS= read -r p; do
-    [ -n "$p" ] || continue
+  local pass_name seen=0
+  while IFS= read -r pass_name; do
+    [ -n "$pass_name" ] || continue
     seen=$(( seen + 1 ))
-    case "$p" in "bash-3.2 parse") continue ;; esac
-    grep -qF -- "--> $p" <<<"$output" && return 1
+    case "$pass_name" in "bash-3.2 parse") continue ;; esac
+    grep -qF -- "--> $pass_name" <<<"$output" && return 1
   done < <(gate_pass_headers)
   # An empty or refused derivation would make every absence above vacuously
   # true, and a set holding only the pass this flag runs would assert nothing at
@@ -287,10 +287,10 @@ gate_pass_headers() {
   if PATH="/usr/bin:/bin" command -v shellcheck >/dev/null 2>&1; then
     skip "this host carries shellcheck in /usr/bin or /bin"
   fi
-  run env PATH="/usr/bin:/bin" SHELL_LINT_BASH32="$STUB_DIR/bash32" \
+  run env PATH="/usr/bin:/bin" SHELL_LINT_BASH32="$STUB_DIRECTORY/bash32" \
     bash "$GATE" --only bash32-parse
   [ "$status" -eq 0 ]
-  grep -qF -- "bash-3.2 parse ($STUB_DIR/bash32 -n)" <<<"$output"
+  grep -qF -- "bash-3.2 parse ($STUB_DIRECTORY/bash32 -n)" <<<"$output"
   grep -qF -- "shell-lint passed" <<<"$output"
 }
 
@@ -299,7 +299,7 @@ gate_pass_headers() {
   # what a run that finds something reports.
   first_sh="$(tracked_sh first)"
   [ -n "$first_sh" ]
-  run env PATH="$STUB_DIR:$PATH" SHELL_LINT_BASH32="$STUB_DIR/bash32" \
+  run env PATH="$STUB_DIRECTORY:$PATH" SHELL_LINT_BASH32="$STUB_DIRECTORY/bash32" \
     BASH32_FAIL_ON="$first_sh" bash "$GATE" --only bash32-parse
   [ "$status" -eq 1 ]
   grep -qF -- "shell-lint FAILED" <<<"$output"
@@ -309,7 +309,7 @@ gate_pass_headers() {
 @test "an unknown --only pass is a usage error, not a silent full run" {
   # A typo falling through to the default would run the whole gate on a host
   # that has no shellcheck, reporting the flag's own absence as a lint failure.
-  run env PATH="$STUB_DIR:$PATH" bash "$GATE" --only no-such-pass
+  run env PATH="$STUB_DIRECTORY:$PATH" bash "$GATE" --only no-such-pass
   [ "$status" -eq 2 ]
   grep -qF -- "unknown --only pass" <<<"$output"
   grep -qF -- "shell-lint passed" <<<"$output" && return 1
@@ -317,13 +317,13 @@ gate_pass_headers() {
 }
 
 @test "an unknown argument is a usage error" {
-  run env PATH="$STUB_DIR:$PATH" bash "$GATE" --bogus
+  run env PATH="$STUB_DIRECTORY:$PATH" bash "$GATE" --bogus
   [ "$status" -eq 2 ]
   grep -qF -- "unknown argument" <<<"$output"
 }
 
 @test "--only with no pass name is a usage error" {
-  run env PATH="$STUB_DIR:$PATH" bash "$GATE" --only
+  run env PATH="$STUB_DIRECTORY:$PATH" bash "$GATE" --only
   [ "$status" -eq 2 ]
   grep -qF -- "needs a pass name" <<<"$output"
 }
@@ -333,8 +333,8 @@ gate_pass_headers() {
   # its own: every assertion above passes with the workflow leg deleted, which
   # is the exact posture -- enforcement resting on a voluntary local run -- that
   # this leg exists to end.
-  wf="$REPO_ROOT/.github/workflows/shell-lint.yml"
-  [ -f "$wf" ]
+  workflow_file="$REPO_ROOT/.github/workflows/shell-lint.yml"
+  [ -f "$workflow_file" ]
   # Scoped to the job's own block, never the whole file. Three of these four
   # strings also appear, or could be relocated, elsewhere in this workflow: the
   # sibling ubuntu job's paths-filter carries a byte-identical `- '**/*.sh'`
@@ -354,7 +354,7 @@ gate_pass_headers() {
   # de-armed. Nothing inside a job block sits at 2-space indent, so the
   # terminator cannot fire early; if one ever did, it would fail loudly here
   # rather than pass.
-  job="$(awk '/^  bash32-parse:/{f=1;next} f&&/^  [^ ]/{exit} f' "$wf")"
+  job="$(awk '/^  bash32-parse:/{inside_job=1;next} inside_job&&/^  [^ ]/{exit} inside_job' "$workflow_file")"
   [ -n "$job" ]
   grep -qF -- "runs-on: macos-latest" <<<"$job"
   grep -qF -- ".gaia/tests/shell-lint.sh --only bash32-parse" <<<"$job"

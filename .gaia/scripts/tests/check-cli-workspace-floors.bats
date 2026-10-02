@@ -25,13 +25,13 @@ setup() {
   # shellcheck source=.gaia/tests/helpers/path.sh
   . "$REPO_ROOT/.gaia/tests/helpers/path.sh"
   CHECK="$REPO_ROOT/.gaia/scripts/check-cli-workspace-floors.sh"
-  TMP="$(mktemp -d)"
-  WS="$TMP/ws"
-  mkdir -p "$WS"
+  TEMPORARY_DIRECTORY="$(mktemp -d)"
+  WORKSPACE_ROOT="$TEMPORARY_DIRECTORY/ws"
+  mkdir -p "$WORKSPACE_ROOT"
 }
 
 teardown() {
-  [ -n "${TMP:-}" ] && [ -d "$TMP" ] && rm -rf "$TMP"
+  [ -n "${TEMPORARY_DIRECTORY:-}" ] && [ -d "$TEMPORARY_DIRECTORY" ] && rm -rf "$TEMPORARY_DIRECTORY"
   return 0
 }
 
@@ -44,7 +44,7 @@ write_workspace() {
       printf 'overrides:\n'
       printf '%s\n' "$@"
     fi
-  } > "$WS/pnpm-workspace.yaml"
+  } > "$WORKSPACE_ROOT/pnpm-workspace.yaml"
 }
 
 write_lock() {
@@ -55,13 +55,13 @@ write_lock() {
       printf '%s\n' "$@"
     fi
     printf '\nimporters:\n\n  .:\n    dependencies:\n      zod:\n        specifier: 4.4.3\n'
-  } > "$WS/pnpm-lock.yaml"
+  } > "$WORKSPACE_ROOT/pnpm-lock.yaml"
 }
 
 @test "a workspace whose floors are all applied is clean" {
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'fast-uri' <<<"$output"
 }
@@ -71,21 +71,21 @@ write_lock() {
   # in the lockfile it writes; neither spelling is drift.
   write_workspace "  'cosmiconfig>js-yaml': 4.3.1" "  '@eslint/eslintrc>js-yaml': 4.3.1"
   write_lock "  cosmiconfig>js-yaml: 4.3.1" "  '@eslint/eslintrc>js-yaml': 4.3.1"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
 }
 
 @test "double-quoted spellings normalize the same way single-quoted ones do" {
   write_workspace '  "fast-uri": "3.1.6"'
   write_lock "  fast-uri: 3.1.6"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
 }
 
 @test "a configured floor missing from the lockfile is reported as unapplied" {
   write_workspace "  fast-uri: 3.1.6" "  morgan: 1.11.0"
   write_lock "  fast-uri: 3.1.6"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 1 ]
   grep -qF -- 'morgan' <<<"$output"
   grep -qiF -- 'not applied' <<<"$output"
@@ -99,7 +99,7 @@ write_lock() {
 @test "a lockfile override with no entry in the workspace config is reported" {
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6" "  morgan: 1.11.0"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 1 ]
   grep -qF -- 'morgan' <<<"$output"
   # Asserted as a PRESENCE. The sibling test that pins the clean path asserts
@@ -111,7 +111,7 @@ write_lock() {
 @test "a floor pinned at one version and locked at another is reported" {
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.4"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 1 ]
   grep -qF -- '3.1.6' <<<"$output"
   grep -qF -- '3.1.4' <<<"$output"
@@ -124,7 +124,7 @@ write_lock() {
   # this gate exists for, so it must not fall through an empty-set comparison.
   write_workspace "  fast-uri: 3.1.6"
   write_lock
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 1 ]
   grep -qF -- 'fast-uri' <<<"$output"
 }
@@ -132,7 +132,7 @@ write_lock() {
 @test "a workspace declaring no overrides is clean and says there is nothing to check" {
   write_workspace
   write_lock
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qiF -- 'no overrides' <<<"$output"
 }
@@ -143,7 +143,7 @@ write_lock() {
   # nested key under it.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'importers' <<<"$output" && return 1
   grep -qF -- 'specifier' <<<"$output" && return 1
@@ -156,9 +156,9 @@ write_lock() {
   # instead, still exiting 2 while reporting a missing file inside a directory
   # that does not exist. That also keeps the negative assertion in the
   # unenterable-root test from going vacuous.
-  run bash "$CHECK" --no-audit "$TMP/absent"
+  run bash "$CHECK" --no-audit "$TEMPORARY_DIRECTORY/absent"
   [ "$status" -eq 2 ]
-  grep -qF -- "the root itself is missing under $TMP/absent" <<<"$output"
+  grep -qF -- "the root itself is missing under $TEMPORARY_DIRECTORY/absent" <<<"$output"
 }
 
 # Both of these assert the CAUSE, not only the status. The readability checks
@@ -167,16 +167,16 @@ write_lock() {
 # that "cannot be read" for a file that is not there at all.
 @test "a workspace root with no pnpm-workspace.yaml is an environment error" {
   write_lock "  fast-uri: 3.1.6"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
-  grep -qF -- "pnpm-workspace.yaml is missing under $WS" <<<"$output"
+  grep -qF -- "pnpm-workspace.yaml is missing under $WORKSPACE_ROOT" <<<"$output"
 }
 
 @test "a workspace root with no lockfile is an environment error" {
   write_workspace "  fast-uri: 3.1.6"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
-  grep -qF -- "pnpm-lock.yaml is missing under $WS" <<<"$output"
+  grep -qF -- "pnpm-lock.yaml is missing under $WORKSPACE_ROOT" <<<"$output"
 }
 
 # A subject that EXISTS and cannot be read is the fail-open case, and it is not
@@ -191,31 +191,31 @@ write_lock() {
   [ "$(id -u)" -ne 0 ] || skip "chmod 000 is not a read barrier for root"
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.5"
-  chmod 000 "$WS/pnpm-workspace.yaml"
-  run bash "$CHECK" --no-audit "$WS"
-  chmod 644 "$WS/pnpm-workspace.yaml"
+  chmod 000 "$WORKSPACE_ROOT/pnpm-workspace.yaml"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
+  chmod 644 "$WORKSPACE_ROOT/pnpm-workspace.yaml"
   [ "$status" -eq 2 ]
-  grep -qF -- "pnpm-workspace.yaml exists under $WS but cannot be read" <<<"$output"
+  grep -qF -- "pnpm-workspace.yaml exists under $WORKSPACE_ROOT but cannot be read" <<<"$output"
 }
 
 @test "an unreadable pnpm-lock.yaml is refused rather than read as no floors" {
   [ "$(id -u)" -ne 0 ] || skip "chmod 000 is not a read barrier for root"
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.5"
-  chmod 000 "$WS/pnpm-lock.yaml"
-  run bash "$CHECK" --no-audit "$WS"
-  chmod 644 "$WS/pnpm-lock.yaml"
+  chmod 000 "$WORKSPACE_ROOT/pnpm-lock.yaml"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
+  chmod 644 "$WORKSPACE_ROOT/pnpm-lock.yaml"
   [ "$status" -eq 2 ]
-  grep -qF -- "pnpm-lock.yaml exists under $WS but cannot be read" <<<"$output"
+  grep -qF -- "pnpm-lock.yaml exists under $WORKSPACE_ROOT but cannot be read" <<<"$output"
 }
 
 @test "two unreadable subjects do not agree with each other into a clean run" {
   [ "$(id -u)" -ne 0 ] || skip "chmod 000 is not a read barrier for root"
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.5"
-  chmod 000 "$WS/pnpm-workspace.yaml" "$WS/pnpm-lock.yaml"
-  run bash "$CHECK" --no-audit "$WS"
-  chmod 644 "$WS/pnpm-workspace.yaml" "$WS/pnpm-lock.yaml"
+  chmod 000 "$WORKSPACE_ROOT/pnpm-workspace.yaml" "$WORKSPACE_ROOT/pnpm-lock.yaml"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
+  chmod 644 "$WORKSPACE_ROOT/pnpm-workspace.yaml" "$WORKSPACE_ROOT/pnpm-lock.yaml"
   [ "$status" -eq 2 ]
   # The exact shape this fixture exists for: before the -r checks, this run
   # exited 0 on the clean line while the workspace declared a floor the lockfile
@@ -231,7 +231,7 @@ write_lock() {
 @test "an unknown flag is refused rather than silently treated as the root" {
   write_workspace
   write_lock
-  run bash "$CHECK" --audit-everything "$WS"
+  run bash "$CHECK" --audit-everything "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
   # The cause is asserted, not only the status, on the same standard the
   # root-missing test above states. Exit 2 alone cannot tell the unknown-flag
@@ -244,7 +244,7 @@ write_lock() {
 @test "a second positional root is refused rather than silently replacing the first" {
   write_workspace
   write_lock
-  run bash "$CHECK" --no-audit "$WS" "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT" "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
   grep -qF -- "more than one workspace root given" <<<"$output"
 }
@@ -252,7 +252,7 @@ write_lock() {
 @test "the advisory arm reports that it was skipped rather than staying silent" {
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qiF -- 'advisory' <<<"$output"
   grep -qiF -- 'skipped' <<<"$output"
@@ -264,15 +264,15 @@ write_lock() {
   # indistinguishable from one whose filter never matches.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  mkdir -p "$TMP/bin"
-  cat > "$TMP/bin/pnpm" <<'STUB'
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  cat > "$TEMPORARY_DIRECTORY/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 cat <<'JSON'
 {"advisories":{"1098765":{"id":1098765,"module_name":"fast-uri","severity":"high","title":"host confusion via a backslash authority introducer"},"22":{"module_name":"quiet-dep","severity":"low","title":"ignored"}}}
 JSON
 STUB
-  chmod +x "$TMP/bin/pnpm"
-  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/pnpm"
+  PATH="$TEMPORARY_DIRECTORY/bin:$PATH" run bash "$CHECK" "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'ADVISORY (high' <<<"$output"
   grep -qF -- 'fast-uri' <<<"$output"
@@ -285,14 +285,14 @@ STUB
   # never happened printing the same line as a closure with nothing wrong.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  mkdir -p "$TMP/bin"
-  cat > "$TMP/bin/pnpm" <<'STUB'
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  cat > "$TEMPORARY_DIRECTORY/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 printf 'ERR_PNPM_AUDIT  registry unreachable\n' >&2
 exit 1
 STUB
-  chmod +x "$TMP/bin/pnpm"
-  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/pnpm"
+  PATH="$TEMPORARY_DIRECTORY/bin:$PATH" run bash "$CHECK" "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'NOT audited' <<<"$output"
   grep -qF -- 'no high or critical advisories' <<<"$output" && return 1
@@ -305,14 +305,14 @@ STUB
   # through and the empty advisory set reads as a clean scan.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  mkdir -p "$TMP/bin"
-  cat > "$TMP/bin/pnpm" <<'STUB'
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  cat > "$TEMPORARY_DIRECTORY/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 printf '{"error":{"code":23,"message":"The operation was aborted due to timeout"}}\n'
 exit 1
 STUB
-  chmod +x "$TMP/bin/pnpm"
-  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/pnpm"
+  PATH="$TEMPORARY_DIRECTORY/bin:$PATH" run bash "$CHECK" "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'NOT audited' <<<"$output"
   grep -qF -- 'no high or critical advisories' <<<"$output" && return 1
@@ -326,16 +326,16 @@ STUB
   # the runs that matter.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  mkdir -p "$TMP/bin"
-  cat > "$TMP/bin/pnpm" <<'STUB'
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  cat > "$TEMPORARY_DIRECTORY/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 cat <<'JSON'
 {"advisories":{"1098765":{"id":1098765,"module_name":"fast-uri","severity":"high","title":"host confusion via a backslash authority introducer"}}}
 JSON
 exit 1
 STUB
-  chmod +x "$TMP/bin/pnpm"
-  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/pnpm"
+  PATH="$TEMPORARY_DIRECTORY/bin:$PATH" run bash "$CHECK" "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'ADVISORY (high' <<<"$output"
   grep -qF -- 'NOT audited' <<<"$output" && return 1
@@ -352,16 +352,16 @@ STUB
   # keeps the cross-check from being what rejects it.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  mkdir -p "$TMP/bin"
-  cat > "$TMP/bin/pnpm" <<'STUB'
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  cat > "$TEMPORARY_DIRECTORY/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 cat <<'JSON'
 {"advisories":{"1098765":{"sev":"critical","mod":"fast-uri","title":"renamed entry fields"}},"metadata":{"vulnerabilities":{"high":0,"critical":0}}}
 JSON
 exit 1
 STUB
-  chmod +x "$TMP/bin/pnpm"
-  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/pnpm"
+  PATH="$TEMPORARY_DIRECTORY/bin:$PATH" run bash "$CHECK" "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'NOT audited' <<<"$output"
   grep -qF -- 'no high or critical advisories' <<<"$output" && return 1
@@ -373,14 +373,14 @@ STUB
   # the empty result read as a clean scan.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  mkdir -p "$TMP/bin"
-  cat > "$TMP/bin/pnpm" <<'STUB'
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  cat > "$TEMPORARY_DIRECTORY/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 printf '{"advisories":5}\n'
 exit 0
 STUB
-  chmod +x "$TMP/bin/pnpm"
-  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/pnpm"
+  PATH="$TEMPORARY_DIRECTORY/bin:$PATH" run bash "$CHECK" "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'NOT audited' <<<"$output"
   grep -qF -- 'no high or critical advisories' <<<"$output" && return 1
@@ -393,16 +393,16 @@ STUB
   # and only the report's own second statement of the same fact catches it.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  mkdir -p "$TMP/bin"
-  cat > "$TMP/bin/pnpm" <<'STUB'
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  cat > "$TEMPORARY_DIRECTORY/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 cat <<'JSON'
 {"advisories":{},"metadata":{"vulnerabilities":{"critical":1,"high":0,"low":0}}}
 JSON
 exit 1
 STUB
-  chmod +x "$TMP/bin/pnpm"
-  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/pnpm"
+  PATH="$TEMPORARY_DIRECTORY/bin:$PATH" run bash "$CHECK" "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'NOT audited' <<<"$output"
   grep -qF -- 'no high or critical advisories' <<<"$output" && return 1
@@ -414,16 +414,16 @@ STUB
   # reports clean, and low-severity findings do not make it inconclusive.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  mkdir -p "$TMP/bin"
-  cat > "$TMP/bin/pnpm" <<'STUB'
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  cat > "$TEMPORARY_DIRECTORY/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 cat <<'JSON'
 {"advisories":{},"metadata":{"vulnerabilities":{"critical":0,"high":0,"low":3}}}
 JSON
 exit 0
 STUB
-  chmod +x "$TMP/bin/pnpm"
-  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/pnpm"
+  PATH="$TEMPORARY_DIRECTORY/bin:$PATH" run bash "$CHECK" "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'no high or critical advisories' <<<"$output"
   grep -qF -- 'NOT audited' <<<"$output" && return 1
@@ -437,16 +437,16 @@ STUB
   # this reader did not read, so the clean line must not print.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  mkdir -p "$TMP/bin"
-  cat > "$TMP/bin/pnpm" <<'STUB'
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  cat > "$TEMPORARY_DIRECTORY/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 cat <<'JSON'
 {"advisories":{},"metadata":{"vulnerabilities":{"high":"3","critical":0}}}
 JSON
 exit 0
 STUB
-  chmod +x "$TMP/bin/pnpm"
-  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/pnpm"
+  PATH="$TEMPORARY_DIRECTORY/bin:$PATH" run bash "$CHECK" "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'NOT audited' <<<"$output"
   grep -qF -- 'no high or critical advisories' <<<"$output" && return 1
@@ -458,16 +458,16 @@ STUB
   # used to be discarded straight onto the clean arm.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  mkdir -p "$TMP/bin"
-  cat > "$TMP/bin/pnpm" <<'STUB'
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  cat > "$TEMPORARY_DIRECTORY/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 cat <<'JSON'
 {"advisories":{},"metadata":{"vulnerabilities":[{"high":3}]}}
 JSON
 exit 0
 STUB
-  chmod +x "$TMP/bin/pnpm"
-  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/pnpm"
+  PATH="$TEMPORARY_DIRECTORY/bin:$PATH" run bash "$CHECK" "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'NOT audited' <<<"$output"
   grep -qF -- 'no high or critical advisories' <<<"$output" && return 1
@@ -482,14 +482,14 @@ STUB
   # is not only absence that would slip through.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  mkdir -p "$TMP/bin"
-  cat > "$TMP/bin/pnpm" <<'STUB'
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  cat > "$TEMPORARY_DIRECTORY/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 printf '{"advisories":{}}\n'
 exit 0
 STUB
-  chmod +x "$TMP/bin/pnpm"
-  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/pnpm"
+  PATH="$TEMPORARY_DIRECTORY/bin:$PATH" run bash "$CHECK" "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'NOT audited' <<<"$output"
   grep -qF -- 'no high or critical advisories' <<<"$output" && return 1
@@ -504,16 +504,16 @@ STUB
   # term is the non-object-vulnerabilities fixture below.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  mkdir -p "$TMP/bin"
-  cat > "$TMP/bin/pnpm" <<'STUB'
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  cat > "$TEMPORARY_DIRECTORY/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 cat <<'JSON'
 {"advisories":{},"metadata":{"vulnerabilities":{"high":"0","critical":null}}}
 JSON
 exit 0
 STUB
-  chmod +x "$TMP/bin/pnpm"
-  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/pnpm"
+  PATH="$TEMPORARY_DIRECTORY/bin:$PATH" run bash "$CHECK" "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'NOT audited' <<<"$output"
   grep -qF -- 'no high or critical advisories' <<<"$output" && return 1
@@ -526,16 +526,16 @@ STUB
   # should be.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  mkdir -p "$TMP/bin"
-  cat > "$TMP/bin/pnpm" <<'STUB'
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  cat > "$TEMPORARY_DIRECTORY/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 cat <<'JSON'
 {"advisories":{"1":{"severity":"high","module_name":"fast-uri"}},"metadata":{"vulnerabilities":{"high":0,"critical":0}}}
 JSON
 exit 1
 STUB
-  chmod +x "$TMP/bin/pnpm"
-  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/pnpm"
+  PATH="$TEMPORARY_DIRECTORY/bin:$PATH" run bash "$CHECK" "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'NOT audited' <<<"$output"
   grep -qF -- 'ADVISORY' <<<"$output" && return 1
@@ -551,7 +551,7 @@ STUB
   # prints its own `cd: ...: Permission denied` naming that same path, `run`
   # folds stderr into $output, and the assertion passes on the broken code.
   # Assert the message itself instead.
-  local locked="$TMP/locked"
+  local locked="$TEMPORARY_DIRECTORY/locked"
   mkdir -p "$locked"
   chmod 000 "$locked"
   run bash "$CHECK" --no-audit "$locked"
@@ -572,16 +572,16 @@ STUB
   # metadata is what makes the entry-shape gate the only thing left.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  mkdir -p "$TMP/bin"
-  cat > "$TMP/bin/pnpm" <<'STUB'
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  cat > "$TEMPORARY_DIRECTORY/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 cat <<'JSON'
 {"advisories":{"1":{"module_name":"fast-uri","title":"no severity"}},"metadata":{"vulnerabilities":{"high":0,"critical":0}}}
 JSON
 exit 0
 STUB
-  chmod +x "$TMP/bin/pnpm"
-  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/pnpm"
+  PATH="$TEMPORARY_DIRECTORY/bin:$PATH" run bash "$CHECK" "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'NOT audited' <<<"$output"
   grep -qF -- 'no high or critical advisories' <<<"$output" && return 1
@@ -594,16 +594,16 @@ STUB
   # naming a literal null module.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  mkdir -p "$TMP/bin"
-  cat > "$TMP/bin/pnpm" <<'STUB'
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  cat > "$TEMPORARY_DIRECTORY/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 cat <<'JSON'
 {"advisories":{"1":{"severity":"high","title":"no module name"}},"metadata":{"vulnerabilities":{"high":0,"critical":0}}}
 JSON
 exit 1
 STUB
-  chmod +x "$TMP/bin/pnpm"
-  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/pnpm"
+  PATH="$TEMPORARY_DIRECTORY/bin:$PATH" run bash "$CHECK" "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'NOT audited' <<<"$output"
   grep -qF -- 'ADVISORY' <<<"$output" && return 1
@@ -618,16 +618,16 @@ STUB
   # payload reads as a completed scan.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  mkdir -p "$TMP/bin"
-  cat > "$TMP/bin/pnpm" <<'STUB'
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  cat > "$TEMPORARY_DIRECTORY/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 cat <<'JSON'
 {"advisories":{},"error":{"code":23,"message":"partial"},"metadata":{"vulnerabilities":{"high":0,"critical":0}}}
 JSON
 exit 1
 STUB
-  chmod +x "$TMP/bin/pnpm"
-  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/pnpm"
+  PATH="$TEMPORARY_DIRECTORY/bin:$PATH" run bash "$CHECK" "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'NOT audited' <<<"$output"
   grep -qF -- 'no high or critical advisories' <<<"$output" && return 1
@@ -641,14 +641,14 @@ STUB
   # just printed FLOOR NOT APPLIED for. This drives the container-gate exit.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.4"
-  mkdir -p "$TMP/bin"
-  cat > "$TMP/bin/pnpm" <<'STUB'
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  cat > "$TEMPORARY_DIRECTORY/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 printf '{"error":{"code":23,"message":"aborted"}}\n'
 exit 1
 STUB
-  chmod +x "$TMP/bin/pnpm"
-  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/pnpm"
+  PATH="$TEMPORARY_DIRECTORY/bin:$PATH" run bash "$CHECK" "$WORKSPACE_ROOT"
   [ "$status" -eq 1 ]
   grep -qF -- 'FLOOR NOT APPLIED' <<<"$output"
   grep -qF -- 'NOT audited' <<<"$output"
@@ -658,16 +658,16 @@ STUB
   # The same contract on the entry-shape gate's own exit.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.4"
-  mkdir -p "$TMP/bin"
-  cat > "$TMP/bin/pnpm" <<'STUB'
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  cat > "$TEMPORARY_DIRECTORY/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 cat <<'JSON'
 {"advisories":{"1":{"sev":"critical","mod":"fast-uri"}}}
 JSON
 exit 1
 STUB
-  chmod +x "$TMP/bin/pnpm"
-  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/pnpm"
+  PATH="$TEMPORARY_DIRECTORY/bin:$PATH" run bash "$CHECK" "$WORKSPACE_ROOT"
   [ "$status" -eq 1 ]
   grep -qF -- 'FLOOR NOT APPLIED' <<<"$output"
   grep -qF -- 'shape this reader cannot read' <<<"$output"
@@ -681,7 +681,7 @@ STUB
   write_workspace "  # retired by hand: see the note above
   fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'floor applied: fast-uri' <<<"$output"
   grep -qF -- 'FLOOR NOT APPLIED' <<<"$output" && return 1
@@ -697,7 +697,7 @@ STUB
   # absent AND invents an undeclared override, on a tree that agrees.
   write_workspace "  'foo@npm:bar': 1.2.3"
   write_lock "  foo@npm:bar: 1.2.3"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'floor applied: foo@npm:bar at 1.2.3' <<<"$output"
   grep -qF -- 'FLOOR NOT APPLIED' <<<"$output" && return 1
@@ -711,9 +711,9 @@ STUB
   # reports clean over a workspace carrying live floors. Every fixture test
   # here would stay green on its own hand-written shape.
   printf 'overrides:\n  # the map pnpm would write is not in a shape this reader knows\n' \
-    > "$WS/pnpm-workspace.yaml"
+    > "$WORKSPACE_ROOT/pnpm-workspace.yaml"
   write_lock "  fast-uri: 3.1.6"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
   grep -qF -- 'no entries' <<<"$output"
 }
@@ -726,8 +726,8 @@ STUB
   # two to change shape.
   write_workspace "  fast-uri: 3.1.6"
   printf 'overrides:\n  # the map pnpm would write is not in a shape this reader knows\n' \
-    > "$WS/pnpm-lock.yaml"
-  run bash "$CHECK" --no-audit "$WS"
+    > "$WORKSPACE_ROOT/pnpm-lock.yaml"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
   grep -qF -- 'no entries' <<<"$output"
 }
@@ -744,7 +744,7 @@ STUB
   # suite header names as the one that gets the gate switched off.
   write_workspace "  fast-uri: 3.1.6 # GHSA-7p8r-x3mc-p8w7"
   write_lock "  fast-uri: 3.1.6"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'floor applied: fast-uri at 3.1.6' <<<"$output"
   grep -qF -- 'FLOOR NOT APPLIED' <<<"$output" && return 1
@@ -754,7 +754,7 @@ STUB
 @test "a quoted key carrying an annotated version parses as its version alone" {
   write_workspace "  'cosmiconfig>js-yaml': 4.3.1  # GHSA-5p4m-2wfm-xmqj"
   write_lock "  cosmiconfig>js-yaml: 4.3.1"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'floor applied: cosmiconfig>js-yaml at 4.3.1' <<<"$output"
 }
@@ -765,7 +765,7 @@ STUB
   # which then refuses rather than reading a legal scalar.
   write_workspace "  fast-uri: '3.1.6 # not a comment'"
   write_lock "  fast-uri: '3.1.6 # not a comment'"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'floor applied: fast-uri at 3.1.6 # not a comment' <<<"$output"
 }
@@ -773,7 +773,7 @@ STUB
 @test "a space before the key-terminating colon is not taken as part of the key" {
   write_workspace "  fast-uri : 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'floor applied: fast-uri at 3.1.6' <<<"$output"
 }
@@ -781,7 +781,7 @@ STUB
 @test "a hash with no space before it stays part of the version, as YAML says" {
   write_workspace "  fast-uri: 3.1.6#notacomment"
   write_lock "  fast-uri: 3.1.6#notacomment"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'floor applied: fast-uri at 3.1.6#notacomment' <<<"$output"
 }
@@ -789,7 +789,7 @@ STUB
 @test "a quoted version may carry whitespace, because the quotes make it unambiguous" {
   write_workspace "  fast-uri: '>=1.2.3 <2.0.0'"
   write_lock "  fast-uri: '>=1.2.3 <2.0.0'"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'floor applied: fast-uri at >=1.2.3 <2.0.0' <<<"$output"
 }
@@ -800,7 +800,7 @@ STUB
   # correctly, not being conservative.
   write_workspace "  fast-uri: >=1.2.3 <2.0.0"
   write_lock "  fast-uri: 3.1.6"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
   grep -qF -- 'is not readable as YAML' <<<"$output"
 }
@@ -808,7 +808,7 @@ STUB
 @test "a YAML alias as a version is refused rather than compared as a literal token" {
   write_workspace "  fast-uri: *alias"
   write_lock "  fast-uri: 3.1.6"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
   grep -qF -- 'unidentified alias' <<<"$output"
 }
@@ -820,7 +820,7 @@ STUB
 @test "a multi-range semver with an or-operator is read, not refused" {
   write_workspace "  fast-uri: ^1.0.0 || ^2.0.0"
   write_lock "  fast-uri: ^1.0.0 || ^2.0.0"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'floor applied: fast-uri at ^1.0.0 || ^2.0.0' <<<"$output"
 }
@@ -828,7 +828,7 @@ STUB
 @test "a hyphenated semver range is read, not refused" {
   write_workspace "  fast-uri: 1.2.3 - 2.0.0"
   write_lock "  fast-uri: 1.2.3 - 2.0.0"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'floor applied: fast-uri at 1.2.3 - 2.0.0' <<<"$output"
 }
@@ -838,7 +838,7 @@ STUB
   # become accepting any two values as equal.
   write_workspace "  fast-uri: ^1.0.0 || ^2.0.0"
   write_lock "  fast-uri: ^1.0.0"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 1 ]
   grep -qF -- 'FLOOR NOT APPLIED' <<<"$output"
 }
@@ -846,7 +846,7 @@ STUB
 @test "a quoted value that never closes is refused rather than compared with its quote" {
   write_workspace "  fast-uri: 'unterminated"
   write_lock "  fast-uri: 3.1.6"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
   grep -qF -- 'is not readable as YAML' <<<"$output"
 }
@@ -854,7 +854,7 @@ STUB
 @test "a quoted value with trailing junk after the closing quote is refused" {
   write_workspace "  fast-uri: 'ok' junk"
   write_lock "  fast-uri: 3.1.6"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
   grep -qF -- 'is not readable as YAML' <<<"$output"
 }
@@ -866,7 +866,7 @@ STUB
   # and YAML itself treats a duplicate key as an error.
   write_workspace "  fast-uri: 0.25.0" "  fast-uri: 0.24.0"
   write_lock "  fast-uri: 0.24.0"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
   # YAML itself treats a duplicate mapping key as an error, and the reader
   # reports the parser's own diagnosis rather than inventing one.
@@ -879,9 +879,9 @@ STUB
   # line at exit 0 over a floor the lockfile does not apply. Both sides matter:
   # the lockfile must declare NOTHING, or an undeclared-override row exits 1
   # anyway and the fixture pins nothing.
-  printf 'overrides: # security floors\n  fast-uri: 3.1.6\n' > "$WS/pnpm-workspace.yaml"
+  printf 'overrides: # security floors\n  fast-uri: 3.1.6\n' > "$WORKSPACE_ROOT/pnpm-workspace.yaml"
   write_lock
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   grep -qF -- 'no overrides declared; no floors to check' <<<"$output" && return 1
   [ "$status" -eq 1 ]
 }
@@ -897,21 +897,21 @@ STUB
   # genuinely unfalsifiable terms in place rather than leaving them bare.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.4"
-  PATH="$(path_allowlist node)" run /bin/bash "$CHECK" --no-audit "$WS"
+  PATH="$(path_allowlist node)" run /bin/bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
   grep -qF -- 'awk is required to compare the two maps' <<<"$output"
 }
 
 @test "a comparison that cannot run is refused, not reported clean" {
   # Same class as the reader status check: discarded, a failing awk yields an
-  # empty report, the consuming loop prints nothing, rc stays 0, and the check
+  # empty report, the consuming loop prints nothing, exit_status stays 0, and the check
   # reports clean over a drift it never compared.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.4"
-  mkdir -p "$TMP/brokenbin"
-  printf '#!/bin/sh\nexit 127\n' > "$TMP/brokenbin/awk"
-  chmod +x "$TMP/brokenbin/awk"
-  PATH="$TMP/brokenbin:$PATH" run bash "$CHECK" --no-audit "$WS"
+  mkdir -p "$TEMPORARY_DIRECTORY/brokenbin"
+  printf '#!/bin/sh\nexit 127\n' > "$TEMPORARY_DIRECTORY/brokenbin/awk"
+  chmod +x "$TEMPORARY_DIRECTORY/brokenbin/awk"
+  PATH="$TEMPORARY_DIRECTORY/brokenbin:$PATH" run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
   grep -qF -- 'the comparison could not be run' <<<"$output"
 }
@@ -919,11 +919,11 @@ STUB
 @test "a missing node is refused loudly, never degraded to a clean run" {
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.4"
-  mkdir -p "$TMP/emptybin"
+  mkdir -p "$TEMPORARY_DIRECTORY/emptybin"
   # `/bin/bash` by absolute path: with PATH emptied, `bash` itself would not
   # resolve and the run would fail at 127 before reaching the reader check,
   # which passes the status assertion for the wrong reason.
-  PATH="$TMP/emptybin" run /bin/bash "$CHECK" --no-audit "$WS"
+  PATH="$TEMPORARY_DIRECTORY/emptybin" run /bin/bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
   grep -qF -- 'node is required' <<<"$output"
   grep -qF -- 'no overrides declared; no floors to check' <<<"$output" && return 1
@@ -935,9 +935,9 @@ STUB
   # outside this repository has no workspace to find it in.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.4"
-  mkdir -p "$TMP/elsewhere"
-  cp "$CHECK" "$TMP/elsewhere/check-cli-workspace-floors.sh"
-  run bash "$TMP/elsewhere/check-cli-workspace-floors.sh" --no-audit "$WS"
+  mkdir -p "$TEMPORARY_DIRECTORY/elsewhere"
+  cp "$CHECK" "$TEMPORARY_DIRECTORY/elsewhere/check-cli-workspace-floors.sh"
+  run bash "$TEMPORARY_DIRECTORY/elsewhere/check-cli-workspace-floors.sh" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
   grep -qF -- 'js-yaml was not found' <<<"$output"
   grep -qF -- 'pnpm -C .gaia/cli install' <<<"$output"
@@ -952,9 +952,9 @@ STUB
   # the guard covered newlines, sort and awk read it as two records and the run
   # printed `floor applied: 2.0.0 at ` alongside the real row, at exit 0: a
   # package the files do not contain, at an empty version.
-  printf 'overrides:\n  fast-uri: |\n    3.1.6\n    2.0.0\n' > "$WS/pnpm-workspace.yaml"
-  printf 'overrides:\n  fast-uri: |\n    3.1.6\n    2.0.0\n' > "$WS/pnpm-lock.yaml"
-  run bash "$CHECK" --no-audit "$WS"
+  printf 'overrides:\n  fast-uri: |\n    3.1.6\n    2.0.0\n' > "$WORKSPACE_ROOT/pnpm-workspace.yaml"
+  printf 'overrides:\n  fast-uri: |\n    3.1.6\n    2.0.0\n' > "$WORKSPACE_ROOT/pnpm-lock.yaml"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
   grep -qF -- 'newline inside an override key or value' <<<"$output"
   grep -qF -- '2.0.0 at' <<<"$output" && return 1
@@ -972,7 +972,7 @@ STUB
   # exit 0 over a genuine drift.
   write_workspace '  fast-uri: "3.10"'
   write_lock '  fast-uri: "3.1"'
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 1 ]
   grep -qF -- 'FLOOR NOT APPLIED' <<<"$output"
   grep -qF -- 'floor applied:' <<<"$output" && return 1
@@ -982,7 +982,7 @@ STUB
 @test "a trailing-zero floor is not equal to its shorter twin" {
   write_workspace '  fast-uri: "4"'
   write_lock '  fast-uri: "4.0"'
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 1 ]
   grep -qF -- 'FLOOR NOT APPLIED' <<<"$output"
 }
@@ -990,7 +990,7 @@ STUB
 @test "an exponent-shaped version is not equal to its expanded value" {
   write_workspace '  fast-uri: "1e2"'
   write_lock '  fast-uri: "100"'
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 1 ]
   grep -qF -- 'FLOOR NOT APPLIED' <<<"$output"
 }
@@ -1002,9 +1002,9 @@ STUB
   # EQUAL to a lockfile pinning `3.16`. That is a false clean over two files
   # pinning different values, at exit 0, whose only trace was a bash warning the
   # script neither owns nor reads.
-  printf 'overrides:\n  fast-uri: "3.1\\x006"\n' > "$WS/pnpm-workspace.yaml"
-  printf 'overrides:\n  fast-uri: "3.16"\n' > "$WS/pnpm-lock.yaml"
-  run bash "$CHECK" --no-audit "$WS"
+  printf 'overrides:\n  fast-uri: "3.1\\x006"\n' > "$WORKSPACE_ROOT/pnpm-workspace.yaml"
+  printf 'overrides:\n  fast-uri: "3.16"\n' > "$WORKSPACE_ROOT/pnpm-lock.yaml"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
   grep -qF -- 'has a NUL, tab, carriage return or newline' <<<"$output"
   grep -qF -- 'floor applied' <<<"$output" && return 1
@@ -1015,9 +1015,9 @@ STUB
   # The reader emitted this as a real row and the comparator blank-line term
   # removed it from both lists before any comparison, so it was never compared
   # and the run reported clean. The retired reader refused the same file.
-  printf 'overrides:\n  "": 3.1.6\n  fast-uri: 3.1.6\n' > "$WS/pnpm-workspace.yaml"
+  printf 'overrides:\n  "": 3.1.6\n  fast-uri: 3.1.6\n' > "$WORKSPACE_ROOT/pnpm-workspace.yaml"
   write_lock "  fast-uri: 3.1.6"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
   grep -qF -- 'maps an empty key, which names no package' <<<"$output"
 }
@@ -1026,8 +1026,8 @@ STUB
   # The other side of the same hole: the UNDECLARED OVERRIDE row this check
   # exists to emit was suppressed at exit 0.
   write_workspace "  fast-uri: 3.1.6"
-  printf 'overrides:\n  "": 9.9.9\n  fast-uri: 3.1.6\n' > "$WS/pnpm-lock.yaml"
-  run bash "$CHECK" --no-audit "$WS"
+  printf 'overrides:\n  "": 9.9.9\n  fast-uri: 3.1.6\n' > "$WORKSPACE_ROOT/pnpm-lock.yaml"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
   grep -qF -- 'maps an empty key, which names no package' <<<"$output"
 }
@@ -1039,7 +1039,7 @@ STUB
   # would have been a silent narrowing of the refusal set.
   write_workspace '  fast-uri: ""'
   write_lock '  fast-uri: ""'
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
   grep -qF -- 'an empty version, which pins nothing' <<<"$output"
 }
@@ -1047,9 +1047,9 @@ STUB
 @test "a flow-mapping overrides block is read, not refused" {
   # A flow mapping is legal YAML and the previous hand-rolled reader could only
   # refuse it. Reading with the serializer means the spelling stops mattering.
-  printf 'overrides: {fast-uri: 3.1.6}\n' > "$WS/pnpm-workspace.yaml"
+  printf 'overrides: {fast-uri: 3.1.6}\n' > "$WORKSPACE_ROOT/pnpm-workspace.yaml"
   write_lock "  fast-uri: 3.1.6"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'floor applied: fast-uri at 3.1.6' <<<"$output"
 }
@@ -1061,7 +1061,7 @@ STUB
   # file where neither was true.
   write_workspace "  'unterminated: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
   grep -qF -- 'is not readable as YAML' <<<"$output"
   grep -qF -- 'yielding no entries' <<<"$output" && return 1
@@ -1076,26 +1076,26 @@ STUB
   # run reports an undeclared override and exits 1 either way, so the fixture
   # would pass with the BOM handling deleted and pin nothing. Both sides empty
   # is the only shape where losing the BOM produces the clean line.
-  printf '\357\273\277overrides:\n  fast-uri: 3.1.6\n' > "$WS/pnpm-workspace.yaml"
+  printf '\357\273\277overrides:\n  fast-uri: 3.1.6\n' > "$WORKSPACE_ROOT/pnpm-workspace.yaml"
   write_lock
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   grep -qF -- 'no overrides declared; no floors to check' <<<"$output" && return 1
   [ "$status" -eq 1 ]
 }
 
 @test "CRLF line endings are read as the same map as LF endings" {
-  printf 'overrides:\r\n  fast-uri: 3.1.6\r\n' > "$WS/pnpm-workspace.yaml"
-  printf 'overrides:\r\n  fast-uri: 3.1.6\r\n' > "$WS/pnpm-lock.yaml"
-  run bash "$CHECK" --no-audit "$WS"
+  printf 'overrides:\r\n  fast-uri: 3.1.6\r\n' > "$WORKSPACE_ROOT/pnpm-workspace.yaml"
+  printf 'overrides:\r\n  fast-uri: 3.1.6\r\n' > "$WORKSPACE_ROOT/pnpm-lock.yaml"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'floor applied: fast-uri at 3.1.6' <<<"$output"
 }
 
 @test "a column-zero comment does not close the block and drop every entry below it" {
   printf 'overrides:\n  fast-uri: 3.1.6\n# a comment at column zero\n  morgan: 1.11.0\n' \
-    > "$WS/pnpm-workspace.yaml"
+    > "$WORKSPACE_ROOT/pnpm-workspace.yaml"
   write_lock "  fast-uri: 3.1.6" "  morgan: 1.11.0"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'floor applied: morgan at 1.11.0' <<<"$output"
 }
@@ -1103,7 +1103,7 @@ STUB
 @test "a key with no version is refused rather than read as an empty pin" {
   write_workspace "  fast-uri:"
   write_lock "  fast-uri: 3.1.6"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
   grep -qF -- 'maps fast-uri to a value that is not a scalar' <<<"$output"
 }
@@ -1111,7 +1111,7 @@ STUB
 @test "a YAML null key inside the block is refused rather than dropped" {
   write_workspace "  :"
   write_lock "  fast-uri: 3.1.6"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
   grep -qF -- 'is not readable as YAML' <<<"$output"
 }
@@ -1119,7 +1119,7 @@ STUB
 @test "a quoted key with no closing quote is refused rather than skipped" {
   write_workspace "  'unterminated: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
   grep -qF -- 'is not readable as YAML' <<<"$output"
 }
@@ -1130,7 +1130,7 @@ STUB
   # simplest spelling and is a guess either way.
   write_workspace "  'fast-uri' 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
   grep -qF -- 'is not readable as YAML' <<<"$output"
 }
@@ -1141,7 +1141,7 @@ STUB
   # one of its own.
   write_workspace "  fast-uri: 3.1.6" "  broken"
   write_lock "  fast-uri: 3.1.6"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
   grep -qF -- 'is not readable as YAML' <<<"$output"
 }
@@ -1149,15 +1149,15 @@ STUB
 @test "an overrides block that is a bare scalar is refused as not a mapping" {
   write_workspace "  fast-uri"
   write_lock "  fast-uri: 3.1.6"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
   grep -qF -- 'declares an overrides block that is not a mapping' <<<"$output"
 }
 
 @test "an overrides block that is a sequence is refused as not a mapping" {
-  printf 'overrides:\n  - fast-uri\n' > "$WS/pnpm-workspace.yaml"
+  printf 'overrides:\n  - fast-uri\n' > "$WORKSPACE_ROOT/pnpm-workspace.yaml"
   write_lock "  fast-uri: 3.1.6"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
   grep -qF -- 'declares an overrides block that is not a mapping' <<<"$output"
 }
@@ -1167,9 +1167,9 @@ STUB
   # so the first entry is line 4 and the broken one is line 5.
   write_workspace "  fast-uri: 3.1.6" "  broken"
   write_lock "  fast-uri: 3.1.6"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
-  grep -qF -- "$WS/pnpm-workspace.yaml" <<<"$output"
+  grep -qF -- "$WORKSPACE_ROOT/pnpm-workspace.yaml" <<<"$output"
   # The LINE, not merely some line reference. Asserting any parenthesised
   # line:column pair passes on a reader that names the wrong line, which is the
   # half this test is named for.
@@ -1182,7 +1182,7 @@ STUB
   # every entry below it, reporting the lockfile keys as undeclared overrides.
   write_workspace "  fast-uri: 3.1.6" "" "  morgan: 1.11.0"
   write_lock "  fast-uri: 3.1.6" "  morgan: 1.11.0"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'floor applied: morgan at 1.11.0' <<<"$output"
   grep -qF -- 'UNDECLARED OVERRIDE' <<<"$output" && return 1
@@ -1196,7 +1196,7 @@ STUB
   # exist while the exit status stays exactly the same.
   write_workspace "  fast-uri: 3.1.6"
   write_lock
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 1 ]
   grep -qF -- '(empty)' <<<"$output" && return 1
   grep -qF -- 'UNDECLARED OVERRIDE:  is locked at' <<<"$output" && return 1
@@ -1206,21 +1206,21 @@ STUB
 @test "the workspace root line names the root it actually read" {
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  run bash "$CHECK" --no-audit "$WS"
+  run bash "$CHECK" --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
-  grep -qF -- "workspace root: $WS" <<<"$output"
+  grep -qF -- "workspace root: $WORKSPACE_ROOT" <<<"$output"
 }
 
 @test "an advisory does not mask a floor that is not applied" {
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.4"
-  mkdir -p "$TMP/bin"
-  cat > "$TMP/bin/pnpm" <<'STUB'
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  cat > "$TEMPORARY_DIRECTORY/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 printf '{"advisories":{}}\n'
 STUB
-  chmod +x "$TMP/bin/pnpm"
-  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/pnpm"
+  PATH="$TEMPORARY_DIRECTORY/bin:$PATH" run bash "$CHECK" "$WORKSPACE_ROOT"
   [ "$status" -eq 1 ]
 }
 
@@ -1244,9 +1244,9 @@ STUB
       if ($0 == "" || substr($0, 1, 1) == "#") next
       i = index($0, ":")
       if (i == 0) next
-      k = substr($0, 1, i - 1)
-      gsub(/^['"'"'"]|['"'"'"]$/, "", k)
-      print k
+      key = substr($0, 1, i - 1)
+      gsub(/^['"'"'"]|['"'"'"]$/, "", key)
+      print key
     }
   ' "$REPO_ROOT/.gaia/cli/pnpm-workspace.yaml")
   # Without this the loop body running zero times greens the test on the status
@@ -1279,15 +1279,15 @@ STUB
 @test "under --advisory-strict a high advisory decides the exit status" {
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  mkdir -p "$TMP/bin"
-  cat > "$TMP/bin/pnpm" <<'STUB'
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  cat > "$TEMPORARY_DIRECTORY/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 cat <<'JSON'
 {"advisories":{"1098765":{"id":1098765,"module_name":"fast-uri","severity":"high","title":"host confusion via a backslash authority introducer"}}}
 JSON
 STUB
-  chmod +x "$TMP/bin/pnpm"
-  PATH="$TMP/bin:$PATH" run bash "$CHECK" --advisory-strict "$WS"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/pnpm"
+  PATH="$TEMPORARY_DIRECTORY/bin:$PATH" run bash "$CHECK" --advisory-strict "$WORKSPACE_ROOT"
   [ "$status" -eq 3 ]
   grep -qF -- 'ADVISORY (high' <<<"$output"
 }
@@ -1297,15 +1297,15 @@ STUB
   # clean is a status nobody reads.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  mkdir -p "$TMP/bin"
-  cat > "$TMP/bin/pnpm" <<'STUB'
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  cat > "$TEMPORARY_DIRECTORY/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 cat <<'JSON'
 {"advisories":{},"metadata":{"vulnerabilities":{"high":0,"critical":0}}}
 JSON
 STUB
-  chmod +x "$TMP/bin/pnpm"
-  PATH="$TMP/bin:$PATH" run bash "$CHECK" --advisory-strict "$WS"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/pnpm"
+  PATH="$TEMPORARY_DIRECTORY/bin:$PATH" run bash "$CHECK" --advisory-strict "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'no high or critical advisories' <<<"$output"
 }
@@ -1316,14 +1316,14 @@ STUB
   # into a vulnerability report.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  mkdir -p "$TMP/bin"
-  cat > "$TMP/bin/pnpm" <<'STUB'
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  cat > "$TEMPORARY_DIRECTORY/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 printf '{"error":{"code":23,"message":"The operation was aborted due to timeout"}}\n'
 exit 1
 STUB
-  chmod +x "$TMP/bin/pnpm"
-  PATH="$TMP/bin:$PATH" run bash "$CHECK" --advisory-strict "$WS"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/pnpm"
+  PATH="$TEMPORARY_DIRECTORY/bin:$PATH" run bash "$CHECK" --advisory-strict "$WORKSPACE_ROOT"
   [ "$status" -eq 4 ]
   grep -qF -- 'NOT audited' <<<"$output"
 }
@@ -1333,15 +1333,15 @@ STUB
   # container gate, so the flag is pinned on both approaches to status 4.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  mkdir -p "$TMP/bin"
-  cat > "$TMP/bin/pnpm" <<'STUB'
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  cat > "$TEMPORARY_DIRECTORY/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 cat <<'JSON'
 {"advisories":{},"metadata":{"vulnerabilities":{"high":2,"critical":0}}}
 JSON
 STUB
-  chmod +x "$TMP/bin/pnpm"
-  PATH="$TMP/bin:$PATH" run bash "$CHECK" --advisory-strict "$WS"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/pnpm"
+  PATH="$TEMPORARY_DIRECTORY/bin:$PATH" run bash "$CHECK" --advisory-strict "$WORKSPACE_ROOT"
   [ "$status" -eq 4 ]
   grep -qF -- 'NOT audited' <<<"$output"
 }
@@ -1350,15 +1350,15 @@ STUB
   # The third unread route: the container parses and the entries do not.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  mkdir -p "$TMP/bin"
-  cat > "$TMP/bin/pnpm" <<'STUB'
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  cat > "$TEMPORARY_DIRECTORY/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 cat <<'JSON'
 {"advisories":{"1":{"severity":"high","module_name":"fast-uri"}}}
 JSON
 STUB
-  chmod +x "$TMP/bin/pnpm"
-  PATH="$TMP/bin:$PATH" run bash "$CHECK" --advisory-strict "$WS"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/pnpm"
+  PATH="$TEMPORARY_DIRECTORY/bin:$PATH" run bash "$CHECK" --advisory-strict "$WORKSPACE_ROOT"
   [ "$status" -eq 4 ]
   grep -qF -- 'NOT audited' <<<"$output"
 }
@@ -1370,15 +1370,15 @@ STUB
   # the lockfile.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.4"
-  mkdir -p "$TMP/bin"
-  cat > "$TMP/bin/pnpm" <<'STUB'
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  cat > "$TEMPORARY_DIRECTORY/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 cat <<'JSON'
 {"advisories":{"1098765":{"id":1098765,"module_name":"fast-uri","severity":"high","title":"host confusion via a backslash authority introducer"}}}
 JSON
 STUB
-  chmod +x "$TMP/bin/pnpm"
-  PATH="$TMP/bin:$PATH" run bash "$CHECK" --advisory-strict "$WS"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/pnpm"
+  PATH="$TEMPORARY_DIRECTORY/bin:$PATH" run bash "$CHECK" --advisory-strict "$WORKSPACE_ROOT"
   [ "$status" -eq 1 ]
   grep -qF -- 'FLOOR NOT APPLIED' <<<"$output"
   grep -qF -- 'ADVISORY (high' <<<"$output"
@@ -1390,14 +1390,14 @@ STUB
   # a second site rather than a second case of the one above.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.4"
-  mkdir -p "$TMP/bin"
-  cat > "$TMP/bin/pnpm" <<'STUB'
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  cat > "$TEMPORARY_DIRECTORY/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 printf '{"error":{"code":23,"message":"The operation was aborted due to timeout"}}\n'
 exit 1
 STUB
-  chmod +x "$TMP/bin/pnpm"
-  PATH="$TMP/bin:$PATH" run bash "$CHECK" --advisory-strict "$WS"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/pnpm"
+  PATH="$TEMPORARY_DIRECTORY/bin:$PATH" run bash "$CHECK" --advisory-strict "$WORKSPACE_ROOT"
   [ "$status" -eq 1 ]
   grep -qF -- 'FLOOR NOT APPLIED' <<<"$output"
   grep -qF -- 'NOT audited' <<<"$output"
@@ -1410,7 +1410,7 @@ STUB
   # is a scheduled lane reporting a clean scan it never ran.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  run bash "$CHECK" --no-audit --advisory-strict "$WS"
+  run bash "$CHECK" --no-audit --advisory-strict "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
   # The named contradiction, not merely a non-zero status: an unknown-flag
   # refusal also exits 2 and names the flag, so a looser assertion would green
@@ -1423,7 +1423,7 @@ STUB
 @test "the contradicting flags are refused in either order" {
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  run bash "$CHECK" --advisory-strict --no-audit "$WS"
+  run bash "$CHECK" --advisory-strict --no-audit "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
   grep -qF -- 'contradicts --no-audit' <<<"$output"
 }
@@ -1437,7 +1437,7 @@ STUB
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
   PATH="$(path_allowlist awk node grep sed sort cat mktemp rm dirname chmod)" \
-    run /bin/bash "$CHECK" --advisory-strict "$WS"
+    run /bin/bash "$CHECK" --advisory-strict "$WORKSPACE_ROOT"
   [ "$status" -eq 2 ]
   grep -qF -- 'advisory arm skipped' <<<"$output"
 }
@@ -1449,7 +1449,7 @@ STUB
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
   PATH="$(path_allowlist awk node grep sed sort cat mktemp rm dirname chmod)" \
-    run /bin/bash "$CHECK" "$WS"
+    run /bin/bash "$CHECK" "$WORKSPACE_ROOT"
   [ "$status" -eq 0 ]
   grep -qF -- 'advisory arm skipped' <<<"$output"
 }
@@ -1461,27 +1461,27 @@ STUB
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.4"
   PATH="$(path_allowlist awk node grep sed sort cat mktemp rm dirname chmod)" \
-    run /bin/bash "$CHECK" --advisory-strict "$WS"
+    run /bin/bash "$CHECK" --advisory-strict "$WORKSPACE_ROOT"
   [ "$status" -eq 1 ]
   grep -qF -- 'FLOOR NOT APPLIED' <<<"$output"
 }
 
 @test "the advisory line calls itself fatal only when it is what decides the status" {
-  # The label is guarded on the raise's own condition, rc included. Keyed to the
+  # The label is guarded on the raise's own condition, exit_status included. Keyed to the
   # flag alone it reads `fatal` on a run whose status came from a failed floor,
   # where this advisory decided nothing, and sends the reader to the registry for
   # a cause sitting in the lockfile.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.4"
-  mkdir -p "$TMP/bin"
-  cat > "$TMP/bin/pnpm" <<'STUB'
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  cat > "$TEMPORARY_DIRECTORY/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 cat <<'JSON'
 {"advisories":{"1098765":{"id":1098765,"module_name":"fast-uri","severity":"high","title":"host confusion via a backslash authority introducer"}}}
 JSON
 STUB
-  chmod +x "$TMP/bin/pnpm"
-  PATH="$TMP/bin:$PATH" run bash "$CHECK" --advisory-strict "$WS"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/pnpm"
+  PATH="$TEMPORARY_DIRECTORY/bin:$PATH" run bash "$CHECK" --advisory-strict "$WORKSPACE_ROOT"
   [ "$status" -eq 1 ]
   grep -qF -- 'ADVISORY (high, not fatal here)' <<<"$output"
   grep -qF -- 'fatal under --advisory-strict' <<<"$output" && return 1
@@ -1493,15 +1493,15 @@ STUB
   # a constant that happens to read correctly in one case.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
-  mkdir -p "$TMP/bin"
-  cat > "$TMP/bin/pnpm" <<'STUB'
+  mkdir -p "$TEMPORARY_DIRECTORY/bin"
+  cat > "$TEMPORARY_DIRECTORY/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 cat <<'JSON'
 {"advisories":{"1098765":{"id":1098765,"module_name":"fast-uri","severity":"high","title":"host confusion via a backslash authority introducer"}}}
 JSON
 STUB
-  chmod +x "$TMP/bin/pnpm"
-  PATH="$TMP/bin:$PATH" run bash "$CHECK" --advisory-strict "$WS"
+  chmod +x "$TEMPORARY_DIRECTORY/bin/pnpm"
+  PATH="$TEMPORARY_DIRECTORY/bin:$PATH" run bash "$CHECK" --advisory-strict "$WORKSPACE_ROOT"
   [ "$status" -eq 3 ]
   grep -qF -- 'ADVISORY (high, fatal under --advisory-strict)' <<<"$output"
 }

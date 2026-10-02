@@ -37,19 +37,19 @@ setup() {
   THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
   LINTER="$REPO_ROOT/.gaia/scripts/lint-sigpipe-readers.sh"
-  TMP=""
+  TEMPORARY_DIRECTORY=""
 }
 
 teardown() {
-  [ -n "$TMP" ] && [ -d "$TMP" ] && rm -rf "$TMP"
+  [ -n "$TEMPORARY_DIRECTORY" ] && [ -d "$TEMPORARY_DIRECTORY" ] && rm -rf "$TEMPORARY_DIRECTORY"
   return 0
 }
 
-# fixture_repo_bare: an initialized git repo in $TMP with no files yet and no
+# fixture_repo_bare: an initialized git repo in $TEMPORARY_DIRECTORY with no files yet and no
 # seeded surface. Point a test that needs an empty scan set here.
 fixture_repo_bare() {
-  TMP="$(mktemp -d -t sigpipe-lint-XXXXXX)"
-  git -C "$TMP" init -q .
+  TEMPORARY_DIRECTORY="$(mktemp -d -t sigpipe-lint-XXXXXX)"
+  git -C "$TEMPORARY_DIRECTORY" init -q .
 }
 
 # fixture_repo: fixture_repo_bare with one benign tracked script and one benign
@@ -69,14 +69,14 @@ fixture_repo() {
           true'
 }
 
-# fixture_file <relpath> <body>: write <body> verbatim to $TMP/<relpath> and
+# fixture_file <relative_path> <body>: write <body> verbatim to $TEMPORARY_DIRECTORY/<relative_path> and
 # track it. `printf %s` never interprets an escape, so the body reaches the file
 # as the characters the gate is meant to read. Call fixture_repo first.
 fixture_file() {
-  local dest="$TMP/$1"
-  mkdir -p "$( dirname "$dest" )"
-  printf '%s\n' "$2" > "$dest"
-  git -C "$TMP" add -A
+  local destination_path="$TEMPORARY_DIRECTORY/$1"
+  mkdir -p "$( dirname "$destination_path" )"
+  printf '%s\n' "$2" > "$destination_path"
+  git -C "$TEMPORARY_DIRECTORY" add -A
 }
 
 # fixture_script <body>: the common case, a tracked shell script that arms
@@ -96,7 +96,7 @@ set -eu
 $1"
 }
 
-# indent <n> <body>: reprint <body> with <n> spaces in front of every line, so a
+# indent <space_count> <body>: reprint <body> with <space_count> spaces in front of every line, so a
 # test writes a `run:` body at column 0 and the helper places it inside the
 # block scalar. Written with awk rather than a `sed` substitution so the
 # indentation is data rather than part of a pattern.
@@ -133,7 +133,7 @@ fixture_action() {
 $( indent 8 "$2" )"
 }
 
-# surface_has_workflow_and_action <repo> <lib>: the `workflows` set, as <lib>
+# surface_has_workflow_and_action <repo> <library>: the `workflows` set, as <library>
 # resolves it inside <repo>, holds at least one workflow and one composite
 # action. A set pointing at a directory that no longer exists would answer from
 # the other half alone and still look populated.
@@ -146,7 +146,7 @@ surface_has_workflow_and_action() {
 
 # run_linter: run the gate from inside the fixture repo.
 run_linter() {
-  run bash -c "cd '$TMP' && bash '$LINTER' 2>&1"
+  run bash -c "cd '$TEMPORARY_DIRECTORY' && bash '$LINTER' 2>&1"
 }
 
 # --- the class fires -------------------------------------------------------
@@ -738,7 +738,7 @@ true'
   fixture_repo
   printf '%s\n' '#!/usr/bin/env bash
 set -o pipefail
-printf "%s" "$a" | grep -q needle' > "$TMP/untracked.sh"
+printf "%s" "$a" | grep -q needle' > "$TEMPORARY_DIRECTORY/untracked.sh"
   run_linter
   [ "$status" -eq 0 ]
 }
@@ -1104,8 +1104,8 @@ YAML'
 # tree. Run outside any repository, so `git ls-files` fails rather than answering
 # empty; that is the one discovery failure a fixture can produce without a stub.
 @test "a discovery that never ran exits distinctly from a surface that came back empty" {
-  TMP="$(mktemp -d -t sigpipe-lint-XXXXXX)"
-  run bash -c "cd '$TMP' && bash '$LINTER' 2>&1"
+  TEMPORARY_DIRECTORY="$(mktemp -d -t sigpipe-lint-XXXXXX)"
+  run bash -c "cd '$TEMPORARY_DIRECTORY' && bash '$LINTER' 2>&1"
   [ "$status" -eq 3 ]
   grep -qF -- "discovery failed" <<<"$output" || return 1
   grep -qF -- "nothing was scanned" <<<"$output"
@@ -1115,8 +1115,8 @@ YAML'
 # has no discovery at all. It must say so rather than scan nothing quietly.
 @test "a gate whose shared library is missing exits 2 rather than reporting clean" {
   fixture_repo
-  cp "$LINTER" "$TMP/lone-gate.sh"
-  run bash -c "cd '$TMP' && bash '$TMP/lone-gate.sh' 2>&1"
+  cp "$LINTER" "$TEMPORARY_DIRECTORY/lone-gate.sh"
+  run bash -c "cd '$TEMPORARY_DIRECTORY' && bash '$TEMPORARY_DIRECTORY/lone-gate.sh' 2>&1"
   [ "$status" -eq 2 ]
   grep -qF -- "guard-awk-lib.sh is missing beside this script" <<<"$output"
 }

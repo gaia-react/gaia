@@ -25,24 +25,24 @@
 # directory and whatever `pnpm bundle` regenerates in place.
 set -euo pipefail
 
-work="$(mktemp -d)"
-trap 'rm -rf "${work}"' EXIT
+work_directory="$(mktemp -d)"
+trap 'rm -rf "${work_directory}"' EXIT
 
-cp .gaia/cli/gaia "${work}/gaia-committed"
-cp .gaia/cli/gaia-maintainer "${work}/gaia-maintainer-committed"
+cp .gaia/cli/gaia "${work_directory}/gaia-committed"
+cp .gaia/cli/gaia-maintainer "${work_directory}/gaia-maintainer-committed"
 # bundle:adopter regenerates .gaia/cli/templates/ from src as a side effect
 # (rm -rf templates && cp -r src/scaffold/templates ...), decoupled from the
 # bundled binary bytes. Snapshot the committed copy before the bundle overwrites
 # it so the diff below can see drift.
-cp -r .gaia/cli/templates "${work}/templates-committed"
+cp -r .gaia/cli/templates "${work_directory}/templates-committed"
 
 pnpm -C .gaia/cli bundle
 
-if ! cmp -s "${work}/gaia-committed" .gaia/cli/gaia; then
+if ! cmp -s "${work_directory}/gaia-committed" .gaia/cli/gaia; then
   echo "::error::.gaia/cli/gaia is stale: rebuilding from src (pnpm -C .gaia/cli bundle) produces a different binary. Run the bundle and commit the result." >&2
   exit 1
 fi
-if ! cmp -s "${work}/gaia-maintainer-committed" .gaia/cli/gaia-maintainer; then
+if ! cmp -s "${work_directory}/gaia-maintainer-committed" .gaia/cli/gaia-maintainer; then
   echo "::error::.gaia/cli/gaia-maintainer is stale: rebuilding from src (pnpm -C .gaia/cli bundle) produces a different binary. Run the bundle and commit the result." >&2
   exit 1
 fi
@@ -51,7 +51,7 @@ fi
 # This diff is a freshness guard for the whole .gaia/cli/templates/ tree,
 # component/, hook/, route/, service/, and workflows/ included. Diff the
 # regenerated tree against the snapshot taken before the bundle.
-if ! diff -rq "${work}/templates-committed" .gaia/cli/templates; then
+if ! diff -rq "${work_directory}/templates-committed" .gaia/cli/templates; then
   echo "::error::.gaia/cli/templates is stale: regenerating from src (pnpm -C .gaia/cli bundle) produces different template files. Run the bundle and commit the result." >&2
   exit 1
 fi

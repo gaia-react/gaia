@@ -33,41 +33,41 @@ assert_contains() {
 # shape `shape` selects: "heading" (default, the primary C6 anchor),
 # "frontmatter" (no heading, the fallback C6 anchor), or "noanchor" (neither).
 fixture_root() {
-  local r="$1" shape="${2:-heading}" names n
-  rm -rf "$r"
-  mkdir -p "$r/.gaia/scripts" "$r/.claude/agents" "$r/.claude/hooks/lib"
-  cat > "$r/.gaia/audit-ci.yml"
+  local fixture_directory="$1" shape="${2:-heading}" names member_name
+  rm -rf "$fixture_directory"
+  mkdir -p "$fixture_directory/.gaia/scripts" "$fixture_directory/.claude/agents" "$fixture_directory/.claude/hooks/lib"
+  cat > "$fixture_directory/.gaia/audit-ci.yml"
   names="$(awk '/^[[:space:]]*-[[:space:]]+name[[:space:]]*:/ {
-    sub(/^[[:space:]]*-[[:space:]]+name[[:space:]]*:[[:space:]]*/, ""); print }' "$r/.gaia/audit-ci.yml")"
+    sub(/^[[:space:]]*-[[:space:]]+name[[:space:]]*:[[:space:]]*/, ""); print }' "$fixture_directory/.gaia/audit-ci.yml")"
   {
     printf 'AUDIT_MACHINERY_PATHS="$(cat <<%s\n' "'EOF'"
-    for n in $names; do printf '.claude/agents/%s.md\n' "$n"; done
+    for member_name in $names; do printf '.claude/agents/%s.md\n' "$member_name"; done
     printf 'EOF\n)"\n'
-  } > "$r/.claude/hooks/lib/audit-machinery.sh"
-  for n in $names; do
+  } > "$fixture_directory/.claude/hooks/lib/audit-machinery.sh"
+  for member_name in $names; do
     case "$shape" in
       frontmatter)
-        cat > "$r/.claude/agents/$n.md" <<MD
+        cat > "$fixture_directory/.claude/agents/$member_name.md" <<MD
 ---
-name: $n
+name: $member_name
 ---
 
-# $n
+# $member_name
 MD
         ;;
       noanchor)
-        cat > "$r/.claude/agents/$n.md" <<MD
+        cat > "$fixture_directory/.claude/agents/$member_name.md" <<MD
 just some text
 no frontmatter no heading
 MD
         ;;
       *)
-        cat > "$r/.claude/agents/$n.md" <<MD
+        cat > "$fixture_directory/.claude/agents/$member_name.md" <<MD
 ---
-name: $n
+name: $member_name
 ---
 
-# $n
+# $member_name
 
 ## Remit and self-skip
 
@@ -86,15 +86,15 @@ run_writer() {
 # through the check's own --emit-roster mode. Never a hard-coded list.
 member_globs() {
   bash "$CHECK" --emit-roster --root "$1" --config "$1/.gaia/audit-ci.yml" |
-    awk -F'\t' -v m="$2" '$1 == "RAW" && $2 == m { print $3 }'
+    awk -F'\t' -v member="$2" '$1 == "RAW" && $2 == member { print $3 }'
 }
 
 # <file> -- the glob bullets inside that file's remit region, in file order.
 region_globs() {
   awk '
-    /^<!-- gaia:audit-remit:start -->$/ { infl = 1; next }
-    /^<!-- gaia:audit-remit:end -->$/ { infl = 0; next }
-    infl && /^- `.*`$/ { line = $0; sub(/^- `/, "", line); sub(/`$/, "", line); print line }
+    /^<!-- gaia:audit-remit:start -->$/ { in_region = 1; next }
+    /^<!-- gaia:audit-remit:end -->$/ { in_region = 0; next }
+    in_region && /^- `.*`$/ { line = $0; sub(/^- `/, "", line); sub(/`$/, "", line); print line }
   ' "$1"
 }
 
@@ -102,9 +102,9 @@ region_globs() {
 # sentence).
 region_sentence_lines() {
   awk '
-    /^<!-- gaia:audit-remit:start -->$/ { infl = 1; next }
-    /^<!-- gaia:audit-remit:end -->$/ { infl = 0; next }
-    infl && $0 != "" && $0 !~ /^- `.*`$/ { print }
+    /^<!-- gaia:audit-remit:start -->$/ { in_region = 1; next }
+    /^<!-- gaia:audit-remit:end -->$/ { in_region = 0; next }
+    in_region && $0 != "" && $0 !~ /^- `.*`$/ { print }
   ' "$1"
 }
 
@@ -119,8 +119,8 @@ region_sentence_lines() {
 # UAT-006: the writer repairs a drifted region.
 
 @test "UAT-006: repair restores a deleted glob, matching the fixture roster in order" {
-  local r="$BATS_TEST_TMPDIR/uat006-order"
-  fixture_root "$r" <<'YAML'
+  local fixture_directory="$BATS_TEST_TMPDIR/uat006-order"
+  fixture_root "$fixture_directory" <<'YAML'
 auditors:
   - name: code-audit-default
     globs:
@@ -132,24 +132,24 @@ auditors:
       - "a/b/*.ts"
       - "a/b/c.ts"
 YAML
-  run_writer "$r"
+  run_writer "$fixture_directory"
   [ "$status" -eq 0 ]
 
-  sed '/^- `a\/b\/\*\.ts`$/d' "$r/.claude/agents/code-audit-a.md" > "$r/tmp-corrupt"
-  mv "$r/tmp-corrupt" "$r/.claude/agents/code-audit-a.md"
+  sed '/^- `a\/b\/\*\.ts`$/d' "$fixture_directory/.claude/agents/code-audit-a.md" > "$fixture_directory/tmp-corrupt"
+  mv "$fixture_directory/tmp-corrupt" "$fixture_directory/.claude/agents/code-audit-a.md"
 
-  run_writer "$r"
+  run_writer "$fixture_directory"
   [ "$status" -eq 0 ]
 
   local expected actual
-  expected="$(member_globs "$r" "code-audit-a")"
-  actual="$(region_globs "$r/.claude/agents/code-audit-a.md")"
+  expected="$(member_globs "$fixture_directory" "code-audit-a")"
+  actual="$(region_globs "$fixture_directory/.claude/agents/code-audit-a.md")"
   [ "$actual" = "$expected" ]
 }
 
 @test "UAT-006: repair announces the added glob with a + prefix" {
-  local r="$BATS_TEST_TMPDIR/uat006-plus"
-  fixture_root "$r" <<'YAML'
+  local fixture_directory="$BATS_TEST_TMPDIR/uat006-plus"
+  fixture_root "$fixture_directory" <<'YAML'
 auditors:
   - name: code-audit-default
     globs:
@@ -160,20 +160,20 @@ auditors:
       - "a/**"
       - "a/b/*.ts"
 YAML
-  run_writer "$r"
+  run_writer "$fixture_directory"
   [ "$status" -eq 0 ]
 
-  sed '/^- `a\/b\/\*\.ts`$/d' "$r/.claude/agents/code-audit-a.md" > "$r/tmp-corrupt"
-  mv "$r/tmp-corrupt" "$r/.claude/agents/code-audit-a.md"
+  sed '/^- `a\/b\/\*\.ts`$/d' "$fixture_directory/.claude/agents/code-audit-a.md" > "$fixture_directory/tmp-corrupt"
+  mv "$fixture_directory/tmp-corrupt" "$fixture_directory/.claude/agents/code-audit-a.md"
 
-  run_writer "$r"
+  run_writer "$fixture_directory"
   [ "$status" -eq 0 ]
   assert_contains "code-audit-a: +a/b/*.ts"
 }
 
 @test "UAT-006: repair is confined to the marker span (byte-identical outside it)" {
-  local r="$BATS_TEST_TMPDIR/uat006-span"
-  fixture_root "$r" <<'YAML'
+  local fixture_directory="$BATS_TEST_TMPDIR/uat006-span"
+  fixture_root "$fixture_directory" <<'YAML'
 auditors:
   - name: code-audit-default
     globs:
@@ -184,26 +184,26 @@ auditors:
       - "a/**"
       - "a/b/*.ts"
 YAML
-  run_writer "$r"
+  run_writer "$fixture_directory"
   [ "$status" -eq 0 ]
 
   local before
-  before="$(snapshot_file "$r/.claude/agents/code-audit-a.md")"
+  before="$(snapshot_file "$fixture_directory/.claude/agents/code-audit-a.md")"
 
-  sed '/^- `a\/b\/\*\.ts`$/d' "$r/.claude/agents/code-audit-a.md" > "$r/tmp-corrupt"
-  mv "$r/tmp-corrupt" "$r/.claude/agents/code-audit-a.md"
+  sed '/^- `a\/b\/\*\.ts`$/d' "$fixture_directory/.claude/agents/code-audit-a.md" > "$fixture_directory/tmp-corrupt"
+  mv "$fixture_directory/tmp-corrupt" "$fixture_directory/.claude/agents/code-audit-a.md"
 
-  run_writer "$r"
+  run_writer "$fixture_directory"
   [ "$status" -eq 0 ]
 
   local after
-  after="$(snapshot_file "$r/.claude/agents/code-audit-a.md")"
+  after="$(snapshot_file "$fixture_directory/.claude/agents/code-audit-a.md")"
   assert_files_identical "$before" "$after"
 }
 
 @test "UAT-006: repair announces a roster-ungranted glob with a - prefix, after the + list" {
-  local r="$BATS_TEST_TMPDIR/uat006-minus"
-  fixture_root "$r" <<'YAML'
+  local fixture_directory="$BATS_TEST_TMPDIR/uat006-minus"
+  fixture_root "$fixture_directory" <<'YAML'
 auditors:
   - name: code-audit-default
     globs:
@@ -214,19 +214,19 @@ auditors:
       - "a/**"
       - "a/b/*.ts"
 YAML
-  run_writer "$r"
+  run_writer "$fixture_directory"
   [ "$status" -eq 0 ]
 
   # Delete a granted bullet AND insert one the roster does not grant, so both
   # halves of the delta appear in the same repair run.
-  sed '/^- `a\/b\/\*\.ts`$/d' "$r/.claude/agents/code-audit-a.md" > "$r/tmp1"
+  sed '/^- `a\/b\/\*\.ts`$/d' "$fixture_directory/.claude/agents/code-audit-a.md" > "$fixture_directory/tmp1"
   sed '/^- `a\/\*\*`$/a\
 - `docs/**`
-' "$r/tmp1" > "$r/tmp-corrupt"
-  mv "$r/tmp-corrupt" "$r/.claude/agents/code-audit-a.md"
-  rm -f "$r/tmp1"
+' "$fixture_directory/tmp1" > "$fixture_directory/tmp-corrupt"
+  mv "$fixture_directory/tmp-corrupt" "$fixture_directory/.claude/agents/code-audit-a.md"
+  rm -f "$fixture_directory/tmp1"
 
-  run_writer "$r"
+  run_writer "$fixture_directory"
   [ "$status" -eq 0 ]
   assert_contains "+a/b/*.ts"
   assert_contains "-docs/**"
@@ -242,8 +242,8 @@ YAML
 # UAT-007: insertion into a definition with no markers.
 
 @test "UAT-007: insertion at the primary anchor (heading-bearing stub)" {
-  local r="$BATS_TEST_TMPDIR/uat007-heading"
-  fixture_root "$r" heading <<'YAML'
+  local fixture_directory="$BATS_TEST_TMPDIR/uat007-heading"
+  fixture_root "$fixture_directory" heading <<'YAML'
 auditors:
   - name: code-audit-default
     globs:
@@ -253,31 +253,31 @@ auditors:
     globs:
       - "a/**"
 YAML
-  run_writer "$r"
+  run_writer "$fixture_directory"
   [ "$status" -eq 0 ]
 
-  local f="$r/.claude/agents/code-audit-a.md"
-  [ "$(grep -cxF -- '<!-- gaia:audit-remit:start -->' "$f")" -eq 1 ]
-  [ "$(grep -cxF -- '<!-- gaia:audit-remit:end -->' "$f")" -eq 1 ]
+  local agent_file="$fixture_directory/.claude/agents/code-audit-a.md"
+  [ "$(grep -cxF -- '<!-- gaia:audit-remit:start -->' "$agent_file")" -eq 1 ]
+  [ "$(grep -cxF -- '<!-- gaia:audit-remit:end -->' "$agent_file")" -eq 1 ]
 
   # The pre-existing content is present verbatim and in order: the heading,
   # then the region, then the stub's own trailing prose.
   local heading_line region_start_line prose_line
-  heading_line="$(grep -n -- '^## Remit and self-skip$' "$f" | head -1 | cut -d: -f1)"
-  region_start_line="$(grep -n -- '^<!-- gaia:audit-remit:start -->$' "$f" | head -1 | cut -d: -f1)"
-  prose_line="$(grep -n -- '^You own things\.$' "$f" | head -1 | cut -d: -f1)"
+  heading_line="$(grep -n -- '^## Remit and self-skip$' "$agent_file" | head -1 | cut -d: -f1)"
+  region_start_line="$(grep -n -- '^<!-- gaia:audit-remit:start -->$' "$agent_file" | head -1 | cut -d: -f1)"
+  prose_line="$(grep -n -- '^You own things\.$' "$agent_file" | head -1 | cut -d: -f1)"
   [ "$heading_line" -lt "$region_start_line" ]
   [ "$region_start_line" -lt "$prose_line" ]
 
-  run bash "$CHECK" --root "$r" --config "$r/.gaia/audit-ci.yml"
+  run bash "$CHECK" --root "$fixture_directory" --config "$fixture_directory/.gaia/audit-ci.yml"
   # The remit invariant does not exist yet at this phase, so this passes
   # vacuously today; it becomes the integration anchor once it lands.
   [ "$status" -eq 0 ]
 }
 
 @test "UAT-007: insertion at the fallback anchor (frontmatter-only stub)" {
-  local r="$BATS_TEST_TMPDIR/uat007-frontmatter"
-  fixture_root "$r" frontmatter <<'YAML'
+  local fixture_directory="$BATS_TEST_TMPDIR/uat007-frontmatter"
+  fixture_root "$fixture_directory" frontmatter <<'YAML'
 auditors:
   - name: code-audit-default
     globs:
@@ -287,29 +287,29 @@ auditors:
     globs:
       - "a/**"
 YAML
-  run_writer "$r"
+  run_writer "$fixture_directory"
   [ "$status" -eq 0 ]
 
-  local f="$r/.claude/agents/code-audit-a.md"
-  [ "$(grep -cxF -- '<!-- gaia:audit-remit:start -->' "$f")" -eq 1 ]
-  [ "$(grep -cxF -- '<!-- gaia:audit-remit:end -->' "$f")" -eq 1 ]
+  local agent_file="$fixture_directory/.claude/agents/code-audit-a.md"
+  [ "$(grep -cxF -- '<!-- gaia:audit-remit:start -->' "$agent_file")" -eq 1 ]
+  [ "$(grep -cxF -- '<!-- gaia:audit-remit:end -->' "$agent_file")" -eq 1 ]
 
   local frontmatter_end_line region_start_line prose_line
-  frontmatter_end_line="$(grep -n -- '^---$' "$f" | sed -n '2p' | cut -d: -f1)"
-  region_start_line="$(grep -n -- '^<!-- gaia:audit-remit:start -->$' "$f" | head -1 | cut -d: -f1)"
-  prose_line="$(grep -n -- '^# code-audit-a$' "$f" | head -1 | cut -d: -f1)"
+  frontmatter_end_line="$(grep -n -- '^---$' "$agent_file" | sed -n '2p' | cut -d: -f1)"
+  region_start_line="$(grep -n -- '^<!-- gaia:audit-remit:start -->$' "$agent_file" | head -1 | cut -d: -f1)"
+  prose_line="$(grep -n -- '^# code-audit-a$' "$agent_file" | head -1 | cut -d: -f1)"
   [ "$frontmatter_end_line" -lt "$region_start_line" ]
   [ "$region_start_line" -lt "$prose_line" ]
 
-  run bash "$CHECK" --root "$r" --config "$r/.gaia/audit-ci.yml"
+  run bash "$CHECK" --root "$fixture_directory" --config "$fixture_directory/.gaia/audit-ci.yml"
   [ "$status" -eq 0 ]
 }
 
 # UAT-008: idempotence.
 
 @test "UAT-008: two repair runs in succession converge to the same tree" {
-  local r="$BATS_TEST_TMPDIR/uat008"
-  fixture_root "$r" <<'YAML'
+  local fixture_directory="$BATS_TEST_TMPDIR/uat008"
+  fixture_root "$fixture_directory" <<'YAML'
 auditors:
   - name: code-audit-default
     globs:
@@ -320,21 +320,21 @@ auditors:
       - "a/**"
       - "a/b/*.ts"
 YAML
-  run_writer "$r"
+  run_writer "$fixture_directory"
   [ "$status" -eq 0 ]
 
-  sed '/^- `a\/b\/\*\.ts`$/d' "$r/.claude/agents/code-audit-a.md" > "$r/tmp-corrupt"
-  mv "$r/tmp-corrupt" "$r/.claude/agents/code-audit-a.md"
+  sed '/^- `a\/b\/\*\.ts`$/d' "$fixture_directory/.claude/agents/code-audit-a.md" > "$fixture_directory/tmp-corrupt"
+  mv "$fixture_directory/tmp-corrupt" "$fixture_directory/.claude/agents/code-audit-a.md"
 
-  run_writer "$r"
+  run_writer "$fixture_directory"
   [ "$status" -eq 0 ]
   local after_first
-  after_first="$(find "$r" -type f -exec shasum {} + | sort)"
+  after_first="$(find "$fixture_directory" -type f -exec shasum {} + | sort)"
 
-  run_writer "$r"
+  run_writer "$fixture_directory"
   [ "$status" -eq 0 ]
   local after_second
-  after_second="$(find "$r" -type f -exec shasum {} + | sort)"
+  after_second="$(find "$fixture_directory" -type f -exec shasum {} + | sort)"
 
   [ "$after_first" = "$after_second" ]
 }
@@ -342,8 +342,8 @@ YAML
 # UAT-016: the generated sentences.
 
 @test "UAT-016: the claimant region carries the canonical claimant sentence" {
-  local r="$BATS_TEST_TMPDIR/uat016-claimant"
-  fixture_root "$r" <<'YAML'
+  local fixture_directory="$BATS_TEST_TMPDIR/uat016-claimant"
+  fixture_root "$fixture_directory" <<'YAML'
 auditors:
   - name: code-audit-default
     globs:
@@ -353,14 +353,14 @@ auditors:
     globs:
       - "a/**"
 YAML
-  run_writer "$r"
+  run_writer "$fixture_directory"
   [ "$status" -eq 0 ]
-  grep -qF 'Filter the changed-file list against the globs above' "$r/.claude/agents/code-audit-a.md"
+  grep -qF 'Filter the changed-file list against the globs above' "$fixture_directory/.claude/agents/code-audit-a.md"
 }
 
 @test "UAT-016: the default region carries the canonical default sentence" {
-  local r="$BATS_TEST_TMPDIR/uat016-default"
-  fixture_root "$r" <<'YAML'
+  local fixture_directory="$BATS_TEST_TMPDIR/uat016-default"
+  fixture_root "$fixture_directory" <<'YAML'
 auditors:
   - name: code-audit-default
     globs:
@@ -370,14 +370,14 @@ auditors:
     globs:
       - "a/**"
 YAML
-  run_writer "$r"
+  run_writer "$fixture_directory"
   [ "$status" -eq 0 ]
-  grep -qF 'second precedence tier' "$r/.claude/agents/code-audit-default.md"
+  grep -qF 'second precedence tier' "$fixture_directory/.claude/agents/code-audit-default.md"
 }
 
 @test "UAT-016: no path appears in either region's sentence lines" {
-  local r="$BATS_TEST_TMPDIR/uat016-nopath"
-  fixture_root "$r" <<'YAML'
+  local fixture_directory="$BATS_TEST_TMPDIR/uat016-nopath"
+  fixture_root "$fixture_directory" <<'YAML'
 auditors:
   - name: code-audit-default
     globs:
@@ -387,14 +387,14 @@ auditors:
     globs:
       - "a/**"
 YAML
-  run_writer "$r"
+  run_writer "$fixture_directory"
   [ "$status" -eq 0 ]
 
   local sentence_lines
-  sentence_lines="$(region_sentence_lines "$r/.claude/agents/code-audit-a.md")"
+  sentence_lines="$(region_sentence_lines "$fixture_directory/.claude/agents/code-audit-a.md")"
   grep -qE '`|/' <<<"$sentence_lines" && return 1
 
-  sentence_lines="$(region_sentence_lines "$r/.claude/agents/code-audit-default.md")"
+  sentence_lines="$(region_sentence_lines "$fixture_directory/.claude/agents/code-audit-default.md")"
   grep -qE '`|/' <<<"$sentence_lines" && return 1
   return 0
 }
@@ -402,8 +402,8 @@ YAML
 # Malformed markers are refused, not repaired.
 
 @test "malformed markers: two start markers are refused, the file left byte-identical" {
-  local r="$BATS_TEST_TMPDIR/malformed-dup-start"
-  fixture_root "$r" <<'YAML'
+  local fixture_directory="$BATS_TEST_TMPDIR/malformed-dup-start"
+  fixture_root "$fixture_directory" <<'YAML'
 auditors:
   - name: code-audit-default
     globs:
@@ -413,30 +413,30 @@ auditors:
     globs:
       - "a/**"
 YAML
-  run_writer "$r"
+  run_writer "$fixture_directory"
   [ "$status" -eq 0 ]
 
-  local f="$r/.claude/agents/code-audit-a.md"
+  local agent_file="$fixture_directory/.claude/agents/code-audit-a.md"
   sed '/^<!-- gaia:audit-remit:start -->$/i\
 <!-- gaia:audit-remit:start -->
-' "$f" > "$r/tmp-corrupt"
-  mv "$r/tmp-corrupt" "$f"
+' "$agent_file" > "$fixture_directory/tmp-corrupt"
+  mv "$fixture_directory/tmp-corrupt" "$agent_file"
 
   local before
-  before="$(snapshot_file "$f")"
+  before="$(snapshot_file "$agent_file")"
 
-  run_writer "$r"
+  run_writer "$fixture_directory"
   [ "$status" -eq 1 ]
   assert_contains "code-audit-a"
 
   local after
-  after="$(snapshot_file "$f")"
+  after="$(snapshot_file "$agent_file")"
   assert_files_identical "$before" "$after"
 }
 
 @test "malformed markers: a start marker with no end marker is refused, the file left byte-identical" {
-  local r="$BATS_TEST_TMPDIR/malformed-no-end"
-  fixture_root "$r" <<'YAML'
+  local fixture_directory="$BATS_TEST_TMPDIR/malformed-no-end"
+  fixture_root "$fixture_directory" <<'YAML'
 auditors:
   - name: code-audit-default
     globs:
@@ -446,22 +446,22 @@ auditors:
     globs:
       - "a/**"
 YAML
-  run_writer "$r"
+  run_writer "$fixture_directory"
   [ "$status" -eq 0 ]
 
-  local f="$r/.claude/agents/code-audit-a.md"
-  sed '/^<!-- gaia:audit-remit:end -->$/d' "$f" > "$r/tmp-corrupt"
-  mv "$r/tmp-corrupt" "$f"
+  local agent_file="$fixture_directory/.claude/agents/code-audit-a.md"
+  sed '/^<!-- gaia:audit-remit:end -->$/d' "$agent_file" > "$fixture_directory/tmp-corrupt"
+  mv "$fixture_directory/tmp-corrupt" "$agent_file"
 
   local before
-  before="$(snapshot_file "$f")"
+  before="$(snapshot_file "$agent_file")"
 
-  run_writer "$r"
+  run_writer "$fixture_directory"
   [ "$status" -eq 1 ]
   assert_contains "code-audit-a"
 
   local after
-  after="$(snapshot_file "$f")"
+  after="$(snapshot_file "$agent_file")"
   assert_files_identical "$before" "$after"
 }
 
@@ -472,8 +472,8 @@ YAML
   # this would print through the start marker, emit the new body, and then
   # (because the state machine's end-marker rule never fires) drop every
   # remaining line to EOF -- including this fixture's distinctive tail line.
-  local r="$BATS_TEST_TMPDIR/malformed-reversed"
-  fixture_root "$r" <<'YAML'
+  local fixture_directory="$BATS_TEST_TMPDIR/malformed-reversed"
+  fixture_root "$fixture_directory" <<'YAML'
 auditors:
   - name: code-audit-default
     globs:
@@ -483,11 +483,11 @@ auditors:
     globs:
       - "a/**"
 YAML
-  run_writer "$r"
+  run_writer "$fixture_directory"
   [ "$status" -eq 0 ]
 
-  local f="$r/.claude/agents/code-audit-a.md"
-  cat > "$f" <<'MD'
+  local agent_file="$fixture_directory/.claude/agents/code-audit-a.md"
+  cat > "$agent_file" <<'MD'
 ---
 name: code-audit-a
 ---
@@ -510,23 +510,23 @@ THIS TAIL MUST SURVIVE
 MD
 
   local before
-  before="$(snapshot_file "$f")"
+  before="$(snapshot_file "$agent_file")"
 
-  run_writer "$r"
+  run_writer "$fixture_directory"
   [ "$status" -eq 1 ]
   assert_contains "code-audit-a"
 
   local after
-  after="$(snapshot_file "$f")"
+  after="$(snapshot_file "$agent_file")"
   assert_files_identical "$before" "$after"
-  grep -qxF -- "THIS TAIL MUST SURVIVE" "$f"
+  grep -qxF -- "THIS TAIL MUST SURVIVE" "$agent_file"
 }
 
 # Neither anchor present.
 
 @test "neither anchor present: the writer is refused, naming the member and the file, byte-identical" {
-  local r="$BATS_TEST_TMPDIR/no-anchor"
-  fixture_root "$r" noanchor <<'YAML'
+  local fixture_directory="$BATS_TEST_TMPDIR/no-anchor"
+  fixture_root "$fixture_directory" noanchor <<'YAML'
 auditors:
   - name: code-audit-default
     globs:
@@ -537,27 +537,27 @@ auditors:
       - "a/**"
 YAML
   local before
-  before="$(snapshot_file "$r/.claude/agents/code-audit-a.md")"
+  before="$(snapshot_file "$fixture_directory/.claude/agents/code-audit-a.md")"
 
-  run_writer "$r"
+  run_writer "$fixture_directory"
   [ "$status" -eq 1 ]
   assert_contains "code-audit-a"
 
   local after
-  after="$(snapshot_file "$r/.claude/agents/code-audit-a.md")"
+  after="$(snapshot_file "$fixture_directory/.claude/agents/code-audit-a.md")"
   assert_files_identical "$before" "$after"
 }
 
 # Robustness.
 
 @test "robustness: an unusable TMPDIR is refused before any definition is touched" {
-  # Without the guard this is destructive and silent: an empty $tmpdir makes
+  # Without the guard this is destructive and silent: an empty $temporary_directory makes
   # the region body file unwritable, awk's getline cannot tell unreadable
   # from empty, and every definition is rewritten to a region holding the
   # two markers and nothing between them, with exit 0. The writer must
   # refuse instead, leaving every file byte-identical.
-  local r="$BATS_TEST_TMPDIR/bad-tmpdir"
-  fixture_root "$r" <<'YAML'
+  local fixture_directory="$BATS_TEST_TMPDIR/bad-tmpdir"
+  fixture_root "$fixture_directory" <<'YAML'
 auditors:
   - name: code-audit-default
     globs:
@@ -568,16 +568,16 @@ auditors:
       - "a/**"
 YAML
   local before_default before_a
-  before_default="$(snapshot_file "$r/.claude/agents/code-audit-default.md")"
-  before_a="$(snapshot_file "$r/.claude/agents/code-audit-a.md")"
+  before_default="$(snapshot_file "$fixture_directory/.claude/agents/code-audit-default.md")"
+  before_a="$(snapshot_file "$fixture_directory/.claude/agents/code-audit-a.md")"
 
-  run env TMPDIR="$r/no-such-tmpdir" bash "$WRITER" --root "$r" --config "$r/.gaia/audit-ci.yml"
+  run env TMPDIR="$fixture_directory/no-such-tmpdir" bash "$WRITER" --root "$fixture_directory" --config "$fixture_directory/.gaia/audit-ci.yml"
   [ "$status" -eq 1 ]
 
   # The definitions are untouched, and in particular no emptied region landed.
   local after_default after_a
-  after_default="$(snapshot_file "$r/.claude/agents/code-audit-default.md")"
-  after_a="$(snapshot_file "$r/.claude/agents/code-audit-a.md")"
+  after_default="$(snapshot_file "$fixture_directory/.claude/agents/code-audit-default.md")"
+  after_a="$(snapshot_file "$fixture_directory/.claude/agents/code-audit-a.md")"
   assert_files_identical "$before_default" "$after_default"
   assert_files_identical "$before_a" "$after_a"
 }
@@ -592,8 +592,8 @@ YAML
   # between them over every definition, and still exits 0.
   [ "$(id -u)" -eq 0 ] && skip "running as root: mode 500 does not deny the write"
 
-  local r="$BATS_TEST_TMPDIR/unwritable-body-dir"
-  fixture_root "$r" <<'YAML'
+  local fixture_directory="$BATS_TEST_TMPDIR/unwritable-body-dir"
+  fixture_root "$fixture_directory" <<'YAML'
 auditors:
   - name: code-audit-default
     globs:
@@ -618,17 +618,17 @@ YAML
   real_mktemp="$(command -v mktemp)"
   cat > "$shim/mktemp" <<SH
 #!/usr/bin/env bash
-d="\$("$real_mktemp" "\$@")" || exit 1
-chmod 500 "\$d" || exit 1
-printf '%s\n' "\$d"
+created_directory="\$("$real_mktemp" "\$@")" || exit 1
+chmod 500 "\$created_directory" || exit 1
+printf '%s\n' "\$created_directory"
 SH
   chmod +x "$shim/mktemp"
 
   local before_default before_a
-  before_default="$(snapshot_file "$r/.claude/agents/code-audit-default.md")"
-  before_a="$(snapshot_file "$r/.claude/agents/code-audit-a.md")"
+  before_default="$(snapshot_file "$fixture_directory/.claude/agents/code-audit-default.md")"
+  before_a="$(snapshot_file "$fixture_directory/.claude/agents/code-audit-a.md")"
 
-  run env PATH="$shim:$PATH" bash "$WRITER" --root "$r" --config "$r/.gaia/audit-ci.yml"
+  run env PATH="$shim:$PATH" bash "$WRITER" --root "$fixture_directory" --config "$fixture_directory/.gaia/audit-ci.yml"
   [ "$status" -eq 1 ]
 
   # The emptiness guard is what refused, for every member, and the earlier
@@ -640,26 +640,26 @@ SH
 
   # No emptied region landed: every definition is byte-identical.
   local after_default after_a
-  after_default="$(snapshot_file "$r/.claude/agents/code-audit-default.md")"
-  after_a="$(snapshot_file "$r/.claude/agents/code-audit-a.md")"
+  after_default="$(snapshot_file "$fixture_directory/.claude/agents/code-audit-default.md")"
+  after_a="$(snapshot_file "$fixture_directory/.claude/agents/code-audit-a.md")"
   assert_files_identical "$before_default" "$after_default"
   assert_files_identical "$before_a" "$after_a"
 }
 
 @test "robustness: a roster with no auditors block exits 0 and writes nothing" {
-  local r="$BATS_TEST_TMPDIR/no-auditors"
-  mkdir -p "$r/.gaia/scripts" "$r/.claude/agents" "$r/.claude/hooks/lib"
-  cat > "$r/.gaia/audit-ci.yml" <<'YAML'
+  local fixture_directory="$BATS_TEST_TMPDIR/no-auditors"
+  mkdir -p "$fixture_directory/.gaia/scripts" "$fixture_directory/.claude/agents" "$fixture_directory/.claude/hooks/lib"
+  cat > "$fixture_directory/.gaia/audit-ci.yml" <<'YAML'
 default_mode: local
 YAML
-  run_writer "$r"
+  run_writer "$fixture_directory"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
 
 @test "robustness: an agent file deleted after scaffolding is skipped, others still processed" {
-  local r="$BATS_TEST_TMPDIR/deleted-agent"
-  fixture_root "$r" <<'YAML'
+  local fixture_directory="$BATS_TEST_TMPDIR/deleted-agent"
+  fixture_root "$fixture_directory" <<'YAML'
 auditors:
   - name: code-audit-default
     globs:
@@ -669,12 +669,12 @@ auditors:
     globs:
       - "a/**"
 YAML
-  rm "$r/.claude/agents/code-audit-a.md"
+  rm "$fixture_directory/.claude/agents/code-audit-a.md"
 
-  run_writer "$r"
+  run_writer "$fixture_directory"
   [ "$status" -eq 0 ]
   assert_contains "code-audit-default: region inserted"
-  grep -qxF -- '<!-- gaia:audit-remit:start -->' "$r/.claude/agents/code-audit-default.md"
+  grep -qxF -- '<!-- gaia:audit-remit:start -->' "$fixture_directory/.claude/agents/code-audit-default.md"
 }
 
 # The writer carries no second scrape (UAT-011's structural half).

@@ -48,15 +48,15 @@ setup() {
   THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
   LINTER="$REPO_ROOT/.gaia/scripts/lint-hook-cwd-relative-loads.sh"
-  TMP=""
+  TEMPORARY_DIRECTORY=""
 }
 
 teardown() {
-  [ -n "$TMP" ] && [ -d "$TMP" ] && rm -rf "$TMP"
+  [ -n "$TEMPORARY_DIRECTORY" ] && [ -d "$TEMPORARY_DIRECTORY" ] && rm -rf "$TEMPORARY_DIRECTORY"
   return 0
 }
 
-# fixture_repo_bare: an initialized git repo in $TMP with an empty hooks
+# fixture_repo_bare: an initialized git repo in $TEMPORARY_DIRECTORY with an empty hooks
 # directory and a COPY of the gate staged at its own repo-relative path, so the
 # discovery comes back empty. Point a test that needs a short surface here.
 #
@@ -68,10 +68,10 @@ teardown() {
 # deliberate too: the gate refuses (exit 2) when it cannot see that directory
 # at its root, so creating it is what leaves the short-surface arm reachable.
 fixture_repo_bare() {
-  TMP="$(mktemp -d -t hookcwd-lint-XXXXXX)"
-  git -C "$TMP" init -q .
-  mkdir -p "$TMP/.claude/hooks" "$TMP/.gaia/scripts"
-  STAGED_LINTER="$TMP/.gaia/scripts/lint-hook-cwd-relative-loads.sh"
+  TEMPORARY_DIRECTORY="$(mktemp -d -t hookcwd-lint-XXXXXX)"
+  git -C "$TEMPORARY_DIRECTORY" init -q .
+  mkdir -p "$TEMPORARY_DIRECTORY/.claude/hooks" "$TEMPORARY_DIRECTORY/.gaia/scripts"
+  STAGED_LINTER="$TEMPORARY_DIRECTORY/.gaia/scripts/lint-hook-cwd-relative-loads.sh"
   cp "$LINTER" "$STAGED_LINTER"
 }
 
@@ -82,33 +82,33 @@ fixture_repo_bare() {
 # gate itself rather than restated, so raising the floor there cannot leave this
 # helper seeding too few and every test failing for the wrong reason.
 fixture_repo() {
-  local floor n
+  local floor seed_index
   fixture_repo_bare
   floor="$( sed -n 's/^readonly SURFACE_FLOOR=\([0-9]*\)$/\1/p' "$LINTER" )"
   [ -n "$floor" ] || return 1
-  mkdir -p "$TMP/.claude/hooks"
-  n=0
-  while [ "$n" -lt "$floor" ]; do
-    printf '#!/usr/bin/env bash\ntrue\n' > "$TMP/.claude/hooks/seed-$n.sh"
-    n=$(( n + 1 ))
+  mkdir -p "$TEMPORARY_DIRECTORY/.claude/hooks"
+  seed_index=0
+  while [ "$seed_index" -lt "$floor" ]; do
+    printf '#!/usr/bin/env bash\ntrue\n' > "$TEMPORARY_DIRECTORY/.claude/hooks/seed-$seed_index.sh"
+    seed_index=$(( seed_index + 1 ))
   done
-  git -C "$TMP" add -A
+  git -C "$TEMPORARY_DIRECTORY" add -A
 }
 
 # fixture_hook <body>: a tracked hook carrying <body>. Line 1 is the shebang and
 # line 2 the `set`, so a one-line body reports at line 3.
 fixture_hook() {
-  mkdir -p "$TMP/.claude/hooks"
+  mkdir -p "$TEMPORARY_DIRECTORY/.claude/hooks"
   printf '%s\n' "#!/usr/bin/env bash
 set -uo pipefail
-$1" > "$TMP/.claude/hooks/check.sh"
-  git -C "$TMP" add -A
+$1" > "$TEMPORARY_DIRECTORY/.claude/hooks/check.sh"
+  git -C "$TEMPORARY_DIRECTORY" add -A
 }
 
 # run_linter: run the fixture's own staged copy of the gate. cwd is set to the
 # fixture only so a failure here reads naturally; the gate no longer consults it.
 run_linter() {
-  run bash -c "cd '$TMP' && bash '$STAGED_LINTER' 2>&1"
+  run bash -c "cd '$TEMPORARY_DIRECTORY' && bash '$STAGED_LINTER' 2>&1"
 }
 
 # --- the class fires, one test per position the header enumerates -----------
@@ -125,7 +125,7 @@ type red_ledger_path >/dev/null 2>&1 || exit 0'
 
 @test "reds against the NEGATED spelling of the historical shape" {
   # The positive twin of the test above, and the idiomatic spelling of the
-  # stand-down this gate exists to prevent: `[ ! -f <lib> ] && exit 0` reads a
+  # stand-down this gate exists to prevent: `[ ! -f <library> ] && exit 0` reads a
   # moved working directory as a missing library exactly as the unnegated form
   # does. The `!` stands where the arm requires the test primary, so reaching it
   # takes an explicit optional negation rather than falling out of the unnegated
@@ -232,19 +232,19 @@ bash "$_library_directory/../../.gaia/scripts/token-tally.sh"'
   # planted hook rather than reporting an empty surface.
   fixture_repo
   fixture_hook '[ -f .claude/hooks/lib/red-ledger.sh ] && . .claude/hooks/lib/red-ledger.sh'
-  mkdir -p "$TMP/app/components"
-  run bash -c "cd '$TMP/app/components' && bash '$STAGED_LINTER' 2>&1"
+  mkdir -p "$TEMPORARY_DIRECTORY/app/components"
+  run bash -c "cd '$TEMPORARY_DIRECTORY/app/components' && bash '$STAGED_LINTER' 2>&1"
   [ "$status" -eq 1 ]
   grep -qF -- ".claude/hooks/check.sh:3:" <<<"$output"
 }
 
 @test "reaches a hook under lib/, not only the top level" {
   fixture_repo
-  mkdir -p "$TMP/.claude/hooks/lib"
+  mkdir -p "$TEMPORARY_DIRECTORY/.claude/hooks/lib"
   printf '%s\n' '#!/usr/bin/env bash
 [ -f .claude/hooks/lib/repo-scope.sh ] && . .claude/hooks/lib/repo-scope.sh' \
-    > "$TMP/.claude/hooks/lib/helper.sh"
-  git -C "$TMP" add -A
+    > "$TEMPORARY_DIRECTORY/.claude/hooks/lib/helper.sh"
+  git -C "$TEMPORARY_DIRECTORY" add -A
   run_linter
   [ "$status" -eq 1 ]
   grep -qF -- ".claude/hooks/lib/helper.sh:2:" <<<"$output"

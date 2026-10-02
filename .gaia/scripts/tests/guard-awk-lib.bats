@@ -13,7 +13,7 @@
 # herestring rather than `[[ == * ]]`, POSIX `[ ]` for equality and numerics,
 # and `<positive-condition-for-the-bad-case> && return 1` for absence.
 #
-# GAIA_GUARD_LIB and GAIA_GUARD_STUB override the two artifacts under test. They
+# GAIA_GUARD_LIBRARY and GAIA_GUARD_STUB override the two artifacts under test. They
 # exist for the mutation proofs at the foot of this file, which copy a neutered
 # library into a tmpdir and require a NAMED test here to red against it. Nothing
 # outside this suite sets either.
@@ -21,16 +21,16 @@
 setup() {
   THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
-  LIB="${GAIA_GUARD_LIB:-$REPO_ROOT/.gaia/scripts/guard-awk-lib.sh}"
+  LIBRARY="${GAIA_GUARD_LIBRARY:-$REPO_ROOT/.gaia/scripts/guard-awk-lib.sh}"
   STUB="${GAIA_GUARD_STUB:-$REPO_ROOT/.gaia/scripts/tests/fixtures/stub-guard.sh}"
-  SCRIPTS_DIR="$( cd "$( dirname "$LIB" )" && pwd )"
-  TMP="$(mktemp -d -t guard-awk-lib-XXXXXX)"
+  SCRIPTS_DIRECTORY="$( cd "$( dirname "$LIBRARY" )" && pwd )"
+  TEMPORARY_DIRECTORY="$(mktemp -d -t guard-awk-lib-XXXXXX)"
   # shellcheck source=/dev/null
-  . "$LIB"
+  . "$LIBRARY"
 }
 
 teardown() {
-  [ -n "${TMP:-}" ] && [ -d "$TMP" ] && rm -rf "$TMP"
+  [ -n "${TEMPORARY_DIRECTORY:-}" ] && [ -d "$TEMPORARY_DIRECTORY" ] && rm -rf "$TEMPORARY_DIRECTORY"
   return 0
 }
 
@@ -56,15 +56,15 @@ END { gaia_scan_end(file, is_bats, guard, is_owner, want_desync) }
 '
 
 # probe <relpath> <is_bats> [guard] [is_owner] [want_desync]: run the detector
-# over $TMP/<relpath>. A bats surface names the file twice, which is the
+# over $TEMPORARY_DIRECTORY/<relpath>. A bats surface names the file twice, which is the
 # two-pass invocation the prepass needs; every other surface names it once.
 probe() {
-  local f="$1" ib="$2" g="${3:-lint-git-path-quoting}" own="${4:-0}" wd="${5:-1}"
+  local relative_path="$1" is_bats="$2" guard="${3:-lint-git-path-quoting}" own="${4:-0}" want_desync="${5:-1}"
   local args
-  args=("$TMP/$f")
-  if [ "$ib" -eq 1 ]; then args+=("$TMP/$f"); fi
-  run awk -v file="$f" -v is_bats="$ib" -v scripts_dir="$SCRIPTS_DIR" \
-      -v guard="$g" -v is_owner="$own" -v want_desync="$wd" \
+  args=("$TEMPORARY_DIRECTORY/$relative_path")
+  if [ "$is_bats" -eq 1 ]; then args+=("$TEMPORARY_DIRECTORY/$relative_path"); fi
+  run awk -v file="$relative_path" -v is_bats="$is_bats" -v scripts_directory="$SCRIPTS_DIRECTORY" \
+      -v guard="$guard" -v is_owner="$own" -v want_desync="$want_desync" \
       "$GAIA_GUARD_AWK$PROBE_AWK" "${args[@]}"
 }
 
@@ -75,19 +75,19 @@ probe() {
 # cardinality: it fails a derivation that came back short, which is the failure
 # a non-empty check cannot see.
 helper_names() {
-  awk '/^function G_classify/, /^}/' "$LIB" \
-    | awk '/^  if \(w == /{f = 1} f {print} f && /\) \{$/{exit}' \
+  awk '/^function G_classify/, /^}/' "$LIBRARY" \
+    | awk '/^  if \(word == /{in_region = 1} in_region {print} in_region && /\) \{$/{exit}' \
     | grep -oE '"[A-Za-z_]+"' | tr -d '"'
 }
 
 @test "every recognized fixture-writing helper skips its argument region" {
-  local names n h
+  local names helper_count helper_name
   names="$(helper_names)"
-  n="$(printf '%s\n' "$names" | grep -c .)"
-  [ "$n" -ge 5 ]
-  for h in $names; do
-    cat > "$TMP/h.bats" <<EOF
-$h probe.sh "STUBCLASS inside a fixture argument"
+  helper_count="$(printf '%s\n' "$names" | grep -c .)"
+  [ "$helper_count" -ge 5 ]
+  for helper_name in $names; do
+    cat > "$TEMPORARY_DIRECTORY/h.bats" <<EOF
+$helper_name probe.sh "STUBCLASS inside a fixture argument"
 echo "STUBCLASS on an executed line"
 EOF
     probe h.bats 1
@@ -98,7 +98,7 @@ EOF
 }
 
 @test "a helper argument carried onto a backslash-continuation line is skipped too" {
-  cat > "$TMP/cont.bats" <<'EOF'
+  cat > "$TEMPORARY_DIRECTORY/cont.bats" <<'EOF'
 fixture_file probe.sh \
   "STUBCLASS on the continuation line"
 echo "STUBCLASS on an executed line"
@@ -110,8 +110,8 @@ EOF
 }
 
 @test "a quoted heredoc body is skipped" {
-  cat > "$TMP/hd.bats" <<'EOF'
-cat > "$TMP/probe.sh" <<'INNER'
+  cat > "$TEMPORARY_DIRECTORY/hd.bats" <<'EOF'
+cat > "$TEMPORARY_DIRECTORY/probe.sh" <<'INNER'
 STUBCLASS inside a quoted heredoc body
 INNER
 echo "STUBCLASS on an executed line"
@@ -123,8 +123,8 @@ EOF
 }
 
 @test "a printf argument region carrying an output redirect is skipped" {
-  cat > "$TMP/pf.bats" <<'EOF'
-printf '%s\n' "STUBCLASS in a printf fixture" > "$TMP/probe.sh"
+  cat > "$TEMPORARY_DIRECTORY/pf.bats" <<'EOF'
+printf '%s\n' "STUBCLASS in a printf fixture" > "$TEMPORARY_DIRECTORY/probe.sh"
 echo "STUBCLASS on an executed line"
 EOF
   probe pf.bats 1
@@ -134,7 +134,7 @@ EOF
 }
 
 @test "a constant later handed to a fixture helper is data on its interior lines" {
-  cat > "$TMP/r4.bats" <<'EOF'
+  cat > "$TEMPORARY_DIRECTORY/r4.bats" <<'EOF'
 BODY='first line
 STUBCLASS on an interior line of a fixture literal
 third line'
@@ -153,7 +153,7 @@ EOF
 # interpreter, whose interior line carries the class. Execution anywhere in the
 # file disqualifies the name, so the interior line is executed shell.
 @test "a constant the file also executes is never data, even when a helper writes it too" {
-  cat > "$TMP/r4x.bats" <<'EOF'
+  cat > "$TEMPORARY_DIRECTORY/r4x.bats" <<'EOF'
 BODY='first line
 STUBCLASS on an interior line of an executed body
 third line'
@@ -168,7 +168,7 @@ EOF
 }
 
 @test "a fixture written through an unrecognized helper is reported" {
-  cat > "$TMP/unk.bats" <<'EOF'
+  cat > "$TEMPORARY_DIRECTORY/unk.bats" <<'EOF'
 write_thing probe.sh "STUBCLASS through a helper the set does not name"
 EOF
   probe unk.bats 1
@@ -176,9 +176,9 @@ EOF
 }
 
 @test "with is_bats 0 the fixture region rule skips nothing" {
-  cat > "$TMP/off.bats" <<'EOF'
+  cat > "$TEMPORARY_DIRECTORY/off.bats" <<'EOF'
 fixture_file probe.sh "STUBCLASS inside a fixture argument"
-printf '%s\n' "STUBCLASS in a printf fixture" > "$TMP/probe.sh"
+printf '%s\n' "STUBCLASS in a printf fixture" > "$TEMPORARY_DIRECTORY/probe.sh"
 echo "STUBCLASS on an executed line"
 EOF
   probe off.bats 0
@@ -192,10 +192,10 @@ EOF
 # separately rather than in one loop over a list, so a spelling that regresses
 # names itself.
 @test "a top-level separator after a fixture writer ends the argument region" {
-  local sep
-  for sep in ";" "&&" "||"; do
-    cat > "$TMP/sep.bats" <<EOF
-fixture_file probe.sh 'ok' $sep echo "STUBCLASS on the second statement"
+  local separator
+  for separator in ";" "&&" "||"; do
+    cat > "$TEMPORARY_DIRECTORY/sep.bats" <<EOF
+fixture_file probe.sh 'ok' $separator echo "STUBCLASS on the second statement"
 EOF
     probe sep.bats 1
     grep -qF -- "sep.bats:1:" <<<"$output" || return 1
@@ -208,7 +208,7 @@ EOF
   # from the walk rather than from the raw text: hundreds of fixture bodies in
   # this tree carry a semicolon inside the literal they write. Reading one of
   # those as a second statement would report the evidence itself.
-  cat > "$TMP/inlit.bats" <<'EOF'
+  cat > "$TEMPORARY_DIRECTORY/inlit.bats" <<'EOF'
 fixture_file probe.sh 'a=1 ; STUBCLASS inside the literal'
 fixture_file probe.sh "b=2 && STUBCLASS inside a double-quoted literal"
 EOF
@@ -223,8 +223,8 @@ EOF
   # this test named them and wrote neither, so widening the separator set left
   # it green and it forbade nothing. Line 1 carries a real pipeline, line 2 a
   # real background ampersand, and each opens a region a widened set would end.
-  cat > "$TMP/pipe.bats" <<'EOF'
-printf '%s\n' "STUBCLASS piped into a fixture path" | tee "$TMP/probe.sh" > /dev/null
+  cat > "$TEMPORARY_DIRECTORY/pipe.bats" <<'EOF'
+printf '%s\n' "STUBCLASS piped into a fixture path" | tee "$TEMPORARY_DIRECTORY/probe.sh" > /dev/null
 fixture_file probe.sh "STUBCLASS in a backgrounded write" &
 EOF
   probe pipe.bats 1
@@ -237,7 +237,7 @@ EOF
   # The region ends at the separator, so the whole second statement is executed
   # shell, not only the part that fits on the first line. A per-line suppression
   # ended at line 1 and handed line 2 back as fixture data.
-  cat > "$TMP/cont.bats" <<'EOF'
+  cat > "$TEMPORARY_DIRECTORY/cont.bats" <<'EOF'
 fixture_file probe.sh 'ok' ; echo \
   "STUBCLASS on the continued second statement"
 EOF
@@ -256,7 +256,7 @@ EOF
     for i in $(seq 1 40); do echo "# filler $i"; done
     echo 'echo "STUBCLASS well past the halfway point"'
     for i in $(seq 1 10); do echo "# tail $i"; done
-  } > "$TMP/long.bats"
+  } > "$TEMPORARY_DIRECTORY/long.bats"
   probe long.bats 1
   grep -qF -- "long.bats:41:" <<<"$output" || return 1
   grep -qF -- "long.bats:92:" <<<"$output" && return 1
@@ -266,7 +266,7 @@ EOF
 # ---- the pragma ------------------------------------------------------------
 
 @test "a pragma is honored above its target in a bats file" {
-  cat > "$TMP/pg.bats" <<'EOF'
+  cat > "$TEMPORARY_DIRECTORY/pg.bats" <<'EOF'
 # gaia-lint-ignore lint-git-path-quoting: the demonstration is the point here
 echo "STUBCLASS on the target line"
 EOF
@@ -277,7 +277,7 @@ EOF
 }
 
 @test "a reason wrapped across consecutive comment lines reads as one reason" {
-  cat > "$TMP/wrap.bats" <<'EOF'
+  cat > "$TEMPORARY_DIRECTORY/wrap.bats" <<'EOF'
 # gaia-lint-ignore lint-git-path-quoting: a reason long enough that it
 # continues onto a second comment line and then a third
 # before the target arrives
@@ -292,7 +292,7 @@ EOF
 # A wrapped reason is textually an ordinary comment, so the two cannot be told
 # apart and neither ends the block. Only a blank line does.
 @test "an unrelated prose comment between the pragma and its target does not void it" {
-  cat > "$TMP/prose.bats" <<'EOF'
+  cat > "$TEMPORARY_DIRECTORY/prose.bats" <<'EOF'
 # gaia-lint-ignore lint-git-path-quoting: the demonstration is the point here
 # An unrelated remark about the fixture below, written by someone who had no
 # idea a pragma was open.
@@ -305,7 +305,7 @@ EOF
 }
 
 @test "two stacked pragmas naming two guards both apply to the same target" {
-  cat > "$TMP/stack.bats" <<'EOF'
+  cat > "$TEMPORARY_DIRECTORY/stack.bats" <<'EOF'
 # gaia-lint-ignore lint-git-path-quoting: first of the stack
 # gaia-lint-ignore lint-sigpipe-readers: second of the stack
 echo "STUBCLASS on the target line"
@@ -318,7 +318,7 @@ EOF
 }
 
 @test "a blank line between the pragma and its target voids the block" {
-  cat > "$TMP/blank.bats" <<'EOF'
+  cat > "$TEMPORARY_DIRECTORY/blank.bats" <<'EOF'
 # gaia-lint-ignore lint-git-path-quoting: voided by the blank line below
 
 echo "STUBCLASS on the line that is no longer a target"
@@ -329,7 +329,7 @@ EOF
 }
 
 @test "a pragma whose target carries no instance is reported unused by the guard it names" {
-  cat > "$TMP/unused.bats" <<'EOF'
+  cat > "$TEMPORARY_DIRECTORY/unused.bats" <<'EOF'
 # gaia-lint-ignore lint-git-path-quoting: nothing here to suppress
 echo "an ordinary line"
 EOF
@@ -341,7 +341,7 @@ EOF
 }
 
 @test "an orphaned token and a missing reason are reported once, and only by the owner" {
-  cat > "$TMP/mal.bats" <<'EOF'
+  cat > "$TEMPORARY_DIRECTORY/mal.bats" <<'EOF'
 # gaia-lint-ignore lint-no-such-guard: names a script that does not exist
 echo "an ordinary line"
 
@@ -359,16 +359,16 @@ EOF
 # These guards are not mode-executable, so resolution asks whether the target
 # reads rather than whether it runs.
 @test "a token resolves by readability rather than by execute permission" {
-  mkdir -p "$TMP/scripts"
-  : > "$TMP/scripts/lint-mode-probe.sh"
-  chmod 0644 "$TMP/scripts/lint-mode-probe.sh"
-  cat > "$TMP/mode.bats" <<'EOF'
+  mkdir -p "$TEMPORARY_DIRECTORY/scripts"
+  : > "$TEMPORARY_DIRECTORY/scripts/lint-mode-probe.sh"
+  chmod 0644 "$TEMPORARY_DIRECTORY/scripts/lint-mode-probe.sh"
+  cat > "$TEMPORARY_DIRECTORY/mode.bats" <<'EOF'
 # gaia-lint-ignore lint-mode-probe: resolves through a non-executable file
 echo "STUBCLASS on the target line"
 EOF
-  run awk -v file=mode.bats -v is_bats=1 -v scripts_dir="$TMP/scripts" \
+  run awk -v file=mode.bats -v is_bats=1 -v scripts_directory="$TEMPORARY_DIRECTORY/scripts" \
       -v guard=lint-mode-probe -v is_owner=1 -v want_desync=1 \
-      "$GAIA_GUARD_AWK$PROBE_AWK" "$TMP/mode.bats" "$TMP/mode.bats"
+      "$GAIA_GUARD_AWK$PROBE_AWK" "$TEMPORARY_DIRECTORY/mode.bats" "$TEMPORARY_DIRECTORY/mode.bats"
   grep -qF -- "STUBCLASS" <<<"$output" && return 1
   grep -qF -- "malformed" <<<"$output" && return 1
   true
@@ -377,16 +377,16 @@ EOF
 # Every fixture test in every consuming suite runs its guard from a throwaway
 # repo that carries no .gaia/scripts, so a cwd-relative resolution would read
 # every well-formed token as orphaned.
-@test "a token resolves against scripts_dir and not against the working directory" {
-  cat > "$TMP/cwd.bats" <<'EOF'
+@test "a token resolves against scripts_directory and not against the working directory" {
+  cat > "$TEMPORARY_DIRECTORY/cwd.bats" <<'EOF'
 # gaia-lint-ignore lint-git-path-quoting: resolved from somewhere else entirely
 echo "STUBCLASS on the target line"
 EOF
-  mkdir -p "$TMP/elsewhere"
-  run bash -c "cd '$TMP/elsewhere' && awk -v file=cwd.bats -v is_bats=1 \
-      -v scripts_dir='$SCRIPTS_DIR' -v guard=lint-git-path-quoting \
+  mkdir -p "$TEMPORARY_DIRECTORY/elsewhere"
+  run bash -c "cd '$TEMPORARY_DIRECTORY/elsewhere' && awk -v file=cwd.bats -v is_bats=1 \
+      -v scripts_directory='$SCRIPTS_DIRECTORY' -v guard=lint-git-path-quoting \
       -v is_owner=1 -v want_desync=1 \
-      \"\$GAIA_GUARD_AWK\$PROBE_AWK\" '$TMP/cwd.bats' '$TMP/cwd.bats'"
+      \"\$GAIA_GUARD_AWK\$PROBE_AWK\" '$TEMPORARY_DIRECTORY/cwd.bats' '$TEMPORARY_DIRECTORY/cwd.bats'"
   grep -qF -- "STUBCLASS" <<<"$output" && return 1
   grep -qF -- "malformed" <<<"$output" && return 1
   true
@@ -395,7 +395,7 @@ EOF
 # The off-surface arm: nothing is honored outside a bats suite, and the block is
 # still parsed there so the guard the pragma names can say so.
 @test "with is_bats 0 no pragma is honored and the block is still visible" {
-  cat > "$TMP/offp.bats" <<'EOF'
+  cat > "$TEMPORARY_DIRECTORY/offp.bats" <<'EOF'
 # gaia-lint-ignore lint-git-path-quoting: honored nowhere on this surface
 echo "STUBCLASS on the target line"
 EOF
@@ -407,7 +407,7 @@ EOF
 # ---- the run-only exemption ------------------------------------------------
 
 @test "run_only answers 1 inside a helper whose every invocation is a run" {
-  cat > "$TMP/ro.bats" <<'EOF'
+  cat > "$TEMPORARY_DIRECTORY/ro.bats" <<'EOF'
 only_run() {
   echo "STUBCLASS inside a helper only ever run detached"
 }
@@ -421,7 +421,7 @@ EOF
 }
 
 @test "run_only answers 0 for a helper one call site invokes plainly" {
-  cat > "$TMP/mixed.bats" <<'EOF'
+  cat > "$TEMPORARY_DIRECTORY/mixed.bats" <<'EOF'
 mixed_call() {
   echo "STUBCLASS inside a helper called both ways"
 }
@@ -438,7 +438,7 @@ EOF
 }
 
 @test "run_only answers 0 for a helper nothing invokes" {
-  cat > "$TMP/never.bats" <<'EOF'
+  cat > "$TEMPORARY_DIRECTORY/never.bats" <<'EOF'
 never_called() {
   echo "STUBCLASS inside a helper with no call site at all"
 }
@@ -450,7 +450,7 @@ EOF
 }
 
 @test "run_only answers 0 inside a test body" {
-  cat > "$TMP/body.bats" <<'EOF'
+  cat > "$TEMPORARY_DIRECTORY/body.bats" <<'EOF'
 @test "one" {
   echo "STUBCLASS inside a test body, which bats runs under errexit"
 }
@@ -468,7 +468,7 @@ EOF
 # terminator, leaving the state inverted for the rest of the file, which is what
 # the desync assertion below detects.
 @test "an escaped quote inside an ANSI-C literal does not invert the quote state" {
-  cat > "$TMP/ansi.bats" <<'EOF'
+  cat > "$TEMPORARY_DIRECTORY/ansi.bats" <<'EOF'
 x=$'a\'b'
 echo "STUBCLASS after the literal"
 EOF
@@ -479,7 +479,7 @@ EOF
 }
 
 @test "a file ending inside an unterminated heredoc earns the desync error" {
-  cat > "$TMP/ds.bats" <<'EOF'
+  cat > "$TEMPORARY_DIRECTORY/ds.bats" <<'EOF'
 cat > probe.sh <<INNER
 STUBCLASS inside a body whose terminator never arrives
 EOF
@@ -488,7 +488,7 @@ EOF
 }
 
 @test "a file ending inside an open quote earns the desync error" {
-  cat > "$TMP/dq.bats" <<'EOF'
+  cat > "$TEMPORARY_DIRECTORY/dq.bats" <<'EOF'
 x="an opening quote with no partner
 echo "STUBCLASS somewhere below it"
 EOF
@@ -497,7 +497,7 @@ EOF
 }
 
 @test "a file ending on a backslash continuation earns the desync error" {
-  printf '%s' 'echo "STUBCLASS" \' > "$TMP/dc.bats"
+  printf '%s' 'echo "STUBCLASS" \' > "$TEMPORARY_DIRECTORY/dc.bats"
   probe dc.bats 1 lint-git-path-quoting 0 1
   grep -qF -- "dc.bats: ERROR: the scan lost track of shell state" <<<"$output" || return 1
 }
@@ -505,7 +505,7 @@ EOF
 # The errexit guard keeps its own desync detector, so it passes want_desync 0 and
 # must not meet two ERROR lines for one file. That argument exists for this.
 @test "want_desync 0 suppresses the desync error on the same unreadable file" {
-  cat > "$TMP/ds0.bats" <<'EOF'
+  cat > "$TEMPORARY_DIRECTORY/ds0.bats" <<'EOF'
 cat > probe.sh <<INNER
 STUBCLASS inside a body whose terminator never arrives
 EOF
@@ -517,7 +517,7 @@ EOF
 # ---- the stub guard --------------------------------------------------------
 
 @test "the stub guard skips a fixture region and honors a pragma with no logic of its own" {
-  cat > "$TMP/stub.bats" <<'EOF'
+  cat > "$TEMPORARY_DIRECTORY/stub.bats" <<'EOF'
 fixture_file probe.sh "STUBCLASS inside a fixture argument"
 
 # gaia-lint-ignore stub-guard: the demonstration is the point here
@@ -525,7 +525,7 @@ echo "STUBCLASS under a pragma"
 
 echo "STUBCLASS on an executed line"
 EOF
-  run bash "$STUB" "$TMP/stub.bats"
+  run bash "$STUB" "$TEMPORARY_DIRECTORY/stub.bats"
   [ "$status" -eq 1 ]
   grep -qF -- "stub.bats:6:" <<<"$output" || return 1
   grep -qF -- "stub.bats:1:" <<<"$output" && return 1
@@ -536,9 +536,9 @@ EOF
 # A future adopter that needs more machinery than this reds the budget rather
 # than quietly re-inventing a tokenizer beside the one the library owns.
 @test "the stub guard non-boilerplate body stays inside its line budget" {
-  local n
-  n="$(grep -vcE '^[[:space:]]*#|^[[:space:]]*$|^#!|^set -euo pipefail$' "$STUB")"
-  [ "$n" -le 40 ]
+  local body_line_count
+  body_line_count="$(grep -vcE '^[[:space:]]*#|^[[:space:]]*$|^#!|^set -euo pipefail$' "$STUB")"
+  [ "$body_line_count" -le 40 ]
 }
 
 # ---- the bats discovery ----------------------------------------------------
@@ -547,17 +547,17 @@ EOF
 # the tree is clean, and the caller reads that as a status rather than through a
 # substitution that would swallow it.
 @test "an empty bats surface is a hard error and a populated one fills the array" {
-  local repo="$TMP/repo"
+  local repo="$TEMPORARY_DIRECTORY/repo"
   mkdir -p "$repo"
   git -C "$repo" init -q .
   printf 'x\n' > "$repo/a.sh"
   git -C "$repo" add -A
-  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_bats_files probe"
+  run bash -c "cd '$repo' && . '$LIBRARY' && gaia_guard_bats_files probe"
   [ "$status" -eq 1 ]
   grep -qF -- "probe: ERROR" <<<"$output" || return 1
   printf 'x\n' > "$repo/a.bats"
   git -C "$repo" add -A
-  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_bats_files probe && printf '%s\n' \"\${#GAIA_GUARD_BATS_FILES[@]}\" \"\${GAIA_GUARD_BATS_FILES[0]}\""
+  run bash -c "cd '$repo' && . '$LIBRARY' && gaia_guard_bats_files probe && printf '%s\n' \"\${#GAIA_GUARD_BATS_FILES[@]}\" \"\${GAIA_GUARD_BATS_FILES[0]}\""
   [ "$status" -eq 0 ]
   grep -qF -- "a.bats" <<<"$output" || return 1
 }
@@ -579,7 +579,7 @@ surface_has_workflow_and_action() {
 # knows, so a per-set assertion below can name what the set must NOT return as
 # well as what it must.
 scan_fixture_repo() {
-  local repo="$TMP/scanrepo"
+  local repo="$TEMPORARY_DIRECTORY/scanrepo"
   mkdir -p "$repo/.husky" "$repo/.github/workflows" "$repo/.github/actions/probe"
   git -C "$repo" init -q .
   printf 'x\n' > "$repo/tool.sh"
@@ -594,18 +594,18 @@ scan_fixture_repo() {
 # the discovery is wrong rather than the tree clean, and the caller reads that
 # as a status rather than through a substitution that would swallow it.
 @test "an empty scan surface is a hard error and a populated one fills the array" {
-  local repo="$TMP/repo"
+  local repo="$TEMPORARY_DIRECTORY/repo"
   mkdir -p "$repo"
   git -C "$repo" init -q .
   printf 'x\n' > "$repo/a.bats"
   git -C "$repo" add -A
-  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell"
+  run bash -c "cd '$repo' && . '$LIBRARY' && gaia_guard_scan_files probe shell"
   [ "$status" -eq 1 ]
   grep -qF -- "probe: ERROR" <<<"$output" || return 1
   grep -qF -- "nothing was scanned" <<<"$output" || return 1
   printf 'x\n' > "$repo/a.sh"
   git -C "$repo" add -A
-  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  run bash -c "cd '$repo' && . '$LIBRARY' && gaia_guard_scan_files probe shell && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
   [ "$status" -eq 0 ]
   grep -qxF -- "a.sh" <<<"$output" || return 1
 }
@@ -613,12 +613,12 @@ scan_fixture_repo() {
 # The message names the sets that were asked for, because a caller asking for
 # more than one has no other way to learn which discovery came back empty.
 @test "the empty-surface error names the sets that were asked for" {
-  local repo="$TMP/repo"
+  local repo="$TEMPORARY_DIRECTORY/repo"
   mkdir -p "$repo"
   git -C "$repo" init -q .
   printf 'x\n' > "$repo/a.bats"
   git -C "$repo" add -A
-  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe husky workflows"
+  run bash -c "cd '$repo' && . '$LIBRARY' && gaia_guard_scan_files probe husky workflows"
   [ "$status" -eq 1 ]
   grep -qF -- "(husky workflows)" <<<"$output" || return 1
 }
@@ -626,7 +626,7 @@ scan_fixture_repo() {
 @test "the shell set returns tracked *.sh and no workflow or hook" {
   local repo
   repo="$(scan_fixture_repo)"
-  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  run bash -c "cd '$repo' && . '$LIBRARY' && gaia_guard_scan_files probe shell && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
   [ "$status" -eq 0 ]
   grep -qxF -- "tool.sh" <<<"$output" || return 1
   grep -qxF -- ".husky/pre-commit" <<<"$output" && return 1
@@ -637,7 +637,7 @@ scan_fixture_repo() {
 @test "the husky set returns the extensionless hooks no extension glob matches" {
   local repo
   repo="$(scan_fixture_repo)"
-  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe husky && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  run bash -c "cd '$repo' && . '$LIBRARY' && gaia_guard_scan_files probe husky && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
   [ "$status" -eq 0 ]
   grep -qxF -- ".husky/pre-commit" <<<"$output" || return 1
   grep -qxF -- "tool.sh" <<<"$output" && return 1
@@ -647,7 +647,7 @@ scan_fixture_repo() {
 @test "the workflows set returns workflows and composite actions" {
   local repo
   repo="$(scan_fixture_repo)"
-  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe workflows && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  run bash -c "cd '$repo' && . '$LIBRARY' && gaia_guard_scan_files probe workflows && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
   [ "$status" -eq 0 ]
   grep -qxF -- ".github/workflows/ci.yml" <<<"$output" || return 1
   grep -qxF -- ".github/actions/probe/action.yaml" <<<"$output" || return 1
@@ -664,10 +664,10 @@ scan_fixture_repo() {
   repo="$(scan_fixture_repo)"
   printf 'x\n' > "$repo/.husky/helper.sh"
   git -C "$repo" add -A
-  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  run bash -c "cd '$repo' && . '$LIBRARY' && gaia_guard_scan_files probe shell && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
   [ "$status" -eq 0 ]
   grep -qxF -- ".husky/helper.sh" <<<"$output" && return 1
-  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell husky && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  run bash -c "cd '$repo' && . '$LIBRARY' && gaia_guard_scan_files probe shell husky && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
   [ "$status" -eq 0 ]
   # The exclude is the only thing keeping this at one. The union is not
   # deduplicated, deliberately: `sort -u` there would be a second mechanism
@@ -684,7 +684,7 @@ scan_fixture_repo() {
 @test "an unknown set name is a hard error that names the set and scans nothing" {
   local repo
   repo="$(scan_fixture_repo)"
-  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell markdown"
+  run bash -c "cd '$repo' && . '$LIBRARY' && gaia_guard_scan_files probe shell markdown"
   # Status 2, never 1: a caller may tolerate an empty surface where one is a
   # legitimate tree, and must never tolerate a set name that resolved nothing
   # because this library does not know it.
@@ -696,7 +696,7 @@ scan_fixture_repo() {
 @test "a call naming no set at all is a hard error rather than an empty surface" {
   local repo
   repo="$(scan_fixture_repo)"
-  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe"
+  run bash -c "cd '$repo' && . '$LIBRARY' && gaia_guard_scan_files probe"
   [ "$status" -eq 2 ]
   grep -qF -- "probe: ERROR" <<<"$output" || return 1
 }
@@ -710,9 +710,9 @@ scan_fixture_repo() {
 # below is what pins that, on the arm where a fixture can name a refusing set
 # ahead of a resolvable one.
 @test "a set whose own discovery fails is distinguished from one that matched nothing" {
-  local outside="$TMP/not-a-repo"
+  local outside="$TEMPORARY_DIRECTORY/not-a-repo"
   mkdir -p "$outside"
-  run bash -c "cd '$outside' && . '$LIB' && gaia_guard_scan_files probe shell workflows"
+  run bash -c "cd '$outside' && . '$LIBRARY' && gaia_guard_scan_files probe shell workflows"
   [ "$status" -eq 3 ]
   grep -qF -- "discovery failed" <<<"$output" || return 1
   grep -qF -- "nothing was scanned" <<<"$output"
@@ -726,7 +726,7 @@ scan_fixture_repo() {
 @test "a refusing set is caught where a later named set would still resolve" {
   local repo
   repo="$(scan_fixture_repo)"
-  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe markdown shell && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  run bash -c "cd '$repo' && . '$LIBRARY' && gaia_guard_scan_files probe markdown shell && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
   [ "$status" -eq 2 ]
   grep -qF -- "markdown" <<<"$output" || return 1
   grep -qxF -- "tool.sh" <<<"$output" && return 1
@@ -740,11 +740,11 @@ scan_fixture_repo() {
 @test "a sort that fails is not reported as an empty surface" {
   local repo stub
   repo="$(scan_fixture_repo)"
-  stub="$TMP/stubbin"
+  stub="$TEMPORARY_DIRECTORY/stubbin"
   mkdir -p "$stub"
   printf '#!/bin/sh\nexit 4\n' > "$stub/sort"
   chmod +x "$stub/sort"
-  run bash -c "cd '$repo' && . '$LIB' && PATH=\"$stub:\$PATH\" gaia_guard_scan_files probe shell"
+  run bash -c "cd '$repo' && . '$LIBRARY' && PATH=\"$stub:\$PATH\" gaia_guard_scan_files probe shell"
   [ "$status" -eq 3 ]
   grep -qF -- "sorting the scan surface failed" <<<"$output" || return 1
   grep -qF -- "nothing was scanned" <<<"$output"
@@ -756,7 +756,7 @@ scan_fixture_repo() {
 @test "a set named twice is refused rather than returned twice" {
   local repo
   repo="$(scan_fixture_repo)"
-  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell shell && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  run bash -c "cd '$repo' && . '$LIBRARY' && gaia_guard_scan_files probe shell shell && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
   [ "$status" -eq 2 ]
   grep -qF -- "named more than once" <<<"$output" || return 1
   grep -qxF -- "tool.sh" <<<"$output" && return 1
@@ -771,10 +771,10 @@ scan_fixture_repo() {
 @test "a refusal empties the surface a previous call left in the array" {
   local repo
   repo="$(scan_fixture_repo)"
-  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell; gaia_guard_scan_files probe markdown; printf 'count=%s\n' \"\${#GAIA_GUARD_SCAN_FILES[@]}\""
+  run bash -c "cd '$repo' && . '$LIBRARY' && gaia_guard_scan_files probe shell; gaia_guard_scan_files probe markdown; printf 'count=%s\n' \"\${#GAIA_GUARD_SCAN_FILES[@]}\""
   grep -qxF -- "count=0" <<<"$output" || return 1
   # The first call has to have filled it, or the assertion above is vacuous.
-  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell; printf 'count=%s\n' \"\${#GAIA_GUARD_SCAN_FILES[@]}\""
+  run bash -c "cd '$repo' && . '$LIBRARY' && gaia_guard_scan_files probe shell; printf 'count=%s\n' \"\${#GAIA_GUARD_SCAN_FILES[@]}\""
   grep -qxF -- "count=0" <<<"$output" && return 1
   true
 }
@@ -782,13 +782,13 @@ scan_fixture_repo() {
 @test "the union across sets is sorted rather than concatenated set by set" {
   local repo
   repo="$(scan_fixture_repo)"
-  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell husky workflows && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  run bash -c "cd '$repo' && . '$LIBRARY' && gaia_guard_scan_files probe shell husky workflows && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
   [ "$status" -eq 0 ]
   [ "$output" = "$(LC_ALL=C sort <<<"$output")" ]
 }
 
 @test "the library sources twice in one shell without erroring under errexit" {
-  run bash -c "set -euo pipefail; . '$LIB'; . '$LIB'; printf 'ok\n'"
+  run bash -c "set -euo pipefail; . '$LIBRARY'; . '$LIBRARY'; printf 'ok\n'"
   [ "$status" -eq 0 ]
   grep -qF -- "ok" <<<"$output" || return 1
 }
@@ -800,7 +800,7 @@ scan_fixture_repo() {
 # made the whole line data and skipped a real instance on it, silently, on the
 # one surface this library exists to arm.
 @test "a stderr dup does not turn a diagnostic line into fixture data" {
-  cat > "$TMP/redir.bats" <<'EOF'
+  cat > "$TEMPORARY_DIRECTORY/redir.bats" <<'EOF'
 echo "STUBCLASS in a diagnostic" >&2
 EOF
   probe redir.bats 1
@@ -809,8 +809,8 @@ EOF
 }
 
 @test "a redirect to a path still makes the line fixture data" {
-  cat > "$TMP/topath.bats" <<'EOF'
-echo "STUBCLASS in a fixture" > "$TMP/written.txt"
+  cat > "$TEMPORARY_DIRECTORY/topath.bats" <<'EOF'
+echo "STUBCLASS in a fixture" > "$TEMPORARY_DIRECTORY/written.txt"
 EOF
   probe topath.bats 1
   grep -qF -- "topath.bats:1:" <<<"$output" && return 1
@@ -818,8 +818,8 @@ EOF
 }
 
 @test "an appending redirect to a path still makes the line fixture data" {
-  cat > "$TMP/append.bats" <<'EOF'
-echo "STUBCLASS in a fixture" >> "$TMP/written.txt"
+  cat > "$TEMPORARY_DIRECTORY/append.bats" <<'EOF'
+echo "STUBCLASS in a fixture" >> "$TEMPORARY_DIRECTORY/written.txt"
 EOF
   probe append.bats 1
   grep -qF -- "append.bats:1:" <<<"$output" && return 1
@@ -827,7 +827,7 @@ EOF
 }
 
 @test "a descriptor dup written as 2>&1 leaves the line executable shell" {
-  cat > "$TMP/dup21.bats" <<'EOF'
+  cat > "$TEMPORARY_DIRECTORY/dup21.bats" <<'EOF'
 echo "STUBCLASS in a diagnostic" 2>&1
 EOF
   probe dup21.bats 1
@@ -840,7 +840,7 @@ EOF
 # Both apply to the same target, so both are used. Marking only the first left
 # the second reported unused over a target that does carry an instance.
 @test "two pragmas naming the same guard are both marked used" {
-  cat > "$TMP/stack.bats" <<'EOF'
+  cat > "$TEMPORARY_DIRECTORY/stack.bats" <<'EOF'
 # gaia-lint-ignore lint-git-path-quoting: the first reason
 # gaia-lint-ignore lint-git-path-quoting: the second reason
 echo "STUBCLASS on the target line"
@@ -857,7 +857,7 @@ EOF
 # per-character toggle left the span open and every comment line inside the
 # fence read as literal data, which meant a pragma there was never parsed.
 @test "a fenced block does not leave the backtick span open" {
-  printf '%s\n' 'text before' '```bash' '# gaia-lint-ignore lint-git-path-quoting: an example' 'echo "STUBCLASS"' '```' > "$TMP/fence.md"
+  printf '%s\n' 'text before' '```bash' '# gaia-lint-ignore lint-git-path-quoting: an example' 'echo "STUBCLASS"' '```' > "$TEMPORARY_DIRECTORY/fence.md"
   probe fence.md 0
   grep -qF -- "fence.md:4:" <<<"$output" || return 1
   true
@@ -877,22 +877,22 @@ EOF
 # outright when the mutation did not apply. An unapplied mutation makes the
 # proof vacuous while it still reports green.
 mutate() {
-  local prog="$1" dir="$TMP/mut"
-  mkdir -p "$dir/scripts/tests/fixtures"
-  awk "$prog" "$REPO_ROOT/.gaia/scripts/guard-awk-lib.sh" > "$dir/scripts/guard-awk-lib.sh"
-  cmp -s "$dir/scripts/guard-awk-lib.sh" "$REPO_ROOT/.gaia/scripts/guard-awk-lib.sh" && return 1
-  cp "$REPO_ROOT/.gaia/scripts/tests/fixtures/stub-guard.sh" "$dir/scripts/tests/fixtures/stub-guard.sh"
-  MUT_LIB="$dir/scripts/guard-awk-lib.sh"
-  MUT_STUB="$dir/scripts/tests/fixtures/stub-guard.sh"
+  local program="$1" directory="$TEMPORARY_DIRECTORY/mut"
+  mkdir -p "$directory/scripts/tests/fixtures"
+  awk "$program" "$REPO_ROOT/.gaia/scripts/guard-awk-lib.sh" > "$directory/scripts/guard-awk-lib.sh"
+  cmp -s "$directory/scripts/guard-awk-lib.sh" "$REPO_ROOT/.gaia/scripts/guard-awk-lib.sh" && return 1
+  cp "$REPO_ROOT/.gaia/scripts/tests/fixtures/stub-guard.sh" "$directory/scripts/tests/fixtures/stub-guard.sh"
+  MUTATED_LIBRARY="$directory/scripts/guard-awk-lib.sh"
+  MUTATED_STUB="$directory/scripts/tests/fixtures/stub-guard.sh"
 }
 
 # Target: "a pragma is honored above its target in a bats file".
 @test "mutation: a pragma reader that always declines reds the honored-pragma test" {
   [ -z "${GAIA_GUARD_MUTATION_CHILD:-}" ] || skip "mutation child run"
-  mutate '/^function gaia_scan_suppressed/{f = 1}
-          f && index($0, "return hit") > 0 { sub(/return hit/, "return 0"); f = 0 }
+  mutate '/^function gaia_scan_suppressed/{in_region = 1}
+          in_region && index($0, "return hit") > 0 { sub(/return hit/, "return 0"); in_region = 0 }
           {print}'
-  GAIA_GUARD_MUTATION_CHILD=1 GAIA_GUARD_LIB="$MUT_LIB" \
+  GAIA_GUARD_MUTATION_CHILD=1 GAIA_GUARD_LIBRARY="$MUTATED_LIBRARY" \
     run bats --filter 'a pragma is honored above its target in a bats file' "$BATS_TEST_FILENAME"
   [ "$status" -ne 0 ]
 }
@@ -903,7 +903,7 @@ mutate() {
   [ -z "${GAIA_GUARD_MUTATION_CHILD:-}" ] || skip "mutation child run"
   mutate '/^function gaia_scan_skip\(\)/ { print "function gaia_scan_skip() { return 0 }"; next }
           {print}'
-  GAIA_GUARD_MUTATION_CHILD=1 GAIA_GUARD_STUB="$MUT_STUB" \
+  GAIA_GUARD_MUTATION_CHILD=1 GAIA_GUARD_STUB="$MUTATED_STUB" \
     run bats --filter 'the stub guard skips a fixture region and honors a pragma' "$BATS_TEST_FILENAME"
   [ "$status" -ne 0 ]
 }
@@ -946,12 +946,12 @@ mutate() {
 # literal the bracket check below compares against. That is data this file
 # reads, not a load it performs.
 library_consumers() {
-  local f
+  local consumer_file
   # -z and a NUL read: without it git C-quotes any consumer whose path carries
   # a non-ASCII byte, and the quoted spelling names no file the caller can open.
-  while IFS= read -r -d '' f; do
-    printf '%s\n' "$REPO_ROOT/$f"
-  done < <(git -C "$REPO_ROOT" grep -l -z -- '_gaia_guard_lib_dir/guard-awk-lib.sh' \
+  while IFS= read -r -d '' consumer_file; do
+    printf '%s\n' "$REPO_ROOT/$consumer_file"
+  done < <(git -C "$REPO_ROOT" grep -l -z -- '_gaia_guard_library_directory/guard-awk-lib.sh' \
              -- ':(exclude)*.bats')
 }
 
@@ -974,9 +974,9 @@ production_guards() {
 # while its name still says every, so every consumer check confirms the count
 # is non-empty before its per-file loop runs.
 assert_consumer_count() {
-  local n
-  n="$(library_consumers | grep -c . || true)"
-  [ "$n" -gt 0 ] || { echo "library_consumers returned nothing" >&2; return 1; }
+  local consumer_count
+  consumer_count="$(library_consumers | grep -c . || true)"
+  [ "$consumer_count" -gt 0 ] || { echo "library_consumers returned nothing" >&2; return 1; }
 }
 
 # Equality, not a per-file grep over the roster: the roster is what the awk
@@ -985,12 +985,12 @@ assert_consumer_count() {
 # assertion that can see it, and it reds both ways -- a roster entry with no awk
 # program, and an awk-carrying consumer with no roster entry.
 @test "the participating roster is exactly the library consumers that concatenate GAIA_GUARD_AWK" {
-  local f derived
+  local consumer_file derived
   assert_consumer_count || return 1
   derived=""
-  while IFS= read -r f; do
-    if grep -qF -- '$GAIA_GUARD_AWK' "$f"; then
-      derived="$derived$f
+  while IFS= read -r consumer_file; do
+    if grep -qF -- '$GAIA_GUARD_AWK' "$consumer_file"; then
+      derived="$derived$consumer_file
 "
     fi
   done < <(library_consumers)
@@ -1002,10 +1002,10 @@ assert_consumer_count() {
   # A CALL is the name immediately followed by "(". Both this file's own
   # header comments and the stub guard's name every entry point in prose,
   # so a raw name-match would misread a comment as a call.
-  local f name
-  while IFS= read -r f; do
+  local guard_file name
+  while IFS= read -r guard_file; do
     for name in gaia_scan_reset gaia_scan_feed gaia_scan_skip gaia_scan_suppressed gaia_scan_end; do
-      grep -qF -- "$name(" "$f" || { echo "$f: never calls $name" >&2; return 1; }
+      grep -qF -- "$name(" "$guard_file" || { echo "$guard_file: never calls $name" >&2; return 1; }
     done
   done < <(participating_files)
 }
@@ -1018,10 +1018,10 @@ assert_consumer_count() {
 # (it has no off-surface pragma to name), and no gaia_scan_run_only (it
 # detects a class errexit arming does not reach).
 @test "each production guard calls gaia_scan_prepass and gaia_scan_pragma_here; only the errexit gate also calls gaia_scan_run_only" {
-  local f
-  while IFS= read -r f; do
-    grep -qF -- "gaia_scan_prepass(" "$f" || { echo "$f: never calls gaia_scan_prepass" >&2; return 1; }
-    grep -qF -- "gaia_scan_pragma_here(" "$f" || { echo "$f: never calls gaia_scan_pragma_here" >&2; return 1; }
+  local guard_file
+  while IFS= read -r guard_file; do
+    grep -qF -- "gaia_scan_prepass(" "$guard_file" || { echo "$guard_file: never calls gaia_scan_prepass" >&2; return 1; }
+    grep -qF -- "gaia_scan_pragma_here(" "$guard_file" || { echo "$guard_file: never calls gaia_scan_pragma_here" >&2; return 1; }
   done < <(production_guards)
   grep -qF -- "gaia_scan_run_only(" "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh" || return 1
   grep -qF -- "gaia_scan_run_only(" "$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh" && return 1
@@ -1032,28 +1032,28 @@ assert_consumer_count() {
 # absorbed: the table lists gaia_scan_prepass_end among the four the
 # production guards "additionally call". None of them calls it by
 # name. The library's own gaia_scan_feed invokes it internally on the
-# transition into pass 2 (guard-awk-lib.sh: "if (G_pre_seen && !G_pre_done)
+# transition into pass 2 (guard-awk-lib.sh: "if (G_prepass_seen && !G_prepass_done)
 # gaia_scan_prepass_end()"), so a guard running the two-pass invocation gets
 # it for free and never has to name it. The contract is satisfied either
 # way; this is a fact about the tree, not a defect.
 @test "no participating file calls gaia_scan_prepass_end directly" {
-  local f
-  while IFS= read -r f; do
-    grep -qF -- "gaia_scan_prepass_end(" "$f" && { echo "$f: calls gaia_scan_prepass_end directly" >&2; return 1; }
+  local guard_file
+  while IFS= read -r guard_file; do
+    grep -qF -- "gaia_scan_prepass_end(" "$guard_file" && { echo "$guard_file: calls gaia_scan_prepass_end directly" >&2; return 1; }
   done < <(participating_files)
   true
 }
 
 @test "no participating file calls a gaia_scan_* name outside the frozen nine" {
-  local f name
-  while IFS= read -r f; do
+  local guard_file name
+  while IFS= read -r guard_file; do
     while IFS= read -r name; do
       [ -n "$name" ] || continue
       case "$name" in
         gaia_scan_reset|gaia_scan_prepass|gaia_scan_prepass_end|gaia_scan_feed|gaia_scan_skip|gaia_scan_suppressed|gaia_scan_pragma_here|gaia_scan_run_only|gaia_scan_end) ;;
-        *) echo "$f: calls unrecognized entry point $name" >&2; return 1 ;;
+        *) echo "$guard_file: calls unrecognized entry point $name" >&2; return 1 ;;
       esac
-    done < <(grep -oE 'gaia_scan_[A-Za-z_]+\(' "$f" | sed 's/(//' | sort -u)
+    done < <(grep -oE 'gaia_scan_[A-Za-z_]+\(' "$guard_file" | sed 's/(//' | sort -u)
   done < <(participating_files)
 }
 
@@ -1085,13 +1085,13 @@ own_awk_functions() {
   # Deviation from the plan's README table, recorded rather than silently
   # absorbed: the table lists eight functions for this file. The tree
   # carries ten. pragma_offsurface (the off-surface honored-nowhere
-  # emitter, README C1.4 / C4) and yfeed (the run:-body feed dispatch point
+  # emitter, README C1.4 / C4) and yaml_feed (the run:-body feed dispatch point
   # for the YAML arm) both landed with Phase 2's arming task and are not in
   # the table. Pinned against what the file defines today, per this task's
   # own instruction to build the set from the tree rather than from the
   # doc.
   actual="$(own_awk_functions "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh")"
-  expected="$(printf '%s\n' arm check_desync eat_word feed has_status_read pragma_offsurface report reset_state walk yfeed)"
+  expected="$(printf '%s\n' arm check_desync eat_word feed has_status_read pragma_offsurface report reset_state walk yaml_feed)"
   [ "$actual" = "$expected" ]
 
   actual="$(own_awk_functions "$REPO_ROOT/.gaia/scripts/tests/fixtures/stub-guard.sh")"
@@ -1115,16 +1115,16 @@ strip_full_line_comments() {
   # for no gain. The literal pathspec token '*.bats' can never match this
   # character class, because the character before the dot is '*', outside
   # [A-Za-z0-9_.-], so there is no allowlist arm to carve out.
-  local f
-  while IFS= read -r f; do
-    strip_full_line_comments "$f" | grep -qE '[A-Za-z0-9_.-]+\.bats' \
-      && { echo "$f: names a bats basename on a non-comment line" >&2; return 1; }
+  local guard_file
+  while IFS= read -r guard_file; do
+    strip_full_line_comments "$guard_file" | grep -qE '[A-Za-z0-9_.-]+\.bats' \
+      && { echo "$guard_file: names a bats basename on a non-comment line" >&2; return 1; }
   done < <(wiki_citing_files)
   true
 }
 
 @test "a bats suite basename planted on a non-comment line reds the no-basename-list check" {
-  local copy="$TMP/planted.sh"
+  local copy="$TEMPORARY_DIRECTORY/planted.sh"
   cp "$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh" "$copy"
   printf '\nSUITE=lint-git-path-quoting.bats\n' >> "$copy"
   strip_full_line_comments "$copy" | grep -qE '[A-Za-z0-9_.-]+\.bats' || return 1
@@ -1143,7 +1143,7 @@ wiki_citing_files() {
 # Section D: the cross-suite mutation proofs (UAT-007)
 # ============================================================================
 #
-# Phase 1 wrote the within-suite half above (GAIA_GUARD_LIB / GAIA_GUARD_STUB,
+# Phase 1 wrote the within-suite half above (GAIA_GUARD_LIBRARY / GAIA_GUARD_STUB,
 # which exist only for this suite). These two prove the same mutation
 # matters to every real consumer: a copy of a production guard, laid beside
 # a neutered library exactly the way the real tree lays them, reproduces
@@ -1157,47 +1157,47 @@ wiki_citing_files() {
 # neutered library, at the same relative depth the real tree uses (guard and
 # library siblings under .gaia/scripts/, the suite one level under
 # .gaia/scripts/tests/), so the guard's own script-relative resolution finds
-# the neutered copy rather than the real one. Sets XG_ROOT and XG_SUITE
+# the neutered copy rather than the real one. Sets CROSS_GUARD_ROOT and CROSS_GUARD_SUITE
 # for the caller.
 mutate_guard_copy() {
-  local prog="$1" guard="$2" suite="$3"
-  local dir="$TMP/xmut-$guard"
-  mkdir -p "$dir/.gaia/scripts/tests"
-  awk "$prog" "$REPO_ROOT/.gaia/scripts/guard-awk-lib.sh" > "$dir/.gaia/scripts/guard-awk-lib.sh"
-  cmp -s "$dir/.gaia/scripts/guard-awk-lib.sh" "$REPO_ROOT/.gaia/scripts/guard-awk-lib.sh" && return 1
-  cp "$REPO_ROOT/.gaia/scripts/$guard.sh" "$dir/.gaia/scripts/$guard.sh"
-  cp "$REPO_ROOT/.gaia/scripts/tests/$suite" "$dir/.gaia/scripts/tests/$suite"
-  XG_ROOT="$dir"
-  XG_SUITE="$dir/.gaia/scripts/tests/$suite"
+  local program="$1" guard="$2" suite="$3"
+  local directory="$TEMPORARY_DIRECTORY/xmut-$guard"
+  mkdir -p "$directory/.gaia/scripts/tests"
+  awk "$program" "$REPO_ROOT/.gaia/scripts/guard-awk-lib.sh" > "$directory/.gaia/scripts/guard-awk-lib.sh"
+  cmp -s "$directory/.gaia/scripts/guard-awk-lib.sh" "$REPO_ROOT/.gaia/scripts/guard-awk-lib.sh" && return 1
+  cp "$REPO_ROOT/.gaia/scripts/$guard.sh" "$directory/.gaia/scripts/$guard.sh"
+  cp "$REPO_ROOT/.gaia/scripts/tests/$suite" "$directory/.gaia/scripts/tests/$suite"
+  CROSS_GUARD_ROOT="$directory"
+  CROSS_GUARD_SUITE="$directory/.gaia/scripts/tests/$suite"
 }
 
 @test "mutation: a pragma reader that always declines reds a named test in every production guard suite" {
   [ -z "${GAIA_GUARD_MUTATION_CHILD:-}" ] || skip "mutation child run"
-  local prog='/^function gaia_scan_suppressed/{f = 1}
-              f && index($0, "return hit") > 0 { sub(/return hit/, "return 0"); f = 0 }
+  local program='/^function gaia_scan_suppressed/{in_region = 1}
+              in_region && index($0, "return hit") > 0 { sub(/return hit/, "return 0"); in_region = 0 }
               {print}'
 
-  mutate_guard_copy "$prog" lint-git-path-quoting lint-git-path-quoting.bats
+  mutate_guard_copy "$program" lint-git-path-quoting lint-git-path-quoting.bats
   GAIA_GUARD_MUTATION_CHILD=1 run bash "$REPO_ROOT/.gaia/scripts/bats5.sh" \
     --filter "a pragma naming this guard suppresses a genuine instance, resolved against the guard's own directory" \
-    "$XG_SUITE"
+    "$CROSS_GUARD_SUITE"
   [ "$status" -ne 0 ]
 
-  mutate_guard_copy "$prog" lint-errexit-status-read lint-errexit-status-read.bats
+  mutate_guard_copy "$program" lint-errexit-status-read lint-errexit-status-read.bats
   GAIA_GUARD_MUTATION_CHILD=1 run bash "$REPO_ROOT/.gaia/scripts/bats5.sh" \
     --filter "a pragma naming this gate suppresses the instance below it" \
-    "$XG_SUITE"
+    "$CROSS_GUARD_SUITE"
   [ "$status" -ne 0 ]
 }
 
 @test "mutation: a fixture-region rule that always declines reds the stub guard's suite and a production guard's suite" {
   [ -z "${GAIA_GUARD_MUTATION_CHILD:-}" ] || skip "mutation child run"
-  local prog='/^function gaia_scan_skip\(\)/ { print "function gaia_scan_skip() { return 0 }"; next }
+  local program='/^function gaia_scan_skip\(\)/ { print "function gaia_scan_skip() { return 0 }"; next }
               {print}'
 
   # The stub half: Phase 1's own mechanism, reused rather than re-derived.
-  mutate "$prog"
-  GAIA_GUARD_MUTATION_CHILD=1 GAIA_GUARD_STUB="$MUT_STUB" \
+  mutate "$program"
+  GAIA_GUARD_MUTATION_CHILD=1 GAIA_GUARD_STUB="$MUTATED_STUB" \
     run bash "$REPO_ROOT/.gaia/scripts/bats5.sh" \
     --filter 'the stub guard skips a fixture region and honors a pragma with no logic of its own' \
     "$BATS_TEST_FILENAME"
@@ -1209,11 +1209,11 @@ mutate_guard_copy() {
   # telling those fixtures apart from executed shell. Tracking the copied
   # suite as the only *.bats file in a throwaway git repo reproduces that
   # verdict without touching the real tree.
-  mutate_guard_copy "$prog" lint-errexit-status-read lint-errexit-status-read.bats
-  git -C "$XG_ROOT" init -q .
-  git -C "$XG_ROOT" add -A
+  mutate_guard_copy "$program" lint-errexit-status-read lint-errexit-status-read.bats
+  git -C "$CROSS_GUARD_ROOT" init -q .
+  git -C "$CROSS_GUARD_ROOT" add -A
   GAIA_GUARD_MUTATION_CHILD=1 run bash "$REPO_ROOT/.gaia/scripts/bats5.sh" \
-    --filter "the repository's own scanned surface is clean" "$XG_SUITE"
+    --filter "the repository's own scanned surface is clean" "$CROSS_GUARD_SUITE"
   [ "$status" -ne 0 ]
 }
 
@@ -1227,7 +1227,7 @@ mutate_guard_copy() {
 # test.
 
 @test "every guard hard-errors together on a tree carrying no tracked bats suite" {
-  local repo="$TMP/no-bats"
+  local repo="$TEMPORARY_DIRECTORY/no-bats"
   mkdir -p "$repo/.husky" "$repo/.github/workflows"
   git -C "$repo" init -q .
   printf '#!/usr/bin/env bash\necho hi\n' > "$repo/tracked.sh"
@@ -1245,7 +1245,7 @@ mutate_guard_copy() {
 # --- no phantom coverage ----------------------------------------------------
 
 @test "the real scan surface holds a workflow and a composite action" {
-  surface_has_workflow_and_action "$REPO_ROOT" "$LIB"
+  surface_has_workflow_and_action "$REPO_ROOT" "$LIBRARY"
 }
 
 @test "the surface check fails when the composite-action directory is absent" {
@@ -1256,7 +1256,7 @@ mutate_guard_copy() {
   printf 'x\n' > "$scratch/.github/workflows/only.yml"
   git -C "$scratch" add -A
   local verdict=0
-  surface_has_workflow_and_action "$scratch" "$LIB" || verdict=$?
+  surface_has_workflow_and_action "$scratch" "$LIBRARY" || verdict=$?
   rm -rf "$scratch"
   [ "$verdict" -eq 1 ]
 }

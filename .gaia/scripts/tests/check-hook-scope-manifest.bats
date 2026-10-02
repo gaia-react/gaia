@@ -15,9 +15,9 @@
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
-  SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
-  CHECK="$SCRIPT_DIR/check-hook-scope-manifest.sh"
-  REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+  SCRIPT_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
+  CHECK="$SCRIPT_DIRECTORY/check-hook-scope-manifest.sh"
+  REPO_ROOT="$(cd "$SCRIPT_DIRECTORY/../.." && pwd)"
   # shellcheck source=.gaia/scripts/check-hook-scope-manifest.sh
   source "$CHECK"
 }
@@ -25,17 +25,17 @@ setup() {
 # make_fixture_repo <name>: an empty .claude/hooks tree under BATS_TEST_TMPDIR.
 # Returns the repo path on stdout.
 make_fixture_repo() {
-  local dir="$BATS_TEST_TMPDIR/$1"
-  mkdir -p "$dir/.claude/hooks/lib"
-  printf '%s' "$dir"
+  local repository_directory="$BATS_TEST_TMPDIR/$1"
+  mkdir -p "$repository_directory/.claude/hooks/lib"
+  printf '%s' "$repository_directory"
 }
 
 # add_hook <repo> <relpath> <body>: writes a hook script at
 # .claude/hooks/<relpath> under <repo> with <body> as its content.
 add_hook() {
-  local repo="$1" rel="$2" body="$3"
-  mkdir -p "$(dirname "$repo/.claude/hooks/$rel")"
-  printf '%s\n' "$body" >"$repo/.claude/hooks/$rel"
+  local repo="$1" relative_path="$2" body="$3"
+  mkdir -p "$(dirname "$repo/.claude/hooks/$relative_path")"
+  printf '%s\n' "$body" >"$repo/.claude/hooks/$relative_path"
 }
 
 # ========== real repo ==========
@@ -54,9 +54,9 @@ add_hook() {
 @test "real repo: every hook reaches .gaia/local only through a resolved root" {
   run gaia_check_hook_scope_manifest "$REPO_ROOT"
   [ "$status" -eq 0 ]
-  local n
-  n="$(find "$REPO_ROOT/.claude/hooks" -name '*.sh' | wc -l | tr -d ' ')"
-  grep -qF "all $n hooks reach .gaia/local only through a resolved root" <<<"$output" || return 1
+  local hook_count
+  hook_count="$(find "$REPO_ROOT/.claude/hooks" -name '*.sh' | wc -l | tr -d ' ')"
+  grep -qF "all $hook_count hooks reach .gaia/local only through a resolved root" <<<"$output" || return 1
 }
 
 @test "real repo: run directly with no argument, it resolves the repo and passes" {
@@ -144,8 +144,8 @@ cat "$ledger"'
   local repo; repo="$(make_fixture_repo resolver-inherits)"
   add_hook "$repo" "foo.sh" '#!/usr/bin/env bash
 . .claude/hooks/lib/gaia-active-plan.sh
-plan_dir="$(resolve_active_plan_directory)"
-echo "$plan_dir"'
+plan_directory="$(resolve_active_plan_directory)"
+echo "$plan_directory"'
   run gaia_check_hook_scope_manifest "$repo"
   [ "$status" -eq 0 ]
 }

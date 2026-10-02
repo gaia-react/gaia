@@ -64,64 +64,64 @@ copy_summary_verify() {
   cp "$REPO_ROOT/.gaia/scripts/summary-verify.sh" "$SANDBOX/.gaia/scripts/summary-verify.sh"
 }
 
-# seed_plan <rel_dir>: creates a plan folder (relative to $SANDBOX) with the
+# seed_plan <relative_directory>: creates a plan folder (relative to $SANDBOX) with the
 # canonical fixture set: SUMMARY.md (the consolidated artifact), PROGRESS.md
 # (the live run ledger), KICKOFF.md, RUNNING, .work/x. Callers that need the
 # representation gate to pass add a cost.json record afterward with
 # write_cost_json.
 seed_plan() {
-  local dir="$SANDBOX/$1"
-  mkdir -p "$dir/.work"
-  echo "summary" > "$dir/SUMMARY.md"
-  echo "progress" > "$dir/PROGRESS.md"
-  echo "kickoff" > "$dir/KICKOFF.md"
-  : > "$dir/RUNNING"
-  echo "scratch" > "$dir/.work/x"
+  local plan_directory="$SANDBOX/$1"
+  mkdir -p "$plan_directory/.work"
+  echo "summary" > "$plan_directory/SUMMARY.md"
+  echo "progress" > "$plan_directory/PROGRESS.md"
+  echo "kickoff" > "$plan_directory/KICKOFF.md"
+  : > "$plan_directory/RUNNING"
+  echo "scratch" > "$plan_directory/.work/x"
 }
 
-# write_cost_json <abs_dir> <fresh> <cwrite> <cread> <output>: writes a
+# write_cost_json <absolute_directory> <fresh_input> <cache_write> <cache_read> <output>: writes a
 # cost.json sidecar with one execute-phase record, the shape
 # cost-represented.sh's sidecar parser expects. Every plan folder in this
 # suite archives post-execution, so the kind is always "execute".
 write_cost_json() {
-  local dir="$1" fresh="$2" cwrite="$3" cread="$4" output="$5"
+  local plan_directory="$1" fresh_input="$2" cache_write="$3" cache_read="$4" output="$5"
   jq -cn \
-    --argjson fresh "$fresh" --argjson cwrite "$cwrite" \
-    --argjson cread "$cread" --argjson output "$output" '
+    --argjson fresh_input "$fresh_input" --argjson cache_write "$cache_write" \
+    --argjson cache_read "$cache_read" --argjson output "$output" '
     {execute: {
       kind: "execute",
       session_id: null,
-      buckets: {fresh_input: $fresh, cache_write: $cwrite, cache_read: $cread, output: $output},
-      total: ($fresh + $cwrite + $cread + $output)
+      buckets: {fresh_input: $fresh_input, cache_write: $cache_write, cache_read: $cache_read, output: $output},
+      total: ($fresh_input + $cache_write + $cache_read + $output)
     }}
-  ' > "$dir/cost.json"
+  ' > "$plan_directory/cost.json"
 }
 
-# seed_cost_row <kind> <field> <val> <session> <fresh> <cwrite> <cread> <output>
+# seed_cost_row <kind> <field> <value> <session> <fresh_input> <cache_write> <cache_read> <output>
 # Appends one row (token-tally/backfill schema) directly to the sandbox's
 # real cost ledger. plan-archive.sh resolves that path itself via
 # gaia_resolve_ledger_path (never a --ledger override), so this writes
 # straight to $LEDGER rather than threading a path through the script.
 seed_cost_row() {
-  local kind="$1" field="$2" val="$3" sid="$4"
-  local fresh="$5" cwrite="$6" cread="$7" output="$8"
+  local kind="$1" field="$2" value="$3" session_id="$4"
+  local fresh_input="$5" cache_write="$6" cache_read="$7" output="$8"
   jq -cn \
-    --arg kind "$kind" --arg field "$field" --arg val "$val" --arg sid "$sid" \
-    --argjson fresh "$fresh" --argjson cwrite "$cwrite" \
-    --argjson cread "$cread" --argjson output "$output" '
+    --arg kind "$kind" --arg field "$field" --arg value "$value" --arg session_id "$session_id" \
+    --argjson fresh_input "$fresh_input" --argjson cache_write "$cache_write" \
+    --argjson cache_read "$cache_read" --argjson output "$output" '
     {
       schema_version: 1,
       kind: $kind,
       spec_id: null, plan_id: null, plan_slug: null,
-      session_id: (if $sid == "" then null else $sid end),
-      buckets: {fresh_input: $fresh, cache_write: $cwrite, cache_read: $cread, output: $output},
-      total: ($fresh + $cwrite + $cread + $output),
+      session_id: (if $session_id == "" then null else $session_id end),
+      buckets: {fresh_input: $fresh_input, cache_write: $cache_write, cache_read: $cache_read, output: $output},
+      total: ($fresh_input + $cache_write + $cache_read + $output),
       seq: 0, final: true, source: "test"
-    } | .[$field] = $val
+    } | .[$field] = $value
   ' >> "$LEDGER"
 }
 
-# assert_deleted <abs_dir>: the dir (and everything under it) is gone.
+# assert_deleted <absolute_directory>: the dir (and everything under it) is gone.
 assert_deleted() {
   [ ! -e "$1" ]
 }
@@ -145,8 +145,8 @@ EOF
 # sandbox's plans ledger ("null" if absent).
 plan_row_field() {
   local id="$1" field="$2"
-  jq -r --arg id "$id" --arg f "$field" \
-    '.plans[] | select(.id == $id) | .[$f] // "null"' \
+  jq -r --arg id "$id" --arg field "$field" \
+    '.plans[] | select(.id == $id) | .[$field] // "null"' \
     "$SANDBOX/.gaia/local/plans/ledger.json"
 }
 
@@ -338,17 +338,17 @@ EOF
 # --- 9b. Spec-less PLAN-NNN with no SUMMARY.md yet: kept, not reduced ------
 
 @test "spec-less PLAN-NNN with no SUMMARY.md yet: kept intact, not reduced (fail-closed consolidation gate)" {
-  local dir="$SANDBOX/.gaia/local/plans/PLAN-010"
-  mkdir -p "$dir/.work"
-  echo "progress" > "$dir/PROGRESS.md"
-  : > "$dir/RUNNING"
-  write_cost_json "$dir" 3 0 0 0
+  local plan_directory="$SANDBOX/.gaia/local/plans/PLAN-010"
+  mkdir -p "$plan_directory/.work"
+  echo "progress" > "$plan_directory/PROGRESS.md"
+  : > "$plan_directory/RUNNING"
+  write_cost_json "$plan_directory" 3 0 0 0
   seed_cost_row execute plan_id PLAN-010 "" 3 0 0 0
   seed_plans_ledger '{"id":"PLAN-010","allocated_at":"2026-01-01T00:00:00Z","source":"allocated","subject":"x","status":"allocated"}'
   run run_in_sandbox ".gaia/local/plans/PLAN-010"
   [ "$status" -eq 0 ]
-  [ -f "$dir/PROGRESS.md" ]
-  [ -f "$dir/RUNNING" ]
+  [ -f "$plan_directory/PROGRESS.md" ]
+  [ -f "$plan_directory/RUNNING" ]
   grep -qF "Retained plan (no consolidated SUMMARY.md yet)" <<<"$output"
 }
 

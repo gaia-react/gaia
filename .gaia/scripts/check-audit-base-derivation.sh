@@ -244,7 +244,7 @@ GAIA_AUDIT_MEMBER_SCAN+=('.claude/hooks/lib/audit-member-protocol.md')
 GAIA_AUDIT_BARE_MERGE_BASE_PATTERN='[A-Za-z_][A-Za-z0-9_]*=.*merge-base'
 
 # Assertion 2's two fixed strings.
-GAIA_AUDIT_BASE_VAR='BASE_SHA'
+GAIA_AUDIT_BASE_VARIABLE='BASE_SHA'
 GAIA_AUDIT_BASE_RESOLVER='resolve-audit-base.sh'
 
 # Assertion 3's candidate net: every `diff --name-only`, correct ones included.
@@ -289,7 +289,7 @@ _gaia_drop_full_base_matches() {
       # real line rather than from the current search window.
       consumed = 0
       rest = content
-      while ((pos = index(rest, "merge-base")) > 0) {
+      while ((position = index(rest, "merge-base")) > 0) {
         # Discrimination 1, the positive rule: a call taking BASE_REF as an
         # argument derives its base through the resolver, the shape this
         # check REQUIRES. That is what lets the ERE above stay a wide
@@ -309,20 +309,20 @@ _gaia_drop_full_base_matches() {
         # code span, the same escape one sentence later. Neither character
         # can precede BASE_REF inside the canonical
         # `merge-base "${BASE_REF}" HEAD`.
-        right = substr(content, consumed + pos + 10)
+        right = substr(content, consumed + position + 10)
         if (right ~ /^[^|;&#)`]*BASE_REF/) {
-          consumed += pos + 9
+          consumed += position + 9
           rest = substr(content, consumed + 1)
           continue
         }
-        left = substr(content, 1, consumed + pos - 1)
+        left = substr(content, 1, consumed + position - 1)
         name = ""
         while (match(left, /[A-Za-z_][A-Za-z0-9_]*=/)) {
           name = substr(left, RSTART, RLENGTH - 1)
           left = substr(left, RSTART + RLENGTH)
         }
         if (name != "FULL_BASE" && name != "ELIG_BASE" && name != "KEY_BASE") { print; next }
-        consumed += pos + 9
+        consumed += position + 9
         rest = substr(content, consumed + 1)
       }
     }
@@ -357,13 +357,13 @@ _gaia_drop_full_base_matches() {
 # ownership walk uses.
 _gaia_keep_unanchored_diff_matches() {
   awk -v call="$GAIA_AUDIT_DIFF_CALL" '
-    BEGIN { calllen = length(call) }
+    BEGIN { call_length = length(call) }
     {
       content = $0
       sub(/^[^:]*:[^:]*:/, "", content)
       consumed = 0
       rest = content
-      while ((pos = index(rest, call)) > 0) {
+      while ((position = index(rest, call)) > 0) {
         # The call window: everything after this occurrence, cut at the first
         # wall. FOUR walls, and the first is what makes "per call" true rather
         # than merely claimed: without it the window runs to end of line, so a
@@ -380,11 +380,11 @@ _gaia_keep_unanchored_diff_matches() {
         #
         # No apostrophe anywhere in this program: it is a single-quoted shell
         # string, so one would end it and hand the rest to bash as source.
-        window = substr(content, consumed + pos + calllen)
-        if ((w = index(window, call)) > 0)  window = substr(window, 1, w - 1)
-        if ((w = index(window, "#")) > 0)   window = substr(window, 1, w - 1)
-        if ((w = index(window, "`")) > 0)   window = substr(window, 1, w - 1)
-        if ((w = index(window, ";")) > 0)   window = substr(window, 1, w - 1)
+        window = substr(content, consumed + position + call_length)
+        if ((wall_position = index(window, call)) > 0)  window = substr(window, 1, wall_position - 1)
+        if ((wall_position = index(window, "#")) > 0)   window = substr(window, 1, wall_position - 1)
+        if ((wall_position = index(window, "`")) > 0)   window = substr(window, 1, wall_position - 1)
+        if ((wall_position = index(window, ";")) > 0)   window = substr(window, 1, wall_position - 1)
 
         # Does this call consume the review base at all? Every spelling of it
         # counts, before and after merge-base alike: the defect is the TWO-DOT
@@ -405,7 +405,7 @@ _gaia_keep_unanchored_diff_matches() {
         # after, a pathspec-first variant before), and a rule that pinned the
         # side would reject a correct call to reject a stylistic one.
         if (consumes && index(window, "...") == 0) { print; next }
-        consumed += pos + calllen - 1
+        consumed += position + call_length - 1
         rest = substr(content, consumed + 1)
       }
     }
@@ -468,15 +468,15 @@ gaia_check_audit_base_derivation() {
   # body assigns `missing_count` and `resolver_failed`, which is the other half
   # of why this is a process substitution rather than a pipe -- a pipe would run
   # the body in a subshell and throw both away.
-  local f missing_count=0
-  while IFS= read -r -d '' f; do
-    [ -n "$f" ] || continue
-    if ! git -C "$repo_root" grep -qF "$GAIA_AUDIT_BASE_RESOLVER" -- "$f" 2>/dev/null; then
-      printf 'names BASE_SHA but never names resolve-audit-base.sh: %s\n' "$f"
+  local candidate_file missing_count=0
+  while IFS= read -r -d '' candidate_file; do
+    [ -n "$candidate_file" ] || continue
+    if ! git -C "$repo_root" grep -qF "$GAIA_AUDIT_BASE_RESOLVER" -- "$candidate_file" 2>/dev/null; then
+      printf 'names BASE_SHA but never names resolve-audit-base.sh: %s\n' "$candidate_file"
       missing_count=$((missing_count + 1))
       resolver_failed=1
     fi
-  done < <(git -C "$repo_root" grep -lIF -z "$GAIA_AUDIT_BASE_VAR" -- '.claude/agents/' ${GAIA_AUDIT_MEMBER_SCAN[@]+"${GAIA_AUDIT_MEMBER_SCAN[@]}"} "$GAIA_AUDIT_SCOPE_RESOLVER" 2>/dev/null)
+  done < <(git -C "$repo_root" grep -lIF -z "$GAIA_AUDIT_BASE_VARIABLE" -- '.claude/agents/' ${GAIA_AUDIT_MEMBER_SCAN[@]+"${GAIA_AUDIT_MEMBER_SCAN[@]}"} "$GAIA_AUDIT_SCOPE_RESOLVER" 2>/dev/null)
   printf 'agent files naming BASE_SHA without naming resolve-audit-base.sh: %s\n' "$missing_count"
 
   # ---------- assertion 3: no diff consumes an un-anchored base ----------

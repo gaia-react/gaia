@@ -16,15 +16,15 @@
 # (a run_in helper that cds into a tree and runs a script).
 
 setup() {
-  LIB="$(cd "$BATS_TEST_DIRNAME/.." && pwd)/main-only-lib.sh"
+  LIBRARY_SCRIPT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)/main-only-lib.sh"
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
-  CLEANUP_DIRS=()
+  CLEANUP_DIRECTORIES=()
 }
 
 teardown() {
-  local d
-  for d in "${CLEANUP_DIRS[@]:-}"; do
-    [ -n "$d" ] && rm -rf "$d"
+  local cleanup_directory
+  for cleanup_directory in "${CLEANUP_DIRECTORIES[@]:-}"; do
+    [ -n "$cleanup_directory" ] && rm -rf "$cleanup_directory"
   done
   return 0
 }
@@ -40,7 +40,7 @@ make_repo() {
   local raw
   raw=$(mktemp -d -t gaia-mol-repo-XXXXXX)
   REPO="$(cd "$raw" && pwd -P)"
-  CLEANUP_DIRS+=("$REPO")
+  CLEANUP_DIRECTORIES+=("$REPO")
   git -C "$REPO" init -q --initial-branch=main
   git_identity "$REPO"
   echo init >"$REPO/f"
@@ -48,51 +48,51 @@ make_repo() {
   git -C "$REPO" commit -q -m init
 }
 
-# make_worktree <repo> <rel> <branch>: a real linked worktree under
-# <repo>/.claude/worktrees/<rel>, mirroring how GAIA creates plan/debt
-# worktrees. Sets WT to the worktree's absolute path.
+# make_worktree <repo> <relative_path> <branch>: a real linked worktree under
+# <repo>/.claude/worktrees/<relative_path>, mirroring how GAIA creates plan/debt
+# worktrees. Sets WORKTREE to the worktree's absolute path.
 make_worktree() {
-  local repo="$1" rel="$2" br="$3"
-  git -C "$repo" branch "$br"
+  local repo="$1" relative_path="$2" branch="$3"
+  git -C "$repo" branch "$branch"
   mkdir -p "$repo/.claude/worktrees"
-  git -C "$repo" worktree add -q "$repo/.claude/worktrees/$rel" "$br"
-  WT="$repo/.claude/worktrees/$rel"
+  git -C "$repo" worktree add -q "$repo/.claude/worktrees/$relative_path" "$branch"
+  WORKTREE="$repo/.claude/worktrees/$relative_path"
 }
 
-# run_in <dir> -- <bash args...>: runs a command with cwd=<dir>.
+# run_in <directory> -- <bash args...>: runs a command with cwd=<directory>.
 run_in() {
-  local dir="$1"
+  local directory="$1"
   shift
   [ "$1" = "--" ] && shift
-  ( cd "$dir" && "$@" )
+  ( cd "$directory" && "$@" )
 }
 
 # ---------- not a linked worktree ----------
 
 @test "not a linked worktree: returns 0 and prints nothing" {
   make_repo
-  run run_in "$REPO" -- bash -c '. "$1"; gaia_refuse_if_worktree "/x"' _ "$LIB"
+  run run_in "$REPO" -- bash -c '. "$1"; gaia_refuse_if_worktree "/x"' _ "$LIBRARY_SCRIPT"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
 
 # ---------- linked worktree, resolvable main ----------
 
-@test "linked worktree with resolvable main: returns 1, message names both roots, no state_line_fn given" {
+@test "linked worktree with resolvable main: returns 1, message names both roots, no state_line_function given" {
   make_repo
   make_worktree "$REPO" w wtbranch1
-  run run_in "$WT" -- bash -c '. "$1"; gaia_refuse_if_worktree "/gaia-release"' _ "$LIB"
+  run run_in "$WORKTREE" -- bash -c '. "$1"; gaia_refuse_if_worktree "/gaia-release"' _ "$LIBRARY_SCRIPT"
   [ "$status" -eq 1 ]
   grep -qF -- "/gaia-release must run from the main checkout, not a worktree." <<<"$output" || return 1
-  grep -qF -- "Worktree:       $WT" <<<"$output" || return 1
+  grep -qF -- "Worktree:       $WORKTREE" <<<"$output" || return 1
   grep -qF -- "Main checkout:  $REPO" <<<"$output" || return 1
   grep -qF -- "Run \`cd $REPO\` then re-invoke /gaia-release." <<<"$output" || return 1
 }
 
-@test "linked worktree, no state_line_fn supplied: no state paragraph at all" {
+@test "linked worktree, no state_line_function supplied: no state paragraph at all" {
   make_repo
   make_worktree "$REPO" w wtbranch2
-  run run_in "$WT" -- bash -c '. "$1"; gaia_refuse_if_worktree "/gaia-release" 2>/dev/null' _ "$LIB"
+  run run_in "$WORKTREE" -- bash -c '. "$1"; gaia_refuse_if_worktree "/gaia-release" 2>/dev/null' _ "$LIBRARY_SCRIPT"
   [ "$status" -eq 1 ]
   # Byte-exact: no state paragraph, and exactly one blank line separates the
   # roots block from the "Run \`cd\`" line -- not $lines-based, bats' $lines
@@ -100,21 +100,21 @@ run_in() {
   local expected
   expected="/gaia-release must run from the main checkout, not a worktree.
 
-Worktree:       $WT
+Worktree:       $WORKTREE
 Main checkout:  $REPO
 
 Run \`cd $REPO\` then re-invoke /gaia-release."
   [ "$output" = "$expected" ]
 }
 
-@test "linked worktree, state_line_fn prints a line: that line is in the message" {
+@test "linked worktree, state_line_function prints a line: that line is in the message" {
   make_repo
   make_worktree "$REPO" w wtbranch3
-  run run_in "$WT" -- bash -c '
+  run run_in "$WORKTREE" -- bash -c '
 . "$1"
 my_state() { printf "Cached on main: GAIA 1.2.3 installed; latest 1.2.3 (update not-available).\n"; }
 gaia_refuse_if_worktree "/update-gaia" my_state
-' _ "$LIB"
+' _ "$LIBRARY_SCRIPT"
   [ "$status" -eq 1 ]
   grep -qF -- "Cached on main: GAIA 1.2.3 installed; latest 1.2.3 (update not-available)." <<<"$output" || return 1
   # Per .claude/rules/bats-assertions.md: a `<positive> && return 1` absence
@@ -125,28 +125,28 @@ gaia_refuse_if_worktree "/update-gaia" my_state
   return 0
 }
 
-@test "linked worktree, state_line_fn supplied but prints nothing: shared fallback line is used" {
+@test "linked worktree, state_line_function supplied but prints nothing: shared fallback line is used" {
   make_repo
   make_worktree "$REPO" w wtbranch4
-  run run_in "$WT" -- bash -c '
+  run run_in "$WORKTREE" -- bash -c '
 . "$1"
 my_state() { :; }
 gaia_refuse_if_worktree "/update-deps" my_state
-' _ "$LIB"
+' _ "$LIBRARY_SCRIPT"
   [ "$status" -eq 1 ]
   grep -qF -- 'Cached state unavailable on main; symlinks may be broken, run `bash .gaia/scripts/link-worktree.sh` to repair.' <<<"$output" || return 1
 }
 
-@test "linked worktree, state_line_fn's own cache_file argument is main's cache path, not the worktree's" {
+@test "linked worktree, state_line_function's own cache_file argument is main's cache path, not the worktree's" {
   make_repo
   make_worktree "$REPO" w wtbranch5
   local captured="$BATS_TEST_TMPDIR/cache_file_arg"
-  run run_in "$WT" -- bash -c '
+  run run_in "$WORKTREE" -- bash -c '
 . "$1"
 captured_path="$2"
 my_state() { printf "%s" "$1" > "$captured_path"; }
 gaia_refuse_if_worktree "/update-gaia" my_state
-' _ "$LIB" "$captured"
+' _ "$LIBRARY_SCRIPT" "$captured"
   [ "$status" -eq 1 ]
   [ "$(cat "$captured")" = "$REPO/.gaia/local/cache/shared/update-check.json" ]
 }
@@ -164,7 +164,7 @@ gaia_refuse_if_worktree "/update-gaia" my_state
   # exact failure -- expected, and not this helper's stdout contract. Discard
   # it here (matching main-root-lib.bats' `resolve()` helper) so $output
   # reflects gaia_refuse_if_worktree's own stdout only.
-  run run_in "$WT" -- bash -c '. "$1"; gaia_refuse_if_worktree "/gaia-release" 2>/dev/null' _ "$LIB"
+  run run_in "$WORKTREE" -- bash -c '. "$1"; gaia_refuse_if_worktree "/gaia-release" 2>/dev/null' _ "$LIBRARY_SCRIPT"
   git config --file "$common_config" --unset core.worktree || true
   [ "$status" -eq 0 ]
   [ -z "$output" ]
@@ -173,7 +173,7 @@ gaia_refuse_if_worktree "/update-gaia" my_state
 # ---------- structural ----------
 
 @test "structural: main-only-lib.sh is executable" {
-  [ -x "$LIB" ]
+  [ -x "$LIBRARY_SCRIPT" ]
 }
 
 @test "structural: sourcing the library defines gaia_refuse_if_worktree and the resolver functions, with no side effects" {
@@ -185,14 +185,14 @@ gaia_refuse_if_worktree "/update-gaia" my_state
     type gaia_is_linked_worktree >/dev/null
     type gaia_resolve_tree_root >/dev/null
     echo OK
-  ' _ "$LIB"
+  ' _ "$LIBRARY_SCRIPT"
   [ "$status" -eq 0 ]
   [ "$output" = "OK" ]
 }
 
 # ---------- as the call sites actually invoke it ----------
 #
-# Every test above sources $LIB by ABSOLUTE path under bash. The call sites
+# Every test above sources $LIBRARY_SCRIPT by ABSOLUTE path under bash. The call sites
 # do neither: they are markdown blocks an agent runs through its shell
 # tool, so the sourcing shell is that machine's login shell (zsh on a stock
 # Mac, not bash as a settings.json-registered hook gets), and the line they run
@@ -205,14 +205,14 @@ gaia_refuse_if_worktree "/update-gaia" my_state
 # the directory from $0, so a test that sources by absolute path greens while
 # the real relative-path call stays dead.
 #
-# install_libs copies both libraries into the fixture at the same repo-relative
+# install_libraries copies both libraries into the fixture at the same repo-relative
 # path a real checkout has them, and commits them before the worktree is cut so
 # both trees carry them.
-install_libs() {
-  local repo="$1" src
-  src="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+install_libraries() {
+  local repo="$1" scripts_directory
+  scripts_directory="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   mkdir -p "$repo/.gaia/scripts"
-  cp "$src/main-only-lib.sh" "$src/main-root-lib.sh" "$repo/.gaia/scripts/"
+  cp "$scripts_directory/main-only-lib.sh" "$scripts_directory/main-root-lib.sh" "$repo/.gaia/scripts/"
   git -C "$repo" add .gaia/scripts
   git -C "$repo" commit -q -m "libs"
 }
@@ -220,9 +220,9 @@ install_libs() {
 @test "as invoked: relative source from a worktree root refuses out loud, under zsh" {
   command -v zsh >/dev/null 2>&1 || skip "zsh not installed"
   make_repo
-  install_libs "$REPO"
+  install_libraries "$REPO"
   make_worktree "$REPO" w wtbranchzsh1
-  run run_in "$WT" -- zsh -c '. .gaia/scripts/main-only-lib.sh; gaia_refuse_if_worktree "/gaia-release"'
+  run run_in "$WORKTREE" -- zsh -c '. .gaia/scripts/main-only-lib.sh; gaia_refuse_if_worktree "/gaia-release"'
   [ "$status" -eq 1 ]
   grep -qF -- "/gaia-release must run from the main checkout, not a worktree." <<<"$output" || return 1
   grep -qF -- "Main checkout:  $REPO" <<<"$output" || return 1
@@ -234,9 +234,9 @@ install_libs() {
 
 @test "as invoked: relative source from a worktree root refuses out loud, under bash" {
   make_repo
-  install_libs "$REPO"
+  install_libraries "$REPO"
   make_worktree "$REPO" w wtbranchrel1
-  run run_in "$WT" -- bash -c '. .gaia/scripts/main-only-lib.sh; gaia_refuse_if_worktree "/gaia-release"'
+  run run_in "$WORKTREE" -- bash -c '. .gaia/scripts/main-only-lib.sh; gaia_refuse_if_worktree "/gaia-release"'
   [ "$status" -eq 1 ]
   grep -qF -- "/gaia-release must run from the main checkout, not a worktree." <<<"$output" || return 1
 }
@@ -244,15 +244,15 @@ install_libs() {
 @test "as invoked: relative source from the main checkout returns 0 and prints nothing, under zsh" {
   command -v zsh >/dev/null 2>&1 || skip "zsh not installed"
   make_repo
-  install_libs "$REPO"
+  install_libraries "$REPO"
   run run_in "$REPO" -- zsh -c '. .gaia/scripts/main-only-lib.sh; gaia_refuse_if_worktree "/gaia-release"'
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
 
 @test "structural: sourcing main-root-lib.sh first, then this file, does not error (guarded re-source)" {
-  local mrl
-  mrl="$(cd "$BATS_TEST_DIRNAME/.." && pwd)/main-root-lib.sh"
+  local main_root_library
+  main_root_library="$(cd "$BATS_TEST_DIRNAME/.." && pwd)/main-root-lib.sh"
   run bash -c '
     # shellcheck disable=SC1090
     source "$1"
@@ -260,7 +260,7 @@ install_libs() {
     source "$2"
     type gaia_refuse_if_worktree >/dev/null
     echo OK
-  ' _ "$mrl" "$LIB"
+  ' _ "$main_root_library" "$LIBRARY_SCRIPT"
   [ "$status" -eq 0 ]
   [ "$output" = "OK" ]
 }
@@ -373,15 +373,15 @@ extract_block() {
   awk '
     /^```/ {
       if (in_block) {
-        if (found) { printf "%s", buf; exit }
-        in_block = 0; buf = ""; found = 0
+        if (found) { printf "%s", block_text; exit }
+        in_block = 0; block_text = ""; found = 0
       } else {
-        in_block = 1; buf = ""
+        in_block = 1; block_text = ""
       }
       next
     }
     in_block {
-      buf = buf $0 "\n"
+      block_text = block_text $0 "\n"
       if ($0 ~ /gaia_refuse_if_worktree "/) found = 1
     }
   ' "$1"
@@ -390,31 +390,31 @@ extract_block() {
 # ---------- roster census ----------
 
 @test "call-site roster: every classified flow carries exactly one line-anchored invocation" {
-  local f count
-  for f in "${CALL_SITE_FILES[@]}"; do
-    count=$(grep -c '^[[:space:]]*gaia_refuse_if_worktree "' "$REPO_ROOT/$f" || true)
-    [ "$count" -eq 1 ] || { echo "expected exactly one gaia_refuse_if_worktree invocation in $f, found $count" >&2; return 1; }
+  local call_site_file count
+  for call_site_file in "${CALL_SITE_FILES[@]}"; do
+    count=$(grep -c '^[[:space:]]*gaia_refuse_if_worktree "' "$REPO_ROOT/$call_site_file" || true)
+    [ "$count" -eq 1 ] || { echo "expected exactly one gaia_refuse_if_worktree invocation in $call_site_file, found $count" >&2; return 1; }
   done
 }
 
 @test "call-site roster: the worktree-callable flows carry none" {
-  local f count
-  for f in "${NO_CALL_SITE_FILES[@]}"; do
-    count=$(grep -c '^[[:space:]]*gaia_refuse_if_worktree "' "$REPO_ROOT/$f" || true)
-    [ "$count" -eq 0 ] || { echo "expected no gaia_refuse_if_worktree invocation in $f, found $count" >&2; return 1; }
+  local call_site_file count
+  for call_site_file in "${NO_CALL_SITE_FILES[@]}"; do
+    count=$(grep -c '^[[:space:]]*gaia_refuse_if_worktree "' "$REPO_ROOT/$call_site_file" || true)
+    [ "$count" -eq 0 ] || { echo "expected no gaia_refuse_if_worktree invocation in $call_site_file, found $count" >&2; return 1; }
   done
 }
 
 # ---------- placement ----------
 
 @test "call-site placement: the invocation precedes the file's own dispatch line, in every thin dispatcher" {
-  local f dispatch_line invoke_line measured=() sorted_measured sorted_expected
-  for f in "${CALL_SITE_FILES[@]}"; do
-    dispatch_line=$(grep -n 'Read `\.claude/' "$REPO_ROOT/$f" | head -1 | cut -d: -f1)
+  local call_site_file dispatch_line invoke_line measured=() sorted_measured sorted_expected
+  for call_site_file in "${CALL_SITE_FILES[@]}"; do
+    dispatch_line=$(grep -n 'Read `\.claude/' "$REPO_ROOT/$call_site_file" | head -1 | cut -d: -f1)
     [ -n "$dispatch_line" ] || continue # exempt: no dispatch line to sit ahead of
-    measured+=("$f")
-    invoke_line=$(grep -n '^[[:space:]]*gaia_refuse_if_worktree "' "$REPO_ROOT/$f" | head -1 | cut -d: -f1)
-    [ "$invoke_line" -lt "$dispatch_line" ] || { echo "$f: invocation at line $invoke_line does not precede dispatch line $dispatch_line" >&2; return 1; }
+    measured+=("$call_site_file")
+    invoke_line=$(grep -n '^[[:space:]]*gaia_refuse_if_worktree "' "$REPO_ROOT/$call_site_file" | head -1 | cut -d: -f1)
+    [ "$invoke_line" -lt "$dispatch_line" ] || { echo "$call_site_file: invocation at line $invoke_line does not precede dispatch line $dispatch_line" >&2; return 1; }
   done
   # Report and enforce the measured split against FC-2's frozen seven: a
   # difference is a finding, not something to accommodate.
@@ -428,22 +428,22 @@ extract_block() {
 
 @test "call-site execution: every extracted block refuses correctly under bash, from a real linked worktree" {
   make_repo
-  install_libs "$REPO"
+  install_libraries "$REPO"
   make_worktree "$REPO" mol-bash mol-bash-branch
-  local i=0 f flow block
-  for f in "${CALL_SITE_FILES[@]}"; do
+  local i=0 call_site_file flow block
+  for call_site_file in "${CALL_SITE_FILES[@]}"; do
     flow="${CALL_SITE_FLOW_NAMES[$i]}"
     i=$((i + 1))
-    block="$(extract_block "$REPO_ROOT/$f")"
-    [ -n "$block" ] || { echo "$f: extractor found no fenced block containing the invocation" >&2; return 1; }
-    run run_in "$WT" -- bash -c "$block"
-    [ "$status" -eq 1 ] || { echo "$f (bash): expected exit 1, got $status; output: $output" >&2; return 1; }
-    grep -qF -- "$flow must run from the main checkout, not a worktree." <<<"$output" || { echo "$f (bash): missing refusal line" >&2; return 1; }
-    grep -qF -- "Main checkout:  $REPO" <<<"$output" || { echo "$f (bash): missing main checkout line" >&2; return 1; }
-    grep -qF -- "Run \`cd $REPO\` then re-invoke $flow." <<<"$output" || { echo "$f (bash): missing re-invoke line" >&2; return 1; }
+    block="$(extract_block "$REPO_ROOT/$call_site_file")"
+    [ -n "$block" ] || { echo "$call_site_file: extractor found no fenced block containing the invocation" >&2; return 1; }
+    run run_in "$WORKTREE" -- bash -c "$block"
+    [ "$status" -eq 1 ] || { echo "$call_site_file (bash): expected exit 1, got $status; output: $output" >&2; return 1; }
+    grep -qF -- "$flow must run from the main checkout, not a worktree." <<<"$output" || { echo "$call_site_file (bash): missing refusal line" >&2; return 1; }
+    grep -qF -- "Main checkout:  $REPO" <<<"$output" || { echo "$call_site_file (bash): missing main checkout line" >&2; return 1; }
+    grep -qF -- "Run \`cd $REPO\` then re-invoke $flow." <<<"$output" || { echo "$call_site_file (bash): missing re-invoke line" >&2; return 1; }
     # The Milestone 5 failure was near-silent: no refusal, and a stray shell
     # error in its place.
-    grep -qF -- "command not found" <<<"$output" && { echo "$f (bash): stray shell error in output" >&2; return 1; }
+    grep -qF -- "command not found" <<<"$output" && { echo "$call_site_file (bash): stray shell error in output" >&2; return 1; }
   done
   # Explicit and deterministic: without this, the loop's own exit status is
   # the LAST command's, and the good case of the final `&&`-guarded absence
@@ -455,23 +455,23 @@ extract_block() {
 @test "call-site execution: every extracted block refuses correctly under zsh, from a real linked worktree" {
   command -v zsh >/dev/null 2>&1 || skip "zsh not installed"
   make_repo
-  install_libs "$REPO"
+  install_libraries "$REPO"
   make_worktree "$REPO" mol-zsh mol-zsh-branch
-  local i=0 f flow block
-  for f in "${CALL_SITE_FILES[@]}"; do
+  local i=0 call_site_file flow block
+  for call_site_file in "${CALL_SITE_FILES[@]}"; do
     flow="${CALL_SITE_FLOW_NAMES[$i]}"
     i=$((i + 1))
-    block="$(extract_block "$REPO_ROOT/$f")"
-    [ -n "$block" ] || { echo "$f: extractor found no fenced block containing the invocation" >&2; return 1; }
-    run run_in "$WT" -- zsh -c "$block"
-    [ "$status" -eq 1 ] || { echo "$f (zsh): expected exit 1, got $status; output: $output" >&2; return 1; }
-    grep -qF -- "$flow must run from the main checkout, not a worktree." <<<"$output" || { echo "$f (zsh): missing refusal line" >&2; return 1; }
-    grep -qF -- "Main checkout:  $REPO" <<<"$output" || { echo "$f (zsh): missing main checkout line" >&2; return 1; }
-    grep -qF -- "Run \`cd $REPO\` then re-invoke $flow." <<<"$output" || { echo "$f (zsh): missing re-invoke line" >&2; return 1; }
+    block="$(extract_block "$REPO_ROOT/$call_site_file")"
+    [ -n "$block" ] || { echo "$call_site_file: extractor found no fenced block containing the invocation" >&2; return 1; }
+    run run_in "$WORKTREE" -- zsh -c "$block"
+    [ "$status" -eq 1 ] || { echo "$call_site_file (zsh): expected exit 1, got $status; output: $output" >&2; return 1; }
+    grep -qF -- "$flow must run from the main checkout, not a worktree." <<<"$output" || { echo "$call_site_file (zsh): missing refusal line" >&2; return 1; }
+    grep -qF -- "Main checkout:  $REPO" <<<"$output" || { echo "$call_site_file (zsh): missing main checkout line" >&2; return 1; }
+    grep -qF -- "Run \`cd $REPO\` then re-invoke $flow." <<<"$output" || { echo "$call_site_file (zsh): missing re-invoke line" >&2; return 1; }
     # Under zsh, BASH_SOURCE is unset and `declare -F` declares a float and
     # succeeds instead of answering whether a function exists; that hazard
     # is exactly what a "command not found" in the output would reveal.
-    grep -qF -- "command not found" <<<"$output" && { echo "$f (zsh): stray shell error in output" >&2; return 1; }
+    grep -qF -- "command not found" <<<"$output" && { echo "$call_site_file (zsh): stray shell error in output" >&2; return 1; }
   done
   # See the bash test above: without this, the loop's own exit status is the
   # last iteration's last command, whose good case exits 1.
@@ -480,15 +480,15 @@ extract_block() {
 
 @test "call-site execution: extracted blocks are silent no-ops from the main checkout" {
   make_repo
-  install_libs "$REPO"
-  local f block
-  # One file with no state_line_fn, one with: both idiom shapes get the
+  install_libraries "$REPO"
+  local call_site_file block
+  # One file with no state_line_function, one with: both idiom shapes get the
   # mirror-case proof, not just the no-arg one.
-  for f in ".claude/commands/gaia-release.md" ".claude/skills/update-deps/SKILL.md"; do
-    block="$(extract_block "$REPO_ROOT/$f")"
+  for call_site_file in ".claude/commands/gaia-release.md" ".claude/skills/update-deps/SKILL.md"; do
+    block="$(extract_block "$REPO_ROOT/$call_site_file")"
     run run_in "$REPO" -- bash -c "$block"
-    [ "$status" -eq 0 ] || { echo "$f: expected exit 0 from the main checkout, got $status; output: $output" >&2; return 1; }
-    [ -z "$output" ] || { echo "$f: expected empty output from the main checkout, got: $output" >&2; return 1; }
+    [ "$status" -eq 0 ] || { echo "$call_site_file: expected exit 0 from the main checkout, got $status; output: $output" >&2; return 1; }
+    [ -z "$output" ] || { echo "$call_site_file: expected empty output from the main checkout, got: $output" >&2; return 1; }
   done
 }
 
@@ -504,11 +504,11 @@ extract_block() {
   # asserted here; duplicating the render assertion would be a second copy
   # of a suite that already exists.
   make_repo
-  install_libs "$REPO"
+  install_libraries "$REPO"
   make_worktree "$REPO" mol-setup mol-setup-branch
   local block
   block="$(extract_block "$REPO_ROOT/.claude/commands/setup-gaia.md")"
-  run run_in "$WT" -- bash -c "$block"
+  run run_in "$WORKTREE" -- bash -c "$block"
   [ "$status" -eq 1 ]
   grep -qF -- "Run \`cd $REPO\` then re-invoke /setup-gaia." <<<"$output"
 }

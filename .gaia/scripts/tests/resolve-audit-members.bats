@@ -41,11 +41,11 @@ run_resolver() {
 
 # Stage one or more changed files (created with placeholder content).
 stage() {
-  local p
-  for p in "$@"; do
-    mkdir -p "$SANDBOX/$(dirname "$p")"
-    printf 'x\n' > "$SANDBOX/$p"
-    git -C "$SANDBOX" add "$p"
+  local staged_path
+  for staged_path in "$@"; do
+    mkdir -p "$SANDBOX/$(dirname "$staged_path")"
+    printf 'x\n' > "$SANDBOX/$staged_path"
+    git -C "$SANDBOX" add "$staged_path"
   done
 }
 
@@ -316,8 +316,8 @@ code-audit-maintainer-shell"
   printf 'gate_label: null\npush_fixes: true\n' > "$SANDBOX/.gaia/audit-ci.yml"
   stage app/x.tsx
   commit "feat"
-  ( cd "$SANDBOX" && "$SCRIPT" ) >"$BATS_TEST_TMPDIR/out" 2>"$BATS_TEST_TMPDIR/err" && rc=0 || rc=$?
-  [ "$rc" -eq 2 ]
+  ( cd "$SANDBOX" && "$SCRIPT" ) >"$BATS_TEST_TMPDIR/out" 2>"$BATS_TEST_TMPDIR/err" && exit_status=0 || exit_status=$?
+  [ "$exit_status" -eq 2 ]
   [ ! -s "$BATS_TEST_TMPDIR/out" ]
   [ "$(wc -l <"$BATS_TEST_TMPDIR/err" | tr -d ' ')" -eq 1 ]
   grep -qF 'has no auditors: roster' "$BATS_TEST_TMPDIR/err"
@@ -480,8 +480,8 @@ YAML
   # bats `run` merges stderr into `$output`, so prove the diagnostic goes to
   # stderr specifically by discarding stdout.
   # shellcheck disable=SC2069
-  err="$( ( cd "$notrepo" && GIT_CEILING_DIRECTORIES="$notrepo" "$SCRIPT" ) 2>&1 1>/dev/null || true )"
-  grep -qF -- "resolve-audit-members" <<<"$err" || return 1
+  error_output="$( ( cd "$notrepo" && GIT_CEILING_DIRECTORIES="$notrepo" "$SCRIPT" ) 2>&1 1>/dev/null || true )"
+  grep -qF -- "resolve-audit-members" <<<"$error_output" || return 1
 }
 
 # 21. Bats-only diff under .gaia/ → maintainer-shell

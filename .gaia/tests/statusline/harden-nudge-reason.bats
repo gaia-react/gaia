@@ -284,7 +284,7 @@ render_statusline_against_refresher_cache() {
   [ "$(jq -r '.checkedAt' "$CACHE_FILE")" = "0" ]
 
   # Refusal proof: drop arm (b) from the race check in a scratch copy that
-  # lives beside the original (check-updates.sh derives GAIA_DIR/PROJECT_ROOT
+  # lives beside the original (check-updates.sh derives GAIA_DIRECTORY/PROJECT_ROOT
   # from its own dirname, so a copy elsewhere resolves every path against the
   # wrong tree) and confirm the same inputs now compose and keep the reason,
   # so the pass above is not a fallback that always clears it.
@@ -391,7 +391,7 @@ render_statusline_against_refresher_cache() {
   [ "$(grep -oF -- "Run /gaia-harden" <<<"$output" | wc -l | tr -d ' ')" -eq 1 ]
 
   # Refusal proof: revert the gsub sanitization in a scratch copy that lives
-  # beside the original (check-updates.sh derives GAIA_DIR/PROJECT_ROOT from
+  # beside the original (check-updates.sh derives GAIA_DIRECTORY/PROJECT_ROOT from
   # its own dirname, so a copy elsewhere silently no-ops) and confirm the raw
   # escape byte now reaches the composed reason.
   search='gsub("[^A-Za-z0-9._-]"'

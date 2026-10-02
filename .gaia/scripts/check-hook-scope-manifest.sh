@@ -32,7 +32,7 @@
 # resolver-backed helper (state-registry-lib.sh, gaia-active-plan.sh,
 # red-ledger.sh, ledger-path-lib.sh, gh-artifact-lib.sh) rather than
 # re-sourcing the resolver itself.
-GAIA_HOOKCHECK_RESOLVER_LIBS=(
+GAIA_HOOKCHECK_RESOLVER_LIBRARIES=(
   "main-root-lib.sh"
   "state-registry-lib.sh"
   "gaia-active-plan.sh"
@@ -52,22 +52,22 @@ _gaia_hookcheck_is_comment_line() {
   [[ "$trimmed" == \#* ]]
 }
 
-# _gaia_hookcheck_live_local_refs <repo_root> <hook_relpath>: prints one
-# "file:line" per NON-COMMENT line in <hook_relpath> that mentions the
+# _gaia_hookcheck_live_local_references <repo_root> <hook_relative_path>: prints one
+# "file:line" per NON-COMMENT line in <hook_relative_path> that mentions the
 # literal ".gaia/local" (bare or resolved). Empty output means the file
 # holds no live reference at all.
-_gaia_hookcheck_live_local_refs() {
-  local repo_root="$1" rel="$2" file ln text
-  file="$repo_root/$rel"
+_gaia_hookcheck_live_local_references() {
+  local repo_root="$1" relative_path="$2" file line_number text
+  file="$repo_root/$relative_path"
   [ -f "$file" ] || return 0
-  while IFS=: read -r ln text; do
-    [ -n "$ln" ] || continue
+  while IFS=: read -r line_number text; do
+    [ -n "$line_number" ] || continue
     _gaia_hookcheck_is_comment_line "$text" && continue
-    printf '%s:%s\n' "$rel" "$ln"
+    printf '%s:%s\n' "$relative_path" "$line_number"
   done < <(grep -n -F '.gaia/local' "$file" 2>/dev/null)
 }
 
-# _gaia_hookcheck_bare_local_refs <repo_root> <hook_relpath>: prints one
+# _gaia_hookcheck_bare_local_references <repo_root> <hook_relative_path>: prints one
 # "file:line" per NON-COMMENT live reference that is BARE -- the literal
 # ".gaia/local" not immediately preceded by "/" or "\" (a resolved-root join,
 # e.g. "$main_root/.gaia/local/...", always has "/" directly before it; a
@@ -76,25 +76,25 @@ _gaia_hookcheck_live_local_refs() {
 # string rather than constructing one; a bare literal like
 # ".gaia/local/audit/x.jsonl" has neither). Empty output means every live
 # reference in the file is resolved-root-joined or a structural regex match.
-_gaia_hookcheck_bare_local_refs() {
-  local repo_root="$1" rel="$2" file ln text
-  file="$repo_root/$rel"
+_gaia_hookcheck_bare_local_references() {
+  local repo_root="$1" relative_path="$2" file line_number text
+  file="$repo_root/$relative_path"
   [ -f "$file" ] || return 0
-  while IFS=: read -r ln text; do
-    [ -n "$ln" ] || continue
+  while IFS=: read -r line_number text; do
+    [ -n "$line_number" ] || continue
     _gaia_hookcheck_is_comment_line "$text" && continue
-    grep -qE '(^|[^/\\])\.gaia/local' <<<"$text" && printf '%s:%s\n' "$rel" "$ln"
+    grep -qE '(^|[^/\\])\.gaia/local' <<<"$text" && printf '%s:%s\n' "$relative_path" "$line_number"
   done < <(grep -n -F '.gaia/local' "$file" 2>/dev/null)
 }
 
-# _gaia_hookcheck_names_resolver_lib <repo_root> <hook_relpath>: exit 0 iff
-# the file mentions at least one of GAIA_HOOKCHECK_RESOLVER_LIBS by name.
-_gaia_hookcheck_names_resolver_lib() {
-  local repo_root="$1" rel="$2" file lib
-  file="$repo_root/$rel"
+# _gaia_hookcheck_names_resolver_library <repo_root> <hook_relative_path>: exit 0 iff
+# the file mentions at least one of GAIA_HOOKCHECK_RESOLVER_LIBRARIES by name.
+_gaia_hookcheck_names_resolver_library() {
+  local repo_root="$1" relative_path="$2" file library
+  file="$repo_root/$relative_path"
   [ -f "$file" ] || return 1
-  for lib in "${GAIA_HOOKCHECK_RESOLVER_LIBS[@]}"; do
-    grep -qF -- "$lib" "$file" 2>/dev/null && return 0
+  for library in "${GAIA_HOOKCHECK_RESOLVER_LIBRARIES[@]}"; do
+    grep -qF -- "$library" "$file" 2>/dev/null && return 0
   done
   return 1
 }
@@ -109,25 +109,25 @@ gaia_check_hook_scope_manifest() {
     return 1
   }
 
-  local rc=0 total=0 hook_path bare live
+  local exit_status=0 total=0 hook_path bare live
   while IFS= read -r hook_path; do
     [ -n "$hook_path" ] || continue
     total=$((total + 1))
 
-    bare="$(_gaia_hookcheck_bare_local_refs "$repo_root" "$hook_path")"
+    bare="$(_gaia_hookcheck_bare_local_references "$repo_root" "$hook_path")"
     if [ -n "$bare" ]; then
       printf 'BARE LITERAL: %s builds a .gaia/local path without a resolved root; join it to a root from main-root-lib.sh (or a caller-supplied root in a lib):\n%s\n' "$hook_path" "$bare"
-      rc=1
+      exit_status=1
       continue
     fi
 
     case "$hook_path" in
       .claude/hooks/lib/*) continue ;;
     esac
-    live="$(_gaia_hookcheck_live_local_refs "$repo_root" "$hook_path")"
-    if [ -n "$live" ] && ! _gaia_hookcheck_names_resolver_lib "$repo_root" "$hook_path"; then
+    live="$(_gaia_hookcheck_live_local_references "$repo_root" "$hook_path")"
+    if [ -n "$live" ] && ! _gaia_hookcheck_names_resolver_library "$repo_root" "$hook_path"; then
       printf 'NO RESOLVER: %s holds a resolved .gaia/local reference but names no resolver-backed lib; source main-root-lib.sh and derive the root with gaia_resolve_main_root\n' "$hook_path"
-      rc=1
+      exit_status=1
     fi
   done < <(cd "$repo_root" && find .claude/hooks -name '*.sh' | sort)
 
@@ -135,8 +135,8 @@ gaia_check_hook_scope_manifest() {
     printf 'hook scope: no hooks found under %s/.claude/hooks\n' "$repo_root"
     return 1
   fi
-  [ "$rc" -eq 0 ] && printf 'hook scope: all %s hooks reach .gaia/local only through a resolved root\n' "$total"
-  return $rc
+  [ "$exit_status" -eq 0 ] && printf 'hook scope: all %s hooks reach .gaia/local only through a resolved root\n' "$total"
+  return $exit_status
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then

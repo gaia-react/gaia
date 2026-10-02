@@ -69,15 +69,15 @@ gaia_usage_default_branch() {
 # its old transcripts still belong to the repo.
 gaia_usage_tree_roots() {
   local root="$1" line path physical_root seen=$'\n'
-  _gaia_usage_load _gaia_physical_dir main-root-lib.sh || return 1
-  physical_root="$(_gaia_physical_dir "$root")" || physical_root="$root"
+  _gaia_usage_load _gaia_physical_directory main-root-lib.sh || return 1
+  physical_root="$(_gaia_physical_directory "$root")" || physical_root="$root"
   printf '%s\n' "$physical_root"
   seen="$seen$physical_root"$'\n'
   while IFS= read -r line; do
     case "$line" in "worktree "*) ;; *) continue ;; esac
     path="${line#worktree }"
     [ -n "$path" ] || continue
-    physical_root="$(_gaia_physical_dir "$path")" || physical_root="$path"
+    physical_root="$(_gaia_physical_directory "$path")" || physical_root="$path"
     case "$seen" in *$'\n'"$physical_root"$'\n'*) continue ;; esac
     seen="$seen$physical_root"$'\n'
     printf '%s\n' "$physical_root"

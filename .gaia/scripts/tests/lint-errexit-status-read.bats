@@ -39,30 +39,30 @@ setup() {
   THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
   LINTER="$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh"
-  TMP=""
+  TEMPORARY_DIRECTORY=""
 }
 
 teardown() {
-  [ -n "$TMP" ] && [ -d "$TMP" ] && rm -rf "$TMP"
+  [ -n "$TEMPORARY_DIRECTORY" ] && [ -d "$TEMPORARY_DIRECTORY" ] && rm -rf "$TEMPORARY_DIRECTORY"
   return 0
 }
 
-# fixture_file <relpath> <body>: write <body> verbatim to $TMP/<relpath> and
+# fixture_file <relpath> <body>: write <body> verbatim to $TEMPORARY_DIRECTORY/<relpath> and
 # track it. `printf %s` never interprets an escape, so the fixture reaches the
 # file as the characters the gate is meant to read.
 fixture_file() {
-  local dest="$TMP/$1"
-  mkdir -p "$( dirname "$dest" )"
-  printf '%s\n' "$2" > "$dest"
-  git -C "$TMP" add -A
+  local destination="$TEMPORARY_DIRECTORY/$1"
+  mkdir -p "$( dirname "$destination" )"
+  printf '%s\n' "$2" > "$destination"
+  git -C "$TEMPORARY_DIRECTORY" add -A
 }
 
 # fixture_repo_bare: an initialized git repo carrying nothing at all. The tests
 # that pin the gate's empty-surface hard errors build on this and seed only the
 # kinds they mean to be present.
 fixture_repo_bare() {
-  TMP="$(mktemp -d -t errexit-status-lint-XXXXXX)"
-  git -C "$TMP" init -q .
+  TEMPORARY_DIRECTORY="$(mktemp -d -t errexit-status-lint-XXXXXX)"
+  git -C "$TEMPORARY_DIRECTORY" init -q .
 }
 
 seed_sh() { fixture_file seed.sh 'echo seed'; }
@@ -83,7 +83,7 @@ seed_bats() {
 }'
 }
 
-# fixture_repo: an initialized git repo in $TMP carrying one benign file of each
+# fixture_repo: an initialized git repo in $TEMPORARY_DIRECTORY carrying one benign file of each
 # scanned kind, so the gate's non-empty-surface preconditions are met and a test
 # can add just the file it is about.
 fixture_repo() {
@@ -100,7 +100,7 @@ fixture_script() {
 
 # run_linter: run the gate from inside the fixture repo.
 run_linter() {
-  run bash -c "cd '$TMP' && bash '$LINTER' 2>&1"
+  run bash -c "cd '$TEMPORARY_DIRECTORY' && bash '$LINTER' 2>&1"
 }
 
 # surface_has_workflow_and_action <repo> <lib>: the `workflows` set, as <lib>
@@ -1164,8 +1164,8 @@ echo done'
 # before the rest are asked. What the later calls rely on is the library reading
 # each set's own status, which guard-awk-lib.bats pins on its own terms.
 @test "a discovery that never ran exits distinctly from a surface that came back empty" {
-  TMP="$(mktemp -d -t errexit-status-lint-XXXXXX)"
-  run bash -c "cd '$TMP' && bash '$LINTER' 2>&1"
+  TEMPORARY_DIRECTORY="$(mktemp -d -t errexit-status-lint-XXXXXX)"
+  run bash -c "cd '$TEMPORARY_DIRECTORY' && bash '$LINTER' 2>&1"
   [ "$status" -eq 3 ]
   grep -qF -- 'discovery failed' <<<"$output" || return 1
   grep -qF -- 'nothing was scanned' <<<"$output"
@@ -1191,16 +1191,16 @@ echo done'
 # .gaia/scripts/bats5.sh, which the project's bats rule already routes these
 # suites through.
 probe_shell() {
-  local cand major
-  for cand in /opt/homebrew/bin/bash /usr/local/bin/bash "$( command -v bash )"; do
-    [ -n "$cand" ] || continue
-    [ -x "$cand" ] || continue
-    major="$( "$cand" -c 'printf %s "${BASH_VERSINFO[0]}"' 2>/dev/null )"
+  local candidate major
+  for candidate in /opt/homebrew/bin/bash /usr/local/bin/bash "$( command -v bash )"; do
+    [ -n "$candidate" ] || continue
+    [ -x "$candidate" ] || continue
+    major="$( "$candidate" -c 'printf %s "${BASH_VERSINFO[0]}"' 2>/dev/null )"
     case "$major" in
       ''|*[!0-9]*) continue ;;
     esac
     [ "$major" -ge 4 ] || continue
-    printf '%s' "$cand"
+    printf '%s' "$candidate"
     return 0
   done
   return 1
@@ -1242,18 +1242,18 @@ probe_shell() {
 # would pin that interpreter's answer as the gate's contract. Both are pinned by
 # named tests above instead, and the script header carries the reasoning.
 prefix_reaches() {
-  local sh="$1" suffix="$2" dir out
-  dir="$(mktemp -d -t errexit-status-probe-XXXXXX)"
-  : > "$dir/log"
-  : > "$dir/my log"
-  printf '%s\n' 'set -e' "out=\$(false) $suffix" 'rc=$?' 'echo REACHED' > "$dir/probe.sh"
-  if ! "$sh" -n "$dir/probe.sh" 2>/dev/null; then
-    rm -rf "$dir"
+  local shell_path="$1" suffix="$2" directory probe_output
+  directory="$(mktemp -d -t errexit-status-probe-XXXXXX)"
+  : > "$directory/log"
+  : > "$directory/my log"
+  printf '%s\n' 'set -e' "out=\$(false) $suffix" 'rc=$?' 'echo REACHED' > "$directory/probe.sh"
+  if ! "$shell_path" -n "$directory/probe.sh" 2>/dev/null; then
+    rm -rf "$directory"
     return 2
   fi
-  out="$( cd "$dir" && "$sh" probe.sh 2>/dev/null || true )"
-  rm -rf "$dir"
-  case "$out" in *REACHED*) return 0 ;; *) return 1 ;; esac
+  probe_output="$( cd "$directory" && "$shell_path" probe.sh 2>/dev/null || true )"
+  rm -rf "$directory"
+  case "$probe_output" in *REACHED*) return 0 ;; *) return 1 ;; esac
 }
 
 # prefix_verdict <suffix>: set PREFIX_VERDICT to the gate's verdict on the same
@@ -1267,8 +1267,8 @@ out=\$(false) $1
 rc=\$?
 echo \"\$rc\""
   run_linter
-  rm -rf "$TMP"
-  TMP=""
+  rm -rf "$TEMPORARY_DIRECTORY"
+  TEMPORARY_DIRECTORY=""
   if [ "$status" -eq 0 ]; then
     PREFIX_VERDICT=quiet
   elif grep -qF -- 'check.sh:3:' <<<"$output"; then
@@ -1279,11 +1279,11 @@ echo \"\$rc\""
 }
 
 @test "the gate agrees with a real shell across the prefix matrix" {
-  local suffix expected sh rc failures=""
+  local suffix expected shell_path reach_status failures=""
   # Refuse to report clean over nothing, the same posture the gate itself takes
   # on a region it cannot read: with no bash 4+ to measure against, this test has
   # no ground truth and says so rather than passing.
-  sh="$( probe_shell )" || {
+  shell_path="$( probe_shell )" || {
     printf 'no bash 4+ available to measure ground truth; the matrix measured nothing\n'
     return 1
   }
@@ -1294,13 +1294,13 @@ echo \"\$rc\""
     # The guarded form this gate itself advertises: bats runs a test body under
     # errexit, so a bare call returning non-zero would abort the loop on the
     # first `report` row rather than recording it.
-    rc=0
-    prefix_reaches "$sh" "$suffix" || rc=$?
-    case "$rc" in
+    reach_status=0
+    prefix_reaches "$shell_path" "$suffix" || reach_status=$?
+    case "$reach_status" in
       0) expected=quiet ;;
       1) expected=report ;;
       *) failures="$failures
-  out=\$(false) $suffix    UNPARSEABLE under $sh, so nothing was measured"
+  out=\$(false) $suffix    UNPARSEABLE under $shell_path, so nothing was measured"
          continue ;;
     esac
     prefix_verdict "$suffix"
@@ -1668,7 +1668,7 @@ rc=$?'
   # Resolution is against the gate's OWN directory rather than a cwd-relative
   # .gaia/scripts. Read cwd-relative, every well-formed token in every fixture
   # repo would resolve as orphaned and this whole section would be vacuous.
-  [ ! -d "$TMP/.gaia/scripts" ]
+  [ ! -d "$TEMPORARY_DIRECTORY/.gaia/scripts" ]
   fixture_file suite.bats '@test "demonstrates the class" {
   out=$(some_command)
   # gaia-lint-ignore lint-errexit-status-read: the dead read IS the subject here
