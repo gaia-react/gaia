@@ -127,6 +127,9 @@ ANCHORS=(
   'I|re-keys only'
   'I|needs the user'
   'I|cannot prompt'
+  'F|audit-loop-unit'
+  'I|sanctioned depth-2 orchestrator'
+  'I|state-changing git and the Quality Gate'
 )
 
 anchors_ok() {
@@ -210,6 +213,15 @@ wiki_structure_ok() {
   [ "$sl" -lt "$ms" ] || return 1
   [ "$ms" -lt "$me" ] || return 1
   [ "$me" -lt "$el" ] || return 1
+  return 0
+}
+
+wiki_exception_ok() {
+  local f="$1"
+  [ -f "$f" ] || return 1
+  grep -qiF 'sanctioned depth-2 orchestrator' "$f" || return 1
+  grep -qF 'audit-loop-unit' "$f" || return 1
+  grep -qiF 'state-changing git' "$f" || return 1
   return 0
 }
 
@@ -416,8 +428,8 @@ pad_to() { # pad_to <src> <dst> <total bytes>: src plus filler so dst ends in on
 
 # ----------------------------------------------------------- 6. anchors
 
-@test "execution.md anchors: all 29 C3 literals are present" {
-  [ "${#ANCHORS[@]}" -eq 29 ]
+@test "execution.md anchors: all 32 C3 literals are present" {
+  [ "${#ANCHORS[@]}" -eq 32 ]
   anchors_ok "$DOC"
 }
 
@@ -431,6 +443,22 @@ pad_to() { # pad_to <src> <dst> <total bytes>: src plus filler so dst ends in on
   sed 's/never through Edit or Write//g' "$DOC" >"$T/noewr.md"
   if cmp -s "$DOC" "$T/noewr.md"; then return 1; fi
   if anchors_ok "$T/noewr.md"; then return 1; fi
+}
+
+@test "execution.md exception red twin: dropping the audit-loop-unit sentence fails the anchors, and the real file names it" {
+  grep -qF 'audit-loop-unit' "$DOC"
+  grep -vF 'audit-loop-unit' "$DOC" >"$T/noexc.md"
+  [ "$(wc -c <"$T/noexc.md" | tr -d ' ')" -lt "$(wc -c <"$DOC" | tr -d ' ')" ]
+  if anchors_ok "$T/noexc.md"; then return 1; fi
+  sed 's/sanctioned depth-2 orchestrator/orchestrator/' "$DOC" >"$T/nosanction.md"
+  if cmp -s "$DOC" "$T/nosanction.md"; then return 1; fi
+  if anchors_ok "$T/nosanction.md"; then return 1; fi
+}
+
+@test "wiki exception: Workflow Doctrine names audit-loop-unit as the sanctioned depth-2 exception, twin without it fails" {
+  wiki_exception_ok "$WIKI"
+  grep -vF 'audit-loop-unit' "$WIKI" >"$T/wiki-noexc.md"
+  if wiki_exception_ok "$T/wiki-noexc.md"; then return 1; fi
 }
 
 # -------------------------------------------------------- 7. model names

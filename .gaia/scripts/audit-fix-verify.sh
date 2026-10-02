@@ -54,14 +54,35 @@
 # Run-folder file shapes (this header is their single owner), all under
 # <MAIN>/.gaia/local/runs/<B>/:
 #
-#   dispositions-<r>.json (main thread):
+#   dispositions-<r>.json (the round's orchestrator: the unit, or the main
+#   thread in the nesting-unavailable fallback):
 #     {"schema":1,"round":r,"tree":"<hex>","root":"<abs resolved root>",
 #      "enforcement_paths_allowed":["<path>"],
 #      "entries":[{"member","finding_class","path","line","severity","title",
 #        "failure_mode","suggested_fix",
-#        "disposition":"fix|accept-residual|waive-out-of-scope|file","reason"}]}
+#        "disposition":"fix|accept-residual|waive-out-of-scope|file","reason",
+#        "basis":"triage-threshold|cross-remit"}]}
 #     enforcement_paths_allowed lists an enforcement path only when an entry
-#     marked fix names that path.
+#     marked fix names that path. basis is required on waive-out-of-scope
+#     entries; this verifier does not read it, the dispositions check does.
+#
+#   vetoes.json (the main thread, written with Bash at the main-checkout path):
+#     {"version":1,"keys":[{"member","finding_class","path","line","vetoed_at",
+#       "unit","effective_from_round"}]}
+#     effective_from_round is the <s> that audit-loop-eval.sh next-unit prints
+#     when the veto is written (the first round the next unit opens), so a
+#     veto never re-fails the dispositions file that held the original waiver.
+#
+#   unit-<u>.json (the unit; absent while the unit runs, so its appearance
+#   marks the unit returned):
+#     {"version":1,"unit":u,"start_round":s,"through_round":t,"k":K,
+#      "rounds":[{"round":r,"opened":true|false,...}],
+#      "marker_state":{"<member>":"cleared|pending|declined"},
+#      "stop_reason":"clean|window-end|checkpoint-deny|dispositions-check-failed|needs-human|nesting-unavailable|failure",
+#      "stop_detail":"...","dispositions_files":["<path>"],
+#      "waiver_table":"<markdown, informational>","residual_path":"..."}
+#     A unit that opened no round writes one element
+#     {"round":<start>,"opened":false,"reason":"<stop_reason>"}.
 #
 #   baseline-<r>.json (the baseline subcommand):
 #     {"schema":1,"round":r,"root":"...","head":"<commit>",
@@ -118,6 +139,14 @@ ENFORCEMENT_PATHS=(
   '.gaia/scripts/main-root-lib.sh'            # main-checkout resolution for every state path
   '.claude/settings.json'                     # hook registrations and env knobs
   '.claude/settings.local.json'               # machine-local overrides of the same
+  '.claude/hooks/audit-loop-ask-grant.sh'     # records the human's AskUserQuestion answer
+  '.gaia/scripts/context-checkpoint-lib.sh'   # shared context threshold and bands
+  '.gaia/scripts/audit-dispositions-check.sh' # deterministic dispositions check
+  '.gaia/scripts/audit-loop-signals-lib.sh'   # rubric signals and unit/member decisions
+  '.claude/agents/audit-loop-unit.md'         # the unit orchestrator's definition
+  '.gaia/statusline/gaia-statusline.sh'       # writes the context reading the gate trusts
+  '.gaia/statusline/context-reading.sh'       # the context reading writer
+  '.gaia/statusline/left-side.sh'             # statusline left side, same writer chain
 )
 
 # Files the baseline pins into the run folder: this script and every library it

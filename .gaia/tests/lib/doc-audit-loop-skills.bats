@@ -125,13 +125,15 @@ line_starting() {
 # --- COV-007: the fixer is not briefed from the ledger ---------------------
 
 @test "COV-007: Code Review Audit Agent.md says the ledger briefs the re-audit and the fixer reads dispositions" {
-  grep -qF -- 'the fixer is briefed from the main thread' "$REVIEW_WIKI"
+  grep -qF -- "the fixer is briefed from the dispositions file the round's orchestrator writes" "$REVIEW_WIKI"
+  grep -qF -- "the fixer is briefed from the main thread's dispositions file" "$REVIEW_WIKI" && return 1
   grep -qF -- 'the fixer read the ledger' "$REVIEW_WIKI" && return 1
   true
 }
 
 @test "COV-007: code-audit-frontend.md no longer has the fixer reading the ledger" {
-  [ "$(grep -cF -- "the fixer is briefed from the main thread's dispositions file" "$FRONTEND_AGENT")" -ge 2 ]
+  [ "$(grep -cF -- "the fixer is briefed from the dispositions file the round's orchestrator writes" "$FRONTEND_AGENT")" -ge 2 ]
+  grep -qF -- "the fixer is briefed from the main thread's dispositions file" "$FRONTEND_AGENT" && return 1
   grep -qF -- 'and the fixer read' "$FRONTEND_AGENT" && return 1
   grep -qF -- 'the next re-audit and the fixer' "$FRONTEND_AGENT" && return 1
   true
