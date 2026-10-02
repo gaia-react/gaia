@@ -159,3 +159,21 @@ classify() {
   classify "settings.json"
   [ "$output" = "unknown" ]
 }
+
+@test "registry: checkpoint-override.json maps to checkpoint-override exactly, its .bak sibling does not" {
+  make_registry_repo
+  run jq -r '.entries[] | select(.path == "checkpoint-override.json") | .id' "$REAL_REGISTRY"
+  [ "$output" = "checkpoint-override" ]
+  classify "checkpoint-override.json"
+  [ "$output" = "shared" ]
+  classify "checkpoint-override.json.bak"
+  [ "$output" = "unknown" ]
+}
+
+@test "registry red twin: without the checkpoint-override row checkpoint-override.json classifies unknown" {
+  make_registry_repo
+  jq '.entries |= map(select(.id != "checkpoint-override"))' "$REG" > "$REG.new"
+  mv "$REG.new" "$REG"
+  classify "checkpoint-override.json"
+  [ "$output" = "unknown" ]
+}

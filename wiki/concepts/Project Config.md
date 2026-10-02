@@ -8,7 +8,7 @@ tags: [concept, claude, config, workflow]
 
 # Project Config
 
-`.gaia/project.json` is the committed, team-shared file where a GAIA project records its own preferences. It holds answers a repository owner gives once and every clone then reads, as opposed to a per-machine choice, which lives in gitignored local settings. The audit loop's context checkpoint line is one such per-machine choice: it lives in `.gaia/local/settings.json`, not here, because teammates can run different models with different context windows, so no single committed value fits them all. That file is machine-local, human-edited, can only lower the shipped default, and Claude tool writes to it are denied; see [[Local Working State]].
+`.gaia/project.json` is the committed, team-shared file where a GAIA project records its own preferences. It holds answers a repository owner gives once and every clone then reads, as opposed to a per-machine choice, which lives in gitignored local settings. The audit loop's context checkpoint line is one such per-machine choice: it lives in `.gaia/local/checkpoint-override.json`, not here, because teammates can run different models with different context windows, so no single committed value fits them all. That file is machine-local, human-edited, can only lower the shipped default, and Claude tool writes to it are denied; see [[Local Working State]].
 
 ## Keys
 

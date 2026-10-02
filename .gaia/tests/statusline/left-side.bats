@@ -103,6 +103,83 @@ expect_band() {
   true
 }
 
+# user_left_with_choice <settings.json content|-> : a global statusLine.command
+# that prints USERLEFT, plus the main checkout's opt-ins file (- writes none).
+user_left_with_choice() {
+  mkdir -p "$TMP_HOME/.claude"
+  printf '{"statusLine":{"type":"command","command":"printf USERLEFT"}}' >"$TMP_HOME/.claude/settings.json"
+  [ "$1" = "-" ] || printf '%s' "$1" >"$MAIN/.gaia/local/settings.json"
+}
+
+assert_gaia_left() {
+  grep -qF "USERLEFT" <<<"$output" && { echo "user left side drawn: $output"; return 1; }
+  grep -qF "$(basename "$MAIN")" <<<"$output" || { echo "no GAIA left side: $output"; return 1; }
+  grep -qE "(▓|░){10}" <<<"$output" || { echo "no bar: $output"; return 1; }
+}
+
+assert_user_left() {
+  grep -qF "USERLEFT" <<<"$output" || { echo "user left side missing: $output"; return 1; }
+  grep -qE "(▓|░){10}" <<<"$output" && { echo "GAIA bar drawn: $output"; return 1; }
+  true
+}
+
+@test "left choice gaia: statusline.left gaia draws GAIA's left side over a global statusLine.command" {
+  user_left_with_choice '{"version":1,"statusline":{"left":"gaia"}}'
+  render_at "$MAIN" 250000 1000000
+  [ "$status" -eq 0 ]
+  assert_gaia_left
+}
+
+@test "left choice gaia: a linked worktree reads the main checkout's choice" {
+  user_left_with_choice '{"version":1,"statusline":{"left":"gaia"}}'
+  git -C "$MAIN" worktree add --quiet "$WT" -b feature
+  render_at "$WT" 250000 1000000
+  [ "$status" -eq 0 ]
+  assert_gaia_left
+}
+
+@test "left choice user: statusline.left user keeps the global statusLine.command" {
+  user_left_with_choice '{"version":1,"statusline":{"left":"user"}}'
+  render_at "$MAIN" 250000 1000000
+  [ "$status" -eq 0 ]
+  assert_user_left
+}
+
+@test "left choice missing: no opt-ins file keeps the global statusLine.command" {
+  user_left_with_choice -
+  render_at "$MAIN" 250000 1000000
+  [ "$status" -eq 0 ]
+  assert_user_left
+}
+
+@test "left choice missing: an opt-ins file with no statusline.left keeps the global statusLine.command" {
+  user_left_with_choice '{"version":1}'
+  render_at "$MAIN" 250000 1000000
+  [ "$status" -eq 0 ]
+  assert_user_left
+}
+
+@test "left choice malformed: a version-less file reads as missing" {
+  user_left_with_choice '{"statusline":{"left":"gaia"}}'
+  render_at "$MAIN" 250000 1000000
+  [ "$status" -eq 0 ]
+  assert_user_left
+}
+
+@test "left choice malformed: invalid JSON reads as missing" {
+  user_left_with_choice '{"version":1,"statusline":{"left":"gaia"'
+  render_at "$MAIN" 250000 1000000
+  [ "$status" -eq 0 ]
+  assert_user_left
+}
+
+@test "left choice malformed: an unknown left value reads as missing" {
+  user_left_with_choice '{"version":1,"statusline":{"left":"GAIA"}}'
+  render_at "$MAIN" 250000 1000000
+  [ "$status" -eq 0 ]
+  assert_user_left
+}
+
 @test "last resort: when the default left side cannot render, the bare label does" {
   rm "$MAIN/.gaia/statusline/left-side.sh"
   render_at "$MAIN" 250000 1000000
@@ -144,7 +221,7 @@ expect_band() {
 }
 
 @test "UAT-019: a lowered ask_tokens moves the red edge and leaves no yellow band" {
-  printf '{"version":1,"context_checkpoint":{"ask_tokens":200000}}' >"$MAIN/.gaia/local/settings.json"
+  printf '{"version":1,"context_checkpoint":{"ask_tokens":200000}}' >"$MAIN/.gaia/local/checkpoint-override.json"
   expect_band 1000000 199999 green none
   expect_band 1000000 200000 red none
   expect_band 1000000 249999 red none
@@ -153,13 +230,13 @@ expect_band() {
 }
 
 @test "UAT-019: an ask_tokens above the default reads as the default" {
-  printf '{"version":1,"context_checkpoint":{"ask_tokens":600000}}' >"$MAIN/.gaia/local/settings.json"
+  printf '{"version":1,"context_checkpoint":{"ask_tokens":600000}}' >"$MAIN/.gaia/local/checkpoint-override.json"
   expect_band 1000000 200000 yellow none
   expect_band 1000000 300000 red none
 }
 
 @test "UAT-019: a non-integer ask_tokens reads as the default" {
-  printf '{"version":1,"context_checkpoint":{"ask_tokens":"abc"}}' >"$MAIN/.gaia/local/settings.json"
+  printf '{"version":1,"context_checkpoint":{"ask_tokens":"abc"}}' >"$MAIN/.gaia/local/checkpoint-override.json"
   expect_band 1000000 200000 yellow none
   expect_band 1000000 300000 red none
 }

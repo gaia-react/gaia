@@ -1,15 +1,15 @@
 ---
 name: setup-gaia
-description: Single post-init onboarding command; detects situation, runs only owed phases; safe to re-run. --reconfigure re-asks the sandbox, isolation-policy, and Dependabot decisions.
+description: Single post-init onboarding command; detects situation, runs only owed phases; safe to re-run. --reconfigure re-asks the sandbox, isolation-policy, Dependabot, and statusline decisions.
 ---
 
 Run this once after `/gaia-init`, and re-run it any time. `/setup-gaia` is the single onboarding command for a GAIA project. It detects the situation and runs only the phases this clone actually owes:
 
-- **Per-machine work** every clone needs (tool installs, plugins, spec-kit runtime, statusline bit, `.env`, the sandbox decision).
+- **Per-machine work** every clone needs (tool installs, plugins, spec-kit runtime, statusline bit, `.env`, the sandbox decision, and, for a developer with a global statusline, which statusline draws the left side).
 - **GitHub repository provisioning** (create / adopt / manual, private by default), plus branch protection and the `GAIA-Audit` required-check registration when the runner is a repo admin.
 - **Team settings** a repo admin records once in `.gaia/project.json`: the git isolation policy and the Dependabot security-updates decision.
 
-It is safe for **any developer** to run at any time. A plain (no-flag) re-run on a fully provisioned project prints the already-provisioned line and mutates nothing: it never re-provisions the repo or changes branch protection. The one exception is a repo admin re-running it on a repo whose required checks still lack `GAIA-Audit` (or still carry the stale `code-review-audit` context): that run owes the registration and makes it. Pass `--reconfigure` to re-ask the sandbox decision (Phase 2), the team git isolation policy (Phase 3.5), and the Dependabot security-updates decision (Phase 3.6).
+It is safe for **any developer** to run at any time. A plain (no-flag) re-run on a fully provisioned project prints the already-provisioned line and mutates nothing: it never re-provisions the repo or changes branch protection. The one exception is a repo admin re-running it on a repo whose required checks still lack `GAIA-Audit` (or still carry the stale `code-review-audit` context): that run owes the registration and makes it. Pass `--reconfigure` to re-ask the sandbox decision (Phase 2), the team git isolation policy (Phase 3.5), the Dependabot security-updates decision (Phase 3.6), and the statusline left-side choice (Phase 4.6).
 
 The slash command name intentionally does NOT start with `gaia-` so it does not pollute the `/gaia` autocomplete namespace (those are reserved for the four user-invoked GAIA workflows).
 
@@ -28,7 +28,7 @@ If the detection does not fire, fall through to `## Argument parse` below.
 
 ## Argument parse
 
-Parse `$ARGUMENTS` for the `--reconfigure` flag. Cache the boolean as `RECONFIGURE`. It re-opens three settled decisions and nothing else: the sandbox decision in Phase 2, the isolation policy in Phase 3.5, and Dependabot security updates in Phase 3.6.
+Parse `$ARGUMENTS` for the `--reconfigure` flag. Cache the boolean as `RECONFIGURE`. It re-opens four settled decisions and nothing else: the sandbox decision in Phase 2, the isolation policy in Phase 3.5, Dependabot security updates in Phase 3.6, and the statusline left-side choice in Phase 4.6.
 
 ## Phase 0: Prerequisites (every invocation, never skipped)
 
@@ -867,6 +867,72 @@ Surface its report verbatim: labels created, labels renamed, and any color drift
 
 This step is advisory, never halting. A token without label-write scope gets the manual `gh label create` / `gh label edit` commands the command itself prints, and setup continues either way; `gaia labels sync` already exits 0 in that case, so this step adds no failure path of its own. It is idempotent and safe to re-run on every plain `/setup-gaia` invocation: a repo already in sync reports zero creates and zero renames.
 
+Fall through to Phase 4.6.
+
+## Phase 4.6: Statusline left side (per-machine, always evaluated)
+
+GAIA's statusline (`.gaia/statusline/gaia-statusline.sh`) always draws GAIA's nudges on the right. For the left side it runs the developer's global `statusLine.command` from `~/.claude/settings.json` when one exists, otherwise GAIA's own bar (project, branch, model and effort, and a context bar colored by the audit checkpoint line). This phase lets a developer with a global statusline choose between the two. It is per-machine state, not a team setting: the answer lives in `.gaia/local/settings.json` (gitignored, GAIA's writable per-machine opt-ins), and it runs even when `completed_at` is non-null, like the sandbox decision, so a clone set up before this phase existed still gets asked.
+
+### The routing warning (every invocation)
+
+Find the statusLine the project actually runs: the first of `.claude/settings.local.json`, `.claude/settings.json` and `~/.claude/settings.json` that sets `statusLine.command`.
+
+```bash
+EFFECTIVE_STATUSLINE=""; EFFECTIVE_SOURCE=""
+for f in .claude/settings.local.json .claude/settings.json "$HOME/.claude/settings.json"; do
+  c="$(jq -r '.statusLine.command // empty' "$f" 2>/dev/null)"
+  if [ -n "$c" ]; then EFFECTIVE_STATUSLINE="$c"; EFFECTIVE_SOURCE="$f"; break; fi
+done
+printf '%s\n%s\n' "$EFFECTIVE_SOURCE" "$EFFECTIVE_STATUSLINE"
+```
+
+The command routes through GAIA when its text names `gaia-statusline.sh`, or when it runs a wrapper script whose own text names `gaia-statusline.sh` (read the script the command runs, one level deep). Otherwise print this warning, filling in the source file, and continue; it is advisory and changes nothing:
+
+> Warning: this project's effective statusLine (from `<EFFECTIVE_SOURCE>`) does not run `.gaia/statusline/gaia-statusline.sh`. Without it you get no GAIA nudges, and no context readings are written, so the audit loop's checkpoint falls back to counting rounds. To fix it, remove the `statusLine` key from `<EFFECTIVE_SOURCE>` (when that is `.claude/settings.local.json`), or point it at a wrapper that runs `gaia-statusline.sh`. `/gaia-fitness` reports the same condition.
+
+The choice below still runs after the warning: it takes effect once the statusLine is routed through GAIA again.
+
+### Gate: a global statusline, and no recorded choice
+
+```bash
+GLOBAL_STATUSLINE="$(jq -r '.statusLine.command // empty' "$HOME/.claude/settings.json" 2>/dev/null)"
+case "$GLOBAL_STATUSLINE" in *gaia-statusline.sh*) GLOBAL_STATUSLINE="" ;; esac
+LEFT_CHOICE="$(jq -r 'if type == "object" and .version == 1 and (.statusline | type) == "object" then (.statusline.left // empty) else empty end' .gaia/local/settings.json 2>/dev/null)"
+printf 'global=%s\nchoice=%s\n' "$GLOBAL_STATUSLINE" "$LEFT_CHOICE"
+```
+
+- `GLOBAL_STATUSLINE` is empty → there is nothing to choose between: GAIA's bar already draws the left side. **Skip silently and write nothing.** A global statusline added later makes this phase owed again on the next run.
+- `LEFT_CHOICE` is `gaia` or `user`, and `RECONFIGURE` is NOT set → the choice stands. **Skip silently.**
+- Otherwise (no recorded choice, any other value, or `--reconfigure`) → ask.
+
+A missing `statusline.left` key means never asked. The file's presence alone is not the signal, because it holds other opt-ins too.
+
+### The question
+
+Use `AskUserQuestion`, header **`Statusline`**, question "You have your own global statusline. Which one should draw the left side of the statusline in this project?", with these two options in this exact order:
+
+- **Use GAIA's statusline bar (Recommended)**: project, branch, model and effort, and a context bar whose colors match the audit checkpoint line.
+- **Keep my own statusline**: your global `statusLine.command` keeps drawing the left side.
+
+Either way GAIA's nudges stay on the right and context readings are still written. Choosing "Other" or dismissing the question writes nothing, so the question re-fires on a later `/setup-gaia` run.
+
+### The write
+
+Write `gaia` for the first option or `user` for the second, keeping any other key already in the file. A file without version 1, or one that does not parse, is replaced, since the statusline reads it as missing anyway:
+
+```bash
+LEFT="<gaia|user>"
+mkdir -p .gaia/local
+tmp="$(mktemp .gaia/local/settings.json.XXXXXX)"
+if jq -e 'type == "object" and .version == 1' .gaia/local/settings.json >/dev/null 2>&1; then
+  jq --arg left "$LEFT" '.statusline = ((.statusline | if type == "object" then . else {} end) + {left: $left})' .gaia/local/settings.json >"$tmp"
+else
+  jq -n --arg left "$LEFT" '{version: 1, statusline: {left: $left}}' >"$tmp"
+fi && mv -f "$tmp" .gaia/local/settings.json || rm -f "$tmp"
+```
+
+The statusline reads the choice on its next render; no restart is needed. Nothing is committed: the file is gitignored. This file is not `.gaia/local/checkpoint-override.json`, the human-only audit checkpoint override, which Claude never writes.
+
 Fall through to Phase 6.
 
 ## Phase 6: Finalize
@@ -925,7 +991,7 @@ Then output (in the user's language): "GAIA setup complete. Restart Claude Code 
 
 ## Idempotence / re-run safety
 
-A plain (no-flag) re-run on a fully provisioned project prints the already-provisioned line and mutates nothing: default-branch protection JSON and `.gaia/project.json` are byte-identical before and after, and no mutating `gh` call fires. Never re-provision the repo or change branch protection on a plain re-run; the one branch-protection change a re-run makes is the owed `GAIA-Audit` registration (Phase 3) for an admin on a repo whose required contexts lack `GAIA-Audit` or still carry `code-review-audit`. Only `--reconfigure` re-opens the settled sandbox, isolation-policy, and Dependabot decisions.
+A plain (no-flag) re-run on a fully provisioned project prints the already-provisioned line and mutates nothing: default-branch protection JSON and `.gaia/project.json` are byte-identical before and after, and no mutating `gh` call fires. Never re-provision the repo or change branch protection on a plain re-run; the one branch-protection change a re-run makes is the owed `GAIA-Audit` registration (Phase 3) for an admin on a repo whose required contexts lack `GAIA-Audit` or still carry `code-review-audit`. Only `--reconfigure` re-opens the settled sandbox, isolation-policy, Dependabot, and statusline decisions.
 
 ## On failure: re-run
 

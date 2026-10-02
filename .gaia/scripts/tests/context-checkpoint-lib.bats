@@ -21,7 +21,7 @@ setup() {
 }
 
 write_settings() {
-  printf '%s\n' "$1" >"$MAIN/.gaia/local/settings.json"
+  printf '%s\n' "$1" >"$MAIN/.gaia/local/checkpoint-override.json"
 }
 
 ctx_file() {
