@@ -32,13 +32,13 @@ Bucket E runs the shared Claude-integration fitness protocol defined in `wiki/de
 
 On the first cycle that meets the clean gate, you spawn a false-clean challenger (BS/MC/GH lenses always, FV when a prior cycle ran a Fixer) before the A+ report and the RUN_DIR deletion; a substantiated finding revokes the clean exit, injected as `real-fix` (non-cycle-3) or escalated `false-clean-refuted` (cycle 3). It runs at most once per run. The runbook's §False-clean challenger is the source of truth.
 
-You spawn the five buckets, the Adjudicator, and the Fixers, and every one is a leaf subagent, because a subagent cannot spawn another subagent (the hard depth-1 limit). So you, the Orchestrator on this main thread, own every spawn. Stay mechanical: counters, directory creation, disk reads, the `jq`/`comm` oscillation compare, and dispatch. You never audit, adjudicate, or fix in your own context, so whatever session state you inherit cannot bias a grade.
+You spawn the five buckets, the Adjudicator, and the Fixers, and every one is a leaf subagent: you, the Orchestrator on this main thread, own every spawn, so the cycle stays observable and bounded. Stay mechanical: counters, directory creation, disk reads, the `jq`/`comm` oscillation compare, and dispatch. You never audit, adjudicate, or fix in your own context, so whatever session state you inherit cannot bias a grade.
 
 A fresh Adjudicator per cycle keeps prior-cycle findings from bleeding into this cycle's verification: it never reads a prior cycle's `findings.json` (you own the cross-cycle oscillation compare), so every cycle's Adjudicator starts on clean context. **Bucket E** runs as its own leaf so its voluminous raw fitness output stays on disk and out of the Adjudicator's context: the Adjudicator reads only Bucket E's findings JSON. Each bucket is spawned with its assigned model (Haiku for the mechanical buckets, Sonnet for the judgment-bearing ones; see the runbook's model table), which pins per-bucket models correctly now that the Orchestrator dispatches them directly.
 
 ## Step 3, Comprehensive phase (post-loop)
 
-After the loop above breaks or escalates — clean exit and escalation both route through here — and before the Step 5 report is emitted, run the **Comprehensive Audit phase** per `.gaia/cli/health/comprehensive/runbook.md`. It is diff-gated (a pre-flight gauge picks skip / scoped / full), report-only (no auto-heal, files nothing), and maintainer-only.
+After the loop above breaks or escalates (clean exit and escalation both route through here), and before the Step 5 report is emitted, run the **Comprehensive Audit phase** per `.gaia/cli/health/comprehensive/runbook.md`. It is diff-gated (a pre-flight gauge picks skip / scoped / full), report-only (no auto-heal, files nothing), and maintainer-only.
 
 - Runs **exactly once**, **never inside the loop above**.
 - Pass `--comprehensive-full` through to the gauge when the maintainer invoked `/health-audit` with that force flag. Pass `--major` through when the maintainer invoked `/health-audit --major` (the gauge maps it to `source=major`).
@@ -94,7 +94,7 @@ If the round returned any `intent-dependent` verdict, add its count to that same
 If the verification round confirmed a blocker, add a release-gate flag on its own line:
 
 ```
-RELEASE-GATE: comprehensive audit confirmed <n> blocker(s) — see REPORT.md ## Priority index
+RELEASE-GATE: comprehensive audit confirmed <n> blocker(s); see REPORT.md ## Priority index
 ```
 
 The comprehensive line is additive: it does not change the `HEALTH AUDIT: <grade>` computation or the shared-fitness grade. The integrity verdict math above is untouched.

@@ -10,7 +10,7 @@ This session is on a working branch or in a linked worktree, so it executes. The
 
 ## Inline floor
 
-Stay on the main thread when the work is small, tightly iterative (edit-run-fix), or needs the user. Sub-agents cannot prompt the user and cannot spawn sub-agents (depth-1).
+Stay on the main thread when the work is small, tightly iterative (edit-run-fix), or needs the user. Sub-agents cannot prompt the user. Keep dispatch depth-1.
 
 ## Run folder
 

@@ -115,7 +115,7 @@ Launch a `general-purpose` Agent with the model determined above and this prompt
 
 ---
 
-You are planning a feature using task orchestration. Do not implement anything. Investigate the codebase, then write the plan files directly to disk. You are a leaf subagent and cannot spawn further subagents; parallelize investigation with parallel tool calls (batch reads and greps in one step), not sub-agent dispatch.
+You are planning a feature using task orchestration. Do not implement anything. Investigate the codebase, then write the plan files directly to disk. You are a leaf subagent: do not dispatch subagents; parallelize investigation with parallel tool calls (batch reads and greps in one step), not sub-agent dispatch.
 
 **Plan directory:** `{PLAN_DIR}`
 
