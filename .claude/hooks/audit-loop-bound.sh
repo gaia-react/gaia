@@ -160,7 +160,9 @@
 #
 # AUDITED ROOT. The dispatch prompt's `Working root:` path wins over the
 # payload cwd (the orchestrator audits a linked worktree from the main
-# checkout, and a unit brief carries one), and the state file is resolved to
+# checkout, and a unit brief carries one); a named path that does not resolve
+# to a checkout denies rather than falling back to cwd, which would charge a
+# tree other than the one the member audits. The state file is resolved to
 # the main checkout through gaia_resolve_main_root in main-root-lib.sh, so a
 # worktree and the main checkout name one record.
 #
@@ -465,10 +467,15 @@ run_decision() {
     finish_deny 'BLOCKED: the audit loop checkpoint cannot load .claude/hooks/lib/cross-repo-refusal.sh, so it cannot tell whether this pull request comes from a fork. Fail-loud, not fail-open: restore the library and retry.'
   fi
 
-  if ! root=$(gaia_loop_resolve_audited_root "$payload"); then
-    # shellcheck disable=SC2016 # the backticks are literal text in the message
-    finish_deny 'BLOCKED: the audit loop checkpoint cannot resolve the audited checkout (no usable Working root: path in the dispatch prompt and no absolute cwd). Name the checkout in the prompt as `Working root: <absolute path>` and retry.'
-  fi
+  rc=0
+  root=$(gaia_loop_resolve_audited_root "$payload") || rc=$?
+  case "$rc" in
+    0) ;;
+    2) finish_deny "BLOCKED: the dispatch prompt names Working root: $root, which is not a git checkout, so the audit loop checkpoint will not charge this round to another tree. Name the checkout under audit as \`Working root: <absolute path>, ...\` and retry." ;;
+    *)
+      # shellcheck disable=SC2016 # the backticks are literal text in the message
+      finish_deny 'BLOCKED: the audit loop checkpoint cannot resolve the audited checkout (no usable Working root: path in the dispatch prompt and no absolute cwd). Name the checkout in the prompt as `Working root: <absolute path>` and retry.' ;;
+  esac
   rc=0
   B=$(gaia_loop_key "$root") || rc=$?
   case "$rc" in

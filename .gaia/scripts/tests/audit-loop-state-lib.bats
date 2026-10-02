@@ -174,16 +174,40 @@ EOF
   [ "$output" = "$ALF_ROOT" ]
 }
 
-@test "audited root: a prompt path that is no work tree with a relative cwd is rc 1" {
+@test "audited root: a prose-punctuated or quoted Working root resolves to the named checkout" {
+  local wt payload p
+  alf_branch feat/x
+  alf_git worktree add -q -b feat/wt "$BATS_TEST_TMPDIR/wt" main
+  wt="$(cd "$BATS_TEST_TMPDIR/wt" && pwd -P)"
+  for p in "Working root: $wt. Audit the PR." "Working root: $wt; base main" "Working root: \`$wt\`." \
+    "Working root: \"$wt\"" "(Working root: $wt)"; do
+    payload="$(jq -n -c --arg c "$ALF_ROOT" --arg p "$p" '{cwd: $c, tool_input: {prompt: $p}}')"
+    run gaia_loop_resolve_audited_root "$payload"
+    [ "$status" -eq 0 ] || { printf 'prompt %s: status %s\n' "$p" "$status" >&2; return 1; }
+    [ "$output" = "$wt" ] || { printf 'prompt %s: output %s\n' "$p" "$output" >&2; return 1; }
+  done
+}
+
+@test "audited root: a named Working root that does not resolve is rc 2 naming it, never the cwd" {
   local payload
   mkdir -p "$BATS_TEST_TMPDIR/nogit"
-  payload="$(jq -n -c --arg p "Working root: $BATS_TEST_TMPDIR/nogit, the path" '{cwd: "rel/dir", tool_input: {prompt: $p}}')"
+  payload="$(jq -n -c --arg c "$ALF_ROOT" --arg p "Working root: $BATS_TEST_TMPDIR/nogit, the path" \
+    '{cwd: $c, tool_input: {prompt: $p}}')"
+  run gaia_loop_resolve_audited_root "$payload"
+  [ "$status" -eq 2 ]
+  [ "$output" = "$BATS_TEST_TMPDIR/nogit" ]
+  payload="$(jq -n -c --arg c "$ALF_ROOT" '{cwd: $c, tool_input: {prompt: "Working root: rel/path, x"}}')"
+  run gaia_loop_resolve_audited_root "$payload"
+  [ "$status" -eq 2 ]
+  [ "$output" = "rel/path" ]
+}
+
+@test "audited root: no Working root and a relative cwd is rc 1" {
+  local payload
+  payload="$(jq -n -c '{cwd: "rel/dir", tool_input: {prompt: "no root named here"}}')"
   run gaia_loop_resolve_audited_root "$payload"
   [ "$status" -eq 1 ]
   [ -z "$output" ]
-  payload="$(jq -n -c '{cwd: "rel/dir", tool_input: {prompt: "Working root: rel/path, x"}}')"
-  run gaia_loop_resolve_audited_root "$payload"
-  [ "$status" -eq 1 ]
 }
 
 @test "parse line: the grammar table, with PATH empty" {

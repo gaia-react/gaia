@@ -587,6 +587,31 @@ next_allowed() {
   [ ! -e "$ALF_ROOT/.gaia/local/audit-loop/main.json" ]
 }
 
+@test "a prose Working root ending in a period records under the named worktree, not the cwd" {
+  local p
+  alf_git checkout -q main
+  linked_worktree wt3 feat/prose
+  ALF_STATE="$ALF_ROOT/.gaia/local/audit-loop/feat/prose.json"
+  wt_commit 1
+  p="$(jq -n -c --arg m "$M" --arg s "$SID" --arg root "$WT" --arg cwd "$ALF_ROOT" \
+    '{session_id: $s, hook_event_name: "PreToolUse", tool_name: "Agent", cwd: $cwd,
+      tool_input: {subagent_type: $m, prompt: ("Working root: " + $root + ". Audit the PR.")}}')"
+  run_payload "$p"
+  assert_allowed
+  [ -f "$ALF_STATE" ]
+  [ "$(nrounds)" -eq 1 ]
+  [ ! -e "$ALF_ROOT/.gaia/local/audit-loop/main.json" ]
+}
+
+@test "a named Working root that does not resolve is denied naming it and charges no round to the cwd" {
+  local missing="$BATS_TEST_TMPDIR/no-such-checkout"
+  alf_git checkout -q main
+  run_payload "$(payload "$M" "$SID" "$missing" "$ALF_ROOT")"
+  assert_denied
+  reason | grep -qF -- "Working root: $missing"
+  [ ! -e "$ALF_ROOT/.gaia/local/audit-loop/main.json" ]
+}
+
 @test "colliding branch names a/b-c and a-b/c keep separate files" {
   alf_branch a/b-c
   new_tree

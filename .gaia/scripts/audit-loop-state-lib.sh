@@ -214,8 +214,13 @@ gaia_loop_unlock() {
 # The dispatch prompt's `Working root: <path>` wins over the payload cwd,
 # because an orchestrator may audit a linked worktree from the main checkout
 # and the audited checkout, not the session's cwd, owns the branch.
+# A prose spelling (`Working root: /abs/path.`, a backticked or quoted path)
+# is retried with its wrapping quotes and trailing sentence punctuation
+# stripped. A named root that still does not resolve is rc 2 with the token
+# on stdout, never a fallback to cwd: the member audits the named checkout,
+# so charging the cwd's branch would gate a different tree than the audited one.
 gaia_loop_resolve_audited_root() {
-  local payload="${1-}" prompt cwd rest p top
+  local payload="${1-}" prompt cwd rest p bare top
   command -v jq >/dev/null 2>&1 || return 6
   prompt="$(printf '%s' "$payload" | jq -r '.tool_input.prompt // "" | strings' 2>/dev/null)" || prompt=""
   cwd="$(printf '%s' "$payload" | jq -r '.cwd // "" | strings' 2>/dev/null)" || cwd=""
@@ -223,14 +228,31 @@ gaia_loop_resolve_audited_root() {
     *"Working root: "*)
       rest="${prompt#*Working root: }"
       p="${rest%%[,[:space:]]*}"
-      case "$p" in
-        /*)
-          if top="$(gaia_resolve_tree_root "$p")" && [ -n "$top" ]; then
-            printf '%s\n' "$top"
-            return 0
-          fi
-          ;;
-      esac
+      bare="$p"
+      while :; do
+        case "$bare" in
+          [\`\"\'\(]*) bare="${bare#?}" ;;
+          *) break ;;
+        esac
+      done
+      while :; do
+        case "$bare" in
+          ?*[.\;:\)\`\"\']) bare="${bare%?}" ;;
+          *) break ;;
+        esac
+      done
+      for p in "$p" "$bare"; do
+        case "$p" in
+          /*)
+            if top="$(gaia_resolve_tree_root "$p")" && [ -n "$top" ]; then
+              printf '%s\n' "$top"
+              return 0
+            fi
+            ;;
+        esac
+      done
+      printf '%s\n' "$bare"
+      return 2
       ;;
   esac
   case "$cwd" in
