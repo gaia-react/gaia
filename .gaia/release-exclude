@@ -225,6 +225,8 @@ wiki/decisions/Dependabot Security Updates.md
 .gaia/local
 .gaia-backup
 .gaia-merge
+# Gate V scratch seed layer for SPEC-093: a throwaway defect seed that lives under a shipping path, so it is withheld by name.
+.gaia/scripts/scratch-seed-2.sh
 
 # --- 8. Per-machine plan / handoff / agent state ---
 # Generated at runtime under the user's clone; not template content.
