@@ -16,3 +16,5 @@ seed2_count() { local c; c=$(wc -l < $1); [ "$c" -gt 0 ] && echo "$c"; }
 
 # Joins its arguments with a comma; no arguments print an empty string.
 seed2_join() { local out=""; for a in $@; do out="$out,$a"; done; echo "$out"; }
+
+# End of seed layer 2.
