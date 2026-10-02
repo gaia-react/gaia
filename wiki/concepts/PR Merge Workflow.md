@@ -658,7 +658,17 @@ A bypass pull request needs none of this: the merge hook, or the CLI wiki flow t
 ### 4. Merge
 
 <!-- gaia:maintainer-only:start -->
-First clear the **CHANGELOG gate** below: decide whether this PR needs an `## [Unreleased]` entry and land it on the branch before merging.
+Two steps come first, in this order:
+
+1. Clear the **CHANGELOG gate** below: decide whether this PR needs an `## [Unreleased]` entry and land it on the branch before merging.
+2. **Read the advisory checks on the final head.** A check whose name ends in `(advisory)` is not a required context, so neither the merge hook nor a `--auto` merge waits on it, and no other step on this page reads one. A red one can still be reporting a real defect, the shipped-surface leak check above all, whose leak otherwise surfaces only when the release's bundle-time scrub fails. After the last push, list every advisory check that has not passed:
+
+   ```bash
+   gh pr checks <N> --json name,bucket \
+     --jq '.[] | select(.name | endswith("(advisory)")) | select(.bucket != "pass" and .bucket != "skipping") | "\(.bucket)\t\(.name)"'
+   ```
+
+   Empty output clears the step. A `pending` row has not concluded yet: wait for it rather than merging past it. For every other row, either fix what the check flagged on this branch (a new commit moves HEAD, so the markers and `GAIA-Audit` must cover it again), or record it in the PR body under `## Red advisory checks at merge`, one line per check naming it and why it stays red. Keep the checks advisory: `.github/workflows/cli-tests.yml` states the leak check must not become a required context.
 <!-- gaia:maintainer-only:end -->
 
 Once **every dispatched member's** marker exists for HEAD and the `GAIA-Audit` status is posted (see [[#Posting the status last]]), run `gh pr merge`. The hook short-circuits to allow the call.
