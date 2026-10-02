@@ -16,10 +16,10 @@
 # .gaia/scripts/gh-artifact-lib.sh's gaia_gh_artifact_path), so those callers
 # call gaia_key_slug directly rather than reimplementing the encoding.
 #
-# gaia_audit_key <base_sha> [<dir>]
+# gaia_audit_key <base_sha> [<directory>]
 #   Prints "<base-sha>.<branch-slug>" and returns 0 when both halves resolve.
-#   <dir> defaults to "."; the branch is THAT tree's own
-#   (`git -C "$dir" branch --show-current`, or GAIA_AUDIT_KEY_BRANCH when that
+#   <directory> defaults to "."; the branch is THAT tree's own
+#   (`git -C "$directory" branch --show-current`, or GAIA_AUDIT_KEY_BRANCH when that
 #   is empty because HEAD is detached), deliberately per-tree and never
 #   main-anchored -- the whole point is to discriminate trees, not resolve a
 #   root. Prints nothing and returns 1 when <base_sha> is empty, the branch
@@ -28,7 +28,7 @@
 #   empty base extends verbatim to the whole key, so a caller skips its write
 #   rather than inventing a fallback key. A half-built key is never printed.
 #
-# gaia_branch_slug [<dir>]
+# gaia_branch_slug [<directory>]
 #   Prints the BRANCH HALF of that key on its own, for a reader that selects on
 #   the branch and deliberately not on the base: `post-findings-block.sh` reads
 #   every base this branch has written under, because the base half advances one
@@ -77,33 +77,33 @@
 # each keeping its own copy.
 gaia_key_slug() {
   local LC_ALL=C
-  local text="$1" out="" i len c
-  len="${#text}"
-  for ((i = 0; i < len; i++)); do
+  local text="$1" encoded_slug="" i text_length character
+  text_length="${#text}"
+  for ((i = 0; i < text_length; i++)); do
     # `${text:$i:1}`, not bash's bare `${text:i:1}`: zsh reads a bare
     # identifier after the colon as a history modifier, aborts the function
     # mid-walk, and returns non-zero having printed a partial slug. Both forms
     # are identical in bash, so the `$` costs nothing and removes the only
     # shell-specific construct in the walk. Callers must still check this
     # function's status -- the `$`-form is not a substitute for that.
-    c="${text:$i:1}"
-    case "$c" in
-      [A-Za-z0-9_-]) out+="$c" ;;
-      *) out+="$(printf '%%%02X' "'$c")" ;;
+    character="${text:$i:1}"
+    case "$character" in
+      [A-Za-z0-9_-]) encoded_slug+="$character" ;;
+      *) encoded_slug+="$(printf '%%%02X' "'$character")" ;;
     esac
   done
-  printf '%s' "$out"
+  printf '%s' "$encoded_slug"
 }
 
-# gaia_branch_slug [<dir>]
+# gaia_branch_slug [<directory>]
 # The branch half of gaia_audit_key's key, on its own. Prints nothing and
 # returns 1 when the branch is undeterminable (detached HEAD, not a git
 # repository) or the slug itself fails, so a caller declines rather than
 # inventing a fallback -- the same fail-open rule the whole key takes.
 gaia_branch_slug() {
-  local dir="${1:-.}"
+  local directory="${1:-.}"
   local branch
-  branch="$(git -C "$dir" branch --show-current 2>/dev/null)" || branch=""
+  branch="$(git -C "$directory" branch --show-current 2>/dev/null)" || branch=""
   # A detached HEAD has no branch to read, and that is the ordinary state of a
   # CI checkout pinned to a sha (`actions/checkout` with `ref: <sha>`), where
   # the key is still needed. GAIA_AUDIT_KEY_BRANCH lets such a caller supply the
@@ -123,7 +123,7 @@ gaia_branch_slug() {
 }
 
 gaia_audit_key() {
-  local base_sha="${1:-}" dir="${2:-.}"
+  local base_sha="${1:-}" directory="${2:-.}"
   [[ -n "$base_sha" ]] || return 1
   local slug
   # The slug is captured and checked rather than interpolated into the printf,
@@ -134,7 +134,7 @@ gaia_audit_key() {
   # failing slug are the second and third ways this key is undeterminable, both
   # folded into gaia_branch_slug above, and both take the same fail-open exit
   # as an empty base.
-  slug="$(gaia_branch_slug "$dir")" || return 1
+  slug="$(gaia_branch_slug "$directory")" || return 1
   printf '%s.%s\n' "$base_sha" "$slug"
   return 0
 }

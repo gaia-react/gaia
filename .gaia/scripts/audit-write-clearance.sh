@@ -144,30 +144,30 @@ usage: audit-write-clearance.sh --root <path> --member <name>
 EOF
 }
 
-err() {
+error() {
   printf 'audit-write-clearance: %s\n' "$1" >&2
 }
 
 # Resolve the digest engine and the version normalizer from THIS file's own
 # on-disk location, never cwd, never $ROOT: .gaia/scripts -> ../../.claude/hooks/lib.
-_write_clearance_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.claude/hooks/lib" 2>/dev/null && pwd)" || true
-if [ -n "${_write_clearance_lib_dir:-}" ] && [ -f "$_write_clearance_lib_dir/audit-digest.sh" ]; then
+_write_clearance_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.claude/hooks/lib" 2>/dev/null && pwd)" || true
+if [ -n "${_write_clearance_library_directory:-}" ] && [ -f "$_write_clearance_library_directory/audit-digest.sh" ]; then
   # shellcheck source=/dev/null
-  . "$_write_clearance_lib_dir/audit-digest.sh"
+  . "$_write_clearance_library_directory/audit-digest.sh"
 fi
-if [ -n "${_write_clearance_lib_dir:-}" ] && [ -f "$_write_clearance_lib_dir/gaia-version.sh" ]; then
+if [ -n "${_write_clearance_library_directory:-}" ] && [ -f "$_write_clearance_library_directory/gaia-version.sh" ]; then
   # shellcheck source=/dev/null
-  . "$_write_clearance_lib_dir/gaia-version.sh"
+  . "$_write_clearance_library_directory/gaia-version.sh"
 fi
 
 # The ledger's key rule, shared with every other worktree-partitioned artifact.
 # Sourced defensively, exactly as the digest engine above is: the marker write
 # is this script's job and the ledger is a rider, so a missing key lib must
 # degrade to "no ledger", never to a failed or noisy clearance write.
-_write_clearance_script_dir="$(dirname "${BASH_SOURCE[0]}")"
-if [ -f "${_write_clearance_script_dir}/audit-key-lib.sh" ]; then
+_write_clearance_script_directory="$(dirname "${BASH_SOURCE[0]}")"
+if [ -f "${_write_clearance_script_directory}/audit-key-lib.sh" ]; then
   # shellcheck source=/dev/null
-  . "${_write_clearance_script_dir}/audit-key-lib.sh"
+  . "${_write_clearance_script_directory}/audit-key-lib.sh"
 fi
 
 ROOT=""
@@ -218,7 +218,7 @@ while [ "$#" -gt 0 ]; do
       exit 0
       ;;
     *)
-      err "unrecognized argument: $1"
+      error "unrecognized argument: $1"
       usage
       exit 2
       ;;
@@ -226,7 +226,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ -z "$ROOT" ]; then
-  err "--root is required"
+  error "--root is required"
   usage
   exit 2
 fi
@@ -240,30 +240,30 @@ fi
 # header), so a symlinked checkout path passes a comparison it should pass.
 _root_toplevel="$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null || true)"
 if [ -z "$_root_toplevel" ]; then
-  err "--root '$ROOT' is not a git checkout"
+  error "--root '$ROOT' is not a git checkout"
   exit 2
 fi
-_root_phys="$(cd "$ROOT" 2>/dev/null && pwd -P)" || _root_phys=""
-_toplevel_phys="$(cd "$_root_toplevel" 2>/dev/null && pwd -P)" || _toplevel_phys=""
-if [ -z "$_root_phys" ] || [ "$_root_phys" != "$_toplevel_phys" ]; then
-  err "--root '$ROOT' is not a checkout root (its checkout root is '$_root_toplevel')"
+_root_physical_path="$(cd "$ROOT" 2>/dev/null && pwd -P)" || _root_physical_path=""
+_toplevel_physical_path="$(cd "$_root_toplevel" 2>/dev/null && pwd -P)" || _toplevel_physical_path=""
+if [ -z "$_root_physical_path" ] || [ "$_root_physical_path" != "$_toplevel_physical_path" ]; then
+  error "--root '$ROOT' is not a checkout root (its checkout root is '$_root_toplevel')"
   exit 2
 fi
 
 if [ -z "$MEMBER" ]; then
-  err "--member is required"
+  error "--member is required"
   usage
   exit 2
 fi
 case "$PROVENANCE" in
   earned|refused) ;;
   "")
-    err "--provenance is required"
+    error "--provenance is required"
     usage
     exit 2
     ;;
   *)
-    err "invalid --provenance '$PROVENANCE' (want earned|refused)"
+    error "invalid --provenance '$PROVENANCE' (want earned|refused)"
     usage
     exit 2
     ;;
@@ -274,14 +274,14 @@ esac
 # reason (supersession must be auditable, so it must carry a stated reason).
 if [ "$SUPERSEDE_SEEN" -eq 1 ]; then
   if [ "$PROVENANCE" != "earned" ]; then
-    err "--supersede-refusal is valid only with --provenance earned"
+    error "--supersede-refusal is valid only with --provenance earned"
     usage
     exit 2
   fi
   _supersede_trimmed="${SUPERSEDE_REASON#"${SUPERSEDE_REASON%%[![:space:]]*}"}"
   _supersede_trimmed="${_supersede_trimmed%"${_supersede_trimmed##*[![:space:]]}"}"
   if [ -z "$_supersede_trimmed" ]; then
-    err "--supersede-refusal requires a non-empty reason"
+    error "--supersede-refusal requires a non-empty reason"
     usage
     exit 2
   fi
@@ -301,7 +301,7 @@ if [ "$SCOPE_DIGEST_SEEN" -eq 1 ]; then
   fi
 fi
 if [ "$_scope_digest_malformed" -eq 1 ]; then
-  err "--scope-digest must be a 64-hex digest"
+  error "--scope-digest must be a 64-hex digest"
   usage
   exit 2
 fi
@@ -309,12 +309,12 @@ fi
 # The member's content digest is the marker's validity key. Fail closed: never
 # write a marker keyed to an empty or partial digest.
 command -v audit_member_digest >/dev/null 2>&1 || {
-  err "cannot load the digest engine (.claude/hooks/lib/audit-digest.sh)"
+  error "cannot load the digest engine (.claude/hooks/lib/audit-digest.sh)"
   exit 2
 }
 digest="$(audit_member_digest "$ROOT" "$MEMBER" 2>/dev/null || true)"
 if [ -z "$digest" ]; then
-  err "cannot derive a content digest for member '$MEMBER' at --root '$ROOT'"
+  error "cannot derive a content digest for member '$MEMBER' at --root '$ROOT'"
   exit 2
 fi
 
@@ -372,13 +372,13 @@ _release_forfeited_capture() {
   scope_file="${ROOT}/.gaia/local/audit/${key}.${MEMBER}.scope.json"
   [ -f "$scope_file" ] || return 1
   rm -f "$scope_file" || {
-    err "warning: could not release the forfeited capture at '$scope_file'; the next round will refuse identically until it is removed"
+    error "warning: could not release the forfeited capture at '$scope_file'; the next round will refuse identically until it is removed"
     return 2
   }
   return 0
 }
 
-audit_dir="${ROOT}/.gaia/local/audit"
+audit_directory="${ROOT}/.gaia/local/audit"
 
 # Filename family for this member/provenance: keyed to the member's content
 # digest, not the tree.
@@ -387,8 +387,8 @@ if [ "$MEMBER" = "$DEFAULT_MEMBER" ]; then
 else
   infix=".${MEMBER}"
 fi
-earned_path="${audit_dir}/${digest}${infix}.ok"
-refused_path="${audit_dir}/${digest}${infix}.refused"
+earned_path="${audit_directory}/${digest}${infix}.ok"
+refused_path="${audit_directory}/${digest}${infix}.refused"
 
 # Whether a --supersede-refusal write actually has something to supersede.
 # The flag alone is not enough: the gate below and do_supersede further down
@@ -423,7 +423,7 @@ fi
 # cannot be taken silently.
 if [ "$PROVENANCE" = "earned" ] && [ "$supersede_retires_refusal" -ne 1 ]; then
   if [ "$SCOPE_DIGEST_SEEN" -ne 1 ]; then
-    err "scope digest not supplied"
+    error "scope digest not supplied"
     # A member dispatched into a worktree loads the agent definition the
     # session resolved from the MAIN checkout, not from the worktree under
     # review. On a branch that edits that member's own definition the prompt it
@@ -434,17 +434,17 @@ if [ "$PROVENANCE" = "earned" ] && [ "$supersede_retires_refusal" -ne 1 ]; then
     # mistake: it retries identically, and if every dispatched member is in
     # that state the AND-aggregator holds the merge gate shut with nothing left
     # that can clear it. Naming the cause is what makes the stall self-clearing.
-    err "If you were dispatched into a worktree whose branch edits your own agent definition, the definition you are running was resolved from the main checkout and predates that edit. Re-read your own definition from --root ('$ROOT'), follow it, and retry."
+    error "If you were dispatched into a worktree whose branch edits your own agent definition, the definition you are running was resolved from the main checkout and predates that edit. Re-read your own definition from --root ('$ROOT'), follow it, and retry."
     exit 2
   elif [ "$SCOPE_DIGEST" != "$digest" ]; then
-    err "review scope superseded: scope=$SCOPE_DIGEST write=$digest"
+    error "review scope superseded: scope=$SCOPE_DIGEST write=$digest"
     _release_forfeited_capture
     case "$?" in
-      0) err "this round is forfeited and its capture is released; the next dispatch captures fresh." ;;
-      1) err "this round is forfeited; no stored capture was found to release, so nothing carries into the next dispatch." ;;
-      *) err "this round is forfeited, but the stored capture could not be located or removed (no --base, an unresolvable audit key, the key library not being loaded, or the removal itself failed). If one is present, the next dispatch inherits it and refuses identically; clear it with audit-scope-digest.sh --capture --recapture." ;;
+      0) error "this round is forfeited and its capture is released; the next dispatch captures fresh." ;;
+      1) error "this round is forfeited; no stored capture was found to release, so nothing carries into the next dispatch." ;;
+      *) error "this round is forfeited, but the stored capture could not be located or removed (no --base, an unresolvable audit key, the key library not being loaded, or the removal itself failed). If one is present, the next dispatch inherits it and refuses identically; clear it with audit-scope-digest.sh --capture --recapture." ;;
     esac
-    err "Do NOT re-run the scope fence to obtain a new capture in this round: you reviewed the superseded content, and a marker earned on a fresh capture would attest content you never read."
+    error "Do NOT re-run the scope fence to obtain a new capture in this round: you reviewed the superseded content, and a marker earned on a fresh capture would attest content you never read."
     exit 2
   fi
 fi
@@ -452,7 +452,7 @@ fi
 # jq builds the body. Fail closed here rather than at the write, so a missing
 # jq never leaves a half-provisioned audit dir behind.
 command -v jq >/dev/null 2>&1 || {
-  err "jq is required to write a clearance marker"
+  error "jq is required to write a clearance marker"
   exit 2
 }
 
@@ -460,7 +460,7 @@ command -v jq >/dev/null 2>&1 || {
 # Plain data fields on the body now, not the filename key.
 tree="$(git -C "$ROOT" rev-parse "HEAD^{tree}" 2>/dev/null || true)"
 if [ -z "$tree" ]; then
-  err "cannot resolve HEAD tree for --root '$ROOT'"
+  error "cannot resolve HEAD tree for --root '$ROOT'"
   exit 2
 fi
 sha="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)"
@@ -473,7 +473,7 @@ if command -v gaia_read_version >/dev/null 2>&1; then
 else
   # Degrade exactly as an absent VERSION file does rather than failing the
   # write: the marker's validity key is the digest above, not this field.
-  err "version normalizer unavailable (.claude/hooks/lib/gaia-version.sh); recording an empty version"
+  error "version normalizer unavailable (.claude/hooks/lib/gaia-version.sh); recording an empty version"
 fi
 
 # Every member files a FINDINGS sidecar, its report of record, so this flag
@@ -499,17 +499,17 @@ if [ "$PROVENANCE" = "earned" ] && [ "$supersede_retires_refusal" -eq 1 ]; then
   do_supersede=true
 fi
 
-mkdir -p "$audit_dir" || {
-  err "cannot create audit directory '$audit_dir'"
+mkdir -p "$audit_directory" || {
+  error "cannot create audit directory '$audit_directory'"
   exit 2
 }
 
 # Atomic write: temp file in the SAME directory as the target, then mv. A torn
 # marker would clear the existence-testing merge gate while failing the
 # reader's stricter body check, so the publish must be a single rename.
-tmp="$(mktemp "${audit_dir}/.audit-write-clearance.XXXXXX" 2>/dev/null || true)"
-if [ -z "$tmp" ]; then
-  err "cannot create temp file in '$audit_dir'"
+temporary_file="$(mktemp "${audit_directory}/.audit-write-clearance.XXXXXX" 2>/dev/null || true)"
+if [ -z "$temporary_file" ]; then
+  error "cannot create temp file in '$audit_directory'"
   exit 2
 fi
 
@@ -536,15 +536,15 @@ jq -cn \
       then {supersedes: {provenance: "refused", reason: $supersede_reason,
                          superseded_at: $audited_at}}
       else {} end)' \
-  > "$tmp" || {
-  rm -f "$tmp"
-  err "cannot build the marker body"
+  > "$temporary_file" || {
+  rm -f "$temporary_file"
+  error "cannot build the marker body"
   exit 2
 }
 
-mv -f "$tmp" "$target" || {
-  rm -f "$tmp"
-  err "cannot publish marker to '$target'"
+mv -f "$temporary_file" "$target" || {
+  rm -f "$temporary_file"
+  error "cannot publish marker to '$target'"
   exit 2
 }
 
@@ -559,7 +559,7 @@ mv -f "$tmp" "$target" || {
 # subprocess, not as a Claude Bash tool call, so the destructive-command guard
 # does not intercept it.
 if [ "$do_supersede" = "true" ]; then
-  rm -f "$refused_path" || err "warning: superseded but could not remove '$refused_path'"
+  rm -f "$refused_path" || error "warning: superseded but could not remove '$refused_path'"
 fi
 
 # -----------------------------------------------------------------------------
@@ -583,13 +583,13 @@ if [ -n "$BASE" ]; then
     AUDIT_KEY="$(gaia_audit_key "$BASE" "$ROOT" 2>/dev/null || true)"
   fi
   if [ -z "$AUDIT_KEY" ]; then
-    err "warning: --base given but the audit key does not resolve; no ledger written"
+    error "warning: --base given but the audit key does not resolve; no ledger written"
   else
-    ledger="${audit_dir}/${AUDIT_KEY}.rerun.json"
+    ledger="${audit_directory}/${AUDIT_KEY}.rerun.json"
     # Deliberately NOT named `sidecar`: that name already holds the marker body's
     # boolean flag built above, and reusing it here would shadow the flag for any
     # future edit that moves a body build below this block.
-    findings_sidecar="${audit_dir}/${AUDIT_KEY}.${MEMBER}.findings.json"
+    findings_sidecar="${audit_directory}/${AUDIT_KEY}.${MEMBER}.findings.json"
     branch="$(git -C "$ROOT" branch --show-current 2>/dev/null || true)"
 
     # A prior ledger counts only when it is for THIS branch and base; anything
@@ -597,8 +597,8 @@ if [ -n "$BASE" ]; then
     # own staleness rule, applied at the writer so a stale file never briefs).
     prior='null'
     if [ -f "$ledger" ]; then
-      prior="$(jq -c --arg b "$branch" --arg base "$BASE" \
-        'if (.schema == 1) and (.branch == $b) and (.base_sha == $base) then . else null end' \
+      prior="$(jq -c --arg branch "$branch" --arg base "$BASE" \
+        'if (.schema == 1) and (.branch == $branch) and (.base_sha == $base) then . else null end' \
         "$ledger" 2>/dev/null || echo null)"
       [ -n "$prior" ] || prior='null'
     fi
@@ -606,7 +606,7 @@ if [ -n "$BASE" ]; then
     ledger_body=""
     if [ "$PROVENANCE" = "refused" ]; then
       if [ ! -f "$findings_sidecar" ]; then
-        err "warning: refusal recorded with no findings sidecar at '$findings_sidecar'; the ledger cannot brief the repair"
+        error "warning: refusal recorded with no findings sidecar at '$findings_sidecar'; the ledger cannot brief the repair"
       else
         # remaining[] for THIS member is rebuilt from its sidecar every round:
         # the sidecar is the current report, so a finding it no longer names is
@@ -619,7 +619,7 @@ if [ -n "$BASE" ]; then
         # was nothing to write".
         if ! ledger_body="$(jq -n \
           --argjson prior "$prior" \
-          --slurpfile sc "$findings_sidecar" \
+          --slurpfile sidecar_report "$findings_sidecar" \
           --arg member "$MEMBER" \
           --arg base "$BASE" \
           --arg branch "$branch" \
@@ -629,24 +629,24 @@ if [ -n "$BASE" ]; then
           def ledger_severity:
             {"error":"critical","warning":"important","suggestion":"suggestion"}[.] // "important";
           ((($prior.round // 0) + 1)                            as $round
-          | (($prior.remaining // []))                          as $prev
-          | ([$prev[] | select(.member != $member)])            as $others
-          | (($sc[0].findings // []))                           as $found
+          | (($prior.remaining // []))                          as $previous_entries
+          | ([$previous_entries[] | select(.member != $member)])            as $others
+          | (($sidecar_report[0].findings // []))                           as $found
           | ([ $found[]
-              | . as $f
-              | ((first($prev[] | select(.member == $member
-                                        and .finding_class == $f.finding_class
-                                        and .path == $f.path
-                                        and .line == $f.line)) // null) as $was
+              | . as $finding
+              | ((first($previous_entries[] | select(.member == $member
+                                        and .finding_class == $finding.finding_class
+                                        and .path == $finding.path
+                                        and .line == $finding.line)) // null) as $was
                 | {member: $member,
-                   finding_class: $f.finding_class,
-                   severity: ($f.severity | ledger_severity),
-                   path: $f.path,
-                   line: $f.line,
-                   title: $f.title,
-                   failure_mode: $f.failure_mode,
-                   verified_by: $f.verified_by,
-                   suggested_fix: $f.suggested_fix,
+                   finding_class: $finding.finding_class,
+                   severity: ($finding.severity | ledger_severity),
+                   path: $finding.path,
+                   line: $finding.line,
+                   title: $finding.title,
+                   failure_mode: $finding.failure_mode,
+                   verified_by: $finding.verified_by,
+                   suggested_fix: $finding.suggested_fix,
                    first_seen_round: ($was.first_seen_round // $round),
                    escalated: false})
             ])                                                  as $mine
@@ -661,7 +661,7 @@ if [ -n "$BASE" ]; then
                                 | select(.member != $member)],
              notes: ($prior.notes // "")})
           ' 2>&1)"; then
-          err "warning: cannot build the carry-forward ledger: $ledger_body"
+          error "warning: cannot build the carry-forward ledger: $ledger_body"
           ledger_body=""
         fi
       fi
@@ -685,18 +685,18 @@ if [ -n "$BASE" ]; then
           --arg head "$sha" \
           --arg now "$audited_at" \
           '
-          ((($prior.remaining // []))                            as $prev
-          | ([$prev[] | select(.member == $member)])             as $closed
+          ((($prior.remaining // []))                            as $previous_entries
+          | ([$previous_entries[] | select(.member == $member)])             as $closed
           | $prior
             + {updated_at: $now,
                head_sha: $head,
-               remaining: [$prev[] | select(.member != $member)],
+               remaining: [$previous_entries[] | select(.member != $member)],
                fixed_last_round:
                  ([($prior.fixed_last_round // [])[] | select(.member != $member)]
                   + [$closed[] | {member, finding_class, path, line, title,
                                   fixed_in_sha: $head}])})
           ' 2>&1)"; then
-          err "warning: cannot update the carry-forward ledger: $ledger_body"
+          error "warning: cannot update the carry-forward ledger: $ledger_body"
           ledger_body=""
         fi
       fi
@@ -708,17 +708,17 @@ if [ -n "$BASE" ]; then
       # another member's clean pass.
       if [ "$PROVENANCE" = "earned" ] \
          && [ "$(printf '%s' "$ledger_body" | jq -r '(.remaining | length) == 0' 2>/dev/null)" = "true" ]; then
-        rm -f "$ledger" || err "warning: could not remove the spent ledger '$ledger'"
+        rm -f "$ledger" || error "warning: could not remove the spent ledger '$ledger'"
       else
-        ledger_tmp="$(mktemp "${audit_dir}/.audit-rerun-ledger.XXXXXX" 2>/dev/null || true)"
-        if [ -z "$ledger_tmp" ]; then
-          err "warning: cannot create a temp file for the ledger in '$audit_dir'"
-        elif ! printf '%s\n' "$ledger_body" > "$ledger_tmp"; then
-          rm -f "$ledger_tmp"
-          err "warning: cannot stage the ledger"
-        elif ! mv -f "$ledger_tmp" "$ledger"; then
-          rm -f "$ledger_tmp"
-          err "warning: cannot publish the ledger to '$ledger'"
+        ledger_temporary_file="$(mktemp "${audit_directory}/.audit-rerun-ledger.XXXXXX" 2>/dev/null || true)"
+        if [ -z "$ledger_temporary_file" ]; then
+          error "warning: cannot create a temp file for the ledger in '$audit_directory'"
+        elif ! printf '%s\n' "$ledger_body" > "$ledger_temporary_file"; then
+          rm -f "$ledger_temporary_file"
+          error "warning: cannot stage the ledger"
+        elif ! mv -f "$ledger_temporary_file" "$ledger"; then
+          rm -f "$ledger_temporary_file"
+          error "warning: cannot publish the ledger to '$ledger'"
         fi
       fi
     fi
@@ -749,7 +749,7 @@ fi
 # validated above, rather than on $ROOT: the subshell `cd` re-bases every
 # relative path inside it, so a caller passing a relative --root from a
 # subdirectory would resolve the hook one way for the `[ -x ]` test and another
-# way for the run. $target has the same exposure, since audit_dir is built from
+# way for the run. $target has the same exposure, since audit_directory is built from
 # $ROOT, so the marker is re-derived here against the absolute root. Both paths
 # name the same files either way: the validation above proves $ROOT and
 # $_root_toplevel are one physical directory.
@@ -771,7 +771,7 @@ if [ "$PROVENANCE" = "refused" ]; then
     # to prevent arrives with no diagnostic at all: the refusal lands, no
     # status is posted, and nothing says why. The direction is still safe, the
     # local gate denies on the artifact alone.
-    err "note: compensating GAIA-Audit failure status skipped (CI environment); the refusal is on disk and the local merge gate still denies"
+    error "note: compensating GAIA-Audit failure status skipped (CI environment); the refusal is on disk and the local merge gate still denies"
   else
     status_hook="${_root_toplevel}/.claude/hooks/post-audit-status.sh"
     status_marker="${_root_toplevel}/.gaia/local/audit/${target##*/}"

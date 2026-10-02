@@ -30,12 +30,12 @@ setup() {
   # An off-main branch, so the key's branch half is a real discriminator and the
   # slug's percent-encoding is exercised rather than trivially a no-op.
   git -C "$ROOT" checkout --quiet -b "feat/x"
-  AUDIT_DIR="$ROOT/.gaia/local/audit"
+  AUDIT_DIRECTORY="$ROOT/.gaia/local/audit"
   MEMBER="code-audit-maintainer-shell"
   # gaia_key_slug percent-encodes every byte outside [A-Za-z0-9_-], so "/" is
-  # "%2F"; the expected path is spelled out rather than derived, so a change to
+  # "%2F"; the expected path is spelled written_path rather than derived, so a change to
   # the encoding fails here instead of silently agreeing with itself.
-  EXPECTED="$AUDIT_DIR/${BASE}.feat%2Fx.${MEMBER}.findings.json"
+  EXPECTED="$AUDIT_DIRECTORY/${BASE}.feat%2Fx.${MEMBER}.findings.json"
 }
 
 # A complete, valid finding. Callers override one field at a time to prove each
@@ -97,8 +97,8 @@ write() {
 # The happy path: keying, shape, atomicity
 
 @test "writes the sidecar at the gaia_audit_key path (base sha + branch slug + member)" {
-  out="$(write "[$(complete_finding)]")"
-  [ "$out" = "$EXPECTED" ]
+  written_path="$(write "[$(complete_finding)]")"
+  [ "$written_path" = "$EXPECTED" ]
   [ -f "$EXPECTED" ]
   [ "$(jq -r .schema "$EXPECTED")" = "1" ]
   [ "$(jq -r .member "$EXPECTED")" = "$MEMBER" ]
@@ -119,8 +119,8 @@ write() {
 }
 
 @test "an empty findings array is valid and meaningful (the member ran, found nothing)" {
-  out="$(write '[]')"
-  [ "$out" = "$EXPECTED" ]
+  written_path="$(write '[]')"
+  [ "$written_path" = "$EXPECTED" ]
   [ "$(jq -c '.findings' "$EXPECTED")" = "[]" ]
 }
 
@@ -144,8 +144,8 @@ write() {
 
 @test "--findings accepts a file as well as stdin" {
   printf '[%s]' "$(complete_finding)" > "$BATS_TEST_TMPDIR/f.json"
-  out="$(bash "$WRITER" --root "$ROOT" --member "$MEMBER" --base "$BASE" --findings "$BATS_TEST_TMPDIR/f.json")"
-  [ "$out" = "$EXPECTED" ]
+  written_path="$(bash "$WRITER" --root "$ROOT" --member "$MEMBER" --base "$BASE" --findings "$BATS_TEST_TMPDIR/f.json")"
+  [ "$written_path" = "$EXPECTED" ]
   [ "$(jq '.findings | length' "$EXPECTED")" = "1" ]
 }
 
@@ -153,7 +153,7 @@ write() {
   write "[$(complete_finding)]" >/dev/null
   write '[]' >/dev/null
   [ "$(jq -c '.findings' "$EXPECTED")" = "[]" ]
-  leftover="$(find "$AUDIT_DIR" -name '.audit-write-findings.*' 2>/dev/null)"
+  leftover="$(find "$AUDIT_DIRECTORY" -name '.audit-write-findings.*' 2>/dev/null)"
   [ -z "$leftover" ]
 }
 
@@ -253,9 +253,9 @@ write() {
 }
 
 @test "accepts each of the three valid severities" {
-  for sev in error warning suggestion; do
-    write "[$(complete_finding | jq -c --arg s "$sev" '.severity = $s')]" >/dev/null
-    [ "$(jq -r '.findings[0].severity' "$EXPECTED")" = "$sev" ]
+  for severity in error warning suggestion; do
+    write "[$(complete_finding | jq -c --arg severity "$severity" '.severity = $severity')]" >/dev/null
+    [ "$(jq -r '.findings[0].severity' "$EXPECTED")" = "$severity" ]
   done
 }
 
@@ -300,7 +300,7 @@ write() {
   [ "$status" -eq 2 ]
   # Validation runs before any filesystem work, so a rejected run does not even
   # provision the audit directory.
-  [ -d "$AUDIT_DIR" ] && return 1
+  [ -d "$AUDIT_DIRECTORY" ] && return 1
   [ ! -f "$EXPECTED" ]
 }
 
@@ -336,7 +336,7 @@ STUB
   run write '[]'
   [ "$status" -eq 0 ]
   [ "$output" = "findings-sidecar: declined: audit key unresolved" ]
-  [ -d "$AUDIT_DIR" ] && return 1
+  [ -d "$AUDIT_DIRECTORY" ] && return 1
   [ ! -f "$EXPECTED" ]
 }
 
@@ -353,19 +353,19 @@ STUB
   other="$BATS_TEST_TMPDIR/other"
   mkdir -p "$other"
   git -C "$other" init --quiet --initial-branch=elsewhere
-  out="$( cd "$other" && printf '[]' | bash "$WRITER" --root "$ROOT" --member "$MEMBER" --base "$BASE" --findings - )"
-  [ "$out" = "$EXPECTED" ]
-  grep -qF "elsewhere" <<<"$out" && return 1
+  written_path="$( cd "$other" && printf '[]' | bash "$WRITER" --root "$ROOT" --member "$MEMBER" --base "$BASE" --findings - )"
+  [ "$written_path" = "$EXPECTED" ]
+  grep -qF "elsewhere" <<<"$written_path" && return 1
   [ -f "$EXPECTED" ]
 }
 
 @test "two branches sharing a base sha never collide on one path" {
   write '[]' >/dev/null
   git -C "$ROOT" checkout --quiet -b "feat/y"
-  other_out="$(write '[]')"
-  [ "$other_out" != "$EXPECTED" ]
+  other_written_path="$(write '[]')"
+  [ "$other_written_path" != "$EXPECTED" ]
   [ -f "$EXPECTED" ]
-  [ -f "$other_out" ]
+  [ -f "$other_written_path" ]
 }
 
 # Repo hygiene
@@ -390,61 +390,61 @@ STUB
 # --anchor-tree). The pairing predicate is on flag PRESENCE, never on value
 # emptiness (contract D / task-findings-record acceptance 3).
 
-write_rb() {
+write_with_review_base() {
   printf '%s' "$1" | bash "$WRITER" --root "$ROOT" --member "$MEMBER" --base "$BASE" --findings - "${@:2}"
 }
 
 @test "review_base: with none of the three flags, no review_base key at all" {
-  write_rb "[$(complete_finding)]" >/dev/null
+  write_with_review_base "[$(complete_finding)]" >/dev/null
   [ "$(jq -e 'has("review_base")' "$EXPECTED")" = "false" ]
 }
 
 @test "review_base: both flags present and non-empty writes the additive key verbatim" {
-  write_rb "[$(complete_finding)]" --review-base deadbeef --base-reason member-clearance >/dev/null
+  write_with_review_base "[$(complete_finding)]" --review-base deadbeef --base-reason member-clearance >/dev/null
   [ "$(jq -r '.review_base.sha' "$EXPECTED")" = "deadbeef" ]
   [ "$(jq -r '.review_base.reason' "$EXPECTED")" = "member-clearance" ]
   [ "$(jq -e '.review_base | has("anchor_tree")' "$EXPECTED")" = "false" ]
 }
 
 @test "review_base: --anchor-tree present and non-empty carries its value" {
-  write_rb "[$(complete_finding)]" --review-base deadbeef --base-reason member-clearance --anchor-tree treesha >/dev/null
+  write_with_review_base "[$(complete_finding)]" --review-base deadbeef --base-reason member-clearance --anchor-tree treesha >/dev/null
   [ "$(jq -r '.review_base.anchor_tree' "$EXPECTED")" = "treesha" ]
 }
 
 @test "review_base: findings array is byte-identical with or without the flags" {
-  write_rb "[$(complete_finding)]" >/dev/null
+  write_with_review_base "[$(complete_finding)]" >/dev/null
   plain="$(jq -c '.findings' "$EXPECTED")"
-  write_rb "[$(complete_finding)]" --review-base deadbeef --base-reason member-clearance --anchor-tree treesha >/dev/null
+  write_with_review_base "[$(complete_finding)]" --review-base deadbeef --base-reason member-clearance --anchor-tree treesha >/dev/null
   withflags="$(jq -c '.findings' "$EXPECTED")"
   [ "$plain" = "$withflags" ]
 }
 
 @test "review_base: exactly one of --review-base/--base-reason present exits 2, names the missing flag, writes nothing" {
-  run write_rb "[$(complete_finding)]" --review-base deadbeef
+  run write_with_review_base "[$(complete_finding)]" --review-base deadbeef
   [ "$status" -eq 2 ]
   grep -qF -- "--base-reason is required" <<<"$output"
   [ ! -f "$EXPECTED" ]
 
-  run write_rb "[$(complete_finding)]" --base-reason member-clearance
+  run write_with_review_base "[$(complete_finding)]" --base-reason member-clearance
   [ "$status" -eq 2 ]
   grep -qF -- "--review-base is required" <<<"$output"
   [ ! -f "$EXPECTED" ]
 }
 
 @test "review_base: both present but one carrying an EMPTY value exits 0, writes the sidecar, omits review_base -- no error" {
-  run write_rb "[$(complete_finding)]" --review-base "" --base-reason member-clearance
+  run write_with_review_base "[$(complete_finding)]" --review-base "" --base-reason member-clearance
   [ "$status" -eq 0 ]
   [ -f "$EXPECTED" ]
   [ "$(jq -e 'has("review_base")' "$EXPECTED")" = "false" ]
 
-  run write_rb "[$(complete_finding)]" --review-base deadbeef --base-reason ""
+  run write_with_review_base "[$(complete_finding)]" --review-base deadbeef --base-reason ""
   [ "$status" -eq 0 ]
   [ -f "$EXPECTED" ]
   [ "$(jq -e 'has("review_base")' "$EXPECTED")" = "false" ]
 }
 
 @test "review_base: --anchor-tree present with an empty value omits anchor_tree but keeps review_base" {
-  write_rb "[$(complete_finding)]" --review-base deadbeef --base-reason member-clearance --anchor-tree "" >/dev/null
+  write_with_review_base "[$(complete_finding)]" --review-base deadbeef --base-reason member-clearance --anchor-tree "" >/dev/null
   [ "$(jq -e 'has("review_base")' "$EXPECTED")" = "true" ]
   [ "$(jq -e '.review_base | has("anchor_tree")' "$EXPECTED")" = "false" ]
 }

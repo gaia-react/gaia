@@ -24,31 +24,31 @@ setup_file() {
 
 setup() {
   # Isolate the rates state and the price feed (token-rates-hermetic.bats).
-  export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state"
+  export GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
   export GAIA_RATES_FEED_DISABLE=1
   SCRIPTS="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   USAGE="$SCRIPTS/usage.sh"
   FLUSH="$SCRIPTS/usage-flush.sh"
   RATES="$BATS_TEST_DIRNAME/fixtures/usage/resolve/rates-a.json"
-  TMP="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
-  MAIN="$TMP/main"
-  WT="$TMP/wt"
-  PROJ="$TMP/projects"
+  TEMPORARY_DIRECTORY="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
+  MAIN="$TEMPORARY_DIRECTORY/main"
+  WORKTREE="$TEMPORARY_DIRECTORY/wt"
+  PROJECTS_DIRECTORY="$TEMPORARY_DIRECTORY/projects"
   TEL="$MAIN/.gaia/local/telemetry"
-  export GAIA_RATES_FEED_DISABLE=1 GAIA_RATES_STATE_DIR="$TMP/rates-state"
+  export GAIA_RATES_FEED_DISABLE=1 GAIA_RATES_STATE_DIRECTORY="$TEMPORARY_DIRECTORY/rates-state"
   unset CLAUDE_CODE_SESSION_ID GAIA_TALLY_PROJECTS_ROOT GITHUB_ACTIONS
-  mkdir -p "$MAIN" "$MAIN/.gaia/local/research" "$PROJ/$(enc "$MAIN")"
+  mkdir -p "$MAIN" "$MAIN/.gaia/local/research" "$PROJECTS_DIRECTORY/$(encode_project_path "$MAIN")"
   git -C "$MAIN" init -q -b main
   git -C "$MAIN" -c user.email=t@example.com -c user.name=T -c commit.gpgsign=false \
     commit -q --allow-empty -m init
-  git -C "$MAIN" worktree add -q -b side "$WT"
+  git -C "$MAIN" worktree add -q -b side "$WORKTREE"
   register_hooks "$MAIN"
   # Every call below runs from outside any repo, so a missing --main-root
   # fails instead of resolving the real checkout.
   cd "$BATS_TEST_TMPDIR" || return 1
 }
 
-enc() { printf '%s' "$1" | LC_ALL=C sed 's/[^A-Za-z0-9]/-/g'; }
+encode_project_path() { printf '%s' "$1" | LC_ALL=C sed 's/[^A-Za-z0-9]/-/g'; }
 
 register_hooks() {
   mkdir -p "$1/.claude"
@@ -60,68 +60,68 @@ register_hooks() {
 JSON
 }
 
-# transcript <sid> <input-a> <output-a> <input-b> <output-b> <write-path>:
+# transcript <session_id> <input-a> <output-a> <input-b> <output-b> <write-path>:
 # one user line, then two assistant messages; the second carries the Write.
 # Prints the transcript path.
 transcript() {
-  local sid="$1" f
-  f="$PROJ/$(enc "$MAIN")/$sid.jsonl"
+  local session_id="$1" transcript_file
+  transcript_file="$PROJECTS_DIRECTORY/$(encode_project_path "$MAIN")/$session_id.jsonl"
   {
-    jq -nc --arg sid "$sid" --arg cwd "$MAIN" \
-      '{type:"user",uuid:"u0",timestamp:"2026-10-01T00:00:00.000Z",cwd:$cwd,sessionId:$sid,gitBranch:"main",message:{role:"user",content:"start"}}'
-    jq -nc --arg sid "$sid" --arg cwd "$MAIN" --argjson i "$2" --argjson o "$3" \
-      '{type:"assistant",uuid:"u-m1",timestamp:"2026-10-01T00:00:01.000Z",cwd:$cwd,sessionId:$sid,gitBranch:"main",message:{id:"m1",model:"claude-opus-5-5",role:"assistant",usage:{input_tokens:$i,cache_creation_input_tokens:0,cache_read_input_tokens:0,output_tokens:$o},content:[{type:"text",text:"ok"}]}}'
-    jq -nc --arg sid "$sid" --arg cwd "$MAIN" --argjson i "$4" --argjson o "$5" --arg p "$6" \
-      '{type:"assistant",uuid:"u-m2",timestamp:"2026-10-01T00:00:02.000Z",cwd:$cwd,sessionId:$sid,gitBranch:"main",message:{id:"m2",model:"claude-opus-5-5",role:"assistant",usage:{input_tokens:$i,cache_creation_input_tokens:0,cache_read_input_tokens:0,output_tokens:$o},content:[{type:"tool_use",id:"tu",name:"Write",input:{file_path:$p,content:"x"}}]}}'
-    jq -nc --arg sid "$sid" --arg cwd "$MAIN" \
-      '{type:"user",uuid:"u1",timestamp:"2026-10-01T00:00:03.000Z",cwd:$cwd,sessionId:$sid,gitBranch:"main",message:{role:"user",content:[{type:"tool_result",tool_use_id:"tu",content:"done"}]}}'
-  } >"$f"
-  touch -t 202001010000 "$f"
-  printf '%s' "$f"
+    jq -nc --arg session_id "$session_id" --arg cwd "$MAIN" \
+      '{type:"user",uuid:"u0",timestamp:"2026-10-01T00:00:00.000Z",cwd:$cwd,sessionId:$session_id,gitBranch:"main",message:{role:"user",content:"start"}}'
+    jq -nc --arg session_id "$session_id" --arg cwd "$MAIN" --argjson input_tokens "$2" --argjson output_tokens "$3" \
+      '{type:"assistant",uuid:"u-m1",timestamp:"2026-10-01T00:00:01.000Z",cwd:$cwd,sessionId:$session_id,gitBranch:"main",message:{id:"m1",model:"claude-opus-5-5",role:"assistant",usage:{input_tokens:$input_tokens,cache_creation_input_tokens:0,cache_read_input_tokens:0,output_tokens:$output_tokens},content:[{type:"text",text:"ok"}]}}'
+    jq -nc --arg session_id "$session_id" --arg cwd "$MAIN" --argjson input_tokens "$4" --argjson output_tokens "$5" --arg write_path "$6" \
+      '{type:"assistant",uuid:"u-m2",timestamp:"2026-10-01T00:00:02.000Z",cwd:$cwd,sessionId:$session_id,gitBranch:"main",message:{id:"m2",model:"claude-opus-5-5",role:"assistant",usage:{input_tokens:$input_tokens,cache_creation_input_tokens:0,cache_read_input_tokens:0,output_tokens:$output_tokens},content:[{type:"tool_use",id:"tu",name:"Write",input:{file_path:$write_path,content:"x"}}]}}'
+    jq -nc --arg session_id "$session_id" --arg cwd "$MAIN" \
+      '{type:"user",uuid:"u1",timestamp:"2026-10-01T00:00:03.000Z",cwd:$cwd,sessionId:$session_id,gitBranch:"main",message:{role:"user",content:[{type:"tool_result",tool_use_id:"tu",content:"done"}]}}'
+  } >"$transcript_file"
+  touch -t 202001010000 "$transcript_file"
+  printf '%s' "$transcript_file"
 }
 
 flush() {
   bash "$FLUSH" --session "$1" --transcript "$2" --finished-main \
-    --projects-root "$PROJ" --main-root "$MAIN" --telemetry-dir "$TEL"
+    --projects-root "$PROJECTS_DIRECTORY" --main-root "$MAIN" --telemetry-dir "$TEL"
 }
 
-# make_wt_session <write-path>: sess-wt, 330 tokens.
-make_wt_session() { flush sess-wt "$(transcript sess-wt 100 10 200 20 "$1")"; }
+# make_worktree_session <write-path>: sess-wt, 330 tokens.
+make_worktree_session() { flush sess-wt "$(transcript sess-wt 100 10 200 20 "$1")"; }
 # make_main_session <write-path>: sess-main, 3300 tokens.
 make_main_session() { flush sess-main "$(transcript sess-main 1000 100 2000 200 "$1")"; }
 
 init() {
-  bash "$USAGE" initiative "$1" --main-root "$MAIN" --rate-table "$RATES" --projects-root "$PROJ"
+  bash "$USAGE" initiative "$1" --main-root "$MAIN" --rate-table "$RATES" --projects-root "$PROJECTS_DIRECTORY"
 }
 
 has_line() { grep -qxF -- "$1" <<<"$output" || { printf 'missing line: [%s]\nin:\n%s\n' "$1" "$output" >&2; return 1; }; }
 
-X="research/topic-x-2026-10-01/README.md"
+RESEARCH_WRITE_PATH="research/topic-x-2026-10-01/README.md"
 
 @test "a main-path Write binds its session; a worktree-path Write binds nothing" {
-  make_wt_session "$WT/.gaia/local/$X"
-  make_main_session "$MAIN/.gaia/local/$X"
+  make_worktree_session "$WORKTREE/.gaia/local/$RESEARCH_WRITE_PATH"
+  make_main_session "$MAIN/.gaia/local/$RESEARCH_WRITE_PATH"
   run init research:topic-x-2026-10-01
   [ "$status" -eq 0 ]
   has_line "  total (distinct segments): tokens 3,300  est. \$0.01"
 }
 
 @test "positive control: only the worktree-path session is flushed and it reports no spend" {
-  make_wt_session "$WT/.gaia/local/$X"
+  make_worktree_session "$WORKTREE/.gaia/local/$RESEARCH_WRITE_PATH"
   run init research:topic-x-2026-10-01
   [ "$status" -eq 0 ]
   has_line "  total (distinct segments): tokens 0  est. \$0.00"
 }
 
 @test "positive control: the same session with a main-path Write reports its tokens" {
-  make_wt_session "$MAIN/.gaia/local/$X"
+  make_worktree_session "$MAIN/.gaia/local/$RESEARCH_WRITE_PATH"
   run init research:topic-x-2026-10-01
   [ "$status" -eq 0 ]
   has_line "  total (distinct segments): tokens 330  est. \$0.00"
 }
 
 @test "declare binds a session's spend to a research initiative without a Write" {
-  make_wt_session "$WT/.gaia/local/$X"
+  make_worktree_session "$WORKTREE/.gaia/local/$RESEARCH_WRITE_PATH"
   run bash "$USAGE" declare research:topic-y-2026-10-01 --session sess-wt \
     --main-root "$MAIN" --telemetry-dir "$TEL"
   [ "$status" -eq 0 ]

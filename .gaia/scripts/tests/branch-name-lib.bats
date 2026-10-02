@@ -25,10 +25,10 @@
 bats_require_minimum_version 1.5.0
 
 setup() {
-  LIB="$(cd "$BATS_TEST_DIRNAME/.." && pwd)/branch-name-lib.sh"
+  LIBRARY="$(cd "$BATS_TEST_DIRNAME/.." && pwd)/branch-name-lib.sh"
   REPO_ROOT="$(git -C "$BATS_TEST_DIRNAME" rev-parse --show-toplevel)"
   # shellcheck disable=SC1090
-  source "$LIB"
+  source "$LIBRARY"
 }
 
 # expect_classify <branch> <mode unit>
@@ -43,8 +43,8 @@ expect_classify() {
 
 # worktree_spelling <name>: the branch EnterWorktree({name}) puts a worktree on.
 worktree_spelling() {
-  local n="$1"
-  printf 'worktree-%s' "${n//\//+}"
+  local name="$1"
+  printf 'worktree-%s' "${name//\//+}"
 }
 
 # ========== 1. source-time purity ==========
@@ -52,7 +52,7 @@ worktree_spelling() {
 @test "sourcing has no side effects: succeeds under set -u with PATH empty outside a repository" {
   scratch="$BATS_TEST_TMPDIR/no-side-effects"
   mkdir -p "$scratch"
-  run bash -c "cd '$scratch' && PATH='' && set -u && source '$LIB' && echo sourced-ok"
+  run bash -c "cd '$scratch' && PATH='' && set -u && source '$LIBRARY' && echo sourced-ok"
   [ "$status" -eq 0 ]
   [ "$output" = "sourced-ok" ]
   [ -z "$(ls -A "$scratch")" ]
@@ -96,15 +96,15 @@ worktree_spelling() {
 }
 
 @test "table: mode never leaves the closed vocabulary, and classify never fails" {
-  local b mode
-  for b in "" "-" "/" "debt/" "plan/" "chore/" "a+b" "worktree-" "日本/語"; do
-    run gaia_branch_classify "$b"
+  local branch mode
+  for branch in "" "-" "/" "debt/" "plan/" "chore/" "a+b" "worktree-" "日本/語"; do
+    run gaia_branch_classify "$branch"
     [ "$status" -eq 0 ]
     mode="${output%% *}"
     case "$mode" in
       drain | plan | maintenance | adhoc) ;;
       *)
-        echo "branch '$b': mode '$mode' is outside the vocabulary" >&2
+        echo "branch '$branch': mode '$mode' is outside the vocabulary" >&2
         return 1
         ;;
     esac
@@ -114,9 +114,9 @@ worktree_spelling() {
 # ========== 4. retired spellings ==========
 
 @test "retired spellings classify as adhoc: GAIA no longer mints them" {
-  local b
-  for b in spec-005-cards plan-012 chore-deps harden/marker harden-marker audit-roster; do
-    expect_classify "$b" "adhoc unknown"
+  local branch
+  for branch in spec-005-cards plan-012 chore-deps harden/marker harden-marker audit-roster; do
+    expect_classify "$branch" "adhoc unknown"
   done
 }
 
@@ -168,12 +168,12 @@ worktree_spelling() {
 }
 
 @test "name: every minted name is a valid EnterWorktree name" {
-  local n
-  for n in "$(gaia_branch_name debt 1 --slug "a b")" "$(gaia_branch_name debt 3 1 2)" \
+  local minted_name
+  for minted_name in "$(gaia_branch_name debt 1 --slug "a b")" "$(gaia_branch_name debt 3 1 2)" \
     "$(gaia_branch_name plan spec-9 --slug z)" "$(gaia_branch_name chore t)" \
     "$(gaia_branch_name release 1.0.0)"; do
-    [ "${#n}" -le 64 ]
-    grep -qE '^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$' <<<"$n"
+    [ "${#minted_name}" -le 64 ]
+    grep -qE '^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$' <<<"$minted_name"
   done
 }
 
@@ -274,12 +274,12 @@ corrupt_packed_refs() {
 }
 
 @test "the removed-prefix fall-through test can fail: a lib that still has the old arm classifies it maintenance" {
-  local prefix scratch_lib
+  local prefix scratch_library
   prefix="$(printf 'gaia%sci' -)"
-  scratch_lib="$BATS_TEST_TMPDIR/branch-name-lib-old-arm.sh"
-  sed "s#wiki-sync/\*)#wiki-sync/* | $prefix/*)#" "$LIB" > "$scratch_lib"
-  grep -qF -- "$prefix/*)" "$scratch_lib"
-  run bash -c ". '$scratch_lib' && gaia_branch_classify '$prefix/t/x'"
+  scratch_library="$BATS_TEST_TMPDIR/branch-name-lib-old-arm.sh"
+  sed "s#wiki-sync/\*)#wiki-sync/* | $prefix/*)#" "$LIBRARY" > "$scratch_library"
+  grep -qF -- "$prefix/*)" "$scratch_library"
+  run bash -c ". '$scratch_library' && gaia_branch_classify '$prefix/t/x'"
   [ "$status" -eq 0 ]
   [ "$output" = "maintenance t/x" ]
 }
@@ -336,7 +336,7 @@ literal_hits() {
 
 @test "portability: the readers agree under zsh, where zsh exists" {
   command -v zsh >/dev/null 2>&1 || skip "zsh not available"
-  run zsh -c "source '$LIB'; gaia_branch_classify worktree-debt+41-42-batch; gaia_branch_members worktree-debt+41-42-batch; gaia_branch_spec_number plan/spec-007-x"
+  run zsh -c "source '$LIBRARY'; gaia_branch_classify worktree-debt+41-42-batch; gaia_branch_members worktree-debt+41-42-batch; gaia_branch_spec_number plan/spec-007-x"
   [ "$status" -eq 0 ]
   [ "$(printf '%s\n' "$output" | tr '\n' ' ')" = "drain 41-42 41 42 7 " ]
 }

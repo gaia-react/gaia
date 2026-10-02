@@ -107,7 +107,7 @@ A readout never shows a silently lower figure. Each of these markers appears whe
 | `lower bound: unpriced model(s) <names>` | The rate table had no window for a model |
 | `readout timed out after <n>s; rerun: ...` | The merge-time render hit its cap; the roll-up still prints |
 
-The merge hook bounds itself. `GAIA_USAGE_MERGE_CAP_SECS` caps the flush and the `gh` read, and `GAIA_USAGE_RENDER_CAP_SECS` caps the render; the defaults and their measurements are in the header of `.gaia/scripts/usage-merge.sh`. `GAIA_USAGE_HOOKS_DISABLE=1` turns the merge hook's usage work off, which the suites that run the real hooks use.
+The merge hook bounds itself. `GAIA_USAGE_MERGE_CAP_SECONDS` caps the flush and the `gh` read, and `GAIA_USAGE_RENDER_CAP_SECONDS` caps the render; the defaults and their measurements are in the header of `.gaia/scripts/usage-merge.sh`. `GAIA_USAGE_HOOKS_DISABLE=1` turns the merge hook's usage work off, which the suites that run the real hooks use.
 
 **Honest limits.** A merge that does not go through a Bash tool call (the CLI through `execFile`, an auto-merge that lands later, the web UI) prints no block. Its spend is still captured; `usage.sh link --merge` records the boundary afterward, and the marker above names the exact command. The per-PR window opens at the previous recorded merge of the same branch, so a missing boundary widens the next window rather than losing spend.
 

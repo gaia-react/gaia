@@ -41,7 +41,7 @@ type with_ledger_lock >/dev/null 2>&1 || {
   echo "ledger-update: the shared ledger mutex is unusable; refuse to write (an unserialized write can tear the ledger)" >&2
   exit 4
 }
-# No probe of its own: the gaia_resolve_specs_dir call below already refuses
+# No probe of its own: the gaia_resolve_specs_directory call below already refuses
 # when the function is absent, which is the degrade this load owes.
 # shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
 set +e; [ -f "${_library_directory}/../../../../.gaia/scripts/ledger-path-lib.sh" ] && . "${_library_directory}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null; set -e
@@ -52,7 +52,7 @@ set +e; [ -f "${_library_directory}/../../../../.gaia/scripts/ledger-path-lib.sh
 # own root, and using it would fork the ledger. Refuse when main is
 # unresolvable, mapped to this file's own ledger-missing code: a ledger this
 # script cannot locate is indistinguishable from one that is missing.
-if ! specs_directory="$(gaia_resolve_specs_dir "$repo_root" 2>/dev/null)" || [ -z "$specs_directory" ]; then
+if ! specs_directory="$(gaia_resolve_specs_directory "$repo_root" 2>/dev/null)" || [ -z "$specs_directory" ]; then
   echo "ledger-update: cannot resolve the main checkout for '$repo_root'; refuse to write (would fork the ledger across worktrees)" >&2
   exit 4
 fi

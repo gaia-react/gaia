@@ -6,12 +6,12 @@
 # Also sources token-rates-local-lib.sh and token-rates-feed-lib.sh from its own
 # directory, silently when either is absent (a partial update).
 
-_gaia_pricing_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_gaia_pricing_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
-source "$_gaia_pricing_dir/token-rates-local-lib.sh" 2>/dev/null || true
+source "$_gaia_pricing_directory/token-rates-local-lib.sh" 2>/dev/null || true
 # shellcheck source=/dev/null
-source "$_gaia_pricing_dir/token-rates-feed-lib.sh" 2>/dev/null || true
-unset _gaia_pricing_dir
+source "$_gaia_pricing_directory/token-rates-feed-lib.sh" 2>/dev/null || true
+unset _gaia_pricing_directory
 
 # shellcheck disable=SC2034 # consumed by sourcing scripts (token-rollup.sh, token-tally.sh)
 GAIA_PRICING_JQ_DEFS="$(cat <<'JQDEFS'
@@ -30,25 +30,25 @@ GAIA_PRICING_JQ_DEFS="$(cat <<'JQDEFS'
           { dollars: 0, missing_anchor: true, unpriced: [] }
         else
           ( $entries | map(
-              . as $e
-              | rate_window($e.key; $date) as $w
-              | { model: $e.key, w: $w, b: $e.value }
+              . as $model_entry
+              | rate_window($model_entry.key; $date) as $window
+              | { model: $model_entry.key, window: $window, token_buckets: $model_entry.value }
             )
           ) as $priced
           | {
               dollars: ( $priced | map(
-                  if .w == null then 0
+                  if .window == null then 0
                   else
-                    ( (.b.fresh_input // 0) * .w.input
-                    + (.b.cache_write_5m // 0) * .w.input * $rates.cache_multipliers.write_5m
-                    + (.b.cache_write_1h // 0) * .w.input * $rates.cache_multipliers.write_1h
-                    + (.b.cache_read // 0) * .w.input * (.w.cache_read_multiplier // $rates.cache_multipliers.read)
-                    + (.b.output // 0) * .w.output
+                    ( (.token_buckets.fresh_input // 0) * .window.input
+                    + (.token_buckets.cache_write_5m // 0) * .window.input * $rates.cache_multipliers.write_5m
+                    + (.token_buckets.cache_write_1h // 0) * .window.input * $rates.cache_multipliers.write_1h
+                    + (.token_buckets.cache_read // 0) * .window.input * (.window.cache_read_multiplier // $rates.cache_multipliers.read)
+                    + (.token_buckets.output // 0) * .window.output
                     ) / 1000000
                   end
                 ) | add // 0 ),
               missing_anchor: false,
-              unpriced: ( $priced | map(select(.w == null) | .model) )
+              unpriced: ( $priced | map(select(.window == null) | .model) )
             }
         end;
 JQDEFS
@@ -81,21 +81,21 @@ gaia_load_rate_table() {
 }
 
 gaia_hash16() {
-  local out
-  if out="$(shasum -a 256 2>/dev/null)"; then :;
-  elif out="$(sha256sum 2>/dev/null)"; then :;
+  local digest
+  if digest="$(shasum -a 256 2>/dev/null)"; then :;
+  elif digest="$(sha256sum 2>/dev/null)"; then :;
   else return 1; fi
-  out="${out%% *}"
-  [[ -z "$out" ]] && return 1
-  printf '%s' "${out:0:16}"
+  digest="${digest%% *}"
+  [[ -z "$digest" ]] && return 1
+  printf '%s' "${digest:0:16}"
 }
 
 # The identity of the card a row was priced under, as `sha256:<16-hex>`: sha256
 # over the raw bytes of the table that priced, truncated to 16 hex characters.
 gaia_rate_table_id() {
-  local path="$1" h
+  local path="$1" table_hash
   [[ -f "$path" ]] || return 1
-  h="$(gaia_hash16 <"$path")" || return 1
-  [[ -z "$h" ]] && return 1
-  printf 'sha256:%s' "$h"
+  table_hash="$(gaia_hash16 <"$path")" || return 1
+  [[ -z "$table_hash" ]] && return 1
+  printf 'sha256:%s' "$table_hash"
 }

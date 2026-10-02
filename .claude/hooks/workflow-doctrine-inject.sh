@@ -255,11 +255,11 @@ IFS= read -r -d '' -n $((maximum_bytes + 1)) content <"$doctrine_document" || tr
 
 # Key, mirroring the ledger's key derivation: detached, an agent worktree
 # branch, and the default branch are session spend.
-type gaia_usage_valid_ref >/dev/null 2>&1 || {
+type gaia_usage_valid_reference >/dev/null 2>&1 || {
   # shellcheck source=/dev/null
   . "$scripts/usage-lib.sh" 2>/dev/null || exit 0
 }
-type gaia_usage_valid_ref >/dev/null 2>&1 || exit 0
+type gaia_usage_valid_reference >/dev/null 2>&1 || exit 0
 case "$raw" in
   "" | worktree-agent-*) key="session:$session_id" ;;
   *)
@@ -284,7 +284,7 @@ fi
 # cwd-relative interpreter call, to the cwd-relative-load lint.
 run=bash
 keyline=""
-if gaia_usage_valid_ref "$key"; then
+if gaia_usage_valid_reference "$key"; then
   case "$key" in
     branch:%*) ;;
     branch:*) keyline="Branch key: $key. Link its initiative once with: $run .gaia/scripts/usage.sh link $key research:<topic>-<date> (or issue:<n>)" ;;

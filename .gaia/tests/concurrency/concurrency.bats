@@ -218,7 +218,7 @@ setup_c4_base_sha_pair() {
   # Tree A's session opens PR #100 for its own branch...
   run run_in "$A" -- bash -c '
     . .gaia/scripts/gh-artifact-lib.sh
-    cache_dir="$(gaia_gh_artifact_cache_dir)"
+    cache_dir="$(gaia_gh_artifact_cache_directory)"
     path="$(gaia_gh_artifact_path "$cache_dir" treeA)"
     gaia_gh_artifact_write "$path" 100 owner/repo treeA sessA
   '
@@ -227,7 +227,7 @@ setup_c4_base_sha_pair() {
   # ...then tree B's session, concurrently, opens PR #200 for ITS branch.
   run run_in "$B" -- bash -c '
     . .gaia/scripts/gh-artifact-lib.sh
-    cache_dir="$(gaia_gh_artifact_cache_dir)"
+    cache_dir="$(gaia_gh_artifact_cache_directory)"
     path="$(gaia_gh_artifact_path "$cache_dir" treeB)"
     gaia_gh_artifact_write "$path" 200 owner/repo treeB sessB
   '
@@ -236,7 +236,7 @@ setup_c4_base_sha_pair() {
   # Tree A's own reader then asks for its own artifact back.
   run run_in "$A" -- bash -c '
     . .gaia/scripts/gh-artifact-lib.sh
-    cache_dir="$(gaia_gh_artifact_cache_dir)"
+    cache_dir="$(gaia_gh_artifact_cache_directory)"
     path="$(gaia_gh_artifact_path "$cache_dir" treeA)"
     gaia_gh_artifact_read "$path" sessA treeA
   '

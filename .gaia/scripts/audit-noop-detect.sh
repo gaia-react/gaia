@@ -221,14 +221,14 @@ FINDINGS_ROOT=""
 FINDINGS_SINCE=""
 REPORT_FIELD=""
 EXPECT_COUNT=""
-MIN_COUNT=""
+MINIMUM_COUNT=""
 # Presence is tracked separately from value. A caller interpolating an unset
 # variable passes an EMPTY count, and testing the value alone reads that as
 # "no count asked for", which silently drops the assertion and collapses the
 # predicate back to existence-plus-parses. That is the exact failure this flag
 # exists to close, so it must fail closed (a usage error) rather than open.
 EXPECT_COUNT_SEEN=""
-MIN_COUNT_SEEN=""
+MINIMUM_COUNT_SEEN=""
 # The resolve arm gates on presence for the same reason: a caller interpolating
 # an unset root passes an EMPTY one, and a value test would read that as "no
 # resolve arm asked for", silently falling back to the marker-only
@@ -275,8 +275,8 @@ while [ "$#" -gt 0 ]; do
       shift 2 2>/dev/null || shift
       ;;
     --min-count)
-      MIN_COUNT="${2:-}"
-      MIN_COUNT_SEEN=1
+      MINIMUM_COUNT="${2:-}"
+      MINIMUM_COUNT_SEEN=1
       shift 2 2>/dev/null || shift
       ;;
     *)
@@ -335,7 +335,7 @@ esac
 # argument's form only; whether a shape honors a count is the shape's own
 # business, matching how --marker and --findings are ignored outside the one
 # shape each serves.
-if [ -n "$EXPECT_COUNT_SEEN" ] && [ -n "$MIN_COUNT_SEEN" ]; then
+if [ -n "$EXPECT_COUNT_SEEN" ] && [ -n "$MINIMUM_COUNT_SEEN" ]; then
   echo "audit-noop-detect: --expect-count and --min-count are mutually exclusive" >&2
   usage
   exit 2
@@ -357,7 +357,7 @@ _acd_validate_count() {
   esac
 }
 _acd_validate_count "$EXPECT_COUNT_SEEN" "$EXPECT_COUNT" --expect-count
-_acd_validate_count "$MIN_COUNT_SEEN" "$MIN_COUNT" --min-count
+_acd_validate_count "$MINIMUM_COUNT_SEEN" "$MINIMUM_COUNT" --min-count
 
 # Resolve-arm validation, on the same terms and for the same reason: every way
 # of asking for it half-way fails closed here rather than degrading into a
@@ -415,24 +415,24 @@ case "$SHAPE" in
     # That is also why the count arrives as a string and is compared through
     # `tonumber`. The two count flags are mutually exclusive (enforced above),
     # so concatenating them yields whichever one was passed, or the empty
-    # string when neither was, and the empty case never reaches `--arg n`
+    # string when neither was, and the empty case never reaches `--arg count`
     # because no count test is built for it.
     #
-    # `try getpath` rather than `.[$f]`: indexing a non-object top level raises,
+    # `try getpath` rather than `.[$report_key]`: indexing a non-object top level raises,
     # and a raise leaves jq's exit status meaning something other than "the
     # predicate was false". Catching it to null collapses that case onto the
     # same false the wrong-key case already produces, so every not-a-report
     # shape classifies NO-OP through one path.
-    # shellcheck disable=SC2016  # $f is jq's --arg binding, not a shell expansion.
-    _acd_report='if $f == "" then . else (try getpath([$f]) catch null) end'
+    # shellcheck disable=SC2016  # $report_key is jq's --arg binding, not a shell expansion.
+    _acd_report='if $report_key == "" then . else (try getpath([$report_key]) catch null) end'
     if [ -n "$EXPECT_COUNT_SEEN" ]; then
-      _acd_count_test="and (($_acd_report | length) == (\$n | tonumber))"
-    elif [ -n "$MIN_COUNT_SEEN" ]; then
-      _acd_count_test="and (($_acd_report | length) >= (\$n | tonumber))"
+      _acd_count_test="and (($_acd_report | length) == (\$count | tonumber))"
+    elif [ -n "$MINIMUM_COUNT_SEEN" ]; then
+      _acd_count_test="and (($_acd_report | length) >= (\$count | tonumber))"
     else
       _acd_count_test=""
     fi
-    if jq -e --arg f "$REPORT_FIELD" --arg n "${EXPECT_COUNT}${MIN_COUNT}" \
+    if jq -e --arg report_key "$REPORT_FIELD" --arg count "${EXPECT_COUNT}${MINIMUM_COUNT}" \
          "($_acd_report | type == \"array\") $_acd_count_test" \
          "$TARGET_PATH" >/dev/null 2>&1; then
       real
@@ -491,20 +491,20 @@ case "$SHAPE" in
     # (.gaia/scripts -> ../../.claude/hooks/lib), never from cwd. Hoisted above
     # both marker arms below so the refusal check and the earned check read
     # markers through the same writer-shape reader.
-    _acd_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.claude/hooks/lib" 2>/dev/null && pwd)"
-    if [ -n "$_acd_lib" ] && [ -f "$_acd_lib/audit-clearance.sh" ]; then
+    _acd_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.claude/hooks/lib" 2>/dev/null && pwd)"
+    if [ -n "$_acd_library_directory" ] && [ -f "$_acd_library_directory/audit-clearance.sh" ]; then
       # shellcheck source=/dev/null
-      . "$_acd_lib/audit-clearance.sh"
+      . "$_acd_library_directory/audit-clearance.sh"
     fi
 
     # The key lib, for the resolve arm's branch half. Sourced from this
     # script's own directory for the same reason the clearance reader is: never
     # from cwd. Absent (a partial checkout), the resolve arm finds nothing and
     # the gate reads that as a lost report, which is the fail-closed direction.
-    _acd_keylib="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
-    if [ -n "$_acd_keylib" ] && [ -f "$_acd_keylib/audit-key-lib.sh" ]; then
+    _acd_key_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+    if [ -n "$_acd_key_library_directory" ] && [ -f "$_acd_key_library_directory/audit-key-lib.sh" ]; then
       # shellcheck source=/dev/null
-      . "$_acd_keylib/audit-key-lib.sh"
+      . "$_acd_key_library_directory/audit-key-lib.sh"
     fi
 
     # ---------- sidecar predicate, shared by both findings arms ----------
@@ -519,7 +519,7 @@ case "$SHAPE" in
       # jq absent: existence degrades to acceptance, matching the marker arm's
       # own jq-absent degradation below.
       command -v jq >/dev/null 2>&1 || return 0
-      jq -e --arg m "$2" '(.member == $m) and (.findings | type == "array")' \
+      jq -e --arg member "$2" '(.member == $member) and (.findings | type == "array")' \
         "$1" >/dev/null 2>&1
     }
 
@@ -547,19 +547,19 @@ case "$SHAPE" in
     # `.member` check below still binds identity inside the file.
     _acd_resolve_sidecar() {
       local root="$1" member="$2"
-      local slug newest="" f
+      local slug newest="" candidate_path
       command -v gaia_branch_slug >/dev/null 2>&1 || return 0
       slug="$(gaia_branch_slug "$root" 2>/dev/null)" || return 0
       [ -n "$slug" ] || return 0
-      for f in "$root"/.gaia/local/audit/*."$slug"."$member".findings.json; do
-        [ -f "$f" ] || continue
+      for candidate_path in "$root"/.gaia/local/audit/*."$slug"."$member".findings.json; do
+        [ -f "$candidate_path" ] || continue
         # The freshness test the pre-clear used to provide. Without it the
         # newest-wins walk would return a previous round's sidecar whenever
         # this round's best-effort write failed, and the gate would read it as
         # proof this round's report landed.
-        [ "$f" -nt "$FINDINGS_SINCE" ] || continue
-        if [ -z "$newest" ] || [ "$f" -nt "$newest" ]; then
-          newest="$f"
+        [ "$candidate_path" -nt "$FINDINGS_SINCE" ] || continue
+        if [ -z "$newest" ] || [ "$candidate_path" -nt "$newest" ]; then
+          newest="$candidate_path"
         fi
       done
       [ -n "$newest" ] && printf '%s\n' "$newest"

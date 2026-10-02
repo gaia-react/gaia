@@ -63,17 +63,17 @@ setup() {
   git -C "$ROOT" commit --quiet -m "widen the guard"
   HEAD_SHA="$(git -C "$ROOT" rev-parse HEAD)"
 
-  AUDIT_DIR="$ROOT/.gaia/local/audit"
+  AUDIT_DIRECTORY="$ROOT/.gaia/local/audit"
   # gaia_key_slug percent-encodes "/" as "%2F". Spelled out rather than derived,
   # so a change to the key rule fails here instead of agreeing with itself.
   TAG="${BASE}.fix%2Fguard-holes"
-  SIDECAR="$AUDIT_DIR/${TAG}.${MEMBER}.findings.json"
-  LEDGER="$AUDIT_DIR/${TAG}.rerun.json"
+  SIDECAR="$AUDIT_DIRECTORY/${TAG}.${MEMBER}.findings.json"
+  LEDGER="$AUDIT_DIRECTORY/${TAG}.rerun.json"
 
   DIGEST="$(bash -c '. "$1"; audit_member_digest "$2" "$3"' _ "$DIGEST_LIBRARY" "$ROOT" "$MEMBER")"
   [ -n "$DIGEST" ] || skip "cannot derive a member digest in the fixture"
-  MARKER="$AUDIT_DIR/${DIGEST}.${MEMBER}.ok"
-  REFUSAL="$AUDIT_DIR/${DIGEST}.${MEMBER}.refused"
+  MARKER="$AUDIT_DIRECTORY/${DIGEST}.${MEMBER}.ok"
+  REFUSAL="$AUDIT_DIRECTORY/${DIGEST}.${MEMBER}.refused"
 
   # What the orchestrator actually receives. A member dispatched as a background
   # teammate routes no report back, so the only thing that arrives is an idle
@@ -237,7 +237,7 @@ JSON
   # The stale refusal no longer answers for the new content: the classifier for
   # the fresh dispatch finds no refusal at its own key and falls through.
   run bash "$CLASSIFIER" --shape audit-team-member --path "$RETURN_TEXT" \
-    --marker "$AUDIT_DIR/${new_digest}.${MEMBER}.ok"
+    --marker "$AUDIT_DIRECTORY/${new_digest}.${MEMBER}.ok"
   [ "$status" -eq 1 ]
   [ "$output" = "noop" ]
 }

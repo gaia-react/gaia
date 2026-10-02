@@ -102,7 +102,7 @@ type with_ledger_lock >/dev/null 2>&1 || {
   echo "spec-allocator: the shared ledger mutex is unusable; refuse to allocate (would risk duplicate SPEC ids)" >&2
   exit 4
 }
-# No probe of its own: the gaia_resolve_specs_dir call below already refuses
+# No probe of its own: the gaia_resolve_specs_directory call below already refuses
 # when the function is absent, which is the degrade this load owes.
 # shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
 set +e; [ -f "${_library_directory}/../../../../.gaia/scripts/ledger-path-lib.sh" ] && . "${_library_directory}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null; set -e
@@ -132,7 +132,7 @@ require_git() {
 # (exit 4) only when the operand is a repo whose main checkout is unresolvable
 # -- the same stance this script already takes on a lock it cannot acquire.
 require_git
-if ! specs_directory="$(gaia_resolve_specs_dir "$repo_root" 2>/dev/null)" || [ -z "$specs_directory" ]; then
+if ! specs_directory="$(gaia_resolve_specs_directory "$repo_root" 2>/dev/null)" || [ -z "$specs_directory" ]; then
   echo "spec-allocator: cannot resolve the main checkout for '$repo_root'; refuse to allocate (would risk duplicate SPEC ids across worktrees)" >&2
   exit 4
 fi

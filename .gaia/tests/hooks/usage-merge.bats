@@ -44,7 +44,7 @@
 #   Growth is linear. The floor at 12 months is one parse of the ledger plus
 #   the per-segment epoch pass, since the branch derivations come from the
 #   memo beside the stores, so the render is also
-#   bounded in the hook by GAIA_USAGE_RENDER_CAP_SECS (default 10).
+#   bounded in the hook by GAIA_USAGE_RENDER_CAP_SECONDS (default 10).
 #   Memoized readout (Apple M2 Pro, macOS 27.0, bash 5.3.15 and /bin/bash
 #   3.2.57, jq 1.7.1, 2026-10-01; stores from .gaia/tests/usage-perf/
 #   gen-usage-stores.sh seed 89, timed with time-usage-readout.sh --runs 5
@@ -77,9 +77,9 @@ setup() {
   # shellcheck disable=SC2034  # read by build_repo in the helper
   SOURCE_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   TEMPORARY_DIRECTORY="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
-  export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state" GAIA_RATES_FEED_DISABLE=1
+  export GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state" GAIA_RATES_FEED_DISABLE=1
   unset CLAUDE_CODE_SESSION_ID GAIA_TALLY_PROJECTS_ROOT GITHUB_ACTIONS GAIA_USAGE_HOOKS_DISABLE
-  unset GAIA_LEDGER_LOCK_FORCE_FALLBACK GAIA_LEDGER_LOCK_TIMEOUT_SECONDS GAIA_USAGE_MERGE_CAP_SECS GAIA_USAGE_RENDER_CAP_SECS
+  unset GAIA_LEDGER_LOCK_FORCE_FALLBACK GAIA_LEDGER_LOCK_TIMEOUT_SECONDS GAIA_USAGE_MERGE_CAP_SECONDS GAIA_USAGE_RENDER_CAP_SECONDS
   export GAIA_LEDGER_LOCK_POLL_SECONDS=0.1
   export GIT_AUTHOR_NAME="GAIA Test" GIT_AUTHOR_EMAIL="gaia-test@example.com"
   export GIT_COMMITTER_NAME="GAIA Test" GIT_COMMITTER_EMAIL="gaia-test@example.com"
@@ -212,7 +212,7 @@ assert_gh_only_pr_view() {
 @test "guards-must-fail: a copy of usage-merge.sh that skips the MERGED check writes a row for an OPEN PR" {
   seed_uat007
   gh_view 105 105 fix/foo OPEN ""
-  sed 's/\[ "\$g_state" = MERGED \]/true/' "$REPO/.gaia/scripts/usage-merge.sh" >"$REPO/.gaia/scripts/usage-merge-mutant.sh"
+  sed 's/\[ "\$gh_state" = MERGED \]/true/' "$REPO/.gaia/scripts/usage-merge.sh" >"$REPO/.gaia/scripts/usage-merge-mutant.sh"
   cmp -s "$REPO/.gaia/scripts/usage-merge.sh" "$REPO/.gaia/scripts/usage-merge-mutant.sh" && return 1
   run_script "$REPO/.gaia/scripts/usage-merge-mutant.sh" "gh pr merge 105 --auto"
   [ "$status" -eq 0 ]
@@ -225,8 +225,8 @@ seed_unflushed() {
   local transcript_file
   transcript_file="$PROJECTS_DIRECTORY/$(encode_project_path "$REPO")/s-un.jsonl"
   {
-    jq -nc --arg r "$REPO" '{type:"user",uuid:"u1",timestamp:"2026-10-01T00:00:00.000Z",cwd:$r,sessionId:"s-un",gitBranch:"fix/unfl",message:{role:"user",content:"go"}}'
-    jq -nc --arg r "$REPO" '{type:"assistant",uuid:"a1",timestamp:"2026-10-01T00:00:01.000Z",cwd:$r,sessionId:"s-un",gitBranch:"fix/unfl",
+    jq -nc --arg cwd "$REPO" '{type:"user",uuid:"u1",timestamp:"2026-10-01T00:00:00.000Z",cwd:$cwd,sessionId:"s-un",gitBranch:"fix/unfl",message:{role:"user",content:"go"}}'
+    jq -nc --arg cwd "$REPO" '{type:"assistant",uuid:"a1",timestamp:"2026-10-01T00:00:01.000Z",cwd:$cwd,sessionId:"s-un",gitBranch:"fix/unfl",
       message:{id:"m1",model:"claude-opus-5-5",role:"assistant",usage:{input_tokens:1000,cache_creation_input_tokens:0,cache_read_input_tokens:0,output_tokens:500,cache_creation:{ephemeral_5m_input_tokens:0,ephemeral_1h_input_tokens:0}},content:[{type:"text",text:"ok"}]}}'
   } >"$transcript_file"
   touch -t 202001010000 "$transcript_file"
@@ -235,14 +235,14 @@ seed_unflushed() {
 
 @test "the cap: a held ledger lock still returns within cap plus 3 s, marks the partial flush and the unconfirmed merge, and writes nothing" {
   seed_unflushed
-  export GAIA_USAGE_MERGE_CAP_SECS=1 GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 GAIA_LEDGER_LOCK_TIMEOUT_SECONDS=6
+  export GAIA_USAGE_MERGE_CAP_SECONDS=1 GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 GAIA_LEDGER_LOCK_TIMEOUT_SECONDS=6
   mkdir "$TELEMETRY_DIRECTORY/specs.lock.d"
-  local t0 t1
-  t0="$(date +%s)"
+  local started_at_seconds ended_at_seconds
+  started_at_seconds="$(date +%s)"
   run_merge "gh pr merge 106" s-un
-  t1="$(date +%s)"
+  ended_at_seconds="$(date +%s)"
   [ "$status" -eq 0 ]
-  [ "$((t1 - t0))" -le 4 ]
+  [ "$((ended_at_seconds - started_at_seconds))" -le 4 ]
   has_line "  ! partial: flush incomplete"
   grep -qF '! merge not confirmed; boundary not recorded' <<<"$output"
   [ ! -s "$TELEMETRY_DIRECTORY/links.jsonl" ]
@@ -251,22 +251,22 @@ seed_unflushed() {
 
 @test "guards-must-fail: a copy of usage-merge.sh without the lock-timeout bound overruns cap plus 3 s" {
   seed_unflushed
-  export GAIA_USAGE_MERGE_CAP_SECS=1 GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 GAIA_LEDGER_LOCK_TIMEOUT_SECONDS=6
+  export GAIA_USAGE_MERGE_CAP_SECONDS=1 GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 GAIA_LEDGER_LOCK_TIMEOUT_SECONDS=6
   sed 's/GAIA_LEDGER_LOCK_TIMEOUT_SECONDS="\$(_um_left)" //' "$REPO/.gaia/scripts/usage-merge.sh" >"$REPO/.gaia/scripts/usage-merge-mutant.sh"
   cmp -s "$REPO/.gaia/scripts/usage-merge.sh" "$REPO/.gaia/scripts/usage-merge-mutant.sh" && return 1
   mkdir "$TELEMETRY_DIRECTORY/specs.lock.d"
-  local t0 t1
-  t0="$(date +%s)"
+  local started_at_seconds ended_at_seconds
+  started_at_seconds="$(date +%s)"
   run_script "$REPO/.gaia/scripts/usage-merge-mutant.sh" "gh pr merge 106" s-un
-  t1="$(date +%s)"
+  ended_at_seconds="$(date +%s)"
   [ "$status" -eq 0 ]
-  [ "$((t1 - t0))" -gt 4 ]
+  [ "$((ended_at_seconds - started_at_seconds))" -gt 4 ]
   rmdir "$TELEMETRY_DIRECTORY/specs.lock.d"
 }
 
 @test "the cap, control: a free lock flushes synchronously, so the unflushed spend is in the block with no partial marker" {
   seed_unflushed
-  export GAIA_USAGE_MERGE_CAP_SECS=5
+  export GAIA_USAGE_MERGE_CAP_SECONDS=5
   run_merge "gh pr merge 106" s-un
   [ "$status" -eq 0 ]
   has_line "[PR cost] pr:106 branch:fix/unfl"
@@ -281,13 +281,13 @@ seed_unflushed() {
   seed_uat007
   printf '30' >"$GH_STUB_DIRECTORY/sleep"
   gh_view 103 103 fix/foo MERGED 2026-09-25T02:00:00Z
-  export GAIA_USAGE_MERGE_CAP_SECS=1
-  local t0 t1
-  t0="$(date +%s)"
+  export GAIA_USAGE_MERGE_CAP_SECONDS=1
+  local started_at_seconds ended_at_seconds
+  started_at_seconds="$(date +%s)"
   run_merge "gh pr merge 103"
-  t1="$(date +%s)"
+  ended_at_seconds="$(date +%s)"
   [ "$status" -eq 0 ]
-  [ "$((t1 - t0))" -le 4 ]
+  [ "$((ended_at_seconds - started_at_seconds))" -le 4 ]
   has_line "[PR cost] pr:103 (branch unresolved)"
   grep -qF '! merge not confirmed' <<<"$output"
   [ "$(merge_rows 103)" -eq 0 ]
@@ -321,13 +321,13 @@ seed_rollup() {
   seed_rollup
   slow_render 8
   gh_view 103 103 fix/foo MERGED 2026-09-25T02:00:00Z
-  export GAIA_USAGE_RENDER_CAP_SECS=1
-  local t0 t1
-  t0="$(date +%s)"
+  export GAIA_USAGE_RENDER_CAP_SECONDS=1
+  local started_at_seconds ended_at_seconds
+  started_at_seconds="$(date +%s)"
   run_merge "gh pr merge 103"
-  t1="$(date +%s)"
+  ended_at_seconds="$(date +%s)"
   [ "$status" -eq 0 ]
-  [ "$((t1 - t0))" -le 4 ]
+  [ "$((ended_at_seconds - started_at_seconds))" -le 4 ]
   has_line "! readout timed out after 1s; rerun: bash .gaia/scripts/usage.sh pr 103"
   [ "$(grep -c 'readout timed out' <<<"$output")" -eq 1 ]
   lacks "[PR cost]"
@@ -339,7 +339,7 @@ seed_rollup() {
 @test "the render cap, numberless: the rerun line names the branch the block would have used" {
   git -C "$REPO" checkout -q -b worktree-fix+bar
   slow_render 8
-  export GAIA_USAGE_RENDER_CAP_SECS=1
+  export GAIA_USAGE_RENDER_CAP_SECONDS=1
   run_merge "gh pr merge"
   [ "$status" -eq 0 ]
   [ "$output" = "! readout timed out after 1s; rerun: bash .gaia/scripts/usage.sh pr --key branch:fix/bar" ]
@@ -349,22 +349,22 @@ seed_rollup() {
   seed_uat007
   slow_render 8
   gh_view 103 103 fix/foo MERGED 2026-09-25T02:00:00Z
-  export GAIA_USAGE_RENDER_CAP_SECS=1
-  sed '/_um_expired "\$rcap" && break/d' "$REPO/.gaia/scripts/usage-merge.sh" >"$REPO/.gaia/scripts/usage-merge-mutant.sh"
+  export GAIA_USAGE_RENDER_CAP_SECONDS=1
+  sed '/_um_expired "\$render_cap" && break/d' "$REPO/.gaia/scripts/usage-merge.sh" >"$REPO/.gaia/scripts/usage-merge-mutant.sh"
   cmp -s "$REPO/.gaia/scripts/usage-merge.sh" "$REPO/.gaia/scripts/usage-merge-mutant.sh" && return 1
-  local t0 t1
-  t0="$(date +%s)"
+  local started_at_seconds ended_at_seconds
+  started_at_seconds="$(date +%s)"
   run_script "$REPO/.gaia/scripts/usage-merge-mutant.sh" "gh pr merge 103"
-  t1="$(date +%s)"
+  ended_at_seconds="$(date +%s)"
   [ "$status" -eq 0 ]
-  [ "$((t1 - t0))" -gt 4 ]
+  [ "$((ended_at_seconds - started_at_seconds))" -gt 4 ]
   has_line "[PR cost] late"
 }
 
 @test "the render cap, control: a render inside the cap prints the block and no timed-out line" {
   seed_uat007
   gh_view 103 103 fix/foo MERGED 2026-09-25T02:00:00Z
-  export GAIA_USAGE_RENDER_CAP_SECS=5
+  export GAIA_USAGE_RENDER_CAP_SECONDS=5
   run_merge "gh pr merge 103"
   [ "$status" -eq 0 ]
   has_line "[PR cost] pr:103 branch:fix/foo"

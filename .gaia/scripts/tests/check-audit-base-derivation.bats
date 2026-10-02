@@ -304,7 +304,7 @@ Derived per .github/audit/resolve-audit-base.sh.
 # the pull request merges into, and it is never a review base; its call passes
 # no BASE_REF, so only the name can admit it.
 ELIG_BASE_DERIVED_OK='```bash
-ELIG_BASE="$(git -C "$root" merge-base HEAD "$primary_ref" 2>/dev/null || git -C "$root" merge-base HEAD "$fallback_ref" 2>/dev/null || true)"
+ELIG_BASE="$(git -C "$root" merge-base HEAD "$primary_reference" 2>/dev/null || git -C "$root" merge-base HEAD "$fallback_reference" 2>/dev/null || true)"
 if ! git -C "$root" diff --name-only -z "${ELIG_BASE}...HEAD" > "$tmp/elig"; then
 ```
 '

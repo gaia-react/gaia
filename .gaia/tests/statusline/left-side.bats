@@ -246,8 +246,8 @@ assert_user_left() {
   expect_band 1000000 250000 yellow none
   # Change the lib default in the sandbox copy only; the bar must follow it.
   local lib="$MAIN/.gaia/scripts/context-checkpoint-lib.sh"
-  sed 's/^GAIA_CTX_ASK_TOKENS_DEFAULT=.*/GAIA_CTX_ASK_TOKENS_DEFAULT=250000/' "$lib" >"$lib.new"
-  grep -q '^GAIA_CTX_ASK_TOKENS_DEFAULT=250000$' "$lib.new"
+  sed 's/^GAIA_CONTEXT_ASK_TOKENS_DEFAULT=.*/GAIA_CONTEXT_ASK_TOKENS_DEFAULT=250000/' "$lib" >"$lib.new"
+  grep -q '^GAIA_CONTEXT_ASK_TOKENS_DEFAULT=250000$' "$lib.new"
   mv "$lib.new" "$lib"
   expect_band 1000000 249999 yellow none
   expect_band 1000000 250000 red none

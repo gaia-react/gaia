@@ -27,15 +27,15 @@ bats_require_minimum_version 1.5.0
 
 setup() {
   # Isolate pricing from the developer's real rate table and the network.
-  export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state"
+  export GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
   export GAIA_RATES_FEED_DISABLE=1
-  SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
-  SCRIPT="$SCRIPT_DIR/token-tally.sh"
-  FIX="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-tally" && pwd)"
+  SCRIPT_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
+  SCRIPT="$SCRIPT_DIRECTORY/token-tally.sh"
+  FIXTURE_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-tally" && pwd)"
 
-  AR="$FIX/auditreview/projects"
-  AR_SESSION="fixtureauditreview0001"
-  ANCHOR="$FIX/projects"
+  AUDIT_REVIEW_PROJECTS="$FIXTURE_DIRECTORY/auditreview/projects"
+  AUDIT_REVIEW_SESSION="fixtureauditreview0001"
+  ANCHOR="$FIXTURE_DIRECTORY/projects"
   ANCHOR_SESSION="fixturesession0001"
 
   LEDGER="$BATS_TEST_TMPDIR/ledger.jsonl"
@@ -54,44 +54,44 @@ setup() {
   export GIT_COMMITTER_EMAIL="gaia-test@example.com"
 }
 
-led() { jq -r "$1" "$LEDGER"; }
+ledger_field() { jq -r "$1" "$LEDGER"; }
 
 # ---------- 1. UAT-006/008: associated review record, full field set ----------
 @test "1: --action review --spec-id associates the record and carries the full FC-3 field set" {
   run bash "$SCRIPT" --action review --spec-id SPEC-032 \
-    --session-id "$AR_SESSION" --projects-root "$AR" --ledger "$LEDGER"
+    --session-id "$AUDIT_REVIEW_SESSION" --projects-root "$AUDIT_REVIEW_PROJECTS" --ledger "$LEDGER"
   [ "$status" -eq 0 ]
 
   [ -f "$LEDGER" ]
   [ "$(wc -l < "$LEDGER" | tr -d ' ')" -eq 1 ]
 
-  [ "$(led '.schema_version')" -eq 1 ]
-  [ "$(led '.kind')" = "review" ]
-  [ "$(led '.spec_id')" = "SPEC-032" ]
-  [ "$(led '.plan_id')" = "null" ]
-  [ "$(led '.plan_slug')" = "null" ]
-  [ "$(led '.source')" = "code-review-audit" ]
-  [ "$(led '.review_id')" = "agent-rev0001" ]
-  [ "$(led '.session_id')" = "$AR_SESSION" ]
+  [ "$(ledger_field '.schema_version')" -eq 1 ]
+  [ "$(ledger_field '.kind')" = "review" ]
+  [ "$(ledger_field '.spec_id')" = "SPEC-032" ]
+  [ "$(ledger_field '.plan_id')" = "null" ]
+  [ "$(ledger_field '.plan_slug')" = "null" ]
+  [ "$(ledger_field '.source')" = "code-review-audit" ]
+  [ "$(ledger_field '.review_id')" = "agent-rev0001" ]
+  [ "$(ledger_field '.session_id')" = "$AUDIT_REVIEW_SESSION" ]
 
   # hand-computed: rev-a + rev-b + nest-a
-  [ "$(led '.buckets.fresh_input')" -eq 115 ]
-  [ "$(led '.buckets.cache_write')" -eq 220 ]
-  [ "$(led '.buckets.cache_read')" -eq 324 ]
-  [ "$(led '.buckets.output')" -eq 430 ]
-  [ "$(led '.total')" -eq 1089 ]
-  [ "$(led '.duration_seconds')" -eq 120 ]
-  [ "$(led '.duration_available')" = "true" ]
-  [ "$(led '.started_at')" = "2026-08-01T11:00:00.000Z" ]
-  [ "$(led '.ended_at')" = "2026-08-01T11:02:00.000Z" ]
+  [ "$(ledger_field '.buckets.fresh_input')" -eq 115 ]
+  [ "$(ledger_field '.buckets.cache_write')" -eq 220 ]
+  [ "$(ledger_field '.buckets.cache_read')" -eq 324 ]
+  [ "$(ledger_field '.buckets.output')" -eq 430 ]
+  [ "$(ledger_field '.total')" -eq 1089 ]
+  [ "$(ledger_field '.duration_seconds')" -eq 120 ]
+  [ "$(ledger_field '.duration_available')" = "true" ]
+  [ "$(ledger_field '.started_at')" = "2026-08-01T11:00:00.000Z" ]
+  [ "$(ledger_field '.ended_at')" = "2026-08-01T11:02:00.000Z" ]
 
   # full schema-1 field set the dashboard's strict parser requires.
-  for f in buckets final kind seq session_id total ts; do
-    run jq -e --arg f "$f" 'has($f)' "$LEDGER"
+  for field_name in buckets final kind seq session_id total ts; do
+    run jq -e --arg field_name "$field_name" 'has($field_name)' "$LEDGER"
     [ "$status" -eq 0 ]
   done
-  [ "$(led '.seq')" -eq 0 ]
-  [ "$(led '.final')" = "true" ]
+  [ "$(ledger_field '.seq')" -eq 0 ]
+  [ "$(ledger_field '.final')" = "true" ]
 
   # never folded into any phase record: this run never invoked spec/plan/
   # execute, so the ledger's one and only row is the review row itself
@@ -101,13 +101,13 @@ led() { jq -r "$1" "$LEDGER"; }
 # ---------- 2. UAT-007/COV-001: ad-hoc review, no partial ----------
 @test "2: --action review with no --spec-id/--plan-id/--out-dir is not marked partial (COV-001)" {
   run bash "$SCRIPT" --action review \
-    --session-id "$AR_SESSION" --projects-root "$AR" --ledger "$LEDGER"
+    --session-id "$AUDIT_REVIEW_SESSION" --projects-root "$AUDIT_REVIEW_PROJECTS" --ledger "$LEDGER"
   [ "$status" -eq 0 ]
 
-  [ "$(led '.spec_id')" = "null" ]
-  [ "$(led '.plan_id')" = "null" ]
-  [ "$(led '.source')" = "code-review-audit" ]
-  [ "$(led '.partial')" = "false" ]
+  [ "$(ledger_field '.spec_id')" = "null" ]
+  [ "$(ledger_field '.plan_id')" = "null" ]
+  [ "$(ledger_field '.source')" = "code-review-audit" ]
+  [ "$(ledger_field '.partial')" = "false" ]
 
   # no cost.json sidecar is ever written for a review (not phase-keyed).
   [ ! -f "$BATS_TEST_TMPDIR/cost.json" ]
@@ -116,15 +116,15 @@ led() { jq -r "$1" "$LEDGER"; }
 # ---------- 3. Dedup: counted exactly once across repeat runs ----------
 @test "3: running --action review twice on the same session writes the row exactly once" {
   run bash "$SCRIPT" --action review --spec-id SPEC-032 \
-    --session-id "$AR_SESSION" --projects-root "$AR" --ledger "$LEDGER"
+    --session-id "$AUDIT_REVIEW_SESSION" --projects-root "$AUDIT_REVIEW_PROJECTS" --ledger "$LEDGER"
   [ "$status" -eq 0 ]
   [ "$(wc -l < "$LEDGER" | tr -d ' ')" -eq 1 ]
 
   run bash "$SCRIPT" --action review --spec-id SPEC-032 \
-    --session-id "$AR_SESSION" --projects-root "$AR" --ledger "$LEDGER"
+    --session-id "$AUDIT_REVIEW_SESSION" --projects-root "$AUDIT_REVIEW_PROJECTS" --ledger "$LEDGER"
   [ "$status" -eq 0 ]
   [ "$(wc -l < "$LEDGER" | tr -d ' ')" -eq 1 ]
-  [ "$(led '.total')" -eq 1089 ]
+  [ "$(ledger_field '.total')" -eq 1089 ]
 }
 
 @test "3b: dedup is idempotent across two different callers (Stop-hook vs gh-pr-merge trigger)" {
@@ -134,16 +134,16 @@ led() { jq -r "$1" "$LEDGER"; }
   # is review_id alone, so the second call must skip, not double-record or
   # overwrite with a different association.
   run bash "$SCRIPT" --action review --spec-id SPEC-032 \
-    --session-id "$AR_SESSION" --projects-root "$AR" --ledger "$LEDGER"
+    --session-id "$AUDIT_REVIEW_SESSION" --projects-root "$AUDIT_REVIEW_PROJECTS" --ledger "$LEDGER"
   [ "$status" -eq 0 ]
 
   run bash "$SCRIPT" --action review --plan-id PLAN-999 \
-    --session-id "$AR_SESSION" --projects-root "$AR" --ledger "$LEDGER"
+    --session-id "$AUDIT_REVIEW_SESSION" --projects-root "$AUDIT_REVIEW_PROJECTS" --ledger "$LEDGER"
   [ "$status" -eq 0 ]
 
   [ "$(wc -l < "$LEDGER" | tr -d ' ')" -eq 1 ]
-  [ "$(led '.spec_id')" = "SPEC-032" ]
-  [ "$(led '.plan_id')" = "null" ]
+  [ "$(ledger_field '.spec_id')" = "SPEC-032" ]
+  [ "$(ledger_field '.plan_id')" = "null" ]
 }
 
 # ---------- 4. No-op when the session has no code-review-audit run ----------
@@ -158,7 +158,7 @@ led() { jq -r "$1" "$LEDGER"; }
 # ---------- 5. stdout stays reserved for the phase tally block ----------
 @test "5: --action review never writes to stdout; diagnostics land on stderr" {
   run bash "$SCRIPT" --action review --spec-id SPEC-032 \
-    --session-id "$AR_SESSION" --projects-root "$AR" --ledger "$LEDGER"
+    --session-id "$AUDIT_REVIEW_SESSION" --projects-root "$AUDIT_REVIEW_PROJECTS" --ledger "$LEDGER"
   [ "$status" -eq 0 ]
   grep -qF "Cost (" <<<"$output" && return 1
 
@@ -172,16 +172,16 @@ led() { jq -r "$1" "$LEDGER"; }
 # ---------- 6. Back-compat: token-rollup.sh ignores kind:"review" rows ----------
 @test "6: back-compat -- token-rollup.sh's kind filter excludes a review row from a feature's totals" {
   run bash "$SCRIPT" --action spec --spec-id SPEC-032 \
-    --out-dir "$BATS_TEST_TMPDIR/out" --session-id "$AR_SESSION" \
-    --projects-root "$AR" --ledger "$LEDGER" --cache-dir "$CACHE"
+    --out-dir "$BATS_TEST_TMPDIR/out" --session-id "$AUDIT_REVIEW_SESSION" \
+    --projects-root "$AUDIT_REVIEW_PROJECTS" --ledger "$LEDGER" --cache-dir "$CACHE"
   [ "$status" -eq 0 ]
-  spec_total="$(led '.total')"
+  spec_total="$(ledger_field '.total')"
 
   run bash "$SCRIPT" --action review --spec-id SPEC-032 \
-    --session-id "$AR_SESSION" --projects-root "$AR" --ledger "$LEDGER"
+    --session-id "$AUDIT_REVIEW_SESSION" --projects-root "$AUDIT_REVIEW_PROJECTS" --ledger "$LEDGER"
   [ "$status" -eq 0 ]
 
-  ROLLUP="$SCRIPT_DIR/token-rollup.sh"
+  ROLLUP="$SCRIPT_DIRECTORY/token-rollup.sh"
   run bash "$ROLLUP" --spec-id SPEC-032 --ledger "$LEDGER"
   [ "$status" -eq 0 ]
 

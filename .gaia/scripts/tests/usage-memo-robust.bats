@@ -23,44 +23,44 @@ bats_require_minimum_version 1.5.0
 
 # How long the held-lock case keeps the ledger lock. The stale-lock reclaim
 # threshold is 30 s, so a longer hold would let the lock lib reclaim it.
-LOCK_HOLD_SECS=15
+LOCK_HOLD_SECONDS=15
 
 setup() {
   # shellcheck source=.gaia/scripts/tests/helpers/usage-memo-env.sh
   . "$BATS_TEST_DIRNAME/helpers/usage-memo-env.sh"
   umemo_setup
   umemo_load_store identity
-  export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state"
+  export GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
   export GAIA_RATES_FEED_DISABLE=1
   export GAIA_USAGE_MEMO_TRACE="$BATS_TEST_TMPDIR/trace"
   : >"$GAIA_USAGE_MEMO_TRACE"
-  PROBES="$UM_FX/identity/probes.json"
-  ROBUST="$UM_FX/robust"
-  MEMO="$UM_TD/usage-branch-memo.json"
+  PROBES="$UM_FIXTURES/identity/probes.json"
+  ROBUST="$UM_FIXTURES/robust"
+  MEMO="$UM_TELEMETRY_DIRECTORY/usage-branch-memo.json"
   # The default probe is the first multi_root one: it prints several initiative
   # lines, so a wrong derive entry on its key changes the figures.
   PR="$(jq -r '[.probes[] | select(.category == "multi_root")][0].pr' "$PROBES")"
   KEY="$(jq -r '[.probes[] | select(.category == "multi_root")][0].key' "$PROBES")"
   RAW="$(jq -r '[.probes[] | select(.category == "multi_root")][0].raw' "$PROBES")"
   case "$PR$KEY$RAW" in *null* | "") return 1 ;; esac
-  WRONG_REF="issue:9999"
+  WRONG_REFERENCE="issue:9999"
 }
 
 teardown() {
-  [ -n "${UM_TD:-}" ] || return 0
-  chmod u+rwx "$UM_TD" 2>/dev/null || true
-  chmod u+rw "$UM_TD"/*.jsonl 2>/dev/null || true
+  [ -n "${UM_TELEMETRY_DIRECTORY:-}" ] || return 0
+  chmod u+rwx "$UM_TELEMETRY_DIRECTORY" 2>/dev/null || true
+  chmod u+rw "$UM_TELEMETRY_DIRECTORY"/*.jsonl 2>/dev/null || true
 }
 
 # --- runners -----------------------------------------------------------------
 
-nrun() { local o="$1" e="$2"; shift 2; _umemo_run "$UM_NEW" "$o" "$e" "$@"; }
-orun() { local o="$1" e="$2"; shift 2; _umemo_run "$UM_OLD" "$o" "$e" "$@"; }
+run_new_tree() { local output_file="$1" error_file="$2"; shift 2; _umemo_run "$UM_NEW" "$output_file" "$error_file" "$@"; }
+run_old_tree() { local output_file="$1" error_file="$2"; shift 2; _umemo_run "$UM_OLD" "$output_file" "$error_file" "$@"; }
 
-N_OUT="" N_ERR="" O_OUT="" O_ERR=""
+NEW_OUTPUT_FILE="" NEW_ERROR_FILE="" OLD_OUTPUT_FILE="" OLD_ERROR_FILE=""
 _paths() {
-  N_OUT="$BATS_TEST_TMPDIR/n.out" N_ERR="$BATS_TEST_TMPDIR/n.err"
-  O_OUT="$BATS_TEST_TMPDIR/o.out" O_ERR="$BATS_TEST_TMPDIR/o.err"
+  NEW_OUTPUT_FILE="$BATS_TEST_TMPDIR/n.out" NEW_ERROR_FILE="$BATS_TEST_TMPDIR/n.err"
+  OLD_OUTPUT_FILE="$BATS_TEST_TMPDIR/o.out" OLD_ERROR_FILE="$BATS_TEST_TMPDIR/o.err"
 }
 
 # assert_figures <subcommand> <file>: the output carries the figures a degenerate
@@ -75,17 +75,17 @@ assert_figures() {
 
 # check_same <args...>: u_new with a fresh trace, then u_old, over the stores as
 # they stand. Both exit 0, the output is priced, stdout is byte-identical, and
-# u_new's stderr is empty. Leaves the captures in $N_OUT, $N_ERR, $O_OUT.
+# u_new's stderr is empty. Leaves the captures in $NEW_OUTPUT_FILE, $NEW_ERROR_FILE, $OLD_OUTPUT_FILE.
 check_same() {
-  local rn=0 ro=0
+  local new_exit_status=0 old_exit_status=0
   _paths
   : >"$GAIA_USAGE_MEMO_TRACE"
-  nrun "$N_OUT" "$N_ERR" "$@" || rn=$?
-  orun "$O_OUT" "$O_ERR" "$@" || ro=$?
-  [ "$rn" = 0 ] && [ "$ro" = 0 ] || { printf 'exit status: new %s, old %s\n' "$rn" "$ro" >&2; return 1; }
-  assert_figures "$1" "$N_OUT" || return 1
-  assert_same "$O_OUT" "$N_OUT" || return 1
-  if [ -s "$N_ERR" ]; then printf 'u_new printed on stderr:\n%s\n' "$(cat "$N_ERR")" >&2; return 1; fi
+  run_new_tree "$NEW_OUTPUT_FILE" "$NEW_ERROR_FILE" "$@" || new_exit_status=$?
+  run_old_tree "$OLD_OUTPUT_FILE" "$OLD_ERROR_FILE" "$@" || old_exit_status=$?
+  [ "$new_exit_status" = 0 ] && [ "$old_exit_status" = 0 ] || { printf 'exit status: new %s, old %s\n' "$new_exit_status" "$old_exit_status" >&2; return 1; }
+  assert_figures "$1" "$NEW_OUTPUT_FILE" || return 1
+  assert_same "$OLD_OUTPUT_FILE" "$NEW_OUTPUT_FILE" || return 1
+  if [ -s "$NEW_ERROR_FILE" ]; then printf 'u_new printed on stderr:\n%s\n' "$(cat "$NEW_ERROR_FILE")" >&2; return 1; fi
   return 0
 }
 
@@ -117,24 +117,24 @@ assert_no_trace() {
 # --- memo --------------------------------------------------------------------
 
 warm() {
-  nrun "$BATS_TEST_TMPDIR/warm.out" "$BATS_TEST_TMPDIR/warm.err" pr "${1:-$PR}" || return 1
+  run_new_tree "$BATS_TEST_TMPDIR/warm.out" "$BATS_TEST_TMPDIR/warm.err" pr "${1:-$PR}" || return 1
   [ -f "$MEMO" ] || { printf 'warm-up left no memo\n' >&2; return 1; }
 }
 
-h16() { bash -c '. "$1/.gaia/scripts/usage-lib.sh" && _gaia_usage_hash16 "$2"' _ "$UM_NEW" "$1"; }
+hash16() { bash -c '. "$1/.gaia/scripts/usage-lib.sh" && _gaia_usage_hash16 "$2"' _ "$UM_NEW" "$1"; }
 
 # memo_rewrite <body-filter> <keep|stamp> <fix|keep>: rewrites the memo with the
 # jq filter applied to its body, optionally another stamp, and either a
 # recomputed sum or the old one.
 memo_rewrite() {
-  local filter="$1" stamp="$2" sums="$3" hdr body nbody nstamp nsum
-  hdr="$(sed -n 1p "$MEMO")"
+  local filter="$1" stamp="$2" sums="$3" header body new_body new_stamp new_sum
+  header="$(sed -n 1p "$MEMO")"
   body="$(sed -n 2p "$MEMO")"
-  nbody="$(jq -c "$filter" <<<"$body")" || return 1
-  nstamp="$(jq -r '.stamp' <<<"$hdr")"
-  [ "$stamp" = keep ] || nstamp="$stamp"
-  if [ "$sums" = fix ]; then nsum="$(h16 "$nbody")"; else nsum="$(jq -r '.sum' <<<"$hdr")"; fi
-  printf '{"schema_version":1,"stamp":"%s","sum":"%s"}\n%s\n' "$nstamp" "$nsum" "$nbody" >"$MEMO"
+  new_body="$(jq -c "$filter" <<<"$body")" || return 1
+  new_stamp="$(jq -r '.stamp' <<<"$header")"
+  [ "$stamp" = keep ] || new_stamp="$stamp"
+  if [ "$sums" = fix ]; then new_sum="$(hash16 "$new_body")"; else new_sum="$(jq -r '.sum' <<<"$header")"; fi
+  printf '{"schema_version":1,"stamp":"%s","sum":"%s"}\n%s\n' "$new_stamp" "$new_sum" "$new_body" >"$MEMO"
 }
 
 memo_body() { sed -n 2p "$MEMO"; }
@@ -142,35 +142,35 @@ memo_body() { sed -n 2p "$MEMO"; }
 # --- scratch copies of the changed tree --------------------------------------
 
 _occurs() {
-  local t="$1" o="$2" r
-  r="${t//"$o"/}"
-  printf '%s' "$(((${#t} - ${#r}) / ${#o}))"
+  local haystack="$1" needle="$2" remainder
+  remainder="${haystack//"$needle"/}"
+  printf '%s' "$(((${#haystack} - ${#remainder}) / ${#needle}))"
 }
 
 # mutate <file> <old> <new>: replaces the one occurrence of <old>. Fails unless
 # <old> occurs exactly once before and not at all after, so a mutant that no
 # longer applies cannot test the shipped code instead.
 mutate() {
-  local f="$1" old="$2" new="$3" text out
-  text="$(cat "$f"; printf x)"
+  local file="$1" old="$2" new="$3" text mutated_text
+  text="$(cat "$file"; printf x)"
   text="${text%x}"
-  [ "$(_occurs "$text" "$old")" = 1 ] || { printf 'mutate: %s: the text to replace occurs %s times, want 1:\n%s\n' "$f" "$(_occurs "$text" "$old")" "$old" >&2; return 1; }
-  out="${text%%"$old"*}$new${text#*"$old"}"
-  [ "$(_occurs "$out" "$old")" = 0 ] || { printf 'mutate: %s: the old text survives the substitution\n' "$f" >&2; return 1; }
-  [ "$out" != "$text" ] || { printf 'mutate: %s: the substitution changed nothing\n' "$f" >&2; return 1; }
-  printf '%s' "$out" >"$f"
+  [ "$(_occurs "$text" "$old")" = 1 ] || { printf 'mutate: %s: the text to replace occurs %s times, want 1:\n%s\n' "$file" "$(_occurs "$text" "$old")" "$old" >&2; return 1; }
+  mutated_text="${text%%"$old"*}$new${text#*"$old"}"
+  [ "$(_occurs "$mutated_text" "$old")" = 0 ] || { printf 'mutate: %s: the old text survives the substitution\n' "$file" >&2; return 1; }
+  [ "$mutated_text" != "$text" ] || { printf 'mutate: %s: the substitution changed nothing\n' "$file" >&2; return 1; }
+  printf '%s' "$mutated_text" >"$file"
 }
 
-# make_tree <name>: a scratch copy of the changed tree; sets $MUT.
+# make_tree <name>: a scratch copy of the changed tree; sets $MUTANT_TREE.
 make_tree() {
-  MUT="$BATS_TEST_TMPDIR/tree-$1"
-  rm -rf "$MUT"
-  cp -R "$UM_NEW" "$MUT"
+  MUTANT_TREE="$BATS_TEST_TMPDIR/tree-$1"
+  rm -rf "$MUTANT_TREE"
+  cp -R "$UM_NEW" "$MUTANT_TREE"
 }
 
-LIB=.gaia/scripts/usage-memo-lib.sh
+LIBRARY=.gaia/scripts/usage-memo-lib.sh
 
-mrun() { local tree="$1" o="$2" e="$3"; shift 3; _umemo_run "$tree" "$o" "$e" "$@"; }
+run_mutant_tree() { local tree="$1" output_file="$2" error_file="$3"; shift 3; _umemo_run "$tree" "$output_file" "$error_file" "$@"; }
 
 # differs <a> <b>: the files are not byte-identical.
 differs() { if cmp -s "$1" "$2"; then return 1; fi; return 0; }
@@ -199,9 +199,9 @@ differs() { if cmp -s "$1" "$2"; then return 1; fi; return 0; }
 @test "damage: a stale stamp over a wrong derive entry is never trusted, for pr, initiative and reconcile" {
   local root bad="$BATS_TEST_TMPDIR/memo.bad"
   warm
-  root="$(jq -r --arg k "$KEY" '.derive[$k][0]' <<<"$(memo_body)")"
+  root="$(jq -r --arg derive_key "$KEY" '.derive[$derive_key][0]' <<<"$(memo_body)")"
   [ -n "$root" ] && [ "$root" != null ] || { printf 'the probe key has no derive entry\n' >&2; return 1; }
-  memo_rewrite ".derive[\"$KEY\"] = [\"$WRONG_REF\"]" 0000000000000000 fix
+  memo_rewrite ".derive[\"$KEY\"] = [\"$WRONG_REFERENCE\"]" 0000000000000000 fix
   cp "$MEMO" "$bad"
 
   check_same pr "$PR"
@@ -217,45 +217,45 @@ differs() { if cmp -s "$1" "$2"; then return 1; fi; return 0; }
 @test "damage, guard red: a copy that skips the stamp comparison trusts the wrong derive entry" {
   local root bad="$BATS_TEST_TMPDIR/memo.bad"
   warm
-  root="$(jq -r --arg k "$KEY" '.derive[$k][0]' <<<"$(memo_body)")"
-  memo_rewrite ".derive[\"$KEY\"] = [\"$WRONG_REF\"]" 0000000000000000 fix
+  root="$(jq -r --arg derive_key "$KEY" '.derive[$derive_key][0]' <<<"$(memo_body)")"
+  memo_rewrite ".derive[\"$KEY\"] = [\"$WRONG_REFERENCE\"]" 0000000000000000 fix
   cp "$MEMO" "$bad"
   _paths
-  orun "$O_OUT" "$O_ERR" pr "$PR"
-  grep -qF "[initiative $root " "$O_OUT"
+  run_old_tree "$OLD_OUTPUT_FILE" "$OLD_ERROR_FILE" pr "$PR"
+  grep -qF "[initiative $root " "$OLD_OUTPUT_FILE"
 
   make_tree stamp
-  mutate "$MUT/$LIB" '[ "$stamp_h" != "$_gaia_usage_memo_stamp" ]' 'false'
+  mutate "$MUTANT_TREE/$LIBRARY" '[ "$stamp_hash" != "$_gaia_usage_memo_stamp" ]' 'false'
   : >"$GAIA_USAGE_MEMO_TRACE"
-  mrun "$MUT" "$N_OUT" "$N_ERR" pr "$PR"
+  run_mutant_tree "$MUTANT_TREE" "$NEW_OUTPUT_FILE" "$NEW_ERROR_FILE" pr "$PR"
   assert_trace "path=warm"
-  assert_priced "$N_OUT"
-  differs "$O_OUT" "$N_OUT"
-  grep -qF "[initiative $WRONG_REF " "$N_OUT"
+  assert_priced "$NEW_OUTPUT_FILE"
+  differs "$OLD_OUTPUT_FILE" "$NEW_OUTPUT_FILE"
+  grep -qF "[initiative $WRONG_REFERENCE " "$NEW_OUTPUT_FILE"
 }
 
 # --- 2. checksum self-check --------------------------------------------------
 
 @test "checksum: a derive entry edited without recomputing the sum reads cold and prints the pre-change bytes" {
   warm
-  memo_rewrite ".derive[\"$KEY\"] = [\"$WRONG_REF\"]" keep keep
+  memo_rewrite ".derive[\"$KEY\"] = [\"$WRONG_REFERENCE\"]" keep keep
   check_same pr "$PR"
   assert_trace "path=cold reason=sum"
 }
 
 @test "checksum, guard red: a copy that skips the sum comparison trusts the edited derive entry" {
   warm
-  memo_rewrite ".derive[\"$KEY\"] = [\"$WRONG_REF\"]" keep keep
+  memo_rewrite ".derive[\"$KEY\"] = [\"$WRONG_REFERENCE\"]" keep keep
   _paths
-  orun "$O_OUT" "$O_ERR" pr "$PR"
+  run_old_tree "$OLD_OUTPUT_FILE" "$OLD_ERROR_FILE" pr "$PR"
   make_tree sum
-  mutate "$MUT/$LIB" '[ "$(_gaia_usage_hash16 "$body" 2>/dev/null)" != "$sum_h" ]' 'false'
+  mutate "$MUTANT_TREE/$LIBRARY" '[ "$(_gaia_usage_hash16 "$body" 2>/dev/null)" != "$sum_hash" ]' 'false'
   : >"$GAIA_USAGE_MEMO_TRACE"
-  mrun "$MUT" "$N_OUT" "$N_ERR" pr "$PR"
+  run_mutant_tree "$MUTANT_TREE" "$NEW_OUTPUT_FILE" "$NEW_ERROR_FILE" pr "$PR"
   assert_trace "path=warm"
-  assert_priced "$N_OUT"
-  differs "$O_OUT" "$N_OUT"
-  grep -qF "[initiative $WRONG_REF " "$N_OUT"
+  assert_priced "$NEW_OUTPUT_FILE"
+  differs "$OLD_OUTPUT_FILE" "$NEW_OUTPUT_FILE"
+  grep -qF "[initiative $WRONG_REFERENCE " "$NEW_OUTPUT_FILE"
 }
 
 # --- 3. escaped key backstop -------------------------------------------------
@@ -267,14 +267,14 @@ differs() { if cmp -s "$1" "$2"; then return 1; fi; return 0; }
   row='{"schema_version":1,"kind":"execute","spec_id":"SPEC-503","plan_id":null,"plan_slug":null,"session_id":"s-esc","total":1000,"seq":0,"final":true,"git_branch":"'"${RAW//\//\\/}"'","ts":"2026-09-29T10:00:00Z","session_cwd":"/work/repo"}'
   warm
   cp "$BATS_TEST_TMPDIR/warm.out" "$before"
-  jq -e --arg r "$RAW" '.bmap[$r] == null' <<<"$(memo_body)" >/dev/null
-  printf '%s\n' "$row" >>"$UM_TD/cost.jsonl"
-  grep -qF "${RAW//\//\\/}" "$UM_TD/cost.jsonl"
+  jq -e --arg raw "$RAW" '.bmap[$raw] == null' <<<"$(memo_body)" >/dev/null
+  printf '%s\n' "$row" >>"$UM_TELEMETRY_DIRECTORY/cost.jsonl"
+  grep -qF "${RAW//\//\\/}" "$UM_TELEMETRY_DIRECTORY/cost.jsonl"
 
   check_same pr "$PR"
-  differs "$before" "$N_OUT"
+  differs "$before" "$NEW_OUTPUT_FILE"
   assert_trace "rerun=miss raws=1 bkeys=0 models=0"
-  jq -e --arg r "$RAW" --arg k "$KEY" '.bmap[$r].key == $k' <<<"$(memo_body)" >/dev/null
+  jq -e --arg raw "$RAW" --arg key "$KEY" '.bmap[$raw].key == $key' <<<"$(memo_body)" >/dev/null
 
   check_same pr "$PR"
   assert_no_trace '^rerun=miss'
@@ -288,36 +288,36 @@ differs() { if cmp -s "$1" "$2"; then return 1; fi; return 0; }
 # --- 4. torn and rewritten stores --------------------------------------------
 
 @test "stores: a torn final line is left for the next read, and a rewrite inside the hashed head scans in full" {
-  local l="$UM_TD/links.jsonl" c="$UM_TD/cost.jsonl" size0 off0 hn0 torn i
+  local links_store="$UM_TELEMETRY_DIRECTORY/links.jsonl" cost_store="$UM_TELEMETRY_DIRECTORY/cost.jsonl" initial_size initial_offset initial_head_length torn i
   torn='{"schema_version":1,"kind":"edge","child":"'"$KEY"'","parent":"research:torn-extra","source":"link-command","ts":"2026-09-29T00:00:00Z","session_id":null,"sidechain":false'
   warm
   check_same pr "$PR"
-  cp "$N_OUT" "$BATS_TEST_TMPDIR/base.out"
-  size0="$(wc -c <"$l" | tr -d '[:space:]')"
+  cp "$NEW_OUTPUT_FILE" "$BATS_TEST_TMPDIR/base.out"
+  initial_size="$(wc -c <"$links_store" | tr -d '[:space:]')"
 
-  printf '%s' "$torn" >>"$l"
+  printf '%s' "$torn" >>"$links_store"
   check_same pr "$PR"
   assert_trace "path=warm"
-  [ "$(jq -r '.stores.l.off' <<<"$(memo_body)")" = "$size0" ]
-  cmp -s "$BATS_TEST_TMPDIR/base.out" "$N_OUT"
+  [ "$(jq -r '.stores.l.off' <<<"$(memo_body)")" = "$initial_size" ]
+  cmp -s "$BATS_TEST_TMPDIR/base.out" "$NEW_OUTPUT_FILE"
 
-  printf '}\n' >>"$l"
+  printf '}\n' >>"$links_store"
   check_same pr "$PR"
-  differs "$BATS_TEST_TMPDIR/base.out" "$N_OUT"
-  grep -qF '[initiative research:torn-extra ' "$N_OUT"
-  [ "$(jq -r '.stores.l.off' <<<"$(memo_body)")" = "$(wc -c <"$l" | tr -d '[:space:]')" ]
+  differs "$BATS_TEST_TMPDIR/base.out" "$NEW_OUTPUT_FILE"
+  grep -qF '[initiative research:torn-extra ' "$NEW_OUTPUT_FILE"
+  [ "$(jq -r '.stores.l.off' <<<"$(memo_body)")" = "$(wc -c <"$links_store" | tr -d '[:space:]')" ]
 
   # A cut below the recorded hashed head, regrown past the recorded offset with
   # different rows.
-  off0="$(jq -r '.stores.c.off' <<<"$(memo_body)")"
-  hn0="$(jq -r '.stores.c.hn' <<<"$(memo_body)")"
-  [ "$hn0" -gt 0 ]
-  head -n 2 "$c" >"$BATS_TEST_TMPDIR/cost.cut"
-  [ "$(wc -c <"$BATS_TEST_TMPDIR/cost.cut" | tr -d '[:space:]')" -lt "$hn0" ]
-  cp "$BATS_TEST_TMPDIR/cost.cut" "$c"
+  initial_offset="$(jq -r '.stores.c.off' <<<"$(memo_body)")"
+  initial_head_length="$(jq -r '.stores.c.hn' <<<"$(memo_body)")"
+  [ "$initial_head_length" -gt 0 ]
+  head -n 2 "$cost_store" >"$BATS_TEST_TMPDIR/cost.cut"
+  [ "$(wc -c <"$BATS_TEST_TMPDIR/cost.cut" | tr -d '[:space:]')" -lt "$initial_head_length" ]
+  cp "$BATS_TEST_TMPDIR/cost.cut" "$cost_store"
   i=0
-  while [ "$(wc -c <"$c" | tr -d '[:space:]')" -le "$off0" ]; do
-    printf '{"schema_version":1,"kind":"execute","spec_id":"SPEC-503","plan_id":null,"plan_slug":null,"session_id":"s-rw%s","total":1000,"seq":0,"final":true,"git_branch":"%s","ts":"2026-09-26T10:00:00Z","session_cwd":"/work/repo"}\n' "$i" "$RAW" >>"$c"
+  while [ "$(wc -c <"$cost_store" | tr -d '[:space:]')" -le "$initial_offset" ]; do
+    printf '{"schema_version":1,"kind":"execute","spec_id":"SPEC-503","plan_id":null,"plan_slug":null,"session_id":"s-rw%s","total":1000,"seq":0,"final":true,"git_branch":"%s","ts":"2026-09-26T10:00:00Z","session_cwd":"/work/repo"}\n' "$i" "$RAW" >>"$cost_store"
     i=$((i + 1))
   done
   check_same pr "$PR"
@@ -325,8 +325,8 @@ differs() { if cmp -s "$1" "$2"; then return 1; fi; return 0; }
   check_same reconcile
 
   # A plain shrink below the recorded offset.
-  head -n 1 "$c" >"$BATS_TEST_TMPDIR/cost.cut"
-  cp "$BATS_TEST_TMPDIR/cost.cut" "$c"
+  head -n 1 "$cost_store" >"$BATS_TEST_TMPDIR/cost.cut"
+  cp "$BATS_TEST_TMPDIR/cost.cut" "$cost_store"
   check_same pr "$PR"
   assert_trace "scan=full store=c reason=shrunk"
 
@@ -338,9 +338,9 @@ differs() { if cmp -s "$1" "$2"; then return 1; fi; return 0; }
 # --- 5. unwritable telemetry dir ---------------------------------------------
 
 @test "unwritable: a telemetry dir that cannot be written still reads, silently, and leaves no memo or temp" {
-  chmod a-w "$UM_TD"
-  if touch "$UM_TD/.write-probe" 2>/dev/null; then
-    rm -f "$UM_TD/.write-probe"
+  chmod a-w "$UM_TELEMETRY_DIRECTORY"
+  if touch "$UM_TELEMETRY_DIRECTORY/.write-probe" 2>/dev/null; then
+    rm -f "$UM_TELEMETRY_DIRECTORY/.write-probe"
     printf 'the telemetry dir is still writable (running as root?); the case would pass vacuously\n' >&2
     return 1
   fi
@@ -348,30 +348,30 @@ differs() { if cmp -s "$1" "$2"; then return 1; fi; return 0; }
   assert_trace "write=fail"
   assert_no_trace '^write=ok'
   [ ! -e "$MEMO" ]
-  [ -z "$(find "$UM_TD" -maxdepth 1 -name '.usage-branch-memo.tmp.*')" ]
+  [ -z "$(find "$UM_TELEMETRY_DIRECTORY" -maxdepth 1 -name '.usage-branch-memo.tmp.*')" ]
 }
 
 # --- 6. concurrent cold readouts ---------------------------------------------
 
 @test "concurrent: simultaneous cold readouts all print the pre-change bytes, and the next one reads warm" {
-  local prs=(2305 2302 2307 2314 2401 2410) p i=0 pids=()
+  local prs=(2305 2302 2307 2314 2401 2410) pr_number background_pid i=0 pids=()
   rm -f "$MEMO"
-  for p in "${prs[@]}"; do
-    ( nrun "$BATS_TEST_TMPDIR/c$i.out" "$BATS_TEST_TMPDIR/c$i.err" pr "$p" ) >/dev/null 2>&1 3>&- &
+  for pr_number in "${prs[@]}"; do
+    ( run_new_tree "$BATS_TEST_TMPDIR/c$i.out" "$BATS_TEST_TMPDIR/c$i.err" pr "$pr_number" ) >/dev/null 2>&1 3>&- &
     pids[i]=$!
     i=$((i + 1))
   done
-  for p in "${pids[@]}"; do wait "$p"; done
+  for background_pid in "${pids[@]}"; do wait "$background_pid"; done
   i=0
-  for p in "${prs[@]}"; do
-    orun "$BATS_TEST_TMPDIR/co.out" "$BATS_TEST_TMPDIR/co.err" pr "$p"
+  for pr_number in "${prs[@]}"; do
+    run_old_tree "$BATS_TEST_TMPDIR/co.out" "$BATS_TEST_TMPDIR/co.err" pr "$pr_number"
     assert_priced "$BATS_TEST_TMPDIR/c$i.out"
     assert_same "$BATS_TEST_TMPDIR/co.out" "$BATS_TEST_TMPDIR/c$i.out"
-    [ ! -s "$BATS_TEST_TMPDIR/c$i.err" ] || { printf 'pr %s printed on stderr:\n%s\n' "$p" "$(cat "$BATS_TEST_TMPDIR/c$i.err")" >&2; return 1; }
+    [ ! -s "$BATS_TEST_TMPDIR/c$i.err" ] || { printf 'pr %s printed on stderr:\n%s\n' "$pr_number" "$(cat "$BATS_TEST_TMPDIR/c$i.err")" >&2; return 1; }
     i=$((i + 1))
   done
   [ "$i" -ge 4 ]
-  [ -z "$(find "$UM_TD" -maxdepth 1 -name '.usage-branch-memo.tmp.*')" ]
+  [ -z "$(find "$UM_TELEMETRY_DIRECTORY" -maxdepth 1 -name '.usage-branch-memo.tmp.*')" ]
   check_same pr "$PR"
   assert_trace "path=warm"
 }
@@ -379,17 +379,17 @@ differs() { if cmp -s "$1" "$2"; then return 1; fi; return 0; }
 # --- 7. held lock and a mid-read append --------------------------------------
 
 @test "lock: a readout started while the ledger lock is held finishes first; a copy that saves under the lock waits for it" {
-  local t0 elapsed rel
+  local started_seconds elapsed releaser_pid
   export GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 GAIA_LEDGER_LOCK_TIMEOUT_SECONDS=60
   rm -f "$MEMO"
-  mkdir "$UM_TD/specs.lock.d"
-  t0=$SECONDS
-  ( sleep "$LOCK_HOLD_SECS"; rmdir "$UM_TD/specs.lock.d" ) >/dev/null 2>&1 3>&- &
-  rel=$!
+  mkdir "$UM_TELEMETRY_DIRECTORY/specs.lock.d"
+  started_seconds=$SECONDS
+  ( sleep "$LOCK_HOLD_SECONDS"; rmdir "$UM_TELEMETRY_DIRECTORY/specs.lock.d" ) >/dev/null 2>&1 3>&- &
+  releaser_pid=$!
 
   check_same pr "$PR"
-  elapsed=$((SECONDS - t0))
-  [ -d "$UM_TD/specs.lock.d" ]
+  elapsed=$((SECONDS - started_seconds))
+  [ -d "$UM_TELEMETRY_DIRECTORY/specs.lock.d" ]
   [ "$elapsed" -lt 10 ]
   assert_trace "write=ok"
   [ -f "$MEMO" ]
@@ -397,40 +397,40 @@ differs() { if cmp -s "$1" "$2"; then return 1; fi; return 0; }
   # Guard red, in the same hold window: a copy whose save takes the ledger lock
   # waits out the hold, so the bound above is not a property of a fast machine.
   make_tree lock
-  mutate "$MUT/$LIB" 'gaia_usage_memo_save() {' '_gaia_usage_memo_save_inner() {'
+  mutate "$MUTANT_TREE/$LIBRARY" 'gaia_usage_memo_save() {' '_gaia_usage_memo_save_inner() {'
   printf '%s\n' \
     'gaia_usage_memo_save() {' \
-    "  . \"$MUT/.specify/extensions/gaia/lib/with-ledger-lock.sh\"" \
+    "  . \"$MUTANT_TREE/.specify/extensions/gaia/lib/with-ledger-lock.sh\"" \
     '  with_ledger_lock "${1%/*}" _gaia_usage_memo_save_inner "$1"' \
-    '}' >>"$MUT/$LIB"
+    '}' >>"$MUTANT_TREE/$LIBRARY"
   rm -f "$MEMO"
-  mrun "$MUT" "$N_OUT" "$N_ERR" pr "$PR"
-  elapsed=$((SECONDS - t0))
-  [ "$elapsed" -ge "$((LOCK_HOLD_SECS - 3))" ]
-  assert_priced "$N_OUT"
-  assert_same "$O_OUT" "$N_OUT"
-  wait "$rel"
+  run_mutant_tree "$MUTANT_TREE" "$NEW_OUTPUT_FILE" "$NEW_ERROR_FILE" pr "$PR"
+  elapsed=$((SECONDS - started_seconds))
+  [ "$elapsed" -ge "$((LOCK_HOLD_SECONDS - 3))" ]
+  assert_priced "$NEW_OUTPUT_FILE"
+  assert_same "$OLD_OUTPUT_FILE" "$NEW_OUTPUT_FILE"
+  wait "$releaser_pid"
 }
 
 @test "seam: rows appended between the warm-up and the parse are found by the coverage check" {
   local first="$BATS_TEST_TMPDIR/seam.out"
   warm
-  export UMEMO_SEAM_TD="$UM_TD" GAIA_USAGE_MEMO_SEAM="$ROBUST/seam-append.sh"
+  export UMEMO_SEAM_TELEMETRY_DIRECTORY="$UM_TELEMETRY_DIRECTORY" GAIA_USAGE_MEMO_SEAM="$ROBUST/seam-append.sh"
   _paths
   : >"$GAIA_USAGE_MEMO_TRACE"
-  nrun "$N_OUT" "$N_ERR" pr 2501
+  run_new_tree "$NEW_OUTPUT_FILE" "$NEW_ERROR_FILE" pr 2501
   unset GAIA_USAGE_MEMO_SEAM
-  grep -qF '"session_id":"s-seam"' "$UM_TD/usage.jsonl"
+  grep -qF '"session_id":"s-seam"' "$UM_TELEMETRY_DIRECTORY/usage.jsonl"
   assert_trace "rerun=miss raws=0 bkeys=1 models=0"
-  [ ! -s "$N_ERR" ]
-  assert_priced "$N_OUT"
-  grep -qF '[initiative issue:2330 ' "$N_OUT"
-  cp "$N_OUT" "$first"
+  [ ! -s "$NEW_ERROR_FILE" ]
+  assert_priced "$NEW_OUTPUT_FILE"
+  grep -qF '[initiative issue:2330 ' "$NEW_OUTPUT_FILE"
+  cp "$NEW_OUTPUT_FILE" "$first"
 
   # The post-append stores read the same cold and under the pre-change scripts.
   rm -f "$MEMO"
   check_same pr 2501
-  assert_same "$first" "$N_OUT"
+  assert_same "$first" "$NEW_OUTPUT_FILE"
 }
 
 # --- 8. transitive helper edit -----------------------------------------------
@@ -442,28 +442,28 @@ differs() { if cmp -s "$1" "$2"; then return 1; fi; return 0; }
   case "$pr$key" in *null* | "") return 1 ;; esac
   _paths
   warm "$pr"
-  jq -e --arg k "$key" '.derive[$k] | length > 0' <<<"$(memo_body)" >/dev/null
+  jq -e --arg derive_key "$key" '.derive[$derive_key] | length > 0' <<<"$(memo_body)" >/dev/null
 
   make_tree helper
-  mutate "$MUT/.gaia/scripts/branch-name-lib.sh" 'unit="SPEC-${lead}"' 'unit="SPEC-9${lead}"'
+  mutate "$MUTANT_TREE/.gaia/scripts/branch-name-lib.sh" 'unit="SPEC-${lead}"' 'unit="SPEC-9${lead}"'
   : >"$GAIA_USAGE_MEMO_TRACE"
-  mrun "$MUT" "$N_OUT" "$N_ERR" pr "$pr"
+  run_mutant_tree "$MUTANT_TREE" "$NEW_OUTPUT_FILE" "$NEW_ERROR_FILE" pr "$pr"
   assert_trace "path=cold reason=stamp"
-  assert_priced "$N_OUT"
-  cp "$N_OUT" "$edited"
+  assert_priced "$NEW_OUTPUT_FILE"
+  cp "$NEW_OUTPUT_FILE" "$edited"
 
   rm -f "$MEMO"
-  mrun "$MUT" "$N_OUT" "$N_ERR" pr "$pr"
-  assert_same "$edited" "$N_OUT"
+  run_mutant_tree "$MUTANT_TREE" "$NEW_OUTPUT_FILE" "$NEW_ERROR_FILE" pr "$pr"
+  assert_same "$edited" "$NEW_OUTPUT_FILE"
   _paths
-  orun "$O_OUT" "$O_ERR" pr "$pr"
-  differs "$O_OUT" "$edited"
+  run_old_tree "$OLD_OUTPUT_FILE" "$OLD_ERROR_FILE" pr "$pr"
+  differs "$OLD_OUTPUT_FILE" "$edited"
 }
 
 # --- local rate mode (9, 12) -------------------------------------------------
 
-LX=claude-xray-1
-LY=claude-yray-1
+MODEL_XRAY=claude-xray-1
+MODEL_YRAY=claude-yray-1
 
 # The model entry in the flusher's key order, and in another order that the
 # warm-up grep does not match.
@@ -475,62 +475,62 @@ _reordered() { printf '"%s":{"output":100000,"fresh_input":1000000,"cache_write_
 # coverage check. C: Y visible to the warm-up and X only to the coverage check,
 # so the first rate load attempts the feed for Y alone.
 append_segment() {
-  local by
+  local by_model
   case "$1" in
-    A) by="{$(_flusher "$LX")}" ;;
-    B) by="{$(_reordered "$LX")}" ;;
-    C) by="{$(_flusher "$LY"),$(_reordered "$LX")}" ;;
+    A) by_model="{$(_flusher "$MODEL_XRAY")}" ;;
+    B) by_model="{$(_reordered "$MODEL_XRAY")}" ;;
+    C) by_model="{$(_flusher "$MODEL_YRAY"),$(_reordered "$MODEL_XRAY")}" ;;
     *) return 1 ;;
   esac
   printf '{"schema_version":1,"kind":"segment","key":"%s","session_id":"s-xm","inherit":false,"first_ts":"2026-09-12T16:00:00Z","last_ts":"2026-09-12T16:00:00Z","messages":2,"by_model":%s}\n' \
-    "$KEY" "$by" >>"$UM_TD/usage.jsonl"
+    "$KEY" "$by_model" >>"$UM_TELEMETRY_DIRECTORY/usage.jsonl"
 }
 
-# lrun <tree> <out> <err> <state-dir> <args...>: local rate mode. No --rate-table
+# run_local_rates <tree> <output-file> <error-file> <state-dir> <args...>: local rate mode. No --rate-table
 # override, the feed enabled and pointed at the stub, and a rates state dir of
 # the caller's choosing (the heal writes the local table, so each tree has its
 # own).
-lrun() {
-  local tree="$1" out="$2" err="$3" state="$4" rc=0
+run_local_rates() {
+  local tree="$1" output_file="$2" error_file="$3" state="$4" exit_status=0
   shift 4
-  env -u GAIA_RATES_FEED_DISABLE GAIA_RATES_STATE_DIR="$state" GAIA_RATES_FEED_URL="file://$STUB" \
-    bash "$tree/.gaia/scripts/usage.sh" "$@" --main-root "$UM_MAIN" --telemetry-dir "$UM_TD" \
-    --projects-root "$UM_PROJ" >"$out" 2>"$err" || rc=$?
-  return "$rc"
+  env -u GAIA_RATES_FEED_DISABLE GAIA_RATES_STATE_DIRECTORY="$state" GAIA_RATES_FEED_URL="file://$STUB" \
+    bash "$tree/.gaia/scripts/usage.sh" "$@" --main-root "$UM_MAIN" --telemetry-dir "$UM_TELEMETRY_DIRECTORY" \
+    --projects-root "$UM_PROJECTS_DIRECTORY" >"$output_file" 2>"$error_file" || exit_status=$?
+  return "$exit_status"
 }
 
 # local_scenario <variant> <tree> <state-name>: warms the memo under the shipped
 # tree over the committed stores, appends the variant's segment, and reads it
 # with <tree> and, over a fresh copy of the same local table, with the
-# pre-change scripts. Leaves the captures in $N_OUT $N_ERR $O_OUT $O_ERR and the
-# warm-up's output in $BASE_OUT.
+# pre-change scripts. Leaves the captures in $NEW_OUTPUT_FILE $NEW_ERROR_FILE $OLD_OUTPUT_FILE $OLD_ERROR_FILE and the
+# warm-up's output in $BASE_OUTPUT_FILE.
 local_scenario() {
-  local variant="$1" tree="$2" sname="$3"
+  local variant="$1" tree="$2" state_name="$3"
   _paths
-  BASE_OUT="$BATS_TEST_TMPDIR/base.out"
+  BASE_OUTPUT_FILE="$BATS_TEST_TMPDIR/base.out"
   STUB="$BATS_TEST_TMPDIR/feed.json"
   mkdir -p "$UM_MAIN/.gaia/scripts"
   cp "$UM_RATES" "$UM_MAIN/.gaia/scripts/token-rates.json"
   cp "$ROBUST/feed-stub.json" "$STUB"
-  rm -rf "$BATS_TEST_TMPDIR/rates-$sname" "$BATS_TEST_TMPDIR/rates-old"
-  lrun "$UM_NEW" "$BASE_OUT" "$BATS_TEST_TMPDIR/base.err" "$BATS_TEST_TMPDIR/rates-$sname" pr "$PR"
-  assert_priced "$BASE_OUT"
+  rm -rf "$BATS_TEST_TMPDIR/rates-$state_name" "$BATS_TEST_TMPDIR/rates-old"
+  run_local_rates "$UM_NEW" "$BASE_OUTPUT_FILE" "$BATS_TEST_TMPDIR/base.err" "$BATS_TEST_TMPDIR/rates-$state_name" pr "$PR"
+  assert_priced "$BASE_OUTPUT_FILE"
   append_segment "$variant"
   : >"$GAIA_USAGE_MEMO_TRACE"
-  lrun "$tree" "$N_OUT" "$N_ERR" "$BATS_TEST_TMPDIR/rates-$sname" pr "$PR"
-  lrun "$UM_OLD" "$O_OUT" "$O_ERR" "$BATS_TEST_TMPDIR/rates-old" pr "$PR"
+  run_local_rates "$tree" "$NEW_OUTPUT_FILE" "$NEW_ERROR_FILE" "$BATS_TEST_TMPDIR/rates-$state_name" pr "$PR"
+  run_local_rates "$UM_OLD" "$OLD_OUTPUT_FILE" "$OLD_ERROR_FILE" "$BATS_TEST_TMPDIR/rates-old" pr "$PR"
 }
 
 # assert_healed: the model's segment is priced and the output is the pre-change
 # one, with nothing on stderr and no lower-bound marker.
 assert_healed() {
-  assert_priced "$N_OUT"
-  assert_priced "$O_OUT"
-  if grep -qF 'unpriced model(s)' "$O_OUT"; then printf 'the pre-change run left a model unpriced, so the fixture proves nothing:\n%s\n' "$(cat "$O_OUT")" >&2; return 1; fi
-  if grep -qF 'unpriced model(s)' "$N_OUT"; then printf 'the readout marks a model unpriced:\n%s\n' "$(cat "$N_OUT")" >&2; return 1; fi
-  differs "$BASE_OUT" "$N_OUT"
-  assert_same "$O_OUT" "$N_OUT"
-  if [ -s "$N_ERR" ]; then printf 'the readout printed on stderr:\n%s\n' "$(cat "$N_ERR")" >&2; return 1; fi
+  assert_priced "$NEW_OUTPUT_FILE"
+  assert_priced "$OLD_OUTPUT_FILE"
+  if grep -qF 'unpriced model(s)' "$OLD_OUTPUT_FILE"; then printf 'the pre-change run left a model unpriced, so the fixture proves nothing:\n%s\n' "$(cat "$OLD_OUTPUT_FILE")" >&2; return 1; fi
+  if grep -qF 'unpriced model(s)' "$NEW_OUTPUT_FILE"; then printf 'the readout marks a model unpriced:\n%s\n' "$(cat "$NEW_OUTPUT_FILE")" >&2; return 1; fi
+  differs "$BASE_OUTPUT_FILE" "$NEW_OUTPUT_FILE"
+  assert_same "$OLD_OUTPUT_FILE" "$NEW_OUTPUT_FILE"
+  if [ -s "$NEW_ERROR_FILE" ]; then printf 'the readout printed on stderr:\n%s\n' "$(cat "$NEW_ERROR_FILE")" >&2; return 1; fi
   return 0
 }
 
@@ -556,49 +556,49 @@ assert_healed() {
 
 @test "local rates, guard red: a copy that reloads rates in-process leaves the second model unpriced" {
   make_tree inproc
-  mutate "$MUT/$LIB" '2) rates="$(gaia_usage_memo_rates_fresh "$dir" "$table" "$main")" || return 1 ;;' \
+  mutate "$MUTANT_TREE/$LIBRARY" '2) rates="$(gaia_usage_memo_rates_fresh "$library_directory" "$table" "$main")" || return 1 ;;' \
     '2) usage_rates_load "$table" "$main" "$(gaia_usage_memo_models)"; rates="$USAGE_RATES" ;;'
-  local_scenario C "$MUT" inproc
-  assert_priced "$O_OUT"
-  assert_priced "$N_OUT"
-  differs "$O_OUT" "$N_OUT"
-  grep -qF "unpriced model(s) $LX" "$N_OUT"
+  local_scenario C "$MUTANT_TREE" inproc
+  assert_priced "$OLD_OUTPUT_FILE"
+  assert_priced "$NEW_OUTPUT_FILE"
+  differs "$OLD_OUTPUT_FILE" "$NEW_OUTPUT_FILE"
+  grep -qF "unpriced model(s) $MODEL_XRAY" "$NEW_OUTPUT_FILE"
 }
 
 # --- 10. cross-shell warmth --------------------------------------------------
 
 @test "shells: one memo stays warm across bash 3.2 and bash 5" {
-  local sh3="" sh5="" s v seq=() i=0 out="$BATS_TEST_TMPDIR/sh.out" err="$BATS_TEST_TMPDIR/sh.err"
-  for s in /bin/bash /usr/bin/bash /opt/homebrew/bin/bash /usr/local/bin/bash "$(command -v bash)"; do
-    [ -x "$s" ] || continue
-    v="$("$s" -c 'printf %s "${BASH_VERSINFO[0]}"')"
-    case "$v" in
-      3) [ -n "$sh3" ] || sh3="$s" ;;
-      [5-9]) [ -n "$sh5" ] || sh5="$s" ;;
+  local bash3_path="" bash5_path="" shell_path major_version shell_sequence=() i=0 output_file="$BATS_TEST_TMPDIR/sh.out" error_file="$BATS_TEST_TMPDIR/sh.err"
+  for shell_path in /bin/bash /usr/bin/bash /opt/homebrew/bin/bash /usr/local/bin/bash "$(command -v bash)"; do
+    [ -x "$shell_path" ] || continue
+    major_version="$("$shell_path" -c 'printf %s "${BASH_VERSINFO[0]}"')"
+    case "$major_version" in
+      3) [ -n "$bash3_path" ] || bash3_path="$shell_path" ;;
+      [5-9]) [ -n "$bash5_path" ] || bash5_path="$shell_path" ;;
     esac
   done
-  if [ -n "$sh3" ] && [ -n "$sh5" ]; then
-    seq=("$sh5" "$sh3" "$sh5" "$sh3")
-  elif [ -n "$sh5" ]; then
-    seq=("$sh5" "$sh5")
-    printf '# only bash 5 (%s) on this host; the cross-shell sequence ran under it alone\n' "$sh5" >&3
-  elif [ -n "$sh3" ]; then
-    seq=("$sh3" "$sh3")
-    printf '# only bash 3 (%s) on this host; the cross-shell sequence ran under it alone\n' "$sh3" >&3
+  if [ -n "$bash3_path" ] && [ -n "$bash5_path" ]; then
+    shell_sequence=("$bash5_path" "$bash3_path" "$bash5_path" "$bash3_path")
+  elif [ -n "$bash5_path" ]; then
+    shell_sequence=("$bash5_path" "$bash5_path")
+    printf '# only bash 5 (%s) on this host; the cross-shell sequence ran under it alone\n' "$bash5_path" >&3
+  elif [ -n "$bash3_path" ]; then
+    shell_sequence=("$bash3_path" "$bash3_path")
+    printf '# only bash 3 (%s) on this host; the cross-shell sequence ran under it alone\n' "$bash3_path" >&3
   else
     printf 'no bash 3 or bash 5 found\n' >&2
     return 1
   fi
   _paths
-  orun "$O_OUT" "$O_ERR" pr "$PR"
+  run_old_tree "$OLD_OUTPUT_FILE" "$OLD_ERROR_FILE" pr "$PR"
   rm -f "$MEMO"
-  for s in "${seq[@]}"; do
+  for shell_path in "${shell_sequence[@]}"; do
     : >"$GAIA_USAGE_MEMO_TRACE"
-    "$s" "$UM_NEW/.gaia/scripts/usage.sh" pr "$PR" --main-root "$UM_MAIN" --telemetry-dir "$UM_TD" \
-      --rate-table "$UM_RATES" --projects-root "$UM_PROJ" >"$out" 2>"$err"
-    assert_priced "$out"
-    assert_same "$O_OUT" "$out"
-    [ ! -s "$err" ] || { printf '%s printed on stderr:\n%s\n' "$s" "$(cat "$err")" >&2; return 1; }
+    "$shell_path" "$UM_NEW/.gaia/scripts/usage.sh" pr "$PR" --main-root "$UM_MAIN" --telemetry-dir "$UM_TELEMETRY_DIRECTORY" \
+      --rate-table "$UM_RATES" --projects-root "$UM_PROJECTS_DIRECTORY" >"$output_file" 2>"$error_file"
+    assert_priced "$output_file"
+    assert_same "$OLD_OUTPUT_FILE" "$output_file"
+    [ ! -s "$error_file" ] || { printf '%s printed on stderr:\n%s\n' "$shell_path" "$(cat "$error_file")" >&2; return 1; }
     if [ "$i" = 0 ]; then assert_trace "path=cold reason=missing"; else assert_trace "path=warm"; fi
     i=$((i + 1))
   done
@@ -610,24 +610,26 @@ assert_healed() {
 # memo path fails with no coverage miss and the readout takes the fallback.
 forced_failure_tree() {
   make_tree "$1"
-  mutate "$MUT/$LIB" 'def usage_present($urows; $links; $cost):' 'def usage_present(($urows; $links; $cost):'
+  mutate "$MUTANT_TREE/$LIBRARY" 'def usage_present($usage_records; $links; $cost):' 'def usage_present(($usage_records; $links; $cost):'
 }
 
 @test "fallback: an unreadable links store prints the pre-change error, status and bytes" {
-  local rn=0 ro=0
-  chmod 000 "$UM_TD/links.jsonl"
-  if cat "$UM_TD/links.jsonl" >/dev/null 2>&1; then
+  local new_exit_status=0 old_exit_status=0
+  chmod 000 "$UM_TELEMETRY_DIRECTORY/links.jsonl"
+  if cat "$UM_TELEMETRY_DIRECTORY/links.jsonl" >/dev/null 2>&1; then
     printf 'links.jsonl is still readable (running as root?); the case would pass vacuously\n' >&2
     return 1
   fi
   _paths
   : >"$GAIA_USAGE_MEMO_TRACE"
-  nrun "$N_OUT" "$N_ERR" pr "$PR" || rn=$?
-  orun "$O_OUT" "$O_ERR" pr "$PR" || ro=$?
-  [ -s "$O_ERR" ]
-  [ "$rn" = "$ro" ]
-  assert_same "$O_OUT" "$N_OUT"
-  assert_same "$O_ERR" "$N_ERR"
+  run_new_tree "$NEW_OUTPUT_FILE" "$NEW_ERROR_FILE" pr "$PR" || new_exit_status=$?
+  run_old_tree "$OLD_OUTPUT_FILE" "$OLD_ERROR_FILE" pr "$PR" || old_exit_status=$?
+  [ -s "$OLD_ERROR_FILE" ]
+  [ "$new_exit_status" = "$old_exit_status" ]
+  assert_same "$OLD_OUTPUT_FILE" "$NEW_OUTPUT_FILE"
+  # jq names the failing option in its message: the pinned baseline spells it l, the working tree links_store.
+  sed 's/--rawfile links_store /--rawfile l /' "$NEW_ERROR_FILE" >"$NEW_ERROR_FILE.normalized"
+  assert_same "$OLD_ERROR_FILE" "$NEW_ERROR_FILE.normalized"
   assert_trace "fallback=legacy"
 }
 
@@ -635,33 +637,33 @@ forced_failure_tree() {
   forced_failure_tree jqfail
   _paths
   : >"$GAIA_USAGE_MEMO_TRACE"
-  mrun "$MUT" "$N_OUT" "$N_ERR" pr "$PR"
-  orun "$O_OUT" "$O_ERR" pr "$PR"
-  assert_priced "$N_OUT"
-  assert_same "$O_OUT" "$N_OUT"
-  assert_same "$O_ERR" "$N_ERR"
-  [ ! -s "$N_ERR" ]
+  run_mutant_tree "$MUTANT_TREE" "$NEW_OUTPUT_FILE" "$NEW_ERROR_FILE" pr "$PR"
+  run_old_tree "$OLD_OUTPUT_FILE" "$OLD_ERROR_FILE" pr "$PR"
+  assert_priced "$NEW_OUTPUT_FILE"
+  assert_same "$OLD_OUTPUT_FILE" "$NEW_OUTPUT_FILE"
+  assert_same "$OLD_ERROR_FILE" "$NEW_ERROR_FILE"
+  [ ! -s "$NEW_ERROR_FILE" ]
   assert_trace "fallback=legacy"
 }
 
 @test "fallback, guard red: a copy whose single-parse jq does not discard stderr prints jq's error" {
   forced_failure_tree jqerr
-  mutate "$MUT/$LIB" $'$filter end end" \\\n      2>/dev/null' '$filter end end"'
+  mutate "$MUTANT_TREE/$LIBRARY" $'$filter end end" \\\n      2>/dev/null' '$filter end end"'
   _paths
   : >"$GAIA_USAGE_MEMO_TRACE"
-  mrun "$MUT" "$N_OUT" "$N_ERR" pr "$PR"
-  orun "$O_OUT" "$O_ERR" pr "$PR"
+  run_mutant_tree "$MUTANT_TREE" "$NEW_OUTPUT_FILE" "$NEW_ERROR_FILE" pr "$PR"
+  run_old_tree "$OLD_OUTPUT_FILE" "$OLD_ERROR_FILE" pr "$PR"
   assert_trace "fallback=legacy"
-  assert_same "$O_OUT" "$N_OUT"
-  [ -s "$N_ERR" ]
-  differs "$O_ERR" "$N_ERR"
+  assert_same "$OLD_OUTPUT_FILE" "$NEW_OUTPUT_FILE"
+  [ -s "$NEW_ERROR_FILE" ]
+  differs "$OLD_ERROR_FILE" "$NEW_ERROR_FILE"
 }
 
 # --- 12. legacy fallback in local rate mode ----------------------------------
 
 @test "fallback, local rates: a failed single parse after a first heal still prices the second model" {
   forced_failure_tree jqfail
-  local_scenario C "$MUT" fallback
+  local_scenario C "$MUTANT_TREE" fallback
   assert_healed
   assert_trace "fallback=legacy"
 }
@@ -674,15 +676,15 @@ forced_failure_tree() {
 # reads. The sum is hashed in a subshell rather than a child bash, whose argv
 # would hit the very limit under test.
 @test "large memo: a body over the argument limits still reads warm and prints the pre-change bytes" {
-  local hdr body size sum
+  local header body size sum
   warm
-  hdr="$(sed -n 1p "$MEMO")"
+  header="$(sed -n 1p "$MEMO")"
   body="$(memo_body | jq -c '.bmap += ([range(0; 6000)] | map({key: "pad/\(.)-\("x" * 80)", value: {norm: "pad/\(.)-\("x" * 80)", key: null}}) | from_entries)')"
   size="${#body}"
   [ "$size" -gt 1048576 ] || { printf 'the padded body is %s bytes, want over 1048576\n' "$size" >&2; return 1; }
   sum="$(. "$UM_NEW/.gaia/scripts/usage-lib.sh" && _gaia_usage_hash16 "$body")"
   [ -n "$sum" ]
-  printf '{"schema_version":1,"stamp":"%s","sum":"%s"}\n%s\n' "$(jq -r '.stamp' <<<"$hdr")" "$sum" "$body" >"$MEMO"
+  printf '{"schema_version":1,"stamp":"%s","sum":"%s"}\n%s\n' "$(jq -r '.stamp' <<<"$header")" "$sum" "$body" >"$MEMO"
 
   check_same pr "$PR"
   assert_trace "path=warm"
@@ -693,26 +695,26 @@ forced_failure_tree() {
 # --- 14. memo model superset -------------------------------------------------
 
 @test "models superset: a model only a non-schema line names is dropped from the memo, with a rate reload" {
-  local row z=claude-zeta-1
-  row='{"schema_version":2,"kind":"segment","key":"session:s-z","session_id":"s-z","inherit":false,"first_ts":"2026-09-30T00:00:00Z","last_ts":"2026-09-30T00:00:00Z","messages":1,"by_model":{"'"$z"'":{"fresh_input":10,"cache_write_5m":0,"cache_write_1h":0,"cache_read":0,"output":5}}}'
+  local row zeta_model=claude-zeta-1
+  row='{"schema_version":2,"kind":"segment","key":"session:s-z","session_id":"s-z","inherit":false,"first_ts":"2026-09-30T00:00:00Z","last_ts":"2026-09-30T00:00:00Z","messages":1,"by_model":{"'"$zeta_model"'":{"fresh_input":10,"cache_write_5m":0,"cache_write_1h":0,"cache_read":0,"output":5}}}'
   warm
   cp "$MEMO" "$BATS_TEST_TMPDIR/memo.warm"
-  printf '%s\n' "$row" >>"$UM_TD/usage.jsonl"
+  printf '%s\n' "$row" >>"$UM_TELEMETRY_DIRECTORY/usage.jsonl"
 
   # Guard red first, from the warm memo: a gap that ignores models_extra finds
   # no miss, so the trace line the shipped copy writes is absent.
   make_tree extra
-  mutate "$MUT/$LIB" '($memo.models - $present.models) as $mx' '[] as $mx'
+  mutate "$MUTANT_TREE/$LIBRARY" '($memo.models - $present.models) as $extra_models' '[] as $extra_models'
   : >"$GAIA_USAGE_MEMO_TRACE"
-  mrun "$MUT" "$BATS_TEST_TMPDIR/m.out" "$BATS_TEST_TMPDIR/m.err" pr "$PR"
-  jq -e --arg z "$z" '.models | index($z) != null' <<<"$(memo_body)" >/dev/null
+  run_mutant_tree "$MUTANT_TREE" "$BATS_TEST_TMPDIR/m.out" "$BATS_TEST_TMPDIR/m.err" pr "$PR"
+  jq -e --arg zeta_model "$zeta_model" '.models | index($zeta_model) != null' <<<"$(memo_body)" >/dev/null
   assert_no_trace '^rerun=miss'
   cp "$BATS_TEST_TMPDIR/memo.warm" "$MEMO"
 
   check_same pr "$PR"
   assert_trace "rerun=miss raws=0 bkeys=0 models=1"
   assert_trace "rates=reload"
-  jq -e --arg z "$z" '.models | index($z) == null' <<<"$(memo_body)" >/dev/null
+  jq -e --arg zeta_model "$zeta_model" '.models | index($zeta_model) == null' <<<"$(memo_body)" >/dev/null
 
   check_same pr "$PR"
   assert_no_trace '^rerun=miss'

@@ -50,7 +50,7 @@ log() {
   printf '%s\n' "$*" >&2
 }
 
-is_uint() {
+is_unsigned_integer() {
   case "$1" in
     ''|*[!0-9]*) return 1 ;;
     *) return 0 ;;
@@ -60,16 +60,16 @@ is_uint() {
 # Pinned human duration format, identical to token-tally.sh: <N>h<M>m<S>s,
 # dropping any leading zero-valued unit.
 human_duration() {
-  local total="$1" h m s
-  h=$(( total / 3600 ))
-  m=$(( (total % 3600) / 60 ))
-  s=$(( total % 60 ))
-  if (( h > 0 )); then
-    printf '%dh%dm%ds' "$h" "$m" "$s"
-  elif (( m > 0 )); then
-    printf '%dm%ds' "$m" "$s"
+  local total="$1" hours minutes seconds
+  hours=$(( total / 3600 ))
+  minutes=$(( (total % 3600) / 60 ))
+  seconds=$(( total % 60 ))
+  if (( hours > 0 )); then
+    printf '%dh%dm%ds' "$hours" "$minutes" "$seconds"
+  elif (( minutes > 0 )); then
+    printf '%dm%ds' "$minutes" "$seconds"
   else
-    printf '%ds' "$s"
+    printf '%ds' "$seconds"
   fi
 }
 
@@ -77,13 +77,13 @@ human_duration() {
 # stored ledger values and all internal arithmetic stay raw. A non-numeric
 # input echoes back unchanged.
 commify() {
-  local n="$1" out=""
-  is_uint "$n" || { printf '%s' "$n"; return 0; }
-  while (( ${#n} > 3 )); do
-    out=",${n: -3}${out}"
-    n="${n:0:${#n}-3}"
+  local digits="$1" grouped_digits=""
+  is_unsigned_integer "$digits" || { printf '%s' "$digits"; return 0; }
+  while (( ${#digits} > 3 )); do
+    grouped_digits=",${digits: -3}${grouped_digits}"
+    digits="${digits:0:${#digits}-3}"
   done
-  printf '%s%s' "$n" "$out"
+  printf '%s%s' "$digits" "$grouped_digits"
 }
 
 # ---------- argument parsing (never crash on a bad/missing flag) ----------
@@ -95,11 +95,11 @@ while [[ $# -gt 0 ]]; do
   key="$1"
   case "$key" in
     --spec-id|--ledger|--rate-table)
-      val="${2:-}"
+      flag_value="${2:-}"
       case "$key" in
-        --spec-id)    FEATURE_KEY="$val" ;;
-        --ledger)     LEDGER_OVERRIDE="$val" ;;
-        --rate-table) RATE_TABLE_OVERRIDE="$val" ;;
+        --spec-id)    FEATURE_KEY="$flag_value" ;;
+        --ledger)     LEDGER_OVERRIDE="$flag_value" ;;
+        --rate-table) RATE_TABLE_OVERRIDE="$flag_value" ;;
       esac
       # `shift 2` fails (and does NOT shift) when a flag is the final arg with
       # no value, which would spin this loop forever; fall back to a single shift.
@@ -150,13 +150,13 @@ fi
 # failures: a bare `42` survives it, then indexing `.spec_id` on a number
 # throws and aborts the whole filter, silently dropping every good row.
 corrupt=0
-parsed="$(jq -R -s --arg fk "$FEATURE_KEY" '
+parsed="$(jq -R -s --arg feature_key "$FEATURE_KEY" '
   split("\n") | map(select(length > 0))
   | map(try fromjson catch "__BAD__")
   | map(if type == "object" then . else "__BAD__" end)
   | {
       bad: (map(select(. == "__BAD__")) | length),
-      recs: (map(select(. != "__BAD__")) | map(select(.spec_id == $fk or .plan_id == $fk)))
+      recs: (map(select(. != "__BAD__")) | map(select(.spec_id == $feature_key or .plan_id == $feature_key)))
     }
 ' "$LEDGER" 2>/dev/null)"
 
@@ -166,14 +166,14 @@ if [[ -z "$parsed" ]]; then
 fi
 
 bad_count="$(jq -r '.bad' <<<"$parsed" 2>/dev/null)"
-is_uint "$bad_count" || bad_count=0
+is_unsigned_integer "$bad_count" || bad_count=0
 (( bad_count > 0 )) && corrupt=1
 
-recs="$(jq -c '.recs' <<<"$parsed" 2>/dev/null)"
-[[ -z "$recs" ]] && recs="[]"
-recs_count="$(jq -r 'length' <<<"$recs" 2>/dev/null)"
-is_uint "$recs_count" || recs_count=0
-(( recs_count == 0 )) && no_records
+records="$(jq -c '.recs' <<<"$parsed" 2>/dev/null)"
+[[ -z "$records" ]] && records="[]"
+record_count="$(jq -r 'length' <<<"$records" 2>/dev/null)"
+is_unsigned_integer "$record_count" || record_count=0
+(( record_count == 0 )) && no_records
 
 # ---------- dedup + aggregate (frozen algorithm, FC-3) ----------
 summary="$(jq -c '
@@ -183,9 +183,9 @@ summary="$(jq -c '
   def winner_of_general($pool):
     $pool | map(. + {_ended: (.ended_at // "")}) | sort_by([(.total // 0), ._ended]) | last;
 
-  def dedup_session_general($sess):
-    ($sess | map(select(.partial != true))) as $nonpartial
-    | (if ($nonpartial | length) > 0 then $nonpartial else $sess end) as $pool
+  def dedup_session_general($session_rows):
+    ($session_rows | map(select(.partial != true))) as $nonpartial
+    | (if ($nonpartial | length) > 0 then $nonpartial else $session_rows end) as $pool
     | { winner: winner_of_general($pool), session_partial: (($nonpartial | length) == 0) };
 
   # execute: one cumulative row per commit. The winner is the row with
@@ -197,27 +197,27 @@ summary="$(jq -c '
       else ($pool | map(. + {_ended: (.ended_at // "")}) | sort_by([(.seq // 0), ._ended]) | last)
       end;
 
-  def dedup_session_execute($sess):
-    ($sess | map(select(.partial != true))) as $nonpartial
-    | (if ($nonpartial | length) > 0 then $nonpartial else $sess end) as $pool
+  def dedup_session_execute($session_rows):
+    ($session_rows | map(select(.partial != true))) as $nonpartial
+    | (if ($nonpartial | length) > 0 then $nonpartial else $session_rows end) as $pool
     | { winner: winner_of_execute($pool), session_partial: (($nonpartial | length) == 0) };
 
-  . as $recs
+  . as $records
   | ( ["spec", "plan", "execute"]
       | map(
           . as $action
-          | ($recs | map(select(.kind == $action))) as $actRecs
-          | select(($actRecs | length) > 0)
-          | ($actRecs | group_by(.session_id)
-             | map(if $action == "execute" then dedup_session_execute(.) else dedup_session_general(.) end)) as $sr
+          | ($records | map(select(.kind == $action))) as $action_records
+          | select(($action_records | length) > 0)
+          | ($action_records | group_by(.session_id)
+             | map(if $action == "execute" then dedup_session_execute(.) else dedup_session_general(.) end)) as $session_results
           | {
               action: $action,
-              total: ([$sr[].winner.total] | add // 0),
-              elapsed: ([$sr[] | (if .winner.duration_available == true then (.winner.duration_seconds // 0) else 0 end)] | add // 0),
-              elapsed_available: ([$sr[].winner.duration_available] | any),
-              elapsed_partial: ([$sr[].winner.duration_available] | map(. != true) | any),
-              session_partial: ([$sr[].session_partial] | any),
-              winners: [$sr[].winner]
+              total: ([$session_results[].winner.total] | add // 0),
+              elapsed: ([$session_results[] | (if .winner.duration_available == true then (.winner.duration_seconds // 0) else 0 end)] | add // 0),
+              elapsed_available: ([$session_results[].winner.duration_available] | any),
+              elapsed_partial: ([$session_results[].winner.duration_available] | map(. != true) | any),
+              session_partial: ([$session_results[].session_partial] | any),
+              winners: [$session_results[].winner]
             }
         )
     ) as $actions
@@ -235,16 +235,16 @@ summary="$(jq -c '
         output:      ($actions | map(.winners[].buckets.output)      | add // 0)
       }
     }
-' <<<"$recs" 2>/dev/null)"
+' <<<"$records" 2>/dev/null)"
 
 if [[ -z "$summary" ]]; then
   log "token-rollup: aggregation failed"
   no_records
 fi
 
-actions_len="$(jq -r '.actions | length' <<<"$summary" 2>/dev/null)"
-is_uint "$actions_len" || actions_len=0
-(( actions_len == 0 )) && no_records
+actions_length="$(jq -r '.actions | length' <<<"$summary" 2>/dev/null)"
+is_unsigned_integer "$actions_length" || actions_length=0
+(( actions_length == 0 )) && no_records
 
 # ---------- dollar pricing ----------
 # Prices each winning row's by_model breakdown against the rate table:
@@ -280,8 +280,8 @@ fi
 
 rates_json="null"
 if [[ "$rate_table_ok" == "true" ]]; then
-  if rt_contents="$(gaia_load_rate_table "$RATE_TABLE")"; then
-    rates_json="$rt_contents"
+  if rate_table_contents="$(gaia_load_rate_table "$RATE_TABLE")"; then
+    rates_json="$rate_table_contents"
     # Heal with every model any winner priced; status 0 means the local table
     # was rewritten, so reload before pricing.
     if declare -F gaia_rates_heal >/dev/null 2>&1 \
@@ -308,10 +308,10 @@ if [[ "$rate_table_ok" == "true" ]]; then
   cost_summary="$(jq -c --argjson rates "$rates_json" "$GAIA_PRICING_JQ_DEFS"'
     .actions as $actions
     | ( $actions | map(
-          . as $a
-          | ($a.winners | map(select(.by_model != null and (.by_model | length) > 0))) as $attributed_winners
+          . as $action_summary
+          | ($action_summary.winners | map(select(.by_model != null and (.by_model | length) > 0))) as $attributed_winners
           | ($attributed_winners | map(priced_row(.))) as $priced_rows
-          | { action: $a.action, dollars: ($priced_rows | map(.dollars) | add // 0), _rows: $priced_rows }
+          | { action: $action_summary.action, dollars: ($priced_rows | map(.dollars) | add // 0), _rows: $priced_rows }
         )
       ) as $cost_actions
     | {
@@ -336,53 +336,53 @@ if [[ -n "$cost_summary" ]]; then
 fi
 
 # ---------- render (stdout = payload only) ----------
-IFS=$'\t' read -r grand_total grand_elapsed grand_elapsed_available grand_elapsed_partial grand_session_partial fresh cwrite cread out < <(
+IFS=$'\t' read -r grand_total grand_elapsed grand_elapsed_available grand_elapsed_partial grand_session_partial fresh_input cache_write cache_read output < <(
   jq -r '[.grand_total, .grand_elapsed, .grand_elapsed_available, .grand_elapsed_partial, .grand_session_partial,
           .buckets.fresh_input, .buckets.cache_write, .buckets.cache_read, .buckets.output] | @tsv' <<<"$summary"
 )
-is_uint "$grand_total" || grand_total=0
-is_uint "$grand_elapsed" || grand_elapsed=0
-is_uint "$fresh" || fresh=0
-is_uint "$cwrite" || cwrite=0
-is_uint "$cread" || cread=0
-is_uint "$out" || out=0
+is_unsigned_integer "$grand_total" || grand_total=0
+is_unsigned_integer "$grand_elapsed" || grand_elapsed=0
+is_unsigned_integer "$fresh_input" || fresh_input=0
+is_unsigned_integer "$cache_write" || cache_write=0
+is_unsigned_integer "$cache_read" || cache_read=0
+is_unsigned_integer "$output" || output=0
 
 printf 'Cycle cost (%s):\n' "$FEATURE_KEY"
 
 # Totals share one right-aligned column; the grand total is >= every action
 # total, so its commified width is the column width for the action + Total lines.
-grand_total_c="$(commify "$grand_total")"
-tw=${#grand_total_c}
+grand_total_commified="$(commify "$grand_total")"
+total_width=${#grand_total_commified}
 
-while IFS=$'\t' read -r a_action a_total a_elapsed a_avail; do
-  is_uint "$a_total" || a_total=0
-  is_uint "$a_elapsed" || a_elapsed=0
-  if [[ "$a_avail" == "true" ]]; then
-    a_elapsed_str="$(human_duration "$a_elapsed")"
+while IFS=$'\t' read -r action_name action_total action_elapsed action_elapsed_available; do
+  is_unsigned_integer "$action_total" || action_total=0
+  is_unsigned_integer "$action_elapsed" || action_elapsed=0
+  if [[ "$action_elapsed_available" == "true" ]]; then
+    action_elapsed_display="$(human_duration "$action_elapsed")"
   else
-    a_elapsed_str="unavailable"
+    action_elapsed_display="unavailable"
   fi
-  printf '  %-11s%*s   (elapsed %s)\n' "$a_action:" "$tw" "$(commify "$a_total")" "$a_elapsed_str"
+  printf '  %-11s%*s   (elapsed %s)\n' "$action_name:" "$total_width" "$(commify "$action_total")" "$action_elapsed_display"
 done < <(jq -r '.actions[] | [.action, .total, .elapsed, .elapsed_available] | @tsv' <<<"$summary")
 
 if [[ "$grand_elapsed_available" == "true" ]]; then
-  total_elapsed_str="$(human_duration "$grand_elapsed")"
+  total_elapsed_display="$(human_duration "$grand_elapsed")"
 else
-  total_elapsed_str="unavailable"
+  total_elapsed_display="unavailable"
 fi
-printf '  %-11s%*s   (elapsed %s)\n' "Total:" "$tw" "$grand_total_c" "$total_elapsed_str"
+printf '  %-11s%*s   (elapsed %s)\n' "Total:" "$total_width" "$grand_total_commified" "$total_elapsed_display"
 
 # Buckets share their own right-aligned column, widened to the largest of the four.
-fresh_c="$(commify "$fresh")"; cwrite_c="$(commify "$cwrite")"
-cread_c="$(commify "$cread")"; out_c="$(commify "$out")"
-bw=${#fresh_c}
-(( ${#cwrite_c} > bw )) && bw=${#cwrite_c}
-(( ${#cread_c}  > bw )) && bw=${#cread_c}
-(( ${#out_c}    > bw )) && bw=${#out_c}
-printf '    %-14s%*s\n' "Fresh input:" "$bw" "$fresh_c"
-printf '    %-14s%*s\n' "Cache write:" "$bw" "$cwrite_c"
-printf '    %-14s%*s\n' "Cache read:"  "$bw" "$cread_c"
-printf '    %-14s%*s\n' "Output:"      "$bw" "$out_c"
+fresh_input_commified="$(commify "$fresh_input")"; cache_write_commified="$(commify "$cache_write")"
+cache_read_commified="$(commify "$cache_read")"; output_commified="$(commify "$output")"
+bucket_width=${#fresh_input_commified}
+(( ${#cache_write_commified} > bucket_width )) && bucket_width=${#cache_write_commified}
+(( ${#cache_read_commified}  > bucket_width )) && bucket_width=${#cache_read_commified}
+(( ${#output_commified}    > bucket_width )) && bucket_width=${#output_commified}
+printf '    %-14s%*s\n' "Fresh input:" "$bucket_width" "$fresh_input_commified"
+printf '    %-14s%*s\n' "Cache write:" "$bucket_width" "$cache_write_commified"
+printf '    %-14s%*s\n' "Cache read:"  "$bucket_width" "$cache_read_commified"
+printf '    %-14s%*s\n' "Output:"      "$bucket_width" "$output_commified"
 
 if (( corrupt == 1 )) || [[ "$grand_elapsed_partial" == "true" ]] || [[ "$grand_session_partial" == "true" ]]; then
   printf '  (partial: some ledger input was unreadable or lacked timing; figures are a lower bound)\n'
@@ -404,27 +404,27 @@ elif [[ "$cost_attributed_present" != "true" ]]; then
 else
   printf '  Est. cost (USD):\n'
 
-  grand_dollars_fmt="$(printf '$%.2f' "$cost_grand_dollars" 2>/dev/null)"
+  grand_dollars_formatted="$(printf '$%.2f' "$cost_grand_dollars" 2>/dev/null)"
   # Literal fallback string, not a command sub.
   # shellcheck disable=SC2016
-  [[ -z "$grand_dollars_fmt" ]] && grand_dollars_fmt='$0.00'
-  dw=${#grand_dollars_fmt}
+  [[ -z "$grand_dollars_formatted" ]] && grand_dollars_formatted='$0.00'
+  dollars_width=${#grand_dollars_formatted}
 
   cost_action_labels=()
-  cost_action_fmts=()
-  while IFS=$'\t' read -r c_action c_dollars; do
-    c_fmt="$(printf '$%.2f' "$c_dollars" 2>/dev/null)"
+  cost_action_dollars_formatted=()
+  while IFS=$'\t' read -r action_label action_dollars; do
+    action_dollars_formatted="$(printf '$%.2f' "$action_dollars" 2>/dev/null)"
     # shellcheck disable=SC2016
-    [[ -z "$c_fmt" ]] && c_fmt='$0.00'
-    cost_action_labels+=("$c_action")
-    cost_action_fmts+=("$c_fmt")
-    (( ${#c_fmt} > dw )) && dw=${#c_fmt}
+    [[ -z "$action_dollars_formatted" ]] && action_dollars_formatted='$0.00'
+    cost_action_labels+=("$action_label")
+    cost_action_dollars_formatted+=("$action_dollars_formatted")
+    (( ${#action_dollars_formatted} > dollars_width )) && dollars_width=${#action_dollars_formatted}
   done < <(jq -r '.actions[] | [.action, .dollars] | @tsv' <<<"$cost_summary")
 
   for i in "${!cost_action_labels[@]}"; do
-    printf '    %-11s%*s\n' "${cost_action_labels[$i]}:" "$dw" "${cost_action_fmts[$i]}"
+    printf '    %-11s%*s\n' "${cost_action_labels[$i]}:" "$dollars_width" "${cost_action_dollars_formatted[$i]}"
   done
-  printf '    %-11s%*s\n' "Total:" "$dw" "$grand_dollars_fmt"
+  printf '    %-11s%*s\n' "Total:" "$dollars_width" "$grand_dollars_formatted"
 
   [[ "$cost_pre_attribution_present" == "true" ]] && printf '    (partial lower bound: some records predate per-model attribution)\n'
   [[ "$cost_corrupt_present" == "true" ]] && printf '    (partial lower bound: some ledger input was unreadable, corrupt, or lacked timing)\n'

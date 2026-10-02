@@ -15,7 +15,7 @@ Pass `Working root: <abs>` verbatim into every member dispatch, with the expecte
 ## First actions
 
 1. Confirm the Agent tool is available to you before round 1. Absent: write the unit file with `stop_reason: "nesting-unavailable"` and return.
-2. Read K from `.gaia/scripts/context-checkpoint-lib.sh` (`GAIA_CTX_UNIT_ROUNDS`). Never hard-code it.
+2. Read K from `.gaia/scripts/context-checkpoint-lib.sh` (`GAIA_CONTEXT_UNIT_ROUNDS`). Never hard-code it.
 3. Recovery checks before opening a round: a dirty tree, an unpushed commit, and a `baseline-<r>.json` in `<run>` with no `fixer-<r>-audit.json`. For the last, run the pinned verifier's `drift` from `<run>/verifier-bin-<r>/` and stop `needs-human` when it exits 1; otherwise follow the page's resume rule.
 4. Republish the `## Audit rounds` record (`audit-loop-eval.sh record-values` into `audit-loop-record.sh`) before round 1.
 

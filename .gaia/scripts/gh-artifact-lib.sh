@@ -38,17 +38,17 @@
 # `gh pr create` on the SAME branch still overwrites in place (last writer
 # wins within one branch, which is correct: one branch has one open PR).
 
-# gaia_gh_artifact_cache_dir
+# gaia_gh_artifact_cache_directory
 # Echoes <main_root>/.gaia/local/cache, or nothing when the shared main-root
 # resolver (.gaia/scripts/main-root-lib.sh) cannot resolve a main checkout.
-# Honors $GAIA_GH_ARTIFACT_CACHE_DIR when set (test seam). Always returns 0.
-gaia_gh_artifact_cache_dir() {
-  if [[ -n "${GAIA_GH_ARTIFACT_CACHE_DIR:-}" ]]; then
-    printf '%s' "$GAIA_GH_ARTIFACT_CACHE_DIR"
+# Honors $GAIA_GH_ARTIFACT_CACHE_DIRECTORY when set (test seam). Always returns 0.
+gaia_gh_artifact_cache_directory() {
+  if [[ -n "${GAIA_GH_ARTIFACT_CACHE_DIRECTORY:-}" ]]; then
+    printf '%s' "$GAIA_GH_ARTIFACT_CACHE_DIRECTORY"
     return 0
   fi
-  local script_dir main_root errexit_was
-  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local script_directory main_root errexit_was
+  script_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   # Suspend errexit across the load, then RESTORE WHAT WAS THERE. A copy that is
   # present but unparseable abandons the shell AT the source, before the resolver
   # check below can degrade, and no caller can guard it from outside because
@@ -60,19 +60,19 @@ gaia_gh_artifact_cache_dir() {
   case $- in *e*) errexit_was=1 ;; esac
   set +e
   # shellcheck disable=SC1091
-  source "$script_dir/main-root-lib.sh" 2>/dev/null
+  source "$script_directory/main-root-lib.sh" 2>/dev/null
   if [ "$errexit_was" = 1 ]; then set -e; fi
   main_root="$(gaia_resolve_main_root)" || return 0
   printf '%s' "$main_root/.gaia/local/cache"
   return 0
 }
 
-# gaia_gh_artifact_path <cache_dir> <branch>
-# Echoes "<cache_dir>/gh-artifact-pr.<gaia_key_slug branch>.json"; echoes
-# nothing when EITHER <cache_dir> or <branch> is empty, or when the slug
+# gaia_gh_artifact_path <cache_directory> <branch>
+# Echoes "<cache_directory>/gh-artifact-pr.<gaia_key_slug branch>.json"; echoes
+# nothing when EITHER <cache_directory> or <branch> is empty, or when the slug
 # itself fails. Always returns 0.
 # Sources .gaia/scripts/audit-key-lib.sh from beside itself via BASH_SOURCE,
-# the same idiom gaia_gh_artifact_cache_dir above already uses for
+# the same idiom gaia_gh_artifact_cache_directory above already uses for
 # main-root-lib.sh.
 #
 # The branch is an explicit argument, never derived here: gaia_audit_key
@@ -87,32 +87,32 @@ gaia_gh_artifact_cache_dir() {
 #
 # Empty branch echoes nothing rather than falling back to an unkeyed shared
 # path: the same fail-open rule this function already applies to an empty
-# cache_dir extends verbatim to an empty branch, and it composes with
+# cache_directory extends verbatim to an empty branch, and it composes with
 # gaia_gh_artifact_write's own refusal to write an unclaimable breadcrumb --
 # a caller that cannot name its branch skips its write, it never invents a
 # shared key.
 gaia_gh_artifact_path() {
-  local cache_dir="${1:-}" branch="${2:-}"
-  [[ -z "$cache_dir" || -z "$branch" ]] && return 0
-  local self_dir errexit_was
-  self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  # Same state-preserving bracket as gaia_gh_artifact_cache_dir above, and for the same reason.
+  local cache_directory="${1:-}" branch="${2:-}"
+  [[ -z "$cache_directory" || -z "$branch" ]] && return 0
+  local self_directory errexit_was
+  self_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # Same state-preserving bracket as gaia_gh_artifact_cache_directory above, and for the same reason.
   errexit_was=0
   case $- in *e*) errexit_was=1 ;; esac
   set +e
   # shellcheck disable=SC1091
-  source "$self_dir/audit-key-lib.sh" 2>/dev/null
+  source "$self_directory/audit-key-lib.sh" 2>/dev/null
   if [ "$errexit_was" = 1 ]; then set -e; fi
 
   # The slug is captured and checked, not interpolated into the printf: a
   # command substitution discards its own status, so a failing slug inside the
   # format arguments would print "gh-artifact-pr..json" -- the unkeyed shared
   # path this function's contract promises never to invent. A failing slug
-  # takes the same empty-output exit as an empty cache_dir or branch, which
+  # takes the same empty-output exit as an empty cache_directory or branch, which
   # every caller already handles by skipping.
   local slug
   slug="$(gaia_key_slug "$branch")" || return 0
-  printf '%s' "$cache_dir/gh-artifact-pr.$slug.json"
+  printf '%s' "$cache_directory/gh-artifact-pr.$slug.json"
   return 0
 }
 
@@ -129,13 +129,13 @@ gaia_gh_artifact_parse_url() {
   local text="${1:-}"
   [[ -z "$text" ]] && return 0
   command -v jq >/dev/null 2>&1 || return 0
-  local re='https://github\.com/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)/pull/([0-9]+)'
-  if [[ "$text" =~ $re ]]; then
+  local pull_request_url_pattern='https://github\.com/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)/pull/([0-9]+)'
+  if [[ "$text" =~ $pull_request_url_pattern ]]; then
     local owner="${BASH_REMATCH[1]}" name="${BASH_REMATCH[2]}" number="${BASH_REMATCH[3]}"
-    local out
-    out="$(jq -cn --arg repo "${owner}/${name}" --argjson number "$number" \
-      '{type: "pr", number: $number, repo: $repo}' 2>/dev/null)" || out=""
-    [[ -n "$out" ]] && printf '%s' "$out"
+    local artifact_json
+    artifact_json="$(jq -cn --arg repo "${owner}/${name}" --argjson number "$number" \
+      '{type: "pr", number: $number, repo: $repo}' 2>/dev/null)" || artifact_json=""
+    [[ -n "$artifact_json" ]] && printf '%s' "$artifact_json"
   fi
   return 0
 }
@@ -147,8 +147,8 @@ gaia_gh_artifact_parse_url() {
 # or a repo outside the safe class. Returns non-zero with a stderr diagnostic
 # whenever nothing reached disk.
 gaia_gh_artifact_write() {
-  local bc_path="${1:-}" number="${2:-}" repo="${3:-}" branch="${4:-}" session_id="${5:-}"
-  if [[ -z "$bc_path" ]]; then
+  local breadcrumb_path="${1:-}" number="${2:-}" repo="${3:-}" branch="${4:-}" session_id="${5:-}"
+  if [[ -z "$breadcrumb_path" ]]; then
     printf 'gaia_gh_artifact_write: no path given; nothing written\n' >&2
     return 1
   fi
@@ -169,25 +169,25 @@ gaia_gh_artifact_write() {
     return 1
   fi
   if ! command -v jq >/dev/null 2>&1; then
-    printf 'gaia_gh_artifact_write: jq not found on PATH; breadcrumb %s not written\n' "$bc_path" >&2
+    printf 'gaia_gh_artifact_write: jq not found on PATH; breadcrumb %s not written\n' "$breadcrumb_path" >&2
     return 1
   fi
-  local ts json
-  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  local timestamp json
+  timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   json="$(jq -n --argjson number "$number" --arg repo "$repo" --arg branch "$branch" \
-      --arg session_id "$session_id" --arg ts "$ts" '
-    {type: "pr", number: $number, repo: $repo, branch: $branch, session_id: $session_id, ts: $ts}
+      --arg session_id "$session_id" --arg timestamp "$timestamp" '
+    {type: "pr", number: $number, repo: $repo, branch: $branch, session_id: $session_id, ts: $timestamp}
   ' 2>/dev/null)" || json=""
   if [[ -z "$json" ]] || ! jq -e 'type == "object"' >/dev/null 2>&1 <<<"$json"; then
-    printf 'gaia_gh_artifact_write: could not build a valid breadcrumb for %s; nothing written\n' "$bc_path" >&2
+    printf 'gaia_gh_artifact_write: could not build a valid breadcrumb for %s; nothing written\n' "$breadcrumb_path" >&2
     return 1
   fi
-  if ! mkdir -p "$(dirname "$bc_path")" 2>/dev/null; then
-    printf 'gaia_gh_artifact_write: cannot create parent directory for %s\n' "$bc_path" >&2
+  if ! mkdir -p "$(dirname "$breadcrumb_path")" 2>/dev/null; then
+    printf 'gaia_gh_artifact_write: cannot create parent directory for %s\n' "$breadcrumb_path" >&2
     return 1
   fi
-  if ! printf '%s\n' "$json" >"$bc_path" 2>/dev/null; then
-    printf 'gaia_gh_artifact_write: cannot write breadcrumb to %s\n' "$bc_path" >&2
+  if ! printf '%s\n' "$json" >"$breadcrumb_path" 2>/dev/null; then
+    printf 'gaia_gh_artifact_write: cannot write breadcrumb to %s\n' "$breadcrumb_path" >&2
     return 1
   fi
   return 0
@@ -200,34 +200,34 @@ gaia_gh_artifact_write() {
 # treated as unreadable clock skew). Echoes nothing otherwise. NEVER deletes
 # the file. Always returns 0.
 gaia_gh_artifact_read() {
-  local bc_path="${1:-}" session_id="${2:-}" branch="${3:-}" ttl_seconds="${4:-}"
-  [[ -n "$bc_path" && -f "$bc_path" ]] || return 0
+  local breadcrumb_path="${1:-}" session_id="${2:-}" branch="${3:-}" ttl_seconds="${4:-}"
+  [[ -n "$breadcrumb_path" && -f "$breadcrumb_path" ]] || return 0
   command -v jq >/dev/null 2>&1 || return 0
   [[ "$ttl_seconds" =~ ^[0-9]+$ ]] || ttl_seconds=86400
   local content
-  content="$(cat "$bc_path" 2>/dev/null)" || return 0
+  content="$(cat "$breadcrumb_path" 2>/dev/null)" || return 0
   [[ -z "$content" ]] && return 0
-  local out
-  out="$(jq -r --arg sid "$session_id" --arg br "$branch" --argjson ttl "$ttl_seconds" '
-    def toe: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
+  local artifact_json
+  artifact_json="$(jq -r --arg session_id "$session_id" --arg branch "$branch" --argjson ttl_seconds "$ttl_seconds" '
+    def to_epoch: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
     if type != "object" then empty
     elif (.session_id | type) != "string" then empty
     elif (.branch | type) != "string" then empty
     elif (.ts | type) != "string" then empty
     elif (.repo | type) != "string" then empty
     elif (.number | type) != "number" then empty
-    elif .session_id != $sid then empty
-    elif .branch != $br then empty
+    elif .session_id != $session_id then empty
+    elif .branch != $branch then empty
     else
-      (try (.ts | toe) catch null) as $epoch
-      | (now) as $n
+      (try (.ts | to_epoch) catch null) as $epoch
+      | (now) as $current_epoch
       | if $epoch == null then empty
-        elif ($epoch - $n) > 60 then empty
-        elif ($n - $epoch) > $ttl then empty
+        elif ($epoch - $current_epoch) > 60 then empty
+        elif ($current_epoch - $epoch) > $ttl_seconds then empty
         else ({type: .type, number: .number, repo: .repo} | tojson)
         end
     end
-  ' <<<"$content" 2>/dev/null)" || out=""
-  [[ -n "$out" ]] && printf '%s' "$out"
+  ' <<<"$content" 2>/dev/null)" || artifact_json=""
+  [[ -n "$artifact_json" ]] && printf '%s' "$artifact_json"
   return 0
 }

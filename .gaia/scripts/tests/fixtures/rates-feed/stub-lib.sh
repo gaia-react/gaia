@@ -21,7 +21,7 @@
 
 _RATES_STUB_PIDS=""
 
-_rates_stub_py() {
+_rates_stub_python_source() {
   cat <<'PYEOF'
 import http.server
 import os
@@ -125,20 +125,20 @@ _rates_stub_need_tools() {
   return 0
 }
 
-# Sets _RATES_STUB_PORT. Args: <dir> <tls|plain> <mode> [body_file].
+# Sets _RATES_STUB_PORT. Args: <stub_directory> <tls|plain> <mode> [body_file].
 _rates_stub_launch() {
-  local dir="$1" kind="$2" mode="$3" body_file="${4:-}" i pid
-  mkdir -p "$dir" || return 1
-  : >"$dir/reqs"
-  : >"$dir/hdrs"
-  printf '%s' "$mode" >"$dir/mode"
+  local stub_directory="$1" kind="$2" mode="$3" body_file="${4:-}" i pid
+  mkdir -p "$stub_directory" || return 1
+  : >"$stub_directory/reqs"
+  : >"$stub_directory/hdrs"
+  printf '%s' "$mode" >"$stub_directory/mode"
   if [[ -n "$body_file" ]]; then
-    cp "$body_file" "$dir/body" || return 1
+    cp "$body_file" "$stub_directory/body" || return 1
   else
-    printf '{}' >"$dir/body"
+    printf '{}' >"$stub_directory/body"
   fi
   if [[ "$kind" == "tls" ]]; then
-    cat >"$dir/cert.cnf" <<'CNF'
+    cat >"$stub_directory/cert.cnf" <<'CNF'
 [req]
 distinguished_name = dn
 x509_extensions = v3
@@ -150,25 +150,25 @@ subjectAltName = IP:127.0.0.1
 basicConstraints = critical, CA:TRUE
 CNF
     openssl req -x509 -newkey rsa:2048 -nodes -days 2 \
-      -keyout "$dir/key.pem" -out "$dir/cert.pem" -config "$dir/cert.cnf" >/dev/null 2>&1 || {
+      -keyout "$stub_directory/key.pem" -out "$stub_directory/cert.pem" -config "$stub_directory/cert.cnf" >/dev/null 2>&1 || {
       echo "rates-stub: openssl could not create the throwaway cert" >&2
       return 1
     }
   fi
-  _rates_stub_py >"$dir/server.py"
+  _rates_stub_python_source >"$stub_directory/server.py"
   # fd 3 is bats' result pipe; the server must not inherit it or the run hangs.
-  python3 "$dir/server.py" "$dir" "$kind" >"$dir/server.log" 2>&1 3>&- &
+  python3 "$stub_directory/server.py" "$stub_directory" "$kind" >"$stub_directory/server.log" 2>&1 3>&- &
   pid=$!
   _RATES_STUB_PIDS="$_RATES_STUB_PIDS $pid"
   for ((i = 0; i < 100; i++)); do
-    [[ -s "$dir/port" ]] && break
+    [[ -s "$stub_directory/port" ]] && break
     sleep 0.1
   done
-  if [[ ! -s "$dir/port" ]]; then
+  if [[ ! -s "$stub_directory/port" ]]; then
     echo "rates-stub: the server did not report a port" >&2
     return 1
   fi
-  _RATES_STUB_PORT="$(cat "$dir/port")"
+  _RATES_STUB_PORT="$(cat "$stub_directory/port")"
   return 0
 }
 
@@ -179,23 +179,23 @@ _rates_stub_root() {
 rates_stub_start() {
   local mode="${1:-serve}" body_file="${2:-}"
   _rates_stub_need_tools tls || return 1
-  RATES_STUB_DIR="$(_rates_stub_root)/rates-stub-tls"
-  _rates_stub_launch "$RATES_STUB_DIR" tls "$mode" "$body_file" || return 1
+  RATES_STUB_DIRECTORY="$(_rates_stub_root)/rates-stub-tls"
+  _rates_stub_launch "$RATES_STUB_DIRECTORY" tls "$mode" "$body_file" || return 1
   RATES_STUB_URL="https://127.0.0.1:${_RATES_STUB_PORT}/gaia-react/gaia/main/.gaia/scripts/token-rates.json"
-  RATES_STUB_REQS="$RATES_STUB_DIR/reqs"
-  RATES_STUB_HDRS="$RATES_STUB_DIR/hdrs"
-  CURL_CA_BUNDLE="$RATES_STUB_DIR/cert.pem"
-  export RATES_STUB_DIR RATES_STUB_URL RATES_STUB_REQS RATES_STUB_HDRS CURL_CA_BUNDLE
+  RATES_STUB_REQUESTS="$RATES_STUB_DIRECTORY/reqs"
+  RATES_STUB_HEADERS="$RATES_STUB_DIRECTORY/hdrs"
+  CURL_CA_BUNDLE="$RATES_STUB_DIRECTORY/cert.pem"
+  export RATES_STUB_DIRECTORY RATES_STUB_URL RATES_STUB_REQUESTS RATES_STUB_HEADERS CURL_CA_BUNDLE
 }
 
 rates_stub_start_plain() {
   local body_file="${1:-}"
   _rates_stub_need_tools plain || return 1
-  RATES_PLAIN_DIR="$(_rates_stub_root)/rates-stub-plain"
-  _rates_stub_launch "$RATES_PLAIN_DIR" plain serve "$body_file" || return 1
+  RATES_PLAIN_DIRECTORY="$(_rates_stub_root)/rates-stub-plain"
+  _rates_stub_launch "$RATES_PLAIN_DIRECTORY" plain serve "$body_file" || return 1
   RATES_PLAIN_URL="http://127.0.0.1:${_RATES_STUB_PORT}/gaia-react/gaia/main/.gaia/scripts/token-rates.json"
-  RATES_PLAIN_REQS="$RATES_PLAIN_DIR/reqs"
-  export RATES_PLAIN_DIR RATES_PLAIN_URL RATES_PLAIN_REQS
+  RATES_PLAIN_REQUESTS="$RATES_PLAIN_DIRECTORY/reqs"
+  export RATES_PLAIN_DIRECTORY RATES_PLAIN_URL RATES_PLAIN_REQUESTS
 }
 
 # rates_stub_start_or_skip <tls|plain> [start args...]
@@ -236,10 +236,10 @@ s.close()')" || return 1
 }
 
 rates_stub_count() {
-  local n
-  if [[ -n "${RATES_STUB_REQS:-}" && -f "$RATES_STUB_REQS" ]]; then
-    n="$(wc -l <"$RATES_STUB_REQS")"
-    printf '%s' "$((n + 0))"
+  local request_count
+  if [[ -n "${RATES_STUB_REQUESTS:-}" && -f "$RATES_STUB_REQUESTS" ]]; then
+    request_count="$(wc -l <"$RATES_STUB_REQUESTS")"
+    printf '%s' "$((request_count + 0))"
   else
     printf '0'
   fi
@@ -247,10 +247,10 @@ rates_stub_count() {
 
 rates_stub_set_mode() {
   local mode="$1" body_file="${2:-}"
-  [[ -n "${RATES_STUB_DIR:-}" ]] || return 1
-  printf '%s' "$mode" >"$RATES_STUB_DIR/mode"
+  [[ -n "${RATES_STUB_DIRECTORY:-}" ]] || return 1
+  printf '%s' "$mode" >"$RATES_STUB_DIRECTORY/mode"
   if [[ -n "$body_file" ]]; then
-    cp "$body_file" "$RATES_STUB_DIR/body" || return 1
+    cp "$body_file" "$RATES_STUB_DIRECTORY/body" || return 1
   fi
 }
 

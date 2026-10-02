@@ -51,7 +51,7 @@ _library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # and using it forks the ledger and points the mutex at a directory no peer
 # tree locks. Refuse when main is unresolvable -- the same stance this script
 # already takes on a lock it cannot acquire, and for the same reason.
-if ! plans_directory="$(gaia_resolve_plans_dir "$repo_root" 2>/dev/null)" || [ -z "$plans_directory" ]; then
+if ! plans_directory="$(gaia_resolve_plans_directory "$repo_root" 2>/dev/null)" || [ -z "$plans_directory" ]; then
   echo "plan-allocator: cannot resolve the main checkout for '$repo_root'; refuse to allocate (would risk duplicate PLAN ids across worktrees)" >&2
   exit 4
 fi

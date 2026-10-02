@@ -39,8 +39,8 @@
 GAIA_RATES_FEED_DEFAULT_URL='https://raw.githubusercontent.com/gaia-react/gaia/main/.gaia/scripts/token-rates.json'
 GAIA_RATES_FEED_STATE_NAME='token-rates.feed-state.json'
 GAIA_RATES_FEED_BODY_PREFIX='.token-rates.feed-body.tmp'
-GAIA_RATES_FEED_BACKOFF_SECS=3600
-GAIA_RATES_FEED_MAX_BYTES=262144
+GAIA_RATES_FEED_BACKOFF_SECONDS=3600
+GAIA_RATES_FEED_MAXIMUM_BYTES=262144
 
 _GAIA_RATES_FEED_TRIED=0
 _GAIA_RATES_FEED_WARNED=0
@@ -57,29 +57,29 @@ _gaia_rates_feed_warn() {
 # Prints the feed state as compact JSON, normalised; an unreadable file is the
 # empty state.
 _gaia_rates_feed_state() {
-  local path="$1" out=""
+  local path="$1" normalized_state=""
   if [[ -s "$path" ]]; then
-    out="$(jq -c '
+    normalized_state="$(jq -c '
       if type == "object" then
         { failed_at: (if (.failed_at | type) == "number" then .failed_at else null end),
           not_found: (if (.not_found | type) == "object"
                       then (.not_found | with_entries(select(.value | type == "number")))
                       else {} end) }
-      else empty end' "$path" 2>/dev/null)" || out=""
+      else empty end' "$path" 2>/dev/null)" || normalized_state=""
   fi
-  [[ -n "$out" ]] || out='{"failed_at":null,"not_found":{}}'
-  printf '%s' "$out"
+  [[ -n "$normalized_state" ]] || normalized_state='{"failed_at":null,"not_found":{}}'
+  printf '%s' "$normalized_state"
 }
 
 # Record a failed fetch: failed_at = now, keep the fresh not_found entries.
 _gaia_rates_feed_record_failure() {
-  local state_file="$1" state="$2" now="$3" msg="$4" out
-  out="$(jq -c --argjson now "$now" --argjson w "$GAIA_RATES_FEED_BACKOFF_SECS" '
+  local state_file="$1" state="$2" now="$3" message="$4" updated_state
+  updated_state="$(jq -c --argjson now "$now" --argjson backoff_seconds "$GAIA_RATES_FEED_BACKOFF_SECONDS" '
     .failed_at = $now
-    | .not_found |= with_entries(select(($now - .value) >= 0 and ($now - .value) < $w))' \
-    <<<"$state" 2>/dev/null)" || out=""
-  [[ -n "$out" ]] && _gaia_rates_write_json "$state_file" "$out" >/dev/null 2>&1
-  _gaia_rates_feed_warn "$msg"
+    | .not_found |= with_entries(select(($now - .value) >= 0 and ($now - .value) < $backoff_seconds))' \
+    <<<"$state" 2>/dev/null)" || updated_state=""
+  [[ -n "$updated_state" ]] && _gaia_rates_write_json "$state_file" "$updated_state" >/dev/null 2>&1
+  _gaia_rates_feed_warn "$message"
   return 0
 }
 
@@ -110,21 +110,21 @@ _GAIA_RATES_FEED_JQ_VALID='
     | map_values(map(. + {source: "feed"}));
 '
 
-# Feed fetch and apply. Args: <body_tmp> <url> <proto> <absent_json> <state_json> <now>.
+# Feed fetch and apply. Args: <body_tmp> <url> <protocol> <absent_json> <state_json> <now>.
 _gaia_rates_feed_run() {
-  local body="$1" url="$2" proto="$3" absent="$4" state="$5" now="$6"
-  local table="$GAIA_RATES_TABLE" dir="$GAIA_RATES_DIR"
-  local base="$dir/$GAIA_RATES_BASE_NAME" state_file="$dir/$GAIA_RATES_FEED_STATE_NAME"
-  local size today plan base_json new_state changed rc=1
+  local body="$1" url="$2" protocol="$3" absent="$4" state="$5" now="$6"
+  local table="$GAIA_RATES_TABLE" directory="$GAIA_RATES_DIRECTORY"
+  local base="$directory/$GAIA_RATES_BASE_NAME" state_file="$directory/$GAIA_RATES_FEED_STATE_NAME"
+  local size today plan base_json new_state changed exit_status=1
 
-  if ! curl -q -fsS --proto "=$proto" --connect-timeout 2 --max-time 4 \
-    --max-filesize "$GAIA_RATES_FEED_MAX_BYTES" "$url" >"$body" 2>/dev/null; then
+  if ! curl -q -fsS --proto "=$protocol" --connect-timeout 2 --max-time 4 \
+    --max-filesize "$GAIA_RATES_FEED_MAXIMUM_BYTES" "$url" >"$body" 2>/dev/null; then
     _gaia_rates_feed_record_failure "$state_file" "$state" "$now" \
       "rates feed unavailable; pricing from the local table (retry in 1 h)"
     return 1
   fi
   size="$(wc -c <"$body" 2>/dev/null)" || size=0
-  if [[ $((size + 0)) -gt $GAIA_RATES_FEED_MAX_BYTES ]] \
+  if [[ $((size + 0)) -gt $GAIA_RATES_FEED_MAXIMUM_BYTES ]] \
     || ! jq -e -s 'length == 1 and (.[0] | type == "object" and (.models | type) == "object")' \
       "$body" >/dev/null 2>&1; then
     _gaia_rates_feed_record_failure "$state_file" "$state" "$now" \
@@ -137,25 +137,25 @@ _gaia_rates_feed_run() {
   if _gaia_rates_table_readable "$base"; then
     base_json="$(jq -c . "$base" 2>/dev/null)" || base_json='{"models":{}}'
   fi
-  plan="$(jq -n -c --slurpfile feed "$body" --slurpfile loc "$table" \
+  plan="$(jq -n -c --slurpfile feed "$body" --slurpfile local_table "$table" \
     --argjson base "$base_json" --argjson absent "$absent" --arg today "$today" \
     "$_GAIA_RATES_FEED_JQ_VALID"'
     ($feed[0] | valid_feed_rows($today)) as $valid
-    | $loc[0] as $L
+    | $local_table[0] as $local_document
     | ($absent | map(select($valid[.] != null))) as $add
-    | ($absent - $add) as $nf
-    | [ ($L.models // {}) | to_entries[]
+    | ($absent - $add) as $not_found_models
+    | [ ($local_document.models // {}) | to_entries[]
         | select((.value | type) == "array" and (.value | length) > 0
                  and (.value | all(.[]; type == "object" and .source == "feed"))
                  and ($base.models[.key]? != null) and .value == $base.models[.key]
                  and $valid[.key] != null and $valid[.key] != .value)
         | .key ] as $refresh
-    | ($add + $refresh) as $chg
-    | ($chg | map({key: ., value: $valid[.]}) | from_entries) as $rows
-    | { changed: ($chg | length > 0),
+    | ($add + $refresh) as $changes
+    | ($changes | map({key: ., value: $valid[.]}) | from_entries) as $rows
+    | { changed: ($changes | length > 0),
         add: $add,
-        notfound: $nf,
-        local: ($L | .models = ((.models // {}) + $rows)),
+        notfound: $not_found_models,
+        local: ($local_document | .models = ((.models // {}) + $rows)),
         base: ($base | .models = ((.models // {}) + $rows)) }' 2>/dev/null)" || plan=""
   if [[ -z "$plan" ]]; then
     _gaia_rates_feed_record_failure "$state_file" "$state" "$now" \
@@ -163,18 +163,18 @@ _gaia_rates_feed_run() {
     return 1
   fi
 
-  new_state="$(jq -n -c --argjson st "$state" --argjson p "$plan" --argjson now "$now" \
-    --argjson w "$GAIA_RATES_FEED_BACKOFF_SECS" '
+  new_state="$(jq -n -c --argjson state "$state" --argjson plan "$plan" --argjson now "$now" \
+    --argjson backoff_seconds "$GAIA_RATES_FEED_BACKOFF_SECONDS" '
     { failed_at: null,
-      not_found: (($st.not_found
-                   | with_entries(select(($now - .value) >= 0 and ($now - .value) < $w
-                                         and ((.key as $k | $p.add | index($k)) == null))))
-                  + ($p.notfound | map({key: ., value: $now}) | from_entries)) }' 2>/dev/null)" || new_state=""
+      not_found: (($state.not_found
+                   | with_entries(select(($now - .value) >= 0 and ($now - .value) < $backoff_seconds
+                                         and ((.key as $model_key | $plan.add | index($model_key)) == null))))
+                  + ($plan.notfound | map({key: ., value: $now}) | from_entries)) }' 2>/dev/null)" || new_state=""
 
   changed="$(jq -r '.changed' <<<"$plan" 2>/dev/null)"
   if [[ "$changed" == "true" ]]; then
     if _gaia_rates_write_json "$table" "$(jq -c '.local' <<<"$plan")" >/dev/null 2>&1; then
-      rc=0
+      exit_status=0
       _gaia_rates_write_json "$base" "$(jq -c '.base' <<<"$plan")" >/dev/null 2>&1 || true
     else
       _gaia_rates_feed_record_failure "$state_file" "$state" "$now" \
@@ -183,25 +183,25 @@ _gaia_rates_feed_run() {
     fi
   fi
   [[ -n "$new_state" ]] && _gaia_rates_write_json "$state_file" "$new_state" >/dev/null 2>&1
-  return "$rc"
+  return "$exit_status"
 }
 
 # gaia_rates_heal <models_json>: heal absent claude-* models from the feed.
 gaia_rates_heal() {
-  local models_json="${1:-[]}" table dir absent state_file state now url proto scheme tmp rc
+  local models_json="${1:-[]}" table directory absent state_file state now url protocol scheme temporary_file exit_status
 
   # 1. Only the machine-local table is ever written.
   [[ "${GAIA_RATES_MODE:-}" == "local" ]] || return 1
   table="${GAIA_RATES_TABLE:-}"
-  dir="${GAIA_RATES_DIR:-}"
-  [[ -n "$table" && -f "$table" && -n "$dir" && -d "$dir" ]] || return 1
+  directory="${GAIA_RATES_DIRECTORY:-}"
+  [[ -n "$table" && -f "$table" && -n "$directory" && -d "$directory" ]] || return 1
   declare -F _gaia_rates_write_json >/dev/null 2>&1 || return 1
   command -v jq >/dev/null 2>&1 || return 1
 
   # 2. A present row (even an expired one) is not absent.
-  absent="$(jq -n -c --argjson ids "$models_json" --slurpfile t "$table" '
+  absent="$(jq -n -c --argjson ids "$models_json" --slurpfile local_table "$table" '
     [ $ids[] | strings | select(test("\\Aclaude-[a-z0-9.-]+\\z"))
-      | select(. as $m | ((($t[0].models // {}) | has($m)) | not)) ] | unique' 2>/dev/null)" || return 1
+      | select(. as $model | ((($local_table[0].models // {}) | has($model)) | not)) ] | unique' 2>/dev/null)" || return 1
   [[ -n "$absent" && "$absent" != "[]" ]] || return 1
 
   # 3. Opt-out: exactly 1.
@@ -213,8 +213,8 @@ gaia_rates_heal() {
   # 5. Scheme.
   url="${GAIA_RATES_FEED_URL:-$GAIA_RATES_FEED_DEFAULT_URL}"
   case "$url" in
-    https://*) proto="https" ;;
-    file://*) proto="file" ;;
+    https://*) protocol="https" ;;
+    file://*) protocol="file" ;;
     *)
       _GAIA_RATES_FEED_TRIED=1
       scheme="$(printf '%s' "${url%%:*}" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C tr -cd 'a-z0-9+.-' | cut -c1-32)"
@@ -232,26 +232,26 @@ gaia_rates_heal() {
   fi
 
   now="$(date +%s)"
-  state_file="$dir/$GAIA_RATES_FEED_STATE_NAME"
+  state_file="$directory/$GAIA_RATES_FEED_STATE_NAME"
   state="$(_gaia_rates_feed_state "$state_file")"
 
   # 7. Backoff after a failure, 8. every absent model recently unpriced by the feed.
-  if jq -e -n --argjson st "$state" --argjson now "$now" --argjson w "$GAIA_RATES_FEED_BACKOFF_SECS" \
-    '$st.failed_at != null and ($now - $st.failed_at) >= 0 and ($now - $st.failed_at) < $w' >/dev/null 2>&1; then
+  if jq -e -n --argjson state "$state" --argjson now "$now" --argjson backoff_seconds "$GAIA_RATES_FEED_BACKOFF_SECONDS" \
+    '$state.failed_at != null and ($now - $state.failed_at) >= 0 and ($now - $state.failed_at) < $backoff_seconds' >/dev/null 2>&1; then
     return 1
   fi
-  if jq -e -n --argjson st "$state" --argjson now "$now" --argjson w "$GAIA_RATES_FEED_BACKOFF_SECS" \
-    --argjson a "$absent" '
-    $a | all(.[]; . as $m | ($st.not_found[$m]) as $t
-                  | $t != null and ($now - $t) >= 0 and ($now - $t) < $w)' >/dev/null 2>&1; then
+  if jq -e -n --argjson state "$state" --argjson now "$now" --argjson backoff_seconds "$GAIA_RATES_FEED_BACKOFF_SECONDS" \
+    --argjson absent_models "$absent" '
+    $absent_models | all(.[]; . as $model | ($state.not_found[$model]) as $not_found_at
+                  | $not_found_at != null and ($now - $not_found_at) >= 0 and ($now - $not_found_at) < $backoff_seconds)' >/dev/null 2>&1; then
     return 1
   fi
 
   # 9. Fetch.
   _GAIA_RATES_FEED_TRIED=1
-  tmp="$(mktemp "$dir/$GAIA_RATES_FEED_BODY_PREFIX.XXXXXX" 2>/dev/null)" || return 1
-  _gaia_rates_feed_run "$tmp" "$url" "$proto" "$absent" "$state" "$now"
-  rc=$?
-  rm -f "$tmp" 2>/dev/null
-  return "$rc"
+  temporary_file="$(mktemp "$directory/$GAIA_RATES_FEED_BODY_PREFIX.XXXXXX" 2>/dev/null)" || return 1
+  _gaia_rates_feed_run "$temporary_file" "$url" "$protocol" "$absent" "$state" "$now"
+  exit_status=$?
+  rm -f "$temporary_file" 2>/dev/null
+  return "$exit_status"
 }

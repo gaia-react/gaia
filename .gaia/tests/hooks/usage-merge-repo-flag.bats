@@ -17,9 +17,9 @@ setup() {
   # shellcheck disable=SC2034  # read by build_repo in the helper
   SOURCE_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   TEMPORARY_DIRECTORY="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
-  export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state" GAIA_RATES_FEED_DISABLE=1
+  export GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state" GAIA_RATES_FEED_DISABLE=1
   unset CLAUDE_CODE_SESSION_ID GAIA_TALLY_PROJECTS_ROOT GITHUB_ACTIONS GAIA_USAGE_HOOKS_DISABLE
-  unset GAIA_LEDGER_LOCK_FORCE_FALLBACK GAIA_LEDGER_LOCK_TIMEOUT_SECONDS GAIA_USAGE_MERGE_CAP_SECS GAIA_USAGE_RENDER_CAP_SECS
+  unset GAIA_LEDGER_LOCK_FORCE_FALLBACK GAIA_LEDGER_LOCK_TIMEOUT_SECONDS GAIA_USAGE_MERGE_CAP_SECONDS GAIA_USAGE_RENDER_CAP_SECONDS
   export GAIA_LEDGER_LOCK_POLL_SECONDS=0.1
   export GIT_AUTHOR_NAME="GAIA Test" GIT_AUTHOR_EMAIL="gaia-test@example.com"
   export GIT_COMMITTER_NAME="GAIA Test" GIT_COMMITTER_EMAIL="gaia-test@example.com"
@@ -276,7 +276,7 @@ slow_render() {
 @test "the render-timeout rerun line for a hostile current branch names a hashed key" {
   git -C "$REPO" checkout -q -b 'x$(touch-pwn)'
   slow_render 8
-  export GAIA_USAGE_RENDER_CAP_SECS=1
+  export GAIA_USAGE_RENDER_CAP_SECONDS=1
   run_merge "gh pr merge"
   [ "$status" -eq 0 ]
   [ ! -e "$REPO/pwn" ]
@@ -293,7 +293,7 @@ slow_render() {
 
 @test "guards-must-fail: copies of the hint sites that print the raw branch leak a hostile name" {
   gh_view 108 108 'x$(touch pwn)' OPEN ""
-  sed -i.bak 's|^    if \[\[ \$key =~ .*|    if false; then f=""|; s|^    elif \[\[ \$rawb =~ .*|    elif true; then f="--branch $rawb"|' "$REPO/.gaia/scripts/usage-render-lib.sh"
+  sed -i.bak 's|^    if \[\[ \$key =~ .*|    if false; then rerun_flags=""|; s|^    elif \[\[ \$raw_branch =~ .*|    elif true; then rerun_flags="--branch $raw_branch"|' "$REPO/.gaia/scripts/usage-render-lib.sh"
   grep -q 'elif true' "$REPO/.gaia/scripts/usage-render-lib.sh"
   run_merge "gh pr merge 108"
   grep -qF -- '--branch x$(touch pwn)' <<<"$output"
@@ -301,8 +301,8 @@ slow_render() {
   cp "$SOURCE_ROOT/.gaia/scripts/usage-render-lib.sh" "$REPO/.gaia/scripts/usage-render-lib.sh"
   git -C "$REPO" checkout -q -b 'x$(touch-pwn)'
   slow_render 8
-  export GAIA_USAGE_RENDER_CAP_SECS=1
-  sed -i.bak 's|^    if \[\[ \$rk =~ .*|    if false; then rf=""|; s|^    elif \[\[ \$branch =~ .*|    elif true; then rf="--branch $branch"|' "$REPO/.gaia/scripts/usage-merge.sh"
+  export GAIA_USAGE_RENDER_CAP_SECONDS=1
+  sed -i.bak 's|^    if \[\[ \$rerun_key =~ .*|    if false; then rerun_flags=""|; s|^    elif \[\[ \$branch =~ .*|    elif true; then rerun_flags="--branch $branch"|' "$REPO/.gaia/scripts/usage-merge.sh"
   grep -q 'elif true' "$REPO/.gaia/scripts/usage-merge.sh"
   run_merge "gh pr merge"
   grep -qF -- '--branch x$(touch-pwn)' <<<"$output"

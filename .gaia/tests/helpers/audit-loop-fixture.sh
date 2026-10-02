@@ -190,7 +190,7 @@ alf_entries() {
 # does at the next new-tree dispatch (needs audit-loop-eval.sh sourced).
 alf_store_snapshot() {
   local snap
-  snap="$(gaia_loop_eval_round "$ALF_ROOT" "$(cat "$ALF_STATE")" "$1")" || return 1
+  snap="$(gaia_loop_evaluate_round "$ALF_ROOT" "$(cat "$ALF_STATE")" "$1")" || return 1
   alf_set_snapshot "$1" "$snap"
 }
 

@@ -6,7 +6,7 @@
 # halves:
 #
 # - Behavioral: in a scratch copy of the scripts, the statusline and the hook,
-#   change GAIA_CTX_ASK_TOKENS_DEFAULT once and assert that the statusline's
+#   change GAIA_CONTEXT_ASK_TOKENS_DEFAULT once and assert that the statusline's
 #   red boundary and the hook's context decision both move with it.
 # - Textual: no other tracked shell file spells the line or the yellow anchor
 #   as a whole word, with a red twin proving the same grep reports a plant.
@@ -20,8 +20,8 @@ setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   # shellcheck source=/dev/null
   . "$REPO_ROOT/.gaia/scripts/context-checkpoint-lib.sh"
-  ORIGINAL_LINE="$GAIA_CTX_ASK_TOKENS_DEFAULT"
-  ORIGINAL_YELLOW="$GAIA_CTX_YELLOW_TOKENS"
+  ORIGINAL_LINE="$GAIA_CONTEXT_ASK_TOKENS_DEFAULT"
+  ORIGINAL_YELLOW="$GAIA_CONTEXT_YELLOW_TOKENS"
   # shellcheck source=/dev/null
   . "$REPO_ROOT/.gaia/tests/helpers/audit-loop-fixture.sh"
   alf_init
@@ -50,10 +50,10 @@ build_scratch() {
 # set_line <tokens>: change the default line in the scratch lib, exactly once.
 set_line() {
   local library_path="$SCRATCH/.gaia/scripts/context-checkpoint-lib.sh"
-  [ "$(grep -c '^GAIA_CTX_ASK_TOKENS_DEFAULT=' "$library_path")" -eq 1 ]
-  sed "s/^GAIA_CTX_ASK_TOKENS_DEFAULT=.*/GAIA_CTX_ASK_TOKENS_DEFAULT=$1/" "$library_path" >"$library_path.new"
+  [ "$(grep -c '^GAIA_CONTEXT_ASK_TOKENS_DEFAULT=' "$library_path")" -eq 1 ]
+  sed "s/^GAIA_CONTEXT_ASK_TOKENS_DEFAULT=.*/GAIA_CONTEXT_ASK_TOKENS_DEFAULT=$1/" "$library_path" >"$library_path.new"
   mv "$library_path.new" "$library_path"
-  grep -qx "GAIA_CTX_ASK_TOKENS_DEFAULT=$1" "$library_path"
+  grep -qx "GAIA_CONTEXT_ASK_TOKENS_DEFAULT=$1" "$library_path"
 }
 
 # bar_is_red <tokens>: exit_status 0 when the scratch statusline colors the bar red, 1
@@ -74,7 +74,7 @@ bar_is_red() {
 hook_denies() {
   local payload hook_output
   rm -rf "$ALF_ROOT/.gaia/local/audit-loop"
-  gaia_ctx_write "$ALF_ROOT" "$SID" "$(($1 * 100 / WINDOW))" "$1" "$WINDOW" "$(date +%s)"
+  gaia_context_write "$ALF_ROOT" "$SID" "$(($1 * 100 / WINDOW))" "$1" "$WINDOW" "$(date +%s)"
   payload="$(jq -n -c --arg s "$SID" --arg root "$ALF_ROOT" '{session_id: $s, tool_name: "Agent", cwd: $root,
     tool_input: {subagent_type: "audit-loop-unit", prompt: ("Run one audit unit.\nWorking root: " + $root)}}')"
   hook_output="$(printf '%s' "$payload" | env PATH="$STUB_BIN:$PATH" bash "$SCRATCH/.claude/hooks/audit-loop-bound.sh")"
@@ -108,7 +108,7 @@ hook_denies() {
   local sandbox="$BATS_TEST_TMPDIR/plant" hits
   mkdir -p "$sandbox/.gaia/scripts" "$sandbox/tools"
   git -C "$sandbox" init -q
-  printf 'GAIA_CTX_ASK_TOKENS_DEFAULT=%s\n' "$ORIGINAL_LINE" >"$sandbox/.gaia/scripts/context-checkpoint-lib.sh"
+  printf 'GAIA_CONTEXT_ASK_TOKENS_DEFAULT=%s\n' "$ORIGINAL_LINE" >"$sandbox/.gaia/scripts/context-checkpoint-lib.sh"
   printf 'X=%s\n' "$ORIGINAL_LINE" >"$sandbox/tools/planted.sh"
   printf 'Y=%s1\n' "$ORIGINAL_LINE" >"$sandbox/tools/longer.sh"
   git -C "$sandbox" add -A

@@ -13,7 +13,7 @@ bats_require_minimum_version 1.5.0
 
 setup() {
   # Isolate the rates state and the price feed (token-rates-hermetic.bats).
-  export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state"
+  export GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
   export GAIA_RATES_FEED_DISABLE=1
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   RULE="$REPO_ROOT/.claude/rules/context-discipline.md"

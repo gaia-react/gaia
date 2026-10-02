@@ -297,7 +297,7 @@ pinned_labels() {
   bash -c '
     . "$1/.gaia/scripts/context-checkpoint-lib.sh"
     . "$1/.gaia/scripts/audit-loop-state-lib.sh"
-    unit_round_count="$GAIA_CTX_UNIT_ROUNDS"
+    unit_round_count="$GAIA_CONTEXT_UNIT_ROUNDS"
     { gaia_loop_pinned_question feat/x 0123456789abcdef 6 "$unit_round_count" true false context
       gaia_loop_pinned_question feat/x 0123456789abcdef 10 "$unit_round_count" false true cap
     } | jq -r ".questions[0].options[].label" | sed "s/ (Recommended)$//" | sort -u

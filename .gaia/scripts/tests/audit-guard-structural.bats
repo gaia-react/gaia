@@ -17,7 +17,7 @@
 setup() {
   THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
-  CRA_MD="$REPO_ROOT/.claude/agents/code-audit-frontend.md"
+  FRONTEND_MD="$REPO_ROOT/.claude/agents/code-audit-frontend.md"
 
   # SPEC-042 clearance-writer surfaces (UAT-020 structural half + PLAN-001).
   SHELL_MD="$REPO_ROOT/.claude/agents/code-audit-maintainer-shell.md"
@@ -73,13 +73,13 @@ assert_predicate_retry_fallback() {
 #    internal specialist/refuter fan-out sites.
 
 @test "wiring: code-audit-frontend.md specialist dispatch site" {
-  content="$(section_between "$CRA_MD" '^### How to run' '^### Knip findings')"
+  content="$(section_between "$FRONTEND_MD" '^### How to run' '^### Knip findings')"
   assert_section_nonempty "code-audit-frontend.md How to run" "$content"
   assert_predicate_retry_fallback "$content"
 }
 
 @test "wiring: code-audit-frontend.md adversarial-refuter dispatch site" {
-  content="$(section_between "$CRA_MD" '^## Finding Proof Gate' '^## Scope classification')"
+  content="$(section_between "$FRONTEND_MD" '^## Finding Proof Gate' '^## Scope classification')"
   assert_section_nonempty "code-audit-frontend.md Finding Proof Gate" "$content"
   assert_predicate_retry_fallback "$content"
 }
@@ -95,23 +95,23 @@ assert_predicate_retry_fallback() {
 #    symptom is a member that silently never carries forward.
 
 @test "clearance writer: the handshake surfaces invoke the shared writer, none keeps the inline printf or the [ ! -f marker ] guard" {
-  local md
+  local markdown_file
   # The frontend and github-workflows members carry their own handshake; the
   # maintainer members carry theirs in the shared protocol file.
-  for md in "$CRA_MD" "$WORKFLOWS_MD" "$PROTOCOL_MD"; do
+  for markdown_file in "$FRONTEND_MD" "$WORKFLOWS_MD" "$PROTOCOL_MD"; do
     # Positive: invokes the one shared writer.
-    grep -qF -- ".gaia/scripts/audit-write-clearance.sh" "$md" || return 1
+    grep -qF -- ".gaia/scripts/audit-write-clearance.sh" "$markdown_file" || return 1
   done
-  for md in "$CRA_MD" "$PROTOCOL_MD" "$SHELL_MD" "$NODE_MD" "$WORKFLOWS_MD"; do
+  for markdown_file in "$FRONTEND_MD" "$PROTOCOL_MD" "$SHELL_MD" "$NODE_MD" "$WORKFLOWS_MD"; do
     # Negative: no inline marker printf (the bad case is a present match).
-    grep -qF -- 'printf '\''{"sha"' "$md" && return 1
+    grep -qF -- 'printf '\''{"sha"' "$markdown_file" && return 1
     # Negative: no idempotence guard (the bad case is a present match).
-    grep -qF -- '[ ! -f "$marker" ]' "$md" && return 1
+    grep -qF -- '[ ! -f "$marker" ]' "$markdown_file" && return 1
   done
   # Each maintainer member reaches the writer only through the protocol file,
   # so a definition that drops the pointer has no marker command at all.
-  for md in "$SHELL_MD" "$NODE_MD"; do
-    grep -qF -- ".claude/hooks/lib/audit-member-protocol.md" "$md" || return 1
+  for markdown_file in "$SHELL_MD" "$NODE_MD"; do
+    grep -qF -- ".claude/hooks/lib/audit-member-protocol.md" "$markdown_file" || return 1
   done
   return 0
 }

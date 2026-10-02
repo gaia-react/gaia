@@ -12,7 +12,7 @@
 
 setup() {
   # Isolate pricing from the developer's real rate table and the network.
-  export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state"
+  export GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
   export GAIA_RATES_FEED_DISABLE=1
   # This suite runs the REAL hook, so its usage-merge.sh would run in every
   # armed case. The seam keeps each pre-existing case exactly as it was; the

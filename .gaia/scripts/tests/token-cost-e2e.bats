@@ -68,18 +68,18 @@ assert_prefix() {
 
 setup() {
   # Isolate pricing from the developer's real rate table and the network.
-  export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state"
+  export GAIA_RATES_STATE_DIRECTORY="$BATS_TEST_TMPDIR/rates-state"
   export GAIA_RATES_FEED_DISABLE=1
-  SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
-  TALLY="$SCRIPT_DIR/token-tally.sh"
-  ROLLUP="$SCRIPT_DIR/token-rollup.sh"
-  FIX_TALLY="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-tally" && pwd)"
-  FIX_E2E="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-cost-e2e" && pwd)"
+  SCRIPT_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
+  TALLY="$SCRIPT_DIRECTORY/token-tally.sh"
+  ROLLUP="$SCRIPT_DIRECTORY/token-rollup.sh"
+  FIXTURE_TALLY_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-tally" && pwd)"
+  FIXTURE_E2E_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/token-cost-e2e" && pwd)"
 
-  MULTIMODEL="$FIX_TALLY/multimodel/projects"
-  RATES="$FIX_E2E/rates.json"
+  MULTIMODEL="$FIXTURE_TALLY_DIRECTORY/multimodel/projects"
+  RATES="$FIXTURE_E2E_DIRECTORY/rates.json"
 
-  OUTDIR="$BATS_TEST_TMPDIR/out"
+  OUTPUT_DIRECTORY="$BATS_TEST_TMPDIR/out"
   LEDGER="$BATS_TEST_TMPDIR/ledger.jsonl"
 
   export GIT_AUTHOR_NAME="GAIA Test"
@@ -92,7 +92,7 @@ setup() {
   # Step 1: write half. Produce a real ledger row against an ISOLATED ledger
   # (never the machine's real .gaia/local/telemetry/cost.jsonl).
   run bash "$TALLY" --action execute --spec-id SPEC-E2E --plan-slug spec-019-dollar-cost \
-    --out-dir "$OUTDIR" --session-id fixturemultimodel0001 \
+    --out-dir "$OUTPUT_DIRECTORY" --session-id fixturemultimodel0001 \
     --projects-root "$MULTIMODEL" --ledger "$LEDGER"
   [ "$status" -eq 0 ]
 

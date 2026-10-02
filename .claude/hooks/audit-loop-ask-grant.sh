@@ -42,7 +42,7 @@
 #
 # What each label records. `Continue audit in this session` and `Continue
 # audit in a new session` record the same `{kind: "grant", n: k}` answer; k is
-# GAIA_CTX_UNIT_ROUNDS from the shared lib, never a count read from a label.
+# GAIA_CONTEXT_UNIT_ROUNDS from the shared lib, never a count read from a label.
 # The new-session label also tells the main thread to print a fenced
 # continuation prompt. `Accept the remainder`
 # records `{kind: "accept"}`. `Stop and file the remainder` and `Type
@@ -282,7 +282,7 @@ esac
 # Classify the label before taking the lock: only the grant and accept labels
 # record. A grant records K from the shared lib, never a count read from the payload.
 label="$(printf '%s' "$verdict" | cut -f2)"
-unit_rounds="$GAIA_CTX_UNIT_ROUNDS"
+unit_rounds="$GAIA_CONTEXT_UNIT_ROUNDS"
 kind=""
 base="${label% (Recommended)}"
 case "$base" in

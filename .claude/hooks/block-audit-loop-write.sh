@@ -81,7 +81,7 @@
 # `ln` could have made it); a context reading minted by a command that never
 # names the context directory, by running .gaia/statusline/gaia-statusline.sh
 # with a crafted stdin payload or by sourcing
-# .gaia/scripts/context-checkpoint-lib.sh and calling gaia_ctx_write, directly or
+# .gaia/scripts/context-checkpoint-lib.sh and calling gaia_context_write, directly or
 # through a wrapper such as .gaia/statusline/context-reading.sh's
 # gaia_statusline_write_context (such a reading stands until the next real
 # statusline render overwrites it).

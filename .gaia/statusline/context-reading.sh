@@ -20,14 +20,14 @@
 # total_input_tokens. Returns 0 when a file was written, 1 otherwise.
 gaia_statusline_write_context() {
   local root="${1:-}" sid="${2:-}" pct="${3:-}" window="${4:-}" tokens="${5:-}" now frac
-  command -v gaia_ctx_write >/dev/null 2>&1 || return 1
+  command -v gaia_context_write >/dev/null 2>&1 || return 1
   [ -n "$root" ] && [ -n "$sid" ] && [ -n "$pct" ] && [ -n "$window" ] && [ -n "$tokens" ] || return 1
-  gaia_ctx_is_session_id "$sid" || return 1
+  gaia_context_is_session_id "$sid" || return 1
   # The lib accepts at most six decimals; a longer fraction is truncated, not refused.
   case "$pct" in
     *.*) frac="${pct#*.}"; pct="${pct%%.*}.${frac:0:6}" ;;
   esac
   now="${EPOCHSECONDS:-}"
   [ -n "$now" ] || now=$(date +%s 2>/dev/null) || return 1
-  gaia_ctx_write "$root" "$sid" "$pct" "$tokens" "$window" "$now" 2>/dev/null
+  gaia_context_write "$root" "$sid" "$pct" "$tokens" "$window" "$now" 2>/dev/null
 }

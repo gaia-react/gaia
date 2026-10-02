@@ -15,16 +15,16 @@
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
-  LIB="$(cd "$BATS_TEST_DIRNAME/.." && pwd)/audit-key-lib.sh"
+  LIBRARY="$(cd "$BATS_TEST_DIRNAME/.." && pwd)/audit-key-lib.sh"
   # shellcheck disable=SC1090
-  source "$LIB"
-  CLEANUP_DIRS=()
+  source "$LIBRARY"
+  CLEANUP_DIRECTORIES=()
 }
 
 teardown() {
-  local d
-  for d in "${CLEANUP_DIRS[@]:-}"; do
-    [ -n "$d" ] && rm -rf "$d"
+  local directory
+  for directory in "${CLEANUP_DIRECTORIES[@]:-}"; do
+    [ -n "$directory" ] && rm -rf "$directory"
   done
   return 0
 }
@@ -43,7 +43,7 @@ make_repo() {
   local raw
   raw=$(mktemp -d -t gaia-akl-repo-XXXXXX)
   REPO="$(cd "$raw" && pwd -P)"
-  CLEANUP_DIRS+=("$REPO")
+  CLEANUP_DIRECTORIES+=("$REPO")
   git -C "$REPO" init -q --initial-branch="$branch"
   git_identity "$REPO"
   echo init >"$REPO/f"
@@ -57,7 +57,7 @@ make_repo() {
 @test "sourcing the lib has no side effects: succeeds under set -u with no git repo and no external PATH" {
   scratch="$BATS_TEST_TMPDIR/no-side-effects"
   mkdir -p "$scratch"
-  run bash -c "cd '$scratch' && PATH='' && set -u && source '$LIB' && echo sourced-ok"
+  run bash -c "cd '$scratch' && PATH='' && set -u && source '$LIBRARY' && echo sourced-ok"
   [ "$status" -eq 0 ]
   grep -qF "sourced-ok" <<<"$output"
   [ -z "$(ls -A "$scratch")" ]
@@ -69,7 +69,7 @@ make_repo() {
     source "$1"
     type gaia_audit_key >/dev/null
     echo OK
-  ' _ "$LIB"
+  ' _ "$LIBRARY"
   [ "$status" -eq 0 ]
   [ "$output" = "OK" ]
 }
@@ -80,7 +80,7 @@ make_repo() {
     source "$1"
     type gaia_key_slug >/dev/null
     echo OK
-  ' _ "$LIB"
+  ' _ "$LIBRARY"
   [ "$status" -eq 0 ]
   [ "$output" = "OK" ]
 }
@@ -97,7 +97,7 @@ make_repo() {
     source "$1"
     type gaia_branch_slug >/dev/null
     echo OK
-  ' _ "$LIB"
+  ' _ "$LIBRARY"
   [ "$status" -eq 0 ]
   [ "$output" = "OK" ]
 }
@@ -132,7 +132,7 @@ make_repo() {
 @test "gaia_branch_slug: a dir outside any git repository fails non-zero and prints nothing" {
   local nongit
   nongit=$(mktemp -d -t gaia-akl-bsnongit-XXXXXX)
-  CLEANUP_DIRS+=("$nongit")
+  CLEANUP_DIRECTORIES+=("$nongit")
   run gaia_branch_slug "$nongit"
   [ "$status" -ne 0 ]
   [ -z "$output" ]
@@ -210,8 +210,8 @@ make_repo() {
 
 @test "dir defaults to '.': omitting the second argument uses the process cwd" {
   make_repo "worktree-program"
-  out="$(cd "$REPO" && gaia_audit_key "$BASE")"
-  [ "$out" = "${BASE}.worktree-program" ]
+  audit_key="$(cd "$REPO" && gaia_audit_key "$BASE")"
+  [ "$audit_key" = "${BASE}.worktree-program" ]
 }
 
 # ========== fail-open: either half undeterminable ==========
@@ -234,7 +234,7 @@ make_repo() {
 @test "a dir outside any git repository fails non-zero and prints nothing" {
   local nongit
   nongit=$(mktemp -d -t gaia-akl-nongit-XXXXXX)
-  CLEANUP_DIRS+=("$nongit")
+  CLEANUP_DIRECTORIES+=("$nongit")
   run gaia_audit_key "deadbeef" "$nongit"
   [ "$status" -ne 0 ]
   [ -z "$output" ]
@@ -261,14 +261,14 @@ make_repo() {
   make_repo "main"
   git -C "$REPO" branch tree-a "$BASE"
   git -C "$REPO" branch tree-b "$BASE"
-  local wt_a wt_b
-  wt_a="$BATS_TEST_TMPDIR/wt-a"
-  wt_b="$BATS_TEST_TMPDIR/wt-b"
-  git -C "$REPO" worktree add -q "$wt_a" tree-a
-  git -C "$REPO" worktree add -q "$wt_b" tree-b
+  local worktree_a worktree_b
+  worktree_a="$BATS_TEST_TMPDIR/wt-a"
+  worktree_b="$BATS_TEST_TMPDIR/wt-b"
+  git -C "$REPO" worktree add -q "$worktree_a" tree-a
+  git -C "$REPO" worktree add -q "$worktree_b" tree-b
 
-  key_a="$(gaia_audit_key "$BASE" "$wt_a")"
-  key_b="$(gaia_audit_key "$BASE" "$wt_b")"
+  key_a="$(gaia_audit_key "$BASE" "$worktree_a")"
+  key_b="$(gaia_audit_key "$BASE" "$worktree_b")"
 
   [ -n "$key_a" ]
   [ -n "$key_b" ]
@@ -280,19 +280,19 @@ make_repo() {
 # ========== structural hygiene ==========
 
 @test "structural: never invokes cd, per .claude/rules/shell-cwd.md" {
-  code_lines="$(grep -vE '^[[:space:]]*#' "$LIB")"
+  code_lines="$(grep -vE '^[[:space:]]*#' "$LIBRARY")"
   grep -qE '(^|[^[:alnum:]_])cd([^[:alnum:]_]|$)' <<<"$code_lines" && return 1
   return 0
 }
 
 @test "structural: no hardcoded /Users or /home paths" {
-  grep -E '/Users/|/home/' "$LIB" && return 1
+  grep -E '/Users/|/home/' "$LIBRARY" && return 1
   return 0
 }
 
 @test "structural: shellcheck is clean" {
   command -v shellcheck >/dev/null 2>&1 || skip "shellcheck not available"
-  shellcheck "$LIB"
+  shellcheck "$LIBRARY"
 }
 
 # gaia_key_slug walks its input with `${text:$i:1}`, not bash's bare
@@ -305,7 +305,7 @@ make_repo() {
   command -v zsh >/dev/null 2>&1 || skip "zsh not available"
   local branch='feat/a.b%c' from_bash from_zsh
   from_bash="$(gaia_key_slug "$branch")"
-  from_zsh="$(zsh -c "source '$LIB'; gaia_key_slug '$branch'")"
+  from_zsh="$(zsh -c "source '$LIBRARY'; gaia_key_slug '$branch'")"
   [ -n "$from_bash" ]
   [ "$from_zsh" = "$from_bash" ]
 }

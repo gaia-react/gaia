@@ -21,12 +21,12 @@ setup() {
   . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
   THIS_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
   SCRIPT="$THIS_DIRECTORY/../audit-scope-digest.sh"
-  KEY_LIB="$THIS_DIRECTORY/../audit-key-lib.sh"
+  KEY_LIBRARY="$THIS_DIRECTORY/../audit-key-lib.sh"
   DIGEST_LIBRARY="$THIS_DIRECTORY/../../../.claude/hooks/lib/audit-digest.sh"
   SCOPE_LIBRARY="$THIS_DIRECTORY/../../../.claude/hooks/lib/audit-scope.sh"
   MACHINERY_LIBRARY="$THIS_DIRECTORY/../../../.claude/hooks/lib/audit-machinery.sh"
   [ -x "$SCRIPT" ] || skip "audit-scope-digest.sh not executable"
-  [ -f "$KEY_LIB" ] || skip "audit-key-lib.sh not present"
+  [ -f "$KEY_LIBRARY" ] || skip "audit-key-lib.sh not present"
   command -v jq >/dev/null 2>&1 || skip "jq not available"
 
   ROOT="$BATS_TEST_TMPDIR/root"
@@ -47,7 +47,7 @@ setup() {
 # audit_key_for <base> <root>: gaia_audit_key computed the same way the
 # script computes it, for building the expected scope-file path by hand.
 audit_key_for() {
-  bash -c '. "$1"; gaia_audit_key "$2" "$3"' _ "$KEY_LIB" "$1" "$2"
+  bash -c '. "$1"; gaia_audit_key "$2" "$3"' _ "$KEY_LIBRARY" "$1" "$2"
 }
 
 # scope_file_for <root> <base> <member>: the exact path the script reads and
@@ -63,22 +63,22 @@ scope_file_for() {
 # manipulate the script's own on-disk neighborhood without touching the real
 # repo. Git repo rooted at <dir>.
 build_sandbox() {
-  local sb="$1"
-  mkdir -p "$sb/.gaia/scripts" "$sb/.claude/hooks/lib"
-  cp "$SCRIPT" "$sb/.gaia/scripts/audit-scope-digest.sh"
-  chmod +x "$sb/.gaia/scripts/audit-scope-digest.sh"
-  cp "$KEY_LIB" "$sb/.gaia/scripts/audit-key-lib.sh"
-  cp "$DIGEST_LIBRARY" "$sb/.claude/hooks/lib/audit-digest.sh"
-  cp "$SCOPE_LIBRARY" "$sb/.claude/hooks/lib/audit-scope.sh"
-  cp "$MACHINERY_LIBRARY" "$sb/.claude/hooks/lib/audit-machinery.sh"
-  git -C "$sb" init --quiet --initial-branch=main
-  git -C "$sb" config user.email "test@example.com"
-  git -C "$sb" config user.name "Test"
-  git -C "$sb" config commit.gpgsign false
-  echo "# readme" >"$sb/README.md"
-  seed_audit_roster "$sb"
-  git -C "$sb" add -A
-  git -C "$sb" commit --quiet -m "init"
+  local sandbox_root="$1"
+  mkdir -p "$sandbox_root/.gaia/scripts" "$sandbox_root/.claude/hooks/lib"
+  cp "$SCRIPT" "$sandbox_root/.gaia/scripts/audit-scope-digest.sh"
+  chmod +x "$sandbox_root/.gaia/scripts/audit-scope-digest.sh"
+  cp "$KEY_LIBRARY" "$sandbox_root/.gaia/scripts/audit-key-lib.sh"
+  cp "$DIGEST_LIBRARY" "$sandbox_root/.claude/hooks/lib/audit-digest.sh"
+  cp "$SCOPE_LIBRARY" "$sandbox_root/.claude/hooks/lib/audit-scope.sh"
+  cp "$MACHINERY_LIBRARY" "$sandbox_root/.claude/hooks/lib/audit-machinery.sh"
+  git -C "$sandbox_root" init --quiet --initial-branch=main
+  git -C "$sandbox_root" config user.email "test@example.com"
+  git -C "$sandbox_root" config user.name "Test"
+  git -C "$sandbox_root" config commit.gpgsign false
+  echo "# readme" >"$sandbox_root/README.md"
+  seed_audit_roster "$sandbox_root"
+  git -C "$sandbox_root" add -A
+  git -C "$sandbox_root" commit --quiet -m "init"
 }
 
 # ========== usage / arity ==========
@@ -118,12 +118,12 @@ build_sandbox() {
   [ "${#digest}" -eq 64 ]
   case "$digest" in *[!0-9a-f]*) return 1 ;; esac
 
-  sf="$(scope_file_for "$ROOT" "$BASE" "$MEMBER")"
-  [ -f "$sf" ]
-  jq -e . "$sf" >/dev/null
-  [ "$(jq -r '.scope_digest' "$sf")" = "$digest" ]
-  [ "$(jq -r '.member' "$sf")" = "$MEMBER" ]
-  [ "$(jq -r '.schema' "$sf")" = "1" ]
+  scope_file="$(scope_file_for "$ROOT" "$BASE" "$MEMBER")"
+  [ -f "$scope_file" ]
+  jq -e . "$scope_file" >/dev/null
+  [ "$(jq -r '.scope_digest' "$scope_file")" = "$digest" ]
+  [ "$(jq -r '.member' "$scope_file")" = "$MEMBER" ]
+  [ "$(jq -r '.schema' "$scope_file")" = "1" ]
 }
 
 # ========== --read round-trip ==========
@@ -142,18 +142,18 @@ build_sandbox() {
 }
 
 @test "--read over a truncated / non-JSON scope file prints nothing and exits non-zero" {
-  sf="$(scope_file_for "$ROOT" "$BASE" "$MEMBER")"
-  mkdir -p "$(dirname "$sf")"
-  printf 'not json {' >"$sf"
+  scope_file="$(scope_file_for "$ROOT" "$BASE" "$MEMBER")"
+  mkdir -p "$(dirname "$scope_file")"
+  printf 'not json {' >"$scope_file"
   run "$SCRIPT" --read --root "$ROOT" --member "$MEMBER" --base "$BASE"
   [ "$status" -ne 0 ]
   [ -z "$output" ]
 }
 
 @test "--read over a non-64-hex scope_digest prints nothing and exits non-zero" {
-  sf="$(scope_file_for "$ROOT" "$BASE" "$MEMBER")"
-  mkdir -p "$(dirname "$sf")"
-  jq -cn '{schema:1, member:"x", scope_digest:"short", head:"h", captured_at:"t"}' >"$sf"
+  scope_file="$(scope_file_for "$ROOT" "$BASE" "$MEMBER")"
+  mkdir -p "$(dirname "$scope_file")"
+  jq -cn '{schema:1, member:"x", scope_digest:"short", head:"h", captured_at:"t"}' >"$scope_file"
   run "$SCRIPT" --read --root "$ROOT" --member "$MEMBER" --base "$BASE"
   [ "$status" -ne 0 ]
   [ -z "$output" ]
@@ -179,10 +179,10 @@ build_sandbox() {
   # .gaia/scripts/audit-scope-digest.sh at its own relative layout, since the
   # fence invokes "$AUDIT_ROOT/.gaia/scripts/audit-scope-digest.sh" literally
   # -- so this drives a full sandbox, not the bare git fixture ROOT.
-  sb="$BATS_TEST_TMPDIR/sb-fence"
-  build_sandbox "$sb"
-  AUDIT_ROOT="$sb"
-  KEY_BASE="$(git -C "$sb" rev-parse HEAD)"
+  sandbox_root="$BATS_TEST_TMPDIR/sb-fence"
+  build_sandbox "$sandbox_root"
+  AUDIT_ROOT="$sandbox_root"
+  KEY_BASE="$(git -C "$sandbox_root" rev-parse HEAD)"
 
   D_SCOPE="$("$AUDIT_ROOT/.gaia/scripts/audit-scope-digest.sh" --capture --root "$AUDIT_ROOT" --member "$MEMBER" --base "$KEY_BASE")"
   [ -n "$D_SCOPE" ] || printf 'could not capture a scope digest; the earned clearance write will refuse\n' >&2
@@ -282,26 +282,26 @@ publish_conclusion() {
 # the capture was replaced or kept. The scope file's recorded `head` is the
 # probe that answers directly, and it works for either outcome.
 stored_head_for() {
-  local sf
+  local scope_file
   # Glob directly rather than parsing `ls`: shellcheck SC2012, and a filename
   # carrying a newline would split into two paths through the pipe.
-  for sf in "$ROOT"/.gaia/local/audit/*."${1}".scope.json; do
-    [ -f "$sf" ] || continue
-    jq -r '.head // empty' "$sf"
+  for scope_file in "$ROOT"/.gaia/local/audit/*."${1}".scope.json; do
+    [ -f "$scope_file" ] || continue
+    jq -r '.head // empty' "$scope_file"
     return 0
   done
   return 1
 }
 
 @test "spent: a specialist's conclusion is found under its own member infix" {
-  local m="code-audit-github-workflows"
-  first="$("$SCRIPT" --capture --root "$ROOT" --member "$m" --base "$BASE")"
-  before_head="$(stored_head_for "$m")"
-  publish_conclusion "$first" .refused ".${m}"
+  local member_name="code-audit-github-workflows"
+  first="$("$SCRIPT" --capture --root "$ROOT" --member "$member_name" --base "$BASE")"
+  before_head="$(stored_head_for "$member_name")"
+  publish_conclusion "$first" .refused ".${member_name}"
   rotate_in_scope
 
-  "$SCRIPT" --capture --root "$ROOT" --member "$m" --base "$BASE" >/dev/null
-  after_head="$(stored_head_for "$m")"
+  "$SCRIPT" --capture --root "$ROOT" --member "$member_name" --base "$BASE" >/dev/null
+  after_head="$(stored_head_for "$member_name")"
   [ "$after_head" != "$before_head" ]
   [ "$after_head" = "$(git -C "$ROOT" rev-parse HEAD)" ]
 }
@@ -309,17 +309,17 @@ stored_head_for() {
 @test "spent: ANOTHER member's conclusion does not spend this member's capture" {
   # The infix is what keys the lookup to this member. Written bare, a
   # specialist would read a different member's conclusion as its own.
-  local m="code-audit-github-workflows"
-  first="$("$SCRIPT" --capture --root "$ROOT" --member "$m" --base "$BASE")"
-  before_head="$(stored_head_for "$m")"
+  local member_name="code-audit-github-workflows"
+  first="$("$SCRIPT" --capture --root "$ROOT" --member "$member_name" --base "$BASE")"
+  before_head="$(stored_head_for "$member_name")"
   publish_conclusion "$first" .refused ".code-audit-maintainer-node"
   rotate_in_scope
 
-  second="$("$SCRIPT" --capture --root "$ROOT" --member "$m" --base "$BASE")"
+  second="$("$SCRIPT" --capture --root "$ROOT" --member "$member_name" --base "$BASE")"
   [ "$second" = "$first" ]
   # The decisive half: the file was not rewritten, so the capture was KEPT
   # rather than coincidentally re-deriving the same digest.
-  [ "$(stored_head_for "$m")" = "$before_head" ]
+  [ "$(stored_head_for "$member_name")" = "$before_head" ]
 }
 
 @test "the spent lookup and the writer agree on the default member's bare infix" {
@@ -481,26 +481,26 @@ rotate_machinery() {
 @test "END TO END: the same recovery holds for a SPECIALIST member" {
   writer="$THIS_DIRECTORY/../audit-write-clearance.sh"
   [ -x "$writer" ] || skip "audit-write-clearance.sh not executable"
-  local m="code-audit-maintainer-shell"
+  local member_name="code-audit-maintainer-shell"
 
-  captured="$("$SCRIPT" --capture --root "$ROOT" --member "$m" --base "$BASE")"
+  captured="$("$SCRIPT" --capture --root "$ROOT" --member "$member_name" --base "$BASE")"
   # Machinery, not app/: a specialist's digest does not reach app/, so
   # rotate_in_scope would leave `captured` valid and the forfeiture below would
   # never fire -- the test would pass without exercising anything.
   rotate_machinery
-  [ "$("$SCRIPT" --read --root "$ROOT" --member "$m" --base "$BASE")" = "$captured" ]
+  [ "$("$SCRIPT" --read --root "$ROOT" --member "$member_name" --base "$BASE")" = "$captured" ]
 
-  run "$writer" --root "$ROOT" --member "$m" --provenance earned \
+  run "$writer" --root "$ROOT" --member "$member_name" --provenance earned \
     --base "$BASE" --scope-digest "$captured"
   [ "$status" -eq 2 ]
-  [ ! -f "$(scope_file_for "$ROOT" "$BASE" "$m")" ]
+  [ ! -f "$(scope_file_for "$ROOT" "$BASE" "$member_name")" ]
 
-  fresh="$("$SCRIPT" --capture --root "$ROOT" --member "$m" --base "$BASE")"
+  fresh="$("$SCRIPT" --capture --root "$ROOT" --member "$member_name" --base "$BASE")"
   [ "$fresh" != "$captured" ]
-  run "$writer" --root "$ROOT" --member "$m" --provenance earned \
+  run "$writer" --root "$ROOT" --member "$member_name" --provenance earned \
     --base "$BASE" --scope-digest "$fresh"
   [ "$status" -eq 0 ]
-  [ -f "$ROOT/.gaia/local/audit/${fresh}.${m}.ok" ]
+  [ -f "$ROOT/.gaia/local/audit/${fresh}.${member_name}.ok" ]
 }
 
 @test "the release is specific to a forfeiture: a running review keeps its capture" {
