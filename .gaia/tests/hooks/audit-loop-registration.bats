@@ -54,6 +54,20 @@ setup() {
   hook_registered "$SETTINGS" '.hooks.UserPromptSubmit[]' audit-loop-grant.sh
 }
 
+@test "PostToolUse AskUserQuestion registers the ask recorder with a rooted command and a timeout" {
+  hook_registered "$SETTINGS" '.hooks.PostToolUse[] | select(.matcher == "AskUserQuestion")' audit-loop-ask-grant.sh
+  run jq -e '[.hooks.PostToolUse[] | select(.matcher == "AskUserQuestion") | .hooks[]
+      | select(.command | test("audit-loop-ask-grant[.]sh"))] | length == 1
+      and all(.[]; (.command | startswith("\"$(git rev-parse --show-toplevel")) and (.timeout | type == "number" and . >= 10))' "$SETTINGS"
+  [ "$status" -eq 0 ]
+}
+
+@test "the ask recorder is registered on no event other than PostToolUse AskUserQuestion" {
+  run jq -e '[.hooks | to_entries[] | .key as $event | .value[] | .matcher as $m | .hooks[]
+      | select(.command | test("audit-loop-ask-grant[.]sh")) | [$event, $m]] == [["PostToolUse", "AskUserQuestion"]]' "$SETTINGS"
+  [ "$status" -eq 0 ]
+}
+
 @test "Edit|Write|MultiEdit registers the write guard" {
   hook_registered "$SETTINGS" '.hooks.PreToolUse[] | select(.matcher == "Edit|Write|MultiEdit")' block-audit-loop-write.sh
 }

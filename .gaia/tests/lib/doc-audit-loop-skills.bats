@@ -109,7 +109,7 @@ line_starting() {
 # --- wiki inventories -------------------------------------------------------
 
 @test "Claude Hooks.md's table has a row for each audit-loop hook and none for the removed one" {
-  for hook in audit-loop-bound.sh audit-loop-grant.sh block-audit-loop-write.sh; do
+  for hook in audit-loop-ask-grant.sh audit-loop-bound.sh audit-loop-grant.sh block-audit-loop-write.sh; do
     grep -qF -- "| \`$hook\` |" "$HOOKS_WIKI" || { echo "missing table row: $hook" >&2; return 1; }
   done
   grep -qE -- 'block-fourth[-]audit-round' "$HOOKS_WIKI" && return 1

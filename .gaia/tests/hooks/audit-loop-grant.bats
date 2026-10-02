@@ -353,3 +353,50 @@ Accept (type exactly as the whole prompt): $(gaia_loop_accept_line)"
   grep -nE '^[[:space:]]*exit 2' "$REPO_ROOT/.claude/hooks/audit-loop-grant.sh" && return 1
   return 0
 }
+
+# seed_capped: ten recorded rounds and a pending checkpoint at round 10.
+seed_capped() {
+  local r
+  alf_fill f.txt 5 x
+  for r in 1 2 3 4 5 6 7 8 9 10; do
+    alf_set_line other.txt "$r" "round $r"
+    alf_commit "round $r"
+    alf_add_round '["code-audit-frontend"]'
+  done
+  alf_add_checkpoint 10 allowance
+}
+
+@test "UAT-013: a typed grant below round 10 records as today and carries source typed" {
+  # shellcheck source=/dev/null
+  . "$REPO_ROOT/.gaia/scripts/context-checkpoint-lib.sh"
+  seed_pending
+  send "audit-grant $GAIA_CTX_UNIT_ROUNDS"
+  [ "$status" -eq 0 ]
+  jq -e --argjson k "$GAIA_CTX_UNIT_ROUNDS" '.allowance.answers | length == 1 and .[0].kind == "grant" and .[0].n == $k and .[0].source == "typed"' "$ALF_STATE"
+}
+
+@test "a typed accept carries source typed" {
+  seed_pending
+  send 'audit-accept'
+  [ "$status" -eq 0 ]
+  jq -e '.allowance.answers | length == 1 and .[0].kind == "accept" and .[0].source == "typed"' "$ALF_STATE"
+}
+
+@test "UAT-029: a typed grant at 10 rounds used records nothing and says round 10 is the cap" {
+  # shellcheck source=/dev/null
+  . "$REPO_ROOT/.gaia/scripts/context-checkpoint-lib.sh"
+  seed_capped
+  snap
+  send "audit-grant $GAIA_CTX_UNIT_ROUNDS"
+  [ "$status" -eq 0 ]
+  unchanged
+  printf '%s' "$output" | grep -qF 'round 10 is the cap'
+  printf '%s' "$output" | grep -qF 'audit-accept'
+}
+
+@test "a typed accept at 10 rounds used still records, as the deliberate override" {
+  seed_capped
+  send 'audit-accept'
+  [ "$status" -eq 0 ]
+  jq -e '.allowance.answers | length == 1 and .[0].kind == "accept" and .[0].source == "typed"' "$ALF_STATE"
+}
