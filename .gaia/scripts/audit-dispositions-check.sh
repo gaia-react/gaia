@@ -27,6 +27,8 @@
 #   vetoed-not-fix              a key vetoed for this round (effective_from_round <= r)
 #                               that is not fix; a synthetic fix entry for a vetoed key
 #                               no member re-reported passes
+#   undisposed                  a branch-authored finding (authored not false), or a key
+#                               vetoed for this round, with no entry in the file
 #   enforcement-paths-set       enforcement_paths_allowed is non-empty (a finding that
 #                               needs one stops the unit with needs-human)
 #   missing-basis               waive-out-of-scope without basis triage-threshold|cross-remit
@@ -92,6 +94,7 @@ def kid: {member, finding_class, path, line};
 def trim: gsub("^\\s+|\\s+$"; "");
 ($vet | map(select(.effective_from_round <= $r) | [.member, .finding_class, .path, .line])) as $vk
 | ($look | map({key: (idk | tojson), value: .}) | from_entries) as $L
+| [.entries[] | idk] as $dk
 | (
     (.entries[] | . as $e | idk as $k | $L[($k | tojson)] as $l | ($vk | any(. == $k)) as $v | (kid | tojson) as $kj
       | (if $l == null and ($v | not) then ["unknown-key"]
@@ -110,6 +113,9 @@ def trim: gsub("^\\s+|\\s+$"; "");
             then "cross-remit-basis-mismatch" else empty end)
          ] end)
       | .[] | "violation: \(.) \($kj)"),
+    (([$look[] | select(.authored != false)] + [$vet[] | select(.effective_from_round <= $r)])
+      | map(kid) | unique_by(idk) | .[] | select(idk as $k | $dk | any(. == $k) | not)
+      | "violation: undisposed \(tojson)"),
     (if ((.enforcement_paths_allowed // []) | if type == "array" then length > 0 else true end)
      then "violation: enforcement-paths-set \(.enforcement_paths_allowed | tojson)" else empty end)
   )
