@@ -117,7 +117,6 @@ gaia_ctx_write() {
 
 # gaia_ctx_read <main-root> <session_id> <now-epoch>: one line, either
 # "fresh <used_tokens> <window_size>" (rc 0) or missing|stale|future|unparseable (rc 1).
-# Note: gaia_ctx_read treats a future-dated reading as fresh.
 gaia_ctx_read() {
   local file out used window written int='^[0-9]{1,12}$'
   file=$(gaia_ctx_file "${1:-}" "${2:-}") || { printf 'missing\n'; return 1; }
