@@ -34,3 +34,6 @@ export const sortBy = <T>(array: T[], key: ComparableKey<T>): T[] =>
       : 0
     );
   });
+
+export const probeSum = (values: number[]): number =>
+  values.reduce((total, value) => total + value, 0);
