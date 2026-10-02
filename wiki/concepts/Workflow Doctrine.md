@@ -20,7 +20,7 @@ The main thread alone owns git that changes state, and runs the Quality Gate onc
 
 ## Inline floor
 
-Delegation has a fixed cost: a brief to write, a result to read back, and a context the sub-agent does not share. Small work, tightly iterative edit-run-fix work, and anything that needs the user stay on the main thread because the cost exceeds the gain. Two platform limits make this a floor, not a preference: a sub-agent cannot prompt the user, and it cannot spawn further sub-agents, so delegation is depth-1 and a task that needs a question answered cannot be pushed down.
+Delegation has a fixed cost: a brief to write, a result to read back, and a context the sub-agent does not share. Small work, tightly iterative edit-run-fix work, and anything that needs the user stay on the main thread because the cost exceeds the gain. A platform limit makes this a floor, not a preference: a sub-agent cannot prompt the user, so a task that needs a question answered cannot be pushed down. Nesting is not such a limit: Claude Code lets a sub-agent spawn its own, three levels below the main conversation by default, set by `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`. GAIA still keeps delegation depth-1 by choice, so the main thread dispatches every sub-agent and sees every artifact it decides on.
 
 ## Model table
 
