@@ -5,12 +5,12 @@
 # Assertion style: .claude/rules/bats-assertions.md.
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
-  MACHINERY_LIB="$REPO_ROOT/.claude/hooks/lib/audit-machinery.sh"
-  [ -f "$MACHINERY_LIB" ] || skip "audit-machinery.sh not present"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
+  MACHINERY_LIBRARY="$REPO_ROOT/.claude/hooks/lib/audit-machinery.sh"
+  [ -f "$MACHINERY_LIBRARY" ] || skip "audit-machinery.sh not present"
   # shellcheck source=/dev/null
-  . "$MACHINERY_LIB"
+  . "$MACHINERY_LIBRARY"
 }
 
 # The gate-machinery lockstep set: files whose change must rotate every

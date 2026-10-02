@@ -46,21 +46,21 @@ tool_name=$(echo "$input" | jq -r '.tool_name // ""' 2>/dev/null)
 [ "$tool_name" = "Bash" ] || exit 0
 
 # Avoid the name `command`: it would shadow bash's `command` builtin.
-cmd=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
+tool_command=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 
 # Five debt-count-mutating gh invocations: `gh pr merge`, `gh issue create`,
 # `gh issue edit`, `gh issue close`, `gh issue reopen`. The `gh pr merge` arm
 # uses the shared arming decision, the same one pr-merge-audit-check.sh and
 # the other deny hooks use (.claude/hooks/lib/verb-arming.sh). A quoted verb
 # inside prose still arms here, fail-closed, with no safe narrowing.
-_va_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+_hook_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 # shellcheck source=/dev/null
-[ -n "${_va_lib:-}" ] && [ -f "$_va_lib/verb-arming.sh" ] && . "$_va_lib/verb-arming.sh"
+[ -n "${_hook_library_directory:-}" ] && [ -f "$_hook_library_directory/verb-arming.sh" ] && . "$_hook_library_directory/verb-arming.sh"
 type gaia_verb_armed >/dev/null 2>&1 || exit 0
 
-frag='gh[[:space:]]+(pr[[:space:]]+merge|issue[[:space:]]+(create|edit|close|reopen))([[:space:]]|$)'
+verb_pattern='gh[[:space:]]+(pr[[:space:]]+merge|issue[[:space:]]+(create|edit|close|reopen))([[:space:]]|$)'
 words='gh pr merge;gh issue create;gh issue edit;gh issue close;gh issue reopen'
-if gaia_verb_armed "$frag" "$words" "$cmd"; then
+if gaia_verb_armed "$verb_pattern" "$words" "$tool_command"; then
   : # match
 else
   exit 0
@@ -69,13 +69,13 @@ fi
 # Repo-scope: a `gh pr merge` aimed at a sibling repo must not touch THIS repo's
 # sentinel.
 # Sourced from this hook's own on-disk location, never cwd: a cwd-relative
-# source that misses leaves cmd_targets_foreign_repo undefined, and the
+# source that misses leaves command_targets_foreign_repo undefined, and the
 # guard below falls THROUGH rather than bailing.
-_scope_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+_repo_scope_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 # shellcheck source=/dev/null
-[ -n "${_scope_lib:-}" ] && [ -f "$_scope_lib/repo-scope.sh" ] && . "$_scope_lib/repo-scope.sh"
-if type cmd_targets_foreign_repo >/dev/null 2>&1 \
-   && cmd_targets_foreign_repo "$cmd"; then
+[ -n "${_repo_scope_library_directory:-}" ] && [ -f "$_repo_scope_library_directory/repo-scope.sh" ] && . "$_repo_scope_library_directory/repo-scope.sh"
+if type command_targets_foreign_repo >/dev/null 2>&1 \
+   && command_targets_foreign_repo "$tool_command"; then
   exit 0
 fi
 

@@ -13,11 +13,11 @@
 # identity: a linked worktree's toplevel is its own directory, and both
 # comparisons read `--repo <home>` or `git -C <main-checkout>` as foreign.
 #
-# Usage (from a PreToolUse Bash hook, after extracting $cmd):
-#   _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _lib_dir=''
-#   [ -n "$_lib_dir" ] && [ -f "$_lib_dir/repo-scope.sh" ] && . "$_lib_dir/repo-scope.sh"
-#   if type cmd_targets_foreign_repo >/dev/null 2>&1 \
-#      && cmd_targets_foreign_repo "$cmd"; then exit 0; fi   # foreign: allow
+# Usage (from a PreToolUse Bash hook, after extracting $command):
+#   _library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _library_directory=''
+#   [ -n "$_library_directory" ] && [ -f "$_library_directory/repo-scope.sh" ] && . "$_library_directory/repo-scope.sh"
+#   if type command_targets_foreign_repo >/dev/null 2>&1 \
+#      && command_targets_foreign_repo "$command"; then exit 0; fi   # foreign: allow
 #
 # Fail-closed: returns 0 (true, "foreign") ONLY when it can POSITIVELY resolve
 # a target in a different repository (or an explicit `gh -R/--repo
@@ -41,11 +41,11 @@
 # remote spelling git accepts: `https://host/owner/repo.git`,
 # `git@host:owner/repo.git`, `ssh://host:22/owner/repo`, a local path.
 _gaia_repo_scope_repo_name() {
-  local v
-  v=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
-  v="${v%/}"
-  v="${v%.git}"
-  printf '%s' "${v##*[/:]}"
+  local repository_name
+  repository_name=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+  repository_name="${repository_name%/}"
+  repository_name="${repository_name%.git}"
+  printf '%s' "${repository_name##*[/:]}"
 }
 
 # The shared main-checkout resolver, loaded from this library's own on-disk
@@ -68,7 +68,7 @@ _gaia_repo_scope_load_main_root() {
   type gaia_resolve_common_dir >/dev/null 2>&1
 }
 
-# Set by cmd_targets_foreign_repo to the directory a `cd` earlier in the tool
+# Set by command_targets_foreign_repo to the directory a `cd` earlier in the tool
 # call moves the deciding command into, once that directory resolves as this
 # repository, and empty otherwise. A home verdict on a `cd` into a linked
 # worktree means "this repository" but not "this checkout", so a caller that
@@ -84,12 +84,12 @@ GAIA_REPO_SCOPE_LEAD_CD=""
 # `/usr/bin/git`, `(gh`, `$(git`, a `bash -c` script holding either. `.` and
 # word characters are not boundaries, so `.gitignore`, `github` and `repo.git`
 # do not match.
-_GAIA_REPO_SCOPE_TOOL_RE='(^|[^[:alnum:]_.])(git|gh)([^[:alnum:]_.]|$)'
+_GAIA_REPO_SCOPE_TOOL_REGEX='(^|[^[:alnum:]_.])(git|gh)([^[:alnum:]_.]|$)'
 
 # A word that can move a command off the directory the hook runs in: a
 # directory change, git's `-C`, or gh's repository flag. A call holding none of
 # them has no command that can be foreign.
-_GAIA_REPO_SCOPE_MOVE_RE='(^|[^[:alnum:]_.])(cd|pushd|popd|-C|-R|--repo)([^[:alnum:]_.]|$)'
+_GAIA_REPO_SCOPE_MOVE_REGEX='(^|[^[:alnum:]_.])(cd|pushd|popd|-C|-R|--repo)([^[:alnum:]_.]|$)'
 
 # The tool pattern above, read against the raw text of the rest of a call
 # rather than a scanned word. The scan drops quote characters, backslashes, and
@@ -97,16 +97,16 @@ _GAIA_REPO_SCOPE_MOVE_RE='(^|[^[:alnum:]_.])(cd|pushd|popd|-C|-R|--repo)([^[:aln
 # hands back (`g\it`, `"gh"`); each is also a boundary character. So a stretch
 # of raw text this does not match yields no word the tool pattern matches.
 _GAIA_REPO_SCOPE_DROPPED="[\""$'\047'"\\"$'\n'"]*"
-_GAIA_REPO_SCOPE_TOOL_RAW_RE='(^|[^[:alnum:]_.])g'"$_GAIA_REPO_SCOPE_DROPPED"'(h|i'"$_GAIA_REPO_SCOPE_DROPPED"'t)([^[:alnum:]_.]|$)'
+_GAIA_REPO_SCOPE_TOOL_RAW_REGEX='(^|[^[:alnum:]_.])g'"$_GAIA_REPO_SCOPE_DROPPED"'(h|i'"$_GAIA_REPO_SCOPE_DROPPED"'t)([^[:alnum:]_.]|$)'
 
 # Sets the caller's `flat` to `$1` with every quote character, backslash, and
 # line continuation removed. The scan's words are that text split at
 # whitespace and separators, less what quoting keeps literal, so a pattern
 # absent from `flat` is absent from every word the scan hands back.
 _gaia_repo_scope_flatten() {
-  local bs=\\ nl=$'\n' sq=$'\047'
-  flat="${1//"$bs$nl"/}"
-  flat="${flat//[\"$sq\\]/}"
+  local backslash=\\ newline=$'\n' single_quote=$'\047'
+  flat="${1//"$backslash$newline"/}"
+  flat="${flat//[\"$single_quote\\]/}"
 }
 
 # The verdict covers the whole tool call, and it is HOME when ANY command in
@@ -121,20 +121,20 @@ _gaia_repo_scope_flatten() {
 # The accepted cost: a foreign command sharing its call with a home one, even a
 # read-only `git status`, is enforced as home. Running the foreign command as
 # its own tool call is the sidestep.
-cmd_targets_foreign_repo() {
-  local _prev_lc_all _had_lc_all rc=1
+command_targets_foreign_repo() {
+  local _previous_lc_all _had_lc_all exit_status=1
 
   GAIA_REPO_SCOPE_LEAD_CD=""
   git rev-parse --show-toplevel >/dev/null 2>&1 || return 1
 
   # The scan reports byte offsets, and the walk slices the command at them, so
   # both have to count bytes rather than characters.
-  _prev_lc_all="${LC_ALL-}"
+  _previous_lc_all="${LC_ALL-}"
   _had_lc_all="${LC_ALL+set}"
   LC_ALL=C
-  if _gaia_repo_scope_verdict "$1"; then rc=0; fi
-  if [ "$_had_lc_all" = set ]; then LC_ALL="$_prev_lc_all"; else unset LC_ALL; fi
-  return "$rc"
+  if _gaia_repo_scope_verdict "$1"; then exit_status=0; fi
+  if [ "$_had_lc_all" = set ]; then LC_ALL="$_previous_lc_all"; else unset LC_ALL; fi
+  return "$exit_status"
 }
 
 # Walks every command in the tool call with the scan below, carrying the
@@ -153,40 +153,40 @@ cmd_targets_foreign_repo() {
 # succeeded, so its move ends with its and-or list, and a `||` after a move
 # makes the directory unknown.
 _gaia_repo_scope_verdict() {
-  local cmd="$1"
-  local NL=$'\n'
-  local pos=0 n_cmd=${#cmd} rest foreign=0 kind c1 c2 walked=0 tool_end
+  local command_text="$1"
+  local NEWLINE=$'\n'
+  local position=0 command_length=${#command_text} rest foreign=0 kind closing_character following_character walked=0 tool_end
   # Read by the helpers below through bash's dynamic scope.
-  local dir="" dir_known=1 remotes="" remotes_read=0 home_common="" home_common_read=0
-  local flat opaque=0 sep_before=start sep_after list_moved=0 cond_move=0
+  local directory="" directory_known=1 remotes="" remotes_read=0 home_common="" home_common_read=0
+  local flat opaque=0 separator_before=start separator_after list_moved=0 conditional_move=0
 
   # The walk is a character loop in bash, so a large call costs real time on a
   # blocking hook's path; these checks skip it wherever it cannot change the
   # answer.
-  _gaia_repo_scope_flatten "$cmd"
-  [[ "$flat" =~ $_GAIA_REPO_SCOPE_MOVE_RE ]] || return 1
-  _gaia_repo_scope_tool_end "$cmd"
+  _gaia_repo_scope_flatten "$command_text"
+  [[ "$flat" =~ $_GAIA_REPO_SCOPE_MOVE_REGEX ]] || return 1
+  _gaia_repo_scope_tool_end "$command_text"
 
-  while [ "$pos" -lt "$n_cmd" ]; do
+  while [ "$position" -lt "$command_length" ]; do
     # Nothing left names either program, so nothing left can be home or
     # foreign.
-    [ "$pos" -lt "$tool_end" ] || break
+    [ "$position" -lt "$tool_end" ] || break
     # Each scan slices the whole call, so the walk costs its length once per
     # command. Past this many commands it stops and enforces rather than stall
     # the hook: an over-enforcement, never a guess of foreign.
     walked=$((walked + 1))
-    [ "$walked" -le "$_GAIA_REPO_SCOPE_WALK_MAX" ] || return 1
-    if gaia_scan_first_command "$cmd" "$pos"; then
-      sep_after=end
+    [ "$walked" -le "$_GAIA_REPO_SCOPE_WALK_MAXIMUM" ] || return 1
+    if gaia_scan_first_command "$command_text" "$position"; then
+      separator_after=end
       if [ "$GAIA_FIRST_COMMAND_CLOSED" = 1 ]; then
-        c1="${cmd:$((GAIA_FIRST_COMMAND_END - 1)):1}"
-        c2="${cmd:$GAIA_FIRST_COMMAND_END:1}"
-        case "$c1$c2" in
-          '&&') sep_after=and ;;
-          '||') sep_after=or ;;
-          '&'*) sep_after='bg' ;;
-          '|'*) sep_after=pipe ;;
-          *) sep_after=seq ;;
+        closing_character="${command_text:$((GAIA_FIRST_COMMAND_END - 1)):1}"
+        following_character="${command_text:$GAIA_FIRST_COMMAND_END:1}"
+        case "$closing_character$following_character" in
+          '&&') separator_after=and ;;
+          '||') separator_after=or ;;
+          '&'*) separator_after='bg' ;;
+          '|'*) separator_after=pipe ;;
+          *) separator_after=seq ;;
         esac
       fi
       kind=0
@@ -196,27 +196,27 @@ _gaia_repo_scope_verdict() {
       [ "$kind" = 2 ] && return 1
       [ "$kind" = 1 ] && foreign=1
       _gaia_repo_scope_opens_group && opaque=1
-      case "$sep_after" in
-        or) [ "$list_moved" = 1 ] && dir_known=0 ;;
+      case "$separator_after" in
+        or) [ "$list_moved" = 1 ] && directory_known=0 ;;
         seq|bg)
-          [ "$cond_move" = 1 ] && dir_known=0
-          list_moved=0; cond_move=0
+          [ "$conditional_move" = 1 ] && directory_known=0
+          list_moved=0; conditional_move=0
           ;;
       esac
-      sep_before="$sep_after"
+      separator_before="$separator_after"
     fi
     [ "$GAIA_FIRST_COMMAND_CLOSED" = 1 ] || break
-    pos="$GAIA_FIRST_COMMAND_END"
+    position="$GAIA_FIRST_COMMAND_END"
     # A comment runs to the end of its line, and the next line is a command.
     # A comment that closed a command already ended its list above. One on a
     # line of its own, after a trailing `&&`, `||` or `|`, does not: bash
     # carries that list or pipeline onto the next line, so the separator the
     # walk last read still stands.
-    if [ "${cmd:$((pos - 1)):1}" = "#" ]; then
-      rest="${cmd:$pos}"
-      case "$rest" in *"$NL"*) ;; *) break ;; esac
-      rest="${rest%%"$NL"*}"
-      pos=$((pos + ${#rest} + 1))
+    if [ "${command_text:$((position - 1)):1}" = "#" ]; then
+      rest="${command_text:$position}"
+      case "$rest" in *"$NEWLINE"*) ;; *) break ;; esac
+      rest="${rest%%"$NEWLINE"*}"
+      position=$((position + ${#rest} + 1))
     fi
   done
   [ "$foreign" = 1 ]
@@ -225,7 +225,7 @@ _gaia_repo_scope_verdict() {
 # Commands the walk reads before it stops and enforces. Measured on bash 3.2
 # and 5, a call of 140KB costs under a second at this depth, where an unbounded
 # walk over 4,000 commands took ten.
-_GAIA_REPO_SCOPE_WALK_MAX=128
+_GAIA_REPO_SCOPE_WALK_MAXIMUM=128
 
 # Sets the caller's `tool_end` to the byte offset just past the last stretch of
 # the call the raw tool pattern matches, 0 when there is none. Past it no
@@ -233,15 +233,15 @@ _GAIA_REPO_SCOPE_WALK_MAX=128
 # would read commands, and the whole call is kept, since a walk that long stops
 # on its own.
 _gaia_repo_scope_tool_end() {
-  local s="$1" m pre n=0
+  local remaining_text="$1" matched_text prefix match_count=0
   tool_end=0
-  while [[ "$s" =~ $_GAIA_REPO_SCOPE_TOOL_RAW_RE ]]; do
-    n=$((n + 1))
-    if [ "$n" -gt "$_GAIA_REPO_SCOPE_WALK_MAX" ]; then tool_end=${#1}; return 0; fi
-    m="${BASH_REMATCH[0]}"
-    pre="${s%%"$m"*}"
-    tool_end=$((tool_end + ${#pre} + ${#m}))
-    s="${s:$((${#pre} + ${#m}))}"
+  while [[ "$remaining_text" =~ $_GAIA_REPO_SCOPE_TOOL_RAW_REGEX ]]; do
+    match_count=$((match_count + 1))
+    if [ "$match_count" -gt "$_GAIA_REPO_SCOPE_WALK_MAXIMUM" ]; then tool_end=${#1}; return 0; fi
+    matched_text="${BASH_REMATCH[0]}"
+    prefix="${remaining_text%%"$matched_text"*}"
+    tool_end=$((tool_end + ${#prefix} + ${#matched_text}))
+    remaining_text="${remaining_text:$((${#prefix} + ${#matched_text}))}"
   done
 }
 
@@ -253,14 +253,14 @@ _gaia_repo_scope_tool_end() {
 # them, so it enforces instead. A `--body` that only mentions git stays
 # foreign; one that also holds a `;` enforces.
 _gaia_repo_scope_swallowed() {
-  local i n=${#GAIA_FIRST_COMMAND_WORDS[@]} tok NL=$'\n'
+  local i word_count=${#GAIA_FIRST_COMMAND_WORDS[@]} token NEWLINE=$'\n'
   i=1
-  while [ "$i" -lt "$n" ]; do
-    tok="${GAIA_FIRST_COMMAND_WORDS[$i]}"
+  while [ "$i" -lt "$word_count" ]; do
+    token="${GAIA_FIRST_COMMAND_WORDS[$i]}"
     i=$((i + 1))
-    case "$tok" in
-      *';'* | *'&'* | *'|'* | *"$NL"*)
-        [[ "$tok" =~ $_GAIA_REPO_SCOPE_TOOL_RE ]] && return 0
+    case "$token" in
+      *';'* | *'&'* | *'|'* | *"$NEWLINE"*)
+        [[ "$token" =~ $_GAIA_REPO_SCOPE_TOOL_REGEX ]] && return 0
         ;;
     esac
   done
@@ -282,16 +282,16 @@ _gaia_repo_scope_swallowed() {
 # mentions git, and a single-quoted one the shell leaves literal: the safe
 # direction.
 _gaia_repo_scope_substitutes() {
-  local i n=${#GAIA_FIRST_COMMAND_WORDS[@]} tok opener=0 tool=0
+  local i word_count=${#GAIA_FIRST_COMMAND_WORDS[@]} token opener=0 tool=0
   i=1
-  while [ "$i" -lt "$n" ]; do
-    tok="${GAIA_FIRST_COMMAND_WORDS[$i]}"
+  while [ "$i" -lt "$word_count" ]; do
+    token="${GAIA_FIRST_COMMAND_WORDS[$i]}"
     i=$((i + 1))
     # shellcheck disable=SC2016 # literal openers matched in the word, not expansions
-    case "$tok" in
+    case "$token" in
       *'$('* | *'`'* | *'<('* | *'>('* | *'=('* | *'${') opener=1 ;;
     esac
-    [[ "$tok" =~ $_GAIA_REPO_SCOPE_TOOL_RE ]] && tool=1
+    [[ "$token" =~ $_GAIA_REPO_SCOPE_TOOL_REGEX ]] && tool=1
   done
   [ "$opener" = 1 ] && [ "$tool" = 1 ]
 }
@@ -303,13 +303,13 @@ _gaia_repo_scope_substitutes() {
 # commit subject counts too: that only makes later `cd`s unknown, which
 # enforces.
 _gaia_repo_scope_opens_group() {
-  local tok
+  local token
   case "${GAIA_FIRST_COMMAND_WORDS[0]}" in
     if|then|else|elif|fi|for|while|until|do|done|case|'esac'|select|function|'!')
       return 0 ;;
   esac
-  for tok in ${GAIA_FIRST_COMMAND_WORDS[@]+"${GAIA_FIRST_COMMAND_WORDS[@]}"}; do
-    case "$tok" in
+  for token in ${GAIA_FIRST_COMMAND_WORDS[@]+"${GAIA_FIRST_COMMAND_WORDS[@]}"}; do
+    case "$token" in
       *'('* | *')'* | *'{'* | *'}'* | *'`'* | *\<\<*) return 0 ;;
     esac
   done
@@ -328,8 +328,8 @@ _gaia_repo_scope_opens_group() {
 # enforces, and one starting `cd` moves nothing, because the heredoc left the
 # walk opaque.
 _gaia_repo_scope_segment() {
-  local n=${#GAIA_FIRST_COMMAND_WORDS[@]}
-  local i tok target cdir="" ccount=0 ghrepo="" name r
+  local word_count=${#GAIA_FIRST_COMMAND_WORDS[@]}
+  local i token target cdir="" ccount=0 ghrepo="" name scope_status
 
   case "${GAIA_FIRST_COMMAND_WORDS[0]}" in
     cd)
@@ -337,27 +337,27 @@ _gaia_repo_scope_segment() {
       # after it, moves the directory (see the walk above). Any other leaves it
       # unknown, and so does one that is opaque itself (`cd x)` closes a
       # subshell).
-      if [ "$opaque" = 1 ] || _gaia_repo_scope_opens_group; then dir_known=0; return 0; fi
-      case "$sep_before:$sep_after" in
+      if [ "$opaque" = 1 ] || _gaia_repo_scope_opens_group; then directory_known=0; return 0; fi
+      case "$separator_before:$separator_after" in
         start:seq|start:and|start:end|seq:seq|seq:and|seq:end|and:seq|and:and|and:end) ;;
-        *) dir_known=0; return 0 ;;
+        *) directory_known=0; return 0 ;;
       esac
-      if [ "$n" -ne 2 ]; then dir_known=0; return 0; fi
+      if [ "$word_count" -ne 2 ]; then directory_known=0; return 0; fi
       target="${GAIA_FIRST_COMMAND_WORDS[1]}"
       # A bare `cd`, `cd -`, and a target the shell rewrites before cd sees it
       # land somewhere this walk cannot name, so every command after one is
       # home until an absolute `cd` names a directory again.
-      _gaia_repo_scope_expand_dir || { dir_known=0; return 0; }
+      _gaia_repo_scope_expand_directory || { directory_known=0; return 0; }
       case "$target" in
-        /*) dir="$target"; dir_known=1 ;;
-        *) [ "$dir_known" = 1 ] && dir="${dir:+$dir/}$target" ;;
+        /*) directory="$target"; directory_known=1 ;;
+        *) [ "$directory_known" = 1 ] && directory="${directory:+$directory/}$target" ;;
       esac
       list_moved=1
-      [ "$sep_before" = and ] && cond_move=1
+      [ "$separator_before" = and ] && conditional_move=1
       return 0
       ;;
     pushd|popd)
-      dir_known=0
+      directory_known=0
       return 0
       ;;
     git)
@@ -365,9 +365,9 @@ _gaia_repo_scope_segment() {
       # takes a separate value ends this walk early and hides a later `-C`,
       # which reads the command against the tracked directory instead.
       i=1
-      while [ "$i" -lt "$n" ]; do
-        tok="${GAIA_FIRST_COMMAND_WORDS[$i]}"
-        case "$tok" in
+      while [ "$i" -lt "$word_count" ]; do
+        token="${GAIA_FIRST_COMMAND_WORDS[$i]}"
+        case "$token" in
           -C)
             ccount=$((ccount + 1))
             cdir="${GAIA_FIRST_COMMAND_WORDS[$((i + 1))]:-}"
@@ -384,19 +384,19 @@ _gaia_repo_scope_segment() {
       [ "$ccount" -gt 1 ] && return 2
       if [ "$ccount" = 1 ]; then
         target="$cdir"
-        _gaia_repo_scope_expand_dir || return 2
+        _gaia_repo_scope_expand_directory || return 2
         case "$target" in
           /*) ;;
-          *) [ "$dir_known" = 1 ] || return 2; target="${dir:+$dir/}$target" ;;
+          *) [ "$directory_known" = 1 ] || return 2; target="${directory:+$directory/}$target" ;;
         esac
-        r=0
-        _gaia_repo_scope_where "$target" || r=$?
-        [ "$r" = 0 ] && return 1
+        scope_status=0
+        _gaia_repo_scope_where "$target" || scope_status=$?
+        [ "$scope_status" = 0 ] && return 1
         return 2
       fi
-      r=0
-      _gaia_repo_scope_tracked || r=$?
-      [ "$r" = 0 ] && return 1
+      scope_status=0
+      _gaia_repo_scope_tracked || scope_status=$?
+      [ "$scope_status" = 0 ] && return 1
       return 2
       ;;
     gh)
@@ -406,16 +406,16 @@ _gaia_repo_scope_segment() {
       # a quoted `--body` stays text and another program's `-R` operand (`cp
       # -R a/b x`, gaia-react/gaia#2011) is never in reach.
       i=1
-      while [ "$i" -lt "$n" ]; do
-        tok="${GAIA_FIRST_COMMAND_WORDS[$i]}"
+      while [ "$i" -lt "$word_count" ]; do
+        token="${GAIA_FIRST_COMMAND_WORDS[$i]}"
         i=$((i + 1))
-        case "$tok" in
+        case "$token" in
           # gh's flag library keeps the LAST spelling it reads, so the walk
           # does not stop at the first one.
           -R|--repo)
-            [ "$i" -lt "$n" ] && ghrepo="${GAIA_FIRST_COMMAND_WORDS[$i]}"
+            [ "$i" -lt "$word_count" ] && ghrepo="${GAIA_FIRST_COMMAND_WORDS[$i]}"
             ;;
-          -R=*|--repo=*) ghrepo="${tok#*=}" ;;
+          -R=*|--repo=*) ghrepo="${token#*=}" ;;
           # An ATTACHED shorthand (`-Rowner/repo`) is not read. Only the flags
           # a given gh subcommand takes a value for decide whether such a word
           # is a repository or some other flag's value (`--subject
@@ -426,9 +426,9 @@ _gaia_repo_scope_segment() {
         esac
       done
       if [ -z "$ghrepo" ]; then
-        r=0
-        _gaia_repo_scope_tracked || r=$?
-        [ "$r" = 0 ] && return 1
+        scope_status=0
+        _gaia_repo_scope_tracked || scope_status=$?
+        [ "$scope_status" = 0 ] && return 1
         return 2
       fi
       # Only the characters a [HOST/]OWNER/REPO or a URL spelling of one
@@ -462,13 +462,13 @@ _gaia_repo_scope_segment() {
       [ -n "$remotes" ] || return 2
       # A shell match rather than grep: a matcher that fails to run would read
       # as "no match" and exempt the command.
-      case "$NL$remotes$NL" in *"$NL$name$NL"*) return 2 ;; esac
+      case "$NEWLINE$remotes$NEWLINE" in *"$NEWLINE$name$NEWLINE"*) return 2 ;; esac
       return 1
       ;;
   esac
 
-  for tok in ${GAIA_FIRST_COMMAND_WORDS[@]+"${GAIA_FIRST_COMMAND_WORDS[@]}"}; do
-    if [[ "$tok" =~ $_GAIA_REPO_SCOPE_TOOL_RE ]]; then
+  for token in ${GAIA_FIRST_COMMAND_WORDS[@]+"${GAIA_FIRST_COMMAND_WORDS[@]}"}; do
+    if [[ "$token" =~ $_GAIA_REPO_SCOPE_TOOL_REGEX ]]; then
       _gaia_repo_scope_tracked || true
       return 2
     fi
@@ -485,7 +485,7 @@ _gaia_repo_scope_segment() {
 # SC2088 fires on the quoted tilde, but these are case PATTERNS matching a
 # literal '~' in the input string, not an expansion attempt, intentional.
 # shellcheck disable=SC2088
-_gaia_repo_scope_expand_dir() {
+_gaia_repo_scope_expand_directory() {
   case "$target" in
     '~') target="$HOME" ;;
     '~/'*) target="$HOME/${target:2}" ;;
@@ -503,16 +503,16 @@ _gaia_repo_scope_expand_dir() {
 # tool call. Without the resolver, or for a target whose repository cannot be
 # resolved, there is no identity to compare, so the caller enforces.
 _gaia_repo_scope_where() {
-  local a
+  local target_common_directory
   _gaia_repo_scope_load_main_root || return 2
   if [ "$home_common_read" = 0 ]; then
     home_common=$(gaia_resolve_common_dir) || home_common=""
     home_common_read=1
   fi
   [ -n "$home_common" ] || return 2
-  a=$(gaia_resolve_common_dir "$1") || return 2
-  [ -n "$a" ] || return 2
-  [ "$a" = "$home_common" ] && return 1
+  target_common_directory=$(gaia_resolve_common_dir "$1") || return 2
+  [ -n "$target_common_directory" ] || return 2
+  [ "$target_common_directory" = "$home_common" ] && return 1
   return 0
 }
 
@@ -523,13 +523,13 @@ _gaia_repo_scope_where() {
 # caller reading its branch from a path git cannot open would read no branch
 # at all and let the command through.
 _gaia_repo_scope_tracked() {
-  local r=0
-  [ "$dir_known" = 1 ] || return 2
-  [ -n "$dir" ] || return 1
-  _gaia_repo_scope_where "$dir" || r=$?
+  local scope_status=0
+  [ "$directory_known" = 1 ] || return 2
+  [ -n "$directory" ] || return 1
+  _gaia_repo_scope_where "$directory" || scope_status=$?
   # shellcheck disable=SC2034 # read by red-verify-commit-check.sh and worthiness-presence-check.sh
-  [ "$r" = 1 ] && GAIA_REPO_SCOPE_LEAD_CD="$dir"
-  return "$r"
+  [ "$scope_status" = 1 ] && GAIA_REPO_SCOPE_LEAD_CD="$directory"
+  return "$scope_status"
 }
 
 # ---------------------------------------------------------------------------
@@ -560,14 +560,14 @@ _gaia_repo_scope_tracked() {
 # fork topology) as home. That is the safe direction there and the wrong one
 # here.
 #
-# Usage (from a hook that acts on the home repo, after extracting $cmd):
-#   _lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
-#   [ -n "${_lib:-}" ] && [ -f "$_lib/repo-scope.sh" ] && . "$_lib/repo-scope.sh"
-#   type cmd_targets_foreign_repo_slug >/dev/null 2>&1 || exit 0  # undefined: decline
-#   if cmd_targets_foreign_repo_slug "$cmd"; then exit 0; fi      # foreign: decline
+# Usage (from a hook that acts on the home repo, after extracting $command):
+#   _library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+#   [ -n "${_library_directory:-}" ] && [ -f "$_library_directory/repo-scope.sh" ] && . "$_library_directory/repo-scope.sh"
+#   type command_targets_foreign_repo_slug >/dev/null 2>&1 || exit 0  # undefined: decline
+#   if command_targets_foreign_repo_slug "$command"; then exit 0; fi      # foreign: decline
 #
 # The `type` guard is not optional decoration. Sourcing this lib cwd-relative
-# and then writing `type f >/dev/null 2>&1 && f "$cmd"` falls THROUGH to acting
+# and then writing `type f >/dev/null 2>&1 && f "$command"` falls THROUGH to acting
 # when the source misses, which is the fail-open composition of a missing
 # boundary check and a consumer that acts. Source from ${BASH_SOURCE[0]} and
 # treat undefined as a reason to exit.
@@ -622,7 +622,7 @@ gaia_repo_scope_resolve_home() {
 # of misread entirely.
 repo_slug_is_foreign() {
   local value="$1"
-  local cmd_host
+  local command_host
 
   [ -n "$value" ] || return 1
 
@@ -634,8 +634,8 @@ repo_slug_is_foreign() {
   # and decline otherwise rather than dropping it and comparing what is left.
   case "$value" in
     */*/*)
-      cmd_host=$(printf '%s' "${value%%/*}" | tr '[:upper:]' '[:lower:]')
-      [ "$cmd_host" = "$GAIA_REPO_SCOPE_HOME_HOST" ] || return 0
+      command_host=$(printf '%s' "${value%%/*}" | tr '[:upper:]' '[:lower:]')
+      [ "$command_host" = "$GAIA_REPO_SCOPE_HOME_HOST" ] || return 0
       value="${value#*/}"
       ;;
   esac
@@ -702,7 +702,7 @@ GAIA_FIRST_COMMAND_CLOSED=0
 GAIA_FIRST_COMMAND_END=0
 
 gaia_scan_first_command() {
-  local cmd="$1" start="${2:-0}"
+  local command_text="$1" start="${2:-0}"
   # Named once, above the loop: a `case` pattern cannot hold a `$'\n'`
   # literal, and a command substitution in one would run per scanned
   # character. The newline is the load-bearing member of the set below: a
@@ -712,14 +712,14 @@ gaia_scan_first_command() {
   # not accept before their verb; that asymmetry costs a background-started
   # command its handling and never a wrong one, so it is the safe direction
   # to differ in.
-  local NL=$'\n'
+  local NEWLINE=$'\n'
   local TAB=$'\t'
-  local word="" chunk="" have_word=0 q="" qset="" esc=0 piece_closed=0
-  local _prev_lc_all _had_lc_all BLOCK n_cmd base block k n_block c rest run
+  local word="" chunk="" have_word=0 quote_character="" quote_stop_set="" escape_pending=0 piece_closed=0
+  local _previous_lc_all _had_lc_all BLOCK command_length base block k block_length character rest run
 
   GAIA_FIRST_COMMAND_WORDS=()
 
-  # `${cmd:$i:1}` costs O(i), so indexing the whole string per character makes
+  # `${command_text:$i:1}` costs O(i), so indexing the whole string per character makes
   # the scan quadratic, and the callers are hooks, so that cost is a
   # synchronous stall on every merge. The command is whatever the tool call
   # carried, and a block that writes a multi-kilobyte pull-request body before
@@ -732,7 +732,7 @@ gaia_scan_first_command() {
   # constants are several times CI's.
   #
   # A third: a word accumulates into `chunk` and reaches `word` once per
-  # block, not one character at a time. `word="$word$c"` costs O(word), and
+  # block, not one character at a time. `word="$word$character"` costs O(word), and
   # nothing bounds how long one word gets, since inside a quoted span
   # whitespace, separators and newlines are all ordinary text, so a quoted
   # `--body` is one word however long the prose is. Appending per character
@@ -741,30 +741,30 @@ gaia_scan_first_command() {
   # Flushing per block bounds the per-character append by BLOCK and pays the
   # O(word) append BLOCK times less often. The cost of that is that every read
   # of the word has to spell `$word$chunk`, which is why the pushes below do.
-  _prev_lc_all="${LC_ALL-}"
+  _previous_lc_all="${LC_ALL-}"
   _had_lc_all="${LC_ALL+set}"
   LC_ALL=C
   BLOCK=256
-  n_cmd=${#cmd}
+  command_length=${#command_text}
   base="$start"
-  GAIA_FIRST_COMMAND_END="$n_cmd"
-  while [ "$base" -lt "$n_cmd" ]; do
-    block="${cmd:$base:$BLOCK}"
+  GAIA_FIRST_COMMAND_END="$command_length"
+  while [ "$base" -lt "$command_length" ]; do
+    block="${command_text:$base:$BLOCK}"
     base=$((base + BLOCK))
     k=0
-    n_block=${#block}
-    while [ "$k" -lt "$n_block" ]; do
-      c="${block:$k:1}"
+    block_length=${#block}
+    while [ "$k" -lt "$block_length" ]; do
+      character="${block:$k:1}"
       k=$((k + 1))
       # A backslash-newline is a line CONTINUATION: the shell drops both
       # characters rather than making the newline text. Appending it would put
       # a lone newline in the word stream, and a caller reading the first
       # non-flag word as its reference would resolve a newline instead of a
       # command written across two lines.
-      if [ "$esc" = 1 ]; then
-        esc=0
-        [ "$c" = "$NL" ] && continue
-        chunk="$chunk$c"; have_word=1; continue
+      if [ "$escape_pending" = 1 ]; then
+        escape_pending=0
+        [ "$character" = "$NEWLINE" ] && continue
+        chunk="$chunk$character"; have_word=1; continue
       fi
       # Inside single quotes a backslash is literal, as in the shell itself.
       # `have_word` is deliberately NOT set here: at the backslash it is not
@@ -772,15 +772,15 @@ gaia_scan_first_command() {
       # marking one either way puts an empty word into the stream on the
       # continuation. The escaped-character branch above marks it once a
       # character survives.
-      if [ "$c" = "\\" ] && [ "$q" != "'" ]; then
-        esc=1; continue
+      if [ "$character" = "\\" ] && [ "$quote_character" != "'" ]; then
+        escape_pending=1; continue
       fi
-      if [ -n "$q" ]; then
-        if [ "$c" = "$q" ]; then
-          q=""; qset=""
+      if [ -n "$quote_character" ]; then
+        if [ "$character" = "$quote_character" ]; then
+          quote_character=""; quote_stop_set=""
         else
-          chunk="$chunk$c"
-          # `c` was ordinary text inside the span, so the run after it is
+          chunk="$chunk$character"
+          # `character` was ordinary text inside the span, so the run after it is
           # ordinary until the next character that means anything here: the
           # closing quote, and in a double-quoted span a backslash. Take that
           # whole run in one operation instead of a character at a time, which
@@ -790,27 +790,27 @@ gaia_scan_first_command() {
           # full string would trade the quadratic append for a superlinear
           # match and buy much less.
           rest="${block:$k}"
-          # shellcheck disable=SC2295 # $qset is a PATTERN here, not a literal
-          run="${rest%%$qset*}"
+          # shellcheck disable=SC2295 # $quote_stop_set is a PATTERN here, not a literal
+          run="${rest%%$quote_stop_set*}"
           if [ -n "$run" ]; then chunk="$chunk$run"; k=$((k + ${#run})); fi
         fi
         have_word=1
         continue
       fi
-      case "$c" in
+      case "$character" in
         '"'|"'")
-          q="$c"; have_word=1
+          quote_character="$character"; have_word=1
           # The stop set the bulk run above cuts at, built once per span
           # rather than per character. A backslash is literal inside single
           # quotes, which is the same rule the escape branch above already
           # applies, so it is not a stop there.
-          if [ "$c" = "'" ]; then qset="[']"; else qset='[\\"]'; fi
+          if [ "$character" = "'" ]; then quote_stop_set="[']"; else quote_stop_set='[\\"]'; fi
           ;;
         ' '|"$TAB")
           [ "$have_word" = 1 ] && GAIA_FIRST_COMMAND_WORDS+=("$word$chunk")
           word=""; chunk=""; have_word=0
           ;;
-        '&'|'|'|';'|"$NL")
+        '&'|'|'|';'|"$NEWLINE")
           [ "$have_word" = 1 ] && GAIA_FIRST_COMMAND_WORDS+=("$word$chunk")
           word=""; chunk=""; have_word=0
           # An empty piece is no command at all: leading whitespace or a
@@ -835,15 +835,15 @@ gaia_scan_first_command() {
           # after it into the first command. The command a caller wants has to
           # be that first command anyway, so nothing beyond the comment was
           # readable.
-          [ "$have_word" = 1 ] && { chunk="$chunk$c"; continue; }
+          [ "$have_word" = 1 ] && { chunk="$chunk$character"; continue; }
           piece_closed=1; GAIA_FIRST_COMMAND_END=$((base - BLOCK + k)); break 2
           ;;
-        *) chunk="$chunk$c"; have_word=1 ;;
+        *) chunk="$chunk$character"; have_word=1 ;;
       esac
     done
     word="$word$chunk"; chunk=""
   done
-  if [ "$_had_lc_all" = set ]; then LC_ALL="$_prev_lc_all"; else unset LC_ALL; fi
+  if [ "$_had_lc_all" = set ]; then LC_ALL="$_previous_lc_all"; else unset LC_ALL; fi
   # shellcheck disable=SC2034 # read by the merge gate, never in this file
   GAIA_FIRST_COMMAND_CLOSED="$piece_closed"
   # The whole command was one piece, so its trailing word closes it.
@@ -859,7 +859,7 @@ gaia_scan_first_command() {
 # home repo off a merge. Requires the FIRST command in the tool call to BE the
 # merge, then reads that invocation's own flags.
 #
-# Sets GAIA_GH_MERGE_REF to the pull-request reference the merge names (empty
+# Sets GAIA_GH_MERGE_REFERENCE to the pull-request reference the merge names (empty
 # when it names none, which is gh's current-branch default) and
 # GAIA_GH_MERGE_REPO to its `-R`/`--repo` value (empty when it carries none,
 # which means gh resolves from cwd). Returns 0 when both are populated from a
@@ -872,17 +872,17 @@ gaia_scan_first_command() {
 # (the merge workflow runs the merge as its own step), and the alternative is
 # a prefix nobody can read exactly, whose misreads all land on a write to a
 # repository the command never named.
-GAIA_GH_MERGE_REF=""
+GAIA_GH_MERGE_REFERENCE=""
 GAIA_GH_MERGE_REPO=""
 
 gaia_scan_gh_merge() {
-  local cmd="$1"
-  local i n tok flag skip_next skip_flag value_flags
+  local command_text="$1"
+  local i word_count token flag skip_next skip_flag value_flags
 
-  GAIA_GH_MERGE_REF=""
+  GAIA_GH_MERGE_REFERENCE=""
   GAIA_GH_MERGE_REPO=""
 
-  gaia_scan_first_command "$cmd" || return 1
+  gaia_scan_first_command "$command_text" || return 1
   # The first command has to BE the merge; a caller's arming match only proved
   # the phrase appears somewhere a command could start, which a comment, a
   # heredoc body line, and a quoted value all satisfy.
@@ -899,18 +899,18 @@ gaia_scan_gh_merge() {
   value_flags=" -R --repo -A --author-email -b --body -F --body-file -t --subject --match-head-commit "
   skip_next=0
   skip_flag=""
-  n=${#GAIA_FIRST_COMMAND_WORDS[@]}
+  word_count=${#GAIA_FIRST_COMMAND_WORDS[@]}
   i=3
-  while [ "$i" -lt "$n" ]; do
-    tok="${GAIA_FIRST_COMMAND_WORDS[$i]}"
+  while [ "$i" -lt "$word_count" ]; do
+    token="${GAIA_FIRST_COMMAND_WORDS[$i]}"
     i=$((i + 1))
     if [ "$skip_next" = 1 ]; then
       skip_next=0
-      [ "$skip_flag" = repo ] && GAIA_GH_MERGE_REPO="$tok"
+      [ "$skip_flag" = repo ] && GAIA_GH_MERGE_REPO="$token"
       skip_flag=""
       continue
     fi
-    case "$tok" in
+    case "$token" in
       # A single-dash CLUSTER, which gh's flag library accepts and this parser
       # does not model. pflag reads a one-dash token letter by letter, and the
       # first value-taking shorthand in it swallows the rest of the token or
@@ -931,11 +931,11 @@ gaia_scan_gh_merge() {
         ;;
       -*=*)
         # `--flag=value` carries its value in the same word.
-        flag="${tok%%=*}"
+        flag="${token%%=*}"
         case "$value_flags" in
           *" $flag "*)
             case "$flag" in
-              -R|--repo) GAIA_GH_MERGE_REPO="${tok#*=}" ;;
+              -R|--repo) GAIA_GH_MERGE_REPO="${token#*=}" ;;
             esac
             ;;
         esac
@@ -946,13 +946,13 @@ gaia_scan_gh_merge() {
       # word and consumes nothing, which the arm below gets right by doing
       # nothing with it.
       -R?*)
-        GAIA_GH_MERGE_REPO="${tok#-R}"
+        GAIA_GH_MERGE_REPO="${token#-R}"
         ;;
       -*)
         case "$value_flags" in
-          *" $tok "*)
+          *" $token "*)
             skip_next=1
-            case "$tok" in
+            case "$token" in
               -R|--repo) skip_flag=repo ;;
             esac
             ;;
@@ -963,7 +963,7 @@ gaia_scan_gh_merge() {
         # gh accepts flags in any position, so `merge 5 --repo other-org/gaia`
         # is an ordinary invocation and stopping here would leave the
         # repository read unarmed for every trailing spelling of the flag.
-        [ -n "$GAIA_GH_MERGE_REF" ] || GAIA_GH_MERGE_REF="$tok"
+        [ -n "$GAIA_GH_MERGE_REFERENCE" ] || GAIA_GH_MERGE_REFERENCE="$token"
         ;;
     esac
   done
@@ -988,10 +988,10 @@ gaia_scan_gh_merge() {
 # carries a slash exactly as a slug does. The scan tells them apart by knowing
 # which command the flag belongs to, and a merge that carries none reads home
 # because it is the first command, so nothing redirected cwd ahead of it.
-cmd_targets_foreign_repo_slug() {
-  local cmd="$1"
+command_targets_foreign_repo_slug() {
+  local command_text="$1"
 
-  gaia_scan_gh_merge "$cmd" || return 0
+  gaia_scan_gh_merge "$command_text" || return 0
 
   # An empty value means the merge named no explicit target. The comparison
   # reads that as home, which is correct here precisely because the scan
@@ -1024,9 +1024,9 @@ cmd_targets_foreign_repo_slug() {
 # repository, and another host are all values no caller may act on.
 GAIA_HOME_PR_NUMBER=""
 
-gaia_gh_merge_ref_to_home_pr() {
-  local ref="$1"
-  local url_re host slug number
+gaia_gh_merge_reference_to_home_pr() {
+  local reference="$1"
+  local url_regex host slug number
 
   GAIA_HOME_PR_NUMBER=""
 
@@ -1062,8 +1062,8 @@ gaia_gh_merge_ref_to_home_pr() {
   # alternative, `shopt -s nocasematch`, is process-global: it would also
   # reach the port strip below and every later `[[ ]]` in whichever hook
   # sourced this file.
-  url_re='^[hH][tT][tT][pP][sS]?://([^/]+)/([^/]+/[^/]+)/pull/([0-9]+)([/?#].*)?$'
-  [[ "$ref" =~ $url_re ]] || return 1
+  url_regex='^[hH][tT][tT][pP][sS]?://([^/]+)/([^/]+/[^/]+)/pull/([0-9]+)([/?#].*)?$'
+  [[ "$reference" =~ $url_regex ]] || return 1
   host=$(printf '%s' "${BASH_REMATCH[1]}" | tr '[:upper:]' '[:lower:]')
   slug=$(printf '%s' "${BASH_REMATCH[2]}" | tr '[:upper:]' '[:lower:]')
   number="${BASH_REMATCH[3]}"

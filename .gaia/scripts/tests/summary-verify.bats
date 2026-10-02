@@ -13,8 +13,8 @@
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  SCRIPT="$THIS_DIR/../summary-verify.sh"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  SCRIPT="$THIS_DIRECTORY/../summary-verify.sh"
   [ -x "$SCRIPT" ] || skip "summary-verify.sh not executable"
   FIXTURE="$BATS_TEST_TMPDIR/SUMMARY.md"
 }

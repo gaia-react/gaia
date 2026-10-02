@@ -13,25 +13,25 @@ session_id="${2:?session_id required}"
 case "$event" in
   user-prompt-submit)
     prompt="${3:-test prompt}"
-    jq -n --arg sid "$session_id" --arg p "$prompt" \
-      '{session_id: $sid, transcript_path: "/tmp/transcript.jsonl", cwd: ".", hook_event_name: "UserPromptSubmit", prompt: $p}'
+    jq -n --arg session_id "$session_id" --arg prompt "$prompt" \
+      '{session_id: $session_id, transcript_path: "/tmp/transcript.jsonl", cwd: ".", hook_event_name: "UserPromptSubmit", prompt: $prompt}'
     ;;
   pre-tool-use)
     tool="${3:?tool_name required}"
-    cmd="${4:?command required}"
-    jq -n --arg sid "$session_id" --arg t "$tool" --arg c "$cmd" \
-      '{session_id: $sid, transcript_path: "/tmp/transcript.jsonl", cwd: ".", hook_event_name: "PreToolUse", tool_name: $t, tool_input: {command: $c}}'
+    command="${4:?command required}"
+    jq -n --arg session_id "$session_id" --arg tool_name "$tool" --arg command "$command" \
+      '{session_id: $session_id, transcript_path: "/tmp/transcript.jsonl", cwd: ".", hook_event_name: "PreToolUse", tool_name: $tool_name, tool_input: {command: $command}}'
     ;;
   post-tool-use)
     tool="${3:?tool_name required}"
-    cmd="${4:?command required}"
-    out="${5:-}"
-    jq -n --arg sid "$session_id" --arg t "$tool" --arg c "$cmd" --arg o "$out" \
-      '{session_id: $sid, transcript_path: "/tmp/transcript.jsonl", cwd: ".", hook_event_name: "PostToolUse", tool_name: $t, tool_input: {command: $c}, tool_response: {stdout: $o, stderr: "", interrupted: false}}'
+    command="${4:?command required}"
+    tool_stdout="${5:-}"
+    jq -n --arg session_id "$session_id" --arg tool_name "$tool" --arg command "$command" --arg stdout_text "$tool_stdout" \
+      '{session_id: $session_id, transcript_path: "/tmp/transcript.jsonl", cwd: ".", hook_event_name: "PostToolUse", tool_name: $tool_name, tool_input: {command: $command}, tool_response: {stdout: $stdout_text, stderr: "", interrupted: false}}'
     ;;
   stop)
-    jq -n --arg sid "$session_id" \
-      '{session_id: $sid, transcript_path: "/tmp/transcript.jsonl", cwd: ".", hook_event_name: "Stop", stop_hook_active: false}'
+    jq -n --arg session_id "$session_id" \
+      '{session_id: $session_id, transcript_path: "/tmp/transcript.jsonl", cwd: ".", hook_event_name: "Stop", stop_hook_active: false}'
     ;;
   *)
     echo "unknown event: $event" >&2

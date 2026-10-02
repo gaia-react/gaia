@@ -12,8 +12,8 @@
 # Assertion style per .claude/rules/bats-assertions.md.
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
   PREDICATE="$REPO_ROOT/.gaia/scripts/chore-deps-skip.sh"
   # A missing predicate is a real regression (a rename or deletion), not an
   # environment gap, so this suite fails rather than skips: a skip here would

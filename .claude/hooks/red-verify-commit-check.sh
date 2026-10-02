@@ -65,10 +65,8 @@ command -v jq >/dev/null 2>&1 || exit 0
 tool_name=$(echo "$input" | jq -r '.tool_name // ""' 2>/dev/null)
 [ "$tool_name" = "Bash" ] || exit 0
 
-# Avoid the name `command`: it would shadow bash's `command` builtin and break
-# later `command -v ...` guards.
-cmd=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
-[ -n "$cmd" ] || exit 0
+command=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
+[ -n "$command" ] || exit 0
 
 # ---------------------------------------------------------------------------
 # Command-position match for `git commit`. Reuse the anchored-segment technique
@@ -80,15 +78,15 @@ cmd=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 # ---------------------------------------------------------------------------
 
 # Fast path: short-circuit when `git` is not an invoked command word anywhere.
-[[ "$cmd" =~ (^|[[:space:]&;|()])git([[:space:]]|$) ]] || exit 0
+[[ "$command" =~ (^|[[:space:]&;|()])git([[:space:]]|$) ]] || exit 0
 
 saw_commit=0
-while IFS= read -r seg; do
+while IFS= read -r segment; do
   # Command word = first token after leading whitespace + env-var assignments.
-  seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*//')
-  [[ "$seg_cmd" =~ ^git([[:space:]]|$) ]] || continue
-  [[ "$seg" =~ (^|[[:space:]])commit([[:space:]]|$) ]] && saw_commit=1
-done < <(printf '%s\n' "$cmd" | tr '|&;()' '\n')
+  segment_command=$(printf '%s' "$segment" | sed -E 's/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*//')
+  [[ "$segment_command" =~ ^git([[:space:]]|$) ]] || continue
+  [[ "$segment" =~ (^|[[:space:]])commit([[:space:]]|$) ]] && saw_commit=1
+done < <(printf '%s\n' "$command" | tr '|&;()' '\n')
 
 [ "$saw_commit" -eq 1 ] || exit 0
 
@@ -103,10 +101,10 @@ done < <(printf '%s\n' "$cmd" | tr '|&;()' '\n')
 # BROKEN library: they cannot tell that case from a moved working directory, so
 # a bare test would let a single `cd` disarm this gate with no diagnostic.
 # ---------------------------------------------------------------------------
-_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _lib_dir=''
-[ -n "$_lib_dir" ] && [ -f "$_lib_dir/repo-scope.sh" ] && . "$_lib_dir/repo-scope.sh"
-if type cmd_targets_foreign_repo >/dev/null 2>&1 \
-   && cmd_targets_foreign_repo "$cmd"; then
+_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _library_directory=''
+[ -n "$_library_directory" ] && [ -f "$_library_directory/repo-scope.sh" ] && . "$_library_directory/repo-scope.sh"
+if type command_targets_foreign_repo >/dev/null 2>&1 \
+   && command_targets_foreign_repo "$command"; then
   exit 0
 fi
 
@@ -114,7 +112,7 @@ fi
 # Shared RED-ledger lib: ledger path, repo-relative normalization, and the
 # signal-helper wrapper. Without it we cannot compute identity, so fail-open.
 # ---------------------------------------------------------------------------
-[ -n "$_lib_dir" ] && [ -f "$_lib_dir/red-ledger.sh" ] && . "$_lib_dir/red-ledger.sh"
+[ -n "$_library_directory" ] && [ -f "$_library_directory/red-ledger.sh" ] && . "$_library_directory/red-ledger.sh"
 type red_ledger_path >/dev/null 2>&1 || exit 0
 type red_ledger_signals >/dev/null 2>&1 || exit 0
 type red_ledger_signal_script >/dev/null 2>&1 || exit 0
@@ -200,10 +198,10 @@ classifier_script="$gaia_scripts/classifier/classify-determinism.mjs"
 # non-zero exit, unparseable JSON, or a strict verdict). A non-empty (emergent)
 # answer relaxes the RED demand for that file.
 test_subject_is_emergent() {
-  local rel="$1"
+  local relative_path="$1"
   [ -f "$classifier_script" ] || return 0
-  local out
-  # Run from the ACTING TREE, not the process working directory. `$rel` is
+  local classifier_output
+  # Run from the ACTING TREE, not the process working directory. `$relative_path` is
   # repo-relative and stays that way, because the classifier's own path rules
   # read it (a .tsx under app/components/**, a spec under .playwright/**), so
   # handing it an absolute path would change its verdict. What it must not do is
@@ -213,9 +211,9 @@ test_subject_is_emergent() {
   # silent disarm of this gate from any subdirectory, in the same direction as
   # a missing library. The `cd` is inside a command substitution, so it never
   # persists into the rest of this hook.
-  out=$( cd "$tree_root" && node "$classifier_script" "$rel" 2>/dev/null ) || return 0
-  [ -n "$out" ] || return 0
-  printf '%s' "$out" \
+  classifier_output=$( cd "$tree_root" && node "$classifier_script" "$relative_path" 2>/dev/null ) || return 0
+  [ -n "$classifier_output" ] || return 0
+  printf '%s' "$classifier_output" \
     | jq -r 'select((.classification // "") == "emergent") | "emergent"' \
         2>/dev/null \
     | head -1
@@ -234,12 +232,12 @@ while IFS= read -r path; do
     *) continue ;;
   esac
 
-  rel=$(red_ledger_repo_rel "$path")
+  relative_path=$(red_ledger_repo_relative_path "$path")
 
   # Carve-out: an emergent-subject test commits without a RED demand. Skip the
   # whole file when the classifier affirmatively labels it emergent; the
   # deterministic surface falls through to the RED check unchanged.
-  [ -n "$(test_subject_is_emergent "$rel")" ] && continue
+  [ -n "$(test_subject_is_emergent "$relative_path")" ] && continue
 
   # Current tests: helper over the working-tree (staged) file content on disk.
   # Parse failure (mid-edit syntax error) -> skip this file (fail-open).
@@ -248,7 +246,7 @@ while IFS= read -r path; do
   # helper reads the staged file from disk at the repo-relative path, so from a
   # subdirectory it finds nothing, and "no signals" is a `continue` -- the file
   # leaves the offender scan and the commit passes ungated.
-  current_ndjson=$( cd "$tree_root" && red_ledger_signals "$rel" 2>/dev/null ) || { continue; }
+  current_ndjson=$( cd "$tree_root" && red_ledger_signals "$relative_path" 2>/dev/null ) || { continue; }
   # No emitted tests (empty file, only dynamic-title tests, or no-tests file):
   # nothing in scope for this file.
   [ -n "$current_ndjson" ] || continue
@@ -260,18 +258,18 @@ while IFS= read -r path; do
   # -> every current test is new. If HEAD content is unparseable we cannot prove
   # a test pre-existed; treat the HEAD set as empty (conservative: more tests
   # look new), but a genuinely new file is the common case on this path.
-  head_src=$(git show "HEAD:$rel" 2>/dev/null || true)
+  head_source=$(git show "HEAD:$relative_path" 2>/dev/null || true)
   head_fullnames=""
-  if [ -n "$head_src" ]; then
-    # From the acting tree, unlike head_src just above (a bare `git show`, which
+  if [ -n "$head_source" ]; then
+    # From the acting tree, unlike head_source just above (a bare `git show`, which
     # resolves against the hook's own cwd rather than $tree_root): $signal_script
     # is the bare repo-relative literal red_ledger_signal_script returns, so from a
     # subdirectory node cannot find it, `|| true` swallows the failure, and
     # head_fullnames stays empty. Empty means "nothing pre-existed at HEAD", so
     # every current test reads as new-at-HEAD and an ordinary edit to a test
     # that has always been there is denied for want of a RED it never owed.
-    head_ndjson=$( cd "$tree_root" && printf '%s' "$head_src" \
-      | node "$signal_script" "$rel" --stdin 2>/dev/null || true)
+    head_ndjson=$( cd "$tree_root" && printf '%s' "$head_source" \
+      | node "$signal_script" "$relative_path" --stdin 2>/dev/null || true)
     if [ -n "$head_ndjson" ]; then
       head_fullnames=$(printf '%s\n' "$head_ndjson" \
         | jq -r '.fullName // empty' 2>/dev/null || true)
@@ -282,9 +280,9 @@ while IFS= read -r path; do
   while IFS= read -r line; do
     [ -n "$line" ] || continue
     full=$(printf '%s' "$line" | jq -r '.fullName // empty' 2>/dev/null || true)
-    sig=$(printf '%s' "$line" | jq -r '.signal // empty' 2>/dev/null || true)
+    signal=$(printf '%s' "$line" | jq -r '.signal // empty' 2>/dev/null || true)
     kind=$(printf '%s' "$line" | jq -r '.kind // empty' 2>/dev/null || true)
-    [ -n "$full" ] && [ -n "$sig" ] || continue
+    [ -n "$full" ] && [ -n "$signal" ] || continue
 
     # Type-only test (all assertions type-level, no runtime expectation): it
     # has no runtime failure mode, so there is no runtime red-green for this
@@ -309,18 +307,18 @@ while IFS= read -r path; do
     # closed. A missing ledger file means zero matches -> deny.
     matched=0
     if [ -f "$ledger" ]; then
-      matched=$(jq -r --arg f "$rel" --arg n "$full" --arg s "$sig" '
+      matched=$(jq -r --arg test_file_path "$relative_path" --arg test_full_name "$full" --arg test_signal "$signal" '
         select((.schema // 0) == 1
-          and (.file // "") == $f
-          and (.fullName // "") == $n
-          and (.signal // "") == $s)
+          and (.file // "") == $test_file_path
+          and (.fullName // "") == $test_full_name
+          and (.signal // "") == $test_signal)
         | "x"' "$ledger" 2>/dev/null \
         | head -1 | grep -c x 2>/dev/null || true)
     fi
     [ -z "$matched" ] && matched=0
 
     if [ "$matched" -eq 0 ]; then
-      offenders="${offenders}${rel}	${full}
+      offenders="${offenders}${relative_path}	${full}
 "
     fi
   done <<EOF
@@ -339,9 +337,9 @@ fi
 
 # Build a human-readable list of "  • file › fullName" lines.
 offender_list=$(printf '%s' "$offenders" \
-  | while IFS=$'\t' read -r f n; do
-      [ -n "$f" ] || continue
-      printf '  \xe2\x80\xa2 %s \xe2\x80\xba %s\n' "$f" "$n"
+  | while IFS=$'\t' read -r offender_file offender_full_name; do
+      [ -n "$offender_file" ] || continue
+      printf '  \xe2\x80\xa2 %s \xe2\x80\xba %s\n' "$offender_file" "$offender_full_name"
     done)
 
 reason="TDD RED-verification: a new test has no observed failing run (RED) on record at its current content.

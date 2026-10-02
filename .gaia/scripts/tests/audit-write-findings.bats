@@ -12,8 +12,8 @@
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  WRITER="$THIS_DIR/../audit-write-findings.sh"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  WRITER="$THIS_DIRECTORY/../audit-write-findings.sh"
   [ -x "$WRITER" ] || skip "audit-write-findings.sh not executable"
   command -v jq >/dev/null 2>&1 || skip "jq required"
 

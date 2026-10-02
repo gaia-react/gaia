@@ -7,8 +7,8 @@
 # sandbox so it never touches the real repo cache, with a stub `gh` on PATH.
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  SRC_SCRIPT="$THIS_DIR/../debt-count-refresh.sh"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  SRC_SCRIPT="$THIS_DIRECTORY/../debt-count-refresh.sh"
   [ -f "$SRC_SCRIPT" ] || skip "debt-count-refresh.sh missing"
   command -v jq >/dev/null 2>&1 || skip "jq required"
 

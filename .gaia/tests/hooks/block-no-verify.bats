@@ -23,8 +23,8 @@
 
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
-  HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
-  HOOK_ABS="$HOOKS_SRC/block-no-verify.sh"
+  HOOKS_SOURCE_DIRECTORY=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
+  HOOK_ABSOLUTE_PATH="$HOOKS_SOURCE_DIRECTORY/block-no-verify.sh"
 
   REPO=$(mktemp -d -t no-verify-test-XXXXXX)
   git -C "$REPO" init --quiet --initial-branch=main
@@ -51,10 +51,10 @@ teardown() {
 
 # Run the hook with a given command, from inside the home repo.
 run_hook() {
-  local cmd="$1"
+  local command_line="$1"
   local json
-  json=$(jq -n --arg c "$cmd" '{tool_name: "Bash", tool_input: {command: $c}}')
-  invoke_hook_in "$REPO" "$json" "$HOOK_ABS"
+  json=$(jq -n --arg command "$command_line" '{tool_name: "Bash", tool_input: {command: $command}}')
+  invoke_hook_in "$REPO" "$json" "$HOOK_ABSOLUTE_PATH"
 }
 
 
@@ -245,7 +245,7 @@ git commit --no-verify -m y"
 }
 
 @test "deny message on push omits the commit-message workaround (push has no -m)" {
-  # floor_msg is shared by commit and push; the over-block note only applies
+  # floor_message is shared by commit and push; the over-block note only applies
   # to commit, since push carries no message text a token could be mentioned
   # inside.
   run_hook 'git push --no-verify'
@@ -258,13 +258,13 @@ git commit --no-verify -m y"
 #
 # The repo-scope load resolves off BASH_SOURCE, never off the process working
 # directory, so expressing a degraded library needs a COPY of the hook in a tree
-# the test controls: running the real $HOOK_ABS leaves it resolving the real
+# the test controls: running the real $HOOK_ABSOLUTE_PATH leaves it resolving the real
 # checkout's library beside itself, whatever a fixture does to a copy anywhere
 # else.
 
 # Overwrites <path> with an unresolved-merge-conflict body: the file opens and
 # reads fine, so an existence test passes it, and bash cannot parse it.
-write_conflicted_lib() {
+write_conflicted_library() {
   { printf '<<<<<<< HEAD\n'; printf 'x() { :; }\n'; printf '=======\n'
     printf 'y() { :; }\n'; printf '>>>>>>> other\n'; } > "$1"
 }
@@ -281,14 +281,14 @@ stage_hook_tree() {
   # also keeps the jq-availability arm present, which runs ahead of the load
   # under test and refuses when it cannot find its own library, answering every
   # case with that refusal instead of with the decision under test.
-  cp -R "$HOOKS_SRC" "$STAGED_ROOT/.claude/hooks"
+  cp -R "$HOOKS_SOURCE_DIRECTORY" "$STAGED_ROOT/.claude/hooks"
   STAGED_HOOK="$STAGED_ROOT/.claude/hooks/block-no-verify.sh"
 }
 
 # Run the staged copy of the hook, from inside the staged tree.
 run_staged() {
   local json
-  json=$(jq -n --arg c "$1" '{tool_name: "Bash", tool_input: {command: $c}}')
+  json=$(jq -n --arg command "$1" '{tool_name: "Bash", tool_input: {command: $command}}')
   invoke_hook_in "$STAGED_ROOT" "$json" "$STAGED_HOOK"
 }
 
@@ -296,7 +296,7 @@ run_staged() {
 #
 # The repo-scope load sits under this hook's `set -euo pipefail`, so without the
 # bracket suspending errexit an unparseable copy abandons the shell ahead of the
-# `type cmd_targets_foreign_repo` check on the next line. That exits 2, the
+# `type command_targets_foreign_repo` check on the next line. That exits 2, the
 # PreToolUse deny code, refusing every git command the hook matches -- including
 # the very edit that would repair the library. Unlike the verb-arming sites,
 # this one denies on bash 5 as well as on 3.2, so neither conflict-marker case
@@ -304,7 +304,7 @@ run_staged() {
 #
 # Each pair is what discriminates. The allow case alone is satisfied by a hook
 # that stopped enforcing entirely, so the deny twin proves the degrade kept the
-# floor: without cmd_targets_foreign_repo the foreign-repo carve-out simply does
+# floor: without command_targets_foreign_repo the foreign-repo carve-out simply does
 # not fire, which is the fail-closed direction the hook's own repo-scope comment
 # documents.
 #
@@ -320,14 +320,14 @@ run_staged() {
 
 @test "repo-scope.sh holding conflict markers: an ordinary git command is still allowed" {
   stage_hook_tree
-  write_conflicted_lib "$STAGED_ROOT/.claude/hooks/lib/repo-scope.sh"
+  write_conflicted_library "$STAGED_ROOT/.claude/hooks/lib/repo-scope.sh"
   run_staged 'git status'
   assert_allowed_by_json
 }
 
 @test "repo-scope.sh holding conflict markers: a --no-verify commit is still denied" {
   stage_hook_tree
-  write_conflicted_lib "$STAGED_ROOT/.claude/hooks/lib/repo-scope.sh"
+  write_conflicted_library "$STAGED_ROOT/.claude/hooks/lib/repo-scope.sh"
   run_staged 'git commit --no-verify -m x'
   assert_denied_by_json
 }
@@ -495,13 +495,13 @@ run_staged() {
 # the construct, not only on sameness: a copy that agrees with the other at the
 # narrow spelling fails here too.
 @test "block-no-verify.sh and block-main-destructive-git.sh derive the segment command word the same way" {
-  local expected="" f line n
-  for f in block-no-verify.sh block-main-destructive-git.sh; do
+  local expected="" hook_file_name line match_count
+  for hook_file_name in block-no-verify.sh block-main-destructive-git.sh; do
     # shellcheck disable=SC2016 # the needle is the hooks' literal source text
-    n=$(grep -cF 'seg_cmd=$(printf' "$HOOKS_SRC/$f")
-    [ "$n" -eq 1 ]
+    match_count=$(grep -cF 'segment_command=$(printf' "$HOOKS_SOURCE_DIRECTORY/$hook_file_name")
+    [ "$match_count" -eq 1 ]
     # shellcheck disable=SC2016
-    line=$(grep -F 'seg_cmd=$(printf' "$HOOKS_SRC/$f" | sed -E 's/^[[:space:]]*//')
+    line=$(grep -F 'segment_command=$(printf' "$HOOKS_SOURCE_DIRECTORY/$hook_file_name" | sed -E 's/^[[:space:]]*//')
     if [ -z "$expected" ]; then expected="$line"; fi
     [ "$line" = "$expected" ]
   done
@@ -521,7 +521,7 @@ run_staged() {
 # silently denying the auto-commit chain.
 @test "the wiki squash's own no-verify commit is denied through the Bash tool" {
   local line
-  line=$(grep -F -- '--no-verify' "$HOOKS_SRC/wiki-squash-autocommits.sh" \
+  line=$(grep -F -- '--no-verify' "$HOOKS_SOURCE_DIRECTORY/wiki-squash-autocommits.sh" \
          | grep -F 'commit -m' | sed -E 's/^[[:space:]]*//; s/[[:space:]]*>.*$//')
   [ -n "$line" ]
   # shellcheck disable=SC2016 # the needle is the substitution opener itself
@@ -548,14 +548,14 @@ run_staged() {
 # it is searched: a renamed or removed directory would otherwise drop out of
 # the scanned set while the search still reported clean.
 @test "the wiki squash script is reached only through its hook registration" {
-  local root hits d
-  root=$(cd "$HOOKS_SRC/../.." && pwd)
+  local root hits directory
+  root=$(cd "$HOOKS_SOURCE_DIRECTORY/../.." && pwd)
   grep -qF 'wiki-squash-autocommits.sh' "$root/.claude/settings.json"
 
   set -- "$root/.claude/skills" "$root/.claude/commands" "$root/.claude/rules" \
          "$root/.claude/agents" "$root/.claude/instructions" \
          "$root/.specify/extensions/gaia/commands" "$root/.specify/extensions/gaia/rules"
-  for d in "$@"; do [ -d "$d" ]; done
+  for directory in "$@"; do [ -d "$directory" ]; done
   hits=$(grep -rlF 'wiki-squash-autocommits.sh' "$@" 2>/dev/null || true)
   [ -z "$hits" ]
 
@@ -572,9 +572,9 @@ run_staged() {
 # collapsed-substitution control, which red when the collapse stops rejoining
 # or starts over-arming.
 @test "block-no-verify.sh and block-main-destructive-git.sh collapse command substitutions the same way" {
-  local expected="" f body
-  for f in block-no-verify.sh block-main-destructive-git.sh; do
-    body=$(sed -n '/^collapsed_substitutions() {$/,/^}$/p' "$HOOKS_SRC/$f")
+  local expected="" hook_file_name body
+  for hook_file_name in block-no-verify.sh block-main-destructive-git.sh; do
+    body=$(sed -n '/^collapsed_substitutions() {$/,/^}$/p' "$HOOKS_SOURCE_DIRECTORY/$hook_file_name")
     [ -n "$body" ]
     if [ -z "$expected" ]; then expected="$body"; fi
     [ "$body" = "$expected" ]

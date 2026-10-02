@@ -3,7 +3,7 @@
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HELPERS="$BATS_TEST_DIRNAME/helpers"
-  HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/wiki-session-stop.sh
+  HOOK_ABSOLUTE_PATH=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/wiki-session-stop.sh
 }
 
 teardown() {
@@ -33,7 +33,7 @@ stage_session_commit() {
 {"version":1,"last_evaluated_sha":"$head","last_evaluated_at":"2026-01-01T00:00:00Z"}
 EOF
   input=$("$HELPERS/mock-hook-input.sh" stop S1)
-  invoke_hook "$input" "$HOOK_ABS"
+  invoke_hook "$input" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -42,13 +42,13 @@ EOF
   REPO=$("$HELPERS/tmp-git-repo.sh")
   cd "$REPO"
   head=$(git rev-parse HEAD)
-  GIT_DIR=$(git rev-parse --git-dir)
-  echo "$head" > "$GIT_DIR/claude-session-start"
+  git_directory=$(git rev-parse --git-dir)
+  echo "$head" > "$git_directory/claude-session-start"
   cat > wiki/.state.json <<EOF
 {"version":1,"last_evaluated_sha":"$head","last_evaluated_at":"2026-01-01T00:00:00Z"}
 EOF
   input=$("$HELPERS/mock-hook-input.sh" stop S1)
-  invoke_hook "$input" "$HOOK_ABS"
+  invoke_hook "$input" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -57,8 +57,8 @@ EOF
   REPO=$("$HELPERS/tmp-git-repo.sh")
   cd "$REPO"
   start=$(git rev-parse HEAD)
-  GIT_DIR=$(git rev-parse --git-dir)
-  echo "$start" > "$GIT_DIR/claude-session-start"
+  git_directory=$(git rev-parse --git-dir)
+  echo "$start" > "$git_directory/claude-session-start"
   for i in 1 2 3; do
     echo "$i" >> bar.txt
     git add bar.txt
@@ -68,7 +68,7 @@ EOF
 {"version":1,"last_evaluated_sha":"$start","last_evaluated_at":"2026-01-01T00:00:00Z"}
 EOF
   input=$("$HELPERS/mock-hook-input.sh" stop S1)
-  invoke_hook "$input" "$HOOK_ABS"
+  invoke_hook "$input" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
   [ -f .claude/wiki-safety-checked ] && return 1
@@ -78,7 +78,7 @@ EOF
 @test "session committed wiki paths: WIKI_CHANGED line" {
   stage_session_commit wiki/index.md
   input=$("$HELPERS/mock-hook-input.sh" stop S1)
-  invoke_hook "$input" "$HOOK_ABS"
+  invoke_hook "$input" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   grep -qF -- 'WIKI_CHANGED' <<<"$output" || return 1
   grep -qF -- 'wiki/hot.md' <<<"$output" || return 1
@@ -88,17 +88,17 @@ EOF
 @test "WIKI_CHANGED fires once per session: a second stop is silent" {
   stage_session_commit wiki/index.md
   input=$("$HELPERS/mock-hook-input.sh" stop S1)
-  invoke_hook "$input" "$HOOK_ABS"
+  invoke_hook "$input" "$HOOK_ABSOLUTE_PATH"
   grep -qF -- 'WIKI_CHANGED' <<<"$output" || return 1
 
-  invoke_hook "$input" "$HOOK_ABS"
+  invoke_hook "$input" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
 
 @test "WIKI_CHANGED fires with no stdin at all" {
   stage_session_commit wiki/index.md
-  run bash -c 'bash "$1" < /dev/null' _ "$HOOK_ABS"
+  run bash -c 'bash "$1" < /dev/null' _ "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   grep -qF -- 'WIKI_CHANGED' <<<"$output" || return 1
   return 0
@@ -108,15 +108,15 @@ EOF
   REPO=$("$HELPERS/tmp-git-repo.sh")
   cd "$REPO"
   start=$(git rev-parse HEAD)
-  GIT_DIR=$(git rev-parse --git-dir)
-  echo "$start" > "$GIT_DIR/claude-session-start"
+  git_directory=$(git rev-parse --git-dir)
+  echo "$start" > "$git_directory/claude-session-start"
   echo "x" >> qux.txt
   git add qux.txt
   git commit --quiet -m "x"
   cat > wiki/.state.json <<EOF
 {"version":1,"last_evaluated_sha":"$start","last_evaluated_at":"2026-01-01T00:00:00Z"}
 EOF
-  invoke_hook 'not-json{{' "$HOOK_ABS"
+  invoke_hook 'not-json{{' "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -124,12 +124,12 @@ EOF
 @test "the hook carries no deferral-library sourcing, end-of-session reminder, or safety marker" {
   deferral_name="gaia""-ci-defer"
   reminder_tag="[wiki end-of""-session]"
-  grep -qF -- "$deferral_name" "$HOOK_ABS" && return 1
-  grep -qF -- "$reminder_tag" "$HOOK_ABS" && return 1
-  grep -qF -- 'wiki-safety-checked' "$HOOK_ABS" && return 1
+  grep -qF -- "$deferral_name" "$HOOK_ABSOLUTE_PATH" && return 1
+  grep -qF -- "$reminder_tag" "$HOOK_ABSOLUTE_PATH" && return 1
+  grep -qF -- 'wiki-safety-checked' "$HOOK_ABSOLUTE_PATH" && return 1
   return 0
 }
 
 @test "the hook file is executable" {
-  [ -x "$HOOK_ABS" ]
+  [ -x "$HOOK_ABSOLUTE_PATH" ]
 }

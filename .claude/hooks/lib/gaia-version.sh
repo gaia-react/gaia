@@ -28,7 +28,7 @@
 # unreadable, or holds no non-blank line. Always exits 0.
 gaia_read_version() {
   local file="${1:-}"
-  local v=""
+  local version=""
 
   if [ -n "$file" ] && [ -f "$file" ]; then
     # Strip CR, take the first non-blank line, trim surrounding whitespace.
@@ -42,10 +42,10 @@ gaia_read_version() {
     # missing one. Doing it in one process rather than a pipe also keeps the
     # result independent of whether the caller set `pipefail`, which the call
     # sites disagree on.
-    v=$(awk '{ gsub(/\r/, "") } NF { print; exit }' "$file" 2>/dev/null) || v=""
-    v="${v#"${v%%[![:space:]]*}"}"
-    v="${v%"${v##*[![:space:]]}"}"
+    version=$(awk '{ gsub(/\r/, "") } NF { print; exit }' "$file" 2>/dev/null) || version=""
+    version="${version#"${version%%[![:space:]]*}"}"
+    version="${version%"${version##*[![:space:]]}"}"
   fi
 
-  printf '%s' "$v"
+  printf '%s' "$version"
 }

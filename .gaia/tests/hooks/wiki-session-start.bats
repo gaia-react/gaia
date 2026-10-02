@@ -18,9 +18,9 @@
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HELPERS="$BATS_TEST_DIRNAME/helpers"
-  HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
-  HOOK_ABS="$HOOKS_SRC/wiki-session-start.sh"
-  SETTINGS_ABS="${HOOKS_SRC%/hooks}/settings.json"
+  HOOKS_SOURCE_DIRECTORY=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
+  HOOK_ABSOLUTE_PATH="$HOOKS_SOURCE_DIRECTORY/wiki-session-start.sh"
+  SETTINGS_ABSOLUTE_PATH="${HOOKS_SOURCE_DIRECTORY%/hooks}/settings.json"
 }
 
 teardown() {
@@ -34,10 +34,10 @@ teardown() {
 # Drop an executable stub at PATH (repo-relative) that touches a witness file
 # instead of doing the real script's work.
 stub_script() {
-  local rel="$1"
-  mkdir -p "$REPO/$(dirname "$rel")"
-  printf '#!/usr/bin/env bash\n: > "%s.ran"\n' "$REPO/$(basename "$rel")" > "$REPO/$rel"
-  chmod +x "$REPO/$rel"
+  local relative_path="$1"
+  mkdir -p "$REPO/$(dirname "$relative_path")"
+  printf '#!/usr/bin/env bash\n: > "%s.ran"\n' "$REPO/$(basename "$relative_path")" > "$REPO/$relative_path"
+  chmod +x "$REPO/$relative_path"
 }
 
 # install_hook: copy the hook under test into $REPO at its own repo-relative
@@ -46,7 +46,7 @@ stub_script() {
 #
 # The delegation tests need this and the stamp tests do not, because the hook
 # locates the janitor from its OWN directory (`${BASH_SOURCE[0]}`) rather
-# than from the working directory. Invoking $HOOK_ABS with cwd set to $REPO
+# than from the working directory. Invoking $HOOK_ABSOLUTE_PATH with cwd set to $REPO
 # therefore runs the real janitor out of the home checkout and never sees a
 # stub placed in the fixture, which reads as a pass for the fail-open tests and
 # as a failure for the witness tests. Running a copy makes the fixture the
@@ -55,7 +55,7 @@ stub_script() {
 # property the rooting buys and these tests are what pin it.
 install_hook() {
   mkdir -p "$REPO/.claude/hooks"
-  cp "$HOOK_ABS" "$REPO/.claude/hooks/wiki-session-start.sh"
+  cp "$HOOK_ABSOLUTE_PATH" "$REPO/.claude/hooks/wiki-session-start.sh"
   chmod +x "$REPO/.claude/hooks/wiki-session-start.sh"
   echo "$REPO/.claude/hooks/wiki-session-start.sh"
 }
@@ -64,7 +64,7 @@ install_hook() {
 
 @test "records HEAD into the git dir" {
   REPO=$("$HELPERS/tmp-git-repo.sh")
-  invoke_hook_in "$REPO" '' "$HOOK_ABS"
+  invoke_hook_in "$REPO" '' "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -f "$REPO/.git/claude-session-start" ]
   head=$(git -C "$REPO" rev-parse HEAD)
@@ -76,7 +76,7 @@ install_hook() {
   # SessionStart stderr is not shown and stdout is not injected, so any output
   # here is noise at best. Silence is the contract.
   REPO=$("$HELPERS/tmp-git-repo.sh")
-  invoke_hook_in "$REPO" '' "$HOOK_ABS"
+  invoke_hook_in "$REPO" '' "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -85,14 +85,14 @@ install_hook() {
   # The stamp is a per-session baseline, not a first-run record: a stale value
   # would make the Stop hook diff against the wrong starting point.
   REPO=$("$HELPERS/tmp-git-repo.sh")
-  invoke_hook_in "$REPO" '' "$HOOK_ABS"
+  invoke_hook_in "$REPO" '' "$HOOK_ABSOLUTE_PATH"
   first=$(cat "$REPO/.git/claude-session-start")
 
   echo "later" >> "$REPO/wiki/index.md"
   git -C "$REPO" add wiki/index.md
   git -C "$REPO" commit --quiet -m "second"
 
-  invoke_hook_in "$REPO" '' "$HOOK_ABS"
+  invoke_hook_in "$REPO" '' "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   second=$(cat "$REPO/.git/claude-session-start")
   head=$(git -C "$REPO" rev-parse HEAD)
@@ -104,14 +104,14 @@ install_hook() {
 @test "a repo with no commits yet does not fail the session" {
   REPO=$(mktemp -d -t gaia-session-start-unborn-XXXXXX)
   git -C "$REPO" init --quiet --initial-branch=main
-  invoke_hook_in "$REPO" '' "$HOOK_ABS"
+  invoke_hook_in "$REPO" '' "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
 
 @test "outside a git repository the hook is a silent no-op" {
   PLAIN=$(mktemp -d -t gaia-session-start-plain-XXXXXX)
-  invoke_hook_in "$PLAIN" '' "$HOOK_ABS"
+  invoke_hook_in "$PLAIN" '' "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
   [ ! -f "$PLAIN/claude-session-start" ]
@@ -185,9 +185,9 @@ install_hook() {
 # --- structural ---
 
 @test "wiki-session-start.sh is executable" {
-  [ -x "$HOOK_ABS" ]
+  [ -x "$HOOK_ABSOLUTE_PATH" ]
 }
 
 @test "settings.json registers the hook under SessionStart startup|resume" {
-  hook_registered "$SETTINGS_ABS" '.hooks.SessionStart[] | select(.matcher == "startup|resume")' wiki-session-start.sh
+  hook_registered "$SETTINGS_ABSOLUTE_PATH" '.hooks.SessionStart[] | select(.matcher == "startup|resume")' wiki-session-start.sh
 }

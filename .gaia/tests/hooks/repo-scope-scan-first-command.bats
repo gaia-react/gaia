@@ -2,7 +2,7 @@
 
 # Contract and cost budget for gaia_scan_first_command
 # (.claude/hooks/lib/repo-scope.sh), the word scanner both gaia_scan_gh_merge
-# and cmd_targets_foreign_repo_slug read a tool call's first command through.
+# and command_targets_foreign_repo_slug read a tool call's first command through.
 #
 # WHY A COST BUDGET LIVES BESIDE THE CONTRACT TESTS. The scanner walks its
 # input one character at a time, and the only thing that bounds how much text
@@ -39,7 +39,7 @@
 bats_require_minimum_version 1.5.0
 
 setup() {
-  LIB=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/repo-scope.sh
+  LIBRARY_FILE=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/repo-scope.sh
 
   # An ASCII record separator: no test payload below contains one, so joining
   # the scanned words with it is unambiguous even for a word holding a
@@ -67,47 +67,47 @@ setup() {
 # outside the timed region in time_scan_ms, so the round-trip never enters a
 # measurement.
 scan_record() {
-  local cmd="$1" cmdfile rec
-  cmdfile=$(mktemp)
-  printf '%s' "$cmd" > "$cmdfile"
-  rec=$(bash -c '
+  local command_text="$1" command_file record
+  command_file=$(mktemp)
+  printf '%s' "$command_text" > "$command_file"
+  record=$(bash -c '
     . "$1"
     # -d "" reads to NUL, i.e. the whole file, keeping a trailing newline that
     # a $(<file) substitution would strip. Non-zero at EOF is expected.
-    IFS= read -r -d "" _cmd < "$2" || :
-    if gaia_scan_first_command "$_cmd"; then printf "rc=0\n"; else printf "rc=1\n"; fi
+    IFS= read -r -d "" _command_text < "$2" || :
+    if gaia_scan_first_command "$_command_text"; then printf "rc=0\n"; else printf "rc=1\n"; fi
     printf "closed=%s\n" "$GAIA_FIRST_COMMAND_CLOSED"
     printf "n=%s\n" "${#GAIA_FIRST_COMMAND_WORDS[@]}"
-    sep=""
-    for w in ${GAIA_FIRST_COMMAND_WORDS[@]+"${GAIA_FIRST_COMMAND_WORDS[@]}"}; do
-      printf "%s%s" "$sep" "$w"
-      sep="$3"
+    separator=""
+    for word in ${GAIA_FIRST_COMMAND_WORDS[@]+"${GAIA_FIRST_COMMAND_WORDS[@]}"}; do
+      printf "%s%s" "$separator" "$word"
+      separator="$3"
     done
-  ' _ "$LIB" "$cmdfile" "$RS")
-  rm -f "$cmdfile"
-  printf '%s' "$rec"
+  ' _ "$LIBRARY_FILE" "$command_file" "$RS")
+  rm -f "$command_file"
+  printf '%s' "$record"
 }
 
-# assert_scan <cmd> <want_rc> <want_closed> [<want_word>...]
+# assert_scan <command_text> <want_exit_status> <want_closed> [<want_word>...]
 #
 # Ends its failing branch with an explicit `return 1` rather than leaning on a
 # bare comparison, per .claude/rules/bats-assertions.md: a non-final assertion
 # has to fail on its own on bash 3.2.
 assert_scan() {
-  local cmd="$1" want_rc="$2" want_closed="$3"
+  local command_text="$1" want_exit_status="$2" want_closed="$3"
   shift 3
-  local joined="" sep="" w want rec
-  for w in "$@"; do
-    joined="$joined$sep$w"
-    sep="$RS"
+  local joined="" separator="" word want record
+  for word in "$@"; do
+    joined="$joined$separator$word"
+    separator="$RS"
   done
-  want="rc=$want_rc
+  want="rc=$want_exit_status
 closed=$want_closed
 n=$#
 $joined"
-  rec=$(scan_record "$cmd")
-  if [ "$rec" != "$want" ]; then
-    printf 'scan mismatch\n--- want ---\n%s\n--- got ---\n%s\n' "$want" "$rec" >&2
+  record=$(scan_record "$command_text")
+  if [ "$record" != "$want" ]; then
+    printf 'scan mismatch\n--- want ---\n%s\n--- got ---\n%s\n' "$want" "$record" >&2
     return 1
   fi
 }
@@ -137,7 +137,7 @@ build_unquoted_word() {
 # resolution on every bash version, so nothing here depends on a GNU-only
 # (`date +%s%N`) or BSD-only (`date -v`) flag.
 time_scan_ms() {
-  local text="$1" textfile t
+  local text="$1" textfile elapsed_seconds
   textfile=$(mktemp)
   printf '%s' "$text" > "$textfile"
   # LC_ALL=C on both halves, and it is load-bearing rather than tidiness.
@@ -153,14 +153,14 @@ time_scan_ms() {
   # writes; pinning the awk pins the radix it reads. The scanner pins LC_ALL=C
   # for itself and restores it, so the stronger pin here changes nothing about
   # what is being measured.
-  t=$(LC_ALL=C bash -c '
+  elapsed_seconds=$(LC_ALL=C bash -c '
     TIMEFORMAT="%R"
     . "$1"
     IFS= read -r -d "" _text < "$2" || :
     { time gaia_scan_first_command "$_text" >/dev/null; } 2>&1
-  ' _ "$LIB" "$textfile")
+  ' _ "$LIBRARY_FILE" "$textfile")
   rm -f "$textfile"
-  REPLY_MS=$(LC_ALL=C awk -v s="$t" 'BEGIN{printf "%d", (s*1000)+0.5}')
+  REPLY_MS=$(LC_ALL=C awk -v seconds="$elapsed_seconds" 'BEGIN{printf "%d", (seconds*1000)+0.5}')
   # Fail closed on an unparseable timing. No scan this file measures is
   # sub-millisecond, so a zero here means the parse lost the number, not that
   # the scan was fast, and a silent zero would pass every ceiling.
@@ -173,7 +173,7 @@ time_scan_ms() {
 
 # One scan of a 16KB quoted body. Measured ~9-11ms after, ~893-904ms before.
 # Headroom: 250/11 ~= 22x. Margin below the quadratic figure: 904/250 ~= 3.6x.
-# 16KB is the size that matters most: GAIA_VERB_ARM_MAX_CHARS is 16,384, so a
+# 16KB is the size that matters most: GAIA_VERB_ARM_MAXIMUM_CHARACTERS is 16,384, so a
 # payload at this size is the largest one still inside the armed population,
 # and the quadratic cost was already ~0.9s there.
 CEILING_SCAN_16K_MS=250
@@ -310,23 +310,23 @@ CEILING_SCAN_UNQUOTED_64K_MS=5000
 # ---------------------------------------------------------------------------
 # Contract: start and end offsets
 #
-# cmd_targets_foreign_repo walks every command in a tool call by scanning
+# command_targets_foreign_repo walks every command in a tool call by scanning
 # again from where the last command ended, so the end offset has to land just
 # past the closing character, in bytes, and a scan from it has to read the next
 # command whole.
 # ---------------------------------------------------------------------------
 
-# scan_from <cmd> <start>: prints `<rc> <closed> <end> <words joined by RS>`.
+# scan_from <command_text> <start>: prints `<rc> <closed> <end> <words joined by RS>`.
 scan_from() {
   bash -c '
     . "$1"
-    if gaia_scan_first_command "$2" "$3"; then rc=0; else rc=1; fi
-    words=""; sep=""
-    for w in ${GAIA_FIRST_COMMAND_WORDS[@]+"${GAIA_FIRST_COMMAND_WORDS[@]}"}; do
-      words="$words$sep$w"; sep="$4"
+    if gaia_scan_first_command "$2" "$3"; then exit_status=0; else exit_status=1; fi
+    words=""; separator=""
+    for word in ${GAIA_FIRST_COMMAND_WORDS[@]+"${GAIA_FIRST_COMMAND_WORDS[@]}"}; do
+      words="$words$separator$word"; separator="$4"
     done
-    printf "%s %s %s %s" "$rc" "$GAIA_FIRST_COMMAND_CLOSED" "$GAIA_FIRST_COMMAND_END" "$words"
-  ' _ "$LIB" "$1" "$2" "$RS"
+    printf "%s %s %s %s" "$exit_status" "$GAIA_FIRST_COMMAND_CLOSED" "$GAIA_FIRST_COMMAND_END" "$words"
+  ' _ "$LIBRARY_FILE" "$1" "$2" "$RS"
 }
 
 @test "scan: the end offset lands just past the separator, and a scan from it reads the next command" {
@@ -355,25 +355,25 @@ scan_from() {
 # ---------------------------------------------------------------------------
 
 @test "cost: one scan of a 16KB quoted body stays inside the ceiling" {
-  local p
-  p=$(build_quoted_body 16384)
-  time_scan_ms "$p"
+  local payload
+  payload=$(build_quoted_body 16384)
+  time_scan_ms "$payload"
   echo "scan 16KB: ${REPLY_MS}ms (ceiling ${CEILING_SCAN_16K_MS}ms)" >&2
   [ "$REPLY_MS" -le "$CEILING_SCAN_16K_MS" ]
 }
 
 @test "cost: doubling a quoted body to 32KB does not quadruple the scan" {
-  local p
-  p=$(build_quoted_body 32768)
-  time_scan_ms "$p"
+  local payload
+  payload=$(build_quoted_body 32768)
+  time_scan_ms "$payload"
   echo "scan 32KB: ${REPLY_MS}ms (ceiling ${CEILING_SCAN_32K_MS}ms)" >&2
   [ "$REPLY_MS" -le "$CEILING_SCAN_32K_MS" ]
 }
 
 @test "cost: an unquoted 64KB word stays inside the ceiling the flush alone holds" {
-  local p
-  p=$(build_unquoted_word 65536)
-  time_scan_ms "$p"
+  local payload
+  payload=$(build_unquoted_word 65536)
+  time_scan_ms "$payload"
   echo "scan 64KB unquoted: ${REPLY_MS}ms (ceiling ${CEILING_SCAN_UNQUOTED_64K_MS}ms)" >&2
   [ "$REPLY_MS" -le "$CEILING_SCAN_UNQUOTED_64K_MS" ]
 }

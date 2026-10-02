@@ -10,10 +10,10 @@ payload=$(cat)
 # install itself, so the refusal is unconditional within it and the call below
 # passes no binding literal; the contract lives in
 # .claude/hooks/lib/jq-availability.sh.
-_jq_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _jq_lib_dir=''
+_jq_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _jq_library_directory=''
 set +e
 # shellcheck source=lib/jq-availability.sh
-[ -n "$_jq_lib_dir" ] && [ -f "$_jq_lib_dir/jq-availability.sh" ] && . "$_jq_lib_dir/jq-availability.sh" 2>/dev/null
+[ -n "$_jq_library_directory" ] && [ -f "$_jq_library_directory/jq-availability.sh" ] && . "$_jq_library_directory/jq-availability.sh" 2>/dev/null
 set -e
 if ! type gaia_require_jq >/dev/null 2>&1; then
   printf 'BLOCKED: block-env-write.sh cannot load lib/jq-availability.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
@@ -32,11 +32,11 @@ base=$(basename "$file_path")
 
 # Deny .env, .env.local, .env.production, .env.development, etc.
 if [[ "$base" == ".env" || "$base" == .env.* ]]; then
-  jq -n --arg r "BLOCKED: writes to '$file_path' are forbidden. .env files must remain gitignored and edited manually by the developer." '{
+  jq -n --arg reason "BLOCKED: writes to '$file_path' are forbidden. .env files must remain gitignored and edited manually by the developer." '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: $r
+      permissionDecisionReason: $reason
     }
   }'
   exit 0

@@ -59,17 +59,17 @@
 # `[ "$fail" -eq 0 ]`.
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
-  SCOPE_LIB="$REPO_ROOT/.claude/hooks/lib/audit-scope.sh"
-  FIXTURE="$THIS_DIR/fixtures/audit-routing-before.tsv"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
+  SCOPE_LIBRARY="$REPO_ROOT/.claude/hooks/lib/audit-scope.sh"
+  FIXTURE="$THIS_DIRECTORY/fixtures/audit-routing-before.tsv"
 }
 
 @test "routing parity: every fixture row resolves to the same owner, except the named sets" {
   [ -f "$FIXTURE" ]
 
   # shellcheck source=/dev/null
-  . "$SCOPE_LIB"
+  . "$SCOPE_LIBRARY"
   audit_scope_init "$REPO_ROOT"
 
   # Classify every fixture path with the CURRENT classifier in one batch pass

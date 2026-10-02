@@ -75,37 +75,37 @@ bats_require_minimum_version 1.5.0
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/usage-merge-env.sh"
   # shellcheck disable=SC2034  # read by build_repo in the helper
-  SRC="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
-  TMP="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
+  SOURCE_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
+  TEMPORARY_DIRECTORY="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
   export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state" GAIA_RATES_FEED_DISABLE=1
   unset CLAUDE_CODE_SESSION_ID GAIA_TALLY_PROJECTS_ROOT GITHUB_ACTIONS GAIA_USAGE_HOOKS_DISABLE
   unset GAIA_LEDGER_LOCK_FORCE_FALLBACK GAIA_LEDGER_LOCK_TIMEOUT_SECONDS GAIA_USAGE_MERGE_CAP_SECS GAIA_USAGE_RENDER_CAP_SECS
   export GAIA_LEDGER_LOCK_POLL_SECONDS=0.1
   export GIT_AUTHOR_NAME="GAIA Test" GIT_AUTHOR_EMAIL="gaia-test@example.com"
   export GIT_COMMITTER_NAME="GAIA Test" GIT_COMMITTER_EMAIL="gaia-test@example.com"
-  GHSTUB_DIR="$TMP/ghstub"
-  mkdir -p "$GHSTUB_DIR" "$TMP/bin"
-  export GHSTUB_DIR
+  GH_STUB_DIRECTORY="$TEMPORARY_DIRECTORY/ghstub"
+  mkdir -p "$GH_STUB_DIRECTORY" "$TEMPORARY_DIRECTORY/bin"
+  export GH_STUB_DIRECTORY
   make_stubs
-  export PATH="$TMP/bin:$PATH"
+  export PATH="$TEMPORARY_DIRECTORY/bin:$PATH"
   build_repo
 }
 
 seed_uat007() {
   {
-    seg branch:plan/spec-090-foo s71 2026-09-20T09:00:00Z 100000 10000 | jq -c '.by_model[].cache_write_5m = 100000 | .by_model[].cache_read = 1000000'
-    seg branch:debt/200-x s73 2026-09-22T09:00:00Z 300000 30000
-    seg branch:fix/foo s74 2026-09-23T09:00:00Z 400000 40000
-  } >"$TD/usage.jsonl"
-  printf '%s\n' '{"schema_version":1,"kind":"edge","child":"spec:SPEC-090","parent":"research:topic-a","source":"spec-frontmatter","ts":"2026-10-01T00:00:00Z","session_id":null,"sidechain":false}' >"$TD/links.jsonl"
+    segment_row branch:plan/spec-090-foo s71 2026-09-20T09:00:00Z 100000 10000 | jq -c '.by_model[].cache_write_5m = 100000 | .by_model[].cache_read = 1000000'
+    segment_row branch:debt/200-x s73 2026-09-22T09:00:00Z 300000 30000
+    segment_row branch:fix/foo s74 2026-09-23T09:00:00Z 400000 40000
+  } >"$TELEMETRY_DIRECTORY/usage.jsonl"
+  printf '%s\n' '{"schema_version":1,"kind":"edge","child":"spec:SPEC-090","parent":"research:topic-a","source":"spec-frontmatter","ts":"2026-10-01T00:00:00Z","session_id":null,"sidechain":false}' >"$TELEMETRY_DIRECTORY/links.jsonl"
 }
 
 assert_gh_only_pr_view() {
-  [ -f "$GHSTUB_DIR/argv.log" ]
+  [ -f "$GH_STUB_DIRECTORY/argv.log" ]
   local bad
-  bad="$(grep -vc '^pr view' "$GHSTUB_DIR/argv.log" || true)"
+  bad="$(grep -vc '^pr view' "$GH_STUB_DIRECTORY/argv.log" || true)"
   [ "$bad" = 0 ]
-  [ ! -e "$GHSTUB_DIR/net.log" ]
+  [ ! -e "$GH_STUB_DIRECTORY/net.log" ]
 }
 
 # ---------- 1. the per-PR block through the hook ----------
@@ -140,10 +140,10 @@ assert_gh_only_pr_view() {
   has_line "  est. cost (USD): \$1.20"
   lacks "[initiative "
 
-  [ "$(jq -s '[.[] | select(.kind == "merge")] | length' "$TD/links.jsonl")" -eq 3 ]
+  [ "$(jq -s '[.[] | select(.kind == "merge")] | length' "$TELEMETRY_DIRECTORY/links.jsonl")" -eq 3 ]
   jq -e -s '[.[] | select(.kind == "merge")] | .[0].pr == 101 and .[0].key == "branch:plan/spec-090-foo"
     and .[0].merged_at == "2026-09-25T00:00:00Z" and .[0].source == "gh-pr-merge"
-    and .[1].key == "branch:debt/200-x" and .[2].key == "branch:fix/foo"' "$TD/links.jsonl"
+    and .[1].key == "branch:debt/200-x" and .[2].key == "branch:fix/foo"' "$TELEMETRY_DIRECTORY/links.jsonl"
   assert_gh_only_pr_view
 }
 
@@ -151,7 +151,7 @@ assert_gh_only_pr_view() {
 
 @test "gh failing: the pr:<N> edge from creation supplies the branch key; no edge reads unresolved; usage-merge.sh never opens the ledger file itself" {
   seed_uat007
-  printf '%s\n' '{"schema_version":1,"kind":"edge","child":"pr:104","parent":"branch:fix/foo","source":"gh-pr-create","ts":"2026-09-24T00:00:00Z","session_id":null,"sidechain":false}' >>"$TD/links.jsonl"
+  printf '%s\n' '{"schema_version":1,"kind":"edge","child":"pr:104","parent":"branch:fix/foo","source":"gh-pr-create","ts":"2026-09-24T00:00:00Z","session_id":null,"sidechain":false}' >>"$TELEMETRY_DIRECTORY/links.jsonl"
   [ "$(grep -c 'links.jsonl' "$REPO/.gaia/scripts/usage-merge.sh" || true)" = 0 ]
 
   run_merge "gh pr merge 104"
@@ -188,19 +188,19 @@ assert_gh_only_pr_view() {
   [ ! -e "$REPO/pwn" ]
   [ ! -e "$BATS_TEST_TMPDIR/pwn" ]
   grep -Eq '^\[PR cost\] pr:107 branch:%[0-9a-f]{16}$' <<<"$output"
-  [ "$(jq -s '[.[] | select(.kind == "merge")] | .[0].key | test("^branch:%[0-9a-f]{16}$")' "$TD/links.jsonl")" = true ]
+  [ "$(jq -s '[.[] | select(.kind == "merge")] | .[0].key | test("^branch:%[0-9a-f]{16}$")' "$TELEMETRY_DIRECTORY/links.jsonl")" = true ]
 }
 
 # ---------- 3. confirmation: only MERGED writes the boundary ----------
 
 @test "an OPEN PR writes no merge row and names the recovery command; the MERGED retry writes exactly one" {
   seed_uat007
-  cp "$TD/links.jsonl" "$TMP/links-before"
+  cp "$TELEMETRY_DIRECTORY/links.jsonl" "$TEMPORARY_DIRECTORY/links-before"
   gh_view 105 105 fix/foo OPEN ""
   run_merge "gh pr merge 105 --auto"
   [ "$status" -eq 0 ]
   grep -qF 'merge not confirmed; boundary not recorded (record it: bash .gaia/scripts/usage.sh link --merge 105 --key branch:fix/foo)' <<<"$output"
-  cmp "$TMP/links-before" "$TD/links.jsonl"
+  cmp "$TEMPORARY_DIRECTORY/links-before" "$TELEMETRY_DIRECTORY/links.jsonl"
 
   gh_view 105 105 fix/foo MERGED 2026-09-25T02:00:00Z
   run_merge "gh pr merge 105"
@@ -222,21 +222,21 @@ assert_gh_only_pr_view() {
 # ---------- 4. the cap ----------
 
 seed_unflushed() {
-  local t
-  t="$PROJ/$(enc "$REPO")/s-un.jsonl"
+  local transcript_file
+  transcript_file="$PROJECTS_DIRECTORY/$(encode_project_path "$REPO")/s-un.jsonl"
   {
     jq -nc --arg r "$REPO" '{type:"user",uuid:"u1",timestamp:"2026-10-01T00:00:00.000Z",cwd:$r,sessionId:"s-un",gitBranch:"fix/unfl",message:{role:"user",content:"go"}}'
     jq -nc --arg r "$REPO" '{type:"assistant",uuid:"a1",timestamp:"2026-10-01T00:00:01.000Z",cwd:$r,sessionId:"s-un",gitBranch:"fix/unfl",
       message:{id:"m1",model:"claude-opus-5-5",role:"assistant",usage:{input_tokens:1000,cache_creation_input_tokens:0,cache_read_input_tokens:0,output_tokens:500,cache_creation:{ephemeral_5m_input_tokens:0,ephemeral_1h_input_tokens:0}},content:[{type:"text",text:"ok"}]}}'
-  } >"$t"
-  touch -t 202001010000 "$t"
+  } >"$transcript_file"
+  touch -t 202001010000 "$transcript_file"
   gh_view 106 106 fix/unfl MERGED 2026-10-02T00:00:00Z
 }
 
 @test "the cap: a held ledger lock still returns within cap plus 3 s, marks the partial flush and the unconfirmed merge, and writes nothing" {
   seed_unflushed
   export GAIA_USAGE_MERGE_CAP_SECS=1 GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 GAIA_LEDGER_LOCK_TIMEOUT_SECONDS=6
-  mkdir "$TD/specs.lock.d"
+  mkdir "$TELEMETRY_DIRECTORY/specs.lock.d"
   local t0 t1
   t0="$(date +%s)"
   run_merge "gh pr merge 106" s-un
@@ -245,8 +245,8 @@ seed_unflushed() {
   [ "$((t1 - t0))" -le 4 ]
   has_line "  ! partial: flush incomplete"
   grep -qF '! merge not confirmed; boundary not recorded' <<<"$output"
-  [ ! -s "$TD/links.jsonl" ]
-  rmdir "$TD/specs.lock.d"
+  [ ! -s "$TELEMETRY_DIRECTORY/links.jsonl" ]
+  rmdir "$TELEMETRY_DIRECTORY/specs.lock.d"
 }
 
 @test "guards-must-fail: a copy of usage-merge.sh without the lock-timeout bound overruns cap plus 3 s" {
@@ -254,14 +254,14 @@ seed_unflushed() {
   export GAIA_USAGE_MERGE_CAP_SECS=1 GAIA_LEDGER_LOCK_FORCE_FALLBACK=1 GAIA_LEDGER_LOCK_TIMEOUT_SECONDS=6
   sed 's/GAIA_LEDGER_LOCK_TIMEOUT_SECONDS="\$(_um_left)" //' "$REPO/.gaia/scripts/usage-merge.sh" >"$REPO/.gaia/scripts/usage-merge-mutant.sh"
   cmp -s "$REPO/.gaia/scripts/usage-merge.sh" "$REPO/.gaia/scripts/usage-merge-mutant.sh" && return 1
-  mkdir "$TD/specs.lock.d"
+  mkdir "$TELEMETRY_DIRECTORY/specs.lock.d"
   local t0 t1
   t0="$(date +%s)"
   run_script "$REPO/.gaia/scripts/usage-merge-mutant.sh" "gh pr merge 106" s-un
   t1="$(date +%s)"
   [ "$status" -eq 0 ]
   [ "$((t1 - t0))" -gt 4 ]
-  rmdir "$TD/specs.lock.d"
+  rmdir "$TELEMETRY_DIRECTORY/specs.lock.d"
 }
 
 @test "the cap, control: a free lock flushes synchronously, so the unflushed spend is in the block with no partial marker" {
@@ -279,7 +279,7 @@ seed_unflushed() {
 
 @test "a hung gh read is killed at the cap and treated as unavailable" {
   seed_uat007
-  printf '30' >"$GHSTUB_DIR/sleep"
+  printf '30' >"$GH_STUB_DIRECTORY/sleep"
   gh_view 103 103 fix/foo MERGED 2026-09-25T02:00:00Z
   export GAIA_USAGE_MERGE_CAP_SECS=1
   local t0 t1
@@ -313,7 +313,7 @@ seed_rollup() {
   jq -nc '{kind:"execute", spec_id:"SPEC-042", plan_slug:"my-plan", session_id:"sess-a",
     buckets:{fresh_input:300, cache_write:0, cache_read:0, output:0}, total:300, partial:false,
     started_at:"2026-06-01T00:00:00Z", ended_at:"2026-06-01T00:00:00Z", duration_seconds:10,
-    duration_available:true, ts:"2026-06-01T00:00:00Z"}' >>"$TD/cost.jsonl"
+    duration_available:true, ts:"2026-06-01T00:00:00Z"}' >>"$TELEMETRY_DIRECTORY/cost.jsonl"
 }
 
 @test "the render cap: a render past the cap is killed, one timed-out line replaces the block, and the roll-up still prints" {
@@ -376,9 +376,9 @@ seed_rollup() {
 
 @test "two merges from a reused branch write two rows and each block counts only its own window" {
   {
-    seg branch:fix/foo s74 2026-09-23T09:00:00Z 400000 40000
-    seg branch:fix/foo s75 2026-09-25T09:00:00Z 100000 10000
-  } >"$TD/usage.jsonl"
+    segment_row branch:fix/foo s74 2026-09-23T09:00:00Z 400000 40000
+    segment_row branch:fix/foo s75 2026-09-25T09:00:00Z 100000 10000
+  } >"$TELEMETRY_DIRECTORY/usage.jsonl"
   gh_view 601 601 fix/foo MERGED 2026-09-24T00:00:00Z
   gh_view 602 602 fix/foo MERGED 2026-09-26T00:00:00Z
 
@@ -387,7 +387,7 @@ seed_rollup() {
   run_merge "gh pr merge 602"
   has_line "  tokens: 110,000 (fresh 100,000, cache write 0, cache read 0, output 10,000)"
   has_line "  window: after 2026-09-24T00:00:00Z through 2026-09-26T00:00:00Z"
-  [ "$(jq -s '[.[] | select(.kind == "merge")] | length' "$TD/links.jsonl")" -eq 2 ]
+  [ "$(jq -s '[.[] | select(.kind == "merge")] | length' "$TELEMETRY_DIRECTORY/links.jsonl")" -eq 2 ]
 }
 
 # ---------- operand scan and seams ----------
@@ -399,7 +399,7 @@ seed_rollup() {
   run_merge 'gh pr merge --body "a b c" --subject x 109'
   run_merge 'gh pr merge ; gh pr merge 112'
   local args
-  args="$(sed 's/ --json .*//' "$GHSTUB_DIR/argv.log" | tr '\n' '|')"
+  args="$(sed 's/ --json .*//' "$GH_STUB_DIRECTORY/argv.log" | tr '\n' '|')"
   [ "$args" = 'pr view 110|pr view https://github.com/o/r/pull/108|pr view 109|pr view|' ]
 }
 
@@ -409,7 +409,7 @@ seed_rollup() {
   GAIA_USAGE_HOOKS_DISABLE=1 run_merge "gh pr merge 101"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
-  [ ! -e "$GHSTUB_DIR/argv.log" ]
+  [ ! -e "$GH_STUB_DIRECTORY/argv.log" ]
 }
 
 @test "no new network host: across merges the gh stub sees only pr view and curl, wget, and nc are never called" {
@@ -420,5 +420,5 @@ seed_rollup() {
   run_merge "gh pr merge 105 --auto"
   run_merge "gh pr merge 999"
   assert_gh_only_pr_view
-  [ "$(wc -l <"$GHSTUB_DIR/argv.log" | tr -d ' ')" -eq 3 ]
+  [ "$(wc -l <"$GH_STUB_DIRECTORY/argv.log" | tr -d ' ')" -eq 3 ]
 }

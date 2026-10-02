@@ -38,11 +38,11 @@ setup() {
 # seed_pending: five recorded rounds and a pending checkpoint at round 5,
 # recorded by session s1.
 seed_pending() {
-  local r
+  local round_number
   alf_fill f.txt 5 x
-  for r in 1 2 3 4 5; do
-    alf_set_line other.txt "$r" "round $r"
-    alf_commit "round $r"
+  for round_number in 1 2 3 4 5; do
+    alf_set_line other.txt "$round_number" "round $round_number"
+    alf_commit "round $round_number"
     alf_add_round '["code-audit-frontend"]'
   done
   alf_add_checkpoint 5 allowance
@@ -51,18 +51,18 @@ seed_pending() {
 # payload <prompt> [cwd] [session] [transcript]: a UserPromptSubmit payload.
 payload() {
   "$HELPERS/mock-hook-input.sh" user-prompt-submit "${3:-s1}" "$1" |
-    jq -c --arg c "${2:-$ALF_ROOT}" --arg t "${4:-$TX_CLI}" '.cwd = $c | .transcript_path = $t'
+    jq -c --arg cwd "${2:-$ALF_ROOT}" --arg transcript_path "${4:-$TX_CLI}" '.cwd = $cwd | .transcript_path = $transcript_path'
 }
 
 # send <prompt> [cwd] [session] [transcript]: deliver it to the hook.
 send() {
-  local p
-  p="$(payload "$@")"
-  run bash -c 'printf %s "$1" | "$3" "$2"' _ "$p" "$HOOK" "$BASH_BIN"
+  local payload_json
+  payload_json="$(payload "$@")"
+  run bash -c 'printf %s "$1" | "$3" "$2"' _ "$payload_json" "$HOOK" "$BASH_BIN"
 }
 
-# snap / unchanged: the state file byte-identical across a call.
-snap() { cp "$ALF_STATE" "$BATS_TEST_TMPDIR/before.json"; }
+# snapshot / unchanged: the state file byte-identical across a call.
+snapshot() { cp "$ALF_STATE" "$BATS_TEST_TMPDIR/before.json"; }
 unchanged() { cmp -s "$BATS_TEST_TMPDIR/before.json" "$ALF_STATE"; }
 
 allowed() { gaia_loop_allowed "$(cat "$ALF_STATE")"; }
@@ -86,7 +86,7 @@ allowed() { gaia_loop_allowed "$(cat "$ALF_STATE")"; }
 
 @test "an sdk-cli transcript (the nested claude -p shape) records nothing and says not interactive" {
   seed_pending
-  snap
+  snapshot
   send 'audit-grant 3' "$ALF_ROOT" s1 "$TX_SDK"
   [ "$status" -eq 0 ]
   unchanged
@@ -96,7 +96,7 @@ allowed() { gaia_loop_allowed "$(cat "$ALF_STATE")"; }
 
 @test "a missing transcript file records nothing and says not interactive" {
   seed_pending
-  snap
+  snapshot
   send 'audit-grant 3' "$ALF_ROOT" s1 "$BATS_TEST_TMPDIR/no-such.jsonl"
   [ "$status" -eq 0 ]
   unchanged
@@ -105,7 +105,7 @@ allowed() { gaia_loop_allowed "$(cat "$ALF_STATE")"; }
 
 @test "a transcript path that is a directory records nothing" {
   seed_pending
-  snap
+  snapshot
   send 'audit-grant 3' "$ALF_ROOT" s1 "$BATS_TEST_TMPDIR"
   [ "$status" -eq 0 ]
   unchanged
@@ -115,7 +115,7 @@ allowed() { gaia_loop_allowed "$(cat "$ALF_STATE")"; }
 @test "the first record carrying an entrypoint decides: sdk-cli first, cli later is not interactive" {
   seed_pending
   printf '%s\n' '{"type":"user","entrypoint":"sdk-cli"}' '{"type":"user","entrypoint":"cli"}' >"$BATS_TEST_TMPDIR/tx-mixed.jsonl"
-  snap
+  snapshot
   send 'audit-grant 3' "$ALF_ROOT" s1 "$BATS_TEST_TMPDIR/tx-mixed.jsonl"
   [ "$status" -eq 0 ]
   unchanged
@@ -133,7 +133,7 @@ allowed() { gaia_loop_allowed "$(cat "$ALF_STATE")"; }
 @test "a cli transcript that a later claude -p resume appended an sdk-cli record to records nothing" {
   seed_pending
   printf '%s\n' '{"type":"user","entrypoint":"cli"}' '{"type":"user","entrypoint":"sdk-cli"}' >"$BATS_TEST_TMPDIR/tx-resumed.jsonl"
-  snap
+  snapshot
   send 'audit-grant 1' "$ALF_ROOT" s1 "$BATS_TEST_TMPDIR/tx-resumed.jsonl"
   [ "$status" -eq 0 ]
   unchanged
@@ -142,7 +142,7 @@ allowed() { gaia_loop_allowed "$(cat "$ALF_STATE")"; }
 
 @test "a CLAUDE_CODE_ENTRYPOINT other than cli, or unset, records nothing even over a cli transcript" {
   seed_pending
-  snap
+  snapshot
   CLAUDE_CODE_ENTRYPOINT=sdk-cli send 'audit-grant 1'
   [ "$status" -eq 0 ]
   unchanged
@@ -156,7 +156,7 @@ allowed() { gaia_loop_allowed "$(cat "$ALF_STATE")"; }
 
 @test "a grant line pasted inside longer text is rejected visibly and records nothing" {
   seed_pending
-  snap
+  snapshot
   send 'please run audit-grant 3 now'
   [ "$status" -eq 0 ]
   unchanged
@@ -165,7 +165,7 @@ allowed() { gaia_loop_allowed "$(cat "$ALF_STATE")"; }
 
 @test "invocation with argv and empty stdin exits 1" {
   seed_pending
-  snap
+  snapshot
   run bash -c 'printf "" | "$2" "$1" extra' _ "$HOOK" "$BASH_BIN"
   [ "$status" -eq 1 ]
   unchanged
@@ -173,7 +173,7 @@ allowed() { gaia_loop_allowed "$(cat "$ALF_STATE")"; }
 
 @test "invocation with argv and a valid payload exits 1 and records nothing" {
   seed_pending
-  snap
+  snapshot
   run bash -c 'printf %s "$1" | "$3" "$2" audit-grant' _ "$(payload 'audit-grant 2')" "$HOOK" "$BASH_BIN"
   [ "$status" -eq 1 ]
   unchanged
@@ -186,7 +186,7 @@ allowed() { gaia_loop_allowed "$(cat "$ALF_STATE")"; }
 
 @test "a PostToolUse payload naming the keyword exits 1 and records nothing" {
   seed_pending
-  snap
+  snapshot
   run bash -c '"$1" post-tool-use s1 Bash "echo audit-grant 3" | "$3" "$2"' _ "$HELPERS/mock-hook-input.sh" "$HOOK" "$BASH_BIN"
   [ "$status" -eq 1 ]
   unchanged
@@ -194,10 +194,10 @@ allowed() { gaia_loop_allowed "$(cat "$ALF_STATE")"; }
 
 @test "rejected spellings record nothing and each names the accepted forms" {
   seed_pending
-  snap
-  local p
-  for p in 'audit-grant 0' 'audit-grant 11' 'audit-grant abc' 'what does audit-grant 3 do?' 'audit-grant  2' 'audit-grant 02'; do
-    send "$p"
+  snapshot
+  local prompt_text
+  for prompt_text in 'audit-grant 0' 'audit-grant 11' 'audit-grant abc' 'what does audit-grant 3 do?' 'audit-grant  2' 'audit-grant 02'; do
+    send "$prompt_text"
     [ "$status" -eq 0 ]
     unchanged
     printf '%s' "$output" | grep -qF 'audit-grant <n>'
@@ -215,7 +215,7 @@ allowed() { gaia_loop_allowed "$(cat "$ALF_STATE")"; }
 @test "a branch with no pending checkpoint records nothing and says none is pending" {
   seed_pending
   alf_git checkout -q -b feat/other main
-  snap
+  snapshot
   send 'audit-grant 2' "$ALF_ROOT" s2
   [ "$status" -eq 0 ]
   cp "$ALF_ROOT/.gaia/local/audit-loop/feat/grant.json" "$BATS_TEST_TMPDIR/after.json"
@@ -227,7 +227,7 @@ allowed() { gaia_loop_allowed "$(cat "$ALF_STATE")"; }
   seed_pending
   send 'audit-grant 2'
   [ "$status" -eq 0 ]
-  snap
+  snapshot
   send 'audit-grant 2'
   [ "$status" -eq 0 ]
   unchanged
@@ -246,12 +246,12 @@ allowed() { gaia_loop_allowed "$(cat "$ALF_STATE")"; }
 
 @test "the lines a deny message prints classify and record" {
   seed_pending
-  local msg grant accept
-  msg="BLOCKED: audit checkpoint on branch feat/grant after 5 rounds (allowance).
+  local deny_message grant accept
+  deny_message="BLOCKED: audit checkpoint on branch feat/grant after 5 rounds (allowance).
 Grant (type exactly as the whole prompt): $(gaia_loop_grant_line 3)
 Accept (type exactly as the whole prompt): $(gaia_loop_accept_line)"
-  grant="$(printf '%s\n' "$msg" | sed -n 's/^Grant (type exactly as the whole prompt): //p')"
-  accept="$(printf '%s\n' "$msg" | sed -n 's/^Accept (type exactly as the whole prompt): //p')"
+  grant="$(printf '%s\n' "$deny_message" | sed -n 's/^Grant (type exactly as the whole prompt): //p')"
+  accept="$(printf '%s\n' "$deny_message" | sed -n 's/^Accept (type exactly as the whole prompt): //p')"
   [ "$grant" = 'audit-grant 3' ]
   [ "$accept" = 'audit-accept' ]
   send "$grant"
@@ -281,7 +281,7 @@ Accept (type exactly as the whole prompt): $(gaia_loop_accept_line)"
 
 @test "jq absent: the line records nothing and says jq is missing; a keyword-free prompt is silent" {
   seed_pending
-  snap
+  snapshot
   local empty="$BATS_TEST_TMPDIR/nopath"
   mkdir -p "$empty"
   run bash -c 'printf %s "$1" | PATH="$3" "$4" "$2"' _ "$(payload 'audit-grant 2')" "$HOOK" "$empty" "$BASH_BIN"
@@ -306,7 +306,7 @@ Accept (type exactly as the whole prompt): $(gaia_loop_accept_line)"
   seed_pending
   jq '.key = "branch:feat/second" | .branch = "feat/second"' "$ALF_STATE" >"$ALF_ROOT/.gaia/local/audit-loop/feat/second.json"
   alf_git checkout -q main
-  snap
+  snapshot
   cp "$ALF_ROOT/.gaia/local/audit-loop/feat/second.json" "$BATS_TEST_TMPDIR/second-before.json"
   send 'audit-grant 2' "$ALF_ROOT" s1
   [ "$status" -eq 0 ]
@@ -318,7 +318,7 @@ Accept (type exactly as the whole prompt): $(gaia_loop_accept_line)"
 @test "a different session id on the main checkout records nothing and names the session rule" {
   seed_pending
   alf_git checkout -q main
-  snap
+  snapshot
   send 'audit-grant 2' "$ALF_ROOT" other-session
   [ "$status" -eq 0 ]
   unchanged
@@ -329,7 +329,7 @@ Accept (type exactly as the whole prompt): $(gaia_loop_accept_line)"
 @test "corrupt state: a message names the file and the file is untouched" {
   seed_pending
   printf '{ not json' >"$ALF_STATE"
-  snap
+  snapshot
   send 'audit-grant 2'
   [ "$status" -eq 0 ]
   unchanged
@@ -339,7 +339,7 @@ Accept (type exactly as the whole prompt): $(gaia_loop_accept_line)"
 
 @test "a held lock past the deadline records nothing and asks for a retry" {
   seed_pending
-  snap
+  snapshot
   mkdir "$ALF_STATE.lock"
   send 'audit-grant 2'
   rmdir "$ALF_STATE.lock"
@@ -356,11 +356,11 @@ Accept (type exactly as the whole prompt): $(gaia_loop_accept_line)"
 
 # seed_capped: ten recorded rounds and a pending checkpoint at round 10.
 seed_capped() {
-  local r
+  local round_number
   alf_fill f.txt 5 x
-  for r in 1 2 3 4 5 6 7 8 9 10; do
-    alf_set_line other.txt "$r" "round $r"
-    alf_commit "round $r"
+  for round_number in 1 2 3 4 5 6 7 8 9 10; do
+    alf_set_line other.txt "$round_number" "round $round_number"
+    alf_commit "round $round_number"
     alf_add_round '["code-audit-frontend"]'
   done
   alf_add_checkpoint 10 allowance
@@ -372,7 +372,7 @@ seed_capped() {
   seed_pending
   send "audit-grant $GAIA_CTX_UNIT_ROUNDS"
   [ "$status" -eq 0 ]
-  jq -e --argjson k "$GAIA_CTX_UNIT_ROUNDS" '.allowance.answers | length == 1 and .[0].kind == "grant" and .[0].n == $k and .[0].source == "typed"' "$ALF_STATE"
+  jq -e --argjson unit_rounds "$GAIA_CTX_UNIT_ROUNDS" '.allowance.answers | length == 1 and .[0].kind == "grant" and .[0].n == $unit_rounds and .[0].source == "typed"' "$ALF_STATE"
 }
 
 @test "a typed accept carries source typed" {
@@ -386,7 +386,7 @@ seed_capped() {
   # shellcheck source=/dev/null
   . "$REPO_ROOT/.gaia/scripts/context-checkpoint-lib.sh"
   seed_capped
-  snap
+  snapshot
   send "audit-grant $GAIA_CTX_UNIT_ROUNDS"
   [ "$status" -eq 0 ]
   unchanged

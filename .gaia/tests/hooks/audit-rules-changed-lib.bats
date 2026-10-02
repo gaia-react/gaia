@@ -13,12 +13,12 @@
 # Assertion style: .claude/rules/bats-assertions.md.
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
-  RULES_LIB="$REPO_ROOT/.claude/hooks/lib/audit-rules-changed.sh"
-  [ -f "$RULES_LIB" ] || skip "audit-rules-changed.sh not present"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
+  RULES_LIBRARY="$REPO_ROOT/.claude/hooks/lib/audit-rules-changed.sh"
+  [ -f "$RULES_LIBRARY" ] || skip "audit-rules-changed.sh not present"
   # shellcheck source=/dev/null
-  . "$RULES_LIB"
+  . "$RULES_LIBRARY"
 }
 
 @test "every path in AUDIT_GLOBAL_RULES_PATHS is matched by audit_path_is_global_rule" {

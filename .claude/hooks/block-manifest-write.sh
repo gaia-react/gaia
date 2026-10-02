@@ -24,10 +24,10 @@ payload=$(cat)
 # jq-availability arm: refuse loudly rather than fail open when the interpreter
 # this hook reads its payload with is absent. What that buys, and the contract
 # the literals below satisfy, live in .claude/hooks/lib/jq-availability.sh.
-_jq_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _jq_lib_dir=''
+_jq_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _jq_library_directory=''
 set +e
 # shellcheck source=lib/jq-availability.sh
-[ -n "$_jq_lib_dir" ] && [ -f "$_jq_lib_dir/jq-availability.sh" ] && . "$_jq_lib_dir/jq-availability.sh" 2>/dev/null
+[ -n "$_jq_library_directory" ] && [ -f "$_jq_library_directory/jq-availability.sh" ] && . "$_jq_library_directory/jq-availability.sh" 2>/dev/null
 set -e
 if ! type gaia_require_jq >/dev/null 2>&1; then
   printf 'BLOCKED: block-manifest-write.sh cannot load lib/jq-availability.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
@@ -39,14 +39,14 @@ gaia_require_jq 'the manifest write guard' "$payload" tool_input 'manifest.json'
 
 tool_name=$(jq -r '.tool_name // empty' <<<"$payload")
 
-DENY_MSG="BLOCKED: .gaia/manifest.json is release-generated and lists only files GAIA ships; feature work never adds to it."
+DENY_MESSAGE="BLOCKED: .gaia/manifest.json is release-generated and lists only files GAIA ships; feature work never adds to it."
 
 deny() {
-  jq -n --arg r "$1" '{
+  jq -n --arg reason "$1" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: $r
+      permissionDecisionReason: $reason
     }
   }'
   exit 0
@@ -54,74 +54,74 @@ deny() {
 
 # Strip one matching pair of surrounding quotes from a token.
 strip_quotes() {
-  local s="$1"
-  case "$s" in
-    \"*\") s=${s#\"}; s=${s%\"} ;;
-    \'*\') s=${s#\'}; s=${s%\'} ;;
+  local text="$1"
+  case "$text" in
+    \"*\") text=${text#\"}; text=${text%\"} ;;
+    \'*\') text=${text#\'}; text=${text%\'} ;;
   esac
-  printf '%s' "$s"
+  printf '%s' "$text"
 }
 
 # Guarded path (C1): after stripping surrounding quotes and a leading ./, the
 # path equals .gaia/manifest.json or ends with /.gaia/manifest.json (absolute
 # paths). Not guarded if any other character follows .json.
 is_guarded_path() {
-  local p
-  p=$(strip_quotes "$1")
-  p=${p#./}
-  [[ "$p" == ".gaia/manifest.json" || "$p" == */.gaia/manifest.json ]]
+  local candidate_path
+  candidate_path=$(strip_quotes "$1")
+  candidate_path=${candidate_path#./}
+  [[ "$candidate_path" == ".gaia/manifest.json" || "$candidate_path" == */.gaia/manifest.json ]]
 }
 
 case "$tool_name" in
   Edit | Write | MultiEdit)
     file_path=$(jq -r '.tool_input.file_path // empty' <<<"$payload")
     [[ -n "$file_path" ]] || exit 0
-    is_guarded_path "$file_path" && deny "$DENY_MSG"
+    is_guarded_path "$file_path" && deny "$DENY_MESSAGE"
     exit 0
     ;;
 
   Bash)
-    cmd=$(jq -r '.tool_input.command // empty' <<<"$payload")
-    [[ -n "$cmd" ]] || exit 0
+    command_line=$(jq -r '.tool_input.command // empty' <<<"$payload")
+    [[ -n "$command_line" ]] || exit 0
 
     # Exemption marker: allow unconditionally, before any vector inspection.
-    [[ "$cmd" == *"GAIA_MANIFEST_WRITE="* ]] && exit 0
+    [[ "$command_line" == *"GAIA_MANIFEST_WRITE="* ]] && exit 0
 
-    # Tokenize every line of $cmd, not just the first: a write vector on
+    # Tokenize every line of $command_line, not just the first: a write vector on
     # line 2+ of a multi-line command (heredoc body, &&-joined block, plain
     # newline-separated statements) must still be inspected.
-    toks=()
+    tokens=()
     while IFS= read -r line || [ -n "$line" ]; do
-      read -r -a linetoks <<<"$line"
-      toks+=(${linetoks[@]+"${linetoks[@]}"} ';')
-    done <<<"$cmd"
-    n=${#toks[@]}
+      read -r -a line_tokens <<<"$line"
+      tokens+=(${line_tokens[@]+"${line_tokens[@]}"} ';')
+    done <<<"$command_line"
+    token_count=${#tokens[@]}
 
     i=0
-    while [ "$i" -lt "$n" ]; do
-      tok="${toks[$i]}"
+    while [ "$i" -lt "$token_count" ]; do
+      token="${tokens[$i]}"
 
-      case "$tok" in
+      case "$token" in
         '>' | '>>')
-          next="${toks[$((i + 1))]:-}"
-          is_guarded_path "$next" && deny "$DENY_MSG"
+          next="${tokens[$((i + 1))]:-}"
+          is_guarded_path "$next" && deny "$DENY_MESSAGE"
           ;;
         '>'*)
           # No space after > or >>: operator and target land in one token
           # (>.gaia/manifest.json, >>.gaia/manifest.json). Strip either
           # prefix and inspect what's left as the target.
-          target="${tok#>>}"
+          target="${token#>>}"
           target="${target#>}"
-          is_guarded_path "$target" && deny "$DENY_MSG"
+          is_guarded_path "$target" && deny "$DENY_MESSAGE"
           ;;
         tee | sponge)
           j=$((i + 1))
-          while [ "$j" -lt "$n" ]; do
-            t2="${toks[$j]}"
-            case "$t2" in
+          while [ "$j" -lt "$token_count" ]; do
+            following_token="${tokens[$j]}"
+            case "$following_token" in
               ';' | '&&' | '||' | '|') break ;;
             esac
-            is_guarded_path "$t2" && deny "$DENY_MSG"
+            is_guarded_path "$following_token" && deny "$DENY_MESSAGE"
             j=$((j + 1))
           done
           ;;
@@ -129,29 +129,29 @@ case "$tool_name" in
           has_i=0
           found=0
           j=$((i + 1))
-          while [ "$j" -lt "$n" ]; do
-            t2="${toks[$j]}"
-            case "$t2" in
+          while [ "$j" -lt "$token_count" ]; do
+            following_token="${tokens[$j]}"
+            case "$following_token" in
               ';' | '&&' | '||' | '|') break ;;
             esac
-            [[ "$t2" == "-i" || "$t2" == -i* ]] && has_i=1
-            is_guarded_path "$t2" && found=1
+            [[ "$following_token" == "-i" || "$following_token" == -i* ]] && has_i=1
+            is_guarded_path "$following_token" && found=1
             j=$((j + 1))
           done
-          [ "$has_i" -eq 1 ] && [ "$found" -eq 1 ] && deny "$DENY_MSG"
+          [ "$has_i" -eq 1 ] && [ "$found" -eq 1 ] && deny "$DENY_MESSAGE"
           ;;
         cp | mv)
-          dest=""
+          destination=""
           j=$((i + 1))
-          while [ "$j" -lt "$n" ]; do
-            t2="${toks[$j]}"
-            case "$t2" in
+          while [ "$j" -lt "$token_count" ]; do
+            following_token="${tokens[$j]}"
+            case "$following_token" in
               ';' | '&&' | '||' | '|') break ;;
             esac
-            [[ "$t2" == -* ]] || dest="$t2"
+            [[ "$following_token" == -* ]] || destination="$following_token"
             j=$((j + 1))
           done
-          is_guarded_path "$dest" && deny "$DENY_MSG"
+          is_guarded_path "$destination" && deny "$DENY_MESSAGE"
           ;;
       esac
 

@@ -12,9 +12,9 @@
 
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
-  HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
-  HOOK_ABS="$HOOKS_SRC/block-manifest-write.sh"
-  SETTINGS_ABS="${HOOKS_SRC%/hooks}/settings.json"
+  HOOKS_SOURCE_DIRECTORY=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
+  HOOK_ABSOLUTE_PATH="$HOOKS_SOURCE_DIRECTORY/block-manifest-write.sh"
+  SETTINGS_ABSOLUTE_PATH="${HOOKS_SOURCE_DIRECTORY%/hooks}/settings.json"
 }
 
 # Several payloads below carry Bash commands with single quotes of their own
@@ -23,15 +23,15 @@ setup() {
 run_hook_edit() {
   local tool="$1" path="$2"
   local json
-  json=$(jq -n --arg t "$tool" --arg p "$path" '{tool_name: $t, tool_input: {file_path: $p}}')
-  invoke_hook "$json" "$HOOK_ABS"
+  json=$(jq -n --arg tool_name "$tool" --arg file_path "$path" '{tool_name: $tool_name, tool_input: {file_path: $file_path}}')
+  invoke_hook "$json" "$HOOK_ABSOLUTE_PATH"
 }
 
 run_hook_bash() {
-  local cmd="$1"
+  local command_line="$1"
   local json
-  json=$(jq -n --arg c "$cmd" '{tool_name: "Bash", tool_input: {command: $c}}')
-  invoke_hook "$json" "$HOOK_ABS"
+  json=$(jq -n --arg command "$command_line" '{tool_name: "Bash", tool_input: {command: $command}}')
+  invoke_hook "$json" "$HOOK_ABSOLUTE_PATH"
 }
 
 
@@ -236,18 +236,18 @@ run_hook_bash() {
 # --- structural ---
 
 @test "block-manifest-write.sh is executable" {
-  [ -x "$HOOK_ABS" ]
+  [ -x "$HOOK_ABSOLUTE_PATH" ]
 }
 
 @test "settings.json is valid JSON" {
-  run jq empty "$SETTINGS_ABS"
+  run jq empty "$SETTINGS_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
 }
 
 @test "settings.json registers the hook under the Edit|Write|MultiEdit matcher" {
-  hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Edit|Write|MultiEdit")' block-manifest-write.sh
+  hook_registered "$SETTINGS_ABSOLUTE_PATH" '.hooks.PreToolUse[] | select(.matcher == "Edit|Write|MultiEdit")' block-manifest-write.sh
 }
 
 @test "settings.json registers the hook on the Bash|Monitor matcher" {
-  hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor")' block-manifest-write.sh
+  hook_registered "$SETTINGS_ABSOLUTE_PATH" '.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor")' block-manifest-write.sh
 }

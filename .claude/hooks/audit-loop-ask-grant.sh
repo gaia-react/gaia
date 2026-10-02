@@ -70,16 +70,16 @@ set -u
 # An unlisted or absent mode is a decline.
 _GAIA_ASK_MODES=" default acceptEdits plan auto bypassPermissions "
 
-# _ag_esc <text>: JSON string body, builtins only (works with jq absent).
-_ag_esc() {
-  local s="${1-}"
-  s="${s//\\/\\\\}"
-  s="${s//\"/\\\"}"
-  s="${s//$'\n'/\\n}"
-  s="${s//$'\t'/\\t}"
-  s="${s//$'\r'/ }"
-  s="${s//[[:cntrl:]]/ }"
-  printf '%s' "$s"
+# _ag_escape_json <text>: JSON string body, builtins only (works with jq absent).
+_ag_escape_json() {
+  local text="${1-}"
+  text="${text//\\/\\\\}"
+  text="${text//\"/\\\"}"
+  text="${text//$'\n'/\\n}"
+  text="${text//$'\t'/\\t}"
+  text="${text//$'\r'/ }"
+  text="${text//[[:cntrl:]]/ }"
+  printf '%s' "$text"
 }
 
 # _ag_say <message> [claude-context]: the visible note, and optionally the same
@@ -87,9 +87,9 @@ _ag_esc() {
 _ag_say() {
   if [ -n "${2-}" ]; then
     printf '{"systemMessage":"%s","hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"%s"}}\n' \
-      "$(_ag_esc "$1")" "$(_ag_esc "$2")"
+      "$(_ag_escape_json "$1")" "$(_ag_escape_json "$2")"
   else
-    printf '{"systemMessage":"%s"}\n' "$(_ag_esc "$1")"
+    printf '{"systemMessage":"%s"}\n' "$(_ag_escape_json "$1")"
   fi
 }
 
@@ -161,34 +161,34 @@ branch=""
 branch="$(gaia_loop_key "$cwd" 2>/dev/null)" || branch=""
 
 target=""
-cand=""
-rc=1
+candidate_state_file=""
+state_read_exit_status=1
 state=""
 pending=""
 have_state=0
 if [ -n "$branch" ]; then
-  cand="$(gaia_loop_state_file "$main" "$branch")"
-  if [ -e "$cand" ]; then
+  candidate_state_file="$(gaia_loop_state_file "$main" "$branch")"
+  if [ -e "$candidate_state_file" ]; then
     have_state=1
-    state="$(gaia_loop_read_state "$cand" 2>/dev/null)"
-    rc=$?
-    if [ "$rc" -eq 0 ]; then
+    state="$(gaia_loop_read_state "$candidate_state_file" 2>/dev/null)"
+    state_read_exit_status=$?
+    if [ "$state_read_exit_status" -eq 0 ]; then
       pending="$(gaia_loop_pending_checkpoint "$state")"
-      [ -n "$pending" ] && target="$cand"
+      [ -n "$pending" ] && target="$candidate_state_file"
     fi
   fi
 fi
 
 matches=0
 if [ -z "$target" ] && [ -n "$session_id" ]; then
-  while IFS= read -r cand; do
-    cstate="$(gaia_loop_read_state "$cand" 2>/dev/null)" || continue
-    cpending="$(gaia_loop_pending_checkpoint "$cstate")"
-    [ -n "$cpending" ] || continue
-    csid="$(printf '%s' "$cpending" | jq -r '.session_id // "" | strings' 2>/dev/null)" || csid=""
-    if [ "$csid" = "$session_id" ]; then
+  while IFS= read -r candidate_state_file; do
+    candidate_state="$(gaia_loop_read_state "$candidate_state_file" 2>/dev/null)" || continue
+    candidate_pending_checkpoint="$(gaia_loop_pending_checkpoint "$candidate_state")"
+    [ -n "$candidate_pending_checkpoint" ] || continue
+    candidate_session_id="$(printf '%s' "$candidate_pending_checkpoint" | jq -r '.session_id // "" | strings' 2>/dev/null)" || candidate_session_id=""
+    if [ "$candidate_session_id" = "$session_id" ]; then
       matches=$((matches + 1))
-      target="$cand"
+      target="$candidate_state_file"
     fi
   done < <(find "$statedir" -name .closed -prune -o -type f -name '*.json' -print 2>/dev/null)
   if [ "$matches" -gt 1 ]; then
@@ -224,8 +224,8 @@ case "$_GAIA_ASK_MODES" in
 esac
 
 # 4. A single pending checkpoint carrying a question.
-if [ "$have_state" -eq 1 ] && [ "$rc" -eq 5 ] && [ -z "$target" ]; then
-  _ag_decline "the audit state file $cand is corrupt and was left untouched."
+if [ "$have_state" -eq 1 ] && [ "$state_read_exit_status" -eq 5 ] && [ -z "$target" ]; then
+  _ag_decline "the audit state file $candidate_state_file is corrupt and was left untouched."
 fi
 if [ -z "$target" ]; then
   _ag_decline "no audit checkpoint is pending on branch ${branch:-(none)} for this session, or it was already answered; answer in the session whose dispatch hit the checkpoint."
@@ -238,13 +238,13 @@ fi
 # `no <reason>` line for the payload against the pending checkpoint of
 # <state-json>. Used before and again under the lock.
 _ag_check() {
-  local st="$1" pend pin qtext label nonce idx
-  pend="$(gaia_loop_pending_checkpoint "$st")"
-  if [ -z "$pend" ]; then
+  local state_json="$1" pending_checkpoint pin question_text label nonce checkpoint_index
+  pending_checkpoint="$(gaia_loop_pending_checkpoint "$state_json")"
+  if [ -z "$pending_checkpoint" ]; then
     printf 'no no audit checkpoint is pending on branch %s for this session, or it was already answered.\n' "${branch:-(none)}"
     return 0
   fi
-  pin="$(printf '%s' "$pend" | jq -c '.question // empty' 2>/dev/null)"
+  pin="$(printf '%s' "$pending_checkpoint" | jq -c '.question // empty' 2>/dev/null)"
   if [ -z "$pin" ]; then
     printf 'no the pending checkpoint carries no pinned question to match.\n'
     return 0
@@ -253,8 +253,8 @@ _ag_check() {
     printf 'no the question asked is not the pinned checkpoint question (any difference in its text, header, options or settings declines).\n'
     return 0
   fi
-  qtext="$(printf '%s' "$pin" | jq -r '.questions[0].question')"
-  label="$(printf '%s' "$payload" | jq -r --arg q "$qtext" 'if (.tool_response.answers | type == "object") and ((.tool_response.answers | keys) == [$q]) and (.tool_response.answers[$q] | type == "string") then .tool_response.answers[$q] else empty end' 2>/dev/null)"
+  question_text="$(printf '%s' "$pin" | jq -r '.questions[0].question')"
+  label="$(printf '%s' "$payload" | jq -r --arg q "$question_text" 'if (.tool_response.answers | type == "object") and ((.tool_response.answers | keys) == [$q]) and (.tool_response.answers[$q] | type == "string") then .tool_response.answers[$q] else empty end' 2>/dev/null)"
   if [ -z "$label" ]; then
     printf 'no no single answer to the pinned question was found in the response.\n'
     return 0
@@ -263,9 +263,9 @@ _ag_check() {
     printf 'no the answer is not one of the pinned options (free text typed into Other is never recorded).\n'
     return 0
   fi
-  nonce="$(printf '%s' "$pend" | jq -r '.nonce // ""')"
-  idx="$(printf '%s' "$pend" | jq -r '.index')"
-  printf 'ok\t%s\t%s\t%s\n' "$label" "$nonce" "$idx"
+  nonce="$(printf '%s' "$pending_checkpoint" | jq -r '.nonce // ""')"
+  checkpoint_index="$(printf '%s' "$pending_checkpoint" | jq -r '.index')"
+  printf 'ok\t%s\t%s\t%s\n' "$label" "$nonce" "$checkpoint_index"
 }
 
 # _ag_decline_check <line>: turn a `no <reason>` line into the visible decline.
@@ -308,10 +308,10 @@ if ! gaia_loop_lock "$target" "$(($(date +%s) + 5))"; then
   _ag_decline "the audit state file is locked by another writer."
 fi
 state="$(gaia_loop_read_state "$target" 2>/dev/null)"
-rc=$?
-if [ "$rc" -ne 0 ]; then
+state_read_exit_status=$?
+if [ "$state_read_exit_status" -ne 0 ]; then
   gaia_loop_unlock "$target"
-  if [ "$rc" -eq 5 ]; then
+  if [ "$state_read_exit_status" -eq 5 ]; then
     _ag_decline "the audit state file $target is corrupt and was left untouched."
   fi
   _ag_decline "the audit state file $target could not be read."
@@ -324,16 +324,16 @@ case "$verdict" in
     ;;
 esac
 nonce="$(printf '%s' "$verdict" | cut -f3)"
-idx="$(printf '%s' "$verdict" | cut -f4)"
+checkpoint_index="$(printf '%s' "$verdict" | cut -f4)"
 at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 if [ "$kind" = grant ]; then
-  new="$(printf '%s' "$state" | jq -c --argjson cp "$idx" --argjson n "$unit_rounds" --arg at "$at" --arg sid "$session_id" \
-    --arg opt "$label" --arg nonce "$nonce" \
-    '.allowance.answers += [{checkpoint: $cp, kind: "grant", n: $n, source: "ask", option: $opt, nonce: $nonce, at: $at, session_id: $sid}]' 2>/dev/null)" || new=""
+  new="$(printf '%s' "$state" | jq -c --argjson checkpoint_number "$checkpoint_index" --argjson unit_rounds "$unit_rounds" --arg at "$at" --arg session_id "$session_id" \
+    --arg option_label "$label" --arg nonce "$nonce" \
+    '.allowance.answers += [{checkpoint: $checkpoint_number, kind: "grant", n: $unit_rounds, source: "ask", option: $option_label, nonce: $nonce, at: $at, session_id: $session_id}]' 2>/dev/null)" || new=""
 else
-  new="$(printf '%s' "$state" | jq -c --argjson cp "$idx" --arg at "$at" --arg sid "$session_id" \
-    --arg opt "$label" --arg nonce "$nonce" \
-    '.allowance.answers += [{checkpoint: $cp, kind: "accept", source: "ask", option: $opt, nonce: $nonce, at: $at, session_id: $sid}]' 2>/dev/null)" || new=""
+  new="$(printf '%s' "$state" | jq -c --argjson checkpoint_number "$checkpoint_index" --arg at "$at" --arg session_id "$session_id" \
+    --arg option_label "$label" --arg nonce "$nonce" \
+    '.allowance.answers += [{checkpoint: $checkpoint_number, kind: "accept", source: "ask", option: $option_label, nonce: $nonce, at: $at, session_id: $session_id}]' 2>/dev/null)" || new=""
 fi
 if [ -z "$new" ] || ! gaia_loop_write_state "$target" "$new"; then
   gaia_loop_unlock "$target"
@@ -341,20 +341,20 @@ if [ -z "$new" ] || ! gaia_loop_write_state "$target" "$new"; then
 fi
 gaia_loop_unlock "$target"
 
-bname="$(printf '%s' "$new" | jq -r '.branch')"
+branch_name="$(printf '%s' "$new" | jq -r '.branch')"
 if [ "$kind" = grant ]; then
-  msg="Recorded: $base on branch $bname (checkpoint $idx), $unit_rounds more rounds."
-  ctx="$msg Claude: the human selected this pinned option; continue the loop within that allowance."
+  recorded_message="Recorded: $base on branch $branch_name (checkpoint $checkpoint_index), $unit_rounds more rounds."
+  claude_context="$recorded_message Claude: the human selected this pinned option; continue the loop within that allowance."
   case "$base" in
     *"in a new session")
-      ctx="$ctx Print one instruction line, then the fenced continuation prompt for a fresh session with the branch, PR and run folder, and stop: do not start another round in this session."
-      ctx="$ctx The line is 'Run \`/clear\`, then paste the prompt below.' by default."
-      ctx="$ctx Use 'Kill this session with Ctrl+C, start a new one (\`claude\`, with any needed environment variable), then paste the prompt below.' instead when the next session needs something only a fresh launch provides: an environment variable, or an agent, hook or settings change that loads at session start, such as the branch having edited .claude/agents/, .claude/hooks/ or .claude/settings.json since this session started."
+      claude_context="$claude_context Print one instruction line, then the fenced continuation prompt for a fresh session with the branch, PR and run folder, and stop: do not start another round in this session."
+      claude_context="$claude_context The line is 'Run \`/clear\`, then paste the prompt below.' by default."
+      claude_context="$claude_context Use 'Kill this session with Ctrl+C, start a new one (\`claude\`, with any needed environment variable), then paste the prompt below.' instead when the next session needs something only a fresh launch provides: an environment variable, or an agent, hook or settings change that loads at session start, such as the branch having edited .claude/agents/, .claude/hooks/ or .claude/settings.json since this session started."
       ;;
   esac
 else
-  msg="Recorded: $base on branch $bname (checkpoint $idx). Exactly one closing round is allowed and no fixer runs in it."
-  ctx="$msg Claude: the human selected this pinned option; continue the loop within that allowance."
+  recorded_message="Recorded: $base on branch $branch_name (checkpoint $checkpoint_index). Exactly one closing round is allowed and no fixer runs in it."
+  claude_context="$recorded_message Claude: the human selected this pinned option; continue the loop within that allowance."
 fi
-_ag_say "$msg" "$ctx"
+_ag_say "$recorded_message" "$claude_context"
 exit 0

@@ -19,8 +19,8 @@
 # outside this suite sets either.
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
   LIB="${GAIA_GUARD_LIB:-$REPO_ROOT/.gaia/scripts/guard-awk-lib.sh}"
   STUB="${GAIA_GUARD_STUB:-$REPO_ROOT/.gaia/scripts/tests/fixtures/stub-guard.sh}"
   SCRIPTS_DIR="$( cd "$( dirname "$LIB" )" && pwd )"

@@ -16,19 +16,19 @@ setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   HOOK="$REPO_ROOT/.claude/hooks/block-fork-pr-checkout.sh"
   SETTINGS="$REPO_ROOT/.claude/settings.json"
-  STUB_DIR="$BATS_TEST_TMPDIR/gh-stub"
-  GH_LOG="$STUB_DIR/gh.log"
-  mkdir -p "$STUB_DIR/bin"
+  STUB_DIRECTORY="$BATS_TEST_TMPDIR/gh-stub"
+  GH_LOG="$STUB_DIRECTORY/gh.log"
+  mkdir -p "$STUB_DIRECTORY/bin"
   : >"$GH_LOG"
-  # Pull request 34 is a fork and 12 is not; `$STUB_DIR/fail` makes every
+  # Pull request 34 is a fork and 12 is not; `$STUB_DIRECTORY/fail` makes every
   # `pr view` fail the way an unreachable API does.
-  cat >"$STUB_DIR/bin/gh" <<EOF
+  cat >"$STUB_DIRECTORY/bin/gh" <<EOF
 #!/usr/bin/env bash
-stub_dir="$STUB_DIR"
+stub_directory="$STUB_DIRECTORY"
 EOF
-  cat >>"$STUB_DIR/bin/gh" <<'EOF'
-printf '%s\n' "$*" >>"$stub_dir/gh.log"
-if [ -f "$stub_dir/fail" ]; then
+  cat >>"$STUB_DIRECTORY/bin/gh" <<'EOF'
+printf '%s\n' "$*" >>"$stub_directory/gh.log"
+if [ -f "$stub_directory/fail" ]; then
   echo "HTTP 502: Bad Gateway (https://api.github.com/graphql)" >&2
   exit 1
 fi
@@ -39,15 +39,15 @@ case "$*" in
   *) echo "Could not resolve to a PullRequest" >&2; exit 1 ;;
 esac
 EOF
-  chmod +x "$STUB_DIR/bin/gh"
+  chmod +x "$STUB_DIRECTORY/bin/gh"
   MESSAGE="$(bash -c '. "$1"; printf "%s" "$GAIA_CROSS_REPO_REFUSAL_MESSAGE"' _ "$REPO_ROOT/.claude/hooks/lib/cross-repo-refusal.sh")"
 }
 
 # run_guard <command> [hook]
 run_guard() {
   local payload
-  payload="$(jq -n -c --arg c "$1" '{tool_name: "Bash", tool_input: {command: $c}}')"
-  run env PATH="$STUB_DIR/bin:$PATH" bash -c 'cd "$1" && printf %s "$2" | bash "$3"' _ "$BATS_TEST_TMPDIR" "$payload" "${2:-$HOOK}"
+  payload="$(jq -n -c --arg command "$1" '{tool_name: "Bash", tool_input: {command: $command}}')"
+  run env PATH="$STUB_DIRECTORY/bin:$PATH" bash -c 'cd "$1" && printf %s "$2" | bash "$3"' _ "$BATS_TEST_TMPDIR" "$payload" "${2:-$HOOK}"
 }
 
 reason() {
@@ -107,30 +107,30 @@ reason() {
 }
 
 @test "a pull-request URL is denied when gh cannot name this repository" {
-  : >"$STUB_DIR/fail"
+  : >"$STUB_DIRECTORY/fail"
   run_guard 'gh pr checkout https://github.com/o/r/pull/12'
   assert_denied_by_json
   reason | grep -qF -- 'could not say which repository'
 }
 
 @test "mutation: stopping the flag scan at the target lets a trailing --repo through, so the trailing-flag test can fail" {
-  local d="$BATS_TEST_TMPDIR/mutant-scan"
-  mkdir -p "$d"
-  ln -s "$REPO_ROOT/.claude/hooks/lib" "$d/lib"
-  sed 's/\[ -n "\$target" \] || target="\$token"/target="$token"; break/' "$HOOK" >"$d/block-fork-pr-checkout.sh"
-  cmp -s "$HOOK" "$d/block-fork-pr-checkout.sh" && return 1
-  run_guard 'gh pr checkout 12 --repo other/repo' "$d/block-fork-pr-checkout.sh"
+  local hook_copy_directory="$BATS_TEST_TMPDIR/mutant-scan"
+  mkdir -p "$hook_copy_directory"
+  ln -s "$REPO_ROOT/.claude/hooks/lib" "$hook_copy_directory/lib"
+  sed 's/\[ -n "\$target" \] || target="\$token"/target="$token"; break/' "$HOOK" >"$hook_copy_directory/block-fork-pr-checkout.sh"
+  cmp -s "$HOOK" "$hook_copy_directory/block-fork-pr-checkout.sh" && return 1
+  run_guard 'gh pr checkout 12 --repo other/repo' "$hook_copy_directory/block-fork-pr-checkout.sh"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
 
 @test "mutation: without the URL repository comparison a foreign URL is allowed, so the foreign-URL test can fail" {
-  local d="$BATS_TEST_TMPDIR/mutant-url"
-  mkdir -p "$d"
-  ln -s "$REPO_ROOT/.claude/hooks/lib" "$d/lib"
-  sed 's/if \[ "\$url_repository" != "\$current_repository" \]/if false/' "$HOOK" >"$d/block-fork-pr-checkout.sh"
-  cmp -s "$HOOK" "$d/block-fork-pr-checkout.sh" && return 1
-  run_guard 'gh pr checkout https://github.com/other/repo/pull/12' "$d/block-fork-pr-checkout.sh"
+  local hook_copy_directory="$BATS_TEST_TMPDIR/mutant-url"
+  mkdir -p "$hook_copy_directory"
+  ln -s "$REPO_ROOT/.claude/hooks/lib" "$hook_copy_directory/lib"
+  sed 's/if \[ "\$url_repository" != "\$current_repository" \]/if false/' "$HOOK" >"$hook_copy_directory/block-fork-pr-checkout.sh"
+  cmp -s "$HOOK" "$hook_copy_directory/block-fork-pr-checkout.sh" && return 1
+  run_guard 'gh pr checkout https://github.com/other/repo/pull/12' "$hook_copy_directory/block-fork-pr-checkout.sh"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -148,7 +148,7 @@ reason() {
 }
 
 @test "UAT-010: when gh cannot answer, the checkout is denied and the reason names the failure" {
-  : >"$STUB_DIR/fail"
+  : >"$STUB_DIRECTORY/fail"
   run_guard 'gh pr checkout 34'
   assert_denied_by_json
   reason | grep -qF -- 'cannot tell whether pull request 34 comes from a fork'
@@ -175,7 +175,7 @@ reason() {
 # it behind.
 run_prefilter_probe() {
   local payload probe_bin="$BATS_TEST_TMPDIR/probe-bin"
-  payload="$(jq -n -c --arg c "$1" '{tool_name: "Bash", tool_input: {command: $c}}')"
+  payload="$(jq -n -c --arg command "$1" '{tool_name: "Bash", tool_input: {command: $command}}')"
   PROBE_SENTINEL="$BATS_TEST_TMPDIR/probe-spawned"
   mkdir -p "$probe_bin"
   for tool in jq gh; do
@@ -196,12 +196,12 @@ EOF
 }
 
 @test "mutation: without the prefilter exit the same command spawns jq, so the prefilter test can fail" {
-  local d="$BATS_TEST_TMPDIR/no-prefilter"
-  mkdir -p "$d"
-  ln -s "$REPO_ROOT/.claude/hooks/lib" "$d/lib"
-  sed '/^  \*) exit 0 ;;$/d' "$HOOK" >"$d/block-fork-pr-checkout.sh"
-  cmp -s "$HOOK" "$d/block-fork-pr-checkout.sh" && return 1
-  run_prefilter_probe 'ls -la' "$d/block-fork-pr-checkout.sh"
+  local hook_copy_directory="$BATS_TEST_TMPDIR/no-prefilter"
+  mkdir -p "$hook_copy_directory"
+  ln -s "$REPO_ROOT/.claude/hooks/lib" "$hook_copy_directory/lib"
+  sed '/^  \*) exit 0 ;;$/d' "$HOOK" >"$hook_copy_directory/block-fork-pr-checkout.sh"
+  cmp -s "$HOOK" "$hook_copy_directory/block-fork-pr-checkout.sh" && return 1
+  run_prefilter_probe 'ls -la' "$hook_copy_directory/block-fork-pr-checkout.sh"
   grep -qxF -- jq "$PROBE_SENTINEL"
 }
 
@@ -220,30 +220,30 @@ EOF
 }
 
 @test "a non-Bash tool call is allowed" {
-  run env PATH="$STUB_DIR/bin:$PATH" bash -c 'printf %s "$1" | bash "$2"' _ \
+  run env PATH="$STUB_DIRECTORY/bin:$PATH" bash -c 'printf %s "$1" | bash "$2"' _ \
     '{"tool_name":"Read","tool_input":{"file_path":"/tmp/x"}}' "$HOOK"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
 
 @test "a missing cross-repo library denies an armed call instead of allowing it" {
-  local d="$BATS_TEST_TMPDIR/no-cross-lib"
-  mkdir -p "$d/lib"
-  cp "$HOOK" "$d/block-fork-pr-checkout.sh"
+  local hook_copy_directory="$BATS_TEST_TMPDIR/no-cross-lib"
+  mkdir -p "$hook_copy_directory/lib"
+  cp "$HOOK" "$hook_copy_directory/block-fork-pr-checkout.sh"
   cp "$REPO_ROOT/.claude/hooks/lib/jq-availability.sh" "$REPO_ROOT/.claude/hooks/lib/verb-arming.sh" \
-    "$REPO_ROOT/.claude/hooks/lib/verb-arming-walk.sh" "$d/lib/"
-  run_guard 'gh pr checkout 12' "$d/block-fork-pr-checkout.sh"
+    "$REPO_ROOT/.claude/hooks/lib/verb-arming-walk.sh" "$hook_copy_directory/lib/"
+  run_guard 'gh pr checkout 12' "$hook_copy_directory/block-fork-pr-checkout.sh"
   assert_denied_by_json
   reason | grep -qF -- 'cross-repo-refusal.sh'
 }
 
 @test "mutation: without the gaia_cross_repo_deny_reason call the fork checkout is allowed, so the denial test can fail" {
-  local d="$BATS_TEST_TMPDIR/mutant"
-  mkdir -p "$d"
-  ln -s "$REPO_ROOT/.claude/hooks/lib" "$d/lib"
-  sed 's/if fork_reason=\$(gaia_cross_repo_deny_reason/if false \&\& fork_reason=$(gaia_cross_repo_deny_reason/' "$HOOK" >"$d/block-fork-pr-checkout.sh"
-  cmp -s "$HOOK" "$d/block-fork-pr-checkout.sh" && return 1
-  run_guard 'gh pr checkout 34' "$d/block-fork-pr-checkout.sh"
+  local hook_copy_directory="$BATS_TEST_TMPDIR/mutant"
+  mkdir -p "$hook_copy_directory"
+  ln -s "$REPO_ROOT/.claude/hooks/lib" "$hook_copy_directory/lib"
+  sed 's/if fork_reason=\$(gaia_cross_repo_deny_reason/if false \&\& fork_reason=$(gaia_cross_repo_deny_reason/' "$HOOK" >"$hook_copy_directory/block-fork-pr-checkout.sh"
+  cmp -s "$HOOK" "$hook_copy_directory/block-fork-pr-checkout.sh" && return 1
+  run_guard 'gh pr checkout 34' "$hook_copy_directory/block-fork-pr-checkout.sh"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
@@ -253,6 +253,6 @@ EOF
   # a matcher shared with another tool.
   hook_registered "$SETTINGS" '.hooks.PreToolUse[] | select(.matcher | split("|") | index("Bash"))' block-fork-pr-checkout.sh
   # shellcheck disable=SC2016 # the expansion is literal text in settings.json
-  jq -e --arg c '"$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.claude/hooks/block-fork-pr-checkout.sh"' \
-    '[.hooks.PreToolUse[] | select(.matcher | split("|") | index("Bash")) | .hooks[].command] | index($c) != null' "$SETTINGS"
+  jq -e --arg command '"$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.claude/hooks/block-fork-pr-checkout.sh"' \
+    '[.hooks.PreToolUse[] | select(.matcher | split("|") | index("Bash")) | .hooks[].command] | index($command) != null' "$SETTINGS"
 }

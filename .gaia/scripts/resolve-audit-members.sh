@@ -154,15 +154,15 @@ fi
 # but unparseable abandons the shell AT the load, so an `-f` test ahead of it
 # proves nothing and the fail-safe below is never reached. Testing what the
 # modules DEFINE routes absent and unparseable to the same empty-stdout exit.
-_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.claude/hooks/lib" 2>/dev/null && pwd)" || true
-if [ -z "$_lib_dir" ]; then
+_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.claude/hooks/lib" 2>/dev/null && pwd)" || true
+if [ -z "$_library_directory" ]; then
   exit 0
 fi
 set +e
 # shellcheck source=/dev/null
-[ -f "$_lib_dir/audit-scope.sh" ] && . "$_lib_dir/audit-scope.sh" 2>/dev/null
+[ -f "$_library_directory/audit-scope.sh" ] && . "$_library_directory/audit-scope.sh" 2>/dev/null
 # shellcheck source=/dev/null
-[ -f "$_lib_dir/audit-base-provenance.sh" ] && . "$_lib_dir/audit-base-provenance.sh" 2>/dev/null
+[ -f "$_library_directory/audit-base-provenance.sh" ] && . "$_library_directory/audit-base-provenance.sh" 2>/dev/null
 set -e
 # Probe each module's LAST definition, not the first symbol this script calls.
 # A truncated copy parses as far as the truncation and defines every function

@@ -37,13 +37,13 @@
 
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
-  HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
-  HOOK_ABS="$HOOKS_SRC/block-eslint-config-edit.sh"
-  TMP=$(mktemp -d "${BATS_TMPDIR:-/tmp}/eslint-hook.XXXXXX")
+  HOOKS_SOURCE_DIRECTORY=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
+  HOOK_ABSOLUTE_PATH="$HOOKS_SOURCE_DIRECTORY/block-eslint-config-edit.sh"
+  TEMPORARY_DIRECTORY=$(mktemp -d "${BATS_TMPDIR:-/tmp}/eslint-hook.XXXXXX")
 }
 
 teardown() {
-  [ -n "${TMP:-}" ] && rm -rf "$TMP"
+  [ -n "${TEMPORARY_DIRECTORY:-}" ] && rm -rf "$TEMPORARY_DIRECTORY"
   return 0
 }
 
@@ -72,26 +72,26 @@ export default defineConfig([
 ]);"
 
 # Writes a config to the temp dir and echoes its path. Takes an optional body.
-cfg() {
+write_config_fixture() {
   local name="${2:-eslint.config.mjs}"
-  printf '%s\n' "${1:-$DEFAULT_BODY}" >"$TMP/$name"
-  printf '%s' "$TMP/$name"
+  printf '%s\n' "${1:-$DEFAULT_BODY}" >"$TEMPORARY_DIRECTORY/$name"
+  printf '%s' "$TEMPORARY_DIRECTORY/$name"
 }
 
 # The fixtures here carry quotes of their own, so delivery goes through
 # `invoke_hook` (helpers/run-hook.sh), which passes the payload positionally.
 run_hook() {
-  invoke_hook "$1" "$HOOK_ABS"
+  invoke_hook "$1" "$HOOK_ABSOLUTE_PATH"
 }
 
 run_edit() {
-  run_hook "$(jq -n --arg p "$1" --arg o "$2" --arg n "$3" \
-    '{tool_name: "Edit", tool_input: {file_path: $p, old_string: $o, new_string: $n}}')"
+  run_hook "$(jq -n --arg file_path "$1" --arg old_string "$2" --arg new_string "$3" \
+    '{tool_name: "Edit", tool_input: {file_path: $file_path, old_string: $old_string, new_string: $new_string}}')"
 }
 
 run_write() {
-  run_hook "$(jq -n --arg p "$1" --arg c "$2" \
-    '{tool_name: "Write", tool_input: {file_path: $p, content: $c}}')"
+  run_hook "$(jq -n --arg file_path "$1" --arg content "$2" \
+    '{tool_name: "Write", tool_input: {file_path: $file_path, content: $content}}')"
 }
 
 # For the shapes run_edit/run_write cannot express: a MultiEdit's edits[], and
@@ -99,7 +99,7 @@ run_write() {
 # tool_input as a JSON literal, so a `\n` in a fixture is a real newline by the
 # time the hook reads it.
 run_tool() {
-  run_hook "$(jq -n --arg t "$1" --argjson i "$2" '{tool_name: $t, tool_input: $i}')"
+  run_hook "$(jq -n --arg tool_name "$1" --argjson tool_input "$2" '{tool_name: $tool_name, tool_input: $tool_input}')"
 }
 
 
@@ -107,22 +107,22 @@ run_tool() {
 # --- path gate, the only thing that decides anything ------------------------
 
 @test "allows an edit to a file that is not an eslint config" {
-  run_edit "$(cfg 'const a = 1;' 'home.tsx')" 'const a = 1;' 'const a = 2;'
+  run_edit "$(write_config_fixture 'const a = 1;' 'home.tsx')" 'const a = 1;' 'const a = 2;'
   assert_allowed_by_exit
 }
 
 @test "allows an edit to a lookalike filename" {
-  run_edit "$(cfg 'rules: {}' 'eslint.config.md')" 'rules: {}' "rules: {a: 'off'}"
+  run_edit "$(write_config_fixture 'rules: {}' 'eslint.config.md')" 'rules: {}' "rules: {a: 'off'}"
   assert_allowed_by_exit
 }
 
 @test "allows a source file whose name merely ends in the guarded one" {
-  run_edit "$(cfg 'const a = 1;' 'my-eslint.config.mjs')" 'const a = 1;' 'const a = 2;'
+  run_edit "$(write_config_fixture 'const a = 1;' 'my-eslint.config.mjs')" 'const a = 1;' 'const a = 2;'
   assert_allowed_by_exit
 }
 
 @test "allows a file whose name merely starts with the guarded one" {
-  run_edit "$(cfg 'const a = 1;' 'eslint.config.mjs.bak')" 'const a = 1;' 'const a = 2;'
+  run_edit "$(write_config_fixture 'const a = 1;' 'eslint.config.mjs.bak')" 'const a = 1;' 'const a = 2;'
   assert_allowed_by_exit
 }
 
@@ -150,15 +150,15 @@ run_tool() {
 # So the payload is assembled into files and reaches jq by --rawfile and the
 # hook by stdin redirection, crossing no argv boundary at any size.
 @test "asks on a guarded path arriving with megabytes of trailing payload" {
-  { printf '%s\n' "$(cfg)"; head -c 1000000 /dev/zero | tr '\0' 'x'; } >"$TMP/path.txt"
-  jq -n --rawfile p "$TMP/path.txt" \
-    '{tool_name: "Edit", tool_input: {file_path: $p, old_string: "a", new_string: "b"}}' \
-    >"$TMP/payload.json"
-  run bash -c 'bash "$2" <"$1"' _ "$TMP/payload.json" "$HOOK_ABS"
+  { printf '%s\n' "$(write_config_fixture)"; head -c 1000000 /dev/zero | tr '\0' 'x'; } >"$TEMPORARY_DIRECTORY/path.txt"
+  jq -n --rawfile file_path "$TEMPORARY_DIRECTORY/path.txt" \
+    '{tool_name: "Edit", tool_input: {file_path: $file_path, old_string: "a", new_string: "b"}}' \
+    >"$TEMPORARY_DIRECTORY/payload.json"
+  run bash -c 'bash "$2" <"$1"' _ "$TEMPORARY_DIRECTORY/payload.json" "$HOOK_ABSOLUTE_PATH"
   assert_asked_by_json
 }
 
-# Every other fixture builds its path under $TMP, so all of them carry a slash
+# Every other fixture builds its path under $TEMPORARY_DIRECTORY, so all of them carry a slash
 # and only the `/` half of the pattern's `(^|/)` gets exercised. Without this
 # case, narrowing the group to `(/)` is undetected.
 @test "guards a config named with no directory component at all" {
@@ -167,10 +167,10 @@ run_tool() {
 }
 
 @test "guards every extension ESLint resolves, at any depth" {
-  mkdir -p "$TMP/apps/web"
+  mkdir -p "$TEMPORARY_DIRECTORY/apps/web"
   for name in eslint.config.js eslint.config.cjs eslint.config.mjs eslint.config.ts \
     apps/web/eslint.config.mjs; do
-    run_edit "$(cfg "$DEFAULT_BODY" "$name")" '  ...lint.react,' "  ...lint.react,
+    run_edit "$(write_config_fixture "$DEFAULT_BODY" "$name")" '  ...lint.react,' "  ...lint.react,
   rules: {'no-empty-pattern': 'off'},"
     [ "$status" -eq 0 ] || return 1
     grep -qF -- '"permissionDecision": "ask"' <<<"$output" || return 1
@@ -180,18 +180,18 @@ run_tool() {
 # --- the ask is uniform, across every shape a judging guard would split -----
 
 @test "asks on the reactRouter migration rather than refusing it" {
-  run_edit "$(cfg)" '  ...lint.react,' '  ...lint.react,
+  run_edit "$(write_config_fixture)" '  ...lint.react,' '  ...lint.react,
   ...lint.reactRouter,'
   assert_asked_by_json
 }
 
 @test "asks on a comment-only change" {
-  run_edit "$(cfg)" ' * Config for the app.' ' * ESLint config for the app.'
+  run_edit "$(write_config_fixture)" ' * Config for the app.' ' * ESLint config for the app.'
   assert_asked_by_json
 }
 
 @test "asks on a blank-line-only change" {
-  run_edit "$(cfg)" "const lint = gaiaLint();
+  run_edit "$(write_config_fixture)" "const lint = gaiaLint();
 
 export default" "const lint = gaiaLint();
 
@@ -201,13 +201,13 @@ export default"
 }
 
 @test "asks on a Write whose content only changes a comment" {
-  run_write "$(cfg)" "${DEFAULT_BODY/Config for the app./ESLint config for the app.}"
+  run_write "$(write_config_fixture)" "${DEFAULT_BODY/Config for the app./ESLint config for the app.}"
   assert_asked_by_json
 }
 
 @test "asks on a MultiEdit whose every pair is a comment or an added spread" {
-  run_tool MultiEdit "$(jq -n --arg p "$(cfg)" \
-    '{file_path: $p,
+  run_tool MultiEdit "$(jq -n --arg file_path "$(write_config_fixture)" \
+    '{file_path: $file_path,
       edits: [{old_string: " * Config for the app.", new_string: " * ESLint config."},
               {old_string: "  ...lint.react,", new_string: "  ...lint.react,\n  ...lint.reactRouter,"}]}')"
   assert_asked_by_json
@@ -216,19 +216,19 @@ export default"
 # --- including the shapes that are usually silencing, so the floor is pinned -
 
 @test "asks on adding a rule override" {
-  run_edit "$(cfg)" "    rules: {'no-console': 'off'}," \
+  run_edit "$(write_config_fixture)" "    rules: {'no-console': 'off'}," \
     "    rules: {'no-console': 'off', 'no-empty-pattern': 'off'},"
   assert_asked_by_json
 }
 
 @test "asks on removing a preset spread" {
-  run_edit "$(cfg)" '  ...lint.guardrails,
+  run_edit "$(write_config_fixture)" '  ...lint.guardrails,
 ' ''
   assert_asked_by_json
 }
 
 @test "asks on a Write that replaces the whole config" {
-  run_write "$(cfg)" 'export default [];'
+  run_write "$(write_config_fixture)" 'export default [];'
   assert_asked_by_json
 }
 
@@ -238,7 +238,7 @@ export default"
 # every test above. The two failure directions are opposite, so they are pinned
 # separately.
 @test "never denies a config edit, and never blocks by exit code" {
-  run_edit "$(cfg)" "    rules: {'no-console': 'off'}," \
+  run_edit "$(write_config_fixture)" "    rules: {'no-console': 'off'}," \
     "    rules: {'no-console': 'off', 'no-empty-pattern': 'off'},"
   [ "$status" -eq 0 ]
   grep -qF -- '"permissionDecision": "deny"' <<<"$output" && return 1
@@ -250,7 +250,7 @@ export default"
 # all, which is the fail-open direction. `jq -n --arg` is what guarantees this;
 # a hand-built JSON string is the shape that loses it.
 @test "emits one well-formed JSON object a parser accepts" {
-  run_edit "$(cfg)" ' * Config for the app.' ' * ESLint config.'
+  run_edit "$(write_config_fixture)" ' * Config for the app.' ' * ESLint config.'
   [ "$status" -eq 0 ]
   jq -e '.hookSpecificOutput.hookEventName == "PreToolUse"' <<<"$output" >/dev/null
 }
@@ -258,20 +258,20 @@ export default"
 # --- the reason is what the operator answers on ----------------------------
 
 @test "the reason names the sanctioned migration it is asking about" {
-  run_edit "$(cfg)" '  ...lint.react,' '  ...lint.react,
+  run_edit "$(write_config_fixture)" '  ...lint.react,' '  ...lint.react,
   ...lint.reactRouter,'
   assert_asked_by_json
   grep -qF -- '...lint.reactRouter' <<<"$output"
 }
 
 @test "the reason admits the prompt is on the filename alone" {
-  run_edit "$(cfg)" ' * Config for the app.' ' * ESLint config.'
+  run_edit "$(write_config_fixture)" ' * Config for the app.' ' * ESLint config.'
   assert_asked_by_json
   grep -qF -- 'filename alone' <<<"$output"
 }
 
 @test "the reason tells the operator the answer is theirs to give" {
-  run_edit "$(cfg)" ' * Config for the app.' ' * ESLint config.'
+  run_edit "$(write_config_fixture)" ' * Config for the app.' ' * ESLint config.'
   assert_asked_by_json
   grep -qF -- 'Approve only if you meant this edit' <<<"$output"
   # Asking is only safe while the reason also refuses the workaround. Nothing in
@@ -283,7 +283,7 @@ export default"
 }
 
 @test "the reason keeps pointing at the source file for the common case" {
-  run_edit "$(cfg)" "    rules: {'no-console': 'off'}," \
+  run_edit "$(write_config_fixture)" "    rules: {'no-console': 'off'}," \
     "    rules: {'no-console': 'off', 'no-empty-pattern': 'off'},"
   assert_asked_by_json
   grep -qF -- 'source file where it occurs' <<<"$output"
@@ -296,17 +296,17 @@ export default"
 # would erode first if a judging guard crept back in.
 
 @test "asks on a tool shape it cannot otherwise read on a guarded path" {
-  run_tool NotebookEdit "$(jq -n --arg p "$(cfg)" '{file_path: $p}')"
+  run_tool NotebookEdit "$(jq -n --arg file_path "$(write_config_fixture)" '{file_path: $file_path}')"
   assert_asked_by_json
 }
 
 @test "asks on an Edit on a guarded path carrying no strings at all" {
-  run_tool Edit "$(jq -n --arg p "$(cfg)" '{file_path: $p}')"
+  run_tool Edit "$(jq -n --arg file_path "$(write_config_fixture)" '{file_path: $file_path}')"
   assert_asked_by_json
 }
 
 @test "asks on a Write on a guarded path that does not exist yet" {
-  run_write "$TMP/eslint.config.ts" 'export default [];'
+  run_write "$TEMPORARY_DIRECTORY/eslint.config.ts" 'export default [];'
   assert_asked_by_json
 }
 

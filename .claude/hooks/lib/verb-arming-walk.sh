@@ -102,7 +102,7 @@ _GAIA_VA_TAB=$'\t'
 # A lone backslash is unwritable as a `case` pattern without either escaping it
 # into something else or drawing a false "did you mean to escape a quote"
 # reading; held in a variable it is unambiguous in both places it is compared.
-_GAIA_VA_BS=$'\\'
+_GAIA_VA_BACKSLASH=$'\\'
 
 # Character sets the walk jumps to, as glob bracket expressions held in
 # variables: a bracket carrying a newline, a backslash and both quote
@@ -120,7 +120,7 @@ _GAIA_VA_BS=$'\\'
 _GAIA_VA_TOP_SET=$'["\047\\\\\140#<$\n]'
 # Inside a double-quoted span: the closing quote, and a backslash, which
 # escapes the character after it there.
-_GAIA_VA_DQ_SET=$'["\\\\]'
+_GAIA_VA_DOUBLE_QUOTE_SET=$'["\\\\]'
 # A run ending in one of these leaves the next character word-initial, which is
 # what decides whether a `#` opens a comment.
 _GAIA_VA_WORD_SET=$'[ \t;&|(\n]'
@@ -148,15 +148,15 @@ _GAIA_VA_NONBLANK_SET=$'[! \t]'
 # margin. A heredoc's body is skipped whole rather than stepped through, so a
 # report written to a file spends two steps whatever its body costs, and even
 # a two-hundred-line script that goes on to write one stays inside.
-_GAIA_VA_MAX_WORK=2000000
+_GAIA_VA_MAXIMUM_WORK=2000000
 
 # A `>` or `>>` redirect to a word. The leading exclusion is what keeps a file
 # descriptor out: `2>err` redirects stderr and leaves the body on stdout, and
 # `>&2` is a descriptor duplication with no file anywhere.
-_GAIA_VA_REDIR_RE='(^|[^0-9&>])>>?[[:space:]]*[^[:space:]&<>|;]'
+_GAIA_VA_REDIRECT_REGEX='(^|[^0-9&>])>>?[[:space:]]*[^[:space:]&<>|;]'
 # A `tee` file operand: flags, then a word that is neither a flag nor a
 # redirection. `tee <<EOF` and `tee -a <<EOF` name no file and fail it.
-_GAIA_VA_TEE_RE='^[[:space:]]*tee([[:space:]]+-[^[:space:]]*)*[[:space:]]+[^-<>[:space:]]'
+_GAIA_VA_TEE_REGEX='^[[:space:]]*tee([[:space:]]+-[^[:space:]]*)*[[:space:]]+[^-<>[:space:]]'
 
 # The run of `x` every mask is filled from, grown on demand and reused for the
 # life of the process. Taken from a doubling cache rather than from
@@ -165,17 +165,17 @@ _GAIA_VA_TEE_RE='^[[:space:]]*tee([[:space:]]+-[^[:space:]]*)*[[:space:]]+[^-<>[
 # character count in every locale.
 _gaia_va_xrun=x
 _gaia_va_run=""
-_gaia_va_p=-1
-_gaia_va_lc_prev=""
-_gaia_va_lc_had=""
+_gaia_va_delimiter_offset=-1
+_gaia_va_locale_previous=""
+_gaia_va_locale_was_set=""
 
 _gaia_va_make_run() {
-  local n="$1"
-  [ "$n" -gt 0 ] || { _gaia_va_run=""; return 0; }
-  while [ "${#_gaia_va_xrun}" -lt "$n" ]; do
+  local run_length="$1"
+  [ "$run_length" -gt 0 ] || { _gaia_va_run=""; return 0; }
+  while [ "${#_gaia_va_xrun}" -lt "$run_length" ]; do
     _gaia_va_xrun="$_gaia_va_xrun$_gaia_va_xrun"
   done
-  _gaia_va_run="${_gaia_va_xrun:0:$n}"
+  _gaia_va_run="${_gaia_va_xrun:0:$run_length}"
 }
 
 # The scan runs under LC_ALL=C, where every offset and length is a byte. Every
@@ -184,61 +184,61 @@ _gaia_va_make_run() {
 # The mask run is the one quantity that cannot be sized that way, since the
 # view's length contract is in characters, so the walk steps back into the
 # caller's locale to measure each body and returns.
-_gaia_va_lc_bytes() {
-  _gaia_va_lc_had="${LC_ALL+set}"
-  _gaia_va_lc_prev="${LC_ALL-}"
+_gaia_va_locale_bytes() {
+  _gaia_va_locale_was_set="${LC_ALL+set}"
+  _gaia_va_locale_previous="${LC_ALL-}"
   LC_ALL=C
 }
 
-_gaia_va_lc_chars() {
-  if [ "$_gaia_va_lc_had" = set ]; then LC_ALL="$_gaia_va_lc_prev"; else unset LC_ALL; fi
+_gaia_va_locale_characters() {
+  if [ "$_gaia_va_locale_was_set" = set ]; then LC_ALL="$_gaia_va_locale_previous"; else unset LC_ALL; fi
 }
 
-# _gaia_va_find_delim <text> <delim> <strip>: set _gaia_va_p to the offset in
+# _gaia_va_find_delimiter <text> <delimiter> <strip_tabs>: set _gaia_va_delimiter_offset to the offset in
 # <text> at which the delimiter LINE begins, or return 1 when no such line
-# exists. <strip> is 1 for the `<<-` form, whose delimiter line may carry
+# exists. <strip_tabs> is 1 for the `<<-` form, whose delimiter line may carry
 # leading tabs the shell removes.
-_gaia_va_find_delim() {
-  local s="$1" d="$2" strip="$3"
-  local nl=$'\n' pre probe consumed line t
-  _gaia_va_p=-1
-  if [ "$strip" = 0 ]; then
-    case "$s" in
-      "$d"|"$d$nl"*) _gaia_va_p=0; return 0 ;;
+_gaia_va_find_delimiter() {
+  local search_text="$1" delimiter="$2" strip_tabs="$3"
+  local newline=$'\n' prefix probe consumed line stripped_line
+  _gaia_va_delimiter_offset=-1
+  if [ "$strip_tabs" = 0 ]; then
+    case "$search_text" in
+      "$delimiter"|"$delimiter$newline"*) _gaia_va_delimiter_offset=0; return 0 ;;
     esac
     # One prefix strip locates the first delimiter line: `%%` removes the
     # longest suffix that matches, which is the one starting at the earliest
     # occurrence. Quoting the delimiter inside the pattern keeps a glob
     # character in it literal.
-    pre="${s%%"$nl$d$nl"*}"
-    if [ "${#pre}" -ne "${#s}" ]; then _gaia_va_p=$(( ${#pre} + 1 )); return 0; fi
-    case "$s" in
-      *"$nl$d") _gaia_va_p=$(( ${#s} - ${#d} )); return 0 ;;
+    prefix="${search_text%%"$newline$delimiter$newline"*}"
+    if [ "${#prefix}" -ne "${#search_text}" ]; then _gaia_va_delimiter_offset=$(( ${#prefix} + 1 )); return 0; fi
+    case "$search_text" in
+      *"$newline$delimiter") _gaia_va_delimiter_offset=$(( ${#search_text} - ${#delimiter} )); return 0 ;;
     esac
     return 1
   fi
   # The `<<-` form needs the tabs stripped before the comparison, which no
   # single pattern expresses, so walk the lines.
-  probe="$s"
+  probe="$search_text"
   consumed=0
   while :; do
     case "$probe" in
-      *"$nl"*) line="${probe%%"$nl"*}" ;;
+      *"$newline"*) line="${probe%%"$newline"*}" ;;
       *) line="$probe" ;;
     esac
-    t="$line"
+    stripped_line="$line"
     while :; do
-      case "$t" in
-        "$_GAIA_VA_TAB"*) t="${t#?}" ;;
+      case "$stripped_line" in
+        "$_GAIA_VA_TAB"*) stripped_line="${stripped_line#?}" ;;
         *) break ;;
       esac
     done
-    if [ "$t" = "$d" ]; then _gaia_va_p="$consumed"; return 0; fi
+    if [ "$stripped_line" = "$delimiter" ]; then _gaia_va_delimiter_offset="$consumed"; return 0; fi
     case "$probe" in
-      *"$nl"*) ;;
+      *"$newline"*) ;;
       *) return 1 ;;
     esac
-    probe="${probe#*"$nl"}"
+    probe="${probe#*"$newline"}"
     consumed=$(( consumed + ${#line} + 1 ))
   done
 }
@@ -248,7 +248,7 @@ _gaia_va_find_delim() {
 # otherwise. Conditions 4 and 5 are decided where the delimiter is parsed and
 # where its line is located; this decides 1, 2, 3 and 6.
 _gaia_va_opener_is_data() {
-  local line="$1" pre="$2"
+  local line="$1" text_before_operator="$2"
   # Condition 6. Conditions 1 and 2 each read the line as a whole, the command
   # word at its start and a redirect anywhere on it, so a line whose FIRST
   # command is `cat > f` and whose heredoc belongs to a SECOND command after a
@@ -260,7 +260,7 @@ _gaia_va_opener_is_data() {
   # separator after the operator is not the same question: the heredoc there
   # already belongs to the first command. `|` needs no arm of its own, since
   # condition 3 rejects it anywhere on the line.
-  case "$pre" in
+  case "$text_before_operator" in
     *'&'*|*';'*|*'('*) return 1 ;;
   esac
   # Condition 3, read as "no `$` at all" rather than as a list of expansion
@@ -278,9 +278,9 @@ _gaia_va_opener_is_data() {
     *) return 1 ;;
   esac
   # Condition 2.
-  [[ "$line" =~ $_GAIA_VA_REDIR_RE ]] && return 0
+  [[ "$line" =~ $_GAIA_VA_REDIRECT_REGEX ]] && return 0
   case "$line" in
-    'tee'*) [[ "$line" =~ $_GAIA_VA_TEE_RE ]] && return 0 ;;
+    'tee'*) [[ "$line" =~ $_GAIA_VA_TEE_REGEX ]] && return 0 ;;
   esac
   return 1
 }
@@ -288,7 +288,7 @@ _gaia_va_opener_is_data() {
 gaia_verb_arm_view() {
   local text="$1"
   GAIA_VERB_ARM_VIEW="$text"
-  [ "${#text}" -le "${GAIA_VERB_ARM_MAX_CHARS:-16384}" ] || return 0
+  [ "${#text}" -le "${GAIA_VERB_ARM_MAXIMUM_CHARACTERS:-16384}" ] || return 0
   # No heredoc operator anywhere means no body can be proven data, and this is
   # the shape most raw-matching traffic takes, so it never pays for the walk.
   case "$text" in
@@ -296,207 +296,207 @@ gaia_verb_arm_view() {
     *) return 0 ;;
   esac
 
-  local nl=$'\n'
-  local s out cur q ch pre np chunk blanks ok wstart work line_start
-  local hd_n strip dl dbad dq data first p body dline bi hd_pre
-  local hd_delim hd_strip hd_quoted
-  hd_delim=()
-  hd_strip=()
-  hd_quoted=()
+  local newline=$'\n'
+  local remaining_text view_text opener_line quote_character character prefix prefix_length chunk blanks ok word_start work line_start
+  local heredoc_count strip_tabs delimiter delimiter_unreadable delimiter_quoted data first delimiter_offset body delimiter_line body_index heredoc_prefix
+  local heredoc_delimiters heredoc_strip_tabs heredoc_quoted
+  heredoc_delimiters=()
+  heredoc_strip_tabs=()
+  heredoc_quoted=()
 
-  _gaia_va_lc_bytes
-  s="$text"
-  out=""
-  q=""
+  _gaia_va_locale_bytes
+  remaining_text="$text"
+  view_text=""
+  quote_character=""
   ok=1
-  wstart=1
+  word_start=1
   work=0
   line_start=0
-  hd_n=0
-  hd_pre=""
+  heredoc_count=0
+  heredoc_prefix=""
 
-  while [ -n "$s" ]; do
+  while [ -n "$remaining_text" ]; do
     # Charge this step what it is about to cost, and abandon suppression on
     # running out, exactly as the walk does on anything else it cannot decide
     # cheaply.
-    work=$(( work + ${#s} ))
-    if [ "$work" -gt "$_GAIA_VA_MAX_WORK" ]; then ok=0; break; fi
+    work=$(( work + ${#remaining_text} ))
+    if [ "$work" -gt "$_GAIA_VA_MAXIMUM_WORK" ]; then ok=0; break; fi
 
-    if [ -n "$q" ]; then
+    if [ -n "$quote_character" ]; then
       # Inside a quoted span, jump to what can end it. A single-quoted span and
       # a backtick span end only at their own delimiter; a double-quoted span
       # also has to honour the backslash, which escapes the character after it
       # there.
-      if [ "$q" = '"' ]; then
+      if [ "$quote_character" = '"' ]; then
         # The set is a bracket expression, so it has to reach the matcher
         # UNQUOTED; quoting it would compare the brackets themselves.
         # shellcheck disable=SC2295
-        pre="${s%%$_GAIA_VA_DQ_SET*}"
+        prefix="${remaining_text%%$_GAIA_VA_DOUBLE_QUOTE_SET*}"
       else
-        pre="${s%%"$q"*}"
+        prefix="${remaining_text%%"$quote_character"*}"
       fi
-      np=${#pre}
-      ch="${s:$np:1}"
+      prefix_length=${#prefix}
+      character="${remaining_text:$prefix_length:1}"
       # An empty character here means the strip found nothing, so the span runs
       # to the end of the text without closing.
-      if [ -z "$ch" ]; then ok=0; break; fi
-      out+="$pre$ch"
-      s="${s:$(( np + 1 ))}"
-      if [ "$ch" = "$_GAIA_VA_BS" ]; then
-        [ -n "$s" ] || { ok=0; break; }
-        out+="${s:0:1}"
-        s="${s:1}"
+      if [ -z "$character" ]; then ok=0; break; fi
+      view_text+="$prefix$character"
+      remaining_text="${remaining_text:$(( prefix_length + 1 ))}"
+      if [ "$character" = "$_GAIA_VA_BACKSLASH" ]; then
+        [ -n "$remaining_text" ] || { ok=0; break; }
+        view_text+="${remaining_text:0:1}"
+        remaining_text="${remaining_text:1}"
       else
-        q=""
+        quote_character=""
       fi
       continue
     fi
 
     # shellcheck disable=SC2295 # a bracket expression, matched as a pattern
-    pre="${s%%$_GAIA_VA_TOP_SET*}"
+    prefix="${remaining_text%%$_GAIA_VA_TOP_SET*}"
     # Every expansion of the remaining text costs a pass over the whole of it,
     # so the strip's length is taken once and reused. Reading the character at
     # that offset also answers whether the strip found anything: past the end
     # of the text the slice is empty, which no real match can be.
-    np=${#pre}
-    ch="${s:$np:1}"
-    if [ -z "$ch" ]; then
-      out+="$pre"
-      s=""
+    prefix_length=${#prefix}
+    character="${remaining_text:$prefix_length:1}"
+    if [ -z "$character" ]; then
+      view_text+="$prefix"
+      remaining_text=""
       break
     fi
-    out+="$pre"
-    s="${s:$np}"
-    case "$pre" in
+    view_text+="$prefix"
+    remaining_text="${remaining_text:$prefix_length}"
+    case "$prefix" in
       '') ;;
-      *$_GAIA_VA_WORD_SET) wstart=1 ;;
-      *) wstart=0 ;;
+      *$_GAIA_VA_WORD_SET) word_start=1 ;;
+      *) word_start=0 ;;
     esac
 
-    case "$ch" in
+    case "$character" in
       "'"|'"'|'`')
-        q="$ch"
-        out+="$ch"
-        s="${s:1}"
-        wstart=0
+        quote_character="$character"
+        view_text+="$character"
+        remaining_text="${remaining_text:1}"
+        word_start=0
         ;;
-      "$_GAIA_VA_BS")
-        out+="$ch"
-        s="${s:1}"
-        if [ -z "$s" ]; then ok=0; break; fi
-        ch="${s:0:1}"
-        out+="$ch"
-        s="${s:1}"
+      "$_GAIA_VA_BACKSLASH")
+        view_text+="$character"
+        remaining_text="${remaining_text:1}"
+        if [ -z "$remaining_text" ]; then ok=0; break; fi
+        character="${remaining_text:0:1}"
+        view_text+="$character"
+        remaining_text="${remaining_text:1}"
         # A backslash-newline is a line CONTINUATION: the shell removes both
         # and the logical line runs on, so the newline that ends an opener line
         # is somewhere further down. Locating a body under that would mask
         # command text, so give up on the whole input instead.
-        if [ "$ch" = "$nl" ] && [ "$hd_n" -gt 0 ]; then ok=0; break; fi
-        wstart=0
+        if [ "$character" = "$newline" ] && [ "$heredoc_count" -gt 0 ]; then ok=0; break; fi
+        word_start=0
         ;;
       '$')
-        out+="$ch"
-        s="${s:1}"
-        case "$s" in "'"*) ok=0; break ;; esac
-        wstart=0
+        view_text+="$character"
+        remaining_text="${remaining_text:1}"
+        case "$remaining_text" in "'"*) ok=0; break ;; esac
+        word_start=0
         ;;
       '#')
-        if [ "$wstart" = 1 ]; then
-          case "$s" in
-            *"$nl"*) pre="${s%%"$nl"*}" ;;
-            *) pre="$s" ;;
+        if [ "$word_start" = 1 ]; then
+          case "$remaining_text" in
+            *"$newline"*) prefix="${remaining_text%%"$newline"*}" ;;
+            *) prefix="$remaining_text" ;;
           esac
-          out+="$pre"
-          s="${s:${#pre}}"
+          view_text+="$prefix"
+          remaining_text="${remaining_text:${#prefix}}"
         else
-          out+="$ch"
-          s="${s:1}"
-          wstart=0
+          view_text+="$character"
+          remaining_text="${remaining_text:1}"
+          word_start=0
         fi
         ;;
       '<')
-        case "$s" in
+        case "$remaining_text" in
           '<<<'*)
             # A herestring, not a heredoc: its word is on this line and no
             # following line is a body.
-            out+='<<<'
-            s="${s:3}"
-            wstart=0
+            view_text+='<<<'
+            remaining_text="${remaining_text:3}"
+            word_start=0
             ;;
           '<<'*)
             chunk='<<'
-            s="${s:2}"
-            strip=0
-            case "$s" in '-'*) chunk="$chunk-"; s="${s:1}"; strip=1 ;; esac
+            remaining_text="${remaining_text:2}"
+            strip_tabs=0
+            case "$remaining_text" in '-'*) chunk="$chunk-"; remaining_text="${remaining_text:1}"; strip_tabs=1 ;; esac
             blanks=""
             # shellcheck disable=SC2295 # bracket expressions, matched as patterns
-            case "$s" in
-              $_GAIA_VA_BLANK_SET*) blanks="${s%%$_GAIA_VA_NONBLANK_SET*}" ;;
+            case "$remaining_text" in
+              $_GAIA_VA_BLANK_SET*) blanks="${remaining_text%%$_GAIA_VA_NONBLANK_SET*}" ;;
             esac
-            if [ -n "$blanks" ]; then chunk="$chunk$blanks"; s="${s:${#blanks}}"; fi
-            dl=""
-            dbad=0
-            dq=1
-            case "$s" in
+            if [ -n "$blanks" ]; then chunk="$chunk$blanks"; remaining_text="${remaining_text:${#blanks}}"; fi
+            delimiter=""
+            delimiter_unreadable=0
+            delimiter_quoted=1
+            case "$remaining_text" in
               "'"*)
-                s="${s:1}"
-                case "$s" in
-                  *"'"*) dl="${s%%\'*}"; s="${s:$(( ${#dl} + 1 ))}"; chunk="$chunk'$dl'" ;;
-                  *) dbad=1 ;;
+                remaining_text="${remaining_text:1}"
+                case "$remaining_text" in
+                  *"'"*) delimiter="${remaining_text%%\'*}"; remaining_text="${remaining_text:$(( ${#delimiter} + 1 ))}"; chunk="$chunk'$delimiter'" ;;
+                  *) delimiter_unreadable=1 ;;
                 esac
                 ;;
               '"'*)
-                s="${s:1}"
-                case "$s" in
-                  *'"'*) dl="${s%%\"*}"; s="${s:$(( ${#dl} + 1 ))}"; chunk="$chunk\"$dl\"" ;;
-                  *) dbad=1 ;;
+                remaining_text="${remaining_text:1}"
+                case "$remaining_text" in
+                  *'"'*) delimiter="${remaining_text%%\"*}"; remaining_text="${remaining_text:$(( ${#delimiter} + 1 ))}"; chunk="$chunk\"$delimiter\"" ;;
+                  *) delimiter_unreadable=1 ;;
                 esac
                 ;;
-              "$_GAIA_VA_BS"*)
-                s="${s:1}"
-                dl="${s%%[!A-Za-z0-9_.-]*}"
-                if [ -n "$dl" ]; then s="${s:${#dl}}"; chunk="$chunk$_GAIA_VA_BS$dl"; else dbad=1; fi
+              "$_GAIA_VA_BACKSLASH"*)
+                remaining_text="${remaining_text:1}"
+                delimiter="${remaining_text%%[!A-Za-z0-9_.-]*}"
+                if [ -n "$delimiter" ]; then remaining_text="${remaining_text:${#delimiter}}"; chunk="$chunk$_GAIA_VA_BACKSLASH$delimiter"; else delimiter_unreadable=1; fi
                 ;;
               *)
-                dq=0
-                dl="${s%%[!A-Za-z0-9_.-]*}"
-                if [ -n "$dl" ]; then s="${s:${#dl}}"; chunk="$chunk$dl"; else dbad=1; fi
+                delimiter_quoted=0
+                delimiter="${remaining_text%%[!A-Za-z0-9_.-]*}"
+                if [ -n "$delimiter" ]; then remaining_text="${remaining_text:${#delimiter}}"; chunk="$chunk$delimiter"; else delimiter_unreadable=1; fi
                 ;;
             esac
-            if [ "$dbad" = 1 ]; then ok=0; break; fi
+            if [ "$delimiter_unreadable" = 1 ]; then ok=0; break; fi
             # Condition 4: the delimiter has to be the whole word. Anything
             # abutting it is a spelling this walk cannot read exactly, and
             # reading it wrong puts the body's end in the wrong place.
-            case "$s" in
-              ''|' '*|"$_GAIA_VA_TAB"*|"$nl"*|';'*|'&'*|'|'*|'<'*|'>'*|')'*) ;;
+            case "$remaining_text" in
+              ''|' '*|"$_GAIA_VA_TAB"*|"$newline"*|';'*|'&'*|'|'*|'<'*|'>'*|')'*) ;;
               *) ok=0; break ;;
             esac
             # Condition 6's evidence, captured here because this is the only
-            # point that knows where the operator sits: `out` still holds the
+            # point that knows where the operator sits: `view_text` still holds the
             # line up to it and nothing of it is masked yet. Only the first
             # operator on a line is recorded, which is the only one condition 6
             # is ever asked about.
-            if [ "$hd_n" -eq 0 ]; then hd_pre="${out:$line_start}"; fi
-            out+="$chunk"
-            hd_delim[hd_n]="$dl"
-            hd_strip[hd_n]="$strip"
-            hd_quoted[hd_n]="$dq"
-            hd_n=$(( hd_n + 1 ))
-            wstart=0
+            if [ "$heredoc_count" -eq 0 ]; then heredoc_prefix="${view_text:$line_start}"; fi
+            view_text+="$chunk"
+            heredoc_delimiters[heredoc_count]="$delimiter"
+            heredoc_strip_tabs[heredoc_count]="$strip_tabs"
+            heredoc_quoted[heredoc_count]="$delimiter_quoted"
+            heredoc_count=$(( heredoc_count + 1 ))
+            word_start=0
             ;;
           *)
-            out+='<'
-            s="${s:1}"
-            wstart=0
+            view_text+='<'
+            remaining_text="${remaining_text:1}"
+            word_start=0
             ;;
         esac
         ;;
-      "$nl")
-        if [ "$hd_n" -eq 0 ]; then
-          out+="$nl"
-          s="${s:1}"
-          line_start=${#out}
-          wstart=1
+      "$newline")
+        if [ "$heredoc_count" -eq 0 ]; then
+          view_text+="$newline"
+          remaining_text="${remaining_text:1}"
+          line_start=${#view_text}
+          word_start=1
           continue
         fi
         # The opener line is read back out of the view rather than accumulated
@@ -504,68 +504,68 @@ gaia_verb_arm_view() {
         # in the text, and only a line that turns out to carry an opener is ever
         # read. Nothing ahead of this point in the line is masked, so the slice
         # is the line's own bytes.
-        cur="${out:$line_start}"
+        opener_line="${view_text:$line_start}"
         # More than one heredoc on a line and the redirection that decides
         # where each body goes stops being readable from one opener, so none of
         # them is proven; their bodies are still skipped, just not masked.
         data=0
-        if [ "$hd_n" -eq 1 ] && _gaia_va_opener_is_data "$cur" "$hd_pre"; then data=1; fi
-        s="${s:1}"
+        if [ "$heredoc_count" -eq 1 ] && _gaia_va_opener_is_data "$opener_line" "$heredoc_prefix"; then data=1; fi
+        remaining_text="${remaining_text:1}"
         first=1
-        bi=0
-        while [ "$bi" -lt "$hd_n" ]; do
-          _gaia_va_find_delim "$s" "${hd_delim[$bi]}" "${hd_strip[$bi]}" || { ok=0; break; }
-          p="$_gaia_va_p"
+        body_index=0
+        while [ "$body_index" -lt "$heredoc_count" ]; do
+          _gaia_va_find_delimiter "$remaining_text" "${heredoc_delimiters[$body_index]}" "${heredoc_strip_tabs[$body_index]}" || { ok=0; break; }
+          delimiter_offset="$_gaia_va_delimiter_offset"
           # Condition 7, decided here because only now is the body's extent
           # known. Only the first heredoc can carry the proof, so only it is
           # asked. The needles are the command-substitution openers of
-          # `sep_re` in verb-arming.sh; an opener added there and missed here
+          # `separator_regex` in verb-arming.sh; an opener added there and missed here
           # is masked as data, which fails open.
-          if [ "$first" = 1 ] && [ "$data" = 1 ] && [ "${hd_quoted[$bi]}" = 0 ]; then
+          if [ "$first" = 1 ] && [ "$data" = 1 ] && [ "${heredoc_quoted[$body_index]}" = 0 ]; then
             # shellcheck disable=SC2016 # the literal opener is the needle
-            case "${s:0:$p}" in
+            case "${remaining_text:0:$delimiter_offset}" in
               *'$('*|*'`'*) data=0 ;;
             esac
           fi
-          if [ "$first" = 1 ] && [ "$data" = 1 ] && [ "$p" -gt 0 ]; then
-            out+=x
+          if [ "$first" = 1 ] && [ "$data" = 1 ] && [ "$delimiter_offset" -gt 0 ]; then
+            view_text+=x
           else
-            out+="$nl"
+            view_text+="$newline"
           fi
           first=0
-          if [ "$p" -gt 0 ]; then
-            body="${s:0:$p}"
-            s="${s:$p}"
+          if [ "$delimiter_offset" -gt 0 ]; then
+            body="${remaining_text:0:$delimiter_offset}"
+            remaining_text="${remaining_text:$delimiter_offset}"
             if [ "$data" = 1 ]; then
-              _gaia_va_lc_chars
+              _gaia_va_locale_characters
               _gaia_va_make_run "$(( ${#body} - 1 ))"
-              _gaia_va_lc_bytes
-              out+="$_gaia_va_run$nl"
+              _gaia_va_locale_bytes
+              view_text+="$_gaia_va_run$newline"
             else
-              out+="$body"
+              view_text+="$body"
             fi
           fi
-          case "$s" in
-            *"$nl"*) dline="${s%%"$nl"*}" ;;
-            *) dline="$s" ;;
+          case "$remaining_text" in
+            *"$newline"*) delimiter_line="${remaining_text%%"$newline"*}" ;;
+            *) delimiter_line="$remaining_text" ;;
           esac
-          out+="$dline"
-          s="${s:${#dline}}"
-          bi=$(( bi + 1 ))
-          if [ "$bi" -lt "$hd_n" ]; then
-            case "$s" in
-              "$nl"*) s="${s:1}" ;;
+          view_text+="$delimiter_line"
+          remaining_text="${remaining_text:${#delimiter_line}}"
+          body_index=$(( body_index + 1 ))
+          if [ "$body_index" -lt "$heredoc_count" ]; then
+            case "$remaining_text" in
+              "$newline"*) remaining_text="${remaining_text:1}" ;;
               *) ok=0; break ;;
             esac
           fi
         done
         [ "$ok" = 1 ] || break
-        hd_n=0
-        hd_delim=()
-        hd_strip=()
-        hd_quoted=()
-        line_start=${#out}
-        wstart=1
+        heredoc_count=0
+        heredoc_delimiters=()
+        heredoc_strip_tabs=()
+        heredoc_quoted=()
+        line_start=${#view_text}
+        word_start=1
         ;;
     esac
   done
@@ -573,11 +573,11 @@ gaia_verb_arm_view() {
   # A heredoc still pending at the end of the text has no body and no
   # delimiter line; an open span has no end. Both are the walk failing to
   # decide, which suppresses nothing.
-  if [ "$ok" = 1 ] && [ -z "$q" ] && [ "$hd_n" -eq 0 ]; then
+  if [ "$ok" = 1 ] && [ -z "$quote_character" ] && [ "$heredoc_count" -eq 0 ]; then
     # shellcheck disable=SC2034 # the view is this function's whole product; every reader is a consumer hook
-    GAIA_VERB_ARM_VIEW="$out"
+    GAIA_VERB_ARM_VIEW="$view_text"
   fi
-  _gaia_va_lc_chars
+  _gaia_va_locale_characters
   return 0
 }
 
@@ -589,7 +589,7 @@ gaia_verb_arm_view() {
 #
 # ASSIGNS GAIA_VERB_ARM_LIVE: <text> with the first character of every
 # substitution opener the parsing shell never runs overwritten by `x`. An
-# opener that arms is one the shell runs, and textually `sep_re` in
+# opener that arms is one the shell runs, and textually `separator_regex` in
 # lib/verb-arming.sh cannot tell those apart from one cited in prose, so the
 # arming decision asks this view whether its opener survived. Same length, in
 # bytes and so in characters, because every overwrite is one ASCII byte for
@@ -609,7 +609,7 @@ gaia_verb_arm_view() {
 #     `--body "$(cat <<'EOF' ... EOF)"`. Inside `<( )` the body is handed to
 #     whatever reads the file, often an interpreter, so it stays live.
 #
-# The openers are the ones `sep_re` carries; one added there needs its first
+# The openers are the ones `separator_regex` carries; one added there needs its first
 # character in _GAIA_VA_LIVE_OPENER_SET, or it is never masked, which only
 # over-arms.
 #
@@ -644,38 +644,38 @@ gaia_verb_arm_view() {
 # openers, a `#`, the list operators, and a newline.
 _GAIA_VA_LIVE_TOP_SET=$'["\047\\\\\140$()<>=#;&|\n]'
 # Inside double quotes: the closing quote, a backslash, a backtick and a `$`.
-_GAIA_VA_LIVE_DQ_SET=$'["\\\\\140$]'
+_GAIA_VA_LIVE_DOUBLE_QUOTE_SET=$'["\\\\\140$]'
 # The first characters an opener can begin with.
 _GAIA_VA_LIVE_OPENER_SET=$'[\140$<>=]'
-_GAIA_VA_LIVE_CASE_RE='(^|[^A-Za-z0-9_])case([^A-Za-z0-9_]|$)'
-_GAIA_VA_LIVE_OWNER_RE='^[[:space:]]*(cat|tee)([[:space:]]+-[A-Za-z]+)*[[:space:]]*$'
-_GAIA_VA_BLANK_LINE_RE='^[[:space:]]*$'
+_GAIA_VA_LIVE_CASE_REGEX='(^|[^A-Za-z0-9_])case([^A-Za-z0-9_]|$)'
+_GAIA_VA_LIVE_OWNER_REGEX='^[[:space:]]*(cat|tee)([[:space:]]+-[A-Za-z]+)*[[:space:]]*$'
+_GAIA_VA_BLANK_LINE_REGEX='^[[:space:]]*$'
 
-_gaia_va_lwork=0
+_gaia_va_live_work=0
 _gaia_va_masked=""
 
 # _gaia_va_mask_openers <span>: set _gaia_va_masked to <span> with every
 # opener's first character overwritten. Charges the shared budget and returns
 # 1 when it runs out.
 _gaia_va_mask_openers() {
-  local rest="$1" pre np ch nx
+  local rest="$1" prefix prefix_length character next_character
   _gaia_va_masked=""
   while [ -n "$rest" ]; do
-    _gaia_va_lwork=$(( _gaia_va_lwork + ${#rest} ))
-    [ "$_gaia_va_lwork" -le "$_GAIA_VA_MAX_WORK" ] || return 1
+    _gaia_va_live_work=$(( _gaia_va_live_work + ${#rest} ))
+    [ "$_gaia_va_live_work" -le "$_GAIA_VA_MAXIMUM_WORK" ] || return 1
     # shellcheck disable=SC2295 # a bracket expression, matched as a pattern
-    pre="${rest%%$_GAIA_VA_LIVE_OPENER_SET*}"
-    np=${#pre}
-    ch="${rest:$np:1}"
-    if [ -z "$ch" ]; then _gaia_va_masked+="$rest"; return 0; fi
-    nx="${rest:$(( np + 1 )):1}"
-    _gaia_va_masked+="$pre"
+    prefix="${rest%%$_GAIA_VA_LIVE_OPENER_SET*}"
+    prefix_length=${#prefix}
+    character="${rest:$prefix_length:1}"
+    if [ -z "$character" ]; then _gaia_va_masked+="$rest"; return 0; fi
+    next_character="${rest:$(( prefix_length + 1 )):1}"
+    _gaia_va_masked+="$prefix"
     # shellcheck disable=SC2016 # the literal openers are the patterns
-    case "$ch$nx" in
+    case "$character$next_character" in
       '`'*|'$('|'<('|'>(') _gaia_va_masked+=x ;;
-      *) _gaia_va_masked+="$ch" ;;
+      *) _gaia_va_masked+="$character" ;;
     esac
-    rest="${rest:$(( np + 1 ))}"
+    rest="${rest:$(( prefix_length + 1 ))}"
   done
   return 0
 }
@@ -697,38 +697,38 @@ _GAIA_VA_B32_SET=$'["\047\140\\\\()]'
 # modelled. Charges the shared
 # budget.
 _gaia_va_b32_body_safe() {
-  local rest="$1" after="$2" pre np ch span depth=0
+  local rest="$1" after="$2" prefix prefix_length character span depth=0
   while [ -n "$rest" ]; do
-    _gaia_va_lwork=$(( _gaia_va_lwork + ${#rest} ))
-    [ "$_gaia_va_lwork" -le "$_GAIA_VA_MAX_WORK" ] || return 1
+    _gaia_va_live_work=$(( _gaia_va_live_work + ${#rest} ))
+    [ "$_gaia_va_live_work" -le "$_GAIA_VA_MAXIMUM_WORK" ] || return 1
     # shellcheck disable=SC2295 # a bracket expression, matched as a pattern
-    pre="${rest%%$_GAIA_VA_B32_SET*}"
-    np=${#pre}
-    ch="${rest:$np:1}"
-    [ -n "$ch" ] || break
-    rest="${rest:$(( np + 1 ))}"
-    case "$ch" in
+    prefix="${rest%%$_GAIA_VA_B32_SET*}"
+    prefix_length=${#prefix}
+    character="${rest:$prefix_length:1}"
+    [ -n "$character" ] || break
+    rest="${rest:$(( prefix_length + 1 ))}"
+    case "$character" in
       '(') depth=$(( depth + 1 )) ;;
       ')')
         depth=$(( depth - 1 ))
         [ "$depth" -ge 0 ] || return 1
         ;;
-      "$_GAIA_VA_BS") rest="${rest:1}" ;;
+      "$_GAIA_VA_BACKSLASH") rest="${rest:1}" ;;
       *)
         case "$rest" in
-          *"$ch"*) ;;
+          *"$character"*) ;;
           *)
-            case "$after" in *"$ch"*) return 1 ;; esac
+            case "$after" in *"$character"*) return 1 ;; esac
             return 0
             ;;
         esac
         # A `$'` span honours backslash escapes, so its end is not the next
         # apostrophe. An escaped `$` was consumed above and never reaches
         # here.
-        case "$ch$pre" in "'"*'$') return 1 ;; esac
-        span="${rest%%"$ch"*}"
-        if [ "$ch" != "'" ]; then
-          case "$span" in *'$'*|*'`'*|*"$_GAIA_VA_BS"*) return 1 ;; esac
+        case "$character$prefix" in "'"*'$') return 1 ;; esac
+        span="${rest%%"$character"*}"
+        if [ "$character" != "'" ]; then
+          case "$span" in *'$'*|*'`'*|*"$_GAIA_VA_BACKSLASH"*) return 1 ;; esac
         fi
         rest="${rest:$(( ${#span} + 1 ))}"
         ;;
@@ -740,148 +740,148 @@ _gaia_va_b32_body_safe() {
 gaia_verb_arm_live_view() {
   local text="$1"
   GAIA_VERB_ARM_LIVE="$text"
-  [ "${#text}" -le "${GAIA_VERB_ARM_MAX_CHARS:-16384}" ] || return 0
+  [ "${#text}" -le "${GAIA_VERB_ARM_MAXIMUM_CHARACTERS:-16384}" ] || return 0
 
-  local nl=$'\n'
-  local s out ok wstart sp bdepth kind pre np ch nx inner seg rest dead
-  local chunk strip blanks dl dbad dq hd_n hd_sp hd_own hd_end bi p body dline
+  local newline=$'\n'
+  local remaining_text view_text ok word_start stack_top backtick_depth kind prefix prefix_length character next_character inner command_so_far rest dead
+  local chunk strip_tabs blanks delimiter delimiter_unreadable delimiter_quoted heredoc_count heredoc_stack_top heredoc_owned heredoc_end body_index delimiter_offset body delimiter_line
   # The context stack. kind: T top level, S `$( )`, P `<( )` `>( )` `=( )`,
-  # B backticks, D double quotes. dep counts bare parentheses, cas records the
-  # word `case`, cmd is the offset in `out` where the current command began,
-  # and sopen, for an S frame, the offset just past its `$(`. Offsets in `out`
+  # B backticks, D double quotes. parenthesis_depths counts bare parentheses, case_seen records the
+  # word `case`, command_starts is the offset in `view_text` where the current command began,
+  # and substitution_open_offsets, for an S frame, the offset just past its `$(`. Offsets in `view_text`
   # are offsets in <text>: the scan runs on bytes and masks one for one.
-  local k dep cas cmd sopen hd_dl hd_strip hd_q f
-  k=(T); dep=(0); cas=(0); cmd=(0); sopen=(0)
-  hd_dl=(); hd_strip=(); hd_q=()
+  local frame_kinds parenthesis_depths case_seen command_starts substitution_open_offsets heredoc_delimiters heredoc_strip_tabs heredoc_quoted frame_index
+  frame_kinds=(T); parenthesis_depths=(0); case_seen=(0); command_starts=(0); substitution_open_offsets=(0)
+  heredoc_delimiters=(); heredoc_strip_tabs=(); heredoc_quoted=()
 
-  _gaia_va_lc_bytes
-  s="$text"
-  out=""
+  _gaia_va_locale_bytes
+  remaining_text="$text"
+  view_text=""
   ok=1
-  wstart=1
-  sp=0
-  bdepth=0
-  hd_n=0
-  hd_sp=0
-  hd_own=0
-  hd_end=0
-  _gaia_va_lwork=0
+  word_start=1
+  stack_top=0
+  backtick_depth=0
+  heredoc_count=0
+  heredoc_stack_top=0
+  heredoc_owned=0
+  heredoc_end=0
+  _gaia_va_live_work=0
 
-  while [ -n "$s" ]; do
-    _gaia_va_lwork=$(( _gaia_va_lwork + ${#s} ))
-    if [ "$_gaia_va_lwork" -gt "$_GAIA_VA_MAX_WORK" ]; then ok=0; break; fi
-    kind="${k[$sp]}"
+  while [ -n "$remaining_text" ]; do
+    _gaia_va_live_work=$(( _gaia_va_live_work + ${#remaining_text} ))
+    if [ "$_gaia_va_live_work" -gt "$_GAIA_VA_MAXIMUM_WORK" ]; then ok=0; break; fi
+    kind="${frame_kinds[$stack_top]}"
 
     if [ "$kind" = D ]; then
       # shellcheck disable=SC2295 # a bracket expression, matched as a pattern
-      pre="${s%%$_GAIA_VA_LIVE_DQ_SET*}"
-      np=${#pre}
-      ch="${s:$np:1}"
-      if [ -z "$ch" ]; then ok=0; break; fi
-      out+="$pre"
-      s="${s:$np}"
+      prefix="${remaining_text%%$_GAIA_VA_LIVE_DOUBLE_QUOTE_SET*}"
+      prefix_length=${#prefix}
+      character="${remaining_text:$prefix_length:1}"
+      if [ -z "$character" ]; then ok=0; break; fi
+      view_text+="$prefix"
+      remaining_text="${remaining_text:$prefix_length}"
     else
       # shellcheck disable=SC2295 # a bracket expression, matched as a pattern
-      pre="${s%%$_GAIA_VA_LIVE_TOP_SET*}"
-      np=${#pre}
-      ch="${s:$np:1}"
-      if [ -z "$ch" ]; then out+="$s"; s=""; break; fi
-      out+="$pre"
-      s="${s:$np}"
-      if [ -n "$pre" ]; then
-        [[ "$pre" =~ $_GAIA_VA_LIVE_CASE_RE ]] && cas[sp]=1
-        case "$pre" in
-          *$_GAIA_VA_WORD_SET) wstart=1 ;;
-          *) wstart=0 ;;
+      prefix="${remaining_text%%$_GAIA_VA_LIVE_TOP_SET*}"
+      prefix_length=${#prefix}
+      character="${remaining_text:$prefix_length:1}"
+      if [ -z "$character" ]; then view_text+="$remaining_text"; remaining_text=""; break; fi
+      view_text+="$prefix"
+      remaining_text="${remaining_text:$prefix_length}"
+      if [ -n "$prefix" ]; then
+        [[ "$prefix" =~ $_GAIA_VA_LIVE_CASE_REGEX ]] && case_seen[stack_top]=1
+        case "$prefix" in
+          *$_GAIA_VA_WORD_SET) word_start=1 ;;
+          *) word_start=0 ;;
         esac
       fi
     fi
-    nx="${s:1:1}"
+    next_character="${remaining_text:1:1}"
 
-    case "$ch" in
+    case "$character" in
       '"')
-        out+="$ch"
-        s="${s:1}"
+        view_text+="$character"
+        remaining_text="${remaining_text:1}"
         if [ "$kind" = D ]; then
-          sp=$(( sp - 1 ))
+          stack_top=$(( stack_top - 1 ))
         else
-          sp=$(( sp + 1 )); k[sp]=D; dep[sp]=0; cas[sp]=0; cmd[sp]=${#out}
+          stack_top=$(( stack_top + 1 )); frame_kinds[stack_top]=D; parenthesis_depths[stack_top]=0; case_seen[stack_top]=0; command_starts[stack_top]=${#view_text}
         fi
-        wstart=0
+        word_start=0
         ;;
       "'")
         # Only reachable outside double quotes: the double-quote set holds no
         # apostrophe.
-        s="${s:1}"
-        case "$s" in
+        remaining_text="${remaining_text:1}"
+        case "$remaining_text" in
           *"'"*) ;;
           *) ok=0; break ;;
         esac
-        inner="${s%%\'*}"
+        inner="${remaining_text%%\'*}"
         # bash ends a backquote at its first unescaped backtick, quoted or not.
-        if [ "$bdepth" -gt 0 ]; then
+        if [ "$backtick_depth" -gt 0 ]; then
           case "$inner" in *'`'*) ok=0; break ;; esac
         fi
         _gaia_va_mask_openers "$inner" || { ok=0; break; }
-        out+="'$_gaia_va_masked'"
-        s="${s:$(( ${#inner} + 1 ))}"
-        wstart=0
+        view_text+="'$_gaia_va_masked'"
+        remaining_text="${remaining_text:$(( ${#inner} + 1 ))}"
+        word_start=0
         ;;
-      "$_GAIA_VA_BS")
-        out+="$ch"
-        if [ -z "$nx" ]; then ok=0; break; fi
+      "$_GAIA_VA_BACKSLASH")
+        view_text+="$character"
+        if [ -z "$next_character" ]; then ok=0; break; fi
         # Under backticks, in any context down to the innermost, the shell
         # strips the backslash from `\$`, `` \` `` and `\\` before parsing the
         # inner command, so the escape it seems to make is gone by then.
-        if [ "$bdepth" -gt 0 ]; then
-          case "$nx" in
-            '$'|'`'|"$_GAIA_VA_BS") ok=0; break ;;
+        if [ "$backtick_depth" -gt 0 ]; then
+          case "$next_character" in
+            '$'|'`'|"$_GAIA_VA_BACKSLASH") ok=0; break ;;
           esac
         fi
         # A line continuation moves the newline that ends a heredoc opener.
-        if [ "$nx" = "$nl" ] && [ "$hd_n" -gt 0 ]; then ok=0; break; fi
-        case "$nx" in
-          '$'|'`'|'<'|'>'|'=') out+=x ;;
-          *) out+="$nx" ;;
+        if [ "$next_character" = "$newline" ] && [ "$heredoc_count" -gt 0 ]; then ok=0; break; fi
+        case "$next_character" in
+          '$'|'`'|'<'|'>'|'=') view_text+=x ;;
+          *) view_text+="$next_character" ;;
         esac
-        s="${s:2}"
-        wstart=0
+        remaining_text="${remaining_text:2}"
+        word_start=0
         ;;
       '`')
         # Under backticks, bash closes the outer backquote here even from
         # inside double quotes or a nested `$( )`, where zsh opens a new one.
-        if [ "$bdepth" -gt 0 ] && [ "$kind" != B ]; then ok=0; break; fi
-        out+="$ch"
-        s="${s:1}"
+        if [ "$backtick_depth" -gt 0 ] && [ "$kind" != B ]; then ok=0; break; fi
+        view_text+="$character"
+        remaining_text="${remaining_text:1}"
         if [ "$kind" = B ]; then
-          sp=$(( sp - 1 ))
-          bdepth=$(( bdepth - 1 ))
-          wstart=0
+          stack_top=$(( stack_top - 1 ))
+          backtick_depth=$(( backtick_depth - 1 ))
+          word_start=0
         else
-          sp=$(( sp + 1 )); k[sp]=B; dep[sp]=0; cas[sp]=0; cmd[sp]=${#out}
-          bdepth=$(( bdepth + 1 ))
-          wstart=1
+          stack_top=$(( stack_top + 1 )); frame_kinds[stack_top]=B; parenthesis_depths[stack_top]=0; case_seen[stack_top]=0; command_starts[stack_top]=${#view_text}
+          backtick_depth=$(( backtick_depth + 1 ))
+          word_start=1
         fi
         ;;
       '$')
-        case "$nx" in
+        case "$next_character" in
           '(')
             # shellcheck disable=SC2016 # the literal opener, copied through
-            out+='$('
-            s="${s:2}"
-            sp=$(( sp + 1 )); k[sp]=S; dep[sp]=0; cas[sp]=0; cmd[sp]=${#out}
-            sopen[sp]=${#out}
-            wstart=1
+            view_text+='$('
+            remaining_text="${remaining_text:2}"
+            stack_top=$(( stack_top + 1 )); frame_kinds[stack_top]=S; parenthesis_depths[stack_top]=0; case_seen[stack_top]=0; command_starts[stack_top]=${#view_text}
+            substitution_open_offsets[stack_top]=${#view_text}
+            word_start=1
             ;;
           "'")
             # A dollar-quoted word, except inside double quotes, where the
             # apostrophe is ordinary.
             if [ "$kind" != D ]; then ok=0; break; fi
-            out+='$'
-            s="${s:1}"
+            view_text+='$'
+            remaining_text="${remaining_text:1}"
             ;;
           '{')
-            rest="${s:2}"
+            rest="${remaining_text:2}"
             case "$rest" in
               *'}'*) ;;
               *) ok=0; break ;;
@@ -891,227 +891,227 @@ gaia_verb_arm_live_view() {
             # nest, quote, or run a command inside the braces is not modelled,
             # and that includes bash 5.3's `${ ` and `${|`.
             case "$inner" in
-              ''|[[:space:]]*|'|'*|*[\"\'\`\$\(\{\\]*|*"$nl"*) ok=0; break ;;
+              ''|[[:space:]]*|'|'*|*[\"\'\`\$\(\{\\]*|*"$newline"*) ok=0; break ;;
             esac
-            out+="\${$inner}"
-            s="${s:$(( ${#inner} + 3 ))}"
-            wstart=0
+            view_text+="\${$inner}"
+            remaining_text="${remaining_text:$(( ${#inner} + 3 ))}"
+            word_start=0
             ;;
           *)
-            out+='$'
-            s="${s:1}"
-            wstart=0
+            view_text+='$'
+            remaining_text="${remaining_text:1}"
+            word_start=0
             ;;
         esac
         ;;
       '(')
-        out+="$ch"
-        s="${s:1}"
-        dep[sp]=$(( ${dep[$sp]} + 1 ))
-        cmd[sp]=${#out}
-        wstart=1
+        view_text+="$character"
+        remaining_text="${remaining_text:1}"
+        parenthesis_depths[stack_top]=$(( ${parenthesis_depths[$stack_top]} + 1 ))
+        command_starts[stack_top]=${#view_text}
+        word_start=1
         ;;
       ')')
-        out+="$ch"
-        s="${s:1}"
-        if [ "${cas[$sp]}" = 1 ]; then ok=0; break; fi
-        if [ "${dep[$sp]}" -gt 0 ]; then
-          dep[sp]=$(( ${dep[$sp]} - 1 ))
+        view_text+="$character"
+        remaining_text="${remaining_text:1}"
+        if [ "${case_seen[$stack_top]}" = 1 ]; then ok=0; break; fi
+        if [ "${parenthesis_depths[$stack_top]}" -gt 0 ]; then
+          parenthesis_depths[stack_top]=$(( ${parenthesis_depths[$stack_top]} - 1 ))
           # A subshell's `)` is an operator, so a `#` right after it opens a
           # comment, where after a substitution's `)` it continues the word.
           # Rather than model which `(` this closes, stop.
-          case "$s" in '#'*) ok=0; break ;; esac
+          case "$remaining_text" in '#'*) ok=0; break ;; esac
         elif [ "$kind" = S ] || [ "$kind" = P ]; then
-          sp=$(( sp - 1 ))
+          stack_top=$(( stack_top - 1 ))
         else
           ok=0; break
         fi
-        wstart=0
+        word_start=0
         ;;
       '<'|'>'|'=')
-        if [ "$nx" = '(' ]; then
-          out+="$ch("
-          s="${s:2}"
-          sp=$(( sp + 1 )); k[sp]=P; dep[sp]=0; cas[sp]=0; cmd[sp]=${#out}
-          wstart=1
-        elif [ "$ch" = '<' ] && [ "${s:0:3}" = '<<<' ]; then
-          out+='<<<'
-          s="${s:3}"
-          wstart=0
-        elif [ "$ch" = '<' ] && [ "$nx" = '<' ]; then
+        if [ "$next_character" = '(' ]; then
+          view_text+="$character("
+          remaining_text="${remaining_text:2}"
+          stack_top=$(( stack_top + 1 )); frame_kinds[stack_top]=P; parenthesis_depths[stack_top]=0; case_seen[stack_top]=0; command_starts[stack_top]=${#view_text}
+          word_start=1
+        elif [ "$character" = '<' ] && [ "${remaining_text:0:3}" = '<<<' ]; then
+          view_text+='<<<'
+          remaining_text="${remaining_text:3}"
+          word_start=0
+        elif [ "$character" = '<' ] && [ "$next_character" = '<' ]; then
           # Inside parentheses `<<` may be an arithmetic shift, and a heredoc
           # in a subshell can feed whatever reads the subshell's output.
-          if [ "${dep[$sp]}" -gt 0 ]; then ok=0; break; fi
+          if [ "${parenthesis_depths[$stack_top]}" -gt 0 ]; then ok=0; break; fi
           # The delimiter is read exactly as the walk above reads it.
-          seg="${out:${cmd[$sp]}}"
+          command_so_far="${view_text:${command_starts[$stack_top]}}"
           chunk='<<'
-          s="${s:2}"
-          strip=0
-          case "$s" in '-'*) chunk="$chunk-"; s="${s:1}"; strip=1 ;; esac
+          remaining_text="${remaining_text:2}"
+          strip_tabs=0
+          case "$remaining_text" in '-'*) chunk="$chunk-"; remaining_text="${remaining_text:1}"; strip_tabs=1 ;; esac
           blanks=""
           # shellcheck disable=SC2295 # bracket expressions, matched as patterns
-          case "$s" in
-            $_GAIA_VA_BLANK_SET*) blanks="${s%%$_GAIA_VA_NONBLANK_SET*}" ;;
+          case "$remaining_text" in
+            $_GAIA_VA_BLANK_SET*) blanks="${remaining_text%%$_GAIA_VA_NONBLANK_SET*}" ;;
           esac
-          if [ -n "$blanks" ]; then chunk="$chunk$blanks"; s="${s:${#blanks}}"; fi
-          dl=""
-          dbad=0
-          dq=1
-          case "$s" in
+          if [ -n "$blanks" ]; then chunk="$chunk$blanks"; remaining_text="${remaining_text:${#blanks}}"; fi
+          delimiter=""
+          delimiter_unreadable=0
+          delimiter_quoted=1
+          case "$remaining_text" in
             "'"*)
-              s="${s:1}"
-              case "$s" in
-                *"'"*) dl="${s%%\'*}"; s="${s:$(( ${#dl} + 1 ))}"; chunk="$chunk'$dl'" ;;
-                *) dbad=1 ;;
+              remaining_text="${remaining_text:1}"
+              case "$remaining_text" in
+                *"'"*) delimiter="${remaining_text%%\'*}"; remaining_text="${remaining_text:$(( ${#delimiter} + 1 ))}"; chunk="$chunk'$delimiter'" ;;
+                *) delimiter_unreadable=1 ;;
               esac
               ;;
             '"'*)
-              s="${s:1}"
-              case "$s" in
-                *'"'*) dl="${s%%\"*}"; s="${s:$(( ${#dl} + 1 ))}"; chunk="$chunk\"$dl\"" ;;
-                *) dbad=1 ;;
+              remaining_text="${remaining_text:1}"
+              case "$remaining_text" in
+                *'"'*) delimiter="${remaining_text%%\"*}"; remaining_text="${remaining_text:$(( ${#delimiter} + 1 ))}"; chunk="$chunk\"$delimiter\"" ;;
+                *) delimiter_unreadable=1 ;;
               esac
               ;;
-            "$_GAIA_VA_BS"*)
-              s="${s:1}"
-              dl="${s%%[!A-Za-z0-9_.-]*}"
-              if [ -n "$dl" ]; then s="${s:${#dl}}"; chunk="$chunk$_GAIA_VA_BS$dl"; else dbad=1; fi
+            "$_GAIA_VA_BACKSLASH"*)
+              remaining_text="${remaining_text:1}"
+              delimiter="${remaining_text%%[!A-Za-z0-9_.-]*}"
+              if [ -n "$delimiter" ]; then remaining_text="${remaining_text:${#delimiter}}"; chunk="$chunk$_GAIA_VA_BACKSLASH$delimiter"; else delimiter_unreadable=1; fi
               ;;
             *)
-              dq=0
-              dl="${s%%[!A-Za-z0-9_.-]*}"
-              if [ -n "$dl" ]; then s="${s:${#dl}}"; chunk="$chunk$dl"; else dbad=1; fi
+              delimiter_quoted=0
+              delimiter="${remaining_text%%[!A-Za-z0-9_.-]*}"
+              if [ -n "$delimiter" ]; then remaining_text="${remaining_text:${#delimiter}}"; chunk="$chunk$delimiter"; else delimiter_unreadable=1; fi
               ;;
           esac
-          if [ "$dbad" = 1 ]; then ok=0; break; fi
-          case "$s" in
-            ''|' '*|"$_GAIA_VA_TAB"*|"$nl"*|';'*|'&'*|'|'*|'<'*|'>'*|')'*) ;;
+          if [ "$delimiter_unreadable" = 1 ]; then ok=0; break; fi
+          case "$remaining_text" in
+            ''|' '*|"$_GAIA_VA_TAB"*|"$newline"*|';'*|'&'*|'|'*|'<'*|'>'*|')'*) ;;
             *) ok=0; break ;;
           esac
-          if [ "$hd_n" -eq 0 ]; then
-            hd_sp=$sp
-            hd_own=0
+          if [ "$heredoc_count" -eq 0 ]; then
+            heredoc_stack_top=$stack_top
+            heredoc_owned=0
             if [ "$kind" = T ] || [ "$kind" = S ]; then
-              [[ "$seg" =~ $_GAIA_VA_LIVE_OWNER_RE ]] && hd_own=1
+              [[ "$command_so_far" =~ $_GAIA_VA_LIVE_OWNER_REGEX ]] && heredoc_owned=1
             fi
-          elif [ "$sp" -ne "$hd_sp" ]; then
+          elif [ "$stack_top" -ne "$heredoc_stack_top" ]; then
             ok=0; break
           fi
-          out+="$chunk"
-          hd_dl[hd_n]="$dl"
-          hd_strip[hd_n]="$strip"
-          hd_q[hd_n]="$dq"
-          hd_n=$(( hd_n + 1 ))
-          [ "$hd_n" -eq 1 ] && hd_end=${#out}
-          wstart=0
+          view_text+="$chunk"
+          heredoc_delimiters[heredoc_count]="$delimiter"
+          heredoc_strip_tabs[heredoc_count]="$strip_tabs"
+          heredoc_quoted[heredoc_count]="$delimiter_quoted"
+          heredoc_count=$(( heredoc_count + 1 ))
+          [ "$heredoc_count" -eq 1 ] && heredoc_end=${#view_text}
+          word_start=0
         else
-          out+="$ch"
-          s="${s:1}"
-          wstart=0
+          view_text+="$character"
+          remaining_text="${remaining_text:1}"
+          word_start=0
         fi
         ;;
       '#')
-        if [ "$wstart" = 1 ]; then
-          case "$s" in
-            *"$nl"*) pre="${s%%"$nl"*}" ;;
-            *) pre="$s" ;;
+        if [ "$word_start" = 1 ]; then
+          case "$remaining_text" in
+            *"$newline"*) prefix="${remaining_text%%"$newline"*}" ;;
+            *) prefix="$remaining_text" ;;
           esac
-          if [ "$bdepth" -gt 0 ]; then
-            case "$pre" in *'`'*) ok=0; break ;; esac
+          if [ "$backtick_depth" -gt 0 ]; then
+            case "$prefix" in *'`'*) ok=0; break ;; esac
           fi
-          out+="$pre"
-          s="${s:${#pre}}"
+          view_text+="$prefix"
+          remaining_text="${remaining_text:${#prefix}}"
         else
-          out+="$ch"
-          s="${s:1}"
+          view_text+="$character"
+          remaining_text="${remaining_text:1}"
         fi
         ;;
       ';'|'&'|'|')
         # After `>` or `<` this completes a redirection operator (`>&`, `<&`,
         # `>|`) rather than ending the command, and the word after it is a
         # file, never the command a heredoc belongs to.
-        case "$out" in
+        case "$view_text" in
           *'>'|*'<') ;;
-          *) cmd[sp]=$(( ${#out} + 1 )) ;;
+          *) command_starts[stack_top]=$(( ${#view_text} + 1 )) ;;
         esac
-        out+="$ch"
-        s="${s:1}"
-        wstart=1
+        view_text+="$character"
+        remaining_text="${remaining_text:1}"
+        word_start=1
         ;;
-      "$nl")
-        if [ "$hd_n" -eq 0 ]; then
-          out+="$nl"
-          s="${s:1}"
-          cmd[sp]=${#out}
-          wstart=1
+      "$newline")
+        if [ "$heredoc_count" -eq 0 ]; then
+          view_text+="$newline"
+          remaining_text="${remaining_text:1}"
+          command_starts[stack_top]=${#view_text}
+          word_start=1
           continue
         fi
         # The bodies begin here, in the context their operators stood in.
-        if [ "$sp" -ne "$hd_sp" ]; then ok=0; break; fi
+        if [ "$stack_top" -ne "$heredoc_stack_top" ]; then ok=0; break; fi
         dead=0
-        if [ "$hd_n" -eq 1 ] && [ "$hd_own" = 1 ] && [ "${hd_q[0]}" = 1 ] \
-           && [[ "${out:$hd_end}" =~ $_GAIA_VA_BLANK_LINE_RE ]]; then
+        if [ "$heredoc_count" -eq 1 ] && [ "$heredoc_owned" = 1 ] && [ "${heredoc_quoted[0]}" = 1 ] \
+           && [[ "${view_text:$heredoc_end}" =~ $_GAIA_VA_BLANK_LINE_REGEX ]]; then
           dead=1
         fi
-        out+="$nl"
-        s="${s:1}"
-        bi=0
-        while [ "$bi" -lt "$hd_n" ]; do
-          _gaia_va_find_delim "$s" "${hd_dl[$bi]}" "${hd_strip[$bi]}" || { ok=0; break; }
-          p="$_gaia_va_p"
-          body="${s:0:$p}"
-          s="${s:$p}"
-          if [ "$bdepth" -gt 0 ]; then
+        view_text+="$newline"
+        remaining_text="${remaining_text:1}"
+        body_index=0
+        while [ "$body_index" -lt "$heredoc_count" ]; do
+          _gaia_va_find_delimiter "$remaining_text" "${heredoc_delimiters[$body_index]}" "${heredoc_strip_tabs[$body_index]}" || { ok=0; break; }
+          delimiter_offset="$_gaia_va_delimiter_offset"
+          body="${remaining_text:0:$delimiter_offset}"
+          remaining_text="${remaining_text:$delimiter_offset}"
+          if [ "$backtick_depth" -gt 0 ]; then
             case "$body" in *'`'*) ok=0; break ;; esac
           fi
           # bash 3.2's matcher starts at each enclosing `$(`, not at the body,
           # so it reads everything from there on: earlier bodies, comments and
           # delimiter lines included.
           if [ "$dead" = 1 ]; then
-            f=0
-            while [ "$f" -le "$hd_sp" ]; do
-              if [ "${k[$f]}" = S ]; then
-                _gaia_va_b32_body_safe "${text:${sopen[$f]}:$(( ${#out} - ${sopen[$f]} ))}$body" "$s" || { ok=0; break; }
+            frame_index=0
+            while [ "$frame_index" -le "$heredoc_stack_top" ]; do
+              if [ "${frame_kinds[$frame_index]}" = S ]; then
+                _gaia_va_b32_body_safe "${text:${substitution_open_offsets[$frame_index]}:$(( ${#view_text} - ${substitution_open_offsets[$frame_index]} ))}$body" "$remaining_text" || { ok=0; break; }
               fi
-              f=$(( f + 1 ))
+              frame_index=$(( frame_index + 1 ))
             done
             [ "$ok" = 1 ] || break
           fi
           if [ "$dead" = 1 ]; then
             _gaia_va_mask_openers "$body" || { ok=0; break; }
-            out+="$_gaia_va_masked"
+            view_text+="$_gaia_va_masked"
           else
-            out+="$body"
+            view_text+="$body"
           fi
-          case "$s" in
-            *"$nl"*) dline="${s%%"$nl"*}" ;;
-            *) dline="$s" ;;
+          case "$remaining_text" in
+            *"$newline"*) delimiter_line="${remaining_text%%"$newline"*}" ;;
+            *) delimiter_line="$remaining_text" ;;
           esac
-          out+="$dline"
-          s="${s:${#dline}}"
-          bi=$(( bi + 1 ))
-          if [ "$bi" -lt "$hd_n" ]; then
-            case "$s" in
-              "$nl"*) out+="$nl"; s="${s:1}" ;;
+          view_text+="$delimiter_line"
+          remaining_text="${remaining_text:${#delimiter_line}}"
+          body_index=$(( body_index + 1 ))
+          if [ "$body_index" -lt "$heredoc_count" ]; then
+            case "$remaining_text" in
+              "$newline"*) view_text+="$newline"; remaining_text="${remaining_text:1}" ;;
               *) ok=0; break ;;
             esac
           fi
         done
         [ "$ok" = 1 ] || break
-        hd_n=0
-        hd_dl=(); hd_strip=(); hd_q=()
-        cmd[sp]=${#out}
-        wstart=1
+        heredoc_count=0
+        heredoc_delimiters=(); heredoc_strip_tabs=(); heredoc_quoted=()
+        command_starts[stack_top]=${#view_text}
+        word_start=1
         ;;
     esac
   done
 
   # Anything still open at the end is the scan failing to decide, which masks
   # nothing.
-  if [ "$ok" = 1 ] && [ "$sp" -eq 0 ] && [ "$hd_n" -eq 0 ]; then
+  if [ "$ok" = 1 ] && [ "$stack_top" -eq 0 ] && [ "$heredoc_count" -eq 0 ]; then
     # shellcheck disable=SC2034 # read by lib/verb-arming.sh
-    GAIA_VERB_ARM_LIVE="$out"
+    GAIA_VERB_ARM_LIVE="$view_text"
   fi
-  _gaia_va_lc_chars
+  _gaia_va_locale_characters
   return 0
 }

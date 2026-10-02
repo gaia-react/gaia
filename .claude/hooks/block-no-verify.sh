@@ -41,10 +41,10 @@ payload=$(cat)
 # jq-availability arm: refuse loudly rather than fail open when the interpreter
 # this hook reads its payload with is absent. What that buys, and the contract
 # the literals below satisfy, live in .claude/hooks/lib/jq-availability.sh.
-_jq_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _jq_lib_dir=''
+_jq_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _jq_library_directory=''
 set +e
 # shellcheck source=lib/jq-availability.sh
-[ -n "$_jq_lib_dir" ] && [ -f "$_jq_lib_dir/jq-availability.sh" ] && . "$_jq_lib_dir/jq-availability.sh" 2>/dev/null
+[ -n "$_jq_library_directory" ] && [ -f "$_jq_library_directory/jq-availability.sh" ] && . "$_jq_library_directory/jq-availability.sh" 2>/dev/null
 set -e
 if ! type gaia_require_jq >/dev/null 2>&1; then
   printf 'BLOCKED: block-no-verify.sh cannot load lib/jq-availability.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
@@ -52,11 +52,11 @@ if ! type gaia_require_jq >/dev/null 2>&1; then
 fi
 gaia_require_jq 'the commit-floor bypass guard' "$payload" tool_input 'git'
 
-cmd=$(echo "$payload" | jq -r '.tool_input.command // empty')
+command_line=$(echo "$payload" | jq -r '.tool_input.command // empty')
 
 # Only act on git commands, short-circuit everything else. (Fast path only;
 # correctness comes from the command-position scan below.)
-[[ "$cmd" =~ (^|[[:space:]&;|()])git([[:space:]]|$) ]] || exit 0
+[[ "$command_line" =~ (^|[[:space:]&;|()])git([[:space:]]|$) ]] || exit 0
 
 # Repo-scope: this repo's commit-floor policy governs this repo only. A git
 # command aimed at a different repo (e.g. `git -C ../other commit --no-verify`)
@@ -78,32 +78,32 @@ cmd=$(echo "$payload" | jq -r '.tool_input.command // empty')
 # fail, so no degrade branch is owed, and a missing carve-out here is a silent
 # fail-open rather than a deny.
 _hook_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || _hook_root=''
-_scope_lib="$_hook_root/.claude/hooks/lib/repo-scope.sh"
-set +e; [ -n "$_hook_root" ] && [ -f "$_scope_lib" ] && . "$_scope_lib" 2>/dev/null; set -e
-if type cmd_targets_foreign_repo >/dev/null 2>&1 \
-   && cmd_targets_foreign_repo "$cmd"; then
+_repo_scope_library="$_hook_root/.claude/hooks/lib/repo-scope.sh"
+set +e; [ -n "$_hook_root" ] && [ -f "$_repo_scope_library" ] && . "$_repo_scope_library" 2>/dev/null; set -e
+if type command_targets_foreign_repo >/dev/null 2>&1 \
+   && command_targets_foreign_repo "$command_line"; then
   exit 0
 fi
 
 deny() {
-  jq -n --arg r "$1" '{
+  jq -n --arg reason "$1" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: $r
+      permissionDecisionReason: $reason
     }
   }'
   exit 0
 }
 
-floor_msg() {
-  local msg="Hook bypass on 'git $sub' is forbidden ($1). The Quality Gate floor (typecheck/lint/test) runs via the Husky pre-commit hook, fix the failures, don't skip the gate. See wiki/decisions/Quality Gate.md."
+floor_message() {
+  local message="Hook bypass on 'git $sub' is forbidden ($1). The Quality Gate floor (typecheck/lint/test) runs via the Husky pre-commit hook, fix the failures, don't skip the gate. See wiki/decisions/Quality Gate.md."
   # The over-block workaround applies to commit only: push carries no -m text
   # a bypass token could be merely mentioned inside.
   if [ "$sub" = "commit" ]; then
-    msg="$msg If this token appears only inside your commit message text, not as a real flag, that is this hook's documented over-block: rephrase the message, the gate was not bypassed. A shell reserved word inside that quoted text ('then', 'do', 'if', an open brace) can put the words after it in command position for this check, so quoted prose describing a bypass reaches the over-block more readily than the flag alone would."
+    message="$message If this token appears only inside your commit message text, not as a real flag, that is this hook's documented over-block: rephrase the message, the gate was not bypassed. A shell reserved word inside that quoted text ('then', 'do', 'if', an open brace) can put the words after it in command position for this check, so quoted prose describing a bypass reaches the over-block more readily than the flag alone would."
   fi
-  echo "$msg"
+  echo "$message"
 }
 
 # collapsed_substitutions <text>: print the command once more with every
@@ -125,13 +125,13 @@ floor_msg() {
 # block-main-destructive-git.sh carries the same function, and
 # block-no-verify.bats pins the copies identical.
 collapsed_substitutions() {
-  local text="$1" prev pass=0
+  local text="$1" previous_text pass=0
   # shellcheck disable=SC2016 # a literal opener matched in the text, not an expansion
   case "$text" in *'$('*) ;; *) return 0 ;; esac
   while [ "$pass" -lt 8 ]; do
-    prev="$text"
+    previous_text="$text"
     text=$(printf '%s' "$text" | sed -E 's/\$\([^()]*\)/_/g')
-    [ "$text" = "$prev" ] && break
+    [ "$text" = "$previous_text" ] && break
     pass=$((pass + 1))
   done
   [ "$text" = "$1" ] || printf '%s\n' "$text"
@@ -147,7 +147,7 @@ collapsed_substitutions() {
 # branch.
 saw_commit=0
 saw_push=0
-while IFS= read -r seg; do
+while IFS= read -r segment; do
   # Command word = the first token past any leading whitespace, env-var
   # assignment prefix, shell reserved word, or redirection. What the shell
   # accepts in that run, each of which hid the whole invocation from a narrower
@@ -179,13 +179,13 @@ while IFS= read -r seg; do
   # block-main-destructive-git.sh carries this expression too, and
   # block-no-verify.bats pins the copies identical: a widening applied to one
   # and not the rest leaves the gap open in whichever copy was missed.
-  seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*\+?=([^[:space:]"'"'"']+|"[^"]*"|'"'"'[^'"'"']*'"'"')*|[0-9]*[<>][^[:space:]]*|[{!]|coproc|elif|else|while|until|then|time([[:space:]]+(-p|--))?|do|if)[[:space:]]+)*//')
-  [[ "$seg_cmd" =~ ^git([[:space:]]|$) ]] || continue
+  segment_command=$(printf '%s' "$segment" | sed -E 's/^[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*\+?=([^[:space:]"'"'"']+|"[^"]*"|'"'"'[^'"'"']*'"'"')*|[0-9]*[<>][^[:space:]]*|[{!]|coproc|elif|else|while|until|then|time([[:space:]]+(-p|--))?|do|if)[[:space:]]+)*//')
+  [[ "$segment_command" =~ ^git([[:space:]]|$) ]] || continue
 
   is_commit=0
   is_push=0
-  [[ "$seg" =~ (^|[[:space:]])commit([[:space:]]|$) ]] && is_commit=1
-  [[ "$seg" =~ (^|[[:space:]])push([[:space:]]|$) ]] && is_push=1
+  [[ "$segment" =~ (^|[[:space:]])commit([[:space:]]|$) ]] && is_commit=1
+  [[ "$segment" =~ (^|[[:space:]])push([[:space:]]|$) ]] && is_push=1
   [[ "$is_commit" -eq 1 || "$is_push" -eq 1 ]] || continue
 
   [[ "$is_commit" -eq 1 ]] && saw_commit=1
@@ -197,21 +197,21 @@ while IFS= read -r seg; do
   # All bypass checks are scoped to THIS git segment.
 
   # --no-verify, both commit and push.
-  if [[ "$seg" =~ (^|[[:space:]])--no-verify([[:space:]]|=|$) ]]; then
-    deny "$(floor_msg '--no-verify')"
+  if [[ "$segment" =~ (^|[[:space:]])--no-verify([[:space:]]|=|$) ]]; then
+    deny "$(floor_message '--no-verify')"
   fi
 
   # Falsy HUSKY= prefix (HUSKY=0, HUSKY=false, HUSKY=no, or empty), both. The
   # `+=` spelling is read too: it appends, so on the unset HUSKY that is the
   # ordinary case it assigns the same falsy value the `=` spelling does.
-  if [[ "$seg" =~ (^|[[:space:]])HUSKY\+?=(0|false|no)?([[:space:]]|$) ]]; then
-    deny "$(floor_msg 'HUSKY disabled')"
+  if [[ "$segment" =~ (^|[[:space:]])HUSKY\+?=(0|false|no)?([[:space:]]|$) ]]; then
+    deny "$(floor_message 'HUSKY disabled')"
   fi
 
   # -c core.hooksPath=<path> override, both. Git config keys are
   # case-insensitive, so match the key case-insensitively.
-  if grep -iqE -- '-c[[:space:]]+core\.hookspath=' <<<"$seg"; then
-    deny "$(floor_msg '-c core.hooksPath override')"
+  if grep -iqE -- '-c[[:space:]]+core\.hookspath=' <<<"$segment"; then
+    deny "$(floor_message '-c core.hooksPath override')"
   fi
 
   # -n short flag = --no-verify, COMMIT ONLY. `git push -n` is --dry-run and
@@ -219,10 +219,10 @@ while IFS= read -r seg; do
   # -anm), never the long --no-verify (handled above) or --dry-run. Scoped to
   # the git segment so a `-n` on another program (grep/head/sort/tail) is inert.
   if [[ "$is_commit" -eq 1 ]] \
-     && [[ "$seg" =~ (^|[[:space:]])-[a-zA-Z]*n[a-zA-Z]*([[:space:]]|$) ]]; then
-    deny "$(floor_msg '-n (= --no-verify)')"
+     && [[ "$segment" =~ (^|[[:space:]])-[a-zA-Z]*n[a-zA-Z]*([[:space:]]|$) ]]; then
+    deny "$(floor_message '-n (= --no-verify)')"
   fi
-done < <({ printf '%s\n' "$cmd"; collapsed_substitutions "$cmd"; } | tr '|&;()' '\n')
+done < <({ printf '%s\n' "$command_line"; collapsed_substitutions "$command_line"; } | tr '|&;()' '\n')
 
 # Fail-closed safety net for the UNAMBIGUOUS tokens. Segment-splitting on a
 # `| & ; ( )` that is actually inside a quoted commit message could orphan a
@@ -234,14 +234,14 @@ done < <({ printf '%s\n' "$cmd"; collapsed_substitutions "$cmd"; } | tr '|&;()' 
 if [[ "$saw_commit" -eq 1 || "$saw_push" -eq 1 ]]; then
   sub="commit"
   [[ "$saw_commit" -eq 1 ]] || sub="push"
-  if [[ "$cmd" =~ (^|[[:space:]])--no-verify([[:space:]]|=|$) ]]; then
-    deny "$(floor_msg '--no-verify')"
+  if [[ "$command_line" =~ (^|[[:space:]])--no-verify([[:space:]]|=|$) ]]; then
+    deny "$(floor_message '--no-verify')"
   fi
-  if [[ "$cmd" =~ (^|[[:space:]])HUSKY\+?=(0|false|no)?([[:space:]]|$) ]]; then
-    deny "$(floor_msg 'HUSKY disabled')"
+  if [[ "$command_line" =~ (^|[[:space:]])HUSKY\+?=(0|false|no)?([[:space:]]|$) ]]; then
+    deny "$(floor_message 'HUSKY disabled')"
   fi
-  if grep -iqE -- '-c[[:space:]]+core\.hookspath=' <<<"$cmd"; then
-    deny "$(floor_msg '-c core.hooksPath override')"
+  if grep -iqE -- '-c[[:space:]]+core\.hookspath=' <<<"$command_line"; then
+    deny "$(floor_message '-c core.hooksPath override')"
   fi
 fi
 

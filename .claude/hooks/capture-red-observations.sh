@@ -35,8 +35,8 @@ command -v jq >/dev/null 2>&1 || exit 0
 tool_name=$(printf '%s' "$input" | jq -r '.tool_name // ""' 2>/dev/null || echo "")
 [ "$tool_name" = "Bash" ] || exit 0
 
-cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null || echo "")
-[ -n "$cmd" ] || exit 0
+command=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null || echo "")
+[ -n "$command" ] || exit 0
 
 # --- scope match: a `(pnpm|npm) [run] test … --run …` invocation --------------
 # ANCHORED detection: walk pipeline segments, strip leading env-var prefixes,
@@ -51,17 +51,17 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null || ec
 # spurious full-suite vitest re-run never fires on prose. `test:ci` /
 # `test:lint-staged` carry a `test:` token, not a bare `test`, so the
 # `test([[:space:]]|$)` boundary skips them.
-# $test_seg is the matched invocation with its env prefix stripped; the scope
+# $test_segment is the matched invocation with its env prefix stripped; the scope
 # parse below reads it (not the whole command) so only that call's args count.
-test_seg=""
-while IFS= read -r seg; do
-  seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*//')
-  [[ "$seg_cmd" =~ ^(pnpm|npm)[[:space:]]+(run[[:space:]]+)?test([[:space:]]|$) ]] || continue
-  [[ "$seg_cmd" =~ (^|[[:space:]])--run([[:space:]]|$) ]] || continue
-  test_seg="$seg_cmd"
+test_segment=""
+while IFS= read -r segment; do
+  segment_command=$(printf '%s' "$segment" | sed -E 's/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*//')
+  [[ "$segment_command" =~ ^(pnpm|npm)[[:space:]]+(run[[:space:]]+)?test([[:space:]]|$) ]] || continue
+  [[ "$segment_command" =~ (^|[[:space:]])--run([[:space:]]|$) ]] || continue
+  test_segment="$segment_command"
   break
-done < <(printf '%s\n' "$cmd" | tr '|&;()' '\n')
-[ -n "$test_seg" ] || exit 0
+done < <(printf '%s\n' "$command" | tr '|&;()' '\n')
+[ -n "$test_segment" ] || exit 0
 
 # --- source the shared lib (ledger path, repo-rel, signal helper) -------------
 # Rooted at this file's own directory, the same way the main-root load below is
@@ -69,8 +69,8 @@ done < <(printf '%s\n' "$cmd" | tr '|&;()' '\n')
 # under the repository root, and the `type` degrade below cannot distinguish a
 # moved working directory from a missing library, so a `cd` alone would stop
 # this hook recording RED observations at all.
-_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _lib_dir=''
-[ -n "$_lib_dir" ] && [ -f "$_lib_dir/red-ledger.sh" ] && . "$_lib_dir/red-ledger.sh"
+_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _library_directory=''
+[ -n "$_library_directory" ] && [ -f "$_library_directory/red-ledger.sh" ] && . "$_library_directory/red-ledger.sh"
 type red_ledger_path >/dev/null 2>&1 || exit 0
 
 # The shared main-root resolver, sourced from this hook's own checkout via
@@ -95,8 +95,8 @@ fi
 tree_root="$(gaia_resolve_tree_root "$source_cwd" 2>/dev/null)" || exit 0
 
 ledger=$(red_ledger_path "$tree_root") || exit 0
-ledger_dir=$(dirname "$ledger")
-tmp_dir="${ledger_dir}/.tmp"
+ledger_directory=$(dirname "$ledger")
+temporary_directory="${ledger_directory}/.tmp"
 
 # --- obtain structured json: canned override, or a scoped vitest re-run -------
 json_file=""
@@ -105,10 +105,10 @@ cleanup_json=0
 if [ -n "${RED_CAPTURE_JSON_OVERRIDE:-}" ] && [ -f "${RED_CAPTURE_JSON_OVERRIDE}" ]; then
   json_file="${RED_CAPTURE_JSON_OVERRIDE}"
 else
-  # Parse the matched invocation ($test_seg) for a scope arg (a path/dir/pattern)
+  # Parse the matched invocation ($test_segment) for a scope arg (a path/dir/pattern)
   # so the json re-run is bounded to the same files the agent targeted. Take the
   # tokens AFTER the `test` token, dropping recognizable flags/options.
-  scope=$(printf '%s\n' "$test_seg" | awk '
+  scope=$(printf '%s\n' "$test_segment" | awk '
     {
       seen = 0
       redir = 0
@@ -128,7 +128,7 @@ else
         # The `|&;()` split above severs a `&`-carrying redirection (2>&1)
         # mid-token: it splits at the `&`, so only the operator head (2>)
         # reaches this segment and the rest becomes an orphan segment on its
-        # own line, never matched into $test_seg. That head still lands here
+        # own line, never matched into $test_segment. That head still lands here
         # as a token, but it is caught by the bare-operator arm just below
         # (which arms `redir`), not by the `[<>]` filter. Arming `redir` on
         # it is harmless: the split guarantees the head is the last token on
@@ -164,7 +164,7 @@ else
     exit 0
   fi
 
-  mkdir -p "$tmp_dir" 2>/dev/null || true
+  mkdir -p "$temporary_directory" 2>/dev/null || true
   # BSD mktemp (macOS) only substitutes a TRAILING run of X's; an embedded
   # "-XXXXXX.json" template is read as the literal filename, so a second
   # concurrent call collides with the first and fails outright (mkstemp
@@ -172,7 +172,7 @@ else
   # leftover file is removed by hand. The trailing-X form randomizes on both
   # BSD and GNU mktemp. vitest's own reporter is selected by --reporter=json,
   # not by the outputFile extension, so dropping .json here is safe.
-  json_file=$(mktemp "${tmp_dir}/vitest-json-XXXXXX" 2>/dev/null || echo "")
+  json_file=$(mktemp "${temporary_directory}/vitest-json-XXXXXX" 2>/dev/null || echo "")
   [ -n "$json_file" ] || exit 0
   cleanup_json=1
 
@@ -192,7 +192,7 @@ else
 fi
 
 # --- parse per-test failures, attach signals, append to the ledger ------------
-mkdir -p "$ledger_dir" 2>/dev/null || true
+mkdir -p "$ledger_directory" 2>/dev/null || true
 observed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "")
 
 # Walk each file (testResults[]). Emit a TSV line "file<TAB>fullName<TAB>kind"
@@ -224,12 +224,12 @@ if [ -n "$failures" ]; then
     [ -n "$raw_file" ] || continue
     [ -n "$full_name" ] || continue
 
-    rel_file=$(red_ledger_repo_rel "$raw_file")
-    [ -n "$rel_file" ] || continue
+    relative_file=$(red_ledger_repo_relative_path "$raw_file")
+    [ -n "$relative_file" ] || continue
 
     # Recompute the file's {fullName → signal} map once and reuse it.
-    if [ "$rel_file" != "$cached_file" ]; then
-      cached_file="$rel_file"
+    if [ "$relative_file" != "$cached_file" ]; then
+      cached_file="$relative_file"
       # From the ACTING TREE, not the process working directory. This helper
       # reads the test file from disk at a repo-relative path and returns 0 with
       # no output when it cannot see it, so from a subdirectory `cached_signals`
@@ -239,7 +239,7 @@ if [ -n "$failures" ]; then
       # RED-before-GREEN commit gate, which now enforces from a subdirectory.
       # A feeder that silently records nothing there would leave that gate
       # denying every new test with no way to satisfy it.
-      cached_signals=$( cd "$tree_root" && red_ledger_signals "$rel_file" 2>/dev/null || echo "")
+      cached_signals=$( cd "$tree_root" && red_ledger_signals "$relative_file" 2>/dev/null || echo "")
     fi
     [ -n "$cached_signals" ] || continue
 
@@ -252,7 +252,7 @@ if [ -n "$failures" ]; then
     # Build the ledger line safely with jq -n --arg (never string-concat json).
     jq -c -n \
       --argjson schema 1 \
-      --arg file "$rel_file" \
+      --arg file "$relative_file" \
       --arg fullName "$full_name" \
       --arg signal "$signal" \
       --arg failureKind "$kind" \

@@ -81,8 +81,8 @@ require_jq() {
 }
 
 setup() {
-  THIS_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
-  REPO_ROOT="$(git -C "$THIS_DIR" rev-parse --show-toplevel)"
+  THIS_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
+  REPO_ROOT="$(git -C "$THIS_DIRECTORY" rev-parse --show-toplevel)"
   AGENTS_DIR="$REPO_ROOT/.claude/agents"
   require_jq
 

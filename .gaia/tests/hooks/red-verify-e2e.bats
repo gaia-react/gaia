@@ -66,7 +66,7 @@ setup() {
   # The ledger path is keyed to REPO's own tree key; ask the shipped resolver
   # for it (the real main-root-lib.sh in HOME_ROOT, not a second hardcoded
   # copy of the keyed literal) now that REPO is a valid work tree.
-  LEDGER_REL=".gaia/local/red-ledger/$(bash "$HOME_ROOT/.gaia/scripts/main-root-lib.sh" --tree-key "$REPO")/observations.jsonl"
+  LEDGER_RELATIVE_PATH=".gaia/local/red-ledger/$(bash "$HOME_ROOT/.gaia/scripts/main-root-lib.sh" --tree-key "$REPO")/observations.jsonl"
 }
 
 teardown() {
@@ -89,18 +89,18 @@ stage() { git -C "$REPO" add "$1"; }
 # signal from the file's CURRENT on-disk content, so the ledger line it writes
 # carries the genuine current signal. Args: <test-file-rel> <canned-json-abs>.
 run_capture() {
-  local file_rel="$1" json_abs="$2"
+  local relative_file="$1" json_absolute_path="$2"
   local payload
-  payload=$(jq -nc --arg c "pnpm test --run $file_rel" \
+  payload=$(jq -nc --arg c "pnpm test --run $relative_file" \
     '{tool_name:"Bash", tool_input:{command:$c}, tool_response:{stdout:"", stderr:"", interrupted:false}}')
-  RED_CAPTURE_JSON_OVERRIDE="$json_abs" invoke_hook_in "$REPO" "$payload" "$CAPTURE_HOOK"
+  RED_CAPTURE_JSON_OVERRIDE="$json_absolute_path" invoke_hook_in "$REPO" "$payload" "$CAPTURE_HOOK"
 }
 
 # Drive the CHECK hook for a `git commit` PreToolUse, from inside the tmp repo.
 run_check() {
-  local cmd="${1:-git commit -m change}"
+  local command="${1:-git commit -m change}"
   local payload
-  payload=$(jq -nc --arg c "$cmd" '{tool_name:"Bash", tool_input:{command:$c}}')
+  payload=$(jq -nc --arg c "$command" '{tool_name:"Bash", tool_input:{command:$c}}')
   invoke_hook_in "$REPO" "$payload" "$CHECK_HOOK"
 }
 
@@ -108,8 +108,8 @@ run_check() {
 # <out-abs> <test-file-rel> <fullName>. The `name` field must equal the staged
 # file's repo-relative path so the capture hook keys the ledger to that file.
 canned_fail_json() {
-  local out="$1" file_rel="$2" full="$3"
-  jq -nc --arg name "$file_rel" --arg full "$full" '{
+  local output_file="$1" relative_file="$2" full="$3"
+  jq -nc --arg name "$relative_file" --arg full "$full" '{
     numTotalTestSuites: 1, numFailedTests: 1, numPassedTests: 0,
     numTotalTests: 1, success: false,
     testResults: [{
@@ -119,11 +119,11 @@ canned_fail_json() {
          failureMessages: ["AssertionError: expected 1 to be 2"]}
       ]
     }]
-  }' > "$out"
+  }' > "$output_file"
 }
 
 ledger_lines() {
-  [ -f "$REPO/$LEDGER_REL" ] && wc -l < "$REPO/$LEDGER_REL" | tr -d ' ' || echo 0
+  [ -f "$REPO/$LEDGER_RELATIVE_PATH" ] && wc -l < "$REPO/$LEDGER_RELATIVE_PATH" | tr -d ' ' || echo 0
 }
 
 denied() { [[ "$output" == *'"permissionDecision": "deny"'* ]]; }

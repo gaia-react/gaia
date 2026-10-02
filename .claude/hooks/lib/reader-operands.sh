@@ -110,12 +110,12 @@ _GAIA_RO_LONG_DISCARD='--regexp --file --exclude-from --ignore-file --max-count 
 # (escaped quotes, a backtick pair, nesting) has to reach every caller, and a
 # copy nobody remembers to edit diverges with no test going red.
 gaia_reader_strip_quotes() {
-  local s="$1"
-  case "$s" in
-    \"*\") s=${s#\"}; s=${s%\"} ;;
-    \'*\') s=${s#\'}; s=${s%\'} ;;
+  local token="$1"
+  case "$token" in
+    \"*\") token=${token#\"}; token=${token%\"} ;;
+    \'*\') token=${token#\'}; token=${token%\'} ;;
   esac
-  printf '%s' "$s"
+  printf '%s' "$token"
 }
 
 _gaia_ro_in_list() {
@@ -130,26 +130,26 @@ _gaia_ro_in_list() {
 # line, so a caller can read the output with a plain line loop and never have to
 # re-check for emptiness that this function already ruled out.
 _gaia_ro_emit() {
-  local v
-  v=$(gaia_reader_strip_quotes "$1")
-  if [ -n "$v" ]; then printf '%s\n' "$v"; fi
+  local operand
+  operand=$(gaia_reader_strip_quotes "$1")
+  if [ -n "$operand" ]; then printf '%s\n' "$operand"; fi
 }
 
 # Emit each element of a select flag's comma-separated glob list, skipping the
 # negated ones.
 _gaia_ro_emit_select() {
-  local v el
+  local glob_list glob_element
   local parts=()
-  v=$(gaia_reader_strip_quotes "$1")
+  glob_list=$(gaia_reader_strip_quotes "$1")
   # An empty array expands as unbound under bash 3.2 with set -u.
-  [ -n "$v" ] || return 0
+  [ -n "$glob_list" ] || return 0
   # read -a rather than an unquoted IFS split, which would also pathname-expand
   # a glob element against the working directory.
-  IFS=',' read -r -a parts <<<"$v"
-  for el in ${parts[@]+"${parts[@]}"}; do
-    case "$el" in
+  IFS=',' read -r -a parts <<<"$glob_list"
+  for glob_element in ${parts[@]+"${parts[@]}"}; do
+    case "$glob_element" in
       '!'* | '^'*) ;;
-      *) _gaia_ro_emit "$el" ;;
+      *) _gaia_ro_emit "$glob_element" ;;
     esac
   done
 }
@@ -157,8 +157,8 @@ _gaia_ro_emit_select() {
 # Emit the file operands of a grep-family invocation. Arguments are the tokens
 # AFTER the command word.
 _gaia_ro_grep_operands() {
-  local toks=("$@")
-  local n=${#toks[@]}
+  local tokens=("$@")
+  local token_count=${#tokens[@]}
   local i=0
   # pending is the disposition of a value the previous flag expects in the NEXT
   # token: "select" to emit it unless negated, "discard" to drop it, empty for
@@ -169,46 +169,46 @@ _gaia_ro_grep_operands() {
   local pattern_flagged=1
   local pattern_taken=1
   local end_of_flags=1
-  local t name val rest c j
+  local token name flag_value rest flag_character j
 
-  while [ "$i" -lt "$n" ]; do
-    t="${toks[$i]}"
+  while [ "$i" -lt "$token_count" ]; do
+    token="${tokens[$i]}"
     i=$((i + 1))
 
     if [ -n "$pending" ]; then
-      if [ "$pending" = 'select' ]; then _gaia_ro_emit_select "$t"; fi
+      if [ "$pending" = 'select' ]; then _gaia_ro_emit_select "$token"; fi
       pending=''
       continue
     fi
 
-    if [ "$end_of_flags" -ne 0 ] && [ "$t" = '--' ]; then
+    if [ "$end_of_flags" -ne 0 ] && [ "$token" = '--' ]; then
       end_of_flags=0
       continue
     fi
 
-    if [ "$end_of_flags" -ne 0 ] && [ "${t#--}" != "$t" ]; then
-      name="${t%%=*}"
-      val=''
-      if [ "$name" != "$t" ]; then val="${t#*=}"; fi
+    if [ "$end_of_flags" -ne 0 ] && [ "${token#--}" != "$token" ]; then
+      name="${token%%=*}"
+      flag_value=''
+      if [ "$name" != "$token" ]; then flag_value="${token#*=}"; fi
       if _gaia_ro_in_list "$name" "$_GAIA_RO_LONG_SELECT"; then
-        if [ -n "$val" ]; then
-          _gaia_ro_emit_select "$val"
+        if [ -n "$flag_value" ]; then
+          _gaia_ro_emit_select "$flag_value"
         else
           pending='select'
         fi
       elif _gaia_ro_in_list "$name" "$_GAIA_RO_LONG_DISCARD"; then
         if [ "$name" = '--regexp' ] || [ "$name" = '--file' ]; then pattern_flagged=0; fi
-        if [ -z "$val" ]; then pending='discard'; fi
+        if [ -z "$flag_value" ]; then pending='discard'; fi
       fi
       continue
     fi
 
-    if [ "$end_of_flags" -ne 0 ] && [ "${t#-}" != "$t" ] && [ "$t" != '-' ]; then
+    if [ "$end_of_flags" -ne 0 ] && [ "${token#-}" != "$token" ] && [ "$token" != '-' ]; then
       j=1
-      while [ "$j" -lt "${#t}" ]; do
-        c="${t:$j:1}"
-        rest="${t:$((j + 1))}"
-        if [ "$_GAIA_RO_SHORT_SELECT" != "${_GAIA_RO_SHORT_SELECT/$c/}" ]; then
+      while [ "$j" -lt "${#token}" ]; do
+        flag_character="${token:$j:1}"
+        rest="${token:$((j + 1))}"
+        if [ "$_GAIA_RO_SHORT_SELECT" != "${_GAIA_RO_SHORT_SELECT/$flag_character/}" ]; then
           if [ -n "$rest" ]; then
             _gaia_ro_emit_select "$rest"
           else
@@ -216,8 +216,8 @@ _gaia_ro_grep_operands() {
           fi
           break
         fi
-        if [ "$_GAIA_RO_SHORT_DISCARD" != "${_GAIA_RO_SHORT_DISCARD/$c/}" ]; then
-          if [ "$c" = 'e' ] || [ "$c" = 'f' ]; then pattern_flagged=0; fi
+        if [ "$_GAIA_RO_SHORT_DISCARD" != "${_GAIA_RO_SHORT_DISCARD/$flag_character/}" ]; then
+          if [ "$flag_character" = 'e' ] || [ "$flag_character" = 'f' ]; then pattern_flagged=0; fi
           if [ -z "$rest" ]; then pending='discard'; fi
           break
         fi
@@ -232,7 +232,7 @@ _gaia_ro_grep_operands() {
       pattern_taken=0
       continue
     fi
-    _gaia_ro_emit "$t"
+    _gaia_ro_emit "$token"
   done
 }
 
@@ -240,14 +240,14 @@ _gaia_ro_grep_operands() {
 # command word, since the target may be a bare assignment (`x=$(<f)`) with no
 # recognizable command word at all.
 _gaia_ro_redirect_operand() {
-  local seg="$1" rest cand
-  case "$seg" in
+  local segment="$1" rest candidate
+  case "$segment" in
     *'<'*) : ;;
     *) return 0 ;;
   esac
-  rest=$(printf '%s' "$seg" | sed -E 's/^.*<[[:space:]]*//')
-  cand=$(printf '%s' "$rest" | sed -E 's/[[:space:])].*$//')
-  if [ -n "$cand" ]; then _gaia_ro_emit "$cand"; fi
+  rest=$(printf '%s' "$segment" | sed -E 's/^.*<[[:space:]]*//')
+  candidate=$(printf '%s' "$rest" | sed -E 's/[[:space:])].*$//')
+  if [ -n "$candidate" ]; then _gaia_ro_emit "$candidate"; fi
   return 0
 }
 
@@ -258,33 +258,33 @@ gaia_reader_strip_env_prefix() {
 
 # Dispatch on a token list whose first element is the command word.
 _gaia_ro_dispatch() {
-  local toks=("$@")
-  local cmdword t
+  local tokens=("$@")
+  local command_word token
 
-  [ "${#toks[@]}" -gt 0 ] || return 0
-  cmdword=$(gaia_reader_strip_quotes "${toks[0]}")
+  [ "${#tokens[@]}" -gt 0 ] || return 0
+  command_word=$(gaia_reader_strip_quotes "${tokens[0]}")
 
-  if _gaia_ro_in_list "$cmdword" "$_GAIA_RO_GREP_READERS"; then
-    _gaia_ro_grep_operands "${toks[@]:1}"
-  elif _gaia_ro_in_list "$cmdword" "$_GAIA_RO_PLAIN_READERS"; then
-    for t in "${toks[@]:1}"; do
-      _gaia_ro_emit "$t"
+  if _gaia_ro_in_list "$command_word" "$_GAIA_RO_GREP_READERS"; then
+    _gaia_ro_grep_operands "${tokens[@]:1}"
+  elif _gaia_ro_in_list "$command_word" "$_GAIA_RO_PLAIN_READERS"; then
+    for token in "${tokens[@]:1}"; do
+      _gaia_ro_emit "$token"
     done
   fi
   return 0
 }
 
 gaia_reader_operands() {
-  local seg="$1"
-  local seg_cmd
-  local toks
+  local segment="$1"
+  local segment_command
+  local tokens
 
-  seg_cmd=$(gaia_reader_strip_env_prefix "$seg")
-  read -r -a toks <<<"$seg_cmd"
+  segment_command=$(gaia_reader_strip_env_prefix "$segment")
+  read -r -a tokens <<<"$segment_command"
 
-  if [ "${#toks[@]}" -gt 0 ]; then
-    _gaia_ro_dispatch ${toks[@]+"${toks[@]}"}
+  if [ "${#tokens[@]}" -gt 0 ]; then
+    _gaia_ro_dispatch ${tokens[@]+"${tokens[@]}"}
   fi
 
-  _gaia_ro_redirect_operand "$seg"
+  _gaia_ro_redirect_operand "$segment"
 }

@@ -32,26 +32,26 @@ setup() {
   . "$BATS_TEST_DIRNAME/helpers/require-node-typescript.sh"
   require_node_typescript "$REPO_ROOT"
   HOOK="$REPO_ROOT/.claude/hooks/capture-red-observations.sh"
-  FIX_REL=".gaia/tests/hooks/fixtures/red-ledger"
-  JSON_REL="$FIX_REL/json"
+  FIXTURE_RELATIVE_DIRECTORY=".gaia/tests/hooks/fixtures/red-ledger"
+  JSON_FIXTURE_RELATIVE_DIRECTORY="$FIXTURE_RELATIVE_DIRECTORY/json"
   # Ask the shipped lib where the ledger belongs (tree-keyed) rather than
   # hardcoding a second copy of the keyed literal.
-  LEDGER_ABS="$( . "$REPO_ROOT/.claude/hooks/lib/red-ledger.sh" && red_ledger_path "$REPO_ROOT" )"
+  LEDGER_ABSOLUTE_PATH="$( . "$REPO_ROOT/.claude/hooks/lib/red-ledger.sh" && red_ledger_path "$REPO_ROOT" )"
 
   # Stash any pre-existing local ledger; restore in teardown.
   STASH=""
-  if [ -f "$LEDGER_ABS" ]; then
+  if [ -f "$LEDGER_ABSOLUTE_PATH" ]; then
     STASH=$(mktemp -t red-ledger-stash-XXXXXX)
-    cp "$LEDGER_ABS" "$STASH"
+    cp "$LEDGER_ABSOLUTE_PATH" "$STASH"
   fi
-  rm -f "$LEDGER_ABS"
+  rm -f "$LEDGER_ABSOLUTE_PATH"
 }
 
 teardown() {
-  rm -f "$LEDGER_ABS"
+  rm -f "$LEDGER_ABSOLUTE_PATH"
   if [ -n "${STASH:-}" ] && [ -f "$STASH" ]; then
-    mkdir -p "$(dirname "$LEDGER_ABS")"
-    cp "$STASH" "$LEDGER_ABS"
+    mkdir -p "$(dirname "$LEDGER_ABSOLUTE_PATH")"
+    cp "$STASH" "$LEDGER_ABSOLUTE_PATH"
     rm -f "$STASH"
   fi
   [ -n "${STUB_BIN:-}" ] && rm -rf "$STUB_BIN"
@@ -62,15 +62,15 @@ teardown() {
 # Build a PostToolUse Bash payload and pipe it to the hook from the repo root.
 # Args: <tool_name> <command> [json_override_relpath]
 run_capture() {
-  local tool="$1" cmd="$2" override_rel="${3:-}"
+  local tool="$1" command="$2" override_relative_path="${3:-}"
   local payload
-  payload=$(jq -n --arg t "$tool" --arg c "$cmd" \
-    '{tool_name: $t, tool_input: {command: $c}, tool_response: {stdout: "", stderr: "", interrupted: false}}')
+  payload=$(jq -n --arg t "$tool" --arg command "$command" \
+    '{tool_name: $t, tool_input: {command: $command}, tool_response: {stdout: "", stderr: "", interrupted: false}}')
 
   # The override is set on the invocation as a whole, so it is in the
   # environment the hook inherits rather than on one side of the pipe.
-  if [ -n "$override_rel" ]; then
-    RED_CAPTURE_JSON_OVERRIDE="$REPO_ROOT/$override_rel" \
+  if [ -n "$override_relative_path" ]; then
+    RED_CAPTURE_JSON_OVERRIDE="$REPO_ROOT/$override_relative_path" \
       invoke_hook_in "$REPO_ROOT" "$payload" "$HOOK"
   else
     invoke_hook_in "$REPO_ROOT" "$payload" "$HOOK"
@@ -82,13 +82,13 @@ run_capture() {
 # from a depth nobody chose.
 # Args: <subdir> <tool_name> <command> [json_override_relpath]
 run_capture_from() {
-  local sub="$1" tool="$2" cmd="$3" override_rel="${4:-}"
+  local sub="$1" tool="$2" command="$3" override_relative_path="${4:-}"
   local payload
-  payload=$(jq -n --arg t "$tool" --arg c "$cmd" \
-    '{tool_name: $t, tool_input: {command: $c}, tool_response: {stdout: "", stderr: "", interrupted: false}}')
+  payload=$(jq -n --arg t "$tool" --arg command "$command" \
+    '{tool_name: $t, tool_input: {command: $command}, tool_response: {stdout: "", stderr: "", interrupted: false}}')
   mkdir -p "$REPO_ROOT/$sub"
-  if [ -n "$override_rel" ]; then
-    RED_CAPTURE_JSON_OVERRIDE="$REPO_ROOT/$override_rel" \
+  if [ -n "$override_relative_path" ]; then
+    RED_CAPTURE_JSON_OVERRIDE="$REPO_ROOT/$override_relative_path" \
       invoke_hook_in "$REPO_ROOT/$sub" "$payload" "$HOOK"
   else
     invoke_hook_in "$REPO_ROOT/$sub" "$payload" "$HOOK"
@@ -97,11 +97,11 @@ run_capture_from() {
 
 # Count ledger lines (0 when the file is absent).
 ledger_lines() {
-  [ -f "$LEDGER_ABS" ] && wc -l < "$LEDGER_ABS" | tr -d ' ' || echo 0
+  [ -f "$LEDGER_ABSOLUTE_PATH" ] && wc -l < "$LEDGER_ABSOLUTE_PATH" | tr -d ' ' || echo 0
 }
 
 # A fake `pnpm` ahead of the real one on PATH. It records every argv word it
-# receives to STUB_PNPM_ARGS_FILE (one per line) and, when STUB_PNPM_JSON_SRC
+# receives to STUB_PNPM_ARGS_FILE (one per line) and, when STUB_PNPM_JSON_SOURCE
 # is set, copies that canned json to whatever path `--outputFile=` names. This
 # drives the hook's real (non-override) scope-parsing code and lets a test
 # assert the exact tokens that reached `vitest --run` -- in particular, that a
@@ -113,15 +113,15 @@ stub_pnpm() {
   cat > "$STUB_BIN/pnpm" <<'SH'
 #!/bin/sh
 : > "$STUB_PNPM_ARGS_FILE"
-out_file=""
-for a in "$@"; do
-  printf '%s\n' "$a" >> "$STUB_PNPM_ARGS_FILE"
-  case "$a" in
-    --outputFile=*) out_file="${a#--outputFile=}" ;;
+output_file=""
+for argument in "$@"; do
+  printf '%s\n' "$argument" >> "$STUB_PNPM_ARGS_FILE"
+  case "$argument" in
+    --outputFile=*) output_file="${argument#--outputFile=}" ;;
   esac
 done
-if [ -n "$out_file" ] && [ -n "${STUB_PNPM_JSON_SRC:-}" ]; then
-  cp "$STUB_PNPM_JSON_SRC" "$out_file"
+if [ -n "$output_file" ] && [ -n "${STUB_PNPM_JSON_SOURCE:-}" ]; then
+  cp "$STUB_PNPM_JSON_SOURCE" "$output_file"
 fi
 exit 0
 SH
@@ -137,12 +137,12 @@ SH
 assert_scope_survives_redirect() {
   local redir="$1"
   stub_pnpm
-  STUB_PNPM_JSON_SRC="$REPO_ROOT/$JSON_REL/assertion-fail.json"
-  export STUB_PNPM_JSON_SRC
-  run_capture "Bash" "pnpm test --run $FIX_REL/mixed-pass-fail.test.ts $redir"
+  STUB_PNPM_JSON_SOURCE="$REPO_ROOT/$JSON_FIXTURE_RELATIVE_DIRECTORY/assertion-fail.json"
+  export STUB_PNPM_JSON_SOURCE
+  run_capture "Bash" "pnpm test --run $FIXTURE_RELATIVE_DIRECTORY/mixed-pass-fail.test.ts $redir"
   [ "$status" -eq 0 ]
   [ "$(ledger_lines)" -eq 1 ]
-  grep -qF -- "$FIX_REL/mixed-pass-fail.test.ts" "$STUB_PNPM_ARGS_FILE"
+  grep -qF -- "$FIXTURE_RELATIVE_DIRECTORY/mixed-pass-fail.test.ts" "$STUB_PNPM_ARGS_FILE"
   grep -E '[<>]' "$STUB_PNPM_ARGS_FILE" && return 1
   return 0
 }
@@ -157,12 +157,12 @@ assert_scope_survives_redirect() {
 assert_spaced_redirect_target_absent() {
   local redir="$1" target="$2"
   stub_pnpm
-  STUB_PNPM_JSON_SRC="$REPO_ROOT/$JSON_REL/assertion-fail.json"
-  export STUB_PNPM_JSON_SRC
-  run_capture "Bash" "pnpm test --run $FIX_REL/mixed-pass-fail.test.ts $redir"
+  STUB_PNPM_JSON_SOURCE="$REPO_ROOT/$JSON_FIXTURE_RELATIVE_DIRECTORY/assertion-fail.json"
+  export STUB_PNPM_JSON_SOURCE
+  run_capture "Bash" "pnpm test --run $FIXTURE_RELATIVE_DIRECTORY/mixed-pass-fail.test.ts $redir"
   [ "$status" -eq 0 ]
   [ "$(ledger_lines)" -eq 1 ]
-  grep -qF -- "$FIX_REL/mixed-pass-fail.test.ts" "$STUB_PNPM_ARGS_FILE"
+  grep -qF -- "$FIXTURE_RELATIVE_DIRECTORY/mixed-pass-fail.test.ts" "$STUB_PNPM_ARGS_FILE"
   grep -qxF "$target" "$STUB_PNPM_ARGS_FILE" && return 1
   return 0
 }
@@ -171,14 +171,14 @@ assert_spaced_redirect_target_absent() {
 
 @test "assertion-fail run appends exactly one RED for the failing test" {
   run_capture "Bash" \
-    "pnpm test --run $FIX_REL/mixed-pass-fail.test.ts" \
-    "$JSON_REL/assertion-fail.json"
+    "pnpm test --run $FIXTURE_RELATIVE_DIRECTORY/mixed-pass-fail.test.ts" \
+    "$JSON_FIXTURE_RELATIVE_DIRECTORY/assertion-fail.json"
   [ "$status" -eq 0 ]
   [ "$(ledger_lines)" -eq 1 ]
 
-  line=$(cat "$LEDGER_ABS")
+  line=$(cat "$LEDGER_ABSOLUTE_PATH")
   [ "$(printf '%s' "$line" | jq -r '.schema')" = "1" ]
-  [ "$(printf '%s' "$line" | jq -r '.file')" = "$FIX_REL/mixed-pass-fail.test.ts" ]
+  [ "$(printf '%s' "$line" | jq -r '.file')" = "$FIXTURE_RELATIVE_DIRECTORY/mixed-pass-fail.test.ts" ]
   [ "$(printf '%s' "$line" | jq -r '.fullName')" = "fails on assertion" ]
   [ "$(printf '%s' "$line" | jq -r '.failureKind')" = "assertion" ]
   [[ "$(printf '%s' "$line" | jq -r '.signal')" == sha256:* ]]
@@ -193,24 +193,24 @@ assert_spaced_redirect_target_absent() {
   # gate active is the worst of the two states: every new test denied, with no
   # way to satisfy the demand.
   run_capture_from "app" "Bash" \
-    "pnpm test --run $FIX_REL/mixed-pass-fail.test.ts" \
-    "$JSON_REL/assertion-fail.json"
+    "pnpm test --run $FIXTURE_RELATIVE_DIRECTORY/mixed-pass-fail.test.ts" \
+    "$JSON_FIXTURE_RELATIVE_DIRECTORY/assertion-fail.json"
   [ "$status" -eq 0 ]
   [ "$(ledger_lines)" -eq 1 ]
-  line=$(cat "$LEDGER_ABS")
+  line=$(cat "$LEDGER_ABSOLUTE_PATH")
   [ "$(printf '%s' "$line" | jq -r '.fullName')" = "fails on assertion" ]
   grep -qE '^sha256:' <<<"$(printf '%s' "$line" | jq -r '.signal')"
 }
 
 @test "recorded signal matches the helper's signal for that test" {
   run_capture "Bash" \
-    "pnpm test --run $FIX_REL/mixed-pass-fail.test.ts" \
-    "$JSON_REL/assertion-fail.json"
+    "pnpm test --run $FIXTURE_RELATIVE_DIRECTORY/mixed-pass-fail.test.ts" \
+    "$JSON_FIXTURE_RELATIVE_DIRECTORY/assertion-fail.json"
   [ "$status" -eq 0 ]
 
-  recorded=$(printf '%s' "$(cat "$LEDGER_ABS")" | jq -r '.signal')
+  recorded=$(printf '%s' "$(cat "$LEDGER_ABSOLUTE_PATH")" | jq -r '.signal')
   expected=$(cd "$REPO_ROOT" && node .gaia/scripts/red-ledger/extract-test-signals.mjs \
-    "$FIX_REL/mixed-pass-fail.test.ts" \
+    "$FIXTURE_RELATIVE_DIRECTORY/mixed-pass-fail.test.ts" \
     | jq -r 'select(.fullName == "fails on assertion") | .signal')
   [ -n "$expected" ]
   [ "$recorded" = "$expected" ]
@@ -218,12 +218,12 @@ assert_spaced_redirect_target_absent() {
 
 @test "the passing test in the same file is NOT recorded" {
   run_capture "Bash" \
-    "pnpm test --run $FIX_REL/mixed-pass-fail.test.ts" \
-    "$JSON_REL/assertion-fail.json"
+    "pnpm test --run $FIXTURE_RELATIVE_DIRECTORY/mixed-pass-fail.test.ts" \
+    "$JSON_FIXTURE_RELATIVE_DIRECTORY/assertion-fail.json"
   [ "$status" -eq 0 ]
   # Only one line, and it is the failing one; the passing test never appears.
   [ "$(ledger_lines)" -eq 1 ]
-  run grep -c '"fullName":"passes fine"' "$LEDGER_ABS"
+  run grep -c '"fullName":"passes fine"' "$LEDGER_ABSOLUTE_PATH"
   [ "$output" = "0" ]
 }
 
@@ -231,28 +231,28 @@ assert_spaced_redirect_target_absent() {
 
 @test "failureKind is runtime for a missing-implementation error" {
   run_capture "Bash" \
-    "pnpm test --run $FIX_REL/runtime-fail.test.ts" \
-    "$JSON_REL/runtime-fail.json"
+    "pnpm test --run $FIXTURE_RELATIVE_DIRECTORY/runtime-fail.test.ts" \
+    "$JSON_FIXTURE_RELATIVE_DIRECTORY/runtime-fail.json"
   [ "$status" -eq 0 ]
   [ "$(ledger_lines)" -eq 1 ]
-  [ "$(cat "$LEDGER_ABS" | jq -r '.failureKind')" = "runtime" ]
-  [ "$(cat "$LEDGER_ABS" | jq -r '.fullName')" = "calls a not-yet-implemented function" ]
+  [ "$(cat "$LEDGER_ABSOLUTE_PATH" | jq -r '.failureKind')" = "runtime" ]
+  [ "$(cat "$LEDGER_ABSOLUTE_PATH" | jq -r '.fullName')" = "calls a not-yet-implemented function" ]
 }
 
 # --- no RED for passing-only and collection-error runs ------------------------
 
 @test "passing-only run writes no ledger lines" {
   run_capture "Bash" \
-    "pnpm test --run $FIX_REL/two-tests.test.ts" \
-    "$JSON_REL/passing-only.json"
+    "pnpm test --run $FIXTURE_RELATIVE_DIRECTORY/two-tests.test.ts" \
+    "$JSON_FIXTURE_RELATIVE_DIRECTORY/passing-only.json"
   [ "$status" -eq 0 ]
   [ "$(ledger_lines)" -eq 0 ]
 }
 
 @test "collection-error run writes no ledger lines (coarse false-RED guard)" {
   run_capture "Bash" \
-    "pnpm test --run $FIX_REL/broken.test.ts" \
-    "$JSON_REL/collection-error.json"
+    "pnpm test --run $FIXTURE_RELATIVE_DIRECTORY/broken.test.ts" \
+    "$JSON_FIXTURE_RELATIVE_DIRECTORY/collection-error.json"
   [ "$status" -eq 0 ]
   [ "$(ledger_lines)" -eq 0 ]
 }
@@ -289,9 +289,9 @@ assert_spaced_redirect_target_absent() {
   jq -e '.hookSpecificOutput.hookEventName == "PostToolUse"' <<<"$output"
   jq -r '.hookSpecificOutput.additionalContext' <<<"$output" | grep -qF -- 'pnpm test --run <test-file>'
   # No temp vitest json was produced (the skip happens before the mktemp).
-  local ledger_dir
-  ledger_dir=$(dirname "$LEDGER_ABS")
-  run bash -c "ls '$ledger_dir/.tmp'/vitest-*.json 2>/dev/null | wc -l | tr -d ' '"
+  local ledger_directory
+  ledger_directory=$(dirname "$LEDGER_ABSOLUTE_PATH")
+  run bash -c "ls '$ledger_directory/.tmp'/vitest-*.json 2>/dev/null | wc -l | tr -d ' '"
   [ "$output" = "0" ]
 }
 
@@ -307,8 +307,8 @@ assert_spaced_redirect_target_absent() {
 @test "commands that never reach the scope check emit no diagnostic" {
   # Guard, not RED: the diagnostic is branch-local to the empty-scope skip, and
   # must stay silent on every command that returns before reaching it.
-  for c in "git status" "pnpm test" "pnpm typecheck" 'gh pr create --body "see `pnpm test --run` output"'; do
-    run_capture "Bash" "$c"
+  for command in "git status" "pnpm test" "pnpm typecheck" 'gh pr create --body "see `pnpm test --run` output"'; do
+    run_capture "Bash" "$command"
     [ "$status" -eq 0 ] || return 1
     [ -z "$output" ] || return 1
   done
@@ -316,9 +316,9 @@ assert_spaced_redirect_target_absent() {
 
 @test "a scoped run emits no skip diagnostic" {
   stub_pnpm
-  STUB_PNPM_JSON_SRC="$REPO_ROOT/$JSON_REL/assertion-fail.json"
-  export STUB_PNPM_JSON_SRC
-  run_capture "Bash" "pnpm test --run $FIX_REL/mixed-pass-fail.test.ts"
+  STUB_PNPM_JSON_SOURCE="$REPO_ROOT/$JSON_FIXTURE_RELATIVE_DIRECTORY/assertion-fail.json"
+  export STUB_PNPM_JSON_SOURCE
+  run_capture "Bash" "pnpm test --run $FIXTURE_RELATIVE_DIRECTORY/mixed-pass-fail.test.ts"
   [ "$status" -eq 0 ]
   grep -qF -- 'RED capture skipped' <<<"$output" && return 1
   true
@@ -329,8 +329,8 @@ assert_spaced_redirect_target_absent() {
   # canned json, the scoped path records exactly as before. This guards that the
   # skip changed ONLY the no-scope fallback, not the scoped behavior.
   run_capture "Bash" \
-    "pnpm test --run $FIX_REL/mixed-pass-fail.test.ts" \
-    "$JSON_REL/assertion-fail.json"
+    "pnpm test --run $FIXTURE_RELATIVE_DIRECTORY/mixed-pass-fail.test.ts" \
+    "$JSON_FIXTURE_RELATIVE_DIRECTORY/assertion-fail.json"
   [ "$status" -eq 0 ]
   [ "$(ledger_lines)" -eq 1 ]
 }
@@ -345,8 +345,8 @@ assert_spaced_redirect_target_absent() {
 }
 
 @test "a non-Bash tool call exits 0 and writes nothing" {
-  run_capture "Edit" "pnpm test --run $FIX_REL/mixed-pass-fail.test.ts" \
-    "$JSON_REL/assertion-fail.json"
+  run_capture "Edit" "pnpm test --run $FIXTURE_RELATIVE_DIRECTORY/mixed-pass-fail.test.ts" \
+    "$JSON_FIXTURE_RELATIVE_DIRECTORY/assertion-fail.json"
   [ "$status" -eq 0 ]
   [ "$(ledger_lines)" -eq 0 ]
 }
@@ -368,14 +368,14 @@ assert_spaced_redirect_target_absent() {
 
 @test "a second failing run appends rather than overwriting" {
   run_capture "Bash" \
-    "pnpm test --run $FIX_REL/mixed-pass-fail.test.ts" \
-    "$JSON_REL/assertion-fail.json"
+    "pnpm test --run $FIXTURE_RELATIVE_DIRECTORY/mixed-pass-fail.test.ts" \
+    "$JSON_FIXTURE_RELATIVE_DIRECTORY/assertion-fail.json"
   [ "$status" -eq 0 ]
   [ "$(ledger_lines)" -eq 1 ]
 
   run_capture "Bash" \
-    "pnpm test --run $FIX_REL/runtime-fail.test.ts" \
-    "$JSON_REL/runtime-fail.json"
+    "pnpm test --run $FIXTURE_RELATIVE_DIRECTORY/runtime-fail.test.ts" \
+    "$JSON_FIXTURE_RELATIVE_DIRECTORY/runtime-fail.json"
   [ "$status" -eq 0 ]
   [ "$(ledger_lines)" -eq 2 ]
 }
@@ -387,19 +387,19 @@ assert_spaced_redirect_target_absent() {
   # silently disabled capture until the leftover was removed by hand. Uses
   # stub_pnpm (not RED_CAPTURE_JSON_OVERRIDE) so this drives the hook's real
   # mktemp call rather than the override seam that bypasses it.
-  local tmp_dir
-  tmp_dir="$(dirname "$LEDGER_ABS")/.tmp"
-  mkdir -p "$tmp_dir"
-  touch "$tmp_dir/vitest-XXXXXX.json"
+  local temporary_directory
+  temporary_directory="$(dirname "$LEDGER_ABSOLUTE_PATH")/.tmp"
+  mkdir -p "$temporary_directory"
+  touch "$temporary_directory/vitest-XXXXXX.json"
 
   stub_pnpm
-  STUB_PNPM_JSON_SRC="$REPO_ROOT/$JSON_REL/assertion-fail.json"
-  export STUB_PNPM_JSON_SRC
-  run_capture "Bash" "pnpm test --run $FIX_REL/mixed-pass-fail.test.ts"
+  STUB_PNPM_JSON_SOURCE="$REPO_ROOT/$JSON_FIXTURE_RELATIVE_DIRECTORY/assertion-fail.json"
+  export STUB_PNPM_JSON_SOURCE
+  run_capture "Bash" "pnpm test --run $FIXTURE_RELATIVE_DIRECTORY/mixed-pass-fail.test.ts"
   [ "$status" -eq 0 ]
   [ "$(ledger_lines)" -eq 1 ]
 
-  rm -f "$tmp_dir/vitest-XXXXXX.json"
+  rm -f "$temporary_directory/vitest-XXXXXX.json"
 }
 
 # --- redirection tokens do not leak into the scope arg (gaia-react/gaia#2225) -
@@ -459,7 +459,7 @@ assert_spaced_redirect_target_absent() {
 }
 
 # --- spaced redirections: operator and target are TWO whitespace-separated
-# tokens (gaia-react/gaia#2225 residual). awk word-splits $test_seg, so a
+# tokens (gaia-react/gaia#2225 residual). awk word-splits $test_segment, so a
 # spaced redirection's operator and target never travel together the way the
 # attached forms above (1>out.log, <<EOF, …) do. Asserting only "no `<`/`>`
 # in the args" (as assert_scope_survives_redirect does) cannot see the

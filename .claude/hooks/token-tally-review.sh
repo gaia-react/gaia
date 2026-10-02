@@ -27,17 +27,17 @@ tool_name=$(jq -r '.tool_name // ""' <<<"$payload")
 
 if [ "$tool_name" = "Bash" ]; then
   # PostToolUse `gh pr merge` path.
-  cmd=$(jq -r '.tool_input.command // ""' <<<"$payload")
+  command=$(jq -r '.tool_input.command // ""' <<<"$payload")
 
   # Shared arming decision; see .claude/hooks/lib/verb-arming.sh. A quoted
   # verb inside prose still arms here, fail-closed, with no safe narrowing.
-  _va_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+  _hook_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
   # shellcheck source=/dev/null
-  [ -n "${_va_lib:-}" ] && [ -f "$_va_lib/verb-arming.sh" ] && . "$_va_lib/verb-arming.sh"
+  [ -n "${_hook_library_directory:-}" ] && [ -f "$_hook_library_directory/verb-arming.sh" ] && . "$_hook_library_directory/verb-arming.sh"
   type gaia_verb_armed >/dev/null 2>&1 || exit 0
 
-  frag='gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
-  if gaia_verb_armed "$frag" 'gh pr merge' "$cmd"; then
+  verb_pattern='gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
+  if gaia_verb_armed "$verb_pattern" 'gh pr merge' "$command"; then
     :
   else
     exit 0
@@ -49,8 +49,8 @@ else
   [ "$stop_active" = "true" ] && exit 0
 fi
 
-sid=$(jq -r '.session_id // ""' <<<"$payload")
-[ -n "$sid" ] || exit 0
+session_id=$(jq -r '.session_id // ""' <<<"$payload")
+[ -n "$session_id" ] || exit 0
 
 # GAIA_TALLY_PROJECTS_ROOT is a documented test seam: unset in production, so
 # this resolves to the SAME default token-tally.sh falls back to. This hook
@@ -59,7 +59,7 @@ sid=$(jq -r '.session_id // ""' <<<"$payload")
 # resolves the default itself.
 projects_root="${GAIA_TALLY_PROJECTS_ROOT:-$HOME/.claude/projects}"
 
-_hook_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+_hook_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
 
 # Cheap negative gate (the spurious guard): before paying for
 # token-tally.sh, confirm the session actually ran a code-review-audit
@@ -75,12 +75,12 @@ _hook_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
 has_review=0
 review_agents=""
 shopt -s nullglob
-for meta in "$projects_root"/*/"$sid"/subagents/agent-*.meta.json; do
+for meta in "$projects_root"/*/"$session_id"/subagents/agent-*.meta.json; do
   [ -f "$meta" ] || continue
   if [ -z "$review_agents" ]; then
     review_agents=$(
-      . "$_hook_dir/lib/audit-scope.sh" 2>/dev/null \
-        && audit_roster_member_names "$_hook_dir/../../.gaia/audit-ci.yml" 2>/dev/null
+      . "$_hook_directory/lib/audit-scope.sh" 2>/dev/null \
+        && audit_roster_member_names "$_hook_directory/../../.gaia/audit-ci.yml" 2>/dev/null
     ) || review_agents=""
     [ -n "$review_agents" ] || review_agents="code-audit-frontend"
   fi
@@ -102,12 +102,12 @@ shopt -u nullglob
 # parse-checks before sourcing where this one does not, which it can afford to
 # skip because it runs without errexit, so a source that fails, whether the
 # file is missing or unparseable, reaches the ERR trap above and exits 0.
-. "$_hook_dir/lib/gaia-active-plan.sh"
+. "$_hook_directory/lib/gaia-active-plan.sh"
 
-plan_dir="$(resolve_active_plan_dir)" || true
+plan_directory="$(resolve_active_plan_directory)" || true
 feature_key=""
-if [ -n "$plan_dir" ]; then
-  feature_key="$(resolve_feature_key "$plan_dir")" || true
+if [ -n "$plan_directory" ]; then
+  feature_key="$(resolve_feature_key "$plan_directory")" || true
 fi
 
 # Route the feature key to the flag matching its shape. An unclassifiable or
@@ -118,19 +118,19 @@ case "$feature_key" in
   PLAN-*) id_flag=(--plan-id "$feature_key") ;;
   *)
     # Running-but-unclassifiable guard: resolve_feature_key falls back to
-    # basename(plan_dir), so a colocated plan whose Source SPEC parse fails
+    # basename(plan_directory), so a colocated plan whose Source SPEC parse fails
     # returns a bare `plan`/`plan-2` basename that matches neither prefix
     # above, even though a plan IS running on the branch. A review row
     # cannot carry `partial`, so unlike the execute path (which lets
     # token-tally mark such a row partial), there is no degraded-attribution
     # signal to fall back on. Recover the id from the plan-dir PATH itself
-    # instead: this reuses resolve_active_plan_dir's own output, not a new
+    # instead: this reuses resolve_active_plan_directory's own output, not a new
     # active-spec marker. Only when the path also yields nothing does the
     # review land as a true ad-hoc null/null record (still findable by its
     # source tag).
     path_spec=""
-    if [ -n "$plan_dir" ]; then
-      path_spec=$(printf '%s' "$plan_dir" | sed -nE 's#.*/\.gaia/local/specs/(SPEC-[0-9]+)/plan.*#\1#p')
+    if [ -n "$plan_directory" ]; then
+      path_spec=$(printf '%s' "$plan_directory" | sed -nE 's#.*/\.gaia/local/specs/(SPEC-[0-9]+)/plan.*#\1#p')
     fi
     if [ -n "$path_spec" ]; then
       id_flag=(--spec-id "$path_spec")
@@ -147,8 +147,8 @@ esac
 # under `set -u`; bash 4.4+ tolerates it. The tally owns window detection,
 # per-run dedup by review_id, the spurious no-op, and the record write; this
 # hook does not parse or dedup.
-bash "$_hook_dir/../../.gaia/scripts/token-tally.sh" \
-  --action review ${id_flag[@]+"${id_flag[@]}"} --session-id "$sid" \
+bash "$_hook_directory/../../.gaia/scripts/token-tally.sh" \
+  --action review ${id_flag[@]+"${id_flag[@]}"} --session-id "$session_id" \
   ${GAIA_TALLY_PROJECTS_ROOT:+--projects-root "$GAIA_TALLY_PROJECTS_ROOT"} >/dev/null 2>&1 || true
 
 exit 0

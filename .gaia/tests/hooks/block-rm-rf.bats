@@ -19,9 +19,9 @@
 
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
-  HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
-  HOOK_ABS="$HOOKS_SRC/block-rm-rf.sh"
-  SETTINGS_ABS="${HOOKS_SRC%/hooks}/settings.json"
+  HOOKS_SOURCE_DIRECTORY=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
+  HOOK_ABSOLUTE_PATH="$HOOKS_SOURCE_DIRECTORY/block-rm-rf.sh"
+  SETTINGS_ABSOLUTE_PATH="${HOOKS_SOURCE_DIRECTORY%/hooks}/settings.json"
 }
 
 # Every payload here is about quoting, so the command text must reach the hook
@@ -30,10 +30,10 @@ setup() {
 # `$HOME` stays the literal 5-character string the guard must match, never this
 # machine's home.
 run_hook_bash() {
-  local cmd="$1"
+  local command="$1"
   local json
-  json=$(jq -n --arg c "$cmd" '{tool_name: "Bash", tool_input: {command: $c}}')
-  invoke_hook "$json" "$HOOK_ABS"
+  json=$(jq -n --arg command "$command" '{tool_name: "Bash", tool_input: {command: $command}}')
+  invoke_hook "$json" "$HOOK_ABSOLUTE_PATH"
 }
 
 
@@ -1188,7 +1188,7 @@ EOF'
 #
 # Nothing above can catch a regression here. Substitution-plus-gate and
 # deletion-plus-gate return identical verdicts on every command a caller could
-# actually send, so a contributor who "simplifies" `ch=' '` to a `continue` breaks
+# actually send, so a contributor who "simplifies" `character=' '` to a `continue` breaks
 # the gate's justification while all 130+ behavioral cases stay green. The invariant
 # is a property of the helper, so it is asserted on the helper, which is what the
 # hook's sourceable entry point exists for.
@@ -1197,25 +1197,25 @@ source_hook() {
   # The hook body sits behind a `main` that runs only when the file is executed, so
   # sourcing defines the helpers and consumes no stdin.
   # shellcheck source=/dev/null
-  source "$HOOK_ABS"
+  source "$HOOK_ABSOLUTE_PATH"
 }
 
 assert_position_preserving() {
-  local s=$1 out len i si oi
-  out=$(neutralize_quoted_separators "$s")
+  local input_text=$1 neutralized_text input_length i input_character neutralized_character
+  neutralized_text=$(neutralize_quoted_separators "$input_text")
 
   # 1. Length is preserved: the walk substitutes, it never inserts or deletes.
-  [ "${#out}" -eq "${#s}" ] || return 1
+  [ "${#neutralized_text}" -eq "${#input_text}" ] || return 1
 
-  len=${#s}
-  for ((i = 0; i < len; i++)); do
-    si=${s:i:1}
-    oi=${out:i:1}
-    if [ "$si" != "$oi" ]; then
+  input_length=${#input_text}
+  for ((i = 0; i < input_length; i++)); do
+    input_character=${input_text:i:1}
+    neutralized_character=${neutralized_text:i:1}
+    if [ "$input_character" != "$neutralized_character" ]; then
       # 2. The only byte it ever writes is a space...
-      [ "$oi" = " " ] || return 1
+      [ "$neutralized_character" = " " ] || return 1
       # 3. ...and it only ever writes one over a `;`, `&`, or `|`.
-      case "$si" in
+      case "$input_character" in
         ';' | '&' | '|') ;;
         *) return 1 ;;
       esac
@@ -1224,8 +1224,8 @@ assert_position_preserving() {
 
   # 4. The consequence the fast-path gate actually leans on: no `rm` appears at an
   #    offset where the input held none. A deletion falsifies exactly this.
-  for ((i = 0; i + 2 <= len; i++)); do
-    if [ "${out:i:2}" = "rm" ] && [ "${s:i:2}" != "rm" ]; then
+  for ((i = 0; i + 2 <= input_length; i++)); do
+    if [ "${neutralized_text:i:2}" = "rm" ] && [ "${input_text:i:2}" != "rm" ]; then
       return 1
     fi
   done
@@ -1234,16 +1234,16 @@ assert_position_preserving() {
 
 @test "the walk substitutes rather than deletes: a quoted r;m never closes into rm" {
   source_hook
-  local out
-  out=$(neutralize_quoted_separators '"r;m"')
+  local neutralized_text
+  neutralized_text=$(neutralize_quoted_separators '"r;m"')
 
   # Substitution writes a space into the separator's slot, giving `"r m"`. A
   # deletion would close the gap into `"rm"` and manufacture the very token the
   # fast-path gate assumes the walk can never create. Both spellings produce the
   # same end-to-end verdict (bash resolves `"r;m"` to a command literally named
   # `r;m`, never to `rm`), which is precisely why only a direct assertion catches it.
-  [ "$out" = '"r m"' ] || return 1
-  grep -qF -- 'rm' <<<"$out" && return 1
+  [ "$neutralized_text" = '"r m"' ] || return 1
+  grep -qF -- 'rm' <<<"$neutralized_text" && return 1
   return 0
 }
 
@@ -1271,69 +1271,69 @@ assert_position_preserving() {
     ';&|'
     '""'
   )
-  local s
-  for s in "${corpus[@]}"; do
-    if ! assert_position_preserving "$s"; then
-      printf 'position-preserving invariant broken on: %s\n' "$s" >&2
+  local corpus_entry
+  for corpus_entry in "${corpus[@]}"; do
+    if ! assert_position_preserving "$corpus_entry"; then
+      printf 'position-preserving invariant broken on: %s\n' "$corpus_entry" >&2
       return 1
     fi
   done
 }
 
-# --- _rm_whitelisted_abs: the registry-driven absolute-whitelist matcher ---
+# --- _rm_whitelisted_absolute: the registry-driven absolute-whitelist matcher ---
 #
 # Tested directly against a SYNTHETIC tsv, no fixture repo and no real
 # registry read: the helper takes the whitelist as an argument precisely so
 # its match logic can be pinned here independent of the real registry's
 # contents.
 
-@test "_rm_whitelisted_abs: a child under a children_only base matches" {
+@test "_rm_whitelisted_absolute: a child under a children_only base matches" {
   source_hook
-  run _rm_whitelisted_abs "/x/y/.gaia/local/audit/f" $'.gaia/local/audit\ttrue'
+  run _rm_whitelisted_absolute "/x/y/.gaia/local/audit/f" $'.gaia/local/audit\ttrue'
   [ "$status" -eq 0 ]
 }
 
-@test "_rm_whitelisted_abs: the bare base itself does NOT match when children_only" {
+@test "_rm_whitelisted_absolute: the bare base itself does NOT match when children_only" {
   source_hook
-  run _rm_whitelisted_abs "/x/y/.gaia/local/plans" $'.gaia/local/plans\ttrue'
+  run _rm_whitelisted_absolute "/x/y/.gaia/local/plans" $'.gaia/local/plans\ttrue'
   [ "$status" -eq 1 ]
 }
 
-@test "_rm_whitelisted_abs: the bare base matches when children_only is false" {
+@test "_rm_whitelisted_absolute: the bare base matches when children_only is false" {
   source_hook
-  run _rm_whitelisted_abs "/x/y/dist" $'dist\tfalse'
+  run _rm_whitelisted_absolute "/x/y/dist" $'dist\tfalse'
   [ "$status" -eq 0 ]
 }
 
-@test "_rm_whitelisted_abs: a child under a children_only=false base also matches" {
+@test "_rm_whitelisted_absolute: a child under a children_only=false base also matches" {
   source_hook
-  run _rm_whitelisted_abs "/x/y/dist/a" $'dist\tfalse'
+  run _rm_whitelisted_absolute "/x/y/dist/a" $'dist\tfalse'
   [ "$status" -eq 0 ]
 }
 
-@test "_rm_whitelisted_abs: a non-empty parent segment is required" {
+@test "_rm_whitelisted_absolute: a non-empty parent segment is required" {
   source_hook
-  run _rm_whitelisted_abs "/dist" $'dist\tfalse'
+  run _rm_whitelisted_absolute "/dist" $'dist\tfalse'
   [ "$status" -eq 1 ]
 }
 
-@test "_rm_whitelisted_abs: a base absent from the tsv does not match" {
+@test "_rm_whitelisted_absolute: a base absent from the tsv does not match" {
   source_hook
-  run _rm_whitelisted_abs "/x/y/notlisted" $'dist\tfalse'
+  run _rm_whitelisted_absolute "/x/y/notlisted" $'dist\tfalse'
   [ "$status" -eq 1 ]
 }
 
-@test "_rm_whitelisted_abs: a base ADDED to the tsv matches with no hook edit" {
+@test "_rm_whitelisted_absolute: a base ADDED to the tsv matches with no hook edit" {
   # The auto-extend proof: a new registry base is whitelisted with no hook
   # edit, the 3.3 analog of the write-guard's own catch.
   source_hook
-  run _rm_whitelisted_abs "/x/y/newbase" $'dist\tfalse\nnewbase\tfalse'
+  run _rm_whitelisted_absolute "/x/y/newbase" $'dist\tfalse\nnewbase\tfalse'
   [ "$status" -eq 0 ]
 }
 
-@test "_rm_whitelisted_abs: an empty tsv matches nothing (the fail-toward-deny substrate)" {
+@test "_rm_whitelisted_absolute: an empty tsv matches nothing (the fail-toward-deny substrate)" {
   source_hook
-  run _rm_whitelisted_abs "/x/y/dist" ""
+  run _rm_whitelisted_absolute "/x/y/dist" ""
   [ "$status" -eq 1 ]
 }
 
@@ -1344,7 +1344,7 @@ assert_position_preserving() {
   # hook to reach an internal helper hangs instead of defining one. The `main`
   # entry point is what makes the invariant cases above reachable at all: sourcing
   # must define the helper, consume no stdin, and emit nothing.
-  run bash -c 'printf %s SENTINEL | { source "$1"; printf "helper=%s stdin=%s" "$(type -t neutralize_quoted_separators)" "$(cat)"; }' _ "$HOOK_ABS"
+  run bash -c 'printf %s SENTINEL | { source "$1"; printf "helper=%s stdin=%s" "$(type -t neutralize_quoted_separators)" "$(cat)"; }' _ "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   grep -qF -- 'helper=function' <<<"$output"
   grep -qF -- 'stdin=SENTINEL' <<<"$output"
@@ -1355,17 +1355,17 @@ assert_position_preserving() {
   # cannot silently switch on errexit/nounset/pipefail in the sourcing shell. At
   # the top level it would, and every caller that sources the hook to reach a
   # helper would inherit them.
-  run bash -c 'source "$1"; o=""; [[ -o errexit ]] && o="${o}e"; [[ -o nounset ]] && o="${o}u"; [[ -o pipefail ]] && o="${o}p"; printf "leaked=[%s]" "$o"' _ "$HOOK_ABS"
+  run bash -c 'source "$1"; enabled_options=""; [[ -o errexit ]] && enabled_options="${enabled_options}e"; [[ -o nounset ]] && enabled_options="${enabled_options}u"; [[ -o pipefail ]] && enabled_options="${enabled_options}p"; printf "leaked=[%s]" "$enabled_options"' _ "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   grep -qF -- 'leaked=[]' <<<"$output"
 }
 
 @test "block-rm-rf.sh is executable" {
-  [ -x "$HOOK_ABS" ]
+  [ -x "$HOOK_ABSOLUTE_PATH" ]
 }
 
 @test "settings.json registers the hook for both tools it binds" {
-  hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor")' block-rm-rf.sh
+  hook_registered "$SETTINGS_ABSOLUTE_PATH" '.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor")' block-rm-rf.sh
 }
 
 # --- an unparseable registry lib degrades, it does not deny everything ---
@@ -1378,7 +1378,7 @@ assert_position_preserving() {
 # footguns alone.
 #
 # Expressing this needs a COPY of the hook in a tree the test controls, since
-# the real $HOOK_ABS always resolves the real checkout's libs. Pinned to stock
+# the real $HOOK_ABSOLUTE_PATH always resolves the real checkout's libs. Pinned to stock
 # /bin/bash: the `|| true` arm both loads already carried survives on bash 5,
 # so only 3.2 tells the fix apart from the arm it replaced.
 #
@@ -1403,21 +1403,21 @@ stage_rmrf_tree() {
   # fixtures degrade and refuses when it cannot load its own library, so a
   # staged tree without it would answer every case with that refusal rather
   # than with the degrade under test.
-  cp -R "$HOOKS_SRC" "$STAGED_ROOT/.claude/hooks"
+  cp -R "$HOOKS_SOURCE_DIRECTORY" "$STAGED_ROOT/.claude/hooks"
   # Outside the hooks directory, so the wholesale copy above does not reach it.
   # This line stays a hand-maintained list for that reason: a further
   # .gaia/scripts load the hook's live path gains has to be added here, unless a
   # case deliberately pins that library's absence, or the staged tree goes short
   # with nothing red.
-  cp "${HOOKS_SRC%/.claude/hooks}/.gaia/scripts/main-root-lib.sh" \
-     "${HOOKS_SRC%/.claude/hooks}/.gaia/scripts/state-registry-lib.sh" \
+  cp "${HOOKS_SOURCE_DIRECTORY%/.claude/hooks}/.gaia/scripts/main-root-lib.sh" \
+     "${HOOKS_SOURCE_DIRECTORY%/.claude/hooks}/.gaia/scripts/state-registry-lib.sh" \
      "$STAGED_ROOT/.gaia/scripts/"
   STAGED_HOOK="$STAGED_ROOT/.claude/hooks/block-rm-rf.sh"
 }
 
 # Overwrites <path> with an unresolved-merge-conflict body: the file opens and
 # reads fine, so an existence test passes it, and bash cannot parse it.
-write_conflicted_lib() {
+write_conflicted_library() {
   { printf '<<<<<<< HEAD\n'; printf 'x() { :; }\n'; printf '=======\n'
     printf 'y() { :; }\n'; printf '>>>>>>> other\n'; } > "$1"
 }
@@ -1425,7 +1425,7 @@ write_conflicted_lib() {
 # run_staged_rmrf <command> <interpreter>
 run_staged_rmrf() {
   local json
-  json=$(jq -n --arg c "$1" '{tool_name: "Bash", tool_input: {command: $c}}')
+  json=$(jq -n --arg command "$1" '{tool_name: "Bash", tool_input: {command: $command}}')
   run bash -c 'printf %s "$1" | $3 "$2"' _ "$json" "$STAGED_HOOK" "$2"
 }
 
@@ -1439,7 +1439,7 @@ run_staged_rmrf() {
 @test "main-root-lib.sh holding conflict markers: the root target is still denied, on stock /bin/bash" {
   [ -x /bin/bash ] || skip "no /bin/bash"
   stage_rmrf_tree
-  write_conflicted_lib "$STAGED_ROOT/.gaia/scripts/main-root-lib.sh"
+  write_conflicted_library "$STAGED_ROOT/.gaia/scripts/main-root-lib.sh"
   run_staged_rmrf 'rm -rf /' /bin/bash
   assert_denied_by_json
 }
@@ -1447,7 +1447,7 @@ run_staged_rmrf() {
 @test "state-registry-lib.sh holding conflict markers: the root target is still denied, on stock /bin/bash" {
   [ -x /bin/bash ] || skip "no /bin/bash"
   stage_rmrf_tree
-  write_conflicted_lib "$STAGED_ROOT/.gaia/scripts/state-registry-lib.sh"
+  write_conflicted_library "$STAGED_ROOT/.gaia/scripts/state-registry-lib.sh"
   run_staged_rmrf 'rm -rf /' /bin/bash
   assert_denied_by_json
 }
@@ -1457,7 +1457,7 @@ run_staged_rmrf() {
 # the whitelist comes back empty, so the absolute spelling of a scratch path falls
 # to the absolute-path deny instead of being allowed on a list that could not be
 # read. That is the direction the load comment promises and the direction
-# _rm_whitelisted_abs is written for. The control proves the same staging allows
+# _rm_whitelisted_absolute is written for. The control proves the same staging allows
 # it when the registry parses, so the deny below is the lost carve-out and not a
 # guard that stopped reading its own whitelist.
 
@@ -1471,7 +1471,7 @@ run_staged_rmrf() {
 @test "state-registry-lib.sh holding conflict markers: the carve-out is lost, not the protection, on stock /bin/bash" {
   [ -x /bin/bash ] || skip "no /bin/bash"
   stage_rmrf_tree
-  write_conflicted_lib "$STAGED_ROOT/.gaia/scripts/state-registry-lib.sh"
+  write_conflicted_library "$STAGED_ROOT/.gaia/scripts/state-registry-lib.sh"
   run_staged_rmrf 'rm -rf /Users/you/projects/my-app/.gaia/local/plans/x' /bin/bash
   assert_denied_by_json
 }
@@ -1487,14 +1487,14 @@ run_staged_rmrf() {
 
 @test "state-registry-lib.sh holding conflict markers: the root target is still denied, unpinned" {
   stage_rmrf_tree
-  write_conflicted_lib "$STAGED_ROOT/.gaia/scripts/state-registry-lib.sh"
+  write_conflicted_library "$STAGED_ROOT/.gaia/scripts/state-registry-lib.sh"
   run_staged_rmrf 'rm -rf /' "$BASH"
   assert_denied_by_json
 }
 
 @test "main-root-lib.sh holding conflict markers: the root target is still denied, unpinned" {
   stage_rmrf_tree
-  write_conflicted_lib "$STAGED_ROOT/.gaia/scripts/main-root-lib.sh"
+  write_conflicted_library "$STAGED_ROOT/.gaia/scripts/main-root-lib.sh"
   run_staged_rmrf 'rm -rf /' "$BASH"
   assert_denied_by_json
 }

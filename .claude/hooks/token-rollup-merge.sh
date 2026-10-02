@@ -31,7 +31,7 @@ fi
 tool_name=$(jq -r '.tool_name // ""' <<<"$payload")
 [ "$tool_name" = "Bash" ] || exit 0
 
-cmd=$(jq -r '.tool_input.command // ""' <<<"$payload")
+command=$(jq -r '.tool_input.command // ""' <<<"$payload")
 
 # Shared arming decision; see .claude/hooks/lib/verb-arming.sh. A quoted verb
 # inside prose still arms here, fail-closed, with no safe narrowing.
@@ -68,13 +68,13 @@ cmd=$(jq -r '.tool_input.command // ""' <<<"$payload")
 # Tracked as its own issue rather than this one, because gaia-react/gaia#1556
 # closes when this change merges and a pointer needs a live destination:
 # gaia-react/gaia#1564.
-_va_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+_hook_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 # shellcheck source=/dev/null
-[ -n "${_va_lib:-}" ] && "${BASH:-bash}" -n "$_va_lib/verb-arming.sh" 2>/dev/null && . "$_va_lib/verb-arming.sh" 2>/dev/null || true
+[ -n "${_hook_library_directory:-}" ] && "${BASH:-bash}" -n "$_hook_library_directory/verb-arming.sh" 2>/dev/null && . "$_hook_library_directory/verb-arming.sh" 2>/dev/null || true
 type gaia_verb_armed >/dev/null 2>&1 || exit 0
 
-frag='gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
-if gaia_verb_armed "$frag" 'gh pr merge' "$cmd"; then
+verb_pattern='gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
+if gaia_verb_armed "$verb_pattern" 'gh pr merge' "$command"; then
   :
 else
   exit 0
@@ -86,13 +86,13 @@ fi
 # resolution the rooting exists to remove, and every load below would take it.
 # Standing the render down is the same silent degrade every other arm here
 # takes, and it is the honest one.
-_hook_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || _hook_dir=''
-[ -n "$_hook_dir" ] || exit 0
+_hook_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || _hook_directory=''
+[ -n "$_hook_directory" ] || exit 0
 
 # The per-PR block prints first and never gates the roll-up below: a failure
 # here degrades to no block.
-if [ -f "$_hook_dir/../../.gaia/scripts/usage-merge.sh" ]; then
-  bash "$_hook_dir/../../.gaia/scripts/usage-merge.sh" <<<"$payload" 2>/dev/null || true
+if [ -f "$_hook_directory/../../.gaia/scripts/usage-merge.sh" ]; then
+  bash "$_hook_directory/../../.gaia/scripts/usage-merge.sh" <<<"$payload" 2>/dev/null || true
 fi
 
 feature_key=""
@@ -113,15 +113,15 @@ fallback=0
 # the parse check answers false for a library it simply cannot see, and the
 # `type` degrade below reads that as a lib that defined no functions, so a cwd
 # under the repository root would lose attribution with nothing to say so.
-if "${BASH:-bash}" -n "$_hook_dir/lib/gaia-active-plan.sh" 2>/dev/null; then
-  . "$_hook_dir/lib/gaia-active-plan.sh" 2>/dev/null || true
+if "${BASH:-bash}" -n "$_hook_directory/lib/gaia-active-plan.sh" 2>/dev/null; then
+  . "$_hook_directory/lib/gaia-active-plan.sh" 2>/dev/null || true
   # Degrades INTO the fallback below rather than out of the hook: a lib that
   # never defined its functions is the same situation as no active plan folder,
   # and the ledger path can still answer.
-  if type resolve_active_plan_dir >/dev/null 2>&1; then
-    plan_dir="$(resolve_active_plan_dir)" || true
-    if [ -n "$plan_dir" ]; then
-      feature_key="$(resolve_feature_key "$plan_dir")" || true
+  if type resolve_active_plan_directory >/dev/null 2>&1; then
+    plan_directory="$(resolve_active_plan_directory)" || true
+    if [ -n "$plan_directory" ]; then
+      feature_key="$(resolve_feature_key "$plan_directory")" || true
     fi
   fi
 fi
@@ -134,8 +134,8 @@ fi
 # execute row could be newer), so it is labeled at render time.
 if [ -z "$feature_key" ]; then
   # Parse-checked for the same reason the plan-folder load above is.
-  if "${BASH:-bash}" -n "$_hook_dir/../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null; then
-    . "$_hook_dir/../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
+  if "${BASH:-bash}" -n "$_hook_directory/../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null; then
+    . "$_hook_directory/../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
     ledger=""
     if type gaia_resolve_ledger_path >/dev/null 2>&1; then
       ledger="$(gaia_resolve_ledger_path 2>/dev/null || true)"
@@ -157,7 +157,7 @@ fi
 
 [ -n "$feature_key" ] || exit 0
 
-rollup=$(bash "$_hook_dir/../../.gaia/scripts/token-rollup.sh" --spec-id "$feature_key" 2>/dev/null || true)
+rollup=$(bash "$_hook_directory/../../.gaia/scripts/token-rollup.sh" --spec-id "$feature_key" 2>/dev/null || true)
 [ -n "$rollup" ] || exit 0
 
 if [ "$fallback" -eq 1 ]; then

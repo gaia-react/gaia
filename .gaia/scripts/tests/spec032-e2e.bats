@@ -378,7 +378,7 @@ ledger_path() {
   write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-810/SPEC.md"
   write_running "$plan_dir" "$branch" "2026-07-01T00:00:00Z"
 
-  # Bash gh-pr-merge trigger: resolves via resolve_active_plan_dir +
+  # Bash gh-pr-merge trigger: resolves via resolve_active_plan_directory +
   # resolve_feature_key (NOT --spec-id), records the review row for real.
   input=$("$HELPERS/mock-hook-input.sh" post-tool-use "$AR_SESSION" Bash "gh pr merge 1")
   run env GAIA_TALLY_PROJECTS_ROOT="$AR" bash -c "echo '$input' | '$REPO/.claude/hooks/token-tally-review.sh'"

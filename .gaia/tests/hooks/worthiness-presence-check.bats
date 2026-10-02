@@ -33,18 +33,18 @@
 # returns, run from the tree the gate decides the merge acts on, so a linked
 # worktree lacking it emits no signals and drops out of the offender scan.
 install_tree_links() {
-  local dir="$1"
-  mkdir -p "$dir/.claude/hooks/lib" "$dir/.gaia/scripts"
-  ln -sfn "$HOME_ROOT/.claude/hooks/lib/red-ledger.sh" "$dir/.claude/hooks/lib/red-ledger.sh"
-  ln -sfn "$HOME_ROOT/.claude/hooks/lib/repo-scope.sh" "$dir/.claude/hooks/lib/repo-scope.sh"
-  ln -sfn "$HOME_ROOT/.claude/hooks/lib/worthiness-ledger.sh" "$dir/.claude/hooks/lib/worthiness-ledger.sh"
-  ln -sfn "$HOME_ROOT/.gaia/scripts/red-ledger" "$dir/.gaia/scripts/red-ledger"
-  ln -sfn "$HOME_ROOT/.gaia/scripts/classifier" "$dir/.gaia/scripts/classifier"
+  local directory="$1"
+  mkdir -p "$directory/.claude/hooks/lib" "$directory/.gaia/scripts"
+  ln -sfn "$HOME_ROOT/.claude/hooks/lib/red-ledger.sh" "$directory/.claude/hooks/lib/red-ledger.sh"
+  ln -sfn "$HOME_ROOT/.claude/hooks/lib/repo-scope.sh" "$directory/.claude/hooks/lib/repo-scope.sh"
+  ln -sfn "$HOME_ROOT/.claude/hooks/lib/worthiness-ledger.sh" "$directory/.claude/hooks/lib/worthiness-ledger.sh"
+  ln -sfn "$HOME_ROOT/.gaia/scripts/red-ledger" "$directory/.gaia/scripts/red-ledger"
+  ln -sfn "$HOME_ROOT/.gaia/scripts/classifier" "$directory/.gaia/scripts/classifier"
   # red_ledger_path and worthiness_ledger_path (inside the symlinked libs
   # above) each source this relative to THEIR OWN location to reach
   # gaia_tree_key, so it needs to resolve inside the tree too, not just from
   # the hook's own BASH_SOURCE.
-  ln -sfn "$HOME_ROOT/.gaia/scripts/main-root-lib.sh" "$dir/.gaia/scripts/main-root-lib.sh"
+  ln -sfn "$HOME_ROOT/.gaia/scripts/main-root-lib.sh" "$directory/.gaia/scripts/main-root-lib.sh"
 }
 
 setup() {
@@ -55,7 +55,7 @@ setup() {
   # precondition the job installs; see the helper for why.
   . "$BATS_TEST_DIRNAME/helpers/require-node-typescript.sh"
   require_node_typescript "$HOME_ROOT"
-  HOOK_ABS="$HOME_ROOT/.claude/hooks/worthiness-presence-check.sh"
+  HOOK_ABSOLUTE_PATH="$HOME_ROOT/.claude/hooks/worthiness-presence-check.sh"
   HELPER="$HOME_ROOT/.gaia/scripts/red-ledger/extract-test-signals.mjs"
 
   REPO=$(mktemp -d -t worthiness-presence-test-XXXXXX)
@@ -94,8 +94,8 @@ commit_file() {
 # Compute the (fullName,signal) NDJSON for a repo-relative path's CURRENT on-disk
 # content, using the same helper the hook uses, run from the tmp repo.
 signals_for() {
-  local rel="$1" root="${2:-$REPO}"
-  ( cd "$root" && node "$HELPER" "$rel" )
+  local relative_path="$1" root="${2:-$REPO}"
+  ( cd "$root" && node "$HELPER" "$relative_path" )
 }
 
 # Append a worthiness-ledger line. Args: file fullName signal verdict [artifact].
@@ -103,16 +103,16 @@ signals_for() {
 # the seed lands exactly where the hook itself will look, rather than a
 # second hardcoded copy of the keyed literal.
 seed_ledger() {
-  local file="$1" full="$2" sig="$3" verdict="${4:-keep}" artifact="${5:-}" root="${6:-$REPO}"
+  local file="$1" full="$2" signal="$3" verdict="${4:-keep}" artifact="${5:-}" root="${6:-$REPO}"
   local ledger
   ledger="$( . "$root/.claude/hooks/lib/worthiness-ledger.sh" && worthiness_ledger_path "$root" )"
   mkdir -p "$(dirname "$ledger")"
   if [ -n "$artifact" ]; then
-    jq -nc --arg f "$file" --arg n "$full" --arg s "$sig" --arg v "$verdict" --arg a "$artifact" \
+    jq -nc --arg f "$file" --arg n "$full" --arg s "$signal" --arg v "$verdict" --arg a "$artifact" \
       '{schema:1, file:$f, fullName:$n, signal:$s, verdict:$v, auditedAt:"2026-06-23T00:00:00Z", artifact:$a}' \
       >> "$ledger"
   else
-    jq -nc --arg f "$file" --arg n "$full" --arg s "$sig" --arg v "$verdict" \
+    jq -nc --arg f "$file" --arg n "$full" --arg s "$signal" --arg v "$verdict" \
       '{schema:1, file:$f, fullName:$n, signal:$s, verdict:$v, auditedAt:"2026-06-23T00:00:00Z"}' \
       >> "$ledger"
   fi
@@ -121,21 +121,21 @@ seed_ledger() {
 # Seed a matching ledger line for one test of a changed file (computes the real
 # current signal so the match is exact).
 seed_matching() {
-  local rel="$1" want_full="$2" verdict="${3:-keep}" root="${4:-$REPO}"
-  local ndjson sig
-  ndjson=$(signals_for "$rel" "$root")
-  sig=$(printf '%s\n' "$ndjson" \
+  local relative_path="$1" want_full="$2" verdict="${3:-keep}" root="${4:-$REPO}"
+  local ndjson signal
+  ndjson=$(signals_for "$relative_path" "$root")
+  signal=$(printf '%s\n' "$ndjson" \
     | jq -r --arg n "$want_full" 'select(.fullName == $n) | .signal' | head -1)
-  [ -n "$sig" ] || { echo "no signal for '$want_full' in $rel" >&2; return 1; }
-  seed_ledger "$rel" "$want_full" "$sig" "$verdict" "" "$root"
+  [ -n "$signal" ] || { echo "no signal for '$want_full' in $relative_path" >&2; return 1; }
+  seed_ledger "$relative_path" "$want_full" "$signal" "$verdict" "" "$root"
 }
 
 # Run the hook with a `gh pr merge` command, from inside the tmp repo.
 run_merge_hook() {
-  local cmd="${1:-gh pr merge 30 --squash --delete-branch}"
+  local command="${1:-gh pr merge 30 --squash --delete-branch}"
   local json
-  json=$(jq -nc --arg c "$cmd" '{tool_name:"Bash", tool_input:{command:$c}}')
-  invoke_hook_in "$REPO" "$json" "$HOOK_ABS"
+  json=$(jq -nc --arg c "$command" '{tool_name:"Bash", tool_input:{command:$c}}')
+  invoke_hook_in "$REPO" "$json" "$HOOK_ABSOLUTE_PATH"
 }
 
 # The same, from a subdirectory of the tmp repo. The agent's working directory
@@ -143,11 +143,11 @@ run_merge_hook() {
 # gate depends on has to resolve from a depth nobody chose.
 run_merge_hook_from() {
   local sub="$1"
-  local cmd="${2:-gh pr merge 30 --squash --delete-branch}"
+  local command="${2:-gh pr merge 30 --squash --delete-branch}"
   local json
   mkdir -p "$REPO/$sub"
-  json=$(jq -nc --arg c "$cmd" '{tool_name:"Bash", tool_input:{command:$c}}')
-  invoke_hook_in "$REPO/$sub" "$json" "$HOOK_ABS"
+  json=$(jq -nc --arg c "$command" '{tool_name:"Bash", tool_input:{command:$c}}')
+  invoke_hook_in "$REPO/$sub" "$json" "$HOOK_ABSOLUTE_PATH"
 }
 
 denied() { [[ "$output" == *'"permissionDecision": "deny"'* ]]; }
@@ -455,14 +455,14 @@ test("oops" => { syntax(((;'
 # $REPO (whose OTHER libs stay the setup()-installed symlinks; this hook
 # sources those cwd-relatively, so only the BASH_SOURCE-anchored verb-arming
 # load is affected by which copy of the hook file runs).
-run_merge_hook_lib_absent() {
-  local libname="$1" cmd="$2" json stage
+run_merge_hook_library_absent() {
+  local libname="$1" command="$2" json stage
   stage="$BATS_TEST_TMPDIR/staged-hooks-${libname}"
   if [ ! -d "$stage" ]; then
-    cp -r "$(dirname "$HOOK_ABS")" "$stage"
+    cp -r "$(dirname "$HOOK_ABSOLUTE_PATH")" "$stage"
     rm -f "$stage/lib/$libname"
   fi
-  json=$(jq -nc --arg c "$cmd" '{tool_name:"Bash", tool_input:{command:$c}}')
+  json=$(jq -nc --arg c "$command" '{tool_name:"Bash", tool_input:{command:$c}}')
   invoke_hook_in "$REPO" "$json" "$stage/worthiness-presence-check.sh"
 }
 
@@ -496,7 +496,7 @@ run_merge_hook_lib_absent() {
 }
 
 @test "library-absent: verb-arming.sh missing denies every Bash tool call, naming the file" {
-  run_merge_hook_lib_absent "verb-arming.sh" "echo hi"
+  run_merge_hook_library_absent "verb-arming.sh" "echo hi"
   [ "$status" -eq 0 ]
   denied
   grep -qF 'verb-arming.sh' <<<"$output" || return 1
@@ -511,7 +511,7 @@ run_merge_hook_staged_root() {
   stage="$BATS_TEST_TMPDIR/staged-root-${libname:-intact}"
   if [ ! -d "$stage" ]; then
     mkdir -p "$stage/.claude" "$stage/.gaia"
-    cp -r "$(dirname "$HOOK_ABS")" "$stage/.claude/hooks"
+    cp -r "$(dirname "$HOOK_ABSOLUTE_PATH")" "$stage/.claude/hooks"
     ln -sfn "$HOME_ROOT/.gaia/scripts" "$stage/.gaia/scripts"
     [ -z "$libname" ] || rm -f "$stage/.claude/hooks/lib/$libname"
   fi
@@ -541,11 +541,11 @@ run_merge_hook_staged_root() {
 
 # A linked worktree of REPO, cut from main so its own merge-base diff holds
 # only what a case commits there, and provisioned the way REPO itself is.
-# Sets WT.
+# Sets WORKTREE.
 make_worktree() {
-  WT="$BATS_TEST_TMPDIR/wt"
-  git -C "$REPO" worktree add --quiet -b wt-branch "$WT" main
-  install_tree_links "$WT"
+  WORKTREE="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$WORKTREE" main
+  install_tree_links "$WORKTREE"
 }
 
 # Run the hook with an explicit payload cwd. run_merge_hook leaves that field
@@ -553,16 +553,16 @@ make_worktree() {
 # the tree the command targets and the tree the session stands in differ here,
 # and the field is how the gate learns the latter.
 run_merge_hook_in() {
-  local cwd="$1" cmd="$2" json
-  json=$(jq -nc --arg c "$cmd" --arg d "$cwd" \
+  local cwd="$1" command="$2" json
+  json=$(jq -nc --arg c "$command" --arg d "$cwd" \
     '{tool_name:"Bash", cwd:$d, tool_input:{command:$c}}')
-  invoke_hook_in "$cwd" "$json" "$HOOK_ABS"
+  invoke_hook_in "$cwd" "$json" "$HOOK_ABSOLUTE_PATH"
 }
 
 @test "a leading cd into a linked worktree reads that worktree's changed tests" {
   make_worktree
-  commit_file "app/components/Foo/tests/index.test.tsx" "$EMERGENT_TEST" "$WT"
-  run_merge_hook_in "$REPO" "cd $WT && gh pr merge 30 --squash"
+  commit_file "app/components/Foo/tests/index.test.tsx" "$EMERGENT_TEST" "$WORKTREE"
+  run_merge_hook_in "$REPO" "cd $WORKTREE && gh pr merge 30 --squash"
   [ "$status" -eq 0 ]
   denied
   grep -qF -- "renders a label" <<<"$output"
@@ -573,7 +573,7 @@ run_merge_hook_in() {
   # a tree this merge never lands on.
   make_worktree
   commit_file "app/components/Foo/tests/index.test.tsx" "$EMERGENT_TEST"
-  run_merge_hook_in "$REPO" "cd $WT && gh pr merge 30 --squash"
+  run_merge_hook_in "$REPO" "cd $WORKTREE && gh pr merge 30 --squash"
   [ "$status" -eq 0 ]
   refute_denied
 }
@@ -582,9 +582,9 @@ run_merge_hook_in() {
   # The ledger is per-tree state, so following the command's target has to
   # reach the ledger lookup as well as the diff.
   make_worktree
-  commit_file "app/components/Foo/tests/index.test.tsx" "$EMERGENT_TEST" "$WT"
-  seed_matching "app/components/Foo/tests/index.test.tsx" "renders a label" "keep" "$WT"
-  run_merge_hook_in "$REPO" "cd $WT && gh pr merge 30 --squash"
+  commit_file "app/components/Foo/tests/index.test.tsx" "$EMERGENT_TEST" "$WORKTREE"
+  seed_matching "app/components/Foo/tests/index.test.tsx" "renders a label" "keep" "$WORKTREE"
+  run_merge_hook_in "$REPO" "cd $WORKTREE && gh pr merge 30 --squash"
   [ "$status" -eq 0 ]
   refute_denied
 }

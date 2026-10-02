@@ -20,7 +20,7 @@
 
 setup() {
   REPO_ROOT=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
-  HOOK_ABS="$REPO_ROOT/.husky/pre-commit"
+  HOOK_ABSOLUTE_PATH="$REPO_ROOT/.husky/pre-commit"
 
   REPO=$(mktemp -d -t husky-pre-commit-XXXXXX)
   git -C "$REPO" init --quiet --initial-branch=main
@@ -58,7 +58,7 @@ stage_and_run() {
   echo "// content" > "$REPO/$path"
   git -C "$REPO" add "$path"
   run env PATH="$STUB_BIN:$PATH" PNPM_LOG="$PNPM_LOG" \
-    sh -c 'cd "$1" && sh -e "$2"' _ "$REPO" "$HOOK_ABS"
+    sh -c 'cd "$1" && sh -e "$2"' _ "$REPO" "$HOOK_ABSOLUTE_PATH"
 }
 
 # Commit one file, then stage its deletion and run the hook. A deletion-only
@@ -72,7 +72,7 @@ stage_deletion_and_run() {
   git -C "$REPO" commit --quiet -m "add $path"
   git -C "$REPO" rm --quiet "$path"
   run env PATH="$STUB_BIN:$PATH" PNPM_LOG="$PNPM_LOG" \
-    sh -c 'cd "$1" && sh -e "$2"' _ "$REPO" "$HOOK_ABS"
+    sh -c 'cd "$1" && sh -e "$2"' _ "$REPO" "$HOOK_ABSOLUTE_PATH"
 }
 
 # Assertion style: .claude/rules/bats-assertions.md.
@@ -169,8 +169,8 @@ assert_gate_skipped() {
 # each of them, not that the two files agree.
 
 # Every directory the hook's change-detection arms grep for, one per line.
-arm_dirs() {
-  sed -n "s/^HAS_[A-Z0-9_]*_CHANGED=.*| grep '\\([^']*\\)'.*/\\1/p" "$HOOK_ABS"
+arm_directories() {
+  sed -n "s/^HAS_[A-Z0-9_]*_CHANGED=.*| grep '\\([^']*\\)'.*/\\1/p" "$HOOK_ABSOLUTE_PATH"
 }
 
 # Every arm assignment, counted by a pattern deliberately wider than the two
@@ -179,7 +179,7 @@ arm_dirs() {
 # confirm each other's blind spot instead of exposing it; this one over-counts
 # rather than under-counts, so an arm neither derivation can read reds the guard.
 arm_assignment_count() {
-  grep -c '^HAS_[A-Za-z0-9_]*=' "$HOOK_ABS"
+  grep -c '^HAS_[A-Za-z0-9_]*=' "$HOOK_ABSOLUTE_PATH"
 }
 
 # The lint-staged glob keys whose task chain actually invokes ESLint. Reading
@@ -194,7 +194,7 @@ eslint_globs() {
 
 # The glob keys whose chain mentions ESLint anywhere, counted by a pattern
 # deliberately wider than the derivation above reads, for the same reason
-# arm_assignment_count is wider than arm_dirs. A count taken with the same
+# arm_assignment_count is wider than arm_directories. A count taken with the same
 # `startswith` test would agree with the derivation on every chain that spelling
 # cannot reach (`pnpm exec eslint`, a path-qualified binary), confirming its
 # blind spot instead of exposing it. This one over-counts, so a key the
@@ -224,7 +224,7 @@ eslint_glob_mentions() {
 # narrower question, and it fails closed in both directions: a key written some
 # other way yields no directory, which reds the arm-to-glob guard on the arm it
 # should have covered and reds the glob-to-arm guard on the key itself.
-glob_head_dirs() {
+glob_head_directories() {
   local glob="$1" head alt
   # A second recursive segment yields nothing, because the cut below takes the
   # head at the FIRST `/**/`: `app/**/routes/**/*.ts` would reduce to a bare
@@ -270,7 +270,7 @@ glob_head_dirs() {
 
 # Whether one glob key hands ESLint the files under directory $1.
 #
-# Exact, where arm_names_dir below is a substring relation, and the asymmetry is
+# Exact, where arm_names_directory below is a substring relation, and the asymmetry is
 # the contract rather than an oversight. This direction asks whether an arm's
 # whole directory reaches ESLint, and a nested head covers only part of it:
 # `app/routes/**/*.ts` leaves app/other.ts unlinted while the `app/` arm still
@@ -278,11 +278,11 @@ glob_head_dirs() {
 # substring would green exactly that case.
 #
 # The other spelling of that miss, a key carrying a second recursive segment,
-# never reaches this check at all: glob_head_dirs refuses the shape and yields
+# never reaches this check at all: glob_head_directories refuses the shape and yields
 # nothing, so the key reds both directions instead of satisfying either.
-glob_covers_dir() {
-  local dir="$1" glob="$2"
-  glob_head_dirs "$glob" | grep -qxF -- "$dir"
+glob_covers_directory() {
+  local directory="$1" glob="$2"
+  glob_head_directories "$glob" | grep -qxF -- "$directory"
 }
 
 # Whether some hook arm's grep reaches every file under directory $1, given the
@@ -294,11 +294,11 @@ glob_covers_dir() {
 # is a substring of every path beneath it: the `app/` arm reaches all of
 # `app/routes/`. Demanding an exact name here would red a nested glob key the
 # hook already covers.
-arm_names_dir() {
-  local dir="$1" arm
+arm_names_directory() {
+  local directory="$1" arm
   while IFS= read -r arm; do
     [ -n "$arm" ] || continue
-    case "$dir" in
+    case "$directory" in
       *"$arm"*) return 0 ;;
     esac
   done <<<"$2"
@@ -306,9 +306,9 @@ arm_names_dir() {
 }
 
 @test "every pre-commit arm directory is covered by an ESLint lint-staged glob" {
-  local dirs globs derived assignments dir glob covered
-  dirs=$(arm_dirs)
-  derived=$(printf '%s\n' "$dirs" | grep -c . || true)
+  local directories globs derived assignments directory glob covered
+  directories=$(arm_directories)
+  derived=$(printf '%s\n' "$directories" | grep -c . || true)
   assignments=$(arm_assignment_count)
   [ "$derived" -gt 0 ]
   [ "$derived" -eq "$assignments" ]
@@ -325,16 +325,16 @@ arm_names_dir() {
     return 1
   }
 
-  while IFS= read -r dir; do
+  while IFS= read -r directory; do
     covered=0
     while IFS= read -r glob; do
-      if glob_covers_dir "$dir" "$glob"; then covered=1; fi
+      if glob_covers_directory "$directory" "$glob"; then covered=1; fi
     done <<<"$globs"
     if [ "$covered" -ne 1 ]; then
-      printf 'hook arm %s has no ESLint .lintstagedrc.json glob\n' "$dir" >&2
+      printf 'hook arm %s has no ESLint .lintstagedrc.json glob\n' "$directory" >&2
       return 1
     fi
-  done <<<"$dirs"
+  done <<<"$directories"
 }
 
 # --- every ESLint lint-staged glob's directory is named by a hook arm ---
@@ -351,9 +351,9 @@ arm_names_dir() {
 # counted separately, so a config entry added with no arm reds here instead of
 # shipping behind a guard that never saw it.
 @test "every ESLint lint-staged glob directory is named by a pre-commit arm" {
-  local dirs globs derived mentions glob glob_dirs dir
-  dirs=$(arm_dirs)
-  [ -n "$dirs" ]
+  local directories globs derived mentions glob glob_directories directory
+  directories=$(arm_directories)
+  [ -n "$directories" ]
 
   # Captured rather than piped, for the reason the guard above gives: a jq that
   # is absent or cannot parse the config must report itself rather than empty
@@ -371,17 +371,17 @@ arm_names_dir() {
   [ "$derived" -eq "$mentions" ]
 
   while IFS= read -r glob; do
-    glob_dirs=$(glob_head_dirs "$glob")
-    [ -n "$glob_dirs" ] || {
+    glob_directories=$(glob_head_directories "$glob")
+    [ -n "$glob_directories" ] || {
       printf 'eslint glob %s does not reduce to a plain recursive <dir>/**/ head, so no directory can be checked against the arms\n' "$glob" >&2
       return 1
     }
-    while IFS= read -r dir; do
-      if ! arm_names_dir "$dir" "$dirs"; then
-        printf 'ESLint .lintstagedrc.json glob %s covers %s, which no pre-commit arm reaches\n' "$glob" "$dir" >&2
+    while IFS= read -r directory; do
+      if ! arm_names_directory "$directory" "$directories"; then
+        printf 'ESLint .lintstagedrc.json glob %s covers %s, which no pre-commit arm reaches\n' "$glob" "$directory" >&2
         return 1
       fi
-    done <<<"$glob_dirs"
+    done <<<"$glob_directories"
   done <<<"$globs"
 }
 
@@ -399,13 +399,13 @@ arm_names_dir() {
 # doubled globstar is the same directory as one, so its head is `app`, and the
 # lazy cut yields `app/**` instead. It is what keeps that refusal from looking
 # like an interchangeable spelling of the lazy cut.
-@test "glob_head_dirs reduces each head shape it can expand to that head's directories" {
+@test "glob_head_directories reduces each head shape it can expand to that head's directories" {
   local glob expect got
   while IFS='|' read -r glob expect; do
     [ -n "$glob" ] || continue
-    got=$(glob_head_dirs "$glob" | tr '\n' ' ')
+    got=$(glob_head_directories "$glob" | tr '\n' ' ')
     if [ "${got% }" != "$expect" ]; then
-      printf 'glob_head_dirs %s yielded "%s", expected "%s"\n' "$glob" "${got% }" "$expect" >&2
+      printf 'glob_head_directories %s yielded "%s", expected "%s"\n' "$glob" "${got% }" "$expect" >&2
       return 1
     fi
   done <<'CASES'
@@ -428,13 +428,13 @@ CASES
 # enough that the reader would happily cut it to `app/`. It is refused because
 # that reduction would be wrong rather than unreadable, and it is the only case
 # that reds if the second-recursive-segment arm is dropped.
-@test "glob_head_dirs yields nothing for a head shape it cannot expand" {
+@test "glob_head_directories yields nothing for a head shape it cannot expand" {
   local glob got
   while IFS= read -r glob; do
     [ -n "$glob" ] || continue
-    got=$(glob_head_dirs "$glob")
+    got=$(glob_head_directories "$glob")
     if [ -n "$got" ]; then
-      printf 'glob_head_dirs %s yielded "%s", expected nothing\n' "$glob" "$got" >&2
+      printf 'glob_head_directories %s yielded "%s", expected nothing\n' "$glob" "$got" >&2
       return 1
     fi
   done <<'CASES'
@@ -448,13 +448,13 @@ app/**/routes/**/*.ts
 CASES
 }
 
-@test "arm_names_dir reads the arms as the unanchored substring greps they are" {
+@test "arm_names_directory reads the arms as the unanchored substring greps they are" {
   local arms
   arms=$(printf '%s\n' 'app/' 'test/')
-  arm_names_dir 'app/' "$arms" || return 1
-  arm_names_dir 'app/routes/' "$arms" || return 1
-  arm_names_dir 'test/mocks/' "$arms" || return 1
-  arm_names_dir '.storybook/' "$arms" && return 1
+  arm_names_directory 'app/' "$arms" || return 1
+  arm_names_directory 'app/routes/' "$arms" || return 1
+  arm_names_directory 'test/mocks/' "$arms" || return 1
+  arm_names_directory '.storybook/' "$arms" && return 1
   true
 }
 
@@ -464,11 +464,11 @@ CASES
 # term reds here instead of passing both checks.
 @test "every pre-commit arm assignment is read by the change-detection guard" {
   local names name guard
-  names=$(sed -n 's/^\(HAS_[A-Z0-9_]*_CHANGED\)=.*/\1/p' "$HOOK_ABS")
+  names=$(sed -n 's/^\(HAS_[A-Z0-9_]*_CHANGED\)=.*/\1/p' "$HOOK_ABSOLUTE_PATH")
   [ -n "$names" ]
   [ "$(printf '%s\n' "$names" | grep -c .)" -eq "$(arm_assignment_count)" ]
   # shellcheck disable=SC2016 # $ is literal in the BRE, not an expansion.
-  guard=$(grep -n '^if \[ -n "\$HAS_' "$HOOK_ABS")
+  guard=$(grep -n '^if \[ -n "\$HAS_' "$HOOK_ABSOLUTE_PATH")
   [ -n "$guard" ]
   while IFS= read -r name; do
     # The closing quote terminates the match. Grepping the bare name would let

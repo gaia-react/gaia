@@ -16,7 +16,7 @@
 #      0 disables the fetch outright, and with it the reap in (c) and the
 #      fast-forward in (d), both of which require evidence only a completed
 #      fetch establishes) and rate-limited by
-#      GAIA_WIKI_FETCH_MIN_INTERVAL_MINUTES (default 60, floor 5; 0 removes
+#      GAIA_WIKI_FETCH_MINIMUM_INTERVAL_MINUTES (default 60, floor 5; 0 removes
 #      the rate limit rather than disabling anything), with the attempt
 #      timestamped BEFORE launch so a hung remote cannot buy an unbounded
 #      retry every session. This fetch's effect is REPO-GLOBAL: refs and the
@@ -102,10 +102,10 @@ set -uo pipefail
 root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 [ -n "$root" ] || exit 0
 
-main_root_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)/.gaia/scripts/main-root-lib.sh"
-if [ -f "$main_root_lib" ]; then
+main_root_library="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)/.gaia/scripts/main-root-lib.sh"
+if [ -f "$main_root_library" ]; then
   # shellcheck source=/dev/null
-  . "$main_root_lib" 2>/dev/null || true
+  . "$main_root_library" 2>/dev/null || true
 fi
 main_root=""
 if command -v gaia_resolve_main_root >/dev/null 2>&1; then
@@ -135,14 +135,14 @@ wiki_catchup_state_get() {
 
 # Sets one key, preserving every other key already on file.
 wiki_catchup_state_set() {
-  local key="$1" value="$2" tmp
+  local key="$1" value="$2" temporary_file
   [ -d "$main_root/.gaia/local" ] || return 0
   mkdir -p "$main_root/.gaia/local/cache/shared" 2>/dev/null || return 0
-  tmp="${wiki_catchup_state_file}.tmp.$$"
+  temporary_file="${wiki_catchup_state_file}.tmp.$$"
   { [ -f "$wiki_catchup_state_file" ] && grep -v "^${key}=" "$wiki_catchup_state_file" 2>/dev/null
     printf '%s=%s\n' "$key" "$value"
-  } >"$tmp" 2>/dev/null && mv -f "$tmp" "$wiki_catchup_state_file" 2>/dev/null
-  rm -f "$tmp" 2>/dev/null
+  } >"$temporary_file" 2>/dev/null && mv -f "$temporary_file" "$wiki_catchup_state_file" 2>/dev/null
+  rm -f "$temporary_file" 2>/dev/null
   return 0
 }
 
@@ -151,12 +151,12 @@ wiki_catchup_state_set() {
 # durable-obligation fast-forward further down this file writes and reads.
 # shellcheck disable=SC2329
 wiki_catchup_state_unset() {
-  local key="$1" tmp
+  local key="$1" temporary_file
   [ -f "$wiki_catchup_state_file" ] || return 0
-  tmp="${wiki_catchup_state_file}.tmp.$$"
-  { grep -v "^${key}=" "$wiki_catchup_state_file" 2>/dev/null || true; } >"$tmp" \
-    && mv -f "$tmp" "$wiki_catchup_state_file" 2>/dev/null
-  rm -f "$tmp" 2>/dev/null
+  temporary_file="${wiki_catchup_state_file}.tmp.$$"
+  { grep -v "^${key}=" "$wiki_catchup_state_file" 2>/dev/null || true; } >"$temporary_file" \
+    && mv -f "$temporary_file" "$wiki_catchup_state_file" 2>/dev/null
+  rm -f "$temporary_file" 2>/dev/null
   return 0
 }
 
@@ -213,8 +213,8 @@ wiki_sync_present=0
 if [ -n "$branch_tracks" ]; then
   while IFS= read -r line; do
     [ -n "$line" ] || continue
-    ref=${line%% *}
-    case "$ref" in wiki-sync/*) wiki_sync_present=1; break ;; esac
+    branch_name=${line%% *}
+    case "$branch_name" in wiki-sync/*) wiki_sync_present=1; break ;; esac
   done <<EOF
 $branch_tracks
 EOF
@@ -233,10 +233,10 @@ if [ "$wiki_sync_present" -eq 1 ]; then
     [ "$wiki_fetch_timeout" -gt 30 ] && wiki_fetch_timeout=30
   fi
 
-  wiki_fetch_min_interval="${GAIA_WIKI_FETCH_MIN_INTERVAL_MINUTES:-60}"
-  case "$wiki_fetch_min_interval" in '' | *[!0-9]*) wiki_fetch_min_interval=60 ;; esac
-  if [ "$wiki_fetch_min_interval" -ne 0 ]; then
-    [ "$wiki_fetch_min_interval" -lt 5 ] && wiki_fetch_min_interval=5
+  wiki_fetch_minimum_interval="${GAIA_WIKI_FETCH_MINIMUM_INTERVAL_MINUTES:-60}"
+  case "$wiki_fetch_minimum_interval" in '' | *[!0-9]*) wiki_fetch_minimum_interval=60 ;; esac
+  if [ "$wiki_fetch_minimum_interval" -ne 0 ]; then
+    [ "$wiki_fetch_minimum_interval" -lt 5 ] && wiki_fetch_minimum_interval=5
   fi
 
   do_fetch=1
@@ -244,7 +244,7 @@ if [ "$wiki_sync_present" -eq 1 ]; then
   if [ "$do_fetch" -eq 1 ]; then
     git -C "$root" remote get-url origin >/dev/null 2>&1 || do_fetch=0
   fi
-  if [ "$do_fetch" -eq 1 ] && [ "$wiki_fetch_min_interval" -ne 0 ]; then
+  if [ "$do_fetch" -eq 1 ] && [ "$wiki_fetch_minimum_interval" -ne 0 ]; then
     last_fetch_at=$(wiki_catchup_state_get last_fetch_at)
     case "$last_fetch_at" in '' | *[!0-9]*) last_fetch_at="" ;; esac
     if [ -n "$last_fetch_at" ]; then
@@ -257,8 +257,8 @@ if [ "$wiki_sync_present" -eq 1 ]; then
       # Half B still runs, and nothing non-zero escapes,
       # so the loss is invisible from the exit status.
       elapsed=$(($(date -u +%s) - 10#$last_fetch_at))
-      min_interval_secs=$((10#$wiki_fetch_min_interval * 60))
-      [ "$elapsed" -lt "$min_interval_secs" ] && do_fetch=0
+      minimum_interval_seconds=$((10#$wiki_fetch_minimum_interval * 60))
+      [ "$elapsed" -lt "$minimum_interval_seconds" ] && do_fetch=0
     fi
   fi
 
@@ -339,10 +339,10 @@ if [ "$wiki_sync_present" -eq 1 ]; then
       # by construction never itself a linked worktree, so its own
       # --absolute-git-dir already IS the common dir shallow.lock lives in,
       # with no relative/absolute normalization needed.
-      git_dir=$(git -C "$root" rev-parse --absolute-git-dir 2>/dev/null || true)
-      git_common_dir=$(git -C "$main_root" rev-parse --absolute-git-dir 2>/dev/null || true)
-      [ -n "$git_dir" ] && rm -f "$git_dir/FETCH_HEAD.lock" 2>/dev/null
-      [ -n "$git_common_dir" ] && rm -f "$git_common_dir/shallow.lock" 2>/dev/null
+      git_directory=$(git -C "$root" rev-parse --absolute-git-dir 2>/dev/null || true)
+      git_common_directory=$(git -C "$main_root" rev-parse --absolute-git-dir 2>/dev/null || true)
+      [ -n "$git_directory" ] && rm -f "$git_directory/FETCH_HEAD.lock" 2>/dev/null
+      [ -n "$git_common_directory" ] && rm -f "$git_common_directory/shallow.lock" 2>/dev/null
       true
     else
       wait "$fetch_pid" 2>/dev/null && fetch_ok=1
@@ -361,18 +361,18 @@ if [ "$wiki_sync_present" -eq 1 ]; then
     if [ -n "$branch_tracks" ] && [ -n "$base" ]; then
       while IFS= read -r line; do
         [ -n "$line" ] || continue
-        ref=${line%% *}                        # branch name (no spaces in a ref)
-        track=${line#"$ref"}; track=${track# }  # remainder: [gone]/[ahead N]/... token
+        branch_name=${line%% *}                        # branch name (no spaces in a ref)
+        track=${line#"$branch_name"}; track=${track# }  # remainder: [gone]/[ahead N]/... token
         # The glob is deliberately loose: it requires only ONE hex character
         # where the landing's short sha has 7-40. That is safe because the
         # cherry check and the `[gone]` track state below are what actually
         # gate the delete, not this glob alone. Validated before any
         # destructive step (SEC-011).
-        case "$ref" in
+        case "$branch_name" in
           wiki-sync/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9a-f]*) ;;
           *) continue ;;
         esac
-        [ "$ref" = "$current" ] && continue
+        [ "$branch_name" = "$current" ] && continue
         [ "$track" = "[gone]" ] || continue
         # shellcheck disable=SC2034 # read by half B, further down this file
         branch_reconciled=1
@@ -396,13 +396,13 @@ if [ "$wiki_sync_present" -eq 1 ]; then
         # which is indistinguishable from a genuine zero-commits-ahead result
         # once piped through `grep -c` alone. Only a clean cherry run answers
         # the question; anything else keeps the branch, per the comment above.
-        cherry_out=$(git -C "$root" cherry --end-of-options "refs/remotes/origin/$base" "$ref" 2>/dev/null)
+        cherry_output=$(git -C "$root" cherry --end-of-options "refs/remotes/origin/$base" "$branch_name" 2>/dev/null)
         cherry_status=$?
         [ "$cherry_status" -eq 0 ] || continue
-        unpushed=$(printf '%s\n' "$cherry_out" | grep -c '^+')
+        unpushed=$(printf '%s\n' "$cherry_output" | grep -c '^+')
         [ "$unpushed" -eq 0 ] || continue
 
-        git -C "$root" branch -D -- "$ref" >/dev/null 2>&1 || true
+        git -C "$root" branch -D -- "$branch_name" >/dev/null 2>&1 || true
       done <<EOF
 $branch_tracks
 EOF
@@ -442,44 +442,44 @@ if [ "$owed" = "1" ] && [ -n "$base" ] \
   owed=""
 fi
 
-attempt_ff=0
-[ "$owed" = "1" ] && attempt_ff=1
-[ "$branch_reconciled" -eq 1 ] && attempt_ff=1
+attempt_fast_forward=0
+[ "$owed" = "1" ] && attempt_fast_forward=1
+[ "$branch_reconciled" -eq 1 ] && attempt_fast_forward=1
 
-if [ "$attempt_ff" -eq 1 ] && [ -n "$base" ]; then
+if [ "$attempt_fast_forward" -eq 1 ] && [ -n "$base" ]; then
   # Gates, all cheap and local, all silent when they fail (a failing gate is a
   # SKIP: no report, exit 0, base byte-identical, index and working tree
   # untouched -- distinct from a TRIED-and-failed fast-forward, which reports).
-  ff_ready=1
-  [ "$current" = "$base" ] || ff_ready=0   # empty $current (detached) fails here too
+  fast_forward_ready=1
+  [ "$current" = "$base" ] || fast_forward_ready=0   # empty $current (detached) fails here too
 
-  if [ "$ff_ready" -eq 1 ]; then
-    [ -z "$(git -C "$root" status --porcelain 2>/dev/null)" ] || ff_ready=0
+  if [ "$fast_forward_ready" -eq 1 ]; then
+    [ -z "$(git -C "$root" status --porcelain 2>/dev/null)" ] || fast_forward_ready=0
   fi
 
   base_upstream=""
-  if [ "$ff_ready" -eq 1 ]; then
+  if [ "$fast_forward_ready" -eq 1 ]; then
     if git -C "$root" rev-parse --verify --quiet "refs/remotes/origin/$base" >/dev/null 2>&1; then
       base_upstream=$(git -C "$root" for-each-ref \
         --format='%(upstream)' "refs/heads/$base" 2>/dev/null)
     fi
-    [ -n "$base_upstream" ] || ff_ready=0
+    [ -n "$base_upstream" ] || fast_forward_ready=0
   fi
 
-  if [ "$ff_ready" -eq 1 ] && [ "$fetch_attempted" -eq 1 ] && [ "$fetch_ok" -ne 1 ]; then
-    ff_ready=0
+  if [ "$fast_forward_ready" -eq 1 ] && [ "$fetch_attempted" -eq 1 ] && [ "$fetch_ok" -ne 1 ]; then
+    fast_forward_ready=0
   fi
 
-  if [ "$ff_ready" -eq 1 ]; then
+  if [ "$fast_forward_ready" -eq 1 ]; then
     # SEC-011: $base was shape-validated once, above, before any git call
     # interpolated it; --end-of-options additionally stops a ref that starts
     # with `-` from ever being read as a flag. Capture stderr only (the
-    # `2>&1 >/dev/null` order): stdout is discarded, stderr lands in $ff_stderr
+    # `2>&1 >/dev/null` order): stdout is discarded, stderr lands in $fast_forward_stderr
     # for the report below, and NOTHING reaches this hook's own stdout/stderr
     # either way.
-    ff_stderr=$(git -C "$root" merge --ff-only --end-of-options "refs/remotes/origin/$base" 2>&1 >/dev/null)
-    ff_status=$?
-    if [ "$ff_status" -eq 0 ]; then
+    fast_forward_stderr=$(git -C "$root" merge --ff-only --end-of-options "refs/remotes/origin/$base" 2>&1 >/dev/null)
+    fast_forward_status=$?
+    if [ "$fast_forward_status" -eq 0 ]; then
       wiki_catchup_state_unset catchup_owed
       rm -f "$main_root/.gaia/local/cache/shared/wiki-base-catchup.report" 2>/dev/null || true
     else
@@ -488,7 +488,7 @@ if [ "$attempt_ff" -eq 1 ] && [ -n "$base" ]; then
       # transient git error all reproduce the same silent stale base. Derived
       # from the failed merge's own stderr; defaults to "git error".
       reason="git error"
-      case "$ff_stderr" in
+      case "$fast_forward_stderr" in
         *"Not possible to fast-forward"*) reason="divergence" ;;
         *"untracked working tree files would be overwritten"*) reason="untracked collision" ;;
         *"index.lock"*) reason="index locked" ;;
@@ -505,11 +505,11 @@ if [ "$attempt_ff" -eq 1 ] && [ -n "$base" ]; then
         # `mv -f` is atomic, so a concurrent drain either sees the old
         # content or the new content, never neither.
         report_file="$main_root/.gaia/local/cache/shared/wiki-base-catchup.report"
-        report_tmp="${report_file}.tmp.$$"
+        report_temporary_file="${report_file}.tmp.$$"
         printf '[wiki base] fast-forward of %s to origin/%s refused (%s); local base is behind. Resolve by hand; the next qualifying session retries.\n' \
           "$base" "$base" "$reason" \
-          > "$report_tmp" 2>/dev/null && mv -f "$report_tmp" "$report_file" 2>/dev/null
-        rm -f "$report_tmp" 2>/dev/null
+          > "$report_temporary_file" 2>/dev/null && mv -f "$report_temporary_file" "$report_file" 2>/dev/null
+        rm -f "$report_temporary_file" 2>/dev/null
       fi
     fi
   else

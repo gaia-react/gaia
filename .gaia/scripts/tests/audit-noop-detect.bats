@@ -15,12 +15,12 @@ assert_contains() {
 }
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   # shellcheck source=.gaia/tests/helpers/path.sh
-  . "$( cd "$THIS_DIR/../../.." && pwd )/.gaia/tests/helpers/path.sh"
-  SCRIPT="$THIS_DIR/../audit-noop-detect.sh"
+  . "$( cd "$THIS_DIRECTORY/../../.." && pwd )/.gaia/tests/helpers/path.sh"
+  SCRIPT="$THIS_DIRECTORY/../audit-noop-detect.sh"
   [ -x "$SCRIPT" ] || skip "audit-noop-detect.sh not executable"
-  FIX="$THIS_DIR/fixtures/audit-noop"
+  FIX="$THIS_DIRECTORY/fixtures/audit-noop"
 }
 
 # Usage errors (exit 2)
@@ -789,7 +789,7 @@ _noop_resolve_marker() {
   local bare="$BATS_TEST_TMPDIR/no-keylib"
   mkdir -p "$bare/.gaia/scripts" "$bare/.claude/hooks"
   cp "$SCRIPT" "$bare/.gaia/scripts/audit-noop-detect.sh"
-  cp -R "$THIS_DIR/../../../.claude/hooks/lib" "$bare/.claude/hooks/lib"
+  cp -R "$THIS_DIRECTORY/../../../.claude/hooks/lib" "$bare/.claude/hooks/lib"
   [ -f "$bare/.claude/hooks/lib/audit-clearance.sh" ] || return 1
   [ -f "$bare/.gaia/scripts/audit-key-lib.sh" ] && return 1
 
@@ -801,7 +801,7 @@ _noop_resolve_marker() {
 
   # ...and the same scratch tree WITH the key lib restored classifies REAL, so
   # the noop above is the missing lib and not the relocation.
-  cp "$THIS_DIR/../audit-key-lib.sh" "$bare/.gaia/scripts/audit-key-lib.sh"
+  cp "$THIS_DIRECTORY/../audit-key-lib.sh" "$bare/.gaia/scripts/audit-key-lib.sh"
   run bash "$bare/.gaia/scripts/audit-noop-detect.sh" --shape audit-team-member \
     --marker "$root/.gaia/local/audit/${digest}.code-audit-maintainer-shell.ok" \
     --findings-root "$root" --findings-since "$stamp"

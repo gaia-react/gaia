@@ -27,13 +27,13 @@ setup() {
   HELPERS="$BATS_TEST_DIRNAME/helpers"
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   . "$REPO_ROOT/.gaia/tests/helpers/path.sh"
-  HOOK_ABS="$REPO_ROOT/.claude/hooks/token-tally-review.sh"
-  LIB_SRC="$REPO_ROOT/.claude/hooks/lib/gaia-active-plan.sh"
-  LIB_MAIN_ROOT_SRC="$REPO_ROOT/.gaia/scripts/main-root-lib.sh"
-  VERB_ARMING_SRC="$REPO_ROOT/.claude/hooks/lib/verb-arming.sh"
-  VERB_ARMING_WALK_SRC="$REPO_ROOT/.claude/hooks/lib/verb-arming-walk.sh"
-  REPO_SCOPE_SRC="$REPO_ROOT/.claude/hooks/lib/repo-scope.sh"
-  AUDIT_SCOPE_SRC="$REPO_ROOT/.claude/hooks/lib/audit-scope.sh"
+  HOOK_ABSOLUTE_PATH="$REPO_ROOT/.claude/hooks/token-tally-review.sh"
+  LIBRARY_SOURCE="$REPO_ROOT/.claude/hooks/lib/gaia-active-plan.sh"
+  LIBRARY_MAIN_ROOT_SOURCE="$REPO_ROOT/.gaia/scripts/main-root-lib.sh"
+  VERB_ARMING_SOURCE="$REPO_ROOT/.claude/hooks/lib/verb-arming.sh"
+  VERB_ARMING_WALK_SOURCE="$REPO_ROOT/.claude/hooks/lib/verb-arming-walk.sh"
+  REPO_SCOPE_SOURCE="$REPO_ROOT/.claude/hooks/lib/repo-scope.sh"
+  AUDIT_SCOPE_SOURCE="$REPO_ROOT/.claude/hooks/lib/audit-scope.sh"
 
   export GIT_AUTHOR_NAME="GAIA Test"
   export GIT_AUTHOR_EMAIL="gaia-test@example.com"
@@ -56,13 +56,13 @@ teardown() {
 build_repo() {
   REPO="$("$HELPERS/tmp-git-repo.sh")"
   mkdir -p "$REPO/.claude/hooks/lib" "$REPO/.gaia/scripts"
-  cp "$LIB_SRC" "$REPO/.claude/hooks/lib/gaia-active-plan.sh"
+  cp "$LIBRARY_SOURCE" "$REPO/.claude/hooks/lib/gaia-active-plan.sh"
   chmod +x "$REPO/.claude/hooks/lib/gaia-active-plan.sh"
-  cp "$LIB_MAIN_ROOT_SRC" "$REPO/.gaia/scripts/main-root-lib.sh"
-  cp "$VERB_ARMING_SRC" "$REPO/.claude/hooks/lib/verb-arming.sh"
-  cp "$VERB_ARMING_WALK_SRC" "$REPO/.claude/hooks/lib/verb-arming-walk.sh"
-  cp "$REPO_SCOPE_SRC" "$REPO/.claude/hooks/lib/repo-scope.sh"
-  cp "$AUDIT_SCOPE_SRC" "$REPO/.claude/hooks/lib/audit-scope.sh"
+  cp "$LIBRARY_MAIN_ROOT_SOURCE" "$REPO/.gaia/scripts/main-root-lib.sh"
+  cp "$VERB_ARMING_SOURCE" "$REPO/.claude/hooks/lib/verb-arming.sh"
+  cp "$VERB_ARMING_WALK_SOURCE" "$REPO/.claude/hooks/lib/verb-arming-walk.sh"
+  cp "$REPO_SCOPE_SOURCE" "$REPO/.claude/hooks/lib/repo-scope.sh"
+  cp "$AUDIT_SCOPE_SOURCE" "$REPO/.claude/hooks/lib/audit-scope.sh"
 
   # A two-member roster: the default member plus one claimant, so the gate's
   # roster read is exercised on a member that is not the default.
@@ -90,23 +90,23 @@ STUB
   # hook resolves both its shared lib and the tally script off ${BASH_SOURCE[0]}
   # rather than off the working directory, so the staged libs above and the
   # recording stub beside them are in its view only when the hook running is
-  # this copy. Driving $HOOK_ABS with cwd set to $REPO would reach the real
+  # this copy. Driving $HOOK_ABSOLUTE_PATH with cwd set to $REPO would reach the real
   # checkout's lib and its real token-tally.sh instead, which is the whole
   # point of the rooting and would make every invocation assertion below read
   # a stub that was never called.
   STAGED_HOOK="$REPO/.claude/hooks/token-tally-review.sh"
-  cp "$HOOK_ABS" "$STAGED_HOOK"
+  cp "$HOOK_ABSOLUTE_PATH" "$STAGED_HOOK"
   chmod +x "$STAGED_HOOK"
 }
 
 write_running() {
-  # write_running <plan_dir> <branch> <started>
+  # write_running <plan_directory> <branch> <started>
   mkdir -p "$1"
   { printf 'branch: %s\n' "$2"; printf 'slug: %s\n' "$(basename "$1")"; printf 'started: %s\n' "$3"; } > "$1/RUNNING"
 }
 
 write_readme_with_spec() {
-  # write_readme_with_spec <plan_dir> <spec_path>
+  # write_readme_with_spec <plan_directory> <spec_path>
   mkdir -p "$1"
   {
     printf '# Plan\n\n'
@@ -122,27 +122,27 @@ write_readme_spec_less() {
 
 # write_review_sidecar <projects_root> <session_id> <agent_type>: fabricates
 # the sidecar meta file the cheap gate globs
-# (<projects-root>/*/<sid>/subagents/agent-*.meta.json). Sets $PROOT.
+# (<projects-root>/*/<session_id>/subagents/agent-*.meta.json). Sets $PROOT.
 write_review_sidecar() {
   PROOT="$1"
-  local sid="$2" atype="$3" dir
-  dir="$PROOT/proj-hash/$sid/subagents"
-  mkdir -p "$dir"
+  local session_id="$2" atype="$3" directory
+  directory="$PROOT/proj-hash/$session_id/subagents"
+  mkdir -p "$directory"
   jq -n --arg t "$atype" '{agentType: $t, description: "review the diff", toolUseId: "toolu_1"}' \
-    > "$dir/agent-0001.meta.json"
+    > "$directory/agent-0001.meta.json"
 }
 
 run_hook_bash() {
   # run_hook_bash <command> <session_id> <projects_root>
-  local cmd="$1" sid="$2" proot="$3" input
-  input=$("$HELPERS/mock-hook-input.sh" post-tool-use "$sid" Bash "$cmd")
+  local command="$1" session_id="$2" proot="$3" input
+  input=$("$HELPERS/mock-hook-input.sh" post-tool-use "$session_id" Bash "$command")
   run env GAIA_TALLY_PROJECTS_ROOT="$proot" bash -c "echo '$input' | '$STAGED_HOOK'"
 }
 
 run_hook_stop() {
   # run_hook_stop <session_id> <projects_root>
-  local sid="$1" proot="$2" input
-  input=$("$HELPERS/mock-hook-input.sh" stop "$sid")
+  local session_id="$1" proot="$2" input
+  input=$("$HELPERS/mock-hook-input.sh" stop "$session_id")
   run env GAIA_TALLY_PROJECTS_ROOT="$proot" bash -c "echo '$input' | '$STAGED_HOOK'"
 }
 
@@ -170,7 +170,7 @@ run_hook_stop() {
 @test "empty/garbage payload: exit 0" {
   build_repo
   cd "$REPO"
-  invoke_hook 'not-json{{' "$HOOK_ABS"
+  invoke_hook 'not-json{{' "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ ! -f "$CALLS_FILE" ]
 }
@@ -178,7 +178,7 @@ run_hook_stop() {
 @test "truly empty stdin: exit 0" {
   build_repo
   cd "$REPO"
-  invoke_hook '' "$HOOK_ABS"
+  invoke_hook '' "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ ! -f "$CALLS_FILE" ]
 }
@@ -190,7 +190,7 @@ run_hook_stop() {
   # Symlink farm of the tools the hook + git need, deliberately WITHOUT jq, so
   # `command -v jq` fails and the hook's earliest guard fires.
   FARM="$(path_allowlist bash git cat mkdir mktemp mv rm cp chmod grep sed printf basename dirname env sh)"
-  run env PATH="$FARM" GAIA_TALLY_PROJECTS_ROOT="$PROOT" bash -c "echo 'x' | '$HOOK_ABS'"
+  run env PATH="$FARM" GAIA_TALLY_PROJECTS_ROOT="$PROOT" bash -c "echo 'x' | '$HOOK_ABSOLUTE_PATH'"
   [ "$status" -eq 0 ]
   [ ! -f "$CALLS_FILE" ]
 }
@@ -221,9 +221,9 @@ run_hook_stop() {
   build_repo
   cd "$REPO"
   branch="$(git branch --show-current)"
-  plan_dir="$REPO/.gaia/local/plans/my-plan"
-  write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-013/SPEC.md"
-  write_running "$plan_dir" "$branch" "2026-07-01T00:00:00Z"
+  plan_directory="$REPO/.gaia/local/plans/my-plan"
+  write_readme_with_spec "$plan_directory" "/abs/root/.gaia/local/specs/SPEC-013/SPEC.md"
+  write_running "$plan_directory" "$branch" "2026-07-01T00:00:00Z"
 
   PROOT="$REPO/projects"
   write_review_sidecar "$PROOT" "S1" "code-audit-frontend"
@@ -240,9 +240,9 @@ run_hook_stop() {
   build_repo
   cd "$REPO"
   branch="$(git branch --show-current)"
-  plan_dir="$REPO/.gaia/local/plans/PLAN-003"
-  write_readme_spec_less "$plan_dir"
-  write_running "$plan_dir" "$branch" "2026-07-01T00:00:00Z"
+  plan_directory="$REPO/.gaia/local/plans/PLAN-003"
+  write_readme_spec_less "$plan_directory"
+  write_running "$plan_directory" "$branch" "2026-07-01T00:00:00Z"
 
   PROOT="$REPO/projects"
   write_review_sidecar "$PROOT" "S1" "code-audit-frontend"
@@ -260,9 +260,9 @@ run_hook_stop() {
   branch="$(git branch --show-current)"
   # Colocated plan dir whose README has no parseable Source SPEC section, so
   # resolve_feature_key's fallback returns the bare basename `plan`.
-  plan_dir="$REPO/.gaia/local/specs/SPEC-099/plan"
-  write_readme_spec_less "$plan_dir"
-  write_running "$plan_dir" "$branch" "2026-07-01T00:00:00Z"
+  plan_directory="$REPO/.gaia/local/specs/SPEC-099/plan"
+  write_readme_spec_less "$plan_directory"
+  write_running "$plan_directory" "$branch" "2026-07-01T00:00:00Z"
 
   PROOT="$REPO/projects"
   write_review_sidecar "$PROOT" "S1" "code-audit-frontend"
@@ -280,8 +280,8 @@ run_hook_stop() {
   PROOT="$REPO/projects"
   write_review_sidecar "$PROOT" "S1" "code-audit-frontend"
 
-  heredoc_cmd=$'cat <<EOF\nPlease remember to gh pr merge later.\nEOF'
-  run_hook_bash "$heredoc_cmd" "S1" "$PROOT"
+  heredoc_command=$'cat <<EOF\nPlease remember to gh pr merge later.\nEOF'
+  run_hook_bash "$heredoc_command" "S1" "$PROOT"
   [ "$status" -eq 0 ]
   [ ! -f "$CALLS_FILE" ]
 }
@@ -294,8 +294,8 @@ run_hook_stop() {
   PROOT="$REPO/projects"
   write_review_sidecar "$PROOT" "S1" "code-audit-frontend"
 
-  heredoc_cmd=$'cat > /tmp/notes.txt <<EOF\ngh pr merge\nEOF'
-  run_hook_bash "$heredoc_cmd" "S1" "$PROOT"
+  heredoc_command=$'cat > /tmp/notes.txt <<EOF\ngh pr merge\nEOF'
+  run_hook_bash "$heredoc_command" "S1" "$PROOT"
   [ "$status" -eq 0 ]
   [ ! -f "$CALLS_FILE" ]
 
@@ -310,12 +310,12 @@ run_hook_stop() {
   PROOT="$REPO/projects"
   write_review_sidecar "$PROOT" "S1" "code-audit-frontend"
 
-  local pad heredoc_cmd
+  local pad heredoc_command
   pad=$(printf 'x%.0s' $(seq 1 16400))
-  heredoc_cmd=$'cat > /tmp/notes.txt <<EOF\n'"$pad"$'\ngh pr merge\nEOF'
-  [ "${#heredoc_cmd}" -gt 16384 ] || return 1
+  heredoc_command=$'cat > /tmp/notes.txt <<EOF\n'"$pad"$'\ngh pr merge\nEOF'
+  [ "${#heredoc_command}" -gt 16384 ] || return 1
 
-  run_hook_bash "$heredoc_cmd" "S1" "$PROOT"
+  run_hook_bash "$heredoc_command" "S1" "$PROOT"
   [ "$status" -eq 0 ]
   [ -f "$CALLS_FILE" ]
 }
@@ -423,7 +423,7 @@ run_hook_stop() {
   PROOT="$REPO/projects"
   write_review_sidecar "$PROOT" "S1" "code-audit-frontend"
 
-  input=$(jq -n --arg sid "S1" '{session_id: $sid, transcript_path: "/tmp/t.jsonl", cwd: ".", hook_event_name: "Stop", stop_hook_active: true}')
+  input=$(jq -n --arg session_id "S1" '{session_id: $session_id, transcript_path: "/tmp/t.jsonl", cwd: ".", hook_event_name: "Stop", stop_hook_active: true}')
   run env GAIA_TALLY_PROJECTS_ROOT="$PROOT" bash -c "echo '$input' | '$STAGED_HOOK'"
   [ "$status" -eq 0 ]
   [ ! -f "$CALLS_FILE" ]
@@ -455,5 +455,5 @@ EOF
 }
 
 @test "the hook file is executable" {
-  [ -x "$HOOK_ABS" ]
+  [ -x "$HOOK_ABSOLUTE_PATH" ]
 }

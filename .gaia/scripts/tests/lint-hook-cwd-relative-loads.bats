@@ -45,8 +45,8 @@ setup() {
   # Isolate pricing from the developer's real rate table and the network.
   export GAIA_RATES_STATE_DIR="$BATS_TEST_TMPDIR/rates-state"
   export GAIA_RATES_FEED_DISABLE=1
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
   LINTER="$REPO_ROOT/.gaia/scripts/lint-hook-cwd-relative-loads.sh"
   TMP=""
 }
@@ -217,9 +217,9 @@ bash ".gaia/scripts/token-tally.sh" --action review'
   # The negative control for the two tests above: adding the optional quote must
   # not turn the advertised repair into a finding.
   fixture_repo
-  fixture_hook '_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _lib_dir=""
-[ -f "$_lib_dir/red-ledger.sh" ] && . "$_lib_dir/red-ledger.sh"
-bash "$_lib_dir/../../.gaia/scripts/token-tally.sh"'
+  fixture_hook '_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _library_directory=""
+[ -f "$_library_directory/red-ledger.sh" ] && . "$_library_directory/red-ledger.sh"
+bash "$_library_directory/../../.gaia/scripts/token-tally.sh"'
   run_linter
   [ "$status" -eq 0 ]
   grep -qF -- "check.sh" <<<"$output" && return 1
@@ -254,8 +254,8 @@ bash "$_lib_dir/../../.gaia/scripts/token-tally.sh"'
 
 @test "quiet on the BASH_SOURCE repair it advertises" {
   fixture_repo
-  fixture_hook '_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _lib_dir=""
-[ -n "$_lib_dir" ] && [ -f "$_lib_dir/red-ledger.sh" ] && . "$_lib_dir/red-ledger.sh"'
+  fixture_hook '_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _library_directory=""
+[ -n "$_library_directory" ] && [ -f "$_library_directory/red-ledger.sh" ] && . "$_library_directory/red-ledger.sh"'
   run_linter
   [ "$status" -eq 0 ]
   grep -qF -- "check.sh" <<<"$output" && return 1
@@ -267,8 +267,8 @@ bash "$_lib_dir/../../.gaia/scripts/token-tally.sh"'
   # primary, so the variable-rooted repair written in the negated stand-down
   # style has to stay the repair rather than become a finding.
   fixture_repo
-  fixture_hook '_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _lib_dir=""
-[ ! -f "$_lib_dir/red-ledger.sh" ] && exit 0'
+  fixture_hook '_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _library_directory=""
+[ ! -f "$_library_directory/red-ledger.sh" ] && exit 0'
   run_linter
   [ "$status" -eq 0 ]
   grep -qF -- "check.sh" <<<"$output" && return 1

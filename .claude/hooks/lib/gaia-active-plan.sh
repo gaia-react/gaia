@@ -8,8 +8,8 @@
 #
 # Usage:
 #   . .claude/hooks/lib/gaia-active-plan.sh
-#   plan_dir="$(resolve_active_plan_dir)"
-#   [ -n "$plan_dir" ] && feature_key="$(resolve_feature_key "$plan_dir")"
+#   plan_directory="$(resolve_active_plan_directory)"
+#   [ -n "$plan_directory" ] && feature_key="$(resolve_feature_key "$plan_directory")"
 
 # Echoes the absolute path of the plan directory whose RUNNING sentinel names the
 # current branch, or nothing when none match. The search is anchored to the MAIN
@@ -25,14 +25,14 @@
 # lexicographically latest `started:` value (ISO-8601 sorts correctly as a
 # string): the most recently started run wins. A RUNNING file missing a
 # `branch:` or `started:` line is skipped, not an error.
-resolve_active_plan_dir() {
-  local cur main_root running_file file_branch file_started best_dir best_started
+resolve_active_plan_directory() {
+  local current_branch main_root running_file file_branch file_started best_directory best_started
 
-  cur="$(git branch --show-current 2>/dev/null)" || true
-  [ -n "$cur" ] || return 0
+  current_branch="$(git branch --show-current 2>/dev/null)" || true
+  [ -n "$current_branch" ] || return 0
 
-  local self_dir errexit_was
-  self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || return 0
+  local self_directory errexit_was
+  self_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || return 0
   # Suspend errexit across the load, then RESTORE WHAT WAS THERE. A copy that is
   # present but unparseable abandons the shell AT the source, before the resolver
   # check below can degrade, and no caller can guard it from outside because
@@ -44,47 +44,47 @@ resolve_active_plan_dir() {
   case $- in *e*) errexit_was=1 ;; esac
   set +e
   # shellcheck disable=SC1091
-  source "$self_dir/../../../.gaia/scripts/main-root-lib.sh" 2>/dev/null
+  source "$self_directory/../../../.gaia/scripts/main-root-lib.sh" 2>/dev/null
   if [ "$errexit_was" = 1 ]; then set -e; fi
   main_root="$(gaia_resolve_main_root 2>/dev/null)" || return 0
   [ -n "$main_root" ] || return 0
 
-  best_dir=""
+  best_directory=""
   best_started=""
   for running_file in "$main_root"/.gaia/local/plans/*/RUNNING "$main_root"/.gaia/local/specs/*/plan/RUNNING "$main_root"/.gaia/local/specs/*/plan-*/RUNNING; do
     [ -f "$running_file" ] || continue
 
     file_branch="$(grep '^branch:' "$running_file" 2>/dev/null | cut -d' ' -f2)" || true
-    [ "$file_branch" = "$cur" ] || continue
+    [ "$file_branch" = "$current_branch" ] || continue
 
     file_started="$(grep '^started:' "$running_file" 2>/dev/null | cut -d' ' -f2)" || true
-    if [ -z "$best_dir" ] || [[ "$file_started" > "$best_started" ]]; then
-      best_dir="$(dirname "$running_file")"
+    if [ -z "$best_directory" ] || [[ "$file_started" > "$best_started" ]]; then
+      best_directory="$(dirname "$running_file")"
       best_started="$file_started"
     fi
   done
 
-  [ -n "$best_dir" ] && printf '%s' "$best_dir"
+  [ -n "$best_directory" ] && printf '%s' "$best_directory"
   return 0
 }
 
 # Echoes the feature key for a plan directory: basename(dirname(SPEC path)),
-# read from the `Derived from … (…)` line inside <plan_dir>/README.md's
+# read from the `Derived from … (…)` line inside <plan_directory>/README.md's
 # `## Source SPEC` section (the same resolution the planning step uses, so
 # a feature's spec / plan / execute records all key together). Falls back to
 # a bare `SPEC-NNN` scan of that line when the path is unparseable, and
 # ultimately to the plan directory's own basename (the slug) for a spec-less
 # plan.
 resolve_feature_key() {
-  local plan_dir="$1" readme source_line path key
+  local plan_directory="$1" readme source_line path key
 
-  readme="$plan_dir/README.md"
+  readme="$plan_directory/README.md"
   source_line=""
   if [ -f "$readme" ]; then
     source_line="$(awk '
-      /^## Source SPEC/ { insec=1; next }
-      insec && /^## / { exit }
-      insec && /Derived from/ { print; exit }
+      /^## Source SPEC/ { inside_section=1; next }
+      inside_section && /^## / { exit }
+      inside_section && /Derived from/ { print; exit }
     ' "$readme" 2>/dev/null)" || true
   fi
 
@@ -105,6 +105,6 @@ resolve_feature_key() {
     fi
   fi
 
-  basename "$plan_dir"
+  basename "$plan_directory"
   return 0
 }

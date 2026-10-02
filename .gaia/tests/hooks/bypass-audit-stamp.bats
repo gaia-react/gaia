@@ -175,8 +175,8 @@ wiki_pr_with_stale_marker() {
 # The head GitHub reports on a numbered read after the classification is a
 # commit nobody classified: the stamp must still land on local HEAD.
 moved_head_after_record() {
-  jq -c '.headRefOid = "0123456789abcdef0123456789abcdef01234567"' "$MGF_STUB_DIR/record.json" \
-    > "$MGF_STUB_DIR/numbered-record.json"
+  jq -c '.headRefOid = "0123456789abcdef0123456789abcdef01234567"' "$MGF_STUB_DIRECTORY/record.json" \
+    > "$MGF_STUB_DIRECTORY/numbered-record.json"
 }
 
 @test "the stamp posts on the classified local HEAD even when a numbered head read would answer a moved head" {
@@ -207,8 +207,8 @@ moved_head_after_record() {
 @test "a rejected POST still allows the bypass and names the manual command on stderr" {
   mgf_commit "wiki/page.md" "doc"
   mgf_record 12 false "docs: page" "wiki/page.md"
-  sed -i.bak 's/\*" -X POST "\*) exit 0 ;;/*" -X POST "*) exit 1 ;;/' "$MGF_STUB_DIR/bin/gh"
-  grep -qF -- '" -X POST "*) exit 1' "$MGF_STUB_DIR/bin/gh"
+  sed -i.bak 's/\*" -X POST "\*) exit 0 ;;/*" -X POST "*) exit 1 ;;/' "$MGF_STUB_DIRECTORY/bin/gh"
+  grep -qF -- '" -X POST "*) exit 1' "$MGF_STUB_DIRECTORY/bin/gh"
 
   mgf_run_merge "gh pr merge 12 --squash"
   assert_allowed_silently

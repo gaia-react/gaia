@@ -42,9 +42,9 @@ log() {
   printf 'provision-worktree: %s\n' "$1" >&2
 }
 
-self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || exit 0
+self_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || exit 0
 # shellcheck disable=SC1091
-source "$self_dir/../../.gaia/scripts/main-root-lib.sh" 2>/dev/null || exit 0
+source "$self_directory/../../.gaia/scripts/main-root-lib.sh" 2>/dev/null || exit 0
 
 # ---------- which tree ----------
 # An explicit argument wins (the direct-call form). Otherwise read the hook
@@ -84,8 +84,8 @@ esac
 # start to rescue it. The gate below is unchanged by this: only the re-link
 # and typegen steps after it stay worktree-only.
 
-# carry_forward_file <dir> <file>: moves the one old unkeyed file at
-# .gaia/local/<dir>/<file> to .gaia/local/<dir>/<tree_key>/<file>, only when
+# carry_forward_file <local_subdirectory> <file>: moves the one old unkeyed file at
+# .gaia/local/<local_subdirectory>/<file> to .gaia/local/<local_subdirectory>/<tree_key>/<file>, only when
 # the old file exists and the keyed file does not, so a second run, or a
 # keyed file a live session already wrote, is left untouched and unkeyed
 # content never overwrites keyed content. Nothing to move is a silent
@@ -94,49 +94,49 @@ esac
 # condition that silently blocks the next commit gate, so both are logged
 # loudly enough to act on.
 carry_forward_file() {
-  local dir="$1"
+  local local_subdirectory="$1"
   local file="$2"
-  local old="$tree/.gaia/local/$dir/$file"
+  local old="$tree/.gaia/local/$local_subdirectory/$file"
   [ -f "$old" ] || return 0
   if [ -z "$tree_key" ]; then
-    log "CARRY-FORWARD FAILED: $dir/$file has no resolvable tree key for $tree -- move it to $dir/<tree-key>/$file by hand, or a stranded ledger will silently block the next commit gate"
+    log "CARRY-FORWARD FAILED: $local_subdirectory/$file has no resolvable tree key for $tree -- move it to $local_subdirectory/<tree-key>/$file by hand, or a stranded ledger will silently block the next commit gate"
     return 0
   fi
-  local new_dir="$tree/.gaia/local/$dir/$tree_key"
-  local new="$new_dir/$file"
+  local new_directory="$tree/.gaia/local/$local_subdirectory/$tree_key"
+  local new="$new_directory/$file"
   [ -e "$new" ] && return 0
-  if mkdir -p "$new_dir" 2>/dev/null && mv "$old" "$new" 2>/dev/null; then
-    log "carried forward $dir/$file -> $dir/$tree_key/$file"
+  if mkdir -p "$new_directory" 2>/dev/null && mv "$old" "$new" 2>/dev/null; then
+    log "carried forward $local_subdirectory/$file -> $local_subdirectory/$tree_key/$file"
   else
-    log "CARRY-FORWARD FAILED: $dir/$file -> $dir/$tree_key/$file -- move it by hand, or a stranded ledger will silently block the next commit gate"
+    log "CARRY-FORWARD FAILED: $local_subdirectory/$file -> $local_subdirectory/$tree_key/$file -- move it by hand, or a stranded ledger will silently block the next commit gate"
   fi
 }
 
-# carry_forward_dir_contents <dir>: the forensics/ and handoff/ shape --
+# carry_forward_directory_contents <local_subdirectory>: the forensics/ and handoff/ shape --
 # any number of loosely-named files sitting directly in the old unkeyed
 # directory, never a subdirectory (which is how an already-migrated keyed
 # subdir is left alone). Same existence and never-overwrite rules as
 # carry_forward_file, applied file by file.
-carry_forward_dir_contents() {
-  local dir="$1"
-  local old_dir="$tree/.gaia/local/$dir"
-  [ -d "$old_dir" ] || return 0
-  local f base new new_dir
-  while IFS= read -r f; do
-    base="$(basename "$f")"
+carry_forward_directory_contents() {
+  local local_subdirectory="$1"
+  local old_directory="$tree/.gaia/local/$local_subdirectory"
+  [ -d "$old_directory" ] || return 0
+  local file_path base new new_directory
+  while IFS= read -r file_path; do
+    base="$(basename "$file_path")"
     if [ -z "$tree_key" ]; then
-      log "CARRY-FORWARD FAILED: $dir/$base has no resolvable tree key for $tree -- move it to $dir/<tree-key>/$base by hand, or a stranded ledger will silently block the next commit gate"
+      log "CARRY-FORWARD FAILED: $local_subdirectory/$base has no resolvable tree key for $tree -- move it to $local_subdirectory/<tree-key>/$base by hand, or a stranded ledger will silently block the next commit gate"
       continue
     fi
-    new_dir="$tree/.gaia/local/$dir/$tree_key"
-    new="$new_dir/$base"
+    new_directory="$tree/.gaia/local/$local_subdirectory/$tree_key"
+    new="$new_directory/$base"
     [ -e "$new" ] && continue
-    if mkdir -p "$new_dir" 2>/dev/null && mv "$f" "$new" 2>/dev/null; then
-      log "carried forward $dir/$base -> $dir/$tree_key/$base"
+    if mkdir -p "$new_directory" 2>/dev/null && mv "$file_path" "$new" 2>/dev/null; then
+      log "carried forward $local_subdirectory/$base -> $local_subdirectory/$tree_key/$base"
     else
-      log "CARRY-FORWARD FAILED: $dir/$base -> $dir/$tree_key/$base -- move it by hand, or a stranded ledger will silently block the next commit gate"
+      log "CARRY-FORWARD FAILED: $local_subdirectory/$base -> $local_subdirectory/$tree_key/$base -- move it by hand, or a stranded ledger will silently block the next commit gate"
     fi
-  done < <(find "$old_dir" -maxdepth 1 -type f 2>/dev/null)
+  done < <(find "$old_directory" -maxdepth 1 -type f 2>/dev/null)
 }
 
 # migrate_keyed_subtrees_to_main: the second half of the same migration, and
@@ -170,19 +170,19 @@ migrate_keyed_subtrees_to_main() {
   [ -n "$main_root" ] || return 0
   [ "$main_root" = "$tree" ] && return 0
 
-  local dir src dest
-  for dir in red-ledger worthiness-ledger forensics handoff; do
-    src="$tree/.gaia/local/$dir/$tree_key"
-    [ -d "$src" ] || continue
-    dest="$main_root/.gaia/local/$dir/$tree_key"
-    if [ -e "$dest" ]; then
-      log "CUTOVER MIGRATION SKIPPED: $dir/$tree_key exists in both this worktree and the main checkout -- merge them by hand; the worktree's copy is about to be moved aside to $tree/.gaia/local.bak.* and nothing reads it there"
+  local local_subdirectory source destination
+  for local_subdirectory in red-ledger worthiness-ledger forensics handoff; do
+    source="$tree/.gaia/local/$local_subdirectory/$tree_key"
+    [ -d "$source" ] || continue
+    destination="$main_root/.gaia/local/$local_subdirectory/$tree_key"
+    if [ -e "$destination" ]; then
+      log "CUTOVER MIGRATION SKIPPED: $local_subdirectory/$tree_key exists in both this worktree and the main checkout -- merge them by hand; the worktree's copy is about to be moved aside to $tree/.gaia/local.bak.* and nothing reads it there"
       continue
     fi
-    if mkdir -p "$main_root/.gaia/local/$dir" 2>/dev/null && mv "$src" "$dest" 2>/dev/null; then
-      log "migrated $dir/$tree_key into $main_root/.gaia/local"
+    if mkdir -p "$main_root/.gaia/local/$local_subdirectory" 2>/dev/null && mv "$source" "$destination" 2>/dev/null; then
+      log "migrated $local_subdirectory/$tree_key into $main_root/.gaia/local"
     else
-      log "CUTOVER MIGRATION FAILED: $dir/$tree_key -- move it into $main_root/.gaia/local/$dir/ by hand, or a stranded ledger will silently block the next commit gate"
+      log "CUTOVER MIGRATION FAILED: $local_subdirectory/$tree_key -- move it into $main_root/.gaia/local/$local_subdirectory/ by hand, or a stranded ledger will silently block the next commit gate"
     fi
   done
 }
@@ -199,8 +199,8 @@ migrate_keyed_subtrees_to_main() {
 # them, and every name is digest- or audit-key-scoped, so a name already in
 # main is a collision to report, never one to overwrite or merge.
 migrate_audit_artifacts_to_main() {
-  local src_dir="$tree/.gaia/local/audit"
-  [ -d "$src_dir" ] || return 0
+  local source_directory="$tree/.gaia/local/audit"
+  [ -d "$source_directory" ] || return 0
   gaia_is_linked_worktree "$tree" || return 0
 
   local main_root
@@ -208,21 +208,21 @@ migrate_audit_artifacts_to_main() {
   [ -n "$main_root" ] || return 0
   [ "$main_root" = "$tree" ] && return 0
 
-  local dest_dir="$main_root/.gaia/local/audit"
-  local f base dest
-  while IFS= read -r f; do
-    base="$(basename "$f")"
-    dest="$dest_dir/$base"
-    if [ -e "$dest" ]; then
+  local destination_directory="$main_root/.gaia/local/audit"
+  local file_path base destination
+  while IFS= read -r file_path; do
+    base="$(basename "$file_path")"
+    destination="$destination_directory/$base"
+    if [ -e "$destination" ]; then
       log "AUDIT MIGRATION SKIPPED: audit/$base exists in both this worktree and the main checkout -- the worktree's copy is about to be moved aside to $tree/.gaia/local.bak.* and nothing reads it there"
       continue
     fi
-    if mkdir -p "$dest_dir" 2>/dev/null && mv "$f" "$dest" 2>/dev/null; then
+    if mkdir -p "$destination_directory" 2>/dev/null && mv "$file_path" "$destination" 2>/dev/null; then
       log "migrated audit/$base into $main_root/.gaia/local"
     else
-      log "AUDIT MIGRATION FAILED: audit/$base -- move it into $dest_dir/ by hand, or the merge gate will decline its marker as absent"
+      log "AUDIT MIGRATION FAILED: audit/$base -- move it into $destination_directory/ by hand, or the merge gate will decline its marker as absent"
     fi
-  done < <(find "$src_dir" -maxdepth 1 -type f 2>/dev/null)
+  done < <(find "$source_directory" -maxdepth 1 -type f 2>/dev/null)
 }
 
 # Skipped outright when .gaia/local is itself a symlink. Once the single-symlink
@@ -235,8 +235,8 @@ if [ ! -L "$tree/.gaia/local" ]; then
   tree_key="$(gaia_tree_key "$tree" 2>/dev/null)" || tree_key=""
   carry_forward_file "red-ledger" "observations.jsonl"
   carry_forward_file "worthiness-ledger" "worthiness.jsonl"
-  carry_forward_dir_contents "forensics"
-  carry_forward_dir_contents "handoff"
+  carry_forward_directory_contents "forensics"
+  carry_forward_directory_contents "handoff"
   migrate_keyed_subtrees_to_main
   migrate_audit_artifacts_to_main
 fi
@@ -284,16 +284,16 @@ fi
 # fails, keeps whatever dependencies it already had; either way typegen below
 # still runs.
 install_workspace() {
-  local dir="$1"
-  [ -f "$dir/pnpm-lock.yaml" ] || return 0
+  local workspace_directory="$1"
+  [ -f "$workspace_directory/pnpm-lock.yaml" ] || return 0
   if command -v pnpm >/dev/null 2>&1; then
-    if (cd "$dir" && pnpm install --frozen-lockfile) >/dev/null 2>&1; then
-      log "installed dependencies in $dir"
+    if (cd "$workspace_directory" && pnpm install --frozen-lockfile) >/dev/null 2>&1; then
+      log "installed dependencies in $workspace_directory"
     else
-      log "INSTALL FAILED for $dir (non-fatal): the tree keeps whatever dependencies it already had -- run 'pnpm install' there to see why; a package.json/pnpm-lock.yaml disagreement is refused here by design"
+      log "INSTALL FAILED for $workspace_directory (non-fatal): the tree keeps whatever dependencies it already had -- run 'pnpm install' there to see why; a package.json/pnpm-lock.yaml disagreement is refused here by design"
     fi
   else
-    log "no pnpm found on PATH -- dependency install skipped for $dir"
+    log "no pnpm found on PATH -- dependency install skipped for $workspace_directory"
   fi
 }
 

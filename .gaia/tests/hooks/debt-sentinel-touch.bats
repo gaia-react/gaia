@@ -14,9 +14,9 @@
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HELPERS="$BATS_TEST_DIRNAME/helpers"
-  HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/debt-sentinel-touch.sh
+  HOOK_ABSOLUTE_PATH=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/debt-sentinel-touch.sh
   command -v jq >/dev/null 2>&1 || skip "jq required"
-  SENTINEL_REL=".gaia/local/debt/refresh-requested"
+  SENTINEL_RELATIVE_PATH=".gaia/local/debt/refresh-requested"
 }
 
 teardown() {
@@ -33,12 +33,12 @@ run_hook() {
   cd "$REPO" || return 1
   local input
   input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Bash "$1")
-  invoke_hook "$input" "$HOOK_ABS"
+  invoke_hook "$input" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
 }
 
-assert_armed() { [ -f "$REPO/$SENTINEL_REL" ]; }
-assert_not_armed() { [ ! -f "$REPO/$SENTINEL_REL" ]; }
+assert_armed() { [ -f "$REPO/$SENTINEL_RELATIVE_PATH" ]; }
+assert_not_armed() { [ ! -f "$REPO/$SENTINEL_RELATIVE_PATH" ]; }
 
 @test "gh issue create arms the sentinel" {
   run_hook 'gh issue create --label tech-debt --label severity:suggestion --body-file /tmp/b.md'
@@ -79,7 +79,7 @@ assert_not_armed() { [ ! -f "$REPO/$SENTINEL_REL" ]; }
   REPO=$("$HELPERS/tmp-git-repo.sh")
   cd "$REPO" || return 1
   input=$(jq -n '{tool_name:"Edit",tool_input:{file_path:"x"}}')
-  invoke_hook "$input" "$HOOK_ABS"
+  invoke_hook "$input" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   assert_not_armed
 }
@@ -112,5 +112,5 @@ assert_not_armed() { [ ! -f "$REPO/$SENTINEL_REL" ]; }
 }
 
 @test "the hook file is executable" {
-  [ -x "$HOOK_ABS" ]
+  [ -x "$HOOK_ABSOLUTE_PATH" ]
 }

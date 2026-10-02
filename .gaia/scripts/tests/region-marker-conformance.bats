@@ -15,8 +15,8 @@
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
-  THIS_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
-  PROJECT_ROOT="$(git -C "$THIS_DIR" rev-parse --show-toplevel)"
+  THIS_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
+  PROJECT_ROOT="$(git -C "$THIS_DIRECTORY" rev-parse --show-toplevel)"
   CLI_DIR="$PROJECT_ROOT/.gaia/cli"
   WRITER="$PROJECT_ROOT/.gaia/scripts/write-audit-remits.sh"
   CHECKER="$PROJECT_ROOT/.gaia/scripts/verify-audit-roster.sh"

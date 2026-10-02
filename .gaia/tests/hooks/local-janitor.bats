@@ -25,13 +25,13 @@ bats_require_minimum_version 1.5.0
 # all four steps, both knobs, and every gate.
 
 setup() {
-  HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/local-janitor.sh
+  HOOK_ABSOLUTE_PATH=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/local-janitor.sh
 }
 
 teardown() {
   [ -n "${REPO:-}" ] && rm -rf "$REPO"
   [ -n "${ORIGIN:-}" ] && rm -rf "$ORIGIN"
-  [ -n "${SHIM_DIR:-}" ] && rm -rf "$SHIM_DIR"
+  [ -n "${SHIM_DIRECTORY:-}" ] && rm -rf "$SHIM_DIRECTORY"
   return 0
 }
 
@@ -96,10 +96,10 @@ make_repo_default_branch() {
 # A branch whose upstream is [gone]: pushed (tracking ref created), then the
 # remote head is deleted and pruned. Mirrors a squash-merged, auto-deleted PR.
 make_gone_branch() {
-  local br="$1"
-  git -C "$REPO" branch "$br"
-  git -C "$REPO" push -q -u origin "$br"
-  git -C "$REPO" push -q origin --delete "$br"
+  local branch_name="$1"
+  git -C "$REPO" branch "$branch_name"
+  git -C "$REPO" push -q -u origin "$branch_name"
+  git -C "$REPO" push -q origin --delete "$branch_name"
   git -C "$REPO" fetch -q --prune
 }
 
@@ -108,30 +108,30 @@ make_gone_branch() {
 # real checkout is in right after a wiki landing's PR squash-merges: exactly
 # the state sweep #1's own prune-fetch has to resolve.
 make_gone_branch_unpruned() {
-  local br="$1" clone
-  git -C "$REPO" branch "$br"
-  git -C "$REPO" push -q -u origin "$br"
+  local branch_name="$1" clone
+  git -C "$REPO" branch "$branch_name"
+  git -C "$REPO" push -q -u origin "$branch_name"
   # Delete the remote branch from a SEPARATE clone, not through REPO's own
   # push: `git push origin --delete` updates the pushing repo's OWN
   # remote-tracking ref as part of that same push, so a delete issued from
   # REPO itself would already read [gone] before REPO's own fetch ever runs
   # -- REPO never observes the delay this fixture exists to model. A second
   # clone has no such side channel back to REPO: REPO's own
-  # refs/remotes/origin/$br stays exactly as it was (present, live) until
+  # refs/remotes/origin/$branch_name stays exactly as it was (present, live) until
   # REPO's own `git fetch --prune` resolves it, which is the real shape of a
   # checkout that has not yet caught up with a squash-merged PR's
   # auto-deleted branch.
   clone=$(mktemp -d -t gaia-janitor-unpruned-clone-XXXXXX)
   git clone -q "$ORIGIN" "$clone"
-  git -C "$clone" push -q origin --delete "$br"
+  git -C "$clone" push -q origin --delete "$branch_name"
   rm -rf "$clone"
 }
 
 # A branch with a live, in-sync upstream (tracking ref still present).
 make_live_branch() {
-  local br="$1"
-  git -C "$REPO" branch "$br"
-  git -C "$REPO" push -q -u origin "$br"
+  local branch_name="$1"
+  git -C "$REPO" branch "$branch_name"
+  git -C "$REPO" push -q -u origin "$branch_name"
 }
 
 branch_exists() {
@@ -142,7 +142,7 @@ branch_exists() {
   make_repo
   make_gone_branch "wiki-sync/2026-01-01-aaaaaaa"
   cd "$REPO"
-  run bash "$HOOK_ABS"
+  run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   ! branch_exists "wiki-sync/2026-01-01-aaaaaaa"
 }
@@ -151,7 +151,7 @@ branch_exists() {
   make_repo
   make_live_branch "wiki-sync/2026-02-02-bbbbbbb"
   cd "$REPO"
-  run bash "$HOOK_ABS"
+  run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   branch_exists "wiki-sync/2026-02-02-bbbbbbb"
 }
@@ -161,7 +161,7 @@ branch_exists() {
   make_gone_branch "wiki-sync/2026-03-03-ccccccc"
   git -C "$REPO" checkout -q "wiki-sync/2026-03-03-ccccccc"
   cd "$REPO"
-  run bash "$HOOK_ABS"
+  run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   branch_exists "wiki-sync/2026-03-03-ccccccc"
 }
@@ -170,7 +170,7 @@ branch_exists() {
   make_repo
   make_gone_branch "feature/some-work"
   cd "$REPO"
-  run bash "$HOOK_ABS"
+  run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   branch_exists "feature/some-work"
 }
@@ -181,7 +181,7 @@ branch_exists() {
   make_live_branch "wiki-sync/2026-05-05-eeeeeee"
   make_gone_branch "feature/keepme"
   cd "$REPO"
-  run bash "$HOOK_ABS"
+  run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   branch_exists "wiki-sync/2026-04-04-ddddddd" && return 1
   branch_exists "wiki-sync/2026-05-05-eeeeeee"
@@ -193,7 +193,7 @@ branch_exists() {
   make_gone_branch "wiki-sync/2026-06-06-fffffff"
   rm -rf "$REPO/.gaia/local"
   cd "$REPO"
-  run bash "$HOOK_ABS"
+  run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   ! branch_exists "wiki-sync/2026-06-06-fffffff"
 }
@@ -201,7 +201,7 @@ branch_exists() {
 @test "no wiki-sync branches: silent no-op, exit 0" {
   make_repo
   cd "$REPO"
-  run bash "$HOOK_ABS"
+  run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
   branch_exists "main"
@@ -214,34 +214,34 @@ branch_exists() {
 # PATH-shimmed `git`: appends every invocation's argv to a witness file, then
 # passes through to the real binary.
 make_argv_witness_shim() {
-  SHIM_DIR=$(mktemp -d -t gaia-janitor-shim-XXXXXX)
-  witness="$SHIM_DIR/witness"
+  SHIM_DIRECTORY=$(mktemp -d -t gaia-janitor-shim-XXXXXX)
+  witness="$SHIM_DIRECTORY/witness"
   : > "$witness"
   local real_git
   real_git=$(command -v git)
-  cat > "$SHIM_DIR/git" <<SHIM
+  cat > "$SHIM_DIRECTORY/git" <<SHIM
 #!/bin/bash
 echo "\$*" >> "$witness"
 exec "$real_git" "\$@"
 SHIM
-  chmod +x "$SHIM_DIR/git"
+  chmod +x "$SHIM_DIRECTORY/git"
 }
 
 # PATH-shimmed `git` whose fetch arm hangs for $1 seconds (default 60); every
 # other call passes through to the real binary.
 make_hanging_fetch_shim() {
-  local sleep_secs="${1:-60}"
-  SHIM_DIR=$(mktemp -d -t gaia-janitor-shim-XXXXXX)
+  local sleep_seconds="${1:-60}"
+  SHIM_DIRECTORY=$(mktemp -d -t gaia-janitor-shim-XXXXXX)
   local real_git
   real_git=$(command -v git)
-  cat > "$SHIM_DIR/git" <<SHIM
+  cat > "$SHIM_DIRECTORY/git" <<SHIM
 #!/bin/bash
 case "\$*" in
-  *fetch*) sleep $sleep_secs; exit 0 ;;
+  *fetch*) sleep $sleep_seconds; exit 0 ;;
 esac
 exec "$real_git" "\$@"
 SHIM
-  chmod +x "$SHIM_DIR/git"
+  chmod +x "$SHIM_DIRECTORY/git"
 }
 
 # PATH-shimmed `git` whose fetch arm backgrounds a long-sleeping grandchild
@@ -249,12 +249,12 @@ SHIM
 # test can assert BOTH are gone after the hook's kill path runs. Every other
 # call passes through to the real binary.
 make_hanging_fetch_pid_witness_shim() {
-  SHIM_DIR=$(mktemp -d -t gaia-janitor-shim-XXXXXX)
-  witness="$SHIM_DIR/pids"
+  SHIM_DIRECTORY=$(mktemp -d -t gaia-janitor-shim-XXXXXX)
+  witness="$SHIM_DIRECTORY/pids"
   : > "$witness"
   local real_git
   real_git=$(command -v git)
-  cat > "$SHIM_DIR/git" <<SHIM
+  cat > "$SHIM_DIRECTORY/git" <<SHIM
 #!/bin/bash
 case "\$*" in
   *fetch*)
@@ -267,32 +267,32 @@ case "\$*" in
 esac
 exec "$real_git" "\$@"
 SHIM
-  chmod +x "$SHIM_DIR/git"
+  chmod +x "$SHIM_DIRECTORY/git"
 }
 
 # PATH-shimmed `git` that records argv plus the four prompt-suppression
 # variables' values into a witness file (one line per invocation), then
 # passes through to the real binary.
 make_env_witness_shim() {
-  SHIM_DIR=$(mktemp -d -t gaia-janitor-shim-XXXXXX)
-  witness="$SHIM_DIR/envlog"
+  SHIM_DIRECTORY=$(mktemp -d -t gaia-janitor-shim-XXXXXX)
+  witness="$SHIM_DIRECTORY/envlog"
   : > "$witness"
   local real_git
   real_git=$(command -v git)
-  cat > "$SHIM_DIR/git" <<SHIM
+  cat > "$SHIM_DIRECTORY/git" <<SHIM
 #!/bin/bash
 printf 'ARGV=%s GIT_TERMINAL_PROMPT=%s GIT_ASKPASS=%s SSH_ASKPASS=%s GIT_SSH_COMMAND=%s\n' \
   "\$*" "\${GIT_TERMINAL_PROMPT:-}" "\${GIT_ASKPASS:-}" "\${SSH_ASKPASS:-}" "\${GIT_SSH_COMMAND:-}" >> "$witness"
 exec "$real_git" "\$@"
 SHIM
-  chmod +x "$SHIM_DIR/git"
+  chmod +x "$SHIM_DIRECTORY/git"
 }
 
 @test "sweep 1: no wiki-sync branch makes ZERO fetch calls (positive argv witness)" {
   make_repo
   make_argv_witness_shim
   cd "$REPO"
-  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  PATH="$SHIM_DIRECTORY:$PATH" run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
   [ "$(grep -c 'fetch' "$witness")" -eq 0 ]
@@ -305,7 +305,7 @@ SHIM
   cd "$REPO"
   export GAIA_WIKI_FETCH_TIMEOUT_SECONDS=2
   start=$(date +%s)
-  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  PATH="$SHIM_DIRECTORY:$PATH" run bash "$HOOK_ABSOLUTE_PATH"
   end=$(date +%s)
   [ "$status" -eq 0 ]
   [ "$((end - start))" -lt 10 ]
@@ -317,7 +317,7 @@ SHIM
   make_argv_witness_shim
   cd "$REPO"
   export GAIA_WIKI_FETCH_TIMEOUT_SECONDS=0
-  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  PATH="$SHIM_DIRECTORY:$PATH" run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ "$(grep -c 'fetch' "$witness")" -eq 0 ]
 }
@@ -330,11 +330,11 @@ SHIM
   # Neutralize the min-interval knob for both sub-cases below: this test's
   # second invocation must actually re-attempt the fetch, not be skipped by
   # the first invocation's own recorded last_fetch_at.
-  export GAIA_WIKI_FETCH_MIN_INTERVAL_MINUTES=0
+  export GAIA_WIKI_FETCH_MINIMUM_INTERVAL_MINUTES=0
 
   export GAIA_WIKI_FETCH_TIMEOUT_SECONDS=abc
   start=$(date +%s)
-  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  PATH="$SHIM_DIRECTORY:$PATH" run bash "$HOOK_ABSOLUTE_PATH"
   end=$(date +%s)
   [ "$status" -eq 0 ]
   elapsed=$((end - start))
@@ -343,7 +343,7 @@ SHIM
 
   export GAIA_WIKI_FETCH_TIMEOUT_SECONDS=9999
   start=$(date +%s)
-  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  PATH="$SHIM_DIRECTORY:$PATH" run bash "$HOOK_ABSOLUTE_PATH"
   end=$(date +%s)
   [ "$status" -eq 0 ]
   elapsed=$((end - start))
@@ -364,10 +364,10 @@ SHIM
   # happens either way: neither the exit status nor the fetch count can see it.
   # The diagnostic on stderr is what separates a rate limit that held from a
   # sweep that was abandoned.
-  export GAIA_WIKI_FETCH_MIN_INTERVAL_MINUTES=08
-  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  export GAIA_WIKI_FETCH_MINIMUM_INTERVAL_MINUTES=08
+  PATH="$SHIM_DIRECTORY:$PATH" run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ] || return 1
-  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  PATH="$SHIM_DIRECTORY:$PATH" run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ] || return 1
   [ "$(grep -c 'fetch' "$witness")" -eq 1 ] || return 1
   case "$output" in *'value too great for base'*) return 1 ;; esac
@@ -380,7 +380,7 @@ SHIM
   make_argv_witness_shim
   cd "$REPO"
   start=$(date +%s)
-  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  PATH="$SHIM_DIRECTORY:$PATH" run bash "$HOOK_ABSOLUTE_PATH"
   end=$(date +%s)
   [ "$status" -eq 0 ]
   [ "$((end - start))" -lt 10 ]
@@ -393,7 +393,7 @@ SHIM
   make_hanging_fetch_pid_witness_shim
   cd "$REPO"
   export GAIA_WIKI_FETCH_TIMEOUT_SECONDS=2
-  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  PATH="$SHIM_DIRECTORY:$PATH" run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -s "$witness" ] || return 1
   read -r shim_pid child_pid < "$witness"
@@ -410,7 +410,7 @@ SHIM
   git -C "$REPO" config core.askPass /custom/adopter-askpass
   make_env_witness_shim
   cd "$REPO"
-  GIT_SSH_COMMAND="ssh -i /custom/key" PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  GIT_SSH_COMMAND="ssh -i /custom/key" PATH="$SHIM_DIRECTORY:$PATH" run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -s "$witness" ] || return 1
 
@@ -443,7 +443,7 @@ SHIM
   make_gone_branch_unpruned "wiki-sync/2026-07-13-7777777"
   make_argv_witness_shim
   cd "$REPO"
-  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  PATH="$SHIM_DIRECTORY:$PATH" run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   branch_exists "wiki-sync/2026-07-13-7777777" && return 1
   [ "$(grep -c 'fetch' "$witness")" -eq 1 ]
@@ -458,7 +458,7 @@ SHIM
   git -C "$REPO" commit -q -m more
   git -C "$REPO" checkout -q main
   cd "$REPO"
-  run bash "$HOOK_ABS"
+  run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   branch_exists "wiki-sync/2026-07-14-8888888"
 }
@@ -468,14 +468,14 @@ SHIM
   make_live_branch "wiki-sync/2026-07-15-9999999"
   make_argv_witness_shim
   cd "$REPO"
-  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  PATH="$SHIM_DIRECTORY:$PATH" run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
-  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  PATH="$SHIM_DIRECTORY:$PATH" run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ "$(grep -c 'fetch' "$witness")" -eq 1 ] || return 1
 
-  export GAIA_WIKI_FETCH_MIN_INTERVAL_MINUTES=0
-  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  export GAIA_WIKI_FETCH_MINIMUM_INTERVAL_MINUTES=0
+  PATH="$SHIM_DIRECTORY:$PATH" run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ "$(grep -c 'fetch' "$witness")" -eq 2 ]
 }
@@ -486,7 +486,7 @@ SHIM
   make_hanging_fetch_shim 60
   cd "$REPO"
   start=$(date +%s)
-  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  PATH="$SHIM_DIRECTORY:$PATH" run bash "$HOOK_ABSOLUTE_PATH"
   end=$(date +%s)
   [ "$status" -eq 0 ]
   elapsed=$((end - start))
@@ -498,7 +498,7 @@ SHIM
   make_gone_branch_unpruned "wiki-sync/2026-07-17-bbbbbbb"
   rm -rf "$REPO/.gaia/local"
   cd "$REPO"
-  run bash "$HOOK_ABS"
+  run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ ! -d "$REPO/.gaia/local" ]
 }
@@ -511,8 +511,8 @@ catchup_state_file() { printf '%s' "$REPO/.gaia/local/cache/shared/wiki-base-cat
 catchup_report_file() { printf '%s' "$REPO/.gaia/local/cache/shared/wiki-base-catchup.report"; }
 
 catchup_owed_is_set() {
-  local f; f=$(catchup_state_file)
-  [ -f "$f" ] && grep -qF -- "catchup_owed=1" "$f"
+  local state_file; state_file=$(catchup_state_file)
+  [ -f "$state_file" ] && grep -qF -- "catchup_owed=1" "$state_file"
 }
 
 # advance_origin_main [base]: pushes a NEW commit to $ORIGIN's own [base]
@@ -573,17 +573,17 @@ seed_catchup_owed() {
 # would otherwise show, which would fail the clean-tree gate before the
 # merge is ever attempted.
 make_status_clean_shim() {
-  SHIM_DIR=$(mktemp -d -t gaia-janitor-shim-XXXXXX)
+  SHIM_DIRECTORY=$(mktemp -d -t gaia-janitor-shim-XXXXXX)
   local real_git
   real_git=$(command -v git)
-  cat > "$SHIM_DIR/git" <<SHIM
+  cat > "$SHIM_DIRECTORY/git" <<SHIM
 #!/bin/bash
 case "\$*" in
   *"status --porcelain"*) exit 0 ;;
 esac
 exec "$real_git" "\$@"
 SHIM
-  chmod +x "$SHIM_DIR/git"
+  chmod +x "$SHIM_DIRECTORY/git"
 }
 
 @test "sweep 1: fast-forwards base with a checkout-aware --ff-only" {
@@ -592,7 +592,7 @@ SHIM
   make_argv_witness_shim
   advance_origin_main main
   cd "$REPO"
-  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  PATH="$SHIM_DIRECTORY:$PATH" run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ "$(git -C "$REPO" rev-parse main)" = "$(git -C "$REPO" rev-parse origin/main)" ] || return 1
   [ -z "$(git -C "$REPO" status --porcelain 2>/dev/null)" ] || return 1
@@ -608,7 +608,7 @@ SHIM
   make_gone_branch "wiki-sync/2026-08-07-ffff007"
   advance_origin_main trunk
   cd "$REPO"
-  run bash "$HOOK_ABS"
+  run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ "$(git -C "$REPO" rev-parse trunk)" = "$(git -C "$REPO" rev-parse origin/trunk)" ]
 }
@@ -619,7 +619,7 @@ SHIM
   make_gone_branch "wiki-sync/2026-08-08-00000a8"
   advance_origin_main main
   cd "$REPO"
-  run bash "$HOOK_ABS"
+  run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ "$(git -C "$REPO" rev-parse main)" = "$(git -C "$REPO" rev-parse origin/main)" ]
 }
@@ -635,13 +635,13 @@ SHIM
 @test "sweep 1: an unresolvable base keeps a gone wiki-sync branch and its unmerged commit" {
   make_repo_default_branch trunk
   git -C "$REPO" remote set-head origin --delete
-  local br="wiki-sync/2026-08-08-b00b00b"
-  git -C "$REPO" checkout -qb "$br"
+  local branch_name="wiki-sync/2026-08-08-b00b00b"
+  git -C "$REPO" checkout -qb "$branch_name"
   echo "unmerged wiki work" >> "$REPO/f"
   git -C "$REPO" add f
   git -C "$REPO" commit -q -m "unmerged wiki-sync work"
-  local tip; tip=$(git -C "$REPO" rev-parse "$br")
-  git -C "$REPO" push -q -u origin "$br"
+  local tip; tip=$(git -C "$REPO" rev-parse "$branch_name")
+  git -C "$REPO" push -q -u origin "$branch_name"
   git -C "$REPO" checkout -q trunk
   # Mirrors a squash-merged, auto-deleted PR: the remote head vanishes via a
   # SEPARATE clone (see make_gone_branch_unpruned above for why), so REPO's
@@ -649,13 +649,13 @@ SHIM
   # resolve to [gone].
   local clone; clone=$(mktemp -d -t gaia-janitor-b00b-clone-XXXXXX)
   git clone -q "$ORIGIN" "$clone"
-  git -C "$clone" push -q origin --delete "$br"
+  git -C "$clone" push -q origin --delete "$branch_name"
   rm -rf "$clone"
   cd "$REPO"
-  run bash "$HOOK_ABS"
+  run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
-  branch_exists "$br" || return 1
-  [ "$(git -C "$REPO" rev-parse "$br")" = "$tip" ] || return 1
+  branch_exists "$branch_name" || return 1
+  [ "$(git -C "$REPO" rev-parse "$branch_name")" = "$tip" ] || return 1
   return 0
 }
 
@@ -665,7 +665,7 @@ SHIM
   advance_origin_main main
   local before; before=$(git -C "$REPO" rev-parse main)
   cd "$REPO"
-  run bash "$HOOK_ABS"
+  run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ "$(git -C "$REPO" rev-parse main)" = "$before" ] || return 1
   branch_exists "wiki-sync/2026-08-01-aaaa001"
@@ -678,7 +678,7 @@ SHIM
   local before; before=$(git -C "$REPO" rev-parse main)
   echo dirty > "$REPO/dirty.txt"
   cd "$REPO"
-  run bash "$HOOK_ABS"
+  run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ "$(git -C "$REPO" rev-parse main)" = "$before" ] || return 1
   [ -f "$(catchup_report_file)" ] && return 1
@@ -694,7 +694,7 @@ SHIM
   git -C "$REPO" checkout -qb feature/off-base
   local checkout_before; checkout_before=$(git -C "$REPO" rev-parse feature/off-base)
   cd "$REPO"
-  run bash "$HOOK_ABS"
+  run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ "$(git -C "$REPO" rev-parse main)" = "$before" ] || return 1
   # Without the on-base gate, the fast-forward still runs but advances
@@ -713,7 +713,7 @@ SHIM
   git -C "$REPO" checkout -q --detach main
   local detached_before; detached_before=$(git -C "$REPO" rev-parse HEAD)
   cd "$REPO"
-  run bash "$HOOK_ABS"
+  run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ "$(git -C "$REPO" rev-parse main)" = "$before" ] || return 1
   # Same hazard the on-base sibling above documents, in its detached form: with
@@ -738,7 +738,7 @@ SHIM
   make_hanging_fetch_shim 60
   cd "$REPO"
   export GAIA_WIKI_FETCH_TIMEOUT_SECONDS=2
-  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  PATH="$SHIM_DIRECTORY:$PATH" run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ] || return 1
   # THIS session's fetch timed out, so nothing it could read is known fresh and
   # the fast-forward is declined even though every other gate passes and the
@@ -755,7 +755,7 @@ SHIM
   local before; before=$(git -C "$REPO" rev-parse main)
   git -C "$REPO" branch --unset-upstream main
   cd "$REPO"
-  run bash "$HOOK_ABS"
+  run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ "$(git -C "$REPO" rev-parse main)" = "$before" ] || return 1
   [ -f "$(catchup_report_file)" ] && return 1
@@ -768,13 +768,13 @@ SHIM
   advance_origin_main main
   cd "$REPO"
   echo dirty > "$REPO/dirty.txt"
-  run bash "$HOOK_ABS"
+  run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ "$(git -C "$REPO" rev-parse main)" != "$(git -C "$REPO" rev-parse origin/main)" ] || return 1
   catchup_owed_is_set || return 1
 
   rm -f "$REPO/dirty.txt"
-  run bash "$HOOK_ABS"
+  run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ "$(git -C "$REPO" rev-parse main)" = "$(git -C "$REPO" rev-parse origin/main)" ] || return 1
   catchup_owed_is_set && return 1
@@ -783,24 +783,24 @@ SHIM
 
 @test "sweep 1: the obligation marker cannot accumulate" {
   make_repo
-  export GAIA_WIKI_FETCH_MIN_INTERVAL_MINUTES=0
+  export GAIA_WIKI_FETCH_MINIMUM_INTERVAL_MINUTES=0
   echo dirty > "$REPO/dirty.txt"
   cd "$REPO"
-  for n in 1 2 3 4 5; do
-    make_gone_branch "wiki-sync/2026-08-2$n-eeee00$n"
-    run bash "$HOOK_ABS"
+  for round_number in 1 2 3 4 5; do
+    make_gone_branch "wiki-sync/2026-08-2$round_number-eeee00$round_number"
+    run bash "$HOOK_ABSOLUTE_PATH"
     [ "$status" -eq 0 ]
   done
-  local dir; dir="$REPO/.gaia/local/cache/shared"
-  [ "$(find "$dir" -maxdepth 1 -name 'wiki-base-catchup.state' | wc -l | tr -d ' ')" -eq 1 ] || return 1
-  [ "$(grep -c '^catchup_owed=1$' "$dir/wiki-base-catchup.state")" -eq 1 ] || return 1
+  local shared_cache_directory; shared_cache_directory="$REPO/.gaia/local/cache/shared"
+  [ "$(find "$shared_cache_directory" -maxdepth 1 -name 'wiki-base-catchup.state' | wc -l | tr -d ' ')" -eq 1 ] || return 1
+  [ "$(grep -c '^catchup_owed=1$' "$shared_cache_directory/wiki-base-catchup.state")" -eq 1 ] || return 1
   # catchup_owed is drained (unset then reset) by every invocation, which
   # would mask a `wiki_catchup_state_set` regression that appends instead of
   # rewriting: the drain's own correct unset clears the prior line before the
   # broken set appends a new one. last_fetch_at is never unset by anything, so
   # it is the key that actually proves the read-modify-write, not just the
   # AND-list's occurrence count.
-  [ "$(grep -c '^last_fetch_at=' "$dir/wiki-base-catchup.state")" -eq 1 ]
+  [ "$(grep -c '^last_fetch_at=' "$shared_cache_directory/wiki-base-catchup.state")" -eq 1 ]
 }
 
 # wiki_catchup_state_unset's file rewrite is grep-driven: removing a key that
@@ -815,7 +815,7 @@ SHIM
   make_repo
   seed_catchup_owed
   cd "$REPO"
-  run bash "$HOOK_ABS"
+  run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   catchup_owed_is_set && return 1
   return 0
@@ -827,7 +827,7 @@ SHIM
   git -C "$REPO" fetch -q origin
   seed_catchup_owed
   cd "$REPO"
-  run --separate-stderr bash "$HOOK_ABS"
+  run --separate-stderr bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -z "$output" ] || return 1
   [ -z "$stderr" ] || return 1
@@ -842,7 +842,7 @@ SHIM
   diverge_base_and_origin main
   local before; before=$(git -C "$REPO" rev-parse main)
   cd "$REPO"
-  run --separate-stderr bash "$HOOK_ABS"
+  run --separate-stderr bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ "$(git -C "$REPO" rev-parse main)" = "$before" ] || return 1
   local report; report=$(catchup_report_file)
@@ -861,7 +861,7 @@ SHIM
   echo "collision" > "$REPO/wiki/.state.json"
   make_status_clean_shim
   cd "$REPO"
-  PATH="$SHIM_DIR:$PATH" run --separate-stderr bash "$HOOK_ABS"
+  PATH="$SHIM_DIRECTORY:$PATH" run --separate-stderr bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   local report; report=$(catchup_report_file)
   [ -f "$report" ] || return 1
@@ -873,8 +873,8 @@ SHIM
 
 @test "sweep 1: a shallow clone degrades without error" {
   make_repo
-  local shallow before after br
-  br="wiki-sync/2026-08-09-77777a9"
+  local shallow before after branch_name
+  branch_name="wiki-sync/2026-08-09-77777a9"
   shallow=$(mktemp -d -t gaia-janitor-shallow-XXXXXX)
   # file://: a bare path clone makes git silently ignore --depth ("--depth is
   # ignored in local clones; use file:// instead"), which would leave this
@@ -887,13 +887,13 @@ SHIM
   git -C "$shallow" config commit.gpgsign false
   git -C "$shallow" remote set-head origin -a
   mkdir -p "$shallow/.gaia/local"
-  git -C "$shallow" branch "$br"
-  git -C "$shallow" push -q -u origin "$br"
-  git -C "$shallow" push -q origin --delete "$br"
+  git -C "$shallow" branch "$branch_name"
+  git -C "$shallow" push -q -u origin "$branch_name"
+  git -C "$shallow" push -q origin --delete "$branch_name"
   advance_origin_main main
   before=$(git -C "$shallow" rev-parse main)
   cd "$shallow"
-  run bash "$HOOK_ABS"
+  run bash "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -z "$output" ] || return 1
   after=$(git -C "$shallow" rev-parse main)
@@ -905,7 +905,7 @@ SHIM
   # (.claude/hooks/local-janitor.sh) then never treats it as a reap
   # candidate, so it survives untouched: the "degrades without error" case
   # for this fixture is skip, not delete.
-  git -C "$shallow" rev-parse --verify --quiet "refs/heads/$br" >/dev/null 2>&1 || return 1
+  git -C "$shallow" rev-parse --verify --quiet "refs/heads/$branch_name" >/dev/null 2>&1 || return 1
   rm -rf "$shallow"
 }
 
@@ -916,8 +916,8 @@ SHIM
   local old_main
   old_main=$(git -C "$REPO" rev-parse main)
   cd "$REPO"
-  bash "$HOOK_ABS" & local pid1=$!
-  bash "$HOOK_ABS" & local pid2=$!
+  bash "$HOOK_ABSOLUTE_PATH" & local pid1=$!
+  bash "$HOOK_ABSOLUTE_PATH" & local pid2=$!
   wait "$pid1"; local s1=$?
   wait "$pid2"; local s2=$?
   [ "$s1" -eq 0 ] || return 1

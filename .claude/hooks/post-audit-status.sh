@@ -134,25 +134,25 @@ set -euo pipefail
 # `if` condition, where a 127 is errexit-exempt and falls through to the same
 # decline an unreadable marker takes -- correct, but noisier, since it prints a
 # `command not found` beside a decline whose message blames the marker.
-_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || true
+_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || true
 set +e
-if [ -n "$_lib_dir" ]; then
+if [ -n "$_library_directory" ]; then
   # shellcheck source=/dev/null
-  [ -f "$_lib_dir/audit-clearance.sh" ] && . "$_lib_dir/audit-clearance.sh" 2>/dev/null
+  [ -f "$_library_directory/audit-clearance.sh" ] && . "$_library_directory/audit-clearance.sh" 2>/dev/null
   # shellcheck source=/dev/null
-  [ -f "$_lib_dir/audit-digest.sh" ] && . "$_lib_dir/audit-digest.sh" 2>/dev/null
+  [ -f "$_library_directory/audit-digest.sh" ] && . "$_library_directory/audit-digest.sh" 2>/dev/null
   # shellcheck source=/dev/null
-  [ -f "$_lib_dir/gaia-version.sh" ] && . "$_lib_dir/gaia-version.sh" 2>/dev/null
+  [ -f "$_library_directory/gaia-version.sh" ] && . "$_library_directory/gaia-version.sh" 2>/dev/null
 fi
 set -e
 
 # Load the shared main-root resolver the same guarded way, from this hook's
 # own on-disk location. Backs the main-anchored `repo_root` derivation below.
-_root_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || true
+_repository_root_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || true
 set +e
 # shellcheck source=/dev/null
-[ -n "$_root_lib_dir" ] && [ -f "$_root_lib_dir/.gaia/scripts/main-root-lib.sh" ] \
-  && . "$_root_lib_dir/.gaia/scripts/main-root-lib.sh" 2>/dev/null
+[ -n "$_repository_root_directory" ] && [ -f "$_repository_root_directory/.gaia/scripts/main-root-lib.sh" ] \
+  && . "$_repository_root_directory/.gaia/scripts/main-root-lib.sh" 2>/dev/null
 set -e
 
 emit_posted() {
@@ -453,20 +453,20 @@ fi
 
 resolver="${repo_root}/.gaia/scripts/resolve-audit-members.sh"
 if [ "$post_state" = "success" ] && [ -x "$resolver" ]; then
-  resolver_rc=0
-  members="$( cd "$repo_root" && bash "$resolver" 2>/dev/null )" || resolver_rc=$?
-  if [ "$resolver_rc" -ne 0 ]; then
+  resolver_exit_status=0
+  members="$( cd "$repo_root" && bash "$resolver" 2>/dev/null )" || resolver_exit_status=$?
+  if [ "$resolver_exit_status" -ne 0 ]; then
     emit_decline "member resolver could not answer"
     exit 0
   fi
 
   pending=""
-  while IFS= read -r m; do
-    [ -n "$m" ] || continue
-    if [ "$m" = "code-audit-frontend" ]; then
+  while IFS= read -r roster_member; do
+    [ -n "$roster_member" ] || continue
+    if [ "$roster_member" = "code-audit-frontend" ]; then
       member_digest="$frontend_digest"
     else
-      member_digest="$(audit_member_digest "$repo_root" "$m" 2>/dev/null || true)"
+      member_digest="$(audit_member_digest "$repo_root" "$roster_member" 2>/dev/null || true)"
     fi
     # Refusal-first, mirroring the merge hook's own precedence
     # (pr-merge-audit-check.sh's member loop). A member that cleared a digest in
@@ -478,11 +478,11 @@ if [ "$post_state" = "success" ] && [ -x "$resolver" ]; then
     # gate would still deny, which is the divergence: the two readers must agree
     # about one state, and the gate's answer is the one that governs.
     if [ -z "$member_digest" ] \
-       || clearance_member_refused "$store_root" "$member_digest" "$m"; then
-      pending="${pending}${pending:+ }${m}"
-    elif ! clearance_member_cleared "$store_root" "$member_digest" "$m" \
-         && { [ "$m" != "code-audit-frontend" ] || [ "$frontend_waived" != "true" ]; }; then
-      pending="${pending}${pending:+ }${m}"
+       || clearance_member_refused "$store_root" "$member_digest" "$roster_member"; then
+      pending="${pending}${pending:+ }${roster_member}"
+    elif ! clearance_member_cleared "$store_root" "$member_digest" "$roster_member" \
+         && { [ "$roster_member" != "code-audit-frontend" ] || [ "$frontend_waived" != "true" ]; }; then
+      pending="${pending}${pending:+ }${roster_member}"
     fi
   done <<< "$members"
 
@@ -503,9 +503,9 @@ fi
 # non-success state. It names the refusing member and the exact content digest,
 # which is what an operator needs to find the artifact on disk.
 if [ "$post_state" = "failure" ]; then
-  desc="refused by ${marker_member} ${marker_digest}"
+  status_description="refused by ${marker_member} ${marker_digest}"
 else
-  desc="${version} ${frontend_digest} ${tree_sha}"
+  status_description="${version} ${frontend_digest} ${tree_sha}"
 fi
 
 # Anchored for the same reason as the `gh pr view` above, and with the same
@@ -520,7 +520,7 @@ if gh api "repos/${repo}/statuses/${head_sha}" \
   --method POST \
   --field state="${post_state}" \
   --field context=GAIA-Audit \
-  --field description="${desc}" >/dev/null 2>&1; then
+  --field description="${status_description}" >/dev/null 2>&1; then
   # Surface the sha we POSTed to, head_sha, which the sha guard above has already
   # established IS local HEAD: nothing reaches this POST while the two name
   # different commits, so the surfaced sha and the POSTed sha are one commit.

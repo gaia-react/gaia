@@ -19,12 +19,12 @@
 
 setup() {
   . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
-  THIS_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
-  SCRIPT="$THIS_DIR/../audit-scope-digest.sh"
-  KEY_LIB="$THIS_DIR/../audit-key-lib.sh"
-  DIGEST_LIB="$THIS_DIR/../../../.claude/hooks/lib/audit-digest.sh"
-  SCOPE_LIB="$THIS_DIR/../../../.claude/hooks/lib/audit-scope.sh"
-  MACHINERY_LIB="$THIS_DIR/../../../.claude/hooks/lib/audit-machinery.sh"
+  THIS_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
+  SCRIPT="$THIS_DIRECTORY/../audit-scope-digest.sh"
+  KEY_LIB="$THIS_DIRECTORY/../audit-key-lib.sh"
+  DIGEST_LIBRARY="$THIS_DIRECTORY/../../../.claude/hooks/lib/audit-digest.sh"
+  SCOPE_LIBRARY="$THIS_DIRECTORY/../../../.claude/hooks/lib/audit-scope.sh"
+  MACHINERY_LIBRARY="$THIS_DIRECTORY/../../../.claude/hooks/lib/audit-machinery.sh"
   [ -x "$SCRIPT" ] || skip "audit-scope-digest.sh not executable"
   [ -f "$KEY_LIB" ] || skip "audit-key-lib.sh not present"
   command -v jq >/dev/null 2>&1 || skip "jq not available"
@@ -68,9 +68,9 @@ build_sandbox() {
   cp "$SCRIPT" "$sb/.gaia/scripts/audit-scope-digest.sh"
   chmod +x "$sb/.gaia/scripts/audit-scope-digest.sh"
   cp "$KEY_LIB" "$sb/.gaia/scripts/audit-key-lib.sh"
-  cp "$DIGEST_LIB" "$sb/.claude/hooks/lib/audit-digest.sh"
-  cp "$SCOPE_LIB" "$sb/.claude/hooks/lib/audit-scope.sh"
-  cp "$MACHINERY_LIB" "$sb/.claude/hooks/lib/audit-machinery.sh"
+  cp "$DIGEST_LIBRARY" "$sb/.claude/hooks/lib/audit-digest.sh"
+  cp "$SCOPE_LIBRARY" "$sb/.claude/hooks/lib/audit-scope.sh"
+  cp "$MACHINERY_LIBRARY" "$sb/.claude/hooks/lib/audit-machinery.sh"
   git -C "$sb" init --quiet --initial-branch=main
   git -C "$sb" config user.email "test@example.com"
   git -C "$sb" config user.name "Test"
@@ -326,7 +326,7 @@ stored_head_for() {
   # audit-scope-digest.sh builds the conclusion filename itself, so its notion of
   # "which member gets no infix" must equal audit-write-clearance.sh's. A drift
   # here makes the lookup miss every conclusion for one member, silently.
-  writer="$THIS_DIR/../audit-write-clearance.sh"
+  writer="$THIS_DIRECTORY/../audit-write-clearance.sh"
   [ -f "$writer" ] || skip "audit-write-clearance.sh not present"
 
   scope_default="$(grep -oE '^SCOPE_DEFAULT_MEMBER="[^"]+"' "$SCRIPT" | head -1 | sed 's/.*="//;s/"$//')"
@@ -360,7 +360,7 @@ stored_head_for() {
 }
 
 @test "END TO END: a rotation between capture and write makes the earned write refuse" {
-  writer="$THIS_DIR/../audit-write-clearance.sh"
+  writer="$THIS_DIRECTORY/../audit-write-clearance.sh"
   [ -x "$writer" ] || skip "audit-write-clearance.sh not executable"
 
   captured="$("$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE")"
@@ -382,7 +382,7 @@ stored_head_for() {
 }
 
 @test "END TO END control: with no rotation the same earned write succeeds" {
-  writer="$THIS_DIR/../audit-write-clearance.sh"
+  writer="$THIS_DIRECTORY/../audit-write-clearance.sh"
   [ -x "$writer" ] || skip "audit-write-clearance.sh not executable"
 
   captured="$("$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE")"
@@ -401,7 +401,7 @@ stored_head_for() {
   # the SAME audit key, because only a clean round advances the key's base. The
   # unit tests above cover the spent lookup; this proves the whole loop, through
   # the real writer, ends in a marker instead of a permanent refusal.
-  writer="$THIS_DIR/../audit-write-clearance.sh"
+  writer="$THIS_DIRECTORY/../audit-write-clearance.sh"
   [ -x "$writer" ] || skip "audit-write-clearance.sh not executable"
 
   # --- round N: capture, find something, refuse ---
@@ -447,7 +447,7 @@ rotate_machinery() {
 # the REAL writer rather than the lookup alone.
 
 @test "END TO END: a round that publishes NOTHING does not strand the round after it" {
-  writer="$THIS_DIR/../audit-write-clearance.sh"
+  writer="$THIS_DIRECTORY/../audit-write-clearance.sh"
   [ -x "$writer" ] || skip "audit-write-clearance.sh not executable"
 
   # --- round A: captures, then ends having published nothing ---
@@ -479,7 +479,7 @@ rotate_machinery() {
 }
 
 @test "END TO END: the same recovery holds for a SPECIALIST member" {
-  writer="$THIS_DIR/../audit-write-clearance.sh"
+  writer="$THIS_DIRECTORY/../audit-write-clearance.sh"
   [ -x "$writer" ] || skip "audit-write-clearance.sh not executable"
   local m="code-audit-maintainer-shell"
 
@@ -521,7 +521,7 @@ rotate_machinery() {
   # omitted --scope-digest has told us nothing about whether its review ended,
   # so discarding its capture there would throw away a running review's fence
   # value on a caller error.
-  writer="$THIS_DIR/../audit-write-clearance.sh"
+  writer="$THIS_DIRECTORY/../audit-write-clearance.sh"
   [ -x "$writer" ] || skip "audit-write-clearance.sh not executable"
 
   "$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE" >/dev/null
@@ -536,7 +536,7 @@ rotate_machinery() {
   # reach the release either. A refusal lands at the WRITE-TIME digest, which
   # never spends the captured one, so releasing here would discard the capture
   # of a member that is still mid-round.
-  writer="$THIS_DIR/../audit-write-clearance.sh"
+  writer="$THIS_DIRECTORY/../audit-write-clearance.sh"
   [ -x "$writer" ] || skip "audit-write-clearance.sh not executable"
 
   captured="$("$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE")"
@@ -551,7 +551,7 @@ rotate_machinery() {
   # Three conditions reach this refusal and they need different operator
   # actions, so one message asserting a release for all three sends the
   # operator away from a live deadlock.
-  writer="$THIS_DIR/../audit-write-clearance.sh"
+  writer="$THIS_DIRECTORY/../audit-write-clearance.sh"
   [ -x "$writer" ] || skip "audit-write-clearance.sh not executable"
 
   # (a) a capture really is released
@@ -627,7 +627,7 @@ rotate_machinery() {
 }
 
 @test "END TO END: a self-healed round that releases lets the next round clear on its first try" {
-  writer="$THIS_DIR/../audit-write-clearance.sh"
+  writer="$THIS_DIRECTORY/../audit-write-clearance.sh"
   [ -x "$writer" ] || skip "audit-write-clearance.sh not executable"
 
   # --- round 1: captures, self-heals, publishes nothing, releases ---

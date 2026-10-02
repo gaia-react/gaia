@@ -6,7 +6,7 @@
 # substitution takes that substitution's exit status on the assignment. With
 # `.claude/hooks/lib/` absent -- a partial /update-gaia, an interrupted
 # checkout, a hand-deleted directory -- the inner `cd` fails and errexit ends
-# the hook ON the assignment, so the `[ -n "$_lib_dir" ]` branch written
+# the hook ON the assignment, so the `[ -n "$_library_directory" ]` branch written
 # directly below it never runs, in exactly the case it was written for
 # (gaia-react/gaia#1590).
 #
@@ -33,7 +33,7 @@
 # the hook is a candidate either way.
 #
 # Neither of those two terms is a claim about every way a shell can reach the
-# state it names. "Arms errexit" means what `lib_degrade_errexit_armed` below
+# state it names. "Arms errexit" means what `library_degrade_errexit_armed` below
 # reads, and that reader's own header states which spellings it takes. "Opens a
 # command substitution with a `cd`" means literally `$(cd`, optional space
 # allowed, which is where this defect has to live: the branch goes unreachable
@@ -63,12 +63,12 @@
 
 setup() {
   REPO_ROOT=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
-  HOOKS_DIR="$REPO_ROOT/.claude/hooks"
+  HOOKS_DIRECTORY="$REPO_ROOT/.claude/hooks"
   CONTROL=$(mktemp -d -t lib-degrade-control-XXXXXX)
   DEGRADED=$(mktemp -d -t lib-degrade-absent-XXXXXX)
-  cp "$HOOKS_DIR"/*.sh "$CONTROL/"
-  cp -R "$HOOKS_DIR/lib" "$CONTROL/lib"
-  cp "$HOOKS_DIR"/*.sh "$DEGRADED/"
+  cp "$HOOKS_DIRECTORY"/*.sh "$CONTROL/"
+  cp -R "$HOOKS_DIRECTORY/lib" "$CONTROL/lib"
+  cp "$HOOKS_DIRECTORY"/*.sh "$DEGRADED/"
 
   # Members are executed, and one of them commits once its preconditions pass,
   # so refuse rather than driving gate hooks against a real repository. Whether
@@ -106,7 +106,7 @@ teardown() {
 # hook spells that, and the direction is fail-closed if one ever does. An
 # over-armed hook joins the candidate set and then owes a member match or a
 # NOT_MEMBERS warrant, so the cost of the over-read is a red, never a miss.
-lib_degrade_errexit_armed() {
+library_degrade_errexit_armed() {
   grep -qE '^[[:space:]]*set[[:space:]]([^#]*[[:space:]])?(-[a-zA-Z]*e[a-zA-Z]*|-o[[:space:]]+errexit)([[:space:]]|;|$)' "$1" || return 1
   grep -qE '^[[:space:]]*trap .* ERR' "$1" && return 1
   return 0
@@ -114,14 +114,14 @@ lib_degrade_errexit_armed() {
 
 # The member set, derived from the hooks themselves. Prints one basename per
 # line.
-lib_degrade_members() {
-  local f
-  for f in "$HOOKS_DIR"/*.sh; do
+library_degrade_members() {
+  local hook_file
+  for hook_file in "$HOOKS_DIRECTORY"/*.sh; do
     # shellcheck disable=SC2016  # a literal pattern matching shell syntax in
     # the hook's text; expansion is exactly what must not happen here.
-    grep -qF '="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib"' "$f" || continue
-    lib_degrade_errexit_armed "$f" || continue
-    basename "$f"
+    grep -qF '="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib"' "$hook_file" || continue
+    library_degrade_errexit_armed "$hook_file" || continue
+    basename "$hook_file"
   done
 }
 
@@ -157,7 +157,7 @@ lib_degrade_members() {
 # author adding an indirected resolve to a listed hook owes this list an edit.
 NOT_MEMBERS=""
 
-# The loose candidate set: a hook that `lib_degrade_errexit_armed` reads as
+# The loose candidate set: a hook that `library_degrade_errexit_armed` reads as
 # armed and untrapped, and whose text opens a command substitution with a `cd`
 # anywhere. That is ONE text term, not two. It used to also require a literal
 # `BASH_SOURCE`, and that conjunct was a short read: a hook resolving its own
@@ -168,7 +168,7 @@ NOT_MEMBERS=""
 #
 # The term is FILE-level rather than line-level on purpose, which is what lets
 # a resolve split across two lines (`_self="${BASH_SOURCE[0]%/*}"`, then
-# `_lib_dir="$(cd "$_self/lib" ...)"`) still land here: neither line carries
+# `_library_directory="$(cd "$_self/lib" ...)"`) still land here: neither line carries
 # the whole shape, and the file does.
 #
 # The `[[:space:]]*` is not decoration. `$( cd "$root" && ... )` is in-house
@@ -178,27 +178,27 @@ NOT_MEMBERS=""
 # Deliberately looser than the member predicate below it, which has to name one
 # exact shape because members get EXECUTED. Everything this catches and that
 # one does not is precisely what the reconciliation forces a decision about.
-lib_degrade_candidates() {
-  local f
-  for f in "$HOOKS_DIR"/*.sh; do
-    grep -qE '\$\([[:space:]]*cd[[:space:]]' "$f" || continue
-    lib_degrade_errexit_armed "$f" || continue
-    basename "$f"
+library_degrade_candidates() {
+  local hook_file
+  for hook_file in "$HOOKS_DIRECTORY"/*.sh; do
+    grep -qE '\$\([[:space:]]*cd[[:space:]]' "$hook_file" || continue
+    library_degrade_errexit_armed "$hook_file" || continue
+    basename "$hook_file"
   done
 }
 
 @test "the derivation names at least one hook" {
   # A per-element claim over an empty set is true and means nothing, so the
   # derivation reports an empty read as a failure rather than as a pass.
-  run lib_degrade_members
+  run library_degrade_members
   [ "$status" -eq 0 ]
   [ -n "$output" ]
 }
 
 @test "every loose candidate is a member or a named exclusion" {
   local candidate member members candidates
-  members=$(lib_degrade_members)
-  candidates=$(lib_degrade_candidates)
+  members=$(library_degrade_members)
+  candidates=$(library_degrade_candidates)
 
   # This test exists to catch a SHORT member derivation, so it must not retire
   # quietly when its OWN derivation goes short instead. The candidate term
@@ -229,7 +229,7 @@ lib_degrade_candidates() {
     if awk -v name="$candidate" '$1 == name { hit = 1 } END { exit !hit }' \
          <<<"$NOT_MEMBERS"; then
       # The exclusion holds only while its warrant does: no cd into a lib child.
-      if grep -qE '\$\([[:space:]]*cd[[:space:]].*/lib' "$HOOKS_DIR/$candidate"; then
+      if grep -qE '\$\([[:space:]]*cd[[:space:]].*/lib' "$HOOKS_DIRECTORY/$candidate"; then
         printf 'hook %s is excluded as resolving no lib child, but now cds into one\n' \
           "$candidate" >&2
         return 1
@@ -244,7 +244,7 @@ lib_degrade_candidates() {
 }
 
 @test "every derived hook reaches its own reporting path with lib absent" {
-  local hook control_rc degraded_out degraded_rc
+  local hook control_exit_status degraded_output degraded_exit_status
   while read -r hook; do
     [ -n "$hook" ] || continue
 
@@ -252,14 +252,14 @@ lib_degrade_candidates() {
     # errexit, so a hook that exits non-zero would abort the test HERE and the
     # assertions below would never report. Capture the status on the failure
     # arm instead; `|| true` would discard the very number being compared.
-    control_rc=0
-    (cd "$CONTROL" && bash "./$hook" </dev/null >/dev/null 2>&1) || control_rc=$?
-    degraded_rc=0
-    degraded_out=$(cd "$DEGRADED" && bash "./$hook" </dev/null 2>&1) || degraded_rc=$?
+    control_exit_status=0
+    (cd "$CONTROL" && bash "./$hook" </dev/null >/dev/null 2>&1) || control_exit_status=$?
+    degraded_exit_status=0
+    degraded_output=$(cd "$DEGRADED" && bash "./$hook" </dev/null 2>&1) || degraded_exit_status=$?
 
     # The hook ran its own code rather than dying on the assignment. Before the
     # fix the degraded run produced nothing at all.
-    if [ -z "$degraded_out" ]; then
+    if [ -z "$degraded_output" ]; then
       printf 'hook %s produced no output with lib absent\n' "$hook" >&2
       return 1
     fi
@@ -273,20 +273,20 @@ lib_degrade_candidates() {
     # than by a list of hook names, so a hook that grows the arm is covered with
     # no edit here. The status is asserted rather than waved past: only 2 blocks,
     # and any other non-zero would be the fail-open this arm exists to close.
-    if grep -qF -- 'cannot load lib/jq-availability.sh' <<<"$degraded_out"; then
-      if [ "$degraded_rc" -ne 2 ]; then
+    if grep -qF -- 'cannot load lib/jq-availability.sh' <<<"$degraded_output"; then
+      if [ "$degraded_exit_status" -ne 2 ]; then
         printf 'hook %s: the jq-availability arm reported but exited %s, and only 2 blocks\n' \
-          "$hook" "$degraded_rc" >&2
+          "$hook" "$degraded_exit_status" >&2
         return 1
       fi
       continue
     fi
 
     # An absent library did not change the verdict.
-    if [ "$degraded_rc" -ne "$control_rc" ]; then
+    if [ "$degraded_exit_status" -ne "$control_exit_status" ]; then
       printf 'hook %s: rc %s with lib, %s without\n' \
-        "$hook" "$control_rc" "$degraded_rc" >&2
+        "$hook" "$control_exit_status" "$degraded_exit_status" >&2
       return 1
     fi
-  done < <(lib_degrade_members)
+  done < <(library_degrade_members)
 }

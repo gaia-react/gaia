@@ -29,15 +29,15 @@
 
 setup() {
   . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  FINDINGS_WRITER="$THIS_DIR/../audit-write-findings.sh"
-  CLEARANCE_WRITER="$THIS_DIR/../audit-write-clearance.sh"
-  CLASSIFIER="$THIS_DIR/../audit-noop-detect.sh"
-  DIGEST_LIB="$THIS_DIR/../../../.claude/hooks/lib/audit-digest.sh"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  FINDINGS_WRITER="$THIS_DIRECTORY/../audit-write-findings.sh"
+  CLEARANCE_WRITER="$THIS_DIRECTORY/../audit-write-clearance.sh"
+  CLASSIFIER="$THIS_DIRECTORY/../audit-noop-detect.sh"
+  DIGEST_LIBRARY="$THIS_DIRECTORY/../../../.claude/hooks/lib/audit-digest.sh"
   [ -x "$FINDINGS_WRITER" ] || skip "audit-write-findings.sh not executable"
   [ -x "$CLEARANCE_WRITER" ] || skip "audit-write-clearance.sh not executable"
   [ -x "$CLASSIFIER" ] || skip "audit-noop-detect.sh not executable"
-  [ -f "$DIGEST_LIB" ] || skip "audit-digest.sh not present"
+  [ -f "$DIGEST_LIBRARY" ] || skip "audit-digest.sh not present"
   command -v jq >/dev/null 2>&1 || skip "jq required"
 
   MEMBER="code-audit-maintainer-shell"
@@ -70,7 +70,7 @@ setup() {
   SIDECAR="$AUDIT_DIR/${TAG}.${MEMBER}.findings.json"
   LEDGER="$AUDIT_DIR/${TAG}.rerun.json"
 
-  DIGEST="$(bash -c '. "$1"; audit_member_digest "$2" "$3"' _ "$DIGEST_LIB" "$ROOT" "$MEMBER")"
+  DIGEST="$(bash -c '. "$1"; audit_member_digest "$2" "$3"' _ "$DIGEST_LIBRARY" "$ROOT" "$MEMBER")"
   [ -n "$DIGEST" ] || skip "cannot derive a member digest in the fixture"
   MARKER="$AUDIT_DIR/${DIGEST}.${MEMBER}.ok"
   REFUSAL="$AUDIT_DIR/${DIGEST}.${MEMBER}.refused"
@@ -231,7 +231,7 @@ JSON
   printf '#!/usr/bin/env bash\necho repaired\n' > "$ROOT/.claude/hooks/guard.sh"
   git -C "$ROOT" add .claude/hooks/guard.sh
   git -C "$ROOT" commit --quiet -m "bound the trailing segment"
-  new_digest="$(bash -c '. "$1"; audit_member_digest "$2" "$3"' _ "$DIGEST_LIB" "$ROOT" "$MEMBER")"
+  new_digest="$(bash -c '. "$1"; audit_member_digest "$2" "$3"' _ "$DIGEST_LIBRARY" "$ROOT" "$MEMBER")"
   [ -n "$new_digest" ]
   [ "$new_digest" != "$DIGEST" ]
   # The stale refusal no longer answers for the new content: the classifier for

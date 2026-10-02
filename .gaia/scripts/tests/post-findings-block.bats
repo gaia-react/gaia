@@ -18,10 +18,10 @@
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   # shellcheck source=.gaia/tests/helpers/path.sh
-  . "$( cd "$THIS_DIR/../../.." && pwd )/.gaia/tests/helpers/path.sh"
-  SCRIPT="$THIS_DIR/../post-findings-block.sh"
+  . "$( cd "$THIS_DIRECTORY/../../.." && pwd )/.gaia/tests/helpers/path.sh"
+  SCRIPT="$THIS_DIRECTORY/../post-findings-block.sh"
   [ -x "$SCRIPT" ] || skip "post-findings-block.sh not executable"
   command -v jq >/dev/null 2>&1 || skip "jq required"
 

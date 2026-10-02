@@ -64,16 +64,16 @@
 
 set -u
 
-# _gl_esc <text>: JSON string body, builtins only (works with jq absent).
-_gl_esc() {
-  local s="${1-}"
-  s="${s//\\/\\\\}"
-  s="${s//\"/\\\"}"
-  s="${s//$'\n'/\\n}"
-  s="${s//$'\t'/\\t}"
-  s="${s//$'\r'/ }"
-  s="${s//[[:cntrl:]]/ }"
-  printf '%s' "$s"
+# _gl_escape_json <text>: JSON string body, builtins only (works with jq absent).
+_gl_escape_json() {
+  local text="${1-}"
+  text="${text//\\/\\\\}"
+  text="${text//\"/\\\"}"
+  text="${text//$'\n'/\\n}"
+  text="${text//$'\t'/\\t}"
+  text="${text//$'\r'/ }"
+  text="${text//[[:cntrl:]]/ }"
+  printf '%s' "$text"
 }
 
 # _gl_say <message> [claude-context]: the visible note, and optionally the
@@ -81,9 +81,9 @@ _gl_esc() {
 _gl_say() {
   if [ -n "${2-}" ]; then
     printf '{"systemMessage":"%s","hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"%s"}}\n' \
-      "$(_gl_esc "$1")" "$(_gl_esc "$2")"
+      "$(_gl_escape_json "$1")" "$(_gl_escape_json "$2")"
   else
-    printf '{"systemMessage":"%s"}\n' "$(_gl_esc "$1")"
+    printf '{"systemMessage":"%s"}\n' "$(_gl_escape_json "$1")"
   fi
 }
 
@@ -181,16 +181,16 @@ target=""
 state=""
 pending=""
 if [ -n "$branch" ]; then
-  cand="$(gaia_loop_state_file "$main" "$branch")"
-  state="$(gaia_loop_read_state "$cand" 2>/dev/null)"
-  rc=$?
-  if [ "$rc" -eq 5 ]; then
-    _gl_corrupt "$cand"
+  candidate_state_file="$(gaia_loop_state_file "$main" "$branch")"
+  state="$(gaia_loop_read_state "$candidate_state_file" 2>/dev/null)"
+  state_read_exit_status=$?
+  if [ "$state_read_exit_status" -eq 5 ]; then
+    _gl_corrupt "$candidate_state_file"
     exit 0
   fi
-  if [ "$rc" -eq 0 ]; then
+  if [ "$state_read_exit_status" -eq 0 ]; then
     pending="$(gaia_loop_pending_checkpoint "$state")"
-    [ -n "$pending" ] && target="$cand"
+    [ -n "$pending" ] && target="$candidate_state_file"
   fi
 fi
 
@@ -198,14 +198,14 @@ if [ -z "$target" ]; then
   matches=0
   statedir="$main/.gaia/local/audit-loop"
   if [ -n "$session_id" ] && [ -d "$statedir" ]; then
-    while IFS= read -r cand; do
-      cstate="$(gaia_loop_read_state "$cand" 2>/dev/null)" || continue
-      cpending="$(gaia_loop_pending_checkpoint "$cstate")"
-      [ -n "$cpending" ] || continue
-      csid="$(printf '%s' "$cpending" | jq -r '.session_id // "" | strings' 2>/dev/null)" || csid=""
-      if [ "$csid" = "$session_id" ]; then
+    while IFS= read -r candidate_state_file; do
+      candidate_state="$(gaia_loop_read_state "$candidate_state_file" 2>/dev/null)" || continue
+      candidate_pending_checkpoint="$(gaia_loop_pending_checkpoint "$candidate_state")"
+      [ -n "$candidate_pending_checkpoint" ] || continue
+      candidate_session_id="$(printf '%s' "$candidate_pending_checkpoint" | jq -r '.session_id // "" | strings' 2>/dev/null)" || candidate_session_id=""
+      if [ "$candidate_session_id" = "$session_id" ]; then
         matches=$((matches + 1))
-        target="$cand"
+        target="$candidate_state_file"
       fi
     done < <(find "$statedir" -name .closed -prune -o -type f -name '*.json' -print 2>/dev/null)
   fi
@@ -221,10 +221,10 @@ if ! gaia_loop_lock "$target" "$(($(date +%s) + 5))"; then
   exit 0
 fi
 state="$(gaia_loop_read_state "$target" 2>/dev/null)"
-rc=$?
-if [ "$rc" -ne 0 ]; then
+state_read_exit_status=$?
+if [ "$state_read_exit_status" -ne 0 ]; then
   gaia_loop_unlock "$target"
-  if [ "$rc" -eq 5 ]; then
+  if [ "$state_read_exit_status" -eq 5 ]; then
     _gl_corrupt "$target"
   else
     _gl_say "Not recorded: the audit state file $target could not be read."
@@ -237,7 +237,7 @@ if [ -z "$pending" ]; then
   _gl_say "Not recorded: no audit checkpoint is pending on branch ${branch:-(none)} for this session; type the line in the session whose dispatch hit the checkpoint."
   exit 0
 fi
-idx="$(printf '%s' "$pending" | jq -r '.index')"
+checkpoint_index="$(printf '%s' "$pending" | jq -r '.index')"
 case "$parsed" in
   "grant "*)
     rounds_used="$(printf '%s' "$state" | jq -r '.history.rounds | length' 2>/dev/null)" || rounds_used=0
@@ -251,13 +251,13 @@ esac
 at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 case "$parsed" in
   "grant "*)
-    n="${parsed#grant }"
-    new="$(printf '%s' "$state" | jq -c --argjson cp "$idx" --argjson n "$n" --arg at "$at" --arg sid "$session_id" \
-      '.allowance.answers += [{checkpoint: $cp, kind: "grant", n: $n, source: "typed", at: $at, session_id: $sid}]' 2>/dev/null)" || new=""
+    granted_round_count="${parsed#grant }"
+    new="$(printf '%s' "$state" | jq -c --argjson checkpoint_number "$checkpoint_index" --argjson granted_round_count "$granted_round_count" --arg at "$at" --arg session_id "$session_id" \
+      '.allowance.answers += [{checkpoint: $checkpoint_number, kind: "grant", n: $granted_round_count, source: "typed", at: $at, session_id: $session_id}]' 2>/dev/null)" || new=""
     ;;
   *)
-    new="$(printf '%s' "$state" | jq -c --argjson cp "$idx" --arg at "$at" --arg sid "$session_id" \
-      '.allowance.answers += [{checkpoint: $cp, kind: "accept", source: "typed", at: $at, session_id: $sid}]' 2>/dev/null)" || new=""
+    new="$(printf '%s' "$state" | jq -c --argjson checkpoint_number "$checkpoint_index" --arg at "$at" --arg session_id "$session_id" \
+      '.allowance.answers += [{checkpoint: $checkpoint_number, kind: "accept", source: "typed", at: $at, session_id: $session_id}]' 2>/dev/null)" || new=""
     ;;
 esac
 if [ -z "$new" ] || ! gaia_loop_write_state "$target" "$new"; then
@@ -268,14 +268,14 @@ fi
 gaia_loop_unlock "$target"
 
 allowed="$(gaia_loop_allowed "$new")"
-bname="$(printf '%s' "$new" | jq -r '.branch')"
+branch_name="$(printf '%s' "$new" | jq -r '.branch')"
 case "$parsed" in
   "grant "*)
-    msg="Recorded: $(gaia_loop_grant_line "$n") on branch $bname (checkpoint $idx). Rounds allowed through round $allowed."
+    recorded_message="Recorded: $(gaia_loop_grant_line "$granted_round_count") on branch $branch_name (checkpoint $checkpoint_index). Rounds allowed through round $allowed."
     ;;
   *)
-    msg="Recorded: $(gaia_loop_accept_line) on branch $bname (checkpoint $idx). Exactly one closing round is allowed (round $allowed) and no fixer runs in it."
+    recorded_message="Recorded: $(gaia_loop_accept_line) on branch $branch_name (checkpoint $checkpoint_index). Exactly one closing round is allowed (round $allowed) and no fixer runs in it."
     ;;
 esac
-_gl_say "$msg" "$msg Claude: the human typed this line; continue the loop within that allowance."
+_gl_say "$recorded_message" "$recorded_message Claude: the human typed this line; continue the loop within that allowance."
 exit 0

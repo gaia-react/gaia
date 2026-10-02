@@ -23,11 +23,11 @@
 
 setup() {
   . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
-  DIGEST_LIB="$REPO_ROOT/.claude/hooks/lib/audit-digest.sh"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
+  DIGEST_LIBRARY="$REPO_ROOT/.claude/hooks/lib/audit-digest.sh"
   CLI="$REPO_ROOT/.gaia/scripts/audit-member-digest.sh"
-  [ -f "$DIGEST_LIB" ] || skip "audit-digest.sh not present"
+  [ -f "$DIGEST_LIBRARY" ] || skip "audit-digest.sh not present"
   # The digest needs a sha256 tool + git; it does NOT need jq.
   if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
     skip "no sha256 tool"
@@ -35,37 +35,37 @@ setup() {
 }
 
 git_init() {
-  local d="$1"
-  git -C "$d" init --quiet --initial-branch=main
-  git -C "$d" config user.email "test@example.com"
-  git -C "$d" config user.name "Test"
-  git -C "$d" config commit.gpgsign false
-  seed_audit_roster "$d"
+  local repository_directory="$1"
+  git -C "$repository_directory" init --quiet --initial-branch=main
+  git -C "$repository_directory" config user.email "test@example.com"
+  git -C "$repository_directory" config user.name "Test"
+  git -C "$repository_directory" config commit.gpgsign false
+  seed_audit_roster "$repository_directory"
 }
 
 # Seed a fixture repo with an owned file for each probed member, a
 # machinery file (in every member's set), a nested rules machinery file, an
 # out-of-glob CHANGELOG, and a wiki file (both ownerless + allowlisted).
 seed_repo() {
-  local d="$1"
-  mkdir -p "$d/app" "$d/.gaia/scripts" "$d/.gaia/cli/src" "$d/.gaia" \
-    "$d/.claude/rules/foo" "$d/wiki"
-  git_init "$d"
-  echo "export const x = 1;"  > "$d/app/x.ts"                 # frontend (auditable base)
-  echo "#!/usr/bin/env bash"  > "$d/.gaia/scripts/foo.sh"     # maintainer-shell owned, not machinery
-  echo "export const y = 2;"  > "$d/.gaia/cli/src/index.ts"   # maintainer-node
-  printf '1.6.1\n'            > "$d/.gaia/VERSION"             # machinery (all members)
-  echo "rule body"            > "$d/.claude/rules/foo/bar.md" # machinery (.claude/rules/**), nested
-  echo "# changelog"          > "$d/CHANGELOG.md"             # out-of-glob (ownerless + allowlisted)
-  echo "doc"                  > "$d/wiki/x.md"                # out-of-glob (ownerless + allowlisted)
-  git -C "$d" add -A
-  git -C "$d" commit --quiet -m "seed"
+  local repository_directory="$1"
+  mkdir -p "$repository_directory/app" "$repository_directory/.gaia/scripts" "$repository_directory/.gaia/cli/src" "$repository_directory/.gaia" \
+    "$repository_directory/.claude/rules/foo" "$repository_directory/wiki"
+  git_init "$repository_directory"
+  echo "export const x = 1;"  > "$repository_directory/app/x.ts"                 # frontend (auditable base)
+  echo "#!/usr/bin/env bash"  > "$repository_directory/.gaia/scripts/foo.sh"     # maintainer-shell owned, not machinery
+  echo "export const y = 2;"  > "$repository_directory/.gaia/cli/src/index.ts"   # maintainer-node
+  printf '1.6.1\n'            > "$repository_directory/.gaia/VERSION"             # machinery (all members)
+  echo "rule body"            > "$repository_directory/.claude/rules/foo/bar.md" # machinery (.claude/rules/**), nested
+  echo "# changelog"          > "$repository_directory/CHANGELOG.md"             # out-of-glob (ownerless + allowlisted)
+  echo "doc"                  > "$repository_directory/wiki/x.md"                # out-of-glob (ownerless + allowlisted)
+  git -C "$repository_directory" add -A
+  git -C "$repository_directory" commit --quiet -m "seed"
 }
 
-# digest_of <root> <member> [<ref>] -> 64-hex on stdout, non-zero on fail-closed.
+# digest_of <root> <member> [<git_reference>] -> 64-hex on stdout, non-zero on fail-closed.
 digest_of() {
-  local root="$1" member="$2" ref="${3:-HEAD}"
-  bash -c '. "$1"; audit_member_digest "$2" "$3" "$4"' _ "$DIGEST_LIB" "$root" "$member" "$ref"
+  local root="$1" member="$2" git_reference="${3:-HEAD}"
+  bash -c '. "$1"; audit_member_digest "$2" "$3" "$4"' _ "$DIGEST_LIBRARY" "$root" "$member" "$git_reference"
 }
 
 # Commit a one-line mutation to <path> and echo "<pre> <post>" (the shas before
@@ -110,8 +110,8 @@ mutate_commit() {
 # ---------------------------------------------------------------------------
 
 @test "the recipe-version sentinel feeding the digest hash is gaia-audit-digest-v1" {
-  grep -qF -- "printf 'gaia-audit-digest-v1\0'" "$DIGEST_LIB" || return 1
-  sites="$(grep -oF -- "printf 'gaia-audit-digest-v1\0'" "$DIGEST_LIB" | wc -l | tr -d ' ')"
+  grep -qF -- "printf 'gaia-audit-digest-v1\0'" "$DIGEST_LIBRARY" || return 1
+  sites="$(grep -oF -- "printf 'gaia-audit-digest-v1\0'" "$DIGEST_LIBRARY" | wc -l | tr -d ' ')"
   [ "$sites" -eq 1 ]
 }
 
@@ -123,11 +123,11 @@ mutate_commit() {
   ROOT="$BATS_TEST_TMPDIR/all"
   mkdir -p "$ROOT"
   seed_repo "$ROOT"
-  out="$(bash -c '. "$1"; audit_digests_all "$2"' _ "$DIGEST_LIB" "$ROOT")"
-  for m in code-audit-frontend code-audit-maintainer-shell code-audit-maintainer-node; do
-    d="$(grep -F "$m"$'\t' <<<"$out" | cut -f2)"
-    [ "${#d}" -eq 64 ] || return 1
-    case "$d" in *[!0-9a-f]*) return 1 ;; esac
+  out="$(bash -c '. "$1"; audit_digests_all "$2"' _ "$DIGEST_LIBRARY" "$ROOT")"
+  for member_name in code-audit-frontend code-audit-maintainer-shell code-audit-maintainer-node; do
+    line_digest="$(grep -F "$member_name"$'\t' <<<"$out" | cut -f2)"
+    [ "${#line_digest}" -eq 64 ] || return 1
+    case "$line_digest" in *[!0-9a-f]*) return 1 ;; esac
   done
 }
 
@@ -142,13 +142,13 @@ mutate_commit() {
   mkdir -p "$ROOT"
   seed_repo "$ROOT"
   refs="$(mutate_commit "$ROOT" "CHANGELOG.md")"
-  a="${refs% *}"
-  b="${refs#* }"
-  for m in code-audit-frontend code-audit-maintainer-shell code-audit-maintainer-node; do
-    da="$(digest_of "$ROOT" "$m" "$a")"
-    db="$(digest_of "$ROOT" "$m" "$b")"
-    [ -n "$da" ] || return 1
-    [ "$da" = "$db" ] || return 1
+  commit_sha_before="${refs% *}"
+  commit_sha_after="${refs#* }"
+  for member_name in code-audit-frontend code-audit-maintainer-shell code-audit-maintainer-node; do
+    digest_before="$(digest_of "$ROOT" "$member_name" "$commit_sha_before")"
+    digest_after="$(digest_of "$ROOT" "$member_name" "$commit_sha_after")"
+    [ -n "$digest_before" ] || return 1
+    [ "$digest_before" = "$digest_after" ] || return 1
   done
 }
 
@@ -163,10 +163,10 @@ mutate_commit() {
   mkdir -p "$ROOT"
   seed_repo "$ROOT"
   refs="$(mutate_commit "$ROOT" ".gaia/cli/src/index.ts")"
-  a="${refs% *}"; b="${refs#* }"
-  [ "$(digest_of "$ROOT" code-audit-maintainer-node "$a")" != "$(digest_of "$ROOT" code-audit-maintainer-node "$b")" ] || return 1
-  [ "$(digest_of "$ROOT" code-audit-frontend "$a")" = "$(digest_of "$ROOT" code-audit-frontend "$b")" ] || return 1
-  [ "$(digest_of "$ROOT" code-audit-maintainer-shell "$a")" = "$(digest_of "$ROOT" code-audit-maintainer-shell "$b")" ] || return 1
+  commit_sha_before="${refs% *}"; commit_sha_after="${refs#* }"
+  [ "$(digest_of "$ROOT" code-audit-maintainer-node "$commit_sha_before")" != "$(digest_of "$ROOT" code-audit-maintainer-node "$commit_sha_after")" ] || return 1
+  [ "$(digest_of "$ROOT" code-audit-frontend "$commit_sha_before")" = "$(digest_of "$ROOT" code-audit-frontend "$commit_sha_after")" ] || return 1
+  [ "$(digest_of "$ROOT" code-audit-maintainer-shell "$commit_sha_before")" = "$(digest_of "$ROOT" code-audit-maintainer-shell "$commit_sha_after")" ] || return 1
 }
 
 @test "UAT-006: a default-member auditable-base (app) byte flip rotates only the frontend digest" {
@@ -174,10 +174,10 @@ mutate_commit() {
   mkdir -p "$ROOT"
   seed_repo "$ROOT"
   refs="$(mutate_commit "$ROOT" "app/x.ts")"
-  a="${refs% *}"; b="${refs#* }"
-  [ "$(digest_of "$ROOT" code-audit-frontend "$a")" != "$(digest_of "$ROOT" code-audit-frontend "$b")" ] || return 1
-  [ "$(digest_of "$ROOT" code-audit-maintainer-node "$a")" = "$(digest_of "$ROOT" code-audit-maintainer-node "$b")" ] || return 1
-  [ "$(digest_of "$ROOT" code-audit-maintainer-shell "$a")" = "$(digest_of "$ROOT" code-audit-maintainer-shell "$b")" ] || return 1
+  commit_sha_before="${refs% *}"; commit_sha_after="${refs#* }"
+  [ "$(digest_of "$ROOT" code-audit-frontend "$commit_sha_before")" != "$(digest_of "$ROOT" code-audit-frontend "$commit_sha_after")" ] || return 1
+  [ "$(digest_of "$ROOT" code-audit-maintainer-node "$commit_sha_before")" = "$(digest_of "$ROOT" code-audit-maintainer-node "$commit_sha_after")" ] || return 1
+  [ "$(digest_of "$ROOT" code-audit-maintainer-shell "$commit_sha_before")" = "$(digest_of "$ROOT" code-audit-maintainer-shell "$commit_sha_after")" ] || return 1
 }
 
 @test "UAT-006: a machinery (.gaia/VERSION) byte flip rotates every member's digest" {
@@ -185,9 +185,9 @@ mutate_commit() {
   mkdir -p "$ROOT"
   seed_repo "$ROOT"
   refs="$(mutate_commit "$ROOT" ".gaia/VERSION")"
-  a="${refs% *}"; b="${refs#* }"
-  for m in code-audit-frontend code-audit-maintainer-shell code-audit-maintainer-node; do
-    [ "$(digest_of "$ROOT" "$m" "$a")" != "$(digest_of "$ROOT" "$m" "$b")" ] || return 1
+  commit_sha_before="${refs% *}"; commit_sha_after="${refs#* }"
+  for member_name in code-audit-frontend code-audit-maintainer-shell code-audit-maintainer-node; do
+    [ "$(digest_of "$ROOT" "$member_name" "$commit_sha_before")" != "$(digest_of "$ROOT" "$member_name" "$commit_sha_after")" ] || return 1
   done
 }
 
@@ -196,9 +196,9 @@ mutate_commit() {
   mkdir -p "$ROOT"
   seed_repo "$ROOT"
   refs="$(mutate_commit "$ROOT" "wiki/x.md")"
-  a="${refs% *}"; b="${refs#* }"
-  for m in code-audit-frontend code-audit-maintainer-shell code-audit-maintainer-node; do
-    [ "$(digest_of "$ROOT" "$m" "$a")" = "$(digest_of "$ROOT" "$m" "$b")" ] || return 1
+  commit_sha_before="${refs% *}"; commit_sha_after="${refs#* }"
+  for member_name in code-audit-frontend code-audit-maintainer-shell code-audit-maintainer-node; do
+    [ "$(digest_of "$ROOT" "$member_name" "$commit_sha_before")" = "$(digest_of "$ROOT" "$member_name" "$commit_sha_after")" ] || return 1
   done
 }
 
@@ -214,9 +214,9 @@ mutate_commit() {
   mkdir -p "$ROOT"
   seed_repo "$ROOT"
   refs="$(mutate_commit "$ROOT" ".claude/rules/foo/bar.md")"
-  a="${refs% *}"; b="${refs#* }"
-  for m in code-audit-frontend code-audit-maintainer-shell code-audit-maintainer-node; do
-    [ "$(digest_of "$ROOT" "$m" "$a")" != "$(digest_of "$ROOT" "$m" "$b")" ] || return 1
+  commit_sha_before="${refs% *}"; commit_sha_after="${refs#* }"
+  for member_name in code-audit-frontend code-audit-maintainer-shell code-audit-maintainer-node; do
+    [ "$(digest_of "$ROOT" "$member_name" "$commit_sha_before")" != "$(digest_of "$ROOT" "$member_name" "$commit_sha_after")" ] || return 1
   done
 }
 
@@ -226,14 +226,14 @@ mutate_commit() {
   seed_repo "$ROOT"
   # app path: frontend only.
   refs="$(mutate_commit "$ROOT" "app/x.ts")"
-  a="${refs% *}"; b="${refs#* }"
-  [ "$(digest_of "$ROOT" code-audit-frontend "$a")" != "$(digest_of "$ROOT" code-audit-frontend "$b")" ] || return 1
-  [ "$(digest_of "$ROOT" code-audit-maintainer-node "$a")" = "$(digest_of "$ROOT" code-audit-maintainer-node "$b")" ] || return 1
+  commit_sha_before="${refs% *}"; commit_sha_after="${refs#* }"
+  [ "$(digest_of "$ROOT" code-audit-frontend "$commit_sha_before")" != "$(digest_of "$ROOT" code-audit-frontend "$commit_sha_after")" ] || return 1
+  [ "$(digest_of "$ROOT" code-audit-maintainer-node "$commit_sha_before")" = "$(digest_of "$ROOT" code-audit-maintainer-node "$commit_sha_after")" ] || return 1
   # cli path: node only.
   refs="$(mutate_commit "$ROOT" ".gaia/cli/src/index.ts")"
-  a="${refs% *}"; b="${refs#* }"
-  [ "$(digest_of "$ROOT" code-audit-maintainer-node "$a")" != "$(digest_of "$ROOT" code-audit-maintainer-node "$b")" ] || return 1
-  [ "$(digest_of "$ROOT" code-audit-frontend "$a")" = "$(digest_of "$ROOT" code-audit-frontend "$b")" ] || return 1
+  commit_sha_before="${refs% *}"; commit_sha_after="${refs#* }"
+  [ "$(digest_of "$ROOT" code-audit-maintainer-node "$commit_sha_before")" != "$(digest_of "$ROOT" code-audit-maintainer-node "$commit_sha_after")" ] || return 1
+  [ "$(digest_of "$ROOT" code-audit-frontend "$commit_sha_before")" = "$(digest_of "$ROOT" code-audit-frontend "$commit_sha_after")" ] || return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -260,13 +260,13 @@ mutate_commit() {
 
   # A Makefile edit rotates the frontend digest (folded in).
   refs="$(mutate_commit "$ROOT" "Makefile")"
-  a="${refs% *}"; b="${refs#* }"
-  [ "$(digest_of "$ROOT" code-audit-frontend "$a")" != "$(digest_of "$ROOT" code-audit-frontend "$b")" ] || return 1
+  commit_sha_before="${refs% *}"; commit_sha_after="${refs#* }"
+  [ "$(digest_of "$ROOT" code-audit-frontend "$commit_sha_before")" != "$(digest_of "$ROOT" code-audit-frontend "$commit_sha_after")" ] || return 1
 
   # A wiki edit does not.
   refs="$(mutate_commit "$ROOT" "wiki/x.md")"
-  a="${refs% *}"; b="${refs#* }"
-  [ "$(digest_of "$ROOT" code-audit-frontend "$a")" = "$(digest_of "$ROOT" code-audit-frontend "$b")" ] || return 1
+  commit_sha_before="${refs% *}"; commit_sha_after="${refs#* }"
+  [ "$(digest_of "$ROOT" code-audit-frontend "$commit_sha_before")" = "$(digest_of "$ROOT" code-audit-frontend "$commit_sha_after")" ] || return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -304,17 +304,17 @@ mutate_commit() {
   # detects the resulting count mismatch and fails closed (empty, non-zero)
   # rather than hashing a mis-aligned set -- safe, never a wrong digest. This
   # is out of scope to "fix" (it would mean changing the classifier semantics).
-  R="$BATS_TEST_TMPDIR/newline"
-  mkdir -p "$R/app"
-  git_init "$R"
-  printf 'export const z = 3;\n' > "$R/app/x.ts"
+  NEWLINE_REPOSITORY="$BATS_TEST_TMPDIR/newline"
+  mkdir -p "$NEWLINE_REPOSITORY/app"
+  git_init "$NEWLINE_REPOSITORY"
+  printf 'export const z = 3;\n' > "$NEWLINE_REPOSITORY/app/x.ts"
   # A tracked path literally containing a newline byte.
   bad="$(printf 'app/we\nird.ts')"
-  printf 'export const w = 4;\n' > "$R/$bad"
-  git -C "$R" add -A
-  git -C "$R" commit --quiet -m "seed with newline path"
+  printf 'export const w = 4;\n' > "$NEWLINE_REPOSITORY/$bad"
+  git -C "$NEWLINE_REPOSITORY" add -A
+  git -C "$NEWLINE_REPOSITORY" commit --quiet -m "seed with newline path"
 
-  run bash -c '. "$1"; audit_member_digest "$2" code-audit-frontend' _ "$DIGEST_LIB" "$R"
+  run bash -c '. "$1"; audit_member_digest "$2" code-audit-frontend' _ "$DIGEST_LIBRARY" "$NEWLINE_REPOSITORY"
   # Either it fails closed (preferred) -- never a bare/partial digest match.
   [ "$status" -ne 0 ]
   [ -z "$output" ]
@@ -335,7 +335,7 @@ mutate_commit() {
     shasum() { return 1; }
     . "$1"
     audit_member_digest "$2" code-audit-frontend
-  ' _ "$DIGEST_LIB" "$ROOT"
+  ' _ "$DIGEST_LIBRARY" "$ROOT"
   [ "$status" -ne 0 ]
   [ -z "$output" ]
 }
@@ -344,7 +344,7 @@ mutate_commit() {
   ROOT="$BATS_TEST_TMPDIR/uat013ref"
   mkdir -p "$ROOT"
   seed_repo "$ROOT"
-  run bash -c '. "$1"; audit_member_digest "$2" code-audit-frontend "no-such-ref"' _ "$DIGEST_LIB" "$ROOT"
+  run bash -c '. "$1"; audit_member_digest "$2" code-audit-frontend "no-such-ref"' _ "$DIGEST_LIBRARY" "$ROOT"
   [ "$status" -ne 0 ]
   [ -z "$output" ]
 }
@@ -355,7 +355,7 @@ mutate_commit() {
   # Seeded so the failure under test is the missing repository, not the
   # missing roster.
   seed_audit_roster "$ROOT"
-  run bash -c '. "$1"; audit_member_digest "$2" code-audit-frontend' _ "$DIGEST_LIB" "$ROOT"
+  run bash -c '. "$1"; audit_member_digest "$2" code-audit-frontend' _ "$DIGEST_LIBRARY" "$ROOT"
   [ "$status" -ne 0 ]
   [ -z "$output" ]
 }

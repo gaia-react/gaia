@@ -52,10 +52,10 @@ setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/path.sh"
   . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/audit-roster.sh"
-  HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/pr-merge-audit-check.sh
-  SETTINGS_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude" && pwd)/settings.json
-  RESOLVER_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/resolve-audit-members.sh
-  LIB_DIR=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)
+  HOOK_ABSOLUTE_PATH=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/pr-merge-audit-check.sh
+  SETTINGS_ABSOLUTE_PATH=$(cd "$BATS_TEST_DIRNAME/../../../.claude" && pwd)/settings.json
+  RESOLVER_ABSOLUTE_PATH=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/resolve-audit-members.sh
+  LIBRARY_DIRECTORY=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)
   REPO=$(mktemp -d -t pr-merge-test-XXXXXX)
 
   git -C "$REPO" init --quiet --initial-branch=main
@@ -73,21 +73,21 @@ setup() {
   git -C "$REPO" checkout --quiet -b feature
 
   mkdir -p "$REPO/.gaia/scripts"
-  cp "$RESOLVER_ABS" "$REPO/.gaia/scripts/resolve-audit-members.sh"
+  cp "$RESOLVER_ABSOLUTE_PATH" "$REPO/.gaia/scripts/resolve-audit-members.sh"
   chmod +x "$REPO/.gaia/scripts/resolve-audit-members.sh"
 
   # The copy above resolves its libs relative to ITSELF
   # ($REPO/.claude/hooks/lib/), not the real repo, so the sandbox needs its
   # own copy of the shared ownership classifier + digest engine + clearance
   # reader + base provenance resolver alongside it. The real hook (run by
-  # absolute path via $HOOK_ABS, never copied) resolves its own libs to the
+  # absolute path via $HOOK_ABSOLUTE_PATH, never copied) resolves its own libs to the
   # real repo regardless.
   mkdir -p "$REPO/.claude/hooks/lib"
-  cp "$LIB_DIR/audit-scope.sh" "$REPO/.claude/hooks/lib/audit-scope.sh"
-  cp "$LIB_DIR/audit-machinery.sh" "$REPO/.claude/hooks/lib/audit-machinery.sh"
-  cp "$LIB_DIR/audit-clearance.sh" "$REPO/.claude/hooks/lib/audit-clearance.sh"
-  cp "$LIB_DIR/audit-digest.sh" "$REPO/.claude/hooks/lib/audit-digest.sh"
-  cp "$LIB_DIR/audit-base-provenance.sh" "$REPO/.claude/hooks/lib/audit-base-provenance.sh"
+  cp "$LIBRARY_DIRECTORY/audit-scope.sh" "$REPO/.claude/hooks/lib/audit-scope.sh"
+  cp "$LIBRARY_DIRECTORY/audit-machinery.sh" "$REPO/.claude/hooks/lib/audit-machinery.sh"
+  cp "$LIBRARY_DIRECTORY/audit-clearance.sh" "$REPO/.claude/hooks/lib/audit-clearance.sh"
+  cp "$LIBRARY_DIRECTORY/audit-digest.sh" "$REPO/.claude/hooks/lib/audit-digest.sh"
+  cp "$LIBRARY_DIRECTORY/audit-base-provenance.sh" "$REPO/.claude/hooks/lib/audit-base-provenance.sh"
 
   # Every permit this gate issues is bound to the pull request the command
   # names, so every case here needs a pull-request record to be bound TO, not
@@ -135,11 +135,11 @@ seed_base_template() {
 # Run the hook with a `gh pr merge` command, against an arbitrary ROOT. The
 # root-parameterized twin of run_merge_hook.
 run_merge_hook_at() {
-  local root="$1" cmd="${2:-gh pr merge 30 --squash --delete-branch}"
+  local root="$1" command_line="${2:-gh pr merge 30 --squash --delete-branch}"
   local json
-  json=$(jq -n --arg c "$cmd" \
-    '{tool_name: "Bash", tool_input: {command: $c}}')
-  invoke_hook_in "$root" "$json" "$HOOK_ABS"
+  json=$(jq -n --arg command_line "$command_line" \
+    '{tool_name: "Bash", tool_input: {command: $command_line}}')
+  invoke_hook_in "$root" "$json" "$HOOK_ABSOLUTE_PATH"
 }
 
 # Run the hook with a `gh pr merge` command, from inside the repo.
@@ -154,13 +154,13 @@ run_merge_hook() {
 # go through a file here: `--rawfile` for the command, a stdin redirect for the
 # payload.
 run_merge_hook_large() {
-  local cmd="$1" cmdfile jsonfile
-  cmdfile="$BATS_TEST_TMPDIR/large-cmd.txt"
+  local command_line="$1" command_file jsonfile
+  command_file="$BATS_TEST_TMPDIR/large-cmd.txt"
   jsonfile="$BATS_TEST_TMPDIR/large-payload.json"
-  printf '%s' "$cmd" > "$cmdfile"
-  jq -n --rawfile c "$cmdfile" \
-    '{tool_name: "Bash", tool_input: {command: $c}}' > "$jsonfile"
-  run bash -c 'cd "$1" && bash "$3" < "$2"' _ "$REPO" "$jsonfile" "$HOOK_ABS"
+  printf '%s' "$command_line" > "$command_file"
+  jq -n --rawfile command_line "$command_file" \
+    '{tool_name: "Bash", tool_input: {command: $command_line}}' > "$jsonfile"
+  run bash -c 'cd "$1" && bash "$3" < "$2"' _ "$REPO" "$jsonfile" "$HOOK_ABSOLUTE_PATH"
 }
 
 # Compute MEMBER's real content digest for REPO's current HEAD, via the real
@@ -168,13 +168,13 @@ run_merge_hook_large() {
 # whatever the hook itself would compute.
 member_digest_for() {
   local member="$1"
-  bash -c '. "$1"; audit_member_digest "$2" "$3"' _ "$LIB_DIR/audit-digest.sh" "$REPO" "$member"
+  bash -c '. "$1"; audit_member_digest "$2" "$3"' _ "$LIBRARY_DIRECTORY/audit-digest.sh" "$REPO" "$member"
 }
 
 # Write a Code Audit Team EARNED clearance marker for MEMBER, keyed to
 # MEMBER's own content digest at ROOT's current HEAD (schema 3). The
 # root-parameterized twin of write_marker, built on member_digest_at.
-#   write_marker_at "$WT" "code-audit-frontend"
+#   write_marker_at "$LINKED_WORKTREE" "code-audit-frontend"
 write_marker_at() {
   local root="$1" member="$2" digest sha tree infix sidecar
   digest="$(member_digest_at "$root" "$member")"
@@ -220,30 +220,30 @@ write_refused() {
 # resolves, so the fixture cannot silently degrade into the resolved path
 # and green.
 make_no_base_repo_pr() {
-  local name="$1" dir
-  dir="$BATS_TEST_TMPDIR/$name"
-  mkdir -p "$dir/.gaia"
-  git -C "$dir" init --quiet --initial-branch=master
-  git -C "$dir" config user.email "test@example.com"
-  git -C "$dir" config user.name "Test"
-  git -C "$dir" config commit.gpgsign false
-  printf '1.4.0\n' > "$dir/.gaia/VERSION"
-  seed_audit_roster "$dir"
-  git -C "$dir" add .gaia/VERSION .gaia/audit-ci.yml
-  git -C "$dir" commit --quiet -m "init"
-  printf 'second\n' > "$dir/.gaia/second.txt"
-  git -C "$dir" add .gaia/second.txt
-  git -C "$dir" commit --quiet -m "second"
+  local name="$1" repository_directory
+  repository_directory="$BATS_TEST_TMPDIR/$name"
+  mkdir -p "$repository_directory/.gaia"
+  git -C "$repository_directory" init --quiet --initial-branch=master
+  git -C "$repository_directory" config user.email "test@example.com"
+  git -C "$repository_directory" config user.name "Test"
+  git -C "$repository_directory" config commit.gpgsign false
+  printf '1.4.0\n' > "$repository_directory/.gaia/VERSION"
+  seed_audit_roster "$repository_directory"
+  git -C "$repository_directory" add .gaia/VERSION .gaia/audit-ci.yml
+  git -C "$repository_directory" commit --quiet -m "init"
+  printf 'second\n' > "$repository_directory/.gaia/second.txt"
+  git -C "$repository_directory" add .gaia/second.txt
+  git -C "$repository_directory" commit --quiet -m "second"
 
-  if git -C "$dir" merge-base HEAD origin/main >/dev/null 2>&1; then
+  if git -C "$repository_directory" merge-base HEAD origin/main >/dev/null 2>&1; then
     echo "make_no_base_repo_pr: origin/main unexpectedly resolved" >&2
     return 1
   fi
-  if git -C "$dir" merge-base HEAD main >/dev/null 2>&1; then
+  if git -C "$repository_directory" merge-base HEAD main >/dev/null 2>&1; then
     echo "make_no_base_repo_pr: main unexpectedly resolved" >&2
     return 1
   fi
-  printf '%s' "$dir"
+  printf '%s' "$repository_directory"
 }
 
 # Print the dispatched member set the resolver resolves for REPO's current diff.
@@ -264,9 +264,9 @@ write_markers_for_spawn_set() {
 # Snapshot every file in the audit pool (name + content hash), to prove a run
 # mints nothing.
 pool_snapshot() {
-  local dir="$REPO/.gaia/local/audit"
-  [ -d "$dir" ] || { printf '<no-pool>'; return 0; }
-  ( cd "$dir" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do printf '%s ' "$f"; shasum "$f" 2>/dev/null; done )
+  local audit_pool_directory="$REPO/.gaia/local/audit"
+  [ -d "$audit_pool_directory" ] || { printf '<no-pool>'; return 0; }
+  ( cd "$audit_pool_directory" && find . -type f | LC_ALL=C sort | while IFS= read -r pool_file; do printf '%s ' "$pool_file"; shasum "$pool_file" 2>/dev/null; done )
 }
 
 # Install a gh stub on a prepended PATH. `gh issue list` prints $1 (default []).
@@ -282,14 +282,14 @@ pool_snapshot() {
 # never meant to assert.
 install_gh_stub() {
   local issues="${1:-[]}"
-  GH_BIN="$BATS_TEST_TMPDIR/bin"
-  mkdir -p "$GH_BIN"
+  STUB_BINARY_DIRECTORY="$BATS_TEST_TMPDIR/bin"
+  mkdir -p "$STUB_BINARY_DIRECTORY"
   printf '%s' "$issues" > "$BATS_TEST_TMPDIR/issues.json"
-  cat > "$GH_BIN/gh" <<EOF
+  cat > "$STUB_BINARY_DIRECTORY/gh" <<EOF
 #!/usr/bin/env bash
 issues_file="$BATS_TEST_TMPDIR/issues.json"
 EOF
-  cat >> "$GH_BIN/gh" <<'EOF'
+  cat >> "$STUB_BINARY_DIRECTORY/gh" <<'EOF'
 case "$*" in *isCrossRepository*) printf 'false\n'; exit 0 ;; esac
 case "$1" in
   auth) exit 0 ;;
@@ -300,8 +300,8 @@ case "$1" in
   *) exit 0 ;;
 esac
 EOF
-  chmod +x "$GH_BIN/gh"
-  export PATH="$GH_BIN:$PATH"
+  chmod +x "$STUB_BINARY_DIRECTORY/gh"
+  export PATH="$STUB_BINARY_DIRECTORY:$PATH"
 }
 
 # Same stub, but the PR record carries $1 as the title and every remaining
@@ -319,26 +319,26 @@ install_gh_stub_with_title() {
   printf '%s' "$title" > "$BATS_TEST_TMPDIR/pr-title.txt"
   printf '%s\n' "$@" | jq -R -s -c 'split("\n") | map(select(length > 0)) | map({path: .})' \
     > "$BATS_TEST_TMPDIR/pr-files.json"
-  cat > "$GH_BIN/gh" <<EOF
+  cat > "$STUB_BINARY_DIRECTORY/gh" <<EOF
 #!/usr/bin/env bash
 issues_file="$BATS_TEST_TMPDIR/issues.json"
 title_file="$BATS_TEST_TMPDIR/pr-title.txt"
 files_file="$BATS_TEST_TMPDIR/pr-files.json"
 EOF
-  cat >> "$GH_BIN/gh" <<'EOF'
+  cat >> "$STUB_BINARY_DIRECTORY/gh" <<'EOF'
 case "$*" in *isCrossRepository*) printf 'false\n'; exit 0 ;; esac
 case "$1" in
   auth) exit 0 ;;
   repo) printf 'gaia-react/gaia\n'; exit 0 ;;
-  pr) jq -n --arg t "$(cat "$title_file")" --slurpfile f "$files_file" \
-        '{title:$t, baseRefName:"", number:"30", files: $f[0]}'
+  pr) jq -n --arg title "$(cat "$title_file")" --slurpfile files "$files_file" \
+        '{title:$title, baseRefName:"", number:"30", files: $files[0]}'
       exit 0 ;;
   issue) cat "$issues_file"; exit 0 ;;
   api) printf 'null\n'; exit 0 ;;
   *) exit 0 ;;
 esac
 EOF
-  chmod +x "$GH_BIN/gh"
+  chmod +x "$STUB_BINARY_DIRECTORY/gh"
 }
 
 # Same stub, but the GAIA-Audit commit status on HEAD is present and matches, so
@@ -355,12 +355,12 @@ install_gh_stub_with_status() {
   digest="$(member_digest_for code-audit-frontend)"
   tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
   printf '1.4.0 %s %s\n' "$digest" "$tree" > "$BATS_TEST_TMPDIR/status-desc.txt"
-  cat > "$GH_BIN/gh" <<EOF
+  cat > "$STUB_BINARY_DIRECTORY/gh" <<EOF
 #!/usr/bin/env bash
 issues_file="$BATS_TEST_TMPDIR/issues.json"
 status_file="$BATS_TEST_TMPDIR/status-desc.txt"
 EOF
-  cat >> "$GH_BIN/gh" <<'EOF'
+  cat >> "$STUB_BINARY_DIRECTORY/gh" <<'EOF'
 case "$*" in *isCrossRepository*) printf 'false\n'; exit 0 ;; esac
 case "$1" in
   auth) exit 0 ;;
@@ -371,7 +371,7 @@ case "$1" in
   *) exit 0 ;;
 esac
 EOF
-  chmod +x "$GH_BIN/gh"
+  chmod +x "$STUB_BINARY_DIRECTORY/gh"
 }
 
 # Stamp a matching GAIA-Audit trailer on HEAD, the way audit-stamp-trailer.sh
@@ -391,10 +391,10 @@ stamp_trailer() {
 # Put the real chore(deps) predicate in the sandbox's ACTING tree, which is
 # where the hook resolves it from.
 install_chore_deps_predicate() {
-  local src
-  src=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/chore-deps-skip.sh
+  local source_path
+  source_path=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/chore-deps-skip.sh
   mkdir -p "$REPO/.gaia/scripts"
-  cp "$src" "$REPO/.gaia/scripts/chore-deps-skip.sh"
+  cp "$source_path" "$REPO/.gaia/scripts/chore-deps-skip.sh"
   chmod +x "$REPO/.gaia/scripts/chore-deps-skip.sh"
 }
 
@@ -1017,7 +1017,7 @@ assert_not_in_set() {
 # digest engine. member_digest_for is the same call pinned to $REPO.
 member_digest_at() {
   local root="$1" member="$2"
-  bash -c '. "$1"; audit_member_digest "$2" "$3"' _ "$LIB_DIR/audit-digest.sh" "$root" "$member"
+  bash -c '. "$1"; audit_member_digest "$2" "$3"' _ "$LIBRARY_DIRECTORY/audit-digest.sh" "$root" "$member"
 }
 
 # Provision a linked worktree of REPO on its own branch, carrying its own
@@ -1025,35 +1025,35 @@ member_digest_at() {
 # Mirrors real provisioning: .gaia/local is a SYMLINK to main's, so a marker
 # written from the worktree lands in main's shared store.
 setup_linked_worktree() {
-  WT=$(mktemp -d -t pr-merge-wt-XXXXXX)
-  rm -rf "$WT"
-  git -C "$REPO" worktree add --quiet -b wt "$WT" main
-  mkdir -p "$WT/app"
-  printf 'export const y = 2\n' > "$WT/app/y.ts"
-  git -C "$WT" add app/y.ts
-  git -C "$WT" commit --quiet -m "worktree change"
+  LINKED_WORKTREE=$(mktemp -d -t pr-merge-wt-XXXXXX)
+  rm -rf "$LINKED_WORKTREE"
+  git -C "$REPO" worktree add --quiet -b wt "$LINKED_WORKTREE" main
+  mkdir -p "$LINKED_WORKTREE/app"
+  printf 'export const y = 2\n' > "$LINKED_WORKTREE/app/y.ts"
+  git -C "$LINKED_WORKTREE" add app/y.ts
+  git -C "$LINKED_WORKTREE" commit --quiet -m "worktree change"
 
   # The dispatch resolver is anchored on the ACTING tree, and REPO's copy is
   # untracked so it does not appear in the worktree. Copy it in, as the real
   # repo always has it.
-  mkdir -p "$WT/.gaia/scripts"
-  cp "$RESOLVER_ABS" "$WT/.gaia/scripts/resolve-audit-members.sh"
-  chmod +x "$WT/.gaia/scripts/resolve-audit-members.sh"
+  mkdir -p "$LINKED_WORKTREE/.gaia/scripts"
+  cp "$RESOLVER_ABSOLUTE_PATH" "$LINKED_WORKTREE/.gaia/scripts/resolve-audit-members.sh"
+  chmod +x "$LINKED_WORKTREE/.gaia/scripts/resolve-audit-members.sh"
 
   mkdir -p "$REPO/.gaia/local"
-  rm -rf "$WT/.gaia/local"
-  ln -s "$REPO/.gaia/local" "$WT/.gaia/local"
+  rm -rf "$LINKED_WORKTREE/.gaia/local"
+  ln -s "$REPO/.gaia/local" "$LINKED_WORKTREE/.gaia/local"
 }
 
 run_merge_hook_in_worktree() {
-  local cmd="${1:-gh pr merge 30 --squash --delete-branch}"
+  local command_line="${1:-gh pr merge 30 --squash --delete-branch}"
   local json
-  json=$(jq -n --arg c "$cmd" '{tool_name: "Bash", tool_input: {command: $c}}')
-  invoke_hook_in "$WT" "$json" "$HOOK_ABS"
+  json=$(jq -n --arg command_line "$command_line" '{tool_name: "Bash", tool_input: {command: $command_line}}')
+  invoke_hook_in "$LINKED_WORKTREE" "$json" "$HOOK_ABSOLUTE_PATH"
 }
 
 teardown_linked_worktree() {
-  [ -n "${WT:-}" ] && git -C "$REPO" worktree remove --force "$WT" 2>/dev/null
+  [ -n "${LINKED_WORKTREE:-}" ] && git -C "$REPO" worktree remove --force "$LINKED_WORKTREE" 2>/dev/null
   return 0
 }
 
@@ -1062,10 +1062,10 @@ teardown_linked_worktree() {
   setup_linked_worktree
 
   local digest
-  digest="$(member_digest_at "$WT" code-audit-frontend)"
+  digest="$(member_digest_at "$LINKED_WORKTREE" code-audit-frontend)"
   mkdir -p "$REPO/.gaia/local/audit"
   printf '{"version":"1.4.0","schema":4,"member":"code-audit-frontend","provenance":"earned","digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":true}\n' \
-    "$digest" "$(git -C "$WT" rev-parse 'HEAD^{tree}')" "$(git -C "$WT" rev-parse HEAD)" \
+    "$digest" "$(git -C "$LINKED_WORKTREE" rev-parse 'HEAD^{tree}')" "$(git -C "$LINKED_WORKTREE" rev-parse HEAD)" \
     > "$REPO/.gaia/local/audit/${digest}.ok"
 
   run_merge_hook_in_worktree
@@ -1081,10 +1081,10 @@ teardown_linked_worktree() {
   # Deliberately key the marker to the MAIN checkout's digest, the shape a
   # main-anchored gate would compute. The two digests must genuinely differ,
   # or this test would pass for the wrong reason.
-  local main_digest wt_digest
+  local main_digest worktree_digest
   main_digest="$(member_digest_at "$REPO" code-audit-frontend)"
-  wt_digest="$(member_digest_at "$WT" code-audit-frontend)"
-  [ "$main_digest" != "$wt_digest" ]
+  worktree_digest="$(member_digest_at "$LINKED_WORKTREE" code-audit-frontend)"
+  [ "$main_digest" != "$worktree_digest" ]
 
   mkdir -p "$REPO/.gaia/local/audit"
   printf '{"version":"1.4.0","schema":4,"member":"code-audit-frontend","provenance":"earned","digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":true}\n' \
@@ -1276,10 +1276,10 @@ gh pr merge 30 --squash"
   # checkout whose branch does not carry it, which is what origin/main looks
   # like before this change merges. A gate resolving the script from the main
   # checkout finds nothing here and denies.
-  mkdir -p "$WT/.gaia/scripts"
+  mkdir -p "$LINKED_WORKTREE/.gaia/scripts"
   cp "$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/chore-deps-skip.sh" \
-    "$WT/.gaia/scripts/chore-deps-skip.sh"
-  chmod +x "$WT/.gaia/scripts/chore-deps-skip.sh"
+    "$LINKED_WORKTREE/.gaia/scripts/chore-deps-skip.sh"
+  chmod +x "$LINKED_WORKTREE/.gaia/scripts/chore-deps-skip.sh"
   [ ! -f "$REPO/.gaia/scripts/chore-deps-skip.sh" ]
 
   run_merge_hook_in_worktree
@@ -1327,32 +1327,32 @@ set_origin_main_at() {
 # the point: the gate is what must tell the record's pull request from the one
 # the command names.
 install_gh_stub_with_record() {
-  local base_ref="$1" head_oid="$2" number="${3:-30}"
+  local base_reference="$1" head_oid="$2" number="${3:-30}"
   install_gh_stub "${4:-[]}"
-  printf '%s' "$base_ref" > "$BATS_TEST_TMPDIR/pr-base.txt"
+  printf '%s' "$base_reference" > "$BATS_TEST_TMPDIR/pr-base.txt"
   printf '%s' "$head_oid" > "$BATS_TEST_TMPDIR/pr-head.txt"
   printf '%s' "$number" > "$BATS_TEST_TMPDIR/pr-number.txt"
-  cat > "$GH_BIN/gh" <<EOF
+  cat > "$STUB_BINARY_DIRECTORY/gh" <<EOF
 #!/usr/bin/env bash
 issues_file="$BATS_TEST_TMPDIR/issues.json"
 base_file="$BATS_TEST_TMPDIR/pr-base.txt"
 head_file="$BATS_TEST_TMPDIR/pr-head.txt"
 number_file="$BATS_TEST_TMPDIR/pr-number.txt"
 EOF
-  cat >> "$GH_BIN/gh" <<'EOF'
+  cat >> "$STUB_BINARY_DIRECTORY/gh" <<'EOF'
 case "$*" in *isCrossRepository*) printf 'false\n'; exit 0 ;; esac
 case "$1" in
   auth) exit 0 ;;
   repo) printf 'gaia-react/gaia\n'; exit 0 ;;
-  pr) jq -n --arg b "$(cat "$base_file")" --arg h "$(cat "$head_file")" \
-        --arg n "$(cat "$number_file")" \
-        '{title:"", baseRefName:$b, headRefOid:$h, number:$n}'; exit 0 ;;
+  pr) jq -n --arg base "$(cat "$base_file")" --arg head "$(cat "$head_file")" \
+        --arg number "$(cat "$number_file")" \
+        '{title:"", baseRefName:$base, headRefOid:$head, number:$number}'; exit 0 ;;
   issue) cat "$issues_file"; exit 0 ;;
   api) printf 'null\n'; exit 0 ;;
   *) exit 0 ;;
 esac
 EOF
-  chmod +x "$GH_BIN/gh"
+  chmod +x "$STUB_BINARY_DIRECTORY/gh"
 }
 
 # A `git` earlier on PATH than the real one that fails every `git diff` and
@@ -1362,17 +1362,17 @@ EOF
 install_failing_diff_git() {
   local real
   real="$(command -v git)"
-  cat > "$GH_BIN/git" <<EOF
+  cat > "$STUB_BINARY_DIRECTORY/git" <<EOF
 #!/usr/bin/env bash
 REAL_GIT="$real"
 EOF
-  cat >> "$GH_BIN/git" <<'EOF'
+  cat >> "$STUB_BINARY_DIRECTORY/git" <<'EOF'
 # Walk past git's own global options to find the subcommand: every call in the
 # gate's chain spells the tree as `git -C <root> <subcommand>`, so a check on
 # $1 alone would never see a diff at all. The scan runs inside a command
 # substitution, which inherits the positional parameters and discards its own
 # shifts, so the exec below still forwards the original argv.
-sub="$(
+subcommand="$(
   while [ "$#" -gt 0 ]; do
     case "$1" in
       -C | -c | --git-dir | --work-tree) shift 2 || break ;;
@@ -1381,10 +1381,10 @@ sub="$(
     esac
   done
 )"
-if [ "$sub" = "diff" ]; then exit 1; fi
+if [ "$subcommand" = "diff" ]; then exit 1; fi
 exec "$REAL_GIT" "$@"
 EOF
-  chmod +x "$GH_BIN/git"
+  chmod +x "$STUB_BINARY_DIRECTORY/git"
 }
 
 # Drop `gh` from PATH entirely, taking the mirroring rebuild rather than the
@@ -1401,10 +1401,10 @@ scrub_gh_from_path() {
 # stdout can be asserted independently of its diagnostic line on stderr.
 # invoke_hook_in merges the two.
 run_merge_hook_split() {
-  local cmd="${1:-gh pr merge 30 --squash --delete-branch}" json
-  json=$(jq -n --arg c "$cmd" '{tool_name: "Bash", tool_input: {command: $c}}')
+  local command_line="${1:-gh pr merge 30 --squash --delete-branch}" json
+  json=$(jq -n --arg command_line "$command_line" '{tool_name: "Bash", tool_input: {command: $command_line}}')
   run --separate-stderr bash -c 'cd "$1" && printf %s "$2" | bash "$3"' \
-    _ "$REPO" "$json" "$HOOK_ABS"
+    _ "$REPO" "$json" "$HOOK_ABSOLUTE_PATH"
 }
 
 # A copy of the gate in the sandbox whose provenance library records the argv
@@ -1416,26 +1416,26 @@ install_recording_hook_copy() {
   RECORD_FILE="$BATS_TEST_TMPDIR/arbp-argv.txt"
   : > "$RECORD_FILE"
   mkdir -p "$REPO/.claude/hooks/lib"
-  cp "$HOOK_ABS" "$REPO/.claude/hooks/pr-merge-audit-check.sh"
-  cp "$LIB_DIR"/*.sh "$REPO/.claude/hooks/lib/"
+  cp "$HOOK_ABSOLUTE_PATH" "$REPO/.claude/hooks/pr-merge-audit-check.sh"
+  cp "$LIBRARY_DIRECTORY"/*.sh "$REPO/.claude/hooks/lib/"
   cat > "$REPO/.claude/hooks/lib/audit-base-provenance.sh" <<EOF
 #!/usr/bin/env bash
-. "$LIB_DIR/audit-base-provenance.sh"
-_arbp_record="$RECORD_FILE"
+. "$LIBRARY_DIRECTORY/audit-base-provenance.sh"
+_base_provenance_call_record="$RECORD_FILE"
 EOF
   cat >> "$REPO/.claude/hooks/lib/audit-base-provenance.sh" <<'EOF'
-eval "_arbp_real() $(declare -f audit_resolve_base_provenance | tail -n +2)"
+eval "_original_audit_resolve_base_provenance() $(declare -f audit_resolve_base_provenance | tail -n +2)"
 audit_resolve_base_provenance() {
-  printf 'supplied=[%s]\n' "${3-}" >> "$_arbp_record"
-  _arbp_real "$@"
+  printf 'supplied=[%s]\n' "${3-}" >> "$_base_provenance_call_record"
+  _original_audit_resolve_base_provenance "$@"
 }
 EOF
 }
 
 run_recording_hook() {
   local json
-  json=$(jq -n --arg c "gh pr merge 30 --squash --delete-branch" \
-    '{tool_name: "Bash", tool_input: {command: $c}}')
+  json=$(jq -n --arg command_line "gh pr merge 30 --squash --delete-branch" \
+    '{tool_name: "Bash", tool_input: {command: $command_line}}')
   invoke_hook_in "$REPO" "$json" "$REPO/.claude/hooks/pr-merge-audit-check.sh"
 }
 
@@ -1462,7 +1462,7 @@ run_recording_hook() {
 }
 
 @test "the gate emits no permissionDecision allow at all" {
-  grep -qF 'permissionDecision: "allow"' "$HOOK_ABS" && return 1
+  grep -qF 'permissionDecision: "allow"' "$HOOK_ABSOLUTE_PATH" && return 1
   true
 }
 
@@ -1739,7 +1739,7 @@ merge 999 --squash'
 
 @test "every audit_resolve_base_provenance call in the gate source passes an empty supplied base" {
   local calls bad
-  calls="$(grep -n 'audit_resolve_base_provenance ' "$HOOK_ABS" | grep -v '^[0-9]*:[[:space:]]*#')"
+  calls="$(grep -n 'audit_resolve_base_provenance ' "$HOOK_ABSOLUTE_PATH" | grep -v '^[0-9]*:[[:space:]]*#')"
   [ -n "$calls" ] || return 1
   bad="$(printf '%s\n' "$calls" \
     | grep -vF 'audit_resolve_base_provenance "$tree_root" pr-record "" "$pr_record_base"' || true)"
@@ -1798,7 +1798,7 @@ merge 999 --squash'
   # branch. Same obligation, reached one line later.
   set_origin_main_at refs/heads/feature
   install_gh_stub
-  cat > "$GH_BIN/gh" <<'EOF'
+  cat > "$STUB_BINARY_DIRECTORY/gh" <<'EOF'
 #!/usr/bin/env bash
 case "$*" in *isCrossRepository*) printf 'false\n'; exit 0 ;; esac
 case "$1" in
@@ -1807,7 +1807,7 @@ case "$1" in
   *) exit 0 ;;
 esac
 EOF
-  chmod +x "$GH_BIN/gh"
+  chmod +x "$STUB_BINARY_DIRECTORY/gh"
 
   run_merge_hook
   [ "$status" -eq 0 ]
@@ -2223,17 +2223,17 @@ rge 30 --squash'
 # `cat`-to-file opener, TOTAL-minus-overhead bytes of body padding, the real
 # merge line, and the delimiter with no trailing newline (so no downstream
 # `$( )` can trim a character off the length this test pins). Sets
-# $PADDED_CMD rather than echoing, so the caller sees exactly TOTAL
+# $PADDED_COMMAND rather than echoing, so the caller sees exactly TOTAL
 # characters with no command-substitution trailing-newline strip in the way.
-padded_heredoc_cmd() {
-  local total="$1" prefix suffix fixed pad_len pad
+padded_heredoc_command() {
+  local total="$1" prefix suffix fixed padding_length padding
   prefix=$'cat > f.txt <<EOF\n'
   suffix=$'\ngh pr merge 30 --squash\nEOF'
   fixed=$(( ${#prefix} + ${#suffix} ))
-  pad_len=$(( total - fixed ))
-  [ "$pad_len" -ge 0 ] || pad_len=0
-  pad=$(head -c "$pad_len" < /dev/zero | tr '\0' 'x')
-  PADDED_CMD="${prefix}${pad}${suffix}"
+  padding_length=$(( total - fixed ))
+  [ "$padding_length" -ge 0 ] || padding_length=0
+  padding=$(head -c "$padding_length" < /dev/zero | tr '\0' 'x')
+  PADDED_COMMAND="${prefix}${padding}${suffix}"
 }
 
 # Stage the whole of .claude/hooks, lib/ included, into a fresh tree and
@@ -2242,14 +2242,14 @@ padded_heredoc_cmd() {
 # its OWN on-disk location via BASH_SOURCE, so deleting from $REPO's sandbox
 # lib/ (used elsewhere in this file for the two resolver-script copies)
 # removes nothing this hook itself reads; only a staged copy's absence is.
-run_merge_hook_lib_absent() {
-  local libname="$1" cmd="$2" json stage
-  stage="$BATS_TEST_TMPDIR/staged-hooks-${libname}"
+run_merge_hook_library_absent() {
+  local library_name="$1" command_line="$2" json stage
+  stage="$BATS_TEST_TMPDIR/staged-hooks-${library_name}"
   if [ ! -d "$stage" ]; then
-    cp -r "$(dirname "$HOOK_ABS")" "$stage"
-    rm -f "$stage/lib/$libname"
+    cp -r "$(dirname "$HOOK_ABSOLUTE_PATH")" "$stage"
+    rm -f "$stage/lib/$library_name"
   fi
-  json=$(jq -n --arg c "$cmd" '{tool_name: "Bash", tool_input: {command: $c}}')
+  json=$(jq -n --arg command_line "$command_line" '{tool_name: "Bash", tool_input: {command: $command_line}}')
   invoke_hook_in "$REPO" "$json" "$stage/pr-merge-audit-check.sh"
 }
 
@@ -2439,9 +2439,9 @@ run_merge_hook_lib_absent() {
   install_gh_stub
   commit_files "app/x.ts" "export const x = 1"
 
-  padded_heredoc_cmd 16384
-  [ "${#PADDED_CMD}" -eq 16384 ]
-  run_merge_hook "$PADDED_CMD"
+  padded_heredoc_command 16384
+  [ "${#PADDED_COMMAND}" -eq 16384 ]
+  run_merge_hook "$PADDED_COMMAND"
   assert_allowed_by_json
   [ -z "$output" ]
 }
@@ -2450,9 +2450,9 @@ run_merge_hook_lib_absent() {
   install_gh_stub
   commit_files "app/x.ts" "export const x = 1"
 
-  padded_heredoc_cmd 16385
-  [ "${#PADDED_CMD}" -eq 16385 ]
-  run_merge_hook "$PADDED_CMD"
+  padded_heredoc_command 16385
+  [ "${#PADDED_COMMAND}" -eq 16385 ]
+  run_merge_hook "$PADDED_COMMAND"
   assert_denied_by_json
 }
 
@@ -2502,7 +2502,7 @@ run_merge_hook_lib_absent() {
   # Without a named guard the block surfaces through the binding's spelling arm,
   # which blames the command and then recommends the exact bare merge that just
   # denied, so the operator is told to respell a command no respelling repairs.
-  run_merge_hook_lib_absent "repo-scope.sh" "gh pr merge --squash --delete-branch"
+  run_merge_hook_library_absent "repo-scope.sh" "gh pr merge --squash --delete-branch"
   assert_denied_by_json
   grep -qF -- 'repo-scope.sh' <<<"$output"
   grep -qF -- 'how the command is spelled' <<<"$output" && return 1
@@ -2510,7 +2510,7 @@ run_merge_hook_lib_absent() {
 }
 
 @test "library-absent: verb-arming.sh missing denies every Bash tool call, naming the file" {
-  run_merge_hook_lib_absent "verb-arming.sh" "echo hi"
+  run_merge_hook_library_absent "verb-arming.sh" "echo hi"
   assert_denied_by_json
   grep -qF 'verb-arming.sh' <<<"$output" || return 1
 }
@@ -2519,7 +2519,7 @@ run_merge_hook_lib_absent() {
   install_gh_stub
   commit_files "app/x.ts" "export const x = 1"
 
-  run_merge_hook_lib_absent "verb-arming-walk.sh" $'cat > f.txt <<EOF\ngh pr merge 30 --squash\nEOF\n'
+  run_merge_hook_library_absent "verb-arming-walk.sh" $'cat > f.txt <<EOF\ngh pr merge 30 --squash\nEOF\n'
   assert_denied_by_json
 }
 
@@ -2528,5 +2528,5 @@ run_merge_hook_lib_absent() {
 # assertion that reads the file deciding which tool calls reach the hook.
 
 @test "the hook is registered in settings.json on the Bash|Monitor matcher" {
-  hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor")' pr-merge-audit-check.sh
+  hook_registered "$SETTINGS_ABSOLUTE_PATH" '.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor")' pr-merge-audit-check.sh
 }

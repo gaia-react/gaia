@@ -77,15 +77,15 @@ set -euo pipefail
 # proves nothing and no caller can guard it from outside -- `bash -n` does not
 # recurse into what a file sources. Every consumer below already gates on
 # `type` / `command -v`, which is what degrades once the shell survives.
-_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || true
+_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || true
 set +e
-if [ -n "$_lib_dir" ]; then
+if [ -n "$_library_directory" ]; then
   # shellcheck source=/dev/null
-  [ -f "$_lib_dir/audit-clearance.sh" ] && . "$_lib_dir/audit-clearance.sh" 2>/dev/null
+  [ -f "$_library_directory/audit-clearance.sh" ] && . "$_library_directory/audit-clearance.sh" 2>/dev/null
   # shellcheck source=/dev/null
-  [ -f "$_lib_dir/audit-digest.sh" ] && . "$_lib_dir/audit-digest.sh" 2>/dev/null
+  [ -f "$_library_directory/audit-digest.sh" ] && . "$_library_directory/audit-digest.sh" 2>/dev/null
   # shellcheck source=/dev/null
-  [ -f "$_lib_dir/gaia-version.sh" ] && . "$_lib_dir/gaia-version.sh" 2>/dev/null
+  [ -f "$_library_directory/gaia-version.sh" ] && . "$_library_directory/gaia-version.sh" 2>/dev/null
 fi
 set -e
 
@@ -113,7 +113,7 @@ emit_error() {
 # section. flock is absent on macOS, so this uses mkdir's atomicity instead.
 # Recovers a lock left behind by a crashed holder (stale past $stale seconds)
 # so the gate can never wedge shut.
-_stamp_lock_dir=""
+_stamp_lock_directory=""
 acquire_stamp_lock() {
   local lock="$1" timeout=45 stale=15 waited=0 now mtime age
   while ! mkdir "$lock" 2>/dev/null; do
@@ -134,8 +134,8 @@ acquire_stamp_lock() {
     sleep 1
     waited=$(( waited + 1 ))
   done
-  _stamp_lock_dir="$lock"
-  trap 'if [ -n "$_stamp_lock_dir" ]; then rm -rf "$_stamp_lock_dir" 2>/dev/null || true; fi' EXIT
+  _stamp_lock_directory="$lock"
+  trap 'if [ -n "$_stamp_lock_directory" ]; then rm -rf "$_stamp_lock_directory" 2>/dev/null || true; fi' EXIT
   return 0
 }
 
@@ -277,12 +277,12 @@ chore_deps_waives_frontend() {
 # decisions on an absent or failing resolver. It depends only on the tree, which
 # nothing between here and the gate changes.
 resolver="${repo_root}/.gaia/scripts/resolve-audit-members.sh"
-resolver_rc=0
+resolver_exit_status=0
 members=""
 if [ -x "$resolver" ]; then
-  members="$( cd "$repo_root" && bash "$resolver" 2>/dev/null )" || resolver_rc=$?
+  members="$( cd "$repo_root" && bash "$resolver" 2>/dev/null )" || resolver_exit_status=$?
 fi
-if [ -x "$resolver" ] && [ "$resolver_rc" -eq 0 ] \
+if [ -x "$resolver" ] && [ "$resolver_exit_status" -eq 0 ] \
    && grep -qx 'code-audit-frontend' <<< "$members" \
    && command -v clearance_member_cleared >/dev/null 2>&1 \
    && ! clearance_member_cleared "$repo_root" "$frontend_digest" code-audit-frontend; then
@@ -298,8 +298,8 @@ fi
 # trailer and declines "already stamped". The lock lives under the
 # per-worktree git dir so its granularity matches git's own index.lock:
 # it never falsely contends across separate worktrees of the same repo.
-lock_dir="$(git -C "$repo_root" rev-parse --absolute-git-dir 2>/dev/null || echo "${repo_root}/.git")/gaia-audit-stamp.lock"
-if ! acquire_stamp_lock "$lock_dir"; then
+lock_directory="$(git -C "$repo_root" rev-parse --absolute-git-dir 2>/dev/null || echo "${repo_root}/.git")/gaia-audit-stamp.lock"
+if ! acquire_stamp_lock "$lock_directory"; then
   emit_decline "stamp lock contended"
   exit 0
 fi
@@ -383,17 +383,17 @@ if clearance_member_refused "$repo_root" "$frontend_digest" code-audit-frontend;
 fi
 
 if [ -x "$resolver" ]; then
-  if [ "$resolver_rc" -ne 0 ]; then
+  if [ "$resolver_exit_status" -ne 0 ]; then
     emit_decline "member resolver could not answer"
     exit 0
   fi
   pending=""
-  while IFS= read -r m; do
-    [ -n "$m" ] || continue
-    if [ "$m" = "code-audit-frontend" ]; then
+  while IFS= read -r member_name; do
+    [ -n "$member_name" ] || continue
+    if [ "$member_name" = "code-audit-frontend" ]; then
       member_digest="$frontend_digest"
     else
-      member_digest="$(audit_member_digest "$repo_root" "$m" 2>/dev/null || true)"
+      member_digest="$(audit_member_digest "$repo_root" "$member_name" 2>/dev/null || true)"
     fi
     # Refusal-first, mirroring the member loop in post-audit-status.sh and the
     # merge hook's own precedence. A member that cleared a digest in one wave and
@@ -402,13 +402,13 @@ if [ -x "$resolver" ]; then
     # it. Read cleared alone and that member counts as cleared, nothing lands in
     # $pending, and the trailer stamps a clean pass over a live refusal.
     if [ -z "$member_digest" ] \
-       || clearance_member_refused "$repo_root" "$member_digest" "$m"; then
-      pending="${pending}${pending:+ }${m}"
-    elif ! clearance_member_cleared "$repo_root" "$member_digest" "$m"; then
+       || clearance_member_refused "$repo_root" "$member_digest" "$member_name"; then
+      pending="${pending}${pending:+ }${member_name}"
+    elif ! clearance_member_cleared "$repo_root" "$member_digest" "$member_name"; then
       # The cached answer only: the title read belongs ahead of the lock, so a
       # frontend the pre-lock read never resolved stays pending here.
-      if [ "$m" != "code-audit-frontend" ] || [ "$frontend_waiver" != "true" ]; then
-        pending="${pending}${pending:+ }${m}"
+      if [ "$member_name" != "code-audit-frontend" ] || [ "$frontend_waiver" != "true" ]; then
+        pending="${pending}${pending:+ }${member_name}"
       fi
     fi
   done <<< "$members"

@@ -91,7 +91,7 @@ BASELINE="red-verify-commit-check.sh"
 # the line so the character before `jq` can be tested without an anchor
 # alternation, and the negated class carries `_`, `.`, `-` and `/` so the
 # library's own name (`lib/jq-availability.sh`), the loader variable
-# (`_jq_lib_dir`) and the shared function (`gaia_require_jq`) are not read as
+# (`_jq_library_directory`) and the shared function (`gaia_require_jq`) are not read as
 # invocations. The accepted miss that buys: an absolute invocation
 # (`/usr/bin/jq`) reads as the library's name and is not seen. No hook spells it
 # that way, and one that did would be defeating PATH resolution deliberately.

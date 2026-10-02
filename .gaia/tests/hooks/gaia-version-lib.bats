@@ -20,33 +20,33 @@
 # Assertion style: .claude/rules/bats-assertions.md.
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
-  VERSION_LIB="$REPO_ROOT/.claude/hooks/lib/gaia-version.sh"
-  [ -f "$VERSION_LIB" ] || skip "gaia-version.sh not present"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
+  VERSION_LIBRARY="$REPO_ROOT/.claude/hooks/lib/gaia-version.sh"
+  [ -f "$VERSION_LIBRARY" ] || skip "gaia-version.sh not present"
   # shellcheck source=/dev/null
-  . "$VERSION_LIB"
+  . "$VERSION_LIBRARY"
 
-  TMP="$BATS_TEST_TMPDIR/version"
-  mkdir -p "$TMP"
+  TEMPORARY_DIRECTORY="$BATS_TEST_TMPDIR/version"
+  mkdir -p "$TEMPORARY_DIRECTORY"
 }
 
 @test "a plain version file normalizes to the bare literal" {
-  printf '1.6.1\n' > "$TMP/VERSION"
-  run gaia_read_version "$TMP/VERSION"
+  printf '1.6.1\n' > "$TEMPORARY_DIRECTORY/VERSION"
+  run gaia_read_version "$TEMPORARY_DIRECTORY/VERSION"
   [ "$status" -eq 0 ]
   [ "$output" = "1.6.1" ]
 }
 
 @test "CRLF line endings are stripped" {
-  printf '1.6.1\r\n' > "$TMP/VERSION"
-  run gaia_read_version "$TMP/VERSION"
+  printf '1.6.1\r\n' > "$TEMPORARY_DIRECTORY/VERSION"
+  run gaia_read_version "$TEMPORARY_DIRECTORY/VERSION"
   [ "$output" = "1.6.1" ]
 }
 
 @test "leading blank lines are skipped and the first non-blank line wins" {
-  printf '\n\n1.6.1\n2.0.0\n' > "$TMP/VERSION"
-  run gaia_read_version "$TMP/VERSION"
+  printf '\n\n1.6.1\n2.0.0\n' > "$TEMPORARY_DIRECTORY/VERSION"
+  run gaia_read_version "$TEMPORARY_DIRECTORY/VERSION"
   [ "$output" = "1.6.1" ]
 }
 
@@ -56,14 +56,14 @@ setup() {
 # reader that tested for a non-blank line BEFORE stripping would select this
 # line, print nothing, and report a readable version file as missing.
 @test "a CR-only line is blank and is skipped, not selected" {
-  printf '\r\n1.6.1\n' > "$TMP/VERSION"
-  run gaia_read_version "$TMP/VERSION"
+  printf '\r\n1.6.1\n' > "$TEMPORARY_DIRECTORY/VERSION"
+  run gaia_read_version "$TEMPORARY_DIRECTORY/VERSION"
   [ "$output" = "1.6.1" ]
 }
 
 @test "surrounding whitespace is trimmed" {
-  printf '   1.6.1\t \n' > "$TMP/VERSION"
-  run gaia_read_version "$TMP/VERSION"
+  printf '   1.6.1\t \n' > "$TEMPORARY_DIRECTORY/VERSION"
+  run gaia_read_version "$TEMPORARY_DIRECTORY/VERSION"
   [ "$output" = "1.6.1" ]
 }
 
@@ -72,14 +72,14 @@ setup() {
 # missing file means and the helper must not flatten those policies.
 
 @test "an absent file yields the empty string and exits 0" {
-  run gaia_read_version "$TMP/nope"
+  run gaia_read_version "$TEMPORARY_DIRECTORY/nope"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
 
 @test "a whitespace-only file yields the empty string and exits 0" {
-  printf '\n  \n\t\n' > "$TMP/VERSION"
-  run gaia_read_version "$TMP/VERSION"
+  printf '\n  \n\t\n' > "$TEMPORARY_DIRECTORY/VERSION"
+  run gaia_read_version "$TEMPORARY_DIRECTORY/VERSION"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }

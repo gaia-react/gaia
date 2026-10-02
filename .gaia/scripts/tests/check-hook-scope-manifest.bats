@@ -144,7 +144,7 @@ cat "$ledger"'
   local repo; repo="$(make_fixture_repo resolver-inherits)"
   add_hook "$repo" "foo.sh" '#!/usr/bin/env bash
 . .claude/hooks/lib/gaia-active-plan.sh
-plan_dir="$(resolve_active_plan_dir)"
+plan_dir="$(resolve_active_plan_directory)"
 echo "$plan_dir"'
   run gaia_check_hook_scope_manifest "$repo"
   [ "$status" -eq 0 ]

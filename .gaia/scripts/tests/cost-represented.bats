@@ -11,8 +11,8 @@
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  LIB="$THIS_DIR/../cost-represented.sh"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  LIB="$THIS_DIRECTORY/../cost-represented.sh"
   [ -f "$LIB" ] || skip "cost-represented.sh missing"
   # shellcheck source=/dev/null
   . "$LIB"

@@ -32,14 +32,14 @@
 # The default member owns the infix-free filename family.
 CLEARANCE_DEFAULT_MEMBER="code-audit-frontend"
 
-# _clearance_path <root> <digest> <member> <ext> -> path on stdout
+# _clearance_path <root> <digest> <member> <extension> -> path on stdout
 # Internal: builds a clearance artifact path for the given extension.
 _clearance_path() {
-  local root="$1" digest="$2" member="$3" ext="$4"
+  local root="$1" digest="$2" member="$3" extension="$4"
   if [ "$member" = "$CLEARANCE_DEFAULT_MEMBER" ]; then
-    printf '%s\n' "${root}/.gaia/local/audit/${digest}.${ext}"
+    printf '%s\n' "${root}/.gaia/local/audit/${digest}.${extension}"
   else
-    printf '%s\n' "${root}/.gaia/local/audit/${digest}.${member}.${ext}"
+    printf '%s\n' "${root}/.gaia/local/audit/${digest}.${member}.${extension}"
   fi
 }
 
@@ -107,9 +107,9 @@ clearance_refusal_acceptable() {
 #   exit 0 iff an acceptable earned clearance exists for this member and
 #   digest. Earned only, there is no carried family.
 clearance_member_cleared() {
-  local root="$1" digest="$2" member="$3" p
-  p="$(clearance_earned_path "$root" "$digest" "$member")"
-  clearance_acceptable "$p" "$member" "$digest"
+  local root="$1" digest="$2" member="$3" earned_path
+  earned_path="$(clearance_earned_path "$root" "$digest" "$member")"
+  clearance_acceptable "$earned_path" "$member" "$digest"
 }
 
 # clearance_member_refused <root> <digest> <member>
@@ -127,9 +127,9 @@ clearance_member_cleared() {
 #   precedence, the control that stops someone re-running an auditor until it
 #   passes, into a no-op.
 clearance_member_refused() {
-  local root="$1" digest="$2" member="$3" p
-  p="$(clearance_refused_path "$root" "$digest" "$member")"
-  clearance_refusal_acceptable "$p" "$member" "$digest"
+  local root="$1" digest="$2" member="$3" refused_path
+  refused_path="$(clearance_refused_path "$root" "$digest" "$member")"
+  clearance_refusal_acceptable "$refused_path" "$member" "$digest"
 }
 
 # clearance_scan <root> <member> <provenance> -> "<tree>\t<version>\t<sha>\t<path>" lines
@@ -155,19 +155,19 @@ clearance_member_refused() {
 # (glob order happens to be lexical, but callers must not depend on it).
 clearance_scan() {
   local root="$1" member="$2" provenance="$3"
-  local dir ext file base stem digest tree version sha any=1
+  local audit_directory extension file base stem digest tree version sha any=1
   command -v jq >/dev/null 2>&1 || return 1
   case "$provenance" in
-    earned) ext="ok" ;;
-    refused) ext="refused" ;;
+    earned) extension="ok" ;;
+    refused) extension="refused" ;;
     *) return 1 ;;
   esac
-  dir="${root}/.gaia/local/audit"
-  [ -d "$dir" ] || return 1
-  for file in "$dir"/*."$ext"; do
+  audit_directory="${root}/.gaia/local/audit"
+  [ -d "$audit_directory" ] || return 1
+  for file in "$audit_directory"/*."$extension"; do
     [ -e "$file" ] || continue
     base="$(basename "$file")"
-    stem="${base%."$ext"}"
+    stem="${base%."$extension"}"
     if [ "$member" != "$CLEARANCE_DEFAULT_MEMBER" ]; then
       case "$stem" in
         *".$member") stem="${stem%."$member"}" ;;

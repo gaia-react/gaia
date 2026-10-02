@@ -18,13 +18,13 @@
 bats_require_minimum_version 1.5.0
 
 setup() {
-  THIS_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
+  THIS_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
   # A `gh` that answers nothing, so the probes that put this directory first on
   # PATH never reach the developer's real `gh` or its GH_REPO / GH_HOST.
   mkdir -p "$BATS_TEST_TMPDIR/no-gh"
   printf '#!/usr/bin/env bash\nexit 1\n' > "$BATS_TEST_TMPDIR/no-gh/gh"
   chmod +x "$BATS_TEST_TMPDIR/no-gh/gh"
-  REPO_ROOT="$(git -C "$THIS_DIR" rev-parse --show-toplevel)"
+  REPO_ROOT="$(git -C "$THIS_DIRECTORY" rev-parse --show-toplevel)"
   if ! command -v jq >/dev/null 2>&1; then
     if [ -n "${GITHUB_ACTIONS:-}" ]; then
       echo "jq not present on a CI runner; the capture probes here would report green" >&2

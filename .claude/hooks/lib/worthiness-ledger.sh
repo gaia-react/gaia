@@ -11,8 +11,8 @@
 # the Node writer can shell out to it (see "Usage (executable)" below).
 #
 # Usage (sourced, from a hook script, at any working directory):
-#   _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _lib_dir=''
-#   [ -n "$_lib_dir" ] && [ -f "$_lib_dir/worthiness-ledger.sh" ] && . "$_lib_dir/worthiness-ledger.sh"
+#   _library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _library_directory=''
+#   [ -n "$_library_directory" ] && [ -f "$_library_directory/worthiness-ledger.sh" ] && . "$_library_directory/worthiness-ledger.sh"
 #   ledger=$(worthiness_ledger_path "$tree_root")
 #
 # Usage (executable):
@@ -21,8 +21,8 @@
 # No persistent `cd`; all paths are repo-relative or resolved via
 # main-root-lib.sh's own resolvers. Guarded so double-sourcing is a no-op.
 
-[ -n "${WORTHINESS_LEDGER_LIB_SOURCED:-}" ] && return 0
-WORTHINESS_LEDGER_LIB_SOURCED=1
+[ -n "${WORTHINESS_LEDGER_LIBRARY_SOURCED:-}" ] && return 0
+WORTHINESS_LEDGER_LIBRARY_SOURCED=1
 
 # Absolute path to the append-only JSON Lines ledger, rooted at ROOT (the
 # per-tree root a caller has already resolved, typically via Pattern T's
@@ -37,10 +37,10 @@ WORTHINESS_LEDGER_LIB_SOURCED=1
 # contract.
 worthiness_ledger_path() {
   local root="${1:-}"
-  local self_dir
-  self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || return 1
+  local self_directory
+  self_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || return 1
   # shellcheck disable=SC1091
-  source "$self_dir/../../../.gaia/scripts/main-root-lib.sh" 2>/dev/null || return 1
+  source "$self_directory/../../../.gaia/scripts/main-root-lib.sh" 2>/dev/null || return 1
   if [ -z "$root" ]; then
     root="$(gaia_resolve_tree_root 2>/dev/null)" || return 1
   fi

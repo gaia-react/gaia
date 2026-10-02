@@ -12,8 +12,8 @@ command -v jq >/dev/null 2>&1 || exit 0
 
 payload=$(cat)
 fields=$(jq -r '[.hook_event_name // "", .session_id // "", .transcript_path // "", (.stop_hook_active // false | tostring)] | join("\u001f")' <<<"$payload") || exit 0
-IFS=$'\037' read -r event sid tp active <<<"$fields"
-[ -n "$sid" ] || exit 0
+IFS=$'\037' read -r event session_id transcript_path active <<<"$fields"
+[ -n "$session_id" ] || exit 0
 [ "$event" = "Stop" ] && [ "$active" = "true" ] && exit 0
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 0
@@ -24,9 +24,9 @@ flusher="$here/../../.gaia/scripts/usage-flush.sh"
 # transcript, and reading the file here would put a turn-synchronous read on
 # every Stop.
 root_args=()
-case "$tp" in
+case "$transcript_path" in
   */*/*)
-    pr="${tp%/*}"
+    pr="${transcript_path%/*}"
     pr="${pr%/*}"
     [ -n "$pr" ] && root_args=(--projects-root "$pr")
     ;;
@@ -35,10 +35,10 @@ esac
 # The redirects are what release the hook's pipes; without them the harness
 # waits for the flusher to exit.
 if [ "$event" = "Stop" ]; then
-  "${BASH:-bash}" "$flusher" --session "$sid" --transcript "$tp" --finished-main \
+  "${BASH:-bash}" "$flusher" --session "$session_id" --transcript "$transcript_path" --finished-main \
     ${root_args[@]+"${root_args[@]}"} </dev/null >/dev/null 2>&1 &
 else
-  "${BASH:-bash}" "$flusher" --sweep --self-session "$sid" \
+  "${BASH:-bash}" "$flusher" --sweep --self-session "$session_id" \
     ${root_args[@]+"${root_args[@]}"} </dev/null >/dev/null 2>&1 &
 fi
 disown "$!" 2>/dev/null || true

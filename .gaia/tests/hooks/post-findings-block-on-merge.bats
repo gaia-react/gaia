@@ -30,13 +30,13 @@
 
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
-  HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/post-findings-block-on-merge.sh
-  SETTINGS_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude" && pwd)/settings.json
-  PRODUCER_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/post-findings-block.sh
-  KEY_LIB_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/audit-key-lib.sh
-  REPO_SCOPE_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/repo-scope.sh
-  VERB_ARMING_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/verb-arming.sh
-  VERB_ARMING_WALK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/verb-arming-walk.sh
+  HOOK_ABSOLUTE_PATH=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/post-findings-block-on-merge.sh
+  SETTINGS_ABSOLUTE_PATH=$(cd "$BATS_TEST_DIRNAME/../../../.claude" && pwd)/settings.json
+  PRODUCER_ABSOLUTE_PATH=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/post-findings-block.sh
+  KEY_LIBRARY_ABSOLUTE_PATH=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/audit-key-lib.sh
+  REPO_SCOPE_ABSOLUTE_PATH=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/repo-scope.sh
+  VERB_ARMING_ABSOLUTE_PATH=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/verb-arming.sh
+  VERB_ARMING_WALK_ABSOLUTE_PATH=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/verb-arming-walk.sh
   REPO=$(mktemp -d -t post-findings-merge-test-XXXXXX)
 
   git -C "$REPO" init --quiet --initial-branch=main
@@ -55,15 +55,15 @@ setup() {
   git -C "$REPO" commit --quiet -m "feature change"
 
   mkdir -p "$REPO/.gaia/scripts" "$REPO/.claude/hooks/lib" "$REPO/.gaia/local/audit"
-  cp "$PRODUCER_ABS" "$REPO/.gaia/scripts/post-findings-block.sh"
-  cp "$KEY_LIB_ABS" "$REPO/.gaia/scripts/audit-key-lib.sh"
-  cp "$REPO_SCOPE_ABS" "$REPO/.claude/hooks/lib/repo-scope.sh"
-  cp "$VERB_ARMING_ABS" "$REPO/.claude/hooks/lib/verb-arming.sh"
-  cp "$VERB_ARMING_WALK_ABS" "$REPO/.claude/hooks/lib/verb-arming-walk.sh"
+  cp "$PRODUCER_ABSOLUTE_PATH" "$REPO/.gaia/scripts/post-findings-block.sh"
+  cp "$KEY_LIBRARY_ABSOLUTE_PATH" "$REPO/.gaia/scripts/audit-key-lib.sh"
+  cp "$REPO_SCOPE_ABSOLUTE_PATH" "$REPO/.claude/hooks/lib/repo-scope.sh"
+  cp "$VERB_ARMING_ABSOLUTE_PATH" "$REPO/.claude/hooks/lib/verb-arming.sh"
+  cp "$VERB_ARMING_WALK_ABSOLUTE_PATH" "$REPO/.claude/hooks/lib/verb-arming-walk.sh"
   chmod +x "$REPO/.gaia/scripts/post-findings-block.sh"
 
-  GH_BIN="$BATS_TEST_TMPDIR/bin"
-  mkdir -p "$GH_BIN"
+  STUB_BINARY_DIRECTORY="$BATS_TEST_TMPDIR/bin"
+  mkdir -p "$STUB_BINARY_DIRECTORY"
   FAKE_GH_STATE="$BATS_TEST_TMPDIR/gh-state"
   mkdir -p "$FAKE_GH_STATE"
   : > "$FAKE_GH_STATE/comment_id"
@@ -72,7 +72,7 @@ setup() {
   : > "$FAKE_GH_STATE/comment_body"
   : > "$FAKE_GH_STATE/comment_pr"
   write_gh_stub
-  export PATH="$GH_BIN:$PATH"
+  export PATH="$STUB_BINARY_DIRECTORY:$PATH"
 }
 
 teardown() {
@@ -86,7 +86,7 @@ teardown() {
 # State (posted body, call counts) lives under $FAKE_GH_STATE so a test can
 # assert on it after run_merge_hook.
 write_gh_stub() {
-  cat > "$GH_BIN/gh" <<'STUBEOF'
+  cat > "$STUB_BINARY_DIRECTORY/gh" <<'STUBEOF'
 #!/usr/bin/env bash
 STATE="$FAKE_GH_STATE"
 
@@ -98,9 +98,9 @@ case "$1" in
     # gh identifies a repository as [HOST/]OWNER/REPO, and repo-scope's
     # act-on-home entry point reads the slug and the URL's authority from this
     # one call, so the stub answers both fields as JSON.
-    jq -n --arg n "${FAKE_GH_REPO:-acme/repo}" \
-      --arg u "https://${FAKE_GH_HOST:-github.com}/${FAKE_GH_REPO:-acme/repo}" \
-      '{nameWithOwner: $n, url: $u}'
+    jq -n --arg name_with_owner "${FAKE_GH_REPO:-acme/repo}" \
+      --arg url "https://${FAKE_GH_HOST:-github.com}/${FAKE_GH_REPO:-acme/repo}" \
+      '{nameWithOwner: $name_with_owner, url: $url}'
     exit 0
     ;;
   pr)
@@ -181,17 +181,17 @@ case "$1" in
         # is the failure the reference resolution above exists to prevent.
         case "$endpoint" in
           repos/*/issues/*/comments)
-            ep_pr="${endpoint#*/issues/}"
-            printf '%s' "${ep_pr%%/*}" > "$STATE/comment_pr"
+            endpoint_pull_request_number="${endpoint#*/issues/}"
+            printf '%s' "${endpoint_pull_request_number%%/*}" > "$STATE/comment_pr"
             ;;
         esac
         if [ "$method" = "POST" ]; then
           echo 1000 > "$STATE/comment_id"
-          c=$(( $(cat "$STATE/post_count" 2>/dev/null || echo 0) + 1 ))
-          echo "$c" > "$STATE/post_count"
+          request_count=$(( $(cat "$STATE/post_count" 2>/dev/null || echo 0) + 1 ))
+          echo "$request_count" > "$STATE/post_count"
         else
-          c=$(( $(cat "$STATE/patch_count" 2>/dev/null || echo 0) + 1 ))
-          echo "$c" > "$STATE/patch_count"
+          request_count=$(( $(cat "$STATE/patch_count" 2>/dev/null || echo 0) + 1 ))
+          echo "$request_count" > "$STATE/patch_count"
         fi
         exit 0
         ;;
@@ -205,17 +205,17 @@ case "$1" in
     ;;
 esac
 STUBEOF
-  chmod +x "$GH_BIN/gh"
+  chmod +x "$STUB_BINARY_DIRECTORY/gh"
 }
 
 # Run the hook with a `gh pr merge` (or other) command and tool_name, from
 # inside the repo, exactly as the harness invokes a PreToolUse hook.
 run_merge_hook() {
-  local cmd="${1:-gh pr merge 42 --squash --delete-branch}"
+  local command_line="${1:-gh pr merge 42 --squash --delete-branch}"
   local tool="${2:-Bash}"
   local json
-  json=$(jq -n --arg c "$cmd" --arg t "$tool" '{tool_name: $t, tool_input: {command: $c}}')
-  invoke_hook_in "$REPO" "$json" "$HOOK_ABS"
+  json=$(jq -n --arg command_line "$command_line" --arg tool_name "$tool" '{tool_name: $tool_name, tool_input: {command: $command_line}}')
+  invoke_hook_in "$REPO" "$json" "$HOOK_ABSOLUTE_PATH"
 }
 
 # write_sidecar [<base>] [<member>] [<findings-json-array>]
@@ -289,10 +289,10 @@ write_sidecar() {
 }
 
 @test "wiring: settings.json registers the hook and the hook calls post-findings-block.sh" {
-  run grep -q "post-findings-block-on-merge.sh" "$SETTINGS_ABS"
+  run grep -q "post-findings-block-on-merge.sh" "$SETTINGS_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
 
-  run grep -q "post-findings-block.sh" "$HOOK_ABS"
+  run grep -q "post-findings-block.sh" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
 }
 
@@ -328,7 +328,7 @@ write_sidecar() {
 }
 
 @test "settings.json remains valid JSON" {
-  run jq . "$SETTINGS_ABS"
+  run jq . "$SETTINGS_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
 }
 
@@ -392,9 +392,9 @@ write_sidecar() {
 
   mkdir -p "$REPO/sub/dir"
   local json
-  json=$(jq -n --arg c "gh pr merge 42 -R other-org/other-repo --squash" \
-    '{tool_name: "Bash", tool_input: {command: $c}}')
-  invoke_hook_in "$REPO/sub/dir" "$json" "$HOOK_ABS"
+  json=$(jq -n --arg command_line "gh pr merge 42 -R other-org/other-repo --squash" \
+    '{tool_name: "Bash", tool_input: {command: $command_line}}')
+  invoke_hook_in "$REPO/sub/dir" "$json" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ ! -s "$FAKE_GH_STATE/post_count" ]
 }
@@ -554,8 +554,8 @@ write_sidecar() {
   write_sidecar
   export FAKE_GH_STATE
 
-  heredoc_cmd=$'cat > /tmp/notes.txt <<EOF\ngh pr merge 42\nEOF'
-  run_merge_hook "$heredoc_cmd"
+  heredoc_command=$'cat > /tmp/notes.txt <<EOF\ngh pr merge 42\nEOF'
+  run_merge_hook "$heredoc_command"
   [ "$status" -eq 0 ]
   [ ! -s "$FAKE_GH_STATE/post_count" ]
 
@@ -565,7 +565,7 @@ write_sidecar() {
 }
 
 # The generic past-bound pairing (case 2's heredoc, padded past
-# GAIA_VERB_ARM_MAX_CHARS, arms because the walker abstains above the bound)
+# GAIA_VERB_ARM_MAXIMUM_CHARACTERS, arms because the walker abstains above the bound)
 # cannot discriminate through THIS hook's observable side effect: the
 # opener's command word is necessarily `cat`/`tee`, never `gh`, so
 # repo-scope's act-on-home boundary (which requires the merge to BE the tool
@@ -579,12 +579,12 @@ write_sidecar() {
   write_sidecar
   export FAKE_GH_STATE
 
-  local pad heredoc_cmd
-  pad=$(printf 'x%.0s' $(seq 1 16400))
-  heredoc_cmd=$'cat > /tmp/notes.txt <<EOF\n'"$pad"$'\ngh pr merge 42\nEOF'
-  [ "${#heredoc_cmd}" -gt 16384 ] || return 1
+  local padding heredoc_command
+  padding=$(printf 'x%.0s' $(seq 1 16400))
+  heredoc_command=$'cat > /tmp/notes.txt <<EOF\n'"$padding"$'\ngh pr merge 42\nEOF'
+  [ "${#heredoc_command}" -gt 16384 ] || return 1
 
-  run_merge_hook "$heredoc_cmd"
+  run_merge_hook "$heredoc_command"
   [ "$status" -eq 0 ]
   [ ! -s "$FAKE_GH_STATE/post_count" ]
 }
@@ -629,26 +629,26 @@ write_sidecar() {
 # of the unparseable case are closed for both loads.
 #
 # These run a COPY of the hook staged inside the sandbox: both loads resolve
-# off the hook's own BASH_SOURCE, so $HOOK_ABS would always reach the real
+# off the hook's own BASH_SOURCE, so $HOOK_ABSOLUTE_PATH would always reach the real
 # checkout's libs, where neither case can be expressed.
 
 # Overwrites <path> with an unresolved-merge-conflict body: the file opens and
 # reads fine, so an existence test passes it, and bash cannot parse it.
-write_conflicted_lib() {
+write_conflicted_library() {
   { printf '<<<<<<< HEAD\n'; printf 'x() { :; }\n'; printf '=======\n'
     printf 'y() { :; }\n'; printf '>>>>>>> other\n'; } > "$1"
 }
 
 stage_merge_hook() {
   STAGED_HOOK="$REPO/.claude/hooks/post-findings-block-on-merge.sh"
-  cp "$HOOK_ABS" "$STAGED_HOOK"
+  cp "$HOOK_ABSOLUTE_PATH" "$STAGED_HOOK"
   chmod +x "$STAGED_HOOK"
 }
 
 run_staged_merge_hook() {
   local json
-  json=$(jq -n --arg c "gh pr merge 42 --squash --delete-branch" \
-    '{tool_name: "Bash", tool_input: {command: $c}}')
+  json=$(jq -n --arg command_line "gh pr merge 42 --squash --delete-branch" \
+    '{tool_name: "Bash", tool_input: {command: $command_line}}')
   invoke_hook_in "$REPO" "$json" "$STAGED_HOOK"
 }
 
@@ -680,8 +680,8 @@ run_staged_merge_hook() {
   stage_merge_hook
 
   local json
-  json=$(jq -n --arg c "gh pr merge 42 --squash --delete-branch" \
-    '{tool_name: "Bash", tool_input: {command: $c}}')
+  json=$(jq -n --arg command_line "gh pr merge 42 --squash --delete-branch" \
+    '{tool_name: "Bash", tool_input: {command: $command_line}}')
   run bash -c 'cd "$1" && printf %s "$2" | /bin/bash "$3"' _ "$REPO" "$json" "$STAGED_HOOK"
   [ "$status" -eq 0 ]
   [ "$(cat "$FAKE_GH_STATE/post_count")" = "1" ]
@@ -696,7 +696,7 @@ run_staged_merge_hook() {
   write_sidecar
   export FAKE_GH_STATE
   stage_merge_hook
-  write_conflicted_lib "$REPO/.claude/hooks/lib/repo-scope.sh"
+  write_conflicted_library "$REPO/.claude/hooks/lib/repo-scope.sh"
 
   run_staged_merge_hook
   [ "$status" -eq 0 ]
@@ -718,7 +718,7 @@ run_staged_merge_hook() {
   write_sidecar
   export FAKE_GH_STATE
   stage_merge_hook
-  write_conflicted_lib "$REPO/.claude/hooks/lib/verb-arming.sh"
+  write_conflicted_library "$REPO/.claude/hooks/lib/verb-arming.sh"
 
   run_staged_merge_hook
   [ "$status" -eq 0 ]
@@ -731,11 +731,11 @@ run_staged_merge_hook() {
   write_sidecar
   export FAKE_GH_STATE
   stage_merge_hook
-  write_conflicted_lib "$REPO/.claude/hooks/lib/verb-arming.sh"
+  write_conflicted_library "$REPO/.claude/hooks/lib/verb-arming.sh"
 
   local json
-  json=$(jq -n --arg c "gh pr merge 42 --squash --delete-branch" \
-    '{tool_name: "Bash", tool_input: {command: $c}}')
+  json=$(jq -n --arg command_line "gh pr merge 42 --squash --delete-branch" \
+    '{tool_name: "Bash", tool_input: {command: $command_line}}')
   run bash -c 'cd "$1" && printf %s "$2" | /bin/bash "$3"' _ "$REPO" "$json" "$STAGED_HOOK"
   [ "$status" -eq 0 ]
   grep -qF -- '"permissionDecision"' <<<"$output" && return 1

@@ -30,8 +30,8 @@
 # exit abort the test body; `$status` is then compared with POSIX `[ ]`.
 
 setup() {
-  THIS_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
-  REPO_ROOT="$(cd "$THIS_DIR/../../.." && pwd)"
+  THIS_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
+  REPO_ROOT="$(cd "$THIS_DIRECTORY/../../.." && pwd)"
   CHECK="$REPO_ROOT/.gaia/scripts/check-debt-issue-metadata.sh"
   TMP="$(mktemp -d -t debt-issue-metadata-XXXXXX)"
   BODY="$TMP/body.md"

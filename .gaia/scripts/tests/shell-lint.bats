@@ -37,8 +37,8 @@
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
 setup() {
-  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
-  REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
+  THIS_DIRECTORY="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  REPO_ROOT="$( cd "$THIS_DIRECTORY/../../.." && pwd )"
   GATE="$REPO_ROOT/.gaia/tests/shell-lint.sh"
   # A clean, pinned-version shellcheck stub lets the gate clear both shellcheck
   # passes and reach the array-guard pass without a real shellcheck binary. Its

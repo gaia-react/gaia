@@ -35,9 +35,9 @@ refute_contains() {
 }
 
 setup() {
-  THIS_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
-  STATUSLINE_SRC="$THIS_DIR/../../statusline/gaia-statusline.sh"
-  RESOLVER_SRC="$THIS_DIR/../main-root-lib.sh"
+  THIS_DIRECTORY="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
+  STATUSLINE_SRC="$THIS_DIRECTORY/../../statusline/gaia-statusline.sh"
+  RESOLVER_SRC="$THIS_DIRECTORY/../main-root-lib.sh"
   [ -f "$STATUSLINE_SRC" ] || skip "gaia-statusline.sh missing"
   [ -f "$RESOLVER_SRC" ] || skip "main-root-lib.sh missing"
   command -v jq >/dev/null 2>&1 || skip "jq required"

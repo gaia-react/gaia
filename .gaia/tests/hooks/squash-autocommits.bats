@@ -7,20 +7,20 @@
 
 setup() {
   HELPERS="$BATS_TEST_DIRNAME/helpers"
-  HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/wiki-squash-autocommits.sh
+  HOOK_ABSOLUTE_PATH=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/wiki-squash-autocommits.sh
 }
 
 teardown() {
   [ -n "${REPO:-}" ] && rm -rf "$REPO"
   [ -n "${ORIGIN:-}" ] && rm -rf "$ORIGIN"
-  [ -n "${SHIM_DIR:-}" ] && rm -rf "$SHIM_DIR"
+  [ -n "${SHIM_DIRECTORY:-}" ] && rm -rf "$SHIM_DIRECTORY"
   return 0
 }
 
 @test "no wiki auto-commits at HEAD: silent no-op" {
   REPO=$("$HELPERS/tmp-git-repo.sh" --commits 2)
   cd "$REPO"
-  run "$HOOK_ABS"
+  run "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
   # No squash should have happened
@@ -35,7 +35,7 @@ teardown() {
   git add wiki/foo.md
   git commit --quiet -m "wiki: auto-commit 2026-05-03 12:00"
   before_sha=$(git rev-parse HEAD)
-  run "$HOOK_ABS"
+  run "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   # On a non-main branch with no gh + no remote, nothing further happens
   after_sha=$(git rev-parse HEAD)
@@ -50,7 +50,7 @@ teardown() {
   echo "a" > wiki/a.md && git add wiki/a.md && git commit --quiet -m "wiki: auto-commit 2026-05-03 12:00"
   echo "b" > wiki/b.md && git add wiki/b.md && git commit --quiet -m "wiki: auto-commit 2026-05-03 12:01"
   before_count=$(git rev-list --count HEAD)
-  run "$HOOK_ABS"
+  run "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   after_count=$(git rev-list --count HEAD)
   # One commit should have been squashed away
@@ -65,7 +65,7 @@ teardown() {
   echo "b" > wiki/b.md && git add wiki/b.md && git commit --quiet -m "wiki: auto-commit b"
   # Add an uncommitted wiki edit
   echo "WIP" > wiki/wip.md
-  run "$HOOK_ABS"
+  run "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
   # WIP file must still be there
   [ -f wiki/wip.md ]

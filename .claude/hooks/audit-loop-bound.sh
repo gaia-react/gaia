@@ -182,9 +182,9 @@ payload=$(cat)
 # the literals below satisfy, live in .claude/hooks/lib/jq-availability.sh.
 # The literals are the two scope spellings; a subagent_type that reaches the
 # scope check only through JSON escapes inside the name is not matched.
-_jq_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _jq_lib_dir=''
+_jq_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _jq_library_directory=''
 # shellcheck source=lib/jq-availability.sh
-[ -n "$_jq_lib_dir" ] && [ -f "$_jq_lib_dir/jq-availability.sh" ] && . "$_jq_lib_dir/jq-availability.sh" 2>/dev/null
+[ -n "$_jq_library_directory" ] && [ -f "$_jq_library_directory/jq-availability.sh" ] && . "$_jq_library_directory/jq-availability.sh" 2>/dev/null
 if ! type gaia_require_jq >/dev/null 2>&1; then
   printf 'BLOCKED: audit-loop-bound.sh cannot load lib/jq-availability.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
   exit 2
@@ -277,14 +277,14 @@ finish_deny() {
   exit 0
 }
 
-# corrupt_msg <file>: why the state file reads as corrupt, plus the repair.
-corrupt_msg() {
-  local f="$1" why stamp schema
+# corrupt_message <file>: why the state file reads as corrupt, plus the repair.
+corrupt_message() {
+  local state_file_path="$1" why stamp schema
   stamp=$(date -u +%Y%m%dT%H%M%SZ)
-  if ! jq -e . "$f" >/dev/null 2>&1; then
+  if ! jq -e . "$state_file_path" >/dev/null 2>&1; then
     why='is invalid JSON'
   else
-    schema=$(jq -r '.schema // "missing"' "$f" 2>/dev/null) || schema='unreadable'
+    schema=$(jq -r '.schema // "missing"' "$state_file_path" 2>/dev/null) || schema='unreadable'
     if [ "$schema" != 1 ]; then
       why="has schema $schema; this hook reads schema 1 only"
     else
@@ -292,22 +292,22 @@ corrupt_msg() {
     fi
   fi
   printf 'BLOCKED: the audit loop state file for branch %s %s: %s\nThis hook never rewrites or resets it, and Claude must not either. From a terminal outside Claude Code, move it aside: mv '"'"'%s'"'"' '"'"'%s.corrupt-%s'"'"'; the branch then starts again at round 1. Do not retry the dispatch until a human has done that.' \
-    "$B" "$why" "$f" "$f" "$f" "$stamp"
+    "$BRANCH_KEY" "$why" "$state_file_path" "$state_file_path" "$state_file_path" "$stamp"
 }
 
-# checkpoint_msg <state-json> <used> <trigger> <question-json>
-checkpoint_msg() {
-  local s="$1" used="$2" trigger="$3" question="$4" grant_n
-  grant_n=$(jq -r '.history.knobs.grant_rounds // 3' <<<"$s")
-  printf 'BLOCKED: audit checkpoint on branch %s after %s rounds (%s).\n' "$B" "$used" "$trigger"
+# checkpoint_message <state-json> <used> <trigger> <question-json>
+checkpoint_message() {
+  local state_json="$1" used="$2" trigger="$3" question="$4" grant_round_count
+  grant_round_count=$(jq -r '.history.knobs.grant_rounds // 3' <<<"$state_json")
+  printf 'BLOCKED: audit checkpoint on branch %s after %s rounds (%s).\n' "$BRANCH_KEY" "$used" "$trigger"
   jq -r '.history.rounds | to_entries[]
-    | "  round \(.key + 1): A=\(.value.snapshot.A // "n/a") verdict=\(.value.snapshot.verdict // "unevaluated")"' <<<"$s"
+    | "  round \(.key + 1): A=\(.value.snapshot.A // "n/a") verdict=\(.value.snapshot.verdict // "unevaluated")"' <<<"$state_json"
   printf '\nThis stops the loop for a human decision; it is not a defect and not a merge blocker.\n'
   printf 'Interactive run: on the main thread of this session, ask this question with AskUserQuestion exactly as printed, passing the JSON below as the whole tool input (do not reword, reorder, add or drop an option). Inside an audit-loop-unit: stop with stop_reason checkpoint-deny and return; the main thread asks.\n'
   # shellcheck disable=SC2016 # the backticks are a literal Markdown fence
   printf '```json\n%s\n```\n' "$question"
   printf 'The human may instead type one of these lines as the whole prompt, in this same session (the grant hook resolves the checkpoint by this session id when the session working directory is on another branch):\n'
-  printf 'Grant (type exactly as the whole prompt): %s\n' "$(gaia_loop_grant_line "$grant_n")"
+  printf 'Grant (type exactly as the whole prompt): %s\n' "$(gaia_loop_grant_line "$grant_round_count")"
   printf 'Accept (type exactly as the whole prompt): %s\n' "$(gaia_loop_accept_line)"
   printf 'Unattended run (a /gaia-debt drain): never ask; stop, leave the PR open, print the typed grant line above, and print no continuation prompt.\n'
   printf '\nClaude never writes the state file and never types or simulates these lines. A dispatch on an already-audited tree is still allowed.\n'
@@ -316,20 +316,20 @@ checkpoint_msg() {
   printf 'State file: %s\n' "$file"
 }
 
-# window_msg <state-json> <used>
-window_msg() {
+# window_message <state-json> <used>
+window_message() {
   local window
-  window=$(jq -r '((.history.units // []) | last) as $u
-    | if $u == null then "no unit window is recorded on this branch"
-      else "unit \($u.unit) was admitted for rounds \($u.start_round) through \($u.through_round)" end' <<<"$1")
+  window=$(jq -r '((.history.units // []) | last) as $latest_unit
+    | if $latest_unit == null then "no unit window is recorded on this branch"
+      else "unit \($latest_unit.unit) was admitted for rounds \($latest_unit.start_round) through \($latest_unit.through_round)" end' <<<"$1")
   printf 'BLOCKED: audit window on branch %s: %s, and this wave would open round %s. Inside an audit-loop-unit: do not dispatch this wave; stop with stop_reason window-end and return, and the main thread admits the next unit. No round and no checkpoint were recorded.\n' \
-    "$B" "$window" "$(($2 + 1))"
+    "$BRANCH_KEY" "$window" "$(($2 + 1))"
 }
 
 # set_member <state-json> <index> : append $member to round <index> when absent.
 add_member() {
-  jq -c --argjson i "$2" --arg m "$member" \
-    '.history.rounds[$i].members |= (if index($m) then . else . + [$m] end)' <<<"$1"
+  jq -c --argjson round_index "$2" --arg member_name "$member" \
+    '.history.rounds[$round_index].members |= (if index($member_name) then . else . + [$member_name] end)' <<<"$1"
 }
 
 # tree_index <state-json>: the index of the round recorded for $tree, or empty.
@@ -354,64 +354,64 @@ answer_view() {
 # check_dispositions: the dispositions check over every round of the run
 # folder; any non-zero exit denies with its violation lines.
 check_dispositions() {
-  local out rc=0
-  out=$(bash "$scripts/audit-dispositions-check.sh" check-all --root "$root" --run-folder "$rundir" --snapshot-dir "$snapdir" 2>&1 </dev/null) || rc=$?
-  [ "$rc" -eq 0 ] && return 0
-  [ -n "$out" ] || out='(the check printed nothing)'
-  out=$(printf '%s\n' "$out" | head -n 40)
+  local dispositions_output check_exit_status=0
+  dispositions_output=$(bash "$scripts/audit-dispositions-check.sh" check-all --root "$root" --run-folder "$run_directory" --snapshot-dir "$snapshot_directory" 2>&1 </dev/null) || check_exit_status=$?
+  [ "$check_exit_status" -eq 0 ] && return 0
+  [ -n "$dispositions_output" ] || dispositions_output='(the check printed nothing)'
+  dispositions_output=$(printf '%s\n' "$dispositions_output" | head -n 40)
   finish_deny "$(printf 'BLOCKED: audit dispositions on branch %s: the dispositions check failed (exit %s), so no audit dispatch proceeds until every dispositions file in %s passes. Nothing was recorded. A Critical or security finding is disposed fix (or file, when the branch did not author it), every non-fix disposition carries a reason, and a vetoed key is fix. Inside an audit-loop-unit: stop with stop_reason dispositions-check-failed and return. To see the violations again (read-only): bash %s/audit-dispositions-check.sh check-all --root %s --run-folder %s\n%s' \
-    "$B" "$rc" "$rundir" "$scripts" "$root" "$rundir" "$out")"
+    "$BRANCH_KEY" "$check_exit_status" "$run_directory" "$scripts" "$root" "$run_directory" "$dispositions_output")"
 }
 
 # close_state <pr>: move the state file (and its stamps) under .closed/.
 close_state() {
-  local closed_dir name
-  closed_dir="$main/.gaia/local/audit-loop/.closed"
-  name="$(printf '%s' "$B" | tr '/' '+').${1:-none}.$(date -u +%Y%m%dT%H%M%SZ)"
-  mkdir -p "$closed_dir" || return 1
-  mv -f "$file" "$closed_dir/$name.json" || return 1
-  [ ! -d "${file%.json}.d" ] || mv -f "${file%.json}.d" "$closed_dir/$name.d" 2>/dev/null
+  local closed_directory name
+  closed_directory="$main/.gaia/local/audit-loop/.closed"
+  name="$(printf '%s' "$BRANCH_KEY" | tr '/' '+').${1:-none}.$(date -u +%Y%m%dT%H%M%SZ)"
+  mkdir -p "$closed_directory" || return 1
+  mv -f "$file" "$closed_directory/$name.json" || return 1
+  [ ! -d "${file%.json}.d" ] || mv -f "${file%.json}.d" "$closed_directory/$name.d" 2>/dev/null
   return 0
 }
 
 fresh_state() {
-  jq -n -c --arg b "$B" --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    '{schema: 1, key: ("branch:" + $b), branch: $b, pr: null, created_at: $now,
+  jq -n -c --arg branch_key "$BRANCH_KEY" --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{schema: 1, key: ("branch:" + $branch_key), branch: $branch_key, pr: null, created_at: $now,
       history: {rounds: [], checkpoints: []}, allowance: {answers: []}}'
 }
 
-# gh_lookup: sets BN/BSTATE from the branch's PR and MSTATE for the linked PR.
+# gh_lookup: sets BRANCH_PR_NUMBER/BRANCH_PR_STATE from the branch's PR and LINKED_PR_STATE for the linked PR.
 gh_lookup() {
-  local out m
-  BN=''
-  BSTATE=''
-  MSTATE=''
-  PRE_M=$(jq -r '.pr // empty' <<<"$state0")
+  local pull_request_json linked_pr_number
+  BRANCH_PR_NUMBER=''
+  BRANCH_PR_STATE=''
+  LINKED_PR_STATE=''
+  RECORDED_PR_NUMBER=$(jq -r '.pr // empty' <<<"$state_before_lock")
   command -v gh >/dev/null 2>&1 || return 0
-  if out=$(cd "$root" 2>/dev/null && gh pr view --json number,state 2>/dev/null </dev/null); then
-    BN=$(jq -r 'if (.number | type) == "number" then .number else empty end' <<<"$out" 2>/dev/null) || BN=''
-    BSTATE=$(jq -r '.state // empty | strings' <<<"$out" 2>/dev/null) || BSTATE=''
+  if pull_request_json=$(cd "$root" 2>/dev/null && gh pr view --json number,state 2>/dev/null </dev/null); then
+    BRANCH_PR_NUMBER=$(jq -r 'if (.number | type) == "number" then .number else empty end' <<<"$pull_request_json" 2>/dev/null) || BRANCH_PR_NUMBER=''
+    BRANCH_PR_STATE=$(jq -r '.state // empty | strings' <<<"$pull_request_json" 2>/dev/null) || BRANCH_PR_STATE=''
   fi
-  [ -n "$BN" ] || BSTATE=''
-  m="$PRE_M"
-  if [ -n "$m" ]; then
-    if [ "$BN" = "$m" ]; then
-      MSTATE="$BSTATE"
-    elif out=$(cd "$root" 2>/dev/null && gh pr view "$m" --json state 2>/dev/null </dev/null); then
-      MSTATE=$(jq -r '.state // empty | strings' <<<"$out" 2>/dev/null) || MSTATE=''
+  [ -n "$BRANCH_PR_NUMBER" ] || BRANCH_PR_STATE=''
+  linked_pr_number="$RECORDED_PR_NUMBER"
+  if [ -n "$linked_pr_number" ]; then
+    if [ "$BRANCH_PR_NUMBER" = "$linked_pr_number" ]; then
+      LINKED_PR_STATE="$BRANCH_PR_STATE"
+    elif pull_request_json=$(cd "$root" 2>/dev/null && gh pr view "$linked_pr_number" --json state 2>/dev/null </dev/null); then
+      LINKED_PR_STATE=$(jq -r '.state // empty | strings' <<<"$pull_request_json" 2>/dev/null) || LINKED_PR_STATE=''
     fi
   fi
 }
 
 # find_renamed <pr>: the one non-closed state file whose pr is <pr>.
 find_renamed() {
-  local f s hits=0 hit=''
-  while IFS= read -r f; do
-    [ "$f" != "$file" ] || continue
-    s=$(gaia_loop_read_state "$f") || continue
-    if [ "$(jq -r '.pr // empty' <<<"$s")" = "$1" ]; then
+  local candidate_file candidate_state hits=0 hit=''
+  while IFS= read -r candidate_file; do
+    [ "$candidate_file" != "$file" ] || continue
+    candidate_state=$(gaia_loop_read_state "$candidate_file") || continue
+    if [ "$(jq -r '.pr // empty' <<<"$candidate_state")" = "$1" ]; then
       hits=$((hits + 1))
-      hit="$f"
+      hit="$candidate_file"
     fi
   done < <(find "$main/.gaia/local/audit-loop" \( -name .closed -prune \) -o -type f -name '*.json' -print 2>/dev/null)
   [ "$hits" -eq 1 ] || return 1
@@ -427,21 +427,21 @@ carry_over() {
 # adopt_renamed <old-state-json>: bring a renamed branch's round stamps and run
 # folder under the new key, which is where the evaluator looks for them.
 adopt_renamed() {
-  local old_b src dst
-  old_b=$(jq -r '.branch' <<<"$1")
-  _gaia_loop_keyable "$old_b" || return 0
-  src="${old_file%.json}.d"
-  dst="${file%.json}.d"
-  [ ! -d "$src" ] || [ -e "$dst" ] || mv "$src" "$dst" 2>/dev/null
-  src=$(gaia_loop_run_dir "$main" "$old_b")
-  dst=$(gaia_loop_run_dir "$main" "$B")
-  [ ! -d "$src" ] || [ -e "$dst" ] || { mkdir -p "${dst%/*}" && mv "$src" "$dst" 2>/dev/null; }
+  local old_branch source_path destination_path
+  old_branch=$(jq -r '.branch' <<<"$1")
+  _gaia_loop_keyable "$old_branch" || return 0
+  source_path="${old_file%.json}.d"
+  destination_path="${file%.json}.d"
+  [ ! -d "$source_path" ] || [ -e "$destination_path" ] || mv "$source_path" "$destination_path" 2>/dev/null
+  source_path=$(gaia_loop_run_dir "$main" "$old_branch")
+  destination_path=$(gaia_loop_run_dir "$main" "$BRANCH_KEY")
+  [ ! -d "$source_path" ] || [ -e "$destination_path" ] || { mkdir -p "${destination_path%/*}" && mv "$source_path" "$destination_path" 2>/dev/null; }
   return 0
 }
 
 run_decision() {
-  local libs_failed=0 rc dirty_rc s0 used idx snap dec now stampf slug closing S2 cur_pr old_file closed=0
-  local verb trigger elig cap extra nonce question in_unit reading ask_tokens ask_pct config view recommended ctx_line
+  local libs_failed=0 lookup_exit_status dirty_exit_status state_under_lock used round_index snapshot decision now stamp_file slug closing NEXT_STATE current_pr_number old_file closed=0
+  local verb trigger decision_third_field decision_fourth_field accept_is_eligible cap extra nonce question in_unit reading ask_tokens ask_percent config view recommended context_line
   local admitted_on start_round through_round
   HELD=''
   trap 'exit 143' TERM INT HUP
@@ -467,18 +467,18 @@ run_decision() {
     finish_deny 'BLOCKED: the audit loop checkpoint cannot load .claude/hooks/lib/cross-repo-refusal.sh, so it cannot tell whether this pull request comes from a fork. Fail-loud, not fail-open: restore the library and retry.'
   fi
 
-  rc=0
-  root=$(gaia_loop_resolve_audited_root "$payload") || rc=$?
-  case "$rc" in
+  lookup_exit_status=0
+  root=$(gaia_loop_resolve_audited_root "$payload") || lookup_exit_status=$?
+  case "$lookup_exit_status" in
     0) ;;
     2) finish_deny "BLOCKED: the dispatch prompt names Working root: $root, which is not a git checkout, so the audit loop checkpoint will not charge this round to another tree. Name the checkout under audit as \`Working root: <absolute path>, ...\` and retry." ;;
     *)
       # shellcheck disable=SC2016 # the backticks are literal text in the message
       finish_deny 'BLOCKED: the audit loop checkpoint cannot resolve the audited checkout (no usable Working root: path in the dispatch prompt and no absolute cwd). Name the checkout in the prompt as `Working root: <absolute path>` and retry.' ;;
   esac
-  rc=0
-  B=$(gaia_loop_key "$root") || rc=$?
-  case "$rc" in
+  lookup_exit_status=0
+  BRANCH_KEY=$(gaia_loop_key "$root") || lookup_exit_status=$?
+  case "$lookup_exit_status" in
     0) ;;
     4) finish_deny "BLOCKED: the audited checkout $root is on a detached HEAD, which has no branch key, so the audit loop cannot record a round. Check out the branch under audit and retry." ;;
     6) finish_deny 'BLOCKED: git is not on PATH, so the audit loop checkpoint cannot read the audited branch. Fail-loud, not fail-open: install git or fix PATH and retry.' ;;
@@ -491,16 +491,16 @@ run_decision() {
   if ! gaia_loop_is_oid "$tree" || ! gaia_loop_is_oid "$commit"; then
     finish_deny "BLOCKED: the audit loop checkpoint cannot read HEAD of $root. Fail-loud, not fail-open: check the checkout and retry."
   fi
-  file=$(gaia_loop_state_file "$main" "$B")
-  snapdir="${file%.json}.d"
-  rundir=$(gaia_loop_run_dir "$main" "$B")
+  file=$(gaia_loop_state_file "$main" "$BRANCH_KEY")
+  snapshot_directory="${file%.json}.d"
+  run_directory=$(gaia_loop_run_dir "$main" "$BRANCH_KEY")
 
-  rc=0
-  state0=$(gaia_loop_read_state "$file") || rc=$?
-  case "$rc" in
+  lookup_exit_status=0
+  state_before_lock=$(gaia_loop_read_state "$file") || lookup_exit_status=$?
+  case "$lookup_exit_status" in
     0) ;;
-    1) state0='' ;;
-    5) finish_deny "$(corrupt_msg "$file")" ;;
+    1) state_before_lock='' ;;
+    5) finish_deny "$(corrupt_message "$file")" ;;
     *) finish_deny 'BLOCKED: the audit loop state could not be read because jq is unavailable. Fail-loud, not fail-open: install jq and retry.' ;;
   esac
 
@@ -508,20 +508,20 @@ run_decision() {
   # member. Neither burns a round, and neither needs the prechecks below; the
   # join still takes the lock for the dispositions check.
   prechecked=0
-  idx=''
-  if [ "$kind" = member ] && [ -n "$state0" ]; then
-    idx=$(tree_index "$state0")
+  round_index=''
+  if [ "$kind" = member ] && [ -n "$state_before_lock" ]; then
+    round_index=$(tree_index "$state_before_lock")
   fi
 
-  if [ -z "$idx" ]; then
+  if [ -z "$round_index" ]; then
     prechecked=1
     # A new tree on a dirty audited checkout would audit work the round's
     # commit does not contain. A unit on a branch with history commits its
     # own rounds, and its member dispatches meet this check.
-    if [ "$kind" = member ] || [ -z "$state0" ]; then
-      dirty_rc=0
-      _gaia_loop_git -C "$root" diff --quiet HEAD -- 2>/dev/null || dirty_rc=$?
-      case "$dirty_rc" in
+    if [ "$kind" = member ] || [ -z "$state_before_lock" ]; then
+      dirty_exit_status=0
+      _gaia_loop_git -C "$root" diff --quiet HEAD -- 2>/dev/null || dirty_exit_status=$?
+      case "$dirty_exit_status" in
         0) ;;
         1) finish_deny "BLOCKED: the audited checkout $root has uncommitted tracked changes (modified or staged), so a new audit round on it would audit work that is not in the round's commit. Commit the round first, then dispatch the next one." ;;
         *) finish_deny "BLOCKED: the audit loop checkpoint could not check $root for uncommitted changes. Fail-loud, not fail-open: check the checkout and retry." ;;
@@ -539,15 +539,15 @@ run_decision() {
   fi
 
   gaia_loop_lock "$file" "$lock_deadline" ||
-    finish_deny "BLOCKED: the audit loop checkpoint could not take the state lock for branch $B before its deadline. Fail-loud, not fail-open: another dispatch holds ${file}.lock; retry the dispatch."
+    finish_deny "BLOCKED: the audit loop checkpoint could not take the state lock for branch $BRANCH_KEY before its deadline. Fail-loud, not fail-open: another dispatch holds ${file}.lock; retry the dispatch."
   HELD="$file"
 
-  rc=0
-  s0=$(gaia_loop_read_state "$file") || rc=$?
-  case "$rc" in
+  lookup_exit_status=0
+  state_under_lock=$(gaia_loop_read_state "$file") || lookup_exit_status=$?
+  case "$lookup_exit_status" in
     0) ;;
-    1) s0='' ;;
-    5) finish_deny "$(corrupt_msg "$file")" ;;
+    1) state_under_lock='' ;;
+    5) finish_deny "$(corrupt_message "$file")" ;;
     *) finish_deny 'BLOCKED: the audit loop state could not be read because jq is unavailable. Fail-loud, not fail-open: install jq and retry.' ;;
   esac
 
@@ -558,12 +558,12 @@ run_decision() {
 
   # Re-check the wave under the lock: a parallel member may have recorded it
   # while this call waited.
-  if [ "$kind" = member ] && [ -n "$s0" ]; then
-    idx=$(tree_index "$s0")
-    if [ -n "$idx" ]; then
-      S2=$(add_member "$s0" "$idx") || finish_deny 'BLOCKED: the audit loop checkpoint could not record this member. Fail-loud, not fail-open: retry the dispatch.'
-      [ "$S2" = "$(jq -c . <<<"$s0")" ] ||
-        gaia_loop_write_state "$file" "$S2" ||
+  if [ "$kind" = member ] && [ -n "$state_under_lock" ]; then
+    round_index=$(tree_index "$state_under_lock")
+    if [ -n "$round_index" ]; then
+      NEXT_STATE=$(add_member "$state_under_lock" "$round_index") || finish_deny 'BLOCKED: the audit loop checkpoint could not record this member. Fail-loud, not fail-open: retry the dispatch.'
+      [ "$NEXT_STATE" = "$(jq -c . <<<"$state_under_lock")" ] ||
+        gaia_loop_write_state "$file" "$NEXT_STATE" ||
         finish_deny "BLOCKED: the audit loop checkpoint could not write $file. Fail-loud, not fail-open: check the directory and retry."
       finish_allow
     fi
@@ -573,69 +573,69 @@ run_decision() {
 
   # --- PR link, closure and rename (one gh lookup, taken before the lock) ---
   old_file=''
-  if [ -n "$s0" ]; then
-    S="$s0"
-    cur_pr=$(jq -r '.pr // empty' <<<"$S")
-    if [ -n "$cur_pr" ] && [ "$cur_pr" = "$PRE_M" ]; then
-      case "$MSTATE" in
+  if [ -n "$state_under_lock" ]; then
+    WORKING_STATE="$state_under_lock"
+    current_pr_number=$(jq -r '.pr // empty' <<<"$WORKING_STATE")
+    if [ -n "$current_pr_number" ] && [ "$current_pr_number" = "$RECORDED_PR_NUMBER" ]; then
+      case "$LINKED_PR_STATE" in
         MERGED | CLOSED) closed=1 ;;
       esac
-      if [ "$closed" -eq 0 ] && [ -n "$BN" ] && [ "$BN" != "$cur_pr" ] && [ "$BSTATE" = OPEN ]; then closed=1; fi
+      if [ "$closed" -eq 0 ] && [ -n "$BRANCH_PR_NUMBER" ] && [ "$BRANCH_PR_NUMBER" != "$current_pr_number" ] && [ "$BRANCH_PR_STATE" = OPEN ]; then closed=1; fi
       if [ "$closed" -eq 1 ]; then
-        close_state "$cur_pr" ||
-          finish_deny "BLOCKED: the audit loop checkpoint could not move the closed state of pull request $cur_pr aside. Fail-loud, not fail-open: check $file and retry."
-        S=$(fresh_state)
-        s0=''
-        cur_pr=''
+        close_state "$current_pr_number" ||
+          finish_deny "BLOCKED: the audit loop checkpoint could not move the closed state of pull request $current_pr_number aside. Fail-loud, not fail-open: check $file and retry."
+        WORKING_STATE=$(fresh_state)
+        state_under_lock=''
+        current_pr_number=''
       fi
     fi
-    if [ -z "$cur_pr" ] && [ -n "$BN" ] && [ "$BSTATE" = OPEN ]; then
-      S=$(jq -c --argjson n "$BN" '.pr = $n' <<<"$S")
+    if [ -z "$current_pr_number" ] && [ -n "$BRANCH_PR_NUMBER" ] && [ "$BRANCH_PR_STATE" = OPEN ]; then
+      WORKING_STATE=$(jq -c --argjson n "$BRANCH_PR_NUMBER" '.pr = $n' <<<"$WORKING_STATE")
     fi
   else
-    S=$(fresh_state)
-    if [ -n "$BN" ] && [ "$BSTATE" = OPEN ]; then
-      if old_file=$(find_renamed "$BN"); then
-        S=$(gaia_loop_read_state "$old_file") ||
-          finish_deny "BLOCKED: the audit loop checkpoint could not carry the history of pull request $BN over to branch $B. Fail-loud, not fail-open: check $old_file and retry."
-        adopt_renamed "$S"
-        S=$(jq -c --arg b "$B" '.key = ("branch:" + $b) | .branch = $b' <<<"$S")
+    WORKING_STATE=$(fresh_state)
+    if [ -n "$BRANCH_PR_NUMBER" ] && [ "$BRANCH_PR_STATE" = OPEN ]; then
+      if old_file=$(find_renamed "$BRANCH_PR_NUMBER"); then
+        WORKING_STATE=$(gaia_loop_read_state "$old_file") ||
+          finish_deny "BLOCKED: the audit loop checkpoint could not carry the history of pull request $BRANCH_PR_NUMBER over to branch $BRANCH_KEY. Fail-loud, not fail-open: check $old_file and retry."
+        adopt_renamed "$WORKING_STATE"
+        WORKING_STATE=$(jq -c --arg branch_key "$BRANCH_KEY" '.key = ("branch:" + $branch_key) | .branch = $branch_key' <<<"$WORKING_STATE")
       else
         old_file=''
-        S=$(jq -c --argjson n "$BN" '.pr = $n' <<<"$S")
+        WORKING_STATE=$(jq -c --argjson n "$BRANCH_PR_NUMBER" '.pr = $n' <<<"$WORKING_STATE")
       fi
     fi
   fi
 
   # Frozen at the first unit or round-1 dispatch, and on first sight of a
   # legacy file that predates either field.
-  if [ "$(jq -r '.history.knobs | type' <<<"$S")" != object ]; then
-    S=$(jq -c --argjson k "$(gaia_loop_knobs_initial)" --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-      '.history.knobs = $k | .created_at = $now' <<<"$S") ||
+  if [ "$(jq -r '.history.knobs | type' <<<"$WORKING_STATE")" != object ]; then
+    WORKING_STATE=$(jq -c --argjson knobs "$(gaia_loop_knobs_initial)" --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      '.history.knobs = $knobs | .created_at = $now' <<<"$WORKING_STATE") ||
       finish_deny 'BLOCKED: the audit loop checkpoint could not freeze its knobs. Fail-loud, not fail-open: retry the dispatch.'
   fi
-  if [ "$(jq -r '.history.context_config | type' <<<"$S")" != object ]; then
+  if [ "$(jq -r '.history.context_config | type' <<<"$WORKING_STATE")" != object ]; then
     config=$(gaia_loop_context_config_initial "$main") ||
       finish_deny 'BLOCKED: the audit loop checkpoint could not freeze its context line config. Fail-loud, not fail-open: retry the dispatch.'
-    S=$(jq -c --argjson c "$config" '.history.context_config = $c' <<<"$S") ||
+    WORKING_STATE=$(jq -c --argjson c "$config" '.history.context_config = $c' <<<"$WORKING_STATE") ||
       finish_deny 'BLOCKED: the audit loop checkpoint could not freeze its context line config. Fail-loud, not fail-open: retry the dispatch.'
   fi
 
-  used=$(jq -r '.history.rounds | length' <<<"$S")
+  used=$(jq -r '.history.rounds | length' <<<"$WORKING_STATE")
   if [ "$used" -eq 0 ]; then
-    snap=null
+    snapshot=null
   else
-    snap=$(jq -c --argjson i "$((used - 1))" '.history.rounds[$i].snapshot' <<<"$S")
-    if [ "$snap" = null ]; then
-      snap=$(gaia_loop_eval_round "$main" "$S" "$used") ||
-        finish_deny "BLOCKED: the audit loop checkpoint could not evaluate round $used on branch $B. Fail-loud, not fail-open: run \`bash $scripts/audit-loop-eval.sh eval --root $root\` to see why."
-      S=$(jq -c --argjson i "$((used - 1))" --argjson s "$snap" '.history.rounds[$i].snapshot = $s' <<<"$S")
+    snapshot=$(jq -c --argjson i "$((used - 1))" '.history.rounds[$i].snapshot' <<<"$WORKING_STATE")
+    if [ "$snapshot" = null ]; then
+      snapshot=$(gaia_loop_eval_round "$main" "$WORKING_STATE" "$used") ||
+        finish_deny "BLOCKED: the audit loop checkpoint could not evaluate round $used on branch $BRANCH_KEY. Fail-loud, not fail-open: run \`bash $scripts/audit-loop-eval.sh eval --root $root\` to see why."
+      WORKING_STATE=$(jq -c --argjson round_index "$((used - 1))" --argjson snapshot "$snapshot" '.history.rounds[$round_index].snapshot = $snapshot' <<<"$WORKING_STATE")
     fi
   fi
 
-  config=$(gaia_loop_context_config_effective "$main" "$S") ||
+  config=$(gaia_loop_context_config_effective "$main" "$WORKING_STATE") ||
     finish_deny 'BLOCKED: the audit loop checkpoint could not compute its context line config. Fail-loud, not fail-open: retry the dispatch.'
-  read -r ask_tokens ask_pct <<<"$config"
+  read -r ask_tokens ask_percent <<<"$config"
   reading=$(gaia_ctx_read "$main" "$session" "$(date +%s)")
   [ -n "$reading" ] || reading=unparseable
 
@@ -643,54 +643,56 @@ run_decision() {
   if [ "$kind" = member ] && [ -n "$caller_id" ] && [ "$caller_type" = audit-loop-unit ]; then
     in_unit=true
   fi
-  view="$S"
-  [ "$in_unit" = true ] || view=$(answer_view "$S") ||
+  view="$WORKING_STATE"
+  [ "$in_unit" = true ] || view=$(answer_view "$WORKING_STATE") ||
     finish_deny 'BLOCKED: the audit loop checkpoint could not compute its decision. Fail-loud, not fail-open: retry the dispatch.'
   if [ "$kind" = unit ]; then
-    dec=$(gaia_loop_decide_unit "$view" "$snap" "$reading" "$ask_tokens" "$ask_pct")
+    decision=$(gaia_loop_decide_unit "$view" "$snapshot" "$reading" "$ask_tokens" "$ask_percent")
   else
-    dec=$(gaia_loop_decide_member "$view" "$snap" "$in_unit" "$reading" "$ask_tokens" "$ask_pct")
+    decision=$(gaia_loop_decide_member "$view" "$snapshot" "$in_unit" "$reading" "$ask_tokens" "$ask_percent")
   fi || finish_deny 'BLOCKED: the audit loop checkpoint could not compute its decision. Fail-loud, not fail-open: retry the dispatch.'
   # A deny reads `deny <trigger> <accept_eligible> <cap>`; a unit allow reads
   # `allow <admitted_on> <start_round> <through_round>`.
-  read -r verb trigger elig cap extra <<<"$dec"
+  read -r verb trigger decision_third_field decision_fourth_field extra <<<"$decision"
   [ -z "$extra" ] ||
     finish_deny 'BLOCKED: the audit loop checkpoint got an unreadable decision. Fail-loud, not fail-open: retry the dispatch.'
   case "$verb" in
     allow) ;;
     deny)
-      case "$elig $cap" in
+      accept_is_eligible="$decision_third_field"
+      cap="$decision_fourth_field"
+      case "$accept_is_eligible $cap" in
         "true true" | "true false" | "false true" | "false false") ;;
         *) finish_deny 'BLOCKED: the audit loop checkpoint got an unreadable decision. Fail-loud, not fail-open: retry the dispatch.' ;;
       esac
       if [ "$trigger" = window ]; then
-        [ "$S" = "$s0" ] ||
-          gaia_loop_write_state "$file" "$S" ||
+        [ "$WORKING_STATE" = "$state_under_lock" ] ||
+          gaia_loop_write_state "$file" "$WORKING_STATE" ||
           finish_deny "BLOCKED: the audit loop checkpoint could not write $file. Fail-loud, not fail-open: check the directory and retry."
         carry_over
-        finish_deny "$(window_msg "$S" "$used")"
+        finish_deny "$(window_message "$WORKING_STATE" "$used")"
       fi
       nonce=$(gaia_loop_new_nonce) ||
         finish_deny 'BLOCKED: the audit loop checkpoint could not draw a checkpoint nonce. Fail-loud, not fail-open: retry the dispatch.'
-      recommended=$(gaia_loop_recommended "$trigger" "$snap") || recommended=''
-      ctx_line=''
+      recommended=$(gaia_loop_recommended "$trigger" "$snapshot") || recommended=''
+      context_line=''
       if [[ $reading =~ ^fresh\ [0-9]+\ ([0-9]+)$ ]]; then
-        ctx_line=$(gaia_ctx_line "${BASH_REMATCH[1]}" "$ask_tokens" "$ask_pct") || ctx_line=''
+        context_line=$(gaia_ctx_line "${BASH_REMATCH[1]}" "$ask_tokens" "$ask_percent") || context_line=''
       fi
-      question=$(gaia_loop_pinned_question "$B" "$nonce" "$used" "$GAIA_CTX_UNIT_ROUNDS" "$elig" "$cap" "$trigger" "$reading" "$recommended" "$ctx_line") && [ -n "$question" ] ||
+      question=$(gaia_loop_pinned_question "$BRANCH_KEY" "$nonce" "$used" "$GAIA_CTX_UNIT_ROUNDS" "$accept_is_eligible" "$cap" "$trigger" "$reading" "$recommended" "$context_line") && [ -n "$question" ] ||
         finish_deny "BLOCKED: the audit loop checkpoint could not build its pinned question (trigger $trigger). Fail-loud, not fail-open: retry the dispatch."
       # Every checkpoint deny appends a new checkpoint; the latest is the one
       # pending, so this supersedes any earlier one, legacy ones included.
-      S=$(jq -c --argjson u "$used" --arg why "$trigger" --arg sid "$session" --arg r "$root" \
-        --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg nonce "$nonce" --argjson elig "$elig" --argjson q "$question" \
-        '.history.checkpoints += [{index: ((.history.checkpoints | length) + 1), at_round: $u, reason: $why,
-          recorded_at: $now, session_id: $sid, audited_root: $r, nonce: $nonce, trigger: $why,
-          accept_eligible: $elig, question: $q}]' <<<"$S") ||
+      WORKING_STATE=$(jq -c --argjson rounds_used "$used" --arg why "$trigger" --arg session_id "$session" --arg r "$root" \
+        --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg nonce "$nonce" --argjson accept_is_eligible "$accept_is_eligible" --argjson pinned_question "$question" \
+        '.history.checkpoints += [{index: ((.history.checkpoints | length) + 1), at_round: $rounds_used, reason: $why,
+          recorded_at: $now, session_id: $session_id, audited_root: $r, nonce: $nonce, trigger: $why,
+          accept_eligible: $accept_is_eligible, question: $pinned_question}]' <<<"$WORKING_STATE") ||
         finish_deny 'BLOCKED: the audit loop checkpoint could not build the checkpoint record. Fail-loud, not fail-open: retry the dispatch.'
-      gaia_loop_write_state "$file" "$S" ||
+      gaia_loop_write_state "$file" "$WORKING_STATE" ||
         finish_deny "BLOCKED: the audit loop checkpoint could not write $file. Fail-loud, not fail-open: check the directory and retry."
       carry_over
-      finish_deny "$(checkpoint_msg "$S" "$used" "$trigger" "$question")"
+      finish_deny "$(checkpoint_message "$WORKING_STATE" "$used" "$trigger" "$question")"
       ;;
     *) finish_deny 'BLOCKED: the audit loop checkpoint got an unreadable decision. Fail-loud, not fail-open: retry the dispatch.' ;;
   esac
@@ -698,20 +700,20 @@ run_decision() {
   now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   if [ "$kind" = unit ]; then
     admitted_on="$trigger"
-    start_round="$elig"
-    through_round="$cap"
+    start_round="$decision_third_field"
+    through_round="$decision_fourth_field"
     case "$admitted_on" in context | grant | accept | fallback) ;; *) admitted_on='' ;; esac
     if [ -z "$admitted_on" ] || ! gaia_loop_is_uint "$start_round" || ! gaia_loop_is_uint "$through_round" ||
       [ "$start_round" -ne $((used + 1)) ] || [ "$through_round" -lt "$start_round" ]; then
       finish_deny 'BLOCKED: the audit loop checkpoint got an unreadable decision. Fail-loud, not fail-open: retry the dispatch.'
     fi
-    S2=$(jq -c --arg a "$admitted_on" --argjson s "$start_round" --argjson t "$through_round" --argjson k "$GAIA_CTX_UNIT_ROUNDS" \
-      --arg now "$now" --arg sid "$session" \
+    NEXT_STATE=$(jq -c --arg admitted_on_trigger "$admitted_on" --argjson start_round "$start_round" --argjson through_round "$through_round" --argjson unit_rounds "$GAIA_CTX_UNIT_ROUNDS" \
+      --arg now "$now" --arg session_id "$session" \
       '.history.units = ((.history.units // []) + [{unit: (((.history.units // []) | length) + 1),
-        start_round: $s, k: $k, through_round: $t, admitted_on: $a,
-        after_checkpoint: (.history.checkpoints | length), recorded_at: $now, session_id: $sid}])' <<<"$S") ||
+        start_round: $start_round, k: $unit_rounds, through_round: $through_round, admitted_on: $admitted_on_trigger,
+        after_checkpoint: (.history.checkpoints | length), recorded_at: $now, session_id: $session_id}])' <<<"$WORKING_STATE") ||
       finish_deny 'BLOCKED: the audit loop checkpoint could not build the unit record. Fail-loud, not fail-open: retry the dispatch.'
-    gaia_loop_write_state "$file" "$S2" ||
+    gaia_loop_write_state "$file" "$NEXT_STATE" ||
       finish_deny "BLOCKED: the audit loop checkpoint could not write $file. Fail-loud, not fail-open: check the directory and retry."
     carry_over
     finish_allow
@@ -720,16 +722,16 @@ run_decision() {
   # Member allow: record round used + 1.
   slug=$(gaia_branch_slug "$root") ||
     finish_deny "BLOCKED: the audit loop checkpoint cannot derive the findings key of $root. Fail-loud, not fail-open: check the checkout and retry."
-  closing=$(gaia_loop_next_closing "$S")
-  stampf=$(gaia_loop_stamp_file "$main" "$B" "$((used + 1))")
-  { mkdir -p "${stampf%/*}" && : >"$stampf"; } ||
-    finish_deny "BLOCKED: the audit loop checkpoint could not write the round stamp $stampf. Fail-loud, not fail-open: check the directory and retry."
-  S2=$(jq -c --arg t "$tree" --arg c "$commit" --arg s "$slug" --arg now "$now" --arg m "$member" \
-    --argjson n "$((used + 1))" --argjson cl "$closing" \
-    '.history.rounds += [{round: $n, tree: $t, commit: $c, raw_branch_slug: $s, dispatched_at: $now,
-      members: [$m], closing: $cl, snapshot: null}]' <<<"$S") ||
+  closing=$(gaia_loop_next_closing "$WORKING_STATE")
+  stamp_file=$(gaia_loop_stamp_file "$main" "$BRANCH_KEY" "$((used + 1))")
+  { mkdir -p "${stamp_file%/*}" && : >"$stamp_file"; } ||
+    finish_deny "BLOCKED: the audit loop checkpoint could not write the round stamp $stamp_file. Fail-loud, not fail-open: check the directory and retry."
+  NEXT_STATE=$(jq -c --arg tree "$tree" --arg commit "$commit" --arg slug "$slug" --arg now "$now" --arg member_name "$member" \
+    --argjson round_number "$((used + 1))" --argjson closing_flag "$closing" \
+    '.history.rounds += [{round: $round_number, tree: $tree, commit: $commit, raw_branch_slug: $slug, dispatched_at: $now,
+      members: [$member_name], closing: $closing_flag, snapshot: null}]' <<<"$WORKING_STATE") ||
     finish_deny 'BLOCKED: the audit loop checkpoint could not build the round record. Fail-loud, not fail-open: retry the dispatch.'
-  gaia_loop_write_state "$file" "$S2" ||
+  gaia_loop_write_state "$file" "$NEXT_STATE" ||
     finish_deny "BLOCKED: the audit loop checkpoint could not write $file. Fail-loud, not fail-open: check the directory and retry."
   carry_over
   finish_allow
@@ -754,7 +756,7 @@ run_decision() {
 
 # The decision is complete only when `verdict` exists, whatever wait returns.
 { wait "$child_pid"; } 2>/dev/null
-child_rc=$?
+child_exit_status=$?
 child_pid=''
 
 verdict=''
@@ -762,5 +764,5 @@ verdict=''
 case "$verdict" in
   allow) exit 0 ;;
   deny*) deny "${verdict#deny$'\n'}" ;;
-  *) deny "BLOCKED: the audit loop checkpoint ended without a decision (status $child_rc). Fail-loud, not fail-open: retry the dispatch." ;;
+  *) deny "BLOCKED: the audit loop checkpoint ended without a decision (status $child_exit_status). Fail-loud, not fail-open: retry the dispatch." ;;
 esac

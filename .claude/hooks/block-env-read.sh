@@ -83,7 +83,7 @@
 # coverage that was real.
 set -euo pipefail
 
-_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _lib_dir=''
+_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _library_directory=''
 # Bracketed against an unparseable target, not merely a missing one: under
 # errexit a library carrying a syntax error aborts the hook mid-source, and a
 # hook that dies before reading its payload denies nothing while looking like it
@@ -91,7 +91,7 @@ _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _lib
 # single place that decides.
 set +e
 # shellcheck source=lib/reader-operands.sh
-[ -n "$_lib_dir" ] && [ -f "$_lib_dir/reader-operands.sh" ] && . "$_lib_dir/reader-operands.sh" 2>/dev/null
+[ -n "$_library_directory" ] && [ -f "$_library_directory/reader-operands.sh" ] && . "$_library_directory/reader-operands.sh" 2>/dev/null
 set -e
 if ! type gaia_reader_operands >/dev/null 2>&1 \
   || ! type gaia_reader_strip_env_prefix >/dev/null 2>&1 \
@@ -127,10 +127,10 @@ payload=$(cat)
 # jq-availability arm: refuse loudly rather than fail open when the interpreter
 # this hook reads its payload with is absent. What that buys, and the contract
 # the literals below satisfy, live in .claude/hooks/lib/jq-availability.sh.
-_jq_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _jq_lib_dir=''
+_jq_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _jq_library_directory=''
 set +e
 # shellcheck source=lib/jq-availability.sh
-[ -n "$_jq_lib_dir" ] && [ -f "$_jq_lib_dir/jq-availability.sh" ] && . "$_jq_lib_dir/jq-availability.sh" 2>/dev/null
+[ -n "$_jq_library_directory" ] && [ -f "$_jq_library_directory/jq-availability.sh" ] && . "$_jq_library_directory/jq-availability.sh" 2>/dev/null
 set -e
 if ! type gaia_require_jq >/dev/null 2>&1; then
   printf 'BLOCKED: block-env-read.sh cannot load lib/jq-availability.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
@@ -146,11 +146,11 @@ DENY_DUMP="BLOCKED: a bare environment dump (env/printenv) is denied so exported
 DENY_READ="BLOCKED: reading a .env / .env.* file (a reader, sourcing, or redirection) is denied to protect local secrets. '.env.example' is exempt. Heuristic defense-in-depth, not a sandbox."
 
 deny() {
-  jq -n --arg r "$1" '{
+  jq -n --arg reason "$1" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: $r
+      permissionDecisionReason: $reason
     }
   }'
   exit 0
@@ -166,10 +166,10 @@ deny() {
 # `case` globs; this one matches a regex, which no metacharacter satisfies, so
 # it has to say so in a second arm.
 is_dotenv_path() {
-  local p="$1" base
-  p=$(gaia_reader_strip_quotes "$p")
-  [[ -n "$p" ]] || return 1
-  base=$(basename -- "$p")
+  local candidate_path="$1" base
+  candidate_path=$(gaia_reader_strip_quotes "$candidate_path")
+  [[ -n "$candidate_path" ]] || return 1
+  base=$(basename -- "$candidate_path")
   if [[ "$base" =~ ^\.env(\.[A-Za-z0-9_-]+)*$ ]]; then
     [[ "$base" == ".env.example" ]] && return 1
     return 0
@@ -184,25 +184,25 @@ is_dotenv_path() {
 # `env -0`). With a command operand it is a runner rather than a dump, so this
 # arm only has to decide the dump question.
 check_env_tokens() {
-  local toks=("$@")
-  local n=${#toks[@]}
+  local tokens=("$@")
+  local token_count=${#tokens[@]}
   local i=0
 
-  while [ "$i" -lt "$n" ]; do
-    case "${toks[$i]}" in
+  while [ "$i" -lt "$token_count" ]; do
+    case "${tokens[$i]}" in
       -*) i=$((i + 1)) ;;
       *) break ;;
     esac
   done
 
-  while [ "$i" -lt "$n" ]; do
-    case "${toks[$i]}" in
+  while [ "$i" -lt "$token_count" ]; do
+    case "${tokens[$i]}" in
       [A-Za-z_]*=*) i=$((i + 1)) ;;
       *) break ;;
     esac
   done
 
-  if [ "$i" -ge "$n" ]; then
+  if [ "$i" -ge "$token_count" ]; then
     deny "$DENY_DUMP"
   fi
   return 0
@@ -210,13 +210,13 @@ check_env_tokens() {
 
 # Process-environment dumps only. File reads are the operand walk's job.
 check_dump_tokens() {
-  local toks=("$@")
-  local cmdword="${toks[0]:-}"
-  cmdword=$(gaia_reader_strip_quotes "$cmdword")
+  local tokens=("$@")
+  local command_word="${tokens[0]:-}"
+  command_word=$(gaia_reader_strip_quotes "$command_word")
 
-  case "$cmdword" in
+  case "$command_word" in
     env)
-      check_env_tokens "${toks[@]:1}"
+      check_env_tokens "${tokens[@]:1}"
       ;;
     printenv)
       # printenv has no runner form; with or without a NAME it only ever
@@ -228,24 +228,24 @@ check_dump_tokens() {
 }
 
 process_segment() {
-  local seg="$1"
-  local seg_cmd operand
-  local toks
+  local segment="$1"
+  local segment_command operand
+  local tokens
 
-  seg_cmd=$(gaia_reader_strip_env_prefix "$seg")
-  read -r -a toks <<<"$seg_cmd"
+  segment_command=$(gaia_reader_strip_env_prefix "$segment")
+  read -r -a tokens <<<"$segment_command"
 
   # An empty segment (e.g. between the two words of `true && cat .env.local`,
-  # which the |&;() split turns into an empty run) yields an empty toks array.
-  # On bash 3.2 under `set -u`, a bare "${toks[@]}" on an empty array aborts
+  # which the |&;() split turns into an empty run) yields an empty tokens array.
+  # On bash 3.2 under `set -u`, a bare "${tokens[@]}" on an empty array aborts
   # with "unbound variable" before later segments are evaluated, so guard it.
-  [ "${#toks[@]}" -eq 0 ] || check_dump_tokens "${toks[@]}"
+  [ "${#tokens[@]}" -eq 0 ] || check_dump_tokens "${tokens[@]}"
 
   while IFS= read -r operand; do
     if is_dotenv_path "$operand"; then
       deny "$DENY_READ"
     fi
-  done < <(gaia_reader_operands "$seg")
+  done < <(gaia_reader_operands "$segment")
   return 0
 }
 
@@ -273,12 +273,12 @@ case "$tool_name" in
     ;;
 
   Bash)
-    cmd=$(jq -r '.tool_input.command // empty' <<<"$payload")
-    [[ -n "$cmd" ]] || exit 0
+    command_line=$(jq -r '.tool_input.command // empty' <<<"$payload")
+    [[ -n "$command_line" ]] || exit 0
 
-    while IFS= read -r seg; do
-      process_segment "$seg"
-    done < <(printf '%s\n' "$cmd" | tr '|&;()' '\n')
+    while IFS= read -r segment; do
+      process_segment "$segment"
+    done < <(printf '%s\n' "$command_line" | tr '|&;()' '\n')
 
     exit 0
     ;;

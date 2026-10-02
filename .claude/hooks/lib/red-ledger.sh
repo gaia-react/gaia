@@ -6,17 +6,17 @@
 # the two hooks in sync by construction.
 #
 # Usage (from a hook script, at any working directory):
-#   _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _lib_dir=''
-#   [ -n "$_lib_dir" ] && [ -f "$_lib_dir/red-ledger.sh" ] && . "$_lib_dir/red-ledger.sh"
+#   _library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _library_directory=''
+#   [ -n "$_library_directory" ] && [ -f "$_library_directory/red-ledger.sh" ] && . "$_library_directory/red-ledger.sh"
 #   ledger=$(red_ledger_path "$tree_root")
-#   rel=$(red_ledger_repo_rel "$some_path")
-#   red_ledger_signals "$rel"          # NDJSON on stdout; helper's exit code
+#   relative_path=$(red_ledger_repo_relative_path "$some_path")
+#   red_ledger_signals "$relative_path"          # NDJSON on stdout; helper's exit code
 #
 # No persistent `cd`; all paths are repo-relative or resolved via `git -C`.
 # Guarded so double-sourcing is a no-op.
 
-[ -n "${RED_LEDGER_LIB_SOURCED:-}" ] && return 0
-RED_LEDGER_LIB_SOURCED=1
+[ -n "${RED_LEDGER_LIBRARY_SOURCED:-}" ] && return 0
+RED_LEDGER_LIBRARY_SOURCED=1
 
 # Absolute path to the append-only JSON Lines ledger, rooted at ROOT (the
 # per-tree root a caller has already resolved, typically via Pattern T's
@@ -33,10 +33,10 @@ RED_LEDGER_LIB_SOURCED=1
 # holds, matching state-registry-lib.sh's own gaia_registry_path.
 red_ledger_path() {
   local root="${1:-}"
-  local self_dir
-  self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || return 1
+  local self_directory
+  self_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || return 1
   # shellcheck disable=SC1091
-  source "$self_dir/../../../.gaia/scripts/main-root-lib.sh" 2>/dev/null || return 1
+  source "$self_directory/../../../.gaia/scripts/main-root-lib.sh" 2>/dev/null || return 1
   if [ -z "$root" ]; then
     root="$(gaia_resolve_tree_root 2>/dev/null)" || return 1
   fi
@@ -55,7 +55,7 @@ red_ledger_signal_script() {
 # Strips a leading repo-root prefix and any leading `./`. Idempotent: an
 # already-repo-relative path returns unchanged. pwd is the repo root, so a
 # bare relative path is already repo-relative.
-red_ledger_repo_rel() {
+red_ledger_repo_relative_path() {
   local path="$1"
   local root
 
@@ -82,7 +82,7 @@ red_ledger_repo_rel() {
 # fail-open / fail-closed policy. Exits 0 with no output (and a stderr note) if
 # Node is unavailable, treating that as "cannot recompute signal".
 red_ledger_signals() {
-  local rel="$1"
+  local relative_path="$1"
   local script
   script=$(red_ledger_signal_script)
 
@@ -95,5 +95,5 @@ red_ledger_signals() {
     return 0
   }
 
-  node "$script" "$rel"
+  node "$script" "$relative_path"
 }
