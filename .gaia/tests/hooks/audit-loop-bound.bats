@@ -945,7 +945,7 @@ assert_pinned() {
   [ "$(sj '.history.checkpoints | last | .reason')" = "$1" ]
   [[ "$(sj '.history.checkpoints | last | .nonce')" =~ ^[0-9a-f]{16}$ ]] || return 1
   [ "$(sj '.history.checkpoints | last | .question.questions[0].options | length')" -ge 2 ]
-  [ "$(sj '[.history.checkpoints | last | .question.questions[0].options[].label] | index("Stop and file the remainder") != null')" = true ]
+  [ "$(sj '[.history.checkpoints | last | .question.questions[0].options[].label | sub(" \\(Recommended\\)$"; "")] | index("Stop and file the remainder") != null')" = true ]
   q="$(sj '.history.checkpoints | last | .question | tojson')"
   printf '%s\n' "$r" | grep -qxF -- "$q"
   printf '%s\n' "$r" | grep -qF -- AskUserQuestion
@@ -1082,7 +1082,7 @@ settings() {
   assert_pinned context
   nonce="$(sj '.history.checkpoints[-1].nonce')"
   elig="$(sj '.history.rounds[1].snapshot.accept_eligible // false')"
-  want="$(gaia_loop_pinned_question feat/loop "$nonce" 2 "$GAIA_CTX_UNIT_ROUNDS" "$elig" false context "fresh $GAIA_CTX_ASK_TOKENS_DEFAULT 1000000")"
+  want="$(gaia_loop_pinned_question feat/loop "$nonce" 2 "$GAIA_CTX_UNIT_ROUNDS" "$elig" false context "fresh $GAIA_CTX_ASK_TOKENS_DEFAULT 1000000" grant "$(gaia_ctx_line 1000000 "$GAIA_CTX_ASK_TOKENS_DEFAULT" "$GAIA_CTX_ASK_WINDOW_PCT_DEFAULT")")"
   [ "$(sj '.history.checkpoints[-1].question | tojson')" = "$want" ]
   [[ "$(sj '.history.checkpoints[-1].question.questions[0].question')" == *"(context), context "[0-9]*"% ("[0-9]*"k of 1000k). How should"* ]]
   [ "$(sj '.history.checkpoints[-1].at_round')" -eq 2 ]
@@ -1126,11 +1126,34 @@ settings() {
   seed_rounds "$_GAIA_LOOP_HARD_CAP" "$(sig_snap cap true)"
   unit_dispatch
   assert_pinned cap
-  [ "$(sj '[.history.checkpoints[-1].question.questions[0].options[].label] | join("|")')" = "Accept the remainder|Stop and file the remainder" ]
+  [ "$(sj '[.history.checkpoints[-1].question.questions[0].options[].label] | join("|")')" = "Accept the remainder (Recommended)|Stop and file the remainder" ]
   seed_rounds "$_GAIA_LOOP_HARD_CAP" "$(sig_snap cap false)"
   unit_dispatch
   assert_pinned cap
-  [ "$(sj '[.history.checkpoints[-1].question.questions[0].options[].label] | join("|")')" = "Type audit-accept instead|Stop and file the remainder" ]
+  [ "$(sj '[.history.checkpoints[-1].question.questions[0].options[].label] | join("|")')" = "Stop and file the remainder (Recommended)|Type audit-accept instead" ]
+}
+
+# first_pinned_label: the leading option of the latest checkpoint's pinned question.
+first_pinned_label() { sj '.history.checkpoints | last | .question.questions[0].options[0].label'; }
+
+@test "the pinned question leads with the evaluator's recommendation, and the band picks the grant when it is a grant" {
+  local K="$GAIA_CTX_UNIT_ROUNDS"
+  below
+  seed_rounds 6 "$(sig_snap nitpicky true)"
+  unit_dispatch
+  assert_pinned rubric:nitpicky
+  [ "$(first_pinned_label)" = "Continue audit in this session (Recommended)" ]
+  [[ "$(sj '.history.checkpoints | last | .question.questions[0].options[0].description')" == "Context "*" is below the checkpoint line, so this session has room: "* ]]
+  seed_rounds 6 "$(sig_snap enriching true)"
+  unit_dispatch
+  assert_pinned rubric:enriching
+  [ "$(first_pinned_label)" = "Accept the remainder (Recommended)" ]
+  above
+  seed_rounds 6 "$(sig_snap quiet true)"
+  unit_dispatch
+  assert_pinned context
+  [ "$(first_pinned_label)" = "Continue audit in a new session (Recommended)" ]
+  [[ "$(sj '.history.checkpoints | last | .question.questions[0].options[0].description')" == "Context "*" is at or above the checkpoint line: "* ]]
 }
 
 @test "an ask grant admits one K-round unit over the line; the next unit asks again; a new session below the line continues" {
@@ -1141,7 +1164,7 @@ settings() {
   assert_pinned context
   idx="$(sj '.history.checkpoints[-1].index')"
   nonce="$(sj '.history.checkpoints[-1].nonce')"
-  alf_state_edit '.allowance.answers += [{checkpoint: $i, kind: "grant", n: $k, source: "ask", option: ("Grant " + ($k | tostring) + ", continue here"),
+  alf_state_edit '.allowance.answers += [{checkpoint: $i, kind: "grant", n: $k, source: "ask", option: "Continue audit in this session",
     nonce: $n, at: "2026-01-01T00:00:00Z", session_id: $s}]' --argjson i "$idx" --argjson k "$K" --arg n "$nonce" --arg s "$SIDU"
   unit_dispatch
   assert_allowed

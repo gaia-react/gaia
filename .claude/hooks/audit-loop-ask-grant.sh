@@ -35,11 +35,16 @@
 #      exactly one pinned option label. Free text typed into Other arrives in
 #      the same map and never matches a label unless it spells one exactly.
 #
-# What each label records. `Grant <k>, continue here` and `Grant <k>, new
-# session` record the same `{kind: "grant", n: k}` answer; k is
-# GAIA_CTX_UNIT_ROUNDS from the shared lib and a pinned label for any other k
-# is a decline, never read as a count. The new-session label also tells the
-# main thread to print a fenced continuation prompt. `Accept the remainder`
+# The pinned question marks its one recommended option with a trailing
+# ` (Recommended)`. The selected label must still equal a stored label exactly;
+# the kind is read from that label with the suffix stripped, and the recorded
+# `option` keeps the label as selected.
+#
+# What each label records. `Continue audit in this session` and `Continue
+# audit in a new session` record the same `{kind: "grant", n: k}` answer; k is
+# GAIA_CTX_UNIT_ROUNDS from the shared lib, never a count read from a label.
+# The new-session label also tells the main thread to print a fenced
+# continuation prompt. `Accept the remainder`
 # records `{kind: "accept"}`. `Stop and file the remainder` and `Type
 # audit-accept instead` record nothing: the loop stays stopped and the message
 # names the next step. Every recorded answer carries source, option, the pin's
@@ -275,12 +280,13 @@ case "$verdict" in
 esac
 
 # Classify the label before taking the lock: only the grant and accept labels
-# record. The grant label is rebuilt from K, never parsed from the payload.
+# record. A grant records K from the shared lib, never a count read from the payload.
 label="$(printf '%s' "$verdict" | cut -f2)"
 unit_rounds="$GAIA_CTX_UNIT_ROUNDS"
 kind=""
-case "$label" in
-  "Grant $unit_rounds, continue here" | "Grant $unit_rounds, new session") kind=grant ;;
+base="${label% (Recommended)}"
+case "$base" in
+  "Continue audit in this session" | "Continue audit in a new session") kind=grant ;;
   "Accept the remainder") kind=accept ;;
   "Stop and file the remainder")
     _ag_say "Nothing was recorded: Stop and file the remainder was selected, so the loop stays stopped. Claude: do not dispatch another audit round; file the remainder as tech debt, leave the PR open, and report to the human." \
@@ -293,7 +299,7 @@ case "$label" in
     exit 0
     ;;
   *)
-    _ag_decline "the selected option '$label' is not a grant for the current round count ($unit_rounds)."
+    _ag_decline "the selected option '$base' is not one this hook records."
     ;;
 esac
 
@@ -337,13 +343,17 @@ gaia_loop_unlock "$target"
 
 bname="$(printf '%s' "$new" | jq -r '.branch')"
 if [ "$kind" = grant ]; then
-  msg="Recorded: $label on branch $bname (checkpoint $idx), $unit_rounds more rounds."
+  msg="Recorded: $base on branch $bname (checkpoint $idx), $unit_rounds more rounds."
   ctx="$msg Claude: the human selected this pinned option; continue the loop within that allowance."
-  case "$label" in
-    *"new session") ctx="$ctx Print a fenced continuation prompt for a fresh session now, with the branch, PR and run folder, and do not start another round in this session." ;;
+  case "$base" in
+    *"in a new session")
+      ctx="$ctx Print one instruction line, then the fenced continuation prompt for a fresh session with the branch, PR and run folder, and stop: do not start another round in this session."
+      ctx="$ctx The line is 'Run \`/clear\`, then paste the prompt below.' by default."
+      ctx="$ctx Use 'Kill this session with Ctrl+C, start a new one (\`claude\`, with any needed environment variable), then paste the prompt below.' instead when the next session needs something only a fresh launch provides: an environment variable, or an agent, hook or settings change that loads at session start, such as the branch having edited .claude/agents/, .claude/hooks/ or .claude/settings.json since this session started."
+      ;;
   esac
 else
-  msg="Recorded: $label on branch $bname (checkpoint $idx). Exactly one closing round is allowed and no fixer runs in it."
+  msg="Recorded: $base on branch $bname (checkpoint $idx). Exactly one closing round is allowed and no fixer runs in it."
   ctx="$msg Claude: the human selected this pinned option; continue the loop within that allowance."
 fi
 _ag_say "$msg" "$ctx"

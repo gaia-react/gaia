@@ -12,7 +12,8 @@
 # stay in audit-loop-eval.sh.
 #
 # Override rule. An optional machine-local file, <main>/.gaia/local/settings.json,
-# may LOWER the line (ask_tokens, ask_window_pct). It can never raise it: an
+# may LOWER the line, for example {"version":1,"context_checkpoint":{"ask_tokens":100000}}
+# (ask_tokens, ask_window_pct; version 1 is required). It can never raise it: an
 # absent, invalid, out-of-range or raised value reads as the shipped default.
 # The file is machine-local and writable by whoever runs the session, so a
 # raise would let a session widen its own bound.

@@ -519,17 +519,13 @@ _gaia_loop_brief() {
     --argjson pending "$([ -n "$pending" ] && echo true || echo false)" --argjson per "$per" \
     --argjson pc "${pending:-null}" --argjson cap "$_GAIA_LOOP_HARD_CAP" \
     --argjson snap "$snap" --argjson fs "$fs" --arg spend "$spend" \
+    --arg rec "$(gaia_loop_recommended "$(printf '%s' "${pending:-null}" | jq -r '.trigger // empty')" "$snap")" \
     --arg gl "$(gaia_loop_grant_line "$(_gaia_loop_grant_rounds "$state")")" --arg al "$(gaia_loop_accept_line)" '
-    (if ($snap.signals | type) == "object" then $snap.signals
-     else {enriching: ($snap.verdict == "enriching"), stalled: ($snap.verdict == "stalled")} end) as $sig
-    | (any($sig | to_entries[]; .key != "quiet" and .value == true)) as $denying
-    | {branch: $st.branch, pr: $st.pr, rounds_run: $used, allowed: $allowed, pending_checkpoint: $pending,
+    {branch: $st.branch, pr: $st.pr, rounds_run: $used, allowed: $allowed, pending_checkpoint: $pending,
      per_round: $per, verdict: $snap.verdict, evidence: $snap.evidence,
      signals: ($snap.signals // null), accept_eligible: ($snap.accept_eligible == true),
      accept_reasons: ($snap.accept_reasons // []), rounds_cap: $cap,
-     recommended: (if $pc != null and $pc.trigger == "context" and ($denying | not) then "grant"
-                   else {continue: "grant", unknown: "grant", enriching: "accept", quiet: "accept", stalled: "stop"}
-                   | .[$snap.verdict // "unknown"] // "grant" end),
+     recommended: $rec,
      grant_line: $gl, accept_line: $al,
      remaining_by_severity: ($fs.entries | {error: map(select(.severity == "error")) | length,
                                             warning: map(select(.severity == "warning")) | length,

@@ -240,6 +240,59 @@ vetoes() {
   red unknown-key "$(kj c/imp f.txt 3)"
 }
 
+# tree_state: every file under the run folder and the state directory with its
+# digest, so a read that wrote anything differs from the one before it.
+tree_state() {
+  find "$RF" "$SNAP" -type f 2>/dev/null | sort | while IFS= read -r f; do
+    printf '%s %s\n' "$f" "$(shasum -a 256 <"$f")"
+  done
+}
+
+@test "snapshots: check-all with no --snapshot-dir reads the default directory's snapshot, so round 1 passes after its sidecar is overwritten, and writes nothing" {
+  local before after
+  wd 1 "[$(ent f.txt 3 c/imp waive-out-of-scope because triage-threshold)]"
+  chk 1 --snapshot-dir "$SNAP"
+  green || return 1
+  open_round 2 '[{"path":"f.txt","line":7,"finding_class":"c/later","severity":"suggestion","security":false}]'
+  wd 2 "[$(ent f.txt 7 c/later fix)]"
+  before="$(tree_state)"
+  chk_all
+  green || return 1
+  after="$(tree_state)"
+  [ "$before" = "$after" ] || { printf 'a read-only check-all wrote:\n%s\n---\n%s\n' "$before" "$after" >&2; return 1; }
+  [ ! -e "$SNAP/dispositions-2.checked.json" ]
+}
+
+@test "snapshots: check-all with no --snapshot-dir still fails unknown-key when the default directory holds no snapshot for the round" {
+  local before
+  mkdir -p "$SNAP"
+  wd 1 "[$(ent f.txt 3 c/imp waive-out-of-scope because triage-threshold)]"
+  chk 1
+  green || return 1
+  open_round 2 '[{"path":"f.txt","line":7,"finding_class":"c/later","severity":"suggestion","security":false}]'
+  wd 2 "[$(ent f.txt 7 c/later fix)]"
+  before="$(tree_state)"
+  chk_all
+  red unknown-key "$(kj c/imp f.txt 3)" || return 1
+  [ "$before" = "$(tree_state)" ]
+}
+
+@test "snapshots: check with no --snapshot-dir re-grades a round from its existing snapshot and flags an edit, writing nothing" {
+  local before after
+  wd 1 "[$(ent f.txt 3 c/imp waive-out-of-scope because triage-threshold)]"
+  chk 1 --snapshot-dir "$SNAP"
+  green || return 1
+  open_round 2 '[{"path":"f.txt","line":7,"finding_class":"c/later","severity":"suggestion","security":false}]'
+  chk 1
+  green || return 1
+  wd 1 "[$(ent f.txt 3 c/imp waive-out-of-scope "a different reason" triage-threshold)]"
+  before="$(tree_state)"
+  chk 1
+  red edited-after-check '{"round":1}' || return 1
+  after="$(tree_state)"
+  [ "$before" = "$after" ]
+}
+
 @test "snapshots: editing the dispositions file after its snapshot fails edited-after-check" {
   wd 1 "[$(ent f.txt 3 c/imp waive-out-of-scope because triage-threshold)]"
   chk 1 --snapshot-dir "$SNAP"

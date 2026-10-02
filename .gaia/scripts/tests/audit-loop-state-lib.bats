@@ -274,7 +274,7 @@ full_state() {
     | .history.units = [{unit: 1, start_round: 1, k: 3, through_round: 3, admitted_on: "context", after_checkpoint: 0, recorded_at: "2026-10-02T00:00:00Z", session_id: "s"}]
     | .history.checkpoints = [{index: 1, at_round: 3, nonce: "0123456789abcdef", trigger: "context", accept_eligible: false,
         question: {questions: [{question: "q"}]}}]
-    | .allowance.answers = [{checkpoint: 1, kind: "grant", n: 3, source: "ask", option: "Grant 3, continue here", nonce: "0123456789abcdef", at: "t", session_id: "s"}]'
+    | .allowance.answers = [{checkpoint: 1, kind: "grant", n: 3, source: "ask", option: "Continue audit in this session", nonce: "0123456789abcdef", at: "t", session_id: "s"}]'
 }
 
 # assert_refused <label> <json>: read returns 5 and a write refuses, file unchanged.
@@ -335,29 +335,29 @@ labels() { printf '%s' "$1" | jq -r '[.questions[0].options[].label] | join("|")
   [ "$(printf '%s' "$q" | jq '.questions | length')" -eq 1 ]
   [ "$(printf '%s' "$q" | jq -r '.questions[0].header')" = "Audit loop" ]
   [ "$(printf '%s' "$q" | jq '.questions[0].multiSelect')" = false ]
-  [ "$(labels "$q")" = "Grant 3, continue here|Grant 3, new session|Accept the remainder|Stop and file the remainder" ]
+  [ "$(labels "$q")" = "Continue audit in a new session (Recommended)|Continue audit in this session|Accept the remainder|Stop and file the remainder" ]
   case "$(printf '%s' "$q" | jq -r '.questions[0].question')" in
     *"$n"*"feat/x"*"6 rounds used (context)"*) ;;
     *) return 1 ;;
   esac
   q="$(gaia_loop_pinned_question feat/x $n 6 2 true false context)"
-  [ "$(labels "$q")" = "Grant 2, continue here|Grant 2, new session|Accept the remainder|Stop and file the remainder" ]
+  [ "$(labels "$q")" = "Continue audit in a new session (Recommended)|Continue audit in this session|Accept the remainder|Stop and file the remainder" ]
 }
 
 @test "pinned question: eligibility and cap shape the options, never fewer than two" {
   local n=0123456789abcdef q
   q="$(gaia_loop_pinned_question feat/x $n 6 3 false false context)"
-  [ "$(labels "$q")" = "Grant 3, continue here|Grant 3, new session|Stop and file the remainder" ]
+  [ "$(labels "$q")" = "Continue audit in a new session (Recommended)|Continue audit in this session|Stop and file the remainder" ]
   q="$(gaia_loop_pinned_question feat/x $n 10 3 true true cap)"
-  [ "$(labels "$q")" = "Accept the remainder|Stop and file the remainder" ]
+  [ "$(labels "$q")" = "Accept the remainder (Recommended)|Stop and file the remainder" ]
   q="$(gaia_loop_pinned_question feat/x $n 10 3 false true cap)"
-  [ "$(labels "$q")" = "Type audit-accept instead|Stop and file the remainder" ]
+  [ "$(labels "$q")" = "Stop and file the remainder (Recommended)|Type audit-accept instead" ]
   local e c
   for e in true false; do
     for c in true false; do
       q="$(gaia_loop_pinned_question feat/x $n 6 3 $e $c rubric:J2)"
       at_least_two_options "$q"
-      [[ "$(labels "$q")" == *"Stop and file the remainder" ]]
+      [[ "$(labels "$q")" == *"Stop and file the remainder"* ]]
       [[ "$q" == *"$n"* ]]
     done
   done
@@ -394,6 +394,100 @@ labels() { printf '%s' "$1" | jq -r '[.questions[0].options[].label] | join("|")
 }
 
 question_text() { printf '%s' "$1" | jq -r '.questions[0].question'; }
+
+# ask_labels <json>: every option label, one per line.
+ask_labels() { printf '%s' "$1" | jq -r '.questions[0].options[].label'; }
+# first_label <json>: the leading option's label.
+first_label() { printf '%s' "$1" | jq -r '.questions[0].options[0].label'; }
+# option_desc <json> <label-prefix>: the description of the option whose label starts with the prefix.
+option_desc() { printf '%s' "$1" | jq -r --arg p "$2" '.questions[0].options[] | select(.label | startswith($p)) | .description'; }
+# recommended_count <json>: how many labels carry the (Recommended) suffix.
+recommended_count() { printf '%s' "$1" | jq '[.questions[0].options[] | select(.label | endswith(" (Recommended)"))] | length'; }
+
+@test "pinned question: a reading below the checkpoint line leads with continue here, and the choices carry the reading" {
+  local q
+  q="$(gaia_loop_pinned_question feat/x 0123456789abcdef 6 3 true false rubric:J2 "fresh 260000 1000000" grant 400000)"
+  [ "$(first_label "$q")" = "Continue audit in this session (Recommended)" ]
+  [ "$(recommended_count "$q")" -eq 1 ]
+  [ "$(ask_labels "$q" | sed -n 2p)" = "Continue audit in a new session" ]
+  [ "$(option_desc "$q" "Continue audit in this session")" = "Context 26% (260k of 1000k) is below the checkpoint line, so this session has room: records 3 more rounds and keeps working here." ]
+  [[ "$(option_desc "$q" "Continue audit in a new session")" == "Context 26% (260k of 1000k) is below the checkpoint line: records the same 3-round grant, then prints a continuation prompt for a fresh session."* ]]
+}
+
+@test "pinned question: a reading at or above the checkpoint line leads with new session" {
+  local q r
+  for r in "fresh 500000 1000000" "fresh 400000 1000000"; do
+    q="$(gaia_loop_pinned_question feat/x 0123456789abcdef 6 3 true false rubric:J2 "$r" grant 400000)"
+    [ "$(first_label "$q")" = "Continue audit in a new session (Recommended)" ]
+    [ "$(recommended_count "$q")" -eq 1 ]
+    [[ "$(option_desc "$q" "Continue audit in a new session")" == *"is at or above the checkpoint line: records the same 3-round grant, then prints a continuation prompt for a fresh session."* ]]
+  done
+}
+
+@test "pinned question: no usable reading, or no line, leads with new session and says context unavailable" {
+  local q
+  for r in "" missing stale future unparseable "fresh 5 0"; do
+    q="$(gaia_loop_pinned_question feat/x 0123456789abcdef 6 3 true false context "$r" grant 400000)"
+    [ "$(first_label "$q")" = "Continue audit in a new session (Recommended)" ]
+    [[ "$(option_desc "$q" "Continue audit in a new session")" == "Context unavailable, so a new session is the safe choice: records the same 3-round grant"* ]]
+  done
+  q="$(gaia_loop_pinned_question feat/x 0123456789abcdef 6 3 true false context "fresh 100000 1000000" grant)"
+  [ "$(first_label "$q")" = "Continue audit in a new session (Recommended)" ]
+}
+
+@test "pinned question: an accept recommendation leads with Accept when offered, otherwise the band picks the grant" {
+  local q
+  q="$(gaia_loop_pinned_question feat/x 0123456789abcdef 6 3 true false rubric:J2 "fresh 260000 1000000" accept 400000)"
+  [ "$(first_label "$q")" = "Accept the remainder (Recommended)" ]
+  [ "$(recommended_count "$q")" -eq 1 ]
+  [ "$(ask_labels "$q" | sed -n 2,3p | paste -sd'|' -)" = "Continue audit in this session|Continue audit in a new session" ]
+  q="$(gaia_loop_pinned_question feat/x 0123456789abcdef 6 3 false false rubric:J2 "fresh 260000 1000000" accept 400000)"
+  [ "$(first_label "$q")" = "Continue audit in this session (Recommended)" ]
+  q="$(gaia_loop_pinned_question feat/x 0123456789abcdef 6 3 true false rubric:J2 "fresh 260000 1000000" stop 400000)"
+  [ "$(first_label "$q")" = "Stop and file the remainder (Recommended)" ]
+  [ "$(recommended_count "$q")" -eq 1 ]
+}
+
+@test "pinned question: a context trigger always leads with new session, whatever the evaluator recommends or the band says" {
+  local q rec
+  for rec in grant accept stop ""; do
+    q="$(gaia_loop_pinned_question feat/x 0123456789abcdef 6 3 true false context "fresh 500000 1000000" "$rec" 400000)"
+    [ "$(first_label "$q")" = "Continue audit in a new session (Recommended)" ]
+    [ "$(recommended_count "$q")" -eq 1 ]
+    [ "$(ask_labels "$q" | sed -n 2p)" = "Continue audit in this session" ]
+  done
+  q="$(gaia_loop_pinned_question feat/x 0123456789abcdef 6 3 true false context "fresh 260000 1000000" accept 400000)"
+  [ "$(first_label "$q")" = "Continue audit in a new session (Recommended)" ]
+}
+
+@test "pinned question: a bad recommendation or line is rc 2 with empty stdout" {
+  run gaia_loop_pinned_question feat/x 0123456789abcdef 6 3 true false context "" bogus 400000
+  [ "$status" -eq 2 ]
+  [ -z "$output" ]
+  run gaia_loop_pinned_question feat/x 0123456789abcdef 6 3 true false context "" grant abc
+  [ "$status" -eq 2 ]
+  [ -z "$output" ]
+}
+
+@test "pinned question: the line comparison is strict, so a reading exactly on the line is not below it" {
+  local mut="$BATS_TEST_TMPDIR/mut-line" q
+  mkdir -p "$mut"
+  cp "$SCRIPTS"/*.sh "$mut/"
+  sed 's/-lt "\$((10#\$line))"/-le "$((10#$line))"/' "$SCRIPTS/audit-loop-state-lib.sh" >"$mut/audit-loop-state-lib.sh"
+  if cmp -s "$SCRIPTS/audit-loop-state-lib.sh" "$mut/audit-loop-state-lib.sh"; then return 1; fi
+  q="$(bash -c '. "$1"; gaia_loop_pinned_question feat/x 0123456789abcdef 6 3 true false rubric:J2 "fresh 400000 1000000" grant 400000' _ "$mut/audit-loop-state-lib.sh")"
+  [ "$(first_label "$q")" = "Continue audit in this session (Recommended)" ]
+}
+
+@test "recommended: a context checkpoint with no denying signal is a grant, otherwise the verdict decides" {
+  [ "$(gaia_loop_recommended context '{"verdict":"stalled"}')" = stop ]
+  [ "$(gaia_loop_recommended context '{"verdict":"quiet","signals":{"quiet":true}}')" = grant ]
+  [ "$(gaia_loop_recommended context '{"verdict":"stalled","signals":{"stalled":true}}')" = stop ]
+  [ "$(gaia_loop_recommended cap '{"verdict":"enriching"}')" = accept ]
+  [ "$(gaia_loop_recommended fallback '{"verdict":"continue"}')" = grant ]
+  [ "$(gaia_loop_recommended cap null)" = grant ]
+  true
+}
 
 @test "pinned question: a fresh reading puts the percent and k-token figures in the text" {
   local q
@@ -438,7 +532,7 @@ question_text() { printf '%s' "$1" | jq -r '.questions[0].question'; }
   cp "$SCRIPTS"/*.sh "$mut/"
   sed 's/^_GAIA_LOOP_ASK_RECORDER=1$/_GAIA_LOOP_ASK_RECORDER=0/' "$SCRIPTS/audit-loop-state-lib.sh" >"$mut/audit-loop-state-lib.sh"
   q="$(bash -c '. "$1"; gaia_loop_pinned_question feat/x 0123456789abcdef 6 3 true false context' _ "$mut/audit-loop-state-lib.sh")"
-  [ "$(printf '%s' "$q" | jq '[.questions[0].options[] | select(.label | startswith("Grant") or startswith("Accept")) | select(.description | test("type `audit-(grant 3|accept)`"))] | length')" -eq 3 ]
+  [ "$(printf '%s' "$q" | jq '[.questions[0].options[] | select(.label | startswith("Continue") or startswith("Accept")) | select(.description | test("type `audit-(grant 3|accept)`"))] | length')" -eq 3 ]
 }
 
 @test "interactive check: cli env and an all-cli transcript pass; every other shape fails" {
