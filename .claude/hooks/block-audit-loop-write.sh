@@ -4,7 +4,7 @@
 # two audit loop recorders. The gate inputs are
 #   <main>/.gaia/local/audit-loop/                      state: history + allowance
 #   <main>/.gaia/local/cache/shared/context/            per-session context readings
-#   <main>/.gaia/local/settings.json                    the per-machine override
+#   <main>/.gaia/local/checkpoint-override.json         the per-machine override
 #
 # WHY. The state directory holds each branch's audit history and its
 # human-granted allowance. Only audit-loop-bound.sh may write history, and only
@@ -28,14 +28,15 @@
 #     checkout resolves to the real directory. Denied when the result lies
 #     inside <main>/.gaia/local/audit-loop/ or
 #     <main>/.gaia/local/cache/shared/context/, or equals
-#     <main>/.gaia/local/settings.json (<main> from gaia_resolve_main_root of
-#     the payload cwd), or when the literal path contains or ends in one of
-#     those spellings (catches a worktree spelling whose symlink target cannot
-#     be resolved). `.claude/settings.json` and `.claude/settings.local.json`
-#     are not this guard's remit.
+#     <main>/.gaia/local/checkpoint-override.json (<main> from
+#     gaia_resolve_main_root of the payload cwd), or when the literal path
+#     contains or ends in one of those spellings (catches a worktree spelling
+#     whose symlink target cannot be resolved). `.claude/settings.json`,
+#     `.claude/settings.local.json` and GAIA's writable opt-ins file
+#     `.gaia/local/settings.json` are not this guard's remit.
 #   Bash / Monitor: .tool_input.command. Cheap pre-filter first: allowed unless
 #     the payload contains `audit-loop`, `cache/shared/context` or
-#     `local/settings.json`. For the state directory the command must
+#     `local/checkpoint-override.json`. For the state directory the command must
 #     name `.gaia/local/audit-loop` followed by a slash, a delimiter or the end
 #     of the command: a path segment that merely ends in `audit-loop` elsewhere
 #     (a worktree named like `spec-091-audit-loop`) does not arm it. The
@@ -113,7 +114,7 @@ fi
 # contain `audit-loop`), so a payload without any is outside the remit with no
 # jq read at all. This is the path every ordinary Bash call takes.
 case "$payload" in
-  *audit-loop* | *cache/shared/context* | *local/settings.json*) ;;
+  *audit-loop* | *cache/shared/context* | *local/checkpoint-override.json*) ;;
   *) exit 0 ;;
 esac
 
@@ -126,22 +127,22 @@ if ! type gaia_require_jq >/dev/null 2>&1; then
   printf 'BLOCKED: block-audit-loop-write.sh cannot load lib/jq-availability.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
   exit 2
 fi
-gaia_require_jq 'the audit loop state guard' "$payload" tool_input 'audit-loop' 'cache/shared/context' 'local/settings.json'
+gaia_require_jq 'the audit loop state guard' "$payload" tool_input 'audit-loop' 'cache/shared/context' 'local/checkpoint-override.json'
 
 tool_name=$(jq -r '.tool_name // empty' <<<"$payload")
 
 DENY_STATE_MSG="BLOCKED: block-audit-loop-write.sh: the audit loop state (<main>/.gaia/local/audit-loop/) is written only by the audit loop hooks. Claude never writes, edits, moves or deletes it. A human answers a checkpoint through the pinned AskUserQuestion, or by typing a whole prompt that is exactly the audit-grant <n> or audit-accept line (see wiki/concepts/PR Merge Workflow.md, #### The branch checkpoint). A corrupt state file is repaired by a human from a terminal outside Claude Code."
 DENY_CONTEXT_MSG="BLOCKED: block-audit-loop-write.sh: the context readings (<main>/.gaia/local/cache/shared/context/) are written by the statusline on each render, and the audit checkpoint trusts them. Claude never writes, edits, moves or deletes them. A human answers a checkpoint through the pinned AskUserQuestion, or by typing a whole prompt that is exactly the audit-grant <n> or audit-accept line (see wiki/concepts/PR Merge Workflow.md, #### The branch checkpoint)."
-DENY_SETTINGS_MSG="BLOCKED: block-audit-loop-write.sh: <main>/.gaia/local/settings.json is the per-machine audit checkpoint override, and only a human edits the override, from outside Claude Code. Claude never creates, writes, edits, moves or deletes it. A human answers a checkpoint through the pinned AskUserQuestion, or by typing a whole prompt that is exactly the audit-grant <n> or audit-accept line (see wiki/concepts/PR Merge Workflow.md, #### The branch checkpoint)."
+DENY_OVERRIDE_MSG="BLOCKED: block-audit-loop-write.sh: <main>/.gaia/local/checkpoint-override.json is the per-machine audit checkpoint override, and only a human edits the override, by hand from outside Claude Code. Claude never creates, writes, edits, moves or deletes it. GAIA's writable per-machine opt-ins live in <main>/.gaia/local/settings.json, which this guard does not cover. A human answers a checkpoint through the pinned AskUserQuestion, or by typing a whole prompt that is exactly the audit-grant <n> or audit-accept line (see wiki/concepts/PR Merge Workflow.md, #### The branch checkpoint)."
 DENY_RECORDER_MSG="BLOCKED: block-audit-loop-write.sh: audit-loop-grant.sh and audit-loop-ask-grant.sh run only as hooks. Claude never executes them from Bash or Monitor, because a piped payload would forge a checkpoint answer. A human answers a checkpoint through the pinned AskUserQuestion, or by typing a whole prompt that is exactly the audit-grant <n> or audit-accept line (see wiki/concepts/PR Merge Workflow.md, #### The branch checkpoint). Naming the files (git add, git diff, git grep -l, shellcheck, cat, bash -n) is allowed."
 DENY_BASH_TRIGGER="Trigger: the command names that path and either redirects into it or carries a write, move or delete verb (rm, mv, cp, tee, ln, touch, sed -i, an interpreter given -c or -e, and the like) outside quotes; in a command holding a heredoc, an unclosed quote, a command substitution inside double quotes, or a redirect target built from a variable or a glob, any redirect or such verb anywhere counts. A command that names the path only as quoted text and redirects elsewhere is allowed, so stage a note that mentions it with printf and a quoted string, no heredoc, or leave the literal path out of the command."
 
-# deny <state|context|settings|recorder> [bash]
+# deny <state|context|override|recorder> [bash]
 deny() {
   local message
   case "$1" in
     context) message="$DENY_CONTEXT_MSG" ;;
-    settings) message="$DENY_SETTINGS_MSG" ;;
+    override) message="$DENY_OVERRIDE_MSG" ;;
     recorder) message="$DENY_RECORDER_MSG" ;;
     *) message="$DENY_STATE_MSG" ;;
   esac
@@ -157,13 +158,14 @@ deny() {
 }
 
 # guarded_class <path>: print the guarded class a path spelling names, or
-# nothing. The settings arm is an exact file name, so `.claude/settings.json`
-# and a sibling such as `.gaia/local/settings.json.bak` do not match.
+# nothing. The override arm is an exact file name, so a sibling such as
+# `.gaia/local/checkpoint-override.json.bak` and the writable opt-ins file
+# `.gaia/local/settings.json` do not match.
 guarded_class() {
   case "$1" in
     */.gaia/local/audit-loop/* | */.gaia/local/audit-loop) printf state ;;
     */.gaia/local/cache/shared/context/* | */.gaia/local/cache/shared/context) printf context ;;
-    */.gaia/local/settings.json) printf settings ;;
+    */.gaia/local/checkpoint-override.json) printf override ;;
   esac
 }
 
@@ -519,7 +521,7 @@ case "$tool_name" in
       case "$resolved" in
         "$main_root/.gaia/local/audit-loop" | "$main_root/.gaia/local/audit-loop"/*) deny state ;;
         "$main_root/.gaia/local/cache/shared/context" | "$main_root/.gaia/local/cache/shared/context"/*) deny context ;;
-        "$main_root/.gaia/local/settings.json") deny settings ;;
+        "$main_root/.gaia/local/checkpoint-override.json") deny override ;;
       esac
     fi
     # Resolved spelling that still names a guarded path (a symlinked checkout
@@ -538,7 +540,7 @@ case "$tool_name" in
     # Pre-filter per class: does the command name the path at all?
     state_names_re='\.gaia/local/audit-loop(/|[[:space:]"'\'';|&)<>]|$)'
     context_names_re='\.gaia/local/cache/shared/context(/|[[:space:]"'\'';|&)<>]|$)'
-    settings_names_re='\.gaia/local/settings\.json([[:space:]"'\'';|&)<>]|$)'
+    override_names_re='\.gaia/local/checkpoint-override\.json([[:space:]"'\'';|&)<>]|$)'
     shell_scan "$cmd"
     if [[ "$cmd" =~ $state_names_re ]] && writes_named "$cmd" "$state_names_re"; then
       deny state bash
@@ -546,8 +548,8 @@ case "$tool_name" in
     if [[ "$cmd" =~ $context_names_re ]] && writes_named "$cmd" "$context_names_re"; then
       deny context bash
     fi
-    if [[ "$cmd" =~ $settings_names_re ]] && writes_named "$cmd" "$settings_names_re"; then
-      deny settings bash
+    if [[ "$cmd" =~ $override_names_re ]] && writes_named "$cmd" "$override_names_re"; then
+      deny override bash
     fi
     exit 0
     ;;

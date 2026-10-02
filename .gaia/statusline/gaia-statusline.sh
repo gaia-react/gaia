@@ -12,7 +12,8 @@
 #
 # Left-side resolution (first match wins):
 #   1. User has `statusLine.command` in `~/.claude/settings.json` → run that
-#      (so the adopter's existing global statusline appears unchanged).
+#      (so the adopter's existing global statusline appears unchanged), unless
+#      the machine chose GAIA's bar in /setup-gaia (statusline.left "gaia").
 #   2. No global command → the default left side (project, branch with a
 #      linked-worktree marker, model and effort, a colored context bar).
 #   3. Last resort, when that cannot render → bare "Claude Code" label.
@@ -170,8 +171,16 @@ fi
 # ---------- Left side ----------
 # First match wins: the user's own global `statusLine.command`, then the ported
 # default (project, branch, model and effort, context bar), then the bare label.
+# A machine whose opt-ins file (main's .gaia/local/settings.json, written by
+# /setup-gaia) says statusline.left "gaia" skips the global command. Any other
+# value, a missing key, or a file without version 1 or that does not parse
+# keeps the global command, which is the behavior with no file at all.
 left=""
-if [ "$GAIA_STATUSLINE_NESTED" != "1" ]; then
+left_choice=""
+if [ -f "$STATE_ROOT/.gaia/local/settings.json" ] && command -v jq >/dev/null 2>&1; then
+  left_choice=$(jq -r 'if type == "object" and .version == 1 and (.statusline | type) == "object" and .statusline.left == "gaia" then "gaia" else empty end' "$STATE_ROOT/.gaia/local/settings.json" 2>/dev/null)
+fi
+if [ "$GAIA_STATUSLINE_NESTED" != "1" ] && [ "$left_choice" != "gaia" ]; then
   user_cmd=""
   if [ -f "$HOME/.claude/settings.json" ] && command -v jq >/dev/null 2>&1; then
     user_cmd=$(jq -r '.statusLine.command // empty' "$HOME/.claude/settings.json" 2>/dev/null)

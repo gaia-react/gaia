@@ -34,8 +34,8 @@ setup() {
   CTX="$MAIN/.gaia/local/cache/shared/context/$CTX_NAME"
   WCTX="$WT/.gaia/local/cache/shared/context/$CTX_NAME"
   printf '{"version":1}' >"$CTX"
-  SETTINGS="$MAIN/.gaia/local/settings.json"
-  WSETTINGS="$WT/.gaia/local/settings.json"
+  OVERRIDE="$MAIN/.gaia/local/checkpoint-override.json"
+  WOVERRIDE="$WT/.gaia/local/checkpoint-override.json"
   ASK_RECORDER="$MAIN/.claude/hooks/audit-loop-ask-grant.sh"
   GRANT_RECORDER="$MAIN/.claude/hooks/audit-loop-grant.sh"
 }
@@ -200,7 +200,7 @@ run_bash() {
 # shape an audit member stages a findings sidecar with.
 @test "printf of quoted text naming each guarded path, redirected to a /tmp file, is allowed" {
   local checked=0 p
-  for p in "$STATE" "$CTX" "$SETTINGS"; do
+  for p in "$STATE" "$CTX" "$OVERRIDE"; do
     run_bash "printf '%s\n' 'the hook trusts $p as written' > $BATS_TEST_TMPDIR/note.txt"
     assert_allowed_by_json
     [ -z "$output" ]
@@ -509,57 +509,57 @@ scratch_hook() {
 # --- override file: edit tools and Bash ---
 
 @test "Write creating the override file is denied with the human-only message" {
-  [ ! -e "$SETTINGS" ]
-  run_edit Write "$SETTINGS"
+  [ ! -e "$OVERRIDE" ]
+  run_edit Write "$OVERRIDE"
   assert_denied_class 'only a human edits the override'
 }
 
 @test "Edit of the override file is denied" {
-  printf '{}' >"$SETTINGS"
-  run_edit Edit "$SETTINGS"
+  printf '{}' >"$OVERRIDE"
+  run_edit Edit "$OVERRIDE"
   assert_denied_class 'only a human edits the override'
 }
 
 @test "Write creating the override file through the worktree spelling is denied" {
-  run_edit Write "$WSETTINGS" "$WT"
+  run_edit Write "$WOVERRIDE" "$WT"
   assert_denied_class 'only a human edits the override'
 }
 
 @test "Bash redirect creating the override file is denied" {
-  run_bash "echo '{}' > $SETTINGS"
+  run_bash "echo '{}' > $OVERRIDE"
   assert_denied_class 'only a human edits the override'
 }
 
 @test "Bash redirect creating the override file through the worktree spelling is denied" {
-  run_bash "echo '{}' > $WSETTINGS" "$WT"
+  run_bash "echo '{}' > $WOVERRIDE" "$WT"
   assert_denied_class 'only a human edits the override'
 }
 
 @test "Bash rm of the override file is denied" {
-  run_bash "rm -f $SETTINGS"
+  run_bash "rm -f $OVERRIDE"
   assert_denied_class 'only a human edits the override'
 }
 
 @test "Bash mv onto the override file is denied" {
-  run_bash "mv /tmp/s.json $SETTINGS"
+  run_bash "mv /tmp/s.json $OVERRIDE"
   assert_denied_class 'only a human edits the override'
 }
 
 @test "Monitor creating the override file is denied" {
-  run_monitor "echo '{}' > $SETTINGS"
+  run_monitor "echo '{}' > $OVERRIDE"
   assert_denied_class 'only a human edits the override'
 }
 
 @test "Bash cat of the override file is allowed" {
-  printf '{}' >"$SETTINGS"
-  run_bash "cat $SETTINGS"
+  printf '{}' >"$OVERRIDE"
+  run_bash "cat $OVERRIDE"
   assert_allowed_by_json
   [ -z "$output" ]
 }
 
 @test "Bash jq read of the override file is allowed" {
-  printf '{}' >"$SETTINGS"
-  run_bash "jq . $SETTINGS"
+  printf '{}' >"$OVERRIDE"
+  run_bash "jq . $OVERRIDE"
   assert_allowed_by_json
   [ -z "$output" ]
 }
@@ -583,7 +583,27 @@ scratch_hook() {
 }
 
 @test "Write to a sibling that merely shares the override file name prefix is allowed" {
-  run_edit Write "$MAIN/.gaia/local/settings.json.bak"
+  run_edit Write "$MAIN/.gaia/local/checkpoint-override.json.bak"
+  assert_allowed_by_json
+  [ -z "$output" ]
+}
+
+# .gaia/local/settings.json holds GAIA's per-machine opt-ins (the statusline
+# left-side choice), which /setup-gaia writes, so the guard must not match it.
+@test "Write to the opt-ins file .gaia/local/settings.json is allowed" {
+  run_edit Write "$MAIN/.gaia/local/settings.json"
+  assert_allowed_by_json
+  [ -z "$output" ]
+}
+
+@test "Write to the opt-ins file through the worktree spelling is allowed" {
+  run_edit Write "$WT/.gaia/local/settings.json" "$WT"
+  assert_allowed_by_json
+  [ -z "$output" ]
+}
+
+@test "Bash redirect into the opt-ins file .gaia/local/settings.json is allowed" {
+  run_bash "echo '{}' > $MAIN/.gaia/local/settings.json"
   assert_allowed_by_json
   [ -z "$output" ]
 }
@@ -759,7 +779,7 @@ bash $GRANT_RECORDER"
   for payload in \
     "$(edit_payload Write "$STATE" "$MAIN")" \
     "$(edit_payload Write "$CTX" "$MAIN")" \
-    "$(edit_payload Write "$SETTINGS" "$MAIN")" \
+    "$(edit_payload Write "$OVERRIDE" "$MAIN")" \
     "$(cmd_payload Bash "bash $ASK_RECORDER" "$MAIN")"; do
     invoke_hook "$payload" "$HOOK_ABS"
     assert_denied_by_json
@@ -795,15 +815,15 @@ bash $GRANT_RECORDER"
 
 @test "red twin: without the widened pre-filter a context redirect and an override redirect are allowed" {
   local twin
-  twin=$(scratch_hook 's/^  \*audit-loop\* \| \*cache\/shared\/context\* \| \*local\/settings\.json\*\) ;;$/  *audit-loop*) ;;/')
+  twin=$(scratch_hook 's/^  \*audit-loop\* \| \*cache\/shared\/context\* \| \*local\/checkpoint-override\.json\*\) ;;$/  *audit-loop*) ;;/')
   invoke_hook "$(cmd_payload Bash "printf x > $CTX" "$MAIN")" "$twin"
   assert_allowed_by_json
-  invoke_hook "$(cmd_payload Bash "echo '{}' > $SETTINGS" "$MAIN")" "$twin"
+  invoke_hook "$(cmd_payload Bash "echo '{}' > $OVERRIDE" "$MAIN")" "$twin"
   assert_allowed_by_json
   # The unmutated hook denies both.
   run_bash "printf x > $CTX"
   assert_denied_by_json
-  run_bash "echo '{}' > $SETTINGS"
+  run_bash "echo '{}' > $OVERRIDE"
   assert_denied_by_json
 }
 
@@ -815,6 +835,6 @@ bash $GRANT_RECORDER"
 }
 
 @test "jq absent: a command that rewrites the override file is refused" {
-  run_without_jq "$(cmd_payload Bash "echo '{}' > $SETTINGS" "$MAIN")"
+  run_without_jq "$(cmd_payload Bash "echo '{}' > $OVERRIDE" "$MAIN")"
   [ "$status" -eq 2 ]
 }

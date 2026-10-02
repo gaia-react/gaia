@@ -66,12 +66,13 @@ One finding per defect, naming the location and the remediation.
 
 ### 5. Settings hygiene
 
-Checks `.claude/settings.json`:
+Checks `.claude/settings.json`, and for the statusLine check `.claude/settings.local.json` too:
 
 - File is valid JSON; unparseable settings is an immediate category `F`.
 - Permission entries whose pattern is a strict subset of another entry's glob are redundant (`info` or `warning`).
 - Any secret-shaped value in the `env` block (`error`).
 - `.claude/settings.local.json` not listed in `.gitignore` (`warning`).
+- The project's effective `statusLine` bypasses `.gaia/statusline/gaia-statusline.sh` (`warning`). The effective one is the first `statusLine.command` set in `.claude/settings.local.json`, then `.claude/settings.json`. It routes through GAIA when its text names `gaia-statusline.sh`, or when it runs a wrapper script whose own text names it (read the script it runs, one level deep). A bypass loses every GAIA nudge, and the audit loop's checkpoint loses its context readings and falls back to counting rounds. Remediation for a `settings.local.json` override: remove its `statusLine` key, or point it at a wrapper that runs `gaia-statusline.sh`; `settings.local.json` is personal and gitignored, so no Fixer edits it and the finding is reported with that fix. Remediation when `.claude/settings.json` itself bypasses it: the `settings` lane restores the shipped `statusLine` command.
 
 Permission-glob semantics: the rule the auditor applies for the strict-subset check, so it does not over-flag distinct entries: `Bash(cmd)` matches the exact command with no arguments; `Bash(cmd:*)` matches `cmd` invoked _with_ arguments. The two are distinct entries, not a redundant pair; a project that runs a command both ways keeps both deliberately. Flag a redundancy only on a genuine strict-subset shadow, e.g. `Bash(git status)` is fully covered by `Bash(git:*)` and is the redundant one.
 
@@ -175,7 +176,7 @@ The Orchestrator dispatches the seven category checks as **parallel subagents** 
 | Category                            | Model      | What it does                                                                                                                                        |
 | ----------------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Hook integrity                      | **Haiku**  | File-exists + executable checks on hook command paths; event-name validation against a known-valid list                                             |
-| Settings hygiene                    | **Haiku**  | `jq` parse of `settings.json`; glob-subset detection; secret-pattern grep on `env` values; `.gitignore` check for `settings.local.json`             |
+| Settings hygiene                    | **Haiku**  | `jq` parse of `settings.json`; glob-subset detection; secret-pattern grep on `env` values; `.gitignore` check for `settings.local.json`; `statusLine` routing through `gaia-statusline.sh` |
 | GAIA-install fitness                | **Haiku**  | Hash-diff of manifest-tracked files against installed-version checksums; version string comparison                                                  |
 | Wiki fitness                        | **Haiku**  | `gaia wiki state` for staleness; `gaia wiki dead-paths`; `gaia wiki orphans`                                                                        |
 | Skill / command / agent frontmatter | **Sonnet** | Frontmatter completeness + placeholder detection (requires judgment); name-collision check                                                          |

@@ -140,20 +140,21 @@ run_in_repo() {
 # cutover-risk scenarios (C4-06, C4-08) run against the shipped registry: the
 # concrete proof that a per-tree entry is genuinely not shared.
 
-@test "gaia_registry_linkable_paths: prints exactly the 10 shared paths in stable order" {
+@test "gaia_registry_linkable_paths: prints exactly the 11 shared paths in stable order" {
   run_in_repo gaia_registry_linkable_paths
   [ "$status" -eq 0 ]
-  [ "${#lines[@]}" -eq 10 ]
+  [ "${#lines[@]}" -eq 11 ]
   [ "${lines[0]}" = "setup-state.json" ]
   [ "${lines[1]}" = "cache/shared/context" ]
   [ "${lines[2]}" = "cache/shared" ]
-  [ "${lines[3]}" = "settings.json" ]
-  [ "${lines[4]}" = "audit" ]
-  [ "${lines[5]}" = "telemetry" ]
-  [ "${lines[6]}" = "telemetry/usage-sweep.lock.d" ]
-  [ "${lines[7]}" = "debt" ]
-  [ "${lines[8]}" = "harden" ]
-  [ "${lines[9]}" = "runs" ]
+  [ "${lines[3]}" = "checkpoint-override.json" ]
+  [ "${lines[4]}" = "settings.json" ]
+  [ "${lines[5]}" = "audit" ]
+  [ "${lines[6]}" = "telemetry" ]
+  [ "${lines[7]}" = "telemetry/usage-sweep.lock.d" ]
+  [ "${lines[8]}" = "debt" ]
+  [ "${lines[9]}" = "harden" ]
+  [ "${lines[10]}" = "runs" ]
 }
 
 @test "gaia_registry_linkable_paths: a per-tree entry (red-ledger) never appears" {

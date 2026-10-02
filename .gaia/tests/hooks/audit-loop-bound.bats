@@ -978,7 +978,7 @@ scratch_copy() {
 settings() {
   mkdir -p "$ALF_ROOT/.gaia/local"
   jq -n -c --argjson t "$1" --argjson p "$2" '{version: 1, context_checkpoint: {ask_tokens: $t, ask_window_pct: $p}}' \
-    >"$ALF_ROOT/.gaia/local/settings.json"
+    >"$ALF_ROOT/.gaia/local/checkpoint-override.json"
 }
 
 @test "fast path: a general-purpose dispatch exits 0 silently without touching the context directory" {
@@ -1323,7 +1323,7 @@ veto_rounds() {
   ctx 240000 1000000
   unit_dispatch
   assert_allowed
-  rm -f "$ALF_ROOT/.gaia/local/settings.json"
+  rm -f "$ALF_ROOT/.gaia/local/checkpoint-override.json"
   ctx 120000 200000
   unit_dispatch
   assert_pinned context

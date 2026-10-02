@@ -11,12 +11,13 @@
 # Does not own: the round count, the grant size or the rubric defaults; those
 # stay in audit-loop-eval.sh.
 #
-# Override rule. An optional machine-local file, <main>/.gaia/local/settings.json,
+# Override rule. An optional machine-local file, <main>/.gaia/local/checkpoint-override.json,
 # may LOWER the line, for example {"version":1,"context_checkpoint":{"ask_tokens":100000}}
 # (ask_tokens, ask_window_pct; version 1 is required). It can never raise it: an
 # absent, invalid, out-of-range or raised value reads as the shipped default.
 # The file is machine-local and writable by whoever runs the session, so a
-# raise would let a session widen its own bound.
+# raise would let a session widen its own bound. A human edits it by hand;
+# Claude's tool writes to it are denied by the audit loop write guard.
 #
 # Low confidence: the shipped defaults are tunable estimates, not measured
 # facts. Their evidence lives in research notes, not here.
@@ -62,7 +63,7 @@ gaia_ctx_file() {
 # gaia_ctx_override <main-root>: print "<ask_tokens> <ask_window_pct>". Each
 # field is honoured only as a JSON integer in 1..default; version must be 1.
 gaia_ctx_override() {
-  local file="${1:-}/.gaia/local/settings.json" out
+  local file="${1:-}/.gaia/local/checkpoint-override.json" out
   local dt="$GAIA_CTX_ASK_TOKENS_DEFAULT" dp="$GAIA_CTX_ASK_WINDOW_PCT_DEFAULT"
   if [ -f "$file" ] && command -v jq >/dev/null 2>&1; then
     out=$(jq -r --argjson dt "$dt" --argjson dp "$dp" '

@@ -8,8 +8,9 @@
 #   - No CI phase heading, no removed CLI verb, no CI token or tool-mode
 #     question.
 #   - `--reconfigure` is parsed, and `RECONFIGURE` is consulted only by the
-#     three decisions it re-opens (Phase 2 sandbox, Phase 3.5 isolation
-#     policy, Phase 3.6 Dependabot) and the Phase 6 ping classification.
+#     decisions it re-opens (Phase 2 sandbox, Phase 3.5 isolation policy,
+#     Phase 3.6 Dependabot, Phase 4.6 statusline left side) and the Phase 6
+#     ping classification.
 #   - Every team-setting read and commit targets `.gaia/project.json`, and so
 #     does the isolation policy read in the shared isolation reference.
 #   - Every `Phase N` cross-reference names a phase heading that exists.
@@ -125,12 +126,12 @@ check_no_ci_phases() {
 }
 
 # ---------------------------------------------------------------------------
-# --reconfigure stays, scoped to its three decisions and the ping
+# --reconfigure stays, scoped to its decisions and the ping
 # ---------------------------------------------------------------------------
 
 # check_reconfigure_scope <file>: the argument parse names --reconfigure and
 # caches RECONFIGURE, and every other RECONFIGURE line sits under Phase 2,
-# 3.5, 3.6, or 6.
+# 3.5, 3.6, 4.6, or 6.
 check_reconfigure_scope() {
   local file="$1" parse_section stray
   parse_section="$(awk '/^## /{inside = ($0 == "## Argument parse")} inside' "$file")"
@@ -146,7 +147,7 @@ check_reconfigure_scope() {
     /^## / { heading = $0 }
     /RECONFIGURE/ {
       if (heading == "## Argument parse") next
-      if (heading ~ /^## Phase (2|3\.5|3\.6|6):/) next
+      if (heading ~ /^## Phase (2|3\.5|3\.6|4\.6|6):/) next
       print NR ": " heading
     }
   ' "$file")"
@@ -156,7 +157,7 @@ check_reconfigure_scope() {
   }
 }
 
-@test "--reconfigure is parsed and RECONFIGURE is read only in Phases 2, 3.5, 3.6, and 6" {
+@test "--reconfigure is parsed and RECONFIGURE is read only in Phases 2, 3.5, 3.6, 4.6, and 6" {
   check_reconfigure_scope "$PAGE"
 }
 
@@ -184,10 +185,12 @@ check_reconfigure_scope() {
 
 # check_project_json <file>: every jq read of a .gaia/*.json file targets
 # .gaia/project.json, the expected three keys are read from it, and the two
-# team-setting commits stage it.
+# team-setting commits stage it. A read of .gaia/local/settings.json is not a
+# team setting: it is the per-machine opt-ins file (the statusline left-side
+# choice), so it is left out of the read set.
 check_project_json() {
   local file="$1" reads stray key staged
-  reads="$(grep -E "jq -r '[^']*' \.gaia/[^ ]*\.json" "$file")"
+  reads="$(grep -E "jq -r '[^']*' \.gaia/[^ ]*\.json" "$file" | grep -vF "' .gaia/local/settings.json" || true)"
   [ -n "$reads" ] || {
     echo "no jq read of a .gaia/*.json file found" >&2
     return 1
