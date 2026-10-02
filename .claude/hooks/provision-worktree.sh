@@ -187,6 +187,44 @@ migrate_keyed_subtrees_to_main() {
   done
 }
 
+# migrate_audit_artifacts_to_main: the same rescue for audit/, which is not
+# tree-keyed. A Code Audit Team member dispatched into a worktree made with
+# plain `git worktree add` writes its earned marker, findings sidecar, and
+# scope file into the worktree's REAL .gaia/local/audit/. Left there, the
+# linker's backup swallows them and the merge gate declines "marker absent"
+# with nothing to say why, and the only recoveries are a full re-audit or a
+# human moving writer-produced artifacts by hand.
+#
+# Moved file by file, top level only: that is where the clearance writer puts
+# them, and every name is digest- or audit-key-scoped, so a name already in
+# main is a collision to report, never one to overwrite or merge.
+migrate_audit_artifacts_to_main() {
+  local src_dir="$tree/.gaia/local/audit"
+  [ -d "$src_dir" ] || return 0
+  gaia_is_linked_worktree "$tree" || return 0
+
+  local main_root
+  main_root="$(gaia_resolve_main_root "$tree" 2>/dev/null)" || return 0
+  [ -n "$main_root" ] || return 0
+  [ "$main_root" = "$tree" ] && return 0
+
+  local dest_dir="$main_root/.gaia/local/audit"
+  local f base dest
+  while IFS= read -r f; do
+    base="$(basename "$f")"
+    dest="$dest_dir/$base"
+    if [ -e "$dest" ]; then
+      log "AUDIT MIGRATION SKIPPED: audit/$base exists in both this worktree and the main checkout -- the worktree's copy is about to be moved aside to $tree/.gaia/local.bak.* and nothing reads it there"
+      continue
+    fi
+    if mkdir -p "$dest_dir" 2>/dev/null && mv "$f" "$dest" 2>/dev/null; then
+      log "migrated audit/$base into $main_root/.gaia/local"
+    else
+      log "AUDIT MIGRATION FAILED: audit/$base -- move it into $dest_dir/ by hand, or the merge gate will decline its marker as absent"
+    fi
+  done < <(find "$src_dir" -maxdepth 1 -type f 2>/dev/null)
+}
+
 # Skipped outright when .gaia/local is itself a symlink. Once the single-symlink
 # cutover has run for this tree, the "old unkeyed path" a worktree sees through
 # that symlink IS main's own data, and moving it under the WORKTREE's own key
@@ -200,6 +238,7 @@ if [ ! -L "$tree/.gaia/local" ]; then
   carry_forward_dir_contents "forensics"
   carry_forward_dir_contents "handoff"
   migrate_keyed_subtrees_to_main
+  migrate_audit_artifacts_to_main
 fi
 
 # ---------- only a linked worktree is provisioned ----------

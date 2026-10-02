@@ -653,6 +653,45 @@ SH
   return 0
 }
 
+# ---------- 24. migrate_audit_artifacts_to_main: the audit/ half ----------
+# A Code Audit Team member dispatched into a worktree made with plain
+# `git worktree add` writes its marker, findings sidecar, and scope file into
+# that worktree's REAL .gaia/local/audit/. Those are not tree-keyed, so the
+# keyed-subtree migration never sees them; without this step they land in the
+# unread backup and the merge gate declines "marker absent".
+@test "worktree-local audit artifacts migrate into main's audit/, byte for byte, reachable through the new symlink" {
+  make_main
+  WT="$(add_worktree feat-migrate-audit)"
+  mkdir -p "$WT/.gaia/local/audit"
+  echo marker-body > "$WT/.gaia/local/audit/abc123.code-audit-maintainer-shell.ok"
+  echo '[]' > "$WT/.gaia/local/audit/def456.feat%2Fx.code-audit-maintainer-shell.findings.json"
+
+  run bash "$HOOK_ABS" "$WT"
+  [ "$status" -eq 0 ]
+
+  [ "$(cat "$MAIN/.gaia/local/audit/abc123.code-audit-maintainer-shell.ok")" = "marker-body" ] || return 1
+  [ "$(cat "$MAIN/.gaia/local/audit/def456.feat%2Fx.code-audit-maintainer-shell.findings.json")" = "[]" ] || return 1
+  [ -L "$WT/.gaia/local" ] || return 1
+  [ "$(cat "$WT/.gaia/local/audit/abc123.code-audit-maintainer-shell.ok")" = "marker-body" ]
+}
+
+@test "an audit artifact already present in main is left alone and the collision is logged" {
+  make_main
+  WT="$(add_worktree feat-migrate-audit-conflict)"
+  mkdir -p "$MAIN/.gaia/local/audit" "$WT/.gaia/local/audit"
+  echo main-marker > "$MAIN/.gaia/local/audit/abc123.code-audit-maintainer-shell.ok"
+  echo worktree-marker > "$WT/.gaia/local/audit/abc123.code-audit-maintainer-shell.ok"
+  echo only-in-worktree > "$WT/.gaia/local/audit/fff999.code-audit-frontend.ok"
+
+  run bash "$HOOK_ABS" "$WT"
+  [ "$status" -eq 0 ]
+
+  grep -qF -- "AUDIT MIGRATION SKIPPED: audit/abc123.code-audit-maintainer-shell.ok exists in both" <<<"$output" || return 1
+  [ "$(cat "$MAIN/.gaia/local/audit/abc123.code-audit-maintainer-shell.ok")" = "main-marker" ] || return 1
+  # A collision on one file does not hold back the rest.
+  [ "$(cat "$MAIN/.gaia/local/audit/fff999.code-audit-frontend.ok")" = "only-in-worktree" ]
+}
+
 @test "dependencies are installed on entry when a lockfile is present" {
   make_main
   add_lockfile
