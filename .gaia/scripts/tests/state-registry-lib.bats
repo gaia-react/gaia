@@ -166,17 +166,18 @@ run_in_repo() {
 
 # ========== gaia_registry_rm_whitelist ==========
 
-@test "gaia_registry_rm_whitelist: prints exactly the 7 rm-whitelist rows in registry order" {
+@test "gaia_registry_rm_whitelist: prints exactly the 8 rm-whitelist rows in registry order" {
   run_in_repo gaia_registry_rm_whitelist
   [ "$status" -eq 0 ]
-  [ "${#lines[@]}" -eq 7 ]
+  [ "${#lines[@]}" -eq 8 ]
   [ "${lines[0]}" = $'.gaia/local/plans\ttrue' ]
   [ "${lines[1]}" = $'.gaia/local/specs\ttrue' ]
   [ "${lines[2]}" = $'.gaia/local/audit\ttrue' ]
   [ "${lines[3]}" = $'.gaia/local/handoff\ttrue' ]
   [ "${lines[4]}" = $'.gaia/local/cache\ttrue' ]
-  [ "${lines[5]}" = $'dist\tfalse' ]
-  [ "${lines[6]}" = $'build\tfalse' ]
+  [ "${lines[5]}" = $'.gaia/local/runs\ttrue' ]
+  [ "${lines[6]}" = $'dist\tfalse' ]
+  [ "${lines[7]}" = $'build\tfalse' ]
 }
 
 @test "gaia_registry_rm_whitelist: no jq on PATH returns 1 and prints nothing on stdout (a caller that cannot read the list treats every path as non-whitelisted)" {
