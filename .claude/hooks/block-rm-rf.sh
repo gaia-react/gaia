@@ -266,6 +266,26 @@ _rm_whitelisted_absolute() {
   return 1
 }
 
+# _rm_whitelist_hint <whitelist_tsv>
+# The next step for an absolute-path deny: the scratch roots an absolute spelling may
+# remove, read from the same list `_rm_whitelisted_absolute` matches against, so the
+# message and the allow cannot disagree. Prints nothing for an empty list, leaving the
+# bare deny text rather than a hint naming no root.
+_rm_whitelist_hint() {
+  local tsv="$1" base children_only roots=""
+  [[ -n "$tsv" ]] || return 0
+  while IFS=$'\t' read -r base children_only; do
+    [[ -n "$base" ]] || continue
+    if [[ "$children_only" == true ]]; then
+      roots="${roots:+$roots, }$base/*"
+    else
+      roots="${roots:+$roots, }$base"
+    fi
+  done <<<"$tsv"
+  [[ -n "$roots" ]] || return 0
+  printf ' An absolute path is removable only inside a project scratch root: %s.' "$roots"
+}
+
 main() {
   set -euo pipefail
 
@@ -629,7 +649,7 @@ main() {
       # shellcheck disable=SC2088
       case "$token" in
         /|/*)
-          deny "BLOCKED: rm -rf of absolute path '$token' is forbidden."
+          deny "BLOCKED: rm -rf of absolute path '$token' is forbidden.$(_rm_whitelist_hint "$rm_whitelist")"
           ;;
         # The brace form is matched alongside the bare one. `${HOME}` is if anything
         # the more careful spelling of the expansion, and leaving it out reproduced

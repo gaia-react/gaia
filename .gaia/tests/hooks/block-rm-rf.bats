@@ -830,6 +830,24 @@ t'
   assert_allowed_by_json
 }
 
+# The PR Merge Workflow prescribes this exact pre-clear of a dispatch artifact,
+# absolute per shell-cwd.md, so the guard must not deny it.
+@test "rm -f of an absolute .gaia/local/runs artifact (the prescribed pre-clear) is allowed" {
+  run_hook_bash 'rm -f /Users/you/projects/my-app/.gaia/local/runs/debt/9-sample/unit-1.json'
+  assert_allowed_by_json
+}
+
+@test "rm -rf of the absolute .gaia/local/runs container itself is denied (children only)" {
+  run_hook_bash 'rm -rf /Users/you/projects/my-app/.gaia/local/runs'
+  assert_denied_because 'rm -rf of absolute path'
+}
+
+@test "the absolute-path deny names the whitelisted scratch roots as the next step" {
+  run_hook_bash 'rm -f /Users/you/projects/my-app/notes.txt'
+  assert_denied_because '.gaia/local/runs/*'
+  assert_denied_because 'dist'
+}
+
 @test "rm -rf of an absolute dist path is allowed" {
   run_hook_bash 'rm -rf /Users/you/projects/my-app/dist'
   assert_allowed_by_json
@@ -1335,6 +1353,22 @@ assert_position_preserving() {
   source_hook
   run _rm_whitelisted_absolute "/x/y/dist" ""
   [ "$status" -eq 1 ]
+}
+
+# --- _rm_whitelist_hint: the absolute-path deny's next step ---
+
+@test "_rm_whitelist_hint: names every root, children_only bases as <base>/*" {
+  source_hook
+  run _rm_whitelist_hint $'.gaia/local/runs\ttrue\ndist\tfalse'
+  [ "$status" -eq 0 ]
+  [ "$output" = ' An absolute path is removable only inside a project scratch root: .gaia/local/runs/*, dist.' ]
+}
+
+@test "_rm_whitelist_hint: an empty tsv prints nothing" {
+  source_hook
+  run _rm_whitelist_hint ""
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
 }
 
 # --- structural ---
