@@ -12,6 +12,25 @@ Build skeleton loading states that are pixel-perfect matches of real content.
 
 Use real HTML elements (`<p>`, `<span>`, `<h2>`, `<button>`) with the same font classes as the real component, plus shimmer + transparency classes. This makes skeletons inherit exact line-height, font-size, and weight, producing pixel-perfect dimensions without hardcoded `h-*`/`w-*` values.
 
+### Define the shimmer animation once
+
+`animate-shimmer` is not a built-in Tailwind utility. If `app/styles/tailwind.css` has no `--animate-shimmer`, add the token and its keyframes inside the existing `@theme` block before using the class (otherwise `better-tailwindcss/no-unknown-classes` fails lint):
+
+```css
+@theme {
+  --animate-shimmer: shimmer 2s linear infinite;
+  /* The gradient is 200% wide (bg-size-[200%_100%]); moving background-position from 100% to -100% shifts it one full tile, so the sweep loops seamlessly. */
+  @keyframes shimmer {
+    from {
+      background-position: 100% 0;
+    }
+    to {
+      background-position: -100% 0;
+    }
+  }
+}
+```
+
 ### Shimmer class constant
 
 Define a shared class string at the top of the skeleton component:

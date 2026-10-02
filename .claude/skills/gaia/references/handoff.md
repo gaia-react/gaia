@@ -40,7 +40,7 @@ Path: `.gaia/local/handoff/<tree_key>/HANDOFF-{YYYY-MM-DD}-{slug}.md`
 
 Use the template below. **Omit any section with no real content**, don't leave empty headings. Keep entries factual and concrete (file paths, commit hashes, command invocations). Cross-reference files with `@path/to/file:line` so the next session can jump straight in.
 
-```markdown
+````markdown
 # Session Handoff
 
 **Date:** {YYYY-MM-DD HH:MM – HH:MM}
@@ -100,7 +100,7 @@ One-and-done. When the Next Actions above are complete and verified (committed o
 `rm -f .gaia/local/handoff/<tree_key>/HANDOFF-{YYYY-MM-DD}-{slug}.md`
 
 If you were interrupted before finishing, leave it. The next `/gaia-pickup` resumes from here.
-```
+````
 
 ### 3. Confirm
 

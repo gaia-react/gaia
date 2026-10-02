@@ -249,82 +249,11 @@ in the `overrides:` map as retained.
 ## Override audit + Wave A: Haiku agent
 
 Spawn a **Haiku agent** (`model: "haiku"`) to run the override audit and the
-Wave A batch install on the **apply set** computed above. Pass it these
-instructions verbatim, substituting the apply set's Wave A entries into the
-Wave A input:
-
----
-
-### Phase 0: Override audit
-
-Each key in the top-level `overrides:` map in `pnpm-workspace.yaml` exists for one of two reasons: to resolve a **peer-dependency conflict**, or to enforce a **security floor** (pin a transitive dependency at or above a patched version to clear a known advisory). The two are detected by different tests, and an override is obsolete only when removing it regresses **neither**. A peer-dep test alone is blind to security-floor pins (a CVE pin never produces a peer-dep error), so it would wrongly delete every one of them. (pnpm 11 reads overrides here; the `package.json` `pnpm.overrides` field is no longer honored.)
-
-**Capture the advisory baseline first**, with every override still in place:
-
-```bash
-pnpm audit --json 2>/dev/null | jq -r '.advisories // {} | keys[]?' | sort -u > /tmp/audit-baseline.txt
-```
-
-Each `.advisories` key is one advisory ID; this file is the set of advisories the current overrides tolerate. (If a future pnpm emits the `vulnerabilities` shape instead of `advisories`, read whichever key is present, the goal is a stable ID set to diff against.)
-
-Then, for each override key, one at a time, leaving every other `pnpm-workspace.yaml` setting untouched:
-
-1. Temporarily remove that single key from the `overrides:` map.
-2. Run `pnpm dedupe`. A bare `pnpm install`, even `pnpm install --force`, short-circuits with "Already up to date" when only the `overrides:` map changed and leaves the lockfile untouched, so the toggle would not re-resolve and the test below would read the stale tree; `pnpm dedupe` performs a full install that re-resolves and applies the override change. See `wiki/dependencies/pnpm-overrides.md`. If it exits non-zero, restore the key, note as **retained (install error)**, and move to the next key, do not diagnose the failure or run the tests below for this key.
-3. **Peer-dep test:** run `pnpm ls 2>&1` and scan for peer-dep errors.
-4. **Security-floor test:** run `pnpm audit --json` and extract its advisory IDs the same way. Any ID present now but absent from `/tmp/audit-baseline.txt` means removing this override reintroduced a known vulnerability.
-
-   ```bash
-   pnpm audit --json 2>/dev/null | jq -r '.advisories // {} | keys[]?' | sort -u > /tmp/audit-now.txt
-   comm -13 /tmp/audit-baseline.txt /tmp/audit-now.txt   # IDs this removal introduced
-   ```
-
-5. Decide:
-   - Peer-dep errors **or** any newly introduced advisory → the override is load-bearing. Restore the key. Note as **retained** (record which test failed, and the advisory ID + package if it was the security-floor test).
-   - Neither regressed → the override is obsolete. Leave it removed. Note as **removed**.
-
-The security-floor test is **severity-agnostic on purpose**: an override is a deliberate maintainer artifact, so any advisory it was silencing, at any severity, is reason to keep it. This is intentionally stricter than the high/critical surfacing floor in the Noise scoping section of `wiki/dependencies/pnpm-audit.md`: deciding whether to *delete a maintainer's pin* warrants more caution than deciding whether to *surface* an advisory for review. A maintainer who wants a pin gone removes it by hand.
-
-**After the toggle loop, assert the lockfile matches config.** Once every retained key is restored, the lockfile's top-level `overrides:` block must list exactly the keys present in the `overrides:` map in `pnpm-workspace.yaml`. Compare the two; on any drift (a config key missing from the lockfile block, or vice versa) the floor is unapplied, so run `pnpm dedupe` once more and re-run the quality gate. This assertion guarantees that every retained floor is applied, never silently disabled. It says nothing about whether a floor is current. Note the tradeoff: `pnpm dedupe` re-optimizes the whole tree, so a single toggle can yield a wider lockfile diff than the one key it touched (it may also drop now-redundant transitives). That broader diff is expected, and correct, the alternative is an unapplied override.
-
-### Wave A input
-
-You are given the **Wave A apply set**: the `wave_a` entries from the
-orchestrator's discovery, minus any group the human chose to skip. Each entry
-carries `name`, `current`, `latest`, `is_pinned`, and `kind` (`minor` or
-`patch`). Do **not** run `pnpm outdated` or re-discover, the ESLint 9.x cap, the
-release-age cooldown, and companion-group expansion are already applied. If the
-Wave A apply set is empty, skip straight to the quality gate (Wave B groups, if
-any, are handled by the orchestrator).
-
-### Wave A (batch minor/patch)
-
-1. Build install args. For each entry: if `is_pinned` use the exact target, else use `^<latest>`. Example: `pnpm add foo@1.2.3 bar@^4.5.0 ...`.
-2. Run the single `pnpm add` command.
-3. Run `pnpm ls 2>&1`. Scan for peer-dep errors.
-4. On error: try one targeted fix in the `overrides:` map in `pnpm-workspace.yaml` (e.g. add a `parent>child` pin), then `pnpm dedupe` to apply it, a bare `pnpm install` won't re-resolve an overrides-only change.
-5. If still failing: revert the offending packages (`pnpm add <pkg>@<previous>`) and log them as **skipped** with the reason.
-6. Run the quality gate (below). If it fails, revert the entire Wave A batch.
-
-### Quality gate
-
-```bash
-pnpm typecheck
-pnpm lint
-pnpm test --run
-pnpm pw
-pnpm build
-```
-
-### Return value
-
-Report back to the orchestrator with:
-
-- Override audit results (removed / retained)
-- Wave A results (updated packages, any skipped)
-- Quality gate results
-
----
+Wave A batch install on the **apply set** computed above. Its prompt tells it to
+read `.claude/skills/update-deps/references/override-audit.md` and
+`.claude/skills/update-deps/references/wave-a.md`, run Phase 0 (skipped under
+`--scope`) then Wave A exactly as written, and gives it the apply set's Wave A
+entries as the Wave A input.
 
 ## Branch creation (after discovery)
 
@@ -360,113 +289,13 @@ For each Wave B group, classify complexity and assign a model:
 
 **Sonnet** (`model: "sonnet"`): `eslint`, all other groups
 
-Spawn one agent per group (or sequentially if resource-constrained), passing it these instructions:
-
----
-
-### Wave B group instructions
-
-You are upgrading the `{GROUP}` dependency group from `{FROM}` to `{TO}`.
-
-**Scope.** Operate on the **root pnpm project only**.
-
-- Run every `pnpm` command from the project root. Never `cd` into subdirectories or use `-C <path>`.
-- For code edits and grep-style searches, scan only `app/`, `test/`, and root config files (`*.config.*`, `tsconfig*.json` at root). Do **not** scan the entire repository, sibling directories may be independent pnpm projects with their own `package.json`/`pnpm-lock.yaml`, and they are out of scope for this skill.
-- A directory is "out of scope" if it contains its own `package.json` or `pnpm-lock.yaml`. Skip those subtrees entirely.
-
-1. **Fetch migration guide** via WebFetch using the table below. If no URL applies, scan the GitHub release notes.
-2. **Install** the group, **from project root only**:
-   - `storybook` group: run `pnpm dlx storybook@latest upgrade` (Storybook's own upgrade tool migrates config alongside the version bump).
-   - All others: `pnpm add <pkg1>@<latest> <pkg2>@<latest> ...` for every group member present in root `package.json`.
-3. **Conflict check**: `pnpm ls 2>&1`. On peer-dep error, attempt one `overrides:` fix in `pnpm-workspace.yaml`, then `pnpm dedupe` to apply it, a bare `pnpm install` won't re-resolve an overrides-only change. If still failing, revert the group and skip with reason.
-4. **Apply breaking changes** within root scope: from the migration guide, identify code-affecting changes (renamed APIs, removed exports, config schema changes). Grep `app/`, `test/`, and root config files for affected patterns. Edit only files inside root scope.
-5. **Verify root `package.json` moved**: read root `package.json` and confirm every group member you bumped now shows the new version. If `pnpm add` did not change root's spec (e.g. the dep is declared in a sibling project's `package.json` and not actually consumed by root code), revert the install and report the package as **skipped, not a root dep**. The skill does not resolve cross-project declarations; the maintainer must clean up manually. If the dep is in root `package.json` but has zero call sites in root scope, that's a phantom declaration: bump it anyway so the version stays current, and add a one-line note `phantom: no call sites in root` to the breaking-changes report so the maintainer can investigate.
-6. **Quality gate**:
-   ```bash
-   pnpm typecheck
-   pnpm lint
-   pnpm test --run
-   pnpm pw
-   pnpm build
-   ```
-   On failure, make one remediation pass: apply fixes inferred from the migration guide, then re-run the gate once. If it still fails after that single re-run, revert the entire group and log as skipped. Do not keep iterating.
-
-Migration guide URLs:
-
-| Group        | URL                                                                        |
-| ------------ | -------------------------------------------------------------------------- |
-| react-router | `https://reactrouter.com/upgrading/v7`                                     |
-| react        | `https://react.dev/blog` (find the major-version post)                     |
-| tailwindcss  | `https://tailwindcss.com/docs/upgrade-guide`                               |
-| storybook    | `https://storybook.js.org/docs/migration-guide`                            |
-| vitest       | `https://vitest.dev/guide/migration`                                       |
-| playwright   | `https://playwright.dev/docs/release-notes`                                |
-| eslint       | `https://eslint.org/docs/latest/use/migrate-to-9` (or relevant X)          |
-| singleton:typescript | `https://www.typescriptlang.org/docs/handbook/release-notes/overview.html` |
-| msw          | `https://mswjs.io/docs/migrations`                                         |
-| vite         | `https://vite.dev/guide/migration`                                         |
-
-Report back: updated packages, breaking changes applied, any skipped reason, quality gate results.
-
----
+Spawn one agent per group (or sequentially if resource-constrained). Its prompt tells it to read `.claude/skills/update-deps/references/wave-b-group.md` and follow it exactly, with GROUP, FROM and TO filled in.
 
 ## Phase 5b: Transitive refresh (Haiku agent)
 
 Waves A and B move direct specs only, and pnpm keeps a transitive dependency's locked version for as long as its parent's range still admits it, so a vulnerable transitive whose patched release is already in range survives every earlier phase. This phase asks pnpm for the newest in-range version of every transitive dependency. It runs before Phase 6 so the post-update override audit reads the refreshed tree.
 
-Skip it when the human skipped `transitive-refresh` in the preview (report `Declined in preview`) or under `--scope` (report `Not run (--scope)`). Otherwise spawn a **Haiku agent** (`model: "haiku"`) and pass it these instructions verbatim, substituting the **frozen names**: every package in `skipped[]` with `reason: "held"`, plus every member of a group in the skip set (empty when nothing was held or skipped).
-
----
-
-### Transitive refresh instructions
-
-Operate on the root pnpm project only: run every `pnpm` command from the project root, never with `-r`, `-C`, or `cd`. Frozen names: `{FROZEN_NAMES}`.
-
-1. **Snapshot** the three files the refresh could touch, and the direct dependencies' resolved versions:
-   ```bash
-   mkdir -p /tmp/update-deps-refresh
-   cp package.json pnpm-lock.yaml pnpm-workspace.yaml /tmp/update-deps-refresh/
-   pnpm ls --depth 0 --json | jq '.[0] | (.dependencies // {}) + (.devDependencies // {}) | map_values(.version)' > /tmp/update-deps-refresh/direct.json
-   ```
-2. **Refresh:**
-   ```bash
-   pnpm update --no-save --depth Infinity
-   ```
-   `--no-save` leaves every range in `package.json` as declared, so direct specs stay with Waves A and B; `--depth Infinity` spells out pnpm's default of re-resolving the whole tree. Do not use `pnpm update --latest` (it ignores ranges) or `pnpm dedupe` (it moves a transitive only when that removes a duplicate). pnpm applies `minimumReleaseAge` while it resolves, so no version younger than the window lands; never add a `minimumReleaseAgeExclude` entry or change any setting to get a version through. If the command exits non-zero, revert (step 6) with reason `install error: <first error line>`.
-3. **Check what it touched.**
-   - `package.json` and `pnpm-workspace.yaml` must be byte-identical to the snapshot (`cmp`). A difference means pnpm rewrote a range or recorded a release-age exemption: revert with reason `rewrote <file>`.
-   - Re-run the step 1 `pnpm ls` line into `/tmp/update-deps-refresh/direct-after.json` and compare each frozen name's version with `direct.json`. A frozen name whose version changed means the refresh moved a held or snoozed package inside its range: revert with reason `moved frozen <name> (<from> -> <to>); pin it to an exact version in package.json to let the refresh run`.
-4. **List what moved**, from the lockfile's `packages:` keys before and after:
-   ```bash
-   lock_keys() {
-     awk '/^packages:/{p=1;next} /^[^ ]/{p=0} p && /^  [^ ]/{k=$0; sub(/^  /,"",k); sub(/:$/,"",k); gsub(/\047/,"",k); print k}' "$1" | sort -u
-   }
-   lock_keys /tmp/update-deps-refresh/pnpm-lock.yaml > /tmp/update-deps-refresh/keys-before
-   lock_keys pnpm-lock.yaml > /tmp/update-deps-refresh/keys-after
-   { comm -23 /tmp/update-deps-refresh/keys-before /tmp/update-deps-refresh/keys-after | sed 's/^/- /'; comm -13 /tmp/update-deps-refresh/keys-before /tmp/update-deps-refresh/keys-after | sed 's/^/+ /'; } |
-     awk '{ i=match($2, /.@[^@]*$/); n=substr($2,1,i); v=substr($2,i+2); if ($1=="-") from[n]=(n in from ? from[n] ", " : "") v; else to[n]=(n in to ? to[n] ", " : "") v; seen[n]=1 }
-          END { for (n in seen) printf "%s\t%s\t%s\n", n, (n in from ? from[n] : "(new)"), (n in to ? to[n] : "(removed)") }' | sort
-   ```
-   Each row is `package<TAB>from<TAB>to`; a package locked at several versions lists them comma-separated. Empty output means nothing moved: report `Nothing moved` and stop, there is nothing to gate.
-5. **Quality gate**:
-   ```bash
-   pnpm typecheck
-   pnpm lint
-   pnpm test --run
-   pnpm pw
-   pnpm build
-   ```
-   On any failure, revert (step 6) with reason `quality gate failed: <step>`. No remediation pass: one gate run cannot say which of the moved packages broke it.
-6. **Revert** restores the whole refresh, never part of it:
-   ```bash
-   cp /tmp/update-deps-refresh/package.json /tmp/update-deps-refresh/pnpm-lock.yaml /tmp/update-deps-refresh/pnpm-workspace.yaml .
-   pnpm install --frozen-lockfile
-   cmp pnpm-lock.yaml /tmp/update-deps-refresh/pnpm-lock.yaml
-   ```
-
-Report back: the outcome (`landed`, `Nothing moved`, or `Reverted (<reason>)`), the step 4 rows (for a revert, the rows that would have moved, when step 4 ran), and the quality gate results.
-
----
+Skip it when the human skipped `transitive-refresh` in the preview (report `Declined in preview`) or under `--scope` (report `Not run (--scope)`). Otherwise spawn a **Haiku agent** (`model: "haiku"`). Its prompt tells it to read `.claude/skills/update-deps/references/transitive-refresh.md` and follow it exactly, with the frozen names as FROZEN_NAMES. The **frozen names** are every package in `skipped[]` with `reason: "held"`, plus every member of a group in the skip set (empty when nothing was held or skipped).
 
 ## Phase 6: Post-update override audit
 
@@ -476,7 +305,7 @@ On a refresh-only run Phase 0 did not run: Phase 6 runs only when Phase 5b repor
 
 Run this as a **Haiku agent**. Its dispatch carries every Phase 6 duty, so pass it all four of these:
 
-- **The recipe.** The Phase 0 section and the Quality gate subsection above verbatim, restricted to the keys retained in Phase 0, so every quality-gate run it owes runs those same commands.
+- **The recipe.** `.claude/skills/update-deps/references/override-audit.md` (tell the agent to read it), restricted to the keys retained in Phase 0, so every quality-gate run it owes runs those same commands.
 - **When to gate.** Run the quality gate once, after the lockfile assertion, whenever it removed any key or repaired lockfile drift. No Wave agent gated that change. This replaces the drift-only trigger in the Phase 0 section.
 - **On a failed gate.** Restore every key it removed to the value it held when this Phase 6 run began, run `pnpm dedupe` to apply the restore, and re-run the lockfile assertion. This is the counterpart of Wave A reverting its whole batch: one gate run cannot say which key broke it, so the restore takes them all. Report each restored removal as **retained (quality gate failed)**. When it changed no key and the gate ran only for a drift repair, there is nothing to restore: report the failure for the maintainer to resolve.
 - **What to return.** The override audit results (removed / retained) and the quality gate results, including a failed gate and whatever restore followed it, so the Phase 7 Quality gate section has the Phase 6 run to report.

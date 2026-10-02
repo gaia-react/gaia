@@ -14,7 +14,6 @@ All paths in this file are repo-relative or derived from `$PROJECT_ROOT`, never 
 
 ```bash
 PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
-GIT_DIR="$PROJECT_ROOT/.git"
 ```
 
 All paths below are repo-relative or `$PROJECT_ROOT`-prefixed.
@@ -46,18 +45,17 @@ Before any heal-phase mutation, determine whether the repo is in a safe state.
 **Detect unsafe states:**
 
 ```bash
-# Detached HEAD, returns empty when HEAD is symbolic; non-empty when attached
-git -C "$PROJECT_ROOT" symbolic-ref -q HEAD
-
-# In-progress operations
-test -d "$GIT_DIR/rebase-merge"
-test -d "$GIT_DIR/rebase-apply"
-test -f "$GIT_DIR/MERGE_HEAD"
-test -f "$GIT_DIR/CHERRY_PICK_HEAD"
-test -f "$GIT_DIR/BISECT_LOG"
+PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+GIT_DIR="$(git -C "$PROJECT_ROOT" rev-parse --absolute-git-dir)"
+git -C "$PROJECT_ROOT" symbolic-ref -q HEAD >/dev/null || echo "unsafe: HEAD is detached"
+for marker in rebase-merge rebase-apply MERGE_HEAD CHERRY_PICK_HEAD BISECT_LOG; do
+  if [ -e "$GIT_DIR/$marker" ]; then echo "unsafe: $marker present"; fi
+done
 ```
 
-**If HEAD is detached OR any in-progress operation file/directory exists → triage-only path:**
+Run it as a single Bash call. No output means the state is safe. Each `unsafe:` line is a reason to report: rebase-merge/rebase-apply mean a rebase is in progress, MERGE_HEAD a merge, CHERRY_PICK_HEAD a cherry-pick, BISECT_LOG a bisect.
+
+**If the block printed any `unsafe:` line → triage-only path:**
 
 1. Run Step 3 (triage) as normal.
 2. Compute and print the grades.

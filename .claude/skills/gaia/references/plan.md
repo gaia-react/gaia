@@ -4,6 +4,12 @@ Plan a complex feature using the task orchestration pattern. Do not implement an
 
 This command is the plan-specific case of the Workflow Doctrine (`wiki/concepts/Workflow Doctrine.md`), which defines roles, git ownership, checkpoint and resume, and model choice. For plan runs, this file's own contract (per-phase commits and gates, `PROGRESS.md`, the orchestrator's executor pins) governs where the two differ.
 
+## Contents
+
+This reference is longer than one `Read` returns. Page through it with `offset` to the end of step 5 before acting on any step.
+
+- Steps: 1 description (1a SPEC reference); 2 planner model; 3 plan directory; 4 planning agent; 4.5 verify output; 4.6 decomposition audit; 4.7 token tally; 5 report and kickoff prompt
+
 ## Steps
 
 ### 1. Get description
@@ -16,7 +22,7 @@ Otherwise, ask: **"What do you want me to orchestrate?"** and wait for the respo
 
 Check the description for a SPEC reference. Three forms are recognized:
 
-1. **Bare id** (the canonical form `/gaia-spec` now hands off): `$ARGUMENTS`, trimmed, is exactly `SPEC-\d+` and nothing else, e.g. `SPEC-026`.
+1. **Bare id** (the canonical form `/gaia-spec` hands off): `$ARGUMENTS`, trimmed, is exactly `SPEC-\d+` and nothing else, e.g. `SPEC-026`.
 2. **Path form**: a path matching `.gaia/local/specs/SPEC-\d+/SPEC\.md` appears anywhere in the description.
 3. **Prefix form** (the older, verbose handoff shape, still accepted for pasted history): a `SPEC-\d+:` prefix at the start of the description.
 
@@ -222,7 +228,7 @@ Then write the following files directly to `{PLAN_DIR}/`:
       The maintainer-scope members are advisory-only and never self-heal: their findings are the orchestrator's to fix.
       <!-- gaia:maintainer-only:end -->
 
-      The default member's LOCAL Task return is terse (pointer + counts + marker line); the full per-finding detail lives in the re-run carry-forward ledger (`.gaia/local/audit/<audit-key>.rerun.json`, `<audit-key>` the incremental base sha plus the acting tree's own branch, `.gaia/scripts/audit-key-lib.sh`), the default member's own ledger. To surface its open findings, the orchestrator reads the ledger's `remaining[]` (enumerating Critical, Important, and escalated Suggestions for the user) instead of expecting a full inline report. Fail-open: if the ledger is absent, corrupt, or stale, the default member's return carries the full report (it emits the full report whenever it could not write the ledger), so the orchestrator surfaces the open findings from that report as today. A specialized member carries no such ledger; its report carries its own findings directly.
+      The default member's LOCAL Task return is terse (pointer + counts + marker line); the full per-finding detail lives in the re-run carry-forward ledger (`.gaia/local/audit/<audit-key>.rerun.json`, `<audit-key>` the incremental base sha plus the acting tree's own branch, `.gaia/scripts/audit-key-lib.sh`), the default member's own ledger. To surface its open findings, the orchestrator reads the ledger's `remaining[]` (enumerating Critical, Important, and escalated Suggestions for the user) instead of expecting a full inline report. Fail-open: if the ledger is absent, corrupt, or stale, the default member's return carries the full report (it emits the full report whenever it could not write the ledger), so the orchestrator surfaces the open findings from that report. A specialized member carries no such ledger; its report carries its own findings directly.
 
     - **Sub-agent invocation:** the verbatim prompt template for each task sub-agent. **Each task sub-agent MUST be dispatched as `general-purpose` with `model: "sonnet"` explicitly pinned.** The feature's complexity is resolved upstream, during `/gaia-spec` + its audit and `/gaia-plan` + the decomposition audit, precisely so execution can run on the cheaper model. Pin Sonnet on the dispatch itself so the executors run on Sonnet regardless of the orchestrator's own session model: a cold orchestrator is often on Opus, and an unpinned sub-agent inherits that. **Escape hatch:** the planner MAY pin `model: "opus"` on a specific phase or task it judges to be genuinely deep synthesis (a subtle parser grammar, a cross-cutting type redesign), but must name which phase and why in that phase's `ORCHESTRATOR.md` entry. Sonnet is the floor; Opus is a per-phase, justified exception, never the blanket default.
 
