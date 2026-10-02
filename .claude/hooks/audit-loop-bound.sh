@@ -77,8 +77,8 @@
 # `audit-loop-unit`; the harness sets both on a sub-agent's call and neither on
 # the main thread's, and the same session_id reaches both. Any other member
 # dispatch (the main thread, or some other sub-agent) is judged as a one-round
-# unit: the cap, the rubric, a fresh grant, then the context line or the
-# fallback, and it appends no `history.units` entry. Limit: the check trusts
+# unit: the cap, the rubric, a fresh grant, a spent accept, then the context
+# line or the fallback, and it appends no `history.units` entry. Limit: the check trusts
 # the harness's payload fields; a harness that stops sending them makes every
 # dispatch read as the main thread's, which is the stricter judgement.
 #

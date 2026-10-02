@@ -105,7 +105,7 @@ _gaia_loop_used() {
 _gaia_loop_decide_unit_k() {
   local state="$1" snap="${2:-null}" reading="$3" tokens="$4" pct="$5" k="$6"
   local int='^[0-9]{1,12}$' fresh='^fresh (0|[1-9][0-9]{0,11}) (0|[1-9][0-9]{0,11})$'
-  local used elig sig s answer line allowed reading_tokens reading_window
+  local used elig sig s answer spent line allowed reading_tokens reading_window
   [[ $tokens =~ $int && $pct =~ $int && $k =~ $int ]] && [ "$k" -ge 1 ] || return 2
   used="$(_gaia_loop_used "$state")" || return 5
   elig="$(_gaia_loop_snap_elig "$snap")"
@@ -140,6 +140,18 @@ _gaia_loop_decide_unit_k() {
       return 0
       ;;
   esac
+  # The inverse of gaia_loop_next_closing: the accepted closing round is
+  # already recorded.
+  spent="$(printf '%s' "$state" | jq -r '
+    (.allowance.answers | last) as $a
+    | if $a == null or $a.kind != "accept" then false
+      else ([.history.checkpoints[] | select(.index == $a.checkpoint)] | .[0].at_round) as $c
+      | ($c != null and (.history.rounds | length) > $c)
+      end' 2>/dev/null)" || return 5
+  if [ "$spent" = true ]; then
+    printf 'deny fallback %s false\n' "$elig"
+    return 0
+  fi
   if [[ $reading =~ $fresh ]]; then
     reading_tokens="${BASH_REMATCH[1]}"
     reading_window="${BASH_REMATCH[2]}"
