@@ -1450,8 +1450,10 @@ veto_rounds() {
 @test "a unit dispatch over 9 rounds with 9 snapshotted dispositions files decides within 5 seconds" {
   local r t0 t1 i
   alf_sequence 6 5 4 3 2 2 1 1 1
+  # With no baselines every round reads the newest sidecar, which reports only
+  # f.txt:1, and the dispositions check requires that finding disposed.
   for r in 1 2 3 4 5 6 7 8 9; do
-    alf_dispositions "$r" '[]'
+    alf_dispositions "$r" "$(alf_entries f.txt 1 1 | jq -c 'map(. + {member: "code-audit-frontend", disposition: "fix", reason: ""})')"
   done
   bash "$REPO_ROOT/.gaia/scripts/audit-dispositions-check.sh" check-all --root "$ALF_ROOT" \
     --run-folder "$ALF_ROOT/.gaia/local/runs/$ALF_B" --snapshot-dir "${ALF_STATE%.json}.d"

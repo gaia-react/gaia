@@ -5,8 +5,9 @@
 # The audit loop state directory (<main>/.gaia/local/audit-loop/) is written only
 # by the audit loop hooks. This guard denies Claude's Edit / Write / MultiEdit
 # calls that resolve into it (including through a linked worktree's `.gaia/local`
-# symlink and a `..` segment) and Bash / Monitor commands that name it alongside
-# a write, move or delete spelling, while allowing reads and the audit loop
+# symlink and a `..` segment) and Bash / Monitor commands that redirect into it
+# or name it alongside a write, move or delete verb, while allowing reads,
+# quoted notes that mention it redirected elsewhere, and the audit loop
 # scripts, which never name the state directory. A path segment that merely ends
 # in `audit-loop` (a worktree named like `spec-091-audit-loop`) does not arm it.
 
@@ -191,6 +192,91 @@ run_bash() {
   assert_denied_by_json
   grep -qF -- 'The branch checkpoint' <<<"$output"
   grep -qF -- 'outside Claude Code' <<<"$output"
+}
+
+# --- redirect target, not redirect anywhere ---
+
+# A note that quotes a guarded path as text and is redirected elsewhere is the
+# shape an audit member stages a findings sidecar with.
+@test "printf of quoted text naming each guarded path, redirected to a /tmp file, is allowed" {
+  local checked=0 p
+  for p in "$STATE" "$CTX" "$SETTINGS"; do
+    run_bash "printf '%s\n' 'the hook trusts $p as written' > $BATS_TEST_TMPDIR/note.txt"
+    assert_allowed_by_json
+    [ -z "$output" ]
+    checked=$((checked + 1))
+  done
+  [ "$checked" -eq 3 ]
+}
+
+@test "a double-quoted note naming the state path with a write verb as text, redirected to /tmp, is allowed" {
+  run_bash "printf '%s\n' \"never rm or mv $STATE by hand\" >> $BATS_TEST_TMPDIR/note.txt"
+  assert_allowed_by_json
+  [ -z "$output" ]
+}
+
+@test "Bash redirect into the quoted state path is denied" {
+  run_bash "printf '{}' > \"$STATE\""
+  assert_denied_by_json
+}
+
+@test "Bash redirect into the state path after a quoted note is denied" {
+  run_bash "printf '%s' 'a > b' > $STATE"
+  assert_denied_by_json
+}
+
+@test "Bash write inside a quoted command substitution is denied" {
+  run_bash "x=\"\$(printf '{}' > $STATE)\""
+  assert_denied_by_json
+}
+
+@test "Bash write after a heredoc whose body has an apostrophe is denied" {
+  run_bash "cat <<EOF > $BATS_TEST_TMPDIR/n
+don't
+EOF
+echo x > $STATE"
+  assert_denied_by_json
+}
+
+# An apostrophe in a comment is not a quote: read as one it would swallow the
+# write between two comments.
+@test "Bash rm of the state path between two comments with apostrophes is denied" {
+  run_bash "echo hi # don't
+rm $STATE # it's gone"
+  assert_denied_by_json
+}
+
+@test "Bash rm -f of the state path after a comment line with an apostrophe is denied" {
+  run_bash "# don't do this lightly
+rm -f $STATE
+# it's fine now"
+  assert_denied_by_json
+}
+
+@test "Bash redirect into the state path between comment lines with apostrophes is denied" {
+  run_bash "# don't do this lightly
+echo '{}' > $STATE
+# it's fine now"
+  assert_denied_by_json
+}
+
+# A redirect target built from a variable or a glob can land on the path the
+# command names elsewhere.
+@test "Bash redirect into a variable holding the state directory is denied" {
+  run_bash "D=$MAIN/.gaia/local/audit-loop/feat; echo x > \"\$D/x.json\""
+  assert_denied_by_json
+}
+
+@test "Bash redirect in a loop over a glob of the state directory is denied" {
+  run_bash "for f in $MAIN/.gaia/local/audit-loop/feat/*.json; do echo '{}' > \"\$f\"; done"
+  assert_denied_by_json
+}
+
+@test "the Bash deny text names the trigger and an allowed spelling" {
+  run_bash "echo x > $STATE"
+  assert_denied_by_json
+  grep -qF -- 'redirects into it' <<<"$output"
+  grep -qF -- 'only as quoted text' <<<"$output"
 }
 
 # --- allowed ---
@@ -566,6 +652,34 @@ assert_recorder_denied() {
   printf '{"seed":1}' >"$STATE"
   assert_recorder_denied "echo hi
 bash $GRANT_RECORDER"
+}
+
+# A checkout path with a space: the quoted recorder path is one shell word, so
+# splitting before the quotes are read would hand the guard `.../My` instead.
+@test "bash running the quoted grant recorder under a spaced checkout path is denied" {
+  printf '{"seed":1}' >"$STATE"
+  assert_recorder_denied "bash \"$FIX/My Repo/.claude/hooks/audit-loop-grant.sh\" < p.json"
+}
+
+@test "the quoted grant recorder under a spaced checkout path as the command word is denied" {
+  printf '{"seed":1}' >"$STATE"
+  assert_recorder_denied "\"$FIX/My Repo/.claude/hooks/audit-loop-grant.sh\" < p.json"
+}
+
+@test "bash running the quoted ask recorder under a spaced checkout path is denied" {
+  printf '{"seed":1}' >"$STATE"
+  assert_recorder_denied "bash \"$FIX/My Repo/.claude/hooks/audit-loop-ask-grant.sh\" < p.json"
+}
+
+@test "the quoted ask recorder under a spaced checkout path as the command word is denied" {
+  printf '{"seed":1}' >"$STATE"
+  assert_recorder_denied "\"$FIX/My Repo/.claude/hooks/audit-loop-ask-grant.sh\" < p.json"
+}
+
+@test "git add of the quoted recorder under a spaced checkout path is allowed" {
+  run_bash "git -C \"$FIX/My Repo\" add -- \"$FIX/My Repo/.claude/hooks/audit-loop-grant.sh\""
+  assert_allowed_by_json
+  [ -z "$output" ]
 }
 
 @test "Monitor piping a forged payload to the ask recorder is denied" {
