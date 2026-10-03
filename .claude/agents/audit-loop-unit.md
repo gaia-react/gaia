@@ -48,7 +48,7 @@ Follow the page in this order: `#### The audit loop unit` for the unit's shape, 
 - Every `waive-out-of-scope` entry carries `basis`: `cross-remit` only for a finding whose sidecar entry has `cross_remit: true`, otherwise `triage-threshold`.
 - Every key in `Vetoes:` whose `effective_from_round` is at or before this round is disposed `fix`, as a synthetic `fix` entry when no member re-reports it.
 - After writing the dispositions file, run `bash <root>/.gaia/scripts/audit-dispositions-check.sh check --root <root> --run-folder <run> --round <r>` (no `--snapshot-dir`). On a non-zero exit stop `dispositions-check-failed` with no commit.
-- Then baseline, fixer, verify, gate, round-check, one commit, push.
+- Then baseline, fixer, verify, gate, round-check, one commit, push. The commit subject is `fix(<scope>): address audit round <r> findings`, `<scope>` the area the round's fixes touch (`hooks`, `cli`) or `audit` when they span several; a free-form subject the `commit-msg` hook refuses would stop the unit with nothing to recover.
 <!-- gaia:maintainer-only:start -->
 - In this repo the gate also runs `bash .gaia/tests/shell-lint.sh` and the referencing bats suites through `bats5.sh < /dev/null`.
 <!-- gaia:maintainer-only:end -->

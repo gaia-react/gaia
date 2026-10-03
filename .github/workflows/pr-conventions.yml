@@ -1,0 +1,151 @@
+name: PR Conventions
+
+# Checks the two names a pull request carries that no local hook sees: its head
+# branch and its title. The commit-msg hook lints every commit a developer
+# makes, but the PR title is what lands on main when the repository squash-merges
+# with the title as the commit subject, and a branch name is validated nowhere
+# else.
+#
+#   1. Branch: `.gaia/scripts/branch-name-lib.sh validate` on the head branch.
+#      It runs before any Node setup, so a bad name fails in seconds.
+#   2. Canary: commitlint must REJECT `debt: canary`. If it accepts that retired
+#      type, the config is not being read (a rename, a broken import, an empty
+#      rule set), and the title check below would pass everything. Without this
+#      step an inert config reports a green check having linted nothing.
+#   3. Title: commitlint on `"<title> (#<number>)"`, the exact subject GitHub
+#      lands under the squash setting, so the 100-character header limit applies
+#      to what ends up in history rather than to the bare title.
+#   4. Type match: a branch minted as `<type>/plan-<nnn>` or `<type>/spec-<nnn>`
+#      declares its change type, and the title's type must equal it. A legacy
+#      `plan/...` branch and every non-plan branch declare none, so this step
+#      passes for them.
+#
+# Dependabot's grouped titles routinely run 99 characters, so the appended
+# ` (#N)` pushes the squash subject past 100. Its title is therefore skipped
+# (steps 3 and 4), and its `dependabot/*` branch is already exempt in step 1.
+#
+# `synchronize` is in the trigger set because a status attaches to the head
+# commit: without it a new push leaves the check on a stale sha, and a branch
+# renamed or retitled mid-review would keep an old verdict. `edited` re-runs on
+# a retitle. There is no paths filter, because a title and a branch name are not
+# scoped to any file.
+#
+# Safe on fork pull requests: it uses `pull_request` (never
+# `pull_request_target`), no secrets, and only checkout's read-only token. Every
+# event value reaches a script through `env:`, never through an expression inside
+# a `run:` body, so a title such as `feat: $(id)` is data, not code.
+#
+# Pinned action SHAs match .github/workflows/cli-tests.yml:
+#   actions/checkout    @ 3d3c42e5aac5ba805825da76410c181273ba90b1 (v7.0.1)
+#   pnpm/action-setup   @ ea17c68df8912ef543352723c149a84f56e3d413 (v6.1.0)
+#   actions/setup-node  @ 820762786026740c76f36085b0efc47a31fe5020 (v7.0.0)
+# The last two are used through the local composite action, which carries them.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+# Default-deny, so a job added later inherits no scope rather than the
+# repository default. The job below grants exactly what it needs.
+permissions: {}
+
+jobs:
+  pr-conventions:
+    name: Conventions check (PR title and head branch) (advisory)
+    runs-on: ubuntu-latest
+    # A checkout, a filtered install of two packages, and a few commitlint runs.
+    # Ten minutes is a wide margin; without a cap a stalled install burns the
+    # 6-hour default.
+    timeout-minutes: 10
+    # Read-only token for checkout. This job lints and reports, it never writes.
+    permissions:
+      contents: read
+    steps:
+      # persist-credentials is off: nothing here pushes, so the token has no
+      # reason to stay in the git config.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate the head branch name
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -u
+          if ! message="$(bash .gaia/scripts/branch-name-lib.sh validate "$HEAD_REF" 2>&1)"; then
+            printf '::error::%s\n' "$message"
+            exit 1
+          fi
+          printf 'Branch %s is valid.\n' "$HEAD_REF"
+      # `install: none` and a filtered install of our own: the composite's `root`
+      # arm is a plain `pnpm install --frozen-lockfile`, which also installs the
+      # frontend workspace (the whole app and its test tooling) that this job
+      # never touches. `--filter .` is the root importer alone, which is
+      # commitlint and its shared config; the lockfile stays frozen. The composite
+      # is still the right caller because the next step runs pnpm itself, so the
+      # store its cache step saves exists.
+      - name: Setup Node
+        uses: ./.github/actions/gaia-setup-node
+        with:
+          install: none
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install the root workspace only
+        run: pnpm install --frozen-lockfile --filter .
+      - name: Prove commitlint rejects a retired type
+        run: |
+          set -u
+          if output="$(printf 'debt: canary\n' | pnpm exec commitlint 2>&1)"; then
+            echo "::error::commitlint accepted a retired type; the config is not being read"
+            exit 1
+          fi
+          # A bare non-zero exit is not proof: a broken install or an
+          # unloadable config also exits non-zero. Only the type-enum rule
+          # naming the type shows the shared type list was read and applied.
+          case "$output" in
+            *type-enum*) ;;
+            *)
+              printf '%s\n' "$output"
+              echo "::error::commitlint failed without naming the type-enum rule; the config did not load or the install is broken"
+              exit 1
+              ;;
+          esac
+          echo "Canary rejected by type-enum as expected."
+      - name: Lint the PR title as the squash subject
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          set -u
+          if [ "$PR_AUTHOR" = "dependabot[bot]" ]; then
+            echo "::notice::Skipping the title lint for Dependabot: its grouped titles run long enough that the appended PR number passes the header limit."
+            exit 0
+          fi
+          printf '%s (#%s)\n' "$PR_TITLE" "$PR_NUMBER" | pnpm exec commitlint --verbose
+      - name: Match the title type to the branch type
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          set -u
+          if [ "$PR_AUTHOR" = "dependabot[bot]" ]; then
+            echo "::notice::Skipping the type match for Dependabot."
+            exit 0
+          fi
+          branch_type="$(bash .gaia/scripts/branch-name-lib.sh plan-type "$HEAD_REF")"
+          if [ -z "$branch_type" ]; then
+            echo "Branch $HEAD_REF declares no change type; nothing to match."
+            exit 0
+          fi
+          title_type="${PR_TITLE%%[(!:]*}"
+          if [ "$title_type" != "$branch_type" ]; then
+            printf '::error::Branch %s declares type %s but the PR title has type %s; retitle the PR to start with %s: or %s(<scope>):\n' \
+              "$HEAD_REF" "$branch_type" "$title_type" "$branch_type" "$branch_type"
+            exit 1
+          fi
+          printf 'Title type %s matches the branch.\n' "$title_type"

@@ -672,6 +672,6 @@ Tell the user:
 4. If Step 7e reported stale package settings, or you resolved a `.claude/settings.json` conflict patch, run `./.gaia/cli/gaia packages sync-settings` and then `bash .gaia/scripts/check-settings-drift.sh`, and stage the regenerated `frontend/.claude/settings.json`. Never hand-edit that file.
 5. Run the quality gate per `wiki/decisions/Quality Gate.md` to verify the updated code still passes.
 6. Inspect the diff (`git diff`) before committing.
-7. When satisfied, commit with `chore: update GAIA to $LATEST_TAG`.
+7. When satisfied, commit with `chore(gaia): update to $LATEST_TAG`.
 
 Do **not** auto-commit on behalf of the user, they need to review the changes first.

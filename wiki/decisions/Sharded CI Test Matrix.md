@@ -4,19 +4,19 @@ status: active
 priority: 2
 date: 2026-08-13
 created: 2026-08-13
-updated: 2026-09-12
+updated: 2026-10-04
 tags: [decision, ci, performance, github-actions, bats]
 ---
 
 # Decision: Sharded CI Test Matrix
 
-The `GAIA: Audit CI Tests` workflow is the whole pull-request critical path. It runs as a fan-out matrix of twelve legs plus a thin aggregator that carries the declared-required check name, because the bats work saturates a single runner's cores and the remaining lever is more runners.
+The `GAIA: Audit CI Tests` workflow is the whole pull-request critical path. It runs as a fan-out matrix of legs plus a thin aggregator that carries the declared-required check name, because the bats work saturates a single runner's cores and the remaining lever is more runners.
 
 ## Shape
 
 `.github/workflows/audit-ci-tests.yml` declares these jobs:
 
-- `shards`, a matrix of twelve legs: ten bats shards (`hooks-1` to `hooks-4`, `scripts-1` to `scripts-3`, `audit`, `lib`, `misc`), the `.gaia/tests/sandbox` conformance tree, and the INV-7 concurrency meter.
+- `shards`, a matrix whose legs are named in the workflow's `matrix.shard` list: the bats shards (assigned by `.gaia/tests/bats-shards.sh`), the `.gaia/tests/sandbox` conformance tree, the INV-7 concurrency meter, and the `commitlint` leg, which installs only the root workspace and runs the `.gaia/tests/commitlint/` suites against the real commitlint binary.
 - `audit-ci-tests`, the aggregator, which reads `shards`'s result and exits non-zero for anything other than `success`.
 
 Splitting the required check name off the work is what lets `fail-fast: false` stop one failing shard from cancelling its siblings without also cancelling the check. The aggregator compares against `success` rather than enumerating failure states, so a conclusion GitHub adds later fails closed, and `always()` on its `if:` stops a skip-on-dependency-failure from satisfying a required context that ran nothing.

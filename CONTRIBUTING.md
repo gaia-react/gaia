@@ -40,8 +40,8 @@ If you do want to contribute code:
 
 Read **Contributing code** above first; unassigned and unsolicited PRs are closed unreviewed, no matter how good the diff.
 
-1. Fork. Branch from `main`. Name the branch by intent: `fix/`, `feat/`, `chore/`, `docs/`.
-2. Commit messages follow conventional commits: `fix(scope): what`, `feat(scope): what`. Run `git log --oneline` for examples.
+1. Fork. Branch from `main`. Name the branch `<type>/[<issue>-]<slug>` with a Conventional Commits type, lowercase kebab.
+2. Commit subjects and the PR title follow Conventional Commits: `fix(scope): what`, `feat(scope): what`. A `commit-msg` hook enforces the subject locally (run `pnpm install` once so it can find commitlint), and the `PR Conventions` check enforces the PR title and branch name. The format is documented in [wiki/decisions/Naming Conventions.md](wiki/decisions/Naming%20Conventions.md).
 3. The quality gate must pass locally before you push: `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`. Zero warnings allowed. This is the project's distinguishing stance, not a starting position to negotiate.
 4. The code-review audit will run on your PR. It dispatches React Patterns, TypeScript and Architecture, and Translation specialists in parallel against your diff. It blocks the merge until findings are resolved.
 5. No `eslint-disable`, no `@ts-ignore`, no `eslint-disable-next-line`. If a rule is wrong for the case, open a separate PR to refine the rule. If the rule is right, fix the source.

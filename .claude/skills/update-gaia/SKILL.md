@@ -229,7 +229,7 @@ else
     echo "PR #$existing already open for $branch, pushed the new commit to it."
   else
     gh pr create --base main --head "$branch" \
-      --title "chore: update GAIA to $LATEST_TAG" \
+      --title "chore(gaia): update to $LATEST_TAG" \
       --body "Pulls GAIA $LATEST_TAG into the project. Per-file outcomes are in the update summary above."
   fi
 fi

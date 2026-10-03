@@ -519,6 +519,15 @@ jobs:
               # self-maintains where the per-page entries cannot: a page added
               # later arms through it without anyone editing this list.
               - 'wiki/**'
+              # branch-name-lib.bats and usage-resolve.bats pin the branch
+              # validator's and the issue-link regex's type lists to the shared
+              # type file, and commitlint.config.mjs reads that file at load
+              # time. Neither matches another entry here, so without these two
+              # lines a pull request that edits only the type list or the config
+              # resolves `code=false`, skips every bats step, and greens the job
+              # having run both lockstep suites zero times.
+              - '.gaia/conventional-commits.json'
+              - 'commitlint.config.mjs'
             # The .gaia/tests/sandbox/ conformance tree gets its own filter
             # output rather than joining `code:` above, so a sandbox-only edit
             # arms that leg's own steps without arming the full matrix.
@@ -587,6 +596,11 @@ jobs:
               - '.gaia/conventional-commits.json'
               # The hook that runs the same config on every commit.
               - '.githooks/commit-msg'
+              # The PR conventions workflow whose steps pr-conventions.bats
+              # extracts and runs, and the branch validator and plan-type
+              # reader those steps call.
+              - '.github/workflows/pr-conventions.yml'
+              - '.gaia/scripts/branch-name-lib.sh'
               # The install inputs: commitlint and its shared config are root
               # devDependencies, so a bump of either, of the toolchain, or of the
               # workspace settings the frozen install obeys changes what the
@@ -968,11 +982,13 @@ jobs:
       - if: matrix.shard == 'concurrency' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Run the INV-7 concurrency meter
         run: bash .gaia/tests/concurrency/meter-gate.sh
-      # The suite fails in setup_file when commitlint is absent rather than
+      # The suites fail in setup_file when commitlint is absent rather than
       # skipping, so a leg whose install silently produced nothing reds here.
+      # The directory is run whole: the non-shard allowlist excuses every
+      # suite under it on the strength of this step.
       - if: matrix.shard == 'commitlint' && (steps.filter.outputs.commitlint == 'true' || github.event_name == 'workflow_dispatch')
-        name: Run the commitlint config suite
-        run: bash .gaia/scripts/bats5.sh .gaia/tests/commitlint/commitlint-config.bats
+        name: Run the commitlint suites
+        run: bash .gaia/scripts/bats5.sh .gaia/tests/commitlint/
 
   # The declared-required check. `needs: [shards]` makes it the second hop of
   # a 2-hop chain the arithmetic above is sized to, and `always()` is what
