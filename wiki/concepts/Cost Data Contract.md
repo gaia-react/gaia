@@ -3,7 +3,7 @@ type: concept
 title: Cost Data Contract
 status: active
 created: 2026-07-05
-updated: 2026-09-30
+updated: 2026-10-03
 tags: [concept, cost, data-contract, audit]
 ---
 
@@ -56,7 +56,7 @@ An `execute` action appends one cumulative row per commit, `seq` incrementing pe
 
 ## Review rows
 
-A `code-review-audit` run (the pre-merge gate, or an ad-hoc invocation) writes a standalone `kind: "review"` row rather than nesting into a spec/plan/execute phase; `plan_slug` is always `null` on these rows. Two triggers can fire for the same run, a `gh pr merge` PostToolUse hook and a Stop hook, `token-tally.sh --action review` owns the window detection and `review_id` dedup so only the first trigger writes a row. A spec/plan/execute phase's own aggregated total excludes any overlapping `code-review-audit` window from its buckets, so a reader summing a phase row plus its `review` rows never double-counts.
+A `code-review-audit` run (the pre-merge gate, or an ad-hoc invocation) writes a standalone `kind: "review"` row rather than nesting into a spec/plan/execute phase; `plan_slug` is always `null` on these rows. Any Code Audit Team member counts as a review run, with the member set read from the audit roster, so an audit that dispatched only a specialist still writes its row. Two triggers can fire for the same run, a `gh pr merge` PostToolUse hook and a Stop hook, `token-tally.sh --action review` owns the window detection and `review_id` dedup so only the first trigger writes a row. A spec/plan/execute phase's own aggregated total excludes any overlapping `code-review-audit` window from its buckets, so a reader summing a phase row plus its `review` rows never double-counts.
 
 ## Maintenance-command rows
 
