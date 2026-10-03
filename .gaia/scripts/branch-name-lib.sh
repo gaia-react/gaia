@@ -13,13 +13,14 @@
 #
 # THE CONVENTION. Every GAIA branch is `<kind>/<rest>`, one kind per row, first
 # matching row wins when reading. The prefix says which workflow produced the
-# branch; the commit type (`.gaia/conventional-commits.json`) says what changed.
+# branch, except for a plan branch, whose prefix is the commit type
+# (`.gaia/conventional-commits.json`) of the change the plan implements.
 #
 #   kind        canonical shape                         mode         unit
 #   debt        debt/<a>-<b>[-<c>...]-batch             drain        <a>-<b>...
 #   debt        debt/<n>[-<slug>]                       drain        <n>
-#   plan        plan/spec-<nnn>[-<slug>]                plan         SPEC-<nnn>
-#   plan        plan/plan-<nnn>[-<slug>]                plan         plan-<nnn>
+#   plan        <type>/spec-<nnn>[-<slug>]              plan         SPEC-<nnn>
+#   plan        <type>/plan-<nnn>[-<slug>]              plan         plan-<nnn>
 #   audit       audit/<YYYY-MM-DD-HHMM>                 maintenance  <rest>
 #   harden      harden/<YYYY-MM-DD-HHMM>                maintenance  <rest>
 #   fitness     fitness/<YYYY-MM-DD-HHMM>               maintenance  <rest>
@@ -31,6 +32,8 @@
 #   forensics   forensics/<issue>-<class-slug>          maintenance  <rest>
 #   chore       chore/<task>-<YYYY-MM-DD-HHMM>          maintenance  <rest>  (legacy)
 #   wiki-sync   wiki-sync/<YYYY-MM-DD>-<short-sha>      maintenance  <rest>  (legacy)
+#   plan        plan/spec-<nnn>[-<slug>]                plan         SPEC-<nnn>  (legacy)
+#   plan        plan/plan-<nnn>[-<slug>]                plan         plan-<nnn>  (legacy)
 #   (any other branch, including main, a `chore/` or `wiki/` branch outside
 #   the rows above, and hand-named `<type>/[<issue>-]<slug>` branches)
 #                                                       adhoc        unknown
@@ -39,10 +42,14 @@
 # unit that comes out empty is `unknown`. `debt` and `plan` names carry the
 # unit a reader needs (the issue numbers a drain closes, the SPEC a plan
 # implements); the maintenance kinds carry a timestamp so two runs never
-# collide.
+# collide. A plan branch is recognized by its unit (`plan-<nnn>` or
+# `spec-<nnn>`) under any lowercase prefix that is not a workflow kind above,
+# so the type is matched by shape here and enforced by gaia_branch_validate
+# and by gaia_branch_name, which read the JSON. A hand-named
+# `<type>/planning-notes` has no digits after `plan-`, so it stays adhoc.
 #
-# Legacy spellings (`chore/<task>-<ts>`, `wiki-sync/`, and the `worktree-*`
-# spelling below) are read so existing branches, PR heads, and ledgers keep
+# Legacy spellings (`chore/<task>-<ts>`, `wiki-sync/`, `plan/`, and the
+# `worktree-*` spelling below) are read so existing branches, PR heads, and ledgers keep
 # classifying; none is minted. The `chore/` row requires the timestamp suffix,
 # so a hand-named `chore/fix-typo` stays adhoc.
 #
@@ -81,8 +88,14 @@
 #   branch. Returns 0.
 #
 # gaia_branch_spec_number <branch>
-#   Prints the SPEC number a `plan/spec-<nnn>` branch names, leading zeros
-#   stripped (`plan/spec-005-x` prints 5). Prints nothing otherwise. Returns 0.
+#   Prints the SPEC number a `<type>/spec-<nnn>` or legacy `plan/spec-<nnn>`
+#   branch names, leading zeros stripped (`refactor/spec-005-x` prints 5).
+#   Prints nothing otherwise. Returns 0.
+#
+# gaia_branch_plan_type <branch>
+#   Prints the commit type a type-prefixed plan branch carries (`feat` for
+#   `feat/plan-024-x`). Prints nothing for a legacy `plan/` branch and for every
+#   non-plan branch. Returns 0.
 #
 # gaia_branch_list [directory]
 #   Prints every local branch and every remote-tracking branch of the
@@ -96,13 +109,16 @@
 #   on stdout, and returns 2. Kinds:
 #     debt <issue> [--slug <text>]        debt/<issue>[-<slug>]
 #     debt <issue> <issue>... [--batch]   debt/<ascending members>-batch
-#     plan <spec-NNN|plan-NNN> [--slug <text>]
-#                                         plan/<id>[-<slug>]
+#     plan <spec-NNN|plan-NNN> --type <type> [--slug <text>]
+#                                         <type>/<id>[-<slug>]
 #     audit | harden | fitness | residue | deps
 #                                         <kind>/<UTC YYYY-MM-DD-HHMM>
 #     update <version>                    update/v<version>-<UTC YYYY-MM-DD-HHMM>
 #     release <version>                   release/v<version>
 #   A leading `v` on <version> is stripped. The retired `chore` kind exits 2.
+#   `--type` is required for `plan` and is lowercase letters; when `jq` and
+#   `.gaia/conventional-commits.json` are readable it must also be one of the
+#   JSON's `types`, and without them the shape check alone applies.
 #   <slug> is reduced to lowercase kebab-case; a slug is truncated
 #   to keep the whole name within 64 bytes. Two or more distinct issues always
 #   mint a batch name, which carries no slug; `--batch` is accepted and
@@ -120,7 +136,8 @@
 #   remainder that is non-empty with no leading or trailing `-`, a valid ref
 #   name, and a prefix that is a workflow kind in the table or a `types`
 #   entry of the JSON. Legacy `wiki-sync/` is invalid; legacy
-#   `chore/<task>-<ts>` passes as a hand-named `chore/<slug>`.
+#   `chore/<task>-<ts>` passes as a hand-named `chore/<slug>`. A `plan/` branch
+#   is valid only as `plan/plan-<nnn>[-<slug>]` or `plan/spec-<nnn>[-<slug>]`.
 #
 # Usage (sourced):
 #   . .gaia/scripts/branch-name-lib.sh
@@ -132,7 +149,9 @@
 #   bash .gaia/scripts/branch-name-lib.sh name update v2.0.0
 #   bash .gaia/scripts/branch-name-lib.sh classify worktree-debt+42-fix
 #   bash .gaia/scripts/branch-name-lib.sh members debt/41-42-batch
-#   bash .gaia/scripts/branch-name-lib.sh spec-number plan/spec-005-cards
+#   bash .gaia/scripts/branch-name-lib.sh name plan spec-005 --type feat --slug cards
+#   bash .gaia/scripts/branch-name-lib.sh spec-number feat/spec-005-cards
+#   bash .gaia/scripts/branch-name-lib.sh plan-type feat/plan-024-cards
 #   bash .gaia/scripts/branch-name-lib.sh list [directory]
 #   bash .gaia/scripts/branch-name-lib.sh validate fix/2450-statusline-nudge
 
@@ -208,7 +227,8 @@ gaia_branch_normalize() {
 
 # _gaia_branch_set_class <branch>: sets _gaia_branch_mode and _gaia_branch_unit.
 _gaia_branch_set_class() {
-  local normalized_name mode="adhoc" unit="" rest="" id="" lead=""
+  local LC_ALL=C
+  local normalized_name mode="adhoc" unit="" rest="" id="" lead="" prefix=""
   _gaia_branch_set_normalized "${1-}"
   normalized_name="$_gaia_branch_normalized_name"
   # Trailing newlines dropped, as a command substitution of the normalized
@@ -259,6 +279,30 @@ _gaia_branch_set_class() {
       mode="maintenance"
       unit="${normalized_name#*/}"
       ;;
+    [a-z]*/spec-* | [a-z]*/plan-*)
+      prefix="${normalized_name%%/*}"
+      case "$prefix" in
+        *[!a-z]*) ;;
+        *)
+          rest="${normalized_name#*/}"
+          case "$rest" in
+            spec-* | plan-*)
+              id="${rest%%-*}"
+              lead="${rest#*-}"
+              lead="${lead%%-*}"
+              if _gaia_branch_is_digits "$lead"; then
+                mode="plan"
+                if [ "$id" = "spec" ]; then
+                  unit="SPEC-${lead}"
+                else
+                  unit="plan-${lead}"
+                fi
+              fi
+              ;;
+          esac
+          ;;
+      esac
+      ;;
   esac
 
   [ -n "$unit" ] || unit="unknown"
@@ -297,6 +341,15 @@ gaia_branch_spec_number() {
   case "$classified" in
     "plan SPEC-"*) printf '%s\n' "$(_gaia_branch_strip_zeros "${unit#SPEC-}")" ;;
   esac
+  return 0
+}
+
+gaia_branch_plan_type() {
+  _gaia_branch_set_class "${1-}"
+  [ "$_gaia_branch_mode" = "plan" ] || return 0
+  [ "$_gaia_branch_unit" != "unknown" ] || return 0
+  [ "${_gaia_branch_normalized_name%%/*}" != "plan" ] || return 0
+  printf '%s\n' "${_gaia_branch_normalized_name%%/*}"
   return 0
 }
 
@@ -343,8 +396,37 @@ _gaia_branch_emit() {
   printf '%s\n' "$name"
 }
 
+# _gaia_branch_load_types: sets _gaia_branch_types to the space-joined `types`
+# of the JSON beside this library and returns 0. Returns 1 with the reason in
+# _gaia_branch_types_error when jq or the file is unusable, so a caller decides
+# whether that is fatal (validate) or falls back to a shape check (name).
+_gaia_branch_load_types() {
+  local library_path="${BASH_SOURCE[0]:-}" library_directory="" types_file
+  _gaia_branch_types=""
+  command -v jq >/dev/null 2>&1 || {
+    _gaia_branch_types_error="jq is not on PATH; install jq"
+    return 1
+  }
+  case "$library_path" in
+    */*) library_directory="${library_path%/*}" ;;
+    "") library_directory="" ;;
+    *) library_directory="." ;;
+  esac
+  types_file="${library_directory}/../conventional-commits.json"
+  if [ -z "$library_directory" ] || [ ! -r "$types_file" ]; then
+    _gaia_branch_types_error=".gaia/conventional-commits.json is not readable beside this library"
+    return 1
+  fi
+  _gaia_branch_types="$(jq -er 'if (.types | type == "array" and length > 0 and all(type == "string")) then .types | join(" ") else empty end' "$types_file" 2>/dev/null)" || _gaia_branch_types=""
+  if [ -z "$_gaia_branch_types" ]; then
+    _gaia_branch_types_error=".gaia/conventional-commits.json has no usable types list"
+    return 1
+  fi
+  return 0
+}
+
 gaia_branch_name() {
-  local kind="${1-}" slug="" argument="" members="" id="" version="" count=0
+  local kind="${1-}" slug="" argument="" members="" id="" version="" count=0 type=""
   [ "$#" -gt 0 ] && shift
 
   case "$kind" in
@@ -400,13 +482,40 @@ gaia_branch_name() {
             slug="$(_gaia_branch_kebab "$1")"
             shift
             ;;
+          --type)
+            shift
+            [ "$#" -gt 0 ] || { echo "gaia_branch_name: --type needs a value" >&2; return 2; }
+            type="$1"
+            shift
+            ;;
           *)
             printf 'gaia_branch_name: unexpected argument %s\n' "$1" >&2
             return 2
             ;;
         esac
       done
-      _gaia_branch_emit "plan/${id}" "$slug"
+      [ -n "$type" ] || {
+        echo "gaia_branch_name: plan needs --type <type>, the commit type of the change the plan implements, for example --type feat" >&2
+        return 2
+      }
+      case "$type" in
+        *[!a-z]*)
+          printf 'gaia_branch_name: --type %s must be lowercase letters only\n' "$type" >&2
+          return 2
+          ;;
+      esac
+      # Minting must not depend on jq: when the type list is unreadable the
+      # shape check above is all that applies, and validate is the backstop.
+      if _gaia_branch_load_types; then
+        case " ${_gaia_branch_types} " in
+          *" ${type} "*) ;;
+          *)
+            printf 'gaia_branch_name: --type %s is not a commit type; use one of: %s\n' "$type" "$_gaia_branch_types" >&2
+            return 2
+            ;;
+        esac
+      fi
+      _gaia_branch_emit "${type}/${id}" "$slug"
       ;;
     audit | harden | fitness | residue | deps)
       if [ "$#" -gt 0 ]; then
@@ -442,8 +551,7 @@ gaia_branch_name() {
 # only when they pass, and an unreadable JSON returns 2, never 0.
 gaia_branch_validate() {
   local LC_ALL=C
-  local branch="${1-}" normalized prefix remainder types_file types=""
-  local library_path="${BASH_SOURCE[0]:-}" library_directory
+  local branch="${1-}" normalized prefix remainder types="" plan_id plan_lead
 
   case "$branch" in
     dependabot/*) return 0 ;;
@@ -504,6 +612,19 @@ gaia_branch_validate() {
       ;;
   esac
 
+  if [ "$prefix" = "plan" ]; then
+    plan_id="${remainder%%-*}"
+    plan_lead="${remainder#*-}"
+    plan_lead="${plan_lead%%-*}"
+    case "$plan_id" in
+      spec | plan) _gaia_branch_is_digits "$plan_lead" ;;
+      *) false ;;
+    esac || {
+      printf 'gaia_branch_validate: %s uses the legacy plan/ prefix, which only plan-<nnn> and spec-<nnn> names may keep; name it <type>/plan-<nnn>-<slug>, for example feat/plan-024-slug\n' "$branch" >&2
+      return 1
+    }
+  fi
+
   command -v jq >/dev/null 2>&1 || {
     echo "gaia_branch_validate: cannot decide: jq is not on PATH; install jq" >&2
     return 2
@@ -512,21 +633,11 @@ gaia_branch_validate() {
     echo "gaia_branch_validate: cannot decide: git is not on PATH" >&2
     return 2
   }
-  case "$library_path" in
-    */*) library_directory="${library_path%/*}" ;;
-    "") library_directory="" ;;
-    *) library_directory="." ;;
-  esac
-  types_file="${library_directory}/../conventional-commits.json"
-  if [ -z "$library_directory" ] || [ ! -r "$types_file" ]; then
-    echo "gaia_branch_validate: cannot decide: .gaia/conventional-commits.json is not readable beside this library" >&2
+  _gaia_branch_load_types || {
+    printf 'gaia_branch_validate: cannot decide: %s\n' "$_gaia_branch_types_error" >&2
     return 2
-  fi
-  types="$(jq -er 'if (.types | type == "array" and length > 0 and all(type == "string")) then .types | join(" ") else empty end' "$types_file" 2>/dev/null)" || types=""
-  if [ -z "$types" ]; then
-    echo "gaia_branch_validate: cannot decide: .gaia/conventional-commits.json has no usable types list" >&2
-    return 2
-  fi
+  }
+  types="$_gaia_branch_types"
 
   case " debt plan audit harden fitness residue deps update release forensics ${types} " in
     *" ${prefix} "*) ;;
@@ -550,11 +661,12 @@ if [ "${BASH_SOURCE[0]:-}" = "$0" ]; then
     classify) gaia_branch_classify "${1-}" ;;
     members) gaia_branch_members "${1-}" ;;
     spec-number) gaia_branch_spec_number "${1-}" ;;
+    plan-type) gaia_branch_plan_type "${1-}" ;;
     normalize) gaia_branch_normalize "${1-}"; printf '\n' ;;
     list) gaia_branch_list "${1-}" ;;
     validate) gaia_branch_validate "${1-}"; exit $? ;;
     *)
-      echo "usage: branch-name-lib.sh name|classify|members|spec-number|normalize|list|validate <args>" >&2
+      echo "usage: branch-name-lib.sh name|classify|members|spec-number|plan-type|normalize|list|validate <args>" >&2
       exit 2
       ;;
   esac

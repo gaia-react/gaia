@@ -83,6 +83,18 @@ worktree_spelling() {
     "plan/spec-005|plan SPEC-005" \
     "plan/plan-012-execution|plan plan-012" \
     "plan/cards-layout|plan unknown" \
+    "feat/plan-024-x|plan plan-024" \
+    "feat/plan-024|plan plan-024" \
+    "fix/spec-012|plan SPEC-012" \
+    "docs/spec-007-cards|plan SPEC-007" \
+    "wiki/spec-003-notes|plan SPEC-003" \
+    "feat/planning-notes|adhoc unknown" \
+    "feat/plan-x|adhoc unknown" \
+    "feat/spec-|adhoc unknown" \
+    "feat/a/spec-1|adhoc unknown" \
+    "Feat/plan-1|adhoc unknown" \
+    "audit/plan-1|maintenance plan-1" \
+    "debt/spec-1|drain unknown" \
     "audit/2026-10-03-1200|maintenance 2026-10-03-1200" \
     "harden/2026-10-03-1200|maintenance 2026-10-03-1200" \
     "fitness/2026-10-03-1200|maintenance 2026-10-03-1200" \
@@ -106,6 +118,26 @@ worktree_spelling() {
     expect_classify "$branch" "$want"
     expect_classify "$(worktree_spelling "$branch")" "$want"
   done
+}
+
+@test "table: a type-prefixed plan branch classifies exactly as the legacy plan/ spelling of the same unit" {
+  local pair
+  for pair in "feat/plan-024-x plan/plan-024-x" "fix/spec-012 plan/spec-012" "docs/spec-007-cards plan/spec-007-cards" \
+    "refactor/plan-5 plan/plan-5"; do
+    [ "$(gaia_branch_classify "${pair%% *}")" = "$(gaia_branch_classify "${pair#* }")" ] || {
+      echo "pair '$pair' classifies differently" >&2
+      return 1
+    }
+  done
+}
+
+@test "the type-prefixed plan arm can fail: a lib without it classifies feat/plan-024-x as adhoc" {
+  local scratch_library="$BATS_TEST_TMPDIR/branch-name-lib-no-plan-arm.sh"
+  sed 's#^    \[a-z\]\*/spec-\* | \[a-z\]\*/plan-\*)$#    zz-never-matches/*)#' "$LIBRARY" >"$scratch_library"
+  cmp -s "$LIBRARY" "$scratch_library" && return 1
+  run bash -c ". '$scratch_library' && gaia_branch_classify feat/plan-024-x"
+  [ "$status" -eq 0 ]
+  [ "$output" = "adhoc unknown" ]
 }
 
 @test "table: mode never leaves the closed vocabulary, and classify never fails" {
@@ -141,6 +173,8 @@ worktree_spelling() {
   [ "$(gaia_branch_members "worktree-debt+41-42-batch" | tr '\n' ' ')" = "41 42 " ]
   [ -z "$(gaia_branch_members "debt/no-number")" ]
   [ -z "$(gaia_branch_members "plan/spec-005-x")" ]
+  [ -z "$(gaia_branch_members "feat/plan-024-x")" ]
+  [ -z "$(gaia_branch_members "worktree-fix+spec-012-x")" ]
   [ -z "$(gaia_branch_members "main")" ]
 }
 
@@ -152,6 +186,57 @@ worktree_spelling() {
   [ -z "$(gaia_branch_spec_number "spec-005-x")" ]
 }
 
+@test "spec-number: a type-prefixed SPEC plan branch prints its number, a type-prefixed plan-NNN branch prints nothing" {
+  [ "$(gaia_branch_spec_number "refactor/spec-005-x")" = "5" ]
+  [ "$(gaia_branch_spec_number "docs/spec-007-cards")" = "7" ]
+  [ "$(gaia_branch_spec_number "worktree-fix+spec-012-x")" = "12" ]
+  [ "$(gaia_branch_spec_number "plan/spec-005-x")" = "5" ]
+  [ -z "$(gaia_branch_spec_number "feat/plan-024-x")" ]
+  [ -z "$(gaia_branch_spec_number "feat/spec-notes")" ]
+}
+
+# plan_type_in <library> <branch>: the plan-type output of the library copy at <library>.
+plan_type_in() {
+  run bash -c ". '$1' && gaia_branch_plan_type '$2'"
+}
+
+@test "plan-type: a type-prefixed plan branch prints its type, in either spelling" {
+  [ "$(gaia_branch_plan_type "feat/plan-024-x")" = "feat" ]
+  [ "$(gaia_branch_plan_type "fix/spec-012")" = "fix" ]
+  [ "$(gaia_branch_plan_type "docs/spec-007-cards")" = "docs" ]
+  [ "$(gaia_branch_plan_type "worktree-fix+spec-012-x")" = "fix" ]
+  [ "$(bash "$LIBRARY" plan-type feat/plan-024-x)" = "feat" ]
+}
+
+@test "plan-type: legacy plan/ branches, hand-named branches, workflow branches and non-plan names print nothing" {
+  local branch
+  for branch in plan/plan-023-conventional-commits-naming plan/spec-005-x worktree-plan+spec-005 feat/planning-notes \
+    feat/new-thing debt/12-spec-1 audit/plan-1 release/v1.0.0 main ""; do
+    run gaia_branch_plan_type "$branch"
+    [ "$status" -eq 0 ] || { echo "branch '$branch': status $status" >&2; return 1; }
+    [ -z "$output" ] || { echo "branch '$branch': printed '$output'" >&2; return 1; }
+  done
+}
+
+@test "the plan-type test can fail: a lib that prints nothing for a type-prefixed plan branch is reported" {
+  local scratch_library="$BATS_TEST_TMPDIR/branch-name-lib-no-plan-type.sh"
+  sed 's#^  \[ "\$_gaia_branch_mode" = "plan" \] || return 0$#  return 0#' "$LIBRARY" >"$scratch_library"
+  cmp -s "$LIBRARY" "$scratch_library" && return 1
+  plan_type_in "$scratch_library" feat/plan-024-x
+  [ "$status" -eq 0 ]
+  [ "$output" != "feat" ]
+}
+
+@test "the plan-type legacy exclusion can fail: a lib that drops it prints plan for plan/spec-005-x" {
+  local scratch_library="$BATS_TEST_TMPDIR/branch-name-lib-legacy-type.sh"
+  plan_type_in "$LIBRARY" plan/spec-005-x
+  [ -z "$output" ]
+  sed 's#^  \[ "\${_gaia_branch_normalized_name%%/\*}" != "plan" \] || return 0$#  :#' "$LIBRARY" >"$scratch_library"
+  cmp -s "$LIBRARY" "$scratch_library" && return 1
+  plan_type_in "$scratch_library" plan/spec-005-x
+  [ "$output" = "plan" ]
+}
+
 # ========== 6. minting ==========
 
 @test "name: each kind mints its canonical shape" {
@@ -159,8 +244,10 @@ worktree_spelling() {
   [ "$(gaia_branch_name debt "#2159")" = "debt/2159" ]
   [ "$(gaia_branch_name debt 47 42 045)" = "debt/42-45-47-batch" ]
   [ "$(gaia_branch_name debt 42 42 --slug x)" = "debt/42-x" ]
-  [ "$(gaia_branch_name plan SPEC-005 --slug "Cards layout")" = "plan/spec-005-cards-layout" ]
-  [ "$(gaia_branch_name plan plan-012)" = "plan/plan-012" ]
+  [ "$(gaia_branch_name plan SPEC-005 --type feat --slug "Cards layout")" = "feat/spec-005-cards-layout" ]
+  [ "$(gaia_branch_name plan plan-012 --type docs)" = "docs/plan-012" ]
+  [ "$(gaia_branch_name plan plan-024 --type feat --slug "type prefixed plans")" = "feat/plan-024-type-prefixed-plans" ]
+  [ "$(gaia_branch_name plan spec-012 --slug x --type fix)" = "fix/spec-012-x" ]
   [ "$(gaia_branch_name release v1.4.0)" = "release/v1.4.0" ]
   [ "$(gaia_branch_name release 2.0.0-rc.1)" = "release/v2.0.0-rc.1" ]
 }
@@ -212,7 +299,7 @@ worktree_spelling() {
 @test "name: every minted name is a valid EnterWorktree name" {
   local minted_name
   for minted_name in "$(gaia_branch_name debt 1 --slug "a b")" "$(gaia_branch_name debt 3 1 2)" \
-    "$(gaia_branch_name plan spec-9 --slug z)" "$(gaia_branch_name deps)" \
+    "$(gaia_branch_name plan spec-9 --type fix --slug z)" "$(gaia_branch_name deps)" \
     "$(gaia_branch_name update v1.0.0)" "$(gaia_branch_name release 1.0.0)"; do
     [ "${#minted_name}" -le 64 ]
     grep -qE '^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$' <<<"$minted_name"
@@ -222,7 +309,7 @@ worktree_spelling() {
 @test "name: a bad argument exits 2 with nothing on stdout and a reason on stderr" {
   local args
   for args in "" "bogus" "debt" "debt abc" "debt 1 --slug" "plan" "plan spec-x" \
-    "plan feat-1" "plan spec-1 extra" "chore" "chore x" "audit extra" "harden extra" "fitness extra" \
+    "plan feat-1 --type feat" "plan spec-1" "plan spec-1 --type" "plan spec-1 --type feat extra" "plan --type feat" "chore" "chore x" "audit extra" "harden extra" "fitness extra" \
     "residue extra" "deps extra" "update" "update 1.0+b" "release" "release 1.0+b"; do
     # shellcheck disable=SC2086
     run --separate-stderr gaia_branch_name $args
@@ -230,6 +317,100 @@ worktree_spelling() {
     [ -z "$output" ] || { echo "args '$args': stdout '$output'" >&2; return 1; }
     grep -qF 'gaia_branch_name:' <<<"$stderr"
   done
+}
+
+@test "name: plan takes --type and --slug in either order" {
+  [ "$(gaia_branch_name plan plan-024 --type feat --slug a-b)" = "feat/plan-024-a-b" ]
+  [ "$(gaia_branch_name plan plan-024 --slug a-b --type feat)" = "feat/plan-024-a-b" ]
+}
+
+@test "name: plan without --type exits 2 with a usage line naming --type" {
+  run --separate-stderr gaia_branch_name plan plan-024 --slug x
+  [ "$status" -eq 2 ]
+  [ -z "$output" ]
+  grep -qF -- '--type' <<<"$stderr"
+  grep -qF 'needs --type' <<<"$stderr"
+}
+
+@test "name: plan refuses a --type that is not lowercase letters or not a shared commit type" {
+  local type
+  for type in Feat feat1 fe-at "feat/x" zzz debt; do
+    run --separate-stderr gaia_branch_name plan plan-024 --type "$type"
+    [ "$status" -eq 2 ] || { echo "type '$type': status $status" >&2; return 1; }
+    [ -z "$output" ] || { echo "type '$type': stdout '$output'" >&2; return 1; }
+    grep -qF -- '--type' <<<"$stderr"
+  done
+  run --separate-stderr gaia_branch_name plan plan-024 --type zzz
+  grep -qF 'use one of:' <<<"$stderr"
+  grep -qF 'feat' <<<"$stderr"
+}
+
+@test "name: plan mints for every shared commit type" {
+  local type checked=0 expected
+  expected="$(jq '.types | length' "$REPO_ROOT/.gaia/conventional-commits.json")"
+  while IFS= read -r type; do
+    [ "$(gaia_branch_name plan spec-1 --type "$type")" = "$type/spec-1" ]
+    checked=$((checked + 1))
+  done < <(shared_types)
+  [ "$expected" -gt 0 ]
+  [ "$checked" -eq "$expected" ]
+}
+
+# bin_without_jq <directory>: a PATH directory holding only what minting a plan
+# name needs, so jq is the one missing tool.
+bin_without_jq() {
+  local tool
+  mkdir -p "$1"
+  for tool in git tr sed; do
+    ln -s "$(command -v "$tool")" "$1/$tool"
+  done
+}
+
+@test "name: with jq absent plan still mints on the shape check alone, and still refuses a non-letter type" {
+  local bin="$BATS_TEST_TMPDIR/bin-no-jq-mint"
+  bin_without_jq "$bin"
+  run env PATH="$bin" "$BASH" -c 'command -v jq'
+  [ "$status" -eq 1 ]
+  run --separate-stderr env PATH="$bin" "$BASH" -c ". '$LIBRARY' && gaia_branch_name plan plan-024 --type zzz --slug x"
+  [ "$status" -eq 0 ]
+  [ "$output" = "zzz/plan-024-x" ]
+  run --separate-stderr env PATH="$bin" "$BASH" -c ". '$LIBRARY' && gaia_branch_name plan plan-024 --type Feat"
+  [ "$status" -eq 2 ]
+  [ -z "$output" ]
+  grep -qF 'lowercase letters' <<<"$stderr"
+}
+
+# plan_mint_in <directory> <args>: mint through the library copy under <directory>.
+plan_mint_in() {
+  run --separate-stderr bash -c ". '$1/.gaia/scripts/branch-name-lib.sh' && gaia_branch_name plan plan-024 $2"
+}
+
+@test "the plan mint guards can fail: a lib copy missing each one mints what the real lib refuses" {
+  local directory="$BATS_TEST_TMPDIR/mint-twins" bin="$BATS_TEST_TMPDIR/bin-no-jq-twin"
+  scratch_library "$directory"
+  # Armed: the unmodified copy refuses all three bad calls.
+  plan_mint_in "$directory" "--slug x"
+  [ "$status" -eq 2 ]
+  plan_mint_in "$directory" "--type zzz"
+  [ "$status" -eq 2 ]
+  # No membership check: an unknown lowercase type mints.
+  sed 's#^      if _gaia_branch_load_types; then$#      if false; then#' "$LIBRARY" >"$directory/.gaia/scripts/branch-name-lib.sh"
+  plan_mint_in "$directory" "--type zzz"
+  [ "$status" -eq 0 ]
+  [ "$output" = "zzz/plan-024" ]
+  # No --type requirement: the usage line is gone.
+  scratch_library "$directory"
+  sed 's#^      \[ -n "\$type" \] || {$#      [ -n "x" ] || {#' "$LIBRARY" >"$directory/.gaia/scripts/branch-name-lib.sh"
+  plan_mint_in "$directory" "--slug x"
+  grep -qF 'needs --type' <<<"$stderr" && return 1
+  # No shape check: with jq absent an uppercase type mints.
+  scratch_library "$directory"
+  sed 's#^        \*\[!a-z\]\*)$#        zz-never)#' "$LIBRARY" >"$directory/.gaia/scripts/branch-name-lib.sh"
+  cmp -s "$LIBRARY" "$directory/.gaia/scripts/branch-name-lib.sh" && return 1
+  bin_without_jq "$bin"
+  run --separate-stderr env PATH="$bin" "$BASH" -c ". '$directory/.gaia/scripts/branch-name-lib.sh' && gaia_branch_name plan plan-024 --type Feat"
+  [ "$status" -eq 0 ]
+  [ "$output" = "Feat/plan-024" ]
 }
 
 @test "name: a batch too wide for 64 bytes is refused rather than cut" {
@@ -246,8 +427,8 @@ worktree_spelling() {
   for row in \
     "debt 2159 --slug fix-it|drain 2159" \
     "debt 3 1 2|drain 1-2-3" \
-    "plan spec-005 --slug cards|plan SPEC-005" \
-    "plan plan-012|plan plan-012" \
+    "plan spec-005 --type feat --slug cards|plan SPEC-005" \
+    "plan plan-012 --type fix|plan plan-012" \
     "release 1.4.0|maintenance v1.4.0"; do
     # shellcheck disable=SC2086
     name="$(gaia_branch_name ${row%%|*})"
@@ -491,7 +672,7 @@ expect_invalid() {
 @test "validate accepts every name the library mints" {
   local branch
   for branch in "$(gaia_branch_name debt 2159 --slug "reconcile claim")" "$(gaia_branch_name debt 3 1 2)" \
-    "$(gaia_branch_name plan plan-023 --slug naming)" "$(gaia_branch_name audit)" "$(gaia_branch_name harden)" \
+    "$(gaia_branch_name plan plan-023 --type feat --slug naming)" "$(gaia_branch_name audit)" "$(gaia_branch_name harden)" \
     "$(gaia_branch_name fitness)" "$(gaia_branch_name residue)" "$(gaia_branch_name deps)" \
     "$(gaia_branch_name update v2.0.0)" "$(gaia_branch_name release 2.0.0)"; do
     expect_valid "$branch"
@@ -508,6 +689,44 @@ expect_invalid() {
   done < <(shared_types)
   [ "$expected" -gt 0 ]
   [ "$checked" -eq "$expected" ]
+}
+
+@test "validate accepts <type>/plan-<nnn> and <type>/spec-<nnn> for every shared commit type" {
+  local type checked=0 expected
+  expected="$(jq '.types | length' "$REPO_ROOT/.gaia/conventional-commits.json")"
+  while IFS= read -r type; do
+    expect_valid "$type/plan-024-some-slug"
+    expect_valid "$type/spec-012"
+    checked=$((checked + 1))
+  done < <(shared_types)
+  [ "$expected" -gt 0 ]
+  [ "$checked" -eq "$expected" ]
+}
+
+@test "validate keeps legacy plan/plan-<nnn> and plan/spec-<nnn> valid" {
+  expect_valid plan/plan-023-conventional-commits-naming
+  expect_valid plan/spec-005-cards
+  expect_valid plan/spec-005
+  expect_valid plan/plan-1
+}
+
+@test "validate refuses any other plan/ name, naming the type-prefixed fix" {
+  local branch
+  for branch in plan/whatever plan/cards-layout plan/spec plan/plan plan/spec-x plan/planning-notes; do
+    expect_invalid "$branch"
+    grep -qF '<type>/plan-<nnn>-<slug>' <<<"$stderr" || { echo "branch '$branch': fix not named: $stderr" >&2; return 1; }
+  done
+}
+
+@test "the plan/ refusal can fail: a lib copy without the rule accepts plan/whatever" {
+  local directory="$BATS_TEST_TMPDIR/no-plan-rule"
+  scratch_library "$directory"
+  validate_in "$directory" plan/whatever
+  [ "$status" -eq 1 ]
+  sed 's#^  if \[ "\$prefix" = "plan" \]; then$#  if false; then#' "$LIBRARY" >"$directory/.gaia/scripts/branch-name-lib.sh"
+  cmp -s "$LIBRARY" "$directory/.gaia/scripts/branch-name-lib.sh" && return 1
+  validate_in "$directory" plan/whatever
+  [ "$status" -eq 0 ]
 }
 
 @test "validate accepts a mixed-case release version, a dependabot branch, and a legacy-style chore slug" {
@@ -620,7 +839,7 @@ name_call_kinds() {
 placeholder_arguments() {
   case "$1" in
     debt) printf '1' ;;
-    plan) printf 'spec-001' ;;
+    plan) printf 'spec-001 --type feat' ;;
     release | update) printf '1.0.0' ;;
   esac
 }
@@ -662,9 +881,9 @@ unmintable_kinds() {
 
 @test "portability: the readers agree under zsh, where zsh exists" {
   command -v zsh >/dev/null 2>&1 || skip "zsh not available"
-  run zsh -c "source '$LIBRARY'; gaia_branch_classify worktree-debt+41-42-batch; gaia_branch_members worktree-debt+41-42-batch; gaia_branch_spec_number plan/spec-007-x"
+  run zsh -c "source '$LIBRARY'; gaia_branch_classify worktree-debt+41-42-batch; gaia_branch_members worktree-debt+41-42-batch; gaia_branch_spec_number plan/spec-007-x; gaia_branch_classify feat/plan-024-x; gaia_branch_spec_number docs/spec-007-x; gaia_branch_plan_type worktree-fix+spec-012-x"
   [ "$status" -eq 0 ]
-  [ "$(printf '%s\n' "$output" | tr '\n' ' ')" = "drain 41-42 41 42 7 " ]
+  [ "$(printf '%s\n' "$output" | tr '\n' ' ')" = "drain 41-42 41 42 7 plan plan-024 7 fix " ]
 }
 
 @test "portability: validate's data-free checks agree under zsh, where zsh exists" {
