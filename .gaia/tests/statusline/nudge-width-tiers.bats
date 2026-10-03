@@ -449,14 +449,14 @@ arm_wiki_nudge() {
 @test "wiki renders last at Large and is the first nudge to shrink" {
   arm_wiki_nudge 20
 
-  render_at 336
+  render_at 329
   [ "$status" -eq 0 ]
   case "$plain" in
-    *"Run /gaia-residue (15 aged residuals)  Run /gaia-wiki (20 commits behind)") ;;
+    *"Run /gaia-residue (15 aged residuals)  Run /gaia-wiki (20 commits)") ;;
     *) return 1 ;;
   esac
 
-  render_at 335
+  render_at 328
   [ "$status" -eq 0 ]
   case "$plain" in
     *"Run /gaia-residue (15 aged residuals)  Run /gaia-wiki (20)") ;;
@@ -468,14 +468,14 @@ arm_wiki_nudge() {
   printf '{"wikiDriftCount":20}' > "$MAIN/.gaia/local/cache/shared/update-check.json"
   rm -f "$MAIN/.gaia/local/debt/count.json"
 
-  render_at 47
+  render_at 40
   [ "$status" -eq 0 ]
   case "$plain" in
-    *"Run /gaia-wiki (20 commits behind)") ;;
+    *"Run /gaia-wiki (20 commits)") ;;
     *) return 1 ;;
   esac
 
-  render_at 46
+  render_at 39
   [ "$status" -eq 0 ]
   case "$plain" in
     *"Run /gaia-wiki (20)") ;;
@@ -541,7 +541,7 @@ arm_wiki_nudge() {
 
   render_at 300
   [ "$status" -eq 0 ]
-  grep -qF -- $'\033[01;96mRun /gaia-wiki (20 commits behind)\033[00m' <<<"$output"
+  grep -qF -- $'\033[01;96mRun /gaia-wiki (20 commits)\033[00m' <<<"$output"
 
   render_at 20
   [ "$status" -eq 0 ]
