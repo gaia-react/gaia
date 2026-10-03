@@ -52,10 +52,13 @@ const driveThemeToggle = async (page: Page): Promise<void> => {
     name: /enable (dark|light) mode|use system theme/i,
   });
   await expect(toggle).toBeVisible();
-  const before = await toggle.getAttribute('aria-label');
+  const previousAriaLabel = await toggle.getAttribute('aria-label');
   await toggle.click();
   // Wait for the optimistic update render to commit (label reflects next mode).
-  await expect(toggle).not.toHaveAttribute('aria-label', before ?? '');
+  await expect(toggle).not.toHaveAttribute(
+    'aria-label',
+    previousAriaLabel ?? ''
+  );
 };
 
 test('captures bippy renders: active, canary resolves name + memo + timing', async ({
@@ -177,7 +180,7 @@ test('noStrict bypass disables StrictMode (the StrictMode fiber-mode bits clear)
   baseURL,
   browser,
 }) => {
-  const load = async (isStrictModeDisabled: boolean) => {
+  const loadPageWithCapture = async (isStrictModeDisabled: boolean) => {
     const context = await browser.newContext({baseURL});
     const page = await context.newPage();
     await installRenderCapture(page, {isStrictModeDisabled});
@@ -190,12 +193,12 @@ test('noStrict bypass disables StrictMode (the StrictMode fiber-mode bits clear)
     return {meta: renderCapture.meta, modeBits: collectObservedModeBits(dump)};
   };
 
-  const strict = await load(false);
-  const relaxed = await load(true);
+  const strictModeRun = await loadPageWithCapture(false);
+  const strictModeDisabledRun = await loadPageWithCapture(true);
 
   // meta.strictMode reflects the bypass (the reduce CLI keys its caveat on it).
-  expect(strict.meta.strictMode).toBe(true);
-  expect(relaxed.meta.strictMode).toBe(false);
+  expect(strictModeRun.meta.strictMode).toBe(true);
+  expect(strictModeDisabledRun.meta.strictMode).toBe(false);
 
   // Proof the bypass actually fired (not vacuous). The double-invoke inflates
   // StrictMode-on render time, but a wall-clock ratio between two live browser
@@ -212,7 +215,9 @@ test('noStrict bypass disables StrictMode (the StrictMode fiber-mode bits clear)
   // was there to catch, and it also fails when both dumps are empty. No literal
   // bit value appears here, so a React renumbering cannot silently invert it.
   /* eslint-disable no-bitwise -- fiber.mode is a bitmask; masking is the only way to test containment */
-  expect(strict.modeBits & relaxed.modeBits).toBe(relaxed.modeBits);
+  expect(strictModeRun.modeBits & strictModeDisabledRun.modeBits).toBe(
+    strictModeDisabledRun.modeBits
+  );
   /* eslint-enable no-bitwise */
-  expect(strict.modeBits).not.toBe(relaxed.modeBits);
+  expect(strictModeRun.modeBits).not.toBe(strictModeDisabledRun.modeBits);
 });

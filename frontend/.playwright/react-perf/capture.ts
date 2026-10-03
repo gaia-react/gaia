@@ -60,8 +60,8 @@ const buildHarnessIife = async (): Promise<string> => {
     platform: 'browser',
     target: 'es2022',
     write: false,
-  }).then((result) => {
-    const output = result.outputFiles.at(0);
+  }).then((buildOutput) => {
+    const output = buildOutput.outputFiles.at(0);
 
     if (!output) {
       throw new Error('react-perf: esbuild produced no output for the harness');
@@ -135,19 +135,19 @@ export const collectRenderDump = async (
       );
     });
 
-  const browser = await page.evaluate(() => ({
+  const pageCapture = await page.evaluate(() => ({
     meta: window.__bippyMeta ?? null,
     renders: window.__renders ?? [],
   }));
 
-  if (!browser.meta) {
+  if (!pageCapture.meta) {
     throw new Error(
       'react-perf: window.__bippyMeta missing after active check'
     );
   }
 
-  const browserMeta: BippyMeta = browser.meta;
-  const renders: RenderRecord[] = browser.renders;
+  const browserMeta: BippyMeta = pageCapture.meta;
+  const renders: RenderRecord[] = pageCapture.renders;
   const isStrictModeDisabled =
     captureOptions.get(page)?.isStrictModeDisabled ?? false;
 

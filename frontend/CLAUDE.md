@@ -5,7 +5,7 @@ The React app: routes, pages, components, services, tests, Storybook, Playwright
 ## Conventions
 
 - The visual styling is a deliberate neutral baseline, not a chosen design system; before designing or restyling read `frontend/.claude/rules/design-baseline.md` and `wiki/concepts/Design System.md`.
-- Rules in `frontend/.claude/rules/` scope themselves to app paths (`app/**`, `.playwright/**`, `.storybook/**`); skills in `frontend/.claude/skills/` cover scaffolding, React, TypeScript, Tailwind, a11y, ESLint fixes, and Playwright. List the directories rather than relying on a copy of the list here.
+- Rules in `frontend/.claude/rules/` scope themselves to the package paths each rule's `paths:` frontmatter names; skills in `frontend/.claude/skills/` cover scaffolding, React, TypeScript, Tailwind, a11y, ESLint fixes, and Playwright. List the directories rather than relying on a copy of the list here.
 - Paths in prose inside these rules and skills (`app/`, `test/`, `.playwright/`, `.storybook/`, `public/`, config files) are relative to `frontend/`. Shell commands are written to run from the repo root, so they carry the `frontend/` prefix or use the root `pnpm` proxies.
 - `.claude/`, `.gaia/`, and `wiki/` paths are repo-root paths; the frontend's own units appear as `frontend/.claude/...`.
 
