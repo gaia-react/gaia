@@ -20,6 +20,11 @@
 #              *.config.ts,*.config.mjs}          -> code-audit-maintainer-node
 #   .husky/**                                     -> code-audit-maintainer-shell
 #
+# The frontend/ move (SPEC-092) then retires the root frontend class: `app/**`,
+# `test/**`, `.storybook/**`, `.playwright/**` and root `tsconfig*.json` resolve
+# to no member, because the roster declares them under `frontend/` now. Their
+# arm precedes the triage arms below.
+#
 # The remaining sets are the ownerless-path triage, and their direction is the
 # whole content of that change: every row they move goes from `-` to a member,
 # and no row moves between members. Those arms assert that direction rather than
@@ -103,6 +108,10 @@ setup() {
     # its own literal arm ahead of them.
     elif [ "$path" = ".gaia/audit-ci.yml" ]; then
       expected="code-audit-maintainer-shell"
+    # The frontend/ move retired these root paths: the roster now declares them
+    # under frontend/, so a root path of the old frontend class owns nothing.
+    elif [[ "$path" =~ ^(app|test|\.storybook|\.playwright)/ ]] || [[ "$path" =~ ^tsconfig[^/]*\.json$ ]]; then
+      expected="-"
     elif [ "$before" = "-" ] && [[ "$path" =~ ^\.playwright/ ]]; then
       expected="code-audit-frontend"
     elif [ "$before" = "-" ] && [[ "$path" =~ ^(Dockerfile|\.npmrc|\.nvmrc|\.node-version|\.lintstagedrc\.json|\.prettierignore|\.env\.example)$ ]]; then

@@ -42,7 +42,7 @@ mkdir -p "$OUT_DIRECTORY"
 OUT_DIRECTORY="$(cd "$OUT_DIRECTORY" && pwd -P)"
 
 # The frontend-only harness units of plan contract C6 (harness-split.json's
-# frontend-only set). Each moves from .claude/<unit> to frontend/.claude/<unit>.
+# frontend-only set). Each lives at frontend/.claude/<unit> in the source tree.
 frontend_only_units() {
   local unit
   for unit in a11y-fixes eslint-fixes gaia-react-perf new-component new-hook new-route \
@@ -61,42 +61,28 @@ frontend_only_units() {
   done
 }
 
-is_frontend_only() {
-  local path="$1" unit
-  while IFS= read -r unit; do
-    case "$unit" in
-      */) case "$path" in "$unit"*) return 0 ;; esac ;;
-      *) [ "$path" = "$unit" ] && return 0 ;;
-    esac
-  done < <(frontend_only_units)
-  return 1
-}
-
 copy_tracked() {
   local relative_path="$1" destination="$2"
   mkdir -p "$(dirname "$OUT_DIRECTORY/$destination")"
   cp -p "$SOURCE_ROOT/$relative_path" "$OUT_DIRECTORY/$destination"
 }
 
-# Tracked root harness: CLAUDE.md, .claude/, .gaia/scripts, .husky, plus
-# .gitignore so the fixture ignores what the real tree ignores (.env,
+# Tracked harness: root CLAUDE.md, .claude/, .gaia/scripts, .husky, and the
+# frontend-only units already tracked under frontend/.claude/ (the source tree
+# is the post-move layout, so every path copies to itself), plus .gitignore so the fixture ignores what the real tree ignores (.env,
 # .gaia/local, .husky/_, .claude/settings.local.json).
 copied_count=0
 while IFS= read -r -d '' relative_path; do
   [ -f "$SOURCE_ROOT/$relative_path" ] || continue
-  if is_frontend_only "$relative_path"; then
-    copy_tracked "$relative_path" "frontend/$relative_path"
-  else
-    copy_tracked "$relative_path" "$relative_path"
-  fi
+  copy_tracked "$relative_path" "$relative_path"
   copied_count=$((copied_count + 1))
-done < <(git -C "$SOURCE_ROOT" -c core.quotepath=false ls-files -z -- CLAUDE.md .claude .gaia/scripts .husky .gitignore)
+done < <(git -C "$SOURCE_ROOT" -c core.quotepath=false ls-files -z -- CLAUDE.md .claude .gaia/scripts .husky .gitignore frontend/.claude)
 if [ "$copied_count" -eq 0 ]; then
   echo "ERROR: no tracked harness files found under $SOURCE_ROOT" >&2
   exit 1
 fi
 
-# Every C6 unit must have landed under frontend/; a unit renamed or deleted at
+# Every C6 unit must be present under frontend/; a unit renamed or deleted at
 # the source would otherwise drop out of the fixture without a word.
 while IFS= read -r unit; do
   if [ ! -e "$OUT_DIRECTORY/frontend/${unit%/}" ]; then

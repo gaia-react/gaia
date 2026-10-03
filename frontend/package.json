@@ -1,5 +1,6 @@
 {
   "name": "frontend",
+  "version": "1.6.1",
   "private": true,
   "type": "module",
   "sideEffects": false,

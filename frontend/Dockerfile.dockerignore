@@ -1,21 +1,24 @@
-# Keeps the Docker build context to tracked files. Every entry mirrors an
-# untracked entry in a .gitignore, the root one or a nested one (dependency
-# trees, local environment files, build and test output, editor and
-# per-machine tool state), plus git history. The Dockerfile's `COPY . /app`
-# stages would otherwise copy them into the build layers; the image installs
-# its own dependencies and builds its own output. Patterns here anchor at the
-# context root, so an entry that can appear at any depth carries a `**/`
-# prefix. Keep this file in step with the .gitignore files.
+# Keeps the Docker build context to tracked files. The build runs from the repo
+# root (`docker build -f frontend/Dockerfile .`), so patterns anchor at the repo
+# root and an entry that can appear at any depth carries a `**/` prefix. Every
+# entry mirrors an untracked entry in a .gitignore (dependency trees, local
+# environment files, build and test output, editor and per-machine tool state),
+# plus git history and the harness and docs trees the image never reads. The
+# image installs its own dependencies and builds its own output. Keep this file
+# in step with the .gitignore files.
 .git
 **/node_modules
 **/.env
 **/.env.*
-!**/.env.example
+
+# Harness and docs the image never reads
+.claude
+.gaia/local
+wiki
 
 # react-router
-.cache
-build
-public/build
+**/.cache
+**/build
 **/.react-router
 
 # Editors and OS
@@ -34,23 +37,19 @@ public/build
 **/*.pyc
 
 # Testing and Storybook output
-playwright
-.playwright/.cache
-.playwright/output
+**/playwright
+**/.playwright/.cache
+**/.playwright/output
 **/.playwright-cli
 **/coverage
-storybook-static
+**/storybook-static
 
 # Per-machine Claude and GAIA state
-.claude/agent-memory
-.claude/worktrees
-.claude/scheduled_tasks.lock
-.claude/settings.local.json
-.claude/skills/react-doctor
+**/.claude/agent-memory
+**/.claude/worktrees
+**/.claude/scheduled_tasks.lock
+**/.claude/settings.local.json
 **/.claude-pr
-.claude/wiki-recompact-pending
-.claude/wiki-*-checked
-.gaia/local
 .gaia/local.bak.*
 .gaia/statusline/.use-vendored-base
 **/.gaia-backup

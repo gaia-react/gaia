@@ -129,12 +129,12 @@ setup() {
 
 @test "UAT-007: mixed allow + deny path proposal denies the whole attempt" {
   # The fixture's reproduction-context names two paths: one in the allowlist
-  # (`.claude/hooks/`), one on the canonical denylist (`app/`). Per UAT-007
+  # (`.claude/hooks/`), one on the canonical denylist (`frontend/app/`). Per UAT-007
   # the WHOLE attempt is denied; `ok:false`; not just the denylisted path.
-  run "$SCOPE" .claude/hooks/wiki-session-stop.sh app/routes/_index.tsx
+  run "$SCOPE" .claude/hooks/wiki-session-stop.sh frontend/app/routes/_index.tsx
   [ "$status" -eq 0 ]
   [[ "$output" == *'"ok":false'* ]]
-  [[ "$output" == *'app/routes/_index.tsx'* ]]
+  [[ "$output" == *'frontend/app/routes/_index.tsx'* ]]
   [[ "$output" == *'"reason":"denylist"'* ]]
   # The allowed leg still appears in `allowed[]`; the partition is informational
   # but `ok` is false, which is what the workflow gates on.

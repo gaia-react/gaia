@@ -87,9 +87,13 @@ jobs:
           echo "base=${base}" >> "$GITHUB_OUTPUT"
           echo "tests: incremental base = ${base}" >&2
       # Allowlist of paths that affect the test suite (ERE, matched against
-      # `git diff --name-only`). Anything outside this list reports the
+      # `git diff --name-only`). The app lives in
+      # `frontend/` (SPEC-092), so its entries carry that prefix while the one
+      # workspace lockfile and manifests stay at the root; the two
+      # `gaia.package.json`/`packages.json` entries are the package registry
+      # and descriptor the harness reads. Anything outside this list reports the
       # required check green without running, so a path that carries tests
-      # must appear here: `.playwright/` holds the e2e specs and their
+      # must appear here: `frontend/.playwright/` holds the e2e specs and their
       # helpers, which `playwright.config.` alone does not cover.
       # This job also runs typecheck and lint, so a path those cover belongs
       # here too even when it carries no tests: `.storybook/` holds neither
@@ -121,7 +125,7 @@ jobs:
           # rename detection reports only the new path, and a move to docs/
           # would read as no relevant change while its importers break.
           changed=$(set -o pipefail; git diff --name-only -z --no-renames "${CHECK_BASE}...HEAD" | tr '\0' '\n')
-          pattern='^(app|test)/|^\.playwright/|^\.storybook/|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.npmrc|\.node-version)$|^tsconfig[^/]*\.json$|^(vite|vitest|playwright|eslint|react-router|doctor|knip|prettier|stylelint)\.config\.|^\.github/workflows/tests\.yml$'
+          pattern='^frontend/(app|test)/|^frontend/\.playwright/|^frontend/\.storybook/|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.npmrc|\.node-version)$|^frontend/package\.json$|^frontend/tsconfig[^/]*\.json$|^frontend/(vite|vitest|playwright|eslint|react-router|doctor|knip|prettier|stylelint)\.config\.|^\.gaia/packages\.json$|^frontend/gaia\.package\.json$|^\.github/workflows/tests\.yml$'
           if printf '%s\n' "$changed" | grep -qE "$pattern"; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
@@ -184,10 +188,10 @@ jobs:
       # are not cacheable, so the step stays either way.
       - if: steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true'
         name: Install Playwright Browsers
-        run: pnpm exec playwright install --with-deps chromium
+        run: pnpm -C frontend exec playwright install --with-deps chromium
       - if: steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true'
         name: Run Playwright tests
-        run: pnpm exec playwright test --pass-with-no-tests
+        run: pnpm -C frontend exec playwright test --pass-with-no-tests
         env:
           COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           npm_package_version: ${{ steps.package-version.outputs.current-version}}
@@ -196,5 +200,5 @@ jobs:
         name: Upload Playwright failed test traces
         with:
           name: playwright-traces
-          path: .playwright/output
+          path: frontend/.playwright/output
           retention-days: 5

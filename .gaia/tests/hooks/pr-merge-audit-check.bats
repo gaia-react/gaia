@@ -448,7 +448,7 @@ assert_not_in_set() {
 }
 
 @test "denies a PR that changes app/ source" {
-  commit_files "app/components/Foo/index.tsx" "export const Foo = () => null"
+  commit_files "frontend/app/components/Foo/index.tsx" "export const Foo = () => null"
   run_merge_hook
   [ "$status" -eq 0 ]
   [[ "$output" == *'"permissionDecision": "deny"'* ]]
@@ -487,7 +487,7 @@ assert_not_in_set() {
 @test "denies a PR mixing out-of-scope docs with in-scope source" {
   commit_files \
     "wiki/x.md" "doc" \
-    "app/y.ts" "export const y = 1"
+    "frontend/app/y.ts" "export const y = 1"
   run_merge_hook
   [ "$status" -eq 0 ]
   [[ "$output" == *'"permissionDecision": "deny"'* ]]
@@ -501,7 +501,7 @@ assert_not_in_set() {
 }
 
 @test "ignores commands that are not gh pr merge" {
-  commit_files "app/y.ts" "export const y = 1"
+  commit_files "frontend/app/y.ts" "export const y = 1"
   run_merge_hook "git status"
   [ "$status" -eq 0 ]
   [[ "$output" != *'"permissionDecision": "deny"'* ]]
@@ -528,15 +528,15 @@ assert_not_in_set() {
   # which the out-of-scope bypass allowlists and no member owns, so the app/
   # source the PR removed would never reach member resolution.
   git -C "$REPO" checkout --quiet main
-  mkdir -p "$REPO/app"
-  printf 'export const moved = "a line long enough to be detected as a rename";\n' > "$REPO/app/moved.ts"
-  git -C "$REPO" add app/moved.ts
+  mkdir -p "$REPO/frontend/app"
+  printf 'export const moved = "a line long enough to be detected as a rename";\n' > "$REPO/frontend/app/moved.ts"
+  git -C "$REPO" add frontend/app/moved.ts
   git -C "$REPO" commit --quiet -m "app source on base"
   git -C "$REPO" checkout --quiet -B feature main
-  git -C "$REPO" mv app/moved.ts wiki-moved.md
+  git -C "$REPO" mv frontend/app/moved.ts wiki-moved.md
   git -C "$REPO" commit --quiet -m "move app source out of scope"
   run git -C "$REPO" diff --name-only -z main...HEAD
-  grep -qF "app/moved.ts" <<<"$output" && return 1
+  grep -qF "frontend/app/moved.ts" <<<"$output" && return 1
   run_merge_hook
   [ "$status" -eq 0 ]
   [[ "$output" == *'"permissionDecision": "deny"'* ]]
@@ -563,7 +563,7 @@ assert_not_in_set() {
 # ---------------------------------------------------------------------------
 
 @test "AND-aggregator: app-only diff allows once the frontend marker is present (regression)" {
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   write_marker "code-audit-frontend"
   run_merge_hook
   [ "$status" -eq 0 ]
@@ -572,7 +572,7 @@ assert_not_in_set() {
 
 @test "AND-aggregator: mixed app/ + .gaia .sh diff denies while the maintainer-shell member withholds" {
   commit_files \
-    "app/x.ts" "export const x = 1" \
+    "frontend/app/x.ts" "export const x = 1" \
     ".gaia/scripts/example.sh" "#!/bin/bash"
   write_marker "code-audit-frontend"
   run_merge_hook
@@ -582,7 +582,7 @@ assert_not_in_set() {
 
 @test "AND-aggregator: mixed app/ + .gaia .sh diff allows once both dispatched members clear" {
   commit_files \
-    "app/x.ts" "export const x = 1" \
+    "frontend/app/x.ts" "export const x = 1" \
     ".gaia/scripts/example.sh" "#!/bin/bash"
   write_marker "code-audit-frontend"
   write_marker "code-audit-maintainer-shell"
@@ -627,7 +627,7 @@ assert_not_in_set() {
 
 @test "AND-aggregator: resolver script absent falls back to the single-signal path (no crash, same branch as zero-match)" {
   rm -f "$REPO/.gaia/scripts/resolve-audit-members.sh"
-  commit_files "app/z.ts" "export const z = 1"
+  commit_files "frontend/app/z.ts" "export const z = 1"
   run_merge_hook
   [ "$status" -eq 0 ]
   grep -qF '"permissionDecision": "deny"' <<< "$output" || return 1
@@ -659,7 +659,7 @@ assert_not_in_set() {
 # over blob shas, so it does not rotate either, and no sibling member's marker
 # is orphaned by the stamp.
 @test "AND-aggregator: every member's marker survives the trailer stamp's empty commit (digest is content-keyed)" {
-  commit_files "app/a.ts" "export const a = 1" ".gaia/scripts/x.sh" "echo x"
+  commit_files "frontend/app/a.ts" "export const a = 1" ".gaia/scripts/x.sh" "echo x"
   write_marker "code-audit-frontend"
   write_marker "code-audit-maintainer-shell"
 
@@ -681,7 +681,7 @@ assert_not_in_set() {
 # ---------------------------------------------------------------------------
 
 @test "UAT-001: an out-of-glob commit (CHANGELOG.md) leaves every digest unchanged; zero new marker" {
-  commit_files "app/x.ts" "export const x = 1" ".gaia/scripts/y.sh" "#!/bin/bash"
+  commit_files "frontend/app/x.ts" "export const x = 1" ".gaia/scripts/y.sh" "#!/bin/bash"
   write_marker "code-audit-frontend"
   write_marker "code-audit-maintainer-shell"
   frontend_before="$(member_digest_for code-audit-frontend)"
@@ -705,7 +705,7 @@ assert_not_in_set() {
 # ---------------------------------------------------------------------------
 
 @test "UAT-002: a maintainer-node-owned change rotates only that member's digest" {
-  commit_files "app/a.ts" "export const a = 1" ".gaia/scripts/x.sh" "echo x" ".gaia/cli/src/foo.ts" "export const foo = 1"
+  commit_files "frontend/app/a.ts" "export const a = 1" ".gaia/scripts/x.sh" "echo x" ".gaia/cli/src/foo.ts" "export const foo = 1"
   write_marker "code-audit-frontend"
   write_marker "code-audit-maintainer-shell"
   write_marker "code-audit-maintainer-node"
@@ -735,7 +735,7 @@ assert_not_in_set() {
 # ---------------------------------------------------------------------------
 
 @test "UAT-003: a machinery-file change rotates every member's digest and re-dispatches the full team" {
-  commit_files "app/a.ts" "export const a = 1" ".gaia/scripts/x.sh" "echo x" ".gaia/cli/src/foo.ts" "export const foo = 1"
+  commit_files "frontend/app/a.ts" "export const a = 1" ".gaia/scripts/x.sh" "echo x" ".gaia/cli/src/foo.ts" "export const foo = 1"
   write_marker "code-audit-frontend"
   write_marker "code-audit-maintainer-shell"
   write_marker "code-audit-maintainer-node"
@@ -762,7 +762,7 @@ assert_not_in_set() {
 # ---------------------------------------------------------------------------
 
 @test "UAT-004: a live refusal for the SAME digest denies even with a valid earned marker present (frontend)" {
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   write_marker "code-audit-frontend"
   write_refused "code-audit-frontend"
 
@@ -771,7 +771,7 @@ assert_not_in_set() {
 }
 
 @test "UAT-004: refusal precedence also applies to a specialized member" {
-  commit_files "app/x.ts" "export const x = 1" ".gaia/scripts/y.sh" "#!/bin/bash"
+  commit_files "frontend/app/x.ts" "export const x = 1" ".gaia/scripts/y.sh" "#!/bin/bash"
   write_marker "code-audit-frontend"
   write_marker "code-audit-maintainer-shell"
   write_refused "code-audit-maintainer-shell"
@@ -788,7 +788,7 @@ assert_not_in_set() {
 # ---------------------------------------------------------------------------
 
 @test "UAT-011: a stale frontend marker does not clear a merge that adds an in-scope-but-ownerless root Makefile" {
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   write_marker "code-audit-frontend"
   commit_files "Makefile" "all:"
 
@@ -797,7 +797,7 @@ assert_not_in_set() {
 }
 
 @test "UAT-011: a stale frontend marker does not clear a merge that adds a nested ownerless public asset" {
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   write_marker "code-audit-frontend"
   commit_files "public/logo.svg" "<svg></svg>"
 
@@ -825,8 +825,8 @@ assert_not_in_set() {
 # marker is written directly rather than through the dispatched set.
 # ---------------------------------------------------------------------------
 
-@test "FC-4 no-deadlock: app/x.tsx spawns the default member alone, and its marker allows" {
-  commit_files "app/x.tsx" "export const X = 1"
+@test "FC-4 no-deadlock: frontend/app/x.tsx spawns the default member alone, and its marker allows" {
+  commit_files "frontend/app/x.tsx" "export const X = 1"
   set=$(spawn_set)
   [ "$set" = "code-audit-frontend" ]
   write_markers_for_spawn_set "$set"
@@ -834,8 +834,8 @@ assert_not_in_set() {
   assert_allowed_by_json
 }
 
-@test "FC-4 no-deadlock: root tsconfig.json spawns the default member alone, and its marker allows" {
-  commit_files "tsconfig.json" '{"compilerOptions":{}}'
+@test "FC-4 no-deadlock: frontend tsconfig.json spawns the default member alone, and its marker allows" {
+  commit_files "frontend/tsconfig.json" '{"compilerOptions":{}}'
   set=$(spawn_set)
   [ "$set" = "code-audit-frontend" ]
   write_markers_for_spawn_set "$set"
@@ -885,7 +885,7 @@ assert_not_in_set() {
 }
 
 @test "FC-4 no-deadlock: mixed app/ + framework shell spawns both, sorted, and their markers allow" {
-  commit_files "app/x.tsx" "export const X = 1" ".gaia/scripts/y.sh" "#!/bin/bash"
+  commit_files "frontend/app/x.tsx" "export const X = 1" ".gaia/scripts/y.sh" "#!/bin/bash"
   set=$(spawn_set)
   expected=$'code-audit-frontend\ncode-audit-maintainer-shell'
   [ "$set" = "$expected" ]
@@ -972,14 +972,14 @@ assert_not_in_set() {
 # --- No useless spawn: withholding a spawned member's marker must deny -----
 
 @test "FC-4 no-useless-spawn: mixed diff denies while only the default member's marker is present" {
-  commit_files "app/x.tsx" "export const X = 1" ".gaia/scripts/y.sh" "#!/bin/bash"
+  commit_files "frontend/app/x.tsx" "export const X = 1" ".gaia/scripts/y.sh" "#!/bin/bash"
   write_marker "code-audit-frontend"
   run_merge_hook
   assert_denied_by_json
 }
 
 @test "FC-4 no-useless-spawn: mixed diff denies with only the shell marker, then allows once both are present" {
-  commit_files "app/x.tsx" "export const X = 1" ".gaia/scripts/y.sh" "#!/bin/bash"
+  commit_files "frontend/app/x.tsx" "export const X = 1" ".gaia/scripts/y.sh" "#!/bin/bash"
   write_marker "code-audit-maintainer-shell"
   run_merge_hook
   assert_denied_by_json
@@ -1030,9 +1030,9 @@ setup_linked_worktree() {
   LINKED_WORKTREE=$(mktemp -d -t pr-merge-wt-XXXXXX)
   rm -rf "$LINKED_WORKTREE"
   git -C "$REPO" worktree add --quiet -b wt "$LINKED_WORKTREE" main
-  mkdir -p "$LINKED_WORKTREE/app"
-  printf 'export const y = 2\n' > "$LINKED_WORKTREE/app/y.ts"
-  git -C "$LINKED_WORKTREE" add app/y.ts
+  mkdir -p "$LINKED_WORKTREE/frontend/app"
+  printf 'export const y = 2\n' > "$LINKED_WORKTREE/frontend/app/y.ts"
+  git -C "$LINKED_WORKTREE" add frontend/app/y.ts
   git -C "$LINKED_WORKTREE" commit --quiet -m "worktree change"
 
   # The dispatch resolver is anchored on the ACTING tree, and REPO's copy is
@@ -1060,7 +1060,7 @@ teardown_linked_worktree() {
 }
 
 @test "linked worktree: a marker keyed to the WORKTREE's own content allows the merge" {
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   setup_linked_worktree
 
   local digest
@@ -1077,7 +1077,7 @@ teardown_linked_worktree() {
 }
 
 @test "linked worktree: a marker keyed to MAIN's content does NOT clear the worktree's merge" {
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   setup_linked_worktree
 
   # Deliberately key the marker to the MAIN checkout's digest, the shape a
@@ -1104,7 +1104,7 @@ teardown_linked_worktree() {
 # comparison against a checkout's directory name reads both merges below as
 # foreign and exits before any audit check.
 @test "linked worktree: --repo naming this repository is still gated" {
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   git -C "$REPO" remote add origin https://github.com/gaia-react/gaia.git
   setup_linked_worktree
 
@@ -1115,7 +1115,7 @@ teardown_linked_worktree() {
 }
 
 @test "linked worktree: a quoted --repo naming this repository is still gated" {
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   git -C "$REPO" remote add origin https://github.com/gaia-react/gaia.git
   setup_linked_worktree
 
@@ -1126,7 +1126,7 @@ teardown_linked_worktree() {
 }
 
 @test "linked worktree: a brace-expanded --repo naming this repository is still gated" {
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   git -C "$REPO" remote add origin https://github.com/gaia-react/gaia.git
   setup_linked_worktree
 
@@ -1137,7 +1137,7 @@ teardown_linked_worktree() {
 }
 
 @test "linked worktree: --repo naming another repository exits before the gate" {
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   git -C "$REPO" remote add origin https://github.com/gaia-react/gaia.git
   setup_linked_worktree
 
@@ -1152,7 +1152,7 @@ teardown_linked_worktree() {
 # a home merge, even a read-only one, does not carry the merge past the gate
 # (gaia-react/gaia#2081).
 @test "a foreign gh in the same call does not exempt a home merge" {
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   git -C "$REPO" remote add origin https://github.com/gaia-react/gaia.git
 
   run_merge_hook "gh pr merge 5 -R other-org/other-repo && gh pr merge 30 --squash"
@@ -1169,7 +1169,7 @@ teardown_linked_worktree() {
 # A `cd` inside a subshell moves nothing for the merge after it, so it cannot
 # carry that merge past the gate as foreign.
 @test "a cd into another repository inside a subshell does not exempt a later home merge" {
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   local other
   other=$(mktemp -d -t merge-other-XXXXXX)
   git -C "$other" init --quiet --initial-branch=main
@@ -1186,7 +1186,7 @@ gh pr merge 30 --squash"
 # A comment line after `&&` does not end the list, so the `cd` after it may
 # never run and the merge after that is this repository's.
 @test "a cd continued past a comment line after && does not exempt a later home merge" {
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   local other
   other=$(mktemp -d -t merge-other-XXXXXX)
   git -C "$other" init --quiet --initial-branch=main
@@ -1200,7 +1200,7 @@ gh pr merge 30 --squash"
 }
 
 @test "a call whose every command is foreign exits before the gate" {
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   git -C "$REPO" remote add origin https://github.com/gaia-react/gaia.git
 
   run_merge_hook "gh pr merge 5 -R other-org/other-repo && gh pr checks 5 -R other-org/other-repo"
@@ -1210,7 +1210,7 @@ gh pr merge 30 --squash"
 }
 
 @test "checkout not named for the repository: --repo naming this repository is still gated" {
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   git -C "$REPO" remote add origin https://github.com/gaia-react/gaia.git
 
   run_merge_hook "gh pr merge 30 --repo gaia-react/gaia --squash --delete-branch"
@@ -1243,9 +1243,9 @@ gh pr merge 30 --squash"
 }
 
 @test "chore(deps): a dep-bump title whose PR changes app/ still requires a marker" {
-  install_gh_stub_with_title "chore(deps): bump the github-actions group" "[]" "package.json" "app/x.ts"
+  install_gh_stub_with_title "chore(deps): bump the github-actions group" "[]" "package.json" "frontend/app/x.ts"
   install_chore_deps_predicate
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   run_merge_hook
   assert_denied_by_json
@@ -1254,7 +1254,7 @@ gh pr merge 30 --squash"
 @test "chore(deps): a record with no files keeps the marker mandatory" {
   install_gh_stub_with_title "chore(deps): bump the github-actions group"
   install_chore_deps_predicate
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   run_merge_hook
   assert_denied_by_json
@@ -1263,7 +1263,7 @@ gh pr merge 30 --squash"
 @test "chore(deps): an ordinary PR title still requires a marker" {
   install_gh_stub_with_title "feat: add a thing" "[]" "package.json"
   install_chore_deps_predicate
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   run_merge_hook
   assert_denied_by_json
@@ -1710,7 +1710,7 @@ merge 999 --squash'
 
 @test "a non-empty dispatched member set still denies while a member withholds, on remote provenance at the recorded head" {
   commit_files \
-    "app/x.ts" "export const x = 1" \
+    "frontend/app/x.ts" "export const x = 1" \
     ".gaia/scripts/example.sh" "#!/bin/bash"
   set_origin_main_at refs/heads/main
   install_gh_stub_with_record "main" "$(git -C "$REPO" rev-parse HEAD)"
@@ -1752,7 +1752,7 @@ merge 999 --squash'
 
 @test "every audit_resolve_base_provenance invocation at run time passes an empty supplied base" {
   install_recording_hook_copy
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   install_gh_stub_with_record "main" "$(git -C "$REPO" rev-parse HEAD)"
 
   run_recording_hook
@@ -1830,7 +1830,7 @@ EOF
 
 @test "arming: a quoted verb reaches the gate instead of skipping it" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   run_merge_hook 'gh pr "merge" 30 --squash'
   assert_denied_by_json
@@ -1838,7 +1838,7 @@ EOF
 
 @test "arming: a quoted subcommand reaches the gate" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   run_merge_hook 'gh "pr" merge 30 --squash'
   assert_denied_by_json
@@ -1846,7 +1846,7 @@ EOF
 
 @test "arming: a line continuation inside the verb reaches the gate" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   # A backslash-newline mid-verb is the shell's own spelling of the verb, and it
   # leaves the text arm looking at a run of characters that is not one.
@@ -1857,7 +1857,7 @@ rge 30 --squash'
 
 @test "arming: a merge that is not the first command still reaches the gate" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   # Invisible to the tokenizer arm, which reads the first command and stops.
   # Swapping the text arm out for the tokenizer, rather than unioning the two,
@@ -1868,7 +1868,7 @@ rge 30 --squash'
 
 @test "arming: a non-merge command carrying the word merge does not arm the gate" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   # A command whose first word cannot reach `gh` must not arm the gate, and the
   # pre-filter is what turns this one away before the scan ever runs. For the
@@ -1949,7 +1949,7 @@ rge 30 --squash'
 
 @test "clearance: a frontend marker denies a merge naming a pull request other than the record's" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   write_markers_for_spawn_set "$(spawn_set)"
 
   # The marker proves a member read THIS content. It says nothing about 999.
@@ -1959,7 +1959,7 @@ rge 30 --squash'
 
 @test "clearance: a frontend marker still clears a merge naming the record's own number" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   write_markers_for_spawn_set "$(spawn_set)"
 
   run_merge_hook "gh pr merge 30 --squash --delete-branch"
@@ -1968,7 +1968,7 @@ rge 30 --squash'
 
 @test "clearance: a frontend marker still clears when the command names no pull request" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   write_markers_for_spawn_set "$(spawn_set)"
 
   # gh resolves an absent positional to the current branch, which is the very
@@ -1979,7 +1979,7 @@ rge 30 --squash'
 
 @test "clearance: a GAIA-Audit trailer denies a merge naming a pull request other than the record's" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   stamp_trailer
 
   run_merge_hook "gh pr merge 999 --squash"
@@ -1988,7 +1988,7 @@ rge 30 --squash'
 
 @test "clearance: a GAIA-Audit trailer still clears a merge naming the record's own number" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   stamp_trailer
 
   # Proves the trailer arm is reached at all, so the deny above is the binding
@@ -1998,7 +1998,7 @@ rge 30 --squash'
 }
 
 @test "clearance: a GAIA-Audit CI status denies a merge naming a pull request other than the record's" {
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   install_gh_stub_with_status
 
   run_merge_hook "gh pr merge 999 --squash"
@@ -2006,7 +2006,7 @@ rge 30 --squash'
 }
 
 @test "clearance: a GAIA-Audit CI status still clears a merge naming the record's own number" {
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   install_gh_stub_with_status
 
   run_merge_hook "gh pr merge 30 --squash"
@@ -2037,7 +2037,7 @@ rge 30 --squash'
 
 @test "clearance: a merge naming an unconfirmable target denies even with every marker present" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   write_markers_for_spawn_set "$(spawn_set)"
 
   # A branch name is not a number, and resolving one costs a second network
@@ -2075,7 +2075,7 @@ rge 30 --squash'
 
 @test "clearance: the deny reads the record rather than reporting it unread" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   write_markers_for_spawn_set "$(spawn_set)"
 
   # A quoted flag value is outside the byte allowlist, so the predicate abstains
@@ -2091,7 +2091,7 @@ rge 30 --squash'
 
 @test "clearance: a readable command naming the right number blames the spelling, not the target" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   write_markers_for_spawn_set "$(spawn_set)"
 
   # The reference IS the record's, so the target was never the problem: the
@@ -2108,7 +2108,7 @@ rge 30 --squash'
 
 @test "clearance: an unreadable command with no number blames the spelling, not the target" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   write_markers_for_spawn_set "$(spawn_set)"
 
   # No positional AND unreadable: the gate established no target at all, so the
@@ -2126,7 +2126,7 @@ rge 30 --squash'
 
 @test "clearance: a genuine mismatch still gets the mismatch headline, not the spelling one" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   write_markers_for_spawn_set "$(spawn_set)"
 
   # The counterpart control: the two arms must not collapse into one.
@@ -2139,7 +2139,7 @@ rge 30 --squash'
 
 @test "clearance: the deny says a clearance does not lift it, rather than sending the operator back to the audit" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   write_markers_for_spawn_set "$(spawn_set)"
 
   run_merge_hook "gh pr merge 999 --squash"
@@ -2154,7 +2154,7 @@ rge 30 --squash'
 
 @test "clearance: the deny names the binding rather than reporting the signal missing" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   write_markers_for_spawn_set "$(spawn_set)"
 
   run_merge_hook "gh pr merge 999 --squash"
@@ -2166,7 +2166,7 @@ rge 30 --squash'
 
 @test "arming: a large non-merge command does not pay an unbounded scan" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   # Pins the CLASS of regression, not a constant. The arming scan walks bytes and
   # slices per block, so its cost grows faster than its input, and every `gh`
@@ -2195,7 +2195,7 @@ rge 30 --squash'
 
 @test "arming: a split or quoted gh still reaches the gate" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   # The tokenizer arm's pre-filter reads the first two characters, so these are
   # the spellings a tighter filter could silently stop admitting. Each still
@@ -2219,7 +2219,7 @@ rge 30 --squash'
 # exercise the SAME-LENGTH VIEW it builds on a raw hit, which suppresses a
 # heredoc body proven to be data before re-testing the raw patterns, and the
 # conditions under which that suppression does NOT happen. Every fixture is
-# an in-scope diff (app/x.ts) with no marker, so ARMED means denied and NOT
+# an in-scope diff (frontend/app/x.ts) with no marker, so ARMED means denied and NOT
 # ARMED means a silent allow.
 # ---------------------------------------------------------------------------
 
@@ -2259,7 +2259,7 @@ run_merge_hook_library_absent() {
 
 @test "data-proof: a cat-to-file heredoc body carrying the verb does not arm" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   run_merge_hook $'cat > f.txt <<EOF\ngh pr merge 30 --squash\nEOF\n'
   assert_allowed_by_json
@@ -2268,7 +2268,7 @@ run_merge_hook_library_absent() {
 
 @test "data-proof: removing the heredoc opener line leaves the same body text armed" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   # Byte-identical to the previous case with the `cat > f.txt <<EOF` opener
   # line removed: the merge now sits at the very start of the text.
@@ -2278,7 +2278,7 @@ run_merge_hook_library_absent() {
 
 @test "data-proof: the verb on the opener line itself still arms, proving the body starts after it" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   run_merge_hook $'true && gh pr merge 30 --squash <<EOF\nirrelevant body\nEOF\n'
   assert_denied_by_json
@@ -2286,7 +2286,7 @@ run_merge_hook_library_absent() {
 
 @test "data-proof: a heredoc piped into bash still arms (output not to a file)" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   run_merge_hook $'cat <<EOF | bash\ngh pr merge 30 --squash\nEOF\n'
   assert_denied_by_json
@@ -2294,7 +2294,7 @@ run_merge_hook_library_absent() {
 
 @test "data-proof: a heredoc opened by bash directly still arms (command word is not cat/tee)" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   run_merge_hook $'bash <<EOF\ngh pr merge 30 --squash\nEOF\n'
   assert_denied_by_json
@@ -2302,7 +2302,7 @@ run_merge_hook_library_absent() {
 
 @test "data-proof: a heredoc owned by a second command on the opener line still arms" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   # The line opens with `cat` and redirects to a file, so it satisfies the
   # whitelist read line-wide, while the heredoc belongs to `bash` after the
@@ -2315,7 +2315,7 @@ run_merge_hook_library_absent() {
 
 @test "data-proof: a heredoc opened by ssh still arms" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   run_merge_hook $'ssh host <<EOF\ngh pr merge 30 --squash\nEOF\n'
   assert_denied_by_json
@@ -2323,7 +2323,7 @@ run_merge_hook_library_absent() {
 
 @test "data-proof: a heredoc opened by a parameter-expansion command word still arms" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   run_merge_hook $'$RUNNER <<EOF\ngh pr merge 30 --squash\nEOF\n'
   assert_denied_by_json
@@ -2334,7 +2334,7 @@ run_merge_hook_library_absent() {
 # text minus the substitution character, which runs no merge and is allowed.
 @test "arming: a merge inside a command substitution reaches the gate" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   run_merge_hook 'echo "$(gh pr merge 30 --squash)"'
   assert_denied_by_json || return 1
@@ -2353,7 +2353,7 @@ run_merge_hook_library_absent() {
 
 @test "arming: a merge inside a process substitution reaches the gate" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   run_merge_hook 'cat <(gh pr merge 30 --squash)'
   assert_denied_by_json || return 1
@@ -2363,7 +2363,7 @@ run_merge_hook_library_absent() {
 
 @test "arming: a substitution naming a home merge inside a foreign command's argument reaches the gate" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   git -C "$REPO" remote add origin https://github.com/gaia-react/gaia.git
 
   run_merge_hook 'gh pr view 5 -R other/x --jq "$(gh pr merge 30 --squash)"'
@@ -2372,7 +2372,7 @@ run_merge_hook_library_absent() {
 
 @test "data-proof: a substitution in an unquoted-delimiter heredoc body still arms" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   run_merge_hook $'cat > f.txt <<EOF\n$(gh pr merge 30 --squash)\nEOF\n'
   assert_denied_by_json || return 1
@@ -2384,7 +2384,7 @@ run_merge_hook_library_absent() {
 
 @test "arming: a merge cited in a pull-request body passed through a quoted-delimiter heredoc is allowed" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   run_merge_hook $'gh pr create --title t --body "$(cat <<\'EOF\'\nSee `gh pr merge 30 --squash`.\nEOF\n)"'
   assert_allowed_by_json || return 1
@@ -2399,7 +2399,7 @@ run_merge_hook_library_absent() {
 
 @test "deny text: a separator or opener arm says the merge may only be cited, and a first-word arm does not" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   run_merge_hook 'echo "$(gh pr merge 30 --squash)"'
   assert_denied_by_json || return 1
@@ -2416,7 +2416,7 @@ run_merge_hook_library_absent() {
 
 @test "data-proof: an unterminated quote after the heredoc denies (walker abstains, raw match stands)" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   run_merge_hook $'cat > f.txt <<EOF\ngh pr merge 30 --squash\nEOF\n'"'"
   assert_denied_by_json
@@ -2424,7 +2424,7 @@ run_merge_hook_library_absent() {
 
 @test "data-proof: the same payload with the quote terminated is proven data and allowed" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   run_merge_hook $'cat > f.txt <<EOF\ngh pr merge 30 --squash\nEOF\n'"'x'"
   assert_allowed_by_json
@@ -2433,7 +2433,7 @@ run_merge_hook_library_absent() {
 
 @test "data-proof: a heredoc whose delimiter never appears denies (walker abstains)" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   run_merge_hook $'cat > f.txt <<EOF\ngh pr merge 30 --squash\n'
   assert_denied_by_json
@@ -2441,7 +2441,7 @@ run_merge_hook_library_absent() {
 
 @test "data-proof: a heredoc-body merge at the character bound is proven data and allowed" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   padded_heredoc_command 16384
   [ "${#PADDED_COMMAND}" -eq 16384 ]
@@ -2452,7 +2452,7 @@ run_merge_hook_library_absent() {
 
 @test "data-proof: the same shape one character past the bound denies (identity view, raw match stands)" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   padded_heredoc_command 16385
   [ "${#PADDED_COMMAND}" -eq 16385 ]
@@ -2462,7 +2462,7 @@ run_merge_hook_library_absent() {
 
 @test "no-regression: an unrelated first line with an unquoted merge on the second line still arms" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   run_merge_hook $'echo hi\ngh pr merge 30 --squash\n'
   assert_denied_by_json
@@ -2470,7 +2470,7 @@ run_merge_hook_library_absent() {
 
 @test "no-regression: a mid-word # before a real merge still arms" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   run_merge_hook 'echo x#y && gh pr merge 30 --squash'
   assert_denied_by_json
@@ -2478,7 +2478,7 @@ run_merge_hook_library_absent() {
 
 @test "no-regression: a merge after a word-initial # comment does not arm" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   run_merge_hook '# gh pr merge 30 --squash'
   assert_allowed_by_json
@@ -2487,7 +2487,7 @@ run_merge_hook_library_absent() {
 
 @test "data-proof: an unmodelled \$'…' word ahead of an otherwise-provable heredoc denies" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   # Without the leading $'a' word this payload is proven data and allowed
   # (see the cat-to-file case above); the walker abandons suppression on the
@@ -2498,7 +2498,7 @@ run_merge_hook_library_absent() {
 
 @test "library-absent: repo-scope.sh missing denies by name, not by blaming the command's spelling" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
   write_markers_for_spawn_set "$(spawn_set)"
 
   # Binding every permit to the named pull request made this library's absence
@@ -2521,7 +2521,7 @@ run_merge_hook_library_absent() {
 
 @test "walker-absent: verb-arming-walk.sh missing degrades to the raw match, so the heredoc-body payload still arms" {
   install_gh_stub
-  commit_files "app/x.ts" "export const x = 1"
+  commit_files "frontend/app/x.ts" "export const x = 1"
 
   run_merge_hook_library_absent "verb-arming-walk.sh" $'cat > f.txt <<EOF\ngh pr merge 30 --squash\nEOF\n'
   assert_denied_by_json
@@ -2533,4 +2533,27 @@ run_merge_hook_library_absent() {
 
 @test "the hook is registered in settings.json on the Bash|Monitor matcher" {
   hook_registered "$SETTINGS_ABSOLUTE_PATH" '.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor")' pr-merge-audit-check.sh
+}
+
+# ---- SPEC-092: the frontend/ roster globs and the merge-layer fail-closed ---
+
+@test "frontend/ roster: a frontend/app diff is claimed by the default member, so its marker is demanded and clears" {
+  commit_files "frontend/app/routes/x.tsx" "export const X = 1"
+  [ "$(spawn_set)" = "code-audit-frontend" ]
+  run_merge_hook
+  [[ "$output" == *'"permissionDecision": "deny"'* ]]
+  write_marker "code-audit-frontend"
+  run_merge_hook
+  assert_allowed_by_json
+}
+
+@test "frontend/ roster guard can fail: with the frontend/ globs removed the resolver is empty and the gate still refuses without a frontend marker" {
+  grep -v '"frontend/' "$REPO/.gaia/audit-ci.yml" > "$REPO/.gaia/audit-ci.yml.tmp"
+  mv "$REPO/.gaia/audit-ci.yml.tmp" "$REPO/.gaia/audit-ci.yml"
+  commit_files "frontend/app/routes/x.tsx" "export const X = 1"
+  [ -z "$(spawn_set)" ]
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"permissionDecision": "deny"'* ]]
+  [[ "$output" == *'code-audit-frontend'* ]]
 }

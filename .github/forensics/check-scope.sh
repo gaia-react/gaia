@@ -37,7 +37,7 @@ dir|allow|.claude/agents/
 dir|allow|.gaia/statusline/
 dir|allow|.specify/extensions/gaia/
 file|allow|.gaia/manifest.json
-dir|deny|app/
+dir|deny|frontend/app/
 dir|deny|wiki/
 dir|deny|studio/
 dir|deny|website/

@@ -102,13 +102,17 @@ jobs:
         with:
           filters: |
             code:
-              - 'app/**'
-              - '.storybook/**'
-              - 'public/**'
+              - 'frontend/app/**'
+              - 'frontend/.storybook/**'
+              - 'frontend/public/**'
               - 'package.json'
+              - 'frontend/package.json'
               - 'pnpm-lock.yaml'
-              - 'tsconfig*.json'
-              - 'vite.config.*'
+              - 'pnpm-workspace.yaml'
+              - 'frontend/tsconfig*.json'
+              - 'frontend/vite.config.*'
+              - '.gaia/packages.json'
+              - 'frontend/gaia.package.json'
               - '.github/workflows/chromatic.yml'
               # The composite action the Node setup step below `uses:`. It
               # matches nothing else here, so without this line a pull request
@@ -139,7 +143,7 @@ jobs:
       # correct: a substitution that publishes nothing is not the failure. Both
       # cases are executed rather than reasoned about.
       #
-      # The sentinels are every key `schema` in `app/env.server.ts` declares
+      # The sentinels are every key `schema` in `frontend/app/env.server.ts` declares
       # except `NODE_ENV`, which is excluded because the build needs its real
       # value. Declares, not requires: `COMMIT_SHA` and `MSW_ENABLED` are
       # `.optional()` and carry sentinels anyway, since what decides coverage is
@@ -156,7 +160,7 @@ jobs:
       # `pnpm run` sets `npm_package_version` from `package.json` and overwrites
       # that sentinel, which would drop one of the four keys from the guard's
       # reach while still reporting green. Flag parity with the script is not
-      # load-bearing; producing `storybook-static/` from the real config is.
+      # load-bearing; producing `frontend/storybook-static/` from the real config is.
       - if: steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true'
         name: Build the preview and assert it inlines no environment values
         env:
@@ -168,19 +172,19 @@ jobs:
           SITE_URL: gaia-preview-env-sentinel-site-url
         run: |
           set -euo pipefail
-          pnpm exec storybook build --test --stats-json
+          pnpm -C frontend exec storybook build --test --stats-json
           # `grep -r` exits 2 on a missing directory, and an `if` condition
           # absorbs that as "no match" rather than as an error, so a build that
           # produced no output would report this guard green having read nothing.
-          if [ ! -d storybook-static ]; then
-            echo "::error::The Storybook build produced no storybook-static/, so this guard inspected nothing."
+          if [ ! -d frontend/storybook-static ]; then
+            echo "::error::The Storybook build produced no frontend/storybook-static/, so this guard inspected nothing."
             exit 1
           fi
-          if grep -rl 'gaia-preview-env-sentinel-' storybook-static; then
+          if grep -rl 'gaia-preview-env-sentinel-' frontend/storybook-static; then
             echo "::error::The Storybook build inlined environment values into the preview (files listed above). Remove the substitution and pass a story the values it needs as args."
             exit 1
           fi
-          # storybook-static/ is left in place: it is the artifact `Run Chromatic`
+          # frontend/storybook-static/ is left in place: it is the artifact `Run Chromatic`
           # publishes below. Publishing it is safe only because every check above
           # already ran against this exact tree and this step aborts before the
           # publish step on either a missing build or a leaked sentinel, so an
@@ -202,5 +206,5 @@ jobs:
           exitOnceUploaded: true
           autoAcceptChanges: 'main'
           onlyChanged: true
-          externals: 'app/styles/tailwind.css'
-          storybookBuildDir: 'storybook-static'
+          externals: 'frontend/app/styles/tailwind.css'
+          storybookBuildDir: 'frontend/storybook-static'

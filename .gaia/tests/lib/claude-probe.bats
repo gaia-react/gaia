@@ -13,6 +13,9 @@
 # `grep -qF` for non-final assertions, `&& return 1` for absence checks.
 
 setup_file() {
+  # Tests share one fixture tree and several mutate it (branch, index), so they
+  # must not run concurrently under --jobs.
+  export BATS_NO_PARALLELIZE_WITHIN_FILE=true
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   HARNESS="$REPO_ROOT/.gaia/tests/claude-probe"
   export REPO_ROOT HARNESS

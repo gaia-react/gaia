@@ -258,8 +258,8 @@ setup() {
   # .gaia/audit-ci.yml's globs), none of them listed in
   # .claude/hooks/lib/audit-machinery.sh, so diverging one rotates only its
   # owning member's digest, never every member's at once.
-  mkdir -p "$MAIN/app" "$MAIN/.github/workflows" "$MAIN/.gaia/cli/src" "$MAIN/.claude/skills/audit-root-fixture"
-  printf 'export const x = 1;\n' > "$MAIN/app/x.ts"
+  mkdir -p "$MAIN/frontend/app" "$MAIN/.github/workflows" "$MAIN/.gaia/cli/src" "$MAIN/.claude/skills/audit-root-fixture"
+  printf 'export const x = 1;\n' > "$MAIN/frontend/app/x.ts"
   printf 'name: ci\n' > "$MAIN/.github/workflows/ci.yml"
   printf '#!/bin/bash\necho shell\n' > "$MAIN/.gaia/scripts/fixture-example.sh"
   chmod +x "$MAIN/.gaia/scripts/fixture-example.sh"
@@ -275,7 +275,7 @@ setup() {
   # different per-member content digests (verified by the fixture-sanity test
   # below). No symlink between the two `.gaia/local` directories: they stay
   # physically separate stores throughout this file.
-  printf 'export const x = 2;\n' > "$WORKTREE/app/x.ts"
+  printf 'export const x = 2;\n' > "$WORKTREE/frontend/app/x.ts"
   printf 'name: ci-changed\n' > "$WORKTREE/.github/workflows/ci.yml"
   printf '#!/bin/bash\necho shell-changed\n' > "$WORKTREE/.gaia/scripts/fixture-example.sh"
   printf 'export const y = 2;\n' > "$WORKTREE/.gaia/cli/src/foo.ts"
@@ -680,7 +680,7 @@ run_audit_root_block() {
 
 @test "stage 4 (flag: --root) a subdirectory of WORKTREE, from OUTSIDE: exits 2 and writes nothing" {
   local subdir before_snapshot after_snapshot
-  subdir="$WORKTREE/app"
+  subdir="$WORKTREE/frontend/app"
   before_snapshot="$(pool_snapshot "$WORKTREE")"
   run_stdout_only bash "$SCRIPT_WRITE_CLEARANCE" --root "$subdir" --member code-audit-frontend --provenance earned
   [ "$status" -eq 2 ]
@@ -692,7 +692,7 @@ run_audit_root_block() {
 @test "stage 4 non-vacuity (source mutation): removing the toplevel-equals-ROOT validation turns the subdirectory-rejection assertion red; byte-identical restore verified" {
   local orig_sum subdir before_snapshot after_snapshot start mutated_sum went_red=0 restored_sum
   orig_sum="$(backup_file "$SCRIPT_WRITE_CLEARANCE")"
-  subdir="$WORKTREE/app"
+  subdir="$WORKTREE/frontend/app"
   # The mutated writer treats the subdirectory as the root and reads its roster
   # from there, so seed one: without it the mutated run fails on the missing
   # roster and stays green for the wrong reason.

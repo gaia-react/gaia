@@ -14,7 +14,7 @@ adding a guard in the hook AND a no-op default route in the app fixes it.
 
 class: hook
 evidence: stack trace originates in `.claude/hooks/wiki-session-stop.sh` and
-in `app/routes/_index.tsx`. A complete fix would touch both files — one in
+in `frontend/app/routes/_index.tsx`. A complete fix would touch both files — one in
 the allowlist, one on the canonical denylist.
 
 ## Capture
@@ -31,4 +31,4 @@ hook_exit: 1
 ## Reproduction context
 
 - `.claude/hooks/wiki-session-stop.sh`
-- `app/routes/_index.tsx`
+- `frontend/app/routes/_index.tsx`

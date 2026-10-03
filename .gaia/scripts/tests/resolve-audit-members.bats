@@ -716,3 +716,102 @@ YAML
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
+
+# ---- SPEC-092: the committed roster claims the frontend/ package ------------
+# These drive the roster that ships (seed_audit_roster copies the committed
+# `auditors:` block), so they pin the real globs rather than a fixture mirror.
+
+# Replace the sandbox roster with the committed one.
+seed_committed_roster() {
+  rm -f "$SANDBOX/.gaia/audit-ci.yml"
+  seed_audit_roster "$SANDBOX"
+}
+
+@test "committed roster: a frontend/app diff resolves to the default member by its own frontend/app/** glob" {
+  seed_committed_roster
+  stage frontend/app/routes/x.tsx
+  commit "frontend app change"
+  run run_resolver
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-frontend" ]
+
+  # Attribution: drop only the member's own `frontend/app/**` glob and the same
+  # diff resolves to nobody, so the match came from that glob and nothing else.
+  grep -vF -- '"frontend/app/**"' "$SANDBOX/.gaia/audit-ci.yml" > "$SANDBOX/.gaia/audit-ci.yml.tmp"
+  mv "$SANDBOX/.gaia/audit-ci.yml.tmp" "$SANDBOX/.gaia/audit-ci.yml"
+  run run_resolver
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "committed roster: frontend/.claude and frontend/gaia.package.json resolve to the frontend member" {
+  seed_committed_roster
+  stage frontend/.claude/rules/x.md frontend/gaia.package.json frontend/CLAUDE.md
+  commit "frontend harness change"
+  run run_resolver
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-frontend" ]
+}
+
+@test "committed roster: workflow, shell and node paths keep their members" {
+  seed_committed_roster
+  stage .github/workflows/a.yml .gaia/scripts/a.sh
+  commit "mixed"
+  run run_resolver
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"code-audit-github-workflows"* ]]
+  [[ "$output" == *"code-audit-maintainer-shell"* ]]
+}
+
+@test "committed roster: a retired root app path resolves to no member (COV-005)" {
+  seed_committed_roster
+  stage app/routes/x.tsx
+  commit "retired root path"
+  run run_resolver
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "committed roster: a frontend/public change resolves to no member (declared unowned, merge layer reviews it)" {
+  seed_committed_roster
+  stage frontend/public/sw.js
+  commit "public"
+  run run_resolver
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "base roster guard can fail: the pre-move roster attributes nothing to frontend/app/**" {
+  # A roster still carrying only root-form frontend globs (the 1.6.1 shape)
+  # leaves a frontend/ diff unowned, the RED state this change repairs.
+  cat > "$SANDBOX/.gaia/audit-ci.yml" <<'YAML'
+auditors:
+  - name: code-audit-frontend
+    globs:
+      - "app/**"
+      - "test/**"
+    audience: adopter
+    push_fixes: true
+    default: true
+YAML
+  stage frontend/app/routes/x.tsx
+  commit "frontend app change"
+  run run_resolver
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "committed roster: a frontend/app change rotates the default member digest" {
+  seed_committed_roster
+  stage frontend/app/routes/x.tsx
+  commit "one"
+  local digest_one digest_two
+  digest_one="$(bash "$THIS_DIRECTORY/../audit-member-digest.sh" --root "$SANDBOX" --member code-audit-frontend)"
+  printf 'y\n' > "$SANDBOX/frontend/app/routes/x.tsx"
+  git -C "$SANDBOX" add frontend/app/routes/x.tsx
+  commit "two"
+  digest_two="$(bash "$THIS_DIRECTORY/../audit-member-digest.sh" --root "$SANDBOX" --member code-audit-frontend)"
+  [ -n "$digest_one" ]
+  [ -n "$digest_two" ]
+  [ "$digest_one" != "$digest_two" ]
+}

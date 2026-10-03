@@ -511,9 +511,9 @@ scrub_maintainer_only() {
 
   # Feature branch with an app/ change (owned by the default member).
   git -C "$ADOPTER" checkout --quiet -b feature
-  mkdir -p "$ADOPTER/app"
-  echo "export const x = 1;" > "$ADOPTER/app/x.ts"
-  git -C "$ADOPTER" add app/x.ts
+  mkdir -p "$ADOPTER/frontend/app"
+  echo "export const x = 1;" > "$ADOPTER/frontend/app/x.ts"
+  git -C "$ADOPTER" add frontend/app/x.ts
   git -C "$ADOPTER" commit --quiet -m "feat: x"
 
   # Provision the adopter shape (all UNTRACKED, so they never join the diff):

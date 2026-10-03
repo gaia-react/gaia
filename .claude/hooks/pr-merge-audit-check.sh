@@ -56,7 +56,7 @@
 #      an in-scope file exists so this never applies there): every file the PR
 #      changes lives on a surface outside audit scope, wiki, instruction files
 #      (.claude / .specify), .gaia metadata, prose docs, and root-level
-#      markdown. Evaluated fail-closed: any in-scope path (app/, test/,
+#      markdown. Evaluated fail-closed: any in-scope path (frontend/app/, frontend/test/,
 #      configs, .github/workflows/) makes the marker mandatory again. An
 #      in-scope-but-ownerless path (a root Makefile, public/**) is folded into
 #      the frontend member's digest input set, so a stale marker computed for a
@@ -1055,7 +1055,7 @@ gate_empty_is_decisive() {
 # Strict allowlist, evaluated fail-closed: the diff base must resolve, the diff
 # must be non-empty OR its emptiness must be decisive under
 # gate_empty_is_decisive above, and EVERY path must be out of scope. Any
-# unresolved base, diff error, or in-scope path (app/, test/, configs,
+# unresolved base, diff error, or in-scope path (frontend/app/, frontend/test/, configs,
 # .github/workflows/) falls through to the normal deny. A PR that touches
 # auditable source therefore can never reach this bypass, it cannot mask an
 # audit that withheld its marker over unresolved findings, since that PR's diff
@@ -1269,7 +1269,7 @@ None of the accepted signals is present:
   - Commit trailer:  ${trailer_status:-missing}
   - GitHub status:   absent or version/digest mismatch
   - chore(deps) PR:  PR title does not match \`chore(deps):\`/\`chore(deps-dev):\`, or the PR changes a path other than a dependency manifest
-  - Out-of-scope:    PR changes at least one in-scope path (app/, test/, configs,
+  - Out-of-scope:    PR changes at least one in-scope path (frontend/app/, frontend/test/, configs,
                      .github/workflows/), not a wiki/docs/.gaia-config-only diff
   - Diff base:       ${gate_trust:-unresolvable} provenance (anchor ${gate_anchor:-default-branch}, base ${base_display}); an empty
                      base-to-HEAD range clears this gate only on remote or supplied
