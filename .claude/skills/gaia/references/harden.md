@@ -335,7 +335,7 @@ If it is empty, no-op (a redirect or an unapplied too-invasive edit can leave th
 **Create the branch, as its own Bash call.** The uncommitted approved edits follow the checkout. Mint the name first and carry its output as a literal, `<HARDEN_BRANCH>`, into every later call, since shell variables do not persist between calls:
 
 ```bash
-bash .gaia/scripts/branch-name-lib.sh name chore gaia-harden
+bash .gaia/scripts/branch-name-lib.sh name harden
 ```
 
 ```bash

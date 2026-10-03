@@ -148,7 +148,7 @@ On `Abort`, exit cleanly with no filesystem changes.
 If `SHOULD_CREATE_BRANCH=true`, create and switch to the branch now that the user has confirmed:
 
 ```bash
-git checkout -b "$(bash .gaia/scripts/branch-name-lib.sh name chore update-gaia)"
+git checkout -b "$(bash .gaia/scripts/branch-name-lib.sh name update "$LATEST_TAG")"
 ```
 
 Otherwise stay on the current branch.
@@ -229,7 +229,7 @@ else
     echo "PR #$existing already open for $branch, pushed the new commit to it."
   else
     gh pr create --base main --head "$branch" \
-      --title "chore: update GAIA to $LATEST_TAG" \
+      --title "chore(gaia): update to $LATEST_TAG" \
       --body "Pulls GAIA $LATEST_TAG into the project. Per-file outcomes are in the update summary above."
   fi
 fi

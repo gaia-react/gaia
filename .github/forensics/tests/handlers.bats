@@ -321,6 +321,32 @@ first_captured_body() {
   [[ "$pr_line" == *'--head forensics/42-quality-gate'* ]]
 }
 
+@test "auto-fixable: pr title is the deterministic conventional header, not the issue title" {
+  body="$BATS_TEST_TMPDIR/pr.md"
+  printf 'x\n' > "$body"
+  run "$HANDLERS/handle-auto-fixable.sh" 42 quality-gate forensics/42-quality-gate "$body"
+  [ "$status" -eq 0 ]
+  pr_line="$(grep -F 'gh pr create' "$GH_LOG")"
+  # The shim logs argv through printf %q, so the expectation is built the same way.
+  expected_title="$(printf '%q' 'fix(forensics): auto-fix #42 (quality-gate)')"
+  [[ "$pr_line" == *"--title $expected_title "* ]]
+  [[ "$pr_line" == *'gaia-forensics'* ]] && return 1
+  [[ "$pr_line" == *'Test\ issue\ title'* ]] && return 1
+  true
+}
+
+@test "auto-fixable: the issue title moves into the pr body as an inert code span" {
+  body="$BATS_TEST_TMPDIR/pr.md"
+  printf '## Capture\nverbatim\n' > "$body"
+  run "$HANDLERS/handle-auto-fixable.sh" 42 quality-gate forensics/42-quality-gate "$body"
+  [ "$status" -eq 0 ]
+  # The first captured body is the one handed to `gh pr create`.
+  first_body="$(head -n1 "$CAPTURED_BODIES_DIRECTORY/index.txt")"
+  [ -f "$first_body" ]
+  [ "$(head -n1 "$first_body")" = 'Issue title: `Test issue title`' ]
+  grep -qF 'verbatim' "$first_body"
+}
+
 @test "auto-fixable: pr body passed via --body-file (UAT-015 passthrough)" {
   body="$BATS_TEST_TMPDIR/pr.md"
   printf '## Capture\n```\napi_key: <redacted>\n```\n' > "$body"

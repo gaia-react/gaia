@@ -232,7 +232,7 @@ const mainRunner = (
         argv: [
           'pr',
           'view',
-          'wiki-sync/2026-05-07-bbbbbbb',
+          'wiki/sync-2026-05-07-bbbbbbb',
           '--json',
           'state',
           '--jq',
@@ -347,7 +347,7 @@ describe('wiki sync land', () => {
           argv: [
             'pr',
             'view',
-            'wiki-sync/2026-05-07-bbbbbbb',
+            'wiki/sync-2026-05-07-bbbbbbb',
             '--json',
             'files,headRefOid,baseRefName',
           ],
@@ -367,7 +367,7 @@ describe('wiki sync land', () => {
           argv: [
             'pr',
             'view',
-            'wiki-sync/2026-05-07-bbbbbbb',
+            'wiki/sync-2026-05-07-bbbbbbb',
             '--json',
             'state',
             '--jq',
@@ -387,7 +387,7 @@ describe('wiki sync land', () => {
     });
     expect(exit).toBe(0);
     expect(stdio.outputs.join('')).toContain(
-      'sync-land: merged PR for wiki-sync/2026-05-07-bbbbbbb and cleaned up locally'
+      'sync-land: merged PR for wiki/sync-2026-05-07-bbbbbbb and cleaned up locally'
     );
 
     // Locate the call sequence and verify each verb in order.
@@ -397,16 +397,16 @@ describe('wiki sync land', () => {
       ) + 1
     );
     const expected = [
-      ['git', 'checkout', '-b', 'wiki-sync/2026-05-07-bbbbbbb'],
+      ['git', 'checkout', '-b', 'wiki/sync-2026-05-07-bbbbbbb'],
       ['git', 'add', 'wiki'],
       ['git', 'commit', '-m', 'wiki: sync through bbbbbbb'],
-      ['git', 'push', '-u', 'origin', 'wiki-sync/2026-05-07-bbbbbbb'],
+      ['git', 'push', '-u', 'origin', 'wiki/sync-2026-05-07-bbbbbbb'],
       ['gh', 'pr', 'create'],
       [
         'gh',
         'pr',
         'view',
-        'wiki-sync/2026-05-07-bbbbbbb',
+        'wiki/sync-2026-05-07-bbbbbbb',
         '--json',
         'files,headRefOid,baseRefName',
       ],
@@ -427,10 +427,10 @@ describe('wiki sync land', () => {
         'description=skipped: out of scope',
       ],
       ['gh', 'pr', 'merge', '--squash', '--auto', '--delete-branch'],
-      ['gh', 'pr', 'view', 'wiki-sync/2026-05-07-bbbbbbb'],
+      ['gh', 'pr', 'view', 'wiki/sync-2026-05-07-bbbbbbb'],
       ['git', 'checkout', '--end-of-options', 'main'],
       ['git', 'pull', '--ff-only', 'origin', 'main'],
-      ['git', 'branch', '-D', '--', 'wiki-sync/2026-05-07-bbbbbbb'],
+      ['git', 'branch', '-D', '--', 'wiki/sync-2026-05-07-bbbbbbb'],
       ['git', 'fetch', '--prune', 'origin'],
     ] as const;
 
@@ -469,7 +469,7 @@ describe('wiki sync land', () => {
           argv: [
             'pr',
             'view',
-            'wiki-sync/2026-05-07-bbbbbbb',
+            'wiki/sync-2026-05-07-bbbbbbb',
             '--json',
             'state',
             '--jq',
@@ -524,7 +524,7 @@ describe('wiki sync land', () => {
           argv: [
             'pr',
             'view',
-            'wiki-sync/2026-05-07-bbbbbbb',
+            'wiki/sync-2026-05-07-bbbbbbb',
             '--json',
             'state',
             '--jq',
@@ -585,7 +585,7 @@ describe('wiki sync land', () => {
           result: okResult('cccccccccccccccccccccccccccccccccccccccc\n'),
         },
         {
-          argv: ['push', '-u', 'origin', 'wiki-sync/2026-05-07-ccccccc'],
+          argv: ['push', '-u', 'origin', 'wiki/sync-2026-05-07-ccccccc'],
           result: failResult(128, 'remote: rejected'),
         },
       ],
@@ -645,7 +645,7 @@ describe('wiki sync land', () => {
       command: 'git',
     });
     expect(gitCalls).toContainEqual({
-      args: ['branch', '-D', 'wiki-sync/2026-05-07-ddddddd'],
+      args: ['branch', '-D', 'wiki/sync-2026-05-07-ddddddd'],
       command: 'git',
     });
     // The staged `wiki` index is reset before switching branches, so the
@@ -711,7 +711,7 @@ describe('wiki sync land', () => {
       command: 'git',
     });
     expect(gitCalls).toContainEqual({
-      args: ['branch', '-D', 'wiki-sync/2026-05-07-ccccccc'],
+      args: ['branch', '-D', 'wiki/sync-2026-05-07-ccccccc'],
       command: 'git',
     });
     // The commit never runs once `add` fails, and no remote work happens.
@@ -855,7 +855,7 @@ describe('wiki sync land', () => {
 
   describe('out-of-scope GAIA-Audit stamp', () => {
     const HEAD_SHA = 'dddddddddddddddddddddddddddddddddddddddd';
-    const BRANCH = 'wiki-sync/2026-05-07-ddddddd';
+    const BRANCH = 'wiki/sync-2026-05-07-ddddddd';
     const RECORD_ARGV = [
       'pr',
       'view',
@@ -1169,7 +1169,7 @@ describe('wiki sync land', () => {
           [],
           [
             {
-              argv: ['push', '-u', 'origin', 'wiki-sync/2026-05-07-bbbbbbb'],
+              argv: ['push', '-u', 'origin', 'wiki/sync-2026-05-07-bbbbbbb'],
               result: failResult(128, 'remote: rejected'),
             },
           ]

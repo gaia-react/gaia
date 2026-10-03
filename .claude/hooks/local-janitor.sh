@@ -5,12 +5,12 @@
 # Side-effect only. A wiki landing whose merge outlasts the CLI's own bounded
 # wait (`gaia wiki chain finish` / `wiki sync land` cuts a throwaway branch,
 # pushes it, and enables auto-merge with `gh pr merge --auto`, a call that
-# returns BEFORE the merge lands) leaves both a local wiki-sync/<date>-<sha>
-# branch and a stale local base branch behind. This hook reconciles both, in
-# order:
+# returns BEFORE the merge lands) leaves both a local wiki/sync-<date>-<sha>
+# branch (or a legacy wiki-sync/<date>-<sha> one, the shape older CLIs cut)
+# and a stale local base branch behind. This hook reconciles both, in order:
 #   a. an existence gate. Everything below runs only when a local
-#      wiki-sync/* branch is present at all, so an ordinary session pays
-#      nothing for any of it.
+#      wiki/sync-* or wiki-sync/* branch is present at all, so an ordinary
+#      session pays nothing for any of it.
 #   b. a bounded, rate-limited `git fetch --prune` of origin. Bounded by
 #      GAIA_WIKI_FETCH_TIMEOUT_SECONDS (default 5, floor 1, ceiling 30;
 #      0 disables the fetch outright, and with it the reap in (c) and the
@@ -24,8 +24,8 @@
 #      worktree-invoked fetch mutates state every tree observes. Tree
 #      locality applies to the fast-forward in (d), which acts on $root, and
 #      to nothing else.
-#   c. a guarded reap of each wiki-sync/* branch whose upstream now reads
-#      [gone]. [gone] does NOT prove a merge: it proves only that the remote
+#   c. a guarded reap of each wiki/sync-* or wiki-sync/* branch whose
+#      upstream now reads [gone]. [gone] does NOT prove a merge: it proves only that the remote
 #      head ref is absent, and a pull request closed without merging and
 #      then branch-deleted reads identically. So the reap refuses any branch
 #      carrying work no remote-tracking ref has, tested by PATCH ID with
@@ -117,7 +117,7 @@ fi
 # Shared by this sweep (last_fetch_at) and the fast-forward further down this
 # same file (catchup_owed). Read-modify-write via a temp file + `mv`, so a
 # concurrent session never observes a half-written file. Deliberately never
-# create .gaia/local: a fresh clone carrying an orphaned wiki-sync branch is
+# create .gaia/local: a fresh clone carrying an orphaned wiki sync branch is
 # swept regardless, and a `mkdir -p` from in here would recreate a directory
 # that never existed. A skipped write is a silent no-op: a fresh clone with no
 # .gaia/local is not a machine accumulating session-start cost, so its fetch
@@ -160,13 +160,16 @@ wiki_catchup_state_unset() {
   return 0
 }
 
-# --- Half A: merged-and-gone wiki-sync branches ---------------------------
+# --- Half A: merged-and-gone wiki sync branches ---------------------------
+# Two shapes name a wiki sync branch: `wiki/sync-<date>-<sha>` (what the CLI
+# cuts) and the legacy `wiki-sync/<date>-<sha>` (cut before the branch-naming
+# convention, still reaped so an old leftover does not linger).
 # Git-scoped: independent of .gaia/local, so a fresh clone carrying an
-# orphaned wiki-sync branch is still swept before any .gaia/local exists.
+# orphaned wiki sync branch is still swept before any .gaia/local exists.
 # List every local branch with its upstream-track state. `[gone]` only
-# materializes after a `git fetch --prune`, so when a wiki-sync/* branch is
-# present at all this sweep runs its own bounded, rate-limited prune-fetch of
-# `origin` (below) before re-reading that state, then hard-deletes each
+# materializes after a `git fetch --prune`, so when a wiki/sync-* or
+# wiki-sync/* branch is present at all this sweep runs its own bounded,
+# rate-limited prune-fetch of `origin` (below) before re-reading that state, then hard-deletes each
 # `[gone]` branch whose work is already fully represented upstream (checked
 # via `git cherry`, since a squash merge leaves the branch tip unreachable by
 # ancestry alone). `git branch -D` (not -d): ancestry would refuse a squash
@@ -181,7 +184,7 @@ branch_tracks=$(git -C "$root" for-each-ref \
 
 # Resolved once, unconditionally -- consumed by this sweep's guarded reap
 # below AND by the durable-obligation fast-forward further down this file,
-# which runs even in a session holding no wiki-sync/* branch at all
+# which runs even in a session holding no wiki sync branch at all
 # (origin/HEAD with a main fallback, matching defaultBranch's convention).
 # Shape-validated immediately, before any git call interpolates it.
 # An unresolvable or unsafely-shaped base clears $base to empty; every
@@ -201,9 +204,9 @@ esac
 fetch_attempted=0
 fetch_ok=0
 
-# Set when THIS session's reap loop below encounters a [gone] wiki-sync/*
-# branch, whether it deletes it or the cherry check refuses to. Read by
-# half B further down this file: it is one of the two triggers ("owed OR
+# Set when THIS session's reap loop below encounters a [gone] wiki/sync-*
+# or wiki-sync/* branch, whether it deletes it or the cherry check refuses
+# to. Read by half B further down this file: it is one of the two triggers ("owed OR
 # half A reconciled a branch") for attempting the fast-forward, alongside a
 # `catchup_owed=1` breadcrumb a previous session left behind. Same
 # initialize-before-any-branch requirement as the two flags above.
@@ -214,7 +217,7 @@ if [ -n "$branch_tracks" ]; then
   while IFS= read -r line; do
     [ -n "$line" ] || continue
     branch_name=${line%% *}
-    case "$branch_name" in wiki-sync/*) wiki_sync_present=1; break ;; esac
+    case "$branch_name" in wiki/sync-* | wiki-sync/*) wiki_sync_present=1; break ;; esac
   done <<EOF
 $branch_tracks
 EOF
@@ -363,12 +366,14 @@ if [ "$wiki_sync_present" -eq 1 ]; then
         [ -n "$line" ] || continue
         branch_name=${line%% *}                        # branch name (no spaces in a ref)
         track=${line#"$branch_name"}; track=${track# }  # remainder: [gone]/[ahead N]/... token
-        # The glob is deliberately loose: it requires only ONE hex character
+        # Both shapes carry `<date>-<hex>` after the prefix. The glob is
+        # deliberately loose: it requires only ONE hex character
         # where the landing's short sha has 7-40. That is safe because the
         # cherry check and the `[gone]` track state below are what actually
         # gate the delete, not this glob alone. Validated before any
         # destructive step.
         case "$branch_name" in
+          wiki/sync-[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9a-f]*) ;;
           wiki-sync/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9a-f]*) ;;
           *) continue ;;
         esac
@@ -413,7 +418,7 @@ fi
 # --- Half B: the durable-obligation fast-forward ---------------------------
 # Advances base to origin/base with a checkout-aware `git merge --ff-only`.
 # Purely local -- no network call under any circumstance -- so it is attempted
-# whether or not this session holds a wiki-sync/* branch at all: half A's
+# whether or not this session holds a wiki sync branch at all: half A's
 # fetch already updated origin/$base when it ran, and nothing here re-hits the
 # network. Two independent triggers, per the frozen gate chain: THIS session's
 # reap loop reconciled a [gone] branch (branch_reconciled=1), OR a previous

@@ -153,11 +153,34 @@ branch is cut fresh from the repository's default base rather than from the curr
 runtime's own `worktree.baseRef: fresh` default. The branch is already cut, so the caller runs no manual
 `git checkout -b`. Everything the caller does after this point runs from inside the worktree.
 
-**The branch is named `worktree-<name>`, not `<name>`, and every `/` in `<name>` is written as `+`.** A worktree requested
-as `debt/123-slug` gets a branch called `worktree-debt+123-slug`, and that is what appears in `git branch` and on the PR.
-Every GAIA reader of a branch name normalizes this spelling back to the requested name through
-`.gaia/scripts/branch-name-lib.sh`, so both the prefix and the `+` separator are load-bearing and change only in
-lockstep with that library.
+**The harness names the branch `worktree-<name>`, with every `/` in `<name>` written as `+`, and GAIA renames it straight away.** A worktree
+requested as `debt/123-slug` starts on `worktree-debt+123-slug`. Right after the call, run these as three separate plain commands, each
+value read from one command's output and typed into the next as a literal:
+
+```bash
+git rev-parse --show-toplevel
+```
+
+Carry the printed path as `RESOLVED_ROOT` (see the export section below).
+
+```bash
+git -C <RESOLVED_ROOT> branch --show-current
+```
+
+It prints the worktree spelling.
+
+```bash
+git -C <RESOLVED_ROOT> branch -m <worktree spelling> <branch-name>
+```
+
+The rename makes the local branch, the remote branch, and the pull request head one canonical name, so a plain `git push -u origin
+<branch-name>`, an argument-less `gh pr view`, and every hook that resolves "this branch's PR" work unchanged. Each value is a typed
+literal because the runtime refuses a `git` command that shares its command line with a command substitution inside a worktree.
+
+A rename that fails (the canonical name already exists, typically a stale branch from a crashed run) is surfaced with the colliding
+name and stops, the same way the `always-worktree` creation-failure paragraph treats a collision. Normalization through
+`.gaia/scripts/branch-name-lib.sh` remains for branches that predate the rename (ledgers and pull request heads that still carry the
+`worktree-` spelling), so both the prefix and the `+` separator change only in lockstep with that library.
 
 Provisioning the worktree (the shared-state symlinks and the generated typed routes) is a separate
 concern from creating it, and it runs on entry rather than at creation: `.claude/hooks/provision-worktree.sh`
@@ -182,12 +205,34 @@ resumes. A caller that has no use for it ignores it.
 `RESOLVED_ROOT` is the absolute path of the working copy the resolved arm left the session in: the current
 checkout's own path under `feature-branch`, or the freshly-entered worktree's path under `worktree`. Every arm
 above leaves the session's cwd inside the resolved working copy, so the caller derives `RESOLVED_ROOT` once,
-immediately after this reference returns, by reading it fresh from that cwd:
+immediately after this reference returns, by reading it fresh from that cwd with one plain command:
 
 ```bash
-RESOLVED_ROOT="$(git rev-parse --show-toplevel)"
+git rev-parse --show-toplevel
 ```
+
+Carry the printed path as a literal from then on. A command substitution around `git` is refused inside a worktree, so the value is
+never captured into a variable. In feature-branch mode the same plain read applies.
 
 Read it once, after the arm has switched cwd (worktree creation, or the feature-branch arm's in-place
 checkout), never before. Every later sub-agent dispatch this session makes, each task sub-agent and each
 pre-merge Code Audit Team member, interpolates this same value rather than re-deriving it ad hoc.
+
+### Post-merge removal
+
+After `ExitWorktree({action: "remove", discard_changes: true})`, delete the renamed branch: `ExitWorktree` removes the directory but
+deletes only the branch name it created, which leaves the canonical branch behind. Get the main checkout's root with a plain
+`bash .gaia/scripts/main-root-lib.sh` call and carry the printed path as `<main root>`, then:
+
+```bash
+git -C <main root> show-ref --verify --quiet refs/heads/<branch-name>
+```
+
+When it exits 0, run `git -C <main root> branch -D <branch-name>`. A non-zero exit means the branch is already gone and there is
+nothing to delete.
+
+### Resume
+
+A caller reconnecting to a worktree finds it with `git worktree list --porcelain`: the `worktree <path>` line whose following
+`branch refs/heads/<branch-name>` line matches. It re-enters with `EnterWorktree({name: "<branch-name>"})`, which resolves the existing
+worktree by its directory, and never assumes the `worktree-` spelling.

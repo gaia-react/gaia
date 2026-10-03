@@ -111,12 +111,13 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[CLI-Binary-Split]]
 - [[Folding Shell Scripts into the CLI Binary]]: considered and declined; the manifest is a never-merged sentinel and the fold is a delete, so it cannot deliver simpler diffs.
 - [[Forensics Triage Workflow]]
-- [[Sharded CI Test Matrix]]: the `GAIA: Audit CI Tests` workflow as a 12-leg fan-out plus a thin aggregator; the zero-headroom 2-hop cap arithmetic any restructuring hits first, how to measure this workflow without the two traps, and the levers already weighed.
+- [[Sharded CI Test Matrix]]: the `GAIA: Audit CI Tests` workflow as a matrix fan-out plus a thin aggregator; the zero-headroom 2-hop cap arithmetic any restructuring hits first, how to measure this workflow without the two traps, and the levers already weighed.
 - [[Shell Guard Fixture Discrimination]]: fixture-region discrimination plus a suppression pragma so the shell guards can read `*.bats` without flagging their own suites' deliberately broken fixtures.
 - [[Local Test Runtime]]: `shell-lint.sh`'s own concurrency budget; the full bats corpus as a decided non-goal; the awk interpreter resolver's stated non-claim.
 - [[Workflow Naming Convention]]: GAIA: prefix for maintainer-only workflows, sentence-case Tool (scope) job names, (advisory) on non-blocking PR jobs; the prefix is tied to the release-exclude derive by a test.
 <!-- gaia:maintainer-only:end -->
 - [[Quality Gate]]
+- [[Naming Conventions]]: Conventional Commits for commits and PR titles, canonical branch names, and the worktree branch rename; where the convention is read and what enforces it.
 - [[pnpm]]
 - [[DragonScale Opt-Out]]
 - [[Vendored Third-Party Skills]]: third-party skills are vendored byte-identical with a GAIA-owned version marker; GAIA guidance lives outside the vendored folder; updates re-vendor.

@@ -1,0 +1,23 @@
+#!/usr/bin/env sh
+# Git runs this file directly through `core.hooksPath` (set by the root
+# `prepare` script), so it arms its own errexit and PATH below.
+#
+# Lints the commit message ($1, the message file) against commitlint.config.mjs
+# (Conventional Commits). It fails closed: when commitlint cannot run, the
+# commit is refused rather than waved through unchecked.
+
+set -e
+
+ROOT=$(git rev-parse --show-toplevel) || exit 1
+PATH="$ROOT/node_modules/.bin:$PATH"
+export PATH
+
+if ! pnpm -C "$ROOT" exec commitlint --version >/dev/null 2>&1; then
+  printf "\x1b[31m✖ commitlint is not installed: run pnpm install\x1b[0m\n"
+  exit 1
+fi
+
+pnpm -C "$ROOT" exec commitlint --edit "$1" || {
+  printf "\x1b[31m✖ Commit message does not follow Conventional Commits; see wiki/decisions/Naming Conventions.md\x1b[0m\n"
+  exit 1
+}

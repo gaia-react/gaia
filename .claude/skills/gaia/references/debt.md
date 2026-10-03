@@ -381,7 +381,7 @@ The **fix unit** is the selected member set as it stands after the pre-isolation
 1. **Confirm the footprint class for the unit.** Each member issue's emitted `footprint` field carries an advisory `narrow`, `wide`, or `spec`, or, for an unclassified human-filed issue, `null`; the full vocabulary is three-valued (`narrow` | `wide` | `spec`). The **spec-versus-implement** determination is owned by the Fix-time spec screen above, before isolation: by the time this step runs, every surviving member is `narrow`/`wide` (a spec-class member was either downgraded and kept, or peeled and handed off there). This step grades **narrow-versus-wide** the same way as today: `narrow` when confined to one file with no public-contract change and no cross-module ripple, `wide` otherwise. Both drain inline, through the same Quality Gate, PR, and audit gate; the class records how far the change reaches and routes nothing. The unit's effective class is the **maximum** over members: `wide` if any member is `wide` (or any fix is cross-module / contract-changing), else `narrow`. A multi-issue batch is usually `wide`. State the honest class before implementing so the human knows the scope, exactly as today's single-issue rule does.
 2. **The unit is already isolated.** `## Pre-flight isolation (branch vs worktree)` above already cut the branch or created the worktree before this step, on the name `.gaia/scripts/branch-name-lib.sh` minted for it. This step does no branch creation of its own.
 3. **Implement all fixes in the unit** on the one branch, following the project's normal conventions (TDD, surgical changes).
-4. **Run the Quality Gate** (`.claude/rules/quality-gate.md`) once for the combined diff, then commit and push. **No commit message on the branch carries a closing keyword against an issue number**, not `Closes #N`, and not the `fixes` / `resolves` spellings GitHub acts on identically; name a member as a bare `#N` where a message has to name one. A squash merge concatenates the branch's commit bodies into the merge commit message and GitHub reads closing keywords out of that message, so a trailer written here closes its issue on merge whatever the PR body says. Keeping it out of every commit is what leaves step 5's PR body the **sole carrier**, and only a sole carrier is correctable when a member is dropped.
+4. **Run the Quality Gate** (`.claude/rules/quality-gate.md`) once for the combined diff, then commit and push. The subject's type is what the fix changed (`fix`, `refactor`, `test`, `docs`, ...), never `debt`, which the `commit-msg` hook rejects; the `debt/` branch prefix already records the workflow (`wiki/decisions/Naming Conventions.md`). **No commit message on the branch carries a closing keyword against an issue number**, not `Closes #N`, and not the `fixes` / `resolves` spellings GitHub acts on identically; name a member as a bare `#N` where a message has to name one. A squash merge concatenates the branch's commit bodies into the merge commit message and GitHub reads closing keywords out of that message, so a trailer written here closes its issue on merge whatever the PR body says. Keeping it out of every commit is what leaves step 5's PR body the **sole carrier**, and only a sole carrier is correctable when a member is dropped.
 5. **Open one PR** with `gh pr create`. The PR body includes **one `Closes #N` line per member issue** (GitHub's auto-close keyword) so the single merge closes every issue in the unit natively. Security-class detail still never reaches a public PR: a security-class issue is either withheld from the offered batch or peeled and diverted by the screen above, so no security-class member ever reaches a public `Closes #N` PR.
 
 The PR is an ordinary in-scope source change: it passes the **same** Code Audit Team marker gate as any feature PR, one gate for the combined diff. Let the normal gate produce a real marker; do not bypass, fake, or pre-empt it. Getting that marker and completing the merge are covered under *Drive the PR to merge* below.
@@ -444,7 +444,7 @@ Resolve the PR to completion through `wiki/concepts/PR Merge Workflow.md`, read 
 
   On `MERGED`, run post-merge cleanup by isolation mode:
   - **Feature-branch isolation:** `git checkout main && git pull`, `git branch -D <branch>`, `git fetch --prune`. (Run ends here; see `## Cost record (run end)`.)
-  - **Worktree mode:** run Post-merge worktree cleanup below instead. Do not `git branch -D` a worktree-held branch.
+  - **Worktree mode:** run Post-merge worktree cleanup below instead. It removes the worktree first and deletes the branch afterward, since a worktree-held branch cannot be deleted while the worktree stands.
 
   Every arm above but `MERGED` and `CONFLICTING` ends the run there (the report above and the return without cleanup); see `## Cost record (run end)`.
 
@@ -455,7 +455,8 @@ Each `Closes #N` line in the PR body auto-closes its issue on merge, so on a bat
 1. Confirm merge via `gh pr view <N> --json state`; require `.state == "MERGED"`. If not merged, do not proceed; surface and stop.
 2. **Isolation-context check** (below). If running inside an isolated subagent context, emit the continuation prompt and stop; do not call `ExitWorktree`.
 3. Otherwise call `ExitWorktree({action: "remove", discard_changes: true})` directly. `discard_changes: true` is safe: the squash-merge absorbed every commit on the worktree branch, but those commits are not ancestors of `main`, so the runtime would otherwise refuse; the merged-state confirmation in step 1 proves the work is preserved.
-4. Report one line: `worktree discarded; PR #<N> squash-merged as <short-sha>`.
+4. Delete the renamed branch as `.claude/skills/gaia/references/isolation.md` (`### Post-merge removal`) prescribes.
+5. Report one line: `worktree discarded; PR #<N> squash-merged as <short-sha>`.
 
 Never call `ExitWorktree` first and treat its refusal as the discard trigger; the merged-state confirmation is the primary signal.
 
@@ -473,7 +474,7 @@ When detected, emit this copy-paste continuation prompt to the user and stop:
     <ABSOLUTE-PATH-TO-MAIN-CHECKOUT>, run:
 
         git worktree remove --force <ABSOLUTE-PATH-TO-WORKTREE>
-        git branch -D <branch-name>   # only if the merge did not already delete it
+        git branch -D <branch-name>   # if it still exists
 
 (Run ends here; see `## Cost record (run end)`.)
 

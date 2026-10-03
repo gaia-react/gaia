@@ -4,7 +4,7 @@
  * Orchestrates the `/gaia-wiki` full chain (sync → consolidate → lint) so it
  * lands on ONE branch and ONE PR instead of each stage landing independently.
  * The router (`references/wiki.md`) calls:
- *   begin   once, before sync         → cut `wiki-sync/<date>-<sha>` on main
+ *   begin   once, before sync         → cut `wiki/sync-<date>-<sha>` on main
  *   commit  after consolidate & lint   → in-place commit of that stage's edits
  *   finish  once, after lint           → push + PR + auto-merge, then wait for
  *                                        the merge and clean up locally
@@ -44,7 +44,11 @@ import {
 } from './util/land.js';
 import type {PassthroughFailureOptions} from './util/land.js';
 
-const WIKI_CHAIN_BRANCH_PREFIX = 'wiki-sync/';
+const WIKI_CHAIN_BRANCH_PREFIX = 'wiki/sync-';
+
+// The shape `begin` minted before the branch-naming convention. `finish` still
+// recognizes it so a chain begun on an older CLI can land; nothing mints it.
+const LEGACY_WIKI_CHAIN_BRANCH_PREFIX = 'wiki-sync/';
 
 const TALLY_SCRIPT = '.gaia/scripts/token-tally.sh';
 
@@ -66,7 +70,7 @@ const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
 const HELP_TEXT = `Usage: gaia wiki chain <begin|commit|finish> [args]
 
-  begin [--branch-aware]       On main/master: cut wiki-sync/<date>-<sha> so the
+  begin [--branch-aware]       On main/master: cut wiki/sync-<date>-<sha> so the
                                whole chain lands on one branch + PR. On a feature
                                branch: no-op (the chain commits in place).
   commit --label "<subject>"   In-place commit of this stage's wiki/ changes.
@@ -523,7 +527,10 @@ const runFinish = (
     return {code: UNEXPECTED_EXIT};
   }
 
-  if (!branch.startsWith(WIKI_CHAIN_BRANCH_PREFIX)) {
+  if (
+    !branch.startsWith(WIKI_CHAIN_BRANCH_PREFIX) &&
+    !branch.startsWith(LEGACY_WIKI_CHAIN_BRANCH_PREFIX)
+  ) {
     // In-place run (begin was a no-op on a feature branch). The stage commits
     // already live on the developer's branch; opening a PR is their call.
     process.stdout.write(

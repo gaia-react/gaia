@@ -46,7 +46,7 @@ if ! git ls-remote --exit-code --heads origin "$fix_branch" >/dev/null 2>&1; the
   exit 1
 fi
 
-# 2. Resolve the issue title for the PR title. We use --json to avoid
+# 2. Resolve the issue title for the PR body. We use --json to avoid
 #    fragile parsing of `gh issue view` text output.
 issue_title="$(gh issue view "$issue_number" --json title --jq '.title')"
 if [ -z "$issue_title" ]; then
@@ -54,7 +54,22 @@ if [ -z "$issue_title" ]; then
   exit 1
 fi
 
-pr_title="[gaia-forensics] ${issue_title} (#${issue_number})"
+# The PR title is built from the issue number and class slug alone, never from
+# the issue title: titles are free text in any case and length, and the PR title
+# becomes the squash commit subject, which must be a conventional commit header.
+pr_title="fix(forensics): auto-fix #${issue_number} (${class_slug})"
+
+work_directory=$(mktemp -d 2>/dev/null) || { echo "handle-auto-fixable.sh: mktemp failed" >&2; exit 2; }
+trap 'rm -rf "$work_directory"' EXIT
+
+# The issue title moves into the PR body as an inline code span, so a title that
+# reads like a closing keyword links nothing. Backticks in it become quotes so
+# the span cannot be closed early.
+titled_body_file="$work_directory/pr-body.md"
+{
+  printf 'Issue title: `%s`\n\n' "${issue_title//\`/\'}"
+  cat "$pr_body_file"
+} > "$titled_body_file"
 
 # 3. Open the draft PR. --draft is the UAT-008 hard requirement; the
 #    handler MUST NEVER mark it ready-for-review. --body-file (never
@@ -66,7 +81,7 @@ pr_url="$(gh pr create \
   --base main \
   --head "$fix_branch" \
   --title "$pr_title" \
-  --body-file "$pr_body_file")"
+  --body-file "$titled_body_file")"
 
 # 4. Apply the `auto-fixable` label. `gaia-triaged` is applied LAST in
 #    step 6 so the idempotency key is the final mutation. `class_slug`
@@ -78,9 +93,6 @@ gh issue edit "$issue_number" --add-label "auto-fixable"
 # 5. Link the PR back from the issue. Comment last (before triaged) so
 #    a re-fire under UAT-011 sees the triaged label and exits before
 #    duplicating the link.
-work_directory=$(mktemp -d 2>/dev/null) || { echo "handle-auto-fixable.sh: mktemp failed" >&2; exit 2; }
-trap 'rm -rf "$work_directory"' EXIT
-
 link_file="$work_directory/link.md"
 {
   printf 'verdict: auto-fixable (class: `%s`)\n\n' "$class_slug"

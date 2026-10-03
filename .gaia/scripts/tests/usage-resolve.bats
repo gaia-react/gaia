@@ -332,3 +332,54 @@ derive() {
   [ "$status" -eq 0 ]
   [ "$output" = '{"branch:chore/12-z":["issue:12"],"branch:debt/41-42-batch":["issue:41","issue:42"],"branch:debt/7-x":["issue:7"],"branch:debt/8":["issue:8"],"branch:plan/plan-5-q":["plan:PLAN-005"],"branch:plan/spec-7":["spec:SPEC-007"],"branch:spec-9-y":["spec:SPEC-009"]}' ]
 }
+
+# ========== hand-named branches that carry an issue number ==========
+
+# issue_link_types <library>: the type alternation the hand-named issue link
+# reads, sorted one per line.
+issue_link_types() {
+  grep -oE '\^\([a-z|]+\)/\(\[0-9\]\+\)-' "$1" | sed -E 's/^\^\(//; s/\)\/.*$//' | tr '|' '\n' | LC_ALL=C sort
+}
+
+# shared_commit_types: the `types` of .gaia/conventional-commits.json, sorted.
+shared_commit_types() {
+  jq -r '.types[]' "$SCRIPTS/../conventional-commits.json" | LC_ALL=C sort
+}
+
+@test "issue link lockstep: the hand-named alternation equals the shared commit types" {
+  local expected actual
+  expected="$(shared_commit_types)"
+  actual="$(issue_link_types "$SCRIPTS/usage-resolve-lib.sh")"
+  [ -n "$expected" ]
+  [ "$actual" = "$expected" ] || {
+    printf 'alternation drifted from the shared types\nwant: %s\ngot:  %s\n' "$(printf '%s' "$expected" | tr '\n' ' ')" "$(printf '%s' "$actual" | tr '\n' ' ')" >&2
+    return 1
+  }
+}
+
+@test "the issue link lockstep can fail: a library missing one type is reported" {
+  local scratch_library="$BATS_TEST_TMPDIR/usage-resolve-lib-missing-type.sh" full_count
+  full_count="$(shared_commit_types | wc -l | tr -d ' ')"
+  sed 's#(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test|wiki)/#(build|chore|ci|docs|feat|perf|refactor|revert|style|test|wiki)/#' "$SCRIPTS/usage-resolve-lib.sh" >"$scratch_library"
+  [ "$(issue_link_types "$scratch_library" | wc -l | tr -d ' ')" -eq $((full_count - 1)) ]
+  [ "$(issue_link_types "$scratch_library")" != "$(shared_commit_types)" ]
+}
+
+@test "issue link: a hand-named type branch links its issue; a date-shaped or sync unit links nothing" {
+  run derive branch:fix/2450-statusline-nudge branch:wiki/2026-10-03-14-30 branch:wiki/sync-2026-10-03-abc1234
+  [ "$status" -eq 0 ]
+  [ "$output" = '{"branch:fix/2450-statusline-nudge":["issue:2450"]}' ]
+}
+
+@test "the date guard can fail: a library without it links wiki/2026-10-03-14-30 to issue:2026" {
+  local scratch_scripts="$BATS_TEST_TMPDIR/scripts-no-guard"
+  mkdir -p "$scratch_scripts"
+  cp "$SCRIPTS"/*.sh "$scratch_scripts/"
+  sed -i.bak 's#if ! \[\[ "\$branch_name" =~ \^\[^/\]+/\[0-9\]{4}-\[0-9\]{2}- \]\]; then#if true; then#' "$scratch_scripts/usage-resolve-lib.sh"
+  grep -qF 'if true; then' "$scratch_scripts/usage-resolve-lib.sh"
+  # shellcheck disable=SC2016
+  run bash -c 'source "$1/usage-lib.sh" && source "$1/usage-resolve-lib.sh" || exit 9
+    shift; gaia_usage_derive_map "$@" | jq -cS .' _ "$scratch_scripts" branch:wiki/2026-10-03-14-30
+  [ "$status" -eq 0 ]
+  [ "$output" = '{"branch:wiki/2026-10-03-14-30":["issue:2026"]}' ]
+}

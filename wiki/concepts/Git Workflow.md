@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-21
-updated: 2026-09-20
+updated: 2026-10-04
 tags: [concept, git, workflow]
 ---
 
@@ -17,10 +17,10 @@ The guard is **repo-scoped** via `.claude/hooks/lib/repo-scope.sh`: it governs t
 Always work on a feature branch. If HEAD is on `main`/`master`, create one first:
 
 ```bash
-git switch -c <type>/<short-description>
+git switch -c <type>/<issue>-<slug>
 ```
 
-GAIA's conventional prefixes: `feat/`, `fix/`, `chore/`, `refactor/`, `test/`, `wiki/`
+The branch name, the commit subject, and the PR title follow [[Naming Conventions]].
 
 Branches GAIA's own commands create are not hand-named: every one takes its name from `.gaia/scripts/branch-name-lib.sh`, whose header holds that convention.
 

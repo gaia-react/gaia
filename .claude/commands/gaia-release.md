@@ -142,7 +142,7 @@ If the pre-commit hook fails, STOP and report, fix the issue and create a **new*
 ```bash
 git push -u origin "<RELEASE_BRANCH>"
 gh pr create --base main --head "<RELEASE_BRANCH>" \
-  --title "chore: release v<NEW_VERSION>" \
+  --title "chore(release): v<NEW_VERSION>" \
   --body "<release summary, link CHANGELOG entry, list highlights>"
 ```
 

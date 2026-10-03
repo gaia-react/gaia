@@ -705,7 +705,7 @@ jobs:
           set -eu
           # Already `git add -A`'d in verify-diff; commit on the local
           # branch. No push yet, gate must pass first.
-          git commit -m "forensics: auto-fix attempt for #${ISSUE_NUMBER}"
+          git commit -m "fix(forensics): auto-fix attempt for #${ISSUE_NUMBER}"
 
       # Apply-fix-only Node + pnpm provisioning. Gated to the same
       # condition set as `Run Quality Gate` so non-apply-fix paths
