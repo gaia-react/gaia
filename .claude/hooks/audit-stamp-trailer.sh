@@ -3,7 +3,7 @@
 #
 # Purpose
 #   Implements the stamp invariant + stamp placement rule described in
-#   .gaia/local/plans/code-review-audit-ci/trailer-format.md. Called by the
+#   wiki/concepts/PR Merge Workflow.md ("Signals"). Called by the
 #   code-audit-frontend agent (.claude/agents/code-audit-frontend.md) after the
 #   audit has decided that an "Audit marker" is warranted. On an un-pushed or
 #   detached HEAD the trailer travels with the commit through the network so
@@ -55,7 +55,7 @@
 #   2 , Usage / unexpected error. Stderr.
 #
 # References
-#   Frozen contract:        .gaia/local/plans/code-review-audit-ci/trailer-format.md
+#   Trailer contract:       wiki/concepts/PR Merge Workflow.md ("Signals")
 #   Audit-marker handshake: .claude/agents/code-audit-frontend.md "Audit marker (gate handshake)"
 #   PR-merge gate hook:     .claude/hooks/pr-merge-audit-check.sh
 #
@@ -198,7 +198,7 @@ if [ -n "$audit_tree" ] && [ "$audit_tree" != "$current_tree" ]; then
 fi
 
 # -----------------------------------------------------------------------------
-# Frontend digest (C3 field 2). Fail closed: never stamp a trailer without a
+# Frontend digest (the trailer's second field). Fail closed: never stamp a trailer without a
 # real digest. Reused below by the member-aware gate for the frontend member's
 # own digest, avoiding a second tree walk.
 # -----------------------------------------------------------------------------

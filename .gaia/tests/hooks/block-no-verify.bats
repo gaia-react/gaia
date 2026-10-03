@@ -518,62 +518,6 @@ run_staged() {
   true
 }
 
-# GAIA's own wiki squash writes a `--no-verify` commit whose message carries a
-# `$( )`, the exact shape the collapse above rejoins, so it is the one in-repo
-# case where widening the walk could have denied GAIA's own automation. It does
-# not: the whole-command safety net already denies this line on the `--no-verify`
-# alone, with or without the collapse, so the widening changes nothing for it.
-# What makes that harmless is the second pin below: the script reaches the shell
-# through the hook runner, where no PreToolUse Bash guard reads it. Both halves
-# are pinned so that routing it through a Bash tool call reds here rather than
-# silently denying the auto-commit chain.
-@test "the wiki squash's own no-verify commit is denied through the Bash tool" {
-  local line
-  line=$(grep -F -- '--no-verify' "$HOOKS_SOURCE_DIRECTORY/wiki-squash-autocommits.sh" \
-         | grep -F 'commit -m' | sed -E 's/^[[:space:]]*//; s/[[:space:]]*>.*$//')
-  [ -n "$line" ]
-  # shellcheck disable=SC2016 # the needle is the substitution opener itself
-  grep -qF '$(' <<<"$line"
-  run_hook "$line"
-  assert_denied_by_json
-}
-
-# The route that matters is an instruction surface an agent reads and then
-# types into the Bash tool. `.claude/hooks` and `.gaia/scripts` are
-# deliberately absent: a script that runs the hook internally is not a route,
-# because the guard reads the command the agent typed rather than what that
-# command's script does once it is running.
-#
-# Two searches, because the two surfaces mention the script for different
-# reasons. On the instruction surfaces any mention at all is a candidate route,
-# so the search is the plain filename. `wiki/` pages are read and acted on too,
-# but they also describe the hook by name in prose, so the search there is the
-# repo-relative PATH: a page that writes the runnable path is handing an agent
-# something to type, where a page naming the file is not. `wiki/meta/` holds
-# audit reports, which quote paths by construction and are never executed.
-#
-# The directory list is hand-written, so each entry is asserted to exist before
-# it is searched: a renamed or removed directory would otherwise drop out of
-# the scanned set while the search still reported clean.
-@test "the wiki squash script is reached only through its hook registration" {
-  local root hits directory
-  root=$(cd "$HOOKS_SOURCE_DIRECTORY/../.." && pwd)
-  grep -qF 'wiki-squash-autocommits.sh' "$root/.claude/settings.json"
-
-  set -- "$root/.claude/skills" "$root/.claude/commands" "$root/.claude/rules" \
-         "$root/.claude/agents" "$root/frontend/.claude/instructions" \
-         "$root/frontend/.claude/rules" "$root/frontend/.claude/skills" \
-         "$root/frontend/.claude/agents" "$root/.specify/extensions/gaia/commands" "$root/.specify/extensions/gaia/rules"
-  for directory in "$@"; do [ -d "$directory" ]; done
-  hits=$(grep -rlF 'wiki-squash-autocommits.sh' "$@" 2>/dev/null || true)
-  [ -z "$hits" ]
-
-  [ -d "$root/wiki" ]
-  hits=$(grep -rlF --exclude-dir=meta '.claude/hooks/wiki-squash-autocommits.sh' \
-           "$root/wiki" 2>/dev/null || true)
-  [ -z "$hits" ]
-}
-
 # The substitution collapse is the second derivation those two copies share.
 # This pin holds SAMENESS only, unlike the command-word pin above: a weakening
 # applied uniformly to both copies leaves it green. What carries the construct

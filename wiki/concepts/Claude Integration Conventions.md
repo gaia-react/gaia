@@ -29,14 +29,15 @@ See [[modules/Claude Integration|the modules page]] for the inventory of current
 
 ### Wiki vendor relationship
 
-GAIA does **not** vendor the `claude-obsidian` plugin into the repo. The plugin is installed **globally** via the Claude Code plugin marketplace (`~/.claude/plugins/marketplaces/claude-obsidian-marketplace/`) at the v1.9.2 baseline. Adopters get it the moment they have Claude Code installed; nothing under `wiki/` or `.claude/` in this repo carries plugin source code.
+GAIA does **not** vendor the `claude-obsidian` plugin into the repo. The plugin is installed **globally** via the Claude Code plugin marketplace (marketplace clone at `~/.claude/plugins/marketplaces/agricidaniel-claude-obsidian/`, installed cache under `~/.claude/plugins/cache/agricidaniel-claude-obsidian/claude-obsidian/<version>/`). `.claude/commands/setup-gaia.md` owns the plugin baseline. Adopters get it the moment they have Claude Code installed; nothing under `wiki/` or `.claude/` in this repo carries plugin source code.
 
 What this means in practice:
 
 - **Wiki mode** is declared as `Mode: B (Codebase) + E (Research)` in `wiki/README.md`. The string matches upstream's `skills/wiki/references/modes.md` catalog so any agent reading the upstream skill picks the right scaffolding rules. Mode is a documentation contract; there is no runtime toggle in the plugin.
-- **Wiki hooks are GAIA-owned** (in `.claude/hooks/wiki-*.sh`), not delegated to the upstream plugin's `hooks.json`. Reasons: upstream auto-commits on every Write/Edit; GAIA squashes those via `wiki-squash-autocommits.sh` for cleaner git history. Upstream's Stop-hook prompt assumes a 500-word hot cache; GAIA enforces ~200 words.
-- **DragonScale is opt-out.** The v1.6.0 release adds an optional memory layer (fold operator, deterministic addresses, semantic tiling, boundary-first autoresearch). GAIA declines all four. See [[DragonScale Opt-Out]] for the per-mechanism reasoning and the opt-in path for a project that wants it.
-- **Plugin upgrades require uninstall + install.** A plain `claude plugin marketplace update` does not re-pin the cache. Use `claude plugin uninstall claude-obsidian@claude-obsidian-marketplace` followed by `claude plugin install claude-obsidian@claude-obsidian-marketplace` to flip `installPath` to the new version. This is a Claude Code plugin CLI quirk worth remembering when upgrading the plugin.
+- **Wiki hooks are GAIA-owned** (in `.claude/hooks/wiki-*.sh`), not delegated to the upstream plugin's `hooks.json`. Reasons: the 2.x plugin does not auto-commit wiki edits, so GAIA's Stop hook checks both committed and uncommitted `wiki/` changes; the plugin's own `hot.md` load is opt-in (`CLAUDE_OBSIDIAN_SESSION_CONTEXT` stays unset) and its vault discovery fails closed on GAIA's layout, so `wiki-hot-inject.sh` owns the load. Upstream's Stop-hook prompt assumes a 500-word hot cache; GAIA enforces ~200 words.
+- **DragonScale is opt-out.** The plugin ships an optional memory layer (fold operator, deterministic addresses, semantic tiling, boundary-first autoresearch) that GAIA declines. See [[DragonScale Opt-Out]] for the per-mechanism reasoning and the opt-in path for a project that wants it.
+- **Plugin upgrades require uninstall + install.** A plain `claude plugin marketplace update` does not re-pin the cache. Run `claude plugin list`, then `claude plugin uninstall <the id it shows>` (an older install is registered under an older id, so the id comes from the list), then `claude plugin marketplace add AgriciDaniel/claude-obsidian` and `claude plugin install claude-obsidian@agricidaniel-claude-obsidian` to flip `installPath` to the new version. This is a Claude Code plugin CLI quirk worth remembering when upgrading the plugin. `.claude/commands/setup-gaia.md` owns the baseline version.
+- **Python 3.11+ is a prerequisite.** The plugin's hooks run through `python3` on `PATH`, so a machine without Python 3.11 or newer cannot run them.
 
 ## 2. Rules vs. skills vs. hooks: decision criteria
 
@@ -75,7 +76,7 @@ Convention applies to **review-type agents only**, currently just `code-review-a
 
 ## 4. Skill references convention
 
-`SKILL.md` is stack-agnostic lazy philosophy; it auto-loads into context, so it must stay concise.
+`SKILL.md` is stack-agnostic lazy philosophy; it auto-loads into context, so it must stay concise. Vendored third-party skills are the exception: they ship as the upstream wrote them, and [[Vendored Third-Party Skills]] owns that rule.
 
 Stack-specific or deep-dive content lives in `references/{topic}.md` inside the skill directory, loaded on demand. `SKILL.md` signals available references via markdown links. Adding support for a new stack = add a new reference file; `SKILL.md` stays unchanged.
 
@@ -109,7 +110,7 @@ Steps (all mechanical):
 2. **Update scaffolding templates**: in `.claude/skills/new-*/SKILL.md` (and any `references/`), path outputs must become `{CONTAINER}/{APP}/app/…`.
 3. **Split CLAUDE.md**: add a per-app `CLAUDE.md` at `{CONTAINER}/{APP}/CLAUDE.md` with stack-specific commands; keep root `CLAUDE.md` as the monorepo overview (see §10).
 4. **Verify hook scripts**: confirm no script hardcodes a specific container folder name. If found, fix.
-5. **Leave wiki hooks alone**: `wiki-session-start.sh` / `wiki-session-stop.sh` are git-level and path-agnostic.
+5. **Leave wiki hooks alone**: `wiki-hot-inject.sh`, `wiki-session-start.sh`, and `wiki-session-stop.sh` are git-level and path-agnostic.
 
 ## 7. External-service rule pattern
 
@@ -163,13 +164,7 @@ See root `CLAUDE.md` § Wiki for the authoritative directive.
 
 Do **not** vendor `react-doctor` into the repo. Do not symlink it. Install per-machine via the upstream install script, invoked by `/gaia-init`.
 
-The `code-review-audit` agent dispatches react-doctor **in parallel** with its specialist subagents:
-
-```bash
-npx -y react-doctor@latest . --verbose --diff
-```
-
-`--diff` scopes the scan to changed files, keeping pre-merge passes cheap.
+The `code-review-audit` agent dispatches react-doctor **in parallel** with its specialist subagents. `.claude/agents/code-audit-frontend.md` owns the command and its scope flag.
 
 ## 13. Proceed vs. AskUserQuestion
 

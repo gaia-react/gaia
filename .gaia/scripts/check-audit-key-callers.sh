@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 #
-# Check the audit-key meter (`C4-01`/`C4-02`) cannot see on its own. The
+# Check the audit-key meter cannot see on its own. The
 # meter's fixtures prove
 # that `gaia_audit_key` (`.gaia/scripts/audit-key-lib.sh`) itself partitions
 # two worktrees correctly; they cannot prove the Code Audit Team agent

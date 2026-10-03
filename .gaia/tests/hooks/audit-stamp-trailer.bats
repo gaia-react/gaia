@@ -2,8 +2,8 @@
 
 # Tests for .claude/hooks/audit-stamp-trailer.sh.
 #
-# Covers all 4 stamp paths plus every refusal case from the frozen stamp
-# invariant (.gaia/local/plans/code-review-audit-ci/trailer-format.md):
+# Covers all 4 stamp paths plus every refusal case from the stamp
+# invariant (wiki/concepts/PR Merge Workflow.md, "Signals"):
 #   1. clean tree, un-pushed HEAD          -> amend
 #   2. clean tree, pushed attached HEAD    -> status only, no commit, no push
 #   2b. attached HEAD behind upstream       -> decline "HEAD behind upstream",

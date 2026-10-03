@@ -101,9 +101,6 @@ fi
 # on staged copies with repo-scope.sh holding conflict markers, a plain
 # `git status` exits 2 on /bin/bash 3.2.57 and 0 on 5.3.15. Both loads live
 # inside verb-arming.sh, so no consumer hook can guard either from out here.
-# Tracked as its own issue rather than this one, because gaia-react/gaia#1556
-# closes when this change merges and a pointer needs a live destination:
-# gaia-react/gaia#1564.
 gaia_scripts="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || exit 0
 gaia_scripts="$gaia_scripts/.gaia/scripts"
 # shellcheck source=/dev/null

@@ -35,7 +35,7 @@ PROJECT_ROOT="$(cd "$GAIA_DIRECTORY/.." && pwd)"
 # checkout. This script's own location answers "which tree am I in", never
 # "where does shared state live", so a copy running inside a worktree must ask
 # the resolver the same question the reader asks. Degrade-to-local rather than
-# fail (D-5.3-c), matching .gaia/statusline/gaia-statusline.sh: with no resolver
+# fail, matching .gaia/statusline/gaia-statusline.sh: with no resolver
 # to ask, the local root is the honest answer and the refresher still refreshes.
 if [ -f "$GAIA_DIRECTORY/scripts/main-root-lib.sh" ]; then
   # shellcheck source=/dev/null

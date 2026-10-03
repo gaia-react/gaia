@@ -86,77 +86,8 @@ Re-measured with `bash .gaia/tests/hooks/workflow-doctrine-timing.sh`.
 | Rule bytes | 542 | 1,200 |
 | Rule tokens (bytes / 4) | 135 | none |
 | Per-session hook cost estimate | 843.4 ms | none |
-| Unattributed tokens at landing | 1,084,636,989 | none |
-| All-segment tokens at landing | 11,655,381,581 | none |
-| Unattributed share at landing | 0.093059 (about 9.3%) | none |
 
-The per-session estimate uses the median session's 32 Bash calls and 0 compactions. The unattributed and all-segment totals are the cumulative figures `bash .gaia/scripts/usage.sh reconcile` prints at landing; the success check below forms a delta against them.
-
-## Post-landing success check
-
-The check asks two things: did `/gaia-debt` per-run cost hold, and did the main thread's dollar share fall. It runs maintainer-side, outside bats and CI.
-
-### Baseline
-
-The frozen baseline is `.gaia/local/research/debt-model-routing-2026-09-30/joined.json`. It covers `/gaia-debt` runs for pull requests through #2370, with difficulty taken from the closing issues' labels as they stood when the snapshot was taken. Each run is repriced at the synthesis row's rates, per million tokens: input $4, output $20, cache read $0.20, 5-minute cache write $5, 1-hour cache write $8. The command reads only the snapshot:
-
-```bash
-SNAP="$(bash .gaia/scripts/main-root-lib.sh)/.gaia/local/research/debt-model-routing-2026-09-30/joined.json"
-jq -r 'def med: sort | if length % 2 == 1 then .[length / 2 | floor] else (.[length / 2 - 1] + .[length / 2]) / 2 end;
-  "runs \(length)", (group_by(.d)[] | "\(.[0].d) n=\(length) median_usd=\([.[].op] | med * 100 | round / 100) main_share=\([.[].cost_main] | med * 1000 | round / 10)%")' "$SNAP"
-```
-
-It prints `runs 310`, then `easy n=84 median_usd=7.21 main_share=70.6%`, `hard n=70 median_usd=16.99 main_share=64.5%`, and `medium n=156 median_usd=11.62 main_share=64.9%`. The main-thread share ranges from 64.5% to 70.6% by difficulty, 65% to 71% rounded.
-
-### Unattributed share
-
-`usage.sh reconcile` has no window flag, so a delta between two cumulative readings stands in for a window. Read it again later and compare the delta share with the landing share (1,084,636,989 and 11,655,381,581 from Measurements). The share fell when the delta share is below the landing share:
-
-```bash
-bash .gaia/scripts/usage.sh reconcile | awk -v ul=1084636989 -v al=11655381581 '
-  /unattributed:/ { gsub(",", "", $3); u = $3 }
-  /all segments:/ { gsub(",", "", $4); a = $4 }
-  END { printf "delta_share %.6f landing_share %.6f\n", (u - ul) / (a - al), ul / al }'
-```
-
-### Post-landing verdict
-
-One instrument decides it: the `/gaia-debt` records in `cost.jsonl` (`kind == "command"`, `command == "gaia-debt"`, `github.type == "pr"`) with `ts` at or after the window start. The window start is derived at run time as the commit that added this page, never a hard-coded date. Each record becomes a row by the same rules the baseline used, because the snapshot's derivation script is not kept:
-
-1. Records with no pull request are dropped.
-2. The pull request's closing issues come from `gh pr view <n> --json closingIssuesReferences`; a pull request with no closing issue is dropped.
-3. Difficulty is read from each closing issue's `difficulty:<easy|medium|hard>` label. A pull request whose issues carry none is dropped, and a batch takes the maximum by rank easy < medium < hard.
-4. `op`, the repriced run dollars, sums `fresh_input`, `output`, `cache_read`, `cache_write_5m`, and `cache_write_1h` across every `by_agent_type` entry, at $4, $20, $0.20, $5, and $8 per million tokens.
-5. `cost_main` is the `main` entry's buckets priced the same way, divided by `op` (0 when `op` is 0).
-6. Medians per difficulty are the middle value, or the mean of the two middle values for an even count, of `op` and of `cost_main`.
-
-```bash
-ROOT="$(bash .gaia/scripts/main-root-lib.sh)"
-LEDGER="$ROOT/.gaia/local/telemetry/cost.jsonl"
-START="$(TZ=UTC git -C "$ROOT" log --diff-filter=A --date='format-local:%Y-%m-%dT%H:%M:%SZ' --format=%cd -- 'wiki/concepts/Workflow Doctrine.md' | tail -1)"
-OUT="$(mktemp -d)"
-jq -c --arg s "$START" 'select(.kind == "command" and .command == "gaia-debt" and .github.type == "pr" and .ts >= $s)' "$LEDGER" > "$OUT/records.jsonl"
-jq -r '.github.number' "$OUT/records.jsonl" | sort -un | while read -r n; do
-  d="$(gh pr view "$n" --repo gaia-react/gaia --json closingIssuesReferences --jq '.closingIssuesReferences[].number' \
-    | while read -r i; do gh issue view "$i" --repo gaia-react/gaia --json labels --jq '.labels[].name'; done \
-    | sed -n 's/^difficulty://p' \
-    | awk 'BEGIN { r["easy"] = 1; r["medium"] = 2; r["hard"] = 3 } r[$1] > m { m = r[$1]; d = $1 } END { print d }')"
-  [ -n "$d" ] && printf '%s %s\n' "$n" "$d"
-done > "$OUT/grades.txt"
-jq -rs --rawfile g "$OUT/grades.txt" '
-  def price: ((.fresh_input // 0) * 4 + (.output // 0) * 20 + (.cache_read // 0) * 0.2
-    + (.cache_write_5m // 0) * 5 + (.cache_write_1h // 0) * 8) / 1000000;
-  def med: sort | if length == 0 then null elif length % 2 == 1 then .[length / 2 | floor] else (.[length / 2 - 1] + .[length / 2]) / 2 end;
-  ($g | split("\n") | map(select(length > 0) | split(" ") | {key: .[0], value: .[1]}) | from_entries) as $d
-  | map(select($d[.github.number | tostring] != null)
-      | ([.by_agent_type[] | price] | add // 0) as $op
-      | {d: $d[.github.number | tostring], op: $op,
-         cost_main: (if $op == 0 then 0 else ((.by_agent_type.main // {}) | price) / $op end)})
-  | "graded \(length)",
-    (group_by(.d)[] | "\(.[0].d) n=\(length) median_usd=\([.[].op] | med * 100 | round / 100) main_share=\([.[].cost_main] | med * 1000 | round / 10)%")' "$OUT/records.jsonl"
-```
-
-A verdict needs at least 30 graded runs with at least 8 in each difficulty; below that, report "not yet". Cost held when each difficulty's post median `op` is at most 1.10 times its baseline median. The main-thread share fell when each difficulty's post median `cost_main` is below its baseline. For a supplementary dollars-per-pull-request reading, `bash .gaia/scripts/usage.sh pr <n>` prints it; it does not decide the verdict.
+The per-session estimate uses the median session's 32 Bash calls and 0 compactions.
 <!-- gaia:maintainer-only:end -->
 
 ## See also

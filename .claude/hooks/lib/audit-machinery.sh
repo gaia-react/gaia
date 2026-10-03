@@ -95,7 +95,7 @@ audit_delta_has_machinery() {
   return 1
 }
 
-# audit_machinery_flags: BATCH classifier for a path list (directive PERF-002).
+# audit_machinery_flags: BATCH classifier for a path list.
 # Reads newline-delimited paths on stdin; prints "<path>\t<0|1>" per NON-EMPTY
 # input line (1 = machinery). It parses the AUDIT_MACHINERY_PATHS heredoc into
 # shell arrays ONCE, then tests each path against those arrays, so a caller

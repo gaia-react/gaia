@@ -191,14 +191,19 @@ Skip if `install-tools` is in `completed_steps`.
 
 Three external tools require per-machine setup. The Serena MCP entry needs `uv` (Astral's Python toolchain runner).
 
-- [React Doctor](https://github.com/millionco/react-doctor): `npx -y react-doctor@latest install --yes`
+- [React Doctor](https://github.com/millionco/react-doctor): `npx -y react-doctor@latest install --yes`, run as the first command of the block below
   Installs the `react-doctor` skill for detected agents (Claude Code included). Scans for React-specific issues; auto-runs after code edits in a `CLAUDECODE` environment and is invoked by the `code-audit-frontend` agent pre-merge.
 
-  **Then strip React Doctor's bundled extras** so GAIA stays the sole controller of when react-doctor runs. There is no skill-only install flag, so the installer also adds a standalone GitHub Actions workflow, a commit-hook block (written into the file `core.hooksPath` names, which in GAIA is the tracked `.githooks/pre-commit`, between `# react-doctor hook start` and `# react-doctor hook end`), a `doctor` package script, a pinned `react-doctor` devDependency, and a `.agents/skills/react-doctor/` copy of the skill for any other agents it detects (Copilot, Warp). GAIA triggers react-doctor via the Claude Code skill (auto-run after edits) and the `code-audit-frontend` agent (at `@latest`), so remove the rest, keeping only the Claude Code skill:
+  **Then strip React Doctor's bundled extras** so GAIA stays the sole controller of when react-doctor runs. There is no skill-only install flag, so the installer also adds a standalone GitHub Actions workflow, a commit-hook block (written into the file `core.hooksPath` names, which in GAIA is the tracked `.githooks/pre-commit`, between `# react-doctor hook start` and `# react-doctor hook end`), a `doctor` package script, a pinned `react-doctor` devDependency, and a `.agents/skills/react-doctor/` copy of the skill for any other agents it detects (Codex, Cursor, Gemini CLI, GitHub Copilot, OpenCode, Pi, Warp, and others). The `doctor` script and the `react-doctor` devDependency land in the root `package.json`. `wiki/dependencies/react-doctor.md` holds the verification record for each path. GAIA triggers react-doctor via the Claude Code skill (auto-run after edits) and the `code-audit-frontend` agent (at `@latest`), so remove the rest, keeping only the Claude Code skill. Run the install and the strip as one block, in one shell, because the lockfile snapshot taken before the install is held in a shell variable:
 
   ```bash
+  # The installer's dependency resolution fills optional peer slots of other packages in
+  # pnpm-lock.yaml, which `pnpm remove` leaves behind, so snapshot the lockfile and restore it below.
+  lockfile_snapshot="$(mktemp)"
+  cp pnpm-lock.yaml "$lockfile_snapshot"
+  npx -y react-doctor@latest install --yes
   rm -f .github/workflows/react-doctor.yml
-  # Remove the non-Claude skill copy (Copilot/Warp); rmdir the now-empty parents but leave
+  # Remove the non-Claude skill copy (Codex, Cursor, Copilot, Warp, and others); rmdir the now-empty parents but leave
   # any unrelated .agents/ content untouched.
   rm -rf .agents/skills/react-doctor
   rmdir .agents/skills .agents 2>/dev/null || true
@@ -220,12 +225,15 @@ Three external tools require per-machine setup. The Serena MCP entry needs `uv` 
   if [ "$(git config --local --get core.hooksPath)" != ".githooks" ]; then
     git config core.hooksPath .githooks
   fi
+  # Put the lockfile back byte for byte, then resync node_modules to it.
+  cat "$lockfile_snapshot" > pnpm-lock.yaml && rm -f "$lockfile_snapshot"
+  pnpm install --frozen-lockfile --config.ignore-scripts=true
   ```
 
-  Each line is idempotent and no-ops when its artifact is absent (including when no non-Claude agent was detected, so no `.agents/` copy was written). The block delete rewrites the hook in place with `cat ... >` rather than `mv`, which keeps its executable bit. The final `git config` re-arms the hook path, because a clone whose dependencies were installed before `git init` skipped `prepare`. Verify: `grep -c 'react-doctor hook' .githooks/pre-commit` prints 0, `git diff --quiet -- .githooks/pre-commit` exits 0, and `git config --local --get core.hooksPath` prints `.githooks`.
+  Each strip line is idempotent and no-ops when its artifact is absent (including when no non-Claude agent was detected, so no `.agents/` copy was written). The lockfile restore copies the pre-install snapshot rather than checking the file out of git, so lockfile edits made before the install survive it. The block delete rewrites the hook in place with `cat ... >` rather than `mv`, which keeps its executable bit. The `git config` line re-arms the hook path, because a clone whose dependencies were installed before `git init` skipped `prepare`. Verify: `grep -c 'react-doctor hook' .githooks/pre-commit` prints 0, `git diff --quiet -- .githooks/pre-commit` exits 0, `git config --local --get core.hooksPath` prints `.githooks`, and `git status` lists no `package.json` or `pnpm-lock.yaml` change the install made.
 
 - [Playwright CLI](https://github.com/microsoft/playwright-cli): `npm install -g @playwright/cli@latest`
-  Installs the global `playwright-cli` binary the bundled skill shells out to. Without it the skill's `allowed-tools: Bash(playwright-cli:*)` directive resolves to nothing.
+  Installs the global `playwright-cli` binary the bundled skill shells out to; the skill's `allowed-tools: Bash(playwright-cli:*)` directive calls it. `/update-deps` keeps the global binary current; `wiki/dependencies/playwright-cli.md` covers the fallback and the deprecated-package trap.
 
 - [Serena](https://github.com/oraios/serena) MCP server: ensure `uv` first.
 
@@ -240,10 +248,10 @@ Three external tools require per-machine setup. The Serena MCP entry needs `uv` 
   Then register Serena globally:
 
   ```bash
-  claude mcp add serena -s user -- uvx --from git+https://github.com/oraios/serena@v1.2.0 serena start-mcp-server --context claude-code --project-from-cwd --open-web-dashboard false
+  claude mcp add serena -s user -- uvx --from git+https://github.com/oraios/serena@v1.7.0 serena start-mcp-server --context claude-code --project-from-cwd --open-web-dashboard false
   ```
 
-  If the registration already exists (`claude mcp add` exits non-zero with a "name already exists" error), treat as success and continue.
+  If the registration already exists (`claude mcp add` exits non-zero with a "name already exists" error), treat as success and continue. A stale pin on an existing registration needs `claude mcp remove serena -s user` and then the add above.
 
   Serena's tools only win over Opus's built-in Read/Grep/Edit when Claude Code loads Serena's system-prompt override; Opus otherwise defaults to its own tools, a strong built-in-tool bias the Serena maintainers prescribe this override to counter. Tell the user the recommended way to start Claude Code sessions in this project:
 
@@ -253,7 +261,7 @@ Three external tools require per-machine setup. The Serena MCP entry needs `uv` 
 
   This is optional but recommended and adopter-safe: a plainly-launched `claude` still works, and the always-loaded `.claude/rules/serena-cc-override.md` is the durable fallback. Use the append form, never `--system-prompt`, which replaces Claude Code's base prompt.
 
-  Serena picks a single language at first startup and freezes it into `.serena/project.yml`. If the project later grows another language, Serena will not index it until the `languages:` list in `.serena/project.yml` is updated and Serena restarts. To fix this manually, edit the `languages:` list in `.serena/project.yml` directly and restart Serena; `/gaia-serena-sync` automates the same edit on explicit consent.
+  Serena picks a single language at first startup and freezes it into `.serena/project.yml`. If the project later grows another language, Serena will not index it until the `language_servers:` list (`languages:` before Serena 1.7) in `.serena/project.yml` is updated and Serena restarts. To fix this manually, edit that list in `.serena/project.yml` directly and restart Serena; `/gaia-serena-sync` automates the same edit on explicit consent.
 
 After all three tools install successfully:
 
@@ -270,8 +278,10 @@ Skip if `install-plugins` is in `completed_steps`.
 ```bash
 claude plugin install typescript-lsp@claude-plugins-official
 claude plugin marketplace add AgriciDaniel/claude-obsidian
-claude plugin install claude-obsidian@claude-obsidian-marketplace
+claude plugin install claude-obsidian@agricidaniel-claude-obsidian
 ```
+
+Baseline: claude-obsidian 2.2.0, which needs Python 3.11+ with `python3` on PATH. To upgrade an existing install, run `claude plugin list`, then `claude plugin uninstall <the id it shows>`, then the marketplace add and install above.
 
 If any fail, surface the error and halt. Already-installed plugins are a no-op. After all three succeed:
 

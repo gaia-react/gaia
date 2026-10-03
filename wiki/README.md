@@ -2,14 +2,14 @@
 type: meta
 status: active
 created: 2026-04-20
-updated: 2026-05-06
+updated: 2026-10-03
 tags: [meta, schema]
 ---
 
 # GAIA React: LLM Wiki
 
 Mode: B (Codebase) + E (Research)
-Plugin baseline: claude-obsidian v1.9.2 (DragonScale features intentionally not adopted, see [[DragonScale Opt-Out]])
+Plugin baseline: `.claude/commands/setup-gaia.md` owns it (DragonScale features intentionally not adopted, see [[DragonScale Opt-Out]])
 Purpose: Persistent knowledge base for the GAIA React workflow: architecture, conventions, decisions, Claude integration.
 <!-- gaia:maintainer-only:start -->
 Owner: Steven Sacks
@@ -20,9 +20,9 @@ Created: 2026-04-20
 
 ```
 wiki/
-├── index.md            # master catalog
-├── log.md              # chronological ingest log (newest at TOP)
-├── hot.md              # ~200-word recent context cache (Stop-hook enforced)
+├── index.md            # master catalog (/gaia-wiki maintains it)
+├── log.md              # change ledger (gaia wiki log-prepend writes it, newest at TOP)
+├── hot.md              # ~200-word recent context cache (wiki-hot-inject.sh loads it, the Stop hook prompts the refresh)
 ├── overview.md         # executive summary
 ├── modules/            # major architectural areas (routing, auth, i18n, etc.)
 ├── components/         # reusable UI components (Form, Toast, Layout, etc.)
@@ -42,14 +42,11 @@ wiki/
 
 - All notes use YAML frontmatter: type, status, created, updated, tags (minimum)
 - Wikilinks use `[[overview]]` - filenames are unique, no paths needed
-- `.raw/` contains source documents - never modify them
-- `wiki/index.md` is the master catalog - update on every ingest
+- `wiki/index.md` is the master catalog - `/gaia-wiki` maintains it
 - `wiki/log.md` is append-only - new entries at the TOP
 - Keep pages 100-300 lines; split if longer
 
 ## Operations
 
-- Ingest: drop a source in `.raw/`, say "ingest [filename]"
 - Query: ask any question - Claude reads `hot.md` → `index.md` → drills in
-- Lint: say "lint the wiki" for a health check
-- Save: "/save" to file the current chat as a note
+- Lint: `/gaia-wiki lint` for a health check

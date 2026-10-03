@@ -501,3 +501,153 @@ assert_fallback() {
 @test "UAT-026 fallback: an invalid/unknown token against a safe form -> FALLBACK:invalid-token, no write" {
   assert_fallback 'languages: [typescript]\n' 'invalid-token' notalang
 }
+
+# ---------- language_servers: key (Serena v1.7) and new tokens ----------
+
+# file_sha256 <file>: print the file's sha256 with whichever tool the host has.
+file_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | cut -d' ' -f1
+  else
+    shasum -a 256 "$1" | cut -d' ' -f1
+  fi
+}
+
+@test "language_servers block form: same drift verdict as languages, append lands under language_servers at matching indent, other lines byte-identical" {
+  local repo_old repo_new yaml_file snapshot
+  repo_old="$(new_repo repo-ls-old)"
+  repo_new="$(new_repo repo-ls-new)"
+  write_file "$repo_old/go.mod" 'module x\n'
+  write_file "$repo_new/go.mod" 'module x\n'
+  write_file "$repo_old/.serena/project.yml" 'project_name: x\nlanguages:\n  - typescript\ndefaults: {}\n'
+  write_file "$repo_new/.serena/project.yml" 'project_name: x\nlanguage_servers:\n  - typescript\ndefaults: {}\n'
+  git -C "$repo_old" add -A
+  git -C "$repo_new" add -A
+  run env HOME="$HOME_YES" bash "$LIBRARY" drift "$repo_old"
+  [ "$output" = '["go"]' ]
+  run env HOME="$HOME_YES" bash "$LIBRARY" drift "$repo_new"
+  [ "$status" -eq 0 ]
+  [ "$output" = '["go"]' ]
+
+  yaml_file="$repo_new/.serena/project.yml"
+  snapshot="$TEMPORARY_ROOT/ls-block.snap"
+  cp "$yaml_file" "$snapshot"
+  run bash "$LIBRARY" classify "$yaml_file"
+  [ "$status" -eq 0 ]
+  [ "$output" = 'block:  ' ]
+  run bash "$LIBRARY" append "$yaml_file" go
+  [ "$status" -eq 0 ]
+  [ "$(diff_added "$snapshot" "$yaml_file")" -eq 1 ]
+  [ "$(diff_removed "$snapshot" "$yaml_file")" -eq 0 ]
+  [ "$(sed -n '4p' "$yaml_file")" = '  - go' ]
+  [ "$(sed -n '2p' "$yaml_file")" = 'language_servers:' ]
+}
+
+@test "language_servers flow form: append goes inside the flow list, every other line byte-identical" {
+  local yaml_file="$TEMPORARY_ROOT/ls-flow.yml" snapshot="$TEMPORARY_ROOT/ls-flow.snap"
+  write_file "$yaml_file" 'project_name: x\nlanguage_servers: [typescript]\nother: 1\n'
+  cp "$yaml_file" "$snapshot"
+  run bash "$LIBRARY" classify "$yaml_file"
+  [ "$status" -eq 0 ]
+  [ "$output" = 'flow' ]
+  run bash "$LIBRARY" append "$yaml_file" go
+  [ "$status" -eq 0 ]
+  [ "$(sed -n '2p' "$yaml_file")" = 'language_servers: [typescript, go]' ]
+  [ "$(diff_added "$snapshot" "$yaml_file")" -eq 1 ]
+  [ "$(diff_removed "$snapshot" "$yaml_file")" -eq 1 ]
+  [ "$(sed -n '1p;3p' "$yaml_file")" = "$(sed -n '1p;3p' "$snapshot")" ]
+}
+
+@test "language_servers in project.local.yml contributes to effective and suppresses matching drift" {
+  local repo; repo="$(new_repo repo-ls-local)"
+  write_file "$repo/go.mod" 'module x\n'
+  write_file "$repo/.serena/project.yml" 'language_servers:\n  - typescript\n'
+  write_file "$repo/.serena/project.local.yml" 'language_servers:\n  - go\n'
+  git -C "$repo" add -A
+  run bash "$LIBRARY" effective "$repo"
+  [ "$status" -eq 0 ]
+  assert_contains 'go'
+  assert_contains 'typescript'
+  run env HOME="$HOME_YES" bash "$LIBRARY" drift "$repo"
+  [ "$status" -eq 0 ]
+  [ "$output" = '[]' ]
+}
+
+@test "both languages and language_servers present: classify is unsafe:multiple-keys and append leaves the file's hash unchanged" {
+  local yaml_file="$TEMPORARY_ROOT/both.yml" before after
+  write_file "$yaml_file" 'languages:\n  - typescript\nlanguage_servers:\n  - typescript\n'
+  before="$(file_sha256 "$yaml_file")"
+  run bash "$LIBRARY" classify "$yaml_file"
+  [ "$status" -ne 0 ]
+  [ "$output" = 'unsafe:multiple-keys' ]
+  run bash "$LIBRARY" append "$yaml_file" go
+  [ "$status" -ne 0 ]
+  [ "$output" = 'FALLBACK:multiple-keys' ]
+  after="$(file_sha256 "$yaml_file")"
+  [ -n "$before" ]
+  [ "$before" = "$after" ]
+}
+
+@test "variant servers count as their base language: pyrefly and basedpyright cover python, phpantom covers php" {
+  local variant repo
+  for variant in python_pyrefly python_basedpyright; do
+    repo="$(new_repo "repo-$variant")"
+    write_file "$repo/pyproject.toml" '[project]\n'
+    write_file "$repo/.serena/project.yml" "language_servers: [$variant]\n"
+    git -C "$repo" add -A
+    run env HOME="$HOME_YES" bash "$LIBRARY" drift "$repo"
+    [ "$status" -eq 0 ]
+    [ "$output" = '[]' ]
+  done
+  repo="$(new_repo repo-phpantom)"
+  write_file "$repo/composer.json" '{}\n'
+  write_file "$repo/.serena/project.yml" 'language_servers: [php_phpantom]\n'
+  git -C "$repo" add -A
+  run env HOME="$HOME_YES" bash "$LIBRARY" drift "$repo"
+  [ "$status" -eq 0 ]
+  [ "$output" = '[]' ]
+}
+
+@test "normalize maps the new python and php variants to their base language" {
+  run bash "$LIBRARY" normalize python_pyrefly
+  [ "$output" = 'python' ]
+  run bash "$LIBRARY" normalize python_basedpyright
+  [ "$output" = 'python' ]
+  run bash "$LIBRARY" normalize php_phpantom
+  [ "$output" = 'php' ]
+}
+
+@test "valid accepts every v1.7 token and rejects an unknown one" {
+  local token
+  for token in angular svelte scss html deno gleam python_pyrefly python_basedpyright php_phpantom; do
+    run bash "$LIBRARY" valid "$token"
+    [ "$status" -eq 0 ] || { echo "rejected: $token" >&2; return 1; }
+  done
+  run bash "$LIBRARY" valid notalanguage
+  [ "$status" -ne 0 ]
+}
+
+@test "guard can fail: a copy of the library with language_servers reverted at the flow-append site cannot append to a language_servers flow list" {
+  local mutated="$TEMPORARY_ROOT/serena-lang-mutated.sh" yaml_file="$TEMPORARY_ROOT/mut.yml" before
+  write_file "$yaml_file" 'language_servers: [typescript]\n'
+  # Control: the real library appends.
+  run bash "$LIBRARY" append "$yaml_file" go
+  [ "$status" -eq 0 ]
+  write_file "$yaml_file" 'language_servers: [typescript]\n'
+  # Revert the key lookup inside _serena_append_flow only to the pre-1.7 spelling.
+  awk '
+    /^_serena_append_flow\(\)/ { inside = 1 }
+    inside && /key_line_number=\$\(grep -nE/ {
+      sub(/\$\{SERENA_LIST_KEY_ERE\}/, "languages"); inside = 0
+    }
+    { print }
+  ' "$LIBRARY" > "$mutated"
+  if cmp -s "$LIBRARY" "$mutated"; then
+    echo "mutation did not change the copy" >&2
+    return 1
+  fi
+  before="$(file_sha256 "$yaml_file")"
+  run bash "$mutated" append "$yaml_file" go
+  [ "$status" -ne 0 ]
+  [ "$(file_sha256 "$yaml_file")" = "$before" ]
+}

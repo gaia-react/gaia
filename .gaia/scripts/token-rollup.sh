@@ -7,7 +7,7 @@
 # summed across every session the feature took (halted, resumed, worktree-
 # split). It reads the ledger ONLY, never a transcript.
 #
-# Dedup (frozen, see the plan's README.md FC-3): within a kind, group ledger
+# Dedup (frozen algorithm): within a kind, group ledger
 # rows by session_id.
 #   - execute: the winning row is the one with `final: true`; if a session
 #     carries none or several `final` rows (a degraded ledger), fall back to
@@ -175,7 +175,7 @@ record_count="$(jq -r 'length' <<<"$records" 2>/dev/null)"
 is_unsigned_integer "$record_count" || record_count=0
 (( record_count == 0 )) && no_records
 
-# ---------- dedup + aggregate (frozen algorithm, FC-3) ----------
+# ---------- dedup + aggregate (frozen algorithm) ----------
 summary="$(jq -c '
   # spec/plan: one row per session; the winner is the max-`.total` row among
   # non-partial rows (tie on latest `.ended_at`), falling back to the whole

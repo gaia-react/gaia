@@ -7,6 +7,7 @@ import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {lookupOwn} from '../util/argv.js';
 import {run as runDecline} from './decline.js';
+import {run as runGlobalTools} from './global-tools.js';
 import {run as runEmit} from './run.js';
 
 const HELP_TEXT = `Usage: gaia update-deps <subcommand> [args]
@@ -18,6 +19,8 @@ const HELP_TEXT = `Usage: gaia update-deps <subcommand> [args]
   decline --source <path> --skip <a,b,...>    Snooze update groups so the
                                               statusline stops counting them
                                               (local only). --clear resets.
+  global-tools                                Report globally installed tools
+                                              (playwright-cli) as JSON rows.
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
@@ -28,6 +31,7 @@ const SUBCOMMAND_HANDLERS: Readonly<
   Partial<Record<string, SubcommandHandler>>
 > = {
   decline: runDecline,
+  'global-tools': runGlobalTools,
   run: runEmit,
 };
 

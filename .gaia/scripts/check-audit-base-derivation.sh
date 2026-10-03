@@ -15,7 +15,7 @@
 # The consolidated findings block is NOT one of the readers this protects.
 # `post-findings-block.sh` selects on the branch half alone, across every
 # base, because the shared base advances roughly one stamp per cleared round
-# that stamps a trailer commit (gaia-react/gaia#1573), so a divergent base
+# that stamps a trailer commit, so a divergent base
 # costs that reader nothing. The ledger is what still binds co-dispatched
 # members to one key, within a round.
 #
