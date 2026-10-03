@@ -1,4 +1,4 @@
-import type {ChangeEvent, ComponentProps, FC} from 'react';
+import type {ChangeEventHandler, ComponentProps, FC} from 'react';
 import {useEffect, useImperativeHandle, useRef, useState} from 'react';
 import autosize from 'autosize';
 import {cn} from 'cn';
@@ -55,7 +55,9 @@ const TextArea: FC<TextAreaProps> = ({
   );
   const length = value === undefined ? localLength : String(value).length;
 
-  const handleUpdateLengthInput = (event: ChangeEvent<HTMLTextAreaElement>) => {
+  const handleUpdateLengthInput: ChangeEventHandler<HTMLTextAreaElement> = (
+    event
+  ) => {
     if (maxLength && value === undefined) {
       setLocalLength(event.currentTarget.value.length);
     }

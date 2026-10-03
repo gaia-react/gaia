@@ -157,6 +157,29 @@ jobs:
               # here, so an edit to only one would green the job with code=false.
               - 'frontend/.claude/settings.json'
               - 'frontend/.claude/settings.overlay.json'
+              # dockerfile-contract.bats (.gaia/tests/lib/) reads the live
+              # frontend/Dockerfile, frontend/Dockerfile.dockerignore and
+              # frontend/package.json, and pins that every dotenv file stays out
+              # of the image context. None matches another arm here, so an edit
+              # to only one (dropping the dotenv exclusion, say) would report
+              # `code=false`, skip every bats step, and green the job having run
+              # the guard zero times.
+              - 'frontend/Dockerfile'
+              - 'frontend/Dockerfile.dockerignore'
+              - 'frontend/package.json'
+              # frontend-rule-globs.bats (.gaia/tests/lib/) reads every
+              # frontend/.claude/rules/*.md, main-only-lib.bats
+              # (.gaia/scripts/tests/) reads
+              # frontend/.claude/skills/gaia-react-perf/SKILL.md, and
+              # doc-noop-terminal-contract.bats searches the whole tree for
+              # dispatch-prompt carriers, which include the frontend rules,
+              # skills and agents. One subtree glob, a superset of the two
+              # settings entries above, which stay listed so each suite's own
+              # sources remain named if it is ever narrowed.
+              - 'frontend/.claude/**'
+              # Suites that read the live frontend/CLAUDE.md (the frontend
+              # rules router) match no other arm here.
+              - 'frontend/CLAUDE.md'
               - '.gaia/packages.json'
               - '.gaia/scripts/**'
               # The shell lint suites (.gaia/scripts/tests/lint-*.bats) scan

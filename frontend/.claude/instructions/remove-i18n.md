@@ -415,7 +415,7 @@ A bare edit is blocked by `.claude/hooks/block-manifest-write.sh`, so the remova
 GAIA_MANIFEST_WRITE=remove-i18n jq '
   .files |= with_entries(
     select(.key
-      | test("^frontend/app/languages/|^frontend/app/i18n\\.ts$|^frontend/app/middleware/i18next\\.ts$|^frontend/app/types/i18n/|^frontend/app/sessions\\.server/language\\.ts$|^frontend/app/routes/actions\\.set-language\\.ts$|^frontend/app/components/LanguageSelect/|^\\frontend/.claude/rules/i18n\\.md$|^\\frontend/.claude/agents/code-audit-frontend/react-i18next\\.md$|^\\frontend/.claude/skills/react-code/references/translation-patterns\\.md$|^\\frontend/.storybook/i18next\\.ts$|^\\frontend/.playwright/e2e/language-switch-a11y\\.spec\\.ts$|^wiki/modules/i18n\\.md$|^wiki/flows/Language Flow\\.md$|^wiki/dependencies/i18next\\.md$|^wiki/dependencies/remix-i18next\\.md$")
+      | test("^frontend/app/languages/|^frontend/app/i18n\\.ts$|^frontend/app/middleware/i18next\\.ts$|^frontend/app/types/i18n/|^frontend/app/sessions\\.server/language\\.ts$|^frontend/app/routes/actions\\.set-language\\.ts$|^frontend/app/components/LanguageSelect/|^frontend/\\.claude/rules/i18n\\.md$|^frontend/\\.claude/agents/code-audit-frontend/react-i18next\\.md$|^frontend/\\.claude/skills/react-code/references/translation-patterns\\.md$|^frontend/\\.storybook/i18next\\.ts$|^frontend/\\.playwright/e2e/language-switch-a11y\\.spec\\.ts$|^wiki/modules/i18n\\.md$|^wiki/flows/Language Flow\\.md$|^wiki/dependencies/i18next\\.md$|^wiki/dependencies/remix-i18next\\.md$")
       | not))
 ' .gaia/manifest.json > .gaia/manifest.json.tmp \
   && GAIA_MANIFEST_WRITE=remove-i18n mv .gaia/manifest.json.tmp .gaia/manifest.json
