@@ -49,7 +49,7 @@ GAIA's skills split into three groups: shared `gaia/references/` playbooks consu
 | -------------------- | ------------------------------------------------------------------------------------------------------------ |
 | `eslint-fixes`       | ESLint failures, autofix conflicts (no-void, prefer-screen-queries, jest-dom matchers, you-dont-need-lodash) |
 | `naming-conventions` | Naming or renaming identifiers in any language; vague names, abbreviations, redundant type noise             |
-| `playwright-cli`     | Browser automation tasks (navigation, form fill, screenshots, data extraction)                               |
+| `playwright-cli`     | Browser automation tasks (navigation, form fill, screenshots, data extraction); Microsoft's skill vendored verbatim, see [[playwright-cli]] |
 | `react-code`         | Writing/reviewing React components, hooks, event handlers, extraction decisions                              |
 | `skeleton-loaders`   | Building skeleton loading states; shimmer animation; preventing layout shift                                 |
 | `tailwind`           | Tailwind class names, `cn` and conditional classes, variants, theme tokens                                   |
@@ -96,24 +96,24 @@ Heuristic when migrating:
 
 `SKILL.md` is stack-agnostic lazy philosophy. It auto-loads into context, so it must stay short and general.
 
-Stack-specific or deep-dive content lives in `references/{topic}.md` inside the skill directory, loaded on demand. `SKILL.md` hints at available references via markdown links. Adding support for a new stack means adding a new reference file; `SKILL.md` itself is never touched.
+Stack-specific or deep-dive content lives in `references/{topic}.md` inside the skill directory, loaded on demand. `SKILL.md` hints at available references via markdown links. Adding support for a new stack means adding a new reference file; `SKILL.md` itself is never touched. Vendored third-party skills are the exception: they ship as the upstream wrote them, and [[Vendored Third-Party Skills]] owns that rule.
 
 **Example:** `frontend/.claude/skills/tdd-react/SKILL.md` links to `frontend/.claude/skills/tdd-react/references/tests-react.md`, while the stack-neutral `.claude/skills/tdd/` stays at the root. A Svelte package would carry its own `tdd-svelte` skill beside it.
 
 See [[Claude Integration Conventions]] for the broader convention covering extension points, monorepo retrofit, and service swaps.
 
-## Plugin skills (claude-obsidian v1.9.2)
+## Plugin skills (claude-obsidian)
 
 Core wiki maintenance (sync, consolidate, lint) runs through GAIA's native CLI (`.gaia/cli/gaia wiki ...`), not the plugin. Wiki-lint in particular is a GAIA-native check with its own rules and report, independent of the plugin's `wiki-lint` skill. The `claude-obsidian` plugin is installed globally via the Claude Code marketplace (not vendored into this repo) and supplies **auxiliary** skills only. Its skills auto-load on context match alongside GAIA's project-local skills.
 
-The auxiliary skills GAIA leans on:
+GAIA leans on two of them:
 
-- `claude-obsidian:wiki-ingest`: read a source (file or URL), extract entities/concepts, file structured pages, update cross-references and the log.
-- `claude-obsidian:wiki-query`: answer questions using the vault (hot cache → index → drill in), with citations; quick / standard / deep modes.
-- `claude-obsidian:save`: file the current chat or a specific insight as a structured wiki note.
+- `claude-obsidian:wiki-query`: read-only. Answers questions using the vault (hot cache, index, then drill in), with citations; quick / standard / deep modes.
 - `claude-obsidian:obsidian-markdown`: write correct Obsidian Flavored Markdown (wikilinks, embeds, callouts, properties, math, canvas syntax).
 
-The plugin ships more `claude-obsidian:*` skills than these (canvas, autoresearch, defuddle, obsidian-bases, plus the wiki-cli / wiki-mode / wiki-retrieve / think additions among them); GAIA pulls any of them in only when a task matches. The skill source lives in the upstream plugin cache (`~/.claude/plugins/cache/claude-obsidian-marketplace/claude-obsidian/<version>/skills/`), informational reference only: adopters should not edit these files. See [[Claude Integration Conventions]] § Wiki vendor relationship and [[DragonScale Opt-Out]] for the baseline policy and why DragonScale's `wiki-fold` skill is dormant under GAIA's default configuration.
+GAIA owns `log.md`, `hot.md`, and `index.md`: `gaia wiki log-prepend` writes `log.md`, `/gaia-wiki` maintains `index.md` and `hot.md`, and the Stop hook prompts the `hot.md` refresh. The plugin's mutation skills (`claude-obsidian:save`, `claude-obsidian:wiki-ingest`, `claude-obsidian:autoresearch`) are not leaned on: they would write into GAIA's sha-keyed `log.md` ledger, refresh `hot.md` against a different word cap, and their vault resolution fails closed on GAIA's layout, which is the intended default.
+
+The plugin ships further skills; the upstream [skills directory](https://github.com/AgriciDaniel/claude-obsidian/tree/main/skills) is the catalog. The skill source also lives in the upstream plugin cache (`~/.claude/plugins/cache/agricidaniel-claude-obsidian/claude-obsidian/<version>/skills/`), informational reference only: adopters should not edit these files. See [[Claude Integration Conventions]] § Wiki vendor relationship and [[DragonScale Opt-Out]] for the baseline policy and why DragonScale's `wiki-fold` skill is dormant under GAIA's default configuration.
 
 ## Playwright CLI vs. MCP
 

@@ -335,19 +335,20 @@ GAIA bundles project-scoped skills, the generic ones at `.claude/skills/` (`tdd`
 - [React Doctor](https://github.com/millionco/react-doctor): `npx -y react-doctor@latest install --yes`
   Installs the `react-doctor` skill for detected agents (Claude Code included). Scans the project for React-specific issues (47+ rules: security, performance, correctness, architecture). Auto-runs after code edits in a `CLAUDECODE` environment and is invoked by the `code-audit-frontend` agent pre-merge.
 
-  **Then strip React Doctor's bundled extras so GAIA stays the sole controller of when react-doctor runs.** The installer adds five things beyond the Claude Code skill: a standalone GitHub Actions workflow, a commit-hook block, a `doctor` package script, a pinned `react-doctor` devDependency, and a `.agents/skills/react-doctor/` copy of the skill for any other agents it detects (GitHub Copilot, Warp). There is no skill-only install flag, so install (above) then remove them. GAIA already triggers react-doctor two ways it owns, the Claude Code skill (auto-run after edits) and the `code-audit-frontend` agent pre-merge (always at `@latest`), so the bundled trigger points are redundant and they collide with GAIA's husky `pre-commit` hook and GAIA's own audit gate. Because GAIA sets `core.hooksPath=.husky/_`, the installer writes its hook into husky's generated (gitignored) stub at `.husky/_/pre-commit`, not GAIA's `.husky/pre-commit`; regenerating the husky stubs wipes it.
+  **Then strip React Doctor's bundled extras so GAIA stays the sole controller of when react-doctor runs.** The installer adds five things beyond the Claude Code skill: a standalone GitHub Actions workflow, a commit-hook block, a `doctor` package script, a pinned `react-doctor` devDependency, and a `.agents/skills/react-doctor/` copy of the skill for any other agents it detects (Codex, Cursor, Gemini CLI, GitHub Copilot, OpenCode, Pi, Warp, and others). The `doctor` script and the `react-doctor` devDependency land in the root `package.json`, and the lockfile updates with it. There is no skill-only install flag, so install (above) then remove them. `wiki/dependencies/react-doctor.md` holds the verification record for each path. GAIA already triggers react-doctor two ways it owns, the Claude Code skill (auto-run after edits) and the `code-audit-frontend` agent pre-merge (always at `@latest`), so the bundled trigger points are redundant and they collide with GAIA's husky `pre-commit` hook and GAIA's own audit gate. Because GAIA sets `core.hooksPath=.husky/_`, the installer writes its hook into husky's generated (gitignored) stub at `.husky/_/pre-commit`, not GAIA's `.husky/pre-commit`; regenerating the husky stubs wipes it.
 
   ```bash
   # 1. Drop the standalone workflow (GAIA ships no CI workflow of its own for it).
   rm -f .github/workflows/react-doctor.yml
   # 2. Remove the non-Claude skill copy. The installer writes .agents/skills/react-doctor/ for
-  #    any other agents it detects (Copilot, Warp); GAIA drives react-doctor through the Claude
+  #    any other agents it detects (Codex, Cursor, Gemini CLI, Copilot, Warp, and others); GAIA drives react-doctor through the Claude
   #    Code skill only, so this copy is redundant. rmdir the now-empty parents but leave any
   #    unrelated .agents/ content untouched (rmdir refuses a non-empty dir).
   rm -rf .agents/skills/react-doctor
   rmdir .agents/skills .agents 2>/dev/null || true
   # 3. Uninstall the pinned dep + lockfile entry. --config.ignore-scripts=true skips the
   #    prepare hook (avoids a redundant husky/playwright run); react-doctor runs at @latest on demand.
+  #    Run from the repo root, where the installer wrote the dependency.
   pnpm remove react-doctor --config.ignore-scripts=true 2>/dev/null || true
   # 4. Delete the package script it added (named `doctor`, or `react-doctor` if `doctor` was taken).
   #    The hyphenated key needs bracket+quote form; a bare `scripts.react-doctor` throws
@@ -359,7 +360,7 @@ GAIA bundles project-scoped skills, the generic ones at `.claude/skills/` (`tdd`
 
   Each line is idempotent and no-ops when its artifact is absent (e.g. when React Doctor's dependency install was skipped by a trust policy, or when no non-Claude agent was detected so no `.agents/` copy was written). After this, `git status` shows no React Doctor workflow and no `.agents/` skill copy, and `package.json` carries no `react-doctor` entry; only the Claude Code skill remains. Do not report a lingering workflow, `.agents/` copy, or commit hook to the user; there is none.
 - [Playwright CLI](https://github.com/microsoft/playwright-cli) binary: `npm install -g @playwright/cli@latest`
-  Installs the global `playwright-cli` binary the bundled skill shells out to. Without it the skill's `allowed-tools: Bash(playwright-cli:*)` directive resolves to nothing. Used for E2E debugging and authoring Playwright specs with minimal token cost, each interaction is one shell call instead of a round-trip through an MCP session.
+  Installs the global `playwright-cli` binary the bundled skill shells out to. `/update-deps` keeps the global binary current; `wiki/dependencies/playwright-cli.md` covers the fallback and the deprecated-package trap. Used for E2E debugging and authoring Playwright specs with minimal token cost, each interaction is one shell call instead of a round-trip through an MCP session.
 - [Serena](https://github.com/oraios/serena) MCP server: semantic code-search and editing tools (find symbol, find references, replace symbol body) backed by language servers, pulls Claude away from grep-the-world toward symbol-aware operations. First, ensure `uv` is available, tell the user: "Checking for uv…" then run:
 
   ```bash
@@ -371,7 +372,7 @@ GAIA bundles project-scoped skills, the generic ones at `.claude/skills/` (`tdd`
   After install, source the shell rc the installer modifies (or add `~/.local/bin` to `PATH` for this session) and verify with `uv --version`. If the verification fails, halt `/gaia-init` with: `uv is required for GAIA. Install with: curl -LsSf https://astral.sh/uv/install.sh | sh, then re-run /gaia-init.` Once `uv` is confirmed present, register Serena with:
 
   ```bash
-  claude mcp add serena -s user -- uvx --from git+https://github.com/oraios/serena@v1.2.0 serena start-mcp-server --context claude-code --project-from-cwd --open-web-dashboard false
+  claude mcp add serena -s user -- uvx --from git+https://github.com/oraios/serena@v1.7.0 serena start-mcp-server --context claude-code --project-from-cwd --open-web-dashboard false
   ```
 
   `-s user` registers Serena globally for the user's Claude Code; `--context claude-code` selects Serena's Claude-Code tool context instead of the default desktop-app one; `--project-from-cwd` makes Serena auto-activate the project rooted at the launch directory, so no per-project re-registration is needed; `--open-web-dashboard false` keeps it headless. The pinned ref keeps every GAIA install on the same Serena baseline. If the `claude mcp add` invocation itself fails (network, registry change, etc.), surface the error verbatim and halt `/gaia-init` so the user can retry the command manually after addressing the cause.
@@ -388,7 +389,9 @@ GAIA bundles project-scoped skills, the generic ones at `.claude/skills/` (`tdd`
 
 - `claude plugin install typescript-lsp@claude-plugins-official`
 - `claude plugin marketplace add AgriciDaniel/claude-obsidian`
-- `claude plugin install claude-obsidian@claude-obsidian-marketplace`
+- `claude plugin install claude-obsidian@agricidaniel-claude-obsidian` (baseline: claude-obsidian 2.2.0; needs Python 3.11+ with `python3` on PATH)
+
+To upgrade an existing install, run `claude plugin list`, then `claude plugin uninstall <the id it shows>`, then the marketplace add and install above.
 
 ### Initialize spec-kit and install the GAIA extension + preset
 

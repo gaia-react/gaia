@@ -111,6 +111,10 @@ auditors:
       # tsconfig and lockfile stay with the node member below.
       - ".gaia/*.yml"
       - ".gaia/*.json"
+      # Vendored-skill markers: each pins the sha256 of every file in a
+      # vendored skill, and the offline drift check this member reviews trusts
+      # them, so a rewritten marker would bless edited upstream bytes.
+      - ".gaia/vendor/*.json"
       # The model-pricing table the bash cost tooling reads at runtime (the
       # token-tally chain). It carries dated per-model rates, so it is
       # actively edited and a wrong entry silently misprices every tally.

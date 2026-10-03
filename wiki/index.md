@@ -87,6 +87,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Vitest]]
 - [[React Testing Library]]
 - [[Playwright]]
+- [[playwright-cli]]: global `@playwright/cli` install, the scoped `npx` fallback, the deprecated unscoped package trap, and which invocation wins over the vendored skill's own advice.
 - [[Chromatic]]
 - [[Storybook]]
 - [[MSW]]
@@ -118,6 +119,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Quality Gate]]
 - [[pnpm]]
 - [[DragonScale Opt-Out]]
+- [[Vendored Third-Party Skills]]: third-party skills are vendored byte-identical with a GAIA-owned version marker; GAIA guidance lives outside the vendored folder; updates re-vendor.
 - [[spec-kit Extension Strategy]]
 - [[Wiki Management]]: wiki primitives, state file, deterministic classification
 - [[Claude Integration Fitness]]: check taxonomy + F-to-A+ grading + triage/heal protocol run by `/gaia-fitness`.

@@ -1,6 +1,6 @@
 ---
 name: gaia-serena-sync
-description: Detect and, on explicit consent, additively append the languages Serena is not indexing to the `languages:` list in `.serena/project.yml`, then prompt a Serena restart. Never mutates without a yes; inert without Serena.
+description: Detect and, on explicit consent, additively append the languages Serena is not indexing to the `language_servers:` list (`languages:` before Serena 1.7) in `.serena/project.yml`, then prompt a Serena restart. Never mutates without a yes; inert without Serena.
 argument-hint: []
 ---
 
