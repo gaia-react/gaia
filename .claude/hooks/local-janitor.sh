@@ -482,6 +482,18 @@ if [ "$attempt_fast_forward" -eq 1 ] && [ -n "$base" ]; then
     if [ "$fast_forward_status" -eq 0 ]; then
       wiki_catchup_state_unset catchup_owed
       rm -f "$main_root/.gaia/local/cache/shared/wiki-base-catchup.report" 2>/dev/null || true
+      # `gaia wiki chain finish` invalidated the statusline cache when it queued
+      # the merge, before wiki/.state.json advanced, so the refresher that ran
+      # since recomputed the pre-land drift and holds it for its 6-hour TTL.
+      # Mark it stale again now that the state file has moved. Only an existing
+      # cache is touched, and only checkedAt, so no other indicator flickers.
+      update_check_cache="$main_root/.gaia/local/cache/shared/update-check.json"
+      if [ -f "$update_check_cache" ] && command -v jq >/dev/null 2>&1; then
+        update_check_temporary_file="${update_check_cache}.tmp.$$"
+        jq '.checkedAt = 0' "$update_check_cache" > "$update_check_temporary_file" 2>/dev/null \
+          && mv -f "$update_check_temporary_file" "$update_check_cache" 2>/dev/null
+        rm -f "$update_check_temporary_file" 2>/dev/null
+      fi
     else
       # Coverage is every non-skip FAILURE, not divergence alone: an untracked
       # file the incoming commit would overwrite, a held index.lock, and a
