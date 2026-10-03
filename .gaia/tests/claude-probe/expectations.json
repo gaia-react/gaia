@@ -1221,7 +1221,7 @@
       "signal": "post_tool_use",
       "floor": true,
       "source": "CG-009 root deny (generated settings never hand-edited); SEC-002",
-      "cited_run": null
+      "cited_run": ".gaia/local/research/monorepo-native-2026-10-01/probe-runs/20261003T062634Z-final"
     },
     {
       "id": "fl-frontend-deny-edit-pnpm-lock-yaml",
@@ -1403,7 +1403,7 @@
       "signal": "post_tool_use",
       "floor": true,
       "source": "CG-009 root deny (generated settings never hand-edited); SEC-002",
-      "cited_run": null
+      "cited_run": ".gaia/local/research/monorepo-native-2026-10-01/probe-runs/20261003T062634Z-final"
     },
     {
       "id": "fl-root-deny-edit-pnpm-lock-yaml",
