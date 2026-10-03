@@ -473,6 +473,44 @@ write_commit_evidence() {
   grep -qxF "MISMATCH root-commit-a-red-gate rep=1 expected=value:allow observed=value:blocked_before_git" <<<"$output"
 }
 
+# write_read_attempt_evidence <dir> <tool_result text>: one repetition of the
+# root permissions-read scenario holding a single Read of pnpm-lock.yaml that
+# errored, with no PostToolUse line and no permission_denials entry.
+write_read_attempt_evidence() {
+  local evidence="$1" result_text="$2" root="/probe/target"
+  local scenario="$evidence/rep-1/root/after-task-permissions-read"
+  mkdir -p "$evidence/snapshot/root/files" "$scenario"
+  printf '%s\n' CLAUDE.md >"$evidence/snapshot/root/tree.txt"
+  jq -n '{reps: 1, expectations_commit: "0000000", table_sha256: null}' >"$evidence/meta.json"
+  jq -n --arg root "$root" '{launch: "root", trigger: "after_task:permissions-read", launch_root: $root, launch_directory: $root}' >"$scenario/scenario.json"
+  printf '{"event":"SessionStart","tag":"root-settings","source":"startup","claude_project_dir":"%s","pwd":"%s","toplevel":"%s"}\n' "$root" "$root" "$root" >"$scenario/probe.jsonl"
+  {
+    printf '{"type":"system","subtype":"init","session_id":"s1","skills":[],"agents":[],"mcp_servers":[]}\n'
+    jq -nc --arg root "$root" '{type: "assistant", message: {content: [{type: "tool_use", id: "t1", name: "Read", input: {file_path: ($root + "/pnpm-lock.yaml")}}]}}'
+    jq -nc --arg text "$result_text" '{type: "user", message: {content: [{type: "tool_result", tool_use_id: "t1", is_error: true, content: $text}]}}'
+    printf '{"type":"result","subtype":"success","total_cost_usd":0.01,"permission_denials":[]}\n'
+  } >"$scenario/stream-1.jsonl"
+}
+
+@test "a Read refused only for its size ran past the permission layer and observes allow" {
+  local evidence="$BATS_TEST_TMPDIR/evidence"
+  write_read_attempt_evidence "$evidence" "File content (361.1KB) exceeds maximum allowed size (256KB). Use offset and limit parameters to read specific portions of the file, or search for specific content instead of reading the whole file."
+  run node "$HARNESS/compare.mjs" "$TABLE" "$evidence" --only 'root-read-pnpm-lock-yaml'
+  [ "$status" -eq 0 ]
+  grep -qF "MISMATCH" <<<"$output" && return 1
+  # Guard can fail: a hook deny, or any other error, is not an allow.
+  rm -rf "$evidence"
+  write_read_attempt_evidence "$evidence" "PreToolUse:Read hook error: BLOCKED: reads of this path are forbidden."
+  run node "$HARNESS/compare.mjs" "$TABLE" "$evidence" --only 'root-read-pnpm-lock-yaml'
+  [ "$status" -eq 1 ]
+  grep -qxF "MISMATCH root-read-pnpm-lock-yaml rep=1 expected=allow observed=deny" <<<"$output"
+  rm -rf "$evidence"
+  write_read_attempt_evidence "$evidence" "ENOENT: no such file or directory"
+  run node "$HARNESS/compare.mjs" "$TABLE" "$evidence" --only 'root-read-pnpm-lock-yaml'
+  [ "$status" -eq 1 ]
+  grep -qxF "MISMATCH root-read-pnpm-lock-yaml rep=1 expected=allow observed=error" <<<"$output"
+}
+
 @test "the fixture tree is built off main" {
   [ "$(git -C "$FIXTURE_TREE" symbolic-ref --short HEAD)" = "probe/fixture" ]
 }

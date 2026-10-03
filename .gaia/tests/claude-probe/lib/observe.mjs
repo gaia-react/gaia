@@ -178,9 +178,15 @@ const fileToolOutcome = (data, toolNames, relativePath) => {
   const outcomes = matching.map((attempt) => {
     if (denied.has(attempt.id)) return 'deny';
     const result = results.get(attempt.id);
-    if (result?.is_error && /permission|denied|blocked|hook/i.test(resultText(result))) return 'deny';
+    const text = resultText(result);
+    if (result?.is_error && /permission|denied|blocked|hook/i.test(text)) return 'deny';
+    // Claude Code refuses an oversized Read at execution, after every
+    // permission check and PreToolUse hook passed, so no PostToolUse line is
+    // logged; the refusal still proves the permission layer allowed the call.
+    if (result?.is_error && /exceeds maximum allowed size/i.test(text)) return 'allow';
     return 'error';
   });
+  if (outcomes.includes('allow')) return 'allow';
   return outcomes.includes('deny') ? 'deny' : 'error';
 };
 
