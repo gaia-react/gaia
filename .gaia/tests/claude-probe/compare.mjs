@@ -21,7 +21,8 @@ import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
 import {
-  EvidenceError, listedNames, loadScenario, loadedInstructionPaths, observe, scenarioSlug, sessionProblem,
+  EvidenceError, listedNames, loadScenario, loadedInstructionPaths, observe, scenarioSlug, sessionCommandNames,
+  sessionProblem,
 } from './lib/observe.mjs';
 import {
   FLOOR_ITEMS, LAUNCHES, TableError, expandRow, floorMap, floorProblems, globToRegExp,
@@ -122,7 +123,9 @@ const planLines = (table, onlyGlob) => {
   };
   for (const row of rows) {
     if (row.signal === 'manual') continue;
-    add(row.launch, row.trigger, row.trigger.startsWith('after_read:') && ['skill', 'agent', 'mcp'].includes(row.kind));
+    // Skill rows read the first turn's commands_changed events, so only agent
+    // and MCP rows still need the second (listing) turn.
+    add(row.launch, row.trigger, row.trigger.startsWith('after_read:') && ['agent', 'mcp'].includes(row.kind));
     if (row.trigger === 'after_task:commit' && row.subject === 'commit-parity') add('root', 'after_task:commit', false);
   }
   const triggerOrder = (trigger) => (trigger === 'session_start' ? '0' : `1${trigger}`);
@@ -237,7 +240,8 @@ const runCompare = (tablePath, evidenceDirectory, options) => {
         for (const stream of data.streams) {
           const init = (stream ?? []).find((event) => event.type === 'system' && event.subtype === 'init');
           for (const kind of ['skill', 'agent', 'mcp']) {
-            for (const listed of listedNames(init, kind)) {
+            const listedForKind = kind === 'skill' ? sessionCommandNames(stream) : listedNames(init, kind);
+            for (const listed of listedForKind) {
               const key = kind === 'mcp' ? listed : baseName(listed);
               if (!scope[kind].has(key)) continue;
               if (!coverage.has(`${launch}\t${kind}\t${key}`)) unlisted.add(`UNLISTED ${kind} ${key} launch=${launch}`);

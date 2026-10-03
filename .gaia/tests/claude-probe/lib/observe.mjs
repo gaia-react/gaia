@@ -95,9 +95,37 @@ export const loadedInstructionPaths = (data) => new Set(data.probe
   .map((line) => relativeTo(data.scenario.launch_root, line.file_path))
   .filter(Boolean));
 
-// The listing a row is judged on: an after_read row uses the turn issued
-// after the Read was verified; every other row the session's own init event.
+// A Read of an instruction file, proven by its PostToolUse probe line. Claude
+// Code emits no InstructionsLoaded for a CLAUDE.md whose content entered the
+// context through a direct Read (the spike run showed a Read of
+// frontend/CLAUDE.md log nothing for that file, while a Read of any other file
+// under frontend/ logged it as nested_traversal), so for a claude_md row the
+// verified Read is the other way the file reaches the session.
+export const readInstructionPaths = (data) => new Set(data.probe
+  .filter((line) => line.event === 'PostToolUse' && line.tool_name === 'Read')
+  .map((line) => relativeTo(data.scenario.launch_root, line.file_path))
+  .filter(Boolean));
+
+// The listing an agent or MCP row is judged on: an after_read row uses the
+// turn issued after the Read was verified; every other row the session's own
+// init event. The init event is a session-start snapshot, so it cannot show
+// anything discovered mid-session.
 const listingInit = (data) => (data.scenario.trigger.startsWith('after_read:') ? initEvent(data.streams[1]) : initEvent(data.streams[0]));
+
+// Skill and command names the first turn's session exposed: the init event's
+// skills and slash_commands, plus every later system `commands_changed` event.
+// Claude Code emits commands_changed with the full command list whenever the
+// set changes, including when a Read discovers a nested .claude/skills
+// directory mid-session, which the init snapshot cannot show (the spike run:
+// 87 init skills on both turns, while the Read of frontend/CLAUDE.md drew a
+// commands_changed adding exactly the 12 frontend skills).
+export const sessionCommandNames = (stream) => {
+  const listed = [...listedNames(initEvent(stream), 'skill')];
+  for (const event of stream ?? []) {
+    if (event.type === 'system' && event.subtype === 'commands_changed') listed.push(...names(event.commands));
+  }
+  return listed;
+};
 
 export const listedNames = (init, kind) => {
   if (!init) return [];
@@ -156,18 +184,61 @@ const fileToolOutcome = (data, toolNames, relativePath) => {
   return outcomes.includes('deny') ? 'deny' : 'error';
 };
 
+// red-verify-commit-check.sh opens every deny reason with this prefix; it is
+// how the RED gate's own decision is told apart from any other PreToolUse
+// hook that denied the same call (the spike's commit-to-main guard).
+export const RED_GATE_REASON_PREFIX = 'TDD RED-verification:';
+
+const hookDenyReasons = (stream) => (stream ?? [])
+  .filter((event) => event.type === 'system' && event.subtype === 'hook_response' && event.hook_event === 'PreToolUse')
+  .map((event) => {
+    try {
+      const output = JSON.parse(event.stdout || event.output || 'null');
+      const decision = output?.hookSpecificOutput;
+      return decision?.permissionDecision === 'deny' ? String(decision.permissionDecisionReason ?? '') : null;
+    } catch {
+      return null;
+    }
+  })
+  .filter((reason) => reason !== null);
+
+// Whether the RED gate itself denied commit <marker>. Two structural sources,
+// neither of them model text: the denied call's own tool_result (Claude Code
+// quotes the hook's reason there), and a PreToolUse hook_response whose
+// RED-gate reason names one of the marker's staged paths (run-probe.sh records
+// them in scenario.json as commit_paths).
+const redGateDenied = (data, marker, commitAttempts) => {
+  const { results } = toolAttempts(data);
+  const inResult = commitAttempts.some((attempt) => {
+    const result = results.get(attempt.id);
+    return Boolean(result?.is_error) && resultText(result).includes(RED_GATE_REASON_PREFIX);
+  });
+  if (inResult) return true;
+  const paths = data.scenario.commit_paths?.[marker] ?? [];
+  if (paths.length === 0) return false;
+  return data.streams.flatMap(hookDenyReasons).some((reason) => reason.startsWith(RED_GATE_REASON_PREFIX)
+    && paths.some((path) => reason.includes(path)));
+};
+
 const commitObservation = (data, marker) => {
   const commitProcesses = data.trace2.filter((event) => event.event === 'start' && Array.isArray(event.argv)
     && event.argv.includes('commit') && event.argv.join(' ').includes(`probe-commit-${marker}`));
   const sids = new Set(commitProcesses.map((event) => event.sid));
   const preCommit = data.trace2.some((event) => event.event === 'child_start' && sids.has(event.sid)
     && event.child_class === 'hook' && event.hook_name === 'pre-commit') ? 'ran' : 'not_run';
-  const attempted = data.probe.some((line) => line.event === 'PreToolUse' && line.probe_commit_marker === marker)
-    || toolAttempts(data).attempts.some((attempt) => attempt.name === 'Bash'
-      && String(attempt.input.command ?? '').includes(`probe-commit-${marker}`));
+  const { attempts, results, denied } = toolAttempts(data);
+  const commitAttempts = attempts.filter((attempt) => attempt.name === 'Bash'
+    && String(attempt.input.command ?? '').includes(`probe-commit-${marker}`));
+  const attempted = commitAttempts.length > 0
+    || data.probe.some((line) => line.event === 'PreToolUse' && line.probe_commit_marker === marker);
+  // The RED gate's own decision only: a call some other PreToolUse hook
+  // denied never reached git, so it says nothing about the gate and is
+  // reported as blocked_before_git, never as the gate's deny.
   let redGate = 'not_reached';
-  if (commitProcesses.length > 0) redGate = 'allow';
-  else if (attempted) redGate = 'deny';
+  if (redGateDenied(data, marker, commitAttempts)) redGate = 'deny';
+  else if (commitProcesses.length > 0) redGate = 'allow';
+  else if (commitAttempts.some((attempt) => denied.has(attempt.id) || results.get(attempt.id)?.is_error)) redGate = 'blocked_before_git';
+  else if (attempted) redGate = 'undetermined';
   return { 'pre-commit': preCommit, 'red-gate': redGate };
 };
 
@@ -194,9 +265,11 @@ export const observe = (row, expanded, data, snapshotDirectory, context = {}) =>
   const { subject } = expanded;
   switch (row.kind) {
     case 'claude_md':
+      return loadedInstructionPaths(data).has(subject) || readInstructionPaths(data).has(subject) ? 'loaded' : 'not_loaded';
     case 'rule':
       return loadedInstructionPaths(data).has(subject) ? 'loaded' : 'not_loaded';
     case 'skill':
+      return sessionCommandNames(data.streams[0]).some((listed) => nameMatches(listed, context.key)) ? 'available' : 'not_available';
     case 'agent': {
       const init = listingInit(data);
       if (!init) return 'no_listing';

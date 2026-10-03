@@ -348,3 +348,189 @@ SETTINGS
   [ "$before" = "$after" ]
   [ "$(git -C "$FIXTURE_TREE" worktree list | grep -c .)" -eq 1 ]
 }
+
+# --- observation fixes from the spike run ------------------------------------
+
+# write_after_read_evidence <dir>: one repetition of the root launch's
+# after_read:frontend/CLAUDE.md scenario. The Read is proven by a PostToolUse
+# line; no InstructionsLoaded line names frontend/CLAUDE.md, and the init
+# event lists no frontend skill, as in the spike run. A commands_changed event
+# after the Read lists the two frontend skills.
+write_after_read_evidence() {
+  local evidence="$1" root="/probe/target"
+  local snapshot="$evidence/snapshot/root" scenario="$evidence/rep-1/root/after-read-frontend-claude-md"
+  mkdir -p "$snapshot/files" "$scenario"
+  printf '%s\n' CLAUDE.md frontend/CLAUDE.md frontend/.claude/skills/front-alpha/SKILL.md \
+    frontend/.claude/skills/front-beta/SKILL.md >"$snapshot/tree.txt"
+  jq -n '{reps: 1, expectations_commit: "0000000", table_sha256: null}' >"$evidence/meta.json"
+  jq -n --arg root "$root" '{launch: "root", trigger: "after_read:frontend/CLAUDE.md", launch_root: $root, launch_directory: $root}' >"$scenario/scenario.json"
+  {
+    printf '{"event":"SessionStart","tag":"root-settings","source":"startup","claude_project_dir":"%s","pwd":"%s","toplevel":"%s"}\n' "$root" "$root" "$root"
+    printf '{"event":"InstructionsLoaded","tag":"root-settings","file_path":"%s/CLAUDE.md","load_reason":"session_start"}\n' "$root"
+    printf '{"event":"PreToolUse","tag":"root-settings","tool_name":"Read","tool_use_id":"t1","file_path":"%s/frontend/CLAUDE.md"}\n' "$root"
+    printf '{"event":"PostToolUse","tag":"root-settings","tool_name":"Read","tool_use_id":"t1","file_path":"%s/frontend/CLAUDE.md"}\n' "$root"
+  } >"$scenario/probe.jsonl"
+  {
+    printf '{"type":"system","subtype":"init","session_id":"s1","skills":["root-skill"],"slash_commands":["root-skill","compact"],"agents":[],"mcp_servers":[]}\n'
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"%s/frontend/CLAUDE.md"}}]}}\n' "$root"
+    printf '{"type":"system","subtype":"commands_changed","commands":[{"name":"root-skill"},{"name":"compact"},{"name":"front-alpha"},{"name":"front-beta"}]}\n'
+    printf '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"# Frontend"}]}}\n'
+    printf '{"type":"result","subtype":"success","total_cost_usd":0.01,"permission_denials":[]}\n'
+  } >"$scenario/stream-1.jsonl"
+}
+
+@test "a verified direct Read of frontend/CLAUDE.md observes it loaded with no InstructionsLoaded line" {
+  local evidence="$BATS_TEST_TMPDIR/evidence" probe
+  write_after_read_evidence "$evidence"
+  probe="$evidence/rep-1/root/after-read-frontend-claude-md/probe.jsonl"
+  grep -qF '"InstructionsLoaded","tag":"root-settings","file_path":"/probe/target/frontend/CLAUDE.md"' "$probe" && return 1
+  run node "$HARNESS/compare.mjs" "$TABLE" "$evidence" --only 'fl-root-frontend-claude-md-after-read'
+  [ "$status" -eq 0 ]
+  grep -qF "SUMMARY floor_mismatches=0" <<<"$output"
+  # Guard can fail: with the Read aimed at another file, nothing proves it.
+  sed 's#/frontend/CLAUDE.md#/frontend/app/x.tsx#' "$probe" >"$BATS_TEST_TMPDIR/probe.jsonl"
+  mv "$BATS_TEST_TMPDIR/probe.jsonl" "$probe"
+  run node "$HARNESS/compare.mjs" "$TABLE" "$evidence" --only 'fl-root-frontend-claude-md-after-read'
+  [ "$status" -eq 1 ]
+  grep -qxF "MISMATCH fl-root-frontend-claude-md-after-read rep=1 expected=loaded observed=read_not_verified" <<<"$output"
+}
+
+@test "frontend skills discovered by the Read are observed from commands_changed, not the init snapshot" {
+  local evidence="$BATS_TEST_TMPDIR/evidence" stream
+  write_after_read_evidence "$evidence"
+  stream="$evidence/rep-1/root/after-read-frontend-claude-md/stream-1.jsonl"
+  run node "$HARNESS/compare.mjs" "$TABLE" "$evidence" --only 'fl-root-frontend-skills-after-read'
+  [ "$status" -eq 0 ]
+  grep -qF "SUMMARY floor_mismatches=0" <<<"$output"
+  # Guard can fail: with no commands_changed event the skills are absent.
+  grep -vF commands_changed "$stream" >"$BATS_TEST_TMPDIR/stream.jsonl"
+  mv "$BATS_TEST_TMPDIR/stream.jsonl" "$stream"
+  run node "$HARNESS/compare.mjs" "$TABLE" "$evidence" --only 'fl-root-frontend-skills-after-read'
+  [ "$status" -eq 1 ]
+  grep -qF "MISMATCH fl-root-frontend-skills-after-read@" <<<"$output"
+  grep -qF "front-alpha" <<<"$output"
+  grep -qF "observed=not_available" <<<"$output"
+}
+
+# write_commit_evidence <dir> <commit-b tool_result text> [hook stdout]: one
+# repetition of the root commit scenario in which neither commit reached git.
+# Commit a is denied by the commit-to-main guard; commit b's tool_result
+# carries the given text, and an optional PreToolUse hook_response carries the
+# given JSON stdout.
+write_commit_evidence() {
+  local evidence="$1" result_text="$2" hook_stdout="${3:-}" root="/probe/target"
+  local scenario="$evidence/rep-1/root/after-task-commit" main_guard="PreToolUse:Bash hook error: Commits to 'main' are forbidden. Create a feature branch first."
+  mkdir -p "$evidence/snapshot/root/files" "$scenario"
+  printf '%s\n' CLAUDE.md >"$evidence/snapshot/root/tree.txt"
+  jq -n '{reps: 1, expectations_commit: "0000000", table_sha256: null}' >"$evidence/meta.json"
+  jq -n --arg root "$root" '{launch: "root", trigger: "after_task:commit", launch_root: $root, launch_directory: $root,
+    commit_paths: {a: ["frontend/app/components/ProbeCommit/index.tsx"], b: ["frontend/app/utils/probeSum.ts", "frontend/app/utils/probeSum.test.ts"]}}' >"$scenario/scenario.json"
+  printf '{"event":"SessionStart","tag":"root-settings","source":"startup","claude_project_dir":"%s","pwd":"%s","toplevel":"%s"}\n' "$root" "$root" "$root" >"$scenario/probe.jsonl"
+  : >"$scenario/trace2.jsonl"
+  {
+    printf '{"type":"system","subtype":"init","session_id":"s1","skills":[],"agents":[],"mcp_servers":[]}\n'
+    jq -nc --arg root "$root" '{type: "assistant", message: {content: [
+      {type: "tool_use", id: "ta", name: "Bash", input: {command: ("git -C " + $root + " commit -m probe-commit-a")}},
+      {type: "tool_use", id: "tb", name: "Bash", input: {command: ("git -C " + $root + " commit -m probe-commit-b")}}]}}'
+    if [ -n "$hook_stdout" ]; then
+      jq -nc --arg stdout "$hook_stdout" '{type: "system", subtype: "hook_response", hook_name: "PreToolUse:Bash", hook_event: "PreToolUse", stdout: $stdout, outcome: "success"}'
+    fi
+    jq -nc --arg a "$main_guard" --arg b "$result_text" '{type: "user", message: {content: [
+      {type: "tool_result", tool_use_id: "ta", is_error: true, content: $a},
+      {type: "tool_result", tool_use_id: "tb", is_error: true, content: $b}]}}'
+    printf '{"type":"result","subtype":"success","total_cost_usd":0.01,"permission_denials":[{"tool_name":"Bash","tool_use_id":"ta","tool_input":{}},{"tool_name":"Bash","tool_use_id":"tb","tool_input":{}}]}\n'
+  } >"$scenario/stream-1.jsonl"
+}
+
+@test "a commit another hook denied is blocked_before_git, never the RED gate's deny" {
+  local evidence="$BATS_TEST_TMPDIR/evidence"
+  write_commit_evidence "$evidence" "PreToolUse:Bash hook error: Commits to 'main' are forbidden. Create a feature branch first."
+  run node "$HARNESS/compare.mjs" "$TABLE" "$evidence" --only 'root-commit-*-red-gate'
+  [ "$status" -eq 1 ]
+  grep -qxF "MISMATCH root-commit-b-red-gate rep=1 expected=value:deny observed=value:blocked_before_git" <<<"$output"
+  grep -qxF "MISMATCH root-commit-a-red-gate rep=1 expected=value:allow observed=value:blocked_before_git" <<<"$output"
+}
+
+@test "the RED gate's own deny is observed from the tool_result or from its hook_response" {
+  local evidence="$BATS_TEST_TMPDIR/evidence" reason
+  reason="TDD RED-verification: a new test has no observed failing run (RED) on record at its current content.
+  - frontend/app/utils/probeSum.test.ts > probeSum adds"
+  write_commit_evidence "$evidence" "PreToolUse:Bash hook error: $reason"
+  run node "$HARNESS/compare.mjs" "$TABLE" "$evidence" --only 'root-commit-b-red-gate'
+  [ "$status" -eq 0 ]
+
+  rm -rf "$evidence"
+  write_commit_evidence "$evidence" "PreToolUse:Bash hook error: denied" \
+    "$(jq -nc --arg reason "$reason" '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: $reason}}')"
+  run node "$HARNESS/compare.mjs" "$TABLE" "$evidence" --only 'root-commit-b-red-gate'
+  [ "$status" -eq 0 ]
+  # A RED-gate reason naming only another commit's paths is not this commit's.
+  run node "$HARNESS/compare.mjs" "$TABLE" "$evidence" --only 'root-commit-a-red-gate'
+  [ "$status" -eq 1 ]
+  grep -qxF "MISMATCH root-commit-a-red-gate rep=1 expected=value:allow observed=value:blocked_before_git" <<<"$output"
+}
+
+@test "the fixture tree is built off main" {
+  [ "$(git -C "$FIXTURE_TREE" symbolic-ref --short HEAD)" = "probe/fixture" ]
+}
+
+# A stub `claude` that, for the commit scenario, records the target's branch
+# and runs each numbered git line of its prompt in order (HUSKY=0, so the
+# fixture's husky shim stands down), logging what is staged just before each
+# commit runs. Every other scenario behaves like write_claude_stub.
+write_committing_claude_stub() {
+  write_claude_stub
+  mv "$BIN/claude" "$BIN/claude-base"
+  cat >"$BIN/claude" <<'STUB'
+#!/usr/bin/env bash
+prompt=""
+previous=""
+for argument in "$@"; do
+  [ "$previous" = "-p" ] && prompt="$argument"
+  previous="$argument"
+done
+case "$prompt" in
+  *"automated commit probe"*)
+    root="$(git rev-parse --show-toplevel)"
+    git -C "$root" symbolic-ref --short HEAD >>"$STUB_BRANCH_LOG"
+    while IFS= read -r line; do
+      case "$line" in
+        [0-9]*". git -C "*)
+          command_line="${line#*. }"
+          case "$command_line" in
+            *" commit -m "*)
+              printf '%s:' "${command_line##* }" >>"$STUB_STAGED_LOG"
+              git -C "$root" diff --cached --name-only | tr '\n' ' ' >>"$STUB_STAGED_LOG"
+              printf '\n' >>"$STUB_STAGED_LOG"
+              ;;
+          esac
+          HUSKY=0 bash -c "$command_line" >/dev/null 2>&1 || true
+          ;;
+      esac
+    done <<<"$prompt"
+    ;;
+esac
+exec "$(dirname "$0")/claude-base" "$@"
+STUB
+  chmod +x "$BIN/claude"
+}
+
+@test "run-probe commits on a probe branch with each commit's files staged first, then restores the target" {
+  write_committing_claude_stub
+  local repo="$BATS_TEST_TMPDIR/table-repo" evidence="$BATS_TEST_TMPDIR/evidence" branch_before head_before status_before
+  export STUB_BRANCH_LOG="$BATS_TEST_TMPDIR/branch-log" STUB_STAGED_LOG="$BATS_TEST_TMPDIR/staged-log"
+  table_repo "$repo"
+  branch_before="$(git -C "$FIXTURE_TREE" symbolic-ref --short HEAD)"
+  head_before="$(git -C "$FIXTURE_TREE" rev-parse HEAD)"
+  status_before="$(git -C "$FIXTURE_TREE" status --porcelain --untracked-files=all)"
+  run bash "$HARNESS/run-probe.sh" --target "$FIXTURE_TREE" --evidence "$evidence" --max-usd 5 --reps 1 \
+    --table-repo "$repo" --launches root --only 'fl-root-commit-a-pre-commit'
+  [ "$(cat "$STUB_BRANCH_LOG")" = "probe/run" ]
+  grep -qF "probe-commit-b:frontend/app/utils/probeSum.test.ts frontend/app/utils/probeSum.ts" "$STUB_STAGED_LOG"
+  grep -qF "probe-commit-a:frontend/app/components/ProbeCommit/index.tsx" "$STUB_STAGED_LOG"
+  jq -e '.commit_paths.b | index("frontend/app/utils/probeSum.test.ts") != null' "$evidence/rep-1/root/after-task-commit/scenario.json" >/dev/null
+  [ "$(git -C "$FIXTURE_TREE" symbolic-ref --short HEAD)" = "$branch_before" ]
+  [ "$(git -C "$FIXTURE_TREE" rev-parse HEAD)" = "$head_before" ]
+  [ "$(git -C "$FIXTURE_TREE" status --porcelain --untracked-files=all)" = "$status_before" ]
+  [ -z "$(git -C "$FIXTURE_TREE" branch --list probe/run)" ]
+}

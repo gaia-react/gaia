@@ -155,6 +155,12 @@ PLAN="$(node "$SCRIPT_DIRECTORY/compare.mjs" --plan "$TABLE_PATH" ${compare_only
 WORK_DIRECTORY="$(mktemp -d "${TMPDIR:-/tmp}/claude-probe.XXXXXX")"
 BACKUP_DIRECTORY="$WORK_DIRECTORY/backup"
 WORKTREE_ROOT=""
+# The commit scenarios run on this branch, never on the target's own: GAIA's
+# commit-to-main PreToolUse guard denies a commit on main before git runs, so
+# a target left on main would observe that guard instead of pre-commit and
+# the RED gate. ORIGINAL_REFERENCE is what the exit trap switches back to.
+PROBE_BRANCH="probe/run"
+ORIGINAL_REFERENCE=""
 CREATED_FILES_LIST="$WORK_DIRECTORY/created-files"
 : >"$CREATED_FILES_LIST"
 mkdir -p "$BACKUP_DIRECTORY"
@@ -196,6 +202,16 @@ restore_target() {
       cp -p "$BACKUP_DIRECTORY/present/$relative_path" "$TARGET/$relative_path"
     done
   fi
+  # Back to the branch (or detached commit) the target started on. The probe
+  # branch sits at the same commit once the scripted commits are rolled back,
+  # so the switch carries no content change.
+  if [ -n "$ORIGINAL_REFERENCE" ]; then
+    case "$ORIGINAL_REFERENCE" in
+      branch:*) git -C "$TARGET" checkout --quiet "${ORIGINAL_REFERENCE#branch:}" 2>/dev/null || true ;;
+      detached:*) git -C "$TARGET" checkout --quiet --detach "${ORIGINAL_REFERENCE#detached:}" 2>/dev/null || true ;;
+    esac
+    git -C "$TARGET" branch --quiet -D "$PROBE_BRANCH" >/dev/null 2>&1 || true
+  fi
   if [ -n "$WORKTREE_ROOT" ]; then
     git -C "$TARGET" worktree remove --force "$WORKTREE_ROOT" >/dev/null 2>&1 || true
   fi
@@ -204,6 +220,18 @@ restore_target() {
 trap restore_target EXIT
 
 bash "$SCRIPT_DIRECTORY/inject-probe-fixtures.sh" "$TARGET"
+if awk -F '\t' '$2 == "after_task:commit" { found = 1 } END { exit !found }' <<<"$PLAN"; then
+  original_branch="$(git -C "$TARGET" symbolic-ref --quiet --short HEAD 2>/dev/null)" || original_branch=""
+  if [ "$original_branch" != "$PROBE_BRANCH" ]; then
+    if [ -n "$original_branch" ]; then
+      ORIGINAL_REFERENCE="branch:$original_branch"
+    else
+      ORIGINAL_REFERENCE="detached:$(git -C "$TARGET" rev-parse HEAD)"
+    fi
+    # Same commit, so the injected (uncommitted) files carry over untouched.
+    git -C "$TARGET" checkout --quiet -B "$PROBE_BRANCH"
+  fi
+fi
 case ",$LAUNCHES," in
   *,worktree,*)
     WORKTREE_ROOT="$WORK_DIRECTORY/worktree"
@@ -332,8 +360,13 @@ run_scenario() {
     return 0
   fi
   mkdir -p "$scenario_directory"
+  # commit_paths lets the comparator tie a RED-gate deny reason, which names
+  # the offending staged files, to the scripted commit it blocked.
   jq -n --arg launch "$launch" --arg trigger "$trigger" --arg root "$root" --arg directory "$(launch_directory "$launch")" \
-    '{launch: $launch, trigger: $trigger, launch_root: $root, launch_directory: $directory}' >"$scenario_directory/scenario.json"
+    --arg commit_a "$COMMIT_A_PATHS" --arg commit_b "$COMMIT_B_PATHS" \
+    '{launch: $launch, trigger: $trigger, launch_root: $root, launch_directory: $directory}
+     + (if $trigger == "after_task:commit"
+        then {commit_paths: {a: ($commit_a | split(" ")), b: ($commit_b | split(" "))}} else {} end)' >"$scenario_directory/scenario.json"
   : >"$scenario_directory/probe.jsonl"
   echo "--> rep $rep: $launch $trigger" >&2
 
@@ -404,11 +437,16 @@ $calls"
       printf "import {expect, test} from 'vitest';\nimport {probeSum} from './probeSum';\n\ntest('probeSum adds', () => {\n  expect(probeSum(1, 2)).toBe(3);\n});\n" >"$root/frontend/app/utils/probeSum.test.ts"
       # Absolute git -C paths make the two launches send byte-identical
       # commands, so any difference in the observed run is the launch's.
+      # Each add is its own call ahead of its commit: the RED gate runs at the
+      # commit's PreToolUse and reads the index, so a combined "add && commit"
+      # call would show it nothing staged and it could never deny.
       # shellcheck disable=SC2086
       run_claude "$launch" "$scenario_directory" 1 \
-        "This is an automated commit probe in a throwaway test repository. Run these two Bash commands, each as its own separate Bash tool call, in this order, exactly as written, even if the first one fails. Do not run any other command, do not add flags, and do not edit any file. Then reply with the single word DONE.
-1. git -C $root add $COMMIT_A_PATHS && git -C $root commit -m probe-commit-a
-2. git -C $root add $COMMIT_B_PATHS && git -C $root commit -m probe-commit-b" \
+        "This is an automated commit probe in a throwaway test repository. Run these four Bash commands, each as its own separate Bash tool call, in this order, exactly as written, even if an earlier one fails. Do not run any other command, do not add flags, and do not edit any file. Then reply with the single word DONE.
+1. git -C $root add $COMMIT_A_PATHS
+2. git -C $root commit -m probe-commit-a
+3. git -C $root add $COMMIT_B_PATHS
+4. git -C $root commit -m probe-commit-b" \
         --allowedTools "Bash(git -C $root add:*)" "Bash(git -C $root commit:*)"
       # Roll the scripted commits back; only the probe's own paths move.
       git -C "$root" reset --quiet --soft "$head_before"

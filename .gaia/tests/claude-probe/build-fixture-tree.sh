@@ -190,6 +190,11 @@ git -C "$OUT_DIRECTORY" config user.email "claude-probe@example.invalid"
 git -C "$OUT_DIRECTORY" config commit.gpgsign false
 git -C "$OUT_DIRECTORY" add -A
 git -C "$OUT_DIRECTORY" commit -q -m "Claude probe fixture: SPEC-092 target layout"
+# Off main, as a maintainer's working tree would be: GAIA's commit-to-main
+# PreToolUse guard denies any commit on main before git runs, which would hide
+# pre-commit and the RED gate from the commit rows. run-probe.sh also moves
+# any target onto its own probe branch for the commit scenarios.
+git -C "$OUT_DIRECTORY" checkout -q -b probe/fixture
 # Armed only after the fixture's own commit, which no hook should judge; from
 # here on a commit in the fixture runs .husky/pre-commit as husky would.
 git -C "$OUT_DIRECTORY" config core.hooksPath .husky/_
