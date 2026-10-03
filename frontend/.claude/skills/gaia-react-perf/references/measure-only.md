@@ -46,7 +46,7 @@ explain this and ask them to narrow to a micro-interaction.
 Drive the target interaction in a short Playwright spec using the committed
 Phase-1 capture helper, `frontend/.playwright/react-perf/capture.ts`. The diagnosis spec
 installs the capture, `goto`s the target route, waits for `hydration`, drives the
-micro-interaction, then collects; it passes `{keep: true}` so the raw dump
+micro-interaction, then collects; it passes `{isRunDirectoryKept: true}` so the raw dump
 survives the Playwright process for the reduce step, and it logs the written
 `rawPath`. Use the template below.
 
@@ -72,9 +72,9 @@ test('drive the target micro-interaction and capture renders', async ({page}) =>
   await expect(toggle).toBeVisible();
   await toggle.click();
 
-  // keep: true is REQUIRED. collectRenderDump auto-deletes the run dir on
+  // isRunDirectoryKept: true is REQUIRED. collectRenderDump auto-deletes the run dir on
   // process exit unless kept, which would erase the raw before reduce reads it.
-  const result = await collectRenderDump(page, {keep: true});
+  const result = await collectRenderDump(page, {isRunDirectoryKept: true});
   console.log(`RAW_DUMP_PATH=${result.rawPath}`);
 });
 ```
