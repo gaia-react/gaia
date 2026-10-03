@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-10-01
+updated: 2026-10-03
 tags: [concept, ci, review]
 ---
 
@@ -46,6 +46,8 @@ Read the whole output before narrowing to that row: the rows this grep discards 
 | -------------------------------- | ---------------------------------------- | --------------------------------------------------------- |
 | `GAIA-Audit … pass`              | a success is already posted for HEAD     | skip to **step 4 (merge)**                                |
 | no `GAIA-Audit` row, or it fails | no audit has cleared this HEAD           | run the local agents (**step 1**), mandatory, not optional |
+
+Member resolution, the out-of-scope bypass, and each member's scope resolver list changed files without rename detection, so a rename counts both its old and its new path: moving an owned file to an unowned path still dispatches its owner and keeps the bypass closed.
 
 The exception is a PR whose entire diff is out of audit scope: the hook's out-of-scope bypass (see step 3) clears those with no marker at all, so no local run is needed.
 
@@ -230,7 +232,7 @@ Agent(
 )
 ```
 
-Write the `Working root:` value as the bare absolute path with nothing after it: a trailing character can stop the hook's resolver from reading the path, and it then audits the session's working directory instead.
+Write the `Working root:` value as the bare absolute path with nothing after it: a trailing character can stop the hook's resolver from reading the path, and the hook strips wrapping quotes, backticks, and trailing sentence punctuation before resolving, and a named root that still does not resolve is denied with the token named rather than falling back to the session's working directory.
 
 | `stop_reason` | The main thread |
 | --- | --- |

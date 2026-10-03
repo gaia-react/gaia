@@ -11,6 +11,47 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-10-03 3e4462d WORTHY - nudge text shortened; no page states the string
+- 2026-10-03 689b6f5 WORTHY - wiki pages updated in the commit itself; verified against current pages
+- 2026-10-03 9ee3deb WORTHY - wiki pages updated in the commit itself; verified against current pages
+- 2026-10-03 fb72f98 WORTHY - wiki pages updated in the commit itself; verified against current pages
+- 2026-10-03 0cafee6 WORTHY - wiki pages updated in the commit itself; verified against current pages
+- 2026-10-03 bfb8b32 WORTHY - wiki pages updated in the commit itself; verified against current pages
+- 2026-10-03 dfb1242 WORTHY - wiki pages updated in the commit itself; verified against current pages
+- 2026-10-03 d91f103 WORTHY - wiki pages updated in the commit itself; verified against current pages
+- 2026-10-03 6f0cf37 WORTHY - wiki pages updated in the commit itself; verified against current pages
+- 2026-10-03 27b4b9e WORTHY - wiki pages updated in the commit itself; verified against current pages
+- 2026-10-03 4781c98 WORTHY - wiki pages updated in the commit itself; verified against current pages
+- 2026-10-03 d26eadb WORTHY - wiki pages updated in the commit itself; verified against current pages
+- 2026-10-03 d4ac31c WORTHY - wiki pages updated in the commit itself; verified against current pages
+- 2026-10-03 82d7c1a WORTHY - Working root resolution and deny → wiki/concepts/PR Merge Workflow.md
+- 2026-10-03 5cee66b WORTHY - worktree audit-marker migration → wiki/concepts/Worktrees.md
+- 2026-10-03 594c041 WORTHY - wiki pages updated in the commit itself; verified against current pages
+- 2026-10-03 a632ca4 WORTHY - wiki pages updated in the commit itself; verified against current pages
+- 2026-10-03 eccca69 WORTHY - wiki pages updated in the commit itself; verified against current pages
+- 2026-10-03 6984f6c WORTHY - wiki pages updated in the commit itself; verified against current pages
+- 2026-10-03 d180129 WORTHY - no-renames in member resolution and bypass → wiki/concepts/PR Merge Workflow.md
+- 2026-10-03 db782dd WORTHY - wiki pages updated in the commit itself; verified against current pages
+- 2026-10-03 9884995 WORTHY - wiki pages updated in the commit itself; verified against current pages
+- 2026-10-03 080bf10 WORTHY - wiki pages updated in the commit itself; verified against current pages
+- 2026-10-03 1efb904 WORTHY - wiki pages updated in the commit itself; verified against current pages
+- 2026-10-03 d70444e SKIP - chore(release): release plumbing
+- 2026-10-03 c9f56c4 WORTHY - wiki pages updated in the commit itself; verified against current pages
+- 2026-10-03 11d5323 WORTHY - skill/config change not wiki-described; no page edit needed
+- 2026-10-03 fc4bf41 SKIP - chore(release): release plumbing
+- 2026-10-03 b667971 WORTHY - wiki pages updated in the commit itself; verified against current pages
+- 2026-10-03 d516a1e WORTHY - wiki pages updated in the commit itself; verified against current pages
+- 2026-10-03 65fbe23 WORTHY - wiki pages updated in the commit itself; verified against current pages
+- 2026-10-03 7c2061e WORTHY - wiki pages updated in the commit itself; verified against current pages
+- 2026-10-03 6d8e684 WORTHY - skill/config change not wiki-described; no page edit needed
+- 2026-10-03 ad96cd4 WORTHY - wiki pages updated in the commit itself; verified against current pages
+- 2026-10-03 c5ca242 WORTHY - wiki pages updated in the commit itself; verified against current pages
+- 2026-10-03 1572130 WORTHY - charset-filter on unpriced model marker; internal detail, Token Cost Readout already describes the marker
+- 2026-10-03 e4b57e2 WORTHY - wiki pages updated in the commit itself; verified against current pages
+- 2026-10-03 2b34a92 WORTHY - token-tally fix; covered in wiki/concepts/Usage Ledger.md and wiki/concepts/Cost Data Contract.md; review rows count every roster member → wiki/concepts/Cost Data Contract.md
+- 2026-10-03 ccc10f4 WORTHY - token-tally fix; covered in wiki/concepts/Usage Ledger.md and wiki/concepts/Cost Data Contract.md
+- 2026-10-03 6e00002 SKIP - feat/fix/perf/refactor/debt: tests-only
+- 2026-10-03 b0ac882 WORTHY - wiki pages updated in the commit itself; verified against current pages
 - 2026-09-30 d8826432 WORTHY - self-healing local rate table, Token Cost Readout and related pages updated in the commit itself
 - 2026-09-30 49d792ab WORTHY - harness scoping and service scaffold fixes, wiki updated in the commit itself
 - 2026-09-30 92dfcb71 SKIP - residue reference statusline refresh, covered in skill reference
