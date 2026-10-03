@@ -82,6 +82,7 @@ const TextArea: FC<TextAreaProps> = ({
 
       return () => {
         textArea.removeEventListener('autosize:resized', listener);
+        autosize.destroy(textArea);
       };
     }
   }, [resize]);

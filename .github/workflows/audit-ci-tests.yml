@@ -151,6 +151,12 @@ jobs:
               # directory). An edit to only one of them would report
               # `code=false` and green the job having run those guards zero times.
               - 'frontend/gaia.package.json'
+              # settings-drift.bats reads the live generated
+              # frontend/.claude/settings.json and runs check-settings-drift.sh,
+              # which reads settings.overlay.json. Neither matches another arm
+              # here, so an edit to only one would green the job with code=false.
+              - 'frontend/.claude/settings.json'
+              - 'frontend/.claude/settings.overlay.json'
               - '.gaia/packages.json'
               - '.gaia/scripts/**'
               # The shell lint suites (.gaia/scripts/tests/lint-*.bats) scan

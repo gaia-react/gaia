@@ -18,19 +18,17 @@ import type {BippyMeta, RawDump, RawDumpMeta, RenderRecord} from './types';
 
 const CURRENT_MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
-// Walk up to the ancestor holding .gaia/packages.json rather than a fixed
-// depth: the package sits at frontend/, so a fixed hop lands inside it, where
-// .gaia/local is not gitignored.
+// Walk up to the ancestor holding .gaia/VERSION (every GAIA root has it, no
+// package does) rather than a fixed depth: the package sits at frontend/, so a
+// fixed hop lands inside it, where .gaia/local is not gitignored.
 const findRepoRoot = (startDirectory: string): string => {
   let directory = startDirectory;
 
-  while (!existsSync(path.join(directory, '.gaia', 'packages.json'))) {
+  while (!existsSync(path.join(directory, '.gaia', 'VERSION'))) {
     const parent = path.dirname(directory);
 
     if (parent === directory) {
-      throw new Error(
-        `react-perf: no .gaia/packages.json above ${startDirectory}`
-      );
+      throw new Error(`react-perf: no .gaia/VERSION above ${startDirectory}`);
     }
 
     directory = parent;

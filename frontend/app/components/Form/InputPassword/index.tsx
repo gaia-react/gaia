@@ -4,7 +4,7 @@ import InputText from '../InputText';
 import type {InputProps} from '../types';
 
 const InputPassword: FC<InputProps> = ({
-  autoComplete = 'password',
+  autoComplete = 'current-password',
   label,
   ref,
   ...props
