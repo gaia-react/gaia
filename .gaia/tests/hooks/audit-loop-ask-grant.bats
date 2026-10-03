@@ -380,13 +380,33 @@ CASES
 
 @test "two pending checkpoints with the same session id record nothing" {
   seed_pinned
-  jq '.key = "branch:feat/second" | .branch = "feat/second"' "$ALF_STATE" >"$ALF_ROOT/.gaia/local/audit-loop/feat/second.json"
+  jq '.key = "branch:feat/second" | .branch = "feat/second"' "$ALF_STATE" >"$ALF_ROOT/.gaia/local/protected/audit-loop/feat/second.json"
   alf_git checkout -q main
   snapshot
-  cp "$ALF_ROOT/.gaia/local/audit-loop/feat/second.json" "$BATS_TEST_TMPDIR/second-before.json"
+  cp "$ALF_ROOT/.gaia/local/protected/audit-loop/feat/second.json" "$BATS_TEST_TMPDIR/second-before.json"
   send "$(continue_label)"
   declined "ambiguous"
-  cmp -s "$BATS_TEST_TMPDIR/second-before.json" "$ALF_ROOT/.gaia/local/audit-loop/feat/second.json"
+  cmp -s "$BATS_TEST_TMPDIR/second-before.json" "$ALF_ROOT/.gaia/local/protected/audit-loop/feat/second.json"
+}
+
+@test "state only at the old directory records nothing; the same state at protected/audit-loop records" {
+  local OLD_STATE_DIRECTORY="$ALF_ROOT/.gaia/local/audit-loop"
+  seed_pinned
+  mkdir -p "$OLD_STATE_DIRECTORY/feat"
+  cp "$ALF_ROOT/.gaia/local/protected/audit-loop/feat/ask.json" "$OLD_STATE_DIRECTORY/feat/ask.json"
+  cp "$ALF_ROOT/.gaia/local/protected/audit-loop/feat/ask.json" "$BATS_TEST_TMPDIR/before.json"
+  local PIN_USE
+  PIN_USE="$(state_pin)"
+  rm -rf "$ALF_ROOT/.gaia/local/protected/audit-loop"
+  send "$(continue_label)"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  cmp -s "$BATS_TEST_TMPDIR/before.json" "$OLD_STATE_DIRECTORY/feat/ask.json"
+  mkdir -p "$ALF_ROOT/.gaia/local/protected/audit-loop/feat"
+  cp "$BATS_TEST_TMPDIR/before.json" "$ALF_ROOT/.gaia/local/protected/audit-loop/feat/ask.json"
+  send "$(continue_label)"
+  [ "$status" -eq 0 ]
+  [ "$(jq '.allowance.answers | length' "$ALF_ROOT/.gaia/local/protected/audit-loop/feat/ask.json")" -eq 1 ]
 }
 
 @test "a tool that is not AskUserQuestion, or no audit state at all, exits 0 silently" {
@@ -398,7 +418,7 @@ CASES
   [ "$status" -eq 0 ]
   [ -z "$output" ]
   unchanged
-  rm -rf "$ALF_ROOT/.gaia/local/audit-loop"
+  rm -rf "$ALF_ROOT/.gaia/local/protected/audit-loop"
   send_payload "$valid"
   [ "$status" -eq 0 ]
   [ -z "$output" ]

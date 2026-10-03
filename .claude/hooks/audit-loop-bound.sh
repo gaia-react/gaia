@@ -366,7 +366,7 @@ check_dispositions() {
 # close_state <pr>: move the state file (and its stamps) under .closed/.
 close_state() {
   local closed_directory name
-  closed_directory="$main/.gaia/local/audit-loop/.closed"
+  closed_directory="$main/.gaia/local/protected/audit-loop/.closed"
   name="$(printf '%s' "$BRANCH_KEY" | tr '/' '+').${1:-none}.$(date -u +%Y%m%dT%H%M%SZ)"
   mkdir -p "$closed_directory" || return 1
   mv -f "$file" "$closed_directory/$name.json" || return 1
@@ -413,7 +413,7 @@ find_renamed() {
       hits=$((hits + 1))
       hit="$candidate_file"
     fi
-  done < <(find "$main/.gaia/local/audit-loop" \( -name .closed -prune \) -o -type f -name '*.json' -print 2>/dev/null)
+  done < <(find "$main/.gaia/local/protected/audit-loop" \( -name .closed -prune \) -o -type f -name '*.json' -print 2>/dev/null)
   [ "$hits" -eq 1 ] || return 1
   printf '%s\n' "$hit"
 }

@@ -52,7 +52,7 @@ alf_branch() {
   ALF_NORMALIZED_BRANCH="${1#worktree-}"
   ALF_NORMALIZED_BRANCH="${ALF_NORMALIZED_BRANCH//+//}"
   ALF_SLUG="$(gaia_key_slug "$1")"
-  ALF_STATE="$ALF_ROOT/.gaia/local/audit-loop/$ALF_NORMALIZED_BRANCH.json"
+  ALF_STATE="$ALF_ROOT/.gaia/local/protected/audit-loop/$ALF_NORMALIZED_BRANCH.json"
 }
 
 # alf_set_line <path> <line> <text>: set one line, padding the file to it.
@@ -113,7 +113,7 @@ alf_sidecar() {
 
 # alf_stamp <round> <minutes>: write round r's dispatch stamp.
 alf_stamp() {
-  local file_path="$ALF_ROOT/.gaia/local/audit-loop/$ALF_NORMALIZED_BRANCH.d/round-$1.stamp"
+  local file_path="$ALF_ROOT/.gaia/local/protected/audit-loop/$ALF_NORMALIZED_BRANCH.d/round-$1.stamp"
   mkdir -p "${file_path%/*}" && : >"$file_path" && touch -t "$(alf_time "$2")" "$file_path"
 }
 

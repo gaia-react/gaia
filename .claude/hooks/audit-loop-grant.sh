@@ -196,7 +196,7 @@ fi
 
 if [ -z "$target" ]; then
   matches=0
-  statedir="$main/.gaia/local/audit-loop"
+  statedir="$main/.gaia/local/protected/audit-loop"
   if [ -n "$session_id" ] && [ -d "$statedir" ]; then
     while IFS= read -r candidate_state_file; do
       candidate_state="$(gaia_loop_read_state "$candidate_state_file" 2>/dev/null)" || continue

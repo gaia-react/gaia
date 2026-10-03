@@ -22,6 +22,8 @@ setup() {
   REGISTRY="$REPO_ROOT/.gaia/state-registry.json"
   # shellcheck source=.gaia/scripts/state-registry-lib.sh
   source "$LIBRARY_SCRIPT"
+  OLD_OVERRIDE_RELATIVE=checkpoint-override.json
+  OLD_STATE_RELATIVE=audit-loop/feat/x.json
 }
 
 # run_in_repo <fn> [args...]: runs a sourced-lib function with cwd = the real
@@ -36,6 +38,31 @@ run_in_repo() {
     shift 2
     "$@"
   ' _ "$REPO_ROOT" "$LIBRARY_SCRIPT" "$@"
+}
+
+# make_registry_repo: a scratch repo holding this branch's registry (REGISTRY)
+# beside copies of the lib, so the reader resolves the branch's rows, not the
+# main checkout's. Sets REGISTRY_REPO.
+make_registry_repo() {
+  REGISTRY_REPO="$(mktemp -d "$BATS_TEST_TMPDIR/reg.XXXXXX")"
+  REGISTRY_REPO="$(cd "$REGISTRY_REPO" && pwd -P)"
+  mkdir -p "$REGISTRY_REPO/.gaia/scripts"
+  cp "$SCRIPT_DIRECTORY/state-registry-lib.sh" "$SCRIPT_DIRECTORY/main-root-lib.sh" "$REGISTRY_REPO/.gaia/scripts/"
+  cp "$REGISTRY" "$REGISTRY_REPO/.gaia/state-registry.json"
+  git -C "$REGISTRY_REPO" init -q
+}
+
+# run_in_registry_repo <fn> [args...]: twin of run_in_repo against the scratch
+# repo's copy of the lib and registry.
+run_in_registry_repo() {
+  make_registry_repo
+  run bash -c '
+    cd "$1" || exit 1
+    # shellcheck disable=SC1090
+    source "$1/.gaia/scripts/state-registry-lib.sh"
+    shift
+    "$@"
+  ' _ "$REGISTRY_REPO" "$@"
 }
 
 # ========== structural ==========
@@ -137,24 +164,46 @@ run_in_repo() {
 # link-worktree.sh no longer calls this to build its own
 # symlink set (a linked worktree's whole .gaia/local is one symlink to
 # main's now). It stays as the regression guard the concurrency meter's
-# cutover-risk scenarios (C4-06, C4-08) run against the shipped registry: the
-# concrete proof that a per-tree entry is genuinely not shared.
+# cutover-risk scenarios run against the shipped registry: the concrete proof
+# that a per-tree entry is genuinely not shared.
 
-@test "gaia_registry_linkable_paths: prints exactly the 11 shared paths in stable order" {
-  run_in_repo gaia_registry_linkable_paths
+@test "gaia_registry_linkable_paths: prints exactly the 11 shared paths, each by name" {
+  run_in_registry_repo gaia_registry_linkable_paths
   [ "$status" -eq 0 ]
   [ "${#lines[@]}" -eq 11 ]
-  [ "${lines[0]}" = "setup-state.json" ]
-  [ "${lines[1]}" = "cache/shared/context" ]
-  [ "${lines[2]}" = "cache/shared" ]
-  [ "${lines[3]}" = "checkpoint-override.json" ]
-  [ "${lines[4]}" = "settings.json" ]
-  [ "${lines[5]}" = "audit" ]
-  [ "${lines[6]}" = "telemetry" ]
-  [ "${lines[7]}" = "telemetry/usage-sweep.lock.d" ]
-  [ "${lines[8]}" = "debt" ]
-  [ "${lines[9]}" = "harden" ]
-  [ "${lines[10]}" = "runs" ]
+  local expected_path
+  for expected_path in setup-state.json cache/shared/context cache/shared protected \
+    settings.json audit telemetry telemetry/usage-sweep.lock.d debt harden runs; do
+    grep -qxF -- "$expected_path" <<<"$output" || return 1
+  done
+  grep -qxF -- "$OLD_OVERRIDE_RELATIVE" <<<"$output" && return 1
+  return 0
+}
+
+@test "gaia_registry_classify: the audit loop state and the override classify under protected" {
+  run_in_registry_repo gaia_registry_classify protected/audit-loop/feat/x.json
+  [ "$status" -eq 0 ]
+  [ "$output" = "main-only" ]
+  run_in_registry_repo gaia_registry_classify protected/checkpoint-override.json
+  [ "$status" -eq 0 ]
+  [ "$output" = "shared" ]
+}
+
+@test "gaia_registry_classify: a new file directly under protected has no row and classifies unknown" {
+  run_in_registry_repo gaia_registry_classify protected/new-state.json
+  [ "$output" = "unknown" ]
+}
+
+@test "gaia_registry_classify: the old override and state locations classify unknown" {
+  run_in_registry_repo gaia_registry_classify "$OLD_OVERRIDE_RELATIVE"
+  [ "$output" = "unknown" ]
+  run_in_registry_repo gaia_registry_classify "$OLD_STATE_RELATIVE"
+  [ "$output" = "unknown" ]
+}
+
+@test "gaia_registry_recognizes: protected is recognized as an ancestor with no row of its own" {
+  run_in_registry_repo gaia_registry_recognizes protected d
+  [ "$status" -eq 0 ]
 }
 
 @test "gaia_registry_linkable_paths: a per-tree entry (red-ledger) never appears" {

@@ -160,20 +160,30 @@ classify() {
   [ "$output" = "unknown" ]
 }
 
-@test "registry: checkpoint-override.json maps to checkpoint-override exactly, its .bak sibling does not" {
+@test "registry: protected/checkpoint-override.json maps to checkpoint-override exactly, its .bak sibling does not" {
   make_registry_repo
-  run jq -r '.entries[] | select(.path == "checkpoint-override.json") | .id' "$REAL_REGISTRY"
+  run jq -r '.entries[] | select(.path == "protected/checkpoint-override.json") | .id' "$REAL_REGISTRY"
   [ "$output" = "checkpoint-override" ]
-  classify "checkpoint-override.json"
+  classify "protected/checkpoint-override.json"
   [ "$output" = "shared" ]
-  classify "checkpoint-override.json.bak"
+  classify "protected/checkpoint-override.json.bak"
   [ "$output" = "unknown" ]
 }
 
-@test "registry red twin: without the checkpoint-override row checkpoint-override.json classifies unknown" {
+@test "registry red twin: without the checkpoint-override row protected/checkpoint-override.json classifies unknown" {
   make_registry_repo
   jq '.entries |= map(select(.id != "checkpoint-override"))' "$REGISTRY_FILE" > "$REGISTRY_FILE.new"
   mv "$REGISTRY_FILE.new" "$REGISTRY_FILE"
-  classify "checkpoint-override.json"
+  classify "protected/checkpoint-override.json"
+  [ "$output" = "unknown" ]
+}
+
+@test "registry red twin: without the audit-loop-state row a protected/audit-loop state file classifies unknown" {
+  make_registry_repo
+  classify "protected/audit-loop/feat/x.json"
+  [ "$output" = "main-only" ]
+  jq '.entries |= map(select(.id != "audit-loop-state"))' "$REGISTRY_FILE" > "$REGISTRY_FILE.new"
+  mv "$REGISTRY_FILE.new" "$REGISTRY_FILE"
+  classify "protected/audit-loop/feat/x.json"
   [ "$output" = "unknown" ]
 }

@@ -954,7 +954,7 @@ else
 fi && mv -f "$tmp" .gaia/local/settings.json || rm -f "$tmp"
 ```
 
-The statusline reads the choice on its next render; no restart is needed. Nothing is committed: the file is gitignored. This file is not `.gaia/local/checkpoint-override.json`, the human-only audit checkpoint override, which Claude never writes.
+The statusline reads the choice on its next render; no restart is needed. Nothing is committed: the file is gitignored. This file is not `.gaia/local/protected/checkpoint-override.json`, the human-only audit checkpoint override, which Claude never writes.
 
 Fall through to Phase 6.
 

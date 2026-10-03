@@ -260,9 +260,38 @@ write_payload() {
 
 @test "jq absent: block-audit-loop-write refuses a write under the loop state" {
   local json
-  json=$(write_payload ".gaia/local/audit-loop/feature.json")
+  json=$(write_payload ".gaia/local/protected/audit-loop/feature.json")
   without_jq block-audit-loop-write.sh "$json"
   assert_blocked_by_exit
+}
+
+# The protected folder is armed by the `local/protected` literal alone: none of
+# these payloads names `audit-loop`, so an omitted literal would exit 0 here.
+@test "jq absent: block-audit-loop-write refuses a write naming only a new file in the protected folder" {
+  local json
+  json=$(write_payload "/Users/you/work/repo/.gaia/local/protected/new-state.json")
+  grep -qF -- 'audit-loop' <<<"$json" && return 1
+  without_jq block-audit-loop-write.sh "$json"
+  assert_blocked_by_exit
+  grep -qF -- 'cannot be checked' <<<"$output"
+}
+
+@test "jq absent: block-audit-loop-write refuses a write naming only the override file" {
+  local json
+  json=$(write_payload "/Users/you/work/repo/.gaia/local/protected/checkpoint-override.json")
+  grep -qF -- 'audit-loop' <<<"$json" && return 1
+  without_jq block-audit-loop-write.sh "$json"
+  assert_blocked_by_exit
+  grep -qF -- 'cannot be checked' <<<"$output"
+}
+
+@test "jq absent: block-audit-loop-write refuses a redirect into the protected folder" {
+  local json
+  json=$(bash_payload "printf x > /Users/you/work/repo/.gaia/local/protected/new-state.json")
+  grep -qF -- 'audit-loop' <<<"$json" && return 1
+  without_jq block-audit-loop-write.sh "$json"
+  assert_blocked_by_exit
+  grep -qF -- 'cannot be checked' <<<"$output"
 }
 
 @test "jq absent: block-audit-loop-write allows the jq install" {
@@ -289,7 +318,7 @@ grant_payload() {
 
 state_listing() {
   local audit_loop_directory
-  audit_loop_directory="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/local/audit-loop"
+  audit_loop_directory="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/local/protected/audit-loop"
   if [ -d "$audit_loop_directory" ]; then
     find "$audit_loop_directory" -print | sort
   fi

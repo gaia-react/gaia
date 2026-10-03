@@ -172,7 +172,17 @@ commit_in_worktree() {
   [ "$(state_field '.history.knobs.grant_rounds')" -eq 3 ]
   [ "$(state_field '.history.rounds[0].members[0]')" = "$FRONTEND_MEMBER" ]
   [ "$(state_field '.history.rounds[0].raw_branch_slug')" = "$ALF_SLUG" ]
-  [ -f "$ALF_ROOT/.gaia/local/audit-loop/feat/loop.d/round-1.stamp" ]
+  [ -f "$ALF_ROOT/.gaia/local/protected/audit-loop/feat/loop.d/round-1.stamp" ]
+}
+
+@test "the recorded round lands under protected/audit-loop and nothing is written to the old state directory" {
+  local OLD_STATE_DIRECTORY="$ALF_ROOT/.gaia/local/audit-loop"
+  dispatch
+  assert_allowed
+  [ -f "$ALF_ROOT/.gaia/local/protected/audit-loop/feat/loop.json" ]
+  [ -f "$ALF_ROOT/.gaia/local/protected/audit-loop/feat/loop.d/round-1.stamp" ]
+  [ -e "$OLD_STATE_DIRECTORY" ] && return 1
+  true
 }
 
 @test "a parallel member and a repeated member on the same tree join one round" {
@@ -428,7 +438,7 @@ next_allowed() {
   assert_allowed
   [ "$(nrounds)" -eq 1 ]
   [ "$(state_field '.pr')" -eq 200 ]
-  [ "$(find "$ALF_ROOT/.gaia/local/audit-loop/.closed" -name 'feat+loop.100.*.json' | wc -l | tr -d ' ')" -eq 1 ]
+  [ "$(find "$ALF_ROOT/.gaia/local/protected/audit-loop/.closed" -name 'feat+loop.100.*.json' | wc -l | tr -d ' ')" -eq 1 ]
 }
 
 @test "a branch lookup that returns the linked pull request as MERGED closes the state" {
@@ -440,7 +450,7 @@ next_allowed() {
   assert_allowed
   [ "$(nrounds)" -eq 1 ]
   [ "$(state_field '.pr')" = null ]
-  [ "$(find "$ALF_ROOT/.gaia/local/audit-loop/.closed" -name '*.json' | wc -l | tr -d ' ')" -eq 1 ]
+  [ "$(find "$ALF_ROOT/.gaia/local/protected/audit-loop/.closed" -name '*.json' | wc -l | tr -d ' ')" -eq 1 ]
 }
 
 @test "a gh failure keeps the history and the allowance" {
@@ -450,7 +460,7 @@ next_allowed() {
   dispatch
   assert_denied
   [ "$(nrounds)" -eq 5 ]
-  [ ! -d "$ALF_ROOT/.gaia/local/audit-loop/.closed" ]
+  [ ! -d "$ALF_ROOT/.gaia/local/protected/audit-loop/.closed" ]
 }
 
 @test "an open pull request is linked onto a state that has none" {
@@ -468,7 +478,7 @@ next_allowed() {
   old_state="$ALF_STATE"
   alf_git branch -m new/name
   ALF_NORMALIZED_BRANCH=new/name
-  ALF_STATE="$ALF_ROOT/.gaia/local/audit-loop/new/name.json"
+  ALF_STATE="$ALF_ROOT/.gaia/local/protected/audit-loop/new/name.json"
   printf '{"number":77,"state":"OPEN"}\n' >"$GH_STUB_STATE_DIRECTORY/branch.json"
   new_tree
   dispatch
@@ -478,7 +488,7 @@ next_allowed() {
   [ "$(state_field '.key')" = branch:new/name ]
   [ "$(state_field '.history.rounds[0].raw_branch_slug')" != "$(gaia_key_slug new/name)" ]
   [ ! -e "$old_state" ]
-  [ -f "$ALF_ROOT/.gaia/local/audit-loop/new/name.d/round-1.stamp" ]
+  [ -f "$ALF_ROOT/.gaia/local/protected/audit-loop/new/name.d/round-1.stamp" ]
 }
 
 @test "a detached HEAD is denied: it has no branch key" {
@@ -486,7 +496,7 @@ next_allowed() {
   dispatch
   assert_denied
   reason | grep -qF -- "no branch key"
-  [ ! -e "$ALF_ROOT/.gaia/local/audit-loop/feat/loop.json" ]
+  [ ! -e "$ALF_ROOT/.gaia/local/protected/audit-loop/feat/loop.json" ]
 }
 
 # --- corrupt state and missing tools --------------------------------------------
@@ -547,7 +557,7 @@ next_allowed() {
   grep -qF -- jq <<<"$output"
   run env PATH="$BATS_TEST_TMPDIR/nojq" bash -c 'printf %s "$1" | /bin/bash "$2"' _ "$(payload general-purpose "$SID" "$ALF_ROOT" "$ALF_ROOT")" "$HOOK"
   assert_allowed
-  [ ! -e "$ALF_ROOT/.gaia/local/audit-loop" ]
+  [ ! -e "$ALF_ROOT/.gaia/local/protected/audit-loop" ]
 }
 
 @test "git absent denies a member dispatch with a message naming git" {
@@ -555,7 +565,7 @@ next_allowed() {
   run env PATH="$BATS_TEST_TMPDIR/nogit" bash -c 'printf %s "$1" | /bin/bash "$2"' _ "$(payload "$FRONTEND_MEMBER" "$SID" "$ALF_ROOT" "$ALF_ROOT")" "$HOOK"
   assert_denied
   reason | grep -qF -- "git is not on PATH"
-  [ ! -e "$ALF_ROOT/.gaia/local/audit-loop/feat/loop.json" ]
+  [ ! -e "$ALF_ROOT/.gaia/local/protected/audit-loop/feat/loop.json" ]
 }
 
 # --- resolving the audited root --------------------------------------------------
@@ -570,7 +580,7 @@ next_allowed() {
   run_payload "$(payload "$FRONTEND_MEMBER" "$SID" "$ALF_ROOT" "$WORKTREE_PATH")"
   assert_allowed
   [ "$(nrounds)" -eq 2 ]
-  [ ! -e "$ALF_ROOT/.gaia/local/audit-loop/worktree-debt+42-fix.json" ]
+  [ ! -e "$ALF_ROOT/.gaia/local/protected/audit-loop/worktree-debt+42-fix.json" ]
   [ "$(state_field '.history.rounds[0].raw_branch_slug')" != "$(state_field '.history.rounds[1].raw_branch_slug')" ]
 }
 
@@ -578,20 +588,20 @@ next_allowed() {
   alf_git checkout -q main
   linked_worktree wt2 feat/from-wt
   ALF_NORMALIZED_BRANCH=feat/from-wt
-  ALF_STATE="$ALF_ROOT/.gaia/local/audit-loop/feat/from-wt.json"
+  ALF_STATE="$ALF_ROOT/.gaia/local/protected/audit-loop/feat/from-wt.json"
   commit_in_worktree 1
   run_payload "$(payload "$FRONTEND_MEMBER" "$SID" "$WORKTREE_PATH" "$ALF_ROOT")"
   assert_allowed
   [ -f "$ALF_STATE" ]
   [ "$(nrounds)" -eq 1 ]
-  [ ! -e "$ALF_ROOT/.gaia/local/audit-loop/main.json" ]
+  [ ! -e "$ALF_ROOT/.gaia/local/protected/audit-loop/main.json" ]
 }
 
 @test "a prose Working root ending in a period records under the named worktree, not the cwd" {
   local payload_json
   alf_git checkout -q main
   linked_worktree wt3 feat/prose
-  ALF_STATE="$ALF_ROOT/.gaia/local/audit-loop/feat/prose.json"
+  ALF_STATE="$ALF_ROOT/.gaia/local/protected/audit-loop/feat/prose.json"
   commit_in_worktree 1
   payload_json="$(jq -n -c --arg member "$FRONTEND_MEMBER" --arg session_id "$SID" --arg root "$WORKTREE_PATH" --arg cwd "$ALF_ROOT" \
     '{session_id: $session_id, hook_event_name: "PreToolUse", tool_name: "Agent", cwd: $cwd,
@@ -600,7 +610,7 @@ next_allowed() {
   assert_allowed
   [ -f "$ALF_STATE" ]
   [ "$(nrounds)" -eq 1 ]
-  [ ! -e "$ALF_ROOT/.gaia/local/audit-loop/main.json" ]
+  [ ! -e "$ALF_ROOT/.gaia/local/protected/audit-loop/main.json" ]
 }
 
 @test "a named Working root that does not resolve is denied naming it and charges no round to the cwd" {
@@ -609,7 +619,7 @@ next_allowed() {
   run_payload "$(payload "$FRONTEND_MEMBER" "$SID" "$missing" "$ALF_ROOT")"
   assert_denied
   reason | grep -qF -- "Working root: $missing"
-  [ ! -e "$ALF_ROOT/.gaia/local/audit-loop/main.json" ]
+  [ ! -e "$ALF_ROOT/.gaia/local/protected/audit-loop/main.json" ]
 }
 
 @test "colliding branch names a/b-c and a-b/c keep separate files" {
@@ -633,7 +643,7 @@ next_allowed() {
   alf_git checkout -q main
   linked_worktree wt3 feat/denied-wt
   ALF_NORMALIZED_BRANCH=feat/denied-wt
-  ALF_STATE="$ALF_ROOT/.gaia/local/audit-loop/$ALF_NORMALIZED_BRANCH.json"
+  ALF_STATE="$ALF_ROOT/.gaia/local/protected/audit-loop/$ALF_NORMALIZED_BRANCH.json"
   local fake_object_id
   fake_object_id="$(printf 'a%.0s' $(seq 1 39))"
   alf_seed_state "$(jq -n -c --arg fake_object_id "$fake_object_id" '{rounds: [range(1; 6) | {round: ., tree: ($fake_object_id + (. | tostring)), commit: ($fake_object_id + (. | tostring)),
@@ -731,7 +741,7 @@ EOF
 
 @test "a held state lock past the deadline denies and the holder's lock is untouched" {
   new_tree
-  mkdir -p "$ALF_ROOT/.gaia/local/audit-loop/feat"
+  mkdir -p "$ALF_ROOT/.gaia/local/protected/audit-loop/feat"
   mkdir "$ALF_STATE.lock"
   export GAIA_AUDIT_LOOP_DEADLINE_SECONDS=2
   dispatch
@@ -789,7 +799,7 @@ EOF
   assert_allowed
   run_payload "$(payload "$FRONTEND_MEMBER" "$SID" "$ALF_ROOT" "$ALF_ROOT" | jq -c '.tool_name = "Bash"')"
   assert_allowed
-  [ ! -e "$ALF_ROOT/.gaia/local/audit-loop" ]
+  [ ! -e "$ALF_ROOT/.gaia/local/protected/audit-loop" ]
 }
 
 @test "the Task tool name is bound like Agent" {
@@ -976,9 +986,9 @@ scratch_copy() {
 
 # settings <ask_tokens> <ask_window_pct>: the machine-local line override.
 settings() {
-  mkdir -p "$ALF_ROOT/.gaia/local"
+  mkdir -p "$ALF_ROOT/.gaia/local/protected"
   jq -n -c --argjson ask_tokens "$1" --argjson ask_window_percent "$2" '{version: 1, context_checkpoint: {ask_tokens: $ask_tokens, ask_window_pct: $ask_window_percent}}' \
-    >"$ALF_ROOT/.gaia/local/checkpoint-override.json"
+    >"$ALF_ROOT/.gaia/local/protected/checkpoint-override.json"
 }
 
 @test "fast path: a general-purpose dispatch exits 0 silently without touching the context directory" {
@@ -989,7 +999,7 @@ settings() {
   run_payload "$(payload general-purpose "$SIDU" "$ALF_ROOT" "$ALF_ROOT")"
   chmod 755 "$context_directory"
   assert_allowed
-  [ ! -e "$ALF_ROOT/.gaia/local/audit-loop" ]
+  [ ! -e "$ALF_ROOT/.gaia/local/protected/audit-loop" ]
 }
 
 @test "jq absent refuses a unit dispatch with exit 2 and allows a general-purpose one; without the unit literal the unit gets through" {
@@ -1323,7 +1333,7 @@ veto_rounds() {
   write_context_reading 240000 1000000
   unit_dispatch
   assert_allowed
-  rm -f "$ALF_ROOT/.gaia/local/checkpoint-override.json"
+  rm -f "$ALF_ROOT/.gaia/local/protected/checkpoint-override.json"
   write_context_reading 120000 200000
   unit_dispatch
   assert_pinned context

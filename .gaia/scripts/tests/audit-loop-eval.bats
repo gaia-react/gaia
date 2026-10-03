@@ -641,7 +641,7 @@ checkpoint_entry() {
 
 # override_file: the per-machine line override of the fixture's main checkout.
 override_file() {
-  printf '%s/.gaia/local/%s\n' "$ALF_ROOT" checkpoint-override.json
+  printf '%s/.gaia/local/protected/checkpoint-override.json\n' "$ALF_ROOT"
 }
 
 @test "signal cap: round 10 of a converging branch raises only cap; the unit dispatch is denied cap" {

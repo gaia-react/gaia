@@ -19,7 +19,7 @@ setup() {
   git -C "$MAIN" config user.email "test@example.com"
   git -C "$MAIN" config user.name "Test"
   git -C "$MAIN" config commit.gpgsign false
-  mkdir -p "$MAIN/.gaia/statusline" "$MAIN/.gaia/scripts" "$MAIN/.gaia/local"
+  mkdir -p "$MAIN/.gaia/statusline" "$MAIN/.gaia/scripts" "$MAIN/.gaia/local/protected"
   cp "$STATUSLINE_SOURCE"/*.sh "$MAIN/.gaia/statusline/"
   cp "$SCRIPTS_SOURCE/main-root-lib.sh" "$SCRIPTS_SOURCE/context-checkpoint-lib.sh" "$MAIN/.gaia/scripts/"
   echo x >"$MAIN/README.md"
@@ -221,7 +221,7 @@ assert_user_left() {
 }
 
 @test "UAT-019: a lowered ask_tokens moves the red edge and leaves no yellow band" {
-  printf '{"version":1,"context_checkpoint":{"ask_tokens":200000}}' >"$MAIN/.gaia/local/checkpoint-override.json"
+  printf '{"version":1,"context_checkpoint":{"ask_tokens":200000}}' >"$MAIN/.gaia/local/protected/checkpoint-override.json"
   expect_band 1000000 199999 green none
   expect_band 1000000 200000 red none
   expect_band 1000000 249999 red none
@@ -230,13 +230,20 @@ assert_user_left() {
 }
 
 @test "UAT-019: an ask_tokens above the default reads as the default" {
-  printf '{"version":1,"context_checkpoint":{"ask_tokens":600000}}' >"$MAIN/.gaia/local/checkpoint-override.json"
+  printf '{"version":1,"context_checkpoint":{"ask_tokens":600000}}' >"$MAIN/.gaia/local/protected/checkpoint-override.json"
   expect_band 1000000 200000 yellow none
   expect_band 1000000 300000 red none
 }
 
 @test "UAT-019: a non-integer ask_tokens reads as the default" {
-  printf '{"version":1,"context_checkpoint":{"ask_tokens":"abc"}}' >"$MAIN/.gaia/local/checkpoint-override.json"
+  printf '{"version":1,"context_checkpoint":{"ask_tokens":"abc"}}' >"$MAIN/.gaia/local/protected/checkpoint-override.json"
+  expect_band 1000000 200000 yellow none
+  expect_band 1000000 300000 red none
+}
+
+@test "an override at the retired location leaves the band at the default" {
+  local OLD_OVERRIDE="$MAIN/.gaia/local/checkpoint-override.json"
+  printf '{"version":1,"context_checkpoint":{"ask_tokens":200000}}' >"$OLD_OVERRIDE"
   expect_band 1000000 200000 yellow none
   expect_band 1000000 300000 red none
 }

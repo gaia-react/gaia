@@ -154,7 +154,7 @@ fi
 # No checkout, or no audit state anywhere: an AskUserQuestion unrelated to the
 # audit loop, which is none of this hook's business.
 [ -n "$main" ] || exit 0
-statedir="$main/.gaia/local/audit-loop"
+statedir="$main/.gaia/local/protected/audit-loop"
 [ -d "$statedir" ] || exit 0
 
 branch=""

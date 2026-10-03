@@ -73,7 +73,7 @@ bar_is_red() {
 # deny; the branch state is reset first.
 hook_denies() {
   local payload hook_output
-  rm -rf "$ALF_ROOT/.gaia/local/audit-loop"
+  rm -rf "$ALF_ROOT/.gaia/local/protected/audit-loop"
   gaia_context_write "$ALF_ROOT" "$SID" "$(($1 * 100 / WINDOW))" "$1" "$WINDOW" "$(date +%s)"
   payload="$(jq -n -c --arg s "$SID" --arg root "$ALF_ROOT" '{session_id: $s, tool_name: "Agent", cwd: $root,
     tool_input: {subagent_type: "audit-loop-unit", prompt: ("Run one audit unit.\nWorking root: " + $root)}}')"
