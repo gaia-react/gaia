@@ -2,7 +2,7 @@
 
 # Tests for the generated per-package Claude settings (SPEC-092 contract C8):
 # `gaia packages sync-settings`, `.gaia/scripts/check-settings-drift.sh`, the
-# drift and MIG-013 arms of `.husky/pre-commit`, and the root settings the
+# drift and MIG-013 arms of `.githooks/pre-commit`, and the root settings the
 # frontend session needs.
 #
 # Three kinds of case. Reads of the live tree assert the committed shape with jq
@@ -10,8 +10,8 @@
 # repo, so a mutation never touches this checkout. Failing-state cases drive each
 # guard into the state it exists to refuse and assert it refuses.
 #
-# Husky runs the hook as `sh -e <hook>`, so the hook cases do too, with `pnpm`
-# stubbed onto PATH. Assertion style: .claude/rules/bats-assertions.md.
+# Git runs the hook directly, so the hook cases do too, with `pnpm` stubbed onto
+# PATH. Assertion style: .claude/rules/bats-assertions.md.
 
 setup() {
   REPO_ROOT=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
@@ -39,7 +39,7 @@ build_tree() {
   git -C "$TREE" config user.name "Test"
   git -C "$TREE" config commit.gpgsign false
   mkdir -p "$TREE/.claude/hooks/lib" "$TREE/.gaia/scripts" "$TREE/.gaia/cli" \
-    "$TREE/.husky" "$TREE/frontend/.claude" "$TREE/stub-bin"
+    "$TREE/frontend/.claude" "$TREE/stub-bin"
   cp "$ROOT_SETTINGS" "$TREE/.claude/settings.json"
   cp "$REPO_ROOT/.claude/hooks/lib/gaia-packages.sh" "$TREE/.claude/hooks/lib/"
   cp "$REPO_ROOT/.gaia/scripts/check-settings-drift.sh" "$TREE/.gaia/scripts/"
@@ -60,7 +60,7 @@ run_drift() {
 
 run_hook() {
   run env PATH="$TREE/stub-bin:$PATH" \
-    sh -c 'cd "$1" && sh -e "$2"' _ "$TREE" "$REPO_ROOT/.husky/pre-commit"
+    sh -c 'cd "$1" && "$2"' _ "$TREE" "$REPO_ROOT/.githooks/pre-commit"
 }
 
 regenerate() {
@@ -117,7 +117,6 @@ regenerate() {
   for pair in 'Edit(.env)|Edit(../.env)' \
     'Edit(frontend/.env)|Edit(../frontend/.env)' \
     'Edit(.gaia/local/audit/*.ok)|Edit(../.gaia/local/audit/*.ok)' \
-    'Edit(.husky/_/**)|Edit(../.husky/_/**)' \
     'Edit(pnpm-lock.yaml)|Edit(../pnpm-lock.yaml)'; do
     root_form="${pair%%|*}"
     anchored="${pair#*|}"

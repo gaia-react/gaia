@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The package-aware half of .husky/pre-commit. The hook is POSIX sh and cannot
+# The package-aware half of .githooks/pre-commit. The hook is POSIX sh and cannot
 # source the bash registry reader, so it asks this helper what to do and acts on the answer.
 #
 # Usage: bash .gaia/scripts/precommit-packages.sh <repo_root>

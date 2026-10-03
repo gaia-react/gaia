@@ -96,10 +96,11 @@ auditors:
       - ".specify/extensions/gaia/lib/*.sh"
       - ".github/**/*.sh"
       - ".github/**/*.bats"
-      # The husky hooks are extensionless POSIX shell, so no *.sh glob reaches
-      # them. .husky/pre-commit is the Quality Gate floor for every commit, so
-      # it gets the shell lens and the shellcheck oracle like any other script.
-      - ".husky/**"
+      # The git hooks are extensionless POSIX shell, so no *.sh glob reaches
+      # them. .githooks/pre-commit is the Quality Gate floor for every commit,
+      # so it gets the shell lens and the shellcheck oracle like any other
+      # script.
+      - ".githooks/**"
       # The distribution and governance surface beside the scripts: the roster
       # and the release scrub's own config (`.gaia/*.yml`, which generalizes the
       # bare `.gaia/audit-ci.yml` this line used to carry), the manifest that

@@ -50,7 +50,7 @@ You end up with a clean app shell and a fully-configured Claude workflow.
 
 ### Repository layout
 
-GAIA is a monorepo. The harness (`.claude/`, `.gaia/`, `.husky/`, `.github/`, `wiki/`) lives at the repo root and the React app lives in `frontend/`. Launch Claude at the root for harness workflows (audits, merges, releases, `/gaia-*` commands); a launch inside `frontend/` supports frontend work through commit. Upgrading a 1.6.1 project? Follow the migration guide at [gaiareact.com/migrate](https://gaiareact.com/migrate).
+GAIA is a monorepo. The harness (`.claude/`, `.gaia/`, `.githooks/`, `.github/`, `wiki/`) lives at the repo root and the React app lives in `frontend/`. Launch Claude at the root for harness workflows (audits, merges, releases, `/gaia-*` commands); a launch inside `frontend/` supports frontend work through commit. Upgrading a 1.6.1 project? Follow the migration guide at [gaiareact.com/migrate](https://gaiareact.com/migrate).
 
 ## What Breaks Claude on Real Projects
 
@@ -99,7 +99,7 @@ The quality gate keeps each commit clean and Knip keeps dead code out (see [Tech
 Every piece of GAIA's [tech stack](https://gaiareact.com/#stack) is pre-configured and wired into the Claude layer.
 
 - **1,450 lint rules** via ESLint, [Prettier](https://prettier.io/), and [Stylelint](https://stylelint.io/) that catch the patterns Claude drifts into first: complexity creep, architectural shortcuts, mismatched filenames, broken CSS. [Knip](https://knip.dev/) detects unused files, exports, and dependencies.
-- **Pre-commit hooks** ([Husky](https://typicode.github.io/husky/) + [lint-staged](https://github.com/lint-staged/lint-staged)): typecheck, lint, and test before CI.
+- **Pre-commit hooks** (native git hooks + [lint-staged](https://github.com/lint-staged/lint-staged)): typecheck, lint, and test before CI.
 - **Testing** via [Vitest](https://vitest.dev) + [React Testing Library](https://testing-library.com/docs/react-testing-library/intro/) for unit and integration, [Playwright](https://playwright.dev/docs/intro) for E2E, and [Chromatic](https://chromatic.com/) for visual regression, all sharing one [MSW](https://mswjs.io/) mock layer.
 - **[Storybook](https://storybook.js.org/)** with React Router + i18n + dark mode + [MSW](https://mswjs.io/) integration.
 - **Internationalization** via [remix-i18next](https://github.com/sergiodxa/remix-i18next) with working examples.

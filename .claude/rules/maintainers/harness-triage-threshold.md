@@ -4,7 +4,7 @@
 
 ## Scope
 
-**Harness:** `.claude/**`, `.gaia/**`, `.github/**`, `.specify/extensions/gaia/**`, `.husky/**`, CLAUDE.md files, wiki pages a rule or skill has Claude execute. **Product** (`app/**`, `test/**`, `.playwright/**`, `.storybook/**`, root build config) is unaffected. Judge shipped harness as an adopter: no maintainer context, maybe a smaller model.
+**Harness:** `.claude/**`, `.gaia/**`, `.github/**`, `.specify/extensions/gaia/**`, `.githooks/**`, CLAUDE.md files, wiki pages a rule or skill has Claude execute. **Product** (`app/**`, `test/**`, `.playwright/**`, `.storybook/**`, root build config) is unaffected. Judge shipped harness as an adopter: no maintainer context, maybe a smaller model.
 
 ## Fix only on a criterion
 

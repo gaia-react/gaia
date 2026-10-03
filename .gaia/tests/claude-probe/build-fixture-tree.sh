@@ -67,16 +67,16 @@ copy_tracked() {
   cp -p "$SOURCE_ROOT/$relative_path" "$OUT_DIRECTORY/$destination"
 }
 
-# Tracked harness: root CLAUDE.md, .claude/, .gaia/scripts, .husky, and the
+# Tracked harness: root CLAUDE.md, .claude/, .gaia/scripts, .githooks, and the
 # frontend-only units already tracked under frontend/.claude/ (the source tree
 # is the post-move layout, so every path copies to itself), plus .gitignore so the fixture ignores what the real tree ignores (.env,
-# .gaia/local, .husky/_, .claude/settings.local.json).
+# .gaia/local, .claude/settings.local.json).
 copied_count=0
 while IFS= read -r -d '' relative_path; do
   [ -f "$SOURCE_ROOT/$relative_path" ] || continue
   copy_tracked "$relative_path" "$relative_path"
   copied_count=$((copied_count + 1))
-done < <(git -C "$SOURCE_ROOT" -c core.quotepath=false ls-files -z -- CLAUDE.md .claude .gaia/scripts .husky .gitignore frontend/.claude)
+done < <(git -C "$SOURCE_ROOT" -c core.quotepath=false ls-files -z -- CLAUDE.md .claude .gaia/scripts .githooks .gitignore frontend/.claude)
 if [ "$copied_count" -eq 0 ]; then
   echo "ERROR: no tracked harness files found under $SOURCE_ROOT" >&2
   exit 1
@@ -123,27 +123,6 @@ for marker in ok carried refused; do
   write_file ".gaia/local/audit/x.$marker" "PROBE=1"
 done
 
-# The husky runtime husky's `prepare` would generate (.husky/_ is gitignored):
-# the dispatcher h, and a pre-commit shim that hands off to .husky/pre-commit.
-mkdir -p "$OUT_DIRECTORY/.husky/_"
-cat >"$OUT_DIRECTORY/.husky/_/h" <<'HUSKY'
-#!/usr/bin/env sh
-[ "$HUSKY" = "2" ] && set -x
-n=$(basename "$0")
-s=$(dirname "$(dirname "$0")")/$n
-[ ! -f "$s" ] && exit 0
-[ "${HUSKY-}" = "0" ] && exit 0
-export PATH="node_modules/.bin:$PATH"
-sh -e "$s" "$@"
-c=$?
-[ $c != 0 ] && echo "husky - $n script failed (code $c)"
-exit $c
-HUSKY
-# shellcheck disable=SC2016 # $(dirname "$0") must expand when husky runs the shim, not here
-printf '#!/usr/bin/env sh\n. "$(dirname "$0")/h"\n' >"$OUT_DIRECTORY/.husky/_/pre-commit"
-printf '*\n' >"$OUT_DIRECTORY/.husky/_/.gitignore"
-chmod +x "$OUT_DIRECTORY/.husky/_/pre-commit"
-
 # frontend/.claude/settings.json: the C8 transform for a package at depth 1.
 # Path-bearing Edit/Read/Write/MultiEdit/NotebookEdit rules and every
 # sandbox.filesystem entry are re-anchored with ../ unless they begin **/, //
@@ -182,8 +161,9 @@ git -C "$OUT_DIRECTORY" commit -q -m "Claude probe fixture: SPEC-092 target layo
 # any target onto its own probe branch for the commit scenarios.
 git -C "$OUT_DIRECTORY" checkout -q -b probe/fixture
 # Armed only after the fixture's own commit, which no hook should judge; from
-# here on a commit in the fixture runs .husky/pre-commit as husky would.
-git -C "$OUT_DIRECTORY" config core.hooksPath .husky/_
+# here on a commit in the fixture runs .githooks/pre-commit directly, as a
+# clone's `prepare` would arm it.
+git -C "$OUT_DIRECTORY" config core.hooksPath .githooks
 
 bash "$SCRIPT_DIRECTORY/inject-probe-fixtures.sh" "$OUT_DIRECTORY"
 

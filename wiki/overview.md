@@ -27,7 +27,7 @@ See [[GAIA Philosophy]] for the long version.
 - **Testing**: [[Vitest]] + [[React Testing Library]] + [[Playwright]] + [[Chromatic]], all sharing one MSW mocking layer
 - **Mocking**: [[MSW]] + `@msw/data` for tests, Storybook, and dev
 - **Storybook** v10 with links, i18n, and dark mode addons; MSW seed data comes from the shared `@msw/data` collections rather than a Storybook MSW addon
-- **Quality**: 20+ ESLint plugins, Prettier, Stylelint, [[Husky]] pre-commit hooks
+- **Quality**: 20+ ESLint plugins, Prettier, Stylelint, [[Pre-commit Hooks]] with [[lint-staged]]
 - **Claude Code**: [[Claude Integration]] with commands, rules, hooks, agents
 
 ## Top-Level Architecture

@@ -18,7 +18,6 @@
 #   .gaia/cli/templates/workflows/code-review-audit.yml.tmpl -> ownerless
 #   .gaia/cli/{package.json,pnpm-lock.yaml,pnpm-workspace.yaml,tsconfig*.json,
 #              *.config.ts,*.config.mjs}          -> code-audit-maintainer-node
-#   .husky/**                                     -> code-audit-maintainer-shell
 #
 # The frontend/ move (SPEC-092) then retires the root frontend class: `app/**`,
 # `test/**`, `.storybook/**`, `.playwright/**`, root `tsconfig*.json`, and the
@@ -97,8 +96,6 @@ setup() {
       expected="-"
     elif [[ "$path" =~ ^\.gaia/cli/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig[^/]*\.json|[^/]*\.config\.ts|[^/]*\.config\.mjs)$ ]]; then
       expected="code-audit-maintainer-node"
-    elif [[ "$path" =~ ^\.husky/ ]]; then
-      expected="code-audit-maintainer-shell"
     # The four ownerless-triage arms below are guarded on `before = -` rather
     # than on the path alone, so the header's claim about their DIRECTION is
     # asserted instead of narrated. A future change that moved one of these

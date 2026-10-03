@@ -18,7 +18,7 @@ You also own the declarative half of that same subsystem: the roster your own di
 - `.specify/extensions/gaia/lib/*.sh`
 - `.github/**/*.sh`
 - `.github/**/*.bats`
-- `.husky/**`
+- `.githooks/**`
 - `.gaia/*.yml`
 - `.gaia/*.json`
 - `.gaia/vendor/*.json`

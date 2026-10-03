@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 
-# Tests for .husky/pre-commit.
+# Tests for .githooks/pre-commit.
 #
 # The hook decides whether a staged change is lint-worthy and runs the Quality
 # Gate floor (pnpm typecheck / lint-staged / test:lint-staged) only when it is.
@@ -11,7 +11,8 @@
 # live failure mode: a commit scoped to that directory alone matches nothing,
 # the skip branch fires, and the change lands unlinted and untypechecked.
 #
-# Husky runs the hook as `sh -e <hook>` (.husky/_/h), so these tests do too.
+# Git runs the hook directly through core.hooksPath, so these tests run it
+# directly too.
 #
 # `pnpm` is stubbed onto PATH as a recorder, so the tests assert on which gate
 # steps the hook invoked, and in which package directory, rather than on their
@@ -24,11 +25,11 @@
 
 setup() {
   REPO_ROOT=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
-  HOOK_ABSOLUTE_PATH="$REPO_ROOT/.husky/pre-commit"
+  HOOK_ABSOLUTE_PATH="$REPO_ROOT/.githooks/pre-commit"
 
   # Physical path: the hook takes its root from `git rev-parse --show-toplevel`,
   # which resolves symlinks (macOS /var is a link to /private/var).
-  REPO=$(cd "$(mktemp -d -t husky-pre-commit-XXXXXX)" && pwd -P)
+  REPO=$(cd "$(mktemp -d -t githooks-pre-commit-XXXXXX)" && pwd -P)
   git -C "$REPO" init --quiet --initial-branch=main
   git -C "$REPO" config user.email "test@example.com"
   git -C "$REPO" config user.name "Test"
@@ -44,7 +45,7 @@ setup() {
   cp "$REPO_ROOT/.claude/hooks/lib/gaia-packages.sh" "$REPO/.claude/hooks/lib/"
 
   # Every stub invocation appends its argv and succeeds, so the hook runs to
-  # completion under `sh -e` and each test reads back which steps fired.
+  # completion under errexit and each test reads back which steps fired.
   PNPM_LOG="$REPO/pnpm.log"
   STUB_BIN="$REPO/stub-bin"
   mkdir -p "$STUB_BIN"
@@ -101,18 +102,18 @@ teardown() {
 
 run_hook() {
   run env PATH="$STUB_BIN:$PATH" PNPM_LOG="$PNPM_LOG" \
-    sh -c 'cd "$1" && sh -e "$2"' _ "$REPO" "$HOOK_ABSOLUTE_PATH"
+    sh -c 'cd "$1" && "$2"' _ "$REPO" "$HOOK_ABSOLUTE_PATH"
 }
 
 # Stage one file at a repo-relative path, then run the hook from the repo root
-# the way husky does.
+# the way git does.
 stage_and_run() {
   local path="$1"
   mkdir -p "$REPO/$(dirname "$path")"
   echo "// content" > "$REPO/$path"
   git -C "$REPO" add "$path"
   run env PATH="$STUB_BIN:$PATH" PNPM_LOG="$PNPM_LOG" \
-    sh -c 'cd "$1" && sh -e "$2"' _ "$REPO" "$HOOK_ABSOLUTE_PATH"
+    sh -c 'cd "$1" && "$2"' _ "$REPO" "$HOOK_ABSOLUTE_PATH"
 }
 
 # Commit one file, then stage its deletion and run the hook. A deletion-only
@@ -126,7 +127,7 @@ stage_deletion_and_run() {
   git -C "$REPO" commit --quiet -m "add $path"
   git -C "$REPO" rm --quiet "$path"
   run env PATH="$STUB_BIN:$PATH" PNPM_LOG="$PNPM_LOG" \
-    sh -c 'cd "$1" && sh -e "$2"' _ "$REPO" "$HOOK_ABSOLUTE_PATH"
+    sh -c 'cd "$1" && "$2"' _ "$REPO" "$HOOK_ABSOLUTE_PATH"
 }
 
 # Assertion style: .claude/rules/bats-assertions.md.
@@ -376,7 +377,7 @@ glob_covers_directory() {
 # Whether some hook arm's grep reaches every file under directory $1, given the
 # newline-separated arm directories in $2.
 #
-# Substring, because the arms are unanchored greps (.husky/pre-commit documents
+# Substring, because the arms are unanchored greps (.githooks/pre-commit documents
 # the lack of anchoring as deliberate). Every path under a directory carries that
 # directory as a prefix, so an arm whose pattern is a substring of the directory
 # is a substring of every path beneath it: the `app/` arm reaches all of
@@ -608,7 +609,8 @@ assert_gate_not_invoked() {
 @test "today's hook text does not run the frontend/ gate" {
   use_frontend_package
   # The pre-frontend/ hook shape, inlined: the gate runs at the repo root, never
-  # `pnpm -C <repo>/frontend`.
+  # `pnpm -C <repo>/frontend`. The old text has no shebang, so this copy runs
+  # through `sh -e`.
   cat >"$REPO/old-pre-commit" <<'OLD_HOOK'
 HAS_APP_CHANGED=$(git diff --cached --name-only -z --diff-filter=ACDM | tr '\0' '\n' | grep 'app/' || true)
 HAS_TEST_CHANGED=$(git diff --cached --name-only -z --diff-filter=ACDM | tr '\0' '\n' | grep 'test/' || true)
@@ -771,4 +773,130 @@ stage_rename() {
   [ "$status" -eq 1 ]
   grep -qF -- "gaia-packages: " <<<"$output"
   [ ! -s "$PNPM_LOG" ]
+}
+
+# --- the hook runs as a native git hook ---
+
+# A pnpm stub whose `typecheck` step fails and whose every other step logs and
+# succeeds, so a failing gate is distinguishable from a hook that never ran.
+install_failing_typecheck_stub() {
+  cat > "$STUB_BIN/pnpm" <<'STUB'
+#!/bin/sh
+printf '%s\n' "$*" >> "$PNPM_LOG"
+case "$*" in
+  *typecheck*) exit 1 ;;
+esac
+exit 0
+STUB
+  chmod +x "$STUB_BIN/pnpm"
+}
+
+# Install the hook under test into the sandbox repository and point
+# core.hooksPath at it, as the root `prepare` script does.
+install_hook_into_sandbox() {
+  mkdir -p "$REPO/.githooks"
+  cp -p "$HOOK_ABSOLUTE_PATH" "$REPO/.githooks/pre-commit"
+  git -C "$REPO" config core.hooksPath .githooks
+}
+
+@test "the hook is executable in the index" {
+  run git -C "$REPO_ROOT" ls-files -s -z .githooks/pre-commit
+  [ "$status" -eq 0 ]
+  grep -q -- '^100755 ' <<<"$output"
+}
+
+@test "the hook arms its own errexit" {
+  install_failing_typecheck_stub
+  use_frontend_package
+  stage_and_run "frontend/app/x.tsx"
+  [ "$status" -ne 0 ]
+  grep -qF -- "typecheck" "$PNPM_LOG"
+  grep -qF -- "exec lint-staged" "$PNPM_LOG" && return 1
+  true
+}
+
+# Stage a frontend file and commit it through real git, so git itself decides
+# whether to run the hook. Sets head_before to HEAD before the commit attempt.
+commit_frontend_file_through_hook() {
+  use_frontend_package
+  install_hook_into_sandbox
+  mkdir -p "$REPO/frontend/app"
+  echo "// content" > "$REPO/frontend/app/x.tsx"
+  git -C "$REPO" add frontend/app/x.tsx
+  head_before=$(git -C "$REPO" rev-parse HEAD)
+  run env PATH="$STUB_BIN:$PATH" PNPM_LOG="$PNPM_LOG" \
+    git -C "$REPO" commit --quiet -m x
+}
+
+@test "git refuses a commit when the hook fails" {
+  install_failing_typecheck_stub
+  local head_before
+  commit_frontend_file_through_hook
+  [ "$status" -ne 0 ]
+  [ "$(git -C "$REPO" rev-parse HEAD)" = "$head_before" ]
+}
+
+@test "git runs the hook through core.hooksPath" {
+  local head_before
+  commit_frontend_file_through_hook
+  [ "$status" -eq 0 ]
+  [ "$(git -C "$REPO" rev-parse HEAD)" != "$head_before" ]
+  grep -qxF -- "-C $REPO/frontend typecheck" "$PNPM_LOG"
+  grep -qxF -- "-C $REPO/frontend exec lint-staged" "$PNPM_LOG"
+}
+
+# --- the root prepare script ---
+
+# `--local` because a machine can carry a global core.hooksPath that a plain
+# `--get` would report. Unset means no output and exit status 1.
+assert_local_hooks_path_unset() {
+  run git -C "$1" config --local --get core.hooksPath
+  [ "$status" -eq 1 ]
+  [ -z "$output" ]
+}
+
+# Run the root prepare script from directory $1 with the env words in "${@:2}".
+# Absolute interpreters, so a PATH reduced to an empty directory still finds them.
+run_prepare() {
+  local directory="$1"
+  shift
+  local prepare_script
+  prepare_script=$(jq -r '.scripts.prepare' "$REPO_ROOT/package.json")
+  run /usr/bin/env "$@" /bin/sh -c 'cd "$1" && /bin/sh -c "$2"' _ "$directory" "$prepare_script"
+}
+
+@test "prepare sets the local core.hooksPath in a repository outside CI" {
+  run_prepare "$REPO" -u CI
+  [ "$status" -eq 0 ]
+  [ "$(git -C "$REPO" config --local --get core.hooksPath)" = ".githooks" ]
+}
+
+@test "prepare is a no-op when CI is set" {
+  run_prepare "$REPO" CI=true
+  [ "$status" -eq 0 ]
+  assert_local_hooks_path_unset "$REPO"
+}
+
+@test "prepare exits 0 and stays quiet outside a repository" {
+  local bare_directory="$BATS_TEST_TMPDIR/not-a-repository"
+  mkdir -p "$bare_directory"
+  run_prepare "$bare_directory" -u CI
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "prepare exits 0 outside a repository when no git binary is on PATH" {
+  local bare_directory="$BATS_TEST_TMPDIR/not-a-repository"
+  local empty_bin="$BATS_TEST_TMPDIR/empty-bin"
+  mkdir -p "$bare_directory" "$empty_bin"
+  run_prepare "$bare_directory" -u CI "PATH=$empty_bin"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "prepare from a nested directory leaves the enclosing repository's core.hooksPath alone" {
+  mkdir -p "$REPO/nested/package"
+  run_prepare "$REPO/nested/package" -u CI
+  [ "$status" -eq 0 ]
+  assert_local_hooks_path_unset "$REPO"
 }

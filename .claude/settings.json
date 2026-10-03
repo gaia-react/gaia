@@ -90,7 +90,6 @@
       "Edit(.gaia/local/audit/*.carried)",
       "Edit(.gaia/local/audit/*.ok)",
       "Edit(.gaia/local/audit/*.refused)",
-      "Edit(.husky/_/**)",
       "Edit(frontend/.claude/settings.json)",
       "Edit(frontend/.env)",
       "Edit(pnpm-lock.yaml)"

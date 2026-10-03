@@ -3,10 +3,9 @@
 # Tests for .claude/hooks/block-no-verify.sh.
 #
 # The hook denies `git commit` / `git push` carrying a hook bypass so the
-# Quality Gate floor (typecheck / lint / test, run by the Husky pre-commit
-# hook) cannot be skipped. Bypass tokens: --no-verify, `-n` (commit only
-# `push -n` is --dry-run), a falsy HUSKY= env prefix, and a `-c
-# core.hooksPath=` override. Foreign-repo commands pass via the shared
+# Quality Gate floor (typecheck / lint / test, run by the pre-commit hook
+# .githooks/pre-commit) cannot be skipped. Bypass tokens: --no-verify, `-n`
+# (commit only, `push -n` is --dry-run), and a `-c core.hooksPath=` override. Foreign-repo commands pass via the shared
 # repo-scope helper.
 #
 # Most tests drive the hook exactly as the harness does: a PreToolUse JSON
@@ -122,11 +121,6 @@ git commit --no-verify -m y"
   assert_denied_by_json
 }
 
-@test "HUSKY=0 git commit is denied" {
-  run_hook 'HUSKY=0 git commit -m "x"'
-  assert_denied_by_json
-}
-
 @test "git -c core.hooksPath=/dev/null commit is denied" {
   run_hook 'git -c core.hooksPath=/dev/null commit -m "x"'
   assert_denied_by_json
@@ -137,9 +131,26 @@ git commit --no-verify -m y"
   assert_denied_by_json
 }
 
-@test "HUSKY=0 git push is denied" {
-  run_hook 'HUSKY=0 git push origin feature'
+@test "git -c core.hooksPath=/dev/null commit is denied, in either key case" {
+  run_hook 'git -c core.hooksPath=/dev/null commit -m x'
   assert_denied_by_json
+  run_hook 'git -c core.hookspath=/dev/null push origin feature'
+  assert_denied_by_json
+}
+
+@test "an env prefix does not hide a hook bypass" {
+  run_hook 'HUSKY=0 git -c core.hooksPath=/dev/null commit -m x'
+  assert_denied_by_json
+  run_hook 'HUSKY=0 git commit --no-verify -m x'
+  assert_denied_by_json
+}
+
+@test "the deny message names .githooks/pre-commit, not Husky" {
+  run_hook 'git commit --no-verify -m x'
+  assert_denied_by_json
+  grep -qF -- '.githooks/pre-commit' <<<"$output" || return 1
+  grep -qF -- 'Husky' <<<"$output" && return 1
+  true
 }
 
 # --- allowed ---
@@ -164,8 +175,15 @@ git commit --no-verify -m y"
   assert_allowed_by_json
 }
 
-@test "HUSKY=1 git commit is allowed (enabling is not a bypass)" {
-  run_hook 'HUSKY=1 git commit -m "x"'
+@test "a HUSKY= prefix is no longer read: commit and push stay allowed" {
+  run_hook 'HUSKY=0 git commit -m x'
+  assert_allowed_by_json
+  run_hook 'HUSKY=0 git push origin feature'
+  assert_allowed_by_json
+}
+
+@test "git config core.hooksPath .githooks is allowed" {
+  run_hook 'git config core.hooksPath .githooks'
   assert_allowed_by_json
 }
 
@@ -359,16 +377,6 @@ run_staged() {
   run_hook 'zz+=1 git push --no-verify'
   assert_denied_by_json
   run_hook 'a=1 b+=2 git commit --no-verify -m x'
-  assert_denied_by_json
-}
-
-# `HUSKY+=0` disables Husky whenever HUSKY is unset, which is the ordinary
-# case, so the bypass-token test reads both spellings the command-word strip
-# above does rather than closing one half of the same shape.
-@test "a falsy HUSKY+= prefix is denied" {
-  run_hook 'HUSKY+=0 git commit -m x'
-  assert_denied_by_json
-  run_hook 'HUSKY+= git push'
   assert_denied_by_json
 }
 

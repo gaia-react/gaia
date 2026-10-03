@@ -104,12 +104,12 @@ run_linter() {
   grep -qF -- "-z" <<<"$output"
 }
 
-@test "flags an unquoted diff --name-only in a husky hook" {
+@test "flags an unquoted diff --name-only in a git hook" {
   fixture_repo
-  fixture_file .husky/pre-commit $'#!/usr/bin/env sh\nchanged=$(git diff --name-only HEAD~1...HEAD)'
+  fixture_file .githooks/pre-commit $'#!/usr/bin/env sh\nchanged=$(git diff --name-only HEAD~1...HEAD)'
   run_linter
   [ "$status" -eq 1 ]
-  grep -qF -- ".husky/pre-commit:2" <<<"$output"
+  grep -qF -- ".githooks/pre-commit:2" <<<"$output"
 }
 
 @test "flags an unquoted diff --name-only in a workflow YAML run block" {
@@ -798,13 +798,13 @@ run_linter() {
   grep -qF -- "probe.sh:3: gaia-lint-ignore is honored only in *.bats" <<<"$output"
 }
 
-@test "a pragma above a genuine instance in a husky hook is honored nowhere" {
+@test "a pragma above a genuine instance in a git hook is honored nowhere" {
   fixture_repo
-  fixture_file .husky/pre-commit $'#!/usr/bin/env sh\n# gaia-lint-ignore lint-git-path-quoting: pretending to waive this\nchanged=$(git diff --name-only HEAD~1...HEAD)'
+  fixture_file .githooks/pre-commit $'#!/usr/bin/env sh\n# gaia-lint-ignore lint-git-path-quoting: pretending to waive this\nchanged=$(git diff --name-only HEAD~1...HEAD)'
   run_linter
   [ "$status" -eq 1 ]
-  grep -qF -- ".husky/pre-commit:3" <<<"$output"
-  grep -qF -- ".husky/pre-commit:3: gaia-lint-ignore is honored only in *.bats" <<<"$output"
+  grep -qF -- ".githooks/pre-commit:3" <<<"$output"
+  grep -qF -- ".githooks/pre-commit:3: gaia-lint-ignore is honored only in *.bats" <<<"$output"
 }
 
 # A tilde fence rather than a backtick fence: guard-awk-lib.sh's legacy-
@@ -978,7 +978,7 @@ EOF
 #
 # Measured per guard (README, "What each guard reports today"): this guard
 # reports BOTH a heredoc-body instance and a backslash-continuation instance on
-# `*.sh`, husky and markdown. These pin that the `*.bats` fixture-region skip
+# `*.sh`, git hooks and markdown. These pin that the `*.bats` fixture-region skip
 # did not leak onto the surfaces it must never touch.
 
 @test "an instance inside a heredoc body in a shell script is still flagged (UAT-016)" {
@@ -989,12 +989,12 @@ EOF
   grep -qF -- "probe.sh:3" <<<"$output"
 }
 
-@test "an instance inside a heredoc body in a husky hook is still flagged (UAT-016)" {
+@test "an instance inside a heredoc body in a git hook is still flagged" {
   fixture_repo
-  fixture_file .husky/pre-commit $'#!/usr/bin/env sh\ncat <<EOF\nchanged=$(git diff --name-only "${base}...HEAD")\nEOF'
+  fixture_file .githooks/pre-commit $'#!/usr/bin/env sh\ncat <<EOF\nchanged=$(git diff --name-only "${base}...HEAD")\nEOF'
   run_linter
   [ "$status" -eq 1 ]
-  grep -qF -- ".husky/pre-commit:3" <<<"$output"
+  grep -qF -- ".githooks/pre-commit:3" <<<"$output"
 }
 
 @test "an instance inside a heredoc body in a markdown fence is still flagged (UAT-016)" {
@@ -1013,12 +1013,12 @@ EOF
   grep -qF -- "probe.sh:2" <<<"$output"
 }
 
-@test "an instance on a backslash-continuation line in a husky hook is still flagged (UAT-016)" {
+@test "an instance on a backslash-continuation line in a git hook is still flagged" {
   fixture_repo
-  fixture_file .husky/pre-commit $'#!/usr/bin/env sh\nchanged=$(git diff --name-only \\\n  -z HEAD~1...HEAD)'
+  fixture_file .githooks/pre-commit $'#!/usr/bin/env sh\nchanged=$(git diff --name-only \\\n  -z HEAD~1...HEAD)'
   run_linter
   [ "$status" -eq 1 ]
-  grep -qF -- ".husky/pre-commit:2" <<<"$output"
+  grep -qF -- ".githooks/pre-commit:2" <<<"$output"
 }
 
 @test "an instance on a backslash-continuation line in a markdown fence is still flagged (UAT-016)" {

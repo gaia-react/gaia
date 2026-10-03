@@ -128,7 +128,7 @@
 #                     than by impossibility: the suites doing it today arm it
 #                     inside a command substitution or a `bash -c` fixture,
 #                     where the shape is the fixture rather than the suite.
-#   the husky hooks   `.husky/_/h` runs each one as `sh -e`, which arms no
+#   the git hooks     `.githooks/*` are POSIX `sh` scripts, which arm no
 #                     pipefail either.
 #
 # What this gate does NOT try to decide: whether the pipeline's status is read

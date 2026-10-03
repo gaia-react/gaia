@@ -147,10 +147,6 @@ const GROUP_RULES: readonly GroupRule[] = [
     group: 'eslint',
     prefixes: ['eslint-config-', 'eslint-plugin-'],
   },
-  {
-    exactNames: ['husky', 'lint-staged'],
-    group: 'husky',
-  },
 ];
 
 const buildExactIndex = (

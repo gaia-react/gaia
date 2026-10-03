@@ -335,7 +335,7 @@ GAIA bundles project-scoped skills, the generic ones at `.claude/skills/` (`tdd`
 - [React Doctor](https://github.com/millionco/react-doctor): `npx -y react-doctor@latest install --yes`
   Installs the `react-doctor` skill for detected agents (Claude Code included). Scans the project for React-specific issues (47+ rules: security, performance, correctness, architecture). Auto-runs after code edits in a `CLAUDECODE` environment and is invoked by the `code-audit-frontend` agent pre-merge.
 
-  **Then strip React Doctor's bundled extras so GAIA stays the sole controller of when react-doctor runs.** The installer adds five things beyond the Claude Code skill: a standalone GitHub Actions workflow, a commit-hook block, a `doctor` package script, a pinned `react-doctor` devDependency, and a `.agents/skills/react-doctor/` copy of the skill for any other agents it detects (Codex, Cursor, Gemini CLI, GitHub Copilot, OpenCode, Pi, Warp, and others). The `doctor` script and the `react-doctor` devDependency land in the root `package.json`, and the lockfile updates with it. There is no skill-only install flag, so install (above) then remove them. `wiki/dependencies/react-doctor.md` holds the verification record for each path. GAIA already triggers react-doctor two ways it owns, the Claude Code skill (auto-run after edits) and the `code-audit-frontend` agent pre-merge (always at `@latest`), so the bundled trigger points are redundant and they collide with GAIA's husky `pre-commit` hook and GAIA's own audit gate. Because GAIA sets `core.hooksPath=.husky/_`, the installer writes its hook into husky's generated (gitignored) stub at `.husky/_/pre-commit`, not GAIA's `.husky/pre-commit`; regenerating the husky stubs wipes it.
+  **Then strip React Doctor's bundled extras so GAIA stays the sole controller of when react-doctor runs.** The installer adds five things beyond the Claude Code skill: a standalone GitHub Actions workflow, a commit-hook block, a `doctor` package script, a pinned `react-doctor` devDependency, and a `.agents/skills/react-doctor/` copy of the skill for any other agents it detects (Codex, Cursor, Gemini CLI, GitHub Copilot, OpenCode, Pi, Warp, and others). The `doctor` script and the `react-doctor` devDependency land in the root `package.json`, and the lockfile updates with it. There is no skill-only install flag, so install (above) then remove them. `wiki/dependencies/react-doctor.md` holds the verification record for each path. GAIA already triggers react-doctor two ways it owns, the Claude Code skill (auto-run after edits) and the `code-audit-frontend` agent pre-merge (always at `@latest`), so the bundled trigger points are redundant and they collide with GAIA's `.githooks/pre-commit` hook and GAIA's own audit gate. The installer writes its hook block into the file `core.hooksPath` names, which in GAIA is the tracked `.githooks/pre-commit`, between the lines `# react-doctor hook start` and `# react-doctor hook end`, so step 5 deletes that block to leave the tracked hook unchanged.
 
   ```bash
   # 1. Drop the standalone workflow (GAIA ships no CI workflow of its own for it).
@@ -347,18 +347,30 @@ GAIA bundles project-scoped skills, the generic ones at `.claude/skills/` (`tdd`
   rm -rf .agents/skills/react-doctor
   rmdir .agents/skills .agents 2>/dev/null || true
   # 3. Uninstall the pinned dep + lockfile entry. --config.ignore-scripts=true skips the
-  #    prepare hook (avoids a redundant husky/playwright run); react-doctor runs at @latest on demand.
+  #    prepare script (avoids a redundant hook-path setup); react-doctor runs at @latest on demand.
   #    Run from the repo root, where the installer wrote the dependency.
   pnpm remove react-doctor --config.ignore-scripts=true 2>/dev/null || true
   # 4. Delete the package script it added (named `doctor`, or `react-doctor` if `doctor` was taken).
   #    The hyphenated key needs bracket+quote form; a bare `scripts.react-doctor` throws
   #    ERR_PNPM_UNEXPECTED_TOKEN_IN_PROPERTY_PATH and aborts the whole command, leaving `doctor` behind too.
   pnpm pkg delete scripts.doctor 'scripts["react-doctor"]'
-  # 5. Regenerate husky's hook stubs, wiping react-doctor's appended pre-commit block.
-  pnpm exec husky
+  # 5. Remove react-doctor's block (and the blank line it adds before it) from
+  #    the pre-commit hook it wrote into, then make sure git runs the hook.
+  hook_file="$(git rev-parse --git-path hooks/pre-commit)"
+  if [ -f "$hook_file" ] && grep -q '^# react-doctor hook start$' "$hook_file"; then
+    awk '
+      /^# react-doctor hook start$/ { in_block = 1; if (have_prev && prev == "") have_prev = 0; next }
+      in_block { if ($0 == "# react-doctor hook end") in_block = 0; next }
+      { if (have_prev) print prev; prev = $0; have_prev = 1 }
+      END { if (have_prev) print prev }
+    ' "$hook_file" > "$hook_file.tmp" && cat "$hook_file.tmp" > "$hook_file" && rm -f "$hook_file.tmp"
+  fi
+  if [ "$(git config --local --get core.hooksPath)" != ".githooks" ]; then
+    git config core.hooksPath .githooks
+  fi
   ```
 
-  Each line is idempotent and no-ops when its artifact is absent (e.g. when React Doctor's dependency install was skipped by a trust policy, or when no non-Claude agent was detected so no `.agents/` copy was written). After this, `git status` shows no React Doctor workflow and no `.agents/` skill copy, and `package.json` carries no `react-doctor` entry; only the Claude Code skill remains. Do not report a lingering workflow, `.agents/` copy, or commit hook to the user; there is none.
+  Each line is idempotent and no-ops when its artifact is absent (e.g. when React Doctor's dependency install was skipped by a trust policy, or when no non-Claude agent was detected so no `.agents/` copy was written). The block delete rewrites the hook in place with `cat ... >` rather than `mv`, which keeps its executable bit. The final `git config` re-arms the hook path: a clone whose dependencies were installed before `git init` skipped `prepare`, so nothing else would set it. Verify: `grep -c 'react-doctor hook' .githooks/pre-commit` prints 0, `git diff --quiet -- .githooks/pre-commit` exits 0, and `git config --local --get core.hooksPath` prints `.githooks`. After this, `git status` shows no React Doctor workflow and no `.agents/` skill copy, and `package.json` carries no `react-doctor` entry; only the Claude Code skill remains. Do not report a lingering workflow, `.agents/` copy, or commit hook to the user; there is none.
 - [Playwright CLI](https://github.com/microsoft/playwright-cli) binary: `npm install -g @playwright/cli@latest`
   Installs the global `playwright-cli` binary the bundled skill shells out to. `/update-deps` keeps the global binary current; `wiki/dependencies/playwright-cli.md` covers the fallback and the deprecated-package trap. Used for E2E debugging and authoring Playwright specs with minimal token cost, each interaction is one shell call instead of a round-trip through an MCP session.
 - [Serena](https://github.com/oraios/serena) MCP server: semantic code-search and editing tools (find symbol, find references, replace symbol body) backed by language servers, pulls Claude away from grep-the-world toward symbol-aware operations. First, ensure `uv` is available, tell the user: "Checking for uv…" then run:

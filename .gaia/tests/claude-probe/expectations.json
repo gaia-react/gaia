@@ -1276,32 +1276,6 @@
       "cited_run": null
     },
     {
-      "id": "fl-frontend-deny-edit-husky-h",
-      "launch": "frontend",
-      "kind": "permission",
-      "subject": "Edit .husky/_/h",
-      "expand": null,
-      "trigger": "after_task:permissions-edit",
-      "expect": "deny",
-      "signal": "post_tool_use",
-      "floor": true,
-      "source": "SPEC floor (each root deny holds for its real repository path); SEC-002; root permissions.deny; plan C8 re-anchoring",
-      "cited_run": null
-    },
-    {
-      "id": "fl-frontend-deny-edit-husky-pre-commit",
-      "launch": "frontend",
-      "kind": "permission",
-      "subject": "Edit .husky/_/pre-commit",
-      "expand": null,
-      "trigger": "after_task:permissions-edit",
-      "expect": "deny",
-      "signal": "post_tool_use",
-      "floor": true,
-      "source": "SPEC floor (each root deny holds for its real repository path); UAT-017; SEC-002; root permissions.deny; plan C8 re-anchoring",
-      "cited_run": null
-    },
-    {
       "id": "fl-frontend-read-env",
       "launch": "frontend",
       "kind": "permission",
@@ -1345,19 +1319,6 @@
       "launch": "frontend",
       "kind": "permission",
       "subject": "Read .gaia/local/audit/x.ok",
-      "expand": null,
-      "trigger": "after_task:permissions-read",
-      "expect": "deny",
-      "signal": "post_tool_use",
-      "floor": false,
-      "source": "SEC-002 (a Read of an Edit-only deny target stays allowed); observed: under -p a Read outside the launch dir is refused as ungranted even with additionalDirectories",
-      "cited_run": ".gaia/local/research/monorepo-native-2026-10-01/probe-runs/20261003T022717Z-spike"
-    },
-    {
-      "id": "frontend-read-husky-h",
-      "launch": "frontend",
-      "kind": "permission",
-      "subject": "Read .husky/_/h",
       "expand": null,
       "trigger": "after_task:permissions-read",
       "expect": "deny",
@@ -1458,32 +1419,6 @@
       "cited_run": null
     },
     {
-      "id": "fl-root-deny-edit-husky-h",
-      "launch": "root",
-      "kind": "permission",
-      "subject": "Edit .husky/_/h",
-      "expand": null,
-      "trigger": "after_task:permissions-edit",
-      "expect": "deny",
-      "signal": "post_tool_use",
-      "floor": true,
-      "source": "SPEC floor (each root deny holds for its real repository path); SEC-002; root permissions.deny",
-      "cited_run": null
-    },
-    {
-      "id": "fl-root-deny-edit-husky-pre-commit",
-      "launch": "root",
-      "kind": "permission",
-      "subject": "Edit .husky/_/pre-commit",
-      "expand": null,
-      "trigger": "after_task:permissions-edit",
-      "expect": "deny",
-      "signal": "post_tool_use",
-      "floor": true,
-      "source": "SPEC floor (each root deny holds for its real repository path); UAT-017; SEC-002; root permissions.deny",
-      "cited_run": null
-    },
-    {
       "id": "root-read-env",
       "launch": "root",
       "kind": "permission",
@@ -1536,19 +1471,6 @@
       "cited_run": null
     },
     {
-      "id": "root-read-husky-h",
-      "launch": "root",
-      "kind": "permission",
-      "subject": "Read .husky/_/h",
-      "expand": null,
-      "trigger": "after_task:permissions-read",
-      "expect": "allow",
-      "signal": "post_tool_use",
-      "floor": false,
-      "source": "SEC-002 (a Read of an Edit-only deny target stays allowed)",
-      "cited_run": null
-    },
-    {
       "id": "fl-uat023-commit-parity",
       "launch": "frontend",
       "kind": "task",
@@ -1571,7 +1493,7 @@
       "expect": "value:ran",
       "signal": "git_log",
       "floor": true,
-      "source": "UAT-023 (the commit runs .husky/pre-commit)",
+      "source": "UAT-023 (the commit runs .githooks/pre-commit)",
       "cited_run": null
     },
     {
@@ -1623,7 +1545,7 @@
       "expect": "value:ran",
       "signal": "git_log",
       "floor": true,
-      "source": "UAT-023 (the commit runs .husky/pre-commit)",
+      "source": "UAT-023 (the commit runs .githooks/pre-commit)",
       "cited_run": null
     },
     {

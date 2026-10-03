@@ -194,7 +194,7 @@ Three external tools require per-machine setup. The Serena MCP entry needs `uv` 
 - [React Doctor](https://github.com/millionco/react-doctor): `npx -y react-doctor@latest install --yes`
   Installs the `react-doctor` skill for detected agents (Claude Code included). Scans for React-specific issues; auto-runs after code edits in a `CLAUDECODE` environment and is invoked by the `code-audit-frontend` agent pre-merge.
 
-  **Then strip React Doctor's bundled extras** so GAIA stays the sole controller of when react-doctor runs. There is no skill-only install flag, so the installer also adds a standalone GitHub Actions workflow, a commit-hook block (written into husky's generated `.husky/_/pre-commit` because GAIA sets `core.hooksPath=.husky/_`), a `doctor` package script, a pinned `react-doctor` devDependency, and a `.agents/skills/react-doctor/` copy of the skill for any other agents it detects (Codex, Cursor, Gemini CLI, GitHub Copilot, OpenCode, Pi, Warp, and others). The `doctor` script and the `react-doctor` devDependency land in the root `package.json`. `wiki/dependencies/react-doctor.md` holds the verification record for each path. GAIA triggers react-doctor via the Claude Code skill (auto-run after edits) and the `code-audit-frontend` agent (at `@latest`), so remove the rest, keeping only the Claude Code skill:
+  **Then strip React Doctor's bundled extras** so GAIA stays the sole controller of when react-doctor runs. There is no skill-only install flag, so the installer also adds a standalone GitHub Actions workflow, a commit-hook block (written into the file `core.hooksPath` names, which in GAIA is the tracked `.githooks/pre-commit`, between `# react-doctor hook start` and `# react-doctor hook end`), a `doctor` package script, a pinned `react-doctor` devDependency, and a `.agents/skills/react-doctor/` copy of the skill for any other agents it detects (Codex, Cursor, Gemini CLI, GitHub Copilot, OpenCode, Pi, Warp, and others). The `doctor` script and the `react-doctor` devDependency land in the root `package.json`. `wiki/dependencies/react-doctor.md` holds the verification record for each path. GAIA triggers react-doctor via the Claude Code skill (auto-run after edits) and the `code-audit-frontend` agent (at `@latest`), so remove the rest, keeping only the Claude Code skill:
 
   ```bash
   rm -f .github/workflows/react-doctor.yml
@@ -206,13 +206,26 @@ Three external tools require per-machine setup. The Serena MCP entry needs `uv` 
   # Hyphenated key needs bracket+quote form; a bare scripts.react-doctor throws
   # ERR_PNPM_UNEXPECTED_TOKEN_IN_PROPERTY_PATH and aborts, leaving `doctor` behind too.
   pnpm pkg delete scripts.doctor 'scripts["react-doctor"]'
-  pnpm exec husky
+  # Remove react-doctor's block (and the blank line it adds before it) from the
+  # pre-commit hook it wrote into, then make sure git runs the hook.
+  hook_file="$(git rev-parse --git-path hooks/pre-commit)"
+  if [ -f "$hook_file" ] && grep -q '^# react-doctor hook start$' "$hook_file"; then
+    awk '
+      /^# react-doctor hook start$/ { in_block = 1; if (have_prev && prev == "") have_prev = 0; next }
+      in_block { if ($0 == "# react-doctor hook end") in_block = 0; next }
+      { if (have_prev) print prev; prev = $0; have_prev = 1 }
+      END { if (have_prev) print prev }
+    ' "$hook_file" > "$hook_file.tmp" && cat "$hook_file.tmp" > "$hook_file" && rm -f "$hook_file.tmp"
+  fi
+  if [ "$(git config --local --get core.hooksPath)" != ".githooks" ]; then
+    git config core.hooksPath .githooks
+  fi
   ```
 
-  Each line is idempotent and no-ops when its artifact is absent (including when no non-Claude agent was detected, so no `.agents/` copy was written).
+  Each line is idempotent and no-ops when its artifact is absent (including when no non-Claude agent was detected, so no `.agents/` copy was written). The block delete rewrites the hook in place with `cat ... >` rather than `mv`, which keeps its executable bit. The final `git config` re-arms the hook path, because a clone whose dependencies were installed before `git init` skipped `prepare`. Verify: `grep -c 'react-doctor hook' .githooks/pre-commit` prints 0, `git diff --quiet -- .githooks/pre-commit` exits 0, and `git config --local --get core.hooksPath` prints `.githooks`.
 
 - [Playwright CLI](https://github.com/microsoft/playwright-cli): `npm install -g @playwright/cli@latest`
-  Installs the global `playwright-cli` binary the bundled skill shells out to. Without it the skill's `allowed-tools: Bash(playwright-cli:*)` directive has a binary to call. `/update-deps` keeps the global binary current; `wiki/dependencies/playwright-cli.md` covers the fallback and the deprecated-package trap.
+  Installs the global `playwright-cli` binary the bundled skill shells out to; the skill's `allowed-tools: Bash(playwright-cli:*)` directive calls it. `/update-deps` keeps the global binary current; `wiki/dependencies/playwright-cli.md` covers the fallback and the deprecated-package trap.
 
 - [Serena](https://github.com/oraios/serena) MCP server: ensure `uv` first.
 

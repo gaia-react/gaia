@@ -28,7 +28,7 @@ bash .gaia/tests/claude-probe/run-probe.sh --target <fixture path> \
   --evidence .gaia/local/probe/<date>-spike --reps 3 --max-usd 15
 ```
 
-Final run (after plan Phase 11), against a scratch clone of the finished branch with dependencies installed, so `.husky/pre-commit` has a toolchain:
+Final run (after plan Phase 11), against a scratch clone of the finished branch with dependencies installed, so `.githooks/pre-commit` has a toolchain:
 
 ```bash
 git clone --branch <branch> . "$(mktemp -d)/final" && pnpm -C <clone> install

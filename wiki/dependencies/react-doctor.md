@@ -31,7 +31,7 @@ Verified against react-doctor 0.9.14, running `install --yes` from the root of t
 | `.agents/skills/react-doctor/` | `rm -rf .agents/skills/react-doctor`, then `rmdir` of the empty parents |
 | root `package.json` devDependency `react-doctor`, and `pnpm-lock.yaml` | `pnpm remove react-doctor --config.ignore-scripts=true` (root package, no `-w` needed) |
 | root `package.json` script `doctor` | `pnpm pkg delete scripts.doctor 'scripts["react-doctor"]'` |
-| pre-commit block in `.husky/_/pre-commit` | `pnpm exec husky` regenerates the stub |
+| block between `# react-doctor hook start` and `# react-doctor hook end` in the file `core.hooksPath` names (`.githooks/pre-commit`) | an `awk` pass deletes the block in place, then `git config core.hooksPath .githooks` re-arms the hook path |
 
 Verdicts:
 
@@ -55,7 +55,7 @@ The canonical config is `frontend/doctor.config.ts`:
 
 ### Duplicate-config guard
 
-A deterministic check fails when more than one `doctor.config.*` or `react-doctor.config.*` file exists, because react-doctor itself gives no warning: `.husky/pre-commit` ([[Pre-commit Hooks]]) fails the commit before a duplicate lands.
+A deterministic check fails when more than one `doctor.config.*` or `react-doctor.config.*` file exists, because react-doctor itself gives no warning: `.githooks/pre-commit` ([[Pre-commit Hooks]]) fails the commit before a duplicate lands.
 
 ## Acting on output
 
