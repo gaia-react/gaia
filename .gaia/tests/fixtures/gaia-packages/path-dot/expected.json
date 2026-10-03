@@ -1,0 +1,60 @@
+{
+  "load": 0,
+  "source": "registry",
+  "list": [["frontend", "."]],
+  "globs": {
+    "tddUnitTests": {
+      "match": ["app/x.test.ts", "app/utils/x.test.ts", "app/a/b/x.test.tsx"],
+      "noMatch": ["frontend/app/utils/x.test.ts", "app/x.ts", "app/x.test.js"]
+    },
+    "tddStrictCandidates": {
+      "match": ["app/components/x.ts", "app/utils/a/b.ts", "app/hooks/x.tsx"],
+      "noMatch": [
+        "app/components/x.tsx",
+        "app/pages/x.ts",
+        "frontend/app/utils/x.ts"
+      ]
+    },
+    "emergentTests": {
+      "match": [
+        ".playwright/x.spec.ts",
+        ".playwright/a/b/x.test.tsx",
+        "app/components/x.test.ts"
+      ],
+      "noMatch": [".playwright/x.ts", "playwright/x.spec.ts"]
+    },
+    "selfHealRefuse": {
+      "match": [
+        ".npmrc",
+        ".env.example",
+        "package.json",
+        "tsconfig.json",
+        "vite.config.ts",
+        "gaia.package.json",
+        "app/a/tests/x.ts",
+        "app/x.stories.tsx",
+        ".claude/hooks/a.sh"
+      ],
+      "noMatch": ["app/routes.ts", "src/.npmrc", "app/x.ts"]
+    },
+    "preCommitSource": {
+      "match": ["app/x.ts", "test/a/b.ts"],
+      "noMatch": ["package.json"]
+    },
+    "doctorConfigs": {
+      "match": ["doctor.config.ts", "react-doctor.config.json"],
+      "noMatch": ["a/doctor.config.ts"]
+    },
+    "dependencyManifests": {
+      "match": ["package.json"],
+      "noMatch": ["frontend/package.json", "a/package.json"]
+    }
+  },
+  "forPath": {
+    "app/x.ts": "frontend",
+    "README.md": "frontend"
+  },
+  "dir": {
+    "frontend": "."
+  }
+}

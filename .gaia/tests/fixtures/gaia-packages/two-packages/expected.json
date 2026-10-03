@@ -1,0 +1,38 @@
+{
+  "load": 0,
+  "source": "registry",
+  "list": [
+    ["frontend", "frontend"],
+    ["ios", "ios"],
+    ["inner", "frontend/inner"]
+  ],
+  "globs": {
+    "tddUnitTests": {
+      "match": [
+        "frontend/app/x.test.ts",
+        "ios/Sources/A/FooTests.swift",
+        "frontend/inner/lib/a.spec.ts"
+      ],
+      "noMatch": [
+        "app/x.test.ts",
+        "ios/app/x.test.ts",
+        "Sources/FooTests.swift",
+        "frontend/inner/app/x.test.ts"
+      ]
+    }
+  },
+  "forPath": {
+    "frontend/app/x.ts": "frontend",
+    "ios/a": "ios",
+    "frontend/inner/lib/a.ts": "inner",
+    "frontend/inner": "inner",
+    "frontend/innerx/a": "frontend",
+    "other": ""
+  },
+  "dir": {
+    "frontend": "frontend",
+    "ios": "ios",
+    "inner": "frontend/inner",
+    "nope": null
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "load": 3,
+  "error": "gaia-packages: frontend/gaia.package.json is invalid: globs.tddUnitTests must be a non-empty array of non-empty strings without control characters. Next step: restore frontend/gaia.package.json from the GAIA release, or correct the field it names."
+}

@@ -1,0 +1,11 @@
+{
+  "load": 0,
+  "source": "registry",
+  "list": [["frontend", "."]],
+  "globs": {
+    "doctorConfigs": {
+      "match": ["a[1].ts", "x|y", "c$d", "e^f", "g\\h", "{}"],
+      "noMatch": ["a1.ts", "x", "y", "cd", "ef", "gh", "a"]
+    }
+  }
+}

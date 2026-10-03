@@ -1,0 +1,20 @@
+{
+  "load": 0,
+  "source": "registry",
+  "list": [["frontend", "frontend"]],
+  "globs": {
+    "tddUnitTests": {
+      "match": ["frontend/app/a b/x.test.ts", "frontend/app/x y.test.ts"],
+      "noMatch": [
+        "my app/x.test.ts",
+        "frontend/my app/x.test.ts",
+        "frontend app/x.test.ts"
+      ]
+    }
+  },
+  "forPath": {
+    "frontend/my app/x": "frontend",
+    "my app/x": "",
+    "front end/x": ""
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "load": 0,
+  "source": "builtin",
+  "list": [["frontend", "frontend"]],
+  "globs": {
+    "tddUnitTests": {
+      "match": ["frontend/app/utils/x.test.ts", "frontend/app/x.test.tsx"],
+      "noMatch": ["app/utils/x.test.ts", "frontend/app/x.ts"]
+    },
+    "dependencyManifests": {
+      "match": ["frontend/package.json"],
+      "noMatch": ["package.json"]
+    }
+  },
+  "forPath": {
+    "frontend/app/x.ts": "frontend",
+    "README.md": ""
+  },
+  "dir": {
+    "frontend": "frontend",
+    "backend": null
+  }
+}
