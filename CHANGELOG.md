@@ -18,7 +18,7 @@ A release change that requires the adopter to act, run a command or hand-migrate
 
 On GAIA 1.6.1? Choose Abort, then paste the prompt from https://gaiareact.com/migrate into a fresh session.
 
-- GAIA 2.0.0 moves the React app and its frontend-only Claude harness into `frontend/`, leaving the root as a pnpm workspace that holds the shared harness, and 2.x releases ship as `gaia-bundle-<tag>.tar.gz`. A 1.6.1 `/update-gaia` cannot cross that move, so choosing Proceed there creates a `chore/update-gaia-*` branch, prunes `.gaia-backup` and the cached tag directories, then stops with `FETCH_FAILED` and changes nothing else. **Action required:** on 1.x, migrate with the prompt at https://gaiareact.com/migrate; from 2.0.0 on, `/update-gaia` works as before and also regenerates `frontend/.claude/settings.json` after each merge. Each release publishes a `.sha256` for its tarball.
+- GAIA 2.0.0 moves the React app and its frontend-only Claude harness into `frontend/`, leaving the root as a pnpm workspace that holds the shared harness, and 2.x releases ship as `gaia-bundle-<tag>.tar.gz`. A 1.6.1 `/update-gaia` cannot cross that move, so choosing Proceed there creates a `chore/update-gaia-*` branch, prunes `.gaia-backup` and the cached tag directories, then stops with `FETCH_FAILED` and changes nothing else. **Action required:** on 1.x, migrate with the prompt at https://gaiareact.com/migrate; from 2.0.0 on, `/update-gaia` works as before and also regenerates `frontend/.claude/settings.json` after each merge. Each release publishes a `.sha256` for its tarball (#2443)
 
 ### Changed
 
