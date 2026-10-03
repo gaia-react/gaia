@@ -1,6 +1,6 @@
 import type {ChangeEvent, FC} from 'react';
 import {useCallback, useState} from 'react';
-import {twJoin, twMerge} from 'tailwind-merge';
+import {cn} from 'cn';
 import Field from '../Field';
 import type {InputProps} from '../types';
 
@@ -65,14 +65,14 @@ const InputText: FC<InputProps> = ({
       required={required}
       type="input"
     >
-      <div className={twJoin((icon ?? children) && 'relative')}>
+      <div className={cn((icon ?? children) && 'relative')}>
         <input
           ref={ref}
           aria-describedby={
             description ? `${id ?? name}-description` : undefined
           }
           aria-label={label ? undefined : name}
-          className={twJoin(
+          className={cn(
             'w-full',
             icon && (iconPosition === 'left' ? 'pl-[2.3rem]' : 'pr-[2.3rem]'),
             error && 'input-invalid',
@@ -91,7 +91,7 @@ const InputText: FC<InputProps> = ({
         />
         {Icon && (
           <Icon
-            className={twMerge(
+            className={cn(
               'text-placeholder absolute top-[0.825rem]',
               iconPosition === 'left' ? 'left-3' : 'right-3',
               classNameIcon

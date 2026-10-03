@@ -1,6 +1,6 @@
 import type {FC, ReactNode} from 'react';
 import {Links, Scripts, ScrollRestoration} from 'react-router';
-import {twJoin} from 'tailwind-merge';
+import {cn} from 'cn';
 import {useOptionalTheme} from '~/hooks/useTheme';
 import {useNonce} from '~/utils/nonce';
 import {useOptionalRequestInfo} from '~/utils/request-info';
@@ -34,7 +34,7 @@ const Document: FC<DocumentProps> = ({
 
   return (
     <html
-      className={twJoin(theme === 'dark' && 'dark', className)}
+      className={cn(theme === 'dark' && 'dark', className)}
       dir={dir}
       lang={lang}
       suppressHydrationWarning={true}

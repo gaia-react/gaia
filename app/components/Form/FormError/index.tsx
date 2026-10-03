@@ -2,7 +2,7 @@ import type {FC} from 'react';
 import {useState} from 'react';
 import {IoClose} from 'react-icons/io5';
 import {useActionData} from 'react-router';
-import {twMerge} from 'tailwind-merge';
+import {cn} from 'cn';
 
 type FormActionData = {
   error?: string;
@@ -35,7 +35,7 @@ const FormError: FC<FormResultProps> = ({className, hide}) => {
 
   return (
     <button
-      className={twMerge(
+      className={cn(
         'flex w-full items-center justify-between rounded-sm border-red-600 bg-red-500 px-4 py-2 text-white dark:border-red-400',
         className
       )}

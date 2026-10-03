@@ -1,6 +1,6 @@
 import type {FC, ReactNode} from 'react';
 import {Trans} from 'react-i18next';
-import {twJoin} from 'tailwind-merge';
+import {cn} from 'cn';
 
 type FieldRequiredTextProps = {
   className?: string;
@@ -14,7 +14,7 @@ const FieldRequiredText: FC<FieldRequiredTextProps> = ({
   error,
 }) => (
   <output
-    className={twJoin(
+    className={cn(
       'ml-4 block w-fit rounded-full border px-1.5 py-px text-xs font-normal select-none',
       disabled ? 'text-disabled'
       : error ? 'bg-invalid border-invalid text-white'

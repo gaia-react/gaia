@@ -1,5 +1,5 @@
 import type {FC, ReactNode} from 'react';
-import {twMerge} from 'tailwind-merge';
+import {cn} from 'cn';
 import FieldDescription from './FieldDescription';
 import FieldError from './FieldError';
 import MaxLength from './MaxLength';
@@ -39,7 +39,7 @@ const FieldStatus: FC<FieldStatusProps> = ({
     error && error !== true ? <FieldError error={error} /> : undefined;
 
   return (
-    <div className={twMerge('mt-1 ml-px', className)}>
+    <div className={cn('mt-1 ml-px', className)}>
       {!hideMaxLength && maxLength && length !== undefined ?
         <>
           <div className="flex items-start justify-between">

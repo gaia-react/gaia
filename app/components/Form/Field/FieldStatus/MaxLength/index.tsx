@@ -1,5 +1,5 @@
 import type {FC} from 'react';
-import {twJoin} from 'tailwind-merge';
+import {cn} from 'cn';
 
 type MaxLengthProps = {
   className?: string;
@@ -15,7 +15,7 @@ const MaxLength: FC<MaxLengthProps> = ({className, length, maxLength}) => {
 
   return (
     <output
-      className={twJoin(
+      className={cn(
         'flex-initial px-1 pt-0.5 text-right text-xs select-none',
         length < maxLength ? 'text-secondary' : 'text-invalid',
         className

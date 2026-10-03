@@ -1,5 +1,5 @@
 import type {ComponentProps, FC, ReactNode} from 'react';
-import {twMerge} from 'tailwind-merge';
+import {cn} from 'cn';
 import type {Size} from '~/types';
 import type {RadioOption} from '../types';
 
@@ -44,7 +44,7 @@ const InputRadio: FC<InputRadioProps> = ({
 }) => (
   <label
     key={option.value}
-    className={twMerge(
+    className={cn(
       'flex w-fit items-center gap-1.5 select-none',
       disabled || option.disabled ? 'cursor-not-allowed' : 'cursor-pointer',
       className
@@ -65,7 +65,7 @@ const InputRadio: FC<InputRadioProps> = ({
       {...props}
     />
     <div
-      className={twMerge(
+      className={cn(
         disabled || option.disabled || readOnly ? 'text-disabled' : 'text-body',
         TEXT_SIZE[size],
         classNameLabel

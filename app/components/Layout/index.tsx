@@ -1,5 +1,5 @@
 import type {FC, ReactNode} from 'react';
-import {twMerge} from 'tailwind-merge';
+import {cn} from 'cn';
 
 type LayoutProps = {
   children: ReactNode;
@@ -7,7 +7,7 @@ type LayoutProps = {
 };
 
 const Layout: FC<LayoutProps> = ({children, className}) => (
-  <div className={twMerge('flex h-dvh flex-col', className)}>
+  <div className={cn('flex h-dvh flex-col', className)}>
     <main className="flex-1">{children}</main>
   </div>
 );

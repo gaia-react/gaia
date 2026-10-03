@@ -1,7 +1,7 @@
 import type {ChangeEvent, FC} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useFetcher, useLocation} from 'react-router';
-import {twMerge} from 'tailwind-merge';
+import {cn} from 'cn';
 import {ACTION_PATHS} from '~/action-paths';
 import {LANGUAGES} from '~/languages';
 
@@ -47,7 +47,7 @@ const LanguageSelect: FC<LanguageSelectProps> = ({className, onChange}) => {
   return (
     <fetcher.Form
       action={ACTION_PATHS.setLanguage}
-      className={twMerge('relative flex-none text-sm', className)}
+      className={cn('relative flex-none text-sm', className)}
       method="POST"
       onChange={handleChangeLanguageForm}
     >

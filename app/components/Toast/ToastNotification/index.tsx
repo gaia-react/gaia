@@ -8,9 +8,9 @@ import {
   IoInformationCircle,
   IoWarning,
 } from 'react-icons/io5';
+import {cn} from 'cn';
 import type {ToastMessage} from 'remix-toast';
 import {toast} from 'sonner';
-import {twJoin} from 'tailwind-merge';
 import ErrorStack from '~/components/Errors/ErrorStack';
 import {parsePayload} from './utils';
 
@@ -58,7 +58,7 @@ const ToastNotification: FC<ToastNotificationProps> = ({id, payload, type}) => {
 
   return (
     <div
-      className={twJoin(
+      className={cn(
         'relative w-88 rounded-sm p-3 text-sm text-white',
         COLOR[type]
       )}
@@ -82,10 +82,10 @@ const ToastNotification: FC<ToastNotificationProps> = ({id, payload, type}) => {
               </div>
             )}
             {description && (
-              <div className={twJoin(message && 'mt-1.5')}>{description}</div>
+              <div className={cn(message && 'mt-1.5')}>{description}</div>
             )}
             {stack && (
-              <details className={twJoin(hasTextAboveStack && 'mt-1.5')}>
+              <details className={cn(hasTextAboveStack && 'mt-1.5')}>
                 <summary className="cursor-pointer">{t('stackTrace')}</summary>
                 <ErrorStack
                   className="max-h-60 overflow-y-auto text-xs"

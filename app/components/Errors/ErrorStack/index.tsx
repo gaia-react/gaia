@@ -1,7 +1,7 @@
 import type {FC} from 'react';
 import {useTranslation} from 'react-i18next';
 import {IoCopyOutline} from 'react-icons/io5';
-import {twJoin, twMerge} from 'tailwind-merge';
+import {cn} from 'cn';
 import {tryCatch} from '~/utils/function';
 
 type ErrorStackProps = {
@@ -34,13 +34,13 @@ const ErrorStack: FC<ErrorStackProps> = ({
 
     return (
       <div
-        className={twMerge(
+        className={cn(
           'relative border-2 border-red-700 bg-gray-900 text-left text-sm text-white',
           className
         )}
       >
         <div
-          className={twJoin(
+          className={cn(
             'sticky top-0 flex w-full',
             statusDiv ?
               'items-center justify-between bg-gray-900'

@@ -1,5 +1,5 @@
 import type {FC, ReactNode} from 'react';
-import {twJoin} from 'tailwind-merge';
+import {cn} from 'cn';
 import SpanOrLegend from '~/components/Form/Field/FieldLabel/SpanOrLegend';
 import FieldExtra from './FieldExtra';
 import FieldRequiredText from './FieldRequiredText';
@@ -25,11 +25,11 @@ const FieldLabel: FC<FieldLabelProps> = ({
   isLegend,
   required,
 }) => {
-  const innerClassName = twJoin(htmlFor && 'flex-initial');
+  const innerClassName = cn(htmlFor && 'flex-initial');
 
   const label = (
     <SpanOrLegend
-      className={twJoin(
+      className={cn(
         innerClassName,
         'text-sm',
         disabled ? 'text-disabled' : 'text-secondary'
@@ -47,7 +47,7 @@ const FieldLabel: FC<FieldLabelProps> = ({
     </div>
   );
 
-  const outerClassName = twJoin(
+  const outerClassName = cn(
     'mb-1 ml-px flex items-center justify-between',
     className
   );
