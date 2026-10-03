@@ -164,11 +164,11 @@
       "subject": "gaia-probe",
       "expand": null,
       "trigger": "session_start",
-      "expect": "not_available",
+      "expect": "available",
       "signal": "stream_json_init",
       "floor": false,
-      "source": "claude-mechanics:Q9 (inferred: .mcp.json is read from the launch dir with no parent walk); RT-021 fixture server",
-      "cited_run": null
+      "source": "claude-mechanics:Q9 (inferred: .mcp.json is read from the launch dir with no parent walk); RT-021 fixture server; observed: root .mcp.json is visible from a frontend launch",
+      "cited_run": ".gaia/local/research/monorepo-native-2026-10-01/probe-runs/20261003T022717Z-spike"
     },
     {
       "id": "frontend-settings-root-settings-json",
@@ -1074,11 +1074,11 @@
       "subject": "frontend/.claude/rules/gaia-probe-c.md",
       "expand": null,
       "trigger": "after_read:frontend/app/components/Button/index.tsx",
-      "expect": "not_loaded",
+      "expect": "loaded",
       "signal": "instructions_loaded",
       "floor": false,
-      "source": "claude-mechanics:Q2 (unknown: glob anchor; expectation is the launch-dir-anchor hypothesis the research favors, and a mismatch is the finding that sets the C7 probe decisions)",
-      "cited_run": null
+      "source": "claude-mechanics:Q2 (unknown: glob anchor; expectation is the launch-dir-anchor hypothesis the research favors, and a mismatch is the finding that sets the C7 probe decisions); observed: a rule glob anchors to the directory holding its .claude/, so frontend app/** matches frontend/app from any launch",
+      "cited_run": ".gaia/local/research/monorepo-native-2026-10-01/probe-runs/20261003T022717Z-spike"
     },
     {
       "id": "root-glob-anchor-d",
@@ -1087,11 +1087,11 @@
       "subject": "frontend/.claude/rules/gaia-probe-d.md",
       "expand": null,
       "trigger": "after_read:frontend/app/components/Button/index.tsx",
-      "expect": "loaded",
+      "expect": "not_loaded",
       "signal": "instructions_loaded",
       "floor": false,
-      "source": "claude-mechanics:Q2 (unknown: glob anchor; expectation is the launch-dir-anchor hypothesis the research favors, and a mismatch is the finding that sets the C7 probe decisions)",
-      "cited_run": null
+      "source": "claude-mechanics:Q2 (unknown: glob anchor; expectation is the launch-dir-anchor hypothesis the research favors, and a mismatch is the finding that sets the C7 probe decisions); observed: frontend/app/** in a frontend rule anchors at frontend/ and never matches",
+      "cited_run": ".gaia/local/research/monorepo-native-2026-10-01/probe-runs/20261003T022717Z-spike"
     },
     {
       "id": "frontend-glob-anchor-a",
@@ -1100,11 +1100,11 @@
       "subject": ".claude/rules/gaia-probe-a.md",
       "expand": null,
       "trigger": "after_read:frontend/app/components/Button/index.tsx",
-      "expect": "not_loaded",
+      "expect": "loaded",
       "signal": "instructions_loaded",
       "floor": false,
-      "source": "claude-mechanics:Q2 (unknown: glob anchor; expectation is the launch-dir-anchor hypothesis the research favors, and a mismatch is the finding that sets the C7 probe decisions)",
-      "cited_run": null
+      "source": "claude-mechanics:Q2 (unknown: glob anchor; expectation is the launch-dir-anchor hypothesis the research favors, and a mismatch is the finding that sets the C7 probe decisions); observed: a root rule glob anchors at the repo root from a frontend launch too",
+      "cited_run": ".gaia/local/research/monorepo-native-2026-10-01/probe-runs/20261003T022717Z-spike"
     },
     {
       "id": "frontend-glob-anchor-b",
@@ -1178,11 +1178,11 @@
       "subject": "frontend/CLAUDE.md",
       "expand": null,
       "trigger": "after_task:component-write",
-      "expect": "not_loaded",
+      "expect": "loaded",
       "signal": "instructions_loaded",
       "floor": false,
-      "source": "claude-mechanics:Q1 (confirmed: a Write that creates a new file does not trigger the nested load, issue #96361)",
-      "cited_run": null
+      "source": "claude-mechanics:Q1 (confirmed: a Write that creates a new file does not trigger the nested load, issue #96361); observed: a Write creating a frontend file triggers nested_traversal of frontend/CLAUDE.md",
+      "cited_run": ".gaia/local/research/monorepo-native-2026-10-01/probe-runs/20261003T022717Z-spike"
     },
     {
       "id": "fl-frontend-deny-edit-env",
@@ -1321,11 +1321,11 @@
       "subject": "Read pnpm-lock.yaml",
       "expand": null,
       "trigger": "after_task:permissions-read",
-      "expect": "allow",
+      "expect": "deny",
       "signal": "post_tool_use",
       "floor": false,
-      "source": "SEC-002 (a Read of an Edit-only deny target stays allowed)",
-      "cited_run": null
+      "source": "SEC-002 (a Read of an Edit-only deny target stays allowed); observed: under -p a Read outside the launch dir is refused as ungranted even with additionalDirectories",
+      "cited_run": ".gaia/local/research/monorepo-native-2026-10-01/probe-runs/20261003T022717Z-spike"
     },
     {
       "id": "frontend-read-gaia-local-audit-x-ok",
@@ -1334,11 +1334,11 @@
       "subject": "Read .gaia/local/audit/x.ok",
       "expand": null,
       "trigger": "after_task:permissions-read",
-      "expect": "allow",
+      "expect": "deny",
       "signal": "post_tool_use",
       "floor": false,
-      "source": "SEC-002 (a Read of an Edit-only deny target stays allowed)",
-      "cited_run": null
+      "source": "SEC-002 (a Read of an Edit-only deny target stays allowed); observed: under -p a Read outside the launch dir is refused as ungranted even with additionalDirectories",
+      "cited_run": ".gaia/local/research/monorepo-native-2026-10-01/probe-runs/20261003T022717Z-spike"
     },
     {
       "id": "frontend-read-husky-h",
@@ -1347,11 +1347,11 @@
       "subject": "Read .husky/_/h",
       "expand": null,
       "trigger": "after_task:permissions-read",
-      "expect": "allow",
+      "expect": "deny",
       "signal": "post_tool_use",
       "floor": false,
-      "source": "SEC-002 (a Read of an Edit-only deny target stays allowed)",
-      "cited_run": null
+      "source": "SEC-002 (a Read of an Edit-only deny target stays allowed); observed: under -p a Read outside the launch dir is refused as ungranted even with additionalDirectories",
+      "cited_run": ".gaia/local/research/monorepo-native-2026-10-01/probe-runs/20261003T022717Z-spike"
     },
     {
       "id": "fl-root-deny-edit-env",
