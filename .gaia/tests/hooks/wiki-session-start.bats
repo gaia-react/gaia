@@ -21,6 +21,9 @@ setup() {
   HOOKS_SOURCE_DIRECTORY=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
   HOOK_ABSOLUTE_PATH="$HOOKS_SOURCE_DIRECTORY/wiki-session-start.sh"
   SETTINGS_ABSOLUTE_PATH="${HOOKS_SOURCE_DIRECTORY%/hooks}/settings.json"
+  FRONTEND_SETTINGS_ABSOLUTE_PATH="${HOOKS_SOURCE_DIRECTORY%/.claude/hooks}/frontend/.claude/settings.json"
+  # Selects a SessionStart group that re-runs the hook on clear or compact.
+  RESET_MATCHER_REGISTRATION_FILTER='.hooks.SessionStart[] | select((.matcher // "") | test("clear|compact")) | select([.hooks[] | .command // empty] | any(contains("wiki-session-start.sh")))'
 }
 
 teardown() {
@@ -57,7 +60,29 @@ install_hook() {
   mkdir -p "$REPO/.claude/hooks"
   cp "$HOOK_ABSOLUTE_PATH" "$REPO/.claude/hooks/wiki-session-start.sh"
   chmod +x "$REPO/.claude/hooks/wiki-session-start.sh"
+  mkdir -p "$REPO/.claude/hooks/lib"
+  cp "$HOOKS_SOURCE_DIRECTORY/lib/wiki-dirty-fingerprint.sh" "$REPO/.claude/hooks/lib/wiki-dirty-fingerprint.sh"
   echo "$REPO/.claude/hooks/wiki-session-start.sh"
+}
+
+# install_hook_without_library: the same copy with no lib/ beside it, for the
+# fail-open case.
+install_hook_without_library() {
+  mkdir -p "$REPO/.claude/hooks"
+  cp "$HOOK_ABSOLUTE_PATH" "$REPO/.claude/hooks/wiki-session-start.sh"
+  echo "$REPO/.claude/hooks/wiki-session-start.sh"
+}
+
+# assert_missing_library_is_silent HOOK: HOOK has no library beside it. It must
+# exit 0, write nothing to stdout or stderr, and still stamp the session HEAD.
+# Plain commands rather than `run`, so the body also works under `run` for the
+# mutation case, where every line has to end the function itself.
+assert_missing_library_is_silent() {
+  local result_status=0 captured
+  captured=$(cd "$REPO" && bash "$1" < /dev/null 2>&1) || result_status=$?
+  [ "$result_status" -eq 0 ] || return 1
+  [ -z "$captured" ] || return 1
+  [ -s "$REPO/.git/claude-session-start" ] || return 1
 }
 
 # --- the HEAD stamp ---
@@ -190,4 +215,94 @@ install_hook() {
 
 @test "settings.json registers the hook under SessionStart startup|resume" {
   hook_registered "$SETTINGS_ABSOLUTE_PATH" '.hooks.SessionStart[] | select(.matcher == "startup|resume")' wiki-session-start.sh
+}
+
+@test "both settings files register the hook on startup and resume, never on clear or compact" {
+  hook_registered "$SETTINGS_ABSOLUTE_PATH" '.hooks.SessionStart[] | select(.matcher == "startup|resume")' wiki-session-start.sh
+  hook_registered "$FRONTEND_SETTINGS_ABSOLUTE_PATH" '.hooks.SessionStart[] | select(.matcher == "startup|resume")' wiki-session-start.sh
+  run jq -e "$RESET_MATCHER_REGISTRATION_FILTER" "$SETTINGS_ABSOLUTE_PATH"
+  [ "$status" -ne 0 ]
+  run jq -e "$RESET_MATCHER_REGISTRATION_FILTER" "$FRONTEND_SETTINGS_ABSOLUTE_PATH"
+  [ "$status" -ne 0 ]
+}
+
+@test "guard: a clear|compact group running the hook fails the no-reset assertion" {
+  # Re-stamping on clear or compact would reset the Stop hook's baseline mid-session.
+  scratch_settings="$BATS_TEST_TMPDIR/settings.json"
+  jq '.hooks.SessionStart += [{matcher: "clear|compact", hooks: [{type: "command", command: "\"$(git rev-parse --show-toplevel)/.claude/hooks/wiki-session-start.sh\""}]}]' \
+    "$SETTINGS_ABSOLUTE_PATH" > "$scratch_settings"
+  run jq -e "$RESET_MATCHER_REGISTRATION_FILTER" "$scratch_settings"
+  [ "$status" -eq 0 ]
+}
+
+# --- the dirty baseline for the Stop hook ---
+
+@test "the dirty baseline is empty on a clean tree" {
+  REPO=$("$HELPERS/tmp-git-repo.sh")
+  invoke_hook_in "$REPO" '' "$HOOK_ABSOLUTE_PATH"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ -f "$REPO/.git/claude-session-wiki-dirty" ]
+  [ ! -s "$REPO/.git/claude-session-wiki-dirty" ]
+}
+
+@test "the dirty baseline is non-empty on a dirty tree and the hook stays silent" {
+  REPO=$("$HELPERS/tmp-git-repo.sh")
+  echo "dirty" >> "$REPO/wiki/index.md"
+  invoke_hook_in "$REPO" '' "$HOOK_ABSOLUTE_PATH"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ -s "$REPO/.git/claude-session-wiki-dirty" ]
+}
+
+@test "the dirty baseline is written when the session starts in frontend/" {
+  REPO=$("$HELPERS/tmp-git-repo.sh")
+  mkdir -p "$REPO/frontend"
+  echo "dirty" >> "$REPO/wiki/index.md"
+  invoke_hook_in "$REPO/frontend" '' "$HOOK_ABSOLUTE_PATH"
+  [ "$status" -eq 0 ]
+  [ -s "$REPO/.git/claude-session-wiki-dirty" ]
+}
+
+# --- header text describes the 2.x plugin contract ---
+
+@test "the start hook header no longer defers hot-cache restoration to the model or the plugin skill" {
+  grep -qF -- 'left to the model' "$HOOK_ABSOLUTE_PATH" && return 1
+  grep -qF -- 'claude-obsidian:wiki skill' "$HOOK_ABSOLUTE_PATH" && return 1
+  return 0
+}
+
+@test "the stop hook header no longer describes a PostToolUse auto-commit" {
+  grep -qF -- 'PostToolUse' "$HOOKS_SOURCE_DIRECTORY/wiki-session-stop.sh" && return 1
+  return 0
+}
+
+# --- missing library ---
+
+@test "start hook without its library exits 0 silently and still stamps HEAD" {
+  REPO=$("$HELPERS/tmp-git-repo.sh")
+  hook=$(install_hook_without_library)
+  assert_missing_library_is_silent "$hook"
+}
+
+@test "guard: a start hook without the library guard writes to stderr and fails the silence assertion" {
+  REPO=$("$HELPERS/tmp-git-repo.sh")
+  hook=$(install_hook_without_library)
+  sed -e 's|^if \[ -f "\$_hook_directory/lib/wiki-dirty-fingerprint.sh" \]; then$|if true; then|' "$hook" > "$hook.mutated"
+  mv "$hook.mutated" "$hook"
+  grep -qF -- 'if true; then' "$hook" || return 1
+  run assert_missing_library_is_silent "$hook"
+  [ "$status" -ne 0 ]
+}
+
+@test "stop hook without its library exits 0 silently despite uncommitted wiki edits" {
+  REPO=$("$HELPERS/tmp-git-repo.sh")
+  mkdir -p "$REPO/.claude/hooks"
+  cp "$HOOKS_SOURCE_DIRECTORY/wiki-session-stop.sh" "$REPO/.claude/hooks/wiki-session-stop.sh"
+  git -C "$REPO" rev-parse HEAD > "$REPO/.git/claude-session-start"
+  echo "dirty" >> "$REPO/wiki/index.md"
+  result_status=0
+  captured=$(cd "$REPO" && bash "$REPO/.claude/hooks/wiki-session-stop.sh" < /dev/null 2>&1) || result_status=$?
+  [ "$result_status" -eq 0 ]
+  [ -z "$captured" ]
 }

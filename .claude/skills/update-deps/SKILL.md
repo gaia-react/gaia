@@ -112,8 +112,58 @@ updates_json="$(mktemp)"
 .gaia/cli/gaia update-deps run --emit-updates "$updates_json"
 ```
 
+### Global tools (before any exit below)
+
+Run this once, right after the discovery call and before every exit branch
+that follows (`total_count` `0`, `--scope`, the Skip answer), so it also runs on
+an otherwise up-to-date run:
+
+```bash
+.gaia/cli/gaia update-deps global-tools
+```
+
+It prints `{"rows":[...]}` and exits 0 even when a probe fails. Keep the
+playwright-cli row for the Phase 7 `### Global tools` section. This step never
+changes `outdatedCount`, never writes the update-check cache, and never creates
+a branch by itself: a global tool cannot be cleared through pnpm, so it stays
+out of the discovery payload and the statusline count.
+
+- **In CI (`CI=true`)**: report the row only. Never run `npm install -g`.
+- **Under `--scope`**: report the row only.
+- **`status` is `not-installed`**: report `not installed, skipped` with the
+  row's `installCommand` as text. No prompt, no error.
+- **`status` is `current` or `unknown`**: report the row only.
+- **Interactively with `offerInstall: true`**: show the row, then ask with
+  `AskUserQuestion` (single-select): **Upgrade playwright-cli to `<latest>`
+  globally** or **Skip**. Only after the Upgrade answer, run
+  `npm install -g @playwright/cli@latest`. Record `upgraded` or `declined` as
+  the action taken.
+
+<!-- gaia:maintainer-only:start -->
+### Vendored skill sync (GAIA maintainer repository, before any exit below)
+
+`frontend/.claude/skills/playwright-cli/` is a verbatim copy of the upstream
+package's skill folder, pinned by `.gaia/vendor/playwright-cli.json`. This phase
+also runs on an otherwise up-to-date run. Compare that marker's `version` with
+the global-tools row's `latest`. When `latest` is unknown or equal, report
+`Vendored skills: current` (or `unknown`) and move on. Otherwise:
+
+1. If no branch exists yet and the run is on `main`/`master`, create one now and
+   remember `CREATED_NEW_BRANCH=true` for Phase 8:
+   ```bash
+   git checkout -b "$(bash .gaia/scripts/branch-name-lib.sh name chore update-deps)"
+   ```
+2. Re-vendor, then verify offline:
+   ```bash
+   bash .gaia/scripts/revendor-playwright-cli.sh --version <latest>
+   bash .gaia/scripts/verify-vendored-skills.sh
+   ```
+3. Keep the result for the Phase 7 `Vendored skills` row. A re-vendor diff is
+   something Phase 8 publishes even when no package moved.
+<!-- gaia:maintainer-only:end -->
+
 Read the payload. If `total_count` is `0`, print `All packages are up to date.`
-Under `--scope`, exit (no branch, no changes). Otherwise the apply set is empty
+(the Phase 7 `### Global tools` section is still printed first). Under `--scope`, exit (no branch, no changes). Otherwise the apply set is empty
 and the run is **refresh-only** (see Decision): in CI it proceeds straight to
 Phase 5b; interactively, print `Transitive refresh: re-resolve every
 transitive dependency to the newest in-range version past the release-age
@@ -352,7 +402,9 @@ Build the report **only** from the agent reports returned to you, the snooze and
 - **Skipped packages**: _only_ packages that were attempted and reverted mid-run (peer-dep conflict, quality-gate failure, manual revert by an agent). **Never** include packages filtered out before installation by a policy rule (e.g. the ESLint 9.x cap or the release-age cooldown). Those are silent by design, surfacing them is noise the user sees every run. When you cannot tell whether a package was policy-filtered before installation or attempted and reverted mid-run, include it in Skipped, a spurious row is recoverable but a silently dropped real failure is not. If nothing was actually skipped during the run, write "None" or omit the table.
 - **Snoozed (deferred this run)**: the companion groups the human chose to skip in the preview, with the version each was snoozed at. These quiet the statusline for 14 days (or until a newer version ships); they are not failures. Omit the section if the human chose "Update all".
 - **Quality gate**: the gate result reported by the agents, verbatim.
+- **Global tools**: always include the playwright-cli row from the Phase 1 global-tools step: status, installed, latest, and the action taken (`upgraded`, `declined`, `report-only`, `not installed`). It is built inline, so it is an exception to building the report only from agent reports, like the residual advisory check. Print it on every exit path, including the all-up-to-date and Skip exits.
 <!-- gaia:maintainer-only:start -->
+- **Vendored skills**: built inline from the Vendored skill sync step, so it is an exception to building the report only from agent reports. One row: marker version, upstream latest, and `current`, `re-vendored`, `verify failed (<path>)`, or `unknown`.
 - **Phase 6b**: runs inline rather than as an agent, so its `.gaia/cli pin sync` row is an exception to building the report only from agent reports, like the residual advisory check. Include it whenever Phase 6b ran past step 1, including a failed step it kept in the diff.
 <!-- gaia:maintainer-only:end -->
 
@@ -393,11 +445,18 @@ Print the report. Do not commit.
 ### Quality gate
 | Step | Result |
 | --- | --- |
+
+### Global tools
+| Tool | Status | Installed | Latest | Action |
+| --- | --- | --- | --- | --- |
 ```
 
 ## Phase 8: Publish
 
 **If nothing was updated** (all packages were already up to date or all were skipped, and the transitive refresh did not report `landed`), skip this phase entirely.
+<!-- gaia:maintainer-only:start -->
+A re-vendor diff from the Vendored skill sync step counts as an update: publish it even when no package moved, with the subject `chore(deps): re-vendor playwright-cli skill <version>`. It touches paths beyond the dependency manifests, so it gets the normal audit handshake, not the dep-bump bypass.
+<!-- gaia:maintainer-only:end -->
 
 **Commit the update.** Stage and commit the applied changes on the current branch. Write the message to a temp file first, then commit from it:
 

@@ -101,17 +101,6 @@ const RUNTIME_PREFIXES: readonly string[] = [
   '.claude/audit',
 ];
 
-/**
- * Per-session marker files written by hooks. These are gitignored on the
- * source side and recreated on each session by the hook that owns them.
- */
-const RUNTIME_MARKERS: ReadonlySet<string> = new Set([
-  // Runtime-created sentinel: wiki-recompact-sentinel.sh (PostCompact) writes
-  // this file and wiki-recompact-inject.sh (UserPromptSubmit) reads and clears
-  // it. Created on first compaction event; never a shipped dependency.
-  '.claude/wiki-recompact-pending',
-]);
-
 const PATH_PREFIXES = ['.gaia/', '.claude/', '.specify/', '.github/'] as const;
 
 /**
@@ -470,7 +459,6 @@ const isShippedPath = (
 ): boolean => {
   if (manifest.has(candidate)) return true;
   if (ADOPTER_OWNED_SENTINELS.has(candidate)) return true;
-  if (RUNTIME_MARKERS.has(candidate)) return true;
 
   if (
     RUNTIME_PREFIXES.some(
