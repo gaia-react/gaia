@@ -1,0 +1,20 @@
+# App build and test output. Package-relative on purpose: ESLint reads this file
+# from the frontend/ working directory, and git applies it to this subtree.
+
+# react-router
+/.cache
+/build
+/public/build
+.react-router/
+
+# Testing
+/playwright
+.playwright/.cache/
+.playwright/output/
+coverage
+
+# Storybook
+/storybook-static/
+
+# Optional eslint cache
+.eslintcache

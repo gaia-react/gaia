@@ -9,6 +9,10 @@ package-lock.json
 .env.example
 .env
 
+# The app owns its own Prettier config and ignore file; `pnpm -C frontend format`
+# formats it.
+/frontend
+
 # gaia:maintainer-only:start
 # Byte-sensitive maintainer-only test fixtures under .gaia/tests/. These dirs
 # are release-excluded and absent from adopter projects, so `gaia-maintainer

@@ -1,0 +1,13 @@
+node_modules
+package-lock.json
+
+.gitignore
+.prettierignore
+.react-router
+
+/build
+/coverage
+/storybook-static
+/public/build
+.env.example
+.env

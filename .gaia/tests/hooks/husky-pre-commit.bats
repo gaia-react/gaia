@@ -607,7 +607,18 @@ assert_gate_not_invoked() {
 # frontend-layout fixture, never runs the gate in frontend/.
 @test "today's hook text does not run the frontend/ gate" {
   use_frontend_package
-  git -C "$REPO_ROOT" show 'HEAD:.husky/pre-commit' > "$REPO/old-pre-commit"
+  # The pre-frontend/ hook shape, inlined: the gate runs at the repo root, never
+  # `pnpm -C <repo>/frontend`.
+  cat >"$REPO/old-pre-commit" <<'OLD_HOOK'
+HAS_APP_CHANGED=$(git diff --cached --name-only -z --diff-filter=ACDM | tr '\0' '\n' | grep 'app/' || true)
+HAS_TEST_CHANGED=$(git diff --cached --name-only -z --diff-filter=ACDM | tr '\0' '\n' | grep 'test/' || true)
+if [ -n "$HAS_APP_CHANGED" ] || [ -n "$HAS_TEST_CHANGED" ]
+then
+	pnpm typecheck
+	pnpm exec lint-staged
+	pnpm test:lint-staged
+fi
+OLD_HOOK
   mkdir -p "$REPO/frontend/app"
   echo "// content" > "$REPO/frontend/app/x.tsx"
   git -C "$REPO" add frontend/app/x.tsx

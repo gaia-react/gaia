@@ -468,17 +468,17 @@ JS
     .claude/hooks/lib/jq-availability.sh \
     .claude/hooks/lib/red-ledger.sh \
     .claude/hooks/lib/repo-scope.sh \
-    .gaia/packages.json \
-    gaia.package.json \
     .gaia/scripts/lib/gaia-packages.mjs \
     .gaia/scripts/main-root-lib.sh \
     .gaia/scripts/state-registry-lib.sh \
     .gaia/scripts/link-worktree.sh
   gaia_copy_registry "$MAIN"
-  # The registry and its descriptor are copied real, not left to the built-in
-  # default: the default names the package directory `frontend`, which would
-  # put this fixture's app/utils test outside every package glob and make both
-  # hooks treat it as emergent, so no gate would ever fire.
+  # The registry and descriptor are written as literals in the post-flip layout
+  # (package dir `frontend`), not copied from the live repo, so this fixture
+  # proves the same layout whatever the real registry says.
+  # shellcheck disable=SC1091
+  . "$BATS_TEST_DIRNAME/../hooks/helpers/package-fixture.sh"
+  write_packages_moved "$MAIN"
 
   # Both node helpers the gate calls (the signal extractor and the determinism
   # classifier) resolve `typescript` via createRequire(import.meta.url), which
@@ -498,19 +498,19 @@ JS
   gaia_link_worktree "$WORKTREE_A"
   gaia_link_worktree "$WORKTREE_B"
 
-  # A test under app/utils/** so the determinism classifier (scoped to
+  # A test under frontend/app/utils/** so the determinism classifier (scoped to
   # app/utils, app/services, app/hooks, and .ts under app/components) returns
   # "strict" for it rather than "emergent" -- an emergent verdict would make
   # the check hook skip the file outright, and the deny in check 2 below would
   # never fire, for a reason that has nothing to do with tree isolation.
-  test_relative_path="app/utils/c407/index.test.ts"
+  test_relative_path="frontend/app/utils/c407/index.test.ts"
   full_name="adds two numbers c407"
   test_body='import {expect, test} from "vitest";
 test("adds two numbers c407", () => {
   expect(1 + 1).toBe(2);
 });
 '
-  mkdir -p "$WORKTREE_A/app/utils/c407" "$WORKTREE_B/app/utils/c407"
+  mkdir -p "$WORKTREE_A/frontend/app/utils/c407" "$WORKTREE_B/frontend/app/utils/c407"
   # Both trees write the IDENTICAL body: same fullName, same content signal.
   # That identity is the whole point -- it is what makes tree A's observation
   # a candidate to satisfy tree B's gate for a test B never ran.
