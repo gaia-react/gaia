@@ -91,7 +91,7 @@ Read the `RAW_DUMP_PATH=...` line from stdout; that absolute path under
 temporary spec when the diagnosis (and any verify pass) is done:
 
 ```
-rm .playwright/e2e/react-perf-drive.spec.ts
+rm frontend/.playwright/e2e/react-perf-drive.spec.ts
 ```
 
 Honest-timing note: the capture above runs StrictMode-off via
@@ -105,7 +105,7 @@ roughly 2x. If a run keeps StrictMode on, the reduce flags it with
 Run the deterministic reduce over the raw dump and read only its stdout JSON:
 
 ```
-.gaia/cli/gaia react-perf reduce <RAW_DUMP_PATH>
+./.gaia/cli/gaia react-perf reduce <RAW_DUMP_PATH>
 ```
 
 The frame budget defaults to 16ms; pass `--frame-budget-ms <n>` to override the

@@ -6,7 +6,7 @@ paths:
 
 # Tailwind Conventions
 
-Authoring patterns live in `.claude/skills/tailwind/SKILL.md`. This rule covers only project-specific facts.
+Authoring patterns live in `frontend/.claude/skills/tailwind/SKILL.md`. This rule covers only project-specific facts.
 
 ## Tailwind v4
 

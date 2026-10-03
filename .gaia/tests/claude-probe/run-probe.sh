@@ -324,6 +324,12 @@ table_subjects() {
     '.rows[] | select(.launch == $launch and .trigger == $trigger and .kind == $kind) | .subject' "$TABLE_PATH" | sort -u
 }
 
+# The generated frontend settings file is the one Edit target that must stay
+# in place: a frontend launch reads its own deny from it, so holding it aside
+# would remove the rule under test. Its Edit uses a real old_string instead of
+# the create-a-file form, and the file is copied aside and put back after.
+LIVE_PERMISSION_TARGET="frontend/.claude/settings.json"
+
 numbered_calls() {
   local root="$1" launch="$2" trigger="$3" index=0 tool relative_path
   while IFS=' ' read -r tool relative_path; do
@@ -331,7 +337,13 @@ numbered_calls() {
     index=$((index + 1))
     case "$tool" in
       Read) printf '%s. Use the Read tool on %s\n' "$index" "$root/$relative_path" ;;
-      Edit) printf '%s. Use the Edit tool on %s with old_string set to the empty string and new_string set to PROBE=2 (this creates the file)\n' "$index" "$root/$relative_path" ;;
+      Edit)
+        if [ "$relative_path" = "$LIVE_PERMISSION_TARGET" ]; then
+          printf '%s. Use the Edit tool on %s with old_string set to permissions and new_string set to permissionz\n' "$index" "$root/$relative_path"
+        else
+          printf '%s. Use the Edit tool on %s with old_string set to the empty string and new_string set to PROBE=2 (this creates the file)\n' "$index" "$root/$relative_path"
+        fi
+        ;;
     esac
   done < <(table_subjects "$launch" "$trigger" permission)
 }
@@ -409,7 +421,11 @@ run_scenario() {
         while IFS=' ' read -r tool relative_path; do
           [ -e "$root/$relative_path" ] || continue
           mkdir -p "$(dirname "$hold_directory/$relative_path")"
-          mv "$root/$relative_path" "$hold_directory/$relative_path"
+          if [ "$relative_path" = "$LIVE_PERMISSION_TARGET" ]; then
+            cp -p "$root/$relative_path" "$hold_directory/$relative_path"
+          else
+            mv "$root/$relative_path" "$hold_directory/$relative_path"
+          fi
         done < <(table_subjects "$launch" "$trigger" permission)
       fi
       run_claude "$launch" "$scenario_directory" 1 \
@@ -417,6 +433,10 @@ run_scenario() {
 $calls"
       if [ "$trigger" = after_task:permissions-edit ]; then
         while IFS=' ' read -r tool relative_path; do
+          if [ "$relative_path" = "$LIVE_PERMISSION_TARGET" ]; then
+            [ ! -e "$hold_directory/$relative_path" ] || cp -p "$hold_directory/$relative_path" "$root/$relative_path"
+            continue
+          fi
           rm -f "$root/$relative_path"
           if [ -e "$hold_directory/$relative_path" ]; then
             mv "$hold_directory/$relative_path" "$root/$relative_path"

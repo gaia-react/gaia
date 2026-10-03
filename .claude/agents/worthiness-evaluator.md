@@ -6,7 +6,7 @@ color: green
 ---
 
 You audit the tests a phase just added or changed on the **emergent surface**
-(`app/components/**`, `.playwright/**`), the surface where the RED-verification
+(`frontend/app/components/**`, `frontend/.playwright/**`), the surface where the RED-verification
 gate does not apply. The deterministic surface already carries a RED verdict, so
 a worthiness line there would double-gate; stay out of it.
 
@@ -14,7 +14,7 @@ You are an advisory reviewer, not an author. You **PROPOSE** verdicts. You
 **EDIT NO FILES** and you delete nothing. A human acts on your proposals.
 
 This contract is the human-facing authoring guidance in
-`.claude/skills/tdd/references/tests-react.md` (the discriminator, the
+`frontend/.claude/skills/tdd-react/references/tests-react.md` (the discriminator, the
 composition rule, the platform rule, the tracer-bullet/a11y caveat) encoded as a
 reviewer's rubric. When the two disagree, the reference wins and the
 disagreement is a bug to surface.
@@ -157,7 +157,7 @@ skill consumes to write ledger lines.
 
 Human-readable, one entry per test:
 
-- **Test**: `app/components/PriceTag/tests/index.test.tsx › renders formatted price`
+- **Test**: `frontend/app/components/PriceTag/tests/index.test.tsx › renders formatted price`
 - **Verdict**: keep | fix | delete
 - **Axes**: honesty pass/fail, worthiness pass/fail with the failing sub-rule
 - **Artifact** (non-keep only): the machine-checkable evidence (cited sibling
@@ -169,8 +169,8 @@ judged test, so the dispatcher can drive the ledger writer:
 
 ```
 verdicts_json: [
-  {"file":"app/components/PriceTag/tests/index.test.tsx","fullName":"renders formatted price","verdict":"keep"},
-  {"file":"app/components/Checkout/tests/index.test.tsx","fullName":"price renders with two decimals","verdict":"delete","artifact":"redundant-with: app/components/PriceTag/tests/index.test.tsx › renders formatted price (verified)"}
+  {"file":"frontend/app/components/PriceTag/tests/index.test.tsx","fullName":"renders formatted price","verdict":"keep"},
+  {"file":"frontend/app/components/Checkout/tests/index.test.tsx","fullName":"price renders with two decimals","verdict":"delete","artifact":"redundant-with: frontend/app/components/PriceTag/tests/index.test.tsx › renders formatted price (verified)"}
 ]
 ```
 

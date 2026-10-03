@@ -63,37 +63,40 @@
       "Bash(rm -rf .gaia/local/cache/*)",
       "Bash(rm -rf .gaia/local/plans/*)",
       "Bash(rm -rf .gaia/local/specs/*)",
-      "Edit(.claude/agents/**)",
-      "Edit(.claude/commands/**)",
-      "Edit(.claude/instructions/**)",
-      "Edit(.claude/rules/**)",
-      "Edit(.claude/skills/**)",
-      "Edit(.gaia/**)",
-      "Edit(CHANGELOG.md)",
-      "Edit(frontend/.claude/agents/**)",
-      "Edit(frontend/.claude/instructions/**)",
-      "Edit(frontend/.claude/rules/**)",
-      "Edit(frontend/.claude/skills/**)",
-      "Edit(frontend/.playwright/**)",
-      "Edit(frontend/.storybook/**)",
-      "Edit(frontend/app/**)",
-      "Edit(frontend/public/**)",
-      "Edit(frontend/test/**)",
-      "Edit(wiki/**)",
+      "Edit(../.claude/agents/**)",
+      "Edit(../.claude/commands/**)",
+      "Edit(../.claude/instructions/**)",
+      "Edit(../.claude/rules/**)",
+      "Edit(../.claude/skills/**)",
+      "Edit(../.gaia/**)",
+      "Edit(../CHANGELOG.md)",
+      "Edit(../frontend/.claude/agents/**)",
+      "Edit(../frontend/.claude/instructions/**)",
+      "Edit(../frontend/.claude/rules/**)",
+      "Edit(../frontend/.claude/skills/**)",
+      "Edit(../frontend/.playwright/**)",
+      "Edit(../frontend/.storybook/**)",
+      "Edit(../frontend/app/**)",
+      "Edit(../frontend/public/**)",
+      "Edit(../frontend/test/**)",
+      "Edit(../wiki/**)",
       "WebFetch(domain:context7.com)"
     ],
     "deny": [
       "Bash(git push --force-with-lease *main*)",
       "Bash(git push --force-with-lease *master*)",
       "Bash(git reset --hard HEAD~*)",
-      "Edit(.env)",
-      "Edit(.gaia/local/audit/*.carried)",
-      "Edit(.gaia/local/audit/*.ok)",
-      "Edit(.gaia/local/audit/*.refused)",
-      "Edit(.husky/_/**)",
-      "Edit(frontend/.claude/settings.json)",
-      "Edit(frontend/.env)",
-      "Edit(pnpm-lock.yaml)"
+      "Edit(../.env)",
+      "Edit(../.gaia/local/audit/*.carried)",
+      "Edit(../.gaia/local/audit/*.ok)",
+      "Edit(../.gaia/local/audit/*.refused)",
+      "Edit(../.husky/_/**)",
+      "Edit(../frontend/.claude/settings.json)",
+      "Edit(../frontend/.env)",
+      "Edit(../pnpm-lock.yaml)"
+    ],
+    "additionalDirectories": [
+      ".."
     ]
   },
   "hooks": {
@@ -394,8 +397,8 @@
   "sandbox": {
     "filesystem": {
       "denyRead": [
-        ".env",
-        ".env.*",
+        "../.env",
+        "../.env.*",
         "**/.env",
         "**/.env.*",
         "**/*.key",
@@ -404,7 +407,7 @@
         "**/secrets/**"
       ],
       "allowRead": [
-        ".env.example",
+        "../.env.example",
         "**/.env.example"
       ]
     }

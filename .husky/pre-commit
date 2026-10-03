@@ -30,6 +30,32 @@ if [ "$PLAN" = "exempt" ]; then
   exit 0
 fi
 
+# Generated package settings (C8): a staged change to the root settings, the
+# registry, or a package's settings or overlay must leave every generated
+# `<package>/.claude/settings.json` current and complete, or a session launched
+# in the package runs without the root's guard hooks and denies.
+SETTINGS_DRIFT=$(printf '%s\n' "$PLAN" | while IFS="$TAB" read -r KIND VALUE; do
+  if [ "$KIND" = "settings-drift" ]; then printf 'x'; fi
+done)
+if [ -n "$SETTINGS_DRIFT" ]; then
+  bash "$ROOT/.gaia/scripts/check-settings-drift.sh" || {
+    printf "\x1b[31m✖ Generated package settings are out of date or incomplete: run ./.gaia/cli/gaia packages sync-settings and stage the result\x1b[0m\n"
+    exit 1
+  }
+fi
+
+# Guard (MIG-013): with no package at the repo root, a new file under a retired
+# root frontend path belongs under frontend/. The helper names each one with its
+# frontend/ equivalent; a C13-exempt rename never reaches here (it exits above).
+RETIRED_ADDS=$(printf '%s\n' "$PLAN" | while IFS="$TAB" read -r KIND VALUE REPLACEMENT; do
+  if [ "$KIND" = "retired-add" ]; then printf '  %s -> %s\n' "$VALUE" "$REPLACEMENT"; fi
+done)
+if [ -n "$RETIRED_ADDS" ]; then
+  printf "\x1b[31m✖ The React app lives in frontend/ now; move these new files there:\x1b[0m\n"
+  printf '%s\n' "$RETIRED_ADDS"
+  exit 1
+fi
+
 # Guard: exactly one react-doctor config may exist per package. react-doctor
 # resolves the highest-precedence file and silently ignores the rest, so a stray
 # duplicate (e.g. doctor.config.json beside doctor.config.ts) shadows the

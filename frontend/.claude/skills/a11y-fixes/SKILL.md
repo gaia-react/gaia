@@ -8,18 +8,18 @@ model: haiku
 
 How to resolve specific axe-core violations in this project.
 
-Violations come from `test/a11y.ts` (Vitest), `.playwright/a11y.ts` (Playwright), or the `code-audit-frontend` agent's a11y bucket. General a11y guidance lives in `.claude/rules/accessibility.md`.
+Violations come from `test/a11y.ts` (Vitest), `.playwright/a11y.ts` (Playwright), or the `code-audit-frontend` agent's a11y bucket. General a11y guidance lives in `frontend/.claude/rules/accessibility.md`.
 
 ## Fix-then-verify loop
 
 1. Fix one violation with the pattern below; for a rule id not listed here, use the violation's `help` and `failureSummary` from the axe output.
-2. Re-run the reporter that flagged it: Vitest `pnpm vitest --run <test-file>`, Playwright `pnpm pw <spec-file>`.
+2. Re-run the reporter that flagged it: Vitest `pnpm test --run <test-file>`, Playwright `pnpm pw <spec-file>`.
 3. Some rules never go green on their own. Under Vitest (jsdom) axe records `color-contrast`, `landmark-one-main` and `page-has-heading-one` as `incomplete`, not violations (see the comment in `test/a11y.ts`), so a Vitest run never checks them. Verify `color-contrast` with `pnpm pw`. The Playwright scan's WCAG tag filter does not run `landmark-one-main` either, so for that rule check the rendered page by hand (exactly one `<main>`) instead of counting a green run as proof.
 4. Repeat until the reporter shows no violations.
 
 ## color-contrast
 
-WCAG AA requires 4.5:1 for normal text, 3:1 for large text. Use the project's semantic Tailwind tokens (see `.claude/rules/tailwind.md`) instead of arbitrary palette colors, they pair light/dark modes correctly.
+WCAG AA requires 4.5:1 for normal text, 3:1 for large text. Use the project's semantic Tailwind tokens (see `frontend/.claude/rules/tailwind.md`) instead of arbitrary palette colors, they pair light/dark modes correctly.
 
 ```tsx
 // BAD, fails contrast in dark mode, raw colors
@@ -57,7 +57,7 @@ Form inputs need an associated `<label>`. Use the `Field` wrapper from `~/compon
 
 ## image-alt
 
-Every `<img>` needs `alt`. Content images describe the image; decorative images use `alt=""`. See `.claude/rules/accessibility.md`.
+Every `<img>` needs `alt`. Content images describe the image; decorative images use `alt=""`. See `frontend/.claude/rules/accessibility.md`.
 
 ```tsx
 // BAD, no alt attribute
@@ -199,7 +199,7 @@ Composite roles need their child roles, and child roles need the right parent. P
 
 ## focus-trap (focus management)
 
-Modals must trap focus while open and return focus to the trigger on close (see `.claude/rules/accessibility.md`). Use the native `<dialog>` opened with `showModal()`: the browser makes the rest of the page inert, closes it on Escape, and restores focus to the opener on close. Reach for a dialog library only if the project already has one installed.
+Modals must trap focus while open and return focus to the trigger on close (see `frontend/.claude/rules/accessibility.md`). Use the native `<dialog>` opened with `showModal()`: the browser makes the rest of the page inert, closes it on Escape, and restores focus to the opener on close. Reach for a dialog library only if the project already has one installed.
 
 ```tsx
 // BAD, open modal leaves focus on body, close drops focus
@@ -257,7 +257,7 @@ Positive `tabindex` (`tabindex={1}`, `tabindex={2}`, ...) reorders the tab seque
 
 ## document-title
 
-Every page needs a `<title>`. Resolve the string in the route `loader` with `getInstance(context)` (see `.claude/rules/i18n.md`) and render `<title>` (and `<meta name="description">`) as JSX, either in the route component (as `app/routes/_public._index.tsx` does) or in the page it renders; React 19 hoists it into `<head>`. Do not add a route `meta` export: next to a JSX `<title>` it produces duplicate tags (react-code skill, Gate 4).
+Every page needs a `<title>`. Resolve the string in the route `loader` with `getInstance(context)` (see `frontend/.claude/rules/i18n.md`) and render `<title>` (and `<meta name="description">`) as JSX, either in the route component (as `app/routes/_public._index.tsx` does) or in the page it renders; React 19 hoists it into `<head>`. Do not add a route `meta` export: next to a JSX `<title>` it produces duplicate tags (react-code skill, Gate 4).
 
 ```tsx
 // BAD, no <title> rendered

@@ -282,11 +282,11 @@ If `STRIP_I18N == false`, also run the prose locale instructions for every non-`
 For each locale in `LOCALES` where the locale is NOT `en`:
 
 1. Resolve the locale's English display name (e.g. `Polish`), native display name (e.g. `Polski`), and RTL flag (`true` for `ar`/`he`/`fa`/`ur`, otherwise `false`).
-2. Read `.claude/instructions/add-locale.md`.
+2. Read `frontend/.claude/instructions/add-locale.md`.
 3. Substitute the four template variables: `{{LOCALE_CODE}}`, `{{LANGUAGE_NAME_EN}}`, `{{LANGUAGE_NAME_NATIVE}}`, `{{IS_RTL}}`.
 4. Execute every step in the substituted instruction. Stop on any failure.
 
-If `STRIP_I18N == true`, read `.claude/instructions/remove-i18n.md` and execute every step. Stop on any failure.
+If `STRIP_I18N == true`, read `frontend/.claude/instructions/remove-i18n.md` and execute every step. Stop on any failure.
 
 ## Step 5: Create CODEOWNERS
 
@@ -306,7 +306,7 @@ Only when Q3 obtained no real handle (automatic mode where gh detection also fai
 
 ## Step 6: Check `.env`
 
-Run the CLI, it copies `.env.example` to `.env` when `.env` is absent, no-op otherwise. Routing through the CLI subprocess bypasses the project's `Write(.env)` deny rule, which guards against Claude writing secrets, not against init seeding from the example file.
+Run the CLI, it copies `frontend/.env.example` to `frontend/.env` when `frontend/.env` is absent, no-op otherwise. Routing through the CLI subprocess bypasses the project's `Write(.env)` deny rule, which guards against Claude writing secrets, not against init seeding from the example file.
 
 ```bash
 .gaia/cli/gaia init bootstrap-env
@@ -316,7 +316,7 @@ If this exits non-zero, surface the structured error verbatim and stop.
 
 ## Step 7: Verify the build
 
-Run sequentially, stopping at the first failure:
+Run sequentially from the repository root, stopping at the first failure (the root scripts proxy to the `frontend` package):
 
 ```bash
 pnpm typecheck && pnpm lint && pnpm test:ci && pnpm build
@@ -330,7 +330,7 @@ If any install step fails, print the command so the user can run it manually.
 
 ### Install tools
 
-GAIA bundles project-scoped skills at `.claude/skills/` (`eslint-fixes`, `playwright-cli`, `react-code`, `skeleton-loaders`, `tailwind`, `tdd`, `typescript`), they ship with the clone. Three external tools still need per-machine setup. The Serena MCP entry below requires `uv` (Astral's Python toolchain runner) on the host, GAIA precheck-installs it just like Step 0 precheck-installs pnpm.
+GAIA bundles project-scoped skills, the generic ones at `.claude/skills/` (`tdd`) and the React ones at `frontend/.claude/skills/` (`eslint-fixes`, `playwright-cli`, `react-code`, `skeleton-loaders`, `tailwind`, `tdd-react`, `typescript`), they ship with the clone. Three external tools still need per-machine setup. The Serena MCP entry below requires `uv` (Astral's Python toolchain runner) on the host, GAIA precheck-installs it just like Step 0 precheck-installs pnpm.
 
 - [React Doctor](https://github.com/millionco/react-doctor): `npx -y react-doctor@latest install --yes`
   Installs the `react-doctor` skill for detected agents (Claude Code included). Scans the project for React-specific issues (47+ rules: security, performance, correctness, architecture). Auto-runs after code edits in a `CLAUDECODE` environment and is invoked by the `code-audit-frontend` agent pre-merge.

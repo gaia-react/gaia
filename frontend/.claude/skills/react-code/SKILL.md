@@ -140,7 +140,7 @@ const nonce = use(NonceContext); // not useContext(NonceContext)
 
 Metadata is the mirror case: render `<title>`/`<meta>` as JSX (React 19 hoisting), not a React Router route `meta`/`links` export. Keep it that way; adding a route `meta` export to a page that already renders `<title>` in JSX produces duplicate tags.
 
-When you do reach for React Router's API, read it from the version-matched docs shipped at `node_modules/react-router/docs`, not the web.
+When you do reach for React Router's API, read it from the version-matched docs shipped at `frontend/node_modules/react-router/docs`, not the web.
 
 Rendering nothing from a `return` is enforced by `@gaia-react/lint`'s `no-null-render` rule (autofix); a `: null` ternary arm is caught by `no-restricted-syntax` (report-only). No manual rewrite needed.
 

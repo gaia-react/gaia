@@ -129,7 +129,9 @@ stage_renames() {
   stage_files app/x.tsx
   plan
   [ "$status" -eq 0 ]
-  [ -z "$output" ]
+  # Not a package change; it is the MIG-013 retired-path record instead.
+  grep -qxF -- "$(printf 'retired-add\tapp/x.tsx\tfrontend/app/x.tsx')" <<<"$output"
+  [ "$(grep -c '^package' <<<"$output" || true)" -eq 0 ]
 }
 
 # Guard can fail: the same staged file under a descriptor that names nothing it

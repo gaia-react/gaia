@@ -10,11 +10,11 @@ any, are handled by the orchestrator).
 
 ### Wave A (batch minor/patch)
 
-1. Build install args. For each entry: if `is_pinned` use the exact target, else use `^<latest>`. Example: `pnpm add foo@1.2.3 bar@^4.5.0 ...`.
-2. Run the single `pnpm add` command.
+1. Build install args. For each entry: if `is_pinned` use the exact target, else use `^<latest>`. Example: `pnpm -C frontend add foo@1.2.3 bar@^4.5.0 ...` (an entry declared in the root `package.json` goes through `pnpm add -w` instead).
+2. Run the single `pnpm -C frontend add` command (plus one `pnpm add -w` for any root-declared entries).
 3. Run `pnpm ls 2>&1`. Scan for peer-dep errors.
 4. On error: try one targeted fix in the `overrides:` map in `pnpm-workspace.yaml` (e.g. add a `parent>child` pin), then `pnpm dedupe` to apply it, a bare `pnpm install` won't re-resolve an overrides-only change.
-5. If still failing: revert the offending packages (`pnpm add <pkg>@<previous>`) and log them as **skipped** with the reason.
+5. If still failing: revert the offending packages (`pnpm -C frontend add <pkg>@<previous>`, or `pnpm add -w` for a root-declared package) and log them as **skipped** with the reason.
 6. Run the quality gate in override-audit.md. If it fails, revert the entire Wave A batch.
 
 ### Return value

@@ -628,10 +628,12 @@ OLD_HOOK
   ! grep -qxF -- "-C $REPO/frontend exec lint-staged" "$PNPM_LOG"
 }
 
-@test "frontend/ package: a root app/x.tsx is not a frontend change" {
+@test "frontend/ package: a root app/x.tsx is refused and runs no gate step" {
   use_frontend_package
   stage_and_run "app/x.tsx"
-  assert_gate_skipped
+  [ "$status" -ne 0 ]
+  grep -qF -- "app/x.tsx -> frontend/app/x.tsx" <<<"$output"
+  [ ! -s "$PNPM_LOG" ]
 }
 
 @test "a harness-only staged set skips the gate" {

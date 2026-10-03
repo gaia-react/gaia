@@ -1,8 +1,9 @@
 ---
 paths:
   - 'wiki/**/*.md'
-  - 'app/**/*.{ts,tsx,js,jsx,css}'
+  - 'frontend/app/**/*.{ts,tsx,js,jsx,css}'
   - '.claude/instructions/**/*.md'
+  - 'frontend/.claude/**/*.md'
   - '.claude/skills/**/*.md'
   - '.claude/commands/**/*.md'
   - '.claude/agents/**/*.md'
@@ -57,20 +58,20 @@ Before merging changes that touch any in-scope path, and before running `/gaia-w
 grep -rEn "UAT-[0-9]+|SPEC-[0-9]+" wiki/ --include="*.md" --exclude="log.md" --exclude="hot.md" --exclude-dir="meta"
 
 # UAT / SPEC refs in source comments
-grep -rEn "// .*(UAT|SPEC)-[0-9]+|/\*.*(UAT|SPEC)-[0-9]+|\*.*(UAT|SPEC)-[0-9]+" app/
+grep -rEn "// .*(UAT|SPEC)-[0-9]+|/\*.*(UAT|SPEC)-[0-9]+|\*.*(UAT|SPEC)-[0-9]+" frontend/app/
 
 # UAT-NNN narrative refs in instruction files and shipped extension surfaces
 # (functional fixture values are kept; the maintainer triages each match per
 # the structural-vs-narrative distinction in the Exceptions section)
 grep -rEn "UAT-[0-9]{3}" \
-  .claude/skills/ .claude/commands/ .claude/agents/ .claude/rules/ .claude/hooks/ \
+  .claude/skills/ .claude/commands/ .claude/agents/ .claude/rules/ .claude/hooks/ frontend/.claude/ \
   .specify/extensions/gaia/README.md .specify/extensions/gaia/commands/ \
   .specify/extensions/gaia/lib/ .specify/extensions/gaia/rules/ \
   .specify/extensions/gaia/templates/
 
 # Concrete maintainer SPEC IDs in instruction files and shipped extension surfaces
 grep -rEn "\bSPEC-[0-9]{3,}\b" \
-  .claude/skills/ .claude/commands/ .claude/agents/ .claude/rules/ .claude/hooks/ \
+  .claude/skills/ .claude/commands/ .claude/agents/ .claude/rules/ .claude/hooks/ frontend/.claude/ \
   .specify/extensions/gaia/README.md .specify/extensions/gaia/commands/ \
   .specify/extensions/gaia/lib/ .specify/extensions/gaia/rules/ \
   .specify/extensions/gaia/templates/

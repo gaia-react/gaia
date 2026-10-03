@@ -25,6 +25,7 @@ import {
   readExpected,
 } from './gaia-packages-corpus-fixture.js';
 import type {CorpusReader} from './gaia-packages-corpus-fixture.js';
+import {writeFrontendRegistry} from './package-fixture.js';
 import {
   BUILTIN_DESCRIPTOR,
   BUILTIN_REGISTRY,
@@ -210,7 +211,12 @@ describe('glob helpers', () => {
 
 describe('packageRoot', () => {
   test('resolves against the repo root, not the working directory', () => {
-    expect(packageRoot(REPO_ROOT)).toBe(path.resolve(REPO_ROOT, '.'));
+    const root = path.join(SCRATCH, 'root-not-cwd');
+
+    writeFrontendRegistry(root, 'frontend');
+
+    expect(process.cwd()).not.toBe(root);
+    expect(packageRoot(root)).toBe(path.join(root, 'frontend'));
   });
 
   test('resolves a registered package at a nested path', () => {

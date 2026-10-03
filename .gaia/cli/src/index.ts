@@ -17,6 +17,7 @@ import {run as runHardenLedger} from './harden/ledger.js';
 import {run as runHardenTally} from './harden/tally.js';
 import {run as runInit} from './init/index.js';
 import {run as runLabels} from './labels/index.js';
+import {run as runPackages} from './packages/index.js';
 import {run as runPing} from './ping/index.js';
 import {run as runReactPerf} from './react-perf/index.js';
 import {run as runResidueCursor} from './residue/cursor-cmd.js';
@@ -39,6 +40,7 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
   wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|frontmatter|empty-sections|chain|sync land
   fitness render-card [--cols N]
   labels docs|sync
+  packages sync-settings [--check]
   harden-ledger list|record|is-suppressed|prune|snapshot
   harden-tally
   update merge-workspace|merge-audit-ci|merge-region|regen-regions
@@ -71,6 +73,7 @@ const SUBCOMMAND_HANDLERS: Readonly<
   'harden-tally': runHardenTally,
   init: runInit,
   labels: runLabels,
+  packages: runPackages,
   ping: runPing,
   'react-perf': runReactPerf,
   'residue-cursor': runResidueCursor,

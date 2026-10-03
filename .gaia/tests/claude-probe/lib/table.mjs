@@ -104,7 +104,7 @@ export const schemaProblems = (table) => {
 // at least one floor row with exactly these fields.
 const item = (id, description, fields) => ({ id, description, fields });
 const PERMISSION_FLOOR_TARGETS = [
-  'Edit .env', 'Edit frontend/.env', 'Edit pnpm-lock.yaml',
+  'Edit .env', 'Edit frontend/.env', 'Edit frontend/.claude/settings.json', 'Edit pnpm-lock.yaml',
   'Edit .gaia/local/audit/x.ok', 'Edit .gaia/local/audit/x.carried', 'Edit .gaia/local/audit/x.refused',
   'Edit .husky/_/h', 'Edit .husky/_/pre-commit', 'Read .env', 'Read frontend/.env',
 ];

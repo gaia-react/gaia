@@ -18,4 +18,4 @@ gaia_refuse_if_worktree "/gaia-react-perf" || exit 1
 
 If the detection does not fire, fall through to the workflow dispatch line below.
 
-Read `.claude/skills/gaia-react-perf/references/measure-only.md` from the project root and follow it exactly. Treat the arguments above as an optional inline target (the page plus the micro-interaction to profile); if empty, ask the user to name a concrete micro-interaction before proceeding, per the reference.
+Read `frontend/.claude/skills/gaia-react-perf/references/measure-only.md` from the project root and follow it exactly. Treat the arguments above as an optional inline target (the page plus the micro-interaction to profile); if empty, ask the user to name a concrete micro-interaction before proceeding, per the reference.

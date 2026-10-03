@@ -574,4 +574,14 @@ if ! run_guard lint-hook-jq-availability; then
   status=1
 fi
 
+# Fold in the generated-settings drift check: no shell linter reads it, and a
+# root hook or deny that a package's generated settings lack is a guard that
+# silently does not run in a session launched from that package. Not named
+# lint-*, because it is a drift check over generated JSON and not a shell-class
+# detector; it rides the same override seam under its own slug.
+echo "--> check-settings-drift (a generated package settings file missing a root hook or deny)"
+if ! run_guard check-settings-drift; then
+  status=1
+fi
+
 report_verdict

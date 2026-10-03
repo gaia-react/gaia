@@ -121,7 +121,7 @@ Analyze the changed code across these dimensions. Focus on cross-cutting concern
 - **Dependency direction**: Lower-level modules importing from higher-level ones, circular dependencies
 - **Consistency**: Patterns that deviate from established project conventions without good reason
 - **Testability**: Tightly coupled code that's hard to test, side effects in pure functions
-- **State placement**: Context vs. URL state vs. local, used appropriately per `.claude/rules/state-pattern.md`
+- **State placement**: Context vs. URL state vs. local, used appropriately per `frontend/.claude/rules/state-pattern.md`
 - **Module-level duplication**: Repeated logic across files that should be extracted (line-level duplication is for the subagents). For each constant list, union type, schema, lookup map, or helper the diff adds, search the whole repo for an existing definition of the same set or behavior, matching on values and not only on names; the copy a diff duplicates usually sits outside the diff. A hit is `holistic/drifting-duplicate`, repaired by importing or deriving from the existing source (typescript skill, "One Source of Truth")
 
 ### 4. Robustness & Edge Cases
@@ -769,41 +769,7 @@ These advisories are **advisory, not blocking**, like knip's and react-doctor's.
 
 Scope: `.tsx` files only.
 
-Prompt the subagent with these rules to check:
-
-**From the react-code skill (`.claude/skills/react-code/SKILL.md`):**
-
-Hook gates:
-
-- `useCallback` only when (1) passed to a `memo`-wrapped child, (2) a dependency of `useEffect`/`useMemo`/another `useCallback`, or (3) passed to a child that uses it in a hook dep array. Flag unnecessary `useCallback` usage.
-- `useEffect` anti-patterns: derived state in effects (should derive inline or via `useMemo`), expensive calcs in effects (should be `useMemo`), user-event logic in effects (belongs in the handler), chained effects triggering each other, notifying parent of state changes via effect. Flag each with the correct alternative.
-- State reset anti-pattern: `useEffect` that resets state when a prop changes, should use `key` instead.
-- When `useEffect` is correct (external system sync, subscriptions), verify a cleanup function; for async data fetching inside an effect, verify an `ignore` flag guards the setter.
-- `useState` type inference: omit explicit type when inferable from the default value. Only annotate for `null` initial values, unions, or complex objects.
-
-Component structure:
-
-- `FC` typing: components use `const MyComponent: FC` or `FC<Props>` pattern
-- Named React imports: `import {useState} from 'react'`; never `React.useState()` or `React.FC`
-- Type-only imports: `import type {ChangeEventHandler} from 'react'`
-- Event handler typing: prefer `ChangeEventHandler<HTMLInputElement>` over inline `(e: ChangeEvent<HTMLInputElement>)`
-- Event handler naming: `handle{Action}{Element}`, the `{Element}` is required; flag bare event names (`handleClick`, `handleChange`, `handleSubmit`), which trip `react-doctor/no-generic-handler-names`
-- One component per file
-
-Component extraction:
-
-- Extract when a section meets all criteria: self-contained (own state/fetcher, or pure display), clear boundary with small props interface, ~60+ lines of JSX/logic
-- Don't extract when state/refs are shared across sections, extraction needs 5+ props/callbacks, section is under ~60 lines, or form validation is tightly coupled
-
-**From `.claude/rules/accessibility.md`:**
-
-- Interactive elements reachable and operable via keyboard (Tab, Enter, Escape, Arrow keys); no keyboard traps
-- Prefer semantic HTML (`<button>`, `<nav>`, `<main>`) over divs with ARIA roles
-- `<img>` has descriptive `alt` or explicit `alt=""` for decorative images
-- Color is never the sole indicator of meaning
-- Modals/dialogs move focus on open, return focus to trigger on close
-- `aria-live="polite"` for dynamic status updates (toasts); `aria-expanded`/`aria-controls` for disclosure widgets
-- `aria-label` only when visible text is insufficient, don't duplicate visible text
+This bucket has no generic rules of its own: the React patterns and accessibility rules ship with the `frontend` package as extension files.
 
 **Library-specific rules (injected from extensions):**
 
@@ -815,7 +781,7 @@ Scope: `.ts` and `.tsx` files.
 
 Prompt the subagent with these rules to check:
 
-**From the typescript skill (`.claude/skills/typescript/SKILL.md`):**
+**From the typescript skill (`frontend/.claude/skills/typescript/SKILL.md`):**
 
 - `type` not `interface`, flag any `interface` declarations
 - `import type {}` for type-only imports: `import type {FC} from 'react'`
@@ -836,14 +802,6 @@ Prompt the subagent with these rules to check:
 - Exported functions must have explicit return types. Exceptions: route loaders/actions, FC-typed components
 - `z.literal()` not `z.enum()`, flag any `z.enum()` usage; `z.literal()` values should be sorted alphanumerically
 
-**From `.claude/rules/routes.md`:**
-
-- Route files (`app/routes/`) must be thin: only loader/action, meta (via loader), Zod schemas, and rendering the page component. No UI code, hooks, state, or sub-components.
-- Page components live at `app/pages/{Group}/{PascalName}Page/index.tsx`
-- Loader data: use `useLoaderData<typeof loader>()` (import the `loader` type from the route file) or `useLoaderData<LoaderData>()` (import `LoaderData` from a sibling `types.ts`). Never define the type inline in the page component file.
-- Meta tags: set in the loader via server-side i18n (`getInstance(context)`), then render them in the route component or pass them to the page component, which renders them (the legal pages do this)
-- Route files are flat dot-delimited files discovered by `@react-router/fs-routes`; group prefixes and their meanings are owned by `wiki/modules/Routing.md`. `actions.*` / `resources.*` files are no-UI data-endpoint routes with no page component: the lint carve-out only lets UI layers import their typed action/loader exports, and the no-UI-code rule above still applies to them.
-
 **Library-specific rules (injected from extensions):**
 
 Append the full content of every extension file whose `subagents:` list includes `typescript`.
@@ -852,11 +810,7 @@ Append the full content of every extension file whose `subagents:` list includes
 
 Scope: files containing `useTranslation` or `t(` calls (skip entirely if none).
 
-Prompt the subagent with these rules to check:
-
-**From `.claude/rules/i18n.md`:**
-
-- Every user-visible string in JSX, labels, headings, placeholders, button text, error messages, tooltips, status text, `aria-label`, `alt`, `title`, must come from a `t()` call. Flag hardcoded English strings. Exceptions: punctuation-only strings, single-character symbols, developer-facing content (console.log, comments, test assertions), and approximate skeleton-loader placeholder text standing in for a dynamic runtime value (skeleton text mirroring static `t()` content must still use `t()`).
+This bucket has no generic rules of its own: the translation rules ship with the `frontend` package as an extension file.
 
 **Library-specific rules (injected from extensions):**
 

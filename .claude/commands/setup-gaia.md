@@ -313,10 +313,10 @@ chmod +x .gaia/statusline/*.sh
 
 Skip if `bootstrap-env` is in `completed_steps`.
 
-`.env` is gitignored. If `.env` does not exist and `.env.example` does, copy:
+The app's `.env` lives in the `frontend/` package and is gitignored. If `frontend/.env` does not exist and `frontend/.env.example` does, copy:
 
 ```bash
-cp .env.example .env
+cp frontend/.env.example frontend/.env
 ```
 
 If neither exists, that's fine, the project may not use `.env`. After the copy (or no-op):

@@ -320,7 +320,7 @@ Heal already cut and switched to `<BRANCH>`, the name Step 4 minted, so the chan
    - **`CLOSED`** (exit 6) → the pull request was closed without merging, so no wait can clear it: report the closure, run the `TIMEOUT` arm's tally command above, print the PR URL, and keep the local branch, without that arm's lands-when-checks-pass note.
    - **exit 2** → the wait refused rather than answered: report what it could not read, run the `TIMEOUT` arm's tally command above, print the PR URL, and keep the local branch. Assert no state for the pull request, since nothing about it was read, so print neither the lands-when-checks-pass note nor any claim that the merge did or did not land; the merge queued above may still land.
 
-   Caveat: the oracle check above already covers this. A heal edit to a nested `CLAUDE.md` under an in-scope path such as `app/` is exactly the kind of reached-an-audited-surface diff the oracle detects; if it named a member, the marker handshake ran before this PR was even opened.
+   Caveat: the oracle check above already covers this. A heal edit to a nested `CLAUDE.md` under an in-scope path such as `frontend/app/` is exactly the kind of reached-an-audited-surface diff the oracle detects; if it named a member, the marker handshake ran before this PR was even opened.
 
 ### Any other branch (in-place heal)
 

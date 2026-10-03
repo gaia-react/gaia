@@ -1211,6 +1211,19 @@
       "cited_run": null
     },
     {
+      "id": "fl-frontend-deny-edit-frontend-claude-settings-json",
+      "launch": "frontend",
+      "kind": "permission",
+      "subject": "Edit frontend/.claude/settings.json",
+      "expand": null,
+      "trigger": "after_task:permissions-edit",
+      "expect": "deny",
+      "signal": "post_tool_use",
+      "floor": true,
+      "source": "CG-009 root deny (generated settings never hand-edited); SEC-002",
+      "cited_run": null
+    },
+    {
       "id": "fl-frontend-deny-edit-pnpm-lock-yaml",
       "launch": "frontend",
       "kind": "permission",
@@ -1377,6 +1390,19 @@
       "signal": "post_tool_use",
       "floor": true,
       "source": "SPEC floor (each root deny holds for its real repository path); SEC-002; root deny Edit(.env) plus block-env-write.sh",
+      "cited_run": null
+    },
+    {
+      "id": "fl-root-deny-edit-frontend-claude-settings-json",
+      "launch": "root",
+      "kind": "permission",
+      "subject": "Edit frontend/.claude/settings.json",
+      "expand": null,
+      "trigger": "after_task:permissions-edit",
+      "expect": "deny",
+      "signal": "post_tool_use",
+      "floor": true,
+      "source": "CG-009 root deny (generated settings never hand-edited); SEC-002",
       "cited_run": null
     },
     {

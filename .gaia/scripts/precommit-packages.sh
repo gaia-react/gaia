@@ -17,6 +17,13 @@
 #   package<TAB><dir>       a registered package with a staged path that
 #                           matches its preCommitSource globs; <dir> is the
 #                           registry path (`.` or `frontend`)
+#   settings-drift          a staged path feeds the generated package settings
+#                           (root `.claude/settings.json`, `.gaia/packages.json`,
+#                           or any `*/.claude/settings.{json,overlay.json}`); the
+#                           hook runs `check-settings-drift.sh` (C8)
+#   retired-add<TAB>p<TAB>q p is an added (or renamed-to) file under a retired
+#                           root frontend path while no registered package sits
+#                           at `.`; q is its `frontend/` equivalent (MIG-013)
 #
 # Exit 0 with a plan (possibly empty: nothing to do). Exit 1 with
 # GAIA_PACKAGES_ERROR on stderr when the registry or a descriptor cannot be
@@ -85,6 +92,7 @@ is_exempt_entry() {
 # carries two NUL-terminated paths. A command substitution drops NUL bytes, so
 # the stream is translated to SOH (never in a path) before it is captured.
 counted_paths=''
+added_paths=''
 entry_count=0
 exempt_count=0
 status_word=''
@@ -116,6 +124,7 @@ while [ "$index" -lt "$total" ]; do
         exempt_count=$((exempt_count + 1))
       else
         counted_paths="${counted_paths}${source_path}"$'\n'"${destination_path}"$'\n'
+        added_paths="${added_paths}${destination_path}"$'\n'
       fi
       ;;
     *)
@@ -123,6 +132,9 @@ while [ "$index" -lt "$total" ]; do
       index=$((index + 1))
       entry_count=$((entry_count + 1))
       counted_paths="${counted_paths}${path}"$'\n'
+      if [ "$status_word" = A ]; then
+        added_paths="${added_paths}${path}"$'\n'
+      fi
       ;;
   esac
 done
@@ -144,6 +156,33 @@ gaia_packages_load "$root" || load_status=$?
 if [ "$load_status" -ne 0 ]; then
   printf '%s\n' "$GAIA_PACKAGES_ERROR" >&2
   exit 1
+fi
+
+# Generated settings (C8): any staged path that feeds `<package>/.claude/
+# settings.json`, or the generated file itself, makes the hook run the drift
+# check. Matching the counted set keeps a rename's source and destination both.
+while IFS= read -r counted; do
+  case "$counted" in
+    .claude/settings.json | .gaia/packages.json | */.claude/settings.overlay.json | */.claude/settings.json)
+      printf 'settings-drift\n'
+      break
+      ;;
+  esac
+done <<<"$counted_paths"
+
+# MIG-013: once no package sits at the repo root, a new file under a retired
+# root frontend path is a stale adopter muscle-memory write, and `frontend/` is
+# where it belongs. Only added paths count; an edit of an existing root file is
+# left to the other gates.
+root_package_count=$(gaia_packages_list | awk -F'\t' '$2 == "." {count++} END {print count + 0}')
+if [ "$root_package_count" -eq 0 ]; then
+  while IFS= read -r added; do
+    case "$added" in
+      app/* | test/* | public/* | .playwright/* | .storybook/*)
+        printf 'retired-add\t%s\tfrontend/%s\n' "$added" "$added"
+        ;;
+    esac
+  done <<<"$added_paths"
 fi
 
 # Doctor guard: exactly one react-doctor config per package directory. The

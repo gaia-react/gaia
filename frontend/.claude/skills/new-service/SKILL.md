@@ -11,7 +11,7 @@ Trigger: user asks to scaffold an API service.
 ## Workflow
 
 1. Confirm: name (kebab), endpoints, schema (`name:type` pairs), with mocks?
-2. Run: `.gaia/cli/gaia scaffold service <name> --endpoints "..." --schema "..." [--mocks]`. It writes into the domain-layer folder under `app/services/`, found as the one folder there besides `api/` (shipped as `gaia/`, often renamed to the company or API name). If it refuses because several folders qualify, ask which one and rerun with `--layer <folder>`.
+2. Run from the repo root: `./.gaia/cli/gaia scaffold service <name> --endpoints "..." --schema "..." [--mocks]`. It writes into the domain-layer folder under `app/services/`, found as the one folder there besides `api/` (shipped as `gaia/`, often renamed to the company or API name). If it refuses because several folders qualify, ask which one and rerun with `--layer <folder>`.
 3. Verify: `pnpm typecheck` clean; if `--mocks`, run a single MSW round-trip in a vitest test.
 4. Wire the service into the consuming page/hook (CLI does not do this, manual). Before wiring, read how an existing service is wired into its page or hook and follow that pattern.
 
@@ -28,4 +28,4 @@ Schema types: `string`, `number`, `boolean`, `datetime`, `enum(a,b,...)`. Append
 ## See
 
 - `wiki/concepts/API Service Pattern.md`, pattern source of truth
-- `.claude/rules/api-service.md`, quick pointer
+- `frontend/.claude/rules/api-service.md`, quick pointer

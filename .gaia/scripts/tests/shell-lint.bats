@@ -255,6 +255,28 @@ EOF
   done < <(gate_pass_headers)
 }
 
+# The settings drift pass is not a lint-* guard, so the loops above never drive
+# it. This drives it into its failing state through the same override seam.
+@test "a failing settings drift check fails the gate" {
+  local stub="$STUB_DIRECTORY/drift-fail.sh"
+  cat > "$stub" <<'STUB'
+#!/usr/bin/env bash
+echo "stub failure: drift" >&2
+exit 1
+STUB
+  chmod +x "$stub"
+  local overrides=() line
+  while IFS= read -r line; do
+    overrides+=("$line")
+  done < <(stub_all_guards "$STUB_DIRECTORY")
+  overrides+=("SHELL_LINT_GUARD_OVERRIDE_check_settings_drift=$stub")
+  run env PATH="$STUB_DIRECTORY:$PATH" ${overrides[@]+"${overrides[@]}"} bash "$GATE"
+  [ "$status" -eq 1 ]
+  grep -qF -- "--> check-settings-drift" <<<"$output"
+  grep -qF -- "stub failure: drift" <<<"$output"
+  grep -qF -- "shell-lint FAILED" <<<"$output"
+}
+
 @test "a failing guard fails the gate and every other guard still runs" {
   local first override_variable_name stub
   first="$(gate_pass_headers | grep '^lint-' | sed -n '1p')"

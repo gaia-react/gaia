@@ -59,8 +59,8 @@ git show <sha>
 
 Read the diff. Decide what wiki page(s) need updating:
 
-- New service in `app/services/`: edit or create `wiki/services/<name>.md`
-- New hook in `app/hooks/`: edit or create `wiki/hooks/<name>.md`
+- New service in `frontend/app/services/`: edit or create `wiki/services/<name>.md`
+- New hook in `frontend/app/hooks/`: edit or create `wiki/hooks/<name>.md`
 - New route group: edit `wiki/decisions/Thin Routes.md` and/or `wiki/modules/Pages.md`
 - Dependency change: edit `wiki/dependencies/<name>.md` (create if needed)
 - Architectural pattern: edit relevant `wiki/concepts/<topic>.md`
@@ -103,7 +103,7 @@ The CLI inserts a single canonical line `- <YYYY-MM-DD> <sha> <decision>, <reaso
 
 - WORTHY: `.gaia/cli/gaia wiki log-prepend --sha abc1234 --decision WORTHY --reason "added /services/Gemini integration → wiki/services/Gemini.md"`
 - SKIP: `.gaia/cli/gaia wiki log-prepend --sha def5678 --decision SKIP --reason "typo-only commit"`
-- Serena-policy SKIP: `.gaia/cli/gaia wiki log-prepend --sha 9a0b1c2 --decision SKIP --reason "Serena handles inventory, added Button variant in app/components/Button"`
+- Serena-policy SKIP: `.gaia/cli/gaia wiki log-prepend --sha 9a0b1c2 --decision SKIP --reason "Serena handles inventory, added Button variant in frontend/app/components/Button"`
 
 ## Step 5b: Fabrication guard, verify edits landed on disk
 

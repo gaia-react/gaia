@@ -1,0 +1,60 @@
+---
+subagents: [react-patterns, typescript, translation]
+library: react-buckets
+---
+
+# React Bucket Audit Rules
+
+Each section below belongs to one specialist subagent. Apply only the section naming your bucket and skip the others.
+
+## React Patterns & Accessibility (react-patterns)
+
+**From the react-code skill (`frontend/.claude/skills/react-code/SKILL.md`):**
+
+Hook gates:
+
+- `useCallback` only when (1) passed to a `memo`-wrapped child, (2) a dependency of `useEffect`/`useMemo`/another `useCallback`, or (3) passed to a child that uses it in a hook dep array. Flag unnecessary `useCallback` usage.
+- `useEffect` anti-patterns: derived state in effects (should derive inline or via `useMemo`), expensive calcs in effects (should be `useMemo`), user-event logic in effects (belongs in the handler), chained effects triggering each other, notifying parent of state changes via effect. Flag each with the correct alternative.
+- State reset anti-pattern: `useEffect` that resets state when a prop changes, should use `key` instead.
+- When `useEffect` is correct (external system sync, subscriptions), verify a cleanup function; for async data fetching inside an effect, verify an `ignore` flag guards the setter.
+- `useState` type inference: omit explicit type when inferable from the default value. Only annotate for `null` initial values, unions, or complex objects.
+
+Component structure:
+
+- `FC` typing: components use `const MyComponent: FC` or `FC<Props>` pattern
+- Named React imports: `import {useState} from 'react'`; never `React.useState()` or `React.FC`
+- Type-only imports: `import type {ChangeEventHandler} from 'react'`
+- Event handler typing: prefer `ChangeEventHandler<HTMLInputElement>` over inline `(e: ChangeEvent<HTMLInputElement>)`
+- Event handler naming: `handle{Action}{Element}`, the `{Element}` is required; flag bare event names (`handleClick`, `handleChange`, `handleSubmit`), which trip `react-doctor/no-generic-handler-names`
+- One component per file
+
+Component extraction:
+
+- Extract when a section meets all criteria: self-contained (own state/fetcher, or pure display), clear boundary with small props interface, ~60+ lines of JSX/logic
+- Don't extract when state/refs are shared across sections, extraction needs 5+ props/callbacks, section is under ~60 lines, or form validation is tightly coupled
+
+**From `frontend/.claude/rules/accessibility.md`:**
+
+- Interactive elements reachable and operable via keyboard (Tab, Enter, Escape, Arrow keys); no keyboard traps
+- Prefer semantic HTML (`<button>`, `<nav>`, `<main>`) over divs with ARIA roles
+- `<img>` has descriptive `alt` or explicit `alt=""` for decorative images
+- Color is never the sole indicator of meaning
+- Modals/dialogs move focus on open, return focus to trigger on close
+- `aria-live="polite"` for dynamic status updates (toasts); `aria-expanded`/`aria-controls` for disclosure widgets
+- `aria-label` only when visible text is insufficient, don't duplicate visible text
+
+## Route conventions (typescript)
+
+**From `frontend/.claude/rules/routes.md`:**
+
+- Route files (`app/routes/`) must be thin: only loader/action, meta (via loader), Zod schemas, and rendering the page component. No UI code, hooks, state, or sub-components.
+- Page components live at `app/pages/{Group}/{PascalName}Page/index.tsx`
+- Loader data: use `useLoaderData<typeof loader>()` (import the `loader` type from the route file) or `useLoaderData<LoaderData>()` (import `LoaderData` from a sibling `types.ts`). Never define the type inline in the page component file.
+- Meta tags: set in the loader via server-side i18n (`getInstance(context)`), then render them in the route component or pass them to the page component, which renders them (the legal pages do this)
+- Route files are flat dot-delimited files discovered by `@react-router/fs-routes`; group prefixes and their meanings are owned by `wiki/modules/Routing.md`. `actions.*` / `resources.*` files are no-UI data-endpoint routes with no page component: the lint carve-out only lets UI layers import their typed action/loader exports, and the no-UI-code rule above still applies to them.
+
+## Translation (translation)
+
+**From `frontend/.claude/rules/i18n.md`:**
+
+- Every user-visible string in JSX, labels, headings, placeholders, button text, error messages, tooltips, status text, `aria-label`, `alt`, `title`, must come from a `t()` call. Flag hardcoded English strings. Exceptions: punctuation-only strings, single-character symbols, developer-facing content (console.log, comments, test assertions), and approximate skeleton-loader placeholder text standing in for a dynamic runtime value (skeleton text mirroring static `t()` content must still use `t()`).

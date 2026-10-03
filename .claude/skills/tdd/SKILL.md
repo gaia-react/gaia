@@ -9,9 +9,9 @@ description: Test-driven development with red-green-refactor loop. Use when user
 
 Before writing the first red test, consult the reference for your stack:
 
-- **React / Vitest / MSW / Storybook** → [references/tests-react.md](references/tests-react.md)
+- **React / Vitest / MSW / Storybook** → the `tdd-react` skill (`frontend/.claude/skills/tdd-react/SKILL.md`)
 
-Add a new `references/tests-{stack}.md` when adopting a new stack. The stack reference covers concrete patterns, test layers, mocking rules, and good/bad examples specific to that environment.
+Add a new stack reference (a skill or a `references/tests-{stack}.md`) when adopting a new stack. The stack reference covers concrete patterns, test layers, mocking rules, and good/bad examples specific to that environment.
 
 ## Philosophy
 
@@ -111,15 +111,15 @@ It emits `{file, classification: "strict" | "emergent", reasons}`. A `strict` fi
 
 ```
 Determinism roll-up:
-  • app/utils/money.ts            strict
-  • app/components/Cart/index.tsx  emergent (path not a .ts under app/components)
+  • frontend/app/utils/money.ts            strict
+  • frontend/app/components/Cart/index.tsx  emergent (path not a .ts under frontend/app/components)
 ```
 
 This roll-up renders into the single end-of-task summary (see "Surfacing the advisory findings").
 
 ### 6. Worthiness Audit (emergent surface)
 
-The deterministic surface earns its honesty proof from the RED gate. The emergent surface (`app/components/**`, `.playwright/**`) has no stable failing-then-passing run to gate on, so its honesty and worthiness come from an **advisory audit** instead. Run this audit after green, on the emergent-surface test files the task changed (the classifier roll-up above tells you which touched files are `emergent`).
+The deterministic surface earns its honesty proof from the RED gate. The emergent surface (`frontend/app/components/**`, `frontend/.playwright/**`) has no stable failing-then-passing run to gate on, so its honesty and worthiness come from an **advisory audit** instead. Run this audit after green, on the emergent-surface test files the task changed (the classifier roll-up above tells you which touched files are `emergent`).
 
 #### Dispatch a fresh-context audit (no-orchestrator path)
 
