@@ -55,6 +55,5 @@ wiki
 **/.gaia-backup
 **/.gaia-merge
 **/.bats-shards-scratch.*
-.husky/_
 .serena/cache
 .serena/project.local.yml

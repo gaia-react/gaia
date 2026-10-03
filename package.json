@@ -32,7 +32,7 @@
     "gaia": "./.gaia/cli/gaia"
   },
   "scripts": {
-    "prepare": "is-ci || husky",
+    "prepare": "[ -n \"$CI\" ] || [ ! -e .git ] || git config core.hooksPath .githooks",
     "lint:cli": "pnpm -C .gaia/cli lint",
     "test:forensics": "bash .gaia/tests/forensics/run-all.sh",
     "test:sandbox": "bash .gaia/tests/sandbox/run-all.sh",
@@ -58,8 +58,6 @@
   },
   "devDependencies": {
     "@gaia-react/lint": "2.3.0",
-    "husky": "9.1.7",
-    "is-ci": "4.1.0",
     "lint-staged": "17.6.0",
     "prettier": "3.9.9",
     "typescript": "6.0.3"

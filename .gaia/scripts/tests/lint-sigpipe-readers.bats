@@ -754,12 +754,12 @@ printf "%s" "$a" | grep -q needle
   [ "$status" -eq 0 ]
 }
 
-# `.husky/_/h` runs each hook as `sh -e`, which arms no pipefail either. The
+# The git hooks are POSIX `sh`, which arms no pipefail either. The
 # shared library owns this exclusion, so the assertion is that this gate asks
-# for the `shell` set alone rather than for `shell husky`.
-@test "a tracked husky hook carrying the class is not scanned" {
+# for the `shell` set alone rather than for `shell githooks`.
+@test "a tracked git hook carrying the class is not scanned" {
   fixture_repo
-  fixture_file .husky/pre-commit '#!/usr/bin/env bash
+  fixture_file .githooks/pre-commit '#!/usr/bin/env bash
 set -o pipefail
 printf "%s" "$a" | grep -q needle'
   run_linter
