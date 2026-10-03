@@ -24,8 +24,9 @@
 # program being run.
 #
 # No carve-out is needed for GAIA's own legitimate --no-verify automation
-# (the audit-stamp trailer): it runs as a hook script, not as a Bash-tool
-# call, so a PreToolUse Bash hook never intercepts it. Do not "fix" the missing carve-out, there is no bug.
+# (the audit-stamp trailer): it passes --no-verify inside its own script, and
+# this guard reads only the command the agent typed, never what an invoked
+# script runs, so it never sees the flag. Do not "fix" the missing carve-out, there is no bug.
 #
 # Residual fail-closed edge: a bypass token written literally INSIDE a commit
 # message (e.g. `git commit -m "use --no-verify"`) still over-blocks. That is
