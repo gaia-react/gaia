@@ -1,6 +1,6 @@
 import {expect, test} from '@playwright/test';
 import type {Page} from '@playwright/test';
-import {readFileSync} from 'node:fs';
+import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {collectRenderDump, installRenderCapture} from '../react-perf/capture';
 import type {RawDump} from '../react-perf/types';
@@ -12,7 +12,25 @@ import {hydration} from '../utils';
 // this and fails loud.
 const CANARY = 'ThemeSwitch';
 
-const repoRoot = path.resolve(import.meta.dirname, '..', '..', '..');
+// Walks up to the directory holding .gaia/VERSION, so the root does not depend
+// on how deep the frontend package sits; resolved here rather than imported from
+// capture.ts so the assertion stays an oracle independent of its REPO_ROOT.
+const findRepoRoot = (startDirectory: string): string => {
+  let directory = startDirectory;
+
+  while (!existsSync(path.join(directory, '.gaia', 'VERSION'))) {
+    const parent = path.dirname(directory);
+
+    if (parent === directory) {
+      throw new Error(`no .gaia/VERSION above ${startDirectory}`);
+    }
+    directory = parent;
+  }
+
+  return directory;
+};
+
+const repoRoot = findRepoRoot(import.meta.dirname);
 
 const readDump = (rawPath: string): RawDump =>
   JSON.parse(readFileSync(rawPath, 'utf8')) as RawDump;
@@ -20,7 +38,7 @@ const readDump = (rawPath: string): RawDump =>
 // Every mode bit set on any captured fiber in one page load. A fiber inherits
 // its parent's mode, so <StrictMode> contributes its bits to the whole app
 // subtree and this OR carries them whenever the wrapper is mounted at all.
-const observedModeBits = (dump: RawDump): number =>
+const collectObservedModeBits = (dump: RawDump): number =>
   // eslint-disable-next-line no-bitwise -- fiber.mode is a bitmask; OR is the only way to union two of them
   dump.all.reduce((bits, record) => bits | record.mode, 0);
 
@@ -48,30 +66,30 @@ test('captures bippy renders: active, canary resolves name + memo + timing', asy
   await hydration(page);
   await driveThemeToggle(page);
 
-  const result = await collectRenderDump(page);
+  const renderCapture = await collectRenderDump(page);
 
   // Writes renders.json under the repo-root .gaia/local/cache/<run>/, the
   // gitignored one; a cache under frontend/ is not ignored.
-  expect(path.relative(repoRoot, result.rawPath)).toMatch(
+  expect(path.relative(repoRoot, renderCapture.rawPath)).toMatch(
     /^\.gaia\/local\/cache\/[^/]+\/renders\.json$/
   );
-  expect(result.recordCount).toBeGreaterThan(0);
+  expect(renderCapture.recordCount).toBeGreaterThan(0);
 
   // Went active, commits observed, no swallowed errors.
-  expect(result.meta.installed).toBe(true);
-  expect(result.meta.commits).toBeGreaterThan(0);
-  expect(result.meta.errors).toEqual([]);
+  expect(renderCapture.meta.installed).toBe(true);
+  expect(renderCapture.meta.commits).toBeGreaterThan(0);
+  expect(renderCapture.meta.errors).toEqual([]);
 
   // Profiling available, self-describing meta.
-  expect(result.meta.profilingAvailable).toBe(true);
-  expect(result.meta.rendererVersion).toBeTruthy();
-  expect(result.meta.bippyVersion).toMatch(/^\d+\.\d+\.\d+/);
+  expect(renderCapture.meta.profilingAvailable).toBe(true);
+  expect(renderCapture.meta.rendererVersion).toBeTruthy();
+  expect(renderCapture.meta.bippyVersion).toMatch(/^\d+\.\d+\.\d+/);
 
   // A default (StrictMode-on) run is flagged so the reduce CLI caveats timings.
-  expect(result.meta.strictMode).toBe(true);
+  expect(renderCapture.meta.strictMode).toBe(true);
 
-  const dump = readDump(result.rawPath);
-  expect(dump.total).toBe(result.recordCount);
+  const dump = readDump(renderCapture.rawPath);
+  expect(dump.total).toBe(renderCapture.recordCount);
 
   // Every emitted record is a real render; didCommit is a boolean.
   for (const record of dump.all) {
@@ -165,11 +183,11 @@ test('noStrict bypass disables StrictMode (the StrictMode fiber-mode bits clear)
     await installRenderCapture(page, {isStrictModeDisabled});
     await page.goto('/');
     await hydration(page);
-    const result = await collectRenderDump(page);
-    const dump = readDump(result.rawPath);
+    const renderCapture = await collectRenderDump(page);
+    const dump = readDump(renderCapture.rawPath);
     await context.close();
 
-    return {meta: result.meta, modeBits: observedModeBits(dump)};
+    return {meta: renderCapture.meta, modeBits: collectObservedModeBits(dump)};
   };
 
   const strict = await load(false);

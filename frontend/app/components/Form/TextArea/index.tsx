@@ -1,11 +1,5 @@
 import type {ChangeEvent, ComponentProps, FC} from 'react';
-import {
-  useCallback,
-  useEffect,
-  useImperativeHandle,
-  useRef,
-  useState,
-} from 'react';
+import {useEffect, useImperativeHandle, useRef, useState} from 'react';
 import autosize from 'autosize';
 import {cn} from 'cn';
 import Field from '~/components/Form/Field';
@@ -61,15 +55,12 @@ const TextArea: FC<TextAreaProps> = ({
   );
   const length = value === undefined ? localLength : String(value).length;
 
-  const handleUpdateLengthInput = useCallback(
-    (event: ChangeEvent<HTMLTextAreaElement>) => {
-      if (maxLength && value === undefined) {
-        setLocalLength(event.currentTarget.value.length);
-      }
-      onChange?.(event);
-    },
-    [maxLength, onChange, value]
-  );
+  const handleUpdateLengthInput = (event: ChangeEvent<HTMLTextAreaElement>) => {
+    if (maxLength && value === undefined) {
+      setLocalLength(event.currentTarget.value.length);
+    }
+    onChange?.(event);
+  };
 
   useEffect(() => {
     if (resize === 'auto' && innerRef.current) {

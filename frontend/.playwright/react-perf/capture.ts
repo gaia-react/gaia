@@ -79,12 +79,12 @@ const captureOptions = new WeakMap<Page, {isStrictModeDisabled: boolean}>();
 
 // Run dirs to remove on process exit (auto-delete unless the caller keeps them).
 const pendingCleanup = new Set<string>();
-let cleanupHooked = false;
+let isCleanupHooked = false;
 
 const scheduleCleanup = (directory: string): void => {
   pendingCleanup.add(directory);
-  if (cleanupHooked) return;
-  cleanupHooked = true;
+  if (isCleanupHooked) return;
+  isCleanupHooked = true;
   process.on('exit', () => {
     for (const pending of pendingCleanup) {
       try {
@@ -120,7 +120,7 @@ export const collectRenderDump = async (
   options: {keep?: boolean; runId?: string} = {}
 ): Promise<CaptureResult> => {
   const runId = options.runId ?? `${Date.now()}-${nanoid()}`;
-  const keep = options.keep ?? false;
+  const isRunDirectoryKept = options.keep ?? false;
 
   // Mirror react-scan's ~5s "failed to load" active check: the harness must have
   // gone active, else injection lost the race with React (or the target is a
@@ -168,7 +168,7 @@ export const collectRenderDump = async (
   const rawPath = path.join(runDirectory, 'renders.json');
   writeFileSync(rawPath, JSON.stringify(dump, null, 2));
 
-  if (!keep) scheduleCleanup(runDirectory);
+  if (!isRunDirectoryKept) scheduleCleanup(runDirectory);
 
   return {meta, rawPath, recordCount: dump.total};
 };

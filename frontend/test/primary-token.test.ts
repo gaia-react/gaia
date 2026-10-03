@@ -59,19 +59,19 @@ describe('primary-token', () => {
       ).toMatch(/oklch\(/i);
 
       // Extract the inner content of oklch(...) and split on whitespace.
-      // args[0]=L, args[1]=C (chroma), args[2]=H
-      // Example: "oklch(43.9% 0 0deg)" → inner = "43.9% 0 0deg" → args[1] = "0"
+      // oklchArguments[0]=L, oklchArguments[1]=C (chroma), oklchArguments[2]=H
+      // Example: "oklch(43.9% 0 0deg)" → inner = "43.9% 0 0deg" → oklchArguments[1] = "0"
       const oklchInner = oklchInnerArgumentsPattern.exec(value);
       expect(
         oklchInner,
         `primary-${shade}: could not parse oklch() inner args`
       ).not.toBeNull();
 
-      const args = oklchInner![1].trim().split(/\s+/);
-      const chroma = Number(args[1]);
+      const oklchArguments = oklchInner![1].trim().split(/\s+/);
+      const chroma = Number(oklchArguments[1]);
       expect(
         chroma,
-        `primary-${shade} chroma must be 0, got "${args[1]}"`
+        `primary-${shade} chroma must be 0, got "${oklchArguments[1]}"`
       ).toBe(0);
     }
   );
