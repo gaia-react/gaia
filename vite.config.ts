@@ -36,7 +36,6 @@ export default defineConfig({
       'remix-toast',
       'sonner',
       'spark-md5',
-      'tailwind-merge',
       'zod',
     ],
   },

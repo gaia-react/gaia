@@ -1,6 +1,6 @@
 ---
 name: tailwind
-description: Patterns and conventions for all Tailwind styling. Use this skill whenever writing Tailwind class names, combining conditional classes, building component variants, or choosing between twJoin and twMerge. Also trigger when the user asks about custom values, defining @theme tokens or CSS variables, naming color/spacing tokens, rem vs px, responsive breakpoints, or avoiding template literal class strings.
+description: Patterns and conventions for all Tailwind styling. Use this skill whenever writing Tailwind class names, combining classes with `cn`, writing conditional classes, or building component variants. Also trigger when the user asks about custom values, defining @theme tokens or CSS variables, naming color/spacing tokens, rem vs px, responsive breakpoints, or avoiding template literal class strings.
 model: haiku
 ---
 
@@ -18,57 +18,51 @@ return <div className="p-[1.0625rem]" />;
 return <div className="p-4.25" />;
 ```
 
-## tailwind-merge
+## cn
 
-Use tailwind-merge to concatenate class names in React components instead of template literals or array joins.
-
-- **`twJoin`**: for conditional class combinations (no override needed)
-- **`twMerge`**: allow class override (merges conflicting utilities; perfect for setting default and optional classes)
-
-### Examples
+`cn` is the only class utility. Use it to combine class names in React components instead of template literals or array joins.
 
 ```tsx
-import {twMerge, twJoin} from 'tailwind-merge';
+import {cn} from 'cn';
+```
+
+`cn` joins its arguments and merges conflicting utilities, so a component default can be overridden by a caller. Put the caller's `className` last: the later class wins on conflict.
+
+```tsx
+import {cn} from 'cn';
 
 // BAD, template literals with potential conflicts
 return <span className={`bg-gray-500 ${isBlue ? 'bg-blue-500' : ''}`} />;
 
-// GOOD - twJoin for conditional classes, but no override needed
-return <span className={twJoin('bg-gray-800', isBlue && 'text-blue-500')} />;
+// GOOD, cn skips falsy values and resolves conflicts
+return <span className={cn('text-white', isBlue && 'text-blue-500')} />;
 
-// GOOD, twMerge for override, twJoin for conditional classes
-return <span className={twMerge('text-white', isBlue && 'text-blue-500')} />;
-```
-
-The key distinction: use `twMerge` when a component accepts a `className` prop that should be able to override defaults, `twJoin` would leave both conflicting classes on the element, but `twMerge` resolves the conflict:
-
-```tsx
-// twMerge enables callers to override component defaults
+// GOOD, callers can override component defaults
 function Button({className}: {className?: string}) {
   return (
-    <button
-      className={twMerge('bg-blue-500 px-4 py-2 text-white', className)}
-    />
+    <button className={cn('bg-blue-500 px-4 py-2 text-white', className)} />
   );
 }
 
-// bg-red-500 wins, twMerge removes the conflicting bg-blue-500
+// bg-red-500 wins, cn removes the conflicting bg-blue-500
 <Button className="bg-red-500" />;
 ```
 
 ## Conditional classes
 
-Pass falsy values directly to `twJoin` / `twMerge`, they're skipped.
+Write a conditional class as `cond && 'class'`, and `!cond && 'class'` when negated. Falsy values are skipped.
 
 ```tsx
 // correct
-twJoin('base', isActive && 'bg-blue-500', error && 'border-red-500');
+cn('base', isActive && 'bg-blue-500', !isDisabled && 'hover:bg-blue-600');
 
-// ternaries that produce two positive values are fine
-twJoin('base', condition ? 'a' : 'b');
+// a ternary with two class values is fine for either/or
+cn('base', condition ? 'a' : 'b');
 ```
 
-Don't wrap class lists in template literals to concatenate, pass each class as a separate argument. Template literals inside `twJoin` / `twMerge` are acceptable **only** when interpolating a pre-built string from a lookup table (e.g., `ICON_POSITION[iconPosition]` from a `Record<string, string>`).
+Lint rejects object conditionals and ternaries with an empty branch passed to `cn` (`cn-conditional/cn-conditional` from `@gaia-react/lint`), in components, tests, and stories alike. Use `cond && 'class'` instead.
+
+Don't wrap class lists in template literals to concatenate, pass each class as a separate argument. Template literals inside `cn` are acceptable **only** when interpolating a pre-built string from a lookup table (e.g., `ICON_POSITION[iconPosition]` from a `Record<string, string>`).
 
 ## Variant / size lookup tables
 
@@ -81,7 +75,7 @@ const VARIANTS: Record<Variant, string> = {
 };
 
 // usage
-twJoin('rounded-sm px-3 py-2', VARIANTS[variant]);
+cn('rounded-sm px-3 py-2', VARIANTS[variant]);
 ```
 
 ## Custom Values

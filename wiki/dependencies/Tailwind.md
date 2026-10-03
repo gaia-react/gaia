@@ -4,7 +4,7 @@ status: active
 package: tailwindcss
 role: styling
 created: 2026-04-20
-updated: 2026-06-24
+updated: 2026-10-03
 tags: [dependency, styling]
 ---
 
@@ -16,11 +16,11 @@ Utility-first CSS framework. GAIA ships **Tailwind v4** with the Vite plugin.
 
 - `@tailwindcss/vite`: v4 Vite plugin
 - `@tailwindcss/forms`, `@tailwindcss/typography`: official plugins
-- `tailwind-merge`: runtime class merging (`twJoin`, `twMerge`)
+- `cn`: runtime class composition and conflict merging (see `package.json`)
 
 Tailwind-aware tooling ships via [[gaia-lint]] (`@gaia-react/lint`), not as direct dependencies:
 
-- `prettier-plugin-tailwindcss`: class auto-sort, configured with `twJoin`/`twMerge` as `tailwindFunctions`, loaded by `@gaia-react/lint/prettier`
+- `prettier-plugin-tailwindcss`: class auto-sort, loaded by `@gaia-react/lint/prettier`, which owns the sorting configuration
 - `eslint-plugin-better-tailwindcss`: `better-tailwindcss/*` rules, wired via `lint.betterTailwind()` in `eslint.config.mjs`
 - `stylelint-config-tailwindcss`: extended by `@gaia-react/lint/stylelint`
 

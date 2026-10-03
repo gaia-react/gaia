@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-09-30
+updated: 2026-10-03
 tags: [concept, claude, skills]
 ---
 
@@ -52,7 +52,7 @@ GAIA's skills split into three groups: shared `gaia/references/` playbooks consu
 | `playwright-cli`     | Browser automation tasks (navigation, form fill, screenshots, data extraction)                               |
 | `react-code`         | Writing/reviewing React components, hooks, event handlers, extraction decisions                              |
 | `skeleton-loaders`   | Building skeleton loading states; shimmer animation; preventing layout shift                                 |
-| `tailwind`           | Tailwind class names, conditional classes, variants, twJoin/twMerge, theme tokens                            |
+| `tailwind`           | Tailwind class names, `cn` and conditional classes, variants, theme tokens                                   |
 | `tdd`                | Red-green-refactor; integration tests; test-first development                                                |
 | `typescript`         | camelCase, exports, Zod schemas, function params, no-switch / no-enum patterns                               |
 
