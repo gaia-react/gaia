@@ -48,6 +48,10 @@ GAIA ships clean. `/gaia-init` does the last-mile setup:
 
 You end up with a clean app shell and a fully-configured Claude workflow.
 
+### Repository layout
+
+GAIA is a monorepo. The harness (`.claude/`, `.gaia/`, `.husky/`, `.github/`, `wiki/`) lives at the repo root and the React app lives in `frontend/`. Launch Claude at the root for harness workflows (audits, merges, releases, `/gaia-*` commands); a launch inside `frontend/` supports frontend work through commit. Upgrading a 1.6.1 project? Follow the migration guide at [gaiareact.com/migrate](https://gaiareact.com/migrate).
+
 ## What Breaks Claude on Real Projects
 
 Most setups treat Claude as a tool you hold: bolt a `CLAUDE.md` onto the root and hope the model figures out the rest. GAIA treats Claude as an engineer you _manage_. That shift exposes three failure modes the bolt-on approach papers over.

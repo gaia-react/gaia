@@ -60,11 +60,6 @@ auditors:
       # root config this member owns; the grant buys review, not write access.
       - ".npmrc"
       - ".prettierignore"
-      # Retired root forms kept for a mid-migration adopter tree.
-      - ".lintstagedrc.json"
-      - "Dockerfile"
-      - ".dockerignore"
-      - ".env.example"
       - ".nvmrc"
       - ".node-version"
       - "frontend/.lintstagedrc.json"

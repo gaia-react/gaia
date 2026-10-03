@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-06-04
 created: 2026-06-04
-updated: 2026-09-28
+updated: 2026-10-03
 tags: [decision, tdd, hooks, quality]
 ---
 
@@ -69,7 +69,7 @@ The hard RED demand applies only to the deterministic surface. Not every file ca
 
 The binding classifies the **test file itself**. The classifier already carries every emergent signal the gate needs and is biased to err emergent, so a single check covers the whole carve-out:
 
-- a `.tsx` test under `app/components/**` (component interaction) and a `.playwright/**` E2E test fall outside the classifier's strict candidate path and classify emergent;
+- a component-interaction `.tsx` test and an E2E test fall outside the package descriptor's strict candidate globs ([[Package Descriptor]]) and classify emergent;
 - a test calling an a11y helper (`expectNoA11yViolations` / `runAxe`) classifies emergent;
 - a test reading the clock, entropy, or I/O in its own body classifies emergent.
 

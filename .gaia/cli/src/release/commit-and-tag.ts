@@ -152,6 +152,7 @@ const passthroughFailure = (
 
 const RELEASE_FILES = [
   'package.json',
+  'frontend/package.json',
   '.gaia/VERSION',
   '.gaia/manifest.json',
   'CHANGELOG.md',

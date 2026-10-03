@@ -27,7 +27,7 @@
 // failures, 7 the package registry or a descriptor is unusable. Exit 7 prints
 // `{"error": <message>}` on stdout and is the one failure a caller must NOT
 // treat as fail-open: the strict-candidate globs come from the package
-// descriptor (SPEC-092 C5), so without them no file can be classified and a
+// descriptor, so without them no file can be classified and a
 // gate that fell back to "emergent" would stop gating anything.
 //
 // The registry is read from the process working directory, which every caller

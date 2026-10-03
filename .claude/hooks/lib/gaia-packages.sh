@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 #
-# The bash reader of the package registry and descriptors (SPEC-092 contract C1
-# to C4). One of three implementations of one contract: the Node twin is
-# `.gaia/scripts/lib/gaia-packages.mjs`, the TypeScript twin is
-# `.gaia/cli/src/util/packages.ts`. The shared conformance corpus under
-# `.gaia/tests/fixtures/gaia-packages/` is the oracle all three satisfy, error
+# The bash reader of the package registry and descriptors. One of three
+# implementations of one contract: the Node twin is
+# `.gaia/scripts/lib/gaia-packages.mjs`, the other is the CLI's TypeScript
+# reader. A shared conformance corpus is the oracle all three satisfy, error
 # message text included, so a reason string changed here changes in the other two.
 #
 # CONTRACT WITH THE CALLER. Source this file, then call

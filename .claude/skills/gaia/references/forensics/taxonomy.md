@@ -12,7 +12,7 @@ The forensics classifier uses a closed set of eight classes. Every report carrie
 | quality-gate | `pnpm typecheck && pnpm lint` failure during a GAIA flow         | "quality gate", "typecheck", "lint failed"                           | `wiki/decisions/Quality Gate.md`, the failing command output verbatim |
 | hook         | `.claude/hooks/*.sh` misfire                                     | "hook", "PreToolUse", "PostToolUse", "session-start", "session-stop" | `.claude/settings.json`, `.claude/hooks/<failing>.sh` filename only   |
 | scaffold     | `new-component` / `new-route` / `new-hook` / `new-service` skill | "scaffold", "new-component", "skeleton", "template"                  | `frontend/.claude/skills/<failing>/SKILL.md`                          |
-| dev-server   | `pnpm dev` / Vite / SSR boot                                     | "dev server", "vite", "5173", "SSR error"                            | `vite.config.ts` filename, `package.json` `scripts.dev`               |
+| dev-server   | `pnpm dev` / Vite / SSR boot                                     | "dev server", "vite", "5173", "SSR error"                            | `frontend/vite.config.ts` filename, `package.json` `scripts.dev`               |
 | other        | unknown / multi-class / novel                                    | (none, fallthrough)                                                  | (none, capture is the generic snapshot only)                          |
 
 State files are advisory pointers to class-specific evidence. For per-class capture details and version-fetch primitives, see `capture.md` in this directory.

@@ -3,7 +3,7 @@ type: concept
 title: Claude Integration Conventions
 status: active
 created: 2026-04-21
-updated: 2026-06-24
+updated: 2026-10-03
 tags: [claude, meta, configuration]
 ---
 
@@ -79,7 +79,7 @@ Convention applies to **review-type agents only**, currently just `code-review-a
 
 Stack-specific or deep-dive content lives in `references/{topic}.md` inside the skill directory, loaded on demand. `SKILL.md` signals available references via markdown links. Adding support for a new stack = add a new reference file; `SKILL.md` stays unchanged.
 
-Example: `skills/tdd/SKILL.md` links to `skills/tdd/references/tests-react.md`. A new Svelte reference would go in `skills/tdd/references/tests-svelte.md`.
+Example: `frontend/.claude/skills/tdd-react/SKILL.md` links to `frontend/.claude/skills/tdd-react/references/tests-react.md`, while the stack-neutral `.claude/skills/tdd/` stays at the root. A Svelte package would carry its own `tdd-svelte` skill beside it.
 
 Skill descriptions should hint at available references when useful.
 
@@ -87,7 +87,7 @@ Cross-link: [[Claude Skills]].
 
 ## 5. Rule `paths:` frontmatter
 
-Rules in `.claude/rules/*.md` with a `paths:` YAML list auto-load **only** when a matching file is in scope. Rules without `paths:` auto-load every session. Keep the always-load list tight.
+Rules in `.claude/rules/*.md` with a `paths:` YAML list auto-load **only** when a matching file is in scope. Rules without `paths:` auto-load every session. Keep the always-load list tight. A rule under `frontend/.claude/rules/` anchors its globs at `frontend/`, so it writes package-relative globs (`app/**`); a root rule anchors at the repo root and writes `frontend/app/**`. See [[Package Descriptor]].
 
 ```yaml
 ---
@@ -101,7 +101,7 @@ Examples of path-scoped rules: `i18n.md` (pages + components + languages), `rout
 
 ## 6. Monorepo retrofit playbook
 
-**Container folder name is a project decision**: `apps/`, `projects/`, `packages/`, etc. Substitute `{CONTAINER}/{APP}` throughout.
+GAIA already ships its React app as the `frontend/` package. This playbook is for adding a further package beside it. **Container folder name is a project decision**: `apps/`, `projects/`, `packages/`, etc. Substitute `{CONTAINER}/{APP}` throughout. Register each package as [[Package Descriptor]] describes.
 
 Steps (all mechanical):
 
@@ -132,12 +132,12 @@ Each gate defines its own runner commands. The default `quality-gate.md` stays s
 
 When replacing the default API layer (Ky + Zod) with Supabase, Firebase, GraphQL, or another REST client:
 
-1. Delete or archive `.claude/rules/api-service.md` (GAIA's default Ky pattern).
+1. Delete or archive `frontend/.claude/rules/api-service.md` (GAIA's default Ky pattern).
 2. Delete `.claude/skills/new-service/` if it scaffolds the outgoing pattern.
 3. Add `.claude/rules/{new-service}.md` with `paths:` scoped to affected directories.
 4. Add `.claude/agents/code-audit-frontend/{new-service}.md` with `subagents: [react-patterns, typescript]`.
 5. Update `{CONTAINER}/{APP}/CLAUDE.md` (or root) with dev-server commands for the new service.
-6. Update `test/mocks/`: remove MSW handlers that shimmed the old layer if the new layer has its own test fakes.
+6. Update `frontend/test/mocks/`: remove MSW handlers that shimmed the old layer if the new layer has its own test fakes.
 
 ## 10. Per-app CLAUDE.md hierarchy (monorepo)
 

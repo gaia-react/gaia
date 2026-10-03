@@ -1,17 +1,17 @@
 ---
 type: module
-path: app/middleware/
+path: frontend/app/middleware/
 status: active
 language: typescript
 purpose: React Router middleware
 created: 2026-04-20
-updated: 2026-05-04
+updated: 2026-10-03
 tags: [module, middleware]
 ---
 
 # Middleware
 
-`app/middleware/` is for [React Router middleware](https://reactrouter.com/how-to/middleware).
+`frontend/app/middleware/` is for [React Router middleware](https://reactrouter.com/how-to/middleware).
 
 ## Hook point, not a feature surface
 

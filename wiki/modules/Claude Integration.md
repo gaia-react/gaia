@@ -4,7 +4,7 @@ path: .claude/
 status: active
 purpose: Claude Code integration, commands, rules, hooks, agents, skills
 created: 2026-04-20
-updated: 2026-10-01
+updated: 2026-10-03
 tags: [module, claude, hooks]
 ---
 
@@ -73,7 +73,7 @@ A linked worktree's `.gaia/local` is one symlink to the main checkout's (see [[W
 
 Pre-seeded with GAIA's architecture knowledge. Durable findings belong in the wiki (`wiki/concepts/Code Review Audit Agent.md` and adjacent pages). The `.claude/agent-memory/` path is a gitignored scratch path (created on demand under a per-agent subdir such as `code-review-audit/`), not a source of truth.
 
-`worthiness-evaluator` is an opus advisory agent that judges each emergent-surface test (under `app/components/**`, `.playwright/**`) on honesty and worthiness, returning a keep / fix / delete verdict per test. It proposes only and edits no files; every delete is human-gated. Its verdicts feed the worthiness ledger that `worthiness-presence-check.sh` enforces at merge.
+`worthiness-evaluator` is an opus advisory agent that judges each emergent-surface test (under `frontend/app/components/**`, `frontend/.playwright/**`) on honesty and worthiness, returning a keep / fix / delete verdict per test. It proposes only and edits no files; every delete is human-gated. Its verdicts feed the worthiness ledger that `worthiness-presence-check.sh` enforces at merge.
 
 ## Skills
 

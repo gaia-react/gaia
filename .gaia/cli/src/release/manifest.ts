@@ -33,6 +33,9 @@ import type {RegionDeclaration} from './region-scan.js';
 // allowlists silently drifting apart.
 export const ADOPTER_OWNED_SENTINELS: ReadonlySet<string> = new Set([
   '.gaia/manifest.json',
+  // The package registry is adopter-owned from first install: an adopter adds
+  // a package by editing it, so /update-gaia must never merge or overwrite it.
+  '.gaia/packages.json',
   '.gaia/VERSION',
   'wiki/hot.md',
   'wiki/log.md',
@@ -44,11 +47,20 @@ export const ADOPTER_OWNED_SENTINELS: ReadonlySet<string> = new Set([
 // at YAML-key / map-entry granularity, audit-ci.yml at YAML-key granularity
 // with its `auditors` roster merged member-by-member) so adopter drift never
 // forces a full-file conflict patch.
+//
+// A registered package's own `package.json`, descriptor, settings overlay, and
+// CLAUDE.md are `shared` for the same reason the root ones are. The frontend
+// package is the only one GAIA ships; an adopter-added package is the
+// adopter's own and never reaches this classifier.
 const SHARED = new Set([
   '.claude/settings.json',
   '.gaia/audit-ci.yml',
   '.github/FUNDING.yml',
   'CLAUDE.md',
+  'frontend/.claude/settings.overlay.json',
+  'frontend/CLAUDE.md',
+  'frontend/gaia.package.json',
+  'frontend/package.json',
   'package.json',
   'pnpm-workspace.yaml',
   'wiki/index.md',
@@ -155,8 +167,17 @@ export const renderExcludeRegex = (text: string): string =>
 export const parseExcludePatterns = (text: string): RegExp[] =>
   compileExcludeRegexStrings(text).map((source) => new RegExp(source));
 
+// A package's `.claude/settings.json` is generated from the root settings plus
+// the package's overlay (`gaia packages sync-settings`), so it has no class: a
+// three-way merge of generated output is noise, and /update-gaia regenerates it
+// after merging the root settings. It still ships (like `.gaia/manifest.json`)
+// so a fresh scaffold starts with a drift-clean file. The root's own
+// `.claude/settings.json` has no directory prefix and stays `shared`.
+const GENERATED_PACKAGE_SETTINGS = /^.+\/\.claude\/settings\.json$/;
+
 export const classifyPath = (relativePath: string): ManifestClass | null => {
   if (ADOPTER_OWNED_SENTINELS.has(relativePath)) return null;
+  if (GENERATED_PACKAGE_SETTINGS.test(relativePath)) return null;
   if (SHARED.has(relativePath)) return 'shared';
   if (SHARED_PREFIXES.some((prefix) => relativePath.startsWith(prefix)))
     return 'shared';

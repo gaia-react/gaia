@@ -52,7 +52,7 @@
 #     new-at-HEAD passing test with no matching valid RED in the ledger that the
 #     classifier does not label emergent.
 #
-# Package scope (SPEC-092): which staged paths are unit tests is read from the
+# Package scope: which staged paths are unit tests is read from the
 # package descriptor (`tddUnitTests`, via .claude/hooks/lib/gaia-packages.sh),
 # never from a literal `app/` prefix, so the gate follows the app wherever the
 # registry puts it. An unusable registry or descriptor is a DENY here, not a

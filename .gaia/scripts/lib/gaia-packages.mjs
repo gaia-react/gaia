@@ -1,8 +1,7 @@
-// The Node reader of the package registry and descriptors (SPEC-092 contract C1
-// to C4). One of three implementations of one contract: the bash twin is
-// `.claude/hooks/lib/gaia-packages.sh`, the TypeScript twin is
-// `.gaia/cli/src/util/packages.ts`. The shared conformance corpus under
-// `.gaia/tests/fixtures/gaia-packages/` is the oracle all three must satisfy,
+// The Node reader of the package registry and descriptors. One of three
+// implementations of one contract: the bash twin is
+// `.claude/hooks/lib/gaia-packages.sh`, the other is the CLI's TypeScript
+// reader. A shared conformance corpus is the oracle all three must satisfy,
 // error message text included, so a change to a reason string here changes it
 // in the other two.
 //

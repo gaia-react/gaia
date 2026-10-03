@@ -4,7 +4,7 @@ status: active
 package: storybook
 role: component-development-and-visual-testing
 created: 2026-04-20
-updated: 2026-08-22
+updated: 2026-10-03
 tags: [dependency, storybook]
 ---
 
@@ -14,7 +14,7 @@ Component-Driven Development environment. v10 with `@storybook/react-vite`.
 
 ## Companion packages
 
-`@storybook/react-vite`, `@storybook/addon-docs`, `@storybook/addon-links`, `@vueless/storybook-dark-mode`, `storybook-react-i18next`, `chromatic`. GAIA's `package.json` lists `msw-storybook-addon` but leaves it deliberately unused (stories seed from `@msw/data`). Storybook lint rules ship through the `@gaia-react/lint` config (spread as `...lint.storybook` in `eslint.config.mjs`), which supplies `eslint-plugin-storybook` transitively rather than as a direct `package.json` dependency.
+`@storybook/react-vite`, `@storybook/addon-docs`, `@storybook/addon-links`, `@vueless/storybook-dark-mode`, `storybook-react-i18next`, `chromatic`. GAIA's `package.json` lists `msw-storybook-addon` but leaves it deliberately unused (stories seed from `@msw/data`). Storybook lint rules ship through the `@gaia-react/lint` config (spread as `...lint.storybook` in `frontend/eslint.config.mjs`), which supplies `eslint-plugin-storybook` transitively rather than as a direct `package.json` dependency.
 
 See [[Storybook Stories]] module page.
 
@@ -36,4 +36,4 @@ A load of `storybook-static/iframe.html` that reports zero console errors and a 
 
 ## Environment values
 
-The published preview inlines no environment values: `.storybook/preview-head.html` seeds `window.process = {env: {}}`, and no Vite `define` pipeline substitutes real values into the bundle, so a component reads every env field as `undefined` under a story, matching what a public Chromatic snapshot sees. A story that needs a value passes it as an arg rather than relying on an ambient env. `test/preview-env.test.ts` guards the Vitest half: the test suite does not merge `.env` file contents into `process.env`, since Vitest's workers already inherit the shell environment on their own and a wholesale merge would leak every local secret, `SESSION_SECRET` included, into every test file and its transitive dependencies.
+The published preview inlines no environment values: `frontend/.storybook/preview-head.html` seeds `window.process = {env: {}}`, and no Vite `define` pipeline substitutes real values into the bundle, so a component reads every env field as `undefined` under a story, matching what a public Chromatic snapshot sees. A story that needs a value passes it as an arg rather than relying on an ambient env. `frontend/test/preview-env.test.ts` guards the Vitest half: the test suite does not merge `.env` file contents into `process.env`, since Vitest's workers already inherit the shell environment on their own and a wholesale merge would leak every local secret, `SESSION_SECRET` included, into every test file and its transitive dependencies.

@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-05-07
-updated: 2026-08-04
+updated: 2026-10-03
 tags: [concept, claude, cli, workflow]
 ---
 
@@ -12,11 +12,11 @@ The `/gaia init` namespace provides subcommands for on-boarding a cloned GAIA te
 
 ## Subcommands
 
-**`strip-branding`**: Removes GAIA-specific branding and identifiers from the codebase (references in README, config files, and CLI scaffolds). Prepares a "vanilla" template for forking or white-label adoption. The `--title` it takes is escaped for each sink's own syntax (a single-quoted JavaScript literal in `.storybook/preview.ts`) rather than passed through raw.
+**`strip-branding`**: Removes GAIA-specific branding and identifiers from the codebase (references in README, config files, and CLI scaffolds). Prepares a "vanilla" template for forking or white-label adoption. The `--title` it takes is escaped for each sink's own syntax (a single-quoted JavaScript literal in `frontend/.storybook/preview.ts`) rather than passed through raw.
 
-**`configure-i18n`**: Edits `app/languages/index.ts` (the `LANGUAGES` array and `Language` union) and `app/i18n.ts` (`fallbackLng`) to match the chosen locales when `--strip false`, or removes the i18n scaffolding when `--strip true`. The locale list is recorded in the init state file.
+**`configure-i18n`**: Edits `frontend/app/languages/index.ts` (the `LANGUAGES` array and `Language` union) and `frontend/app/i18n.ts` (`fallbackLng`) to match the chosen locales when `--strip false`, or removes the i18n scaffolding when `--strip true`. The locale list is recorded in the init state file.
 
-**`rename`**: Changes the project name and title across the files that carry an identity: `package.json` (`name` → kebab slug), the first `# ` heading in `CLAUDE.md`, and the seeded English language files (`app/languages/en/common.ts` `meta.siteName`, and `app/languages/en/pages/_index.ts` `heroTitle` / `title` / `meta.title`). The `CLAUDE.md` heading is a precondition, not something this step creates: a `CLAUDE.md` with no top-level `# ` heading above its first fenced code block fails the step outright (`claude_md_heading_missing`, exit 1) before any file is renamed, rather than silently leaving the title-less file in place. Add the missing heading and re-run `rename` directly, since `resume` cannot replay a step that never completed. `--title` is spliced into the seeded language files through a function replacement that interprets no `$`-pattern and escapes the quote it matched, so a title like `Steve's App` or one containing `$1` lands as the literal string rather than corrupting the file.
+**`rename`**: Changes the project name and title across the files that carry an identity: `package.json` (`name` → kebab slug), the first `# ` heading in `CLAUDE.md`, and the seeded English language files (`frontend/app/languages/en/common.ts` `meta.siteName`, and `frontend/app/languages/en/pages/_index.ts` `heroTitle` / `title` / `meta.title`). The `CLAUDE.md` heading is a precondition, not something this step creates: a `CLAUDE.md` with no top-level `# ` heading above its first fenced code block fails the step outright (`claude_md_heading_missing`, exit 1) before any file is renamed, rather than silently leaving the title-less file in place. Add the missing heading and re-run `rename` directly, since `resume` cannot replay a step that never completed. `--title` is spliced into the seeded language files through a function replacement that interprets no `$`-pattern and escapes the quote it matched, so a title like `Steve's App` or one containing `$1` lands as the literal string rather than corrupting the file.
 
 Each language-file key is optional (the shipped `_index.ts` carries only `meta.title`) and is rewritten wherever it is a quoted string literal; a key present but holding something else (a template literal, a computed value) is left untouched. Each key is matched wherever its own rewrite looks for it, so a value wrapped in one quote may hold the other bare: `siteName: "Steve's Template"` is an ordinary literal and is rewritten, as is a value this command itself wrote when the title carried the non-wrapping quote.
 

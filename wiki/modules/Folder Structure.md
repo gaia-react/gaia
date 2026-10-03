@@ -1,17 +1,19 @@
 ---
 type: module
-path: app/
+path: frontend/app/
 status: active
 language: typescript
 purpose: Top-level folder layout of the app
 created: 2026-04-20
-updated: 2026-06-24
+updated: 2026-10-03
 tags: [module, structure]
 ---
 
 # Folder Structure
 
-`app/` is organized by responsibility, not by feature. Each top-level folder owns one concern:
+The repo is a monorepo. The harness (`.claude/`, `.gaia/`, `.husky/`, `.github/`, `wiki/`) lives at the root and the React app lives in the `frontend/` package, which holds its own `package.json`, build config, tests, Storybook, and `.claude/` skills and rules. [[Package Descriptor]] describes how the harness finds the package.
+
+`frontend/app/` is organized by responsibility, not by feature. Each top-level folder owns one concern:
 
 | Folder             | Concern                                    | Wiki page      |
 | ------------------ | ------------------------------------------ | -------------- |

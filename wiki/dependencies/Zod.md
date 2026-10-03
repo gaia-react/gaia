@@ -4,13 +4,13 @@ status: active
 package: zod
 role: schema-validation
 created: 2026-04-20
-updated: 2026-06-24
+updated: 2026-10-03
 tags: [dependency, validation]
 ---
 
 # Zod
 
-Schema validation. Used for form validation ([[Conform]]), API response parsing (`parsers.ts`), env var validation (`app/env.server.ts`), and TypeScript type inference. See [[API Service Pattern]] and [[Form Components]].
+Schema validation. Used for form validation ([[Conform]]), API response parsing (`parsers.ts`), env var validation (`frontend/app/env.server.ts`), and TypeScript type inference. See [[API Service Pattern]] and [[Form Components]].
 
 ## v4 conventions
 

@@ -37,7 +37,7 @@
 # files changed, the gate is a NO-OP and allows the merge. Which paths are
 # emergent-surface tests is read from the package descriptor (`emergentTests`,
 # via .claude/hooks/lib/gaia-packages.sh), never from a literal `app/` prefix,
-# and an unusable registry or descriptor DENIES (SPEC-092 C5): with no globs the
+# and an unusable registry or descriptor DENIES: with no globs the
 # gate would silently match nothing. An EXACT rename (R100: the content is
 # byte-identical, so there is nothing new to judge) is skipped; any other change,
 # including a rename that also edits the file, is in scope at its new path.

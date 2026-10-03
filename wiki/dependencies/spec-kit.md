@@ -4,7 +4,7 @@ status: active
 package: spec-kit
 role: spec-authoring-engine
 created: 2026-05-06
-updated: 2026-06-24
+updated: 2026-10-03
 tags: [dependency, spec-kit, claude]
 ---
 
@@ -41,7 +41,7 @@ uvx --from "git+https://github.com/github/spec-kit.git@v0.8.5" specify preset ad
 
 GAIA distributes a spec-kit **extension** at `.specify/extensions/gaia/` (see `extension.yml` for the full command list) and a **preset** at `.specify/presets/gaia/` (see `preset.yml` for what it replaces). Both are GAIA-internal: not published to spec-kit's catalog; distribution is via the GAIA template.
 
-The extension also automates the implement half of the SPEC lifecycle: the `before_implement` hook (`uat-write`) renders the active SPEC's PO-authored UATs into Playwright e2e specs at `.playwright/e2e/spec-NNN/` before `/speckit-implement` edits source, and the `after_implement` hook (`wiki-promote`) promotes merged SPEC content into the wiki on `/speckit-implement` completion. The unhooked `spec-close` command closes a SPEC after its PR merges, optionally draining a deferred wiki-promote, then prompting to archive, delete, or keep the local SPEC artifact.
+The extension also automates the implement half of the SPEC lifecycle: the `before_implement` hook (`uat-write`) renders the active SPEC's PO-authored UATs into Playwright e2e specs at `frontend/.playwright/e2e/spec-NNN/` before `/speckit-implement` edits source, and the `after_implement` hook (`wiki-promote`) promotes merged SPEC content into the wiki on `/speckit-implement` completion. The unhooked `spec-close` command closes a SPEC after its PR merges, optionally draining a deferred wiki-promote, then prompting to archive, delete, or keep the local SPEC artifact.
 
 Full contract details: [[spec-kit Extension Strategy]].
 

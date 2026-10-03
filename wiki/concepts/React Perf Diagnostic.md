@@ -3,7 +3,7 @@ type: concept
 title: React Perf Diagnostic
 status: active
 created: 2026-06-26
-updated: 2026-06-26
+updated: 2026-10-03
 tags: [concept, claude, skill, performance]
 ---
 
@@ -17,7 +17,7 @@ The diagnostic separates a token-heavy raw capture from the small summary the mo
 
 | Layer | Home | Role |
 |---|---|---|
-| **Capture** | `.playwright/react-perf/` | A bippy harness, bundled to an IIFE and injected via Playwright `addInitScript` before React initializes, records each rendered fiber to primitives and writes a raw `RenderRecord` dump to `.gaia/local/cache/<run>/`. |
+| **Capture** | `frontend/.playwright/react-perf/` | A bippy harness, bundled to an IIFE and injected via Playwright `addInitScript` before React initializes, records each rendered fiber to primitives and writes a raw `RenderRecord` dump to `.gaia/local/cache/<run>/`. |
 | **Reduce** | `gaia react-perf reduce <raw.json>` | A deterministic, vitest-tested CLI subcommand. Filters framework noise, recomputes the signal, ranks findings, applies a frame-budget gate, and prints a small `ReducedSummary` JSON. |
 | **Reason** | `.claude/skills/gaia-react-perf/` | The skill ingests only the `ReducedSummary` and presents the ranked diagnosis. |
 | **Verify** | the skill runbook | After a fix, re-capture and re-reduce, then confirm the targeted finding count drops to 0 before stopping. |
@@ -36,7 +36,7 @@ Timing is a **gate, not a trigger**. Findings rank by blast-radius times cost (`
 
 The capture serializes every changed input to a **type label** (`object`, `function`, `number`), never the raw value, and retains no fibers, DOM nodes, or `fiber.type`. The harness gates instrumentation behind a manual `canProfile` check (development build, minimum React 19) and a non-throwing `guard()` wrapper around the commit handler, backed by a 5 second install-check timeout that calls `window.stop()` if bippy never attaches, standing in for bippy's `secure()` helper (removed upstream in 0.6.0). The harness also carries local ports of `didFiberCommit`, `getTimings`, and the `traverseProps` / `traverseState` / `traverseContexts` visitors, which upstream dropped in 0.7.0 as policy-heavy helpers; they reproduce the 0.6.1 fiber reads exactly, so the attribution they feed is unchanged. It stays on `onCommitFiberRoot` (never the lite profiling channel that would kill the DevTools timeline), filters to real renders via `didFiberRender`, keys cross-commit identity by `getFiberId`, and detects memo via the per-fiber work-tag map from `getReactWorkTagsForFiber` rather than literal tag integers, so React's renumbering of work tags between versions cannot silently mislabel a fiber. Names resolve through `getDisplayName(getType(...))`, and unnamed fibers bucket as `Unknown` rather than being dropped. `bippy` is pinned exactly (no caret), and a smoke spec asserts a known component still resolves name, memo, and timing as a version-bump canary.
 
-GAIA renders under `<StrictMode>`, which double-invokes render and inflates timings. The capture can inject `window.__PERF_NO_STRICT` so `app/entry.client.tsx` skips the `<StrictMode>` wrapper for honest timings, and stamps `meta.strictMode` accordingly. When StrictMode was on, the summary carries `strictModeTimingCaveat` so timings are read as relative rather than absolute.
+GAIA renders under `<StrictMode>`, which double-invokes render and inflates timings. The capture can inject `window.__PERF_NO_STRICT` so `frontend/app/entry.client.tsx` skips the `<StrictMode>` wrapper for honest timings, and stamps `meta.strictMode` accordingly. When StrictMode was on, the summary carries `strictModeTimingCaveat` so timings are read as relative rather than absolute.
 
 ## react-doctor cross-reference
 

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Drift check for the generated per-package Claude settings (SPEC-092 contract
-# C8). A session launched in `frontend/` reads `frontend/.claude/settings.json`
-# and never the root file, so a hook or deny the root gains and the generated
+# Drift check for the generated per-package Claude settings. A session launched in `frontend/`
+# reads `frontend/.claude/settings.json` and never the root file, so a hook or deny the root gains and the generated
 # file lacks is a guard that silently does not run there.
 #
 # Usage: check-settings-drift.sh [repo_root]

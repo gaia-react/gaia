@@ -1,17 +1,17 @@
 ---
 type: module
-path: app/state/
+path: frontend/app/state/
 status: active
 language: typescript
 purpose: Global React Context+Provider state
 created: 2026-04-20
-updated: 2026-06-24
+updated: 2026-10-03
 tags: [module, state]
 ---
 
 # State
 
-The app uses plain React Context+Provider for global state; no Redux, Zustand, etc. `app/state/index.tsx` defines a single `<State>` component that `root.tsx` renders around `<App />`. It is the designated composition point: consumers nest their own providers inside `<State>` as they add slices.
+The app uses plain React Context+Provider for global state; no Redux, Zustand, etc. `frontend/app/state/index.tsx` defines a single `<State>` component that `root.tsx` renders around `<App />`. It is the designated composition point: consumers nest their own providers inside `<State>` as they add slices.
 
 ## Template ships with no slices
 
@@ -22,7 +22,7 @@ The template ships with **no global state slices**; `<State>` is currently a pas
 
 ## Canonical pattern
 
-Every state slice in `app/state/` follows one of two variants; full implementations are in the `state-pattern` rule (`.claude/rules/state-pattern.md`).
+Every state slice in `frontend/app/state/` follows one of two variants; full implementations are in the `state-pattern` rule (`frontend/.claude/rules/state-pattern.md`).
 
 **Read-only** (value from SSR loader, components only read):
 Context holds `Maybe<T>`; hook asserts non-null and returns `T`. Optional `useMaybeX()` variant returns `Maybe<T>` without throwing.
@@ -54,9 +54,9 @@ XProvider.displayName = 'XProvider';
 
 ## Initial state from the loader
 
-Providers receive SSR-safe initial state from `root.tsx` loader data, preventing hydration mismatches. Query Serena to read the live `AppWithState` implementation in `app/root.tsx`.
+Providers receive SSR-safe initial state from `root.tsx` loader data, preventing hydration mismatches. Query Serena to read the live `AppWithState` implementation in `frontend/app/root.tsx`.
 
 ## See also
 
-- `state-pattern` rule (`.claude/rules/state-pattern.md`): prescriptive rule (naming, typing, colocation)
+- `state-pattern` rule (`frontend/.claude/rules/state-pattern.md`): prescriptive rule (naming, typing, colocation)
 - [[Theme Flow]]: full SSR→client theme lifecycle

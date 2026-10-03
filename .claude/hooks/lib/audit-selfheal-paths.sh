@@ -2,7 +2,7 @@
 # audit-selfheal-paths.sh: the one self-heal refusal set for the Code Audit
 # Team's repair boundary. Sourced, never executed; does no work at source
 # time except one load: sourcing reads the package registry and descriptors
-# (SPEC-092, `gaia-packages.sh`) to build the package arms; see the next block.
+# (`gaia-packages.sh`) to build the package arms; see the next block.
 #
 # Exports two things: AUDIT_SELFHEAL_REFUSE_ERE, an anchored ERE
 # matching every path a self-healing member must never touch -- the tests

@@ -4,7 +4,7 @@ status: active
 priority: 2
 date: 2026-04-26
 created: 2026-04-26
-updated: 2026-09-29
+updated: 2026-10-03
 tags: [decision, theme, dark-mode]
 ---
 
@@ -22,12 +22,12 @@ The old implementation had three real problems:
 
 ## What changed
 
-- **Added** `app/utils/theme.server.ts`, `app/utils/request-info.ts`, `app/hooks/useTheme.ts`.
-- **Added** `app/routes/resources.theme-switch.tsx` (originally `resources+/theme-switch.tsx`, before the flat fs-routes rename): co-located `action` + Zod `ThemeFormSchema`. The theme hooks live in `app/hooks/useTheme.ts` and the switcher component in `app/components/ThemeSwitch/index.tsx`.
-- **Removed** `app/state/theme.tsx`, `app/sessions.server/theme.ts`, `app/routes/actions+/set-theme.ts`, `app/components/ThemeSwitcher/index.tsx`.
-- **Updated** `app/root.tsx` loader to return `requestInfo`. `<State>` no longer carries `theme`.
-- **Updated** `app/components/Document/index.tsx` to call `useOptionalTheme()` and, when no explicit cookie preference exists, render an inline pre-paint `<script>` (`THEME_SCRIPT`) in `<head>` that adds the `dark` class from `matchMedia`.
-- **Updated** `app/components/Errors/RootErrorBoundary/index.tsx` to drop `getPreferredTheme()`.
+- **Added** `frontend/app/utils/theme.server.ts`, `frontend/app/utils/request-info.ts`, `frontend/app/hooks/useTheme.ts`.
+- **Added** `frontend/app/routes/resources.theme-switch.tsx` (originally `resources+/theme-switch.tsx`, before the flat fs-routes rename): co-located `action` + Zod `ThemeFormSchema`. The theme hooks live in `frontend/app/hooks/useTheme.ts` and the switcher component in `frontend/app/components/ThemeSwitch/index.tsx`.
+- **Removed** `frontend/app/state/theme.tsx`, `frontend/app/sessions.server/theme.ts`, `frontend/app/routes/actions+/set-theme.ts`, `frontend/app/components/ThemeSwitcher/index.tsx`.
+- **Updated** `frontend/app/root.tsx` loader to return `requestInfo`. `<State>` no longer carries `theme`.
+- **Updated** `frontend/app/components/Document/index.tsx` to call `useOptionalTheme()` and, when no explicit cookie preference exists, render an inline pre-paint `<script>` (`THEME_SCRIPT`) in `<head>` that adds the `dark` class from `matchMedia`.
+- **Updated** `frontend/app/components/Errors/RootErrorBoundary/index.tsx` to drop `getPreferredTheme()`.
 
 ## Trade-offs
 

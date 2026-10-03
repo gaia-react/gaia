@@ -187,14 +187,32 @@ jobs:
       - name: Distribution test gate (Layers 0+1)
         run: bash .gaia/tests/distribution/run-all.sh
 
+      # The asset is named gaia-bundle-<tag>.tar.gz, not gaia-<tag>.tar.gz, on
+      # purpose: v1.6.1's /update-gaia downloads with `--pattern
+      # "gaia-${tag}.tar.gz"`, so a 2.x tarball under that name would be read as
+      # a release whose manifest deletes every moved frontend path. Under this
+      # name the 1.6.1 download fails at its fetch step, before any write. The
+      # staging directory inside the tarball keeps the gaia-<tag> name; every
+      # consumer extracts with --strip-components=1, so it never shows.
+      # .gaia/tests/lib/release-asset-name.bats pins the name.
       - name: Build tarball
         env:
           TAG: ${{ steps.version.outputs.tag }}
         run: |
-          tar -czf "gaia-${TAG}.tar.gz" -C /tmp "gaia-${TAG}"
+          tar -czf "gaia-bundle-${TAG}.tar.gz" -C /tmp "gaia-${TAG}"
           echo "Tarball contents (first 30):"
-          tar -tzf "gaia-${TAG}.tar.gz" | head -30
-          echo "Total entries: $(tar -tzf "gaia-${TAG}.tar.gz" | wc -l)"
+          tar -tzf "gaia-bundle-${TAG}.tar.gz" | head -30
+          echo "Total entries: $(tar -tzf "gaia-bundle-${TAG}.tar.gz" | wc -l)"
+          shasum -a 256 "gaia-bundle-${TAG}.tar.gz" > "gaia-bundle-${TAG}.tar.gz.sha256"
+          cat "gaia-bundle-${TAG}.tar.gz.sha256"
+
+      - name: Compose release body
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          bash .gaia/scripts/compose-release-body.sh \
+            "$TAG" release-notes.md "gaia-bundle-${TAG}.tar.gz.sha256" release-body.md
+          head -n 1 release-body.md
 
       - name: Create GitHub Release
         env:
@@ -202,6 +220,7 @@ jobs:
           TAG: ${{ steps.version.outputs.tag }}
         run: |
           gh release create "$TAG" \
-            "gaia-${TAG}.tar.gz" \
+            "gaia-bundle-${TAG}.tar.gz" \
+            "gaia-bundle-${TAG}.tar.gz.sha256" \
             --title "$TAG" \
-            --notes-file release-notes.md
+            --notes-file release-body.md

@@ -59,9 +59,9 @@ If the proposal disagrees with `<BUMP>`, surface the disagreement once (e.g. "CL
 
 Apply by path:
 
-- **`<BUMP>` ≥ proposal, not major:** `.gaia/cli/gaia-maintainer release bump --auto`, writes `package.json` + `.gaia/VERSION`.
-- **`<BUMP>` < proposal** (e.g. `patch` override of a `minor` proposal): `--auto` would write the larger version. Compute NEW_VERSION = current with the requested bump applied, then write `package.json` + `.gaia/VERSION` directly. Preserve `package.json` formatting (2-space indent, trailing newline), use `node -e "const fs=require('fs');const p=require('./package.json');p.version='<NEW>';fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n');"` and `printf '<NEW>\n' > .gaia/VERSION`.
-- **`<BUMP>` = major:** `--auto` refuses (exit 1). Compute NEW_VERSION = `v<CURRENT_MAJOR+1>.0.0` and write `package.json` + `.gaia/VERSION` directly per the form above.
+- **`<BUMP>` ≥ proposal, not major:** `.gaia/cli/gaia-maintainer release bump --auto`, writes `package.json`, `frontend/package.json`, and `.gaia/VERSION`.
+- **`<BUMP>` < proposal** (e.g. `patch` override of a `minor` proposal): `--auto` would write the larger version. Compute NEW_VERSION = current with the requested bump applied, then write `package.json`, `frontend/package.json`, and `.gaia/VERSION` directly (the two `package.json` versions must stay equal: a bats case fails the release PR on drift). Preserve `package.json` formatting (2-space indent, trailing newline), use `node -e "const fs=require('fs');const p=require('./package.json');p.version='<NEW>';fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n');"` `node -e` the same line against `frontend/package.json`, and `printf '<NEW>\n' > .gaia/VERSION`.
+- **`<BUMP>` = major:** `--auto` refuses (exit 1). Compute NEW_VERSION = `v<CURRENT_MAJOR+1>.0.0` and write `package.json`, `frontend/package.json`, and `.gaia/VERSION` directly per the form above.
 
 ### 3. Quality gate
 
@@ -133,7 +133,7 @@ Rebuilds both `.gaia/cli/gaia` (adopter binary) and `.gaia/cli/gaia-maintainer` 
 .gaia/cli/gaia-maintainer release commit-and-tag --commit
 ```
 
-Stages `package.json`, `.gaia/VERSION`, `.gaia/manifest.json`, `CHANGELOG.md`, `wiki/hot.md`, `wiki/log.md` (and `wiki/.state.json` after the amend). The maintainer adds `.gaia/cli/gaia` and `.gaia/cli/gaia-maintainer` manually if Step 7b rebuilt them. Commits as `chore(release): vX.Y.Z`, captures the new SHA, updates `wiki/.state.json` to point at it, then amends the commit so the tree contains a self-referential state file. Adopters who scaffold via `create-gaia` get a state file that says "wiki is in sync at this release."
+Stages `package.json`, `frontend/package.json`, `.gaia/VERSION`, `.gaia/manifest.json`, `CHANGELOG.md`, `wiki/hot.md`, `wiki/log.md` (and `wiki/.state.json` after the amend). The maintainer adds `.gaia/cli/gaia` and `.gaia/cli/gaia-maintainer` manually if Step 7b rebuilt them. Commits as `chore(release): vX.Y.Z`, captures the new SHA, updates `wiki/.state.json` to point at it, then amends the commit so the tree contains a self-referential state file. Adopters who scaffold via `create-gaia` get a state file that says "wiki is in sync at this release."
 
 If the pre-commit hook fails, STOP and report, fix the issue and create a **new** commit; do not `--amend`.
 
@@ -311,6 +311,14 @@ gh release edit "v<NEW_VERSION>" -R gaia-react/gaia --notes-file "/tmp/gh-notes-
 ```
 
 `gh release edit` is neither a push nor a `gh pr merge`, so the repo-scope and audit hooks do not apply; no literal-path treatment is needed here.
+
+**2.x routing line check.** While 1.x adopters can still reach a 2.x release (the 2.0.0 cut), the release data `<NEW_VERSION>.ts` carries a `preamble` (the routing line, the Proceed side-effects line, the sha256 line) that the renderer emits verbatim before the headline. After the edit, verify the body still leads with the routing line, and re-render if not:
+
+```bash
+gh release view "v<NEW_VERSION>" -R gaia-react/gaia --json body --jq .body | head -1
+```
+
+The first line must be exactly `On GAIA 1.6.1? Choose Abort, then paste the prompt from https://gaiareact.com/migrate into a fresh session.` See `wiki/concepts/Release Workflow.md`.
 
 ### 15. Lockstep docs
 

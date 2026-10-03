@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-06-23
 created: 2026-06-23
-updated: 2026-06-23
+updated: 2026-10-03
 tags: [decision, tdd, hooks, quality, classifier]
 ---
 
@@ -24,9 +24,9 @@ A file classifies **STRICT only when ALL of conditions 1 through 4 hold.** Faili
 
 ### Condition 1: path + hook/non-hook discriminator
 
-The file path is in `app/utils/**`, `app/services/**`, `app/hooks/**`, or is a `.ts` (NOT `.tsx`) under `app/components/**`. Any other path classifies EMERGENT.
+The file path matches the owning package's `tddStrictCandidates` globs, which the package descriptor declares ([[Package Descriptor]]). Any other path, and any path no registered package owns, classifies EMERGENT. The shipped `frontend` package lists its utilities, services, hooks, and non-JSX component files there.
 
-A file that exports a `use*` symbol is a hook (even under `app/utils/**`) and is judged by condition 3. Non-hook files skip condition 3.
+A file that exports a `use*` symbol is a hook (even under a utilities folder the descriptor lists) and is judged by condition 3. Non-hook files skip condition 3.
 
 ### Condition 2: no module-reachable non-determinism
 
@@ -58,7 +58,7 @@ The allowlist is a constant in the classifier with a version marker (`DOM_ALLOWL
 
 ## a11y helpers are an emergent signal
 
-The a11y-helper call names `expectNoA11yViolations` and `runAxe` (from `test/a11y.ts`) are members of the emergent-signal set. A static-markup a11y check is environment- and render-dependent, so a file calling either helper classifies EMERGENT regardless of whether it renders a component.
+The a11y-helper call names `expectNoA11yViolations` and `runAxe` (from `frontend/test/a11y.ts`) are members of the emergent-signal set. A static-markup a11y check is environment- and render-dependent, so a file calling either helper classifies EMERGENT regardless of whether it renders a component.
 
 ## File-granularity limitation
 
@@ -71,6 +71,6 @@ The classifier is **file-granular**: it labels a whole file STRICT or EMERGENT a
 ## Consumers
 
 - The RED carve-out at commit time scopes the RED demand to STRICT files; EMERGENT files commit without a RED proof.
-- The worthiness audit and the merge presence gate scope to the EMERGENT surface (`app/components/**`, `.playwright/**`).
+- The worthiness audit and the merge presence gate scope to the EMERGENT surface, the test files a package's `emergentTests` globs name ([[Package Descriptor]]).
 
 The `{file, classification, reasons}` output shape and the emergent-signal set are a stable contract these consumers depend on.

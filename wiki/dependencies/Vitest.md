@@ -4,7 +4,7 @@ status: active
 package: vitest
 role: test-runner
 created: 2026-04-20
-updated: 2026-06-24
+updated: 2026-10-03
 tags: [dependency, testing]
 ---
 
@@ -20,11 +20,11 @@ Vitest-aware lint rules come from `@vitest/eslint-plugin`, which the shared `@ga
 
 ## Conventions
 
-- `*.test.{ts,tsx}` anywhere in `app/`
+- `*.test.{ts,tsx}` anywhere in `frontend/app/`
 - Tests live in `tests/` subfolders next to components/pages/hooks
 - Explicit imports in every test file: `import {describe, expect, test} from 'vitest'`
-- `globals: true` in `vitest.config.ts` enables Testing Library's auto-cleanup between tests; it does not replace the explicit imports. Keep `vitest/globals` out of `tsconfig.json` types: the explicit imports are what type-check
-- `vitest.config.ts` runs tests under `environment: 'happy-dom'` with `setupFiles: ['./test/setup.ts']`. `test/setup.ts` registers Storybook project annotations, imports jest-dom matchers, loads `test.server`, and supplies fallback env vars (see `test/setup.ts` for the current list) so server modules parse in clean environments. Add new global matchers or env defaults there
+- `globals: true` in `frontend/vitest.config.ts` enables Testing Library's auto-cleanup between tests; it does not replace the explicit imports. Keep `vitest/globals` out of `frontend/tsconfig.json` types: the explicit imports are what type-check
+- `frontend/vitest.config.ts` runs tests under `environment: 'happy-dom'` with `setupFiles: ['./test/setup.ts']`. `frontend/test/setup.ts` registers Storybook project annotations, imports jest-dom matchers, loads `test.server`, and supplies fallback env vars (see `frontend/test/setup.ts` for the current list) so server modules parse in clean environments. Add new global matchers or env defaults there
 
 ## Run rules
 

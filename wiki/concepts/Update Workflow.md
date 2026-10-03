@@ -3,7 +3,7 @@ type: concept
 title: Update Workflow
 status: active
 created: 2026-04-22
-updated: 2026-08-15
+updated: 2026-10-03
 tags: [release, claude, adopter, drift]
 ---
 
@@ -34,17 +34,22 @@ The manifest assigns each shipped file exactly one class. Anything **not** in th
 
 **Drift handling is identical across all three classes**: a drifted file the release also changed gets a sidecar patch and the working tree is left alone. No class prompts on drift. The class decides two other things: which summary bucket a clean overwrite reports under (`owned` → overwritten, `shared` / `wiki-owned` → merged), and what happens when the release newly owns a path the adopter already has, where `owned` backs the file up and overwrites it while the other two fall through to the ordinary rows.
 
-Sentinel paths (always adopter-owned regardless of what GAIA ships): `wiki/hot.md`, `wiki/log.md`, `CHANGELOG.md`, `.gaia/VERSION`, `.gaia/manifest.json`.
+Sentinel paths (always adopter-owned regardless of what GAIA ships): `wiki/hot.md`, `wiki/log.md`, `CHANGELOG.md`, `.gaia/VERSION`, `.gaia/manifest.json`, `.gaia/packages.json`.
+
+A package's generated `<path>/.claude/settings.json` (`frontend/.claude/settings.json`) ships in the tarball but has no manifest class: it is regenerated from the root settings and the package's `settings.overlay.json` after the merge, never three-way merged. The overlay, `frontend/gaia.package.json`, `frontend/package.json`, and `frontend/CLAUDE.md` are `shared`.
 
 ## Flow
 
 1. Read `.gaia/VERSION`. Missing → tell user to run `/gaia-init` on a fresh `create-gaia` scaffold.
 2. Resolve latest release via `gh release list --repo gaia-react/gaia` (or GitHub API fallback).
 3. Compare to baseline. Same or older → exit, unless `.gaia/VERSION` has been bumped but not committed (an interrupted prior run), in which case surface the residual state so the adopter can commit or discard. Never downgrade.
+3b. **Refuse a 1.x baseline.** A project whose `.gaia/VERSION` major is below 2 is pointed at https://gaiareact.com/migrate and nothing is fetched, created, or pruned: the 2.0.0 layout moved the app into `frontend/`, and a three-way merge across that move would read every baseline app path as an upstream deletion.
 4. Show the adopter the **full baseline-to-latest CHANGELOG range** (every versioned section newer than `$BASELINE`, fetched no-auth from the release tarball) and **confirm** before touching anything. An adopter several versions behind sees every intervening entry, not just the latest tag's body. Step 9 cross-references the Step 7a removal no-op and deletion sweep against `**Action required:**`-anchored entries in the displayed range and surfaces a documented, opt-in cleanup suggestion for any convention-marked entry the merge walk left in place. Never auto-removes a dependency or deletes a file. If on `main`/`master`, create the feature branch only after this confirmation, not before, so an early exit leaves no orphan branch.
 5. Prune prior runs' leftover artifacts before this run creates its own: drop stale `.gaia-backup/` copies and stale `.gaia/local/cache/shared/update-gaia/` tag dirs (keeping the baseline tarball), and remove `.gaia-merge/` only when empty. Then download baseline + latest tarballs to `.gaia/local/cache/shared/update-gaia/`. Stop on any download or extraction failure; do not proceed with a partial cache.
+5b. Fetch the baseline and latest tarballs, `gaia-bundle-<tag>.tar.gz` (`gh release download --pattern`). The `gaia-bundle-` name is the 2.0.0 release fence: a 1.6.1 `/update-gaia` asks for `gaia-<tag>.tar.gz`, finds nothing, and stops at its fetch step before it writes a file. The release body leads with a line routing 1.6.1 adopters to the migrate page, and `release.yml` publishes a `.sha256` asset beside the tarball.
 6. Walk the latest manifest. For each file, apply the decision table below.
 7. Report summary: overwritten / merged / added / removed / skipped / conflicts / deleted / backed up.
+7b. Regenerate each registered package's settings with `./.gaia/cli/gaia packages sync-settings`, then run `bash .gaia/scripts/check-settings-drift.sh`. This runs after the root `.claude/settings.json` merge, because a session launched in `frontend/` reads only the generated file and a root hook or deny it lacks would silently not run there.
 8. Bump `.gaia/VERSION` and replace `.gaia/manifest.json` with the latest version's copy. This happens after the summary prints so that if the walk was aborted mid-way the version stays at baseline and a re-run resumes cleanly.
 9. Remind the adopter to review `.gaia-merge/`, run the [[Quality Gate]], and commit manually.
 
@@ -80,6 +85,8 @@ Each side is normalized on its own, so a side that carries no marker pair is sti
 `gaia update regen-regions --manifest <path> --root <dir> [--backup-dir <dir>] [--conflicted <path>]... [--absent-path <path>]... [--skip-region <id>]... [--json]` regenerates a declared region by running its shipped regeneration command against the adopter's own post-merge tree, one region at a time. It refuses a region before spawning anything when the declaration itself is malformed, or when the command operand fails a well-formedness check: an absolute path, a parent-directory segment, a path outside the shipped file set, or a path resolving through a symlink out of the repository. A region named by `--skip-region`, or one whose declared paths appear in `--conflicted` or `--absent-path`, is left alone. `--backup-dir` copies each declared path aside before the command runs, without overwriting a copy an earlier step already made. Every write the regeneration command makes outside its declared paths is confined, and where it lands decides how: inside the region's own directories the runner restores what the path held before the run, or removes what the command created; a path the command deletes is left deleted and not reported. Anywhere else in the tree there is no pre-image to restore from, so the write is reported and left where it is. The command writes to the adopter's tree, and it exits `0` for every refusal, skip, or regeneration failure; only its own flags or manifest being unusable is a non-zero exit.
 
 ## `package.json` (field-aware merge)
+
+The merge runs once for the root `package.json` and once for each package registered in `.gaia/packages.json` (`frontend/package.json`; an absent registry means the stock `frontend` package). A package whose `package.json` is missing on any of the three sides is skipped, which is how an adopter-added package GAIA does not ship stays untouched. The rest of this section describes one file.
 
 A whole-file three-way merge of `package.json` is pure noise: every adopter rewrites `name` / `description` / `author` and resets `version` at init, and GAIA bumps its own `version` every release, so adopter, baseline, and latest all differ on every release. `package.json` is therefore merged at JSON-key granularity, acting only on the genuine upstream delta `B → L`.
 

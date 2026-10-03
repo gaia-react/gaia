@@ -263,6 +263,15 @@ var writePackageJsonVersion = (packagePath, raw, newVersion) => {
   }
   atomicWriteFileSync(packagePath, replaced);
 };
+var PACKAGE_VERSION_FILES = ["frontend/package.json"];
+var writePackageVersions = (cwd, newVersion) => {
+  for (const relative of PACKAGE_VERSION_FILES) {
+    const target = path.join(cwd, relative);
+    if (existsSync(target)) {
+      writePackageJsonVersion(target, readFileSync(target, "utf8"), newVersion);
+    }
+  }
+};
 var writeVersionFile = (cwd, newVersion) => {
   const target = path.join(cwd, ".gaia", "VERSION");
   if (!existsSync(target)) return;
@@ -308,6 +317,7 @@ var tryApplyBumpOrReport = (version2, kind) => {
 var tryWriteVersionOrReport = (pkg, cwd, nextVersion) => {
   try {
     writePackageJsonVersion(pkg.path, pkg.raw, nextVersion);
+    writePackageVersions(cwd, nextVersion);
     writeVersionFile(cwd, nextVersion);
     return true;
   } catch (error51) {
@@ -744,6 +754,7 @@ var passthroughFailure = (result, step) => {
 };
 var RELEASE_FILES = [
   "package.json",
+  "frontend/package.json",
   ".gaia/VERSION",
   ".gaia/manifest.json",
   "CHANGELOG.md",
@@ -18785,6 +18796,9 @@ var scanRegionDeclarations = (repoRoot, shippedFiles, registry2 = REGION_REGISTR
 // src/release/manifest.ts
 var ADOPTER_OWNED_SENTINELS = /* @__PURE__ */ new Set([
   ".gaia/manifest.json",
+  // The package registry is adopter-owned from first install: an adopter adds
+  // a package by editing it, so /update-gaia must never merge or overwrite it.
+  ".gaia/packages.json",
   ".gaia/VERSION",
   "wiki/hot.md",
   "wiki/log.md"
@@ -18794,6 +18808,10 @@ var SHARED = /* @__PURE__ */ new Set([
   ".gaia/audit-ci.yml",
   ".github/FUNDING.yml",
   "CLAUDE.md",
+  "frontend/.claude/settings.overlay.json",
+  "frontend/CLAUDE.md",
+  "frontend/gaia.package.json",
+  "frontend/package.json",
   "package.json",
   "pnpm-workspace.yaml",
   "wiki/index.md"
@@ -18831,8 +18849,10 @@ var compileExcludeRegexStrings = (text) => parseExcludeLines(text).map((line) =>
 var renderExcludeRegex = (text) => compileExcludeRegexStrings(text).map((pattern) => `${pattern}
 `).join("");
 var parseExcludePatterns = (text) => compileExcludeRegexStrings(text).map((source) => new RegExp(source));
+var GENERATED_PACKAGE_SETTINGS = /^.+\/\.claude\/settings\.json$/;
 var classifyPath = (relativePath) => {
   if (ADOPTER_OWNED_SENTINELS.has(relativePath)) return null;
+  if (GENERATED_PACKAGE_SETTINGS.test(relativePath)) return null;
   if (SHARED.has(relativePath)) return "shared";
   if (SHARED_PREFIXES.some((prefix) => relativePath.startsWith(prefix)))
     return "shared";
@@ -20091,9 +20111,39 @@ var RUNTIME_MARKERS = /* @__PURE__ */ new Set([
 ]);
 var PATH_PREFIXES = [".gaia/", ".claude/", ".specify/", ".github/"];
 var PROSE_PATH_ALLOWLIST = /* @__PURE__ */ new Set([
+  ".claude/agents/code-audit-frontend/cn.md",
+  ".claude/agents/code-audit-frontend/conform.md",
+  ".claude/agents/code-audit-frontend/form-components.md",
+  ".claude/agents/code-audit-frontend/react-i18next.md",
+  ".claude/agents/code-audit-frontend/README.md",
+  ".claude/instructions/add-locale.md",
+  ".claude/instructions/remove-i18n.md",
   ".claude/projects",
+  ".claude/rules/accessibility.md",
+  ".claude/rules/api-service.md",
+  ".claude/rules/design-baseline.md",
+  ".claude/rules/i18n.md",
+  ".claude/rules/playwright.md",
+  ".claude/rules/react-router-docs.md",
+  ".claude/rules/routes.md",
+  ".claude/rules/state-pattern.md",
+  ".claude/rules/storybook.md",
+  ".claude/rules/tailwind.md",
   ".claude/settings.local.json",
   ".claude/shell-snapshots",
+  ".claude/skills/a11y-fixes",
+  ".claude/skills/eslint-fixes",
+  ".claude/skills/gaia-react-perf",
+  ".claude/skills/new-component",
+  ".claude/skills/new-hook",
+  ".claude/skills/new-route",
+  ".claude/skills/new-service",
+  ".claude/skills/playwright-cli",
+  ".claude/skills/react-code",
+  ".claude/skills/skeleton-loaders",
+  ".claude/skills/tailwind",
+  ".claude/skills/typescript",
+  ".gaia/packages",
   ".github/workflows"
 ]);
 var PATH_BODY_CHAR = /[a-zA-Z0-9._/-]/;

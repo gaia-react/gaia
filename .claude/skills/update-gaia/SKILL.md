@@ -86,6 +86,26 @@ If both fail, stop and ask the user to supply the target version explicitly.
   - Otherwise print "You are up to date on GAIA v$BASELINE." and exit.
 - If `semver(LATEST) < semver(BASELINE)` → print a warning that the installed version is ahead of the latest release and exit. Never downgrade.
 
+## Step 3b: Refuse a 1.x baseline
+
+GAIA 2.0.0 moved the React app into `frontend/`, and the 2.x release manifest is keyed on those paths. A three-way merge from a 1.x baseline would read every baseline app path as an upstream deletion and offer to delete the adopter's app, so a 1.x project is migrated by the prompt at https://gaiareact.com/migrate and never by this command. Run this before the Step 4 prompt, so nothing has been created or pruned when it refuses:
+
+```bash
+BASELINE_MAJOR="${BASELINE%%.*}"
+case "$BASELINE_MAJOR" in
+  '' | *[!0-9]*)
+    echo "REFUSED: .gaia/VERSION holds '$BASELINE', which is not a version. Fix .gaia/VERSION, then re-run /update-gaia."
+    exit 1
+    ;;
+esac
+if [ "$BASELINE_MAJOR" -lt 2 ]; then
+  echo "REFUSED: this project is on GAIA $BASELINE. /update-gaia cannot cross the 2.0.0 layout change. Paste the prompt from https://gaiareact.com/migrate into a fresh session instead. Nothing was changed."
+  exit 1
+fi
+```
+
+On `REFUSED`, stop, relay the message, and do nothing else: no branch, no prune, no download.
+
 ## Step 4: Show the release notes and confirm
 
 Show the human the **full baseline-to-latest CHANGELOG range**, not just the single latest tag's GitHub body, an adopter several versions behind needs every intervening entry. Read GAIA's own `CHANGELOG.md` at `$LATEST_TAG` (a plain markdown file, fetched no-auth from the raw URL, with a `gh` fallback) and extract every `## [x.y.z]` section strictly newer than `$BASELINE` through `$LATEST`:

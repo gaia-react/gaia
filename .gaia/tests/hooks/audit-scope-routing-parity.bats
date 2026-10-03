@@ -21,7 +21,8 @@
 #   .husky/**                                     -> code-audit-maintainer-shell
 #
 # The frontend/ move (SPEC-092) then retires the root frontend class: `app/**`,
-# `test/**`, `.storybook/**`, `.playwright/**` and root `tsconfig*.json` resolve
+# `test/**`, `.storybook/**`, `.playwright/**`, root `tsconfig*.json`, and the
+# root `Dockerfile`, `.dockerignore`, `.lintstagedrc.json` and `.env.example` resolve
 # to no member, because the roster declares them under `frontend/` now. Their
 # arm precedes the triage arms below.
 #
@@ -36,8 +37,7 @@
 #
 #   .playwright/**                                -> code-audit-frontend
 #   the root tooling that decides what runs        -> code-audit-frontend
-#     (Dockerfile, .npmrc, .nvmrc, .node-version, .lintstagedrc.json,
-#      .prettierignore, .env.example)
+#     (.npmrc, .nvmrc, .node-version, .prettierignore)
 #   .gaia/scripts/**/*.mjs                         -> code-audit-maintainer-node
 #   the distribution and governance surface        -> code-audit-maintainer-shell
 #     (.gaia/*.yml, .gaia/*.json, .gaia/scripts/token-rates.json,
@@ -110,11 +110,12 @@ setup() {
       expected="code-audit-maintainer-shell"
     # The frontend/ move retired these root paths: the roster now declares them
     # under frontend/, so a root path of the old frontend class owns nothing.
-    elif [[ "$path" =~ ^(app|test|\.storybook|\.playwright)/ ]] || [[ "$path" =~ ^tsconfig[^/]*\.json$ ]]; then
+    elif [[ "$path" =~ ^(app|test|\.storybook|\.playwright)/ ]] || [[ "$path" =~ ^tsconfig[^/]*\.json$ ]] \
+      || [[ "$path" =~ ^(Dockerfile|\.dockerignore|\.lintstagedrc\.json|\.env\.example)$ ]]; then
       expected="-"
     elif [ "$before" = "-" ] && [[ "$path" =~ ^\.playwright/ ]]; then
       expected="code-audit-frontend"
-    elif [ "$before" = "-" ] && [[ "$path" =~ ^(Dockerfile|\.npmrc|\.nvmrc|\.node-version|\.lintstagedrc\.json|\.prettierignore|\.env\.example)$ ]]; then
+    elif [ "$before" = "-" ] && [[ "$path" =~ ^(\.npmrc|\.nvmrc|\.node-version|\.prettierignore)$ ]]; then
       expected="code-audit-frontend"
     elif [ "$before" = "-" ] && [[ "$path" =~ ^\.gaia/scripts/.*\.mjs$ ]]; then
       expected="code-audit-maintainer-node"

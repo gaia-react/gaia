@@ -215,7 +215,7 @@ inside a bats unit (do not fabricate an LLM-driven bats test for it).
 The two write sinks are the only paths the skill may create or modify:
 `.gaia/local/forensics/<tree_key>/` (`<tree_key>` from
 `bash .gaia/scripts/main-root-lib.sh --tree-key`) and `.gaia/local/telemetry/`.
-Everything else - `app/`, `wiki/`, `.claude/`, and any git-tracked source -
+Everything else - `frontend/app/`, `wiki/`, `.claude/`, and any git-tracked source -
 must be untouched.
 
 - **Setup**: from a clean tree (`git status --porcelain` empty), drop a marker
@@ -241,7 +241,7 @@ must be untouched.
     -not -path "$MARKER" \
     && echo 'FAIL: write outside allowlist' || echo 'pass: writes confined to sinks'
   ```
-- **Diff (b); no tracked source changed.** No modification to `app/`, `wiki/`,
+- **Diff (b); no tracked source changed.** No modification to `frontend/app/`, `wiki/`,
   or anything git tracks (`.gaia/local/` is gitignored, so a clean porcelain
   proves the report landed only in the ignored sink).
   ```bash

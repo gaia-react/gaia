@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-04-20
 created: 2026-04-20
-updated: 2026-10-01
+updated: 2026-10-03
 tags: [decision, ci, quality]
 ---
 
@@ -14,17 +14,19 @@ Every change must pass the Quality Gate. Pre-commit hooks enforce a subset; Clau
 
 ## Steps
 
+The contract lives at the repo root and the commands run per package. Steps 3 to 8 are the executable steps; each root `pnpm <script>` is a proxy that forwards to the `pnpm -C frontend <script>` shown beside it, and either spelling runs the same command.
+
 1. **Simplify**: run `simplify` skill; apply all endorsed changes.
 2. **Localization check**: no hardcoded user-facing strings or unfilled keys.
-3. `pnpm typecheck`: zero errors. This is the sole enforcer for type-only tests (`expectTypeOf`/`assertType`/`@ts-expect-error`), which [[TDD RED Verification]] exempts from its runtime-RED demand.
-4. `pnpm lint`: zero errors, zero warnings. Runs `eslint --fix`, so it auto-fixes every fixable lint rule **and** Prettier formatting (Prettier is wired in as an `eslint` rule via `prettier/prettier`); only non-auto-fixable issues need manual attention. Hand-formatting while authoring is wasted effort; this step normalizes it. `pnpm lint` ignores `.gaia/**`.
+3. `pnpm typecheck` (`pnpm -C frontend typecheck`): zero errors. This is the sole enforcer for type-only tests (`expectTypeOf`/`assertType`/`@ts-expect-error`), which [[TDD RED Verification]] exempts from its runtime-RED demand.
+4. `pnpm lint` (`pnpm -C frontend lint`): zero errors, zero warnings. Runs `eslint --fix`, so it auto-fixes every fixable lint rule **and** Prettier formatting (Prettier is wired in as an `eslint` rule via `prettier/prettier`); only non-auto-fixable issues need manual attention. Hand-formatting while authoring is wasted effort; this step normalizes it. `pnpm lint` ignores `.gaia/**`.
    <!-- gaia:maintainer-only:start -->
    Changes touching `.gaia/cli/**` also run `pnpm lint:cli` (`pnpm -C .gaia/cli lint`), the CLI's own ESLint config in its separate pnpm workspace.
    <!-- gaia:maintainer-only:end -->
-5. `pnpm test --run`: all tests pass with **zero console warnings** (missing keys, HydrateFallback, etc. count as failures).
-6. `pnpm pw`: all Playwright E2E tests pass. Without a `.env` the web server never starts. Entering a worktree provisions it, which symlinks the main checkout's `.env` into it, so a worktree missing one was never entered by a session: run `bash .claude/hooks/provision-worktree.sh <absolute-worktree-path>`, which also installs dependencies and moves a plain `.gaia/local` aside to `.gaia/local.bak.<timestamp>` before linking the shared one. When the main checkout itself has no `.env`, linking skips it; copy `.env.example` to the main checkout's `.env` and link again, or, if `.env.example` is gone too, stop and ask the human to create `.env` (`app/env.server.ts` lists the required variables). Never read, print, or copy `.env` contents: the link shares the file without exposing it. The linked `.env` is the real one, so an `MSW_ENABLED` that is off sends Playwright to the real `API_URL`, exactly as in the main checkout.
-7. **Dev smoke test**: start `pnpm dev`, curl a route, verify HTTP 200.
-8. `pnpm build`: confirms production build.
+5. `pnpm test --run` (`pnpm -C frontend test --run`): all tests pass with **zero console warnings** (missing keys, HydrateFallback, etc. count as failures).
+6. `pnpm pw` (`pnpm -C frontend pw`): all Playwright E2E tests pass. Playwright reads the `.env` of its working directory, so the file is `frontend/.env`; without it the web server never starts. Entering a worktree provisions it, which symlinks the main checkout's `frontend/.env` into the worktree's `frontend/`, so a worktree missing one was never entered by a session: run `bash .claude/hooks/provision-worktree.sh <absolute-worktree-path>`, which also installs dependencies and moves a plain `.gaia/local` aside to `.gaia/local.bak.<timestamp>` before linking the shared one. When the main checkout itself has no `frontend/.env`, linking skips it; copy `frontend/.env.example` to the main checkout's `frontend/.env` and link again, or, if `frontend/.env.example` is gone too, stop and ask the human to create `frontend/.env` (`frontend/app/env.server.ts` lists the required variables). Never read, print, or copy `.env` contents: the link shares the file without exposing it. The linked `.env` is the real one, so an `MSW_ENABLED` that is off sends Playwright to the real `API_URL`, exactly as in the main checkout.
+7. **Dev smoke test**: start `pnpm dev` (`pnpm -C frontend dev`), curl a route, verify HTTP 200.
+8. `pnpm build` (`pnpm -C frontend build`): confirms production build.
 9. **Fix all warnings before reporting**: never hand off with known warnings.
 10. **Stop and report**: wait for user approval, except inside the PR Merge Workflow's fix round ([[PR Merge Workflow#The fix round: fixer, verifier, gate]]).
 
@@ -44,14 +46,15 @@ Every change must pass the Quality Gate. Pre-commit hooks enforce a subset; Clau
 Skip the gate entirely if no staged file is something typecheck / lint / tests / build can inspect. The gate runs only when at least one staged file matches:
 
 - **Source**: `*.ts`, `*.tsx`, `*.js`, `*.jsx`, `*.mjs`, `*.cjs`, `*.css`
-- **Gate-affecting config**: `package.json`, `pnpm-lock.yaml`, `tsconfig*.json`, `vite.config.*`, `vitest.config.*`, `playwright.config.*`, `eslint.config.*`
+- **Gate-affecting config**: `package.json`, `pnpm-lock.yaml`, `tsconfig*.json`, `vite.config.*`, `vitest.config.*`, `playwright.config.*`, `eslint.config.*`, each at the repo root or directly under a package folder such as `frontend/`
+- **Package registry**: `.gaia/packages.json` and `frontend/gaia.package.json`
 
 Pure markdown, `.claude/**`, `wiki/**`, image, or other non-source-affecting commits skip straight to the commit step.
 
 Quick check:
 
 ```bash
-git diff --cached --name-only -z | tr '\0' '\n' | grep -E '\.(ts|tsx|js|jsx|mjs|cjs|css)$|^(package\.json|pnpm-lock\.yaml|tsconfig.*\.json|vite\.config\.|vitest\.config\.|playwright\.config\.|eslint\.config\.)'
+git diff --cached --name-only -z | tr '\0' '\n' | grep -E '\.(ts|tsx|js|jsx|mjs|cjs|css)$|^([^/]+/)?(package\.json|pnpm-lock\.yaml|tsconfig.*\.json|vite\.config\.|vitest\.config\.|playwright\.config\.|eslint\.config\.)|^(\.gaia/packages\.json|frontend/gaia\.package\.json)$'
 ```
 
 ## Behavior when the gate runs

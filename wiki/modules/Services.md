@@ -1,6 +1,6 @@
 ---
 type: module
-path: app/services/
+path: frontend/app/services/
 status: active
 language: typescript
 purpose: API client (Ky wrapper) and domain-specific service layers
@@ -8,20 +8,20 @@ depends_on:
   - '[[Ky]]'
   - '[[Zod]]'
 created: 2026-04-20
-updated: 2026-09-30
+updated: 2026-10-03
 tags: [module, services, api]
 ---
 
 # Services
 
-`app/services/` is where API calls and business logic live.
+`frontend/app/services/` is where API calls and business logic live.
 
 ## `api/` vs `gaia/`: the convention
 
-- `app/services/api/`: the [[Ky]] wrapper. A `create()` factory plus path/search-param interpolation, snake_case ↔ camelCase conversion, and per-request `token` / `language` request options. **Reusable across domains.**
-- `app/services/gaia/`: the GAIA template's domain layer. Rename to your company name or 3rd-party API name; Claude updates imports, barrels, and references across the app.
+- `frontend/app/services/api/`: the [[Ky]] wrapper. A `create()` factory plus path/search-param interpolation, snake_case ↔ camelCase conversion, and per-request `token` / `language` request options. **Reusable across domains.**
+- `frontend/app/services/gaia/`: the GAIA template's domain layer. Rename to your company name or 3rd-party API name; Claude updates imports, barrels, and references across the app.
 
-The pattern: each domain folder under `app/services/gaia/{domain}/` holds `parsers.ts`, `types.ts`, `requests.ts`, its own URL constants (`urls.ts`), and a non-server `index.ts` barrel re-exporting parsers, types, and urls. Domains share the root `Ky` instance (`app/services/gaia/api.ts`) via `import {api} from '../api'`. `/new-service` scaffolds the full pattern into the domain-layer folder (`app/services/gaia/`, or whatever you renamed it to), and leaves the root `urls.ts` and `index.server.ts` untouched.
+The pattern: each domain folder under `frontend/app/services/gaia/{domain}/` holds `parsers.ts`, `types.ts`, `requests.ts`, its own URL constants (`urls.ts`), and a non-server `index.ts` barrel re-exporting parsers, types, and urls. Domains share the root `Ky` instance (`frontend/app/services/gaia/api.ts`) via `import {api} from '../api'`. `/new-service` scaffolds the full pattern into the domain-layer folder (`frontend/app/services/gaia/`, or whatever you renamed it to), and leaves the root `urls.ts` and `index.server.ts` untouched.
 
 ## Why URL constants are mandatory
 

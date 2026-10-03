@@ -14,11 +14,11 @@
 # capture only means the check may later deny, which is the safe direction. It
 # mirrors the merge-audit gate's split of "observe and record" from "deny the
 # consequential action." The one thing it does say out loud is an unusable
-# package registry or descriptor (SPEC-092 C5): it records nothing and emits a
+# package registry or descriptor: it records nothing and emits a
 # PostToolUse `{"decision":"block","reason":...}` so the session sees why, rather
 # than going quiet while the commit gate later denies for want of a RED.
 #
-# Package scope (SPEC-092): the test run may name a package three ways, and the
+# Package scope: the test run may name a package three ways, and the
 # hook recognizes all of them. `pnpm test --run frontend/app/x.test.ts` from the
 # repo root (the root proxy script), `pnpm -C frontend test --run app/x.test.ts`
 # or `pnpm --filter <name> test --run app/x.test.ts` from anywhere, and

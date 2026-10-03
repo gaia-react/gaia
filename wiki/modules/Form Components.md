@@ -1,6 +1,6 @@
 ---
 type: module
-path: app/components/Form/
+path: frontend/app/components/Form/
 status: active
 language: typescript
 purpose: Conform + Zod-powered form components
@@ -8,7 +8,7 @@ depends_on:
   - '[[Conform]]'
   - '[[Zod]]'
 created: 2026-04-20
-updated: 2026-06-24
+updated: 2026-10-03
 tags: [module, components, forms]
 ---
 

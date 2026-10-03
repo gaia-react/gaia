@@ -88,7 +88,7 @@ jobs:
           echo "tests: incremental base = ${base}" >&2
       # Allowlist of paths that affect the test suite (ERE, matched against
       # `git diff --name-only`). The app lives in
-      # `frontend/` (SPEC-092), so its entries carry that prefix while the one
+      # `frontend/`, so its entries carry that prefix while the one
       # workspace lockfile and manifests stay at the root; the two
       # `gaia.package.json`/`packages.json` entries are the package registry
       # and descriptor the harness reads. Anything outside this list reports the

@@ -375,6 +375,24 @@ describe('release bump CLI', () => {
     expect(versionFile).toBe('1.0.1\n');
   });
 
+  test('--auto keeps frontend/package.json at the root version', () => {
+    sandbox = setupSandbox('1.0.0');
+    mkdirSync(path.join(sandbox.root, 'frontend'));
+    writeFileSync(
+      path.join(sandbox.root, 'frontend', 'package.json'),
+      `${JSON.stringify({name: 'frontend', version: '1.0.0'}, null, 2)}\n`,
+      'utf8'
+    );
+    const runner = buildRunner([{subject: 'fix: a'}]);
+
+    expect(run(['--auto'], {cwd: sandbox.root, runner})).toBe(0);
+
+    const frontend = JSON.parse(
+      readFileSync(path.join(sandbox.root, 'frontend', 'package.json'), 'utf8')
+    ) as {name: string; version: string};
+    expect(frontend).toEqual({name: 'frontend', version: '1.0.1'});
+  });
+
   test('--auto refuses major without confirmation', () => {
     sandbox = setupSandbox('1.0.0');
     const runner = buildRunner([{subject: 'feat!: rip out X'}]);

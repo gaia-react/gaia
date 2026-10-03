@@ -4,13 +4,13 @@ status: active
 package: ky
 role: http-client
 created: 2026-04-20
-updated: 2026-06-24
+updated: 2026-10-03
 tags: [dependency, http]
 ---
 
 # Ky
 
-Tiny HTTP client built on `fetch`. `app/services/api/index.ts` wraps it:
+Tiny HTTP client built on `fetch`. `frontend/app/services/api/index.ts` wraps it:
 
 - `create()` factory that returns a typed request function
 - per-request `token` / `language` options that set `Authorization` and `Accept-Language` headers per call

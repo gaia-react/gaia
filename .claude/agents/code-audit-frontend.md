@@ -32,10 +32,6 @@ You conduct comprehensive code audits for production React 19 / React Router 7 S
 - `frontend/.playwright/**`
 - `.npmrc`
 - `.prettierignore`
-- `.lintstagedrc.json`
-- `Dockerfile`
-- `.dockerignore`
-- `.env.example`
 - `.nvmrc`
 - `.node-version`
 - `frontend/.lintstagedrc.json`
@@ -109,7 +105,7 @@ Analyze the changed code across these dimensions. Focus on cross-cutting concern
 
 - **N+1 patterns**: Sequential awaits inside loops that could be parallelized with `Promise.all`
 - **Unnecessary re-renders**: Missing memoization, unstable references in deps arrays, large objects passed as props, unnecessary `useCallback`/`useMemo` that adds indirection without benefit
-- **Bundle size**: Large imports that could be tree-shaken or lazy-loaded, duplicate logic, named imports over namespace imports (the barrel-import false-positive caveat under "Merge findings" applies here too: the project's documented barrel modules, e.g. `app/services/gaia/*` and `test/mocks/*`, are the intended pattern, not defects)
+- **Bundle size**: Large imports that could be tree-shaken or lazy-loaded, duplicate logic, named imports over namespace imports (the barrel-import false-positive caveat under "Merge findings" applies here too: the project's documented barrel modules, e.g. `frontend/app/services/gaia/*` and `frontend/test/mocks/*`, are the intended pattern, not defects)
 - **SSR performance**: Heavy computation in loaders that blocks response, missing caching for cacheable upstream responses
 - **Service-layer efficiency**: Over-fetching data, missing pagination/limits on list endpoints, redundant requests that could be coalesced
 - **Network waterfall**: Sequential fetches that could be parallel, missing prefetching opportunities
@@ -154,7 +150,7 @@ Beyond general best practices, verify adherence to these project-specific patter
 
 - No `eslint-disable react-hooks/exhaustive-deps` to hide missing fetcher deps, fix the deps instead
 - No `.catch(() => {})`, use `void` for fire-and-forget promises
-- Route files (`app/routes/`) are thin shells, loader, action, meta, and a one-line page import. UI belongs in `app/pages/`.
+- Route files (`frontend/app/routes/`) are thin shells, loader, action, meta, and a one-line page import. UI belongs in `frontend/app/pages/`.
 - Localization: every user-facing string comes from `t()`. Hardcoded JSX strings are bugs (except approximate skeleton-loader placeholders standing in for dynamic values).
 
 ## Findings grading
@@ -566,7 +562,7 @@ If `AUDIT_KEY` is empty (the base or the branch is undeterminable), skip the led
       "member": "code-audit-frontend",
       "finding_class": "holistic/swallowed-error",
       "severity": "critical",
-      "path": "app/services/foo.ts",
+      "path": "frontend/app/services/foo.ts",
       "line": 42,
       "title": "<short>",
       "failure_mode": "<input + state + bad outcome>",
@@ -581,7 +577,7 @@ If `AUDIT_KEY` is empty (the base or the branch is undeterminable), skip the led
     {
       "member": "code-audit-frontend",
       "finding_class": "holistic/non-null-assertion",
-      "path": "app/pages/Bar/index.tsx",
+      "path": "frontend/app/pages/Bar/index.tsx",
       "line": 17,
       "title": "<short>",
       "fixed_in_sha": "<40-hex sha of the fix commit, or empty if uncommitted>"
@@ -855,7 +851,7 @@ How your run ends: a reply with no tool call ends it, and the orchestrator reads
 - Prioritize ruthlessly **in the final report's ordering**, 5 important issues lead over 50 trivial ones; this governs how findings are ranked and presented, not whether they are surfaced (surface everything at the finding stage, let the proof gate and verifier cut)
 - Work within the project's existing patterns when suggesting fixes; don't introduce new dependencies
 - **Self-heal scope is fix-only, not restore-only.** Do NOT recreate files the PR explicitly deleted, do NOT add files you think "should" exist (deprecation aliases, restored renames, templates the PR removed). The PR's intent is authoritative; if a removal looks wrong, raise it as a finding for human review rather than reverting it via a self-heal commit.
-- **Self-heal scope.** A self-heal may touch only files inside your own declared domain, and never a path in the one refusal set, `AUDIT_SELFHEAL_REFUSE_ERE` in `.claude/hooks/lib/audit-selfheal-paths.sh`. That set covers the tests, the whole `.github/` tree, the `.gaia/` gate and roster machinery, the instruction surfaces (`.claude/**`, `.specify/**`, `wiki/**`), and build config at the root and under each registered package directory; the ERE is the boundary and this list is only a summary of it, so read the ERE. This is not a request: the boundary holds whether or not a given self-heal looks harmless, and the per-branch audit loop and its checkpoint bound what a self-heal can do. `test/**` is inside your declared globs and you may **review** it; you may not **repair** it, because a healing pass that adjusts the test which would catch its own repair is exactly the failure this boundary exists to prevent. The same split runs through `app/**`, your own repair surface, and it is the half most likely to surprise you: the vitest suites (`app/**/*.test.ts`, `app/**/*.test.tsx`, and everything under an `app/**/tests/` folder) and the Chromatic stories (`app/**/*.stories.tsx`) sit inside it and are yours to review and not to repair, so a finding in one is reported rather than fixed.
+- **Self-heal scope.** A self-heal may touch only files inside your own declared domain, and never a path in the one refusal set, `AUDIT_SELFHEAL_REFUSE_ERE` in `.claude/hooks/lib/audit-selfheal-paths.sh`. That set covers the tests, the whole `.github/` tree, the `.gaia/` gate and roster machinery, the instruction surfaces (`.claude/**`, `.specify/**`, `wiki/**`), and build config at the root and under each registered package directory; the ERE is the boundary and this list is only a summary of it, so read the ERE. This is not a request: the boundary holds whether or not a given self-heal looks harmless, and the per-branch audit loop and its checkpoint bound what a self-heal can do. `frontend/test/**` is inside your declared globs and you may **review** it; you may not **repair** it, because a healing pass that adjusts the test which would catch its own repair is exactly the failure this boundary exists to prevent. The same split runs through `frontend/app/**`, your own repair surface, and it is the half most likely to surprise you: the vitest suites (`frontend/app/**/*.test.ts`, `frontend/app/**/*.test.tsx`, and everything under an `frontend/app/**/tests/` folder) and the Chromatic stories (`frontend/app/**/*.stories.tsx`) sit inside it and are yours to review and not to repair, so a finding in one is reported rather than fixed.
 - A self-heal that touches more than 10 files is out of bounds: a sprawling self-heal indicates the agent is undoing intentional work.
 
 ## Audit-run env (capture before any edits)
@@ -1076,7 +1072,7 @@ Shape (one entry per finding; the writer rejects the write and names the offendi
 ```json
 [
   {"finding_class":"holistic/swallowed-error","severity":"error",
-   "path":"app/services/gaia/foo/requests.ts","line":42,
+   "path":"frontend/app/services/gaia/foo/requests.ts","line":42,
    "title":"a rejected request resolves as success",
    "failure_mode":"a 500 from the endpoint takes the catch arm, which returns the empty parse result, so the caller renders an empty list as if the fetch succeeded",
    "verified_by":"drove the MSW 500 handler through the hook: the error boundary never mounts and the list renders empty",

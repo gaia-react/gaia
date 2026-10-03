@@ -143,7 +143,7 @@ The **trailer stamp**, landed by whichever dispatched member clears last, is con
 
 #### The repair boundary
 
-A member's self-heal is confined by instruction alone. `.claude/hooks/lib/audit-selfheal-paths.sh` holds the one sourced refusal set naming the paths no member may edit (the instruction and convention surfaces, the test surface, the rest of `.gaia/**`, `.github/**`, and the root package, build, and lint config), and each member's definition points at it. No deterministic gate enforces it at push time: a dispatched member is instructed to stay inside the boundary, and its working-tree edits reach the branch only through the orchestrator's commit (see [[#Parallel dispatch]]). **The orchestrator itself is not bound by the gate**: it is trusted rather than bounded (see Cross-remit findings below), because this same protocol's own execution routinely edits `.gaia/**`, `test/**`, and `.github/workflows/**`. The fix round's fixer inherits that trust rather than a member's boundary, and its edits reach the branch only through the main thread's verified commit ([[#The fix round: fixer, verifier, gate]]).
+A member's self-heal is confined by instruction alone. `.claude/hooks/lib/audit-selfheal-paths.sh` holds the one sourced refusal set naming the paths no member may edit (the root instruction and convention surfaces, the rest of `.gaia/**`, `.github/**`, the root package, build, and lint config, and each package's `selfHealRefuse` globs in its `gaia.package.json`), and each member's definition points at it. No deterministic gate enforces it at push time: a dispatched member is instructed to stay inside the boundary, and its working-tree edits reach the branch only through the orchestrator's commit (see [[#Parallel dispatch]]). **The orchestrator itself is not bound by the gate**: it is trusted rather than bounded (see Cross-remit findings below), because this same protocol's own execution routinely edits `.gaia/**`, `frontend/test/**`, and `.github/workflows/**`. The fix round's fixer inherits that trust rather than a member's boundary, and its edits reach the branch only through the main thread's verified commit ([[#The fix round: fixer, verifier, gate]]).
 
 #### No-op detection and retry for each dispatched member
 
@@ -787,7 +787,7 @@ If `state == "MERGED"`, do NOT retry the merge. Treat it as merged, run any post
 
 `gh pr merge` passes through a second, independent PreToolUse hook,
 `.claude/hooks/worthiness-presence-check.sh`. It denies the merge when an
-emergent test the PR changed (under `app/components/**` or `.playwright/**`, as
+emergent test the PR changed (matching the package's `emergentTests` globs in its `gaia.package.json`, as
 the [[Determinism Classifier]] labels it) has no worthiness-ledger line matching
 its current content. It checks presence and signal match only, never the
 keep/fix/delete verdict, scopes to the emergent tests this PR changed (a no-op

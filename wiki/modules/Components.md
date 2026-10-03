@@ -1,21 +1,21 @@
 ---
 type: module
-path: app/components/
+path: frontend/app/components/
 status: active
 language: typescript
 purpose: Shared UI components used across pages
 created: 2026-04-20
-updated: 2026-09-29
+updated: 2026-10-03
 tags: [module, components]
 ---
 
 # Components
 
-`app/components/` holds shared UI components. Page-specific UI lives in `app/pages/` (see [[Pages]]).
+`frontend/app/components/` holds shared UI components. Page-specific UI lives in `frontend/app/pages/` (see [[Pages]]).
 
 ## Component folder convention (ESLint-enforced)
 
-Each component lives in `app/components/{PascalName}/`:
+Each component lives in `frontend/app/components/{PascalName}/`:
 
 - `index.tsx`: main component
 - `styles.module.css`: CSS module styles (when needed)
@@ -43,9 +43,9 @@ Not strict, but a strong default. Refactoring is easier when the folder hierarch
 
 ## Where to look up the inventory
 
-The current set of bundled components changes over time. Use Serena (`.claude/rules/code-search.md`) to list `app/components/` rather than maintaining a roster here. Notable exceptions:
+The current set of bundled components changes over time. Use Serena (`.claude/rules/code-search.md`) to list `frontend/app/components/` rather than maintaining a roster here. Notable exceptions:
 
 - `Form/`: the headline feature with its own deep dives ([[Form Components]])
-- `ThemeSwitch` lives at `app/components/ThemeSwitch/`. Its resource-route action and Zod schema live separately at `app/routes/resources.theme-switch.tsx`, and its theme hooks live at `app/hooks/useTheme.ts`. See [[Theme Flow]].
+- `ThemeSwitch` lives at `frontend/app/components/ThemeSwitch/`. Its resource-route action and Zod schema live separately at `frontend/app/routes/resources.theme-switch.tsx`, and its theme hooks live at `frontend/app/hooks/useTheme.ts`. See [[Theme Flow]].
 
 See [[Component Testing]] for the `composeStory` test pattern.
