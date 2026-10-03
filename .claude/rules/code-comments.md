@@ -35,7 +35,7 @@ A test of subject, not length. A thirty-line comment about a platform quirk earn
 - A header re-narrating the implementation sites below, or the same paragraph repeated at each site.
 - A banner over a single item, and ASCII section rules (`// ─── Types ───`). A banner over a group is navigation and stays.
 - The ceremonial opener: a first line assembled from the filename's own tokens and saying nothing else.
-- Historical narration: "used to do X, now does Y", "added in PR #123", "as of <date>". Git carries this. A `#NNN` paired with the failure mode it names is a different subject; `## Issue and PR references` rules it.
+- Historical narration: "used to do X, now does Y", "added in PR #123", "as of <date>". Git carries this. Issue numbers and other working-document ids: `.claude/rules/working-doc-ids.md`.
 - A number used as justification that nothing in the repo can reproduce.
 
 ## Name less, explain more
@@ -70,7 +70,3 @@ A wrong doc comment on an exported symbol displays at every call site, so export
 ## Comments that are not commentary
 
 Linter and type-checker directives, test-environment and editor pragmas, generated-region and codegen markers, and version glosses a bot writes and a test parses. If anything in the repo parses it, it is data wearing comment syntax. Never judge it on worthiness and never reword it: editing or deleting one changes behavior.
-
-## Issue and PR references
-
-`#NNN` names an issue or a pull request out of one shared number space. Keep a `#NNN` only beside the failure mode, the guard, or the test it names; a bare id with nothing else a reader can act on is not a comment worth keeping. On a file an adopter receives, write the reference as `gaia-react/gaia#NNN`, so it names the repository the number belongs to rather than the reader's own; that obligation reaches comments, test names, and user-facing message strings alike, is scoped to shipped files that are not Markdown (Markdown spends `#` on headings and quoted counter-examples), and does not reach a release-excluded file (no reader there can be misled about whose issue it is).
