@@ -24,7 +24,7 @@ const SIGNAL_HELPER = path.join(
 const CLI_NODE_MODULES = path.join(REPO_ROOT, '.gaia/cli/node_modules');
 const HELPER_ENV = {...process.env, NODE_PATH: CLI_NODE_MODULES};
 
-const TEST_FILE_REL = 'app/generated/tests/index.test.ts';
+const TEST_FILE_REL = 'frontend/app/generated/tests/index.test.ts';
 
 /**
  * Pins the `.each` carve-out (gaia-react/gaia#2224): vitest expands an

@@ -32,7 +32,9 @@ import {fileURLToPath} from 'node:url';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {takeNonFlagValue} from '../util/argv.js';
+import {toPackageRelative} from '../util/package-target.js';
 import {writeFileIfAbsent} from './fs.js';
+import {resolveScaffoldTarget} from './resolve-target.js';
 import {renderTemplate} from './template.js';
 import type {ScaffoldResult} from './types.js';
 
@@ -109,7 +111,8 @@ type PropertyEntry = {
 const HELP_TEXT = `Usage: gaia scaffold component <Name> [flags]
 
   --no-story          Skip the index.stories.tsx file
-  --parent <dir>      Parent dir under app/components/ (default: app/components/)
+  --parent <dir>      Parent dir under app/components/ (default: app/components/),
+                      relative to the frontend package
   --props "a:string,b:number"
                       Typed props rendered as a Props type alias.
                       Comma-bearing types (Record<K, V>, (a, b) => void,
@@ -430,7 +433,7 @@ const buildTestImports = (
 };
 
 const buildStoryTitle = (parent: string, componentName: string): string => {
-  // parent is repo-relative, e.g. "app/components" or "app/components/Form".
+  // parent is package-relative, e.g. "app/components" or "app/components/Form".
   // Strip the "app/components" prefix so titles look like "Components/Foo"
   // (matching the existing pattern, see app/components/Button/tests/index.stories.tsx).
   const stripped = parent.replace(/^app\/components\/?/u, '');
@@ -441,7 +444,7 @@ const buildStoryTitle = (parent: string, componentName: string): string => {
 };
 
 type RunOptions = {
-  /** Repo root used to resolve relative paths. Defaults to `process.cwd()`. */
+  /** Directory the command runs in; defaults to `process.cwd()`. The package root comes from the registry. */
   cwd?: string;
   /** Returns true if `absPath` is an existing directory. Default uses fs. */
   isDirectory?: (absPath: string) => boolean;
@@ -572,9 +575,15 @@ export const run = (
   }
 
   const {flags} = parsed;
-  const cwd = options.cwd ?? process.cwd();
+  const target = resolveScaffoldTarget(
+    options.cwd ?? process.cwd(),
+    'scaffold component'
+  );
+
+  if (target === undefined) return EXIT_CODES.CONFIG_INVALID;
   const isDirectory = options.isDirectory ?? defaultIsDirectory;
-  const parentAbs = path.resolve(cwd, flags.parent);
+  const parent = toPackageRelative(flags.parent, target.packagePath);
+  const parentAbs = path.resolve(target.packageDir, parent);
 
   if (!isDirectory(parentAbs)) {
     structuredError({
@@ -598,7 +607,7 @@ export const run = (
 
   const renderOptions: RenderFileOptions = {
     componentName: flags.name,
-    parent: flags.parent,
+    parent,
     props: flags.props,
     templatesRoot,
     withStory: flags.story,

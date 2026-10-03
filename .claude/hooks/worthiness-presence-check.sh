@@ -32,9 +32,15 @@
 # tests. Emergent membership is decided by the determinism classifier
 # (.gaia/scripts/classifier/classify-determinism.mjs): a changed test file whose
 # classifier verdict is `emergent` is in scope; a `.ts` test under
-# app/components/** that the classifier proves deterministic is RED-gated, not
-# worthiness-gated, and is excluded. When ZERO emergent test files changed, the
-# gate is a NO-OP and allows the merge.
+# <package>/app/components/** that the classifier proves deterministic is
+# RED-gated, not worthiness-gated, and is excluded. When ZERO emergent test
+# files changed, the gate is a NO-OP and allows the merge. Which paths are
+# emergent-surface tests is read from the package descriptor (`emergentTests`,
+# via .claude/hooks/lib/gaia-packages.sh), never from a literal `app/` prefix,
+# and an unusable registry or descriptor DENIES (SPEC-092 C5): with no globs the
+# gate would silently match nothing. An EXACT rename (R100: the content is
+# byte-identical, so there is nothing new to judge) is skipped; any other change,
+# including a rename that also edits the file, is in scope at its new path.
 #
 # COST/LATENCY. The recompute is O(emergent test files changed in the PR): each
 # in-scope file is fed through the signal helper once. Wall-clock therefore
@@ -216,6 +222,32 @@ tree_root="$(gaia_resolve_tree_root "$source_cwd" 2>/dev/null)" || exit 0
 # zero matches, which denies for the clean case below.
 ledger="$(worthiness_ledger_path "$tree_root")" || exit 0
 
+# The package descriptor decides which changed paths are emergent-surface tests.
+# Loaded from the ACTING tree (its registry and descriptor are the ones under
+# test) through the library rooted at this hook's own location. A missing
+# library or an unusable registry denies: an empty glob would let every emergent
+# test through unjudged.
+deny_with_reason() {
+  jq -n --arg r "$1" '{
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason: $r
+    }
+  }'
+  exit 0
+}
+[ -n "$_hook_library_directory" ] && [ -f "$_hook_library_directory/gaia-packages.sh" ] && . "$_hook_library_directory/gaia-packages.sh"
+if ! type gaia_packages_load >/dev/null 2>&1; then
+  deny_with_reason "Worthiness presence gate: cannot load .claude/hooks/lib/gaia-packages.sh, so the emergent-test globs are unknown and this merge cannot be checked. Next step: restore .claude/hooks/lib/gaia-packages.sh from the GAIA release and retry."
+fi
+packages_status=0
+gaia_packages_load "$tree_root" || packages_status=$?
+if [ "$packages_status" -ne 0 ]; then
+  deny_with_reason "$GAIA_PACKAGES_ERROR"
+fi
+emergent_test_ere=$(gaia_package_globs_ere emergentTests)
+
 # ---------------------------------------------------------------------------
 # Resolve the PR base in the ACTING tree: the branch being merged is that
 # checkout's HEAD, so a base resolved anywhere else scopes the diff to another
@@ -231,31 +263,62 @@ prov="$(audit_resolve_base_provenance "$tree_root" default-branch)" || prov=""
 IFS=$'\t' read -r _ _ base <<< "$prov" || true
 [ -n "$base" ] || exit 0
 
-# `-z` because the emergent-surface case patterns below match a repo-relative
-# path literally: under git's default core.quotePath a path carrying non-ASCII
-# or control bytes comes back wrapped in literal double quotes, matches none of
-# them, and the gate passes on the input it exists to hold. The `tr` restores
-# the newlines the read loop below splits on.
-changed=$(git -C "$tree_root" diff --name-only -z "${base}...HEAD" 2>/dev/null | tr '\0' '\n' || true)
+# `-z` because the emergent-surface glob below matches a repo-relative path
+# literally: under git's default core.quotePath a path carrying non-ASCII or
+# control bytes comes back wrapped in literal double quotes, matches none of
+# them, and the gate passes on the input it exists to hold. `--name-status -M100%`
+# reports an EXACT rename as `R100<NUL>old<NUL>new`, which is skipped (content
+# identical, nothing new to judge); every other status carries one path, in scope
+# at that path. A rename below 100% is never reported as R at this threshold: git
+# reports it as D plus A, so the new path is in scope. The records are translated
+# to newlines for the read loop below.
+changed=""
+while IFS= read -r -d '' diff_status; do
+  IFS= read -r -d '' diff_path || break
+  case "$diff_status" in
+    R* | C*)
+      IFS= read -r -d '' diff_new_path || break
+      [ "$diff_status" = "R100" ] && continue
+      diff_path="$diff_new_path"
+      ;;
+  esac
+  changed="${changed}${diff_path}
+"
+done < <(git -C "$tree_root" diff --name-status -z -M100% "${base}...HEAD" 2>/dev/null)
 [ -n "$changed" ] || exit 0
 
-# Echo "emergent" only when the classifier affirmatively classifies the given
-# repo-relative path emergent; echo nothing otherwise (non-zero exit, unparseable
-# JSON, or a strict verdict). Mirrors red-verify-commit-check.sh.
+# Sets `path_is_emergent` to 1 only when the classifier affirmatively classifies
+# the given repo-relative path emergent, and to 0 otherwise (non-zero exit,
+# unparseable JSON, or a strict verdict). Mirrors red-verify-commit-check.sh.
+# Exit 7 is the one failure that is NOT a 0: the classifier could not read the
+# package descriptor, so it sets `classifier_package_error` and the loop denies.
+# Not a command substitution, so both variables survive the call.
+path_is_emergent=0
+classifier_package_error=''
 classify_emergent() {
   local relative_path="$1"
-  local classifier_output
+  local classifier_output classifier_status=0
+  path_is_emergent=0
   # Run from the ACTING TREE, not the process working directory. `$relative_path` stays
   # repo-relative because the classifier's own path rules read it, but it must
   # not be resolved against a working directory nobody chose: the file read then
-  # fails and the verdict stops describing the file. The `cd` is inside a
-  # command substitution, so it never persists into the rest of this hook.
-  classifier_output=$( cd "$tree_root" && node "$classifier_script" "$relative_path" 2>/dev/null ) || return 0
+  # fails and the verdict stops describing the file. The same working directory
+  # is where the classifier finds the registry. The `cd` is inside a command
+  # substitution, so it never persists into the rest of this hook.
+  classifier_output=$( cd "$tree_root" && node "$classifier_script" "$relative_path" 2>/dev/null ) || classifier_status=$?
+  if [ "$classifier_status" -eq 7 ]; then
+    classifier_package_error=$(printf '%s' "$classifier_output" | jq -r '.error // empty' 2>/dev/null)
+    [ -n "$classifier_package_error" ] || classifier_package_error='gaia-packages: the determinism classifier could not read the package descriptor. Next step: fix .gaia/packages.json or the package descriptor and retry.'
+    return 0
+  fi
+  [ "$classifier_status" -eq 0 ] || return 0
   [ -n "$classifier_output" ] || return 0
-  printf '%s' "$classifier_output" \
+  if [ -n "$(printf '%s' "$classifier_output" \
     | jq -r 'select((.classification // "") == "emergent") | "emergent"' \
         2>/dev/null \
-    | head -1
+    | head -1)" ]; then
+    path_is_emergent=1
+  fi
 }
 
 # Collect missing-line offenders as "file\tfullName" lines.
@@ -264,15 +327,12 @@ offenders=""
 while IFS= read -r path; do
   [ -n "$path" ] || continue
 
-  # Emergent surface only: app/components/** or .playwright/**. The signal helper
-  # only emits for test files (.test.ts/.test.tsx and playwright .spec.ts); a
-  # non-test file under these paths emits nothing and drops out below.
-  case "$path" in
-    app/components/*.test.ts | app/components/*.test.tsx) ;;
-    .playwright/*.spec.ts | .playwright/*.spec.tsx) ;;
-    .playwright/*.test.ts | .playwright/*.test.tsx) ;;
-    *) continue ;;
-  esac
+  # Emergent surface only: the package descriptor's `emergentTests` globs (the
+  # component tests and the Playwright specs of each registered package), joined
+  # with the package path. The signal helper only emits for test files; a
+  # non-test file that slips through emits nothing and drops out below. An empty
+  # ERE matches nothing.
+  [ -n "$emergent_test_ere" ] && [[ "$path" =~ $emergent_test_ere ]] || continue
 
   relative_path=$(red_ledger_repo_relative_path "$path")
 
@@ -288,7 +348,11 @@ while IFS= read -r path; do
   # not worthiness-gated; skip it. A classifier failure echoes nothing (fail-open:
   # the file is not treated as emergent, so it is not demanded here; the RED gate
   # owns the deterministic surface).
-  [ -n "$(classify_emergent "$relative_path")" ] || continue
+  classify_emergent "$relative_path"
+  if [ -n "$classifier_package_error" ]; then
+    deny_with_reason "$classifier_package_error"
+  fi
+  [ "$path_is_emergent" -eq 1 ] || continue
 
   # Current tests: helper over the working-tree file content on disk. Parse
   # failure (mid-edit syntax error) -> skip this file (fail-open).

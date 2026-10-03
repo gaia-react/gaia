@@ -107,6 +107,8 @@ wiki_pr_with_stale_marker() {
 
 @test "UAT-011: a manifest-only chore(deps) pull request is allowed and gets the chore(deps) stamp" {
   cp "$MGF_REPO_ROOT/.gaia/scripts/chore-deps-skip.sh" "$REPO/.gaia/scripts/chore-deps-skip.sh"
+  mkdir -p "$REPO/.claude/hooks/lib"
+  cp "$MGF_REPO_ROOT/.claude/hooks/lib/gaia-packages.sh" "$REPO/.claude/hooks/lib/gaia-packages.sh"
   mgf_commit "package.json" '{"name":"x","version":"1.0.1"}'
   mgf_record 12 false "chore(deps): bump x from 1.0.0 to 1.0.1" "package.json"
   # Non-vacuity: package.json dispatches a member, so this is the member-aware

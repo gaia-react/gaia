@@ -3,8 +3,10 @@ import {execFileSync} from 'node:child_process';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {EXIT_CODES} from '../exit.js';
 import {ADOPTER_OWNED_SENTINELS as GIT_TRACKED_SENTINELS} from '../release/manifest.js';
 import {ADOPTER_OWNED_SENTINELS as RELEASE_SENTINELS} from '../release/runtime-deps.js';
+import {writeFrontendRegistry} from '../util/package-fixture.js';
 import {
   ADOPTER_OWNED_SENTINELS,
   HELP_TEXT,
@@ -296,24 +298,56 @@ describe('wiki dead-paths', () => {
     ]);
   });
 
-  test('detects dead paths under .gaia/ and app/ as well as .claude/', () => {
+  test('detects dead paths under .gaia/ and the frontend package as well as .claude/', () => {
     sandbox.writeFile(
       'wiki/concepts/A.md',
       '# A\n\nSee `.gaia/cli/src/missing/index.ts`.\n'
     );
     sandbox.writeFile(
       'wiki/concepts/B.md',
-      '# B\n\nSee `app/components/Removed/index.tsx`.\n'
+      '# B\n\nSee `frontend/app/missing.ts` and `frontend/app/components/Removed/index.tsx`.\n'
     );
 
     const {dead} = scanWikiPaths(sandbox.root);
-    expect(dead).toHaveLength(2);
     expect(
       dead.map((d) => d.path).toSorted((a, b) => a.localeCompare(b))
     ).toEqual([
       '.gaia/cli/src/missing/index.ts',
-      'app/components/Removed/index.tsx',
+      'frontend/app/components/Removed/index.tsx',
+      'frontend/app/missing.ts',
     ]);
+  });
+
+  test('does not track root app/ or test/ prefixes under the built-in default', () => {
+    sandbox.writeFile(
+      'wiki/concepts/B.md',
+      '# B\n\nSee `app/missing.ts` and `test/missing.ts`.\n'
+    );
+
+    expect(scanWikiPaths(sandbox.root).dead).toEqual([]);
+  });
+
+  test('a path-"." registry tracks the root app/ and test/ prefixes', () => {
+    writeFrontendRegistry(sandbox.root, '.');
+    sandbox.writeFile(
+      'wiki/concepts/B.md',
+      '# B\n\nSee `app/missing.ts` and `test/missing.ts`.\n'
+    );
+
+    expect(scanWikiPaths(sandbox.root).dead.map((d) => d.path)).toEqual([
+      'app/missing.ts',
+      'test/missing.ts',
+    ]);
+  });
+
+  test('a malformed registry refuses with the gaia-packages message', () => {
+    sandbox.writeFile('.gaia/packages.json', '{not json');
+    const capture = captureStdio();
+    const exit = run([], {cwd: sandbox.root});
+    capture.restore();
+
+    expect(exit).not.toBe(EXIT_CODES.OK);
+    expect(capture.errors.join('')).toContain('gaia-packages:');
   });
 
   test('flags sibling-monorepo paths (studio/, website/) regardless of disk', () => {

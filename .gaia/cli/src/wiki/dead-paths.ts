@@ -13,6 +13,7 @@ import {readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {loadPackages} from '../util/packages.js';
 import {
   collectWikiMarkdown,
   isGeneratedContentExempt,
@@ -22,7 +23,8 @@ import {
 export const HELP_TEXT = `Usage: gaia wiki dead-paths [--json]
 
   Scan wiki/**/*.md for backticked repo-relative paths under .claude/, .gaia/,
-  app/, test/, wiki/ that no longer exist on disk, plus any reference to
+  wiki/ and the registered package paths (frontend/) that no longer exist on
+  disk, plus any reference to
   sibling-monorepo paths (studio/, website/) which reach outside the GAIA
   tarball and never resolve on a single-repo clone. Excludes wiki/log.md,
   wiki/hot.md and wiki/meta/** (generated or append-only files that
@@ -31,13 +33,32 @@ export const HELP_TEXT = `Usage: gaia wiki dead-paths [--json]
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
-const TRACKED_PREFIXES = [
-  '.claude/',
-  '.gaia/',
-  'app/',
-  'test/',
-  'wiki/',
-] as const;
+const HARNESS_PREFIXES = ['.claude/', '.gaia/', 'wiki/'] as const;
+
+// A package registered at `.` has no directory prefix of its own to key on, so
+// its top-level source directories stand in until it moves under its own path.
+const ROOT_PACKAGE_PREFIXES = ['app/', 'test/'] as const;
+
+/**
+ * The repo-relative prefixes whose citations are checked: the harness
+ * directories plus each registered package's path. Throws the `gaia-packages:`
+ * message when the registry or a descriptor cannot be loaded, so a broken
+ * registry never degrades the scan to a guessed layout.
+ */
+const trackedPrefixes = (repoRoot: string): readonly string[] => {
+  const loaded = loadPackages(repoRoot);
+
+  if (!loaded.ok) {
+    throw new Error(loaded.message);
+  }
+
+  return [
+    ...HARNESS_PREFIXES,
+    ...loaded.packages.flatMap((entry) =>
+      entry.path === '.' ? ROOT_PACKAGE_PREFIXES : [`${entry.path}/`]
+    ),
+  ];
+};
 
 /**
  * Sibling-monorepo segments that the maintainer's working tree contains
@@ -125,7 +146,7 @@ type WikiPathScan = {
   dead: readonly DeadRef[];
 };
 
-const isTrackedPath = (token: string): boolean => {
+const isTrackedPath = (token: string, prefixes: readonly string[]): boolean => {
   if (PLACEHOLDER_PATTERN.test(token)) return false;
   if (!token.includes('/')) return false;
   if (!/\.[a-z0-9]{1,8}$/i.test(token)) return false;
@@ -133,7 +154,7 @@ const isTrackedPath = (token: string): boolean => {
   if (RUNTIME_PREFIXES.some((prefix) => token.startsWith(prefix))) return false;
   if (SIBLING_REPO_PATTERN.test(token)) return true;
 
-  return TRACKED_PREFIXES.some((prefix) => token.startsWith(prefix));
+  return prefixes.some((prefix) => token.startsWith(prefix));
 };
 
 // A dead citation is a content finding, so this scan takes the shared
@@ -165,6 +186,7 @@ const isDeadToken = (cwd: string, token: string): boolean =>
 type FileContext = {
   cwd: string;
   filePath: string;
+  prefixes: readonly string[];
 };
 
 const collectFindingsInLine = (
@@ -181,7 +203,7 @@ const collectFindingsInLine = (
 
     return (
         token !== undefined &&
-          isTrackedPath(token) &&
+          isTrackedPath(token, ctx.prefixes) &&
           isDeadToken(ctx.cwd, token)
       ) ?
         [{filePath: ctx.filePath, line: lineNumber, path: token}]
@@ -204,9 +226,10 @@ const collectFindingsInFile = (ctx: FileContext): WikiPathScan => {
 };
 
 export const scanWikiPaths = (cwd: string): WikiPathScan => {
+  const prefixes = trackedPrefixes(cwd);
   const perFile = collectWikiMarkdown(cwd)
     .filter((filePath) => !shouldSkipFile(filePath))
-    .map((filePath) => collectFindingsInFile({cwd, filePath}));
+    .map((filePath) => collectFindingsInFile({cwd, filePath, prefixes}));
 
   return {
     dead: perFile.flatMap((found) => found.dead),

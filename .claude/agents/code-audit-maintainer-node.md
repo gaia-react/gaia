@@ -24,6 +24,7 @@ You audit the framework's own Node/CLI TypeScript, the code behind GAIA's CLI: r
 - `.gaia/cli/*.config.cjs`
 - `.gaia/cli/*.config.js`
 - `.gaia/scripts/**/*.mjs`
+- `.gaia/tests/**/*.mjs`
 
 Filter the changed-file list against the globs above. **If none match, self-skip cleanly.** Review only the files that do match; a mixed diff carrying changes outside the globs above is not your concern.
 <!-- gaia:audit-remit:end -->

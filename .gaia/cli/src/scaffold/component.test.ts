@@ -18,6 +18,7 @@ import {
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {writeFrontendRegistry} from '../util/package-fixture.js';
 import {run} from './component.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -33,6 +34,7 @@ const setupSandbox = (): Sandbox => {
   const root = mkdtempSync(path.join(tmpdir(), 'gaia-scaffold-component-'));
   const parent = path.join(root, 'app', 'components');
   mkdirSync(parent, {recursive: true});
+  writeFrontendRegistry(root);
 
   return {
     cleanup: () => {

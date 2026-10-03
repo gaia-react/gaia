@@ -393,8 +393,10 @@ stamp_trailer() {
 install_chore_deps_predicate() {
   local source_path
   source_path=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/chore-deps-skip.sh
-  mkdir -p "$REPO/.gaia/scripts"
+  mkdir -p "$REPO/.gaia/scripts" "$REPO/.claude/hooks/lib"
   cp "$source_path" "$REPO/.gaia/scripts/chore-deps-skip.sh"
+  # The predicate reads the package registry through this library.
+  cp "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib/gaia-packages.sh" "$REPO/.claude/hooks/lib/gaia-packages.sh"
   chmod +x "$REPO/.gaia/scripts/chore-deps-skip.sh"
 }
 
@@ -1280,6 +1282,8 @@ gh pr merge 30 --squash"
   cp "$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/chore-deps-skip.sh" \
     "$LINKED_WORKTREE/.gaia/scripts/chore-deps-skip.sh"
   chmod +x "$LINKED_WORKTREE/.gaia/scripts/chore-deps-skip.sh"
+  mkdir -p "$LINKED_WORKTREE/.claude/hooks/lib"
+  cp "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib/gaia-packages.sh" "$LINKED_WORKTREE/.claude/hooks/lib/gaia-packages.sh"
   [ ! -f "$REPO/.gaia/scripts/chore-deps-skip.sh" ]
 
   run_merge_hook_in_worktree

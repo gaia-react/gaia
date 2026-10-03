@@ -7,7 +7,7 @@
  *   1. Delete `.github/FUNDING.yml`.
  *   2. Replace the root `README.md` with the project-agnostic template at
  *      `.gaia/templates/README.md`, substituting `{{PROJECT_TITLE}}`.
- *   3. De-brand the Storybook sidebar in `.storybook/preview.ts`: rewrite
+ *   3. De-brand the Storybook sidebar in the frontend package's `.storybook/preview.ts`: rewrite
  *      the brand to the project title with no GAIA image or URL.
  *
  * Idempotent: re-running is safe; files already removed stay removed,
@@ -22,6 +22,7 @@ import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {takeValue} from '../util/argv.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
+import {resolvePackageTarget} from '../util/package-target.js';
 import {escapeJsLiteralValue} from './util/js-literal.js';
 import {markStepCompleted} from './util/state.js';
 
@@ -165,11 +166,22 @@ export const run = (
   }
 
   const cwd = options.cwd ?? process.cwd();
+  const target = resolvePackageTarget(cwd);
+
+  if (!target.ok) {
+    structuredError({
+      code: 'gaia_packages',
+      message: target.message,
+      subcommand: 'init strip-branding',
+    });
+
+    return EXIT_CODES.CONFIG_INVALID;
+  }
 
   try {
     removeIfPresent(cwd, FUNDING_PATH);
     writeReadme(cwd, parsed.flags.title);
-    debrandStorybook(cwd, parsed.flags.title);
+    debrandStorybook(target.packageDir, parsed.flags.title);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 

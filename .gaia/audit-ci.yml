@@ -52,6 +52,12 @@ auditors:
       - ".env.example"
       - ".nvmrc"
       - ".node-version"
+      # The package descriptor: it names the globs every gate reads (unit
+      # tests, strict candidates, self-heal refusals), so a change to it
+      # changes what the gates check. The root copy is the transitional
+      # location; `frontend/` is where the descriptor lands after the move.
+      - "gaia.package.json"
+      - "frontend/gaia.package.json"
     audience: adopter
     push_fixes: true
     default: true
@@ -174,6 +180,9 @@ auditors:
       # The framework's executable Node beside the shell scripts. The shell
       # member's `.gaia/**/*.sh` never reaches these, so they dispatched nobody.
       - ".gaia/scripts/**/*.mjs"
+      # The same Node under the test tree (the claude-probe harness and its
+      # fixtures), for the same reason: `.gaia/**/*.sh` never reaches `.mjs`.
+      - ".gaia/tests/**/*.mjs"
     audience: maintainer
     push_fixes: false
   # gaia:maintainer-only:end

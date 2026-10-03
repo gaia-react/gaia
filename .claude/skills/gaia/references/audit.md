@@ -16,7 +16,7 @@ Calling `/gaia-audit` is the intent to audit. The default researches, then gates
 This command ships in a template and runs in many clones across many machines. Neither this file nor the subagent prompts may hardcode a project root or a user-scoped memory path. The subagent resolves both at the start of its run:
 
 ```bash
-PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-$(pwd)}")"
 MEMORY_DIR="$HOME/.claude/projects/$(echo "$PROJECT_ROOT" | sed 's|/|-|g')/memory"
 AGENT_MEMORY_DIR="$HOME/.claude/agent-memory"
 ```
@@ -68,7 +68,7 @@ Use this to re-apply an existing report after fixing drift, or to retry without 
   > `Before doing anything else, resolve these variables and use them for every path in the playbook:`
   >
   > ```bash
-  > PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+  > PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-$(pwd)}")"
   > MEMORY_DIR="$HOME/.claude/projects/$(echo "$PROJECT_ROOT" | sed 's|/|-|g')/memory"
   > AGENT_MEMORY_DIR="$HOME/.claude/agent-memory"
   > ```
@@ -93,7 +93,7 @@ Use this to re-apply an existing report after fixing drift, or to retry without 
   > `Before doing anything else, resolve these variables and use them for every path in the playbook:`
   >
   > ```bash
-  > PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+  > PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-$(pwd)}")"
   > MEMORY_DIR="$HOME/.claude/projects/$(echo "$PROJECT_ROOT" | sed 's|/|-|g')/memory"
   > AGENT_MEMORY_DIR="$HOME/.claude/agent-memory"
   > ```

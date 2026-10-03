@@ -1,6 +1,7 @@
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -9,6 +10,7 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {writeFrontendRegistry} from '../util/package-fixture.js';
 import {saveDeclines} from './declines.js';
 import {resolveGroupMembers} from './groups.js';
 import {
@@ -42,6 +44,7 @@ const writeWorkspace = (root: string, minutes: number): void => {
 
 const setupSandbox = (): Sandbox => {
   const root = mkdtempSync(path.join(tmpdir(), 'gaia-update-deps-'));
+  writeFrontendRegistry(root);
   execFileSync('git', ['init', '-q', '-b', 'main'], {cwd: root});
   execFileSync('git', ['config', 'user.email', 'test@example.com'], {
     cwd: root,
@@ -1367,5 +1370,137 @@ describe('update-deps run: preview payload fields', () => {
     });
 
     expect(result.snoozed).toEqual([]);
+  });
+});
+
+describe('update-deps run: frontend package root', () => {
+  let root: string;
+
+  beforeEach(() => {
+    // Registry-less workspace: the built-in default puts the app in frontend/.
+    root = mkdtempSync(path.join(tmpdir(), 'gaia-update-deps-workspace-'));
+    execFileSync('git', ['init', '-q', '-b', 'main'], {cwd: root});
+    writeFileSync(
+      path.join(root, 'package.json'),
+      JSON.stringify({gaia: {updateDepsHold: {vite: '8.0'}}, name: 'root'}),
+      'utf8'
+    );
+    mkdirSync(path.join(root, 'frontend', 'node_modules', 'vite'), {
+      recursive: true,
+    });
+    writeFileSync(
+      path.join(root, 'frontend', 'package.json'),
+      JSON.stringify({
+        dependencies: {foo: '^1.2.3', vite: '8.0.16'},
+        name: 'frontend',
+      }),
+      'utf8'
+    );
+    writeFileSync(
+      path.join(root, 'frontend', 'node_modules', 'vite', 'package.json'),
+      JSON.stringify({name: 'vite', version: '8.0.16'}),
+      'utf8'
+    );
+  });
+
+  afterEach(() => {
+    rmSync(root, {force: true, recursive: true});
+  });
+
+  const fakeOutdated: FakeOutdated = {
+    foo: {current: '1.2.3', latest: '1.3.0', wanted: '1.3.0'},
+    vite: {current: '8.0.16', latest: '8.1.0', wanted: '8.1.0'},
+  };
+
+  test.each([
+    ['the repo root', ''],
+    ['inside frontend/', 'frontend'],
+  ])(
+    'lists the frontend packages and honors the root hold, from %s',
+    (_label, cwdRelative) => {
+      const cwds: string[] = [];
+      const runner = makePnpmRunner(
+        fakeOutdated,
+        undefined,
+        undefined,
+        undefined,
+        {vite: ['8.0.16', '8.0.17', '8.1.0']}
+      );
+      const result = computeUpdates({
+        cwd: path.join(root, cwdRelative),
+        pnpmRunner: (args, options) => {
+          cwds.push(options.cwd);
+
+          return runner(args, options);
+        },
+      });
+
+      expect(result.wave_a.map((entry) => entry.name)).toEqual(['foo', 'vite']);
+      // The root hold capped vite to the 8.0 line.
+      expect(result.wave_a.find((entry) => entry.name === 'vite')?.latest).toBe(
+        '8.0.17'
+      );
+      // `pnpm outdated` ran in the package, not at the workspace root.
+      expect(cwds.every((cwd) => cwd.endsWith('/frontend'))).toBe(true);
+    }
+  );
+
+  test('sibling expansion reads the installed version from frontend/node_modules', () => {
+    writeFileSync(
+      path.join(root, 'frontend', 'package.json'),
+      JSON.stringify({
+        devDependencies: {'@storybook/react': '^8.0.0', storybook: '^8.0.0'},
+        name: 'frontend',
+      }),
+      'utf8'
+    );
+    // Installed at 9.0.0 although the spec floors at ^8.0.0; a read from any
+    // other node_modules falls back to the spec floor and reports 8.0.0.
+    mkdirSync(
+      path.join(root, 'frontend', 'node_modules', '@storybook', 'react'),
+      {recursive: true}
+    );
+    writeFileSync(
+      path.join(
+        root,
+        'frontend',
+        'node_modules',
+        '@storybook',
+        'react',
+        'package.json'
+      ),
+      JSON.stringify({name: '@storybook/react', version: '9.0.0'}),
+      'utf8'
+    );
+
+    const result = computeUpdates({
+      cwd: root,
+      pnpmRunner: makePnpmRunner(
+        {storybook: {current: '8.0.0', latest: '9.0.0', wanted: '8.0.0'}},
+        undefined,
+        {'@storybook/react': '9.0.0'}
+      ),
+    });
+
+    const sbReact = result.wave_b[0]?.packages.find(
+      (p) => p.name === '@storybook/react'
+    );
+    expect(sbReact?.current).toBe('9.0.0');
+  });
+
+  test('a malformed registry makes the run exit non-zero with the gaia-packages message and writes no payload', () => {
+    mkdirSync(path.join(root, '.gaia'), {recursive: true});
+    writeFileSync(path.join(root, '.gaia', 'packages.json'), '{not json');
+    const stdio = captureStdio();
+    const outPath = path.join(root, 'out', 'updates.json');
+    const exit = run(['--emit-updates', outPath], {
+      cwd: root,
+      pnpmRunner: makePnpmRunner(fakeOutdated),
+    });
+    stdio.restore();
+
+    expect(exit).not.toBe(0);
+    expect(stdio.errors.join('')).toContain('gaia-packages:');
+    expect(existsSync(outPath)).toBe(false);
   });
 });

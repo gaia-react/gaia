@@ -10,6 +10,8 @@ import {
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {runInNewContext} from 'node:vm';
+import {writeFrontendRegistry} from '../util/package-fixture.js';
+import {packageRoot} from '../util/packages.js';
 import {resolveRepoRootFromImportMeta} from '../util/repo-root-fixture.js';
 import {claudeMdHasH1, run} from './rename.js';
 import {readState} from './util/state.js';
@@ -50,6 +52,7 @@ const PAGE_INDEX_TS = `export default {
 
 const setupSandbox = (): Sandbox => {
   const root = mkdtempSync(path.join(tmpdir(), 'gaia-init-rename-'));
+  writeFrontendRegistry(root);
   writeFileSync(path.join(root, 'package.json'), `${PACKAGE_JSON}\n`, 'utf8');
   writeFileSync(path.join(root, 'CLAUDE.md'), CLAUDE_MD, 'utf8');
   mkdirSync(path.join(root, 'app', 'languages', 'en', 'pages'), {
@@ -602,7 +605,10 @@ describe('CLAUDE.md template invariant', () => {
 describe('language template invariant', () => {
   test('the shipped language files come back carrying the new title', () => {
     const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+    // The shipped files live in the frontend package wherever it is registered.
+    const shippedPackage = packageRoot(repoRoot);
     const root = mkdtempSync(path.join(tmpdir(), 'gaia-init-rename-shipped-'));
+    writeFrontendRegistry(root);
 
     try {
       writeFileSync(
@@ -615,11 +621,18 @@ describe('language template invariant', () => {
         recursive: true,
       });
       copyFileSync(
-        path.join(repoRoot, 'app', 'languages', 'en', 'common.ts'),
+        path.join(shippedPackage, 'app', 'languages', 'en', 'common.ts'),
         path.join(root, 'app', 'languages', 'en', 'common.ts')
       );
       copyFileSync(
-        path.join(repoRoot, 'app', 'languages', 'en', 'pages', '_index.ts'),
+        path.join(
+          shippedPackage,
+          'app',
+          'languages',
+          'en',
+          'pages',
+          '_index.ts'
+        ),
         path.join(root, 'app', 'languages', 'en', 'pages', '_index.ts')
       );
 

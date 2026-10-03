@@ -10,10 +10,24 @@
 # (red-verify-commit-check.sh) later reads that ledger to decide whether a
 # `git commit` introducing a now-passing new test may land.
 #
-# This hook ONLY observes. It never blocks, never emits a deny, and ALWAYS
-# exits 0, a missing capture only means the check may later deny, which is the
-# safe direction. It mirrors the merge-audit gate's split of "observe and
-# record" from "deny the consequential action."
+# This hook ONLY observes. It never emits a deny and ALWAYS exits 0; a missing
+# capture only means the check may later deny, which is the safe direction. It
+# mirrors the merge-audit gate's split of "observe and record" from "deny the
+# consequential action." The one thing it does say out loud is an unusable
+# package registry or descriptor (SPEC-092 C5): it records nothing and emits a
+# PostToolUse `{"decision":"block","reason":...}` so the session sees why, rather
+# than going quiet while the commit gate later denies for want of a RED.
+#
+# Package scope (SPEC-092): the test run may name a package three ways, and the
+# hook recognizes all of them. `pnpm test --run frontend/app/x.test.ts` from the
+# repo root (the root proxy script), `pnpm -C frontend test --run app/x.test.ts`
+# or `pnpm --filter <name> test --run app/x.test.ts` from anywhere, and
+# `pnpm test --run app/x.test.ts` from inside the package directory. Each scope
+# path is resolved to the package that owns it (the registry's longest-prefix
+# owner), the json re-run happens in that package's directory with the
+# package-relative scope, and the ledger key stays REPO-relative
+# (`frontend/app/x.test.ts`), the key red-verify-commit-check.sh computes for
+# the staged path.
 #
 # Valid RED = a per-test `assertionResults[].status == "failed"`. A file-level
 # collection/compile error (file status "failed", empty assertionResults,
@@ -41,7 +55,8 @@ command=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null |
 # --- scope match: a `(pnpm|npm) [run] test … --run …` invocation --------------
 # ANCHORED detection: walk pipeline segments, strip leading env-var prefixes,
 # and act only when `pnpm`/`npm` is the segment's command word AND `test` is
-# the script position, requiring the POSITIVE `--run` case scoped to that same
+# the script position (after any `-C <dir>`, `--dir <dir>`, `--filter <name>`, or
+# `-F <name>` option), requiring the POSITIVE `--run` case scoped to that same
 # segment (a bare run without `--run` is simply not captured here, and a
 # `--run` naming no test path is skipped below with a diagnostic;
 # red-verify-commit-check.sh names `pnpm test --run <test-file>` as the
@@ -56,7 +71,7 @@ command=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null |
 test_segment=""
 while IFS= read -r segment; do
   segment_command=$(printf '%s' "$segment" | sed -E 's/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*//')
-  [[ "$segment_command" =~ ^(pnpm|npm)[[:space:]]+(run[[:space:]]+)?test([[:space:]]|$) ]] || continue
+  [[ "$segment_command" =~ ^(pnpm|npm)[[:space:]]+(((-C|--dir|--filter|-F)[[:space:]]+[^[:space:]]+|(--dir|--filter)=[^[:space:]]+)[[:space:]]+)*(run[[:space:]]+)?test([[:space:]]|$) ]] || continue
   [[ "$segment_command" =~ (^|[[:space:]])--run([[:space:]]|$) ]] || continue
   test_segment="$segment_command"
   break
@@ -97,6 +112,73 @@ tree_root="$(gaia_resolve_tree_root "$source_cwd" 2>/dev/null)" || exit 0
 ledger=$(red_ledger_path "$tree_root") || exit 0
 ledger_directory=$(dirname "$ledger")
 temporary_directory="${ledger_directory}/.tmp"
+
+# --- package registry: which package owns the scope --------------------------
+# Loaded from the ACTING tree through the library rooted at this hook's own
+# location. An unusable registry or descriptor (or a library that will not load)
+# records nothing and tells the session why, instead of exiting silently.
+block_with_reason() {
+  jq -n --arg r "$1" '{decision: "block", reason: $r}' 2>/dev/null || true
+  exit 0
+}
+[ -n "$_library_directory" ] && [ -f "$_library_directory/gaia-packages.sh" ] && . "$_library_directory/gaia-packages.sh"
+if ! type gaia_packages_load >/dev/null 2>&1; then
+  block_with_reason "RED capture: cannot load .claude/hooks/lib/gaia-packages.sh, so no RED was recorded for this test run. Next step: restore .claude/hooks/lib/gaia-packages.sh from the GAIA release and re-run the test."
+fi
+packages_status=0
+gaia_packages_load "$tree_root" || packages_status=$?
+if [ "$packages_status" -ne 0 ]; then
+  block_with_reason "RED capture recorded nothing: ${GAIA_PACKAGES_ERROR}"
+fi
+
+# The `-C`, `--dir`, `--filter`, and `-F` options the matched invocation carries
+# before its `test` script word. Walks the tokens up to `test`; a quoted value
+# with a space is not modeled, like the rest of this hook's parsing.
+option_directory=''
+option_filter=''
+read -ra segment_tokens <<<"$test_segment"
+token_index=1
+while [ "$token_index" -lt "${#segment_tokens[@]}" ]; do
+  token="${segment_tokens[$token_index]}"
+  case "$token" in
+    test) break ;;
+    -C | --dir)
+      token_index=$((token_index + 1))
+      option_directory="${segment_tokens[$token_index]:-}"
+      ;;
+    --dir=*) option_directory="${token#--dir=}" ;;
+    --filter | -F)
+      token_index=$((token_index + 1))
+      option_filter="${segment_tokens[$token_index]:-}"
+      ;;
+    --filter=*) option_filter="${token#--filter=}" ;;
+  esac
+  token_index=$((token_index + 1))
+done
+
+# The directory the scope paths are written relative to: the `-C`/`--dir`
+# directory, the `--filter` package's directory, else the agent's own working
+# directory. Physical, so it compares against $tree_root (also physical).
+scope_base="$source_cwd"
+if [ -n "$option_directory" ]; then
+  case "$option_directory" in
+    /*) scope_base="$option_directory" ;;
+    *) scope_base="$source_cwd/$option_directory" ;;
+  esac
+elif [ -n "$option_filter" ]; then
+  filter_path=$(gaia_package_dir "$option_filter") || filter_path=''
+  if [ -z "$filter_path" ]; then
+    jq -n --arg c "RED capture skipped: the --filter name '$option_filter' is not a registered package in .gaia/packages.json, so no RED was recorded. Run the test with pnpm -C <package dir> test --run <test-file>, or pnpm test --run <repo-relative test-file> from the repo root." \
+      '{hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $c}}' 2>/dev/null || true
+    exit 0
+  fi
+  if [ "$filter_path" = . ]; then
+    scope_base="$tree_root"
+  else
+    scope_base="$tree_root/$filter_path"
+  fi
+fi
+scope_base=$(cd "$scope_base" 2>/dev/null && pwd -P) || scope_base="$source_cwd"
 
 # --- obtain structured json: canned override, or a scoped vitest re-run -------
 json_file=""
@@ -164,11 +246,65 @@ else
     exit 0
   fi
 
+  # Resolve every scope token against the scope base. A token that lands inside
+  # a registered package is rewritten package-relative and decides the re-run
+  # directory (the package that owns the first such token); a token that lands
+  # nowhere (a bare filter pattern) is kept as written. Nothing resolves: the
+  # re-run stays in the scope base, as it always did.
+  run_directory="$scope_base"
+  run_scope=""
+  resolved_package_path=""
+  resolved_tokens=""
+  # Globbing off: a scope like app/**/*.test.ts is vitest's to expand, not the shell's.
+  set -f
+  for scope_token in $scope; do
+    scope_clean="$scope_token"
+    while [ "${scope_clean#./}" != "$scope_clean" ]; do
+      scope_clean="${scope_clean#./}"
+    done
+    case "$scope_clean" in
+      /*) scope_absolute="$scope_clean" ;;
+      *) scope_absolute="$scope_base/$scope_clean" ;;
+    esac
+    scope_repo_relative=""
+    case "$scope_absolute" in
+      "$tree_root"/*) scope_repo_relative="${scope_absolute#"$tree_root"/}" ;;
+    esac
+    owner_name=""
+    [ -n "$scope_repo_relative" ] && owner_name=$(gaia_package_for_path "$scope_repo_relative")
+    if [ -n "$owner_name" ]; then
+      owner_path=$(gaia_package_dir "$owner_name")
+      if [ -z "$resolved_package_path" ]; then
+        resolved_package_path="$owner_path"
+      fi
+      if [ "$owner_path" = "$resolved_package_path" ]; then
+        if [ "$owner_path" = . ]; then
+          resolved_tokens="${resolved_tokens}${scope_repo_relative}
+"
+        else
+          resolved_tokens="${resolved_tokens}${scope_repo_relative#"$owner_path"/}
+"
+        fi
+        continue
+      fi
+    fi
+    resolved_tokens="${resolved_tokens}${scope_token}
+"
+  done
+  if [ -n "$resolved_package_path" ]; then
+    if [ "$resolved_package_path" = . ]; then
+      run_directory="$tree_root"
+    else
+      run_directory="$tree_root/$resolved_package_path"
+    fi
+  fi
+  run_scope=$(printf '%s' "$resolved_tokens" | tr '\n' ' ')
+
   mkdir -p "$temporary_directory" 2>/dev/null || true
   # BSD mktemp (macOS) only substitutes a TRAILING run of X's; an embedded
   # "-XXXXXX.json" template is read as the literal filename, so a second
   # concurrent call collides with the first and fails outright (mkstemp
-  # failed … File exists), which would silently disable capture until the
+  # failed ... File exists), which would silently disable capture until the
   # leftover file is removed by hand. The trailing-X form randomizes on both
   # BSD and GNU mktemp. vitest's own reporter is selected by --reporter=json,
   # not by the outputFile extension, so dropping .json here is safe.
@@ -176,13 +312,15 @@ else
   [ -n "$json_file" ] || exit 0
   cleanup_json=1
 
-  # Re-invoke vitest directly (not `pnpm test`) with the json reporter. Using
-  # `pnpm exec vitest` avoids the project `test` script and passes json
-  # cleanly; this is a hook subprocess, not a Bash-tool call, so no PreToolUse
-  # hook intercepts it.
-  # shellcheck disable=SC2086 # $scope is an intentional word-split arg list.
-  pnpm exec vitest --run --reporter=json --outputFile="$json_file" $scope \
+  # Re-invoke vitest directly (not `pnpm test`) with the json reporter, in the
+  # owning package's directory with the package-relative scope. `pnpm -C <dir>
+  # exec vitest` avoids the project `test` script and passes json cleanly; this
+  # is a hook subprocess, not a Bash-tool call, so no PreToolUse hook intercepts
+  # it.
+  # shellcheck disable=SC2086 # $run_scope is an intentional word-split arg list.
+  pnpm -C "$run_directory" exec vitest --run --reporter=json --outputFile="$json_file" $run_scope \
     >/dev/null 2>&1 || true
+  set +f
 
   # If vitest produced no parseable json (binary missing, etc.), bail silently.
   if [ ! -s "$json_file" ] || ! jq -e . "$json_file" >/dev/null 2>&1; then
@@ -224,7 +362,13 @@ if [ -n "$failures" ]; then
     [ -n "$raw_file" ] || continue
     [ -n "$full_name" ] || continue
 
-    relative_file=$(red_ledger_repo_relative_path "$raw_file")
+    # Repo-relative against the ACTING tree's physical root first (vitest reports
+    # an absolute path, and the package re-run may sit in a subdirectory); the
+    # shared normalizer covers an already-relative name.
+    case "$raw_file" in
+      "$tree_root"/*) relative_file="${raw_file#"$tree_root"/}" ;;
+      *) relative_file=$(red_ledger_repo_relative_path "$raw_file") ;;
+    esac
     [ -n "$relative_file" ] || continue
 
     # Recompute the file's {fullName → signal} map once and reuse it.

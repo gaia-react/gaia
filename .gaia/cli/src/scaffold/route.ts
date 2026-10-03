@@ -20,6 +20,7 @@ import {structuredError} from '../stderr.js';
 import {lookupOwn} from '../util/argv.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {writeFileIfAbsent} from './fs.js';
+import {resolveScaffoldTarget} from './resolve-target.js';
 import {renderTemplate} from './template.js';
 import type {TemplateVars} from './template.js';
 import type {ScaffoldResult} from './types.js';
@@ -45,7 +46,7 @@ type ParsedFlags = {
 
 /** Options for `run`, mirroring the other scaffolders so tests can inject a root. */
 type RunOptions = {
-  /** Repo root used to resolve output paths. Defaults to `process.cwd()`. */
+  /** Directory the command runs in; defaults to `process.cwd()`. The package root comes from the registry. */
   cwd?: string;
 };
 
@@ -525,6 +526,74 @@ const writeLocaleFiles = (args: WriteLocaleFilesArgs): null | number => {
   );
 };
 
+type EmitRouteFilesArgs = {
+  flags: ParsedFlags;
+  name: string;
+  names: ResolvedNames;
+  result: ScaffoldResult;
+  root: string;
+};
+
+/** Write the route, page, and optional locale files; a number is a failure exit. */
+const emitRouteFiles = (args: EmitRouteFilesArgs): null | number => {
+  const {flags, name, names, result, root} = args;
+  const {dryRun, i18n} = flags;
+  const {groupSegment, i18nKey, pageName, routeFile} = names;
+  const tmpls = templatePaths();
+  const routeVars = buildRouteVars({flags, name, names});
+
+  const routeAbs = path.join(root, 'app', 'routes', `${routeFile}.tsx`);
+  writeFile({
+    absPath: routeAbs,
+    contents: renderTemplate(tmpls.route, routeVars),
+    dryRun,
+    result,
+  });
+
+  const pageDir = path.join(root, 'app', 'pages', groupSegment, pageName);
+  const pageVars: TemplateVars = {
+    groupSegment,
+    hasI18n: i18n,
+    i18nKey,
+    noI18n: !i18n,
+    pageName,
+  };
+
+  writeFile({
+    absPath: path.join(pageDir, 'index.tsx'),
+    contents: renderTemplate(tmpls.pageIndex, pageVars),
+    dryRun,
+    result,
+  });
+  writeFile({
+    absPath: path.join(pageDir, 'tests', 'index.test.tsx'),
+    contents: renderTemplate(tmpls.pageTest, pageVars),
+    dryRun,
+    result,
+  });
+  writeFile({
+    absPath: path.join(pageDir, 'tests', 'index.stories.tsx'),
+    contents: renderTemplate(tmpls.pageStories, pageVars),
+    dryRun,
+    result,
+  });
+
+  if (i18n) {
+    const failure = writeLocaleFiles({
+      dryRun,
+      name,
+      names,
+      result,
+      root,
+      tmpls,
+    });
+
+    if (failure !== null) return failure;
+  }
+
+  return null;
+};
+
 /**
  * Entry point for `gaia scaffold route ...`. Returns the process exit code.
  */
@@ -561,68 +630,26 @@ export const run = (
     return userError(invalidGroupMessage(flags.group));
   }
 
-  // Output paths resolve from the working directory, matching the other
-  // scaffolders. The shipped CLI is a single bundle two levels shallower
-  // than its source, so deriving the root from the module location (as an
-  // earlier version did) overshot the repo root by two directories.
-  const root = options.cwd ?? process.cwd();
-  const {dryRun, group, i18n, json} = flags;
+  // Output paths resolve from the frontend package root, which the registry
+  // names relative to the working tree root, so the command writes the same
+  // files from the repo root and from inside the package. The root is never
+  // derived from the module location: the shipped CLI is a single bundle two
+  // levels shallower than its source, so that overshoots the repo root.
+  const target = resolveScaffoldTarget(
+    options.cwd ?? process.cwd(),
+    'scaffold route'
+  );
+
+  if (target === undefined) return EXIT_CODES.CONFIG_INVALID;
+  const root = target.packageDir;
+  const {dryRun, group, json} = flags;
   const names = resolveNames(name, group);
-  const {groupSegment, i18nKey, pageName, routeFile} = names;
-  const tmpls = templatePaths();
   const result: ScaffoldResult = {edited: [], skipped: [], written: []};
 
   try {
-    const routeVars = buildRouteVars({flags, name, names});
+    const failure = emitRouteFiles({flags, name, names, result, root});
 
-    const routeAbs = path.join(root, 'app', 'routes', `${routeFile}.tsx`);
-    writeFile({
-      absPath: routeAbs,
-      contents: renderTemplate(tmpls.route, routeVars),
-      dryRun,
-      result,
-    });
-
-    const pageDir = path.join(root, 'app', 'pages', groupSegment, pageName);
-    const pageVars: TemplateVars = {
-      groupSegment,
-      hasI18n: i18n,
-      i18nKey,
-      noI18n: !i18n,
-      pageName,
-    };
-
-    writeFile({
-      absPath: path.join(pageDir, 'index.tsx'),
-      contents: renderTemplate(tmpls.pageIndex, pageVars),
-      dryRun,
-      result,
-    });
-    writeFile({
-      absPath: path.join(pageDir, 'tests', 'index.test.tsx'),
-      contents: renderTemplate(tmpls.pageTest, pageVars),
-      dryRun,
-      result,
-    });
-    writeFile({
-      absPath: path.join(pageDir, 'tests', 'index.stories.tsx'),
-      contents: renderTemplate(tmpls.pageStories, pageVars),
-      dryRun,
-      result,
-    });
-
-    if (i18n) {
-      const failure = writeLocaleFiles({
-        dryRun,
-        name,
-        names,
-        result,
-        root,
-        tmpls,
-      });
-
-      if (failure !== null) return failure;
-    }
+    if (failure !== null) return failure;
   } catch (error) {
     return userError(error instanceof Error ? error.message : String(error));
   }

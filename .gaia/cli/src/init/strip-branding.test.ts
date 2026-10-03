@@ -9,6 +9,7 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {writeFrontendRegistry} from '../util/package-fixture.js';
 import {run} from './strip-branding.js';
 import {readState} from './util/state.js';
 
@@ -44,6 +45,7 @@ export default preview;
 
 const setupSandbox = (): Sandbox => {
   const root = mkdtempSync(path.join(tmpdir(), 'gaia-init-strip-branding-'));
+  writeFrontendRegistry(root);
   mkdirSync(path.join(root, '.github'), {recursive: true});
   writeFileSync(
     path.join(root, '.github', 'FUNDING.yml'),

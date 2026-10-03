@@ -735,3 +735,23 @@ EOF
   [ -n "$from_roster" ]
   [ "$from_roster" = "$from_unowned" ]
 }
+
+# SPEC-092 C5 exempt row: audit-scope.sh reads no package descriptor, because the
+# `*/*` arm already puts every nested path in scope. A frontend/ path therefore
+# classifies exactly as its retired root form does, and no registry state can
+# move it (the second test pins that nothing here reads one). frontend/.claude/**
+# and frontend/CLAUDE.md stay in scope on purpose (C14: code-audit-frontend
+# claims them), so a package harness diff is never allowlisted past review.
+@test "package paths: frontend/ classifies in scope like the root form" {
+  run bash -c '. "$1"; for p in frontend/app/routes/x.tsx app/routes/x.tsx frontend/.claude/rules/x.md frontend/CLAUDE.md frontend/public/logo.svg; do audit_out_of_scope_allowlisted "$p" && echo "allowlisted:$p" || echo "in-scope:$p"; done' _ "$SCOPE_LIBRARY"
+  [ "$status" -eq 0 ]
+  local path
+  for path in frontend/app/routes/x.tsx app/routes/x.tsx frontend/.claude/rules/x.md frontend/CLAUDE.md frontend/public/logo.svg; do
+    grep -qxF "in-scope:$path" <<<"$output" || { echo "$path not in scope"; return 1; }
+  done
+}
+
+@test "package paths: the classifier names no package registry or descriptor (structural, no descriptor read)" {
+  run grep -n "gaia-packages\|packages\.json\|gaia\.package" "$SCOPE_LIBRARY"
+  [ "$status" -eq 1 ]
+}

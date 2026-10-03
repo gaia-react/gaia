@@ -9,6 +9,7 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {writeFrontendRegistry} from '../util/package-fixture.js';
 import {run} from './route.js';
 
 /**
@@ -24,6 +25,7 @@ type Sandbox = {
 
 const setupSandbox = (): Sandbox => {
   const fakeRoot = mkdtempSync(path.join(tmpdir(), 'gaia-route-'));
+  writeFrontendRegistry(fakeRoot);
 
   return {
     cleanup: () => {

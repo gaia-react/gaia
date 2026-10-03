@@ -22,9 +22,20 @@
 // Exit 0 on success. Exit non-zero with a one-line stderr message on a missing
 // argument, a missing `typescript`, an unreadable file, or a parse failure, so
 // the bash callers can apply their own fail-open policy.
+//
+// Exit codes: 2 usage, 3 `typescript` unresolvable, 4 to 6 read and parse
+// failures, 7 the package registry or a descriptor is unusable. Exit 7 prints
+// `{"error": <message>}` on stdout and is the one failure a caller must NOT
+// treat as fail-open: the strict-candidate globs come from the package
+// descriptor (SPEC-092 C5), so without them no file can be classified and a
+// gate that fell back to "emergent" would stop gating anything.
+//
+// The registry is read from the process working directory, which every caller
+// sets to the acting tree's root before invoking this script.
 
 import {createRequire} from 'node:module';
 import {readFileSync} from 'node:fs';
+import {joinGlob, loadPackages, repoRegExps} from '../lib/gaia-packages.mjs';
 
 const require = createRequire(import.meta.url);
 
@@ -38,6 +49,30 @@ if (!filePath) {
   );
   process.exit(2);
 }
+
+// The strict-candidate globs come from the package descriptor, never from a
+// literal prefix, so the classifier follows the app wherever the registry puts
+// it. A descriptor failure is exit 7, distinct from every other exit here.
+const loadedPackages = loadPackages(process.cwd());
+if (!loadedPackages.ok) {
+  // Exit from the write callback, not right after the write: a pipe-backed
+  // stdout is asynchronous on macOS (see the stdout-exit idiom at the tail).
+  // The never-settling await parks the rest of the script until it fires.
+  process.stdout.write(
+    `${JSON.stringify({error: loadedPackages.message})}\n`,
+    () => process.exit(7),
+  );
+  await new Promise(() => {});
+}
+const strictCandidatePatterns = repoRegExps(
+  loadedPackages.packages,
+  'tddStrictCandidates',
+);
+const strictCandidateGlobs = loadedPackages.packages.flatMap((entry) =>
+  entry.descriptor.globs.tddStrictCandidates.map((glob) =>
+    joinGlob(entry.path, glob),
+  ),
+);
 
 let ts;
 try {
@@ -155,16 +190,8 @@ const addReason = (reason) => {
 
 // --- Condition 1: path scoping + hook/non-hook discriminator ------------------
 
-const inCandidatePath = () => {
-  if (/^app\/utils\//.test(filePath)) return true;
-  if (/^app\/services\//.test(filePath)) return true;
-  if (/^app\/hooks\//.test(filePath)) return true;
-  // A `.ts` (NOT `.tsx`) under app/components/**.
-  if (/^app\/components\//.test(filePath) && !/\.tsx$/i.test(filePath)) {
-    return true;
-  }
-  return false;
-};
+const inCandidatePath = () =>
+  strictCandidatePatterns.some((pattern) => pattern.test(filePath));
 
 // A file is a hook when it exports a `use*` symbol. Detected from the source
 // AST: an exported declaration (function / variable / class) whose name starts
@@ -498,9 +525,7 @@ const checkA11ySignal = () => {
 // side effects, so `reasons` is only complete once this returns.
 const classify = () => {
   if (!inCandidatePath()) {
-    addReason(
-      'path not in app/utils, app/services, app/hooks, or a .ts under app/components',
-    );
+    addReason(`path not in ${strictCandidateGlobs.join(', ')}`);
     return 'emergent';
   }
 

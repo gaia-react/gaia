@@ -11,8 +11,8 @@
 # cwd fallback.
 #
 # The typegen arm is exercised through a stub `react-router` binary installed
-# at the borrowed path under the main checkout, the same proxy the concurrency
-# meter's C6-03 uses. A real typegen needs the app's whole dependency tree.
+# at the borrowed path under the main checkout's `frontend/` package (the
+# built-in default registry), the same proxy the concurrency meter's C6-03 uses. A real typegen needs the app's whole dependency tree.
 #
 # The install arm is exercised through a stub `pnpm` binary prepended onto
 # PATH, standing in for the package manager the same way the react-router
@@ -47,8 +47,12 @@ make_main() {
   git -C "$MAIN" config user.name Test
   git -C "$MAIN" config commit.gpgsign false
 
-  mkdir -p "$MAIN/.claude/hooks" "$MAIN/.gaia/scripts" "$MAIN/.gaia/local"
+  mkdir -p "$MAIN/.claude/hooks/lib" "$MAIN/.gaia/scripts" "$MAIN/.gaia/local" "$MAIN/frontend"
   cp "$HOOK_ABSOLUTE_PATH" "$MAIN/.claude/hooks/provision-worktree.sh"
+  cp "$REPO_ROOT_REAL/.claude/hooks/lib/gaia-packages.sh" "$MAIN/.claude/hooks/lib/"
+  # The built-in registry names `frontend`; typegen runs only for a package
+  # that carries a react-router config.
+  echo 'export default {};' > "$MAIN/frontend/react-router.config.ts"
   cp "$REPO_ROOT_REAL/.gaia/scripts/main-root-lib.sh" "$MAIN/.gaia/scripts/"
   cp "$REPO_ROOT_REAL/.gaia/scripts/state-registry-lib.sh" "$MAIN/.gaia/scripts/"
   cp "$REPO_ROOT_REAL/.gaia/scripts/link-worktree.sh" "$MAIN/.gaia/scripts/"
@@ -71,15 +75,15 @@ add_worktree() {
 # main checkout. Stamps the tree it was run in, so the assertion can tell which
 # tree typegen actually ran against.
 stub_typegen() {
-  mkdir -p "$MAIN/node_modules/.bin"
-  cat > "$MAIN/node_modules/.bin/react-router" <<'SH'
+  mkdir -p "$MAIN/frontend/node_modules/.bin"
+  cat > "$MAIN/frontend/node_modules/.bin/react-router" <<'SH'
 #!/bin/sh
 if [ "$1" = "typegen" ]; then
   mkdir -p .react-router/types
   pwd -P > .react-router/types/.stamp
 fi
 SH
-  chmod +x "$MAIN/node_modules/.bin/react-router"
+  chmod +x "$MAIN/frontend/node_modules/.bin/react-router"
 }
 
 # enter_payload <tree>: the PostToolUse payload the harness emits for
@@ -261,10 +265,10 @@ SH
   run bash "$HOOK_ABSOLUTE_PATH" "$WORKTREE_PATH"
   [ "$status" -eq 0 ]
 
-  [ -f "$WORKTREE_PATH/.react-router/types/.stamp" ] || return 1
-  # The stamp records the cwd typegen ran in: the worktree, never main.
-  [ "$(cat "$WORKTREE_PATH/.react-router/types/.stamp")" = "$WORKTREE_PATH" ]
-  [ -f "$MAIN/.react-router/types/.stamp" ] && return 1
+  [ -f "$WORKTREE_PATH/frontend/.react-router/types/.stamp" ] || return 1
+  # The stamp records the cwd typegen ran in: the worktree's package directory, never main.
+  [ "$(cat "$WORKTREE_PATH/frontend/.react-router/types/.stamp")" = "$WORKTREE_PATH/frontend" ]
+  [ -f "$MAIN/frontend/.react-router/types/.stamp" ] && return 1
   return 0
 }
 
@@ -278,13 +282,13 @@ SH
   # the assertion would pass without typegen having run at all.
   WORKTREE_PATH="$(add_worktree feat-refresh)"
 
-  mkdir -p "$WORKTREE_PATH/.react-router/types"
-  echo LEFTOVER > "$WORKTREE_PATH/.react-router/types/.stamp"
+  mkdir -p "$WORKTREE_PATH/frontend/.react-router/types"
+  echo LEFTOVER > "$WORKTREE_PATH/frontend/.react-router/types/.stamp"
 
   invoke_hook "$(enter_payload "$WORKTREE_PATH")" "$HOOK_ABSOLUTE_PATH"
   [ "$status" -eq 0 ]
-  grep -qF LEFTOVER "$WORKTREE_PATH/.react-router/types/.stamp" && return 1
-  [ "$(cat "$WORKTREE_PATH/.react-router/types/.stamp")" = "$WORKTREE_PATH" ]
+  grep -qF LEFTOVER "$WORKTREE_PATH/frontend/.react-router/types/.stamp" && return 1
+  [ "$(cat "$WORKTREE_PATH/frontend/.react-router/types/.stamp")" = "$WORKTREE_PATH/frontend" ]
 }
 
 @test "a main checkout with no installed CLI provisions links and skips typegen" {
@@ -294,7 +298,7 @@ SH
   run bash "$HOOK_ABSOLUTE_PATH" "$WORKTREE_PATH"
   [ "$status" -eq 0 ]
   [ -L "$WORKTREE_PATH/.gaia/local" ] || return 1
-  [ -e "$WORKTREE_PATH/.react-router/types/.stamp" ] && return 1
+  [ -e "$WORKTREE_PATH/frontend/.react-router/types/.stamp" ] && return 1
   return 0
 }
 
@@ -732,7 +736,7 @@ SH
   [ "$status" -eq 0 ]
   [ -s "$PNPM_LOG" ] && return 1
   [ -L "$WORKTREE_PATH/.gaia/local" ] || return 1
-  [ -f "$WORKTREE_PATH/.react-router/types/.stamp" ]
+  [ -f "$WORKTREE_PATH/frontend/.react-router/types/.stamp" ]
 }
 
 @test "pnpm absent from PATH: install is skipped, logged, non-fatal, and typegen still runs" {
@@ -766,7 +770,7 @@ SH
   PATH="$(path_without pnpm)" run bash "$HOOK_ABSOLUTE_PATH" "$WORKTREE_PATH"
   [ "$status" -eq 0 ]
   grep -qF -- "no pnpm found on PATH" <<<"$output" || return 1
-  [ -f "$WORKTREE_PATH/.react-router/types/.stamp" ]
+  [ -f "$WORKTREE_PATH/frontend/.react-router/types/.stamp" ]
 }
 
 @test "the install exiting non-zero is logged, non-fatal, and typegen still runs" {
@@ -779,7 +783,7 @@ SH
   run bash "$HOOK_ABSOLUTE_PATH" "$WORKTREE_PATH"
   [ "$status" -eq 0 ]
   grep -qF -- "INSTALL FAILED for $WORKTREE_PATH" <<<"$output" || return 1
-  [ -f "$WORKTREE_PATH/.react-router/types/.stamp" ]
+  [ -f "$WORKTREE_PATH/frontend/.react-router/types/.stamp" ]
 }
 
 # The CLI workspace is a second pnpm root with its own lockfile, so the root
@@ -821,7 +825,7 @@ SH
   run bash "$HOOK_ABSOLUTE_PATH" "$WORKTREE_PATH"
   [ "$status" -eq 0 ]
   grep -qF -- "INSTALL FAILED for $WORKTREE_PATH/.gaia/cli" <<<"$output" || return 1
-  [ -f "$WORKTREE_PATH/.react-router/types/.stamp" ]
+  [ -f "$WORKTREE_PATH/frontend/.react-router/types/.stamp" ]
 }
 
 # The adopter shape: .gaia/cli ships its bundled binary but not its lockfile,
@@ -850,17 +854,160 @@ SH
   stub_typegen
   WORKTREE_PATH="$(add_worktree feat-typegen-own)"
 
-  mkdir -p "$WORKTREE_PATH/node_modules/.bin"
-  cat > "$WORKTREE_PATH/node_modules/.bin/react-router" <<'SH'
+  mkdir -p "$WORKTREE_PATH/frontend/node_modules/.bin"
+  cat > "$WORKTREE_PATH/frontend/node_modules/.bin/react-router" <<'SH'
 #!/bin/sh
 if [ "$1" = "typegen" ]; then
   mkdir -p .react-router/types
   echo own-cli > .react-router/types/.stamp
 fi
 SH
+  chmod +x "$WORKTREE_PATH/frontend/node_modules/.bin/react-router"
+
+  run bash "$HOOK_ABSOLUTE_PATH" "$WORKTREE_PATH"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$WORKTREE_PATH/frontend/.react-router/types/.stamp")" = "own-cli" ]
+}
+
+# ---------- Typegen is per registered package ----------
+
+# write_literal_descriptor <path>: a minimal valid descriptor named `frontend`,
+# written literally so a fixture never copies the live file.
+write_literal_descriptor() {
+  cat > "$1" <<'JSON'
+{
+  "schemaVersion": 1,
+  "name": "frontend",
+  "globs": {
+    "tddUnitTests": ["app/**/*.test.ts"],
+    "tddStrictCandidates": ["app/utils/**"],
+    "emergentTests": ["app/**/*.test.tsx"],
+    "selfHealRefuse": ["test/**"],
+    "preCommitSource": ["app/**"],
+    "doctorConfigs": ["doctor.config.*"],
+    "dependencyManifests": ["package.json"]
+  },
+  "wiki": {"sourcePaths": ["app/"], "inventoryPaths": [], "flowPaths": []}
+}
+JSON
+}
+
+@test "one root install runs and typegen runs from the package directory through the tree's own CLI" {
+  make_main
+  add_lockfile
+  stub_pnpm
+  WORKTREE_PATH="$(add_worktree feat-pkg-own)"
+  mkdir -p "$WORKTREE_PATH/frontend/node_modules/.bin"
+  cat > "$WORKTREE_PATH/frontend/node_modules/.bin/react-router" <<'SH'
+#!/bin/sh
+if [ "$1" = "typegen" ]; then
+  mkdir -p .react-router/types
+  echo own-cli > .react-router/types/.stamp
+  pwd -P > .react-router/types/.cwd
+fi
+SH
+  chmod +x "$WORKTREE_PATH/frontend/node_modules/.bin/react-router"
+
+  run bash "$HOOK_ABSOLUTE_PATH" "$WORKTREE_PATH"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$PNPM_LOG")" = "$WORKTREE_PATH" ] || return 1
+  [ "$(cat "$WORKTREE_PATH/frontend/.react-router/types/.stamp")" = "own-cli" ] || return 1
+  [ "$(cat "$WORKTREE_PATH/frontend/.react-router/types/.cwd")" = "$WORKTREE_PATH/frontend" ] || return 1
+  [ -e "$WORKTREE_PATH/.react-router/types/.stamp" ] && return 1
+  true
+}
+
+@test "typegen falls back to the main checkout's package CLI and runs in the tree's package directory" {
+  make_main
+  stub_typegen
+  WORKTREE_PATH="$(add_worktree feat-pkg-fallback)"
+
+  run bash "$HOOK_ABSOLUTE_PATH" "$WORKTREE_PATH"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$WORKTREE_PATH/frontend/.react-router/types/.stamp")" = "$WORKTREE_PATH/frontend" ] || return 1
+  grep -qF -- "generated typed routes for package frontend" <<<"$output"
+}
+
+@test "a failing typegen logs a FAILED line naming the package and stays non-fatal" {
+  make_main
+  WORKTREE_PATH="$(add_worktree feat-pkg-fails)"
+  mkdir -p "$WORKTREE_PATH/frontend/node_modules/.bin"
+  printf '#!/bin/sh\nexit 1\n' > "$WORKTREE_PATH/frontend/node_modules/.bin/react-router"
+  chmod +x "$WORKTREE_PATH/frontend/node_modules/.bin/react-router"
+
+  run bash "$HOOK_ABSOLUTE_PATH" "$WORKTREE_PATH"
+  [ "$status" -eq 0 ]
+  grep -qF -- "TYPEGEN FAILED (non-fatal) for package frontend" <<<"$output" || return 1
+  [ -L "$WORKTREE_PATH/.gaia/local" ]
+}
+
+# The guard this proves: before the per-package rewrite the hook ran the root
+# CLI from the root cwd, which after the move generates nothing for the app.
+@test "a CLI only at the old root path is reported FAILED for the package, never run from the root" {
+  make_main
+  WORKTREE_PATH="$(add_worktree feat-pkg-rootcli)"
+  mkdir -p "$WORKTREE_PATH/node_modules/.bin"
+  cat > "$WORKTREE_PATH/node_modules/.bin/react-router" <<'SH'
+#!/bin/sh
+mkdir -p .react-router/types
+echo root-cli > .react-router/types/.stamp
+SH
   chmod +x "$WORKTREE_PATH/node_modules/.bin/react-router"
 
   run bash "$HOOK_ABSOLUTE_PATH" "$WORKTREE_PATH"
   [ "$status" -eq 0 ]
-  [ "$(cat "$WORKTREE_PATH/.react-router/types/.stamp")" = "own-cli" ]
+  grep -qF -- "TYPEGEN FAILED (non-fatal) for package frontend" <<<"$output" || return 1
+  [ -e "$WORKTREE_PATH/.react-router/types/.stamp" ] && return 1
+  [ -e "$WORKTREE_PATH/frontend/.react-router/types/.stamp" ] && return 1
+  true
+}
+
+@test "a package with no react-router config gets no typegen and no FAILED line" {
+  make_main
+  git -C "$MAIN" rm -q frontend/react-router.config.ts
+  git -C "$MAIN" commit -q -m "drop router config"
+  stub_typegen
+  WORKTREE_PATH="$(add_worktree feat-pkg-noconfig)"
+
+  run bash "$HOOK_ABSOLUTE_PATH" "$WORKTREE_PATH"
+  [ "$status" -eq 0 ]
+  [ -e "$WORKTREE_PATH/frontend/.react-router/types/.stamp" ] && return 1
+  grep -qF -- "TYPEGEN FAILED" <<<"$output" && return 1
+  true
+}
+
+@test "a registry naming the package at a literal dot runs typegen from the tree root" {
+  make_main
+  printf '[{"name":"frontend","path":"."}]\n' > "$MAIN/.gaia/packages.json"
+  write_literal_descriptor "$MAIN/gaia.package.json"
+  echo 'export default {};' > "$MAIN/react-router.config.ts"
+  git -C "$MAIN" add -A
+  git -C "$MAIN" commit -q -m "root package"
+  mkdir -p "$MAIN/node_modules/.bin"
+  cat > "$MAIN/node_modules/.bin/react-router" <<'SH'
+#!/bin/sh
+mkdir -p .react-router/types
+pwd -P > .react-router/types/.stamp
+SH
+  chmod +x "$MAIN/node_modules/.bin/react-router"
+  WORKTREE_PATH="$(add_worktree feat-pkg-dot)"
+
+  run bash "$HOOK_ABSOLUTE_PATH" "$WORKTREE_PATH"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$WORKTREE_PATH/.react-router/types/.stamp")" = "$WORKTREE_PATH" ]
+}
+
+@test "a registry whose descriptor is missing logs the gaia-packages message, skips typegen, and stays non-fatal" {
+  make_main
+  printf '[{"name":"frontend","path":"frontend"}]\n' > "$MAIN/.gaia/packages.json"
+  git -C "$MAIN" add -A
+  git -C "$MAIN" commit -q -m "registry without descriptor"
+  stub_typegen
+  WORKTREE_PATH="$(add_worktree feat-pkg-nodescriptor)"
+
+  run bash "$HOOK_ABSOLUTE_PATH" "$WORKTREE_PATH"
+  [ "$status" -eq 0 ]
+  grep -qF -- "TYPEGEN FAILED (non-fatal): gaia-packages: frontend/gaia.package.json is missing" <<<"$output" || return 1
+  [ -e "$WORKTREE_PATH/frontend/.react-router/types/.stamp" ] && return 1
+  [ -L "$WORKTREE_PATH/.gaia/local" ]
 }

@@ -18,6 +18,7 @@ import {
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
+import {writeFrontendRegistry} from '../util/package-fixture.js';
 import {run} from './service.js';
 
 type Sandbox = {
@@ -49,6 +50,7 @@ const seedDatabase = (root: string): string => {
 
 const setupSandbox = ({withDatabase}: {withDatabase: boolean}): Sandbox => {
   const dir = mkdtempSync(path.join(tmpdir(), 'gaia-scaffold-service-'));
+  writeFrontendRegistry(dir);
   mkdirSync(path.join(dir, 'app', 'services', 'gaia'), {recursive: true});
 
   if (withDatabase) seedDatabase(dir);

@@ -399,6 +399,8 @@ commit_mixed_diff() {
 install_chore_deps_predicate() {
   mkdir -p "$SANDBOX/.gaia/scripts"
   cp "$THIS_DIRECTORY/../../../.gaia/scripts/chore-deps-skip.sh" "$SANDBOX/.gaia/scripts/chore-deps-skip.sh"
+  mkdir -p "$SANDBOX/.claude/hooks/lib"
+  cp "$THIS_DIRECTORY/../../../.claude/hooks/lib/gaia-packages.sh" "$SANDBOX/.claude/hooks/lib/gaia-packages.sh"
 }
 
 # Write $@ as the PR's changed-path list the mock's `pr` case reads back, one

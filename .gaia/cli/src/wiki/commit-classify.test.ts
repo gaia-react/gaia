@@ -16,6 +16,7 @@ import {
   QUOTED_FIRST_BYTE,
   QUOTEPATH_PIN_ARGS,
 } from '../util/non-ascii-path-fixture.js';
+import {BUILTIN_DESCRIPTOR} from '../util/packages.js';
 import {run} from './commit-classify.js';
 import type {CommitClassification} from './commit-classify.js';
 
@@ -144,7 +145,12 @@ const initSandboxRepo = (root: string, omit?: ReadonlySet<string>): void => {
   }
 };
 
-const setupSandbox = (): Sandbox => {
+/**
+ * `transitionalLayout` pins the app at the repo root with a literal registry
+ * and descriptor in the baseline commit; without it the sandbox has no
+ * registry, so the built-in default (the app under `frontend/`) applies.
+ */
+const setupSandbox = (transitionalLayout = true): Sandbox => {
   const root = mkdtempSync(path.join(tmpdir(), 'gaia-wiki-classify-'));
   initSandboxRepo(root);
 
@@ -161,7 +167,15 @@ const setupSandbox = (): Sandbox => {
   };
 
   // Initial baseline commit.
-  const initialSha = commit('initial commit', {'README.md': '# repo\n'});
+  const baseline: Record<string, string> = {'README.md': '# repo\n'};
+
+  if (transitionalLayout) {
+    baseline['.gaia/packages.json'] = JSON.stringify([
+      {name: 'frontend', path: '.'},
+    ]);
+    baseline['gaia.package.json'] = JSON.stringify(BUILTIN_DESCRIPTOR);
+  }
+  const initialSha = commit('initial commit', baseline);
 
   return {
     cleanup: () => {
@@ -908,5 +922,92 @@ describe('commit-classify sandbox fixture', () => {
       rmSync(controlRoot, {force: true, recursive: true});
       rmSync(traceRoot, {force: true, recursive: true});
     }
+  });
+});
+
+describe('wiki commit-classify under the built-in frontend package', () => {
+  let sandbox: Sandbox;
+  let stdio: ReturnType<typeof captureStdio>;
+
+  beforeEach(() => {
+    stdio = captureStdio();
+    sandbox = setupSandbox(false);
+  });
+
+  afterEach(() => {
+    stdio.restore();
+    sandbox.cleanup();
+    vi.restoreAllMocks();
+  });
+
+  test('a frontend/app source commit is source-bearing', () => {
+    sandbox.commit('feat: add a module', {
+      'frontend/app/foo.ts': 'export const x = 1;\n',
+    });
+
+    const {commits} = classify(sandbox);
+    expect(commits[0]?.suggestion).toBe('WORTHY');
+    expect(commits[0]?.suggestion_reason).toContain('source-bearing');
+  });
+
+  test('frontend/app/components is inventory and skips', () => {
+    sandbox.commit('feat: add Button variant', {
+      'frontend/app/components/X/index.tsx': 'export const X = null;\n',
+    });
+
+    const {commits} = classify(sandbox);
+    expect(commits[0]?.suggestion).toBe('SKIP');
+    expect(commits[0]?.suggestion_reason).toContain('inventory');
+  });
+
+  test('frontend/app/routes.ts is flows-relevant', () => {
+    sandbox.commit('chore: touch routes', {
+      'frontend/app/routes.ts': 'export default [];\n',
+    });
+
+    const {commits} = classify(sandbox);
+    expect(commits[0]?.suggestion).toBe('WORTHY');
+    expect(commits[0]?.suggestion_reason).toContain('flows-relevant');
+  });
+
+  test('a root app/ path is not inventory and not source-bearing', () => {
+    sandbox.commit('feat: add Button variant', {
+      'app/components/X/index.tsx': 'export const X = null;\n',
+    });
+
+    const {commits} = classify(sandbox);
+    expect(commits[0]?.suggestion_reason).not.toContain('inventory');
+    expect(commits[0]?.suggestion_reason).not.toContain('source-bearing');
+  });
+
+  test('a present gaia.wikiClassify wins whole over the descriptor', () => {
+    sandbox.commit('chore: configure', {
+      'package.json': withConfig({sourcePaths: ['cli/src/']}),
+    });
+    sandbox.commit('fix(cli): repair the parser', {
+      'cli/src/parse.ts': 'export const x = 1;\n',
+    });
+    sandbox.commit('fix: repair the app', {
+      'frontend/app/foo.ts': 'export const x = 1;\n',
+    });
+
+    const {commits} = classify(sandbox);
+    expect(commits[1]?.suggestion_reason).toContain('source-bearing');
+    expect(commits[2]?.suggestion_reason).not.toContain('source-bearing');
+  });
+
+  // The defaults come from the descriptor, so one that cannot load must stop
+  // the command rather than classify against a guessed layout.
+  test('a malformed registry refuses with the gaia-packages message', () => {
+    sandbox.commit('chore: break the registry', {
+      '.gaia/packages.json': '{not json',
+    });
+    const exit = run(['--since', sandbox.initialSha, '--json'], {
+      cwd: sandbox.root,
+    });
+
+    expect(exit).toBe(EXIT_CODES.CONFIG_INVALID);
+    expect(stdio.errors.join('')).toContain('gaia-packages:');
+    expect(stdio.outputs.join('')).toBe('');
   });
 });

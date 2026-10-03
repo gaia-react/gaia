@@ -28,6 +28,7 @@ import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {takeValue} from '../util/argv.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
+import {resolvePackageTarget} from '../util/package-target.js';
 import {escapeJsLiteralValue} from './util/js-literal.js';
 import type {JsLiteralQuote} from './util/js-literal.js';
 import {markStepCompleted} from './util/state.js';
@@ -367,6 +368,17 @@ export const run = (
   }
 
   const cwd = options.cwd ?? process.cwd();
+  const target = resolvePackageTarget(cwd);
+
+  if (!target.ok) {
+    structuredError({
+      code: 'gaia_packages',
+      message: target.message,
+      subcommand: 'init rename',
+    });
+
+    return EXIT_CODES.CONFIG_INVALID;
+  }
 
   try {
     // Ahead of every write: a knowable precondition should not fail the run
@@ -385,7 +397,7 @@ export const run = (
     renameClaudeMd(cwd, parsed.flags.title);
 
     for (const languageFile of LANGUAGE_FILES) {
-      renameLanguageFile(cwd, languageFile, parsed.flags.title);
+      renameLanguageFile(target.packageDir, languageFile, parsed.flags.title);
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

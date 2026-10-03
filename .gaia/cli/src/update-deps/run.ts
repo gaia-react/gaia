@@ -29,6 +29,7 @@ import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {resolvePackageTarget} from '../util/package-target.js';
 import {
   collectSnoozedGroups,
   computeActionableCount,
@@ -1195,23 +1196,33 @@ const discoverOutdated = (
 
 export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
   const pnpmRunner = options.pnpmRunner ?? defaultPnpmRunner;
-  const pkg = readPackageJson(options.cwd);
-  const raw = discoverOutdated(options.cwd, pnpmRunner);
+  // App dependencies, their installed versions, and `pnpm outdated` live in
+  // the frontend package; the committed hold map and the release-age setting
+  // stay at the repo root, so the two directories are resolved separately.
+  const target = resolvePackageTarget(options.cwd);
+
+  if (!target.ok) {
+    throw new Error(target.message);
+  }
+  const {packageDir, packagePath, repoRoot} = target;
+  const pkg = readPackageJson(packageDir);
+  const rootPackage = packagePath === '.' ? pkg : readPackageJson(repoRoot);
+  const raw = discoverOutdated(packageDir, pnpmRunner);
 
   // Release-age cooldown context; disabled (no registry calls) when the
   // setting is unset, preserving the prior behaviour for adopters who do
   // not use it.
   const now = (options.now ?? (() => new Date()))();
-  const minimumReleaseAgeMinutes = readMinimumReleaseAge(options.cwd);
+  const minimumReleaseAgeMinutes = readMinimumReleaseAge(repoRoot);
   const cooldown: CooldownContext = {
     cooldownCutoffMs: now.getTime() - minimumReleaseAgeMinutes * 60_000,
-    cwd: options.cwd,
+    cwd: packageDir,
     minimumReleaseAgeMinutes,
     pnpmRunner,
   };
 
-  const getVersions = createVersionFetcher(options.cwd, pnpmRunner);
-  const holds = readUpdateDepsHolds(pkg);
+  const getVersions = createVersionFetcher(packageDir, pnpmRunner);
+  const holds = readUpdateDepsHolds(rootPackage);
   const adjustContext: AdjustEntryContext = {cooldown, getVersions, holds, pkg};
   const adjusted: Adjusted[] = [];
   const skipped: SkippedEntry[] = [];

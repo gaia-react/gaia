@@ -13,7 +13,7 @@ The check taxonomy, F-to-A+ grading rubric, and triage/heal orchestration protoc
 All paths in this file are repo-relative or derived from `$PROJECT_ROOT`, never hardcoded.
 
 ```bash
-PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-$(pwd)}")"
 ```
 
 All paths below are repo-relative or `$PROJECT_ROOT`-prefixed.
@@ -45,7 +45,7 @@ Before any heal-phase mutation, determine whether the repo is in a safe state.
 **Detect unsafe states:**
 
 ```bash
-PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-$(pwd)}")"
 GIT_DIR="$(git -C "$PROJECT_ROOT" rev-parse --absolute-git-dir)"
 git -C "$PROJECT_ROOT" symbolic-ref -q HEAD >/dev/null || echo "unsafe: HEAD is detached"
 for marker in rebase-merge rebase-apply MERGE_HEAD CHERRY_PICK_HEAD BISECT_LOG; do

@@ -464,13 +464,21 @@ JS
   gaia_copy_real "$MAIN" \
     .claude/hooks/red-verify-commit-check.sh \
     .claude/hooks/capture-red-observations.sh \
+    .claude/hooks/lib/gaia-packages.sh \
     .claude/hooks/lib/jq-availability.sh \
     .claude/hooks/lib/red-ledger.sh \
     .claude/hooks/lib/repo-scope.sh \
+    .gaia/packages.json \
+    gaia.package.json \
+    .gaia/scripts/lib/gaia-packages.mjs \
     .gaia/scripts/main-root-lib.sh \
     .gaia/scripts/state-registry-lib.sh \
     .gaia/scripts/link-worktree.sh
   gaia_copy_registry "$MAIN"
+  # The registry and its descriptor are copied real, not left to the built-in
+  # default: the default names the package directory `frontend`, which would
+  # put this fixture's app/utils test outside every package glob and make both
+  # hooks treat it as emergent, so no gate would ever fire.
 
   # Both node helpers the gate calls (the signal extractor and the determinism
   # classifier) resolve `typescript` via createRequire(import.meta.url), which
@@ -1035,22 +1043,26 @@ test("adds two numbers c407", () => {
     .gaia/scripts/link-worktree.sh \
     .gaia/scripts/main-root-lib.sh \
     .gaia/scripts/state-registry-lib.sh \
-    .claude/hooks/provision-worktree.sh
+    .claude/hooks/provision-worktree.sh \
+    .claude/hooks/lib/gaia-packages.sh
   gaia_copy_registry "$MAIN"
 
   # A stand-in react-router CLI: provisioning borrows the resolved main
   # checkout's own installed binary rather than installing one per worktree,
   # so a fixture-local stub at the same borrowed path is a faithful proxy for
   # the real typegen call.
-  mkdir -p "$MAIN/node_modules/.bin"
-  cat > "$MAIN/node_modules/.bin/react-router" <<'SH'
+  # Typegen runs per registered package (the built-in default is `frontend`)
+  # that carries a react-router config, from that package's directory.
+  mkdir -p "$MAIN/frontend/node_modules/.bin"
+  echo 'export default {};' > "$MAIN/frontend/react-router.config.ts"
+  cat > "$MAIN/frontend/node_modules/.bin/react-router" <<'SH'
 #!/bin/sh
 if [ "$1" = "typegen" ]; then
   mkdir -p .react-router/types
   echo generated > .react-router/types/.stamp
 fi
 SH
-  chmod +x "$MAIN/node_modules/.bin/react-router"
+  chmod +x "$MAIN/frontend/node_modules/.bin/react-router"
   gaia_commit_all "$MAIN" "add provisioning deps + stub CLI"
 
   # RESTATED AT THE MOVE TO HARNESS-NATIVE CREATION (see README, Published
@@ -1077,7 +1089,7 @@ SH
   run_in "$worktree_path" -- gaia_deliver_hook "$entry_payload" "$worktree_path/.claude/hooks/provision-worktree.sh" >/dev/null 2>&1
 
   # Target: generated build types are present and current before first use.
-  [ -f "$worktree_path/.react-router/types/.stamp" ]
+  [ -f "$worktree_path/frontend/.react-router/types/.stamp" ]
 }
 
 # ---------------------------------------------------------------------------

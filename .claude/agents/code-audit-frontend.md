@@ -32,6 +32,8 @@ You conduct comprehensive code audits for production React 19 / React Router 7 S
 - `.env.example`
 - `.nvmrc`
 - `.node-version`
+- `gaia.package.json`
+- `frontend/gaia.package.json`
 
 Your globs above are a **second precedence tier**: every claimant member's globs are matched first, first-match-wins over roster order, and a path any claimant claims belongs to that claimant even when a glob above also matches it. Only a path no claimant claims reaches you. The roster is the whole truth about your reach; nothing outside this region grants you a file it does not declare.
 <!-- gaia:audit-remit:end -->
@@ -54,18 +56,15 @@ A full review is your default: run it unconditionally, without re-deriving your 
 
 ## Extension Loading
 
-Before starting the review, resolve the project root and load library-specific extensions:
+Before starting the review, load library-specific extensions from the `<root>` you resolved above, typed as a literal in each step (never a variable or a command substitution; the Claude project directory is the launch directory, which is not the repository root in a package launch):
 
-```bash
-PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
-```
+1. Read `<root>/.gaia/packages.json`. When it is absent, the registry is the built-in default: one package named `frontend` at path `frontend`. A registry that is present but unreadable is an error finding; do not guess a layout.
+2. Glob `<root>/.claude/agents/code-audit-frontend/*.md`, and for each registered package path typed as a literal, `<root>/<path>/.claude/agents/code-audit-frontend/*.md` (a package at path `.` adds nothing beyond step 2's first glob)
+3. Read each matched file; skip any named exactly `README.md`
+4. Parse each file's `subagents:` frontmatter field (YAML list: `react-patterns`, `typescript`, and/or `translation`)
+5. Hold the content of each file, keyed by its `subagents:` list
 
-1. Glob `$PROJECT_ROOT/.claude/agents/code-audit-frontend/*.md`
-2. Read each matched file; skip any named exactly `README.md`
-3. Parse each file's `subagents:` frontmatter field (YAML list: `react-patterns`, `typescript`, and/or `translation`)
-4. Hold the content of each file, keyed by its `subagents:` list
-
-When constructing each specialist subagent's prompt below, append the full content of every extension file that lists that subagent in its `subagents:` field. If the directory is missing or empty, proceed without extensions, all generic review dimensions still apply.
+When constructing each specialist subagent's prompt below, append the full content of every extension file that lists that subagent in its `subagents:` field. If the package named `frontend` is registered (or the built-in default applies) and its extension directory `<root>/<path>/.claude/agents/code-audit-frontend/` is missing or empty, report an **error finding** that names the missing directory instead of proceeding without extensions: the library rules would silently not apply. All generic review dimensions still apply.
 
 ## How this review runs
 
@@ -281,7 +280,7 @@ This decision runs **after** section B's security classification and **before** 
 Promote a non-security out-of-scope finding into the self-heal path, repaired in place rather than filed, **if and only if all five** of these hold:
 
 1. The finding's file is in the audit's **changed TS/TSX file set**: the exact `CHANGED=` set the audit already resolved in "Rules-Based Audit" → "How to run" (`.gaia/scripts/audit-resolve-scope.sh`). Read those lines; do not re-derive them, or this filter and the review can disagree about which files the audit covered. A changed non-TS file (a `*.mjs` config, a CSS file) is out.
-2. The file is **inside the self-heal repair boundary**: it does NOT match `AUDIT_SELFHEAL_REFUSE_ERE` (`.claude/hooks/lib/audit-selfheal-paths.sh`). A file in the refusal set (`test/**`, a root `*.config.ts`, `.claude/**`, and the rest of that set) is out: repairing it would cross the self-heal boundary, so the finding is reported or filed instead, never left without a disposition.
+2. The file is **inside the self-heal repair boundary**: it does NOT match `AUDIT_SELFHEAL_REFUSE_ERE` (`.claude/hooks/lib/audit-selfheal-paths.sh`). A file in the refusal set (a `test/**` tree, a `*.config.ts`, a `.claude/**` tree, in the root or under a registered package directory such as `frontend/`, and the rest of that set) is out: repairing it would cross the self-heal boundary, so the finding is reported or filed instead, never left without a disposition.
 3. The file is in **your own remit** (your declared globs, see "Remit and self-skip", evaluated at the second precedence tier), not a cross-remit file a claimant member owns.
 4. The finding is **non-security** per section B's classification, read as section B's own flag, bound on **every repo including a confirmed PRIVATE one**. Never re-derive "non-security" from the `finding_class` tag or a fresh screen.
 5. The fix is **narrow**: a single logical unit confined to that one file, no public-contract change, no cross-module ripple (`footprint:narrow`, never `footprint:wide` or `footprint:spec`).
@@ -890,7 +889,7 @@ How your run ends: a reply with no tool call ends it, and the orchestrator reads
 - Prioritize ruthlessly **in the final report's ordering**, 5 important issues lead over 50 trivial ones; this governs how findings are ranked and presented, not whether they are surfaced (surface everything at the finding stage, let the proof gate and verifier cut)
 - Work within the project's existing patterns when suggesting fixes; don't introduce new dependencies
 - **Self-heal scope is fix-only, not restore-only.** Do NOT recreate files the PR explicitly deleted, do NOT add files you think "should" exist (deprecation aliases, restored renames, templates the PR removed). The PR's intent is authoritative; if a removal looks wrong, raise it as a finding for human review rather than reverting it via a self-heal commit.
-- **Self-heal scope.** A self-heal may touch only files inside your own declared domain, and never a path in the one refusal set, `AUDIT_SELFHEAL_REFUSE_ERE` in `.claude/hooks/lib/audit-selfheal-paths.sh`. That set covers the tests, the whole `.github/` tree, the `.gaia/` gate and roster machinery, the instruction surfaces (`.claude/**`, `.specify/**`, `wiki/**`), and root build config; the ERE is the boundary and this list is only a summary of it, so read the ERE. This is not a request: the boundary holds whether or not a given self-heal looks harmless, and the per-branch audit loop and its checkpoint bound what a self-heal can do. `test/**` is inside your declared globs and you may **review** it; you may not **repair** it, because a healing pass that adjusts the test which would catch its own repair is exactly the failure this boundary exists to prevent. The same split runs through `app/**`, your own repair surface, and it is the half most likely to surprise you: the vitest suites (`app/**/*.test.ts`, `app/**/*.test.tsx`, and everything under an `app/**/tests/` folder) and the Chromatic stories (`app/**/*.stories.tsx`) sit inside it and are yours to review and not to repair, so a finding in one is reported rather than fixed.
+- **Self-heal scope.** A self-heal may touch only files inside your own declared domain, and never a path in the one refusal set, `AUDIT_SELFHEAL_REFUSE_ERE` in `.claude/hooks/lib/audit-selfheal-paths.sh`. That set covers the tests, the whole `.github/` tree, the `.gaia/` gate and roster machinery, the instruction surfaces (`.claude/**`, `.specify/**`, `wiki/**`), and build config at the root and under each registered package directory; the ERE is the boundary and this list is only a summary of it, so read the ERE. This is not a request: the boundary holds whether or not a given self-heal looks harmless, and the per-branch audit loop and its checkpoint bound what a self-heal can do. `test/**` is inside your declared globs and you may **review** it; you may not **repair** it, because a healing pass that adjusts the test which would catch its own repair is exactly the failure this boundary exists to prevent. The same split runs through `app/**`, your own repair surface, and it is the half most likely to surprise you: the vitest suites (`app/**/*.test.ts`, `app/**/*.test.tsx`, and everything under an `app/**/tests/` folder) and the Chromatic stories (`app/**/*.stories.tsx`) sit inside it and are yours to review and not to repair, so a finding in one is reported rather than fixed.
 - A self-heal that touches more than 10 files is out of bounds: a sprawling self-heal indicates the agent is undoing intentional work.
 
 ## Audit-run env (capture before any edits)

@@ -737,9 +737,11 @@ EOF
 install_chore_deps_predicate() {
   local source_script_path
   source_script_path="$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/chore-deps-skip.sh"
-  mkdir -p "$REPO/.gaia/scripts"
+  mkdir -p "$REPO/.gaia/scripts" "$REPO/.claude/hooks/lib"
   cp "$source_script_path" "$REPO/.gaia/scripts/chore-deps-skip.sh"
-  git -C "$REPO" add .gaia/scripts/chore-deps-skip.sh
+  # The predicate reads the package registry through this library.
+  cp "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib/gaia-packages.sh" "$REPO/.claude/hooks/lib/gaia-packages.sh"
+  git -C "$REPO" add .gaia/scripts/chore-deps-skip.sh .claude/hooks/lib/gaia-packages.sh
   git -C "$REPO" commit --quiet -m "install chore(deps) predicate"
 }
 
