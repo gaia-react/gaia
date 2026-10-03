@@ -711,10 +711,10 @@ An empty `ELIG_BASE` **disengages** the waive rather than opening it: with no el
 Parse the JSON output from `pnpm knip --reporter json` (an `issues[]` array keyed by file with `files`, `dependencies`, `devDependencies`, `unlisted`, `binaries`, `unresolved`, `exports`, `types`, `enumMembers`, `duplicates`). For each finding, classify into one of the three buckets from `wiki/dependencies/knip.md`:
 
 1. **Real dead code**: unused file/export/type with no remaining callers. Recommend deletion.
-2. **Unconsumed template surface**: exported on purpose though nothing in this repo imports it yet (see the template-aware config section of that page). Recommend covering it with an `entry` glob in `knip.config.ts`, as narrow as the case allows.
-3. **Implicit dependency**: package used via config plugin, CSS, or runtime resolution that knip can't trace. Recommend adding to `ignoreDependencies` in `knip.config.ts`.
+2. **Unconsumed template surface**: exported on purpose though nothing in this repo imports it yet (see the template-aware config section of that page). Recommend covering it with an `entry` glob in `frontend/knip.config.ts`, as narrow as the case allows.
+3. **Implicit dependency**: package used via config plugin, CSS, or runtime resolution that knip can't trace. Recommend adding to `ignoreDependencies` in `frontend/knip.config.ts`.
 
-Knip findings are **advisory, not blocking**, like react-doctor's. Surface them in the audit summary with the recommended bucket and action so the user can decide. Do not auto-delete or auto-edit `knip.config.ts` during the review.
+Knip findings are **advisory, not blocking**, like react-doctor's. Surface them in the audit summary with the recommended bucket and action so the user can decide. Do not auto-delete or auto-edit `frontend/knip.config.ts` during the review.
 
 When reporting knip in the Tooling table: if `issues` is an empty array, write **No issues**, do not paste the raw `{"issues":[]}` JSON.
 

@@ -143,7 +143,7 @@ jobs:
               # run the guard zero times. Arming is not remit: code-audit-frontend
               # does claim this path, and that dispatches a member without
               # running one line of the suite.
-              - '.lintstagedrc.json'
+              - 'frontend/.lintstagedrc.json'
               - '.gaia/scripts/**'
               # The shell lint suites (.gaia/scripts/tests/lint-*.bats) scan
               # the real tree's tracked shell, lint-errexit-status-read.bats

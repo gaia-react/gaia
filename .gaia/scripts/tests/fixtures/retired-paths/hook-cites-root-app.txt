@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+source_file="app/routes.ts"

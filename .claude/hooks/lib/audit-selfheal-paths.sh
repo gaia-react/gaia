@@ -76,23 +76,20 @@
 # a reader verifying the no-drift contract ends up counting to the wrong
 # alternative.
 #
-# The ROOT-TOOLING half, the `.npmrc` / `.lintstagedrc.json` / `.prettierignore`
-# / `Dockerfile` / `.dockerignore` / `.env.example` / `.nvmrc` / `.node-version`
-# alternative, is refused for this reason: the files below are granted to
-# `code-audit-frontend`, the roster's only `push_fixes: true` member, so a diff
-# touching one of them dispatches the member that could then rewrite it in its
-# own self-heal commit.
-# Each decides what the gates check rather than what the app does:
-# `.lintstagedrc.json` is the command `.husky/pre-commit` runs through `pnpm
-# exec lint-staged`, so a member free to edit it can narrow the Quality Gate
-# floor in the same commit as its repair; `.npmrc` is the registry and install
-# policy; `.prettierignore` decides what formatting skips; `Dockerfile` builds
-# the image and `.dockerignore` decides what its build context carries;
-# `.env.example` is the environment contract; `.nvmrc` and
-# `.node-version` decide the Node that CI and local must agree on. Every SIBLING
-# root config the same member owns is already refused by the mirrored half, so
-# refusing these restores the consistency the grant broke rather than inventing
-# a new rule.
+# The ROOT-TOOLING half, the `.npmrc` / `.prettierignore` / `.nvmrc` /
+# `.node-version` alternative, is refused for this reason: the files below are
+# granted to `code-audit-frontend`, the roster's only `push_fixes: true` member,
+# so a diff touching one of them dispatches the member that could then rewrite
+# it in its own self-heal commit.
+# Each decides what the gates check rather than what the app does: `.npmrc` is
+# the registry and install policy; `.prettierignore` decides what formatting
+# skips; `.nvmrc` and `.node-version` decide the Node that CI and local must
+# agree on. Every SIBLING root config the same member owns is already refused
+# by the mirrored half, so refusing these restores the consistency the grant
+# broke rather than inventing a new rule. The package's own copies of the
+# frontend-only files (`frontend/.lintstagedrc.json`, `frontend/Dockerfile`,
+# `frontend/Dockerfile.dockerignore`, `frontend/.env.example`) are refused by
+# the package arms below.
 #
 # Bash 3.2 compatible (macOS default). Never `cd`.
 
@@ -103,18 +100,16 @@
 # (`<package path>/gaia.package.json`, registry `.gaia/packages.json`), joined
 # with the package path, so after the move `frontend/app/x.test.ts` and
 # `frontend/vite.config.ts` are refused and a retired root `app/x.test.ts` is
-# not. The descriptor set is ADDED to the root arms and never replaces one
-# (COV-008). The root arms keep every build-config filename even though the
-# files moved, because an adopter tree mid-migration still has them, and they
-# add `.gaia/packages.json` so a member cannot rewrite the registry that scopes
-# its own refusals. Every sentence above that says `test/`, `.playwright/`,
+# not. The descriptor set is ADDED to the root arms and never replaces one.
+# The root arms add `.gaia/packages.json` so a member cannot rewrite the
+# registry that scopes its own refusals. Every sentence above that says `test/`, `.playwright/`,
 # `.storybook/` or `app/` describes the package arms.
 #
 # The sourced repo root is the one three directories above this file
 # (`.claude/hooks/lib/`), never the launch directory: `CLAUDE_PROJECT_DIR` is
 # the launch dir, which is `frontend/` for a package launch.
 #
-# FAIL CLOSED (C5). A malformed registry, an invalid or missing descriptor, or
+# FAIL CLOSED. A malformed registry, an invalid or missing descriptor, or
 # a missing jq makes the ERE `.` (refuse every path) and sets
 # AUDIT_SELFHEAL_PACKAGES_ERROR to the one-line `gaia-packages:` message, so a
 # consumer can say why every path was refused. On success the variable is empty.
@@ -140,7 +135,7 @@ AUDIT_SELFHEAL_REFUSE_ERE=''
 # shellcheck disable=SC2034 # both variables are read by whoever sources this file
 _audit_selfheal_build() {
   local root_arms status=0 package_arm
-  root_arms='^(\.claude|\.specify|wiki|\.github)/|^\.gaia/(local[^/]|loca[^l]|loc[^a]|lo[^c]|l[^o]|[^l])|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$|^tsconfig[^/]*\.json$|^[^/]*\.config\.(ts|mts|mjs|cjs|js)$|^(\.npmrc|\.lintstagedrc\.json|\.prettierignore|Dockerfile|\.dockerignore|\.env\.example|\.nvmrc|\.node-version)$|^\.gaia/packages\.json$'
+  root_arms='^(\.claude|\.specify|wiki|\.github)/|^\.gaia/(local[^/]|loca[^l]|loc[^a]|lo[^c]|l[^o]|[^l])|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$|^tsconfig[^/]*\.json$|^[^/]*\.config\.(ts|mts|mjs|cjs|js)$|^(\.npmrc|\.prettierignore|\.nvmrc|\.node-version)$|^\.gaia/packages\.json$'
   AUDIT_SELFHEAL_PACKAGES_ERROR=''
   gaia_packages_load "$(cd "$_audit_selfheal_dir/../../.." && pwd)" || status=$?
   if [ "$status" -ne 0 ]; then

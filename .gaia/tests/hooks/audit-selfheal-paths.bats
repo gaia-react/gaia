@@ -67,7 +67,8 @@ refused() {
     frontend/tsconfig.json frontend/.npmrc frontend/.env.example \
     frontend/.claude/rules/x.md frontend/.claude/settings.json frontend/CLAUDE.md \
     frontend/gaia.package.json .gaia/packages.json package.json pnpm-lock.yaml \
-    pnpm-workspace.yaml prettier.config.mjs .npmrc .lintstagedrc.json; do
+    pnpm-workspace.yaml prettier.config.mjs .npmrc frontend/.lintstagedrc.json \
+    frontend/Dockerfile frontend/Dockerfile.dockerignore; do
     refused "$path" || missed="$missed $path"
   done
   [ -z "$missed" ]
@@ -88,6 +89,10 @@ refused() {
   run refused "app/foo.test.ts"
   [ "$status" -eq 1 ]
   run refused "test/a.ts"
+  [ "$status" -eq 1 ]
+  run refused ".lintstagedrc.json"
+  [ "$status" -eq 1 ]
+  run refused "Dockerfile"
   [ "$status" -eq 1 ]
   [ -z "$AUDIT_SELFHEAL_PACKAGES_ERROR" ]
 }
