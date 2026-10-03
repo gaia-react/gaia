@@ -108,20 +108,22 @@ transforms:
       - path: "labels[]"
         match: {audience: "maintainer"}
 
-  # Maintainer SPEC ids inside `.gaia/state-registry.json`'s per-entry
-  # `source` provenance. The field cannot simply be deleted: every entry
-  # carries a non-empty `source`, so a bundle that dropped the key, or kept
+  # Maintainer SPEC ids and issue references inside
+  # `.gaia/state-registry.json`'s per-entry `source` provenance. The field
+  # cannot simply be deleted: every entry carries a non-empty `source`, so a
+  # bundle that dropped the key, or kept
   # it as "", would ship a silently invalid registry. Rewriting keeps the
   # field non-empty and still meaningful ("SPEC-061 §shared" → "§shared")
   # while the identifier, which resolves only inside the maintainer's
-  # release-excluded `.specify/specs/` tree, leaves the bundle.
+  # release-excluded `.specify/specs/` tree or on this project's tracker,
+  # leaves the bundle.
   # Maintainer-side provenance in the repo is untouched.
   - type: json-field-rewrite
     paths:
       - ".gaia/state-registry.json"
     selectors:
       - path: "entries[].source"
-        pattern: "\\bSPEC-[0-9]{3,}\\s*"
+        pattern: "\\bSPEC-[0-9]{3,}\\s*|gaia-react/gaia#[0-9]+,?\\s*"
         replacement: ""
 
   # The six token-leak checks (uat-narrative through monorepo-prefix) plus
@@ -153,9 +155,6 @@ transforms:
         scope:
           - "**"
         path-allowlist:
-          # The rule itself names concrete IDs to teach adopters what NOT
-          # to write.
-          - ".claude/rules/wiki-style.md"
           # The wiki-lint playbook's documentation describes what its audit
           # flags, with concrete-ID examples by design.
           - ".claude/skills/gaia/references/wiki/lint.md"
@@ -175,9 +174,6 @@ transforms:
         scope:
           - "**"
         path-allowlist:
-          # The rule itself names concrete IDs to teach adopters what NOT to
-          # do. Self-referential prose is the rule's body.
-          - ".claude/rules/wiki-style.md"
           # The wiki-lint playbook's documentation cites concrete-ID
           # examples that mirror the audit findings it surfaces.
           - ".claude/skills/gaia/references/wiki/lint.md"
@@ -185,6 +181,76 @@ transforms:
           # Illustrative usage in CLI/SPEC docs: `(e.g. SPEC-002)` or
           # `(e.g. \`SPEC-002\`)` (with optional backticks around the ID).
           - "e\\.g\\.\\s*`?SPEC-[0-9]{3,}"
+
+      # ---- Concrete plan ids ----
+      - id: plan-concrete-ids
+        description: "Concrete PLAN-NNN ids in shipped surfaces"
+        pattern: "\\bPLAN-[0-9]+\\b"
+        scope:
+          - "**"
+        line-allowlist:
+          # Illustrative usage in docs: `(e.g. SPEC-004 or PLAN-004)`.
+          - "e\\.g\\.[^)]*`?PLAN-[0-9]+"
+          # Regex targets that match a plan folder's name, e.g. the
+          # allocator's `s|^PLAN-0*([0-9]+)$|...|` sed expression.
+          - "\\^PLAN-0\\*"
+
+      # ---- This project's own issue and pull request references ----
+      # `.claude/rules/working-doc-ids.md` bans them from shipped code and
+      # prose: they point at records an adopter's tracker does not have. The
+      # qualified and URL forms are unambiguous wherever they appear. A
+      # third-party tracker reference (`capricorn86/happy-dom#978`) is exempt
+      # by the rule and never matches: the qualified form is anchored to this
+      # repo's own slug.
+      #
+      # The rule also exempts a pointer to an OPEN tracking issue inside a
+      # refusal or error message. No shipped file carries one today; one
+      # added later fails this check and earns a line-allowlist entry here.
+      - id: project-issue-refs
+        description: "This project's own owner/repo#N issue/PR references and issue/PR URLs"
+        pattern: "gaia-react/gaia#[0-9]+|github\\.com/gaia-react/gaia/(issues|pull)/[0-9]+"
+        scope:
+          - "**"
+        path-allowlist:
+          # History ledgers, exempt by the rule; same release-baseline carve-out
+          # as excluded-refs above.
+          - "wiki/hot.md"
+          - "wiki/log.md"
+
+      # The bare `#N` form, scoped to non-Markdown files. In Markdown a bare
+      # `#123` collides with heading anchors and placeholder examples
+      # (`#999`, `Closes #<N>`) too often to gate a build on; the qualified
+      # and URL forms above stay checked there. The lookbehind skips an
+      # `owner/repo#N` third-party reference and an HTML entity (`&#160;`).
+      - id: bare-issue-refs
+        description: "Bare #N issue/PR references in shipped non-Markdown files"
+        pattern: "(?<![&\\w/])#[0-9]{3,}(?!\\w)"
+        scope:
+          - "**"
+        path-allowlist:
+          - "**/*.md"
+        line-allowlist:
+          # An all-digit hex color in markup: `fill="#141413"`.
+          - "\\b(fill|stroke|stop-color)=\"#[0-9a-fA-F]{3,8}\""
+          # An all-digit hex color named in a comment beside its sRGB value.
+          - "\\bsRGB #[0-9a-fA-F]{6}\\b"
+
+      # ---- Paths to machine-local artifacts ----
+      # `.gaia/local/` is gitignored, so a shipped file naming one machine's
+      # artifact points at nothing on any other clone. A dated research
+      # folder is the one artifact shape a regex can tell apart from the
+      # tool-owned state locations shipped code must name; a concrete SPEC or
+      # plan folder is caught by the id checks above, and any other named
+      # artifact rests on `.claude/rules/working-doc-ids.md`. The placeholder
+      # `<topic>-<date>` never matches.
+      - id: local-artifact-paths
+        description: "Dated .gaia/local/research/ artifact paths in shipped files"
+        pattern: "\\.gaia/local/research/[A-Za-z0-9._-]*20[0-9]{2}-[0-9]{2}-[0-9]{2}"
+        scope:
+          - "**"
+        path-allowlist:
+          - "wiki/hot.md"
+          - "wiki/log.md"
 
       # ---- Release-excluded references leaked into shipped surfaces ----
       # Derived at scan time from `.gaia/release-exclude` and the source repo's
