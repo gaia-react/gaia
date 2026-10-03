@@ -208,3 +208,6 @@ jobs:
           onlyChanged: true
           externals: 'frontend/app/styles/tailwind.css'
           storybookBuildDir: 'frontend/storybook-static'
+          # TurboSnap traces stories from the stats file relative to the
+          # Storybook project root, which is the package, not the repo root.
+          storybookBaseDir: 'frontend'

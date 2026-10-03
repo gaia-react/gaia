@@ -217,7 +217,7 @@ const buildPermissions = (
 
   for (const [key, value] of Object.entries(rootPermissions)) {
     permissions[key] =
-      PERMISSION_LISTS.includes(key) ?
+      (PERMISSION_LISTS as readonly string[]).includes(key) ?
         reanchorPermissionList(value, prefix, `permissions.${key}`)
       : value;
   }
