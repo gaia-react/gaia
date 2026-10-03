@@ -16,7 +16,7 @@
 # Usage:
 #   audit-noop-detect.sh --shape <SHAPE> --path <PATH> [--marker <MARKER_PATH>] [--findings <FINDINGS_PATH>] [--findings-root <ROOT> --findings-since <STAMP>] [--report-key <KEY>] [--expect-count <N> | --min-count <N>]
 #
-#   --shape       one of the caller shape ids below (FC-2).
+#   --shape       one of the caller shape ids below.
 #   --path        file-backed shape: the expected output file, which the
 #                 caller pre-cleared (`rm -f`) before dispatch, so presence
 #                 is a fresh-write signal. return-conformance shape: a file
@@ -66,7 +66,7 @@
 #                 or both flags together is a usage error rather than a silent
 #                 permanent no-op. Ignored for every other shape.
 #
-# Caller shapes (FC-2), REAL iff:
+# Caller shapes, REAL iff:
 #   agent-report-file     the generic contract for a dispatch composed at the
 #                         point of need. File exists AND parses AND the report
 #                         array resolves (the top-level value, or --report-key's
@@ -707,7 +707,7 @@ case "$SHAPE" in
     # early exit on a large early match SIGPIPEs the upstream writer, and the
     # pipeline's exit code collapses to that SIGPIPE, not grep's match. A
     # full audit report comfortably exceeds the pipe buffer, so this is the
-    # same hazard gaia-react/gaia#748 removed from the success-present guard, not a
+    # same hazard that was removed from the success-present guard, not a
     # theoretical one. shellcheck disable=SC2016 (literal backticks, not a
     # command substitution).
     # shellcheck disable=SC2016

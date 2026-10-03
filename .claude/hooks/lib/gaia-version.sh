@@ -13,7 +13,7 @@
 # the normalization has to be one function rather than one idiom: correct a
 # producer without correcting a reader and the two disagree forever, the audit
 # re-runs on every push, and no component reports an error because each is
-# behaving exactly as written (gaia-react/gaia#1297).
+# behaving exactly as written.
 #
 # The absent-file policy belongs to the CALLER, deliberately. The call sites
 # disagree on what a missing file means -- some treat it as empty and let a

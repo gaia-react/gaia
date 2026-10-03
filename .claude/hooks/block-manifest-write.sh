@@ -62,7 +62,7 @@ strip_quotes() {
   printf '%s' "$text"
 }
 
-# Guarded path (C1): after stripping surrounding quotes and a leading ./, the
+# Guarded path: after stripping surrounding quotes and a leading ./, the
 # path equals .gaia/manifest.json or ends with /.gaia/manifest.json (absolute
 # paths). Not guarded if any other character follows .json.
 is_guarded_path() {

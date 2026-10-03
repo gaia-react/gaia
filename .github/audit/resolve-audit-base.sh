@@ -114,7 +114,7 @@
 #   that reviewed it is still current. The per-member arm is gated the same
 #   way, on the clearance body's own recorded version.
 #
-# Base reset on machinery change (RT-006)
+# Base reset on machinery change
 #   A version-matching candidate is not automatically safe: if any
 #   gate-machinery file (the ownership classifier, the machinery matcher,
 #   the digest recipe itself) changed between that candidate and HEAD, the
@@ -293,7 +293,7 @@ resolve_main_reference() {
   # hands every consumer the base branch's entire divergence as if this pull
   # request had introduced it, and a finding raised against that history is
   # indistinguishable, in a member's output, from one against the pull
-  # request's own code (gaia-react/gaia#1057).
+  # request's own code.
   #
   # Read only under Actions, which is what makes the value trustworthy: there
   # the event sets it, not whoever invoked the script. This resolver SCOPES a
@@ -389,7 +389,7 @@ fi
 # Signal extractors (frozen regex + status shape for the GAIA-Audit trailer).
 # -----------------------------------------------------------------------------
 
-# C3: version, frontend-digest (64-hex), tree (40-hex).
+# Trailer fields: version, frontend-digest (64-hex), tree (40-hex).
 trailer_regex='^GAIA-Audit:[[:space:]]+([^[:space:]]+)[[:space:]]+([0-9a-f]{64})[[:space:]]+([0-9a-f]{40})[[:space:]]*$'
 
 # trailer_version_for <sha> → echoes the (last) GAIA-Audit trailer version on

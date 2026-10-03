@@ -186,7 +186,7 @@ wiki_models_ok() {
 WIKI_HEADINGS=(
   '## Roles' '## Inline floor' '## Model table' '## Run folder and checkpoint' '## Resume'
   '## Concurrency limits' '## Initiative linking' '## Research attribution' '## Injection hook'
-  '## Measurements' '## Post-landing success check' '## See also'
+  '## Measurements' '## See also'
 )
 START_MARK='<!-- gaia:maintainer-only:start -->'
 END_MARK='<!-- gaia:maintainer-only:end -->'
@@ -194,7 +194,7 @@ END_MARK='<!-- gaia:maintainer-only:end -->'
 line_of() { grep -nxF -- "$2" "$1" | head -n 1 | cut -d: -f1; }
 
 wiki_structure_ok() {
-  local file_path="$1" heading previous_line_number=0 line_number measurements_heading_line success_check_heading_line start_marker_line end_marker_line
+  local file_path="$1" heading previous_line_number=0 line_number measurements_heading_line start_marker_line end_marker_line
   [ -f "$file_path" ] || return 1
   for heading in "${WIKI_HEADINGS[@]}"; do
     line_number="$(line_of "$file_path" "$heading")"
@@ -209,10 +209,8 @@ wiki_structure_ok() {
   start_marker_line="$(line_of "$file_path" "$START_MARK")"
   end_marker_line="$(line_of "$file_path" "$END_MARK")"
   measurements_heading_line="$(line_of "$file_path" '## Measurements')"
-  success_check_heading_line="$(line_of "$file_path" '## Post-landing success check')"
   [ "$start_marker_line" -lt "$measurements_heading_line" ] || return 1
-  [ "$measurements_heading_line" -lt "$success_check_heading_line" ] || return 1
-  [ "$success_check_heading_line" -lt "$end_marker_line" ] || return 1
+  [ "$measurements_heading_line" -lt "$end_marker_line" ] || return 1
   return 0
 }
 
@@ -483,15 +481,15 @@ pad_to() { # pad_to <src> <dst> <total bytes>: src plus filler so dst ends in on
 
 # ------------------------------------------------ 8. wiki headings and markers
 
-@test "wiki structure: C5 headings in order, source links, maintainer markers bracket both sections" {
-  [ "${#WIKI_HEADINGS[@]}" -eq 12 ]
+@test "wiki structure: C5 headings in order, source links, maintainer markers bracket Measurements" {
+  [ "${#WIKI_HEADINGS[@]}" -eq 11 ]
   wiki_structure_ok "$WIKI"
 }
 
-@test "wiki structure red twin: the end marker moved above Post-landing success check fails" {
+@test "wiki structure red twin: the end marker moved above Measurements fails" {
   awk -v end_marker="$END_MARK" '
     $0 == end_marker { next }
-    $0 == "## Post-landing success check" { print end_marker }
+    $0 == "## Measurements" { print end_marker }
     { print }
   ' "$WIKI" >"$TEMPORARY_DIRECTORY/wiki-marker.md"
   [ "$(grep -cxF -- "$END_MARK" "$TEMPORARY_DIRECTORY/wiki-marker.md")" -eq 1 ]

@@ -46,7 +46,7 @@
 #   caller could resolve at merge time is the newest one, whose round is clean
 #   by construction, because a clean round is what let the pull request merge.
 #   The findings worth hardening against -- the ones fixed during the loop --
-#   were exactly the ones dropped. gaia-react/gaia#1573.
+#   were exactly the ones dropped.
 #
 #   The branch half stays the whole discriminator. `.gaia/local/audit/` is
 #   shared (symlinked to main from every worktree), so a sibling tree's

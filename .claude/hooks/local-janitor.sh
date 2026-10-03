@@ -82,7 +82,7 @@ set -uo pipefail
 #
 # `main_root` answers "where do the wiki-base catch-up state and report files
 # actually live". A linked worktree's .gaia/local is one symlink to main's
-# (D-011), so those files are conceptually always at main's tree, not the
+# .gaia/local, so those files are conceptually always at main's tree, not the
 # invoking one. Resolved via the shared resolver
 # (.gaia/scripts/main-root-lib.sh), sourced beside this file via BASH_SOURCE
 # the same way the other hooks that already depend on it do, rather than
@@ -186,7 +186,7 @@ branch_tracks=$(git -C "$root" for-each-ref \
 # below AND by the durable-obligation fast-forward further down this file,
 # which runs even in a session holding no wiki sync branch at all
 # (origin/HEAD with a main fallback, matching defaultBranch's convention).
-# SEC-011: shape-validated immediately, before any git call interpolates it.
+# Shape-validated immediately, before any git call interpolates it.
 # An unresolvable or unsafely-shaped base clears $base to empty; every
 # consumer below treats an empty $base as "unanswerable, skip".
 base=$(git -C "$root" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null || true)
@@ -371,7 +371,7 @@ if [ "$wiki_sync_present" -eq 1 ]; then
         # where the landing's short sha has 7-40. That is safe because the
         # cherry check and the `[gone]` track state below are what actually
         # gate the delete, not this glob alone. Validated before any
-        # destructive step (SEC-011).
+        # destructive step.
         case "$branch_name" in
           wiki/sync-[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9a-f]*) ;;
           wiki-sync/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9a-f]*) ;;
@@ -476,7 +476,7 @@ if [ "$attempt_fast_forward" -eq 1 ] && [ -n "$base" ]; then
   fi
 
   if [ "$fast_forward_ready" -eq 1 ]; then
-    # SEC-011: $base was shape-validated once, above, before any git call
+    # $base was shape-validated once, above, before any git call
     # interpolated it; --end-of-options additionally stops a ref that starts
     # with `-` from ever being read as a flag. Capture stderr only (the
     # `2>&1 >/dev/null` order): stdout is discarded, stderr lands in $fast_forward_stderr

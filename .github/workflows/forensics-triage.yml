@@ -1,8 +1,6 @@
 name: 'GAIA: Forensics Triage'
 
-# SPEC-002 phase 2: autonomous Claude Code triage for `gaia-forensics`-labeled
-# issues. Spec lives at `.gaia/local/specs/SPEC-002.md`; the per-task plan is at
-# `.gaia/local/plans/spec-002-forensics-triage-action/`.
+# Autonomous Claude Code triage for `gaia-forensics`-labeled issues.
 #
 # This file is on the canonical denylist (`.github/workflows/`). Future
 # autonomous triage runs MUST NOT modify it. Self-modifying triage is a

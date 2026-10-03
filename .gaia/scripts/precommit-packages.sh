@@ -7,7 +7,7 @@
 # Reads the staged set with `git diff --cached --name-status -z -M100%` and
 # prints a plan on stdout, one record per line, fields separated by a TAB:
 #
-#   exempt                  every staged entry is a C13 migration rename; the
+#   exempt                  every staged entry is a frontend migration rename; the
 #                           hook skips the whole gate. Nothing else is printed
 #                           and no registry is loaded (the exemption is a
 #                           literal table, independent of the registry).
@@ -19,19 +19,19 @@
 #   settings-drift          a staged path feeds the generated package settings
 #                           (root `.claude/settings.json`, `.gaia/packages.json`,
 #                           or any `*/.claude/settings.{json,overlay.json}`); the
-#                           hook runs `check-settings-drift.sh` (C8)
+#                           hook runs `check-settings-drift.sh`
 #   retired-add<TAB>p<TAB>q p is an added (or renamed-to) file under a retired
 #                           root frontend path while no registered package sits
-#                           at `.`; q is its `frontend/` equivalent (MIG-013)
+#                           at `.`; q is its `frontend/` equivalent
 #
 # Exit 0 with a plan (possibly empty: nothing to do). Exit 1 with
 # GAIA_PACKAGES_ERROR on stderr when the registry or a descriptor cannot be
-# read; the hook then fails the commit (C5, no guard allows on a descriptor
+# read; the hook then fails the commit (no guard allows on a descriptor
 # failure). Exit 2 on a usage error or a git failure.
 #
-# C13: an entry is exempt only when it is an exact rename (R100) whose source is
-# a retired root frontend path and whose destination is that source's C6
-# counterpart (`<src>` -> `frontend/<src>`), or the single pair `.dockerignore`
+# Exemption: an entry is exempt only when it is an exact rename (R100) whose
+# source is a retired root frontend path and whose destination is that source's
+# migration counterpart (`<src>` -> `frontend/<src>`), or the single pair `.dockerignore`
 # -> `frontend/Dockerfile.dockerignore`. Everything else counts, including an
 # R100 rename inside `frontend/`, because a rename can break importers that
 # typecheck would catch.
@@ -46,7 +46,7 @@ if [ -z "$root" ] || [ ! -d "$root" ]; then
   exit 2
 fi
 
-# The C6 move list, as literal case arms. Never derived from the registry.
+# The retired-path move list, as literal case arms. Never derived from the registry.
 # shellcheck disable=SC2249 # every arm is a literal pattern, no default needed
 is_retired_source() {
   case "$1" in
@@ -157,7 +157,7 @@ if [ "$load_status" -ne 0 ]; then
   exit 1
 fi
 
-# Generated settings (C8): any staged path that feeds `<package>/.claude/
+# Generated settings: any staged path that feeds `<package>/.claude/
 # settings.json`, or the generated file itself, makes the hook run the drift
 # check. Matching the counted set keeps a rename's source and destination both.
 while IFS= read -r counted; do
@@ -169,7 +169,7 @@ while IFS= read -r counted; do
   esac
 done <<<"$counted_paths"
 
-# MIG-013: once no package sits at the repo root, a new file under a retired
+# Retired-path guard: once no package sits at the repo root, a new file under a retired
 # root frontend path is a stale adopter muscle-memory write, and `frontend/` is
 # where it belongs. Only added paths count; an edit of an existing root file is
 # left to the other gates.

@@ -33,18 +33,17 @@
 # call wrapped in a construct that complex stays inside the worktree. The
 # caller is then one keystroke from a loop that waits only for `MERGED`.
 #
-# That is gaia-react/gaia#2209, and it is a recurrence rather than a
-# hypothetical. On PR gaia-react/gaia#2203 the refusal landed, an ad-hoc
-# `until [ "$(gh pr view 2203 --json state --jq .state)" != "OPEN" ]` was
-# substituted, `origin/main` then landed a conflicting `CHANGELOG.md` entry,
-# the pull request went CONFLICTING with auto-merge still queued, and the loop
-# had no exit condition that could ever fire. It spun until a human noticed.
+# The failure is concrete: the refusal lands, an ad-hoc
+# `until [ "$(gh pr view <N> --json state --jq .state)" != "OPEN" ]` is
+# substituted, `origin/main` lands a conflicting `CHANGELOG.md` entry, the
+# pull request goes CONFLICTING with auto-merge still queued, and the loop has
+# no exit condition that can ever fire. It spins until a human notices.
 # A single `bash .gaia/scripts/pr-wait-merge.sh --pr <N>` invocation is plain
 # enough for that guard to read, so the documented path stops being the one
 # the guard refuses.
 #
-# Issue gaia-react/gaia#2144 fixed the TEXT of the polls; this file is the
-# other half, making the text the only reachable way to wait.
+# The workflow page carries the TEXT of the polls; this file is the other
+# half, making that text the only reachable way to wait.
 # `.claude/hooks/block-handrolled-pr-poll.sh` is the enforcement half, and it
 # names this script in its denial: a denial with no blessed alternative is
 # what produces the next improvisation.

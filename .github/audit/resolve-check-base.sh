@@ -83,8 +83,8 @@ resolve_main_reference() {
   # The declared base ref comes first because it names the branch THIS pull
   # request merges into; the repository default does not whenever the pull
   # request is stacked on another branch, and falling back to the default
-  # there re-runs the check over the base branch's whole divergence
-  # (gaia-react/gaia#1057). Read only under Actions, where the event sets the
+  # there re-runs the check over the base branch's whole divergence.
+  # Read only under Actions, where the event sets the
   # value rather than whoever invoked the script: this resolver scopes what a
   # check re-runs over, so a value resolving near HEAD skips work nothing
   # proved green. The sibling resolver this one mirrors keeps the same order

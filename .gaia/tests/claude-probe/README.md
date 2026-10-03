@@ -86,7 +86,7 @@ A row whose expansion finds nothing fails as `EMPTY`; a claim over an empty set 
 
 ### Editing the table after the first run
 
-The table was committed before the first probe run, and `run-probe.sh` records `expectations_commit` and `table_sha256` in each evidence dir's `meta.json` before its first Claude call. After that, **a row may change only with `cited_run` set to the evidence path of the probe run that justified the change.** `compare.mjs --first-run-commit <sha>` fails with `UNCITED <row-id>` on any row that differs from its form at that commit while `cited_run` is null; a deleted row always fails.
+The table was committed before the first probe run, and `run-probe.sh` records `expectations_commit` and `table_sha256` in each evidence dir's `meta.json` before its first Claude call. After that, **a row may change only with `cited_run` set to the tracked summary of the probe run that justified the change.** The evidence dir stays machine-local, so the summary is what a citation names: copy the run's `meta.json` (without the machine-local `table_repo` and `target` keys) and `compare.txt` into `cited-runs/<run-id>/` and cite that repo-relative path. `compare.mjs --first-run-commit <sha>` fails with `UNCITED <row-id>` on any row that differs from its form at that commit while `cited_run` is null; a deleted row always fails.
 
 A contradiction of a **floor** row, or of constraint 2 (ancestor walk plus generated settings, no symlinks), is never resolved by editing the table: it stops the plan and reopens SPEC-092.
 
@@ -120,7 +120,7 @@ The `*-glob-anchor-*` rows are the claude-mechanics Q2 experiment: their expecta
     files-after.json   component-write scenario only
 ```
 
-Keep each run's evidence dir: a later table edit cites it.
+A later table edit cites a run through its `cited-runs/` summary, never through the evidence dir itself.
 
 ## Assumptions the first run confirms
 

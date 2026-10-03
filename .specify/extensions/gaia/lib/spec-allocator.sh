@@ -598,7 +598,7 @@ case "$mode" in
   next)
     require_git
     ensure_ledger
-    # C1 lock-dir precondition: the dir must exist before with_ledger_lock.
+    # Lock-dir precondition: the dir must exist before with_ledger_lock.
     # ensure_ledger already mkdir -p's it via the ledger parent, but make the
     # precondition explicit and independent of ledger-init ordering.
     mkdir -p "$specs_directory"

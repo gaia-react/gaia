@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 #
-# Hook-command rooting check for .claude/settings.json (gaia-react/gaia#1740).
+# Hook-command rooting check for .claude/settings.json.
 #
 # Every hook is registered as a command string, and /bin/sh runs that
 # string against the Bash tool's current working directory, which persists
@@ -27,7 +27,7 @@
 # gitignored and per-machine, so it is deliberately out of THIS check's set:
 # nothing here holds it to the rooting form. It is not unheld in general.
 # Nothing else in this tree reads it either, so a bare local spelling fails
-# open in exactly the way gaia-react/gaia#1740 describes with nothing to
+# open in exactly the way described above with nothing to
 # catch it; the verdict below names the file it read rather than claiming
 # every registered command on the machine.
 #

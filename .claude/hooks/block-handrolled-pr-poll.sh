@@ -11,15 +11,13 @@
 # when the merge has become impossible. `origin/main` lands a conflicting
 # change, `mergeable` turns `CONFLICTING` within minutes, the queued `--auto`
 # merge never lands, and the loop has no exit condition left that can ever
-# fire: it spins until a human notices. That is gaia-react/gaia#2209, observed
-# on PR gaia-react/gaia#2203, where the substituted loop was
-# `until [ "$(gh pr view 2203 --json state --jq .state)" != "OPEN" ]`.
+# fire: it spins until a human notices. The substituted loop that does this
+# is `until [ "$(gh pr view <N> --json state --jq .state)" != "OPEN" ]`.
 #
-# WHY A HOOK AND NOT PROSE, given the prose is already correct. It was already
-# correct on gaia-react/gaia#2203. Issue gaia-react/gaia#2144 fixed the TEXT of every poll in the workflow,
-# and the recurrence happened anyway, because the documented compound form is
-# refused by the worktree-isolation guard and the caller was one keystroke from
-# improvising past it. Prose cannot hold a boundary an agent has a standing
+# WHY A HOOK AND NOT PROSE, given the prose is already correct. Correct poll
+# text in the workflow does not stop the loop recurring, because the documented
+# compound form is refused by the worktree-isolation guard and the caller is
+# one keystroke from improvising past it. Prose cannot hold a boundary an agent has a standing
 # reason to cross under pressure, so the boundary is held by a hook.
 #
 # WHY THE DENIAL NAMES A SCRIPT. `.gaia/scripts/pr-wait-merge.sh` ships in the
@@ -49,8 +47,7 @@
 # `block-manifest-write.sh` already takes. A poll written in Python, or inside
 # a script file this hook never sees, walks past it untouched. The
 # justification for a heuristic anyway is that this failure is silent and costs
-# a full wait plus a spent CI round, which is the argument gaia-react/gaia#2144 already made
-# and which the recurrence confirms.
+# a full wait plus a spent CI round.
 #
 # THE DELIBERATE ESCAPES, both cheap, because over-denying a legitimate wait is
 # worse than missing an improvised one:

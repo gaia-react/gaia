@@ -294,7 +294,7 @@ if [ "$post_state" = "success" ]; then
     exit 0
   fi
 
-  # Frontend digest (C3 field 2). Fail closed: never post a status without a
+  # Frontend digest (the status description's second field). Fail closed: never post a status without a
   # real digest. Reused below by the member-aware gate for the frontend
   # member's own digest, avoiding a second tree walk.
   frontend_digest="$(audit_member_digest "$repo_root" code-audit-frontend 2>/dev/null || true)"
@@ -306,7 +306,7 @@ fi
 
 # The sha branch protection checks is the PR head on the REMOTE, not local HEAD.
 # On the empty-commit stamp path local HEAD is an un-pushed commit origin has
-# never seen, so a status posted there 422s and never lands (gaia-react/gaia#726). Target the
+# never seen, so a status posted there 422s and never lands. Target the
 # pushed PR head instead (the same sha a pull_request event reports as head.sha).
 #
 # `gh` resolves BOTH the repository and the current branch from its working
@@ -386,7 +386,7 @@ if [ "$head_local" != "$head_sha" ]; then
   exit 0
 fi
 
-# Member-aware gate (blocker COV-001): require EVERY dispatched Code Audit
+# Member-aware gate: require EVERY dispatched Code Audit
 # Team member's marker, not just the caller's own, before posting success.
 # Otherwise a frontend-only POST on a mixed diff would flip the GAIA-Audit
 # status green (and unlock the github.com merge button) while a co-dispatched
@@ -492,7 +492,7 @@ if [ "$post_state" = "success" ] && [ -x "$resolver" ]; then
   fi
 fi
 
-# Description (C3): three positional fields "<version> <frontend-digest>
+# Description: three positional fields "<version> <frontend-digest>
 # <tree>". Every dispatched member's clearance is earned (there is no
 # carried provenance), so the shape is fixed: no branch, no CLI flag.
 #

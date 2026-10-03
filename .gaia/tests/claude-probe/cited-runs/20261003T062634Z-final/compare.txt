@@ -1,0 +1,4 @@
+MISMATCH root-read-pnpm-lock-yaml rep=1 expected=allow observed=error
+MISMATCH root-read-pnpm-lock-yaml rep=2 expected=allow observed=error
+MISMATCH root-read-pnpm-lock-yaml rep=3 expected=allow observed=error
+SUMMARY floor_mismatches=0 other_mismatches=3 unlisted=0 reps=3

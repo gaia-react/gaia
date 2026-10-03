@@ -73,7 +73,7 @@ gaia_loop_is_safe_relative_path() {
   return 0
 }
 
-# The normalized-key rule (README C1): what may name a state file. A `..`, an
+# The normalized-key rule: what may name a state file. A `..`, an
 # empty segment or an edge slash would let a branch name climb out of, or
 # alias a sibling inside, the audit-loop directory.
 _gaia_loop_keyable() {
@@ -96,7 +96,7 @@ gaia_loop_key() {
   printf '%s\n' "$branch_key"
 }
 
-# gaia_loop_state_file <main-root> <B>: the branch state path (C1).
+# gaia_loop_state_file <main-root> <B>: the branch state path.
 gaia_loop_state_file() {
   printf '%s/.gaia/local/audit-loop/%s.json\n' "$1" "$2"
 }
@@ -210,7 +210,7 @@ gaia_loop_unlock() {
   rmdir "${1-}.lock" 2>/dev/null || rm -rf "${1-}.lock"
 }
 
-# gaia_loop_resolve_audited_root <payload-json>: the audited checkout (C7).
+# gaia_loop_resolve_audited_root <payload-json>: the audited checkout.
 # The dispatch prompt's `Working root: <path>` wins over the payload cwd,
 # because an orchestrator may audit a linked worktree from the main checkout
 # and the audited checkout, not the session's cwd, owns the branch.
@@ -268,7 +268,7 @@ gaia_loop_resolve_audited_root() {
   return 1
 }
 
-# gaia_loop_grant_line <n>: the one spelling of the grant line (C6).
+# gaia_loop_grant_line <n>: the one spelling of the grant line.
 gaia_loop_grant_line() {
   case "${1-}" in
     [1-9] | 10) printf 'audit-grant %s\n' "$1" ;;
@@ -276,7 +276,7 @@ gaia_loop_grant_line() {
   esac
 }
 
-# gaia_loop_accept_line: the one spelling of the accept line (C6).
+# gaia_loop_accept_line: the one spelling of the accept line.
 gaia_loop_accept_line() {
   printf 'audit-accept\n'
 }
@@ -300,7 +300,7 @@ gaia_loop_parse_line() {
 }
 
 # _GAIA_LOOP_ASK_RECORDER: 1 when the PostToolUse recorder
-# (audit-loop-ask-grant.sh) is built (probe P3 passed), 0 when selecting an
+# (audit-loop-ask-grant.sh) is built and verified to fire, 0 when selecting an
 # option records nothing and the human must type the line instead.
 _GAIA_LOOP_ASK_RECORDER=1
 

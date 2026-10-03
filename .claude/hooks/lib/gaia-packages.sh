@@ -30,7 +30,7 @@
 # `gaia_require_jq` arm (`.claude/hooks/lib/jq-availability.sh`) for their
 # payload.
 #
-# GLOB DIALECT (C3): `**/` is zero or more whole directories, a trailing `/**`
+# GLOB DIALECT: `**/` is zero or more whole directories, a trailing `/**`
 # is everything beneath, `*` is any run excluding `/`, `?` is one character
 # excluding `/`, `{a,b}` is non-nested alternation, every other character is
 # literal. A glob compiles to an anchored ERE through control-character
