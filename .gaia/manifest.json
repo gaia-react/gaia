@@ -154,6 +154,7 @@
     ".gaia/cli/templates/service/requests.ts.tmpl": "owned",
     ".gaia/cli/templates/service/types.ts.tmpl": "owned",
     ".gaia/cli/templates/service/urls.ts.tmpl": "owned",
+    ".gaia/conventional-commits.json": "owned",
     ".gaia/labels.json": "owned",
     ".gaia/scripts/a11y-structural/check-a11y-triviality.mjs": "owned",
     ".gaia/scripts/audit-dispositions-check.sh": "owned",
@@ -233,6 +234,7 @@
     ".github/workflows/chromatic.yml": "shared",
     ".github/workflows/tests.yml": "shared",
     ".gitignore": "owned",
+    ".husky/commit-msg": "owned",
     ".husky/pre-commit": "owned",
     ".node-version": "owned",
     ".npmrc": "owned",
@@ -276,6 +278,7 @@
     ".specify/presets/gaia/preset.yml": "owned",
     ".specify/presets/gaia/templates/spec-template.md": "owned",
     "CLAUDE.md": "shared",
+    "commitlint.config.mjs": "owned",
     "frontend/.claude/agents/code-audit-frontend/cn.md": "owned",
     "frontend/.claude/agents/code-audit-frontend/conform.md": "owned",
     "frontend/.claude/agents/code-audit-frontend/form-components.md": "owned",
@@ -609,6 +612,7 @@
     "wiki/decisions/Determinism Classifier.md": "wiki-owned",
     "wiki/decisions/Dispatched-Check Rollup via Polling.md": "wiki-owned",
     "wiki/decisions/DragonScale Opt-Out.md": "wiki-owned",
+    "wiki/decisions/Naming Conventions.md": "wiki-owned",
     "wiki/decisions/No Component Library.md": "wiki-owned",
     "wiki/decisions/pnpm.md": "wiki-owned",
     "wiki/decisions/Quality Gate.md": "wiki-owned",
@@ -670,7 +674,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-10-03T08:07:39.580Z",
+  "generated": "2026-10-03T13:12:07.280Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",
