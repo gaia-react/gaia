@@ -32,7 +32,7 @@ The canonical config is `frontend/doctor.config.ts`:
 
 ### Duplicate-config guard
 
-A deterministic check fails when more than one `doctor.config.*` or `react-doctor.config.*` file exists, because react-doctor itself gives no warning: `.husky/pre-commit` ([[Pre-commit Hooks]]) fails the commit before a duplicate lands.
+A deterministic check fails when more than one `doctor.config.*` or `react-doctor.config.*` file exists, because react-doctor itself gives no warning: `.githooks/pre-commit` ([[Pre-commit Hooks]]) fails the commit before a duplicate lands.
 
 ## Acting on output
 

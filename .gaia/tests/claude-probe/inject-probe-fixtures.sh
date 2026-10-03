@@ -29,7 +29,7 @@
 #     root-launch "frontend rules load after a Read of frontend/CLAUDE.md"
 #     observation, and a frontend agent (gaia-probe-agent) for the Q4 row.
 #   - the permission-row targets when absent: root and frontend .env, the
-#     audit markers, the husky runtime files, and a pnpm-lock.yaml stub.
+#     audit markers, and a pnpm-lock.yaml stub.
 #
 # Re-running is idempotent: existing probe hook entries (any command naming
 # claude-probe/probe-hooks/) are stripped before the fresh ones are appended.
@@ -65,9 +65,7 @@ permission_targets() {
     pnpm-lock.yaml \
     .gaia/local/audit/x.ok \
     .gaia/local/audit/x.carried \
-    .gaia/local/audit/x.refused \
-    .husky/_/h \
-    .husky/_/pre-commit
+    .gaia/local/audit/x.refused
 }
 
 if [ "${1:-}" = "--list-paths" ]; then
@@ -174,7 +172,7 @@ Reply with the single word OK.
 AGENT
 
 # Permission-row targets. Existing files are left alone: in a real tree the
-# husky runtime and the lockfile are the real ones.
+# lockfile is the real one.
 while IFS= read -r relative_path; do
   target_path="$TREE_ROOT/$relative_path"
   [ -e "$target_path" ] && continue

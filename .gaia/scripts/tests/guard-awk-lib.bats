@@ -580,10 +580,10 @@ surface_has_workflow_and_action() {
 # well as what it must.
 scan_fixture_repo() {
   local repo="$TEMPORARY_DIRECTORY/scanrepo"
-  mkdir -p "$repo/.husky" "$repo/.github/workflows" "$repo/.github/actions/probe"
+  mkdir -p "$repo/.githooks" "$repo/.github/workflows" "$repo/.github/actions/probe"
   git -C "$repo" init -q .
   printf 'x\n' > "$repo/tool.sh"
-  printf 'x\n' > "$repo/.husky/pre-commit"
+  printf 'x\n' > "$repo/.githooks/pre-commit"
   printf 'x\n' > "$repo/.github/workflows/ci.yml"
   printf 'x\n' > "$repo/.github/actions/probe/action.yaml"
   git -C "$repo" add -A
@@ -618,9 +618,9 @@ scan_fixture_repo() {
   git -C "$repo" init -q .
   printf 'x\n' > "$repo/a.bats"
   git -C "$repo" add -A
-  run bash -c "cd '$repo' && . '$LIBRARY' && gaia_guard_scan_files probe husky workflows"
+  run bash -c "cd '$repo' && . '$LIBRARY' && gaia_guard_scan_files probe githooks workflows"
   [ "$status" -eq 1 ]
-  grep -qF -- "(husky workflows)" <<<"$output" || return 1
+  grep -qF -- "(githooks workflows)" <<<"$output" || return 1
 }
 
 @test "the shell set returns tracked *.sh and no workflow or hook" {
@@ -629,19 +629,31 @@ scan_fixture_repo() {
   run bash -c "cd '$repo' && . '$LIBRARY' && gaia_guard_scan_files probe shell && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
   [ "$status" -eq 0 ]
   grep -qxF -- "tool.sh" <<<"$output" || return 1
-  grep -qxF -- ".husky/pre-commit" <<<"$output" && return 1
+  grep -qxF -- ".githooks/pre-commit" <<<"$output" && return 1
   grep -qxF -- ".github/workflows/ci.yml" <<<"$output" && return 1
   true
 }
 
-@test "the husky set returns the extensionless hooks no extension glob matches" {
+@test "the githooks set returns the extensionless hooks no extension glob matches" {
   local repo
   repo="$(scan_fixture_repo)"
-  run bash -c "cd '$repo' && . '$LIBRARY' && gaia_guard_scan_files probe husky && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  run bash -c "cd '$repo' && . '$LIBRARY' && gaia_guard_scan_files probe githooks && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
   [ "$status" -eq 0 ]
-  grep -qxF -- ".husky/pre-commit" <<<"$output" || return 1
+  grep -qxF -- ".githooks/pre-commit" <<<"$output" || return 1
   grep -qxF -- "tool.sh" <<<"$output" && return 1
   true
+}
+
+# The set was renamed with the hook directory, and a name this library no longer
+# knows must be refused rather than resolve to nothing, or a caller still asking
+# for it would scan no hook and report clean.
+@test "the retired husky set name is refused as an unknown set" {
+  local repo
+  repo="$(scan_fixture_repo)"
+  run bash -c "cd '$repo' && . '$LIBRARY' && gaia_guard_scan_files probe husky"
+  [ "$status" -eq 2 ]
+  grep -qF -- "husky" <<<"$output" || return 1
+  grep -qF -- "probe: ERROR" <<<"$output" || return 1
 }
 
 @test "the workflows set returns workflows and composite actions" {
@@ -656,24 +668,24 @@ scan_fixture_repo() {
 }
 
 # A git pathspec glob is matched without FNM_PATHNAME, so `*.sh` crosses `/` and
-# reaches a script under .husky/. The shell set excludes the hook directory for
+# reaches a script under .githooks/. The shell set excludes the hook directory for
 # that reason: a caller asking for both sets must receive such a file once, or
 # it is scanned twice and reported twice.
-@test "a .sh under .husky belongs to the husky set alone and appears once in the union" {
+@test "a .sh under .githooks belongs to the githooks set alone and appears once in the union" {
   local repo
   repo="$(scan_fixture_repo)"
-  printf 'x\n' > "$repo/.husky/helper.sh"
+  printf 'x\n' > "$repo/.githooks/helper.sh"
   git -C "$repo" add -A
   run bash -c "cd '$repo' && . '$LIBRARY' && gaia_guard_scan_files probe shell && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
   [ "$status" -eq 0 ]
-  grep -qxF -- ".husky/helper.sh" <<<"$output" && return 1
-  run bash -c "cd '$repo' && . '$LIBRARY' && gaia_guard_scan_files probe shell husky && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  grep -qxF -- ".githooks/helper.sh" <<<"$output" && return 1
+  run bash -c "cd '$repo' && . '$LIBRARY' && gaia_guard_scan_files probe shell githooks && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
   [ "$status" -eq 0 ]
   # The exclude is the only thing keeping this at one. The union is not
   # deduplicated, deliberately: `sort -u` there would be a second mechanism
   # guaranteeing the same thing, and a suite cannot red on either one alone
   # while the other still holds.
-  [ "$(grep -cxF -- '.husky/helper.sh' <<<"$output")" -eq 1 ]
+  [ "$(grep -cxF -- '.githooks/helper.sh' <<<"$output")" -eq 1 ]
 }
 
 # The set that names it is where an unknown name is refused, so a set ahead of it
@@ -782,7 +794,7 @@ scan_fixture_repo() {
 @test "the union across sets is sorted rather than concatenated set by set" {
   local repo
   repo="$(scan_fixture_repo)"
-  run bash -c "cd '$repo' && . '$LIBRARY' && gaia_guard_scan_files probe shell husky workflows && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  run bash -c "cd '$repo' && . '$LIBRARY' && gaia_guard_scan_files probe shell githooks workflows && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
   [ "$status" -eq 0 ]
   [ "$output" = "$(LC_ALL=C sort <<<"$output")" ]
 }
@@ -1228,10 +1240,10 @@ mutate_guard_copy() {
 
 @test "every guard hard-errors together on a tree carrying no tracked bats suite" {
   local repo="$TEMPORARY_DIRECTORY/no-bats"
-  mkdir -p "$repo/.husky" "$repo/.github/workflows"
+  mkdir -p "$repo/.githooks" "$repo/.github/workflows"
   git -C "$repo" init -q .
   printf '#!/usr/bin/env bash\necho hi\n' > "$repo/tracked.sh"
-  printf '#!/usr/bin/env sh\necho hi\n' > "$repo/.husky/pre-commit"
+  printf '#!/usr/bin/env sh\necho hi\n' > "$repo/.githooks/pre-commit"
   printf 'on: push\njobs:\n  x:\n    steps:\n      - run: echo hi\n' > "$repo/.github/workflows/ci.yml"
   git -C "$repo" add -A
 

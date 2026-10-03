@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shell-lint.sh: run shellcheck over every tracked shell script, bats suite, and
-# husky hook, then parse every tracked shell script with bash 3.2, then the
+# git hook, then parse every tracked shell script with bash 3.2, then the
 # repo-authored guards shellcheck cannot model: the hook
 # array-guard (.gaia/scripts/lint-hook-array-guard.sh), the git path-quoting
 # guard (.gaia/scripts/lint-git-path-quoting.sh), the workflow
@@ -47,10 +47,10 @@
 #            `# shellcheck disable=SC2016` directives, so the gate stays live to a
 #            genuine SC2016 bug in any file that does not opt out.
 #
-#   .husky/* -> `style` as well, but linted as POSIX `sh` in a pass of its own.
+#   .githooks/* -> `style` as well, but linted as POSIX `sh` in a pass of its own.
 #            The hooks are extensionless, so no glob above reaches them, and
-#            husky runs each one as `sh -e`, so bash-only constructs must fail
-#            here even though they pass in the *.sh pass.
+#            git runs each one directly as a POSIX sh script, so bash-only
+#            constructs must fail here even though they pass in the *.sh pass.
 #
 #   *.bats -> `warning`. Errors and warnings are the tiers with live failure
 #            modes (a masked `!` assertion that never fails a test [SC2314], a
@@ -181,10 +181,10 @@ while IFS= read -r -d '' tracked_path; do
   bats_scripts+=("$tracked_path")
 done < <(git -C "$REPO_ROOT" -c core.quotepath=false ls-files -z '*.bats')
 
-husky_hooks=()
+githook_hooks=()
 while IFS= read -r -d '' tracked_path; do
-  husky_hooks+=("$tracked_path")
-done < <(git -C "$REPO_ROOT" -c core.quotepath=false ls-files -z '.husky/*')
+  githook_hooks+=("$tracked_path")
+done < <(git -C "$REPO_ROOT" -c core.quotepath=false ls-files -z '.githooks/*')
 
 # Guard the expansion below: on bash 3.2 a bare "${sh_scripts[@]}" over an EMPTY
 # array aborts with `unbound variable` under `set -u`. An empty *.sh result also
@@ -237,7 +237,7 @@ trap 'rm -rf "$LINT_TEMPORARY_DIRECTORY"' EXIT
 #
 # Args: <slug> <severity> <file>...
 # Every pass split this way lets shellcheck read each file's own shebang, so
-# there is no dialect argument; the husky pass, which needs an explicit `-s sh`,
+# there is no dialect argument; the githooks pass, which needs an explicit `-s sh`,
 # lints a single file and stays serial.
 # Returns 0 only when every worker exited 0. A worker's status is collected per
 # pid: a bare `wait` returns the last job's status only and would green a
@@ -346,15 +346,16 @@ if [ -z "$ONLY_PASS" ]; then
     fi
   fi
 
-  # The husky hooks are extensionless, so they match neither glob above and would
+  # The git hooks are extensionless, so they match neither glob above and would
   # escape the gate entirely. `-s sh` is passed explicitly rather than left to the
-  # per-file directive: husky runs every hook as `sh -e`, so the dialect is a
-  # property of the directory, and a newly added hook is linted correctly whether
+  # per-file directive: git runs each hook directly and the hooks are POSIX sh by
+  # convention, so the dialect is pinned per directory, and a newly added hook is
+  # linted correctly whether
   # or not its author remembered the directive. It has to be its own invocation
   # because shellcheck takes one dialect per run.
-  if [ "${#husky_hooks[@]}" -gt 0 ]; then
-    echo "--> shellcheck .husky/* (dialect=sh, severity=$SH_SEVERITY): ${#husky_hooks[@]} tracked hooks"
-    if ! (cd "$REPO_ROOT" && shellcheck -s sh --severity="$SH_SEVERITY" --exclude="$TOOLING_EXCLUDE" ${husky_hooks[@]+"${husky_hooks[@]}"}); then
+  if [ "${#githook_hooks[@]}" -gt 0 ]; then
+    echo "--> shellcheck .githooks/* (dialect=sh, severity=$SH_SEVERITY): ${#githook_hooks[@]} tracked hooks"
+    if ! (cd "$REPO_ROOT" && shellcheck -s sh --severity="$SH_SEVERITY" --exclude="$TOOLING_EXCLUDE" ${githook_hooks[@]+"${githook_hooks[@]}"}); then
       status=1
     fi
   fi

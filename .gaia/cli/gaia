@@ -27887,10 +27887,6 @@ var GROUP_RULES = [
     exactNames: ["@eslint/compat", "@eslint/js", "eslint"],
     group: "eslint",
     prefixes: ["eslint-config-", "eslint-plugin-"]
-  },
-  {
-    exactNames: ["husky", "lint-staged"],
-    group: "husky"
   }
 ];
 var buildExactIndex = (rules) => {

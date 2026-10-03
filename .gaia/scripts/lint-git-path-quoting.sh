@@ -178,7 +178,7 @@ case "$GAIA_AWK_STATUS" in
     ;;
 esac
 
-# Scan surface: tracked shell, the extensionless husky hooks, the workflow YAML
+# Scan surface: tracked shell, the extensionless git hooks, the workflow YAML
 # whose `run:` blocks are shell by another name, tracked markdown, whose
 # fenced blocks are shell by another name on any page a rule tells the agent to
 # execute, and tracked `*.bats`, collected as its own set below. `git ls-files`
@@ -198,7 +198,7 @@ esac
 scan_files=()
 while IFS= read -r -d '' file_path; do
   scan_files+=("$file_path")
-done < <(git -c core.quotepath=false ls-files -z '*.sh' '.husky/*' '.github/workflows/*.yml' '.github/workflows/*.yaml' '*.md' | LC_ALL=C sort -z)
+done < <(git -c core.quotepath=false ls-files -z '*.sh' '.githooks/*' '.github/workflows/*.yml' '.github/workflows/*.yaml' '*.md' | LC_ALL=C sort -z)
 
 # An empty scan set is a hard error, never a clean tree. The loop above reads
 # from a process substitution, whose failure `set -o pipefail` cannot see, so a
@@ -283,7 +283,7 @@ gaia_guard_bats_files lint-git-path-quoting || exit 1
 #     is not a `*.bats` question and it does not change with the widened
 #     surface.
 #   - A single-quoted string containing a literal `git diff --name-only` reads
-#     as an invocation on `*.sh`, husky, workflow YAML and markdown, where
+#     as an invocation on `*.sh`, git hooks, workflow YAML and markdown, where
 #     nothing distinguishes a string constant from executed shell. On `*.bats`
 #     the same text, written through a recognized fixture-writing idiom, is
 #     read as data instead; see

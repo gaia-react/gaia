@@ -11,7 +11,7 @@
 #
 # Exit 0 when clean, and 1 either with a file:line report on any hit or on a
 # scan set that came back empty, which this gate reads as a broken discovery
-# rather than a clean tree. The husky hooks are the one surface where an empty
+# rather than a clean tree. The git hooks are the one surface where an empty
 # set is a legitimate tree, and they never reach this status: that status is
 # tolerated where the hooks are read, for the reason stated there. Four
 # statuses say the gate never ran at all: 2 when guard-awk-lib.sh is missing
@@ -68,7 +68,7 @@
 #
 # Scan surface, and the halves of it that arm differently:
 #
-#   tracked `*.sh` and the extensionless husky hooks -- armed only where the
+#   tracked `*.sh` and the extensionless git hooks -- armed only where the
 #     file turns errexit on, tracked line by line so a `set +e` disarms and a
 #     later `set -e` re-arms. Off by default is the truthful model here: a
 #     script with no `set -e` does not carry the class at all, and roughly
@@ -933,7 +933,7 @@ function feed(line, line_number,   stripped, terminator_candidate, tail) {
 }
 '
 
-# scan_shell: the *.sh and husky half. Errexit starts OFF, because a script that
+# scan_shell: the *.sh and git hooks half. Errexit starts OFF, because a script that
 # never turns it on does not carry the class.
 readonly SHELL_AWK='
 BEGIN { armed = armed_init; gaia_scan_reset(); reset_state() }
@@ -1024,12 +1024,10 @@ END {
 gaia_guard_scan_files lint-errexit-status-read shell || exit $?
 sh_files=(${GAIA_GUARD_SCAN_FILES[@]+"${GAIA_GUARD_SCAN_FILES[@]}"})
 
-# The husky hooks are read as their own set because they ARM differently, not
-# merely because the `*.sh` glob misses them. `.husky/_/h` invokes every hook as
-# `sh -e "$s"`, so errexit is on there whether or not the hook says so, exactly as
-# it is inside an Actions `run:` body; `.husky/pre-commit` carries no `set -e` and
-# is live for the class today. Reading them off-by-default with the ordinary
-# scripts is what left that whole surface certified clean.
+# The git hooks are read as their own set because the `*.sh` glob misses
+# extensionless files. Git execs a hook directly and the hook arms itself with its
+# own `set -e`, so they are armed the same way as `*.sh`: off until the file turns
+# errexit on.
 #
 # Alone among the sets this gate reads, an empty one is a legitimate tree rather
 # than a broken discovery: a repository can carry no tracked hook at all, and the
@@ -1039,27 +1037,26 @@ sh_files=(${GAIA_GUARD_SCAN_FILES[@]+"${GAIA_GUARD_SCAN_FILES[@]}"})
 #
 # That status and no other. Every other one the library returns says the call is
 # wrong or the discovery broke, and swallowing one here would leave this gate,
-# the only one arming the hooks as errexit-on, scanning no hook while printing
-# `clean`: the certified-clean surface the paragraph above names.
+# the only one reading the hooks, scanning no hook while printing `clean`.
 #
 # So the library's message is held rather than discarded, and replayed on every
 # status but the tolerated one. Discarding it outright would cost the operator
 # the only text that separates the causes sharing a status: status 3 is returned
 # for a failed discovery, a failed sort, and a scratch file that could not be
 # created, and the line held here is what names which.
-husky_files=()
-husky_error_file="$(mktemp -t gaia-errexit-husky-XXXXXX)"
-if gaia_guard_scan_files lint-errexit-status-read husky 2>"$husky_error_file"; then
-  husky_files=(${GAIA_GUARD_SCAN_FILES[@]+"${GAIA_GUARD_SCAN_FILES[@]}"})
+githook_files=()
+githook_error_file="$(mktemp -t gaia-errexit-githooks-XXXXXX)"
+if gaia_guard_scan_files lint-errexit-status-read githooks 2>"$githook_error_file"; then
+  githook_files=(${GAIA_GUARD_SCAN_FILES[@]+"${GAIA_GUARD_SCAN_FILES[@]}"})
 else
-  husky_status=$?
-  if [ "$husky_status" -ne 1 ]; then
-    cat "$husky_error_file" >&2
-    rm -f "$husky_error_file"
-    exit "$husky_status"
+  githook_status=$?
+  if [ "$githook_status" -ne 1 ]; then
+    cat "$githook_error_file" >&2
+    rm -f "$githook_error_file"
+    exit "$githook_status"
   fi
 fi
-rm -f "$husky_error_file"
+rm -f "$githook_error_file"
 
 gaia_guard_scan_files lint-errexit-status-read workflows || exit $?
 yaml_files=(${GAIA_GUARD_SCAN_FILES[@]+"${GAIA_GUARD_SCAN_FILES[@]}"})
@@ -1079,13 +1076,13 @@ for scanned_file in ${sh_files[@]+"${sh_files[@]}"}; do
     "$GAIA_GUARD_AWK$CORE_AWK$SHELL_AWK" "$scanned_file")"
   [ -z "$hits" ] || report+="$hits"$'\n'
 done
-# The husky set is allowed to be empty and is simply skipped, mirroring the way
+# The githooks set is allowed to be empty and is simply skipped, mirroring the way
 # .gaia/tests/shell-lint.sh treats its own *.bats set: an adopter clone may
 # legitimately carry no hooks, while every real tree carries tracked *.sh, which
 # is why only that set and the workflows are hard preconditions above.
-for scanned_file in ${husky_files[@]+"${husky_files[@]}"}; do
+for scanned_file in ${githook_files[@]+"${githook_files[@]}"}; do
   [ -f "$scanned_file" ] || continue
-  hits="$("$GAIA_AWK" -v file="$scanned_file" -v armed_init=1 -v is_bats=0 -v scripts_directory="$_gaia_guard_library_directory" \
+  hits="$("$GAIA_AWK" -v file="$scanned_file" -v armed_init=0 -v is_bats=0 -v scripts_directory="$_gaia_guard_library_directory" \
     "$GAIA_GUARD_AWK$CORE_AWK$SHELL_AWK" "$scanned_file")"
   [ -z "$hits" ] || report+="$hits"$'\n'
 done

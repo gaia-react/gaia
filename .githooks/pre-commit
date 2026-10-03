@@ -1,8 +1,8 @@
-# shellcheck shell=sh
-# No shebang: husky runs this hook as `sh -e "$s"` from the generated .husky/_/h,
-# so the dialect comes from the runner, not the file. The directive above is
-# inert to every shell and pins that dialect for shellcheck, which otherwise
-# cannot infer one and reports SC2148.
+#!/usr/bin/env sh
+# Git runs this file directly through `core.hooksPath` (set by the root
+# `prepare` script), so it arms its own errexit and PATH below.
+
+set -e
 
 printf '\n🔎 Running pre-commit check\n'
 
@@ -12,6 +12,8 @@ printf '\n🔎 Running pre-commit check\n'
 # It exits 1 with the reason on stderr when the registry or a descriptor cannot
 # be read, and no descriptor failure lets a commit through.
 ROOT=$(git rev-parse --show-toplevel) || exit 1
+PATH="$ROOT/node_modules/.bin:$PATH"
+export PATH
 PLAN=$(bash "$ROOT/.gaia/scripts/precommit-packages.sh" "$ROOT") || {
   printf "\x1b[31m✖ Pre-commit could not read the package registry\x1b[0m\n"
   exit 1
@@ -86,7 +88,7 @@ then
   printf "\x1b[33m"
   printf "⚠️ Changes detected - running lint-staged\n"
   printf "\x1b[0m"
-  # A here-document, not a pipe: the gate must run in this shell so `sh -e`
+  # A here-document, not a pipe: the gate must run in this shell so errexit (`set -e`)
   # stops the commit on the first failing step.
   while IFS= read -r PACKAGE_DIR; do
     if [ "$PACKAGE_DIR" = "." ]; then PACKAGE_PATH="$ROOT"; else PACKAGE_PATH="$ROOT/$PACKAGE_DIR"; fi

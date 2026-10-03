@@ -12,7 +12,7 @@ tags: [decision, shell, lint, bats, awk-lib]
 
 Three GAIA shell guards scan the tree for a class of shell defect: an unquoted
 path-listing call, an unescaped ERE metacharacter, an unguarded status read under
-errexit. Each guard reads tracked shell scripts, husky hooks, workflow YAML, and
+errexit. Each guard reads tracked shell scripts, git hooks, workflow YAML, and
 the fenced code blocks of tracked markdown, and until now none of them read `*.bats`
 at all. The exclusion existed because a bats suite is exactly where the defect class
 gets demonstrated on purpose: a suite proves a guard's own claim by writing a
@@ -55,7 +55,7 @@ The fixture-region skip carries the same scope for the mirror reason. Scoping th
 skip to `*.bats` is what makes it a closed, provable claim: a line is data only when
 it sits inside the argument region of a recognized fixture-writing shape, checked
 against the small set of suites that write fixtures. Letting the same skip apply to
-`*.sh`, husky hooks, workflow YAML and markdown would mean silently dropping heredoc
+`*.sh`, git hooks, workflow YAML and markdown would mean silently dropping heredoc
 bodies and multi-line continuations across every shipped script on those surfaces,
 more than 160 heredoc openers across 65 tracked shell scripts on that surface alone,
 which is a net regression against what those guards already catch there today.

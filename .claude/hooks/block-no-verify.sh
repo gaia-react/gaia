@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PreToolUse Bash hook: deny `git commit` / `git push` that carry a hook
 # bypass, so GAIA's commit-time deterministic floor (typecheck / lint / test,
-# run by the Husky pre-commit hook) cannot be silently skipped.
+# run by the pre-commit hook, .githooks/pre-commit) cannot be silently skipped.
 #
 # "Enforced, not advisory" applies to GAIA's own gate: a floor the agent can
 # opt out of is advisory. This closes the commit/push layer. The apex merge
@@ -11,13 +11,12 @@
 #   --no-verify                     skips client-side hooks
 #   -n                              COMMIT ONLY (= --no-verify). On `push`, -n
 #                                   means --dry-run and is harmless, never block it.
-#   HUSKY=0 (or falsy HUSKY= prefix) disables Husky for the invocation
 #   -c core.hooksPath=<path>        redirects hooks to a path with no floor
 #
 # Command-position anchoring: a token is only a bypass when it belongs to a
 # real `git commit` / `git push` INVOCATION, i.e. `git` is the command word of
 # a pipeline segment (start of command, after a `| & ; ( )` separator, or after
-# an env-var prefix like `HUSKY=0`). Command TEXT that merely mentions the words
+# an env-var prefix like `GIT_AUTHOR_DATE=...`). Command TEXT that merely mentions the words
 # (a grep pattern, an echo string, a path, an argument to another program such
 # as `grep -n -e git commit file`) is not an invocation and never fires. Without
 # this anchor the matcher fired on free-floating substrings: any command whose
@@ -32,7 +31,7 @@
 # Residual fail-closed edge: a bypass token written literally INSIDE a commit
 # message (e.g. `git commit -m "use --no-verify"`) still over-blocks. That is
 # the safe direction; rephrase the message. The unambiguous tokens
-# (--no-verify, falsy HUSKY=, core.hooksPath=) also get a whole-command
+# (--no-verify, core.hooksPath=) also get a whole-command
 # fail-closed safety net so segment-splitting on a shell metacharacter inside a
 # message can never let a real bypass slip. Policy: wiki/decisions/Quality Gate.md
 set -euo pipefail
@@ -97,7 +96,7 @@ deny() {
 }
 
 floor_message() {
-  local message="Hook bypass on 'git $sub' is forbidden ($1). The Quality Gate floor (typecheck/lint/test) runs via the Husky pre-commit hook, fix the failures, don't skip the gate. See wiki/decisions/Quality Gate.md."
+  local message="Hook bypass on 'git $sub' is forbidden ($1). The Quality Gate floor (typecheck/lint/test) runs via the pre-commit hook (.githooks/pre-commit), fix the failures, don't skip the gate. See wiki/decisions/Quality Gate.md."
   # The over-block workaround applies to commit only: push carries no -m text
   # a bypass token could be merely mentioned inside.
   if [ "$sub" = "commit" ]; then
@@ -201,13 +200,6 @@ while IFS= read -r segment; do
     deny "$(floor_message '--no-verify')"
   fi
 
-  # Falsy HUSKY= prefix (HUSKY=0, HUSKY=false, HUSKY=no, or empty), both. The
-  # `+=` spelling is read too: it appends, so on the unset HUSKY that is the
-  # ordinary case it assigns the same falsy value the `=` spelling does.
-  if [[ "$segment" =~ (^|[[:space:]])HUSKY\+?=(0|false|no)?([[:space:]]|$) ]]; then
-    deny "$(floor_message 'HUSKY disabled')"
-  fi
-
   # -c core.hooksPath=<path> override, both. Git config keys are
   # case-insensitive, so match the key case-insensitively.
   if grep -iqE -- '-c[[:space:]]+core\.hookspath=' <<<"$segment"; then
@@ -227,7 +219,7 @@ done < <({ printf '%s\n' "$command_line"; collapsed_substitutions "$command_line
 # Fail-closed safety net for the UNAMBIGUOUS tokens. Segment-splitting on a
 # `| & ; ( )` that is actually inside a quoted commit message could orphan a
 # trailing bypass flag from its `git` segment (e.g. `git commit -m "a|b"
-# --no-verify`). These three tokens are specific enough that a whole-command
+# --no-verify`). These tokens are specific enough that a whole-command
 # match, given a confirmed command-position commit/push above, is a real bypass
 #, re-assert it. (`-n` is deliberately excluded: it is too common in other
 # programs to test whole-command without re-introducing false positives.)
@@ -236,9 +228,6 @@ if [[ "$saw_commit" -eq 1 || "$saw_push" -eq 1 ]]; then
   [[ "$saw_commit" -eq 1 ]] || sub="push"
   if [[ "$command_line" =~ (^|[[:space:]])--no-verify([[:space:]]|=|$) ]]; then
     deny "$(floor_message '--no-verify')"
-  fi
-  if [[ "$command_line" =~ (^|[[:space:]])HUSKY\+?=(0|false|no)?([[:space:]]|$) ]]; then
-    deny "$(floor_message 'HUSKY disabled')"
   fi
   if grep -iqE -- '-c[[:space:]]+core\.hookspath=' <<<"$command_line"; then
     deny "$(floor_message '-c core.hooksPath override')"

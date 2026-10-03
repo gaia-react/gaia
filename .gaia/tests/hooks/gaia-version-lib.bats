@@ -103,7 +103,7 @@ setup() {
 # workflow `run:` block holds shell without being a `.sh` file and a workflow
 # template renders into one that does. It stays a pathspec rather than every
 # tracked file, so a copy in a `.bats` suite, a `.yaml`, or an extensionless
-# hook such as `.husky/pre-commit` is still invisible to it.
+# hook such as `.githooks/pre-commit` is still invisible to it.
 #
 # What it cannot catch at any pathspec is a site spelling the read its own way:
 # both regexes are written against this idiom, so a reader that answers

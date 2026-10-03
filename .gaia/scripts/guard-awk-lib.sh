@@ -806,27 +806,26 @@ GAIA_GUARD_SCAN_FILES=()
 # one this library knows. Private to gaia_guard_scan_files, and the one place
 # each pathspec is written.
 #
-#   shell      tracked `*.sh`, minus the hook directory the `husky` set owns. A
-#              git pathspec glob is matched without FNM_PATHNAME, so its `*`
-#              crosses `/` and a `.husky/helper.sh` would otherwise be returned
+#   shell      tracked `*.sh`, minus the hook directory the `githooks` set owns.
+#              A git pathspec glob is matched without FNM_PATHNAME, so its `*`
+#              crosses `/` and a `.githooks/helper.sh` would otherwise be returned
 #              by both sets: scanned twice, and reported twice, by a caller that
 #              asked for both.
-#   husky      the husky hooks, which are extensionless and so match no
-#              extension glob. `.husky/_/h` runs each one as `sh -e`, so a
-#              caller that arms them differently from an ordinary script asks
-#              for this set separately rather than folding it into `shell`.
+#   githooks   the extensionless git hooks under `.githooks/`, which match no
+#              extension glob, so a caller reads them as their own set rather
+#              than folding them into `shell`.
 #   workflows  the Actions workflows and composite actions.
 #
 # One set per call rather than one call carrying every pathspec: a `:(exclude)`
 # magic pathspec applies to the whole call, so `shell`'s exclude would also
-# empty a `husky` set asked for in the same breath.
+# empty a `githooks` set asked for in the same breath.
 #
 # `core.quotepath=false`, so a path carrying a non-ASCII byte is not handed over
 # C-quoted and silently dropped.
 _gaia_guard_scan_set() {
   case "$1" in
-    shell) git -c core.quotepath=false ls-files -z '*.sh' ':(exclude).husky/*' ;;
-    husky) git -c core.quotepath=false ls-files -z '.husky/*' ;;
+    shell) git -c core.quotepath=false ls-files -z '*.sh' ':(exclude).githooks/*' ;;
+    githooks) git -c core.quotepath=false ls-files -z '.githooks/*' ;;
     workflows)
       git -c core.quotepath=false ls-files -z \
         '.github/workflows/*.yml' '.github/workflows/*.yaml' \

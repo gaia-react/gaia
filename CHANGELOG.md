@@ -19,6 +19,7 @@ A release change that requires the adopter to act, run a command or hand-migrate
 On GAIA 1.6.1? Choose Abort, then paste the prompt from https://gaiareact.com/migrate into a fresh session.
 
 - GAIA 2.0.0 moves the React app and its frontend-only Claude harness into `frontend/`, leaving the root as a pnpm workspace that holds the shared harness, and 2.x releases ship as `gaia-bundle-<tag>.tar.gz`. A 1.6.1 `/update-gaia` cannot cross that move, so choosing Proceed there creates a `chore/update-gaia-*` branch, prunes `.gaia-backup` and the cached tag directories, then stops with `FETCH_FAILED` and changes nothing else. **Action required:** on 1.x, migrate with the prompt at https://gaiareact.com/migrate; from 2.0.0 on, `/update-gaia` works as before and also regenerates `frontend/.claude/settings.json` after each merge. Each release publishes a `.sha256` for its tarball (#2443)
+- GAIA now runs its pre-commit floor as a native git hook at `.githooks/pre-commit`, activated by `pnpm install` through the root `prepare` script, and no longer depends on husky or is-ci; lint-staged stays. A clone still pointing at `.husky/_` runs no pre-commit hook and reports nothing. **Action required:** in every existing clone, run `pnpm install` or `git config core.hooksPath .githooks`, then confirm `git config --get core.hooksPath` prints `.githooks`. The migration prompt handles the clone that runs it (#2456)
 
 ### Changed
 
