@@ -1,0 +1,251 @@
+// Raw probe evidence -> observed states. Observations come only from the
+// probe-hook log (probe.jsonl), the harness-emitted stream-json events (system
+// init, result, and the structured tool_use / tool_result blocks), git's
+// trace2 event log, and run-probe's post-scenario file check. Assistant text
+// is never read: a model saying a rule loaded is not evidence that it did.
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { readSnapshotJson, settingsHookEntries } from './table.mjs';
+
+export class EvidenceError extends Error {}
+
+// Which settings file each probe tag stands for (inject-probe-fixtures.sh).
+export const TAG_FILES = {
+  'root-settings': '.claude/settings.json',
+  'root-local': '.claude/settings.local.json',
+  'frontend-settings': 'frontend/.claude/settings.json',
+  'frontend-local': 'frontend/.claude/settings.local.json',
+};
+
+export const scenarioSlug = (trigger) => trigger.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+const readJsonl = (path) => {
+  if (!existsSync(path)) return null;
+  return readFileSync(path, 'utf8').split('\n').map((line, index) => {
+    if (line.trim() === '') return null;
+    try {
+      const value = JSON.parse(line);
+      if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error('not a JSON object');
+      return value;
+    } catch (error) {
+      throw new EvidenceError(`malformed evidence line ${path}:${index + 1}: ${error.message}`);
+    }
+  }).filter(Boolean);
+};
+
+const readJson = (path) => {
+  if (!existsSync(path)) return null;
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch (error) {
+    throw new EvidenceError(`malformed evidence file ${path}: ${error.message}`);
+  }
+};
+
+// Repo-relative form of an absolute path, tolerating macOS's /private alias
+// for /var and /tmp. Paths outside the launch's repo root keep an @outside:
+// prefix so they never collide with an in-repo subject.
+export const relativeTo = (root, path) => {
+  if (typeof path !== 'string' || path === '') return null;
+  if (!path.startsWith('/')) return path.replace(/^\.\//, '');
+  const roots = new Set([root, `/private${root}`, root.replace(/^\/private/, '')]);
+  for (const candidate of roots) {
+    if (path === candidate) return '.';
+    if (path.startsWith(`${candidate}/`)) return path.slice(candidate.length + 1);
+  }
+  return `@outside:${path}`;
+};
+
+export const loadScenario = (directory) => {
+  const scenario = readJson(join(directory, 'scenario.json'));
+  if (!scenario) return null;
+  const streams = [readJsonl(join(directory, 'stream-1.jsonl')) ?? [], readJsonl(join(directory, 'stream-2.jsonl'))];
+  return {
+    scenario,
+    probe: readJsonl(join(directory, 'probe.jsonl')) ?? [],
+    streams,
+    trace2: readJsonl(join(directory, 'trace2.jsonl')) ?? [],
+    filesAfter: readJson(join(directory, 'files-after.json')) ?? {},
+  };
+};
+
+const initEvent = (stream) => (stream ?? []).find((event) => event.type === 'system' && event.subtype === 'init') ?? null;
+const names = (list) => (list ?? []).map((entry) => (typeof entry === 'string' ? entry : entry?.name)).filter(Boolean);
+const nameMatches = (listed, key) => listed === key || listed.endsWith(`:${key}`);
+
+// Session-level problems that void every row of the scenario.
+export const sessionProblem = (data) => {
+  if (!data) return 'no_session';
+  if (data.probe.some((line) => line.event === 'ProbeError')) return 'probe_error';
+  if (!data.probe.some((line) => line.event === 'SessionStart')) return 'no_session';
+  if (!initEvent(data.streams[0])) return 'no_session';
+  return null;
+};
+
+const readVerified = (data) => {
+  const { trigger, launch_root: root } = data.scenario;
+  if (!trigger.startsWith('after_read:')) return true;
+  const target = trigger.slice('after_read:'.length);
+  return data.probe.some((line) => line.event === 'PostToolUse' && line.tool_name === 'Read'
+    && relativeTo(root, line.file_path) === target);
+};
+
+export const loadedInstructionPaths = (data) => new Set(data.probe
+  .filter((line) => line.event === 'InstructionsLoaded')
+  .map((line) => relativeTo(data.scenario.launch_root, line.file_path))
+  .filter(Boolean));
+
+// The listing a row is judged on: an after_read row uses the turn issued
+// after the Read was verified; every other row the session's own init event.
+const listingInit = (data) => (data.scenario.trigger.startsWith('after_read:') ? initEvent(data.streams[1]) : initEvent(data.streams[0]));
+
+export const listedNames = (init, kind) => {
+  if (!init) return [];
+  if (kind === 'skill') return [...names(init.skills), ...names(init.slash_commands)];
+  if (kind === 'agent') return names(init.agents);
+  if (kind === 'mcp') return names(init.mcp_servers);
+  return [];
+};
+
+const loadedTags = (data) => new Set(data.probe.filter((line) => line.event === 'SessionStart').map((line) => line.tag));
+
+const toolAttempts = (data) => {
+  const attempts = new Map();
+  const results = new Map();
+  const denied = new Set();
+  for (const stream of data.streams) {
+    for (const event of stream ?? []) {
+      if (event.type === 'assistant') {
+        for (const block of event.message?.content ?? []) {
+          if (block.type === 'tool_use') attempts.set(block.id, { id: block.id, name: block.name, input: block.input ?? {} });
+        }
+      } else if (event.type === 'user') {
+        for (const block of event.message?.content ?? []) {
+          if (block.type === 'tool_result') results.set(block.tool_use_id, block);
+        }
+      } else if (event.type === 'result') {
+        for (const denial of event.permission_denials ?? []) {
+          denied.add(denial.tool_use_id);
+          if (!attempts.has(denial.tool_use_id)) attempts.set(denial.tool_use_id, { id: denial.tool_use_id, name: denial.tool_name, input: denial.tool_input ?? {} });
+        }
+      }
+    }
+  }
+  return { attempts: [...attempts.values()], results, denied };
+};
+
+const resultText = (result) => (typeof result?.content === 'string' ? result.content
+  : (result?.content ?? []).map((part) => part?.text ?? '').join('\n'));
+
+// allow wins over deny: one executed attempt means the deny did not hold.
+const fileToolOutcome = (data, toolNames, relativePath) => {
+  const root = data.scenario.launch_root;
+  const { attempts, results, denied } = toolAttempts(data);
+  const posted = data.probe.filter((line) => line.event === 'PostToolUse');
+  const matching = attempts.filter((attempt) => toolNames.includes(attempt.name)
+    && relativeTo(root, attempt.input.file_path ?? attempt.input.notebook_path) === relativePath);
+  const ranByProbe = posted.some((line) => toolNames.includes(line.tool_name) && relativeTo(root, line.file_path) === relativePath);
+  if (ranByProbe) return 'allow';
+  if (matching.length === 0) return 'not_attempted';
+  const outcomes = matching.map((attempt) => {
+    if (denied.has(attempt.id)) return 'deny';
+    const result = results.get(attempt.id);
+    if (result?.is_error && /permission|denied|blocked|hook/i.test(resultText(result))) return 'deny';
+    return 'error';
+  });
+  return outcomes.includes('deny') ? 'deny' : 'error';
+};
+
+const commitObservation = (data, marker) => {
+  const commitProcesses = data.trace2.filter((event) => event.event === 'start' && Array.isArray(event.argv)
+    && event.argv.includes('commit') && event.argv.join(' ').includes(`probe-commit-${marker}`));
+  const sids = new Set(commitProcesses.map((event) => event.sid));
+  const preCommit = data.trace2.some((event) => event.event === 'child_start' && sids.has(event.sid)
+    && event.child_class === 'hook' && event.hook_name === 'pre-commit') ? 'ran' : 'not_run';
+  const attempted = data.probe.some((line) => line.event === 'PreToolUse' && line.probe_commit_marker === marker)
+    || toolAttempts(data).attempts.some((attempt) => attempt.name === 'Bash'
+      && String(attempt.input.command ?? '').includes(`probe-commit-${marker}`));
+  let redGate = 'not_reached';
+  if (commitProcesses.length > 0) redGate = 'allow';
+  else if (attempted) redGate = 'deny';
+  return { 'pre-commit': preCommit, 'red-gate': redGate };
+};
+
+export const commitTuple = (data) => ['a', 'b'].map((marker) => {
+  const observation = commitObservation(data, marker);
+  return `${marker}.pre-commit=${observation['pre-commit']},${marker}.red-gate=${observation['red-gate']}`;
+}).join(';');
+
+const envValue = (data, subject) => {
+  const lines = data.probe.filter((line) => line.event === 'SessionStart');
+  const field = { CLAUDE_PROJECT_DIR: 'claude_project_dir', pwd: 'pwd', git_toplevel: 'toplevel' }[subject];
+  if (!field) return 'unknown_env_subject';
+  const values = new Set(lines.map((line) => (line[field] === '' ? '(empty)' : relativeTo(data.scenario.launch_root, line[field]))));
+  if (values.size !== 1) return `inconsistent:${[...values].join('|')}`;
+  return `value:${[...values][0]}`;
+};
+
+// Observed state of one expanded row in one scenario. `context.rootCommit`
+// supplies the root launch's commit scenario for the parity row.
+export const observe = (row, expanded, data, snapshotDirectory, context = {}) => {
+  const problem = sessionProblem(data);
+  if (problem) return problem;
+  if (!readVerified(data)) return 'read_not_verified';
+  const { subject } = expanded;
+  switch (row.kind) {
+    case 'claude_md':
+    case 'rule':
+      return loadedInstructionPaths(data).has(subject) ? 'loaded' : 'not_loaded';
+    case 'skill':
+    case 'agent': {
+      const init = listingInit(data);
+      if (!init) return 'no_listing';
+      return listedNames(init, row.kind).some((listed) => nameMatches(listed, context.key)) ? 'available' : 'not_available';
+    }
+    case 'mcp': {
+      const init = listingInit(data);
+      if (!init) return 'no_listing';
+      const server = (init.mcp_servers ?? []).find((entry) => entry?.name === subject);
+      if (!server) return 'not_available';
+      return server.status === 'connected' ? 'available' : `status:${server.status}`;
+    }
+    case 'settings_source':
+      return [...loadedTags(data)].some((tag) => TAG_FILES[tag] === subject) ? 'loaded' : 'not_loaded';
+    case 'hook': {
+      const entry = expanded.entry ?? (() => {
+        const [event, matcher, ...command] = subject.split('|');
+        return { event, matcher, command: command.join('|') };
+      })();
+      const registered = [...loadedTags(data)].some((tag) => {
+        const settings = TAG_FILES[tag] ? readSnapshotJson(snapshotDirectory, TAG_FILES[tag]) : null;
+        return settingsHookEntries(settings).some((candidate) => candidate.event === entry.event
+          && candidate.matcher === entry.matcher && candidate.command === entry.command);
+      });
+      return registered ? 'registered' : 'not_registered';
+    }
+    case 'env':
+      return envValue(data, subject);
+    case 'permission': {
+      const [tool, ...pathParts] = subject.split(' ');
+      return fileToolOutcome(data, [tool], pathParts.join(' '));
+    }
+    case 'task': {
+      if (row.trigger === 'after_task:commit') {
+        if (subject === 'commit-parity') {
+          if (!context.rootCommit || sessionProblem(context.rootCommit)) return 'no_root_baseline';
+          const mine = commitTuple(data);
+          const root = commitTuple(context.rootCommit);
+          return mine === root ? 'value:match-root' : `value:differs(${data.scenario.launch}=${mine} root=${root})`;
+        }
+        const match = /^commit-([a-z]):(pre-commit|red-gate)$/.exec(subject);
+        if (!match) return 'unknown_commit_subject';
+        return `value:${commitObservation(data, match[1])[match[2]]}`;
+      }
+      const outcome = fileToolOutcome(data, ['Write', 'Edit'], subject);
+      if (outcome === 'allow' && data.filesAfter[subject] !== true) return 'allow_but_file_missing';
+      return outcome;
+    }
+    default:
+      return 'unknown_kind';
+  }
+};
