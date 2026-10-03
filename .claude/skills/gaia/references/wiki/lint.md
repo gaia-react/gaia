@@ -146,7 +146,7 @@ List every dead reference (one per line). Do not truncate: the count is small en
 
 ## Step 4: GAIA check #13: UAT/SPEC narrative-ref drift
 
-Detects narrative `UAT-NNN` and concrete maintainer `SPEC-NNN` references that crept into instruction files (`.claude/skills/`, `.claude/commands/`, `.claude/agents/`, `.claude/rules/`, `.claude/hooks/`) and shipped extension surfaces (`.specify/extensions/gaia/{README.md, commands, lib, rules, templates}`). The rule rationale + structural-vs-narrative triage table lives in `.claude/rules/wiki-style.md` (Exceptions section).
+Detects narrative `UAT-NNN` and concrete maintainer `SPEC-NNN` references that crept into instruction files (`.claude/skills/`, `.claude/commands/`, `.claude/agents/`, `.claude/rules/`, `.claude/hooks/`) and shipped extension surfaces (`.specify/extensions/gaia/{README.md, commands, lib, rules, templates}`). The rule rationale + structural-vs-narrative triage lives in `.claude/rules/working-doc-ids.md`.
 
 <!-- gaia:maintainer-only:start -->
 Both scans deliberately exclude `.gaia/tests/`: it is release-excluded maintainer-only test infrastructure that never reaches an adopter, so its UAT/SEC/TST test labels are legitimate SPEC-conformance traceability, not shipped-surface drift. Do not re-add `.gaia/tests/` to either grep.
@@ -174,7 +174,7 @@ grep -rEn "\bSPEC-[0-9]{3,}\b" \
 
 ### 4b. Triage and append
 
-Both scans return raw match lines. Apply the structural-vs-narrative filter from `wiki-style.md`:
+Both scans return raw match lines. Apply the structural-vs-narrative filter from `working-doc-ids.md`:
 
 - **Skip (structural, not findings):** template format examples (`> - UAT-NNN → Given …`), CLI argument values (`--uat-id UAT-007`), JS/Python/YAML literals (`uat_id: 'UAT-099'`), regex targets that match SPEC YAML structure, filename literals (`uat-001.spec.ts`), illustrative `(e.g. SPEC-002)` examples in usage docs, generic placeholders (`SPEC-NNN`, `SPEC-NNN.md`), variable-name fragments (`uat_id`, `uats_block`).
 - **Flag (narrative, findings):** section-header parentheticals (`#### 5b. Discuss-this escape (UAT-004)`), inline narrative parentheticals (`(UAT-022, UAT-027)`), comments naming specific working-doc IDs, pass/fail label prefixes (`pass "UAT-001 …"`), prose using a maintainer SPEC ID as a system-wide constant (`operate under SPEC-001's scope_boundaries`).
