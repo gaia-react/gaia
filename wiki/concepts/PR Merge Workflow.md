@@ -368,7 +368,7 @@ bash <RUN_FOLDER>/verifier-bin-<r>/audit-fix-verify.sh round-check --run-folder 
 
 A non-zero exit means a gate ran on an attempt the verifier did not pass, and the round does not commit.
 
-**Commit, push, publish.** After a gate pass, run the staging block again so the passing attempt's autofix paths are staged, then make one commit carrying the self-heal, fixer, and autofix edits, and push; the round's orchestrator makes it. The [[Quality Gate]] page's stop-and-report step does not apply inside this loop: the branch checkpoint is where the human reviews, and the gate page carries the matching clause. Then the round's orchestrator rewrites the PR body's record (the unit calls `audit-loop-record.sh` itself, so no main-thread write is involved):
+**Commit, push, publish.** After a gate pass, run the staging block again so the passing attempt's autofix paths are staged, then make one commit carrying the self-heal, fixer, and autofix edits, and push; the round's orchestrator makes it. Its subject is `fix(<scope>): address audit round <r> findings`, `<scope>` the area the round's fixes touch (`hooks`, `cli`) or `audit` when they span several: this flow is unattended, so a free-form subject the `commit-msg` hook refuses would stop it with nothing to recover (`wiki/decisions/Naming Conventions.md`). The [[Quality Gate]] page's stop-and-report step does not apply inside this loop: the branch checkpoint is where the human reviews, and the gate page carries the matching clause. Then the round's orchestrator rewrites the PR body's record (the unit calls `audit-loop-record.sh` itself, so no main-thread write is involved):
 
 ```bash
 bash .gaia/scripts/audit-loop-eval.sh record-values --root <RESOLVED_ROOT> |
@@ -687,7 +687,7 @@ The last decision before merge: does this PR's change belong in `CHANGELOG.md` u
 When worthy:
 
 1. Add the entry to the right `### Added | Changed | Removed | Fixed` subsection under `## [Unreleased]`, present tense with the trailing `(#<PR>)` reference. Write it at Keep a Changelog altitude: 1-3 sentences on what changed and why it matters, not implementation mechanics (no file/function/flag-internals narration). Preserve any **Action required:** marker and its literal command, breaking/migration substance plus a pointer to the steps, behavior-changing flag names, adopter-relevant version/engine bumps, and a truthful who/why clause; deep detail belongs in the PR and commit.
-2. Commit it onto the PR branch and push so it merges with the change. HEAD moves, so re-confirm step 3's audit marker still covers the new HEAD, then post the `GAIA-Audit` status ([[#Posting the status last]]) on the new HEAD before merging. Cheapest path: decide changelog-worthiness back in step 2 while fixing audit findings, so a single audit pass covers both.
+2. Commit it onto the PR branch with the subject `docs(changelog): add the entry for #<N>` and push so it merges with the change. HEAD moves, so re-confirm step 3's audit marker still covers the new HEAD, then post the `GAIA-Audit` status ([[#Posting the status last]]) on the new HEAD before merging. Cheapest path: decide changelog-worthiness back in step 2 while fixing audit findings, so a single audit pass covers both.
 <!-- gaia:maintainer-only:end -->
 
 ## Post-merge verification before cleanup

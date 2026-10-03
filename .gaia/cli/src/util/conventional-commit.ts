@@ -21,6 +21,10 @@
  * `release/bump.ts` (bump kind), `release/changelog.ts` (section), and the
  * `wiki/commit-classify.ts` rule table (which a test asserts reaches a rule
  * rather than the fail-open default).
+ *
+ * `debt` is a legacy type kept so history still classifies; commitlint rejects
+ * it for new commits. The list is pinned to `.gaia/conventional-commits.json`
+ * (`types` plus `legacyTypes`) by a test.
  */
 export const COMMIT_TYPES = [
   'build',

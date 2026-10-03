@@ -36,7 +36,7 @@ The wiki is critical infrastructure; it decays when drift between code and docum
 
 **`gaia wiki chain <begin|commit|finish>`**: Manages the branch lifecycle for the `/gaia-wiki` full chain so all stages (sync, consolidate, lint) land in one PR rather than opening separate PRs.
 
-- `begin` (before sync): cuts a `wiki-sync/<date>-<sha>` branch from `main`; no-op on a feature branch, where stages commit in place.
+- `begin` (before sync): cuts a `wiki/sync-<date>-<sha>` branch from `main`; no-op on a feature branch, where stages commit in place.
 - `commit` (after each stage): commits that stage's `wiki/` changes in place; gracefully no-ops when nothing changed; refuses non-wiki changes.
 - `finish` (after lint): pushes the branch, opens one PR for all stage commits, enables auto-merge, and takes one bounded wait on the merge. When it lands inside that wait, `finish` cleans up locally; on the common path the merge gate outlasts the wait, so it returns to base with the local cleanup outstanding for the session-start janitor. Drops the branch if it is empty. Leaves an aborted dirty tree in place for review. No-op for in-place runs on a feature branch.
 

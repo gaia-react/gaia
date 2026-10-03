@@ -445,7 +445,9 @@ differs() { if cmp -s "$1" "$2"; then return 1; fi; return 0; }
   jq -e --arg derive_key "$key" '.derive[$derive_key] | length > 0' <<<"$(memo_body)" >/dev/null
 
   make_tree helper
-  mutate "$MUTANT_TREE/.gaia/scripts/branch-name-lib.sh" 'unit="SPEC-${lead}"' 'unit="SPEC-9${lead}"'
+  # The newline and indentation pick the legacy plan/ arm the probed key takes;
+  # the type-prefixed plan arm repeats the assignment at a deeper indent.
+  mutate "$MUTANT_TREE/.gaia/scripts/branch-name-lib.sh" $'\n              unit="SPEC-${lead}"' $'\n              unit="SPEC-9${lead}"'
   : >"$GAIA_USAGE_MEMO_TRACE"
   run_mutant_tree "$MUTANT_TREE" "$NEW_OUTPUT_FILE" "$NEW_ERROR_FILE" pr "$pr"
   assert_trace "path=cold reason=stamp"

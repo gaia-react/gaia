@@ -151,10 +151,10 @@ If it is empty, nothing landed; say so and stop.
 
 **Repo-state safety.** If HEAD is detached or a rebase / merge / cherry-pick / bisect is in progress, do not branch: leave the changes in the working tree, tell the engineer they ship through normal PR review, and stop.
 
-**On the default branch (main/master):** branch, commit through a message file (never `-m`), push, and open a PR.
+**On the default branch (main/master):** branch, commit through a message file (never `-m`), push, and open a PR. Subject: `chore(residue): <what the drain promoted or dismissed>`.
 
 ```bash
-BRANCH="$(bash .gaia/scripts/branch-name-lib.sh name chore gaia-residue)"
+BRANCH="$(bash .gaia/scripts/branch-name-lib.sh name residue)"
 git checkout -b "$BRANCH"
 git add -A
 git commit -F <commit-message-file>

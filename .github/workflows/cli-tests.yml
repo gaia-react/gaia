@@ -182,6 +182,13 @@ jobs:
               # The same test derives its expected set from this file, so an
               # edit to it alone must also re-run the job.
               - '.gaia/release-exclude'
+              # The commit-type lockstep test (src/util/conventional-commit.test.ts)
+              # pins the CLI's literal type tuple to the shared type file. The
+              # file matches no other entry here, so without this line a pull
+              # request that edits only the type list resolves `code=false`,
+              # skips the Vitest step, and greens this required check having
+              # run the lockstep zero times.
+              - '.gaia/conventional-commits.json'
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Setup Node and install the CLI workspace
         uses: ./.github/actions/gaia-setup-node

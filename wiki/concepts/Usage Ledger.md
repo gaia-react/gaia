@@ -3,7 +3,7 @@ type: concept
 title: Usage Ledger
 status: active
 created: 2026-09-30
-updated: 2026-10-01
+updated: 2026-10-04
 tags: [concept, cost, usage, data-contract]
 ---
 
@@ -69,7 +69,7 @@ Resolution happens at read time: the latest research or declare binding at or be
 
 An initiative is a tree of refs (`research:`, `init:`, `issue:`, `spec:`, `plan:`, `pr:`, `branch:`) joined by lineage edges. Edges come from two places:
 
-- **Derived** at read time from naming conventions (a debt branch to its issue, `plan/spec-<n>` to its SPEC, a branch named for an issue) and from `cost.jsonl` rows: one naming both a SPEC or plan and a branch, and a command row's pull request.
+- **Derived** at read time from naming conventions (a debt branch to its issue, `<type>/spec-<n>` to its SPEC, legacy `plan/spec-<n>` too, a branch named for an issue) and from `cost.jsonl` rows: one naming both a SPEC or plan and a branch, and a command row's pull request.
 - **Explicit**, recorded by `usage.sh link`, by `usage.sh lineage` from a SPEC's `lineage:` frontmatter, and by the PR-create hook (a `pr:` to its branch).
 
 `usage.sh unlink` writes a tombstone that suppresses a pair, derived or explicit, from then on. `link` refuses a link that would close a cycle.

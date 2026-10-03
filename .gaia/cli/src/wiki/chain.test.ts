@@ -222,7 +222,7 @@ describe('wiki chain', () => {
       expect(recorded.find((c) => c.args[0] === 'checkout')).toBeUndefined();
     });
 
-    test('on main with --branch-aware: cuts wiki-sync/<date>-<sha>, exit 0', () => {
+    test('on main with --branch-aware: cuts wiki/sync-<date>-<sha>, exit 0', () => {
       sandbox = setupSandbox();
       const recorded: RecordedCall[] = [];
       const runner = buildRunner(
@@ -246,10 +246,10 @@ describe('wiki chain', () => {
       });
       expect(exit).toBe(0);
       expect(stdio.outputs.join('')).toContain(
-        'chain begin: started wiki-sync/2026-05-07-bbbbbbb'
+        'chain begin: started wiki/sync-2026-05-07-bbbbbbb'
       );
       expect(gitCalls(recorded).at(-1)).toMatchObject({
-        args: ['checkout', '-b', 'wiki-sync/2026-05-07-bbbbbbb'],
+        args: ['checkout', '-b', 'wiki/sync-2026-05-07-bbbbbbb'],
         command: 'git',
       });
     });
@@ -476,6 +476,31 @@ describe('wiki chain', () => {
   });
 
   describe('finish', () => {
+    test('on a hand-named wiki/sync-<slug> branch: stays in place, no push or gh call', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+      const runner = buildRunner(
+        [
+          {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult('wiki/sync-docs-cleanup\n'),
+          },
+        ],
+        recorded
+      );
+
+      const exit = run(['finish', '--branch-aware'], {
+        cwd: sandbox.root,
+        runner,
+      });
+      expect(exit).toBe(0);
+      expect(stdio.outputs.join('')).toContain(
+        'chain finish: in-place commits remain on wiki/sync-docs-cleanup'
+      );
+      expect(ghCalls(recorded)).toHaveLength(0);
+      expect(recorded.find((c) => c.args[0] === 'push')).toBeUndefined();
+    });
+
     test('on a non-chain branch: no-op, exit 0, no PR', () => {
       sandbox = setupSandbox();
       const recorded: RecordedCall[] = [];
@@ -499,6 +524,84 @@ describe('wiki chain', () => {
     });
 
     test('on a chain branch, PR merges: push + PR + auto-merge, then wait + local cleanup', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+      const runner = buildRunner(
+        [
+          {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult('wiki/sync-2026-05-07-bbbbbbb\n'),
+          },
+          {
+            argv: ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
+            result: okResult('origin/main\n'),
+          },
+          {
+            argv: ['rev-list', '--count', 'main..HEAD'],
+            result: okResult('3\n'),
+          },
+          {
+            argv: ['rev-parse', 'HEAD'],
+            result: okResult('bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n'),
+          },
+          {
+            argv: [
+              'pr',
+              'view',
+              'wiki/sync-2026-05-07-bbbbbbb',
+              '--json',
+              'state',
+              '--jq',
+              '.state',
+            ],
+            result: okResult('MERGED\n'),
+          },
+        ],
+        recorded
+      );
+
+      const exit = run(['finish', '--branch-aware'], {
+        cwd: sandbox.root,
+        runner,
+        sleep: () => undefined,
+      });
+      expect(exit).toBe(0);
+      expect(stdio.outputs.join('')).toContain(
+        'merged PR for wiki/sync-2026-05-07-bbbbbbb and cleaned up locally'
+      );
+
+      const ordered = recorded.map((c) => [c.command, ...c.args].join(' '));
+      const pushIndex = ordered.findIndex((c) =>
+        c.startsWith('git push -u origin wiki/sync-2026-05-07-bbbbbbb')
+      );
+      const prCreateIndex = ordered.findIndex((c) =>
+        c.startsWith('gh pr create')
+      );
+      const prMergeIndex = ordered.indexOf(
+        'gh pr merge --squash --auto --delete-branch'
+      );
+      const pollIndex = ordered.findIndex((c) =>
+        c.startsWith('gh pr view wiki/sync-2026-05-07-bbbbbbb --json state')
+      );
+      const checkoutBaseIndex = ordered.indexOf(
+        'git checkout --end-of-options main'
+      );
+      const pullIndex = ordered.indexOf('git pull --ff-only origin main');
+      const branchDeleteIndex = ordered.indexOf(
+        'git branch -D -- wiki/sync-2026-05-07-bbbbbbb'
+      );
+      const pruneIndex = ordered.indexOf('git fetch --prune origin');
+      expect(pushIndex).toBeGreaterThanOrEqual(0);
+      expect(prCreateIndex).toBeGreaterThan(pushIndex);
+      expect(prMergeIndex).toBeGreaterThan(prCreateIndex);
+      expect(pollIndex).toBeGreaterThan(prMergeIndex);
+      expect(checkoutBaseIndex).toBeGreaterThan(pollIndex);
+      expect(pullIndex).toBeGreaterThan(checkoutBaseIndex);
+      expect(branchDeleteIndex).toBeGreaterThan(pullIndex);
+      expect(pruneIndex).toBeGreaterThan(branchDeleteIndex);
+    });
+
+    test('on a legacy wiki-sync/ chain branch: still opens the PR', () => {
       sandbox = setupSandbox();
       const recorded: RecordedCall[] = [];
       const runner = buildRunner(
@@ -541,39 +644,14 @@ describe('wiki chain', () => {
         sleep: () => undefined,
       });
       expect(exit).toBe(0);
-      expect(stdio.outputs.join('')).toContain(
-        'merged PR for wiki-sync/2026-05-07-bbbbbbb and cleaned up locally'
-      );
 
       const ordered = recorded.map((c) => [c.command, ...c.args].join(' '));
-      const pushIndex = ordered.findIndex((c) =>
-        c.startsWith('git push -u origin wiki-sync/2026-05-07-bbbbbbb')
-      );
-      const prCreateIndex = ordered.findIndex((c) =>
-        c.startsWith('gh pr create')
-      );
-      const prMergeIndex = ordered.indexOf(
-        'gh pr merge --squash --auto --delete-branch'
-      );
-      const pollIndex = ordered.findIndex((c) =>
-        c.startsWith('gh pr view wiki-sync/2026-05-07-bbbbbbb --json state')
-      );
-      const checkoutBaseIndex = ordered.indexOf(
-        'git checkout --end-of-options main'
-      );
-      const pullIndex = ordered.indexOf('git pull --ff-only origin main');
-      const branchDeleteIndex = ordered.indexOf(
-        'git branch -D -- wiki-sync/2026-05-07-bbbbbbb'
-      );
-      const pruneIndex = ordered.indexOf('git fetch --prune origin');
-      expect(pushIndex).toBeGreaterThanOrEqual(0);
-      expect(prCreateIndex).toBeGreaterThan(pushIndex);
-      expect(prMergeIndex).toBeGreaterThan(prCreateIndex);
-      expect(pollIndex).toBeGreaterThan(prMergeIndex);
-      expect(checkoutBaseIndex).toBeGreaterThan(pollIndex);
-      expect(pullIndex).toBeGreaterThan(checkoutBaseIndex);
-      expect(branchDeleteIndex).toBeGreaterThan(pullIndex);
-      expect(pruneIndex).toBeGreaterThan(branchDeleteIndex);
+      expect(
+        ordered.some((c) =>
+          c.startsWith('git push -u origin wiki-sync/2026-05-07-bbbbbbb')
+        )
+      ).toBe(true);
+      expect(ordered.some((c) => c.startsWith('gh pr create'))).toBe(true);
     });
 
     test('on a chain branch, merge does not land: auto-merge stays queued, cleanup deferred', () => {
@@ -583,7 +661,7 @@ describe('wiki chain', () => {
         [
           {
             argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
-            result: okResult('wiki-sync/2026-05-07-fffffff\n'),
+            result: okResult('wiki/sync-2026-05-07-fffffff\n'),
           },
           {
             argv: ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
@@ -601,7 +679,7 @@ describe('wiki chain', () => {
             argv: [
               'pr',
               'view',
-              'wiki-sync/2026-05-07-fffffff',
+              'wiki/sync-2026-05-07-fffffff',
               '--json',
               'state',
               '--jq',
@@ -646,7 +724,7 @@ describe('wiki chain', () => {
         [
           {
             argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
-            result: okResult('wiki-sync/2026-05-07-ccccccc\n'),
+            result: okResult('wiki/sync-2026-05-07-ccccccc\n'),
           },
           {
             argv: ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
@@ -663,14 +741,14 @@ describe('wiki chain', () => {
       const exit = run(['finish'], {cwd: sandbox.root, runner});
       expect(exit).toBe(0);
       expect(stdio.outputs.join('')).toContain(
-        'removed empty branch wiki-sync/2026-05-07-ccccccc'
+        'removed empty branch wiki/sync-2026-05-07-ccccccc'
       );
       expect(gitCalls(recorded)).toContainEqual({
         args: ['checkout', 'main'],
         command: 'git',
       });
       expect(gitCalls(recorded)).toContainEqual({
-        args: ['branch', '-D', 'wiki-sync/2026-05-07-ccccccc'],
+        args: ['branch', '-D', 'wiki/sync-2026-05-07-ccccccc'],
         command: 'git',
       });
       expect(ghCalls(recorded)).toHaveLength(0);
@@ -683,7 +761,7 @@ describe('wiki chain', () => {
         [
           {
             argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
-            result: okResult('wiki-sync/2026-05-07-eeeeeee\n'),
+            result: okResult('wiki/sync-2026-05-07-eeeeeee\n'),
           },
           {
             argv: ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
@@ -718,7 +796,7 @@ describe('wiki chain', () => {
         [
           {
             argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
-            result: okResult('wiki-sync/2026-05-07-ddddddd\n'),
+            result: okResult('wiki/sync-2026-05-07-ddddddd\n'),
           },
           {
             argv: ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
@@ -733,7 +811,7 @@ describe('wiki chain', () => {
             result: okResult('dddddddddddddddddddddddddddddddddddddddd\n'),
           },
           {
-            argv: ['push', '-u', 'origin', 'wiki-sync/2026-05-07-ddddddd'],
+            argv: ['push', '-u', 'origin', 'wiki/sync-2026-05-07-ddddddd'],
             result: failResult(128, 'remote: rejected'),
           },
         ],
@@ -785,7 +863,7 @@ describe('wiki chain', () => {
         [
           {
             argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
-            result: okResult('wiki-sync/2026-05-07-bbbbbbb\n'),
+            result: okResult('wiki/sync-2026-05-07-bbbbbbb\n'),
           },
           {
             argv: ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
@@ -814,7 +892,7 @@ describe('wiki chain', () => {
             argv: [
               'pr',
               'view',
-              'wiki-sync/2026-05-07-bbbbbbb',
+              'wiki/sync-2026-05-07-bbbbbbb',
               '--json',
               'state',
               '--jq',
@@ -852,7 +930,7 @@ describe('wiki chain', () => {
         [
           {
             argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
-            result: okResult('wiki-sync/2026-05-07-ccccccc\n'),
+            result: okResult('wiki/sync-2026-05-07-ccccccc\n'),
           },
           {
             argv: ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
@@ -883,7 +961,7 @@ describe('wiki chain', () => {
         [
           {
             argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
-            result: okResult('wiki-sync/2026-05-07-eeeeeee\n'),
+            result: okResult('wiki/sync-2026-05-07-eeeeeee\n'),
           },
           {
             argv: ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
@@ -941,7 +1019,7 @@ describe('wiki chain', () => {
         [
           {
             argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
-            result: okResult('wiki-sync/2026-05-07-ddddddd\n'),
+            result: okResult('wiki/sync-2026-05-07-ddddddd\n'),
           },
           {
             argv: ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
@@ -956,7 +1034,7 @@ describe('wiki chain', () => {
             result: okResult('dddddddddddddddddddddddddddddddddddddddd\n'),
           },
           {
-            argv: ['push', '-u', 'origin', 'wiki-sync/2026-05-07-ddddddd'],
+            argv: ['push', '-u', 'origin', 'wiki/sync-2026-05-07-ddddddd'],
             result: failResult(128, 'remote: rejected'),
           },
         ],
@@ -980,7 +1058,7 @@ describe('wiki chain', () => {
         [
           {
             argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
-            result: okResult('wiki-sync/2026-05-07-1111111\n'),
+            result: okResult('wiki/sync-2026-05-07-1111111\n'),
           },
           {
             argv: ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
@@ -995,7 +1073,7 @@ describe('wiki chain', () => {
             result: okResult('1111111111111111111111111111111111111111\n'),
           },
           {
-            argv: ['push', '-u', 'origin', 'wiki-sync/2026-05-07-1111111'],
+            argv: ['push', '-u', 'origin', 'wiki/sync-2026-05-07-1111111'],
             result: okResult(''),
           },
           {
@@ -1030,7 +1108,7 @@ describe('wiki chain', () => {
         [
           {
             argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
-            result: okResult('wiki-sync/2026-05-07-2222222\n'),
+            result: okResult('wiki/sync-2026-05-07-2222222\n'),
           },
           {
             argv: ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
@@ -1045,7 +1123,7 @@ describe('wiki chain', () => {
             result: okResult('2222222222222222222222222222222222222222\n'),
           },
           {
-            argv: ['push', '-u', 'origin', 'wiki-sync/2026-05-07-2222222'],
+            argv: ['push', '-u', 'origin', 'wiki/sync-2026-05-07-2222222'],
             result: okResult(''),
           },
           {
@@ -1081,7 +1159,7 @@ describe('wiki chain', () => {
         [
           {
             argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
-            result: okResult('wiki-sync/2026-05-07-3333333\n'),
+            result: okResult('wiki/sync-2026-05-07-3333333\n'),
           },
           {
             argv: ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
@@ -1112,7 +1190,7 @@ describe('wiki chain', () => {
         [
           {
             argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
-            result: okResult('wiki-sync/2026-05-07-fffffff\n'),
+            result: okResult('wiki/sync-2026-05-07-fffffff\n'),
           },
           {
             argv: ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
@@ -1141,7 +1219,7 @@ describe('wiki chain', () => {
             argv: [
               'pr',
               'view',
-              'wiki-sync/2026-05-07-fffffff',
+              'wiki/sync-2026-05-07-fffffff',
               '--json',
               'state',
               '--jq',
@@ -1172,7 +1250,7 @@ describe('wiki chain', () => {
         [
           {
             argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
-            result: okResult('wiki-sync/2026-05-07-4444444\n'),
+            result: okResult('wiki/sync-2026-05-07-4444444\n'),
           },
           {
             argv: ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
@@ -1201,7 +1279,7 @@ describe('wiki chain', () => {
             argv: [
               'pr',
               'view',
-              'wiki-sync/2026-05-07-4444444',
+              'wiki/sync-2026-05-07-4444444',
               '--json',
               'state',
               '--jq',
@@ -1234,7 +1312,7 @@ describe('wiki chain', () => {
         [
           {
             argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
-            result: okResult('wiki-sync/2026-05-07-5555555\n'),
+            result: okResult('wiki/sync-2026-05-07-5555555\n'),
           },
           {
             argv: ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
@@ -1263,7 +1341,7 @@ describe('wiki chain', () => {
             argv: [
               'pr',
               'view',
-              'wiki-sync/2026-05-07-5555555',
+              'wiki/sync-2026-05-07-5555555',
               '--json',
               'state',
               '--jq',
@@ -1297,7 +1375,7 @@ describe('wiki chain', () => {
         [
           {
             argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
-            result: okResult('wiki-sync/2026-05-07-6666666\n'),
+            result: okResult('wiki/sync-2026-05-07-6666666\n'),
           },
           {
             argv: ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
@@ -1326,7 +1404,7 @@ describe('wiki chain', () => {
             argv: [
               'pr',
               'view',
-              'wiki-sync/2026-05-07-6666666',
+              'wiki/sync-2026-05-07-6666666',
               '--json',
               'state',
               '--jq',
@@ -1376,7 +1454,7 @@ describe('wiki chain', () => {
   });
 
   describe('finish: out-of-scope stamp and statusline cache', () => {
-    const BRANCH = 'wiki-sync/2026-05-07-bbbbbbb';
+    const BRANCH = 'wiki/sync-2026-05-07-bbbbbbb';
     const HEAD_SHA = 'b'.repeat(40);
 
     const prRecord = (

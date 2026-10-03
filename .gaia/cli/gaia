@@ -30859,7 +30859,9 @@ var finalizeMerge = (options) => {
 };
 
 // src/wiki/chain.ts
-var WIKI_CHAIN_BRANCH_PREFIX = "wiki-sync/";
+var WIKI_CHAIN_BRANCH_PREFIX = "wiki/sync-";
+var WIKI_CHAIN_BRANCH_PATTERN = /^wiki\/sync-\d{4}-\d{2}-\d{2}-[\da-f]{7,40}$/u;
+var LEGACY_WIKI_CHAIN_BRANCH_PATTERN = /^wiki-sync\/\d{4}-\d{2}-\d{2}-[\da-f]{7,40}$/u;
 var TALLY_SCRIPT = ".gaia/scripts/token-tally.sh";
 var passthroughFailure2 = (result, command, args) => passthroughFailure({ args, command, prefix: "chain", result });
 var stepOk = commandSucceeded;
@@ -30867,7 +30869,7 @@ var safeOutput3 = (value) => value ?? "";
 var HELP_TOKENS51 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var HELP_TEXT53 = `Usage: gaia wiki chain <begin|commit|finish> [args]
 
-  begin [--branch-aware]       On main/master: cut wiki-sync/<date>-<sha> so the
+  begin [--branch-aware]       On main/master: cut wiki/sync-<date>-<sha> so the
                                whole chain lands on one branch + PR. On a feature
                                branch: no-op (the chain commits in place).
   commit --label "<subject>"   In-place commit of this stage's wiki/ changes.
@@ -31153,7 +31155,7 @@ var runFinish = (argv, options) => {
     );
     return { code: UNEXPECTED_EXIT9 };
   }
-  if (!branch.startsWith(WIKI_CHAIN_BRANCH_PREFIX)) {
+  if (!WIKI_CHAIN_BRANCH_PATTERN.test(branch) && !LEGACY_WIKI_CHAIN_BRANCH_PATTERN.test(branch)) {
     process.stdout.write(
       `chain finish: in-place commits remain on ${branch}; no PR opened
 `
@@ -33009,7 +33011,7 @@ var rollbackLocalLanding = (ctx, branchName, onSyncBranch) => {
   );
 };
 var protectedBranchLanding = (ctx, options) => {
-  const branchName = `wiki-sync/${options.today}-${ctx.shortHead}`;
+  const branchName = `wiki/sync-${options.today}-${ctx.shortHead}`;
   const message = `wiki: sync through ${ctx.shortHead}`;
   const prTitle = message;
   const prBody = `Automated wiki sync landed via \`gaia wiki sync land --branch-aware\`. State advanced to ${ctx.shortHead}.`;

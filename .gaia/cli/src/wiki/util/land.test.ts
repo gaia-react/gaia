@@ -66,7 +66,7 @@ describe('cleanupAfterMerge', () => {
 
     cleanupAfterMerge({
       base: 'main',
-      branch: 'wiki-sync/x',
+      branch: 'wiki/sync-x',
       cwd: '/repo',
       runner,
     });
@@ -74,7 +74,7 @@ describe('cleanupAfterMerge', () => {
     expect(seen).toEqual([
       {args: ['checkout', '--end-of-options', 'main'], command: 'git'},
       {args: ['pull', '--ff-only', 'origin', 'main'], command: 'git'},
-      {args: ['branch', '-D', '--', 'wiki-sync/x'], command: 'git'},
+      {args: ['branch', '-D', '--', 'wiki/sync-x'], command: 'git'},
       {args: ['fetch', '--prune', 'origin'], command: 'git'},
     ]);
   });

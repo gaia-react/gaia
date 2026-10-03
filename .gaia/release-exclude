@@ -133,8 +133,6 @@ wiki/decisions/Forensics Triage Workflow.md
 # release-excluded, so on an adopter clone every claim here is about a
 # workflow they do not have.
 wiki/decisions/Sharded CI Test Matrix.md
-# Describes the naming of the maintainer-only workflows, none of which an adopter clone has.
-wiki/decisions/Workflow Naming Convention.md
 # Documents the fixture-discrimination convention for the maintainer-only shell guards and their shared library, none of which an adopter clone has.
 wiki/decisions/Shell Guard Fixture Discrimination.md
 # Documents the local runtime of shell-lint.sh (release-excluded via the wholesale .gaia/tests entry below), the mawk/GNU-parallel maintainer tool prerequisites it uses, and the awk interpreter resolver (.gaia/scripts/awk-interp-lib.sh), which serves the guard-awk-lib.sh closure and is withheld individually elsewhere in this file. Every subject this page describes is maintainer-only; an adopter clone has none of them to run.

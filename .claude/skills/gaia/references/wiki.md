@@ -42,7 +42,7 @@ When the subagent returns, relay its final summary verbatim. Do not redo the wor
 
 If invoked as `/gaia-wiki sync` (sub-arg form): stop after relaying the summary. Do **not** chain into consolidate or lint, that's only the no-arg form's job.
 
-Standalone, sync's Step 7 lands on its own: from `main` it cuts a `wiki-sync/<date>-<sha>` branch, opens its own PR, and queues auto-merge, then takes one bounded in-CLI wait; normally it returns with the local cleanup outstanding, because the merge gate outlasts any wait that fits in one call (same mechanism as `chain finish`), and the session-start janitor completes it on a later session; from a feature branch it commits in place. In the no-arg full chain the parent pre-cuts the branch via `chain begin`, so the same Step 7 commits in place on the chain branch and the chain opens a single PR at the end (see "Full chain").
+Standalone, sync's Step 7 lands on its own: from `main` it cuts a `wiki/sync-<date>-<sha>` branch, opens its own PR, and queues auto-merge, then takes one bounded in-CLI wait; normally it returns with the local cleanup outstanding, because the merge gate outlasts any wait that fits in one call (same mechanism as `chain finish`), and the session-start janitor completes it on a later session; from a feature branch it commits in place. In the no-arg full chain the parent pre-cuts the branch via `chain begin`, so the same Step 7 commits in place on the chain branch and the chain opens a single PR at the end (see "Full chain").
 
 ## Consolidate
 
@@ -106,7 +106,7 @@ When the subagent returns, relay its summary verbatim. If the drift severity is 
 
 The whole chain lands on **one branch and one PR**, not one PR per stage. The parent (the agent reading this file) owns the branch lifecycle through `gaia wiki chain`; each stage still runs as its own subagent. The `chain` calls are the only parent-side git/branch/PR actions, the playbook bans inlining any other branch logic, manual `gh pr` calls, or push narrative.
 
-1. **Begin the chain.** Run `.gaia/cli/gaia wiki chain begin --branch-aware`. On `main`/`master` it cuts a `wiki-sync/<date>-<sha>` branch so every stage commits there instead of landing separately; on a feature branch it is a no-op and the chain commits in place. Proceed regardless of which.
+1. **Begin the chain.** Run `.gaia/cli/gaia wiki chain begin --branch-aware`. On `main`/`master` it cuts a `wiki/sync-<date>-<sha>` branch so every stage commits there instead of landing separately; on a feature branch it is a no-op and the chain commits in place. Proceed regardless of which.
 
 2. **Sync.** Run the "Sync" section above. Capture the final summary. The chain branch is already checked out, so sync's Step 7 (`gaia wiki sync land --branch-aware`) commits in place on the chain branch rather than opening its own PR.
 

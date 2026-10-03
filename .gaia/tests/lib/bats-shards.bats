@@ -863,6 +863,8 @@ non_shard_runners() {
     'bash .gaia/tests/sandbox/run-all.sh' 'the sandbox leg of the audit-ci-tests.yml matrix' \
     '.gaia/tests/concurrency/concurrency.bats' '.github/workflows/audit-ci-tests.yml' \
     'bash .gaia/tests/concurrency/meter-gate.sh' 'the concurrency leg of the audit-ci-tests.yml matrix' \
+    '.gaia/tests/commitlint/' '.github/workflows/audit-ci-tests.yml' \
+    'bash .gaia/scripts/bats5.sh .gaia/tests/commitlint/' 'the commitlint leg of the audit-ci-tests.yml matrix' \
     '.github/forensics/tests/' '.gaia/tests/forensics/unit.bats' \
     'run bats "$FORENSICS_DIR/tests/"' 'the delegation @test in .gaia/tests/forensics/unit.bats, which the misc shard runs'
 }

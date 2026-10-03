@@ -981,16 +981,16 @@ assert_paths_filter_pin_matches() {
 }
 
 # W6. The matrix and bats-shards.sh agree: the matrix is exactly the sharder's
-# own shard ids plus sandbox and concurrency, no extras in either direction.
+# own shard ids plus sandbox, concurrency and commitlint, no extras in either direction.
 
 @test "W6: the matrix and the sharder agree" {
   require_yaml_parser
   local matrix_list expected
   matrix_list="$(read_workflow matrix "$WORKFLOW" shards | LC_ALL=C sort)"
-  expected="$(printf '%s\nsandbox\nconcurrency\n' "$(bash "$BATS_SHARDS" shards)" | LC_ALL=C sort)"
+  expected="$(printf '%s\nsandbox\nconcurrency\ncommitlint\n' "$(bash "$BATS_SHARDS" shards)" | LC_ALL=C sort)"
 
   [ "$matrix_list" = "$expected" ] || {
-    echo "matrix shard list does not equal bats-shards.sh shards plus sandbox/concurrency" >&2
+    echo "matrix shard list does not equal bats-shards.sh shards plus sandbox/concurrency/commitlint" >&2
     echo "matrix:   $(printf '%s' "$matrix_list" | tr '\n' ' ')" >&2
     echo "expected: $(printf '%s' "$expected" | tr '\n' ' ')" >&2
     return 1
@@ -1007,7 +1007,7 @@ assert_paths_filter_pin_matches() {
 
   local matrix_list expected
   matrix_list="$(read_workflow matrix "$doctored" shards | LC_ALL=C sort)"
-  expected="$(printf '%s\nsandbox\nconcurrency\n' "$(bash "$BATS_SHARDS" shards)" | LC_ALL=C sort)"
+  expected="$(printf '%s\nsandbox\nconcurrency\ncommitlint\n' "$(bash "$BATS_SHARDS" shards)" | LC_ALL=C sort)"
   [ "$matrix_list" != "$expected" ] || { echo "adding a bogus shard id did not desync the matrix from the sharder" >&2; return 1; }
 }
 
@@ -1026,7 +1026,7 @@ assert_paths_filter_pin_matches() {
 
   local matrix_list expected
   matrix_list="$(read_workflow matrix "$doctored" shards | LC_ALL=C sort)"
-  expected="$(printf '%s\nsandbox\nconcurrency\n' "$(bash "$BATS_SHARDS" shards)" | LC_ALL=C sort)"
+  expected="$(printf '%s\nsandbox\nconcurrency\ncommitlint\n' "$(bash "$BATS_SHARDS" shards)" | LC_ALL=C sort)"
   [ "$matrix_list" != "$expected" ] || { echo "dropping lib from the matrix did not desync it from the sharder" >&2; return 1; }
 }
 

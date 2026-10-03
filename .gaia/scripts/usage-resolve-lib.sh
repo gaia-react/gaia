@@ -26,7 +26,7 @@
 # is not used: it strips leading zeros, and a two-digit SPEC ref fails the ref
 # grammar and never joins the zero-padded ref the SPEC was minted under.
 _gaia_usage_branch_parents() {
-  local branch_name="$1" branch_key="$2" scratch_file="$3" classification unit member parent_reference pad
+  local branch_name="$1" branch_key="$2" scratch_file="$3" classification unit member parent_reference pad issue_number
   local -a parent_references=()
   _gaia_usage_capture "$scratch_file" gaia_branch_classify "$branch_name"
   # shellcheck disable=SC2154  # set by _gaia_usage_capture (usage-lib.sh)
@@ -47,8 +47,14 @@ _gaia_usage_branch_parents() {
     _gaia_usage_pad3 "${BASH_REMATCH[1]}"
     parent_references[${#parent_references[@]}]="spec:SPEC-$pad"
   fi
-  if [[ "$branch_name" =~ ^(fix|feat|chore|docs|refactor)/([0-9]+)- ]]; then
-    parent_references[${#parent_references[@]}]="issue:${BASH_REMATCH[2]}"
+  # The alternation is the `types` list of .gaia/conventional-commits.json
+  # (pinned by usage-resolve.bats). A date-shaped unit, such as the hook's
+  # `wiki/2026-10-03-14-30`, is a timestamp and never an issue number.
+  if [[ "$branch_name" =~ ^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test|wiki)/([0-9]+)- ]]; then
+    issue_number="${BASH_REMATCH[2]}"
+    if ! [[ "$branch_name" =~ ^[^/]+/[0-9]{4}-[0-9]{2}- ]]; then
+      parent_references[${#parent_references[@]}]="issue:$issue_number"
+    fi
   fi
   for parent_reference in ${parent_references[@]+"${parent_references[@]}"}; do
     gaia_usage_valid_reference "$parent_reference" || continue
