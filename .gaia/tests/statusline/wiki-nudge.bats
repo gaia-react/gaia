@@ -265,7 +265,7 @@ assert_no_wiki_nudge() {
 }
 
 assert_wiki_nudge() {
-  grep -qF -- "Run /gaia-wiki ($1 commits behind)" <<<"$plain"
+  grep -qF -- "Run /gaia-wiki ($1 commits)" <<<"$plain"
 }
 
 # The icon form only exists at a width too narrow for any text form: with the
@@ -376,7 +376,7 @@ stage_state_advance() {
   make_statusline_fixture
   render_with_cache '{"gaiaHasUpdate":true,"gaiaLatest":"9.9.9","outdatedCount":3,"residueCandidateCount":5,"wikiDriftCount":22}'
   [ "$status" -eq 0 ]
-  grep -qF -- $'\033[01;96mRun /gaia-wiki (22 commits behind)\033[00m' <<<"$output"
+  grep -qF -- $'\033[01;96mRun /gaia-wiki (22 commits)\033[00m' <<<"$output"
   [ "$(grep -oF -- $'\033[01;96m' <<<"$output" | wc -l | tr -d ' ')" -eq 1 ]
 }
 

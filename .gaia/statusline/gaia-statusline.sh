@@ -419,7 +419,7 @@ else
       if [ "$wiki_drift_count" -ge "$WIKI_NUDGE_THRESHOLD" ] 2>/dev/null; then
         # 01;96 (bright cyan) is the one color no other slot or the setup
         # segment uses.
-        nudge_set 7 '01;96' 'Run /gaia-wiki' "Run /gaia-wiki ($wiki_drift_count commits behind)" "$wiki_drift_count" '🧠'
+        nudge_set 7 '01;96' 'Run /gaia-wiki' "Run /gaia-wiki ($wiki_drift_count commits)" "$wiki_drift_count" '🧠'
       fi
     fi
     # Debt-backlog nudge, read from the pinned debt cache. Independent of
