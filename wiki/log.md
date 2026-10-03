@@ -11,6 +11,14 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-10-03 2e3d776 SKIP - integration upgrades, wiki already updated in the commit
+- 2026-10-03 986bc4d SKIP - working-doc id sweep, wiki already updated in the commit
+- 2026-10-03 935b74d SKIP - native git hook replaces husky, wiki pages already updated in the commit
+- 2026-10-03 c48e50c SKIP - docs: prose-only
+- 2026-10-03 4d9433b SKIP - working-doc-ids rule lives in .claude/rules, no wiki page owns it
+- 2026-10-03 15473e1 SKIP - option rename, wiki page already updated in the commit
+- 2026-10-03 647ab5a WORTHY - janitor invalidates statusline update cache after base catch-up → wiki/concepts/Claude Hooks.md
+- 2026-10-03 e41ff26 SKIP - wiki maintenance commit, no new content to catalogue
 - 2026-10-03 3e4462d WORTHY - nudge text shortened; no page states the string
 - 2026-10-03 689b6f5 WORTHY - wiki pages updated in the commit itself; verified against current pages
 - 2026-10-03 9ee3deb WORTHY - wiki pages updated in the commit itself; verified against current pages
