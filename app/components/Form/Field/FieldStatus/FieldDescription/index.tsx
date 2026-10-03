@@ -1,5 +1,5 @@
 import type {FC, ReactNode} from 'react';
-import {twJoin} from 'tailwind-merge';
+import {cn} from 'cn';
 
 type FieldDescriptionProps = {
   description?: ReactNode;
@@ -15,7 +15,7 @@ const FieldDescription: FC<FieldDescriptionProps> = ({
   maxLength,
 }) => (
   <div
-    className={twJoin(
+    className={cn(
       'text-xs whitespace-pre-line',
       maxLength && 'flex-1 pr-1',
       disabled ? 'text-disabled' : 'text-secondary'

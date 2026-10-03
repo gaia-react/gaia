@@ -1,7 +1,7 @@
 import type {ChangeEvent, ComponentProps, FC, ReactNode} from 'react';
 import {useState} from 'react';
 import type {IconType} from 'react-icons';
-import {twJoin, twMerge} from 'tailwind-merge';
+import {cn} from 'cn';
 import Field from '~/components/Form/Field';
 import type {SelectOption} from './types';
 
@@ -74,13 +74,13 @@ const Select: FC<SelectProps> = ({
       required={required}
       type="select"
     >
-      <div className={twJoin(icon && 'relative')}>
+      <div className={cn(icon && 'relative')}>
         <select
           ref={ref}
           aria-describedby={
             description ? `${id ?? name}-description` : undefined
           }
-          className={twMerge(
+          className={cn(
             'w-full',
             disabled ? 'text-disabled'
             : !unselected || currentValue ? 'text-body'
@@ -126,7 +126,7 @@ const Select: FC<SelectProps> = ({
         </select>
         {Icon && (
           <div
-            className={twMerge(
+            className={cn(
               'pointer-events-none absolute left-[0.8rem]',
               disabled ? 'text-disabled' : !currentValue && 'text-placeholder',
               !classNameIcon?.includes('top-') && 'top-[0.575rem]',

@@ -6,7 +6,7 @@ language: css
 purpose: Tailwind setup and shared utilities
 depends_on: [[Tailwind]]
 created: 2026-04-20
-updated: 2026-09-29
+updated: 2026-10-03
 tags: [module, styles, tailwind]
 ---
 
@@ -16,10 +16,9 @@ tags: [module, styles, tailwind]
 
 ## Conventions (load-bearing)
 
-See the `tailwind` skill (`.claude/skills/tailwind/`) and the `tailwind` rule (`.claude/rules/tailwind.md`):
+See the `tailwind` skill (`.claude/skills/tailwind/`, which owns class composition with `cn`) and the `tailwind` rule (`.claude/rules/tailwind.md`):
 
 - **No `px` units** in Tailwind classes: use the spacing scale or `rem` for custom values
-- **`twJoin`** for static class lists, **`twMerge`** only when classes can conflict
 - **No template-literal class strings**: they defeat Tailwind's static analysis
 - **Prefer semantic `@utility` tokens** defined in `tailwind.css` (`bg-body`, `bg-secondary`, `text-body`, `text-secondary`, `border-normal`, `input-invalid`, etc.) over raw paired `dark:` classes; each token bundles the light/dark pair
 

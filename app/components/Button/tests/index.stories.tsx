@@ -1,7 +1,7 @@
 import {Fragment} from 'react';
 import {IoStar} from 'react-icons/io5';
 import type {Meta, StoryFn} from '@storybook/react-vite';
-import {twJoin} from 'tailwind-merge';
+import {cn} from 'cn';
 import type {Size} from '~/types';
 import type {Variant} from '..';
 import Button from '..';
@@ -45,7 +45,7 @@ const render = (
     {sizes.map((size) => (
       <Fragment key={size}>
         <legend
-          className={twJoin(
+          className={cn(
             legends.find((value) => value.includes(size)),
             disabled && 'text-disabled'
           )}

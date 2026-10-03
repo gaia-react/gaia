@@ -1,5 +1,5 @@
 import type {FC, ReactNode} from 'react';
-import {twMerge} from 'tailwind-merge';
+import {cn} from 'cn';
 import styles from './styles.module.css';
 
 export type CheckboxRadioGroupProps = {
@@ -19,7 +19,7 @@ const CheckboxRadioGroup: FC<CheckboxRadioGroupProps> = ({
   // inside a consumer's own <fieldset>; keeps the group role without <fieldset>
   // legend/styling baggage or nested-group semantics it can't control.
   <div
-    className={twMerge(
+    className={cn(
       styles.group,
       'flex',
       isHorizontal ?

@@ -7,7 +7,7 @@ import {
   useState,
 } from 'react';
 import autosize from 'autosize';
-import {twMerge} from 'tailwind-merge';
+import {cn} from 'cn';
 import Field from '~/components/Form/Field';
 import type {SharedInputProps} from '~/components/Form/types';
 
@@ -108,7 +108,7 @@ const TextArea: FC<TextAreaProps> = ({
         ref={innerRef}
         aria-describedby={description ? `${id ?? name}-description` : undefined}
         aria-label={label ? undefined : name}
-        className={twMerge(
+        className={cn(
           'w-full',
           RESIZE[resize],
           error && 'input-invalid',

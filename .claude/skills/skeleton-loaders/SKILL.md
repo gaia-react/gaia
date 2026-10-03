@@ -48,7 +48,7 @@ Copy the real component's element type and font classes, add `shimmer`. How you 
 - **Dynamic runtime values** (`{data.name}`, API content): you cannot know the real value, so use hardcoded placeholder text of similar character count to approximate its width.
 
 ```tsx
-import {twJoin} from 'tailwind-merge';
+import {cn} from 'cn';
 
 // Real component
 <h2 className="text-lg font-bold text-white">{t('profile.heading')}</h2>   // static
@@ -56,9 +56,9 @@ import {twJoin} from 'tailwind-merge';
 <p className="text-xs text-slate-400">{data.value}</p>                     // dynamic
 
 // Skeleton
-<h2 className={twJoin('text-lg font-bold', shimmer)}>{t('profile.heading')}</h2>  // same t(), exact width
-<p className={twJoin('truncate text-sm font-semibold', shimmer)}>Name</p>         // approximate
-<p className={twJoin('text-xs', shimmer)}>Example value</p>                        // approximate
+<h2 className={cn('text-lg font-bold', shimmer)}>{t('profile.heading')}</h2>  // same t(), exact width
+<p className={cn('truncate text-sm font-semibold', shimmer)}>Name</p>         // approximate
+<p className={cn('text-xs', shimmer)}>Example value</p>                        // approximate
 ```
 
 ### Non-text elements (images, icons, avatars)
@@ -66,7 +66,7 @@ import {twJoin} from 'tailwind-merge';
 Keep as empty divs with the shimmer class, no text needed:
 
 ```tsx
-<div className={twJoin('size-14 shrink-0', shimmer)} />
+<div className={cn('size-14 shrink-0', shimmer)} />
 ```
 
 ### Interactive elements (buttons)
@@ -75,7 +75,7 @@ Use the real element type with `tabIndex={-1}` to prevent focus. Button labels a
 
 ```tsx
 <button
-  className={twJoin('w-full py-2 text-xs font-medium', shimmer)}
+  className={cn('w-full py-2 text-xs font-medium', shimmer)}
   tabIndex={-1}
   type="button"
 >
@@ -118,7 +118,7 @@ Skeleton text is transparent, but screen readers still announce it (placeholder 
 ## Full Example Implementation
 
 ```tsx
-import {twJoin} from 'tailwind-merge';
+import {cn} from 'cn';
 
 const shimmer =
   'animate-shimmer rounded-sm bg-linear-to-r from-slate-950 via-slate-900 to-slate-950 bg-size-[200%_100%] text-transparent select-none';
@@ -126,12 +126,12 @@ const shimmer =
 const ExampleSkeleton = () => (
   <div aria-hidden className="border border-slate-700 bg-slate-900">
     <div className="flex items-center gap-3 p-3">
-      <div className={twJoin('size-14 shrink-0', shimmer)} />
+      <div className={cn('size-14 shrink-0', shimmer)} />
       <div className="min-w-0 flex-1">
-        <p className={twJoin('truncate text-sm font-semibold', shimmer)}>
+        <p className={cn('truncate text-sm font-semibold', shimmer)}>
           Name
         </p>
-        <p className={twJoin('truncate text-xs', shimmer)}>Example value</p>
+        <p className={cn('truncate text-xs', shimmer)}>Example value</p>
       </div>
     </div>
   </div>

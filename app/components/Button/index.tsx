@@ -1,7 +1,7 @@
 /* eslint-disable react/button-has-type */
 import type {ComponentProps, FC, ReactNode} from 'react';
 import type {IconType} from 'react-icons';
-import {twJoin, twMerge} from 'tailwind-merge';
+import {cn} from 'cn';
 import Spinner from '~/components/Loaders/Spinner';
 import type {Size} from '~/types';
 
@@ -96,10 +96,10 @@ const Button: FC<ButtonProps> = ({
 }) => {
   const Icon = icon;
   const iconComponent = Icon && (
-    <Icon className={twJoin(children && 'flex-none', classNameIcon)} />
+    <Icon className={cn(children && 'flex-none', classNameIcon)} />
   );
 
-  const innerClassName = twJoin(
+  const innerClassName = cn(
     icon && 'flex items-center justify-center',
     icon && !children && ICON_ONLY_SIZES[size],
     icon && children && 'gap-1.5',
@@ -109,7 +109,7 @@ const Button: FC<ButtonProps> = ({
   return (
     <button
       ref={ref}
-      className={twMerge(
+      className={cn(
         'text-center whitespace-nowrap select-none',
         VARIANTS[variant],
         SIZES[size],
@@ -127,7 +127,7 @@ const Button: FC<ButtonProps> = ({
     >
       {isLoading ?
         <span className="relative block">
-          <span className={twJoin('invisible', innerClassName)}>
+          <span className={cn('invisible', innerClassName)}>
             {iconComponent}
             {children}
           </span>

@@ -1,5 +1,5 @@
 import type {ComponentProps, FC, ReactNode} from 'react';
-import {twMerge} from 'tailwind-merge';
+import {cn} from 'cn';
 import type {Size} from '~/types';
 import FieldStatus from '../Field/FieldStatus';
 
@@ -51,7 +51,7 @@ const Checkbox: FC<CheckboxProps> = ({
   const checkbox = (
     <input
       ref={ref}
-      className={twMerge(SIZE[size], classNameInput)}
+      className={cn(SIZE[size], classNameInput)}
       id={id ?? name}
       name={name}
       required={required}
@@ -63,7 +63,7 @@ const Checkbox: FC<CheckboxProps> = ({
 
   const status = !!(description ?? error) && (
     <FieldStatus
-      className={twMerge('mt-0', classNameDescription)}
+      className={cn('mt-0', classNameDescription)}
       description={description}
       disabled={disabled}
       error={error}
@@ -82,7 +82,7 @@ const Checkbox: FC<CheckboxProps> = ({
 
   const field = (
     <label
-      className={twMerge(
+      className={cn(
         'group inline-flex w-fit items-center select-none [&_a]:underline',
         disabled ? 'cursor-not-allowed' : 'cursor-pointer',
         TEXT_SIZE[size],

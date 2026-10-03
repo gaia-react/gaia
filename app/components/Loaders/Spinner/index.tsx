@@ -1,7 +1,7 @@
 import type {FC} from 'react';
 import {useId} from 'react';
 import {useTranslation} from 'react-i18next';
-import {twMerge} from 'tailwind-merge';
+import {cn} from 'cn';
 import type {Size} from '~/types';
 
 export type SpinnerProps = {
@@ -27,7 +27,7 @@ const Spinner: FC<SpinnerProps> = ({className = '', label, size = 'base'}) => {
       aria-busy="true"
       aria-label={label ?? t('loading')}
       aria-live="polite"
-      className={twMerge(SIZES[size], className)}
+      className={cn(SIZES[size], className)}
       role="progressbar"
       viewBox="0 0 38 38"
       xmlns="http://www.w3.org/2000/svg"

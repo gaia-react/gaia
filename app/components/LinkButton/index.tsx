@@ -1,6 +1,6 @@
 import type {AnchorHTMLAttributes, FC} from 'react';
 import {Link, NavLink} from 'react-router';
-import {twJoin, twMerge} from 'tailwind-merge';
+import {cn} from 'cn';
 import type {IconUnion, Variant} from '~/components/Button';
 import {ICON_POSITION, ICON_SIZES, SIZES, VARIANTS} from '~/components/Button';
 import type {Size} from '~/types';
@@ -32,12 +32,12 @@ const LinkButton: FC<LinkButtonProps> = ({
 }) => {
   const Icon = icon;
   const iconComponent = Icon && (
-    <Icon className={twJoin(children && 'flex-none', classNameIcon)} />
+    <Icon className={cn(children && 'flex-none', classNameIcon)} />
   );
 
   const innerSpan = (
     <span
-      className={twJoin(
+      className={cn(
         icon && children && 'flex items-center justify-center gap-1.5',
         icon && children && ICON_POSITION[iconPosition]
       )}
@@ -47,7 +47,7 @@ const LinkButton: FC<LinkButtonProps> = ({
     </span>
   );
 
-  const css = twMerge(
+  const css = cn(
     'plain-link text-center whitespace-nowrap select-none',
     disabled ?
       VARIANTS[variant].replaceAll('disabled:', '')
@@ -78,7 +78,7 @@ const LinkButton: FC<LinkButtonProps> = ({
   if (isNav) {
     return (
       <NavLink
-        className={({isActive}) => twMerge(css, !isActive && VARIANTS.tertiary)}
+        className={({isActive}) => cn(css, !isActive && VARIANTS.tertiary)}
         data-disabled={disabled ? true : undefined}
         prefetch={prefetch}
         tabIndex={disabled ? -1 : undefined}

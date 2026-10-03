@@ -2,11 +2,11 @@
   "files": {
     ".claude/agents/audit-loop-unit.md": "owned",
     ".claude/agents/code-audit-frontend.md": "owned",
+    ".claude/agents/code-audit-frontend/cn.md": "owned",
     ".claude/agents/code-audit-frontend/conform.md": "owned",
     ".claude/agents/code-audit-frontend/form-components.md": "owned",
     ".claude/agents/code-audit-frontend/react-i18next.md": "owned",
     ".claude/agents/code-audit-frontend/README.md": "owned",
-    ".claude/agents/code-audit-frontend/tailwind-merge.md": "owned",
     ".claude/agents/code-audit-github-workflows.md": "owned",
     ".claude/agents/worthiness-evaluator.md": "owned",
     ".claude/commands/gaia-audit.md": "owned",
@@ -655,7 +655,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-10-02T06:44:02.672Z",
+  "generated": "2026-10-03T00:51:30.400Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

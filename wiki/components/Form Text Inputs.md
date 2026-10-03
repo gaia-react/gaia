@@ -8,7 +8,7 @@ depends_on:
   - '[[Form Components]]'
   - '[[Form Field]]'
 created: 2026-04-20
-updated: 2026-06-24
+updated: 2026-10-03
 tags: [component, forms, inputs]
 ---
 
@@ -32,7 +32,7 @@ Calling sites shouldn't have to remember `autoComplete='email'` and the matching
 
 ## Class merging
 
-`twJoin` for static / conditional class lists; `twMerge` only when caller classes must override built-ins. See the `tailwind` skill (`.claude/skills/tailwind/`) and rule (`.claude/rules/tailwind.md`).
+Text inputs compose classes with `cn`; the `tailwind` skill (`.claude/skills/tailwind/`) owns the convention.
 
 ## Module convention
 

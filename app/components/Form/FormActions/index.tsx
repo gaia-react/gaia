@@ -1,5 +1,5 @@
 import type {FC, ReactNode} from 'react';
-import {twMerge} from 'tailwind-merge';
+import {cn} from 'cn';
 
 export type FormActionsProps = {
   align?: 'left' | 'right';
@@ -13,7 +13,7 @@ const FormActions: FC<FormActionsProps> = ({
   className,
 }) => (
   <div
-    className={twMerge(
+    className={cn(
       'flex gap-4',
       align === 'right' ? 'justify-end' : 'pl-0.5',
       className

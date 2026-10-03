@@ -3,7 +3,7 @@ type: overview
 title: GAIA React Overview
 status: mature
 created: 2026-04-20
-updated: 2026-09-29
+updated: 2026-10-03
 tags: [overview, gaia]
 ---
 
@@ -21,7 +21,7 @@ See [[GAIA Philosophy]] for the long version.
 
 - **Framework**: [[React Router]] (SSR, file-based routing via [[fs-routes]])
 - **Forms**: [[Conform]] + [[Zod]], see [[Form Components]]
-- **Styling**: [[Tailwind]] v4 with `tailwind-merge`, plus [[react-icons]] icons
+- **Styling**: [[Tailwind]] v4 with `cn`, plus [[react-icons]] icons
 - **i18n**: [[remix-i18next]] with TypeScript language files (not JSON)
 - **State**: minimal; `app/state/index.tsx` is a passthrough; theme is cookie-based (no React state for theme)
 - **Testing**: [[Vitest]] + [[React Testing Library]] + [[Playwright]] + [[Chromatic]], all sharing one MSW mocking layer

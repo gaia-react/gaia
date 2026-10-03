@@ -4,7 +4,7 @@ status: active
 package: '@gaia-react/lint'
 role: lint-config
 created: 2026-04-27
-updated: 2026-09-29
+updated: 2026-10-03
 tags: [dependency, lint, eslint]
 ---
 
@@ -22,7 +22,7 @@ GAIA's lint config, extracted to a standalone package under `github.com/gaia-rea
 
 ## Where rules live
 
-Source of truth: the package's `src/configs/*.ts` (per export: `base.ts`, `react.ts`, `style-hygiene.ts`, `guardrails.ts`, `testing.ts`, `storybook.ts`, `playwright.ts`, `prettier.ts`, `better-tailwind.ts`, `ignores.ts`). Custom plugins (`no-enum`, `no-switch`, `no-jsx-iife`) live in its `src/plugins/`.
+Source of truth: the package's `src/configs/*.ts` (per export: `base.ts`, `react.ts`, `style-hygiene.ts`, `guardrails.ts`, `testing.ts`, `storybook.ts`, `playwright.ts`, `prettier.ts`, `better-tailwind.ts`, `ignores.ts`). Custom plugins live in its `src/plugins/`.
 
 The project's `eslint.config.mjs` is a thin consumer: it spreads the package's exported arrays and adds project-specific overrides last.
 
@@ -66,10 +66,10 @@ export default defineConfig([
 | `testing` | D-8 test-honesty: `vitest/prefer-called-with`, `no-restricted-imports` (blocks `*.server` / internals from consumer tests) | Added in 1.6.0 |
 | `storybook` | `eslint-plugin-storybook` recommended, scoped to `*.stories.*` and `.storybook/main.*` | `.storybook/` half reaches files from 1.11.0 |
 | `playwright` | `eslint-plugin-playwright` recommended, scoped to `.playwright/**`; `expect-expect` counts `expect*()` helpers as the assertion, `no-skipped-test` allows the conditional `test.skip(condition, reason)` form | block reaches files from 1.11.0; `allowConditional` added there |
-| `guardrails` | `no-enum`, `no-switch`, `no-jsx-iife`, `no-zod-enum` (errors on `z.enum([...])`; use `z.literal([...])` for string unions) custom plugins; `gaia/no-restricted-syntax` selectors ban `cond ? <JSX/> : null` and `cond ? null : <JSX/>` (flag-only, no autofix) and flag `.length && <JSX/>` numeric-0 leaks (report-only); the `sonarjs` recommended set, whose `parameterized-tests` errors where three or more sibling tests differ only by their data and wants one `test.each` table instead (no autofix) | `.length` selector added in 1.8.0; `no-zod-enum` added in 1.9.0; `sonarjs/parameterized-tests` reaches files from 2.1.0 |
+| `guardrails` | `no-enum`, `no-switch`, `no-jsx-iife`, `no-zod-enum` (errors on `z.enum([...])`; use `z.literal([...])` for string unions), `cn-conditional` (errors on an object conditional or a ternary with an empty branch passed to the `cn` import from `cn`, at any depth, in every file type including tests and stories; write `cond && 'class'`) custom plugins; `gaia/no-restricted-syntax` selectors ban `cond ? <JSX/> : null` and `cond ? null : <JSX/>` (flag-only, no autofix) and flag `.length && <JSX/>` numeric-0 leaks (report-only); the `sonarjs` recommended set, whose `parameterized-tests` errors where three or more sibling tests differ only by their data and wants one `test.each` table instead (no autofix) | `.length` selector added in 1.8.0; `no-zod-enum` added in 1.9.0; `cn-conditional` added in 2.3.0; `sonarjs/parameterized-tests` reaches files from 2.1.0 |
 | `guardrails` | `import-x/no-restricted-paths` with carve-outs: `resources.*` and `actions.*` route files are exempt for UI layers | Carve-out added in 1.6.0; spelling moved to `actions.*`/`resources.*` in 2.2.0 (the older `+` folders are still accepted on the 2.x line) |
 | `betterTailwind` | Tailwind class ordering and hygiene | - |
-| `prettier` | Formatting via Prettier as an ESLint rule | - |
+| `prettier` | Formatting via Prettier as an ESLint rule | The Prettier config also sorts classes inside `cn(...)` |
 
 The `resources.*` and `actions.*` carve-out means UI-layer files may import typed action/loader types from flat-file resource routes without an `eslint-disable` comment. Consumer tests must not import from `*.server` files or internal server surfaces; the `test/setup.ts` global Vitest setupFile is the single sanctioned place to start the MSW harness.
 
