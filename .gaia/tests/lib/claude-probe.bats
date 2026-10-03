@@ -516,8 +516,9 @@ write_read_attempt_evidence() {
 }
 
 # A stub `claude` that, for the commit scenario, records the target's branch
-# and runs each numbered git line of its prompt in order (HUSKY=0, so the
-# fixture's husky shim stands down), logging what is staged just before each
+# and runs each numbered git line of its prompt in order (with core.hooksPath
+# overridden to /dev/null through the git config environment, so the fixture's
+# pre-commit hook stands down), logging what is staged just before each
 # commit runs. Every other scenario behaves like write_claude_stub.
 write_committing_claude_stub() {
   write_claude_stub
@@ -545,7 +546,12 @@ case "$prompt" in
               printf '\n' >>"$STUB_STAGED_LOG"
               ;;
           esac
-          HUSKY=0 bash -c "$command_line" >/dev/null 2>&1 || true
+          (
+            hooks_entry_index="${GIT_CONFIG_COUNT:-0}"
+            export "GIT_CONFIG_KEY_$hooks_entry_index=core.hooksPath" "GIT_CONFIG_VALUE_$hooks_entry_index=/dev/null"
+            export GIT_CONFIG_COUNT=$((hooks_entry_index + 1))
+            bash -c "$command_line" >/dev/null 2>&1
+          ) || true
           ;;
       esac
     done <<<"$prompt"

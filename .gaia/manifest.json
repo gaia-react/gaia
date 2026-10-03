@@ -624,10 +624,10 @@
     "wiki/dependencies/Conform.md": "wiki-owned",
     "wiki/dependencies/fs-routes.md": "wiki-owned",
     "wiki/dependencies/gaia-lint.md": "wiki-owned",
-    "wiki/dependencies/Husky.md": "wiki-owned",
     "wiki/dependencies/i18next.md": "wiki-owned",
     "wiki/dependencies/knip.md": "wiki-owned",
     "wiki/dependencies/Ky.md": "wiki-owned",
+    "wiki/dependencies/lint-staged.md": "wiki-owned",
     "wiki/dependencies/MSW.md": "wiki-owned",
     "wiki/dependencies/Playwright.md": "wiki-owned",
     "wiki/dependencies/pnpm-audit.md": "wiki-owned",
@@ -670,7 +670,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-10-03T13:11:42.492Z",
+  "generated": "2026-10-03T13:32:40.100Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

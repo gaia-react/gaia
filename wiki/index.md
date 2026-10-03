@@ -90,7 +90,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Chromatic]]
 - [[Storybook]]
 - [[MSW]]
-- [[Husky]]
+- [[lint-staged]]
 
 ## Decisions (ADRs)
 
