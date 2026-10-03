@@ -235,6 +235,7 @@
     ".github/audit/resolve-check-base.sh": "owned",
     ".github/FUNDING.yml": "shared",
     ".github/workflows/chromatic.yml": "shared",
+    ".github/workflows/pr-conventions.yml": "shared",
     ".github/workflows/tests.yml": "shared",
     ".gitignore": "owned",
     ".node-version": "owned",
@@ -623,6 +624,7 @@
     "wiki/decisions/TypeScript 7 Readiness.md": "wiki-owned",
     "wiki/decisions/TypeScript Language Files.md": "wiki-owned",
     "wiki/decisions/Wiki Management.md": "wiki-owned",
+    "wiki/decisions/Workflow Naming Convention.md": "wiki-owned",
     "wiki/decisions/Worthiness Audit.md": "wiki-owned",
     "wiki/decisions/Worthiness Presence Gate.md": "wiki-owned",
     "wiki/dependencies/Chromatic.md": "wiki-owned",
@@ -675,7 +677,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-10-03T14:19:05.629Z",
+  "generated": "2026-10-03T15:15:24.460Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",
