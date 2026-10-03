@@ -3,8 +3,8 @@
 // header of at most 100 characters.
 //
 // The permitted types live in .gaia/conventional-commits.json (`types`), read
-// here at load time so the hook, the branch-name validator and the CLI parser
-// share one list. Do not copy the list into this file.
+// here at load time; the branch-name validator reads the same file, and a test
+// pins the CLI parser copy to it. Do not copy the list into this file.
 //
 // Body and footer line length are off: wrapped bodies, long trailers and URLs
 // are not what the convention governs.

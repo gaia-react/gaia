@@ -521,13 +521,11 @@ jobs:
               - 'wiki/**'
               # branch-name-lib.bats and usage-resolve.bats pin the branch
               # validator's and the issue-link regex's type lists to the shared
-              # type file, and commitlint.config.mjs reads that file at load
-              # time. Neither matches another entry here, so without these two
-              # lines a pull request that edits only the type list or the config
-              # resolves `code=false`, skips every bats step, and greens the job
-              # having run both lockstep suites zero times.
+              # type file. The file matches no other entry here, so without
+              # this line a pull request that edits only the type list resolves
+              # `code=false`, skips every bats step, and greens the job having
+              # run both lockstep suites zero times.
               - '.gaia/conventional-commits.json'
-              - 'commitlint.config.mjs'
             # The .gaia/tests/sandbox/ conformance tree gets its own filter
             # output rather than joining `code:` above, so a sandbox-only edit
             # arms that leg's own steps without arming the full matrix.

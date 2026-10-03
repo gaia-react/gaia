@@ -30860,7 +30860,8 @@ var finalizeMerge = (options) => {
 
 // src/wiki/chain.ts
 var WIKI_CHAIN_BRANCH_PREFIX = "wiki/sync-";
-var LEGACY_WIKI_CHAIN_BRANCH_PREFIX = "wiki-sync/";
+var WIKI_CHAIN_BRANCH_PATTERN = /^wiki\/sync-\d{4}-\d{2}-\d{2}-[\da-f]{7,40}$/u;
+var LEGACY_WIKI_CHAIN_BRANCH_PATTERN = /^wiki-sync\/\d{4}-\d{2}-\d{2}-[\da-f]{7,40}$/u;
 var TALLY_SCRIPT = ".gaia/scripts/token-tally.sh";
 var passthroughFailure2 = (result, command, args) => passthroughFailure({ args, command, prefix: "chain", result });
 var stepOk = commandSucceeded;
@@ -31154,7 +31155,7 @@ var runFinish = (argv, options) => {
     );
     return { code: UNEXPECTED_EXIT9 };
   }
-  if (!branch.startsWith(WIKI_CHAIN_BRANCH_PREFIX) && !branch.startsWith(LEGACY_WIKI_CHAIN_BRANCH_PREFIX)) {
+  if (!WIKI_CHAIN_BRANCH_PATTERN.test(branch) && !LEGACY_WIKI_CHAIN_BRANCH_PATTERN.test(branch)) {
     process.stdout.write(
       `chain finish: in-place commits remain on ${branch}; no PR opened
 `

@@ -476,6 +476,31 @@ describe('wiki chain', () => {
   });
 
   describe('finish', () => {
+    test('on a hand-named wiki/sync-<slug> branch: stays in place, no push or gh call', () => {
+      sandbox = setupSandbox();
+      const recorded: RecordedCall[] = [];
+      const runner = buildRunner(
+        [
+          {
+            argv: ['rev-parse', '--abbrev-ref', 'HEAD'],
+            result: okResult('wiki/sync-docs-cleanup\n'),
+          },
+        ],
+        recorded
+      );
+
+      const exit = run(['finish', '--branch-aware'], {
+        cwd: sandbox.root,
+        runner,
+      });
+      expect(exit).toBe(0);
+      expect(stdio.outputs.join('')).toContain(
+        'chain finish: in-place commits remain on wiki/sync-docs-cleanup'
+      );
+      expect(ghCalls(recorded)).toHaveLength(0);
+      expect(recorded.find((c) => c.args[0] === 'push')).toBeUndefined();
+    });
+
     test('on a non-chain branch: no-op, exit 0, no PR', () => {
       sandbox = setupSandbox();
       const recorded: RecordedCall[] = [];

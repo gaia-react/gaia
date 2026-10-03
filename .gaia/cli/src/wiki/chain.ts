@@ -46,9 +46,15 @@ import type {PassthroughFailureOptions} from './util/land.js';
 
 const WIKI_CHAIN_BRANCH_PREFIX = 'wiki/sync-';
 
+// The full shape `begin` mints (date plus short sha). `finish` matches this,
+// not the bare prefix, so a hand-named `wiki/sync-<slug>` branch stays in place.
+const WIKI_CHAIN_BRANCH_PATTERN =
+  /^wiki\/sync-\d{4}-\d{2}-\d{2}-[\da-f]{7,40}$/u;
+
 // The shape `begin` minted before the branch-naming convention. `finish` still
 // recognizes it so a chain begun on an older CLI can land; nothing mints it.
-const LEGACY_WIKI_CHAIN_BRANCH_PREFIX = 'wiki-sync/';
+const LEGACY_WIKI_CHAIN_BRANCH_PATTERN =
+  /^wiki-sync\/\d{4}-\d{2}-\d{2}-[\da-f]{7,40}$/u;
 
 const TALLY_SCRIPT = '.gaia/scripts/token-tally.sh';
 
@@ -528,8 +534,8 @@ const runFinish = (
   }
 
   if (
-    !branch.startsWith(WIKI_CHAIN_BRANCH_PREFIX) &&
-    !branch.startsWith(LEGACY_WIKI_CHAIN_BRANCH_PREFIX)
+    !WIKI_CHAIN_BRANCH_PATTERN.test(branch) &&
+    !LEGACY_WIKI_CHAIN_BRANCH_PATTERN.test(branch)
   ) {
     // In-place run (begin was a no-op on a feature branch). The stage commits
     // already live on the developer's branch; opening a PR is their call.

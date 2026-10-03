@@ -150,7 +150,7 @@ the global-tools row's `latest`. When `latest` is unknown or equal, report
 1. If no branch exists yet and the run is on `main`/`master`, create one now and
    remember `CREATED_NEW_BRANCH=true` for Phase 8:
    ```bash
-   git checkout -b "$(bash .gaia/scripts/branch-name-lib.sh name chore update-deps)"
+   git checkout -b "$(bash .gaia/scripts/branch-name-lib.sh name deps)"
    ```
 2. Re-vendor, then verify offline:
    ```bash

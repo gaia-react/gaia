@@ -103,8 +103,10 @@ jobs:
             exit 1
           fi
           # A bare non-zero exit is not proof: a broken install or an
-          # unloadable config also exits non-zero. Only the type-enum rule
-          # naming the type shows the shared type list was read and applied.
+          # unloadable config also exits non-zero. The type-enum rule naming
+          # the type shows a type-enum rule loaded; the wiki: acceptance check
+          # below shows the shared type list itself was applied, since
+          # config-conventional alone rejects wiki.
           case "$output" in
             *type-enum*) ;;
             *)
@@ -114,6 +116,12 @@ jobs:
               ;;
           esac
           echo "Canary rejected by type-enum as expected."
+          if ! output="$(printf 'wiki: canary\n' | pnpm exec commitlint 2>&1)"; then
+            printf '%s\n' "$output"
+            echo "::error::commitlint rejected the shared-list type wiki; the shared type list was not applied"
+            exit 1
+          fi
+          echo "Canary accepted the shared-list type as expected."
       - name: Lint the PR title as the squash subject
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
