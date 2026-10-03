@@ -96,11 +96,11 @@ jobs:
       # must appear here: `frontend/.playwright/` holds the e2e specs and their
       # helpers, which `playwright.config.` alone does not cover.
       # This job also runs typecheck and lint, so a path those cover belongs
-      # here too even when it carries no tests: `.storybook/` holds neither
+      # here too even when it carries no tests: `frontend/.storybook/` holds neither
       # tests nor stories, but it is inside the tsconfig `include` and is
       # linted, and Chromatic's Vite build strips types instead of checking
       # them, so it is not a substitute. The `*.config.*` alternation names
-      # every root config for the same reason, not only the four whose tools
+      # every frontend/ config for the same reason, not only the four whose tools
       # this job runs: each one is linted, the `.ts` ones are also in the
       # tsconfig program (the `.mjs` ones are not, since `include` lists no
       # `.mjs` glob and `allowJs` is off), and `react-router.config.` feeds the

@@ -28585,6 +28585,25 @@ var discoverOutdated = (cwd, pnpmRunner) => {
   }
   return parseOutdated(result.stdout);
 };
+var mergeManifestSection = (rootSection, packageSection) => ({ ...rootSection, ...packageSection });
+var mergeManifests = (rootPackage, pkg) => ({
+  dependencies: mergeManifestSection(
+    rootPackage.dependencies,
+    pkg.dependencies
+  ),
+  devDependencies: mergeManifestSection(
+    rootPackage.devDependencies,
+    pkg.devDependencies
+  ),
+  optionalDependencies: mergeManifestSection(
+    rootPackage.optionalDependencies,
+    pkg.optionalDependencies
+  ),
+  peerDependencies: mergeManifestSection(
+    rootPackage.peerDependencies,
+    pkg.peerDependencies
+  )
+});
 var computeUpdates = (options) => {
   const pnpmRunner = options.pnpmRunner ?? defaultPnpmRunner;
   const target = resolvePackageTarget(options.cwd);
@@ -28592,9 +28611,16 @@ var computeUpdates = (options) => {
     throw new Error(target.message);
   }
   const { packageDir, packagePath, repoRoot } = target;
-  const pkg = readPackageJson(packageDir);
-  const rootPackage = packagePath === "." ? pkg : readPackageJson(repoRoot);
-  const raw = discoverOutdated(packageDir, pnpmRunner);
+  const packageManifest = readPackageJson(packageDir);
+  const rootPackage = packagePath === "." ? packageManifest : readPackageJson(repoRoot);
+  const packageOutdated = discoverOutdated(packageDir, pnpmRunner);
+  const raw = packagePath === "." ? packageOutdated : [
+    ...packageOutdated,
+    ...discoverOutdated(repoRoot, pnpmRunner).filter(
+      (rootEntry) => !packageOutdated.some((entry) => entry.name === rootEntry.name)
+    )
+  ];
+  const pkg = packagePath === "." ? packageManifest : mergeManifests(rootPackage, packageManifest);
   const now = (options.now ?? (() => /* @__PURE__ */ new Date()))();
   const minimumReleaseAgeMinutes = readMinimumReleaseAge(repoRoot);
   const cooldown = {

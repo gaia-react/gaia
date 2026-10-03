@@ -144,6 +144,14 @@ jobs:
               # does claim this path, and that dispatches a member without
               # running one line of the suite.
               - 'frontend/.lintstagedrc.json'
+              # husky-pre-commit.bats also reads the live package descriptor
+              # (frontend/gaia.package.json preCommitSource globs, for its
+              # arm_directories and arm_assignment_count guards) and the live
+              # registry (.gaia/packages.json, to resolve the package
+              # directory). An edit to only one of them would report
+              # `code=false` and green the job having run those guards zero times.
+              - 'frontend/gaia.package.json'
+              - '.gaia/packages.json'
               - '.gaia/scripts/**'
               # The shell lint suites (.gaia/scripts/tests/lint-*.bats) scan
               # the real tree's tracked shell, lint-errexit-status-read.bats

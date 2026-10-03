@@ -6,9 +6,9 @@ import {describe, expect, test} from 'vitest';
 import {readFileSync} from 'node:fs';
 import path from 'node:path';
 
-// Read the source CSS; Vitest is invoked from the repo root (process.cwd())
+// Read the source CSS, resolved from this file so the cwd does not matter
 const css = readFileSync(
-  path.resolve(process.cwd(), 'app/styles/tailwind.css'),
+  path.resolve(import.meta.dirname, '../app/styles/tailwind.css'),
   'utf-8'
 );
 

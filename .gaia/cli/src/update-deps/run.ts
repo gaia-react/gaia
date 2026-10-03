@@ -1194,6 +1194,37 @@ const discoverOutdated = (
   return parseOutdated(result.stdout);
 };
 
+const mergeManifestSection = (
+  rootSection: Readonly<Record<string, string>> | undefined,
+  packageSection: Readonly<Record<string, string>> | undefined
+): Readonly<Record<string, string>> => ({...rootSection, ...packageSection});
+
+/**
+ * One view over both manifests for spec lookup and sibling expansion; the
+ * package's declaration wins when a name is declared in both.
+ */
+const mergeManifests = (
+  rootPackage: PackageJsonShape,
+  pkg: PackageJsonShape
+): PackageJsonShape => ({
+  dependencies: mergeManifestSection(
+    rootPackage.dependencies,
+    pkg.dependencies
+  ),
+  devDependencies: mergeManifestSection(
+    rootPackage.devDependencies,
+    pkg.devDependencies
+  ),
+  optionalDependencies: mergeManifestSection(
+    rootPackage.optionalDependencies,
+    pkg.optionalDependencies
+  ),
+  peerDependencies: mergeManifestSection(
+    rootPackage.peerDependencies,
+    pkg.peerDependencies
+  ),
+});
+
 export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
   const pnpmRunner = options.pnpmRunner ?? defaultPnpmRunner;
   // App dependencies, their installed versions, and `pnpm outdated` live in
@@ -1205,9 +1236,27 @@ export const computeUpdates = (options: ComputeOptions): UpdatesPayload => {
     throw new Error(target.message);
   }
   const {packageDir, packagePath, repoRoot} = target;
-  const pkg = readPackageJson(packageDir);
-  const rootPackage = packagePath === '.' ? pkg : readPackageJson(repoRoot);
-  const raw = discoverOutdated(packageDir, pnpmRunner);
+  const packageManifest = readPackageJson(packageDir);
+  const rootPackage =
+    packagePath === '.' ? packageManifest : readPackageJson(repoRoot);
+  // `pnpm outdated` scopes to the project it runs in, so the harness
+  // dependencies declared only in the root manifest need their own run. An
+  // entry both manifests declare is listed once, from the package.
+  const packageOutdated = discoverOutdated(packageDir, pnpmRunner);
+  const raw =
+    packagePath === '.' ? packageOutdated : (
+      [
+        ...packageOutdated,
+        ...discoverOutdated(repoRoot, pnpmRunner).filter(
+          (rootEntry) =>
+            !packageOutdated.some((entry) => entry.name === rootEntry.name)
+        ),
+      ]
+    );
+  const pkg =
+    packagePath === '.' ? packageManifest : (
+      mergeManifests(rootPackage, packageManifest)
+    );
 
   // Release-age cooldown context; disabled (no registry calls) when the
   // setting is unset, preserving the prior behaviour for adopters who do

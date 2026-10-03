@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -1440,10 +1441,46 @@ describe('update-deps run: frontend package root', () => {
       expect(result.wave_a.find((entry) => entry.name === 'vite')?.latest).toBe(
         '8.0.17'
       );
-      // `pnpm outdated` ran in the package, not at the workspace root.
-      expect(cwds.every((cwd) => cwd.endsWith('/frontend'))).toBe(true);
+      // `pnpm outdated` ran in the package and at the workspace root.
+      expect(cwds.some((cwd) => cwd.endsWith('/frontend'))).toBe(true);
+      expect(cwds).toContain(realpathSync(root));
     }
   );
+
+  test('a root-only devDependency reaches the payload from the root run', () => {
+    writeFileSync(
+      path.join(root, 'package.json'),
+      JSON.stringify({
+        devDependencies: {husky: '~9.1.0'},
+        name: 'root',
+      }),
+      'utf8'
+    );
+    const runner = makePnpmRunner({
+      foo: {current: '1.2.3', latest: '1.3.0', wanted: '1.3.0'},
+      husky: {current: '9.1.0', latest: '9.1.7', wanted: '9.1.7'},
+    });
+    const result = computeUpdates({
+      cwd: root,
+      pnpmRunner: (args, options) =>
+        args[0] === 'outdated' && options.cwd !== realpathSync(root) ?
+          makePnpmRunner({
+            foo: {current: '1.2.3', latest: '1.3.0', wanted: '1.3.0'},
+          })(args, options)
+        : runner(args, options),
+    });
+    const names = result.wave_a.map((entry) => entry.name);
+
+    expect(names).toEqual(['foo', 'husky']);
+    expect(result.wave_a.filter((entry) => entry.name === 'foo')).toHaveLength(
+      1
+    );
+    // The spec comes from the root manifest: `~9.1.0` is not pinned.
+    expect(
+      result.wave_a.find((entry) => entry.name === 'husky')?.is_pinned
+    ).toBe(false);
+    expect(result.total_count).toBe(2);
+  });
 
   test('sibling expansion reads the installed version from frontend/node_modules', () => {
     writeFileSync(

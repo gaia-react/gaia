@@ -40,7 +40,7 @@ provides:
 
     - name: "speckit.gaia.uat-write"
       file: "commands/uat-write.md"
-      description: "before_implement hook: render PO-authored UATs into Playwright e2e specs at .playwright/e2e/spec-NNN/."
+      description: "before_implement hook: render PO-authored UATs into Playwright e2e specs at <package>/.playwright/e2e/spec-NNN/ in the frontend package."
 
     - name: "speckit.gaia.spec-close"
       file: "commands/spec-close.md"

@@ -27,39 +27,6 @@ export default {
     // these are evidenced false positives at specific sites, not blanket-offs.
     overrides: [
       {
-        // .gaia/cli is maintainer CLI tooling, and both perf rules misfire here:
-        //  - js-set-map-lookups flags String.prototype.includes/indexOf
-        //    (substring/char search like token.indexOf(':'), entry.includes('\t')),
-        //    not Array membership; a Set cannot replace them.
-        //  - async-await-in-loop flags intentional sequential loops (ordered
-        //    nested-dir creation, bounded-memory per-file reads, a poll loop),
-        //    several already carrying `eslint-disable no-await-in-loop -- intentional`.
-        files: ['.gaia/cli/**'],
-        rules: [
-          'react-doctor/js-set-map-lookups',
-          'react-doctor/async-await-in-loop',
-        ],
-      },
-      {
-        // path-traversal-risk flags filesystem paths built from "caller input."
-        // In .gaia/cli that input is operator CLI flags (--out-dir,
-        // --staging-dir, --config-path) resolved against cwd by a maintainer who
-        // already has shell access; no untrusted/web caller reaches these paths.
-        // Rule stays active for app code where request data can reach a path.
-        files: ['.gaia/cli/**'],
-        rules: ['react-doctor/path-traversal-risk'],
-      },
-      {
-        // build-pipeline-secret-boundary flags `pnpm install` running package
-        // lifecycle scripts while CI secrets may be present. The Chromatic and
-        // GitHub tokens are scoped to the Run Chromatic step via `with:`, so they
-        // are absent from the environment during install and a lifecycle script
-        // cannot read them. Rule stays active for any workflow that exposes
-        // secrets to the install step itself.
-        files: ['.github/workflows/**'],
-        rules: ['react-doctor/build-pipeline-secret-boundary'],
-      },
-      {
         // Route modules must co-locate loader/middleware/meta exports with the
         // default component export; framework-mandated by React Router, not a
         // Fast-Refresh hazard. Rule stays active for non-route component files.
