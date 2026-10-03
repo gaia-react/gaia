@@ -96,8 +96,8 @@ Snapshot the durable working-state directories under `.gaia/local/`: the
 `integrity_snapshot` set the state registry (`.gaia/state-registry.json`)
 declares, the artifact classes a destructive script can wipe out unnoticed
 (the incident this guard exists for: a refuter ran
-`spec-archive-merged.sh --close` to probe its gates and deleted
-`.gaia/local/specs/SPEC-031/`). The registry is the authoritative
+`spec-archive-merged.sh --close` to probe its gates and deleted a
+live SPEC directory under `.gaia/local/specs/`). The registry is the authoritative
 inventory of which dirs are in and out; the excluded dirs (`debt/`,
 `telemetry/`, `audit/`, `cache/`, `red-ledger/`) are each rewritten or
 appended by a background process with no leaf involved, so including them

@@ -798,7 +798,7 @@ The `## Coverage` section is sourced from `.gaia/local/cache/audit-<spec_id>/cov
 
 When a sibling `AUDIT.md` exists, the step-11 `/gaia-plan` handoff names it so its plan-time directives are discoverable.
 
-**Close the audit window (cost-ledger breadcrumb).** The audit unit is now complete, the 7c applier has returned. Capture the end and write the FC-1 breadcrumb by sourcing the FC-5 lib and calling its single breadcrumb writer. Do not inline `jq -n` here, the write goes through `gaia_audit_window_write` so the same code path a unit test exercises is the one production runs:
+**Close the audit window (cost-ledger breadcrumb).** The audit unit is now complete, the 7c applier has returned. Capture the end and write the audit-window breadcrumb by sourcing `.gaia/scripts/audit-window-lib.sh` and calling its single breadcrumb writer. Do not inline `jq -n` here, the write goes through `gaia_audit_window_write` so the same code path a unit test exercises is the one production runs:
 
 ```bash
 AUDIT_WINDOW_END="$(date -u +%Y-%m-%dT%H:%M:%SZ)"

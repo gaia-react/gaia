@@ -10,7 +10,7 @@
 # checkout's own copy of a file that also exists in the worktree) is a
 # different, equally valid file on disk, so the edit tools apply it with no
 # error: the write silently lands in the wrong checkout. This is the
-# silent-wrong-write footgun of tech-debt gaia-react/gaia#841.
+# silent-wrong-write footgun.
 #
 # Tree identity comes from one shared rule and one shared resolver, so this
 # guard never re-derives "which tree am I in":
@@ -27,8 +27,8 @@
 #
 # Scope: the guard adjudicates "does this target resolve into the acting tree",
 # denying any write whose target lands in a different checkout -- the main
-# checkout (gaia-react/gaia#841's own case) or a sibling linked worktree. The acting tree is the
-# one the hook process cwd sits in; the target's own tree is compared against
+# checkout or a sibling linked worktree. The acting tree is the one the hook
+# process cwd sits in; the target's own tree is compared against
 # it, not against main alone. This is the defense-in-depth role isolation.md contracts: deny an
 # Edit/Write/MultiEdit whose file_path resolves to a different worktree than
 # RESOLVED_ROOT.
@@ -177,8 +177,8 @@ resolved_target_directory="$(CDPATH='' cd "$target_directory" 2>/dev/null && pwd
 # shared and main-anchored state already had no worktree-side copy worth
 # protecting, and the ephemeral cache entries (spec-session locks,
 # audit-window breadcrumbs, and the rest) never had one either -- denying
-# them would block the sole correct write, not catch a wrong one (tech-debt
-# gaia-react/gaia#934's class). A relative path the registry does not recognize at all (typo,
+# them would block the sole correct write, not catch a wrong one.
+# A relative path the registry does not recognize at all (typo,
 # stray, or genuinely unclassified) is NOT exempted here and falls through
 # to the ordinary cross-tree deny below, the same as before the cutover.
 #
@@ -252,7 +252,7 @@ file_root="$(gaia_resolve_tree_root "$target_directory")" || exit 0
 [[ -n "$file_root" ]] || exit 0
 
 # The target resolves into a checkout other than the acting tree: the main
-# checkout or a sibling worktree, both the gaia-react/gaia#841 silent-wrong-write. The exempt
+# checkout or a sibling worktree, both a silent-wrong-write. The exempt
 # shared and main-anchored paths have already returned above, so a cross-tree
 # target reaching here is a real wrong-write, not a legitimate write-through to
 # main.
@@ -267,7 +267,7 @@ if [[ "$file_root" != "$current_root" ]]; then
   if [[ -n "${local_state_reason:-}" ]]; then
     deny "BLOCKED: $local_state_reason"
   fi
-  deny "BLOCKED: '$file_path' resolves to a different checkout ('$file_root') than the linked worktree this session works inside ('$current_root'). This is the silent-wrong-write footgun from tech-debt gaia-react/gaia#841: a stale pre-switch absolute path is a real, valid file in another checkout (the main checkout or a sibling worktree), so the edit tools would apply it with no error. Resolve RESOLVED_ROOT fresh (git rev-parse --show-toplevel) and prefix file_path with it."
+  deny "BLOCKED: '$file_path' resolves to a different checkout ('$file_root') than the linked worktree this session works inside ('$current_root'). This is the silent-wrong-write footgun: a stale pre-switch absolute path is a real, valid file in another checkout (the main checkout or a sibling worktree), so the edit tools would apply it with no error. Resolve RESOLVED_ROOT fresh (git rev-parse --show-toplevel) and prefix file_path with it."
 fi
 
 exit 0

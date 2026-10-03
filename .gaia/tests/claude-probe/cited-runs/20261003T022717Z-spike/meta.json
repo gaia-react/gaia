@@ -1,0 +1,14 @@
+{
+  "expectations_commit": "82c0cc19c51237ead32f43bfd64c459d0e1b4658",
+  "table_sha256": "f1610e5949189a10d9574aaf3df294cc1ed63b11a5f10da537b594c43c8b2125",
+  "reps": 3,
+  "max_usd": 15,
+  "model": "sonnet",
+  "launches": [
+    "root",
+    "frontend",
+    "worktree"
+  ],
+  "only": null,
+  "started_at": "2026-10-03T02:27:21Z"
+}

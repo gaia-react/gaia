@@ -173,7 +173,7 @@ Repo-root tooling is a separate hazard from anything the registry governs: a com
 GAIA maintainers: two enforcement mechanisms persist in this repo against re-creating the problem in the next cross-cutting feature.
 
 1. The derivation scan: a hand-rolled main-checkout derivation in tracked source fails the build (`check-main-root-derivation.bats`).
-2. The INV-7 concurrency meter runs in CI (`meter-gate.sh`): two trees off the same base drive audit, PR, and merge cycles concurrently, some scenarios directly and some simulated, and nothing from one leaks into the other.
+2. The concurrency meter runs in CI (`meter-gate.sh`): two trees off the same base drive audit, PR, and merge cycles concurrently, some scenarios directly and some simulated, and nothing from one leaks into the other.
 
 Both run from release-excluded suites, so they guard maintainer changes. The registry rule has no CI check; the path-mismatch hook above is its only enforcement.
 <!-- gaia:maintainer-only:end -->

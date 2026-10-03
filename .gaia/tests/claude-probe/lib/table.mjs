@@ -93,7 +93,7 @@ export const schemaProblems = (table) => {
     else if (row.signal !== 'manual' && !KIND_RULES[row.kind].signal.includes(row.signal)) problems.push(`SCHEMA ${label}: signal ${row.signal} cannot observe kind ${row.kind}`);
     if (typeof row.floor !== 'boolean') problems.push(`SCHEMA ${label}: floor must be a boolean`);
     if (typeof row.source !== 'string' || row.source.trim() === '') problems.push(`SCHEMA ${label}: source must be a non-empty string`);
-    if (row.cited_run !== null && (typeof row.cited_run !== 'string' || row.cited_run === '')) problems.push(`SCHEMA ${label}: cited_run must be null or a probe-run evidence path`);
+    if (row.cited_run !== null && (typeof row.cited_run !== 'string' || row.cited_run === '')) problems.push(`SCHEMA ${label}: cited_run must be null or a cited-runs/ summary path`);
     if (row.floor === true && row.signal === 'manual') problems.push(`SCHEMA ${label}: a floor row needs an observable signal, not manual`);
   });
   return problems;

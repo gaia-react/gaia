@@ -17,7 +17,7 @@
 # nothing) so a lost breadcrumb is detectable; its callers guard with `|| true`
 # so that too never blocks.
 #
-# Timestamp precision (COV-003): a breadcrumb's started_at/ended_at are
+# Timestamp precision: a breadcrumb's started_at/ended_at are
 # written at SECOND precision (date -u +%Y-%m-%dT%H:%M:%SZ) while sidecar
 # tmin/tmax carry FRACTIONAL seconds. A raw string compare sorts
 # "HH:MM:SS.fffZ" BEFORE "HH:MM:SSZ" ("." (0x2E) < "Z" (0x5A)), wrongly
@@ -29,7 +29,7 @@
 # interpolated across functions) so a bash-side interpolation mistake can
 # never silently corrupt the jq program text.
 #
-# Sidecar-only lower bound (DP-003 / COV-005): gaia_window_subset sums
+# Sidecar-only lower bound: gaia_window_subset sums
 # DISPATCHED sidecars only (file_agent != "main"). An audit sub-agent that
 # runs main-inline (an applier / refuter / completeness fold in the main
 # transcript) lands its tokens under file_agent == "main" and is
@@ -137,7 +137,7 @@ gaia_window_subset() {
 }
 
 # gaia_audit_window_write <breadcrumb_path> <session_id> <started_at> <ended_at> <lenses_json> [intensity]
-# The single breadcrumb writer (DP-001). Writes the FC-1 breadcrumb JSON to
+# The single breadcrumb writer. Writes the breadcrumb JSON to
 # <breadcrumb_path> via `jq -n` (never string-concatenated), omitting the
 # `intensity` key entirely when the 6th arg is empty/absent (plan audits).
 # The JSON is built in a variable first (nothing touches disk until it

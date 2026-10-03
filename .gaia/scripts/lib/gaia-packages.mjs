@@ -14,9 +14,9 @@
 // FAIL-CLOSED. A registry that is absent is the built-in default (frontend at
 // `frontend`), never "nothing in scope". A registry that is present and
 // malformed, or a descriptor that is missing or invalid, returns an error and
-// never a partial answer: callers refuse on it (README C5).
+// never a partial answer: callers refuse on it.
 //
-// GLOB DIALECT (C3): `**/` is zero or more whole directories, a trailing `/**`
+// GLOB DIALECT: `**/` is zero or more whole directories, a trailing `/**`
 // is everything beneath, `*` is any run excluding `/`, `?` is one character
 // excluding `/`, `{a,b}` is non-nested alternation, every other character is
 // literal. The compiler is a fixed sequence of substitutions through private

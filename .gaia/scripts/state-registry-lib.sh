@@ -53,7 +53,7 @@
 #   enumerate for that purpose. This function stays as a
 #   diagnostic/regression-guard read: it is what proves a per-tree entry
 #   (red-ledger, forensics, handoff) is genuinely NOT shared, the concrete
-#   check the concurrency meter's cutover-risk scenarios (C4-06, C4-08) run
+#   check the concurrency meter's cutover-risk scenarios run
 #   against the shipped registry rather than asserting by hand. Prints
 #   nothing and returns 1 when the registry cannot be read (see
 #   gaia_registry_path).

@@ -65,7 +65,7 @@ START_MARKER='<!-- gaia:audit-remit:start -->'
 END_MARKER='<!-- gaia:audit-remit:end -->'
 REMIT_HEADING='## Remit and self-skip'
 
-# Contract C5: the two canonical region sentences, verbatim. Neither names a
+# The two canonical region sentences, verbatim. Neither names a
 # path. Kept here, not in the check: the check does not compare sentence text
 # (see verify-audit-roster.sh's remit invariant), so this is their one home.
 CLAIMANT_SENTENCE='Filter the changed-file list against the globs above. **If none match, self-skip cleanly.** Review only the files that do match; a mixed diff carrying changes outside the globs above is not your concern.'
@@ -210,7 +210,7 @@ while IFS= read -r name; do
     fi
   fi
 
-  # Region body (contract C1 + C5): one bullet per roster glob, in roster
+  # Region body: one bullet per roster glob, in roster
   # order, a blank line, then the canonical sentence for this member's shape.
   # Written to a file and never through awk -v, so no character in a glob
   # (backtick, *, .) is ever interpreted.
@@ -255,7 +255,7 @@ EOF
     ' "$agent")"
   fi
 
-  # The glob delta (contract C3): globs the roster grants that the old region
+  # The glob delta: globs the roster grants that the old region
   # lacks are "+", globs the old region carried that the roster no longer
   # grants are "-". Empty for INSERT mode's old_globs (everything is "+").
   added=""
