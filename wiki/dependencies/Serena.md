@@ -14,7 +14,7 @@ LSP-backed MCP server. Gives Claude live, always-fresh access to symbol definiti
 
 ## Pin
 
-- Version: `v1.2.0`.
+- Version: `.claude/commands/setup-gaia.md` owns the pin.
 - Scope: user (registered globally for the user's Claude Code, not project-scoped).
 - Runtime: requires `uv` (Astral Python toolchain runner).
 - Context: `--context claude-code`, which trims Serena to its symbol and memory tools and drops the file read/create, shell, directory-list, and pattern-search tools that Claude Code's own tools already cover.
@@ -25,7 +25,7 @@ The prescribed registration passes `--project-from-cwd` (see Pin above), so the 
 
 ## Exposed tools
 
-The `claude-code` context exposes Serena's LSP-backed symbol tools and its memory tools, and excludes the file-level tools Claude Code already provides. Available for symbol work: `find_symbol`, `find_referencing_symbols`, `get_symbols_overview`, `rename_symbol`, `replace_symbol_body`, `insert_before_symbol`, `insert_after_symbol`, `replace_content`, and `safe_delete_symbol`, alongside the memory tools (`write_memory`, `read_memory`, `list_memories`, `edit_memory`, `rename_memory`, `delete_memory`) and session helpers (`check_onboarding_performed`, `onboarding`, `get_current_config`, `initial_instructions`). Excluded in this context: `read_file`, `create_text_file`, `execute_shell_command`, `find_file`, `list_dir`, and `search_for_pattern`. `activate_project` is off because the context is single-project. The `think_about_*` reflection tools are not part of this Serena build at all, so no context exposes them. This is the statically declared surface; a running single-project session may narrow it further to the project's configured language-server needs.
+The `claude-code` context exposes Serena's LSP-backed symbol tools and its memory tools, and excludes the file-level tools Claude Code already provides (file read and create, shell, directory listing, file and pattern search). `activate_project` is off because the context is single-project. The exact tool list moves with Serena releases, so Serena's own documentation and `.claude/rules/code-search.md` own it rather than this page. A running single-project session may narrow the surface further to the project's configured language-server needs.
 
 ## When to use
 
@@ -41,9 +41,11 @@ The advisory routing rule is language-agnostic: it activates on a broad multi-la
 
 ## Language configuration
 
-Serena decides which language servers to start from the `languages:` list in `.serena/project.yml`. Under GAIA's non-interactive registration (`--project-from-cwd`), Serena autogenerates that file at first startup and enables only the single most prominent language it detects; from then on it reads `.serena/project.yml` verbatim and never re-detects. A project that begins as TypeScript-only and later grows a Go or Python module keeps getting single-language symbol intelligence, because the new language is absent from the frozen `languages:` list and nothing signals that it is invisible to symbol search.
+Serena decides which language servers to start from the `language_servers:` list in `.serena/project.yml`. Serena releases before 1.7 call that list `languages:`; a file uses exactly one of the two names, and GAIA's tooling reads and writes whichever the file already carries. A file carrying both is left untouched. Under GAIA's non-interactive registration (`--project-from-cwd`), Serena autogenerates that file at first startup and enables only the single most prominent language it detects; from then on it reads `.serena/project.yml` verbatim and never re-detects. A project that begins as TypeScript-only and later grows a Go or Python module keeps getting single-language symbol intelligence, because the new language is absent from the frozen list and nothing signals that it is invisible to symbol search.
 
-`/gaia-serena-sync` closes that gap for languages GAIA recognizes from a high-signal manifest: it detects the drift and, on explicit consent, additively appends the missing language(s) to the `languages:` list in place, then prompts a restart so the new language is indexed.
+`/gaia-serena-sync` closes that gap for languages GAIA recognizes from a high-signal manifest: it detects the drift and, on explicit consent, additively appends the missing language(s) to the list in place under its existing key name, then prompts a restart so the new language is indexed.
+
+A Serena that predates the `language_servers:` name cannot load a file that carries only that key. A team therefore re-registers every collaborator on the current Serena before anyone commits a `.serena/project.yml` that Serena auto-migrated to the new name.
 
 ## Limits
 

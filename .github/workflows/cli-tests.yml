@@ -132,6 +132,15 @@ jobs:
               # shellcheck can see, and a semantic weakening -- dropping the
               # template `diff -rq`, inverting a `cmp` -- is invisible to it.
               - '.gaia/scripts/verify-cli-bundle-fresh.sh'
+              # The vendored-skill check below reads these three: the vendored
+              # folder, the markers recording its hashes, and the script
+              # itself. A pull request touching only one of them is exactly the
+              # drift the check exists to catch, and without these lines it
+              # resolves `code=false`, skips the step, and greens this required
+              # check having verified nothing.
+              - 'frontend/.claude/skills/playwright-cli/**'
+              - '.gaia/vendor/**'
+              - '.gaia/scripts/verify-vendored-skills.sh'
               # The workspace-floor check below is this script, so an edit to it
               # must re-run the check on its own pull request, exactly as the
               # bundle-freshness entry above does. The two subjects it reads,
@@ -308,6 +317,12 @@ jobs:
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Verify committed CLI binaries and templates are rebuilt from src
         run: bash .gaia/scripts/verify-cli-bundle-fresh.sh
+      # Offline byte-identity check over the vendored third-party skill folders
+      # against the hashes their markers under .gaia/vendor record. It needs jq,
+      # which ubuntu-latest carries, and never touches the network.
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
+        name: Verify vendored skills are byte-identical to their markers
+        run: bash .gaia/scripts/verify-vendored-skills.sh
       # .gaia/cli is a second pnpm workspace root, and every dependency-CVE
       # surface in this repository runs from the repository root, whose closure
       # cannot contain it. This job is where the PARITY half of that gap

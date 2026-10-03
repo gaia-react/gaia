@@ -68,11 +68,13 @@ GAIA's wiki is a living knowledge layer. Adopters scaffold from a release tarbal
 
 ### How it works (quick tour)
 
-A statusline nudge and two Claude Code hooks keep you informed about wiki state:
+A statusline nudge and Claude Code hooks keep you informed about wiki state:
 
 - Statusline nudge: `🧠 Run /gaia-wiki` appears once the wiki is 20 or more commits behind (`drift_count` in `gaia wiki state --json`). It is the only drift signal; a landed `/gaia-wiki sync` clears it.
 - `janitor-report-drain.sh`: UserPromptSubmit. Delivers the session-start janitor's one-line report once, then deletes it.
-- `wiki-session-stop.sh`: Stop hook. Two reminders share one git/jq pass: nudge to refresh `wiki/hot.md` if wiki/ files were modified this session, and a safety-net nag at session end if commits landed but `wiki/.state.json` didn't advance.
+- `wiki-session-stop.sh`: Stop hook. Prompts a `wiki/hot.md` refresh on two triggers: wiki/ changes committed this session, and uncommitted edits to wiki/ content, once per distinct state.
+
+The full hook set is in `wiki/concepts/Claude Hooks.md`.
 
 The workhorse is `/gaia-wiki sync`. It's the only thing that writes `wiki/.state.json`. Hooks are read-only consumers.
 

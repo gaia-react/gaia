@@ -379,23 +379,6 @@ describe('release runtime-deps CLI', () => {
     expect(exit).toBe(0);
   });
 
-  test('allowlists per-session marker files', () => {
-    sandbox.writeManifest({
-      '.claude/hooks/wiki-recompact-inject.sh': 'owned',
-    });
-    sandbox.writeFile(
-      '.claude/hooks/wiki-recompact-inject.sh',
-      [
-        '#!/usr/bin/env bash',
-        'touch ".claude/wiki-recompact-pending"',
-        '',
-      ].join('\n')
-    );
-
-    const exit = run([], {cwd: sandbox.rootDir});
-    expect(exit).toBe(0);
-  });
-
   test('resolves a bare directory token as shipped when manifest entries exist beneath it', () => {
     // Mirrors a shell array glob like `SCAN_GLOB=(.claude/hooks/*.sh)`: the
     // extractor's path-body character class stops at `*`, yielding the bare

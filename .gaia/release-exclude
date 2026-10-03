@@ -203,6 +203,13 @@ frontend/.playwright/e2e/react-perf-smoke.spec.ts
 # check could only fail or mislead. Its two callers (cli-tests.yml,
 # release.yml) are maintainer-only and release-excluded in category 9.
 .gaia/scripts/verify-cli-bundle-fresh.sh
+# The vendored playwright-cli skill ships with its marker, but the means to
+# replace it from npm and the offline check that its bytes still match the
+# marker are the maintainer's: an adopter never re-vendors, and the check's only
+# runner, cli-tests.yml (category 9), is release-excluded, so shipping either
+# script would ship a tool nothing on an adopter clone invokes.
+.gaia/scripts/verify-vendored-skills.sh
+.gaia/scripts/revendor-playwright-cli.sh
 
 # --- 5. Release-time maintainer tooling ---
 # This file itself: adopters don't run GAIA releases. The release-scrub

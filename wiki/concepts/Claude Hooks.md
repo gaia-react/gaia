@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-10-01
+updated: 2026-10-04
 tags: [concept, claude, hooks]
 ---
 
@@ -54,7 +54,7 @@ The sourced libraries under `.claude/hooks/lib/` are deliberately absent. They a
 | `debt-session-reconcile.sh` | SessionStart (startup\|resume) | Reconciles a shown `Run /gaia-debt` nudge against the live backlog. |
 | `issue-claim-release.sh` | PostToolUse (Bash) | Strips the `in-progress` claim from every issue a merged pull request closes. |
 | `janitor-report-drain.sh` | UserPromptSubmit | Delivers the janitor's one-line base-catch-up report to the conversation, once. |
-| `local-janitor.sh` | Invoked by path from `wiki-session-start.sh`; also runnable on its own | Reaps a merged-and-gone local wiki-sync branch and fast-forwards base to catch up a wiki landing. |
+| `local-janitor.sh` | Invoked by path from `wiki-session-start.sh`; also runnable on its own | Reaps a merged-and-gone local wiki-sync branch and fast-forwards base to catch up a wiki landing, then marks the statusline update cache stale so the wiki nudge clears. |
 | `post-audit-status.sh` | Invoked by path by the orchestrating session, after every member is dispositioned | Posts the `GAIA-Audit` commit status on HEAD. |
 | `post-findings-block-on-merge.sh` | PreToolUse (Bash) | Posts the machine-readable findings block on a local-mode merge, so it counts toward the recurrence tally. Never blocks. |
 | `pr-merge-audit-check.sh` | PreToolUse (Bash) | Blocks `gh pr merge` until every dispatched Code Audit Team member has written its clearance marker. |
@@ -64,11 +64,9 @@ The sourced libraries under `.claude/hooks/lib/` are deliberately absent. They a
 | `token-tally-git-op.sh` | PreToolUse (Bash) | Records the session's ground-truth token counts ahead of a git operation. |
 | `token-tally-review.sh` | PostToolUse (Bash), Stop | Captures a code-review-audit run as its own cost record, on either end-of-context trigger. |
 | `usage-capture.sh` | Stop, SessionStart (startup\|resume) | Launches the detached usage flusher and returns. |
-| `wiki-recompact-inject.sh` | UserPromptSubmit | Re-injects the hot cache on the first turn after a compaction, then clears the sentinel. |
-| `wiki-recompact-sentinel.sh` | PostCompact | Drops the sentinel a compaction happened, which the inject hook acts on next turn. |
-| `wiki-session-start.sh` | SessionStart (startup\|resume) | Records HEAD for the acting tree and delegates to `local-janitor.sh`. |
-| `wiki-session-stop.sh` | Stop | Prompts to refresh the hot cache when the session committed wiki changes. |
-| `wiki-squash-autocommits.sh` | Stop | Squashes the session's trailing run of wiki auto-commits into one. |
+| `wiki-hot-inject.sh` | SessionStart (startup\|resume\|clear\|compact) | Prints `wiki/hot.md` into the session, capped with a truncation notice. |
+| `wiki-session-start.sh` | SessionStart (startup\|resume) | Records HEAD and the wiki dirty-tree baseline for the acting tree, then delegates to `local-janitor.sh`. |
+| `wiki-session-stop.sh` | Stop | Prompts to refresh the hot cache when the session committed or left uncommitted `wiki/` content changes. |
 | `workflow-doctrine-inject.sh` | PostToolUse (Bash, EnterWorktree), SessionStart (startup\|resume\|clear\|compact) | Injects the execution doctrine into a session on a non-default branch or in a linked worktree, once per branch key. |
 | `worthiness-presence-check.sh` | PreToolUse (Bash) | Denies `gh pr merge` when an emergent test the pull request changed carries no worthiness verdict. |
 
@@ -189,11 +187,9 @@ Every **blocking** command-reading hook's `PreToolUse` registration names `Bash|
 
 The wiki sync system is convergent: the user's already-paid-for Claude session does the work via `/gaia-wiki sync`. Hooks only keep Claude _informed_; they never spawn `claude -p` sub-processes. See [[Wiki Sync]] for the full design.
 
-- **`wiki-session-start.sh`** (SessionStart) / **`wiki-session-stop.sh`** (Stop): wiki coherence and `hot.md` refresh. The Stop hook prompts a `hot.md` refresh when the session committed changes under `wiki/`. See [[Claude Integration Conventions]] § Wiki vendor relationship.
+- **`wiki-hot-inject.sh`** (SessionStart, startup|resume|clear|compact): prints the first 4096 bytes of `wiki/hot.md` to stdout so the cache is in context on every session start and after every compaction, with a one-line notice when the file is larger. GAIA owns the `hot.md` load: claude-obsidian 2.x's own SessionStart load stays off because `CLAUDE_OBSIDIAN_SESSION_CONTEXT` is left unset, and its vault discovery fails closed on GAIA's layout. A no-op when `wiki/hot.md` does not exist.
+- **`wiki-session-start.sh`** (SessionStart) / **`wiki-session-stop.sh`** (Stop): wiki coherence and `hot.md` refresh. The start hook records the HEAD commit and a fingerprint of the uncommitted `wiki/` content as the session baseline. The Stop hook prompts a `hot.md` refresh once per run, on either trigger: `wiki/` commits since the session-start HEAD, or uncommitted `wiki/` content that differs from the baseline. `wiki/hot.md`, `wiki/log.md`, `wiki/.state.json`, and `wiki/.obsidian/` are excluded from the uncommitted check, so a tree already dirty at session start stays quiet. No hook commits wiki edits on its own. See [[Claude Integration Conventions]] § Wiki vendor relationship.
 - **`janitor-report-drain.sh`** (UserPromptSubmit): reads and deletes the one-line base-catch-up report `local-janitor.sh` writes when its fast-forward of the base branch is refused, so the line reaches the conversation once. A SessionStart hook's exit-0 stderr is not injected into the conversation, which is why the delivery runs on this event.
-- **`wiki-recompact-sentinel.sh`** (PostCompact): on a context compaction event, drops a sentinel file (`.claude/wiki-recompact-pending`) so the next `UserPromptSubmit` knows to re-inject the hot cache. PostCompact command hooks cannot inject stdout into context directly, so the sentinel hands off to `wiki-recompact-inject.sh`. A no-op when `wiki/hot.md` does not exist.
-- **`wiki-recompact-inject.sh`** (UserPromptSubmit): on the first prompt after a compaction (sentinel present), re-injects `wiki/hot.md` into context via stdout, then removes the sentinel so it fires exactly once per compaction. Replaces the claude-obsidian prompt-type PostCompact hook, which some Claude Code builds reject. A no-op on every prompt where no compaction has occurred.
-- **`wiki-squash-autocommits.sh`** (Stop): folds adjacent `wiki: auto-commit` subjects into a single PR-branch commit. Failed `gh pr create` / `gh pr merge` preserves the working tree (no silent reset).
 
 Wiki drift has no hook: the only drift signal is the `🧠 Run /gaia-wiki` statusline nudge, see [[Wiki Sync]]. `update-deps` and `update-gaia` are surfaced via the **statusline** (not a hook); see [[Claude Skills]] § Statusline update indicators. The statusline surface is chosen over a SessionStart `<system-reminder>` because system-reminders are visible only to the model; passive statusline indicators are visible to the user.
 
