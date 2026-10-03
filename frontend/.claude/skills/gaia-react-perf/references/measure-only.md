@@ -44,14 +44,14 @@ explain this and ask them to narrow to a micro-interaction.
 ## Step 2: Drive and capture
 
 Drive the target interaction in a short Playwright spec using the committed
-Phase-1 capture helper, `.playwright/react-perf/capture.ts`. The diagnosis spec
+Phase-1 capture helper, `frontend/.playwright/react-perf/capture.ts`. The diagnosis spec
 installs the capture, `goto`s the target route, waits for `hydration`, drives the
 micro-interaction, then collects; it passes `{keep: true}` so the raw dump
 survives the Playwright process for the reduce step, and it logs the written
 `rawPath`. Use the template below.
 
-Write a temporary spec under `.playwright/e2e/` (the configured `testDir`), for
-example `.playwright/e2e/react-perf-drive.spec.ts`:
+Write a temporary spec under `frontend/.playwright/e2e/` (the configured `testDir`), for
+example `frontend/.playwright/e2e/react-perf-drive.spec.ts`:
 
 ```ts
 import {expect, test} from '@playwright/test';
@@ -86,7 +86,7 @@ development build, a production build is rejected):
 pnpm pw react-perf-drive
 ```
 
-Read the `RAW_DUMP_PATH=...` line from stdout; that absolute path under
+Read the `RAW_DUMP_PATH=...` line from stdout; that absolute path under the repo-root
 `.gaia/local/cache/<run>/renders.json` is the input to the reduce. Remove the
 temporary spec when the diagnosis (and any verify pass) is done:
 

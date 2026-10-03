@@ -11,13 +11,35 @@
 import type {Page} from '@playwright/test';
 import {build} from 'esbuild';
 import {nanoid} from 'nanoid';
-import {mkdirSync, rmSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, rmSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import type {BippyMeta, RawDump, RawDumpMeta, RenderRecord} from './types';
 
 const CURRENT_MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.resolve(CURRENT_MODULE_DIR, '..', '..');
+
+// Walk up to the ancestor holding .gaia/packages.json rather than a fixed
+// depth: the package sits at frontend/, so a fixed hop lands inside it, where
+// .gaia/local is not gitignored.
+const findRepoRoot = (startDirectory: string): string => {
+  let directory = startDirectory;
+
+  while (!existsSync(path.join(directory, '.gaia', 'packages.json'))) {
+    const parent = path.dirname(directory);
+
+    if (parent === directory) {
+      throw new Error(
+        `react-perf: no .gaia/packages.json above ${startDirectory}`
+      );
+    }
+
+    directory = parent;
+  }
+
+  return directory;
+};
+
+const REPO_ROOT = findRepoRoot(CURRENT_MODULE_DIR);
 const CACHE_ROOT = path.join(REPO_ROOT, '.gaia', 'local', 'cache');
 const HARNESS_ENTRY = path.join(CURRENT_MODULE_DIR, 'harness-entry.ts');
 

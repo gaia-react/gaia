@@ -1,6 +1,7 @@
 import {expect, test} from '@playwright/test';
 import type {Page} from '@playwright/test';
 import {readFileSync} from 'node:fs';
+import path from 'node:path';
 import {collectRenderDump, installRenderCapture} from '../react-perf/capture';
 import type {RawDump} from '../react-perf/types';
 import {hydration} from '../utils';
@@ -10,6 +11,8 @@ import {hydration} from '../utils';
 // flag is false; a bippy/React bump that breaks tag or name resolution flips
 // this and fails loud.
 const CANARY = 'ThemeSwitch';
+
+const repoRoot = path.resolve(import.meta.dirname, '..', '..', '..');
 
 const readDump = (rawPath: string): RawDump =>
   JSON.parse(readFileSync(rawPath, 'utf8')) as RawDump;
@@ -47,8 +50,11 @@ test('captures bippy renders: active, canary resolves name + memo + timing', asy
 
   const result = await collectRenderDump(page);
 
-  // Writes renders.json under .gaia/local/cache/<run>/.
-  expect(result.rawPath).toMatch(/\.gaia\/local\/cache\/[^/]+\/renders\.json$/);
+  // Writes renders.json under the repo-root .gaia/local/cache/<run>/, the
+  // gitignored one; a cache under frontend/ is not ignored.
+  expect(path.relative(repoRoot, result.rawPath)).toMatch(
+    /^\.gaia\/local\/cache\/[^/]+\/renders\.json$/
+  );
   expect(result.recordCount).toBeGreaterThan(0);
 
   // Went active, commits observed, no swallowed errors.

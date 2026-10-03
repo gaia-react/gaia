@@ -14,37 +14,44 @@ const css = readFileSync(
 
 // Collect every --color-primary-N: value declaration.
 // Uses a specific oklch() value pattern to avoid open-ended backtracking.
-const CSS_RE = /--color-primary-(\d+):\s+(oklch\([^)]+\))/g;
-const declarations = [...css.matchAll(CSS_RE)].map(([, shade, value]) => ({
-  shade: Number(shade),
-  value: value.trim(),
-}));
+const primaryColorDeclarationPattern =
+  /--color-primary-(\d+):\s+(oklch\([^)]+\))/g;
+const declarations = [...css.matchAll(primaryColorDeclarationPattern)].map(
+  ([, shade, value]) => ({
+    shade: Number(shade),
+    value: value.trim(),
+  })
+);
 
-const EXPECTED_SHADES = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
+const expectedShades = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
 
 // Hoisted to module scope; reused in every test.each iteration.
-const OKLCH_INNER_RE = /oklch\(([^)]+)\)/i;
+const oklchInnerArgumentsPattern = /oklch\(([^)]+)\)/i;
 
 describe('primary-token', () => {
   test('exactly one primary scale: shades 50-950, 11 values, no duplicates', () => {
-    const shades = declarations.map((d) => d.shade).toSorted((a, b) => a - b);
-    expect(shades).toEqual(EXPECTED_SHADES);
+    const shades = declarations
+      .map((declaration) => declaration.shade)
+      .toSorted((firstShade, secondShade) => firstShade - secondShade);
+    expect(shades).toEqual(expectedShades);
   });
 
   test('no --color-claude-* declarations anywhere in tailwind.css', () => {
     expect(css).not.toMatch(/--color-claude-/);
   });
 
-  test.each(EXPECTED_SHADES)(
+  test.each(expectedShades)(
     '--color-primary-%i has zero chroma (neutral oklch)',
     (shade) => {
-      const decl = declarations.find((d) => d.shade === shade);
+      const declaration = declarations.find(
+        (candidate) => candidate.shade === shade
+      );
       expect(
-        decl,
+        declaration,
         `--color-primary-${shade} declaration not found`
       ).toBeDefined();
 
-      const {value} = decl!;
+      const {value} = declaration!;
 
       expect(
         value,
@@ -54,7 +61,7 @@ describe('primary-token', () => {
       // Extract the inner content of oklch(...) and split on whitespace.
       // args[0]=L, args[1]=C (chroma), args[2]=H
       // Example: "oklch(43.9% 0 0deg)" → inner = "43.9% 0 0deg" → args[1] = "0"
-      const oklchInner = OKLCH_INNER_RE.exec(value);
+      const oklchInner = oklchInnerArgumentsPattern.exec(value);
       expect(
         oklchInner,
         `primary-${shade}: could not parse oklch() inner args`

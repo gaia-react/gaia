@@ -116,12 +116,12 @@ jobs:
         run: |
           set -eu
           # -z, so a non-ASCII path is not C-quoted into a string the ERE below
-          # cannot match: without it a change under app/ can read as no relevant
+          # cannot match: without it a change under frontend/app/ can read as no relevant
           # change at all, and this step reports the required check green having
           # run no tests. `$(...)` discards NUL bytes, so the `tr` must stay
           # inside the substitution; the subshell sets pipefail so a git failure
           # still aborts the step under `set -e` as it did before the pipe.
-          # --no-renames, so a file moved out of app/ lists its old path too:
+          # --no-renames, so a file moved out of frontend/app/ lists its old path too:
           # rename detection reports only the new path, and a move to docs/
           # would read as no relevant change while its importers break.
           changed=$(set -o pipefail; git diff --name-only -z --no-renames "${CHECK_BASE}...HEAD" | tr '\0' '\n')

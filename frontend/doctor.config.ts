@@ -5,8 +5,8 @@
 // react-doctor's config type. The `.ts` extension matches the repo's config
 // convention (vite/knip/playwright/react-router) and is the highest-precedence
 // extension react-doctor resolves, so a stray doctor.config.json/.jsonc can
-// never silently shadow it. A pre-commit hook and the Config Guard workflow
-// both fail if more than one react-doctor config file exists.
+// never silently shadow it. A pre-commit hook fails if more than one
+// react-doctor config file exists.
 
 export default {
   // Dead-code analysis (deslop: unused files/exports/deps) is owned by knip,
