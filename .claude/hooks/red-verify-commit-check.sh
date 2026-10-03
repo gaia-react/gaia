@@ -8,7 +8,7 @@
 # action on a recorded marker keyed to content.
 #
 # The check is a LEDGER LOOKUP + a SIGNAL RECOMPUTE. It never re-runs tests;
-# husky's `test:lint-staged` remains the GREEN confirmation. For each staged
+# the pre-commit hook's (.githooks/pre-commit) `test:lint-staged` remains the GREEN confirmation. For each staged
 # test file that is new/modified at HEAD, it computes the set of CURRENT tests
 # (working-tree content) and the set that existed at HEAD, then demands a
 # matching valid RED only for tests whose fullName is NEW at HEAD. Edits,
@@ -43,7 +43,7 @@
 # Fail-open vs fail-closed (threat model: a cooperative-but-fallible agent):
 #   - git / jq / node unavailable  -> exit 0 (allow). Sibling-hook posture.
 #   - a staged test file the helper cannot parse (mid-edit syntax error)
-#     -> that file is skipped, never denied (husky's GREEN gate and the
+#     -> that file is skipped, never denied (the pre-commit hook's GREEN gate and the
 #        agent's own run surface the syntax error). Fail-open.
 #   - the determinism classifier unavailable or erroring -> the carve-out
 #     does NOT fire; the file falls back to the pre-carve RED demand. This keeps

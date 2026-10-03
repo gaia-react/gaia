@@ -557,21 +557,32 @@ two'
   grep -qF -- 'check.sh' <<<"$output"
 }
 
-# --- the husky surface arms like the run: bodies, not like a script ---------
+# --- the git hooks arm like a script: off until the file's own set -e --------
 
-@test "arms a husky hook with no set -e, because husky runs it under sh -e" {
+@test "does not flag a git hook with no set -e" {
   fixture_repo
-  fixture_file .husky/pre-commit 'out=$(some_command)
+  fixture_file .githooks/pre-commit 'out=$(some_command)
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "flags a git hook once its own set -e has armed errexit" {
+  fixture_repo
+  fixture_file .githooks/pre-commit 'set -e
+out=$(some_command)
 rc=$?
 echo "$rc"'
   run_linter
   [ "$status" -eq 1 ]
-  grep -qF -- '.husky/pre-commit:2:' <<<"$output"
+  grep -qF -- '.githooks/pre-commit:3:' <<<"$output"
 }
 
-@test "a set +e in a husky hook still disarms from that point" {
+@test "a set +e in a git hook still disarms from that point" {
   fixture_repo
-  fixture_file .husky/pre-commit 'set +e
+  fixture_file .githooks/pre-commit 'set -e
+set +e
 out=$(some_command)
 rc=$?
 echo "$rc"'
@@ -579,18 +590,18 @@ echo "$rc"'
   [ "$status" -eq 0 ]
 }
 
-@test "a .sh under .husky is scanned once, not once per overlapping pathspec" {
+@test "a .sh under .githooks is scanned once, not once per overlapping pathspec" {
   fixture_repo
-  fixture_file .husky/helper.sh 'set -e
+  fixture_file .githooks/helper.sh 'set -e
 out=$(some_command)
 rc=$?
 echo "$rc"'
   run_linter
   [ "$status" -eq 1 ]
   # A git pathspec glob crosses `/`, so this file matches BOTH the `*.sh` set and
-  # the `.husky/*` set. Armed by its own `set -e` it would be hit in each pass
+  # the `.githooks/*` set. Armed by its own `set -e` it would be hit in each pass
   # and reported twice, which reads as two defects on one line.
-  [ "$(grep -cF -- '.husky/helper.sh:3:' <<<"$output")" -eq 1 ]
+  [ "$(grep -cF -- '.githooks/helper.sh:3:' <<<"$output")" -eq 1 ]
 }
 
 @test "an ordinary tracked script is still off by default" {
@@ -1120,7 +1131,7 @@ echo done'
 # phrase alone would green whichever precondition happened to fire first. Each
 # assertion below names the set it is about, or it pins the wrong surface.
 #
-# A tree carrying no tracked hook is NOT among them: the husky set is the one
+# A tree carrying no tracked hook is NOT among them: the githooks set is the one
 # this gate reads tolerantly, because a repository legitimately has no hooks.
 
 @test "errors rather than passing when no tracked shell matches" {
@@ -1609,14 +1620,15 @@ rc=$?'
   grep -qF -- 'check.sh:4:' <<<"$output"
 }
 
-@test "follows a continued assignment in a husky hook" {
+@test "follows a continued assignment in a git hook" {
   fixture_repo
-  fixture_file .husky/pre-commit 'out=$(some_command \
+  fixture_file .githooks/pre-commit 'set -e
+out=$(some_command \
   --flag)
 rc=$?'
   run_linter
   [ "$status" -eq 1 ]
-  grep -qF -- '.husky/pre-commit:3:' <<<"$output"
+  grep -qF -- '.githooks/pre-commit:4:' <<<"$output"
 }
 
 @test "follows a continued assignment in a workflow run: body" {
@@ -1786,15 +1798,16 @@ rc=$?'
   grep -qF -- 'check.sh:4: `$?` read after' <<<"$output"
 }
 
-@test "the same in a husky hook" {
+@test "the same in a git hook" {
   fixture_repo
-  fixture_file .husky/pre-commit 'out=$(some_command)
+  fixture_file .githooks/pre-commit 'set -e
+out=$(some_command)
 # gaia-lint-ignore lint-errexit-status-read: waives nothing on this surface
 rc=$?'
   run_linter
   [ "$status" -eq 1 ]
-  grep -qF -- '.husky/pre-commit:3: gaia-lint-ignore is honored only in *.bats' <<<"$output"
-  grep -qF -- '.husky/pre-commit:3: `$?` read after' <<<"$output"
+  grep -qF -- '.githooks/pre-commit:4: gaia-lint-ignore is honored only in *.bats' <<<"$output"
+  grep -qF -- '.githooks/pre-commit:4: `$?` read after' <<<"$output"
 }
 
 @test "the same in a workflow run: body" {

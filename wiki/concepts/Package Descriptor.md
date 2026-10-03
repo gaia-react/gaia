@@ -8,7 +8,7 @@ tags: [concept, monorepo, guards, claude]
 
 # Package Descriptor
 
-GAIA is a monorepo: the harness (`.claude/`, `.gaia/`, `.husky/`, `.github/`, `wiki/`) lives at the repo root and the React app lives in a package folder, `frontend/`. Two JSON files tell the harness where a package is and which of its paths each guard cares about, so no guard hardcodes `app/` or `frontend/`.
+GAIA is a monorepo: the harness (`.claude/`, `.gaia/`, `.githooks/`, `.github/`, `wiki/`) lives at the repo root and the React app lives in a package folder, `frontend/`. Two JSON files tell the harness where a package is and which of its paths each guard cares about, so no guard hardcodes `app/` or `frontend/`.
 
 ## The two files
 

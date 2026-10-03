@@ -74,4 +74,4 @@ The verdicts come from the `gaia update merge-workspace` CLI primitive, which pa
 
 This page. Mechanics: `package.json`, `.npmrc`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `Dockerfile`, `.github/workflows/tests.yml`, `.github/workflows/chromatic.yml`. Bootstrap: `.claude/commands/gaia-init.md` Step 0. Migration tooling: `.claude/skills/update-deps/SKILL.md` (release-age selection implemented in the CLI binary). Field-aware workspace merge: `.claude/skills/update-gaia/references/merge-execution.md` (Step 7b); the merge is driven by the `gaia update merge-workspace` CLI primitive.
 
-See [[Quality Gate]], [[Husky]], [[Vitest]], [[Playwright]].
+See [[Quality Gate]], [[Pre-commit Hooks]], [[lint-staged]], [[Vitest]], [[Playwright]].

@@ -1,10 +1,10 @@
 #!/usr/bin/env bats
-# .gaia/scripts/precommit-packages.sh: the plan helper behind .husky/pre-commit.
+# .gaia/scripts/precommit-packages.sh: the plan helper behind .githooks/pre-commit.
 #
 # The helper reads the staged set and prints one record per line. These tests
 # drive it directly in a sandbox repo, so each plan is asserted as data. The
 # hook that acts on the plan is covered end to end by
-# .gaia/tests/hooks/husky-pre-commit.bats.
+# .gaia/tests/hooks/githooks-pre-commit.bats.
 #
 # The registry and descriptors are written literally into the sandbox; the live
 # files are never copied. Assertion style per .claude/rules/bats-assertions.md.

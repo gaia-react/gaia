@@ -1451,14 +1451,14 @@ describe('update-deps run: frontend package root', () => {
     writeFileSync(
       path.join(root, 'package.json'),
       JSON.stringify({
-        devDependencies: {husky: '~9.1.0'},
+        devDependencies: {'lint-staged': '~17.6.0'},
         name: 'root',
       }),
       'utf8'
     );
     const runner = makePnpmRunner({
       foo: {current: '1.2.3', latest: '1.3.0', wanted: '1.3.0'},
-      husky: {current: '9.1.0', latest: '9.1.7', wanted: '9.1.7'},
+      'lint-staged': {current: '17.6.0', latest: '17.6.2', wanted: '17.6.2'},
     });
     const result = computeUpdates({
       cwd: root,
@@ -1471,13 +1471,13 @@ describe('update-deps run: frontend package root', () => {
     });
     const names = result.wave_a.map((entry) => entry.name);
 
-    expect(names).toEqual(['foo', 'husky']);
+    expect(names).toEqual(['foo', 'lint-staged']);
     expect(result.wave_a.filter((entry) => entry.name === 'foo')).toHaveLength(
       1
     );
-    // The spec comes from the root manifest: `~9.1.0` is not pinned.
+    // The spec comes from the root manifest: `~17.6.0` is not pinned.
     expect(
-      result.wave_a.find((entry) => entry.name === 'husky')?.is_pinned
+      result.wave_a.find((entry) => entry.name === 'lint-staged')?.is_pinned
     ).toBe(false);
     expect(result.total_count).toBe(2);
   });
