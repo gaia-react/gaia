@@ -26,7 +26,7 @@ setup() {
   alf_fill f.txt 12 feature
   alf_commit "feature"
   RUN_FOLDER="$ALF_ROOT/.gaia/local/runs/$ALF_NORMALIZED_BRANCH"
-  SNAPSHOT_DIRECTORY="$ALF_ROOT/.gaia/local/audit-loop/$ALF_NORMALIZED_BRANCH.d"
+  SNAPSHOT_DIRECTORY="$ALF_ROOT/.gaia/local/protected/audit-loop/$ALF_NORMALIZED_BRANCH.d"
   mkdir -p "$RUN_FOLDER"
   # f.txt:1 authored Critical, :2 security Suggestion, :3 Important,
   # base.txt:3 Critical outside the branch diff, :4 cross-remit Important,

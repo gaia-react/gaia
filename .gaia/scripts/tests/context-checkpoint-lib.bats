@@ -16,12 +16,12 @@ setup() {
   # shellcheck source=/dev/null
   . "$LIBRARY_DIRECTORY/context-checkpoint-lib.sh"
   MAIN="$BATS_TEST_TMPDIR/main"
-  mkdir -p "$MAIN/.gaia/local"
+  mkdir -p "$MAIN/.gaia/local/protected"
   SESSION_ID="12345678-1234-1234-1234-123456789abc"
 }
 
 write_settings() {
-  printf '%s\n' "$1" >"$MAIN/.gaia/local/checkpoint-override.json"
+  printf '%s\n' "$1" >"$MAIN/.gaia/local/protected/checkpoint-override.json"
 }
 
 context_file() {
@@ -85,6 +85,45 @@ context_json() {
 
 @test "override: no file reads the defaults" {
   run gaia_context_override "$MAIN"
+  [ "$output" = "300000 50" ]
+}
+
+# write_old_override <json>: a file at the retired location, which nothing reads.
+old_override_file() { printf '%s/.gaia/local/checkpoint-override.json\n' "$MAIN"; }
+
+write_old_override() {
+  printf '%s\n' "$1" >"$(old_override_file)"
+}
+
+@test "override: a file only at the retired location reads the defaults" {
+  write_old_override '{"version":1,"context_checkpoint":{"ask_tokens":100000}}'
+  run gaia_context_override "$MAIN"
+  [ "$output" = "300000 50" ]
+}
+
+@test "override: a file only at protected/checkpoint-override.json is honoured" {
+  write_settings '{"version":1,"context_checkpoint":{"ask_tokens":150000}}'
+  run gaia_context_override "$MAIN"
+  [ "$output" = "150000 50" ]
+}
+
+@test "override: with files at both locations only the protected one counts" {
+  write_old_override '{"version":1,"context_checkpoint":{"ask_tokens":100000}}'
+  write_settings '{"version":1,"context_checkpoint":{"ask_tokens":150000}}'
+  run gaia_context_override "$MAIN"
+  [ "$output" = "150000 50" ]
+}
+
+@test "red twin: a library reading the retired location honours the old file and ignores the new one" {
+  mkdir -p "$BATS_TEST_TMPDIR/oldlib"
+  sed 's#local/protected/checkpoint#local/checkpoint#' "$LIBRARY_DIRECTORY/context-checkpoint-lib.sh" >"$BATS_TEST_TMPDIR/oldlib/context-checkpoint-lib.sh"
+  grep -qF 'local/protected/checkpoint' "$BATS_TEST_TMPDIR/oldlib/context-checkpoint-lib.sh" && return 1
+  write_old_override '{"version":1,"context_checkpoint":{"ask_tokens":100000}}'
+  run bash -c '. "$1" && gaia_context_override "$2"' _ "$BATS_TEST_TMPDIR/oldlib/context-checkpoint-lib.sh" "$MAIN"
+  [ "$output" = "100000 50" ]
+  rm -f "$(old_override_file)"
+  write_settings '{"version":1,"context_checkpoint":{"ask_tokens":150000}}'
+  run bash -c '. "$1" && gaia_context_override "$2"' _ "$BATS_TEST_TMPDIR/oldlib/context-checkpoint-lib.sh" "$MAIN"
   [ "$output" = "300000 50" ]
 }
 

@@ -98,12 +98,12 @@ gaia_loop_key() {
 
 # gaia_loop_state_file <main-root> <B>: the branch state path (C1).
 gaia_loop_state_file() {
-  printf '%s/.gaia/local/audit-loop/%s.json\n' "$1" "$2"
+  printf '%s/.gaia/local/protected/audit-loop/%s.json\n' "$1" "$2"
 }
 
 # gaia_loop_stamp_file <main-root> <B> <r>: the round-r dispatch stamp.
 gaia_loop_stamp_file() {
-  printf '%s/.gaia/local/audit-loop/%s.d/round-%s.stamp\n' "$1" "$2" "$3"
+  printf '%s/.gaia/local/protected/audit-loop/%s.d/round-%s.stamp\n' "$1" "$2" "$3"
 }
 
 # gaia_loop_run_directory <main-root> <B>: the execution run folder for B.

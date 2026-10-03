@@ -212,13 +212,23 @@ allowed() { gaia_loop_allowed "$(cat "$ALF_STATE")"; }
   [ "$(allowed)" = 15 ]
 }
 
+@test "a recorded grant lands in the state file under protected/audit-loop and the old state directory stays absent" {
+  local OLD_STATE_DIRECTORY="$ALF_ROOT/.gaia/local/audit-loop"
+  seed_pending
+  send 'audit-grant 2'
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.allowance.answers[0] | "\(.kind) \(.n)"' "$ALF_ROOT/.gaia/local/protected/audit-loop/feat/grant.json")" = "grant 2" ]
+  [ -e "$OLD_STATE_DIRECTORY" ] && return 1
+  true
+}
+
 @test "a branch with no pending checkpoint records nothing and says none is pending" {
   seed_pending
   alf_git checkout -q -b feat/other main
   snapshot
   send 'audit-grant 2' "$ALF_ROOT" s2
   [ "$status" -eq 0 ]
-  cp "$ALF_ROOT/.gaia/local/audit-loop/feat/grant.json" "$BATS_TEST_TMPDIR/after.json"
+  cp "$ALF_ROOT/.gaia/local/protected/audit-loop/feat/grant.json" "$BATS_TEST_TMPDIR/after.json"
   [ "$(jq '.allowance.answers | length' "$BATS_TEST_TMPDIR/after.json")" -eq 0 ]
   printf '%s' "$output" | grep -qF 'no audit checkpoint is pending on branch feat/other for this session'
 }
@@ -304,14 +314,14 @@ Accept (type exactly as the whole prompt): $(gaia_loop_accept_line)"
 
 @test "two pending checkpoints with the same session id record nothing" {
   seed_pending
-  jq '.key = "branch:feat/second" | .branch = "feat/second"' "$ALF_STATE" >"$ALF_ROOT/.gaia/local/audit-loop/feat/second.json"
+  jq '.key = "branch:feat/second" | .branch = "feat/second"' "$ALF_STATE" >"$ALF_ROOT/.gaia/local/protected/audit-loop/feat/second.json"
   alf_git checkout -q main
   snapshot
-  cp "$ALF_ROOT/.gaia/local/audit-loop/feat/second.json" "$BATS_TEST_TMPDIR/second-before.json"
+  cp "$ALF_ROOT/.gaia/local/protected/audit-loop/feat/second.json" "$BATS_TEST_TMPDIR/second-before.json"
   send 'audit-grant 2' "$ALF_ROOT" s1
   [ "$status" -eq 0 ]
   unchanged
-  cmp -s "$BATS_TEST_TMPDIR/second-before.json" "$ALF_ROOT/.gaia/local/audit-loop/feat/second.json"
+  cmp -s "$BATS_TEST_TMPDIR/second-before.json" "$ALF_ROOT/.gaia/local/protected/audit-loop/feat/second.json"
   printf '%s' "$output" | grep -qF 'no audit checkpoint is pending'
 }
 

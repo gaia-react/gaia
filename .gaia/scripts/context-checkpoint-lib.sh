@@ -11,7 +11,7 @@
 # Does not own: the round count, the grant size or the rubric defaults; those
 # stay in audit-loop-eval.sh.
 #
-# Override rule. An optional machine-local file, <main>/.gaia/local/checkpoint-override.json,
+# Override rule. An optional machine-local file, <main>/.gaia/local/protected/checkpoint-override.json,
 # may LOWER the line, for example {"version":1,"context_checkpoint":{"ask_tokens":100000}}
 # (ask_tokens, ask_window_pct; version 1 is required). It can never raise it: an
 # absent, invalid, out-of-range or raised value reads as the shipped default.
@@ -63,7 +63,7 @@ gaia_context_file() {
 # gaia_context_override <main-root>: print "<ask_tokens> <ask_window_pct>". Each
 # field is honoured only as a JSON integer in 1..default; version must be 1.
 gaia_context_override() {
-  local file="${1:-}/.gaia/local/checkpoint-override.json" override_values
+  local file="${1:-}/.gaia/local/protected/checkpoint-override.json" override_values
   local default_tokens="$GAIA_CONTEXT_ASK_TOKENS_DEFAULT" default_percent="$GAIA_CONTEXT_ASK_WINDOW_PERCENT_DEFAULT"
   if [ -f "$file" ] && command -v jq >/dev/null 2>&1; then
     override_values=$(jq -r --argjson default_tokens "$default_tokens" --argjson default_percent "$default_percent" '
