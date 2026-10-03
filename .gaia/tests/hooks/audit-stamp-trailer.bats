@@ -189,10 +189,10 @@ write_refusal() {
 # code-audit-maintainer-shell (.gaia/**/*.sh) against the seeded roster.
 commit_mixed_diff() {
   git -C "$REPO" checkout --quiet -b feature
-  mkdir -p "$REPO/app" "$REPO/.gaia/scripts"
-  echo "export const x = 1;" > "$REPO/app/x.ts"
+  mkdir -p "$REPO/frontend/app" "$REPO/.gaia/scripts"
+  echo "export const x = 1;" > "$REPO/frontend/app/x.ts"
   echo "#!/bin/bash" > "$REPO/.gaia/scripts/example.sh"
-  git -C "$REPO" add app/x.ts .gaia/scripts/example.sh
+  git -C "$REPO" add frontend/app/x.ts .gaia/scripts/example.sh
   git -C "$REPO" commit --quiet -m "mixed change"
 }
 
@@ -737,9 +737,11 @@ EOF
 install_chore_deps_predicate() {
   local source_script_path
   source_script_path="$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/chore-deps-skip.sh"
-  mkdir -p "$REPO/.gaia/scripts"
+  mkdir -p "$REPO/.gaia/scripts" "$REPO/.claude/hooks/lib"
   cp "$source_script_path" "$REPO/.gaia/scripts/chore-deps-skip.sh"
-  git -C "$REPO" add .gaia/scripts/chore-deps-skip.sh
+  # The predicate reads the package registry through this library.
+  cp "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib/gaia-packages.sh" "$REPO/.claude/hooks/lib/gaia-packages.sh"
+  git -C "$REPO" add .gaia/scripts/chore-deps-skip.sh .claude/hooks/lib/gaia-packages.sh
   git -C "$REPO" commit --quiet -m "install chore(deps) predicate"
 }
 
@@ -852,7 +854,7 @@ run_waiver_case() {
   install_resolver
   install_chore_deps_predicate
   commit_mixed_diff
-  install_title_stub "chore(deps): bump vite to 8.3.0" "package.json" "app/x.ts"
+  install_title_stub "chore(deps): bump vite to 8.3.0" "package.json" "frontend/app/x.ts"
 
   run_waiver_case
 
@@ -873,8 +875,8 @@ run_waiver_case() {
   # A further un-pushed commit changes HEAD's tree, so the pushed sha the
   # stubbed PR record answers with (below) no longer describes the content
   # being stamped now.
-  echo "export const y = 2;" > "$REPO/app/y.ts"
-  git -C "$REPO" add app/y.ts
+  echo "export const y = 2;" > "$REPO/frontend/app/y.ts"
+  git -C "$REPO" add frontend/app/y.ts
   git -C "$REPO" commit --quiet -m "further un-pushed change"
   before_sha=$(git -C "$REPO" rev-parse HEAD)
   before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")

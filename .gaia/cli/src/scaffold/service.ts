@@ -28,6 +28,7 @@ import {structuredError} from '../stderr.js';
 import {lookupOwn} from '../util/argv.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {ensureDir, writeFileIfAbsent} from './fs.js';
+import {resolveScaffoldTarget} from './resolve-target.js';
 import {renderTemplate} from './template.js';
 import type {TemplateVars} from './template.js';
 import type {ScaffoldResult} from './types.js';
@@ -798,10 +799,22 @@ const emitMockFiles = (context: EmitContext, result: ScaffoldResult): void => {
   }
 };
 
+const printResult = (result: ScaffoldResult, json: boolean): void => {
+  if (json) {
+    process.stdout.write(`${JSON.stringify(result)}\n`);
+
+    return;
+  }
+
+  for (const created of result.written) process.stdout.write(`+ ${created}\n`);
+  for (const edited of result.edited) process.stdout.write(`~ ${edited}\n`);
+  for (const skipped of result.skipped) process.stdout.write(`= ${skipped}\n`);
+};
+
 // Public entry
 
 export type ServiceRunOptions = {
-  /** Override repo root; tests pass a sandbox dir. Defaults to `process.cwd()`. */
+  /** Directory the command runs in; tests pass a sandbox dir. Defaults to `process.cwd()`. The package root comes from the registry. */
   cwd?: string;
 };
 
@@ -821,7 +834,13 @@ export const run = (
     return userError(parsed.error, 'scaffold service');
   }
 
-  const repoRoot = options.cwd ?? process.cwd();
+  const target = resolveScaffoldTarget(
+    options.cwd ?? process.cwd(),
+    'scaffold service'
+  );
+
+  if (target === undefined) return EXIT_CODES.CONFIG_INVALID;
+  const repoRoot = target.packageDir;
   const resolved = resolveLayer(repoRoot, parsed.layer);
 
   if ('error' in resolved) {
@@ -851,15 +870,7 @@ export const run = (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  if (parsed.json) {
-    process.stdout.write(`${JSON.stringify(result)}\n`);
-  } else {
-    for (const created of result.written)
-      process.stdout.write(`+ ${created}\n`);
-    for (const edited of result.edited) process.stdout.write(`~ ${edited}\n`);
-    for (const skipped of result.skipped)
-      process.stdout.write(`= ${skipped}\n`);
-  }
+  printResult(result, parsed.json);
 
   return EXIT_CODES.OK;
 };

@@ -488,7 +488,7 @@ run_library() {
     run_helper "$f"
     [ "$status" -eq 0 ]
     if [ -n "$output" ]; then
-      # .playwright/e2e/legal-a11y.spec.ts emits zero records; a "same number
+      # frontend/.playwright/e2e/legal-a11y.spec.ts emits zero records; a "same number
       # of records" clause over it is satisfied by 0 == 0 and carries no
       # weight on its own.
       duplicate_signals=$(printf '%s\n' "$output" | jq -r .signal | sort | uniq -d)
@@ -497,9 +497,9 @@ run_library() {
       record_count=$((record_count + file_record_count))
       printf '%s\n' "$output" >> "$corpus"
     fi
-  done < <(git -C "$REPO_ROOT" ls-files -z 'app/**/*.test.ts' 'app/**/*.test.tsx' \
-    '.playwright/**/*.spec.ts' '.playwright/**/*.spec.tsx' \
-    '.playwright/**/*.test.ts' '.playwright/**/*.test.tsx')
+  done < <(git -C "$REPO_ROOT" ls-files -z 'frontend/app/**/*.test.ts' 'frontend/app/**/*.test.tsx' \
+    'frontend/.playwright/**/*.spec.ts' 'frontend/.playwright/**/*.spec.tsx' \
+    'frontend/.playwright/**/*.test.ts' 'frontend/.playwright/**/*.test.tsx')
 
   # Refresh both by re-running the git ls-files command above and summing the
   # helper's output line count across the result. Re-derive rather than

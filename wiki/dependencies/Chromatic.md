@@ -4,7 +4,7 @@ status: active
 package: chromatic
 role: visual-regression
 created: 2026-04-20
-updated: 2026-07-07
+updated: 2026-10-03
 tags: [dependency, testing, visual]
 ---
 
@@ -29,7 +29,7 @@ The `.github/workflows/chromatic.yml` workflow triggers on every `push` but does
 
 ## Preview publishes no environment values
 
-Before uploading, the workflow builds Storybook once with sentinel values standing in for every key `app/env.server.ts`'s `schema` declares except `NODE_ENV` (which needs its real value for the build itself), then fails if any sentinel survives into `storybook-static/`. The published preview is a static Vite artifact with no build-time `define` substitution wired to it, so this step asserts that fact directly rather than trusting it never regresses: a substitution re-added to any Storybook config or plugin that inlined an env value would fail the build instead of silently shipping a secret- or deployment-value-carrying preview.
+Before uploading, the workflow builds Storybook once with sentinel values standing in for every key `frontend/app/env.server.ts`'s `schema` declares except `NODE_ENV` (which needs its real value for the build itself), then fails if any sentinel survives into `storybook-static/`. The published preview is a static Vite artifact with no build-time `define` substitution wired to it, so this step asserts that fact directly rather than trusting it never regresses: a substitution re-added to any Storybook config or plugin that inlined an env value would fail the build instead of silently shipping a secret- or deployment-value-carrying preview.
 
 ## Opt-out
 

@@ -2,7 +2,7 @@
 type: flow
 status: active
 created: 2026-04-20
-updated: 2026-09-29
+updated: 2026-10-03
 tags: [flow, forms, conform, zod]
 ---
 
@@ -20,12 +20,12 @@ The end-to-end path of a form submission in the app.
    const submission = parseWithZod(formData, {schema});
    if (submission.status !== 'success') return submission.reply();
    ```
-5. On success, action does the work (call API via `app/services/`), then either:
+5. On success, action does the work (call API via `frontend/app/services/`), then either:
    - Returns `redirect(...)` for a navigation
    - Returns `dataWithToast(...)` from `remix-toast` for an inline toast
 6. Conform binds errors back to fields automatically.
 
-This is the recommended template pattern. No shipped route action implements it; the live working examples are the `InputEmail`, `InputPassword`, and `YearMonthDay` Storybook stories under `app/components/Form/`. The shipped route actions (`app/routes/actions.set-language.ts`, `app/routes/resources.theme-switch.tsx`) validate with plain `z.safeParse` rather than `parseWithZod`/`submission.reply()`.
+This is the recommended template pattern. No shipped route action implements it; the live working examples are the `InputEmail`, `InputPassword`, and `YearMonthDay` Storybook stories under `frontend/app/components/Form/`. The shipped route actions (`frontend/app/routes/actions.set-language.ts`, `frontend/app/routes/resources.theme-switch.tsx`) validate with plain `z.safeParse` rather than `parseWithZod`/`submission.reply()`.
 
 ## Stateful custom inputs
 

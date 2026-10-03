@@ -48,7 +48,7 @@ A structured `malformed_snapshot` error on stderr means the prior review snapsho
       "finding_class": "rule/use-effect-derived-state",
       "distinct_pr_count": 4,
       "pr_numbers": [311, 314, 318, 320],
-      "area_tags": ["app/components"],
+      "area_tags": ["frontend/app/components"],
       "severity_max": "warning",
       "is_oracle": false
     }
@@ -56,7 +56,7 @@ A structured `malformed_snapshot` error on stderr means the prior review snapsho
   "unclassified": {
     "distinct_pr_count": 3,
     "pr_numbers": [401, 405, 409],
-    "area_tags": ["app/routes"],
+    "area_tags": ["frontend/app/routes"],
     "severity_max": "suggestion"
   },
   "audited_pr_count": 400,
@@ -181,7 +181,7 @@ Accepting a recommended decline or defer is a decision, the same as choosing it 
 
 ### approve, prose rule
 
-Draft the rule file into the working tree using the template below. The rule is MANDATORILY path-scoped: a `paths:` frontmatter glob is always present, derived from the candidate's `area_tags`. When `area_tags` is empty or holds non-path strings (holistic classes often carry semantic tags, not path globs), fall back: derive the glob from the finding's bucket/surface (e.g. a `rule/*` React class scopes to `app/**/*`) or ask the human for the intended scope. Never write a frontmatter-less / always-loaded rule, and never emit an unscoped `**/*` glob, that defeats the path-scoping invariant that bounds per-task context weight. Immediately after the frontmatter, write the provenance marker verbatim (see the frozen marker below). Then write present-tense body prose describing the anti-pattern and the correct pattern.
+Draft the rule file into the working tree using the template below. The rule is MANDATORILY path-scoped: a `paths:` frontmatter glob is always present, derived from the candidate's `area_tags`. When `area_tags` is empty or holds non-path strings (holistic classes often carry semantic tags, not path globs), fall back: derive the glob from the finding's bucket/surface (e.g. a `rule/*` React class scopes to `frontend/app/**/*`) or ask the human for the intended scope. Never write a frontmatter-less / always-loaded rule, and never emit an unscoped `**/*` glob, that defeats the path-scoping invariant that bounds per-task context weight. Immediately after the frontmatter, write the provenance marker verbatim (see the frozen marker below). Then write present-tense body prose describing the anti-pattern and the correct pattern.
 
 After writing, tell the engineer the rule is in the working tree. Do not commit or PR here; the end-of-run publish step handles that (`## Publish approved changes (end of run)`).
 
@@ -231,7 +231,7 @@ Write to `.claude/rules/<slug>.md`, where `<slug>` is a short kebab-case name de
 ```markdown
 ---
 paths:
-  - '<glob derived from area_tags, e.g. app/components/**/*>'
+  - '<glob derived from area_tags, e.g. frontend/app/components/**/*>'
 ---
 <!-- gaia-harden: promoted from recurring finding_class <class>; pruned by /gaia-audit on obsolescence/redundancy/supersession/duplication only, never for non-recurrence -->
 
@@ -250,7 +250,7 @@ paths:
 
 Rules for filling it in:
 
-- **`paths:` is mandatory.** Derive the glob from the candidate's `area_tags` (e.g. an `area_tags` of `["app/components"]` becomes `app/components/**/*`). When `area_tags` is empty or holds non-path strings, fall back: derive the glob from the finding's bucket/surface (e.g. a `rule/*` React class scopes to `app/**/*`) or ask the human for the intended scope. One or more single-quoted globs, one per line. A rule with no `paths:` frontmatter is never produced, and an unscoped `**/*` glob is never emitted; path-scoping is what bounds per-task context weight regardless of how many promoted rules accumulate.
+- **`paths:` is mandatory.** Derive the glob from the candidate's `area_tags` (e.g. an `area_tags` of `["frontend/app/components"]` becomes `frontend/app/components/**/*`; the rule file lives in the root `.claude/rules/`, whose globs anchor at the repository root, so the glob keeps the `frontend/` prefix). When `area_tags` is empty or holds non-path strings, fall back: derive the glob from the finding's bucket/surface (e.g. a `rule/*` React class scopes to `frontend/app/**/*`) or ask the human for the intended scope. One or more single-quoted globs, one per line. A rule with no `paths:` frontmatter is never produced, and an unscoped `**/*` glob is never emitted; path-scoping is what bounds per-task context weight regardless of how many promoted rules accumulate.
 - **The provenance marker is verbatim and single-line**, placed immediately after the closing `---` of the frontmatter, with `<class>` replaced by the actual finding_class. It references the `finding_class`, never a SPEC or UAT id.
 - **Body prose is present tense** and follows `.claude/rules/wiki-style.md`, which carries the authoritative ban list. Use repo-relative paths only.
 - **Verify every path, script, and owner the rule cites before writing it.** Open each file and confirm it holds what the sentence says it holds. A rule that names the wrong owner teaches the wrong thing, and fixing it after the audit costs a whole extra round.

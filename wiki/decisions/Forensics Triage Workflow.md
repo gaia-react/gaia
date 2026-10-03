@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-05-08
 created: 2026-05-08
-updated: 2026-06-24
+updated: 2026-10-03
 tags: [decision, ci, automation, security]
 ---
 
@@ -57,7 +57,7 @@ Default-deny. Any path in neither list below is denylisted by default; allowlist
 
 | Path                                  | Notes                                                                   |
 | ------------------------------------- | ----------------------------------------------------------------------- |
-| `app/`                                | Application source.                                                     |
+| `frontend/app/`                                | Application source.                                                     |
 | `wiki/`                               | Knowledge base; human-curated.                                          |
 | `studio/`                             | Private strategy vault; human-curated.                                  |
 | `website/`                            | Marketing/docs site; human-curated.                                     |

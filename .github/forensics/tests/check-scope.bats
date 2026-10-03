@@ -12,7 +12,7 @@ setup() {
 # --- exit-code contract ----------------------------------------------------
 
 @test "exit code is always 0 (consumer reads ok from JSON)" {
-  run "$SCRIPT" app/foo.ts
+  run "$SCRIPT" frontend/app/foo.ts
   [ "$status" -eq 0 ]
   run "$SCRIPT" .gaia/cli/foo.sh
   [ "$status" -eq 0 ]
@@ -64,9 +64,14 @@ setup() {
 
 # --- denylist hits ---------------------------------------------------------
 
-@test "denylist: app/" {
+@test "denylist: frontend/app/" {
+  run "$SCRIPT" frontend/app/foo.ts
+  [ "$output" = '{"ok":false,"allowed":[],"denied":[{"path":"frontend/app/foo.ts","reason":"denylist"}]}' ]
+}
+
+@test "retired root app/ is no longer denylisted (default-deny, not allowed)" {
   run "$SCRIPT" app/foo.ts
-  [ "$output" = '{"ok":false,"allowed":[],"denied":[{"path":"app/foo.ts","reason":"denylist"}]}' ]
+  [ "$output" = '{"ok":false,"allowed":[],"denied":[{"path":"app/foo.ts","reason":"default-deny-unenumerated"}]}' ]
 }
 
 @test "denylist: wiki/" {
@@ -145,8 +150,8 @@ setup() {
 }
 
 @test "multi: any-deny flips ok:false; allowed/denied partition the input" {
-  run "$SCRIPT" .gaia/cli/foo.sh app/bar.ts package.json
-  [ "$output" = '{"ok":false,"allowed":[".gaia/cli/foo.sh"],"denied":[{"path":"app/bar.ts","reason":"denylist"},{"path":"package.json","reason":"default-deny-unenumerated"}]}' ]
+  run "$SCRIPT" .gaia/cli/foo.sh frontend/app/bar.ts package.json
+  [ "$output" = '{"ok":false,"allowed":[".gaia/cli/foo.sh"],"denied":[{"path":"frontend/app/bar.ts","reason":"denylist"},{"path":"package.json","reason":"default-deny-unenumerated"}]}' ]
 }
 
 @test "multi: deny reasons are recorded per-path (mixed denylist + default-deny)" {

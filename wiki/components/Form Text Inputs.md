@@ -1,6 +1,6 @@
 ---
 type: component
-path: app/components/Form/{InputText,InputEmail,InputPassword,TextArea}/
+path: frontend/app/components/Form/{InputText,InputEmail,InputPassword,TextArea}/
 status: active
 language: typescript
 purpose: Text-family form inputs: text, email, password, textarea

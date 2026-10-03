@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-06-23
 created: 2026-06-23
-updated: 2026-08-12
+updated: 2026-10-03
 tags: [decision, tdd, testing, audit, merge, quality]
 ---
 
@@ -77,9 +77,9 @@ block every unrelated merge.
 
 Emergent membership is decided by the [[Determinism Classifier]]
 (`.gaia/scripts/classifier/classify-determinism.mjs`), not a second hand-rolled
-classifier. A changed test file under `app/components/**` or `.playwright/**`
-whose classifier verdict is `emergent` is in scope; a `.ts` test under
-`app/components/**` that the classifier proves deterministic is RED-gated by the
+classifier. A changed test file that a package's `emergentTests` globs name ([[Package Descriptor]])
+and whose classifier verdict is `emergent` is in scope; a `.ts` component test
+that the classifier proves deterministic is RED-gated by the
 [[TDD RED Verification]] gate, not worthiness-gated, and is excluded.
 
 When zero emergent test files changed, the gate is a no-op and allows the merge.

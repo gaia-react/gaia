@@ -11,8 +11,8 @@ The forensics classifier uses a closed set of eight classes. Every report carrie
 | wiki-sync    | `/gaia-wiki sync`                                                | "wiki-sync", "sync", "wiki commit"                                   | `wiki/.state.json`, `wiki/log.md` last entry                          |
 | quality-gate | `pnpm typecheck && pnpm lint` failure during a GAIA flow         | "quality gate", "typecheck", "lint failed"                           | `wiki/decisions/Quality Gate.md`, the failing command output verbatim |
 | hook         | `.claude/hooks/*.sh` misfire                                     | "hook", "PreToolUse", "PostToolUse", "session-start", "session-stop" | `.claude/settings.json`, `.claude/hooks/<failing>.sh` filename only   |
-| scaffold     | `new-component` / `new-route` / `new-hook` / `new-service` skill | "scaffold", "new-component", "skeleton", "template"                  | `.claude/skills/<failing>/SKILL.md`                                   |
-| dev-server   | `pnpm dev` / Vite / SSR boot                                     | "dev server", "vite", "5173", "SSR error"                            | `vite.config.ts` filename, `package.json` `scripts.dev`               |
+| scaffold     | `new-component` / `new-route` / `new-hook` / `new-service` skill | "scaffold", "new-component", "skeleton", "template"                  | `frontend/.claude/skills/<failing>/SKILL.md`                          |
+| dev-server   | `pnpm dev` / Vite / SSR boot                                     | "dev server", "vite", "5173", "SSR error"                            | `frontend/vite.config.ts` filename, `package.json` `scripts.dev`               |
 | other        | unknown / multi-class / novel                                    | (none, fallthrough)                                                  | (none, capture is the generic snapshot only)                          |
 
 State files are advisory pointers to class-specific evidence. For per-class capture details and version-fetch primitives, see `capture.md` in this directory.
@@ -41,7 +41,7 @@ evidence: <verbatim user phrase> + <named state file>
 
 Three sub-cases:
 
-- **Phrase and state file both apply:** `evidence: "scaffold failed" + .claude/skills/new-component/SKILL.md`
+- **Phrase and state file both apply:** `evidence: "scaffold failed" + frontend/.claude/skills/new-component/SKILL.md`
 - **Phrase only (no state file inspected):** `evidence: "merge conflict"`
 - **State file only (no specific user phrase, but a captured file pointed at the class):** `evidence: (no user phrase) + wiki/.state.json`
 - **`other`:** `evidence: no taxonomy class matched`

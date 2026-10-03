@@ -6,19 +6,22 @@
 #
 # Reads the GAIA SPEC artifact's frontmatter, extracts every UAT-NNN with its
 # given/when/then prose, renders one Playwright spec file per UAT under
-# .playwright/e2e/<spec-id-lowercase>/, and writes a JSON summary to stdout
+# <package>/.playwright/e2e/<spec-id-lowercase>/ (the package named `frontend`
+# in .gaia/packages.json, `frontend/` when the registry is absent, the repo
+# root when that package's path is `.`), and writes a JSON summary to stdout
 # (mirrored to .gaia/local/cache/uat-write/<SPEC-ID>.json).
 #
 # Exit codes:
 #   0  - success; stdout is a JSON object with ok:true
 #   1  - operational failure (template missing, write permission denied, etc.);
-#        stdout is {"ok": false, "error": "..."}
+#        stdout is {"ok": false, "error": "..."}; a package registry or
+#        descriptor that cannot be read is one, and nothing is written
 #   2  - usage error (no spec path / spec missing / malformed frontmatter);
 #        stderr message, no stdout
 #
 # Side effects (success path):
-#   - Writes .playwright/e2e/<spec-id-lc>/uat-<nnn>.spec.ts for every UAT in
-#     the SPEC (action: written | rewritten | unchanged).
+#   - Writes <package>/.playwright/e2e/<spec-id-lc>/uat-<nnn>.spec.ts for every
+#     UAT in the SPEC (action: written | rewritten | unchanged).
 #   - Hard-deletes any existing uat-*.spec.ts in that directory whose UAT-NNN
 #     is no longer present in the SPEC (action: deleted).
 #   - Writes the same JSON summary to
@@ -35,7 +38,7 @@ if [ "$#" -lt 1 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
 usage: uat-write.sh <spec-path>
 
 Renders every UAT-NNN in <spec-path> into a Playwright e2e spec under
-.playwright/e2e/<spec-id-lowercase>/. See script header for full contract.
+<package>/.playwright/e2e/<spec-id-lowercase>/. See script header for full contract.
 EOF
   exit 2
 fi
@@ -68,6 +71,32 @@ fail_operation() {
   exit 1
 }
 
+# Sets e2e_relative_directory, the repo-relative directory the specs render
+# into: the package named `frontend` (the registry, or the built-in default)
+# plus `.playwright/e2e`. Not run in a command substitution, so fail_operation's
+# stdout and exit reach the caller.
+resolve_e2e_relative_directory() {
+  local packages_library="$script_directory/../../../../.claude/hooks/lib/gaia-packages.sh"
+  local packages_status=0 package_path
+  if [ ! -f "$packages_library" ]; then
+    fail_operation "package library missing: $packages_library. Next step: restore it from the GAIA release."
+  fi
+  # shellcheck disable=SC1090
+  source "$packages_library"
+  gaia_packages_load "$repo_root" || packages_status=$?
+  if [ "$packages_status" -ne 0 ]; then
+    fail_operation "$GAIA_PACKAGES_ERROR"
+  fi
+  if ! package_path=$(gaia_package_dir frontend); then
+    fail_operation "gaia-packages: .gaia/packages.json registers no package named frontend. Next step: add a frontend entry, or delete the registry to use the built-in default."
+  fi
+  if [ "$package_path" = "." ]; then
+    e2e_relative_directory='.playwright/e2e'
+  else
+    e2e_relative_directory="$package_path/.playwright/e2e"
+  fi
+}
+
 # Compute sha256 of stdin; output the bare hex digest.
 sha256_of_stdin() {
   if command -v shasum > /dev/null 2>&1; then
@@ -92,6 +121,10 @@ sanitize_for_javascript_string() {
   sanitized="${sanitized//\'/\\\'}"
   printf '%s' "$sanitized"
 }
+
+# Resolved before anything is written, so a registry that cannot be read
+# leaves the tree untouched.
+resolve_e2e_relative_directory
 
 # --- Extract frontmatter block (between first two `---` lines) ---
 frontmatter_block=""
@@ -147,7 +180,7 @@ uats_block=$(printf '%s' "$frontmatter_block" | awk '
 ')
 
 # --- Empty / missing UATs case (stop condition) ---
-target_directory="$repo_root/.playwright/e2e/$spec_id_lowercase"
+target_directory="$repo_root/$e2e_relative_directory/$spec_id_lowercase"
 
 # Ensure cache dir + path resolved up-front (used in both empty and populated paths).
 cache_directory="$repo_root/.gaia/local/cache/uat-write"
@@ -174,8 +207,8 @@ if [ -z "$uats_block" ] || ! grep -qE '^[[:space:]]*-[[:space:]]+uat_id:' <<<"$u
     done < <(find "$target_directory" -maxdepth 1 -type f -name 'uat-*.spec.ts' 2>/dev/null | sort)
   fi
   mkdir -p "$cache_directory"
-  result=$(printf '{"ok":true,"spec_id":"%s","spec_dir":".playwright/e2e/%s","framework":"playwright","summary":{"written":0,"rewritten":0,"deleted":%d,"fixme":0,"unchanged":0},"details":[%s]}' \
-    "$spec_id" "$spec_id_lowercase" "$deleted_count" "$deleted_details")
+  result=$(printf '{"ok":true,"spec_id":"%s","spec_dir":"%s/%s","framework":"playwright","summary":{"written":0,"rewritten":0,"deleted":%d,"fixme":0,"unchanged":0},"details":[%s]}' \
+    "$spec_id" "$e2e_relative_directory" "$spec_id_lowercase" "$deleted_count" "$deleted_details")
   printf '%s\n' "$result" | tee "$cache_file" > /dev/null
   printf '%s\n' "$result"
   exit 0
@@ -288,7 +321,7 @@ while IFS=$'\t' read -r uat_id uat_given uat_when uat_then; do
 
   uat_number="${uat_id#UAT-}"
   uat_number_lowercase=$(printf '%s' "$uat_number" | tr '[:upper:]' '[:lower:]')
-  output_relative_path=".playwright/e2e/$spec_id_lowercase/uat-$uat_number_lowercase.spec.ts"
+  output_relative_path="$e2e_relative_directory/$spec_id_lowercase/uat-$uat_number_lowercase.spec.ts"
   output_path="$repo_root/$output_relative_path"
 
   seen_uat_files+="$output_relative_path"$'\n'
@@ -468,8 +501,8 @@ fi
 # --- Build final JSON, mirror to cache, emit on stdout ---
 mkdir -p "$cache_directory"
 
-result=$(printf '{"ok":true,"spec_id":"%s","spec_dir":".playwright/e2e/%s","framework":"playwright","summary":{"written":%d,"rewritten":%d,"deleted":%d,"fixme":%d,"unchanged":%d},"details":[%s]}' \
-  "$spec_id" "$spec_id_lowercase" "$written" "$rewritten" "$deleted" "$fixme" "$unchanged" "$details")
+result=$(printf '{"ok":true,"spec_id":"%s","spec_dir":"%s/%s","framework":"playwright","summary":{"written":%d,"rewritten":%d,"deleted":%d,"fixme":%d,"unchanged":%d},"details":[%s]}' \
+  "$spec_id" "$e2e_relative_directory" "$spec_id_lowercase" "$written" "$rewritten" "$deleted" "$fixme" "$unchanged" "$details")
 
 printf '%s\n' "$result" > "$cache_file"
 printf '%s\n' "$result"

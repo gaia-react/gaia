@@ -53,7 +53,7 @@ type LedgerLine = {
 };
 
 // A small test file whose single test has a known fullName.
-const TEST_FILE_REL = 'app/components/PriceTag/tests/index.test.tsx';
+const TEST_FILE_REL = 'frontend/app/components/PriceTag/tests/index.test.tsx';
 const TEST_SOURCE = [
   "import {test, expect} from 'vitest';",
   "test('renders formatted price', () => {",

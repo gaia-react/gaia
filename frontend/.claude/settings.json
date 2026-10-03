@@ -1,0 +1,422 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash .gaia/scripts/branch-name-lib.sh:*)",
+      "Bash(bash .gaia/scripts/check-debt-issue-metadata.sh:*)",
+      "Bash(bash .gaia/scripts/debt-stale-claims.sh:*)",
+      "Bash(bash .gaia/scripts/plan-archive.sh:*)",
+      "Bash(bash .gaia/scripts/plan-resume-point.sh:*)",
+      "Bash(bash .gaia/scripts/pr-wait-merge.sh:*)",
+      "Bash(bash .specify/extensions/gaia/lib/plan-allocator.sh:*)",
+      "Bash(corepack enable pnpm)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr view:*)",
+      "Bash(git branch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git merge-base:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git show:*)",
+      "Bash(git stash:*)",
+      "Bash(git status:*)",
+      "Bash(git switch:*)",
+      "Bash(git symbolic-ref:*)",
+      "Bash(git worktree *)",
+      "Bash(mkdir -p .gaia/local)",
+      "Bash(mkdir -p .gaia/local/*)",
+      "Bash(pnpm -C .gaia/cli bundle)",
+      "Bash(pnpm -C .gaia/cli lint)",
+      "Bash(pnpm -C .gaia/cli test:*)",
+      "Bash(pnpm -C frontend build:*)",
+      "Bash(pnpm -C frontend dev:*)",
+      "Bash(pnpm -C frontend exec playwright test:*)",
+      "Bash(pnpm -C frontend format)",
+      "Bash(pnpm -C frontend lint)",
+      "Bash(pnpm -C frontend lint-dry)",
+      "Bash(pnpm -C frontend pw-ui:*)",
+      "Bash(pnpm -C frontend pw:*)",
+      "Bash(pnpm -C frontend storybook:*)",
+      "Bash(pnpm -C frontend stylelint)",
+      "Bash(pnpm -C frontend test:*)",
+      "Bash(pnpm -C frontend test:ci:*)",
+      "Bash(pnpm -C frontend typecheck:*)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm dev:*)",
+      "Bash(pnpm format)",
+      "Bash(pnpm install:*)",
+      "Bash(pnpm lint)",
+      "Bash(pnpm lint-dry)",
+      "Bash(pnpm ls:*)",
+      "Bash(pnpm outdated:*)",
+      "Bash(pnpm pw-ui:*)",
+      "Bash(pnpm pw:*)",
+      "Bash(pnpm remove:*)",
+      "Bash(pnpm storybook:*)",
+      "Bash(pnpm stylelint)",
+      "Bash(pnpm test:ci:*)",
+      "Bash(pnpm typecheck:*)",
+      "Bash(rm -f .gaia/local/cache/*)",
+      "Bash(rm -f .gaia/local/handoff/*/HANDOFF-*.md)",
+      "Bash(rm -rf .gaia/cache)",
+      "Bash(rm -rf .gaia/local/cache/*)",
+      "Bash(rm -rf .gaia/local/plans/*)",
+      "Bash(rm -rf .gaia/local/specs/*)",
+      "Edit(../.claude/agents/**)",
+      "Edit(../.claude/commands/**)",
+      "Edit(../.claude/instructions/**)",
+      "Edit(../.claude/rules/**)",
+      "Edit(../.claude/skills/**)",
+      "Edit(../.gaia/**)",
+      "Edit(../CHANGELOG.md)",
+      "Edit(../frontend/.claude/agents/**)",
+      "Edit(../frontend/.claude/instructions/**)",
+      "Edit(../frontend/.claude/rules/**)",
+      "Edit(../frontend/.claude/skills/**)",
+      "Edit(../frontend/.playwright/**)",
+      "Edit(../frontend/.storybook/**)",
+      "Edit(../frontend/app/**)",
+      "Edit(../frontend/public/**)",
+      "Edit(../frontend/test/**)",
+      "Edit(../wiki/**)",
+      "WebFetch(domain:context7.com)"
+    ],
+    "deny": [
+      "Bash(git push --force-with-lease *main*)",
+      "Bash(git push --force-with-lease *master*)",
+      "Bash(git reset --hard HEAD~*)",
+      "Edit(../.env)",
+      "Edit(../.gaia/local/audit/*.carried)",
+      "Edit(../.gaia/local/audit/*.ok)",
+      "Edit(../.gaia/local/audit/*.refused)",
+      "Edit(../.husky/_/**)",
+      "Edit(../frontend/.claude/settings.json)",
+      "Edit(../frontend/.env)",
+      "Edit(../pnpm-lock.yaml)"
+    ],
+    "additionalDirectories": [
+      ".."
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/provision-worktree.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/wiki-session-start.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/debt-session-reconcile.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/usage-capture.sh\""
+          }
+        ]
+      },
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/workflow-doctrine-inject.sh\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/wiki-session-stop.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/wiki-squash-autocommits.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/token-tally-review.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/usage-capture.sh\""
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/janitor-report-drain.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/wiki-recompact-inject.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/audit-loop-grant.sh\""
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/wiki-recompact-sentinel.sh\""
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-env-write.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-eslint-config-edit.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-secrets-write.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-manifest-write.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-worktree-path-mismatch.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-audit-loop-write.sh\""
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Monitor",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-handrolled-pr-poll.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-main-destructive-git.sh\"",
+            "statusMessage": "Checking main-branch protection…"
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-no-verify.sh\"",
+            "statusMessage": "Checking commit-floor bypass…"
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/red-verify-commit-check.sh\"",
+            "statusMessage": "Checking RED-before-GREEN gate…"
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-rm-rf.sh\"",
+            "statusMessage": "Checking rm -rf safety…"
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/pr-merge-audit-check.sh\"",
+            "statusMessage": "Checking PR-merge audit gate…"
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-fork-pr-checkout.sh\"",
+            "statusMessage": "Checking fork PR checkout…"
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/worthiness-presence-check.sh\"",
+            "statusMessage": "Checking worthiness presence gate…"
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-manifest-write.sh\"",
+            "statusMessage": "Checking manifest-write guard…"
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-env-read.sh\"",
+            "statusMessage": "Checking .env read guard…"
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-secrets-read.sh\"",
+            "statusMessage": "Checking secret-path read guard…"
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-audit-loop-write.sh\"",
+            "statusMessage": "Checking audit loop state guard…"
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-env-read.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-secrets-read.sh\""
+          }
+        ]
+      },
+      {
+        "matcher": "Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-env-read.sh\"",
+            "statusMessage": "Checking .env read guard…"
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-secrets-read.sh\"",
+            "statusMessage": "Checking secret-path read guard…"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/token-tally-git-op.sh\"",
+            "statusMessage": "Recording execute-phase token tally…"
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/post-findings-block-on-merge.sh\"",
+            "statusMessage": "Posting local audit findings block…"
+          }
+        ]
+      },
+      {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/audit-loop-bound.sh\"",
+            "timeout": 30,
+            "statusMessage": "Checking audit loop checkpoint…"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/audit-loop-ask-grant.sh\"",
+            "timeout": 15,
+            "statusMessage": "Recording audit checkpoint answer…"
+          }
+        ]
+      },
+      {
+        "matcher": "EnterWorktree",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/provision-worktree.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/workflow-doctrine-inject.sh\""
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/token-rollup-merge.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/token-tally-review.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/capture-red-observations.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/debt-sentinel-touch.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/issue-claim-release.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/capture-gh-artifact.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/workflow-doctrine-inject.sh\""
+          }
+        ]
+      }
+    ]
+  },
+  "sandbox": {
+    "filesystem": {
+      "denyRead": [
+        "../.env",
+        "../.env.*",
+        "**/.env",
+        "**/.env.*",
+        "**/*.key",
+        "**/*.pem",
+        "**/*credential*",
+        "**/secrets/**"
+      ],
+      "allowRead": [
+        "../.env.example",
+        "**/.env.example"
+      ]
+    }
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bash \"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.gaia/statusline/gaia-statusline.sh\""
+  },
+  "enabledPlugins": {
+    "typescript-lsp@claude-plugins-official": true
+  }
+}

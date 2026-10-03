@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-07-18
-updated: 2026-07-18
+updated: 2026-10-03
 tags: [concept, ci, audit, claude]
 ---
 
@@ -60,7 +60,7 @@ A `audience: maintainer` member's agent file, and any fixtures or bats suites wr
 
 ## Choices to make per member
 
-- **Advisory vs. gating.** `push_fixes: true` lets the member self-heal (push a fix commit) as part of clearing its own marker; `push_fixes: false` makes it advisory-only, it reports and then clears or withholds, but never rewrites the tree. No auditor may self-heal the surface that runs auditors, regardless of its own `push_fixes` setting: no script enforces that, so it is confined by instruction alone, with the orchestrator owning every commit, and the one refusal set, `AUDIT_SELFHEAL_REFUSE_ERE` in `.claude/hooks/lib/audit-selfheal-paths.sh`, is the written boundary every member cites. That set reaches past the workflow YAML, the roster, and the agent definitions that produce clearances to the tests, the whole `.github/` tree, the `.gaia/` machinery, `.claude/**`, `.specify/**`, `wiki/**`, and root build config. The ERE is the boundary; a prose list is a summary, so read the ERE.
+- **Advisory vs. gating.** `push_fixes: true` lets the member self-heal (push a fix commit) as part of clearing its own marker; `push_fixes: false` makes it advisory-only, it reports and then clears or withholds, but never rewrites the tree. No auditor may self-heal the surface that runs auditors, regardless of its own `push_fixes` setting: no script enforces that, so it is confined by instruction alone, with the orchestrator owning every commit, and the one refusal set, `AUDIT_SELFHEAL_REFUSE_ERE` in `.claude/hooks/lib/audit-selfheal-paths.sh`, is the written boundary every member cites. That set reaches past the workflow YAML, the roster, and the agent definitions that produce clearances to the tests, the whole `.github/` tree, the `.gaia/` machinery, `.claude/**`, `.specify/**`, `wiki/**`, and root build config. Each registered package adds its own arms from its descriptor's `selfHealRefuse` globs ([[Package Descriptor]]). When the registry or a descriptor cannot be read, the set refuses every path and `AUDIT_SELFHEAL_PACKAGES_ERROR` carries the reason; both are defined in that same file. The ERE is the boundary; a prose list is a summary, so read the ERE.
 - **`audience`.** `adopter` ships to every clone. `maintainer` entries sit inside `# gaia:maintainer-only` marker comments in the roster, and the release scrub strips them, so an adopter's roster only ever carries adopter-audience members.
 - **Globs and roster order.** Every claimant member's globs are matched first-match-wins over roster order; the default member's globs are a catch-all tier reached only once every claimant has failed to match. Two claimants claiming overlapping territory silently hands a path to whichever member the roster happens to list first, so check for that by eye when adding a member; `.gaia/scripts/verify-audit-roster.sh` asserts remit region parity (each member's agent definition carries exactly its roster globs, in roster order, inside a balanced marker pair) and ownerless-path coverage, and its own bats suite asserts machinery registration and the `code-audit-` name-prefix convention against the real tree. It ships to every clone; nothing gates a merge on it, so run it by hand after any roster change: `bash .gaia/scripts/verify-audit-roster.sh`, then `bash .gaia/scripts/write-audit-remits.sh` to repair a remit finding.
 

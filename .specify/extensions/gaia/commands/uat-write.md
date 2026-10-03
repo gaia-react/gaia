@@ -1,5 +1,5 @@
 ---
-description: 'GAIA before_implement hook: render PO-authored UATs into Playwright e2e specs at .playwright/e2e/spec-NNN/.'
+description: 'GAIA before_implement hook: render PO-authored UATs into Playwright e2e specs at <package>/.playwright/e2e/spec-NNN/ in the frontend package.'
 ---
 
 # UAT auto-write pass
@@ -33,13 +33,13 @@ The helper emits a JSON summary on stdout. Capture it verbatim; do NOT pipe thro
 
 - **Success (`ok: true`).** Emit a one-line summary:
 
-  > `before_implement` UAT-write complete: <written> written, <rewritten> rewritten, <deleted> deleted, <fixme> fixme, <unchanged> unchanged. Specs at `.playwright/e2e/<spec-dir>/`. Cache: `.gaia/local/cache/uat-write/<SPEC-ID>.json`.
+  > `before_implement` UAT-write complete: <written> written, <rewritten> rewritten, <deleted> deleted, <fixme> fixme, <unchanged> unchanged. Specs at `<spec_dir>/` (the helper's `spec_dir`, e.g. `frontend/.playwright/e2e/spec-NNN`). Cache: `.gaia/local/cache/uat-write/<SPEC-ID>.json`.
 
   Then, if `summary.fixme > 0`, list each fixme'd UAT with its `abstraction_blocker`. The implementer needs to see these on turn 1, those UATs need a SPEC reopen before they can turn green.
 
   Suggest the implementer's first command:
 
-  > Suggested first action: `pnpm pw .playwright/e2e/<spec-dir>/`, confirms red-state baseline.
+  > Suggested first action: `pnpm pw <spec_dir>/`, confirms red-state baseline.
 
 - **Operational failure (`ok: false`, exit `1`).** Emit the helper's `error` message verbatim, then **stop**, do not proceed to `/speckit-implement`'s source edits and do not call any further tool. End the turn on the failure so the lifecycle halts here rather than relying on a downstream agent to notice and stop.
 
@@ -48,10 +48,10 @@ The helper emits a JSON summary on stdout. Capture it verbatim; do NOT pipe thro
 ## Notes
 
 - The hook is **idempotent**: re-firing on an unchanged SPEC produces zero file diffs. Per-UAT content hashes are stored in the cache file at `.gaia/local/cache/uat-write/<SPEC-ID>.json`; matching hashes short-circuit the write path.
-- The hook reads/writes **only** to `.playwright/e2e/<spec-dir>/` plus the cache file under `.gaia/local/cache/uat-write/`. It never edits the SPEC, source, or any other directory.
+- The hook reads/writes **only** to the `<spec_dir>/` the helper reports (under the `frontend` package registered in `.gaia/packages.json`, `frontend/` by default) plus the cache file under `.gaia/local/cache/uat-write/`. It never edits the SPEC, source, or any other directory.
 - Generated specs carry an inline divergence-rule header pointing to `.specify/extensions/gaia/rules/uat-divergence.md`. The implementer may make cosmetic edits (selector text, button label, copy) but logical changes (flow, success criteria, error handling) are forbidden.
 - Orphaned spec files (a `uat-NNN.spec.ts` whose `UAT-NNN` no longer appears in the SPEC) are **hard-deleted**, not archived. Git preserves history; an `_archived/` directory would be picked up by CI globs.
 - The hook fires only on `before_implement`. It is not invoked by any other lifecycle event.
 - Pluggability: only Playwright is supported in this SPEC. Vitest e2e / Cypress is a future SPEC.
 - The helper is pure: same SPEC in, same JSON out. Any rendering logic belongs in `lib/uat-write.sh`, never inline in this command body.
-- On completion (success, failure, or skip) this hook returns control to the lifecycle; it touches only `.playwright/e2e/<spec-dir>/` and its cache file, and performs no other action.
+- On completion (success, failure, or skip) this hook returns control to the lifecycle; it touches only `<spec_dir>/` and its cache file, and performs no other action.

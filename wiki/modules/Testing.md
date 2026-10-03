@@ -1,6 +1,6 @@
 ---
 type: module
-path: test/, .playwright/
+path: frontend/test/, frontend/.playwright/
 status: active
 language: typescript
 purpose: Four-layer testing setup: unit, integration, E2E, visual regression
@@ -11,7 +11,7 @@ depends_on:
   - '[[Chromatic]]'
   - '[[MSW]]'
 created: 2026-04-20
-updated: 2026-06-24
+updated: 2026-10-03
 tags: [module, testing]
 ---
 
@@ -19,16 +19,16 @@ tags: [module, testing]
 
 Testing has **four layers**, all sharing a common [[MSW Handlers|MSW]] mocking layer:
 
-- Unit: [[Vitest]] in `app/utils/tests/`, `app/hooks/tests/`
-- Integration: Vitest + [[React Testing Library]] in `app/components/*/tests/`, `app/pages/*/tests/`
-- E2E: [[Playwright]] in `.playwright/e2e/*.spec.ts`
+- Unit: [[Vitest]] in `frontend/app/utils/tests/`, `frontend/app/hooks/tests/`
+- Integration: Vitest + [[React Testing Library]] in `frontend/app/components/*/tests/`, `frontend/app/pages/*/tests/`
+- E2E: [[Playwright]] in `frontend/.playwright/e2e/*.spec.ts`
 - Visual regression: [[Chromatic]] (CI only), driven by Storybook stories
 
 The `composeStory` pattern means integration tests and visual regression share one source of truth. See [[Component Testing]].
 
 ## Vitest
 
-Config at `vitest.config.ts`; see its `test.include` for the covered directories. Runs against `happy-dom`.
+Config at `frontend/vitest.config.ts`; see its `test.include` for the covered directories. Runs against `happy-dom`.
 
 > [!info] Watch mode needs a TTY
 > Vitest only enters watch mode with an interactive TTY; in CI or under Claude, a bare `pnpm test` runs once and exits. Use `pnpm test --run` for an explicit single pass. See [[Test Runner]].
@@ -39,16 +39,16 @@ Always use Storybook stories with `composeStory`. Never manually mock framework 
 
 ## Playwright
 
-- Tests in `.playwright/e2e/*.spec.ts`, config in `playwright.config.ts`
+- Tests in `frontend/.playwright/e2e/*.spec.ts`, config in `frontend/playwright.config.ts`
 - Use the bundled `hydration(page)` helper after `page.goto()` to wait for React Router hydration before interacting
 
 ### a11y scanning
 
-Most shipped e2e specs are axe-core a11y scans; others cover hydration errors and render-performance smoke. `.playwright/a11y.ts` exports `expectNoSeriousA11yViolations(page, testInfo, options?)`: critical and serious violations fail the test; moderate and minor violations attach as an `axe-advisory.json` and surface via `console.warn`. `.playwright/fixtures.ts` exposes the `makeAxeBuilder` fixture (WCAG 2.0/2.1 A and AA tags) for custom scans.
+Most shipped e2e specs are axe-core a11y scans; others cover hydration errors and render-performance smoke. `frontend/.playwright/a11y.ts` exports `expectNoSeriousA11yViolations(page, testInfo, options?)`: critical and serious violations fail the test; moderate and minor violations attach as an `axe-advisory.json` and surface via `console.warn`. `frontend/.playwright/fixtures.ts` exposes the `makeAxeBuilder` fixture (WCAG 2.0/2.1 A and AA tags) for custom scans.
 
 ### Cold-start hydration self-heal
 
-`playwright.config.ts` wires `globalSetup: './.playwright/global-setup.ts'`, a serial `/` navigation that warms Vite's cold dep-optimize cache before the parallel specs run. Local retries are 0 (2 on CI) by design, so the `hydration(page)` helper's probe-then-reload self-heals the cold dep-optimize race rather than masking real flakes. The first `pnpm pw` after a dependency or Vite-config change boots a cold cache and can lose the race on the dynamic import of `entry.client.tsx`.
+`frontend/playwright.config.ts` wires `globalSetup: './.playwright/global-setup.ts'`, a serial `/` navigation that warms Vite's cold dep-optimize cache before the parallel specs run. Local retries are 0 (2 on CI) by design, so the `hydration(page)` helper's probe-then-reload self-heals the cold dep-optimize race rather than masking real flakes. The first `pnpm pw` after a dependency or Vite-config change boots a cold cache and can lose the race on the dynamic import of `entry.client.tsx`.
 
 ## Chromatic
 
@@ -69,4 +69,4 @@ See [[ESLint Fixes]] for fix patterns.
 
 The pre-commit hook runs `pnpm typecheck`, `pnpm exec lint-staged` (eslint, prettier, stylelint), then `pnpm test:lint-staged` (`vitest --run --changed --passWithNoTests --bail 1`) as a separate step, so only tests affected by the staged changes run. See [[Quality Gate]].
 
-For the current `test/` folder inventory and helper signatures, query Serena (`.claude/rules/code-search.md`).
+For the current `frontend/test/` folder inventory and helper signatures, query Serena (`.claude/rules/code-search.md`).

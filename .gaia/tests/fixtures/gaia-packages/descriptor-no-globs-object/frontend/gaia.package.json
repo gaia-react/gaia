@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "name": "frontend",
+  "wiki": {
+    "sourcePaths": ["app/"],
+    "inventoryPaths": [
+      "app/components/",
+      "app/hooks/",
+      "app/pages/",
+      "app/services/"
+    ],
+    "flowPaths": [
+      "app/middleware/",
+      "app/routes.ts",
+      "app/i18n.ts",
+      "app/sessions.server/"
+    ]
+  }
+}

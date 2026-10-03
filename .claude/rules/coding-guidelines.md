@@ -2,9 +2,8 @@
 
 ## File Naming
 
-- **Components**: PascalCase folders with `index.tsx`, tests/stories in `tests/` subfolder
-- **Hooks**: camelCase with named export
 - **Other files**: kebab-case
+- **React components and hooks** (PascalCase component folders, camelCase hooks): `frontend/.claude/rules/coding-guidelines-react.md`, loaded on frontend files
 
 ## 1. Simplicity First
 
@@ -18,8 +17,7 @@ Touch only what's needed: don't improve adjacent code, don't refactor unbroken t
 
 When building new features or fixing bugs, follow the TDD workflow described in `.claude/skills/tdd/SKILL.md` (read it on demand, do not preload).
 
-- Use Vitest to test individual functions and components work in isolation
-- Use Playwright to test user flows required by the feature specifications
+- Test individual functions in isolation and user flows end to end; the frontend stack (Vitest, Playwright) is in `frontend/.claude/rules/coding-guidelines-react.md`
 
 ## 4. Always Verify Your Work
 

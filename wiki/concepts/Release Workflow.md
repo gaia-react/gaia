@@ -3,7 +3,7 @@ type: concept
 title: Release Workflow
 status: active
 created: 2026-04-22
-updated: 2026-09-01
+updated: 2026-10-03
 tags: [release, claude, maintainer, versioning]
 ---
 
@@ -40,7 +40,7 @@ Run `/gaia-release` on a clean `main`. The command is a 15-step orchestrator:
 3. Auto-determine bump by analyzing commits since last tag. `patch`/`minor` proceed automatically; `major` stops and asks.
 4. Run the [[Quality Gate]]. Stop on failure.
 5. Create `release/vX.Y.Z` branch.
-6. Bump `package.json` + `.gaia/VERSION`.
+6. Bump the root `package.json`, `frontend/package.json` (its `version` must equal the root's: `env.server.ts` reads it through `npm_package_version`, and a bats case fails on drift), and `.gaia/VERSION`.
 7. Auto-draft a CHANGELOG block from `git log` since last release and present it for review; it is an aid, so fold anything the hand-written `## [Unreleased]` block is missing into that block by hand. Then graduate `## [Unreleased]` in place to `## [X.Y.Z] - YYYY-MM-DD` (no `v` prefix; `release.yml` extracts the section by the bare version), seeding a new empty `## [Unreleased]` above it. The hand-written entries are the released block; the drafted one is never written to the file, and an empty `## [Unreleased]` is refused rather than dated. The graduator also keeps the Keep-a-Changelog reference-link block current: it repoints the `[Unreleased]` compare link at the new version and inserts a `[X.Y.Z]` release-tag definition, deriving the repo base URL from the existing `[Unreleased]` link.
 8. Overwrite `wiki/hot.md` with release-baseline content (so adopters clone a fresh slate).
 9. Overwrite `wiki/log.md` with a single release-milestone entry (dev history lives in git).
@@ -48,7 +48,7 @@ Run `/gaia-release` on a clean `main`. The command is a 15-step orchestrator:
 11. Commit on the release branch: `chore(release): vX.Y.Z`. The pre-commit dance updates `wiki/.state.json`'s `last_evaluated_sha` to the new commit's own SHA via amend, so adopters' state files match their release commit on first scaffold.
 12. Push branch, open PR via `gh`. The release PR is subject to the same CI gate (`Vitest and Playwright`, `Run Chromatic`) and `code-review-audit` merge handshake as any other PR; see [[PR Merge Workflow]]. `gh pr merge --merge --auto` is the normal path: base-branch protection rejects a plain `--merge`, and `--auto` lets GitHub complete the merge once checks pass.
 13. Once the PR shows `MERGED`, pull `main`, tag the merge commit (`v<NEW_VERSION>`), push the tag.
-14. Lockstep `create-gaia` and the website. The website update includes bumping three version constants, invoking the `release-notes` skill to generate the public changelog entry (`<version>.ts`) for the site, and overwriting the GitHub release body with adopter-facing notes rendered from that file via `render-release-md.mjs` (so the GitHub release and the website changelog stay in sync).
+14. Lockstep `create-gaia` and the website. The website update includes bumping three version constants, invoking the `release-notes` skill to generate the public changelog entry (`<version>.ts`) for the site, and overwriting the GitHub release body with adopter-facing notes rendered from that file via `render-release-md.mjs` (so the GitHub release and the website changelog stay in sync). For a 2.x release that 1.x adopters can still see (the 2.0.0 cut), the release data carries a `preamble` (the routing line, the Proceed side-effects line, the sha256 line) that the renderer emits verbatim before the headline, so the rewritten body still starts with the routing line. The step ends with `gh release view <tag> --json body --jq .body | head -1`, which must equal `On GAIA 1.6.1? Choose Abort, then paste the prompt from https://gaiareact.com/migrate into a fresh session.`; any other first line means the rewrite dropped the preamble, so re-render before moving on.
 15. Lockstep the docs site (`../docs` sibling checkout): update the sidebar version constant and commit directly to `main`.
 
 The tag push triggers [`release.yml`](../../.github/workflows/release.yml), which produces the scrubbed tarball.
@@ -64,7 +64,7 @@ The tag push triggers [`release.yml`](../../.github/workflows/release.yml), whic
 2. **Bundle-time scrub**: `gaia-maintainer release scrub /tmp/gaia-vX.Y.Z` applies the transforms in `.gaia/release-scrub.yml`: marker-delimited section strips and a leak-check pass that mirrors the `wiki-style.md` audit greps. Build fails closed on any leak. See [[Bundle-time Scrub]] for rationale.
 3. **Runtime-deps verification**: `gaia-maintainer release runtime-deps --staging /tmp/gaia-vX.Y.Z` walks shipped shell scripts and verifies every explicit path constant resolves to a shipped path, an adopter-owned sentinel, or a runtime-allocated location. Catches the leak class scrubbing cannot see; runtime references survive lexical strip.
 4. **Distribution test gate**: `bash .gaia/tests/distribution/run-all.sh` runs Layers 0+1 against an independently-staged tree (`build-staging.sh` re-runs the same `git ls-files` + scrub + runtime-deps phases above). Layer 0 confirms an adopter scaffold typechecks, lints, tests, and builds; Layer 1 confirms the bootstrap path survives in a PATH-stripped subshell. If any scenario fails the release halts; the tarball is never built and `gh release create` never runs, so a broken release cannot publish.
-5. **Tar**: `tar -czf gaia-vX.Y.Z.tar.gz -C /tmp gaia-vX.Y.Z`. The same release-exclude list drives `gaia-maintainer release manifest`, so the manifest never references files an adopter cannot have. What the list withholds, and why, is covered in the next section.
+5. **Tar**: `tar -czf gaia-bundle-vX.Y.Z.tar.gz -C /tmp gaia-vX.Y.Z`, plus `gaia-bundle-vX.Y.Z.tar.gz.sha256` (`shasum -a 256`). The asset is `gaia-bundle-<tag>.tar.gz`, not `gaia-<tag>.tar.gz`, deliberately: v1.6.1's `/update-gaia` downloads with `--pattern "gaia-${tag}.tar.gz"`, and the 2.x manifest is keyed on `frontend/` paths a 1.6.1 merge would read as deletions of the adopter's app. Under the new name that download fails at its fetch step, before any write. `.gaia/scripts/compose-release-body.sh` then builds the release body, with the 1.6.1 routing line first (fail-closed for `v2.0.0`), the Proceed side effects (a `chore/update-gaia-*` branch is created and `.gaia-backup` and `.gaia/cache` tag dirs pruned before the expected `FETCH_FAILED`), and the sha256. `.gaia/tests/lib/release-asset-name.bats` pins the asset name against `release.yml` and the `/update-gaia` Step 5 pattern. The same release-exclude list drives `gaia-maintainer release manifest`, so the manifest never references files an adopter cannot have. What the list withholds, and why, is covered in the next section.
 
 The scrubbed `wiki/hot.md` + `wiki/log.md` contain only the release marker; none of GAIA's internal session cache.
 
@@ -88,6 +88,8 @@ These ARE distributed but excluded from `.gaia/manifest.json` by the classifier 
 
 - `wiki/hot.md`, `wiki/log.md`: adopter's session cache and change ledger.
 - `.gaia/VERSION`, `.gaia/manifest.json`: bumped only by `/update-gaia`.
+- `.gaia/packages.json`: the package registry; an adopter adds a package by editing it.
+- `<package>/.claude/settings.json` (`frontend/.claude/settings.json`): generated by `gaia packages sync-settings`, shipped so a scaffold starts drift-clean, and regenerated after every `/update-gaia` merge instead of merged. Any `.claude/settings.json` below the root is matched by the classifier's generated-settings rule.
 
 The classifier is in `.gaia/cli/src/release/manifest.ts`, `ADOPTER_OWNED_SENTINELS` constant.
 
@@ -96,7 +98,7 @@ The classifier is in `.gaia/cli/src/release/manifest.ts`, `ADOPTER_OWNED_SENTINE
 Separate repo, separate npm package (`create-gaia`). Zero runtime deps. When an adopter runs `npx create-gaia@latest my-app`:
 
 1. Resolves the target version (flag, or latest GitHub release).
-2. Downloads the release tarball from `github.com/gaia-react/gaia/releases/download/vX.Y.Z/gaia-vX.Y.Z.tar.gz`.
+2. Downloads the release tarball from `github.com/gaia-react/gaia/releases/download/vX.Y.Z/gaia-vX.Y.Z.tar.gz`. Releases from 2.0.0 on publish `gaia-bundle-vX.Y.Z.tar.gz` instead, so create-gaia has to switch to the new asset name before the 2.0.0 tag.
 3. Extracts into `my-app/`.
 4. `git init` + initial commit (unless `--no-git`).
 5. `pnpm install` (after `corepack enable pnpm`), unless `--no-install`. The scaffolded project pins pnpm via `packageManager` in `package.json`; corepack provisions the matching version transparently.

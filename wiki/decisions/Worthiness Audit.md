@@ -4,14 +4,14 @@ status: active
 priority: 1
 date: 2026-06-23
 created: 2026-06-23
-updated: 2026-08-12
+updated: 2026-10-03
 tags: [decision, tdd, testing, audit, quality]
 ---
 
 # Worthiness Audit
 
 An advisory, two-axis review of the tests on the **emergent surface**
-(`app/components/**`, `.playwright/**`), the surface where the
+(the tests a package's `emergentTests` globs name, per [[Package Descriptor]]), the surface where the
 [[TDD RED Verification]] gate does not apply. The emergent surface has no stable
 failing-then-passing run to gate on, so its honesty and worthiness come from a
 fresh-context reviewer instead of a mechanical RED proof. The reviewer
@@ -131,7 +131,7 @@ ledger:
   prompt. Reads only the changed emergent test files plus their sibling suites,
   judges both axes, returns `{keep, fix, delete}` per test, edits no files. The
   human-facing encoding of the same contract is
-  `.claude/skills/tdd/references/tests-react.md` (the discriminator, composition,
+  `frontend/.claude/skills/tdd-react/references/tests-react.md` (the discriminator, composition,
   and platform rules).
 - `.gaia/scripts/audit-ledger/append-worthiness.mjs`: the ledger writer. Takes a
   repo-relative test path, a `fullName`, a verdict, and (for non-keep) an

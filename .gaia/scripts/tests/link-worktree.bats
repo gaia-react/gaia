@@ -298,3 +298,121 @@ FAKE
   # links the raw glob match.
   [ ! -L "$LINKED/.env.local~" ]
 }
+
+# ---------- Package env files (the registry's packages, built-in default `frontend`) ----------
+
+# write_literal_descriptor <path> <name>: a minimal valid descriptor, written
+# literally so a fixture never copies the live file.
+write_literal_descriptor() {
+  cat > "$1" <<JSON
+{
+  "schemaVersion": 1,
+  "name": "$2",
+  "globs": {
+    "tddUnitTests": ["app/**/*.test.ts"],
+    "tddStrictCandidates": ["app/utils/**"],
+    "emergentTests": ["app/**/*.test.tsx"],
+    "selfHealRefuse": ["test/**"],
+    "preCommitSource": ["app/**"],
+    "doctorConfigs": ["doctor.config.*"],
+    "dependencyManifests": ["package.json"]
+  },
+  "wiki": {"sourcePaths": ["app/"], "inventoryPaths": [], "flowPaths": []}
+}
+JSON
+}
+
+@test "package env files: frontend/.env and frontend/.env.local are linked, frontend/.env.example is not" {
+  mkdir -p "$MAIN/frontend" "$LINKED/frontend"
+  printf 'ENV_VAR=main' > "$MAIN/frontend/.env"
+  printf 'LOCAL_VAR=local' > "$MAIN/frontend/.env.local"
+  printf 'EXAMPLE_VAR=example' > "$MAIN/frontend/.env.example"
+  printf 'EXAMPLE_VAR=example' > "$LINKED/frontend/.env.example"
+
+  run run_in "$LINKED"
+  [ "$status" -eq 0 ]
+
+  [ -L "$LINKED/frontend/.env" ]
+  [ -L "$LINKED/frontend/.env.local" ]
+  [ "$(readlink "$LINKED/frontend/.env")" = "$MAIN/frontend/.env" ]
+  [ "$(readlink "$LINKED/frontend/.env.local")" = "$MAIN/frontend/.env.local" ]
+  [ ! -L "$LINKED/frontend/.env.example" ]
+  [ "$(cat "$LINKED/frontend/.env")" = "ENV_VAR=main" ]
+}
+
+@test "package env files: root and package env files are both linked in one run" {
+  mkdir -p "$MAIN/frontend" "$LINKED/frontend"
+  printf 'ROOT_VAR=root' > "$MAIN/.env"
+  printf 'PKG_VAR=pkg' > "$MAIN/frontend/.env"
+
+  run run_in "$LINKED"
+  [ "$status" -eq 0 ]
+  [ "$(readlink "$LINKED/.env")" = "$MAIN/.env" ]
+  [ "$(readlink "$LINKED/frontend/.env")" = "$MAIN/frontend/.env" ]
+}
+
+@test "package env files: a re-run is idempotent with no backups" {
+  mkdir -p "$MAIN/frontend" "$LINKED/frontend"
+  printf 'PKG_VAR=pkg' > "$MAIN/frontend/.env"
+  run_in "$LINKED"
+
+  run run_in "$LINKED"
+  [ "$status" -eq 0 ]
+  grep -qF -- "already-linked: $LINKED/frontend/.env" <<<"$output" || return 1
+  run bash -c "find '$LINKED/frontend' -name '*.bak.*' -print"
+  [ -z "$output" ]
+}
+
+# The guard proof: the same script with the per-package arm cut out leaves the
+# package env file unlinked in the identical fixture, so the assertion above is
+# not satisfied by anything else in the script.
+@test "package env files: the script without its per-package arm leaves frontend/.env unlinked" {
+  mutant="$BATS_TEST_TMPDIR/mutant"
+  mkdir -p "$mutant/.gaia/scripts" "$mutant/.claude/hooks/lib"
+  cp "$SCRIPT_DIRECTORY/main-root-lib.sh" "$mutant/.gaia/scripts/"
+  cp "$SCRIPT_DIRECTORY/../../.claude/hooks/lib/gaia-packages.sh" "$mutant/.claude/hooks/lib/"
+  grep -v '^    link_env_files_in "\$package_path"$' "$SCRIPT" > "$mutant/.gaia/scripts/link-worktree.sh"
+  # The mutation must have removed exactly the per-package call.
+  [ "$(grep -c 'link_env_files_in' "$SCRIPT")" -gt "$(grep -c 'link_env_files_in' "$mutant/.gaia/scripts/link-worktree.sh")" ] || return 1
+
+  mkdir -p "$MAIN/frontend" "$LINKED/frontend"
+  printf 'PKG_VAR=pkg' > "$MAIN/frontend/.env"
+
+  run bash -c "cd '$LINKED' && bash '$mutant/.gaia/scripts/link-worktree.sh'"
+  [ "$status" -eq 0 ]
+  [ ! -e "$LINKED/frontend/.env" ]
+}
+
+@test "package env files: a worktree whose branch has no package directory gets none created" {
+  mkdir -p "$MAIN/frontend"
+  printf 'PKG_VAR=pkg' > "$MAIN/frontend/.env"
+  [ ! -e "$LINKED/frontend" ]
+
+  run run_in "$LINKED"
+  [ "$status" -eq 0 ]
+  [ ! -e "$LINKED/frontend" ]
+}
+
+@test "package env files: a registry path other than frontend is linked too" {
+  mkdir -p "$LINKED/.gaia" "$MAIN/apps/web" "$LINKED/apps/web"
+  printf '[{"name":"web","path":"apps/web"}]\n' > "$LINKED/.gaia/packages.json"
+  write_literal_descriptor "$LINKED/apps/web/gaia.package.json" web
+  printf 'WEB_VAR=web' > "$MAIN/apps/web/.env"
+
+  run run_in "$LINKED"
+  [ "$status" -eq 0 ]
+  [ "$(readlink "$LINKED/apps/web/.env")" = "$MAIN/apps/web/.env" ]
+}
+
+@test "package env files: a malformed registry logs the gaia-packages message, still links root env files, exits 0" {
+  mkdir -p "$MAIN/frontend" "$LINKED/frontend" "$LINKED/.gaia"
+  printf 'ROOT_VAR=root' > "$MAIN/.env"
+  printf 'PKG_VAR=pkg' > "$MAIN/frontend/.env"
+  printf 'not json' > "$LINKED/.gaia/packages.json"
+
+  run run_in "$LINKED"
+  [ "$status" -eq 0 ]
+  [ -L "$LINKED/.env" ] || return 1
+  [ ! -e "$LINKED/frontend/.env" ] || return 1
+  grep -qF -- "failed: $LINKED/.gaia/packages.json: gaia-packages: .gaia/packages.json is malformed" <<<"$output"
+}

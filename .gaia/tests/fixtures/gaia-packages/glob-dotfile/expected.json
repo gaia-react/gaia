@@ -1,0 +1,22 @@
+{
+  "load": 0,
+  "source": "registry",
+  "list": [["frontend", "frontend"]],
+  "globs": {
+    "selfHealRefuse": {
+      "match": [
+        "frontend/.npmrc",
+        "frontend/.env.example",
+        "frontend/.lintstagedrc.json",
+        "frontend/a+b(c).ts"
+      ],
+      "noMatch": [
+        "frontend/a/.npmrc",
+        "frontend/npmrc",
+        "frontend/aab(c).ts",
+        "frontend/a+bc.ts",
+        ".npmrc"
+      ]
+    }
+  }
+}

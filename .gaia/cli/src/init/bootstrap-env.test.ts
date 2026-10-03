@@ -1,6 +1,7 @@
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -8,6 +9,8 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {EXIT_CODES} from '../exit.js';
+import {writeFrontendRegistry} from '../util/package-fixture.js';
 import {run} from './bootstrap-env.js';
 import {readState} from './util/state.js';
 
@@ -18,6 +21,8 @@ type Sandbox = {
 
 const setupSandbox = (): Sandbox => {
   const root = mkdtempSync(path.join(tmpdir(), 'gaia-bootstrap-env-'));
+
+  mkdirSync(path.join(root, 'frontend'));
 
   return {
     cleanup: () => {
@@ -73,33 +78,47 @@ describe('gaia init bootstrap-env', () => {
     vi.restoreAllMocks();
   });
 
-  test('copies .env.example to .env when .env is absent', () => {
+  test('copies frontend/.env.example to frontend/.env when .env is absent', () => {
     sandbox = setupSandbox();
-    writeFileSync(path.join(sandbox.root, '.env.example'), 'FOO=bar\n', 'utf8');
+    writeFileSync(
+      path.join(sandbox.root, 'frontend', '.env.example'),
+      'FOO=bar\n',
+      'utf8'
+    );
 
     const exit = run([], {cwd: sandbox.root});
 
     expect(exit).toBe(0);
-    expect(existsSync(path.join(sandbox.root, '.env'))).toBe(true);
-    expect(readFileSync(path.join(sandbox.root, '.env'), 'utf8')).toBe(
-      'FOO=bar\n'
-    );
-    expect(existsSync(path.join(sandbox.root, '.env.example'))).toBe(true);
+    expect(existsSync(path.join(sandbox.root, 'frontend', '.env'))).toBe(true);
+    expect(
+      readFileSync(path.join(sandbox.root, 'frontend', '.env'), 'utf8')
+    ).toBe('FOO=bar\n');
+    expect(
+      existsSync(path.join(sandbox.root, 'frontend', '.env.example'))
+    ).toBe(true);
     const state = readState(sandbox.root);
     expect(state.completed_steps).toContain('bootstrap-env');
   });
 
   test('no-op when .env already exists', () => {
     sandbox = setupSandbox();
-    writeFileSync(path.join(sandbox.root, '.env'), 'EXISTING=1\n', 'utf8');
-    writeFileSync(path.join(sandbox.root, '.env.example'), 'FOO=bar\n', 'utf8');
+    writeFileSync(
+      path.join(sandbox.root, 'frontend', '.env'),
+      'EXISTING=1\n',
+      'utf8'
+    );
+    writeFileSync(
+      path.join(sandbox.root, 'frontend', '.env.example'),
+      'FOO=bar\n',
+      'utf8'
+    );
 
     const exit = run([], {cwd: sandbox.root});
 
     expect(exit).toBe(0);
-    expect(readFileSync(path.join(sandbox.root, '.env'), 'utf8')).toBe(
-      'EXISTING=1\n'
-    );
+    expect(
+      readFileSync(path.join(sandbox.root, 'frontend', '.env'), 'utf8')
+    ).toBe('EXISTING=1\n');
     const state = readState(sandbox.root);
     expect(state.completed_steps).toContain('bootstrap-env');
   });
@@ -110,22 +129,64 @@ describe('gaia init bootstrap-env', () => {
     const exit = run([], {cwd: sandbox.root});
 
     expect(exit).toBe(0);
-    expect(existsSync(path.join(sandbox.root, '.env'))).toBe(false);
+    expect(existsSync(path.join(sandbox.root, 'frontend', '.env'))).toBe(false);
     const state = readState(sandbox.root);
     expect(state.completed_steps).toContain('bootstrap-env');
   });
 
   test('idempotent: re-running is safe', () => {
     sandbox = setupSandbox();
-    writeFileSync(path.join(sandbox.root, '.env.example'), 'FOO=bar\n', 'utf8');
+    writeFileSync(
+      path.join(sandbox.root, 'frontend', '.env.example'),
+      'FOO=bar\n',
+      'utf8'
+    );
 
     run([], {cwd: sandbox.root});
     const second = run([], {cwd: sandbox.root});
 
     expect(second).toBe(0);
+    expect(
+      readFileSync(path.join(sandbox.root, 'frontend', '.env'), 'utf8')
+    ).toBe('FOO=bar\n');
+  });
+
+  test('a path-"." registry keeps the copy at the repo root', () => {
+    sandbox = setupSandbox();
+    writeFrontendRegistry(sandbox.root, '.');
+    writeFileSync(path.join(sandbox.root, '.env.example'), 'ROOT=1\n', 'utf8');
+
+    const exit = run([], {cwd: sandbox.root});
+
+    expect(exit).toBe(0);
     expect(readFileSync(path.join(sandbox.root, '.env'), 'utf8')).toBe(
-      'FOO=bar\n'
+      'ROOT=1\n'
     );
+    expect(existsSync(path.join(sandbox.root, 'frontend', '.env'))).toBe(false);
+  });
+
+  test('a malformed registry refuses and writes nothing', () => {
+    sandbox = setupSandbox();
+    mkdirSync(path.join(sandbox.root, '.gaia'));
+    writeFileSync(
+      path.join(sandbox.root, '.gaia', 'packages.json'),
+      '{not json'
+    );
+    writeFileSync(
+      path.join(sandbox.root, 'frontend', '.env.example'),
+      'FOO=bar\n',
+      'utf8'
+    );
+
+    const exit = run([], {cwd: sandbox.root});
+
+    expect(exit).toBe(EXIT_CODES.CONFIG_INVALID);
+    expect(stdio.errors.join('')).toContain('gaia-packages:');
+    expect(existsSync(path.join(sandbox.root, 'frontend', '.env'))).toBe(false);
+    expect(existsSync(path.join(sandbox.root, '.env'))).toBe(false);
+    expect(
+      existsSync(path.join(sandbox.root, '.gaia', 'init-state.json'))
+    ).toBe(false);
   });
 
   test('rejects unknown flags', () => {

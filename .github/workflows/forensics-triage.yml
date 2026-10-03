@@ -190,7 +190,7 @@ jobs:
           - `.gaia/manifest.json`'
 
           # shellcheck disable=SC2016
-          denylist='- `app/`, `wiki/`, `studio/`, `website/`
+          denylist='- `frontend/app/`, `wiki/`, `studio/`, `website/`
           - `.specify/specs/`, `.specify/memory/`
           - `.gaia/local/specs/`
           - `.specify/extensions/gaia/templates/`

@@ -1,0 +1,21 @@
+{
+  "load": 0,
+  "source": "registry",
+  "list": [["frontend", "frontend"]],
+  "globs": {
+    "tddUnitTests": {
+      "match": [
+        "frontend/app/x.ts",
+        "frontend/app/a/x.tsx",
+        "frontend/src/a/x.js",
+        "frontend/src/b/x.js"
+      ],
+      "noMatch": [
+        "frontend/app/x.js",
+        "frontend/src/c/x.js",
+        "frontend/src/a,b/x.js",
+        "frontend/app/x.{ts,tsx}"
+      ]
+    }
+  }
+}

@@ -21,8 +21,8 @@
  *      WORTHY.
  *   3. Touches `wiki/decisions/`, `wiki/concepts/`, `wiki/flows/`,
  *      `wiki/dependencies/`, or `wiki/entities/` : WORTHY.
- *   4. Touches `app/middleware/**`, `app/routes.ts`, `app/i18n.ts`, or
- *      `app/sessions.server/**` : WORTHY (flows-relevant).
+ *   4. Touches a flow path from the frontend package descriptor's `wiki` block
+ *      (middleware, routes, i18n, sessions) : WORTHY (flows-relevant).
  *   5. `chore(deps):`, `chore(cli):`, `wiki:`, `ci:`, `build:` : SKIP unless
  *      body mentions `architecture` or trade-off / invariant / gotcha
  *      keywords.
@@ -165,13 +165,6 @@ const WIKI_HEAVY_DOMAINS = [
   'wiki/entities/',
 ];
 
-const FLOWS_RELEVANT_PATHS = [
-  'app/middleware/',
-  'app/routes.ts',
-  'app/i18n.ts',
-  'app/sessions.server/',
-];
-
 const touchesAny = (
   files: readonly string[],
   prefixes: readonly string[]
@@ -299,7 +292,8 @@ const classifyStrongWorthy = (
 
 // Rules 3/4: touches a wiki-heavy domain or a flows-relevant app path.
 const classifyTouchedDomains = (
-  commit: CommitDetail
+  commit: CommitDetail,
+  paths: ClassifyPaths
 ): ClassifyDecision | undefined => {
   const {files} = commit;
 
@@ -307,7 +301,7 @@ const classifyTouchedDomains = (
     return {reason: 'touches wiki-heavy domain', suggestion: 'WORTHY'};
   }
 
-  if (touchesAny(files, FLOWS_RELEVANT_PATHS)) {
+  if (touchesAny(files, paths.flowPaths)) {
     return {reason: 'touches flows-relevant path', suggestion: 'WORTHY'};
   }
 
@@ -460,7 +454,7 @@ const classify = (
   return (
     classifyHardSkip(commit, header) ??
     classifyStrongWorthy(commit, header) ??
-    classifyTouchedDomains(commit) ??
+    classifyTouchedDomains(commit, paths) ??
     classifyArchSuppressibleChore(commit, header) ??
     classifyFeatureCommit(commit, header, paths) ??
     classifyCatchAll(commit, header)
@@ -598,7 +592,19 @@ export const run = (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  const paths = readClassifyPaths(repoRoot);
+  let paths: ClassifyPaths;
+
+  try {
+    paths = readClassifyPaths(repoRoot);
+  } catch (error) {
+    structuredError({
+      code: 'gaia_packages',
+      message: error instanceof Error ? error.message : String(error),
+      subcommand: 'wiki commit-classify',
+    });
+
+    return EXIT_CODES.CONFIG_INVALID;
+  }
   // Paired rather than two index-correlated arrays. `deferred` is an internal
   // health input, so it stays off the published `ClassifiedCommit` shape.
   const classified = details.map((detail) => ({

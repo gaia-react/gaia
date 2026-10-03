@@ -138,13 +138,14 @@ field() { sed -n "s/^${2}=//p" <<<"$1"; }
 
 setup_sandbox_repo() {
   SANDBOX="$BATS_TEST_TMPDIR/sandbox"
-  mkdir -p "$SANDBOX/.gaia/scripts"
+  mkdir -p "$SANDBOX/.gaia/scripts" "$SANDBOX/.claude/hooks/lib"
   cp "$PREDICATE" "$SANDBOX/.gaia/scripts/chore-deps-skip.sh"
+  cp "$REPO_ROOT/.claude/hooks/lib/gaia-packages.sh" "$SANDBOX/.claude/hooks/lib/gaia-packages.sh"
   git -C "$SANDBOX" init --quiet --initial-branch=main
   git -C "$SANDBOX" config user.email "test@example.com"
   git -C "$SANDBOX" config user.name "Test"
   git -C "$SANDBOX" config commit.gpgsign false
-  git -C "$SANDBOX" add .gaia/scripts/chore-deps-skip.sh
+  git -C "$SANDBOX" add .gaia/scripts/chore-deps-skip.sh .claude/hooks/lib/gaia-packages.sh
   git -C "$SANDBOX" commit --quiet -m "init"
 }
 
@@ -254,4 +255,155 @@ setup_chromatic_sandbox() {
   commit_file package.json '{}' "chore(deps): bump x"
   result="$(run_step_capture "$body" "DEFAULT_BRANCH=main" "REF_NAME=main" "BEFORE=$parent")"
   [ "$(field "$result" skip)" = "true" ]
+}
+
+# -----------------------------------------------------------------------------
+# Registered-package manifests (SPEC-092 coupling 7)
+#
+# The predicate reads the package registry and each descriptor's
+# `dependencyManifests` globs from the tree the script sits in, so these tests
+# run a sandbox copy of the script beside a literal registry and descriptor.
+# The live registry and descriptor are never copied.
+# -----------------------------------------------------------------------------
+
+make_sandbox() {
+  SANDBOX="$BATS_TEST_TMPDIR/sandbox"
+  mkdir -p "$SANDBOX/.gaia/scripts" "$SANDBOX/.claude/hooks/lib"
+  cp "$PREDICATE" "$SANDBOX/.gaia/scripts/"
+  cp "$REPO_ROOT/.claude/hooks/lib/gaia-packages.sh" "$SANDBOX/.claude/hooks/lib/"
+  SANDBOX_PREDICATE="$SANDBOX/.gaia/scripts/chore-deps-skip.sh"
+}
+
+write_package() {
+  local directory="$1"
+  mkdir -p "$SANDBOX/$directory"
+  cat > "$SANDBOX/$directory/gaia.package.json" <<'JSON'
+{
+  "schemaVersion": 1,
+  "name": "frontend",
+  "globs": {
+    "tddUnitTests": ["app/**/*.test.ts"],
+    "tddStrictCandidates": ["app/utils/**"],
+    "emergentTests": ["app/components/**/*.test.ts"],
+    "selfHealRefuse": ["CLAUDE.md"],
+    "preCommitSource": ["app/**"],
+    "doctorConfigs": ["doctor.config.*"],
+    "dependencyManifests": ["package.json"]
+  },
+  "wiki": { "sourcePaths": ["app/"], "inventoryPaths": ["app/"], "flowPaths": ["app/"] }
+}
+JSON
+}
+
+use_frontend_registry() {
+  make_sandbox
+  printf '[{"name":"frontend","path":"frontend"}]\n' > "$SANDBOX/.gaia/packages.json"
+  write_package frontend
+}
+
+use_root_registry() {
+  make_sandbox
+  printf '[{"name":"frontend","path":"."}]\n' > "$SANDBOX/.gaia/packages.json"
+  write_package .
+}
+
+# Run the sandbox predicate keeping stdout (STDOUT_TEXT) and stderr (STDERR_TEXT)
+# apart; the exit status must be 0.
+sandbox_predicate_split() {
+  local status_code=0
+  STDOUT_TEXT=$(bash "$SANDBOX_PREDICATE" "$1" <<<"$2" 2>"$BATS_TEST_TMPDIR/stderr") || status_code=$?
+  STDERR_TEXT=$(cat "$BATS_TEST_TMPDIR/stderr")
+  [ "$status_code" -eq 0 ]
+}
+
+sandbox_predicate() {
+  run bash "$SANDBOX_PREDICATE" "$1" <<<"$2"
+  [ "$status" -eq 0 ]
+}
+
+@test "package manifests: a lockfile plus frontend/package.json is dependency-only" {
+  use_frontend_registry
+  sandbox_predicate 'chore(deps): bump x' $'pnpm-lock.yaml\nfrontend/package.json'
+  [ "$output" = "true" ]
+}
+
+@test "package manifests: the same paths under a feat subject are not" {
+  use_frontend_registry
+  sandbox_predicate 'feat: x' $'pnpm-lock.yaml\nfrontend/package.json'
+  [ "$output" = "false" ]
+}
+
+@test "package manifests: a frontend source file beside the manifests is not dependency-only" {
+  use_frontend_registry
+  sandbox_predicate 'chore(deps): bump x' $'pnpm-lock.yaml\nfrontend/package.json\nfrontend/app/a.ts'
+  [ "$output" = "false" ]
+}
+
+@test "package manifests: a nested package.json under the package is not a manifest" {
+  use_frontend_registry
+  sandbox_predicate 'chore(deps): bump x' 'frontend/app/foo/package.json'
+  [ "$output" = "false" ]
+}
+
+@test "package manifests: package.json under an unregistered directory is not a manifest" {
+  use_frontend_registry
+  sandbox_predicate 'chore(deps): bump x' 'x/package.json'
+  [ "$output" = "false" ]
+}
+
+@test "package manifests: a root source path beside the lockfile is not dependency-only" {
+  use_frontend_registry
+  sandbox_predicate 'chore(deps): bump x' $'pnpm-lock.yaml\napp/a.ts'
+  [ "$output" = "false" ]
+}
+
+@test "package manifests: a registered package manifest is not accepted when the registry omits it" {
+  make_sandbox
+  printf '[{"name":"frontend","path":"frontend"}]\n' > "$SANDBOX/.gaia/packages.json"
+  write_package frontend
+  printf '[]\n' > "$SANDBOX/.gaia/packages.json"
+  sandbox_predicate 'chore(deps): bump x' 'frontend/package.json'
+  [ "$output" = "false" ]
+}
+
+@test "package manifests: with no registry the built-in frontend package is used" {
+  make_sandbox
+  sandbox_predicate 'chore(deps): bump x' $'pnpm-lock.yaml\nfrontend/package.json'
+  [ "$output" = "true" ]
+}
+
+@test "package manifests: an unparseable registry prints false and the reason on stderr" {
+  use_frontend_registry
+  printf 'not json {\n' > "$SANDBOX/.gaia/packages.json"
+  sandbox_predicate_split 'chore(deps): bump x' $'pnpm-lock.yaml\nfrontend/package.json'
+  [ "$STDOUT_TEXT" = "false" ]
+  grep -qF -- "gaia-packages: " <<<"$STDERR_TEXT"
+}
+
+@test "package manifests: a missing descriptor prints false, even for root manifests only" {
+  use_frontend_registry
+  rm "$SANDBOX/frontend/gaia.package.json"
+  sandbox_predicate_split 'chore(deps): bump x' $'pnpm-lock.yaml\npackage.json'
+  [ "$STDOUT_TEXT" = "false" ]
+  grep -qF -- "gaia-packages: " <<<"$STDERR_TEXT"
+}
+
+@test "package manifests: a missing registry reader prints false" {
+  use_frontend_registry
+  rm "$SANDBOX/.claude/hooks/lib/gaia-packages.sh"
+  sandbox_predicate_split 'chore(deps): bump x' 'package.json'
+  [ "$STDOUT_TEXT" = "false" ]
+  grep -qF -- "gaia-packages: " <<<"$STDERR_TEXT"
+}
+
+@test "path-dot layout: root package.json plus the lockfile is dependency-only" {
+  use_root_registry
+  sandbox_predicate 'chore(deps): bump x' $'package.json\npnpm-lock.yaml'
+  [ "$output" = "true" ]
+}
+
+@test "path-dot layout: an app/ source file beside the lockfile is not" {
+  use_root_registry
+  sandbox_predicate 'chore(deps): bump x' $'pnpm-lock.yaml\napp/a.ts'
+  [ "$output" = "false" ]
 }

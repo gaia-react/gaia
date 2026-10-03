@@ -8,7 +8,7 @@ tags: [concept, claude, skills]
 
 # Claude Skills
 
-`.claude/skills/` holds project-local skills. Each has a `SKILL.md` with YAML frontmatter (`name`, `description`, optional `allowed-tools`) defining when it activates. Skills apply by context/intent (description match); rules apply by file path.
+`.claude/skills/` holds project-local skills. Each has a `SKILL.md` with YAML frontmatter (`name`, `description`, optional `allowed-tools`) defining when it activates. Skills apply by context/intent (description match); rules apply by file path. Skills that serve only the React app live in `frontend/.claude/skills/` and surface when work touches files under `frontend/`; the harness and stack-neutral skills stay in `.claude/skills/`. The tables below cover both locations.
 
 See [[modules/Claude Integration|the modules page]] for the full skills inventory inside `.claude/`.
 
@@ -36,10 +36,10 @@ GAIA's skills split into three groups: shared `gaia/references/` playbooks consu
 
 | Skill           | Triggers on                                                                                                                                |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `new-component` | "create a component", "scaffold a card": drops a PascalCase folder under `app/components/` with `index.tsx` and a `tests/` dir             |
-| `new-hook`      | "create a useFoo hook", "add a hook under app/hooks": drops a `useThing.ts` + Vitest test                                                  |
-| `new-route`     | "add a new page", "scaffold /dashboard": wires a route file + `app/pages/{Group}/{PageName}/` + i18n keys                                  |
-| `new-service`   | "add a service", "scaffold the projects API": drops `app/services/{layer}/{name}/` (parsers, types, requests) and matching MSW collections |
+| `new-component` | "create a component", "scaffold a card": drops a PascalCase folder under `frontend/app/components/` with `index.tsx` and a `tests/` dir             |
+| `new-hook`      | "create a useFoo hook", "add a hook under frontend/app/hooks": drops a `useThing.ts` + Vitest test                                                  |
+| `new-route`     | "add a new page", "scaffold /dashboard": wires a route file + `frontend/app/pages/{Group}/{PageName}/` + i18n keys                                  |
+| `new-service`   | "add a service", "scaffold the projects API": drops `frontend/app/services/{layer}/{name}/` (parsers, types, requests) and matching MSW collections |
 | `update-deps`   | Autonomous Dependabot: fired by `/gaia-init`, accepted from the statusline `Run /update-deps` indicator, or "update dependencies"          |
 | `update-gaia`   | Pull a later GAIA release into the project: accepted from the SessionStart update prompt, or "pull the latest GAIA"                        |
 
@@ -90,7 +90,7 @@ Heuristic when migrating:
 
 - **Rule → hook** when the guidance can be phrased as a deterministic block on a specific tool call (e.g. "no writes to `.env`" → `block-env-write.sh`).
 - **Rule → skill** when the guidance is a body of patterns triggered by intent rather than file path (e.g. ESLint fix recipes only matter when fixing lint, not on every edit) and benefits from references that load on demand.
-- **Keep as rule** when it must auto-apply whenever a file in scope is touched, regardless of user intent (e.g. `i18n.md` for `app/pages/**`, `accessibility.md`, `coding-guidelines.md`, `quality-gate.md`).
+- **Keep as rule** when it must auto-apply whenever a file in scope is touched, regardless of user intent (e.g. `i18n.md` for `frontend/app/pages/**`, `accessibility.md`, `coding-guidelines.md`, `quality-gate.md`).
 
 ## Skill references convention
 
@@ -98,7 +98,7 @@ Heuristic when migrating:
 
 Stack-specific or deep-dive content lives in `references/{topic}.md` inside the skill directory, loaded on demand. `SKILL.md` hints at available references via markdown links. Adding support for a new stack means adding a new reference file; `SKILL.md` itself is never touched.
 
-**Example:** `skills/tdd/SKILL.md` links to `skills/tdd/references/tests-react.md`. A new Svelte testing reference would go in `skills/tdd/references/tests-svelte.md`.
+**Example:** `frontend/.claude/skills/tdd-react/SKILL.md` links to `frontend/.claude/skills/tdd-react/references/tests-react.md`, while the stack-neutral `.claude/skills/tdd/` stays at the root. A Svelte package would carry its own `tdd-svelte` skill beside it.
 
 See [[Claude Integration Conventions]] for the broader convention covering extension points, monorepo retrofit, and service swaps.
 

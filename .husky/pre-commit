@@ -6,41 +6,96 @@
 
 printf '\n🔎 Running pre-commit check\n'
 
-# Guard: exactly one react-doctor config may exist. react-doctor resolves the
-# highest-precedence file and silently ignores the rest, so a stray duplicate
-# (e.g. doctor.config.json beside doctor.config.ts) shadows the canonical
-# config without warning. Fail fast rather than ship a shadowed config.
-DOCTOR_CONFIGS=$(find . -maxdepth 1 -type f \( -name 'doctor.config.*' -o -name 'react-doctor.config.*' \) | wc -l | tr -d ' ')
-if [ "$DOCTOR_CONFIGS" -gt 1 ]; then
-  printf "\x1b[31m✖ Multiple react-doctor configs found; keep only doctor.config.ts\x1b[0m\n"
-  find . -maxdepth 1 -type f \( -name 'doctor.config.*' -o -name 'react-doctor.config.*' \)
+# The package-aware decisions live in a bash helper (this file must stay POSIX
+# sh, and the registry reader is bash). It prints one TAB-separated record per
+# line: `exempt`, `doctor<TAB>dir`, `doctor-file<TAB>path`, `package<TAB>dir`.
+# It exits 1 with the reason on stderr when the registry or a descriptor cannot
+# be read, and no descriptor failure lets a commit through.
+ROOT=$(git rev-parse --show-toplevel) || exit 1
+PLAN=$(bash "$ROOT/.gaia/scripts/precommit-packages.sh" "$ROOT") || {
+  printf "\x1b[31m✖ Pre-commit could not read the package registry\x1b[0m\n"
+  exit 1
+}
+
+TAB=$(printf '\t')
+
+# Migration renames (C13): a staged set of only exact renames from a retired
+# root frontend path to its `frontend/` counterpart carries no content change,
+# so the gate has nothing to check. The helper decides this before it loads the
+# registry; every other entry, including a rename inside `frontend/`, counts.
+if [ "$PLAN" = "exempt" ]; then
+  printf "\x1b[32m"
+  printf "✅ Only frontend/ migration renames staged -- skipping lint-staged\n\n"
+  printf "\x1b[0m"
+  exit 0
+fi
+
+# Generated package settings (C8): a staged change to the root settings, the
+# registry, or a package's settings or overlay must leave every generated
+# `<package>/.claude/settings.json` current and complete, or a session launched
+# in the package runs without the root's guard hooks and denies.
+SETTINGS_DRIFT=$(printf '%s\n' "$PLAN" | while IFS="$TAB" read -r KIND VALUE; do
+  if [ "$KIND" = "settings-drift" ]; then printf 'x'; fi
+done)
+if [ -n "$SETTINGS_DRIFT" ]; then
+  bash "$ROOT/.gaia/scripts/check-settings-drift.sh" || {
+    printf "\x1b[31m✖ Generated package settings are out of date or incomplete: run ./.gaia/cli/gaia packages sync-settings and stage the result\x1b[0m\n"
+    exit 1
+  }
+fi
+
+# Guard (MIG-013): with no package at the repo root, a new file under a retired
+# root frontend path belongs under frontend/. The helper names each one with its
+# frontend/ equivalent; a C13-exempt rename never reaches here (it exits above).
+RETIRED_ADDS=$(printf '%s\n' "$PLAN" | while IFS="$TAB" read -r KIND VALUE REPLACEMENT; do
+  if [ "$KIND" = "retired-add" ]; then printf '  %s -> %s\n' "$VALUE" "$REPLACEMENT"; fi
+done)
+if [ -n "$RETIRED_ADDS" ]; then
+  printf "\x1b[31m✖ The React app lives in frontend/ now; move these new files there:\x1b[0m\n"
+  printf '%s\n' "$RETIRED_ADDS"
   exit 1
 fi
 
-# All four arms share one --diff-filter, ACDM. `D` is load-bearing: deleting a
-# shared helper, fixture, or spec breaks the types of every file that imported
-# it, so a deletion-only commit is exactly when the skipped `pnpm typecheck`
-# earns its keep. lint-staged and `vitest --changed` both no-op safely on a
-# staged deletion, so the arms cost nothing when there is nothing left to lint.
-#
-# `-z` on all four: without it git C-quotes a path carrying a non-ASCII byte,
-# and the four unanchored greps below survive that only by accident, because
-# `"app/caf\303\251.tsx"` still contains the substring `app/`. Anchoring any of
-# these greps to `^app/` at any later point would turn all four into silent
-# misses, so the fix belongs on the producer rather than on the four consumers.
-HAS_APP_CHANGED=$(git diff --cached --name-only -z --diff-filter=ACDM | tr '\0' '\n' | grep 'app/' || true)
-HAS_TEST_CHANGED=$(git diff --cached --name-only -z --diff-filter=ACDM | tr '\0' '\n' | grep 'test/' || true)
-HAS_STORYBOOK_CHANGED=$(git diff --cached --name-only -z --diff-filter=ACDM | tr '\0' '\n' | grep '.storybook/' || true)
-HAS_PLAYWRIGHT_CHANGED=$(git diff --cached --name-only -z --diff-filter=ACDM | tr '\0' '\n' | grep '.playwright/' || true)
+# Guard: exactly one react-doctor config may exist per package. react-doctor
+# resolves the highest-precedence file and silently ignores the rest, so a stray
+# duplicate (e.g. doctor.config.json beside doctor.config.ts) shadows the
+# canonical config without warning. Fail fast rather than ship a shadowed config.
+DOCTOR_DIRS=$(printf '%s\n' "$PLAN" | while IFS="$TAB" read -r KIND VALUE; do
+  if [ "$KIND" = "doctor" ]; then printf '%s\n' "$VALUE"; fi
+done)
+if [ -n "$DOCTOR_DIRS" ]; then
+  printf "\x1b[31m✖ Multiple react-doctor configs found in %s; keep only doctor.config.ts\x1b[0m\n" "$DOCTOR_DIRS"
+  printf '%s\n' "$PLAN" | while IFS="$TAB" read -r KIND VALUE; do
+    if [ "$KIND" = "doctor-file" ]; then printf '%s\n' "$VALUE"; fi
+  done
+  exit 1
+fi
 
-if [ -n "$HAS_APP_CHANGED" ] || [ -n "$HAS_TEST_CHANGED" ] || [ -n "$HAS_STORYBOOK_CHANGED" ] || [ -n "$HAS_PLAYWRIGHT_CHANGED" ]
+# The helper counts a staged path only when it matches a package's
+# preCommitSource globs, with every status in the count (`D` is load-bearing:
+# deleting a shared helper, fixture, or spec breaks the types of every file that
+# imported it, so a deletion-only commit is exactly when the skipped typecheck
+# earns its keep). `-z` inside the helper keeps a non-ASCII path from being
+# C-quoted into a silent miss.
+PACKAGE_DIRS=$(printf '%s\n' "$PLAN" | while IFS="$TAB" read -r KIND VALUE; do
+  if [ "$KIND" = "package" ]; then printf '%s\n' "$VALUE"; fi
+done)
+
+if [ -n "$PACKAGE_DIRS" ]
 then
   printf "\x1b[33m"
   printf "⚠️ Changes detected - running lint-staged\n"
   printf "\x1b[0m"
-	pnpm typecheck
-	pnpm exec lint-staged
-	pnpm test:lint-staged
+  # A here-document, not a pipe: the gate must run in this shell so `sh -e`
+  # stops the commit on the first failing step.
+  while IFS= read -r PACKAGE_DIR; do
+    if [ "$PACKAGE_DIR" = "." ]; then PACKAGE_PATH="$ROOT"; else PACKAGE_PATH="$ROOT/$PACKAGE_DIR"; fi
+    pnpm -C "$PACKAGE_PATH" typecheck
+    pnpm -C "$PACKAGE_PATH" exec lint-staged
+    pnpm -C "$PACKAGE_PATH" test:lint-staged
+  done <<EOF
+$PACKAGE_DIRS
+EOF
 else
   printf "\x1b[32m"
   printf "✅ No changed files -- skipping lint-staged\n\n"

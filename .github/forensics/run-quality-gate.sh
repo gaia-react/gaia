@@ -27,6 +27,10 @@
 # Exit code: 0 on pass, 1 on any step failure. The workflow YAML uses the
 # exit code to short-circuit; the JSON summary feeds the issue comment.
 #
+# Each step runs through the root pnpm proxy scripts, which forward to
+# `pnpm -C frontend <script>` (the app lives in frontend/, SPEC-092); install
+# stays at the root because the workspace has one lockfile.
+#
 # Knip caveat:
 #   wiki/dependencies/knip.md says "do not run mid-task / as part of the
 #   Quality Gate, in-progress exports flag as false positives". That

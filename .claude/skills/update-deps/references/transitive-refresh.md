@@ -1,21 +1,23 @@
 ### Transitive refresh instructions
 
-Operate on the root pnpm project only: run every `pnpm` command from the project root, never with `-r`, `-C`, or `cd`. Frozen names: `{FROZEN_NAMES}`.
+Operate on the root workspace and its `frontend` package only: run every `pnpm` command from the repository root, never with `-r` or `cd`; `-C frontend` is the one allowed path argument. Frozen names: `{FROZEN_NAMES}`.
 
 1. **Snapshot** the three files the refresh could touch, and the direct dependencies' resolved versions:
    ```bash
    mkdir -p /tmp/update-deps-refresh
+   mkdir -p /tmp/update-deps-refresh/frontend
+   cp frontend/package.json /tmp/update-deps-refresh/frontend/
    cp package.json pnpm-lock.yaml pnpm-workspace.yaml /tmp/update-deps-refresh/
-   pnpm ls --depth 0 --json | jq '.[0] | (.dependencies // {}) + (.devDependencies // {}) | map_values(.version)' > /tmp/update-deps-refresh/direct.json
+   pnpm -C frontend ls --depth 0 --json | jq '.[0] | (.dependencies // {}) + (.devDependencies // {}) | map_values(.version)' > /tmp/update-deps-refresh/direct.json
    ```
 2. **Refresh:**
    ```bash
-   pnpm update --no-save --depth Infinity
+   pnpm -C frontend update --no-save --depth Infinity
    ```
    `--no-save` leaves every range in `package.json` as declared, so direct specs stay with Waves A and B; `--depth Infinity` spells out pnpm's default of re-resolving the whole tree. Do not use `pnpm update --latest` (it ignores ranges) or `pnpm dedupe` (it moves a transitive only when that removes a duplicate). pnpm applies `minimumReleaseAge` while it resolves, so no version younger than the window lands; never add a `minimumReleaseAgeExclude` entry or change any setting to get a version through. If the command exits non-zero, revert (step 6) with reason `install error: <first error line>`.
 3. **Check what it touched.**
-   - `package.json` and `pnpm-workspace.yaml` must be byte-identical to the snapshot (`cmp`). A difference means pnpm rewrote a range or recorded a release-age exemption: revert with reason `rewrote <file>`.
-   - Re-run the step 1 `pnpm ls` line into `/tmp/update-deps-refresh/direct-after.json` and compare each frozen name's version with `direct.json`. A frozen name whose version changed means the refresh moved a held or snoozed package inside its range: revert with reason `moved frozen <name> (<from> -> <to>); pin it to an exact version in package.json to let the refresh run`.
+   - `package.json`, `frontend/package.json`, and `pnpm-workspace.yaml` must be byte-identical to the snapshot (`cmp`). A difference means pnpm rewrote a range or recorded a release-age exemption: revert with reason `rewrote <file>`.
+   - Re-run the step 1 `pnpm -C frontend ls` line into `/tmp/update-deps-refresh/direct-after.json` and compare each frozen name's version with `direct.json`. A frozen name whose version changed means the refresh moved a held or snoozed package inside its range: revert with reason `moved frozen <name> (<from> -> <to>); pin it to an exact version in package.json to let the refresh run`.
 4. **List what moved**, from the lockfile's `packages:` keys before and after:
    ```bash
    lock_keys() {
@@ -40,6 +42,7 @@ Operate on the root pnpm project only: run every `pnpm` command from the project
 6. **Revert** restores the whole refresh, never part of it:
    ```bash
    cp /tmp/update-deps-refresh/package.json /tmp/update-deps-refresh/pnpm-lock.yaml /tmp/update-deps-refresh/pnpm-workspace.yaml .
+   cp /tmp/update-deps-refresh/frontend/package.json frontend/package.json
    pnpm install --frozen-lockfile
    cmp pnpm-lock.yaml /tmp/update-deps-refresh/pnpm-lock.yaml
    ```

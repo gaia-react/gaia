@@ -1,0 +1,59 @@
+# file<TAB>needle<TAB>reason. A retired-path hit is allowed when its file matches and the line contains the needle.
+# An entry that matches no hit fails the gate as stale. Read by .gaia/scripts/check-retired-paths.sh.
+.claude/hooks/lib/gaia-packages.sh	app/	Built-in default package descriptor: paths are package-relative by contract and join the registry path at use.
+.claude/hooks/lib/gaia-packages.sh	.playwright/	Built-in default package descriptor: paths are package-relative by contract and join the registry path at use.
+.claude/hooks/lib/gaia-packages.sh	test/**	Built-in default package descriptor: paths are package-relative by contract and join the registry path at use.
+.claude/hooks/lib/gaia-packages.sh	.storybook/	Built-in default package descriptor: paths are package-relative by contract and join the registry path at use.
+.claude/hooks/lib/gaia-packages.sh	Dockerfile	Built-in default package descriptor: paths are package-relative by contract and join the registry path at use.
+.gaia/cli/src/util/packages.ts	app/	Built-in default package descriptor: paths are package-relative by contract and join the registry path at use.
+.gaia/cli/src/util/packages.ts	.playwright/	Built-in default package descriptor: paths are package-relative by contract and join the registry path at use.
+.gaia/cli/src/util/packages.ts	test/**	Built-in default package descriptor: paths are package-relative by contract and join the registry path at use.
+.gaia/cli/src/util/packages.ts	.storybook/	Built-in default package descriptor: paths are package-relative by contract and join the registry path at use.
+.gaia/cli/src/util/packages.ts	Dockerfile	Built-in default package descriptor: paths are package-relative by contract and join the registry path at use.
+.gaia/scripts/lib/gaia-packages.mjs	app/	Built-in default package descriptor: paths are package-relative by contract and join the registry path at use.
+.gaia/scripts/lib/gaia-packages.mjs	.playwright/	Built-in default package descriptor: paths are package-relative by contract and join the registry path at use.
+.gaia/scripts/lib/gaia-packages.mjs	test/**	Built-in default package descriptor: paths are package-relative by contract and join the registry path at use.
+.gaia/scripts/lib/gaia-packages.mjs	.storybook/	Built-in default package descriptor: paths are package-relative by contract and join the registry path at use.
+.gaia/scripts/lib/gaia-packages.mjs	Dockerfile	Built-in default package descriptor: paths are package-relative by contract and join the registry path at use.
+.gaia/cli/src/release/runtime-deps.ts	'.claude/agents/code-audit-frontend/	Withheld-token list: names the retired root homes of the moved frontend-only units so a stray root copy never ships.
+.gaia/cli/src/release/runtime-deps.ts	'.claude/instructions/	Withheld-token list: names the retired root homes of the moved frontend-only units so a stray root copy never ships.
+.gaia/cli/src/release/runtime-deps.ts	'.claude/rules/	Withheld-token list: names the retired root homes of the moved frontend-only units so a stray root copy never ships.
+.gaia/cli/src/release/runtime-deps.ts	'.claude/skills/	Withheld-token list: names the retired root homes of the moved frontend-only units so a stray root copy never ships.
+.gaia/scripts/precommit-packages.sh	app/* | test/*	Literal table of the retired root sources a migration rename may move, independent of the registry by design.
+.gaia/scripts/precommit-packages.sh	.dockerignore	Literal table of the retired root sources a migration rename may move, independent of the registry by design.
+.gaia/scripts/precommit-packages.sh	vite.config.ts	Literal table of the retired root sources a migration rename may move, independent of the registry by design.
+.gaia/scripts/precommit-packages.sh	react-router.config.ts	Literal table of the retired root sources a migration rename may move, independent of the registry by design.
+.gaia/scripts/precommit-packages.sh	doctor.config.ts	Literal table of the retired root sources a migration rename may move, independent of the registry by design.
+.gaia/scripts/precommit-packages.sh	eslint.config.mjs	Literal table of the retired root sources a migration rename may move, independent of the registry by design.
+.gaia/scripts/precommit-packages.sh	.claude/skills/	Literal table of the retired root sources a migration rename may move, independent of the registry by design.
+.gaia/scripts/precommit-packages.sh	.claude/rules/	Literal table of the retired root sources a migration rename may move, independent of the registry by design.
+.gaia/scripts/precommit-packages.sh	.claude/instructions/	Literal table of the retired root sources a migration rename may move, independent of the registry by design.
+.gaia/scripts/precommit-packages.sh	.claude/agents/code-audit-frontend/	Literal table of the retired root sources a migration rename may move, independent of the registry by design.
+.claude/hooks/block-env-read.sh	.env.example	Basename match on the committed placeholder file name at any depth; not a root path.
+.claude/hooks/block-env-write.sh	.env.example	Basename match on the committed placeholder file name at any depth; not a root path.
+.claude/hooks/block-secrets-write.sh	.env.example	Basename match on the committed placeholder file name at any depth; not a root path.
+.gaia/scripts/link-worktree.sh	.env.example	Basename match on the committed placeholder file name at any depth; not a root path.
+.claude/commands/setup-gaia.md	.env.example	Prose naming the placeholder file by basename, not a root path.
+.claude/agents/code-audit-frontend.md	<root>/.claude/agents/code-audit-frontend/	Root extension-directory glob by design, and a generic refusal-set shape that applies at the root or under a package.
+.claude/agents/code-audit-frontend.md	a `test/**` tree	Root extension-directory glob by design, and a generic refusal-set shape that applies at the root or under a package.
+.claude/skills/gaia/references/debt.md	app/services/	Illustrative file path in an example, not a path the skill reads.
+.claude/skills/gaia/references/debt.md	app/foo/index.ts	Illustrative file path in an example, not a path the skill reads.
+.claude/skills/gaia/references/forensics/redaction.md	app/i18n.ts	Redaction example for an arbitrary user project layout.
+.claude/skills/naming-conventions/SKILL.md	Dockerfile ARG	The generic word Dockerfile, not the retired root file.
+.claude/skills/release-notes/SKILL.md	app/root.tsx	Example adopter-facing release note text about an adopter's own app file.
+.claude/skills/update-gaia/references/merge-execution.md	unprefixed `app/**`	Describes the 1.x roster shape that the 2.x update path refuses.
+.gaia/scripts/red-ledger/README.md	"app/x/index.test.ts"	Example ledger record with a package-relative path.
+.gaia/cli/src/wiki/dead-paths.ts	ROOT_PACKAGE_PREFIXES = 	Prefixes serving a package registered at the root only; a nested package is keyed by its own path.
+.gaia/cli/src/init/bootstrap-env.ts	.env.example	Resolved against the package directory from the registry.
+.gaia/cli/src/init/index.ts	.env.example	Help text naming the placeholder file.
+.gaia/cli/src/init/configure-i18n.ts	app/languages	Package-relative constants joined to the package directory from the registry.
+.gaia/cli/src/init/configure-i18n.ts	app/i18n.ts	Package-relative constants joined to the package directory from the registry.
+.gaia/cli/src/init/rename.ts	app/languages	Package-relative constants joined to the package directory from the registry.
+.gaia/cli/src/init/strip-branding.ts	.storybook/preview.ts	Package-relative constant joined to the package directory from the registry.
+.gaia/cli/src/scaffold/component.ts	app/components	Package-relative default parent and a tsconfig-path import specifier written into generated files.
+.gaia/cli/src/scaffold/component.ts	'test/rtl'	Package-relative default parent and a tsconfig-path import specifier written into generated files.
+.gaia/cli/src/scaffold/service.ts	app/services/	Package-relative paths resolved against the package directory from the registry.
+.gaia/cli/src/scaffold/service.ts	test/mocks/	Package-relative paths resolved against the package directory from the registry.
+.gaia/cli/src/scaffold/templates/component/index.test.tsx.tmpl	'test/a11y'	Import specifier resolved by the generated package's tsconfig paths, not a root file path.
+.gaia/cli/src/scaffold/templates/route/page.stories.tsx.tmpl	'test/stubs'	Import specifier resolved by the generated package's tsconfig paths, not a root file path.
+.gaia/cli/src/scaffold/templates/route/page.test.tsx.tmpl	'test/rtl'	Import specifier resolved by the generated package's tsconfig paths, not a root file path.

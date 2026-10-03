@@ -1,0 +1,4 @@
+{
+  "load": 3,
+  "error": "gaia-packages: frontend/gaia.package.json is invalid: name must be \"frontend\". Next step: restore frontend/gaia.package.json from the GAIA release, or correct the field it names."
+}

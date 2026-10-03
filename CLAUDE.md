@@ -36,4 +36,7 @@ Wiki prose follows `.claude/rules/wiki-style.md` and code comments follow `.clau
 - No hardcoded machine-specific absolute paths; keep paths repo-relative.
 - Prefer structured logs and errors over ad hoc console text.
 - Keep files focused; split past ~400 lines.
-- The visual styling is a deliberate neutral baseline, not a chosen design system; before designing or restyling read `.claude/rules/design-baseline.md` and `wiki/concepts/Design System.md`.
+
+## Frontend work
+
+The React app and its harness live in `frontend/`. Before reading or editing anything under `frontend/`, Read `frontend/CLAUDE.md`: in a root session that Read is what loads the frontend rules and skills. Harness workflows (`/gaia-spec`, `/gaia-plan`, PR merge, release, `/gaia-debt`, `/update-gaia`) run from a root launch, not from `frontend/`.

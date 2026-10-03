@@ -295,7 +295,7 @@ CALL_SITE_FILES=(
   ".claude/commands/health-audit.md"
   ".claude/commands/setup-gaia.md"
   ".claude/skills/gaia-wiki/SKILL.md"
-  ".claude/skills/gaia-react-perf/SKILL.md"
+  "frontend/.claude/skills/gaia-react-perf/SKILL.md"
   ".claude/skills/release-notes/SKILL.md"
   ".claude/skills/update-deps/SKILL.md"
   ".claude/skills/update-gaia/SKILL.md"
@@ -348,7 +348,7 @@ NO_CALL_SITE_FILES=(
   ".claude/skills/file-tech-debt/SKILL.md"
 )
 
-# Seven of the call-site roster are thin dispatchers: a "Read `.claude/..." line
+# Seven of the call-site roster are thin dispatchers: a "Read `.claude/..." (or "Read `frontend/.claude/...") line
 # sends the agent to a reference file, and a refusal call placed BELOW that
 # line greps as present but never runs, because the agent follows the
 # reference instead of reading the rest of the file. This is the frozen set
@@ -361,7 +361,7 @@ EXPECTED_DISPATCHER_FILES=(
   ".claude/commands/gaia-harden.md"
   ".claude/commands/gaia-serena-sync.md"
   ".claude/skills/gaia-wiki/SKILL.md"
-  ".claude/skills/gaia-react-perf/SKILL.md"
+  "frontend/.claude/skills/gaia-react-perf/SKILL.md"
 )
 
 # extract_block <file>: pulls the fenced code block (```...```) that
@@ -410,7 +410,7 @@ extract_block() {
 @test "call-site placement: the invocation precedes the file's own dispatch line, in every thin dispatcher" {
   local call_site_file dispatch_line invoke_line measured=() sorted_measured sorted_expected
   for call_site_file in "${CALL_SITE_FILES[@]}"; do
-    dispatch_line=$(grep -n 'Read `\.claude/' "$REPO_ROOT/$call_site_file" | head -1 | cut -d: -f1)
+    dispatch_line=$(grep -nE 'Read `(frontend/)?\.claude/' "$REPO_ROOT/$call_site_file" | head -1 | cut -d: -f1)
     [ -n "$dispatch_line" ] || continue # exempt: no dispatch line to sit ahead of
     measured+=("$call_site_file")
     invoke_line=$(grep -n '^[[:space:]]*gaia_refuse_if_worktree "' "$REPO_ROOT/$call_site_file" | head -1 | cut -d: -f1)

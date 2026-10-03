@@ -14,6 +14,12 @@ A release change that requires the adopter to act, run a command or hand-migrate
 
 ## [Unreleased]
 
+### Breaking
+
+On GAIA 1.6.1? Choose Abort, then paste the prompt from https://gaiareact.com/migrate into a fresh session.
+
+- GAIA 2.0.0 moves the React app and its frontend-only Claude harness into `frontend/`, leaving the root as a pnpm workspace that holds the shared harness, and 2.x releases ship as `gaia-bundle-<tag>.tar.gz`. A 1.6.1 `/update-gaia` cannot cross that move, so choosing Proceed there creates a `chore/update-gaia-*` branch, prunes `.gaia-backup` and the cached tag directories, then stops with `FETCH_FAILED` and changes nothing else. **Action required:** on 1.x, migrate with the prompt at https://gaiareact.com/migrate; from 2.0.0 on, `/update-gaia` works as before and also regenerates `frontend/.claude/settings.json` after each merge. Each release publishes a `.sha256` for its tarball (#2443)
+
 ### Changed
 
 - GAIA's components now compose classes with `cn` from the `cn` package instead of tailwind-merge's `twMerge`/`twJoin`, and write a conditional class as `cond && 'class'`; a new `@gaia-react/lint` rule, `cn-conditional/cn-conditional`, rejects object conditionals and ternaries with an empty branch. One utility replaces the merge-versus-join choice, there is one conditional form, and it is the same `cn` the shadcn registry components import, so a later `shadcn add` does not ship a second merge engine. This ships in 2.0.0. One rendered change: `Button`, `LinkButton`, `Document`, `InputText`, `FieldLabel`, `FieldRequiredText`, and `MaxLength` now merge a caller class that conflicts with a built-in class, so the caller's class wins (via `classNameIcon`, `classNameInput`, or `className`, depending on the component) where before both classes landed on the element, so check any call that passes a conflicting class to those props. **Action required:** migrate your own components in five steps (#2441)

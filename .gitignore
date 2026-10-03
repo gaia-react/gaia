@@ -1,9 +1,6 @@
 node_modules/
 
 # react-router
-/.cache
-/build
-/public/build
 .react-router/
 
 # Environment
@@ -22,15 +19,13 @@ logs
 npm-debug.log*
 
 # Testing
-/playwright
-.playwright/.cache/
-.playwright/output/
+**/.playwright/.cache/
+**/.playwright/output/
 .playwright-cli/
 coverage
 .jest-cache
 
 # Storybook
-/storybook-static/
 
 # Optional npm cache directory
 .npm
@@ -43,18 +38,18 @@ __pycache__/
 *.pyc
 
 # Claude files
-.claude/agent-memory/
-.claude/worktrees/
-.claude/scheduled_tasks.lock
-.claude/settings.local.json
+**/.claude/agent-memory/
+**/.claude/worktrees/
+**/.claude/scheduled_tasks.lock
+**/.claude/settings.local.json
 # React Doctor installs its Claude Code skill project-local; kept per-machine, never committed.
-.claude/skills/react-doctor/
+**/.claude/skills/react-doctor/
 # claude-code-action runtime working area (mirrors .claude/ for sandboxed execution)
 .claude-pr/
 
 # Wiki sync system markers (project-local, never commit)
-.claude/wiki-recompact-pending
-.claude/wiki-*-checked
+**/.claude/wiki-recompact-pending
+**/.claude/wiki-*-checked
 
 # GAIA release/update working directories
 # No trailing slash: in the main checkout this is a directory, in a provisioned

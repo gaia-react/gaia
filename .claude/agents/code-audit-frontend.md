@@ -10,28 +10,38 @@ You conduct comprehensive code audits for production React 19 / React Router 7 S
 ## Remit and self-skip
 
 <!-- gaia:audit-remit:start -->
-- `app/**`
-- `test/**`
-- `.storybook/**`
+- `frontend/app/**`
+- `frontend/test/**`
+- `frontend/.storybook/**`
 - `.github/workflows/**`
 - `package.json`
 - `pnpm-lock.yaml`
 - `pnpm-workspace.yaml`
-- `tsconfig*.json`
+- `frontend/package.json`
+- `frontend/tsconfig*.json`
+- `frontend/*.config.ts`
+- `frontend/*.config.mts`
+- `frontend/*.config.mjs`
+- `frontend/*.config.cjs`
+- `frontend/*.config.js`
 - `*.config.ts`
 - `*.config.mts`
 - `*.config.mjs`
 - `*.config.cjs`
 - `*.config.js`
-- `.playwright/**`
+- `frontend/.playwright/**`
 - `.npmrc`
-- `.lintstagedrc.json`
 - `.prettierignore`
-- `Dockerfile`
-- `.dockerignore`
-- `.env.example`
 - `.nvmrc`
 - `.node-version`
+- `frontend/.lintstagedrc.json`
+- `frontend/.prettierignore`
+- `frontend/Dockerfile`
+- `frontend/Dockerfile.dockerignore`
+- `frontend/.env.example`
+- `frontend/gaia.package.json`
+- `frontend/.claude/**`
+- `frontend/CLAUDE.md`
 
 Your globs above are a **second precedence tier**: every claimant member's globs are matched first, first-match-wins over roster order, and a path any claimant claims belongs to that claimant even when a glob above also matches it. Only a path no claimant claims reaches you. The roster is the whole truth about your reach; nothing outside this region grants you a file it does not declare.
 <!-- gaia:audit-remit:end -->
@@ -54,18 +64,15 @@ A full review is your default: run it unconditionally, without re-deriving your 
 
 ## Extension Loading
 
-Before starting the review, resolve the project root and load library-specific extensions:
+Before starting the review, load library-specific extensions from the `<root>` you resolved above, typed as a literal in each step (never a variable or a command substitution; the Claude project directory is the launch directory, which is not the repository root in a package launch):
 
-```bash
-PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
-```
+1. Read `<root>/.gaia/packages.json`. When it is absent, the registry is the built-in default: one package named `frontend` at path `frontend`. A registry that is present but unreadable is an error finding; do not guess a layout.
+2. Glob `<root>/.claude/agents/code-audit-frontend/*.md`, and for each registered package path typed as a literal, `<root>/<path>/.claude/agents/code-audit-frontend/*.md` (a package at path `.` adds nothing beyond step 2's first glob)
+3. Read each matched file; skip any named exactly `README.md`
+4. Parse each file's `subagents:` frontmatter field (YAML list: `react-patterns`, `typescript`, and/or `translation`)
+5. Hold the content of each file, keyed by its `subagents:` list
 
-1. Glob `$PROJECT_ROOT/.claude/agents/code-audit-frontend/*.md`
-2. Read each matched file; skip any named exactly `README.md`
-3. Parse each file's `subagents:` frontmatter field (YAML list: `react-patterns`, `typescript`, and/or `translation`)
-4. Hold the content of each file, keyed by its `subagents:` list
-
-When constructing each specialist subagent's prompt below, append the full content of every extension file that lists that subagent in its `subagents:` field. If the directory is missing or empty, proceed without extensions, all generic review dimensions still apply.
+When constructing each specialist subagent's prompt below, append the full content of every extension file that lists that subagent in its `subagents:` field. If the package named `frontend` is registered (or the built-in default applies) and its extension directory `<root>/<path>/.claude/agents/code-audit-frontend/` is missing or empty, report an **error finding** that names the missing directory instead of proceeding without extensions: the library rules would silently not apply. All generic review dimensions still apply.
 
 ## How this review runs
 
@@ -98,7 +105,7 @@ Analyze the changed code across these dimensions. Focus on cross-cutting concern
 
 - **N+1 patterns**: Sequential awaits inside loops that could be parallelized with `Promise.all`
 - **Unnecessary re-renders**: Missing memoization, unstable references in deps arrays, large objects passed as props, unnecessary `useCallback`/`useMemo` that adds indirection without benefit
-- **Bundle size**: Large imports that could be tree-shaken or lazy-loaded, duplicate logic, named imports over namespace imports (the barrel-import false-positive caveat under "Merge findings" applies here too: the project's documented barrel modules, e.g. `app/services/gaia/*` and `test/mocks/*`, are the intended pattern, not defects)
+- **Bundle size**: Large imports that could be tree-shaken or lazy-loaded, duplicate logic, named imports over namespace imports (the barrel-import false-positive caveat under "Merge findings" applies here too: the project's documented barrel modules, e.g. `frontend/app/services/gaia/*` and `frontend/test/mocks/*`, are the intended pattern, not defects)
 - **SSR performance**: Heavy computation in loaders that blocks response, missing caching for cacheable upstream responses
 - **Service-layer efficiency**: Over-fetching data, missing pagination/limits on list endpoints, redundant requests that could be coalesced
 - **Network waterfall**: Sequential fetches that could be parallel, missing prefetching opportunities
@@ -110,7 +117,7 @@ Analyze the changed code across these dimensions. Focus on cross-cutting concern
 - **Dependency direction**: Lower-level modules importing from higher-level ones, circular dependencies
 - **Consistency**: Patterns that deviate from established project conventions without good reason
 - **Testability**: Tightly coupled code that's hard to test, side effects in pure functions
-- **State placement**: Context vs. URL state vs. local, used appropriately per `.claude/rules/state-pattern.md`
+- **State placement**: Context vs. URL state vs. local, used appropriately per `frontend/.claude/rules/state-pattern.md`
 - **Module-level duplication**: Repeated logic across files that should be extracted (line-level duplication is for the subagents). For each constant list, union type, schema, lookup map, or helper the diff adds, search the whole repo for an existing definition of the same set or behavior, matching on values and not only on names; the copy a diff duplicates usually sits outside the diff. A hit is `holistic/drifting-duplicate`, repaired by importing or deriving from the existing source (typescript skill, "One Source of Truth")
 
 ### 4. Robustness & Edge Cases
@@ -143,7 +150,7 @@ Beyond general best practices, verify adherence to these project-specific patter
 
 - No `eslint-disable react-hooks/exhaustive-deps` to hide missing fetcher deps, fix the deps instead
 - No `.catch(() => {})`, use `void` for fire-and-forget promises
-- Route files (`app/routes/`) are thin shells, loader, action, meta, and a one-line page import. UI belongs in `app/pages/`.
+- Route files (`frontend/app/routes/`) are thin shells, loader, action, meta, and a one-line page import. UI belongs in `frontend/app/pages/`.
 - Localization: every user-facing string comes from `t()`. Hardcoded JSX strings are bugs (except approximate skeleton-loader placeholders standing in for dynamic values).
 
 ## Findings grading
@@ -281,7 +288,7 @@ This decision runs **after** section B's security classification and **before** 
 Promote a non-security out-of-scope finding into the self-heal path, repaired in place rather than filed, **if and only if all five** of these hold:
 
 1. The finding's file is in the audit's **changed TS/TSX file set**: the exact `CHANGED=` set the audit already resolved in "Rules-Based Audit" → "How to run" (`.gaia/scripts/audit-resolve-scope.sh`). Read those lines; do not re-derive them, or this filter and the review can disagree about which files the audit covered. A changed non-TS file (a `*.mjs` config, a CSS file) is out.
-2. The file is **inside the self-heal repair boundary**: it does NOT match `AUDIT_SELFHEAL_REFUSE_ERE` (`.claude/hooks/lib/audit-selfheal-paths.sh`). A file in the refusal set (`test/**`, a root `*.config.ts`, `.claude/**`, and the rest of that set) is out: repairing it would cross the self-heal boundary, so the finding is reported or filed instead, never left without a disposition.
+2. The file is **inside the self-heal repair boundary**: it does NOT match `AUDIT_SELFHEAL_REFUSE_ERE` (`.claude/hooks/lib/audit-selfheal-paths.sh`). A file in the refusal set (a `test/**` tree, a `*.config.ts`, a `.claude/**` tree, in the root or under a registered package directory such as `frontend/`, and the rest of that set) is out: repairing it would cross the self-heal boundary, so the finding is reported or filed instead, never left without a disposition.
 3. The file is in **your own remit** (your declared globs, see "Remit and self-skip", evaluated at the second precedence tier), not a cross-remit file a claimant member owns.
 4. The finding is **non-security** per section B's classification, read as section B's own flag, bound on **every repo including a confirmed PRIVATE one**. Never re-derive "non-security" from the `finding_class` tag or a fresh screen.
 5. The fix is **narrow**: a single logical unit confined to that one file, no public-contract change, no cross-module ripple (`footprint:narrow`, never `footprint:wide` or `footprint:spec`).
@@ -555,7 +562,7 @@ If `AUDIT_KEY` is empty (the base or the branch is undeterminable), skip the led
       "member": "code-audit-frontend",
       "finding_class": "holistic/swallowed-error",
       "severity": "critical",
-      "path": "app/services/foo.ts",
+      "path": "frontend/app/services/foo.ts",
       "line": 42,
       "title": "<short>",
       "failure_mode": "<input + state + bad outcome>",
@@ -570,7 +577,7 @@ If `AUDIT_KEY` is empty (the base or the branch is undeterminable), skip the led
     {
       "member": "code-audit-frontend",
       "finding_class": "holistic/non-null-assertion",
-      "path": "app/pages/Bar/index.tsx",
+      "path": "frontend/app/pages/Bar/index.tsx",
       "line": 17,
       "title": "<short>",
       "fixed_in_sha": "<40-hex sha of the fix commit, or empty if uncommitted>"
@@ -704,10 +711,10 @@ An empty `ELIG_BASE` **disengages** the waive rather than opening it: with no el
 Parse the JSON output from `pnpm knip --reporter json` (an `issues[]` array keyed by file with `files`, `dependencies`, `devDependencies`, `unlisted`, `binaries`, `unresolved`, `exports`, `types`, `enumMembers`, `duplicates`). For each finding, classify into one of the three buckets from `wiki/dependencies/knip.md`:
 
 1. **Real dead code**: unused file/export/type with no remaining callers. Recommend deletion.
-2. **Unconsumed template surface**: exported on purpose though nothing in this repo imports it yet (see the template-aware config section of that page). Recommend covering it with an `entry` glob in `knip.config.ts`, as narrow as the case allows.
-3. **Implicit dependency**: package used via config plugin, CSS, or runtime resolution that knip can't trace. Recommend adding to `ignoreDependencies` in `knip.config.ts`.
+2. **Unconsumed template surface**: exported on purpose though nothing in this repo imports it yet (see the template-aware config section of that page). Recommend covering it with an `entry` glob in `frontend/knip.config.ts`, as narrow as the case allows.
+3. **Implicit dependency**: package used via config plugin, CSS, or runtime resolution that knip can't trace. Recommend adding to `ignoreDependencies` in `frontend/knip.config.ts`.
 
-Knip findings are **advisory, not blocking**, like react-doctor's. Surface them in the audit summary with the recommended bucket and action so the user can decide. Do not auto-delete or auto-edit `knip.config.ts` during the review.
+Knip findings are **advisory, not blocking**, like react-doctor's. Surface them in the audit summary with the recommended bucket and action so the user can decide. Do not auto-delete or auto-edit `frontend/knip.config.ts` during the review.
 
 When reporting knip in the Tooling table: if `issues` is an empty array, write **No issues**, do not paste the raw `{"issues":[]}` JSON.
 
@@ -758,41 +765,7 @@ These advisories are **advisory, not blocking**, like knip's and react-doctor's.
 
 Scope: `.tsx` files only.
 
-Prompt the subagent with these rules to check:
-
-**From the react-code skill (`.claude/skills/react-code/SKILL.md`):**
-
-Hook gates:
-
-- `useCallback` only when (1) passed to a `memo`-wrapped child, (2) a dependency of `useEffect`/`useMemo`/another `useCallback`, or (3) passed to a child that uses it in a hook dep array. Flag unnecessary `useCallback` usage.
-- `useEffect` anti-patterns: derived state in effects (should derive inline or via `useMemo`), expensive calcs in effects (should be `useMemo`), user-event logic in effects (belongs in the handler), chained effects triggering each other, notifying parent of state changes via effect. Flag each with the correct alternative.
-- State reset anti-pattern: `useEffect` that resets state when a prop changes, should use `key` instead.
-- When `useEffect` is correct (external system sync, subscriptions), verify a cleanup function; for async data fetching inside an effect, verify an `ignore` flag guards the setter.
-- `useState` type inference: omit explicit type when inferable from the default value. Only annotate for `null` initial values, unions, or complex objects.
-
-Component structure:
-
-- `FC` typing: components use `const MyComponent: FC` or `FC<Props>` pattern
-- Named React imports: `import {useState} from 'react'`; never `React.useState()` or `React.FC`
-- Type-only imports: `import type {ChangeEventHandler} from 'react'`
-- Event handler typing: prefer `ChangeEventHandler<HTMLInputElement>` over inline `(e: ChangeEvent<HTMLInputElement>)`
-- Event handler naming: `handle{Action}{Element}`, the `{Element}` is required; flag bare event names (`handleClick`, `handleChange`, `handleSubmit`), which trip `react-doctor/no-generic-handler-names`
-- One component per file
-
-Component extraction:
-
-- Extract when a section meets all criteria: self-contained (own state/fetcher, or pure display), clear boundary with small props interface, ~60+ lines of JSX/logic
-- Don't extract when state/refs are shared across sections, extraction needs 5+ props/callbacks, section is under ~60 lines, or form validation is tightly coupled
-
-**From `.claude/rules/accessibility.md`:**
-
-- Interactive elements reachable and operable via keyboard (Tab, Enter, Escape, Arrow keys); no keyboard traps
-- Prefer semantic HTML (`<button>`, `<nav>`, `<main>`) over divs with ARIA roles
-- `<img>` has descriptive `alt` or explicit `alt=""` for decorative images
-- Color is never the sole indicator of meaning
-- Modals/dialogs move focus on open, return focus to trigger on close
-- `aria-live="polite"` for dynamic status updates (toasts); `aria-expanded`/`aria-controls` for disclosure widgets
-- `aria-label` only when visible text is insufficient, don't duplicate visible text
+This bucket has no generic rules of its own: the React patterns and accessibility rules ship with the `frontend` package as extension files.
 
 **Library-specific rules (injected from extensions):**
 
@@ -804,7 +777,7 @@ Scope: `.ts` and `.tsx` files.
 
 Prompt the subagent with these rules to check:
 
-**From the typescript skill (`.claude/skills/typescript/SKILL.md`):**
+**From the typescript skill (`frontend/.claude/skills/typescript/SKILL.md`):**
 
 - `type` not `interface`, flag any `interface` declarations
 - `import type {}` for type-only imports: `import type {FC} from 'react'`
@@ -825,14 +798,6 @@ Prompt the subagent with these rules to check:
 - Exported functions must have explicit return types. Exceptions: route loaders/actions, FC-typed components
 - `z.literal()` not `z.enum()`, flag any `z.enum()` usage; `z.literal()` values should be sorted alphanumerically
 
-**From `.claude/rules/routes.md`:**
-
-- Route files (`app/routes/`) must be thin: only loader/action, meta (via loader), Zod schemas, and rendering the page component. No UI code, hooks, state, or sub-components.
-- Page components live at `app/pages/{Group}/{PascalName}Page/index.tsx`
-- Loader data: use `useLoaderData<typeof loader>()` (import the `loader` type from the route file) or `useLoaderData<LoaderData>()` (import `LoaderData` from a sibling `types.ts`). Never define the type inline in the page component file.
-- Meta tags: set in the loader via server-side i18n (`getInstance(context)`), then render them in the route component or pass them to the page component, which renders them (the legal pages do this)
-- Route files are flat dot-delimited files discovered by `@react-router/fs-routes`; group prefixes and their meanings are owned by `wiki/modules/Routing.md`. `actions.*` / `resources.*` files are no-UI data-endpoint routes with no page component: the lint carve-out only lets UI layers import their typed action/loader exports, and the no-UI-code rule above still applies to them.
-
 **Library-specific rules (injected from extensions):**
 
 Append the full content of every extension file whose `subagents:` list includes `typescript`.
@@ -841,11 +806,7 @@ Append the full content of every extension file whose `subagents:` list includes
 
 Scope: files containing `useTranslation` or `t(` calls (skip entirely if none).
 
-Prompt the subagent with these rules to check:
-
-**From `.claude/rules/i18n.md`:**
-
-- Every user-visible string in JSX, labels, headings, placeholders, button text, error messages, tooltips, status text, `aria-label`, `alt`, `title`, must come from a `t()` call. Flag hardcoded English strings. Exceptions: punctuation-only strings, single-character symbols, developer-facing content (console.log, comments, test assertions), and approximate skeleton-loader placeholder text standing in for a dynamic runtime value (skeleton text mirroring static `t()` content must still use `t()`).
+This bucket has no generic rules of its own: the translation rules ship with the `frontend` package as an extension file.
 
 **Library-specific rules (injected from extensions):**
 
@@ -890,7 +851,7 @@ How your run ends: a reply with no tool call ends it, and the orchestrator reads
 - Prioritize ruthlessly **in the final report's ordering**, 5 important issues lead over 50 trivial ones; this governs how findings are ranked and presented, not whether they are surfaced (surface everything at the finding stage, let the proof gate and verifier cut)
 - Work within the project's existing patterns when suggesting fixes; don't introduce new dependencies
 - **Self-heal scope is fix-only, not restore-only.** Do NOT recreate files the PR explicitly deleted, do NOT add files you think "should" exist (deprecation aliases, restored renames, templates the PR removed). The PR's intent is authoritative; if a removal looks wrong, raise it as a finding for human review rather than reverting it via a self-heal commit.
-- **Self-heal scope.** A self-heal may touch only files inside your own declared domain, and never a path in the one refusal set, `AUDIT_SELFHEAL_REFUSE_ERE` in `.claude/hooks/lib/audit-selfheal-paths.sh`. That set covers the tests, the whole `.github/` tree, the `.gaia/` gate and roster machinery, the instruction surfaces (`.claude/**`, `.specify/**`, `wiki/**`), and root build config; the ERE is the boundary and this list is only a summary of it, so read the ERE. This is not a request: the boundary holds whether or not a given self-heal looks harmless, and the per-branch audit loop and its checkpoint bound what a self-heal can do. `test/**` is inside your declared globs and you may **review** it; you may not **repair** it, because a healing pass that adjusts the test which would catch its own repair is exactly the failure this boundary exists to prevent. The same split runs through `app/**`, your own repair surface, and it is the half most likely to surprise you: the vitest suites (`app/**/*.test.ts`, `app/**/*.test.tsx`, and everything under an `app/**/tests/` folder) and the Chromatic stories (`app/**/*.stories.tsx`) sit inside it and are yours to review and not to repair, so a finding in one is reported rather than fixed.
+- **Self-heal scope.** A self-heal may touch only files inside your own declared domain, and never a path in the one refusal set, `AUDIT_SELFHEAL_REFUSE_ERE` in `.claude/hooks/lib/audit-selfheal-paths.sh`. That set covers the tests, the whole `.github/` tree, the `.gaia/` gate and roster machinery, the instruction surfaces (`.claude/**`, `.specify/**`, `wiki/**`), and build config at the root and under each registered package directory; the ERE is the boundary and this list is only a summary of it, so read the ERE. This is not a request: the boundary holds whether or not a given self-heal looks harmless, and the per-branch audit loop and its checkpoint bound what a self-heal can do. `frontend/test/**` is inside your declared globs and you may **review** it; you may not **repair** it, because a healing pass that adjusts the test which would catch its own repair is exactly the failure this boundary exists to prevent. The same split runs through `frontend/app/**`, your own repair surface, and it is the half most likely to surprise you: the vitest suites (`frontend/app/**/*.test.ts`, `frontend/app/**/*.test.tsx`, and everything under an `frontend/app/**/tests/` folder) and the Chromatic stories (`frontend/app/**/*.stories.tsx`) sit inside it and are yours to review and not to repair, so a finding in one is reported rather than fixed.
 - A self-heal that touches more than 10 files is out of bounds: a sprawling self-heal indicates the agent is undoing intentional work.
 
 ## Audit-run env (capture before any edits)
@@ -1111,7 +1072,7 @@ Shape (one entry per finding; the writer rejects the write and names the offendi
 ```json
 [
   {"finding_class":"holistic/swallowed-error","severity":"error",
-   "path":"app/services/gaia/foo/requests.ts","line":42,
+   "path":"frontend/app/services/gaia/foo/requests.ts","line":42,
    "title":"a rejected request resolves as success",
    "failure_mode":"a 500 from the endpoint takes the catch arm, which returns the empty parse result, so the caller renders an empty list as if the fetch succeeded",
    "verified_by":"drove the MSW 500 handler through the hook: the error boundary never mounts and the list renders empty",

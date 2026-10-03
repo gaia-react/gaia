@@ -52,6 +52,13 @@
 #     new-at-HEAD passing test with no matching valid RED in the ledger that the
 #     classifier does not label emergent.
 #
+# Package scope: which staged paths are unit tests is read from the
+# package descriptor (`tddUnitTests`, via .claude/hooks/lib/gaia-packages.sh),
+# never from a literal `app/` prefix, so the gate follows the app wherever the
+# registry puts it. An unusable registry or descriptor is a DENY here, not a
+# fail-open: with no globs the gate would silently match nothing. The same holds
+# when the classifier reports its own descriptor failure (exit 7).
+#
 # -e is intentionally omitted: we must not abort before writing the deny JSON.
 # All error-prone commands are individually guarded (|| true, 2>/dev/null) so a
 # transient failure can never crash the hook into a default-allow that skips
@@ -124,8 +131,8 @@ command -v node >/dev/null 2>&1 || exit 0
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 
 # ---------------------------------------------------------------------------
-# Staged test files new/modified at HEAD, filtered to the vitest include glob
-# (app/**/*.test.ts|tsx, confirmed against vitest.config.ts: './app/**/*.test.{ts,tsx}').
+# Staged test files new/modified at HEAD, filtered to the package descriptor's
+# `tddUnitTests` globs (the vitest include glob of each registered package).
 # A pure deletion/rename-away cannot add a new passing test, so --diff-filter=ACM.
 #
 # `-z` is what makes the glob filter below reachable at all: without it git
@@ -162,6 +169,34 @@ tree_root="$(gaia_resolve_tree_root "$source_cwd" 2>/dev/null)" || exit 0
 ledger=$(red_ledger_path "$tree_root") || exit 0
 signal_script=$(red_ledger_signal_script)
 
+# Deny with a one-line reason. --arg safely escapes it; never interpolate
+# dynamic values into the JSON.
+deny_with_reason() {
+  jq -n --arg r "$1" '{
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason: $r
+    }
+  }'
+  exit 0
+}
+
+# The package descriptor decides which staged paths are unit tests. Loaded from
+# the ACTING tree (its registry and descriptor are the ones under test), through
+# the library rooted at this hook's own location. A missing library or an
+# unusable registry denies: an empty glob would let every test through ungated.
+[ -n "$_library_directory" ] && [ -f "$_library_directory/gaia-packages.sh" ] && . "$_library_directory/gaia-packages.sh"
+if ! type gaia_packages_load >/dev/null 2>&1; then
+  deny_with_reason "TDD RED-verification: cannot load .claude/hooks/lib/gaia-packages.sh, so the unit-test globs are unknown and this commit cannot be checked. Next step: restore .claude/hooks/lib/gaia-packages.sh from the GAIA release and retry."
+fi
+packages_status=0
+gaia_packages_load "$tree_root" || packages_status=$?
+if [ "$packages_status" -ne 0 ]; then
+  deny_with_reason "$GAIA_PACKAGES_ERROR"
+fi
+unit_test_ere=$(gaia_package_globs_ere tddUnitTests)
+
 # ---------------------------------------------------------------------------
 # Determinism carve-out: the RED demand is scoped to the DETERMINISTIC surface.
 # A test whose subject is emergent (clock-/entropy-/I-O-bound or tree-dependent:
@@ -173,8 +208,9 @@ signal_script=$(red_ledger_signal_script)
 # Binding: classify the TEST FILE ITSELF with the determinism classifier
 # (.gaia/scripts/classifier/classify-determinism.mjs). The classifier already
 # carries every emergent signal this gate cares about and is biased err-EMERGENT:
-#   - a `.tsx` test under app/components/** (component interaction) and a
-#     .playwright/** E2E test fall outside its STRICT candidate path -> emergent;
+#   - a `.tsx` test under <package>/app/components/** (component interaction)
+#     and a <package>/.playwright/** E2E test fall outside its STRICT candidate
+#     globs (the descriptor's `tddStrictCandidates`) -> emergent;
 #   - a test calling the a11y helpers (expectNoA11yViolations / runAxe) -> emergent;
 #   - a test reading the clock/entropy/I-O in its own body -> emergent.
 # The classifier's internal err-EMERGENT bias supplies the "treat as emergent
@@ -193,30 +229,45 @@ signal_script=$(red_ledger_signal_script)
 # would silently retire the emergent carve-out rather than report anything.
 classifier_script="$gaia_scripts/classifier/classify-determinism.mjs"
 
-# Echo "emergent" only when the classifier affirmatively classifies the given
-# repo-relative test path emergent; echo nothing otherwise (missing helper,
-# non-zero exit, unparseable JSON, or a strict verdict). A non-empty (emergent)
-# answer relaxes the RED demand for that file.
+# Sets `subject_emergent` to 1 only when the classifier affirmatively classifies
+# the given repo-relative test path emergent, and to 0 otherwise (missing
+# helper, non-zero exit, unparseable JSON, or a strict verdict). A 1 relaxes the
+# RED demand for that file. Exit 7 is the one failure that is NOT a 0: the
+# classifier could not read the package descriptor, so it sets
+# `classifier_package_error` and the decision below denies. Not a command
+# substitution, so both variables survive the call.
+subject_emergent=0
+classifier_package_error=''
 test_subject_is_emergent() {
   local relative_path="$1"
+  subject_emergent=0
   [ -f "$classifier_script" ] || return 0
-  local classifier_output
+  local classifier_output classifier_status=0
   # Run from the ACTING TREE, not the process working directory. `$relative_path` is
   # repo-relative and stays that way, because the classifier's own path rules
-  # read it (a .tsx under app/components/**, a spec under .playwright/**), so
-  # handing it an absolute path would change its verdict. What it must not do is
-  # resolve that path against a working directory nobody chose: the file read
-  # then fails, the classifier's deliberate err-EMERGENT bias returns emergent,
-  # and an emergent verdict RETIRES the RED demand for the file. That is a
-  # silent disarm of this gate from any subdirectory, in the same direction as
-  # a missing library. The `cd` is inside a command substitution, so it never
-  # persists into the rest of this hook.
-  classifier_output=$( cd "$tree_root" && node "$classifier_script" "$relative_path" 2>/dev/null ) || return 0
+  # read it (a strict-candidate glob from the package descriptor, a spec under
+  # .playwright/**), so handing it an absolute path would change its verdict.
+  # What it must not do is resolve that path against a working directory nobody
+  # chose: the file read then fails, the classifier's deliberate err-EMERGENT
+  # bias returns emergent, and an emergent verdict RETIRES the RED demand for
+  # the file. That is a silent disarm of this gate from any subdirectory, in the
+  # same direction as a missing library. The same working directory is where the
+  # classifier finds the registry. The `cd` is inside a command substitution, so
+  # it never persists into the rest of this hook.
+  classifier_output=$( cd "$tree_root" && node "$classifier_script" "$relative_path" 2>/dev/null ) || classifier_status=$?
+  if [ "$classifier_status" -eq 7 ]; then
+    classifier_package_error=$(printf '%s' "$classifier_output" | jq -r '.error // empty' 2>/dev/null)
+    [ -n "$classifier_package_error" ] || classifier_package_error='gaia-packages: the determinism classifier could not read the package descriptor. Next step: run gaia-packages checks and fix .gaia/packages.json.'
+    return 0
+  fi
+  [ "$classifier_status" -eq 0 ] || return 0
   [ -n "$classifier_output" ] || return 0
-  printf '%s' "$classifier_output" \
+  if [ -n "$(printf '%s' "$classifier_output" \
     | jq -r 'select((.classification // "") == "emergent") | "emergent"' \
         2>/dev/null \
-    | head -1
+    | head -1)" ]; then
+    subject_emergent=1
+  fi
 }
 
 # Collect offenders as "file\tfullName" lines.
@@ -224,20 +275,21 @@ offenders=""
 
 while IFS= read -r path; do
   [ -n "$path" ] || continue
-  # vitest include glob is './app/**/*.test.{ts,tsx}' (vitest.config.ts). In a
-  # case statement `*` already spans slashes, so `app/*.test.ts` matches any
-  # depth under app/. Match the app/ prefix AND a .test.ts/.tsx suffix.
-  case "$path" in
-    app/*.test.ts | app/*.test.tsx) ;;
-    *) continue ;;
-  esac
+  # The unit-test globs come from the package descriptor (`tddUnitTests`),
+  # joined with the package's registry path, so a root `app/` test is not a
+  # unit test once the app lives at `frontend/`. An empty ERE matches nothing.
+  [ -n "$unit_test_ere" ] && [[ "$path" =~ $unit_test_ere ]] || continue
 
   relative_path=$(red_ledger_repo_relative_path "$path")
 
   # Carve-out: an emergent-subject test commits without a RED demand. Skip the
   # whole file when the classifier affirmatively labels it emergent; the
   # deterministic surface falls through to the RED check unchanged.
-  [ -n "$(test_subject_is_emergent "$relative_path")" ] && continue
+  test_subject_is_emergent "$relative_path"
+  if [ -n "$classifier_package_error" ]; then
+    deny_with_reason "$classifier_package_error"
+  fi
+  [ "$subject_emergent" -eq 1 ] && continue
 
   # Current tests: helper over the working-tree (staged) file content on disk.
   # Parse failure (mid-edit syntax error) -> skip this file (fail-open).

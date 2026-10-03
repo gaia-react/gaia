@@ -153,13 +153,51 @@ const PATH_PREFIXES = ['.gaia/', '.claude/', '.specify/', '.github/'] as const;
  *     enforcement-set array, as a path the audit fixer must not edit. It is
  *     compared against a changed-path list, never sourced or executed, and it
  *     is per-machine and gitignored, so it can never have a manifest entry.
+ *   - The retired root-layout move list in `.gaia/scripts/precommit-packages.sh`
+ *     (`is_retired_source`) and the self-heal refusal ERE in
+ *     `.claude/hooks/lib/audit-selfheal-paths.sh` (`.gaia/packages.json`
+ *     anchored). Both name locations that no longer exist at the root after the
+ *     frontend move, as case patterns or regex text compared against staged
+ *     paths, never sourced or executed, so a missing target is the intended
+ *     state. Each retired location is listed as its own token because the
+ *     allowlist matches exactly.
  *     This module has no inline-ignore channel, so the allowlist is the
  *     documented one.
  */
 export const PROSE_PATH_ALLOWLIST: ReadonlySet<string> = new Set([
+  '.claude/agents/code-audit-frontend/cn.md',
+  '.claude/agents/code-audit-frontend/conform.md',
+  '.claude/agents/code-audit-frontend/form-components.md',
+  '.claude/agents/code-audit-frontend/react-i18next.md',
+  '.claude/agents/code-audit-frontend/README.md',
+  '.claude/instructions/add-locale.md',
+  '.claude/instructions/remove-i18n.md',
   '.claude/projects',
+  '.claude/rules/accessibility.md',
+  '.claude/rules/api-service.md',
+  '.claude/rules/design-baseline.md',
+  '.claude/rules/i18n.md',
+  '.claude/rules/playwright.md',
+  '.claude/rules/react-router-docs.md',
+  '.claude/rules/routes.md',
+  '.claude/rules/state-pattern.md',
+  '.claude/rules/storybook.md',
+  '.claude/rules/tailwind.md',
   '.claude/settings.local.json',
   '.claude/shell-snapshots',
+  '.claude/skills/a11y-fixes',
+  '.claude/skills/eslint-fixes',
+  '.claude/skills/gaia-react-perf',
+  '.claude/skills/new-component',
+  '.claude/skills/new-hook',
+  '.claude/skills/new-route',
+  '.claude/skills/new-service',
+  '.claude/skills/playwright-cli',
+  '.claude/skills/react-code',
+  '.claude/skills/skeleton-loaders',
+  '.claude/skills/tailwind',
+  '.claude/skills/typescript',
+  '.gaia/packages',
   '.github/workflows',
 ]);
 

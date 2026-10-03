@@ -13,9 +13,9 @@ After `/update-gaia`, the app router throws `Cannot find module
 ## Classification
 
 class: update
-evidence: the merge appears to have dropped a route file under `app/routes/`;
+evidence: the merge appears to have dropped a route file under `frontend/app/routes/`;
 restoring it from git history fixes boot. The fix necessarily lives inside
-`app/`, which is on the SPEC-002 canonical denylist.
+`frontend/app/`, which is on the SPEC-002 canonical denylist.
 
 ## Capture
 
@@ -28,10 +28,10 @@ branch: main
 dirty: true
 class_state_files:
   - .gaia/manifest.json: present, version 1.4.2
-  - app/routes/_session+/dashboard.tsx: absent (dropped by merge)
+  - frontend/app/routes/_session+/dashboard.tsx: absent (dropped by merge)
 ```
 
 ## Reproduction context
 
-- `app/routes/_session+/dashboard.tsx`
+- `frontend/app/routes/_session+/dashboard.tsx`
 - `app/router.ts`

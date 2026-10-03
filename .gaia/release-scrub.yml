@@ -78,9 +78,12 @@ transforms:
   #   .gaia/tests/forensics/unit.bats, which is release-excluded and does
   #   not exist on adopter machines.
   # scripts.test:sandbox: same shape, against .gaia/tests/sandbox/run-all.sh.
+  # The frontend package's own package.json is listed so a maintainer-only key
+  # added there later cannot ship; a key it does not carry is a silent no-op.
   - type: json-strip
     paths:
       - "package.json"
+      - "frontend/package.json"
     keys:
       - "bin"
       - "scripts.test:forensics"

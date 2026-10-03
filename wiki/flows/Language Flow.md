@@ -2,7 +2,7 @@
 type: flow
 status: active
 created: 2026-04-20
-updated: 2026-09-29
+updated: 2026-10-03
 tags: [flow, i18n, language]
 ---
 
@@ -10,13 +10,13 @@ tags: [flow, i18n, language]
 
 How a user's language preference flows through the request lifecycle.
 
-1. **i18next middleware** (`app/middleware/i18next.ts`): runs on every request, attaches an i18next instance and resolved language to `context`.
+1. **i18next middleware** (`frontend/app/middleware/i18next.ts`): runs on every request, attaches an i18next instance and resolved language to `context`.
 2. **Loader** (`root.tsx`):
    - `getLanguage(context)` reads the resolved language
    - Sets the `lng` cookie via `languageCookie.serialize(language)` so the choice survives the redirect
    - Renders `<html lang={i18n.language}>` so the client can pick up the SSR language
-3. **Client init** (`app/entry.client.tsx`): i18next inits with `initReactI18next` + `LanguageDetector`, `detection: {caches: [], order: ['htmlTag']}`, and `ns: Object.keys(i18n.resources[DEFAULT_LOCALE])`, so the client reads the language from the `<html lang>` attribute rather than the cookie or navigator. The `App` effect then calls `i18n.changeLanguage(language)` to keep client-side i18next in sync on navigation.
-4. **Switcher**: `LanguageSelect` component → `POST /actions/set-language` (`app/routes/actions.set-language.ts`) validates the language and `redirectUrl`, sets the `lng` cookie, and returns a `replace()` redirect to that URL so loaders rerun with the new language.
+3. **Client init** (`frontend/app/entry.client.tsx`): i18next inits with `initReactI18next` + `LanguageDetector`, `detection: {caches: [], order: ['htmlTag']}`, and `ns: Object.keys(i18n.resources[DEFAULT_LOCALE])`, so the client reads the language from the `<html lang>` attribute rather than the cookie or navigator. The `App` effect then calls `i18n.changeLanguage(language)` to keep client-side i18next in sync on navigation.
+4. **Switcher**: `LanguageSelect` component → `POST /actions/set-language` (`frontend/app/routes/actions.set-language.ts`) validates the language and `redirectUrl`, sets the `lng` cookie, and returns a `replace()` redirect to that URL so loaders rerun with the new language.
 
 API requests that need the resolved language pass it per call via the `language` request option; there is no global API language state. See [[API Service Pattern]].
 
@@ -26,6 +26,6 @@ The middleware sets no custom `order`, so remix-i18next applies its default serv
 
 ## Cookie
 
-The persisted cookie is named `lng` (`createCookie('lng', ...)` in `app/sessions.server/language.ts`): `httpOnly`, `maxAge` one year, `sameSite: 'lax'`, and `secure` only when `NODE_ENV` is `production` (Safari rejects a `secure` cookie over plain HTTP in dev).
+The persisted cookie is named `lng` (`createCookie('lng', ...)` in `frontend/app/sessions.server/language.ts`): `httpOnly`, `maxAge` one year, `sameSite: 'lax'`, and `secure` only when `NODE_ENV` is `production` (Safari rejects a `secure` cookie over plain HTTP in dev).
 
 See [[i18n]], [[Middleware]], [[Sessions]].

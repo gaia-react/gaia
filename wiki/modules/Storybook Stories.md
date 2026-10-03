@@ -1,6 +1,6 @@
 ---
 type: module
-path: .storybook/
+path: frontend/.storybook/
 status: active
 language: typescript
 purpose: Storybook setup with React Router, i18n, dark mode, and Chromatic snapshots
@@ -8,13 +8,13 @@ depends_on:
   - '[[Storybook]]'
   - '[[MSW]]'
 created: 2026-04-20
-updated: 2026-05-04
+updated: 2026-10-03
 tags: [module, storybook, testing]
 ---
 
 # Storybook Stories
 
-Storybook v10 with the `@storybook/react-vite` framework. Configured to discover `*.stories.tsx` anywhere in `app/`.
+Storybook v10 with the `@storybook/react-vite` framework. Configured to discover `*.stories.tsx` anywhere in `frontend/app/`.
 
 ## Why Storybook is also the test driver
 
@@ -32,7 +32,7 @@ Interactive sessions skip the Chromatic decorator: `WrapDecorator → ToastDecor
 
 ## Stubs
 
-`test/stubs/` provides story-level decorators (`stubs.state()`, `stubs.reactRouter()`). Apply as `[stubs.state(), stubs.reactRouter()]` when both are needed. See `.claude/rules/storybook.md` for full stub options (`action`, `loader`, `path`, `routes`).
+`frontend/test/stubs/` provides story-level decorators (`stubs.state()`, `stubs.reactRouter()`). Apply as `[stubs.state(), stubs.reactRouter()]` when both are needed. See `frontend/.claude/rules/storybook.md` for full stub options (`action`, `loader`, `path`, `routes`).
 
 ## Dark-mode handling
 
@@ -44,6 +44,6 @@ Interactive sessions skip the Chromatic decorator: `WrapDecorator → ToastDecor
 
 ## Test data: no MSW addon
 
-`msw-storybook-addon` ships in devDependencies but is **not wired into Storybook config**; stories do no API-level mocking. Pull seed data from the `@msw/data` collections in `test/mocks/database` directly. See `.claude/rules/storybook.md` for the usage pattern. The unused addon is a removal candidate.
+`msw-storybook-addon` ships in devDependencies but is **not wired into Storybook config**; stories do no API-level mocking. Pull seed data from the `@msw/data` collections in `frontend/test/mocks/database` directly. See `frontend/.claude/rules/storybook.md` for the usage pattern. The unused addon is a removal candidate.
 
-For the current `.storybook/` file inventory, query Serena (`.claude/rules/code-search.md`).
+For the current `frontend/.storybook/` file inventory, query Serena (`.claude/rules/code-search.md`).

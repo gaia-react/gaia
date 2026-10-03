@@ -68,6 +68,24 @@ describe('classifyPath', () => {
     expect(classifyPath('wiki/log.md')).toBeNull();
     expect(classifyPath('.gaia/VERSION')).toBeNull();
     expect(classifyPath('.gaia/manifest.json')).toBeNull();
+    expect(classifyPath('.gaia/packages.json')).toBeNull();
+  });
+
+  test('a registered package settings file is generated and has no class', () => {
+    expect(classifyPath('frontend/.claude/settings.json')).toBeNull();
+    // The root settings file has no package prefix and stays shared.
+    expect(classifyPath('.claude/settings.json')).toBe('shared');
+    // The overlay is the hand-edited input, so it is shared, not generated.
+    expect(classifyPath('frontend/.claude/settings.overlay.json')).toBe(
+      'shared'
+    );
+  });
+
+  test('frontend package descriptor, manifest, and CLAUDE.md are shared', () => {
+    expect(classifyPath('frontend/package.json')).toBe('shared');
+    expect(classifyPath('frontend/gaia.package.json')).toBe('shared');
+    expect(classifyPath('frontend/CLAUDE.md')).toBe('shared');
+    expect(classifyPath('frontend/app/root.tsx')).toBe('owned');
   });
 
   test('shared exact and prefix matches', () => {

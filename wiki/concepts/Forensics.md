@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-05-08
-updated: 2026-06-24
+updated: 2026-10-03
 tags: [concept, gaia, workflow, support]
 ---
 
@@ -32,7 +32,7 @@ After classifying the failure, the skill supplements this envelope with class-sp
 | `dev-server`   | `pnpm dev` / Vite / SSR boot failures                                      |
 | `other`        | unknown or multi-class failures; always treated as a probable bug          |
 
-State-file capture is conservative: the skill records filenames and one-line summaries, never full file bodies. File bodies from `app/` and `wiki/` are never captured regardless of class.
+State-file capture is conservative: the skill records filenames and one-line summaries, never full file bodies. File bodies from `frontend/app/` and `wiki/` are never captured regardless of class.
 
 The classifier also determines whether the failure is a **user-config issue** (wrong Node version, missing required env var, dirty working tree blocking a workflow) or a **probable bug** (any other pattern, including the `other` class). This diagnosis gates what happens next: user-config failures receive inline remediation steps and no GitHub issue offer; probable-bug failures trigger the issue filing offer. Both branches always save the local report first.
 
@@ -44,7 +44,7 @@ Before writing or filing anything, the skill runs a single redaction pass over t
 
 The skill writes to `.gaia/local/forensics/<tree_key>/<timestamp>-<class>.md` using an ISO-8601 compact UTC timestamp (`YYYYMMDDTHHMMSSZ`); `<tree_key>` identifies the working tree, printed by `bash .gaia/scripts/main-root-lib.sh --tree-key`. This path is gitignored by default, so reports stay local to the machine that generated them and never appear in git history.
 
-The skill's write-surface allowlist is exactly two directories: `.gaia/local/forensics/` (the report) and `.gaia/local/telemetry/` (GAIA's local cost ledger sink). No other path is writable. The "read-only" framing means it never mutates GAIA state, the working tree, or anything under `app/` or `wiki/`; it does not extend to these two local-only sink directories.
+The skill's write-surface allowlist is exactly two directories: `.gaia/local/forensics/` (the report) and `.gaia/local/telemetry/` (GAIA's local cost ledger sink). No other path is writable. The "read-only" framing means it never mutates GAIA state, the working tree, or anything under `frontend/app/` or `wiki/`; it does not extend to these two local-only sink directories.
 
 The local file carries a small YAML frontmatter block (`class`, `gaia_version`, `created`, and optionally `gh_issue_url`). The report body that follows has four fixed sections: `## Symptom`, `## Classification`, `## Capture`, and `## Reproduction context`, in that order. The body schema is load-bearing: downstream tooling parses it without LLM fallback, so section names and order never drift.
 
@@ -55,7 +55,7 @@ If the failure classifies as a probable bug and `gh` is installed, the skill off
 - **Never mutates GAIA state.** The skill is strictly read-only. It does not run `pnpm install`, `git fetch`, `git stash`, or any script that modifies the working tree.
 - **Never auto-fixes.** It diagnoses and reports; remediation is the user's call.
 - **Never re-runs the failing workflow.** The skill captures the state at invocation time; it does not attempt to reproduce or replay the failure.
-- **Never captures file bodies from `app/` or `wiki/`.** Filenames from these directories may appear in state summaries; full contents are excluded.
+- **Never captures file bodies from `frontend/app/` or `wiki/`.** Filenames from these directories may appear in state summaries; full contents are excluded.
 - **Never captures Claude Code session JSONL contents.** Session files are excluded in full; not even their paths appear in the report.
 - **Never pre-checks `gh` auth or label existence.** On `gh` failure, the native error is surfaced verbatim and the local report remains in place.
 

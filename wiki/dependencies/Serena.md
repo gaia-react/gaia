@@ -4,7 +4,7 @@ status: active
 package: serena
 role: code-intelligence-mcp
 created: 2026-05-04
-updated: 2026-07-03
+updated: 2026-10-03
 tags: [dependency, mcp, code-search]
 ---
 
@@ -37,7 +37,7 @@ Symbol-level queries in any language Serena indexes for the project:
 
 For prose / string / cross-language search, fall back to Read+grep. Routing rule: `.claude/rules/code-search.md`.
 
-The advisory routing rule is language-agnostic: it activates on a broad multi-language source glob and nudges toward Serena's symbol tools for any language Serena indexes, not TypeScript or `app/`/`test/` alone. See [[Serena Integration]] for detail.
+The advisory routing rule is language-agnostic: it activates on a broad multi-language source glob and nudges toward Serena's symbol tools for any language Serena indexes, not TypeScript or `frontend/app/`/`frontend/test/` alone. See [[Serena Integration]] for detail.
 
 ## Language configuration
 
@@ -48,7 +48,7 @@ Serena decides which language servers to start from the `languages:` list in `.s
 ## Limits
 
 - Cold-start cost on first invocation per session (language-server warm-up).
-- Indexes only files reachable from the language server's project config (`tsconfig.json` for TypeScript).
+- Indexes only files reachable from the language server's project config (`frontend/tsconfig.json` for TypeScript).
 - Doesn't see gitignored or generated files.
 
 See [[Serena Integration]].

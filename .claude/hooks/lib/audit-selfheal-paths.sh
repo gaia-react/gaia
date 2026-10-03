@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # audit-selfheal-paths.sh: the one self-heal refusal set for the Code Audit
 # Team's repair boundary. Sourced, never executed; does no work at source
-# time.
+# time except one load: sourcing reads the package registry and descriptors
+# (`gaia-packages.sh`) to build the package arms; see the next block.
 #
-# Exports exactly one thing: AUDIT_SELFHEAL_REFUSE_ERE, an anchored ERE
+# Exports two things: AUDIT_SELFHEAL_REFUSE_ERE, an anchored ERE
 # matching every path a self-healing member must never touch -- the tests
 # that would catch its own bad repair, the whole .github/ tree, the gate
 # machinery and roster under .gaia/, the instruction/convention surfaces, and
@@ -75,25 +76,78 @@
 # a reader verifying the no-drift contract ends up counting to the wrong
 # alternative.
 #
-# The ROOT-TOOLING half, the `.npmrc` / `.lintstagedrc.json` / `.prettierignore`
-# / `Dockerfile` / `.dockerignore` / `.env.example` / `.nvmrc` / `.node-version`
-# alternative, is refused for this reason: the files below are granted to
-# `code-audit-frontend`, the roster's only `push_fixes: true` member, so a diff
-# touching one of them dispatches the member that could then rewrite it in its
-# own self-heal commit.
-# Each decides what the gates check rather than what the app does:
-# `.lintstagedrc.json` is the command `.husky/pre-commit` runs through `pnpm
-# exec lint-staged`, so a member free to edit it can narrow the Quality Gate
-# floor in the same commit as its repair; `.npmrc` is the registry and install
-# policy; `.prettierignore` decides what formatting skips; `Dockerfile` builds
-# the image and `.dockerignore` decides what its build context carries;
-# `.env.example` is the environment contract; `.nvmrc` and
-# `.node-version` decide the Node that CI and local must agree on. Every SIBLING
-# root config the same member owns is already refused by the mirrored half, so
-# refusing these restores the consistency the grant broke rather than inventing
-# a new rule.
+# The ROOT-TOOLING half, the `.npmrc` / `.prettierignore` / `.nvmrc` /
+# `.node-version` alternative, is refused for this reason: the files below are
+# granted to `code-audit-frontend`, the roster's only `push_fixes: true` member,
+# so a diff touching one of them dispatches the member that could then rewrite
+# it in its own self-heal commit.
+# Each decides what the gates check rather than what the app does: `.npmrc` is
+# the registry and install policy; `.prettierignore` decides what formatting
+# skips; `.nvmrc` and `.node-version` decide the Node that CI and local must
+# agree on. Every SIBLING root config the same member owns is already refused
+# by the mirrored half, so refusing these restores the consistency the grant
+# broke rather than inventing a new rule. The package's own copies of the
+# frontend-only files (`frontend/.lintstagedrc.json`, `frontend/Dockerfile`,
+# `frontend/Dockerfile.dockerignore`, `frontend/.env.example`) are refused by
+# the package arms below.
 #
 # Bash 3.2 compatible (macOS default). Never `cd`.
 
+#
+# THE PACKAGE ARMS. The app's own paths (test/, .playwright/, .storybook/,
+# and the app/ shapes described above) are not literals here any more: they
+# are the `selfHealRefuse` globs of each registered package's descriptor
+# (`<package path>/gaia.package.json`, registry `.gaia/packages.json`), joined
+# with the package path, so after the move `frontend/app/x.test.ts` and
+# `frontend/vite.config.ts` are refused and a retired root `app/x.test.ts` is
+# not. The descriptor set is ADDED to the root arms and never replaces one.
+# The root arms add `.gaia/packages.json` so a member cannot rewrite the
+# registry that scopes its own refusals. Every sentence above that says `test/`, `.playwright/`,
+# `.storybook/` or `app/` describes the package arms.
+#
+# The sourced repo root is the one three directories above this file
+# (`.claude/hooks/lib/`), never the launch directory: `CLAUDE_PROJECT_DIR` is
+# the launch dir, which is `frontend/` for a package launch.
+#
+# FAIL CLOSED. A malformed registry, an invalid or missing descriptor, or
+# a missing jq makes the ERE `.` (refuse every path) and sets
+# AUDIT_SELFHEAL_PACKAGES_ERROR to the one-line `gaia-packages:` message, so a
+# consumer can say why every path was refused. On success the variable is empty.
+# An absent registry is the built-in default (frontend at `frontend/`), never
+# "nothing refused".
+#
+# Consumers read the variable and never source this file for anything else.
+# `code-audit-frontend` names the ERE as its repair boundary and
+# `code-audit-github-workflows` repeats it; no script enforces it.
+#
+# Bash 3.2 compatible (macOS default). Never `cd` in a caller; the one `cd`
+# below runs in a command substitution to resolve this file's own directory.
+
+_audit_selfheal_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "$_audit_selfheal_dir/gaia-packages.sh"
+
 # shellcheck disable=SC2034 # read by whoever sources this file
-AUDIT_SELFHEAL_REFUSE_ERE='^(\.claude|\.specify|wiki|test|\.playwright|\.storybook|\.github)/|^app/(.*/)?tests/|^app/.*\.test\.tsx?$|^app/.*\.stories\.tsx$|^\.gaia/(local[^/]|loca[^l]|loc[^a]|lo[^c]|l[^o]|[^l])|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$|^tsconfig[^/]*\.json$|^[^/]*\.config\.(ts|mts|mjs|cjs|js)$|^(\.npmrc|\.lintstagedrc\.json|\.prettierignore|Dockerfile|\.dockerignore|\.env\.example|\.nvmrc|\.node-version)$'
+AUDIT_SELFHEAL_PACKAGES_ERROR=''
+# shellcheck disable=SC2034 # read by whoever sources this file
+AUDIT_SELFHEAL_REFUSE_ERE=''
+
+# shellcheck disable=SC2034 # both variables are read by whoever sources this file
+_audit_selfheal_build() {
+  local root_arms status=0 package_arm
+  root_arms='^(\.claude|\.specify|wiki|\.github)/|^\.gaia/(local[^/]|loca[^l]|loc[^a]|lo[^c]|l[^o]|[^l])|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$|^tsconfig[^/]*\.json$|^[^/]*\.config\.(ts|mts|mjs|cjs|js)$|^(\.npmrc|\.prettierignore|\.nvmrc|\.node-version)$|^\.gaia/packages\.json$'
+  AUDIT_SELFHEAL_PACKAGES_ERROR=''
+  gaia_packages_load "$(cd "$_audit_selfheal_dir/../../.." && pwd)" || status=$?
+  if [ "$status" -ne 0 ]; then
+    AUDIT_SELFHEAL_PACKAGES_ERROR="$GAIA_PACKAGES_ERROR"
+    AUDIT_SELFHEAL_REFUSE_ERE='.'
+    return 0
+  fi
+  package_arm="$(gaia_package_globs_ere selfHealRefuse)"
+  if [ -n "$package_arm" ]; then
+    AUDIT_SELFHEAL_REFUSE_ERE="$root_arms|$package_arm"
+  else
+    AUDIT_SELFHEAL_REFUSE_ERE="$root_arms"
+  fi
+}
+_audit_selfheal_build

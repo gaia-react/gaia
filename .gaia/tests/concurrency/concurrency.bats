@@ -464,13 +464,21 @@ JS
   gaia_copy_real "$MAIN" \
     .claude/hooks/red-verify-commit-check.sh \
     .claude/hooks/capture-red-observations.sh \
+    .claude/hooks/lib/gaia-packages.sh \
     .claude/hooks/lib/jq-availability.sh \
     .claude/hooks/lib/red-ledger.sh \
     .claude/hooks/lib/repo-scope.sh \
+    .gaia/scripts/lib/gaia-packages.mjs \
     .gaia/scripts/main-root-lib.sh \
     .gaia/scripts/state-registry-lib.sh \
     .gaia/scripts/link-worktree.sh
   gaia_copy_registry "$MAIN"
+  # The registry and descriptor are written as literals in the post-flip layout
+  # (package dir `frontend`), not copied from the live repo, so this fixture
+  # proves the same layout whatever the real registry says.
+  # shellcheck disable=SC1091
+  . "$BATS_TEST_DIRNAME/../hooks/helpers/package-fixture.sh"
+  write_packages_moved "$MAIN"
 
   # Both node helpers the gate calls (the signal extractor and the determinism
   # classifier) resolve `typescript` via createRequire(import.meta.url), which
@@ -490,19 +498,19 @@ JS
   gaia_link_worktree "$WORKTREE_A"
   gaia_link_worktree "$WORKTREE_B"
 
-  # A test under app/utils/** so the determinism classifier (scoped to
+  # A test under frontend/app/utils/** so the determinism classifier (scoped to
   # app/utils, app/services, app/hooks, and .ts under app/components) returns
   # "strict" for it rather than "emergent" -- an emergent verdict would make
   # the check hook skip the file outright, and the deny in check 2 below would
   # never fire, for a reason that has nothing to do with tree isolation.
-  test_relative_path="app/utils/c407/index.test.ts"
+  test_relative_path="frontend/app/utils/c407/index.test.ts"
   full_name="adds two numbers c407"
   test_body='import {expect, test} from "vitest";
 test("adds two numbers c407", () => {
   expect(1 + 1).toBe(2);
 });
 '
-  mkdir -p "$WORKTREE_A/app/utils/c407" "$WORKTREE_B/app/utils/c407"
+  mkdir -p "$WORKTREE_A/frontend/app/utils/c407" "$WORKTREE_B/frontend/app/utils/c407"
   # Both trees write the IDENTICAL body: same fullName, same content signal.
   # That identity is the whole point -- it is what makes tree A's observation
   # a candidate to satisfy tree B's gate for a test B never ran.
@@ -1035,22 +1043,26 @@ test("adds two numbers c407", () => {
     .gaia/scripts/link-worktree.sh \
     .gaia/scripts/main-root-lib.sh \
     .gaia/scripts/state-registry-lib.sh \
-    .claude/hooks/provision-worktree.sh
+    .claude/hooks/provision-worktree.sh \
+    .claude/hooks/lib/gaia-packages.sh
   gaia_copy_registry "$MAIN"
 
   # A stand-in react-router CLI: provisioning borrows the resolved main
   # checkout's own installed binary rather than installing one per worktree,
   # so a fixture-local stub at the same borrowed path is a faithful proxy for
   # the real typegen call.
-  mkdir -p "$MAIN/node_modules/.bin"
-  cat > "$MAIN/node_modules/.bin/react-router" <<'SH'
+  # Typegen runs per registered package (the built-in default is `frontend`)
+  # that carries a react-router config, from that package's directory.
+  mkdir -p "$MAIN/frontend/node_modules/.bin"
+  echo 'export default {};' > "$MAIN/frontend/react-router.config.ts"
+  cat > "$MAIN/frontend/node_modules/.bin/react-router" <<'SH'
 #!/bin/sh
 if [ "$1" = "typegen" ]; then
   mkdir -p .react-router/types
   echo generated > .react-router/types/.stamp
 fi
 SH
-  chmod +x "$MAIN/node_modules/.bin/react-router"
+  chmod +x "$MAIN/frontend/node_modules/.bin/react-router"
   gaia_commit_all "$MAIN" "add provisioning deps + stub CLI"
 
   # RESTATED AT THE MOVE TO HARNESS-NATIVE CREATION (see README, Published
@@ -1077,7 +1089,7 @@ SH
   run_in "$worktree_path" -- gaia_deliver_hook "$entry_payload" "$worktree_path/.claude/hooks/provision-worktree.sh" >/dev/null 2>&1
 
   # Target: generated build types are present and current before first use.
-  [ -f "$worktree_path/.react-router/types/.stamp" ]
+  [ -f "$worktree_path/frontend/.react-router/types/.stamp" ]
 }
 
 # ---------------------------------------------------------------------------

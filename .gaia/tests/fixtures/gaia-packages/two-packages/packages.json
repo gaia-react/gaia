@@ -1,0 +1,5 @@
+[
+  {"name": "frontend", "path": "frontend"},
+  {"name": "ios", "path": "ios"},
+  {"name": "inner", "path": "frontend/inner"}
+]

@@ -553,8 +553,9 @@ run_staged() {
   grep -qF 'wiki-squash-autocommits.sh' "$root/.claude/settings.json"
 
   set -- "$root/.claude/skills" "$root/.claude/commands" "$root/.claude/rules" \
-         "$root/.claude/agents" "$root/.claude/instructions" \
-         "$root/.specify/extensions/gaia/commands" "$root/.specify/extensions/gaia/rules"
+         "$root/.claude/agents" "$root/frontend/.claude/instructions" \
+         "$root/frontend/.claude/rules" "$root/frontend/.claude/skills" \
+         "$root/frontend/.claude/agents" "$root/.specify/extensions/gaia/commands" "$root/.specify/extensions/gaia/rules"
   for directory in "$@"; do [ -d "$directory" ]; done
   hits=$(grep -rlF 'wiki-squash-autocommits.sh' "$@" 2>/dev/null || true)
   [ -z "$hits" ]

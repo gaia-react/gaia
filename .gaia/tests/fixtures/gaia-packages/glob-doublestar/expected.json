@@ -1,0 +1,18 @@
+{
+  "load": 0,
+  "source": "registry",
+  "list": [["frontend", "."]],
+  "globs": {
+    "tddStrictCandidates": {
+      "match": [
+        "app/utils/a.ts",
+        "app/utils/a/b/c.ts",
+        "a/b.ts",
+        "a/x/y/b.ts",
+        "z.ts",
+        "q/r/z.ts"
+      ],
+      "noMatch": ["app/utils", "app/utilsx/a.ts", "a/xb.ts", "az.ts", "qz.ts"]
+    }
+  }
+}

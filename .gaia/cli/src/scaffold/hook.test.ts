@@ -11,6 +11,7 @@ import {
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {execGaiaGit} from '../util/git-env.js';
+import {writeFrontendRegistry} from '../util/package-fixture.js';
 import {run} from './hook.js';
 
 type Sandbox = {
@@ -20,6 +21,7 @@ type Sandbox = {
 
 const setupSandbox = (): Sandbox => {
   const repoRoot = mkdtempSync(path.join(tmpdir(), 'gaia-scaffold-hook-'));
+  writeFrontendRegistry(repoRoot);
 
   return {
     cleanup: () => {
@@ -398,7 +400,7 @@ describe('gaia scaffold hook root resolution', () => {
     return dir;
   };
 
-  test('scaffolds into the current directory outside a git repository', () => {
+  test('scaffolds under the built-in frontend package outside a git repository', () => {
     const root = newScratchDir();
     const stdout = captureStdout();
     let code = -1;
@@ -412,10 +414,12 @@ describe('gaia scaffold hook root resolution', () => {
     }
 
     expect(code).toBe(0);
-    expect(existsSync(path.join(root, 'app/hooks/useFoo.ts'))).toBe(true);
-    expect(existsSync(path.join(root, 'app/hooks/tests/useFoo.test.ts'))).toBe(
+    expect(existsSync(path.join(root, 'frontend/app/hooks/useFoo.ts'))).toBe(
       true
     );
+    expect(
+      existsSync(path.join(root, 'frontend/app/hooks/tests/useFoo.test.ts'))
+    ).toBe(true);
   });
 
   test('scaffolds into the working tree root, not the calling subdirectory', () => {
@@ -439,7 +443,10 @@ describe('gaia scaffold hook root resolution', () => {
     }
 
     expect(code).toBe(0);
-    expect(existsSync(path.join(root, 'app/hooks/useBar.ts'))).toBe(true);
+    expect(existsSync(path.join(root, 'frontend/app/hooks/useBar.ts'))).toBe(
+      true
+    );
     expect(existsSync(path.join(inner, 'app/hooks/useBar.ts'))).toBe(false);
+    expect(existsSync(path.join(inner, 'frontend'))).toBe(false);
   });
 });

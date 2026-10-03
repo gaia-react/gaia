@@ -25,14 +25,14 @@
 #                   the tree up for the remaining steps. Same surface as
 #                   07; no new assertions added here.
 #
-#   configure-i18n  app/languages/index.ts contains both 'en' and 'es'
+#   configure-i18n  frontend/app/languages/index.ts contains both 'en' and 'es'
 #                   imports + a LANGUAGES list with both codes;
-#                   app/i18n.ts has fallbackLng: 'en'.
+#                   frontend/app/i18n.ts has fallbackLng: 'en'.
 #
 #   rename          package.json "name" == "test-project"; CLAUDE.md
 #                   first H1 line == "# Test Project";
-#                   app/languages/en/common.ts has siteName: 'Test
-#                   Project'; app/languages/en/pages/_index.ts has
+#                   frontend/app/languages/en/common.ts has siteName: 'Test
+#                   Project'; frontend/app/languages/en/pages/_index.ts has
 #                   title: 'Test Project'.
 #
 #   wire-statusline .claude/settings.json contains the canonical GAIA
@@ -80,20 +80,20 @@ rsync -a "$STAGING"/ "$SCAFFOLD"/
   || { fail "staged tree missing .gaia/templates/README.md (strip-branding template source)"; exit 1; }
 
 # configure-i18n targets.
-[ -f "$SCAFFOLD/app/languages/index.ts" ] \
-  || { fail "staged tree missing app/languages/index.ts (configure-i18n target)"; exit 1; }
-[ -f "$SCAFFOLD/app/i18n.ts" ] \
-  || { fail "staged tree missing app/i18n.ts (configure-i18n fallbackLng target)"; exit 1; }
+[ -f "$SCAFFOLD/frontend/app/languages/index.ts" ] \
+  || { fail "staged tree missing frontend/app/languages/index.ts (configure-i18n target)"; exit 1; }
+[ -f "$SCAFFOLD/frontend/app/i18n.ts" ] \
+  || { fail "staged tree missing frontend/app/i18n.ts (configure-i18n fallbackLng target)"; exit 1; }
 
 # rename targets.
 [ -f "$SCAFFOLD/package.json" ] \
   || { fail "staged tree missing package.json (rename target)"; exit 1; }
 [ -f "$SCAFFOLD/CLAUDE.md" ] \
   || { fail "staged tree missing CLAUDE.md (rename H1 target)"; exit 1; }
-[ -f "$SCAFFOLD/app/languages/en/common.ts" ] \
-  || { fail "staged tree missing app/languages/en/common.ts (rename siteName target)"; exit 1; }
-[ -f "$SCAFFOLD/app/languages/en/pages/_index.ts" ] \
-  || { fail "staged tree missing app/languages/en/pages/_index.ts (rename title target)"; exit 1; }
+[ -f "$SCAFFOLD/frontend/app/languages/en/common.ts" ] \
+  || { fail "staged tree missing frontend/app/languages/en/common.ts (rename siteName target)"; exit 1; }
+[ -f "$SCAFFOLD/frontend/app/languages/en/pages/_index.ts" ] \
+  || { fail "staged tree missing frontend/app/languages/en/pages/_index.ts (rename title target)"; exit 1; }
 
 # finalize target; the staged tree must ship the command file so
 # finalize has something to delete.
@@ -133,15 +133,15 @@ run_step "strip-branding" \
 run_step "configure-i18n" \
   init configure-i18n --locales "en,es" --strip false
 
-LANGUAGES_INDEX="$SCAFFOLD/app/languages/index.ts"
+LANGUAGES_INDEX="$SCAFFOLD/frontend/app/languages/index.ts"
 grep -q "^import en from './en';" "$LANGUAGES_INDEX" \
-  || { fail "configure-i18n did not write 'en' import to app/languages/index.ts"; exit 1; }
+  || { fail "configure-i18n did not write 'en' import to frontend/app/languages/index.ts"; exit 1; }
 grep -q "^import es from './es';" "$LANGUAGES_INDEX" \
-  || { fail "configure-i18n did not write 'es' import to app/languages/index.ts"; exit 1; }
+  || { fail "configure-i18n did not write 'es' import to frontend/app/languages/index.ts"; exit 1; }
 grep -q "LANGUAGES = \['en', 'es'\]" "$LANGUAGES_INDEX" \
   || { fail "configure-i18n did not set LANGUAGES = ['en', 'es']"; exit 1; }
-grep -q "fallbackLng: 'en'" "$SCAFFOLD/app/i18n.ts" \
-  || { fail "configure-i18n did not set fallbackLng: 'en' in app/i18n.ts"; exit 1; }
+grep -q "fallbackLng: 'en'" "$SCAFFOLD/frontend/app/i18n.ts" \
+  || { fail "configure-i18n did not set fallbackLng: 'en' in frontend/app/i18n.ts"; exit 1; }
 
 # Step 3; rename. Touches package.json, CLAUDE.md H1, and two seeded
 # language files.
@@ -157,11 +157,11 @@ first_h1="$(grep -m1 '^# ' "$SCAFFOLD/CLAUDE.md" || true)"
 [ "$first_h1" = "# $TITLE" ] \
   || { fail "rename did not rewrite CLAUDE.md first H1 to '# $TITLE' (got: '$first_h1')"; exit 1; }
 # common.ts siteName.
-grep -qE "siteName:\s*['\"]Test Project['\"]" "$SCAFFOLD/app/languages/en/common.ts" \
+grep -qE "siteName:\s*['\"]Test Project['\"]" "$SCAFFOLD/frontend/app/languages/en/common.ts" \
   || { fail "rename did not set siteName: 'Test Project' in en/common.ts"; exit 1; }
 # _index.ts title (rewritten globally, including nested meta.title; see
 # rename.ts replaceStringPropertyAll).
-grep -qE "title:\s*['\"]Test Project['\"]" "$SCAFFOLD/app/languages/en/pages/_index.ts" \
+grep -qE "title:\s*['\"]Test Project['\"]" "$SCAFFOLD/frontend/app/languages/en/pages/_index.ts" \
   || { fail "rename did not set title: 'Test Project' in en/pages/_index.ts"; exit 1; }
 
 # Step 4; wire-statusline. --mode project so the merge writes to the

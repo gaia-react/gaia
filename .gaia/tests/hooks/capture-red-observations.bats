@@ -23,8 +23,16 @@
 # setup/teardown stash and restore any pre-existing local ledger so a
 # developer's scratch ledger is never clobbered.
 
+# Every legacy case here reads and writes the one ledger this checkout keys, and
+# its setup/teardown stash, delete and restore that file. Under `bats --jobs`
+# the cases of a file run in parallel, so they would delete each other's ledger
+# mid-test. Keep this file's cases serial; other files still run in parallel.
+# shellcheck disable=SC2034 # read by bats itself
+BATS_NO_PARALLELIZE_WITHIN_FILE=true
+
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
+  . "$BATS_TEST_DIRNAME/helpers/package-fixture.sh"
   REPO_ROOT=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
   # The Node helpers this suite drives resolve `typescript` from node_modules.
   # The gate fails rather than skips on a CI runner, where the dependency is a
@@ -484,4 +492,182 @@ assert_spaced_redirect_target_absent() {
   [ "$status" -eq 0 ]
   [ "$(ledger_lines)" -eq 0 ]
   [ ! -s "$STUB_PNPM_ARGS_FILE" ]
+}
+
+# --- package scope: the owning package decides where the json re-run happens ---
+#
+# These cases run the hook against a fixture repository, not this checkout, with
+# the real (non-override) re-run path. `pnpm` and `vitest` are stubs on PATH:
+# the pnpm shim honors only `-C <dir> exec <command> ...`, and the vitest stub
+# records the directory and scope it was invoked with, then reports one failing
+# test whose file name is absolute, as a real vitest report's is.
+
+PACKAGE_TEST_BODY='import {expect, test} from "vitest";
+test("adds two numbers", () => {
+  expect(1 + 1).toBe(2);
+});
+'
+
+make_package_fixture() {
+  FIXTURE=$(cd "$BATS_TEST_TMPDIR" && pwd -P)/package-fixture
+  mkdir -p "$FIXTURE/.gaia/scripts" "$FIXTURE/frontend/app/utils" "$FIXTURE/app/utils"
+  git -C "$FIXTURE" init --quiet --initial-branch=main
+  git -C "$FIXTURE" config user.email "test@example.com"
+  git -C "$FIXTURE" config user.name "Test"
+  git -C "$FIXTURE" config commit.gpgsign false
+  ln -s "$REPO_ROOT/.gaia/scripts/red-ledger" "$FIXTURE/.gaia/scripts/red-ledger"
+  printf '%s' "$PACKAGE_TEST_BODY" >"$FIXTURE/frontend/app/utils/x.test.ts"
+  printf '%s' "$PACKAGE_TEST_BODY" >"$FIXTURE/app/utils/x.test.ts"
+  echo "# readme" >"$FIXTURE/README.md"
+  git -C "$FIXTURE" add README.md
+  git -C "$FIXTURE" commit --quiet -m init
+  FIXTURE_LEDGER="$( . "$REPO_ROOT/.claude/hooks/lib/red-ledger.sh" && red_ledger_path "$FIXTURE" )"
+
+  STUB_BIN=$(mktemp -d)
+  cat >"$STUB_BIN/pnpm" <<'SH'
+#!/bin/sh
+[ "$1" = "-C" ] || exit 64
+directory="$2"
+shift 2
+[ "$1" = "exec" ] || exit 64
+shift
+cd "$directory" || exit 65
+exec "$@"
+SH
+  cat >"$STUB_BIN/vitest" <<'SH'
+#!/bin/sh
+output_file=""
+scope=""
+for argument in "$@"; do
+  case "$argument" in
+    --outputFile=*) output_file="${argument#--outputFile=}" ;;
+    --*) ;;
+    *) scope="$argument" ;;
+  esac
+done
+printf 'cwd=%s\nscope=%s\n' "$(pwd -P)" "$scope" >>"$STUB_VITEST_LOG"
+cat >"$output_file" <<JSON
+{"testResults":[{"name":"$(pwd -P)/$scope","status":"failed","message":"","assertionResults":[{"title":"adds two numbers","fullName":"adds two numbers","status":"failed","failureMessages":["AssertionError: expected 1 to be 2"]}]}]}
+JSON
+exit 1
+SH
+  chmod +x "$STUB_BIN/pnpm" "$STUB_BIN/vitest"
+  PATH="$STUB_BIN:$PATH"
+  STUB_VITEST_LOG="$BATS_TEST_TMPDIR/vitest.log"
+  export PATH STUB_VITEST_LOG
+}
+
+# Drive the hook for <command> with payload cwd <directory>, in the fixture.
+run_capture_in_fixture() {
+  local directory="$1" command="$2" payload
+  payload=$(jq -nc --arg c "$command" --arg d "$directory" \
+    '{tool_name:"Bash", cwd:$d, tool_input:{command:$c}, tool_response:{stdout:"", stderr:"", interrupted:false}}')
+  invoke_hook_in "$directory" "$payload" "$HOOK"
+}
+
+fixture_ledger_lines() {
+  [ -f "$FIXTURE_LEDGER" ] && wc -l <"$FIXTURE_LEDGER" | tr -d ' ' || echo 0
+}
+
+# The RED the capture recorded is keyed by the repo-relative path the commit
+# gate computes for the staged file, and the stub saw the package directory and
+# the package-relative scope.
+assert_frontend_capture() {
+  [ "$status" -eq 0 ]
+  [ "$(fixture_ledger_lines)" -eq 1 ]
+  [ "$(jq -r '.file' "$FIXTURE_LEDGER")" = "frontend/app/utils/x.test.ts" ]
+  grep -qxF -- "cwd=$FIXTURE/frontend" "$STUB_VITEST_LOG"
+  grep -qxF -- "scope=app/utils/x.test.ts" "$STUB_VITEST_LOG"
+}
+
+@test "package scope: the root proxy 'pnpm test --run frontend/...' re-runs in frontend/ with a package-relative scope" {
+  make_package_fixture
+  run_capture_in_fixture "$FIXTURE" "pnpm test --run frontend/app/utils/x.test.ts"
+  assert_frontend_capture
+}
+
+@test "package scope: 'pnpm -C frontend test --run app/...' from the root records the repo-relative key" {
+  make_package_fixture
+  run_capture_in_fixture "$FIXTURE" "pnpm -C frontend test --run app/utils/x.test.ts"
+  assert_frontend_capture
+}
+
+@test "package scope: 'pnpm --filter frontend test --run app/...' resolves the package through the registry" {
+  make_package_fixture
+  run_capture_in_fixture "$FIXTURE" "pnpm --filter frontend test --run app/utils/x.test.ts"
+  assert_frontend_capture
+}
+
+@test "package scope: 'pnpm test --run app/...' from inside frontend/ is keyed frontend/app/..." {
+  make_package_fixture
+  run_capture_in_fixture "$FIXTURE/frontend" "pnpm test --run app/utils/x.test.ts"
+  assert_frontend_capture
+}
+
+@test "package scope: the recorded key is the one the commit gate computes, so the retried commit is allowed" {
+  make_package_fixture
+  git -C "$FIXTURE" add frontend/app/utils/x.test.ts
+  local commit_payload
+  commit_payload=$(jq -nc '{tool_name:"Bash", tool_input:{command:"git commit -m change"}}')
+  invoke_hook_in "$FIXTURE" "$commit_payload" "$REPO_ROOT/.claude/hooks/red-verify-commit-check.sh"
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output"
+
+  run_capture_in_fixture "$FIXTURE" "pnpm test --run frontend/app/utils/x.test.ts"
+  assert_frontend_capture
+
+  invoke_hook_in "$FIXTURE" "$commit_payload" "$REPO_ROOT/.claude/hooks/red-verify-commit-check.sh"
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output" && return 1
+  true
+}
+
+@test "package scope: a root app/ path is not a frontend package path, so nothing is keyed under frontend/" {
+  make_package_fixture
+  run_capture_in_fixture "$FIXTURE" "pnpm test --run app/utils/x.test.ts"
+  [ "$status" -eq 0 ]
+  grep -qxF -- "cwd=$FIXTURE/frontend" "$STUB_VITEST_LOG" && return 1
+  if [ -f "$FIXTURE_LEDGER" ]; then
+    grep -qF -- '"file":"frontend/' "$FIXTURE_LEDGER" && return 1
+  fi
+  true
+}
+
+@test "package scope: a literal path-dot registry keeps today's layout, the root app/ test is keyed app/..." {
+  make_package_fixture
+  write_packages_today "$FIXTURE"
+  run_capture_in_fixture "$FIXTURE" "pnpm test --run app/utils/x.test.ts"
+  [ "$status" -eq 0 ]
+  [ "$(fixture_ledger_lines)" -eq 1 ]
+  [ "$(jq -r '.file' "$FIXTURE_LEDGER")" = "app/utils/x.test.ts" ]
+  grep -qxF -- "cwd=$FIXTURE" "$STUB_VITEST_LOG"
+  grep -qxF -- "scope=app/utils/x.test.ts" "$STUB_VITEST_LOG"
+}
+
+@test "package scope: an unparseable registry records nothing and blocks with the gaia-packages reason" {
+  make_package_fixture
+  write_package_registry "$FIXTURE" '{'
+  run_capture_in_fixture "$FIXTURE" "pnpm test --run frontend/app/utils/x.test.ts"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.decision' <<<"$output")" = block ]
+  jq -r '.reason' <<<"$output" | grep -qF -- 'gaia-packages: .gaia/packages.json is malformed'
+  [ "$(fixture_ledger_lines)" -eq 0 ]
+  [ ! -e "$STUB_VITEST_LOG" ]
+}
+
+@test "package scope: a registered package with no descriptor records nothing and blocks with the gaia-packages reason" {
+  make_package_fixture
+  write_package_registry "$FIXTURE" '[{"name":"frontend","path":"frontend"}]'
+  run_capture_in_fixture "$FIXTURE" "pnpm test --run frontend/app/utils/x.test.ts"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.decision' <<<"$output")" = block ]
+  jq -r '.reason' <<<"$output" | grep -qF -- 'gaia-packages: frontend/gaia.package.json is missing'
+  [ "$(fixture_ledger_lines)" -eq 0 ]
+}
+
+@test "package scope: a --filter name that is no registered package records nothing and says why" {
+  make_package_fixture
+  run_capture_in_fixture "$FIXTURE" "pnpm --filter nonesuch test --run app/utils/x.test.ts"
+  [ "$status" -eq 0 ]
+  jq -r '.hookSpecificOutput.additionalContext' <<<"$output" | grep -qF -- "'nonesuch' is not a registered package"
+  [ "$(fixture_ledger_lines)" -eq 0 ]
 }

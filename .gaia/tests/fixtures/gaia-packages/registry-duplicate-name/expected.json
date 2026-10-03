@@ -1,0 +1,4 @@
+{
+  "load": 2,
+  "error": "gaia-packages: .gaia/packages.json is malformed: entry 1 name is a duplicate. Next step: fix .gaia/packages.json so it is a JSON array of {\"name\",\"path\"} entries, or delete it to use the built-in default."
+}

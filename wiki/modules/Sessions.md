@@ -1,27 +1,27 @@
 ---
 type: module
-path: app/sessions.server/
+path: frontend/app/sessions.server/
 status: active
 language: typescript
 purpose: Server-only signed cookie for the language preference
 created: 2026-04-20
-updated: 2026-09-29
+updated: 2026-10-03
 tags: [module, sessions, cookies]
 ---
 
 # Sessions
 
-`app/sessions.server/` holds server-only cookie code that needs `SESSION_SECRET` for signing. The `.server` suffix excludes it from the client bundle; secrets never reach the browser.
+`frontend/app/sessions.server/` holds server-only cookie code that needs `SESSION_SECRET` for signing. The `.server` suffix excludes it from the client bundle; secrets never reach the browser.
 
 The shipped file, `language.ts`, defines a signed `lng` cookie via React Router's `createCookie` to persist the language preference. The secret comes from `env.SESSION_SECRET` (Zod-validated). For full session storage (auth, flash messages), swap in `createCookieSessionStorage`.
 
 ## Theme cookie is **not** a session
 
-The `__theme` cookie is read/written as a plain cookie via `app/utils/theme.server.ts` (using the `cookie` package directly), not session storage. It doesn't need signing; its value is non-sensitive (light/dark/system). See [[Theme Flow]] and [[Dark Mode Modernization]] for the full pipeline.
+The `__theme` cookie is read/written as a plain cookie via `frontend/app/utils/theme.server.ts` (using the `cookie` package directly), not session storage. It doesn't need signing; its value is non-sensitive (light/dark/system). See [[Theme Flow]] and [[Dark Mode Modernization]] for the full pipeline.
 
 ## Adding auth sessions
 
-`_session` is the designated hook point for consumer auth. Add your own `createCookieSessionStorage` (or use Clerk, Supabase, Auth0 SDKs) in `app/sessions.server/` and wire a loader into a `_session.tsx` layout route you add under `app/routes/`. See [[Routing]] for the route group overview.
+`_session` is the designated hook point for consumer auth. Add your own `createCookieSessionStorage` (or use Clerk, Supabase, Auth0 SDKs) in `frontend/app/sessions.server/` and wire a loader into a `_session.tsx` layout route you add under `frontend/app/routes/`. See [[Routing]] for the route group overview.
 
 For the current bundled session files, query Serena (`.claude/rules/code-search.md`).
 

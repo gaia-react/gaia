@@ -1,25 +1,25 @@
 ---
 type: module
-path: app/pages/
+path: frontend/app/pages/
 status: active
 language: typescript
 purpose: Page-specific UI components, organized by route group
 created: 2026-04-20
-updated: 2026-09-29
+updated: 2026-10-03
 tags: [module, pages]
 ---
 
 # Pages
 
-`app/pages/` holds page-specific components, the UI that the thin route file in `app/routes/` renders.
+`frontend/app/pages/` holds page-specific components, the UI that the thin route file in `frontend/app/routes/` renders.
 
-This is **different** from `app/components/`, which holds shared UI used across pages. The split is the load-bearing convention for [[Thin Routes]]: routes stay tiny (loader/action/meta only), pages own all UI and are independently testable.
+This is **different** from `frontend/app/components/`, which holds shared UI used across pages. The split is the load-bearing convention for [[Thin Routes]]: routes stay tiny (loader/action/meta only), pages own all UI and are independently testable.
 
 ## Folder convention
 
-Pages are grouped by route group: `app/pages/{Group}/{PascalName}/`. Legal pages follow the same convention under `app/pages/Legal/{PageName}/`; the `_legal.*.tsx` route files stay thin and render the page component. When you add auth-guarded pages behind `_session`, ask Claude to scaffold a `Session/` folder; `/new-route` handles the wiring.
+Pages are grouped by route group: `frontend/app/pages/{Group}/{PascalName}/`. Legal pages follow the same convention under `frontend/app/pages/Legal/{PageName}/`; the `_legal.*.tsx` route files stay thin and render the page component. When you add auth-guarded pages behind `_session`, ask Claude to scaffold a `Session/` folder; `/new-route` handles the wiring.
 
-Within a page folder: `index.tsx`, plus `tests/index.test.tsx` (Vitest via `composeStory`) and `tests/index.stories.tsx` (Storybook). The test/story files are co-located by convention but not present on every page: only `Public/IndexPage` ships a `tests/` folder (both story and test). Sub-components in their own PascalCase folders, lifted only as high as needed (same lift rule as [[Components]]).
+Within a page folder: `index.tsx`, plus `tests/index.test.tsx` (Vitest via `composeStory`) and `tests/index.stories.tsx` (Storybook). The test and story files are co-located by convention but not present on every page: only `Public/IndexPage` ships a `tests/` folder (both story and test). Sub-components in their own PascalCase folders, lifted only as high as needed (same lift rule as [[Components]]).
 
 ## Standard page shape
 

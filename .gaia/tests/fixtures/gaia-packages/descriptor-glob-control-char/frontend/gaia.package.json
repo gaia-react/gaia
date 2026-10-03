@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "name": "frontend",
+  "globs": {
+    "tddUnitTests": ["app/**/*.test.ts", "app/**/*.test.tsx"],
+    "tddStrictCandidates": [
+      "app/utils/**",
+      "app/services/**",
+      "app/hooks/**",
+      "app/components/**/*.ts"
+    ],
+    "emergentTests": [
+      "app/components/**/*.test.ts",
+      "app/components/**/*.test.tsx",
+      ".playwright/**/*.spec.ts",
+      ".playwright/**/*.spec.tsx",
+      ".playwright/**/*.test.ts",
+      ".playwright/**/*.test.tsx"
+    ],
+    "selfHealRefuse": [
+      ".claude/**",
+      "CLAUDE.md",
+      "gaia.package.json",
+      "test/**",
+      ".playwright/**",
+      ".storybook/**",
+      "app/**/tests/**",
+      "app/**/*.test.ts",
+      "app/**/*.test.tsx",
+      "app/**/*.stories.tsx",
+      "package.json",
+      "tsconfig*.json",
+      "*.config.ts",
+      "*.config.mts",
+      "*.config.mjs",
+      "*.config.cjs",
+      "*.config.js",
+      "Dockerfile",
+      "Dockerfile.dockerignore",
+      ".*"
+    ],
+    "preCommitSource": ["app/\u0001x"],
+    "doctorConfigs": ["doctor.config.*", "react-doctor.config.*"],
+    "dependencyManifests": ["package.json"]
+  },
+  "wiki": {
+    "sourcePaths": ["app/"],
+    "inventoryPaths": [
+      "app/components/",
+      "app/hooks/",
+      "app/pages/",
+      "app/services/"
+    ],
+    "flowPaths": [
+      "app/middleware/",
+      "app/routes.ts",
+      "app/i18n.ts",
+      "app/sessions.server/"
+    ]
+  }
+}

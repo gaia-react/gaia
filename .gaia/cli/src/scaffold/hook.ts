@@ -1,7 +1,7 @@
 /**
  * `gaia scaffold hook <useFoo>` handler.
  *
- * Emits a custom React hook + its vitest under `app/hooks/`. The hook name
+ * Emits a custom React hook + its vitest under the frontend package's `app/hooks/`. The hook name
  * must start with `use` and be camelCase; the file name matches the hook
  * name verbatim.
  *
@@ -18,8 +18,8 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
-import {resolveRepoRoot} from '../util/repo-root.js';
 import {writeFileIfAbsent} from './fs.js';
+import {resolveScaffoldTarget} from './resolve-target.js';
 import {renderTemplate} from './template.js';
 import type {ScaffoldResult} from './types.js';
 
@@ -127,27 +127,6 @@ const resolveTemplateFile = (filename: string): string => {
   );
 };
 
-/**
- * Resolve the tree to scaffold into.
- *
- * Prefers the calling working tree's root, so `gaia scaffold hook` run from a
- * subdirectory writes `<repo>/app/hooks/` rather than `<subdir>/app/hooks/`.
- * Falls back to the current directory when git cannot answer, because git is
- * not a precondition for scaffolding a hook: `component`, `route`, and
- * `service` resolve straight off `process.cwd()` and never shell git at all,
- * an adopter may scaffold into a project that is not a repository yet, and the
- * release harness drives the shipped binary against a staged tree in a temp
- * directory. Refusing is the one answer that is neither git's nor the
- * caller's, and it takes away work this command already did.
- */
-const resolveScaffoldRoot = (): string => {
-  try {
-    return resolveRepoRoot();
-  } catch {
-    return process.cwd();
-  }
-};
-
 type EmitOptions = {
   hookFilePath: string;
   name: string;
@@ -210,7 +189,7 @@ const printResult = (result: ScaffoldResult, jsonMode: boolean): void => {
 };
 
 type HandlerOptions = {
-  /** Absolute path to the repo root; defaults to `resolveScaffoldRoot()`. */
+  /** Directory the command runs in; defaults to `process.cwd()`. The package root comes from the registry, never from this directory itself. */
   repoRoot?: string;
 };
 
@@ -254,8 +233,13 @@ export const run = (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  const repoRoot = options.repoRoot ?? resolveScaffoldRoot();
-  const hooksDir = path.join(repoRoot, 'app', 'hooks');
+  const target = resolveScaffoldTarget(
+    options.repoRoot ?? process.cwd(),
+    'scaffold hook'
+  );
+
+  if (target === undefined) return EXIT_CODES.CONFIG_INVALID;
+  const hooksDir = path.join(target.packageDir, 'app', 'hooks');
   const hookFilePath = path.join(hooksDir, `${name}.ts`);
   const testFilePath = path.join(hooksDir, 'tests', `${name}.test.ts`);
 

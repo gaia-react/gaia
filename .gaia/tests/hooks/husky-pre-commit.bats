@@ -4,25 +4,31 @@
 #
 # The hook decides whether a staged change is lint-worthy and runs the Quality
 # Gate floor (pnpm typecheck / lint-staged / test:lint-staged) only when it is.
-# That decision is a set of `git diff --cached` greps, one arm per lintable
-# directory, OR-ed into a single guard. A directory that .lintstagedrc.json
-# covers but no arm names is the live failure mode: a commit scoped to that
-# directory alone matches nothing, the else branch fires, and the change lands
-# unlinted and untypechecked.
+# The decision is descriptor-driven: .gaia/scripts/precommit-packages.sh reads
+# the package registry and each descriptor's `preCommitSource` globs and tells
+# the POSIX hook which package directories have a counted staged path. A
+# directory that .lintstagedrc.json covers but the descriptor never names is the
+# live failure mode: a commit scoped to that directory alone matches nothing,
+# the skip branch fires, and the change lands unlinted and untypechecked.
 #
 # Husky runs the hook as `sh -e <hook>` (.husky/_/h), so these tests do too.
-# The `|| true` tail on each grep is load-bearing under -e, and running the
-# hook any other way would not exercise it.
 #
 # `pnpm` is stubbed onto PATH as a recorder, so the tests assert on which gate
-# steps the hook invoked rather than on their real output. The suite needs no
-# node_modules and stays fast.
+# steps the hook invoked, and in which package directory, rather than on their
+# real output. The suite needs no node_modules and stays fast.
+#
+# The "path ." fixtures write a literal registry and descriptor into the sandbox
+# (the transitional layout) and never copy the live files, so the suite states
+# what it asserts and stays green once the live registry points at `frontend`.
+# The one test that reads the live descriptor says so.
 
 setup() {
   REPO_ROOT=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
   HOOK_ABSOLUTE_PATH="$REPO_ROOT/.husky/pre-commit"
 
-  REPO=$(mktemp -d -t husky-pre-commit-XXXXXX)
+  # Physical path: the hook takes its root from `git rev-parse --show-toplevel`,
+  # which resolves symlinks (macOS /var is a link to /private/var).
+  REPO=$(cd "$(mktemp -d -t husky-pre-commit-XXXXXX)" && pwd -P)
   git -C "$REPO" init --quiet --initial-branch=main
   git -C "$REPO" config user.email "test@example.com"
   git -C "$REPO" config user.name "Test"
@@ -30,6 +36,12 @@ setup() {
   echo "# readme" > "$REPO/README.md"
   git -C "$REPO" add README.md
   git -C "$REPO" commit --quiet -m "init"
+
+  # The hook finds its helper and the registry reader under the repo root it
+  # runs in, so the sandbox carries copies of both (the code under test).
+  mkdir -p "$REPO/.gaia/scripts" "$REPO/.claude/hooks/lib"
+  cp "$REPO_ROOT/.gaia/scripts/precommit-packages.sh" "$REPO/.gaia/scripts/"
+  cp "$REPO_ROOT/.claude/hooks/lib/gaia-packages.sh" "$REPO/.claude/hooks/lib/"
 
   # Every stub invocation appends its argv and succeeds, so the hook runs to
   # completion under `sh -e` and each test reads back which steps fired.
@@ -45,9 +57,51 @@ STUB
   : > "$PNPM_LOG"
 }
 
+# A descriptor with every required key; $1 is the destination directory, $2 the
+# `preCommitSource` array as JSON.
+write_descriptor() {
+  local directory="$1" pre_commit_source="$2"
+  mkdir -p "$directory"
+  cat > "$directory/gaia.package.json" <<JSON
+{
+  "schemaVersion": 1,
+  "name": "frontend",
+  "globs": {
+    "tddUnitTests": ["app/**/*.test.ts"],
+    "tddStrictCandidates": ["app/utils/**"],
+    "emergentTests": ["app/components/**/*.test.ts"],
+    "selfHealRefuse": ["CLAUDE.md"],
+    "preCommitSource": $pre_commit_source,
+    "doctorConfigs": ["doctor.config.*", "react-doctor.config.*"],
+    "dependencyManifests": ["package.json"]
+  },
+  "wiki": { "sourcePaths": ["app/"], "inventoryPaths": ["app/"], "flowPaths": ["app/"] }
+}
+JSON
+}
+
+# The transitional layout: the frontend package lives at the repo root.
+use_root_package() {
+  mkdir -p "$REPO/.gaia"
+  printf '[{"name":"frontend","path":"."}]\n' > "$REPO/.gaia/packages.json"
+  write_descriptor "$REPO" '["app/**", "test/**", ".storybook/**", ".playwright/**"]'
+}
+
+# The 2.0.0 layout: the frontend package lives at frontend/.
+use_frontend_package() {
+  mkdir -p "$REPO/.gaia"
+  printf '[{"name":"frontend","path":"frontend"}]\n' > "$REPO/.gaia/packages.json"
+  write_descriptor "$REPO/frontend" '["app/**", "test/**", ".storybook/**", ".playwright/**"]'
+}
+
 teardown() {
   [ -n "${REPO:-}" ] && rm -rf "$REPO"
   return 0
+}
+
+run_hook() {
+  run env PATH="$STUB_BIN:$PATH" PNPM_LOG="$PNPM_LOG" \
+    sh -c 'cd "$1" && sh -e "$2"' _ "$REPO" "$HOOK_ABSOLUTE_PATH"
 }
 
 # Stage one file at a repo-relative path, then run the hook from the repo root
@@ -76,12 +130,14 @@ stage_deletion_and_run() {
 }
 
 # Assertion style: .claude/rules/bats-assertions.md.
+# $1 is the package directory the gate must run in (default: the repo root).
 assert_gate_ran() {
+  local package_path="${1:-$REPO}"
   [ "$status" -eq 0 ]
   grep -qF -- "running lint-staged" <<<"$output"
-  grep -qx 'typecheck' "$PNPM_LOG"
-  grep -qx 'exec lint-staged' "$PNPM_LOG"
-  grep -qx 'test:lint-staged' "$PNPM_LOG"
+  grep -qxF -- "-C $package_path typecheck" "$PNPM_LOG"
+  grep -qxF -- "-C $package_path exec lint-staged" "$PNPM_LOG"
+  grep -qxF -- "-C $package_path test:lint-staged" "$PNPM_LOG"
 }
 
 assert_gate_skipped() {
@@ -93,16 +149,19 @@ assert_gate_skipped() {
 # --- a change in a lintable directory runs the gate ---
 
 @test "app/ change runs the gate" {
+  use_root_package
   stage_and_run "app/routes/home.tsx"
   assert_gate_ran
 }
 
 @test "test/ change runs the gate" {
+  use_root_package
   stage_and_run "test/setup.ts"
   assert_gate_ran
 }
 
 @test ".storybook/ change runs the gate" {
+  use_root_package
   stage_and_run ".storybook/preview.ts"
   assert_gate_ran
 }
@@ -111,6 +170,7 @@ assert_gate_skipped() {
 # .playwright half needs an arm of its own; without one that entry is
 # unreachable for an e2e-spec-only commit, the most common .playwright shape.
 @test ".playwright/ change runs the gate" {
+  use_root_package
   stage_and_run ".playwright/e2e/home.spec.ts"
   assert_gate_ran
 }
@@ -123,63 +183,91 @@ assert_gate_skipped() {
 # edit cannot narrow one arm back without a failure.
 
 @test "app/ deletion runs the gate" {
+  use_root_package
   stage_deletion_and_run "app/routes/home.tsx"
   assert_gate_ran
 }
 
 @test "test/ deletion runs the gate" {
+  use_root_package
   stage_deletion_and_run "test/setup.ts"
   assert_gate_ran
 }
 
 @test ".storybook/ deletion runs the gate" {
+  use_root_package
   stage_deletion_and_run ".storybook/preview.ts"
   assert_gate_ran
 }
 
 @test ".playwright/ deletion runs the gate" {
+  use_root_package
   stage_deletion_and_run ".playwright/e2e/home.spec.ts"
   assert_gate_ran
 }
 
 
 @test "a change matching no lintable directory skips the gate" {
+  use_root_package
   stage_and_run "docs/notes.md"
   assert_gate_skipped
 }
 
-# --- every hook arm's directory is reachable by lint-staged ---
+# --- every gated directory is reachable by lint-staged ---
 #
-# The arms above and .lintstagedrc.json's globs are the two halves of one
-# contract: an arm decides the gate runs, a glob decides lint-staged has
-# anything to hand ESLint. An arm no glob covers is the silent half of the
-# failure mode the header describes: the hook prints "running lint-staged",
-# lint-staged matches zero files and exits 0, and the commit lands with ESLint
-# skipped for that whole directory while typecheck and Vitest still report.
+# The descriptor's `preCommitSource` globs and the package's .lintstagedrc.json
+# are the two halves of one contract: a descriptor glob decides the gate runs, a
+# lint-staged glob decides lint-staged has anything to hand ESLint. A glob no
+# lint-staged key covers is the silent half of the failure mode the header
+# describes: the hook prints "running lint-staged", lint-staged matches zero
+# files and exits 0, and the commit lands with ESLint skipped for that whole
+# directory while typecheck and Vitest still report.
 #
-# The arm set is derived from the hook rather than restated here, and the count
-# of directories the derivation yields is checked against the number of arm
-# assignments, so an arm whose spelling drifts stops the guard rather than
-# quietly shrinking it.
-#
-# Both directions of the contract are derived, one guard each: this one asks
-# whether every arm reaches a glob, the one below it whether every glob reaches
-# an arm. The per-directory @tests above still pin each of those directories by
-# name, which is a different claim, that the hook really runs end to end for
-# each of them, not that the two files agree.
+# Both directions are derived and checked, one guard each: this one asks whether
+# every gated directory reaches a glob, the one below it whether every glob
+# reaches a gated directory. These two read the LIVE registry, descriptor, and
+# lint-staged config; everything else in this file reads a sandbox.
 
-# Every directory the hook's change-detection arms grep for, one per line.
-arm_directories() {
-  sed -n "s/^HAS_[A-Z0-9_]*_CHANGED=.*| grep '\\([^']*\\)'.*/\\1/p" "$HOOK_ABSOLUTE_PATH"
+# The live frontend package directory, from the committed registry. When the
+# move has landed the config sits under it; between the rename-only commit and
+# the registry flip the registry still says `.`, so fall back to frontend/.
+live_package_directory() {
+  local registered
+  registered=$(jq -r '.[] | select(.name == "frontend") | .path' "$REPO_ROOT/.gaia/packages.json") || return 1
+  [ -n "$registered" ] || return 1
+  printf '%s\n' "$registered"
 }
 
-# Every arm assignment, counted by a pattern deliberately wider than the two
-# derivations read. A count taken with the same pattern as the extraction agrees
-# with it on every name the pattern cannot spell, so the two readings would
-# confirm each other's blind spot instead of exposing it; this one over-counts
-# rather than under-counts, so an arm neither derivation can read reds the guard.
+live_lintstaged_file() {
+  local directory candidate
+  directory=$(live_package_directory) || return 1
+  for candidate in "$REPO_ROOT/$directory/.lintstagedrc.json" "$REPO_ROOT/frontend/.lintstagedrc.json"; do
+    if [ -f "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+live_descriptor_file() {
+  local directory
+  directory=$(live_package_directory) || return 1
+  printf '%s\n' "$REPO_ROOT/$directory/gaia.package.json"
+}
+
+# Every directory the descriptor's `preCommitSource` globs gate, one per line.
+arm_directories() {
+  jq -r '.globs.preCommitSource[]' "$(live_descriptor_file)" | sed -n 's#^\(.*/\)\*\*$#\1#p'
+}
+
+# Every `preCommitSource` entry, counted by a pattern deliberately wider than
+# the derivation above reads. A count taken with the same pattern as the
+# extraction agrees with it on every spelling the pattern cannot read, so the
+# two readings would confirm each other's blind spot; this one over-counts, so
+# a glob the derivation cannot read reds the guard.
 arm_assignment_count() {
-  grep -c '^HAS_[A-Za-z0-9_]*=' "$HOOK_ABSOLUTE_PATH"
+  jq -r '.globs.preCommitSource | length' "$(live_descriptor_file)"
 }
 
 # The lint-staged glob keys whose task chain actually invokes ESLint. Reading
@@ -189,7 +277,7 @@ arm_assignment_count() {
 eslint_globs() {
   jq -r 'to_entries[]
          | select(any(.value[]?; type == "string" and startswith("eslint")))
-         | .key' "$REPO_ROOT/.lintstagedrc.json"
+         | .key' "$(live_lintstaged_file)"
 }
 
 # The glob keys whose chain mentions ESLint anywhere, counted by a pattern
@@ -209,7 +297,7 @@ eslint_globs() {
 # job. `tostring` reads a string value, an array value, and any nesting.
 eslint_glob_mentions() {
   jq -r '[to_entries[] | select(.value | tostring | test("eslint"))]
-         | length' "$REPO_ROOT/.lintstagedrc.json"
+         | length' "$(live_lintstaged_file)"
 }
 
 # Every directory one glob key hands ESLint files under, one per line, and
@@ -458,25 +546,229 @@ CASES
   true
 }
 
-# An arm assignment that never reaches the OR guard is dead: the directory looks
-# armed at the top of the hook and decides nothing. The assignment names are
-# derived from the same lines the guard above reads, so an arm added without a
-# term reds here instead of passing both checks.
-@test "every pre-commit arm assignment is read by the change-detection guard" {
-  local names name guard
-  names=$(sed -n 's/^\(HAS_[A-Z0-9_]*_CHANGED\)=.*/\1/p' "$HOOK_ABSOLUTE_PATH")
-  [ -n "$names" ]
-  [ "$(printf '%s\n' "$names" | grep -c .)" -eq "$(arm_assignment_count)" ]
-  # shellcheck disable=SC2016 # $ is literal in the BRE, not an expansion.
-  guard=$(grep -n '^if \[ -n "\$HAS_' "$HOOK_ABSOLUTE_PATH")
-  [ -n "$guard" ]
-  while IFS= read -r name; do
-    # The closing quote terminates the match. Grepping the bare name would let
-    # a longer arm whose name merely starts with this one supply the matching
-    # substring, greening the check for an arm that is assigned and never read.
-    if ! grep -qF -- "\"\$$name\"" <<<"$guard"; then
-      printf 'arm %s is assigned but never read by the guard\n' "$name" >&2
+# A descriptor glob the hook never acts on is dead: the directory looks gated in
+# the descriptor and decides nothing. For each directory the LIVE descriptor
+# gates, the real hook, given a sandbox carrying the live registry and
+# descriptor, runs the gate in the package directory for a file staged there.
+@test "every live preCommitSource directory runs the gate through the hook" {
+  local directories directory package_directory prefix package_path
+  directories=$(arm_directories)
+  [ -n "$directories" ]
+  package_directory=$(live_package_directory)
+  mkdir -p "$REPO/.gaia"
+  cp "$REPO_ROOT/.gaia/packages.json" "$REPO/.gaia/packages.json"
+  mkdir -p "$REPO/$package_directory"
+  cp "$(live_descriptor_file)" "$REPO/$package_directory/gaia.package.json"
+  if [ "$package_directory" = . ]; then
+    prefix=''
+    package_path="$REPO"
+  else
+    prefix="$package_directory/"
+    package_path="$REPO/$package_directory"
+  fi
+  while IFS= read -r directory; do
+    : > "$PNPM_LOG"
+    git -C "$REPO" reset --quiet
+    mkdir -p "$REPO/$prefix$directory"
+    echo "// content" > "$REPO/${prefix}${directory}probe.ts"
+    git -C "$REPO" add "${prefix}${directory}probe.ts"
+    run_hook
+    if ! { [ "$status" -eq 0 ] && grep -qxF -- "-C $package_path exec lint-staged" "$PNPM_LOG"; }; then
+      printf 'staging %s%sprobe.ts did not run the gate in %s\n' "$prefix" "$directory" "$package_path" >&2
       return 1
     fi
-  done <<<"$names"
+  done <<<"$directories"
+}
+
+# --- package-aware behavior (SPEC-092 couplings, C5 and C13) ---
+
+assert_gate_not_invoked() {
+  [ "$status" -eq 0 ]
+  [ ! -s "$PNPM_LOG" ]
+}
+
+@test "frontend/ package: staging frontend/app/x.tsx runs the gate in frontend/" {
+  use_frontend_package
+  stage_and_run "frontend/app/x.tsx"
+  assert_gate_ran "$REPO/frontend"
+}
+
+# The guard can fail: with a descriptor that gates nothing the staged file
+# matches, a frontend commit skips. Proves the descriptor decides, rather than
+# an unanchored substring of the path.
+@test "frontend/ package: a descriptor whose preCommitSource names nothing here skips the gate" {
+  use_frontend_package
+  write_descriptor "$REPO/frontend" '["nomatch/**"]'
+  stage_and_run "frontend/app/x.tsx"
+  assert_gate_skipped
+}
+
+# The RED on today's tree: the unmodified hook text, run against the same
+# frontend-layout fixture, never runs the gate in frontend/.
+@test "today's hook text does not run the frontend/ gate" {
+  use_frontend_package
+  # The pre-frontend/ hook shape, inlined: the gate runs at the repo root, never
+  # `pnpm -C <repo>/frontend`.
+  cat >"$REPO/old-pre-commit" <<'OLD_HOOK'
+HAS_APP_CHANGED=$(git diff --cached --name-only -z --diff-filter=ACDM | tr '\0' '\n' | grep 'app/' || true)
+HAS_TEST_CHANGED=$(git diff --cached --name-only -z --diff-filter=ACDM | tr '\0' '\n' | grep 'test/' || true)
+if [ -n "$HAS_APP_CHANGED" ] || [ -n "$HAS_TEST_CHANGED" ]
+then
+	pnpm typecheck
+	pnpm exec lint-staged
+	pnpm test:lint-staged
+fi
+OLD_HOOK
+  mkdir -p "$REPO/frontend/app"
+  echo "// content" > "$REPO/frontend/app/x.tsx"
+  git -C "$REPO" add frontend/app/x.tsx
+  run env PATH="$STUB_BIN:$PATH" PNPM_LOG="$PNPM_LOG" \
+    sh -c 'cd "$1" && sh -e "$2"' _ "$REPO" "$REPO/old-pre-commit"
+  [ "$status" -eq 0 ]
+  ! grep -qxF -- "-C $REPO/frontend exec lint-staged" "$PNPM_LOG"
+}
+
+@test "frontend/ package: a root app/x.tsx is refused and runs no gate step" {
+  use_frontend_package
+  stage_and_run "app/x.tsx"
+  [ "$status" -ne 0 ]
+  grep -qF -- "app/x.tsx -> frontend/app/x.tsx" <<<"$output"
+  [ ! -s "$PNPM_LOG" ]
+}
+
+@test "a harness-only staged set skips the gate" {
+  use_frontend_package
+  mkdir -p "$REPO/wiki" "$REPO/.claude/rules"
+  echo a > "$REPO/wiki/a.md"
+  echo a > "$REPO/.claude/rules/a.md"
+  git -C "$REPO" add wiki/a.md .claude/rules/a.md
+  run_hook
+  assert_gate_skipped
+}
+
+@test "built-in default: with no registry, frontend/app/x.tsx runs the gate in frontend/" {
+  rm -f "$REPO/.gaia/packages.json"
+  stage_and_run "frontend/app/x.tsx"
+  assert_gate_ran "$REPO/frontend"
+}
+
+# --- C13: the migration-rename exemption ---
+
+# Commit the retired root paths, then stage their renames the way the Phase 4
+# move does, so the staged set carries real R100 entries.
+commit_root_frontend_files() {
+  local path
+  for path in "$@"; do
+    mkdir -p "$REPO/$(dirname "$path")"
+    echo "// $path" > "$REPO/$path"
+    # Long enough that one appended line stays a rename above git's similarity
+    # threshold, so the content-change refusal drives a real Rnn entry.
+    seq 1 40 >> "$REPO/$path"
+    git -C "$REPO" add "$path"
+  done
+  git -C "$REPO" commit --quiet -m "seed root frontend files"
+}
+
+stage_rename() {
+  mkdir -p "$REPO/$(dirname "$2")"
+  git -C "$REPO" mv "$1" "$2"
+}
+
+@test "C13: a staged set of only C6 renames skips the gate, even with the descriptor missing" {
+  commit_root_frontend_files app/x.tsx .dockerignore test/setup.ts public/favicon.ico .storybook/main.ts .playwright/a.spec.ts vite.config.ts .claude/skills/tailwind/SKILL.md .claude/rules/i18n.md .claude/agents/code-audit-frontend/cn.md
+  stage_rename app/x.tsx frontend/app/x.tsx
+  stage_rename .dockerignore frontend/Dockerfile.dockerignore
+  stage_rename test/setup.ts frontend/test/setup.ts
+  stage_rename public/favicon.ico frontend/public/favicon.ico
+  stage_rename .storybook/main.ts frontend/.storybook/main.ts
+  stage_rename .playwright/a.spec.ts frontend/.playwright/a.spec.ts
+  stage_rename vite.config.ts frontend/vite.config.ts
+  stage_rename .claude/skills/tailwind/SKILL.md frontend/.claude/skills/tailwind/SKILL.md
+  stage_rename .claude/rules/i18n.md frontend/.claude/rules/i18n.md
+  stage_rename .claude/agents/code-audit-frontend/cn.md frontend/.claude/agents/code-audit-frontend/cn.md
+  # No registry and no descriptor anywhere: the exemption runs before the load.
+  rm -rf "$REPO/.gaia/packages.json" "$REPO/gaia.package.json" "$REPO/frontend/gaia.package.json"
+  git -C "$REPO" diff --cached --name-status -M100% | grep -c '^R100' | grep -qx 10
+  run_hook
+  assert_gate_skipped
+}
+
+@test "C13 refusal: an R100 rename inside frontend/ runs the full gate" {
+  use_frontend_package
+  commit_root_frontend_files frontend/app/utils/a.ts
+  stage_rename frontend/app/utils/a.ts frontend/app/utils/b.ts
+  git -C "$REPO" diff --cached --name-status -M100% | grep -q '^R100'
+  run_hook
+  assert_gate_ran "$REPO/frontend"
+}
+
+@test "C13 refusal: a rename to a destination that is not the C6 counterpart runs the full gate" {
+  use_root_package
+  commit_root_frontend_files app/x.tsx
+  stage_rename app/x.tsx src/x.tsx
+  git -C "$REPO" diff --cached --name-status -M100% | grep -q '^R100'
+  run_hook
+  assert_gate_ran "$REPO"
+}
+
+@test "C13 refusal: a C6 rename with one changed line runs the full gate" {
+  use_frontend_package
+  commit_root_frontend_files app/x.tsx
+  stage_rename app/x.tsx frontend/app/x.tsx
+  printf 'a changed line\n' >> "$REPO/frontend/app/x.tsx"
+  git -C "$REPO" add frontend/app/x.tsx
+  run_hook
+  assert_gate_ran "$REPO/frontend"
+}
+
+@test "C13 refusal: one non-exempt entry beside C6 renames runs the full gate" {
+  use_frontend_package
+  commit_root_frontend_files app/x.tsx
+  stage_rename app/x.tsx frontend/app/x.tsx
+  mkdir -p "$REPO/frontend/app"
+  echo "// new" > "$REPO/frontend/app/new.tsx"
+  git -C "$REPO" add frontend/app/new.tsx
+  run_hook
+  assert_gate_ran "$REPO/frontend"
+}
+
+# --- doctor guard, one config per package directory ---
+
+@test "doctor guard: two configs under frontend/ fail the commit naming frontend" {
+  use_frontend_package
+  mkdir -p "$REPO/frontend"
+  : > "$REPO/frontend/doctor.config.ts"
+  : > "$REPO/frontend/doctor.config.json"
+  stage_and_run "docs/notes.md"
+  [ "$status" -eq 1 ]
+  grep -qF -- "Multiple react-doctor configs found in frontend" <<<"$output"
+  grep -qF -- "frontend/doctor.config.json" <<<"$output"
+  [ ! -s "$PNPM_LOG" ]
+}
+
+@test "doctor guard: one config under frontend/ passes" {
+  use_frontend_package
+  : > "$REPO/frontend/doctor.config.ts"
+  stage_and_run "docs/notes.md"
+  assert_gate_skipped
+}
+
+# --- fail closed on a descriptor failure (UAT-018) ---
+
+@test "an unparseable registry fails the commit with the gaia-packages message" {
+  use_frontend_package
+  printf 'not json {\n' > "$REPO/.gaia/packages.json"
+  stage_and_run "frontend/app/x.tsx"
+  [ "$status" -eq 1 ]
+  grep -qF -- "gaia-packages: " <<<"$output"
+  [ ! -s "$PNPM_LOG" ]
+}
+
+@test "a missing descriptor fails the commit with the gaia-packages message" {
+  use_frontend_package
+  rm "$REPO/frontend/gaia.package.json"
+  stage_and_run "frontend/app/x.tsx"
+  [ "$status" -eq 1 ]
+  grep -qF -- "gaia-packages: " <<<"$output"
+  [ ! -s "$PNPM_LOG" ]
 }

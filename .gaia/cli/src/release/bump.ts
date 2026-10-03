@@ -19,8 +19,9 @@
  *
  * Without `--auto` the command prints `vCURRENT -> vNEXT (bump)` and
  * exits 0 without writing. With `--auto` it writes the new version to
- * `package.json` and `.gaia/VERSION`, then prints the new version on
- * stdout.
+ * `package.json`, `frontend/package.json` (kept at the root's version: the
+ * app reads it through `npm_package_version`), and `.gaia/VERSION`, then
+ * prints the new version on stdout.
  *
  * Major bumps are surfaced but never auto-applied: the CLI always
  * exits 0 on `--auto` for major and writes nothing, expecting the
@@ -327,6 +328,21 @@ const writePackageJsonVersion = (
   atomicWriteFileSync(packagePath, replaced);
 };
 
+// Packages whose `package.json` carries the same version as the root. The
+// frontend app reads `npm_package_version` (env.server.ts), and a bats case
+// fails the release PR when the two drift, so the bump writes both.
+const PACKAGE_VERSION_FILES: readonly string[] = ['frontend/package.json'];
+
+const writePackageVersions = (cwd: string, newVersion: string): void => {
+  for (const relative of PACKAGE_VERSION_FILES) {
+    const target = path.join(cwd, relative);
+
+    if (existsSync(target)) {
+      writePackageJsonVersion(target, readFileSync(target, 'utf8'), newVersion);
+    }
+  }
+};
+
 const writeVersionFile = (cwd: string, newVersion: string): void => {
   const target = path.join(cwd, '.gaia', 'VERSION');
 
@@ -402,6 +418,7 @@ const tryWriteVersionOrReport = (
 ): boolean => {
   try {
     writePackageJsonVersion(pkg.path, pkg.raw, nextVersion);
+    writePackageVersions(cwd, nextVersion);
     writeVersionFile(cwd, nextVersion);
 
     return true;

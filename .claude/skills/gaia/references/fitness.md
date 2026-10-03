@@ -13,7 +13,7 @@ The check taxonomy, F-to-A+ grading rubric, and triage/heal orchestration protoc
 All paths in this file are repo-relative or derived from `$PROJECT_ROOT`, never hardcoded.
 
 ```bash
-PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-$(pwd)}")"
 ```
 
 All paths below are repo-relative or `$PROJECT_ROOT`-prefixed.
@@ -45,7 +45,7 @@ Before any heal-phase mutation, determine whether the repo is in a safe state.
 **Detect unsafe states:**
 
 ```bash
-PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-$(pwd)}")"
 GIT_DIR="$(git -C "$PROJECT_ROOT" rev-parse --absolute-git-dir)"
 git -C "$PROJECT_ROOT" symbolic-ref -q HEAD >/dev/null || echo "unsafe: HEAD is detached"
 for marker in rebase-merge rebase-apply MERGE_HEAD CHERRY_PICK_HEAD BISECT_LOG; do
@@ -320,7 +320,7 @@ Heal already cut and switched to `<BRANCH>`, the name Step 4 minted, so the chan
    - **`CLOSED`** (exit 6) → the pull request was closed without merging, so no wait can clear it: report the closure, run the `TIMEOUT` arm's tally command above, print the PR URL, and keep the local branch, without that arm's lands-when-checks-pass note.
    - **exit 2** → the wait refused rather than answered: report what it could not read, run the `TIMEOUT` arm's tally command above, print the PR URL, and keep the local branch. Assert no state for the pull request, since nothing about it was read, so print neither the lands-when-checks-pass note nor any claim that the merge did or did not land; the merge queued above may still land.
 
-   Caveat: the oracle check above already covers this. A heal edit to a nested `CLAUDE.md` under an in-scope path such as `app/` is exactly the kind of reached-an-audited-surface diff the oracle detects; if it named a member, the marker handshake ran before this PR was even opened.
+   Caveat: the oracle check above already covers this. A heal edit to a nested `CLAUDE.md` under an in-scope path such as `frontend/app/` is exactly the kind of reached-an-audited-surface diff the oracle detects; if it named a member, the marker handshake ran before this PR was even opened.
 
 ### Any other branch (in-place heal)
 

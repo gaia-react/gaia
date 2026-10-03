@@ -1,0 +1,36 @@
+{
+  "load": 0,
+  "source": "registry",
+  "list": [["frontend", "frontend"]],
+  "globs": {
+    "tddUnitTests": {
+      "match": ["frontend/app/x.test.ts", "frontend/app/utils/x.test.ts"],
+      "noMatch": ["app/x.test.ts", "app/utils/x.test.ts"]
+    },
+    "tddStrictCandidates": {
+      "match": ["frontend/app/components/x.ts"],
+      "noMatch": ["frontend/app/components/x.tsx", "app/components/x.ts"]
+    },
+    "emergentTests": {
+      "match": ["frontend/.playwright/x.spec.ts"],
+      "noMatch": [".playwright/x.spec.ts"]
+    },
+    "selfHealRefuse": {
+      "match": [
+        "frontend/.npmrc",
+        "frontend/package.json",
+        "frontend/gaia.package.json"
+      ],
+      "noMatch": ["package.json", ".npmrc", "frontend/a/.npmrc"]
+    }
+  },
+  "forPath": {
+    "frontend/app/x.ts": "frontend",
+    "frontend": "frontend",
+    "frontendx/a.ts": "",
+    "app/x.ts": ""
+  },
+  "dir": {
+    "frontend": "frontend"
+  }
+}

@@ -96,7 +96,7 @@ const check = (
 describe('check-a11y-triviality', () => {
   test('emits the {file, verdict, findings} contract shape', () => {
     const result = check(
-      'app/components/Spinner/tests/index.test.tsx',
+      'frontend/app/components/Spinner/tests/index.test.tsx',
       [
         "import {expectNoA11yViolations} from 'test/a11y';",
         "import {render} from 'test/rtl';",
@@ -108,7 +108,9 @@ describe('check-a11y-triviality', () => {
       ].join('\n')
     );
 
-    expect(result.file).toBe('app/components/Spinner/tests/index.test.tsx');
+    expect(result.file).toBe(
+      'frontend/app/components/Spinner/tests/index.test.tsx'
+    );
     expect(['non-trivial', 'not-a11y', 'trivial']).toContain(result.verdict);
     expect(Array.isArray(result.findings)).toBe(true);
   });
@@ -116,7 +118,7 @@ describe('check-a11y-triviality', () => {
   describe('not an a11y test file', () => {
     test('returns not-a11y for a file with no a11y-helper call', () => {
       const result = check(
-        'app/components/Foo/tests/index.test.tsx',
+        'frontend/app/components/Foo/tests/index.test.tsx',
         [
           "import {render, screen} from 'test/rtl';",
           "import Foo from '..';",
@@ -135,7 +137,7 @@ describe('check-a11y-triviality', () => {
   describe('condition A: render passes no props or only defaults', () => {
     test('flags an a11y test whose render passes NO props', () => {
       const result = check(
-        'app/components/Button/tests/index.test.tsx',
+        'frontend/app/components/Button/tests/index.test.tsx',
         [
           "import {expectNoA11yViolations} from 'test/a11y';",
           "import {render} from 'test/rtl';",
@@ -159,7 +161,7 @@ describe('check-a11y-triviality', () => {
       // `runAxe` is an a11y signal too. A self-closing render with zero
       // attributes carries no props.
       const result = check(
-        'app/components/Badge/tests/index.test.tsx',
+        'frontend/app/components/Badge/tests/index.test.tsx',
         [
           "import {runAxe} from 'test/a11y';",
           "import {render} from 'test/rtl';",
@@ -182,7 +184,7 @@ describe('check-a11y-triviality', () => {
       // Props supplied AND no stories declaring interactive variants -> the
       // structural floor has nothing to flag.
       const result = check(
-        'app/components/Avatar/tests/index.test.tsx',
+        'frontend/app/components/Avatar/tests/index.test.tsx',
         [
           "import {expectNoA11yViolations} from 'test/a11y';",
           "import {render} from 'test/rtl';",
@@ -213,7 +215,7 @@ describe('check-a11y-triviality', () => {
       ].join('\n');
 
       const result = check(
-        'app/components/Card/tests/index.test.tsx',
+        'frontend/app/components/Card/tests/index.test.tsx',
         [
           "import {expectNoA11yViolations} from 'test/a11y';",
           "import {render} from 'test/rtl';",
@@ -245,7 +247,7 @@ describe('check-a11y-triviality', () => {
       ].join('\n');
 
       const result = check(
-        'app/components/Field/tests/index.test.tsx',
+        'frontend/app/components/Field/tests/index.test.tsx',
         [
           "import {expectNoA11yViolations} from 'test/a11y';",
           "import {render} from 'test/rtl';",
@@ -275,7 +277,7 @@ describe('check-a11y-triviality', () => {
       ].join('\n');
 
       const result = check(
-        'app/components/Note/tests/index.test.tsx',
+        'frontend/app/components/Note/tests/index.test.tsx',
         [
           "import {expectNoA11yViolations} from 'test/a11y';",
           "import {render} from 'test/rtl';",
@@ -296,7 +298,7 @@ describe('check-a11y-triviality', () => {
   describe('multiple tests in one file', () => {
     test('only flags the a11y test, never the behavior tests', () => {
       const result = check(
-        'app/components/Toggle/tests/index.test.tsx',
+        'frontend/app/components/Toggle/tests/index.test.tsx',
         [
           "import userEvent from '@testing-library/user-event';",
           "import {expectNoA11yViolations} from 'test/a11y';",

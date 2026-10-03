@@ -1,0 +1,19 @@
+{
+  "load": 0,
+  "source": "registry",
+  "list": [],
+  "globs": {
+    "tddUnitTests": {
+      "empty": true
+    },
+    "selfHealRefuse": {
+      "empty": true
+    }
+  },
+  "forPath": {
+    "frontend/app/x.ts": ""
+  },
+  "dir": {
+    "frontend": null
+  }
+}

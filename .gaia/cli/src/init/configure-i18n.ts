@@ -26,6 +26,7 @@ import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {takeValue} from '../util/argv.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
+import {resolvePackageTarget} from '../util/package-target.js';
 import {markStepCompleted} from './util/state.js';
 
 const HELP_TEXT = `Usage: gaia init configure-i18n --locales <list> --strip <bool>
@@ -261,10 +262,22 @@ export const run = (
   // (referenced by the slash command). Here we only record the decision
   // so resume can detect it; the orchestrator dispatches the prose path.
   if (!parsed.flags.strip) {
+    const target = resolvePackageTarget(cwd);
+
+    if (!target.ok) {
+      structuredError({
+        code: 'gaia_packages',
+        message: target.message,
+        subcommand: 'init configure-i18n',
+      });
+
+      return EXIT_CODES.CONFIG_INVALID;
+    }
+
     try {
-      updateLanguagesIndex(cwd, parsed.flags.locales);
+      updateLanguagesIndex(target.packageDir, parsed.flags.locales);
       const [fallbackLocale] = parsed.flags.locales;
-      updateI18nFallback(cwd, fallbackLocale);
+      updateI18nFallback(target.packageDir, fallbackLocale);
     } catch (error) {
       structuredError({
         code: 'configure_i18n_failed',

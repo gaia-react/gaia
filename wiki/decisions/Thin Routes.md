@@ -4,13 +4,13 @@ status: active
 priority: 1
 date: 2026-04-20
 created: 2026-04-20
-updated: 2026-09-29
+updated: 2026-10-03
 tags: [decision, routing, architecture]
 ---
 
 # Decision: Thin Routes, Fat Pages
 
-Route files (`app/routes/**`) contain only loader, action, meta, and a one-line render of a page component. All UI lives in `app/pages/{Group}/{PascalName}Page/`.
+Route files (`frontend/app/routes/**`) contain only loader, action, meta, and a one-line render of a page component. All UI lives in `frontend/app/pages/{Group}/{PascalName}Page/`.
 
 ## Rationale
 
@@ -29,7 +29,7 @@ Route action endpoints read `formData` and validate with a Zod schema's `safePar
 
 ## Enforcement
 
-- `app/routes/**` rule (`.claude/rules/routes.md`) guides code review
+- `frontend/app/routes/**` rule (`frontend/.claude/rules/routes.md`) guides code review
 - The `new-route` skill scaffolds in this exact pattern
 
-See [[Routing]], [[Pages]], and the `routes` rule at `.claude/rules/routes.md`.
+See [[Routing]], [[Pages]], and the `routes` rule at `frontend/.claude/rules/routes.md`.

@@ -48,6 +48,10 @@ In CI (`CI=true`, set by GitHub Actions, GitLab CI, CircleCI, and most CI provid
 
 Otherwise set `SHOULD_CREATE_BRANCH=false` and proceed on the current branch.
 
+## Package layout
+
+The repository is a pnpm workspace with one lockfile at the root. App dependencies (everything the React app imports or builds with) are declared in `frontend/package.json`; harness dependencies (husky, lint-staged, prettier, `typescript` for the harness helpers) and the `gaia.updateDepsHold` map are in the root `package.json`. `overrides:` and `minimumReleaseAge` stay in the root `pnpm-workspace.yaml`. Add or bump an app dependency with `pnpm -C frontend add <pkg>@<spec>`, a harness dependency with `pnpm add -w <pkg>@<spec>` from the root. The quality gate runs the root `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm pw`, and `pnpm build`, which proxy to `frontend`.
+
 ## Composition: --scope &lt;group-name&gt;
 
 When invoked with `--scope <group-name>` (e.g. `/update-deps --scope react-router`):
@@ -58,7 +62,7 @@ When invoked with `--scope <group-name>` (e.g. `/update-deps --scope react-route
 - Skip wave classification, the run is implicitly a single group; treat it
   as Wave A if all members are minor/patch, else Wave B.
 - Wave A / Wave B still apply, scoped to the named group's members
-  in root `package.json`.
+  in the package manifest that declares them (see Package layout).
 - Skip Phase 5b (transitive refresh), a single-group run does not re-resolve
   the whole tree.
 - Quality gate, return value, and final report still run.
@@ -71,7 +75,7 @@ major-bump group's own PR rather than the combined Wave A/B run.
 The fixed table mapping each package to its group. `gaia update-deps run`
 resolves grouping internally and is the source of
 truth at runtime; every emitted entry already carries its resolved `group`.
-**When any member of a group is outdated, all members present in `package.json`
+**When any member of a group is outdated, all members present in a manifest
 update together**, so a group moves as one unit (and snoozes as one unit).
 
 | Group             | Members                                                                                                                                                                      |
@@ -128,7 +132,7 @@ the set of their `group` ids, this is what you mark and default-skip below. It
 is empty in CI and whenever no active snooze matches the current offer.
 
 `skipped[]` entries with `reason: "held"` are packages capped by the committed
-`gaia.updateDepsHold` map in package.json (a durable version ceiling, distinct
+`gaia.updateDepsHold` map in the root `package.json` (a durable version ceiling, distinct
 from a snooze: it holds in CI too and never lapses until the maintainer lifts
 it). They are already excluded from both waves, never installed, so nothing to
 apply. Surface them once (see Preview) so the maintainer remembers a hold is

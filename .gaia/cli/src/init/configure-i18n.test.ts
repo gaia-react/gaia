@@ -8,6 +8,7 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {writeFrontendRegistry} from '../util/package-fixture.js';
 import {run} from './configure-i18n.js';
 import {readState} from './util/state.js';
 
@@ -40,6 +41,7 @@ export default i18n;
 
 const setupSandbox = (): Sandbox => {
   const root = mkdtempSync(path.join(tmpdir(), 'gaia-init-configure-i18n-'));
+  writeFrontendRegistry(root);
   mkdirSync(path.join(root, 'app', 'languages'), {recursive: true});
   writeFileSync(
     path.join(root, 'app', 'languages', 'index.ts'),

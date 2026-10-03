@@ -3,7 +3,7 @@ type: meta
 title: Index
 status: active
 created: 2026-04-20
-updated: 2026-09-29
+updated: 2026-10-03
 tags: [meta]
 ---
 
@@ -81,7 +81,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[react-icons]]
 - [[gaia-lint]]
 - [[knip]]
-- [[react-doctor]]: React security/perf/a11y scanner (`npx`); advisory, single canonical `doctor.config.ts`, duplicate-config guard.
+- [[react-doctor]]: React security/perf/a11y scanner (`npx`); advisory, single canonical `frontend/doctor.config.ts`, duplicate-config guard.
 - [[pnpm-audit]]: dependency-CVE advisory oracle (`pnpm audit --json`); read-only, advisory, baseline-scoped.
 - [[pnpm-overrides]]: applying `overrides`/security-floor changes needs `pnpm dedupe`; `pnpm install` short-circuits "Already up to date".
 - [[Vitest]]
@@ -156,6 +156,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[GAIA Scripts]]: the index of `.gaia/scripts/`: one row per root file with its family, ship status, invoker, and what it is, plus the subdirectories and why the directory stays flat.
 - [[OS Sandbox]]: two-tier sandbox-enablement preference (owner recommends, each machine resolves) and the honest `.env` deny-merge boundary.
 - [[Project Config]]: `.gaia/project.json`, the committed team-shared settings file (sandbox recommendation, isolation policy, Dependabot answer), its writers and readers, and why `/update-gaia` never touches it.
+- [[Package Descriptor]]: the package registry `.gaia/packages.json` and per-package `gaia.package.json`; who reads them, the fail-closed rule, and the frontend launch scope.
 - [[Claude Integration Conventions]]: Conventions for Claude's config surface: extension points, monorepo retrofit, service swaps, domain isolation.
 - [[Local Working State]]: the gitignored `.gaia/local/` working-state folder and its pointer to the state registry; the SessionStart janitor's wiki-landing catch-up.
 - [[Worktrees]]: the worktree model a feature author needs: tree identity from the acting event's working directory, the single main-checkout resolver, the single `.gaia/local` symlink, and the state registry's four scopes.

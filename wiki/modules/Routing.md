@@ -1,6 +1,6 @@
 ---
 type: module
-path: app/routes/
+path: frontend/app/routes/
 status: active
 language: typescript
 purpose: File-based routing using @react-router/fs-routes on top of React Router
@@ -8,17 +8,17 @@ depends_on:
   - '[[fs-routes]]'
   - '[[React Router]]'
 created: 2026-04-20
-updated: 2026-09-29
+updated: 2026-10-03
 tags: [module, routing]
 ---
 
 # Routing
 
-The app uses [[fs-routes]] (React Router's own file convention) configured in `app/routes.ts`. You can switch to standard React Router routing if you prefer.
+The app uses [[fs-routes]] (React Router's own file convention) configured in `frontend/app/routes.ts`. You can switch to standard React Router routing if you prefer.
 
 ## Route group convention
 
-Routes are flat, dot-delimited files directly in `app/routes/`; there are no `+`-suffixed folders. A leading `_` marks a pathless layout: `_public.tsx` is the layout, `_public.<name>.tsx` its children, `_public._index.tsx` the index route under it. Group prefixes:
+Routes are flat, dot-delimited files directly in `frontend/app/routes/`; there are no `+`-suffixed folders. A leading `_` marks a pathless layout: `_public.tsx` is the layout, `_public.<name>.tsx` its children, `_public._index.tsx` the index route under it. Group prefixes:
 
 - `_public`: home, marketing, public content (no auth)
 - `_session`: hook point for auth-guarded app (intentionally a stub)
@@ -28,14 +28,14 @@ Routes are flat, dot-delimited files directly in `app/routes/`; there are no `+`
 
 Both `actions.*` and `resources.*` hold no-UI server-side form endpoints. Use `actions.*` for a route whose job is to mutate state and redirect; use `resources.*` for a route that also serves as a data/cookie endpoint a fetcher posts to without navigating.
 
-`app/routes/_session/` ships only a `README.md`. The folder holds no `route.*` or `index.*` module, so fs-routes skips it entirely; it isn't a route. To guard the group, add a `_session.tsx` layout route to `app/routes/` with a loader that throws `redirect('/login')` when the user isn't authenticated, and add children as `app/routes/_session.<name>.tsx`; every route nested under it then inherits the guard. Choose any auth provider: Supabase, Clerk, Auth0, custom sessions. The README walks through the setup.
+`frontend/app/routes/_session/` ships only a `README.md`. The folder holds no `route.*` or `index.*` module, so fs-routes skips it entirely; it isn't a route. To guard the group, add a `_session.tsx` layout route to `frontend/app/routes/` with a loader that throws `redirect('/login')` when the user isn't authenticated, and add children as `frontend/app/routes/_session.<name>.tsx`; every route nested under it then inherits the guard. Choose any auth provider: Supabase, Clerk, Auth0, custom sessions. The README walks through the setup.
 
-`app/routes.ts` fails loudly at startup if a leftover `+`-suffixed folder still exists under `app/routes/`, naming the offending folder and pointing at the flat dot-delimited rename.
+`frontend/app/routes.ts` fails loudly at startup if a leftover `+`-suffixed folder still exists under `frontend/app/routes/`, naming the offending folder and pointing at the flat dot-delimited rename.
 
 ## Thin Routes Convention
 
 > [!key-insight] Routes are thin
-> Route files in `app/routes/` handle only **loader, action, meta, and rendering the page component**. All UI lives in `app/pages/`. This keeps routes easy to scan and pages easy to test in isolation. See [[Thin Routes]].
+> Route files in `frontend/app/routes/` handle only **loader, action, meta, and rendering the page component**. All UI lives in `frontend/app/pages/`. This keeps routes easy to scan and pages easy to test in isolation. See [[Thin Routes]].
 
 `/new-route` scaffolds routes in this shape: route file, page folder, tests, story, i18n keys, all in one pass. Run the scaffold from the repo root; output paths resolve from the working directory.
 
@@ -45,7 +45,7 @@ The page folder and its component are named `<PascalName>Page` (e.g. `DashboardP
 
 ### Scaffold flags
 
-- `--group _public|_session`: required; writes the route file at `app/routes/<group>.<name>.tsx`
+- `--group _public|_session`: required; writes the route file at `frontend/app/routes/<group>.<name>.tsx`
 - `--loader`: emit a loader stub
 - `--action`: emit an action stub
 - `--i18n`: emit a flat `<kebab>.ts` locale file and wire it into the locale barrel (fails loudly if the barrel is absent)
@@ -53,7 +53,7 @@ The page folder and its component are named `<PascalName>Page` (e.g. `DashboardP
 
 ### Fetcher action paths
 
-`app/action-paths.ts` exports `ACTION_PATHS`, the single source of truth for every path a fetcher submits to under `actions.*`/`resources.*` (e.g. `themeSwitch: '/resources/theme-switch'`). React Router derives each path from its route file's name, so a hand-copied literal at a call site goes stale silently the moment that file renames: the submission 404s, an optimistic update stops applying while the POST still succeeds, or a story renders the router's error boundary. The component, the optimistic-mode matcher, and the test router stub all read `ACTION_PATHS` instead of keeping their own copies, and `test/action-paths.test.ts` resolves the app's real route config to assert every declared path still resolves to a served route.
+`frontend/app/action-paths.ts` exports `ACTION_PATHS`, the single source of truth for every path a fetcher submits to under `actions.*`/`resources.*` (e.g. `themeSwitch: '/resources/theme-switch'`). React Router derives each path from its route file's name, so a hand-copied literal at a call site goes stale silently the moment that file renames: the submission 404s, an optimistic update stops applying while the POST still succeeds, or a story renders the router's error boundary. The component, the optimistic-mode matcher, and the test router stub all read `ACTION_PATHS` instead of keeping their own copies, and `frontend/test/action-paths.test.ts` resolves the app's real route config to assert every declared path still resolves to a served route.
 
 ## Server-side i18n in loaders
 

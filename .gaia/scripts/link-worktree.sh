@@ -12,6 +12,12 @@
 #
 #   <worktree>/.gaia/local -> <main>/.gaia/local
 #   <worktree>/.env, <worktree>/.env.* -> <main>/.env, <main>/.env.*
+#   <worktree>/<pkg>/.env, <worktree>/<pkg>/.env.* -> <main>/<pkg>/.env, <main>/<pkg>/.env.*
+#
+# `<pkg>` is every package the registry (.gaia/packages.json, or the built-in
+# default `frontend`) names, so an app that lives in a package directory keeps
+# its secrets reachable from a worktree. A package directory the worktree's
+# branch does not have is skipped rather than created.
 #
 # Behavior:
 #   - Idempotent: re-running on an already-linked worktree is a no-op.
@@ -30,6 +36,7 @@
 #   linked-after-backup: <abs-path> (backup: <abs-backup-path>)
 #   skipped-no-target: <abs-path>
 #   failed: <abs-path>: <reason>
+#   failed: <abs-registry-path>: <gaia-packages message>   (root-only linking continues)
 #   not a linked worktree
 #   not a git repo
 
@@ -131,21 +138,52 @@ link_one() {
 # directory that must exist on the worktree side before the symlink lands).
 link_one ".gaia/local" ".gaia"
 
-# ---------- share gitignored root .env / .env.* files ----------
+# ---------- share gitignored .env / .env.* files ----------
 # Vite (`pnpm dev`) and Playwright's dotenv `config()` read .env / .env.* from
-# the checkout root. They are gitignored, so a fresh worktree has none; symlink
-# whatever the main checkout holds so the worktree app sees the same secrets.
-# .env.example is committed (already present in the worktree) and is never linked.
-link_env_files() {
-  local env_file base
+# the app's own directory. They are gitignored, so a fresh worktree has none;
+# symlink whatever the main checkout holds so the worktree app sees the same
+# secrets. .env.example is committed (already present in the worktree) and is
+# never linked.
+
+# link_env_files_in <package-path-or-.>: links the env files directly under one
+# directory of the main checkout into the same directory of the worktree.
+link_env_files_in() {
+  local package_path="$1" env_file base prefix=""
   local re='^\.env(\.[A-Za-z0-9_-]+)*$'
-  for env_file in "$main_root"/.env "$main_root"/.env.*; do
+  if [ "$package_path" != "." ]; then
+    prefix="$package_path/"
+    # A branch that predates the package has no such directory; creating one
+    # here would leave a stray directory holding only links.
+    [ -d "$worktree_root/$package_path" ] || return 0
+  fi
+  for env_file in "$main_root/$prefix".env "$main_root/$prefix".env.*; do
     [ -e "$env_file" ] || continue
     base="$(basename "$env_file")"
     [ "$base" = ".env.example" ] && continue
     [[ "$base" =~ $re ]] || continue   # identical set to CLI ENV_BASENAME_RE + read guard
-    link_one "$base" "."
+    link_one "$prefix$base" "$package_path"
   done
+}
+
+link_env_files() {
+  local package_name package_path packages_status=0
+  link_env_files_in "."
+
+  # shellcheck disable=SC1091
+  if ! source "$script_directory/../../.claude/hooks/lib/gaia-packages.sh" 2>/dev/null; then
+    log "failed: $worktree_root/.gaia/packages.json: gaia-packages library is missing; linked root env files only"
+    return 0
+  fi
+  gaia_packages_load "$worktree_root" || packages_status=$?
+  if [ "$packages_status" -ne 0 ]; then
+    log "failed: $worktree_root/.gaia/packages.json: $GAIA_PACKAGES_ERROR"
+    return 0
+  fi
+  while IFS=$'\t' read -r package_name package_path; do
+    [ -n "$package_name" ] || continue
+    [ "$package_path" = "." ] && continue
+    link_env_files_in "$package_path"
+  done <<<"$(gaia_packages_list)"
 }
 
 link_env_files

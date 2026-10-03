@@ -6,7 +6,7 @@ Contents:
 
 - Step 5: Fetch baseline and latest tarballs
 - Step 6: Load the latest manifest
-- Step 7: Three-way merge (7a `package.json`, 7b `pnpm-workspace.yaml`, 7c `.gaia/audit-ci.yml`, 7d regenerate declared regions)
+- Step 7: Three-way merge (7a each `package.json`, 7b `pnpm-workspace.yaml`, 7c `.gaia/audit-ci.yml`, 7d regenerate declared regions, 7e regenerate package settings)
 - Step 8: Deferred version bump (8c sync GitHub labels)
 - Step 9: Summary
 - Step 10: Next steps for the user
@@ -25,9 +25,9 @@ for tag in "v$BASELINE" "$LATEST_TAG"; do
   mkdir -p "$dir"
   if ! gh release download "$tag" \
       --repo gaia-react/gaia \
-      --pattern "gaia-${tag}.tar.gz" \
+      --pattern "gaia-bundle-${tag}.tar.gz" \
       --dir "$dir" \
-    || ! tar -xzf "$dir/gaia-${tag}.tar.gz" -C "$dir" --strip-components=1; then
+    || ! tar -xzf "$dir/gaia-bundle-${tag}.tar.gz" -C "$dir" --strip-components=1; then
     rm -rf "$dir"
     echo "FETCH_FAILED $tag"
   fi
@@ -35,6 +35,8 @@ done
 ```
 
 `BASELINE_DIR=".gaia/local/cache/shared/update-gaia/v$BASELINE"`, `LATEST_DIR=".gaia/local/cache/shared/update-gaia/$LATEST_TAG"`.
+
+The asset is `gaia-bundle-<tag>.tar.gz` from 2.0.0 on; releases before 2.0.0 published `gaia-<tag>.tar.gz` and are out of reach on purpose (`SKILL.md` Step 3b refuses a 1.x baseline, and the different name is what makes a 1.6.1 `/update-gaia` fail here, before it writes anything, instead of misreading the moved layout as deletions).
 
 The block prints `FETCH_FAILED <tag>` for any tag whose download or extraction did not complete, and removes the partial cache dir so a re-run retries cleanly. On any `FETCH_FAILED`, **stop, do not proceed to Step 6**:
 
@@ -94,7 +96,7 @@ if [ -f "wiki/concepts/Design System.md" ] && grep -qE '^established:[[:space:]]
 fi
 ```
 
-If `design_established=true`, the adopter has committed their design system. Both `wiki/concepts/Design System.md` and `.claude/rules/design-baseline.md` are effectively adopter-owned from this point forward. Add both paths to `skip[]` and **exclude them from the manifest walk entirely**: no overwrite, no conflict patch, no backup. The adopter's content is the source of truth.
+If `design_established=true`, the adopter has committed their design system. Both `wiki/concepts/Design System.md` and `frontend/.claude/rules/design-baseline.md` are effectively adopter-owned from this point forward. Add both paths to `skip[]` and **exclude them from the manifest walk entirely**: no overwrite, no conflict patch, no backup. The adopter's content is the source of truth.
 
 If `design_established=false`, apply the normal decision table to both files as their manifest class dictates.
 
@@ -125,7 +127,7 @@ Track seven lists plus a `package.json` sub-report internally (`UpdateMergeRepor
     class: 'owned' | 'shared' | 'wiki-owned';
     patch_path: string;  // .gaia-merge/<path>.patch
   }>;
-  packageJson: {         // field-aware result for package.json (Step 7a)
+  packageJson: {         // field-aware result for every package.json (Step 7a); keys of a package other than the root are prefixed `<path>:`
     applied: string[];      // managed keys GAIA changed that the adopter still tracked at the baseline pin, written to the working tree
     conflicts: string[];    // managed keys GAIA changed but the adopter independently re-pinned, left as the adopter's, noted
     suggestions: string[];  // managed keys GAIA added, or changed but the adopter had removed, surfaced opt-in, never applied
@@ -164,7 +166,7 @@ Track seven lists plus a `package.json` sub-report internally (`UpdateMergeRepor
 }
 ```
 
-**Iterate every `<path>: <class>` entry in `$LATEST_MANIFEST`'s `.files` object, except `package.json`, `pnpm-workspace.yaml`, and `.gaia/audit-ci.yml`**, all three are handled field-aware below (`package.json` in **Step 7a**, `pnpm-workspace.yaml` in **Step 7b**, `.gaia/audit-ci.yml` in **Step 7c**). A whole-file `cmp`/`diff` can't separate adopter identity and intentional removals from the real upstream delta; `pnpm-workspace.yaml` is a mixed file (GAIA-authored supply-chain / resolution settings plus adopter-extensible `overrides` and `allowBuilds` maps) that drifts the moment an adopter adds one override; and `.gaia/audit-ci.yml` is a mixed file (GAIA-authored scalar knobs, and the `auditors` roster list, which is GAIA-authored **and** adopter-extensible at once) that drifts the moment a roster member is added on either side. Skip all three during this walk.
+**Iterate every `<path>: <class>` entry in `$LATEST_MANIFEST`'s `.files` object, except `package.json`, every registered package's `package.json` (`frontend/package.json` in a stock 2.x tree), `pnpm-workspace.yaml`, and `.gaia/audit-ci.yml`**, all of them are handled field-aware below (every `package.json` in **Step 7a**, `pnpm-workspace.yaml` in **Step 7b**, `.gaia/audit-ci.yml` in **Step 7c**). A whole-file `cmp`/`diff` can't separate adopter identity and intentional removals from the real upstream delta; `pnpm-workspace.yaml` is a mixed file (GAIA-authored supply-chain / resolution settings plus adopter-extensible `overrides` and `allowBuilds` maps) that drifts the moment an adopter adds one override; and `.gaia/audit-ci.yml` is a mixed file (GAIA-authored scalar knobs, and the `auditors` roster list, which is GAIA-authored **and** adopter-extensible at once) that drifts the moment a roster member is added on either side. Skip all of them during this walk. A package's generated `<path>/.claude/settings.json` is not in the manifest at all (it is regenerated in **Step 7e**), so the walk never sees it.
 
 Let `A` = working-tree `<path>`, `B` = `$BASELINE_DIR/<path>`, `L` = `$LATEST_DIR/<path>`. Use `cmp -s` for equality; `mkdir -p` before writing.
 
@@ -251,7 +253,18 @@ GAIA's conflict patches are **advisory reading**: the flow reads them and walks 
 
 `package.json` is classed `shared`, but a whole-file three-way merge produces pure noise for it: **every** adopter diverges it at init (`gaia-init` rewrites `name` / `description` / `author` and resets `version`), and GAIA bumps its own `version` on **every** release, so `A ≠ B`, `A ≠ L`, and `B ≠ L` all hold on every release, and the generic table emits a full-file conflict patch dominated by identity fields no adopter wants from GAIA. Merge it at JSON-key granularity instead, acting only on the genuine upstream delta `B → L`.
 
-Let `A` = working-tree `package.json`, `B` = `$BASELINE_DIR/package.json`, `L` = `$LATEST_DIR/package.json`.
+**Run this step once per `package.json`: the root, then each package the project registers.** The registry is `.gaia/packages.json` (adopter-owned, a JSON array of `{name, path}`; absent means the stock `frontend` package). The root is implicit and is never listed there. Build the directory list, rejecting any `path` that is not a plain relative directory so a hand-edited registry cannot steer the merge outside the tree:
+
+```bash
+PKG_DIRS="$(
+  {
+    printf '.\n'
+    jq -r '.[].path' .gaia/packages.json 2>/dev/null || printf 'frontend\n'
+  } | grep -E '^(\.|[a-z0-9][a-z0-9._-]*(/[a-z0-9][a-z0-9._-]*)*)$' | grep -v '\.\.' | sort -u
+)"
+```
+
+For each `PKG_DIR` in `$PKG_DIRS`, let `A` = working-tree `$PKG_DIR/package.json`, `B` = `$BASELINE_DIR/$PKG_DIR/package.json`, `L` = `$LATEST_DIR/$PKG_DIR/package.json`. **Skip a directory whose `A`, `B`, or `L` is missing**: a package GAIA's release does not ship is the adopter's own, and a package GAIA added since the baseline is not a key-level merge (it arrives through the Step 7 walk as a new file only if its manifest entry is new). Skipping never writes anything.
 
 **Adopter-owned keys, never compared, merged, or patched.** Every top-level key **except** the managed sections below is the adopter's, left exactly as-is: `name`, `version`, `description`, `author`, `private`, `type`, `bin`, `sideEffects`, and anything else. Identity drift is invisible to this step.
 
@@ -281,9 +294,9 @@ For each managed entry key `k` (within its section), with `Bk` / `Lk` / `Ak` its
 
 ```bash
 jq -n \
-  --slurpfile a package.json \
-  --slurpfile b "$BASELINE_DIR/package.json" \
-  --slurpfile l "$LATEST_DIR/package.json" '
+  --slurpfile a "$PKG_DIR/package.json" \
+  --slurpfile b "$BASELINE_DIR/$PKG_DIR/package.json" \
+  --slurpfile l "$LATEST_DIR/$PKG_DIR/package.json" '
   ($a[0]) as $A | ($b[0]) as $B | ($l[0]) as $L
   | [["dependencies"],["devDependencies"],["scripts"],["engines"]] as $sections
   | [ $sections[] as $sp
@@ -305,9 +318,9 @@ jq -n \
 
 Apply the same rule to the scalar `packageManager` by hand: `B == L` → no-op; `B != L` and `A == B` → apply; `B != L` and `A != B` → conflict; in `L` only → suggest-add; in `B` only → no-op.
 
-**Apply clean changes (`applied[]`):** edit the single line for `k` in the working-tree `package.json` so its value becomes `Lk`, using the **Edit** tool, preserve the adopter's formatting and key order. Do **not** reserialize the file with `jq` write-back; that reorders keys and buries the real change in noise.
+**Apply clean changes (`applied[]`):** edit the single line for `k` in the working-tree `$PKG_DIR/package.json` so its value becomes `Lk`, using the **Edit** tool, preserve the adopter's formatting and key order. Do **not** reserialize the file with `jq` write-back; that reorders keys and buries the real change in noise.
 
-**Record conflicts + suggestions:** if either bucket is non-empty, write a human-readable `.gaia-merge/package.json.notes` listing, per key: the section, the key, the adopter / baseline / latest values, and the recommended action. Set `notes_path`. This file is informational, the adopter reconciles re-pin conflicts by hand and accepts or ignores suggestions. It is **not** a `diff -u` patch and is **not** added to the file-level `conflicts[]` bucket.
+**Record conflicts + suggestions:** if either bucket is non-empty, write a human-readable `.gaia-merge/package.json.notes` (one file for every package, one `## <PKG_DIR>/package.json` section per package that has anything to say) listing, per key: the section, the key, the adopter / baseline / latest values, and the recommended action. Set `notes_path`. This file is informational, the adopter reconciles re-pin conflicts by hand and accepts or ignores suggestions. It is **not** a `diff -u` patch and is **not** added to the file-level `conflicts[]` bucket.
 
 **Net effect:**
 
@@ -384,6 +397,8 @@ The JSON report is `{ applied, conflicts, suggestions }`. Each item is `{ kind: 
 - **No managed-key delta** (the roster unchanged by the release) → zero applied/conflicts/suggestions → **clean skip, no notes file.** An adopter whose only divergence is their own added roster member or a legacy key never sees a conflict.
 - **A GAIA-authored roster addition always lands in `applied[]`, not `suggestions[]`.** This is the one section whose added-row verdict diverges from every other merged section, by design (see above): the alternative would mean a new GAIA-authored auditor never reaches an existing adopter's file at all.
 
+- **The 2.0.0 roster shape needs no special case.** Its members declare `frontend/`-prefixed globs (the file's header comment says so), and a member whose globs a later release changes is compared as one unit like any other. A 1.x roster, whose members carry unprefixed `app/**` globs, never reaches this step: Step 3b refuses a 1.x baseline before anything is fetched.
+
 ### Step 7d: Regenerate declared regions
 
 **This step must run after Step 7c and before Step 8, and the ordering is the whole point of the step.** A declared region's body is derived from the adopter's own post-merge tree, and for the shipped audit-remit region that source is the `auditors` roster in `.gaia/audit-ci.yml`, which **Step 7c** merges. Regenerating before Step 7c would derive every region from the **pre-merge** roster, so a GAIA-authored member this release just added would be missing from the region the adopter ends up with, and the roster check would fail on a file this run had supposedly just made current. Running before Step 8 keeps the whole merge, including this write, inside the window `.gaia/VERSION` still names the baseline, so an interrupted run stays resumable.
@@ -443,6 +458,23 @@ What the step guarantees, and what it does not:
 
   Symlinks take the same rule rather than an exception to it, because a link's pre-image is the target string it holds: one the command retargets or swaps for a regular file is put back as a link on its original target, and one it creates is removed. Restoring a link writes no content and follows nothing, so whatever it pointed at is never touched.
 - **The operand guard is well-formedness, not security.** The runner refuses an operand that is absolute, carries a parent-directory segment, resolves through a symlink out of the repository, or is not an exact key of the same manifest's shipped file map. This guards against a stale, corrupt, or hand-edited declaration. It is **not** a defense against anyone who controls the manifest: the flow already extracts and runs the release tarball's bundled tool, so a manifest that could not be trusted would be the smaller problem. Do not describe it as a security control to the adopter.
+
+### Step 7e: Regenerate package settings
+
+**Runs after Step 7d and before Step 8**, so the root `.claude/settings.json` the Step 7 walk just merged is the input and an interrupted run stays resumable. A registered package's `<path>/.claude/settings.json` (`frontend/.claude/settings.json` in a stock tree) is **generated** from the root settings plus the package's `settings.overlay.json`, never merged: it is not in the release manifest, so a root hook, deny rule, or permission this release changed reaches the package only through this step. A session launched inside `frontend/` reads that file and never the root one, so skipping the step leaves a guard silently absent there.
+
+```bash
+./.gaia/cli/gaia packages sync-settings \
+  && bash .gaia/scripts/check-settings-drift.sh
+```
+
+By now the Step 7 walk has replaced `.gaia/cli/gaia` and `.gaia/scripts/check-settings-drift.sh` with the release's copies, so the working-tree commands are the right ones here (unlike the Step 6 and 7d subcommands, which resolve from `$LATEST_DIR` because the walk has not run yet at their call sites).
+
+- **Exit 0 from both:** record `settings regenerated` for Step 9.
+- **`sync-settings` exits non-zero** (a malformed registry, or an overlay that tries to remove a root deny): do not retry or edit the overlay. Record the error text for Step 9 and tell the adopter the package settings are stale until they fix it and run the same command by hand.
+- **The drift check exits 1:** the generated file still disagrees with the root settings; record the output for Step 9.
+- **Step 7 left `.claude/settings.json` as a conflict patch:** the regeneration ran from the adopter's pre-merge root settings. Say so in Step 9; after the adopter resolves the patch, they re-run `./.gaia/cli/gaia packages sync-settings` themselves.
+- **The package has no `settings.overlay.json`:** not an error, the overlay is optional.
 
 ### Step 8: Deferred version bump
 
@@ -516,6 +548,7 @@ GAIA update: v$BASELINE → $LATEST_TAG
   package.json: <a> applied, <c> conflicts, <s> suggestions  (field-aware; see .gaia-merge/package.json.notes)
   pnpm-workspace.yaml: <a> applied, <c> conflicts, <s> suggestions  (field-aware; see .gaia-merge/pnpm-workspace.yaml.notes)
   audit-ci.yml: <a> applied, <c> conflicts, <s> suggestions  (field-aware; see .gaia-merge/audit-ci.yml.notes)
+  Package settings: <regenerated | stale: reason>  (Step 7e; generated, never merged)
   Regions:      <r> regenerated, <f> failed, <s> skipped, <x> refused  (see notes below)
   Region fallbacks: <n>  (declared paths compared whole-file this run)
   Pre-region paths: <n>  (declared paths not yet carrying a region)
@@ -535,7 +568,9 @@ Render that row from `LABELS_STATE`. Each backticked row below is the whole lite
 
 Why the `read` and `unknown` rows claim no remainder: computing one needs the read that was refused, so a count of outstanding work would be invented rather than measured. Step 8c above owns the rest of that rationale, including why the fallback is `unknown`.
 
-When all three `package.json` counts are zero, render that row as `package.json: no managed-key changes (clean skip)` and omit the notes reference. Apply the same rule to the `pnpm-workspace.yaml` row: `pnpm-workspace.yaml: no managed-key changes (clean skip)` when all three of its counts are zero. If 7b fell back to a whole-file conflict patch (presence triage or a parse failure), render the row as `pnpm-workspace.yaml: whole-file conflict (see .gaia-merge/pnpm-workspace.yaml.patch)` instead. Apply the same two rules to the `audit-ci.yml` row: `audit-ci.yml: no managed-key changes (clean skip)` when all three counts are zero, or `audit-ci.yml: whole-file conflict (see .gaia-merge/audit-ci.yml.patch)` when 7c fell back.
+When all three `package.json` counts are zero (summed across the root and every registered package), render that row as `package.json: no managed-key changes (clean skip)` and omit the notes reference. Apply the same rule to the `pnpm-workspace.yaml` row: `pnpm-workspace.yaml: no managed-key changes (clean skip)` when all three of its counts are zero. If 7b fell back to a whole-file conflict patch (presence triage or a parse failure), render the row as `pnpm-workspace.yaml: whole-file conflict (see .gaia-merge/pnpm-workspace.yaml.patch)` instead. Apply the same two rules to the `audit-ci.yml` row: `audit-ci.yml: no managed-key changes (clean skip)` when all three counts are zero, or `audit-ci.yml: whole-file conflict (see .gaia-merge/audit-ci.yml.patch)` when 7c fell back.
+
+**The package-settings row.** Render `Package settings: regenerated and drift-clean` when Step 7e's two commands exited 0, otherwise `Package settings: stale (<the recorded error or drift output>); run ./.gaia/cli/gaia packages sync-settings by hand`. Never render a clean row for a step that did not run.
 
 **The three region rows.** Counts come from `regions.regen` (`ran` / `failed` / `skipped` / `refused`) and `regions.fallbacks`. Render them like this:
 
@@ -634,8 +669,9 @@ Tell the user:
 1. Review any conflict patches in `.gaia-merge/` and reconcile manually. Delete the patch file once resolved. If `.gaia-merge/package.json.notes` or `.gaia-merge/pnpm-workspace.yaml.notes` exists, reconcile the re-pin conflicts and decide on the suggestions, then delete it.
 2. If the `package.json` or `pnpm-workspace.yaml` merge applied any change, sync `pnpm-lock.yaml` before the quality gate, but pick the command by what changed. A dependency or `packageManager` bump syncs with `pnpm install`. An `overrides`, `allowBuilds`, or resolution-setting change needs `pnpm dedupe` instead: `pnpm install` short-circuits with "Already up to date" when only the `overrides:` map moved and leaves the lockfile untouched, so a floor you just accepted would be declared in config and unapplied in the tree, with nothing red to say so (`wiki/dependencies/pnpm-overrides.md`). `pnpm dedupe` is correct for both cases, so prefer it when unsure.
 3. If any region regeneration failed, was refused, or was skipped, running the command named in the Step 9 report is a follow-up the adopter owns. Resolve whatever suppressed it first (the conflict patch for that path, most often), then run the command and re-run the roster check to confirm the region is current.
-4. Run the quality gate per `wiki/decisions/Quality Gate.md` to verify the updated code still passes.
-5. Inspect the diff (`git diff`) before committing.
-6. When satisfied, commit with `chore: update GAIA to $LATEST_TAG`.
+4. If Step 7e reported stale package settings, or you resolved a `.claude/settings.json` conflict patch, run `./.gaia/cli/gaia packages sync-settings` and then `bash .gaia/scripts/check-settings-drift.sh`, and stage the regenerated `frontend/.claude/settings.json`. Never hand-edit that file.
+5. Run the quality gate per `wiki/decisions/Quality Gate.md` to verify the updated code still passes.
+6. Inspect the diff (`git diff`) before committing.
+7. When satisfied, commit with `chore: update GAIA to $LATEST_TAG`.
 
 Do **not** auto-commit on behalf of the user, they need to review the changes first.

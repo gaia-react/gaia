@@ -99,12 +99,21 @@
 # withhold it: its subject is the maintainer-only distribution boundary itself,
 # which is a GAIA-internal concern an adopter has no counterpart to.
 .gaia/scripts/assert-no-release-leak.sh
+# Composes the GitHub release body (the 1.6.1 routing line first, then the
+# tarball sha256) for release.yml. Withheld on the absent caller, the same
+# ground as assert-no-release-leak.sh above: release.yml is its one caller and
+# an adopter clone never publishes a GAIA release. Its runner is
+# .gaia/tests/lib/release-asset-name.bats, withheld with the rest of .gaia/tests.
+.gaia/scripts/compose-release-body.sh
 # Deterministic lint over GAIA's own hook layer; every runner (shell-lint.sh and its sibling bats suite) is release-excluded, so an adopter clone would carry a check nothing invokes. The repaired hooks themselves ship.
 .gaia/scripts/lint-hook-cwd-relative-loads.sh
 # Deterministic lint over GAIA's own hook layer, withheld on the same terms as its two siblings above: every runner is release-excluded, so an adopter clone would carry a check nothing invokes. The shared arm it enforces (.claude/hooks/lib/jq-availability.sh) and the hooks reaching it both ship.
 .gaia/scripts/lint-hook-jq-availability.sh
 # The PreToolUse registration read and blocking oracle the two hook-layer gates share. Both consumers are withheld above, so an adopter clone would carry a library nothing sources.
 .gaia/scripts/hook-registration-lib.sh
+# The retired-path gate fails on a harness citation of a root path that moved under frontend/, and its allowlist names the surviving ones. Both describe GAIA's own harness layout and its runner (shell-lint.sh) and sibling suite (.gaia/scripts/tests/check-retired-paths.bats) are release-excluded, so an adopter clone would carry a check nothing invokes.
+.gaia/scripts/check-retired-paths.sh
+.gaia/retired-paths-allowlist.tsv
 # Shared report, handshake and sidecar protocol read only by the two maintainer-only code-audit-maintainer-* members, which this category already withholds
 .claude/hooks/lib/audit-member-protocol.md
 
@@ -152,8 +161,8 @@ wiki/decisions/Dependabot Security Updates.md
 # memo + timing, and that the StrictMode bypass fires. It guards GAIA's own
 # instrumentation against a bippy/React upgrade, not adopter app behavior, and
 # is coupled to a GAIA component an adopter may rename or remove. The capture
-# helper it exercises (.playwright/react-perf/) DOES ship; this canary does not.
-.playwright/e2e/react-perf-smoke.spec.ts
+# helper it exercises (frontend/.playwright/react-perf/) DOES ship; this canary does not.
+frontend/.playwright/e2e/react-perf-smoke.spec.ts
 # The audit-residual dismissal store records this repository's own triage
 # decisions: assertions about this repository's code that are false about
 # an adopter's. The machinery ships and the data does not. Without this

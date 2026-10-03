@@ -317,24 +317,53 @@ install_workspace "$tree/.gaia/cli"
 # what keeps them current rather than merely present, which is the property a
 # create-time run cannot hold once the branch moves.
 #
-# Prefer the tree's OWN installed CLI: the install step above is what gives
+# Typegen runs once per registered package that carries a react-router config,
+# from that package's own directory, since the app's routes and its installed
+# CLI live there and not at the repository root.
+#
+# Prefer the package's OWN installed CLI: the install step above is what gives
 # the tree its own `node_modules`, and once it exists that is the copy whose
 # resolution matches the app's own imports. Borrowing the main checkout's copy
-# is the fallback for a tree where the install above could not run (no
-# lockfile, no pnpm on PATH, or the install itself failed): the worktree still
-# sits under that root, so Node's upward node_modules traversal resolves both
-# the CLI and the app's imports from there. Neither tree having an installed
-# CLI is nothing to do rather than a failure worth reporting.
-cli="$tree/node_modules/.bin/react-router"
-if [ ! -x "$cli" ]; then
-  main_root="$(gaia_resolve_main_root "$tree" 2>/dev/null)" || main_root=""
-  [ -n "$main_root" ] && cli="$main_root/node_modules/.bin/react-router"
-fi
-if [ -x "$cli" ]; then
-  if (cd "$tree" && "$cli" typegen) >/dev/null; then
-    log "generated typed routes in $tree"
+# of the same package is the fallback for a tree where the install above could
+# not run (no lockfile, no pnpm on PATH, or the install itself failed). A CLI
+# at the repository root is deliberately never tried: a package that resolves
+# nothing of its own is reported FAILED, not silently run from the wrong cwd.
+# shellcheck disable=SC1091
+if ! source "$self_directory/lib/gaia-packages.sh" 2>/dev/null; then
+  log "TYPEGEN FAILED (non-fatal): .claude/hooks/lib/gaia-packages.sh is missing, so the packages to generate routes for are unknown"
+else
+  packages_status=0
+  gaia_packages_load "$tree" || packages_status=$?
+  if [ "$packages_status" -ne 0 ]; then
+    log "TYPEGEN FAILED (non-fatal): $GAIA_PACKAGES_ERROR"
   else
-    log "typegen skipped (non-fatal) for $tree"
+    main_root="$(gaia_resolve_main_root "$tree" 2>/dev/null)" || main_root=""
+    while IFS=$'\t' read -r package_name package_path; do
+      [ -n "$package_name" ] || continue
+      if [ "$package_path" = "." ]; then
+        package_prefix=""
+      else
+        package_prefix="$package_path/"
+      fi
+      package_directory="${tree}/${package_prefix%/}"
+      has_router_config=0
+      for router_config in "$package_directory"/react-router.config.*; do
+        [ -e "$router_config" ] && has_router_config=1
+      done
+      [ "$has_router_config" -eq 1 ] || continue
+
+      cli="$tree/${package_prefix}node_modules/.bin/react-router"
+      if [ ! -x "$cli" ] && [ -n "$main_root" ]; then
+        cli="$main_root/${package_prefix}node_modules/.bin/react-router"
+      fi
+      if [ ! -x "$cli" ]; then
+        log "TYPEGEN FAILED (non-fatal) for package $package_name: no react-router CLI at ${package_prefix}node_modules/.bin in $tree or the main checkout -- run 'pnpm install' there"
+      elif (cd "$package_directory" && "$cli" typegen) >/dev/null; then
+        log "generated typed routes for package $package_name in $package_directory"
+      else
+        log "TYPEGEN FAILED (non-fatal) for package $package_name in $package_directory"
+      fi
+    done <<<"$(gaia_packages_list)"
   fi
 fi
 

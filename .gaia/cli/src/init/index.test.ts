@@ -159,14 +159,15 @@ describe('gaia init router target guard', () => {
 
   test('hands the step the same path it guarded', async () => {
     makeScaffold(sandbox.root);
-    writeFileSync(path.join(sandbox.root, '.env.example'), 'A=1\n');
+    mkdirSync(path.join(sandbox.root, 'frontend'), {recursive: true});
+    writeFileSync(path.join(sandbox.root, 'frontend', '.env.example'), 'A=1\n');
 
     await run(['bootstrap-env'], {cwd: sandbox.root});
 
     // The guard validates one path and the step writes to another unless the
     // router hands its resolved cwd down. Assert the write landed in the tree
     // that was guarded, not in the process's ambient directory.
-    expect(existsSync(path.join(sandbox.root, '.env'))).toBe(true);
+    expect(existsSync(path.join(sandbox.root, 'frontend', '.env'))).toBe(true);
   });
 
   test('leaves the router help path unguarded', async () => {

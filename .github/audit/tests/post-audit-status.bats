@@ -248,10 +248,10 @@ install_resolver() {
 # code-audit-maintainer-shell (.gaia/**/*.sh) against the seeded roster.
 commit_mixed_diff() {
   git -C "$SANDBOX" checkout --quiet -b feature
-  mkdir -p "$SANDBOX/app" "$SANDBOX/.gaia/scripts"
-  echo "export const x = 1;" > "$SANDBOX/app/x.ts"
+  mkdir -p "$SANDBOX/frontend/app" "$SANDBOX/.gaia/scripts"
+  echo "export const x = 1;" > "$SANDBOX/frontend/app/x.ts"
   echo "#!/bin/bash" > "$SANDBOX/.gaia/scripts/example.sh"
-  git -C "$SANDBOX" add app/x.ts .gaia/scripts/example.sh
+  git -C "$SANDBOX" add frontend/app/x.ts .gaia/scripts/example.sh
   git -C "$SANDBOX" commit --quiet -m "mixed change"
   # Push before any later local-only stamp commit, so the pushed head sha this
   # captures is the one post-audit-status.sh must target (not local HEAD).
@@ -399,6 +399,8 @@ commit_mixed_diff() {
 install_chore_deps_predicate() {
   mkdir -p "$SANDBOX/.gaia/scripts"
   cp "$THIS_DIRECTORY/../../../.gaia/scripts/chore-deps-skip.sh" "$SANDBOX/.gaia/scripts/chore-deps-skip.sh"
+  mkdir -p "$SANDBOX/.claude/hooks/lib"
+  cp "$THIS_DIRECTORY/../../../.claude/hooks/lib/gaia-packages.sh" "$SANDBOX/.claude/hooks/lib/gaia-packages.sh"
 }
 
 # Write $@ as the PR's changed-path list the mock's `pr` case reads back, one
@@ -452,13 +454,13 @@ run_shell_member_handshake() {
   [ ! -f "$POST_LOG" ]
 }
 
-@test "chore(deps) waiver: a dep-bump title whose PR changes app/x.ts leaves frontend pending" {
+@test "chore(deps) waiver: a dep-bump title whose PR changes frontend/app/x.ts leaves frontend pending" {
   install_gh_mock ok
   install_resolver
   install_chore_deps_predicate
   commit_mixed_diff
   printf '%s' "chore(deps): bump vite to 8.3.0" > "$BATS_TEST_TMPDIR/pr-title"
-  install_pr_files "package.json" "app/x.ts"
+  install_pr_files "package.json" "frontend/app/x.ts"
 
   run_shell_member_handshake
 

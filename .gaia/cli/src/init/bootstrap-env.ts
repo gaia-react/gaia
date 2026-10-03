@@ -2,17 +2,22 @@
  * Runs as a CLI subprocess so it bypasses Claude Code's Write(.env) deny
  * rule; the deny rule guards against Claude writing secrets into .env, not
  * against the init scaffolding seeding it from the example file.
+ *
+ * The env the app reads lives in the frontend package root, so both files are
+ * resolved there through the package registry, never from `cwd` itself.
  */
 import {copyFileSync, existsSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {resolvePackageTarget} from '../util/package-target.js';
 import {markStepCompleted} from './util/state.js';
 
 const HELP_TEXT = `Usage: gaia init bootstrap-env
 
-  Copy .env.example to .env when .env does not yet exist.
-  No-op when .env already exists or .env.example is absent.
+  Copy .env.example to .env in the frontend package root (frontend/) when
+  .env does not yet exist. No-op when .env already exists or .env.example is
+  absent.
 
   Exit codes:
     0  success (no stdout)
@@ -50,8 +55,20 @@ export const run = (
   }
 
   const cwd = options.cwd ?? process.cwd();
-  const envPath = path.join(cwd, '.env');
-  const examplePath = path.join(cwd, '.env.example');
+  const target = resolvePackageTarget(cwd);
+
+  if (!target.ok) {
+    structuredError({
+      code: 'gaia_packages',
+      message: target.message,
+      subcommand: 'init bootstrap-env',
+    });
+
+    return EXIT_CODES.CONFIG_INVALID;
+  }
+
+  const envPath = path.join(target.packageDir, '.env');
+  const examplePath = path.join(target.packageDir, '.env.example');
 
   if (!existsSync(envPath) && existsSync(examplePath)) {
     try {

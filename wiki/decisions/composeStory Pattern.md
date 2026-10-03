@@ -4,13 +4,13 @@ status: active
 priority: 2
 date: 2026-04-20
 created: 2026-04-20
-updated: 2026-04-20
+updated: 2026-10-03
 tags: [decision, testing, storybook]
 ---
 
 # Decision: Test Components via Storybook `composeStory`
 
-Component tests use `composeStory(Default, Meta)` from `@storybook/react-vite` rather than rendering the component directly. Framework dependencies (React Router, i18n, state) are wired via stubs in `test/stubs/`, never via `vi.mock`.
+Component tests use `composeStory(Default, Meta)` from `@storybook/react-vite` rather than rendering the component directly. Framework dependencies (React Router, i18n, state) are wired via stubs in `frontend/test/stubs/`, never via `vi.mock`.
 
 ## Rationale
 

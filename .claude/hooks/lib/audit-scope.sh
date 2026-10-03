@@ -51,10 +51,17 @@
 # suppresses no review and is safe to grant on a glance. An entry HERE is load
 # bearing, because it clears a merge with no member having read the diff, so it
 # has to be judged against what the path can actually contain rather than
-# against how the list describes it. `public/**` is the worked example of the
-# gap: `unowned:` characterises that set as executed by nothing, while the tree
-# carries a service worker under it, which is exactly what the default member
-# has a lens for. It stays in scope here for that reason.
+# against how the list describes it. `frontend/public/**` is the worked example
+# of the gap: `unowned:` characterises that set as executed by nothing, while
+# the tree carries a service worker under it, which is exactly what the default
+# member has a lens for. It stays in scope here for that reason.
+#
+# This function reads no registry or descriptor, and needs none: the
+# `*/*` arm classifies every nested path as in scope, so `frontend/app/**`,
+# `frontend/test/**`, `frontend/.claude/**` and `frontend/CLAUDE.md` are in
+# scope with or without a package registry, and no descriptor state can make
+# a package path out of scope. The out-of-scope arms are the root-level harness
+# trees only; they are deliberately not widened to a package's own `.claude/`.
 #
 # Widening this set moves every consumer at once, which is what keeps them
 # in agreement: the merge gate stops demanding that member's marker, and the

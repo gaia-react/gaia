@@ -1,0 +1,4 @@
+{
+  "load": 3,
+  "error": "gaia-packages: frontend/gaia.package.json is invalid: wiki.flowPaths must be an array of strings without control characters. Next step: restore frontend/gaia.package.json from the GAIA release, or correct the field it names."
+}

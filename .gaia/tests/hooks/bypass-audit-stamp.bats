@@ -47,7 +47,7 @@ assert_allowed_silently() {
 
 # The marker-present fixture both the real hook and its mutant run.
 wiki_pr_with_stale_marker() {
-  mgf_commit "app/x.ts" "export const x = 1"
+  mgf_commit "frontend/app/x.ts" "export const x = 1"
   git -C "$REPO" checkout --quiet main
   git -C "$REPO" merge --quiet --ff-only feature
   git -C "$REPO" checkout --quiet feature
@@ -107,6 +107,8 @@ wiki_pr_with_stale_marker() {
 
 @test "UAT-011: a manifest-only chore(deps) pull request is allowed and gets the chore(deps) stamp" {
   cp "$MGF_REPO_ROOT/.gaia/scripts/chore-deps-skip.sh" "$REPO/.gaia/scripts/chore-deps-skip.sh"
+  mkdir -p "$REPO/.claude/hooks/lib"
+  cp "$MGF_REPO_ROOT/.claude/hooks/lib/gaia-packages.sh" "$REPO/.claude/hooks/lib/gaia-packages.sh"
   mgf_commit "package.json" '{"name":"x","version":"1.0.1"}'
   mgf_record 12 false "chore(deps): bump x from 1.0.0 to 1.0.1" "package.json"
   # Non-vacuity: package.json dispatches a member, so this is the member-aware
@@ -121,8 +123,8 @@ wiki_pr_with_stale_marker() {
 # --- the refusal state ----------------------------------------------------------
 
 @test "UAT-011: an in-scope pull request with no marker is denied and nothing is posted" {
-  mgf_commit "app/x.ts" "export const x = 1"
-  mgf_record 12 false "feat: x" "app/x.ts"
+  mgf_commit "frontend/app/x.ts" "export const x = 1"
+  mgf_record 12 false "feat: x" "frontend/app/x.ts"
 
   mgf_run_merge "gh pr merge 12 --squash"
   assert_denied_by_json
@@ -130,8 +132,8 @@ wiki_pr_with_stale_marker() {
 }
 
 @test "UAT-011: an in-scope pull request cleared by its member marker is allowed with no bypass POST" {
-  mgf_commit "app/x.ts" "export const x = 1"
-  mgf_record 12 false "feat: x" "app/x.ts"
+  mgf_commit "frontend/app/x.ts" "export const x = 1"
+  mgf_record 12 false "feat: x" "frontend/app/x.ts"
   mgf_marker code-audit-frontend >/dev/null
 
   mgf_run_merge "gh pr merge 12 --squash"
@@ -152,8 +154,8 @@ wiki_pr_with_stale_marker() {
 @test "UAT-011 mutation: posting on every member-aware allow turns the marker-cleared case red" {
   local mutant
   mutant="$(mgf_scratch_hook 's/\[ "\$frontend_chore_deps_waived" -eq 0 \] \|\| gate_post_bypass_stamp/gate_post_bypass_stamp/')"
-  mgf_commit "app/x.ts" "export const x = 1"
-  mgf_record 12 false "feat: x" "app/x.ts"
+  mgf_commit "frontend/app/x.ts" "export const x = 1"
+  mgf_record 12 false "feat: x" "frontend/app/x.ts"
   mgf_marker code-audit-frontend >/dev/null
 
   mgf_run_merge "gh pr merge 12 --squash" "$mutant"
@@ -230,8 +232,8 @@ uat_004_fixture() {
   git -C "$REPO" add .github/workflows/code-review-audit.yml .gaia/audit-ci.yml
   git -C "$REPO" commit --quiet -m "stale audit lane"
   git -C "$REPO" checkout --quiet -B feature main
-  mgf_commit "app/x.ts" "export const x = 1"
-  mgf_record 12 false "feat: x" "app/x.ts"
+  mgf_commit "frontend/app/x.ts" "export const x = 1"
+  mgf_record 12 false "feat: x" "frontend/app/x.ts"
 }
 
 @test "UAT-004 fixture A (stale workflow, no default_mode): the marker allows the merge and post-audit-status.sh posts success" {

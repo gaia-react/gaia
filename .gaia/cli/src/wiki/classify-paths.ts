@@ -2,9 +2,9 @@
  * The path vocabulary `commit-classify`'s rules 6/7 discriminate on, declared
  * as a repo-configurable input instead of `app/**` literals.
  *
- * The classifier ships to adopters, whose product source really does live in
- * `app/**`, so the defaults below reproduce the previous hardcoded behavior
- * exactly. What the literals could not express is a repo whose source lives
+ * The classifier ships to adopters, whose product source lives in the frontend
+ * package's `app/**`, so the defaults come from that package's descriptor.
+ * What the literals could not express is a repo whose source lives
  * anywhere else: GAIA's own clone keeps its product in `.gaia/` and `.claude/`
  * and touches `app/` in zero commits, so every one of rules 6/7's
  * discriminating branches was unreachable and every source commit fell
@@ -15,7 +15,9 @@
  * adopter-owned and never rewritten by `/update-gaia`, so an adopter's tuning
  * survives an update; a `.gaia/` file would not.
  *
- * Every failure mode here falls back to the defaults. This is a cheap
+ * Every `gaia.wikiClassify` failure mode falls back to the defaults; a registry
+ * or descriptor that cannot load throws instead, because the defaults
+ * themselves come from it. This is a cheap
  * heuristic pre-filter ahead of an expensive per-commit read, so a malformed
  * config must degrade to the shipped behavior rather than fail a sync.
  */
@@ -23,8 +25,11 @@ import {z} from 'zod';
 import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {summarizeZodError} from '../schemas/zod-error.js';
+import {loadPackages} from '../util/packages.js';
 
 export type ClassifyPaths = {
+  /** Paths whose change alters a flow (routing, middleware, sessions, i18n). */
+  flowPaths: readonly string[];
   /**
    * Paths whose contents are mechanically discoverable (Serena indexes them),
    * so a commit touching only these needs no wiki narration.
@@ -44,15 +49,36 @@ export type ClassifyPaths = {
   testPaths: readonly string[];
 };
 
-const DEFAULT_CLASSIFY_PATHS: ClassifyPaths = {
-  inventoryPaths: [
-    'app/components/',
-    'app/hooks/',
-    'app/pages/',
-    'app/services/',
-  ],
-  sourcePaths: ['app/'],
-  testPaths: [],
+/**
+ * The defaults, from the frontend package's descriptor `wiki` block joined with
+ * its registry path, so the vocabulary follows wherever the app lives. Throws
+ * the `gaia-packages:` message when the registry or descriptor cannot be
+ * loaded: classifying against a guessed layout is a silent miss.
+ */
+const defaultClassifyPaths = (repoRoot: string): ClassifyPaths => {
+  const loaded = loadPackages(repoRoot);
+
+  if (!loaded.ok) {
+    throw new Error(loaded.message);
+  }
+  const frontend = loaded.packages.find((entry) => entry.name === 'frontend');
+
+  if (frontend === undefined) {
+    throw new Error(
+      'gaia-packages: no package named "frontend" is registered. Next step: add it to .gaia/packages.json.'
+    );
+  }
+  const prefixed = (paths: readonly string[]): string[] =>
+    paths.map((entry) =>
+      frontend.path === '.' ? entry : `${frontend.path}/${entry}`
+    );
+
+  return {
+    flowPaths: prefixed(frontend.descriptor.wiki.flowPaths),
+    inventoryPaths: prefixed(frontend.descriptor.wiki.inventoryPaths),
+    sourcePaths: prefixed(frontend.descriptor.wiki.sourcePaths),
+    testPaths: [],
+  };
 };
 
 const PathListSchema = z.array(z.string().min(1));
@@ -81,20 +107,21 @@ const PackageJsonSchema = z.object({
 
 /**
  * Read `gaia.wikiClassify` from the repo root's `package.json`, falling back
- * to `DEFAULT_CLASSIFY_PATHS` for the whole object on any read or parse
+ * to `defaults` for the whole object on any read or parse
  * failure and per key for anything the config omits.
  */
 export const readClassifyPaths = (repoRoot: string): ClassifyPaths => {
+  const defaults = defaultClassifyPaths(repoRoot);
   const target = path.join(repoRoot, 'package.json');
 
-  if (!existsSync(target)) return DEFAULT_CLASSIFY_PATHS;
+  if (!existsSync(target)) return defaults;
 
   let parsed: unknown;
 
   try {
     parsed = JSON.parse(readFileSync(target, 'utf8'));
   } catch {
-    return DEFAULT_CLASSIFY_PATHS;
+    return defaults;
   }
 
   const result = PackageJsonSchema.safeParse(parsed);
@@ -107,17 +134,17 @@ export const readClassifyPaths = (repoRoot: string): ClassifyPaths => {
       `commit-classify: ignoring malformed gaia.wikiClassify config. ${summarizeZodError(target, result.error)}\n`
     );
 
-    return DEFAULT_CLASSIFY_PATHS;
+    return defaults;
   }
 
   const configured = result.data.gaia?.wikiClassify;
 
-  if (configured === undefined) return DEFAULT_CLASSIFY_PATHS;
+  if (configured === undefined) return defaults;
 
   return {
-    inventoryPaths:
-      configured.inventoryPaths ?? DEFAULT_CLASSIFY_PATHS.inventoryPaths,
-    sourcePaths: configured.sourcePaths ?? DEFAULT_CLASSIFY_PATHS.sourcePaths,
-    testPaths: configured.testPaths ?? DEFAULT_CLASSIFY_PATHS.testPaths,
+    flowPaths: defaults.flowPaths,
+    inventoryPaths: configured.inventoryPaths ?? defaults.inventoryPaths,
+    sourcePaths: configured.sourcePaths ?? defaults.sourcePaths,
+    testPaths: configured.testPaths ?? defaults.testPaths,
   };
 };
