@@ -76,12 +76,12 @@ jobs:
             shell:
               - '**/*.sh'
               - '**/*.bats'
-              # The husky hooks are extensionless, so neither glob above reaches
+              # The git hooks are extensionless, so neither glob above reaches
               # them -- the same gap that kept them out of the gate's own
-              # discovery. Without this line a PR that changes only a husky hook
+              # discovery. Without this line a PR that changes only a git hook
               # resolves `shell=false`, skips the install and the gate, and
               # greens the check having linted nothing.
-              - '.husky/**'
+              - '.githooks/**'
               # The gate folds in guards whose scan surface INCLUDES the
               # workflow `run:` blocks, which no *.sh glob reaches:
               # lint-git-path-quoting.sh, lint-workflow-run-interpolation.sh,
@@ -98,7 +98,7 @@ jobs:
               # licence to drop it. Without this line a PR that changes only a
               # workflow resolves `shell=false`, skips the gate and greens the
               # check having linted the very files it just changed -- the same
-              # gap the .husky/** line above closes, one file type over.
+              # gap the .githooks/** line above closes, one file type over.
               - '.github/workflows/**'
               # The run-interpolation, status-read and sigpipe-reader guards
               # also scan the composite actions, which the glob above does not
@@ -226,7 +226,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Narrower than the sibling job's filter, and deliberately so: this leg
       # runs one pass, and that pass reads the tracked *.sh set and nothing
-      # else. The husky hooks, the composite actions and the markdown
+      # else. The git hooks, the composite actions and the markdown
       # fences all belong to passes that do not run here. The
       # second entry is the self-coverage half every gated step owes -- a gate
       # blind to a change in its own definition greens having run nothing.

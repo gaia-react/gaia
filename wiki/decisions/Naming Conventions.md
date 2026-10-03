@@ -10,4 +10,4 @@ tags: [decision, git, conventions]
 
 # Decision: Naming Conventions
 
-Commit subjects and PR titles follow Conventional Commits 1.0.0. The permitted types live in `.gaia/conventional-commits.json`, and `commitlint.config.mjs` reads them. The `commit-msg` hook (`.husky/commit-msg`) enforces the convention on every commit.
+Commit subjects and PR titles follow Conventional Commits 1.0.0. The permitted types live in `.gaia/conventional-commits.json`, and `commitlint.config.mjs` reads them. The `commit-msg` hook (`.githooks/commit-msg`) enforces the convention on every commit.

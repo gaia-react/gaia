@@ -1,4 +1,4 @@
-// Commit-message lint, run by .husky/commit-msg on every commit and by CI on PR
+// Commit-message lint, run by .githooks/commit-msg on every commit and by CI on PR
 // titles. Enforces Conventional Commits 1.0.0 (`type(scope)!: summary`) with a
 // header of at most 100 characters.
 //

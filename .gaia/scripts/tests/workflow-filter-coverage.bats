@@ -17,7 +17,7 @@
 # filter that omitted the suite guarding its own gate, two entries made no-ops by
 # a catch-all above them, a comment naming a narrower surface than the suite had,
 # a gate extracted into a script that left its workflow's filter behind, and the
-# two the `.husky/**` and `.github/workflows/**` globs in shell-lint.yml were each
+# two the `.githooks/**` and `.github/workflows/**` globs in shell-lint.yml were each
 # added to close. Those two globs carry the repo's own written record that this
 # recurs.
 #

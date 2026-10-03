@@ -22,7 +22,7 @@ The diagnostic separates a token-heavy raw capture from the small summary the mo
 | **Reason** | `.claude/skills/gaia-react-perf/` | The skill ingests only the `ReducedSummary` and presents the ranked diagnosis. |
 | **Verify** | the skill runbook | After a fix, re-capture and re-reduce, then confirm the targeted finding count drops to 0 before stopping. |
 
-The capture helper exports `installRenderCapture(page, {isStrictModeDisabled?})` and `collectRenderDump(page, {runId?, keep?})`. `collectRenderDump` auto-deletes the run directory on process exit unless `keep` is set, so a diagnosis drive passes `{keep: true}` to let the reduce step read the dump.
+The capture helper exports `installRenderCapture(page, {isStrictModeDisabled?})` and `collectRenderDump(page, {runId?, isRunDirectoryKept?})`. `collectRenderDump` auto-deletes the run directory on process exit unless `isRunDirectoryKept` is set, so a diagnosis drive passes `{isRunDirectoryKept: true}` to let the reduce step read the dump.
 
 ## The signal: memoDefeated, not "unnecessary"
 

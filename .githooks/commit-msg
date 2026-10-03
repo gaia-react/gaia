@@ -1,14 +1,16 @@
-# shellcheck shell=sh
-# No shebang: husky runs this hook as `sh -e "$s"` from the generated .husky/_/h,
-# so the dialect comes from the runner, not the file. The directive above is
-# inert to every shell and pins that dialect for shellcheck, which otherwise
-# cannot infer one and reports SC2148.
+#!/usr/bin/env sh
+# Git runs this file directly through `core.hooksPath` (set by the root
+# `prepare` script), so it arms its own errexit and PATH below.
 #
 # Lints the commit message ($1, the message file) against commitlint.config.mjs
 # (Conventional Commits). It fails closed: when commitlint cannot run, the
 # commit is refused rather than waved through unchecked.
 
+set -e
+
 ROOT=$(git rev-parse --show-toplevel) || exit 1
+PATH="$ROOT/node_modules/.bin:$PATH"
+export PATH
 
 if ! pnpm -C "$ROOT" exec commitlint --version >/dev/null 2>&1; then
   printf "\x1b[31m✖ commitlint is not installed: run pnpm install\x1b[0m\n"

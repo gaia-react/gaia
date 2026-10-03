@@ -67,7 +67,7 @@
 #
 # Sibling gate: .gaia/scripts/lint-git-path-quoting.sh, which scans the same
 # workflow YAML for a different class. The two are kept separate because their
-# scan surfaces differ (that one also reads *.sh, .husky/*, and the fenced
+# scan surfaces differ (that one also reads *.sh, .githooks/*, and the fenced
 # blocks of tracked markdown) and their discriminations share nothing.
 
 set -euo pipefail

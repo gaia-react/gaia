@@ -184,8 +184,8 @@ branch_tracks=$(git -C "$root" for-each-ref \
 
 # Resolved once, unconditionally -- consumed by this sweep's guarded reap
 # below AND by the durable-obligation fast-forward further down this file,
-# which runs even in a session holding no wiki sync branch at all (D2:
-# origin/HEAD with a main fallback, matching defaultBranch's convention).
+# which runs even in a session holding no wiki sync branch at all
+# (origin/HEAD with a main fallback, matching defaultBranch's convention).
 # SEC-011: shape-validated immediately, before any git call interpolates it.
 # An unresolvable or unsafely-shaped base clears $base to empty; every
 # consumer below treats an empty $base as "unanswerable, skip".

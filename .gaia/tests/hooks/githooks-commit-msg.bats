@@ -1,13 +1,14 @@
 #!/usr/bin/env bats
 
-# Tests for .husky/commit-msg.
+# Tests for .githooks/commit-msg.
 #
 # The hook hands the commit message file to commitlint and refuses the commit
 # when commitlint rejects it or cannot run at all. A guard that silently passes
 # when its tool is missing reports clean having checked nothing, so the
 # missing-tool case is its own refusal.
 #
-# Husky runs the hook as `sh -e <hook>` (.husky/_/h), so these tests do too.
+# Git runs the hook directly through core.hooksPath, so these tests run it
+# directly too.
 #
 # `pnpm` is stubbed onto PATH, so the suite needs no node_modules and runs
 # anywhere. The stub answers the `--version` probe and the `--edit` run with
@@ -16,11 +17,11 @@
 
 setup() {
   REPO_ROOT=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
-  HOOK_ABSOLUTE_PATH="$REPO_ROOT/.husky/commit-msg"
+  HOOK_ABSOLUTE_PATH="$REPO_ROOT/.githooks/commit-msg"
 
   # Physical path: the hook takes its root from `git rev-parse --show-toplevel`,
   # which resolves symlinks (macOS /var is a link to /private/var).
-  SANDBOX=$(cd "$(mktemp -d -t husky-commit-msg-XXXXXX)" && pwd -P)
+  SANDBOX=$(cd "$(mktemp -d -t githooks-commit-msg-XXXXXX)" && pwd -P)
   git -C "$SANDBOX" init --quiet --initial-branch=main
 
   MESSAGE_FILE="$SANDBOX/COMMIT_EDITMSG"
@@ -46,11 +47,11 @@ teardown() {
   rm -rf "$SANDBOX"
 }
 
-# Runs the hook $1 (default: the real one) from the sandbox repo, as husky does.
+# Runs the hook $1 (default: the real one) from the sandbox repo, as git does.
 run_hook() {
   local hook="${1:-$HOOK_ABSOLUTE_PATH}"
   cd "$SANDBOX" || return 1
-  PATH="$STUB_BIN:$PATH" PNPM_LOG="$PNPM_LOG" run sh -e "$hook" "$MESSAGE_FILE"
+  PATH="$STUB_BIN:$PATH" PNPM_LOG="$PNPM_LOG" run "$hook" "$MESSAGE_FILE"
 }
 
 # Succeeds only when the stub recorded an `--edit` call that carries the
@@ -89,6 +90,8 @@ edit_argument_was_recorded() {
   sed 's/--edit "\$1"/--edit/' "$HOOK_ABSOLUTE_PATH" > "$broken_hook"
   # The mutation must have changed the hook, or this twin proves nothing.
   cmp -s "$HOOK_ABSOLUTE_PATH" "$broken_hook" && return 1
+  # Git runs the hook directly, so the copy needs the executable bit.
+  chmod +x "$broken_hook"
 
   run_hook "$broken_hook"
   [ "$status" -eq 0 ]

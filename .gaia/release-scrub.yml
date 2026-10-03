@@ -160,7 +160,7 @@ transforms:
           # flags, with concrete-ID examples by design.
           - ".claude/skills/gaia/references/wiki/lint.md"
         # Lines matching ANY of these regexes are exempt. Structural matches
-        # only; see `.claude/rules/wiki-style.md` Exceptions for the contract.
+        # only; see `.claude/rules/working-doc-ids.md` for the contract.
         line-allowlist:
           # Identifier fragments inside variable names: uat_id, uats_block,
           # seen_uat_files, --uat-id CLI flag form.

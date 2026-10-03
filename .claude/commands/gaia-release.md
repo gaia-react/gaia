@@ -173,6 +173,14 @@ The merge above is already queued, and this script issues no `gh pr merge` of it
 
 ### 12. Tag the merge commit
 
+**2.0.0 cut only: publish `create-gaia` first.** Releases from 2.0.0 on publish `gaia-bundle-<tag>.tar.gz`, and a `create-gaia` that still downloads `gaia-<tag>.tar.gz` 404s for every `npx create-gaia@latest` the moment the `v2.0.0` release goes live. So before tagging `v2.0.0`, run step 13 in full now, including its 2.0.0 asset-name bullet, through the npm confirmation, then check:
+
+```bash
+npm view create-gaia@2.0.0 version    # must print 2.0.0; do not tag until it does
+```
+
+Publishing `create-gaia` ahead of the tag is safe: it resolves the latest GAIA release, which is still below 2.0.0 and keeps the old asset name until the tag lands. Every other release tags here first and runs step 13 after.
+
 ```bash
 git checkout main
 git pull --ff-only origin main
@@ -185,6 +193,8 @@ Push the tag, which kicks the GitHub Release workflow (`release.yml`) to build t
 ### 13. Lockstep `create-gaia`
 
 `create-gaia` (the `npx create-gaia` scaffolder) must stay in **version lockstep** with the GAIA template: its `package.json` `version` and its offline `FALLBACK_VERSION` (`bin/index.js`) both track the release just cut. Its `publish.yml` triggers on a `v*.*.*` tag and refuses to publish unless the tag equals `package.json` version.
+
+On the 2.0.0 cut, step 12 runs this step before the tag, then returns to tag. Reaching it again after the tag, it is already done: go to step 14.
 
 It lives in a sibling checkout (`../create-gaia` relative to the GAIA repo root). If the sibling is absent on this machine, STOP and report, do not silently skip; lockstep is mandatory and a maintainer with the checkout must complete it.
 
@@ -200,7 +210,7 @@ Set both version sites to `<NEW_VERSION>` (no `v` in `package.json`, `v`-prefixe
 
 - `$CG/package.json` → `"version": "<NEW_VERSION>"`
 - `$CG/bin/index.js` → `const FALLBACK_VERSION = 'v<NEW_VERSION>';`
-- For the 2.0.0 cut only: `$CG/bin/index.js` builds the download URL `.../releases/download/${version}/gaia-${version}.tar.gz`, but releases from 2.0.0 on publish `gaia-bundle-${version}.tar.gz` (`wiki/concepts/Release Workflow.md`). Switch the URL to `gaia-bundle-${version}.tar.gz` for versions at or above `v2.0.0` (keeping `gaia-${version}.tar.gz` below it) and publish that `create-gaia` before the `v2.0.0` tag, or every `npx create-gaia@latest` 404s once the release goes live (tracked in #2445).
+- For the 2.0.0 cut only: releases from 2.0.0 on publish `gaia-bundle-${version}.tar.gz` (`wiki/concepts/Release Workflow.md`). Make sure `$CG/bin/index.js` downloads `gaia-bundle-${version}.tar.gz` for versions at or above `v2.0.0` and keeps `gaia-${version}.tar.gz` below it; step 12's gate requires this `create-gaia` published before the `v2.0.0` tag.
 
 Commit on a branch, open + merge a PR, then tag. The PR-merge and main-push guards are repo-scoped (`.claude/hooks/lib/repo-scope.sh`), but the two surfaces resolve the sibling differently. `gh pr merge -R gaia-react/create-gaia` is recognized as foreign by repo-**name** (basename) comparison, so this repo's audit gate does **not** fire, no manual-UI detour needed. Raw-git operations (`git -C <path>`, `cd <path> &&`) are recognized as foreign only by resolving the **filesystem path** from the raw command string: `repo-scope.sh` reads `tool_input.command` verbatim and cannot expand shell variables, so a `$CG` form fails to resolve, the guard falls back to enforcing home-repo main-protection, and a legitimate sibling push is denied. Every sibling `git -C … push` below therefore inlines the **literal absolute path** the discovery step printed, never `$CG`. `create-gaia` has no audit infrastructure or branch protection of its own; a plain `--merge` (not `--auto`) is correct there.
 

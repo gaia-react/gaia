@@ -630,8 +630,8 @@ EOF
   [ "$(grep -c 'code-audit' <<<"$output")" -eq 0 ]
 }
 
-@test "the husky commit hook is owned by the shell member" {
-  # .husky/pre-commit is the Quality Gate floor for every commit and is POSIX
+@test "the git commit hook is owned by the shell member" {
+  # .githooks/pre-commit is the Quality Gate floor for every commit and is POSIX
   # shell, so the shell member (which holds the shellcheck oracle) owns it.
   # Without a glob claiming it, a PR that changes the hook alongside any other
   # owned surface dispatches members for the other files only, and the hook
@@ -645,7 +645,7 @@ EOF
   # shellcheck source=/dev/null
   . "$SCOPE_LIBRARY"
   audit_scope_init "$REPO_ROOT"
-  [ "$(audit_owner_for_path '.husky/pre-commit')" = "code-audit-maintainer-shell" ]
+  [ "$(audit_owner_for_path '.githooks/pre-commit')" = "code-audit-maintainer-shell" ]
 }
 
 @test "the CLI workspace policy file is owned by the node member" {

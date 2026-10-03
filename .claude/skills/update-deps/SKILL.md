@@ -50,7 +50,7 @@ Otherwise set `SHOULD_CREATE_BRANCH=false` and proceed on the current branch.
 
 ## Package layout
 
-The repository is a pnpm workspace with one lockfile at the root. App dependencies (everything the React app imports or builds with) are declared in `frontend/package.json`; harness dependencies (husky, lint-staged, prettier, `typescript` for the harness helpers) and the `gaia.updateDepsHold` map are in the root `package.json`. `overrides:` and `minimumReleaseAge` stay in the root `pnpm-workspace.yaml`. Add or bump an app dependency with `pnpm -C frontend add <pkg>@<spec>`, a harness dependency with `pnpm add -w <pkg>@<spec>` from the root. The quality gate runs the root `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm pw`, and `pnpm build`, which proxy to `frontend`.
+The repository is a pnpm workspace with one lockfile at the root. App dependencies (everything the React app imports or builds with) are declared in `frontend/package.json`; harness dependencies (lint-staged, prettier, `typescript` for the harness helpers) and the `gaia.updateDepsHold` map are in the root `package.json`. `overrides:` and `minimumReleaseAge` stay in the root `pnpm-workspace.yaml`. Add or bump an app dependency with `pnpm -C frontend add <pkg>@<spec>`, a harness dependency with `pnpm add -w <pkg>@<spec>` from the root. The quality gate runs the root `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm pw`, and `pnpm build`, which proxy to `frontend`.
 
 ## Composition: --scope &lt;group-name&gt;
 
@@ -95,7 +95,6 @@ update together**, so a group moves as one unit (and snoozes as one unit).
 | `fontawesome`     | `@fortawesome/*`                                                                                                                                                             |
 | `stylelint`       | `stylelint`, `stylelint-config-*`, `stylelint-order`                                                                                                                         |
 | `prettier`        | `prettier`, `eslint-config-prettier`, `eslint-plugin-prettier`                                                                                                               |
-| `husky`           | `husky`, `lint-staged`                                                                                                                                                       |
 
 Packages not matched form singleton groups. `typescript` is deliberately one of
 them: a compiler bump and an ambient type-definition bump (`@types/node`) carry

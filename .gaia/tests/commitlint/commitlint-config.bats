@@ -158,7 +158,7 @@ header_of_length() {
 
 @test "commit-msg hook end to end: git refuses debt and accepts feat" {
   local scratch="$BATS_TEST_TMPDIR/end-to-end"
-  mkdir -p "$scratch/.husky" "$scratch/.gaia" "$scratch/hooks" "$scratch/shim"
+  mkdir -p "$scratch/.githooks" "$scratch/.gaia" "$scratch/shim"
   # `pnpm exec` in a scratch directory tries to install into the node_modules
   # symlinked below, which would reach the real tree. The shim stands in for it:
   # the hook's `pnpm -C <root> exec <command> ...` runs the real commitlint
@@ -176,12 +176,10 @@ SHIM
   git -C "$scratch" config commit.gpgsign false
   cp "$REAL_CONFIG" "$scratch/commitlint.config.mjs"
   cp "$TYPES_FILE" "$scratch/.gaia/conventional-commits.json"
-  cp "$REPO_ROOT/.husky/commit-msg" "$scratch/.husky/commit-msg"
+  cp "$REPO_ROOT/.githooks/commit-msg" "$scratch/.githooks/commit-msg"
   ln -s "$REPO_ROOT/node_modules" "$scratch/node_modules"
-  # Husky's generated runner invokes the hook as `sh -e <hook>`.
-  printf '#!/bin/sh\nexec sh -e "%s/.husky/commit-msg" "$@"\n' "$scratch" > "$scratch/hooks/commit-msg"
-  chmod +x "$scratch/hooks/commit-msg"
-  git -C "$scratch" config core.hooksPath "$scratch/hooks"
+  # The real hook, activated the way the root `prepare` script activates it.
+  git -C "$scratch" config core.hooksPath .githooks
   printf 'one\n' > "$scratch/file.txt"
   git -C "$scratch" add file.txt
 

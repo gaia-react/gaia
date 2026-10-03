@@ -148,7 +148,7 @@ gate_pass_headers() {
 # red. Deriving it means a guard folded in tomorrow is covered the day
 # it lands.
 #
-# SHELLCHECK_LOG is set on this run so the husky dialect assertion rides along
+# SHELLCHECK_LOG is set on this run so the git hooks dialect assertion rides along
 # rather than paying for a run of its own. The stub is a pure always-clean fake
 # with the variable unset, and recording argv changes nothing else it does.
 
@@ -176,11 +176,12 @@ gate_pass_headers() {
   [ "$folded" -eq "$(grep -c 'echo "--> lint-' "$GATE")" ]
   [ "$folded" -gt 1 ]
 
-  # The husky hooks are extensionless, so they match neither the *.sh nor the
-  # *.bats discovery glob and need a pass of their own. Husky runs them as
-  # `sh -e`, so that pass pins the dialect: shellcheck takes one dialect per
-  # invocation, which is why this cannot fold into the *.sh pass.
-  grep -qE -- '(^| )-s sh( |$).*\.husky/pre-commit' "$STUB_DIRECTORY/argv.log"
+  # The git hooks are extensionless, so they match neither the *.sh nor the
+  # *.bats discovery glob and need a pass of their own. Git runs each one
+  # directly and the hooks are POSIX sh by convention, so that pass pins the
+  # dialect: shellcheck takes one dialect per invocation, which is why this
+  # cannot fold into the *.sh pass.
+  grep -qE -- '(^| )-s sh( |$).*\.githooks/pre-commit' "$STUB_DIRECTORY/argv.log"
 }
 
 
