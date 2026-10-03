@@ -52,6 +52,7 @@ On GAIA 1.6.1? Choose Abort, then paste the prompt from https://gaiareact.com/mi
 
 ### Fixed
 
+- The React Doctor install steps in `/setup-gaia` and `/gaia-init` no longer leave `pnpm-lock.yaml` modified. Removing the installer's dependency left peer resolutions behind in the lockfile, so the steps now snapshot the lockfile before the install and restore it afterward (#2462)
 - Shipped hooks, scripts, skills, and wiki pages no longer cite working-document ids or this project's issue numbers, and no tracked file points at an artifact that exists only on one machine's gitignored `.gaia/local/`, which the working-doc-ids rule now bans. The release build fails on any that reappear: issue and pull request references, plan ids, and dated local research paths join the bundle-time leak checks (#2458)
 - `/gaia-release` now publishes the 2.0.0-aware `create-gaia` before it tags `v2.0.0`, and refuses to tag until npm serves it. The command asked for that order in a step that runs after the tag, which left a window where every `npx create-gaia@latest` failed to download the new `gaia-bundle` asset. Maintainer-only; nothing reaches adopters (#2457)
 - The `/gaia-wiki` statusline nudge now clears once the wiki has landed locally. When the merge outlasted the landing command's wait, the stale drift count stayed cached for up to six hours after the session-start janitor caught the main branch up; the janitor now marks the cache stale at that point so the next render recomputes it. (#2452)
