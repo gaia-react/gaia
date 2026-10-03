@@ -91,6 +91,7 @@
     ".claude/rules/shell-cwd.md": "owned",
     ".claude/rules/subagent-dispatch.md": "owned",
     ".claude/rules/wiki-style.md": "owned",
+    ".claude/rules/working-doc-ids.md": "owned",
     ".claude/settings.json": "shared",
     ".claude/skills/file-tech-debt/SKILL.md": "owned",
     ".claude/skills/gaia-handoff/SKILL.md": "owned",
@@ -670,7 +671,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-10-03T13:32:40.100Z",
+  "generated": "2026-10-03T13:44:16.016Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

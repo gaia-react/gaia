@@ -117,10 +117,10 @@ export const installRenderCapture = async (
 
 export const collectRenderDump = async (
   page: Page,
-  options: {keep?: boolean; runId?: string} = {}
+  options: {isRunDirectoryKept?: boolean; runId?: string} = {}
 ): Promise<CaptureResult> => {
   const runId = options.runId ?? `${Date.now()}-${nanoid()}`;
-  const isRunDirectoryKept = options.keep ?? false;
+  const isRunDirectoryKept = options.isRunDirectoryKept ?? false;
 
   // Mirror react-scan's ~5s "failed to load" active check: the harness must have
   // gone active, else injection lost the race with React (or the target is a
