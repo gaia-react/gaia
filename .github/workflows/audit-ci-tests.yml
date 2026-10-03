@@ -48,8 +48,8 @@ env:
 
 jobs:
   # The fan-out matrix: one leg per bats shard, plus the sandbox conformance
-  # tree and the INV-7 concurrency meter as two further legs that run their
-  # own runners under their own filter gates. `audit-ci-tests` below is the
+  # tree, the INV-7 concurrency meter and the commitlint config suite as three
+  # further legs that run their own runners under their own filter gates. `audit-ci-tests` below is the
   # thin aggregator that carries the declared-required check name; splitting
   # the name off this job is what lets `fail-fast: false` keep one failing
   # shard from cancelling its siblings without also cancelling the check
@@ -81,12 +81,12 @@ jobs:
     # shard must not cancel its siblings, or the aggregator adjudicates a
     # partial picture and a re-run loses information about every leg GitHub
     # cancelled rather than ran. The matrix values are the bats-shards.sh shard
-    # ids plus the two workflow-level legs; audit-ci-shards.bats' W6 checks the
+    # ids plus the three workflow-level legs; audit-ci-shards.bats' W6 checks the
     # two stay in sync.
     strategy:
       fail-fast: false
       matrix:
-        shard: [hooks-1, hooks-2, hooks-3, hooks-4, scripts-1, scripts-2, scripts-3, audit, lib, misc, sandbox, concurrency]
+        shard: [hooks-1, hooks-2, hooks-3, hooks-4, scripts-1, scripts-2, scripts-3, audit, lib, misc, sandbox, concurrency, commitlint]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # PRs that don't touch the audit scripts report this check green
@@ -566,6 +566,43 @@ jobs:
               - '.claude/hooks/lib/reader-operands.sh'
               - '.gaia/tests/helpers/hook-registration.sh'
               - '.gaia/scripts/hook-registration-lib.sh'
+            # The commitlint config suite (.gaia/tests/commitlint/) runs the REAL
+            # commitlint binary, so it needs the root workspace installed, which
+            # the bats shards do not do. It gets its own filter output for the
+            # same reason `sandbox` does: a commit-lint-only edit arms this leg
+            # without arming the full matrix, and nothing else here reaches it.
+            # Every entry is LOAD-BEARING, named rather than reached by a glob
+            # on another output: a filter output is evaluated independently of
+            # its siblings, and a path missing here reports `commitlint=false`,
+            # skips the leg's steps, and greens a declared-required context
+            # having run the suite zero times.
+            commitlint:
+              # This job's own definition, including this filter and the step
+              # conditions it gates.
+              - '.github/workflows/audit-ci-tests.yml'
+              # The suite itself.
+              - '.gaia/tests/commitlint/**'
+              # The config under test and the type list it reads at load time.
+              - 'commitlint.config.mjs'
+              - '.gaia/conventional-commits.json'
+              # The hook that runs the same config on every commit.
+              - '.husky/commit-msg'
+              # The install inputs: commitlint and its shared config are root
+              # devDependencies, so a bump of either, of the toolchain, or of the
+              # workspace settings the frozen install obeys changes what the
+              # suite runs against.
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - '.npmrc'
+              - '.node-version'
+              # The composite action the Node setup step uses.
+              - '.github/actions/**'
+              # What the leg's own steps invoke: the bats installer and its
+              # vendored archive, and the bats5.sh wrapper the run step calls.
+              - '.gaia/tests/install-bats.sh'
+              - '.gaia/tests/vendor/**'
+              - '.gaia/scripts/bats5.sh'
       # python3-yaml pins the parser (python3+pyyaml) that every
       # `require_yaml_parser` gate on this runner needs. How many suites carry
       # one is deliberately not written down here: a hand-kept count drifts as
@@ -607,7 +644,7 @@ jobs:
       # on `code || sandbox` would need install-bats.sh listed in both filter
       # bodies for the SAME step, and this way each step's script is covered by
       # exactly the filter that gates it.
-      - if: matrix.shard != 'sandbox' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
+      - if: matrix.shard != 'sandbox' && matrix.shard != 'commitlint' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Install pinned bats
         run: bash .gaia/tests/install-bats.sh
       # python3-yaml pins the parser (python3+pyyaml) rather than resting on
@@ -740,6 +777,31 @@ jobs:
       - if: matrix.shard == 'sandbox' && (steps.filter.outputs.sandbox == 'true' || github.event_name == 'workflow_dispatch')
         name: Install bats
         run: bash .gaia/tests/install-bats.sh
+      # The commitlint leg: no apt (the suite needs neither python3-yaml nor
+      # zsh; `jq` ships on the runner image), the pinned bats, and the ROOT
+      # package's dependencies only. Gated on `commitlint` rather than `code`,
+      # so a PR touching only a file this suite reads runs it without arming
+      # the other legs. A `workflow_dispatch` run has no filter output and runs
+      # every step, as on the other legs.
+      - if: matrix.shard == 'commitlint' && (steps.filter.outputs.commitlint == 'true' || github.event_name == 'workflow_dispatch')
+        name: Install pinned bats for the commitlint suite
+        run: bash .gaia/tests/install-bats.sh
+      # `install: none` and a filtered install of our own, because the
+      # composite's `root` arm is a plain `pnpm install --frozen-lockfile`,
+      # which also installs the frontend workspace this suite never touches.
+      # `--filter .` is the root importer alone (commitlint and its shared
+      # config are root devDependencies); the lockfile stays frozen. The
+      # composite is still the right caller: the next step runs pnpm itself, so
+      # the store its cache step saves exists.
+      - if: matrix.shard == 'commitlint' && (steps.filter.outputs.commitlint == 'true' || github.event_name == 'workflow_dispatch')
+        name: Setup Node for the commitlint suite
+        uses: ./.github/actions/gaia-setup-node
+        with:
+          install: none
+          cache-dependency-path: pnpm-lock.yaml
+      - if: matrix.shard == 'commitlint' && (steps.filter.outputs.commitlint == 'true' || github.event_name == 'workflow_dispatch')
+        name: Install the root workspace only
+        run: pnpm install --frozen-lockfile --filter .
       # TWO installs on THIS leg, not one, and the reason is structural:
       # .gaia/cli is deliberately its own isolated pnpm workspace
       # (.gaia/cli/pnpm-workspace.yaml), so a repo-root install does not reach
@@ -844,7 +906,7 @@ jobs:
       # question matters on a given day, `bats-shards.sh files <shard>` answers
       # which leg pays, and the region-marker docblock in cli-tests.yml records
       # what to check on that leg and when the check is actually owed.
-      - if: matrix.shard != 'sandbox' && matrix.shard != 'concurrency' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
+      - if: matrix.shard != 'sandbox' && matrix.shard != 'concurrency' && matrix.shard != 'commitlint' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         id: needs-cli-workspace
         name: Ask the sharder whether this shard holds the js-yaml-dependent suite
         env:
@@ -888,7 +950,7 @@ jobs:
       # interpolated into the run: body text itself -- the shape this repo's
       # workflows auditor checks, and what keeps it true when a future edit
       # drives the matrix from an expression rather than a literal list.
-      - if: matrix.shard != 'sandbox' && matrix.shard != 'concurrency' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
+      - if: matrix.shard != 'sandbox' && matrix.shard != 'concurrency' && matrix.shard != 'commitlint' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Run a bats shard
         env:
           SHARD: ${{ matrix.shard }}
@@ -906,6 +968,11 @@ jobs:
       - if: matrix.shard == 'concurrency' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Run the INV-7 concurrency meter
         run: bash .gaia/tests/concurrency/meter-gate.sh
+      # The suite fails in setup_file when commitlint is absent rather than
+      # skipping, so a leg whose install silently produced nothing reds here.
+      - if: matrix.shard == 'commitlint' && (steps.filter.outputs.commitlint == 'true' || github.event_name == 'workflow_dispatch')
+        name: Run the commitlint config suite
+        run: bash .gaia/scripts/bats5.sh .gaia/tests/commitlint/commitlint-config.bats
 
   # The declared-required check. `needs: [shards]` makes it the second hop of
   # a 2-hop chain the arithmetic above is sized to, and `always()` is what

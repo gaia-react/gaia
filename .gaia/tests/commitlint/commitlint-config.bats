@@ -7,8 +7,8 @@
 #
 # This suite needs the root workspace's node_modules, which no bats shard in
 # .github/workflows/audit-ci-tests.yml installs, so it lives outside the
-# directories .gaia/tests/bats-shards.sh discovers. CI runs the same behavior
-# through the pr-conventions workflow's canary. Run it locally with
+# directories .gaia/tests/bats-shards.sh discovers; that workflow's dedicated
+# commitlint leg installs the root deps and runs it. Run it locally with
 # `.gaia/scripts/bats5.sh .gaia/tests/commitlint/commitlint-config.bats`.
 #
 # A missing commitlint FAILS setup_file rather than skipping: a skipped guard
