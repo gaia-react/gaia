@@ -38,7 +38,7 @@ The saved file contains:
       "value": "abc123",
       "domain": "example.com",
       "path": "/",
-      "expires": 1735689600,
+      "expires": 1893456000,
       "httpOnly": true,
       "secure": true,
       "sameSite": "Lax"
@@ -48,8 +48,8 @@ The saved file contains:
     {
       "origin": "https://example.com",
       "localStorage": [
-        {"name": "theme", "value": "dark"},
-        {"name": "user_id", "value": "12345"}
+        { "name": "theme", "value": "dark" },
+        { "name": "user_id", "value": "12345" }
       ]
     }
   ]
@@ -92,7 +92,7 @@ playwright-cli cookie-set session abc123
 playwright-cli cookie-set session abc123 --domain=example.com --path=/ --httpOnly --secure --sameSite=Lax
 
 # Cookie with expiration (Unix timestamp)
-playwright-cli cookie-set remember_me token123 --expires=1735689600
+playwright-cli cookie-set remember_me token123 --expires=1893456000
 ```
 
 ### Delete a Cookie
@@ -246,6 +246,24 @@ playwright-cli state-save auth.json
 playwright-cli state-load auth.json
 playwright-cli open https://app.example.com/dashboard
 # Already logged in!
+```
+
+### Save and Restore Roundtrip
+
+```bash
+# Set up authentication state
+playwright-cli open https://example.com
+playwright-cli eval "() => { document.cookie = 'session=abc123'; localStorage.setItem('user', 'john'); }"
+
+# Save state to file
+playwright-cli state-save my-session.json
+
+# ... later, in a new session ...
+
+# Restore state
+playwright-cli state-load my-session.json
+playwright-cli open https://example.com
+# Cookies and localStorage are restored!
 ```
 
 ## Security Notes

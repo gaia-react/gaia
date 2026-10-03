@@ -20103,12 +20103,6 @@ var RUNTIME_PREFIXES = [
   ".claude/agent-memory",
   ".claude/audit"
 ];
-var RUNTIME_MARKERS = /* @__PURE__ */ new Set([
-  // Runtime-created sentinel: wiki-recompact-sentinel.sh (PostCompact) writes
-  // this file and wiki-recompact-inject.sh (UserPromptSubmit) reads and clears
-  // it. Created on first compaction event; never a shipped dependency.
-  ".claude/wiki-recompact-pending"
-]);
 var PATH_PREFIXES = [".gaia/", ".claude/", ".specify/", ".github/"];
 var PROSE_PATH_ALLOWLIST = /* @__PURE__ */ new Set([
   ".claude/agents/code-audit-frontend/cn.md",
@@ -20246,7 +20240,6 @@ var computeShippedDirs = (manifest) => {
 var isShippedPath = (candidate, manifest, shippedDirs) => {
   if (manifest.has(candidate)) return true;
   if (ADOPTER_OWNED_SENTINELS2.has(candidate)) return true;
-  if (RUNTIME_MARKERS.has(candidate)) return true;
   if (RUNTIME_PREFIXES.some(
     (prefix) => candidate === prefix || candidate.startsWith(`${prefix}/`)
   )) {

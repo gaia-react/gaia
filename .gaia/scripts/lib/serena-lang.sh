@@ -3,8 +3,9 @@
 #
 # Detects "additive drift": a language present on disk via a git-tracked
 # high-signal manifest but absent from Serena's effective configured
-# `languages:` set, and performs a safe, byte-identical, consent-gated append
-# to the `languages:` list in `.serena/project.yml`.
+# `language_servers:` set (the pre-1.7 name of that key is `languages:`, still
+# read and written), and performs a safe, byte-identical, consent-gated append
+# to that list in `.serena/project.yml`.
 #
 # Dual interface:
 #   (a) source it and call the `serena_*` functions, or
@@ -22,25 +23,31 @@
 # is the single authoritative source for serena_valid_token. It is a working
 # subset of Serena's Language enum, sufficient for this feature: the marker map
 # only ever emits the seven base tokens, all present here.
-SERENA_KNOWN_LANGUAGES="al bash clojure cpp csharp csharp_omnisharp dart elixir elm erlang fortran fsharp go groovy haskell haxe java julia kotlin lua markdown matlab nix pascal perl php php_phpactor powershell python python_jedi python_ty r rego ruby ruby_solargraph rust scala swift terraform toml typescript typescript_vts vue yaml zig"
+SERENA_KNOWN_LANGUAGES="al angular bash clojure cpp csharp csharp_omnisharp dart deno elixir elm erlang fortran fsharp gleam go groovy haskell haxe html java julia kotlin lua markdown matlab nix pascal perl php php_phpactor php_phpantom powershell python python_basedpyright python_jedi python_pyrefly python_ty r rego ruby ruby_solargraph rust scala scss svelte swift terraform toml typescript typescript_vts vue yaml zig"
+
+# The language-list key, as an ERE alternation. Serena v1.7 renamed `languages:`
+# to `language_servers:`; both mean the same list, and a file holds exactly one.
+# Every reader and appender below takes the key from here, so the two spellings
+# never drift apart.
+SERENA_LIST_KEY_ERE='(languages|language_servers)'
 
 # --- Token helpers ----------------------------------------------------------
 
-# serena_normalize_token <token> — print the base language for a variant/alias;
+# serena_normalize_token <token>: print the base language for a variant/alias;
 # print the token unchanged when it is already a base token.
 serena_normalize_token() {
   case "$1" in
-    python_jedi|python_ty) printf 'python\n' ;;
+    python_jedi|python_ty|python_pyrefly|python_basedpyright) printf 'python\n' ;;
     csharp_omnisharp) printf 'csharp\n' ;;
     ruby_solargraph) printf 'ruby\n' ;;
-    php_phpactor) printf 'php\n' ;;
+    php_phpactor|php_phpantom) printf 'php\n' ;;
     typescript_vts) printf 'typescript\n' ;;
     javascript) printf 'typescript\n' ;;
     *) printf '%s\n' "$1" ;;
   esac
 }
 
-# serena_valid_token <token> — exit 0 if the token is in Serena's known set.
+# serena_valid_token <token>: exit 0 if the token is in Serena's known set.
 serena_valid_token() {
   local token="$1" known
   for known in $SERENA_KNOWN_LANGUAGES; do
@@ -49,7 +56,7 @@ serena_valid_token() {
   return 1
 }
 
-# _serena_clean_token <raw> — strip surrounding whitespace and a single pair of
+# _serena_clean_token <raw>: strip surrounding whitespace and a single pair of
 # matching quotes. Print the cleaned token (no trailing newline).
 _serena_clean_token() {
   local token_text="$1"
@@ -64,7 +71,7 @@ _serena_clean_token() {
 
 # --- Serena registration ----------------------------------------------------
 
-# serena_registered <root> — exit 0 if Serena is a registered MCP server.
+# serena_registered <root>: exit 0 if Serena is a registered MCP server.
 # Not gated on a tsconfig, so detection fires for non-TS projects too.
 # Requires jq; exit 1 if jq is absent.
 serena_registered() {
@@ -82,15 +89,16 @@ serena_registered() {
 
 # --- Configured (effective) languages ---------------------------------------
 
-# _serena_raw_tokens <file> — print raw (un-normalized, un-cleaned) language
+# _serena_raw_tokens <file>: print raw (un-normalized, un-cleaned) language
 # tokens found in ONE YAML file across the three supported forms: block list,
-# single-line flow list, and legacy singular `language:` scalar. Best-effort
+# single-line flow list (under either list key), and legacy singular `language:`
+# scalar. Best-effort
 # and line-based; full-line comments are ignored. Prints nothing on any form it
 # does not recognize (false-negative bias).
 _serena_raw_tokens() {
   local file="$1"
   [ -f "$file" ] || return 0
-  awk '
+  awk -v list_key="$SERENA_LIST_KEY_ERE" '
     {
       line = $0
       # Full-line comment: ignore. A YAML comment does NOT end a block
@@ -109,10 +117,10 @@ _serena_raw_tokens() {
         inblock = 0
         # fall through to re-test this line for other forms
       }
-      # Single-line flow list: languages: [ ... ]
-      if (line ~ /^[[:space:]]*languages:[[:space:]]*\[/) {
+      # Single-line flow list: <list key>: [ ... ]
+      if (line ~ ("^[[:space:]]*" list_key ":[[:space:]]*[[]")) {
         inner = line
-        sub(/^[[:space:]]*languages:[[:space:]]*\[/, "", inner)
+        sub(("^[[:space:]]*" list_key ":[[:space:]]*[[]"), "", inner)
         sub(/\].*$/, "", inner)
         flow_item_count = split(inner, flow_items, ",")
         for (i = 1; i <= flow_item_count; i++) {
@@ -123,8 +131,8 @@ _serena_raw_tokens() {
         }
         next
       }
-      # Block-list start: languages: with an empty (or comment-only) value.
-      if (line ~ /^[[:space:]]*languages:[[:space:]]*$/ || line ~ /^[[:space:]]*languages:[[:space:]]*#/) {
+      # Block-list start: <list key>: with an empty (or comment-only) value.
+      if (line ~ ("^[[:space:]]*" list_key ":[[:space:]]*$") || line ~ ("^[[:space:]]*" list_key ":[[:space:]]*#")) {
         inblock = 1
         next
       }
@@ -140,7 +148,7 @@ _serena_raw_tokens() {
   ' "$file"
 }
 
-# _serena_file_normalized_tokens <file> — cleaned + normalized + de-duplicated tokens
+# _serena_file_normalized_tokens <file>: cleaned + normalized + de-duplicated tokens
 # from a single file.
 _serena_file_normalized_tokens() {
   local file="$1" raw cleaned_token
@@ -151,7 +159,7 @@ _serena_file_normalized_tokens() {
   done | awk '!seen[$0]++'
 }
 
-# serena_effective_languages <root> — print newline-separated, normalized
+# serena_effective_languages <root>: print newline-separated, normalized
 # base-language tokens = the union across .serena/project.yml and
 # .serena/project.local.yml. Print nothing if the primary file is absent.
 serena_effective_languages() {
@@ -167,7 +175,7 @@ serena_effective_languages() {
 
 # --- Manifest-derived languages ---------------------------------------------
 
-# serena_manifest_languages <root> — map git-tracked high-signal manifests to
+# serena_manifest_languages <root>: map git-tracked high-signal manifests to
 # base-language tokens. Conservative map (git-tracked files only); gitignored or
 # vendored files never appear in `git ls-files` and are auto-excluded.
 serena_manifest_languages() {
@@ -197,7 +205,7 @@ serena_manifest_languages() {
 
 # --- Top-level drift detector -----------------------------------------------
 
-# serena_language_drift <root> — print a compact JSON array of missing base tokens
+# serena_language_drift <root>: print a compact JSON array of missing base tokens
 # = sorted(manifest_languages - effective_languages). Print [] when jq is
 # unavailable, Serena is not registered, .serena/project.yml is absent, or there
 # is no drift. Always exit 0.
@@ -217,8 +225,8 @@ serena_language_drift() {
 
 # --- Form classification (append safety) ------------------------------------
 
-# _serena_block_scan <file> <key_line_number> — scan the block list following the
-# `languages:` key at <key_line_number>. Print one tab-separated line:
+# _serena_block_scan <file> <key_line_number>: scan the block list following the
+# list key (`language_servers:` or `languages:`) at <key_line_number>. Print one tab-separated line:
 #   <status>\t<indent>\t<last_item_line_number>
 # status is one of: block (safe), complex, malformed, empty (no list items).
 _serena_block_scan() {
@@ -256,13 +264,15 @@ _serena_block_scan() {
   ' "$file"
 }
 
-# serena_classify_form <project_yaml> — print block:<indent> | flow |
-# unsafe:<reason>. Exit 0 for safe forms, non-zero for unsafe.
+# serena_classify_form <project_yaml>: print block:<indent> | flow |
+# unsafe:<reason>. Exit 0 for safe forms, non-zero for unsafe. Either list key
+# (`language_servers:`, or the pre-1.7 `languages:`) counts; both in one file is
+# unsafe:multiple-keys.
 serena_classify_form() {
   local file="$1"
   [ -f "$file" ] || { printf 'unsafe:malformed\n'; return 1; }
   local key_count
-  key_count=$(grep -cE '^[[:space:]]*languages:([[:space:]]|$|\[)' "$file" 2>/dev/null)
+  key_count=$(grep -cE "^[[:space:]]*${SERENA_LIST_KEY_ERE}:([[:space:]]|\$|\\[)" "$file" 2>/dev/null)
   case "$key_count" in ''|*[!0-9]*) key_count=0 ;; esac
   if [ "$key_count" -gt 1 ]; then
     printf 'unsafe:multiple-keys\n'; return 1
@@ -271,16 +281,15 @@ serena_classify_form() {
     if grep -qE '^[[:space:]]*language:[[:space:]]*[^[:space:]#]' "$file" 2>/dev/null; then
       printf 'unsafe:legacy-scalar\n'; return 1
     fi
-    if grep -qE '^[[:space:]]*#.*languages:' "$file" 2>/dev/null; then
+    if grep -qE "^[[:space:]]*#.*${SERENA_LIST_KEY_ERE}:" "$file" 2>/dev/null; then
       printf 'unsafe:comment-only\n'; return 1
     fi
     printf 'unsafe:no-key\n'; return 1
   fi
   local key_line_number key_line value
-  key_line_number=$(grep -nE '^[[:space:]]*languages:([[:space:]]|$|\[)' "$file" | head -1 | cut -d: -f1)
+  key_line_number=$(grep -nE "^[[:space:]]*${SERENA_LIST_KEY_ERE}:([[:space:]]|\$|\\[)" "$file" | head -1 | cut -d: -f1)
   key_line=$(sed -n "${key_line_number}p" "$file")
-  value="${key_line#*languages:}"
-  value=$(printf '%s' "$value" | sed 's/[[:space:]]#.*$//; s/^[[:space:]]*//; s/[[:space:]]*$//')
+  value=$(printf '%s' "$key_line" | sed -E "s/^[[:space:]]*${SERENA_LIST_KEY_ERE}://; s/[[:space:]]#.*\$//; s/^[[:space:]]*//; s/[[:space:]]*\$//")
   if [ -z "$value" ]; then
     local scan status indent
     scan=$(_serena_block_scan "$file" "$key_line_number")
@@ -311,12 +320,12 @@ serena_classify_form() {
 
 # --- Consent-gated append ---------------------------------------------------
 
-# _serena_append_flow <file> <token...> — append tokens to a single-line flow
+# _serena_append_flow <file> <token...>: append tokens to a single-line flow
 # list, preserving surrounding spacing and any trailing comment.
 _serena_append_flow() {
   local file="$1"; shift
   local key_line_number line prefix rest inner suffix inner_trim new_inner token new_line temporary_file directory
-  key_line_number=$(grep -nE '^[[:space:]]*languages:([[:space:]]|$|\[)' "$file" | head -1 | cut -d: -f1)
+  key_line_number=$(grep -nE "^[[:space:]]*${SERENA_LIST_KEY_ERE}:([[:space:]]|\$|\\[)" "$file" | head -1 | cut -d: -f1)
   [ -n "$key_line_number" ] || return 1
   line=$(sed -n "${key_line_number}p" "$file")
   prefix="${line%%\[*}"
@@ -344,12 +353,12 @@ _serena_append_flow() {
   if [ -s "$temporary_file" ]; then mv "$temporary_file" "$file"; else rm -f "$temporary_file"; return 1; fi
 }
 
-# _serena_append_block <file> <token...> — append tokens as new list items at
+# _serena_append_block <file> <token...>: append tokens as new list items at
 # the block list's exact indentation, immediately after the last item.
 _serena_append_block() {
   local file="$1"; shift
   local key_line_number scan status indent last_line_number inserts token temporary_file directory
-  key_line_number=$(grep -nE '^[[:space:]]*languages:([[:space:]]|$|\[)' "$file" | head -1 | cut -d: -f1)
+  key_line_number=$(grep -nE "^[[:space:]]*${SERENA_LIST_KEY_ERE}:([[:space:]]|\$|\\[)" "$file" | head -1 | cut -d: -f1)
   [ -n "$key_line_number" ] || return 1
   scan=$(_serena_block_scan "$file" "$key_line_number")
   status=$(printf '%s' "$scan" | cut -f1)
@@ -372,11 +381,12 @@ _serena_append_block() {
   if [ -s "$temporary_file" ]; then mv "$temporary_file" "$file"; else rm -f "$temporary_file"; return 1; fi
 }
 
-# serena_language_append <project_yaml> <token> [token...] — on a safe form, append
+# serena_language_append <project_yaml> <token> [token...]: on a safe form, append
 # each not-already-present, validated token reusing the list's exact style; keep
 # every other line byte-identical. Exit 0. On any unsafe form or invalid token,
 # write nothing, print FALLBACK:<reason>, exit non-zero. Idempotent set-union
-# against THIS file's own `languages:` list.
+# against THIS file's own list, under whichever single key (`language_servers:`
+# or `languages:`) it already uses.
 serena_language_append() {
   local project_yaml="$1"; shift
   [ -f "$project_yaml" ] || { printf 'FALLBACK:malformed\n'; return 1; }

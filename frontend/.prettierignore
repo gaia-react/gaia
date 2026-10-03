@@ -8,6 +8,10 @@ package-lock.json
 /build
 /coverage
 /storybook-static
+
+# Byte-identical vendored upstream copy; its version and per-file hashes are
+# recorded in .gaia/vendor/playwright-cli.json, so formatting would break it.
+.claude/skills/playwright-cli/
 /public/build
 .env.example
 .env

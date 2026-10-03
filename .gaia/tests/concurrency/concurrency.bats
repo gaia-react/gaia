@@ -20,16 +20,6 @@ teardown() {
   gaia_teardown
 }
 
-# count_autocommits <checkout_directory>: how many consecutive `wiki: auto-commit *` commits
-# sit at <checkout_directory>'s current HEAD. Used by C5-02's squash-hook check.
-count_autocommits() {
-  local checkout_directory="$1" autocommit_count=0
-  while git -C "$checkout_directory" log "HEAD~$autocommit_count" -1 --format=%s 2>/dev/null | grep -q '^wiki: auto-commit '; do
-    autocommit_count=$((autocommit_count + 1))
-  done
-  printf '%s' "$autocommit_count"
-}
-
 # ---------------------------------------------------------------------------
 # Tranche 3 -- CONVERT
 # ---------------------------------------------------------------------------
@@ -809,8 +799,8 @@ test("adds two numbers c407", () => {
   MAIN="$(gaia_new_main gaia-c502-main)"
   gaia_copy_real "$MAIN" \
     .claude/hooks/janitor-report-drain.sh \
+    .claude/hooks/lib/wiki-dirty-fingerprint.sh \
     .claude/hooks/wiki-session-stop.sh \
-    .claude/hooks/wiki-squash-autocommits.sh \
     .gaia/scripts/main-root-lib.sh
   mkdir -p "$MAIN/wiki"
   jq -n --arg sha "$(git -C "$MAIN" rev-parse HEAD)" \
@@ -847,20 +837,6 @@ test("adds two numbers c407", () => {
   json="$(jq -n '{session_id: "S1"}')"
   hook_output="$(run_in "$WORKTREE_B" -- gaia_deliver_hook "$json" "$MAIN/.claude/hooks/wiki-session-stop.sh")"
   grep -qF 'WIKI_CHANGED' <<< "$hook_output" || dead="$dead wiki-session-stop"
-
-  # 3. wiki-squash-autocommits.sh: two consecutive `wiki: auto-commit` commits
-  # at HEAD; a live hook squashes them into one.
-  echo a1 > "$WORKTREE_B/wiki/auto.md"
-  git -C "$WORKTREE_B" add wiki/auto.md
-  git -C "$WORKTREE_B" commit -q -m "wiki: auto-commit 1"
-  echo a2 >> "$WORKTREE_B/wiki/auto.md"
-  git -C "$WORKTREE_B" add wiki/auto.md
-  git -C "$WORKTREE_B" commit -q -m "wiki: auto-commit 2"
-  before_count="$(count_autocommits "$WORKTREE_B")"
-  run_in "$WORKTREE_B" -- bash "$MAIN/.claude/hooks/wiki-squash-autocommits.sh" >/dev/null 2>&1
-  after_count="$(count_autocommits "$WORKTREE_B")"
-  [ "$before_count" -eq 2 ]
-  [ "$after_count" -eq 1 ] || dead="$dead wiki-squash-autocommits"
 
   # Target: none silently dead -- each either fires correctly or refuses out
   # loud. A hook that still gated repository detection on a bare

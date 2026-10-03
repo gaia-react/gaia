@@ -1,6 +1,6 @@
 # /gaia-serena-sync
 
-The on-demand reconcile surface for Serena language drift. When an adopter's Serena-registered project grows a language Serena is not indexing, `/gaia-serena-sync` reports the missing languages, prints a literal in-place edit instruction, and presents **one** consent prompt covering the whole drifted set. On an explicit yes it appends the missing tokens to the `languages:` list in `.serena/project.yml` via the shared library, reusing the list's exact indentation and style, keeping every other line byte-identical, then tells the adopter to restart Serena. With no drift it reports in sync and writes nothing. Any config form it cannot edit safely routes to a prompt-only fallback. It never runs `serena project create`.
+The on-demand reconcile surface for Serena language drift. When an adopter's Serena-registered project grows a language Serena is not indexing, `/gaia-serena-sync` reports the missing languages, prints a literal in-place edit instruction, and presents **one** consent prompt covering the whole drifted set. On an explicit yes it appends the missing tokens to the `language_servers:` list (`languages:` before Serena 1.7) in `.serena/project.yml` via the shared library, reusing the list's exact indentation and style, keeping every other line byte-identical, then tells the adopter to restart Serena. With no drift it reports in sync and writes nothing. Any config form it cannot edit safely routes to a prompt-only fallback. It never runs `serena project create`.
 
 ## Execution model, READ FIRST
 
@@ -46,11 +46,11 @@ Keep the drifted token array from this step; the later steps operate on it.
 - Name the missing tokens in plain language, e.g. "Serena is not indexing: `go`".
 - Print a **literal, in-place edit instruction** that names the file and the list, so the adopter always has a manual path even if the automated apply is declined or unavailable. For example:
 
-  > Add `go` to the `languages:` list in `.serena/project.yml`.
+  > Add `go` to the `language_servers:` list (or `languages:` on a pre-1.7 file) in `.serena/project.yml`.
 
   For multiple missing tokens, name each one in the same instruction. This literal manual instruction is always shown, in every path from here on.
 
-- Classify the file's `languages:` form:
+- Classify the form of the file's `language_servers:` list (`languages:` on a pre-1.7 file):
 
   ```bash
   bash .gaia/scripts/lib/serena-lang.sh classify .serena/project.yml
@@ -111,7 +111,7 @@ If the command otherwise completes without an explicit yes, treat it as Skip: no
 
 Reached when the config form cannot be edited safely (from `classify` in Step 2, or a `FALLBACK:<reason>` from the append in Step 3).
 
-- Report that GAIA will not edit this config form automatically, and name the reason category in plain language (e.g. "the `languages:` block uses YAML anchors GAIA will not rewrite", "there is no `languages:` list to append to", "more than one `languages:` key is present").
+- Report that GAIA will not edit this config form automatically, and name the reason category in plain language (e.g. "the `language_servers:` block (`languages:` before 1.7) uses YAML anchors GAIA will not rewrite", "there is no `language_servers:` list to append to", "both the `language_servers:` and `languages:` keys are present").
 - Show the literal manual instruction from Step 2, and make a "show me the manual instruction" affordance available so the adopter can re-request it.
 - **Write nothing.** Never invoke `serena project create`.
 
@@ -122,5 +122,5 @@ Reached when the config form cannot be edited safely (from `classify` in Step 2,
 - **Never run `serena project create`.** It may regenerate the file and clobber `.serena/project.local.yml` customizations. This command only ever appends to an existing list, never regenerates the file.
 - **Never remove or reorder existing entries, never rewrite unrelated fields, never leave the file invalid YAML.** Any unsafe form routes to the Step 4 prompt-only fallback. The library owns byte-identity; this command only decides whether to invoke it.
 - **Always instruct a Serena or session restart on a successful apply.** The appended language is not indexed until Serena restarts.
-- **Always show the literal manual instruction** naming `.serena/project.yml` and the `languages:` list, in every path once drift is found.
+- **Always show the literal manual instruction** naming `.serena/project.yml` and the `language_servers:` list (`languages:` before 1.7), in every path once drift is found.
 - Use repo-relative paths only.
