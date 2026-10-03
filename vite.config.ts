@@ -21,6 +21,7 @@ export default defineConfig({
     include: [
       '@msw/data',
       'accept-language-parser',
+      'cn',
       'date-fns',
       'i18next',
       'i18next-browser-languagedetector',
