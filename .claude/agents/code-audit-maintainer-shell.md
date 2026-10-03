@@ -23,6 +23,7 @@ You also own the declarative half of that same subsystem: the roster your own di
 - `.gaia/*.json`
 - `.gaia/scripts/token-rates.json`
 - `.gaia/release-exclude`
+- `.gaia/retired-paths-allowlist.tsv`
 - `.gaia/tests/vendor/**`
 - `.gaia/scripts/tests/fixtures/**/*.jq`
 - `.gaia/scripts/tests/fixtures/**/*.sed`
@@ -124,7 +125,7 @@ This lens activates only for `.bats` files.
 
 Several paths in your remit are not scripts, and the correctness core above and the shellcheck oracle both assume a script, so a diff touching only these would otherwise dispatch you with no stated lens. Read the remit region as the authority on which; deliberately no count here, because a number in this sentence rots the next time the roster grants one, and for the same reason no count of the groups below either.
 
-**The declarative surfaces** — `.gaia/*.yml`, `.gaia/*.json`, `.gaia/scripts/token-rates.json`, `.gaia/release-exclude`, `.gaia/VERSION`, `.claude/settings.json`, `.github/CODEOWNERS` — are here because each one *decides* something the scripts merely execute, and that is what to review.
+**The declarative surfaces** — `.gaia/*.yml`, `.gaia/*.json`, `.gaia/scripts/token-rates.json`, `.gaia/release-exclude`, `.gaia/retired-paths-allowlist.tsv`, `.gaia/VERSION`, `.claude/settings.json`, `.github/CODEOWNERS` — are here because each one *decides* something the scripts merely execute, and that is what to review.
 
 - **What the change decides, not how it is spelled.** Read the diff as a policy change and name its consequence: which file now ships or stops shipping (`.gaia/release-exclude`, the manifest), which hook now runs or stops running and with what permission (`.claude/settings.json`), who is required to review what (`.github/CODEOWNERS`, `.gaia/audit-ci.yml`), what a computation is now based on (`.gaia/scripts/token-rates.json`). A syntactically clean edit that quietly widens one of those is the defect this lens exists for.
 - **Loosening that reads as tidying.** A removed `release-exclude` entry, a widened permission or a dropped hook registration, a deleted CODEOWNERS rule, an auditor glob narrowed so it no longer reaches a path it used to: each makes a gate smaller while the diff looks like cleanup. Require the change to say why.
