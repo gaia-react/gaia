@@ -989,7 +989,7 @@ EOF
   grep -qF -- "probe.sh:3" <<<"$output"
 }
 
-@test "an instance inside a heredoc body in a git hook is still flagged (UAT-016)" {
+@test "an instance inside a heredoc body in a git hook is still flagged" {
   fixture_repo
   fixture_file .githooks/pre-commit $'#!/usr/bin/env sh\ncat <<EOF\nchanged=$(git diff --name-only "${base}...HEAD")\nEOF'
   run_linter
@@ -1013,7 +1013,7 @@ EOF
   grep -qF -- "probe.sh:2" <<<"$output"
 }
 
-@test "an instance on a backslash-continuation line in a git hook is still flagged (UAT-016)" {
+@test "an instance on a backslash-continuation line in a git hook is still flagged" {
   fixture_repo
   fixture_file .githooks/pre-commit $'#!/usr/bin/env sh\nchanged=$(git diff --name-only \\\n  -z HEAD~1...HEAD)'
   run_linter
