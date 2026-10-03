@@ -444,7 +444,7 @@ Resolve the PR to completion through `wiki/concepts/PR Merge Workflow.md`, read 
 
   On `MERGED`, run post-merge cleanup by isolation mode:
   - **Feature-branch isolation:** `git checkout main && git pull`, `git branch -D <branch>`, `git fetch --prune`. (Run ends here; see `## Cost record (run end)`.)
-  - **Worktree mode:** run Post-merge worktree cleanup below instead. Do not `git branch -D` a worktree-held branch.
+  - **Worktree mode:** run Post-merge worktree cleanup below instead. It removes the worktree first and deletes the branch afterward, since a worktree-held branch cannot be deleted while the worktree stands.
 
   Every arm above but `MERGED` and `CONFLICTING` ends the run there (the report above and the return without cleanup); see `## Cost record (run end)`.
 
@@ -455,7 +455,8 @@ Each `Closes #N` line in the PR body auto-closes its issue on merge, so on a bat
 1. Confirm merge via `gh pr view <N> --json state`; require `.state == "MERGED"`. If not merged, do not proceed; surface and stop.
 2. **Isolation-context check** (below). If running inside an isolated subagent context, emit the continuation prompt and stop; do not call `ExitWorktree`.
 3. Otherwise call `ExitWorktree({action: "remove", discard_changes: true})` directly. `discard_changes: true` is safe: the squash-merge absorbed every commit on the worktree branch, but those commits are not ancestors of `main`, so the runtime would otherwise refuse; the merged-state confirmation in step 1 proves the work is preserved.
-4. Report one line: `worktree discarded; PR #<N> squash-merged as <short-sha>`.
+4. Delete the renamed branch as `.claude/skills/gaia/references/isolation.md` (`### Post-merge removal`) prescribes.
+5. Report one line: `worktree discarded; PR #<N> squash-merged as <short-sha>`.
 
 Never call `ExitWorktree` first and treat its refusal as the discard trigger; the merged-state confirmation is the primary signal.
 
@@ -473,7 +474,7 @@ When detected, emit this copy-paste continuation prompt to the user and stop:
     <ABSOLUTE-PATH-TO-MAIN-CHECKOUT>, run:
 
         git worktree remove --force <ABSOLUTE-PATH-TO-WORKTREE>
-        git branch -D <branch-name>   # only if the merge did not already delete it
+        git branch -D <branch-name>   # if it still exists
 
 (Run ends here; see `## Cost record (run end)`.)
 

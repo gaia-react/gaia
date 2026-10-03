@@ -1,5 +1,7 @@
 import {describe, expect, test} from 'vitest';
+import {readFileSync} from 'node:fs';
 import {
+  COMMIT_TYPES,
   isCommitType,
   parseConventionalCommitHeader,
 } from './conventional-commit.js';
@@ -80,5 +82,66 @@ describe('COMMIT_TYPES', () => {
   // (missing key) and a removed one (excess key).
   test('isCommitType rejects a type nobody declared', () => {
     expect(isCommitType('spike')).toBe(false);
+  });
+});
+
+type SharedTypeFile = {legacyTypes: string[]; types: string[]};
+
+/**
+ * Throw unless the CLI's literal tuple names exactly the shared file's `types`
+ * plus `legacyTypes`. A parameterized helper so a unit test can feed it a
+ * mismatched pair and watch it refuse.
+ */
+const assertTypesAgree = (
+  cliTypes: readonly string[],
+  shared: SharedTypeFile
+): void => {
+  const expected = [...shared.types, ...shared.legacyTypes];
+  const expectedSet = new Set(expected);
+  const agrees =
+    cliTypes.length === expected.length &&
+    cliTypes.every((type) => expectedSet.has(type));
+
+  if (!agrees) {
+    throw new Error(
+      `COMMIT_TYPES [${cliTypes.join(', ')}] disagrees with .gaia/conventional-commits.json [${expected.join(', ')}]`
+    );
+  }
+};
+
+describe('COMMIT_TYPES lockstep with .gaia/conventional-commits.json', () => {
+  const shared = JSON.parse(
+    readFileSync(
+      new URL('../../../conventional-commits.json', import.meta.url),
+      'utf8'
+    )
+  ) as SharedTypeFile;
+
+  test('the tuple equals types plus legacyTypes', () => {
+    expect(() => assertTypesAgree(COMMIT_TYPES, shared)).not.toThrow();
+  });
+
+  test('debt stays parseable but is not a type for new commits', () => {
+    expect(isCommitType('debt')).toBe(true);
+    expect(shared.types).not.toContain('debt');
+  });
+
+  test('every type for new commits is a declared CommitType', () => {
+    for (const type of shared.types) expect(isCommitType(type)).toBe(true);
+  });
+
+  test('the helper refuses a type the tuple lacks', () => {
+    expect(() =>
+      assertTypesAgree(COMMIT_TYPES, {
+        ...shared,
+        types: [...shared.types, 'zzz'],
+      })
+    ).toThrow(/disagrees/u);
+  });
+
+  test('the helper refuses a type the file lacks', () => {
+    expect(() => assertTypesAgree([...COMMIT_TYPES, 'zzz'], shared)).toThrow(
+      /disagrees/u
+    );
   });
 });

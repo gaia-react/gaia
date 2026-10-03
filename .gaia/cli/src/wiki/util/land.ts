@@ -15,7 +15,7 @@ import {invalidateStatuslineCache} from './statusline-cache.js';
 /** Exit code for an unexpected git/gh process failure. */
 export const UNEXPECTED_EXIT = 2;
 
-/** UTC `YYYY-MM-DD`; the date component of a `wiki-sync/<date>-<sha>` branch. */
+/** UTC `YYYY-MM-DD`; the date component of a `wiki/sync-<date>-<sha>` branch. */
 export const todayUtc = (now: Date = new Date()): string => {
   const year = now.getUTCFullYear();
   const month = String(now.getUTCMonth() + 1).padStart(2, '0');

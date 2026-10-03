@@ -203,7 +203,7 @@ const protectedBranchLanding = (
     today: string;
   }
 ): number => {
-  const branchName = `wiki-sync/${options.today}-${ctx.shortHead}`;
+  const branchName = `wiki/sync-${options.today}-${ctx.shortHead}`;
   const message = `wiki: sync through ${ctx.shortHead}`;
   const prTitle = message;
   const prBody = `Automated wiki sync landed via \`gaia wiki sync land --branch-aware\`. State advanced to ${ctx.shortHead}.`;

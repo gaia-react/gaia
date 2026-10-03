@@ -12,18 +12,28 @@
 # file and its suite.
 #
 # THE CONVENTION. Every GAIA branch is `<kind>/<rest>`, one kind per row, first
-# matching row wins when reading:
+# matching row wins when reading. The prefix says which workflow produced the
+# branch; the commit type (`.gaia/conventional-commits.json`) says what changed.
 #
-#   kind       canonical shape                      mode         unit
-#   debt       debt/<a>-<b>[-<c>...]-batch          drain        <a>-<b>...
-#   debt       debt/<n>[-<slug>]                    drain        <n>
-#   plan       plan/spec-<nnn>[-<slug>]             plan         SPEC-<nnn>
-#   plan       plan/plan-<nnn>[-<slug>]             plan         plan-<nnn>
-#   chore      chore/<task>-<YYYY-MM-DD-HHMM>       maintenance  <rest>
-#   release    release/v<version>                   maintenance  <rest>
-#   wiki-sync  wiki-sync/<YYYY-MM-DD>-<short-sha>   maintenance  <rest>
-#   (any other branch, including main and hand-named fix/ feat/ docs/)
-#                                                   adhoc        unknown
+#   kind        canonical shape                         mode         unit
+#   debt        debt/<a>-<b>[-<c>...]-batch             drain        <a>-<b>...
+#   debt        debt/<n>[-<slug>]                       drain        <n>
+#   plan        plan/spec-<nnn>[-<slug>]                plan         SPEC-<nnn>
+#   plan        plan/plan-<nnn>[-<slug>]                plan         plan-<nnn>
+#   audit       audit/<YYYY-MM-DD-HHMM>                 maintenance  <rest>
+#   harden      harden/<YYYY-MM-DD-HHMM>                maintenance  <rest>
+#   fitness     fitness/<YYYY-MM-DD-HHMM>               maintenance  <rest>
+#   residue     residue/<YYYY-MM-DD-HHMM>               maintenance  <rest>
+#   deps        deps/<YYYY-MM-DD-HHMM>                  maintenance  <rest>
+#   update      update/v<version>-<YYYY-MM-DD-HHMM>     maintenance  <rest>
+#   release     release/v<version>                      maintenance  <rest>
+#   wiki sync   wiki/sync-<YYYY-MM-DD>-<short-sha>      maintenance  <rest>
+#   forensics   forensics/<issue>-<class-slug>          maintenance  <rest>
+#   chore       chore/<task>-<YYYY-MM-DD-HHMM>          maintenance  <rest>  (legacy)
+#   wiki-sync   wiki-sync/<YYYY-MM-DD>-<short-sha>      maintenance  <rest>  (legacy)
+#   (any other branch, including main, a `chore/` or `wiki/` branch outside
+#   the rows above, and hand-named `<type>/[<issue>-]<slug>` branches)
+#                                                       adhoc        unknown
 #
 # `mode` is a closed vocabulary: drain, plan, maintenance, adhoc. A derived
 # unit that comes out empty is `unknown`. `debt` and `plan` names carry the
@@ -31,17 +41,26 @@
 # implements); the maintenance kinds carry a timestamp so two runs never
 # collide.
 #
-# One kind is minted outside bash and is therefore not an arm of
-# gaia_branch_name: `wiki-sync`, by the GAIA CLI's wiki chain. GAIA's own test
-# suite pins that prefix to this table, so it cannot drift without a red suite.
+# Legacy spellings (`chore/<task>-<ts>`, `wiki-sync/`, and the `worktree-*`
+# spelling below) are read so existing branches, PR heads, and ledgers keep
+# classifying; none is minted. The `chore/` row requires the timestamp suffix,
+# so a hand-named `chore/fix-typo` stays adhoc.
+#
+# Two kinds are minted outside bash and are therefore not arms of
+# gaia_branch_name: `wiki/sync-`, by the GAIA CLI's wiki chain, and
+# `forensics/`, by `forensics-triage.yml`. GAIA's own test suite pins each
+# prefix to this table, so neither can drift without a red suite.
 #
 # THE WORKTREE SPELLING. A worktree created with `EnterWorktree({name: <n>})`
 # sits on a branch the harness names `worktree-<n>`, with every `/` in <n>
-# written as `+`: `debt/42-fix` becomes `worktree-debt+42-fix`. Every reader
-# below normalizes that spelling first (gaia_branch_normalize), so a worktree
-# branch reads exactly as the branch it was requested as. Minted names are
-# capped at 64 bytes and restricted to [A-Za-z0-9./-] (slugs and tasks are
-# lowercased; a release version keeps its own case) so they are always valid
+# written as `+`: `debt/42-fix` becomes `worktree-debt+42-fix`. GAIA renames
+# that branch to its canonical name right after creation
+# (`.claude/skills/gaia/references/isolation.md`), so a branch it created
+# carries the canonical name. Every reader below still normalizes the spelling
+# first (gaia_branch_normalize), so a branch that predates the rename reads
+# exactly as the branch it was requested as. Minted names are capped at 64
+# bytes and restricted to [A-Za-z0-9./-] (slugs and tasks are lowercased; a
+# release or update version keeps its own case) so they are always valid
 # EnterWorktree names as well as valid git refs.
 #
 # Functions (all defined at source time; sourcing has no side effects and runs
@@ -79,12 +98,29 @@
 #     debt <issue> <issue>... [--batch]   debt/<ascending members>-batch
 #     plan <spec-NNN|plan-NNN> [--slug <text>]
 #                                         plan/<id>[-<slug>]
-#     chore <task>                        chore/<task>-<UTC YYYY-MM-DD-HHMM>
+#     audit | harden | fitness | residue | deps
+#                                         <kind>/<UTC YYYY-MM-DD-HHMM>
+#     update <version>                    update/v<version>-<UTC YYYY-MM-DD-HHMM>
 #     release <version>                   release/v<version>
-#   <slug> and <task> are reduced to lowercase kebab-case; a slug is truncated
+#   A leading `v` on <version> is stripped. The retired `chore` kind exits 2.
+#   <slug> is reduced to lowercase kebab-case; a slug is truncated
 #   to keep the whole name within 64 bytes. Two or more distinct issues always
 #   mint a batch name, which carries no slug; `--batch` is accepted and
 #   changes nothing.
+#
+# gaia_branch_validate <branch>
+#   Decides whether <branch> is a name GAIA accepts for a new pull request.
+#   Returns 0 when valid; 1 when invalid, after one stderr line naming the
+#   reason and the fix; 2 when it cannot decide (no `jq` or `git` on PATH, or
+#   `.gaia/conventional-commits.json` unreadable, found relative to this file,
+#   never the working directory). Rules: `dependabot/*` is always valid; a
+#   `worktree-*` name is invalid and the message names the canonical name and
+#   `git branch -m`; otherwise at most 64 bytes, lowercase [a-z0-9./-] (a
+#   `release/` or `update/` version may keep its case), exactly one `/`, a
+#   remainder that is non-empty with no leading or trailing `-`, a valid ref
+#   name, and a prefix that is a workflow kind in the table or a `types`
+#   entry of the JSON. Legacy `wiki-sync/` is invalid; legacy
+#   `chore/<task>-<ts>` passes as a hand-named `chore/<slug>`.
 #
 # Usage (sourced):
 #   . .gaia/scripts/branch-name-lib.sh
@@ -92,11 +128,13 @@
 #
 # Usage (executable):
 #   bash .gaia/scripts/branch-name-lib.sh name debt 2159 --slug "reconcile worktree claim"
-#   bash .gaia/scripts/branch-name-lib.sh name chore update-deps
+#   bash .gaia/scripts/branch-name-lib.sh name deps
+#   bash .gaia/scripts/branch-name-lib.sh name update v2.0.0
 #   bash .gaia/scripts/branch-name-lib.sh classify worktree-debt+42-fix
 #   bash .gaia/scripts/branch-name-lib.sh members debt/41-42-batch
 #   bash .gaia/scripts/branch-name-lib.sh spec-number plan/spec-005-cards
 #   bash .gaia/scripts/branch-name-lib.sh list [directory]
+#   bash .gaia/scripts/branch-name-lib.sh validate fix/2450-statusline-nudge
 
 GAIA_BRANCH_NAME_MAXIMUM_LENGTH=64
 
@@ -215,7 +253,9 @@ _gaia_branch_set_class() {
           ;;
       esac
       ;;
-    chore/* | release/* | wiki-sync/*)
+    audit/* | harden/* | fitness/* | residue/* | deps/* | update/* | release/* | forensics/* \
+      | wiki/sync-* | wiki-sync/* \
+      | chore/*-[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9][0-9][0-9])
       mode="maintenance"
       unit="${normalized_name#*/}"
       ;;
@@ -304,7 +344,7 @@ _gaia_branch_emit() {
 }
 
 gaia_branch_name() {
-  local kind="${1-}" slug="" argument="" members="" id="" task="" version="" count=0
+  local kind="${1-}" slug="" argument="" members="" id="" version="" count=0
   [ "$#" -gt 0 ] && shift
 
   case "$kind" in
@@ -368,27 +408,138 @@ gaia_branch_name() {
       done
       _gaia_branch_emit "plan/${id}" "$slug"
       ;;
-    chore)
-      task="$(_gaia_branch_kebab "${1-}")"
-      [ -n "$task" ] || { echo "gaia_branch_name: chore needs a task name" >&2; return 2; }
-      _gaia_branch_emit "chore/${task}-$(date -u +%Y-%m-%d-%H%M)" ""
+    audit | harden | fitness | residue | deps)
+      if [ "$#" -gt 0 ]; then
+        printf 'gaia_branch_name: unexpected argument %s\n' "$1" >&2
+        return 2
+      fi
+      _gaia_branch_emit "${kind}/$(date -u +%Y-%m-%d-%H%M)" ""
       ;;
-    release)
+    release | update)
       version="${1-}"
       version="${version#v}"
       case "$version" in
         "" | *[!0-9A-Za-z.-]*)
-          echo "gaia_branch_name: release needs a version such as 1.4.0" >&2
+          printf 'gaia_branch_name: %s needs a version such as 1.4.0\n' "$kind" >&2
           return 2
           ;;
       esac
-      _gaia_branch_emit "release/v${version}" ""
+      if [ "$kind" = "update" ]; then
+        _gaia_branch_emit "update/v${version}-$(date -u +%Y-%m-%d-%H%M)" ""
+      else
+        _gaia_branch_emit "release/v${version}" ""
+      fi
       ;;
     *)
-      printf 'gaia_branch_name: unknown kind %s (debt, plan, chore, release)\n' "${kind:-<none>}" >&2
+      printf 'gaia_branch_name: unknown kind %s (debt, plan, audit, harden, fitness, residue, deps, update, release)\n' "${kind:-<none>}" >&2
       return 2
       ;;
   esac
+}
+
+# gaia_branch_validate <branch>: see the header. The checks that need no data
+# run first; the commit-type set is read from the JSON beside this library
+# only when they pass, and an unreadable JSON returns 2, never 0.
+gaia_branch_validate() {
+  local LC_ALL=C
+  local branch="${1-}" normalized prefix remainder types_file types=""
+  local library_path="${BASH_SOURCE[0]:-}" library_directory
+
+  case "$branch" in
+    dependabot/*) return 0 ;;
+    worktree-*)
+      _gaia_branch_set_normalized "$branch"
+      normalized="$_gaia_branch_normalized_name"
+      printf 'gaia_branch_validate: %s is a worktree spelling; rename it with: git branch -m %s %s, then push %s\n' \
+        "$branch" "$branch" "$normalized" "$normalized" >&2
+      return 1
+      ;;
+  esac
+
+  if [ "${#branch}" -gt "$GAIA_BRANCH_NAME_MAXIMUM_LENGTH" ]; then
+    printf 'gaia_branch_validate: %s is longer than %s bytes; shorten the slug\n' "$branch" "$GAIA_BRANCH_NAME_MAXIMUM_LENGTH" >&2
+    return 1
+  fi
+  case "$branch" in
+    */*/*)
+      printf 'gaia_branch_validate: %s has more than one slash; use <type>/<slug> with a single slash\n' "$branch" >&2
+      return 1
+      ;;
+    */*) ;;
+    *)
+      printf 'gaia_branch_validate: %s has no <prefix>/ part; name it <type>/<slug>, for example fix/<slug>\n' "$branch" >&2
+      return 1
+      ;;
+  esac
+  prefix="${branch%%/*}"
+  remainder="${branch#*/}"
+  case "$prefix" in
+    "" | *[!a-z0-9.-]*)
+      printf 'gaia_branch_validate: %s has an empty prefix or one outside [a-z0-9.-]; use <type>/<slug> in lowercase\n' "$branch" >&2
+      return 1
+      ;;
+  esac
+  case "$prefix" in
+    release | update)
+      case "$remainder" in
+        *[!A-Za-z0-9./-]*)
+          printf 'gaia_branch_validate: %s has a character outside [A-Za-z0-9./-]; use letters, digits, dot, slash and dash\n' "$branch" >&2
+          return 1
+          ;;
+      esac
+      ;;
+    *)
+      case "$remainder" in
+        *[!a-z0-9./-]*)
+          printf 'gaia_branch_validate: %s has a character outside [a-z0-9./-]; use lowercase letters, digits, dot, slash and dash\n' "$branch" >&2
+          return 1
+          ;;
+      esac
+      ;;
+  esac
+  case "$remainder" in
+    "" | -* | *-)
+      printf 'gaia_branch_validate: %s needs a slug that is not empty and does not start or end with a dash\n' "$branch" >&2
+      return 1
+      ;;
+  esac
+
+  command -v jq >/dev/null 2>&1 || {
+    echo "gaia_branch_validate: cannot decide: jq is not on PATH; install jq" >&2
+    return 2
+  }
+  command -v git >/dev/null 2>&1 || {
+    echo "gaia_branch_validate: cannot decide: git is not on PATH" >&2
+    return 2
+  }
+  case "$library_path" in
+    */*) library_directory="${library_path%/*}" ;;
+    "") library_directory="" ;;
+    *) library_directory="." ;;
+  esac
+  types_file="${library_directory}/../conventional-commits.json"
+  if [ -z "$library_directory" ] || [ ! -r "$types_file" ]; then
+    echo "gaia_branch_validate: cannot decide: .gaia/conventional-commits.json is not readable beside this library" >&2
+    return 2
+  fi
+  types="$(jq -er 'if (.types | type == "array" and length > 0 and all(type == "string")) then .types | join(" ") else empty end' "$types_file" 2>/dev/null)" || types=""
+  if [ -z "$types" ]; then
+    echo "gaia_branch_validate: cannot decide: .gaia/conventional-commits.json has no usable types list" >&2
+    return 2
+  fi
+
+  case " debt plan audit harden fitness residue deps update release forensics ${types} " in
+    *" ${prefix} "*) ;;
+    *)
+      printf 'gaia_branch_validate: %s has the prefix %s, which is neither a GAIA workflow nor a commit type; use one of: %s\n' "$branch" "$prefix" "$types" >&2
+      return 1
+      ;;
+  esac
+  if ! git check-ref-format --branch "$branch" >/dev/null 2>&1; then
+    printf 'gaia_branch_validate: %s is not a valid git branch name; remove a double dot, a .lock ending, or the other ref-format violation\n' "$branch" >&2
+    return 1
+  fi
+  return 0
 }
 
 if [ "${BASH_SOURCE[0]:-}" = "$0" ]; then
@@ -401,8 +552,9 @@ if [ "${BASH_SOURCE[0]:-}" = "$0" ]; then
     spec-number) gaia_branch_spec_number "${1-}" ;;
     normalize) gaia_branch_normalize "${1-}"; printf '\n' ;;
     list) gaia_branch_list "${1-}" ;;
+    validate) gaia_branch_validate "${1-}"; exit $? ;;
     *)
-      echo "usage: branch-name-lib.sh name|classify|members|spec-number|normalize|list <args>" >&2
+      echo "usage: branch-name-lib.sh name|classify|members|spec-number|normalize|list|validate <args>" >&2
       exit 2
       ;;
   esac

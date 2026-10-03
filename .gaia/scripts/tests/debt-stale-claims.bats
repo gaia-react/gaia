@@ -85,6 +85,30 @@ verdict() {
   [ "$output" = "11" ]
 }
 
+@test "canonical spelling: a local debt/42-x branch with no pull request keeps its issue" {
+  claims 42 43
+  printf 'main\ndebt/42-x\n' >"$TEST_DIRECTORY/branches"
+  verdict
+  [ "$status" -eq 0 ]
+  [ "$output" = "43" ]
+}
+
+@test "canonical spelling: an open pull request headed debt/42-x with no local branch keeps its issue" {
+  claims 42 43
+  printf '[{"headRefName":"debt/42-x","body":""}]' >"$TEST_DIRECTORY/prs.json"
+  verdict
+  [ "$status" -eq 0 ]
+  [ "$output" = "43" ]
+}
+
+@test "legacy spelling: a local worktree-debt+42-x branch alone still keeps its issue" {
+  claims 42 43
+  printf 'main\nworktree-debt+42-x\n' >"$TEST_DIRECTORY/branches"
+  verdict
+  [ "$status" -eq 0 ]
+  [ "$output" = "43" ]
+}
+
 @test "pr arm: every closing keyword in a body keeps its issue, in any case" {
   claims 1 2 3 4 5 6 7
   printf '%s' '[{"headRefName":"feat/x","body":"Closes #1\nfixes #2\nRESOLVED: #3\nclose #4 and fixed #5\nsee #6"}]' >"$TEST_DIRECTORY/prs.json"

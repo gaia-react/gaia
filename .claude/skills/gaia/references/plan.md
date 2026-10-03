@@ -157,7 +157,7 @@ Then write the following files directly to `{PLAN_DIR}/`:
         ```
 
         If `pr_state` is `MERGED`, do not drive a resume of merged work, `plan-archive.sh`'s fail-closed representation gate can leave a stale RUNNING/PROGRESS on an already-merged plan, surface it and stop. If no PR is found (empty result) or the state is `OPEN`, proceed with resume; the guard degrades to a no-op when there is nothing merged to protect against.
-      - **Reconnect by isolation mode.** Read `branch:` and `mode:` from the sentinel. If `mode:` is absent (a legacy sentinel written before this line existed), derive it from `git worktree list`: a worktree whose checked-out branch equals the sentinel branch means worktree mode, otherwise feature-branch isolation. Reconnect using the matching operation: `git checkout <branch>` for feature-branch isolation, or re-enter the existing worktree for worktree mode (do NOT `git checkout` the worktree-held branch and do NOT create a new worktree). Do NOT re-fire the on-main isolation `AskUserQuestion` and do NOT cut a new branch. **Failed reconnect:** if the sentinel branch is genuinely missing or the working tree is dirty, surface the condition and STOP, never silently start a new branch.
+      - **Reconnect by isolation mode.** Read `branch:` and `mode:` from the sentinel. If `mode:` is absent (a legacy sentinel written before this line existed), derive it from `git worktree list --porcelain`: a `worktree <path>` record whose `branch refs/heads/<branch>` line equals the sentinel branch means worktree mode, otherwise feature-branch isolation. A sentinel written before the isolation reference renamed worktree branches may hold the legacy `worktree-` spelling, so match either the canonical name or its legacy spelling (`worktree-` plus the name with every `/` written as `+`). Reconnect using the matching operation: `git checkout <branch>` for feature-branch isolation, or re-enter the existing worktree for worktree mode with `EnterWorktree({name: "<branch>"})`, the name originally passed (do NOT `git checkout` the worktree-held branch and do NOT create a new worktree); `.claude/skills/gaia/references/isolation.md` (`### Resume`) owns the lookup. Do NOT re-fire the on-main isolation `AskUserQuestion` and do NOT cut a new branch. **Failed reconnect:** if the sentinel branch is genuinely missing or the working tree is dirty, surface the condition and STOP, never silently start a new branch.
       - **Compute the resume point.** Run the helper from the reconnected working context:
 
         ```bash
@@ -187,10 +187,10 @@ Then write the following files directly to `{PLAN_DIR}/`:
 
       **Tool-choice contract: which tool writes `{PLAN_DIR}/PROGRESS.md` and `{PLAN_DIR}/RUNNING` depends on `RESOLVED_MODE`, and is stated only here.** Under `feature-branch` isolation `{PLAN_DIR}` sits inside the acting checkout, so the ordinary `Edit`/`Write` tools write both and nothing below applies. Under `worktree` mode they cannot reach either: the harness isolates the session to the worktree and refuses an `Edit`/`Write` whose `file_path` resolves to the shared checkout, and both spellings of the path land on that same refused target, because a linked worktree reaches `.gaia/local` through one symlink to the main checkout. GAIA's own guard already allows these writes (`.claude/hooks/block-worktree-path-mismatch.sh` exempts main-anchored `.gaia/local` state by registry scope), so editing it will not lift the harness refusal sitting above it. Write both files with `Bash` at their main-checkout absolute paths instead, then read each back and confirm both its content and its location before continuing. The read-back is what makes this fallback safe rather than a dodge, since the failure the discipline exists to prevent is a write landing in the wrong tree. Keep the fallback scoped to these two main-anchored files: a `Bash` redirect is never the way to write into another checkout where the edit tools already work. `.claude/skills/gaia/references/spec.md` states the parallel rule for main-anchored SPEC-folder writes, in its Operational primitives; a change to the harness behavior here needs the same change there.
 
-    - **RUNNING sentinel.** Immediately after the pre-flight isolation above (the feature branch is cut, or the worktree is entered), write a sentinel file at `{PLAN_DIR}/RUNNING`, per the tool-choice contract in the pre-flight isolation bullet above. Content:
+    - **RUNNING sentinel.** Immediately after the pre-flight isolation above (the feature branch is cut, or the worktree is entered and its branch renamed to the canonical name by the isolation reference, so `branch:` records the canonical name), write a sentinel file at `{PLAN_DIR}/RUNNING`, per the tool-choice contract in the pre-flight isolation bullet above. Content:
 
       ```
-      branch: <the isolation branch: git branch --show-current now that pre-flight cut the branch / entered the worktree>
+      branch: <the isolation branch's canonical name, as `git branch --show-current` prints it now that pre-flight cut the branch / entered the worktree and renamed it>
       slug: <basename of {PLAN_DIR}>
       started: <current UTC time, ISO 8601, e.g. 2026-05-19T14:32:00Z>
       mode: <the RESOLVED_MODE the isolation reference exported: feature-branch or worktree>
@@ -313,7 +313,8 @@ Then write the following files directly to `{PLAN_DIR}/`:
       1. Confirm merge via `gh pr view <N> --json state`. Parse the JSON; require `.state == "MERGED"`. If not merged, do NOT proceed, surface to user and stop.
       2. **Isolation-context check (see next bullet).** If the orchestrator is running inside an isolated subagent context, emit a continuation prompt and STOP, do NOT call `ExitWorktree`.
       3. Otherwise, call `ExitWorktree({action: "remove", discard_changes: true})` directly. `discard_changes: true` is safe and correct: a squash-merge absorbs every commit on the worktree branch, but those commits are not reachable as ancestors of `main`. Without `discard_changes: true` the runtime conservatively refuses, treating the unreachable commits as unsynced work. The merged-state confirmation in step 1 proves the work is preserved.
-      4. Report a one-line success: `worktree discarded; PR #<N> squash-merged as <short-sha>`.
+      4. Delete the renamed branch as `.claude/skills/gaia/references/isolation.md` (`### Post-merge removal`) prescribes.
+      5. Report a one-line success: `worktree discarded; PR #<N> squash-merged as <short-sha>`.
 
       Never call `ExitWorktree` first and treat its refusal as the trigger for the discard retry, that's the backstop pattern this section replaces. The merged-state confirmation is the primary signal source.
 
@@ -328,7 +329,7 @@ Then write the following files directly to `{PLAN_DIR}/`:
           <ABSOLUTE-PATH-TO-MAIN-CHECKOUT>, run:
 
               git worktree remove --force <ABSOLUTE-PATH-TO-WORKTREE>
-              git branch -D <branch-name>   # only if the merge did not already delete it
+              git branch -D <branch-name>   # if it still exists
 
       Do not emit an `ExitWorktree({...})` call in this continuation prompt. `ExitWorktree` only operates on a worktree created by `EnterWorktree` in the current session: from a fresh session it is a no-op on a prior-session worktree, and its schema requires `action` and rejects a `worktree` parameter. A plain `git worktree remove --force` is the correct session-independent cleanup. No error surfaces, no `ExitWorktree` invocation happens in this branch, and the user pastes the shell commands into any terminal to complete the cleanup without further investigation.
 
@@ -352,10 +353,10 @@ Before returning, delete `{PLAN_DIR}/.work/` if you created it. Use the literal 
 
 ### 4.5. Verify the planner's output
 
-After the planner returns, confirm the required artifacts exist (and warn on any surviving scratch):
+After the planner returns, read the checkout root with one plain command (`git rev-parse --show-toplevel`; a command substitution around `git` is refused inside a worktree) and carry the printed path as `ROOT`. Then confirm the required artifacts exist (and warn on any surviving scratch):
 
 ```bash
-ROOT="$(git rev-parse --show-toplevel)"
+ROOT=<printed checkout root>
 PLAN_REL="${PLAN_DIR#"$ROOT/"}"
 # The planner deletes its own .work/ before returning; this is a verify-only
 # backstop. If scratch survived (e.g. the planner crashed mid-run), warn instead

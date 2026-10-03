@@ -115,7 +115,7 @@ Classify each surviving finding as fixable or unfixable. A finding is fixable wh
 Before applying the first fix, create and switch to a new branch:
 
 ```bash
-BRANCH="$(bash .gaia/scripts/branch-name-lib.sh name chore gaia-fitness)"
+BRANCH="$(bash .gaia/scripts/branch-name-lib.sh name fitness)"
 git -C "$PROJECT_ROOT" checkout -b "$BRANCH"
 ```
 

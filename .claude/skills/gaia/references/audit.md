@@ -593,7 +593,7 @@ Otherwise the working tree carries the applied `wiki/` / `.claude/` / `CLAUDE.md
 1. **Cut a branch** (the uncommitted applied changes carry over):
 
    ```bash
-   git checkout -b "$(bash .gaia/scripts/branch-name-lib.sh name chore knowledge-audit)"
+   git checkout -b "$(bash .gaia/scripts/branch-name-lib.sh name audit)"
    ```
 
 2. **Commit.** `.gaia/local/` is gitignored, so `git add -A` never sweeps in the report; memory edits are outside the repo. Route the message through a file, never `-m`, so package/keyword text can't trip a shell hook:

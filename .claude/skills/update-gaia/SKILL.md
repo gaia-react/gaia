@@ -148,7 +148,7 @@ On `Abort`, exit cleanly with no filesystem changes.
 If `SHOULD_CREATE_BRANCH=true`, create and switch to the branch now that the user has confirmed:
 
 ```bash
-git checkout -b "$(bash .gaia/scripts/branch-name-lib.sh name chore update-gaia)"
+git checkout -b "$(bash .gaia/scripts/branch-name-lib.sh name update "$LATEST_TAG")"
 ```
 
 Otherwise stay on the current branch.

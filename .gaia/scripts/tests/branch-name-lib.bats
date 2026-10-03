@@ -10,11 +10,13 @@
 #   4. the retired spellings no longer classify as GAIA work
 #   5. members and spec-number, the two readers built on the table
 #   6. minting: every kind, its argument errors, and the 64-byte cap
-#   7. round trip: every minted name reads back as its own kind
+#   7. round trip: every minted name reads back as its own kind and validates
 #   8. branch listing across local and remote-tracking refs, fail-open on an
 #      unreadable ref store
 #   9. lockstep: the kinds minted outside bash still carry the table's prefix
 #  10. no creation site spells a GAIA branch literal instead of minting it
+#  11. validate: what it accepts, what it refuses, and that it never fails open
+#  12. every `name <kind>` call in the instruction surface mints
 #
 # Run under bash 5 (.claude/rules/bats-assertions.md):
 #   source .gaia/scripts/bats5.sh && bats5 .gaia/scripts/tests/branch-name-lib.bats
@@ -81,9 +83,20 @@ worktree_spelling() {
     "plan/spec-005|plan SPEC-005" \
     "plan/plan-012-execution|plan plan-012" \
     "plan/cards-layout|plan unknown" \
-    "chore/update-deps-2026-09-20-1200|maintenance update-deps-2026-09-20-1200" \
+    "audit/2026-10-03-1200|maintenance 2026-10-03-1200" \
+    "harden/2026-10-03-1200|maintenance 2026-10-03-1200" \
+    "fitness/2026-10-03-1200|maintenance 2026-10-03-1200" \
+    "residue/2026-10-03-1200|maintenance 2026-10-03-1200" \
+    "deps/2026-10-03-1200|maintenance 2026-10-03-1200" \
+    "update/v2.0.0-2026-10-03-1200|maintenance v2.0.0-2026-10-03-1200" \
     "release/v1.4.0|maintenance v1.4.0" \
+    "wiki/sync-2026-09-20-abc1234|maintenance sync-2026-09-20-abc1234" \
+    "forensics/123-some-class|maintenance 123-some-class" \
+    "chore/update-deps-2026-09-20-1200|maintenance update-deps-2026-09-20-1200" \
     "wiki-sync/2026-09-20-abc1234|maintenance 2026-09-20-abc1234" \
+    "chore/fix-typo|adhoc unknown" \
+    "wiki/notes|adhoc unknown" \
+    "wiki/2026-10-03-14-30|adhoc unknown" \
     "main|adhoc unknown" \
     "fix/some-thing|adhoc unknown" \
     "feat/new-thing|adhoc unknown" \
@@ -115,7 +128,7 @@ worktree_spelling() {
 
 @test "retired spellings classify as adhoc: GAIA no longer mints them" {
   local branch
-  for branch in spec-005-cards plan-012 chore-deps harden/marker harden-marker audit-roster; do
+  for branch in spec-005-cards plan-012 chore-deps harden-marker audit-roster; do
     expect_classify "$branch" "adhoc unknown"
   done
 }
@@ -152,10 +165,39 @@ worktree_spelling() {
   [ "$(gaia_branch_name release 2.0.0-rc.1)" = "release/v2.0.0-rc.1" ]
 }
 
-@test "name: chore appends a UTC minute stamp" {
-  run gaia_branch_name chore "Update deps"
+@test "name: each argument-free maintenance kind appends a UTC minute stamp" {
+  local kind
+  for kind in audit harden fitness residue deps; do
+    run --separate-stderr gaia_branch_name "$kind"
+    [ "$status" -eq 0 ] || { echo "kind '$kind': status $status" >&2; return 1; }
+    grep -qE "^${kind}/[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{4}\$" <<<"$output" || {
+      echo "kind '$kind': minted '$output'" >&2
+      return 1
+    }
+  done
+}
+
+@test "name: update mints the version and a UTC minute stamp, with or without the leading v" {
+  run gaia_branch_name update v2.0.0
   [ "$status" -eq 0 ]
-  grep -qE '^chore/update-deps-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{4}$' <<<"$output"
+  grep -qE '^update/v2\.0\.0-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{4}$' <<<"$output"
+  run gaia_branch_name update 2.0.0
+  [ "$status" -eq 0 ]
+  grep -qE '^update/v2\.0\.0-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{4}$' <<<"$output"
+}
+
+@test "name: update without a version exits 2" {
+  run --separate-stderr gaia_branch_name update ''
+  [ "$status" -eq 2 ]
+  [ -z "$output" ]
+  grep -qF 'gaia_branch_name:' <<<"$stderr"
+}
+
+@test "name: the retired chore kind exits 2 as an unknown kind with nothing on stdout" {
+  run --separate-stderr gaia_branch_name chore x
+  [ "$status" -eq 2 ]
+  [ -z "$output" ]
+  grep -qF 'unknown kind' <<<"$stderr"
 }
 
 @test "name: a long slug is cut to keep the name within 64 bytes, never ending in a dash" {
@@ -170,8 +212,8 @@ worktree_spelling() {
 @test "name: every minted name is a valid EnterWorktree name" {
   local minted_name
   for minted_name in "$(gaia_branch_name debt 1 --slug "a b")" "$(gaia_branch_name debt 3 1 2)" \
-    "$(gaia_branch_name plan spec-9 --slug z)" "$(gaia_branch_name chore t)" \
-    "$(gaia_branch_name release 1.0.0)"; do
+    "$(gaia_branch_name plan spec-9 --slug z)" "$(gaia_branch_name deps)" \
+    "$(gaia_branch_name update v1.0.0)" "$(gaia_branch_name release 1.0.0)"; do
     [ "${#minted_name}" -le 64 ]
     grep -qE '^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$' <<<"$minted_name"
   done
@@ -180,7 +222,8 @@ worktree_spelling() {
 @test "name: a bad argument exits 2 with nothing on stdout and a reason on stderr" {
   local args
   for args in "" "bogus" "debt" "debt abc" "debt 1 --slug" "plan" "plan spec-x" \
-    "plan feat-1" "plan spec-1 extra" "chore" "chore !!!" "release" "release 1.0+b"; do
+    "plan feat-1" "plan spec-1 extra" "chore" "chore x" "audit extra" "harden extra" "fitness extra" \
+    "residue extra" "deps extra" "update" "update 1.0+b" "release" "release 1.0+b"; do
     # shellcheck disable=SC2086
     run --separate-stderr gaia_branch_name $args
     [ "$status" -eq 2 ] || { echo "args '$args': status $status" >&2; return 1; }
@@ -212,8 +255,14 @@ worktree_spelling() {
     expect_classify "$name" "$want"
     expect_classify "$(worktree_spelling "$name")" "$want"
   done
-  name="$(gaia_branch_name chore update-deps)"
-  [ "$(gaia_branch_classify "$(worktree_spelling "$name")" | cut -d' ' -f1)" = "maintenance" ]
+  local kind
+  for kind in audit harden fitness residue deps "update v2.0.0"; do
+    # shellcheck disable=SC2086
+    name="$(gaia_branch_name $kind)"
+    [ "$(gaia_branch_classify "$name" | cut -d' ' -f1)" = "maintenance" ]
+    [ "$(gaia_branch_classify "$(worktree_spelling "$name")" | cut -d' ' -f1)" = "maintenance" ]
+    gaia_branch_validate "$name"
+  done
 }
 
 # ========== 8. listing and ref readability ==========
@@ -259,10 +308,75 @@ corrupt_packed_refs() {
 
 # ========== 9. lockstep with the kinds minted outside bash ==========
 
-@test "lockstep: the CLI still mints wiki-sync/" {
-  grep -qF "const WIKI_CHAIN_BRANCH_PREFIX = 'wiki-sync/';" "$REPO_ROOT/.gaia/cli/src/wiki/chain.ts"
-  grep -qF 'const branchName = `wiki-sync/${' "$REPO_ROOT/.gaia/cli/src/wiki/sync-land.ts"
-  expect_classify "wiki-sync/2026-09-20-abc1234" "maintenance 2026-09-20-abc1234"
+# quoted_prefix <file> <anchor-regex>: the text between the opening quote of the
+# first matching line's literal and either the closing quote or the first `${`.
+chain_prefix() {
+  sed -nE "s/^const WIKI_CHAIN_BRANCH_PREFIX = '([^']*)';\$/\\1/p" "$1"
+}
+
+land_prefix() {
+  sed -nE 's/^[[:space:]]*const branchName = `([^$`]*)\$\{.*$/\1/p' "$1"
+}
+
+forensics_prefix() {
+  sed -nE 's/^[[:space:]]*branch="([^$"]*)\$\{ISSUE_NUMBER\}.*$/\1/p' "$1"
+}
+
+# prefix_conforms <prefix> <sample-suffix>: 0 when a name minted under <prefix>
+# classifies maintenance and validates, the two readers CI and the usage ledger
+# trust.
+prefix_conforms() {
+  local sample="$1$2" classified
+  [ -n "$1" ] || return 1
+  classified="$(gaia_branch_classify "$sample")"
+  [ "${classified%% *}" = "maintenance" ] || return 1
+  gaia_branch_validate "$sample" 2>/dev/null
+}
+
+@test "lockstep: the CLI wiki chain and sync-land mint one prefix, and it classifies and validates" {
+  local chain_value land_value
+  chain_value="$(chain_prefix "$REPO_ROOT/.gaia/cli/src/wiki/chain.ts")"
+  land_value="$(land_prefix "$REPO_ROOT/.gaia/cli/src/wiki/sync-land.ts")"
+  [ -n "$chain_value" ]
+  [ "$chain_value" = "$land_value" ] || {
+    printf 'chain.ts mints %s, sync-land.ts mints %s\n' "$chain_value" "$land_value" >&2
+    return 1
+  }
+  prefix_conforms "$chain_value" "2026-09-20-abc1234"
+  expect_classify "${chain_value}2026-09-20-abc1234" "maintenance sync-2026-09-20-abc1234"
+}
+
+@test "the wiki lockstep can fail: a source file with a different prefix literal is reported" {
+  local scratch_chain="$BATS_TEST_TMPDIR/chain.ts" scratch_land="$BATS_TEST_TMPDIR/sync-land.ts"
+  sed "s#WIKI_CHAIN_BRANCH_PREFIX = 'wiki/sync-'#WIKI_CHAIN_BRANCH_PREFIX = 'wiki-chain/'#" \
+    "$REPO_ROOT/.gaia/cli/src/wiki/chain.ts" >"$scratch_chain"
+  sed 's#const branchName = `wiki/sync-#const branchName = `wiki-land/#' \
+    "$REPO_ROOT/.gaia/cli/src/wiki/sync-land.ts" >"$scratch_land"
+  [ "$(chain_prefix "$scratch_chain")" = "wiki-chain/" ]
+  [ "$(land_prefix "$scratch_land")" = "wiki-land/" ]
+  [ "$(chain_prefix "$scratch_chain")" != "$(land_prefix "$scratch_land")" ]
+  # A prefix the table does not know is refused by the same helper the real
+  # lockstep calls.
+  prefix_conforms "wiki-chain/" "2026-09-20-abc1234" && return 1
+  true
+}
+
+@test "lockstep: forensics-triage.yml mints forensics/<issue>-<class>, and it classifies and validates" {
+  local prefix
+  prefix="$(forensics_prefix "$REPO_ROOT/.github/workflows/forensics-triage.yml")"
+  [ "$prefix" = "forensics/" ]
+  prefix_conforms "$prefix" "123-some-class"
+  expect_classify "${prefix}123-some-class" "maintenance 123-some-class"
+}
+
+@test "the forensics lockstep can fail: a workflow with a different prefix literal is reported" {
+  local scratch_workflow="$BATS_TEST_TMPDIR/forensics-triage.yml" prefix
+  sed 's#branch="forensics/\${ISSUE_NUMBER}#branch="forensic-fix/${ISSUE_NUMBER}#' \
+    "$REPO_ROOT/.github/workflows/forensics-triage.yml" >"$scratch_workflow"
+  prefix="$(forensics_prefix "$scratch_workflow")"
+  [ "$prefix" = "forensic-fix/" ]
+  prefix_conforms "$prefix" "123-some-class" && return 1
+  true
 }
 
 # The prefix is built at runtime so no removed-layer literal lands in the tree.
@@ -277,8 +391,8 @@ corrupt_packed_refs() {
   local prefix scratch_library
   prefix="$(printf 'gaia%sci' -)"
   scratch_library="$BATS_TEST_TMPDIR/branch-name-lib-old-arm.sh"
-  sed "s#wiki-sync/\*)#wiki-sync/* | $prefix/*)#" "$LIBRARY" > "$scratch_library"
-  grep -qF -- "$prefix/*)" "$scratch_library"
+  sed 's#wiki-sync/\* \\$#wiki-sync/* | PREFIX/* \\#' "$LIBRARY" | sed "s#PREFIX#$prefix#" > "$scratch_library"
+  grep -qF -- "| $prefix/* " "$scratch_library"
   run bash -c ". '$scratch_library' && gaia_branch_classify '$prefix/t/x'"
   [ "$status" -eq 0 ]
   [ "$output" = "maintenance t/x" ]
@@ -290,7 +404,7 @@ corrupt_packed_refs() {
 # hands git or the harness a hand-spelled GAIA branch name. One definition, so
 # the guard and its can-fail twin below read exactly the same patterns.
 literal_hits() {
-  local kinds='(debt|plan|chore|release|spec|harden|audit)[-/]'
+  local kinds='(debt|plan|chore|release|spec|harden|audit|fitness|residue|deps|update|forensics|wiki/sync)[-/]'
   git -C "$1" grep -nE \
     -e "(checkout -b|switch -c|branch -[mM]|worktree add( [^ ]+)* -[bB]) +\"?${kinds}" \
     -e 'BRANCH="(debt|plan|chore|release)/' \
@@ -321,15 +435,227 @@ literal_hits() {
     'BRANCH="release/v1"' \
     'EnterWorktree({name: "debt/2-y"})' \
     'git checkout -b "$BRANCH"' \
-    'EnterWorktree({name: "<branch-name>"})' >"$repo/.claude/x.md"
+    'EnterWorktree({name: "<branch-name>"})' \
+    'git checkout -b deps/2026-01-01-0000' \
+    'git checkout -b update/v1' >"$repo/.claude/x.md"
   git -C "$repo" add .claude/x.md
   hits="$(literal_hits "$repo")"
-  for line in 1 2 3 4 5; do
+  for line in 1 2 3 4 5 8 9; do
     grep -qF ".claude/x.md:$line:" <<<"$hits" || { echo "line $line not reported" >&2; return 1; }
   done
   # The minted and placeholder forms are the correct spellings, never hits.
   grep -qE '\.claude/x\.md:(6|7):' <<<"$hits" && return 1
   true
+}
+
+# ========== 11. validate ==========
+
+# shared_types: the `types` of .gaia/conventional-commits.json, one per line.
+shared_types() {
+  jq -r '.types[]' "$REPO_ROOT/.gaia/conventional-commits.json"
+}
+
+# expect_valid <branch>
+expect_valid() {
+  run --separate-stderr gaia_branch_validate "$1"
+  [ "$status" -eq 0 ] || {
+    printf "validate '%s': status %s, stderr '%s'\n" "$1" "$status" "$stderr" >&2
+    return 1
+  }
+}
+
+# expect_invalid <branch>: exit 1 with exactly one non-empty stderr line.
+expect_invalid() {
+  run --separate-stderr gaia_branch_validate "$1"
+  [ "$status" -eq 1 ] || {
+    printf "validate '%s': status %s, want 1\n" "$1" "$status" >&2
+    return 1
+  }
+  [ -n "$stderr" ] || { printf "validate '%s': empty stderr\n" "$1" >&2; return 1; }
+  [ "$(printf '%s\n' "$stderr" | wc -l | tr -d ' ')" -eq 1 ] || {
+    printf "validate '%s': stderr is not one line: %s\n" "$1" "$stderr" >&2
+    return 1
+  }
+}
+
+@test "validate accepts one canonical example per workflow kind" {
+  local branch
+  for branch in debt/42-fix-it debt/41-42-47-batch plan/spec-005-cards plan/plan-023-naming \
+    audit/2026-10-03-1200 harden/2026-10-03-1200 fitness/2026-10-03-1200 residue/2026-10-03-1200 \
+    deps/2026-10-03-1200 update/v2.0.0-2026-10-03-1200 release/v2.0.0 \
+    wiki/sync-2026-09-20-abc1234 forensics/123-some-class; do
+    expect_valid "$branch"
+  done
+}
+
+@test "validate accepts every name the library mints" {
+  local branch
+  for branch in "$(gaia_branch_name debt 2159 --slug "reconcile claim")" "$(gaia_branch_name debt 3 1 2)" \
+    "$(gaia_branch_name plan plan-023 --slug naming)" "$(gaia_branch_name audit)" "$(gaia_branch_name harden)" \
+    "$(gaia_branch_name fitness)" "$(gaia_branch_name residue)" "$(gaia_branch_name deps)" \
+    "$(gaia_branch_name update v2.0.0)" "$(gaia_branch_name release 2.0.0)"; do
+    expect_valid "$branch"
+  done
+}
+
+@test "validate accepts <type>/<issue>-<slug> and <type>/<slug> for every shared commit type" {
+  local type checked=0 expected
+  expected="$(jq '.types | length' "$REPO_ROOT/.gaia/conventional-commits.json")"
+  while IFS= read -r type; do
+    expect_valid "$type/123-some-slug"
+    expect_valid "$type/some-slug"
+    checked=$((checked + 1))
+  done < <(shared_types)
+  [ "$expected" -gt 0 ]
+  [ "$checked" -eq "$expected" ]
+}
+
+@test "validate accepts a mixed-case release version, a dependabot branch, and a legacy-style chore slug" {
+  expect_valid release/v2.0.0-RC.1
+  expect_valid update/v2.0.0-RC.1-2026-10-03-1200
+  expect_valid dependabot/npm_and_yarn/Foo-1.2.3
+  expect_valid chore/fix-typo
+  expect_valid chore/update-deps-2026-09-20-1200
+}
+
+@test "validate refuses every malformed name with one stderr line and exit 1" {
+  local long branch
+  long="fix/$(printf 'a%.0s' $(seq 61))"
+  [ "${#long}" -eq 65 ]
+  for branch in feature/x Feat/x fix/x_y fix/ fix/-x fix/x- fix/a/b "$long" wiki-sync/2026-09-20-abc1234 \
+    debt main 'debt(x)/y' '' fix/a..b fix/x.lock; do
+    expect_invalid "$branch"
+  done
+}
+
+@test "validate accepts the 64-byte boundary" {
+  local exact
+  exact="fix/$(printf 'a%.0s' $(seq 60))"
+  [ "${#exact}" -eq 64 ]
+  expect_valid "$exact"
+}
+
+@test "validate names the canonical name and the rename for a worktree spelling" {
+  run --separate-stderr gaia_branch_validate worktree-plan+plan-023-x
+  [ "$status" -eq 1 ]
+  grep -qF 'plan/plan-023-x' <<<"$stderr"
+  grep -qF 'branch -m' <<<"$stderr"
+}
+
+@test "validate accepts debt/<n>-slug though debt is not a commit type" {
+  jq -e '.types | index("debt") | not' "$REPO_ROOT/.gaia/conventional-commits.json" >/dev/null
+  expect_valid debt/2159-slug
+}
+
+# scratch_library <directory>: a copy of the library at <directory>/.gaia/scripts
+# with the shared types file beside it, the layout validate reads relative to
+# its own location.
+scratch_library() {
+  mkdir -p "$1/.gaia/scripts"
+  cp "$LIBRARY" "$1/.gaia/scripts/branch-name-lib.sh"
+  cp "$REPO_ROOT/.gaia/conventional-commits.json" "$1/.gaia/conventional-commits.json"
+}
+
+# validate_in <directory> <branch>: validate through the copy under <directory>.
+validate_in() {
+  run --separate-stderr bash -c ". '$1/.gaia/scripts/branch-name-lib.sh' && gaia_branch_validate '$2'"
+}
+
+@test "validate cannot decide when jq is missing: exit 2, never 0" {
+  local bin="$BATS_TEST_TMPDIR/bin-without-jq"
+  mkdir -p "$bin"
+  ln -s "$(command -v git)" "$bin/git"
+  run --separate-stderr env PATH="$bin" "$BASH" -c ". '$LIBRARY' && gaia_branch_validate fix/x"
+  [ "$status" -eq 2 ]
+  [ -z "$output" ]
+  grep -qF 'jq' <<<"$stderr"
+}
+
+@test "validate cannot decide when the shared types file is unreadable: exit 2, never 0" {
+  local directory="$BATS_TEST_TMPDIR/no-types"
+  scratch_library "$directory"
+  # Armed first: with the file present the same call is valid, so the 2 below
+  # comes from the missing file and not from the scratch layout.
+  validate_in "$directory" fix/x
+  [ "$status" -eq 0 ]
+  rm "$directory/.gaia/conventional-commits.json"
+  validate_in "$directory" fix/x
+  [ "$status" -eq 2 ]
+  [ -z "$output" ]
+  grep -qF 'cannot decide' <<<"$stderr"
+}
+
+@test "validate cannot decide when the shared types file holds no usable list" {
+  local directory="$BATS_TEST_TMPDIR/bad-types" content
+  scratch_library "$directory"
+  for content in '{"types": []}' '{"types": "fix"}' '{"legacyTypes": ["debt"]}' 'not json'; do
+    printf '%s' "$content" >"$directory/.gaia/conventional-commits.json"
+    validate_in "$directory" fix/x
+    [ "$status" -eq 2 ] || { echo "content '$content': status $status" >&2; return 1; }
+  done
+}
+
+@test "validate reads the type set from the JSON: a copy without fix refuses fix/x and still accepts feat/x" {
+  local directory="$BATS_TEST_TMPDIR/types-without-fix"
+  scratch_library "$directory"
+  jq 'del(.types[] | select(. == "fix"))' "$REPO_ROOT/.gaia/conventional-commits.json" >"$directory/.gaia/conventional-commits.json"
+  jq -e '.types | index("fix") | not' "$directory/.gaia/conventional-commits.json" >/dev/null
+  validate_in "$directory" fix/x
+  [ "$status" -eq 1 ]
+  [ -n "$stderr" ]
+  validate_in "$directory" feat/x
+  [ "$status" -eq 0 ]
+}
+
+# ========== 12. every `name <kind>` call mints ==========
+
+# name_call_kinds <repo>: every kind named by a tracked `branch-name-lib.sh name
+# <kind>` call under .claude and .specify, one per line, bats files excluded.
+name_call_kinds() {
+  git -C "$1" grep -hoE 'branch-name-lib\.sh name [a-z]+' -- .claude .specify ':!**/*.bats' \
+    | awk '{ print $3 }' | LC_ALL=C sort -u || true
+}
+
+# placeholder_arguments <kind>: arguments that satisfy the kind's own validation.
+placeholder_arguments() {
+  case "$1" in
+    debt) printf '1' ;;
+    plan) printf 'spec-001' ;;
+    release | update) printf '1.0.0' ;;
+  esac
+}
+
+# unmintable_kinds <repo>: the kinds a call names that the library refuses.
+unmintable_kinds() {
+  local kind
+  while IFS= read -r kind; do
+    [ -n "$kind" ] || continue
+    # shellcheck disable=SC2046
+    bash "$LIBRARY" name "$kind" $(placeholder_arguments "$kind") >/dev/null 2>&1 || printf '%s\n' "$kind"
+  done < <(name_call_kinds "$1")
+}
+
+@test "every branch-name-lib.sh name call in the instruction surface names a kind that mints" {
+  local kinds kind unmintable
+  kinds="$(name_call_kinds "$REPO_ROOT")"
+  # A short read would leave the loop green over a subset: every kind a bash
+  # flow mints must have been found.
+  for kind in debt plan release audit harden fitness residue deps update; do
+    grep -qx "$kind" <<<"$kinds" || { echo "no call site found for kind '$kind'" >&2; return 1; }
+  done
+  unmintable="$(unmintable_kinds "$REPO_ROOT")"
+  [ -z "$unmintable" ] || { printf 'calls name a kind the library refuses: %s\n' "$unmintable" >&2; return 1; }
+}
+
+@test "the call-site guard can fail: a planted name chore call is reported" {
+  local repo="$BATS_TEST_TMPDIR/planted-call"
+  mkdir -p "$repo/.claude"
+  git init -q "$repo"
+  printf '%s\n' 'bash .gaia/scripts/branch-name-lib.sh name chore x' \
+    'bash .gaia/scripts/branch-name-lib.sh name audit' >"$repo/.claude/x.md"
+  git -C "$repo" add .claude/x.md
+  [ "$(name_call_kinds "$repo" | tr '\n' ' ')" = "audit chore " ]
+  [ "$(unmintable_kinds "$repo")" = "chore" ]
 }
 
 # ========== structural hygiene ==========
@@ -339,4 +665,12 @@ literal_hits() {
   run zsh -c "source '$LIBRARY'; gaia_branch_classify worktree-debt+41-42-batch; gaia_branch_members worktree-debt+41-42-batch; gaia_branch_spec_number plan/spec-007-x"
   [ "$status" -eq 0 ]
   [ "$(printf '%s\n' "$output" | tr '\n' ' ')" = "drain 41-42 41 42 7 " ]
+}
+
+@test "portability: validate's data-free checks agree under zsh, where zsh exists" {
+  command -v zsh >/dev/null 2>&1 || skip "zsh not available"
+  local script="dependabot/a/b; echo \$?; gaia_branch_validate worktree-plan+plan-023-x 2>/dev/null; echo \$?; gaia_branch_validate Feat/x 2>/dev/null; echo \$?; gaia_branch_validate fix/a/b 2>/dev/null; echo \$?; gaia_branch_validate fix/-x 2>/dev/null; echo \$?"
+  run zsh -c "source '$LIBRARY'; gaia_branch_validate $script"
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s\n' "$output" | tr '\n' ' ')" = "0 1 1 1 1 " ]
 }
