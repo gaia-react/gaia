@@ -2,9 +2,12 @@
 # PreToolUse Edit/Write/MultiEdit + Bash/Monitor hook: deny Claude any write,
 # edit, move or delete of the audit loop gate inputs, and any execution of the
 # two audit loop recorders. The gate inputs are
-#   <main>/.gaia/local/audit-loop/                      state: history + allowance
+#   <main>/.gaia/local/protected/                       hook-only and human-only state
+#     protected/audit-loop/                             state: history + allowance
+#     protected/checkpoint-override.json                the per-machine override
 #   <main>/.gaia/local/cache/shared/context/            per-session context readings
-#   <main>/.gaia/local/checkpoint-override.json         the per-machine override
+# The protected folder is guarded as a whole, so a file added to it later is
+# protected by its placement, with no edit to this guard.
 #
 # WHY. The state directory holds each branch's audit history and its
 # human-granted allowance. Only audit-loop-bound.sh may write history, and only
@@ -25,23 +28,25 @@
 #   Edit / Write / MultiEdit: .tool_input.file_path is resolved physically (the
 #     deepest existing ancestor through `pwd -P`, `..` collapsed, the rest
 #     re-appended), so a linked worktree's `.gaia/local` symlink to the main
-#     checkout resolves to the real directory. Denied when the result lies
-#     inside <main>/.gaia/local/audit-loop/ or
-#     <main>/.gaia/local/cache/shared/context/, or equals
-#     <main>/.gaia/local/checkpoint-override.json (<main> from
+#     checkout resolves to the real directory. Denied when the result is
+#     <main>/.gaia/local/protected or lies inside it, or lies inside
+#     <main>/.gaia/local/cache/shared/context/ (<main> from
 #     gaia_resolve_main_root of the payload cwd), or when the literal path
 #     contains or ends in one of those spellings (catches a worktree spelling
-#     whose symlink target cannot be resolved). `.claude/settings.json`,
-#     `.claude/settings.local.json` and GAIA's writable opt-ins file
-#     `.gaia/local/settings.json` are not this guard's remit.
+#     whose symlink target cannot be resolved). A sibling inside the folder
+#     such as `protected/checkpoint-override.json.bak` is guarded; a sibling
+#     beside the folder such as `.gaia/local/protected-notes.md` is not.
+#     `.claude/settings.json`, `.claude/settings.local.json` and GAIA's
+#     writable opt-ins file `.gaia/local/settings.json` are not this guard's
+#     remit.
 #   Bash / Monitor: .tool_input.command. Cheap pre-filter first: allowed unless
-#     the payload contains `audit-loop`, `cache/shared/context` or
-#     `local/checkpoint-override.json`. For the state directory the command must
-#     name `.gaia/local/audit-loop` followed by a slash, a delimiter or the end
-#     of the command: a path segment that merely ends in `audit-loop` elsewhere
-#     (a worktree named like `spec-091-audit-loop`) does not arm it. The
+#     the payload contains `audit-loop`, `local/protected` or
+#     `cache/shared/context`. For the protected folder the command must name
+#     `.gaia/local/protected` followed by a slash, a delimiter or the end of
+#     the command: a path segment that merely starts with `protected` (a
+#     sibling such as `.gaia/local/protected-notes.md`) does not arm it. The
 #     command is read with its quotes grouped (single and double quotes, a
-#     backslash escape), and a command that names one of the three paths is
+#     backslash escape), and a command that names a guarded path is
 #     denied when a `>`, `>>`, `>|` or `>&` redirect TARGETS that path, or
 #     when a write, move or delete verb stands outside quotes: rm, mv, cp, tee,
 #     ln, install, dd, touch, truncate, chmod, rsync, unlink, shred, `sed -i`,
@@ -55,7 +60,8 @@
 #     variable, a substitution or a glob is not read that way, since its
 #     quoting or its target means something else there: it is denied on any
 #     redirect (a redirect to /dev/null or a descriptor duplication such as
-#     2>&1 is not one) or verb anywhere.
+#     2>&1 is not one) or verb anywhere. The deny message follows what the
+#     command writes: the audit loop state, the override, or the folder.
 #   Recorder execution: a command that EXECUTES audit-loop-grant.sh or
 #     audit-loop-ask-grant.sh is denied. The command is split on `;`, `&&`,
 #     `||`, `|`, `&`, `(`, `)`, backticks, `$(` and newlines; each simple
@@ -73,12 +79,23 @@
 # WHAT IS NOT COVERED (exotic spellings, outside the guarantee): a `cd` into a
 # guarded directory followed by relative names; `eval`, `bash -c`, `env`,
 # `timeout` and `xargs` wrappers, and a path held in a variable or built from a
-# command substitution, for any of the three paths and for the recorders; glob
-# spellings such as `.gaia/local/audit-*`; a verb joined to the path by quoting
+# command substitution, for any guarded path and for the recorders; glob
+# spellings such as `.gaia/local/prot*`; a verb joined to the path by quoting
 # tricks, or itself quoted (`'rm'`); `bash < <recorder>` and
 # `cat <recorder> | bash`; a recorder name inside a quoted string that the
-# split above cuts at a `;`, `|` or `&`; a symlink alias to a guarded path whose own path never names it (only a denied
-# `ln` could have made it); a context reading minted by a command that never
+# split above cuts at a `;`, `|` or `&`; case variants of a guarded path on a
+# case-insensitive filesystem (`.gaia/local/Protected`); an Edit/Write path or
+# a Bash command that reaches `protected/` without naming `local/protected` or
+# `audit-loop` anywhere in its spelling (a `..` hop such as
+# `.gaia/local/runs/../protected/x`, or a symlink alias whose own path names
+# neither): the raw pre-filter allows it before any resolution; a symlink alias
+# to `protected/` or into it whose own path never names it, and the two-hop
+# parent alias (an allowed `ln -s <main>/.gaia/local <elsewhere>`, which names
+# neither `.gaia/local/protected` nor `local/protected`, followed by a write
+# through `<elsewhere>/protected/...`, or a `mv` or `ln` through the alias),
+# since the `ln -s` that names the folder is denied but the parent alias is not;
+# `mkdir`, which is not a write verb, so creating the folder or a directory
+# inside it stays allowed; a context reading minted by a command that never
 # names the context directory, by running .gaia/statusline/gaia-statusline.sh
 # with a crafted stdin payload or by sourcing
 # .gaia/scripts/context-checkpoint-lib.sh and calling gaia_context_write, directly or
@@ -114,7 +131,7 @@ fi
 # contain `audit-loop`), so a payload without any is outside the remit with no
 # jq read at all. This is the path every ordinary Bash call takes.
 case "$payload" in
-  *audit-loop* | *cache/shared/context* | *local/checkpoint-override.json*) ;;
+  *audit-loop* | *local/protected* | *cache/shared/context*) ;;
   *) exit 0 ;;
 esac
 
@@ -127,22 +144,24 @@ if ! type gaia_require_jq >/dev/null 2>&1; then
   printf 'BLOCKED: block-audit-loop-write.sh cannot load lib/jq-availability.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
   exit 2
 fi
-gaia_require_jq 'the audit loop state guard' "$payload" tool_input 'audit-loop' 'cache/shared/context' 'local/checkpoint-override.json'
+gaia_require_jq 'the audit loop state guard' "$payload" tool_input 'audit-loop' 'local/protected' 'cache/shared/context'
 
 tool_name=$(jq -r '.tool_name // empty' <<<"$payload")
 
-DENY_STATE_MESSAGE="BLOCKED: block-audit-loop-write.sh: the audit loop state (<main>/.gaia/local/audit-loop/) is written only by the audit loop hooks. Claude never writes, edits, moves or deletes it. A human answers a checkpoint through the pinned AskUserQuestion, or by typing a whole prompt that is exactly the audit-grant <n> or audit-accept line (see wiki/concepts/PR Merge Workflow.md, #### The branch checkpoint). A corrupt state file is repaired by a human from a terminal outside Claude Code."
+DENY_STATE_MESSAGE="BLOCKED: block-audit-loop-write.sh: the audit loop state (<main>/.gaia/local/protected/audit-loop/) is written only by the audit loop hooks. Claude never writes, edits, moves or deletes it. A human answers a checkpoint through the pinned AskUserQuestion, or by typing a whole prompt that is exactly the audit-grant <n> or audit-accept line (see wiki/concepts/PR Merge Workflow.md, #### The branch checkpoint). A corrupt state file is repaired by a human from a terminal outside Claude Code."
 DENY_CONTEXT_MESSAGE="BLOCKED: block-audit-loop-write.sh: the context readings (<main>/.gaia/local/cache/shared/context/) are written by the statusline on each render, and the audit checkpoint trusts them. Claude never writes, edits, moves or deletes them. A human answers a checkpoint through the pinned AskUserQuestion, or by typing a whole prompt that is exactly the audit-grant <n> or audit-accept line (see wiki/concepts/PR Merge Workflow.md, #### The branch checkpoint)."
-DENY_OVERRIDE_MESSAGE="BLOCKED: block-audit-loop-write.sh: <main>/.gaia/local/checkpoint-override.json is the per-machine audit checkpoint override, and only a human edits the override, by hand from outside Claude Code. Claude never creates, writes, edits, moves or deletes it. GAIA's writable per-machine opt-ins live in <main>/.gaia/local/settings.json, which this guard does not cover. A human answers a checkpoint through the pinned AskUserQuestion, or by typing a whole prompt that is exactly the audit-grant <n> or audit-accept line (see wiki/concepts/PR Merge Workflow.md, #### The branch checkpoint)."
+DENY_OVERRIDE_MESSAGE="BLOCKED: block-audit-loop-write.sh: <main>/.gaia/local/protected/checkpoint-override.json is the per-machine audit checkpoint override, and only a human edits the override, by hand from outside Claude Code. Claude never creates, writes, edits, moves or deletes it. GAIA's writable per-machine opt-ins live in <main>/.gaia/local/settings.json, which this guard does not cover. A human answers a checkpoint through the pinned AskUserQuestion, or by typing a whole prompt that is exactly the audit-grant <n> or audit-accept line (see wiki/concepts/PR Merge Workflow.md, #### The branch checkpoint)."
+DENY_FOLDER_MESSAGE="BLOCKED: block-audit-loop-write.sh: <main>/.gaia/local/protected/ holds state the audit checkpoint trusts, and only hooks or a human write <main>/.gaia/local/protected/, by hand from a terminal outside Claude Code. Claude never creates, writes, edits, moves or deletes anything in it. A human answers a checkpoint through the pinned AskUserQuestion, or by typing a whole prompt that is exactly the audit-grant <n> or audit-accept line (see wiki/concepts/PR Merge Workflow.md, #### The branch checkpoint)."
 DENY_RECORDER_MESSAGE="BLOCKED: block-audit-loop-write.sh: audit-loop-grant.sh and audit-loop-ask-grant.sh run only as hooks. Claude never executes them from Bash or Monitor, because a piped payload would forge a checkpoint answer. A human answers a checkpoint through the pinned AskUserQuestion, or by typing a whole prompt that is exactly the audit-grant <n> or audit-accept line (see wiki/concepts/PR Merge Workflow.md, #### The branch checkpoint). Naming the files (git add, git diff, git grep -l, shellcheck, cat, bash -n) is allowed."
 DENY_BASH_TRIGGER="Trigger: the command names that path and either redirects into it or carries a write, move or delete verb (rm, mv, cp, tee, ln, touch, sed -i, an interpreter given -c or -e, and the like) outside quotes; in a command holding a heredoc, an unclosed quote, a command substitution inside double quotes, or a redirect target built from a variable or a glob, any redirect or such verb anywhere counts. A command that names the path only as quoted text and redirects elsewhere is allowed, so stage a note that mentions it with printf and a quoted string, no heredoc, or leave the literal path out of the command."
 
-# deny <state|context|override|recorder> [bash]
+# deny <state|override|folder|context|recorder> [bash]
 deny() {
   local message
   case "$1" in
     context) message="$DENY_CONTEXT_MESSAGE" ;;
     override) message="$DENY_OVERRIDE_MESSAGE" ;;
+    folder) message="$DENY_FOLDER_MESSAGE" ;;
     recorder) message="$DENY_RECORDER_MESSAGE" ;;
     *) message="$DENY_STATE_MESSAGE" ;;
   esac
@@ -157,15 +176,26 @@ deny() {
   exit 0
 }
 
+# protected_class <path> <folder>: print the class a path inside, or equal to,
+# the protected folder names. The audit loop state directory and the exact
+# override file name get their own message; every other occupant, a sibling
+# such as `protected/checkpoint-override.json.bak` included, is the folder.
+protected_class() {
+  case "$1" in
+    "$2/audit-loop" | "$2/audit-loop"/*) printf state ;;
+    "$2/checkpoint-override.json") printf override ;;
+    *) printf folder ;;
+  esac
+}
+
 # guarded_class <path>: print the guarded class a path spelling names, or
-# nothing. The override arm is an exact file name, so a sibling such as
-# `.gaia/local/checkpoint-override.json.bak` and the writable opt-ins file
-# `.gaia/local/settings.json` do not match.
+# nothing. The protected arm pairs the folder itself with its children, so a
+# sibling beside it such as `.gaia/local/protected-notes.md` and the writable
+# opt-ins file `.gaia/local/settings.json` do not match.
 guarded_class() {
   case "$1" in
-    */.gaia/local/audit-loop/* | */.gaia/local/audit-loop) printf state ;;
+    */.gaia/local/protected/* | */.gaia/local/protected) protected_class "$1" "${1%%/.gaia/local/protected*}/.gaia/local/protected" ;;
     */.gaia/local/cache/shared/context/* | */.gaia/local/cache/shared/context) printf context ;;
-    */.gaia/local/checkpoint-override.json) printf override ;;
   esac
 }
 
@@ -519,9 +549,8 @@ case "$tool_name" in
     fi
     if [ -n "$main_root" ]; then
       case "$resolved" in
-        "$main_root/.gaia/local/audit-loop" | "$main_root/.gaia/local/audit-loop"/*) deny state ;;
+        "$main_root/.gaia/local/protected" | "$main_root/.gaia/local/protected"/*) deny "$(protected_class "$resolved" "$main_root/.gaia/local/protected")" ;;
         "$main_root/.gaia/local/cache/shared/context" | "$main_root/.gaia/local/cache/shared/context"/*) deny context ;;
-        "$main_root/.gaia/local/checkpoint-override.json") deny override ;;
       esac
     fi
     # Resolved spelling that still names a guarded path (a symlinked checkout
@@ -538,18 +567,23 @@ case "$tool_name" in
     runs_recorder "$command_line" && deny recorder
 
     # Pre-filter per class: does the command name the path at all?
-    state_names_re='\.gaia/local/audit-loop(/|[[:space:]"'\'';|&)<>]|$)'
+    protected_names_re='\.gaia/local/protected(/|[[:space:]"'\'';|&)<>]|$)'
+    state_subpath_re='\.gaia/local/protected/audit-loop(/|[[:space:]"'\'';|&)<>]|$)'
+    override_subpath_re='\.gaia/local/protected/checkpoint-override\.json([[:space:]"'\'';|&)<>]|$)'
     context_names_re='\.gaia/local/cache/shared/context(/|[[:space:]"'\'';|&)<>]|$)'
-    override_names_re='\.gaia/local/checkpoint-override\.json([[:space:]"'\'';|&)<>]|$)'
     shell_scan "$command_line"
-    if [[ "$command_line" =~ $state_names_re ]] && writes_named "$command_line" "$state_names_re"; then
-      deny state bash
+    if [[ "$command_line" =~ $protected_names_re ]] && writes_named "$command_line" "$protected_names_re"; then
+      # The class follows what is written, not what is merely named.
+      if [[ "$command_line" =~ $state_subpath_re ]] && writes_named "$command_line" "$state_subpath_re"; then
+        deny state bash
+      fi
+      if [[ "$command_line" =~ $override_subpath_re ]] && writes_named "$command_line" "$override_subpath_re"; then
+        deny override bash
+      fi
+      deny folder bash
     fi
     if [[ "$command_line" =~ $context_names_re ]] && writes_named "$command_line" "$context_names_re"; then
       deny context bash
-    fi
-    if [[ "$command_line" =~ $override_names_re ]] && writes_named "$command_line" "$override_names_re"; then
-      deny override bash
     fi
     exit 0
     ;;

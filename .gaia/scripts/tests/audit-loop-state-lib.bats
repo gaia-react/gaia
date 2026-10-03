@@ -82,8 +82,8 @@ valid_state() {
   local first_path second_path
   first_path="$(gaia_loop_state_file /m a/b-c)"
   second_path="$(gaia_loop_state_file /m a-b/c)"
-  [ "$first_path" = "/m/.gaia/local/audit-loop/a/b-c.json" ]
-  [ "$second_path" = "/m/.gaia/local/audit-loop/a-b/c.json" ]
+  [ "$first_path" = "/m/.gaia/local/protected/audit-loop/a/b-c.json" ]
+  [ "$second_path" = "/m/.gaia/local/protected/audit-loop/a-b/c.json" ]
   [ "$first_path" != "$second_path" ]
 }
 

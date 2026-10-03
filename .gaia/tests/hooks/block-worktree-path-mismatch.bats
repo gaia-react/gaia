@@ -349,6 +349,47 @@ use_real_registry() {
   grep -qF -- "no entry in .gaia/state-registry.json recognizes it" <<<"$output" || return 1
 }
 
+# The protected folder is recognized as an ancestor of the two registered
+# rows, and its scope is not per-tree, so a linked worktree's write to a file
+# directly under it lands in main's copy and is allowed here. Refusing Claude's
+# write to it is block-audit-loop-write.sh's job, not this hook's.
+@test "a worktree-mode write to an unregistered file under the main checkout's protected folder is allowed (real registry)" {
+  make_repo
+  use_real_registry
+  make_worktree "feat/9-sample-c" "feat/9-sample-c"
+  mkdir -p "$REPO/.gaia/local/protected"
+  cd "$WORKTREE"
+  run_hook_edit "Write" "$REPO/.gaia/local/protected/new-state.json"
+  assert_allowed_by_json
+}
+
+@test "a worktree-mode write to the registered protected override file is allowed (real registry)" {
+  make_repo
+  use_real_registry
+  make_worktree "feat/9-sample-d" "feat/9-sample-d"
+  mkdir -p "$REPO/.gaia/local/protected"
+  cd "$WORKTREE"
+  run_hook_edit "Write" "$REPO/.gaia/local/protected/checkpoint-override.json"
+  assert_allowed_by_json
+}
+
+# Paired deny control for the two allows above: with both protected rows gone
+# the same write is denied, so the allow is the registry's recognition and not
+# a failed cd or a blanket allow.
+@test "a worktree-mode write under protected is denied once both protected rows are removed (real registry)" {
+  make_repo
+  use_real_registry
+  jq '.entries |= map(select(.id != "audit-loop-state" and .id != "checkpoint-override"))' \
+    "$REPO/.gaia/state-registry.json" >"$REPO/.gaia/state-registry.json.new"
+  mv "$REPO/.gaia/state-registry.json.new" "$REPO/.gaia/state-registry.json"
+  make_worktree "feat/9-sample-e" "feat/9-sample-e"
+  mkdir -p "$REPO/.gaia/local/protected"
+  cd "$WORKTREE"
+  run_hook_edit "Write" "$REPO/.gaia/local/protected/new-state.json"
+  assert_denied_by_json
+  grep -qF -- "no entry in .gaia/state-registry.json recognizes it" <<<"$output" || return 1
+}
+
 # The remaining symlinked dirs get the same coverage as audit/, so a future
 # narrowing of the exemption cannot silently drop one.
 @test "a write under the worktree's symlinked .gaia/local/debt is allowed" {

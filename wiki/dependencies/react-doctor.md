@@ -29,14 +29,16 @@ Verified against react-doctor 0.9.14, running `install --yes` from the root of t
 | `.claude/skills/react-doctor/` | kept: the Claude Code skill is the sole trigger point |
 | `.github/workflows/react-doctor.yml` | `rm -f .github/workflows/react-doctor.yml` |
 | `.agents/skills/react-doctor/` | `rm -rf .agents/skills/react-doctor`, then `rmdir` of the empty parents |
-| root `package.json` devDependency `react-doctor`, and `pnpm-lock.yaml` | `pnpm remove react-doctor --config.ignore-scripts=true` (root package, no `-w` needed) |
+| root `package.json` devDependency `react-doctor` | `pnpm remove react-doctor --config.ignore-scripts=true` (root package, no `-w` needed) |
 | root `package.json` script `doctor` | `pnpm pkg delete scripts.doctor 'scripts["react-doctor"]'` |
 | block between `# react-doctor hook start` and `# react-doctor hook end` in the file `core.hooksPath` names (`.githooks/pre-commit`) | an `awk` pass deletes the block in place, then `git config core.hooksPath .githooks` re-arms the hook path |
+| `pnpm-lock.yaml` | a pre-install snapshot is copied back over it, then `pnpm install --frozen-lockfile --config.ignore-scripts=true` resyncs `node_modules` |
 
 Verdicts:
 
 - The installer targets the root `package.json`, not `frontend/package.json`, so every strip step runs from the repo root.
 - `pnpm remove` at the workspace root works without `-w` on GAIA's pinned pnpm.
+- `pnpm remove` does not return the lockfile to its pre-install state. The install resolves `oxlint` and `@opentelemetry/api` into optional peer slots of `@gaia-react/lint` and `vitest`, and those resolutions survive `pnpm remove`, `pnpm install`, and `pnpm dedupe`. Only restoring a snapshot taken before the install clears them, which is why the install runs inside the strip block.
 - The installer writes the CI workflow even under `--yes`.
 - GAIA never passes `--agent-hooks`. Without that flag `--yes` installs no agent hooks. With it the installer adds a Stop hook to `.claude/settings.json`, `.claude/hooks/react-doctor.mjs`, and Cursor hook files.
 - The `.agents/skills/` copy is written for many agents (Codex, Cursor, Gemini CLI, GitHub Copilot, OpenCode, Pi, Warp, and others), not only Copilot and Warp.

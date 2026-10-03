@@ -40,12 +40,12 @@
     },
     {
       "id": "checkpoint-override",
-      "path": "checkpoint-override.json",
+      "path": "protected/checkpoint-override.json",
       "match": "exact",
       "kind": "file",
       "scope": "shared",
       "keyed_by": "singleton per machine",
-      "why": "Machine-local, lower-only override of the audit checkpoint's context line. Hand-authored by a human; Claude tool writes to it are denied by block-audit-loop-write.sh.",
+      "why": "Machine-local, lower-only override of the audit checkpoint's context line. Lives in the protected folder and is hand-authored by a human; Claude tool writes to it are denied by block-audit-loop-write.sh.",
       "writer": "hand-authored",
       "reaped_by": null,
       "source": "SPEC-093 §state"
@@ -57,7 +57,7 @@
       "kind": "file",
       "scope": "shared",
       "keyed_by": "singleton per machine",
-      "why": "GAIA's per-machine opt-ins (the statusline left-side choice). Written by /setup-gaia and read by the statusline from every tree; not write-guarded, unlike checkpoint-override.json.",
+      "why": "GAIA's per-machine opt-ins (the statusline left-side choice). Written by /setup-gaia and read by the statusline from every tree; not write-guarded, unlike protected/checkpoint-override.json.",
       "writer": "code",
       "reaped_by": null,
       "source": "statusline left-side choice, added after the frozen classification"
@@ -412,12 +412,12 @@
     },
     {
       "id": "audit-loop-state",
-      "path": "audit-loop/",
+      "path": "protected/audit-loop/",
       "match": "prefix",
       "kind": "dir",
       "scope": "main-only",
       "keyed_by": null,
-      "why": "Per-branch audit loop history and allowance, resolved to main so every session, sub-agent, fork and linked worktree on the branch reads one record; written only by the audit loop hooks.",
+      "why": "Per-branch audit loop history and allowance, resolved to main so every session, sub-agent, fork and linked worktree on the branch reads one record. Lives in the protected folder; written only by the audit loop hooks.",
       "writer": "code",
       "reaped_by": null,
       "source": "SPEC-090 §State"

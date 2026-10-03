@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-07-01
-updated: 2026-08-02
+updated: 2026-10-04
 tags: [concept, claude, hooks]
 ---
 
@@ -20,9 +20,17 @@ A linked worktree's `.gaia/local` is a single symlink to the main checkout's `.g
 
 An `ephemeral` entry is consumed once and then orphaned; its owner is meant to prune it, and most such entries have no other backstop if the owner doesn't.
 
+## The protected folder
+
+`.gaia/local/protected/` holds state that only hooks or a human may write: the audit loop's per-branch history and allowance under `protected/audit-loop/`, and the machine-local checkpoint override at `protected/checkpoint-override.json`. The placement rule is one sentence: state that only hooks or a human may write lives in `.gaia/local/protected/`, and placing a file there protects it from Claude's tools by every spelling the guard covers. A new occupant still needs its own row in `.gaia/state-registry.json` to carry a scope.
+
+`block-audit-loop-write.sh` guards the folder as a whole by prefix, so a file added later is protected by where it sits, with no edit to the guard. The hook's header owns the covered and not-covered spellings. `mkdir` stays allowed, so creating the folder or a directory inside it is not a write. A human changes or removes anything in the folder from a terminal outside Claude Code.
+
 ## Machine-local settings
 
-`.gaia/local/checkpoint-override.json` is the one hand-edited file under `.gaia/local/`: a machine-local, lower-only override of the audit loop's context checkpoint line. It is not a `.gaia/project.json` key because teammates can run different models with different context windows, so the line is a per-machine choice (see [[Project Config]]). A value that would raise the line, or any invalid value, reads as the shipped default, and the file's fields and the default live in `.gaia/scripts/context-checkpoint-lib.sh`. Only a human edits it: `block-audit-loop-write.sh` denies Claude tool writes to it and to `cache/shared/context/`, the per-session context readings the statusline writes and the audit loop reads, which a session could otherwise forge to widen its own bound. It is a text guard over commands that name those paths, so a reading minted from Bash by running the statusline or `gaia_context_write` is outside it and stands until the next real render; the hook's header lists its limits.
+`.gaia/local/protected/checkpoint-override.json` is a machine-local, lower-only override of the audit loop's context checkpoint line, hand-edited by a human. It is not a `.gaia/project.json` key because teammates can run different models with different context windows, so the line is a per-machine choice (see [[Project Config]]). A value that would raise the line, or any invalid value, reads as the shipped default, and the file's fields and the default live in `.gaia/scripts/context-checkpoint-lib.sh`.
+
+The context readings under `cache/shared/context/` are guarded cache outside the protected folder: the statusline writes one per session and they are swept by age, and the audit loop reads them, so a session that could forge one would widen its own bound. The same guard denies Claude tool writes to that directory. It is a text guard over commands that name those paths, so a reading minted from Bash by running the statusline or `gaia_context_write` is outside it and stands until the next real render; the hook's header lists its limits.
 
 `.gaia/local/settings.json` is the other machine-local settings file, and the writable one: GAIA's per-machine opt-ins, `{"version":1,"statusline":{"left":"gaia"|"user"}}`. `/setup-gaia` writes it and the statusline reads it (see [[Claude Integration]]); no guard covers it, since nothing in it widens a bound.
 
@@ -36,7 +44,7 @@ The hook is fail-safe throughout. Every gate is cheap and local, `--ff-only` aga
 
 ## Deciding by hand
 
-Anything under `.gaia/local/` is safe to delete once its owner is done with it: a spent audit marker for an already-merged PR, a plan directory for a merged or abandoned branch, a `KNOWLEDGE-*.md` report already applied, a gate cache for a merged spec. The append-only ledgers (`red-ledger/observations.jsonl`, `worthiness-ledger/worthiness.jsonl`, `telemetry`), the identity files (`.project-id`, `setup-state.json`), and `.gaia/local/specs/ledger.json` (and the `specs/` store it lives in) are the load-bearing exceptions; deleting the ledger drops per-machine draft-resume state and the local half of SPEC-number allocation.
+Anything under `.gaia/local/` is safe to delete once its owner is done with it: a spent audit marker for an already-merged PR, a plan directory for a merged or abandoned branch, a `KNOWLEDGE-*.md` report already applied, a gate cache for a merged spec. The append-only ledgers (`red-ledger/observations.jsonl`, `worthiness-ledger/worthiness.jsonl`, `telemetry`), the identity files (`.project-id`, `setup-state.json`), and `.gaia/local/specs/ledger.json` (and the `specs/` store it lives in) are the load-bearing exceptions; deleting the ledger drops per-machine draft-resume state and the local half of SPEC-number allocation. `.gaia/local/protected/` is the other exception: Claude never deletes anything in it, and a human removes it from a terminal outside Claude Code.
 
 `.gaia/local/research/` is where GAIA looks for research; a write there binds the session's spend to it (see [[Usage Ledger]]). The state registry stays the source of truth for how each path is classified.
 
