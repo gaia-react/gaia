@@ -25,7 +25,7 @@ Code, comments, test names, user-facing strings, and prose never cite the projec
 
 ## Why
 
-These ids point at documents no other reader can open. A SPEC or plan lives under the gitignored `.gaia/local/` on the one machine that wrote it and is deleted when the plan is archived, so a teammate, a CI run, or an adopter meeting the id has nothing to follow. The ids are per-project working references: they get renumbered, superseded, or deleted, and an adopter's SPEC of the same number is a different document. An issue number adds nothing the change's history does not already record, and it stays behind after the reasoning it stood for has moved on.
+These ids point at documents no other reader can open. A SPEC or plan lives under the gitignored `.gaia/local/` on the one machine that wrote it and is deleted when the plan is archived, so a teammate, a CI run, or an adopter meeting the id has nothing to follow. The ids are per-project working references: they get renumbered, superseded, or deleted, and an adopter's SPEC of the same number is a different document. A reference to a closed or historical issue adds nothing the change's history does not already record, and it stays behind after the reasoning it stood for has moved on.
 
 The usual way one gets written is copying: a plan task doc cites the directive it honors, and the executor copies the citation into the file it edits. A directive id belongs in the plan, never in the files the plan changes.
 
@@ -34,6 +34,7 @@ The usual way one gets written is copying: a plan task doc cites the directive i
 - **Placeholders**: `SPEC-NNN`, `#<N>`, `Closes #<N>`, and illustrative `(e.g. SPEC-002)` examples in usage docs.
 - **Data, not references**: template format examples showing a SPEC's shape, fixture values (CLI args, JSON/YAML literals, URLs in test fixtures), regex targets that match SPEC structure, filename literals, and identifier fragments inside variable names (`uat_id`).
 - **An upstream third-party tracker** cited beside the platform quirk it documents (a dependency's own issue). It names a public, stable record outside this project.
+- **A pointer to an open tracking issue** in an operator-facing message (a refusal or error) that would otherwise leave the reader with no next step. Open work is not in git history, so the pointer carries information the history cannot; a test that pins the message keeps it.
 - **Generated provenance**: the `## References` and `## UAT references` blocks `.specify/extensions/gaia/commands/wiki-promote.md` writes onto a promoted wiki page.
 - **History ledgers**: `wiki/log.md`, `wiki/hot.md`, `wiki/meta/`, `CHANGELOG.md`, commit messages, and pull request bodies.
 <!-- gaia:maintainer-only:start -->
