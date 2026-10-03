@@ -143,7 +143,7 @@ if [ ! -e "$absolute_source_path" ]; then
   exit 0
 fi
 
-# ---------- derive representation-gate identity (FC-3) ----------
+# ---------- derive representation-gate identity ----------
 attribute_field=""
 attribute_value=""
 if [ "$kind" = "plans" ]; then
@@ -176,7 +176,7 @@ if [ "$kind" = "plans" ] && [ "$attribute_field" = "plan_id" ]; then
     >/dev/null 2>&1 || true
 fi
 
-# ---------- representation gate (FC-3) ----------
+# ---------- representation gate ----------
 # shellcheck source=.gaia/scripts/ledger-path-lib.sh
 . "$root/.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
 # shellcheck source=.gaia/scripts/cost-represented.sh

@@ -73,7 +73,7 @@ _audit_sha256_hex() {
 
 # audit_digests_all <root> [<git_reference>]
 #
-# The single-walk / single-classify batch form (directive PERF-001). Prints one
+# The single-walk / single-classify batch form. Prints one
 # `<member>\t<digest>` line per roster member (the default member and every
 # specialist audit_scope_init populated). Fail-closed conditions emit NOTHING
 # and return non-zero, atomically (never some members and not others).

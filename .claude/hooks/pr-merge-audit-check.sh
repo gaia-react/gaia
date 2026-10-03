@@ -376,8 +376,8 @@ if ! audit_scope_init "$tree_root" 2>/dev/null; then
   exit 0
 fi
 
-# Compute every roster member's content digest in ONE walk (directive
-# PERF-001): audit_digests_all parses the roster, walks the tree once, and
+# Compute every roster member's content digest in ONE walk:
+# audit_digests_all parses the roster, walks the tree once, and
 # classifies every path once, emitting "<member>\t<digest>" per member. This
 # is the sole validity-key derive point for every marker check below,
 # replacing the single HEAD^{tree} marker key. Fail closed: a missing sha256
@@ -428,7 +428,7 @@ frontend_digest="$(member_digest code-audit-frontend)" || frontend_digest=""
 marker="$root/.gaia/local/audit/${frontend_digest}.ok"
 
 # A refusal for the frontend's CURRENT digest is checked before any earned
-# signal and is absolute (C6): denies regardless of a same-digest earned
+# signal and is absolute: denies regardless of a same-digest earned
 # marker. Computed once so both the legacy and member-aware deny paths (and
 # frontend_cleared() below) see the same value without re-querying per call.
 frontend_refused=0
@@ -460,7 +460,7 @@ marker_state() {
 # Each check is a self-contained function so frontend_cleared() below can
 # reuse it from both the legacy gate and the member-aware gate.
 
-# The C3 shared trailer regex (POSIX ERE): version, 64-hex frontend digest,
+# The shared trailer regex (POSIX ERE): version, 64-hex frontend digest,
 # 40-hex tree, in that order after the colon. $1=version, $2=digest, $3=tree.
 GAIA_AUDIT_TRAILER_REGEX='^GAIA-Audit:[[:space:]]+([^[:space:]]+)[[:space:]]+([0-9a-f]{64})[[:space:]]+([0-9a-f]{40})[[:space:]]*$'
 
@@ -479,7 +479,7 @@ _gate_current_version() {
 # Trailer fallback: accept a GAIA-Audit trailer on HEAD when its version and
 # frontend-digest fields both match. The trailer format (per
 # audit-stamp-trailer.sh) is "GAIA-Audit: <version> <frontend-digest> <tree>",
-# parsed via the C3 shared regex above; the tree field is data only and is
+# parsed via the shared regex above; the tree field is data only and is
 # never compared. Sets $trailer_status for the deny reason regardless of
 # outcome.
 check_trailer() {
@@ -509,7 +509,7 @@ check_trailer() {
 # commit status off a member marker, which carries a clearance earned on one
 # machine to a merge run on another. Query the API for a matching status on
 # HEAD. The status must be state: success; its description shape is
-# "<version> <frontend-digest> <tree>" (C3), and version + digest must both
+# "<version> <frontend-digest> <tree>", and version + digest must both
 # match (the tree field is data only, never compared), so a bypass stamp
 # (`skipped: ...`) never reads as cleared here. A non-success status is
 # filtered out at the source, so a pending status carrying HEAD's
@@ -628,8 +628,8 @@ check_chore_deps_pr() {
   # from `gh pr view` with no number, so on its own it proves a property of the
   # CURRENT BRANCH's pull request while the merge being gated names one this
   # function never parsed: from a checkout sitting on a dep-bump branch, a merge
-  # naming an arbitrary unaudited number cleared with no marker at all
-  # (gaia-react/gaia#1540). A command carrying no positional still permits,
+  # naming an arbitrary unaudited number cleared with no marker at all.
+  # A command carrying no positional still permits,
   # since that is gh's current-branch default and therefore the very pull
   # request the title was read for, which is what leaves the turnkey
   # `gh pr merge --squash` dep-bump path unaffected.
@@ -678,7 +678,7 @@ check_chore_deps_pr() {
 # advertised default is that branch only when the PR targets it: a PR stacked on
 # another branch merges into THAT branch, and diffing against the default hands
 # the check the base branch's own history instead, denying a bypass the PR had
-# earned (gaia-react/gaia#1057).
+# earned.
 #
 # When the record's remote-tracking ref does not verify (no gh, no auth, no PR
 # for this branch, network error, a base branch this checkout has never
@@ -841,7 +841,7 @@ gate_command_names_the_record_pr() {
 # status on HEAD's sha. Not one of them reads the pull-request reference the
 # gated command carries, so on a branch whose dispatched members have all
 # cleared, `gh pr merge <other-number>` used to be permitted and merged a pull
-# request nothing here audited (gaia-react/gaia#1544).
+# request nothing here audited.
 #
 # It sits at the two PERMIT SITES rather than inside the three signals, and
 # that placement is what makes it complete rather than merely correct. A
@@ -1048,7 +1048,7 @@ gate_empty_is_decisive() {
 # no marker is required. The allowlist itself lives in the
 # shared classifier (audit_out_of_scope_allowlisted), the ONE place this
 # literal set is defined.
-# Legacy-gate only: FC-4's auditable-base mirrors this check's complement, so
+# Legacy-gate only: the member roster's auditable-base set mirrors this check's complement, so
 # any in-scope path here also dispatches a member, a non-empty dispatched set
 # never reaches this function.
 #
@@ -1113,7 +1113,7 @@ check_out_of_scope_pr() {
 }
 
 # code-audit-frontend clearance: a live refusal for the current digest is
-# checked first and is absolute (C6); otherwise any one of the four member
+# checked first and is absolute; otherwise any one of the four member
 # signals above (marker, trailer, CI status, chore(deps)). Reused by both the
 # legacy gate and the member-aware gate below. Records which signal cleared in
 # $frontend_cleared_by, because only the chore(deps) arm earns a bypass stamp.
@@ -1225,7 +1225,7 @@ fi
 if [ -z "$members" ]; then
   # Zero-match (entire diff out of scope) OR the resolver script is
   # absent/unusable: fall through to the legacy single-signal gate verbatim.
-  # NOT an unconditional allow, FC-4's auditable-base is strictly narrower
+  # NOT an unconditional allow, the member roster's auditable-base set is strictly narrower
   # than check_out_of_scope_pr's denylist, so an ownerless-but-in-scope file
   # (root Makefile, public/**, ...) still denies here without a marker.
   #
@@ -1305,11 +1305,11 @@ fi
 # --- AND-aggregator: require every dispatched member's clearance ------------
 #
 # A non-empty dispatched set means at least one changed file is owned by a
-# Code Audit Team member (FC-2). Every dispatched member must clear:
+# Code Audit Team member. Every dispatched member must clear:
 # code-audit-frontend via frontend_cleared() above, each specialized member
 # <m> via its own marker .gaia/local/audit/<digest>.<m>.ok, keyed to that
 # member's OWN content digest. A live refusal for a member's current digest is
-# checked before its earned marker and is absolute (C6).
+# checked before its earned marker and is absolute.
 
 all_cleared=1
 report=""

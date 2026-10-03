@@ -114,7 +114,7 @@ _gaia_repo_scope_flatten() {
 # foreign-acting or touches no repository at all. Judging the call by one
 # command let a foreign first `gh` exempt a home commit after it, a trailing
 # `git -C <sibling>` exempt a home commit before it, and a leading `cd
-# <sibling>` exempt a commit made after `cd -` (gaia-react/gaia#2081). The rule
+# <sibling>` exempt a commit made after `cd -`. The rule
 # "nothing may follow a foreign command" was rejected because it enforces on a
 # sibling merge followed only by sibling commands or by `echo`.
 #
@@ -274,8 +274,8 @@ _gaia_repo_scope_swallowed() {
 # `${`. A `${| cmd; }` needs no arm: the scan splits it at the pipe, so its
 # payload is a command of its own. The shell runs that payload in its own directory
 # before the command itself, so the command's `git -C` or `gh -R` never
-# reaches it, and a foreign command holding one enforces
-# (gaia-react/gaia#2148). The scan keeps a quoted substitution as one word and
+# reaches it, and a foreign command holding one enforces.
+# The scan keeps a quoted substitution as one word and
 # splits an unquoted one at its spaces, so the opener and the name are looked
 # for across the words rather than within one. That over-enforces a foreign
 # command whose substitution runs something else while another word only
@@ -404,7 +404,7 @@ _gaia_repo_scope_segment() {
       # so it is authoritative for the command carrying it. It is read from
       # this command's own words, which the scan unquoted, so `--repo` inside
       # a quoted `--body` stays text and another program's `-R` operand (`cp
-      # -R a/b x`, gaia-react/gaia#2011) is never in reach.
+      # -R a/b x`) is never in reach.
       i=1
       while [ "$i" -lt "$word_count" ]; do
         token="${GAIA_FIRST_COMMAND_WORDS[$i]}"

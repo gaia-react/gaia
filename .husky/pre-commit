@@ -19,7 +19,7 @@ PLAN=$(bash "$ROOT/.gaia/scripts/precommit-packages.sh" "$ROOT") || {
 
 TAB=$(printf '\t')
 
-# Migration renames (C13): a staged set of only exact renames from a retired
+# Migration renames: a staged set of only exact renames from a retired
 # root frontend path to its `frontend/` counterpart carries no content change,
 # so the gate has nothing to check. The helper decides this before it loads the
 # registry; every other entry, including a rename inside `frontend/`, counts.
@@ -30,7 +30,7 @@ if [ "$PLAN" = "exempt" ]; then
   exit 0
 fi
 
-# Generated package settings (C8): a staged change to the root settings, the
+# Generated package settings: a staged change to the root settings, the
 # registry, or a package's settings or overlay must leave every generated
 # `<package>/.claude/settings.json` current and complete, or a session launched
 # in the package runs without the root's guard hooks and denies.
@@ -44,9 +44,9 @@ if [ -n "$SETTINGS_DRIFT" ]; then
   }
 fi
 
-# Guard (MIG-013): with no package at the repo root, a new file under a retired
+# Retired-path guard: with no package at the repo root, a new file under a retired
 # root frontend path belongs under frontend/. The helper names each one with its
-# frontend/ equivalent; a C13-exempt rename never reaches here (it exits above).
+# frontend/ equivalent; an exempt migration rename never reaches here (it exits above).
 RETIRED_ADDS=$(printf '%s\n' "$PLAN" | while IFS="$TAB" read -r KIND VALUE REPLACEMENT; do
   if [ "$KIND" = "retired-add" ]; then printf '  %s -> %s\n' "$VALUE" "$REPLACEMENT"; fi
 done)

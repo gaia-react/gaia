@@ -24,14 +24,14 @@
 # (`date -j -f` ignores the Z and halves a span across a DST boundary, and
 # `date -j` is macOS-only, which breaks the Linux CI bats run).
 #
-# The ledger stores the raw UTC endpoints (C2, the durable machine record); the
+# The ledger stores the raw UTC endpoints (the durable machine record); the
 # HUMAN surface (stdout) renders those two endpoints in the machine's
 # LOCAL zone (jq for the clock, `date +%Z` for the zone label — jq's own %z/%Z
 # misreport the offset across a DST boundary on some builds, while `date +%Z`
 # reads the effective system zone, is identical on macOS and Linux, and parses
 # no timestamp, so it is outside the epoch-parsing ban above).
 #
-# Behavior / contract (README C1-C5):
+# Behavior / contract:
 #   - Exit code is ALWAYS 0. The helper never blocks or fails its caller.
 #     Every failure mode degrades to a partial/absent figure with a marker;
 #     no number is ever fabricated.
@@ -49,7 +49,7 @@
 #     while duration is unavailable (unparseable extremal timestamp), and the
 #     reverse.
 #
-# CLI (README C1):
+# CLI:
 #   bash .gaia/scripts/token-tally.sh \
 #     --action <spec|plan|execute> [--spec-id <SPEC-NNN>] [--plan-id <PLAN-NNN>] \
 #     [--plan-slug <slug>] --out-dir <dir> [--session-id <id>] \
@@ -299,7 +299,7 @@ FEATURE="${SPEC_ID_VALIDATED:-$PLAN_ID_VALIDATED}"
 
 # Missing required flags are belt-and-suspenders (callers pass well-formed args);
 # degrade to partial rather than crash. --action review/command are exempt from
-# the feature-identity and --out-dir checks (COV-001): both kinds are
+# the feature-identity and --out-dir checks: both kinds are
 # legitimately unattributed (both ids null is valid, not a defect) and write no
 # cost.json sidecar, so neither absence may mark them partial (the
 # never-mark-partial clause).
@@ -350,7 +350,7 @@ if [[ "$ACTION" == "command" ]]; then
   fi
 fi
 
-# ---------- github pass-through for --action command (FC-4/FC-5; no breadcrumb read) ----------
+# ---------- github pass-through for --action command (no breadcrumb read) ----------
 # Built ONLY from --github-* flags: never looked up, never reused across runs,
 # never guessed. Any missing/invalid flag omits the key entirely and logs to
 # stderr; the artifact's absence never marks the record partial. The repo
@@ -464,7 +464,7 @@ if [[ -n "$SESSION_ID" && -n "$temporary_file" ]]; then
   done
 fi
 
-# ---------- --action review: standalone FC-3 records, no phase record ----------
+# ---------- --action review: standalone review records, no phase record ----------
 # A distinct path, branched early (before the phase aggregate/pricing/record
 # machinery below): scans this session's sidecars for code-review-audit runs
 # and appends one standalone kind:"review" ledger row per run not already
@@ -472,7 +472,7 @@ fi
 # audit annotation, and never writes a cost.json sidecar (a review is not
 # phase-keyed). --spec-id/--plan-id/--out-dir are all optional here; the
 # feature-identity and --out-dir partial checks above are already skipped for
-# this action (COV-001).
+# this action.
 if [[ "$ACTION" == "review" ]]; then
   windows="$(gaia_review_windows "$temporary_file")"
   window_count="$(jq -r 'length' <<<"$windows" 2>/dev/null)"
@@ -748,7 +748,7 @@ if [[ -n "$temporary_phase_file" && -s "$temporary_phase_file" ]]; then
     ' "$temporary_phase_file" 2>/dev/null || printf '0\t0\t0\t0\t\t\n'
   )
 
-  # ---------- per-model attribution (FC-1): same dedup-by-id, grouped by model ----------
+  # ---------- per-model attribution: same dedup-by-id, grouped by model ----------
   # Reuses the identical global dedup so per-model sums reconcile exactly to the
   # aggregate above (AUDIT directive 3: dedup THEN group). A model key is dropped
   # when `.m` is null/empty (line not attributable) or its five-bucket sum is
@@ -804,7 +804,7 @@ if [[ -n "$temporary_phase_file" && -s "$temporary_phase_file" ]]; then
   jq -e 'type == "object"' >/dev/null 2>&1 <<<"$BY_AGENT_TYPE" || BY_AGENT_TYPE='{}'
 fi
 # $temporary_file itself is no longer needed for a phase action (the aggregate above, and
-# the FC-2 audit-nesting block further down, both read $temporary_phase_file). $temporary_phase_file
+# the audit-nesting block further down, both read $temporary_phase_file). $temporary_phase_file
 # stays alive until after that block runs, so its cleanup is deferred to just
 # before the ledger-record build.
 [[ -n "$temporary_file" ]] && rm -f "$temporary_file" 2>/dev/null
@@ -932,14 +932,14 @@ if jq -e 'length > 0' >/dev/null 2>&1 <<<"$BY_MODEL"; then
   # else: rate table unresolvable/unreadable -> leave dollars/rate_table_id null.
 fi
 
-# ---------- CACHE_DIRECTORY resolution (hoisted): spec/plan's FC-2 audit-window
-#            breadcrumb AND execute's FC-6 gh-artifact breadcrumb both resolve
+# ---------- CACHE_DIRECTORY resolution (hoisted): spec/plan's audit-window
+#            breadcrumb AND execute's gh-artifact breadcrumb both resolve
 #            through this one derivation. --cache-dir (test seam) defaults to
 #            <main_root>/.gaia/local/cache, deriving main_root through the
 #            shared main-root resolver (.gaia/scripts/main-root-lib.sh), the
 #            same one ledger-path-lib.sh uses for the ledger main_root -- NOT
-#            via compute_project_id, which returns a hash, not a path
-#            (CG-002). A command or review run pays nothing for this (guarded
+#            via compute_project_id, which returns a hash, not a path.
+#            A command or review run pays nothing for this (guarded
 #            out below).
 CACHE_DIRECTORY=""
 if [[ "$ACTION" == "spec" || "$ACTION" == "plan" || "$ACTION" == "execute" ]]; then
@@ -953,20 +953,19 @@ if [[ "$ACTION" == "spec" || "$ACTION" == "plan" || "$ACTION" == "execute" ]]; t
   fi
 fi
 
-# ---------- git_branch (moved up: FC-6's execute breadcrumb read below needs
+# ---------- git_branch (moved up: execute's breadcrumb read below needs
 #            it before the record build; project identity stays at its
 #            original site further down) ----------
 GIT_BRANCH="$(resolve_branch)"
 
-# ---------- FC-2: nest the adversarial-audit annotation (spec/plan only) ----------
+# ---------- nest the adversarial-audit annotation (spec/plan only) ----------
 # A strict subset drill-down of the phase record just aggregated above: never
 # summed into total/buckets/dollars, and omitted entirely (never fabricated)
 # when the breadcrumb is absent/unparseable, its session_id does not match
 # this tally's session, or its window catches zero sidecar activity.
 AUDIT_JSON=""
 if [[ "$ACTION" == "spec" || "$ACTION" == "plan" ]]; then
-  # The breadcrumb key MUST match what task-breadcrumb-emit writes (FC-1,
-  # DP-002 / CG-001): spec -> $SPEC_ID_VALIDATED; spec-derived plan -> "<spec_id>-plan"
+  # The breadcrumb key MUST match what task-breadcrumb-emit writes: spec -> $SPEC_ID_VALIDATED; spec-derived plan -> "<spec_id>-plan"
   # (namespaced by the SPEC id, never $PLAN_SLUG, which is the literal
   # "plan"/"plan-2" identical across every SPEC); SPEC-less plan -> $PLAN_ID_VALIDATED.
   if [[ "$ACTION" == "spec" ]]; then
@@ -1049,10 +1048,10 @@ if [[ "$ACTION" == "spec" || "$ACTION" == "plan" ]]; then
   fi
 fi
 
-# $temporary_phase_file's last reader was the FC-2 block just above; safe to remove now.
+# $temporary_phase_file's last reader was the audit-nesting block just above; safe to remove now.
 [[ -n "$temporary_phase_file" && "$temporary_phase_file" != "$temporary_file" ]] && rm -f "$temporary_phase_file" 2>/dev/null
 
-# ---------- FC-6: github on --action execute (breadcrumb, read-only, never deletes) ----------
+# ---------- github on --action execute (breadcrumb, read-only, never deletes) ----------
 # --action execute only; spec/plan/review/command never read it. A match
 # requires the breadcrumb's session_id AND branch to equal this run's, and its
 # ts to be within the TTL (the lib enforces all three); the lib never deletes
@@ -1076,7 +1075,7 @@ else
   output_title="$ACTION $FEATURE/$PLAN_SLUG"
 fi
 
-# ---------- ledger record (README C2), resolved to the main checkout ----------
+# ---------- ledger record, resolved to the main checkout ----------
 # The main-checkout ledger path (…/cost.jsonl) comes from the shared lib, so the
 # ledger filename lives in one place. A KICKOFF run inside a linked worktree
 # records to the surviving main ledger. --ledger overrides (test seam).
@@ -1142,7 +1141,7 @@ if [[ -n "$ledger" && "$(basename "$ledger")" == "cost.jsonl" ]]; then
 fi
 
 # ---------- project identity (git_branch is computed earlier, before the
-#            CACHE_DIRECTORY/FC-2/FC-6 breadcrumb block, which needs it) ----------
+#            CACHE_DIRECTORY/audit/github breadcrumb block, which needs it) ----------
 PROJECT_ID="$(compute_project_id 2>/dev/null || true)"
 
 # ---------- seq ----------
@@ -1280,7 +1279,7 @@ elif [[ -z "$record" ]]; then
   log "token-tally: failed to build ledger record; skipping ledger append"
 fi
 
-# ---------- cost.json sidecar (README C3; FC-1) ----------
+# ---------- cost.json sidecar ----------
 # One object keyed by phase kind: {"spec":<record>} for a spec folder, and
 # {"plan":<record>, "execute":<record>} for a plan folder. Each value is the same
 # record shape appended to the central cost.jsonl. A plan/execute write replaces
@@ -1306,7 +1305,7 @@ if [[ -n "$OUTPUT_DIRECTORY" && -n "$record" && "$ACTION" != "command" ]]; then
   fi
 fi
 
-# ---------- stdout tally block (README C4; FC-7 for --action command) ----------
+# ---------- stdout tally block ----------
 # The unpriced-model marker both stdout shapes below append, worded as
 # token-rollup.sh:402 already words it. It keys on an unpriced MODEL, never on a
 # $0.00 total: a mixed-model run whose other model priced correctly reports a

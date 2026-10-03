@@ -65,9 +65,6 @@ command=$(jq -r '.tool_input.command // ""' <<<"$payload")
 # on staged copies with repo-scope.sh holding conflict markers, a plain
 # `git status` exits 2 on /bin/bash 3.2.57 and 0 on 5.3.15. Both loads live
 # inside verb-arming.sh, so no consumer hook can guard either from out here.
-# Tracked as its own issue rather than this one, because gaia-react/gaia#1556
-# closes when this change merges and a pointer needs a live destination:
-# gaia-react/gaia#1564.
 _hook_library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 # shellcheck source=/dev/null
 [ -n "${_hook_library_directory:-}" ] && "${BASH:-bash}" -n "$_hook_library_directory/verb-arming.sh" 2>/dev/null && . "$_hook_library_directory/verb-arming.sh" 2>/dev/null || true

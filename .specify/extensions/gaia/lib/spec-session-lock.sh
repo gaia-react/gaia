@@ -11,7 +11,7 @@
 # (the ancestor-walk primitive) plus `acquire` / `status` / `release` (the
 # liveness-lock helper built on top of it).
 #
-# --- The one load-bearing fact (AUDIT RT-001, maintainer guidance item 1) ---
+# --- The one load-bearing fact ---
 #
 # The recorded liveness token MUST be the session-lifetime HOST process (the
 # durable `claude` CLI that owns the whole authoring session), never the
@@ -112,7 +112,7 @@
 #                     (`Jul  9`) AND pads the field with trailing spaces, so a
 #                     token-normalized or trimmed value would not byte-match and
 #                     a session started on days 1-9 (or any session) would
-#                     false-read dormant (DP-003). The pid-reuse guard (RT-008):
+#                     false-read dormant. The pid-reuse guard:
 #                     a recycled pid whose start-time differs never reads as the
 #                     same session.
 #   - host_nonce   -- CLAUDE_CODE_SESSION_ID when present, else a generated
@@ -121,7 +121,7 @@
 #                     session cannot re-derive a FOREIGN session's id, so folding
 #                     the nonce into `status` would make every genuinely-live
 #                     other session read dormant -- the exact silent no-op this
-#                     feature exists to prevent (DP-002). Liveness is hostname +
+#                     feature exists to prevent. Liveness is hostname +
 #                     kill -0 + host_lstart only.
 #   - hostname     -- same-machine guard: a lock whose hostname is not this
 #                     machine reads dormant (a copied checkout never reads live).
@@ -130,7 +130,7 @@
 #   resolve-host [start_pid]
 #       Walk ancestry from start_pid (default $PPID) up to the Claude-CLI host.
 #       On match: print host_pid then host_lstart (two lines; the lstart from a
-#       DEDICATED `ps -o lstart= -p <host_pid>` call -- DP-003), exit 0. No host
+#       DEDICATED `ps -o lstart= -p <host_pid>` call), exit 0. No host
 #       found (reached pid <= 1) or ps error: print nothing, exit 1. The walk is
 #       bounded (<= 30 hops) so a cycle or pathological tree can never spin.
 #   match-host <command_line>  (test/diagnostic seam)
@@ -143,9 +143,9 @@
 #       existing lock -> atomically create-exclusive, exit 0. Live and ours ->
 #       idempotent, exit 0 (ownership = same host_pid AND host_nonce; with no
 #       stable CLAUDE_CODE_SESSION_ID, fall back to host_pid + host_lstart so a
-#       per-call generated nonce never mis-reads our own lock as foreign --
-#       DP-005). Live and foreign -> do NOT overwrite, exit 3 (caller falls back
-#       to Start new -- RT-004 TOCTOU guard) UNLESS --override (human-consented
+#       per-call generated nonce never mis-reads our own lock as foreign).
+#       Live and foreign -> do NOT overwrite, exit 3 (caller falls back
+#       to Start new, so a TOCTOU race cannot overwrite it) UNLESS --override (human-consented
 #       reclaim: force-remove + create, exit 0). Dormant / stale / error ->
 #       reclaim (remove + create), exit 0. Host unresolvable -> warn to stderr,
 #       write NO lock, exit 0 (accepted fail-open-to-"always dormant" degrade).
@@ -167,7 +167,7 @@
 #
 # Atomic create-exclusive: `( set -o noclobber; printf '%s\n' "$body" >
 # "$lockfile" ) 2>/dev/null`. Bash opens a noclobber redirection target with
-# O_EXCL, so this is a real kernel-level single-winner race (RT-004), not a
+# O_EXCL, so this is a real kernel-level single-winner race, not a
 # check-then-write TOCTOU. Chosen over an `ln`-of-a-tempfile dance because the
 # target IS the lock file itself here -- no separate link-target file is
 # needed, and the subshell parens scope `set -o noclobber` so it never leaks
@@ -194,7 +194,7 @@
 #   2. present but unreadable / not valid JSON / missing req -> error
 #   3. hostname != this machine                              -> dormant
 #   4. host_pid not alive (kill -0 fails, ESRCH)             -> dormant (reclaimable)
-#   5. host_pid alive but host_lstart mismatch (pid reuse)   -> dormant (RT-008)
+#   5. host_pid alive but host_lstart mismatch (pid reuse)   -> dormant
 #   6. host_pid alive + host_lstart matches                  -> live
 #   7. any unexpected probe error                            -> error
 #
@@ -279,7 +279,7 @@ _resolve_host() {
     # occupies fields 2-6 (default field-splitting collapses BSD's double-space
     # single-digit day, so it is always 5 tokens); command is the remainder.
     # The lstart parsed here is used ONLY to locate command; the EMITTED
-    # host_lstart comes from a dedicated call below (DP-003).
+    # host_lstart comes from a dedicated call below.
     line="$(ps -o ppid= -o lstart= -o command= -p "$pid" 2>/dev/null)"
     [ -n "$line" ] || return 1
     read -r ppid _ _ _ _ _ command <<<"$line"
@@ -313,9 +313,9 @@ _lock_path() {
 }
 
 # _generate_nonce: a per-call fallback host_nonce when no stable
-# CLAUDE_CODE_SESSION_ID is set. Never compared against in `status` (DP-002);
+# CLAUDE_CODE_SESSION_ID is set. Never compared against in `status`;
 # `acquire`'s own-lock ownership check falls back to host_pid + host_lstart in
-# this case (DP-005), so the token's exact form only needs to be non-empty.
+# this case, so the token's exact form only needs to be non-empty.
 _generate_nonce() {
   printf '%s-%s-%s' "$$" "$RANDOM" "$(date -u +%s)"
 }
@@ -408,9 +408,9 @@ _classify_lock() {
     return 0
   fi
 
-  # 5. host_pid alive but host_lstart mismatch -> dormant (pid reuse; RT-008).
+  # 5. host_pid alive but host_lstart mismatch -> dormant (pid reuse).
   # Compared against a standalone `ps -o lstart= -p` call, byte-identical to
-  # the one resolve-host used to produce the recorded value (DP-003). DP-002:
+  # the one resolve-host used to produce the recorded value.
   # host_nonce is NEVER consulted here.
   local live_lstart
   live_lstart="$(ps -o lstart= -p "$lock_pid" 2>/dev/null)"
@@ -481,7 +481,7 @@ _acquire() {
   body="$(_compose_lock_body "$spec_id" "$this_hostname" "$host_pid" "$host_lstart" "$nonce")"
 
   if [ "$override" -eq 1 ]; then
-    # COV-001 / DP-001: the ONLY path that reclaims a LIVE foreign lock,
+    # The ONLY path that reclaims a LIVE foreign lock,
     # firing only from the human-consented "Override: resume ... anyway"
     # branch (Phase 3).
     rm -f "$lockfile" 2>/dev/null || true
@@ -493,7 +493,7 @@ _acquire() {
   fi
 
   # Atomic create-exclusive: bash opens a noclobber redirection target with
-  # O_EXCL, so this is a real single-winner race (RT-004), not a
+  # O_EXCL, so this is a real single-winner race, not a
   # check-then-write TOCTOU. See the header's implementation note for why this
   # idiom was chosen over an `ln`-of-a-tempfile dance.
   if (
@@ -504,7 +504,7 @@ _acquire() {
   fi
 
   # Create failed: a lock already exists. Classify it with the SAME logic
-  # `status` uses (DP-002: never the nonce for liveness). Called directly
+  # `status` uses (never the nonce for liveness). Called directly
   # (not via `$(...)`) so LOCK_HOST_PID/LOCK_HOST_LSTART/LOCK_HOST_NONCE reach
   # this shell rather than dying in a substitution subshell.
   _classify_lock "$lockfile"
@@ -513,8 +513,7 @@ _acquire() {
     live)
       # Ownership: same host_pid AND host_nonce; when no stable
       # CLAUDE_CODE_SESSION_ID exists, fall back to host_pid + host_lstart so
-      # a per-call generated nonce never mis-reads our own lock as foreign
-      # (DP-005).
+      # a per-call generated nonce never mis-reads our own lock as foreign.
       if [ "$LOCK_HOST_PID" = "$host_pid" ]; then
         if [ "$have_stable_nonce" -eq 1 ] && [ "$LOCK_HOST_NONCE" = "$nonce" ]; then
           return 0
@@ -527,7 +526,7 @@ _acquire() {
       return 3
       ;;
     dormant | error)
-      # Reclaim: rm + re-create exclusively. COV-005 -- a crash never blocks a
+      # Reclaim: rm + re-create exclusively, so a crash never blocks a
       # draft.
       rm -f "$lockfile" 2>/dev/null || true
       (

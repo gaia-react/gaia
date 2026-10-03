@@ -4,7 +4,7 @@
 # consolidation producer (plan-close / spec-close / pre-flight backstop / the
 # warm orchestrator) calls this before the irreversible removal of
 # SPEC.md / AUDIT.md: a failed or malformed consolidation keeps the layers
-# (fail-closed, AUDIT DEF-05).
+# (fail-closed).
 #
 # Usage: summary-verify.sh <summary_md_path>
 #

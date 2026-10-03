@@ -297,7 +297,7 @@ command_has_unquoted_group() {
 # `read -ra` splits on whitespace alone, so a quoted global-option value
 # carrying whitespace arrived as fragments and the fragment after the space
 # landed in the slot the subcommand is read from, leaving every rule armed on
-# git_subcommand reading a subcommand that was never spelled (gaia-react/gaia#2020).
+# git_subcommand reading a subcommand that was never spelled.
 #
 # A word accumulates into `chunk` and reaches `word` once per block rather than
 # once per character, and the walk indexes inside a block rather than into the
@@ -404,8 +404,8 @@ parse_git_globals() {
 # push_refspec_names_main: 0 when the words after a `push` subcommand carry a
 # refspec whose SOURCE is main, master, or HEAD. It reads the operands rather
 # than a fixed position: the ref was pinned to the word after the remote, so an
-# option written ahead of the remote shifted both and the push was allowed
-# (gaia-react/gaia#2021). Rule 2 below still caught the shape when a force flag
+# option written ahead of the remote shifted both and the push was allowed.
+# Rule 2 below still caught the shape when a force flag
 # was present, which is what left the plain push as the hole.
 #
 # The first operand is the remote and every operand after it is a refspec, so a
@@ -538,8 +538,7 @@ hop_moves_head() {
     # refs/remotes/<remote>/<name>, so the test above cannot see one. Denying a
     # name that resolves nowhere at all refuses a command git would reject
     # anyway, which is the safe direction. `checkout` keeps the opposite answer,
-    # the DWIM limit its honest-limits block above records
-    # (gaia-react/gaia#2018).
+    # the DWIM limit its honest-limits block above records.
     if [ "$git_subcommand" = switch ]; then return 0; fi
     return 1
   fi

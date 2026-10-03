@@ -499,7 +499,7 @@ _gaia_loop_spend() {
 }
 
 # _gaia_loop_brief <audited-root> <main-root> <state-json>: the checkpoint
-# brief (README C8).
+# brief.
 _gaia_loop_brief() {
   local root="$1" main="$2" state="$3" used allowed pending snapshot findings raw spend per_round="[]" i round_snapshot
   used="$(printf '%s' "$state" | jq -r '.history.rounds | length')"

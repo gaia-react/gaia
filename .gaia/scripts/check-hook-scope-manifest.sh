@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 #
-# Check D -- hooks reach .gaia/local only through a resolved root (INV-5).
+# Hook-scope check: hooks reach .gaia/local only through a resolved root.
 #
 # A hook that builds a .gaia/local path from a bare literal resolves it
 # against whatever tree the hook happens to run in, so from inside a linked
