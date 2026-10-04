@@ -1,7 +1,6 @@
 import type {ChangeEventHandler, ComponentProps} from 'react';
 import {useCallback, useMemo, useRef} from 'react';
 import {useTranslation} from 'react-i18next';
-import {cn} from 'cn';
 import {
   addDays,
   differenceInDays,
@@ -27,7 +26,6 @@ import {
 
 export type YearMonthDayProps = Omit<ComponentProps<'select'>, 'onChange'> & {
   className?: string;
-  classNameSelect?: string;
   label?: string;
   name?: string;
   onBlur?: () => void;
@@ -40,7 +38,6 @@ const YearMonthDay = ({
   'aria-describedby': ariaDescribedBy,
   'aria-invalid': ariaInvalid,
   className,
-  classNameSelect,
   id,
   label,
   name = 'dob',
@@ -138,7 +135,6 @@ const YearMonthDay = ({
       });
   }, [language, month, year]);
 
-  const selectClassName = cn('flex-1', classNameSelect);
   const sharedSelectProps = {
     'aria-describedby': ariaDescribedBy,
     'aria-invalid': ariaInvalid,
@@ -155,7 +151,7 @@ const YearMonthDay = ({
           {...sharedSelectProps}
           ref={ref}
           aria-label={t('date.year')}
-          className={selectClassName}
+          className="flex-1"
           id={id}
           name={`${name}Year`}
           value={year}
@@ -169,7 +165,7 @@ const YearMonthDay = ({
         <NativeSelect
           {...sharedSelectProps}
           aria-label={t('date.month')}
-          className={selectClassName}
+          className="flex-1"
           name={`${name}Month`}
           value={month}
         >
@@ -182,7 +178,7 @@ const YearMonthDay = ({
         <NativeSelect
           {...sharedSelectProps}
           aria-label={t('date.day')}
-          className={selectClassName}
+          className="flex-1"
           name={`${name}Date`}
           value={date}
         >

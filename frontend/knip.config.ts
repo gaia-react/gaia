@@ -24,7 +24,6 @@ export default {
     '@msw/data',
     '@playwright-testing-library/test',
     '@storybook/addon-docs',
-    '@tailwindcss/forms',
     '@tailwindcss/typography',
     'lru-cache',
     'msw-storybook-addon',
