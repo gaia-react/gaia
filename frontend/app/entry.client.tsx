@@ -13,7 +13,7 @@ const prepareApp = async () => {
   ) {
     const {worker} = await import('../test/worker');
 
-    return worker.start({onUnhandledFrame: 'bypass'});
+    return worker.start({onUnhandledRequest: 'bypass'});
   }
 };
 

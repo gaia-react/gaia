@@ -22,7 +22,7 @@ const setup = () => {
 };
 
 const start = (server: SetupServer) => {
-  server.listen({onUnhandledFrame: 'bypass'});
+  server.listen({onUnhandledRequest: 'bypass'});
 
   process.once('SIGTERM', () => {
     server.close();
