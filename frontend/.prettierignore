@@ -15,3 +15,7 @@ package-lock.json
 /public/build
 .env.example
 .env
+
+# Vendored shadcn add output kept byte-identical (one level only, so ui/tests/
+# stays formatted).
+app/components/ui/*.tsx
