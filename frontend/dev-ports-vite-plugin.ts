@@ -17,7 +17,9 @@ import {
 // flag keeps a restart, in this module or a fresh one, from recording the launch twice.
 let hasListenedInThisProcess = false;
 
-const LOOPBACK_ADDRESSES = ['127.0.0.1', '::1'];
+// The wildcards are probed too: on macOS a loopback bind succeeds beside a
+// server bound to 0.0.0.0 or ::, so the loopback probes alone read it as free.
+const PROBE_ADDRESSES = ['127.0.0.1', '::1', '0.0.0.0', '::'];
 
 const isTakenOn = async (port: number, host: string): Promise<boolean> =>
   new Promise((resolve) => {
@@ -25,7 +27,7 @@ const isTakenOn = async (port: number, host: string): Promise<boolean> =>
 
     probe.once('error', (error: NodeJS.ErrnoException) => {
       // Only EADDRINUSE means taken; an absent address family (EADDRNOTAVAIL,
-      // EAFNOSUPPORT) just means that loopback does not exist here.
+      // EAFNOSUPPORT) just means that address does not exist here.
       resolve(error.code === 'EADDRINUSE');
     });
     probe.once('listening', () => {
@@ -36,7 +38,7 @@ const isTakenOn = async (port: number, host: string): Promise<boolean> =>
 
 const isTaken = async (port: number): Promise<boolean> => {
   const takenStateByAddress = await Promise.all(
-    LOOPBACK_ADDRESSES.map(async (host) => isTakenOn(port, host))
+    PROBE_ADDRESSES.map(async (host) => isTakenOn(port, host))
   );
 
   return takenStateByAddress.includes(true);

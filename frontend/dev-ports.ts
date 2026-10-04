@@ -48,18 +48,18 @@ const REQUIRED_KEYS = [
   'SITE_URL',
 ] as const;
 
-const isPort = (text: string): boolean => {
-  if (!/^\d+$/.test(text)) return false;
-  const value = Number(text);
+const isPort = (candidatePort: string): boolean => {
+  if (!/^\d+$/.test(candidatePort)) return false;
+  const portNumber = Number(candidatePort);
 
-  return value >= 1 && value <= MAXIMUM_PORT;
+  return portNumber >= 1 && portNumber <= MAXIMUM_PORT;
 };
 
 /** Parses the port file text; undefined means malformed. */
-export const parsePortFile = (text: string): DevPorts | undefined => {
+export const parsePortFile = (portFileText: string): DevPorts | undefined => {
   const valuesByKey = new Map<string, string>();
 
-  for (const rawLine of text.split(/\r?\n/)) {
+  for (const rawLine of portFileText.split(/\r?\n/)) {
     const line = rawLine.trim();
 
     if (line !== '' && !line.startsWith('#')) {
