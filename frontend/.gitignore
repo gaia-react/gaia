@@ -13,6 +13,9 @@
 .playwright/output/
 coverage
 
+# Per-tree ports, written by worktree provisioning
+/.gaia-ports
+
 # Storybook
 /storybook-static/
 

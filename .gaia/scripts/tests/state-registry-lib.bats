@@ -167,13 +167,14 @@ run_in_registry_repo() {
 # cutover-risk scenarios run against the shipped registry: the concrete proof
 # that a per-tree entry is genuinely not shared.
 
-@test "gaia_registry_linkable_paths: prints exactly the 11 shared paths, each by name" {
+@test "gaia_registry_linkable_paths: prints exactly the 15 shared paths, each by name" {
   run_in_registry_repo gaia_registry_linkable_paths
   [ "$status" -eq 0 ]
-  [ "${#lines[@]}" -eq 11 ]
+  [ "${#lines[@]}" -eq 15 ]
   local expected_path
   for expected_path in setup-state.json cache/shared/context cache/shared protected \
-    settings.json audit telemetry telemetry/usage-sweep.lock.d debt harden runs; do
+    settings.json audit telemetry telemetry/usage-sweep.lock.d debt harden runs \
+    ports ports/tombstones ports/launches ports/sessions; do
     grep -qxF -- "$expected_path" <<<"$output" || return 1
   done
   grep -qxF -- "$OLD_OVERRIDE_RELATIVE" <<<"$output" && return 1
@@ -211,6 +212,26 @@ run_in_registry_repo() {
   [ "$status" -eq 0 ]
   grep -qxF 'red-ledger' <<<"$output" && return 1
   return 0
+}
+
+@test "gaia_registry_classify: each port state path maps to its own entry's scope" {
+  run_in_registry_repo gaia_registry_classify ports/slots.tsv
+  [ "$status" -eq 0 ]
+  [ "$output" = "shared" ]
+  run_in_registry_repo gaia_registry_classify ports/tombstones/3.1700000000.tsv
+  [ "$output" = "shared" ]
+  run_in_registry_repo gaia_registry_classify ports/slots.lock
+  [ "$output" = "ephemeral" ]
+  run_in_registry_repo gaia_registry_classify ports/launches/123.tsv
+  [ "$output" = "shared" ]
+  run_in_registry_repo gaia_registry_classify ports/sessions/abc.tsv
+  [ "$output" = "shared" ]
+}
+
+@test "gaia_registry_classify: an unregistered file under ports classifies unknown" {
+  run_in_registry_repo gaia_registry_classify ports/other.tsv
+  [ "$status" -eq 0 ]
+  [ "$output" = "unknown" ]
 }
 
 # ========== gaia_registry_rm_whitelist ==========

@@ -56,6 +56,8 @@ make_main() {
   cp "$REPO_ROOT_REAL/.gaia/scripts/main-root-lib.sh" "$MAIN/.gaia/scripts/"
   cp "$REPO_ROOT_REAL/.gaia/scripts/state-registry-lib.sh" "$MAIN/.gaia/scripts/"
   cp "$REPO_ROOT_REAL/.gaia/scripts/link-worktree.sh" "$MAIN/.gaia/scripts/"
+  cp "$REPO_ROOT_REAL/.gaia/scripts/worktree-ports-lib.sh" "$MAIN/.gaia/scripts/"
+  cp "$REPO_ROOT_REAL/.gaia/scripts/server-process-lib.sh" "$MAIN/.gaia/scripts/"
   cp "$REPO_ROOT_REAL/.gaia/state-registry.json" "$MAIN/.gaia/"
   chmod +x "$MAIN/.claude/hooks/provision-worktree.sh" "$MAIN"/.gaia/scripts/*.sh
 

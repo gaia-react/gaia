@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-07-23
-updated: 2026-10-03
+updated: 2026-10-04
 tags: [concept, worktree, claude, hooks, state]
 ---
 
@@ -162,6 +162,22 @@ Confinement is not Bash-specific. Write and Edit apply it to `file_path`, and a 
 The identical write from Bash succeeds. That asymmetry is the whole surprise, and it stays surprising until the shared confinement rule is visible behind both tools.
 
 **`.claude/hooks/block-worktree-path-mismatch.sh` is not the source of that denial.** The hook exempts the path: `gaia_registry_classify cache/mutation-scratch` returns `ephemeral`, and the hook exits 0 for every scope but `per-tree`, so it allows the very call the runtime refuses. Attributing the refusal to the hook sends a reader to widen an exemption that is already correct, and to a fix that cannot change the outcome. The denial comes from the runtime's own isolation, and the way out is the tool, not the guard: write the path from Bash.
+
+## Ports per worktree
+
+Every checkout owns stable dev, Storybook, and Playwright ports, so two trees never fight over one. The main checkout is slot 0 and keeps the default ports; each linked worktree holds a slot of its own, and its ports are the defaults offset by that slot.
+
+**The ledger.** A slot ledger lives in main-anchored state (`.gaia/state-registry.json` declares it and its siblings, which hold the removal tombstones and the launch and session records). Because the ledger is main-anchored, every tree sees the same assignments and a slot is never handed out twice; a lock guards only the ledger's read-modify-write and is never held across a wait or a signal. Provisioning assigns the lowest free slot whose ports no other tree's or unidentified server holds, and a tree keeps its slot on every later entry. The logic is in `.gaia/scripts/worktree-ports-lib.sh`.
+
+**The port file.** Provisioning writes the slot's ports to `frontend/.gaia-ports` on every entry, derived from the ledger, so an edit to it is overwritten. It lives beside the frontend config that reads it rather than in `.env` or `.gaia/local`: the linker symlinks every `.env` variant, and `.gaia/local` is one symlink shared by all trees, so a port file in either place would hand every worktree the same ports. The file is gitignored and kept out of the Docker build context. `bash .gaia/scripts/ports.sh` prints the tree's ports, and the Vite, Playwright, and Storybook entry points read the same file.
+
+**Reclaim.** A slot is freed when its tree is no longer a registered worktree or its directory is gone. A locked worktree whose directory exists keeps its slot. A worktree recreated at the same path gets a fresh assignment, and `git worktree move` reassigns the moved tree's slot on its next entry.
+
+**Refusals.** A linked worktree with no port file has no ports of its own and refuses `pnpm dev`, `pnpm storybook`, and `pnpm pw` rather than borrow main's, naming `bash .claude/hooks/provision-worktree.sh <worktree-path>` as the fix; `typegen` and `build` still run. A taken port is refused rather than drifted from: `pnpm dev` and the `pnpm storybook` launcher are strict. Only the launcher is strict about Storybook, so a direct `storybook dev` bypasses it and can drift to another port. Playwright reuses a server on its port only when that server belongs to its own tree, and refuses one that does not. Ownership is decided by the nearest enclosing `.git` of the listener's working directory, because GAIA's worktrees nest inside the main checkout and a path-prefix test would give every tree's server to main.
+
+**Automatic cleanup.** Servers are stopped only on positive evidence, after re-verifying the process identity (start time, command, working directory, and that it still listens on the port) immediately before each signal. Two cases qualify: a server left running from a removed worktree, and a server recorded as launched by a Claude session that has since ended. The dev server and the Storybook launcher record themselves only when a Claude session launched them. Cleanup runs at worktree entry, at slot reclaim, and at a real session start (`startup` or `resume`); `/clear` and compaction stop nothing. A server a human started, a server started before these records existed, and a server on a port another live tree owns are never stopped automatically, so the ask-first rule applies to them. The process logic is in `.gaia/scripts/server-process-lib.sh`.
+
+**What Claude is told.** Worktree entry, session start, and `/clear` or compaction inside a linked worktree print one context line carrying the tree's ports and the ask-first rule. The rule for Claude's own behavior is `frontend/.claude/rules/ports.md`.
 
 ## What is permanent
 

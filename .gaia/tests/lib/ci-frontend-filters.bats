@@ -80,7 +80,8 @@ tests_verdict() {
   local pattern candidate
   pattern="$(tests_pattern)"
   for candidate in frontend/app/routes/x.tsx frontend/.playwright/a.spec.ts frontend/package.json pnpm-lock.yaml \
-    frontend/test/a.test.ts frontend/vite.config.ts frontend/gaia.package.json .gaia/packages.json; do
+    frontend/test/a.test.ts frontend/vite.config.ts frontend/gaia.package.json .gaia/packages.json \
+    frontend/dev-ports.ts frontend/dev-ports-vite-plugin.ts frontend/dev-ports-reuse.ts; do
     [ "$(tests_verdict "$pattern" "$candidate")" = select ] || { printf 'did not select: %s\n' "$candidate" >&2; return 1; }
   done
 }
