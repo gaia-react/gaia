@@ -179,6 +179,37 @@ commit_base_files() {
   }
 }
 
+@test "a source file with a basename no other file has, in a tree with no suite, selects suites naming its basename" {
+  base="$(commit_base_files \
+    'frontend/app/date/year-month-day.tsx=a' \
+    'tests/names-date.bats=# reads "$COMPONENTS/year-month-day.tsx"')"
+  printf 'edited\n' >> "$FIXTURE/frontend/app/date/year-month-day.tsx"
+  git -C "$FIXTURE" commit -q -am edit
+
+  run --separate-stderr bash "$SCRIPT" --dir "$FIXTURE" "$base" HEAD
+  [ "$status" -eq 0 ]
+  [ "$output" = "tests/names-date.bats" ] || {
+    printf 'got:\n%s\n' "$output" >&2
+    return 1
+  }
+}
+
+@test "a non-source file sharing its basename, in a tree with no suite, selects suites naming its basename" {
+  base="$(commit_base_files \
+    'config/hooks/settings.json={}' \
+    'config/settings.json={}' \
+    'tests/reads-settings.bats=SETTINGS="${HOOKS_SOURCE_DIRECTORY%/hooks}/settings.json"')"
+  printf 'edited\n' >> "$FIXTURE/config/settings.json"
+  git -C "$FIXTURE" commit -q -am edit
+
+  run --separate-stderr bash "$SCRIPT" --dir "$FIXTURE" "$base" HEAD
+  [ "$status" -eq 0 ]
+  [ "$output" = "tests/reads-settings.bats" ] || {
+    printf 'got:\n%s\n' "$output" >&2
+    return 1
+  }
+}
+
 @test "a deleted suite is not printed, since there is nothing left to run" {
   git -C "$FIXTURE" rm -q tests/unrelated.bats
   git -C "$FIXTURE" commit -q -m drop-suite
