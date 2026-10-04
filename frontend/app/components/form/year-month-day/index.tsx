@@ -1,4 +1,4 @@
-import type {ChangeEvent, ComponentProps, FC, ReactNode} from 'react';
+import type {ChangeEventHandler, ComponentProps, FC, ReactNode} from 'react';
 import {useCallback, useMemo, useRef} from 'react';
 import {useTranslation} from 'react-i18next';
 import {
@@ -75,7 +75,9 @@ const YearMonthDay: FC<YearMonthDayProps> = ({
     };
   }, []);
 
-  const handleUpdateDateSelect = (event: ChangeEvent<HTMLSelectElement>) => {
+  const handleUpdateDateSelect: ChangeEventHandler<HTMLSelectElement> = (
+    event
+  ) => {
     const newValue =
       event.currentTarget.name.includes('Date') ?
         `${year}-${month}-${event.currentTarget.value}`

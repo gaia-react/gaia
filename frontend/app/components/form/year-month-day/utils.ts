@@ -27,25 +27,28 @@ export const DEFAULT_VALUE = formatISO8601Date(DEFAULT_DATE);
 const iso8601DateSchema = z.iso.date();
 
 export const getValues = (value: string): string[] => {
-  const result = iso8601DateSchema.safeParse(value);
+  const parseResult = iso8601DateSchema.safeParse(value);
   const [year, month, date] = (
-    result.success ?
-      result.data
+    parseResult.success ?
+      parseResult.data
     : DEFAULT_VALUE).split('-');
 
   return [year, month, date];
 };
 
-type NumericYMD = {
+type NumericYearMonthDate = {
   date: number;
   month: number;
   year: number;
 };
 
-const getDateFromNumericYMD = ({date, month, year}: NumericYMD) =>
-  new Date(+year, +month, +date, 12, 0, 0, 0);
+const getDateFromNumericYearMonthDate = ({
+  date,
+  month,
+  year,
+}: NumericYearMonthDate) => new Date(+year, +month, +date, 12, 0, 0, 0);
 
-const getNumericYMDFromISO8601Date = (value: string) => {
+const getNumericYearMonthDateFromISO8601Date = (value: string) => {
   const [year, month, date] = value.split('-').map(Number);
 
   return {date, month: +month - 1, year};
@@ -53,33 +56,35 @@ const getNumericYMDFromISO8601Date = (value: string) => {
 
 // ensure date is valid (i.e. no June 31, Feb 30, Feb 29 on non-leap years, etc.)
 export const getSafeValue = (
-  prevValue: string,
+  previousValue: string,
   {name, value: fieldValue}: EventTarget & HTMLSelectElement
 ): string => {
-  const which = name.includes('Month') ? 'month' : 'year';
+  const changedUnit = name.includes('Month') ? 'month' : 'year';
 
-  const prevYMD = getNumericYMDFromISO8601Date(prevValue);
+  const previousYearMonthDate =
+    getNumericYearMonthDateFromISO8601Date(previousValue);
 
-  const nextYMD = {
+  const nextYearMonthDate = {
     date: 1, // prevent date from being out of bounds for daysInMonth check
-    month: which === 'month' ? +fieldValue - 1 : +prevYMD.month,
-    year: which === 'year' ? +fieldValue : +prevYMD.year,
+    month:
+      changedUnit === 'month' ? +fieldValue - 1 : +previousYearMonthDate.month,
+    year: changedUnit === 'year' ? +fieldValue : +previousYearMonthDate.year,
   };
 
-  const prevDate = getDateFromNumericYMD(prevYMD);
+  const previousDate = getDateFromNumericYearMonthDate(previousYearMonthDate);
 
-  const daysInMonth = getDaysInMonth(set(prevDate, nextYMD));
+  const daysInMonth = getDaysInMonth(set(previousDate, nextYearMonthDate));
 
   let nextDate: Date;
 
-  if (+prevYMD.date > daysInMonth) {
-    nextDate = set(prevDate, {
-      ...nextYMD,
-      date: lastDayOfMonth(set(prevDate, nextYMD)).getDate(),
+  if (+previousYearMonthDate.date > daysInMonth) {
+    nextDate = set(previousDate, {
+      ...nextYearMonthDate,
+      date: lastDayOfMonth(set(previousDate, nextYearMonthDate)).getDate(),
     });
   } else {
-    nextDate = set(prevDate, {
-      [which]: which === 'month' ? +fieldValue - 1 : +fieldValue,
+    nextDate = set(previousDate, {
+      [changedUnit]: changedUnit === 'month' ? +fieldValue - 1 : +fieldValue,
     });
   }
 
