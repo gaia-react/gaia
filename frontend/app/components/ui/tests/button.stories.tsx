@@ -1,3 +1,4 @@
+import {Fragment} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link, NavLink} from 'react-router';
 import type {Meta, StoryFn} from '@storybook/react-vite';
@@ -18,89 +19,95 @@ const meta: Meta = {
 
 export default meta;
 
-type IconSize = 'icon' | 'icon-lg' | 'icon-sm' | 'icon-xs';
-type Size = 'default' | 'lg' | 'sm' | 'xs';
-type Variant =
-  'default' | 'destructive' | 'ghost' | 'link' | 'outline' | 'secondary';
+const VARIANTS = [
+  'default',
+  'outline',
+  'secondary',
+  'ghost',
+  'destructive',
+  'link',
+] as const;
 
-const VariantStory = ({variant}: {variant: Variant}) => {
-  const {t} = useTranslation();
+// Each text size pairs with the icon-only size of the same height.
+const SIZES = [
+  {icon: 'icon-xs', text: 'xs'},
+  {icon: 'icon-sm', text: 'sm'},
+  {icon: 'icon', text: 'default'},
+  {icon: 'icon-lg', text: 'lg'},
+] as const;
 
-  return <Button variant={variant}>{t('form.submit')}</Button>;
+type GridProps = {
+  content?: 'icon' | 'icon-text' | 'text';
+  isDisabled?: boolean;
+  isInvalid?: boolean;
+  isLoading?: boolean;
 };
 
-const SizeStory = ({size}: {size: Size}) => {
+// Every variant (columns) at every size (rows), in one state.
+const ButtonGrid = ({
+  content = 'text',
+  isDisabled = false,
+  isInvalid = false,
+  isLoading = false,
+}: GridProps) => {
   const {t} = useTranslation();
-
-  return <Button size={size}>{t('form.submit')}</Button>;
-};
-
-const IconSizeStory = ({size}: {size: IconSize}) => {
-  const {t} = useTranslation();
+  const label = isLoading ? t('form.submitting') : t('form.submit');
 
   return (
-    <Button aria-label={t('form.submit')} size={size}>
-      <StarIcon />
-    </Button>
+    <div className="grid grid-cols-7 items-center justify-items-start gap-x-6 gap-y-4">
+      <span />
+      {VARIANTS.map((variant) => (
+        <span key={variant} className="text-muted-foreground text-sm">
+          {variant}
+        </span>
+      ))}
+      {SIZES.map((size) => (
+        <Fragment key={size.text}>
+          <span className="text-muted-foreground text-sm">
+            {content === 'icon' ? size.icon : size.text}
+          </span>
+          {VARIANTS.map((variant) => (
+            <Button
+              key={variant}
+              aria-invalid={isInvalid}
+              aria-label={content === 'icon' ? label : undefined}
+              disabled={isDisabled || isLoading}
+              size={content === 'icon' ? size.icon : size.text}
+              variant={variant}
+            >
+              {isLoading && (
+                <Spinner aria-label={t('loading')} data-icon="inline-start" />
+              )}
+              {!isLoading && content !== 'text' && (
+                <StarIcon data-icon="inline-start" />
+              )}
+              {content !== 'icon' && label}
+            </Button>
+          ))}
+        </Fragment>
+      ))}
+    </div>
   );
 };
 
-export const Default: StoryFn = () => <VariantStory variant="default" />;
+export const Default: StoryFn = () => <ButtonGrid />;
 
-export const Outline: StoryFn = () => <VariantStory variant="outline" />;
+export const Disabled: StoryFn = () => <ButtonGrid isDisabled={true} />;
 
-export const Secondary: StoryFn = () => <VariantStory variant="secondary" />;
+export const Loading: StoryFn = () => <ButtonGrid isLoading={true} />;
+Loading.parameters = {
+  chromatic: {disableSnapshot: true},
+};
 
-export const Ghost: StoryFn = () => <VariantStory variant="ghost" />;
+export const Invalid: StoryFn = () => <ButtonGrid isInvalid={true} />;
 
-export const Destructive: StoryFn = () => (
-  <VariantStory variant="destructive" />
+export const Icon: StoryFn = () => <ButtonGrid content="icon" />;
+
+export const IconDisabled: StoryFn = () => (
+  <ButtonGrid content="icon" isDisabled={true} />
 );
 
-export const LinkVariant: StoryFn = () => <VariantStory variant="link" />;
-
-export const SizeDefault: StoryFn = () => <SizeStory size="default" />;
-
-export const SizeXs: StoryFn = () => <SizeStory size="xs" />;
-
-export const SizeSm: StoryFn = () => <SizeStory size="sm" />;
-
-export const SizeLg: StoryFn = () => <SizeStory size="lg" />;
-
-export const SizeIcon: StoryFn = () => <IconSizeStory size="icon" />;
-
-export const SizeIconXs: StoryFn = () => <IconSizeStory size="icon-xs" />;
-
-export const SizeIconSm: StoryFn = () => <IconSizeStory size="icon-sm" />;
-
-export const SizeIconLg: StoryFn = () => <IconSizeStory size="icon-lg" />;
-
-export const Invalid: StoryFn = () => {
-  const {t} = useTranslation();
-
-  return (
-    <Button aria-invalid={true} variant="outline">
-      {t('form.submit')}
-    </Button>
-  );
-};
-
-export const Disabled: StoryFn = () => {
-  const {t} = useTranslation();
-
-  return <Button disabled={true}>{t('form.submit')}</Button>;
-};
-
-export const Loading: StoryFn = () => {
-  const {t} = useTranslation();
-
-  return (
-    <Button disabled={true}>
-      <Spinner aria-label={t('loading')} />
-      {t('form.submitting')}
-    </Button>
-  );
-};
+export const IconText: StoryFn = () => <ButtonGrid content="icon-text" />;
 
 export const AsLink: StoryFn = () => {
   const {t} = useTranslation();
