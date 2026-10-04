@@ -2,8 +2,9 @@
 #
 # Prints every bats suite that references a file the change edits or deletes,
 # one repo-relative path per line, sorted and de-duplicated: the suite set the
-# pre-merge "verify your own work" step and each audit round's verification
-# run through bats5.sh.
+# pre-merge "verify your own work" step (no argument, the whole branch) and
+# each audit round's verification (`HEAD`, that round's staged delta) run
+# through bats5.sh.
 #
 # A suite is selected when it names a changed file's basename as a fixed
 # string, or when it is itself a changed suite that still exists. Selection by
@@ -44,7 +45,7 @@ while [ "$#" -gt 0 ]; do
       shift 2
       ;;
     --help|-h)
-      sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,33p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     --)

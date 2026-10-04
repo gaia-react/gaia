@@ -13,11 +13,20 @@
 # Usage:
 #   source .gaia/scripts/bats5.sh   # then call `bats5` wherever a page says `bats`
 #   .gaia/scripts/bats5.sh <args>   # run directly; forwards <args> to bats under the guard
+#   .gaia/scripts/bats5.sh --jobs <n> <args>   # parallel; serial with a warning when
+#                                             # neither GNU parallel nor rush is installed
+
+# bats --jobs aborts the whole run without one of these. Its own function so a
+# test can stand in for a host that lacks both.
+bats5_parallel_runner_available() {
+  command -v parallel >/dev/null 2>&1 || command -v rush >/dev/null 2>&1
+}
 
 bats5() {
   # The helper vars are locals so sourcing this file into a shell does not
   # leak them; PATH is exported on purpose, that export is the whole point.
   local candidate_directory resolved_bash major
+  local -a forwarded_arguments
   for candidate_directory in /opt/homebrew/bin /usr/local/bin; do
     if [ -x "$candidate_directory/bash" ]; then
       PATH="$candidate_directory:$PATH"
@@ -38,6 +47,15 @@ bats5() {
     echo "# (e.g. 'date -v') that fail on Linux won't be caught here." >&2
     echo "# brew install bash, then re-run before trusting this pass count." >&2
     echo "############################################################" >&2
+  fi
+  # An unattended audit round passes --jobs; aborting there would read as a
+  # failing gate and spend a repair attempt on a missing tool. Running serially
+  # is slower and otherwise the same verdict. Only the `--jobs <n>` spelling
+  # the merge workflow prescribes is recognised.
+  forwarded_arguments=("$@")
+  if [ "${1:-}" = "--jobs" ] && ! bats5_parallel_runner_available; then
+    echo "bats5: --jobs needs GNU parallel (brew install parallel); running serially." >&2
+    forwarded_arguments=("${@:3}")
   fi
   # Gate git's background auto-maintenance for the run. Left ungated, every
   # `git commit` into a fixture repository spawns a detached
@@ -63,7 +81,7 @@ bats5() {
       config_entry_count=$((config_entry_count + 1))
     done
     export GIT_CONFIG_COUNT="$config_entry_count"
-    bats "$@"
+    bats ${forwarded_arguments[@]+"${forwarded_arguments[@]}"}
   )
 }
 
