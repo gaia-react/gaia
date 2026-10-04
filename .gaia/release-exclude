@@ -114,6 +114,8 @@
 # The retired-path gate fails on a harness citation of a root path that moved under frontend/, and its allowlist names the surviving ones. Both describe GAIA's own harness layout and its runner (shell-lint.sh) and sibling suite (.gaia/scripts/tests/check-retired-paths.bats) are release-excluded, so an adopter clone would carry a check nothing invokes.
 .gaia/scripts/check-retired-paths.sh
 .gaia/retired-paths-allowlist.tsv
+# Derives the bats suites a change must re-run before an audit dispatch and in each audit round. Every caller sits inside a maintainer-only block the bundle-time scrub removes, and the suites it selects are release-excluded, so an adopter clone would carry a helper nothing invokes.
+.gaia/scripts/bats-suites-for-change.sh
 # Shared report, handshake and sidecar protocol read only by the two maintainer-only code-audit-maintainer-* members, which this category already withholds
 .claude/hooks/lib/audit-member-protocol.md
 
