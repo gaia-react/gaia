@@ -1,13 +1,49 @@
+import type {Page} from '@playwright/test';
 import {ACTION_PATHS} from '../../app/action-paths';
+import common from '../../app/languages/en/common';
+import legal from '../../app/languages/en/pages/legal';
 import {expect, test} from '../fixtures';
 import {hydration} from '../utils';
 
-const PAGES = ['/', '/privacy', '/terms'] as const;
+type PageContent = {
+  expectContent: (page: Page) => Promise<void>;
+  path: string;
+};
 
-for (const path of PAGES) {
-  test(`${path} responds 200`, async ({page}) => {
+// Each check asserts content the page component itself owns, so a route that
+// imports the wrong page fails here even when the status is still 200.
+const PAGES: readonly PageContent[] = [
+  {
+    expectContent: async (page) => {
+      await expect(
+        page.getByRole('heading', {level: 1, name: common.meta.siteName})
+      ).toBeVisible();
+    },
+    path: '/',
+  },
+  {
+    expectContent: async (page) => {
+      await expect(
+        page.getByText(legal.privacy.paragraphs[0], {exact: true})
+      ).toBeVisible();
+    },
+    path: '/privacy',
+  },
+  {
+    expectContent: async (page) => {
+      await expect(
+        page.getByText(legal.terms.paragraphs[0], {exact: true})
+      ).toBeVisible();
+    },
+    path: '/terms',
+  },
+];
+
+for (const {expectContent, path} of PAGES) {
+  test(`${path} responds 200 and renders its own page`, async ({page}) => {
     const response = await page.goto(path);
     expect(response?.status()).toBe(200);
+    await expectContent(page);
   });
 }
 

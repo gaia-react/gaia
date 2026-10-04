@@ -658,6 +658,15 @@ install_stub_classifier_home() {
   refute_denied
 }
 
+@test "denies an emergent page test with no ledger entry when the emergent globs cover app/pages" {
+  write_packages_moved "$REPO" '["app/**/*.test.ts"]' '["app/utils/**"]' '["app/pages/**/*.test.tsx"]'
+  commit_file "frontend/app/pages/x/tests/page.test.tsx" "$EMERGENT_TEST"
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  denied
+  [[ "$output" == *"renders a label"* ]]
+}
+
 @test "DP-002: an exact rename into frontend/ is skipped, so a PR that only moves its tests needs no ledger line" {
   commit_file "app/components/X/tests/X.test.tsx" "$EMERGENT_TEST"
   advance_base_to_head

@@ -54,7 +54,7 @@ Edit `frontend/app/languages/index.ts`:
 
 ## Step 3, LanguageSelect
 
-Edit `frontend/app/components/LanguageSelect/index.tsx`:
+Edit `frontend/app/components/language-select/index.tsx`:
 
 Add `{{LOCALE_CODE}}: '{{LANGUAGE_NAME_NATIVE}}'` to the `LANGUAGE_LABELS` record (keep `en: 'English'` first). Do **not** edit `OPTIONS`, it is derived automatically by mapping over the `LANGUAGES` array (registered in Step 2) and falls back to the bare locale code when a label is missing. Adding the `LANGUAGE_LABELS` entry is what gives the new option its native display name.
 

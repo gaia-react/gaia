@@ -23,7 +23,7 @@ Discover every call site:
 grep -rln "useTranslation\|i18next" frontend/app frontend/test
 ```
 
-For every match in `frontend/app/` (excluding `frontend/app/i18n.ts`, `frontend/app/middleware/i18next.ts`, `frontend/app/languages/`, `frontend/app/sessions.server/language.ts`, `frontend/app/routes/actions.set-language.ts`, `frontend/app/components/LanguageSelect/`, those are deleted in Section C):
+For every match in `frontend/app/` (excluding `frontend/app/i18n.ts`, `frontend/app/middleware/i18next.ts`, `frontend/app/languages/`, `frontend/app/sessions.server/language.ts`, `frontend/app/routes/actions.set-language.ts`, `frontend/app/components/language-select/`, those are deleted in Section C):
 
 1. Open the file.
 2. Delete the import line: `import {useTranslation} from 'react-i18next';`
@@ -36,20 +36,20 @@ The seeded list of files known to use `t()` (verify against the grep output, add
 - `frontend/app/routes/_legal.terms.tsx`
 - `frontend/app/routes/_legal.privacy.tsx`
 - `frontend/app/routes/_public._index.tsx`
-- `frontend/app/pages/Public/IndexPage/index.tsx`
+- `frontend/app/pages/index/page.tsx`
 - `frontend/app/routes/resources.theme-switch.tsx`
-- `frontend/app/components/Form/InputEmail/index.tsx`
-- `frontend/app/components/Form/InputPassword/index.tsx`
-- `frontend/app/components/Form/YearMonthDay/index.tsx`
-- `frontend/app/components/Form/Field/FieldLabel/FieldRequiredText/index.tsx`
-- All `tests/index.stories.tsx` and `tests/index.test.tsx` files alongside the above components
+- `frontend/app/components/form/input-email/index.tsx`
+- `frontend/app/components/form/input-password/index.tsx`
+- `frontend/app/components/form/year-month-day/index.tsx`
+- `frontend/app/components/form/field/field-label/field-required-text/index.tsx`
+- All `tests/index.stories.tsx` and `tests/index.test.tsx` files alongside the above components (`tests/page.stories.tsx` and `tests/page.test.tsx` for the index page)
 
 Resolve translation keys via the `frontend/app/languages/en/` files. Example: `t('meta.siteName')` → look up `meta.siteName` in `frontend/app/languages/en/common.ts` and inline the resolved string.
 
-`useTranslation`/`t()` is not the only i18n coupling on the index page: `frontend/app/pages/Public/IndexPage/index.tsx` also imports and renders `LanguageSelect`, which Section C deletes. In every file that references it, remove the `import LanguageSelect from '~/components/LanguageSelect';` line and the `<LanguageSelect />` element. Discover all such files:
+`useTranslation`/`t()` is not the only i18n coupling on the index page: `frontend/app/pages/index/page.tsx` also imports and renders `LanguageSelect`, which Section C deletes. In every file that references it, remove the `import LanguageSelect from '~/components/language-select';` line and the `<LanguageSelect />` element. Discover all such files:
 
 ```bash
-grep -rln "components/LanguageSelect" app
+grep -rln "components/language-select" app
 ```
 
 After unwrapping all source files, re-run the grep. If any matches remain in `frontend/app/` or `frontend/test/` outside the deletion targets above, unwrap those too. Repeat until grep returns no frontend/app/test matches.
@@ -216,7 +216,7 @@ rm -rf \
   frontend/app/languages \
   frontend/app/sessions.server/language.ts \
   frontend/app/routes/actions.set-language.ts \
-  frontend/app/components/LanguageSelect \
+  frontend/app/components/language-select \
   frontend/.storybook/i18next.ts \
   frontend/.playwright/e2e/language-switch-a11y.spec.ts \
   frontend/.claude/rules/i18n.md \
@@ -398,7 +398,7 @@ Remove every key whose path matches any of:
 - `frontend/app/types/i18n/*`
 - `frontend/app/sessions.server/language.ts`
 - `frontend/app/routes/actions.set-language.ts`
-- `frontend/app/components/LanguageSelect/*`
+- `frontend/app/components/language-select/*`
 - `frontend/.claude/rules/i18n.md`
 - `frontend/.claude/agents/code-audit-frontend/react-i18next.md`
 - `frontend/.claude/skills/react-code/references/translation-patterns.md`
@@ -415,7 +415,7 @@ A bare edit is blocked by `.claude/hooks/block-manifest-write.sh`, so the remova
 GAIA_MANIFEST_WRITE=remove-i18n jq '
   .files |= with_entries(
     select(.key
-      | test("^frontend/app/languages/|^frontend/app/i18n\\.ts$|^frontend/app/middleware/i18next\\.ts$|^frontend/app/types/i18n/|^frontend/app/sessions\\.server/language\\.ts$|^frontend/app/routes/actions\\.set-language\\.ts$|^frontend/app/components/LanguageSelect/|^frontend/\\.claude/rules/i18n\\.md$|^frontend/\\.claude/agents/code-audit-frontend/react-i18next\\.md$|^frontend/\\.claude/skills/react-code/references/translation-patterns\\.md$|^frontend/\\.storybook/i18next\\.ts$|^frontend/\\.playwright/e2e/language-switch-a11y\\.spec\\.ts$|^wiki/modules/i18n\\.md$|^wiki/flows/Language Flow\\.md$|^wiki/dependencies/i18next\\.md$|^wiki/dependencies/remix-i18next\\.md$")
+      | test("^frontend/app/languages/|^frontend/app/i18n\\.ts$|^frontend/app/middleware/i18next\\.ts$|^frontend/app/types/i18n/|^frontend/app/sessions\\.server/language\\.ts$|^frontend/app/routes/actions\\.set-language\\.ts$|^frontend/app/components/language-select/|^frontend/\\.claude/rules/i18n\\.md$|^frontend/\\.claude/agents/code-audit-frontend/react-i18next\\.md$|^frontend/\\.claude/skills/react-code/references/translation-patterns\\.md$|^frontend/\\.storybook/i18next\\.ts$|^frontend/\\.playwright/e2e/language-switch-a11y\\.spec\\.ts$|^wiki/modules/i18n\\.md$|^wiki/flows/Language Flow\\.md$|^wiki/dependencies/i18next\\.md$|^wiki/dependencies/remix-i18next\\.md$")
       | not))
 ' .gaia/manifest.json > .gaia/manifest.json.tmp \
   && GAIA_MANIFEST_WRITE=remove-i18n mv .gaia/manifest.json.tmp .gaia/manifest.json
