@@ -261,7 +261,7 @@ Every page needs a `<title>`. Resolve the string in the route `loader` with `get
 
 ```tsx
 // BAD, no <title> rendered
-const DashboardRoute: FC = () => <DashboardPage />;
+const DashboardRoute = () => <DashboardPage />;
 
 // GOOD, i18n-resolved title in the loader, rendered as JSX
 export const loader = async ({context}: Route.LoaderArgs) => {
@@ -270,7 +270,7 @@ export const loader = async ({context}: Route.LoaderArgs) => {
   return {title: i18next.t('dashboard.meta.title', {ns: 'pages'})};
 };
 
-const DashboardRoute: FC = () => {
+const DashboardRoute = () => {
   const {title} = useLoaderData<typeof loader>();
 
   return (

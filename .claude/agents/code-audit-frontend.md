@@ -781,7 +781,7 @@ Prompt the subagent with these rules to check:
 **From the typescript skill (`frontend/.claude/skills/typescript/SKILL.md`):**
 
 - `type` not `interface`, flag any `interface` declarations
-- `import type {}` for type-only imports: `import type {FC} from 'react'`
+- `import type {}` for type-only imports: `import type {ReactNode} from 'react'`
 - Array syntax: `string[]` not `Array<string>`
 - camelCase for all identifiers (Zod fields, form `name`/`id`/`htmlFor`, props, state, params). Exceptions: `types/database.ts` (mirrors DB column names), dynamic template-literal names, env variable names (SCREAMING_SNAKE_CASE)
 - **Descriptive and self-documenting names** (from the naming-conventions skill, `.claude/skills/naming-conventions/SKILL.md`, and `.claude/rules/no-abbreviations.md`; Swift API Design Guidelines style, names read like prose at the point of use):
@@ -796,7 +796,7 @@ Prompt the subagent with these rules to check:
 - No TypeScript enums, use `as const` objects with derived types
 - JSX boolean props: always explicit `={true}`
 - Max 3 function parameters, use an options object beyond that
-- Exported functions must have explicit return types. Exceptions: route loaders/actions, FC-typed components
+- Exported functions must have explicit return types. Exceptions: route loaders/actions, React components
 - `z.literal()` not `z.enum()`, flag any `z.enum()` usage; `z.literal()` values should be sorted alphanumerically
 
 **Library-specific rules (injected from extensions):**

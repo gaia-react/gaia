@@ -102,9 +102,9 @@ Write React 19 idioms. The work here is to not regress to pre-19 habits, and to 
 
 ```tsx
 // BAD, needless indirection
-const InputText = forwardRef<HTMLInputElement, Props>((props, ref) => <input ref={ref} {...props} />);
+const InputText = forwardRef<HTMLInputElement, InputTextProps>((props, ref) => <input ref={ref} {...props} />);
 // GOOD, ref is just a prop
-const InputText: FC<Props> = ({ref, ...rest}) => <input ref={ref} {...rest} />;
+const InputText = ({ref, ...rest}: InputTextProps) => <input ref={ref} {...rest} />;
 ```
 
 The ref _type_ (`Ref<T>`, or `ComponentProps<'input'>` already carrying `ref`) is the typescript skill's domain.
@@ -148,10 +148,10 @@ For `useEffectEvent` (the sanctioned replacement for stale-deps / latest-ref hac
 
 ## Component Structure
 
-- **FC typing:** `const MyComponent: FC<Props> = ({...}) => ...`
+- **Inline props typing:** `type MyComponentProps = {...}; const MyComponent = ({...}: MyComponentProps) => ...`; a generic component is `const List = <T,>({items}: ListProps<T>) => ...`. Never import `FC` or `FunctionComponent` from `react`
 - **One component per file**: keeps co-location clean and makes code-splitting predictable
 - **Named React imports:** `import {useState} from 'react'`, never `React.useState()`, avoids the React namespace and makes tree-shaking explicit
-- **Type imports:** `import type {ChangeEventHandler} from 'react'`, never `React.FC`
+- **Type imports:** `import type {ChangeEventHandler} from 'react'`, never the `React.` namespace
 - **Event handler types:** Prefer `ChangeEventHandler<HTMLInputElement>` over inline event typing
 - **Event handler naming:** `handle{Action}{Element}`, the `{Element}` is required so the name says _what it does_, not just _when it fires_; e.g. `handleClickSave`, `handleChangeInput`, `handleCopyStack`. A bare event name (`handleClick`, `handleChange`, `handleSubmit`) trips `react-doctor/no-generic-handler-names`.
 
@@ -175,7 +175,7 @@ Thin shell only:
 
 - `loader` / `action` functions
 - Zod schemas for the action
-- One-line default export: `const MyRoute: FC = () => <MyPage />;`
+- One-line default export: `const MyRoute = () => <MyPage />;`
 
 **No UI code, hooks, state, or sub-components in route files.** Metadata renders as JSX (`<title>`/`<meta>`) in the page, not a route `meta` export (Gate 4).
 

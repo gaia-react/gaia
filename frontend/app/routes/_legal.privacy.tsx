@@ -1,4 +1,3 @@
-import type {FC} from 'react';
 import {useLoaderData} from 'react-router';
 import {getInstance} from '~/middleware/i18next';
 import PrivacyPage from '~/pages/privacy/page';
@@ -12,7 +11,7 @@ export const loader = async ({context}: Route.LoaderArgs) => {
   return {description, title};
 };
 
-const PrivacyRoute: FC = () => {
+const PrivacyRoute = () => {
   const {description, title} = useLoaderData<typeof loader>();
 
   return <PrivacyPage description={description} title={title} />;

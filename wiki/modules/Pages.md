@@ -23,7 +23,7 @@ Within a page folder: `page.tsx`, plus `tests/page.test.tsx` (Vitest via `compos
 
 ## Standard page shape
 
-Pages are `FC` components with a default export. `/new-route` emits this shape. See [[i18n]] for the namespace and `keyPrefix` conventions.
+Pages are components with inline-typed props and a default export. `/new-route` emits this shape. See [[i18n]] for the namespace and `keyPrefix` conventions.
 
 A page may also accept loader-derived data as props and own its document head. The legal pages take a `{title, description}` props type and render `<title>` and `<meta name="description">` themselves; the thin route resolves those strings in its loader and passes them down.
 

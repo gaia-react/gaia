@@ -44,7 +44,7 @@ export const useThings = (): Things => {
   return context;
 };
 
-export const ThingsProvider: FC<ThingsProviderProps> = ({children, things}) => (
+export const ThingsProvider = ({children, things}: ThingsProviderProps) => (
   <ThingsContext value={things}>{children}</ThingsContext>
 );
 ThingsProvider.displayName = 'ThingsProvider';
@@ -66,7 +66,7 @@ export const useX = () => {
   return context;
 };
 
-export const XProvider: FC<XProviderProps> = ({children, initialState}) => {
+export const XProvider = ({children, initialState}: XProviderProps) => {
   const value = useState(initialState);
   return <XContext value={value}>{children}</XContext>;
 };

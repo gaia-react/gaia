@@ -1,10 +1,9 @@
-import type {FC} from 'react';
 import {useTranslation} from 'react-i18next';
 import LanguageSelect from '~/components/language-select';
 import ThemeSwitch from '~/components/theme-switch';
 import {useOptionalRequestInfo} from '~/utils/request-info';
 
-const IndexPage: FC = () => {
+const IndexPage = () => {
   const {t} = useTranslation('common');
   const requestInfo = useOptionalRequestInfo();
 

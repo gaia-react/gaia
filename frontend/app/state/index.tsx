@@ -1,10 +1,10 @@
 /* eslint-disable canonical/filename-match-exported */
-import type {FC, ReactNode} from 'react';
+import type {ReactNode} from 'react';
 
 type StateProps = {
   children: ReactNode;
 };
 
-const State: FC<StateProps> = ({children}) => <>{children}</>;
+const State = ({children}: StateProps) => <>{children}</>;
 
 export default State;

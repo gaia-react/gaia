@@ -1,4 +1,3 @@
-import type {FC} from 'react';
 import {useEffect} from 'react';
 import {useTranslation} from 'react-i18next';
 import {data, Outlet, useLoaderData} from 'react-router';
@@ -47,7 +46,7 @@ export const loader = async ({context, request, url}: Route.LoaderArgs) => {
   );
 };
 
-const App: FC = () => {
+const App = () => {
   const loaderData = useLoaderData<typeof loader>();
   const {i18n} = useTranslation();
   const nonce = useNonce();
@@ -92,7 +91,7 @@ const App: FC = () => {
   );
 };
 
-const AppWithState: FC = () => (
+const AppWithState = () => (
   <State>
     <App />
   </State>

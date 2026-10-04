@@ -43,7 +43,7 @@ import {useForm, getFormProps, getInputProps} from '@conform-to/react';
 import {getZodConstraint, parseWithZod} from '@conform-to/zod/v4';
 import {useTranslation} from 'react-i18next';
 
-const MyPage: FC = () => {
+const MyPage = () => {
   const {t} = useTranslation('pages');
   const actionData = useActionData<{result: SubmissionResult}>();
 

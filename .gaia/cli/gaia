@@ -24047,13 +24047,12 @@ var parseFlags7 = (argv) => {
 var buildPropsTypeBlock = (componentName, props) => {
   if (props.length === 0) return "";
   const entries = props.map((property) => `  ${property.name}: ${property.type};`).join("\n");
-  return `
-type ${componentName}Props = {
+  return `type ${componentName}Props = {
 ${entries}
 };
+
 `;
 };
-var buildPropsGeneric = (componentName, props) => props.length === 0 ? "" : `<${componentName}Props>`;
 var isFunctionType = (type2) => type2.includes("=>") || /\bFunction\b/u.test(type2);
 var buildPropertyAttribute = (property) => {
   const { type: type2 } = property;
@@ -24134,11 +24133,9 @@ var renderComponentFile = (options) => {
     `${TEMPLATES_DIR}/index.tsx.tmpl`
   );
   const propsTypeBlock = buildPropsTypeBlock(componentName, props);
-  const propsGeneric = buildPropsGeneric(componentName, props);
-  const propsParam = props.length === 0 ? "" : `{${props.map((property) => property.name).join(", ")}}`;
+  const propsParam = props.length === 0 ? "" : `{${props.map((property) => property.name).join(", ")}}: ${componentName}Props`;
   return renderTemplate(templatePath, {
     Name: componentName,
-    propsGeneric,
     propsParam,
     propsTypeBlock
   });

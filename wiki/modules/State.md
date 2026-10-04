@@ -32,7 +32,7 @@ Context holds `[value, setter]` tuple (same shape as `useState`); use `noop` fro
 
 ```tsx
 const XContext = createContext<XContextValue>([undefined, noop]);
-export const XProvider: FC<XProviderProps> = ({children, initialState}) => {
+export const XProvider = ({children, initialState}: XProviderProps) => {
   const value = useState(initialState);
   return <XContext.Provider value={value}>{children}</XContext.Provider>;
 };

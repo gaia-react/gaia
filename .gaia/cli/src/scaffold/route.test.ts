@@ -253,7 +253,9 @@ describe('scaffold route: base emission (_session)', () => {
     expect(routeBody).not.toContain('export const action');
 
     const pageBody = readFileSync(pageIndex, 'utf8');
-    expect(pageBody).toContain('const DashboardPage: FC');
+    expect(pageBody).not.toMatch(/\bFC\b/);
+    expect(pageBody.startsWith('\n')).toBe(false);
+    expect(pageBody).toContain('const DashboardPage = () => {');
     expect(pageBody).toContain('export default DashboardPage');
 
     const storiesBody = readFileSync(pageStories, 'utf8');

@@ -10,7 +10,7 @@ Patterns and conventions for all TypeScript code.
 
 ## Types
 
-- `import type {}` for type-only imports: `import type {FC} from 'react'`
+- `import type {}` for type-only imports: `import type {ReactNode} from 'react'`
 
 ## Naming, camelCase
 
@@ -35,7 +35,7 @@ All exported functions must have explicit return types.
 **Exceptions:**
 
 - Route loaders/actions (complex generics)
-- React components typed with `FC<Props>` (return type provided by generic)
+- React components (props typed inline on the destructured parameter, return type inferred)
 
 ```tsx
 // BAD
