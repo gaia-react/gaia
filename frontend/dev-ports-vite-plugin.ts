@@ -12,13 +12,28 @@ import {
 
 // A config restart builds the new server (running this hook) before it closes
 // the old one, so the old one still holds the port. Vite re-bundles the config
-// into a fresh module on restart, so module state does not survive it: the
-// restart is told from a foreign holder by asking who owns the listener. This
-// flag keeps a restart, in this module or a fresh one, from recording the launch twice.
-let hasListenedInThisProcess = false;
+// into a fresh module on restart, so module state does not survive it. The port
+// this process is listening on is therefore recorded in a globalThis slot, which
+// does survive, so a restart is told from a foreign holder without needing the
+// listener-owner probe (which reads unknown without lsof/ss or outside a git
+// checkout). The owner probe stays as the fallback for a port the slot does not
+// name. The slot also keeps a restart from recording the launch twice.
+const LISTENING_PORT_SLOT = Symbol.for('gaia.dev-ports.listening-port');
+
+type ListeningPortHolder = {[LISTENING_PORT_SLOT]?: number};
+
+const getRecordedPort = (): number | undefined =>
+  (globalThis as ListeningPortHolder)[LISTENING_PORT_SLOT];
+
+const recordPort = (port: number): void => {
+  (globalThis as ListeningPortHolder)[LISTENING_PORT_SLOT] = port;
+};
 
 // The wildcards are probed too: on macOS a loopback bind succeeds beside a
 // server bound to 0.0.0.0 or ::, so the loopback probes alone read it as free.
+// The probes run one at a time: on Linux a wildcard bind fails beside this
+// process's own still-open loopback probe, so concurrent probes read a free
+// port as taken.
 const PROBE_ADDRESSES = ['127.0.0.1', '::1', '0.0.0.0', '::'];
 
 const isTakenOn = async (port: number, host: string): Promise<boolean> =>
@@ -37,11 +52,12 @@ const isTakenOn = async (port: number, host: string): Promise<boolean> =>
   });
 
 const isTaken = async (port: number): Promise<boolean> => {
-  const takenStateByAddress = await Promise.all(
-    PROBE_ADDRESSES.map(async (host) => isTakenOn(port, host))
-  );
+  for (const host of PROBE_ADDRESSES) {
+    // eslint-disable-next-line no-await-in-loop -- concurrent probes collide on Linux
+    if (await isTakenOn(port, host)) return true;
+  }
 
-  return takenStateByAddress.includes(true);
+  return false;
 };
 
 const describePortHolder = ({
@@ -114,7 +130,7 @@ export const devPortsPlugin = (packageDirectory: string): Plugin => ({
     if (resolution.kind !== 'resolved') throw new Error(resolution.message);
     const {devPort, treeRoot} = resolution.ports;
 
-    if (await isTaken(devPort)) {
+    if ((await isTaken(devPort)) && getRecordedPort() !== devPort) {
       const owner = findListenerOwner({port: devPort, treeRoot});
 
       if (owner.kind !== 'own' || owner.pid !== process.pid) {
@@ -126,13 +142,13 @@ export const devPortsPlugin = (packageDirectory: string): Plugin => ({
           })
         );
       }
-      // This process already holds the port: a restart, whose launch was recorded.
-      hasListenedInThisProcess = true;
     }
 
     server.httpServer?.once('listening', () => {
-      if (hasListenedInThisProcess) return;
-      hasListenedInThisProcess = true;
+      // A restart's port is already recorded, and so is its launch.
+      const isRestart = getRecordedPort() === devPort;
+      recordPort(devPort);
+      if (isRestart) return;
       if (treeRoot !== undefined) recordLaunch({port: devPort, treeRoot});
     });
   },

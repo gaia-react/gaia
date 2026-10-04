@@ -164,6 +164,10 @@ describe('resolveDevPorts port file', () => {
       'non-numeric DEV_PORT',
       slotThreeFile.replace('DEV_PORT=5176', 'DEV_PORT=abc'),
     ],
+    [
+      'empty SITE_URL',
+      slotThreeFile.replace('SITE_URL=http://localhost:5176', 'SITE_URL='),
+    ],
     ['zero DEV_PORT', slotThreeFile.replace('DEV_PORT=5176', 'DEV_PORT=0')],
     [
       'out-of-range DEV_PORT',
@@ -285,11 +289,16 @@ describe('messages', () => {
     expect(message).toBe(
       `GAIA: port 5176, this tree's dev server port, is already in use by PID 99 in /other/tree. Refusing to start on a different port. ${ASK_FIRST_SENTENCE} ${PORTS_HINT}`
     );
-    const bare = buildPortInUseMessage({port: 6009, service: 'Storybook'});
-    expect(bare).toContain('port 6009');
-    expect(bare).toContain('Storybook');
-    expect(bare).not.toContain('PID');
-    expect(bare.endsWith(`${ASK_FIRST_SENTENCE} ${PORTS_HINT}`)).toBe(true);
+    const messageWithoutOwner = buildPortInUseMessage({
+      port: 6009,
+      service: 'Storybook',
+    });
+    expect(messageWithoutOwner).toContain('port 6009');
+    expect(messageWithoutOwner).toContain('Storybook');
+    expect(messageWithoutOwner).not.toContain('PID');
+    expect(
+      messageWithoutOwner.endsWith(`${ASK_FIRST_SENTENCE} ${PORTS_HINT}`)
+    ).toBe(true);
   });
 
   test('foreign server names the port and owner', () => {

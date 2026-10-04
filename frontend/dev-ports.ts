@@ -79,6 +79,7 @@ export const parsePortFile = (portFileText: string): DevPorts | undefined => {
     devPort === undefined ||
     storybookPort === undefined ||
     siteUrl === undefined ||
+    siteUrl === '' ||
     !/^\d+$/.test(slot) ||
     !isPort(devPort) ||
     !isPort(storybookPort)

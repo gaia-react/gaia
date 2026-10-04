@@ -140,6 +140,9 @@ beforeEach(() => {
   findListenerOwnerMock.mockReset();
   findListenerOwnerMock.mockReturnValue({kind: 'unknown'});
   delete process.env.CLAUDE_CODE_SESSION_ID;
+  delete (globalThis as Record<symbol, unknown>)[
+    Symbol.for('gaia.dev-ports.listening-port')
+  ];
 });
 
 afterEach(async () => {
@@ -250,7 +253,9 @@ describe('config restart', () => {
     // A real restart re-bundles the config into a fresh module, so the second
     // configureServer runs against a module with no memory of the first.
     vi.resetModules();
-    findListenerOwnerMock.mockReturnValue({kind: 'own', pid: process.pid});
+    // The owner probe cannot identify the holder (no lsof/ss, or no git
+    // checkout): the restart must still pass, on the recorded port alone.
+    findListenerOwnerMock.mockReturnValue({kind: 'unknown'});
     const restartedPlugin = await loadPlugin();
 
     const restartedServer = makeServer();
@@ -259,11 +264,17 @@ describe('config restart', () => {
     ).resolves.toBeUndefined();
     restartedServer.httpServer.emit('listening');
 
-    expect(findListenerOwnerMock).toHaveBeenCalledWith({
-      port,
-      treeRoot: sandbox,
-    });
     expect(spawnMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('a restart still passes through the owner probe when the slot is empty and the holder is this process', async () => {
+    const port = await findFreePort();
+    heldServers.push(await listenOn(port, '127.0.0.1'));
+    findListenerOwnerMock.mockReturnValue({kind: 'own', pid: process.pid});
+    resolveDevPortsMock.mockReturnValue(buildResolvedResolution(port));
+    const plugin = await loadPlugin();
+
+    await expect(plugin.configureServer(makeServer())).resolves.toBeUndefined();
   });
 
   test('a held port owned by another process still refuses', async () => {

@@ -4,7 +4,7 @@ import {ASK_FIRST_SENTENCE} from '../dev-ports';
 import type {ListenerOwner} from '../dev-ports';
 import {decideServerReuse} from '../dev-ports-reuse';
 
-const decide = (
+const decideReuseForOwner = (
   owner: ListenerOwner,
   isContinuousIntegration = false
 ): {decision: boolean | Error; probe: ReturnType<typeof vi.fn>} => {
@@ -27,26 +27,26 @@ const decide = (
 
 describe('decideServerReuse', () => {
   test('reuses a server this tree owns', () => {
-    expect(decide({kind: 'own', pid: 10}).decision).toBe(true);
+    expect(decideReuseForOwner({kind: 'own', pid: 10}).decision).toBe(true);
   });
 
   test('does not reuse a free port', () => {
-    expect(decide({kind: 'free'}).decision).toBe(false);
+    expect(decideReuseForOwner({kind: 'free'}).decision).toBe(false);
   });
 
   test('does not reuse when ownership is unknown', () => {
-    expect(decide({kind: 'unknown'}).decision).toBe(false);
+    expect(decideReuseForOwner({kind: 'unknown'}).decision).toBe(false);
   });
 
   test('in continuous integration never reuses and never probes', () => {
-    const {decision, probe} = decide({kind: 'own', pid: 10}, true);
+    const {decision, probe} = decideReuseForOwner({kind: 'own', pid: 10}, true);
 
     expect(decision).toBe(false);
     expect(probe).not.toHaveBeenCalled();
   });
 
   test('a foreign server with an owner path throws naming port, path, and the ask-first sentence', () => {
-    const {decision} = decide({
+    const {decision} = decideReuseForOwner({
       kind: 'foreign',
       ownerPath: '/trees/other',
       pid: 11,
@@ -60,7 +60,7 @@ describe('decideServerReuse', () => {
   });
 
   test('a foreign server with no owner path throws naming owner unknown', () => {
-    const {decision} = decide({
+    const {decision} = decideReuseForOwner({
       kind: 'foreign',
       ownerPath: undefined,
       pid: 0,
