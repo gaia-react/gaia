@@ -1,7 +1,7 @@
 import type {FC} from 'react';
 import {useLoaderData} from 'react-router';
 import {getInstance} from '~/middleware/i18next';
-import TermsPage from '~/pages/Legal/TermsPage';
+import TermsPage from '~/pages/terms/page';
 import type {Route} from './+types/_legal.terms';
 
 export const loader = async ({context}: Route.LoaderArgs) => {

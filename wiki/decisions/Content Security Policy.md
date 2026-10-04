@@ -4,7 +4,7 @@ status: active
 priority: 2
 date: 2026-05-21
 created: 2026-05-21
-updated: 2026-10-03
+updated: 2026-10-04
 tags: [decision, security, csp]
 ---
 
@@ -23,7 +23,7 @@ Router's single-fetch stream scripts and post-shell chunks included, so
 enforcement does not block hydration. App-authored inline scripts read the
 nonce through `useNonce()`: the `window.process` ENV bootstrap in
 `frontend/app/root.tsx`, and the dark-mode probe plus `ScrollRestoration` / `Scripts` /
-`Links` in `frontend/app/components/Document`. The browser blanks a nonce attribute
+`Links` in `frontend/app/components/document`. The browser blanks a nonce attribute
 after parsing, and React 19.3+ hydrates `nonce` against the element's `.nonce`
 property, which keeps the real value. The client's empty-string default
 therefore always differs from the server's real nonce, so every nonced element

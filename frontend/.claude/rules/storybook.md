@@ -14,7 +14,7 @@ Write a story for every component scaffolded with `/new-component`. Skip stories
 
 ## File location
 
-Stories live in the component's `tests/` subfolder as `index.stories.tsx`.
+A story or test is `tests/<source basename>.<kind>.tsx` beside its source: `index.tsx` -> `tests/index.stories.tsx`, `page.tsx` -> `tests/page.stories.tsx`, `ui/button.tsx` -> `ui/tests/button.stories.tsx`.
 
 ## Typing
 
@@ -22,7 +22,7 @@ Use `Meta` and `StoryFn` from `@storybook/react-vite`. Never use `Story` (deprec
 
 ## Title convention
 
-Slash-separated paths mirror the component's parent directory: `Components/MyComponent`, `Form/InputText`, `Components/Loaders/Spinner`.
+Slash-separated PascalCase display segments of the path under `app/`, with no layout group: `Pages/Contact`, `Pages/Index/PromoBanner`, `Components/PriceTag`.
 
 ## Decorator order
 

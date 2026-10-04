@@ -2,7 +2,7 @@
 type: flow
 status: active
 created: 2026-04-20
-updated: 2026-10-03
+updated: 2026-10-04
 tags: [flow, forms, conform, zod]
 ---
 
@@ -25,7 +25,7 @@ The end-to-end path of a form submission in the app.
    - Returns `dataWithToast(...)` from `remix-toast` for an inline toast
 6. Conform binds errors back to fields automatically.
 
-This is the recommended template pattern. No shipped route action implements it; the live working examples are the `InputEmail`, `InputPassword`, and `YearMonthDay` Storybook stories under `frontend/app/components/Form/`. The shipped route actions (`frontend/app/routes/actions.set-language.ts`, `frontend/app/routes/resources.theme-switch.tsx`) validate with plain `z.safeParse` rather than `parseWithZod`/`submission.reply()`.
+This is the recommended template pattern. No shipped route action implements it; the live working examples are the `InputEmail`, `InputPassword`, and `YearMonthDay` Storybook stories under `frontend/app/components/form/`. The shipped route actions (`frontend/app/routes/actions.set-language.ts`, `frontend/app/routes/resources.theme-switch.tsx`) validate with plain `z.safeParse` rather than `parseWithZod`/`submission.reply()`.
 
 ## Stateful custom inputs
 

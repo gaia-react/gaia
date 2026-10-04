@@ -1,0 +1,63 @@
+import type {FC, ReactNode} from 'react';
+import {cn} from 'cn';
+import FieldDescription from './field-description';
+import FieldError from './field-error';
+import MaxLength from './max-length';
+
+type FieldStatusProps = {
+  className?: string;
+  description?: ReactNode;
+  disabled?: boolean;
+  error?: ReactNode;
+  hideMaxLength?: boolean;
+  id?: string;
+  length?: number;
+  maxLength?: number;
+};
+
+const FieldStatus: FC<FieldStatusProps> = ({
+  className,
+  description,
+  disabled,
+  error,
+  hideMaxLength,
+  id,
+  length,
+  maxLength,
+}) => {
+  const descriptionElement =
+    description ?
+      <FieldDescription
+        description={description}
+        disabled={disabled}
+        id={id}
+        maxLength={maxLength}
+      />
+    : undefined;
+
+  const errorElement =
+    error && error !== true ? <FieldError error={error} /> : undefined;
+
+  return (
+    <div className={cn('mt-1 ml-px', className)}>
+      {!hideMaxLength && maxLength && length !== undefined ?
+        <>
+          <div className="flex items-start justify-between">
+            {descriptionElement ?? errorElement}
+            {!(descriptionElement ?? errorElement) && (
+              <span className="flex-1 text-sm">&nbsp;</span>
+            )}
+            <MaxLength length={length} maxLength={maxLength} />
+          </div>
+          {errorElement}
+        </>
+      : <>
+          {descriptionElement}
+          {errorElement}
+        </>
+      }
+    </div>
+  );
+};
+
+export default FieldStatus;

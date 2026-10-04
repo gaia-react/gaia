@@ -3,11 +3,11 @@
  *
  * Emits a route file at `app/routes/<group>.<name>.tsx`, a flat
  * `@react-router/fs-routes` file, a page folder under
- * `app/pages/<Group>/<PageName>/` (with index.tsx + tests/), and optionally
+ * `app/pages/<name>/` (with page.tsx + tests/), and optionally
  * an i18n locale file + alphabetical insert into the locale barrel.
  *
- * Groups are `_public` or `_session`. Group segment in the page tree maps
- * to `Public` / `Session`.
+ * Groups are `_public` or `_session`. The group names only the route file
+ * prefix; the page tree has no group segment.
  *
  * Templates and the shared scaffold primitives live alongside under
  * `templates/route/` and `template.ts` / `fs.ts` / `barrel.ts`.
@@ -17,7 +17,6 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
-import {lookupOwn} from '../util/argv.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {writeFileIfAbsent} from './fs.js';
 import {resolveScaffoldTarget} from './resolve-target.js';
@@ -27,10 +26,9 @@ import type {ScaffoldResult} from './types.js';
 
 const VALID_GROUPS = new Set(['_public', '_session']);
 
-const GROUP_TO_SEGMENT: Readonly<Record<string, string>> = {
-  _public: 'Public',
-  _session: 'Session',
-};
+/** Folder names the page layout reserves for its own subfolders. */
+const RESERVED_PAGE_NAME_LIST = ['assets', 'hooks', 'state', 'tests', 'utils'];
+const RESERVED_PAGE_NAMES = new Set(RESERVED_PAGE_NAME_LIST);
 
 /** kebab-case validation: lowercase letters, digits, hyphens; cannot start or end with hyphen. */
 const KEBAB_PATTERN = /^[a-z\d]+(?:-[a-z\d]+)*$/u;
@@ -356,7 +354,6 @@ const templatePaths = (): TemplatePaths => {
 };
 
 type ResolvedNames = {
-  groupSegment: string;
   i18nKey: string;
   pageName: string;
   routeFile: string;
@@ -365,10 +362,8 @@ type ResolvedNames = {
 
 const resolveNames = (kebabName: string, group: string): ResolvedNames => {
   const pascal = toPascalCase(kebabName);
-  const segment = lookupOwn(GROUP_TO_SEGMENT, group) ?? '';
 
   return {
-    groupSegment: segment,
     i18nKey: toCamelCase(kebabName),
     // Page folder, component, and the route's import use the `<Pascal>Page`
     // convention (e.g. `IndexPage`); the route component stays `<Pascal>Route`.
@@ -393,7 +388,6 @@ const buildRouteVars = (args: BuildRouteVarsArgs): TemplateVars => {
   const hasLoaderI18n = flags.loader && flags.i18n;
 
   return {
-    groupSegment: names.groupSegment,
     hasAction: flags.action,
     hasLoader: flags.loader,
     hasLoaderI18n,
@@ -538,7 +532,7 @@ type EmitRouteFilesArgs = {
 const emitRouteFiles = (args: EmitRouteFilesArgs): null | number => {
   const {flags, name, names, result, root} = args;
   const {dryRun, i18n} = flags;
-  const {groupSegment, i18nKey, pageName, routeFile} = names;
+  const {i18nKey, pageName, routeFile, routeName} = names;
   const tmpls = templatePaths();
   const routeVars = buildRouteVars({flags, name, names});
 
@@ -550,29 +544,29 @@ const emitRouteFiles = (args: EmitRouteFilesArgs): null | number => {
     result,
   });
 
-  const pageDir = path.join(root, 'app', 'pages', groupSegment, pageName);
+  const pageDir = path.join(root, 'app', 'pages', name);
   const pageVars: TemplateVars = {
-    groupSegment,
     hasI18n: i18n,
     i18nKey,
     noI18n: !i18n,
     pageName,
+    routeName,
   };
 
   writeFile({
-    absPath: path.join(pageDir, 'index.tsx'),
+    absPath: path.join(pageDir, 'page.tsx'),
     contents: renderTemplate(tmpls.pageIndex, pageVars),
     dryRun,
     result,
   });
   writeFile({
-    absPath: path.join(pageDir, 'tests', 'index.test.tsx'),
+    absPath: path.join(pageDir, 'tests', 'page.test.tsx'),
     contents: renderTemplate(tmpls.pageTest, pageVars),
     dryRun,
     result,
   });
   writeFile({
-    absPath: path.join(pageDir, 'tests', 'index.stories.tsx'),
+    absPath: path.join(pageDir, 'tests', 'page.stories.tsx'),
     contents: renderTemplate(tmpls.pageStories, pageVars),
     dryRun,
     result,
@@ -619,6 +613,12 @@ export const run = (
   if (!KEBAB_PATTERN.test(name)) {
     return userError(
       `route name must be kebab-case (lowercase letters, digits, hyphens): got "${name}"`
+    );
+  }
+
+  if (RESERVED_PAGE_NAMES.has(name)) {
+    return userError(
+      `route name "${name}" is reserved: page folders use it for their own subfolders (reserved: ${RESERVED_PAGE_NAME_LIST.join(', ')})`
     );
   }
 

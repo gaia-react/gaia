@@ -427,7 +427,7 @@ write_commit_evidence() {
   printf '%s\n' CLAUDE.md >"$evidence/snapshot/root/tree.txt"
   jq -n '{reps: 1, expectations_commit: "0000000", table_sha256: null}' >"$evidence/meta.json"
   jq -n --arg root "$root" '{launch: "root", trigger: "after_task:commit", launch_root: $root, launch_directory: $root,
-    commit_paths: {a: ["frontend/app/components/ProbeCommit/index.tsx"], b: ["frontend/app/utils/probeSum.ts", "frontend/app/utils/probeSum.test.ts"]}}' >"$scenario/scenario.json"
+    commit_paths: {a: ["frontend/app/components/probe-commit/index.tsx"], b: ["frontend/app/utils/probeSum.ts", "frontend/app/utils/probeSum.test.ts"]}}' >"$scenario/scenario.json"
   printf '{"event":"SessionStart","tag":"root-settings","source":"startup","claude_project_dir":"%s","pwd":"%s","toplevel":"%s"}\n' "$root" "$root" "$root" >"$scenario/probe.jsonl"
   : >"$scenario/trace2.jsonl"
   {
@@ -574,7 +574,7 @@ STUB
     --table-repo "$repo" --launches root --only 'fl-root-commit-a-pre-commit'
   [ "$(cat "$STUB_BRANCH_LOG")" = "probe/run" ]
   grep -qF "probe-commit-b:frontend/app/utils/probeSum.test.ts frontend/app/utils/probeSum.ts" "$STUB_STAGED_LOG"
-  grep -qF "probe-commit-a:frontend/app/components/ProbeCommit/index.tsx" "$STUB_STAGED_LOG"
+  grep -qF "probe-commit-a:frontend/app/components/probe-commit/index.tsx" "$STUB_STAGED_LOG"
   jq -e '.commit_paths.b | index("frontend/app/utils/probeSum.test.ts") != null' "$evidence/rep-1/root/after-task-commit/scenario.json" >/dev/null
   [ "$(git -C "$FIXTURE_TREE" symbolic-ref --short HEAD)" = "$branch_before" ]
   [ "$(git -C "$FIXTURE_TREE" rev-parse HEAD)" = "$head_before" ]

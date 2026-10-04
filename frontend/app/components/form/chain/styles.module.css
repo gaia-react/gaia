@@ -1,0 +1,149 @@
+.chain {
+  display: flex;
+  align-items: flex-end;
+
+  > button,
+  > select,
+  > [type='text'],
+  > [type='email'],
+  > [type='url'],
+  > [type='password'],
+  > [type='number'],
+  > [type='date'],
+  > [type='datetime-local'],
+  > [type='month'],
+  > [type='search'],
+  > [type='tel'],
+  > [type='time'],
+  > [type='week'] {
+    &:first-child {
+      border-right-width: 0;
+      border-top-right-radius: 0;
+      border-bottom-right-radius: 0;
+    }
+
+    &:last-child {
+      border-top-left-radius: 0;
+      border-bottom-left-radius: 0;
+    }
+
+    &:not(:first-child, :last-child) {
+      border-right-width: 0;
+      border-left-width: 0;
+      border-radius: 0;
+    }
+  }
+
+  > button {
+    &:first-child {
+      border-right-color: var(--color-gray-400);
+      border-top-left-radius: var(--radius-md);
+      border-bottom-left-radius: var(--radius-md);
+    }
+
+    &:last-child {
+      border-top-right-radius: var(--radius-md);
+      border-bottom-right-radius: var(--radius-md);
+
+      &:nth-child(2) {
+        border-left-width: 0;
+      }
+
+      &:not(:nth-child(2)) {
+        border-left-color: var(--color-gray-400);
+      }
+    }
+  }
+
+  > [role='presentation'] {
+    &:first-child {
+      select,
+      [type='text'],
+      [type='email'],
+      [type='url'],
+      [type='password'],
+      [type='number'],
+      [type='date'],
+      [type='datetime-local'],
+      [type='month'],
+      [type='search'],
+      [type='tel'],
+      [type='time'],
+      [type='week'] {
+        border-right-width: 0;
+        border-top-right-radius: 0;
+        border-bottom-right-radius: 0;
+      }
+    }
+
+    &:last-child {
+      select,
+      [type='text'],
+      [type='email'],
+      [type='url'],
+      [type='password'],
+      [type='number'],
+      [type='date'],
+      [type='datetime-local'],
+      [type='month'],
+      [type='search'],
+      [type='tel'],
+      [type='time'],
+      [type='week'] {
+        border-top-left-radius: 0;
+        border-bottom-left-radius: 0;
+      }
+    }
+
+    &:not(:first-child, :last-child) {
+      select,
+      [type='text'],
+      [type='email'],
+      [type='url'],
+      [type='password'],
+      [type='number'],
+      [type='date'],
+      [type='datetime-local'],
+      [type='month'],
+      [type='search'],
+      [type='tel'],
+      [type='time'],
+      [type='week'] {
+        border-right-width: 0;
+        border-radius: 0;
+      }
+    }
+  }
+}
+
+.fullWidth {
+  > select,
+  > [type='text'],
+  > [type='email'],
+  > [type='url'],
+  > [type='password'],
+  > [type='number'],
+  > [type='date'],
+  > [type='datetime-local'],
+  > [type='month'],
+  > [type='search'],
+  > [type='tel'],
+  > [type='time'],
+  > [type='week'] {
+    flex-grow: 1;
+  }
+
+  > [role='presentation'] {
+    flex-grow: 1;
+  }
+}
+
+:global .dark {
+  :local .chain {
+    > button {
+      &:last-child {
+        border-left-color: var(--color-gray-600);
+      }
+    }
+  }
+}

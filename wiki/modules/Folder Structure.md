@@ -5,7 +5,7 @@ status: active
 language: typescript
 purpose: Top-level folder layout of the app
 created: 2026-04-20
-updated: 2026-10-03
+updated: 2026-10-04
 tags: [module, structure]
 ---
 
@@ -21,7 +21,7 @@ The repo is a monorepo. The harness (`.claude/`, `.gaia/`, `.githooks/`, `.githu
 | `hooks/`           | Global custom hooks                        | [[Hooks]]      |
 | `languages/`       | TypeScript-based i18n strings              | [[i18n]]       |
 | `middleware/`      | React Router middleware (i18next)        | [[Middleware]] |
-| `pages/`           | Page-specific UI, organized by route group | [[Pages]]      |
+| `pages/`           | Page-specific UI, organized by route path  | [[Pages]]      |
 | `routes/`          | Thin route files (loader/action only)      | [[Routing]]    |
 | `services/`        | API wrapper + domain services              | [[Services]]   |
 | `sessions.server/` | Server-only signed cookie for language      | [[Sessions]]   |

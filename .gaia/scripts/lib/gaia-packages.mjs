@@ -41,10 +41,13 @@ export const BUILTIN_DESCRIPTOR = Object.freeze({
       'app/services/**',
       'app/hooks/**',
       'app/components/**/*.ts',
+      'app/pages/**/*.ts',
     ]),
     emergentTests: Object.freeze([
       'app/components/**/*.test.ts',
       'app/components/**/*.test.tsx',
+      'app/pages/**/*.test.ts',
+      'app/pages/**/*.test.tsx',
       '.playwright/**/*.spec.ts',
       '.playwright/**/*.spec.tsx',
       '.playwright/**/*.test.ts',

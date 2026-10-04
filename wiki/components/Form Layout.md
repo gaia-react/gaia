@@ -1,12 +1,12 @@
 ---
 type: component
-path: frontend/app/components/Form/{Chain,FormActions,FormError}/
+path: frontend/app/components/form/{chain,form-actions,form-error}/
 status: active
 language: typescript
 purpose: Form composition helpers: input rows, action rows, server-error banner
 depends_on: [[Form Components]]
 created: 2026-04-20
-updated: 2026-10-03
+updated: 2026-10-04
 tags: [component, forms, layout]
 ---
 

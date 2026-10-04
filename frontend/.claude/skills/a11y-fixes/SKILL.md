@@ -31,7 +31,7 @@ WCAG AA requires 4.5:1 for normal text, 3:1 for large text. Use the project's se
 
 ## label
 
-Form inputs need an associated `<label>`. Use the `Field` wrapper from `~/components/Form/Field` rather than a bare `<label>`, it wires `htmlFor`, error text, and description automatically. See the `form-components.md` audit extension.
+Form inputs need an associated `<label>`. Use the `Field` wrapper from `~/components/form/field` rather than a bare `<label>`, it wires `htmlFor`, error text, and description automatically. See the `form-components.md` audit extension.
 
 ```tsx
 // BAD, bare input with no label association

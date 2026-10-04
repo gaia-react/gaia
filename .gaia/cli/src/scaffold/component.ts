@@ -1,16 +1,24 @@
 /**
- * `gaia scaffold component <Name>` handler.
+ * `gaia scaffold component <name>` handler.
  *
  * Replaces the prose-only `new-component` skill with deterministic file
  * emission. Produces three files (or two with `--no-story`) under
- * `app/components/<Name>/` matching the project's existing component
- * convention (`app/components/Button/`, etc.).
+ * `app/components/<kebab>/` matching the project's component convention
+ * (`app/components/theme-switch/`, etc.).
  *
- * Output shape (default invocation, `gaia scaffold component Foo`):
+ * The name is kebab (`price-tag`) or PascalCase (`PriceBadge`). The export is
+ * the PascalCase form and the folder is its lodash-style kebab form, the same
+ * transform the linter's filename-match rule applies.
  *
- *   app/components/Foo/index.tsx
- *   app/components/Foo/tests/index.test.tsx
- *   app/components/Foo/tests/index.stories.tsx
+ * Output shape (default invocation, `gaia scaffold component foo-bar`):
+ *
+ *   app/components/foo-bar/index.tsx
+ *   app/components/foo-bar/tests/index.test.tsx
+ *   app/components/foo-bar/tests/index.stories.tsx
+ *
+ * `--parent` may name an existing folder under `app/components` or
+ * `app/pages/<path>`. `app/components/ui` and everything under it is refused:
+ * shadcn owns that folder.
  *
  * The `--no-story` flag drops the stories file and rewires the test imports
  * so the test is self-contained (no `composeStory` round-trip).
@@ -39,9 +47,40 @@ import {renderTemplate} from './template.js';
 import type {ScaffoldResult} from './types.js';
 
 const PASCAL_CASE_PATTERN = /^[A-Z][\dA-Za-z]*$/u;
+const KEBAB_CASE_PATTERN = /^[a-z][\da-z]*(?:-[\da-z]+)*$/u;
 const PROP_NAME_PATTERN = /^[A-Za-z_][\w$]*$/u;
+// lodash's word split, ordinals included. Input is a validated identifier, so
+// backtracking cost is bounded by its length.
+/* eslint-disable sonarjs/super-linear-regex -- bounded identifier input */
+const KEBAB_WORD_PATTERN =
+  /[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|\d*(?:1ST|2ND|3RD|(?![123])\dTH)(?=\b|[a-z_])|\d*(?:1st|2nd|3rd|(?![123])\dth)(?=\b|[A-Z_])|\d+/gu;
+/* eslint-enable sonarjs/super-linear-regex */
 const TEMPLATES_DIR = 'component';
 const COMPONENTS_DEFAULT_PARENT = 'app/components';
+const APP_SEGMENT = 'app';
+const COMPONENTS_SEGMENT = 'components';
+const PAGES_SEGMENT = 'pages';
+const UI_SEGMENT = 'ui';
+
+const NAME_FORMS_MESSAGE =
+  'use kebab-case (price-tag) or PascalCase (PriceBadge)';
+
+/** `price-tag` -> `PriceTag`: capitalize each hyphen-separated part. */
+const kebabToPascal = (kebab: string): string =>
+  kebab
+    .split('-')
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join('');
+
+/**
+ * lodash `kebabCase` for the ASCII alphanumeric names this command accepts:
+ * words split on a lower-to-upper boundary, an acronym-to-word boundary
+ * (`HTMLView` -> `HTML`, `View`) and every digit run (`Heading2` ->
+ * `Heading`, `2`) except ordinals (`1st`), lowercased and joined with `-`. The linter's filename
+ * transform uses lodash, so the folder name must come from the same split.
+ */
+const toKebabCase = (value: string): string =>
+  (value.match(KEBAB_WORD_PATTERN) ?? []).join('-').toLowerCase();
 
 const BRACKET_PAIRS: Record<string, string> = {
   '(': ')',
@@ -108,11 +147,14 @@ type PropertyEntry = {
   type: string;
 };
 
-const HELP_TEXT = `Usage: gaia scaffold component <Name> [flags]
+const HELP_TEXT = `Usage: gaia scaffold component <name> [flags]
 
+  <name>              kebab-case (price-tag) or PascalCase (PriceBadge); the
+                      folder is the kebab form of the PascalCase export name
   --no-story          Skip the index.stories.tsx file
-  --parent <dir>      Parent dir under app/components/ (default: app/components/),
-                      relative to the frontend package
+  --parent <dir>      Existing parent dir under app/components/ or app/pages/<path>
+                      (default: app/components/), relative to the frontend
+                      package. components/ui is refused: shadcn owns it.
   --props "a:string,b:number"
                       Typed props rendered as a Props type alias.
                       Comma-bearing types (Record<K, V>, (a, b) => void,
@@ -308,9 +350,22 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
     return {message: 'component name is required', ok: false};
   }
 
-  if (!PASCAL_CASE_PATTERN.test(name)) {
+  const isKebab = KEBAB_CASE_PATTERN.test(name);
+
+  if (!isKebab && !PASCAL_CASE_PATTERN.test(name)) {
     return {
-      message: `component name must be PascalCase (got: "${name}")`,
+      message: `component name must be ${NAME_FORMS_MESSAGE} (got: "${name}")`,
+      ok: false,
+    };
+  }
+
+  // A kebab name round-trips only when lodash splits it where the author did.
+  // lodash splits digit runs, so `heading2` exports `Heading2` and the
+  // linter expects the folder `heading-2`: refuse rather than write a folder
+  // the linter rejects.
+  if (isKebab && toKebabCase(kebabToPascal(name)) !== name) {
+    return {
+      message: `component folder for "${name}" must be "${toKebabCase(kebabToPascal(name))}" (the folder the linter expects for export ${kebabToPascal(name)}); pass that name instead`,
       ok: false,
     };
   }
@@ -432,15 +487,53 @@ const buildTestImports = (
   ].join('\n');
 };
 
-const buildStoryTitle = (parent: string, componentName: string): string => {
-  // parent is package-relative, e.g. "app/components" or "app/components/Form".
-  // Strip the "app/components" prefix so titles look like "Components/Foo"
-  // (matching the existing pattern, see app/components/Button/tests/index.stories.tsx).
-  const stripped = parent.replace(/^app\/components\/?/u, '');
+/**
+ * The story title is the path under `app/`, each folder in PascalCase display
+ * form: `app/components/price-tag` -> `Components/PriceTag`,
+ * `app/pages/index/promo-banner` -> `Pages/Index/PromoBanner`. `parent` is
+ * package-relative and already normalized.
+ */
+const buildStoryTitle = (parent: string, folder: string): string =>
+  [...parent.split('/').slice(1), folder].map(kebabToPascal).join('/');
 
-  if (stripped === '') return `Components/${componentName}`;
+type ParentCheck = {message: string; ok: false} | {ok: true; parent: string};
 
-  return `Components/${stripped}/${componentName}`;
+/**
+ * Normalize a package-relative parent and refuse any that is not under
+ * `app/components` (excluding `ui`) or `app/pages/<path>`.
+ */
+const checkParent = (rawParent: string): ParentCheck => {
+  const normalized = path.posix.normalize(rawParent);
+  const parent =
+    normalized.endsWith('/') ? normalized.slice(0, -1) : normalized;
+  const segments = parent.split('/');
+  const [root, area, child] = segments;
+
+  if (root !== APP_SEGMENT) {
+    return {
+      message: `--parent must be under app/components or app/pages (got: "${rawParent}")`,
+      ok: false,
+    };
+  }
+
+  if (area === COMPONENTS_SEGMENT && child === UI_SEGMENT) {
+    return {
+      message: `--parent "${rawParent}" is under components/ui: shadcn owns components/ui, so scaffold the component elsewhere`,
+      ok: false,
+    };
+  }
+
+  const underComponents = area === COMPONENTS_SEGMENT;
+  const underPage = area === PAGES_SEGMENT && segments.length > 2;
+
+  if (!underComponents && !underPage) {
+    return {
+      message: `--parent must be under app/components or app/pages/<path> (got: "${rawParent}")`,
+      ok: false,
+    };
+  }
+
+  return {ok: true, parent};
 };
 
 type RunOptions = {
@@ -455,6 +548,7 @@ const defaultIsDirectory = (absPath: string): boolean =>
 
 type RenderFileOptions = {
   componentName: string;
+  folder: string;
   parent: string;
   props: readonly PropertyEntry[];
   templatesRoot: string;
@@ -497,7 +591,7 @@ const renderTestFile = (options: RenderFileOptions): string => {
 };
 
 const renderStoryFile = (options: RenderFileOptions): string => {
-  const {componentName, parent, props, templatesRoot} = options;
+  const {componentName, folder, parent, props, templatesRoot} = options;
   const templatePath = path.join(
     templatesRoot,
     `${TEMPLATES_DIR}/index.stories.tsx.tmpl`
@@ -506,7 +600,7 @@ const renderStoryFile = (options: RenderFileOptions): string => {
   return renderTemplate(templatePath, {
     Name: componentName,
     storyDefault: buildStoryDefault(componentName, props),
-    storyTitle: buildStoryTitle(parent, componentName),
+    storyTitle: buildStoryTitle(parent, folder),
   });
 };
 
@@ -582,7 +676,21 @@ export const run = (
 
   if (target === undefined) return EXIT_CODES.CONFIG_INVALID;
   const isDirectory = options.isDirectory ?? defaultIsDirectory;
-  const parent = toPackageRelative(flags.parent, target.packagePath);
+  const checked = checkParent(
+    toPackageRelative(flags.parent, target.packagePath)
+  );
+
+  if (!checked.ok) {
+    structuredError({
+      code: 'invalid_parent',
+      message: checked.message,
+      subcommand: 'scaffold component',
+    });
+
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+
+  const {parent} = checked;
   const parentAbs = path.resolve(target.packageDir, parent);
 
   if (!isDirectory(parentAbs)) {
@@ -596,7 +704,12 @@ export const run = (
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  const componentDir = path.join(parentAbs, flags.name);
+  const componentName =
+    PASCAL_CASE_PATTERN.test(flags.name) ?
+      flags.name
+    : kebabToPascal(flags.name);
+  const folder = toKebabCase(componentName);
+  const componentDir = path.join(parentAbs, folder);
   const indexPath = path.join(componentDir, 'index.tsx');
   const testsDir = path.join(componentDir, 'tests');
   const testPath = path.join(testsDir, 'index.test.tsx');
@@ -606,7 +719,8 @@ export const run = (
   const result: ScaffoldResult = {edited: [], skipped: [], written: []};
 
   const renderOptions: RenderFileOptions = {
-    componentName: flags.name,
+    componentName,
+    folder,
     parent,
     props: flags.props,
     templatesRoot,
@@ -633,7 +747,7 @@ export const run = (
   if (flags.json) {
     process.stdout.write(`${JSON.stringify(result)}\n`);
   } else {
-    printHumanResult(result, flags.name);
+    printHumanResult(result, componentName);
   }
 
   return EXIT_CODES.OK;

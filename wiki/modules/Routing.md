@@ -8,7 +8,7 @@ depends_on:
   - '[[fs-routes]]'
   - '[[React Router]]'
 created: 2026-04-20
-updated: 2026-10-03
+updated: 2026-10-04
 tags: [module, routing]
 ---
 
@@ -41,7 +41,7 @@ Both `actions.*` and `resources.*` hold no-UI server-side form endpoints. Use `a
 
 ### Scaffold naming conventions
 
-The page folder and its component are named `<PascalName>Page` (e.g. `DashboardPage/index.tsx`). The route component exported from the route file is named `<PascalName>Route`. The two identifiers exist at different layers: `<PascalName>Route` is thin (loader/action/meta only), `<PascalName>Page` holds the UI.
+The page component is named `<PascalName>Page` and lives in `page.tsx` of a folder derived from the route path (e.g. `pages/dashboard/page.tsx`); the route imports it from `~/pages/<path>/page`. The route component exported from the route file is named `<PascalName>Route`. The two identifiers exist at different layers: `<PascalName>Route` is thin (loader/action/meta only), `<PascalName>Page` holds the UI.
 
 ### Scaffold flags
 

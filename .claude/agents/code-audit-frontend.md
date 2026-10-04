@@ -578,7 +578,7 @@ If `AUDIT_KEY` is empty (the base or the branch is undeterminable), skip the led
     {
       "member": "code-audit-frontend",
       "finding_class": "holistic/non-null-assertion",
-      "path": "frontend/app/pages/Bar/index.tsx",
+      "path": "frontend/app/pages/bar/page.tsx",
       "line": 17,
       "title": "<short>",
       "fixed_in_sha": "<40-hex sha of the fix commit, or empty if uncommitted>"

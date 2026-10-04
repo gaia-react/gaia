@@ -5,7 +5,7 @@ status: active
 language: typescript
 purpose: Shared UI components used across pages
 created: 2026-04-20
-updated: 2026-10-03
+updated: 2026-10-04
 tags: [module, components]
 ---
 
@@ -15,7 +15,7 @@ tags: [module, components]
 
 ## Component folder convention (ESLint-enforced)
 
-Each component lives in `frontend/app/components/{PascalName}/`:
+Each component lives in its own kebab-case folder under `frontend/app/components/`. Folder naming, the `ui/` exception, and story and test placement are owned by `frontend/.claude/rules/coding-guidelines-react.md`. A component folder holds:
 
 - `index.tsx`: main component
 - `styles.module.css`: CSS module styles (when needed)
@@ -38,14 +38,13 @@ Not strict, but a strong default. Refactoring is easier when the folder hierarch
 
 ## Naming conventions
 
-- PascalCase folder names
-- `index.tsx` for the main file (configurable in ESLint if you prefer `ComponentName.tsx`)
+- Folder names, `index.tsx`, and the default export name: see `frontend/.claude/rules/coding-guidelines-react.md`
 
 ## Where to look up the inventory
 
 The current set of bundled components changes over time. Use Serena (`.claude/rules/code-search.md`) to list `frontend/app/components/` rather than maintaining a roster here. Notable exceptions:
 
-- `Form/`: the headline feature with its own deep dives ([[Form Components]])
-- `ThemeSwitch` lives at `frontend/app/components/ThemeSwitch/`. Its resource-route action and Zod schema live separately at `frontend/app/routes/resources.theme-switch.tsx`, and its theme hooks live at `frontend/app/hooks/useTheme.ts`. See [[Theme Flow]].
+- `form/`: the headline feature with its own deep dives ([[Form Components]])
+- `ThemeSwitch` lives at `frontend/app/components/theme-switch/`. Its resource-route action and Zod schema live separately at `frontend/app/routes/resources.theme-switch.tsx`, and its theme hooks live at `frontend/app/hooks/use-theme.ts`. See [[Theme Flow]].
 
 See [[Component Testing]] for the `composeStory` test pattern.

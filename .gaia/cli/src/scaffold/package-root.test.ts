@@ -30,13 +30,13 @@ type Scaffolder = {
 
 const SCAFFOLDERS: readonly Scaffolder[] = [
   {
-    expected: ['app/components/Widget/index.tsx'],
+    expected: ['app/components/widget/index.tsx'],
     name: 'component',
     run: (cwd) => runComponent(['Widget', '--no-story'], {cwd}),
     seed: ['app/components'],
   },
   {
-    expected: ['app/hooks/useWidget.ts'],
+    expected: ['app/hooks/use-widget.ts'],
     name: 'hook',
     run: (cwd) => runHook(['useWidget'], {repoRoot: cwd}),
     seed: [],
@@ -166,7 +166,7 @@ describe('gaia scaffold component --parent normalization', () => {
   beforeEach(() => {
     root = realpathSync(mkdtempSync(path.join(tmpdir(), 'gaia-parent-')));
     execGaiaGit(['init', '-q', '-b', 'main'], root);
-    mkdirSync(path.join(root, 'frontend/app/components/Form'), {
+    mkdirSync(path.join(root, 'frontend/app/components/form'), {
       recursive: true,
     });
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
@@ -177,7 +177,7 @@ describe('gaia scaffold component --parent normalization', () => {
     rmSync(root, {force: true, recursive: true});
   });
 
-  test.each(['app/components/Form', 'frontend/app/components/Form'])(
+  test.each(['app/components/form', 'frontend/app/components/form'])(
     'resolves --parent %s against the package and titles the story package-relative',
     (parent) => {
       expect(runComponent(['Field', '--parent', parent], {cwd: root})).toBe(
@@ -187,7 +187,7 @@ describe('gaia scaffold component --parent normalization', () => {
       const story = readFileSync(
         path.join(
           root,
-          'frontend/app/components/Form/Field/tests/index.stories.tsx'
+          'frontend/app/components/form/field/tests/index.stories.tsx'
         ),
         'utf8'
       );

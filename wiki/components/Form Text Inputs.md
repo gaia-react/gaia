@@ -1,6 +1,6 @@
 ---
 type: component
-path: frontend/app/components/Form/{InputText,InputEmail,InputPassword,TextArea}/
+path: frontend/app/components/form/{input-text,input-email,input-password,text-area}/
 status: active
 language: typescript
 purpose: Text-family form inputs: text, email, password, textarea
@@ -8,7 +8,7 @@ depends_on:
   - '[[Form Components]]'
   - '[[Form Field]]'
 created: 2026-04-20
-updated: 2026-10-03
+updated: 2026-10-04
 tags: [component, forms, inputs]
 ---
 
@@ -36,6 +36,6 @@ Text inputs compose classes with `cn`; the `tailwind` skill (`.claude/skills/tai
 
 ## Module convention
 
-Every component exports a single default `FC`; no named component exports. Text inputs compose the shared `~/components/Form/types` types (`InputProps`, `SharedInputProps`) on top of the native `ComponentProps` element type; `Select` extends `ComponentProps<'select'>` directly plus its own `SelectOption` type.
+Every component exports a single default `FC`; no named component exports. Text inputs compose the shared `~/components/form/types` types (`InputProps`, `SharedInputProps`) on top of the native `ComponentProps` element type; `Select` extends `ComponentProps<'select'>` directly plus its own `SelectOption` type.
 
 For prop signatures and the full inventory, query Serena (`.claude/rules/code-search.md`).

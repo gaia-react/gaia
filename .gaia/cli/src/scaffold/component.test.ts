@@ -9,8 +9,10 @@
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {
   copyFileSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -113,16 +115,16 @@ describe('scaffold component', () => {
 
     expect(exit).toBe(0);
 
-    const indexPath = path.join(sandbox.parent, 'Foo', 'index.tsx');
+    const indexPath = path.join(sandbox.parent, 'foo', 'index.tsx');
     const testPath = path.join(
       sandbox.parent,
-      'Foo',
+      'foo',
       'tests',
       'index.test.tsx'
     );
     const storyPath = path.join(
       sandbox.parent,
-      'Foo',
+      'foo',
       'tests',
       'index.stories.tsx'
     );
@@ -163,7 +165,7 @@ describe('scaffold component', () => {
 
     const storyPath = path.join(
       sandbox.parent,
-      'Bar',
+      'bar',
       'tests',
       'index.stories.tsx'
     );
@@ -171,7 +173,7 @@ describe('scaffold component', () => {
     expect(() => read(storyPath)).toThrow(/ENOENT/);
 
     const testContents = read(
-      path.join(sandbox.parent, 'Bar', 'tests', 'index.test.tsx')
+      path.join(sandbox.parent, 'bar', 'tests', 'index.test.tsx')
     );
     expect(testContents.startsWith(`${JSDOM_ENV_DIRECTIVE}\n`)).toBe(true);
     expect(testContents).not.toContain('composeStory');
@@ -196,7 +198,7 @@ describe('scaffold component', () => {
 
     expect(exit).toBe(0);
 
-    const indexContents = read(path.join(sandbox.parent, 'Card', 'index.tsx'));
+    const indexContents = read(path.join(sandbox.parent, 'card', 'index.tsx'));
     expect(indexContents).toContain('type CardProps = {');
     expect(indexContents).toContain('  title: string;');
     expect(indexContents).toContain('  count: number;');
@@ -220,7 +222,7 @@ describe('scaffold component', () => {
     expect(exit).toBe(0);
 
     const storyContents = read(
-      path.join(sandbox.parent, 'Card', 'tests', 'index.stories.tsx')
+      path.join(sandbox.parent, 'card', 'tests', 'index.stories.tsx')
     );
     // Default must carry representative props, not a bare `<Card />`, so the
     // story-driven a11y check renders against a real DOM and can fail.
@@ -231,7 +233,7 @@ describe('scaffold component', () => {
 
     // The a11y test renders the composed Default, which now carries props.
     const testContents = read(
-      path.join(sandbox.parent, 'Card', 'tests', 'index.test.tsx')
+      path.join(sandbox.parent, 'card', 'tests', 'index.test.tsx')
     );
     expect(testContents).toContain('const Card = composeStory(Default, Meta);');
     expect(testContents).toContain('await expectNoA11yViolations(container);');
@@ -253,7 +255,7 @@ describe('scaffold component', () => {
     expect(exit).toBe(0);
 
     const testContents = read(
-      path.join(sandbox.parent, 'Bar', 'tests', 'index.test.tsx')
+      path.join(sandbox.parent, 'bar', 'tests', 'index.test.tsx')
     );
     expect(testContents).not.toContain('composeStory');
     expect(testContents).toContain("import Bar from '..'");
@@ -271,25 +273,28 @@ describe('scaffold component', () => {
     expect(exit).toBe(0);
 
     const testContents = read(
-      path.join(sandbox.parent, 'Foo', 'tests', 'index.test.tsx')
+      path.join(sandbox.parent, 'foo', 'tests', 'index.test.tsx')
     );
     // The render-only a11y check is a starting point, not complete a11y
     // evidence (consistent with the tracer-bullet/a11y caveat).
     expect(testContents.toLowerCase()).toContain('starting point');
   });
 
-  test('lowercase name exits 1 with PascalCase message', () => {
-    const exit = run(['foo', '--parent', 'app/components'], {
+  test('a name in neither accepted form exits 1 and names both forms', () => {
+    const exit = run(['price_tag', '--parent', 'app/components'], {
       cwd: sandbox.root,
     });
 
     expect(exit).toBe(1);
     const errorLine = stdio.errors.join('');
+    expect(errorLine).toContain('kebab-case');
     expect(errorLine).toContain('PascalCase');
   });
 
   test('non-existent parent dir exits 1', () => {
-    const exit = run(['Foo', '--parent', 'app/missing'], {cwd: sandbox.root});
+    const exit = run(['Foo', '--parent', 'app/components/missing'], {
+      cwd: sandbox.root,
+    });
 
     expect(exit).toBe(1);
     expect(stdio.errors.join('')).toContain('parent dir does not exist');
@@ -340,7 +345,7 @@ describe('scaffold component', () => {
     expect(first).toBe(0);
 
     // Mutate the index file so the second run sees a conflict.
-    const indexPath = path.join(sandbox.parent, 'Foo', 'index.tsx');
+    const indexPath = path.join(sandbox.parent, 'foo', 'index.tsx');
     const altered = `${read(indexPath)}\n// user customization\n`;
     writeFileSync(indexPath, altered, 'utf8');
 
@@ -352,17 +357,164 @@ describe('scaffold component', () => {
   });
 
   test('story title respects nested parent dir', () => {
-    mkdirSync(path.join(sandbox.parent, 'Form'), {recursive: true});
+    mkdirSync(path.join(sandbox.parent, 'form'), {recursive: true});
 
-    const exit = run(['Field', '--parent', 'app/components/Form'], {
+    const exit = run(['Field', '--parent', 'app/components/form'], {
       cwd: sandbox.root,
     });
     expect(exit).toBe(0);
 
     const storyContents = read(
-      path.join(sandbox.parent, 'Form', 'Field', 'tests', 'index.stories.tsx')
+      path.join(sandbox.parent, 'form', 'field', 'tests', 'index.stories.tsx')
     );
     expect(storyContents).toContain("title: 'Components/Form/Field',");
+  });
+
+  describe('naming', () => {
+    test('a kebab name exports the PascalCase form into the kebab folder', () => {
+      const exit = run(['price-tag'], {cwd: sandbox.root});
+
+      expect(exit).toBe(0);
+      const indexContents = read(
+        path.join(sandbox.parent, 'price-tag', 'index.tsx')
+      );
+      expect(indexContents).toContain('const PriceTag: FC = () => (');
+      expect(indexContents).toContain('export default PriceTag;');
+      const storyContents = read(
+        path.join(sandbox.parent, 'price-tag', 'tests', 'index.stories.tsx')
+      );
+      expect(storyContents).toContain("title: 'Components/PriceTag',");
+    });
+
+    test('a PascalCase name exports as given into the kebab folder', () => {
+      const exit = run(['PriceBadge'], {cwd: sandbox.root});
+
+      expect(exit).toBe(0);
+      const indexContents = read(
+        path.join(sandbox.parent, 'price-badge', 'index.tsx')
+      );
+      expect(indexContents).toContain('export default PriceBadge;');
+    });
+
+    test('an acronym PascalCase name gets the folder lodash kebabCase gives', () => {
+      const exit = run(['HTMLView'], {cwd: sandbox.root});
+
+      expect(exit).toBe(0);
+      expect(
+        read(path.join(sandbox.parent, 'html-view', 'index.tsx'))
+      ).toContain('export default HTMLView;');
+    });
+
+    test('a PascalCase name with a digit gets a digit-split folder', () => {
+      const exit = run(['Heading2'], {cwd: sandbox.root});
+
+      expect(exit).toBe(0);
+      expect(
+        read(path.join(sandbox.parent, 'heading-2', 'index.tsx'))
+      ).toContain('export default Heading2;');
+    });
+
+    test.each(['heading2', 'item2-card', 'h1-title'])(
+      'the digit-bearing kebab name %s refuses and writes nothing',
+      (name) => {
+        const exit = run([name], {cwd: sandbox.root});
+
+        expect(exit).toBe(1);
+        expect(readdirSync(sandbox.parent)).toEqual([]);
+        expect(stdio.errors.join('')).toContain(
+          'the folder the linter expects'
+        );
+      }
+    );
+
+    test('the heading2 refusal names the folder the linter expects', () => {
+      run(['heading2'], {cwd: sandbox.root});
+
+      expect(stdio.errors.join('')).toContain(
+        String.raw`must be \"heading-2\"`
+      );
+    });
+
+    test.each(['price_tag', 'Price-Tag', '2fast', 'price-', 'priceTag'])(
+      'the invalid name %s refuses and writes nothing',
+      (name) => {
+        const exit = run([name], {cwd: sandbox.root});
+
+        expect(exit).toBe(1);
+        expect(readdirSync(sandbox.parent)).toEqual([]);
+        expect(stdio.errors.join('')).toContain('PascalCase');
+      }
+    );
+  });
+
+  describe('--parent', () => {
+    test('a pages parent writes under the page folder with a Pages title', () => {
+      mkdirSync(path.join(sandbox.root, 'app', 'pages', 'index'), {
+        recursive: true,
+      });
+
+      const exit = run(['promo-banner', '--parent', 'app/pages/index'], {
+        cwd: sandbox.root,
+      });
+
+      expect(exit).toBe(0);
+      const dir = path.join(
+        sandbox.root,
+        'app',
+        'pages',
+        'index',
+        'promo-banner'
+      );
+      expect(read(path.join(dir, 'index.tsx'))).toContain(
+        'export default PromoBanner;'
+      );
+      expect(read(path.join(dir, 'tests', 'index.stories.tsx'))).toContain(
+        "title: 'Pages/Index/PromoBanner',"
+      );
+    });
+
+    test.each([
+      'app/components/ui',
+      'app/components/ui/x',
+      'app/components/ui/',
+    ])('the ui parent %s refuses and creates nothing', (parent) => {
+      const ui = path.join(sandbox.parent, 'ui');
+      mkdirSync(path.join(ui, 'x'), {recursive: true});
+
+      const exit = run(['probe', '--parent', parent], {cwd: sandbox.root});
+
+      expect(exit).toBe(1);
+      expect(stdio.errors.join('')).toContain('shadcn');
+      expect(readdirSync(ui)).toEqual(['x']);
+      expect(readdirSync(path.join(ui, 'x'))).toEqual([]);
+    });
+
+    test('a ui parent that does not exist is not created', () => {
+      const exit = run(['probe', '--parent', 'app/components/ui'], {
+        cwd: sandbox.root,
+      });
+
+      expect(exit).toBe(1);
+      expect(existsSync(path.join(sandbox.parent, 'ui'))).toBe(false);
+    });
+
+    test.each([
+      'app/services',
+      'app',
+      'app/pages',
+      'app/components/../services',
+      'app/components/../components/ui',
+      '../outside',
+    ])('the parent %s outside the allowed folders refuses', (parent) => {
+      mkdirSync(path.join(sandbox.root, 'app', 'services'), {recursive: true});
+      mkdirSync(path.join(sandbox.root, 'app', 'pages'), {recursive: true});
+
+      const exit = run(['probe', '--parent', parent], {cwd: sandbox.root});
+
+      expect(exit).toBe(1);
+      expect(stdio.errors.join('')).toContain('--parent');
+      expect(readdirSync(sandbox.parent)).toEqual([]);
+    });
   });
 
   test('malformed --props entry exits 1', () => {
@@ -388,7 +540,7 @@ describe('scaffold component', () => {
     expect(exit).toBe(0);
 
     const indexContents = read(
-      path.join(sandbox.parent, 'Widget', 'index.tsx')
+      path.join(sandbox.parent, 'widget', 'index.tsx')
     );
     expect(indexContents).toContain('type WidgetProps = {');
     expect(indexContents).toContain('  meta: Record<string, unknown>;');
@@ -411,7 +563,7 @@ describe('scaffold component', () => {
 
     expect(exit).toBe(0);
 
-    const indexContents = read(path.join(sandbox.parent, 'Pair', 'index.tsx'));
+    const indexContents = read(path.join(sandbox.parent, 'pair', 'index.tsx'));
     expect(indexContents).toContain('  pair: [string, number];');
     expect(indexContents).toContain(
       'const Pair: FC<PairProps> = ({pair}) => ('
@@ -432,7 +584,7 @@ describe('scaffold component', () => {
 
     expect(exit).toBe(0);
 
-    const indexContents = read(path.join(sandbox.parent, 'Card', 'index.tsx'));
+    const indexContents = read(path.join(sandbox.parent, 'card', 'index.tsx'));
     expect(indexContents).toContain('  title: string;');
     expect(indexContents).toContain('  meta: Record<string, unknown>;');
     expect(indexContents).toContain(
@@ -456,7 +608,7 @@ describe('scaffold component', () => {
     expect(exit).toBe(0);
 
     const indexContents = read(
-      path.join(sandbox.parent, 'Picker', 'index.tsx')
+      path.join(sandbox.parent, 'picker', 'index.tsx')
     );
     expect(indexContents).toContain(
       '  onSelect: (id: string, ev: Event) => void;'
@@ -466,7 +618,7 @@ describe('scaffold component', () => {
     );
 
     const testContents = read(
-      path.join(sandbox.parent, 'Picker', 'tests', 'index.test.tsx')
+      path.join(sandbox.parent, 'picker', 'tests', 'index.test.tsx')
     );
     // The render attribute must be a CALLABLE no-op cast, so wiring the prop
     // into the render body survives being invoked with arguments.
@@ -492,7 +644,7 @@ describe('scaffold component', () => {
     expect(exit).toBe(0);
 
     const testContents = read(
-      path.join(sandbox.parent, 'Clicker', 'tests', 'index.test.tsx')
+      path.join(sandbox.parent, 'clicker', 'tests', 'index.test.tsx')
     );
     // The render attribute must be a CALLABLE no-op cast, so wiring the prop
     // into the render body would not throw at call time.

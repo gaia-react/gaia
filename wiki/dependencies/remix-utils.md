@@ -4,7 +4,7 @@ status: active
 package: remix-utils
 role: utility-belt
 created: 2026-06-25
-updated: 2026-10-03
+updated: 2026-10-04
 tags: [dependency, claude, decision-map]
 ---
 
@@ -18,7 +18,7 @@ Risk-sorted, footguns first. Each row pairs a trap to hand-roll with the resolva
 
 | DIY trap | Reach for | Why safer | README section |
 |---|---|---|---|
-| Hand-rolled client-only / hydration guard (`useState` + `useEffect` flag) | `remix-utils/use-hydrated` (component-wrapper sibling: `remix-utils/client-only`) | `useSyncExternalStore`-based, no provider, avoids hydration mismatch; in-repo usage: `frontend/app/components/Document/MetaHydrated/index.tsx` | `### useHydrated` (and `### ClientOnly`) |
+| Hand-rolled client-only / hydration guard (`useState` + `useEffect` flag) | `remix-utils/use-hydrated` (component-wrapper sibling: `remix-utils/client-only`) | `useSyncExternalStore`-based, no provider, avoids hydration mismatch; in-repo usage: `frontend/app/components/document/meta-hydrated/index.tsx` | `### useHydrated` (and `### ClientOnly`) |
 | Hand-rolled SSE hook / `EventSource` wiring | `remix-utils/sse/react` (server emitter: `remix-utils/sse/server`) | Manages the connection lifecycle and cleanup; a hand-rolled hook leaks connections | `### Server-Sent Events` |
 | Hand-rolled CSRF token + verification | `remix-utils/middleware/csrf` (classic split `remix-utils/csrf/server` + `remix-utils/csrf/react` for non-middleware routes) | Battle-tested token generation and verification; rolling your own is a security footgun | `#### CSRF Middleware` (classic: `### CSRF`) |
 | Hand-rolled bot/spam honeypot field | `remix-utils/middleware/honeypot` (classic split `remix-utils/honeypot/server` + `remix-utils/honeypot/react` for non-middleware routes) | Correct hidden-field plus timing checks; ad-hoc honeypots miss the timing trap | `#### Honeypot Middleware` (classic: `### Form Honeypot`) |

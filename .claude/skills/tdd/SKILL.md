@@ -112,14 +112,14 @@ It emits `{file, classification: "strict" | "emergent", reasons}`. A `strict` fi
 ```
 Determinism roll-up:
   • frontend/app/utils/money.ts            strict
-  • frontend/app/components/Cart/index.tsx  emergent (path not a .ts under frontend/app/components)
+  • frontend/app/components/cart/index.tsx  emergent (path not a .ts under frontend/app/components)
 ```
 
 This roll-up renders into the single end-of-task summary (see "Surfacing the advisory findings").
 
 ### 6. Worthiness Audit (emergent surface)
 
-The deterministic surface earns its honesty proof from the RED gate. The emergent surface (`frontend/app/components/**`, `frontend/.playwright/**`) has no stable failing-then-passing run to gate on, so its honesty and worthiness come from an **advisory audit** instead. Run this audit after green, on the emergent-surface test files the task changed (the classifier roll-up above tells you which touched files are `emergent`).
+The deterministic surface earns its honesty proof from the RED gate. The emergent surface (the descriptor's `emergentTests` globs: components, pages and Playwright) has no stable failing-then-passing run to gate on, so its honesty and worthiness come from an **advisory audit** instead. Run this audit after green, on the emergent-surface test files the task changed (the classifier roll-up above tells you which touched files are `emergent`).
 
 #### Dispatch a fresh-context audit (no-orchestrator path)
 

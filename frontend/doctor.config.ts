@@ -39,7 +39,7 @@ export default {
         // JSON.stringify(envClient) (server-controlled build config), HTML-escaped
         // against script-tag breakout. No user input reaches either. Rule stays
         // active everywhere else so any new dangerouslySetInnerHTML is flagged.
-        files: ['app/components/Document/index.tsx', 'app/root.tsx'],
+        files: ['app/components/document/index.tsx', 'app/root.tsx'],
         rules: ['react-doctor/no-danger'],
       },
       {
@@ -49,8 +49,8 @@ export default {
         // These are reusable grouping primitives that may nest inside a
         // consumer's own <fieldset>, so role="group" on a <div> stays correct.
         files: [
-          'app/components/Form/Chain/index.tsx',
-          'app/components/Form/CheckboxRadioGroup/index.tsx',
+          'app/components/form/chain/index.tsx',
+          'app/components/form/checkbox-radio-group/index.tsx',
         ],
         rules: ['react-doctor/prefer-tag-over-role'],
       },

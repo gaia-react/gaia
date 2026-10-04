@@ -6,7 +6,7 @@ color: green
 ---
 
 You audit the tests a phase just added or changed on the **emergent surface**
-(`frontend/app/components/**`, `frontend/.playwright/**`), the surface where the RED-verification
+(the descriptor's `emergentTests` globs: components, pages and Playwright), the surface where the RED-verification
 gate does not apply. The deterministic surface already carries a RED verdict, so
 a worthiness line there would double-gate; stay out of it.
 
@@ -157,7 +157,7 @@ skill consumes to write ledger lines.
 
 Human-readable, one entry per test:
 
-- **Test**: `frontend/app/components/PriceTag/tests/index.test.tsx › renders formatted price`
+- **Test**: `frontend/app/components/price-tag/tests/index.test.tsx › renders formatted price`
 - **Verdict**: keep | fix | delete
 - **Axes**: honesty pass/fail, worthiness pass/fail with the failing sub-rule
 - **Artifact** (non-keep only): the machine-checkable evidence (cited sibling
@@ -169,8 +169,8 @@ judged test, so the dispatcher can drive the ledger writer:
 
 ```
 verdicts_json: [
-  {"file":"frontend/app/components/PriceTag/tests/index.test.tsx","fullName":"renders formatted price","verdict":"keep"},
-  {"file":"frontend/app/components/Checkout/tests/index.test.tsx","fullName":"price renders with two decimals","verdict":"delete","artifact":"redundant-with: frontend/app/components/PriceTag/tests/index.test.tsx › renders formatted price (verified)"}
+  {"file":"frontend/app/components/price-tag/tests/index.test.tsx","fullName":"renders formatted price","verdict":"keep"},
+  {"file":"frontend/app/components/checkout/tests/index.test.tsx","fullName":"price renders with two decimals","verdict":"delete","artifact":"redundant-with: frontend/app/components/price-tag/tests/index.test.tsx › renders formatted price (verified)"}
 ]
 ```
 

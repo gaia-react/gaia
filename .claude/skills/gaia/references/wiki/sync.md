@@ -103,7 +103,7 @@ The CLI inserts a single canonical line `- <YYYY-MM-DD> <sha> <decision>, <reaso
 
 - WORTHY: `.gaia/cli/gaia wiki log-prepend --sha abc1234 --decision WORTHY --reason "added /services/Gemini integration → wiki/services/Gemini.md"`
 - SKIP: `.gaia/cli/gaia wiki log-prepend --sha def5678 --decision SKIP --reason "typo-only commit"`
-- Serena-policy SKIP: `.gaia/cli/gaia wiki log-prepend --sha 9a0b1c2 --decision SKIP --reason "Serena handles inventory, added Button variant in frontend/app/components/Button"`
+- Serena-policy SKIP: `.gaia/cli/gaia wiki log-prepend --sha 9a0b1c2 --decision SKIP --reason "Serena handles inventory, added Button variant in frontend/app/components/button"`
 
 ## Step 5b: Fabrication guard, verify edits landed on disk
 
