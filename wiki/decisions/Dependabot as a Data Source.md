@@ -12,11 +12,13 @@ tags: [decision, dependencies, security, ci]
 
 ## Decision
 
-Dependabot alerts are the data source for security work, and `/update-deps` resolves the advisories they report. GAIA renders no Dependabot config and enables no repository setting that makes Dependabot open pull requests: alerts stay on, automated security fixes stay off. `/update-deps` resolves each advisory through the local quality gate, and accepting an advisory instead of fixing it is a visible alert dismissal on the repository, not a private suppression. `/setup-gaia` sets the posture with `gaia setup-ci configure-dependabot-alerts` and records nothing in [[Project Config]].
+GAIA owns dependency updates. Dependabot alerts are the data source for security work, and `/update-deps` resolves the advisories they report and runs every version update. GAIA renders no Dependabot config and enables no repository setting that makes Dependabot open pull requests, for version updates or security fixes: alerts stay on, automated security fixes stay off. `/update-deps` resolves each advisory through the local quality gate, and accepting an advisory instead of fixing it is a visible alert dismissal on the repository, not a private suppression. `/setup-gaia` sets the posture with `gaia setup-ci configure-dependabot-alerts` and records nothing in [[Project Config]].
 
 ## Why
 
-An advisory needs one of three resolutions, and each needs a decision a security-update pull request cannot make:
+`/update-deps` is the one owner of what moves and when: companion groups move as one unit, `gaia.updateDepsHold` caps a version, a snooze defers a group, a major bump carries its codebase migration, and every change passes the local quality gate before it merges. Dependabot reads none of that, so its pull requests would duplicate or fight the work `/update-deps` does. A second updater is not compatible with one owner, whatever Dependabot supports.
+
+The same holds for security fixes. An advisory needs one of three resolutions, and each needs a decision a security-update pull request cannot make:
 
 - An in-range refresh, when the vulnerable version is locked but the parent's range already admits the patch.
 - A chain-head bump with its migration, when the parent's range caps the dependency below the fix.
@@ -24,10 +26,7 @@ An advisory needs one of three resolutions, and each needs a decision a security
 
 Dependabot cannot apply the second without the migration work and the quality gate behind it, and there is no evidence it edits `pnpm-workspace.yaml` overrides, which is where the third lives. The gate is what makes a `chore(deps):` dependency change safe to merge without a full audit (see [[PR Merge Workflow]]), so a fix that skipped it is not the same change.
 
-Two upstream Dependabot issues reversed the earlier decision to run its security updates beside `/update-deps` (see [[Dependabot Security Updates]]):
-
-- dependabot-core #16375: an explicit `minimumReleaseAge` fails every update on pnpm 12.3 and later. GAIA sets the window (see [[pnpm]]), so its pull requests would fail their own install.
-- dependabot-core #16434: transitive security updates fail on lockfiles that resolve several majors of one package.
+Dependabot's pnpm 12 support adds a further reason, not the deciding one: dependabot-core #16434, transitive security updates fail on lockfiles that resolve several majors of one package.
 
 ## Shape
 
@@ -46,9 +45,10 @@ An advisory waits for the next `/update-deps` run. The statusline security count
 - A repository whose organization enforces automated security fixes cannot satisfy the posture. The configurer reports the refused step and prints the manual commands.
 - Nothing resolves an advisory until someone runs `/update-deps`. Dependabot finds it and GAIA fixes it through the gate, on the operator's schedule.
 
-## Rejected alternative
+## Rejected alternatives
 
-Dependabot security-update pull requests beside `/update-deps`, the earlier decision. This page adopts what that one rejected: keeping security fixes behind `/update-deps`, with Dependabot only surfacing them.
+- Dependabot security-update pull requests beside `/update-deps`, the earlier decision. This page adopts what that one rejected: keeping security fixes behind `/update-deps`, with Dependabot only surfacing them.
+- Dependabot version-update pull requests, from a `dependabot.yml` rendered out of GAIA's groups, holds, and release-age window. Snoozes are machine-local and cannot be rendered, and a rendered copy of the groups and holds is a second source that drifts from the first; above all it makes Dependabot a second owner of version updates.
 
 ## Related
 
