@@ -131,7 +131,7 @@ check_no_ci_phases() {
 
 # check_reconfigure_scope <file>: the argument parse names --reconfigure and
 # caches RECONFIGURE, and every other RECONFIGURE line sits under Phase 2,
-# 3.5, 3.6, 4.6, or 6.
+# 3.5, 3.6, 3.7, 4.6, or 6.
 check_reconfigure_scope() {
   local file="$1" parse_section stray
   parse_section="$(awk '/^## /{inside = ($0 == "## Argument parse")} inside' "$file")"
@@ -147,7 +147,7 @@ check_reconfigure_scope() {
     /^## / { heading = $0 }
     /RECONFIGURE/ {
       if (heading == "## Argument parse") next
-      if (heading ~ /^## Phase (2|3\.5|3\.6|4\.6|6):/) next
+      if (heading ~ /^## Phase (2|3\.5|3\.6|3\.7|4\.6|6):/) next
       print NR ": " heading
     }
   ' "$file")"
@@ -157,7 +157,7 @@ check_reconfigure_scope() {
   }
 }
 
-@test "--reconfigure is parsed and RECONFIGURE is read only in Phases 2, 3.5, 3.6, 4.6, and 6" {
+@test "--reconfigure is parsed and RECONFIGURE is read only in Phases 2, 3.5, 3.6, 3.7, 4.6, and 6" {
   check_reconfigure_scope "$PAGE"
 }
 
