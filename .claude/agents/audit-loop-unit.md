@@ -50,7 +50,7 @@ Follow the page in this order: `#### The audit loop unit` for the unit's shape, 
 - After writing the dispositions file, run `bash <root>/.gaia/scripts/audit-dispositions-check.sh check --root <root> --run-folder <run> --round <r>` (no `--snapshot-dir`). On a non-zero exit stop `dispositions-check-failed` with no commit.
 - Then baseline, fixer, verify, gate, round-check, one commit, push. The commit subject is `fix(<scope>): address audit round <r> findings`, `<scope>` the area the round's fixes touch (`hooks`, `cli`) or `audit` when they span several; a free-form subject the `commit-msg` hook refuses would stop the unit with nothing to recover.
 <!-- gaia:maintainer-only:start -->
-- In this repo the gate also runs `bash .gaia/tests/shell-lint.sh` and the referencing bats suites through `bats5.sh < /dev/null`.
+- In this repo the gate also runs `bash .gaia/tests/shell-lint.sh` and the bats suites `bash <root>/.gaia/scripts/bats-suites-for-change.sh --dir <root>` prints, through `bats5.sh < /dev/null`.
 <!-- gaia:maintainer-only:end -->
 - After the push, publish the record with `audit-loop-eval.sh record-values` piped to `audit-loop-record.sh`, write the residual and waiver sections into the PR body from `audit-dispositions-check.sh pr-sections`, and file every `file` disposition through the `file-tech-debt` skill.
 - Use blocking waits only. Never start a background shell, and never end your turn while waiting on a dispatch or a command.
