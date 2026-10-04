@@ -1,4 +1,5 @@
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
+import {execFileSync} from 'node:child_process';
 import {chmodSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {assertNotOk, assertOk, setupSandbox} from '../../__tests__/sandbox.js';
@@ -50,10 +51,15 @@ describe('runGh wrapper', () => {
 
     writeFileSync(
       shimPath,
-      `#!/bin/sh\necho $$ > '${pidFile}'\nexec sleep 30\n`,
+      `#!/bin/sh\n[ -n "$GH_SHIM_WARMUP" ] && exit 0\necho $$ > '${pidFile}'\nexec sleep 30\n`,
       'utf8'
     );
     chmodSync(shimPath, 0o755);
+
+    // The first exec of a freshly written executable can stall past the 200ms
+    // budget on macOS, killing the shim before it records its pid. Pay that
+    // cost here, outside the timed call.
+    execFileSync(shimPath, {env: {...process.env, GH_SHIM_WARMUP: '1'}});
 
     const started = Date.now();
     const result = await runGh({
