@@ -129,8 +129,8 @@ export const FLOOR_ITEMS = [
   item('root-frontend-skills-after-read', 'root launch: frontend skills load after a Read of frontend/CLAUDE.md', { launch: 'root', kind: 'skill', expand: 'frontend/.claude/skills/*/SKILL.md', trigger: 'after_read:frontend/CLAUDE.md', expect: 'available' }),
   item('root-code-audit-frontend', 'root launch: code-audit-frontend is spawnable', { launch: 'root', kind: 'agent', subject: '.claude/agents/code-audit-frontend.md', trigger: 'session_start', expect: 'available' }),
   item('worktree-code-audit-frontend', 'worktree launch: code-audit-frontend is spawnable', { launch: 'worktree', kind: 'agent', subject: '.claude/agents/code-audit-frontend.md', trigger: 'session_start', expect: 'available' }),
-  item('root-task-component-write', 'root launch: scripted component Write task', { launch: 'root', kind: 'task', subject: 'frontend/app/components/ProbeX/index.tsx', trigger: 'after_task:component-write', expect: 'allow' }),
-  item('frontend-task-component-write', 'frontend launch: scripted component Write task', { launch: 'frontend', kind: 'task', subject: 'frontend/app/components/ProbeX/index.tsx', trigger: 'after_task:component-write', expect: 'allow' }),
+  item('root-task-component-write', 'root launch: scripted component Write task', { launch: 'root', kind: 'task', subject: 'frontend/app/components/probe-x/index.tsx', trigger: 'after_task:component-write', expect: 'allow' }),
+  item('frontend-task-component-write', 'frontend launch: scripted component Write task', { launch: 'frontend', kind: 'task', subject: 'frontend/app/components/probe-x/index.tsx', trigger: 'after_task:component-write', expect: 'allow' }),
   ...UAT017_TARGETS.map((subject) => item(
     `uat017-root-${subject.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+$/, '')}`,
     `UAT-017 root launch: ${subject} denied`,

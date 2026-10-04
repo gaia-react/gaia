@@ -1,11 +1,9 @@
 import {renderHook} from '@testing-library/react';
 import {describe, expect, test} from 'vitest';
-import {{{name}}} from '../{{name}}';
+import {{{name}}} from '../{{fileStem}}';
 
 describe('{{name}}', () => {
   test('renders without crashing', () => {
-    const {result} = renderHook(() => {{name}}({{callArgs}}));
-
-    expect(result.current).toBeDefined();
+    expect(() => renderHook(() => {{name}}({{callArgs}}))).not.toThrow();
   });
 });

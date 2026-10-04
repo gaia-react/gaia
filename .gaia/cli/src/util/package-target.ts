@@ -55,7 +55,7 @@ export const resolvePackageTarget = (
 
 /**
  * Normalize a user-supplied path to package-relative: a repo-relative value
- * that begins with the package path (`frontend/app/components/Form`) loses
+ * that begins with the package path (`frontend/app/components/form`) loses
  * that prefix, a package-relative one passes through.
  */
 export const toPackageRelative = (

@@ -21,8 +21,8 @@ export type {ScaffoldResult} from './types.js';
 
 const HELP_TEXT = `Usage: gaia scaffold <subcommand> [args]
 
-  component <Name>         Scaffold a new React component.
-  hook <useFoo>            Scaffold a new custom hook.
+  component <name>         Scaffold a new React component (kebab or PascalCase).
+  hook <use-foo|useFoo>    Scaffold a new custom hook.
   route <name>             Scaffold a new route + page.
   service <name>           Scaffold a new API service.
 `;

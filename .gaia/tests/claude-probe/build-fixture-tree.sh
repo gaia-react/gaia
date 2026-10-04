@@ -100,8 +100,8 @@ write_file frontend/CLAUDE.md "# Frontend (probe fixture)
 
 Stub package CLAUDE.md for the Claude probe fixture tree. React app conventions live in frontend/.claude/."
 
-write_file frontend/app/components/Button/index.tsx "export const Button = ({label}: {label: string}) => <button type=\"button\">{label}</button>;"
-write_file frontend/app/components/Button/tests/index.test.tsx "import {describe, expect, test} from 'vitest';
+write_file frontend/app/components/button/index.tsx "export const Button = ({label}: {label: string}) => <button type=\"button\">{label}</button>;"
+write_file frontend/app/components/button/tests/index.test.tsx "import {describe, expect, test} from 'vitest';
 
 describe('Button', () => {
   test('exists', () => {

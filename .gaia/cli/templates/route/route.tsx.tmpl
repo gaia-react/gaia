@@ -1,7 +1,7 @@
 {{#hasLoaderI18n}}import type {RouterContextProvider} from 'react-router';
 {{/hasLoaderI18n}}{{#hasLoader}}import {useLoaderData} from 'react-router';
 {{/hasLoader}}{{#hasLoaderI18n}}import {getInstance} from '~/middleware/i18next';
-{{/hasLoaderI18n}}import {{pageName}} from '~/pages/{{groupSegment}}/{{pageName}}';
+{{/hasLoaderI18n}}import {{pageName}} from '~/pages/{{routeSlug}}/page';
 {{#needsRouteType}}import type {Route} from './+types/{{routeFile}}';
 {{/needsRouteType}}
 {{#hasLoaderI18n}}export const loader = async ({context}: Route.LoaderArgs) => {

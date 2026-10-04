@@ -22,7 +22,7 @@
  */
 import {afterEach, describe, expect, test} from 'vitest';
 import {execFileSync} from 'node:child_process';
-import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {resolveRepoRootFromImportMeta} from '../util/repo-root-fixture.js';
@@ -137,7 +137,7 @@ describe('check-a11y-triviality', () => {
   describe('condition A: render passes no props or only defaults', () => {
     test('flags an a11y test whose render passes NO props', () => {
       const result = check(
-        'frontend/app/components/Button/tests/index.test.tsx',
+        'frontend/app/components/button/tests/index.test.tsx',
         [
           "import {expectNoA11yViolations} from 'test/a11y';",
           "import {render} from 'test/rtl';",
@@ -323,6 +323,73 @@ describe('check-a11y-triviality', () => {
       const [finding] = result.findings;
 
       expect(finding?.fullName).toBe('Toggle a11y');
+    });
+  });
+
+  describe('sibling stories resolved from the test basename (no --stories, no --stdin)', () => {
+    const storiesSource = [
+      "import type {Meta, StoryFn} from '@storybook/react-vite';",
+      "import Card from '..';",
+      'const meta: Meta = {component: Card};',
+      'export default meta;',
+      'export const Default: StoryFn = () => <Card title="hi" />;',
+      'export const Clickable: StoryFn = () => (',
+      '  <Card title="hi" onClick={() => undefined} />',
+      ');',
+    ].join('\n');
+    const testSource = [
+      "import {expectNoA11yViolations} from 'test/a11y';",
+      "import {render} from 'test/rtl';",
+      "import Card from '..';",
+      "test('a11y', async () => {",
+      '  const {container} = render(<Card title="hi" subtitle="yo" />);',
+      '  await expectNoA11yViolations(container);',
+      '});',
+    ].join('\n');
+
+    // Writes `<testRelative>` and its sibling stories file into a temp tree,
+    // then runs the helper on the on-disk test path with neither flag.
+    const checkOnDisk = (testRelative: string, storiesRelative: string) => {
+      const dir = mkdtempSync(path.join(tmpdir(), 'a11y-sibling-'));
+
+      tmpDirs.push(dir);
+      const testFile = path.join(dir, testRelative);
+
+      mkdirSync(path.dirname(testFile), {recursive: true});
+      writeFileSync(testFile, testSource);
+      writeFileSync(path.join(dir, storiesRelative), storiesSource);
+
+      const out = execFileSync('node', [HELPER, testFile], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+        env: HELPER_ENV,
+      });
+
+      return JSON.parse(out) as Verdict;
+    };
+
+    test('fires condition B for pages/<x>/tests/page.test.tsx with a page.stories.tsx sibling', () => {
+      const result = checkOnDisk(
+        'pages/contact/tests/page.test.tsx',
+        'pages/contact/tests/page.stories.tsx'
+      );
+
+      expect(result.verdict).toBe('trivial');
+      expect(result.findings[0]?.reason).toMatch(
+        /interactive|landmark|variant/i
+      );
+    });
+
+    test('fires condition B for components/ui/tests/button.test.tsx with a button.stories.tsx sibling', () => {
+      const result = checkOnDisk(
+        'components/ui/tests/button.test.tsx',
+        'components/ui/tests/button.stories.tsx'
+      );
+
+      expect(result.verdict).toBe('trivial');
+      expect(result.findings[0]?.reason).toMatch(
+        /interactive|landmark|variant/i
+      );
     });
   });
 });

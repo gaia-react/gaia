@@ -238,8 +238,8 @@ stage_renames() {
 # destination is its C6 counterpart.
 C6_PAIRS=(
   "app/routes/home.tsx:frontend/app/routes/home.tsx"
-  "app/components/Button/index.tsx:frontend/app/components/Button/index.tsx"
-  "app/components/Button/tests/index.test.tsx:frontend/app/components/Button/tests/index.test.tsx"
+  "app/components/button/index.tsx:frontend/app/components/button/index.tsx"
+  "app/components/button/tests/index.test.tsx:frontend/app/components/button/tests/index.test.tsx"
   "app/sessions.server/cookie ü.ts:frontend/app/sessions.server/cookie ü.ts"
   "test/setup.ts:frontend/test/setup.ts"
   "public/favicon.ico:frontend/public/favicon.ico"

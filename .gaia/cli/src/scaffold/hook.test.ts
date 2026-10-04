@@ -96,15 +96,15 @@ describe('gaia scaffold hook', () => {
       stdout.restore();
     }
 
-    const hookPath = path.join(sandbox.repoRoot, 'app/hooks/useFoo.ts');
+    const hookPath = path.join(sandbox.repoRoot, 'app/hooks/use-foo.ts');
     const testPath = path.join(
       sandbox.repoRoot,
-      'app/hooks/tests/useFoo.test.ts'
+      'app/hooks/tests/use-foo.test.ts'
     );
 
     expect(read(hookPath)).toBe(
       [
-        'export const useFoo = () => {',
+        'export const useFoo = (): void => {',
         '  // TODO: implement useFoo',
         '};',
         '',
@@ -115,13 +115,11 @@ describe('gaia scaffold hook', () => {
       [
         "import {renderHook} from '@testing-library/react';",
         "import {describe, expect, test} from 'vitest';",
-        "import {useFoo} from '../useFoo';",
+        "import {useFoo} from '../use-foo';",
         '',
         "describe('useFoo', () => {",
         "  test('renders without crashing', () => {",
-        '    const {result} = renderHook(() => useFoo());',
-        '',
-        '    expect(result.current).toBeDefined();',
+        '    expect(() => renderHook(() => useFoo())).not.toThrow();',
         '  });',
         '});',
         '',
@@ -143,15 +141,15 @@ describe('gaia scaffold hook', () => {
     }
 
     const hookContents = read(
-      path.join(sandbox.repoRoot, 'app/hooks/useFoo.ts')
+      path.join(sandbox.repoRoot, 'app/hooks/use-foo.ts')
     );
 
     expect(hookContents).toContain(
-      'export const useFoo = (id: string, count: number) => {'
+      'export const useFoo = (id: string, count: number): void => {'
     );
 
     const testContents = read(
-      path.join(sandbox.repoRoot, 'app/hooks/tests/useFoo.test.ts')
+      path.join(sandbox.repoRoot, 'app/hooks/tests/use-foo.test.ts')
     );
 
     expect(testContents).toContain("renderHook(() => useFoo('', 0))");
@@ -171,7 +169,7 @@ describe('gaia scaffold hook', () => {
     }
 
     const hookContents = read(
-      path.join(sandbox.repoRoot, 'app/hooks/useFoo.ts')
+      path.join(sandbox.repoRoot, 'app/hooks/use-foo.ts')
     );
 
     expect(hookContents).toContain('export const useFoo = (): string => {');
@@ -192,7 +190,7 @@ describe('gaia scaffold hook', () => {
     }
 
     const hookContents = read(
-      path.join(sandbox.repoRoot, 'app/hooks/useFoo.ts')
+      path.join(sandbox.repoRoot, 'app/hooks/use-foo.ts')
     );
 
     expect(hookContents).toContain(
@@ -236,6 +234,70 @@ describe('gaia scaffold hook', () => {
 
     expect(payload.code).toBe('invalid_hook_name');
   });
+
+  test('a kebab name emits a kebab file exporting the camelCase hook', () => {
+    const stdout = captureStdout();
+
+    try {
+      expect(run(['use-toggle'], {repoRoot: sandbox.repoRoot})).toBe(0);
+    } finally {
+      stdout.restore();
+    }
+
+    expect(
+      read(path.join(sandbox.repoRoot, 'app/hooks/use-toggle.ts'))
+    ).toContain('export const useToggle = (): void => {');
+    const testContents = read(
+      path.join(sandbox.repoRoot, 'app/hooks/tests/use-toggle.test.ts')
+    );
+
+    expect(testContents).toContain("import {useToggle} from '../use-toggle';");
+    expect(testContents).toContain('renderHook(() => useToggle())');
+  });
+
+  test('a camelCase name emits the kebab file name for the same hook', () => {
+    const stdout = captureStdout();
+
+    try {
+      expect(run(['useCounter'], {repoRoot: sandbox.repoRoot})).toBe(0);
+      expect(run(['useToggleOpen'], {repoRoot: sandbox.repoRoot})).toBe(0);
+    } finally {
+      stdout.restore();
+    }
+
+    expect(
+      read(path.join(sandbox.repoRoot, 'app/hooks/use-counter.ts'))
+    ).toContain('export const useCounter = (): void => {');
+    expect(
+      read(path.join(sandbox.repoRoot, 'app/hooks/tests/use-counter.test.ts'))
+    ).toContain("from '../use-counter'");
+    expect(
+      existsSync(path.join(sandbox.repoRoot, 'app/hooks/use-toggle-open.ts'))
+    ).toBe(true);
+    expect(
+      existsSync(path.join(sandbox.repoRoot, 'app/hooks/useCounter.ts'))
+    ).toBe(false);
+  });
+
+  test.each(['use_toggle', 'Usetoggle', 'use-', 'use--toggle', 'use-Toggle'])(
+    'rejects the invalid name %s and writes nothing',
+    (name) => {
+      const stderr = captureStderr();
+
+      try {
+        expect(run([name], {repoRoot: sandbox.repoRoot})).toBe(1);
+      } finally {
+        stderr.restore();
+      }
+
+      const payload = JSON.parse(stderr.written.join('').trim()) as {
+        code: string;
+      };
+
+      expect(payload.code).toBe('invalid_hook_name');
+      expect(existsSync(path.join(sandbox.repoRoot, 'app'))).toBe(false);
+    }
+  );
 
   test('rejects when no name is supplied', () => {
     const stderr = captureStderr();
@@ -286,7 +348,7 @@ describe('gaia scaffold hook', () => {
   });
 
   test('refuses to overwrite a customized file', () => {
-    const hookPath = path.join(sandbox.repoRoot, 'app/hooks/useFoo.ts');
+    const hookPath = path.join(sandbox.repoRoot, 'app/hooks/use-foo.ts');
     const stdoutA = captureStdout();
 
     try {
@@ -414,11 +476,11 @@ describe('gaia scaffold hook root resolution', () => {
     }
 
     expect(code).toBe(0);
-    expect(existsSync(path.join(root, 'frontend/app/hooks/useFoo.ts'))).toBe(
+    expect(existsSync(path.join(root, 'frontend/app/hooks/use-foo.ts'))).toBe(
       true
     );
     expect(
-      existsSync(path.join(root, 'frontend/app/hooks/tests/useFoo.test.ts'))
+      existsSync(path.join(root, 'frontend/app/hooks/tests/use-foo.test.ts'))
     ).toBe(true);
   });
 
@@ -443,10 +505,10 @@ describe('gaia scaffold hook root resolution', () => {
     }
 
     expect(code).toBe(0);
-    expect(existsSync(path.join(root, 'frontend/app/hooks/useBar.ts'))).toBe(
+    expect(existsSync(path.join(root, 'frontend/app/hooks/use-bar.ts'))).toBe(
       true
     );
-    expect(existsSync(path.join(inner, 'app/hooks/useBar.ts'))).toBe(false);
+    expect(existsSync(path.join(inner, 'app/hooks/use-bar.ts'))).toBe(false);
     expect(existsSync(path.join(inner, 'frontend'))).toBe(false);
   });
 });

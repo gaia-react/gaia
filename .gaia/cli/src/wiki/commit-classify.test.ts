@@ -299,7 +299,7 @@ describe('wiki commit-classify', () => {
 
   test('feat: only inventory paths without decision keywords → SKIP', () => {
     sandbox.commit('feat: add Button variant', {
-      'app/components/Button/index.tsx': 'export const Button = () => null;\n',
+      'app/components/button/index.tsx': 'export const Button = () => null;\n',
     });
 
     const json = classify(sandbox);
@@ -665,7 +665,7 @@ describe('wiki commit-classify', () => {
         'package.json': withConfig({inventoryPaths: []}),
       });
       sandbox.commit('feat: add Button variant', {
-        'app/components/Button/index.tsx': 'export const Button = null;\n',
+        'app/components/button/index.tsx': 'export const Button = null;\n',
       });
 
       const {commits} = classify(sandbox);
