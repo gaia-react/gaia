@@ -2,9 +2,9 @@ name: Tests
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -127,7 +127,7 @@ jobs:
           # The root-level dev-ports modules are imported by vite.config.ts and
           # playwright.config.ts, so a change to one is test-relevant too.
           changed=$(set -o pipefail; git diff --name-only -z --no-renames "${CHECK_BASE}...HEAD" | tr '\0' '\n')
-          pattern='^frontend/(app|test)/|^frontend/\.playwright/|^frontend/\.storybook/|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.npmrc|\.node-version)$|^frontend/package\.json$|^frontend/tsconfig[^/]*\.json$|^frontend/dev-ports[^/]*\.ts$|^frontend/(vite|vitest|playwright|eslint|react-router|doctor|knip|prettier|stylelint)\.config\.|^\.gaia/packages\.json$|^frontend/gaia\.package\.json$|^\.github/workflows/tests\.yml$'
+          pattern='^frontend/(app|test)/|^frontend/\.playwright/|^frontend/\.storybook/|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.npmrc|\.node-version)$|^frontend/package\.json$|^frontend/tsconfig[^/]*\.json$|^frontend/dev-ports[^/]*\.ts$|^frontend/components\.json$|^frontend/(vite|vitest|playwright|eslint|react-router|doctor|knip|prettier|stylelint)\.config\.|^\.gaia/packages\.json$|^frontend/gaia\.package\.json$|^\.github/workflows/tests\.yml$'
           if printf '%s\n' "$changed" | grep -qE "$pattern"; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
@@ -191,6 +191,11 @@ jobs:
       - if: steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true'
         name: Install Playwright Browsers
         run: pnpm -C frontend exec playwright install --with-deps chromium
+      # The story a11y scan serves this build (`storybook-static/`) and fails,
+      # never skips, when it is absent.
+      - if: steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true'
+        name: Build Storybook
+        run: pnpm -C frontend build-storybook
       - if: steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true'
         name: Run Playwright tests
         run: pnpm -C frontend exec playwright test --pass-with-no-tests
@@ -203,4 +208,17 @@ jobs:
         with:
           name: playwright-traces
           path: frontend/.playwright/output
+          retention-days: 5
+      # Every story is screenshotted in light and dark, so the maintainer can
+      # review hover, active and dark rendering by eye (axe checks neither).
+      # `always()` rather than `failure()`: a passing run keeps them too.
+      - if: ${{ always() && steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        name: Upload Playwright story screenshots
+        with:
+          name: playwright-story-screenshots
+          path: |
+            frontend/.playwright/output/**/*.png
+            !frontend/.playwright/output/**/attachments/**
+          if-no-files-found: error
           retention-days: 5

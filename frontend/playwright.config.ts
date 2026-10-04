@@ -93,16 +93,32 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
 
-  webServer: {
-    command: 'pnpm dev',
-    reuseExistingServer: decideServerReuse({
-      isContinuousIntegration: !!process.env.CI,
-      port: ports.devPort,
-      treeRoot: ports.treeRoot,
-    }),
-    timeout: 15_000,
-    url: devUrl,
-  },
+  webServer: [
+    {
+      command: 'pnpm dev',
+      reuseExistingServer: decideServerReuse({
+        isContinuousIntegration: !!process.env.CI,
+        port: ports.devPort,
+        treeRoot: ports.treeRoot,
+      }),
+      timeout: 15_000,
+      url: devUrl,
+    },
+    // Serves the built Storybook for the story a11y scan. `pnpm pw` does not
+    // build it: run `pnpm build-storybook` first (CI does). The server starts
+    // without a build so the other specs run; the story spec fails, never
+    // skips, naming the build command.
+    {
+      command: `pnpm exec tsx .playwright/storybook-server.ts ${ports.storybookPort}`,
+      reuseExistingServer: decideServerReuse({
+        isContinuousIntegration: !!process.env.CI,
+        port: ports.storybookPort,
+        treeRoot: ports.treeRoot,
+      }),
+      timeout: 15_000,
+      url: `http://127.0.0.1:${ports.storybookPort}/__ready`,
+    },
+  ],
 
   workers: process.env.CI ? 1 : undefined,
 });

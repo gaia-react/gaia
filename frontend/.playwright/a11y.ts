@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import type {Page, TestInfo} from '@playwright/test';
+import type {AxeResults} from 'axe-core';
 
 const SEVERITY_FAIL = new Set(['critical', 'serious']);
 
@@ -15,7 +16,7 @@ export const expectNoSeriousA11yViolations = async (
   page: Page,
   testInfo: TestInfo,
   options?: {builder?: AxeBuilder; label?: string}
-): Promise<void> => {
+): Promise<AxeResults['incomplete']> => {
   const axe =
     options?.builder ??
     new AxeBuilder({page}).withTags([
@@ -26,7 +27,7 @@ export const expectNoSeriousA11yViolations = async (
     ]);
   const suffix = options?.label === undefined ? '' : `-${options.label}`;
 
-  const {violations} = await axe.analyze();
+  const {incomplete, violations} = await axe.analyze();
   const blocking = violations.filter((v) =>
     SEVERITY_FAIL.has(v.impact ?? 'minor')
   );
@@ -46,6 +47,16 @@ export const expectNoSeriousA11yViolations = async (
     }
   }
 
+  // Axe's "needs review" results, unfiltered: a rule it could not decide (a
+  // contrast node over an image, say) is neither a pass nor a violation, so the
+  // record keeps every one of them rather than narrowing any rule out.
+  if (incomplete.length > 0) {
+    await testInfo.attach(`axe-incomplete${suffix}.json`, {
+      body: JSON.stringify(incomplete, null, 2),
+      contentType: 'application/json',
+    });
+  }
+
   if (blocking.length > 0) {
     await testInfo.attach(`axe-violations${suffix}.json`, {
       body: JSON.stringify(blocking, null, 2),
@@ -58,4 +69,6 @@ export const expectNoSeriousA11yViolations = async (
         .join(', ')}`
     );
   }
+
+  return incomplete;
 };

@@ -1,5 +1,6 @@
 import {expectNoSeriousA11yViolations} from '../a11y';
 import {expect, test} from '../fixtures';
+import {expectDarkTheme} from '../theme';
 import {hydration} from '../utils';
 
 test('home page has no serious a11y violations', async ({page}, testInfo) => {
@@ -31,6 +32,7 @@ test('home dark mode has no serious a11y violations', async ({
   await toggle.focus();
   await expect(toggle).toBeFocused();
 
+  await expectDarkTheme(page);
   await expectNoSeriousA11yViolations(page, testInfo, {label: 'dark'});
 });
 

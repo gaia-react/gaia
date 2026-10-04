@@ -20,7 +20,9 @@
   --destructive: oklch(52% 0.235 27.325deg);
   --border: oklch(92.2% 0 0deg);
   --input: oklch(92.2% 0 0deg);
-  --ring: oklch(70.8% 0 0deg);
+
+  /* Accessibility (focus contrast) fix, not a brand choice. */
+  --ring: oklch(20% 0 0deg);
   --chart-1: oklch(87% 0 0deg);
   --chart-2: oklch(55.6% 0 0deg);
   --chart-3: oklch(43.9% 0 0deg);
@@ -57,7 +59,9 @@
   --destructive: oklch(70.4% 0.191 22.216deg);
   --border: oklch(100% 0 0deg / 10%);
   --input: oklch(100% 0 0deg / 15%);
-  --ring: oklch(55.6% 0 0deg);
+
+  /* Accessibility (focus contrast) fix, not a brand choice. */
+  --ring: oklch(92% 0 0deg);
   --chart-1: oklch(87% 0 0deg);
   --chart-2: oklch(55.6% 0 0deg);
   --chart-3: oklch(43.9% 0 0deg);

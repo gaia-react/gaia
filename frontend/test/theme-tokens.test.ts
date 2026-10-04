@@ -80,10 +80,17 @@ const stockDark: Record<string, string> = {
   '--sidebar-ring': 'oklch(0.556 0 0)',
 };
 
-// The only two values GAIA changes, both accessibility (contrast) fixes.
+// The only values GAIA changes, all accessibility (contrast) fixes. The ring
+// is darkened in light and lightened in dark so the focus ring, drawn at half
+// opacity, still measures 3:1 against the page, card and input surfaces.
 const rootOverrides: Record<string, string> = {
   '--destructive': 'oklch(0.52 0.235 27.325)',
   '--muted-foreground': 'oklch(0.5 0 0)',
+  '--ring': 'oklch(0.2 0 0)',
+};
+
+const darkOverrides: Record<string, string> = {
+  '--ring': 'oklch(0.92 0 0)',
 };
 
 const blockPattern = (selector: string): RegExp =>
@@ -193,12 +200,18 @@ describe('theme tokens', () => {
     expect(sameColor(rootTokens.get(name) ?? '', stock)).toBe(true);
   });
 
-  test.each(Object.entries(stockDark))(
-    '.dark %s equals the stock value',
-    (name, stock) => {
-      expect(sameColor(darkTokens.get(name) ?? '', stock)).toBe(true);
+  test.each(Object.entries(darkOverrides))(
+    '.dark %s keeps the contrast override',
+    (name, expected) => {
+      expect(sameColor(darkTokens.get(name) ?? '', expected)).toBe(true);
     }
   );
+
+  test.each(
+    Object.entries(stockDark).filter(([name]) => !(name in darkOverrides))
+  )('.dark %s equals the stock value', (name, stock) => {
+    expect(sameColor(darkTokens.get(name) ?? '', stock)).toBe(true);
+  });
 
   test('declares color-scheme for both themes', () => {
     expect(blockPattern(':root').exec(tokenCss)?.[1]).toMatch(
@@ -206,12 +219,6 @@ describe('theme tokens', () => {
     );
     expect(blockPattern(String.raw`\.dark`).exec(tokenCss)?.[1]).toMatch(
       /color-scheme:\s*dark;/
-    );
-  });
-
-  test('does not override --ring beyond the stock value', () => {
-    expect(sameColor(rootTokens.get('--ring') ?? '', stockRoot['--ring'])).toBe(
-      true
     );
   });
 
