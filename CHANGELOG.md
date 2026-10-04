@@ -60,6 +60,7 @@ On GAIA 1.6.1? Choose Abort, then paste the prompt from https://gaiareact.com/mi
 
 ### Fixed
 
+- The pre-merge bats selection no longer runs suites that only use a changed file's name as test data. Root-level files and shared-name frontend sources now match on a path-qualified name, which cuts a typical frontend PR's local verification from about 21 suites to 5 (#2491)
 - the English `date.month` label is now `Month`, matching `Year` and `Day`, so screen readers announce the date-of-birth month select with the same capitalization as its siblings (#2487)
 - The maintainer CLI workspace clears its open brace-expansion and fast-uri advisories: brace-expansion moves to its patched releases in range, and the workspace's `fast-uri` floor rises to 3.1.8, which had turned from a floor into a cap below the fix (#2480)
 - The Quality Gate's dev smoke test now runs through `bash .gaia/scripts/dev-smoke.sh`, which starts this checkout's dev server, checks a route for HTTP 200, and stops only the server it started. The step used to give no way to stop the server, so gate runs improvised pattern kills that could stop another session's or another worktree's dev server. A port that is already taken is refused, never freed (#2477)
