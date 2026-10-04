@@ -53,6 +53,7 @@ wiki
 .gaia/local.bak.*
 .gaia/statusline/.use-vendored-base
 **/.gaia-backup
+**/.gaia-ports
 **/.gaia-merge
 **/.bats-shards-scratch.*
 .serena/cache

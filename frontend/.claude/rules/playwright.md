@@ -62,8 +62,10 @@ await hydration(page); // waits for <meta name="hydrated" content="true">
 
 ## MSW + real dev server
 
-E2E tests run against `pnpm dev` (localhost:5173). MSW browser worker is
-active in dev, so tests exercise the real route/loader/action stack with MSW
+E2E tests run against this tree's `pnpm dev` server, on the port
+`bash .gaia/scripts/ports.sh` prints (5173 in the main checkout). Playwright
+refuses to reuse a server on that port that is not this tree's own. MSW browser
+worker is active in dev, so tests exercise the real route/loader/action stack with MSW
 intercepting API calls. No separate mock server is needed for e2e.
 
 For tests that mutate MSW in-memory data, call `resetTestData()` in

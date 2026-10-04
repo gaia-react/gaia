@@ -36,6 +36,9 @@ auditors:
       - "frontend/*.config.mjs"
       - "frontend/*.config.cjs"
       - "frontend/*.config.js"
+      # The port modules the Vite and Playwright configs import: config code
+      # that lives beside the configs without the `.config.` infix.
+      - "frontend/dev-ports*.ts"
       # Root halves of the split config files (prettier.config.mjs at the root).
       - "*.config.ts"
       - "*.config.mts"

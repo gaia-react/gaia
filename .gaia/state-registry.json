@@ -627,6 +627,66 @@
       "source": "SPEC-088 §shared"
     },
     {
+      "id": "ports-slot-ledger",
+      "path": "ports/slots.tsv",
+      "match": "exact",
+      "kind": "file",
+      "scope": "shared",
+      "keyed_by": "tree root, one line per linked worktree; read-modify-write under a cross-tree mkdir lock, written temp-then-mv",
+      "why": "The main-anchored slot ledger: which linked worktree holds which port slot. One ledger for every tree is the point, so two worktrees can never be handed the same ports.",
+      "writer": "code",
+      "reaped_by": "slot reclaim in worktree provisioning and in the ports session-start cleanup",
+      "source": "per-worktree port allocation"
+    },
+    {
+      "id": "ports-tombstones",
+      "path": "ports/tombstones/",
+      "match": "prefix",
+      "kind": "dir",
+      "scope": "shared",
+      "keyed_by": "one file per retired ledger entry, named <slot>.<epoch>.tsv",
+      "why": "A reclaimed slot's leftover servers must still be found and stopped after the ledger line is gone. One file per entry means a reaper deletes it with rm and never rewrites a shared file.",
+      "writer": "code",
+      "reaped_by": "the tombstone reap once no listener on the slot's ports qualifies for a removed-tree stop, or after 7 days",
+      "source": "per-worktree port allocation"
+    },
+    {
+      "id": "ports-slot-lock",
+      "path": "ports/slots.lock",
+      "match": "exact",
+      "kind": "dir",
+      "scope": "ephemeral",
+      "keyed_by": null,
+      "why": "A singleton mkdir lock serializing ledger rewrites across trees, with no partition key. Held only for the read-modify-write, never across a signal or a wait.",
+      "writer": "code",
+      "reaped_by": "broken once when older than 60 seconds",
+      "source": "per-worktree port allocation"
+    },
+    {
+      "id": "ports-launch-records",
+      "path": "ports/launches/",
+      "match": "prefix",
+      "kind": "dir",
+      "scope": "shared",
+      "keyed_by": "server PID, one file per server a Claude session launched",
+      "why": "Records which dev or Storybook server a Claude session started, with its process identity, so a dead session's server can be stopped after the identity is re-verified. A human's launch is never recorded.",
+      "writer": "code",
+      "reaped_by": "the dead-session reap (ports session-start cleanup and worktree provisioning); the tombstone reap prunes the records of a reclaimed tree",
+      "source": "per-worktree port allocation"
+    },
+    {
+      "id": "ports-session-registry",
+      "path": "ports/sessions/",
+      "match": "prefix",
+      "kind": "dir",
+      "scope": "shared",
+      "keyed_by": "Claude Code session id, one file per session",
+      "why": "Records each live session's host process so a launch can be attributed to it and a dead host can be told from a live one.",
+      "writer": "code",
+      "reaped_by": "the dead-session reap, when the host is dead and no launch record names the session",
+      "source": "per-worktree port allocation"
+    },
+    {
       "id": "doctrine-injected-marker",
       "path": "cache/doctrine-injected.*",
       "match": "glob",
