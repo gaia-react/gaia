@@ -7,6 +7,8 @@ library: react-buckets
 
 Each section below belongs to one specialist subagent. Apply only the section naming your bucket and skip the others.
 
+The house-style buckets below (hook gates, component structure and extraction, event-handler naming, inline props typing, named React imports) skip `components/ui/*.tsx`: that folder is vendored shadcn output that uses `function` declarations and `import * as React` by design (`frontend/.claude/rules/shadcn-ui.md`). Correctness findings (hooks bugs, accessibility, security) still apply there. `components/ui/tests/` is GAIA-authored and gets every bucket.
+
 ## React Patterns & Accessibility (react-patterns)
 
 **From the react-code skill (`frontend/.claude/skills/react-code/SKILL.md`):**

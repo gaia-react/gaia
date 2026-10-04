@@ -8,7 +8,7 @@ depends_on:
   - '[[Storybook]]'
   - '[[MSW]]'
 created: 2026-04-20
-updated: 2026-10-03
+updated: 2026-10-05
 tags: [module, storybook, testing]
 ---
 
@@ -26,7 +26,7 @@ Outermost to innermost: **`WrapDecorator → ChromaticDecorator → ToastDecorat
 
 - `WrapDecorator`: reads `parameters.wrap` and wraps the story (use `parameters: {wrap: 'p-4'}` for padding instead of hardcoding divs in stories)
 - `ChromaticDecorator`: Chromatic snapshots only; renders story twice (light + dark, `50vh` each). `excludeDark: true` suppresses the dark render
-- `ToastDecorator`: appends `<Toast />` after every story so any toast call from a story is rendered
+- `ToastDecorator`: renders `ui/sonner`'s `Toaster` (with `toasterProps` from `notify`) after every story, inside a data-router stub, so any toast call from a story is rendered
 
 Interactive sessions skip the Chromatic decorator: `WrapDecorator → ToastDecorator`.
 
@@ -36,7 +36,7 @@ Interactive sessions skip the Chromatic decorator: `WrapDecorator → ToastDecor
 
 ## Dark-mode handling
 
-`preview.ts` configures `darkClass: ['dark', 'bg-gray-900', 'text-white']` and `lightClass: ['light', 'bg-white', 'text-gray-900']`; applied to the preview document root when the toolbar toggle fires, matching the Tailwind `dark:` variant convention used throughout the codebase. `stylePreview: true` extends the theme to Storybook chrome.
+`preview.ts` sets `darkClass` and `lightClass` to the `dark` or `light` class plus the role-token utilities `bg-background` and `text-foreground`, applied to the preview document root when the toolbar toggle fires, so the `.dark` token block in `theme.css` drives both themes. `stylePreview: true` extends the theme to Storybook chrome.
 
 ## i18n in stories
 

@@ -21508,8 +21508,6 @@ var FRAMEWORK_NAMES = /* @__PURE__ */ new Set([
   // React Router form primitives (no app component renders as `Form`).
   "Form",
   "HydratedRouter",
-  // react-icons shared base wrapper.
-  "IconBase",
   "Link",
   "Links",
   "Outlet",
@@ -21523,8 +21521,8 @@ var FRAMEWORK_NAMES = /* @__PURE__ */ new Set([
   "ScrollRestoration",
   "WithComponentProps2"
 ]);
-var REACT_ICONS_PREFIX = /^(Ai|Bi|Bs|Cg|Ci|Di|Fa|Fc|Fi|Gi|Go|Gr|Hi|Im|Io|Lia|Lu|Md|Pi|Ri|Rx|Si|Sl|Tb|Tfi|Ti|Vsc|Wi)[A-Z]/;
-var isFrameworkComponent = (componentName) => FRAMEWORK_NAMES.has(componentName) || REACT_ICONS_PREFIX.test(componentName);
+var FRAMEWORK_KIND = "ForwardRef";
+var isFrameworkComponent = (componentName, kind) => FRAMEWORK_NAMES.has(componentName) || kind === FRAMEWORK_KIND;
 
 // src/react-perf/reduce.ts
 var DEFAULT_FRAME_BUDGET_MS = 16;
@@ -21641,10 +21639,10 @@ var reduceDump = (dump2, options) => {
     if (record2.phase === "mount") mounts += 1;
     if (record2.phase === "update") {
       updates += 1;
-      if (record2.componentName === UNKNOWN_NAME) {
-        unknownNameCount += 1;
-      } else if (isFrameworkComponent(record2.componentName)) {
+      if (isFrameworkComponent(record2.componentName, record2.kind)) {
         frameworkFiltered += 1;
+      } else if (record2.componentName === UNKNOWN_NAME) {
+        unknownNameCount += 1;
       } else {
         accumulateRecord(record2, aggregates);
       }
@@ -30274,13 +30272,22 @@ var GROUP_RULES = [
   },
   {
     exactNames: [
-      "@tailwindcss/forms",
       "@tailwindcss/typography",
       "@tailwindcss/vite",
       "prettier-plugin-tailwindcss",
       "tailwindcss"
     ],
     group: "tailwindcss"
+  },
+  {
+    exactNames: [
+      "@base-ui/react",
+      "class-variance-authority",
+      "lucide-react",
+      "shadcn",
+      "tw-animate-css"
+    ],
+    group: "shadcn"
   },
   {
     exactNames: [

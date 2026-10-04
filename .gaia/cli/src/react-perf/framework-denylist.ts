@@ -10,12 +10,11 @@
  * through, and an app component that happened to share a framework name would
  * be filtered as noise. No app component currently collides with this cohort.
  *
- * The cohort below is the React Router v7 / Remix internal set plus the
- * react-icons base, drawn from the fixloop noisy-capture (`RenderedRoute`,
- * `WithComponentProps2`, `Form`, `fetcher.Form`, `IconBase`, `Outlet`,
- * `Router`, `Links`, `Link`, `Scripts`, `ScrollRestoration`,
- * `HydratedRouter`, `DataRoutes2`, ...). Individual react-icons exports
- * (`FaGithub`, `IoDesktopOutline`, ...) are matched by the pack-prefix regex.
+ * The cohort below is the React Router v7 / Remix internal set, drawn from the
+ * fixloop noisy-capture (`RenderedRoute`, `WithComponentProps2`, `Form`,
+ * `fetcher.Form`, `Outlet`, `Router`, `Links`, `Link`, `Scripts`,
+ * `ScrollRestoration`, `HydratedRouter`, `DataRoutes2`, ...), plus every bare
+ * `ForwardRef` record (see `isFrameworkComponent`).
  */
 
 const FRAMEWORK_NAMES: ReadonlySet<string> = new Set([
@@ -25,8 +24,6 @@ const FRAMEWORK_NAMES: ReadonlySet<string> = new Set([
   // React Router form primitives (no app component renders as `Form`).
   'Form',
   'HydratedRouter',
-  // react-icons shared base wrapper.
-  'IconBase',
   'Link',
   'Links',
   'Outlet',
@@ -42,17 +39,27 @@ const FRAMEWORK_NAMES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * react-icons exports are named `<PackPrefix><IconName>` where the prefix is
- * a known 2-3 letter pack code (Fa, Io, Md, ...) followed by an uppercase
- * letter. Matching the pack prefix filters the whole icon cohort without
- * enumerating thousands of icon names.
+ * lucide-react renders each icon as two `ForwardRef` records: a wrapper named
+ * with the plain PascalCase icon name (`Sun`, `X`, `Copy`) and a shared base
+ * `Icon` with no display name at all (recorded as `Unknown`). A prefix regex
+ * cannot select plain names, and a name list would collide with an app
+ * component that happens to be called `Sun` or `Copy`, so the cohort is
+ * selected by record `kind` instead: a bare `ForwardRef` is dropped.
+ *
+ * Trade-off: an app component declared with `forwardRef` is filtered as noise
+ * too, so it can never surface as an over-budget finding. It is never lost as a
+ * memo defeat, because `memo(forwardRef(...))` records as `Memo`, not
+ * `ForwardRef`. GAIA components take `ref` as a plain prop (React 19), so app
+ * code seldom produces this kind.
  */
-const REACT_ICONS_PREFIX =
-  /^(Ai|Bi|Bs|Cg|Ci|Di|Fa|Fc|Fi|Gi|Go|Gr|Hi|Im|Io|Lia|Lu|Md|Pi|Ri|Rx|Si|Sl|Tb|Tfi|Ti|Vsc|Wi)[A-Z]/;
+const FRAMEWORK_KIND = 'ForwardRef';
 
 /**
- * True when `componentName` belongs to the framework/library cohort and
- * should be dropped from the app-owned re-render metric. Pure.
+ * True when a render record belongs to the framework/library cohort and should
+ * be dropped from the app-owned re-render metric. `kind` is optional because
+ * legacy dumps carry no `kind` field. Pure.
  */
-export const isFrameworkComponent = (componentName: string): boolean =>
-  FRAMEWORK_NAMES.has(componentName) || REACT_ICONS_PREFIX.test(componentName);
+export const isFrameworkComponent = (
+  componentName: string,
+  kind?: string
+): boolean => FRAMEWORK_NAMES.has(componentName) || kind === FRAMEWORK_KIND;

@@ -103,11 +103,12 @@ Every piece of GAIA's [tech stack](https://gaiareact.com/#stack) is pre-configur
 - **Testing** via [Vitest](https://vitest.dev) + [React Testing Library](https://testing-library.com/docs/react-testing-library/intro/) for unit and integration, [Playwright](https://playwright.dev/docs/intro) for E2E, and [Chromatic](https://chromatic.com/) for visual regression, all sharing one [MSW](https://mswjs.io/) mock layer.
 - **[Storybook](https://storybook.js.org/)** with React Router + i18n + dark mode + [MSW](https://mswjs.io/) integration.
 - **Internationalization** via [remix-i18next](https://github.com/sergiodxa/remix-i18next) with working examples.
-- **Form components with validation** using [Conform](https://conform.guide/) + [Zod](https://zod.dev/).
+- **A shadcn/ui component layer** vendored into your project: the components are yours, token-themed, and axe-checked in light and dark.
+- **Forms with validation** composed from those components using [Conform](https://conform.guide/) + [Zod](https://zod.dev/).
 - **Dark mode end-to-end.** Context, session, CSS, and Storybook all in sync.
 - **API mocking** with [Mock Service Worker](https://mswjs.io/) and [msw/data](https://github.com/mswjs/data): working handlers for tests and Storybook.
 - **Toast notifications** with [remix-toast](https://remix.run/resources/remix-toast) and [Sonner](https://sonner.emilkowal.ski/).
-- Built with [React Router 8](https://reactrouter.com/), [Tailwind](https://tailwindcss.com/), and [react-icons](https://react-icons.github.io/react-icons/).
+- Built with [React Router 8](https://reactrouter.com/), [Tailwind](https://tailwindcss.com/), [shadcn/ui](https://ui.shadcn.com/) components, and [lucide-react](https://lucide.dev/) icons.
 
 GAIA also wires agentic-design patterns into the project structure rather than the prompt, so they run the same way every session and every model variant: stop hooks, a blocking pre-merge audit, multi-agent review, spec-driven development, a committed knowledge base, a filesystem deny list, and more. The [features page](https://gaiareact.com/features/#agentic-design) walks through all twelve, grouped as workflow control, context engineering, and tooling and safety.
 

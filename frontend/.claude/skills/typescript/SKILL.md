@@ -74,10 +74,10 @@ export const orderStatuses = ['cancelled', 'pending', 'shipped'] as const;
 // derived, never retyped
 export type OrderStatus = (typeof orderStatuses)[number];
 export const orderStatusSchema = z.literal(orderStatuses);
-export const orderStatusColors = {
-  cancelled: 'text-red-600',
-  pending: 'text-amber-600',
-  shipped: 'text-green-600',
+export const orderStatusLabels = {
+  cancelled: 'Cancelled',
+  pending: 'Pending',
+  shipped: 'Shipped',
 } satisfies Record<OrderStatus, string>;
 ```
 

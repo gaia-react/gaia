@@ -14,7 +14,7 @@ Write a story for every component scaffolded with `/new-component`. Skip stories
 
 ## File location
 
-A story or test is `tests/<source basename>.<kind>.tsx` beside its source: `index.tsx` -> `tests/index.stories.tsx`, `page.tsx` -> `tests/page.stories.tsx`, `ui/button.tsx` -> `ui/tests/button.stories.tsx`.
+A story or test is `tests/<source basename>.<kind>.tsx` beside its source: `index.tsx` -> `tests/index.stories.tsx`, `page.tsx` -> `tests/page.stories.tsx`, `ui/button.tsx` -> `ui/tests/button.stories.tsx`. A vendored `components/ui/<name>.tsx` file's stories live at `components/ui/tests/<name>.stories.tsx` (the flat ui folder's location, distinct from a component folder's `tests/index.stories.tsx`); ui stories render each variant value and the invalid and disabled states.
 
 ## Typing
 

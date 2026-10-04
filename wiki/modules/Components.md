@@ -5,13 +5,15 @@ status: active
 language: typescript
 purpose: Shared UI components used across pages
 created: 2026-04-20
-updated: 2026-10-04
+updated: 2026-10-05
 tags: [module, components]
 ---
 
 # Components
 
 `frontend/app/components/` holds shared UI components. Page-specific UI lives in `frontend/app/pages/` (see [[Pages]]).
+
+The base controls are vendored shadcn components in `frontend/app/components/ui/` (flat files, stories and tests in `ui/tests/`); the policy and local patches are in [[shadcn Component Layer]]. The kept GAIA components compose them.
 
 ## Component folder convention (ESLint-enforced)
 
@@ -44,7 +46,8 @@ Not strict, but a strong default. Refactoring is easier when the folder hierarch
 
 The current set of bundled components changes over time. Use Serena (`.claude/rules/code-search.md`) to list `frontend/app/components/` rather than maintaining a roster here. Notable exceptions:
 
-- `form/`: the headline feature with its own deep dives ([[Form Components]])
+- `ui/`: vendored shadcn components, refreshed with `pnpm shadcn add`, never hand-edited ([[shadcn Component Layer]])
+- `form/`: composed-form support (`FormError`, `MaxLength`, `YearMonthDay`) and the composed form fixture ([[Form Components]])
 - `ThemeSwitch` lives at `frontend/app/components/theme-switch/`. Its resource-route action and Zod schema live separately at `frontend/app/routes/resources.theme-switch.tsx`, and its theme hooks live at `frontend/app/hooks/use-theme.ts`. See [[Theme Flow]].
 
 See [[Component Testing]] for the `composeStory` test pattern.

@@ -19,27 +19,30 @@ Violations come from `test/a11y.ts` (Vitest), `.playwright/a11y.ts` (Playwright)
 
 ## color-contrast
 
-WCAG AA requires 4.5:1 for normal text, 3:1 for large text. Use the project's semantic Tailwind tokens (see `frontend/.claude/rules/tailwind.md`) instead of arbitrary palette colors, they pair light/dark modes correctly.
+WCAG AA requires 4.5:1 for normal text, 3:1 for large text. Use the theme role tokens (see `frontend/.claude/rules/tailwind.md`) instead of raw palette colors: each token carries a light and a dark value that pass in both themes. Pair a surface token with its foreground (`bg-primary` with `text-primary-foreground`).
 
 ```tsx
 // BAD, fails contrast in dark mode, raw colors
 <p className="text-gray-400 bg-white">Status</p>
 
-// GOOD, semantic tokens, contrast-safe in both modes
-<p className="text-body bg-body">Status</p>
+// GOOD, role tokens, contrast-safe in both themes
+<p className="bg-background text-foreground">Status</p>
 ```
+
+If a token itself fails (the placeholder values are a neutral default), fix the value in `app/styles/theme.css` and keep it an accessibility fix, per `frontend/.claude/rules/design-baseline.md`.
 
 ## label
 
-Form inputs need an associated `<label>`. Use the `Field` wrapper from `~/components/form/field` rather than a bare `<label>`, it wires `htmlFor`, error text, and description automatically. See the `form-components.md` audit extension.
+Form inputs need an associated label. Compose the ui `Field` parts around the control rather than a bare `<label>`: `FieldLabel htmlFor` names it, and `FieldError` carries the error. See `frontend/.claude/skills/react-code/references/conform-forms.md` for the full wiring.
 
 ```tsx
 // BAD, bare input with no label association
 <input type="text" name="email" />
 
-// GOOD, Field wraps a project input with the right wiring
-<Field type="input" name="email" label={t('email')}>
-  <InputText name="email" />
+// GOOD, Field and FieldLabel wire the label to the ui control
+<Field>
+  <FieldLabel htmlFor="email">{t('email')}</FieldLabel>
+  <Input id="email" name="email" />
 </Field>
 ```
 
@@ -288,12 +291,12 @@ Every `id` in the rendered DOM must be unique. Common Conform pitfall: rendering
 
 ```tsx
 // BAD, same field rendered twice, ids collide
-<InputText name="email" />
-<InputText name="email" />
+<Input name="email" />
+<Input name="email" />
 
 // GOOD, unique ids
-<InputText id="email-primary" name="emailPrimary" />
-<InputText id="email-secondary" name="emailSecondary" />
+<Input id="email-primary" name="emailPrimary" />
+<Input id="email-secondary" name="emailSecondary" />
 ```
 
 ## listitem
@@ -329,3 +332,16 @@ Every `id` in the rendered DOM must be unique. Common Conform pitfall: rendering
   <dd>{t('definition')}</dd>
 </dl>
 ```
+
+## Upstream shadcn and Base UI findings
+
+The vendored `components/ui/` files are byte-identical to `shadcn add` output, so a violation that comes from a vendored file is fixed by a local patch recorded in `wiki/decisions/shadcn Component Layer.md`, or by a scoped exclusion in the scan, never by editing the file silently. The a11y scan hits these cases:
+
+| Rule and symptom | Source | Fix kind |
+| --- | --- | --- |
+| `label`: the Slider thumb `<input type="range">` ignores `aria-label` on the root | shadcn-ui/ui#10221 | Local patch forwarding the label to the thumb input |
+| `button-name`: the Combobox trigger and icon buttons have no accessible name | shadcn-ui/ui#11589 | Local patch naming the icon buttons |
+| `aria-hidden-focus` on Base UI overlay focus guards (`span[data-base-ui-focus-guard][aria-hidden="true"]`, seen on open dropdown menus) | No upstream issue found as of 2026-10-03 (measured against the shadcn Base UI overlay set). TODO: file one | Selector-scoped exclusion in the scan, with a canary check that fails if no guard matches the selector, so the exclusion cannot go stale |
+| Radix Select `aria-hidden` sibling findings | shadcn-ui/ui#10074, shadcn-ui/ui#8707 | Informational: they describe the Radix Select, which does not apply because GAIA's `base-nova` style uses Base UI |
+
+`shadcn add --overwrite` drops a local patch along with the rest of the file. After refreshing a patched ui file, re-apply its patch from the decision page's list and re-run the scan.

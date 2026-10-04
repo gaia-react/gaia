@@ -77,10 +77,4 @@ export default {
     light: 'Light mode',
     useSystemTheme: 'Use system theme',
   },
-  toast: {
-    error: 'Error',
-    info: 'Information',
-    success: 'Success',
-    warning: 'Warning',
-  },
 };

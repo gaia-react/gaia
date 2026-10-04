@@ -80,7 +80,7 @@ import {Trans} from 'react-i18next';
 // Pass ns as a separate prop, never embed it in i18nKey.
 // i18nKey is namespace-relative: "dashboard.previousWorkout", not "pages:dashboard.previousWorkout"
 <Trans
-  components={{accent: <span className="text-orange-500" />}}
+  components={{accent: <span className="text-primary" />}}
   i18nKey="dashboard.previousWorkout"
   ns="pages"
 />;

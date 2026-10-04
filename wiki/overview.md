@@ -13,15 +13,15 @@ GAIA React eliminates the multi-day setup tax on new projects: linting, testing,
 
 ## Philosophy
 
-GAIA deliberately ships **no component library**; you choose what fits. Every tool is pre-configured but **removable**.
+GAIA ships a vendored [[shadcn]] component layer you own ([[shadcn Component Layer]]). Every tool is pre-configured but **removable**.
 
 See [[GAIA Philosophy]] for the long version.
 
 ## Tech Stack at a Glance
 
 - **Framework**: [[React Router]] (SSR, file-based routing via [[fs-routes]])
-- **Forms**: [[Conform]] + [[Zod]], see [[Form Components]]
-- **Styling**: [[Tailwind]] v4 with `cn`, plus [[react-icons]] icons
+- **Forms**: [[Conform]] + [[Zod]] composed with ui `Field` parts, see [[Form Components]]
+- **Styling**: [[Tailwind]] v4 with `cn` and role tokens, [[shadcn]] components, and [[lucide-react]] icons
 - **i18n**: [[remix-i18next]] with TypeScript language files (not JSON)
 - **State**: minimal; `frontend/app/state/index.tsx` is a passthrough; theme is cookie-based (no React state for theme)
 - **Testing**: [[Vitest]] + [[React Testing Library]] + [[Playwright]] + [[Chromatic]], all sharing one MSW mocking layer

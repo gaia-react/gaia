@@ -41,14 +41,9 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Claude Integration]]
 - [[CLI Scaffolding]]: component/hook/route/service generators
 
-## Components (Form deep dives)
+## Components
 
-- [[Form Field]]
-- [[Form Text Inputs]]
-- [[Form Select]]
 - [[Form YearMonthDay]]
-- [[Form Choices]]
-- [[Form Layout]]
 
 ## Flows
 
@@ -78,7 +73,8 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Ky]]
 - [[i18next]]
 - [[Tailwind]]
-- [[react-icons]]
+- [[lucide-react]]
+- [[shadcn]]
 - [[gaia-lint]]
 - [[knip]]
 - [[react-doctor]]: React security/perf/a11y scanner (`npx`); advisory, single canonical `frontend/doctor.config.ts`, duplicate-config guard.
@@ -95,7 +91,8 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 
 ## Decisions (ADRs)
 
-- [[No Component Library]]
+- [[shadcn Component Layer]]: GAIA's component layer, the vendored-ui policy, the local-patch list.
+- [[No Component Library]]: superseded by the shadcn decision.
 - [[TypeScript Language Files]]
 - [[TypeScript 7 Readiness]]: tsconfig pre-adopts the TS7 strict baseline; the 7.1 upgrade is a dep swap gated on typescript-eslint's programmatic API.
 - [[Thin Routes]]

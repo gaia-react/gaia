@@ -1,14 +1,17 @@
 ---
 type: decision
-status: active
+status: superseded
 priority: 1
 date: 2026-04-20
 created: 2026-04-20
-updated: 2026-04-20
+updated: 2026-10-05
 tags: [decision, philosophy]
+superseded_by: '[[shadcn Component Layer]]'
 ---
 
 # Decision: No Component Library
+
+Superseded by [[shadcn Component Layer]]: GAIA now vendors shadcn components as its component layer. The rationale below records the earlier position.
 
 GAIA ships zero UI components by default: no Material UI, Radix, shadcn, etc. The only components are infrastructure (Button, Form/, Toast, Layout); UI styling is intentionally minimal so each project can pick what fits.
 

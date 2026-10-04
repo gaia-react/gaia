@@ -5,17 +5,17 @@ status: active
 language: typescript
 purpose: Composite date-of-birth input: three locale-aware Selects + hidden ISO date
 depends_on:
-  - '[[Form Select]]'
+  - '[[shadcn Component Layer]]'
   - '[[Conform]]'
   - '[[Form Components]]'
 created: 2026-04-20
-updated: 2026-10-04
+updated: 2026-10-05
 tags: [component, forms, date, gotcha]
 ---
 
 # Form YearMonthDay
 
-Three [[Form Select]]s (year, month, day) feeding one hidden `<input type="hidden" name="dob">` that carries the ISO-8601 date string to the server. The canonical example of a custom stateful component that integrates with Conform.
+Three `NativeSelect`s from the ui layer (year, month, day) feeding one hidden `<input type="hidden" name="dob">` that carries the ISO-8601 date string to the server. The canonical example of a custom stateful component that integrates with Conform.
 
 ## Why this composite exists
 
@@ -38,6 +38,10 @@ A native `addEventListener` on the container div stops child Select `input` even
 
 When the user changes year or month, `getSafeValue` computes the new ISO string, **clamping the day to the last valid day of the new month**. Prevents 2024-02-29 from rolling over to 2023-02-29 (which is not a real date).
 
+## DOM contract
+
+The year select carries the `id`, so a `FieldLabel htmlFor` points at it. `aria-invalid`, `aria-describedby` and `required` go on all three selects; the hidden input carries none. With `name='dob'` the form posts `dob`, `dobYear`, `dobMonth` and `dobDate`, in that DOM order. The component has no `error` prop: the call site renders a ui `FieldError`. Its inner legend renders only when `label` is passed; a call site that supplies its own `FieldSet` and `FieldLegend` omits `label`.
+
 ## Caller pattern: `useInputControl`
 
 Always wire via `useInputControl`; local `useState` desyncs from Conform once validation fails. See `frontend/app/components/form/year-month-day/tests/index.stories.tsx` for the canonical usage and [[Component Testing]] for the test.
@@ -46,6 +50,5 @@ For prop signatures, query Serena (`.claude/rules/code-search.md`).
 
 ## Related
 
-- [[Form Select]]: the primitive
 - [[Conform]]: form library
 - [[Form Components]]: overview

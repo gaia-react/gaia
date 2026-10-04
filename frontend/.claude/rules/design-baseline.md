@@ -10,6 +10,10 @@ paths:
 
 The visual styling GAIA ships in `app/styles/`, `app/components/`, `app/pages/`, and `app/routes/` is a **deliberate neutral baseline**. It carries no brand hue and no opinion the adopter must follow. It is not a chosen design system.
 
+## The token values are a placeholder
+
+The role-token values in `app/styles/theme.css` are shadcn's neutral placeholder, not a brand choice. Three of them carry an accessibility override, a contrast fix rather than a design decision: `--muted-foreground` and `--destructive` are darkened in the light theme so text passes 4.5:1, and `--ring` is overridden in both themes so the focus indicator reaches 3:1. Keep those fixes when an adopter replaces the placeholder values, or re-measure. The contract for using tokens (role tokens only, when a new color needs approval) lives in `frontend/.claude/rules/tailwind.md`; this rule only governs whether Claude may choose or change values.
+
 ## Behavioral switch
 
 `wiki/concepts/Design System.md` carries a machine-readable sentinel in its frontmatter:
@@ -20,8 +24,9 @@ established: false
 
 **While `established: false`:**
 
-- Treat all tokens (primary scale, font stack, spacing, radius) as a blank slate.
-- Do not infer or extend a "house style" from the neutral ramp.
+- Use the existing role tokens (the contract is in `frontend/.claude/rules/tailwind.md`). Ask the adopter before choosing brand values, changing a token value, or restyling a component.
+- Treat the token values (and the font stack, spacing and radius) as a blank slate.
+- Do not infer or extend a "house style" from the neutral values.
 - Do not invent palettes, type scales, or color pairings based on the existing values.
 - When a styling question arises, ask the adopter what they want rather than extrapolating from the current tokens.
 
@@ -29,7 +34,7 @@ established: false
 
 ## When Claude is implementing design decisions
 
-If the adopter directs Claude to make styling changes that represent real brand decisions -- a chosen palette, a brand hue replacing the neutral primary scale, a specific type stack -- treat updating `wiki/concepts/Design System.md` as part of the same task:
+If the adopter directs Claude to make styling changes that represent real brand decisions -- a chosen palette, a brand hue replacing the neutral placeholder values, a specific type stack -- treat updating `wiki/concepts/Design System.md` as part of the same task:
 
 1. Document the decisions in the wiki page body (what was chosen and why, replacing the placeholder prose).
 2. Flip `established: true` in the wiki frontmatter.

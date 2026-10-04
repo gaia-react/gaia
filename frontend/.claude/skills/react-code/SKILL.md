@@ -50,22 +50,21 @@ If none apply, skip `useCallback`, it adds indirection without benefit.
 
 **Before writing `<input>`, `<select>`, `<textarea>`, or `<input type="checkbox">`:**
 
-| Native element                         | Use instead                                                                     |
-| -------------------------------------- | ------------------------------------------------------------------------------- |
-| `<input type="text">`                  | `InputText` (`~/components/form/input-text`)                                    |
-| `<input type="email">`                 | `InputEmail` (`~/components/form/input-email`)                                  |
-| `<input type="password">`              | `InputPassword` (`~/components/form/input-password`)                            |
-| `<input type="checkbox">` (single)     | `Checkbox` (`~/components/form/checkbox`)                                       |
-| `<input type="checkbox">` (group)      | `Checkboxes` (`~/components/form/checkboxes`), needs `options: Option[]`        |
-| `<input type="radio">` / radio group   | `RadioButtons` (`~/components/form/radio-buttons`), needs `options: Option[]`   |
-| `<select>`                             | `Select` (`~/components/form/select`), needs `name` + `options: SelectOption[]` |
-| `<textarea>`                           | `TextArea` (`~/components/form/text-area`), needs `name`; auto-resizes          |
-| Date (year/month/day)                  | `YearMonthDay` (`~/components/form/year-month-day`)                             |
-| Field with label + error + description | `Field` (`~/components/form/field`)                                             |
+| Native element                         | Use instead (`~/components/ui/...`)                                                  |
+| -------------------------------------- | ------------------------------------------------------------------------------------ |
+| `<input type="text">` (any text type) | `Input` (`input`)                                                                    |
+| `<input type="checkbox">`              | `Checkbox` (`checkbox`); a group is one `Checkbox` per option in a `FieldSet`        |
+| `<input type="radio">` / radio group   | `RadioGroup` and `RadioGroupItem` (`radio-group`) in a `FieldSet`                    |
+| `<select>`                             | `NativeSelect` and `NativeSelectOption` (`native-select`)                            |
+| `<textarea>`                           | `Textarea` (`textarea`)                                                              |
+| `<label>`                              | `FieldLabel` (`field`), or `Label` (`label`) outside a `Field`                       |
+| Field with label + error + description | `Field`, `FieldLabel`, `FieldDescription`, `FieldError` (`field`)                    |
+| `<button>`                             | `Button` (`button`)                                                                  |
+| Date (year/month/day)                  | `YearMonthDay` (`~/components/form/year-month-day`), the one GAIA form control |
 
 **Exceptions (native OK):** `<input type="hidden">`, `<input type="file">`, `<input type="range">`.
 
-`Select` requires `options: SelectOption[]` (`{label, value}`). Build this array (with `useMemo` if derived from translations/data) rather than inline `<option>` elements.
+A raw ui control carries no label or error wiring. Compose it with Conform exactly as `references/conform-forms.md` shows (one pattern per control type, with the `Field` wiring). Options are rendered from an array with `.map`, not written as inline `<option>` elements.
 
 **CRITICAL, `@conform-to/zod`:** Always import from `/v4` subpath. The default export targets Zod v3 and causes a runtime error that typecheck/lint/build do NOT catch.
 
@@ -98,13 +97,13 @@ See `references/translation-patterns.md` for edge cases (keyPrefix, Trans compon
 
 Write React 19 idioms. The work here is to not regress to pre-19 habits, and to not pull in React's framework-level form APIs that React Router already owns.
 
-**Before writing `forwardRef`: don't.** In React 19, `ref` is an ordinary prop on function components, so `forwardRef` is no longer needed (slated for deprecation in a future release). Use no `forwardRef`; destructure `ref` from props, as every Form control does.
+**Before writing `forwardRef`: don't.** In React 19, `ref` is an ordinary prop on function components, so `forwardRef` is no longer needed (slated for deprecation in a future release). Use no `forwardRef`; destructure `ref` from props.
 
 ```tsx
 // BAD, needless indirection
-const InputText = forwardRef<HTMLInputElement, InputTextProps>((props, ref) => <input ref={ref} {...props} />);
+const TextBox = forwardRef<HTMLInputElement, TextBoxProps>((props, ref) => <input ref={ref} {...props} />);
 // GOOD, ref is just a prop
-const InputText = ({ref, ...rest}: InputTextProps) => <input ref={ref} {...rest} />;
+const TextBox = ({ref, ...rest}: TextBoxProps) => <input ref={ref} {...rest} />;
 ```
 
 The ref _type_ (`Ref<T>`, or `ComponentProps<'input'>` already carrying `ref`) is the typescript skill's domain.
