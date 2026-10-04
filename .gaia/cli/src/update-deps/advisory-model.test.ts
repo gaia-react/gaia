@@ -284,6 +284,72 @@ describe('joinAuditToAlerts', () => {
   });
 });
 
+describe('a GHSA spanning several packages', () => {
+  const spanning = [
+    auditAdvisory({
+      findings: [{paths: ['.>@babel/runtime'], version: '7.0.0'}],
+      github_advisory_id: 'GHSA-968p-4wvh-cqc8',
+      id: 1,
+      module_name: '@babel/runtime',
+      patched_versions: '>=7.26.10',
+    }),
+    auditAdvisory({
+      findings: [{paths: ['.>@babel/helpers'], version: '7.0.0'}],
+      github_advisory_id: 'GHSA-968p-4wvh-cqc8',
+      id: 2,
+      module_name: '@babel/helpers',
+      patched_versions: '>=7.26.10',
+    }),
+  ];
+
+  test('the pnpm audit source yields one advisory per package', () => {
+    const built = advisoriesFromAudit(
+      normalizePnpmAudit(auditReport(...spanning)).records
+    );
+
+    expect(
+      built.map((entry) => [entry.package, entry.key, entry.pnpmIds])
+    ).toStrictEqual([
+      ['@babel/runtime', 'GHSA-968p-4wvh-cqc8', [1]],
+      ['@babel/helpers', 'GHSA-968p-4wvh-cqc8', [2]],
+    ]);
+    expect(countAdvisories('pnpm-audit', built)).toBe(1);
+  });
+
+  test('the alerts source yields one advisory per package with its own alerts', () => {
+    const alerts = normalizeAlerts(
+      [
+        [41, '@babel/runtime'],
+        [42, '@babel/helpers'],
+      ].map(([number, name]) => ({
+        dependency: {
+          manifest_path: 'pnpm-lock.yaml',
+          package: {ecosystem: 'npm', name},
+          relationship: 'transitive',
+          scope: 'development',
+        },
+        number,
+        security_advisory: {ghsa_id: 'GHSA-968p-4wvh-cqc8', severity: 'high'},
+        security_vulnerability: {vulnerable_version_range: '< 7.26.10'},
+        state: 'open',
+      })),
+      OPEN
+    ).records;
+    const joined = joinAuditToAlerts(
+      alerts,
+      normalizePnpmAudit(auditReport(...spanning)).records
+    );
+
+    expect(
+      joined.map((entry) => [entry.package, entry.alerts, entry.pnpmIds])
+    ).toStrictEqual([
+      ['@babel/runtime', [{manifestPath: 'pnpm-lock.yaml', number: 41}], [1]],
+      ['@babel/helpers', [{manifestPath: 'pnpm-lock.yaml', number: 42}], [2]],
+    ]);
+    expect(countAdvisories('dependabot', joined)).toBe(1);
+  });
+});
+
 describe('rankAdvisories', () => {
   test('severity first, then EPSS descending, then key', () => {
     const ranked = rankAdvisories([

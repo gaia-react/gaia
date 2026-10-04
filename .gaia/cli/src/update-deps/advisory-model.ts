@@ -464,22 +464,32 @@ const firstNonNull = <TValue>(
 ): null | TValue => values.find((value) => value !== null) ?? null;
 
 /**
- * One advisory per GHSA among the alerts, enriched with pnpm ids and chains
- * from the audit records carrying the same GHSA.
+ * One advisory per GHSA and package among the alerts, enriched with pnpm ids
+ * and chains from the audit records carrying the same GHSA and package. A GHSA
+ * spanning several packages yields one advisory each, all sharing the GHSA as
+ * their key, so each package gets its own landed check and alert list.
  */
 export const joinAuditToAlerts = (
   alerts: readonly AlertRecord[],
   audit: readonly AuditRecord[]
 ): Advisory[] =>
-  [...groupBy(alerts, (alert) => alert.ghsa)].map(([ghsa, group]) => {
+  [
+    ...groupBy(
+      alerts,
+      (alert) => `${alert.ghsa}\u0000${alert.package}`
+    ).values(),
+  ].map((group) => {
     const [first] = group as [AlertRecord, ...AlertRecord[]];
-    const joined = audit.filter((record) => record.ghsa === ghsa);
+    const {ghsa, package: packageName, relationship, scope} = first;
+    const joined = audit.filter(
+      (record) => record.ghsa === ghsa && record.package === packageName
+    );
     const {chains, pathCount} = chainsOf(joined);
 
     return {
       ...baseAdvisory(
         ghsa,
-        first.package,
+        packageName,
         highestSeverity(group.map((alert) => alert.severity))
       ),
       alerts: group
@@ -496,11 +506,9 @@ export const joinAuditToAlerts = (
       ghsa,
       pathCount,
       pnpmIds: joined.map((record) => record.id).toSorted((a, b) => a - b),
-      relationship: first.relationship,
+      relationship,
       scope:
-        group.some((alert) => alert.scope === 'runtime') ? 'runtime' : (
-          first.scope
-        ),
+        group.some((alert) => alert.scope === 'runtime') ? 'runtime' : scope,
       vulnerableRange: firstNonNull(
         group.map((alert) => alert.vulnerableRange)
       ),
@@ -515,17 +523,24 @@ const relationshipFromChain = (
   return chain.length === 2 ? 'direct' : 'transitive';
 };
 
+const auditKeyOf = (record: AuditRecord): string =>
+  record.ghsa ?? `pnpm:${String(record.id)}`;
+
 /**
- * One advisory per key among the audit records (the GHSA id, or `pnpm:<id>`
- * for a record with none), for the fallback source.
+ * One advisory per key and package among the audit records (the key is the
+ * GHSA id, or `pnpm:<id>` for a record with none), for the fallback source.
  */
 export const advisoriesFromAudit = (
   audit: readonly AuditRecord[]
 ): Advisory[] =>
   [
-    ...groupBy(audit, (record) => record.ghsa ?? `pnpm:${String(record.id)}`),
-  ].map(([key, group]) => {
+    ...groupBy(
+      audit,
+      (record) => `${auditKeyOf(record)}\u0000${record.package}`
+    ).values(),
+  ].map((group) => {
     const [first] = group as [AuditRecord, ...AuditRecord[]];
+    const key = auditKeyOf(first);
     const {chains, pathCount} = chainsOf(group);
 
     return {
@@ -633,13 +648,14 @@ export const rankAdvisories = (advisories: readonly Advisory[]): Advisory[] =>
     (a, b) =>
       severityRank(a.severity) - severityRank(b.severity) ||
       compareEpss(a.epssPercentage, b.epssPercentage) ||
-      compareStrings(a.key, b.key)
+      compareStrings(a.key, b.key) ||
+      compareStrings(a.package, b.package)
   );
 
 /**
  * The payload count: distinct GHSA ids on the alerts source (the baseline is
  * ignored there), or distinct keys minus baseline-acknowledged ones on the
- * `pnpm audit` source.
+ * `pnpm audit` source. A GHSA spanning several packages counts once.
  */
 export const countAdvisories = (
   source: Exclude<AdvisorySource, 'unavailable'>,

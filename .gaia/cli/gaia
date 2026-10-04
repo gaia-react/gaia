@@ -29729,14 +29729,22 @@ var groupBy = (records, keyOf) => {
   return groups;
 };
 var firstNonNull = (values) => values.find((value) => value !== null) ?? null;
-var joinAuditToAlerts = (alerts, audit) => [...groupBy(alerts, (alert) => alert.ghsa)].map(([ghsa, group]) => {
+var joinAuditToAlerts = (alerts, audit) => [
+  ...groupBy(
+    alerts,
+    (alert) => `${alert.ghsa}\0${alert.package}`
+  ).values()
+].map((group) => {
   const [first] = group;
-  const joined = audit.filter((record2) => record2.ghsa === ghsa);
+  const { ghsa, package: packageName, relationship, scope } = first;
+  const joined = audit.filter(
+    (record2) => record2.ghsa === ghsa && record2.package === packageName
+  );
   const { chains, pathCount } = chainsOf(joined);
   return {
     ...baseAdvisory(
       ghsa,
-      first.package,
+      packageName,
       highestSeverity(group.map((alert) => alert.severity))
     ),
     alerts: group.map((alert) => ({
@@ -29751,8 +29759,8 @@ var joinAuditToAlerts = (alerts, audit) => [...groupBy(alerts, (alert) => alert.
     ghsa,
     pathCount,
     pnpmIds: joined.map((record2) => record2.id).toSorted((a, b) => a - b),
-    relationship: first.relationship,
-    scope: group.some((alert) => alert.scope === "runtime") ? "runtime" : first.scope,
+    relationship,
+    scope: group.some((alert) => alert.scope === "runtime") ? "runtime" : scope,
     vulnerableRange: firstNonNull(
       group.map((alert) => alert.vulnerableRange)
     )
@@ -29762,10 +29770,15 @@ var relationshipFromChain = (chain) => {
   if (chain === void 0) return "n/a";
   return chain.length === 2 ? "direct" : "transitive";
 };
+var auditKeyOf = (record2) => record2.ghsa ?? `pnpm:${String(record2.id)}`;
 var advisoriesFromAudit = (audit) => [
-  ...groupBy(audit, (record2) => record2.ghsa ?? `pnpm:${String(record2.id)}`)
-].map(([key, group]) => {
+  ...groupBy(
+    audit,
+    (record2) => `${auditKeyOf(record2)}\0${record2.package}`
+  ).values()
+].map((group) => {
   const [first] = group;
+  const key = auditKeyOf(first);
   const { chains, pathCount } = chainsOf(group);
   return {
     ...baseAdvisory(
@@ -29823,7 +29836,7 @@ var compareEpss = (a, b) => {
   return b - a;
 };
 var rankAdvisories = (advisories) => advisories.toSorted(
-  (a, b) => severityRank(a.severity) - severityRank(b.severity) || compareEpss(a.epssPercentage, b.epssPercentage) || compareStrings2(a.key, b.key)
+  (a, b) => severityRank(a.severity) - severityRank(b.severity) || compareEpss(a.epssPercentage, b.epssPercentage) || compareStrings2(a.key, b.key) || compareStrings2(a.package, b.package)
 );
 var countAdvisories = (source, advisories) => {
   const counted = source === "dependabot" ? advisories : advisories.filter((advisory) => !advisory.baselineAcknowledged);

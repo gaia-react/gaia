@@ -13,7 +13,7 @@ Then one row per advisory, in the payload's ranked order: package, severity, EPS
 - `chain-head-major` is ask-first. Show it in the row whenever the advisory carries it, as the proposal when no earlier candidate is viable, otherwise as the alternative. The human takes it or declines it in the decision; a declined major that was the only viable candidate ends still open with `chain-head major declined`. A taken major joins Wave B as that group's agent.
 - A chain-head bump for a snoozed group is still offered: a snooze never blocks a security resolution.
 
-**Decision.** Under "Choose what to skip", the human may also name advisory keys: a named advisory is declined in the preview and gets no resolution (it stays open and goes to acceptance in an interactive run). Under `--security` the apply set starts empty and gains only the chain-head bumps the accepted plan needs, taken from the payload's `wave_a` / `wave_b` entries for those heads.
+**Decision.** Under "Choose what to skip", the human may also name advisory keys: a named advisory is declined in the preview and gets no resolution (it stays open and goes to acceptance in an interactive run). A GHSA spanning several packages is one advisory per package sharing one key, so naming the key declines each of them. Under `--security` the apply set starts empty and gains only the chain-head bumps the accepted plan needs, taken from the payload's `wave_a` / `wave_b` entries for those heads.
 
 Carry into the later phases the security plan: per advisory, its candidate order after the apply-set step and each ask-first answer.
 
@@ -126,7 +126,7 @@ The expected gate count is 1 on a clean batch and at most 6 (one batch gate plus
 
 Acceptance runs only in an interactive run the user started directly: never under `CI=true`, never when another skill or command such as `/gaia-init` invoked the run, and never under `--scope`. In those runs an advisory left open stays open with its reason, and no question is asked.
 
-It covers each advisory left open with `no patch`, and any other advisory the user says they want to live with. Ask with `AskUserQuestion`, one advisory per question, never a batch "accept all". The question names every alert number and manifest path that will be dismissed for that GHSA (from the payload's `alerts`), the proposed reason (`tolerable_risk` or `not_used`), and the proposed comment: at most 280 characters, built only from structured fields (package, installed version, severity, key, and why it is tolerable), never from advisory text.
+It covers each advisory left open with `no patch`, and any other advisory the user says they want to live with. Ask with `AskUserQuestion`, one advisory per question, never a batch "accept all". The question names every alert number and manifest path that will be dismissed for that advisory, which is one package (from the payload's `alerts`), the proposed reason (`tolerable_risk` or `not_used`), and the proposed comment: at most 280 characters, built only from structured fields (package, installed version, severity, key, and why it is tolerable), never from advisory text.
 
 - **Confirmed:** call, once per alert number,
   ```bash
