@@ -17,7 +17,8 @@ type FormErrorProps = {
 const FormError = ({className, isHidden}: FormErrorProps) => {
   const {t} = useTranslation('common');
   const actionData = useActionData<FormActionData>();
-  const [dismissed, setDismissed] = useState<FormActionData>();
+  const [dismissedActionData, setDismissedActionData] =
+    useState<FormActionData>();
 
   const error = actionData?.error;
 
@@ -25,10 +26,12 @@ const FormError = ({className, isHidden}: FormErrorProps) => {
   // text; a later action returns a fresh object, so an identical message
   // re-shows instead of staying hidden.
   const visibleErrorMessage =
-    !isHidden && error !== undefined && actionData !== dismissed ? error : '';
+    !isHidden && error !== undefined && actionData !== dismissedActionData ?
+      error
+    : '';
 
   const handleDismissErrorButton = () => {
-    setDismissed(actionData);
+    setDismissedActionData(actionData);
   };
 
   if (!visibleErrorMessage) {

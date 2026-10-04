@@ -63,25 +63,27 @@ export const resolveColors = async (
       if (probe.color === '') throw new Error(`unparseable color: ${css}`);
       context.fillStyle = css;
       context.fillRect(0, 0, 1, 1);
-      const [r, g, b, a] = context.getImageData(0, 0, 1, 1).data;
+      const [red, green, blue, alpha] = context.getImageData(0, 0, 1, 1).data;
 
-      return {a: a / 255, b, g, r};
+      return {a: alpha / 255, b: blue, g: green, r: red};
     });
   }, colors);
 
-const channel = (value: number): number => {
+const linearizeChannel = (value: number): number => {
   const scaled = value / 255;
 
   return scaled <= 0.03928 ? scaled / 12.92 : ((scaled + 0.055) / 1.055) ** 2.4;
 };
 
-const luminance = ({b, g, r}: Rgba): number =>
-  0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+const computeLuminance = ({b, g, r}: Rgba): number =>
+  0.2126 * linearizeChannel(r) +
+  0.7152 * linearizeChannel(g) +
+  0.0722 * linearizeChannel(b);
 
 /** WCAG 2.x contrast ratio between two opaque colors. */
 export const contrastRatio = (first: Rgba, second: Rgba): number => {
-  const lighter = Math.max(luminance(first), luminance(second));
-  const darker = Math.min(luminance(first), luminance(second));
+  const lighter = Math.max(computeLuminance(first), computeLuminance(second));
+  const darker = Math.min(computeLuminance(first), computeLuminance(second));
 
   return (lighter + 0.05) / (darker + 0.05);
 };

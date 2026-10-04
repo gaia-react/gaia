@@ -4,13 +4,13 @@ import {enterThemeByCookie, expectTheme} from '../theme';
 import {hydration} from '../utils';
 
 const LEGAL_ROUTES = [
-  {h1: 'Privacy Policy', path: '/privacy'},
-  {h1: 'Terms of Service', path: '/terms'},
+  {heading: 'Privacy Policy', path: '/privacy'},
+  {heading: 'Terms of Service', path: '/terms'},
 ] as const;
 
 const THEMES = ['light', 'dark'] as const;
 
-for (const {h1, path} of LEGAL_ROUTES) {
+for (const {heading, path} of LEGAL_ROUTES) {
   for (const theme of THEMES) {
     test(`${path} renders and has no serious a11y violations in ${theme} mode`, async ({
       baseURL,
@@ -26,7 +26,7 @@ for (const {h1, path} of LEGAL_ROUTES) {
 
       // The page renders its heading without error.
       await expect(
-        page.getByRole('heading', {level: 1, name: h1})
+        page.getByRole('heading', {level: 1, name: heading})
       ).toBeVisible();
 
       // The simplified Layout provides no controls on legal pages.

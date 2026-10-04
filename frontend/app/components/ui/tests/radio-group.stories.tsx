@@ -17,9 +17,9 @@ export const Default: StoryFn = () => {
   const {t} = useTranslation();
 
   return (
-    <RadioGroup aria-label={t('language')} defaultValue="one">
-      <RadioGroupItem aria-label={t('form.ok')} value="one" />
-      <RadioGroupItem aria-label={t('form.cancel')} value="two" />
+    <RadioGroup aria-label={t('theme.useSystemTheme')} defaultValue="one">
+      <RadioGroupItem aria-label={t('theme.light')} value="one" />
+      <RadioGroupItem aria-label={t('theme.dark')} value="two" />
     </RadioGroup>
   );
 };
@@ -28,15 +28,15 @@ export const Invalid: StoryFn = () => {
   const {t} = useTranslation();
 
   return (
-    <RadioGroup aria-label={t('language')} defaultValue="one">
+    <RadioGroup aria-label={t('theme.useSystemTheme')} defaultValue="one">
       <RadioGroupItem
         aria-invalid={true}
-        aria-label={t('form.ok')}
+        aria-label={t('theme.light')}
         value="one"
       />
       <RadioGroupItem
         aria-invalid={true}
-        aria-label={t('form.cancel')}
+        aria-label={t('theme.dark')}
         value="two"
       />
     </RadioGroup>
@@ -47,9 +47,13 @@ export const Disabled: StoryFn = () => {
   const {t} = useTranslation();
 
   return (
-    <RadioGroup aria-label={t('language')} defaultValue="one" disabled={true}>
-      <RadioGroupItem aria-label={t('form.ok')} value="one" />
-      <RadioGroupItem aria-label={t('form.cancel')} value="two" />
+    <RadioGroup
+      aria-label={t('theme.useSystemTheme')}
+      defaultValue="one"
+      disabled={true}
+    >
+      <RadioGroupItem aria-label={t('theme.light')} value="one" />
+      <RadioGroupItem aria-label={t('theme.dark')} value="two" />
     </RadioGroup>
   );
 };

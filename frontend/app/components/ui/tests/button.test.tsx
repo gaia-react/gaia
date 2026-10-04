@@ -13,7 +13,9 @@ import {describe, expect, test, vi} from 'vitest';
 import {render, screen} from 'test/rtl';
 import {Button, buttonVariants} from '~/components/ui/button';
 
-const Location = () => <p data-testid="location">{useLocation().pathname}</p>;
+const CurrentPathname = () => (
+  <p data-testid="location">{useLocation().pathname}</p>
+);
 
 const renderInRouter = (element: ReactNode) => {
   const router = createMemoryRouter([
@@ -21,17 +23,17 @@ const renderInRouter = (element: ReactNode) => {
       element: (
         <>
           {element}
-          <Location />
+          <CurrentPathname />
         </>
       ),
       path: '/',
     },
-    {element: <Location />, path: '/target'},
+    {element: <CurrentPathname />, path: '/target'},
   ]);
   render(<RouterProvider router={router} />);
 };
 
-const variantClasses = (variant: 'outline') =>
+const getVariantClasses = (variant: 'outline') =>
   cn(buttonVariants({variant})).split(' ');
 
 describe('Button rendered as a link', () => {
@@ -49,7 +51,7 @@ describe('Button rendered as a link', () => {
     expect(link).toHaveAttribute('href', '/target');
     expect(link).toHaveAttribute('data-slot', 'button');
     expect(link).not.toHaveAttribute('type');
-    expect(link).toHaveClass(...variantClasses('outline'));
+    expect(link).toHaveClass(...getVariantClasses('outline'));
   });
 
   test('Link: navigates on click and on Enter', async () => {
@@ -90,7 +92,7 @@ describe('Button rendered as a link', () => {
     expect(link).toHaveAttribute('href', '/target');
     expect(link).toHaveAttribute('data-slot', 'button');
     expect(link).not.toHaveAttribute('type');
-    expect(link).toHaveClass(...variantClasses('outline'));
+    expect(link).toHaveClass(...getVariantClasses('outline'));
   });
 
   test('NavLink: navigates on click', async () => {
@@ -137,14 +139,14 @@ describe('Button rendered as a link', () => {
     expect(link).toHaveAttribute('href', 'https://example.com/docs');
     expect(link).toHaveAttribute('data-slot', 'button');
     expect(link).not.toHaveAttribute('type');
-    expect(link).toHaveClass(...variantClasses('outline'));
+    expect(link).toHaveClass(...getVariantClasses('outline'));
   });
 
   test('external anchor: stays focusable and activates on Enter', async () => {
     const user = userEvent.setup();
     // jsdom cannot navigate, so the handler stops the navigation and records
     // that Enter activated the link.
-    const handleClick = vi.fn((event: MouseEvent<HTMLAnchorElement>) => {
+    const handleClickLink = vi.fn((event: MouseEvent<HTMLAnchorElement>) => {
       event.preventDefault();
     });
     render(
@@ -154,7 +156,7 @@ describe('Button rendered as a link', () => {
           // eslint-disable-next-line jsx-a11y/anchor-has-content, jsx-a11y/no-redundant-roles
           <a
             href="https://example.com/docs"
-            onClick={handleClick}
+            onClick={handleClickLink}
             role="link"
           />
         }
@@ -167,7 +169,7 @@ describe('Button rendered as a link', () => {
     expect(link).toHaveFocus();
     await user.keyboard('{Enter}');
     expect(link).toHaveAttribute('href', 'https://example.com/docs');
-    expect(handleClick).toHaveBeenCalledExactlyOnceWith(
+    expect(handleClickLink).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({type: 'click'})
     );
   });
@@ -176,15 +178,15 @@ describe('Button rendered as a link', () => {
 describe('Button disabled action', () => {
   test('is disabled and does not fire', async () => {
     const user = userEvent.setup();
-    const handleClick = vi.fn();
+    const handleClickSaveButton = vi.fn();
     render(
-      <Button disabled={true} onClick={handleClick}>
+      <Button disabled={true} onClick={handleClickSaveButton}>
         Save
       </Button>
     );
     const button = screen.getByRole('button', {name: 'Save'});
     expect(button).toBeDisabled();
     await user.click(button);
-    expect(handleClick).not.toHaveBeenCalled();
+    expect(handleClickSaveButton).not.toHaveBeenCalled();
   });
 });

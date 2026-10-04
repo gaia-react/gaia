@@ -1,4 +1,4 @@
-import type {ChangeEvent} from 'react';
+import type {ChangeEventHandler} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useFetcher, useLocation} from 'react-router';
 import {cn} from 'cn';
@@ -34,8 +34,8 @@ const LanguageSelect = ({className, onChange}: LanguageSelectProps) => {
 
   const redirectUrl = `${location.pathname}${location.search}${location.hash}`;
 
-  const handleChangeLanguageForm = async (
-    event: ChangeEvent<HTMLFormElement>
+  const handleChangeLanguageForm: ChangeEventHandler<HTMLFormElement> = async (
+    event
   ) => {
     await fetcher.submit(event.currentTarget, {
       action: ACTION_PATHS.setLanguage,

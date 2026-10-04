@@ -7,13 +7,13 @@ import FormError from '..';
 
 const ERROR = 'Something went wrong';
 
-const createStub = (errors: ReactNode) =>
+const createStub = (formErrorContent: ReactNode) =>
   createRoutesStub([
     {
       action: () => ({error: ERROR}),
       Component: () => (
         <Form method="post">
-          {errors}
+          {formErrorContent}
           <button type="submit">Submit</button>
         </Form>
       ),

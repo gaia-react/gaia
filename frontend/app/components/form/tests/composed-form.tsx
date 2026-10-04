@@ -27,11 +27,39 @@ import {RadioGroup, RadioGroupItem} from '~/components/ui/radio-group';
 import {Spinner} from '~/components/ui/spinner';
 import {Textarea} from '~/components/ui/textarea';
 
-const COLORS = ['red', 'green', 'blue'];
-const COUNTRIES = ['fr', 'jp', 'us'];
-const SIZES = ['sm', 'md', 'lg'];
+// Sorted `as const` lists feed the schema; the display-order lists drive rendering.
+const COLORS = ['blue', 'green', 'red'] as const;
+const COUNTRIES = ['fr', 'jp', 'us'] as const;
+const SIZES = ['lg', 'md', 'sm'] as const;
+
+const COLORS_DISPLAY_ORDER: (typeof COLORS)[number][] = [
+  'red',
+  'green',
+  'blue',
+];
+const SIZES_DISPLAY_ORDER: (typeof SIZES)[number][] = ['sm', 'md', 'lg'];
 
 const REQUIRED_MESSAGE = 'required';
+
+// Strings used only by this fixture, kept here so they do not ship in the
+// adopter `common` namespace.
+const FIXTURE_TEXT = {
+  bio: 'Bio',
+  colorOptions: {blue: 'Blue', green: 'Green', red: 'Red'},
+  colors: 'Favorite colors',
+  country: 'Country',
+  countryOptions: {
+    fr: 'France',
+    jp: 'Japan',
+    none: 'Select a country',
+    us: 'United States',
+  },
+  passwordDescription: 'Use at least 8 characters',
+  passwordError: 'Password must be at least 8 characters',
+  size: 'Size',
+  sizeOptions: {lg: 'Large', md: 'Medium', sm: 'Small'},
+  terms: 'I accept the terms',
+} as const;
 
 export const composedFormSchema = z.object({
   bio: z.string().optional(),
@@ -57,7 +85,7 @@ type ComposedFormProps = {
 };
 
 export const ComposedForm = ({disabled = false}: ComposedFormProps) => {
-  const {t} = useTranslation('common');
+  const {t} = useTranslation(['common', 'errors']);
   const actionData = useActionData<{result: SubmissionResult}>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === 'submitting';
@@ -72,27 +100,15 @@ export const ComposedForm = ({disabled = false}: ComposedFormProps) => {
   });
 
   const errorMessages: Record<string, string> = {
-    email: t('composedForm.errors.email'),
-    password: t('composedForm.errors.password'),
-    required: t('composedForm.errors.required'),
+    email: t('errors:invalidEmail'),
+    password: FIXTURE_TEXT.passwordError,
+    required: t('form.required'),
   };
-  const colorLabels: Record<string, string> = {
-    blue: t('composedForm.colorOptions.blue'),
-    green: t('composedForm.colorOptions.green'),
-    red: t('composedForm.colorOptions.red'),
-  };
-  const countryLabels: Record<string, string> = {
-    fr: t('composedForm.countryOptions.fr'),
-    jp: t('composedForm.countryOptions.jp'),
-    us: t('composedForm.countryOptions.us'),
-  };
-  const sizeLabels: Record<string, string> = {
-    lg: t('composedForm.sizeOptions.lg'),
-    md: t('composedForm.sizeOptions.md'),
-    sm: t('composedForm.sizeOptions.sm'),
-  };
+  const colorLabels: Record<string, string> = FIXTURE_TEXT.colorOptions;
+  const countryLabels: Record<string, string> = FIXTURE_TEXT.countryOptions;
+  const sizeLabels: Record<string, string> = FIXTURE_TEXT.sizeOptions;
 
-  const toErrors = (messages?: string[]) =>
+  const mapToFieldErrors = (messages?: string[]) =>
     messages?.map((message) => ({message: errorMessages[message]}));
 
   return (
@@ -108,7 +124,7 @@ export const ComposedForm = ({disabled = false}: ComposedFormProps) => {
           disabled={disabled}
         />
         <FieldError
-          errors={toErrors(fields.name.errors)}
+          errors={mapToFieldErrors(fields.name.errors)}
           id={fields.name.errorId}
         />
       </Field>
@@ -121,7 +137,7 @@ export const ComposedForm = ({disabled = false}: ComposedFormProps) => {
           placeholder={t('emailPlaceholder')}
         />
         <FieldError
-          errors={toErrors(fields.email.errors)}
+          errors={mapToFieldErrors(fields.email.errors)}
           id={fields.email.errorId}
         />
       </Field>
@@ -136,30 +152,30 @@ export const ComposedForm = ({disabled = false}: ComposedFormProps) => {
           disabled={disabled}
         />
         <FieldDescription id={fields.password.descriptionId}>
-          {t('composedForm.passwordDescription')}
+          {FIXTURE_TEXT.passwordDescription}
         </FieldDescription>
         <FieldError
-          errors={toErrors(fields.password.errors)}
+          errors={mapToFieldErrors(fields.password.errors)}
           id={fields.password.errorId}
         />
       </Field>
 
       <Field data-invalid={fields.bio.errors ? true : undefined}>
-        <FieldLabel htmlFor={fields.bio.id}>{t('composedForm.bio')}</FieldLabel>
+        <FieldLabel htmlFor={fields.bio.id}>{FIXTURE_TEXT.bio}</FieldLabel>
         <Textarea {...getTextareaProps(fields.bio)} disabled={disabled} />
         <FieldError
-          errors={toErrors(fields.bio.errors)}
+          errors={mapToFieldErrors(fields.bio.errors)}
           id={fields.bio.errorId}
         />
       </Field>
 
       <Field data-invalid={fields.country.errors ? true : undefined}>
         <FieldLabel htmlFor={fields.country.id}>
-          {t('composedForm.country')}
+          {FIXTURE_TEXT.country}
         </FieldLabel>
         <NativeSelect {...getSelectProps(fields.country)} disabled={disabled}>
           <NativeSelectOption value="">
-            {t('composedForm.countryOptions.none')}
+            {FIXTURE_TEXT.countryOptions.none}
           </NativeSelectOption>
           {COUNTRIES.map((country) => (
             <NativeSelectOption key={country} value={country}>
@@ -168,7 +184,7 @@ export const ComposedForm = ({disabled = false}: ComposedFormProps) => {
           ))}
         </NativeSelect>
         <FieldError
-          errors={toErrors(fields.country.errors)}
+          errors={mapToFieldErrors(fields.country.errors)}
           id={fields.country.errorId}
         />
       </Field>
@@ -181,19 +197,17 @@ export const ComposedForm = ({disabled = false}: ComposedFormProps) => {
           {...omitType(getInputProps(fields.terms, {type: 'checkbox'}))}
           disabled={disabled}
         />
-        <FieldLabel htmlFor={fields.terms.id}>
-          {t('composedForm.terms')}
-        </FieldLabel>
+        <FieldLabel htmlFor={fields.terms.id}>{FIXTURE_TEXT.terms}</FieldLabel>
         <FieldError
-          errors={toErrors(fields.terms.errors)}
+          errors={mapToFieldErrors(fields.terms.errors)}
           id={fields.terms.errorId}
         />
       </Field>
 
       <FieldSet disabled={disabled}>
-        <FieldLegend variant="label">{t('composedForm.colors')}</FieldLegend>
+        <FieldLegend variant="label">{FIXTURE_TEXT.colors}</FieldLegend>
         {getCollectionProps(fields.colors, {
-          options: COLORS,
+          options: COLORS_DISPLAY_ORDER,
           type: 'checkbox',
         }).map(({key, type: collectionType, ...checkboxProps}) => (
           <Field
@@ -208,7 +222,7 @@ export const ComposedForm = ({disabled = false}: ComposedFormProps) => {
           </Field>
         ))}
         <FieldError
-          errors={toErrors(fields.colors.errors)}
+          errors={mapToFieldErrors(fields.colors.errors)}
           id={fields.colors.errorId}
         />
       </FieldSet>
@@ -216,7 +230,7 @@ export const ComposedForm = ({disabled = false}: ComposedFormProps) => {
       <Field data-invalid={fields.size.errors ? true : undefined}>
         <FieldSet disabled={disabled}>
           <FieldLegend id={`${fields.size.id}-legend`} variant="label">
-            {t('composedForm.size')}
+            {FIXTURE_TEXT.size}
           </FieldLegend>
           <RadioGroup
             aria-describedby={
@@ -230,7 +244,7 @@ export const ComposedForm = ({disabled = false}: ComposedFormProps) => {
             name={fields.size.name}
             required={true}
           >
-            {SIZES.map((size) => (
+            {SIZES_DISPLAY_ORDER.map((size) => (
               <Field
                 key={size}
                 data-invalid={fields.size.errors ? true : undefined}
@@ -244,15 +258,15 @@ export const ComposedForm = ({disabled = false}: ComposedFormProps) => {
             ))}
           </RadioGroup>
           <FieldError
-            errors={toErrors(fields.size.errors)}
+            errors={mapToFieldErrors(fields.size.errors)}
             id={fields.size.errorId}
           />
         </FieldSet>
       </Field>
 
       <Button disabled={disabled || isSubmitting} type="submit">
-        {isSubmitting && <Spinner aria-label={t('form.submitting')} />}
-        {t('form.submit')}
+        {isSubmitting && <Spinner aria-hidden={true} />}
+        {isSubmitting ? t('form.submitting') : t('form.submit')}
       </Button>
     </Form>
   );

@@ -43,18 +43,27 @@ const server = http.createServer((request, response) => {
     return;
   }
 
-  const requested = path.resolve(
-    root,
-    `.${decodeURIComponent(pathname === '/' ? '/index.html' : pathname)}`
-  );
+  let decodedPathname: string;
 
-  if (!requested.startsWith(`${root}${path.sep}`)) {
+  try {
+    decodedPathname = decodeURIComponent(
+      pathname === '/' ? '/index.html' : pathname
+    );
+  } catch {
+    response.writeHead(400).end('bad request');
+
+    return;
+  }
+
+  const requestedPath = path.resolve(root, `.${decodedPathname}`);
+
+  if (!requestedPath.startsWith(`${root}${path.sep}`)) {
     response.writeHead(403).end('forbidden');
 
     return;
   }
 
-  fs.readFile(requested, (error, body) => {
+  fs.readFile(requestedPath, (error, body) => {
     if (error) {
       response.writeHead(404).end('not found');
 
@@ -63,10 +72,18 @@ const server = http.createServer((request, response) => {
     response
       .writeHead(200, {
         'Content-Type':
-          MIME_TYPES[path.extname(requested)] ?? 'application/octet-stream',
+          MIME_TYPES[path.extname(requestedPath)] ?? 'application/octet-stream',
       })
       .end(body);
   });
+});
+
+server.on('error', (error: NodeJS.ErrnoException) => {
+  throw new Error(
+    error.code === 'EADDRINUSE' ?
+      `Port ${port} is already in use (for example by \`pnpm storybook\`, which shares the Storybook port). Stop that process, then run \`pnpm pw\` again.`
+    : `Storybook static server failed: ${error.message}`
+  );
 });
 
 server.listen(port, '127.0.0.1');

@@ -1,34 +1,5 @@
 export default {
   close: 'Close',
-  composedForm: {
-    bio: 'Bio',
-    colorOptions: {
-      blue: 'Blue',
-      green: 'Green',
-      red: 'Red',
-    },
-    colors: 'Favorite colors',
-    country: 'Country',
-    countryOptions: {
-      fr: 'France',
-      jp: 'Japan',
-      none: 'Select a country',
-      us: 'United States',
-    },
-    errors: {
-      email: 'Enter a valid email address',
-      password: 'Password must be at least 8 characters',
-      required: 'This field is required',
-    },
-    passwordDescription: 'Use at least 8 characters',
-    size: 'Size',
-    sizeOptions: {
-      lg: 'Large',
-      md: 'Medium',
-      sm: 'Small',
-    },
-    terms: 'I accept the terms',
-  },
   copyToClipboard: 'Copy to clipboard',
   counters: {
     clicks_one: '{{count}} click',

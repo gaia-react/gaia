@@ -93,14 +93,13 @@ const darkOverrides: Record<string, string> = {
   '--ring': 'oklch(0.92 0 0)',
 };
 
-const blockPattern = (selector: string): RegExp =>
+const buildBlockPattern = (selector: string): RegExp =>
   new RegExp(String.raw`(?:^|\n)${selector}\s*\{([^}]*)\}`);
 
 const parseBlock = (selector: string): Map<string, string> => {
-  const body = (blockPattern(selector).exec(tokenCss)?.[1] ?? '').replaceAll(
-    /\/\*[^*]*\*\//g,
-    ''
-  );
+  const body = (
+    buildBlockPattern(selector).exec(tokenCss)?.[1] ?? ''
+  ).replaceAll(/\/\*[^*]*\*\//g, '');
   const declarations = new Map<string, string>();
 
   for (const declaration of body.split(';')) {
@@ -125,7 +124,7 @@ const stylelintOklch =
   /^oklch\(\d+(?:\.\d+)?% \d+(?:\.\d+)? \d+(?:\.\d+)?deg(?: \/ \d+(?:\.\d+)?%)?\)$/;
 
 // Normalizes either spelling to numbers so 52% and 0.52 compare equal.
-const toNumbers = (value: string): number[] => {
+const parseOklchNumbers = (value: string): number[] => {
   const match = /oklch\(([^)]+)\)/.exec(value);
   const [channels, alpha] = (match?.[1] ?? '').split('/');
   const [lightness, chroma, hue] = channels.trim().split(/\s+/);
@@ -144,9 +143,9 @@ const toNumbers = (value: string): number[] => {
   return numbers;
 };
 
-const sameColor = (actual: string, expected: string): boolean => {
-  const actualNumbers = toNumbers(actual);
-  const expectedNumbers = toNumbers(expected);
+const isSameColor = (actual: string, expected: string): boolean => {
+  const actualNumbers = parseOklchNumbers(actual);
+  const expectedNumbers = parseOklchNumbers(expected);
 
   return (
     actualNumbers.length === expectedNumbers.length &&
@@ -188,7 +187,7 @@ describe('theme tokens', () => {
   test.each(Object.entries(rootOverrides))(
     ':root %s keeps the contrast override',
     (name, expected) => {
-      expect(sameColor(rootTokens.get(name) ?? '', expected)).toBe(true);
+      expect(isSameColor(rootTokens.get(name) ?? '', expected)).toBe(true);
     }
   );
 
@@ -197,27 +196,27 @@ describe('theme tokens', () => {
       ([name]) => name !== '--radius' && !(name in rootOverrides)
     )
   )(':root %s equals the stock value', (name, stock) => {
-    expect(sameColor(rootTokens.get(name) ?? '', stock)).toBe(true);
+    expect(isSameColor(rootTokens.get(name) ?? '', stock)).toBe(true);
   });
 
   test.each(Object.entries(darkOverrides))(
     '.dark %s keeps the contrast override',
     (name, expected) => {
-      expect(sameColor(darkTokens.get(name) ?? '', expected)).toBe(true);
+      expect(isSameColor(darkTokens.get(name) ?? '', expected)).toBe(true);
     }
   );
 
   test.each(
     Object.entries(stockDark).filter(([name]) => !(name in darkOverrides))
   )('.dark %s equals the stock value', (name, stock) => {
-    expect(sameColor(darkTokens.get(name) ?? '', stock)).toBe(true);
+    expect(isSameColor(darkTokens.get(name) ?? '', stock)).toBe(true);
   });
 
   test('declares color-scheme for both themes', () => {
-    expect(blockPattern(':root').exec(tokenCss)?.[1]).toMatch(
+    expect(buildBlockPattern(':root').exec(tokenCss)?.[1]).toMatch(
       /color-scheme:\s*light;/
     );
-    expect(blockPattern(String.raw`\.dark`).exec(tokenCss)?.[1]).toMatch(
+    expect(buildBlockPattern(String.raw`\.dark`).exec(tokenCss)?.[1]).toMatch(
       /color-scheme:\s*dark;/
     );
   });

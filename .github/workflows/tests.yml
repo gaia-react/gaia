@@ -19,12 +19,15 @@ jobs:
   tests:
     name: Vitest and Playwright
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
-    # 15 minutes bounds execution: a job that hits the cap is cancelled and
+    # 20 minutes bounds execution: a job that hits the cap is cancelled and
     # reports an ordinary red check to re-run rather than hanging. A full run
-    # here is about 4 minutes: typecheck and lint dominate it,
-    # Vitest and Playwright together are under a minute, and the browser install
-    # below fetches one engine rather than every engine Playwright ships.
-    timeout-minutes: 15
+    # here is about 7 minutes: typecheck and lint dominate the first part,
+    # Vitest is under a minute, and Playwright is about 4.5 minutes including
+    # the per-story light/dark a11y scan (built Storybook, one worker). On CI
+    # each broken story costs about 3.5 minutes across its retries, so the cap
+    # leaves room for a few broken stories to report in full. The browser
+    # install below fetches one engine rather than every engine Playwright ships.
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -202,7 +205,7 @@ jobs:
         env:
           COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           npm_package_version: ${{ steps.package-version.outputs.current-version}}
-      - if: ${{ failure() && steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true' }}
+      - if: ${{ (failure() || cancelled()) && steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         name: Upload Playwright failed test traces
         with:

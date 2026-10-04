@@ -63,3 +63,21 @@ export const Loading: Story = {
     await expectToast(canvasElement, 'Uploading file');
   },
 };
+
+const createTypeStory = (
+  type: 'error' | 'info' | 'success' | 'warning'
+): Story => ({
+  play: async ({canvasElement}) => {
+    toast.add({title: `${type} toast`, type});
+
+    await expectToast(canvasElement, `${type} toast`);
+  },
+});
+
+export const ErrorType: Story = createTypeStory('error');
+
+export const Info: Story = createTypeStory('info');
+
+export const Success: Story = createTypeStory('success');
+
+export const Warning: Story = createTypeStory('warning');

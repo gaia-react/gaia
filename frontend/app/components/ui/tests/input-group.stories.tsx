@@ -1,6 +1,6 @@
 import {useTranslation} from 'react-i18next';
 import type {Meta, StoryFn} from '@storybook/react-vite';
-import {SearchIcon} from 'lucide-react';
+import {SearchIcon, SendIcon} from 'lucide-react';
 import {
   InputGroup,
   InputGroupAddon,
@@ -20,10 +20,13 @@ const meta: Meta = {
 
 export default meta;
 
+type AddonStoryProps = {align: Align};
 type Align = 'block-end' | 'block-start' | 'inline-end' | 'inline-start';
-type ButtonSize = 'icon-sm' | 'icon-xs' | 'sm' | 'xs';
 
-const AddonStory = ({align}: {align: Align}) => {
+type ButtonSize = 'icon-sm' | 'icon-xs' | 'sm' | 'xs';
+type ButtonStoryProps = {size: ButtonSize};
+
+const AddonStory = ({align}: AddonStoryProps) => {
   const {t} = useTranslation();
 
   return (
@@ -36,7 +39,7 @@ const AddonStory = ({align}: {align: Align}) => {
   );
 };
 
-const ButtonStory = ({size}: {size: ButtonSize}) => {
+const ButtonStory = ({size}: ButtonStoryProps) => {
   const {t} = useTranslation();
 
   return (
@@ -44,7 +47,7 @@ const ButtonStory = ({size}: {size: ButtonSize}) => {
       <InputGroupInput aria-label={t('email')} />
       <InputGroupAddon align="inline-end">
         <InputGroupButton aria-label={t('form.submit')} size={size}>
-          <SearchIcon />
+          <SendIcon />
         </InputGroupButton>
       </InputGroupAddon>
     </InputGroup>

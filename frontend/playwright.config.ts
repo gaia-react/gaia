@@ -107,7 +107,9 @@ export default defineConfig({
     // Serves the built Storybook for the story a11y scan. `pnpm pw` does not
     // build it: run `pnpm build-storybook` first (CI does). The server starts
     // without a build so the other specs run; the story spec fails, never
-    // skips, naming the build command.
+    // skips, naming the build command. It shares the Storybook port with
+    // `pnpm storybook`: if that is running, this server exits with a message
+    // naming the conflict and the run aborts, so stop `pnpm storybook` first.
     {
       command: `pnpm exec tsx .playwright/storybook-server.ts ${ports.storybookPort}`,
       reuseExistingServer: decideServerReuse({

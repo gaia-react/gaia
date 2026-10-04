@@ -36,7 +36,7 @@ const parsePayload = (
 
 type NotifyType = 'error' | 'info' | 'success' | 'warning';
 
-const show = (
+const showToast = (
   type: NotifyType,
   payload: Partial<ToastMessage> | string,
   defaultDuration: number
@@ -63,11 +63,11 @@ const show = (
 
 export const notify = {
   error: (payload: Partial<ToastMessage> | string): string =>
-    show('error', payload, DEFAULT_ERROR_DURATION),
+    showToast('error', payload, DEFAULT_ERROR_DURATION),
   info: (payload: Partial<ToastMessage> | string): string =>
-    show('info', payload, DEFAULT_DURATION),
+    showToast('info', payload, DEFAULT_DURATION),
   success: (payload: Partial<ToastMessage> | string): string =>
-    show('success', payload, DEFAULT_DURATION),
+    showToast('success', payload, DEFAULT_DURATION),
   warning: (payload: Partial<ToastMessage> | string): string =>
-    show('warning', payload, DEFAULT_DURATION),
+    showToast('warning', payload, DEFAULT_DURATION),
 };

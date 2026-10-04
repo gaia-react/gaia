@@ -15,12 +15,12 @@ export default meta;
 
 type BoundaryProps = Parameters<typeof RootErrorBoundary>[0];
 
-const boundaryProps = (error: unknown) =>
+const createBoundaryProps = (error: unknown) =>
   ({error, params: {}}) as unknown as BoundaryProps;
 
 export const NotFound: StoryFn = () => (
   <RootErrorBoundary
-    {...boundaryProps({
+    {...createBoundaryProps({
       data: '',
       internal: true,
       status: 404,
@@ -31,10 +31,10 @@ export const NotFound: StoryFn = () => (
 
 export const ServerError: StoryFn = () => (
   <RootErrorBoundary
-    {...boundaryProps(new Error('Something broke while rendering'))}
+    {...createBoundaryProps(new Error('Something broke while rendering'))}
   />
 );
 
 export const Unexpected: StoryFn = () => (
-  <RootErrorBoundary {...boundaryProps('boom')} />
+  <RootErrorBoundary {...createBoundaryProps('boom')} />
 );

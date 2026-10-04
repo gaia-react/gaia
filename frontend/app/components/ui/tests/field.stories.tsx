@@ -28,12 +28,16 @@ export const Default: StoryFn = () => {
 
   return (
     <FieldSet>
-      <FieldLegend>{t('form.dateOfBirth')}</FieldLegend>
+      <FieldLegend>{t('form.allFieldsAreRequired')}</FieldLegend>
       <FieldGroup>
+        <Field>
+          <FieldLabel htmlFor="field-story-name">{t('name')}</FieldLabel>
+          <Input id="field-story-name" />
+        </Field>
         <Field>
           <FieldLabel htmlFor="field-story-email">{t('email')}</FieldLabel>
           <Input id="field-story-email" placeholder={t('emailPlaceholder')} />
-          <FieldDescription>{t('form.allFieldsAreRequired')}</FieldDescription>
+          <FieldDescription>{t('form.required')}</FieldDescription>
         </Field>
       </FieldGroup>
     </FieldSet>
@@ -76,6 +80,35 @@ export const WithError: StoryFn = () => {
       <FieldError id="field-story-error-message">
         {t('form.required')}
       </FieldError>
+    </Field>
+  );
+};
+
+export const LegendLabelVariant: StoryFn = () => {
+  const {t} = useTranslation();
+
+  return (
+    <FieldSet>
+      <FieldLegend variant="label">{t('name')}</FieldLegend>
+      <FieldGroup>
+        <Field>
+          <FieldLabel htmlFor="field-story-legend-label">
+            {t('email')}
+          </FieldLabel>
+          <Input id="field-story-legend-label" />
+        </Field>
+      </FieldGroup>
+    </FieldSet>
+  );
+};
+
+export const Disabled: StoryFn = () => {
+  const {t} = useTranslation();
+
+  return (
+    <Field data-disabled={true}>
+      <FieldLabel htmlFor="field-story-disabled">{t('email')}</FieldLabel>
+      <Input disabled={true} id="field-story-disabled" />
     </Field>
   );
 };

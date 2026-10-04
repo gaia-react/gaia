@@ -36,7 +36,7 @@ const SIZES = [
   {icon: 'icon-lg', text: 'lg'},
 ] as const;
 
-type GridProps = {
+type ButtonGridProps = {
   content?: 'icon' | 'icon-text' | 'text';
   isDisabled?: boolean;
   isInvalid?: boolean;
@@ -49,7 +49,7 @@ const ButtonGrid = ({
   isDisabled = false,
   isInvalid = false,
   isLoading = false,
-}: GridProps) => {
+}: ButtonGridProps) => {
   const {t} = useTranslation();
   const label = isLoading ? t('form.submitting') : t('form.submit');
 

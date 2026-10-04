@@ -12,7 +12,7 @@ const TYPES = ['error', 'info', 'success', 'warning'] as const;
 
 const renderToaster = () => render(<Toaster />);
 
-const fire = async (type: (typeof TYPES)[number]) => {
+const fireToast = async (type: (typeof TYPES)[number]) => {
   await act(async () => {
     notify[type](`${type} message`);
   });
@@ -68,8 +68,8 @@ describe('notify', () => {
     const iconClasses: string[] = [];
 
     for (const type of TYPES) {
-      const item = await fire(type);
-      const icon = item.querySelector('[data-slot="toast-icon"] svg');
+      const toastElement = await fireToast(type);
+      const icon = toastElement.querySelector('[data-slot="toast-icon"] svg');
 
       expect(icon).toHaveClass('lucide');
       iconClasses.push(icon?.getAttribute('class') ?? '');
@@ -82,17 +82,17 @@ describe('notify', () => {
     renderToaster();
 
     for (const type of TYPES) {
-      const item = await fire(type);
+      const toastElement = await fireToast(type);
 
-      expect(item.className).not.toMatch(RAW_PALETTE);
+      expect(toastElement.className).not.toMatch(RAW_PALETTE);
     }
   });
 
   test('the error icon uses destructive and the others do not', async () => {
     renderToaster();
 
-    const error = await fire('error');
-    const info = await fire('info');
+    const error = await fireToast('error');
+    const info = await fireToast('info');
     const errorIcon = error.querySelector('[data-slot="toast-icon"] svg');
     const infoIcon = info.querySelector('[data-slot="toast-icon"] svg');
 

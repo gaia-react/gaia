@@ -26,7 +26,11 @@ const NOTIFY_TYPES = [
 const TOAST_STORY_IDS = new Set<string>([
   ...NOTIFY_TYPES.map(({id}) => id),
   'components-ui-toast--default',
+  'components-ui-toast--error-type',
+  'components-ui-toast--info',
   'components-ui-toast--loading',
+  'components-ui-toast--success',
+  'components-ui-toast--warning',
   'components-ui-toast--with-action',
   'utils-notify--with-stack',
 ]);

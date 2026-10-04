@@ -203,7 +203,7 @@ describe('ComposedForm filled submit', () => {
     ]);
   });
 
-  test('disables the submit button and shows the spinner while the action runs', async () => {
+  test('disables the submit button and shows the submitting text and a hidden spinner while the action runs', async () => {
     const user = userEvent.setup();
 
     const Stub = createStub(
@@ -225,6 +225,9 @@ describe('ComposedForm filled submit', () => {
     const button = await screen.findByRole('button', {name: /Please wait/});
 
     expect(button).toBeDisabled();
-    expect(screen.getByRole('status')).toBeInTheDocument();
+    expect(screen.getByRole('status', {hidden: true})).toHaveAttribute(
+      'aria-hidden',
+      'true'
+    );
   });
 });
