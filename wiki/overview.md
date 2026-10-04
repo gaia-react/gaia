@@ -3,7 +3,7 @@ type: overview
 title: GAIA React Overview
 status: mature
 created: 2026-04-20
-updated: 2026-10-03
+updated: 2026-10-04
 tags: [overview, gaia]
 ---
 
@@ -35,8 +35,8 @@ See [[GAIA Philosophy]] for the long version.
 ```
 frontend/app/
 ├── assets/           images, svgs
-├── components/       shared UI (Button, Form/*, Toast, Layout, ...)
-├── hooks/            useBreakpoint, useComponentRect, useDebounce, useTheme, useTimeout
+├── components/       shared UI (button, form/*, toast, layout, ...)
+├── hooks/            use-breakpoint, use-component-rect, use-debounce, use-theme, use-timeout
 ├── languages/        TS-based i18n (en by default)
 ├── middleware/       i18next middleware
 ├── pages/            page-specific UI

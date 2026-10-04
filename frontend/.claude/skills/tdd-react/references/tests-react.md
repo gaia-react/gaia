@@ -6,8 +6,8 @@ Four layers share one mocking foundation (`msw` + `@msw/data`). Write tests at t
 
 | Layer       | Tool                           | Runner     | File location                  | What to assert                                      |
 | ----------- | ------------------------------ | ---------- | ------------------------------ | --------------------------------------------------- |
-| Unit / hook | RTL `renderHook`               | Vitest     | `app/hooks/<name>/tests/`      | hook return values, state transitions, callbacks    |
-| Component   | RTL + Storybook `composeStory` | Vitest     | `app/components/<Name>/tests/` | rendered DOM, user interactions, props behavior     |
+| Unit / hook | RTL `renderHook`               | Vitest     | `app/hooks/tests/`             | hook return values, state transitions, callbacks    |
+| Component   | RTL + Storybook `composeStory` | Vitest     | `app/components/<name>/tests/` | rendered DOM, user interactions, props behavior     |
 | Service     | MSW handlers + Zod             | Vitest     | `app/services/<name>/tests/`   | parsed response shape, request payload, error cases |
 | E2E         | Playwright + MSW browser       | Playwright | `.playwright/e2e/*.spec.ts`    | full user flow across routes                        |
 
@@ -16,7 +16,7 @@ Four layers share one mocking foundation (`msw` + `@msw/data`). Write tests at t
 The story is the test's source of truth. Use `composeStory`, never render a fresh `<Component prop={...} />` directly in tests, because stories already set up decorators (i18n, router, state) via `test/stubs`. Rendering fresh bypasses those stubs and produces flaky or incomplete tests.
 
 ```tsx
-// app/components/PriceTag/tests/index.stories.tsx
+// app/components/price-tag/tests/index.stories.tsx
 import type {Meta, StoryFn} from '@storybook/react-vite';
 import PriceTag from '..';
 
@@ -30,7 +30,7 @@ export const Discounted: StoryFn = () => (
 ```
 
 ```tsx
-// app/components/PriceTag/tests/index.test.tsx
+// app/components/price-tag/tests/index.test.tsx
 import {composeStory} from '@storybook/react-vite';
 import {describe, expect, test} from 'vitest';
 import {render, screen} from 'test/rtl';
@@ -59,10 +59,10 @@ The tracer bullet for any component: `composeStory(Default, Meta)` renders witho
 
 When a test overrides a prop on a composed story, especially a callback it spies on, the story must accept `(args)` and spread `{...args}` **last**, after any hardcoded default, so the override wins. Storybook's own guidance says the render function "spreads `args` onto the component" (https://storybook.js.org/docs/writing-stories), and `composeStory` says render-time props "override the values passed in the story's args" (https://storybook.js.org/docs/api/portable-stories/portable-stories-vitest#composestory). `args` only reaches the real component through that spread, so a story that hardcodes the callback, or spreads `{...args}` before it, silently drops the override.
 
-Storybook's own examples spread every prop from `args`, so there's nothing to order against. GAIA's stories hardcode structural/demo props inline (labels, names, options) and spread `{...args}` only for the controllable knobs, see `app/components/Form/RadioButtons/tests/index.stories.tsx`, so ordering is load-bearing: `{...args}` must come after the hardcoded props for an override to win.
+Storybook's own examples spread every prop from `args`, so there's nothing to order against. GAIA's stories hardcode structural/demo props inline (labels, names, options) and spread `{...args}` only for the controllable knobs, see `app/components/form/radio-buttons/tests/index.stories.tsx`, so ordering is load-bearing: `{...args}` must come after the hardcoded props for an override to win.
 
 ```tsx
-// app/components/Toggle/tests/index.stories.tsx
+// app/components/toggle/tests/index.stories.tsx
 // GOOD - accepts args and spreads {...args} LAST, so a test can override onChange
 const Template: StoryFn = (args) => (
   <Toggle label="Notifications" onChange={() => {}} {...args} />
@@ -73,7 +73,7 @@ Default.args = {checked: false};
 ```
 
 ```tsx
-// app/components/Toggle/tests/index.test.tsx
+// app/components/toggle/tests/index.test.tsx
 // GOOD - the override reaches the real component, so the spy assertion is real
 test('emits onChange when toggled', async () => {
   const onChange = vi.fn();
@@ -109,10 +109,10 @@ Why bad: the story hardcodes `onChange`, so the composed story ignores the rende
 ## Hook Tests via `renderHook`
 
 ```tsx
-// app/hooks/useToggle/tests/index.test.ts
+// app/hooks/tests/use-toggle.test.ts
 import {act, renderHook} from 'test/rtl';
 import {describe, expect, test} from 'vitest';
-import useToggle from '..';
+import {useToggle} from '../use-toggle';
 
 describe('useToggle', () => {
   test('starts with initial value', () => {
@@ -225,7 +225,7 @@ const fieldControl = useInputControl(fields.fieldName);
 
 **Why this matters**: When validation fails, Conform takes control of the field value. If you use local `useState`, the component becomes disconnected from Conform's state and stops responding to changes after validation errors occur.
 
-See `app/components/Form/YearMonthDay/tests/` for a complete example of this pattern in action.
+See `app/components/form/year-month-day/tests/` for a complete example of this pattern in action.
 
 ## Bad Tests
 
@@ -282,7 +282,7 @@ Before keeping any test, ask:
 A test for component `C` asserts the **emergent behavior of its children together**: the seam where data and events flow through `C`. It never re-proves what the children's own suites already cover.
 
 ```tsx
-// app/components/Checkout/tests/index.test.tsx
+// app/components/checkout/tests/index.test.tsx
 // GOOD - the seam: PriceTag + QuantityStepper feeding the running total in Checkout
 test('total updates when quantity changes', async () => {
   render(<DefaultCheckout />);

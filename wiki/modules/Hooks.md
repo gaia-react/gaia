@@ -5,13 +5,13 @@ status: active
 language: typescript
 purpose: Global custom React hooks
 created: 2026-04-20
-updated: 2026-10-03
+updated: 2026-10-04
 tags: [module, hooks]
 ---
 
 # Hooks
 
-Global custom hooks live in `frontend/app/hooks/`. Component-specific hooks live in `frontend/app/components/{Name}/hooks/`. A few context-bound hooks co-locate with their provider under `frontend/app/utils/` instead (`useNonce` in `nonce.ts`, `useRequestInfo`/`useOptionalRequestInfo` in `request-info.ts`).
+Global custom hooks live in `frontend/app/hooks/`. Component-specific hooks live in each component or page folder's own `hooks/` folder. A few context-bound hooks co-locate with their provider under `frontend/app/utils/` instead (`useNonce` in `nonce.ts`, `useRequestInfo`/`useOptionalRequestInfo` in `request-info.ts`).
 
 ## Lift rule
 
@@ -19,7 +19,7 @@ A hook starts in the component that needs it. When a second component needs the 
 
 ## Conventions
 
-Named export, `use` prefix, one hook per file, tests in `frontend/app/hooks/tests/{name}.test.ts`. Use `/new-hook` to scaffold. See [[Coding Guidelines]] for file-naming rules.
+Named export, `use` prefix, one hook per file, tests in `frontend/app/hooks/tests/`. Use `/new-hook` to scaffold. File names and the layout are owned by `frontend/.claude/rules/coding-guidelines-react.md`; see [[Coding Guidelines]] for the general naming rules.
 
 For the current bundled inventory and signatures, query Serena (`.claude/rules/code-search.md`).
 

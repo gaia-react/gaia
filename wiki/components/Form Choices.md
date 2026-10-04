@@ -1,6 +1,6 @@
 ---
 type: component
-path: frontend/app/components/Form/{Checkbox,Checkboxes,CheckboxRadioGroup,InputRadio,RadioButtons}/
+path: frontend/app/components/form/{checkbox,checkboxes,checkbox-radio-group,input-radio,radio-buttons}/
 status: active
 language: typescript
 purpose: Checkbox and radio primitives plus grouped variants
@@ -8,7 +8,7 @@ depends_on:
   - '[[Form Components]]'
   - '[[Form Field]]'
 created: 2026-04-20
-updated: 2026-10-03
+updated: 2026-10-04
 tags: [component, forms, checkbox, radio]
 ---
 

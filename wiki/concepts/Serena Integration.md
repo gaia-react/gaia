@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-05-04
-updated: 2026-10-03
+updated: 2026-10-04
 tags: [concept, claude, code-search, mcp]
 ---
 
@@ -29,7 +29,7 @@ tags: [concept, claude, code-search, mcp]
 
 - "What does `useBreakpoint` return?" → Serena.
 - "Why don't we use Redux?" → wiki (`wiki/decisions/`).
-- "What's in `frontend/app/components/Form/`?" → Serena.
+- "What's in `frontend/app/components/form/`?" → Serena.
 - "Why is the form folder co-located like this?" → wiki (`wiki/modules/Components.md`).
 
 See `.claude/rules/code-search.md` for the routing rule.
@@ -46,5 +46,5 @@ The nudge renders from a `serenaLangDrift` field in `.gaia/local/cache/shared/up
 
 - **Line numbers are 0-indexed.** `body_location.start_line` from `find_symbol` and friends counts from 0. When quoting a location to a human (`path:line`), report `start_line + 1`. Editor jump-to-line conventions are 1-indexed everywhere; emitting Serena's raw value silently misleads readers.
 
-- **`name_path` may include workspace prefix.** Results can come back as `gaia/app/hooks/useBreakpoint` even though the file is `frontend/app/hooks/useBreakpoint.ts` from the project root. Strip the leading workspace segment when echoing paths to the user.
+- **`name_path` may include workspace prefix.** Results can come back prefixed with the workspace (`gaia/app/...`) even though the file is `frontend/app/...` from the project root. Strip the leading workspace segment when echoing paths to the user.
 - **Modules can be directories.** A path like `frontend/app/sessions.server` may resolve to a directory containing one or more `.ts` files (no `index.ts` barrel). If `find_file` and `find_symbol` both return empty for such a path, follow up with `list_dir` on the directory or `get_symbols_overview` on each file inside before concluding the module doesn't exist.

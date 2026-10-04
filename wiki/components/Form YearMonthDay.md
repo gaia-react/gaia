@@ -1,6 +1,6 @@
 ---
 type: component
-path: frontend/app/components/Form/YearMonthDay/
+path: frontend/app/components/form/year-month-day/
 status: active
 language: typescript
 purpose: Composite date-of-birth input: three locale-aware Selects + hidden ISO date
@@ -9,7 +9,7 @@ depends_on:
   - '[[Conform]]'
   - '[[Form Components]]'
 created: 2026-04-20
-updated: 2026-10-03
+updated: 2026-10-04
 tags: [component, forms, date, gotcha]
 ---
 
@@ -40,7 +40,7 @@ When the user changes year or month, `getSafeValue` computes the new ISO string,
 
 ## Caller pattern: `useInputControl`
 
-Always wire via `useInputControl`; local `useState` desyncs from Conform once validation fails. See `frontend/app/components/Form/YearMonthDay/tests/index.stories.tsx` for the canonical usage and [[Component Testing]] for the test.
+Always wire via `useInputControl`; local `useState` desyncs from Conform once validation fails. See `frontend/app/components/form/year-month-day/tests/index.stories.tsx` for the canonical usage and [[Component Testing]] for the test.
 
 For prop signatures, query Serena (`.claude/rules/code-search.md`).
 

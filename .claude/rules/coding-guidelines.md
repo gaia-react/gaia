@@ -3,7 +3,7 @@
 ## File Naming
 
 - **Other files**: kebab-case
-- **React components and hooks** (PascalCase component folders, camelCase hooks): `frontend/.claude/rules/coding-guidelines-react.md`, loaded on frontend files
+- **React components and hooks** (file and folder layout, naming): `frontend/.claude/rules/coding-guidelines-react.md`, loaded on frontend files
 
 ## 1. Simplicity First
 

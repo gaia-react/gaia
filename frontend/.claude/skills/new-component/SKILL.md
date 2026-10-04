@@ -1,6 +1,6 @@
 ---
 name: new-component
-description: Scaffold a new React component with optional Storybook story and Vitest test files. Use this skill whenever the user asks to "create a component", "make a button", "scaffold a card", "add a new component", or asks for a new file under `app/components/` following the project's component pattern (PascalCase folder, index.tsx, tests/).
+description: Scaffold a new React component with optional Storybook story and Vitest test files. Use this skill whenever the user asks to "create a component", "make a button", "scaffold a card", "add a new component", or asks for a new file under `app/components/` following the project's component pattern (kebab-case folder, index.tsx, tests/).
 model: haiku
 ---
 
@@ -10,7 +10,7 @@ Trigger: user asks to create a component, scaffold a card, etc.
 
 ## Workflow
 
-1. Confirm with user via AskUserQuestion: name (PascalCase), parent dir (default `app/components`), props (or "none"), story (default yes).
+1. Confirm with user via AskUserQuestion: name (PascalCase or kebab-case; the folder is kebab-case), parent dir (default `app/components`), props (or "none"), story (default yes).
 2. Run from the repo root: `./.gaia/cli/gaia scaffold component <Name> [flags]` (the package comes from the registry, not the working directory).
 3. Verify: `pnpm typecheck` clean. Open the new files, sanity-check the props.
 4. If user wants more (variants, conditional rendering, complex children): edit the generated files. The skill does not regenerate. Before hand-editing, read one or two existing components with a similar shape and follow their pattern.
@@ -18,7 +18,7 @@ Trigger: user asks to create a component, scaffold a card, etc.
 ## Flags
 
 - `--no-story`, skip Storybook story
-- `--parent <dir>`, non-default parent dir (e.g. `app/components/Form`)
+- `--parent <dir>`, non-default parent dir, an existing `app/components[/...]` folder (e.g. `app/components/form`) or `app/pages/<path>` to colocate the component in a page folder. A parent equal to or under `app/components/ui`, or outside `app/components` and `app/pages`, is refused; the layout rule is in `frontend/.claude/rules/coding-guidelines-react.md`
 - `--props "a:string,b:number"`, typed props rendered as a Props alias and destructured in the signature. Only top-level commas separate props, so comma-bearing types (`Record<K, V>`, `(a, b) => void`, tuples) are supported within a single entry.
 
 ## Accessibility assertion

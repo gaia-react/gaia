@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-10-03
+updated: 2026-10-04
 tags: [concept, testing]
 ---
 
@@ -23,7 +23,7 @@ expect(screen.getByText('Hello')).toBeInTheDocument();
 > [!warning] Never manually mock framework deps
 > Don't mock `react-router`, `react-i18next`, or other framework deps. Use the stubs in `frontend/test/stubs/` instead; they wire real providers with sensible defaults.
 
-`frontend/test/stubs/` exposes `stubs.reactRouter()`, `stubs.state()`, etc. Apply as decorators in `tests/index.stories.tsx`; the stories pull them in for both Storybook and Vitest. Only mock **external services** or **utilities** the component imports directly.
+`frontend/test/stubs/` exposes `stubs.reactRouter()`, `stubs.state()`, etc. Apply as decorators in the component's story file under `tests/`; the stories pull them in for both Storybook and Vitest. Only mock **external services** or **utilities** the component imports directly.
 
 ## Overriding a prop (callback spies)
 
@@ -49,7 +49,7 @@ Stateful custom form components MUST use `useInputControl` to stay in sync with 
 
 ## Reference example
 
-`frontend/app/components/Form/YearMonthDay/tests/`: a parent-controlled composite of three Selects plus a hidden input that mirrors the ISO date value for Conform. The story wires it into a Conform form with `useInputControl`; `composeStory` then drives the integration test.
+`frontend/app/components/form/year-month-day/tests/`: a parent-controlled composite of three Selects plus a hidden input that mirrors the ISO date value for Conform. The story wires it into a Conform form with `useInputControl`; `composeStory` then drives the integration test.
 
 For the current file pattern (where to put `.stories.tsx` vs `.test.tsx`), Serena and the scaffolders (`/new-component`, `/new-route`) handle it; query Serena rather than maintaining the layout here.
 
