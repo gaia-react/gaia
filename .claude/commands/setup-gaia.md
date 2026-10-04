@@ -6,7 +6,7 @@ description: Single post-init onboarding command; detects situation, runs only o
 Run this once after `/gaia-init`, and re-run it any time. `/setup-gaia` is the single onboarding command for a GAIA project. It detects the situation and runs only the phases this clone actually owes:
 
 - **Per-machine work** every clone needs (tool installs, plugins, spec-kit runtime, statusline bit, `.env`, the sandbox decision, and, for a developer with a global statusline, which statusline draws the left side).
-- **GitHub repository provisioning** (create / adopt / manual, private by default), plus branch protection and the `GAIA-Audit` required-check registration when the runner is a repo admin.
+- **GitHub repository provisioning** (create / adopt / manual, private by default), plus branch protection, the `GAIA-Audit` required-check registration, and squash-only merge settings when the runner is a repo admin.
 - **Team settings** a repo admin records once in `.gaia/project.json`: the git isolation policy and the Dependabot security-updates decision.
 
 It is safe for **any developer** to run at any time. A plain (no-flag) re-run on a fully provisioned project prints the already-provisioned line and mutates nothing: it never re-provisions the repo or changes branch protection. The one exception is a repo admin re-running it on a repo whose required checks still lack `GAIA-Audit` (or still carry the stale `code-review-audit` context): that run owes the registration and makes it. Pass `--reconfigure` to re-ask the sandbox decision (Phase 2), the team git isolation policy (Phase 3.5), the Dependabot security-updates decision (Phase 3.6), and the statusline left-side choice (Phase 4.6).
@@ -471,7 +471,7 @@ Reached from Option 1 (after create) or Option 2 (adopt). Run the admin probe fo
 Cache `admin` and `auth_status`. **If `admin` is not `true` (or `auth_status != "ok"`)**, none of the GitHub mutations below fire; print the admin-note and skip straight to Phase 3.5 (which runs its own admin probe and fails closed the same way):
 
 ```
-GitHub provisioning needs repo-admin permission and an authenticated gh (yours: admin=<admin>, auth_status=<auth_status>). Skipping the admin-only steps (branch protection, the GAIA-Audit required-check registration, Dependabot alerts, and delete-branch-on-merge). Per-machine setup still completes. Ask a repo admin to finish the GitHub side, or gain admin access and re-run /setup-gaia.
+GitHub provisioning needs repo-admin permission and an authenticated gh (yours: admin=<admin>, auth_status=<auth_status>). Skipping the admin-only steps (branch protection, the GAIA-Audit required-check registration, Dependabot alerts, delete-branch-on-merge, and squash-only merges). Per-machine setup still completes. Ask a repo admin to finish the GitHub side, or gain admin access and re-run /setup-gaia.
 ```
 
 When `admin: true` and `auth_status == "ok"`:
@@ -553,6 +553,31 @@ On Enable:
 
 If already `true`, print `delete_branch_on_merge is already enabled.` and continue.
 
+**Squash-only merges.** GAIA lints pull request titles as Conventional Commits because a squash merge lands the title as the commit subject on the default branch. That holds only when squash is the one merge method and the squash commit takes the PR title. Read the current settings:
+
+```bash
+gh api "repos/<owner>/<repo>" --jq '{allow_merge_commit, allow_rebase_merge, allow_squash_merge, squash_merge_commit_title, squash_merge_commit_message}'
+```
+
+If any of `allow_merge_commit` or `allow_rebase_merge` is `true`, `allow_squash_merge` is `false`, or `squash_merge_commit_title` is not `PR_TITLE`, AskUserQuestion:
+
+> This repository allows merges that bypass the squash path, or squashes under a title other than the PR title. A merge commit, a rebase merge, or a default squash title can land a non-Conventional subject on the default branch, so the PR title lint stops describing what lands. Squash-only turns off merge commits and rebase merges, and has every squash commit take the PR title as its subject and the branch's commit messages as its body.
+>
+> - **Make merges squash-only** (Recommended)
+> - **Skip** (keep the current merge settings)
+
+On Make merges squash-only:
+
+```bash
+gh api -X PATCH "repos/<owner>/<repo>" --input - <<'JSON'
+{"allow_merge_commit": false, "allow_rebase_merge": false, "allow_squash_merge": true, "squash_merge_commit_title": "PR_TITLE", "squash_merge_commit_message": "COMMIT_MESSAGES"}
+JSON
+```
+
+Re-run the read above and confirm the five values match the PATCH. On a failed PATCH or a read-back that does not match, print the error and the manual path, `Settings → General → Pull Requests` on `https://github.com/<owner>/<repo>/settings`, and continue; do not halt.
+
+If the settings already match, print `Merges are already squash-only.` and continue.
+
 **Dependabot posture.** Enable Dependabot **alerts** (visibility) and keep the PR-producing features **off** here; Phase 3.6 offers security updates as an opt-in. First warn about any existing Dependabot / Renovate config:
 
 ```bash
@@ -576,7 +601,7 @@ gh api "repos/<owner>/<repo>/automated-security-fixes" --jq .enabled            
 
 Assert `automated-security-fixes` is `false` (unless `.gaia/project.json` already records `"dependabot_security_updates": "on"`), and write **no** `.github/dependabot.yml` here. **`/update-deps` owns version updates** in GAIA; Dependabot never opens a version-update pull request. Security-update pull requests are a separate, explicit opt-in offered in Phase 3.6, the only path that turns `automated-security-fixes` on.
 
-All Phase-3 GitHub mutations (create, protection, required-check registration, vuln-alerts, delete-branch) are net-new, admin-gated, security-sensitive calls. A non-admin runner degrades gracefully: skip the mutation, print the admin-note above, and continue to Phase 3.5.
+All Phase-3 GitHub mutations (create, protection, required-check registration, vuln-alerts, delete-branch, merge settings) are net-new, admin-gated, security-sensitive calls. A non-admin runner degrades gracefully: skip the mutation, print the admin-note above, and continue to Phase 3.5.
 
 ## Phase 3.5: Team git isolation policy (always evaluated)
 
