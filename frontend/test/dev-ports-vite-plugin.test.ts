@@ -72,7 +72,10 @@ const hasIpv6 = async (): Promise<boolean> => {
 
 const isIpv6Available = await hasIpv6();
 
-const resolved = (devPort: number, treeRoot = '/tree'): DevPortsResolution => ({
+const buildResolvedResolution = (
+  devPort: number,
+  treeRoot = '/tree'
+): DevPortsResolution => ({
   kind: 'resolved',
   ports: {
     devPort,
@@ -107,11 +110,11 @@ const makeServer = (): FakeServer => {
   };
 };
 
-const held: net.Server[] = [];
+const heldServers: net.Server[] = [];
 let sandbox: string | undefined;
 
 const listenWith = async (treeRoot: string): Promise<void> => {
-  resolveDevPortsMock.mockReturnValue(resolved(5301, treeRoot));
+  resolveDevPortsMock.mockReturnValue(buildResolvedResolution(5301, treeRoot));
   const plugin = await loadPlugin();
   const server = makeServer();
   await plugin.configureServer(server);
@@ -140,7 +143,9 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  await Promise.all(held.splice(0).map(async (server) => closeServer(server)));
+  await Promise.all(
+    heldServers.splice(0).map(async (server) => closeServer(server))
+  );
 
   if (sandbox !== undefined) {
     fs.rmSync(sandbox, {force: true, recursive: true});
@@ -151,7 +156,7 @@ afterEach(async () => {
 
 describe('config', () => {
   test('serve pins the resolved dev port with strictPort', async () => {
-    resolveDevPortsMock.mockReturnValue(resolved(5199));
+    resolveDevPortsMock.mockReturnValue(buildResolvedResolution(5199));
     const plugin = await loadPlugin();
 
     expect(plugin.config({}, {command: 'serve'})).toEqual({
@@ -190,8 +195,8 @@ describe('configureServer refusals', () => {
 
   test('a port taken on 127.0.0.1 rejects naming the port, the ask-first sentence, and the hint', async () => {
     const port = await findFreePort();
-    held.push(await listenOn(port, '127.0.0.1'));
-    resolveDevPortsMock.mockReturnValue(resolved(port));
+    heldServers.push(await listenOn(port, '127.0.0.1'));
+    resolveDevPortsMock.mockReturnValue(buildResolvedResolution(port));
     const plugin = await loadPlugin();
 
     const failure = plugin.configureServer(makeServer());
@@ -204,8 +209,8 @@ describe('configureServer refusals', () => {
     'a port taken on ::1 only rejects the same way',
     async () => {
       const port = await findFreePort();
-      held.push(await listenOn(port, '::1'));
-      resolveDevPortsMock.mockReturnValue(resolved(port));
+      heldServers.push(await listenOn(port, '::1'));
+      resolveDevPortsMock.mockReturnValue(buildResolvedResolution(port));
       const plugin = await loadPlugin();
 
       await expect(plugin.configureServer(makeServer())).rejects.toThrow(
@@ -215,7 +220,9 @@ describe('configureServer refusals', () => {
   );
 
   test('a free port resolves', async () => {
-    resolveDevPortsMock.mockReturnValue(resolved(await findFreePort()));
+    resolveDevPortsMock.mockReturnValue(
+      buildResolvedResolution(await findFreePort())
+    );
     const plugin = await loadPlugin();
 
     await expect(plugin.configureServer(makeServer())).resolves.toBeUndefined();
@@ -232,12 +239,12 @@ describe('config restart', () => {
     );
     process.env.CLAUDE_CODE_SESSION_ID = 'session-one';
     const port = await findFreePort();
-    resolveDevPortsMock.mockReturnValue(resolved(port, sandbox));
+    resolveDevPortsMock.mockReturnValue(buildResolvedResolution(port, sandbox));
     const plugin = await loadPlugin();
 
     const firstServer = makeServer();
     await plugin.configureServer(firstServer);
-    held.push(await listenOn(port, '127.0.0.1'));
+    heldServers.push(await listenOn(port, '127.0.0.1'));
     firstServer.httpServer.emit('listening');
 
     // A real restart re-bundles the config into a fresh module, so the second
@@ -261,9 +268,9 @@ describe('config restart', () => {
 
   test('a held port owned by another process still refuses', async () => {
     const port = await findFreePort();
-    held.push(await listenOn(port, '127.0.0.1'));
+    heldServers.push(await listenOn(port, '127.0.0.1'));
     findListenerOwnerMock.mockReturnValue({kind: 'own', pid: process.pid + 1});
-    resolveDevPortsMock.mockReturnValue(resolved(port));
+    resolveDevPortsMock.mockReturnValue(buildResolvedResolution(port));
     const plugin = await loadPlugin();
 
     await expect(plugin.configureServer(makeServer())).rejects.toThrow(
@@ -273,8 +280,8 @@ describe('config restart', () => {
 
   test('a fresh module with the port held still refuses (control)', async () => {
     const port = await findFreePort();
-    held.push(await listenOn(port, '127.0.0.1'));
-    resolveDevPortsMock.mockReturnValue(resolved(port));
+    heldServers.push(await listenOn(port, '127.0.0.1'));
+    resolveDevPortsMock.mockReturnValue(buildResolvedResolution(port));
     const plugin = await loadPlugin();
 
     await expect(plugin.configureServer(makeServer())).rejects.toThrow(
@@ -285,7 +292,9 @@ describe('config restart', () => {
 
 describe('launch recording', () => {
   test('with no session id nothing is spawned', async () => {
-    resolveDevPortsMock.mockReturnValue(resolved(await findFreePort()));
+    resolveDevPortsMock.mockReturnValue(
+      buildResolvedResolution(await findFreePort())
+    );
     await listenWith(makeTreeWithScript());
 
     expect(spawnMock).not.toHaveBeenCalled();

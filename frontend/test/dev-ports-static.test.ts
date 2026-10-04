@@ -18,7 +18,7 @@ const explicitFiles = [
 const listTypeScriptFiles = (directory: string): string[] =>
   fs
     .readdirSync(directory, {recursive: true, withFileTypes: true})
-    .filter((entry) => entry.isFile() && entry.name.endsWith('.ts'))
+    .filter((entry) => entry.isFile() && /\.tsx?$/.test(entry.name))
     .map((entry) => path.join(entry.parentPath, entry.name))
     .filter((file) => !file.includes(`${path.sep}output${path.sep}`));
 

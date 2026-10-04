@@ -2,6 +2,7 @@ import type {Plugin} from 'vite';
 import {spawn} from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
+import type {ListenerOwner} from './dev-ports.ts';
 import {
   buildPortInUseMessage,
   findListenerOwner,
@@ -34,23 +35,29 @@ const isTakenOn = async (port: number, host: string): Promise<boolean> =>
   });
 
 const isTaken = async (port: number): Promise<boolean> => {
-  const isTakenByAddress = await Promise.all(
+  const takenStateByAddress = await Promise.all(
     LOOPBACK_ADDRESSES.map(async (host) => isTakenOn(port, host))
   );
 
-  return isTakenByAddress.includes(true);
+  return takenStateByAddress.includes(true);
 };
 
-const isOwnProcessListener = ({
-  devPort,
+const describePortHolder = ({
+  owner,
   treeRoot,
 }: {
-  devPort: number;
+  owner: ListenerOwner;
   treeRoot: string | undefined;
-}): boolean => {
-  const owner = findListenerOwner({port: devPort, treeRoot});
+}): {ownerPath?: string; pid?: number} => {
+  if (owner.kind === 'foreign') {
+    return {
+      ownerPath: owner.ownerPath,
+      pid: owner.pid > 0 ? owner.pid : undefined,
+    };
+  }
+  if (owner.kind === 'own') return {ownerPath: treeRoot, pid: owner.pid};
 
-  return owner.kind === 'own' && owner.pid === process.pid;
+  return {};
 };
 
 const recordLaunch = ({
@@ -106,9 +113,15 @@ export const devPortsPlugin = (packageDirectory: string): Plugin => ({
     const {devPort, treeRoot} = resolution.ports;
 
     if (await isTaken(devPort)) {
-      if (!isOwnProcessListener({devPort, treeRoot})) {
+      const owner = findListenerOwner({port: devPort, treeRoot});
+
+      if (owner.kind !== 'own' || owner.pid !== process.pid) {
         throw new Error(
-          buildPortInUseMessage({port: devPort, service: 'dev server'})
+          buildPortInUseMessage({
+            ...describePortHolder({owner, treeRoot}),
+            port: devPort,
+            service: 'dev server',
+          })
         );
       }
       // This process already holds the port: a restart, whose launch was recorded.

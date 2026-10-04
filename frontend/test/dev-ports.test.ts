@@ -64,7 +64,7 @@ const makeTree = ({
 
 type Resolution = ReturnType<typeof resolveDevPorts>;
 
-const resolvedPorts = (resolution: Resolution): DevelopmentPorts =>
+const extractResolvedPorts = (resolution: Resolution): DevelopmentPorts =>
   (resolution as Extract<Resolution, {kind: 'resolved'}>).ports;
 
 const linkedGit = 'gitdir: /x/repo/.git/worktrees/feature\n';
@@ -83,7 +83,7 @@ describe('resolveDevPorts defaults', () => {
     const {packageDirectory} = makeTree({});
     const resolution = resolveDevPorts(packageDirectory);
     expect(resolution).toMatchObject({kind: 'resolved'});
-    expect(resolvedPorts(resolution)).toMatchObject({
+    expect(extractResolvedPorts(resolution)).toMatchObject({
       devPort: 5173,
       siteUrl: undefined,
       slot: 0,
@@ -96,7 +96,7 @@ describe('resolveDevPorts defaults', () => {
     const {packageDirectory} = makeTree({gitFile: 'none'});
     const resolution = resolveDevPorts(packageDirectory);
     expect(resolution).toMatchObject({kind: 'resolved'});
-    expect(resolvedPorts(resolution)).toMatchObject({
+    expect(extractResolvedPorts(resolution)).toMatchObject({
       devPort: 5173,
       siteUrl: undefined,
       source: 'default',
@@ -110,7 +110,7 @@ describe('resolveDevPorts defaults', () => {
     });
     expect(findCheckout(packageDirectory).isLinkedWorktree).toBe(false);
     const resolution = resolveDevPorts(packageDirectory);
-    expect(resolvedPorts(resolution).devPort).toBe(5173);
+    expect(extractResolvedPorts(resolution).devPort).toBe(5173);
   });
 });
 

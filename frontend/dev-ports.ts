@@ -57,7 +57,7 @@ const isPort = (text: string): boolean => {
 
 /** Parses the port file text; undefined means malformed. */
 export const parsePortFile = (text: string): DevPorts | undefined => {
-  const values = new Map<string, string>();
+  const valuesByKey = new Map<string, string>();
 
   for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.trim();
@@ -66,12 +66,12 @@ export const parsePortFile = (text: string): DevPorts | undefined => {
       const separatorIndex = line.indexOf('=');
       if (separatorIndex === -1) return undefined;
       const key = line.slice(0, separatorIndex);
-      if (values.has(key)) return undefined;
-      values.set(key, line.slice(separatorIndex + 1));
+      if (valuesByKey.has(key)) return undefined;
+      valuesByKey.set(key, line.slice(separatorIndex + 1));
     }
   }
   const [slot, devPort, storybookPort, siteUrl] = REQUIRED_KEYS.map((key) =>
-    values.get(key)
+    valuesByKey.get(key)
   );
 
   if (
@@ -190,18 +190,18 @@ export const resolveDevPorts = (
   const portFilePath = path.join(packageDirectory, PORT_FILE_NAME);
   const {isLinkedWorktree, treeRoot} = findCheckout(packageDirectory);
 
-  let text: string | undefined;
+  let portFileText: string | undefined;
 
   try {
-    text = fs.readFileSync(portFilePath, 'utf8');
+    portFileText = fs.readFileSync(portFilePath, 'utf8');
   } catch {
-    text = undefined;
+    portFileText = undefined;
   }
 
-  if (text !== undefined) {
-    const parsed = parsePortFile(text);
+  if (portFileText !== undefined) {
+    const parsedPorts = parsePortFile(portFileText);
 
-    if (parsed === undefined) {
+    if (parsedPorts === undefined) {
       return {
         kind: 'malformed-port-file',
         message: buildMalformedPortFileMessage({portFilePath, treeRoot}),
@@ -209,7 +209,7 @@ export const resolveDevPorts = (
       };
     }
 
-    return {kind: 'resolved', ports: {...parsed, treeRoot}};
+    return {kind: 'resolved', ports: {...parsedPorts, treeRoot}};
   }
 
   if (isLinkedWorktree && treeRoot !== undefined) {
@@ -257,19 +257,23 @@ export const resolveSiteUrl = ({
   return ports.siteUrl;
 };
 
-const parseListenerOwner = (output: string): ListenerOwner => {
-  const [kind, pidText, ...rest] = output.trim().split(/\s+/);
+const parseListenerOwner = (listenerOwnerOutput: string): ListenerOwner => {
+  const [kind, pidText, ...ownerPathParts] = listenerOwnerOutput
+    .trim()
+    .split(/\s+/);
   const pid = Number(pidText);
   const hasPid = Number.isInteger(pid) && pid > 0;
-  if (kind === 'free' && output.trim() === 'free') return {kind: 'free'};
-  if (kind === 'own' && hasPid && rest.length === 0) return {kind: 'own', pid};
+  if (kind === 'free' && listenerOwnerOutput.trim() === 'free')
+    return {kind: 'free'};
+  if (kind === 'own' && hasPid && ownerPathParts.length === 0)
+    return {kind: 'own', pid};
 
   // `ss` omits the PID of another user's socket, so the process library
   // reports that listener as `foreign 0`; it is still a foreign server.
   const hasForeignPid = Number.isInteger(pid) && pid >= 0;
 
-  if (kind === 'foreign' && hasForeignPid && rest.length > 0) {
-    const ownerPath = rest.join(' ');
+  if (kind === 'foreign' && hasForeignPid && ownerPathParts.length > 0) {
+    const ownerPath = ownerPathParts.join(' ');
 
     return {
       kind: 'foreign',
@@ -297,7 +301,7 @@ export const findListenerOwner = ({
 
   try {
     // The script path is built from the resolved tree root; `bash` is the only PATH lookup.
-    const output = execFileSync(
+    const listenerOwnerOutput = execFileSync(
       // eslint-disable-next-line sonarjs/no-os-command-from-path
       'bash',
       [
@@ -313,7 +317,7 @@ export const findListenerOwner = ({
       }
     );
 
-    return parseListenerOwner(output);
+    return parseListenerOwner(listenerOwnerOutput);
   } catch {
     return {kind: 'unknown'};
   }
