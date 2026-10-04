@@ -6,10 +6,25 @@
 # each audit round's verification (`HEAD`, that round's staged delta) run
 # through bats5.sh.
 #
-# A suite is selected when it names a changed file's basename as a fixed
-# string, or when it is itself a changed suite that still exists. Selection by
-# basename over-selects on a common name (`index.ts`) and never drops a suite,
-# which is the safe direction for a verification set.
+# A suite is selected when it contains a changed file's match text as a fixed
+# string, or when it is itself a changed suite that still exists. The match
+# text is the basename, because a suite names the file it tests through a
+# directory variable and the bare name (`"$SCRIPTS/usage-lib.sh"`), with two
+# exceptions where the bare name is mostly fixture data (a staged path, a hook
+# command) and selecting on it runs suites the change cannot affect:
+#
+#   - A root-level file matches as `/<name>`. A suite that reads one reads it
+#     through a root (`"$REPO_ROOT/CHANGELOG.md"`).
+#   - A JS/TS source whose basename another tracked file shares (`index.tsx`,
+#     `common.ts`), under a top-level directory holding no bats suite, matches
+#     on its shortest trailing path no other tracked file ends with
+#     (`form-error/tests/index.test.tsx`). No suite sits beside it to name it
+#     through a directory variable. A source under a tree holding suites keeps
+#     the basename: a suite there imports it as `"$storage_directory/index.ts"`.
+#
+# The exceptions drop a suite that reaches such a file only by an unqualified
+# spelling (`cd "$REPO_ROOT" && cat package.json`). No tracked suite does
+# today; one that starts to is missed here and still runs in CI.
 #
 # Changed paths are read NUL-delimited. The hand-rolled spelling,
 # `for f in $(git diff --name-only ...)`, word-splits a path holding a space
@@ -45,7 +60,7 @@ while [ "$#" -gt 0 ]; do
       shift 2
       ;;
     --help|-h)
-      sed -n '2,33p' "$0" | sed 's/^# \{0,1\}//'
+      awk 'NR > 1 && !/^#/ { exit } NR > 1' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     --)
@@ -74,7 +89,47 @@ repository_root="$(git -C "$directory" rev-parse --show-toplevel 2>/dev/null)" \
 
 changed_list="$(mktemp)" || die_input "cannot create a temporary file"
 suite_list="$(mktemp)" || { rm -f "$changed_list"; die_input "cannot create a temporary file"; }
-trap 'rm -f "$changed_list" "$suite_list"' EXIT
+tracked_list="$(mktemp)" || { rm -f "$changed_list" "$suite_list"; die_input "cannot create a temporary file"; }
+suite_tree_list="$(mktemp)" || { rm -f "$changed_list" "$suite_list" "$tracked_list"; die_input "cannot create a temporary file"; }
+trap 'rm -f "$changed_list" "$suite_list" "$tracked_list" "$suite_tree_list"' EXIT
+
+# -z keeps a non-ASCII path unquoted, so it compares equal to the diff's path.
+git -C "$repository_root" ls-files -z | tr '\0' '\n' > "$tracked_list" \
+  || die_input "listing tracked files failed"
+awk -F/ 'NF > 1 && /\.bats$/ { print $1 }' "$tracked_list" | sort -u > "$suite_tree_list"
+
+count_other_paths_ending_with() {
+  awk -v changed="$1" -v suffix="/$2" '
+    $0 != changed && substr("/" $0, length($0) + 2 - length(suffix)) == suffix { count++ }
+    END { print count + 0 }
+  ' "$tracked_list"
+}
+
+match_text_for() {
+  local changed_path="$1" base_name="${1##*/}" match_text parent_path
+  if [ "$changed_path" = "$base_name" ]; then
+    printf '/%s' "$base_name"
+    return
+  fi
+  case "$base_name" in
+    *.ts|*.tsx|*.js|*.jsx|*.mjs|*.cjs) ;;
+    *) printf '%s' "$base_name"; return ;;
+  esac
+  if grep -qxF -e "${changed_path%%/*}" "$suite_tree_list" \
+    || [ "$(count_other_paths_ending_with "$changed_path" "$base_name")" -eq 0 ]; then
+    printf '%s' "$base_name"
+    return
+  fi
+  match_text="$base_name"
+  parent_path="${changed_path%/*}"
+  while :; do
+    match_text="${parent_path##*/}/$match_text"
+    [ "$parent_path" != "${parent_path%/*}" ] || break
+    parent_path="${parent_path%/*}"
+    [ "$(count_other_paths_ending_with "$changed_path" "$match_text")" -gt 0 ] || break
+  done
+  printf '%s' "$match_text"
+}
 
 if [ "${#diff_arguments[@]}" -gt 0 ]; then
   git -C "$repository_root" diff --name-only --no-renames -z ${diff_arguments[@]+"${diff_arguments[@]}"} -- > "$changed_list" \
@@ -98,7 +153,7 @@ while IFS= read -r -d '' changed_path; do
       ;;
   esac
   # git grep exits 1 on no match; only a status above 1 is a failure.
-  git -C "$repository_root" grep -l -F -e "${changed_path##*/}" -- '*.bats' >> "$suite_list" || {
+  git -C "$repository_root" grep -l -F -e "$(match_text_for "$changed_path")" -- '*.bats' >> "$suite_list" || {
     grep_status=$?
     [ "$grep_status" -eq 1 ] || die_input "git grep for $changed_path failed"
   }

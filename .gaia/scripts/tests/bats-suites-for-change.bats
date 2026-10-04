@@ -19,7 +19,7 @@ bats_require_minimum_version 1.5.0
 setup() {
   SCRIPT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)/bats-suites-for-change.sh"
   FIXTURE="$BATS_TEST_TMPDIR/repo"
-  mkdir -p "$FIXTURE/wiki" "$FIXTURE/tests"
+  mkdir -p "$FIXTURE/wiki" "$FIXTURE/tests" "$FIXTURE/scripts"
   git -C "$FIXTURE" init -q -b main
   git -C "$FIXTURE" config user.email t@example.com
   git -C "$FIXTURE" config user.name t
@@ -27,7 +27,7 @@ setup() {
 
   printf 'one\n' > "$FIXTURE/wiki/PR Merge Workflow.md"
   printf 'two\n' > "$FIXTURE/wiki/other.md"
-  printf 'three\n' > "$FIXTURE/gone.sh"
+  printf 'three\n' > "$FIXTURE/scripts/gone.sh"
   printf '# reads PR Merge Workflow.md\n' > "$FIXTURE/tests/names-it.bats"
   printf '# PR\n' > "$FIXTURE/tests/fragment-pr.bats"
   printf '# Merge\n' > "$FIXTURE/tests/fragment-merge.bats"
@@ -55,7 +55,7 @@ setup() {
 }
 
 @test "a deleted file still selects the suites referencing it" {
-  git -C "$FIXTURE" rm -q gone.sh
+  git -C "$FIXTURE" rm -q scripts/gone.sh
   git -C "$FIXTURE" commit -q -m delete
 
   run --separate-stderr bash "$SCRIPT" --dir "$FIXTURE" "$BASE" HEAD
@@ -64,7 +64,7 @@ setup() {
 }
 
 @test "a renamed file still selects the suites naming its old basename" {
-  git -C "$FIXTURE" mv gone.sh renamed.sh
+  git -C "$FIXTURE" mv scripts/gone.sh scripts/renamed.sh
   git -C "$FIXTURE" commit -q -m rename
 
   run --separate-stderr bash "$SCRIPT" --dir "$FIXTURE" "$BASE" HEAD
@@ -76,7 +76,7 @@ setup() {
 }
 
 @test "a renamed file selects the suites naming its old basename in the default mode" {
-  git -C "$FIXTURE" mv gone.sh renamed.sh
+  git -C "$FIXTURE" mv scripts/gone.sh scripts/renamed.sh
 
   run --separate-stderr bash "$SCRIPT" --dir "$FIXTURE"
   [ "$status" -eq 0 ]
@@ -95,6 +95,90 @@ setup() {
   [ "$output" = "tests/unrelated.bats" ]
 }
 
+# Writes each "<path>=<content>" pair into the fixture and commits them as the
+# new base, printing its commit.
+commit_base_files() {
+  local pair
+  for pair in "$@"; do
+    mkdir -p "$(dirname "$FIXTURE/${pair%%=*}")"
+    printf '%s\n' "${pair#*=}" > "$FIXTURE/${pair%%=*}"
+  done
+  git -C "$FIXTURE" add -A
+  git -C "$FIXTURE" commit -q -m files
+  git -C "$FIXTURE" rev-parse HEAD
+}
+
+@test "a root-level file selects suites reading it through a root, not suites using its name as data" {
+  base="$(commit_base_files \
+    'CHANGELOG.md=# changelog' \
+    'tests/reads-changelog.bats=body="$(cat "$REPO_ROOT/CHANGELOG.md")"' \
+    'tests/fixture-changelog.bats=commit_files CHANGELOG.md "entry"')"
+  printf 'edited\n' >> "$FIXTURE/CHANGELOG.md"
+  git -C "$FIXTURE" commit -q -am edit
+
+  run --separate-stderr bash "$SCRIPT" --dir "$FIXTURE" "$base" HEAD
+  [ "$status" -eq 0 ]
+  [ "$output" = "tests/reads-changelog.bats" ] || {
+    printf 'got:\n%s\n' "$output" >&2
+    return 1
+  }
+}
+
+@test "a source file sharing its basename, in a tree with no suite, selects only suites naming its unique trailing path" {
+  base="$(commit_base_files \
+    'frontend/app/form-error/index.tsx=a' \
+    'frontend/app/form-error/tests/index.test.tsx=b' \
+    'frontend/app/date/index.tsx=c' \
+    'frontend/app/date/tests/index.test.tsx=d' \
+    'tests/component-source.bats=# reads frontend/app/form-error/index.tsx' \
+    'tests/component-test.bats=# reads form-error/tests/index.test.tsx' \
+    'tests/fixture-index.bats=stage index.tsx tests/index.test.tsx')"
+  printf 'edited\n' >> "$FIXTURE/frontend/app/form-error/index.tsx"
+  printf 'edited\n' >> "$FIXTURE/frontend/app/form-error/tests/index.test.tsx"
+  git -C "$FIXTURE" commit -q -am edit
+
+  run --separate-stderr bash "$SCRIPT" --dir "$FIXTURE" "$base" HEAD
+  [ "$status" -eq 0 ]
+  expected="$(printf 'tests/component-source.bats\ntests/component-test.bats')"
+  [ "$output" = "$expected" ] || {
+    printf 'got:\n%s\n' "$output" >&2
+    return 1
+  }
+}
+
+@test "a deleted source file sharing its basename still selects suites naming its unique trailing path" {
+  base="$(commit_base_files \
+    'frontend/app/form-error/index.tsx=a' \
+    'frontend/app/date/index.tsx=c' \
+    'tests/date-source.bats=# reads app/date/index.tsx' \
+    'tests/fixture-index.bats=stage index.tsx')"
+  git -C "$FIXTURE" rm -q frontend/app/date/index.tsx
+  git -C "$FIXTURE" commit -q -m delete
+
+  run --separate-stderr bash "$SCRIPT" --dir "$FIXTURE" "$base" HEAD
+  [ "$status" -eq 0 ]
+  [ "$output" = "tests/date-source.bats" ] || {
+    printf 'got:\n%s\n' "$output" >&2
+    return 1
+  }
+}
+
+@test "a source file sharing its basename, in a tree holding a suite, still selects suites naming its basename" {
+  base="$(commit_base_files \
+    'tools/storage/index.ts=a' \
+    'tools/wiki/index.ts=b' \
+    'tools/tests/storage.bats=import from "$storage_directory/index.ts"')"
+  printf 'edited\n' >> "$FIXTURE/tools/storage/index.ts"
+  git -C "$FIXTURE" commit -q -am edit
+
+  run --separate-stderr bash "$SCRIPT" --dir "$FIXTURE" "$base" HEAD
+  [ "$status" -eq 0 ]
+  [ "$output" = "tools/tests/storage.bats" ] || {
+    printf 'got:\n%s\n' "$output" >&2
+    return 1
+  }
+}
+
 @test "a deleted suite is not printed, since there is nothing left to run" {
   git -C "$FIXTURE" rm -q tests/unrelated.bats
   git -C "$FIXTURE" commit -q -m drop-suite
@@ -107,7 +191,7 @@ setup() {
 @test "no argument covers committed, uncommitted, and untracked changes since the merge base" {
   printf 'committed\n' >> "$FIXTURE/wiki/PR Merge Workflow.md"
   git -C "$FIXTURE" commit -q -am committed
-  printf 'uncommitted\n' >> "$FIXTURE/gone.sh"
+  printf 'uncommitted\n' >> "$FIXTURE/scripts/gone.sh"
   printf 'new\n' > "$FIXTURE/wiki/fresh.md"
   printf '# reads fresh.md\n' > "$FIXTURE/tests/names-fresh.bats"
 
@@ -123,7 +207,7 @@ setup() {
 @test "HEAD covers only the staged round delta, not changes an earlier commit made" {
   printf 'earlier round\n' >> "$FIXTURE/wiki/PR Merge Workflow.md"
   git -C "$FIXTURE" commit -q -am earlier
-  printf 'this round\n' >> "$FIXTURE/gone.sh"
+  printf 'this round\n' >> "$FIXTURE/scripts/gone.sh"
   printf 'new\n' > "$FIXTURE/wiki/fresh.md"
   printf '# reads fresh.md\n' > "$FIXTURE/tests/names-fresh.bats"
   git -C "$FIXTURE" add -A
