@@ -25,14 +25,15 @@ const NOTIFY_TYPES = [
 ] as const;
 const TOAST_STORY_IDS = new Set<string>([
   ...NOTIFY_TYPES.map(({id}) => id),
+  'components-ui-toast--default',
+  'components-ui-toast--loading',
+  'components-ui-toast--with-action',
   'utils-notify--with-stack',
 ]);
 // Stories whose subject renders nothing in this project: the language select
-// hides itself in a single-language project, and an idle Toaster draws no
-// toast until one is fired.
+// hides itself in a single-language project.
 const RENDERS_NOTHING_BY_DESIGN = new Set([
   'components-languageselect--default',
-  'components-ui-sonner--default',
 ]);
 
 // A missing build is a failing test, never a skipped or empty one.
