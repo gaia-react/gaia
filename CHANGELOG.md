@@ -54,6 +54,7 @@ On GAIA 1.6.1? Choose Abort, then paste the prompt from https://gaiareact.com/mi
 
 ### Fixed
 
+- The maintainer pre-merge and per-round verification now select bats suites through one helper, `.gaia/scripts/bats-suites-for-change.sh`, instead of a hand-rolled loop. That loop split any changed path holding a space, so editing a wiki page could select about five times as many suites as needed and add minutes of bats to every gate. The helper also keeps a renamed file's old path so suites still naming it run (#2469)
 - The React Doctor install steps in `/setup-gaia` and `/gaia-init` no longer leave `pnpm-lock.yaml` modified. Removing the installer's dependency left peer resolutions behind in the lockfile, so the steps now snapshot the lockfile before the install and restore it afterward (#2462)
 - Shipped hooks, scripts, skills, and wiki pages no longer cite working-document ids or this project's issue numbers, and no tracked file points at an artifact that exists only on one machine's gitignored `.gaia/local/`, which the working-doc-ids rule now bans. The release build fails on any that reappear: issue and pull request references, plan ids, and dated local research paths join the bundle-time leak checks (#2458)
 - `/gaia-release` now publishes the 2.0.0-aware `create-gaia` before it tags `v2.0.0`, and refuses to tag until npm serves it. The command asked for that order in a step that runs after the tag, which left a window where every `npx create-gaia@latest` failed to download the new `gaia-bundle` asset. Maintainer-only; nothing reaches adopters (#2457)
