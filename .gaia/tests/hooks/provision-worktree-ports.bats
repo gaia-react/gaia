@@ -27,7 +27,15 @@ setup() {
   STORYBOOK_BASE=$((DEV_BASE + 1000))
   export GAIA_PORTS_DEV_BASE_PORT="$DEV_BASE"
   export GAIA_PORTS_STORYBOOK_BASE_PORT="$STORYBOOK_BASE"
-  export GAIA_PORTS_PROCESS_PROBE="${GAIA_PORTS_PROCESS_PROBE:-auto}"
+  # The foreign-port skip in slot assignment makes every slot number depend on
+  # what else is listening. Parallel jobs from this suite and
+  # ports-session-start.bats bind ports in overlapping random ranges, so with
+  # the probe on, a peer's listener on a slot's port shifts every slot and
+  # fails an unrelated assertion. The probe is off unless a test starts its own
+  # listener (require_process_backend turns it back on); an unrecognized value
+  # selects no backend, so every port reads free.
+  REQUESTED_PROCESS_PROBE="${GAIA_PORTS_PROCESS_PROBE:-auto}"
+  export GAIA_PORTS_PROCESS_PROBE=off
 }
 
 teardown() {
@@ -46,6 +54,7 @@ require_process_backend() {
   if ! command -v lsof >/dev/null 2>&1; then
     { [ -e /proc/self ] && command -v ss >/dev/null 2>&1; } || skip "no process backend (lsof, or /proc with ss) on this host"
   fi
+  export GAIA_PORTS_PROCESS_PROBE="$REQUESTED_PROCESS_PROBE"
 }
 
 # make_main: a fixture main checkout carrying the hook, both libraries, and the
@@ -461,7 +470,7 @@ SH
   [ "$(wc -l <"$PROVISION_STDOUT" | tr -d ' ')" -eq 1 ]
   [ "$(cat "$PROVISION_STDOUT")" = "$(expected_context_line 1)" ]
   # stderr is where the logs go and is not part of the channel.
-  [ -s "$PROVISION_STDERR" ]
+  grep -qF 'provision-worktree: ' "$PROVISION_STDERR"
 }
 
 @test "a direct call prints the same plain context line" {
