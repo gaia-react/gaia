@@ -10,25 +10,19 @@ const ChromaticDecorator: DecoratorFunction<ReactRenderer> = (
   // before each snapshot is taken
   sessionStorage.clear();
 
+  // The wrapper fills the viewport; with the dark pane present the two panes
+  // split it evenly, otherwise the light pane takes all of it.
   return (
-    <>
-      <div
-        className="relative bg-white text-gray-900"
-        style={{
-          minHeight: parameters.chromatic?.excludeDark ? '100vh' : '50vh',
-        }}
-      >
+    <div className="flex min-h-screen flex-col">
+      <div className="bg-background text-foreground relative flex-1">
         {storyFn()}
       </div>
       {!parameters.chromatic?.excludeDark && (
-        <div
-          className="dark relative bg-gray-900 text-white"
-          style={{minHeight: '50vh'}}
-        >
+        <div className="dark bg-background text-foreground relative flex-1">
           {storyFn()}
         </div>
       )}
-    </>
+    </div>
   );
 };
 

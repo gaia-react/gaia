@@ -4,12 +4,13 @@ import {data, Outlet, useLoaderData} from 'react-router';
 import {getToast} from 'remix-toast';
 import Document from '~/components/document';
 import RootErrorBoundary from '~/components/errors/root-error-boundary';
-import Toast, {notify} from '~/components/toast';
+import {Toaster} from '~/components/ui/sonner';
 import {getLanguage, i18nextMiddleware} from '~/middleware/i18next';
 import {languageCookie} from '~/sessions.server/language';
 import State from '~/state';
 import {isProductionHost} from '~/utils/http.server';
 import {useNonce} from '~/utils/nonce';
+import {notify, toasterProps} from '~/utils/notify';
 import {getTheme} from '~/utils/theme.server';
 import type {Route} from './+types/root';
 import {envClient} from './env.server';
@@ -86,7 +87,7 @@ const App = () => {
         suppressHydrationWarning={true}
       />
       <Outlet />
-      <Toast />
+      <Toaster {...toasterProps} />
     </Document>
   );
 };

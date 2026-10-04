@@ -29,4 +29,15 @@ describe('ErrorStack', () => {
     expect(writeText).toHaveBeenCalledWith('boom stack');
     writeText.mockRestore();
   });
+
+  test('renders a lucide icon in the copy control', () => {
+    render(<ErrorStack stack="boom stack" />);
+
+    const button = screen.getByRole('button');
+    // Icons are aria-hidden, so the lucide class is the only handle on them.
+    // eslint-disable-next-line testing-library/no-node-access
+    const icon = button.querySelector('svg.lucide');
+
+    expect(icon).toBeInTheDocument();
+  });
 });

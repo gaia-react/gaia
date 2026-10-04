@@ -1,6 +1,7 @@
-import type {ChangeEventHandler, ComponentProps, FC, ReactNode} from 'react';
+import type {ChangeEventHandler, ComponentProps} from 'react';
 import {useCallback, useMemo, useRef} from 'react';
 import {useTranslation} from 'react-i18next';
+import {cn} from 'cn';
 import {
   addDays,
   differenceInDays,
@@ -8,13 +9,13 @@ import {
   set,
   startOfMonth,
 } from 'date-fns';
+import {FieldLegend, FieldSet} from '~/components/ui/field';
+import {NativeSelect, NativeSelectOption} from '~/components/ui/native-select';
 import {
   formatAbbreviatedMonth,
   formatFullYear,
   formatOrdinalDay,
 } from '~/utils/date';
-import FieldLabel from '../field/field-label';
-import Select from '../select';
 import {
   DEFAULT_DATE,
   DEFAULT_VALUE,
@@ -27,7 +28,6 @@ import {
 export type YearMonthDayProps = Omit<ComponentProps<'select'>, 'onChange'> & {
   className?: string;
   classNameSelect?: string;
-  error?: ReactNode;
   label?: string;
   name?: string;
   onBlur?: () => void;
@@ -36,10 +36,12 @@ export type YearMonthDayProps = Omit<ComponentProps<'select'>, 'onChange'> & {
   value: string;
 };
 
-const YearMonthDay: FC<YearMonthDayProps> = ({
+const YearMonthDay = ({
+  'aria-describedby': ariaDescribedBy,
+  'aria-invalid': ariaInvalid,
   className,
   classNameSelect,
-  error,
+  id,
   label,
   name = 'dob',
   onBlur,
@@ -47,7 +49,7 @@ const YearMonthDay: FC<YearMonthDayProps> = ({
   ref,
   required,
   value = DEFAULT_VALUE,
-}) => {
+}: YearMonthDayProps) => {
   const {
     i18n: {language},
     t,
@@ -136,46 +138,62 @@ const YearMonthDay: FC<YearMonthDayProps> = ({
       });
   }, [language, month, year]);
 
+  const selectClassName = cn('flex-1', classNameSelect);
+  const sharedSelectProps = {
+    'aria-describedby': ariaDescribedBy,
+    'aria-invalid': ariaInvalid,
+    onChange: handleUpdateDateSelect,
+    required,
+  };
+
   return (
-    <fieldset className={className} onBlur={onBlur}>
-      <FieldLabel error={error} isLegend={true} required={required}>
-        {label ?? t('form.dateOfBirth')}
-      </FieldLabel>
-      <div
-        ref={containerRef}
-        className="mt-2 flex justify-between gap-4 md:gap-6"
-      >
+    <FieldSet className={className} onBlur={onBlur}>
+      {label && <FieldLegend>{label}</FieldLegend>}
+      <div ref={containerRef} className="flex gap-4 md:gap-6">
         <input ref={hiddenRef} name={name} type="hidden" value={value} />
-        <Select
+        <NativeSelect
+          {...sharedSelectProps}
           ref={ref}
           aria-label={t('date.year')}
-          className="flex-1"
-          classNameSelect={classNameSelect}
+          className={selectClassName}
+          id={id}
           name={`${name}Year`}
-          onChange={handleUpdateDateSelect}
-          options={years}
           value={year}
-        />
-        <Select
+        >
+          {years.map((option) => (
+            <NativeSelectOption key={option.value} value={option.value}>
+              {option.label}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+        <NativeSelect
+          {...sharedSelectProps}
           aria-label={t('date.month')}
-          className="flex-1"
-          classNameSelect={classNameSelect}
+          className={selectClassName}
           name={`${name}Month`}
-          onChange={handleUpdateDateSelect}
-          options={months}
           value={month}
-        />
-        <Select
+        >
+          {months.map((option) => (
+            <NativeSelectOption key={option.value} value={option.value}>
+              {option.label}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+        <NativeSelect
+          {...sharedSelectProps}
           aria-label={t('date.day')}
-          className="flex-1"
-          classNameSelect={classNameSelect}
+          className={selectClassName}
           name={`${name}Date`}
-          onChange={handleUpdateDateSelect}
-          options={dates}
           value={date}
-        />
+        >
+          {dates.map((option) => (
+            <NativeSelectOption key={option.value} value={option.value}>
+              {option.label}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
       </div>
-    </fieldset>
+    </FieldSet>
   );
 };
 

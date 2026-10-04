@@ -1,4 +1,4 @@
-import type {FC, ReactNode} from 'react';
+import type {ReactNode} from 'react';
 import {Links, Scripts, ScrollRestoration} from 'react-router';
 import {cn} from 'cn';
 import {useOptionalTheme} from '~/hooks/use-theme';
@@ -19,14 +19,14 @@ type DocumentProps = {
   title?: string;
 };
 
-const Document: FC<DocumentProps> = ({
+const Document = ({
   children,
   className,
   dir,
   lang,
   noIndex,
   title,
-}) => {
+}: DocumentProps) => {
   const nonce = useNonce();
   const theme = useOptionalTheme();
   const requestInfo = useOptionalRequestInfo();

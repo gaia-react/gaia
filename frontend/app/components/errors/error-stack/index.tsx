@@ -1,7 +1,7 @@
-import type {FC} from 'react';
 import {useTranslation} from 'react-i18next';
-import {IoCopyOutline} from 'react-icons/io5';
 import {cn} from 'cn';
+import {Copy} from 'lucide-react';
+import {Button} from '~/components/ui/button';
 import {tryCatch} from '~/utils/function';
 
 type ErrorStackProps = {
@@ -11,12 +11,12 @@ type ErrorStackProps = {
   statusText?: string;
 };
 
-const ErrorStack: FC<ErrorStackProps> = ({
+const ErrorStack = ({
   className,
   stack,
   status,
   statusText,
-}) => {
+}: ErrorStackProps) => {
   const {t} = useTranslation('common');
 
   if (stack) {
@@ -26,7 +26,7 @@ const ErrorStack: FC<ErrorStackProps> = ({
 
     const statusDiv =
       status || statusText ?
-        <div className="space-x-1 pt-px pr-1.5 pl-1 font-sans text-xs leading-none text-white">
+        <div className="text-muted-foreground space-x-1 pt-px pr-1.5 pl-1 font-sans text-xs leading-none">
           {status !== undefined && <span>{status}</span>}
           {statusText && <span>{statusText}</span>}
         </div>
@@ -35,27 +35,26 @@ const ErrorStack: FC<ErrorStackProps> = ({
     return (
       <div
         className={cn(
-          'relative border-2 border-red-700 bg-gray-900 text-left text-sm text-white',
+          'border-destructive bg-card text-card-foreground relative border-2 text-left text-sm',
           className
         )}
       >
         <div
           className={cn(
             'sticky top-0 flex w-full',
-            statusDiv ?
-              'items-center justify-between bg-gray-900'
-            : 'justify-end'
+            statusDiv ? 'bg-card items-center justify-between' : 'justify-end'
           )}
         >
           {statusDiv}
-          <button
-            className="flex items-center gap-1 rounded-bl-sm bg-red-700 pt-px pr-1 pb-1 pl-1.5 font-sans text-xs leading-none text-white hover:bg-red-600"
+          <Button
             onClick={handleCopyStackButton}
+            size="xs"
             type="button"
+            variant="destructive"
           >
-            <IoCopyOutline aria-hidden={true} />
-            <span>{t('copyToClipboard')}</span>
-          </button>
+            <Copy aria-hidden={true} />
+            {t('copyToClipboard')}
+          </Button>
         </div>
         <pre className="px-4 pt-2 pb-4 whitespace-pre-wrap">{stack}</pre>
       </div>

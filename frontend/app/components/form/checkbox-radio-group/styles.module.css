@@ -1,6 +1,0 @@
-/* Do not show individual help/error status on grouped radio/checkbox */
-.group {
-  [role='status'] {
-    display: none;
-  }
-}

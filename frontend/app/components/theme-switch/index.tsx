@@ -1,8 +1,8 @@
-import type {FC} from 'react';
 import {useTranslation} from 'react-i18next';
-import {IoDesktopOutline, IoMoon, IoSunny} from 'react-icons/io5';
 import {useFetcher} from 'react-router';
+import {Monitor, Moon, Sun} from 'lucide-react';
 import {ACTION_PATHS} from '~/action-paths';
+import {Button} from '~/components/ui/button';
 import {useOptimisticThemeMode} from '~/hooks/use-theme';
 import type {action} from '~/routes/resources.theme-switch';
 import type {Theme} from '~/utils/theme.server';
@@ -21,9 +21,9 @@ const NEXT_MODE: Record<
 };
 
 const ICONS = {
-  dark: IoMoon,
-  light: IoSunny,
-  system: IoDesktopOutline,
+  dark: Moon,
+  light: Sun,
+  system: Monitor,
 } as const;
 
 const LABEL_KEYS = {
@@ -32,7 +32,7 @@ const LABEL_KEYS = {
   system: 'enableLightMode',
 } as const;
 
-const ThemeSwitch: FC<ThemeSwitchProps> = ({userPreference}) => {
+const ThemeSwitch = ({userPreference}: ThemeSwitchProps) => {
   const {t} = useTranslation('common', {keyPrefix: 'theme'});
   const fetcher = useFetcher<typeof action>();
   const optimisticMode = useOptimisticThemeMode();
@@ -44,13 +44,14 @@ const ThemeSwitch: FC<ThemeSwitchProps> = ({userPreference}) => {
   return (
     <fetcher.Form action={ACTION_PATHS.themeSwitch} method="POST">
       <input name="theme" type="hidden" value={next} />
-      <button
+      <Button
         aria-label={t(LABEL_KEYS[mode])}
-        className="text-body relative flex size-4.5 items-center gap-2"
+        size="icon"
         type="submit"
+        variant="ghost"
       >
         <ThemeIcon aria-hidden={true} />
-      </button>
+      </Button>
     </fetcher.Form>
   );
 };
