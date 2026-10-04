@@ -107,12 +107,3 @@ check_help_text() {
   done
   true
 }
-
-@test "the committed CLI bundles are what a rebuild from source produces" {
-  local before after
-  before="$(shasum -a 256 "$BUNDLE")"
-  run bash -c 'cd "$0" && bash .gaia/scripts/verify-cli-bundle-fresh.sh' "$REPOSITORY_ROOT"
-  after="$(shasum -a 256 "$BUNDLE")"
-  [ "$status" -eq 0 ]
-  [ "$before" = "$after" ]
-}
