@@ -4,11 +4,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {requireDevPorts} from '../dev-ports';
+import type {Theme} from './theme';
 import {forceDarkBeforeLoad} from './theme';
 
 export type StoryEntry = {id: string; title: string; type: string};
-
-export type Theme = 'dark' | 'light';
 
 const packageDirectory = fileURLToPath(new URL('..', import.meta.url));
 

@@ -2,14 +2,19 @@ import type {Page, TestInfo} from '@playwright/test';
 import fs from 'node:fs';
 import {expectNoSeriousA11yViolations} from '../a11y';
 import {expect, test} from '../fixtures';
-import type {StoryEntry, Theme} from '../storybook';
+import type {StoryEntry} from '../storybook';
 import {
   countStoriesInSource,
   loadStory,
   readStoryIndex,
   waitForRender,
 } from '../storybook';
-import {contrastRatio, expectDarkTheme, resolveColors} from '../theme';
+import {
+  contrastRatio,
+  expectTheme,
+  MINIMUM_NON_TEXT_CONTRAST,
+  resolveColors,
+} from '../theme';
 
 const THEMES = ['light', 'dark'] as const;
 const NOTIFY_TYPES = [
@@ -29,7 +34,6 @@ const RENDERS_NOTHING_BY_DESIGN = new Set([
   'components-languageselect--default',
   'components-ui-sonner--default',
 ]);
-const MINIMUM_NON_TEXT_CONTRAST = 3;
 
 // A missing build is a failing test, never a skipped or empty one.
 let stories: StoryEntry[] = [];
@@ -89,20 +93,8 @@ const expectStoryHasContent = async (page: Page, storyId: string) => {
   }
 };
 
-const expectThemeApplied = async (page: Page, theme: Theme) => {
-  if (theme === 'dark') {
-    await expectDarkTheme(page);
-
-    return;
-  }
-  await expect(page.locator('html')).not.toHaveClass(/(^|\s)dark(\s|$)/);
-};
-
 const saveScreenshot = async (page: Page, testInfo: TestInfo, name: string) => {
-  const screenshotPath = testInfo.outputPath(`${name}.png`);
-
-  await page.screenshot({path: screenshotPath});
-  await testInfo.attach(name, {contentType: 'image/png', path: screenshotPath});
+  await page.screenshot({path: testInfo.outputPath(`${name}.png`)});
 };
 
 test.describe('storybook a11y', () => {
@@ -137,7 +129,7 @@ test.describe('storybook a11y', () => {
         // The Chromatic dual render wraps every story in a light and a dark
         // pane, which would scan one story under both themes at once.
         await expect(page.locator('#storybook-root .dark')).toHaveCount(0);
-        await expectThemeApplied(page, theme);
+        await expectTheme(page, theme);
         await saveScreenshot(page, testInfo, `${story.id}-${theme}`);
         await expectNoSeriousA11yViolations(page, testInfo, {label: theme});
       });

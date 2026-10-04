@@ -1,5 +1,5 @@
 import {describe, expect, test} from 'vitest';
-// Runs in the project default (happy-dom) environment; see primary-token.test.ts.
+// Runs in the project default (happy-dom) environment.
 import {readFileSync} from 'node:fs';
 import path from 'node:path';
 

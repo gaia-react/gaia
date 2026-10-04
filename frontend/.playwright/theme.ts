@@ -6,6 +6,11 @@ import {fileURLToPath} from 'node:url';
 
 export type Rgba = {a: number; b: number; g: number; r: number};
 
+export type Theme = 'dark' | 'light';
+
+/** WCAG 1.4.11 minimum contrast for focus indicators and meaningful icons. */
+export const MINIMUM_NON_TEXT_CONTRAST = 3;
+
 const themeCss = fs.readFileSync(
   path.resolve(
     fileURLToPath(new URL('..', import.meta.url)),
@@ -129,7 +134,7 @@ export const enterThemeByCookie = async ({
 }: {
   baseURL: string | undefined;
   context: BrowserContext;
-  theme: 'dark' | 'light';
+  theme: Theme;
 }): Promise<void> => {
   if (theme === 'dark') {
     await context.addCookies([{name: '__theme', url: baseURL, value: theme}]);
@@ -137,10 +142,7 @@ export const enterThemeByCookie = async ({
 };
 
 /** Asserts the page is in `theme`: the dark assertion, or no `dark` class. */
-export const expectTheme = async (
-  page: Page,
-  theme: 'dark' | 'light'
-): Promise<void> => {
+export const expectTheme = async (page: Page, theme: Theme): Promise<void> => {
   if (theme === 'dark') {
     await expectDarkTheme(page);
 

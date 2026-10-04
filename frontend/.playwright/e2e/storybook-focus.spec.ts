@@ -3,9 +3,13 @@ import fs from 'node:fs';
 import {expect, test} from '../fixtures';
 import {loadStory, waitForRender} from '../storybook';
 import type {Rgba} from '../theme';
-import {contrastRatio, expectTheme, resolveColors} from '../theme';
+import {
+  contrastRatio,
+  expectTheme,
+  MINIMUM_NON_TEXT_CONTRAST,
+  resolveColors,
+} from '../theme';
 
-const MINIMUM_NON_TEXT_CONTRAST = 3;
 const MAXIMUM_TABS = 12;
 const SURFACES = ['background', 'card', 'input'] as const;
 

@@ -1,6 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
 import type {Page, TestInfo} from '@playwright/test';
-import type {AxeResults} from 'axe-core';
 
 const SEVERITY_FAIL = new Set(['critical', 'serious']);
 
@@ -16,7 +15,7 @@ export const expectNoSeriousA11yViolations = async (
   page: Page,
   testInfo: TestInfo,
   options?: {builder?: AxeBuilder; label?: string}
-): Promise<AxeResults['incomplete']> => {
+): Promise<void> => {
   const axe =
     options?.builder ??
     new AxeBuilder({page}).withTags([
@@ -69,6 +68,4 @@ export const expectNoSeriousA11yViolations = async (
         .join(', ')}`
     );
   }
-
-  return incomplete;
 };

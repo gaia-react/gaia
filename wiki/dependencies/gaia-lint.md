@@ -71,13 +71,13 @@ export default defineConfig([
 | `guardrails` | `import-x/no-restricted-paths` with carve-outs: `resources.*` and `actions.*` route files are exempt for UI layers | Carve-out added in 1.6.0; spelling moved to `actions.*`/`resources.*` in 2.2.0 (the older `+` folders are still accepted on the 2.x line) |
 | `betterTailwind` | Tailwind class ordering and hygiene; the only unknown-class check (`shadcn/no-unknown-classes` stays off) | `ignore` lists classes that are real but not in the Tailwind graph |
 | `prettier` | Formatting via Prettier as an ESLint rule | The Prettier config also sorts classes inside `cn(...)` |
-| `shadcn` | `@shadcn/lint` token rules on source files: `no-raw-colors`, `require-static-classes`, `no-arbitrary-values`, `no-inline-styles` and `no-restyle` (`allow: ['layout']`), all errors; the vendored-ui exemption for `ui/*.tsx` | Spread last, after `lint.prettier`, so its `prettier/prettier: off` wins on vendored files; `settings.shadcn.ui` is set at root level; carried by the next 3.0.0 rc |
+| `shadcn` | `@shadcn/lint` token rules on source files: `no-raw-colors`, `require-static-classes`, `no-arbitrary-values`, `no-inline-styles` and `no-restyle` (`allow: ['layout']`), all errors; the vendored-ui exemption for `ui/*.tsx` | Spread last, after `lint.prettier`, so its `prettier/prettier: off` wins on vendored files; `settings.shadcn.ui` is set at root level; carried by 3.0.0-rc.1 |
 
 ### Component layer
 
 `lint.shadcn({ui})` wires the shadcn token rules and the `shadcn/vendored-ui` block, which exempts `ui/*.tsx` (never `ui/tests/**`) from Prettier, the house-style rules and a short list of correctness rules unedited shadcn source trips, while `shadcn/no-raw-colors` and `react-hooks/*` stay on. The rule list and why it was chosen are in [[shadcn Component Layer]]. A new house-style rule firing on a ui file added later means extending that block upstream. The restricted-imports config also rejects importing `FC` or `FunctionComponent` from `react`, so components are typed inline; the vendored-ui block lifts only that `react` entry, because shadcn source uses `import * as React`.
 
-The `shadcn` group and the `FC` ban ship in the next 3.0.0 rc of `@gaia-react/lint`; the `eslint` peer floor is `>=9.30.0` within the 9 line, which `@shadcn/lint` requires.
+The `shadcn` group and the `FC` ban ship in 3.0.0-rc.1 of `@gaia-react/lint`; the `eslint` peer floor is `>=9.30.0` within the 9 line, which `@shadcn/lint` requires.
 
 The `resources.*` and `actions.*` carve-out means UI-layer files may import typed action/loader types from flat-file resource routes without an `eslint-disable` comment. Consumer tests must not import from `*.server` files or internal server surfaces; the `frontend/test/setup.ts` global Vitest setupFile is the single sanctioned place to start the MSW harness.
 

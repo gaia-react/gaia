@@ -1,11 +1,10 @@
-import type {ComponentProps, ReactNode} from 'react';
+import type {ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {ToastMessage} from 'remix-toast';
+import type {ToasterProps} from 'sonner';
 import {toast} from 'sonner';
 // eslint-disable-next-line import-x/no-restricted-paths -- notify is specified to live in app/utils (its callers import it from there) while rendering a component-layer ErrorStack in the toast description
 import ErrorStack from '~/components/errors/error-stack';
-// eslint-disable-next-line import-x/no-restricted-paths -- type-only, used to derive the props type of the vendored Toaster that spreads toasterProps
-import type {Toaster} from '~/components/ui/sonner';
 import {md5} from '~/utils/object';
 
 // Reference
@@ -24,7 +23,7 @@ const DEFAULT_ERROR_DURATION = 30_000;
 // with its own color (destructive); the others stay on the neutral surface and
 // are told apart by their icon. Sonner's own styles are unlayered, so the
 // destructive utilities need `!` to win over its border and text variables.
-export const toasterProps: ComponentProps<typeof Toaster> = {
+export const toasterProps: ToasterProps = {
   expand: true,
   offset: 8,
   position: 'top-right',
