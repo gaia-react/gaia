@@ -6,16 +6,18 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   ASK_FIRST_SENTENCE,
+  buildForeignServerMessage,
+  buildMissingPortFileMessage,
+  buildPortInUseMessage,
+  DEV_BASE_PORT,
   findCheckout,
-  foreignServerMessage,
-  listenerOwner,
-  missingPortFileMessage,
+  findListenerOwner,
   PORT_FILE_NAME,
-  portInUseMessage,
   PORTS_HINT,
   requireDevPorts,
   resolveDevPorts,
   resolveSiteUrl,
+  STORYBOOK_BASE_PORT,
 } from '../dev-ports';
 import type {DevPorts as DevelopmentPorts} from '../dev-ports';
 
@@ -147,7 +149,9 @@ describe('resolveDevPorts port file', () => {
     expect(
       refusal.message.endsWith(`${ASK_FIRST_SENTENCE} ${PORTS_HINT}`)
     ).toBe(true);
-    expect(missingPortFileMessage({portFilePath, treeRoot})).toBe(expected);
+    expect(buildMissingPortFileMessage({portFilePath, treeRoot})).toBe(
+      expected
+    );
     expect(() => requireDevPorts(packageDirectory)).toThrow(
       new Error(expected)
     );
@@ -224,7 +228,7 @@ describe('resolveSiteUrl', () => {
   });
 });
 
-describe('listenerOwner', () => {
+describe('findListenerOwner', () => {
   const treeRoot = '/some/tree';
 
   test.each([
@@ -240,7 +244,7 @@ describe('listenerOwner', () => {
     ['gibberish\n', {kind: 'unknown'}],
   ])('parses %j', (output, expected) => {
     vi.mocked(execFileSyncMock).mockReturnValue(output);
-    expect(listenerOwner({port: 5176, treeRoot})).toEqual(expected);
+    expect(findListenerOwner({port: 5176, treeRoot})).toEqual(expected);
     expect(execFileSyncMock).toHaveBeenCalledWith(
       'bash',
       [
@@ -257,11 +261,13 @@ describe('listenerOwner', () => {
     vi.mocked(execFileSyncMock).mockImplementation(() => {
       throw new Error('ETIMEDOUT');
     });
-    expect(listenerOwner({port: 5176, treeRoot})).toEqual({kind: 'unknown'});
+    expect(findListenerOwner({port: 5176, treeRoot})).toEqual({
+      kind: 'unknown',
+    });
   });
 
   test('maps an undefined tree root to unknown without probing', () => {
-    expect(listenerOwner({port: 5176, treeRoot: undefined})).toEqual({
+    expect(findListenerOwner({port: 5176, treeRoot: undefined})).toEqual({
       kind: 'unknown',
     });
     expect(execFileSyncMock).not.toHaveBeenCalled();
@@ -270,7 +276,7 @@ describe('listenerOwner', () => {
 
 describe('messages', () => {
   test('port in use names the port, service, owner, and ask-first text', () => {
-    const message = portInUseMessage({
+    const message = buildPortInUseMessage({
       ownerPath: '/other/tree',
       pid: 99,
       port: 5176,
@@ -279,7 +285,7 @@ describe('messages', () => {
     expect(message).toBe(
       `GAIA: port 5176, this tree's dev server port, is already in use by PID 99 in /other/tree. Refusing to start on a different port. ${ASK_FIRST_SENTENCE} ${PORTS_HINT}`
     );
-    const bare = portInUseMessage({port: 6009, service: 'Storybook'});
+    const bare = buildPortInUseMessage({port: 6009, service: 'Storybook'});
     expect(bare).toContain('port 6009');
     expect(bare).toContain('Storybook');
     expect(bare).not.toContain('PID');
@@ -287,11 +293,50 @@ describe('messages', () => {
   });
 
   test('foreign server names the port and owner', () => {
-    expect(foreignServerMessage({ownerPath: '/other/tree', port: 5176})).toBe(
+    expect(
+      buildForeignServerMessage({ownerPath: '/other/tree', port: 5176})
+    ).toBe(
       `GAIA: port 5176 is held by a server that is not this tree's own (/other/tree), so Playwright will not reuse it. ${ASK_FIRST_SENTENCE} ${PORTS_HINT}`
     );
-    expect(foreignServerMessage({ownerPath: undefined, port: 5176})).toContain(
-      '(owner unknown)'
-    );
+    expect(
+      buildForeignServerMessage({ownerPath: undefined, port: 5176})
+    ).toContain('(owner unknown)');
+  });
+});
+
+const matchDefaults = (text: string, pattern: RegExp): number[] =>
+  [...text.matchAll(pattern)].map((match) => Number(match[1]));
+
+describe('slot-0 base ports match the shell defaults', () => {
+  const scriptsDirectory = path.resolve(
+    import.meta.dirname,
+    '..',
+    '..',
+    '.gaia',
+    'scripts'
+  );
+  const readScript = (name: string): string =>
+    fs.readFileSync(path.join(scriptsDirectory, name), 'utf8');
+
+  test('worktree-ports-lib.sh defaults equal the TypeScript base ports', () => {
+    const text = readScript('worktree-ports-lib.sh');
+
+    expect(matchDefaults(text, /GAIA_PORTS_DEV_BASE_PORT:-(\d+)\}/g)).toEqual([
+      DEV_BASE_PORT,
+    ]);
+    expect(
+      matchDefaults(text, /GAIA_PORTS_STORYBOOK_BASE_PORT:-(\d+)\}/g)
+    ).toEqual([STORYBOOK_BASE_PORT]);
+  });
+
+  test('server-process-lib.sh defaults equal the TypeScript base ports', () => {
+    const text = readScript('server-process-lib.sh');
+
+    expect(
+      matchDefaults(text, /GAIA_PORTS_DEV_BASE_PORT:-\}"\s+(\d+)\)/g)
+    ).toEqual([DEV_BASE_PORT]);
+    expect(
+      matchDefaults(text, /GAIA_PORTS_STORYBOOK_BASE_PORT:-\}"\s+(\d+)\)/g)
+    ).toEqual([STORYBOOK_BASE_PORT]);
   });
 });

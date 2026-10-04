@@ -7,10 +7,13 @@ import path from 'node:path';
 import {ASK_FIRST_SENTENCE, PORTS_HINT} from '../dev-ports';
 import type {DevPortsResolution} from '../dev-ports';
 
-const {resolveDevPortsMock, spawnMock} = vi.hoisted(() => ({
-  resolveDevPortsMock: vi.fn(),
-  spawnMock: vi.fn(),
-}));
+const {findListenerOwnerMock, resolveDevPortsMock, spawnMock} = vi.hoisted(
+  () => ({
+    findListenerOwnerMock: vi.fn(),
+    resolveDevPortsMock: vi.fn(),
+    spawnMock: vi.fn(),
+  })
+);
 
 vi.mock('node:child_process', () => ({
   default: {spawn: spawnMock},
@@ -19,6 +22,7 @@ vi.mock('node:child_process', () => ({
 
 vi.mock('../dev-ports', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
+  findListenerOwner: findListenerOwnerMock,
   resolveDevPorts: resolveDevPortsMock,
 }));
 
@@ -48,7 +52,7 @@ const closeServer = async (server: net.Server): Promise<void> =>
     server.close(() => resolve());
   });
 
-const freePort = async (): Promise<number> => {
+const findFreePort = async (): Promise<number> => {
   const server = await listenOn(0, '127.0.0.1');
   const {port} = server.address() as net.AddressInfo;
   await closeServer(server);
@@ -66,7 +70,7 @@ const hasIpv6 = async (): Promise<boolean> => {
   }
 };
 
-const ipv6Available = await hasIpv6();
+const isIpv6Available = await hasIpv6();
 
 const resolved = (devPort: number, treeRoot = '/tree'): DevPortsResolution => ({
   kind: 'resolved',
@@ -130,6 +134,8 @@ beforeEach(() => {
   spawnMock.mockReset();
   spawnMock.mockReturnValue({on: vi.fn(), unref: vi.fn()});
   resolveDevPortsMock.mockReset();
+  findListenerOwnerMock.mockReset();
+  findListenerOwnerMock.mockReturnValue({kind: 'unknown'});
   delete process.env.CLAUDE_CODE_SESSION_ID;
 });
 
@@ -183,7 +189,7 @@ describe('configureServer refusals', () => {
   });
 
   test('a port taken on 127.0.0.1 rejects naming the port, the ask-first sentence, and the hint', async () => {
-    const port = await freePort();
+    const port = await findFreePort();
     held.push(await listenOn(port, '127.0.0.1'));
     resolveDevPortsMock.mockReturnValue(resolved(port));
     const plugin = await loadPlugin();
@@ -194,10 +200,10 @@ describe('configureServer refusals', () => {
     await expect(failure).rejects.toThrow(PORTS_HINT);
   });
 
-  test.skipIf(!ipv6Available)(
+  test.skipIf(!isIpv6Available)(
     'a port taken on ::1 only rejects the same way',
     async () => {
-      const port = await freePort();
+      const port = await findFreePort();
       held.push(await listenOn(port, '::1'));
       resolveDevPortsMock.mockReturnValue(resolved(port));
       const plugin = await loadPlugin();
@@ -209,7 +215,7 @@ describe('configureServer refusals', () => {
   );
 
   test('a free port resolves', async () => {
-    resolveDevPortsMock.mockReturnValue(resolved(await freePort()));
+    resolveDevPortsMock.mockReturnValue(resolved(await findFreePort()));
     const plugin = await loadPlugin();
 
     await expect(plugin.configureServer(makeServer())).resolves.toBeUndefined();
@@ -217,7 +223,7 @@ describe('configureServer refusals', () => {
 });
 
 describe('config restart', () => {
-  test('does not refuse its own port and records the launch once', async () => {
+  test('does not refuse its own port after a module reload and records the launch once', async () => {
     sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-ports-plugin-'));
     fs.mkdirSync(path.join(sandbox, '.gaia', 'scripts'), {recursive: true});
     fs.writeFileSync(
@@ -225,7 +231,7 @@ describe('config restart', () => {
       ''
     );
     process.env.CLAUDE_CODE_SESSION_ID = 'session-one';
-    const port = await freePort();
+    const port = await findFreePort();
     resolveDevPortsMock.mockReturnValue(resolved(port, sandbox));
     const plugin = await loadPlugin();
 
@@ -234,17 +240,39 @@ describe('config restart', () => {
     held.push(await listenOn(port, '127.0.0.1'));
     firstServer.httpServer.emit('listening');
 
+    // A real restart re-bundles the config into a fresh module, so the second
+    // configureServer runs against a module with no memory of the first.
+    vi.resetModules();
+    findListenerOwnerMock.mockReturnValue({kind: 'own', pid: process.pid});
+    const restartedPlugin = await loadPlugin();
+
     const restartedServer = makeServer();
     await expect(
-      plugin.configureServer(restartedServer)
+      restartedPlugin.configureServer(restartedServer)
     ).resolves.toBeUndefined();
     restartedServer.httpServer.emit('listening');
 
+    expect(findListenerOwnerMock).toHaveBeenCalledWith({
+      port,
+      treeRoot: sandbox,
+    });
     expect(spawnMock).toHaveBeenCalledTimes(1);
   });
 
+  test('a held port owned by another process still refuses', async () => {
+    const port = await findFreePort();
+    held.push(await listenOn(port, '127.0.0.1'));
+    findListenerOwnerMock.mockReturnValue({kind: 'own', pid: process.pid + 1});
+    resolveDevPortsMock.mockReturnValue(resolved(port));
+    const plugin = await loadPlugin();
+
+    await expect(plugin.configureServer(makeServer())).rejects.toThrow(
+      `port ${port}`
+    );
+  });
+
   test('a fresh module with the port held still refuses (control)', async () => {
-    const port = await freePort();
+    const port = await findFreePort();
     held.push(await listenOn(port, '127.0.0.1'));
     resolveDevPortsMock.mockReturnValue(resolved(port));
     const plugin = await loadPlugin();
@@ -257,7 +285,7 @@ describe('config restart', () => {
 
 describe('launch recording', () => {
   test('with no session id nothing is spawned', async () => {
-    resolveDevPortsMock.mockReturnValue(resolved(await freePort()));
+    resolveDevPortsMock.mockReturnValue(resolved(await findFreePort()));
     await listenWith(makeTreeWithScript());
 
     expect(spawnMock).not.toHaveBeenCalled();

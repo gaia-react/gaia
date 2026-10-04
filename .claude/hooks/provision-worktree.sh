@@ -95,6 +95,14 @@ case "$tree" in
 esac
 [ -d "$tree" ] || exit 0
 
+# Every ledger, marker and port-file call below keys on one physical tree
+# root. A symlinked path would otherwise be recorded literally while the ports
+# reclaim compares physical worktree paths, and a launch from <tree>/frontend
+# would fail the .git marker read. A directory outside any work tree has
+# nothing to provision.
+tree="$(gaia_resolve_tree_root "$tree" 2>/dev/null)" || exit 0
+[ -n "$tree" ] || exit 0
+
 # ---------- carry forward per-tree ledger/report data under the tree key ----------
 # Four .gaia/local segments moved one path segment deeper, keyed by this
 # tree's own gaia_tree_key, so multiple trees stop shadowing each other's

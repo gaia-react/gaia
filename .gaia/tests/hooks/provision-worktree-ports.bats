@@ -243,6 +243,34 @@ start_host_process() {
   cmp -s "$SCRATCH/b-before" "$(port_file "$tree_b")"
 }
 
+@test "a symlinked tree path is keyed physically, so a sibling run keeps its ledger entry" {
+  make_main
+  local tree_a tree_b link
+  tree_a="$(add_worktree a)"
+  tree_b="$(add_worktree b)"
+  link="$SCRATCH/link-a"
+  ln -s "$tree_a" "$link"
+  provision "$link"
+  [ "$PROVISION_STATUS" -eq 0 ]
+  [ "$(ledger_slot_for "$tree_a")" = "1" ]
+  [ -z "$(ledger_slot_for "$link")" ]
+  provision "$tree_b"
+  [ "$(ledger_slot_for "$tree_a")" = "1" ]
+  [ "$(port_value "$tree_a" GAIA_PORT_SLOT)" = "1" ]
+  [ "$(port_value "$tree_b" GAIA_PORT_SLOT)" = "2" ]
+}
+
+@test "a session launched from the frontend subdirectory still gets the tree's slot and port file" {
+  make_main
+  local tree
+  tree="$(add_worktree a)"
+  provision_with_payload "$tree" "{\"hook_event_name\":\"SessionStart\",\"cwd\":\"$tree/frontend\"}"
+  [ "$PROVISION_STATUS" -eq 0 ]
+  [ "$(ledger_slot_for "$tree")" = "1" ]
+  [ "$(port_value "$tree" GAIA_PORT_SLOT)" = "1" ]
+  [ ! -e "$tree/frontend/frontend/.gaia-ports" ]
+}
+
 @test "a reclaimed slot is reused by the next new worktree, with one ledger line for it" {
   make_main
   local tree_a tree_b tree_c

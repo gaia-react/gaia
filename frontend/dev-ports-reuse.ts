@@ -1,5 +1,4 @@
-import {foreignServerMessage, listenerOwner} from './dev-ports';
-import type {ListenerOwner} from './dev-ports';
+import {buildForeignServerMessage, findListenerOwner} from './dev-ports';
 
 /**
  * Decides whether Playwright may reuse a server already listening on its port.
@@ -9,15 +8,12 @@ import type {ListenerOwner} from './dev-ports';
 export const decideServerReuse = ({
   isContinuousIntegration,
   port,
-  probe = listenerOwner,
+  probe = findListenerOwner,
   treeRoot,
 }: {
   isContinuousIntegration: boolean;
   port: number;
-  probe?: (input: {
-    port: number;
-    treeRoot: string | undefined;
-  }) => ListenerOwner;
+  probe?: typeof findListenerOwner;
   treeRoot: string | undefined;
 }): boolean => {
   if (isContinuousIntegration) return false;
@@ -25,7 +21,9 @@ export const decideServerReuse = ({
   const owner = probe({port, treeRoot});
 
   if (owner.kind === 'foreign') {
-    throw new Error(foreignServerMessage({ownerPath: owner.ownerPath, port}));
+    throw new Error(
+      buildForeignServerMessage({ownerPath: owner.ownerPath, port})
+    );
   }
 
   return owner.kind === 'own';

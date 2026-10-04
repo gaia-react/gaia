@@ -137,7 +137,7 @@ export const findCheckout = (
 };
 
 /** The refusal text for a linked worktree that has no port file. */
-export const missingPortFileMessage = ({
+export const buildMissingPortFileMessage = ({
   portFilePath,
   treeRoot,
 }: {
@@ -146,7 +146,7 @@ export const missingPortFileMessage = ({
 }): string =>
   `GAIA: ${treeRoot} is a linked worktree with no port file at ${portFilePath}, so it has no ports of its own and will not borrow the main checkout's. Run: bash .claude/hooks/provision-worktree.sh ${treeRoot} ${ASK_FIRST_SENTENCE} ${PORTS_HINT}`;
 
-const malformedPortFileMessage = ({
+const buildMalformedPortFileMessage = ({
   portFilePath,
   treeRoot,
 }: {
@@ -156,7 +156,7 @@ const malformedPortFileMessage = ({
   `GAIA: the port file at ${portFilePath} is malformed, so this tree has no usable ports. Run: bash .claude/hooks/provision-worktree.sh ${treeRoot ?? '<tree-root>'} ${ASK_FIRST_SENTENCE} ${PORTS_HINT}`;
 
 /** The refusal text for a dev or Storybook port that is already taken. */
-export const portInUseMessage = ({
+export const buildPortInUseMessage = ({
   ownerPath,
   pid,
   port,
@@ -174,7 +174,7 @@ export const portInUseMessage = ({
 };
 
 /** The refusal text for Playwright declining a server this tree does not own. */
-export const foreignServerMessage = ({
+export const buildForeignServerMessage = ({
   ownerPath,
   port,
 }: {
@@ -204,7 +204,7 @@ export const resolveDevPorts = (
     if (parsed === undefined) {
       return {
         kind: 'malformed-port-file',
-        message: malformedPortFileMessage({portFilePath, treeRoot}),
+        message: buildMalformedPortFileMessage({portFilePath, treeRoot}),
         portFilePath,
       };
     }
@@ -215,7 +215,7 @@ export const resolveDevPorts = (
   if (isLinkedWorktree && treeRoot !== undefined) {
     return {
       kind: 'missing-port-file',
-      message: missingPortFileMessage({portFilePath, treeRoot}),
+      message: buildMissingPortFileMessage({portFilePath, treeRoot}),
       portFilePath,
       treeRoot,
     };
@@ -281,8 +281,12 @@ const parseListenerOwner = (output: string): ListenerOwner => {
   return {kind: 'unknown'};
 };
 
+/** The process library's path inside a resolved tree root. */
+export const resolveServerProcessScriptPath = (treeRoot: string): string =>
+  path.join(treeRoot, '.gaia', 'scripts', 'server-process-lib.sh');
+
 /** Asks the process library who owns the listener on a port. */
-export const listenerOwner = ({
+export const findListenerOwner = ({
   port,
   treeRoot,
 }: {
@@ -297,7 +301,7 @@ export const listenerOwner = ({
       // eslint-disable-next-line sonarjs/no-os-command-from-path
       'bash',
       [
-        path.join(treeRoot, '.gaia', 'scripts', 'server-process-lib.sh'),
+        resolveServerProcessScriptPath(treeRoot),
         '--listener-owner',
         String(port),
         treeRoot,

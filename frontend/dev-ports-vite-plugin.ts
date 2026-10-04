@@ -2,12 +2,18 @@ import type {Plugin} from 'vite';
 import {spawn} from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
-import path from 'node:path';
-import {portInUseMessage, resolveDevPorts} from './dev-ports.ts';
+import {
+  buildPortInUseMessage,
+  findListenerOwner,
+  resolveDevPorts,
+  resolveServerProcessScriptPath,
+} from './dev-ports.ts';
 
 // A config restart builds the new server (running this hook) before it closes
-// the old one, and the old one still holds the port. Module state survives the
-// restart, so it tells a restart from a first start.
+// the old one, so the old one still holds the port. Vite re-bundles the config
+// into a fresh module on restart, so module state does not survive it: the
+// restart is told from a foreign holder by asking who owns the listener. This
+// flag keeps a restart, in this module or a fresh one, from recording the launch twice.
 let hasListenedInThisProcess = false;
 
 const LOOPBACK_ADDRESSES = ['127.0.0.1', '::1'];
@@ -28,11 +34,23 @@ const isTakenOn = async (port: number, host: string): Promise<boolean> =>
   });
 
 const isTaken = async (port: number): Promise<boolean> => {
-  const results = await Promise.all(
+  const isTakenByAddress = await Promise.all(
     LOOPBACK_ADDRESSES.map(async (host) => isTakenOn(port, host))
   );
 
-  return results.includes(true);
+  return isTakenByAddress.includes(true);
+};
+
+const isOwnProcessListener = ({
+  devPort,
+  treeRoot,
+}: {
+  devPort: number;
+  treeRoot: string | undefined;
+}): boolean => {
+  const owner = findListenerOwner({port: devPort, treeRoot});
+
+  return owner.kind === 'own' && owner.pid === process.pid;
 };
 
 const recordLaunch = ({
@@ -43,20 +61,15 @@ const recordLaunch = ({
   treeRoot: string;
 }): void => {
   if (!process.env.CLAUDE_CODE_SESSION_ID) return;
-  const script = path.join(
-    treeRoot,
-    '.gaia',
-    'scripts',
-    'server-process-lib.sh'
-  );
-  if (!fs.existsSync(script)) return;
+  const scriptPath = resolveServerProcessScriptPath(treeRoot);
+  if (!fs.existsSync(scriptPath)) return;
 
   // Fire and forget: the record is bookkeeping and must never slow the server.
   const child = spawn(
     // eslint-disable-next-line sonarjs/no-os-command-from-path
     'bash',
     [
-      script,
+      scriptPath,
       '--record-launch',
       '--pid',
       String(process.pid),
@@ -92,8 +105,14 @@ export const devPortsPlugin = (packageDirectory: string): Plugin => ({
     if (resolution.kind !== 'resolved') throw new Error(resolution.message);
     const {devPort, treeRoot} = resolution.ports;
 
-    if (!hasListenedInThisProcess && (await isTaken(devPort))) {
-      throw new Error(portInUseMessage({port: devPort, service: 'dev server'}));
+    if (await isTaken(devPort)) {
+      if (!isOwnProcessListener({devPort, treeRoot})) {
+        throw new Error(
+          buildPortInUseMessage({port: devPort, service: 'dev server'})
+        );
+      }
+      // This process already holds the port: a restart, whose launch was recorded.
+      hasListenedInThisProcess = true;
     }
 
     server.httpServer?.once('listening', () => {

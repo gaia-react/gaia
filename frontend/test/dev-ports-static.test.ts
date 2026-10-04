@@ -22,7 +22,7 @@ const listTypeScriptFiles = (directory: string): string[] =>
     .map((entry) => path.join(entry.parentPath, entry.name))
     .filter((file) => !file.includes(`${path.sep}output${path.sep}`));
 
-const scannedFiles = (): string[] => [
+const listScannedFiles = (): string[] => [
   ...explicitFiles.map((file) => path.join(frontendDirectory, file)),
   ...listTypeScriptFiles(path.join(frontendDirectory, '.playwright')),
   ...listTypeScriptFiles(path.join(frontendDirectory, '.storybook')),
@@ -48,7 +48,7 @@ afterEach(() => {
 
 describe('port literals in config files', () => {
   test('the scanned set is the expected non-empty set and every file exists', () => {
-    const files = scannedFiles();
+    const files = listScannedFiles();
 
     for (const file of explicitFiles) {
       expect(files).toContain(path.join(frontendDirectory, file));
@@ -88,6 +88,6 @@ describe('port literals in config files', () => {
   });
 
   test('no scanned config file carries a 5173 or 6006 literal', () => {
-    expect(findLiterals(scannedFiles())).toEqual([]);
+    expect(findLiterals(listScannedFiles())).toEqual([]);
   });
 });
