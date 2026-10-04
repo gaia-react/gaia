@@ -10,10 +10,10 @@ type FormActionData = {
 
 type FormResultProps = {
   className?: string;
-  hide?: boolean;
+  isHidden?: boolean;
 };
 
-const FormError: FC<FormResultProps> = ({className, hide}) => {
+const FormError: FC<FormResultProps> = ({className, isHidden}) => {
   const actionData = useActionData<FormActionData>();
   const [dismissed, setDismissed] = useState<FormActionData>();
 
@@ -23,7 +23,7 @@ const FormError: FC<FormResultProps> = ({className, hide}) => {
   // text; a later action returns a fresh object, so an identical message
   // re-shows instead of staying hidden.
   const result =
-    !hide && error !== undefined && actionData !== dismissed ? error : '';
+    !isHidden && error !== undefined && actionData !== dismissed ? error : '';
 
   const handleDismissErrorButton = () => {
     setDismissed(actionData);
