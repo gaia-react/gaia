@@ -1,4 +1,6 @@
-import {afterEach, beforeEach, describe, expect, test} from 'vitest';
+import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
+import {chmodSync, readFileSync, writeFileSync} from 'node:fs';
+import path from 'node:path';
 import {assertNotOk, assertOk, setupSandbox} from '../../__tests__/sandbox.js';
 import type {Sandbox} from '../../__tests__/sandbox.js';
 import {runGh} from '../gh.js';
@@ -40,5 +42,46 @@ describe('runGh wrapper', () => {
     assertNotOk(result);
 
     expect(result.exitCode).toBe(7);
+  });
+
+  test('a gh that never exits settles as timed out once timeoutMs elapses, and is killed', async () => {
+    const pidFile = path.join(sandbox.root, 'gh.pid');
+    const shimPath = path.join(sandbox.binDir, 'gh');
+
+    writeFileSync(
+      shimPath,
+      `#!/bin/sh\necho $$ > '${pidFile}'\nexec sleep 30\n`,
+      'utf8'
+    );
+    chmodSync(shimPath, 0o755);
+
+    const started = Date.now();
+    const result = await runGh({
+      args: ['api', 'repos/acme/widgets'],
+      env: {
+        ...process.env,
+        PATH: `${sandbox.binDir}:${process.env.PATH ?? ''}`,
+      },
+      timeoutMs: 200,
+    });
+
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(result).toStrictEqual({
+      exitCode: -1,
+      ok: false,
+      stderr: '',
+      timedOut: true,
+    });
+
+    const pid = Number.parseInt(readFileSync(pidFile, 'utf8'), 10);
+
+    // A killed child can linger as a zombie until Node reaps it, and a signal
+    // probe still reaches a zombie, so poll until the process is gone.
+    await vi.waitFor(
+      () => {
+        expect(() => process.kill(pid, 0)).toThrow(/ESRCH/u);
+      },
+      {interval: 20, timeout: 1000}
+    );
   });
 });

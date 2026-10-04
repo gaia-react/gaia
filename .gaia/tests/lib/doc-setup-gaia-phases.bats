@@ -9,7 +9,7 @@
 #     question.
 #   - `--reconfigure` is parsed, and `RECONFIGURE` is consulted only by the
 #     decisions it re-opens (Phase 2 sandbox, Phase 3.5 isolation policy,
-#     Phase 3.6 Dependabot, Phase 4.6 statusline left side) and the Phase 6
+#     Phase 3.7 squash-only merges, Phase 4.6 statusline left side) and the Phase 6
 #     ping classification.
 #   - Every team-setting read and commit targets `.gaia/project.json`, and so
 #     does the isolation policy read in the shared isolation reference.
@@ -71,6 +71,8 @@ forbidden_literals() {
     'CLAUDE_CODE_OAUTH_TOKEN' \
     'ANTHROPIC_API_KEY' \
     'default_mode'
+  printf 'write-dependabot-%s\n' config policy
+  printf 'enable-dependabot-%s\n' security
   printf 'automation%sjson\n' .
   printf 'claude-code%saction\n' -
   printf 'docs.gaiareact.com/maintenance/gaia%sci\n' -
@@ -88,8 +90,8 @@ check_no_ci_phases() {
     fi
   done < <(forbidden_literals)
   # A short read of the literal list would turn the loop into a partial check.
-  [ "$count" -eq 17 ] || {
-    echo "expected 17 forbidden literals, read ${count}" >&2
+  [ "$count" -eq 20 ] || {
+    echo "expected 20 forbidden literals, read ${count}" >&2
     return 1
   }
   if grep -qiE 'enable gaia ci|which bot token|token type|tool mode|tools running on cron' "$file"; then
@@ -114,7 +116,7 @@ check_no_ci_phases() {
       return 1
     }
   done < <(forbidden_literals)
-  [ "$count" -eq 17 ]
+  [ "$count" -eq 20 ]
 }
 
 @test "the no-CI check fails on a CI enable question put back" {
@@ -131,7 +133,7 @@ check_no_ci_phases() {
 
 # check_reconfigure_scope <file>: the argument parse names --reconfigure and
 # caches RECONFIGURE, and every other RECONFIGURE line sits under Phase 2,
-# 3.5, 3.6, 3.7, 4.6, or 6.
+# 3.5, 3.7, 4.6, or 6.
 check_reconfigure_scope() {
   local file="$1" parse_section stray
   parse_section="$(awk '/^## /{inside = ($0 == "## Argument parse")} inside' "$file")"
@@ -147,7 +149,7 @@ check_reconfigure_scope() {
     /^## / { heading = $0 }
     /RECONFIGURE/ {
       if (heading == "## Argument parse") next
-      if (heading ~ /^## Phase (2|3\.5|3\.6|3\.7|4\.6|6):/) next
+      if (heading ~ /^## Phase (2|3\.5|3\.7|4\.6|6):/) next
       print NR ": " heading
     }
   ' "$file")"
@@ -157,7 +159,7 @@ check_reconfigure_scope() {
   }
 }
 
-@test "--reconfigure is parsed and RECONFIGURE is read only in Phases 2, 3.5, 3.6, 3.7, 4.6, and 6" {
+@test "--reconfigure is parsed and RECONFIGURE is read only in Phases 2, 3.5, 3.7, 4.6, and 6" {
   check_reconfigure_scope "$PAGE"
 }
 
@@ -184,8 +186,8 @@ check_reconfigure_scope() {
 # ---------------------------------------------------------------------------
 
 # check_project_json <file>: every jq read of a .gaia/*.json file targets
-# .gaia/project.json, the expected three keys are read from it, and the two
-# team-setting commits stage it. A read of .gaia/local/settings.json is not a
+# .gaia/project.json, the expected keys are read from it, and the one
+# team-setting commit stages it. A read of .gaia/local/settings.json is not a
 # team setting: it is the per-machine opt-ins file (the statusline left-side
 # choice), so it is left out of the read set.
 check_project_json() {
@@ -200,15 +202,15 @@ check_project_json() {
     echo "a key read targets another file: ${stray}" >&2
     return 1
   }
-  for key in sandbox_recommended isolation_policy dependabot_security_updates; do
+  for key in sandbox_recommended isolation_policy; do
     grep -qF -- "$key" <<<"$reads" || {
       echo "no .gaia/project.json read for ${key}" >&2
       return 1
     }
   done
   staged="$(grep -cE '^git add \.gaia/project\.json' "$file" || true)"
-  [ "$staged" -eq 2 ] || {
-    echo "expected 2 commits staging .gaia/project.json, found ${staged}" >&2
+  [ "$staged" -eq 1 ] || {
+    echo "expected 1 commit staging .gaia/project.json, found ${staged}" >&2
     return 1
   }
 }
@@ -495,4 +497,169 @@ STUB
   cmp -s "${BATS_TEST_TMPDIR}/protection.sh" "$mutated" && return 1
   run_protection_fence "$mutated" 0
   [ -n "$(put_line)" ]
+}
+
+# ---------------------------------------------------------------------------
+# Dependabot is a data source: no opt-in question, no config write
+# ---------------------------------------------------------------------------
+
+# check_no_dependabot_question <file>: fails when the page asks a Dependabot
+# question or carries the retired opt-in phase heading.
+check_no_dependabot_question() {
+  local file="$1"
+  grep -qE 'header \*\*`Dependabot`\*\*' "$file" && {
+    echo "a Dependabot AskUserQuestion is present" >&2
+    return 1
+  }
+  grep -qE '^## Phase 3\.6' "$file" && {
+    echo "the retired Phase 3.6 heading is present" >&2
+    return 1
+  }
+  return 0
+}
+
+@test "setup-gaia asks no Dependabot question and has no Phase 3.6" {
+  check_no_dependabot_question "$PAGE"
+}
+
+@test "the no-Dependabot-question check fails on the question put back" {
+  local copy
+  copy="$(scratch_copy "$PAGE" "dependabot-question.md")"
+  printf '\nUse `AskUserQuestion`, header **`Dependabot`**, with two options.\n' >>"$copy"
+  run check_no_dependabot_question "$copy"
+  [ "$status" -ne 0 ]
+}
+
+@test "the no-Dependabot-question check fails on the Phase 3.6 heading put back" {
+  local copy
+  copy="$(scratch_copy "$PAGE" "dependabot-heading.md")"
+  printf '\n## Phase 3.6: Dependabot security updates\n' >>"$copy"
+  run check_no_dependabot_question "$copy"
+  [ "$status" -ne 0 ]
+}
+
+# check_posture_subcommand <file>: the page invokes the posture subcommand.
+check_posture_subcommand() {
+  grep -qF -- 'setup-ci configure-dependabot-alerts' "$1" || {
+    echo "the page does not invoke setup-ci configure-dependabot-alerts" >&2
+    return 1
+  }
+}
+
+@test "the posture step calls the configure-dependabot-alerts subcommand" {
+  check_posture_subcommand "$PAGE"
+}
+
+@test "the posture-subcommand check fails when the call is removed" {
+  local copy
+  copy="$(scratch_copy "$PAGE" "posture-call-removed.md")"
+  grep -vF -- 'setup-ci configure-dependabot-alerts' "$PAGE" >"$copy" || true
+  cmp -s "$PAGE" "$copy" && return 1
+  run check_posture_subcommand "$copy"
+  [ "$status" -ne 0 ]
+}
+
+@test "the no-CI check fails when the Dependabot config writer is put back" {
+  local copy literal
+  literal="$(printf 'write-dependabot-%s' config)"
+  copy="$(scratch_copy "$PAGE" "writer-put-back.md")"
+  printf '\n.gaia/cli/gaia setup-ci %s --json\n' "$literal" >>"$copy"
+  run check_no_ci_phases "$copy"
+  [ "$status" -ne 0 ]
+}
+
+@test "the project.json check fails when a second team-setting commit is added" {
+  local copy
+  copy="$(scratch_copy "$PAGE" "second-commit.md")"
+  printf '\n```bash\ngit add .gaia/project.json\n```\n' >>"$copy"
+  run check_project_json "$copy"
+  [ "$status" -ne 0 ]
+}
+
+# ---------------------------------------------------------------------------
+# The Dependabot posture step warns and never edits
+# ---------------------------------------------------------------------------
+
+# posture_section <file>: the posture step's text, from its bold lead-in to the
+# next level-two heading.
+posture_section() {
+  awk '
+    /^## / { inside = 0 }
+    /^\*\*Dependabot posture\.\*\*/ { inside = 1 }
+    inside
+  ' "$1"
+}
+
+# check_posture_warns_only <file>: passes only when the posture step invokes
+# warn-existing-tools, tells the human to delete the npm entry, tells the human
+# to disable Renovate's npm and pnpm management, and instructs no write,
+# create, or edit of .github/dependabot.yml. The removal step is phrased with
+# "delete", the refusals avoid those verbs, and "writes" (as in "GAIA writes
+# no ...") is a different word, so only an imperative write, create, or edit
+# verb on a line naming dependabot.yml counts as an edit instruction.
+check_posture_warns_only() {
+  local section
+  section="$(posture_section "$1")"
+  [ -n "$section" ] || {
+    echo "the posture step is absent" >&2
+    return 1
+  }
+  grep -qF -- 'setup-ci warn-existing-tools' <<<"$section" || {
+    echo "the posture step does not invoke warn-existing-tools" >&2
+    return 1
+  }
+  grep -qE 'delete the `package-ecosystem: npm` entry from \.github/dependabot\.yml' <<<"$section" || {
+    echo "the posture step does not tell the human to delete the npm entry" >&2
+    return 1
+  }
+  grep -E 'disable Renovate' <<<"$section" | grep -qF 'npm and pnpm' || {
+    echo "the posture step carries no Renovate warning naming the disable step" >&2
+    return 1
+  }
+  if grep -iE 'dependabot\.ya?ml' <<<"$section" | grep -qiE '(^|[^a-z])(write|create|edit)([^a-z]|$)'; then
+    echo "the posture step instructs a write, create, or edit of dependabot.yml" >&2
+    return 1
+  fi
+  return 0
+}
+
+@test "the posture step warns about existing tools and never edits their files" {
+  check_posture_warns_only "$PAGE"
+}
+
+@test "the posture check fails when the warn-existing-tools call is removed" {
+  local copy
+  copy="$(scratch_copy "$PAGE" "posture-no-warn.md")"
+  grep -vF -- 'setup-ci warn-existing-tools' "$PAGE" >"$copy" || true
+  cmp -s "$PAGE" "$copy" && return 1
+  run check_posture_warns_only "$copy"
+  [ "$status" -ne 0 ]
+}
+
+@test "the posture check fails when the npm entry removal sentence is removed" {
+  local copy
+  copy="$(scratch_copy "$PAGE" "posture-no-removal.md")"
+  grep -vF -- 'package-ecosystem: npm' "$PAGE" >"$copy" || true
+  cmp -s "$PAGE" "$copy" && return 1
+  run check_posture_warns_only "$copy"
+  [ "$status" -ne 0 ]
+}
+
+@test "the posture check fails when the Renovate warning is removed" {
+  local copy
+  copy="$(scratch_copy "$PAGE" "posture-no-renovate.md")"
+  grep -vF -- 'disable Renovate' "$PAGE" >"$copy" || true
+  cmp -s "$PAGE" "$copy" && return 1
+  run check_posture_warns_only "$copy"
+  [ "$status" -ne 0 ]
+}
+
+@test "the posture check fails when an instruction to write dependabot.yml is inserted" {
+  local copy
+  copy="$(scratch_copy "$PAGE" "posture-writes.md")"
+  awk '{ print } /^\*\*Dependabot posture\.\*\*/ { print ""; print "Write .github/dependabot.yml with the npm entry." }' \
+    "$PAGE" >"$copy"
+  cmp -s "$PAGE" "$copy" && return 1
+  run check_posture_warns_only "$copy"
+  [ "$status" -ne 0 ]
 }

@@ -539,7 +539,7 @@ const fetchLatestVersion = (
  * registry calls). pnpm 11 enforces this same setting on the lockfile; honour
  * it here so the dependabot flow never targets a version pnpm 11 would reject.
  */
-const readMinimumReleaseAge = (cwd: string): number => {
+export const readMinimumReleaseAge = (cwd: string): number => {
   let raw: string;
 
   try {
@@ -578,7 +578,7 @@ const readMinimumReleaseAge = (cwd: string): number => {
  * caller can fail closed (record the package as unresolved rather than bump to
  * a possibly-too-young version).
  */
-const fetchVersionTimes = (
+export const fetchVersionTimes = (
   name: string,
   cwd: string,
   pnpmRunner: PnpmRunner

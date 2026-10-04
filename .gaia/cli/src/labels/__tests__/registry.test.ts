@@ -256,16 +256,21 @@ describe('labels/registry resolveAudience and resolveFeatures', () => {
     expect(resolveFeatures(fixture)).toEqual(['tech-debt']);
   });
 
-  test('a project config opting into Dependabot security updates turns dependabot on', () => {
+  test('a retired project config opt-in alone leaves dependabot off', () => {
     writeProjectConfig('{"version":1,"dependabot_security_updates":"on"}');
 
-    expect(resolveFeatures(fixture)).toEqual(['tech-debt', 'dependabot']);
+    expect(resolveFeatures(fixture)).toEqual(['tech-debt']);
   });
 
-  test('a project config opting out leaves dependabot off', () => {
-    writeProjectConfig('{"version":1,"dependabot_security_updates":"off"}');
+  test('an existing .github/dependabot.yaml alone turns dependabot on', () => {
+    mkdirSync(path.join(fixture, '.github'), {recursive: true});
+    writeFileSync(
+      path.join(fixture, '.github', 'dependabot.yaml'),
+      'version: 2\n',
+      'utf8'
+    );
 
-    expect(resolveFeatures(fixture)).toEqual(['tech-debt']);
+    expect(resolveFeatures(fixture)).toEqual(['tech-debt', 'dependabot']);
   });
 
   test('an existing .github/dependabot.yml turns dependabot on without a project config', () => {

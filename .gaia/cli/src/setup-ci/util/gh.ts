@@ -11,12 +11,16 @@ export type GhFailure = {
   exitCode: number;
   ok: false;
   stderr: string;
+  /** Set only when `timeoutMs` elapsed and the child was killed. */
+  timedOut?: true;
 };
 
 export type GhOptions = {
   args: readonly string[];
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  /** Kill the child and settle as a timed-out failure after this many ms. */
+  timeoutMs?: number;
 };
 
 export type GhResult = GhFailure | GhSuccess;
@@ -37,12 +41,21 @@ export const runGh = async (options: GhOptions): Promise<GhResult> =>
     let stdoutBuf = '';
     let stderrBuf = '';
     let settled = false;
+    let timer: NodeJS.Timeout | undefined;
 
     const settle = (result: GhResult): void => {
       if (settled) return;
       settled = true;
+      if (timer !== undefined) clearTimeout(timer);
       resolve(result);
     };
+
+    if (options.timeoutMs !== undefined) {
+      timer = setTimeout(() => {
+        child.kill('SIGKILL');
+        settle({exitCode: -1, ok: false, stderr: '', timedOut: true});
+      }, options.timeoutMs);
+    }
 
     child.stdout.on('data', (chunk: Buffer | string) => {
       stdoutBuf += typeof chunk === 'string' ? chunk : chunk.toString('utf8');

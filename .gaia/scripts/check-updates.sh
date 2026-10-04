@@ -1,5 +1,5 @@
 #!/bin/bash
-# GAIA SessionStart update checker.
+# GAIA update checker. The statusline's main-checkout render starts it detached.
 #
 # Writes .gaia/local/cache/shared/update-check.json with:
 #   - outdatedCount  (actionable updates from `gaia update-deps run`, which
@@ -26,11 +26,17 @@
 #                     /gaia-wiki nudge)
 #   - auditNudge / auditNudgeReason / auditLastAppliedAt / auditMemoryCount /
 #                  auditMemoryBaseline (knowledge-audit drift signals)
+#   - securityCount  (distinct open security advisories from `gaia update-deps
+#                     advisories`; null, never 0, when no source answered)
+#   - securitySource (dependabot, pnpm-audit, or unavailable)
+#   - securityUnavailableReason (comma-joined closed-set reason tokens; empty
+#                     for dependabot)
 #   - checkedAt      (Unix epoch seconds)
 #
 # TTL is 6 hours (21600s). Re-runs within the TTL exit immediately so the
-# SessionStart hook can fire this in the background without paying the cost
-# on every session.
+# statusline can start this in the background on every render without paying
+# the cost each time. A cache with no securitySource key is treated as past its
+# TTL once, so the first refresh after an upgrade fills the security fields.
 #
 # Partial failures are tolerated; exit 0 even if some fields could not be
 # refreshed. Do NOT add `set -e`.
@@ -168,6 +174,13 @@ if [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
   esac
 fi
 
+# A cache written before the security fields existed is stale once, whatever
+# its checkedAt says; the refresh that follows writes securitySource.
+if [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1 \
+  && ! jq -e 'has("securitySource")' "$CACHE_FILE" >/dev/null 2>&1; then
+  previous_checked_at=0
+fi
+
 # TTL gate.
 age=$((now - previous_checked_at))
 if [ "$age" -lt "$TTL" ]; then
@@ -279,6 +292,51 @@ if [ -x "$GAIA_BIN" ] && command -v jq >/dev/null 2>&1; then
 fi
 case "$outdated_count" in
   ''|*[!0-9]*) outdated_count=0 ;;
+esac
+
+# ---------- securityCount / securitySource / securityUnavailableReason ----------
+# Open security advisories, from the CLI verb that owns source selection and
+# validation. A refresh that cannot get an answer writes null with a reason and
+# never carries the previous count forward: a stale count would claim a
+# certainty this run does not have. Reason tokens are checked against the
+# closed set below before they reach the cache, so no payload string is ever
+# written verbatim.
+security_count="null"
+security_source="unavailable"
+security_reason="cli-failed"
+if [ -x "$GAIA_BIN" ] && command -v jq >/dev/null 2>&1; then
+  advisories_temporary_file="$(mktemp "$CACHE_DIRECTORY/.advisories.XXXXXX" 2>/dev/null)"
+  if [ -n "$advisories_temporary_file" ]; then
+    if (cd "$PROJECT_ROOT" && "$GAIA_BIN" update-deps advisories --emit "$advisories_temporary_file" --count-only) >/dev/null 2>&1 && [ -s "$advisories_temporary_file" ]; then
+      advisories_parsed=$(jq -r '
+        def allowed: ["ci","gh-missing","gh-unauthenticated","no-remote","non-github-remote","alerts-disabled","forbidden","alerts-request-failed","alerts-invalid-response","pnpm-audit-failed","cli-failed","jq-missing"];
+        ((.reasons // []) | if type == "array" then map(select(type == "string" and . as $token | allowed | index($token))) | join(",") else "" end) as $reasons
+        | if (.source == "dependabot" or .source == "pnpm-audit") and (.count | type) == "number" and (.count == (.count | floor)) and .count >= 0
+          then "\(.source)|\(.count | floor)|\($reasons)"
+          elif .source == "unavailable" then "unavailable||\($reasons)"
+          else empty end
+      ' "$advisories_temporary_file" 2>/dev/null)
+      case "$advisories_parsed" in
+        dependabot\|*|pnpm-audit\|*)
+          security_source="${advisories_parsed%%|*}"
+          advisories_rest="${advisories_parsed#*|}"
+          security_count="${advisories_rest%%|*}"
+          security_reason="${advisories_rest#*|}"
+          ;;
+        unavailable\|*)
+          security_source="unavailable"
+          security_count="null"
+          security_reason="${advisories_parsed#*|}"
+          security_reason="${security_reason#|}"
+          ;;
+      esac
+    fi
+    rm -f "$advisories_temporary_file" 2>/dev/null
+  fi
+fi
+case "$security_count" in
+  null) ;;
+  ''|*[!0-9]*) security_count="null"; security_source="unavailable"; security_reason="cli-failed" ;;
 esac
 
 # ---------- hardenCandidateCount / hardenUnclassifiedCount / hardenNudgeReason ----------
@@ -652,7 +710,10 @@ if command -v jq >/dev/null 2>&1; then
     --argjson auditMemoryCount "$audit_memory_count" \
     --argjson auditMemoryBaseline "$audit_memory_baseline" \
     --argjson serenaLangDrift "$serena_language_drift_json" \
-    '{checkedAt: $checkedAt, outdatedCount: $outdatedCount, gaiaCurrent: $gaiaCurrent, gaiaLatest: $gaiaLatest, gaiaHasUpdate: $gaiaHasUpdate, hardenCandidateCount: $hardenCandidateCount, hardenUnclassifiedCount: $hardenUnclassifiedCount, hardenNudgeReason: $hardenNudgeReason, residueCandidateCount: $residueCandidateCount, wikiDriftCount: $wikiDriftCount, auditNudge: $auditNudge, auditNudgeReason: $auditNudgeReason, auditLastAppliedAt: $auditLastAppliedAt, auditMemoryCount: $auditMemoryCount, auditMemoryBaseline: $auditMemoryBaseline, serenaLangDrift: $serenaLangDrift}' \
+    --argjson securityCount "$security_count" \
+    --arg securitySource "$security_source" \
+    --arg securityUnavailableReason "$security_reason" \
+    '{checkedAt: $checkedAt, outdatedCount: $outdatedCount, gaiaCurrent: $gaiaCurrent, gaiaLatest: $gaiaLatest, gaiaHasUpdate: $gaiaHasUpdate, hardenCandidateCount: $hardenCandidateCount, hardenUnclassifiedCount: $hardenUnclassifiedCount, hardenNudgeReason: $hardenNudgeReason, residueCandidateCount: $residueCandidateCount, wikiDriftCount: $wikiDriftCount, auditNudge: $auditNudge, auditNudgeReason: $auditNudgeReason, auditLastAppliedAt: $auditLastAppliedAt, auditMemoryCount: $auditMemoryCount, auditMemoryBaseline: $auditMemoryBaseline, serenaLangDrift: $serenaLangDrift, securityCount: $securityCount, securitySource: $securitySource, securityUnavailableReason: $securityUnavailableReason}' \
     > "$temporary_file" 2>/dev/null
 else
   # jq not available; emit valid JSON via printf. serenaLangDrift is empty:
@@ -661,7 +722,7 @@ else
   # compute it (the tally-driven composition above and the cache seed at
   # startup) require jq themselves, so neither branch ever runs without it.
   # Nothing here needs escaping.
-  printf '{"checkedAt":%s,"outdatedCount":%s,"gaiaCurrent":"%s","gaiaLatest":"%s","gaiaHasUpdate":%s,"hardenCandidateCount":%s,"hardenUnclassifiedCount":%s,"hardenNudgeReason":"%s","residueCandidateCount":%s,"wikiDriftCount":%s,"auditNudge":%s,"auditNudgeReason":"%s","auditLastAppliedAt":%s,"auditMemoryCount":%s,"auditMemoryBaseline":%s,"serenaLangDrift":[]}\n' \
+  printf '{"checkedAt":%s,"outdatedCount":%s,"gaiaCurrent":"%s","gaiaLatest":"%s","gaiaHasUpdate":%s,"hardenCandidateCount":%s,"hardenUnclassifiedCount":%s,"hardenNudgeReason":"%s","residueCandidateCount":%s,"wikiDriftCount":%s,"auditNudge":%s,"auditNudgeReason":"%s","auditLastAppliedAt":%s,"auditMemoryCount":%s,"auditMemoryBaseline":%s,"serenaLangDrift":[],"securityCount":null,"securitySource":"unavailable","securityUnavailableReason":"jq-missing"}\n' \
     "$checked_at_to_write" "$outdated_count" "$gaia_current" "$gaia_latest" "$gaia_has_update" "$harden_count" "$unclassified_count" "$harden_reason" "$residue_count" "$wiki_drift_count" "$audit_nudge" "$audit_nudge_reason" "$audit_last_applied_at" "$audit_memory_count" "$audit_memory_baseline" \
     > "$temporary_file" 2>/dev/null
 fi

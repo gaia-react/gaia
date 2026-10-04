@@ -81,4 +81,54 @@ describe('update-deps namespace router', () => {
     expect(exit).toBe(0);
     expect(stdio.outputs.join('')).toContain('Usage: gaia update-deps decline');
   });
+
+  test('namespace help lists the advisories and advisory-landed subcommands', async () => {
+    const exit = await run([]);
+    expect(exit).toBe(0);
+    expect(stdio.outputs.join('')).toContain(
+      'advisories --emit <path> [--count-only] [--updates <path>] [--no-alerts]'
+    );
+    expect(stdio.outputs.join('')).toContain(
+      'advisory-landed --package <name> --vulnerable-range <range>'
+    );
+  });
+
+  test.each(['advisories', 'advisory-landed'])(
+    '%s --help routes to its handler and exits 0',
+    async (verb) => {
+      const exit = await run([verb, '--help']);
+      expect(exit).toBe(0);
+      expect(stdio.outputs.join('')).toContain(
+        `Usage: gaia update-deps ${verb}`
+      );
+    }
+  );
+
+  test('namespace help lists every update-deps verb', async () => {
+    const exit = await run([]);
+    expect(exit).toBe(0);
+
+    for (const verb of [
+      'run',
+      'decline',
+      'global-tools',
+      'advisories',
+      'advisory-landed',
+      'dismiss-alert',
+      'write-security-cache',
+      'check-security-override',
+    ]) {
+      expect(stdio.outputs.join('')).toContain(`  ${verb} `);
+    }
+  });
+
+  test.each([
+    'dismiss-alert',
+    'write-security-cache',
+    'check-security-override',
+  ])('%s --help routes to its handler and exits 0', async (verb) => {
+    const exit = await run([verb, '--help']);
+    expect(exit).toBe(0);
+    expect(stdio.outputs.join('')).toContain(`Usage: gaia update-deps ${verb}`);
+  });
 });

@@ -309,7 +309,15 @@ else
       nudge_icon[$1]="$6"
     }
     if [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
-      outdated_count=$(jq -r '.outdatedCount // 0' "$CACHE_FILE" 2>/dev/null)
+      # One spawn for both update-deps counts. securityCount is never defaulted
+      # to 0: null (no advisory source answered) must stay distinguishable from
+      # a real zero, so an unreadable value yields an empty field.
+      deps_counts=$(jq -r '"\(.outdatedCount // 0),\(.securityCount | if type == "number" then (floor | tostring) else "" end)"' "$CACHE_FILE" 2>/dev/null)
+      outdated_count="${deps_counts%%,*}"
+      security_count="${deps_counts#*,}"
+      case "$security_count" in
+        ''|*[!0-9]*) security_count="" ;;
+      esac
       gaia_has_update=$(jq -r '.gaiaHasUpdate // false' "$CACHE_FILE" 2>/dev/null)
       gaia_latest=$(jq -r '.gaiaLatest // empty' "$CACHE_FILE" 2>/dev/null)
       # One spawn for three reads: a digit-string candidate count, a comma,
@@ -340,9 +348,19 @@ else
         printf -v full 'Run /update-gaia (GAIA %s available)' "$gaia_latest"
         nudge_set 0 '01;36' 'Run /update-gaia' "$full" "$gaia_latest" '🌍'
       fi
-      if [ -n "$outdated_count" ] && [ "$outdated_count" -gt 0 ] 2>/dev/null; then
-        printf -v full 'Run /update-deps (%d outdated)' "$outdated_count"
-        nudge_set 2 '01;33' 'Run /update-deps' "$full" "$outdated_count" '📦'
+      deps_outdated=0
+      deps_security=0
+      [ -n "$outdated_count" ] && [ "$outdated_count" -gt 0 ] 2>/dev/null && deps_outdated="$outdated_count"
+      [ -n "$security_count" ] && [ "$security_count" -gt 0 ] 2>/dev/null && deps_security="$security_count"
+      if [ "$deps_outdated" -gt 0 ] || [ "$deps_security" -gt 0 ]; then
+        if [ "$deps_outdated" -gt 0 ] && [ "$deps_security" -gt 0 ]; then
+          printf -v full 'Run /update-deps (%d outdated, %d security)' "$deps_outdated" "$deps_security"
+        elif [ "$deps_outdated" -gt 0 ]; then
+          printf -v full 'Run /update-deps (%d outdated)' "$deps_outdated"
+        else
+          printf -v full 'Run /update-deps (%d security)' "$deps_security"
+        fi
+        nudge_set 2 '01;33' 'Run /update-deps' "$full" "$((deps_outdated + deps_security))" '📦'
       fi
       # Both signals are discharged by the same bare `/gaia-harden` run, and no
       # argument selects between them, so they stack into one segment's reason

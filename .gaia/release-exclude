@@ -141,6 +141,8 @@ wiki/decisions/Shell Guard Fixture Discrimination.md
 wiki/decisions/Local Test Runtime.md
 # Design rationale for the /setup-gaia Dependabot opt-in; maintainer kept it internal
 wiki/decisions/Dependabot Security Updates.md
+# Design rationale for treating Dependabot as a data source and resolving advisories in /update-deps; maintainer kept it internal
+wiki/decisions/Dependabot as a Data Source.md
 
 # --- 3. Test harnesses and audit reports ---
 # Smoke / observability harnesses run by maintainers in CI; never invoked

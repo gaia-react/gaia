@@ -13,11 +13,18 @@
  *   - .renovaterc.json
  *   - .github/renovate.json
  *
- * Output JSON: `{ "found": [...] }`. The `found` array deduplicates by
- * tool name (so `["dependabot"]` even when both `.yml` and `.yaml`
- * exist).
+ * Dependabot counts only when a config has an `npm` update entry, because
+ * a config for other ecosystems (an adopter's own GitHub Actions or Docker
+ * updates) does not overlap `/update-deps`. A config that cannot be parsed
+ * is reported as Dependabot with `dependabot_unparseable: true`, since its
+ * contents are unknown.
+ *
+ * Output JSON: `{ "found": [...], "dependabot_unparseable": <bool> }`. The
+ * `found` array deduplicates by tool name (so `["dependabot"]` even when
+ * both `.yml` and `.yaml` exist).
  */
-import {existsSync} from 'node:fs';
+import {load} from 'js-yaml';
+import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
@@ -46,6 +53,36 @@ const RENOVATE_PATHS = [
   ['.renovaterc.json'],
   ['.github', 'renovate.json'],
 ] as const;
+
+type DependabotStatus = 'npm' | 'other' | 'unparseable';
+
+/** Classifies one Dependabot config file by whether it updates npm. */
+const classifyDependabotFile = (filePath: string): DependabotStatus => {
+  let parsed: unknown;
+
+  try {
+    parsed = load(readFileSync(filePath, 'utf8'));
+  } catch {
+    return 'unparseable';
+  }
+
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return 'unparseable';
+  }
+
+  const updates: unknown = (parsed as {updates?: unknown}).updates;
+
+  if (!Array.isArray(updates)) return 'other';
+
+  const hasNpmEntry = updates.some(
+    (entry: unknown) =>
+      typeof entry === 'object' &&
+      entry !== null &&
+      (entry as {'package-ecosystem'?: unknown})['package-ecosystem'] === 'npm'
+  );
+
+  return hasNpmEntry ? 'npm' : 'other';
+};
 
 const printHuman = (found: ToolName[]): void => {
   if (found.length === 0) {
@@ -100,11 +137,16 @@ export const run = (
 
   const found: ToolName[] = [];
 
-  const hasDependabot = DEPENDABOT_PATHS.some((segments) =>
-    existsSync(path.join(repoRoot, ...segments))
-  );
+  const dependabotStatuses = DEPENDABOT_PATHS.map((segments) =>
+    path.join(repoRoot, ...segments)
+  )
+    .filter((filePath) => existsSync(filePath))
+    .map((filePath) => classifyDependabotFile(filePath));
+  const dependabotUnparseable = dependabotStatuses.includes('unparseable');
 
-  if (hasDependabot) found.push('dependabot');
+  if (dependabotUnparseable || dependabotStatuses.includes('npm')) {
+    found.push('dependabot');
+  }
 
   const hasRenovate = RENOVATE_PATHS.some((segments) =>
     existsSync(path.join(repoRoot, ...segments))
@@ -113,7 +155,12 @@ export const run = (
   if (hasRenovate) found.push('renovate');
 
   if (json) {
-    process.stdout.write(`${JSON.stringify({found})}\n`);
+    process.stdout.write(
+      `${JSON.stringify({
+        dependabot_unparseable: dependabotUnparseable,
+        found,
+      })}\n`
+    );
   } else {
     printHuman(found);
   }

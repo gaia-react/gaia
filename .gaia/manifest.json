@@ -124,6 +124,7 @@
     ".claude/skills/tdd/refactoring.md": "owned",
     ".claude/skills/tdd/SKILL.md": "owned",
     ".claude/skills/update-deps/references/override-audit.md": "owned",
+    ".claude/skills/update-deps/references/security.md": "owned",
     ".claude/skills/update-deps/references/transitive-refresh.md": "owned",
     ".claude/skills/update-deps/references/wave-a.md": "owned",
     ".claude/skills/update-deps/references/wave-b-group.md": "owned",
@@ -695,7 +696,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-10-04T06:40:20.757Z",
+  "generated": "2026-10-04T07:34:18.493Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

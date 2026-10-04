@@ -37,6 +37,15 @@ const captureStdio = (): {
   };
 };
 
+const NPM_CONFIG =
+  'version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n';
+
+const ACTIONS_CONFIG =
+  'version: 2\nupdates:\n  - package-ecosystem: github-actions\n    directory: /\n';
+
+const readOutput = (stdio: {out: string[]}): Record<string, unknown> =>
+  JSON.parse(stdio.out.join('').trim()) as Record<string, unknown>;
+
 const writeFileAt = (root: string, relPath: string, content: string): void => {
   const target = path.join(root, relPath);
   mkdirSync(path.dirname(target), {recursive: true});
@@ -73,13 +82,13 @@ describe('setup-ci warn-existing-tools', () => {
     [
       'detects .github/dependabot.yml',
       '.github/dependabot.yml',
-      'version: 2\n',
+      NPM_CONFIG,
       ['dependabot'],
     ],
     [
       'detects .github/dependabot.yaml',
       '.github/dependabot.yaml',
-      'version: 2\n',
+      NPM_CONFIG,
       ['dependabot'],
     ],
     ['detects renovate.json', 'renovate.json', '{}\n', ['renovate']],
@@ -111,7 +120,7 @@ describe('setup-ci warn-existing-tools', () => {
   });
 
   test('reports both when both exist', () => {
-    writeFileAt(sandbox.root, '.github/dependabot.yml', 'version: 2\n');
+    writeFileAt(sandbox.root, '.github/dependabot.yml', NPM_CONFIG);
     writeFileAt(sandbox.root, 'renovate.json', '{}\n');
 
     const exit = run(['--json'], {cwd: sandbox.root});
@@ -125,8 +134,8 @@ describe('setup-ci warn-existing-tools', () => {
   });
 
   test('deduplicates when both .yml and .yaml exist', () => {
-    writeFileAt(sandbox.root, '.github/dependabot.yml', 'version: 2\n');
-    writeFileAt(sandbox.root, '.github/dependabot.yaml', 'version: 2\n');
+    writeFileAt(sandbox.root, '.github/dependabot.yml', NPM_CONFIG);
+    writeFileAt(sandbox.root, '.github/dependabot.yaml', NPM_CONFIG);
 
     const exit = run(['--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);
@@ -138,8 +147,54 @@ describe('setup-ci warn-existing-tools', () => {
     expect(parsed.found).toEqual(['dependabot']);
   });
 
-  test('emits a human report without --json', () => {
+  test('a config with only non-npm entries reports nothing', () => {
+    writeFileAt(sandbox.root, '.github/dependabot.yml', ACTIONS_CONFIG);
+
+    const exit = run(['--json'], {cwd: sandbox.root});
+    expect(exit).toBe(0);
+
+    expect(readOutput(stdio)).toEqual({
+      dependabot_unparseable: false,
+      found: [],
+    });
+  });
+
+  test('a config with no updates list reports nothing', () => {
     writeFileAt(sandbox.root, '.github/dependabot.yml', 'version: 2\n');
+
+    run(['--json'], {cwd: sandbox.root});
+
+    expect(readOutput(stdio).found).toEqual([]);
+  });
+
+  test('an npm entry among other ecosystems reports dependabot', () => {
+    writeFileAt(
+      sandbox.root,
+      '.github/dependabot.yml',
+      `${ACTIONS_CONFIG}  - package-ecosystem: npm\n    directory: /\n`
+    );
+
+    run(['--json'], {cwd: sandbox.root});
+
+    expect(readOutput(stdio)).toEqual({
+      dependabot_unparseable: false,
+      found: ['dependabot'],
+    });
+  });
+
+  test('an unparseable config reports dependabot and flags it unparseable', () => {
+    writeFileAt(sandbox.root, '.github/dependabot.yml', 'updates: [unclosed\n');
+
+    run(['--json'], {cwd: sandbox.root});
+
+    expect(readOutput(stdio)).toEqual({
+      dependabot_unparseable: true,
+      found: ['dependabot'],
+    });
+  });
+
+  test('emits a human report without --json', () => {
+    writeFileAt(sandbox.root, '.github/dependabot.yml', NPM_CONFIG);
 
     const exit = run([], {cwd: sandbox.root});
     expect(exit).toBe(0);

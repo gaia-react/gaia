@@ -129,7 +129,8 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Worthiness Audit]]: advisory two-axis (honesty + worthiness) review of emergent-surface tests; fresh-context reviewer proposes keep/fix/delete, deletes human-gated, audit ledger sibling to the RED ledger; judge-independent structural a11y floor for the non-triviality signal; two-tier end-of-task surfacing.
 - [[Worthiness Presence Gate]]: merge-time `gh pr merge` hook requiring each changed emergent test to carry a worthiness-ledger line matching its current content; presence + signal match only (never the verdict), scoped to the PR's changed emergent tests, fail-open.
 <!-- gaia:maintainer-only:start -->
-- [[Dependabot Security Updates]]: `/setup-gaia` opt-in that merges a grouped, security-updates-only npm entry into `.github/dependabot.yml` and turns on the repository's alert/security-update settings.
+- [[Dependabot as a Data Source]]: Dependabot alerts feed `/update-deps`, which resolves advisories through the local quality gate; GAIA renders no Dependabot config and keeps automated security fixes off.
+- [[Dependabot Security Updates]]: superseded opt-in design for security-update pull requests, kept as the record of what it chose and why it was reversed.
 - [[Bundle-time Scrub]]: marker-strip + leak-check + runtime-deps; closes the audit-round loop with build-time enforcement.
 <!-- gaia:maintainer-only:end -->
 
@@ -158,7 +159,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Claude Hooks]]
 - [[GAIA Scripts]]: the index of `.gaia/scripts/`: one row per root file with its family, ship status, invoker, and what it is, plus the subdirectories and why the directory stays flat.
 - [[OS Sandbox]]: two-tier sandbox-enablement preference (owner recommends, each machine resolves) and the honest `.env` deny-merge boundary.
-- [[Project Config]]: `.gaia/project.json`, the committed team-shared settings file (sandbox recommendation, isolation policy, Dependabot answer), its writers and readers, and why `/update-gaia` never touches it.
+- [[Project Config]]: `.gaia/project.json`, the committed team-shared settings file (sandbox recommendation, isolation policy), its writers and readers, and why `/update-gaia` never touches it.
 - [[Package Descriptor]]: the package registry `.gaia/packages.json` and per-package `gaia.package.json`; who reads them, the fail-closed rule, and the frontend launch scope.
 - [[Claude Integration Conventions]]: Conventions for Claude's config surface: extension points, monorepo retrofit, service swaps, domain isolation.
 - [[Local Working State]]: the gitignored `.gaia/local/` working-state folder and its pointer to the state registry; the SessionStart janitor's wiki-landing catch-up.

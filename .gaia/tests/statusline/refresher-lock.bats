@@ -121,7 +121,7 @@ wait_for_entered() {
 }
 
 @test "a run inside the TTL neither takes nor leaves the lock" {
-  printf '{"checkedAt":%s}' "$(date +%s)" > "$CACHE_FILE"
+  printf '{"checkedAt":%s,"securitySource":"dependabot"}' "$(date +%s)" > "$CACHE_FILE"
   run bash "$REFRESH_ROOT/.gaia/scripts/check-updates.sh"
   [ "$status" -eq 0 ]
   [ ! -e "$LOCK_DIRECTORY" ]

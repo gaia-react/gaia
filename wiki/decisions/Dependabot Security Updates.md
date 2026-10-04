@@ -1,6 +1,6 @@
 ---
 type: decision
-status: active
+status: superseded
 priority: 2
 date: 2026-09-29
 created: 2026-09-29
@@ -9,6 +9,8 @@ tags: [decision, dependencies, security, ci]
 ---
 
 # Decision: Opt-in Dependabot Security Updates
+
+Superseded by [[Dependabot as a Data Source]]: Dependabot is now a data source only and GAIA no longer offers security-update pull requests.
 
 ## Decision
 

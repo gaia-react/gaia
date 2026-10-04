@@ -23,4 +23,5 @@ Report back to the orchestrator with:
 
 - Override audit results (removed / retained)
 - Wave A results (updated packages, any skipped)
+- For each entry the orchestrator marked as a security chain-head bump: landed, skipped, or reverted with the batch (the orchestrator then checks whether its advisory cleared)
 - Quality gate results

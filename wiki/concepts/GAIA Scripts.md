@@ -56,7 +56,7 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 | `check-hook-command-rooting.sh` | yes | GAIA's own invariant harness (maintainer-side) | Asserts every hook command in `.claude/settings.json` is rooted at the repository top level rather than at the working directory. |
 | `check-hook-scope-manifest.sh` | yes | GAIA's own invariant harness (maintainer-side) | Scans every hook for a `.gaia/local` path built without a resolved root. |
 | `check-main-root-derivation.sh` | no | GAIA's own invariant harness | Catches a hand-rolled main-checkout derivation inlined into a consumer that declares no resolver at all. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
-| `check-updates.sh` | yes | `SessionStart`, the statusline | Background check that feeds the statusline nudges: a newer GAIA release, the residue candidate count, and `wikiDriftCount` (commits the wiki trails HEAD by, from `gaia wiki state`). It also sweeps stale per-session context files. |
+| `check-updates.sh` | yes | `SessionStart`, the statusline | Background check, started by the statusline, that feeds its nudges: a newer GAIA release, the outdated-package and open-advisory counts for `/update-deps`, the residue candidate count, and `wikiDriftCount` (commits the wiki trails HEAD by, from `gaia wiki state`). It also sweeps stale per-session context files. |
 
 ### `cost-`
 

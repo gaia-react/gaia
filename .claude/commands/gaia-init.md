@@ -43,28 +43,28 @@ Every gate is one of two tiers. The tier is fixed here, do not reclassify by jud
 
 **HARD-BLOCK** (consequential / irreversible / identity). On non-response in interactive mode: re-ask and wait for an explicit answer. Never apply a default and move on, never guess.
 
-| Gate | Where |
-|---|---|
-| Run mode (this section) | before Step 0 |
-| pnpm upgrade consent | Step 0c |
-| Primary app language (+ "Other" free-text) | Step 2, Q1 |
-| Additional languages / i18n teardown, `STRIP_I18N` (+ free-text) | Step 2, Q2 |
-| CODEOWNERS GitHub handle (HARD-BLOCK only when `gh` can't detect it) | Step 2, Q3 |
-| Project title | Step 2, Q4 |
-| kebab-case slug | Step 2, Q5 |
+| Gate                                                                 | Where         |
+| -------------------------------------------------------------------- | ------------- |
+| Run mode (this section)                                              | before Step 0 |
+| pnpm upgrade consent                                                 | Step 0c       |
+| Primary app language (+ "Other" free-text)                           | Step 2, Q1    |
+| Additional languages / i18n teardown, `STRIP_I18N` (+ free-text)     | Step 2, Q2    |
+| CODEOWNERS GitHub handle (HARD-BLOCK only when `gh` can't detect it) | Step 2, Q3    |
+| Project title                                                        | Step 2, Q4    |
+| kebab-case slug                                                      | Step 2, Q5    |
 
 **SAFE-DEFAULT** (reversible, the recommended default is the safe outcome). On non-response in interactive mode: re-ask once; if still no answer, apply the stated default, name it plainly ("Defaulting the sandbox recommendation to not recommended, you can reconfigure later"), and continue. Do not claim the user is absent.
 
-| Gate | Default on non-response | Where |
-|---|---|---|
-| Sandbox recommendation | `false` (don't recommend) | Step 9 |
+| Gate                      | Default on non-response        | Where  |
+| ------------------------- | ------------------------------ | ------ |
+| Sandbox recommendation    | `false` (don't recommend)      | Step 9 |
 | Team git isolation policy | flag omitted (key stays unset) | Step 9 |
 
 ### Free-text identity values are never fabricated
 
 The CODEOWNERS GitHub handle, and any similar free-text identity field, must come from the user. A guessed handle is a silent correctness bug: a wrong owner ships in `.github/CODEOWNERS`. Never write a plausible-looking guess.
 
-**Detecting the handle is not fabricating it.** The GitHub CLI, when installed and authenticated, reports the user's *own* authenticated login. That is the user's real identity, not a guess, so using it never violates this rule. There is one authoritative detection method, used everywhere `/gaia-init` needs the handle:
+**Detecting the handle is not fabricating it.** The GitHub CLI, when installed and authenticated, reports the user's _own_ authenticated login. That is the user's real identity, not a guess, so using it never violates this rule. There is one authoritative detection method, used everywhere `/gaia-init` needs the handle:
 
 ```bash
 handle=""
@@ -85,15 +85,15 @@ When the user chose Automatic, first detect the project folder name (`basename "
 
 > **Automatic mode. Applying these defaults:**
 >
-> | Setting | Value | Reversible? |
-> |---|---|---|
-> | Primary language | {detected language, e.g. English (en)} | Costly, re-run i18n |
-> | Additional languages | None, i18n scaffolding kept | Yes, fully |
-> | Project title | {title-cased folder name} | Yes, re-run rename |
-> | Slug | {folder name} | Yes, re-run rename |
-> | CODEOWNERS handle | {gh-detected handle when available, else `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder} | Placeholder: one-line edit required. Detected handle: none |
-> | Sandbox recommendation | Not recommended | Yes, reconfigure |
-> | Team git isolation policy | Left unset, `/setup-gaia` asks later | Yes, reconfigure |
+> | Setting                   | Value                                                                                   | Reversible?                                                |
+> | ------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+> | Primary language          | {detected language, e.g. English (en)}                                                  | Costly, re-run i18n                                        |
+> | Additional languages      | None, i18n scaffolding kept                                                             | Yes, fully                                                 |
+> | Project title             | {title-cased folder name}                                                               | Yes, re-run rename                                         |
+> | Slug                      | {folder name}                                                                           | Yes, re-run rename                                         |
+> | CODEOWNERS handle         | {gh-detected handle when available, else `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder} | Placeholder: one-line edit required. Detected handle: none |
+> | Sandbox recommendation    | Not recommended                                                                         | Yes, reconfigure                                           |
+> | Team git isolation policy | Left unset, `/setup-gaia` asks later                                                    | Yes, reconfigure                                           |
 
 Exactly one row per setting. For the CODEOWNERS row, show the gh-detected handle when detection succeeds (it is the user's own authenticated identity, not a guess), otherwise the `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder. **Never** put a guessed or git-config-derived handle there: the only non-placeholder value allowed is the gh-detected login.
 
@@ -181,7 +181,7 @@ pnpm install --config.confirm-modules-purge=false
 
 If install fails, stop and report the error. Do not continue.
 
-Then run `/update-deps` to bring all packages to their latest compatible versions before continuing. If `/update-deps` reports anything as **skipped** with a reason, surface it so the user can investigate, but proceed. Note `/update-deps` runs its own quality gate at the end, if it halts on a quality-gate failure or peer-dep error, stop here and surface the report to the user; do not silently continue.
+Then run `/update-deps` to bring all packages to their latest compatible versions before continuing. Tell it that `/gaia-init` invoked it: that run resolves every security advisory it can, asks no acceptance question (an advisory it cannot resolve is reported still open), and reverts a failing resolution on its own. If `/update-deps` reports anything as **skipped** with a reason, surface it so the user can investigate, but proceed. Note `/update-deps` runs its own quality gate at the end, if it halts on a quality-gate failure or peer-dep error, stop here and surface the report to the user; do not silently continue.
 
 ## Step 2: Gather user input (in the user's language)
 
@@ -380,6 +380,7 @@ GAIA bundles project-scoped skills, the generic ones at `.claude/skills/` (`tdd`
   ```
 
   Each strip line is idempotent and no-ops when its artifact is absent (e.g. when React Doctor's dependency install was skipped by a trust policy, or when no non-Claude agent was detected so no `.agents/` copy was written). Step 6 copies the pre-install snapshot rather than checking the lockfile out of git, so lockfile edits made before the install survive it. The block delete rewrites the hook in place with `cat ... >` rather than `mv`, which keeps its executable bit. The `git config` line re-arms the hook path: a clone whose dependencies were installed before `git init` skipped `prepare`, so nothing else would set it. Verify: `grep -c 'react-doctor hook' .githooks/pre-commit` prints 0, `git diff --quiet -- .githooks/pre-commit` exits 0, and `git config --local --get core.hooksPath` prints `.githooks`. After this, `git status` shows no React Doctor workflow and no `.agents/` skill copy, `package.json` carries no `react-doctor` entry, and `pnpm-lock.yaml` carries no change the install made; only the Claude Code skill remains. Do not report a lingering workflow, `.agents/` copy, or commit hook to the user; there is none.
+
 - [Playwright CLI](https://github.com/microsoft/playwright-cli) binary: `npm install -g @playwright/cli@latest`
   Installs the global `playwright-cli` binary the bundled skill shells out to. `/update-deps` keeps the global binary current; `wiki/dependencies/playwright-cli.md` covers the fallback and the deprecated-package trap. Used for E2E debugging and authoring Playwright specs with minimal token cost, each interaction is one shell call instead of a round-trip through an MCP session.
 - [Serena](https://github.com/oraios/serena) MCP server: semantic code-search and editing tools (find symbol, find references, replace symbol body) backed by language servers, pulls Claude away from grep-the-world toward symbol-aware operations. First, ensure `uv` is available, tell the user: "Checking for uv…" then run:
