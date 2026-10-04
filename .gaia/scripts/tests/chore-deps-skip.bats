@@ -396,6 +396,18 @@ sandbox_predicate() {
   grep -qF -- "gaia-packages: " <<<"$STDERR_TEXT"
 }
 
+@test "security resolutions: an override plus the lockfile under a chore(deps) subject is dependency-only" {
+  use_frontend_registry
+  sandbox_predicate 'chore(deps): resolve 1 security advisory (cookie)' $'pnpm-workspace.yaml\npnpm-lock.yaml'
+  [ "$output" = "true" ]
+}
+
+@test "security resolutions: the same change plus a frontend source file is not dependency-only" {
+  use_frontend_registry
+  sandbox_predicate 'chore(deps): resolve 1 security advisory (cookie)' $'pnpm-workspace.yaml\npnpm-lock.yaml\nfrontend/app/root.tsx'
+  [ "$output" = "false" ]
+}
+
 @test "path-dot layout: root package.json plus the lockfile is dependency-only" {
   use_root_registry
   sandbox_predicate 'chore(deps): bump x' $'package.json\npnpm-lock.yaml'

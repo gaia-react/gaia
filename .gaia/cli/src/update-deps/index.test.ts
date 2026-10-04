@@ -103,4 +103,32 @@ describe('update-deps namespace router', () => {
       );
     }
   );
+
+  test('namespace help lists every update-deps verb', async () => {
+    const exit = await run([]);
+    expect(exit).toBe(0);
+
+    for (const verb of [
+      'run',
+      'decline',
+      'global-tools',
+      'advisories',
+      'advisory-landed',
+      'dismiss-alert',
+      'write-security-cache',
+      'check-security-override',
+    ]) {
+      expect(stdio.outputs.join('')).toContain(`  ${verb} `);
+    }
+  });
+
+  test.each([
+    'dismiss-alert',
+    'write-security-cache',
+    'check-security-override',
+  ])('%s --help routes to its handler and exits 0', async (verb) => {
+    const exit = await run([verb, '--help']);
+    expect(exit).toBe(0);
+    expect(stdio.outputs.join('')).toContain(`Usage: gaia update-deps ${verb}`);
+  });
 });

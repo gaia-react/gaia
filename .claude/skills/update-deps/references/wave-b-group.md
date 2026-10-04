@@ -27,17 +27,17 @@ You are upgrading the `{GROUP}` dependency group from `{FROM}` to `{TO}`.
 
 Migration guide URLs:
 
-| Group        | URL                                                                        |
-| ------------ | -------------------------------------------------------------------------- |
-| react-router | `https://reactrouter.com/upgrading/v7`                                     |
-| react        | `https://react.dev/blog` (find the major-version post)                     |
-| tailwindcss  | `https://tailwindcss.com/docs/upgrade-guide`                               |
-| storybook    | `https://storybook.js.org/docs/migration-guide`                            |
-| vitest       | `https://vitest.dev/guide/migration`                                       |
-| playwright   | `https://playwright.dev/docs/release-notes`                                |
-| eslint       | `https://eslint.org/docs/latest/use/migrate-to-9` (or relevant X)          |
+| Group                | URL                                                                        |
+| -------------------- | -------------------------------------------------------------------------- |
+| react-router         | `https://reactrouter.com/upgrading/v7`                                     |
+| react                | `https://react.dev/blog` (find the major-version post)                     |
+| tailwindcss          | `https://tailwindcss.com/docs/upgrade-guide`                               |
+| storybook            | `https://storybook.js.org/docs/migration-guide`                            |
+| vitest               | `https://vitest.dev/guide/migration`                                       |
+| playwright           | `https://playwright.dev/docs/release-notes`                                |
+| eslint               | `https://eslint.org/docs/latest/use/migrate-to-9` (or relevant X)          |
 | singleton:typescript | `https://www.typescriptlang.org/docs/handbook/release-notes/overview.html` |
-| msw          | `https://mswjs.io/docs/migrations`                                         |
-| vite         | `https://vite.dev/guide/migration`                                         |
+| msw                  | `https://mswjs.io/docs/migrations`                                         |
+| vite                 | `https://vite.dev/guide/migration`                                         |
 
-Report back: updated packages, breaking changes applied, any skipped reason, quality gate results.
+Report back: updated packages, breaking changes applied, any skipped reason, quality gate results, and, when the orchestrator dispatched this group as a security chain-head bump, whether the group landed or was reverted.

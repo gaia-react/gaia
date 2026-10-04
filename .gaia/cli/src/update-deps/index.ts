@@ -8,9 +8,12 @@ import {structuredError} from '../stderr.js';
 import {lookupOwn} from '../util/argv.js';
 import {run as runAdvisories} from './advisories.js';
 import {run as runAdvisoryLanded} from './advisory-landed.js';
+import {run as runCheckSecurityOverride} from './check-security-override.js';
 import {run as runDecline} from './decline.js';
+import {run as runDismissAlert} from './dismiss-alert.js';
 import {run as runGlobalTools} from './global-tools.js';
 import {run as runEmit} from './run.js';
+import {run as runWriteSecurityCache} from './write-security-cache.js';
 
 const HELP_TEXT = `Usage: gaia update-deps <subcommand> [args]
 
@@ -31,6 +34,16 @@ const HELP_TEXT = `Usage: gaia update-deps <subcommand> [args]
   advisory-landed --package <name> --vulnerable-range <range>
                                               Exit 0 when no installed version
                                               of <name> is in <range>.
+  dismiss-alert --alert <n> --reason <tolerable_risk|not_used> --comment <text> --confirmed
+                                              Dismiss one Dependabot alert
+                                              after confirmation (never in
+                                              CI).
+  write-security-cache --count <n> --source <dependabot|pnpm-audit> [--reason <tokens>]
+                                              Rewrite the update-check cache's
+                                              security fields.
+  check-security-override --key <k> --value <v> --package <name> --first-patched <version>
+                                              Validate a security-floor
+                                              override entry.
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
@@ -42,9 +55,12 @@ const SUBCOMMAND_HANDLERS: Readonly<
 > = {
   advisories: runAdvisories,
   'advisory-landed': runAdvisoryLanded,
+  'check-security-override': runCheckSecurityOverride,
   decline: runDecline,
+  'dismiss-alert': runDismissAlert,
   'global-tools': runGlobalTools,
   run: runEmit,
+  'write-security-cache': runWriteSecurityCache,
 };
 
 export const run = async (argv: readonly string[]): Promise<number> => {

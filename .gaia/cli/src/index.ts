@@ -44,7 +44,7 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
   harden-ledger list|record|is-suppressed|prune|snapshot
   harden-tally
   update merge-workspace|merge-audit-ci|merge-region|regen-regions
-  update-deps run|decline
+  update-deps run|decline|global-tools|advisories|advisory-landed|dismiss-alert|write-security-cache|check-security-override
   init strip-branding|configure-i18n|rename|wire-statusline|bootstrap-env|write-project-config|finalize|resume
   setup status|mark-step|finalize
   setup-ci detect-remote|warn-existing-tools|check-admin|enable-delete-branch|write-isolation-policy|configure-dependabot-alerts
