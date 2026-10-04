@@ -92,7 +92,11 @@ The Playwright axe scan covers every page and every story in light and dark, wit
 
 ## Distribution
 
-`frontend/app/styles/theme.css` and `frontend/components.json` ship `shared`, so `/update-gaia` merges an adopter's token values and added ui components instead of overwriting them. GAIA-shipped `ui/<name>.tsx` files ship `owned`. The classes are set in `.gaia/cli/src/release/manifest.ts`.
+`frontend/app/styles/theme.css` and `frontend/components.json` ship `shared`, so `/update-gaia` merges an adopter's token values and added ui components instead of overwriting them. GAIA-shipped `ui/<name>.tsx` files ship `owned`.
+
+<!-- gaia:maintainer-only:start -->
+The classes are set in `.gaia/cli/src/release/manifest.ts`.
+<!-- gaia:maintainer-only:end -->
 
 ## Related
 
