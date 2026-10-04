@@ -188,6 +188,7 @@
     ".gaia/scripts/cost-represented.sh": "owned",
     ".gaia/scripts/debt-count-refresh.sh": "owned",
     ".gaia/scripts/debt-stale-claims.sh": "owned",
+    ".gaia/scripts/dev-smoke.sh": "owned",
     ".gaia/scripts/gh-artifact-lib.sh": "owned",
     ".gaia/scripts/ledger-path-lib.sh": "owned",
     ".gaia/scripts/ledger-status-migrate.sh": "owned",
@@ -694,7 +695,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-10-04T02:52:50.207Z",
+  "generated": "2026-10-04T06:40:20.757Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",
