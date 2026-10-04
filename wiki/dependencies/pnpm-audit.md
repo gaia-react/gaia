@@ -15,6 +15,7 @@ tags: [dependency, security, quality]
 ## Conventions
 
 - Run: `pnpm audit --json || true` (parse the JSON regardless of exit code; `pnpm audit` exits non-zero when advisories exist)
+- `.gaia/scripts/check-updates.sh` and `/update-deps` (both through `gaia update-deps advisories`) read `.gaia/local/dep-audit-baseline.json` (see below).
 - Runs automatically pre-merge inside the [[Code Review Audit Agent]] (alongside `react-doctor` and `knip`), dispatched in the same parallel advisory call.
 - Not part of the [[Quality Gate]] (pre-commit): it is a read-only review surface, not a commit gate.
 
@@ -23,7 +24,7 @@ tags: [dependency, security, quality]
 Two filters keep the same unfixable transitive advisory from spamming every review:
 
 1. **Severity threshold**: only `high` and `critical` advisories are candidates (drops the long tail of low/moderate transitive noise). Within-run dedup is free: the JSON is keyed by advisory ID.
-2. **Baseline allowlist**: `.gaia/local/dep-audit-baseline.json` (machine-local, gitignored). Acknowledge an unfixable advisory by its ID and it is suppressed (count-only) on later reviews:
+2. **Baseline allowlist**: `.gaia/local/dep-audit-baseline.json` (machine-local, gitignored). Acknowledge an unfixable advisory by its ID and it is suppressed (count-only) on later reviews. While Dependabot alerts are readable, a baseline acknowledgment no longer reduces the statusline security count; `/update-deps` converts it to an alert dismissal, which does:
 
    ```jsonc
    {"acknowledged": [{"id": 1098765, "module": "tough-cookie", "note": "why"}]}
@@ -33,7 +34,7 @@ Two filters keep the same unfixable transitive advisory from spamming every revi
 
 ## Surfaces
 
-No workflow GAIA renders into your project runs `pnpm audit` on a schedule or opens security PRs or issues. The `pnpm audit` surfaces are `/update-deps`'s override audit and its report of residual advisories (`wiki/decisions/pnpm.md`), and this local, read-only advisory check inside the Code Review Audit Agent; none files a security PR or issue on its own. There is no CI blocking path.
+No workflow GAIA renders into your project runs `pnpm audit` on a schedule or opens security PRs or issues. The `pnpm audit` surfaces are `/update-deps`'s override audit and its Security section (`wiki/decisions/pnpm.md`), the background advisory count behind the statusline, and this local, read-only advisory check inside the Code Review Audit Agent; none files a security PR or issue on its own. There is no CI blocking path.
 
 ## Acting on output
 
@@ -41,6 +42,6 @@ High/critical advisories surface in the audit's advisory bucket, never in Critic
 
 1. **Bump**: a `patched_versions` range exists; update the dependency to a patched version.
 2. **Override**: no patched range and the advisory is transitive; pin a safe version via an `overrides` entry in `pnpm-workspace.yaml`. Apply it with `pnpm dedupe`, not `pnpm install`, which does not re-resolve an overrides-only change; see [[pnpm-overrides]].
-3. **Acknowledge**: unfixable for now; add the advisory `id` to `.gaia/local/dep-audit-baseline.json` so it is suppressed (count-only) on later reviews.
+3. **Accept**: unfixable for now. When alerts are readable, acceptance is a dismissal of the Dependabot alert, made by `/update-deps` after you confirm it; otherwise it is an entry for the advisory `id` in `.gaia/local/dep-audit-baseline.json`, which suppresses it (count-only) on later reviews.
 
 See [[Code Review Audit Agent]], [[PR Merge Workflow]], [[Quality Gate]], [[pnpm-overrides]].
