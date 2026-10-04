@@ -63,6 +63,29 @@ setup() {
   [ "$output" = "tests/names-gone.bats" ]
 }
 
+@test "a renamed file still selects the suites naming its old basename" {
+  git -C "$FIXTURE" mv gone.sh renamed.sh
+  git -C "$FIXTURE" commit -q -m rename
+
+  run --separate-stderr bash "$SCRIPT" --dir "$FIXTURE" "$BASE" HEAD
+  [ "$status" -eq 0 ]
+  [ "$output" = "tests/names-gone.bats" ] || {
+    printf 'got:\n%s\n' "$output" >&2
+    return 1
+  }
+}
+
+@test "a renamed file selects the suites naming its old basename in the default mode" {
+  git -C "$FIXTURE" mv gone.sh renamed.sh
+
+  run --separate-stderr bash "$SCRIPT" --dir "$FIXTURE"
+  [ "$status" -eq 0 ]
+  [ "$output" = "tests/names-gone.bats" ] || {
+    printf 'got:\n%s\n' "$output" >&2
+    return 1
+  }
+}
+
 @test "a changed suite selects itself even when nothing names it" {
   printf '# edited\n' >> "$FIXTURE/tests/unrelated.bats"
   git -C "$FIXTURE" commit -q -am edit-suite

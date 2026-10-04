@@ -15,6 +15,10 @@
 # (`PR Merge Workflow.md` becomes `PR`, `Merge`, `Workflow.md`), and those
 # fragments match nearly every suite.
 #
+# Rename detection is off, so a renamed file lists both its old and new path.
+# With it on, only the new path prints and a suite still naming the old
+# basename, the one most likely to break, would go unselected.
+#
 # Usage:
 #   bash .gaia/scripts/bats-suites-for-change.sh [--dir <repo>] [<git-diff-arg>...]
 #
@@ -40,7 +44,7 @@ while [ "$#" -gt 0 ]; do
       shift 2
       ;;
     --help|-h)
-      sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     --)
@@ -72,7 +76,7 @@ suite_list="$(mktemp)" || { rm -f "$changed_list"; die_input "cannot create a te
 trap 'rm -f "$changed_list" "$suite_list"' EXIT
 
 if [ "${#diff_arguments[@]}" -gt 0 ]; then
-  git -C "$repository_root" diff --name-only -z ${diff_arguments[@]+"${diff_arguments[@]}"} -- > "$changed_list" \
+  git -C "$repository_root" diff --name-only --no-renames -z ${diff_arguments[@]+"${diff_arguments[@]}"} -- > "$changed_list" \
     || die_input "git diff ${diff_arguments[*]} failed"
 else
   default_branch="$(git -C "$repository_root" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null)"
@@ -80,7 +84,7 @@ else
   [ -n "$default_branch" ] || default_branch="main"
   merge_base="$(git -C "$repository_root" merge-base "refs/remotes/origin/$default_branch" HEAD 2>/dev/null)" \
     || die_input "no merge base with refs/remotes/origin/$default_branch; pass a range, e.g. <base> HEAD"
-  git -C "$repository_root" diff --name-only -z "$merge_base" -- > "$changed_list" \
+  git -C "$repository_root" diff --name-only --no-renames -z "$merge_base" -- > "$changed_list" \
     || die_input "git diff $merge_base failed"
   git -C "$repository_root" ls-files --others --exclude-standard -z >> "$changed_list" \
     || die_input "listing untracked files failed"
