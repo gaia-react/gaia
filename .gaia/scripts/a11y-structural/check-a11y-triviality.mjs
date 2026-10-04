@@ -32,9 +32,9 @@
 //                           the file identity for .ts-vs-.tsx script kind)
 //   ... --stories <path>   (read the component's stories from this path)
 //
-// When --stories is not given, the sibling `index.stories.tsx` in the test's
-// folder is read from disk when present; absent it, condition B simply cannot
-// fire and only condition A applies.
+// When --stories is not given, the sibling stories file in the test's folder
+// (`<base>.test.tsx` -> `<base>.stories.tsx`) is read from disk when present;
+// absent it, condition B simply cannot fire and only condition A applies.
 //
 // Output (stdout): one JSON object,
 //   {"file":"...","verdict":"trivial"|"non-trivial"|"not-a11y","findings":[{fullName,reason}]}
@@ -90,13 +90,16 @@ try {
 }
 
 // Resolve the stories source: an explicit --stories path, else the sibling
-// index.stories.tsx in the test's folder (skipped under --stdin, where there is
-// no on-disk sibling to resolve against). A missing stories file is not an
+// <base>.stories.tsx in the test's folder (skipped under --stdin, where there
+// is no on-disk sibling to resolve against). A missing stories file is not an
 // error; condition B simply cannot fire without it.
 let storiesSource;
 let storiesPath = storiesArg;
 if (!storiesPath && !useStdin) {
-  storiesPath = path.join(path.dirname(filePath), 'index.stories.tsx');
+  const storiesName = path
+    .basename(filePath)
+    .replace(/\.test\.tsx?$/i, '.stories.tsx');
+  storiesPath = path.join(path.dirname(filePath), storiesName);
 }
 if (storiesPath) {
   try {

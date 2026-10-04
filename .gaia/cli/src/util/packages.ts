@@ -103,6 +103,8 @@ export const BUILTIN_DESCRIPTOR: PackageDescriptor = {
     emergentTests: [
       'app/components/**/*.test.ts',
       'app/components/**/*.test.tsx',
+      'app/pages/**/*.test.ts',
+      'app/pages/**/*.test.tsx',
       '.playwright/**/*.spec.ts',
       '.playwright/**/*.spec.tsx',
       '.playwright/**/*.test.ts',
@@ -136,6 +138,7 @@ export const BUILTIN_DESCRIPTOR: PackageDescriptor = {
       'app/services/**',
       'app/hooks/**',
       'app/components/**/*.ts',
+      'app/pages/**/*.ts',
     ],
     tddUnitTests: ['app/**/*.test.ts', 'app/**/*.test.tsx'],
   },

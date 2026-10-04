@@ -48,7 +48,7 @@ Component extraction:
 **From `frontend/.claude/rules/routes.md`:**
 
 - Route files (`app/routes/`) must be thin: only loader/action, meta (via loader), Zod schemas, and rendering the page component. No UI code, hooks, state, or sub-components.
-- Page components live at `app/pages/{Group}/{PascalName}Page/index.tsx`
+- Page components live at `app/pages/<route path>/page.tsx` (layout rule: `frontend/.claude/rules/coding-guidelines-react.md`)
 - Loader data: use `useLoaderData<typeof loader>()` (import the `loader` type from the route file) or `useLoaderData<LoaderData>()` (import `LoaderData` from a sibling `types.ts`). Never define the type inline in the page component file.
 - Meta tags: set in the loader via server-side i18n (`getInstance(context)`), then render them in the route component or pass them to the page component, which renders them (the legal pages do this)
 - Route files are flat dot-delimited files discovered by `@react-router/fs-routes`; group prefixes and their meanings are owned by `wiki/modules/Routing.md`. `actions.*` / `resources.*` files are no-UI data-endpoint routes with no page component: the lint carve-out only lets UI layers import their typed action/loader exports, and the no-UI-code rule above still applies to them.

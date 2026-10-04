@@ -18232,6 +18232,8 @@ var BUILTIN_DESCRIPTOR = {
     emergentTests: [
       "app/components/**/*.test.ts",
       "app/components/**/*.test.tsx",
+      "app/pages/**/*.test.ts",
+      "app/pages/**/*.test.tsx",
       ".playwright/**/*.spec.ts",
       ".playwright/**/*.spec.tsx",
       ".playwright/**/*.test.ts",
@@ -18264,7 +18266,8 @@ var BUILTIN_DESCRIPTOR = {
       "app/utils/**",
       "app/services/**",
       "app/hooks/**",
-      "app/components/**/*.ts"
+      "app/components/**/*.ts",
+      "app/pages/**/*.ts"
     ],
     tddUnitTests: ["app/**/*.test.ts", "app/**/*.test.tsx"]
   },
@@ -23855,9 +23858,18 @@ var renderTemplate = (templatePath, vars) => substituteVars(readFileSync25(templ
 
 // src/scaffold/component.ts
 var PASCAL_CASE_PATTERN = /^[A-Z][\dA-Za-z]*$/u;
+var KEBAB_CASE_PATTERN = /^[a-z][\da-z]*(?:-[\da-z]+)*$/u;
 var PROP_NAME_PATTERN = /^[A-Za-z_][\w$]*$/u;
+var KEBAB_WORD_PATTERN = /[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|\d*(?:1ST|2ND|3RD|(?![123])\dTH)(?=\b|[a-z_])|\d*(?:1st|2nd|3rd|(?![123])\dth)(?=\b|[A-Z_])|\d+/gu;
 var TEMPLATES_DIR = "component";
 var COMPONENTS_DEFAULT_PARENT = "app/components";
+var APP_SEGMENT = "app";
+var COMPONENTS_SEGMENT = "components";
+var PAGES_SEGMENT = "pages";
+var UI_SEGMENT = "ui";
+var NAME_FORMS_MESSAGE = "use kebab-case (price-tag) or PascalCase (PriceBadge)";
+var kebabToPascal = (kebab) => kebab.split("-").map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`).join("");
+var toKebabCase = (value) => (value.match(KEBAB_WORD_PATTERN) ?? []).join("-").toLowerCase();
 var BRACKET_PAIRS = {
   "(": ")",
   "<": ">",
@@ -23885,11 +23897,14 @@ var splitTopLevelCommas = (raw) => {
   segments.push(current);
   return segments;
 };
-var HELP_TEXT27 = `Usage: gaia scaffold component <Name> [flags]
+var HELP_TEXT27 = `Usage: gaia scaffold component <name> [flags]
 
+  <name>              kebab-case (price-tag) or PascalCase (PriceBadge); the
+                      folder is the kebab form of the PascalCase export name
   --no-story          Skip the index.stories.tsx file
-  --parent <dir>      Parent dir under app/components/ (default: app/components/),
-                      relative to the frontend package
+  --parent <dir>      Existing parent dir under app/components/ or app/pages/<path>
+                      (default: app/components/), relative to the frontend
+                      package. components/ui is refused: shadcn owns it.
   --props "a:string,b:number"
                       Typed props rendered as a Props type alias.
                       Comma-bearing types (Record<K, V>, (a, b) => void,
@@ -24005,9 +24020,16 @@ var parseFlags7 = (argv) => {
   if (name === void 0) {
     return { message: "component name is required", ok: false };
   }
-  if (!PASCAL_CASE_PATTERN.test(name)) {
+  const isKebab = KEBAB_CASE_PATTERN.test(name);
+  if (!isKebab && !PASCAL_CASE_PATTERN.test(name)) {
     return {
-      message: `component name must be PascalCase (got: "${name}")`,
+      message: `component name must be ${NAME_FORMS_MESSAGE} (got: "${name}")`,
+      ok: false
+    };
+  }
+  if (isKebab && toKebabCase(kebabToPascal(name)) !== name) {
+    return {
+      message: `component folder for "${name}" must be "${toKebabCase(kebabToPascal(name))}" (the folder the linter expects for export ${kebabToPascal(name)}); pass that name instead`,
       ok: false
     };
   }
@@ -24076,10 +24098,33 @@ var buildTestImports = (componentName, withStory) => {
     `import ${componentName} from '..';`
   ].join("\n");
 };
-var buildStoryTitle = (parent, componentName) => {
-  const stripped = parent.replace(/^app\/components\/?/u, "");
-  if (stripped === "") return `Components/${componentName}`;
-  return `Components/${stripped}/${componentName}`;
+var buildStoryTitle = (parent, folder) => [...parent.split("/").slice(1), folder].map(kebabToPascal).join("/");
+var checkParent = (rawParent) => {
+  const normalized = path31.posix.normalize(rawParent);
+  const parent = normalized.endsWith("/") ? normalized.slice(0, -1) : normalized;
+  const segments = parent.split("/");
+  const [root, area, child] = segments;
+  if (root !== APP_SEGMENT) {
+    return {
+      message: `--parent must be under app/components or app/pages (got: "${rawParent}")`,
+      ok: false
+    };
+  }
+  if (area === COMPONENTS_SEGMENT && child === UI_SEGMENT) {
+    return {
+      message: `--parent "${rawParent}" is under components/ui: shadcn owns components/ui, so scaffold the component elsewhere`,
+      ok: false
+    };
+  }
+  const underComponents = area === COMPONENTS_SEGMENT;
+  const underPage = area === PAGES_SEGMENT && segments.length > 2;
+  if (!underComponents && !underPage) {
+    return {
+      message: `--parent must be under app/components or app/pages/<path> (got: "${rawParent}")`,
+      ok: false
+    };
+  }
+  return { ok: true, parent };
 };
 var defaultIsDirectory = (absPath) => existsSync20(absPath) && statSync2(absPath).isDirectory();
 var renderComponentFile = (options) => {
@@ -24111,7 +24156,7 @@ var renderTestFile = (options) => {
   });
 };
 var renderStoryFile = (options) => {
-  const { componentName, parent, props, templatesRoot } = options;
+  const { componentName, folder, parent, props, templatesRoot } = options;
   const templatePath = path31.join(
     templatesRoot,
     `${TEMPLATES_DIR}/index.stories.tsx.tmpl`
@@ -24119,7 +24164,7 @@ var renderStoryFile = (options) => {
   return renderTemplate(templatePath, {
     Name: componentName,
     storyDefault: buildStoryDefault(componentName, props),
-    storyTitle: buildStoryTitle(parent, componentName)
+    storyTitle: buildStoryTitle(parent, folder)
   });
 };
 var resolveTemplatesRoot = () => {
@@ -24169,7 +24214,18 @@ var run27 = (argv, options = {}) => {
   );
   if (target === void 0) return EXIT_CODES.CONFIG_INVALID;
   const isDirectory = options.isDirectory ?? defaultIsDirectory;
-  const parent = toPackageRelative(flags.parent, target.packagePath);
+  const checked = checkParent(
+    toPackageRelative(flags.parent, target.packagePath)
+  );
+  if (!checked.ok) {
+    structuredError({
+      code: "invalid_parent",
+      message: checked.message,
+      subcommand: "scaffold component"
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+  const { parent } = checked;
   const parentAbs = path31.resolve(target.packageDir, parent);
   if (!isDirectory(parentAbs)) {
     structuredError({
@@ -24180,7 +24236,9 @@ var run27 = (argv, options = {}) => {
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  const componentDir = path31.join(parentAbs, flags.name);
+  const componentName = PASCAL_CASE_PATTERN.test(flags.name) ? flags.name : kebabToPascal(flags.name);
+  const folder = toKebabCase(componentName);
+  const componentDir = path31.join(parentAbs, folder);
   const indexPath = path31.join(componentDir, "index.tsx");
   const testsDir = path31.join(componentDir, "tests");
   const testPath = path31.join(testsDir, "index.test.tsx");
@@ -24188,7 +24246,8 @@ var run27 = (argv, options = {}) => {
   const templatesRoot = resolveTemplatesRoot();
   const result = { edited: [], skipped: [], written: [] };
   const renderOptions = {
-    componentName: flags.name,
+    componentName,
+    folder,
     parent,
     props: flags.props,
     templatesRoot,
@@ -24212,7 +24271,7 @@ var run27 = (argv, options = {}) => {
     process.stdout.write(`${JSON.stringify(result)}
 `);
   } else {
-    printHumanResult(result, flags.name);
+    printHumanResult(result, componentName);
   }
   return EXIT_CODES.OK;
 };
@@ -24220,7 +24279,12 @@ var run27 = (argv, options = {}) => {
 // src/scaffold/hook.ts
 import path32 from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
-var HOOK_NAME_PATTERN = /^use[A-Z][A-Za-z0-9]*$/u;
+var KEBAB_HOOK_PATTERN = /^use(?:-[a-z\d]+)+$/u;
+var CAMEL_HOOK_PATTERN = /^use[A-Z][A-Za-z\d]*$/u;
+var kebabToCamel = (kebab) => kebab.split("-").map(
+  (part, index) => index === 0 ? part : `${part.charAt(0).toUpperCase()}${part.slice(1)}`
+).join("");
+var camelToKebab = (camel) => camel.replaceAll(/(?<lower>[a-z\d])(?<upper>[A-Z])/gu, "$<lower>-$<upper>").toLowerCase();
 var TEMPLATE_DIR_NAME = "hook";
 var HOOK_TEMPLATE_FILE = "hook.ts.tmpl";
 var TEST_TEMPLATE_FILE = "hook.test.ts.tmpl";
@@ -24290,9 +24354,9 @@ var resolveTemplateFile = (filename) => {
   );
 };
 var emitFiles = (options) => {
-  const { hookFilePath, name, params, returns, testFilePath } = options;
+  const { fileStem, hookFilePath, name, params, returns, testFilePath } = options;
   const paramsString = formatParamsString(params);
-  const returnsAnnotation = returns === void 0 ? "" : `: ${returns}`;
+  const returnsAnnotation = `: ${returns ?? "void"}`;
   const hookContents = renderTemplate(resolveTemplateFile(HOOK_TEMPLATE_FILE), {
     // The default body (`// TODO: implement`) references no React hooks,
     // so the import block is empty.
@@ -24303,6 +24367,7 @@ var emitFiles = (options) => {
   });
   const testContents = renderTemplate(resolveTemplateFile(TEST_TEMPLATE_FILE), {
     callArgs: formatCallArgs(params),
+    fileStem,
     name
   });
   const written = [];
@@ -24351,15 +24416,16 @@ var run28 = (argv, options = {}) => {
   if (name === void 0) {
     structuredError({
       code: "missing_argument",
-      message: "expected hook name (e.g. useFoo)",
+      message: "expected hook name (e.g. use-foo or useFoo)",
       subcommand: "scaffold hook"
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
-  if (!HOOK_NAME_PATTERN.test(name)) {
+  const isKebab = KEBAB_HOOK_PATTERN.test(name);
+  if (!isKebab && !CAMEL_HOOK_PATTERN.test(name)) {
     structuredError({
       code: "invalid_hook_name",
-      message: `hook name must start with 'use' and be camelCase; got '${name}'`,
+      message: `hook name must be use-kebab (use-toggle) or useCamel (useToggle); got '${name}'`,
       subcommand: "scaffold hook"
     });
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
@@ -24369,14 +24435,17 @@ var run28 = (argv, options = {}) => {
     "scaffold hook"
   );
   if (target === void 0) return EXIT_CODES.CONFIG_INVALID;
+  const exportName = isKebab ? kebabToCamel(name) : name;
+  const fileStem = isKebab ? name : camelToKebab(name);
   const hooksDir = path32.join(target.packageDir, "app", "hooks");
-  const hookFilePath = path32.join(hooksDir, `${name}.ts`);
-  const testFilePath = path32.join(hooksDir, "tests", `${name}.test.ts`);
+  const hookFilePath = path32.join(hooksDir, `${fileStem}.ts`);
+  const testFilePath = path32.join(hooksDir, "tests", `${fileStem}.test.ts`);
   let result;
   try {
     result = emitFiles({
+      fileStem,
       hookFilePath,
-      name,
+      name: exportName,
       params: parsed.flags.params,
       returns: parsed.flags.returns,
       testFilePath
@@ -24398,10 +24467,8 @@ import { existsSync as existsSync21, readFileSync as readFileSync26 } from "node
 import path33 from "node:path";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 var VALID_GROUPS = /* @__PURE__ */ new Set(["_public", "_session"]);
-var GROUP_TO_SEGMENT = {
-  _public: "Public",
-  _session: "Session"
-};
+var RESERVED_PAGE_NAME_LIST = ["assets", "hooks", "state", "tests", "utils"];
+var RESERVED_PAGE_NAMES = new Set(RESERVED_PAGE_NAME_LIST);
 var KEBAB_PATTERN = /^[a-z\d]+(?:-[a-z\d]+)*$/u;
 var HELP_TEXT28 = `Usage: gaia scaffold route <name> --group <_public|_session> [flags]
 
@@ -24572,9 +24639,7 @@ var templatePaths = () => {
 };
 var resolveNames = (kebabName, group) => {
   const pascal = toPascalCase(kebabName);
-  const segment = lookupOwn(GROUP_TO_SEGMENT, group) ?? "";
   return {
-    groupSegment: segment,
     i18nKey: toCamelCase(kebabName),
     // Page folder, component, and the route's import use the `<Pascal>Page`
     // convention (e.g. `IndexPage`); the route component stays `<Pascal>Route`.
@@ -24587,7 +24652,6 @@ var buildRouteVars = (args) => {
   const { flags, name, names } = args;
   const hasLoaderI18n = flags.loader && flags.i18n;
   return {
-    groupSegment: names.groupSegment,
     hasAction: flags.action,
     hasLoader: flags.loader,
     hasLoaderI18n,
@@ -24683,7 +24747,7 @@ var writeLocaleFiles = (args) => {
 var emitRouteFiles = (args) => {
   const { flags, name, names, result, root } = args;
   const { dryRun, i18n } = flags;
-  const { groupSegment, i18nKey, pageName, routeFile } = names;
+  const { i18nKey, pageName, routeFile, routeName } = names;
   const tmpls = templatePaths();
   const routeVars = buildRouteVars({ flags, name, names });
   const routeAbs = path33.join(root, "app", "routes", `${routeFile}.tsx`);
@@ -24693,28 +24757,28 @@ var emitRouteFiles = (args) => {
     dryRun,
     result
   });
-  const pageDir = path33.join(root, "app", "pages", groupSegment, pageName);
+  const pageDir = path33.join(root, "app", "pages", name);
   const pageVars = {
-    groupSegment,
     hasI18n: i18n,
     i18nKey,
     noI18n: !i18n,
-    pageName
+    pageName,
+    routeName
   };
   writeFile({
-    absPath: path33.join(pageDir, "index.tsx"),
+    absPath: path33.join(pageDir, "page.tsx"),
     contents: renderTemplate(tmpls.pageIndex, pageVars),
     dryRun,
     result
   });
   writeFile({
-    absPath: path33.join(pageDir, "tests", "index.test.tsx"),
+    absPath: path33.join(pageDir, "tests", "page.test.tsx"),
     contents: renderTemplate(tmpls.pageTest, pageVars),
     dryRun,
     result
   });
   writeFile({
-    absPath: path33.join(pageDir, "tests", "index.stories.tsx"),
+    absPath: path33.join(pageDir, "tests", "page.stories.tsx"),
     contents: renderTemplate(tmpls.pageStories, pageVars),
     dryRun,
     result
@@ -24746,6 +24810,11 @@ var run29 = (rest, options = {}) => {
   if (!KEBAB_PATTERN.test(name)) {
     return userError(
       `route name must be kebab-case (lowercase letters, digits, hyphens): got "${name}"`
+    );
+  }
+  if (RESERVED_PAGE_NAMES.has(name)) {
+    return userError(
+      `route name "${name}" is reserved: page folders use it for their own subfolders (reserved: ${RESERVED_PAGE_NAME_LIST.join(", ")})`
     );
   }
   if (flags.group === null) {
@@ -25295,8 +25364,8 @@ var run30 = (argv, options = {}) => {
 // src/scaffold/index.ts
 var HELP_TEXT30 = `Usage: gaia scaffold <subcommand> [args]
 
-  component <Name>         Scaffold a new React component.
-  hook <useFoo>            Scaffold a new custom hook.
+  component <name>         Scaffold a new React component (kebab or PascalCase).
+  hook <use-foo|useFoo>    Scaffold a new custom hook.
   route <name>             Scaffold a new route + page.
   service <name>           Scaffold a new API service.
 `;

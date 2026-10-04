@@ -4,13 +4,13 @@ status: active
 priority: 1
 date: 2026-04-20
 created: 2026-04-20
-updated: 2026-10-03
+updated: 2026-10-04
 tags: [decision, routing, architecture]
 ---
 
 # Decision: Thin Routes, Fat Pages
 
-Route files (`frontend/app/routes/**`) contain only loader, action, meta, and a one-line render of a page component. All UI lives in `frontend/app/pages/{Group}/{PascalName}Page/`.
+Route files (`frontend/app/routes/**`) contain only loader, action, meta, and a one-line render of a page component. All UI lives in a folder under `frontend/app/pages/` derived from the route path (layout owned by `frontend/.claude/rules/coding-guidelines-react.md`).
 
 ## Rationale
 

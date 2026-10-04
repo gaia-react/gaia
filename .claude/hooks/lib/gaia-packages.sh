@@ -78,11 +78,14 @@ _gaia_packages_builtin_descriptor() {
       "app/utils/**",
       "app/services/**",
       "app/hooks/**",
-      "app/components/**/*.ts"
+      "app/components/**/*.ts",
+      "app/pages/**/*.ts"
     ],
     "emergentTests": [
       "app/components/**/*.test.ts",
       "app/components/**/*.test.tsx",
+      "app/pages/**/*.test.ts",
+      "app/pages/**/*.test.tsx",
       ".playwright/**/*.spec.ts",
       ".playwright/**/*.spec.tsx",
       ".playwright/**/*.test.ts",

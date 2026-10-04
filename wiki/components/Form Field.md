@@ -1,12 +1,12 @@
 ---
 type: component
-path: frontend/app/components/Form/Field/
+path: frontend/app/components/form/field/
 status: active
 language: typescript
 purpose: Label + input + status wrapper several Form components wrap directly
 depends_on: [[Form Components]]
 created: 2026-04-20
-updated: 2026-10-03
+updated: 2026-10-04
 tags: [component, forms, wrapper]
 ---
 

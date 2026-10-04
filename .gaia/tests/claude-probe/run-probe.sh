@@ -315,8 +315,8 @@ run_claude() {
 }
 
 ONE_WORD="Reply with the single word OK. Do not use any tools."
-COMPONENT_PATH="frontend/app/components/ProbeX/index.tsx"
-COMMIT_A_PATHS="frontend/app/components/ProbeCommit/index.tsx"
+COMPONENT_PATH="frontend/app/components/probe-x/index.tsx"
+COMMIT_A_PATHS="frontend/app/components/probe-commit/index.tsx"
 COMMIT_B_PATHS="frontend/app/utils/probeSum.ts frontend/app/utils/probeSum.test.ts"
 
 table_subjects() {
@@ -452,7 +452,7 @@ $calls"
         mkdir -p "$(dirname "$root/$relative_path")"
         printf '%s\n' "$relative_path" >>"$CREATED_FILES_LIST"
       done
-      printf 'export const ProbeCommit = () => <div>probe</div>;\n' >"$root/frontend/app/components/ProbeCommit/index.tsx"
+      printf 'export const ProbeCommit = () => <div>probe</div>;\n' >"$root/frontend/app/components/probe-commit/index.tsx"
       printf 'export const probeSum = (left: number, right: number) => left + right;\n' >"$root/frontend/app/utils/probeSum.ts"
       printf "import {expect, test} from 'vitest';\nimport {probeSum} from './probeSum';\n\ntest('probeSum adds', () => {\n  expect(probeSum(1, 2)).toBe(3);\n});\n" >"$root/frontend/app/utils/probeSum.test.ts"
       # Absolute git -C paths make the two launches send byte-identical
@@ -474,7 +474,7 @@ $calls"
       git -C "$root" reset --quiet -- $COMMIT_A_PATHS $COMMIT_B_PATHS 2>/dev/null || true
       # shellcheck disable=SC2086
       for relative_path in $COMMIT_A_PATHS $COMMIT_B_PATHS; do rm -f "$root/$relative_path"; done
-      rmdir "$root/frontend/app/components/ProbeCommit" 2>/dev/null || true
+      rmdir "$root/frontend/app/components/probe-commit" 2>/dev/null || true
       rm -f "$WORK_DIRECTORY/commit-in-flight"
       ;;
     *)

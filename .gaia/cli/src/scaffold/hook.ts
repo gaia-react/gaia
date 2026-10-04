@@ -2,12 +2,12 @@
  * `gaia scaffold hook <useFoo>` handler.
  *
  * Emits a custom React hook + its vitest under the frontend package's `app/hooks/`. The hook name
- * must start with `use` and be camelCase; the file name matches the hook
- * name verbatim.
+ * is `use-kebab` (`use-toggle`) or `useCamel` (`useToggle`); the export is the
+ * camelCase name and the file name is its kebab form.
  *
  * Naming convention:
- *   app/hooks/{name}.ts
- *   app/hooks/tests/{name}.test.ts
+ *   app/hooks/use-{kebab}.ts
+ *   app/hooks/tests/use-{kebab}.test.ts
  *
  * No barrel; `app/hooks/` does not have an index.ts in this repo.
  *
@@ -23,7 +23,23 @@ import {resolveScaffoldTarget} from './resolve-target.js';
 import {renderTemplate} from './template.js';
 import type {ScaffoldResult} from './types.js';
 
-const HOOK_NAME_PATTERN = /^use[A-Z][A-Za-z0-9]*$/u;
+const KEBAB_HOOK_PATTERN = /^use(?:-[a-z\d]+)+$/u;
+const CAMEL_HOOK_PATTERN = /^use[A-Z][A-Za-z\d]*$/u;
+
+/** `use-toggle` -> `useToggle`. */
+const kebabToCamel = (kebab: string): string =>
+  kebab
+    .split('-')
+    .map((part, index) =>
+      index === 0 ? part : `${part.charAt(0).toUpperCase()}${part.slice(1)}`
+    )
+    .join('');
+
+/** `useToggleOpen` -> `use-toggle-open`, splitting before each capital. */
+const camelToKebab = (camel: string): string =>
+  camel
+    .replaceAll(/(?<lower>[a-z\d])(?<upper>[A-Z])/gu, '$<lower>-$<upper>')
+    .toLowerCase();
 
 const TEMPLATE_DIR_NAME = 'hook';
 const HOOK_TEMPLATE_FILE = 'hook.ts.tmpl';
@@ -128,6 +144,7 @@ const resolveTemplateFile = (filename: string): string => {
 };
 
 type EmitOptions = {
+  fileStem: string;
   hookFilePath: string;
   name: string;
   params: readonly Param[];
@@ -136,9 +153,9 @@ type EmitOptions = {
 };
 
 const emitFiles = (options: EmitOptions): ScaffoldResult => {
-  const {hookFilePath, name, params, returns, testFilePath} = options;
+  const {fileStem, hookFilePath, name, params, returns, testFilePath} = options;
   const paramsString = formatParamsString(params);
-  const returnsAnnotation = returns === undefined ? '' : `: ${returns}`;
+  const returnsAnnotation = `: ${returns ?? 'void'}`;
 
   const hookContents = renderTemplate(resolveTemplateFile(HOOK_TEMPLATE_FILE), {
     // The default body (`// TODO: implement`) references no React hooks,
@@ -150,6 +167,7 @@ const emitFiles = (options: EmitOptions): ScaffoldResult => {
   });
   const testContents = renderTemplate(resolveTemplateFile(TEST_TEMPLATE_FILE), {
     callArgs: formatCallArgs(params),
+    fileStem,
     name,
   });
 
@@ -216,17 +234,19 @@ export const run = (
   if (name === undefined) {
     structuredError({
       code: 'missing_argument',
-      message: 'expected hook name (e.g. useFoo)',
+      message: 'expected hook name (e.g. use-foo or useFoo)',
       subcommand: 'scaffold hook',
     });
 
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  if (!HOOK_NAME_PATTERN.test(name)) {
+  const isKebab = KEBAB_HOOK_PATTERN.test(name);
+
+  if (!isKebab && !CAMEL_HOOK_PATTERN.test(name)) {
     structuredError({
       code: 'invalid_hook_name',
-      message: `hook name must start with 'use' and be camelCase; got '${name}'`,
+      message: `hook name must be use-kebab (use-toggle) or useCamel (useToggle); got '${name}'`,
       subcommand: 'scaffold hook',
     });
 
@@ -239,16 +259,19 @@ export const run = (
   );
 
   if (target === undefined) return EXIT_CODES.CONFIG_INVALID;
+  const exportName = isKebab ? kebabToCamel(name) : name;
+  const fileStem = isKebab ? name : camelToKebab(name);
   const hooksDir = path.join(target.packageDir, 'app', 'hooks');
-  const hookFilePath = path.join(hooksDir, `${name}.ts`);
-  const testFilePath = path.join(hooksDir, 'tests', `${name}.test.ts`);
+  const hookFilePath = path.join(hooksDir, `${fileStem}.ts`);
+  const testFilePath = path.join(hooksDir, 'tests', `${fileStem}.test.ts`);
 
   let result: ScaffoldResult;
 
   try {
     result = emitFiles({
+      fileStem,
       hookFilePath,
-      name,
+      name: exportName,
       params: parsed.flags.params,
       returns: parsed.flags.returns,
       testFilePath,

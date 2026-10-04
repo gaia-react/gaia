@@ -100,19 +100,19 @@ copy_rules_to_scratch() {
 }
 
 @test "code-comments.md matches the frontend app file and the frontend playwright spec" {
-  rule_matches_path "$RULES_DIRECTORY/code-comments.md" "frontend/app/components/Button/index.tsx"
+  rule_matches_path "$RULES_DIRECTORY/code-comments.md" "frontend/app/components/button/index.tsx"
   rule_matches_path "$RULES_DIRECTORY/code-comments.md" "frontend/.playwright/e2e/hydration.spec.ts"
 }
 
 @test "wiki-style.md matches the frontend app file and not the frontend playwright spec" {
-  rule_matches_path "$RULES_DIRECTORY/wiki-style.md" "frontend/app/components/Button/index.tsx"
+  rule_matches_path "$RULES_DIRECTORY/wiki-style.md" "frontend/app/components/button/index.tsx"
   run rule_matches_path "$RULES_DIRECTORY/wiki-style.md" "frontend/.playwright/e2e/hydration.spec.ts"
   [ "$status" -eq 1 ]
 }
 
 @test "guards-must-fail.md matches the frontend playwright spec and not the frontend app file" {
   rule_matches_path "$RULES_DIRECTORY/guards-must-fail.md" "frontend/.playwright/e2e/hydration.spec.ts"
-  run rule_matches_path "$RULES_DIRECTORY/guards-must-fail.md" "frontend/app/components/Button/index.tsx"
+  run rule_matches_path "$RULES_DIRECTORY/guards-must-fail.md" "frontend/app/components/button/index.tsx"
   [ "$status" -eq 1 ]
 }
 
@@ -120,7 +120,7 @@ copy_rules_to_scratch() {
   copy_rules_to_scratch
   sed -i.bak -E "s#'frontend/(app|test|\.playwright|\.storybook)/#'\1/#" "$SCRATCH_RULES/code-comments.md"
   rm -f "$SCRATCH_RULES/code-comments.md.bak"
-  run rule_matches_path "$SCRATCH_RULES/code-comments.md" "frontend/app/components/Button/index.tsx"
+  run rule_matches_path "$SCRATCH_RULES/code-comments.md" "frontend/app/components/button/index.tsx"
   [ "$status" -eq 1 ]
   run rule_matches_path "$SCRATCH_RULES/code-comments.md" "frontend/.playwright/e2e/hydration.spec.ts"
   [ "$status" -eq 1 ]

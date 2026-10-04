@@ -1,7 +1,7 @@
 import type {FC} from 'react';
 import {useLoaderData} from 'react-router';
 import {getInstance} from '~/middleware/i18next';
-import IndexPage from '~/pages/Public/IndexPage';
+import IndexPage from '~/pages/index/page';
 import type {Route} from './+types/_public._index';
 
 export const loader = async ({context}: Route.LoaderArgs) => {

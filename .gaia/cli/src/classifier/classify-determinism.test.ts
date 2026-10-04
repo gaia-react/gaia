@@ -73,8 +73,8 @@ beforeAll(() => {
 
   for (const file of [
     'frontend/app/utils/date.ts',
-    'frontend/app/components/Form/YearMonthDay/utils.ts',
-    'frontend/app/components/Toast/ToastNotification/utils.ts',
+    'frontend/app/components/form/year-month-day/utils.ts',
+    'frontend/app/components/toast/toast-notification/utils.ts',
   ]) {
     mkdirSync(path.join(FIXTURE_ROOT, path.dirname(file)), {recursive: true});
     copyFileSync(realAppFile(file), path.join(FIXTURE_ROOT, file));
@@ -404,17 +404,17 @@ describe('classify-determinism', () => {
       expect(result.classification).toBe('emergent');
     });
 
-    test('classifies frontend/app/components/Form/YearMonthDay/utils.ts EMERGENT (module-level TODAY)', () => {
+    test('classifies frontend/app/components/form/year-month-day/utils.ts EMERGENT (module-level TODAY)', () => {
       const result = classifyFile(
-        'frontend/app/components/Form/YearMonthDay/utils.ts'
+        'frontend/app/components/form/year-month-day/utils.ts'
       );
 
       expect(result.classification).toBe('emergent');
     });
 
-    test('classifies frontend/app/components/Toast/ToastNotification/utils.ts STRICT (pure parsePayload)', () => {
+    test('classifies frontend/app/components/toast/toast-notification/utils.ts STRICT (pure parsePayload)', () => {
       const result = classifyFile(
-        'frontend/app/components/Toast/ToastNotification/utils.ts'
+        'frontend/app/components/toast/toast-notification/utils.ts'
       );
 
       expect(result.classification).toBe('strict');

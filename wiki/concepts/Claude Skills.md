@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-10-03
+updated: 2026-10-04
 tags: [concept, claude, skills]
 ---
 
@@ -36,9 +36,9 @@ GAIA's skills split into three groups: shared `gaia/references/` playbooks consu
 
 | Skill           | Triggers on                                                                                                                                |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `new-component` | "create a component", "scaffold a card": drops a PascalCase folder under `frontend/app/components/` with `index.tsx` and a `tests/` dir             |
-| `new-hook`      | "create a useFoo hook", "add a hook under frontend/app/hooks": drops a `useThing.ts` + Vitest test                                                  |
-| `new-route`     | "add a new page", "scaffold /dashboard": wires a route file + `frontend/app/pages/{Group}/{PageName}/` + i18n keys                                  |
+| `new-component` | "create a component", "scaffold a card": drops a kebab-case folder under `frontend/app/components/` with `index.tsx` and a `tests/` dir        |
+| `new-hook`      | "create a useFoo hook", "add a hook under frontend/app/hooks": drops a `use-thing.ts` + Vitest test                                                 |
+| `new-route`     | "add a new page", "scaffold /dashboard": wires a route file + a `frontend/app/pages/<route path>/page.tsx` folder + i18n keys                         |
 | `new-service`   | "add a service", "scaffold the projects API": drops `frontend/app/services/{layer}/{name}/` (parsers, types, requests) and matching MSW collections |
 | `update-deps`   | Dependency remediation (outdated packages and security advisories): fired by `/gaia-init`, accepted from the statusline `Run /update-deps` indicator, or "update dependencies"          |
 | `update-gaia`   | Pull a later GAIA release into the project: accepted from the SessionStart update prompt, or "pull the latest GAIA"                        |

@@ -52,16 +52,16 @@ If none apply, skip `useCallback`, it adds indirection without benefit.
 
 | Native element                         | Use instead                                                                     |
 | -------------------------------------- | ------------------------------------------------------------------------------- |
-| `<input type="text">`                  | `InputText` (`~/components/Form/InputText`)                                     |
-| `<input type="email">`                 | `InputEmail` (`~/components/Form/InputEmail`)                                   |
-| `<input type="password">`              | `InputPassword` (`~/components/Form/InputPassword`)                             |
-| `<input type="checkbox">` (single)     | `Checkbox` (`~/components/Form/Checkbox`)                                       |
-| `<input type="checkbox">` (group)      | `Checkboxes` (`~/components/Form/Checkboxes`), needs `options: Option[]`        |
-| `<input type="radio">` / radio group   | `RadioButtons` (`~/components/Form/RadioButtons`), needs `options: Option[]`    |
-| `<select>`                             | `Select` (`~/components/Form/Select`), needs `name` + `options: SelectOption[]` |
-| `<textarea>`                           | `TextArea` (`~/components/Form/TextArea`), needs `name`; auto-resizes           |
-| Date (year/month/day)                  | `YearMonthDay` (`~/components/Form/YearMonthDay`)                               |
-| Field with label + error + description | `Field` (`~/components/Form/Field`)                                             |
+| `<input type="text">`                  | `InputText` (`~/components/form/input-text`)                                    |
+| `<input type="email">`                 | `InputEmail` (`~/components/form/input-email`)                                  |
+| `<input type="password">`              | `InputPassword` (`~/components/form/input-password`)                            |
+| `<input type="checkbox">` (single)     | `Checkbox` (`~/components/form/checkbox`)                                       |
+| `<input type="checkbox">` (group)      | `Checkboxes` (`~/components/form/checkboxes`), needs `options: Option[]`        |
+| `<input type="radio">` / radio group   | `RadioButtons` (`~/components/form/radio-buttons`), needs `options: Option[]`   |
+| `<select>`                             | `Select` (`~/components/form/select`), needs `name` + `options: SelectOption[]` |
+| `<textarea>`                           | `TextArea` (`~/components/form/text-area`), needs `name`; auto-resizes          |
+| Date (year/month/day)                  | `YearMonthDay` (`~/components/form/year-month-day`)                             |
+| Field with label + error + description | `Field` (`~/components/form/field`)                                             |
 
 **Exceptions (native OK):** `<input type="hidden">`, `<input type="file">`, `<input type="range">`.
 
@@ -135,7 +135,7 @@ const nonce = use(NonceContext); // not useContext(NonceContext)
 | -------------------------------------- | --------------------------------------------------------------------------------------------- |
 | `useActionState`, `<form action={fn}>` | route `action` + `useActionData`                                                              |
 | `useFormStatus`                        | `useNavigation().state` / `fetcher.state`                                                     |
-| `useOptimistic`                        | fetcher-based optimism (`useOptimisticThemeMode` in `useTheme.ts`)                            |
+| `useOptimistic`                        | fetcher-based optimism (`useOptimisticThemeMode` in `use-theme.ts`)                           |
 | `use(promise)` for route data          | loader + `useLoaderData` (`use(promise)` only for non-route promises inside `<Suspense>`)     |
 
 Metadata is the mirror case: render `<title>`/`<meta>` as JSX (React 19 hoisting), not a React Router route `meta`/`links` export. Keep it that way; adding a route `meta` export to a page that already renders `<title>` in JSX produces duplicate tags.
@@ -182,13 +182,15 @@ Thin shell only:
 ### Page components (`app/pages/`)
 
 ```
-app/pages/{Group}/{PascalName}Page/index.tsx                    # most pages
-app/pages/{Group}/{Section}/{PascalName}Page/index.tsx          # only when a section grouping is needed
+app/pages/<route path>/page.tsx          # default export <Name>Page
+app/pages/<route path>/tests/page.*.tsx  # the page's tests and stories
 ```
+
+The folder is derived from the route file name; the full layout rule (derivation, colocation, hooks) lives in `frontend/.claude/rules/coding-guidelines-react.md`.
 
 For loader data: use `useLoaderData<typeof loader>()` (import the `loader` type from the route file) or `useLoaderData<LoaderData>()` (import `LoaderData` from a sibling `types.ts`). Never define the type inline in the page component file itself.
 
-Sub-components go in sibling folders. Tests/stories in `{PageName}/tests/`.
+Page content goes in colocated `<kebab>/index.tsx` folders inside the page folder. Tests and stories go in the page folder's `tests/`.
 
 When stories need different loader data, put `stubs.reactRouter()` decorators on individual stories (not meta) to avoid nested Router errors with `composeStory`.
 

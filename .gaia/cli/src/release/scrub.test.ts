@@ -2421,7 +2421,7 @@ describe('shipped absolute-paths check', () => {
     // edges. `/Users/username` is where they ship today, in the captured
     // Storybook parser stack trace.
     sandbox.writeStaged(
-      'app/components/Errors/ErrorStack/tests/index.stories.tsx',
+      'app/components/errors/error-stack/tests/index.stories.tsx',
       '    at constructor (/Users/username/Development/gaia/node_modules/x.cjs:1:2)\n'
     );
     sandbox.writeStaged('docs/notes.md', 'Clone into /Users/you/projects.\n');

@@ -167,6 +167,19 @@ describe('scaffold route: argument validation', () => {
     expect(out).toContain('invalid or unknown flag');
   });
 
+  test.each(['tests', 'hooks', 'state', 'utils', 'assets'])(
+    'rejects the reserved page-folder name %s and writes nothing',
+    (name) => {
+      const stderr = captureStderr();
+      const exit = run([name, '--group', '_public'], {cwd: sandbox.fakeRoot});
+      const out = stderr.restore();
+
+      expect(exit).toBe(1);
+      expect(out).toContain('reserved');
+      expect(existsSync(path.join(sandbox.fakeRoot, 'app'))).toBe(false);
+    }
+  );
+
   test('prints help when invoked with no args', () => {
     const stdout = captureStdout();
     const exit = run([], {cwd: sandbox.fakeRoot});
@@ -206,27 +219,24 @@ describe('scaffold route: base emission (_session)', () => {
       sandbox.fakeRoot,
       'app',
       'pages',
-      'Session',
-      'DashboardPage',
-      'index.tsx'
+      'dashboard',
+      'page.tsx'
     );
     const pageTest = path.join(
       sandbox.fakeRoot,
       'app',
       'pages',
-      'Session',
-      'DashboardPage',
+      'dashboard',
       'tests',
-      'index.test.tsx'
+      'page.test.tsx'
     );
     const pageStories = path.join(
       sandbox.fakeRoot,
       'app',
       'pages',
-      'Session',
-      'DashboardPage',
+      'dashboard',
       'tests',
-      'index.stories.tsx'
+      'page.stories.tsx'
     );
 
     expect(existsSync(routeFile)).toBe(true);
@@ -236,7 +246,7 @@ describe('scaffold route: base emission (_session)', () => {
 
     const routeBody = readFileSync(routeFile, 'utf8');
     expect(routeBody).toContain(
-      "import DashboardPage from '~/pages/Session/DashboardPage'"
+      "import DashboardPage from '~/pages/dashboard/page'"
     );
     expect(routeBody).toContain('const DashboardRoute');
     expect(routeBody).not.toContain('export const loader');
@@ -247,10 +257,10 @@ describe('scaffold route: base emission (_session)', () => {
     expect(pageBody).toContain('export default DashboardPage');
 
     const storiesBody = readFileSync(pageStories, 'utf8');
-    expect(storiesBody).toContain('Pages/Session/DashboardPage');
+    expect(storiesBody).toContain("title: 'Pages/Dashboard'");
   });
 
-  test('hyphenated names map to <Pascal>Page folder', () => {
+  test('hyphenated names map to a kebab page folder', () => {
     const stdout = captureStdout();
     const exit = run(['user-settings', '--group', '_session'], {
       cwd: sandbox.fakeRoot,
@@ -263,9 +273,8 @@ describe('scaffold route: base emission (_session)', () => {
       sandbox.fakeRoot,
       'app',
       'pages',
-      'Session',
-      'UserSettingsPage',
-      'index.tsx'
+      'user-settings',
+      'page.tsx'
     );
     expect(existsSync(pageIndex)).toBe(true);
 
@@ -278,11 +287,11 @@ describe('scaffold route: base emission (_session)', () => {
     const routeBody = readFileSync(routeFile, 'utf8');
     expect(routeBody).toContain('const UserSettingsRoute');
     expect(routeBody).toContain(
-      "import UserSettingsPage from '~/pages/Session/UserSettingsPage'"
+      "import UserSettingsPage from '~/pages/user-settings/page'"
     );
   });
 
-  test('_public group writes to Public segment', () => {
+  test('_public group writes the same page folder, with no group segment', () => {
     const stdout = captureStdout();
     const exit = run(['marketing', '--group', '_public'], {
       cwd: sandbox.fakeRoot,
@@ -295,9 +304,8 @@ describe('scaffold route: base emission (_session)', () => {
       sandbox.fakeRoot,
       'app',
       'pages',
-      'Public',
-      'MarketingPage',
-      'index.tsx'
+      'marketing',
+      'page.tsx'
     );
     const routeFile = path.join(
       sandbox.fakeRoot,
@@ -483,14 +491,7 @@ describe('scaffold route: flag combos', () => {
     );
 
     const pageBody = readFileSync(
-      path.join(
-        sandbox.fakeRoot,
-        'app',
-        'pages',
-        'Session',
-        'DashboardPage',
-        'index.tsx'
-      ),
+      path.join(sandbox.fakeRoot, 'app', 'pages', 'dashboard', 'page.tsx'),
       'utf8'
     );
     expect(pageBody).toContain(
@@ -558,9 +559,8 @@ describe('scaffold route: --dry-run', () => {
       sandbox.fakeRoot,
       'app',
       'pages',
-      'Session',
-      'DashboardPage',
-      'index.tsx'
+      'dashboard',
+      'page.tsx'
     );
     expect(existsSync(routeFile)).toBe(false);
     expect(existsSync(pageIndex)).toBe(false);

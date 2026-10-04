@@ -114,8 +114,8 @@ run_hook_without_library() {
 
 # --- Read-tool allows: the near-misses a substring match would get wrong ---
 
-@test "Read app/components/Button/index.tsx is allowed" {
-  run_hook_read "app/components/Button/index.tsx"
+@test "Read app/components/button/index.tsx is allowed" {
+  run_hook_read "app/components/button/index.tsx"
   assert_allowed_by_json
 }
 
