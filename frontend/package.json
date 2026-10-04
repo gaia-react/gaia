@@ -22,7 +22,7 @@
     "pw": "pnpm exec playwright test",
     "pw-ui": "pnpm exec playwright test --ui",
     "chromatic": "pnpm exec chromatic --auto-accept-changes 'main' --storybook-build-dir 'storybook-static' --only-changed --exit-once-uploaded --exit-zero-on-changes --skip '@(renovate/**|dependabot/**)'",
-    "storybook": "storybook dev -p 6006",
+    "storybook": "bash ../.gaia/scripts/storybook-launch.sh",
     "build-storybook": "storybook build --test"
   },
   "dependencies": {

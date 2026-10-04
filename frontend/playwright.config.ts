@@ -1,7 +1,25 @@
 import {defineConfig, devices} from '@playwright/test';
 import {config} from 'dotenv';
+import {fileURLToPath} from 'node:url';
+import {requireDevPorts, resolveSiteUrl} from './dev-ports';
+import {decideServerReuse} from './dev-ports-reuse';
+
+// Captured before dotenv loads the .env (symlinked from main in a worktree),
+// whose SITE_URL carries main's port and would otherwise reach the spawned server.
+const exportedSiteUrl = process.env.SITE_URL;
 
 config();
+
+const packageDirectory = fileURLToPath(new URL('.', import.meta.url));
+// Throws in a linked worktree with no port file, so no spec runs on main's ports.
+const ports = requireDevPorts(packageDirectory);
+const siteUrl = resolveSiteUrl({exportedSiteUrl, ports});
+
+if (ports.source === 'port-file' && siteUrl !== undefined) {
+  process.env.SITE_URL = siteUrl;
+}
+
+const devUrl = `http://localhost:${ports.devPort}`;
 
 /**
  * You can change this to "true" this to test in multiple browsers if you prefer.
@@ -70,16 +88,20 @@ export default defineConfig({
   testMatch: '**/*.spec.ts',
 
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: devUrl,
 
     trace: 'retain-on-failure',
   },
 
   webServer: {
     command: 'pnpm dev',
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: decideServerReuse({
+      isContinuousIntegration: !!process.env.CI,
+      port: ports.devPort,
+      treeRoot: ports.treeRoot,
+    }),
     timeout: 15_000,
-    url: 'http://localhost:5173',
+    url: devUrl,
   },
 
   workers: process.env.CI ? 1 : undefined,

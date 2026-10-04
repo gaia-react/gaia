@@ -1,6 +1,25 @@
 import {reactRouter} from '@react-router/dev/vite';
 import tailwindcss from '@tailwindcss/vite';
 import {defineConfig} from 'vite';
+import {fileURLToPath} from 'node:url';
+import {devPortsPlugin} from './dev-ports-vite-plugin.ts';
+import {resolveDevPorts, resolveSiteUrl} from './dev-ports.ts';
+
+const packageDirectory = fileURLToPath(new URL('.', import.meta.url));
+
+// The SSR app reads SITE_URL from process.env, and React Router's env loading
+// lets an existing value win, so set it here, before any plugin loads env, to
+// this tree's port-file value. A shell export is left alone.
+const portResolution = resolveDevPorts(packageDirectory);
+
+if (portResolution.kind === 'resolved') {
+  const siteUrl = resolveSiteUrl({
+    exportedSiteUrl: process.env.SITE_URL,
+    ports: portResolution.ports,
+  });
+
+  if (siteUrl !== undefined) process.env.SITE_URL = siteUrl;
+}
 
 // Open the browser only when a person runs `pnpm dev` in a terminal. Tools that
 // spawn the dev server (Playwright, agents, CI) pipe stdout, so they get no tab.
@@ -39,7 +58,7 @@ export default defineConfig({
       'zod',
     ],
   },
-  plugins: [tailwindcss(), reactRouter()],
+  plugins: [tailwindcss(), devPortsPlugin(packageDirectory), reactRouter()],
   resolve: {
     tsconfigPaths: true,
   },

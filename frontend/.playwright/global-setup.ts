@@ -1,5 +1,7 @@
 import type {FullConfig} from '@playwright/test';
 import {chromium} from '@playwright/test';
+import {fileURLToPath} from 'node:url';
+import {requireDevPorts} from '../dev-ports';
 import {hydration} from './utils';
 
 /**
@@ -14,7 +16,9 @@ import {hydration} from './utils';
  * the server is up by the time this runs; on a warm server it returns quickly.
  */
 const globalSetup = async (config: FullConfig): Promise<void> => {
-  const baseURL = config.projects[0]?.use.baseURL ?? 'http://localhost:5173';
+  const baseURL =
+    config.projects[0]?.use.baseURL ??
+    `http://localhost:${requireDevPorts(fileURLToPath(new URL('..', import.meta.url))).devPort}`;
   const browser = await chromium.launch();
 
   try {

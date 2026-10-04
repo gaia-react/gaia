@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Provision the linked worktree a session is working in: re-link the shared
-# state the registry declares, install the dependencies its own lockfiles
-# commit, and regenerate the typed routes the worktree's own branch needs.
+# state the registry declares, give the tree its port slot and port file,
+# install the dependencies its own lockfiles commit, and regenerate the typed
+# routes the worktree's own branch needs.
 #
 # Provisioning is a property a worktree must HOLD, not an event that happened
 # once when it was created. A worktree whose symlinks were broken by hand, one
@@ -32,6 +33,22 @@
 # definition, three callers: SessionStart, PostToolUse/EnterWorktree, and the
 # direct call.
 #
+# The ports stage runs right after the linker and only for a linked worktree,
+# so the main checkout pays nothing for it. In order: reclaim ledger entries
+# whose tree is gone and retire the entry of a tree recreated at the same path
+# (under the ledger lock); stop servers left by removed trees; stop servers
+# recorded by ended Claude sessions, behind a stat-only gate; then keep or
+# allocate this tree's slot and rewrite its port file from the ledger (under
+# the lock again). The lock guards only the ledger, is never held across a
+# signal or a wait, and a lock timeout keeps any existing port file and never
+# blocks. Inert under GitHub Actions.
+#
+# Stdout carries what Claude should know and nothing else: one line per server
+# stopped, then one context line naming the tree's ports and the ask-first rule.
+# SessionStart and a direct call print plain lines; PostToolUse prints one JSON
+# object whose additionalContext holds them. Every log stays on stderr, and a
+# run with nothing to say prints nothing.
+#
 # Always exits 0. Provisioning repairs a worktree; failing to provision must
 # never block the session that asked for one.
 #
@@ -53,10 +70,19 @@ source "$self_directory/../../.gaia/scripts/main-root-lib.sh" 2>/dev/null || exi
 # several other hooks in this repository use. The process cwd is the last
 # fallback.
 tree="${1:-}"
+payload=""
+payload_event=""
 if [ -z "$tree" ] && [ ! -t 0 ]; then
   payload="$(cat)"
   if [ -n "$payload" ] && command -v jq >/dev/null 2>&1; then
     tree="$(jq -r '.tool_response.worktreePath // .cwd // empty' <<<"$payload" 2>/dev/null)"
+    payload_event="$(jq -r '.hook_event_name // empty' <<<"$payload" 2>/dev/null)"
+  elif [ -n "$payload" ]; then
+    # Without jq the flat fields are read with sed, the shape
+    # workflow-doctrine-inject.sh uses.
+    tree="$(printf '%s\n' "$payload" | sed -n 's/.*"worktreePath"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | sed -n 1p)"
+    [ -n "$tree" ] || tree="$(printf '%s\n' "$payload" | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | sed -n 1p)"
+    payload_event="$(printf '%s\n' "$payload" | sed -n 's/.*"hook_event_name"[[:space:]]*:[[:space:]]*"\([A-Za-z]*\)".*/\1/p' | sed -n 1p)"
   fi
 fi
 [ -n "$tree" ] || tree="$PWD"
@@ -265,6 +291,103 @@ else
   log "no linker found at $linker"
 fi
 
+# ---------- slot, port file, and stale servers ----------
+# Every step below can fail without the others mattering, and several libraries
+# answer a non-zero code for a normal "nothing to do" (a stale-entry retire with
+# nothing stale, a reclaim that could not list worktrees), so each call is
+# guarded and none can end the hook.
+ports_report_lines=""
+ports_context_line=""
+
+# add_ports_report <text>: appends text, one report line per input line.
+add_ports_report() {
+  [ -n "$1" ] || return 0
+  ports_report_lines="${ports_report_lines}${1}"$'\n'
+}
+
+provision_ports() {
+  local state reclaimed slot_number reclaimed_slot reclaimed_tree report write_status
+
+  state="$(gaia_ports_state_directory "$tree" 2>/dev/null)" || state=""
+  if [ -z "$state" ]; then
+    log "PORTS STATE UNRESOLVABLE (non-fatal) for $tree: the main checkout could not be found, so no port slot was assigned"
+    return 0
+  fi
+
+  if gaia_ports_lock "$state"; then
+    reclaimed="$(gaia_ports_reclaim "$state" "$tree")" || reclaimed=""
+    while IFS=$'\t' read -r reclaimed_slot reclaimed_tree; do
+      [ -n "$reclaimed_slot" ] || continue
+      log "reclaimed port slot $reclaimed_slot from removed tree $reclaimed_tree"
+    done <<<"$reclaimed"
+    gaia_ports_retire_stale_entry "$state" "$tree" >/dev/null || true
+    gaia_ports_unlock "$state"
+  else
+    log "PORTS LOCK TIMEOUT (non-fatal): kept the existing port file for $tree"
+    return 0
+  fi
+
+  # A directory listing, not a process probe: a plain re-entry stays cheap.
+  local tombstone_file
+  for tombstone_file in "$state"/tombstones/*.tsv; do
+    if [ -e "$tombstone_file" ]; then
+      report="$(gaia_server_reap_tombstones "$state")" || report=""
+      add_ports_report "$report"
+      break
+    fi
+  done
+
+  if gaia_server_cleanup_needed "$state"; then
+    report="$(gaia_server_reap_dead_sessions "$state")" || report=""
+    add_ports_report "$report"
+  fi
+
+  if gaia_ports_lock "$state"; then
+    if slot_number="$(gaia_ports_assign_slot "$state" "$tree")" && [ -n "$slot_number" ]; then
+      write_status=0
+      gaia_ports_write_file "$tree" "$slot_number" || write_status=$?
+      case "$write_status" in
+        0) ;;
+        3) log "PORT FILE SKIPPED (non-fatal) for $tree: no package carrying a react-router config was found" ;;
+        *) log "PORT FILE WRITE FAILED (non-fatal) for $tree" ;;
+      esac
+    else
+      log "PORT SLOTS EXHAUSTED or unassignable (non-fatal) for $tree: no port file was written"
+    fi
+    gaia_ports_unlock "$state"
+  else
+    log "PORTS LOCK TIMEOUT (non-fatal): kept the existing port file for $tree"
+  fi
+}
+
+# build_ports_context_line: the tree's own port file is the source, so a kept
+# file after a lock timeout still tells Claude the truth.
+build_ports_context_line() {
+  local port_file port_record slot_value storybook_value site_url_value
+  port_file="$(gaia_ports_file_path "$tree" 2>/dev/null)" || return 0
+  port_record="$(gaia_ports_read_file "$port_file" 2>/dev/null)" || return 0
+  IFS=$'\t' read -r slot_value _ storybook_value site_url_value <<<"$port_record"
+  ports_context_line="$(gaia_ports_context_line "$slot_value" "$site_url_value" "$storybook_value")"
+}
+
+# source_ports_libraries: both libraries, or neither. The process library must be
+# defined before a slot is assigned, or the foreign-port skip silently turns off.
+source_ports_libraries() {
+  # shellcheck disable=SC1091
+  source "$self_directory/../../.gaia/scripts/server-process-lib.sh" 2>/dev/null || return 1
+  # shellcheck disable=SC1091
+  source "$self_directory/../../.gaia/scripts/worktree-ports-lib.sh" 2>/dev/null || return 1
+}
+
+if [ -z "${GITHUB_ACTIONS:-}" ]; then
+  if source_ports_libraries; then
+    provision_ports
+    build_ports_context_line
+  else
+    log "PORTS SKIPPED (non-fatal): .gaia/scripts/server-process-lib.sh or worktree-ports-lib.sh is missing, so $tree gets no port slot"
+  fi
+fi
+
 # ---------- install the tree's own dependencies ----------
 # Runs on EVERY entry, not only when node_modules is missing: a warm re-run
 # costs a quarter of a second, and paying that every time is what keeps a tree
@@ -367,4 +490,32 @@ else
   fi
 fi
 
+# ---------- tell Claude ----------
+# json_escape <text>: the JSON string body for text, for a run without jq.
+json_escape() {
+  local text="$1" backslash=$'\\' quote='"' newline=$'\n' tab=$'\t'
+  text="${text//$backslash/$backslash$backslash}"
+  text="${text//$quote/$backslash$quote}"
+  text="${text//$newline/${backslash}n}"
+  text="${text//$tab/${backslash}t}"
+  printf '%s' "$text"
+}
+
+emit_ports_output() {
+  local output_text="$ports_report_lines"
+  [ -n "$ports_context_line" ] && output_text="${output_text}${ports_context_line}"$'\n'
+  [ -n "$output_text" ] || return 0
+  output_text="${output_text%$'\n'}"
+  if [ "$payload_event" = "PostToolUse" ]; then
+    if command -v jq >/dev/null 2>&1; then
+      jq -n --arg context "$output_text" '{hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $context}}'
+    else
+      printf '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"%s"}}\n' "$(json_escape "$output_text")"
+    fi
+  else
+    printf '%s\n' "$output_text"
+  fi
+}
+
+emit_ports_output
 exit 0
