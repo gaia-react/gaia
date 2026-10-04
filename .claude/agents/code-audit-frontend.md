@@ -24,6 +24,7 @@ You conduct comprehensive code audits for production React 19 / React Router 7 S
 - `frontend/*.config.mjs`
 - `frontend/*.config.cjs`
 - `frontend/*.config.js`
+- `frontend/dev-ports*.ts`
 - `*.config.ts`
 - `*.config.mts`
 - `*.config.mjs`
