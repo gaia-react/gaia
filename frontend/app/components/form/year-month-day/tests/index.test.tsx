@@ -8,6 +8,14 @@ import Meta, {Default} from './index.stories';
 const YearMonthDay = composeStory(Default, Meta);
 
 describe('YearMonthDay', () => {
+  test('names the selects Year, Month and Day', () => {
+    render(<YearMonthDay />);
+
+    expect(screen.getByRole('combobox', {name: 'Year'})).toBeInTheDocument();
+    expect(screen.getByRole('combobox', {name: 'Month'})).toBeInTheDocument();
+    expect(screen.getByRole('combobox', {name: 'Day'})).toBeInTheDocument();
+  });
+
   test('February date constraint works', async () => {
     render(<YearMonthDay />);
 

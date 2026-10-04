@@ -9,7 +9,7 @@ export default {
   },
   date: {
     day: 'Day',
-    month: 'month',
+    month: 'Month',
     year: 'Year',
   },
   description: 'Description',

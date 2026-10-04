@@ -8,12 +8,12 @@ type FormActionData = {
   error?: string;
 };
 
-type FormResultProps = {
+type FormErrorProps = {
   className?: string;
-  hide?: boolean;
+  isHidden?: boolean;
 };
 
-const FormError: FC<FormResultProps> = ({className, hide}) => {
+const FormError: FC<FormErrorProps> = ({className, isHidden}) => {
   const actionData = useActionData<FormActionData>();
   const [dismissed, setDismissed] = useState<FormActionData>();
 
@@ -22,14 +22,14 @@ const FormError: FC<FormResultProps> = ({className, hide}) => {
   // Dismissal is keyed to the action-data object identity, not the message
   // text; a later action returns a fresh object, so an identical message
   // re-shows instead of staying hidden.
-  const result =
-    !hide && error !== undefined && actionData !== dismissed ? error : '';
+  const visibleErrorMessage =
+    !isHidden && error !== undefined && actionData !== dismissed ? error : '';
 
   const handleDismissErrorButton = () => {
     setDismissed(actionData);
   };
 
-  if (!result) {
+  if (!visibleErrorMessage) {
     return undefined;
   }
 
@@ -42,7 +42,7 @@ const FormError: FC<FormResultProps> = ({className, hide}) => {
       onClick={handleDismissErrorButton}
       type="button"
     >
-      <span role="alert">{result}</span>
+      <span role="alert">{visibleErrorMessage}</span>
       <IoClose />
     </button>
   );
