@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type {ReactNode} from 'react';
+import type {MouseEvent, ReactNode} from 'react';
 import {
   createMemoryRouter,
   Link,
@@ -140,13 +140,24 @@ describe('Button rendered as a link', () => {
     expect(link).toHaveClass(...variantClasses('outline'));
   });
 
-  test('external anchor: stays focusable and keeps its href on Enter', async () => {
+  test('external anchor: stays focusable and activates on Enter', async () => {
     const user = userEvent.setup();
+    // jsdom cannot navigate, so the handler stops the navigation and records
+    // that Enter activated the link.
+    const handleClick = vi.fn((event: MouseEvent<HTMLAnchorElement>) => {
+      event.preventDefault();
+    });
     render(
       <Button
         nativeButton={false}
-        // eslint-disable-next-line jsx-a11y/anchor-has-content, jsx-a11y/no-redundant-roles
-        render={<a href="https://example.com/docs" role="link" />}
+        render={
+          // eslint-disable-next-line jsx-a11y/anchor-has-content, jsx-a11y/no-redundant-roles
+          <a
+            href="https://example.com/docs"
+            onClick={handleClick}
+            role="link"
+          />
+        }
       >
         Docs
       </Button>
@@ -156,6 +167,9 @@ describe('Button rendered as a link', () => {
     expect(link).toHaveFocus();
     await user.keyboard('{Enter}');
     expect(link).toHaveAttribute('href', 'https://example.com/docs');
+    expect(handleClick).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({type: 'click'})
+    );
   });
 });
 
