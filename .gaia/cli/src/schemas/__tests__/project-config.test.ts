@@ -3,7 +3,6 @@ import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {
-  isDependabotSecurityUpdates,
   isIsolationPolicy,
   projectConfigPath,
   ProjectConfigSchema,
@@ -14,13 +13,11 @@ describe('ProjectConfigSchema', () => {
   test('parses a config with every key', () => {
     expect(
       ProjectConfigSchema.parse({
-        dependabot_security_updates: 'on',
         isolation_policy: 'prefer-branch',
         sandbox_recommended: true,
         version: 1,
       })
     ).toEqual({
-      dependabot_security_updates: 'on',
       isolation_policy: 'prefer-branch',
       sandbox_recommended: true,
       version: 1,
@@ -33,13 +30,11 @@ describe('ProjectConfigSchema', () => {
 
   test('invalid or wrong-typed values degrade to undefined instead of malforming', () => {
     const parsed = ProjectConfigSchema.parse({
-      dependabot_security_updates: 'sometimes',
       isolation_policy: 'worktree-ish',
       sandbox_recommended: 'yes',
       version: 9,
     });
 
-    expect(parsed.dependabot_security_updates).toBeUndefined();
     expect(parsed.isolation_policy).toBeUndefined();
     expect(parsed.sandbox_recommended).toBeUndefined();
     expect(parsed.version).toBe(1);
@@ -48,8 +43,6 @@ describe('ProjectConfigSchema', () => {
   test('the guards accept only the known literals', () => {
     expect(isIsolationPolicy('always-worktree')).toBe(true);
     expect(isIsolationPolicy('worktree')).toBe(false);
-    expect(isDependabotSecurityUpdates('off')).toBe(true);
-    expect(isDependabotSecurityUpdates('maybe')).toBe(false);
   });
 });
 
@@ -100,6 +93,22 @@ describe('readProjectConfig', () => {
       raw: {isolation_policy: 'bogus'},
     });
   });
+
+  test.each(['on', 'off', 'maybe'])(
+    'a retired dependabot_security_updates value %j reads ok and stays in raw',
+    (value) => {
+      write(JSON.stringify({dependabot_security_updates: value, version: 1}));
+
+      const result = readProjectConfig(root);
+
+      expect(result.status).toBe('ok');
+      expect(result).toMatchObject({
+        config: {version: 1},
+        raw: {dependabot_security_updates: value},
+      });
+      expect(result).not.toHaveProperty('config.dependabot_security_updates');
+    }
+  );
 
   test('reports malformed for invalid JSON, naming the file', () => {
     write('{not json');

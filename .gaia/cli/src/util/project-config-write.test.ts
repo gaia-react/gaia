@@ -48,15 +48,30 @@ describe('updateProjectConfig', () => {
       })
     );
 
-    updateProjectConfig(root, {dependabot_security_updates: 'on'});
+    updateProjectConfig(root, {sandbox_recommended: true});
 
     expect(JSON.parse(read())).toEqual({
-      dependabot_security_updates: 'on',
       future: 'x',
       isolation_policy: 'prefer-branch',
+      sandbox_recommended: true,
       version: 1,
     });
   });
+
+  test.each(['on', 'off', 'maybe'])(
+    'carries a retired dependabot_security_updates value %j through byte-for-byte',
+    (value) => {
+      seed(
+        `{\n  "version": 1,\n  "dependabot_security_updates": "${value}"\n}\n`
+      );
+
+      updateProjectConfig(root, {isolation_policy: 'prefer-branch'});
+
+      expect(read()).toBe(
+        `{\n  "version": 1,\n  "dependabot_security_updates": "${value}",\n  "isolation_policy": "prefer-branch"\n}\n`
+      );
+    }
+  );
 
   test('sets version 1 on an existing file that lacks it', () => {
     seed(JSON.stringify({isolation_policy: 'prefer-branch'}));
@@ -72,16 +87,15 @@ describe('updateProjectConfig', () => {
     expect(readdirSync(path.join(root, '.gaia'))).toEqual(['project.json']);
   });
 
-  test.each([
-    {isolation_policy: 'sometimes'},
-    {dependabot_security_updates: 'maybe'},
-    {sandbox_recommended: 'true'},
-  ])('refuses an invalid known key %j and writes nothing', (patch) => {
-    expect(() => {
-      updateProjectConfig(root, patch);
-    }).toThrow(expect.objectContaining({kind: 'invalid_value'}));
-    expect(existsSync(projectConfigPath(root))).toBe(false);
-  });
+  test.each([{isolation_policy: 'sometimes'}, {sandbox_recommended: 'true'}])(
+    'refuses an invalid known key %j and writes nothing',
+    (patch) => {
+      expect(() => {
+        updateProjectConfig(root, patch);
+      }).toThrow(expect.objectContaining({kind: 'invalid_value'}));
+      expect(existsSync(projectConfigPath(root))).toBe(false);
+    }
+  );
 
   test('an invalid known key leaves an existing file byte-identical', () => {
     seed('{"version": 1, "future": "x"}\n');

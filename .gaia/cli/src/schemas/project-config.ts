@@ -20,25 +20,12 @@ export type IsolationPolicy = (typeof ISOLATION_POLICIES)[number];
 export const isIsolationPolicy = (value: string): value is IsolationPolicy =>
   (ISOLATION_POLICIES as readonly string[]).includes(value);
 
-export const DEPENDABOT_SECURITY_UPDATES = ['on', 'off'] as const;
-
-export type DependabotSecurityUpdates =
-  (typeof DEPENDABOT_SECURITY_UPDATES)[number];
-
-export const isDependabotSecurityUpdates = (
-  value: string
-): value is DependabotSecurityUpdates =>
-  (DEPENDABOT_SECURITY_UPDATES as readonly string[]).includes(value);
-
 /**
  * The strict shape of every known field, defined once. The write boundary
  * (`updateProjectConfig`) validates against it as is; `ProjectConfigSchema`
  * wraps each field so a bad value degrades instead of failing the read.
  */
 export const ProjectConfigStrictShape = {
-  dependabot_security_updates: z
-    .literal(DEPENDABOT_SECURITY_UPDATES)
-    .optional(),
   isolation_policy: z.literal(ISOLATION_POLICIES).optional(),
   sandbox_recommended: z.boolean().optional(),
   version: z.literal(1),
@@ -60,10 +47,6 @@ const withFallback = <Schema extends z.ZodType>(
  * consumer can compare against a literal without re-validating.
  */
 export const ProjectConfigSchema = z.object({
-  dependabot_security_updates: withFallback(
-    ProjectConfigStrictShape.dependabot_security_updates,
-    undefined
-  ),
   isolation_policy: withFallback(
     ProjectConfigStrictShape.isolation_policy,
     undefined

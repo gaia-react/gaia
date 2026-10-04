@@ -47,7 +47,7 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
   update-deps run|decline
   init strip-branding|configure-i18n|rename|wire-statusline|bootstrap-env|write-project-config|finalize|resume
   setup status|mark-step|finalize
-  setup-ci detect-remote|warn-existing-tools|check-admin|enable-delete-branch|write-isolation-policy|write-dependabot-config|write-dependabot-policy|enable-dependabot-security
+  setup-ci detect-remote|warn-existing-tools|check-admin|enable-delete-branch|write-isolation-policy|configure-dependabot-alerts
   sandbox detect|apply|record|status
   ping --event <init|setup|update> [--field value ...]
   residue-tally [--count-only] [--attribute-only] [--cap N] [--no-cap] [--json]

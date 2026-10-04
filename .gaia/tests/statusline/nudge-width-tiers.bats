@@ -549,3 +549,97 @@ arm_wiki_nudge() {
   grep -qF -- $'\033' <<<"$after_left" && return 1
   true
 }
+
+# Writes a cache holding only the update-deps counts, so the lone nudge steps
+# through every tier at the widths below: Large "Run /update-deps (3 outdated,
+# 2 security)" is 41 columns, Medium "Run /update-deps (5)" is 20, Small is 16,
+# and the left side plus the 2-column gap adds 13.
+write_lone_deps_cache() {
+  printf '%s' "$1" > "$MAIN/.gaia/local/cache/shared/update-check.json"
+  rm -f "$MAIN/.gaia/local/debt/count.json"
+}
+
+@test "UAT-028: outdated plus security steps Large, Medium sum, Small, icon sum at the boundaries" {
+  write_lone_deps_cache '{"outdatedCount":3,"securityCount":2,"securitySource":"dependabot"}'
+
+  render_at 54
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"Run /update-deps (3 outdated, 2 security)") ;;
+    *) return 1 ;;
+  esac
+
+  render_at 53
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"Run /update-deps (5)") ;;
+    *) return 1 ;;
+  esac
+
+  render_at 33
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"Run /update-deps (5)") ;;
+    *) return 1 ;;
+  esac
+
+  render_at 32
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"Run /update-deps") ;;
+    *) return 1 ;;
+  esac
+
+  render_at 28
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"📦5") ;;
+    *) return 1 ;;
+  esac
+}
+
+@test "UAT-028: security only renders its own count at Medium and icon" {
+  write_lone_deps_cache '{"outdatedCount":0,"securityCount":2,"securitySource":"dependabot"}'
+
+  render_at 200
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"Run /update-deps (2 security)") ;;
+    *) return 1 ;;
+  esac
+
+  render_at 33
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"Run /update-deps (2)") ;;
+    *) return 1 ;;
+  esac
+
+  render_at 28
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"📦2") ;;
+    *) return 1 ;;
+  esac
+}
+
+@test "UAT-028: an unavailable security count adds nothing at Medium and icon" {
+  write_lone_deps_cache '{"outdatedCount":3,"securityCount":null,"securitySource":"unavailable"}'
+
+  render_at 33
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"Run /update-deps (3)") ;;
+    *) return 1 ;;
+  esac
+  grep -qF -- "null" <<<"$plain" && return 1
+
+  render_at 28
+  [ "$status" -eq 0 ]
+  case "$plain" in
+    *"📦3") ;;
+    *) return 1 ;;
+  esac
+  grep -qF -- "security" <<<"$plain" && return 1
+  true
+}

@@ -3,9 +3,8 @@
  * subcommand.
  *
  * Feature resolution answers "which labels does a tree owe". The `dependabot`
- * feature turns on for a tree that opted into Dependabot security updates or
- * already carries `.github/dependabot.yml`, because only then does a
- * `security`-labelled pull request reach it.
+ * feature turns on for a tree that carries its own Dependabot config, because
+ * only then can a `security`-labelled pull request reach it.
  *
  * Every helper takes an explicit `repoRoot` and none calls `process.cwd()`.
  * Each `run(argv)` handler resolves its own default once with
@@ -20,7 +19,6 @@ import type {
   LabelRegistry,
 } from '../schemas/labels.js';
 import {isCreatable, LabelRegistrySchema} from '../schemas/labels.js';
-import {readProjectConfig} from '../schemas/project-config.js';
 import {summarizeZodError} from '../schemas/zod-error.js';
 
 /** Repo-relative registry path, joined onto an explicit `repoRoot`. */
@@ -30,18 +28,10 @@ export const labelsRegistryPath = (repoRoot: string): string =>
 const forensicsWorkflowPath = (repoRoot: string): string =>
   path.join(repoRoot, '.github', 'workflows', 'forensics-triage.yml');
 
-const hasDependabot = (repoRoot: string): boolean => {
-  const projectConfig = readProjectConfig(repoRoot);
-
-  if (
-    projectConfig.status === 'ok' &&
-    projectConfig.config.dependabot_security_updates === 'on'
-  ) {
-    return true;
-  }
-
-  return existsSync(path.join(repoRoot, '.github', 'dependabot.yml'));
-};
+const hasDependabot = (repoRoot: string): boolean =>
+  ['dependabot.yml', 'dependabot.yaml'].some((fileName) =>
+    existsSync(path.join(repoRoot, '.github', fileName))
+  );
 
 /** Reads and validates `.gaia/labels.json`; throws naming the file on failure. */
 export const readRegistry = (repoRoot: string): LabelRegistry => {

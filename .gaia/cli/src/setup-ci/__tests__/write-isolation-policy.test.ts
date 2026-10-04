@@ -80,7 +80,6 @@ describe('setup-ci write-isolation-policy', () => {
 
   test('a second writer keeps the first key, and an unknown key survives', () => {
     sandbox.writeProjectConfig({
-      dependabot_security_updates: 'on',
       some_future_key: 'x',
       version: 1,
     });
@@ -90,7 +89,6 @@ describe('setup-ci write-isolation-policy', () => {
 
     const written = readRaw(sandbox.root);
     expect(written.some_future_key).toBe('x');
-    expect(written.dependabot_security_updates).toBe('on');
     expect(written.isolation_policy).toBe('prefer-worktree');
     expect(existsSync(retiredConfigPath(sandbox.root))).toBe(false);
   });

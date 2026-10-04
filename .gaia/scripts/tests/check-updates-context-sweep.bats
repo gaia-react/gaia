@@ -74,7 +74,7 @@ run_refresher() {
 @test "sweep red state: with the TTL not past, the 8-day-old file survives" {
   make_main
   seed_context
-  printf '{"checkedAt":%s}\n' "$(date +%s)" > "$MAIN/.gaia/local/cache/shared/update-check.json"
+  printf '{"checkedAt":%s,"securitySource":"dependabot"}\n' "$(date +%s)" > "$MAIN/.gaia/local/cache/shared/update-check.json"
   run_refresher
   [ "$status" -eq 0 ]
   [ -e "$CONTEXT_DIRECTORY/old.json" ]
