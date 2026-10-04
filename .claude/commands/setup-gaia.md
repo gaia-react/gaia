@@ -1,15 +1,15 @@
 ---
 name: setup-gaia
-description: Single post-init onboarding command; detects situation, runs only owed phases; safe to re-run. --reconfigure re-asks the sandbox, isolation-policy, Dependabot, and statusline decisions.
+description: Single post-init onboarding command; detects situation, runs only owed phases; safe to re-run. --reconfigure re-asks the sandbox, isolation-policy, Dependabot, squash-only-merge, and statusline decisions.
 ---
 
 Run this once after `/gaia-init`, and re-run it any time. `/setup-gaia` is the single onboarding command for a GAIA project. It detects the situation and runs only the phases this clone actually owes:
 
 - **Per-machine work** every clone needs (tool installs, plugins, spec-kit runtime, statusline bit, `.env`, the sandbox decision, and, for a developer with a global statusline, which statusline draws the left side).
-- **GitHub repository provisioning** (create / adopt / manual, private by default), plus branch protection and the `GAIA-Audit` required-check registration when the runner is a repo admin.
+- **GitHub repository provisioning** (create / adopt / manual, private by default), plus branch protection, the `GAIA-Audit` required-check registration, and squash-only merge settings when the runner is a repo admin.
 - **Team settings** a repo admin records once in `.gaia/project.json`: the git isolation policy and the Dependabot security-updates decision.
 
-It is safe for **any developer** to run at any time. A plain (no-flag) re-run on a fully provisioned project prints the already-provisioned line and mutates nothing: it never re-provisions the repo or changes branch protection. The one exception is a repo admin re-running it on a repo whose required checks still lack `GAIA-Audit` (or still carry the stale `code-review-audit` context): that run owes the registration and makes it. Pass `--reconfigure` to re-ask the sandbox decision (Phase 2), the team git isolation policy (Phase 3.5), the Dependabot security-updates decision (Phase 3.6), and the statusline left-side choice (Phase 4.6).
+It is safe for **any developer** to run at any time. A plain (no-flag) re-run on a fully provisioned project prints the already-provisioned line and mutates nothing: it never re-provisions the repo or changes branch protection. The one exception is a repo admin re-running it on a repo whose required checks still lack `GAIA-Audit` (or still carry the stale `code-review-audit` context): that run owes the registration and makes it. Pass `--reconfigure` to re-ask the sandbox decision (Phase 2), the team git isolation policy (Phase 3.5), the Dependabot security-updates decision (Phase 3.6), the squash-only-merge offer (Phase 3.7), and the statusline left-side choice (Phase 4.6).
 
 The slash command name intentionally does NOT start with `gaia-` so it does not pollute the `/gaia` autocomplete namespace (those are reserved for the four user-invoked GAIA workflows).
 
@@ -28,7 +28,7 @@ If the detection does not fire, fall through to `## Argument parse` below.
 
 ## Argument parse
 
-Parse `$ARGUMENTS` for the `--reconfigure` flag. Cache the boolean as `RECONFIGURE`. It re-opens four settled decisions and nothing else: the sandbox decision in Phase 2, the isolation policy in Phase 3.5, Dependabot security updates in Phase 3.6, and the statusline left-side choice in Phase 4.6.
+Parse `$ARGUMENTS` for the `--reconfigure` flag. Cache the boolean as `RECONFIGURE`. It re-opens five settled decisions and nothing else: the sandbox decision in Phase 2, the isolation policy in Phase 3.5, Dependabot security updates in Phase 3.6, the squash-only-merge offer in Phase 3.7, and the statusline left-side choice in Phase 4.6.
 
 ## Phase 0: Prerequisites (every invocation, never skipped)
 
@@ -471,7 +471,7 @@ Reached from Option 1 (after create) or Option 2 (adopt). Run the admin probe fo
 Cache `admin` and `auth_status`. **If `admin` is not `true` (or `auth_status != "ok"`)**, none of the GitHub mutations below fire; print the admin-note and skip straight to Phase 3.5 (which runs its own admin probe and fails closed the same way):
 
 ```
-GitHub provisioning needs repo-admin permission and an authenticated gh (yours: admin=<admin>, auth_status=<auth_status>). Skipping the admin-only steps (branch protection, the GAIA-Audit required-check registration, Dependabot alerts, and delete-branch-on-merge). Per-machine setup still completes. Ask a repo admin to finish the GitHub side, or gain admin access and re-run /setup-gaia.
+GitHub provisioning needs repo-admin permission and an authenticated gh (yours: admin=<admin>, auth_status=<auth_status>). Skipping the admin-only steps (branch protection, the GAIA-Audit required-check registration, Dependabot alerts, delete-branch-on-merge, and squash-only merges). Per-machine setup still completes. Ask a repo admin to finish the GitHub side, or gain admin access and re-run /setup-gaia.
 ```
 
 When `admin: true` and `auth_status == "ok"`:
@@ -552,6 +552,8 @@ On Enable:
 ```
 
 If already `true`, print `delete_branch_on_merge is already enabled.` and continue.
+
+**Squash-only merges.** Phase 3.7 owns this offer; it runs there, after the team settings, because `--reconfigure` re-opens it on a repo this phase no longer touches.
 
 **Dependabot posture.** Enable Dependabot **alerts** (visibility) and keep the PR-producing features **off** here; Phase 3.6 offers security updates as an opt-in. First warn about any existing Dependabot / Renovate config:
 
@@ -876,11 +878,60 @@ git commit -m "<message from the branch above>"
 git push origin <current-branch>
 ```
 
+Fall through to Phase 3.7.
+
+## Phase 3.7: Squash-only merges (provisioning or `--reconfigure` only)
+
+GAIA lints pull request titles as Conventional Commits because a squash merge lands the title as the commit subject on the default branch. That holds only when squash is the one merge method and the squash commit takes the PR title. This is a **repository setting**, asked once by whoever provisions the repo. GitHub's own merge settings are the record of the answer, so nothing is written to `.gaia/project.json` and nothing is committed.
+
+### Gate 1: whether the question is owed
+
+- Phase 3 ran its **Recommended defaults** this invocation (the repo was just created or adopted) → owed. Continue to Gate 2.
+- `RECONFIGURE` is set → owed. Continue to Gate 2.
+- Otherwise → **skip silently**. A teammate's fresh clone, a plain re-run on a provisioned repo, and the registration-only partial re-run never see this question, whatever the repo's current settings are: the developer who provisioned the repo already answered it, and a Skip stays a Skip until someone passes `--reconfigure`.
+
+### Gate 2: `check-admin` probe (fail closed)
+
+When Phase 3's Recommended defaults ran this invocation, reuse the `admin` and `auth_status` it cached. Otherwise run the probe with Phase 1's cached `detect-remote` values:
+
+```bash
+.gaia/cli/gaia setup-ci check-admin --owner <owner> --repo <repo> --json
+```
+
+Fail closed, silently (skip the question, no error, no output), on any of: `detect-remote` reported `found: false`; `host != "github.com"`; `admin` is not `true`; `auth_status` is not `"ok"`. Merge settings are a repository setting, so a non-admin is not its audience.
+
+### The question
+
+Read the current settings:
+
+```bash
+gh api "repos/<owner>/<repo>" --jq '{allow_merge_commit, allow_rebase_merge, allow_squash_merge, squash_merge_commit_title, squash_merge_commit_message}'
+```
+
+If they already match the PATCH below, print `Merges are already squash-only.` and fall through to Phase 4.5. Otherwise AskUserQuestion:
+
+> This repository allows merges that bypass the squash path, or squashes under a title other than the PR title. A merge commit, a rebase merge, or a default squash title can land a non-Conventional subject on the default branch, so the PR title lint stops describing what lands. Squash-only turns off merge commits and rebase merges, and has every squash commit take the PR title as its subject and the branch's commit messages as its body.
+>
+> - **Make merges squash-only** (Recommended)
+> - **Skip** (keep the current merge settings)
+
+On Make merges squash-only:
+
+```bash
+gh api -X PATCH "repos/<owner>/<repo>" --input - <<'JSON'
+{"allow_merge_commit": false, "allow_rebase_merge": false, "allow_squash_merge": true, "squash_merge_commit_title": "PR_TITLE", "squash_merge_commit_message": "COMMIT_MESSAGES"}
+JSON
+```
+
+Re-run the read above and confirm the five values match the PATCH. On a failed PATCH or a read-back that does not match, print the error and the manual path, `Settings → General → Pull Requests` on `https://github.com/<owner>/<repo>/settings`, and continue; do not halt.
+
+On Skip, change nothing.
+
 Fall through to Phase 4.5.
 
 ## Phase 4.5: Label sync (always evaluated)
 
-This runs on every invocation, after Phase 3.6, whichever path Phases 3 through 3.6 took (repo created, adopted, set up manually, already provisioned, or degraded on a non-admin runner), because the feature and audience choices already on disk by then are what the label sync filters on: whether the forensics workflow is present, and whether this repo is adopter- or maintainer-audience.
+This runs on every invocation, after Phase 3.7, whichever path Phases 3 through 3.7 took (repo created, adopted, set up manually, already provisioned, or degraded on a non-admin runner), because the feature and audience choices already on disk by then are what the label sync filters on: whether the forensics workflow is present, and whether this repo is adopter- or maintainer-audience.
 
 ```bash
 .gaia/cli/gaia labels sync
@@ -1014,7 +1065,7 @@ Then output (in the user's language): "GAIA setup complete. Restart Claude Code 
 
 ## Idempotence / re-run safety
 
-A plain (no-flag) re-run on a fully provisioned project prints the already-provisioned line and mutates nothing: default-branch protection JSON and `.gaia/project.json` are byte-identical before and after, and no mutating `gh` call fires. Never re-provision the repo or change branch protection on a plain re-run; the one branch-protection change a re-run makes is the owed `GAIA-Audit` registration (Phase 3) for an admin on a repo whose required contexts lack `GAIA-Audit` or still carry `code-review-audit`. Only `--reconfigure` re-opens the settled sandbox, isolation-policy, Dependabot, and statusline decisions.
+A plain (no-flag) re-run on a fully provisioned project prints the already-provisioned line and mutates nothing: default-branch protection JSON and `.gaia/project.json` are byte-identical before and after, and no mutating `gh` call fires. Never re-provision the repo or change branch protection on a plain re-run; the one branch-protection change a re-run makes is the owed `GAIA-Audit` registration (Phase 3) for an admin on a repo whose required contexts lack `GAIA-Audit` or still carry `code-review-audit`. Only `--reconfigure` re-opens the settled sandbox, isolation-policy, Dependabot, squash-only-merge, and statusline decisions.
 
 ## On failure: re-run
 

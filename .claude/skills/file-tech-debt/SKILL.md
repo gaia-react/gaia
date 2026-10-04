@@ -182,18 +182,6 @@ The class is advisory: whatever later drains the issue re-derives it from the ci
 
 Being advisory also sets how strictly it is checked. `.gaia/scripts/check-debt-issue-metadata.sh` validates at most one footprint label and rejects a value outside the three above, but absence is not a finding: a human-filed issue that carries no class is legal, and the drain treats it as unclassified and grades it from code like any other.
 
-The `fold:` label records that **the repair's cost is dominated by a fixed cost the finding alone does not justify**, so draining it on its own pays that cost for a change too small to warrant it.
-
-| Label | Apply it when |
-|---|---|
-| `fold:required` | the repair should ride a change that already pays its fixed cost, and nothing about the finding on its own justifies paying that cost. |
-
-That one condition is the whole application rule. The instance it was written for is a small prose edit to a path the audit gate treats as global (`AUDIT_GLOBAL_RULES_PATHS` in `.claude/hooks/lib/audit-rules-changed.sh`), which discards every Code Audit Team member's incremental review anchor repo-wide: the repair is one sentence and the reset is not. The general form is any repair whose cost sits in the change around it rather than in the change itself.
-
-**Display-only, gating nothing.** The label records the intent for a human reading the issue. `/gaia-debt` does not read it: it never filters the candidate pool, never changes the ordering, and never changes the clustering pass. Which carrier a folded repair should ride is a property of the *other* change's fix, so no pure function over this issue's fields can compute it, and the ordering and clustering are deliberately model-free.
-
-Optional, and absence is the ordinary case: most repairs carry their own cost. Exactly one is permitted when present, and `.gaia/scripts/check-debt-issue-metadata.sh` validates the value the way it validates a difficulty grade.
-
 See step 7 for the difficulty label's three permitted values and the rubric for choosing between them.
 
 A finding that gets deliberately declined (closed without fixing) carries GitHub's `wontfix` label, that's what step 2 checks for to avoid re-filing it.
@@ -205,7 +193,6 @@ The registry is reconciled before the first filing in a run, then anything still
 present="$(gh label list --limit 200 --json name --jq '.[].name' 2>/dev/null)"
 for label in tech-debt severity:critical severity:important severity:suggestion severity:investigate \
              footprint:narrow footprint:wide footprint:spec \
-             fold:required \
              difficulty:easy difficulty:medium difficulty:hard wontfix; do
   printf '%s\n' "$present" | grep -qx "$label" || gh label create "$label" 2>/dev/null || true
 done

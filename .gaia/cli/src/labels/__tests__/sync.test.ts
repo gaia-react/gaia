@@ -171,7 +171,6 @@ describe('labels/sync planSync create sets', () => {
       'difficulty:medium',
       'documentation',
       'enhancement',
-      'fold:required',
       'footprint:narrow',
       'footprint:spec',
       'footprint:wide',
@@ -191,7 +190,7 @@ describe('labels/sync planSync create sets', () => {
     const names = createNames(plan({features: ['tech-debt', 'forensics']}));
 
     expect(names).not.toContain('security');
-    expect(names).toHaveLength(20);
+    expect(names).toHaveLength(19);
   });
 
   test('tech-debt off leaves the always-on set plus the dependabot set', () => {
@@ -219,7 +218,6 @@ describe('labels/sync planSync create sets', () => {
       'difficulty:medium',
       'documentation',
       'enhancement',
-      'fold:required',
       'footprint:narrow',
       'footprint:spec',
       'footprint:wide',

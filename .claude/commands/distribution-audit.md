@@ -145,7 +145,7 @@ The CLI snapshots the unanswered set once, validates the whole answer set agains
 
 The CLI is the sole writer of `.gaia/release-exclude`. This command never edits that file itself: no direct file write, no in-place edit, no shell redirect into it. Every withheld entry is written by the CLI's own answer machinery, which is the only place the literal-path rule is enforced and under test. If this command hand-edited the boundary instead, that rule would be enforced by nothing at all, no code would own the write, and it would be exactly the kind of unenforced promise this feature exists to eliminate.
 
-Commit what the CLI wrote, `.gaia/manifest.json` plus any `.gaia/release-exclude` change, as the **manifest-answer commit**, carrying one ship line per shipped path in its body in the format 3d gives. Land it before starting a PR's Code Audit Team pre-merge audit handshake, not after; see `wiki/concepts/PR Merge Workflow.md` for why the ordering matters.
+Commit what the CLI wrote, `.gaia/manifest.json` plus any `.gaia/release-exclude` change, as the **manifest-answer commit**, with the subject `chore(manifest): answer distribution for <what ships>` (lowercase, so the `commit-msg` hook's commitlint accepts it) and one ship line per shipped path in its body in the format 3d gives. Land it before starting a PR's Code Audit Team pre-merge audit handshake, not after; see `wiki/concepts/PR Merge Workflow.md` for why the ordering matters.
 
 ## What this command never does
 

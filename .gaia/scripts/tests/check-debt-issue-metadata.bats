@@ -308,45 +308,6 @@ refute_code() {
   refute_code "footprint-count"
 }
 
-# ---------------------------------------------------------------------------
-# fold: validated when present, never demanded
-# ---------------------------------------------------------------------------
-
-@test "a filing with no fold: label is clean, the ordinary case" {
-  # Absence is the norm rather than an omission: the label marks the minority of
-  # findings whose repair rides another change's fixed cost, so demanding it
-  # would make every ordinary filing a finding.
-  run bash "$CHECK" --pre-file --labels "$GOOD_LABELS" --body-file "$BODY"
-  [ "$status" -eq 0 ]
-  refute_code "fold"
-}
-
-@test "fold:required is accepted" {
-  run bash "$CHECK" --pre-file --labels "$GOOD_LABELS,fold:required" --body-file "$BODY"
-  [ "$status" -eq 0 ]
-}
-
-@test "two fold: labels are rejected" {
-  run bash "$CHECK" --pre-file --labels "$GOOD_LABELS,fold:required,fold:required" --body-file "$BODY"
-  [ "$status" -eq 1 ]
-  assert_code "fold-count"
-}
-
-@test "a fold: value outside the permitted set is rejected" {
-  run bash "$CHECK" --pre-file --labels "$GOOD_LABELS,fold:optional" --body-file "$BODY"
-  [ "$status" -eq 1 ]
-  assert_code "fold-value"
-}
-
-@test "RED: an unfilled fold placeholder is a finding, not a dropped flag" {
-  run bash "$CHECK" --pre-file --labels "$GOOD_LABELS,fold:" --body-file "$BODY"
-  [ "$status" -eq 1 ]
-  assert_code "fold-value"
-  # The count check cannot catch this: `fold:` is one label, so at-most-one
-  # holds and only the value is wrong.
-  refute_code "fold-count"
-}
-
 # --- the shapes an unquoted value expansion used to let through ------------
 #
 # Each of these greened the gate before the value loop read its input line-wise.
@@ -755,7 +716,7 @@ stub_gh_failing() {
 # The hazard that wrap creates is a runtime one, not a syntax one. Under
 # `set -euo pipefail` a strip that took the `AUDIENCE_VALUES` declaration but
 # left its `check_namespace_values` reader behind aborts on an unbound variable at the
-# FIRST filing, taking the severity, difficulty, footprint, and fold checks down
+# FIRST filing, taking the severity, difficulty, and footprint checks down
 # with it, and `bash -n` parses that file clean. So these tests strip through
 # the real shipped stripper (`gaia-maintainer release scrub`, never a second
 # parser written here) and then RUN the result.
@@ -861,19 +822,18 @@ YAML
   # The finding CODES are the assertion, not the exit status. An unbound-
   # variable abort also exits non-zero, so a status-only test would green on
   # the exact defect this exists to catch. Each code below is emitted from a
-  # line AFTER the stripped block, so seeing all four proves execution reached
+  # line AFTER the stripped block, so seeing every one proves execution reached
   # the end of `check_labels`.
   require_stripper
   local stripped
   stripped="$(stripped_check)" || return 1
 
   run bash "$stripped" --pre-file \
-    --labels 'tech-debt,severity:blocker,difficulty:trivial,footprint:agent,fold:maybe' \
+    --labels 'tech-debt,severity:blocker,difficulty:trivial,footprint:agent' \
     --body-file "$BODY"
   [ "$status" -eq 1 ]
   assert_code "severity-value"
   assert_code "difficulty-value"
   assert_code "footprint-value"
-  assert_code "fold-value"
   refute_code "unbound variable"
 }
