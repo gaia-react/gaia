@@ -26,7 +26,7 @@ export const DEFAULT_VALUE = formatISO8601Date(DEFAULT_DATE);
 
 const iso8601DateSchema = z.iso.date();
 
-export const getValues = (value: string) => {
+export const getValues = (value: string): string[] => {
   const result = iso8601DateSchema.safeParse(value);
   const [year, month, date] = (
     result.success ?
@@ -55,7 +55,7 @@ const getNumericYMDFromISO8601Date = (value: string) => {
 export const getSafeValue = (
   prevValue: string,
   {name, value: fieldValue}: EventTarget & HTMLSelectElement
-) => {
+): string => {
   const which = name.includes('Month') ? 'month' : 'year';
 
   const prevYMD = getNumericYMDFromISO8601Date(prevValue);

@@ -29,12 +29,19 @@ const variants: Variant[] = [
 
 const legends = ['text-xs', 'text-sm', 'text-base', 'text-lg', 'text-xl'];
 
-const render = (
-  disabled?: boolean,
-  icon?: boolean,
-  iconText?: boolean,
-  isLoading?: boolean
-) => (
+type RenderOptions = {
+  disabled?: boolean;
+  hasIcon?: boolean;
+  hasIconText?: boolean;
+  isLoading?: boolean;
+};
+
+const render = ({
+  disabled,
+  hasIcon,
+  hasIconText,
+  isLoading,
+}: RenderOptions = {}) => (
   <div className="grid max-w-5xl grid-cols-11 items-center justify-items-start gap-x-8 gap-y-4">
     <div />
     {variants.map((variant) => (
@@ -57,12 +64,12 @@ const render = (
             key={variant}
             className="col-span-2 capitalize"
             disabled={disabled}
-            icon={icon ? IoStar : undefined}
+            icon={hasIcon ? IoStar : undefined}
             isLoading={isLoading}
             size={size}
             variant={variant}
           >
-            {!icon || iconText ? 'Label' : undefined}
+            {!hasIcon || hasIconText ? 'Label' : undefined}
           </Button>
         ))}
       </Fragment>
@@ -72,17 +79,20 @@ const render = (
 
 export const Default: StoryFn = () => render();
 
-export const Loading: StoryFn = () => render(false, false, false, true);
+export const Loading: StoryFn = () => render({isLoading: true});
 Loading.parameters = {
   chromatic: {disableSnapshot: true},
 };
 
-export const Disabled: StoryFn = () => render(true);
+export const Disabled: StoryFn = () => render({disabled: true});
 
-export const Icon: StoryFn = () => render(false, true);
+export const Icon: StoryFn = () => render({hasIcon: true});
 
-export const IconDisabled: StoryFn = () => render(true, true);
+export const IconDisabled: StoryFn = () =>
+  render({disabled: true, hasIcon: true});
 
-export const IconText: StoryFn = () => render(false, true, true);
+export const IconText: StoryFn = () =>
+  render({hasIcon: true, hasIconText: true});
 
-export const IconTextDisabled: StoryFn = () => render(true, true, true);
+export const IconTextDisabled: StoryFn = () =>
+  render({disabled: true, hasIcon: true, hasIconText: true});

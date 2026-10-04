@@ -14,7 +14,7 @@ const meta: Meta = {
   parameters: {
     controls: {hideNoControlsWarning: true},
   },
-  title: 'Form/Input/Email',
+  title: 'Components/Form/InputEmail',
 };
 
 export default meta;

@@ -8,7 +8,7 @@ const meta: Meta = {
   parameters: {
     controls: {hideNoControlsWarning: true},
   },
-  title: 'Form/Select',
+  title: 'Components/Form/Select',
 };
 
 export default meta;

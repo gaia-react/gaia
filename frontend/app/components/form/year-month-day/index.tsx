@@ -92,21 +92,21 @@ const YearMonthDay: FC<YearMonthDayProps> = ({
 
   const years = useMemo(
     () =>
-      YEARS.map((y) => ({
-        label: formatFullYear(set(DEFAULT_DATE, {year: y}), language),
-        value: String(y),
+      YEARS.map((yearNumber) => ({
+        label: formatFullYear(set(DEFAULT_DATE, {year: yearNumber}), language),
+        value: String(yearNumber),
       })),
     [language]
   );
 
   const months = useMemo(
     () =>
-      MONTHS.map((m) => ({
+      MONTHS.map((monthNumber) => ({
         label: formatAbbreviatedMonth(
-          set(DEFAULT_DATE, {month: m - 1}),
+          set(DEFAULT_DATE, {month: monthNumber - 1}),
           language
         ),
-        value: String(m).padStart(2, '0'),
+        value: String(monthNumber).padStart(2, '0'),
       })),
     [language]
   );
@@ -121,15 +121,15 @@ const YearMonthDay: FC<YearMonthDayProps> = ({
 
     return Array(differenceInDays(end, start) + 1)
       .fill(start)
-      .map((s, index) => {
-        const d: Date = addDays(s, index);
+      .map((monthStartDate, index) => {
+        const dayDate: Date = addDays(monthStartDate, index);
 
         return {
           label:
             language === 'en' ?
-              String(d.getDate())
-            : formatOrdinalDay(d, language),
-          value: String(d.getDate()).padStart(2, '0'),
+              String(dayDate.getDate())
+            : formatOrdinalDay(dayDate, language),
+          value: String(dayDate.getDate()).padStart(2, '0'),
         };
       });
   }, [language, month, year]);

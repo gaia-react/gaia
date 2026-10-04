@@ -6,7 +6,7 @@ const meta: Meta = {
   parameters: {
     controls: {hideNoControlsWarning: true},
   },
-  title: 'Form/Input/Text',
+  title: 'Components/Form/InputText',
 };
 
 export default meta;

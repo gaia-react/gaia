@@ -15,7 +15,7 @@ const meta: Meta = {
   parameters: {
     controls: {hideNoControlsWarning: true},
   },
-  title: 'Form/RadioButtons',
+  title: 'Components/Form/RadioButtons',
 };
 
 export default meta;

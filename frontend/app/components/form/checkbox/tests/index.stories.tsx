@@ -15,7 +15,7 @@ const meta: Meta = {
   parameters: {
     controls: {hideNoControlsWarning: true},
   },
-  title: 'Form/Checkbox',
+  title: 'Components/Form/Checkbox',
 };
 
 export default meta;

@@ -6,7 +6,7 @@ const meta: Meta = {
   parameters: {
     controls: {hideNoControlsWarning: true},
   },
-  title: 'Form/FieldRequiredText',
+  title: 'Components/Form/Field/FieldLabel/FieldRequiredText',
 };
 
 export default meta;

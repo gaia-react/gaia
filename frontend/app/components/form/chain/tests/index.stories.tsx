@@ -10,7 +10,7 @@ const meta: Meta = {
   parameters: {
     controls: {hideNoControlsWarning: true},
   },
-  title: 'Form/Chain',
+  title: 'Components/Form/Chain',
 };
 
 export default meta;

@@ -9,7 +9,7 @@ const meta: Meta = {
     controls: {hideNoControlsWarning: true},
     wrap: 'p-4 max-w-sm space-y-4',
   },
-  title: 'Form/TextArea',
+  title: 'Components/Form/TextArea',
 };
 
 export default meta;

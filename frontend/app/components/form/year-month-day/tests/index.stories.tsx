@@ -12,7 +12,7 @@ const meta: Meta = {
   parameters: {
     controls: {hideNoControlsWarning: true},
   },
-  title: 'Form/YearMonthDay',
+  title: 'Components/Form/YearMonthDay',
 };
 
 export default meta;

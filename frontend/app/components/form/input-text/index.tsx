@@ -1,5 +1,5 @@
-import type {ChangeEvent, FC} from 'react';
-import {useCallback, useState} from 'react';
+import type {ChangeEventHandler, FC} from 'react';
+import {useState} from 'react';
 import {cn} from 'cn';
 import Field from '../field';
 import type {InputProps} from '../types';
@@ -35,15 +35,14 @@ const InputText: FC<InputProps> = ({
   const length =
     props.value === undefined ? localLength : String(props.value).length;
 
-  const handleUpdateLengthInput = useCallback(
-    (event: ChangeEvent<HTMLInputElement>) => {
-      if (maxLength && props.value === undefined) {
-        setLocalLength(event.currentTarget.value.length);
-      }
-      onChange?.(event);
-    },
-    [maxLength, onChange, props.value]
-  );
+  const handleUpdateLengthInput: ChangeEventHandler<HTMLInputElement> = (
+    event
+  ) => {
+    if (maxLength && props.value === undefined) {
+      setLocalLength(event.currentTarget.value.length);
+    }
+    onChange?.(event);
+  };
 
   const Icon = icon;
 
