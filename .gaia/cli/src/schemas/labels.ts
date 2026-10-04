@@ -16,7 +16,6 @@ export const LABEL_AXES = [
   'effort',
   'reach',
   'lifecycle',
-  'modifier',
   'disposition',
   'origin',
   'attention',

@@ -92,7 +92,6 @@ const AXIS_TITLES: Readonly<Record<LabelAxis, string>> = {
   disposition: 'Disposition',
   effort: 'Effort',
   lifecycle: 'Lifecycle',
-  modifier: 'Modifier',
   origin: 'Origin and trigger',
   reach: 'Reach of fix',
   'third-party': 'Third-party',

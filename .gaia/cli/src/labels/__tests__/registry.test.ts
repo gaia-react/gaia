@@ -31,7 +31,7 @@ const names = (
 describe('labels/registry readRegistry', () => {
   test('parses the committed .gaia/labels.json', () => {
     expect(registry.version).toBe(1);
-    expect(registry.labels).toHaveLength(33);
+    expect(registry.labels).toHaveLength(32);
   });
 
   test('the two deprecated entries carry no features and a null reason', () => {
@@ -100,7 +100,6 @@ describe('labels/registry creatableEntries', () => {
       'difficulty:medium',
       'documentation',
       'enhancement',
-      'fold:required',
       'footprint:narrow',
       'footprint:spec',
       'footprint:wide',
@@ -126,7 +125,6 @@ describe('labels/registry creatableEntries', () => {
       'difficulty:medium',
       'documentation',
       'enhancement',
-      'fold:required',
       'footprint:narrow',
       'footprint:spec',
       'footprint:wide',
@@ -181,7 +179,6 @@ describe('labels/registry creatableEntries', () => {
       'difficulty:medium',
       'documentation',
       'enhancement',
-      'fold:required',
       'footprint:narrow',
       'footprint:spec',
       'footprint:wide',

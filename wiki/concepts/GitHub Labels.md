@@ -37,7 +37,7 @@ The `audience` axis answers two questions at two layers, under one name. A regis
 | Label | Color | Description | Created by |
 | --- | --- | --- | --- |
 | `tech-debt` | `ededed` | Out-of-scope review finding, tracked for a later drain | tech-debt |
-| `bug` | `d73a4a` | Existing behavior is broken or wrong | always |
+| `bug` | `d1297e` | Existing behavior is broken or wrong | always |
 | `enhancement` | `a2eeef` | New feature or request | always |
 | `documentation` | `0075ca` | Improvements or additions to documentation | always |
 | `security` | `a1121b` | Security defect or dependency CVE | dependabot |
@@ -47,9 +47,9 @@ The `audience` axis answers two questions at two layers, under one name. A regis
 | Label | Color | Description | Created by |
 | --- | --- | --- | --- |
 | `severity:critical` | `b60205` | Breaks a documented promise or loses work; drain first | tech-debt |
-| `severity:important` | `fbca04` | Degrades a documented behavior; drain before suggestions | tech-debt |
-| `severity:suggestion` | `c5def5` | Improvement with no broken behavior behind it | tech-debt |
-| `severity:investigate` | `1d76db` | Severity not yet determined; research required before it can be graded | tech-debt |
+| `severity:important` | `e3555a` | Degrades a documented behavior; drain before suggestions | tech-debt |
+| `severity:suggestion` | `f5a3a3` | Improvement with no broken behavior behind it | tech-debt |
+| `severity:investigate` | `c4a7a7` | Severity not yet determined; research required before it can be graded | tech-debt |
 
 ### Effort
 
@@ -74,12 +74,6 @@ The `audience` axis answers two questions at two layers, under one name. A regis
 | `in-progress` | `ffd33d` | Someone is actively working this issue right now; do not pick it up | always |
 | `debt:spec-pending` | `a6e3b8` | Handed to /gaia-spec; parked until the SPEC pipeline starts | tech-debt |
 | `debt:spec-active` | `3b9b58` | SPEC is underway for this issue, or holds it open on a recorded trigger | tech-debt |
-
-### Modifier
-
-| Label | Color | Description | Created by |
-| --- | --- | --- | --- |
-| `fold:required` | `fbb6ce` | Repair should ride a change that already pays its fixed cost | tech-debt |
 
 ### Disposition
 
