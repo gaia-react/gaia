@@ -533,6 +533,11 @@ _gaia_server_wait_for_exit() {
   return 0
 }
 
+# Public names for the liveness checks above, for callers that reap a process
+# they launched themselves.
+gaia_server_pid_alive() { _gaia_server_pid_alive "$1"; }
+gaia_server_wait_for_exit() { _gaia_server_wait_for_exit "$1" "$2"; }
+
 # gaia_server_stop_verified <pid> <start> <command> <cwd-prefix> <port>:
 # re-reads every field immediately before each signal and skips on any
 # mismatch. SIGTERM, a bounded wait, re-verify, SIGKILL only if still
