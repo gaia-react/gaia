@@ -229,10 +229,6 @@ import {RadioGroup, RadioGroupItem} from '~/components/ui/radio-group';
 </Field>;
 ```
 
-## Dates
-
-`YearMonthDay` (`~/components/form/year-month-day`) is controlled. Drive it with `useInputControl(fields.dob)` (`value={control.value ?? ''}`, `onChange={control.change}`, `onBlur={control.blur}`), place it in a `FieldSet` with a `FieldLegend` (omit its own `label` prop so no second legend renders) and render its `FieldError` yourself, since it has no `error` prop. Passing `name` posts `dob`, `dobYear`, `dobMonth` and `dobDate`.
-
 ## Actions and disabled states
 
 A disabled action renders a disabled `ui/button`, never a disabled link: `<Button disabled>` keeps the button role and the disabled semantics, while an `<a>` cannot be disabled and a styled link stays focusable and clickable. Pass `disabled` to the controls and the `FieldSet` together when a whole form is disabled. A button that navigates is `<Button nativeButton={false} render={<Link to="/path" role="link" />}>`; Base UI sets `role="button"` on a non-native render target, so the explicit `role="link"` restores the link role.

@@ -29,10 +29,10 @@ This is the recommended template pattern. No shipped route action implements it;
 
 ## Stateful custom inputs
 
-If the form contains a stateful custom input (e.g. `YearMonthDay`), wire it via `useInputControl` so it stays in sync with Conform's validation state. See [[Form Components]].
+If the form contains a stateful custom input (e.g. a date picker), wire it via `useInputControl` so it stays in sync with Conform's validation state. See [[Form Components]].
 
 ## Toasts
 
-`remix-toast` cookie + Sonner UI render success/error toasts on redirect. The root loader reads the toast via `getToast(request)` and returns it in loader data. The root `App` component's `useEffect` calls `notify[toast.type](toast)` when a toast is present, and the `ui/sonner` `Toaster`, mounted in the root with `toasterProps`, displays it.
+`remix-toast` cookie + the ui `toast` render success/error toasts on redirect. The root loader reads the toast via `getToast(request)` and returns it in loader data. The root `App` component's `useEffect` calls `notify[toast.type](toast)` when a toast is present, and the `<Toaster />` from `~/components/ui/toast`, mounted in the root, displays it.
 
 See [[Routing]], [[Form Components]], [[i18n]].

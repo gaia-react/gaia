@@ -59,7 +59,7 @@
   "devDependencies": {
     "@commitlint/cli": "21.2.3",
     "@commitlint/config-conventional": "21.2.3",
-    "@gaia-react/lint": "3.0.0-rc.1",
+    "@gaia-react/lint": "3.0.0-rc.2",
     "lint-staged": "17.6.0",
     "prettier": "3.9.9",
     "typescript": "6.0.3"

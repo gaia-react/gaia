@@ -31,11 +31,14 @@ export const Invalid: StoryFn = () => <ComposedForm />;
 Invalid.play = async ({canvasElement}) => {
   const canvas = within(canvasElement);
 
-  await userEvent.click(canvas.getByRole('button', {name: 'Submit'}));
-  await expect(await canvas.findByLabelText('Name')).toHaveAttribute(
-    'aria-invalid',
-    'true'
-  );
+  // Chromatic renders the story in light and dark panes, so act on every copy.
+  for (const submit of await canvas.findAllByRole('button', {name: 'Submit'})) {
+    await userEvent.click(submit);
+  }
+
+  for (const nameField of await canvas.findAllByLabelText('Name')) {
+    await expect(nameField).toHaveAttribute('aria-invalid', 'true');
+  }
 };
 
 export const Disabled: StoryFn = () => <ComposedForm disabled={true} />;

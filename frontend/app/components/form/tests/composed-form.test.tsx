@@ -155,7 +155,7 @@ describe('ComposedForm interaction', () => {
 
     await user.tab();
     expect(screen.getByRole('radio', {name: 'Medium'})).not.toHaveFocus();
-    expect(screen.getByRole('combobox', {name: 'Year'})).toHaveFocus();
+    expect(screen.getByRole('button', {name: 'Submit'})).toHaveFocus();
   });
 });
 
@@ -184,15 +184,6 @@ describe('ComposedForm filled submit', () => {
     await user.click(screen.getByText('Blue'));
     await user.click(screen.getByText('Red'));
     await user.click(screen.getByText('Medium'));
-    await user.selectOptions(
-      screen.getByRole('combobox', {name: 'Year'}),
-      '2000'
-    );
-    await user.selectOptions(
-      screen.getByRole('combobox', {name: 'Month'}),
-      '01'
-    );
-    await user.selectOptions(screen.getByRole('combobox', {name: 'Day'}), '15');
     await user.click(screen.getByRole('button', {name: 'Submit'}));
 
     await waitFor(() => {
@@ -209,10 +200,6 @@ describe('ComposedForm filled submit', () => {
       ['colors', 'red'],
       ['colors', 'blue'],
       ['size', 'md'],
-      ['dob', '2000-01-15'],
-      ['dobYear', '2000'],
-      ['dobMonth', '01'],
-      ['dobDate', '15'],
     ]);
   });
 

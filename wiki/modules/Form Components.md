@@ -26,14 +26,13 @@ The step-by-step pattern, the Zod schema and action wiring, and error-message tr
 
 - `FormError`: top-of-form error summary built on ui `Alert`.
 - `MaxLength`: character counter for length-limited fields.
-- [[Form YearMonthDay]]: composite date input; documents the Conform gotchas.
 
 For the current inventory, query Serena (`.claude/rules/code-search.md`).
 
 ## Conform + custom components
 
 > [!warning] useInputControl is mandatory for stateful custom components
-> When using custom form components that manage their own internal state (e.g. `YearMonthDay`), you **must** use `useInputControl` to keep them in sync with Conform's validation state. Local `useState` becomes disconnected from Conform once validation fails.
+> When using custom form components that manage their own internal state (e.g. a date picker), you **must** use `useInputControl` to keep them in sync with Conform's validation state. Local `useState` becomes disconnected from Conform once validation fails.
 
 ```tsx
 const fieldControl = useInputControl(fields.fieldName);
@@ -45,7 +44,7 @@ const fieldControl = useInputControl(fields.fieldName);
 />;
 ```
 
-See [[Component Testing]] for the canonical example (`year-month-day/tests/`).
+See [[Component Testing]] for how form components are tested.
 
 ## Validation
 

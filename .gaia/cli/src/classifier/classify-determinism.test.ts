@@ -73,7 +73,6 @@ beforeAll(() => {
 
   for (const file of [
     'frontend/app/utils/date.ts',
-    'frontend/app/components/form/year-month-day/utils.ts',
     'frontend/app/utils/string.ts',
   ]) {
     mkdirSync(path.join(FIXTURE_ROOT, path.dirname(file)), {recursive: true});
@@ -400,14 +399,6 @@ describe('classify-determinism', () => {
   describe('named regression fixtures (real files on disk)', () => {
     test('classifies frontend/app/utils/date.ts EMERGENT (default-param new Date())', () => {
       const result = classifyFile('frontend/app/utils/date.ts');
-
-      expect(result.classification).toBe('emergent');
-    });
-
-    test('classifies frontend/app/components/form/year-month-day/utils.ts EMERGENT (module-level TODAY)', () => {
-      const result = classifyFile(
-        'frontend/app/components/form/year-month-day/utils.ts'
-      );
 
       expect(result.classification).toBe('emergent');
     });

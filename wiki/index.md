@@ -43,7 +43,6 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 
 ## Components
 
-- [[Form YearMonthDay]]
 
 ## Flows
 
@@ -91,8 +90,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 
 ## Decisions (ADRs)
 
-- [[shadcn Component Layer]]: GAIA's component layer, the vendored-ui policy, the local-patch list.
-- [[No Component Library]]: superseded by the shadcn decision.
+- [[shadcn Component Layer]]: GAIA's component layer, the vendored-ui policy.
 - [[TypeScript Language Files]]
 - [[TypeScript 7 Readiness]]: tsconfig pre-adopts the TS7 strict baseline; the 7.1 upgrade is a dep swap gated on typescript-eslint's programmatic API.
 - [[Thin Routes]]

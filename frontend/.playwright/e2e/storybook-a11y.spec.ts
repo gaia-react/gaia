@@ -90,7 +90,7 @@ const expectStoryHasContent = async (page: Page, storyId: string) => {
   );
 
   if (TOAST_STORY_IDS.has(storyId)) {
-    await expect(page.locator('[data-sonner-toast]').first()).toBeVisible();
+    await expect(page.locator('[data-slot="toast"]').first()).toBeVisible();
   }
 };
 
@@ -160,10 +160,10 @@ test.describe('storybook a11y', () => {
         requireIndex();
         await loadStory(page, id, theme);
         await waitForRender(page);
-        const toast = page.locator(`[data-sonner-toast][data-type="${type}"]`);
+        const toast = page.locator(`[data-slot="toast"][data-type="${type}"]`);
 
         await expect(toast).toBeVisible();
-        const iconLocator = toast.locator('[data-icon] svg');
+        const iconLocator = toast.locator('[data-slot="toast-icon"] svg');
 
         await expect(iconLocator).toBeVisible();
         const colors = {

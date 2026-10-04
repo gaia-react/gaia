@@ -15,7 +15,7 @@ export default defineConfig([
   ...lint.guardrails,
   ...lint.betterTailwind({
     entryPoint: './app/styles/tailwind.css',
-    ignore: ['dark', 'toaster'],
+    ignore: ['dark'],
   }),
   ...lint.prettier,
   ...lint.shadcn({ui: '~/components/ui'}),

@@ -131,6 +131,7 @@ export const BUILTIN_DESCRIPTOR: PackageDescriptor = {
       '*.config.js',
       'Dockerfile',
       'Dockerfile.dockerignore',
+      'components.json',
       '.*',
     ],
     tddStrictCandidates: [

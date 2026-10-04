@@ -36,11 +36,6 @@ export default {
     days_one: '{{count}} day',
     days_other: '{{count}} days',
   },
-  date: {
-    day: 'Day',
-    month: 'Month',
-    year: 'Year',
-  },
   description: 'Description',
   dismiss: 'Dismiss',
   email: 'Email',
@@ -69,7 +64,6 @@ export default {
   next: 'Next',
   password: 'Password',
   previous: 'Previous',
-  stackTrace: 'Stack trace',
   theme: {
     dark: 'Dark mode',
     enableDarkMode: 'Enable dark mode',

@@ -53,7 +53,6 @@ export default defineConfig({
       'react-i18next',
       'remix-i18next',
       'remix-toast',
-      'sonner',
       'spark-md5',
       'zod',
     ],

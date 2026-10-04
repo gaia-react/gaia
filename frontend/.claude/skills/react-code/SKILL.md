@@ -60,7 +60,6 @@ If none apply, skip `useCallback`, it adds indirection without benefit.
 | `<label>`                              | `FieldLabel` (`field`), or `Label` (`label`) outside a `Field`                       |
 | Field with label + error + description | `Field`, `FieldLabel`, `FieldDescription`, `FieldError` (`field`)                    |
 | `<button>`                             | `Button` (`button`)                                                                  |
-| Date (year/month/day)                  | `YearMonthDay` (`~/components/form/year-month-day`), the one GAIA form control |
 
 **Exceptions (native OK):** `<input type="hidden">`, `<input type="file">`, `<input type="range">`.
 
@@ -97,7 +96,7 @@ See `references/translation-patterns.md` for edge cases (keyPrefix, Trans compon
 
 Write React 19 idioms. The work here is to not regress to pre-19 habits, and to not pull in React's framework-level form APIs that React Router already owns.
 
-**Before writing `forwardRef`: don't.** In React 19, `ref` is an ordinary prop on function components, so `forwardRef` is no longer needed (slated for deprecation in a future release). Use no `forwardRef`; destructure `ref` from props.
+**Before writing `forwardRef`: don't.** In React 19, `ref` is an ordinary prop on function components, so `forwardRef` is unnecessary (slated for deprecation in a future release). Use no `forwardRef`; destructure `ref` from props.
 
 ```tsx
 // BAD, needless indirection

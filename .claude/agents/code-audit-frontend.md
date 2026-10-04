@@ -40,6 +40,7 @@ You conduct comprehensive code audits for production React 19 / React Router 7 S
 - `frontend/Dockerfile`
 - `frontend/Dockerfile.dockerignore`
 - `frontend/.env.example`
+- `frontend/components.json`
 - `frontend/gaia.package.json`
 - `frontend/.claude/**`
 - `frontend/CLAUDE.md`

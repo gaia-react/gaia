@@ -1,12 +1,11 @@
 import type {Meta, StoryObj} from '@storybook/react-vite';
-import {toast} from 'sonner';
 import {expect, waitFor, within} from 'storybook/test';
-import {Toaster} from '~/components/ui/sonner';
+import {toast, Toaster} from '~/components/ui/toast';
 
 // The global ToastDecorator already renders the Toaster, so each story fires a
-// toast through sonner rather than mounting a second, empty Toaster. The
-// per-type toasts the app sends live in the Utils/Notify stories; these cover
-// the sonner calls notify does not wrap.
+// toast through the ui toast manager rather than mounting a second, empty
+// Toaster. The per-type toasts the app sends live in the Utils/Notify stories;
+// these cover the manager calls notify does not wrap.
 const meta: Meta = {
   component: Toaster,
   parameters: {
@@ -23,13 +22,18 @@ type Story = StoryObj<typeof meta>;
 
 const expectToast = async (canvasElement: HTMLElement, text: string) => {
   await waitFor(async () => {
-    await expect(within(canvasElement).getByText(text)).toBeVisible();
+    await expect(
+      within(canvasElement.ownerDocument.body).getByText(text)
+    ).toBeVisible();
   });
 };
 
 export const Default: Story = {
   play: async ({canvasElement}) => {
-    toast('Event created', {description: 'Monday, January 3rd at 6:00pm'});
+    toast.add({
+      description: 'Monday, January 3rd at 6:00pm',
+      title: 'Event created',
+    });
 
     await expectToast(canvasElement, 'Event created');
   },
@@ -37,18 +41,24 @@ export const Default: Story = {
 
 export const WithAction: Story = {
   play: async ({canvasElement}) => {
-    toast('Message archived', {
-      action: {label: 'Undo', onClick: () => undefined},
+    toast.add({
+      actionProps: {children: 'Undo', onClick: () => undefined},
+      title: 'Message archived',
     });
 
     await expectToast(canvasElement, 'Message archived');
+    await expect(
+      within(canvasElement.ownerDocument.body).getByRole('button', {
+        name: 'Undo',
+      })
+    ).toBeVisible();
   },
 };
 
 export const Loading: Story = {
   parameters: {chromatic: {disableSnapshot: true}},
   play: async ({canvasElement}) => {
-    toast.loading('Uploading file');
+    toast.add({title: 'Uploading file', type: 'loading'});
 
     await expectToast(canvasElement, 'Uploading file');
   },

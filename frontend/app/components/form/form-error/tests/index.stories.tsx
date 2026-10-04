@@ -21,10 +21,16 @@ const meta: Meta = {
 
 export default meta;
 
+// Chromatic renders the story twice (light and dark panes), so submit every
+// copy rather than expecting a single button.
 const showError = async ({canvasElement}: {canvasElement: HTMLElement}) => {
-  await userEvent.click(
-    await within(canvasElement).findByRole('button', {name: 'Submit'})
-  );
+  const buttons = await within(canvasElement).findAllByRole('button', {
+    name: 'Submit',
+  });
+
+  for (const button of buttons) {
+    await userEvent.click(button);
+  }
 };
 
 export const Default: StoryFn = () => (

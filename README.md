@@ -107,7 +107,7 @@ Every piece of GAIA's [tech stack](https://gaiareact.com/#stack) is pre-configur
 - **Forms with validation** composed from those components using [Conform](https://conform.guide/) + [Zod](https://zod.dev/).
 - **Dark mode end-to-end.** Context, session, CSS, and Storybook all in sync.
 - **API mocking** with [Mock Service Worker](https://mswjs.io/) and [msw/data](https://github.com/mswjs/data): working handlers for tests and Storybook.
-- **Toast notifications** with [remix-toast](https://remix.run/resources/remix-toast) and [Sonner](https://sonner.emilkowal.ski/).
+- **Toast notifications** with [remix-toast](https://remix.run/resources/remix-toast) and shadcn's [toast](https://ui.shadcn.com/docs/components/toast).
 - Built with [React Router 8](https://reactrouter.com/), [Tailwind](https://tailwindcss.com/), [shadcn/ui](https://ui.shadcn.com/) components, and [lucide-react](https://lucide.dev/) icons.
 
 GAIA also wires agentic-design patterns into the project structure rather than the prompt, so they run the same way every session and every model variant: stop hooks, a blocking pre-merge audit, multi-agent review, spec-driven development, a committed knowledge base, a filesystem deny list, and more. The [features page](https://gaiareact.com/features/#agentic-design) walks through all twelve, grouped as workflow control, context engineering, and tooling and safety.

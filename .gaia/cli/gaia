@@ -18260,6 +18260,7 @@ var BUILTIN_DESCRIPTOR = {
       "*.config.js",
       "Dockerfile",
       "Dockerfile.dockerignore",
+      "components.json",
       ".*"
     ],
     tddStrictCandidates: [

@@ -19,4 +19,4 @@ Flag, in every other `.tsx` file:
 | a `Field` without `data-invalid`, or a `FieldError` without `id={field.errorId}` | wire `data-invalid`, `field.id`, `field.errorId` and `field.descriptionId` as the reference shows |
 | a disabled link standing in for a disabled action                    | a disabled `ui/button`                                                                        |
 
-Exceptions (native OK): `<input type="hidden">`, `<input type="file">`, `<input type="range">`. The date composite is `YearMonthDay` from `~/components/form/year-month-day`.
+Exceptions (native OK): `<input type="hidden">`, `<input type="file">`, `<input type="range">`.

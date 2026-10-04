@@ -202,7 +202,7 @@ export const Default: StoryFn = () => {
 
 ### Custom form components: use `useInputControl`
 
-When using custom form components (like `YearMonthDay`, `TimePicker`, etc.) that manage their own internal state, you **must** use `useInputControl` to properly integrate them with Conform's validation state:
+When using custom form components (like a `TimePicker` or a date picker) that manage their own internal state, you **must** use `useInputControl` to properly integrate them with Conform's validation state:
 
 ```tsx
 // BAD - Local state conflicts with Conform's validation
@@ -224,8 +224,6 @@ const fieldControl = useInputControl(fields.fieldName);
 ```
 
 **Why this matters**: When validation fails, Conform takes control of the field value. If you use local `useState`, the component becomes disconnected from Conform's state and stops responding to changes after validation errors occur.
-
-See `app/components/form/year-month-day/tests/` for a complete example of this pattern in action.
 
 ## Bad Tests
 

@@ -111,6 +111,7 @@ _gaia_packages_builtin_descriptor() {
       "*.config.js",
       "Dockerfile",
       "Dockerfile.dockerignore",
+      "components.json",
       ".*"
     ],
     "preCommitSource": ["app/**", "test/**", ".storybook/**", ".playwright/**"],

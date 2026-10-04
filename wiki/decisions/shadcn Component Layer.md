@@ -6,24 +6,23 @@ date: 2026-10-05
 created: 2026-10-05
 updated: 2026-10-05
 tags: [decision, components, shadcn, styling, accessibility]
-supersedes: '[[No Component Library]]'
 ---
 
 # Decision: shadcn Component Layer
 
-GAIA's component layer is [[shadcn]]: Base UI primitives, the `base-nova` style, the `neutral` base color. The components are vendored into `frontend/app/components/ui/`, owned by the project, and refreshed with the shadcn CLI. This supersedes [[No Component Library]].
+GAIA's component layer is [[shadcn]]: Base UI primitives, the `base-nova` style, the `neutral` base color. The components are vendored into `frontend/app/components/ui/`, owned by the project, and refreshed with the shadcn CLI.
 
 ## What is decided
 
-- **Every GAIA component that has a shadcn equivalent is replaced by the ui component.** GAIA ships no parallel Button, Input, Select, Checkbox, radio or field wrapper.
-- **Kept app-logic components compose ui components.** `ThemeSwitch`, `LanguageSelect`, `FormError`, `YearMonthDay`, `MaxLength`, `Document`, `MetaHydrated`, `Layout`, `ErrorStack` and `RootErrorBoundary` hold behavior shadcn does not supply (theme cookie, language, Conform wiring, dev-only stacks, document shell) and render ui components for their surfaces. They use role tokens only.
+- **Every component with a shadcn equivalent is the ui component.** GAIA ships no parallel Button, Input, Select, Checkbox, radio or field wrapper.
+- **Kept app-logic components compose ui components.** `ThemeSwitch`, `LanguageSelect`, `FormError`, `MaxLength`, `Document`, `MetaHydrated`, `Layout`, `ErrorStack` and `RootErrorBoundary` hold behavior shadcn does not supply (theme cookie, language, Conform wiring, dev-only stacks, document shell) and render ui components for their surfaces. They use role tokens only.
 - **Forms are composed, not wrapped.** There is no GAIA form wrapper. A form is built from the ui `Field` parts and ui controls with Conform's props and ids applied directly (`getInputProps`, `getSelectProps`, `getTextareaProps`, `getCollectionProps`, `useInputControl`). The pattern lives in `frontend/.claude/skills/react-code/references/conform-forms.md`; see [[Form Components]].
 - **Components are typed inline.** `type XProps = {...}` and `const X = ({...}: XProps) => ...`. GAIA has no `FC` or `FunctionComponent` convention, and lint bans importing either from `react` ([[gaia-lint]]).
 - **The baseline stays a placeholder.** The token values are shadcn's neutral set, which the adopter replaces. [[Design System]] keeps `established: false`.
 
 ## The shipped ui set
 
-`alert`, `button`, `checkbox`, `field`, `input`, `input-group`, `label`, `native-select`, `radio-group`, `separator`, `sonner`, `spinner`, `textarea`.
+`alert`, `button`, `checkbox`, `field`, `input`, `input-group`, `label`, `native-select`, `radio-group`, `separator`, `spinner`, `textarea`, `toast`.
 
 A component outside this set (for example `button-group` or `badge`) is added with `pnpm shadcn add <name>`. The shipped set is whatever the project imports, so a ui file with no importer is deleted rather than carried.
 
@@ -36,7 +35,7 @@ Two replacements worth naming:
 
 ## Toasts
 
-`notify` (`frontend/app/utils/notify.tsx`) calls sonner's `toast.success|error|info|warning` and renders through `ui/sonner`'s Toaster, which each caller mounts with the exported `toasterProps`. Toasts sit on the neutral surface and are told apart by a lucide icon per type; `error` alone uses `destructive`, applied with Tailwind's `!` modifier because sonner's own CSS is unlayered. See [[remix-toast]].
+`ui/toast` is shadcn's `toast` component, built on Base UI's Toast primitive. `notify` (`frontend/app/utils/notify.ts`) exposes `notify.error|info|success|warning(payload)`, each returning the toast id. It drives the ui `toast` manager and derives the id from an md5 of the payload, so a repeated payload updates the live toast instead of stacking a copy. The root layout and the Storybook `ToastDecorator` each render a bare `<Toaster />` from `~/components/ui/toast`. Placement, the visible-toast limit and styling are the component's stock behavior: bottom-right, at most three toasts visible, and errors told apart by a destructive icon alone. In development a payload's `stack` goes to the console rather than into the toast. See [[remix-toast]].
 
 ## Theme files
 
@@ -69,10 +68,10 @@ The Playwright axe scan covers every page and every story in light and dark, wit
 
 ## Vendored-ui policy
 
-- **Byte-identical to the registry.** Each `frontend/app/components/ui/*.tsx` matches `pnpm shadcn add <name>` output except the listed local patches. `use client` directive placement varies with the order of adds, so a refresh runs the full add command in one invocation.
-- **Refresh with the CLI.** `pnpm shadcn add <name> --overwrite` re-vendors a file. Never hand-edit a ui file outside the patch list.
+- **Byte-identical to the registry.** Each `frontend/app/components/ui/*.tsx` matches `pnpm shadcn add <name>` output `use client` directive placement varies with the order of adds, so a refresh runs the full add command in one invocation.
+- **Refresh with the CLI.** `pnpm shadcn add <name> --overwrite` re-vendors a file. Never hand-edit a ui file.
 - **Prettier and the house-style rules are off for `ui/*.tsx` only.** The `shadcn/vendored-ui` block in [[gaia-lint]] turns off `prettier/prettier`, `@stylistic/quotes`, `prefer-arrow-functions`, `import-x/consistent-type-specifier-style`, `canonical/export-specifier-newline`, `sonarjs/prefer-read-only-props`, `@typescript-eslint/array-type`, `@typescript-eslint/promise-function-async`, `@typescript-eslint/no-use-before-define`, `@typescript-eslint/naming-convention`, `no-underscore-dangle`, `no-null-render`, `unicorn/prevent-abbreviations`, `react/boolean-prop-naming`, the `perfectionist` sort rules, and the `better-tailwindcss` canonical and shorthand class rules, plus `shadcn/no-arbitrary-values`, `shadcn/no-inline-styles` and `shadcn/no-restyle`.
-- **Seven rules that unedited shadcn source trips are also off there**, by maintainer decision: `@typescript-eslint/no-unnecessary-condition`, `eqeqeq`, `react/no-array-index-key`, `jsx-a11y/label-has-associated-control`, `jsx-a11y/click-events-have-key-events`, `jsx-a11y/no-noninteractive-element-interactions` and `shadcn/require-static-classes`. The `react` entry of the import ban is lifted too, because shadcn's `import * as React` is a namespace import the rule reports; every other import ban stays.
+- **Eight rules that unedited shadcn source trips are also off there**, by maintainer decision: `@typescript-eslint/prefer-destructuring` (the toast re-exports namespace members), `@typescript-eslint/no-unnecessary-condition`, `eqeqeq`, `react/no-array-index-key`, `jsx-a11y/label-has-associated-control`, `jsx-a11y/click-events-have-key-events`, `jsx-a11y/no-noninteractive-element-interactions` and `shadcn/require-static-classes`. The `react` entry of the import ban is lifted too, because shadcn's `import * as React` is a namespace import the rule reports; every other import ban stays.
 - **Correctness stays on.** `shadcn/no-raw-colors`, `react-hooks/*` and the remaining correctness rules apply to ui files.
 - **`ui/tests/**` is fully linted.** The exemption never reaches the GAIA-authored stories and tests.
 - **How the exemption was chosen.** The rule list was measured by linting unedited `shadcn add` output for GAIA's set, plus a wider registry sample GAIA does not ship (`dialog`, `dropdown-menu`, `combobox`, `slider`, `select`, `popover`, `sheet`, `tooltip`) so the exemption also covers what adopters typically add. The wider sample surfaced only house-style rules, no correctness rule. A correctness finding on a file added later is a real finding, not an exemption candidate; a new house-style rule firing on an added file means extending the vendored-ui block in `@gaia-react/lint`.
@@ -80,9 +79,7 @@ The Playwright axe scan covers every page and every story in light and dark, wit
 
 ## Local patches
 
-- `frontend/app/components/ui/sonner.tsx`: the `next-themes` import is replaced by GAIA's `useOptionalTheme` from `~/hooks/use-theme`, with a header comment naming the patch. GAIA does not depend on `next-themes`.
-
-`pnpm shadcn add sonner --overwrite` removes the patch and reintroduces the `next-themes` import. After any overwrite of `sonner`, reapply it.
+None. Every vendored ui file is byte-identical to `pnpm shadcn add <name>` output, so a refresh with `--overwrite` loses nothing.
 
 ## Tooling facts
 

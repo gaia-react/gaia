@@ -11,7 +11,7 @@ tags: [module, utils]
 
 # Utils
 
-`frontend/app/utils/` holds shared helpers. Most are pure functions: array, date, dom, environment, function, http (split `http.ts` / `http.server.ts`), object, string. A few are React-context utilities: `nonce` (`NonceProvider`, `useNonce`), `request-info` (`useRequestInfo`, `useOptionalRequestInfo`), and `theme.server` (`getTheme`, `setTheme`). `notify` (a `.tsx` helper) wraps sonner's `toast` for the app: `notify.error|info|success|warning`, plus the `toasterProps` the Toaster is mounted with. Each should be well-named, self-explanatory, and unit-tested.
+`frontend/app/utils/` holds shared helpers. Most are pure functions: array, date, dom, environment, function, http (split `http.ts` / `http.server.ts`), object, string. A few are React-context utilities: `nonce` (`NonceProvider`, `useNonce`), `request-info` (`useRequestInfo`, `useOptionalRequestInfo`), and `theme.server` (`getTheme`, `setTheme`). `notify` drives the ui `toast` manager for the app: `notify.error|info|success|warning`, each returning the toast id. Each should be well-named, self-explanatory, and unit-tested.
 
 ## Convention
 

@@ -70,6 +70,9 @@ auditors:
       - "frontend/Dockerfile"
       - "frontend/Dockerfile.dockerignore"
       - "frontend/.env.example"
+      # The shadcn CLI config: it names the stylesheet @shadcn/lint reads its
+      # token set from, so it decides what the token rules accept.
+      - "frontend/components.json"
       # The package descriptor: it names the globs every gate reads (unit
       # tests, strict candidates, self-heal refusals), so a change to it
       # changes what the gates check.

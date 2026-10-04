@@ -990,10 +990,6 @@ app/components/Form/Select/types.ts	code-audit-frontend
 app/components/Form/TextArea/index.tsx	code-audit-frontend
 app/components/Form/TextArea/tests/index.stories.tsx	code-audit-frontend
 app/components/Form/TextArea/tests/index.test.tsx	code-audit-frontend
-app/components/Form/YearMonthDay/index.tsx	code-audit-frontend
-app/components/Form/YearMonthDay/tests/index.stories.tsx	code-audit-frontend
-app/components/Form/YearMonthDay/tests/index.test.tsx	code-audit-frontend
-app/components/Form/YearMonthDay/utils.ts	code-audit-frontend
 app/components/Form/types.ts	code-audit-frontend
 app/components/LanguageSelect/index.tsx	code-audit-frontend
 app/components/Layout/index.tsx	code-audit-frontend
@@ -1130,7 +1126,6 @@ wiki/components/Form Field.md	-
 wiki/components/Form Layout.md	-
 wiki/components/Form Select.md	-
 wiki/components/Form Text Inputs.md	-
-wiki/components/Form YearMonthDay.md	-
 wiki/concepts/API Service Pattern.md	-
 wiki/concepts/Accessibility.md	-
 wiki/concepts/Audit Disposition and Debt Fix.md	-
@@ -1182,7 +1177,6 @@ wiki/decisions/Determinism Classifier.md	-
 wiki/decisions/Dispatched-Check Rollup via Polling.md	-
 wiki/decisions/DragonScale Opt-Out.md	-
 wiki/decisions/Forensics Triage Workflow.md	-
-wiki/decisions/No Component Library.md	-
 wiki/decisions/Quality Gate.md	-
 wiki/decisions/TDD RED Verification.md	-
 wiki/decisions/Thin Routes.md	-

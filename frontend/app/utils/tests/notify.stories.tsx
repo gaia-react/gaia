@@ -17,10 +17,13 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 // Each story fires its toast and waits until it is on screen, so an
-// accessibility scan sees a rendered toast instead of an empty Toaster.
+// accessibility scan sees a rendered toast instead of an empty Toaster. The
+// toast renders in a portal on the document body, outside the canvas element.
 const expectToast = async (canvasElement: HTMLElement, text: string) => {
   await waitFor(async () => {
-    await expect(within(canvasElement).getByText(text)).toBeVisible();
+    await expect(
+      within(canvasElement.ownerDocument.body).getByText(text)
+    ).toBeVisible();
   });
 };
 
@@ -69,7 +72,7 @@ export const WithStack: Story = {
   play: async ({canvasElement}) => {
     notify.error({
       message: JSON.stringify({
-        description: 'Expand to view the stack trace',
+        description: 'The stack trace is logged to the console in development',
         message: 'Error with stack trace',
         stack,
       }),

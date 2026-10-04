@@ -8,7 +8,6 @@ import {
   getSelectProps,
   getTextareaProps,
   useForm,
-  useInputControl,
 } from '@conform-to/react';
 import {getZodConstraint, parseWithZod} from '@conform-to/zod/v4';
 import {z} from 'zod';
@@ -27,7 +26,6 @@ import {NativeSelect, NativeSelectOption} from '~/components/ui/native-select';
 import {RadioGroup, RadioGroupItem} from '~/components/ui/radio-group';
 import {Spinner} from '~/components/ui/spinner';
 import {Textarea} from '~/components/ui/textarea';
-import YearMonthDay from '../year-month-day';
 
 const COLORS = ['red', 'green', 'blue'];
 const COUNTRIES = ['fr', 'jp', 'us'];
@@ -41,7 +39,6 @@ export const composedFormSchema = z.object({
     .array(z.literal(COLORS), {error: REQUIRED_MESSAGE})
     .min(1, REQUIRED_MESSAGE),
   country: z.literal(COUNTRIES).optional(),
-  dob: z.iso.date(),
   email: z.email({error: 'email'}).optional(),
   name: z.string({error: REQUIRED_MESSAGE}).min(1, REQUIRED_MESSAGE),
   password: z.string().min(8, 'password').optional(),
@@ -67,15 +64,12 @@ export const ComposedForm = ({disabled = false}: ComposedFormProps) => {
 
   const [form, fields] = useForm({
     constraint: getZodConstraint(composedFormSchema),
-    defaultValue: {dob: '2000-01-01'},
     lastResult: actionData?.result,
     onValidate: ({formData}) =>
       parseWithZod(formData, {schema: composedFormSchema}),
     shouldRevalidate: 'onInput',
     shouldValidate: 'onBlur',
   });
-
-  const dobControl = useInputControl(fields.dob);
 
   const errorMessages: Record<string, string> = {
     email: t('composedForm.errors.email'),
@@ -255,24 +249,6 @@ export const ComposedForm = ({disabled = false}: ComposedFormProps) => {
           />
         </FieldSet>
       </Field>
-
-      <FieldSet disabled={disabled}>
-        <FieldLegend variant="label">{t('form.dateOfBirth')}</FieldLegend>
-        <YearMonthDay
-          aria-describedby={fields.dob.errors ? fields.dob.errorId : undefined}
-          aria-invalid={fields.dob.errors ? true : undefined}
-          id={fields.dob.id}
-          name={fields.dob.name}
-          onBlur={dobControl.blur}
-          onChange={dobControl.change}
-          required={true}
-          value={dobControl.value ?? ''}
-        />
-        <FieldError
-          errors={toErrors(fields.dob.errors)}
-          id={fields.dob.errorId}
-        />
-      </FieldSet>
 
       <Button disabled={disabled || isSubmitting} type="submit">
         {isSubmitting && <Spinner aria-label={t('form.submitting')} />}

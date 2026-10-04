@@ -47,7 +47,7 @@ Not strict, but a strong default. Refactoring is easier when the folder hierarch
 The current set of bundled components changes over time. Use Serena (`.claude/rules/code-search.md`) to list `frontend/app/components/` rather than maintaining a roster here. Notable exceptions:
 
 - `ui/`: vendored shadcn components, refreshed with `pnpm shadcn add`, never hand-edited ([[shadcn Component Layer]])
-- `form/`: composed-form support (`FormError`, `MaxLength`, `YearMonthDay`) and the composed form fixture ([[Form Components]])
+- `form/`: composed-form support (`FormError`, `MaxLength`) and the composed form fixture ([[Form Components]])
 - `ThemeSwitch` lives at `frontend/app/components/theme-switch/`. Its resource-route action and Zod schema live separately at `frontend/app/routes/resources.theme-switch.tsx`, and its theme hooks live at `frontend/app/hooks/use-theme.ts`. See [[Theme Flow]].
 
 See [[Component Testing]] for the `composeStory` test pattern.
