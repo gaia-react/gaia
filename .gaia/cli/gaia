@@ -29729,6 +29729,17 @@ var groupBy = (records, keyOf) => {
   return groups;
 };
 var firstNonNull = (values) => values.find((value) => value !== null) ?? null;
+var distinctNonNull = (values) => [
+  ...new Set(values.filter((value) => value !== null))
+];
+var unionRange = (values) => {
+  const ranges = distinctNonNull(values);
+  return ranges.length === 0 ? null : ranges.join(" || ");
+};
+var agreedPatchedVersion = (values) => {
+  const versions = distinctNonNull(values);
+  return versions.length === 1 ? versions[0] ?? null : null;
+};
 var joinAuditToAlerts = (alerts, audit) => [
   ...groupBy(
     alerts,
@@ -29753,17 +29764,19 @@ var joinAuditToAlerts = (alerts, audit) => [
     })).toSorted((a, b) => a.number - b.number),
     chains,
     epssPercentage: firstNonNull(group.map((alert) => alert.epssPercentage)),
-    firstPatchedVersion: firstNonNull(
-      group.map((alert) => alert.firstPatchedVersion)
-    ),
+    firstPatchedVersion: agreedPatchedVersion([
+      ...group.map((alert) => alert.firstPatchedVersion),
+      ...joined.map((record2) => record2.firstPatchedVersion)
+    ]),
     ghsa,
     pathCount,
     pnpmIds: joined.map((record2) => record2.id).toSorted((a, b) => a - b),
     relationship,
     scope: group.some((alert) => alert.scope === "runtime") ? "runtime" : scope,
-    vulnerableRange: firstNonNull(
-      group.map((alert) => alert.vulnerableRange)
-    )
+    vulnerableRange: unionRange([
+      ...group.map((alert) => alert.vulnerableRange),
+      ...joined.map((record2) => record2.vulnerableRange)
+    ])
   };
 });
 var relationshipFromChain = (chain) => {
@@ -29787,14 +29800,14 @@ var advisoriesFromAudit = (audit) => [
       highestSeverity(group.map((record2) => record2.severity))
     ),
     chains,
-    firstPatchedVersion: firstNonNull(
+    firstPatchedVersion: agreedPatchedVersion(
       group.map((record2) => record2.firstPatchedVersion)
     ),
     ghsa: first.ghsa,
     pathCount,
     pnpmIds: group.map((record2) => record2.id).toSorted((a, b) => a - b),
     relationship: relationshipFromChain(chains[0]),
-    vulnerableRange: firstNonNull(
+    vulnerableRange: unionRange(
       group.map((record2) => record2.vulnerableRange)
     )
   };

@@ -463,6 +463,33 @@ const firstNonNull = <TValue>(
   values: readonly (null | TValue)[]
 ): null | TValue => values.find((value) => value !== null) ?? null;
 
+const distinctNonNull = (values: readonly (null | string)[]): string[] => [
+  ...new Set(values.filter((value) => value !== null)),
+];
+
+/**
+ * The union of every distinct vulnerable range, so the landed check covers each
+ * range npm splits one GHSA into; null when none carries a range.
+ */
+const unionRange = (values: readonly (null | string)[]): null | string => {
+  const ranges = distinctNonNull(values);
+
+  return ranges.length === 0 ? null : ranges.join(' || ');
+};
+
+/**
+ * The single patched version the records agree on. Records that disagree (one
+ * per vulnerable range) have no one patch that fixes them all, so the answer is
+ * null and the advisory is blocked rather than resolved by a partial patch.
+ */
+const agreedPatchedVersion = (
+  values: readonly (null | string)[]
+): null | string => {
+  const versions = distinctNonNull(values);
+
+  return versions.length === 1 ? (versions[0] ?? null) : null;
+};
+
 /**
  * One advisory per GHSA and package among the alerts, enriched with pnpm ids
  * and chains from the audit records carrying the same GHSA and package. A GHSA
@@ -500,18 +527,20 @@ export const joinAuditToAlerts = (
         .toSorted((a, b) => a.number - b.number),
       chains,
       epssPercentage: firstNonNull(group.map((alert) => alert.epssPercentage)),
-      firstPatchedVersion: firstNonNull(
-        group.map((alert) => alert.firstPatchedVersion)
-      ),
+      firstPatchedVersion: agreedPatchedVersion([
+        ...group.map((alert) => alert.firstPatchedVersion),
+        ...joined.map((record) => record.firstPatchedVersion),
+      ]),
       ghsa,
       pathCount,
       pnpmIds: joined.map((record) => record.id).toSorted((a, b) => a - b),
       relationship,
       scope:
         group.some((alert) => alert.scope === 'runtime') ? 'runtime' : scope,
-      vulnerableRange: firstNonNull(
-        group.map((alert) => alert.vulnerableRange)
-      ),
+      vulnerableRange: unionRange([
+        ...group.map((alert) => alert.vulnerableRange),
+        ...joined.map((record) => record.vulnerableRange),
+      ]),
     };
   });
 
@@ -550,14 +579,14 @@ export const advisoriesFromAudit = (
         highestSeverity(group.map((record) => record.severity))
       ),
       chains,
-      firstPatchedVersion: firstNonNull(
+      firstPatchedVersion: agreedPatchedVersion(
         group.map((record) => record.firstPatchedVersion)
       ),
       ghsa: first.ghsa,
       pathCount,
       pnpmIds: group.map((record) => record.id).toSorted((a, b) => a - b),
       relationship: relationshipFromChain(chains[0]),
-      vulnerableRange: firstNonNull(
+      vulnerableRange: unionRange(
         group.map((record) => record.vulnerableRange)
       ),
     };

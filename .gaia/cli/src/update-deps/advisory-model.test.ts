@@ -284,6 +284,62 @@ describe('joinAuditToAlerts', () => {
   });
 });
 
+describe('one GHSA split into several vulnerable ranges', () => {
+  const semverRecords = normalizePnpmAudit(
+    auditReport(
+      auditAdvisory({
+        github_advisory_id: 'GHSA-c2qf-rxjj-qqgw',
+        id: 1,
+        module_name: 'semver',
+        patched_versions: '>=5.7.2',
+        vulnerable_versions: '<5.7.2',
+      }),
+      auditAdvisory({
+        github_advisory_id: 'GHSA-c2qf-rxjj-qqgw',
+        id: 2,
+        module_name: 'semver',
+        patched_versions: '>=7.5.2',
+        vulnerable_versions: '>=7.0.0 <7.5.2',
+      })
+    )
+  ).records;
+
+  test('advisoriesFromAudit unions the ranges and blocks on disagreeing patches', () => {
+    const [built, ...rest] = advisoriesFromAudit(semverRecords);
+
+    expect(rest).toHaveLength(0);
+    expect(built?.vulnerableRange).toBe('<5.7.2 || >=7.0.0 <7.5.2');
+    expect(built?.firstPatchedVersion).toBeNull();
+  });
+
+  test('joinAuditToAlerts unions the audit ranges the alerts omit', () => {
+    const alerts = normalizeAlerts(
+      [
+        {
+          dependency: {
+            manifest_path: 'pnpm-lock.yaml',
+            package: {ecosystem: 'npm', name: 'semver'},
+            relationship: 'transitive',
+            scope: 'runtime',
+          },
+          number: 1,
+          security_advisory: {ghsa_id: 'GHSA-c2qf-rxjj-qqgw', severity: 'high'},
+          security_vulnerability: {
+            first_patched_version: {identifier: '5.7.2'},
+            vulnerable_version_range: '< 5.7.2',
+          },
+          state: 'open',
+        },
+      ],
+      OPEN
+    ).records;
+    const [joined] = joinAuditToAlerts(alerts, semverRecords);
+
+    expect(joined?.vulnerableRange).toBe('< 5.7.2 || <5.7.2 || >=7.0.0 <7.5.2');
+    expect(joined?.firstPatchedVersion).toBeNull();
+  });
+});
+
 describe('a GHSA spanning several packages', () => {
   const spanning = [
     auditAdvisory({
