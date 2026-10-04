@@ -14,7 +14,9 @@ describe('useBreakpoint', () => {
       return mockMatches;
     },
     removeEventListener: vi.fn((_event: string, listener: () => void) => {
-      changeListeners = changeListeners.filter((l) => l !== listener);
+      changeListeners = changeListeners.filter(
+        (registeredListener) => registeredListener !== listener
+      );
     }),
   };
 

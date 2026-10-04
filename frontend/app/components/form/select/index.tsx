@@ -1,4 +1,4 @@
-import type {ChangeEvent, ComponentProps, FC, ReactNode} from 'react';
+import type {ChangeEventHandler, ComponentProps, FC, ReactNode} from 'react';
 import {useState} from 'react';
 import type {IconType} from 'react-icons';
 import {cn} from 'cn';
@@ -53,7 +53,9 @@ const Select: FC<SelectProps> = ({
   // `uncontrolledValue` only backs the uncontrolled (defaultValue) case.
   const currentValue = value ?? uncontrolledValue;
 
-  const handleUpdateValueSelect = (event: ChangeEvent<HTMLSelectElement>) => {
+  const handleUpdateValueSelect: ChangeEventHandler<HTMLSelectElement> = (
+    event
+  ) => {
     setUncontrolledValue(event.currentTarget.value || '');
     onChange?.(event);
   };
