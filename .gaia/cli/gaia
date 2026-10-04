@@ -29710,6 +29710,7 @@ var baseAdvisory = (key, packageName, severity) => ({
   package: packageName,
   parentRange: null,
   parentRangeAdmitsPatch: null,
+  patchedVersions: [],
   patchEligibleAt: null,
   pathCount: 0,
   pnpmIds: [],
@@ -29740,6 +29741,7 @@ var agreedPatchedVersion = (values) => {
   const versions = distinctNonNull(values);
   return versions.length === 1 ? versions[0] ?? null : null;
 };
+var patchedVersionsOf = (values) => distinctNonNull(values).toSorted(compareStrings2);
 var joinAuditToAlerts = (alerts, audit) => [
   ...groupBy(
     alerts,
@@ -29769,6 +29771,10 @@ var joinAuditToAlerts = (alerts, audit) => [
       ...joined.map((record2) => record2.firstPatchedVersion)
     ]),
     ghsa,
+    patchedVersions: patchedVersionsOf([
+      ...group.map((alert) => alert.firstPatchedVersion),
+      ...joined.map((record2) => record2.firstPatchedVersion)
+    ]),
     pathCount,
     pnpmIds: joined.map((record2) => record2.id).toSorted((a, b) => a - b),
     relationship,
@@ -29804,6 +29810,9 @@ var advisoriesFromAudit = (audit) => [
       group.map((record2) => record2.firstPatchedVersion)
     ),
     ghsa: first.ghsa,
+    patchedVersions: patchedVersionsOf(
+      group.map((record2) => record2.firstPatchedVersion)
+    ),
     pathCount,
     pnpmIds: group.map((record2) => record2.id).toSorted((a, b) => a - b),
     relationship: relationshipFromChain(chains[0]),
@@ -29821,7 +29830,8 @@ var applyBaseline = (advisory, acknowledged) => {
   };
 };
 var classifyCandidates = (advisory, updates, applySet) => {
-  if (advisory.firstPatchedVersion === null) {
+  const splitPatch = advisory.firstPatchedVersion === null && advisory.patchedVersions.length > 1;
+  if (advisory.firstPatchedVersion === null && !splitPatch) {
     return { blockedReason: "no-patch", candidates: [] };
   }
   if (advisory.insideReleaseAgeWindow) {
@@ -29836,11 +29846,11 @@ var classifyCandidates = (advisory, updates, applySet) => {
   const headMinor = !headInRun && head !== void 0 && updates.waveA.has(head);
   if (headInRun) candidates.push("chain-head-in-run");
   else if (headMinor) candidates.push("chain-head-minor");
-  candidates.push("override");
+  if (!splitPatch) candidates.push("override");
   if (!headInRun && !headMinor && head !== void 0 && updates.waveB.has(head)) {
     candidates.push("chain-head-major");
   }
-  return { blockedReason: null, candidates };
+  return { blockedReason: splitPatch ? "split-patch" : null, candidates };
 };
 var compareEpss = (a, b) => {
   if (a === b) return 0;

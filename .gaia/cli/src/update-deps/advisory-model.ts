@@ -59,6 +59,7 @@ export type Advisory = {
   package: string;
   parentRange: null | string;
   parentRangeAdmitsPatch: boolean | null;
+  patchedVersions: string[];
   patchEligibleAt: null | string;
   pathCount: number;
   pnpmIds: number[];
@@ -106,7 +107,7 @@ export type AuditRecord = {
   vulnerableRange: null | string;
 };
 
-export type BlockedReason = 'no-patch' | 'release-age';
+export type BlockedReason = 'no-patch' | 'release-age' | 'split-patch';
 
 export type NormalizeResult<TRecord> = {
   records: TRecord[];
@@ -433,6 +434,7 @@ const baseAdvisory = (
   package: packageName,
   parentRange: null,
   parentRangeAdmitsPatch: null,
+  patchedVersions: [],
   patchEligibleAt: null,
   pathCount: 0,
   pnpmIds: [],
@@ -480,7 +482,8 @@ const unionRange = (values: readonly (null | string)[]): null | string => {
 /**
  * The single patched version the records agree on. Records that disagree (one
  * per vulnerable range) have no one patch that fixes them all, so the answer is
- * null and the advisory is blocked rather than resolved by a partial patch.
+ * null rather than a partial patch; `patchedVersionsOf` tells that case apart
+ * from an advisory with no patch at all.
  */
 const agreedPatchedVersion = (
   values: readonly (null | string)[]
@@ -489,6 +492,10 @@ const agreedPatchedVersion = (
 
   return versions.length === 1 ? (versions[0] ?? null) : null;
 };
+
+/** Every distinct patched version, one per vulnerable range, sorted. */
+const patchedVersionsOf = (values: readonly (null | string)[]): string[] =>
+  distinctNonNull(values).toSorted(compareStrings);
 
 /**
  * One advisory per GHSA and package among the alerts, enriched with pnpm ids
@@ -532,6 +539,10 @@ export const joinAuditToAlerts = (
         ...joined.map((record) => record.firstPatchedVersion),
       ]),
       ghsa,
+      patchedVersions: patchedVersionsOf([
+        ...group.map((alert) => alert.firstPatchedVersion),
+        ...joined.map((record) => record.firstPatchedVersion),
+      ]),
       pathCount,
       pnpmIds: joined.map((record) => record.id).toSorted((a, b) => a - b),
       relationship,
@@ -583,6 +594,9 @@ export const advisoriesFromAudit = (
         group.map((record) => record.firstPatchedVersion)
       ),
       ghsa: first.ghsa,
+      patchedVersions: patchedVersionsOf(
+        group.map((record) => record.firstPatchedVersion)
+      ),
       pathCount,
       pnpmIds: group.map((record) => record.id).toSorted((a, b) => a - b),
       relationship: relationshipFromChain(chains[0]),
@@ -626,7 +640,11 @@ export const classifyCandidates = (
   updates: UpdateOffers,
   applySet: ReadonlySet<string>
 ): Pick<Advisory, 'blockedReason' | 'candidates'> => {
-  if (advisory.firstPatchedVersion === null) {
+  const splitPatch =
+    advisory.firstPatchedVersion === null &&
+    advisory.patchedVersions.length > 1;
+
+  if (advisory.firstPatchedVersion === null && !splitPatch) {
     return {blockedReason: 'no-patch', candidates: []};
   }
 
@@ -647,7 +665,8 @@ export const classifyCandidates = (
   if (headInRun) candidates.push('chain-head-in-run');
   else if (headMinor) candidates.push('chain-head-minor');
 
-  candidates.push('override');
+  // One floor cannot cover ranges patched at different versions.
+  if (!splitPatch) candidates.push('override');
 
   if (
     !headInRun &&
@@ -658,7 +677,7 @@ export const classifyCandidates = (
     candidates.push('chain-head-major');
   }
 
-  return {blockedReason: null, candidates};
+  return {blockedReason: splitPatch ? 'split-patch' : null, candidates};
 };
 
 // ---------- ranking and count ----------

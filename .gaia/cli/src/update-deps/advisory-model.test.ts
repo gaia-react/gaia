@@ -310,6 +310,7 @@ describe('one GHSA split into several vulnerable ranges', () => {
     expect(rest).toHaveLength(0);
     expect(built?.vulnerableRange).toBe('<5.7.2 || >=7.0.0 <7.5.2');
     expect(built?.firstPatchedVersion).toBeNull();
+    expect(built?.patchedVersions).toStrictEqual(['5.7.2', '7.5.2']);
   });
 
   test('joinAuditToAlerts unions the audit ranges the alerts omit', () => {
@@ -455,6 +456,23 @@ describe('classifyCandidates', () => {
         NO_APPLY
       )
     ).toStrictEqual({blockedReason: 'no-patch', candidates: []});
+  });
+
+  test('ranges patched at different versions offer no override and block with split-patch', () => {
+    expect(
+      classifyCandidates(
+        advisory({
+          chains: headChain,
+          firstPatchedVersion: null,
+          patchedVersions: ['5.7.2', '7.5.2'],
+        }),
+        NO_OFFERS,
+        NO_APPLY
+      )
+    ).toStrictEqual({
+      blockedReason: 'split-patch',
+      candidates: ['in-range-refresh'],
+    });
   });
 
   test('a patch inside the release-age window blocks with release-age', () => {

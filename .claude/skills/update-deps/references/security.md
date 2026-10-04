@@ -4,7 +4,7 @@ The Phase 1 preview's Security section, read from the advisories payload. Every 
 
 Print the source line first: `Source: Dependabot alerts`, or `Source: pnpm audit. Dependabot alerts: Not run (<reasonText>)` when the payload's source is `pnpm-audit`, or `Source: Not run (<reasonText>)` when it is `unavailable`. Add `<rejectedCount> advisory records failed validation and were dropped` when `rejectedCount` is non-zero.
 
-Then one row per advisory, in the payload's ranked order: package, severity, EPSS (`n/a` when null), scope, relationship, installed version(s), first patched version, the chain holding it back (`chains[0]` below its importer, segment 1 being the chain head, plus `(+N more paths)` when `pathCount` exceeds 1), and the proposed resolution or the blocked reason (`no patch`, or `patch inside release-age window (eligible <date>)` from `patchEligibleAt`).
+Then one row per advisory, in the payload's ranked order: package, severity, EPSS (`n/a` when null), scope, relationship, installed version(s), first patched version (the `patchedVersions` joined with `, ` when `firstPatchedVersion` is null under `split-patch`), the chain holding it back (`chains[0]` below its importer, segment 1 being the chain head, plus `(+N more paths)` when `pathCount` exceeds 1), and the proposed resolution or the blocked reason (`no patch`, `patched per range (<patchedVersions>), no single override` for `split-patch`, which still carries its other candidates, or `patch inside release-age window (eligible <date>)` from `patchEligibleAt`).
 
 **Proposed resolution.** The payload classified its candidates with an empty apply set, so it holds at most one chain-head candidate and never `chain-head-in-run`. Once the decision fixes the apply set, re-apply the rule: when the chain head is in the actual apply set, its `chain-head-minor` or `chain-head-major` candidate becomes `chain-head-in-run` (the bump already happening clears it); otherwise it stays as classified. The proposed resolution is the first viable candidate after that step:
 
@@ -25,13 +25,13 @@ Inputs from Phase 1: the opening advisories payload (`$advisories_json`), the se
 
 #### 1. Scope
 
-Resolve only an advisory that is still open after the waves and Phase 5b (its `advisory-landed` check in step 5 exits non-zero), is not blocked, and was not declined in the preview. An advisory Phase 5b already cleared is resolved by `in-range refresh` and gets nothing further here.
+Resolve only an advisory that is still open after the waves and Phase 5b (its `advisory-landed` check in step 5 exits non-zero), is not blocked (`split-patch` is not a block: it is resolved through its candidates, which never include `override`), and was not declined in the preview. An advisory Phase 5b already cleared is resolved by `in-range refresh` and gets nothing further here.
 
 In a report-only run (`CI=true`, or `--scope <group>`) stop here: every advisory is reported still open with `report-only run`, and this phase adds, edits, and removes no `overrides:` key and applies no bump. Report-only is a property of this phase only; the Phase 0 and Phase 6 override audit runs in those modes exactly as it does without security work.
 
 #### 2. Release age and trust settings
 
-An advisory with `blockedReason: "release-age"` is never forced in. Report it still open with `patch inside release-age window (eligible <date>)`, `<date>` being its `patchEligibleAt` rendered as a plain date. One with `blockedReason: "no-patch"` is reported `no patch` and goes to acceptance (step 7).
+An advisory with `blockedReason: "release-age"` is never forced in. Report it still open with `patch inside release-age window (eligible <date>)`, `<date>` being its `patchEligibleAt` rendered as a plain date. One with `blockedReason: "no-patch"` is reported `no patch` and goes to acceptance (step 7). One with `blockedReason: "split-patch"` is patched at a different version per vulnerable range: it is not unpatchable, so it never goes to acceptance on that ground; it is reported `patched per range (<patchedVersions>), no single override` when its candidates all fail.
 
 No resolution ever touches the five release-age and trust settings: never add a `minimumReleaseAgeExclude` entry, and never change `minimumReleaseAge`, `minimumReleaseAgeStrict`, `minimumReleaseAgeExclude`, `trustPolicy`, or `trustPolicyExclude` to land a resolution. Before gating each resolution, prove it left them alone by extracting them from the resolution's snapshot and from the working tree and comparing:
 
