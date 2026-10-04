@@ -73,11 +73,6 @@ readonly AUDIENCE_VALUES="adopter maintainer"
 # gaia:maintainer-only:end
 readonly DIFFICULTY_VALUES="easy medium hard"
 readonly FOOTPRINT_VALUES="narrow wide spec"
-# One permitted value today. A single-valued namespace is still a namespace
-# rather than a bare label, because the axis it opens ("what does this repair's
-# cost depend on") admits more answers than the one case that motivated it, and
-# a bare `fold-required` label would have to be renamed to grow a second.
-readonly FOLD_VALUES="required"
 
 usage() {
   cat >&2 <<'EOF'
@@ -253,18 +248,6 @@ check_labels() {
     finding "$subject" "footprint-count" "expected at most one \`footprint:\` label, found $label_count"
   fi
   check_namespace_values "$subject" "$labels" 'footprint:' "$FOOTPRINT_VALUES" "footprint"
-
-  # Fold is optional in the strongest sense of the three: it marks a minority of
-  # findings, so absence is the ordinary case rather than an omission, and
-  # nothing gates on presence or absence. It is checked here for the same reason
-  # the others are: the value reaches a display surface that reads it literally,
-  # so a misspelling is silent until a drainer does not see the annotation the
-  # filer thought they left.
-  label_count="$(count_namespace_labels "$labels" 'fold:')"
-  if [ "$label_count" -gt 1 ]; then
-    finding "$subject" "fold-count" "expected at most one \`fold:\` label, found $label_count"
-  fi
-  check_namespace_values "$subject" "$labels" 'fold:' "$FOLD_VALUES" "fold"
 
   return 0
 }

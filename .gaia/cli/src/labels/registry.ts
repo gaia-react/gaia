@@ -97,7 +97,6 @@ export const NAMESPACE_PREFIXES: readonly string[] = [
   'footprint:',
   'debt:',
   'audience:',
-  'fold:',
 ];
 
 /**
