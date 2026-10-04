@@ -85,7 +85,7 @@ type ComposedFormProps = {
 };
 
 export const ComposedForm = ({disabled = false}: ComposedFormProps) => {
-  const {t} = useTranslation(['common', 'errors']);
+  const {t} = useTranslation('common');
   const actionData = useActionData<{result: SubmissionResult}>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === 'submitting';
@@ -100,7 +100,7 @@ export const ComposedForm = ({disabled = false}: ComposedFormProps) => {
   });
 
   const errorMessages: Record<string, string> = {
-    email: t('errors:invalidEmail'),
+    email: t('invalidEmail', {ns: 'errors'}),
     password: FIXTURE_TEXT.passwordError,
     required: t('form.required'),
   };

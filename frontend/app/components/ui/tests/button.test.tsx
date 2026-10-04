@@ -54,7 +54,7 @@ describe('Button rendered as a link', () => {
     expect(link).toHaveClass(...getVariantClasses('outline'));
   });
 
-  test('Link: navigates on click and on Enter', async () => {
+  test('Link: navigates on click', async () => {
     const user = userEvent.setup();
     renderInRouter(
       <Button nativeButton={false} render={<Link role="link" to="/target" />}>

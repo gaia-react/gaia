@@ -247,7 +247,7 @@ Missing or stale deps in `useMemo` introduce the same stale closure bugs as `use
 
 ## useEffectEvent, Non-Reactive Effect Logic
 
-`useEffectEvent` (stable in React 19.2) extracts a non-reactive read out of an Effect, so the Effect uses a current value without listing it as a dependency. It is the sanctioned replacement for "I had to omit X from the deps array" and for the latest-ref workaround (e.g. `TextArea` keeping `onAutoSizeRef.current = onAutoSize` behind an `eslint-disable react-hooks/refs`).
+`useEffectEvent` (stable in React 19.2) extracts a non-reactive read out of an Effect, so the Effect uses a current value without listing it as a dependency. It is the sanctioned replacement for "I had to omit X from the deps array" and for the latest-ref workaround (a callback ref updated during render behind an `eslint-disable react-hooks/refs`).
 
 ```tsx
 // onVisit reads numItems, but the Effect should re-run only when url changes

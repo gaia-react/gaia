@@ -1,14 +1,12 @@
 import {expectNoSeriousA11yViolations} from '../a11y';
 import {expect, test} from '../fixtures';
-import {enterThemeByCookie, expectTheme} from '../theme';
+import {enterThemeByCookie, expectTheme, THEMES} from '../theme';
 import {hydration} from '../utils';
 
 const LEGAL_ROUTES = [
   {heading: 'Privacy Policy', path: '/privacy'},
   {heading: 'Terms of Service', path: '/terms'},
 ] as const;
-
-const THEMES = ['light', 'dark'] as const;
 
 for (const {heading, path} of LEGAL_ROUTES) {
   for (const theme of THEMES) {

@@ -56,8 +56,12 @@ test('home page landmarks and headings pass best-practice rules', async ({
   // Project each violation to its triage fields: a failure names the rule, its
   // impact, and how many nodes tripped it, without dumping serialized axe nodes.
   const relevant = violations
-    .filter((v) => targetRules.has(v.id))
-    .map((v) => ({id: v.id, impact: v.impact, nodes: v.nodes.length}));
+    .filter((violation) => targetRules.has(violation.id))
+    .map((violation) => ({
+      id: violation.id,
+      impact: violation.impact,
+      nodes: violation.nodes.length,
+    }));
 
   expect(relevant).toEqual([]);
 

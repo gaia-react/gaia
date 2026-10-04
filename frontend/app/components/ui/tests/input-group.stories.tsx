@@ -1,3 +1,4 @@
+import type {ComponentProps} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {Meta, StoryFn} from '@storybook/react-vite';
 import {SearchIcon, SendIcon} from 'lucide-react';
@@ -21,9 +22,9 @@ const meta: Meta = {
 export default meta;
 
 type AddonStoryProps = {align: Align};
-type Align = 'block-end' | 'block-start' | 'inline-end' | 'inline-start';
+type Align = NonNullable<ComponentProps<typeof InputGroupAddon>['align']>;
 
-type ButtonSize = 'icon-sm' | 'icon-xs' | 'sm' | 'xs';
+type ButtonSize = NonNullable<ComponentProps<typeof InputGroupButton>['size']>;
 type ButtonStoryProps = {size: ButtonSize};
 
 const AddonStory = ({align}: AddonStoryProps) => {

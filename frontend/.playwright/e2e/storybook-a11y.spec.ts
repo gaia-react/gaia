@@ -4,7 +4,8 @@ import {expectNoSeriousA11yViolations} from '../a11y';
 import {expect, test} from '../fixtures';
 import type {StoryEntry} from '../storybook';
 import {
-  countStoriesInSource,
+  getStoryIdentity,
+  listStoryIdentitiesInSource,
   loadStory,
   readStoryIndex,
   waitForRender,
@@ -14,9 +15,9 @@ import {
   expectTheme,
   MINIMUM_NON_TEXT_CONTRAST,
   resolveColors,
+  THEMES,
 } from '../theme';
 
-const THEMES = ['light', 'dark'] as const;
 const NOTIFY_TYPES = [
   {id: 'utils-notify--error-toast', type: 'error'},
   {id: 'utils-notify--info', type: 'info'},
@@ -105,13 +106,20 @@ const saveScreenshot = async (page: Page, testInfo: TestInfo, name: string) => {
 test.describe('storybook a11y', () => {
   test('the built Storybook indexes exactly the stories in source', () => {
     requireIndex();
-    const fromSource = countStoriesInSource();
+    const fromSource = listStoryIdentitiesInSource();
+    const fromIndex = new Set(stories.map(getStoryIdentity));
+    const missingFromBuild = [...fromSource].filter(
+      (identity) => !fromIndex.has(identity)
+    );
+    const missingFromSource = [...fromIndex].filter(
+      (identity) => !fromSource.has(identity)
+    );
 
-    expect(fromSource, 'story exports found in source').toBeGreaterThan(0);
+    expect(fromSource.size, 'story exports found in source').toBeGreaterThan(0);
     expect(
-      stories,
-      `index.json lists ${stories.length} stories but source exports ${fromSource}: rebuild with \`pnpm build-storybook\``
-    ).toHaveLength(fromSource);
+      {missingFromBuild, missingFromSource},
+      'index.json and source list different stories: rebuild with `pnpm build-storybook`'
+    ).toEqual({missingFromBuild: [], missingFromSource: []});
   });
 
   for (const story of stories) {

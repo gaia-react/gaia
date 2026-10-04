@@ -21,7 +21,7 @@ describe('Checkbox', () => {
     expect(screen.getByRole('checkbox', {name: 'Accept'})).toHaveClass('mt-2');
   });
 
-  test('applies a passed className to the root inside a field label', () => {
+  test('applies a passed className to the root beside an associated field label', () => {
     render(
       <Field orientation="horizontal">
         <Checkbox className="mt-2" id="accept" />

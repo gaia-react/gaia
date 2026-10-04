@@ -7,7 +7,13 @@ import {requireDevPorts} from '../dev-ports';
 import type {Theme} from './theme';
 import {forceDarkBeforeLoad} from './theme';
 
-export type StoryEntry = {id: string; title: string; type: string};
+export type StoryEntry = {
+  exportName: string;
+  id: string;
+  importPath: string;
+  title: string;
+  type: string;
+};
 
 const packageDirectory = fileURLToPath(new URL('..', import.meta.url));
 
@@ -33,46 +39,66 @@ const isNamedExport = (node: ts.Node): boolean => {
   );
 };
 
-const countNamedExports = (filePath: string): number => {
-  const source = ts.createSourceFile(
-    filePath,
-    fs.readFileSync(filePath, 'utf8'),
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TSX
-  );
-  let count = 0;
-
-  for (const statement of source.statements) {
-    if (ts.isVariableStatement(statement) && isNamedExport(statement)) {
-      count += statement.declarationList.declarations.length;
-    } else if (
-      (ts.isFunctionDeclaration(statement) ||
-        ts.isClassDeclaration(statement)) &&
-      isNamedExport(statement)
-    ) {
-      count += 1;
-    } else if (
-      ts.isExportDeclaration(statement) &&
-      !statement.isTypeOnly &&
-      statement.exportClause &&
-      ts.isNamedExports(statement.exportClause)
-    ) {
-      count += statement.exportClause.elements.filter(
-        (element) => !element.isTypeOnly && element.name.text !== 'default'
-      ).length;
-    }
+const listStatementExports = (statement: ts.Statement): string[] => {
+  if (ts.isVariableStatement(statement) && isNamedExport(statement)) {
+    return statement.declarationList.declarations.flatMap((declaration) =>
+      ts.isIdentifier(declaration.name) ? [declaration.name.text] : []
+    );
   }
 
-  return count;
+  if (
+    (ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement)) &&
+    isNamedExport(statement)
+  ) {
+    return statement.name ? [statement.name.text] : [];
+  }
+
+  if (
+    ts.isExportDeclaration(statement) &&
+    !statement.isTypeOnly &&
+    statement.exportClause &&
+    ts.isNamedExports(statement.exportClause)
+  ) {
+    return statement.exportClause.elements
+      .filter(
+        (element) => !element.isTypeOnly && element.name.text !== 'default'
+      )
+      .map((element) => element.name.text);
+  }
+
+  return [];
 };
 
-/** Named, non-default exports across every `*.stories.tsx` under `app/`: what Storybook indexes. */
-export const countStoriesInSource = (): number =>
-  findStoryFiles(path.join(packageDirectory, 'app')).reduce(
-    (total, file) => total + countNamedExports(file),
-    0
+const listNamedExports = (filePath: string): string[] =>
+  ts
+    .createSourceFile(
+      filePath,
+      fs.readFileSync(filePath, 'utf8'),
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TSX
+    )
+    .statements.flatMap(listStatementExports);
+
+/**
+ * The identity of every story in source: the `importPath` and `exportName` the
+ * built index records, for each named, non-default export across every
+ * `*.stories.tsx` under `app/`.
+ */
+export const listStoryIdentitiesInSource = (): Set<string> =>
+  new Set(
+    findStoryFiles(path.join(packageDirectory, 'app')).flatMap((file) => {
+      const importPath = `./${path.relative(packageDirectory, file).split(path.sep).join('/')}`;
+
+      return listNamedExports(file).map(
+        (exportName) => `${importPath}#${exportName}`
+      );
+    })
   );
+
+/** The same identity for a built index entry. */
+export const getStoryIdentity = (story: StoryEntry): string =>
+  `${story.importPath}#${story.exportName}`;
 
 /** The story entries of the built Storybook; throws, never skips, when it is not built. */
 export const readStoryIndex = (): StoryEntry[] => {

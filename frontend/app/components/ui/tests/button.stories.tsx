@@ -1,3 +1,4 @@
+import type {ComponentProps} from 'react';
 import {Fragment} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link, NavLink} from 'react-router';
@@ -18,6 +19,23 @@ const meta: Meta = {
 };
 
 export default meta;
+
+// Compile-time guard: fails when a variant or size is missing from the lists
+// below, so a registry overwrite that adds one cannot leave the grid behind.
+type AssertNever<T extends never> = T;
+type ButtonSizeName = NonNullable<ComponentProps<typeof Button>['size']>;
+type ButtonVariantName = NonNullable<ComponentProps<typeof Button>['variant']>;
+// eslint-disable-next-line unused-imports/no-unused-vars -- the alias exists only to fail compilation
+type UncoveredSizes = AssertNever<
+  Exclude<
+    ButtonSizeName,
+    'default' | (typeof SIZES)[number][keyof (typeof SIZES)[number]]
+  >
+>;
+// eslint-disable-next-line unused-imports/no-unused-vars -- the alias exists only to fail compilation
+type UncoveredVariants = AssertNever<
+  Exclude<ButtonVariantName, (typeof VARIANTS)[number]>
+>;
 
 const VARIANTS = [
   'default',

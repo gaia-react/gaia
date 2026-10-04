@@ -8,6 +8,7 @@ import {
   expectTheme,
   MINIMUM_NON_TEXT_CONTRAST,
   resolveColors,
+  THEMES,
 } from '../theme';
 
 const MAXIMUM_TABS = 12;
@@ -182,7 +183,7 @@ const measureSurfaces = async ({
 };
 
 for (const {control, id, locate} of CONTROLS) {
-  for (const theme of ['light', 'dark'] as const) {
+  for (const theme of THEMES) {
     test(`${control} keeps a focus indicator at 3:1 on every surface in ${theme} mode`, async ({
       page,
     }, testInfo) => {

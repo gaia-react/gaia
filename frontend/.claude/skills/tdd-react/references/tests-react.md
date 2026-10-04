@@ -59,7 +59,7 @@ The tracer bullet for any component: `composeStory(Default, Meta)` renders witho
 
 When a test overrides a prop on a composed story, especially a callback it spies on, the story must accept `(args)` and spread `{...args}` **last**, after any hardcoded default, so the override wins. Storybook's own guidance says the render function "spreads `args` onto the component" (https://storybook.js.org/docs/writing-stories), and `composeStory` says render-time props "override the values passed in the story's args" (https://storybook.js.org/docs/api/portable-stories/portable-stories-vitest#composestory). `args` only reaches the real component through that spread, so a story that hardcodes the callback, or spreads `{...args}` before it, silently drops the override.
 
-Storybook's own examples spread every prop from `args`, so there's nothing to order against. GAIA's stories hardcode structural/demo props inline (labels, names, options) and spread `{...args}` only for the controllable knobs, see `app/components/form/radio-buttons/tests/index.stories.tsx`, so ordering is load-bearing: `{...args}` must come after the hardcoded props for an override to win.
+Storybook's own examples spread every prop from `args`, so there's nothing to order against. GAIA's stories hardcode structural/demo props inline (labels, names, options) and spread `{...args}` only for the controllable knobs, so ordering is load-bearing: `{...args}` must come after the hardcoded props for an override to win.
 
 ```tsx
 // app/components/toggle/tests/index.stories.tsx

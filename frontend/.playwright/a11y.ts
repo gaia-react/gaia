@@ -27,11 +27,11 @@ export const expectNoSeriousA11yViolations = async (
   const suffix = options?.label === undefined ? '' : `-${options.label}`;
 
   const {incomplete, violations} = await axe.analyze();
-  const blocking = violations.filter((v) =>
-    SEVERITY_FAIL.has(v.impact ?? 'minor')
+  const blocking = violations.filter((violation) =>
+    SEVERITY_FAIL.has(violation.impact ?? 'minor')
   );
   const advisory = violations.filter(
-    (v) => !SEVERITY_FAIL.has(v.impact ?? 'minor')
+    (violation) => !SEVERITY_FAIL.has(violation.impact ?? 'minor')
   );
 
   if (advisory.length > 0) {
@@ -40,9 +40,11 @@ export const expectNoSeriousA11yViolations = async (
       contentType: 'application/json',
     });
 
-    for (const v of advisory) {
+    for (const violation of advisory) {
       // eslint-disable-next-line no-console -- advisory surface for moderate/minor violations
-      console.warn(`a11y advisory (${v.impact}) ${v.id}: ${v.help}`);
+      console.warn(
+        `a11y advisory (${violation.impact}) ${violation.id}: ${violation.help}`
+      );
     }
   }
 
@@ -64,7 +66,7 @@ export const expectNoSeriousA11yViolations = async (
 
     throw new Error(
       `Found ${blocking.length} blocking a11y violations: ${blocking
-        .map((v) => `${v.id} (${v.impact})`)
+        .map((violation) => `${violation.id} (${violation.impact})`)
         .join(', ')}`
     );
   }

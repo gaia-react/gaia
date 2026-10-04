@@ -6,7 +6,10 @@ import {fileURLToPath} from 'node:url';
 
 export type Rgba = {a: number; b: number; g: number; r: number};
 
-export type Theme = 'dark' | 'light';
+/** Every theme a scan covers, in the order the specs run them. */
+export const THEMES = ['light', 'dark'] as const;
+
+export type Theme = (typeof THEMES)[number];
 
 /** WCAG 1.4.11 minimum contrast for focus indicators and meaningful icons. */
 export const MINIMUM_NON_TEXT_CONTRAST = 3;
