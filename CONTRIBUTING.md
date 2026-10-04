@@ -90,7 +90,7 @@ For the full design, see `wiki/concepts/Wiki Sync.md`.
 bats .gaia/tests/hooks/                 # one suite directory
 ```
 
-Requires `bats-core` (`brew install bats-core`). Tests are deterministic, run in tmp git repos, take a few seconds total. Add to your local commit hook if you want them on every commit.
+Requires `bats-core` (`brew install bats-core`); `--jobs` also needs GNU parallel (`brew install parallel`). Tests are deterministic, run in tmp git repos, take a few seconds total. Add to your local commit hook if you want them on every commit.
 
 The hooks directory covers the bulk of the wiki system: drift math, marker file behavior, hook input parsing, edge cases (missing state, unreachable SHA, malformed JSON). The other five directories cover the audit helpers, the shipped `.gaia/scripts`, the SPEC-ledger libs, forensics, and the statusline.
 

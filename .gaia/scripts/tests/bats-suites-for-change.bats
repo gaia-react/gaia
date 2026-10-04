@@ -120,6 +120,23 @@ setup() {
   }
 }
 
+@test "HEAD covers only the staged round delta, not changes an earlier commit made" {
+  printf 'earlier round\n' >> "$FIXTURE/wiki/PR Merge Workflow.md"
+  git -C "$FIXTURE" commit -q -am earlier
+  printf 'this round\n' >> "$FIXTURE/gone.sh"
+  printf 'new\n' > "$FIXTURE/wiki/fresh.md"
+  printf '# reads fresh.md\n' > "$FIXTURE/tests/names-fresh.bats"
+  git -C "$FIXTURE" add -A
+
+  run --separate-stderr bash "$SCRIPT" --dir "$FIXTURE" HEAD
+  [ "$status" -eq 0 ]
+  expected="$(printf 'tests/names-fresh.bats\ntests/names-gone.bats')"
+  [ "$output" = "$expected" ] || {
+    printf 'got:\n%s\n' "$output" >&2
+    return 1
+  }
+}
+
 @test "no change prints nothing and exits 0" {
   run --separate-stderr bash "$SCRIPT" --dir "$FIXTURE"
   [ "$status" -eq 0 ]

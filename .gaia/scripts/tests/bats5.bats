@@ -30,6 +30,28 @@ setup() {
   grep -qxF 'one two three' "$recorded"
 }
 
+@test "bats5 drops --jobs and warns when no parallel runner is installed" {
+  recorded="${BATS_TEST_TMPDIR}/args"
+  bats() { printf '%s\n' "$*" >"$recorded"; }
+  # shellcheck disable=SC1090
+  source "$SCRIPT"
+  bats5_parallel_runner_available() { return 1; }
+  run --separate-stderr bats5 --jobs 8 one.bats two.bats
+  [ "$status" -eq 0 ]
+  grep -qxF 'one.bats two.bats' "$recorded"
+  [[ "$stderr" == *"GNU parallel"* ]] || return 1
+}
+
+@test "bats5 forwards --jobs when a parallel runner is installed" {
+  recorded="${BATS_TEST_TMPDIR}/args"
+  bats() { printf '%s\n' "$*" >"$recorded"; }
+  # shellcheck disable=SC1090
+  source "$SCRIPT"
+  bats5_parallel_runner_available() { return 0; }
+  bats5 --jobs 8 one.bats
+  grep -qxF -- '--jobs 8 one.bats' "$recorded"
+}
+
 @test "bats5 does not leak its helper locals into the caller" {
   bats() { :; }
   # shellcheck disable=SC1090
