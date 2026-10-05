@@ -203,13 +203,14 @@ declined() {
   [ "$(jq '.allowance.answers | length' "$ALF_STATE")" -eq 0 ]
 }
 
-@test "a grant label offered against a cap pin that does not carry it declines" {
+@test "a grant label selected against a cap pin records one grant of K" {
   seed_rounds 10
   alf_add_checkpoint 10 cap
   pin_latest "$NONCE" 10 false true cap
-  snapshot
   send "$(continue_label)"
-  declined "grant label against a cap pin"
+  [ "$status" -eq 0 ]
+  [ "$(jq '.allowance.answers | length' "$ALF_STATE")" -eq 1 ]
+  jq -e --argjson unit_rounds "$UNIT_ROUNDS" '.allowance.answers[0] | .checkpoint == 1 and .kind == "grant" and .n == $unit_rounds and .source == "ask"' "$ALF_STATE"
 }
 
 @test "UAT-030: Stop and file the remainder records nothing and names the file-and-report step" {

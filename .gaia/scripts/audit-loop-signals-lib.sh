@@ -110,15 +110,6 @@ _gaia_loop_decide_unit_with_unit_rounds() {
   used="$(_gaia_loop_used "$state")" || return 5
   eligible="$(_gaia_loop_snapshot_eligible "$snapshot")"
   start_round=$((used + 1))
-  if [ "$used" -ge "$_GAIA_LOOP_HARD_CAP" ]; then
-    printf 'deny cap %s true\n' "$eligible"
-    return 0
-  fi
-  denying_signal="$(_gaia_loop_denying_signal "$state" "$snapshot" "$used")" || return 5
-  if [ -n "$denying_signal" ]; then
-    printf 'deny rubric:%s %s false\n' "$denying_signal" "$eligible"
-    return 0
-  fi
   # Grant admission comes before the line check: it is how a human lets a unit
   # run while the reading is over the line. Only the LATEST checkpoint counts,
   # and only once: after_checkpoint is the checkpoint count when the last unit
@@ -130,6 +121,23 @@ _gaia_loop_decide_unit_with_unit_rounds() {
       else ([.allowance.answers[] | select(.checkpoint == $latest_checkpoint.index)] | last) as $latest_answer
       | if $latest_answer != null and ($latest_unit == null or $latest_unit.after_checkpoint < $latest_checkpoint.index) then $latest_answer.kind else empty end
       end' 2>/dev/null)" || return 5
+  if [ "$used" -ge "$_GAIA_LOOP_HARD_CAP" ]; then
+    # Past the cap neither the context line nor the fallback fold admits a
+    # unit: each one needs a human answer to the checkpoint the cap pins. A
+    # grant buys a whole unit rather than one round, so a loop that is still
+    # converging costs the human one answer per unit, not one per round.
+    case "$answer" in
+      grant) printf 'allow grant %s %s\n' "$start_round" $((start_round + unit_rounds - 1)) ;;
+      accept) printf 'allow accept %s %s\n' "$start_round" "$start_round" ;;
+      *) printf 'deny cap %s true\n' "$eligible" ;;
+    esac
+    return 0
+  fi
+  denying_signal="$(_gaia_loop_denying_signal "$state" "$snapshot" "$used")" || return 5
+  if [ -n "$denying_signal" ]; then
+    printf 'deny rubric:%s %s false\n' "$denying_signal" "$eligible"
+    return 0
+  fi
   case "$answer" in
     grant)
       printf 'allow grant %s %s\n' "$start_round" "$(_gaia_loop_minimum $((start_round + unit_rounds - 1)) "$_GAIA_LOOP_HARD_CAP")"
@@ -191,11 +199,13 @@ gaia_loop_decide_member() {
   esac
   used="$(_gaia_loop_used "$state")" || return 5
   eligible="$(_gaia_loop_snapshot_eligible "$snapshot")"
-  if [ "$used" -ge "$_GAIA_LOOP_HARD_CAP" ]; then
+  through="$(printf '%s' "$state" | jq -r '((.history.units // []) | last | .through_round?) // empty' 2>/dev/null)" || return 5
+  # Past the cap a member runs only inside a unit an answer admitted there; a
+  # unit admitted below the cap ends at it.
+  if [ "$used" -ge "$_GAIA_LOOP_HARD_CAP" ] && { ! gaia_loop_is_uint "$through" || [ "$through" -le "$_GAIA_LOOP_HARD_CAP" ]; }; then
     printf 'deny cap %s true\n' "$eligible"
     return 0
   fi
-  through="$(printf '%s' "$state" | jq -r '((.history.units // []) | last | .through_round?) // empty' 2>/dev/null)" || return 5
   if ! gaia_loop_is_uint "$through" || [ "$through" -lt $((used + 1)) ]; then
     printf 'deny window %s false\n' "$eligible"
     return 0
