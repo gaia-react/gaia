@@ -4,7 +4,7 @@ status: active
 package: chromatic
 role: visual-regression
 created: 2026-04-20
-updated: 2026-10-03
+updated: 2026-10-05
 tags: [dependency, testing, visual]
 ---
 
@@ -19,6 +19,19 @@ Visual regression service that consumes Storybook stories. Runs in CI via `.gith
 - `--exit-once-uploaded`: return after upload instead of waiting for the build
 - `--storybook-build-dir 'storybook-static'`: consume the prebuilt Storybook
 - `--skip '@(renovate/**|dependabot/**)'`: skip visual review on bot branches
+
+## Modes: one snapshot per theme
+
+`parameters.chromatic.modes` in `frontend/.storybook/preview.ts` takes the modes `frontend/.storybook/modes.ts` defines: `light` and `dark`, both at a 1280px viewport. Chromatic renders the story once per mode, so a play function runs unchanged in each, and the dark mode's `theme` global puts `dark` on `<html>` through the Chromatic decorator (see [[Storybook Stories]]).
+
+Each mode is its own snapshot with its own baseline, so every snapshotted story costs two snapshots against the Chromatic quota, one per theme. `disableSnapshot: true` removes a story from both.
+
+A story changes a mode by its key, because Storybook merges parameters object by object:
+
+- `chromatic: {modes: {dark: {disable: true}}}` snapshots light only.
+- `chromatic: {modes: {dark: {viewport: 375}, light: {viewport: 375}}}` snapshots both themes at another width.
+
+Chromatic rejects the legacy `chromatic.viewports` parameter alongside modes, so a width goes on the mode, never in `viewports`.
 
 ## CI gating
 

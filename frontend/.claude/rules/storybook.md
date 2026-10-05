@@ -24,7 +24,7 @@ addon-a11y runs on every story with the WCAG 2.0/2.1 A and AA tags and fails on 
 
 ## Vitest and Chromatic
 
-The Chromatic decorator (`ChromaticDecorator`, light and dark side by side) is added only when Chromatic itself snapshots, so it does not run under Vitest: a play function sees the story once, in the current theme.
+The Chromatic decorator (`ChromaticDecorator`) is added only when Chromatic itself snapshots, so it does not run under Vitest. Every render shows the story once: Vitest renders it in the current theme, and Chromatic renders it once per mode (light, then dark), running the play function in each.
 
 ## File location
 
@@ -73,17 +73,22 @@ Layout is `fullscreen`. Use `parameters.wrap: 'p-4'` for padding instead of wrap
 
 ## Dark-mode and Chromatic
 
-`ChromaticDecorator` renders light + dark side-by-side automatically, no per-story setup needed. Override via story-level parameters:
+Chromatic snapshots every story in a `light` and a `dark` mode (`.storybook/modes.ts`, both at 1280px), no per-story setup needed. Override a mode by its key in story-level parameters:
 
 ```tsx
 parameters: {
   chromatic: {
-    disableSnapshot: true,    // non-deterministic stories (spinners, env-injected data)
-    excludeDark: true,        // light-only snapshot
-    viewports: [1280, 412],   // override default [1280]
+    disableSnapshot: true,                // non-deterministic stories (spinners, env-injected data)
+    modes: {
+      dark: {disable: true},              // light-only snapshot
+      // or a different width for both themes:
+      // dark: {viewport: 375}, light: {viewport: 375},
+    },
   },
 },
 ```
+
+Never set `chromatic.viewports`: Chromatic rejects it alongside modes.
 
 ## i18n in stories
 

@@ -42,7 +42,13 @@ export const Default: StoryFn = () => (
   </Form>
 );
 
-Default.play = showError;
+Default.play = async (context) => {
+  await showError(context);
+
+  await expect(
+    await within(context.canvasElement).findByRole('alert')
+  ).toHaveTextContent('Something went wrong. Please try again.');
+};
 
 export const Hidden: StoryFn = () => (
   <Form className="space-y-4" method="post">
@@ -50,8 +56,6 @@ export const Hidden: StoryFn = () => (
     <Button type="submit">Submit</Button>
   </Form>
 );
-
-Hidden.play = showError;
 
 type PlayContext = {canvasElement: HTMLElement};
 

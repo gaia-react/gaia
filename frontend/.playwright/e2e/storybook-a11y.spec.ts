@@ -139,8 +139,8 @@ test.describe('storybook a11y', () => {
         );
         await expect(page.locator('.sb-errordisplay')).toBeHidden();
         await expectStoryHasContent(page, story.id);
-        // The Chromatic dual render wraps every story in a light and a dark
-        // pane, which would scan one story under both themes at once.
+        // A `.dark` subtree inside the story would scan part of it under the
+        // other theme, so the theme assertion below would not cover it.
         await expect(page.locator('#storybook-root .dark')).toHaveCount(0);
         await expectTheme(page, theme);
         await saveScreenshot(page, testInfo, `${story.id}-${theme}`);

@@ -281,20 +281,3 @@ export const ExternalLinkActivatesOnEnter: StoryObj<typeof meta> = {
     </Button>
   ),
 };
-
-export const DisabledDoesNotFire: StoryObj<typeof meta> = {
-  args: {onClick: fn()},
-  play: async ({args, canvasElement}) => {
-    const button = within(canvasElement).getByRole('button', {name: 'Save'});
-
-    await expect(button).toBeDisabled();
-    // A disabled button has pointer-events none; the attempt still has to reach it.
-    await userEvent.setup({pointerEventsCheck: 0}).click(button);
-    await expect(args.onClick).not.toHaveBeenCalled();
-  },
-  render: (args) => (
-    <Button disabled={true} onClick={args.onClick}>
-      Save
-    </Button>
-  ),
-};

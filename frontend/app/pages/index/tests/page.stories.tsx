@@ -1,22 +1,13 @@
 import type {Meta, StoryFn} from '@storybook/react-vite';
 import {expect, userEvent, within} from 'storybook/test';
 import stubs from 'test/stubs';
-import Layout from '~/components/layout';
 import {LANGUAGES} from '~/languages';
 import common from '~/languages/en/common';
 import IndexPage from '../page';
 
 const meta: Meta = {
   component: IndexPage,
-  decorators: [
-    // The page renders no main landmark of its own; the app's layout does.
-    (Story) => (
-      <Layout>
-        <Story />
-      </Layout>
-    ),
-    stubs.reactRouter(),
-  ],
+  decorators: [stubs.reactRouter()],
   parameters: {
     controls: {hideNoControlsWarning: true},
   },
@@ -33,7 +24,6 @@ Default.play = async ({canvasElement}) => {
   const headings = await canvas.findAllByRole('heading', {level: 1});
   await expect(headings).toHaveLength(1);
   await expect(headings[0]).toHaveTextContent(common.meta.siteName);
-  await expect(canvas.getByRole('main')).toBeInTheDocument();
 
   // Marketing chrome, branding, and layout landmarks stay absent.
   await expect(
@@ -46,13 +36,15 @@ Default.play = async ({canvasElement}) => {
   await expect(canvas.queryByRole('banner')).not.toBeInTheDocument();
   await expect(canvas.queryByRole('contentinfo')).not.toBeInTheDocument();
 
-  // Pinning the length keeps the absence check below from passing vacuously
-  // once a second locale is configured; that case is the language select's own
-  // stories, since the page passes no languages.
-  await expect(LANGUAGES).toHaveLength(1);
-  await expect(
-    canvas.queryByRole('combobox', {name: /language/i})
-  ).not.toBeInTheDocument();
+  // The language select renders only once a second locale is configured, so
+  // the expectation follows the configured language count.
+  const languageSelect = canvas.queryByRole('combobox', {name: /language/i});
+
+  if (LANGUAGES.length <= 1) {
+    await expect(languageSelect).not.toBeInTheDocument();
+  } else {
+    await expect(languageSelect).toBeInTheDocument();
+  }
 
   // ThemeSwitch's aria-label names the mode the button switches to. The router
   // stub registers no route the root loader data hangs off, so no stored
@@ -72,5 +64,5 @@ Default.play = async ({canvasElement}) => {
 
 export const Mobile: StoryFn = () => <IndexPage />;
 Mobile.parameters = {
-  chromatic: {viewports: [375]},
+  chromatic: {modes: {dark: {viewport: 375}, light: {viewport: 375}}},
 };

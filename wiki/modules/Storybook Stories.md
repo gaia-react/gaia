@@ -25,7 +25,7 @@ Storybook v10 with the `@storybook/react-vite` framework. Configured to discover
 Outermost to innermost: **`WrapDecorator → ChromaticDecorator → ToastDecorator`**. The order matters because each decorator depends on the layout established by the one outside it.
 
 - `WrapDecorator`: reads `parameters.wrap` and wraps the story (use `parameters: {wrap: 'p-4'}` for padding instead of hardcoding divs in stories)
-- `ChromaticDecorator`: Chromatic snapshots only; renders story twice (light + dark, `50vh` each). `excludeDark: true` suppresses the dark render
+- `ChromaticDecorator`: Chromatic snapshots only; renders the story once, puts `dark` on `<html>` when the `theme` global is `dark`, and clears `sessionStorage` before each snapshot
 - `ToastDecorator`: renders a bare `<Toaster />` from `~/components/ui/toast` after every story, so any toast call from a story is rendered
 
 Interactive sessions skip the Chromatic decorator: `WrapDecorator → ToastDecorator`.
@@ -37,6 +37,8 @@ Interactive sessions skip the Chromatic decorator: `WrapDecorator → ToastDecor
 ## Dark-mode handling
 
 `preview.ts` sets `darkClass` and `lightClass` to the `dark` or `light` class plus the role-token utilities `bg-background` and `text-foreground`, applied to the preview document root when the toolbar toggle fires, so the `.dark` token block in `theme.css` drives both themes. `stylePreview: true` extends the theme to Storybook chrome.
+
+Chromatic loads only the preview iframe, so the toolbar toggle never fires there. Instead `frontend/.storybook/modes.ts` defines a `light` and a `dark` [[Chromatic]] mode, each setting the `theme` global (declared in `preview.ts` `initialGlobals`, since Storybook drops an undeclared global) and the 1280px viewport. Chromatic snapshots every story once per mode, and `ChromaticDecorator` applies the global. Vitest and the Playwright scan never add that decorator, so `theme` changes nothing there.
 
 ## i18n in stories
 

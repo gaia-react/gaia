@@ -2,6 +2,7 @@ import type {Preview} from '@storybook/react-vite';
 import {themes} from 'storybook/theming';
 import {decorators} from './chromatic';
 import i18n from './i18next';
+import {allModes} from './modes';
 import viewport from './viewport';
 import '~/styles/tailwind.css';
 
@@ -18,6 +19,10 @@ const preview: Preview = {
     locales: {
       en: {left: '🇺🇸', right: 'en', title: 'English'},
     },
+    // Read only by the Chromatic decorator. Declared here because Storybook
+    // drops a global it has no initial value for, which would silently turn
+    // the dark mode into a second light snapshot.
+    theme: 'light',
   },
   parameters: {
     // The tag set matches the Playwright story scan, and any impact fails here
@@ -33,7 +38,7 @@ const preview: Preview = {
       },
       test: 'error',
     },
-    chromatic: {viewports: [1280]},
+    chromatic: {modes: allModes},
     controls: {
       expanded: false,
       hideNoControlsWarning: true,
