@@ -109,7 +109,7 @@ assert_pinned() {
   closing="$(awk '/^## Closing round$/ {inside_closing_section=1; next} /^## / {inside_closing_section=0} inside_closing_section' "$AGENT")"
   [ -n "$closing" ]
   local needle
-  for needle in 'audit-dispositions-check.sh pr-sections' 'file every `file` disposition through the `file-tech-debt` skill'; do
+  for needle in 'audit-dispositions-check.sh pr-sections' 'file every `file` disposition through the `file-tech-debt` skill' 'A dirty tree after the closing wave stops the unit `needs-human`'; do
     grep -qF -- "$needle" <<<"$closing" || { echo "not under Closing round: $needle" >&2; return 1; }
   done
 }
