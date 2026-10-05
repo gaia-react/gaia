@@ -10,10 +10,11 @@
 #
 # Two arms.
 #
-# ARM 1 (structural greps) anchors extraction on the `--jq '` line, the only
-# one of debt.md's four fenced blocks that carries it (verify with
-# `grep -c -- "--jq '" .claude/skills/gaia/references/debt.md`, which returns
-# 1), so a naive first-fenced-block grab can never land on the reconcile
+# ARM 1 (structural greps) anchors extraction on the FIRST `--jq '` line in
+# debt.md (`grep -n -F -- "--jq '" ... | head -1`), which is the ordering query
+# inside the `## Read and order the backlog` fence. Later sections carry `--jq '`
+# lines of their own, so the invariant is that none appears above that one, and
+# a naive first-fenced-block grab can never land on the reconcile
 # pre-pass query instead, where every negative assertion below would pass
 # vacuously. It carries a positive `sort_by` assertion for the same reason:
 # proof the extraction landed on the ordering query, not a silent pass on the
