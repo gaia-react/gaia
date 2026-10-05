@@ -541,14 +541,14 @@ run_library() {
   [ "$shapes" = "fullName,signal,kind" ]
 
   # Zero in-scope tests classify type-only today, so this is a floor rather
-  # than a check; the real catcher for `kind` classification is the existing
-  # case at .gaia/tests/hooks/red-ledger-lib.bats:119-126, which must stay
-  # green.
+  # than a check; the real catcher for `kind` classification is the
+  # "helper tags an expectTypeOf-only test kind=type-only" case above, which
+  # must stay green.
 }
 
 # The corpus check's exemption is dormant while no tracked frontend test holds
 # such a describe, so these fixtures are what keep it able to fail.
-@test "the corpus floor's exemption fires on each describe shape the helper leaves unrecorded, and on no literal describe" {
+@test "the corpus floor's exemption fires on a tagged-template describe.each and on a non-literal describe title, and on no literal describe" {
   local fixture file_floor file_record_count
   for fixture in each-describe.test.ts dynamic-title-describe.test.ts; do
     run_helper "$FIXTURE_RELATIVE_DIRECTORY/$fixture"
