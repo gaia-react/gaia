@@ -15,7 +15,6 @@ export default {
     allFieldsAreRequired: 'All fields are required',
     cancel: 'Cancel',
     clear: 'Clear',
-    dateOfBirth: 'Date of birth',
     delete: 'Delete',
     deleteConfirm: 'Are you sure you want to delete <strong>{{name}}</strong>?',
     ok: 'OK',
