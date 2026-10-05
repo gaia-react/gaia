@@ -60,6 +60,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
+    "@babel/core": "7.29.7",
     "@faker-js/faker": "10.6.0",
     "@gaia-react/lint": "3.0.0-rc.2",
     "@msw/data": "1.1.8",
@@ -67,6 +68,7 @@
     "@playwright/test": "1.63.0",
     "@react-router/dev": "8.4.0",
     "@react-router/fs-routes": "8.4.0",
+    "@rolldown/plugin-babel": "0.2.4",
     "@storybook/addon-docs": "10.6.1",
     "@storybook/addon-links": "10.6.1",
     "@storybook/react-vite": "10.6.1",
@@ -87,6 +89,7 @@
     "@vueless/storybook-dark-mode": "10.0.8",
     "accept-language-parser": "1.5.0",
     "axe-core": "4.13.0",
+    "babel-plugin-react-compiler": "1.0.0",
     "bippy": "0.7.3",
     "chromatic": "18.10.1",
     "esbuild": "0.28.2",

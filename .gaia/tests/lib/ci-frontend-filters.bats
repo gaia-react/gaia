@@ -15,6 +15,7 @@ setup() {
   TESTS_YML="$REPO_ROOT/.github/workflows/tests.yml"
   CHROMATIC_YML="$REPO_ROOT/.github/workflows/chromatic.yml"
   OLD_TESTS_PATTERN='^(app|test)/|^\.playwright/|^\.storybook/|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.npmrc|\.node-version)$|^tsconfig[^/]*\.json$|^(vite|vitest|playwright|eslint|react-router|doctor|knip|prettier|stylelint)\.config\.|^\.github/workflows/tests\.yml$'
+  NO_COMPILER_TESTS_PATTERN='^frontend/(app|test)/|^frontend/\.playwright/|^frontend/\.storybook/|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.npmrc|\.node-version)$|^frontend/package\.json$|^frontend/tsconfig[^/]*\.json$|^frontend/dev-ports[^/]*\.ts$|^frontend/components\.json$|^frontend/(vite|vitest|playwright|eslint|react-router|doctor|knip|prettier|stylelint)\.config\.|^\.gaia/packages\.json$|^frontend/gaia\.package\.json$|^\.github/workflows/tests\.yml$'
   OLD_CHROMATIC_GLOBS="app/**
 .storybook/**
 public/**
@@ -81,7 +82,8 @@ tests_verdict() {
   pattern="$(tests_pattern)"
   for candidate in frontend/app/routes/x.tsx frontend/.playwright/a.spec.ts frontend/package.json pnpm-lock.yaml \
     frontend/test/a.test.ts frontend/vite.config.ts frontend/gaia.package.json .gaia/packages.json \
-    frontend/dev-ports.ts frontend/dev-ports-vite-plugin.ts frontend/dev-ports-reuse.ts; do
+    frontend/dev-ports.ts frontend/dev-ports-vite-plugin.ts frontend/dev-ports-reuse.ts \
+    frontend/react-compiler.config.ts; do
     [ "$(tests_verdict "$pattern" "$candidate")" = select ] || { printf 'did not select: %s\n' "$candidate" >&2; return 1; }
   done
 }
@@ -96,6 +98,10 @@ tests_verdict() {
 
 @test "tests.yml: the pre-move pattern skips frontend/app (the guard can fail)" {
   [ "$(tests_verdict "$OLD_TESTS_PATTERN" frontend/app/routes/x.tsx)" = skip ]
+}
+
+@test "tests.yml: the pattern without react-compiler skips the compiler config (the guard can fail)" {
+  [ "$(tests_verdict "$NO_COMPILER_TESTS_PATTERN" frontend/react-compiler.config.ts)" = skip ]
 }
 
 @test "chromatic.yml: extracted globs include the descriptor entries" {

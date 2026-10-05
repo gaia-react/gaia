@@ -4,6 +4,7 @@ import {defineConfig} from 'vite';
 import {fileURLToPath} from 'node:url';
 import {devPortsPlugin} from './dev-ports-vite-plugin.ts';
 import {resolveDevPorts, resolveSiteUrl} from './dev-ports.ts';
+import {reactCompiler} from './react-compiler.config.ts';
 
 const packageDirectory = fileURLToPath(new URL('.', import.meta.url));
 
@@ -57,7 +58,12 @@ export default defineConfig({
       'zod',
     ],
   },
-  plugins: [tailwindcss(), devPortsPlugin(packageDirectory), reactRouter()],
+  plugins: [
+    tailwindcss(),
+    devPortsPlugin(packageDirectory),
+    reactRouter(),
+    reactCompiler,
+  ],
   resolve: {
     tsconfigPaths: true,
   },
