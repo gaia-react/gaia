@@ -111,7 +111,8 @@ export const CommitsOnEnter: Story = {
   play: async ({args, canvasElement}) => {
     const select = await findSelect(canvasElement);
 
-    select.focus();
+    await userEvent.tab();
+    await expect(select).toHaveFocus();
     await arrowTo(select, 'ja');
     await userEvent.keyboard('{Enter}');
 
@@ -123,9 +124,11 @@ export const CommitsOnLeaving: Story = {
   play: async ({args, canvasElement}) => {
     const select = await findSelect(canvasElement);
 
-    select.focus();
+    await userEvent.tab();
+    await expect(select).toHaveFocus();
     await arrowTo(select, 'ja');
     await userEvent.tab();
+    await expect(select).not.toHaveFocus();
 
     await expectSubmittedOnce(args.onSubmit, 'ja');
   },

@@ -306,7 +306,7 @@ export const StackLoggedNotShown: StoryObj<typeof meta> = {
     }
     // A substring check, so a stack rendered as one block still fails it.
     await expect(canvasElement.ownerDocument.body).not.toHaveTextContent(
-      new RegExp(stack.split('\n', 1)[0])
+      stack.split('\n', 1)[0]
     );
     consoleError.mockRestore();
   },
