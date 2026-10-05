@@ -143,7 +143,8 @@ hand_edit_sentences() {
   local section_text
   section_text="$(section "$CHECKPOINT")" || return 1
   sentences <<<"$section_text" | grep -qF -- 'No fixer is dispatched for it, so the round has no `fixer-<r>-audit.json`: the members re-audit the current tree to earn their markers, and the remaining entries are recorded under the heading `## Accepted residuals (recorded, not fixed)` in the PR body' || return 1
-  sentences <<<"$section_text" | grep -qF -- 'A closing round never re-arms the loop: if it does not clear, the next new-tree dispatch is denied and the human decides again.'
+  sentences <<<"$section_text" | grep -qF -- 'A closing round never re-arms the loop: if it does not clear, the next new-tree dispatch is denied and the human decides again.' || return 1
+  sentences <<<"$section_text" | grep -qF -- 'No member repairs anything in it either: `code-audit-frontend` reads the same `closing` field and applies no self-heal'
 }
 
 @test "UAT-015: a gate log exists only for an attempt whose verifier passed" {
