@@ -164,8 +164,8 @@ status_of() {
 
 # ========== refusals ==========
 
-@test "refusal: a backlog that is a JSON object" {
-  printf '{"number": 1}' >"$BACKLOG"
+@test "refusal: a backlog that is a JSON object, even one whose values are issues" {
+  printf '{"a": {"number": 1, "key": {"class": "c", "path": "src/app.ts", "line": 1}}}' >"$BACKLOG"
   probe
   [ "$status" -eq 2 ]
   [ -z "$output" ]
