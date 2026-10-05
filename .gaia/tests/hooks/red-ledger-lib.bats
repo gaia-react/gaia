@@ -475,39 +475,58 @@ run_library() {
 
 # --- signal helper: corpus standing check over the union glob set ---
 
-@test "the helper over the whole union glob set has no duplicate signal per file, and pins its file/record counts" {
+@test "the helper over the whole union glob set has no duplicate signal per file, and records at least every plain literal-titled test" {
   local corpus="$BATS_TEST_TMPDIR/corpus.ndjson"
   : > "$corpus"
 
+  # The floor this test checks the helper against is counted by grep, not by
+  # the helper's TypeScript parser, so a parser regression that drops records
+  # cannot also lower the bar it is measured against. It counts only lines
+  # opening a test/it call on a quoted title with no title-expanding modifier,
+  # each of which the helper must record, so it undercounts (runIf(...)(...),
+  # a title wrapped onto the next line) and never overcounts. That is why it is
+  # a floor and not an equality. A pinned total would follow nothing and red an
+  # unrelated harness PR after any frontend PR adds a test; the test
+  # runner's own listing is no oracle either, since it expands `.each` rows
+  # the helper deliberately leaves unrecorded, and the CI leg installs no
+  # runner.
+  local plain_test_pattern="^[[:space:]]*(test|it)(\.(only|skip|todo|fails|concurrent|sequential))*\([[:space:]]*['\"]"
+  # Inside a `.each`/`.for` describe or one with a non-literal title, the helper
+  # records nothing by design, so a floor counted over that file would demand
+  # records it must not emit. Such a file keeps every other check below.
+  local unrecorded_subtree_pattern="describe\.(each|for)|describe(\.[a-z]+)*\([[:space:]]*[^'\"[:space:]]"
+
   local file_count=0
-  local record_count=0
-  local f duplicate_signals file_record_count
+  local floor_total=0
+  local f duplicate_signals file_record_count file_floor
   while IFS= read -r -d '' f; do
     [ -z "$f" ] && continue
     file_count=$((file_count + 1))
     run_helper "$f"
     [ "$status" -eq 0 ]
+    file_record_count=0
     if [ -n "$output" ]; then
-      # frontend/.playwright/e2e/legal-a11y.spec.ts emits zero records; a "same number
-      # of records" clause over it is satisfied by 0 == 0 and carries no
-      # weight on its own.
       duplicate_signals=$(printf '%s\n' "$output" | jq -r .signal | sort | uniq -d)
       [ -z "$duplicate_signals" ]
       file_record_count=$(printf '%s\n' "$output" | grep -c '"fullName"')
-      record_count=$((record_count + file_record_count))
       printf '%s\n' "$output" >> "$corpus"
+    fi
+    if ! grep -qE "$unrecorded_subtree_pattern" "$REPO_ROOT/$f"; then
+      file_floor=$(grep -cE "$plain_test_pattern" "$REPO_ROOT/$f" || true)
+      floor_total=$((floor_total + file_floor))
+      [ "$file_record_count" -ge "$file_floor" ] || {
+        echo "$f: helper emitted $file_record_count record(s), below the $file_floor plain literal-titled test(s) grep counts" >&2
+        return 1
+      }
     fi
   done < <(git -C "$REPO_ROOT" ls-files -z 'frontend/app/**/*.test.ts' 'frontend/app/**/*.test.tsx' \
     'frontend/.playwright/**/*.spec.ts' 'frontend/.playwright/**/*.spec.tsx' \
     'frontend/.playwright/**/*.test.ts' 'frontend/.playwright/**/*.test.tsx')
 
-  # Refresh both by re-running the git ls-files command above and summing the
-  # helper's output line count across the result. Re-derive rather than
-  # adjusting the old number by the diff's test count: the two cardinals move
-  # independently, and #1748 was a `record_count` that drifted while
-  # `file_count` stayed put.
-  [ "$file_count" -eq 31 ]
-  [ "$record_count" -eq 152 ]
+  # Without these the floor check above passes vacuously: on an empty file set
+  # (a glob that stopped matching), or on one where no file contributed a floor.
+  [ "$file_count" -gt 0 ]
+  [ "$floor_total" -gt 0 ]
 
   local bad_signal
   bad_signal=$(jq -r '.signal' "$corpus" | grep -vE '^sha256:[0-9a-f]{64}$' || true)
