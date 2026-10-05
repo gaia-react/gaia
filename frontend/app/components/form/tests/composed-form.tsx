@@ -104,9 +104,18 @@ export const ComposedForm = ({disabled = false}: ComposedFormProps) => {
     password: FIXTURE_TEXT.passwordError,
     required: t('form.required'),
   };
-  const colorLabels: Record<string, string> = FIXTURE_TEXT.colorOptions;
-  const countryLabels: Record<string, string> = FIXTURE_TEXT.countryOptions;
-  const sizeLabels: Record<string, string> = FIXTURE_TEXT.sizeOptions;
+  const colorLabels = FIXTURE_TEXT.colorOptions satisfies Record<
+    (typeof COLORS)[number],
+    string
+  >;
+  const countryLabels = FIXTURE_TEXT.countryOptions satisfies Record<
+    'none' | (typeof COUNTRIES)[number],
+    string
+  >;
+  const sizeLabels = FIXTURE_TEXT.sizeOptions satisfies Record<
+    (typeof SIZES)[number],
+    string
+  >;
 
   const mapToFieldErrors = (messages?: string[]) =>
     messages?.map((message) => ({message: errorMessages[message]}));
@@ -217,7 +226,7 @@ export const ComposedForm = ({disabled = false}: ComposedFormProps) => {
           >
             <Checkbox {...checkboxProps} disabled={disabled} />
             <FieldLabel htmlFor={checkboxProps.id}>
-              {colorLabels[checkboxProps.value]}
+              {colorLabels[checkboxProps.value as (typeof COLORS)[number]]}
             </FieldLabel>
           </Field>
         ))}

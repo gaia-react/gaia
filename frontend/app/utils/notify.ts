@@ -50,13 +50,16 @@ const showToast = (
     console.error(stack);
   }
 
-  // A payload with only a description promotes it to the title. The same
-  // payload hashes to the same id, so a repeat updates the live toast in place.
+  // A payload with no message (absent or empty) promotes its description to
+  // the title. The same payload hashes to the same id, so a repeat updates the
+  // live toast in place.
+  const hasMessage = Boolean(message);
+
   return toast.add({
-    description: message ? description : undefined,
+    description: hasMessage ? description : undefined,
     id: md5({payload}),
     timeout: duration ?? defaultDuration,
-    title: message ?? description,
+    title: hasMessage ? message : description,
     type,
   });
 };

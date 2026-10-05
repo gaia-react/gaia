@@ -50,6 +50,24 @@ describe('notify', () => {
     expect(await screen.findByText('only a description')).toBeInTheDocument();
   });
 
+  test('promotes the description when the message is an empty string', async () => {
+    renderToaster();
+
+    await act(async () => {
+      notify.warning({description: 'Saved', message: ''});
+    });
+
+    const title = await screen.findByText('Saved');
+    const toastElement = title.closest('[data-slot="toast"]') as HTMLElement;
+
+    expect(
+      toastElement.querySelector('[data-slot="toast-title"]')
+    ).toHaveTextContent('Saved');
+    expect(
+      toastElement.querySelector('[data-slot="toast-description"]')
+    ).toBeNull();
+  });
+
   test('renders the message as text, never as HTML', async () => {
     renderToaster();
     const markup = '<img src=x onerror="alert(1)">';

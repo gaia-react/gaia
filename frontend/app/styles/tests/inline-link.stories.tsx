@@ -5,7 +5,7 @@ const meta: Meta = {
     controls: {hideNoControlsWarning: true},
     wrap: 'max-w-prose p-4',
   },
-  title: 'Styles/Inline link',
+  title: 'Styles/InlineLink',
 };
 
 export default meta;

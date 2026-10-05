@@ -9,7 +9,7 @@ export const isChromaticSnapshot =
   isChromatic() ||
   (process.env.NODE_ENV === 'production' ?
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    [...(window?.location.ancestorOrigins ?? {length: 0})].some((origin) =>
+    [...(window?.location.ancestorOrigins ?? [])].some((origin) =>
       origin.includes('www.chromatic.com')
     )
   : false);

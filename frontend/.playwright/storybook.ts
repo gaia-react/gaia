@@ -134,7 +134,7 @@ export const loadStory = async (
 
 /** Resolves with the render phase once the story and its play function end. */
 export const waitForRender = async (page: Page): Promise<string> => {
-  const handle = await page.waitForFunction(() => {
+  const renderPhaseHandle = await page.waitForFunction(() => {
     const preview = Reflect.get(globalThis, '__STORYBOOK_PREVIEW__') as
       StoryPreview | undefined;
     const phase = preview?.currentRender?.phase;
@@ -144,5 +144,5 @@ export const waitForRender = async (page: Page): Promise<string> => {
       : false;
   });
 
-  return (await handle.jsonValue()) as string;
+  return (await renderPhaseHandle.jsonValue()) as string;
 };

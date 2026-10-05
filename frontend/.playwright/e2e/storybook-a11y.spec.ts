@@ -153,7 +153,7 @@ test.describe('storybook a11y', () => {
   // underline (not color alone) is what sets it apart.
   test('inline text links are underlined', async ({page}) => {
     requireIndex();
-    await loadStory(page, 'styles-inline-link--default', 'light');
+    await loadStory(page, 'styles-inlinelink--default', 'light');
     await waitForRender(page);
     const links = page.locator('#storybook-root p a');
 

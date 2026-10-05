@@ -150,7 +150,8 @@ const isSameColor = (actual: string, expected: string): boolean => {
   return (
     actualNumbers.length === expectedNumbers.length &&
     actualNumbers.every(
-      (number, index) => Math.abs(number - expectedNumbers[index]) < 1e-9
+      (actualChannelValue, index) =>
+        Math.abs(actualChannelValue - expectedNumbers[index]) < 1e-9
     )
   );
 };

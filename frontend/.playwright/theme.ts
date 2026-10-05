@@ -121,13 +121,15 @@ export const expectDarkTheme = async (page: Page): Promise<void> => {
 export const forceDarkBeforeLoad = async (page: Page): Promise<void> => {
   await page.emulateMedia({colorScheme: 'dark'});
   await page.addInitScript(() => {
-    const apply = () => {
+    const addDarkClassToRootElement = () => {
       // The document has no root element yet when the init script first runs.
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       document.documentElement?.classList.add('dark');
     };
-    apply();
-    new MutationObserver(apply).observe(document, {childList: true});
+    addDarkClassToRootElement();
+    new MutationObserver(addDarkClassToRootElement).observe(document, {
+      childList: true,
+    });
   });
 };
 
