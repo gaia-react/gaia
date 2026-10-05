@@ -156,13 +156,13 @@ function baseCalleeName(node) {
 // title argument a template rather than the recorded fullName.
 const TITLE_EXPANDING_MODIFIERS = new Set(['each', 'for']);
 
-// True when the call's callee chain carries a title-expanding modifier:
-// test.each(table)(...), test.for(table)(...), it.each(table)(...),
-// describe.each(table)(...), and the tagged-template spelling
-// (test.each`...`(...)) wherever baseCalleeName can see it. Mirrors
-// baseCalleeName's own call-of-a-call / tagged-template / property-access
-// walk, checking each property name along the way instead of only the root.
-function calleeHasTitleExpandingModifier(node) {
+// True when any property name along the call's callee chain is in
+// propertyNames: test.each(table)(...), test.describe.serial(...), and the
+// tagged-template spelling (test.each`...`(...)) wherever baseCalleeName can
+// see it. Mirrors baseCalleeName's own call-of-a-call / tagged-template /
+// property-access walk, checking each property name along the way instead of
+// only the root.
+function calleeChainHasProperty(node, propertyNames) {
   let expr = node.expression;
   for (;;) {
     if (ts.isCallExpression(expr)) {
@@ -174,7 +174,7 @@ function calleeHasTitleExpandingModifier(node) {
     }
   }
   while (ts.isPropertyAccessExpression(expr)) {
-    if (TITLE_EXPANDING_MODIFIERS.has(expr.name.text)) {
+    if (propertyNames.has(expr.name.text)) {
       return true;
     }
     expr = expr.expression;
@@ -193,7 +193,7 @@ function calleeHasTitleExpandingModifier(node) {
 // suppression stays deliberately wider than strictly necessary and trades
 // away that narrow slice of coverage.
 function titleOf(node) {
-  if (calleeHasTitleExpandingModifier(node)) {
+  if (calleeChainHasProperty(node, TITLE_EXPANDING_MODIFIERS)) {
     return null;
   }
   const arg = node.arguments[0];
@@ -208,6 +208,24 @@ function titleOf(node) {
 
 const TEST_NAMES = new Set(['test', 'it']);
 const DESCRIBE_NAMES = new Set(['describe', 'suite']);
+// Playwright spells a describe block as a property of `test`
+// (test.describe(...), test.describe.serial(...)), so its root name alone
+// reads as a test. test.describe.configure({...}) lands here too; its options
+// object is not a literal title, so it records nothing and only its own
+// arguments are marked unmatchable.
+const DESCRIBE_PROPERTY = new Set(['describe']);
+
+// 'test', 'describe', or null for a call that is neither.
+function blockKindOf(node) {
+  const name = baseCalleeName(node);
+  if (DESCRIBE_NAMES.has(name)) {
+    return 'describe';
+  }
+  if (TEST_NAMES.has(name)) {
+    return calleeChainHasProperty(node, DESCRIBE_PROPERTY) ? 'describe' : 'test';
+  }
+  return null;
+}
 
 // Runtime assertions give a test a runtime failure mode (a RED). Type-level
 // proofs do not: they are evaluated by tsc, never by the test runner.
@@ -398,8 +416,8 @@ const lines = [];
 // propagates to the whole subtree rather than resetting at the next describe.
 function visit(node, ancestors, unmatchable) {
   if (ts.isCallExpression(node)) {
-    const name = baseCalleeName(node);
-    if (name && TEST_NAMES.has(name)) {
+    const blockKind = blockKindOf(node);
+    if (blockKind === 'test') {
       const title = unmatchable ? null : titleOf(node);
       if (title !== null) {
         const fullName = [...ancestors, title].join(' ');
@@ -416,7 +434,14 @@ function visit(node, ancestors, unmatchable) {
       ts.forEachChild(node, (child) => visit(child, ancestors, unmatchable));
       return;
     }
-    if (name && DESCRIBE_NAMES.has(name)) {
+    if (blockKind === 'describe') {
+      // Playwright's untitled test.describe(() => {...}) groups tests without
+      // adding a title, so its children keep the enclosing names.
+      const firstArgument = node.arguments[0];
+      if (firstArgument && ts.isFunctionLike(firstArgument)) {
+        ts.forEachChild(node, (child) => visit(child, ancestors, unmatchable));
+        return;
+      }
       const title = unmatchable ? null : titleOf(node);
       const nextAncestors =
         title !== null ? [...ancestors, title] : ancestors;
