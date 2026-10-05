@@ -61,12 +61,12 @@ const FormError = ({className, isHidden}: FormErrorProps) => {
     // keep. Browsers whose click is a MouseEvent carry no pointerType, so
     // there a keyboard activation is told apart by its zero click count.
     const {currentTarget, nativeEvent} = event;
-    const shouldMoveFocus =
+    const isFocusHandoffWanted =
       'pointerType' in nativeEvent ?
         nativeEvent.pointerType !== 'touch' && nativeEvent.pointerType !== 'pen'
       : nativeEvent.detail === 0;
 
-    if (shouldMoveFocus) {
+    if (isFocusHandoffWanted) {
       focusFirstFormControl(currentTarget);
     }
 
