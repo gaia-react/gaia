@@ -1,4 +1,4 @@
-import type {MouseEvent} from 'react';
+import type {MouseEventHandler} from 'react';
 import {useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useActionData} from 'react-router';
@@ -45,7 +45,9 @@ const FormError = ({className, isHidden}: FormErrorProps) => {
       error
     : '';
 
-  const handleDismissErrorButton = (event: MouseEvent<HTMLButtonElement>) => {
+  const handleDismissErrorButton: MouseEventHandler<HTMLButtonElement> = (
+    event
+  ) => {
     focusFirstFormControl(event.currentTarget);
     setDismissedActionData(actionData);
   };
