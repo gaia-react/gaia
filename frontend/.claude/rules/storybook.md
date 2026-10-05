@@ -8,9 +8,23 @@ paths:
 
 The `/new-component` command scaffolds the canonical story shape. This rule covers what to do when authoring or extending a story beyond that scaffold.
 
+## Stories are the tests
+
+A story is a test. `@storybook/addon-vitest` runs every story in headless Chromium (run `pnpm install:browsers` once), and the story passes when it renders and its play function, if any, finishes without an assertion failing. addon-a11y then axe-checks the rendered story, so a violation fails the story with no extra test. Components and pages have no `.test.tsx` beside their stories; the play function is where the assertions live. Import `expect`, `fn`, `userEvent`, `waitFor`, `within` (and `fireEvent` when a native event has no `userEvent` equivalent) from `storybook/test`; it re-exports the jest-dom matchers and user-event.
+
 ## When to write a story
 
-Write a story for every component scaffolded with `/new-component`. Skip stories only for pure-utility components with no visual output (e.g. context providers, HOCs with no markup).
+Write a story with a play function for every GAIA behavior a component or page owns: each interaction, state transition and error path, one story per behavior, named for the behavior (`PointerChoiceSubmits`, not `Test1`). A render-only story (no play) still runs and passes axe, and is complete only for a component with no interactive behavior. For an interactive component the plays assert a keyboard path and a focus outcome. Skip stories only for pure-utility components with no visual output (e.g. context providers, HOCs with no markup); those get a `node` or `browser` Vitest test instead.
+
+Configure a story through props and args (for example `LanguageSelect`'s `languages` prop), not by mutating shared constants.
+
+## Accessibility
+
+addon-a11y runs on every story with the WCAG 2.0/2.1 A and AA tags and fails on a violation of any impact; only the `region` rule is off, because a story renders a fragment outside the page landmarks. The config is `parameters.a11y` in `.storybook/preview.ts`. Do not opt a story out (`parameters.a11y.test: 'off'` or a disabled rule) without a reason written beside it; fix the markup instead. Page landmark and heading checks are play assertions (one `main`, one level-1 heading).
+
+## Vitest and Chromatic
+
+The Chromatic decorator (`ChromaticDecorator`, light and dark side by side) is added only when Chromatic itself snapshots, so it does not run under Vitest: a play function sees the story once, in the current theme.
 
 ## File location
 
@@ -28,7 +42,9 @@ Slash-separated PascalCase display segments of the path under `app/`, with no la
 
 Apply stubs outermost → innermost: `state` then `reactRouter`. Only include stubs the component actually needs (`stubs.state()` only when the component reads from `~/state`). Import from `test/stubs`.
 
-`stubs.reactRouter()` options: `path` (default `/`), `loader`, `action` (string storyId, `Record<Method, storyId>`, or full `ActionFunction`), and `routes` (`{path, storyId}[]`, navigates to a story when the path loads).
+`stubs.reactRouter()` options: `path` (default `/`), `loader`, `action` (string storyId, `Record<Method, storyId>`, or full `ActionFunction`), `routes` (`{path, storyId}[]`, navigates to a story when the path loads), `actions` (`Record<path, ActionFunction>`, a per-path action that overrides the no-op entry for that path) and `destinations` (`string[]`, each path renders `Navigated to <path>` in a `main` so a play can assert arrival by text). Pass a function of the story context (`stubs.reactRouter(({args}) => ({...}))`) to read `fn()` spies from args. `actions` keys must differ from `path`: the main route matches first, so an action keyed to it never fires; observe a form posting to its own route through `action`.
+
+A story file has exactly one `stubs.reactRouter` decorator, at meta level, because a nested Router throws. Vary the router per story through the function form, never a second decorator.
 
 ```tsx
 decorators: [

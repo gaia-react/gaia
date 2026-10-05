@@ -112,20 +112,20 @@ It emits `{file, classification: "strict" | "emergent", reasons}`. A `strict` fi
 ```
 Determinism roll-up:
   • frontend/app/utils/money.ts            strict
-  • frontend/app/components/cart/index.tsx  emergent (path not a .ts under frontend/app/components)
+  • frontend/app/components/cart/tests/index.stories.tsx  emergent (story file: a *.stories.tsx is emergent regardless of path)
 ```
 
 This roll-up renders into the single end-of-task summary (see "Surfacing the advisory findings").
 
 ### 6. Worthiness Audit (emergent surface)
 
-The deterministic surface earns its honesty proof from the RED gate. The emergent surface (the descriptor's `emergentTests` globs: components, pages and Playwright) has no stable failing-then-passing run to gate on, so its honesty and worthiness come from an **advisory audit** instead. Run this audit after green, on the emergent-surface test files the task changed (the classifier roll-up above tells you which touched files are `emergent`).
+The deterministic surface earns its honesty proof from the RED gate. The emergent surface (the descriptor's `emergentTests` globs: component and page stories, which are the component tests, and Playwright) has no stable failing-then-passing run to gate on, so its honesty and worthiness come from an **advisory audit** instead. Run this audit after green, on the emergent-surface test and story files the task changed (the classifier roll-up above tells you which touched files are `emergent`).
 
 #### Dispatch a fresh-context audit (no-orchestrator path)
 
 On the main loop, with no orchestrator above you, the audit MUST run in a **genuine fresh-context `Agent` sub-leaf**, never as an in-context self-review by the test author. The author who just wrote the tests shares their blind spots; a same-model fresh-context reviewer that never saw the authoring rationale is the cheapest way to recover honesty signal. An in-context "I'll review my own tests" pass does not satisfy this step.
 
-Dispatch one `Agent` leaf running the committed evaluator prompt (`.claude/agents/worthiness-evaluator.md`) over the task's changed emergent test files plus their sibling suites. The evaluator judges each test on two axes (honesty, worthiness), returns a `keep`/`fix`/`delete` verdict per test, and **edits no files**: every `delete` is a proposal a human confirms.
+Dispatch one `Agent` leaf running the committed evaluator prompt (`.claude/agents/worthiness-evaluator.md`) over the task's changed emergent test and story files plus their sibling suites. The evaluator judges each test on two axes (honesty, worthiness), returns a `keep`/`fix`/`delete` verdict per test, and **edits no files**: every `delete` is a proposal a human confirms.
 
 #### Write the worthiness ledger (no-orchestrator path)
 

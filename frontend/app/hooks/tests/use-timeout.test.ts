@@ -51,7 +51,7 @@ describe('useTimeout', () => {
     expect(result.current).toBe(true);
   });
 
-  test('timeout is cleared on unmount — no late state update', async () => {
+  test('timeout is cleared on unmount, with no late state update', async () => {
     const {act, result, unmount} = await renderHook(() => useTimeout(500));
 
     expect(vi.getTimerCount()).toBe(1);

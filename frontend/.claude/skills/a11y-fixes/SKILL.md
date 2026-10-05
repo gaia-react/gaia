@@ -1,6 +1,6 @@
 ---
 name: a11y-fixes
-description: Resolve axe-core accessibility violations reported by Vitest (test/a11y.ts), Playwright (.playwright/a11y.ts), or the code-audit-frontend agent's a11y bucket. Trigger on any axe rule id appearing in test output, not only the ones named here. Contains fix patterns for the most common violations (color-contrast, label, label-title-only, image-alt, button-name, link-name, region, landmark-one-main, heading-order, aria-allowed-attr, aria-required-attr, aria-required-children, aria-required-parent, aria-valid-attr-value, focus-trap, tabindex, html-has-lang, document-title, duplicate-id, listitem, definition-list); for any violation not listed, apply the general axe guidance and the same fix-then-verify loop.
+description: Resolve axe-core accessibility violations reported by a story under Vitest (addon-a11y), Playwright (.playwright/a11y.ts), or the code-audit-frontend agent's a11y bucket. Trigger on any axe rule id appearing in test output, not only the ones named here. Contains fix patterns for the most common violations (color-contrast, label, label-title-only, image-alt, button-name, link-name, region, landmark-one-main, heading-order, aria-allowed-attr, aria-required-attr, aria-required-children, aria-required-parent, aria-valid-attr-value, focus-trap, tabindex, html-has-lang, document-title, duplicate-id, listitem, definition-list); for any violation not listed, apply the general axe guidance and the same fix-then-verify loop.
 model: haiku
 ---
 
@@ -8,13 +8,13 @@ model: haiku
 
 How to resolve specific axe-core violations in this project.
 
-Violations come from `test/a11y.ts` (Vitest), `.playwright/a11y.ts` (Playwright), or the `code-audit-frontend` agent's a11y bucket. General a11y guidance lives in `frontend/.claude/rules/accessibility.md`.
+Violations come from addon-a11y, which axe-checks every story under Vitest (configured in `.storybook/preview.ts`), `.playwright/a11y.ts` (Playwright), or the `code-audit-frontend` agent's a11y bucket. General a11y guidance lives in `frontend/.claude/rules/accessibility.md`.
 
 ## Fix-then-verify loop
 
 1. Fix one violation with the pattern below; for a rule id not listed here, use the violation's `help` and `failureSummary` from the axe output.
-2. Re-run the reporter that flagged it: Vitest `pnpm test --run <test-file>`, Playwright `pnpm pw <spec-file>`.
-3. Some rules never go green on their own. Under Vitest (jsdom) axe records `color-contrast`, `landmark-one-main` and `page-has-heading-one` as `incomplete`, not violations (see the comment in `test/a11y.ts`), so a Vitest run never checks them. Verify `color-contrast` with `pnpm pw`. The Playwright scan's WCAG tag filter does not run `landmark-one-main` either, so for that rule check the rendered page by hand (exactly one `<main>`) instead of counting a green run as proof.
+2. Re-run the reporter that flagged it: Vitest `pnpm test --run --project storybook <story-file>`, Playwright `pnpm pw <spec-file>`.
+3. Some rules are not checked by the story run. addon-a11y runs the WCAG 2.0/2.1 A and AA tags and disables `region` (a story renders a fragment outside the page landmarks), so `landmark-one-main` and `page-has-heading-one` never fire there: assert the page landmark and heading in the page story's play instead (exactly one `main`, one level-1 heading). Verify `color-contrast` with `pnpm pw` when a story run is ambiguous, since the Playwright scan renders the same stories in the full page.
 4. Repeat until the reporter shows no violations.
 
 ## color-contrast

@@ -80,27 +80,24 @@ await things.update((q) => q.where({id: 'abc'}), {
 
 ### When `resetTestData()` runs
 
-`resetTestData()` is async and runs automatically in an `afterEach` hook inside `frontend/test/rtl.tsx` (the Testing Library re-export wrapper). Every test that imports the project's RTL re-export starts from a freshly wiped and re-seeded database; no manual reset is needed. Tests that import `@testing-library/react` directly, bypassing `frontend/test/rtl.tsx`, must reset state themselves.
+`resetTestData()` is async and runs automatically in an `afterEach` hook in `frontend/test/setup.ts`, the setup file of the `node` Vitest project. Every test in that project starts from a freshly wiped and re-seeded database; no manual reset is needed.
 
 ```ts
-// frontend/test/rtl.tsx
-import {resetTestData} from './mocks/database';
-
-afterEach(async () => {
-  await resetTestData();
-  cleanup();
-});
+// frontend/test/setup.ts
+afterEach(resetTestData);
 ```
 
+Stories and browser-project tests run neither the MSW node server nor this reset. They read seed data from the `@msw/data` collections directly, so they treat those collections as read-only.
+
 > [!warning] `resetHandlers` ≠ `resetTestData`
-> `frontend/test/test.server.ts` calls `server.resetHandlers()` in its own `afterEach`; this resets runtime handler overrides but **not** the database. The database reset is the separate `resetTestData()` wired into `frontend/test/rtl.tsx`.
+> `frontend/test/test.server.ts` calls `server.resetHandlers()` in its own `afterEach`; this resets runtime handler overrides but **not** the database. The database reset is the separate `resetTestData()` wired into `frontend/test/setup.ts`.
 
 `frontend/test/mocks/faker.ts` exports a seeded `faker` instance (seed `7`) so generated values are deterministic across runs.
 
 ## Common pitfalls
 
 - **Request escapes to real network** → handler URL doesn't match ky URL. Use `url({NAME}_URLS.key)`, never a hardcoded string.
-- **Test sees stale data after mutation** → test bypasses `frontend/test/rtl.tsx`, so the automatic `afterEach` `resetTestData()` never runs.
+- **Test sees stale data after mutation** → the test runs outside the `node` project (a story or browser test), where the automatic `afterEach` `resetTestData()` never runs; keep stories and browser tests from mutating the collections.
 - **MSW not active in dev** → `MSW_ENABLED` missing or false in `.env`.
 - **Server-side requests bypass mock in dev** → `entry.server.tsx` check failed; ensure `env.MSW_ENABLED` is truthy.
 - **Handler added but never triggered** → not registered in `frontend/test/mocks/index.ts`.

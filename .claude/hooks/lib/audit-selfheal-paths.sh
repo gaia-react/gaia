@@ -42,7 +42,8 @@
 # merge rather than from the directory convention, because a collector keying
 # on a suffix reaches a file the convention does not put in a tests/ folder:
 #
-#   app/**/*.test.ts, app/**/*.test.tsx -- vitest.config.ts `test.include`
+#   app/**/*.test.ts, app/**/*.test.tsx -- the `node` and `browser` projects'
+#                                          `include` in vitest.config.ts
 #   app/**/*.stories.tsx                -- .storybook/main.ts `stories`, the
 #                                          glob Chromatic snapshots
 #

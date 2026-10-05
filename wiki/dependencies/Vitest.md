@@ -10,21 +10,24 @@ tags: [dependency, testing]
 
 # Vitest
 
-Test runner for unit + integration tests. Paired with `happy-dom` and [[React Testing Library]].
+Test runner for unit tests and, through `@storybook/addon-vitest`, for the story play functions that test components and pages. Browser-mode projects run in headless Chromium via `@vitest/browser-playwright`; no DOM emulation is used. See [[Stories as Tests]].
 
 ## Companion packages
 
 - `@vitest/coverage-v8`: coverage reports (direct devDependency)
+- `@vitest/browser-playwright` and `vitest-browser-react`: the browser provider and the hook-test renderer for the `browser` project
+- `@storybook/addon-vitest`: the `storybook` project's plugin, which turns every story into a test
 
 Vitest-aware lint rules come from `@vitest/eslint-plugin`, which the shared `@gaia-react/lint` config pulls in transitively; GAIA's `package.json` does not declare it directly.
 
 ## Conventions
 
-- `*.test.{ts,tsx}` anywhere in `frontend/app/`
-- Tests live in `tests/` subfolders next to components/pages/hooks
+- `*.test.{ts,tsx}` for pure code, server code and hooks; component and page tests are stories (`*.stories.tsx`) with `play` functions
+- Tests and stories live in `tests/` subfolders next to components/pages/hooks
 - Explicit imports in every test file: `import {describe, expect, test} from 'vitest'`
-- `globals: true` in `frontend/vitest.config.ts` enables Testing Library's auto-cleanup between tests; it does not replace the explicit imports. Keep `vitest/globals` out of `frontend/tsconfig.json` types: the explicit imports are what type-check
-- `frontend/vitest.config.ts` runs tests under `environment: 'happy-dom'` with `setupFiles: ['./test/setup.ts']`. `frontend/test/setup.ts` registers Storybook project annotations, imports jest-dom matchers, loads `test.server`, and supplies fallback env vars (see `frontend/test/setup.ts` for the current list) so server modules parse in clean environments. Add new global matchers or env defaults there
+- Keep `vitest/globals` out of `frontend/tsconfig.json` types: the explicit imports are what type-check
+- `frontend/vitest.config.ts` defines three projects (`node`, `browser`, `storybook`); read it for membership and settings. `frontend/test/setup.ts` serves the `node` project: it loads `test.server`, resets test data after each test, and supplies fallback env vars (see the file for the current list) so server modules parse in clean environments. `frontend/test/setup.browser.ts` serves the `browser` project. The `storybook` project takes its setup from `.storybook/preview.ts`
+- The browser projects need Chromium: run `pnpm install:browsers` once. See [[Testing]]
 
 ## Run rules
 

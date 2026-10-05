@@ -3,15 +3,15 @@ type: module
 path: frontend/test/, frontend/.playwright/
 status: active
 language: typescript
-purpose: Four-layer testing setup: unit, integration, E2E, visual regression
+purpose: Four-layer testing setup: unit, stories as component tests, E2E, visual regression
 depends_on:
   - '[[Vitest]]'
-  - '[[React Testing Library]]'
+  - '[[Storybook]]'
   - '[[Playwright]]'
   - '[[Chromatic]]'
   - '[[MSW]]'
 created: 2026-04-20
-updated: 2026-10-03
+updated: 2026-10-05
 tags: [module, testing]
 ---
 
@@ -19,23 +19,31 @@ tags: [module, testing]
 
 Testing has **four layers**, all sharing a common [[MSW Handlers|MSW]] mocking layer:
 
-- Unit: [[Vitest]] in `frontend/app/utils/tests/`, `frontend/app/hooks/tests/`
-- Integration: Vitest + [[React Testing Library]] in `frontend/app/components/*/tests/`, `frontend/app/pages/*/tests/`
+- Unit: [[Vitest]] in `frontend/app/utils/tests/` (pure and server code), and `vitest-browser-react` tests for hooks
+- Component and page: Storybook stories with `play` functions in `frontend/app/components/*/tests/`, `frontend/app/pages/*/tests/`, run by Vitest through `@storybook/addon-vitest`
 - E2E: [[Playwright]] in `frontend/.playwright/e2e/*.spec.ts`
-- Visual regression: [[Chromatic]] (CI only), driven by Storybook stories
+- Visual regression: [[Chromatic]] (CI only), driven by the same stories
 
-The `composeStory` pattern means integration tests and visual regression share one source of truth. See [[Component Testing]].
+A story is the component test and the visual-regression input, so both share one source of truth. See [[Stories as Tests]] and [[Component Testing]].
 
 ## Vitest
 
-Config at `frontend/vitest.config.ts`; see its `test.include` for the covered directories. Runs against `happy-dom`.
+One config, `frontend/vitest.config.ts`, defines three projects: `node` for pure and server code, `browser` for hooks and any `*.test.tsx`, and `storybook` for every story. Read it for the exact membership. The `browser` and `storybook` projects run in headless Chromium; no project uses an emulated DOM.
 
 > [!info] Watch mode needs a TTY
 > Vitest only enters watch mode with an interactive TTY; in CI or under Claude, a bare `pnpm test` runs once and exits. Use `pnpm test --run` for an explicit single pass. See [[Test Runner]].
 
+### Setup prerequisite
+
+Run `pnpm install:browsers` once per machine. It installs every Playwright browser with its OS dependencies, which local `pnpm pw` uses too. Vitest's browser projects need Chromium from it; a missing browser fails the run with an install command rather than skipping the tests.
+
+### Accessibility coverage
+
+`@storybook/addon-a11y` axe-checks every story under Vitest, in the **light theme only**. The dark-theme check is `pnpm pw` (the Playwright story scan), so run it on any theme or token change. See [[Accessibility]].
+
 ## Component test pattern
 
-Always use Storybook stories with `composeStory`. Never manually mock framework deps (`react-router`, `react-i18next`, etc.). See [[Component Testing]] for the canonical pattern.
+Test a component or page with a story that has a `play` function. Never manually mock framework deps (`react-router`, `react-i18next`, etc.); use the stubs. See [[Stories as Tests]] and [[Component Testing]] for the canonical pattern.
 
 ## Playwright
 
@@ -58,15 +66,10 @@ Most shipped e2e specs are axe-core a11y scans; others cover hydration errors an
 
 ## ESLint rules on test files
 
-Test files (`**/*.test.ts?(x)`) enforce two additional plugin configs that change how tests are written:
-
-- `eslint-plugin-testing-library`: prefer `screen` queries, `await` all `userEvent` calls, no `act()` wrappers, no manual cleanup
-- `eslint-plugin-jest-dom`: prefer jest-dom matchers (`toHaveValue`, `toBeChecked`, `toHaveTextContent`) over raw DOM property checks
-
-See [[ESLint Fixes]] for fix patterns.
+Test files are linted by the `testing` preset of [[gaia-lint]] and stories by its `storybook` preset. See [[ESLint Fixes]] for fix patterns.
 
 ## Pre-commit
 
-The pre-commit hook runs `pnpm typecheck`, `pnpm exec lint-staged` (eslint, prettier, stylelint), then `pnpm test:lint-staged` (`vitest --run --changed --passWithNoTests --bail 1`) as a separate step, so only tests affected by the staged changes run. See [[Quality Gate]].
+The pre-commit hook runs `pnpm typecheck`, `pnpm exec lint-staged` (eslint, prettier, stylelint), then `pnpm test:lint-staged` (`vitest --run --changed --passWithNoTests --bail 1`) as a separate step, so only tests affected by the staged changes run (browser projects included, so Chromium must be installed). See [[Quality Gate]].
 
 For the current `frontend/test/` folder inventory and helper signatures, query Serena (`.claude/rules/code-search.md`).

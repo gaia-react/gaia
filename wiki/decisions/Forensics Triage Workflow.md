@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-05-08
 created: 2026-05-08
-updated: 2026-10-03
+updated: 2026-10-05
 tags: [decision, ci, automation, security]
 ---
 
@@ -30,7 +30,7 @@ Lifecycle:
 5. **Scope check (pre-fix).** `check-scope.sh` runs over the classifier's `Proposed paths` block. Any path outside the allowlist (or on the explicit denylist) demotes the issue to `needs-human` with a comment naming the rejected paths. No branch is created.
 6. **Apply fix.** A second `claude-code-action` invocation runs the fix-application prompt with `--allowedTools Edit,Write` only; no shell, no git, no network. The branch `forensics/<issue-num>-<class-slug>` is created locally from `origin/main`.
 7. **Post-fix scope check.** Even within the allowlist, the diff must be a subset of the classifier's proposed paths. Any deviation aborts before commit and demotes to `needs-human`.
-8. **Quality Gate.** `.github/forensics/run-quality-gate.sh` runs `pnpm install --frozen-lockfile`, `pnpm typecheck`, `pnpm lint`, `pnpm test --run`, and `pnpm knip` in order, halt-on-first-fail. Gate failure abandons the branch (it was never pushed) and demotes the issue to `needs-human` with a comment naming the failed step and a log excerpt.
+8. **Quality Gate.** `.github/forensics/run-quality-gate.sh` runs `pnpm install --frozen-lockfile`, a Chromium install (Vitest's browser and story projects launch headless Chromium), `pnpm typecheck`, `pnpm lint`, `pnpm test --run`, and `pnpm knip` in order, halt-on-first-fail. Gate failure abandons the branch (it was never pushed) and demotes the issue to `needs-human` with a comment naming the failed step and a log excerpt.
 9. **Open draft PR.** Gate pass pushes the branch and opens a draft PR. PR body cites the `## Capture` section verbatim. Label `auto-fixable` attaches to the issue.
 10. **Idempotency key.** Every triaged issue receives the `gaia-triaged` label as the final, always-run step.
 

@@ -2,20 +2,24 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-10-04
+updated: 2026-10-05
 tags: [concept, testing]
 ---
 
 # Component Testing
 
-## Why `composeStory` is mandatory
+## A story with a play is the test
 
-Component tests use Storybook stories with `composeStory`, never standalone `render()` calls. The reason: stories already encode the setup the component needs (decorators, stubs, mocked context, i18n). Re-deriving that setup inside a `.test.tsx` file duplicates the wiring and lets the two drift. Visual regression (Chromatic) and integration tests share one source of truth.
+A component test is a story whose `play` function asserts the behavior. Vitest runs it in headless Chromium through `@storybook/addon-vitest`, so the story's decorators, stubs, mocked context and i18n are the test's setup and nothing re-derives them in a second file. There is no `.test.tsx` beside a component's stories and no standalone `render()`. Assertions use `expect`, `fn`, `userEvent`, `waitFor` and `within` from `storybook/test`. One story covers one behavior, named for it. See [[Stories as Tests]] for the model and the harness rules, and `frontend/.claude/rules/storybook.md` for authoring.
 
 ```tsx
-const MyComponent = composeStory(Default, Meta);
-render(<MyComponent />);
-expect(screen.getByText('Hello')).toBeInTheDocument();
+export const ShowsError: Story = {
+  play: async ({canvasElement}) => {
+    await expect(
+      await within(canvasElement).findByRole('alert')
+    ).toHaveTextContent('Required');
+  },
+};
 ```
 
 ## Stubs, never framework mocks
@@ -23,21 +27,21 @@ expect(screen.getByText('Hello')).toBeInTheDocument();
 > [!warning] Never manually mock framework deps
 > Don't mock `react-router`, `react-i18next`, or other framework deps. Use the stubs in `frontend/test/stubs/` instead; they wire real providers with sensible defaults.
 
-`frontend/test/stubs/` exposes `stubs.reactRouter()`, `stubs.state()`, etc. Apply as decorators in the component's story file under `tests/`; the stories pull them in for both Storybook and Vitest. Only mock **external services** or **utilities** the component imports directly.
+`frontend/test/stubs/` exposes `stubs.reactRouter()`, `stubs.state()`, etc. Apply as decorators in the component's story file under `tests/`; the same decorators serve Storybook, Chromatic and the Vitest run. Only mock **external services** or **utilities** the component imports directly.
 
-## Overriding a prop (callback spies)
+## Spying on a callback
 
-A test overriding a prop on a composed story, especially a callback it spies on, only reaches the real component if the story accepts `(args)` and spreads `{...args}` **last**, after any hardcoded default. GAIA's stories hardcode structural/demo props inline and spread `{...args}` only for the controllable knobs, so ordering is load-bearing: a story that hardcodes the callback, or spreads `{...args}` before it, silently drops a render-time override. A spy assertion against a dropped override still runs, it just proves nothing: `not.toHaveBeenCalled()` passes vacuously with the callback never wired, so the test stays green even if the behavior it's meant to guard is broken.
+A play that asserts a callback ran needs the spy to reach the real component. Declare the spy as an arg (`fn()`) and pass it into the rendered component from the story's `render` or template, spreading `{...args}` **last**, after any hardcoded default. A story that hardcodes the callback, or spreads `{...args}` before it, silently drops the spy. The assertion still runs, it just proves nothing: `not.toHaveBeenCalled()` passes vacuously with the callback never wired, so the story stays green even if the behavior it guards is broken.
 
 ```tsx
-// GOOD - accepts args and spreads {...args} LAST, so a test can override onChange
+// GOOD - accepts args and spreads {...args} LAST, so the fn() spy reaches onChange
 const Template: StoryFn = (args) => (
   <Toggle label="Notifications" onChange={() => {}} {...args} />
 );
 ```
 
 ```tsx
-// BAD - hardcodes onChange after the spread (or never accepts args), so a render-time override is dropped
+// BAD - hardcodes onChange after the spread (or never accepts args), so the spy is dropped
 const Template: StoryFn = (args) => (
   <Toggle label="Notifications" {...args} onChange={() => {}} />
 );
@@ -49,10 +53,10 @@ Stateful custom form components MUST use `useInputControl` to stay in sync with 
 
 ## Reference example
 
-`frontend/app/components/form/tests/composed-form.tsx`: a Conform form composed from ui `Field` parts, with its story and a `composeStory`-driven integration test beside it.
+`frontend/app/components/form/tests/composed-form.tsx`: a Conform form composed from ui `Field` parts, with its stories, whose play functions are the integration tests.
 
-For the current file pattern (where to put `.stories.tsx` vs `.test.tsx`), Serena and the scaffolders (`/new-component`, `/new-route`) handle it; query Serena rather than maintaining the layout here.
+For the current file pattern (where stories and hook tests go), Serena and the scaffolders (`/new-component`, `/new-route`) handle it; query Serena rather than maintaining the layout here.
 
 ## Accessibility assertions
 
-`frontend/test/a11y.ts` exports `expectNoA11yViolations(container, options?)` and `runAxe(container, options?)`, thin wrappers around `axe-core` that fail a test on any WCAG-relevant violation. The scaffolder injects an `a11y` block into every new component test by default. The helper requires the `jsdom` runtime: tests calling it must declare `// @vitest-environment jsdom` as the very first line of the file. The global env stays `happy-dom` for speed; the per-file opt-in exists because `axe-core` mutates `Node.prototype.isConnected`, which `happy-dom` defines as a getter-only property. The helper throws a clear setup error when the env is wrong, so a missing directive surfaces immediately.
+`@storybook/addon-a11y` axe-checks every story with no assertion written, so a render-only story is already an accessibility test. A page story adds play assertions for one level-1 heading and a `main` landmark, because addon-a11y scopes axe to the body. See [[Accessibility]].

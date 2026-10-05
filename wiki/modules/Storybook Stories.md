@@ -18,7 +18,7 @@ Storybook v10 with the `@storybook/react-vite` framework. Configured to discover
 
 ## Why Storybook is also the test driver
 
-`composeStory` lets Vitest tests reuse the same story setup, so a single source of truth drives both visual regression (Chromatic) and integration tests. See [[Component Testing]] and [[Testing]].
+`@storybook/addon-vitest` runs every story as a Vitest test in headless Chromium, and a story's `play` function holds its assertions, so one source of truth drives the component test, visual regression (Chromatic) and the Playwright story scan. `@storybook/addon-a11y` axe-checks each story. See [[Stories as Tests]], [[Component Testing]] and [[Testing]].
 
 ## Decorator stack: the load-bearing convention
 
@@ -32,7 +32,7 @@ Interactive sessions skip the Chromatic decorator: `WrapDecorator → ToastDecor
 
 ## Stubs
 
-`frontend/test/stubs/` provides story-level decorators (`stubs.state()`, `stubs.reactRouter()`). Apply as `[stubs.state(), stubs.reactRouter()]` when both are needed. See `frontend/.claude/rules/storybook.md` for full stub options (`action`, `loader`, `path`, `routes`).
+`frontend/test/stubs/` provides story-level decorators (`stubs.state()`, `stubs.reactRouter()`). Apply as `[stubs.state(), stubs.reactRouter()]` when both are needed. See `frontend/.claude/rules/storybook.md` for full stub options (`action`, `loader`, `path`, `routes`, `actions`, `destinations`).
 
 ## Dark-mode handling
 

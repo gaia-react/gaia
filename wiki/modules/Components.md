@@ -50,4 +50,4 @@ The current set of bundled components changes over time. Use Serena (`.claude/ru
 - `form/`: composed-form support (`FormError`, `MaxLength`) and the composed form fixture ([[Form Components]])
 - `ThemeSwitch` lives at `frontend/app/components/theme-switch/`. Its resource-route action and Zod schema live separately at `frontend/app/routes/resources.theme-switch.tsx`, and its theme hooks live at `frontend/app/hooks/use-theme.ts`. See [[Theme Flow]].
 
-See [[Component Testing]] for the `composeStory` test pattern.
+See [[Component Testing]] for how stories with play functions test a component.

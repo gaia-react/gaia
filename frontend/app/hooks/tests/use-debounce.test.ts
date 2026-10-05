@@ -51,7 +51,7 @@ describe('useDebounce', () => {
     expect(result.current).toBe('world');
   });
 
-  test('clears the pending timer on unmount — no late state update', async () => {
+  test('clears the pending timer on unmount, with no late state update', async () => {
     let value = 'hello';
     const {act, rerender, result, unmount} = await renderHook(() =>
       useDebounce(value, 300)

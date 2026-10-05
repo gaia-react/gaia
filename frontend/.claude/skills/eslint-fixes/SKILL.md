@@ -1,6 +1,6 @@
 ---
 name: eslint-fixes
-description: Resolve specific ESLint errors and warnings that appear in this project. Use when fixing lint failures, ESLint reported issues, or autofix conflicts (e.g. no-void, canonical/export-specifier-newline vs prettier, no-shadow trailing underscores, sonarjs/deprecation, you-dont-need-lodash-underscore, testing-library/prefer-screen-queries, testing-library/await-async-events, jest-dom/prefer-*).
+description: Resolve specific ESLint errors and warnings that appear in this project. Use when fixing lint failures, ESLint reported issues, or autofix conflicts (e.g. no-void, canonical/export-specifier-newline vs prettier, no-shadow trailing underscores, sonarjs/deprecation, you-dont-need-lodash-underscore, unawaited user-event calls in a play function, raw DOM property checks the jest-dom matchers replace).
 model: haiku
 ---
 
@@ -72,23 +72,9 @@ const first = items.find((item) => item.active);
 const names = items.map((item) => item.name);
 ```
 
-## testing-library/prefer-screen-queries
+## Unawaited user-event calls
 
-Use `screen` queries instead of destructuring from `render()`.
-
-```tsx
-// BAD
-const {getByText, getByRole} = render(<MyComponent />);
-
-// GOOD
-render(<MyComponent />);
-screen.getByText('...');
-screen.getByRole('button');
-```
-
-## testing-library/await-async-events
-
-`userEvent` methods are async, always `await` them.
+`userEvent` from `storybook/test` is async in a play function, always `await` it.
 
 ```tsx
 // BAD
@@ -98,9 +84,9 @@ userEvent.click(button);
 await userEvent.click(button);
 ```
 
-## jest-dom/prefer-\*
+## Raw DOM property checks
 
-Use jest-dom matchers instead of raw DOM property checks.
+Use the jest-dom matchers `storybook/test` re-exports instead of raw DOM property checks.
 
 ```tsx
 // BAD

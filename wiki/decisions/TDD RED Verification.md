@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-06-04
 created: 2026-06-04
-updated: 2026-10-03
+updated: 2026-10-05
 tags: [decision, tdd, hooks, quality]
 ---
 
@@ -70,7 +70,7 @@ The hard RED demand applies only to the deterministic surface. Not every file ca
 The binding classifies the **test file itself**. The classifier already carries every emergent signal the gate needs and is biased to err emergent, so a single check covers the whole carve-out:
 
 - a component-interaction `.tsx` test and an E2E test fall outside the package descriptor's strict candidate globs ([[Package Descriptor]]) and classify emergent;
-- a test calling an a11y helper (`expectNoA11yViolations` / `runAxe`) classifies emergent;
+- a story file (`*.stories.tsx`) classifies emergent wherever it sits, so a story play carries no RED demand and is worthiness-audited instead ([[Stories as Tests]]);
 - a test reading the clock, entropy, or I/O in its own body classifies emergent.
 
 An emergent verdict relaxes the demand: that test commits with no RED. The deterministic surface (pure utils, service parsers, spec-derivable hooks) still demands and gets its RED. The classifier's own err-emergent bias supplies the over-loose posture: anything it cannot prove deterministic it returns emergent.
@@ -82,5 +82,9 @@ The honest RED on the deterministic surface is a genuine missing-implementation 
 ## Consequences
 
 A new test on the deterministic surface always requires a one-shot vitest run scoped to the test's file (`pnpm test --run <test-file>`) that observes the test failing before the commit is allowed. This is a one-time step per new test; a green-only test that was never run red will be denied at commit time with a clear message naming the test. An emergent-subject test carries no such requirement.
+
+A hook test (`*.test.ts` under a `hooks/` folder, run by the `browser` Vitest project) is not a story and keeps the normal classification, so a deterministic hook still demands its RED.
+
+The capture hook re-runs the new test under Vitest to record the failing result. When that re-run cannot start a browser because Chromium is missing, the hook says the RED was not recorded and names `pnpm install:browsers`; it does not record nothing silently.
 
 See [[Claude Hooks]] for hook registration. See the [[Quality Gate]] for the broader pre-commit enforcement surface.

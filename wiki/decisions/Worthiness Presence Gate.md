@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-06-23
 created: 2026-06-23
-updated: 2026-10-03
+updated: 2026-10-05
 tags: [decision, tdd, testing, audit, merge, quality]
 ---
 
@@ -78,7 +78,7 @@ block every unrelated merge.
 Emergent membership is decided by the [[Determinism Classifier]]
 (`.gaia/scripts/classifier/classify-determinism.mjs`), not a second hand-rolled
 classifier. A changed test file that a package's `emergentTests` globs name ([[Package Descriptor]])
-and whose classifier verdict is `emergent` is in scope; a `.ts` component test
+and whose classifier verdict is `emergent` is in scope (a `*.stories.tsx` is in scope through its own globs entry, one ledger line per story with a play); a `.ts` component test
 that the classifier proves deterministic is RED-gated by the
 [[TDD RED Verification]] gate, not worthiness-gated, and is excluded.
 
@@ -111,8 +111,14 @@ The gate enforces only where its tooling answers, matching the sibling hooks:
 - `jq`, `git`, `node`, the RED-ledger lib, or the classifier unavailable: allow.
 - A changed emergent test file the signal helper cannot parse (a mid-edit syntax
   error): skip that file, never deny.
-- The deny path is fail-closed only for the clean case: a parseable in-scope
-  emergent test whose current signal has no matching ledger line.
+- A story file whose shape the extractor refuses (exit 7): **deny**, the one
+  fail-closed case. The deny names the file and carries the extractor's one-line
+  reason plus the next step, rewriting the story in a supported shape ([[Stories as Tests]]).
+  A refusal means the gate cannot tell which stories have a play, so allowing the
+  merge would pass unaudited tests.
+- The deny path is fail-closed for the clean case, a parseable in-scope
+  emergent test whose current signal has no matching ledger line, and for the
+  extractor refusal above. Any other extractor failure keeps the fail-open skip.
 
 ## Relationship to the other merge gates
 

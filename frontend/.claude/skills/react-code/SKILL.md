@@ -208,7 +208,7 @@ For loader data: use `useLoaderData<typeof loader>()` (import the `loader` type 
 
 Page content goes in colocated `<kebab>/index.tsx` folders inside the page folder. Tests and stories go in the page folder's `tests/`.
 
-When stories need different loader data, put `stubs.reactRouter()` decorators on individual stories (not meta) to avoid nested Router errors with `composeStory`.
+A story file carries exactly one `stubs.reactRouter()` decorator, because a nested Router throws. When stories need different loader data, either put the decorator on each story and none on meta, or keep it on meta and pass it the function form (`stubs.reactRouter(({args}) => ({...}))`) so each story varies the options through its args or parameters.
 
 ## References
 
