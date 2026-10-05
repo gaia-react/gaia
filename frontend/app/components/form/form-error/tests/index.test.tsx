@@ -30,7 +30,45 @@ const PairStub = createStub(
   </>
 );
 
+const FieldStub = createStub(
+  <>
+    <FormError />
+    <input aria-label="Email" name="email" type="email" />
+  </>
+);
+
 describe('FormError', () => {
+  test('moves focus to the first form field when dismissed from the keyboard', async () => {
+    const {click, keyboard, tab} = userEvent.setup();
+    render(<FieldStub />);
+
+    await click(screen.getByRole('button', {name: 'Submit'}));
+    await screen.findByRole('alert');
+
+    screen.getByRole('button', {name: 'Dismiss'}).focus();
+    await keyboard('{Enter}');
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', {name: 'Email'})).toHaveFocus();
+
+    await tab();
+    expect(screen.getByRole('button', {name: 'Submit'})).toHaveFocus();
+  });
+
+  test('moves focus to the submit button when the form has no other field', async () => {
+    const {click, keyboard} = userEvent.setup();
+    render(<Stub />);
+
+    await click(screen.getByRole('button', {name: 'Submit'}));
+    await screen.findByRole('alert');
+
+    screen.getByRole('button', {name: 'Dismiss'}).focus();
+    await keyboard('{Enter}');
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Submit'})).toHaveFocus();
+  });
+
   test('re-shows an identical error message after dismissal', async () => {
     const {click} = userEvent.setup();
     render(<Stub />);

@@ -1,3 +1,4 @@
+import type {MouseEvent} from 'react';
 import {useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useActionData} from 'react-router';
@@ -12,6 +13,20 @@ type FormActionData = {
 type FormErrorProps = {
   className?: string;
   isHidden?: boolean;
+};
+
+// Dismissing unmounts the alert along with its focused button, which drops
+// focus to <body>; hand it to the form's first control first.
+const focusFirstFormControl = (dismissButton: HTMLButtonElement) => {
+  const firstControl = [...(dismissButton.form?.elements ?? [])].find(
+    (element): element is HTMLElement =>
+      element instanceof HTMLElement &&
+      element.tabIndex >= 0 &&
+      !element.matches(':disabled, [type="hidden"]') &&
+      element !== dismissButton
+  );
+
+  firstControl?.focus();
 };
 
 const FormError = ({className, isHidden}: FormErrorProps) => {
@@ -30,7 +45,8 @@ const FormError = ({className, isHidden}: FormErrorProps) => {
       error
     : '';
 
-  const handleDismissErrorButton = () => {
+  const handleDismissErrorButton = (event: MouseEvent<HTMLButtonElement>) => {
+    focusFirstFormControl(event.currentTarget);
     setDismissedActionData(actionData);
   };
 
