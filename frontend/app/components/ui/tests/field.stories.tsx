@@ -36,8 +36,14 @@ export const Default: StoryFn = () => {
         </Field>
         <Field>
           <FieldLabel htmlFor="field-story-email">{t('email')}</FieldLabel>
-          <Input id="field-story-email" placeholder={t('emailPlaceholder')} />
-          <FieldDescription>{t('form.required')}</FieldDescription>
+          <Input
+            aria-describedby="field-story-email-description"
+            id="field-story-email"
+            placeholder={t('emailPlaceholder')}
+          />
+          <FieldDescription id="field-story-email-description">
+            {t('form.required')}
+          </FieldDescription>
         </Field>
       </FieldGroup>
     </FieldSet>

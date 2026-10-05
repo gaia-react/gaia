@@ -52,23 +52,23 @@ type FocusStyles = {
 };
 
 // Splits a computed box-shadow list on its top-level commas.
-const splitShadows = (value: string): string[] => {
+const splitShadows = (boxShadowList: string): string[] => {
   const layers: string[] = [];
   let depth = 0;
   let start = 0;
 
-  for (let index = 0; index < value.length; index += 1) {
-    const character = value.charAt(index);
+  for (let index = 0; index < boxShadowList.length; index += 1) {
+    const character = boxShadowList.charAt(index);
 
     if (character === '(') depth += 1;
     if (character === ')') depth -= 1;
 
     if (character === ',' && depth === 0) {
-      layers.push(value.slice(start, index).trim());
+      layers.push(boxShadowList.slice(start, index).trim());
       start = index + 1;
     }
   }
-  layers.push(value.slice(start).trim());
+  layers.push(boxShadowList.slice(start).trim());
 
   return layers;
 };
@@ -78,15 +78,19 @@ const splitShadows = (value: string): string[] => {
 // layers, which `box-shadow` still reports as something other than `none`.
 const findRingColor = (boxShadow: string): string | undefined => {
   for (const layer of splitShadows(boxShadow)) {
-    const open = layer.indexOf('(');
-    const colorStart = layer.lastIndexOf(' ', open) + 1;
-    const colorEnd = layer.indexOf(')', open) + 1;
+    const openParenthesisIndex = layer.indexOf('(');
+    const colorStart = layer.lastIndexOf(' ', openParenthesisIndex) + 1;
+    const colorEnd = layer.indexOf(')', openParenthesisIndex) + 1;
     const lengths = (layer.slice(0, colorStart) + layer.slice(colorEnd))
       .split(' ')
       .filter((part) => part.endsWith('px'))
       .map((part) => Number.parseFloat(part));
 
-    if (open !== -1 && !layer.includes('inset') && (lengths[3] ?? 0) > 0) {
+    if (
+      openParenthesisIndex !== -1 &&
+      !layer.includes('inset') &&
+      (lengths[3] ?? 0) > 0
+    ) {
       return layer.slice(colorStart, colorEnd);
     }
   }
