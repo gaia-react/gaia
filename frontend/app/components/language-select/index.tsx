@@ -1,4 +1,5 @@
-import type {ChangeEventHandler} from 'react';
+import type {KeyboardEvent} from 'react';
+import {useRef} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useFetcher, useLocation} from 'react-router';
 import {cn} from 'cn';
@@ -26,6 +27,15 @@ const LanguageSelect = ({className, onChange}: LanguageSelectProps) => {
 
   const fetcher = useFetcher();
   const location = useLocation();
+  const formRef = useRef<HTMLFormElement>(null);
+  // A closed native select changes value on Arrow keys in Windows browsers, so a
+  // keyboard change only stages the choice and Enter or leaving the select
+  // commits it (WCAG 3.2.2 On Input). A pointer change is already a committed
+  // choice and submits at once.
+  const isKeyboardInputRef = useRef(false);
+  // The current language updates only after the action reloads translations, so
+  // without this an Enter commit followed by leaving the select submits twice.
+  const submittedLanguageRef = useRef(language);
 
   // A single configured language offers nothing to switch, so render nothing.
   // The switcher appears once a second locale is added (LANGUAGES grows via the
@@ -34,10 +44,19 @@ const LanguageSelect = ({className, onChange}: LanguageSelectProps) => {
 
   const redirectUrl = `${location.pathname}${location.search}${location.hash}`;
 
-  const handleChangeLanguageForm: ChangeEventHandler<HTMLFormElement> = async (
-    event
-  ) => {
-    await fetcher.submit(event.currentTarget, {
+  const submitLanguage = async () => {
+    const form = formRef.current;
+
+    if (!form) return;
+
+    const selected = String(new FormData(form).get('language'));
+
+    if (selected === language || selected === submittedLanguageRef.current) {
+      return;
+    }
+
+    submittedLanguageRef.current = selected;
+    await fetcher.submit(form, {
       action: ACTION_PATHS.setLanguage,
       method: 'POST',
     });
@@ -45,8 +64,25 @@ const LanguageSelect = ({className, onChange}: LanguageSelectProps) => {
     onChange?.();
   };
 
+  const handleChangeLanguageForm = async () => {
+    if (isKeyboardInputRef.current) return;
+
+    await submitLanguage();
+  };
+
+  const handleKeyDown = async (event: KeyboardEvent<HTMLSelectElement>) => {
+    isKeyboardInputRef.current = true;
+
+    if (event.key === 'Enter') await submitLanguage();
+  };
+
+  const handlePointerDown = () => {
+    isKeyboardInputRef.current = false;
+  };
+
   return (
     <fetcher.Form
+      ref={formRef}
       action={ACTION_PATHS.setLanguage}
       className={cn('flex-none', className)}
       method="POST"
@@ -57,6 +93,9 @@ const LanguageSelect = ({className, onChange}: LanguageSelectProps) => {
         aria-label={t('language')}
         defaultValue={language}
         name="language"
+        onBlur={submitLanguage}
+        onKeyDown={handleKeyDown}
+        onPointerDown={handlePointerDown}
         size="sm"
       >
         {OPTIONS.map(({label, value}) => (
