@@ -96,6 +96,24 @@ assert_pinned() {
   assert_pinned 'A `BLOCKED:` deny is never `nesting-unavailable`.'
 }
 
+@test "agent reads the closing field and runs the closing round with no fixer" {
+  assert_pinned '## Closing round'
+  assert_pinned "The window's fourth field is \`closing\`."
+  assert_pinned 'Run no fixer in it.'
+  assert_pinned 'stops the unit `needs-human`, naming the finding, before any fixer runs.'
+  assert_pinned 'a Critical or security-class finding this branch authored'
+  assert_pinned 'Then, outside a closing round, baseline, fixer'
+  # A closing round never pushes, so the After-the-push bullet does not
+  # reach it: the closing paragraph carries the PR-body and filing steps.
+  local closing
+  closing="$(awk '/^## Closing round$/ {inside_closing_section=1; next} /^## / {inside_closing_section=0} inside_closing_section' "$AGENT")"
+  [ -n "$closing" ]
+  local needle
+  for needle in 'audit-dispositions-check.sh pr-sections' 'file every `file` disposition through the `file-tech-debt` skill'; do
+    grep -qF -- "$needle" <<<"$closing" || { echo "not under Closing round: $needle" >&2; return 1; }
+  done
+}
+
 @test "agent names the window check, the ENFORCEMENT_PATHS rule and the stop" {
   assert_pinned 'unit-window'
   assert_pinned 'enforcement_paths_allowed'

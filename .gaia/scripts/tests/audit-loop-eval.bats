@@ -538,6 +538,29 @@ brief_check() {
   [ "$(read_json "$(gaia_loop_pending_checkpoint "$(cat "$ALF_STATE")")" '.index')" = 2 ]
 }
 
+@test "unit-window: the closing field is true only for a unit an accept admitted" {
+  cli_copy
+  alf_sequence 4 4 4
+  run "$CLI/audit-loop-eval.sh" unit-window --root "$ALF_ROOT"
+  [ "$status" -eq 2 ]
+  alf_state_edit '.history.units = [{unit: 1, start_round: 1, k: 3, through_round: 3, admitted_on: "context",
+    after_checkpoint: 0, recorded_at: "2026-01-01T00:00:00Z", session_id: "s1"}]'
+  run "$CLI/audit-loop-eval.sh" unit-window --root "$ALF_ROOT"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1 1 3 false" ]
+  alf_add_checkpoint 3 stalled
+  alf_add_answer 1 accept
+  alf_state_edit '.history.units += [{unit: 2, start_round: 4, k: 3, through_round: 4, admitted_on: "accept",
+    after_checkpoint: 1, recorded_at: "2026-01-01T00:00:00Z", session_id: "s1"}]'
+  run "$CLI/audit-loop-eval.sh" unit-window --root "$ALF_ROOT"
+  [ "$status" -eq 0 ]
+  [ "$output" = "2 4 4 true" ]
+  # Red twin: a grant-admitted unit in the same position is not closing.
+  alf_state_edit '.history.units[-1].admitted_on = "grant"'
+  run "$CLI/audit-loop-eval.sh" unit-window --root "$ALF_ROOT"
+  [ "$output" = "2 4 4 false" ]
+}
+
 @test "record-values: rounds, distinct trees per member, and grants" {
   cli_copy
   alf_fill f.txt 12 feature
@@ -1111,7 +1134,7 @@ drift_fixture() {
   [ "$output" = "2 3" ]
   run "$CLI/audit-loop-eval.sh" unit-window --root "$ALF_ROOT"
   [ "$status" -eq 0 ]
-  [ "$output" = "1 3 $((2 + $(UNIT_ROUNDS)))" ]
+  [ "$output" = "1 3 $((2 + $(UNIT_ROUNDS))) false" ]
   alf_add_checkpoint 2 context
   run "$CLI/audit-loop-eval.sh" pinned-question --root "$ALF_ROOT"
   [ "$status" -eq 2 ]
