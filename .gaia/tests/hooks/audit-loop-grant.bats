@@ -392,16 +392,13 @@ seed_capped() {
   jq -e '.allowance.answers | length == 1 and .[0].kind == "accept" and .[0].source == "typed"' "$ALF_STATE"
 }
 
-@test "UAT-029: a typed grant at 10 rounds used records nothing and says round 10 is the cap" {
+@test "a typed grant at 10 rounds used records, since past the cap each unit runs on a human answer" {
   # shellcheck source=/dev/null
   . "$REPO_ROOT/.gaia/scripts/context-checkpoint-lib.sh"
   seed_capped
-  snapshot
   send "audit-grant $GAIA_CONTEXT_UNIT_ROUNDS"
   [ "$status" -eq 0 ]
-  unchanged
-  printf '%s' "$output" | grep -qF 'round 10 is the cap'
-  printf '%s' "$output" | grep -qF 'audit-accept'
+  jq -e --argjson unit_rounds "$GAIA_CONTEXT_UNIT_ROUNDS" '.allowance.answers | length == 1 and .[0].kind == "grant" and .[0].n == $unit_rounds and .[0].source == "typed"' "$ALF_STATE"
 }
 
 @test "a typed accept at 10 rounds used still records, as the deliberate override" {

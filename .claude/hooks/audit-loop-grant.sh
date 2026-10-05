@@ -44,10 +44,8 @@
 #
 # The typed lines stay as the fallback and as the deliberate human override:
 # a typed `audit-accept` is accepted whether or not the pinned question offered
-# an accept option (it overrides the eligibility gate), while a typed
-# `audit-grant <n>` is declined once the branch has used the hard round cap,
-# because round 10 is the cap and only an accept or a stop ends the loop. A
-# typed `audit-grant <n>` keeps its meaning (n more rounds) and the answer it
+# an accept option (it overrides the eligibility gate). A typed
+# `audit-grant <n>` keeps its meaning (n more rounds) and the answer it
 # writes carries `source: "typed"`.
 #
 # Invoked with arguments, with no payload on stdin, or with a payload for any
@@ -238,16 +236,6 @@ if [ -z "$pending" ]; then
   exit 0
 fi
 checkpoint_index="$(printf '%s' "$pending" | jq -r '.index')"
-case "$parsed" in
-  "grant "*)
-    rounds_used="$(printf '%s' "$state" | jq -r '.history.rounds | length' 2>/dev/null)" || rounds_used=0
-    if [ "$rounds_used" -ge "$_GAIA_LOOP_HARD_CAP" ] 2>/dev/null; then
-      gaia_loop_unlock "$target"
-      _gl_say "Not recorded: branch ${branch:-(none)} has used $rounds_used rounds and round $_GAIA_LOOP_HARD_CAP is the cap, so no further grant is possible. Only $(gaia_loop_accept_line) (a deliberate override) or stopping and filing the remainder ends the loop."
-      exit 0
-    fi
-    ;;
-esac
 at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 case "$parsed" in
   "grant "*)

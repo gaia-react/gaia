@@ -1122,7 +1122,7 @@ settings() {
   done
 }
 
-@test "below the line each denying signal denies the unit and quiet alone does not; the cap pins accept or type-accept with stop" {
+@test "below the line each denying signal denies the unit and quiet alone does not; the cap pins both grants, accept or type-accept, and stop" {
   local signal
   below
   for signal in enriching stalled nitpicky reintroduced small-tail waiver-drift; do
@@ -1136,11 +1136,11 @@ settings() {
   seed_rounds "$_GAIA_LOOP_HARD_CAP" "$(sig_snap cap true)"
   unit_dispatch
   assert_pinned cap
-  [ "$(state_field '[.history.checkpoints[-1].question.questions[0].options[].label] | join("|")')" = "Accept the remainder (Recommended)|Stop and file the remainder" ]
+  [ "$(state_field '[.history.checkpoints[-1].question.questions[0].options[].label] | join("|")')" = "Continue audit in this session (Recommended)|Continue audit in a new session|Accept the remainder|Stop and file the remainder" ]
   seed_rounds "$_GAIA_LOOP_HARD_CAP" "$(sig_snap cap false)"
   unit_dispatch
   assert_pinned cap
-  [ "$(state_field '[.history.checkpoints[-1].question.questions[0].options[].label] | join("|")')" = "Stop and file the remainder (Recommended)|Type audit-accept instead" ]
+  [ "$(state_field '[.history.checkpoints[-1].question.questions[0].options[].label] | join("|")')" = "Continue audit in this session (Recommended)|Continue audit in a new session|Type audit-accept instead|Stop and file the remainder" ]
 }
 
 # first_pinned_label: the leading option of the latest checkpoint's pinned question.
@@ -1375,6 +1375,54 @@ veto_rounds() {
   nested
   assert_pinned cap
   [ "$(nrounds)" -eq "$_GAIA_LOOP_HARD_CAP" ]
+}
+
+@test "at the round cap a grant runs a whole unit instead of re-asking, then the cap asks again" {
+  local unit_rounds="$GAIA_CONTEXT_UNIT_ROUNDS" round
+  seed_rounds "$_GAIA_LOOP_HARD_CAP" '{"verdict":"continue","A":1}'
+  alf_state_edit '.history.units = [{unit: 1, start_round: 8, k: 3, through_round: 10, admitted_on: "context",
+    after_checkpoint: 0, recorded_at: "2026-01-01T00:00:00Z", session_id: $session_id}]' --arg session_id "$SIDU"
+  below
+  unit_dispatch
+  assert_pinned cap
+  alf_add_answer 1 grant "$unit_rounds"
+  unit_dispatch
+  assert_allowed
+  [ "$(state_field '.history.units[-1] | [.admitted_on, .start_round, .through_round] | map(tostring) | join(" ")')" = "grant $((_GAIA_LOOP_HARD_CAP + 1)) $((_GAIA_LOOP_HARD_CAP + unit_rounds))" ]
+  round=1
+  while [ "$round" -le "$unit_rounds" ]; do
+    new_tree
+    nested
+    assert_allowed
+    round=$((round + 1))
+  done
+  [ "$(nrounds)" -eq $((_GAIA_LOOP_HARD_CAP + unit_rounds)) ]
+  new_tree
+  unit_dispatch
+  assert_pinned cap
+  [ "$(nrounds)" -eq $((_GAIA_LOOP_HARD_CAP + unit_rounds)) ]
+}
+
+@test "at the round cap an accept runs its one closing round instead of re-asking, then the cap denies" {
+  seed_rounds "$_GAIA_LOOP_HARD_CAP" '{"verdict":"continue","A":1}'
+  alf_state_edit '.history.units = [{unit: 1, start_round: 8, k: 3, through_round: 10, admitted_on: "context",
+    after_checkpoint: 0, recorded_at: "2026-01-01T00:00:00Z", session_id: $session_id}]' --arg session_id "$SIDU"
+  below
+  unit_dispatch
+  assert_pinned cap
+  alf_add_answer 1 accept
+  unit_dispatch
+  assert_allowed
+  [ "$(state_field '.history.checkpoints | length')" -eq 1 ]
+  new_tree
+  nested
+  assert_allowed
+  [ "$(nrounds)" -eq $((_GAIA_LOOP_HARD_CAP + 1)) ]
+  [ "$(state_field ".history.rounds[$_GAIA_LOOP_HARD_CAP].closing")" = true ]
+  new_tree
+  unit_dispatch
+  assert_pinned cap
+  [ "$(nrounds)" -eq $((_GAIA_LOOP_HARD_CAP + 1)) ]
 }
 
 @test "deny classes: each gate deny carries its prefix and no fail-loud deny borrows one" {
