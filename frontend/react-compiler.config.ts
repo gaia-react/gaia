@@ -30,8 +30,8 @@ const reportedKinds = new Set([
 const describeEvent = (event: CompilerEvent): string =>
   event.fnName ?? event.reason ?? event.detail?.reason ?? event.data ?? '';
 
-// With the report variable set, the file exists even when no event is written,
-// so an off-switch run reads as an empty report rather than a missing one.
+// With the report variable set, the file exists even when no event is written.
+// Events append across runs, so point the variable at a fresh path per run.
 const createReportLogger = (reportFile: string) => {
   mkdirSync(path.dirname(reportFile), {recursive: true});
   closeSync(openSync(reportFile, 'a'));

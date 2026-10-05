@@ -17,7 +17,7 @@ React Compiler 1.x runs by default in the app build, the dev server, Vitest and 
 - **Options:** `compilationMode: 'infer'`, `panicThreshold: 'none'` (a bailout skips that function instead of failing the build), `target: '19'`, no gating.
 - **Wiring rule:** the shared plugin sits after `reactRouter()` in `frontend/vite.config.ts`, which never calls `react()` (a second `react()` double-runs Fast Refresh). Vitest and Storybook add the same export from the shared module; no consumer passes its own options.
 - **Babel is the only supported path.** A native compiler path is not yet usable in React Router framework mode.
-- **Compile report:** `GAIA_REACT_COMPILER_REPORT=<path>` writes per-file compile events as JSON Lines. Unset, nothing is written and nothing is logged per function.
+- **Compile report:** `GAIA_REACT_COMPILER_REPORT=<path>` writes per-file compile events as JSON Lines. Events append across runs, so point it at a fresh path per run. Unset, nothing is written and nothing is logged per function.
 
 ## Correctness gate
 

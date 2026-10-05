@@ -4,14 +4,14 @@ import {useBreakpoint} from '../use-breakpoint';
 
 describe('useBreakpoint', () => {
   let changeListeners: (() => void)[] = [];
-  let mockMatches = false;
+  let isMockMatching = false;
 
-  const mockMql = {
+  const mockMediaQueryList = {
     addEventListener: vi.fn((_event: string, listener: () => void) => {
       changeListeners.push(listener);
     }),
     get matches() {
-      return mockMatches;
+      return isMockMatching;
     },
     removeEventListener: vi.fn((_event: string, listener: () => void) => {
       changeListeners = changeListeners.filter(
@@ -22,9 +22,9 @@ describe('useBreakpoint', () => {
 
   beforeEach(() => {
     changeListeners = [];
-    mockMatches = false;
+    isMockMatching = false;
     vi.spyOn(window, 'matchMedia').mockReturnValue(
-      mockMql as unknown as MediaQueryList
+      mockMediaQueryList as unknown as MediaQueryList
     );
   });
 
@@ -33,24 +33,24 @@ describe('useBreakpoint', () => {
   });
 
   test('returns false when media query does not match', () => {
-    mockMatches = false;
+    isMockMatching = false;
     const {result} = renderHook(() => useBreakpoint('lg'));
     expect(result.current).toBe(false);
   });
 
   test('returns true when media query matches', () => {
-    mockMatches = true;
+    isMockMatching = true;
     const {result} = renderHook(() => useBreakpoint('lg'));
     expect(result.current).toBe(true);
   });
 
   test('updates when MediaQueryList fires a change event', () => {
-    mockMatches = false;
+    isMockMatching = false;
     const {result} = renderHook(() => useBreakpoint('lg'));
     expect(result.current).toBe(false);
 
     act(() => {
-      mockMatches = true;
+      isMockMatching = true;
       changeListeners.forEach((listener) => listener());
     });
 
@@ -61,16 +61,16 @@ describe('useBreakpoint', () => {
     const {unmount} = renderHook(() => useBreakpoint('md'));
     unmount();
 
-    expect(mockMql.removeEventListener).toHaveBeenCalledWith(
+    expect(mockMediaQueryList.removeEventListener).toHaveBeenCalledWith(
       'change',
       expect.any(Function)
     );
   });
 
   test('subscribes once per breakpoint, not once per render', () => {
-    mockMql.addEventListener.mockClear();
-    mockMql.removeEventListener.mockClear();
-    mockMatches = true;
+    mockMediaQueryList.addEventListener.mockClear();
+    mockMediaQueryList.removeEventListener.mockClear();
+    isMockMatching = true;
     const maxSubscriptions = REACT_COMPILER_ENABLED ? 1 : Infinity;
 
     const {rerender, result, unmount} = renderHook(
@@ -80,27 +80,27 @@ describe('useBreakpoint', () => {
     expect(result.current).toBe(true);
 
     rerender({breakpoint: 'lg'});
-    expect(mockMql.addEventListener.mock.calls.length).toBeLessThanOrEqual(
-      maxSubscriptions
-    );
+    expect(
+      mockMediaQueryList.addEventListener.mock.calls.length
+    ).toBeLessThanOrEqual(maxSubscriptions);
     expect(changeListeners).toHaveLength(1);
 
-    mockMql.addEventListener.mockClear();
-    mockMql.removeEventListener.mockClear();
+    mockMediaQueryList.addEventListener.mockClear();
+    mockMediaQueryList.removeEventListener.mockClear();
     rerender({breakpoint: 'md'});
     expect(result.current).toBe(true);
-    expect(mockMql.addEventListener.mock.calls.length).toBeGreaterThanOrEqual(
-      1
-    );
-    expect(mockMql.addEventListener.mock.calls.length).toBeLessThanOrEqual(
-      maxSubscriptions
-    );
     expect(
-      mockMql.removeEventListener.mock.calls.length
+      mockMediaQueryList.addEventListener.mock.calls.length
     ).toBeGreaterThanOrEqual(1);
-    expect(mockMql.removeEventListener.mock.calls.length).toBeLessThanOrEqual(
-      maxSubscriptions
-    );
+    expect(
+      mockMediaQueryList.addEventListener.mock.calls.length
+    ).toBeLessThanOrEqual(maxSubscriptions);
+    expect(
+      mockMediaQueryList.removeEventListener.mock.calls.length
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      mockMediaQueryList.removeEventListener.mock.calls.length
+    ).toBeLessThanOrEqual(maxSubscriptions);
     expect(changeListeners).toHaveLength(1);
 
     unmount();

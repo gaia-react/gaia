@@ -16,10 +16,10 @@ export const useBreakpoint = (breakpoint: BreakpointType): boolean => {
   const query = `(min-width: ${BREAKPOINTS[breakpoint]}px)`;
 
   const subscribe = (callback: () => void) => {
-    const mql = window.matchMedia(query);
-    mql.addEventListener('change', callback);
+    const mediaQueryList = window.matchMedia(query);
+    mediaQueryList.addEventListener('change', callback);
 
-    return () => mql.removeEventListener('change', callback);
+    return () => mediaQueryList.removeEventListener('change', callback);
   };
 
   return useSyncExternalStore(
