@@ -9,7 +9,7 @@ export const isChromaticSnapshot =
   isChromatic() ||
   (process.env.NODE_ENV === 'production' ?
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    [...(window?.location.ancestorOrigins ?? {length: 0})].some((origin) =>
+    [...(window?.location.ancestorOrigins ?? [])].some((origin) =>
       origin.includes('www.chromatic.com')
     )
   : false);
@@ -22,10 +22,10 @@ if (!isChromaticSnapshot) {
 
     if (isDark) {
       document.documentElement.classList.add('dark');
-      docsStory?.classList.add('bg-gray-900', 'text-white');
+      docsStory?.classList.add('bg-background', 'text-foreground');
     } else {
       document.documentElement.classList.remove('dark');
-      docsStory?.classList.remove('bg-gray-900', 'text-white');
+      docsStory?.classList.remove('bg-background', 'text-foreground');
     }
   });
 }

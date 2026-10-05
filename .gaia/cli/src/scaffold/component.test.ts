@@ -130,8 +130,9 @@ describe('scaffold component', () => {
     );
 
     const indexContents = read(indexPath);
-    expect(indexContents).toContain("import type {FC} from 'react';");
-    expect(indexContents).toContain('const Foo: FC = () => (');
+    expect(indexContents).not.toMatch(/\bFC\b/);
+    expect(indexContents.startsWith('\n')).toBe(false);
+    expect(indexContents).toContain('const Foo = () => (');
     expect(indexContents).toContain('export default Foo;');
     expect(indexContents).not.toContain('FooProps');
 
@@ -202,8 +203,10 @@ describe('scaffold component', () => {
     expect(indexContents).toContain('type CardProps = {');
     expect(indexContents).toContain('  title: string;');
     expect(indexContents).toContain('  count: number;');
+    expect(indexContents).not.toMatch(/\bFC\b/);
+    expect(indexContents.startsWith('\n')).toBe(false);
     expect(indexContents).toContain(
-      'const Card: FC<CardProps> = ({title, count}) => ('
+      'const Card = ({title, count}: CardProps) => ('
     );
   });
 
@@ -378,7 +381,7 @@ describe('scaffold component', () => {
       const indexContents = read(
         path.join(sandbox.parent, 'price-tag', 'index.tsx')
       );
-      expect(indexContents).toContain('const PriceTag: FC = () => (');
+      expect(indexContents).toContain('const PriceTag = () => (');
       expect(indexContents).toContain('export default PriceTag;');
       const storyContents = read(
         path.join(sandbox.parent, 'price-tag', 'tests', 'index.stories.tsx')
@@ -545,7 +548,7 @@ describe('scaffold component', () => {
     expect(indexContents).toContain('type WidgetProps = {');
     expect(indexContents).toContain('  meta: Record<string, unknown>;');
     expect(indexContents).toContain(
-      'const Widget: FC<WidgetProps> = ({meta}) => ('
+      'const Widget = ({meta}: WidgetProps) => ('
     );
   });
 
@@ -565,9 +568,7 @@ describe('scaffold component', () => {
 
     const indexContents = read(path.join(sandbox.parent, 'pair', 'index.tsx'));
     expect(indexContents).toContain('  pair: [string, number];');
-    expect(indexContents).toContain(
-      'const Pair: FC<PairProps> = ({pair}) => ('
-    );
+    expect(indexContents).toContain('const Pair = ({pair}: PairProps) => (');
   });
 
   test('a plain prop and a comma-bearing prop separate into two props', () => {
@@ -588,7 +589,7 @@ describe('scaffold component', () => {
     expect(indexContents).toContain('  title: string;');
     expect(indexContents).toContain('  meta: Record<string, unknown>;');
     expect(indexContents).toContain(
-      'const Card: FC<CardProps> = ({title, meta}) => ('
+      'const Card = ({title, meta}: CardProps) => ('
     );
   });
 
@@ -614,7 +615,7 @@ describe('scaffold component', () => {
       '  onSelect: (id: string, ev: Event) => void;'
     );
     expect(indexContents).toContain(
-      'const Picker: FC<PickerProps> = ({onSelect}) => ('
+      'const Picker = ({onSelect}: PickerProps) => ('
     );
 
     const testContents = read(

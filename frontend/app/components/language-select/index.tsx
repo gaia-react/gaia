@@ -1,11 +1,12 @@
-import type {ChangeEvent, FC} from 'react';
+import type {ChangeEventHandler} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useFetcher, useLocation} from 'react-router';
 import {cn} from 'cn';
 import {ACTION_PATHS} from '~/action-paths';
+import {NativeSelect, NativeSelectOption} from '~/components/ui/native-select';
 import {LANGUAGES} from '~/languages';
 
-// Native <select> intentional: this is a non-Conform chrome control, not a form field.
+// Native select intentional: this is a non-Conform chrome control, not a form field.
 const LANGUAGE_LABELS: Record<string, string> = {en: 'English'};
 const OPTIONS = LANGUAGES.map((value) => ({
   label: LANGUAGE_LABELS[value] ?? value,
@@ -17,7 +18,7 @@ type LanguageSelectProps = {
   onChange?: () => void;
 };
 
-const LanguageSelect: FC<LanguageSelectProps> = ({className, onChange}) => {
+const LanguageSelect = ({className, onChange}: LanguageSelectProps) => {
   const {
     i18n: {language},
     t,
@@ -33,8 +34,8 @@ const LanguageSelect: FC<LanguageSelectProps> = ({className, onChange}) => {
 
   const redirectUrl = `${location.pathname}${location.search}${location.hash}`;
 
-  const handleChangeLanguageForm = async (
-    event: ChangeEvent<HTMLFormElement>
+  const handleChangeLanguageForm: ChangeEventHandler<HTMLFormElement> = async (
+    event
   ) => {
     await fetcher.submit(event.currentTarget, {
       action: ACTION_PATHS.setLanguage,
@@ -47,23 +48,23 @@ const LanguageSelect: FC<LanguageSelectProps> = ({className, onChange}) => {
   return (
     <fetcher.Form
       action={ACTION_PATHS.setLanguage}
-      className={cn('relative flex-none text-sm', className)}
+      className={cn('flex-none', className)}
       method="POST"
       onChange={handleChangeLanguageForm}
     >
       <input name="redirectUrl" type="hidden" value={redirectUrl} />
-      <select
+      <NativeSelect
         aria-label={t('language')}
-        className="cursor-pointer border-none bg-transparent! bg-none p-0 text-sm ring-0!"
         defaultValue={language}
         name="language"
+        size="sm"
       >
         {OPTIONS.map(({label, value}) => (
-          <option key={value} className="text-sm" value={value}>
+          <NativeSelectOption key={value} value={value}>
             {label}
-          </option>
+          </NativeSelectOption>
         ))}
-      </select>
+      </NativeSelect>
     </fetcher.Form>
   );
 };

@@ -50,22 +50,20 @@ If none apply, skip `useCallback`, it adds indirection without benefit.
 
 **Before writing `<input>`, `<select>`, `<textarea>`, or `<input type="checkbox">`:**
 
-| Native element                         | Use instead                                                                     |
-| -------------------------------------- | ------------------------------------------------------------------------------- |
-| `<input type="text">`                  | `InputText` (`~/components/form/input-text`)                                    |
-| `<input type="email">`                 | `InputEmail` (`~/components/form/input-email`)                                  |
-| `<input type="password">`              | `InputPassword` (`~/components/form/input-password`)                            |
-| `<input type="checkbox">` (single)     | `Checkbox` (`~/components/form/checkbox`)                                       |
-| `<input type="checkbox">` (group)      | `Checkboxes` (`~/components/form/checkboxes`), needs `options: Option[]`        |
-| `<input type="radio">` / radio group   | `RadioButtons` (`~/components/form/radio-buttons`), needs `options: Option[]`   |
-| `<select>`                             | `Select` (`~/components/form/select`), needs `name` + `options: SelectOption[]` |
-| `<textarea>`                           | `TextArea` (`~/components/form/text-area`), needs `name`; auto-resizes          |
-| Date (year/month/day)                  | `YearMonthDay` (`~/components/form/year-month-day`)                             |
-| Field with label + error + description | `Field` (`~/components/form/field`)                                             |
+| Native element                         | Use instead (`~/components/ui/...`)                                                  |
+| -------------------------------------- | ------------------------------------------------------------------------------------ |
+| `<input type="text">` (any text type) | `Input` (`input`)                                                                    |
+| `<input type="checkbox">`              | `Checkbox` (`checkbox`); a group is one `Checkbox` per option in a `FieldSet`        |
+| `<input type="radio">` / radio group   | `RadioGroup` and `RadioGroupItem` (`radio-group`) in a `FieldSet`                    |
+| `<select>`                             | `NativeSelect` and `NativeSelectOption` (`native-select`)                            |
+| `<textarea>`                           | `Textarea` (`textarea`)                                                              |
+| `<label>`                              | `FieldLabel` (`field`), or `Label` (`label`) outside a `Field`                       |
+| Field with label + error + description | `Field`, `FieldLabel`, `FieldDescription`, `FieldError` (`field`)                    |
+| `<button>`                             | `Button` (`button`)                                                                  |
 
 **Exceptions (native OK):** `<input type="hidden">`, `<input type="file">`, `<input type="range">`.
 
-`Select` requires `options: SelectOption[]` (`{label, value}`). Build this array (with `useMemo` if derived from translations/data) rather than inline `<option>` elements.
+A raw ui control carries no label or error wiring. Compose it with Conform exactly as `references/conform-forms.md` shows (one pattern per control type, with the `Field` wiring). Options are rendered from an array with `.map`, not written as inline `<option>` elements.
 
 **CRITICAL, `@conform-to/zod`:** Always import from `/v4` subpath. The default export targets Zod v3 and causes a runtime error that typecheck/lint/build do NOT catch.
 
@@ -98,13 +96,13 @@ See `references/translation-patterns.md` for edge cases (keyPrefix, Trans compon
 
 Write React 19 idioms. The work here is to not regress to pre-19 habits, and to not pull in React's framework-level form APIs that React Router already owns.
 
-**Before writing `forwardRef`: don't.** In React 19, `ref` is an ordinary prop on function components, so `forwardRef` is no longer needed (slated for deprecation in a future release). Use no `forwardRef`; destructure `ref` from props, as every Form control does.
+**Before writing `forwardRef`: don't.** In React 19, `ref` is an ordinary prop on function components, so `forwardRef` is unnecessary (slated for deprecation in a future release). Use no `forwardRef`; destructure `ref` from props.
 
 ```tsx
 // BAD, needless indirection
-const InputText = forwardRef<HTMLInputElement, Props>((props, ref) => <input ref={ref} {...props} />);
+const TextBox = forwardRef<HTMLInputElement, TextBoxProps>((props, ref) => <input ref={ref} {...props} />);
 // GOOD, ref is just a prop
-const InputText: FC<Props> = ({ref, ...rest}) => <input ref={ref} {...rest} />;
+const TextBox = ({ref, ...rest}: TextBoxProps) => <input ref={ref} {...rest} />;
 ```
 
 The ref _type_ (`Ref<T>`, or `ComponentProps<'input'>` already carrying `ref`) is the typescript skill's domain.
@@ -148,10 +146,10 @@ For `useEffectEvent` (the sanctioned replacement for stale-deps / latest-ref hac
 
 ## Component Structure
 
-- **FC typing:** `const MyComponent: FC<Props> = ({...}) => ...`
+- **Inline props typing:** `type MyComponentProps = {...}; const MyComponent = ({...}: MyComponentProps) => ...`; a generic component is `const List = <T,>({items}: ListProps<T>) => ...`. Never import `FC` or `FunctionComponent` from `react`
 - **One component per file**: keeps co-location clean and makes code-splitting predictable
 - **Named React imports:** `import {useState} from 'react'`, never `React.useState()`, avoids the React namespace and makes tree-shaking explicit
-- **Type imports:** `import type {ChangeEventHandler} from 'react'`, never `React.FC`
+- **Type imports:** `import type {ChangeEventHandler} from 'react'`, never the `React.` namespace
 - **Event handler types:** Prefer `ChangeEventHandler<HTMLInputElement>` over inline event typing
 - **Event handler naming:** `handle{Action}{Element}`, the `{Element}` is required so the name says _what it does_, not just _when it fires_; e.g. `handleClickSave`, `handleChangeInput`, `handleCopyStack`. A bare event name (`handleClick`, `handleChange`, `handleSubmit`) trips `react-doctor/no-generic-handler-names`.
 
@@ -175,7 +173,7 @@ Thin shell only:
 
 - `loader` / `action` functions
 - Zod schemas for the action
-- One-line default export: `const MyRoute: FC = () => <MyPage />;`
+- One-line default export: `const MyRoute = () => <MyPage />;`
 
 **No UI code, hooks, state, or sub-components in route files.** Metadata renders as JSX (`<title>`/`<meta>`) in the page, not a route `meta` export (Gate 4).
 

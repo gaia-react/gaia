@@ -47,3 +47,7 @@ export const Default: StoryFn = () => (
     statusText="Server error"
   />
 );
+
+export const WithoutStatus: StoryFn = () => (
+  <ErrorStack className="max-h-96 max-w-360 overflow-y-auto" stack={stack} />
+);

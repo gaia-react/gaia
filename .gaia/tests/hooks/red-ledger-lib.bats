@@ -506,7 +506,7 @@ run_library() {
   # adjusting the old number by the diff's test count: the two cardinals move
   # independently, and #1748 was a `record_count` that drifted while
   # `file_count` stayed put.
-  [ "$file_count" -eq 33 ]
+  [ "$file_count" -eq 30 ]
   [ "$record_count" -eq 138 ]
 
   local bad_signal

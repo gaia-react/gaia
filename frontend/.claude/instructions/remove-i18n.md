@@ -38,10 +38,9 @@ The seeded list of files known to use `t()` (verify against the grep output, add
 - `frontend/app/routes/_public._index.tsx`
 - `frontend/app/pages/index/page.tsx`
 - `frontend/app/routes/resources.theme-switch.tsx`
-- `frontend/app/components/form/input-email/index.tsx`
-- `frontend/app/components/form/input-password/index.tsx`
-- `frontend/app/components/form/year-month-day/index.tsx`
-- `frontend/app/components/form/field/field-label/field-required-text/index.tsx`
+- `frontend/app/components/errors/error-stack/index.tsx`
+- `frontend/app/components/form/form-error/index.tsx`
+- `frontend/app/components/theme-switch/index.tsx`
 - All `tests/index.stories.tsx` and `tests/index.test.tsx` files alongside the above components (`tests/page.stories.tsx` and `tests/page.test.tsx` for the index page)
 
 Resolve translation keys via the `frontend/app/languages/en/` files. Example: `t('meta.siteName')` → look up `meta.siteName` in `frontend/app/languages/en/common.ts` and inline the resolved string.

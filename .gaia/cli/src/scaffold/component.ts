@@ -23,9 +23,9 @@
  * The `--no-story` flag drops the stories file and rewires the test imports
  * so the test is self-contained (no `composeStory` round-trip).
  *
- * The `--props "name:type,name:type"` flag turns the bare `FC` signature
- * into a typed `FC<NameProps>` and emits a Props type alias plus a
- * destructured signature. Each entry must be `name:type`; empty entries
+ * The `--props "name:type,name:type"` flag emits a Props type alias and
+ * annotates the destructured parameter with it (`({a, b}: NameProps) =>`);
+ * without the flag the component takes no parameters. Each entry must be `name:type`; empty entries
  * and malformed pairs are rejected with exit 1. Only depth-0 commas separate
  * props, so comma-bearing types (`Record<K, V>`, `(a, b) => void`, tuples) are
  * supported within a single entry.
@@ -391,13 +391,8 @@ const buildPropsTypeBlock = (
     .map((property) => `  ${property.name}: ${property.type};`)
     .join('\n');
 
-  return `\ntype ${componentName}Props = {\n${entries}\n};\n`;
+  return `type ${componentName}Props = {\n${entries}\n};\n\n`;
 };
-
-const buildPropsGeneric = (
-  componentName: string,
-  props: readonly PropertyEntry[]
-): string => (props.length === 0 ? '' : `<${componentName}Props>`);
 
 /**
  * A representative value literal for a prop, ready to splice into a JSX
@@ -562,15 +557,13 @@ const renderComponentFile = (options: RenderFileOptions): string => {
     `${TEMPLATES_DIR}/index.tsx.tmpl`
   );
   const propsTypeBlock = buildPropsTypeBlock(componentName, props);
-  const propsGeneric = buildPropsGeneric(componentName, props);
   const propsParam =
     props.length === 0 ?
       ''
-    : `{${props.map((property) => property.name).join(', ')}}`;
+    : `{${props.map((property) => property.name).join(', ')}}: ${componentName}Props`;
 
   return renderTemplate(templatePath, {
     Name: componentName,
-    propsGeneric,
     propsParam,
     propsTypeBlock,
   });

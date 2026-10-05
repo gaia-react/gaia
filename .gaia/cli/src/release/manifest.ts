@@ -52,13 +52,20 @@ export const ADOPTER_OWNED_SENTINELS: ReadonlySet<string> = new Set([
 // CLAUDE.md are `shared` for the same reason the root ones are. The frontend
 // package is the only one GAIA ships; an adopter-added package is the
 // adopter's own and never reaches this classifier.
+//
+// The frontend's token values (`app/styles/theme.css`) and shadcn config
+// (`components.json`) are `shared` because an adopter edits them to rebrand
+// and to add ui components, so /update-gaia merges instead of overwriting.
+// GAIA-shipped `app/components/ui/<name>.tsx` stay `owned` by default.
 const SHARED = new Set([
   '.claude/settings.json',
   '.gaia/audit-ci.yml',
   '.github/FUNDING.yml',
   'CLAUDE.md',
   'frontend/.claude/settings.overlay.json',
+  'frontend/app/styles/theme.css',
   'frontend/CLAUDE.md',
+  'frontend/components.json',
   'frontend/gaia.package.json',
   'frontend/package.json',
   'package.json',

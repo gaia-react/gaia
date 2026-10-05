@@ -1,7 +1,6 @@
-import type {FC} from 'react';
 {{#hasI18n}}import {useTranslation} from 'react-i18next';
-{{/hasI18n}}
-const {{pageName}}: FC = () => {
+
+{{/hasI18n}}const {{pageName}} = () => {
 {{#hasI18n}}  const {t} = useTranslation('pages', {keyPrefix: '{{i18nKey}}'});
 
   return (

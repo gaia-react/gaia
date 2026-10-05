@@ -6,13 +6,13 @@ language: css
 purpose: Tailwind setup and shared utilities
 depends_on: [[Tailwind]]
 created: 2026-04-20
-updated: 2026-10-04
+updated: 2026-10-05
 tags: [module, styles, tailwind]
 ---
 
 # Styles
 
-`frontend/app/styles/tailwind.css` is the entry point for [[Tailwind]] v4 and the place to define shared `@layer` utilities/components. Component-specific CSS lives in `frontend/app/components/<kebab-name>/styles.module.css` (CSS Modules), co-located with the component, not centralized here.
+`frontend/app/styles/tailwind.css` is the entry point for [[Tailwind]] v4: it imports Tailwind, `tw-animate-css`, shadcn's Tailwind layer and `theme.css`, and holds `@theme inline`, the base `@layer`, and the few shared `@utility` blocks. `frontend/app/styles/theme.css` holds the token values: the `:root` and `.dark` blocks and `color-scheme`. Components are styled with role-token utilities in their own class names; a component's own CSS file is the exception, not the rule.
 
 ## Conventions (load-bearing)
 
@@ -20,7 +20,7 @@ See the `tailwind` skill (`.claude/skills/tailwind/`, which owns class compositi
 
 - **No `px` units** in Tailwind classes: use the spacing scale or `rem` for custom values
 - **No template-literal class strings**: they defeat Tailwind's static analysis
-- **Prefer semantic `@utility` tokens** defined in `tailwind.css` (`bg-body`, `bg-secondary`, `text-body`, `text-secondary`, `border-normal`, `input-invalid`, etc.) over raw paired `dark:` classes; each token bundles the light/dark pair
+- **Role tokens only for color**: `bg-background`, `text-foreground`, `border-input` and the rest of the set in `theme.css`, never a raw palette class. Each token holds its light and dark values, so components write one utility, not a `dark:` pair. The contract is `frontend/.claude/rules/tailwind.md`; the token values are a replaceable placeholder ([[Design System]], [[shadcn Component Layer]])
 
 ## Dark mode pipeline (no React state)
 
@@ -33,7 +33,7 @@ The pipeline (query Serena for current paths):
 - `frontend/app/hooks/use-theme.ts`: tracks OS `prefers-color-scheme` via `useSyncExternalStore` (`useSystemTheme`), derives the optimistic theme from pending `useFetchers()` (`useOptimisticThemeMode`), and resolves the effective theme (`useOptionalTheme`) from optimistic value, then the loader cookie preference, then OS
 - `frontend/app/routes/resources.theme-switch.tsx`: action + `ThemeFormSchema` only
 - `frontend/app/components/theme-switch/index.tsx`: the `ThemeSwitch` UI
-- Tailwind's `dark:` variant via `@custom-variant dark` in `tailwind.css`
+- The `.dark` token block in `theme.css`, selected through `@custom-variant dark` in `tailwind.css`
 - Storybook's `@vueless/storybook-dark-mode` addon (unchanged)
 
 For the current Tailwind plugin inventory, query Serena or `package.json`.

@@ -21,6 +21,87 @@ On GAIA 1.6.1? Choose Abort, then paste the prompt from https://gaiareact.com/mi
 - GAIA 2.0.0 moves the React app and its frontend-only Claude harness into `frontend/`, leaving the root as a pnpm workspace that holds the shared harness, and 2.x releases ship as `gaia-bundle-<tag>.tar.gz`. A 1.6.1 `/update-gaia` cannot cross that move, so choosing Proceed there creates a `chore/update-gaia-*` branch, prunes `.gaia-backup` and the cached tag directories, then stops with `FETCH_FAILED` and changes nothing else. **Action required:** on 1.x, migrate with the prompt at https://gaiareact.com/migrate; from 2.0.0 on, `/update-gaia` works as before and also regenerates `frontend/.claude/settings.json` after each merge. Each release publishes a `.sha256` for its tarball (#2443)
 - GAIA now runs its pre-commit floor as a native git hook at `.githooks/pre-commit`, activated by `pnpm install` through the root `prepare` script, and no longer depends on husky or is-ci; lint-staged stays. A clone still pointing at `.husky/_` runs no pre-commit hook and reports nothing. **Action required:** in every existing clone, run `pnpm install` or `git config core.hooksPath .githooks`, then confirm `git config --get core.hooksPath` prints `.githooks`. The migration prompt handles the clone that runs it (#2456)
 - Files and folders under `frontend/app/components`, `pages`, and `hooks` are now kebab-case: a component is `components/<name>/index.tsx`, shadcn components live flat in `components/ui/`, a page is `pages/<route path>/page.tsx`, and a hook is `use-<name>.ts`. `@gaia-react/lint` 3.0.0-rc.0 enforces it, so your own PascalCase folders fail lint until renamed, and `gaia scaffold` now emits the new layout. **Action required:** on 1.x, follow the migration prompt at https://gaiareact.com/migrate, whose rename-before-merge step renames GAIA's files and your own so the merge keeps your edits (#2482)
+- shadcn/ui is now GAIA's component layer. The vendored components live in `frontend/app/components/ui/` (Base UI primitives, `class-variance-authority` variants, `lucide-react` icons), forms compose them with Conform instead of GAIA's form wrappers, and every color comes from a shadcn role token in `frontend/app/styles/theme.css` instead of the old `primary-*` ramp, paired light and dark palette classes, and custom utilities. GAIA's own `Button`, `LinkButton`, `Toast`, the form wrappers and `react-icons` are gone, and `@gaia-react/lint` now fails raw palette classes, arbitrary values, restyled shadcn components and `FC` types. You get one registry to add components from (`pnpm shadcn add <name>`), and a theme you change by editing token values. **Action required:** migrate your own code with the steps below, then run the closing grep until it prints nothing (#2492)
+  1. Run `/update-gaia`, then `pnpm add lucide-react @base-ui/react class-variance-authority tw-animate-css`, `pnpm add -D shadcn` and `pnpm remove autosize @types/autosize @tailwindcss/forms` (add `react-icons` to that remove only if none of your own code imports it; you may keep it as your own dependency, GAIA no longer uses it). `@tailwindcss/forms` is gone together with the global form block, so a raw native `<input>`, `<select>`, `<textarea>`, checkbox or radio loses its styling: move each to the `ui` control that replaces it.
+  2. Replace every removed utility and `primary-*` step with a role token. `text-secondary` is now `text-muted-foreground` and `bg-secondary` is now `bg-muted`: the names `text-secondary` and `bg-secondary` now mean the shadcn `secondary` role token, so a leftover old-meaning use renders a different color and must be renamed, not just left alone. The `primary-*` steps map by what the element is, not by its shade, so treat the right-hand column as the usual target and check the result in light and dark.
+
+     | Removed class | Use instead |
+     | --- | --- |
+     | `bg-body` | `bg-background` |
+     | `bg-secondary` | `bg-muted` |
+     | `text-body` | `text-foreground` |
+     | `text-disabled` | `text-muted-foreground`, with `disabled:opacity-50` on the element |
+     | `text-secondary` | `text-muted-foreground` |
+     | `text-invalid` | `text-destructive` |
+     | `text-placeholder` | `placeholder:text-muted-foreground` |
+     | `border-strong` | `border-input` |
+     | `border-normal` | `border-input` |
+     | `border-medium` | `border-border` |
+     | `border-light` | `border-border` |
+     | `border-disabled` | `border-border` |
+     | `border-invalid` | `border-destructive` |
+     | `bg-invalid` | `bg-destructive` |
+     | `input-invalid` | `aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20` (the `ui` controls already carry it) |
+     | `hide-required` | removed with the required pill it hid; delete it |
+     | `primary-50` | `primary-foreground` |
+     | `primary-100` | `secondary` |
+     | `primary-200` | `border` |
+     | `primary-300` | `input` |
+     | `primary-400` | `ring` |
+     | `primary-500` | `muted-foreground` |
+     | `primary-600` | `muted-foreground` |
+     | `primary-700` | `primary` |
+     | `primary-800` | `card` |
+     | `primary-900` | `foreground` |
+     | `primary-950` | `foreground` |
+
+     Raw palette classes (`bg-gray-900`, `dark:text-white` and the rest) and arbitrary colors (`bg-[#fff]`) go the same way: pick the role token for what the element is.
+  3. Replace each removed GAIA component with its shadcn replacement. The `ui` files ship with this release; a replacement marked "add with" does not, so run the command it names.
+
+     | Removed component | Replacement |
+     | --- | --- |
+     | `Button` | `ui/button` |
+     | `Spinner` | `ui/spinner` |
+     | `LinkButton` | `<Button render={<Link />}>` (step 6) |
+     | `Field` | `ui/field` (`Field`, `FieldGroup`, `FieldSet`) |
+     | `FieldLabel` | `ui/field` `FieldLabel` |
+     | `FieldDescription` | `ui/field` `FieldDescription` |
+     | `FieldError` | `ui/field` `FieldError` |
+     | `SpanOrLegend` | `ui/field` `FieldLegend` inside a `FieldSet` |
+     | `FieldStatus` | `ui/field` `FieldDescription` and `FieldError` |
+     | `InputText` | `ui/input` |
+     | `InputEmail` | `ui/input` with `type="email"` |
+     | `InputPassword` | `ui/input` with `type="password"` |
+     | `TextArea` | `ui/textarea` |
+     | `Select` | `ui/native-select` |
+     | `Checkbox` | `ui/checkbox` |
+     | `Checkboxes` | the composed checkbox group: one `ui/checkbox` per option inside a `FieldSet` |
+     | `InputRadio` | `ui/radio-group` |
+     | `RadioButtons` | `ui/radio-group` |
+     | `BaseRadioButtons` | `ui/radio-group` |
+     | `CheckboxRadioGroup` | `ui/radio-group` or the composed checkbox group |
+     | `FieldRequiredText` | removed; mark a required field in its label text |
+     | `FieldExtra` | removed; put the extra content in `FieldDescription` |
+     | `FormActions` | removed; lay the buttons out with your own flex container |
+     | `Chain` | `ui/input-group` for an input with attached addons; add with `pnpm shadcn add button-group` for a group of buttons |
+     | `Toast` | `ui/toast` (step 7) |
+     | `ToastNotification` | `ui/toast` (step 7) |
+     | `YearMonthDay` | removed with no replacement |
+
+     The kept form pieces are `FormError` and `MaxLength` (now at `~/components/form/max-length`). Delete `~/components/form/year-month-day` and the `date.day`, `date.month` and `date.year` i18n keys with it.
+  4. GAIA's `Button` is replaced by `ui/button`, which takes shadcn's `variant` and `size` props. The exports `SIZES`, `VARIANTS`, `ICON_SIZES`, `ICON_ONLY_SIZES`, `ICON_POSITION`, the `Variant` and `IconUnion` types and the `isLoading` prop are gone, and no GAIA-to-shadcn name map is provided: `pnpm typecheck` reports each call site. For loading, compose `ui/spinner` inside a disabled button.
+  5. Compose forms from `ui/field` parts and `ui` controls, wired with Conform's `getInputProps`, `getCollectionProps` and field ids, as shown in `frontend/.claude/skills/react-code/references/conform-forms.md`. A checkbox group posts one name repeated, once per checked option, so read it as an array in the schema.
+  6. Replace `LinkButton` with `<Button nativeButton={false} render={<Link to="/path" role="link" />}>`, and the same for `NavLink` and for an external `<a href>`. Keep the explicit `role="link"`: Base UI gives a non-native `render` target `role="button"`, which would announce a link as a button. A disabled action is a disabled `Button`, never a disabled link.
+  7. `notify` keeps its call signature (`notify.error`, `notify.info`, `notify.success` and `notify.warning`, each taking a remix-toast payload or a string, and returning the toast id); its import path moves from `~/components/toast` to `~/utils/notify`, and toasts now render through `ui/toast`, shadcn's toast built on Base UI. Render a bare `<Toaster />` from `~/components/ui/toast` where you rendered `<Toaster {...toasterProps} />` (`toasterProps` is removed), delete the `sonner` dependency with `pnpm remove sonner`, and drop the `stackTrace` i18n key: in development a payload's `stack` is logged to the console instead of shown in the toast.
+  8. Replace `react-icons` with `lucide-react`: `import {Sun} from 'lucide-react'` in place of the react-icons import. A component that takes an icon as a prop types it `ComponentType<SVGProps<SVGSVGElement>>`, which both lucide and react-icons satisfy, so an app that keeps `react-icons` for its own icons still type-checks.
+  9. The `autosize` package is gone: `ui/textarea` grows with the CSS `field-sizing` property, so delete any `autosize(...)` call.
+  10. If your `wiki/concepts/Design System.md` says `established: true`, map your existing token values onto shadcn's role tokens in `frontend/app/styles/theme.css` (or `frontend/app/styles/tailwind.css` where `theme.css` is not used) and keep your wiki page; never overwrite either with GAIA's placeholder values.
+  11. Bump `@gaia-react/lint` to 3.0.0-rc.2 with `pnpm add -D @gaia-react/lint@3.0.0-rc.2`; `/update-gaia` applies it unless you re-pinned the package. It adds the shadcn token rules, a lint exemption for the vendored `ui` files, and a ban on importing `FC` or `FunctionComponent` from `react`: convert `const X: FC<Props> = (...) => ...` to `const X = (...: Props) => ...`. `frontend/eslint.config.mjs` is yours and hook-guarded, so add `...lint.shadcn({ui: '~/components/ui'})` as the last entry of the config array yourself.
+  12. Confirm nothing is left. From the repository root this must print nothing (the `ui` folder is excluded because shadcn's own files use `text-secondary` legitimately):
+
+     ```bash
+     git grep -nE "(bg|text|border|border-[trblxyse]|ring|ring-offset|outline|divide|placeholder|shadow|decoration|caret|accent|fill|stroke|from|via|to)-((slate|gray|zinc|neutral|stone|mauve|mist|olive|taupe|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-[0-9]|white|black)|-\[(#|rgb|hsl|oklch)|primary-[0-9]|react-icons|(^|[^A-Za-z-])(bg-body|bg-secondary|text-body|text-disabled|text-secondary|text-invalid|text-placeholder|border-strong|border-normal|border-medium|border-light|border-disabled|border-invalid|bg-invalid|input-invalid|hide-required)([^A-Za-z-]|$)|import[^;]*[{, ](FC|FunctionComponent)[,} ][^;]*from 'react'" -- frontend/app ':!frontend/app/components/ui'
+     ```
 
 ### Changed
 
@@ -39,7 +120,7 @@ On GAIA 1.6.1? Choose Abort, then paste the prompt from https://gaiareact.com/mi
   1. Run `pnpm add cn@0.4.0` and `pnpm remove tailwind-merge`; `/update-gaia` only suggests `cn` while GAIA's components import it, so add it before or right after the update.
   2. Replace `import {twMerge} from 'tailwind-merge'`, `import {twJoin} from 'tailwind-merge'`, and the combined import with `import {cn} from 'cn'`, and rename the `twMerge(` and `twJoin(` calls to `cn(`.
   3. Rewrite object conditionals and `cond ? 'x' : undefined` ternaries inside those calls as `cond && 'x'`; the `cn-conditional/cn-conditional` lint rule reports every one left, tests and stories included.
-  4. Bump `@gaia-react/lint` to 2.3.0 with `pnpm add -D @gaia-react/lint@2.3.0`; `/update-gaia` applies it unless you re-pinned the package, in which case bump it by hand, since it carries the rule and the class sorting inside `cn(...)`.
+  4. Bump `@gaia-react/lint` to 3.0.0-rc.2 with `pnpm add -D @gaia-react/lint@3.0.0-rc.2`; `/update-gaia` applies it unless you re-pinned the package, in which case bump it by hand, since it carries the rule and the class sorting inside `cn(...)`.
   5. Accept `/update-gaia`'s proposed deletion of `.claude/agents/code-audit-frontend/tailwind-merge.md`, or delete it yourself if it is left behind; a kept copy makes the frontend auditor flag every `cn(...)` call.
 - the spec-kit extension's tuning variables now spell out their names, part of applying the no-abbreviations rule to GAIA's shell code: `GAIA_LEDGER_LOCK_TIMEOUT_SECS`, `GAIA_LEDGER_LOCK_STALE_SECS` and `GAIA_LEDGER_LOCK_POLL_SECS` end in `_SECONDS`, `GAIA_SPEC_REMOTE_TIMEOUT_SECS` is `GAIA_SPEC_REMOTE_TIMEOUT_SECONDS`, `GAIA_SPEC_ALLOC_MAX_RETRIES` is `GAIA_SPEC_ALLOCATION_MAXIMUM_RETRIES`, and `GAIA_TITLE_MAX` is `GAIA_TITLE_MAXIMUM_LENGTH`. An old name is no longer read, so a value set under it is silently ignored. **Action required:** if you export any of the old names (shell profile, CI, or `.env`), rename it to the new one (#2433)
 - the wiki catch-up's fetch rate limit is now set with `GAIA_WIKI_FETCH_MINIMUM_INTERVAL_MINUTES`, part of the same naming pass over GAIA's hooks. The old `GAIA_WIKI_FETCH_MIN_INTERVAL_MINUTES` is no longer read, so a value set under it is silently ignored and the default of 60 minutes applies. **Action required:** if you export the old name (shell profile, CI, or `.env`), rename it to the new one (#2434)

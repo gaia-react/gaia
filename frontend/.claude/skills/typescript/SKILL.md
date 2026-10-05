@@ -10,7 +10,7 @@ Patterns and conventions for all TypeScript code.
 
 ## Types
 
-- `import type {}` for type-only imports: `import type {FC} from 'react'`
+- `import type {}` for type-only imports: `import type {ReactNode} from 'react'`
 
 ## Naming, camelCase
 
@@ -35,7 +35,7 @@ All exported functions must have explicit return types.
 **Exceptions:**
 
 - Route loaders/actions (complex generics)
-- React components typed with `FC<Props>` (return type provided by generic)
+- React components (props typed inline on the destructured parameter, return type inferred)
 
 ```tsx
 // BAD
@@ -74,10 +74,10 @@ export const orderStatuses = ['cancelled', 'pending', 'shipped'] as const;
 // derived, never retyped
 export type OrderStatus = (typeof orderStatuses)[number];
 export const orderStatusSchema = z.literal(orderStatuses);
-export const orderStatusColors = {
-  cancelled: 'text-red-600',
-  pending: 'text-amber-600',
-  shipped: 'text-green-600',
+export const orderStatusLabels = {
+  cancelled: 'Cancelled',
+  pending: 'Pending',
+  shipped: 'Shipped',
 } satisfies Record<OrderStatus, string>;
 ```
 

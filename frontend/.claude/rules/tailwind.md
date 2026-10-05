@@ -6,34 +6,30 @@ paths:
 
 # Tailwind Conventions
 
-Authoring patterns live in `frontend/.claude/skills/tailwind/SKILL.md`. This rule covers only project-specific facts.
+Authoring patterns live in `frontend/.claude/skills/tailwind/SKILL.md`. This rule covers the role-token contract and the project-specific facts.
 
 ## Tailwind v4
 
-Config lives in `app/styles/tailwind.css` under `@theme` / `@layer` / `@utility`. GAIA ships no `tailwind.config.ts`.
+Config lives in `app/styles/tailwind.css` under `@theme` / `@layer` / `@utility`; the token values live in `app/styles/theme.css`, which `tailwind.css` imports. GAIA ships no `tailwind.config.ts`.
+
+## Role tokens
+
+Every color comes from a theme role token (`bg-background`, `text-foreground`, `text-muted-foreground`, `border-input`, `text-destructive`, `bg-primary`, and the rest of the set), never a raw palette class (a color name plus a shade, or `white` or `black`) or an arbitrary color in square brackets. The token blocks in `app/styles/theme.css` (`:root` and `.dark`) are the list of what exists; read them rather than a copy here. The `@theme inline` block in `app/styles/tailwind.css` maps each token to its utilities. shadcn's theming doc describes what each role means: https://ui.shadcn.com/docs/theming.
+
+The light and dark values live in the token, so write one utility, not a `dark:` pair. A `dark:` variant on a color is a sign the wrong token was picked.
+
+Lint enforces the contract: `shadcn/no-raw-colors` rejects raw palette classes and color literals in source files.
+
+## Adding a token
+
+- A role token whose value equals an existing token, or a value the code already repeats, needs no approval.
+- Introducing a new color value asks first.
+- When to create a token and how to name it: the tailwind skill's "When to create a role token" section.
 
 ## Dark mode
 
-Class strategy: `@custom-variant dark (&:where(.dark, .dark *))`. Always pair light/dark in one utility call (`bg-white dark:bg-gray-900`).
-
-Prefer the project's semantic `@utility` tokens over raw paired classes:
-
-| Token              | Expands to                             |
-| ------------------ | -------------------------------------- |
-| `bg-body`          | `bg-white dark:bg-gray-900`            |
-| `bg-secondary`     | `bg-gray-100 dark:bg-gray-800`         |
-| `text-body`        | `text-gray-900 dark:text-white`        |
-| `text-secondary`   | `text-gray-500 dark:text-gray-400`     |
-| `text-disabled`    | `text-gray-900/15 dark:text-white/15`  |
-| `text-placeholder` | `text-gray-400 dark:text-gray-600`     |
-| `text-invalid`     | `text-red-600 dark:text-red-500`       |
-| `border-normal`    | `border-gray-300 dark:border-gray-600` |
-| `border-strong`    | `border-gray-400 dark:border-gray-500` |
-| `border-medium`    | `border-gray-200 dark:border-gray-700` |
-| `border-light`     | `border-gray-100 dark:border-gray-800` |
-| `border-disabled`  | `border-gray-300 dark:border-gray-700` |
-| `input-invalid`    | error ring + border combo              |
+Class strategy: `@custom-variant dark (&:where(.dark, .dark *))`. The `.dark` block in `theme.css` swaps the token values, so components do not branch on theme.
 
 ## No arbitrary colors
 
-Use palette tokens (`blue-500`, `red-600`) with opacity modifiers (`bg-blue-900/15`). No hex literals in `[]`.
+No hex, `rgb()`, `hsl()` or `oklch()` literals in `[]` or in a component's CSS. Colors live in `theme.css` only.

@@ -73,6 +73,7 @@ export const BUILTIN_DESCRIPTOR = Object.freeze({
       '*.config.js',
       'Dockerfile',
       'Dockerfile.dockerignore',
+      'components.json',
       '.*',
     ]),
     preCommitSource: Object.freeze([

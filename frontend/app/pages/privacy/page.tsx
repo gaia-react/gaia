@@ -1,4 +1,3 @@
-import type {FC} from 'react';
 import {useTranslation} from 'react-i18next';
 import {md5} from '~/utils/object';
 
@@ -7,7 +6,7 @@ type PrivacyPageProps = {
   title: string;
 };
 
-const PrivacyPage: FC<PrivacyPageProps> = ({description, title}) => {
+const PrivacyPage = ({description, title}: PrivacyPageProps) => {
   const {t} = useTranslation('pages', {keyPrefix: 'legal.privacy'});
   const raw = t('paragraphs', {returnObjects: true});
   const paragraphs = Array.isArray(raw) ? (raw as readonly string[]) : [];

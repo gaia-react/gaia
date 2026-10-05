@@ -106,7 +106,8 @@ update together**, so a group moves as one unit (and snoozes as one unit).
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `react-router`    | `react-router`, `@react-router/dev`, `@react-router/node`, `@react-router/serve`, `@react-router/fs-routes`                              |
 | `react`           | `react`, `react-dom`, `@types/react`, `@types/react-dom`                                                                                 |
-| `tailwindcss`     | `tailwindcss`, `@tailwindcss/vite`, `@tailwindcss/forms`, `@tailwindcss/typography`, `prettier-plugin-tailwindcss`                       |
+| `tailwindcss`     | `tailwindcss`, `@tailwindcss/vite`, `@tailwindcss/typography`, `prettier-plugin-tailwindcss`                                             |
+| `shadcn`          | `shadcn`, `@base-ui/react`, `class-variance-authority`, `lucide-react`, `tw-animate-css`                                                 |
 | `storybook`       | `storybook`, `@storybook/*`, `eslint-plugin-storybook`, `msw-storybook-addon`, `storybook-react-i18next`, `@vueless/storybook-dark-mode` |
 | `vitest`          | `vitest`, `@vitest/coverage-v8`, `@vitest/ui`, `@vitest/eslint-plugin`                                                                   |
 | `playwright`      | `@playwright/test`, `@playwright-testing-library/test`                                                                                   |

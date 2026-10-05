@@ -88,6 +88,16 @@ describe('classifyPath', () => {
     expect(classifyPath('frontend/app/root.tsx')).toBe('owned');
   });
 
+  test('frontend token values and shadcn config are shared; vendored ui stays owned', () => {
+    expect(classifyPath('frontend/app/styles/theme.css')).toBe('shared');
+    expect(classifyPath('frontend/components.json')).toBe('shared');
+    expect(classifyPath('frontend/app/styles/tailwind.css')).toBe('owned');
+    expect(classifyPath('frontend/app/components/ui/button.tsx')).toBe('owned');
+    expect(
+      classifyPath('frontend/app/components/ui/tests/button.test.tsx')
+    ).toBe('owned');
+  });
+
   test('shared exact and prefix matches', () => {
     expect(classifyPath('.claude/settings.json')).toBe('shared');
     expect(classifyPath('package.json')).toBe('shared');

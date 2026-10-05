@@ -1,5 +1,6 @@
 import {expectNoSeriousA11yViolations} from '../a11y';
 import {expect, test} from '../fixtures';
+import {expectDarkTheme} from '../theme';
 import {hydration} from '../utils';
 
 test('home page has no serious a11y violations', async ({page}, testInfo) => {
@@ -31,6 +32,7 @@ test('home dark mode has no serious a11y violations', async ({
   await toggle.focus();
   await expect(toggle).toBeFocused();
 
+  await expectDarkTheme(page);
   await expectNoSeriousA11yViolations(page, testInfo, {label: 'dark'});
 });
 
@@ -54,8 +56,12 @@ test('home page landmarks and headings pass best-practice rules', async ({
   // Project each violation to its triage fields: a failure names the rule, its
   // impact, and how many nodes tripped it, without dumping serialized axe nodes.
   const relevant = violations
-    .filter((v) => targetRules.has(v.id))
-    .map((v) => ({id: v.id, impact: v.impact, nodes: v.nodes.length}));
+    .filter((violation) => targetRules.has(violation.id))
+    .map((violation) => ({
+      id: violation.id,
+      impact: violation.impact,
+      nodes: violation.nodes.length,
+    }));
 
   expect(relevant).toEqual([]);
 

@@ -162,10 +162,16 @@ test('captures bippy renders: active, canary resolves name + memo + timing', asy
   // Name resolution is asserted over the whole dump, not the canary slice: a
   // slice selected BY componentName can never contain 'Unknown', so asking it
   // that question answers itself. Only composite fibers are recorded, so an
-  // 'Unknown' here is a real getDisplayName failure rather than a host node.
-  expect(dump.all.every((record) => record.componentName !== 'Unknown')).toBe(
-    true
-  );
+  // 'Unknown' function or class component is a real getDisplayName failure
+  // rather than a host node. A ForwardRef is exempt: icon libraries such as
+  // lucide-react wrap each icon around an anonymous forwardRef with no
+  // displayName, which no resolver can name.
+  expect(
+    dump.all.every(
+      (record) =>
+        record.componentName !== 'Unknown' || record.kind === 'ForwardRef'
+    )
+  ).toBe(true);
 
   const canaryRecords = dump.all.filter(
     (record) => record.componentName === CANARY

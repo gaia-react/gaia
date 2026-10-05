@@ -49,7 +49,7 @@ Stateful custom form components MUST use `useInputControl` to stay in sync with 
 
 ## Reference example
 
-`frontend/app/components/form/year-month-day/tests/`: a parent-controlled composite of three Selects plus a hidden input that mirrors the ISO date value for Conform. The story wires it into a Conform form with `useInputControl`; `composeStory` then drives the integration test.
+`frontend/app/components/form/tests/composed-form.tsx`: a Conform form composed from ui `Field` parts, with its story and a `composeStory`-driven integration test beside it.
 
 For the current file pattern (where to put `.stories.tsx` vs `.test.tsx`), Serena and the scaffolders (`/new-component`, `/new-route`) handle it; query Serena rather than maintaining the layout here.
 

@@ -243,12 +243,14 @@ export const reduceDump = (
     if (record.phase === 'update') {
       updates += 1;
 
-      if (record.componentName === UNKNOWN_NAME) {
+      if (isFrameworkComponent(record.componentName, record.kind)) {
+        // Checked before the Unknown bucket: an icon library's anonymous
+        // base forwardRef has no name but is framework noise, not a failure.
+        frameworkFiltered += 1;
+      } else if (record.componentName === UNKNOWN_NAME) {
         // Never silently dropped: a wall of unnamed renders is a finding
         // in itself.
         unknownNameCount += 1;
-      } else if (isFrameworkComponent(record.componentName)) {
-        frameworkFiltered += 1;
       } else {
         accumulateRecord(record, aggregates);
       }

@@ -4,7 +4,7 @@ status: active
 package: '@gaia-react/lint'
 role: lint-config
 created: 2026-04-27
-updated: 2026-10-03
+updated: 2026-10-05
 tags: [dependency, lint, eslint]
 ---
 
@@ -48,6 +48,7 @@ export default defineConfig([
   ...lint.guardrails,
   ...lint.betterTailwind({entryPoint: './app/styles/tailwind.css'}),
   ...lint.prettier,
+  ...lint.shadcn({ui: '~/components/ui'}),
   // Project-specific overrides go LAST
   {
     files: ['app/some/path/**'],
@@ -68,8 +69,15 @@ export default defineConfig([
 | `playwright` | `eslint-plugin-playwright` recommended, scoped to `frontend/.playwright/**`; `expect-expect` counts `expect*()` helpers as the assertion, `no-skipped-test` allows the conditional `test.skip(condition, reason)` form | block reaches files from 1.11.0; `allowConditional` added there |
 | `guardrails` | `no-enum`, `no-switch`, `no-jsx-iife`, `no-zod-enum` (errors on `z.enum([...])`; use `z.literal([...])` for string unions), `cn-conditional` (errors on an object conditional or a ternary with an empty branch passed to the `cn` import from `cn`, at any depth, in every file type including tests and stories; write `cond && 'class'`) custom plugins; `gaia/no-restricted-syntax` selectors ban `cond ? <JSX/> : null` and `cond ? null : <JSX/>` (flag-only, no autofix) and flag `.length && <JSX/>` numeric-0 leaks (report-only); the `sonarjs` recommended set, whose `parameterized-tests` errors where three or more sibling tests differ only by their data and wants one `test.each` table instead (no autofix) | `.length` selector added in 1.8.0; `no-zod-enum` added in 1.9.0; `cn-conditional` added in 2.3.0; `sonarjs/parameterized-tests` reaches files from 2.1.0 |
 | `guardrails` | `import-x/no-restricted-paths` with carve-outs: `resources.*` and `actions.*` route files are exempt for UI layers | Carve-out added in 1.6.0; spelling moved to `actions.*`/`resources.*` in 2.2.0 (the older `+` folders are still accepted on the 2.x line) |
-| `betterTailwind` | Tailwind class ordering and hygiene | - |
+| `betterTailwind` | Tailwind class ordering and hygiene; the only unknown-class check (`shadcn/no-unknown-classes` stays off) | `ignore` lists classes that are real but not in the Tailwind graph |
 | `prettier` | Formatting via Prettier as an ESLint rule | The Prettier config also sorts classes inside `cn(...)` |
+| `shadcn` | `@shadcn/lint` token rules on source files: `no-raw-colors`, `require-static-classes`, `no-arbitrary-values`, `no-inline-styles` and `no-restyle` (`allow: ['layout']`), all errors; the vendored-ui exemption for `ui/*.tsx` | Spread last, after `lint.prettier`, so its `prettier/prettier: off` wins on vendored files; `settings.shadcn.ui` is set at root level; carried by 3.0.0-rc.1 |
+
+### Component layer
+
+`lint.shadcn({ui})` wires the shadcn token rules and the `shadcn/vendored-ui` block, which exempts `ui/*.tsx` (never `ui/tests/**`) from Prettier, the house-style rules and a short list of correctness rules unedited shadcn source trips, while `shadcn/no-raw-colors` and `react-hooks/*` stay on. The rule list and why it was chosen are in [[shadcn Component Layer]]. A new house-style rule firing on a ui file added later means extending that block upstream. The restricted-imports config also rejects importing `FC` or `FunctionComponent` from `react`, so components are typed inline; the vendored-ui block lifts only that `react` entry, because shadcn source uses `import * as React`.
+
+The `shadcn` group and the `FC` ban ship in 3.0.0-rc.1 of `@gaia-react/lint`; the `eslint` peer floor is `>=9.30.0` within the 9 line, which `@shadcn/lint` requires.
 
 The `resources.*` and `actions.*` carve-out means UI-layer files may import typed action/loader types from flat-file resource routes without an `eslint-disable` comment. Consumer tests must not import from `*.server` files or internal server surfaces; the `frontend/test/setup.ts` global Vitest setupFile is the single sanctioned place to start the MSW harness.
 

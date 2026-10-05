@@ -37,7 +37,7 @@ Define a shared class string at the top of the skeleton component:
 
 ```tsx
 const shimmer =
-  'animate-shimmer rounded-sm bg-linear-to-r from-slate-950 via-slate-900 to-slate-950 bg-size-[200%_100%] text-transparent select-none';
+  'animate-shimmer rounded-sm bg-linear-to-r from-muted via-accent to-muted bg-size-[200%_100%] text-transparent select-none';
 ```
 
 ### Text elements
@@ -51,9 +51,9 @@ Copy the real component's element type and font classes, add `shimmer`. How you 
 import {cn} from 'cn';
 
 // Real component
-<h2 className="text-lg font-bold text-white">{t('profile.heading')}</h2>   // static
-<p className="truncate text-sm font-semibold text-white">{data.name}</p>   // dynamic
-<p className="text-xs text-slate-400">{data.value}</p>                     // dynamic
+<h2 className="text-lg font-bold text-foreground">{t('profile.heading')}</h2>   // static
+<p className="truncate text-sm font-semibold text-foreground">{data.name}</p>   // dynamic
+<p className="text-xs text-muted-foreground">{data.value}</p>                     // dynamic
 
 // Skeleton
 <h2 className={cn('text-lg font-bold', shimmer)}>{t('profile.heading')}</h2>  // same t(), exact width
@@ -121,10 +121,10 @@ Skeleton text is transparent, but screen readers still announce it (placeholder 
 import {cn} from 'cn';
 
 const shimmer =
-  'animate-shimmer rounded-sm bg-linear-to-r from-slate-950 via-slate-900 to-slate-950 bg-size-[200%_100%] text-transparent select-none';
+  'animate-shimmer rounded-sm bg-linear-to-r from-muted via-accent to-muted bg-size-[200%_100%] text-transparent select-none';
 
 const ExampleSkeleton = () => (
-  <div aria-hidden className="border border-slate-700 bg-slate-900">
+  <div aria-hidden className="border border-border bg-card">
     <div className="flex items-center gap-3 p-3">
       <div className={cn('size-14 shrink-0', shimmer)} />
       <div className="min-w-0 flex-1">

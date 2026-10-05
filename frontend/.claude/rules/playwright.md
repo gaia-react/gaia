@@ -64,7 +64,9 @@ await hydration(page); // waits for <meta name="hydrated" content="true">
 
 E2E tests run against this tree's `pnpm dev` server, on the port
 `bash .gaia/scripts/ports.sh` prints (5173 in the main checkout). Playwright
-refuses to reuse a server on that port that is not this tree's own. MSW browser
+refuses to reuse a server on that port that is not this tree's own. A second
+`webServer` serves the built `storybook-static` on this tree's Storybook port for
+the story scan (see Accessibility scans). MSW browser
 worker is active in dev, so tests exercise the real route/loader/action stack with MSW
 intercepting API calls. No separate mock server is needed for e2e.
 
@@ -113,9 +115,11 @@ GAIA's `playwright.config.ts` ships these defaults:
 ## Traces and screenshots
 
 - `trace: 'retain-on-failure'`, traces saved to `.playwright/output/` on failure.
-- No explicit screenshot calls in specs; rely on Playwright trace viewer for debugging.
+- Specs make no explicit screenshot calls, except the Storybook scan below, which writes one screenshot per story per theme (uploaded on every CI run so hover and active colors can be reviewed by eye). Use the trace viewer for debugging.
 
 ## Accessibility scans
+
+The Storybook scan (`storybook-a11y.spec.ts`, `storybook-focus.spec.ts`) runs axe over every story in light and dark and checks focus visibility, against `storybook-static`. `pnpm pw` does not build Storybook: run `pnpm build-storybook` first (about 2 seconds). The story server starts even with no build so the other specs run; the story spec fails, never skips, naming `pnpm build-storybook` when `storybook-static/index.json` is missing or its story count differs from the story exports in source.
 
 Use `expectNoSeriousA11yViolations` from `.playwright/a11y.ts` for axe-core
 scans of fully-rendered pages. The fixture in `.playwright/fixtures.ts`

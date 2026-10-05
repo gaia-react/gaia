@@ -8,33 +8,31 @@ depends_on:
   - '[[Conform]]'
   - '[[Zod]]'
 created: 2026-04-20
-updated: 2026-10-04
+updated: 2026-10-05
 tags: [module, components, forms]
 ---
 
 # Form Components
 
-Built on [[Conform]] + [[Zod]], the form components handle label association, validation state, error display, and accessibility automatically.
+GAIA has no form wrapper components. A form is composed from the ui `Field` parts and ui controls ([[shadcn Component Layer]]) with [[Conform]] and [[Zod]] supplying the props, ids and validation state. Each control's accessible name, invalid state, required state and keyboard behavior come from the ui component plus Conform's attributes, not from a GAIA abstraction.
 
-## Replace native inputs
+## The composed pattern
 
-Per [[Coding Guidelines]]: use these instead of native `<input>`, `<select>`, `<textarea>`. Exceptions: `<input type="hidden">`, `<input type="file">`, `<input type="radio">` inside custom radio groups.
+For each field: a ui `Field` (with `data-invalid` when the field has errors) holding a `FieldLabel` (`htmlFor` the field id), the control (`Input`, `Textarea`, `NativeSelect`, `Checkbox`, `RadioGroup`) spread with Conform's `getInputProps`, `getSelectProps` or `getTextareaProps`, an optional `FieldDescription`, and a `FieldError` (`id` the field's `errorId`). Groups of checkboxes or radios sit in a `FieldSet` with a `FieldLegend`; checkboxes share one name through `getCollectionProps`. The submit button is a `ui/button` that shows a `ui/spinner` and disables itself while the navigation is submitting.
 
-## Deep dives by component family
+The step-by-step pattern, the Zod schema and action wiring, and error-message translation are in `frontend/.claude/skills/react-code/references/conform-forms.md`. The runnable reference is `frontend/app/components/form/tests/composed-form.tsx` and its story and test.
 
-- [[Form Field]]: label + input + error wrapper that every other Form component composes
-- [[Form Layout]]: `Chain`, `FormActions`, `FormError`
-- [[Form Text Inputs]]: `InputText`, `InputEmail`, `InputPassword`, `TextArea`
-- [[Form Select]]: native select with icon, optgroup, placeholder
-- [[Form Choices]]: `Checkbox` / `Checkboxes` / `RadioButtons` / `BaseRadioButtons`
-- [[Form YearMonthDay]]: composite date input; documents the Conform gotchas
+## App-logic form components
 
-For the current bundled inventory, query Serena (`.claude/rules/code-search.md`).
+- `FormError`: top-of-form error summary built on ui `Alert`.
+- `MaxLength`: character counter for length-limited fields.
+
+For the current inventory, query Serena (`.claude/rules/code-search.md`).
 
 ## Conform + custom components
 
 > [!warning] useInputControl is mandatory for stateful custom components
-> When using custom form components that manage their own internal state (e.g. `YearMonthDay`), you **must** use `useInputControl` to keep them in sync with Conform's validation state. Local `useState` becomes disconnected from Conform once validation fails.
+> When using custom form components that manage their own internal state (e.g. a date picker), you **must** use `useInputControl` to keep them in sync with Conform's validation state. Local `useState` becomes disconnected from Conform once validation fails.
 
 ```tsx
 const fieldControl = useInputControl(fields.fieldName);
@@ -46,7 +44,7 @@ const fieldControl = useInputControl(fields.fieldName);
 />;
 ```
 
-See [[Component Testing]] for the canonical example (`YearMonthDay/tests/`).
+See [[Component Testing]] for how form components are tested.
 
 ## Validation
 
@@ -56,4 +54,4 @@ See [[Component Testing]] for the canonical example (`YearMonthDay/tests/`).
 
 ## Accessibility
 
-The Form components handle label association automatically. For custom inputs, ensure `<label htmlFor>` or `aria-label`. See [[Accessibility]].
+Label association comes from `FieldLabel htmlFor` pointing at the Conform field id, and error association from `aria-describedby` pointing at `errorId`. For custom inputs, ensure `<label htmlFor>` or `aria-label`. See [[Accessibility]].

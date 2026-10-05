@@ -1,4 +1,3 @@
-import type {FC} from 'react';
 import {useLoaderData} from 'react-router';
 import {getInstance} from '~/middleware/i18next';
 import IndexPage from '~/pages/index/page';
@@ -12,7 +11,7 @@ export const loader = async ({context}: Route.LoaderArgs) => {
   return {description, title};
 };
 
-const IndexRoute: FC = () => {
+const IndexRoute = () => {
   const {description, title} = useLoaderData<typeof loader>();
 
   return (

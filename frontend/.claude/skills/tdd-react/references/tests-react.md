@@ -59,7 +59,7 @@ The tracer bullet for any component: `composeStory(Default, Meta)` renders witho
 
 When a test overrides a prop on a composed story, especially a callback it spies on, the story must accept `(args)` and spread `{...args}` **last**, after any hardcoded default, so the override wins. Storybook's own guidance says the render function "spreads `args` onto the component" (https://storybook.js.org/docs/writing-stories), and `composeStory` says render-time props "override the values passed in the story's args" (https://storybook.js.org/docs/api/portable-stories/portable-stories-vitest#composestory). `args` only reaches the real component through that spread, so a story that hardcodes the callback, or spreads `{...args}` before it, silently drops the override.
 
-Storybook's own examples spread every prop from `args`, so there's nothing to order against. GAIA's stories hardcode structural/demo props inline (labels, names, options) and spread `{...args}` only for the controllable knobs, see `app/components/form/radio-buttons/tests/index.stories.tsx`, so ordering is load-bearing: `{...args}` must come after the hardcoded props for an override to win.
+Storybook's own examples spread every prop from `args`, so there's nothing to order against. GAIA's stories hardcode structural/demo props inline (labels, names, options) and spread `{...args}` only for the controllable knobs, so ordering is load-bearing: `{...args}` must come after the hardcoded props for an override to win.
 
 ```tsx
 // app/components/toggle/tests/index.stories.tsx
@@ -202,7 +202,7 @@ export const Default: StoryFn = () => {
 
 ### Custom form components: use `useInputControl`
 
-When using custom form components (like `YearMonthDay`, `TimePicker`, etc.) that manage their own internal state, you **must** use `useInputControl` to properly integrate them with Conform's validation state:
+When using custom form components (like a `TimePicker` or a date picker) that manage their own internal state, you **must** use `useInputControl` to properly integrate them with Conform's validation state:
 
 ```tsx
 // BAD - Local state conflicts with Conform's validation
@@ -224,8 +224,6 @@ const fieldControl = useInputControl(fields.fieldName);
 ```
 
 **Why this matters**: When validation fails, Conform takes control of the field value. If you use local `useState`, the component becomes disconnected from Conform's state and stops responding to changes after validation errors occur.
-
-See `app/components/form/year-month-day/tests/` for a complete example of this pattern in action.
 
 ## Bad Tests
 

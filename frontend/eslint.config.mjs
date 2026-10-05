@@ -15,7 +15,8 @@ export default defineConfig([
   ...lint.guardrails,
   ...lint.betterTailwind({
     entryPoint: './app/styles/tailwind.css',
-    ignore: ['plain-link', 'plain-table'],
+    ignore: ['dark'],
   }),
   ...lint.prettier,
+  ...lint.shadcn({ui: '~/components/ui'}),
 ]);

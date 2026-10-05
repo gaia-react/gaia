@@ -58,13 +58,22 @@ const GROUP_RULES: readonly GroupRule[] = [
   },
   {
     exactNames: [
-      '@tailwindcss/forms',
       '@tailwindcss/typography',
       '@tailwindcss/vite',
       'prettier-plugin-tailwindcss',
       'tailwindcss',
     ],
     group: 'tailwindcss',
+  },
+  {
+    exactNames: [
+      '@base-ui/react',
+      'class-variance-authority',
+      'lucide-react',
+      'shadcn',
+      'tw-animate-css',
+    ],
+    group: 'shadcn',
   },
   {
     exactNames: [

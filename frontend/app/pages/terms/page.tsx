@@ -1,4 +1,3 @@
-import type {FC} from 'react';
 import {useTranslation} from 'react-i18next';
 import {md5} from '~/utils/object';
 
@@ -7,7 +6,7 @@ type TermsPageProps = {
   title: string;
 };
 
-const TermsPage: FC<TermsPageProps> = ({description, title}) => {
+const TermsPage = ({description, title}: TermsPageProps) => {
   const {t} = useTranslation('pages', {keyPrefix: 'legal.terms'});
   const raw = t('paragraphs', {returnObjects: true});
   const paragraphs = Array.isArray(raw) ? (raw as readonly string[]) : [];
