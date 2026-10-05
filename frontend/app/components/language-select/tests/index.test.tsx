@@ -17,11 +17,14 @@ vi.mock('~/languages', async (importOriginal) => ({
 // Long enough for a stray submission to reach the action before asserting none did.
 const SETTLE_MILLISECONDS = 50;
 
-const renderSelect = async () => {
+const renderSelect = async (actionDelayMilliseconds = 0) => {
   const submitted = vi.fn<(language: FormDataEntryValue | null) => void>();
 
   const action = async ({request}: ActionFunctionArgs) => {
     const formData = await request.formData();
+
+    if (actionDelayMilliseconds) await delay(actionDelayMilliseconds);
+
     submitted(formData.get('language'));
 
     return null;
@@ -107,5 +110,29 @@ describe('LanguageSelect', () => {
 
     await delay(SETTLE_MILLISECONDS);
     expect(submitted).not.toHaveBeenCalled();
+  });
+
+  test('a pointer choice after a keydown submits immediately', async () => {
+    const {selectOptions} = userEvent.setup();
+    const {select, submitted} = await renderSelect();
+
+    fireEvent.keyDown(select, {key: 'ArrowDown'});
+    await selectOptions(select, 'ja');
+
+    await vi.waitFor(() => {
+      expect(submitted).toHaveBeenCalledExactlyOnceWith('ja');
+    });
+  });
+
+  test('a choice back to the current language during an in-flight submit is submitted', async () => {
+    const {selectOptions} = userEvent.setup();
+    const {select, submitted} = await renderSelect(SETTLE_MILLISECONDS);
+
+    await selectOptions(select, 'ja');
+    await selectOptions(select, 'en');
+
+    await vi.waitFor(() => {
+      expect(submitted).toHaveBeenLastCalledWith('en');
+    });
   });
 });

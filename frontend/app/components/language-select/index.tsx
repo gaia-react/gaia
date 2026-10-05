@@ -1,4 +1,4 @@
-import type {KeyboardEvent} from 'react';
+import type {KeyboardEventHandler} from 'react';
 import {useRef} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useFetcher, useLocation} from 'react-router';
@@ -34,7 +34,9 @@ const LanguageSelect = ({className, onChange}: LanguageSelectProps) => {
   // choice and submits at once.
   const isKeyboardInputRef = useRef(false);
   // The current language updates only after the action reloads translations, so
-  // without this an Enter commit followed by leaving the select submits twice.
+  // a choice is compared against the last one submitted, never the current
+  // language: that would drop a pick back to it made while a submission is in
+  // flight, and an Enter commit followed by leaving the select would submit twice.
   const submittedLanguageRef = useRef(language);
 
   // A single configured language offers nothing to switch, so render nothing.
@@ -49,13 +51,11 @@ const LanguageSelect = ({className, onChange}: LanguageSelectProps) => {
 
     if (!form) return;
 
-    const selected = String(new FormData(form).get('language'));
+    const selectedLanguage = String(new FormData(form).get('language'));
 
-    if (selected === language || selected === submittedLanguageRef.current) {
-      return;
-    }
+    if (selectedLanguage === submittedLanguageRef.current) return;
 
-    submittedLanguageRef.current = selected;
+    submittedLanguageRef.current = selectedLanguage;
     await fetcher.submit(form, {
       action: ACTION_PATHS.setLanguage,
       method: 'POST',
@@ -70,13 +70,15 @@ const LanguageSelect = ({className, onChange}: LanguageSelectProps) => {
     await submitLanguage();
   };
 
-  const handleKeyDown = async (event: KeyboardEvent<HTMLSelectElement>) => {
+  const handleKeyDownSelect: KeyboardEventHandler<HTMLSelectElement> = async (
+    event
+  ) => {
     isKeyboardInputRef.current = true;
 
     if (event.key === 'Enter') await submitLanguage();
   };
 
-  const handlePointerDown = () => {
+  const handlePointerDownSelect = () => {
     isKeyboardInputRef.current = false;
   };
 
@@ -94,8 +96,8 @@ const LanguageSelect = ({className, onChange}: LanguageSelectProps) => {
         defaultValue={language}
         name="language"
         onBlur={submitLanguage}
-        onKeyDown={handleKeyDown}
-        onPointerDown={handlePointerDown}
+        onKeyDown={handleKeyDownSelect}
+        onPointerDown={handlePointerDownSelect}
         size="sm"
       >
         {OPTIONS.map(({label, value}) => (
