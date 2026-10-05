@@ -1377,6 +1377,28 @@ veto_rounds() {
   [ "$(nrounds)" -eq "$_GAIA_LOOP_HARD_CAP" ]
 }
 
+@test "at the round cap an accept runs its one closing round instead of re-asking, then the cap denies" {
+  seed_rounds "$_GAIA_LOOP_HARD_CAP" '{"verdict":"continue","A":1}'
+  alf_state_edit '.history.units = [{unit: 1, start_round: 8, k: 3, through_round: 10, admitted_on: "context",
+    after_checkpoint: 0, recorded_at: "2026-01-01T00:00:00Z", session_id: $session_id}]' --arg session_id "$SIDU"
+  below
+  unit_dispatch
+  assert_pinned cap
+  alf_add_answer 1 accept
+  unit_dispatch
+  assert_allowed
+  [ "$(state_field '.history.checkpoints | length')" -eq 1 ]
+  new_tree
+  nested
+  assert_allowed
+  [ "$(nrounds)" -eq $((_GAIA_LOOP_HARD_CAP + 1)) ]
+  [ "$(state_field ".history.rounds[$_GAIA_LOOP_HARD_CAP].closing")" = true ]
+  new_tree
+  unit_dispatch
+  assert_pinned cap
+  [ "$(nrounds)" -eq $((_GAIA_LOOP_HARD_CAP + 1)) ]
+}
+
 @test "deny classes: each gate deny carries its prefix and no fail-loud deny borrows one" {
   local denial_reasons
   alf_sequence 6 5

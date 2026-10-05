@@ -949,6 +949,39 @@ drift_fixture() {
   [ "$(gaia_loop_decide "$state" null)" = "deny cap" ]
 }
 
+@test "decision: an accept answered at the cap admits its closing round, and only that round" {
+  local state reading cap closing
+  cap="$_GAIA_LOOP_HARD_CAP"
+  closing=$((cap + 1))
+  state="$(make_state "$cap" ".history.checkpoints = [$(checkpoint_entry 1 "$cap" cap)]
+    | .allowance.answers = [{checkpoint: 1, kind: \"accept\", at: \"x\", session_id: \"s1\"}]")"
+  for reading in "$LOW" "$HIGH" missing; do
+    [ "$(gaia_loop_decide_unit "$state" null "$reading" 300000 50)" = "allow accept $closing $closing" ] || { echo "unit, $reading"; return 1; }
+    [ "$(gaia_loop_decide_member "$state" null false "$reading" 300000 50)" = "allow accept $closing $closing" ] || { echo "member inline, $reading"; return 1; }
+  done
+  # The unit admitted on that accept lets its members dispatch the closing round.
+  state="$(jq -c --argjson unit "$(unit_entry 1 "$closing" "$closing" 1)" '.history.units = [$unit]' <<<"$state")"
+  [ "$(gaia_loop_decide_member "$state" null true "$LOW" 300000 50)" = allow ]
+  # red: the accept is consumed, so a second unit on it is denied at the cap.
+  [ "$(gaia_loop_decide_unit "$state" null "$LOW" 300000 50)" = "deny cap false true" ]
+  # red: once the closing round is recorded, the cap denies every path again.
+  state="$(make_state "$closing" ".history.checkpoints = [$(checkpoint_entry 1 "$cap" cap)]
+    | .allowance.answers = [{checkpoint: 1, kind: \"accept\", at: \"x\", session_id: \"s1\"}]
+    | .history.units = [$(unit_entry 1 "$closing" "$closing" 1)]")"
+  for reading in "$LOW" "$HIGH" missing; do
+    [ "$(gaia_loop_decide_unit "$state" null "$reading" 300000 50)" = "deny cap false true" ] || { echo "unit, $reading"; return 1; }
+    [ "$(gaia_loop_decide_member "$state" null true "$reading" 300000 50)" = "deny cap false true" ] || { echo "member in-unit, $reading"; return 1; }
+    [ "$(gaia_loop_decide_member "$state" null false "$reading" 300000 50)" = "deny cap false true" ] || { echo "member inline, $reading"; return 1; }
+  done
+  # The human decides again at the checkpoint that deny pins: a grant there is
+  # still denied, and a fresh accept buys one more closing round.
+  state="$(jq -c --argjson checkpoint "$(checkpoint_entry 2 "$closing" cap)" '.history.checkpoints += [$checkpoint]
+    | .allowance.answers += [{checkpoint: 2, kind: "grant", n: 3, at: "x", session_id: "s1"}]' <<<"$state")"
+  [ "$(gaia_loop_decide_unit "$state" null "$LOW" 300000 50)" = "deny cap false true" ]
+  state="$(jq -c '.allowance.answers[-1] = {checkpoint: 2, kind: "accept", at: "x", session_id: "s1"}' <<<"$state")"
+  [ "$(gaia_loop_decide_unit "$state" null "$LOW" 300000 50)" = "allow accept $((closing + 1)) $((closing + 1))" ]
+}
+
 @test "decision: a member in a unit is allowed only inside the unit's window" {
   local unit_rounds used state
   unit_rounds="$(UNIT_ROUNDS)"
