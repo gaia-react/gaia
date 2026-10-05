@@ -4,6 +4,10 @@
 
 import react from '@vitejs/plugin-react';
 import {defineConfig} from 'vitest/config';
+import {
+  isReactCompilerEnabled,
+  reactCompiler,
+} from './react-compiler.config.ts';
 
 const ignoreWarnings = ['React DevTools', 'React Router Future Flag Warning'];
 
@@ -14,7 +18,10 @@ const ignoreWarnings = ['React DevTools', 'React Router Future Flag Warning'];
 // would instead put every value in it, `SESSION_SECRET` included, in reach of
 // every test file and every transitive dependency loaded in this process.
 export default defineConfig({
-  plugins: [react()],
+  define: {
+    REACT_COMPILER_ENABLED: JSON.stringify(isReactCompilerEnabled),
+  },
+  plugins: [react(), reactCompiler],
   resolve: {
     conditions: ['module-sync'],
     tsconfigPaths: true,

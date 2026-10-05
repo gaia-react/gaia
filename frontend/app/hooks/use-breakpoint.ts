@@ -1,4 +1,4 @@
-import {useCallback, useSyncExternalStore} from 'react';
+import {useSyncExternalStore} from 'react';
 
 const BREAKPOINTS = {
   '2xl': 1536,
@@ -15,16 +15,12 @@ const getServerSnapshot = (): boolean => false;
 export const useBreakpoint = (breakpoint: BreakpointType): boolean => {
   const query = `(min-width: ${BREAKPOINTS[breakpoint]}px)`;
 
-  // stable ref required by useSyncExternalStore; re-subscribes only when breakpoint changes
-  const subscribe = useCallback(
-    (callback: () => void) => {
-      const mql = window.matchMedia(query);
-      mql.addEventListener('change', callback);
+  const subscribe = (callback: () => void) => {
+    const mql = window.matchMedia(query);
+    mql.addEventListener('change', callback);
 
-      return () => mql.removeEventListener('change', callback);
-    },
-    [query]
-  );
+    return () => mql.removeEventListener('change', callback);
+  };
 
   return useSyncExternalStore(
     subscribe,

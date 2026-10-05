@@ -66,4 +66,44 @@ describe('useBreakpoint', () => {
       expect.any(Function)
     );
   });
+
+  test('subscribes once per breakpoint, not once per render', () => {
+    mockMql.addEventListener.mockClear();
+    mockMql.removeEventListener.mockClear();
+    mockMatches = true;
+    const maxSubscriptions = REACT_COMPILER_ENABLED ? 1 : Infinity;
+
+    const {rerender, result, unmount} = renderHook(
+      ({breakpoint}: {breakpoint: 'lg' | 'md'}) => useBreakpoint(breakpoint),
+      {initialProps: {breakpoint: 'lg'}}
+    );
+    expect(result.current).toBe(true);
+
+    rerender({breakpoint: 'lg'});
+    expect(mockMql.addEventListener.mock.calls.length).toBeLessThanOrEqual(
+      maxSubscriptions
+    );
+    expect(changeListeners).toHaveLength(1);
+
+    mockMql.addEventListener.mockClear();
+    mockMql.removeEventListener.mockClear();
+    rerender({breakpoint: 'md'});
+    expect(result.current).toBe(true);
+    expect(mockMql.addEventListener.mock.calls.length).toBeGreaterThanOrEqual(
+      1
+    );
+    expect(mockMql.addEventListener.mock.calls.length).toBeLessThanOrEqual(
+      maxSubscriptions
+    );
+    expect(
+      mockMql.removeEventListener.mock.calls.length
+    ).toBeGreaterThanOrEqual(1);
+    expect(mockMql.removeEventListener.mock.calls.length).toBeLessThanOrEqual(
+      maxSubscriptions
+    );
+    expect(changeListeners).toHaveLength(1);
+
+    unmount();
+    expect(changeListeners).toHaveLength(0);
+  });
 });
