@@ -108,18 +108,18 @@ await page.setExtraHTTPHeaders({'Accept-Language': 'ja'});
 GAIA's `playwright.config.ts` ships these defaults:
 
 - `fullyParallel: true`, all specs run in parallel by default.
-- CI: `workers: 1`, `retries: 2`, `forbidOnly: true`.
+- CI: `workers: '100%'` (one per core), `retries: 2`, `forbidOnly: true`.
 - Locally: unlimited workers, no retries, multi-browser opt-in via `TEST_ALL_BROWSERS`.
 - Primary browser: Chromium only by default. Other browsers (webkit, firefox, mobile) guarded behind `TEST_ALL_BROWSERS` flag.
 
 ## Traces and screenshots
 
 - `trace: 'retain-on-failure'`, traces saved to `.playwright/output/` on failure.
-- Specs make no explicit screenshot calls, except the Storybook scan below, which writes one screenshot per story per theme (uploaded on every CI run so hover and active colors can be reviewed by eye). Use the trace viewer for debugging.
+- Specs make no explicit screenshot calls, except the Storybook scan below, which writes one dark-theme screenshot per story (uploaded on every CI run so hover and active colors can be reviewed by eye). Use the trace viewer for debugging.
 
 ## Accessibility scans
 
-The Storybook scan (`storybook-a11y.spec.ts`, `storybook-focus.spec.ts`) runs axe over every story in light and dark and checks focus visibility, against `storybook-static`. `pnpm pw` does not build Storybook: run `pnpm build-storybook` first (about 2 seconds). The story server starts even with no build so the other specs run; the story spec fails, never skips, naming `pnpm build-storybook` when `storybook-static/index.json` is missing or its story count differs from the story exports in source.
+The Storybook scan (`storybook-a11y.spec.ts`, `storybook-focus.spec.ts`) runs axe over every story in dark and checks focus visibility in light and dark, against `storybook-static`. `pnpm pw` does not build Storybook: run `pnpm build-storybook` first (about 2 seconds). The story server starts even with no build so the other specs run; the story spec fails, never skips, naming `pnpm build-storybook` when `storybook-static/index.json` is missing or its story count differs from the story exports in source. The light theme is not scanned per story here: the Vitest storybook project runs addon-a11y on every story in light, failing on any impact.
 
 Use `expectNoSeriousA11yViolations` from `.playwright/a11y.ts` for axe-core
 scans of fully-rendered pages. The fixture in `.playwright/fixtures.ts`

@@ -64,7 +64,7 @@ Measured focus indicator contrast, the same for button, checkbox, input, native-
 
 Toast icons measure at least 5.79:1 against the toast surface in both themes (error is the lowest; the other types measure above 17:1).
 
-The Playwright axe scan covers every page and every story in light and dark, with the WCAG 2.1 tags `wcag2a`, `wcag2aa`, `wcag21a` and `wcag21aa`. There is no `wcag22aa` tag in the scan, so WCAG 2.2 target size (minimum) is not checked. That is a known ceiling of the tooling, not a pass.
+The axe scans cover every page and every story in light and dark (stories in light through Vitest's addon-a11y, in dark through Playwright), with the WCAG 2.1 tags `wcag2a`, `wcag2aa`, `wcag21a` and `wcag21aa`. There is no `wcag22aa` tag in the scan, so WCAG 2.2 target size (minimum) is not checked. That is a known ceiling of the tooling, not a pass.
 
 ## Vendored-ui policy
 
