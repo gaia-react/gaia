@@ -359,27 +359,42 @@ describe('classify-determinism', () => {
     });
   });
 
-  describe('a11y helpers are an emergent signal', () => {
-    test('classifies a file calling expectNoA11yViolations EMERGENT', () => {
-      const result = classifySource(
-        'frontend/app/components/Foo/utils.ts',
-        "import {expectNoA11yViolations} from 'test/a11y';\n" +
-          'export const checkMarkup = async (el: Element): Promise<void> =>\n' +
-          '  expectNoA11yViolations(el);\n'
-      );
+  describe('story files', () => {
+    const STORY_REASON =
+      /story file: a \*\.stories\.tsx is emergent regardless of path/;
+    const pureSource = 'export const double = (n: number): number => n * 2;\n';
+
+    test.each([
+      'frontend/app/utils/tests/notify.stories.tsx',
+      'frontend/app/services/api/tests/client.stories.tsx',
+      'frontend/app/hooks/tests/use-thing.stories.tsx',
+      'frontend/app/components/Foo/tests/index.stories.tsx',
+    ])('classifies %s EMERGENT with the story reason', (storyPath) => {
+      const result = classifySource(storyPath, pureSource);
 
       expect(result.classification).toBe('emergent');
-      expect(result.reasons.join(' ')).toMatch(/expectNoA11yViolations|a11y/i);
+      expect(result.reasons.join(' ')).toMatch(STORY_REASON);
     });
 
-    test('classifies a file calling runAxe EMERGENT', () => {
+    test('classifies a pure story under a strict-candidate folder EMERGENT while the same content in a .ts file is STRICT', () => {
+      const asStory = classifySource(
+        'frontend/app/utils/tests/pure.stories.tsx',
+        pureSource
+      );
+      const asModule = classifySource('frontend/app/utils/pure.ts', pureSource);
+
+      expect(asStory.classification).toBe('emergent');
+      expect(asModule.classification).toBe('strict');
+    });
+
+    test('classifies a .stories.ts file EMERGENT', () => {
       const result = classifySource(
-        'frontend/app/components/Foo/axe.ts',
-        "import {runAxe} from 'test/a11y';\n" +
-          'export const audit = async (el: Element) => runAxe(el);\n'
+        'frontend/app/utils/tests/pure.stories.ts',
+        pureSource
       );
 
       expect(result.classification).toBe('emergent');
+      expect(result.reasons.join(' ')).toMatch(STORY_REASON);
     });
   });
 

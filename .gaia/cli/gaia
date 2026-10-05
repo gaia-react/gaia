@@ -18237,7 +18237,8 @@ var BUILTIN_DESCRIPTOR = {
       ".playwright/**/*.spec.ts",
       ".playwright/**/*.spec.tsx",
       ".playwright/**/*.test.ts",
-      ".playwright/**/*.test.tsx"
+      ".playwright/**/*.test.tsx",
+      "app/**/*.stories.tsx"
     ],
     preCommitSource: ["app/**", "test/**", ".storybook/**", ".playwright/**"],
     selfHealRefuse: [

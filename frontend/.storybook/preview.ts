@@ -20,6 +20,19 @@ const preview: Preview = {
     },
   },
   parameters: {
+    // The tag set matches the Playwright story scan, and any impact fails here
+    // where the scan fails only critical and serious. `region` is off because a
+    // story renders a fragment outside the page landmarks.
+    a11y: {
+      config: {rules: [{enabled: false, id: 'region'}]},
+      options: {
+        runOnly: {
+          type: 'tag',
+          values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'],
+        },
+      },
+      test: 'error',
+    },
     chromatic: {viewports: [1280]},
     controls: {
       expanded: false,

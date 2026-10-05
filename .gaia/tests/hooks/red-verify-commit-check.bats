@@ -550,17 +550,16 @@ test("renders something", () => { expect(true).toBe(true); });
   refute_denied
 }
 
-@test "carve-out: a new a11y-helper test (.ts) commits without a RED" {
-  # A static-markup a11y check is render-/environment-dependent. The classifier
-  # tags expectNoA11yViolations/runAxe as an emergent signal even in a .ts file
-  # on the otherwise-deterministic component surface -> exempt from the RED.
-  stage_file "frontend/app/components/Widget/tests/a11y.test.ts" 'import {expect, test} from "vitest";
-import {runAxe} from "test/a11y";
-const node = document.body;
-test("has no a11y violations", async () => {
-  const results = await runAxe(node);
-  expect(results).toBeDefined();
-});
+@test "carve-out: a new story file under a strict-candidate folder commits without a RED" {
+  # A story is a rendered, browser-bound test. The classifier tags a
+  # *.stories.tsx emergent whatever its path, even on the otherwise
+  # deterministic utils surface -> exempt from the RED; the worthiness gate owns it.
+  stage_file "frontend/app/utils/tests/notify.stories.tsx" 'import type {Meta, StoryObj} from "@storybook/react-vite";
+const meta = {title: "utils/notify"} satisfies Meta;
+export default meta;
+export const Default: StoryObj<typeof meta> = {
+  play: async () => {},
+};
 '
   run_commit_hook
   [ "$status" -eq 0 ]

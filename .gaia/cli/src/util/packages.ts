@@ -109,6 +109,7 @@ export const BUILTIN_DESCRIPTOR: PackageDescriptor = {
       '.playwright/**/*.spec.tsx',
       '.playwright/**/*.test.ts',
       '.playwright/**/*.test.tsx',
+      'app/**/*.stories.tsx',
     ],
     preCommitSource: ['app/**', 'test/**', '.storybook/**', '.playwright/**'],
     selfHealRefuse: [

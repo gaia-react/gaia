@@ -69,8 +69,10 @@
     "@react-router/dev": "8.4.0",
     "@react-router/fs-routes": "8.4.0",
     "@rolldown/plugin-babel": "0.2.4",
+    "@storybook/addon-a11y": "10.6.1",
     "@storybook/addon-docs": "10.6.1",
     "@storybook/addon-links": "10.6.1",
+    "@storybook/addon-vitest": "10.6.1",
     "@storybook/react-vite": "10.6.1",
     "@tailwindcss/typography": "0.5.20",
     "@tailwindcss/vite": "4.3.3",
@@ -85,10 +87,10 @@
     "@types/react-dom": "19.3.0",
     "@types/spark-md5": "3.0.5",
     "@vitejs/plugin-react": "6.1.1",
+    "@vitest/browser-playwright": "5.0.3",
     "@vitest/coverage-v8": "5.0.3",
     "@vueless/storybook-dark-mode": "10.0.8",
     "accept-language-parser": "1.5.0",
-    "axe-core": "4.13.0",
     "babel-plugin-react-compiler": "1.0.0",
     "bippy": "0.7.3",
     "chromatic": "18.10.1",
@@ -99,6 +101,7 @@
     "knip": "6.39.0",
     "msw": "2.15.0",
     "msw-storybook-addon": "3.0.3",
+    "playwright": "1.63.0",
     "prettier": "3.9.9",
     "shadcn": "4.21.1",
     "storybook": "10.6.1",
@@ -108,7 +111,8 @@
     "tsx": "4.23.15",
     "typescript": "6.0.3",
     "vite": "8.3.1",
-    "vitest": "5.0.3"
+    "vitest": "5.0.3",
+    "vitest-browser-react": "2.3.0"
   },
   "msw": {
     "workerDirectory": "public"

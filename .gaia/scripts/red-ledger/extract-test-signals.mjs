@@ -15,8 +15,23 @@
 // Output (stdout): one JSON object per discovered test(...)/it(...) call,
 // newline-delimited:
 //   {"fullName":"...","signal":"sha256:...","kind":"runtime"|"type-only"}
-// Exit 0 on success (even when zero tests are found; emits nothing).
-// Exit non-zero with a one-line stderr message on a parse failure.
+//
+// Story mode: a path ending `.stories.tsx` or `.stories.ts` is read as a CSF
+// story file instead, emitting one {"fullName","signal","kind":"runtime"}
+// line per story with an effective play function, in export source order.
+// The fullName rule, the signal regions, the supported play shapes and the
+// refusal list live in the header of ./extract-story-signals.mjs.
+//
+// Exit codes (each failure writes one stderr line and nothing to stdout):
+//   0  success, including zero tests or stories found (emits nothing)
+//   2  missing path argument
+//   3  cannot resolve "typescript"
+//   4  cannot read the file
+//   5  parser threw
+//   6  syntax error in the file
+//   7  story mode only: a story shape the extractor cannot resolve; stderr is
+//      `extract-test-signals: unsupported story shape in <path>: <ExportName>: <reason>`
+//      (fail closed: a story is never silently dropped)
 //
 // fullName: the titles of all enclosing describe(...) blocks (outermost
 // first) plus the test's own title, single-space-joined. Matches vitest's
@@ -53,6 +68,10 @@
 import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {readFileSync} from 'node:fs';
+import {
+  extractStorySignals,
+  StoryShapeRefusal,
+} from './extract-story-signals.mjs';
 
 const require = createRequire(import.meta.url);
 
@@ -430,7 +449,23 @@ function visit(node, ancestors, unmatchable) {
   ts.forEachChild(node, (child) => visit(child, ancestors, unmatchable));
 }
 
-visit(sourceFile, [], false);
+if (/\.stories\.tsx?$/.test(filePath)) {
+  try {
+    lines.push(
+      ...extractStorySignals({ts, sourceFile, textWithoutComments, normalize}),
+    );
+  } catch (err) {
+    if (!(err instanceof StoryShapeRefusal)) {
+      throw err;
+    }
+    process.stderr.write(
+      `extract-test-signals: unsupported story shape in ${filePath}: ${err.exportName}: ${err.reason}\n`,
+    );
+    process.exit(7);
+  }
+} else {
+  visit(sourceFile, [], false);
+}
 
 // The stdout-exit idiom every .gaia/scripts Node helper follows: install this
 // guard, write, then set process.exitCode. Never process.exit() after a stdout

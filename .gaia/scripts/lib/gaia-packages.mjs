@@ -52,6 +52,7 @@ export const BUILTIN_DESCRIPTOR = Object.freeze({
       '.playwright/**/*.spec.tsx',
       '.playwright/**/*.test.ts',
       '.playwright/**/*.test.tsx',
+      'app/**/*.stories.tsx',
     ]),
     selfHealRefuse: Object.freeze([
       '.claude/**',

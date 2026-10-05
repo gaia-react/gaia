@@ -4,7 +4,7 @@ import type {
   LoaderFunctionArgs,
 } from 'react-router';
 import {createRoutesStub} from 'react-router';
-import type {PartialStoryFn} from 'storybook/internal/types';
+import type {PartialStoryFn, StoryContext} from 'storybook/internal/types';
 import {addons} from 'storybook/preview-api';
 import {ACTION_PATHS} from '~/action-paths';
 
@@ -14,6 +14,10 @@ type Method = (typeof methods)[number];
 
 type ReactRouterDecoratorOptions = {
   action?: Action;
+  /** Per-path action. Overrides the no-op ACTION_PATHS entry for the same path; adds a route for a path not in ACTION_PATHS. */
+  actions?: Record<string, ActionFunction>;
+  /** Each path renders `Navigated to {path}` inside a main landmark, so a play can assert arrival by visible text. */
+  destinations?: string[];
   loader?: (args: LoaderFunctionArgs) => Promise<unknown>;
   path?: string;
   routes?: Routes;
@@ -78,8 +82,22 @@ const getAction = (action?: Action) => {
 };
 
 const decorator =
-  (options?: ReactRouterDecoratorOptions) => (Story: PartialStoryFn) => {
-    const {action, path = '/', routes = [], ...rest} = options ?? {};
+  (
+    options?:
+      | ((context: StoryContext) => ReactRouterDecoratorOptions)
+      | ReactRouterDecoratorOptions
+  ) =>
+  (Story: PartialStoryFn, context: StoryContext) => {
+    const resolvedOptions =
+      typeof options === 'function' ? options(context) : options;
+    const {
+      action,
+      actions = {},
+      destinations = [],
+      path = '/',
+      routes = [],
+      ...rest
+    } = resolvedOptions ?? {};
 
     const reactRouterStub = createRoutesStub([
       {
@@ -108,9 +126,23 @@ const decorator =
       // Dropping that module breaks every story using this decorator at import,
       // which is the loud direction to fail in next to an entry that silently
       // stops matching.
-      ...Object.values(ACTION_PATHS).map((actionPath) => ({
-        action: () => {},
+      ...Object.values(ACTION_PATHS)
+        .filter((actionPath) => !(actionPath in actions))
+        .map((actionPath) => ({
+          action: () => {},
+          path: actionPath,
+        })),
+      ...Object.entries(actions).map(([actionPath, pathAction]) => ({
+        action: pathAction,
         path: actionPath,
+      })),
+      ...destinations.map((destination) => ({
+        Component: () => (
+          <main>
+            <p>Navigated to {destination}</p>
+          </main>
+        ),
+        path: destination,
       })),
     ]);
 

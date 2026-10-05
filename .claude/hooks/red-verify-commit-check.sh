@@ -211,7 +211,8 @@ unit_test_ere=$(gaia_package_globs_ere tddUnitTests)
 #   - a `.tsx` test under <package>/app/components/** (component interaction)
 #     and a <package>/.playwright/** E2E test fall outside its STRICT candidate
 #     globs (the descriptor's `tddStrictCandidates`) -> emergent;
-#   - a test calling the a11y helpers (expectNoA11yViolations / runAxe) -> emergent;
+#   - a `*.stories.tsx` -> emergent regardless of path; stories are the
+#     worthiness gate's, never the RED gate's;
 #   - a test reading the clock/entropy/I-O in its own body -> emergent.
 # The classifier's internal err-EMERGENT bias supplies the "treat as emergent
 # when we cannot prove the subject deterministic" posture: anything it cannot
