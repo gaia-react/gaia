@@ -202,7 +202,7 @@ useEffect(() => {
     if (!ignore) setData(result);
   }
 
-  fetchData();
+  void fetchData();
   return () => {
     ignore = true;
   };

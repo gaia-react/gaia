@@ -151,9 +151,14 @@ A `"use no memo"` directive always carries a comment stating why. Opting out is 
 // Case 1: third-party chart compares `options` by identity and is not compiled.
 const options = useMemo(() => ({series, theme}), [series, theme]);
 
-// reason: legacy class-based form library mutates props during render
-'use no memo';
+const LegacyForm = (props: LegacyFormProps) => {
+  // reason: legacy class-based form library mutates props during render
+  'use no memo';
+  // ...
+};
 ```
+
+The directive takes effect only as the first statement of a function or module body.
 
 A hand-written memo's deps array is also a stale-closure risk, one more reason not to write one.
 
