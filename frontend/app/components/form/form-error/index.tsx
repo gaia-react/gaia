@@ -1,3 +1,4 @@
+import type {MouseEventHandler} from 'react';
 import {useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useActionData} from 'react-router';
@@ -12,6 +13,28 @@ type FormActionData = {
 type FormErrorProps = {
   className?: string;
   isHidden?: boolean;
+};
+
+// Dismissing unmounts the alert along with its focused button, which drops
+// focus to <body>; hand it to the form's first control that accepts focus. A
+// control hidden by CSS, an inert ancestor or the hidden attribute ignores
+// focus(), so each candidate is tried until one actually holds it.
+const focusFirstFormControl = (dismissButton: HTMLButtonElement) => {
+  const candidates = [...(dismissButton.form?.elements ?? [])].filter(
+    (element): element is HTMLElement =>
+      element instanceof HTMLElement &&
+      element.tabIndex >= 0 &&
+      !element.matches(':disabled, [type="hidden"]') &&
+      element !== dismissButton
+  );
+
+  for (const candidate of candidates) {
+    candidate.focus();
+
+    if (document.activeElement === candidate) {
+      return;
+    }
+  }
 };
 
 const FormError = ({className, isHidden}: FormErrorProps) => {
@@ -30,7 +53,23 @@ const FormError = ({className, isHidden}: FormErrorProps) => {
       error
     : '';
 
-  const handleDismissErrorButton = () => {
+  const handleDismissErrorButton: MouseEventHandler<HTMLButtonElement> = (
+    event
+  ) => {
+    // Mobile browsers open the on-screen keyboard when a tap's click handler
+    // focuses a text field, and a touch or pen user has no Tab position to
+    // keep. Browsers whose click is a MouseEvent carry no pointerType, so
+    // there a keyboard activation is told apart by its zero click count.
+    const {currentTarget, nativeEvent} = event;
+    const isFocusHandoffWanted =
+      'pointerType' in nativeEvent ?
+        nativeEvent.pointerType !== 'touch' && nativeEvent.pointerType !== 'pen'
+      : nativeEvent.detail === 0;
+
+    if (isFocusHandoffWanted) {
+      focusFirstFormControl(currentTarget);
+    }
+
     setDismissedActionData(actionData);
   };
 

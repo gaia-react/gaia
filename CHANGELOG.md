@@ -144,6 +144,7 @@ On GAIA 1.6.1? Choose Abort, then paste the prompt from https://gaiareact.com/mi
 
 ### Fixed
 
+- Dismissing a `FormError` from the keyboard no longer drops focus to the page. Focus moves to the form's first control before the alert closes, so the next Tab continues inside the form instead of starting over at the top of the page (#2506)
 - The language switcher no longer changes the language on every Arrow-key press. On Windows browsers Arrow keys change a closed select's value, so a keyboard user reloaded translations with each move (WCAG 3.2.2 On Input). A mouse or touch choice still applies at once; a keyboard choice applies on Enter or when focus leaves the select. Inert until a second locale is added (#2505)
 - The audit loop's checkpoint no longer recommends stopping a loop that has converged. A quiet round now resets the stall check, so two clean rounds followed by one finding read as progress, not a stall. A stalled loop whose remainder the evaluator already judges acceptable now recommends accepting it instead of stopping and leaving the PR open. The scripts ship, so the fix reaches adopters on their next `/update-gaia` (#2497)
 - The RED-verification gate now records a failing test run. A failing run exits non-zero, which Claude Code reports through a different hook event than a passing one, so the capture never saw the run it exists for, and following the commit gate's own recovery could not satisfy it (#2494)
