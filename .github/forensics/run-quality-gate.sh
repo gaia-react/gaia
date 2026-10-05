@@ -11,10 +11,12 @@
 #   1. pnpm install --frozen-lockfile  (deps tree precondition)
 #   2. pnpm typecheck
 #   3. pnpm lint
-#   4. pnpm test --run                  (vitest only; playwright is out of
+#   4. playwright install chromium     (Vitest's browser and storybook
+#                                        projects launch headless Chromium)
+#   5. pnpm test --run                  (vitest only; playwright is out of
 #                                        scope for the triage gate, see
 #                                        task-quality-gate-runner.md)
-#   5. pnpm knip
+#   6. pnpm knip
 #
 # Output JSON:
 #   On failure:
@@ -22,7 +24,7 @@
 #       "exit_code": <int>, "log_excerpt": "<≤50 lines, ≤2000 chars>" }
 #   On pass:
 #     { "passed": true,
-#       "steps_run": ["install", "typecheck", "lint", "test", "knip"] }
+#       "steps_run": ["install", "typecheck", "lint", "browsers", "test", "knip"] }
 #
 # Exit code: 0 on pass, 1 on any step failure. The workflow YAML uses the
 # exit code to short-circuit; the JSON summary feeds the issue comment.
@@ -108,7 +110,7 @@ json_escape() {
 # On zero exit: returns 0 silently.
 #
 # Args:
-#   $1: step name (matches the spec's vocabulary: install/typecheck/lint/test/knip)
+#   $1: step name (matches the spec's vocabulary: install/typecheck/lint/browsers/test/knip)
 #   $2..$N: command + args
 # ---------------------------------------------------------------------------
 run_step() {
@@ -160,6 +162,7 @@ JSON
 run_step install   pnpm install --frozen-lockfile || exit 1
 run_step typecheck pnpm typecheck                  || exit 1
 run_step lint      pnpm lint                       || exit 1
+run_step browsers  pnpm -C frontend exec playwright install --with-deps chromium || exit 1
 run_step test      pnpm test --run                 || exit 1
 run_step knip      pnpm knip                       || exit 1
 
@@ -167,7 +170,7 @@ run_step knip      pnpm knip                       || exit 1
 cat >"$summary_file" <<'JSON'
 {
   "passed": true,
-  "steps_run": ["install", "typecheck", "lint", "test", "knip"]
+  "steps_run": ["install", "typecheck", "lint", "browsers", "test", "knip"]
 }
 JSON
 

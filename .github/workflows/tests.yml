@@ -170,13 +170,9 @@ jobs:
       - if: steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true'
         name: Lint
         run: pnpm lint-dry
-      - if: steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true'
-        name: Run Vitest tests
-        run: pnpm test:ci
-        env:
-          COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          npm_package_version: ${{ steps.package-version.outputs.current-version}}
-      # Only the engine this suite runs. `playwright install` resolves its browser
+      # Only the engine the suites run. Vitest's browser and storybook projects
+      # and the Playwright story scan all launch Chromium, so this one install
+      # serves both steps below and must precede the first of them. `playwright install` resolves its browser
       # set from its arguments alone and reads nothing from playwright.config.ts,
       # so with none named it adds firefox and webkit on top of what this suite
       # needs, for a config whose CI project list is chromium alone (its
@@ -194,6 +190,12 @@ jobs:
       - if: steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true'
         name: Install Playwright Browsers
         run: pnpm -C frontend exec playwright install --with-deps chromium
+      - if: steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true'
+        name: Run Vitest tests
+        run: pnpm test:ci
+        env:
+          COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          npm_package_version: ${{ steps.package-version.outputs.current-version}}
       # The story a11y scan serves this build (`storybook-static/`) and fails,
       # never skips, when it is absent.
       - if: steps.chore-deps.outputs.skip == 'false' && steps.filter.outputs.code == 'true'

@@ -22,7 +22,6 @@ export default {
     'accept-language-parser',
     '@epic-web/invariant',
     '@msw/data',
-    '@playwright-testing-library/test',
     '@storybook/addon-docs',
     '@tailwindcss/typography',
     'lru-cache',
@@ -36,9 +35,6 @@ export default {
     'stylelint-order',
     'tailwindcss',
     'tw-animate-css',
-    // Browser tests render through it once the Testing Library suites are
-    // converted; until a test imports it, knip sees it unused.
-    'vitest-browser-react',
   ],
   ignoreUnresolved: [/\/\+types\//],
   project: ['app/**/*.{ts,tsx}', 'test/**/*.{ts,tsx}'],

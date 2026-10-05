@@ -19,5 +19,8 @@ coverage
 # Storybook
 /storybook-static/
 
+# Vitest browser mode failure attachments
+/.vitest/
+
 # Optional eslint cache
 .eslintcache

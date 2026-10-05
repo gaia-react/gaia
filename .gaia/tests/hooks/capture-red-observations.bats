@@ -737,3 +737,62 @@ failure_payload() {
   jq -r '.hookSpecificOutput.additionalContext' <<<"$output" | grep -qF -- 'gaia-packages: .gaia/packages.json is malformed'
   [ "$(fixture_ledger_lines)" -eq 0 ]
 }
+
+# --- a re-run that cannot start a browser says so ----------------------------
+
+# A fake `pnpm` that prints STUB_PNPM_OUTPUT_SOURCE and, when set, copies
+# STUB_PNPM_JSON_SOURCE to the --outputFile path before exiting 1. The fixtures
+# are captured from Vitest browser mode run with PLAYWRIGHT_BROWSERS_PATH
+# pointed at a directory with no Chromium in it: that run still writes a
+# parseable report, with zero tests, next to the browser-launch error text.
+stub_failing_pnpm() {
+  STUB_BIN=$(mktemp -d)
+  cat > "$STUB_BIN/pnpm" <<'SH'
+#!/bin/sh
+output_file=""
+for argument in "$@"; do
+  case "$argument" in
+    --outputFile=*) output_file="${argument#--outputFile=}" ;;
+  esac
+done
+if [ -n "$output_file" ] && [ -n "${STUB_PNPM_JSON_SOURCE:-}" ]; then
+  cp "$STUB_PNPM_JSON_SOURCE" "$output_file"
+fi
+[ -z "${STUB_PNPM_OUTPUT_SOURCE:-}" ] || cat "$STUB_PNPM_OUTPUT_SOURCE"
+exit 1
+SH
+  chmod +x "$STUB_BIN/pnpm"
+  PATH="$STUB_BIN:$PATH"
+  export PATH
+}
+
+@test "a re-run that cannot launch Chromium emits context naming pnpm install:browsers" {
+  stub_failing_pnpm
+  STUB_PNPM_OUTPUT_SOURCE="$BATS_TEST_DIRNAME/fixtures/no-chromium-vitest-output.txt"
+  STUB_PNPM_JSON_SOURCE="$BATS_TEST_DIRNAME/fixtures/no-chromium-vitest-report.json"
+  export STUB_PNPM_OUTPUT_SOURCE STUB_PNPM_JSON_SOURCE
+  run_capture "Bash" "pnpm test --run $FIXTURE_RELATIVE_DIRECTORY/mixed-pass-fail.test.ts"
+  [ "$status" -eq 0 ]
+  [ "$(ledger_lines)" -eq 0 ]
+  jq -e '.hookSpecificOutput.hookEventName == "PostToolUse"' <<<"$output"
+  context=$(jq -r '.hookSpecificOutput.additionalContext' <<<"$output")
+  grep -qF -- 'pnpm install:browsers' <<<"$context"
+  grep -qF -- 'no failing (RED) result was recorded' <<<"$context"
+}
+
+@test "a re-run with no report and the launch error also names pnpm install:browsers" {
+  stub_failing_pnpm
+  STUB_PNPM_OUTPUT_SOURCE="$BATS_TEST_DIRNAME/fixtures/no-chromium-vitest-output.txt"
+  export STUB_PNPM_OUTPUT_SOURCE
+  run_capture "Bash" "pnpm test --run $FIXTURE_RELATIVE_DIRECTORY/mixed-pass-fail.test.ts"
+  [ "$status" -eq 0 ]
+  jq -r '.hookSpecificOutput.additionalContext' <<<"$output" | grep -qF -- 'pnpm install:browsers'
+}
+
+@test "a re-run that yields no report for another reason stays silent" {
+  stub_failing_pnpm
+  run_capture "Bash" "pnpm test --run $FIXTURE_RELATIVE_DIRECTORY/mixed-pass-fail.test.ts"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ "$(ledger_lines)" -eq 0 ]
+}

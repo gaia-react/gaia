@@ -1,6 +1,5 @@
 /// <reference types="vitest" />
 /// <reference types="vite/client" />
-/// <reference types="@testing-library/jest-dom" />
 
 import {storybookTest} from '@storybook/addon-vitest/vitest-plugin';
 import tailwindcss from '@tailwindcss/vite';
@@ -96,19 +95,6 @@ export default defineConfig({
         plugins: [react(), tailwindcss(), reactCompiler],
         test: {
           browser: browserOptions('browser'),
-          // Converted to stories and deleted in the same change.
-          exclude: [
-            'app/components/errors/error-stack/tests/index.test.tsx',
-            'app/components/form/form-error/tests/index.test.tsx',
-            'app/components/form/max-length/tests/index.test.tsx',
-            'app/components/form/tests/composed-form.test.tsx',
-            'app/components/language-select/tests/index.test.tsx',
-            'app/components/theme-switch/tests/index.test.tsx',
-            'app/components/ui/tests/button.test.tsx',
-            'app/components/ui/tests/checkbox.test.tsx',
-            'app/pages/index/tests/page.test.tsx',
-            'app/utils/tests/notify.test.tsx',
-          ],
           globals: true,
           include: [
             'app/**/*.test.tsx',

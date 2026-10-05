@@ -958,6 +958,29 @@ jobs:
           # keying the store cache on the root lockfile as well would rebuild
           # the cache on bumps this leg does not consume.
           cache-dependency-path: .gaia/cli/pnpm-lock.yaml
+      # The story-name equality suite runs the real storybook Vitest project in
+      # Chromium, so the leg that holds it owes a browser install. The
+      # condition is derived from the sharder for the reason the floor-check
+      # step above gives: the suite moves between legs as the weighted split
+      # re-balances, and a hard-coded shard name would arm the install on the
+      # wrong leg. Only the legs that install the root workspace can hold it,
+      # and the suite fails rather than skips when Chromium is absent.
+      - if: contains(fromJSON('["hooks-2", "hooks-3", "hooks-4"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
+        id: needs-chromium
+        name: Ask the sharder whether this shard holds the story-name equality suite
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          shard_files="$(bash .gaia/tests/bats-shards.sh files "$SHARD")"
+          if grep -qF 'extract-test-signals-stories-reporter.bats' <<<"$shard_files"; then
+            printf 'needed=1\n' >> "$GITHUB_OUTPUT"
+          else
+            printf 'needed=0\n' >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.needs-chromium.outputs.needed == '1'
+        name: Install Chromium for the story-name equality suite
+        run: pnpm -C frontend exec playwright install --with-deps chromium
       # `${{ matrix.shard }}` reaches the script only through `env:`, never
       # interpolated into the run: body text itself -- the shape this repo's
       # workflows auditor checks, and what keeps it true when a future edit
