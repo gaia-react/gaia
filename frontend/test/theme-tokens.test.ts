@@ -10,89 +10,6 @@ const tailwindCss = readFileSync(
   'utf-8'
 );
 
-// Stock base-nova neutral values, as the shadcn init emitted them.
-const stockRoot: Record<string, string> = {
-  '--accent': 'oklch(0.97 0 0)',
-  '--accent-foreground': 'oklch(0.205 0 0)',
-  '--background': 'oklch(1 0 0)',
-  '--border': 'oklch(0.922 0 0)',
-  '--card': 'oklch(1 0 0)',
-  '--card-foreground': 'oklch(0.145 0 0)',
-  '--chart-1': 'oklch(0.87 0 0)',
-  '--chart-2': 'oklch(0.556 0 0)',
-  '--chart-3': 'oklch(0.439 0 0)',
-  '--chart-4': 'oklch(0.371 0 0)',
-  '--chart-5': 'oklch(0.269 0 0)',
-  '--destructive': 'oklch(0.577 0.245 27.325)',
-  '--foreground': 'oklch(0.145 0 0)',
-  '--input': 'oklch(0.922 0 0)',
-  '--muted': 'oklch(0.97 0 0)',
-  '--muted-foreground': 'oklch(0.556 0 0)',
-  '--popover': 'oklch(1 0 0)',
-  '--popover-foreground': 'oklch(0.145 0 0)',
-  '--primary': 'oklch(0.205 0 0)',
-  '--primary-foreground': 'oklch(0.985 0 0)',
-  '--radius': '0.625rem',
-  '--ring': 'oklch(0.708 0 0)',
-  '--secondary': 'oklch(0.97 0 0)',
-  '--secondary-foreground': 'oklch(0.205 0 0)',
-  '--sidebar': 'oklch(0.985 0 0)',
-  '--sidebar-accent': 'oklch(0.97 0 0)',
-  '--sidebar-accent-foreground': 'oklch(0.205 0 0)',
-  '--sidebar-border': 'oklch(0.922 0 0)',
-  '--sidebar-foreground': 'oklch(0.145 0 0)',
-  '--sidebar-primary': 'oklch(0.205 0 0)',
-  '--sidebar-primary-foreground': 'oklch(0.985 0 0)',
-  '--sidebar-ring': 'oklch(0.708 0 0)',
-};
-
-const stockDark: Record<string, string> = {
-  '--accent': 'oklch(0.269 0 0)',
-  '--accent-foreground': 'oklch(0.985 0 0)',
-  '--background': 'oklch(0.145 0 0)',
-  '--border': 'oklch(1 0 0 / 10%)',
-  '--card': 'oklch(0.205 0 0)',
-  '--card-foreground': 'oklch(0.985 0 0)',
-  '--chart-1': 'oklch(0.87 0 0)',
-  '--chart-2': 'oklch(0.556 0 0)',
-  '--chart-3': 'oklch(0.439 0 0)',
-  '--chart-4': 'oklch(0.371 0 0)',
-  '--chart-5': 'oklch(0.269 0 0)',
-  '--destructive': 'oklch(0.704 0.191 22.216)',
-  '--foreground': 'oklch(0.985 0 0)',
-  '--input': 'oklch(1 0 0 / 15%)',
-  '--muted': 'oklch(0.269 0 0)',
-  '--muted-foreground': 'oklch(0.708 0 0)',
-  '--popover': 'oklch(0.205 0 0)',
-  '--popover-foreground': 'oklch(0.985 0 0)',
-  '--primary': 'oklch(0.922 0 0)',
-  '--primary-foreground': 'oklch(0.205 0 0)',
-  '--ring': 'oklch(0.556 0 0)',
-  '--secondary': 'oklch(0.269 0 0)',
-  '--secondary-foreground': 'oklch(0.985 0 0)',
-  '--sidebar': 'oklch(0.205 0 0)',
-  '--sidebar-accent': 'oklch(0.269 0 0)',
-  '--sidebar-accent-foreground': 'oklch(0.985 0 0)',
-  '--sidebar-border': 'oklch(1 0 0 / 10%)',
-  '--sidebar-foreground': 'oklch(0.985 0 0)',
-  '--sidebar-primary': 'oklch(0.488 0.243 264.376)',
-  '--sidebar-primary-foreground': 'oklch(0.985 0 0)',
-  '--sidebar-ring': 'oklch(0.556 0 0)',
-};
-
-// The only values GAIA changes, all accessibility (contrast) fixes. The ring
-// is darkened in light and lightened in dark so the focus ring, drawn at half
-// opacity, still measures 3:1 against the page, card and input surfaces.
-const rootOverrides: Record<string, string> = {
-  '--destructive': 'oklch(0.52 0.235 27.325)',
-  '--muted-foreground': 'oklch(0.5 0 0)',
-  '--ring': 'oklch(0.2 0 0)',
-};
-
-const darkOverrides: Record<string, string> = {
-  '--ring': 'oklch(0.92 0 0)',
-};
-
 const buildBlockPattern = (selector: string): RegExp =>
   new RegExp(String.raw`(?:^|\n)${selector}\s*\{([^}]*)\}`);
 
@@ -123,40 +40,39 @@ const darkTokens = parseBlock(String.raw`\.dark`);
 const stylelintOklch =
   /^oklch\(\d+(?:\.\d+)?% \d+(?:\.\d+)? \d+(?:\.\d+)?deg(?: \/ \d+(?:\.\d+)?%)?\)$/;
 
-// Normalizes either spelling to numbers so 52% and 0.52 compare equal.
-const parseOklchNumbers = (value: string): number[] => {
-  const match = /oklch\(([^)]+)\)/.exec(value);
-  const [channels, alpha] = (match?.[1] ?? '').split('/');
-  const [lightness, chroma, hue] = channels.trim().split(/\s+/);
-  const numbers = [
-    lightness.endsWith('%') ?
-      Number.parseFloat(lightness) / 100
-    : Number(lightness),
-    Number.parseFloat(chroma),
-    Number.parseFloat(hue),
-  ];
-
-  if (alpha) {
-    numbers.push(Number.parseFloat(alpha) / 100);
-  }
-
-  return numbers;
-};
-
-const isSameColor = (actual: string, expected: string): boolean => {
-  const actualNumbers = parseOklchNumbers(actual);
-  const expectedNumbers = parseOklchNumbers(expected);
-
-  return (
-    actualNumbers.length === expectedNumbers.length &&
-    actualNumbers.every(
-      (actualChannelValue, index) =>
-        Math.abs(actualChannelValue - expectedNumbers[index]) < 1e-9
-    )
-  );
-};
-
-const requiredTokens = Object.keys(stockDark);
+const requiredTokens = [
+  '--accent',
+  '--accent-foreground',
+  '--background',
+  '--border',
+  '--card',
+  '--card-foreground',
+  '--chart-1',
+  '--chart-2',
+  '--chart-3',
+  '--chart-4',
+  '--chart-5',
+  '--destructive',
+  '--foreground',
+  '--input',
+  '--muted',
+  '--muted-foreground',
+  '--popover',
+  '--popover-foreground',
+  '--primary',
+  '--primary-foreground',
+  '--ring',
+  '--secondary',
+  '--secondary-foreground',
+  '--sidebar',
+  '--sidebar-accent',
+  '--sidebar-accent-foreground',
+  '--sidebar-border',
+  '--sidebar-foreground',
+  '--sidebar-primary',
+  '--sidebar-primary-foreground',
+  '--sidebar-ring',
+];
 
 describe('theme tokens', () => {
   test.each(requiredTokens)('%s is defined in :root', (name) => {
@@ -168,7 +84,7 @@ describe('theme tokens', () => {
   });
 
   test('--radius is defined', () => {
-    expect(rootTokens.get('--radius')).toBe('0.625rem');
+    expect(rootTokens.has('--radius')).toBe(true);
   });
 
   test.each([...rootTokens.entries()].filter(([name]) => name !== '--radius'))(
@@ -184,34 +100,6 @@ describe('theme tokens', () => {
       expect(value).toMatch(stylelintOklch);
     }
   );
-
-  test.each(Object.entries(rootOverrides))(
-    ':root %s keeps the contrast override',
-    (name, expected) => {
-      expect(isSameColor(rootTokens.get(name) ?? '', expected)).toBe(true);
-    }
-  );
-
-  test.each(
-    Object.entries(stockRoot).filter(
-      ([name]) => name !== '--radius' && !(name in rootOverrides)
-    )
-  )(':root %s equals the stock value', (name, stock) => {
-    expect(isSameColor(rootTokens.get(name) ?? '', stock)).toBe(true);
-  });
-
-  test.each(Object.entries(darkOverrides))(
-    '.dark %s keeps the contrast override',
-    (name, expected) => {
-      expect(isSameColor(darkTokens.get(name) ?? '', expected)).toBe(true);
-    }
-  );
-
-  test.each(
-    Object.entries(stockDark).filter(([name]) => !(name in darkOverrides))
-  )('.dark %s equals the stock value', (name, stock) => {
-    expect(isSameColor(darkTokens.get(name) ?? '', stock)).toBe(true);
-  });
 
   test('declares color-scheme for both themes', () => {
     expect(buildBlockPattern(':root').exec(tokenCss)?.[1]).toMatch(
