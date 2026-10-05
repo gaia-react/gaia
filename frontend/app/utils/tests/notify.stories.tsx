@@ -291,7 +291,13 @@ export const StackLoggedNotShown: StoryObj<typeof meta> = {
 
     await expectToast(canvasElement, 'Stacked and logged');
     await expect(body.getByText('Expand to view the stack')).toBeVisible();
-    await expect(consoleError).toHaveBeenCalledWith(stack);
+
+    // Production builds, which Chromatic snapshots, never log the stack.
+    if (process.env.NODE_ENV === 'production') {
+      await expect(consoleError).not.toHaveBeenCalledWith(stack);
+    } else {
+      await expect(consoleError).toHaveBeenCalledWith(stack);
+    }
     await expect(
       body.queryByText(stack.split('\n', 1)[0])
     ).not.toBeInTheDocument();
