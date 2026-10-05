@@ -27,6 +27,21 @@ setup() {
   # The ledger path is keyed to the repo's own tree key; ask the shipped
   # resolver for it rather than hardcoding a second copy of the literal.
   TREE_KEY=$(bash "$REPO_ROOT/.gaia/scripts/main-root-lib.sh" --tree-key "$REPO_ROOT")
+
+  # The corpus standing check's floor, counted by grep rather than by the
+  # helper's TypeScript parser, so a parser regression that drops records
+  # cannot also lower the bar it is measured against. It counts only lines
+  # opening a test/it call on a quoted title with no title-expanding modifier,
+  # each of which the helper must record, so it undercounts (runIf(...)(...),
+  # a title wrapped onto the next line) and never overcounts outside the
+  # exemption below. That is why it is a floor and not an equality.
+  PLAIN_TEST_PATTERN="^[[:space:]]*(test|it)(\.(only|skip|todo|fails|concurrent|sequential))*\([[:space:]]*['\"]"
+  # Inside a `.each`/`.for` describe or one with a non-literal title the helper
+  # records nothing by design, so a floor counted over such a file would demand
+  # records the helper must not emit. The second arm also catches the
+  # `describe.each(table)` spelling; the first is there for the tagged-template
+  # one. Over-matching only drops a file from the floor, the safe direction.
+  UNRECORDED_SUBTREE_PATTERN="describe\.(each|for)|describe(\.[a-z]+)*\([[:space:]]*[^'\"[:space:]]"
 }
 
 # Run the Node helper from the repo root with a repo-relative fixture path.
@@ -475,39 +490,47 @@ run_library() {
 
 # --- signal helper: corpus standing check over the union glob set ---
 
-@test "the helper over the whole union glob set has no duplicate signal per file, and pins its file/record counts" {
+@test "the helper over the whole union glob set has no duplicate signal per file, and records at least every plain literal-titled test" {
   local corpus="$BATS_TEST_TMPDIR/corpus.ndjson"
   : > "$corpus"
 
+  # Checked against the floor setup() defines rather than a pinned total. A
+  # pinned total follows nothing, so it reds an unrelated harness PR after any
+  # frontend PR adds a test. The test runner's own listing is no oracle either:
+  # it expands `.each` rows the helper deliberately leaves unrecorded, and the
+  # CI leg that runs this suite installs no runner. A file the exemption
+  # matches skips only the floor and keeps every other check below.
   local file_count=0
-  local record_count=0
-  local f duplicate_signals file_record_count
+  local floor_total=0
+  local f duplicate_signals file_record_count file_floor
   while IFS= read -r -d '' f; do
     [ -z "$f" ] && continue
     file_count=$((file_count + 1))
     run_helper "$f"
     [ "$status" -eq 0 ]
+    file_record_count=0
     if [ -n "$output" ]; then
-      # frontend/.playwright/e2e/legal-a11y.spec.ts emits zero records; a "same number
-      # of records" clause over it is satisfied by 0 == 0 and carries no
-      # weight on its own.
       duplicate_signals=$(printf '%s\n' "$output" | jq -r .signal | sort | uniq -d)
       [ -z "$duplicate_signals" ]
       file_record_count=$(printf '%s\n' "$output" | grep -c '"fullName"')
-      record_count=$((record_count + file_record_count))
       printf '%s\n' "$output" >> "$corpus"
+    fi
+    if ! grep -qE "$UNRECORDED_SUBTREE_PATTERN" "$REPO_ROOT/$f"; then
+      file_floor=$(grep -cE "$PLAIN_TEST_PATTERN" "$REPO_ROOT/$f" || true)
+      floor_total=$((floor_total + file_floor))
+      [ "$file_record_count" -ge "$file_floor" ] || {
+        echo "$f: helper emitted $file_record_count record(s), below the $file_floor plain literal-titled test(s) grep counts" >&2
+        return 1
+      }
     fi
   done < <(git -C "$REPO_ROOT" ls-files -z 'frontend/app/**/*.test.ts' 'frontend/app/**/*.test.tsx' \
     'frontend/.playwright/**/*.spec.ts' 'frontend/.playwright/**/*.spec.tsx' \
     'frontend/.playwright/**/*.test.ts' 'frontend/.playwright/**/*.test.tsx')
 
-  # Refresh both by re-running the git ls-files command above and summing the
-  # helper's output line count across the result. Re-derive rather than
-  # adjusting the old number by the diff's test count: the two cardinals move
-  # independently, and #1748 was a `record_count` that drifted while
-  # `file_count` stayed put.
-  [ "$file_count" -eq 31 ]
-  [ "$record_count" -eq 152 ]
+  # Without these the floor check above passes vacuously: on an empty file set
+  # (a glob that stopped matching), or on one where no file contributed a floor.
+  [ "$file_count" -gt 0 ]
+  [ "$floor_total" -gt 0 ]
 
   local bad_signal
   bad_signal=$(jq -r '.signal' "$corpus" | grep -vE '^sha256:[0-9a-f]{64}$' || true)
@@ -518,7 +541,36 @@ run_library() {
   [ "$shapes" = "fullName,signal,kind" ]
 
   # Zero in-scope tests classify type-only today, so this is a floor rather
-  # than a check; the real catcher for `kind` classification is the existing
-  # case at .gaia/tests/hooks/red-ledger-lib.bats:119-126, which must stay
-  # green.
+  # than a check; the real catcher for `kind` classification is the
+  # "helper tags an expectTypeOf-only test kind=type-only" case above, which
+  # must stay green.
+}
+
+# The corpus check's exemption is dormant while no tracked frontend test holds
+# such a describe, so these fixtures are what keep it able to fail.
+@test "the corpus floor's exemption fires on a tagged-template describe.each and on a non-literal describe title, and on no literal describe" {
+  local fixture file_floor file_record_count
+  for fixture in each-describe.test.ts dynamic-title-describe.test.ts; do
+    run_helper "$FIXTURE_RELATIVE_DIRECTORY/$fixture"
+    [ "$status" -eq 0 ]
+    file_record_count=0
+    [ -z "$output" ] || file_record_count=$(printf '%s\n' "$output" | grep -c '"fullName"')
+    file_floor=$(grep -cE "$PLAIN_TEST_PATTERN" "$REPO_ROOT/$FIXTURE_RELATIVE_DIRECTORY/$fixture" || true)
+    # Without the exemption the floor would red here: grep counts a test the
+    # helper must not record.
+    [ "$file_floor" -gt "$file_record_count" ] || {
+      echo "$fixture: floor $file_floor does not exceed $file_record_count record(s); the fixture no longer exercises the exemption" >&2
+      return 1
+    }
+    grep -qE "$UNRECORDED_SUBTREE_PATTERN" "$REPO_ROOT/$FIXTURE_RELATIVE_DIRECTORY/$fixture" || {
+      echo "$fixture: the exemption pattern does not match" >&2
+      return 1
+    }
+  done
+
+  grep -qE "$UNRECORDED_SUBTREE_PATTERN" "$REPO_ROOT/$FIXTURE_RELATIVE_DIRECTORY/nested-describe.test.ts" && {
+    echo "the exemption matches a literal-titled describe, which would drop its file from the floor" >&2
+    return 1
+  }
+  true
 }
