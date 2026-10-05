@@ -26,14 +26,18 @@ describe('ThemeSwitch', () => {
     expect(await screen.findByRole('button', {name})).toBeInTheDocument();
   });
 
-  test('renders a lucide icon', async () => {
-    renderSwitch('light');
+  test.each([
+    [undefined, 'monitor'],
+    ['light', 'sun'],
+    ['dark', 'moon'],
+  ] as const)('preference %s renders the %s icon', async (preference, icon) => {
+    renderSwitch(preference);
 
     const button = await screen.findByRole('button');
 
     // Icons are aria-hidden, so the lucide class is the only handle on them.
 
-    expect(button.querySelector('svg.lucide')).toBeInTheDocument();
+    expect(button.querySelector(`svg.lucide-${icon}`)).toBeInTheDocument();
   });
 
   test('posts the next theme mode', async () => {
