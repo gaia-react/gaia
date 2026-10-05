@@ -101,6 +101,7 @@ assert_pinned() {
   assert_pinned "The window's fourth field is \`closing\`."
   assert_pinned 'Run no fixer in it.'
   assert_pinned 'stops the unit `needs-human`, naming the finding, before any fixer runs.'
+  assert_pinned 'a Critical or security-class finding this branch authored'
   assert_pinned 'Then, outside a closing round, baseline, fixer'
   # A closing round never pushes, so the After-the-push bullet does not
   # reach it: the closing paragraph carries the PR-body and filing steps.
