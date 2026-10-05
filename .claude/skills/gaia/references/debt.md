@@ -117,11 +117,15 @@ A shared directory alone is too weak to cluster on (a whole `app/services/` dire
 
 An issue asserts things about the tree: the dedup key's `path=`, the `file:line` locations its body cites, and any count its suggested fix depends on. Nothing re-checks those when the backlog is read, so an issue whose subject was renamed, moved, or already fixed keeps offering itself and still reads as actionable. Draining one that way documents a change that is not the change the code needs.
 
-Run the cheap half of that verification here, over every candidate, from the `key.path` the ordering query already emits. Test the path against the index, not the filesystem, so an untracked build artifact sitting at the path does not read as a live source file:
+Run the cheap half of that verification here, over every candidate, from the `key.path` the ordering query already emits. Pipe the ordering command in `## Read and order the backlog` above, run unchanged from the repository root, into the probe script:
 
 ```bash
-git ls-files --error-unmatch -- "<path>" >/dev/null 2>&1 || echo "path gone"
+<the ordering command above> | bash .gaia/scripts/debt-path-probe.sh
 ```
+
+It prints one JSON array with a `{number, path, status}` entry per issue, in backlog order. `status` is `gone` when the path is not in the index, so an untracked build artifact sitting at the path does not read as a live source file; `tracked` when it is; and `keyless` when the emitted `key` is `null`. A non-zero exit means no report: say the probe could not run and annotate nothing, rather than marking every issue stale.
+
+A `key.path` is text from an editable issue body, so never place it, or any other body text, in a command line yourself: not to re-run the probe on one issue, not to check a path by hand. The script reads every path as JSON data; read the `status` it prints.
 
 This probe is **advisory, and annotates only**. A missing path is a strong signal and not a verdict: a finding can stay entirely real while the file it cites is renamed out from under the issue, and the correct repair is sometimes the issue and sometimes the code. So `list` marks the issue `[stale: path gone]`, `why` reports it, and `fix` still offers it with the annotation carried into the option description, which puts the choice in front of the fact instead of behind it. An issue whose emitted `key` is `null` has no path to probe and is annotated nothing: a missing key is not evidence of staleness.
 
@@ -369,8 +373,8 @@ Runs after the pick, the claim, and the Fix-time security screen above, and **be
 
 Per member, in order, and stop at the first mismatch:
 
-1. **The dedup key's `path=` resolves.** The advisory probe in `### Staleness probe (all subcommands)` above already annotated this; here it is a verdict rather than an annotation.
-2. **Every `file:line` the body cites resolves to a real line in the named file**, and the line still carries what the body says is there. Reading the surrounding lines is the point: a citation that resolves to a *different* statement is worse than one that does not resolve at all, because it looks correct.
+1. **The dedup key's `path=` resolves.** The advisory probe in `### Staleness probe (all subcommands)` above already annotated this; here its `status` for the member is a verdict rather than an annotation.
+2. **Every `file:line` the body cites resolves to a real line in the named file**, and the line still carries what the body says is there. Reading the surrounding lines is the point: a citation that resolves to a *different* statement is worse than one that does not resolve at all, because it looks correct. Open each cited file with the Read tool, never with a shell command that names it: a cited path is body text, held to the same rule as the probe's `key.path`.
 3. **Every count the fix depends on re-derives.** A body that says "41 `unowned:` entries at `<path>:239-298`" is asserting a number and a range. Re-derive both. A count the suggested fix does not depend on is not worth stopping over; a count it is built around is the fix's premise.
 
 **On a mismatch:** report it precisely, naming the member, the assertion, and what the tree says instead. Then release the unit exactly as a controlled stop does: strip `in-progress` from every claimed member (`gh issue edit <n> --remove-label in-progress`) and touch the sentinel (`mkdir -p .gaia/local/debt && : > .gaia/local/debt/refresh-requested`), so the issue re-enters the open count and a peer session's offer. Do not edit the issue to repair the drift and do not proceed on a re-derived premise: which of the issue and the code is wrong is the operator's call. (Run ends here; see `## Cost record (run end)`.)
