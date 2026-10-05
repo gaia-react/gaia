@@ -309,7 +309,7 @@ checkpoint_message() {
   printf 'The human may instead type one of these lines as the whole prompt, in this same session (the grant hook resolves the checkpoint by this session id when the session working directory is on another branch):\n'
   printf 'Grant (type exactly as the whole prompt): %s\n' "$(gaia_loop_grant_line "$grant_round_count")"
   printf 'Accept (type exactly as the whole prompt): %s\n' "$(gaia_loop_accept_line)"
-  printf 'Unattended run (a /gaia-debt drain): never ask; stop, leave the PR open, print the typed grant line above, and print no continuation prompt.\n'
+  printf 'Unattended run (no human in the session: a headless, scheduled, or /loop run): never ask; stop, leave the PR open, print the typed grant line above, and print no continuation prompt.\n'
   printf '\nClaude never writes the state file and never types or simulates these lines. A dispatch on an already-audited tree is still allowed.\n'
   # shellcheck disable=SC2016 # the backticks are literal text in the message
   printf 'Evidence and recommendation: `bash %s/audit-loop-eval.sh brief --root %s`.\n' "$scripts" "$root"
