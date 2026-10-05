@@ -365,6 +365,7 @@
     "frontend/.storybook/decorators/WrapDecorator.tsx": "owned",
     "frontend/.storybook/i18next.ts": "owned",
     "frontend/.storybook/main.ts": "owned",
+    "frontend/.storybook/modes.ts": "owned",
     "frontend/.storybook/preview-head.html": "owned",
     "frontend/.storybook/preview.ts": "owned",
     "frontend/.storybook/viewport.ts": "owned",
@@ -677,7 +678,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-10-05T12:07:23.206Z",
+  "generated": "2026-10-05T13:30:03.607Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",
