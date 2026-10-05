@@ -6,9 +6,7 @@ type MarkerProps = {text: string};
 const Marker = ({text}: MarkerProps) => <p>{text}</p>;
 
 // Fixture for the test-identity extractor: one story per supported play shape.
-// Each play asserts its marker renders exactly once, which also proves the
-// Chromatic light-and-dark decorator never engages inside the Vitest project
-// (it renders every story twice).
+// Each play asserts its marker renders exactly once.
 const meta = {
   args: {text: 'default marker'},
   component: Marker,

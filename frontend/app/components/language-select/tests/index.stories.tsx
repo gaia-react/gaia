@@ -12,14 +12,14 @@ import {ACTION_PATHS} from '~/action-paths';
 import LanguageSelect from '..';
 
 type StoryArgs = {
-  actionDelayMs: number;
+  actionDelayMilliseconds: number;
   languages: string[];
   onSubmit: (language: FormDataEntryValue | null) => void;
 };
 
 const meta: Meta<StoryArgs> = {
   args: {
-    actionDelayMs: 0,
+    actionDelayMilliseconds: 0,
     languages: ['en', 'ja'],
     onSubmit: fn(),
   },
@@ -30,9 +30,9 @@ const meta: Meta<StoryArgs> = {
         [ACTION_PATHS.setLanguage]: async ({request}) => {
           const formData = await request.formData();
 
-          if (args.actionDelayMs) {
+          if (args.actionDelayMilliseconds) {
             await new Promise((resolve) => {
-              setTimeout(resolve, args.actionDelayMs);
+              setTimeout(resolve, args.actionDelayMilliseconds);
             });
           }
 
@@ -172,7 +172,7 @@ export const PointerChoiceAfterKeydownSubmits: Story = {
 };
 
 export const ChoiceBackToCurrentDuringInFlightSubmit: Story = {
-  args: {actionDelayMs: SETTLE_MILLISECONDS},
+  args: {actionDelayMilliseconds: SETTLE_MILLISECONDS},
   play: async ({args, canvasElement}) => {
     const select = await findSelect(canvasElement);
 

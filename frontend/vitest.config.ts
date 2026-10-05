@@ -18,7 +18,7 @@ const ignoreWarnings = ['React DevTools', 'React Router Future Flag Warning'];
 // uses, so a story is judged at the same size by both.
 // Each browser project names its one instance: two projects on the same
 // browser need distinct instance names or Vitest refuses to start.
-const browserOptions = (instanceName: string): BrowserConfigOptions => ({
+const createBrowserOptions = (instanceName: string): BrowserConfigOptions => ({
   enabled: true,
   headless: true,
   instances: [{browser: 'chromium', name: instanceName}],
@@ -94,7 +94,7 @@ export default defineConfig({
       {
         plugins: [react(), tailwindcss(), reactCompiler],
         test: {
-          browser: browserOptions('browser'),
+          browser: createBrowserOptions('browser'),
           globals: true,
           include: [
             'app/**/*.test.tsx',
@@ -122,7 +122,7 @@ export default defineConfig({
           reactCompiler,
         ],
         test: {
-          browser: browserOptions('storybook'),
+          browser: createBrowserOptions('storybook'),
           name: 'storybook',
         },
       },

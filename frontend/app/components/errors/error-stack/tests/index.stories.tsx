@@ -66,6 +66,23 @@ CopiesStack.play = async ({canvasElement}) => {
   writeText.mockRestore();
 };
 
+export const KeyboardCopiesStack: StoryFn = () => (
+  <ErrorStack stack="boom stack" />
+);
+
+KeyboardCopiesStack.play = async ({canvasElement}) => {
+  const writeText = spyOn(navigator.clipboard, 'writeText');
+  const button = within(canvasElement).getByRole('button', {name: /copy/i});
+
+  await userEvent.tab();
+  await expect(button).toHaveFocus();
+
+  await userEvent.keyboard('{Enter}');
+
+  await expect(writeText).toHaveBeenCalledWith('boom stack');
+  writeText.mockRestore();
+};
+
 export const ClipboardRejection: StoryFn = () => (
   <ErrorStack stack="boom stack" />
 );

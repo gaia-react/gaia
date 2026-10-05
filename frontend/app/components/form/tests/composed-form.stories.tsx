@@ -59,14 +59,12 @@ export const Invalid: StoryFn<StoryArgs> = () => <ComposedForm />;
 Invalid.play = async ({canvasElement}) => {
   const canvas = within(canvasElement);
 
-  // Chromatic renders the story in light and dark panes, so act on every copy.
-  for (const submit of await canvas.findAllByRole('button', {name: 'Submit'})) {
-    await userEvent.click(submit);
-  }
+  await userEvent.click(await canvas.findByRole('button', {name: 'Submit'}));
 
-  for (const nameField of await canvas.findAllByLabelText('Name')) {
-    await expect(nameField).toHaveAttribute('aria-invalid', 'true');
-  }
+  await expect(await canvas.findByLabelText('Name')).toHaveAttribute(
+    'aria-invalid',
+    'true'
+  );
 };
 
 export const Disabled: StoryFn<StoryArgs> = () => (

@@ -23,16 +23,14 @@ const meta: Meta = {
 
 export default meta;
 
-// Chromatic renders the story twice (light and dark panes), so submit every
-// copy rather than expecting a single button.
-const showError = async ({canvasElement}: {canvasElement: HTMLElement}) => {
-  const buttons = await within(canvasElement).findAllByRole('button', {
-    name: 'Submit',
-  });
+const submitAndFindAlert = async (
+  canvasElement: HTMLElement
+): Promise<HTMLElement> => {
+  const canvas = within(canvasElement);
 
-  for (const button of buttons) {
-    await userEvent.click(button);
-  }
+  await userEvent.click(canvas.getByRole('button', {name: 'Submit'}));
+
+  return canvas.findByRole('alert');
 };
 
 export const Default: StoryFn = () => (
@@ -42,12 +40,10 @@ export const Default: StoryFn = () => (
   </Form>
 );
 
-Default.play = async (context) => {
-  await showError(context);
-
-  await expect(
-    await within(context.canvasElement).findByRole('alert')
-  ).toHaveTextContent('Something went wrong. Please try again.');
+Default.play = async ({canvasElement}) => {
+  await expect(await submitAndFindAlert(canvasElement)).toHaveTextContent(
+    'Something went wrong. Please try again.'
+  );
 };
 
 export const Hidden: StoryFn = () => (
@@ -61,23 +57,15 @@ type PlayContext = {canvasElement: HTMLElement};
 
 const actionErrorMessage = 'Something went wrong. Please try again.';
 
-const ErrorForm = ({children}: {children?: ReactNode}) => (
+type ErrorFormProps = {children?: ReactNode};
+
+const ErrorForm = ({children}: ErrorFormProps) => (
   <Form className="space-y-4" method="post">
     <FormError />
     {children}
     <Button type="submit">Submit</Button>
   </Form>
 );
-
-const submitAndFindAlert = async (
-  canvasElement: HTMLElement
-): Promise<HTMLElement> => {
-  const canvas = within(canvasElement);
-
-  await userEvent.click(canvas.getByRole('button', {name: 'Submit'}));
-
-  return canvas.findByRole('alert');
-};
 
 const focusDismissButton = (canvasElement: HTMLElement): HTMLElement => {
   const dismissButton = within(canvasElement).getByRole('button', {

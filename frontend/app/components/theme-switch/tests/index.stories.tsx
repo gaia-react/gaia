@@ -97,3 +97,21 @@ export const Dark: Story = {
       next: 'system',
     }),
 };
+
+export const KeyboardActivation: Story = {
+  play: async ({args, canvasElement}) => {
+    const button = await within(canvasElement).findByRole('button', {
+      name: 'Enable light mode',
+    });
+
+    await userEvent.tab();
+    await expect(button).toHaveFocus();
+
+    await userEvent.keyboard('{Enter}');
+
+    await waitFor(async () => {
+      await expect(args.onSubmit).toHaveBeenCalledTimes(1);
+    });
+    await expect(args.onSubmit).toHaveBeenCalledWith('light');
+  },
+};

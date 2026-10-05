@@ -6,9 +6,7 @@ type MarkerProps = {text: string};
 const Marker = ({text}: MarkerProps) => <p>{text}</p>;
 
 // Fixture for the test-identity extractor: a play on the meta is inherited by
-// every story in the file. The play asserts the marker renders exactly once,
-// which also proves the Chromatic light-and-dark decorator never engages inside
-// the Vitest project (it renders every story twice).
+// every story in the file. The play asserts the marker renders exactly once.
 const meta = {
   args: {text: 'meta play marker'},
   component: Marker,

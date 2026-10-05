@@ -1,6 +1,6 @@
 import {useTranslation} from 'react-i18next';
 import type {Meta, StoryFn, StoryObj} from '@storybook/react-vite';
-import {expect, within} from 'storybook/test';
+import {expect, userEvent, within} from 'storybook/test';
 import {Checkbox} from '~/components/ui/checkbox';
 import {Field, FieldLabel} from '~/components/ui/field';
 import {Label} from '~/components/ui/label';
@@ -55,6 +55,29 @@ export const Disabled: StoryFn = () => {
       />
     </div>
   );
+};
+
+export const KeyboardToggle: StoryObj<typeof meta> = {
+  play: async ({canvasElement}) => {
+    const checkbox = within(canvasElement).getByRole('checkbox', {
+      name: 'Accept',
+    });
+
+    await userEvent.tab();
+    await expect(checkbox).toHaveFocus();
+    await expect(checkbox).not.toBeChecked();
+
+    await userEvent.keyboard(' ');
+
+    await expect(checkbox).toBeChecked();
+    await expect(checkbox).toHaveFocus();
+  },
+  render: () => (
+    <div className="flex gap-2">
+      <Checkbox id="acceptKeyboard" />
+      <Label htmlFor="acceptKeyboard">Accept</Label>
+    </div>
+  ),
 };
 
 export const WithLabel: StoryObj<typeof meta> = {
