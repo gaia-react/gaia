@@ -489,6 +489,14 @@ recommended_count() { printf '%s' "$1" | jq '[.questions[0].options[] | select(.
   true
 }
 
+@test "recommended: a stalled small tail the evaluator calls accept-eligible is an accept, not a stop" {
+  [ "$(gaia_loop_recommended rubric:stalled '{"verdict":"stalled","signals":{"stalled":true,"small-tail":true},"accept_eligible":true}')" = accept ]
+  [ "$(gaia_loop_recommended context '{"verdict":"stalled","signals":{"stalled":true,"small-tail":true},"accept_eligible":true}')" = accept ]
+  [ "$(gaia_loop_recommended rubric:stalled '{"verdict":"stalled","signals":{"stalled":true,"small-tail":true},"accept_eligible":false}')" = stop ]
+  [ "$(gaia_loop_recommended rubric:stalled '{"verdict":"stalled","signals":{"stalled":true,"small-tail":false},"accept_eligible":true}')" = stop ]
+  true
+}
+
 @test "pinned question: a fresh reading puts the percent and k-token figures in the text" {
   local question
   question="$(gaia_loop_pinned_question feat/x 0123456789abcdef 6 3 true false context "fresh 123456 400000")"

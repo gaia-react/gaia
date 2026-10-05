@@ -103,7 +103,9 @@
 #              A(r) has an identity key absent from round r-1's keys and a
 #              line inside a new-side hunk of `diff -U0 -M tree_{r-1} tree_r`.
 #   stalled    r >= 3, r >= g + 2, A(r-2), A(r-1), A(r) non-null,
-#              A(r-1) >= A(r-2) and A(r) >= A(r-1).
+#              A(r-2) >= 1, A(r-1) >= A(r-2) and A(r) >= A(r-1). A quiet
+#              round resets the window: a series that sits at zero and then
+#              reports one finding (0, 0, 1) is convergence, not a stall.
 #   continue   otherwise.
 # g is the round of the checkpoint the latest grant answered (0 when none), so
 # a grant always buys one round of fresh evidence before enriching and two
@@ -160,8 +162,11 @@
 # would count fewer findings.
 #
 # RECOMMENDATION (brief): continue -> grant, unknown -> grant,
-# enriching -> accept, quiet -> accept, stalled -> stop; at a pending
-# checkpoint whose trigger is context, grant unless a denying signal holds.
+# enriching -> accept, quiet -> accept, stalled -> stop, except that a stalled
+# round where small-tail holds and the snapshot is accept_eligible -> accept
+# (what remains is a tail the evaluator already judges acceptable, and stop
+# would leave the PR open over it); at a pending checkpoint whose trigger is
+# context, grant unless a denying signal holds.
 # Spend is shown as information only and never changes any other field.
 
 _GAIA_LOOP_EVAL_DIRECTORY="${BASH_SOURCE[0]%/*}"
@@ -418,7 +423,7 @@ def isnew: key as $entry_key | any(($previous_keys // [])[]; . == $entry_key) | 
 | (if $authored_count == null then "unknown"
    elif $authored_count == 0 then "quiet"
    elif $round >= 3 and $round >= $granted_round + 1 and $previous_authored_count != null and ($new_keys_on_repaired_lines | length) > 0 then "enriching"
-   elif $round >= 3 and $round >= $granted_round + 2 and $second_previous_authored_count != null and $previous_authored_count != null and $previous_authored_count >= $second_previous_authored_count and $authored_count >= $previous_authored_count then "stalled"
+   elif $round >= 3 and $round >= $granted_round + 2 and $second_previous_authored_count != null and $second_previous_authored_count >= 1 and $previous_authored_count != null and $previous_authored_count >= $second_previous_authored_count and $authored_count >= $previous_authored_count then "stalled"
    else "continue" end) as $verdict
 '"$_GAIA_LOOP_SIGNALS_JQ"'
 | {round: $round, merge_base: (if $merge_base == "" then null else $merge_base end), keys: ($findings.entries | map(key) | unique),

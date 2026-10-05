@@ -60,6 +60,7 @@ On GAIA 1.6.1? Choose Abort, then paste the prompt from https://gaiareact.com/mi
 
 ### Fixed
 
+- The audit loop's checkpoint no longer recommends stopping a loop that has converged. A quiet round now resets the stall check, so two clean rounds followed by one finding read as progress, not a stall. A stalled loop whose remainder the evaluator already judges acceptable now recommends accepting it instead of stopping and leaving the PR open. The scripts ship, so the fix reaches adopters on their next `/update-gaia` (#2497)
 - The RED-verification gate now records a failing test run. A failing run exits non-zero, which Claude Code reports through a different hook event than a passing one, so the capture never saw the run it exists for, and following the commit gate's own recovery could not satisfy it (#2494)
 - The pre-merge bats selection no longer runs suites that only use a changed file's name as test data. Root-level files and shared-name frontend sources now match on a path-qualified name, which cuts a typical frontend PR's local verification from about 21 suites to 5 (#2491)
 - the English `date.month` label is now `Month`, matching `Year` and `Day`, so screen readers announce the date-of-birth month select with the same capitalization as its siblings (#2487)
