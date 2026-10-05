@@ -1,5 +1,5 @@
-import {act, renderHook} from '@testing-library/react';
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
+import {renderHook} from 'vitest-browser-react';
 import {useTimeout} from '../use-timeout';
 
 describe('useTimeout', () => {
@@ -11,50 +11,56 @@ describe('useTimeout', () => {
     vi.useRealTimers();
   });
 
-  test('complete is false immediately after mount', () => {
-    const {result} = renderHook(() => useTimeout(500));
+  test('complete is false immediately after mount', async () => {
+    const {result} = await renderHook(() => useTimeout(500));
     expect(result.current).toBe(false);
   });
 
-  test('complete becomes true after advancing timers past delay', () => {
-    const {result} = renderHook(() => useTimeout(500));
+  test('complete becomes true after advancing timers past delay', async () => {
+    const {act, result} = await renderHook(() => useTimeout(500));
     expect(result.current).toBe(false);
 
-    act(() => {
+    await act(() => {
       vi.advanceTimersByTime(500);
     });
 
     expect(result.current).toBe(true);
   });
 
-  test('changing trigger resets complete to false', () => {
+  test('changing trigger resets complete to false', async () => {
     let trigger = 'a';
-    const {rerender, result} = renderHook(() => useTimeout(200, trigger));
+    const {act, rerender, result} = await renderHook(() =>
+      useTimeout(200, trigger)
+    );
 
-    act(() => {
+    await act(() => {
       vi.advanceTimersByTime(200);
     });
 
     expect(result.current).toBe(true);
 
     trigger = 'b';
-    rerender();
+    await rerender();
 
     expect(result.current).toBe(false);
 
-    act(() => {
+    await act(() => {
       vi.advanceTimersByTime(200);
     });
 
     expect(result.current).toBe(true);
   });
 
-  test('timeout is cleared on unmount — no late state update', () => {
-    const {result, unmount} = renderHook(() => useTimeout(500));
+  test('timeout is cleared on unmount — no late state update', async () => {
+    const {act, result, unmount} = await renderHook(() => useTimeout(500));
 
-    unmount();
+    expect(vi.getTimerCount()).toBe(1);
 
-    act(() => {
+    await unmount();
+
+    expect(vi.getTimerCount()).toBe(0);
+
+    await act(() => {
       vi.advanceTimersByTime(500);
     });
 

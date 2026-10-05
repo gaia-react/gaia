@@ -9,17 +9,18 @@ import {LANGUAGES} from '~/languages';
 
 // Native select intentional: this is a non-Conform chrome control, not a form field.
 const LANGUAGE_LABELS: Record<string, string> = {en: 'English'};
-const OPTIONS = LANGUAGES.map((value) => ({
-  label: LANGUAGE_LABELS[value] ?? value,
-  value,
-}));
 
 type LanguageSelectProps = {
   className?: string;
+  languages?: readonly string[];
   onChange?: () => void;
 };
 
-const LanguageSelect = ({className, onChange}: LanguageSelectProps) => {
+const LanguageSelect = ({
+  className,
+  languages = LANGUAGES,
+  onChange,
+}: LanguageSelectProps) => {
   const {
     i18n: {language},
     t,
@@ -42,7 +43,12 @@ const LanguageSelect = ({className, onChange}: LanguageSelectProps) => {
   // A single configured language offers nothing to switch, so render nothing.
   // The switcher appears once a second locale is added (LANGUAGES grows via the
   // add-locale runbook).
-  if (LANGUAGES.length <= 1) return undefined;
+  if (languages.length <= 1) return undefined;
+
+  const options = languages.map((value) => ({
+    label: LANGUAGE_LABELS[value] ?? value,
+    value,
+  }));
 
   const redirectUrl = `${location.pathname}${location.search}${location.hash}`;
 
@@ -100,7 +106,7 @@ const LanguageSelect = ({className, onChange}: LanguageSelectProps) => {
         onPointerDown={handlePointerDownSelect}
         size="sm"
       >
-        {OPTIONS.map(({label, value}) => (
+        {options.map(({label, value}) => (
           <NativeSelectOption key={value} value={value}>
             {label}
           </NativeSelectOption>

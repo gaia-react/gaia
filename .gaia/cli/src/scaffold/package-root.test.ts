@@ -32,7 +32,7 @@ const SCAFFOLDERS: readonly Scaffolder[] = [
   {
     expected: ['app/components/widget/index.tsx'],
     name: 'component',
-    run: (cwd) => runComponent(['Widget', '--no-story'], {cwd}),
+    run: (cwd) => runComponent(['Widget'], {cwd}),
     seed: ['app/components'],
   },
   {

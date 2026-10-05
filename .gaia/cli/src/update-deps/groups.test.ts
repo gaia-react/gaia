@@ -24,4 +24,32 @@ describe('companion groups', () => {
       expect.arrayContaining(['shadcn', 'lucide-react'])
     );
   });
+
+  test('the Vitest browser stack moves with vitest, playwright stays its own group', () => {
+    for (const name of [
+      '@vitest/browser-playwright',
+      'vitest-browser-react',
+      'vitest',
+    ]) {
+      expect(resolveGroup(name)).toBe('vitest');
+    }
+
+    for (const name of ['@playwright/test', 'playwright']) {
+      expect(resolveGroup(name)).toBe('playwright');
+    }
+  });
+
+  test('the retired testing-library packages are no longer grouped', () => {
+    for (const name of [
+      '@testing-library/react',
+      '@playwright-testing-library/test',
+    ]) {
+      expect(resolveGroup(name)).toBe(`singleton:${name}`);
+    }
+  });
+
+  test('the Storybook test addons fall under the @storybook/ prefix', () => {
+    expect(resolveGroup('@storybook/addon-vitest')).toBe('storybook');
+    expect(resolveGroup('@storybook/addon-a11y')).toBe('storybook');
+  });
 });

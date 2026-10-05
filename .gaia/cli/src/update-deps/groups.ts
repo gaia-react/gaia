@@ -88,25 +88,18 @@ const GROUP_RULES: readonly GroupRule[] = [
   },
   {
     exactNames: [
+      '@vitest/browser-playwright',
       '@vitest/coverage-v8',
       '@vitest/eslint-plugin',
       '@vitest/ui',
       'vitest',
+      'vitest-browser-react',
     ],
     group: 'vitest',
   },
   {
-    exactNames: ['@playwright-testing-library/test', '@playwright/test'],
+    exactNames: ['@playwright/test', 'playwright'],
     group: 'playwright',
-  },
-  {
-    exactNames: [
-      '@testing-library/dom',
-      '@testing-library/jest-dom',
-      '@testing-library/react',
-      '@testing-library/user-event',
-    ],
-    group: 'testing-library',
   },
   // No `typescript` rule here on purpose; see the header's resolution rules.
   {

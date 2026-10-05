@@ -1,5 +1,5 @@
-import {act, renderHook} from '@testing-library/react';
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
+import {renderHook} from 'vitest-browser-react';
 import {useDebounce} from '../use-debounce';
 
 describe('useDebounce', () => {
@@ -11,54 +11,58 @@ describe('useDebounce', () => {
     vi.useRealTimers();
   });
 
-  test('returns the initial value immediately', () => {
-    const {result} = renderHook(() => useDebounce('hello', 300));
+  test('returns the initial value immediately', async () => {
+    const {result} = await renderHook(() => useDebounce('hello', 300));
     expect(result.current).toBe('hello');
   });
 
-  test('does not update until delay elapses after a value change', () => {
+  test('does not update until delay elapses after a value change', async () => {
     let value = 'hello';
-    const {rerender, result} = renderHook(() => useDebounce(value, 300));
+    const {act, rerender, result} = await renderHook(() =>
+      useDebounce(value, 300)
+    );
 
     value = 'world';
-    rerender();
+    await rerender();
 
     // Not updated yet; delay has not elapsed
     expect(result.current).toBe('hello');
 
-    act(() => {
+    await act(() => {
       vi.advanceTimersByTime(299);
     });
 
     expect(result.current).toBe('hello');
   });
 
-  test('updates to the latest value after delay elapses', () => {
+  test('updates to the latest value after delay elapses', async () => {
     let value = 'hello';
-    const {rerender, result} = renderHook(() => useDebounce(value, 300));
+    const {act, rerender, result} = await renderHook(() =>
+      useDebounce(value, 300)
+    );
 
     value = 'world';
-    rerender();
+    await rerender();
 
-    act(() => {
+    await act(() => {
       vi.advanceTimersByTime(300);
     });
 
     expect(result.current).toBe('world');
   });
 
-  test('clears the pending timer on unmount — no late state update', () => {
+  test('clears the pending timer on unmount — no late state update', async () => {
     let value = 'hello';
-    const {rerender, result, unmount} = renderHook(() =>
+    const {act, rerender, result, unmount} = await renderHook(() =>
       useDebounce(value, 300)
     );
 
     value = 'world';
-    rerender();
+    await rerender();
 
-    unmount();
+    await unmount();
 
-    act(() => {
+    await act(() => {
       vi.advanceTimersByTime(300);
     });
 
@@ -66,21 +70,23 @@ describe('useDebounce', () => {
     expect(result.current).toBe('hello');
   });
 
-  test('cancels pending update on rapid value changes and settles on the final value', () => {
+  test('cancels pending update on rapid value changes and settles on the final value', async () => {
     let value = 'a';
-    const {rerender, result} = renderHook(() => useDebounce(value, 300));
+    const {act, rerender, result} = await renderHook(() =>
+      useDebounce(value, 300)
+    );
 
     value = 'b';
-    rerender();
+    await rerender();
 
-    act(() => {
+    await act(() => {
       vi.advanceTimersByTime(100);
     });
 
     value = 'c';
-    rerender();
+    await rerender();
 
-    act(() => {
+    await act(() => {
       vi.advanceTimersByTime(300);
     });
 

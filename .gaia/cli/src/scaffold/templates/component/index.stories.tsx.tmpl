@@ -1,4 +1,5 @@
 import type {Meta, StoryFn} from '@storybook/react-vite';
+import {expect, within} from 'storybook/test';
 import {{Name}} from '..';
 
 const meta: Meta = {
@@ -13,3 +14,14 @@ const meta: Meta = {
 export default meta;
 
 {{storyDefault}}
+
+// Starting point only: a render check is not complete evidence. The story is
+// this component's test and the accessibility check runs on every story. Add
+// interaction assertions and prop variants as the component grows.
+{{storyRenders}}
+
+Renders.play = async ({canvasElement}) => {
+  await expect(
+    within(canvasElement).getByRole('region', {name: '{{Name}}'})
+  ).toBeVisible();
+};

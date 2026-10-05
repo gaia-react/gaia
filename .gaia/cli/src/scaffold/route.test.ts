@@ -200,7 +200,7 @@ describe('scaffold route: base emission (_session)', () => {
     sandbox.cleanup();
   });
 
-  test('emits route file, page index, test, and story', () => {
+  test('emits route file, page index, and story with no test file', () => {
     const stdout = captureStdout();
     const exit = run(['dashboard', '--group', '_session'], {
       cwd: sandbox.fakeRoot,
@@ -241,7 +241,7 @@ describe('scaffold route: base emission (_session)', () => {
 
     expect(existsSync(routeFile)).toBe(true);
     expect(existsSync(pageIndex)).toBe(true);
-    expect(existsSync(pageTest)).toBe(true);
+    expect(existsSync(pageTest)).toBe(false);
     expect(existsSync(pageStories)).toBe(true);
 
     const routeBody = readFileSync(routeFile, 'utf8');

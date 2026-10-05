@@ -1,4 +1,5 @@
 import type {Meta, StoryFn} from '@storybook/react-vite';
+import {expect, within} from 'storybook/test';
 import {
   InputGroup,
   InputGroupAddon,
@@ -19,6 +20,10 @@ export default meta;
 
 export const Default: StoryFn = () => <MaxLength length={12} maxLength={100} />;
 
+Default.play = async ({canvasElement}) => {
+  await expect(within(canvasElement).getByText('12 / 100')).toBeVisible();
+};
+
 export const AtLimit: StoryFn = () => (
   <MaxLength length={100} maxLength={100} />
 );
@@ -31,3 +36,11 @@ export const InInputGroup: StoryFn = () => (
     </InputGroupAddon>
   </InputGroup>
 );
+
+export const WithClassName: StoryFn = () => (
+  <MaxLength className="ml-2" length={1} maxLength={10} />
+);
+
+WithClassName.play = async ({canvasElement}) => {
+  await expect(within(canvasElement).getByText('1 / 10')).toHaveClass('ml-2');
+};
