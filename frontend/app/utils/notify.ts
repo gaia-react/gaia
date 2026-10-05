@@ -34,7 +34,9 @@ const parsePayload = (
   return payload;
 };
 
-type NotifyType = 'error' | 'info' | 'success' | 'warning';
+export const NOTIFY_TYPES = ['error', 'info', 'success', 'warning'] as const;
+
+type NotifyType = (typeof NOTIFY_TYPES)[number];
 
 const showToast = (
   type: NotifyType,

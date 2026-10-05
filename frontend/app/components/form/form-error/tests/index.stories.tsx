@@ -237,6 +237,9 @@ AlertStructure.play = async ({canvasElement}: PlayContext) => {
 
   await expect(canvas.getAllByRole('alert')).toHaveLength(1);
   await expect(canvas.getByRole('button', {name: 'Dismiss'})).toBeVisible();
-  // Icons are aria-hidden, so the lucide class is the only handle on them.
-  await expect(alert.querySelector('svg.lucide')).toBeInTheDocument();
+  // Icons are aria-hidden, so the lucide class is the only handle on them. The
+  // Dismiss button's X also matches svg.lucide, so assert the alert glyph.
+  await expect(
+    alert.querySelector('svg.lucide-circle-alert')
+  ).toBeInTheDocument();
 };

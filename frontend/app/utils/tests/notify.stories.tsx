@@ -1,15 +1,13 @@
 import type {Meta, StoryObj} from '@storybook/react-vite';
 import {expect, spyOn, waitFor, within} from 'storybook/test';
 import {toast} from '~/components/ui/toast';
-import {notify} from '~/utils/notify';
+import {notify, NOTIFY_TYPES} from '~/utils/notify';
 import {expectToast} from './expect-toast';
 import stack from './stack';
 
 // Raw palette utilities and arbitrary colors, which role tokens replace.
 const RAW_PALETTE =
   /(bg|text|border|border-[trblxyse]|ring|ring-offset|outline|divide|placeholder|shadow|decoration|caret|accent|fill|stroke|from|via|to)-((slate|gray|zinc|neutral|stone|mauve|mist|olive|taupe|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d|white|black)|-\[(#|rgb|hsl|oklch)/;
-
-const TYPES = ['error', 'info', 'success', 'warning'] as const;
 
 // The toast renders in a portal on the document body, outside the canvas.
 const getToastElement = (canvasElement: HTMLElement, text: string) =>
@@ -161,9 +159,9 @@ export const MessageRenderedAsText: StoryObj<typeof meta> = {
 
 export const DistinctIconPerType: StoryObj<typeof meta> = {
   play: async ({canvasElement}) => {
-    const iconClasses: string[] = [];
+    const glyphClasses: string[] = [];
 
-    for (const type of TYPES) {
+    for (const type of NOTIFY_TYPES) {
       await clearToasts();
       notify[type](`${type} icon message`);
 
@@ -175,16 +173,24 @@ export const DistinctIconPerType: StoryObj<typeof meta> = {
       ).querySelector('[data-slot="toast-icon"] svg');
 
       await expect(icon).toHaveClass('lucide');
-      iconClasses.push(icon?.getAttribute('class') ?? '');
+
+      // Only the glyph class (lucide-<name>) identifies the icon; the full
+      // class string also carries per-type color classes.
+      const glyph = [...(icon?.classList ?? [])].find((name) =>
+        name.startsWith('lucide-')
+      );
+
+      await expect(glyph).toBeDefined();
+      glyphClasses.push(glyph ?? '');
     }
 
-    await expect(new Set(iconClasses).size).toBe(TYPES.length);
+    await expect(new Set(glyphClasses).size).toBe(NOTIFY_TYPES.length);
   },
 };
 
 export const RoleTokensNoRawPalette: StoryObj<typeof meta> = {
   play: async ({canvasElement}) => {
-    for (const type of TYPES) {
+    for (const type of NOTIFY_TYPES) {
       await clearToasts();
       notify[type](`${type} token message`);
 
@@ -298,9 +304,10 @@ export const StackLoggedNotShown: StoryObj<typeof meta> = {
     } else {
       await expect(consoleError).toHaveBeenCalledWith(stack);
     }
-    await expect(
-      body.queryByText(stack.split('\n', 1)[0])
-    ).not.toBeInTheDocument();
+    // A substring check, so a stack rendered as one block still fails it.
+    await expect(canvasElement.ownerDocument.body).not.toHaveTextContent(
+      new RegExp(stack.split('\n', 1)[0])
+    );
     consoleError.mockRestore();
   },
 };

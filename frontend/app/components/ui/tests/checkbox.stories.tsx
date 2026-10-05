@@ -107,3 +107,12 @@ export const WithFieldLabel: StoryObj<typeof meta> = {
     </Field>
   ),
 };
+
+export const WithClassName: StoryObj<typeof meta> = {
+  play: async ({canvasElement}) => {
+    await expect(
+      within(canvasElement).getByRole('checkbox', {name: 'Accept'})
+    ).toHaveClass('mt-2');
+  },
+  render: () => <Checkbox aria-label="Accept" className="mt-2" />,
+};
