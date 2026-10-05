@@ -96,6 +96,14 @@ assert_pinned() {
   assert_pinned 'A `BLOCKED:` deny is never `nesting-unavailable`.'
 }
 
+@test "agent reads the closing field and runs the closing round with no fixer" {
+  assert_pinned '## Closing round'
+  assert_pinned "The window's fourth field is \`closing\`."
+  assert_pinned 'Run no fixer in it.'
+  assert_pinned 'stops the unit `needs-human`, naming the finding, before any fixer runs.'
+  assert_pinned 'Then, outside a closing round, baseline, fixer'
+}
+
 @test "agent names the window check, the ENFORCEMENT_PATHS rule and the stop" {
   assert_pinned 'unit-window'
   assert_pinned 'enforcement_paths_allowed'

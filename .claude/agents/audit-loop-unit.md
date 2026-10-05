@@ -23,6 +23,10 @@ Pass `Working root: <abs>` verbatim into every member dispatch, with the expecte
 
 After the first member wave is admitted, run `bash <root>/.gaia/scripts/audit-loop-eval.sh unit-window --root <root>`. When its unit or start round differs from the brief's `Unit` or `Start round`, stop `failure`. Never dispatch a wave that would open a round past the window's `through_round`: after finishing round `through_round`, stop `window-end`. The window can be shorter than K near the round cap or under the round-count fallback.
 
+## Closing round
+
+The window's fourth field is `closing`. When it is `true`, a human answered the checkpoint with an accept, and this unit's one round is the closing round: the human chose to stop fixing. Run no fixer in it. Dispose every finding the round reports `accept-residual`, or `waive-out-of-scope` or `file` where `#### Cross-remit findings` routes it, and none `fix`, then follow the page's zero-fix rule: no baseline, fixer, verifier, gate, or commit. A finding the dispositions check refuses to see disposed anything but `fix` (a Critical, a security-class finding, or a key in `Vetoes:`) stops the unit `needs-human`, naming the finding, before any fixer runs. Otherwise run the dispositions check, write the accepted residuals into the PR body, publish the record, and stop: `clean` when every member marker is cleared, else `window-end`.
+
 ## Deny classes
 
 A member dispatch is denied with text that carries a `BLOCKED:` marker after a harness prefix (`PreToolUse:Agent hook error: BLOCKED: audit ...`). Search for the marker anywhere in the result, not at the start.
@@ -48,7 +52,7 @@ Follow the page in this order: `#### The audit loop unit` for the unit's shape, 
 - Every `waive-out-of-scope` entry carries `basis`: `cross-remit` only for a finding whose sidecar entry has `cross_remit: true`, otherwise `triage-threshold`.
 - Every key in `Vetoes:` whose `effective_from_round` is at or before this round is disposed `fix`, as a synthetic `fix` entry when no member re-reports it.
 - After writing the dispositions file, run `bash <root>/.gaia/scripts/audit-dispositions-check.sh check --root <root> --run-folder <run> --round <r>` (no `--snapshot-dir`). On a non-zero exit stop `dispositions-check-failed` with no commit.
-- Then baseline, fixer, verify, gate, round-check, one commit, push. The commit subject is `fix(<scope>): address audit round <r> findings`, `<scope>` the area the round's fixes touch (`hooks`, `cli`) or `audit` when they span several; a free-form subject the `commit-msg` hook refuses would stop the unit with nothing to recover.
+- Then, outside a closing round, baseline, fixer, verify, gate, round-check, one commit, push. The commit subject is `fix(<scope>): address audit round <r> findings`, `<scope>` the area the round's fixes touch (`hooks`, `cli`) or `audit` when they span several; a free-form subject the `commit-msg` hook refuses would stop the unit with nothing to recover.
 <!-- gaia:maintainer-only:start -->
 - In this repo the gate also runs `bash .gaia/tests/shell-lint.sh` and the bats suites `bash <root>/.gaia/scripts/bats-suites-for-change.sh --dir <root> HEAD` prints (the round's staged delta, not the whole branch), through `bats5.sh --jobs 8 < /dev/null`.
 <!-- gaia:maintainer-only:end -->

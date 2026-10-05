@@ -24,6 +24,9 @@
 #   audit-loop-eval.sh findings|eval|brief|record-values|state-path|current-round
 #                      |next-unit|unit-window|pinned-question
 #                      --root <audited-root> [--round <r>]
+# unit-window prints `<unit> <start_round> <through_round> <closing>` for the
+# latest unit; closing is `true` when an accept admitted it, so its one round
+# is the closing round and audit-loop-unit runs no fixer in it.
 # Exit 0 ok, 2 usage or no recorded round (unit-window: no unit;
 # pinned-question: no pending pinned question), 4 detached HEAD, 5 corrupt
 # state, an unreadable vetoes.json, or a branch that is not keyable, 6 jq or
@@ -603,7 +606,7 @@ _gaia_loop_cli() {
       ;;
     unit-window)
       subcommand_output="$(printf '%s' "$state" | jq -r '(.history.units // []) | last
-        | if . == null then empty else "\(.unit) \(.start_round) \(.through_round)" end')"
+        | if . == null then empty else "\(.unit) \(.start_round) \(.through_round) \(.admitted_on == "accept")" end')"
       [ -n "$subcommand_output" ] || { printf 'audit-loop-eval: no unit recorded for %s\n' "$branch_key" >&2; return 2; }
       printf '%s\n' "$subcommand_output"
       return 0
