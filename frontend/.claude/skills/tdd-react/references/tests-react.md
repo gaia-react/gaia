@@ -207,9 +207,9 @@ When using custom form components (like a `TimePicker` or a date picker) that ma
 ```tsx
 // BAD - Local state conflicts with Conform's validation
 const [value, setValue] = useState(savedData?.field ?? DEFAULT);
-const handleChangeValue = useCallback((newValue) => {
+const handleChangeValue = (newValue) => {
   setValue(newValue);
-}, []);
+};
 
 <CustomComponent onChange={handleChangeValue} value={value} />;
 

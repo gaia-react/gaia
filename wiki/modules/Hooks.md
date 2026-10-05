@@ -5,7 +5,7 @@ status: active
 language: typescript
 purpose: Global custom React hooks
 created: 2026-04-20
-updated: 2026-10-04
+updated: 2026-10-05
 tags: [module, hooks]
 ---
 
@@ -23,4 +23,4 @@ Named export, `use` prefix, one hook per file, tests in `frontend/app/hooks/test
 
 For the current bundled inventory and signatures, query Serena (`.claude/rules/code-search.md`).
 
-See the `react-code` skill (`.claude/skills/react-code/`) for `useEffect`, `useCallback`, `useState` rules.
+See the `react-code` skill (`frontend/.claude/skills/react-code/SKILL.md`) for `useEffect` and `useState` rules, and its `## Memoization: compiler-first` section for memoization.

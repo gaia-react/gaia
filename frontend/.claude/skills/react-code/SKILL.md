@@ -1,6 +1,6 @@
 ---
 name: react-code
-description: Patterns and conventions for writing and editing React code, including components and hooks. Use this skill whenever writing or reviewing React components, hooks (useEffect, useCallback, useState), event handlers, or component extraction decisions. Also trigger when debugging stale closures, infinite re-renders, or unnecessary re-renders caused by memoization issues, or when deciding whether to add a dependency, reach for a web-platform API (Intl, URL, crypto.randomUUID), or hand-roll a primitive. Also trigger when choosing a React 19 idiom, deciding between forwardRef and ref-as-prop, useContext and use(), or Context.Provider and the Context shorthand; when conditional rendering risks the && numeric-0 leak; or when tempted to reach for React's form Actions (useActionState, useFormStatus, useOptimistic) instead of React Router's form handling.
+description: Patterns and conventions for writing and editing React code, including components and hooks. Use this skill whenever writing or reviewing React components, hooks (useEffect, useState), event handlers, or component extraction decisions. Also trigger when deciding whether a manual useMemo, useCallback, memo, or "use no memo" is justified under React Compiler, when debugging stale closures or infinite re-renders, or when deciding whether to add a dependency, reach for a web-platform API (Intl, URL, crypto.randomUUID), or hand-roll a primitive. Also trigger when choosing a React 19 idiom, deciding between forwardRef and ref-as-prop, useContext and use(), or Context.Provider and the Context shorthand; when conditional rendering risks the && numeric-0 leak; or when tempted to reach for React's form Actions (useActionState, useFormStatus, useOptimistic) instead of React Router's form handling.
 ---
 
 # React Code
@@ -27,22 +27,14 @@ Most hook bugs come from misidentifying the type of problem being solved. Before
 
 **Before writing `useEffect`:**
 
-1. Can I calculate this during render? → Derive inline or `useMemo`, no Effect needed.
+1. Can I calculate this during render? → Derive inline (the compiler memoizes derived values), no Effect needed.
 2. Does this respond to a user action? → Put it in the event handler, no Effect needed.
 3. Am I syncing state to other state? → Derive it; remove the redundant state, no Effect needed.
 4. Am I notifying a parent of a state change? → Call both setters in the handler, no Effect needed.
 5. Do I need to reset child state when a prop changes? → Use `key`, no Effect needed.
 6. Am I synchronizing with an external system (browser API, third-party widget, network)? → Effect is appropriate here. Add cleanup. For data fetching, include an `ignore` flag.
 
-**Before writing `useCallback`:**
-
-Only use when the function is:
-
-1. Passed as a prop to a `memo`-wrapped component
-2. A dependency of `useEffect`, `useMemo`, or another `useCallback`
-3. Passed to a child that uses it in a hook dependency array
-
-If none apply, skip `useCallback`, it adds indirection without benefit.
+**Before writing `useMemo`, `useCallback`, or `memo`:** don't; see `## Memoization: compiler-first`.
 
 **`useState` type inference:** Omit explicit type when inferable from the default value. Add types for unions or complex objects. For an absent initial value, prefer `undefined` over `null` (never-null convention): `useState<T>()` is already typed `T | undefined`.
 
@@ -144,6 +136,27 @@ Rendering nothing from a `return` is enforced by `@gaia-react/lint`'s `no-null-r
 
 For `useEffectEvent` (the sanctioned replacement for stale-deps / latest-ref hacks) and ref-callback cleanup functions, see `references/hook-patterns.md`.
 
+## Memoization: compiler-first
+
+React Compiler is on by default and memoizes components and hooks automatically. **Never hand-write `useMemo`, `useCallback`, or `memo`.** Inline callbacks, inline object props, and derived values need no wrapper.
+
+A manual memo is allowed in exactly two cases, and each one carries a one-line comment naming its case:
+
+1. **A value crosses into code the compiler does not compile**: a third-party hook or component that relies on referential identity, or a file opted out with `"use no memo"`.
+2. **A component bails out of compilation and the memo is measured to matter.**
+
+A `"use no memo"` directive always carries a comment stating why. Opting out is a last resort: the default fix is to make the code follow the Rules of React (no mutation of props, state, or values during render; no reads of refs during render; hooks called unconditionally).
+
+```tsx
+// Case 1: third-party chart compares `options` by identity and is not compiled.
+const options = useMemo(() => ({series, theme}), [series, theme]);
+
+// reason: legacy class-based form library mutates props during render
+'use no memo';
+```
+
+A hand-written memo's deps array is also a stale-closure risk, one more reason not to write one.
+
 ## Component Structure
 
 - **Inline props typing:** `type MyComponentProps = {...}; const MyComponent = ({...}: MyComponentProps) => ...`; a generic component is `const List = <T,>({items}: ListProps<T>) => ...`. Never import `FC` or `FunctionComponent` from `react`
@@ -194,6 +207,6 @@ When stories need different loader data, put `stubs.reactRouter()` decorators on
 
 ## References
 
-- `references/hook-patterns.md`, Read when writing any Effect or useCallback, or when debugging stale closures, double-firing effects, or infinite re-renders.
+- `references/hook-patterns.md`, Read when writing any Effect, or when debugging stale closures, double-firing effects, or infinite re-renders.
 - `references/conform-forms.md`, full Conform + Zod form wiring walkthrough
 - `references/translation-patterns.md`, i18n edge cases, Trans component, dedup rules

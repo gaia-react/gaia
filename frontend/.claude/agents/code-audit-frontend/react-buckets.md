@@ -15,8 +15,8 @@ The house-style buckets below (hook gates, component structure and extraction, e
 
 Hook gates:
 
-- `useCallback` only when (1) passed to a `memo`-wrapped child, (2) a dependency of `useEffect`/`useMemo`/another `useCallback`, or (3) passed to a child that uses it in a hook dep array. Flag unnecessary `useCallback` usage.
-- `useEffect` anti-patterns: derived state in effects (should derive inline or via `useMemo`), expensive calcs in effects (should be `useMemo`), user-event logic in effects (belongs in the handler), chained effects triggering each other, notifying parent of state changes via effect. Flag each with the correct alternative.
+- Memoization (compiler-first; the rule and its two escape cases live in `frontend/.claude/skills/react-code/SKILL.md` `## Memoization: compiler-first`): flag a manual `useMemo`, `useCallback`, or `memo` that has no justifying comment naming one of the skill's two cases, and flag a `"use no memo"` directive that has no comment stating why. Each finding names the compiler-first rule and points to that skill section. Do NOT flag missing memoization, inline callbacks, inline object props, or unstable references passed to children: the compiler provides those. This is a house-style rule, so vendored `components/ui/*.tsx` (for example the `useMemo` in `components/ui/field.tsx`) stays exempt.
+- `useEffect` anti-patterns: derived state in effects (derive inline during render), expensive calcs in effects (derive inline during render), user-event logic in effects (belongs in the handler), chained effects triggering each other, notifying parent of state changes via effect. Flag each with the correct alternative.
 - State reset anti-pattern: `useEffect` that resets state when a prop changes, should use `key` instead.
 - When `useEffect` is correct (external system sync, subscriptions), verify a cleanup function; for async data fetching inside an effect, verify an `ignore` flag guards the setter.
 - `useState` type inference: omit explicit type when inferable from the default value. Only annotate for `null` initial values, unions, or complex objects.
