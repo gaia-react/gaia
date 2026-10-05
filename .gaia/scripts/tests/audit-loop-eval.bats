@@ -109,6 +109,14 @@ sequence_case() {
   sequence_case continue allow 5 5
 }
 
+@test "stalled: two quiet rounds then one finding continues, since a quiet round resets the window" {
+  sequence_case continue allow 0 0 1
+}
+
+@test "stalled: a quiet round as A(r-2) keeps a flat run after it from stalling" {
+  sequence_case continue allow 0 1 1
+}
+
 @test "directive 8: A 3,2,1,1,1 continues at round 4 and stalls at round 5" {
   local snapshot
   alf_sequence 3 2 1 1 1
@@ -467,6 +475,14 @@ brief_check() {
   alf_add_checkpoint 3 stalled
   brief_check stop true 0 5 0
   [ "$(read_json "$BRIEF" '.verdict')" = stalled ]
+}
+
+@test "brief: one finding after two quiet rounds late in a loop does not recommend stop" {
+  cli_copy
+  alf_sequence 12 7 9 3 0 5 0 0 1
+  alf_add_checkpoint 9 rubric:small-tail
+  brief_check grant true 0 1 0
+  [ "$(read_json "$BRIEF" '.verdict')" = continue ]
 }
 
 @test "brief: enriching recommends accept" {

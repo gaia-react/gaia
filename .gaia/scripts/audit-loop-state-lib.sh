@@ -329,7 +329,8 @@ gaia_loop_session_is_interactive() {
 # evaluator's recommendation for a checkpoint on <trigger> over the last
 # round's snapshot. The brief and the pinned question both read it from here so
 # the rule has one copy: a context checkpoint with no denying signal is a grant
-# (the session is merely full), otherwise the verdict decides.
+# (the session is merely full), otherwise the verdict decides, except that a
+# stalled small tail the snapshot calls accept-eligible is an accept.
 gaia_loop_recommended() {
   local trigger="${1-}" snapshot="${2:-null}"
   printf '%s' "$snapshot" | jq -r --arg trigger "$trigger" '
@@ -338,6 +339,7 @@ gaia_loop_recommended() {
        else {enriching: ($snapshot.verdict == "enriching"), stalled: ($snapshot.verdict == "stalled")} end) as $signals
     | (any($signals | to_entries[]; .key != "quiet" and .value == true)) as $denying
     | if $trigger == "context" and ($denying | not) then "grant"
+      elif $snapshot.verdict == "stalled" and $signals["small-tail"] == true and $snapshot.accept_eligible == true then "accept"
       else {continue: "grant", unknown: "grant", enriching: "accept", quiet: "accept", stalled: "stop"}
            | .[$snapshot.verdict // "unknown"] // "grant" end'
 }
