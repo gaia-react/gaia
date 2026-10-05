@@ -16,9 +16,11 @@ type FormErrorProps = {
 };
 
 // Dismissing unmounts the alert along with its focused button, which drops
-// focus to <body>; hand it to the form's first control first.
+// focus to <body>; hand it to the form's first control that accepts focus. A
+// control hidden by CSS, an inert ancestor or the hidden attribute ignores
+// focus(), so each candidate is tried until one actually holds it.
 const focusFirstFormControl = (dismissButton: HTMLButtonElement) => {
-  const firstControl = [...(dismissButton.form?.elements ?? [])].find(
+  const candidates = [...(dismissButton.form?.elements ?? [])].filter(
     (element): element is HTMLElement =>
       element instanceof HTMLElement &&
       element.tabIndex >= 0 &&
@@ -26,7 +28,13 @@ const focusFirstFormControl = (dismissButton: HTMLButtonElement) => {
       element !== dismissButton
   );
 
-  firstControl?.focus();
+  for (const candidate of candidates) {
+    candidate.focus();
+
+    if (document.activeElement === candidate) {
+      return;
+    }
+  }
 };
 
 const FormError = ({className, isHidden}: FormErrorProps) => {
