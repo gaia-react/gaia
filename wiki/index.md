@@ -149,7 +149,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Workflow Doctrine]]: the one execution doctrine (roles, git ownership, checkpoint and resume, model choice) and the hook that injects it on a branch.
 - [[Code Review Audit Agent]]
 - [[Registering a Code Audit Team Member]]: how-to for adding a new roster member: agent def, roster entry, machinery wiring, finding_class bucket, recurrence-tally integration, and the local-gate checklist.
-- [[Audit Disposition and Debt Fix]]: forced disposition of out-of-scope audit findings as deduped tech-debt issues; security-class divert; the /gaia-debt fix loop (single issue or recommended related batch, isolated per the team's git isolation policy) and statusline nudge; /gaia-residue drains the accepted-residual record the same audit leaves unfiled.
+- [[Audit Disposition and Debt Fix]]: forced disposition of out-of-scope audit findings as deduped tech-debt issues; security-class divert; the /gaia-debt fix loop (single issue, recommended related batch, or operator-named batch, isolated per the team's git isolation policy) and statusline nudge; /gaia-residue drains the accepted-residual record the same audit leaves unfiled.
 - [[GitHub Labels]]: the label registry at `.gaia/labels.json`, the palette rule, the generated page, and `gaia labels sync` / `docs`.
 - [[Policy-Memory Loop]]: prune-first self-improvement; recurring finding_class -> statusline nudge -> `/gaia-harden` -> path-scoped rule -> `/gaia-audit` prunes only on obsolescence/redundancy/supersession/duplication.
 - [[Incremental CI Skipping]]: required checks skip when the delta since they last passed green has no relevant files; `resolve-check-base.sh` / `resolve-audit-base.sh`.

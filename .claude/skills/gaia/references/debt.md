@@ -1,12 +1,12 @@
 # /gaia-debt
 
-Fix the `tech-debt` backlog the audit files. `/gaia-debt` reads the open `tech-debt` issues, orders them deterministically (highest severity then oldest first, no model call), recommends the top candidate, and resolves **one fix unit** per invocation, a single issue or a user-approved related batch of issues, on a fresh branch through the same Code Audit Team marker gate every feature PR passes, with one `Closes #N` per member issue in the PR body so the merge closes every issue in the unit natively.
+Fix the `tech-debt` backlog the audit files. `/gaia-debt` reads the open `tech-debt` issues, orders them deterministically (highest severity then oldest first, no model call), recommends the top candidate, and resolves **one fix unit** per invocation, a single issue, a user-approved related batch of issues, or a batch the operator names by number, on a fresh branch through the same Code Audit Team marker gate every feature PR passes, with one `Closes #N` per member issue in the PR body so the merge closes every issue in the unit natively.
 
 The ordering is a pure, source-checkable sort over the issues' severity labels and `createdAt` timestamps. It never calls a model to rank the backlog, and it never resolves more than one fix unit per run.
 
 ## Execution model, READ FIRST
 
-Execute the playbook yourself in the current conversation. The happy path runs start to finish without stopping, exactly like `/update-deps`: once the fix unit is chosen and isolated the skill implements the fix, runs the Quality Gate, commits, pushes, opens the PR, clears the marker gate, and merges, all in one invocation. There are **up to two** up-front interactive decisions, in order: (1) the candidate/batch pick, only when the backlog holds two or more issues, and (2) the isolation-mode pick (`## Pre-flight isolation (branch vs worktree)` below), resolved through the shared isolation reference: on `main`/`master` the team's isolation policy decides whether this surfaces a prompt at all, and on any other branch it is always a silent forced worktree with no prompt. After both, the flow does not pause for confirmation. Pause only when input is genuinely needed (those two picks) or something unexpected blocks the path (a security-class diversion, an issue whose premise the staleness screen finds no longer holds, a rejected push, a gate that will not go green). Resolve **one fix unit** per invocation, a single issue or a user-confirmed related batch; the skill never auto-advances to an unrelated issue.
+Execute the playbook yourself in the current conversation. The happy path runs start to finish without stopping, exactly like `/update-deps`: once the fix unit is chosen and isolated the skill implements the fix, runs the Quality Gate, commits, pushes, opens the PR, clears the marker gate, and merges, all in one invocation. There are **up to two** up-front interactive decisions, in order: (1) the pick: with no issue number named, the candidate/batch pick, only when the backlog holds two or more issues; with one number named, the cluster offer, only when that issue heads a batchable cluster; with two or more numbers named, only the spec hand-off prompt or the over-budget prompt, when one applies (`## Fix a named set (two or more numbers)` below), and (2) the isolation-mode pick (`## Pre-flight isolation (branch vs worktree)` below), resolved through the shared isolation reference: on `main`/`master` the team's isolation policy decides whether this surfaces a prompt at all, and on any other branch it is always a silent forced worktree with no prompt. After both, the flow does not pause for confirmation. Pause only when input is genuinely needed (those two picks) or something stops the path: an unrecognized argument, a named number that cannot be drained, a named member that cannot join a batch, a named batch whose branch name would exceed the branch-name limit, or something unexpected that blocks it (a security-class diversion, an issue whose premise the staleness screen finds no longer holds, a rejected push, a gate that will not go green). Resolve **one fix unit** per invocation, a single issue, a user-confirmed related batch, or an operator-named batch; the skill never auto-advances to an unrelated issue.
 
 The skill drives a fix PR through the **full** PR Merge Workflow (cut a branch, implement, run the Quality Gate, commit, push, `gh pr create`, then the marker handshake and merge). Once the PR is up it drives straight through to merge with no second confirmation, resolving the PR to completion the standard way: the same Code Audit Team marker gate every feature PR passes, then `gh pr merge`. The gate is inviolate: never bypass, fake, or pre-empt the marker, and never substitute a bare `gh pr merge` for the workflow's handshake.
 
@@ -14,25 +14,24 @@ The Workflow Doctrine (`wiki/concepts/Workflow Doctrine.md`) defines roles, git 
 
 ## Argument parsing
 
-Tokenize the first whitespace-separated word of `$ARGUMENTS`. Accept an optional
-leading `#` on any issue-number argument below (`why`'s, `fix`'s, or the bare
-form) and strip it before parsing the remainder as an integer.
+Parse the argument first, before `## Backend probe` and the stale-claim reconcile, so an argument the grammar does not accept stops the run before anything is read or written. The grammar is executable, not prose to interpret: hand `$ARGUMENTS` to the parser verbatim, through a quoted heredoc so nothing in it is expanded by the shell:
 
-- `fix` with no further token (or empty `$ARGUMENTS`) → the full interactive
-  flow, recommending the top-of-backlog candidate. This is the default the
-  statusline nudge (`Run /gaia-debt (N issues)`) points at.
-- `list` → print the ordered backlog and stop. No branch, no PR, no prompts.
-  (Run ends here; see `## Cost record (run end)`.)
-- `why <issue-number>` → explain where that issue sits in the ordering, its
-  recommended footprint class, and the rationale, then stop. No authoring, no
-  prompts. (Run ends here; see `## Cost record (run end)`.)
-- `fix <issue-number>`, or a bare `<issue-number>` / `#<issue-number>` with no
-  leading subcommand → fix that specific issue directly (see "## Fix a
-  specific issue (direct-number path)" below).
+```bash
+bash .gaia/scripts/debt-parse-args.sh <<'GAIA_DEBT_ARGUMENTS'
+<the $ARGUMENTS text, verbatim>
+GAIA_DEBT_ARGUMENTS
+```
 
-If the first token is none of `fix` / `list` / `why` and does not parse (after
-optional `#`-stripping) as a single integer, default to `fix` with no target,
-the normal top-of-backlog flow.
+The accepted forms are `fix`, `list`, `why <issue-number>`, and one or more issue numbers, each with an optional leading `#`, after an optional leading `fix`, separated by spaces or commas; a repeated number counts once. The parser's header owns the grammar. It prints exactly one line; map it:
+
+- `top` (empty `$ARGUMENTS`, or a bare `fix`) → the full interactive flow, recommending the top-of-backlog candidate. This is the default the statusline nudge (`Run /gaia-debt (N issues)`) points at, and these two forms are the only ones that run it.
+- `list` → `## list subcommand`: print the ordered backlog and stop. No branch, no PR, no prompts. (Run ends here; see `## Cost record (run end)`.)
+- `why <N>` → `## why subcommand` for `#<N>`: explain where that issue sits in the ordering, its recommended footprint class, and the rationale, then stop. `why` takes exactly one number. No authoring, no prompts. (Run ends here; see `## Cost record (run end)`.)
+- `numbers <N>` (one number) → `## Validate named numbers`, then `## Fix a specific issue (direct-number path)` for `#<N>`.
+- `numbers <N1> <N2> ...` (two or more numbers) → `## Validate named numbers`, then `## Fix a named set (two or more numbers)`.
+- `unrecognized <token>` (the parser refused the argument) → relay its two stderr lines verbatim (the unrecognized token, then the accepted forms), claim nothing, run no backend probe and no reconcile, and end the run. (Run ends here; see `## Cost record (run end)`.)
+
+If the parser reports that it was misused or could not read its input (no stdout line, one `debt-parse-args:` stderr line), report that line and end the run the same way: nothing claimed, no probe. (Run ends here; see `## Cost record (run end)`.)
 
 ## Backend probe
 
@@ -48,7 +47,7 @@ Read the open backlog and order it with a pure sort. No model call ranks the bac
 
 ### Reconcile stale claims (fix only)
 
-This reconcile runs only in `fix`, never in `list`/`why`: it writes (it can strip a label), and those two subcommands never write. It runs **before** the backlog read below, so it recovers a claim leaked by a session that died ungracefully mid-fix before the ordering and clustering passes below ever see the backlog.
+This reconcile runs only in `fix` (a `top` or `numbers` parse), never in `list`/`why`: it writes (it can strip a label), and those two subcommands never write. It runs **before** the backlog read below, so it recovers a claim leaked by a session that died ungracefully mid-fix before the ordering and clustering passes below ever see the backlog.
 
 Ask the verdict helper which claims are stale. It owns the whole liveness rule and computes it rather than leaving any part of it to judgment:
 
@@ -118,45 +117,65 @@ A shared directory alone is too weak to cluster on (a whole `app/services/` dire
 
 An issue asserts things about the tree: the dedup key's `path=`, the `file:line` locations its body cites, and any count its suggested fix depends on. Nothing re-checks those when the backlog is read, so an issue whose subject was renamed, moved, or already fixed keeps offering itself and still reads as actionable. Draining one that way documents a change that is not the change the code needs.
 
-Run the cheap half of that verification here, over every candidate, from the `key.path` the ordering query already emits. Test the path against the index, not the filesystem, so an untracked build artifact sitting at the path does not read as a live source file:
+Run the cheap half of that verification here, over every candidate, from the `key.path` the ordering query already emits. Pipe the ordering command in `## Read and order the backlog` above, run unchanged from the repository root, into the probe script:
 
 ```bash
-git ls-files --error-unmatch -- "<path>" >/dev/null 2>&1 || echo "path gone"
+<the ordering command above> | bash .gaia/scripts/debt-path-probe.sh
 ```
+
+It prints one JSON array with a `{number, path, status}` entry per issue, in backlog order. `status` is `gone` when the path is not in the index, so an untracked build artifact sitting at the path does not read as a live source file; `tracked` when it is; and `keyless` when the emitted `key` is `null`. A non-zero exit means no report: say the probe could not run and annotate nothing, rather than marking every issue stale.
+
+A `key.path` is text from an editable issue body, so never place it, or any other body text, in a command line yourself: not to re-run the probe on one issue, not to check a path by hand. The script reads every path as JSON data; read the `status` it prints.
 
 This probe is **advisory, and annotates only**. A missing path is a strong signal and not a verdict: a finding can stay entirely real while the file it cites is renamed out from under the issue, and the correct repair is sometimes the issue and sometimes the code. So `list` marks the issue `[stale: path gone]`, `why` reports it, and `fix` still offers it with the annotation carried into the option description, which puts the choice in front of the fact instead of behind it. An issue whose emitted `key` is `null` has no path to probe and is annotated nothing: a missing key is not evidence of staleness.
 
 What this probe deliberately does not do is re-resolve the body's cited `file:line` locations or re-derive its stated counts. Both need the body read closely against real code, one issue at a time, and paying that for every open issue on every `list` would make the cheapest subcommand the most expensive one. That half runs once, against the one issue about to be fixed, in `## Fix-time staleness screen` below. The two tiers are deliberately split on cost: cheap and total here, expensive and single-target there.
 
+## Validate named numbers
+
+Runs for every `numbers` result of `## Argument parsing` above, one number or several, after the backlog read above and before anything else the named flow does. Validation of every named number precedes the security pre-filter, the spec pre-filter, the branch-name dry-run, and the score in `## Fix a named set (two or more numbers)` below, and precedes the cluster offer in `## Fix a specific issue (direct-number path)` below. So a run naming a closed number alongside a spec-class or security-class member prints only the validation reasons.
+
+Look each number up in the ordered backlog already fetched. A number present there is open and `tech-debt`-labeled by construction, so only the label rows of the table below can apply to it, read from its emitted `labels`. For a number absent from the backlog, make exactly one targeted call:
+
+```bash
+gh issue view <n> --json state,labels,url
+```
+
+`gh issue view` resolves a pull-request number too: it exits 0 with a state of `OPEN`, `CLOSED`, or `MERGED` and a `url` containing `/pull/`. No field flags a pull request; `url` is the discriminator. A number that is neither an issue nor a pull request exits non-zero with stderr containing `Could not resolve to an issue or pull request`.
+
+Each ineligible number gets exactly one line, `<N>` being the number as parsed. The first matching row wins, read top to bottom:
+
+| condition | line printed |
+|---|---|
+| the call exits non-zero and its stderr contains `Could not resolve to an issue or pull request`, or it exits 0 and its `url` contains `/pull/` (a pull request, whatever its state, `MERGED` included) | `#<N> is not an issue in this repository` |
+| the call exits non-zero for any other reason (network, auth, rate limit) | `#<N> could not be read: <gh error, one line>` |
+| state `CLOSED` | `#<N> is already closed` |
+| open, no `tech-debt` label | `#<N> doesn't carry the tech-debt label` |
+| carries `in-progress` | `#<N> is already being fixed by another session` |
+| carries `debt:spec-pending` | `#<N> is parked pending a SPEC handoff` |
+| carries `debt:spec-active` | `#<N> is parked with a SPEC underway or holding it open` |
+| carries `severity:investigate` | `#<N> is graded severity:investigate: answer its question and re-grade it before fixing it` |
+
+Print the line of every ineligible number, then stop: any ineligible number ends the run with nothing claimed, no branch, no prompt, and no fall-through to the top of the backlog or to any other issue. (Run ends here; see `## Cost record (run end)`.) Only when every named number is eligible does the run continue: one number to `## Fix a specific issue (direct-number path)`, two or more to `## Fix a named set (two or more numbers)`.
+
 ## Fix a specific issue (direct-number path)
 
-Runs only when Argument parsing above resolved a direct issue-number target:
-bare `<issue-number>`, `#<issue-number>`, or `fix <issue-number>`. It runs
-after the Backend probe and Read-and-order-the-backlog passes above (reconcile,
-ordering, and clustering already ran), and it replaces "## Recommend and
-present (fix)" below for this invocation, except on the two fall-through paths
-noted inline.
+Runs only when Argument parsing above resolved exactly one issue number
+(`numbers <N>`), from a bare `<issue-number>`, `#<issue-number>`, or
+`fix <issue-number>`. It runs after the Backend probe, the
+Read-and-order-the-backlog passes (reconcile, ordering, and clustering), and
+`## Validate named numbers` above, and it replaces "## Recommend and present
+(fix)" below for this invocation, except on the one operator-chosen
+fall-through noted inline (option 3 of the cluster offer).
 
-**Validate the target.** Look up `<issue-number>` in the ordered, clustered
-backlog already fetched above. If present there, its `inProgress` flag is
-already derived from `labels`; skip to Eligible. If absent, disambiguate with
-a single targeted call, `gh issue view <issue-number> --json state,labels,title`
-(mirrors the claim-time re-check in "## Claim the fix unit" below), to tell
-apart: the issue doesn't exist, it's CLOSED, or it's open but not
-`tech-debt`-labeled.
+**Validate the target.** `## Validate named numbers` above decides whether
+`#<N>` is drainable; its table owns the reasons and their precedence, and this
+section restates neither.
 
-**Ineligible** (doesn't exist, closed, not `tech-debt`-labeled, already
-carries `in-progress`, already carries either park label,
-`debt:spec-pending` or `debt:spec-active`, or carries
-`severity:investigate`) → state
-the specific reason in one line (e.g. `"#<N> is already closed"`, `"#<N>
-doesn't carry the tech-debt label"`, `"#<N> is already being fixed by another
-session"`, `"#<N> is parked pending a SPEC handoff"`, `"#<N> is parked
-with a SPEC underway or holding it open"`, `"#<N> is graded
-severity:investigate: answer its question and re-grade it before fixing it"`),
-then fall through to
-"## Recommend and present (fix)" below exactly as if no argument had been
-passed.
+**Ineligible** (any row of that table matches) → print that row's line and
+stop. The run ends with nothing claimed, no branch, and no prompt; it never
+offers or drains a different issue in place of the one named. (Run ends here;
+see `## Cost record (run end)`.)
 
 **Eligible** (open, `tech-debt`-labeled, not in-progress, not parked, not
 investigate-graded) →
@@ -176,9 +195,9 @@ Recommend and present (fix)" defines below (one read, never a second prompt):
   - The built-in **Other** entry still lets the human type any open
     `tech-debt` issue number to fix that one alone.
 - **Singleton (no cluster), security-class on a non-PRIVATE repo, or
-  spec-class (any repo)** → no prompt: proceed straight to fixing `#<N>`
-  alone, the same nothing-to-decide rule "## Recommend and present (fix)"
-  applies to a lone remaining candidate. A spec-class `#<N>` (emitted `footprint`
+  spec-class (any repo)** → no prompt: the run claims only `#<N>` and
+  proceeds straight to fixing it alone, the same nothing-to-decide rule
+  "## Recommend and present (fix)" applies to a lone remaining candidate. A spec-class `#<N>` (emitted `footprint`
   equal to `"spec"`) is never anchored or batched, mirroring the
   security-class singleton rule. The Fix-time security screen below still
   screens and, if needed, diverts a security-class `#<N>` exactly as it would
@@ -187,11 +206,72 @@ Recommend and present (fix)" defines below (one read, never a second prompt):
   off.
 
 Whatever this section resolves to, hand off to "## Claim the fix unit" below
-the same way "## Recommend and present (fix)" does.
+the same way "## Recommend and present (fix)" does. `#<N>` is a named
+selection there: losing `#<N>` at the claim-time re-read (a peer session
+claimed it, or it was parked on a SPEC, after validation) stops the run with
+no re-present and no substitute issue, as `## Claim the fix unit` step 1
+states. A cluster sibling that option 1 added and that is lost at the same
+re-read follows the existing batch rule instead: it is dropped and the
+surviving members proceed.
+
+## Fix a named set (two or more numbers)
+
+Runs only when `## Argument parsing` above resolved two or more issue numbers (`numbers <N1> <N2> ...`): a batch the operator chose. It replaces "## Recommend and present (fix)" and its clustering offer for this invocation; the named set is the batch, and no issue the operator did not name joins it. `## Validate named numbers` above has already run on every named number, and this section runs only when nothing failed validation. Its steps run in this order, and a step that stops the run stops it before every later step:
+
+1. **Security pre-filter.** Read `gh repo view --json visibility` once. Anything but a confirmed `PRIVATE` (`PUBLIC`, `INTERNAL`, or a failed read) is non-private.
+   - On a **confirmed-PRIVATE** repo nothing is filtered: a security-class member passes and batches normally.
+   - On a non-private repo, classify each named member with the fail-safe content classification `## Fix-time security screen` below applies, read from the emitted `body`. A **benign member** passes. For each security-class member print exactly this line, and nothing else about it:
+
+     `#<P> can't join a batch on a non-private repo; drain it alone.`
+
+     Then stop when any member was rejected: no claim, no force, no hand-off, even when a spec-class member is also named. (Run ends here; see `## Cost record (run end)`.)
+
+   **No disclosure.** The rule covers the run's printed messages: the text relayed or written to the operator, its prompts, and its cost lines. Local tool output, such as the backlog read's JSON, is not a printed message. No printed message names a security-class member's title, body, or path, which is why no step before this one prints a named member's title, and the staleness probe's annotation is never printed for a named set's security-class member.
+2. **Spec pre-filter.** A named member whose emitted `footprint` is `spec` needs a SPEC and cannot be batched. Print that for each such member (`#<S> needs a SPEC and cannot be batched`), then ask one `AskUserQuestion` (header `Debt batch`, single-select) with exactly two options:
+   - `Hand off #<S> [#<S2> ...] to /gaia-spec`
+   - `Cancel`
+
+   `Cancel`, anything typed into the built-in Other, or a declined or dismissed prompt prints `Cancelled; nothing was claimed. Re-run /gaia-debt <numbers> to choose again.` and ends the run with nothing claimed. (Run ends here; see `## Cost record (run end)`.)
+
+   `Hand off` runs the spec member(s) alone as one selection: they go through `## Claim the fix unit` and the security, staleness, and spec screens below, and no other named member gains `in-progress` in that run. The outcomes:
+   - A confirmed spec-class member is parked with `debt:spec-pending` and its `/gaia-spec` handoff block is printed exactly as `## Fix-time spec screen` prints it, one block per confirmed member (the sentinel touch is idempotent, so one touch suffices).
+   - One downgraded member (the spec screen found it needs no SPEC) drains alone exactly as `/gaia-debt <S>` would.
+   - With two or more downgraded members, the first downgraded member in backlog order drains alone exactly as `/gaia-debt <S>` would; every other downgraded member's claim is released (`gh issue edit <n> --remove-label in-progress`), the sentinel is touched (`mkdir -p .gaia/local/debt && : > .gaia/local/debt/refresh-requested`), and one line names them: `Released #<S2> [#<S3> ...]: the spec screen found no SPEC needed, and a hand-off drains one downgraded issue per run. Re-run /gaia-debt <S2> [<S3> ...] to drain them.` Downgraded members never drain together.
+
+   This step runs before scoring, so a set that names a spec member shows the spec prompt and no scores, whether or not it would fit the budget.
+3. **Branch-name dry-run.** Mint the batch name the claim would cut, before claiming anything:
+
+   ```bash
+   bash .gaia/scripts/branch-name-lib.sh name debt <every named number>
+   ```
+
+   Any non-zero exit prints `The batch branch name for <#A #B ...> would exceed the 64-byte branch-name limit; name fewer issues. Nothing was claimed.`, then the library's own stderr line, and ends the run: nothing claimed, no scoring. (Run ends here; see `## Cost record (run end)`.)
+4. **Score.** Pipe the ordering command in `## Read and order the backlog` above, run unchanged, into the scorer:
+
+   ```bash
+   <the ordering command above> | bash .gaia/scripts/debt-batch-budget.sh <every named number>
+   ```
+
+   It prints one JSON document: `members` (each with `number`, `cost`, `base`, `surcharge`, `waived`, `difficulty`, `footprint`), `total`, `budget`, `verdict`, and `subsets`. The weights and the budget live in the scorer alone; print its numbers and never state one here. Overlap credit comes from the dedup-key path alone: a keyless member earns no shared-directory waiver even when its body cites a path in another member's directory, unlike the clustering pass's body fallback. The outcomes, named by meaning (the exit codes behind them live in the scorer's header):
+   - **fits** → the named set is the confirmed selection, with no prompt.
+   - **over** → first print each member's cost line, then the total line, built from the JSON:
+
+     `#<N>: cost <cost> (<difficulty or ungraded>, <footprint or no footprint label><, surcharge waived: shared directory when waived>)`
+
+     `Total <total> against a budget of <budget>: over budget.`
+
+     Then ask one `AskUserQuestion` (header `Debt batch`, single-select) whose question text says to use Other to cancel. Its options, in order:
+     - each of the scorer's `subsets`, in the order it lists them, labelled with its members (`#<A> #<B>`) and its total, the first suffixed `(Recommended)`;
+     - `Force #<A> #<B> ...` last, naming every named member in backlog order.
+
+     There is no separate Cancel option. A picked subset becomes the selection, and a one-member subset drains that issue alone, with no cluster prompt. Force selects every named member, over budget. Anything typed into Other, or a declined or dismissed prompt, prints `Cancelled; nothing was claimed. Re-run /gaia-debt <numbers> to choose again.` and ends the run with nothing claimed: it never forces and never drains. (Run ends here; see `## Cost record (run end)`.)
+   - **usage or malformed input** → report the scorer's stderr line, claim nothing, and end the run. (Run ends here; see `## Cost record (run end)`.)
+   - **unreadable input, jq missing included** → report it, claim nothing, and end the run. When the cause is a missing `jq`, say so in its own message: a named batch needs `jq`, and naming one number at a time still works. (Run ends here; see `## Cost record (run end)`.)
+5. **Claim and drain.** The selection enters `## Claim the fix unit` below as a named selection, and everything after it runs unchanged. The branch is minted by `## Pre-flight isolation (branch vs worktree)` unchanged: the single-issue `--slug` form for a one-member selection, the batch form for two or more. The PR carries one `Closes #N` per selected member and no other.
 
 ## Recommend and present (fix)
 
-Skipped when "## Fix a specific issue (direct-number path)" above already resolved the pick; runs otherwise. The top candidate is the first in the sorted list. Before building the prompt, resolve which cluster, if any, anchors the recommendation.
+Skipped when "## Fix a specific issue (direct-number path)" or "## Fix a named set (two or more numbers)" above already resolved the pick, or when `## Validate named numbers` stopped the run; runs otherwise, on a `top` parse or when the operator picks option 3 of the direct-number cluster offer. The top candidate is the first in the sorted list. Before building the prompt, resolve which cluster, if any, anchors the recommendation.
 
 **Offer-time security read.** Clustering itself is security-blind, but a security-class issue can never share a public `Closes #N` PR, so the offer is not. Before presenting, read repo visibility once: `gh repo view --json visibility`. On a **confirmed-PRIVATE** repo every cluster is public-batch-eligible as-is. On any **non-PRIVATE** repo, apply the same fail-safe security classification the Fix-time security screen (below) defines, reading each candidate's content from the emitted `body`, to every candidate issue in the backlog, and treat any security-class issue as not public-batch-eligible: it never appears inside a batch option, only as its own single candidate. Reuse this one read for the Fix-time security screen after selection; it never becomes a second prompt.
 
@@ -236,7 +316,17 @@ The fallback create covers every case the sync leaves the label uncreated: a CLI
 
 Then, for a single issue or **every member of a confirmed batch**:
 
-1. **Re-read each member's labels** (`gh issue view <n> --json labels`) before claiming. If `in-progress` is already present, a peer session won the race:
+1. **Re-read each member's labels** (`gh issue view <n> --json labels`) before claiming. The order of re-read and claim depends on how the selection was made.
+
+   **A named selection** is one the operator named by number: the issue a single-number run named, a fitting named set, a subset picked from the over-budget offer, a forced set, and a spec hand-off unit. For a named selection, re-read and claim each member in backlog order, interleaved: re-read `#A`'s labels, claim `#A`, re-read `#B`, claim `#B`, and so on, so this run's claims at any point are exactly the members before the one being re-read. If a member's re-read finds `in-progress` or either park label (`debt:spec-pending`, `debt:spec-active`), the named selection is lost:
+   - release every claim this run already set (the members claimed before it), `gh issue edit <n> --remove-label in-progress` each;
+   - touch the sentinel (`mkdir -p .gaia/local/debt && : > .gaia/local/debt/refresh-requested`);
+   - print `#<N> was <claimed by another session | parked on a SPEC> before this run could claim it; released this run's claims and stopped. Re-run /gaia-debt with the numbers you still want.`, naming the lost member and why;
+   - cut no branch, drain nothing, and end the run without re-presenting the backlog. A named selection never shrinks silently and never falls through to another issue. (Run ends here; see `## Cost record (run end)`.)
+
+   When the direct-number cluster offer's batch option was picked, `#<N>` is the named member and is re-read and claimed first under this rule; the siblings the offer added then follow the rule for every other selection below.
+
+   **Every other selection** (the no-argument flow's pick, a batch it recommended, a number typed into its Other, and the cluster siblings above): re-read every member first, then claim the survivors in step 2. If `in-progress` is already present, a peer session won the race:
    - **single issue** → report "issue #N was just claimed by another session" and re-present the refreshed backlog; do not fix it. (Run ends here; see `## Cost record (run end)`.)
    - **batch** → drop that member and proceed with the surviving members if 1 or more remain; if none remain, report the whole batch was claimed and re-present the refreshed backlog. (The none-remain case ends the run here; see `## Cost record (run end)`.)
 
@@ -244,8 +334,8 @@ Then, for a single issue or **every member of a confirmed batch**:
    - **single issue** → report "#<N> is parked on a SPEC" and re-present the refreshed backlog; do not fix it. (Run ends here; see `## Cost record (run end)`.)
    - **batch** → drop that member and proceed with the surviving members if 1 or more remain; if none remain, report and re-present the refreshed backlog. (The none-remain case ends the run here; see `## Cost record (run end)`.)
 
-   This re-read is the universal choke point every selection path (recommend, direct-number, Other) reaches after the pick, so it backstops the offer-time spec read and the direct-number ineligible list the same way it backstops the offer-time security read and the in-progress exclusion: a parked issue is caught no matter how it was selected.
-2. **Claim every surviving member**: `gh issue edit <n> --add-label in-progress`. A confirmed batch claims all of its members, not just the top one.
+   This re-read is the universal choke point every selection path (recommend, direct-number, named set, Other) reaches after the pick, so it backstops the offer-time spec read and the direct-number ineligible list the same way it backstops the offer-time security read and the in-progress exclusion: a parked issue is caught no matter how it was selected.
+2. **Claim every surviving member**: `gh issue edit <n> --add-label in-progress`. A confirmed batch claims all of its members, not just the top one. A named selection's members are already claimed, one by one, by step 1's interleave.
 3. **Touch the sentinel** (`mkdir -p .gaia/local/debt && : > .gaia/local/debt/refresh-requested`) so a peer session's next statusline tick recomputes the open count and drops it. This in-flow touch is best-effort; the `gh issue edit` PostToolUse hook is the deterministic backstop.
 
 The label spelling is the same shared contract `.gaia/scripts/debt-count-refresh.sh` reads to exclude claimed issues from the open count.
@@ -283,8 +373,8 @@ Runs after the pick, the claim, and the Fix-time security screen above, and **be
 
 Per member, in order, and stop at the first mismatch:
 
-1. **The dedup key's `path=` resolves.** The advisory probe in `### Staleness probe (all subcommands)` above already annotated this; here it is a verdict rather than an annotation.
-2. **Every `file:line` the body cites resolves to a real line in the named file**, and the line still carries what the body says is there. Reading the surrounding lines is the point: a citation that resolves to a *different* statement is worse than one that does not resolve at all, because it looks correct.
+1. **The dedup key's `path=` resolves.** The advisory probe in `### Staleness probe (all subcommands)` above already annotated this; here its `status` for the member is a verdict rather than an annotation.
+2. **Every `file:line` the body cites resolves to a real line in the named file**, and the line still carries what the body says is there. Reading the surrounding lines is the point: a citation that resolves to a *different* statement is worse than one that does not resolve at all, because it looks correct. Open each cited file with the Read tool, never with a shell command that names it: a cited path is body text, held to the same rule as the probe's `key.path`.
 3. **Every count the fix depends on re-derives.** A body that says "41 `unowned:` entries at `<path>:239-298`" is asserting a number and a range. Re-derive both. A count the suggested fix does not depend on is not worth stopping over; a count it is built around is the fix's premise.
 
 **On a mismatch:** report it precisely, naming the member, the assertion, and what the tree says instead. Then release the unit exactly as a controlled stop does: strip `in-progress` from every claimed member (`gh issue edit <n> --remove-label in-progress`) and touch the sentinel (`mkdir -p .gaia/local/debt && : > .gaia/local/debt/refresh-requested`), so the issue re-enters the open count and a peer session's offer. Do not edit the issue to repair the drift and do not proceed on a re-derived premise: which of the issue and the code is wrong is the operator's call. (Run ends here; see `## Cost record (run end)`.)
@@ -315,7 +405,7 @@ Runs after the pick, the claim, the Fix-time security screen, and the Fix-time s
 
 **This screen owns the spec-versus-implement determination**, resolving the advisory footprint class **symmetrically**, exactly as the class is advisory for `narrow`/`wide`:
 
-- A `footprint:spec` member the drainer judges to need **no** SPEC after reading the code → **downgrade** to `wide`/`narrow` and keep it in the unit to implement.
+- A `footprint:spec` member the drainer judges to need **no** SPEC after reading the code → **downgrade** to `wide`/`narrow` and keep it in the unit to implement. A named set's spec hand-off keeps at most one downgraded member; `## Fix a named set (two or more numbers)` step 2 releases the rest.
 - A `narrow`/`wide` member the drainer judges to **need** a SPEC → **upgrade**, **peel** it from the unit, and hand it off, mirroring the way the Fix-time security screen peels a security member reached via Other. The surviving members proceed as the smaller fix unit.
 
 **For each confirmed spec-class member, do not implement.** Instead:
@@ -493,7 +583,15 @@ Run the ordering command and the clustering pass, find the issue whose number ma
 Every path that ends a `/gaia-debt` run appends exactly one cost record, the run-ending paths above:
 
 - `list` and `why` printing their result.
+- The argument parser's unrecognized-argument stop, or its misuse stop. This stop precedes the backend probe and the stale-claim reconcile, so the run read and wrote nothing before it.
 - The backend probe's definitive-absent or transient/ambiguous stop.
+- The validation stop: `## Validate named numbers` found a named number ineligible.
+- The named-set security pre-filter rejecting a security-class member on a non-private repo.
+- The named-set spec hand-off prompt cancelled (Cancel, Other, or a declined or dismissed prompt).
+- The named-set branch-name dry-run stop: the batch branch name would exceed the branch-name limit.
+- The named-set over-budget prompt cancelled (Other, or a declined or dismissed prompt).
+- The named-set scorer stopping on usage or malformed input, or on unreadable input (a missing `jq` included).
+- A named selection losing a member at the claim-time re-read.
 - Zero remaining candidates.
 - Claiming the fix unit losing the race to a peer session (single issue, or every batch member).
 - The security screen diverting every member.
@@ -502,11 +600,14 @@ Every path that ends a `/gaia-debt` run appends exactly one cost record, the run
 - Driving the PR to merge: `MERGED` cleanup, a still-queued `--auto` merge, a failed required check, a pull request closed without merging, a merge wait that refused because it read nothing, a stop at the audit gate's branch checkpoint, or a controlled stop before merge.
 - Worktree mode's isolation-context continuation prompt.
 
+The parser, validation, named-set, and named-selection claim-time stops above all end the run before a PR exists, so none of them passes `--github-*` flags.
+
 Apply the shared tally machinery in `.claude/skills/gaia/references/cost-record.md` with `{{COMMAND}}` = `gaia-debt`. Pass-through is mode-agnostic: worktree mode reads the same URL from the same tool result, nothing about the worktree changes the call.
 
 ## Guardrails
 
-- **One fix unit per invocation.** A single issue, or a user-confirmed related batch; the skill never auto-advances to an unrelated issue and never batches unrelated issues. Batching is always a user-confirmed choice, with one-at-a-time preserved as the explicit opt-out. Security-class issues never join a public batch.
+- **One fix unit per invocation.** A single issue, a user-confirmed related batch, or an operator-named batch; the skill never auto-advances to an unrelated issue. Batching is always the user's choice: either a related batch the clustering pass recommends and the user confirms, or a batch the operator names by number, under the named-batch budget. One-at-a-time stays the explicit opt-out. Security-class issues never join a public batch, and spec-class members and, on a non-private repo, security-class members never join a named batch, forced or not.
+- **A named number never drains a different issue without the operator choosing it.** There is no automatic fall-through: an unrecognized argument, an ineligible named number, and a named selection's claim-time loss each stop the run with a reason. The direct-number cluster offer's next-available option is the operator's choice, not a fall-through.
 - **Deterministic ordering, never an LLM evaluator.** The order is the `--jq` sort above over severity labels and `createdAt`; no model ranks the backlog.
 - **Within-band FIFO, severity-first.** Highest severity first, oldest first within a band. Cross-band fairness / anti-starvation is out of scope.
 - **The skill drives the merge, never the gate.** The happy path runs start to finish with no merge-time confirmation: it resolves the fix PR to completion through the standard PR Merge Workflow's marker handshake, running `gh pr merge` only once a real marker exists for HEAD. Never bypass, fake, or pre-empt the marker, and never substitute a bare `gh pr merge` for the workflow's gate.
@@ -516,5 +617,5 @@ Apply the shared tally machinery in `.claude/skills/gaia/references/cost-record.
 - **Spec screen before any implementation.** A confirmed spec-class member never joins a fix PR: it hands off to `/gaia-spec` and parks with `debt:spec-pending`, which the pasted spec session swaps to `debt:spec-active` once the pipeline starts; the peel is unconditional, on every repo. `## Fix-time spec screen` above owns what each park state means, why the two are equivalent to every consumer, the hand-release cases, and the abandonment rule; this recap names the swap and restates none of the rules, so the two cannot disagree.
 - **Claim before contest.** `/gaia-debt fix` claims each selected member with the gaia-owned `in-progress` label the instant a unit is picked, ahead of every pre-isolation screen and of isolation itself, which excludes it from the open count and a peer session's offer. `## Claim the fix unit` above states that order; this recap does not restate it, so the two cannot disagree. The claim releases on a controlled stop or on any screen's peel, is best-effort cleared on merge, and is recovered by the fix-start stale-claim reconcile after an ungraceful session death. A hand-set claim on a `tech-debt` issue is **not** exempt from that reconcile; `### Reconcile stale claims (fix only)` above states its scope and its liveness rule, and this recap does not restate either, so the two cannot disagree.
 - **The PR body is the sole `Closes` carrier.** No commit message on the branch closes an issue, so dropping a member stays correctable by editing the PR body; a member dropped after its commits exist also gets those commit messages rewritten, and the post-merge close-set check catches a stale trailer that reaches the merge by any other route.
-- **Difficulty grading never gates anything.** No `/gaia-debt` path requires a `difficulty:*` label to be present.
+- **Difficulty feeds exactly one decision.** No `/gaia-debt` path requires a `difficulty:*` label to be present; the named-batch budget is difficulty's one consumer, and an ungraded issue scores as medium there.
 - Use repo-relative paths only.

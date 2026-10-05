@@ -68,7 +68,10 @@ The maintainer's copy of this page carries every root file. An adopter's copy ca
 
 | Script | Ships | Invoker | What it is |
 |---|---|---|---|
+| `debt-batch-budget.sh` | yes | `/gaia-debt` | Scores an operator-named batch against the named-batch budget from labels and dedup-key directories, and ranks the within-budget subsets to offer when it is over. |
 | `debt-count-refresh.sh` | yes | the statusline | Recomputes the open tech-debt count the statusline nudge shows. |
+| `debt-parse-args.sh` | yes | `/gaia-debt` | Parses the `/gaia-debt` argument string into a subcommand or a list of issue numbers, and refuses anything else. |
+| `debt-path-probe.sh` | yes | `/gaia-debt` | Reports whether each backlog issue's dedup-key path is still tracked, comparing every path against the index as data. |
 | `debt-stale-claims.sh` | yes | `/gaia-debt` | Prints the number of every open tech-debt issue whose `in-progress` claim is stale. It never strips a label; the caller does. |
 
 ### `lint-`
