@@ -349,9 +349,9 @@ labels() { printf '%s' "$1" | jq -r '[.questions[0].options[].label] | join("|")
   question="$(gaia_loop_pinned_question feat/x $nonce 6 3 false false context)"
   [ "$(labels "$question")" = "Continue audit in a new session (Recommended)|Continue audit in this session|Stop and file the remainder" ]
   question="$(gaia_loop_pinned_question feat/x $nonce 10 3 true true cap)"
-  [ "$(labels "$question")" = "Accept the remainder (Recommended)|Stop and file the remainder" ]
+  [ "$(labels "$question")" = "Continue audit in a new session (Recommended)|Continue audit in this session|Accept the remainder|Stop and file the remainder" ]
   question="$(gaia_loop_pinned_question feat/x $nonce 10 3 false true cap)"
-  [ "$(labels "$question")" = "Stop and file the remainder (Recommended)|Type audit-accept instead" ]
+  [ "$(labels "$question")" = "Continue audit in a new session (Recommended)|Continue audit in this session|Type audit-accept instead|Stop and file the remainder" ]
   local eligible cap
   for eligible in true false; do
     for cap in true false; do
@@ -366,11 +366,11 @@ labels() { printf '%s' "$1" | jq -r '[.questions[0].options[].label] | join("|")
   [[ "$question" == *"audit-accept"*"deliberate override"* ]]
 }
 
-@test "pinned question red twin: a builder without the cap-ineligible option fails the two-option check" {
+@test "pinned question red twin: a builder without the grants and the cap-ineligible option fails the two-option check" {
   local mutant_directory="$BATS_TEST_TMPDIR/mut" question
   mkdir -p "$mutant_directory"
   cp "$SCRIPTS"/*.sh "$mutant_directory/"
-  sed 's/if \$cap and (\$eligible | not) then/if false then/' "$SCRIPTS/audit-loop-state-lib.sh" >"$mutant_directory/audit-loop-state-lib.sh"
+  sed -e 's/if \$cap and (\$eligible | not) then/if false then/' -e '/{key: "grant_/d' "$SCRIPTS/audit-loop-state-lib.sh" >"$mutant_directory/audit-loop-state-lib.sh"
   if cmp -s "$SCRIPTS/audit-loop-state-lib.sh" "$mutant_directory/audit-loop-state-lib.sh"; then return 1; fi
   question="$(bash -c '. "$1"; gaia_loop_pinned_question feat/x 0123456789abcdef 10 3 false true cap' _ "$mutant_directory/audit-loop-state-lib.sh")"
   [ "$(option_count "$question")" -eq 1 ]

@@ -122,14 +122,15 @@ _gaia_loop_decide_unit_with_unit_rounds() {
       | if $latest_answer != null and ($latest_unit == null or $latest_unit.after_checkpoint < $latest_checkpoint.index) then $latest_answer.kind else empty end
       end' 2>/dev/null)" || return 5
   if [ "$used" -ge "$_GAIA_LOOP_HARD_CAP" ]; then
-    # The cap ends grants, not accepts: the checkpoint it pins offers Accept as
-    # the way out, so an accept answered there still buys its one closing round
-    # (no fixer runs in it). Anything else past the cap is denied.
-    if [ "$answer" = accept ] && [ "$(gaia_loop_next_closing "$state")" = true ]; then
-      printf 'allow accept %s %s\n' "$start_round" "$start_round"
-    else
-      printf 'deny cap %s true\n' "$eligible"
-    fi
+    # Past the cap neither the context line nor the fallback fold admits a
+    # unit: each one needs a human answer to the checkpoint the cap pins. A
+    # grant buys a whole unit rather than one round, so a loop that is still
+    # converging costs the human one answer per unit, not one per round.
+    case "$answer" in
+      grant) printf 'allow grant %s %s\n' "$start_round" $((start_round + unit_rounds - 1)) ;;
+      accept) printf 'allow accept %s %s\n' "$start_round" "$start_round" ;;
+      *) printf 'deny cap %s true\n' "$eligible" ;;
+    esac
     return 0
   fi
   denying_signal="$(_gaia_loop_denying_signal "$state" "$snapshot" "$used")" || return 5
@@ -198,13 +199,13 @@ gaia_loop_decide_member() {
   esac
   used="$(_gaia_loop_used "$state")" || return 5
   eligible="$(_gaia_loop_snapshot_eligible "$snapshot")"
-  # Past the cap a member may dispatch only the closing round an accept
-  # admitted; the window check below still binds it to that unit.
-  if [ "$used" -ge "$_GAIA_LOOP_HARD_CAP" ] && [ "$(gaia_loop_next_closing "$state")" != true ]; then
+  through="$(printf '%s' "$state" | jq -r '((.history.units // []) | last | .through_round?) // empty' 2>/dev/null)" || return 5
+  # Past the cap a member runs only inside a unit an answer admitted there; a
+  # unit admitted below the cap ends at it.
+  if [ "$used" -ge "$_GAIA_LOOP_HARD_CAP" ] && { ! gaia_loop_is_uint "$through" || [ "$through" -le "$_GAIA_LOOP_HARD_CAP" ]; }; then
     printf 'deny cap %s true\n' "$eligible"
     return 0
   fi
-  through="$(printf '%s' "$state" | jq -r '((.history.units // []) | last | .through_round?) // empty' 2>/dev/null)" || return 5
   if ! gaia_loop_is_uint "$through" || [ "$through" -lt $((used + 1)) ]; then
     printf 'deny window %s false\n' "$eligible"
     return 0

@@ -294,7 +294,7 @@ case "$base" in
     exit 0
     ;;
   "Type audit-accept instead")
-    _ag_say "Nothing was recorded: round 10 is the cap and accept is not offered. The human may type audit-accept as the whole prompt as a deliberate override of the eligibility gate, or stop and file the remainder." \
+    _ag_say "Nothing was recorded: round 10 is the cap and accept is not offered. The human may type audit-accept as the whole prompt as a deliberate override of the eligibility gate, continue the audit for another unit, or stop and file the remainder." \
       "The human selected Type audit-accept instead. Nothing was recorded and the loop stays stopped. Wait for the human to type audit-accept, or file the remainder."
     exit 0
     ;;

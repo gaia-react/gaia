@@ -361,9 +361,8 @@ gaia_loop_recommended() {
 # trigger <recommended> is the gaia_loop_recommended value: accept leads when
 # Accept is offered, stop leads on stop. Otherwise, with a grant on the table, a reading below the
 # <checkpoint_line> (gaia_context_line) puts "Continue audit in this session" first and a reading at
-# or above it, or no usable reading or line, puts "Continue audit in a new session" first. At the
-# cap there is no grant: Accept leads when offered, else Stop. The rest keep
-# their order.
+# or above it, or no usable reading or line, puts "Continue audit in a new session" first. The rest
+# keep their order.
 gaia_loop_pinned_question() {
   local branch="${1-}" nonce="${2-}" used="${3-}" unit_rounds="${4-}" eligible="${5-}" cap="${6-}" trigger="${7-}" reading="${8-}"
   local recommended="${9-}" line="${10-}"
@@ -403,9 +402,7 @@ gaia_loop_pinned_question() {
     esac
   fi
   if [ -z "${lead-}" ]; then
-    if [ "$cap" = true ]; then
-      if [ "$eligible" = true ]; then lead=accept; else lead=stop; fi
-    elif [ "$band" = below ]; then
+    if [ "$band" = below ]; then
       lead=grant_here
     else
       lead=grant_new_session
@@ -427,10 +424,8 @@ gaia_loop_pinned_question() {
         above: " is at or above the checkpoint line: ",
         none: ", so a new session is the safe choice: "}[$band]) as $fresh
     | [
-        (if $cap then empty else
-          {key: "grant_here", label: "Continue audit in this session", description: ($option_context + $here + "records " + $unit_rounds + " more rounds and keeps working here." + $typed_grant_note)},
-          {key: "grant_new_session", label: "Continue audit in a new session", description: ($option_context + $fresh + "records the same " + $unit_rounds + "-round grant, then prints a continuation prompt for a fresh session." + $typed_grant_note)}
-        end),
+        {key: "grant_here", label: "Continue audit in this session", description: ($option_context + $here + "records " + $unit_rounds + " more rounds and keeps working here." + $typed_grant_note)},
+        {key: "grant_new_session", label: "Continue audit in a new session", description: ($option_context + $fresh + "records the same " + $unit_rounds + "-round grant, then prints a continuation prompt for a fresh session." + $typed_grant_note)},
         (if $eligible then
           {key: "accept", label: "Accept the remainder", description: ("One closing round, then the remainder is recorded as accepted residuals." + $typed_accept_note)}
         else empty end),

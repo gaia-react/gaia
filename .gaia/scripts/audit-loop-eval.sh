@@ -36,9 +36,9 @@
 # more than 5 rounds and 1.8% more than 6, so it interrupts only the long tail;
 # the signals below catch non-convergence earlier. A grant of 3 is the
 # smallest that lets both evidence windows below see fresh rounds before the
-# next checkpoint. The cap: a dispatch that would start round 11 or later is
-# denied whatever was granted; only an accept answered at the cap admits its
-# one closing round.
+# next checkpoint. The cap: a unit admitted below round 10 ends at round 10,
+# and past it every unit needs a human answer to the checkpoint the cap pins,
+# whatever the context line or the fold says.
 #
 # KNOBS. GAIA_AUDIT_CHECKPOINT_ROUND and GAIA_AUDIT_GRANT_ROUNDS remain, as
 # lower-only knobs for the round-count fallback only, integers 1..99; anything
@@ -72,8 +72,8 @@
 #   answer exists for a checkpoint at round >= r; else allow.
 #   gaia_loop_decide_unit, first match wins:
 #     1. used >= 10: the latest checkpoint's unconsumed answer (as in step 3)
-#        is an accept whose closing round is not yet recorded: `allow accept
-#        s s`; else `deny cap <eligible> true`. A grant never passes the cap.
+#        admits one unit, a grant `allow grant s s+k-1` and an accept `allow
+#        accept s s`; with none, `deny cap <eligible> true`.
 #     2. a denying signal on the snapshot, none of whose checkpoints at round
 #        >= used is answered: `deny rubric:<signal> <eligible> false`, the first in
 #        SIGNALS order.
@@ -91,7 +91,7 @@
 #     6. any other reading: the fallback fold, `deny fallback <eligible> false`
 #        when used >= allowed, else `allow fallback s min(s+k-1, 10, allowed)`.
 #   gaia_loop_decide_member, in a unit: used >= 10 denies `cap` first unless
-#   the next round is an accept's closing round; then
+#   the latest unit runs past round 10 (an answer admitted it there); then
 #   the latest unit's through_round must reach s, else `deny window`; then a
 #   denying signal unanswered denies as in step 2; else `allow`. Inline (no
 #   unit, nesting unavailable): gaia_loop_decide_unit with k = 1.
