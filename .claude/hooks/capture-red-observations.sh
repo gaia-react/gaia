@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
-# PostToolUse Bash hook: OBSERVE-AND-RECORD half of the RED-verification gate.
+# PostToolUse and PostToolUseFailure Bash hook: OBSERVE-AND-RECORD half of the
+# RED-verification gate.
+#
+# Both events are registered because a vitest run with a failing test exits
+# non-zero, and Claude Code reports a non-zero Bash call through
+# PostToolUseFailure only. Without that registration the RED run, the one this
+# hook exists to observe, is never seen. Nothing here reads `tool_response`
+# (the failure payload carries `error` instead): the results come from the
+# json re-run below, so both payloads drive the same path.
 #
 # When the agent runs a one-shot vitest run (`pnpm test --run [scope]`), this
 # hook re-invokes vitest with the json reporter on the same scope, reads the
@@ -17,6 +25,8 @@
 # package registry or descriptor: it records nothing and emits a
 # PostToolUse `{"decision":"block","reason":...}` so the session sees why, rather
 # than going quiet while the commit gate later denies for want of a RED.
+# PostToolUseFailure accepts no `decision`, so on that event the same reason
+# goes out as additionalContext.
 #
 # Package scope: the test run may name a package three ways, and the
 # hook recognizes all of them. `pnpm test --run frontend/app/x.test.ts` from the
@@ -48,6 +58,15 @@ command -v jq >/dev/null 2>&1 || exit 0
 
 tool_name=$(printf '%s' "$input" | jq -r '.tool_name // ""' 2>/dev/null || echo "")
 [ "$tool_name" = "Bash" ] || exit 0
+
+# Every diagnostic below names the event that fired as its hookEventName, the
+# key hookSpecificOutput carries per event.
+hook_event_name=$(printf '%s' "$input" | jq -r '.hook_event_name // "PostToolUse"' 2>/dev/null || echo "PostToolUse")
+[ "$hook_event_name" = "PostToolUseFailure" ] || hook_event_name="PostToolUse"
+emit_context() {
+  jq -n --arg e "$hook_event_name" --arg c "$1" \
+    '{hookSpecificOutput: {hookEventName: $e, additionalContext: $c}}' 2>/dev/null || true
+}
 
 command=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null || echo "")
 [ -n "$command" ] || exit 0
@@ -118,7 +137,11 @@ temporary_directory="${ledger_directory}/.tmp"
 # location. An unusable registry or descriptor (or a library that will not load)
 # records nothing and tells the session why, instead of exiting silently.
 block_with_reason() {
-  jq -n --arg r "$1" '{decision: "block", reason: $r}' 2>/dev/null || true
+  if [ "$hook_event_name" = "PostToolUseFailure" ]; then
+    emit_context "$1"
+  else
+    jq -n --arg r "$1" '{decision: "block", reason: $r}' 2>/dev/null || true
+  fi
   exit 0
 }
 [ -n "$_library_directory" ] && [ -f "$_library_directory/gaia-packages.sh" ] && . "$_library_directory/gaia-packages.sh"
@@ -168,8 +191,7 @@ if [ -n "$option_directory" ]; then
 elif [ -n "$option_filter" ]; then
   filter_path=$(gaia_package_dir "$option_filter") || filter_path=''
   if [ -z "$filter_path" ]; then
-    jq -n --arg c "RED capture skipped: the --filter name '$option_filter' is not a registered package in .gaia/packages.json, so no RED was recorded. Run the test with pnpm -C <package dir> test --run <test-file>, or pnpm test --run <repo-relative test-file> from the repo root." \
-      '{hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $c}}' 2>/dev/null || true
+    emit_context "RED capture skipped: the --filter name '$option_filter' is not a registered package in .gaia/packages.json, so no RED was recorded. Run the test with pnpm -C <package dir> test --run <test-file>, or pnpm test --run <repo-relative test-file> from the repo root."
     exit 0
   fi
   if [ "$filter_path" = . ]; then
@@ -241,8 +263,7 @@ else
   # plain stdout and stderr to its debug log only, so a printed line would be as
   # silent as the bare exit.
   if [ -z "$(printf '%s' "$scope" | tr -d '[:space:]')" ]; then
-    jq -n --arg c "RED capture skipped: this test run named no test file, so no failing (RED) result was recorded for the RED-verification commit gate. An unscoped run is not captured, because re-running the whole suite on every run is an unbounded cost. If a new test failed here and you need its RED on record, re-run it with a test path: pnpm test --run <test-file>" \
-      '{hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $c}}' 2>/dev/null || true
+    emit_context "RED capture skipped: this test run named no test file, so no failing (RED) result was recorded for the RED-verification commit gate. An unscoped run is not captured, because re-running the whole suite on every run is an unbounded cost. If a new test failed here and you need its RED on record, re-run it with a test path: pnpm test --run <test-file>"
     exit 0
   fi
 

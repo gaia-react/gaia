@@ -671,3 +671,69 @@ assert_frontend_capture() {
   jq -r '.hookSpecificOutput.additionalContext' <<<"$output" | grep -qF -- "'nonesuch' is not a registered package"
   [ "$(fixture_ledger_lines)" -eq 0 ]
 }
+
+# --- the failure event: a failing run's Bash call errors ----------------------
+#
+# A vitest run with a failing test exits non-zero, and Claude Code reports a
+# non-zero Bash call through PostToolUseFailure, not PostToolUse. The RED run is
+# the one this hook exists to observe, so it has to be registered on that event
+# too. The failure payload carries `error` and `is_interrupt` in place of
+# `tool_response`, and that event accepts no `decision: "block"`, so the hook
+# answers it through additionalContext keyed to the event it received.
+
+# A PostToolUseFailure Bash payload, as Claude Code sends it for a failing run.
+# Args: <command> [cwd]
+failure_payload() {
+  jq -nc --arg command "$1" --arg directory "${2:-}" \
+    '{hook_event_name:"PostToolUseFailure", tool_name:"Bash", tool_input:{command:$command},
+      tool_use_id:"toolu_test", error:"Command failed with exit code 1", is_interrupt:false}
+     + (if $directory == "" then {} else {cwd:$directory} end)'
+}
+
+@test "failure event: both settings files register the capture on PostToolUseFailure for Bash" {
+  hook_registered "$REPO_ROOT/.claude/settings.json" \
+    '.hooks.PostToolUseFailure[] | select(.matcher == "Bash")' capture-red-observations.sh
+  hook_registered "$REPO_ROOT/frontend/.claude/settings.json" \
+    '.hooks.PostToolUseFailure[] | select(.matcher == "Bash")' capture-red-observations.sh
+}
+
+@test "failure event: both settings files still register the capture on PostToolUse for Bash" {
+  hook_registered "$REPO_ROOT/.claude/settings.json" \
+    '.hooks.PostToolUse[] | select(.matcher == "Bash")' capture-red-observations.sh
+  hook_registered "$REPO_ROOT/frontend/.claude/settings.json" \
+    '.hooks.PostToolUse[] | select(.matcher == "Bash")' capture-red-observations.sh
+}
+
+@test "failure event: a failing run's payload records the RED" {
+  RED_CAPTURE_JSON_OVERRIDE="$REPO_ROOT/$JSON_FIXTURE_RELATIVE_DIRECTORY/assertion-fail.json" \
+    invoke_hook_in "$REPO_ROOT" \
+    "$(failure_payload "pnpm test --run $FIXTURE_RELATIVE_DIRECTORY/mixed-pass-fail.test.ts")" "$HOOK"
+  [ "$status" -eq 0 ]
+  [ "$(ledger_lines)" -eq 1 ]
+  [ "$(jq -r '.fullName' "$LEDGER_ABSOLUTE_PATH")" = "fails on assertion" ]
+}
+
+@test "failure event: a failing package run re-runs in the package and records the repo-relative key" {
+  make_package_fixture
+  invoke_hook_in "$FIXTURE" "$(failure_payload "pnpm -C frontend test --run app/utils/x.test.ts" "$FIXTURE")" "$HOOK"
+  assert_frontend_capture
+}
+
+@test "failure event: the unscoped-run skip is announced under the event it received" {
+  invoke_hook_in "$REPO_ROOT" "$(failure_payload "pnpm test --run")" "$HOOK"
+  [ "$status" -eq 0 ]
+  [ "$(ledger_lines)" -eq 0 ]
+  jq -e '.hookSpecificOutput.hookEventName == "PostToolUseFailure"' <<<"$output"
+  jq -r '.hookSpecificOutput.additionalContext' <<<"$output" | grep -qF -- 'pnpm test --run <test-file>'
+}
+
+@test "failure event: an unusable registry says why as context, not as an unsupported block" {
+  make_package_fixture
+  write_package_registry "$FIXTURE" '{'
+  invoke_hook_in "$FIXTURE" "$(failure_payload "pnpm test --run frontend/app/utils/x.test.ts" "$FIXTURE")" "$HOOK"
+  [ "$status" -eq 0 ]
+  jq -e 'has("decision") | not' <<<"$output"
+  jq -e '.hookSpecificOutput.hookEventName == "PostToolUseFailure"' <<<"$output"
+  jq -r '.hookSpecificOutput.additionalContext' <<<"$output" | grep -qF -- 'gaia-packages: .gaia/packages.json is malformed'
+  [ "$(fixture_ledger_lines)" -eq 0 ]
+}
