@@ -65,7 +65,8 @@ setup() {
     ':!wiki/log.md' ':!wiki/hot.md' \
     ':!.gaia/scripts/tests/cost-consolidate-absence.bats' \
     ':!.gaia/tests/hooks/fixtures/audit-routing-before.tsv' \
-    ':!.gaia/tests/fixtures/dedup-key-corpus'
+    ':!.gaia/tests/fixtures/dedup-key-corpus' \
+    ':!.gaia/audit-residual-dismissals.jsonl'
   # git grep exits 1 (not 0) when it finds no match; the assertion that
   # matters is emptiness of $output, not the exit code.
   [ -z "$output" ]
