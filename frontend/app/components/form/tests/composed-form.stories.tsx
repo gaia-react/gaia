@@ -105,14 +105,18 @@ EmptySubmitInvalidControls.play = async ({canvasElement}) => {
     const alertIds = canvas.getAllByRole('alert').map((alert) => alert.id);
 
     await expect(describedBy.some((id) => alertIds.includes(id))).toBe(true);
-    await expect(
-      canvas
-        .getAllByRole('group')
-        .filter(
-          (group) => group.dataset.slot === 'field' && group.contains(control)
-        )
-        .every((group) => group.dataset.invalid === 'true')
-    ).toBe(true);
+
+    const fieldGroups = canvas
+      .getAllByRole('group')
+      .filter(
+        (group) => group.dataset.slot === 'field' && group.contains(control)
+      );
+
+    await expect(fieldGroups).not.toHaveLength(0);
+
+    for (const group of fieldGroups) {
+      await expect(group).toHaveAttribute('data-invalid', 'true');
+    }
   }
 };
 
