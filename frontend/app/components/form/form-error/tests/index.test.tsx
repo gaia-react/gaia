@@ -2,7 +2,7 @@ import type {ReactNode} from 'react';
 import {createRoutesStub, Form} from 'react-router';
 import userEvent from '@testing-library/user-event';
 import {describe, expect, test} from 'vitest';
-import {render, screen} from 'test/rtl';
+import {fireEvent, render, screen} from 'test/rtl';
 import FormError from '..';
 
 const ERROR = 'Something went wrong';
@@ -53,6 +53,26 @@ describe('FormError', () => {
 
     await tab();
     expect(screen.getByRole('button', {name: 'Submit'})).toHaveFocus();
+  });
+
+  test('leaves focus alone when dismissed by a touch tap', async () => {
+    const {click} = userEvent.setup();
+    render(<FieldStub />);
+
+    await click(screen.getByRole('button', {name: 'Submit'}));
+    await screen.findByRole('alert');
+
+    fireEvent(
+      screen.getByRole('button', {name: 'Dismiss'}),
+      new PointerEvent('click', {
+        bubbles: true,
+        cancelable: true,
+        pointerType: 'touch',
+      })
+    );
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', {name: 'Email'})).not.toHaveFocus();
   });
 
   test('moves focus to the submit button when the form has no other field', async () => {

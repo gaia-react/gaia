@@ -48,7 +48,16 @@ const FormError = ({className, isHidden}: FormErrorProps) => {
   const handleDismissErrorButton: MouseEventHandler<HTMLButtonElement> = (
     event
   ) => {
-    focusFirstFormControl(event.currentTarget);
+    // Mobile browsers open the on-screen keyboard when a tap's click handler
+    // focuses a text field, and a touch user has no Tab position to keep.
+    const isTouchActivation =
+      'pointerType' in event.nativeEvent &&
+      event.nativeEvent.pointerType === 'touch';
+
+    if (!isTouchActivation) {
+      focusFirstFormControl(event.currentTarget);
+    }
+
     setDismissedActionData(actionData);
   };
 
