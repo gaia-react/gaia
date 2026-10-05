@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import type {Page, TestInfo} from '@playwright/test';
+import {AXE_WCAG_TAGS} from '../test/axe-tags';
 
 const SEVERITY_FAIL = new Set(['critical', 'serious']);
 
@@ -17,13 +18,7 @@ export const expectNoSeriousA11yViolations = async (
   options?: {builder?: AxeBuilder; label?: string}
 ): Promise<void> => {
   const axe =
-    options?.builder ??
-    new AxeBuilder({page}).withTags([
-      'wcag2a',
-      'wcag2aa',
-      'wcag21a',
-      'wcag21aa',
-    ]);
+    options?.builder ?? new AxeBuilder({page}).withTags(AXE_WCAG_TAGS);
   const suffix = options?.label === undefined ? '' : `-${options.label}`;
 
   const {incomplete, violations} = await axe.analyze();

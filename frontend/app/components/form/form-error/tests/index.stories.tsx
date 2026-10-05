@@ -7,11 +7,13 @@ import {Button} from '~/components/ui/button';
 import {Input} from '~/components/ui/input';
 import FormError from '..';
 
+const actionErrorMessage = 'Something went wrong. Please try again.';
+
 const meta: Meta = {
   component: FormError,
   decorators: [
     stubs.reactRouter({
-      action: () => ({error: 'Something went wrong. Please try again.'}),
+      action: () => ({error: actionErrorMessage}),
     }),
   ],
   parameters: {
@@ -42,7 +44,7 @@ export const Default: StoryFn = () => (
 
 Default.play = async ({canvasElement}) => {
   await expect(await submitAndFindAlert(canvasElement)).toHaveTextContent(
-    'Something went wrong. Please try again.'
+    actionErrorMessage
   );
 };
 
@@ -53,11 +55,9 @@ export const Hidden: StoryFn = () => (
   </Form>
 );
 
-type PlayContext = {canvasElement: HTMLElement};
-
-const actionErrorMessage = 'Something went wrong. Please try again.';
-
 type ErrorFormProps = {children?: ReactNode};
+
+type PlayContext = {canvasElement: HTMLElement};
 
 const ErrorForm = ({children}: ErrorFormProps) => (
   <Form className="space-y-4" method="post">

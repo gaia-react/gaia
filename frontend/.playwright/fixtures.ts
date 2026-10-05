@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import {test as base, expect} from '@playwright/test';
+import {AXE_WCAG_TAGS} from '../test/axe-tags';
 
 type AxeFixtures = {
   makeAxeBuilder: () => AxeBuilder;
@@ -11,13 +12,7 @@ type AxeFixtures = {
  */
 export const test = base.extend<AxeFixtures>({
   makeAxeBuilder: async ({page}, use) => {
-    const make = () =>
-      new AxeBuilder({page}).withTags([
-        'wcag2a',
-        'wcag2aa',
-        'wcag21a',
-        'wcag21aa',
-      ]);
+    const make = () => new AxeBuilder({page}).withTags(AXE_WCAG_TAGS);
 
     // `use` is the Playwright fixture-API callback parameter, not a React hook.
     // eslint-disable-next-line react-hooks/rules-of-hooks

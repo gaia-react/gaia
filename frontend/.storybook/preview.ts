@@ -1,5 +1,6 @@
 import type {Preview} from '@storybook/react-vite';
 import {themes} from 'storybook/theming';
+import {AXE_WCAG_TAGS} from '../test/axe-tags';
 import {decorators} from './chromatic';
 import i18n from './i18next';
 import {allModes} from './modes';
@@ -25,15 +26,15 @@ const preview: Preview = {
     theme: 'light',
   },
   parameters: {
-    // The tag set matches the Playwright story scan, and any impact fails here
-    // where the scan fails only critical and serious. `region` is off because a
+    // Any impact fails here, where the Playwright scan fails only critical and
+    // serious. `region` is off because a
     // story renders a fragment outside the page landmarks.
     a11y: {
       config: {rules: [{enabled: false, id: 'region'}]},
       options: {
         runOnly: {
           type: 'tag',
-          values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'],
+          values: AXE_WCAG_TAGS,
         },
       },
       test: 'error',
