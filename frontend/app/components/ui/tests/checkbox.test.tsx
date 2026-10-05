@@ -14,8 +14,8 @@ describe('Checkbox', () => {
   test('applies a passed className to the root next to a label', () => {
     render(
       <>
-        <Checkbox className="mt-2" id="accept-plain" />
-        <Label htmlFor="accept-plain">Accept</Label>
+        <Checkbox className="mt-2" id="acceptPlain" />
+        <Label htmlFor="acceptPlain">Accept</Label>
       </>
     );
     expect(screen.getByRole('checkbox', {name: 'Accept'})).toHaveClass('mt-2');

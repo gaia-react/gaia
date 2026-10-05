@@ -31,17 +31,17 @@ export const Default: StoryFn = () => {
       <FieldLegend>{t('form.allFieldsAreRequired')}</FieldLegend>
       <FieldGroup>
         <Field>
-          <FieldLabel htmlFor="field-story-name">{t('name')}</FieldLabel>
-          <Input id="field-story-name" />
+          <FieldLabel htmlFor="fieldStoryName">{t('name')}</FieldLabel>
+          <Input id="fieldStoryName" />
         </Field>
         <Field>
-          <FieldLabel htmlFor="field-story-email">{t('email')}</FieldLabel>
+          <FieldLabel htmlFor="fieldStoryEmail">{t('email')}</FieldLabel>
           <Input
-            aria-describedby="field-story-email-description"
-            id="field-story-email"
+            aria-describedby="fieldStoryEmailDescription"
+            id="fieldStoryEmail"
             placeholder={t('emailPlaceholder')}
           />
-          <FieldDescription id="field-story-email-description">
+          <FieldDescription id="fieldStoryEmailDescription">
             {t('form.required')}
           </FieldDescription>
         </Field>
@@ -55,8 +55,8 @@ export const Horizontal: StoryFn = () => {
 
   return (
     <Field orientation="horizontal">
-      <Checkbox id="field-story-horizontal" />
-      <FieldLabel htmlFor="field-story-horizontal">{t('form.ok')}</FieldLabel>
+      <Checkbox id="fieldStoryHorizontal" />
+      <FieldLabel htmlFor="fieldStoryHorizontal">{t('form.ok')}</FieldLabel>
     </Field>
   );
 };
@@ -66,8 +66,8 @@ export const Responsive: StoryFn = () => {
 
   return (
     <Field orientation="responsive">
-      <FieldLabel htmlFor="field-story-responsive">{t('name')}</FieldLabel>
-      <Input id="field-story-responsive" />
+      <FieldLabel htmlFor="fieldStoryResponsive">{t('name')}</FieldLabel>
+      <Input id="fieldStoryResponsive" />
     </Field>
   );
 };
@@ -77,15 +77,13 @@ export const WithError: StoryFn = () => {
 
   return (
     <Field data-invalid={true}>
-      <FieldLabel htmlFor="field-story-error">{t('email')}</FieldLabel>
+      <FieldLabel htmlFor="fieldStoryError">{t('email')}</FieldLabel>
       <Input
-        aria-describedby="field-story-error-message"
+        aria-describedby="fieldStoryErrorMessage"
         aria-invalid={true}
-        id="field-story-error"
+        id="fieldStoryError"
       />
-      <FieldError id="field-story-error-message">
-        {t('form.required')}
-      </FieldError>
+      <FieldError id="fieldStoryErrorMessage">{t('form.required')}</FieldError>
     </Field>
   );
 };
@@ -98,10 +96,8 @@ export const LegendLabelVariant: StoryFn = () => {
       <FieldLegend variant="label">{t('name')}</FieldLegend>
       <FieldGroup>
         <Field>
-          <FieldLabel htmlFor="field-story-legend-label">
-            {t('email')}
-          </FieldLabel>
-          <Input id="field-story-legend-label" />
+          <FieldLabel htmlFor="fieldStoryLegendLabel">{t('email')}</FieldLabel>
+          <Input id="fieldStoryLegendLabel" />
         </Field>
       </FieldGroup>
     </FieldSet>
@@ -113,8 +109,8 @@ export const Disabled: StoryFn = () => {
 
   return (
     <Field data-disabled={true}>
-      <FieldLabel htmlFor="field-story-disabled">{t('email')}</FieldLabel>
-      <Input disabled={true} id="field-story-disabled" />
+      <FieldLabel htmlFor="fieldStoryDisabled">{t('email')}</FieldLabel>
+      <Input disabled={true} id="fieldStoryDisabled" />
     </Field>
   );
 };

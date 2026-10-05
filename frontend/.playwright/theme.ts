@@ -72,8 +72,8 @@ export const resolveColors = async (
     });
   }, colors);
 
-const linearizeChannel = (value: number): number => {
-  const scaled = value / 255;
+const linearizeChannel = (channelByte: number): number => {
+  const scaled = channelByte / 255;
 
   return scaled <= 0.03928 ? scaled / 12.92 : ((scaled + 0.055) / 1.055) ** 2.4;
 };
@@ -84,7 +84,7 @@ const computeLuminance = ({b, g, r}: Rgba): number =>
   0.0722 * linearizeChannel(b);
 
 /** WCAG 2.x contrast ratio between two opaque colors. */
-export const contrastRatio = (first: Rgba, second: Rgba): number => {
+export const computeContrastRatio = (first: Rgba, second: Rgba): number => {
   const lighter = Math.max(computeLuminance(first), computeLuminance(second));
   const darker = Math.min(computeLuminance(first), computeLuminance(second));
 

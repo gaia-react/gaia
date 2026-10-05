@@ -11,7 +11,7 @@ import {
   waitForRender,
 } from '../storybook';
 import {
-  contrastRatio,
+  computeContrastRatio,
   expectTheme,
   MINIMUM_NON_TEXT_CONTRAST,
   resolveColors,
@@ -195,7 +195,7 @@ test.describe('storybook a11y', () => {
         const [icon] = await resolveColors(page, [
           {backdrop: colors.surface, css: colors.icon},
         ]);
-        const iconRatio = contrastRatio(icon, surface);
+        const iconRatio = computeContrastRatio(icon, surface);
 
         fs.writeFileSync(
           testInfo.outputPath('measurement.json'),

@@ -4,7 +4,7 @@ import {expect, test} from '../fixtures';
 import {loadStory, waitForRender} from '../storybook';
 import type {Rgba} from '../theme';
 import {
-  contrastRatio,
+  computeContrastRatio,
   expectTheme,
   MINIMUM_NON_TEXT_CONTRAST,
   resolveColors,
@@ -165,7 +165,7 @@ const measureSurfaces = async ({
     ];
     const ratios = measured.map(([indicator, color]) => ({
       indicator,
-      ratio: contrastRatio(color, surfaceColor),
+      ratio: computeContrastRatio(color, surfaceColor),
     }));
     let weakest = ratios[0];
 

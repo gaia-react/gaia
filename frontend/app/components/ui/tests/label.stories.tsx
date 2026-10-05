@@ -19,8 +19,8 @@ export const Default: StoryFn = () => {
 
   return (
     <div className="flex flex-col gap-2">
-      <Label htmlFor="label-story-input">{t('email')}</Label>
-      <Input id="label-story-input" type="email" />
+      <Label htmlFor="labelStoryInput">{t('email')}</Label>
+      <Input id="labelStoryInput" type="email" />
     </div>
   );
 };
@@ -30,8 +30,8 @@ export const Disabled: StoryFn = () => {
 
   return (
     <div className="group flex flex-col gap-2" data-disabled={true}>
-      <Label htmlFor="label-story-disabled-input">{t('email')}</Label>
-      <Input disabled={true} id="label-story-disabled-input" type="email" />
+      <Label htmlFor="labelStoryDisabledInput">{t('email')}</Label>
+      <Input disabled={true} id="labelStoryDisabledInput" type="email" />
     </div>
   );
 };
