@@ -75,6 +75,42 @@ describe('FormError', () => {
     expect(screen.getByRole('textbox', {name: 'Email'})).not.toHaveFocus();
   });
 
+  test('leaves focus alone when dismissed by a pen tap', async () => {
+    const {click} = userEvent.setup();
+    render(<FieldStub />);
+
+    await click(screen.getByRole('button', {name: 'Submit'}));
+    await screen.findByRole('alert');
+
+    fireEvent(
+      screen.getByRole('button', {name: 'Dismiss'}),
+      new PointerEvent('click', {
+        bubbles: true,
+        cancelable: true,
+        pointerType: 'pen',
+      })
+    );
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', {name: 'Email'})).not.toHaveFocus();
+  });
+
+  test('leaves focus alone when a click carries no pointerType and a click count', async () => {
+    const {click} = userEvent.setup();
+    render(<FieldStub />);
+
+    await click(screen.getByRole('button', {name: 'Submit'}));
+    await screen.findByRole('alert');
+
+    fireEvent(
+      screen.getByRole('button', {name: 'Dismiss'}),
+      new MouseEvent('click', {bubbles: true, cancelable: true, detail: 1})
+    );
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', {name: 'Email'})).not.toHaveFocus();
+  });
+
   test('moves focus to the submit button when the form has no other field', async () => {
     const {click, keyboard} = userEvent.setup();
     render(<Stub />);

@@ -49,13 +49,17 @@ const FormError = ({className, isHidden}: FormErrorProps) => {
     event
   ) => {
     // Mobile browsers open the on-screen keyboard when a tap's click handler
-    // focuses a text field, and a touch user has no Tab position to keep.
-    const isTouchActivation =
-      'pointerType' in event.nativeEvent &&
-      event.nativeEvent.pointerType === 'touch';
+    // focuses a text field, and a touch or pen user has no Tab position to
+    // keep. Browsers whose click is a MouseEvent carry no pointerType, so
+    // there a keyboard activation is told apart by its zero click count.
+    const {currentTarget, nativeEvent} = event;
+    const shouldMoveFocus =
+      'pointerType' in nativeEvent ?
+        nativeEvent.pointerType !== 'touch' && nativeEvent.pointerType !== 'pen'
+      : nativeEvent.detail === 0;
 
-    if (!isTouchActivation) {
-      focusFirstFormControl(event.currentTarget);
+    if (shouldMoveFocus) {
+      focusFirstFormControl(currentTarget);
     }
 
     setDismissedActionData(actionData);
