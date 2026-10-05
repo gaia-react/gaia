@@ -11,6 +11,7 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-10-05 added the [[React Compiler]] decision page: compiler on by default, measured cost verdicts, adopter steps and rollback
 - 2026-10-03 2e3d776 SKIP - integration upgrades, wiki already updated in the commit
 - 2026-10-03 986bc4d SKIP - working-doc id sweep, wiki already updated in the commit
 - 2026-10-03 935b74d SKIP - native git hook replaces husky, wiki pages already updated in the commit
@@ -896,7 +897,7 @@ tags: [meta, log]
 - 2026-07-20 7254c608 WORTHY - promotes qualifying out-of-scope findings to in-flight self-heal repair + seeds filed finding_class; wiki/concepts/Audit Disposition and Debt Fix.md updated this sync
 - 2026-07-20 9e236cb2 SKIP - cover the CLI build/config surface + drain orphaned ulid; internal hardening, no documented contract change
 - 2026-07-20 d6c6dd27 WORTHY - count workflow-security findings, roster CI + name check, binary freshness gate (SPEC-045 follow-ups); wiki/concepts/PR Merge Workflow.md updated in-commit
-- 2026-07-20 88241f95 WORTHY - Code Audit Team v2 — local-by-default, one producer, workflows member (SPEC-045); wiki/concepts/Code Review Audit CI.md, wiki/concepts/PR Merge Workflow.md, wiki/decisions/Code Audit Team.md updated in-commit
+- 2026-07-20 88241f95 WORTHY - Code Audit Team v2: local-by-default, one producer, workflows member (SPEC-045); wiki/concepts/Code Review Audit CI.md, wiki/concepts/PR Merge Workflow.md, wiki/decisions/Code Audit Team.md updated in-commit
 - 2026-07-20 2cea369b WORTHY - codify deliberately-required merge checks + detect ruleset drift; wiki/concepts/Release Workflow.md updated in-commit
 - 2026-07-20 881631dc SKIP - answer the SPEC-044 shipping files, drain #801 + #803, backfill the #800 changelog; chore, no wiki-tracked fact
 - 2026-07-20 ba97c8b2 WORTHY - per-member content-digest keying for the Code Audit Team gate (SPEC-044); wiki/concepts/Audit Disposition and Debt Fix.md, Code Review Audit Agent.md, Local Working State.md, PR Merge Workflow.md, wiki/decisions/Code Audit Team.md updated in-commit
