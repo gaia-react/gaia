@@ -26,9 +26,11 @@ The capture helper exports `installRenderCapture(page, {isStrictModeDisabled?})`
 
 ## The signal: memoDefeated, not "unnecessary"
 
-A render is `memoDefeated` when it is an update render of a `memo`-wrapped component whose every changed input is an unstable reference (a fresh object or function passed where `Object.is` fails across commits). This is the actionable, low-false-positive signal. A plain "nothing meaningfully changed" render is not surfaced, because chasing it leads to memoize-everything over-optimization.
+A render is `memoDefeated` when it is an update render of a memoized component (wrapped in `memo`, or carrying a React Compiler memo cache) whose every changed input is an unstable reference (a fresh object or function passed where `Object.is` fails across commits). This is the actionable, low-false-positive signal. A plain "nothing meaningfully changed" render is not surfaced, because chasing it leads to memoize-everything over-optimization.
 
 The reduce recomputes `memoDefeated` from primitives (`phase`, `isMemo`, `changedTotal`, and each change entry's `unstable` flag) rather than trusting a precomputed flag, which keeps the authoritative computation deterministic and unit-tested in the CLI rather than in the browser.
+
+With the React Compiler on, compiled components count as memoized: the capture treats a component with a compiler memo cache as memo. A `memoDefeated` record on a compiled component therefore means its inputs arrive unstable from code the compiler does not compile (an escape-case boundary), not that a manual memo is missing. Compiler gains are read by comparing update-phase render counts between captures with the shared compiler switch off and on.
 
 Timing is a **gate, not a trigger**. Findings rank by blast-radius times cost (`memoDefeatedCount` times `maxTotalTime`), and `exceedsFrameBudget` flags a component whose max subtree time crosses the frame budget (16 ms default, overridable with `--frame-budget-ms`). Render-count wins are often sub-perceptible, so the tool is most valuable where a defeated memo guards an expensive subtree.
 
@@ -40,7 +42,7 @@ GAIA renders under `<StrictMode>`, which double-invokes render and inflates timi
 
 ## react-doctor cross-reference
 
-Each finding maps to one of three conceptual cross-reference labels: `jsx-no-new-object-as-prop`, `jsx-no-constructed-context-values`, and `no-unstable-nested-components`. These name the static cause and the structural-first fix (hoist to a module constant before reaching for `useMemo` / `useCallback` / a context split). They are guidance labels, **not** live `react-doctor/` rule ids, and are never matched against lint output. [[react-doctor]] is the always-on static prevention layer; this runtime tool is the complementary diagnosis layer for instability that only manifests at render time.
+Each finding maps to one of three conceptual cross-reference labels: `jsx-no-new-object-as-prop`, `jsx-no-constructed-context-values`, and `no-unstable-nested-components`. These name the static cause and the structural-first fix (hoist to a module constant first; for a value that depends on render state, fix the compiler bailout or apply an escape case per `frontend/.claude/skills/react-code/SKILL.md`, `## Memoization: compiler-first`). They are guidance labels, **not** live `react-doctor/` rule ids, and are never matched against lint output. [[react-doctor]] is the always-on static prevention layer; this runtime tool is the complementary diagnosis layer for instability that only manifests at render time.
 
 ## Trigger and scope boundaries
 

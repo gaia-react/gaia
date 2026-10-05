@@ -4,7 +4,7 @@ status: active
 package: storybook
 role: component-development-and-visual-testing
 created: 2026-04-20
-updated: 2026-10-03
+updated: 2026-10-05
 tags: [dependency, storybook]
 ---
 
@@ -37,3 +37,5 @@ A load of `storybook-static/iframe.html` that reports zero console errors and a 
 ## Environment values
 
 The published preview inlines no environment values: `frontend/.storybook/preview-head.html` seeds `window.process = {env: {}}`, and no Vite `define` pipeline substitutes real values into the bundle, so a component reads every env field as `undefined` under a story, matching what a public Chromatic snapshot sees. A story that needs a value passes it as an arg rather than relying on an ambient env. `frontend/test/preview-env.test.ts` guards the Vitest half: the test suite does not merge `.env` file contents into `process.env`, since Vitest's workers already inherit the shell environment on their own and a wholesale merge would leak every local secret, `SESSION_SECRET` included, into every test file and its transitive dependencies.
+
+React Compiler runs in this pipeline; see [[React Compiler]].

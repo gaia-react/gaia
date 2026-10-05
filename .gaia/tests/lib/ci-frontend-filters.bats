@@ -15,6 +15,7 @@ setup() {
   TESTS_YML="$REPO_ROOT/.github/workflows/tests.yml"
   CHROMATIC_YML="$REPO_ROOT/.github/workflows/chromatic.yml"
   OLD_TESTS_PATTERN='^(app|test)/|^\.playwright/|^\.storybook/|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.npmrc|\.node-version)$|^tsconfig[^/]*\.json$|^(vite|vitest|playwright|eslint|react-router|doctor|knip|prettier|stylelint)\.config\.|^\.github/workflows/tests\.yml$'
+  NO_COMPILER_TESTS_PATTERN='^frontend/(app|test)/|^frontend/\.playwright/|^frontend/\.storybook/|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.npmrc|\.node-version)$|^frontend/package\.json$|^frontend/tsconfig[^/]*\.json$|^frontend/dev-ports[^/]*\.ts$|^frontend/components\.json$|^frontend/(vite|vitest|playwright|eslint|react-router|doctor|knip|prettier|stylelint)\.config\.|^\.gaia/packages\.json$|^frontend/gaia\.package\.json$|^\.github/workflows/tests\.yml$'
   OLD_CHROMATIC_GLOBS="app/**
 .storybook/**
 public/**
@@ -81,7 +82,8 @@ tests_verdict() {
   pattern="$(tests_pattern)"
   for candidate in frontend/app/routes/x.tsx frontend/.playwright/a.spec.ts frontend/package.json pnpm-lock.yaml \
     frontend/test/a.test.ts frontend/vite.config.ts frontend/gaia.package.json .gaia/packages.json \
-    frontend/dev-ports.ts frontend/dev-ports-vite-plugin.ts frontend/dev-ports-reuse.ts; do
+    frontend/dev-ports.ts frontend/dev-ports-vite-plugin.ts frontend/dev-ports-reuse.ts \
+    frontend/react-compiler.config.ts; do
     [ "$(tests_verdict "$pattern" "$candidate")" = select ] || { printf 'did not select: %s\n' "$candidate" >&2; return 1; }
   done
 }
@@ -98,6 +100,10 @@ tests_verdict() {
   [ "$(tests_verdict "$OLD_TESTS_PATTERN" frontend/app/routes/x.tsx)" = skip ]
 }
 
+@test "tests.yml: the pattern without react-compiler skips the compiler config (the guard can fail)" {
+  [ "$(tests_verdict "$NO_COMPILER_TESTS_PATTERN" frontend/react-compiler.config.ts)" = skip ]
+}
+
 @test "chromatic.yml: extracted globs include the descriptor entries" {
   local globs
   globs="$(chromatic_globs)"
@@ -111,9 +117,15 @@ tests_verdict() {
   local globs candidate
   globs="$(chromatic_globs)"
   for candidate in frontend/app/components/X/index.tsx frontend/public/a.png frontend/vite.config.ts frontend/tsconfig.json \
-    frontend/.storybook/main.ts frontend/package.json pnpm-workspace.yaml .github/actions/gaia-setup-node/action.yml; do
+    frontend/react-compiler.config.ts frontend/.storybook/main.ts frontend/package.json pnpm-workspace.yaml .github/actions/gaia-setup-node/action.yml; do
     [ "$(glob_verdict "$globs" "$candidate")" = select ] || { printf 'did not select: %s\n' "$candidate" >&2; return 1; }
   done
+}
+
+@test "chromatic.yml: the globs without react-compiler skip the compiler config (the guard can fail)" {
+  local globs
+  globs="$(chromatic_globs | grep -vxF 'frontend/react-compiler.config.*')"
+  [ "$(glob_verdict "$globs" frontend/react-compiler.config.ts)" = skip ]
 }
 
 @test "chromatic.yml: wiki and the retired root app/ skip" {

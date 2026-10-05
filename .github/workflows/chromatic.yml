@@ -111,6 +111,7 @@ jobs:
               - 'pnpm-workspace.yaml'
               - 'frontend/tsconfig*.json'
               - 'frontend/vite.config.*'
+              - 'frontend/react-compiler.config.*'
               - '.gaia/packages.json'
               - 'frontend/gaia.package.json'
               - '.github/workflows/chromatic.yml'

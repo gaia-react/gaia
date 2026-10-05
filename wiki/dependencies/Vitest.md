@@ -4,7 +4,7 @@ status: active
 package: vitest
 role: test-runner
 created: 2026-04-20
-updated: 2026-10-03
+updated: 2026-10-05
 tags: [dependency, testing]
 ---
 
@@ -32,3 +32,5 @@ Vitest-aware lint rules come from `@vitest/eslint-plugin`, which the shared `@ga
 > Vitest only enters watch mode with an interactive TTY; in CI or under Claude, a bare `pnpm test` runs once and exits. Use `pnpm test --run` for an explicit single pass, or at an interactive terminal to avoid watch mode. See [[Test Runner]] rule.
 
 See [[Testing]], [[Component Testing]].
+
+React Compiler runs in this pipeline; see [[React Compiler]].

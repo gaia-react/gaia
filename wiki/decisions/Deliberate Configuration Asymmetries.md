@@ -4,7 +4,7 @@ status: active
 priority: 2
 date: 2026-07-20
 created: 2026-07-20
-updated: 2026-10-01
+updated: 2026-10-05
 tags: [decision, claude, configuration]
 ---
 
@@ -61,7 +61,7 @@ The criterion is what the skill's work demands:
 Skills that read as structurally similar can still fall on opposite sides of
 this line. `tailwind` and `typescript` are convention lookups and pin.
 `react-code` does not pin, because its trigger surface is decision-shaped:
-memoization and reference stability, stale closures, choosing between React
+compiler-first memoization decisions (whether a manual memo or `"use no memo"` is justified), stale closures, choosing between React
 idioms, deciding whether a dependency is warranted. That work needs whatever
 model the session is running.
 

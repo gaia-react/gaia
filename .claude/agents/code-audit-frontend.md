@@ -106,7 +106,7 @@ Analyze the changed code across these dimensions. Focus on cross-cutting concern
 ### 2. Performance Issues
 
 - **N+1 patterns**: Sequential awaits inside loops that could be parallelized with `Promise.all`
-- **Unnecessary re-renders**: Missing memoization, unstable references in deps arrays, large objects passed as props, unnecessary `useCallback`/`useMemo` that adds indirection without benefit
+- **Compiler bail-outs**: a component or hook the React Compiler report shows skipped or failing (a Rules-of-React violation) when a compile report is available; manual memos and `"use no memo"` directives are judged by the react-buckets compiler-first rule, not here
 - **Bundle size**: Large imports that could be tree-shaken or lazy-loaded, duplicate logic, named imports over namespace imports (the barrel-import false-positive caveat under "Merge findings" applies here too: the project's documented barrel modules, e.g. `frontend/app/services/gaia/*` and `frontend/test/mocks/*`, are the intended pattern, not defects)
 - **SSR performance**: Heavy computation in loaders that blocks response, missing caching for cacheable upstream responses
 - **Service-layer efficiency**: Over-fetching data, missing pagination/limits on list endpoints, redundant requests that could be coalesced

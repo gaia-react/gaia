@@ -5,8 +5,7 @@
 - [useEffect Anti-Patterns](#useeffect-anti-patterns)
 - [When Effects ARE Correct](#when-effects-are-correct)
 - [Strict Mode & Cleanup](#strict-mode--cleanup)
-- [useCallback, When to Use](#usecallback--when-to-use)
-- [useMemo, When to Use](#usememo--when-to-use)
+- [Memoization](#memoization)
 - [useEffectEvent, Non-Reactive Effect Logic](#useeffectevent-non-reactive-effect-logic)
 - [Ref Callback Cleanup](#ref-callback-cleanup)
 
@@ -35,11 +34,8 @@ useEffect(() => {
   setSorted(exercises.slice().sort((a, b) => a.name.localeCompare(b.name)));
 }, [exercises]);
 
-// GOOD, useMemo runs synchronously, no extra render
-const sorted = useMemo(
-  () => exercises.slice().sort((a, b) => a.name.localeCompare(b.name)),
-  [exercises]
-);
+// GOOD, derive inline during render, no extra render; the compiler memoizes it
+const sorted = exercises.slice().sort((a, b) => a.name.localeCompare(b.name));
 ```
 
 ### Don't derive redundant state
@@ -178,70 +174,42 @@ The same principle applies to any subscription, timer, or third-party widget: if
 
 ---
 
-## useCallback, When to Use
+## Memoization
+
+When to write a manual `useMemo`, `useCallback`, or `memo` is owned by `frontend/.claude/skills/react-code/SKILL.md` `## Memoization: compiler-first`. The default is none.
+
+A hand-written memo's deps array is a stale-closure risk: a missing or stale dep makes the memoized value or function silently read an old snapshot, and an empty deps array breaks the moment the body needs current state or props. That is one more reason not to write one.
+
+### Functions an Effect calls
 
 ```tsx
-// ✅ Passed to memo-wrapped child, prevents unnecessary child re-renders
-const handleSubmitForm = useCallback((data: FormData) => {
-  post('/api/submit', data);
-}, []);
-return <MemoizedForm onSubmit={handleSubmitForm} />;
-
-// ✅ Used in useEffect dependency array, keeps a stable reference
-const fetchData = useCallback(async () => {
+// BAD, a function defined outside the Effect becomes a dependency to manage
+const fetchData = async () => {
   const result = await api.get(endpoint);
   setData(result);
-}, [endpoint]);
+};
 
 useEffect(() => {
   fetchData();
 }, [fetchData]);
 
-// ❌ Not passed to a memo child, not in any hook deps, skip useCallback
-const handleClickIncrement = () => {
-  setCount(count + 1);
-};
+// GOOD, define it inside the Effect; the only dependency is endpoint
+useEffect(() => {
+  let ignore = false;
+
+  async function fetchData() {
+    const result = await api.get(endpoint);
+    if (!ignore) setData(result);
+  }
+
+  void fetchData();
+  return () => {
+    ignore = true;
+  };
+}, [endpoint]);
 ```
 
-### Anti-pattern: wrapping every handler "just in case"
-
-```tsx
-// BAD, premature optimization; every render still allocates the deps array,
-// so if deps change often useCallback saves nothing. An empty deps array is
-// a stale closure waiting to happen if the handler ever needs to read state or props.
-const handleChangeName = useCallback((e: ChangeEvent<HTMLInputElement>) => {
-  setName(e.target.value);
-}, []); // looks safe now, breaks the moment handleChangeName needs to read other state
-
-// GOOD, plain function is the right default
-const handleChangeName = (e: ChangeEvent<HTMLInputElement>) => {
-  setName(e.target.value);
-};
-```
-
-The default should be a plain function. Reach for `useCallback` only when you have a concrete reason: a `memo`-wrapped child that's visibly re-rendering, or a stable reference needed by an Effect.
-
----
-
-## useMemo, When to Use
-
-Use `useMemo` for computations that are:
-
-- Genuinely expensive (sorting/filtering large arrays, building derived structures)
-- Passed as props to `memo`-wrapped children where reference stability matters
-- Used in `useEffect` dependency arrays to maintain a stable reference
-
-### Anti-pattern: memoizing cheap calculations
-
-```tsx
-// BAD, trivial calculation; memo bookkeeping costs more than it saves
-const label = useMemo(() => `Hello, ${name}`, [name]);
-
-// GOOD, just compute inline
-const label = `Hello, ${name}`;
-```
-
-Missing or stale deps in `useMemo` introduce the same stale closure bugs as `useCallback`, the memoized value silently reads an old snapshot of whatever was omitted from the deps array.
+When the Effect must call a function that reads values it should not re-run for, use `useEffectEvent` (next section).
 
 ---
 

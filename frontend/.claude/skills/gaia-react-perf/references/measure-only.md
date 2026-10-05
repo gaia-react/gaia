@@ -127,6 +127,15 @@ The `ReducedSummary` has these fields (read these, cite them by name):
 - `strictModeTimingCaveat`, `profilingAvailable`, `rendererVersion`.
 - `stopSignal`: `zeroAppMemoDefeated`, `noAppFrameBudgetBreach`.
 
+**Under the React Compiler.** With the compiler on, compiled components count
+as memoized: the capture treats a component carrying a compiler memo cache as
+memo (`isMemo: true`). A `memoDefeated` record on a compiled component therefore
+means its inputs arrive unstable from code the compiler does not compile (an
+escape-case boundary such as a third-party component or a `"use no memo"` file),
+not that a manual memo is missing. Compiler gains are read by comparing
+update-phase render counts (`renderCount`, `totals.updates`) between captures
+taken with the shared compiler switch off and on.
+
 For the top finding (`rank: 1`), state:
 
 1. **Component + count.** `componentName` (note `isMemo`) re-rendered
@@ -164,16 +173,17 @@ symptom-to-cause-to-fix guidance. Never claim a named lint rule catches the
 pattern, and never match these strings against ESLint output.
 
 The recommended fix is **structural-first**: prefer hoisting a stable value to a
-module-level constant before reaching for a `useMemo` / `useCallback` /
-context-split, and only use a hook when the value genuinely depends on render
-state.
+module-level constant. A value that depends on render state is memoized
+automatically under the React Compiler, so the fallback is to fix the compiler
+bailout (a Rules of React violation) or apply an escape case, per
+`frontend/.claude/skills/react-code/SKILL.md` (`## Memoization: compiler-first`).
 
-| Unstable input | `reactDoctorRule` (conceptual) | Structural-first fix | Hook fallback |
+| Unstable input | `reactDoctorRule` (conceptual) | Structural-first fix | Compiler-first fallback |
 |---|---|---|---|
-| An inline object/array prop literal (`prop:<name>`) | `jsx-no-new-object-as-prop` | Hoist the literal to a module-level `const` | `useMemo` only when the value depends on render state |
-| A callback prop (`prop:<name>`, a function ref) | `jsx-no-new-object-as-prop` (same "new reference as a prop" class) | Hoist the handler to module scope when it closes over nothing | `useCallback` with the right deps when it closes over render state |
-| A freshly-constructed context value (`context`) | `jsx-no-constructed-context-values` | Move a static `value` to a module const, or split the context so unrelated consumers do not churn | `useMemo` the provider `value` when it depends on state |
-| A child component defined inside another component's body | `no-unstable-nested-components` | Lift the component to module scope | Not a hook fix |
+| An inline object/array prop literal (`prop:<name>`) | `jsx-no-new-object-as-prop` | Hoist the literal to a module-level `const` | A value depending on render state is memoized by the compiler; if it still arrives unstable, fix the bailout or apply an escape case |
+| A callback prop (`prop:<name>`, a function ref) | `jsx-no-new-object-as-prop` (same "new reference as a prop" class) | Hoist the handler to module scope when it closes over nothing | The compiler memoizes a callback that closes over render state; if it still arrives unstable, fix the bailout or apply an escape case |
+| A freshly-constructed context value (`context`) | `jsx-no-constructed-context-values` | Move a static `value` to a module const, or split the context so unrelated consumers do not churn | The compiler memoizes a provider `value` built from state; if it still arrives unstable, fix the bailout or apply an escape case |
+| A child component defined inside another component's body | `no-unstable-nested-components` | Lift the component to module scope | Not a memoization fix |
 
 What the reduce emits versus what you apply: the CLI sets `reactDoctorRule` to
 `jsx-no-new-object-as-prop` when an unstable prop dominates, to
@@ -187,10 +197,11 @@ component's render.
 ## Step 5: Hand off the fix
 
 The human (or Claude, in normal conversation) applies the fix. This is not an
-auto-fix loop. Offer the structural-first option first; reach for a hook only
-when the value depends on render state, per the table. The right fix is
-context-dependent (hoist vs `useMemo` vs `useCallback` vs context-split), which
-is why a human stays in the loop.
+auto-fix loop. Offer the structural-first option first; when the value depends
+on render state, the fix is compiler-first per the table (fix the bailout or
+apply an escape case, see `frontend/.claude/skills/react-code/SKILL.md`,
+`## Memoization: compiler-first`). The right fix is context-dependent (hoist vs
+fix the bailout vs context-split), which is why a human stays in the loop.
 
 ## Step 6: Verify
 
@@ -200,12 +211,20 @@ component does not appear in `findings` at all: the capture only records fibers
 that actually rendered, so a memo that now correctly skips leaves no record.
 That absence is the cleanest "gone" proof.
 
+To confirm a compiler gain rather than a fix, re-capture with the shared
+compiler switch off and on and compare update-phase render counts; a compiled
+component that still shows `memoDefeated` points at the uncompiled code feeding
+it unstable inputs.
+
 ## Step 7: Stop
 
 Apply the composite stop rule from the summary's `stopSignal`:
 
 > **STOP when `stopSignal.zeroAppMemoDefeated` is true AND
 > `stopSignal.noAppFrameBudgetBreach` is true.**
+
+With the compiler on, a residual `memoDefeated` on a compiled component is an
+uncompiled upstream boundary (an escape case), not a missing manual memo.
 
 The memo-defeat count catches the cheap-but-wrong cases (a memo silently
 defeated); the frame-budget gate catches the rare expensive-subtree case that

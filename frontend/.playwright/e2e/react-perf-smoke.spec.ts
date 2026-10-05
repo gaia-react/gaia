@@ -2,14 +2,17 @@ import {expect, test} from '@playwright/test';
 import type {Page} from '@playwright/test';
 import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
+import {isReactCompilerEnabled} from '../../react-compiler.config';
 import {collectRenderDump, installRenderCapture} from '../react-perf/capture';
 import type {RawDump} from '../react-perf/types';
 import {hydration} from '../utils';
 
 // Version-bump canary: a stable, named app component reliably rendered by the
-// micro-interaction. GAIA ships no memo-wrapped component, so the expected memo
-// flag is false; a bippy/React bump that breaks tag or name resolution flips
-// this and fails loud.
+// micro-interaction. GAIA ships no hand-written memo, so the expected memo flag
+// follows the React Compiler switch: the harness counts a compiler memo cache
+// as memo, so the canary is memoized when the compiler is on and not when it is
+// off. A bippy/React bump that breaks tag or name resolution flips this and
+// fails loud.
 const CANARY = 'ThemeSwitch';
 
 // Walks up to the directory holding .gaia/VERSION, so the root does not depend
@@ -177,7 +180,9 @@ test('captures bippy renders: active, canary resolves name + memo + timing', asy
     (record) => record.componentName === CANARY
   );
   expect(canaryRecords.length).toBeGreaterThan(0);
-  expect(canaryRecords.every((record) => !record.isMemo)).toBe(true);
+  expect(
+    canaryRecords.every((record) => record.isMemo === isReactCompilerEnabled)
+  ).toBe(true);
   expect(canaryRecords.some((record) => record.totalTime > 0)).toBe(true);
   expect(canaryRecords.some((record) => record.phase === 'update')).toBe(true);
 });

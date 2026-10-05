@@ -4,7 +4,7 @@ status: active
 package: react-router
 role: framework
 created: 2026-04-20
-updated: 2026-09-29
+updated: 2026-10-05
 tags: [dependency, framework]
 ---
 
@@ -30,3 +30,4 @@ The `/update-deps` command upgrades all of these together when react-router is s
 ## Related
 
 - [[fs-routes]], [[remix-i18next]], [[remix-toast]]
+- React Compiler runs in this pipeline; see [[React Compiler]].
