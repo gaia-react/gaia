@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-04-20
 created: 2026-04-20
-updated: 2026-10-04
+updated: 2026-10-05
 tags: [decision, ci, quality]
 ---
 
@@ -23,7 +23,7 @@ The contract lives at the repo root and the commands run per package. Steps 3 to
    <!-- gaia:maintainer-only:start -->
    Changes touching `.gaia/cli/**` also run `pnpm lint:cli` (`pnpm -C .gaia/cli lint`), the CLI's own ESLint config in its separate pnpm workspace, and `pnpm -C .gaia/cli typecheck`: the root `pnpm typecheck` covers only the frontend package, and the CLI's ESLint and vitest runs do not type-check.
    <!-- gaia:maintainer-only:end -->
-5. `pnpm test --run` (`pnpm -C frontend test --run`): all tests pass with **zero console warnings** (missing keys, HydrateFallback, etc. count as failures).
+5. `pnpm test --run` (`pnpm -C frontend test --run`): all tests pass with **zero console warnings** (missing keys, HydrateFallback, etc. count as failures). Stories and hook tests run in headless Chromium, so `pnpm install:browsers` must have run once; a missing browser fails the step with an install command ([[Stories as Tests]]).
 6. `pnpm pw` (`pnpm -C frontend pw`): all Playwright E2E tests pass. Playwright reads the `.env` of its working directory, so the file is `frontend/.env`; without it the web server never starts. Entering a worktree provisions it, which symlinks the main checkout's `frontend/.env` into the worktree's `frontend/`, so a worktree missing one was never entered by a session: run `bash .claude/hooks/provision-worktree.sh <absolute-worktree-path>`, which also installs dependencies and moves a plain `.gaia/local` aside to `.gaia/local.bak.<timestamp>` before linking the shared one. When the main checkout itself has no `frontend/.env`, linking skips it; copy `frontend/.env.example` to the main checkout's `frontend/.env` and link again, or, if `frontend/.env.example` is gone too, stop and ask the human to create `frontend/.env` (`frontend/app/env.server.ts` lists the required variables). Never read, print, or copy `.env` contents: the link shares the file without exposing it. The linked `.env` is the real one, so an `MSW_ENABLED` that is off sends Playwright to the real `API_URL`, exactly as in the main checkout.
 7. **Dev smoke test**: `bash .gaia/scripts/dev-smoke.sh`: exit 0 means the route answered HTTP 200 and the server it started is stopped. It starts `pnpm -C frontend dev` on this tree's dev port, requests `/` (`--path` names another route), and stops only the server it started. Do not start or stop the dev server by hand for this step: a pattern kill (`pkill -f vite`, `kill $(lsof -ti:<port>)`) also stops other sessions' and other worktrees' servers. When the script refuses because the port is already in use, ask the user before stopping the holder; its header documents the exit codes.
 8. `pnpm build` (`pnpm -C frontend build`): confirms production build.

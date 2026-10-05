@@ -2,7 +2,7 @@
  * `gaia scaffold component <name>` handler.
  *
  * Replaces the prose-only `new-component` skill with deterministic file
- * emission. Produces three files (or two with `--no-story`) under
+ * emission. Produces two files under
  * `app/components/<kebab>/` matching the project's component convention
  * (`app/components/theme-switch/`, etc.).
  *
@@ -13,15 +13,17 @@
  * Output shape (default invocation, `gaia scaffold component foo-bar`):
  *
  *   app/components/foo-bar/index.tsx
- *   app/components/foo-bar/tests/index.test.tsx
  *   app/components/foo-bar/tests/index.stories.tsx
+ *
+ * The story is the component's test: its play story renders the component in
+ * Chromium and asserts on it, and the accessibility check runs on every story.
  *
  * `--parent` may name an existing folder under `app/components` or
  * `app/pages/<path>`. `app/components/ui` and everything under it is refused:
  * shadcn owns that folder.
  *
- * The `--no-story` flag drops the stories file and rewires the test imports
- * so the test is self-contained (no `composeStory` round-trip).
+ * The retired `--no-story` flag is refused: a component without a story has
+ * no test.
  *
  * The `--props "name:type,name:type"` flag emits a Props type alias and
  * annotates the destructured parameter with it (`({a, b}: NameProps) =>`);
@@ -61,6 +63,9 @@ const APP_SEGMENT = 'app';
 const COMPONENTS_SEGMENT = 'components';
 const PAGES_SEGMENT = 'pages';
 const UI_SEGMENT = 'ui';
+
+const NO_STORY_MESSAGE =
+  "--no-story is not supported: the story is the component's test (render, play and accessibility check), so a component cannot be scaffolded without one.";
 
 const NAME_FORMS_MESSAGE =
   'use kebab-case (price-tag) or PascalCase (PriceBadge)';
@@ -139,7 +144,6 @@ type ParsedFlags = {
   name: string;
   parent: string;
   props: PropertyEntry[];
-  story: boolean;
 };
 
 type PropertyEntry = {
@@ -151,7 +155,6 @@ const HELP_TEXT = `Usage: gaia scaffold component <name> [flags]
 
   <name>              kebab-case (price-tag) or PascalCase (PriceBadge); the
                       folder is the kebab form of the PascalCase export name
-  --no-story          Skip the index.stories.tsx file
   --parent <dir>      Existing parent dir under app/components/ or app/pages/<path>
                       (default: app/components/), relative to the frontend
                       package. components/ui is refused: shadcn owns it.
@@ -217,7 +220,6 @@ const parseProps = (raw: string): FlagParseResult => {
       name: '',
       parent: '',
       props,
-      story: true,
     },
     ok: true,
   };
@@ -262,7 +264,6 @@ type FlagsState = {
   name: string | undefined;
   parent: string;
   props: PropertyEntry[];
-  story: boolean;
 };
 
 // One token's worth of dispatch, extracted so `parseFlags`'s own loop stays
@@ -283,9 +284,7 @@ const applyToken = (
   }
 
   if (token === '--no-story') {
-    state.story = false;
-
-    return {consumed: 0};
+    return {message: NO_STORY_MESSAGE, ok: false};
   }
 
   if (token === '--json') {
@@ -331,7 +330,6 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
     name: undefined,
     parent: COMPONENTS_DEFAULT_PARENT,
     props: [],
-    story: true,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -344,7 +342,7 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
     }
   }
 
-  const {json, name, parent, props, story} = state;
+  const {json, name, parent, props} = state;
 
   if (name === undefined) {
     return {message: 'component name is required', ok: false};
@@ -376,7 +374,6 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
       name,
       parent,
       props,
-      story,
     },
     ok: true,
   };
@@ -397,9 +394,9 @@ const buildPropsTypeBlock = (
 /**
  * A representative value literal for a prop, ready to splice into a JSX
  * attribute (`name={value}` or, for strings, the quoted form `name="value"`).
- * Primitives get an honest non-degenerate value so the scaffolded a11y test
+ * Primitives get an honest non-degenerate value so the scaffolded story
  * renders real DOM. Exotic types fall back to a typed cast the author replaces
- * (kept type-safe so the generated test still typechecks).
+ * (kept type-safe so the generated story still typechecks).
  */
 const isFunctionType = (type: string): boolean =>
   type.includes('=>') || /\bFunction\b/u.test(type);
@@ -426,59 +423,24 @@ const buildPropertyAttributes = (props: readonly PropertyEntry[]): string =>
   props.map(buildPropertyAttribute).join(' ');
 
 /**
- * The JSX the test renders. With a story, the test renders the composed
- * `Default` (props live on the story). Without a story, the component is
- * rendered directly, so required props must be supplied at the render site.
+ * A story export that renders the component. With props, it renders an
+ * instance carrying representative values so the play story and the
+ * accessibility check have real DOM to work against; without props it renders
+ * the bare component.
  */
-const buildRenderJsx = (
-  componentName: string,
-  props: readonly PropertyEntry[],
-  withStory: boolean
-): string => {
-  if (withStory || props.length === 0) return `<${componentName} />`;
-
-  return `<${componentName} ${buildPropertyAttributes(props)} />`;
-};
-
-/**
- * The `Default` story export. With props, `Default` renders a non-degenerate
- * instance carrying representative values so the story-driven a11y check has
- * real DOM to assert against; without props it renders the bare component.
- */
-const buildStoryDefault = (
+const buildStoryExport = (
+  exportName: string,
   componentName: string,
   props: readonly PropertyEntry[]
 ): string => {
   if (props.length === 0) {
-    return `export const Default: StoryFn = () => <${componentName} />;`;
+    return `export const ${exportName}: StoryFn = () => <${componentName} />;`;
   }
 
   return [
-    'export const Default: StoryFn = () => (',
+    `export const ${exportName}: StoryFn = () => (`,
     `  <${componentName} ${buildPropertyAttributes(props)} />`,
     ');',
-  ].join('\n');
-};
-
-const buildTestImports = (
-  componentName: string,
-  withStory: boolean
-): string => {
-  if (withStory) {
-    return [
-      "import {composeStory} from '@storybook/react-vite';",
-      "import {describe, expect, test} from 'vitest';",
-      "import {render} from 'test/rtl';",
-      "import Meta, {Default} from './index.stories';",
-      '',
-      `const ${componentName} = composeStory(Default, Meta);`,
-    ].join('\n');
-  }
-
-  return [
-    "import {describe, expect, test} from 'vitest';",
-    "import {render} from 'test/rtl';",
-    `import ${componentName} from '..';`,
   ].join('\n');
 };
 
@@ -547,7 +509,6 @@ type RenderFileOptions = {
   parent: string;
   props: readonly PropertyEntry[];
   templatesRoot: string;
-  withStory: boolean;
 };
 
 const renderComponentFile = (options: RenderFileOptions): string => {
@@ -569,20 +530,6 @@ const renderComponentFile = (options: RenderFileOptions): string => {
   });
 };
 
-const renderTestFile = (options: RenderFileOptions): string => {
-  const {componentName, props, templatesRoot, withStory} = options;
-  const templatePath = path.join(
-    templatesRoot,
-    `${TEMPLATES_DIR}/index.test.tsx.tmpl`
-  );
-
-  return renderTemplate(templatePath, {
-    Name: componentName,
-    renderJsx: buildRenderJsx(componentName, props, withStory),
-    testImports: buildTestImports(componentName, withStory),
-  });
-};
-
 const renderStoryFile = (options: RenderFileOptions): string => {
   const {componentName, folder, parent, props, templatesRoot} = options;
   const templatePath = path.join(
@@ -592,7 +539,8 @@ const renderStoryFile = (options: RenderFileOptions): string => {
 
   return renderTemplate(templatePath, {
     Name: componentName,
-    storyDefault: buildStoryDefault(componentName, props),
+    storyDefault: buildStoryExport('Default', componentName, props),
+    storyRenders: buildStoryExport('Renders', componentName, props),
     storyTitle: buildStoryTitle(parent, folder),
   });
 };
@@ -705,7 +653,6 @@ export const run = (
   const componentDir = path.join(parentAbs, folder);
   const indexPath = path.join(componentDir, 'index.tsx');
   const testsDir = path.join(componentDir, 'tests');
-  const testPath = path.join(testsDir, 'index.test.tsx');
   const storyPath = path.join(testsDir, 'index.stories.tsx');
 
   const templatesRoot = resolveTemplatesRoot();
@@ -717,16 +664,11 @@ export const run = (
     parent,
     props: flags.props,
     templatesRoot,
-    withStory: flags.story,
   };
 
   try {
     writeOne(indexPath, renderComponentFile(renderOptions), result);
-    writeOne(testPath, renderTestFile(renderOptions), result);
-
-    if (flags.story) {
-      writeOne(storyPath, renderStoryFile(renderOptions), result);
-    }
+    writeOne(storyPath, renderStoryFile(renderOptions), result);
   } catch (error) {
     structuredError({
       code: 'write_failed',

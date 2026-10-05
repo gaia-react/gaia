@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-10-04
+updated: 2026-10-05
 tags: [concept, claude, skills]
 ---
 
@@ -37,7 +37,7 @@ GAIA's skills split into three groups: shared `gaia/references/` playbooks consu
 | Skill           | Triggers on                                                                                                                                |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | `new-component` | "create a component", "scaffold a card": drops a kebab-case folder under `frontend/app/components/` with `index.tsx` and a `tests/` dir        |
-| `new-hook`      | "create a useFoo hook", "add a hook under frontend/app/hooks": drops a `use-thing.ts` + Vitest test                                                 |
+| `new-hook`      | "create a useFoo hook", "add a hook under frontend/app/hooks": drops a `use-thing.ts` + a `vitest-browser-react` hook test                                                 |
 | `new-route`     | "add a new page", "scaffold /dashboard": wires a route file + a `frontend/app/pages/<route path>/page.tsx` folder + i18n keys                         |
 | `new-service`   | "add a service", "scaffold the projects API": drops `frontend/app/services/{layer}/{name}/` (parsers, types, requests) and matching MSW collections |
 | `update-deps`   | Dependency remediation (outdated packages and security advisories): fired by `/gaia-init`, accepted from the statusline `Run /update-deps` indicator, or "update dependencies"          |
@@ -47,13 +47,13 @@ GAIA's skills split into three groups: shared `gaia/references/` playbooks consu
 
 | Skill                | Triggers on                                                                                                  |
 | -------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `eslint-fixes`       | ESLint failures, autofix conflicts (no-void, prefer-screen-queries, jest-dom matchers, you-dont-need-lodash) |
+| `eslint-fixes`       | ESLint failures, autofix conflicts (no-void, Testing Library and jest-dom rules in story plays, you-dont-need-lodash) |
 | `naming-conventions` | Naming or renaming identifiers in any language; vague names, abbreviations, redundant type noise             |
 | `playwright-cli`     | Browser automation tasks (navigation, form fill, screenshots, data extraction); Microsoft's skill vendored verbatim, see [[playwright-cli]] |
 | `react-code`         | Writing/reviewing React components, hooks, event handlers, extraction decisions                              |
 | `skeleton-loaders`   | Building skeleton loading states; shimmer animation; preventing layout shift                                 |
 | `tailwind`           | Tailwind class names, `cn` and conditional classes, variants, theme tokens                                   |
-| `tdd`                | Red-green-refactor; integration tests; test-first development                                                |
+| `tdd`                | Red-green-refactor; story-play and hook tests; test-first development                                                |
 | `typescript`         | camelCase, exports, Zod schemas, function params, no-switch / no-enum patterns                               |
 
 ### Statusline update indicators

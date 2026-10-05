@@ -1,16 +1,18 @@
-import type {ComponentProps} from 'react';
+import type {ComponentProps, MouseEvent} from 'react';
 import {Fragment} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link, NavLink} from 'react-router';
-import type {Meta, StoryFn} from '@storybook/react-vite';
+import type {Meta, StoryFn, StoryObj} from '@storybook/react-vite';
+import {cn} from 'cn';
 import {StarIcon} from 'lucide-react';
+import {expect, fn, userEvent, within} from 'storybook/test';
 import stubs from 'test/stubs';
-import {Button} from '~/components/ui/button';
+import {Button, buttonVariants} from '~/components/ui/button';
 import {Spinner} from '~/components/ui/spinner';
 
 const meta: Meta = {
   component: Button,
-  decorators: [stubs.reactRouter()],
+  decorators: [stubs.reactRouter({destinations: ['/target']})],
   parameters: {
     controls: {hideNoControlsWarning: true},
     wrap: 'w-fit p-4',
@@ -127,27 +129,37 @@ export const IconDisabled: StoryFn = () => (
 
 export const IconText: StoryFn = () => <ButtonGrid content="icon-text" />;
 
-export const AsLink: StoryFn = () => {
+type LinkButtonProps = {label?: string; to?: string};
+
+const LinkButton = ({label, to = '/'}: LinkButtonProps) => {
   const {t} = useTranslation();
 
   return (
-    <Button nativeButton={false} render={<Link role="link" to="/" />}>
-      {t('next')}
+    <Button
+      nativeButton={false}
+      render={<Link role="link" to={to} />}
+      variant="outline"
+    >
+      {label ?? t('next')}
     </Button>
   );
 };
 
-export const AsNavLink: StoryFn = () => {
+const NavLinkButton = ({label, to = '/'}: LinkButtonProps) => {
   const {t} = useTranslation();
 
   return (
-    <Button nativeButton={false} render={<NavLink role="link" to="/" />}>
-      {t('next')}
+    <Button
+      nativeButton={false}
+      render={<NavLink role="link" to={to} />}
+      variant="outline"
+    >
+      {label ?? t('next')}
     </Button>
   );
 };
 
-export const AsExternalLink: StoryFn = () => {
+const ExternalLinkButton = () => {
   const {t} = useTranslation();
 
   return (
@@ -155,8 +167,148 @@ export const AsExternalLink: StoryFn = () => {
       nativeButton={false}
       // eslint-disable-next-line jsx-a11y/anchor-has-content, jsx-a11y/no-redundant-roles
       render={<a href="https://example.com" role="link" />}
+      variant="outline"
     >
       {t('next')}
     </Button>
   );
+};
+
+const expectLinkSemantics = async (canvasElement: HTMLElement) => {
+  const link = within(canvasElement).getByRole('link');
+
+  await expect(link).toHaveAttribute('data-slot', 'button');
+  await expect(link).not.toHaveAttribute('type');
+  await expect(link).toHaveClass(
+    ...cn(buttonVariants({variant: 'outline'})).split(' ')
+  );
+};
+
+export const AsLink: StoryObj<typeof meta> = {
+  play: async ({canvasElement}) => {
+    await expectLinkSemantics(canvasElement);
+    await expect(within(canvasElement).getByRole('link')).toHaveAttribute(
+      'href',
+      '/'
+    );
+  },
+  render: () => <LinkButton />,
+};
+
+export const AsNavLink: StoryObj<typeof meta> = {
+  play: async ({canvasElement}) => {
+    await expectLinkSemantics(canvasElement);
+    await expect(within(canvasElement).getByRole('link')).toHaveAttribute(
+      'href',
+      '/'
+    );
+  },
+  render: () => <NavLinkButton />,
+};
+
+export const AsExternalLink: StoryObj<typeof meta> = {
+  play: async ({canvasElement}) => {
+    await expectLinkSemantics(canvasElement);
+    await expect(within(canvasElement).getByRole('link')).toHaveAttribute(
+      'href',
+      'https://example.com'
+    );
+  },
+  render: () => <ExternalLinkButton />,
+};
+
+// The navigating stories end on the destination page, so the render-only link
+// stories above stay axe-scanned in their resting state.
+const navigatesOnClick: StoryObj<typeof meta>['play'] = async ({
+  canvasElement,
+}) => {
+  await userEvent.click(within(canvasElement).getByRole('link', {name: 'Go'}));
+  await expect(
+    await within(canvasElement).findByText('Navigated to /target')
+  ).toBeVisible();
+};
+
+const navigatesOnEnter: StoryObj<typeof meta>['play'] = async ({
+  canvasElement,
+}) => {
+  await userEvent.tab();
+  await expect(
+    within(canvasElement).getByRole('link', {name: 'Go'})
+  ).toHaveFocus();
+  await userEvent.keyboard('{Enter}');
+  await expect(
+    await within(canvasElement).findByText('Navigated to /target')
+  ).toBeVisible();
+};
+
+export const LinkNavigatesOnClick: StoryObj<typeof meta> = {
+  play: navigatesOnClick,
+  render: () => <LinkButton label="Go" to="/target" />,
+};
+
+export const LinkNavigatesOnEnter: StoryObj<typeof meta> = {
+  play: navigatesOnEnter,
+  render: () => <LinkButton label="Go" to="/target" />,
+};
+
+export const NavLinkNavigatesOnClick: StoryObj<typeof meta> = {
+  play: navigatesOnClick,
+  render: () => <NavLinkButton label="Go" to="/target" />,
+};
+
+export const NavLinkNavigatesOnEnter: StoryObj<typeof meta> = {
+  play: navigatesOnEnter,
+  render: () => <NavLinkButton label="Go" to="/target" />,
+};
+
+// The handler stops the navigation so the test never leaves the page, and
+// records that Enter activated the link.
+export const ExternalLinkActivatesOnEnter: StoryObj<typeof meta> = {
+  args: {
+    onClick: fn((event: MouseEvent<HTMLAnchorElement>) => {
+      event.preventDefault();
+    }),
+  },
+  play: async ({args, canvasElement}) => {
+    await userEvent.tab();
+
+    const link = within(canvasElement).getByRole('link', {name: 'Docs'});
+
+    await expect(link).toHaveFocus();
+    await userEvent.keyboard('{Enter}');
+    await expect(link).toHaveAttribute('href', 'https://example.com/docs');
+    await expect(args.onClick).toHaveBeenCalledTimes(1);
+    await expect(args.onClick).toHaveBeenCalledWith(
+      expect.objectContaining({type: 'click'})
+    );
+  },
+  render: (args) => (
+    <Button
+      nativeButton={false}
+      render={
+        // eslint-disable-next-line jsx-a11y/anchor-has-content, jsx-a11y/no-redundant-roles
+        <a href="https://example.com/docs" onClick={args.onClick} role="link" />
+      }
+    >
+      Docs
+    </Button>
+  ),
+};
+
+export const DisabledDoesNotFire: StoryObj<typeof meta> = {
+  args: {onClick: fn()},
+  play: async ({args, canvasElement}) => {
+    const button = within(canvasElement).getByRole('button', {name: 'Save'});
+
+    await expect(button).toBeDisabled();
+    // The disabled button sets pointer-events: none, which the default
+    // userEvent refuses to click through.
+    await userEvent.setup({pointerEventsCheck: 0}).click(button);
+    await expect(args.onClick).not.toHaveBeenCalled();
+  },
+  render: (args) => (
+    <Button disabled={true} onClick={args.onClick}>
+      Save
+    </Button>
+  ),
 };

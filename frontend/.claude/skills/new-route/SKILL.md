@@ -15,7 +15,7 @@ Trigger: user asks to add a new page/route.
 3. Verify: `pnpm typecheck` clean; `pnpm dev` reaches the new route.
 4. Before filling in the page, loader, or action by hand, read one or two existing routes with a similar shape and follow their pattern.
 
-The scaffold writes `app/routes/<group>.<name>.tsx` plus `app/pages/<name>/page.tsx` (export `<Name>Page`) with `tests/page.test.tsx` and `tests/page.stories.tsx`. It refuses the reserved page-folder names `tests`, `hooks`, `state`, `utils` and `assets`. Layout rule: `frontend/.claude/rules/coding-guidelines-react.md`.
+The scaffold writes `app/routes/<group>.<name>.tsx` plus `app/pages/<name>/page.tsx` (export `<Name>Page`) with `tests/page.stories.tsx`, a page story whose play asserts the page structure (the story is the page's test). It refuses the reserved page-folder names `tests`, `hooks`, `state`, `utils` and `assets`. Layout rule: `frontend/.claude/rules/coding-guidelines-react.md`.
 
 ## Flags
 

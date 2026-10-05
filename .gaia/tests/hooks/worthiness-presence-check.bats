@@ -761,3 +761,117 @@ test("renders a label", () => {
   [ "$status" -eq 0 ]
   refute_denied
 }
+
+# --- story files: play stories are emergent and gated like component tests ---
+
+# A story file with one play story, parameterized by the export name and the
+# text the play looks for.
+story_source() {
+  local export_name="$1" marker="$2"
+  printf '%s\n' \
+    "import type {Meta, StoryObj} from '@storybook/react-vite';" \
+    "import {expect, within} from 'storybook/test';" \
+    "" \
+    "const Marker = () => <p>${marker}</p>;" \
+    "" \
+    "const meta = {component: Marker, title: 'Internal/${marker}'} satisfies Meta<typeof Marker>;" \
+    "" \
+    "export default meta;" \
+    "" \
+    "type Story = StoryObj<typeof meta>;" \
+    "" \
+    "export const ${export_name}: Story = {" \
+    "  play: async ({canvasElement}) => {" \
+    "    await expect(within(canvasElement).getByText('${marker}')).toBeTruthy();" \
+    "  }," \
+    "};"
+}
+
+# Record a verdict through the real ledger writer, aimed at REPO's ledger.
+record_verdict() {
+  local relative_path="$1" full_name="$2" ledger
+  ledger="$( . "$REPO/.claude/hooks/lib/worthiness-ledger.sh" && worthiness_ledger_path "$REPO" )"
+  ( cd "$REPO" && WORTHINESS_LEDGER_PATH="$ledger" \
+      node "$HOME_ROOT/.gaia/scripts/audit-ledger/append-worthiness.mjs" "$relative_path" "$full_name" keep )
+}
+
+@test "denies a changed play story under app/components and one under app/utils/tests, then allows once verdicts are recorded" {
+  local component_story="frontend/app/components/Marker/tests/marker.stories.tsx"
+  local utility_story="frontend/app/utils/tests/utility-marker.stories.tsx"
+  commit_file "$component_story" "$(story_source ShowsComponentMarker 'component marker')"
+  commit_file "$utility_story" "$(story_source ShowsUtilityMarker 'utility marker')"
+
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  denied
+  grep -qF -- "$component_story" <<<"$output"
+  grep -qF -- "Shows Component Marker" <<<"$output"
+  grep -qF -- "$utility_story" <<<"$output"
+  grep -qF -- "Shows Utility Marker" <<<"$output"
+
+  record_verdict "$component_story" "Shows Component Marker"
+  record_verdict "$utility_story" "Shows Utility Marker"
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  refute_denied
+}
+
+@test "a story whose play changed after its verdict is denied again" {
+  local story="frontend/app/utils/tests/utility-marker.stories.tsx"
+  commit_file "$story" "$(story_source ShowsUtilityMarker 'utility marker')"
+  record_verdict "$story" "Shows Utility Marker"
+  commit_file "$story" "$(story_source ShowsUtilityMarker 'utility marker edited')"
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  denied
+  grep -qF -- "Shows Utility Marker" <<<"$output"
+}
+
+@test "a render-only story file demands no verdict" {
+  commit_file "frontend/app/components/Marker/tests/marker.stories.tsx" "import type {Meta, StoryObj} from '@storybook/react-vite';
+
+const Marker = () => <p>marker</p>;
+
+const meta = {component: Marker, title: 'Internal/Marker'} satisfies Meta<typeof Marker>;
+
+export default meta;
+
+type Story = StoryObj<typeof meta>;
+
+export const Plain: Story = {};
+"
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  refute_denied
+}
+
+@test "a story whose play is an imported identifier is denied naming the file and the unsupported shape" {
+  local story="frontend/app/utils/tests/imported-play.stories.tsx"
+  commit_file "$story" "import type {Meta, StoryObj} from '@storybook/react-vite';
+import {sharedPlay} from './shared-play';
+
+const Marker = () => <p>marker</p>;
+
+const meta = {component: Marker, title: 'Internal/Imported'} satisfies Meta<typeof Marker>;
+
+export default meta;
+
+type Story = StoryObj<typeof meta>;
+
+export const UsesImportedPlay: Story = {play: sharedPlay};
+"
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  denied
+  grep -qF -- "$story" <<<"$output"
+  grep -qF -- "unsupported story shape" <<<"$output"
+  grep -qF -- "UsesImportedPlay" <<<"$output"
+  grep -qF -- "Next step:" <<<"$output"
+}
+
+@test "a story file with a syntax error still passes through (the extractor's other failures fail open)" {
+  commit_file "frontend/app/utils/tests/broken.stories.tsx" "export const Broken = {play: async ((( => {"
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  refute_denied
+}

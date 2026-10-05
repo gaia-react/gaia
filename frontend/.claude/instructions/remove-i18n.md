@@ -41,7 +41,7 @@ The seeded list of files known to use `t()` (verify against the grep output, add
 - `frontend/app/components/errors/error-stack/index.tsx`
 - `frontend/app/components/form/form-error/index.tsx`
 - `frontend/app/components/theme-switch/index.tsx`
-- All `tests/index.stories.tsx` and `tests/index.test.tsx` files alongside the above components (`tests/page.stories.tsx` and `tests/page.test.tsx` for the index page)
+- All `tests/index.stories.tsx` files alongside the above components (`tests/page.stories.tsx` for the index page); stories are the component tests, so no `.test.tsx` sits beside them
 
 Resolve translation keys via the `frontend/app/languages/en/` files. Example: `t('meta.siteName')` → look up `meta.siteName` in `frontend/app/languages/en/common.ts` and inline the resolved string.
 
@@ -256,15 +256,7 @@ Remove the `i18n` key from `parameters`:
 i18n,
 ```
 
-### D2. `frontend/test/rtl.tsx`
-
-Remove:
-
-```ts
-import '../.storybook/i18next';
-```
-
-### D3. `frontend/test/utils.ts`
+### D2. `frontend/test/utils.ts`
 
 Remove:
 
@@ -292,7 +284,7 @@ grep -rln "getLanguage" frontend/app frontend/test
 
 For each caller, drop the import and replace any usage with the literal `'en'`.
 
-### D4. `frontend/.playwright/e2e/route-status.spec.ts` and `frontend/app/action-paths.ts`
+### D3. `frontend/.playwright/e2e/route-status.spec.ts` and `frontend/app/action-paths.ts`
 
 Delete the `'set-language action redirects and sets the language cookie'` test (the one that POSTs to `ACTION_PATHS.setLanguage`) from `frontend/.playwright/e2e/route-status.spec.ts`, leaving the page-status and theme-toggle tests.
 

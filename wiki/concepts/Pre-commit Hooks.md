@@ -2,13 +2,13 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-10-03
+updated: 2026-10-05
 tags: [concept, ci, quality]
 ---
 
 # Pre-commit Hooks
 
-GAIA runs ESLint, Prettier, Stylelint, and Vitest on staged files before every commit through a native git hook that calls [[lint-staged]].
+GAIA runs ESLint, Prettier, Stylelint, and Vitest on staged files before every commit through a native git hook that calls [[lint-staged]]. The Vitest step launches headless Chromium for stories and hook tests, so `pnpm install:browsers` is a prerequisite ([[Testing]]).
 
 ## The hook
 

@@ -22,7 +22,6 @@ export default {
     'accept-language-parser',
     '@epic-web/invariant',
     '@msw/data',
-    '@playwright-testing-library/test',
     '@storybook/addon-docs',
     '@tailwindcss/typography',
     'lru-cache',

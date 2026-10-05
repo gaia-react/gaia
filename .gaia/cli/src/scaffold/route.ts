@@ -337,7 +337,6 @@ type TemplatePaths = {
   locale: string;
   pageIndex: string;
   pageStories: string;
-  pageTest: string;
   route: string;
 };
 
@@ -348,7 +347,6 @@ const templatePaths = (): TemplatePaths => {
     locale: path.join(dir, 'locale.ts.tmpl'),
     pageIndex: path.join(dir, 'page.index.tsx.tmpl'),
     pageStories: path.join(dir, 'page.stories.tsx.tmpl'),
-    pageTest: path.join(dir, 'page.test.tsx.tmpl'),
     route: path.join(dir, 'route.tsx.tmpl'),
   };
 };
@@ -556,12 +554,6 @@ const emitRouteFiles = (args: EmitRouteFilesArgs): null | number => {
   writeFile({
     absPath: path.join(pageDir, 'page.tsx'),
     contents: renderTemplate(tmpls.pageIndex, pageVars),
-    dryRun,
-    result,
-  });
-  writeFile({
-    absPath: path.join(pageDir, 'tests', 'page.test.tsx'),
-    contents: renderTemplate(tmpls.pageTest, pageVars),
     dryRun,
     result,
   });

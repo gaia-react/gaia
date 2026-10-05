@@ -1,5 +1,5 @@
-import {act, renderHook} from '@testing-library/react';
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
+import {renderHook} from 'vitest-browser-react';
 import {useComponentRect} from '../use-component-rect';
 
 describe('useComponentRect', () => {
@@ -14,9 +14,9 @@ describe('useComponentRect', () => {
     vi.restoreAllMocks();
   });
 
-  test('returns a zero-rect before any measurement', () => {
+  test('returns a zero-rect before any measurement', async () => {
     const ref = {current: null};
-    const {result} = renderHook(() => useComponentRect(ref));
+    const {result} = await renderHook(() => useComponentRect(ref));
 
     expect(result.current).toMatchObject({
       bottom: 0,
@@ -30,7 +30,7 @@ describe('useComponentRect', () => {
     });
   });
 
-  test('calls getBoundingClientRect on the ref element and updates state', () => {
+  test('calls getBoundingClientRect on the ref element and updates state', async () => {
     const mockRect = {
       bottom: 100,
       height: 50,
@@ -48,9 +48,9 @@ describe('useComponentRect', () => {
 
     const ref = {current: element};
 
-    const {result} = renderHook(() => useComponentRect(ref));
+    const {act, result} = await renderHook(() => useComponentRect(ref));
 
-    act(() => {
+    await act(() => {
       vi.runAllTimers();
     });
 
@@ -61,7 +61,7 @@ describe('useComponentRect', () => {
     });
   });
 
-  test('removes resize and scroll listeners on unmount', () => {
+  test('removes resize and scroll listeners on unmount', async () => {
     const element = document.createElement('div');
     element.getBoundingClientRect = vi.fn().mockReturnValue({
       bottom: 0,
@@ -76,13 +76,13 @@ describe('useComponentRect', () => {
     });
 
     const ref = {current: element};
-    const {unmount} = renderHook(() => useComponentRect(ref));
+    const {act, unmount} = await renderHook(() => useComponentRect(ref));
 
-    act(() => {
+    await act(() => {
       vi.runAllTimers();
     });
 
-    unmount();
+    await unmount();
 
     expect(window.removeEventListener).toHaveBeenCalledWith(
       'resize',

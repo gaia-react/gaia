@@ -1,4 +1,5 @@
 import type {Meta, StoryFn} from '@storybook/react-vite';
+import {expect, spyOn, userEvent, within} from 'storybook/test';
 import ErrorStack from '..';
 
 const meta: Meta = {
@@ -51,3 +52,61 @@ export const Default: StoryFn = () => (
 export const WithoutStatus: StoryFn = () => (
   <ErrorStack className="max-h-96 max-w-360 overflow-y-auto" stack={stack} />
 );
+
+export const CopiesStack: StoryFn = () => <ErrorStack stack="boom stack" />;
+
+CopiesStack.play = async ({canvasElement}) => {
+  const writeText = spyOn(navigator.clipboard, 'writeText');
+
+  await userEvent.click(
+    within(canvasElement).getByRole('button', {name: /copy/i})
+  );
+
+  await expect(writeText).toHaveBeenCalledWith('boom stack');
+  writeText.mockRestore();
+};
+
+export const KeyboardCopiesStack: StoryFn = () => (
+  <ErrorStack stack="boom stack" />
+);
+
+KeyboardCopiesStack.play = async ({canvasElement}) => {
+  const writeText = spyOn(navigator.clipboard, 'writeText');
+  const button = within(canvasElement).getByRole('button', {name: /copy/i});
+
+  await userEvent.tab();
+  await expect(button).toHaveFocus();
+
+  await userEvent.keyboard('{Enter}');
+
+  await expect(writeText).toHaveBeenCalledWith('boom stack');
+  writeText.mockRestore();
+};
+
+export const ClipboardRejection: StoryFn = () => (
+  <ErrorStack stack="boom stack" />
+);
+
+ClipboardRejection.play = async ({canvasElement}) => {
+  const writeText = spyOn(navigator.clipboard, 'writeText').mockRejectedValue(
+    new Error('clipboard denied')
+  );
+  const canvas = within(canvasElement);
+
+  await userEvent.click(canvas.getByRole('button', {name: /copy/i}));
+
+  // A surfaced rejection would fail the run as an unhandled error, and would
+  // replace the control with an error boundary.
+  await expect(writeText).toHaveBeenCalledWith('boom stack');
+  await expect(canvas.getByRole('button', {name: /copy/i})).toBeVisible();
+  writeText.mockRestore();
+};
+
+export const CopyIcon: StoryFn = () => <ErrorStack stack="boom stack" />;
+
+CopyIcon.play = async ({canvasElement}) => {
+  const button = within(canvasElement).getByRole('button');
+
+  // Icons are aria-hidden, so the lucide class is the only handle on them.
+  await expect(button.querySelector('svg.lucide')).toBeInTheDocument();
+};

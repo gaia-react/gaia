@@ -83,16 +83,6 @@ const captureStdio = (): StdioCapture => {
 
 const read = (filePath: string): string => readFileSync(filePath, 'utf8');
 
-// Built from fragments so Vitest's environment scanner never sees the literal
-// directive token in this file. This is a Node CLI test; if the scanner reads
-// the token it forces jsdom, which is absent from the isolated CLI install, so
-// the forks worker fails to start. The interpolation is load-bearing, not
-// cosmetic: the eslint autofix would inline it to a plain string and reinstate a
-// real directive. The scanner reads comments too, so no comment here (including
-// this one) may spell the token out either.
-// eslint-disable-next-line @typescript-eslint/no-unnecessary-template-expression -- keep the split; see note above
-const JSDOM_ENV_DIRECTIVE = `// @vitest-${'environment'} jsdom`;
-
 describe('scaffold component', () => {
   let sandbox: Sandbox;
   let stdio: StdioCapture;
@@ -108,7 +98,7 @@ describe('scaffold component', () => {
     vi.restoreAllMocks();
   });
 
-  test('default invocation produces three files matching component shape', () => {
+  test('default invocation produces the component and its story, no test file', () => {
     const exit = run(['Foo', '--parent', 'app/components'], {
       cwd: sandbox.root,
     });
@@ -133,56 +123,39 @@ describe('scaffold component', () => {
     expect(indexContents).not.toMatch(/\bFC\b/);
     expect(indexContents.startsWith('\n')).toBe(false);
     expect(indexContents).toContain('const Foo = () => (');
+    expect(indexContents).toContain('<section aria-label="Foo">');
     expect(indexContents).toContain('export default Foo;');
     expect(indexContents).not.toContain('FooProps');
 
-    const testContents = read(testPath);
-    expect(testContents.startsWith(`${JSDOM_ENV_DIRECTIVE}\n`)).toBe(true);
-    expect(testContents).toContain(
-      "import {composeStory} from '@storybook/react-vite';"
-    );
-    expect(testContents).toContain(
-      "import {expectNoA11yViolations} from 'test/a11y';"
-    );
-    expect(testContents).toContain('const Foo = composeStory(Default, Meta);');
-    expect(testContents).toContain("describe('Foo'");
-    expect(testContents).toContain("test('a11y', async () => {");
-    expect(testContents).toContain('await expectNoA11yViolations(container);');
+    expect(existsSync(testPath)).toBe(false);
 
     const storyContents = read(storyPath);
     expect(storyContents).toContain("import Foo from '..';");
+    expect(storyContents).toContain(
+      "import {expect, within} from 'storybook/test';"
+    );
     expect(storyContents).toContain("title: 'Components/Foo',");
     expect(storyContents).toContain(
       'export const Default: StoryFn = () => <Foo />;'
     );
+    expect(storyContents).toContain(
+      'export const Renders: StoryFn = () => <Foo />;'
+    );
+    expect(storyContents).toContain('Renders.play = async');
+    expect(storyContents).toContain("getByRole('region', {name: 'Foo'})");
   });
 
-  test('--no-story drops the stories file and rewires the test imports', () => {
+  test('--no-story is refused: exit 1, nothing written, the story named as the test', () => {
     const exit = run(['Bar', '--parent', 'app/components', '--no-story'], {
       cwd: sandbox.root,
     });
 
-    expect(exit).toBe(0);
+    expect(exit).toBe(1);
+    expect(existsSync(path.join(sandbox.parent, 'bar'))).toBe(false);
 
-    const storyPath = path.join(
-      sandbox.parent,
-      'bar',
-      'tests',
-      'index.stories.tsx'
-    );
-
-    expect(() => read(storyPath)).toThrow(/ENOENT/);
-
-    const testContents = read(
-      path.join(sandbox.parent, 'bar', 'tests', 'index.test.tsx')
-    );
-    expect(testContents.startsWith(`${JSDOM_ENV_DIRECTIVE}\n`)).toBe(true);
-    expect(testContents).not.toContain('composeStory');
-    expect(testContents).toContain("import Bar from '..'");
-    expect(testContents).toContain(
-      "import {expectNoA11yViolations} from 'test/a11y';"
-    );
-    expect(testContents).toContain("test('a11y', async () => {");
+    const errorLine = stdio.errors.join('');
+    expect(errorLine).toContain('--no-story is not supported');
+    expect(errorLine).toContain("the story is the component's test");
   });
 
   test('--props renders a typed Props alias and destructured signature', () => {
@@ -228,59 +201,32 @@ describe('scaffold component', () => {
       path.join(sandbox.parent, 'card', 'tests', 'index.stories.tsx')
     );
     // Default must carry representative props, not a bare `<Card />`, so the
-    // story-driven a11y check renders against a real DOM and can fail.
+    // accessibility check renders against a real DOM and can fail.
     expect(storyContents).toContain('export const Default: StoryFn = () => (');
     expect(storyContents).toContain('title="title"');
     expect(storyContents).toContain('count={0}');
     expect(storyContents).not.toContain('=> <Card />;');
 
-    // The a11y test renders the composed Default, which now carries props.
-    const testContents = read(
-      path.join(sandbox.parent, 'card', 'tests', 'index.test.tsx')
-    );
-    expect(testContents).toContain('const Card = composeStory(Default, Meta);');
-    expect(testContents).toContain('await expectNoA11yViolations(container);');
+    // The play story renders the same representative instance.
+    expect(storyContents).toContain('export const Renders: StoryFn = () => (');
+    expect(storyContents.match(/title="title"/g)).toHaveLength(2);
+    expect(
+      existsSync(path.join(sandbox.parent, 'card', 'tests', 'index.test.tsx'))
+    ).toBe(false);
   });
 
-  test('--props --no-story test renders the component with representative props', () => {
-    const exit = run(
-      [
-        'Bar',
-        '--parent',
-        'app/components',
-        '--props',
-        'label:string',
-        '--no-story',
-      ],
-      {cwd: sandbox.root}
-    );
-
-    expect(exit).toBe(0);
-
-    const testContents = read(
-      path.join(sandbox.parent, 'bar', 'tests', 'index.test.tsx')
-    );
-    expect(testContents).not.toContain('composeStory');
-    expect(testContents).toContain("import Bar from '..'");
-    // Required props must be supplied at the render site so the test typechecks
-    // and renders a non-degenerate instance the a11y check can fail against.
-    expect(testContents).toContain('render(<Bar label="label" />)');
-    expect(testContents).toContain('await expectNoA11yViolations(container);');
-  });
-
-  test('no-props a11y test carries a starting-point caveat comment', () => {
+  test('the play story carries a starting-point caveat comment', () => {
     const exit = run(['Foo', '--parent', 'app/components'], {
       cwd: sandbox.root,
     });
 
     expect(exit).toBe(0);
 
-    const testContents = read(
-      path.join(sandbox.parent, 'foo', 'tests', 'index.test.tsx')
+    const storyContents = read(
+      path.join(sandbox.parent, 'foo', 'tests', 'index.stories.tsx')
     );
-    // The render-only a11y check is a starting point, not complete a11y
-    // evidence (consistent with the tracer-bullet/a11y caveat).
-    expect(testContents.toLowerCase()).toContain('starting point');
+    // The render check is a starting point, not complete evidence.
+    expect(storyContents.toLowerCase()).toContain('starting point');
   });
 
   test('a name in neither accepted form exits 1 and names both forms', () => {
@@ -316,7 +262,7 @@ describe('scaffold component', () => {
       written: string[];
     };
     expect(parsed.edited).toEqual([]);
-    expect(parsed.written).toHaveLength(3);
+    expect(parsed.written).toHaveLength(2);
     expect(parsed.skipped).toEqual([]);
   });
 
@@ -337,7 +283,7 @@ describe('scaffold component', () => {
       skipped: string[];
       written: string[];
     };
-    expect(parsed.skipped).toHaveLength(3);
+    expect(parsed.skipped).toHaveLength(2);
     expect(parsed.written).toEqual([]);
   });
 
@@ -601,7 +547,6 @@ describe('scaffold component', () => {
         'app/components',
         '--props',
         'onSelect:(id: string, ev: Event) => void',
-        '--no-story',
       ],
       {cwd: sandbox.root}
     );
@@ -619,9 +564,9 @@ describe('scaffold component', () => {
     );
 
     const testContents = read(
-      path.join(sandbox.parent, 'picker', 'tests', 'index.test.tsx')
+      path.join(sandbox.parent, 'picker', 'tests', 'index.stories.tsx')
     );
-    // The render attribute must be a CALLABLE no-op cast, so wiring the prop
+    // The story attribute must be a CALLABLE no-op cast, so wiring the prop
     // into the render body survives being invoked with arguments.
     expect(testContents).toContain(
       'onSelect={(() => undefined) as (id: string, ev: Event) => void}'
@@ -637,7 +582,6 @@ describe('scaffold component', () => {
         'app/components',
         '--props',
         'onClick:() => void',
-        '--no-story',
       ],
       {cwd: sandbox.root}
     );
@@ -645,7 +589,7 @@ describe('scaffold component', () => {
     expect(exit).toBe(0);
 
     const testContents = read(
-      path.join(sandbox.parent, 'clicker', 'tests', 'index.test.tsx')
+      path.join(sandbox.parent, 'clicker', 'tests', 'index.stories.tsx')
     );
     // The render attribute must be a CALLABLE no-op cast, so wiring the prop
     // into the render body would not throw at call time.

@@ -3,7 +3,7 @@ type: overview
 title: GAIA React Overview
 status: mature
 created: 2026-04-20
-updated: 2026-10-04
+updated: 2026-10-05
 tags: [overview, gaia]
 ---
 
@@ -24,9 +24,9 @@ See [[GAIA Philosophy]] for the long version.
 - **Styling**: [[Tailwind]] v4 with `cn` and role tokens, [[shadcn]] components, and [[lucide-react]] icons
 - **i18n**: [[remix-i18next]] with TypeScript language files (not JSON)
 - **State**: minimal; `frontend/app/state/index.tsx` is a passthrough; theme is cookie-based (no React state for theme)
-- **Testing**: [[Vitest]] + [[React Testing Library]] + [[Playwright]] + [[Chromatic]], all sharing one MSW mocking layer
+- **Testing**: [[Vitest]] running [[Storybook]] stories as component tests ([[Stories as Tests]]) + [[Playwright]] + [[Chromatic]], with MSW seed data shared across them
 - **Mocking**: [[MSW]] + `@msw/data` for tests, Storybook, and dev
-- **Storybook** v10 with links, i18n, and dark mode addons; MSW seed data comes from the shared `@msw/data` collections rather than a Storybook MSW addon
+- **Storybook** v10 with links, i18n, dark mode, Vitest and a11y addons; MSW seed data comes from the shared `@msw/data` collections rather than a Storybook MSW addon
 - **Quality**: 20+ ESLint plugins, Prettier, Stylelint, [[Pre-commit Hooks]] with [[lint-staged]]
 - **Claude Code**: [[Claude Integration]] with commands, rules, hooks, agents
 

@@ -1,7 +1,7 @@
 import {Profiler, useState} from 'react';
-import {render, screen} from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import {describe, expect, test, vi} from 'vitest';
+import {render} from 'vitest-browser-react';
+import {page, userEvent} from 'vitest/browser';
 
 describe('React Compiler canary', () => {
   test('a child with constant props re-renders only when the compiler is off', async () => {
@@ -29,10 +29,13 @@ describe('React Compiler canary', () => {
       );
     };
 
-    render(<Parent />);
-    await userEvent.click(screen.getByRole('button'));
+    await render(<Parent />);
+    // `page` is Vitest browser mode's own locator API, not a Testing Library render result.
+    // eslint-disable-next-line testing-library/prefer-screen-queries
+    const counterButton = page.getByRole('button');
+    await userEvent.click(counterButton);
 
-    expect(screen.getByRole('button')).toHaveTextContent('count 1');
+    await expect.element(counterButton).toHaveTextContent('count 1');
     expect(onChildRender).toHaveBeenCalledTimes(REACT_COMPILER_ENABLED ? 1 : 2);
   });
 });

@@ -338,10 +338,25 @@ else
   # exec vitest` avoids the project `test` script and passes json cleanly; this
   # is a hook subprocess, not a Bash-tool call, so no PreToolUse hook intercepts
   # it.
+  rerun_output_file=$(mktemp "${temporary_directory}/vitest-output-XXXXXX" 2>/dev/null || echo "")
   # shellcheck disable=SC2086 # $run_scope is an intentional word-split arg list.
   pnpm -C "$run_directory" exec vitest --run --reporter=json --outputFile="$json_file" $run_scope \
-    >/dev/null 2>&1 || true
+    >"${rerun_output_file:-/dev/null}" 2>&1 || true
   set +f
+
+  # Hook tests run in a real browser, so a machine without Chromium records no
+  # RED. Vitest still writes a parseable report in that case, one with zero
+  # tests, so "no usable report" means unparseable or empty. That one cause is
+  # named, because the missing RED would otherwise surface only as a
+  # commit-gate denial with nothing tying it to this run.
+  if [ ! -s "$json_file" ] || ! jq -e '(.numTotalTests // 0) > 0' "$json_file" >/dev/null 2>&1; then
+    if [ -n "$rerun_output_file" ] && grep -qE "Executable doesn't exist|playwright install|browserType\.launch" "$rerun_output_file" 2>/dev/null; then
+      rm -f "$json_file" "$rerun_output_file" 2>/dev/null || true
+      emit_context "RED capture failed: the test re-run could not start a browser (Chromium is not installed), so no failing (RED) result was recorded and the RED-verification commit gate will not see this run. Install the browsers with: pnpm install:browsers, then re-run the test."
+      exit 0
+    fi
+  fi
+  [ -n "$rerun_output_file" ] && rm -f "$rerun_output_file" 2>/dev/null || true
 
   # If vitest produced no parseable json (binary missing, etc.), bail silently.
   if [ ! -s "$json_file" ] || ! jq -e . "$json_file" >/dev/null 2>&1; then

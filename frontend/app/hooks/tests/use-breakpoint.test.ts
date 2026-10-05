@@ -1,5 +1,5 @@
-import {act, renderHook} from '@testing-library/react';
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
+import {renderHook} from 'vitest-browser-react';
 import {useBreakpoint} from '../use-breakpoint';
 
 describe('useBreakpoint', () => {
@@ -32,24 +32,24 @@ describe('useBreakpoint', () => {
     vi.restoreAllMocks();
   });
 
-  test('returns false when media query does not match', () => {
+  test('returns false when media query does not match', async () => {
     isMockMatching = false;
-    const {result} = renderHook(() => useBreakpoint('lg'));
+    const {result} = await renderHook(() => useBreakpoint('lg'));
     expect(result.current).toBe(false);
   });
 
-  test('returns true when media query matches', () => {
+  test('returns true when media query matches', async () => {
     isMockMatching = true;
-    const {result} = renderHook(() => useBreakpoint('lg'));
+    const {result} = await renderHook(() => useBreakpoint('lg'));
     expect(result.current).toBe(true);
   });
 
-  test('updates when MediaQueryList fires a change event', () => {
+  test('updates when MediaQueryList fires a change event', async () => {
     isMockMatching = false;
-    const {result} = renderHook(() => useBreakpoint('lg'));
+    const {act, result} = await renderHook(() => useBreakpoint('lg'));
     expect(result.current).toBe(false);
 
-    act(() => {
+    await act(() => {
       isMockMatching = true;
       changeListeners.forEach((listener) => listener());
     });
@@ -57,9 +57,9 @@ describe('useBreakpoint', () => {
     expect(result.current).toBe(true);
   });
 
-  test('removes the change listener on unmount', () => {
-    const {unmount} = renderHook(() => useBreakpoint('md'));
-    unmount();
+  test('removes the change listener on unmount', async () => {
+    const {unmount} = await renderHook(() => useBreakpoint('md'));
+    await unmount();
 
     expect(mockMediaQueryList.removeEventListener).toHaveBeenCalledWith(
       'change',
@@ -67,19 +67,20 @@ describe('useBreakpoint', () => {
     );
   });
 
-  test('subscribes once per breakpoint, not once per render', () => {
+  test('subscribes once per breakpoint, not once per render', async () => {
     mockMediaQueryList.addEventListener.mockClear();
     mockMediaQueryList.removeEventListener.mockClear();
     isMockMatching = true;
     const maxSubscriptions = REACT_COMPILER_ENABLED ? 1 : Infinity;
 
-    const {rerender, result, unmount} = renderHook(
-      ({breakpoint}: {breakpoint: 'lg' | 'md'}) => useBreakpoint(breakpoint),
+    const {rerender, result, unmount} = await renderHook(
+      (props?: {breakpoint: 'lg' | 'md'}) =>
+        useBreakpoint(props?.breakpoint ?? 'lg'),
       {initialProps: {breakpoint: 'lg'}}
     );
     expect(result.current).toBe(true);
 
-    rerender({breakpoint: 'lg'});
+    await rerender({breakpoint: 'lg'});
     expect(
       mockMediaQueryList.addEventListener.mock.calls.length
     ).toBeLessThanOrEqual(maxSubscriptions);
@@ -87,7 +88,7 @@ describe('useBreakpoint', () => {
 
     mockMediaQueryList.addEventListener.mockClear();
     mockMediaQueryList.removeEventListener.mockClear();
-    rerender({breakpoint: 'md'});
+    await rerender({breakpoint: 'md'});
     expect(result.current).toBe(true);
     expect(
       mockMediaQueryList.addEventListener.mock.calls.length
@@ -103,7 +104,7 @@ describe('useBreakpoint', () => {
     ).toBeLessThanOrEqual(maxSubscriptions);
     expect(changeListeners).toHaveLength(1);
 
-    unmount();
+    await unmount();
     expect(changeListeners).toHaveLength(0);
   });
 });

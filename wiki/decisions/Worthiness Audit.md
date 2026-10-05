@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-06-23
 created: 2026-06-23
-updated: 2026-10-03
+updated: 2026-10-05
 tags: [decision, tdd, testing, audit, quality]
 ---
 
@@ -41,13 +41,13 @@ who wrote the tests shares their blind spots.
 - **Worthiness**: the discriminator (a failure points at MY code, not a
   dependency), composition non-redundancy (the test asserts the seam, not a
   child's own output), no platform-output tests (the formatter's bytes belong to
-  the formatter), and non-triviality (a behavior-rich tracer-bullet/vacuous-a11y-only
+  the formatter), and non-triviality (a behavior-rich tracer-bullet
   test is incomplete).
 
 ### Verdicts
 
 `keep` clears both axes. `fix` is honest-but-flawed (implementation coupling,
-platform-byte assertion, or a behavior-rich tracer-bullet/vacuous-a11y-only
+platform-byte assertion, or a behavior-rich tracer-bullet
 test, which returns `fix`, not `keep`). `delete` is worthless or unfalsifiable
 and is **always human-gated**.
 
@@ -63,29 +63,9 @@ and is **always human-gated**.
   escaping, sanitization, injection resistance, or data integrity is never
   deleted without a machine-verified sibling that asserts the same property.
 
-### Non-triviality is corroboration, not the producer
+### Stories are audited tests
 
-The judge-independent producer of the non-triviality signal is a structural
-floor (a static-shape check at
-`.gaia/scripts/a11y-structural/check-a11y-triviality.mjs`), not the reviewer's
-runtime agreement. The reviewer's `fix` on a behavior-rich tracer-bullet-only
-test is corroborating evidence; when the reviewer and the structural floor
-disagree, the disagreement surfaces rather than the reviewer's `keep` overriding
-the structural `fix`.
-
-The floor inspects a11y test files (those calling the emergent-signal a11y
-helpers `expectNoA11yViolations` / `runAxe`) and flags a vacuous a11y test when
-EITHER its `render(...)` passes no props (only defaults) OR its rendered markup
-carries no interactive or landmark node while the component's stories declare
-interactive variants. It reads no LLM judgement and rests on no can-it-fail axis
-(an a11y render reads GREEN identically whether the test is honest or vacuous),
-so the structural shape is the mechanical pass condition. It is ADVISORY: a
-`trivial` verdict adds a `fix` to the end-of-task summary and routes into the
-ledger as a `fix`; it never blocks a commit. A render-only axe pass stays a
-complete a11y test for a component with no interactive behavior (a Spinner, a
-static badge). The a11y-helper call names are in the [[Determinism Classifier]]
-emergent set, so a vacuous a11y test never leaks to the deterministic RED
-surface; this floor grades the same test's worthiness.
+A story with an effective play function is one test to the audit, wherever the file sits: stories classify emergent ([[Determinism Classifier]]), and `extract-test-signals.mjs` emits one identity per such story (see [[Stories as Tests]]). A render-only story is not counted. The a11y axe check is automatic for every story, so a story that only renders and passes axe is a complete a11y test for a component with no interactive behavior; the reviewer judges a play on its behavior assertions, and a play that asserts nothing a user could see break returns `fix`. No separate static a11y check runs: addon-a11y covers the mechanical half.
 
 ### Two-tier surfacing
 
@@ -137,12 +117,6 @@ ledger:
   repo-relative test path, a `fullName`, a verdict, and (for non-keep) an
   artifact; recomputes the signal via the RED-ledger helper and appends one
   JSONL line. Rejects an unknown verdict and a non-keep with no artifact.
-- `.gaia/scripts/a11y-structural/check-a11y-triviality.mjs`: the structural a11y
-  floor. A Node ESM AST helper (TypeScript compiler API, repo-relative path arg,
-  `--stdin`, `--stories <path>`) that emits
-  `{file, verdict: "trivial" | "non-trivial" | "not-a11y", findings}`. It is the
-  judge-independent producer of the non-triviality signal; the reviewer's
-  matching `fix` is corroboration only.
 
 ## Consumers
 

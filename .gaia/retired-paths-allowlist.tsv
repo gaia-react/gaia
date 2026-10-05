@@ -51,9 +51,6 @@
 .gaia/cli/src/init/rename.ts	app/languages	Package-relative constants joined to the package directory from the registry.
 .gaia/cli/src/init/strip-branding.ts	.storybook/preview.ts	Package-relative constant joined to the package directory from the registry.
 .gaia/cli/src/scaffold/component.ts	app/components	Package-relative default parent and a tsconfig-path import specifier written into generated files.
-.gaia/cli/src/scaffold/component.ts	'test/rtl'	Package-relative default parent and a tsconfig-path import specifier written into generated files.
 .gaia/cli/src/scaffold/service.ts	app/services/	Package-relative paths resolved against the package directory from the registry.
 .gaia/cli/src/scaffold/service.ts	test/mocks/	Package-relative paths resolved against the package directory from the registry.
-.gaia/cli/src/scaffold/templates/component/index.test.tsx.tmpl	'test/a11y'	Import specifier resolved by the generated package's tsconfig paths, not a root file path.
 .gaia/cli/src/scaffold/templates/route/page.stories.tsx.tmpl	'test/stubs'	Import specifier resolved by the generated package's tsconfig paths, not a root file path.
-.gaia/cli/src/scaffold/templates/route/page.test.tsx.tmpl	'test/rtl'	Import specifier resolved by the generated package's tsconfig paths, not a root file path.

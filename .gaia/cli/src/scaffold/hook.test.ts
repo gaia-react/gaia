@@ -113,13 +113,13 @@ describe('gaia scaffold hook', () => {
 
     expect(read(testPath)).toBe(
       [
-        "import {renderHook} from '@testing-library/react';",
         "import {describe, expect, test} from 'vitest';",
+        "import {renderHook} from 'vitest-browser-react';",
         "import {useFoo} from '../use-foo';",
         '',
         "describe('useFoo', () => {",
-        "  test('renders without crashing', () => {",
-        '    expect(() => renderHook(() => useFoo())).not.toThrow();',
+        "  test('renders without crashing', async () => {",
+        '    await expect(renderHook(() => useFoo())).resolves.toBeDefined();',
         '  });',
         '});',
         '',

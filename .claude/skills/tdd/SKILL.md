@@ -112,20 +112,20 @@ It emits `{file, classification: "strict" | "emergent", reasons}`. A `strict` fi
 ```
 Determinism roll-up:
   • frontend/app/utils/money.ts            strict
-  • frontend/app/components/cart/index.tsx  emergent (path not a .ts under frontend/app/components)
+  • frontend/app/components/cart/tests/index.stories.tsx  emergent (story file: a *.stories.tsx is emergent regardless of path)
 ```
 
 This roll-up renders into the single end-of-task summary (see "Surfacing the advisory findings").
 
 ### 6. Worthiness Audit (emergent surface)
 
-The deterministic surface earns its honesty proof from the RED gate. The emergent surface (the descriptor's `emergentTests` globs: components, pages and Playwright) has no stable failing-then-passing run to gate on, so its honesty and worthiness come from an **advisory audit** instead. Run this audit after green, on the emergent-surface test files the task changed (the classifier roll-up above tells you which touched files are `emergent`).
+The deterministic surface earns its honesty proof from the RED gate. The emergent surface (the descriptor's `emergentTests` globs: component and page stories, which are the component tests, and Playwright) has no stable failing-then-passing run to gate on, so its honesty and worthiness come from an **advisory audit** instead. Run this audit after green, on the emergent-surface test and story files the task changed (the classifier roll-up above tells you which touched files are `emergent`).
 
 #### Dispatch a fresh-context audit (no-orchestrator path)
 
 On the main loop, with no orchestrator above you, the audit MUST run in a **genuine fresh-context `Agent` sub-leaf**, never as an in-context self-review by the test author. The author who just wrote the tests shares their blind spots; a same-model fresh-context reviewer that never saw the authoring rationale is the cheapest way to recover honesty signal. An in-context "I'll review my own tests" pass does not satisfy this step.
 
-Dispatch one `Agent` leaf running the committed evaluator prompt (`.claude/agents/worthiness-evaluator.md`) over the task's changed emergent test files plus their sibling suites. The evaluator judges each test on two axes (honesty, worthiness), returns a `keep`/`fix`/`delete` verdict per test, and **edits no files**: every `delete` is a proposal a human confirms.
+Dispatch one `Agent` leaf running the committed evaluator prompt (`.claude/agents/worthiness-evaluator.md`) over the task's changed emergent test and story files plus their sibling suites. The evaluator judges each test on two axes (honesty, worthiness), returns a `keep`/`fix`/`delete` verdict per test, and **edits no files**: every `delete` is a proposal a human confirms.
 
 #### Write the worthiness ledger (no-orchestrator path)
 
@@ -148,17 +148,7 @@ The guarantee this audit provides is scoped to **the subset a same-model fresh-c
 
 ### 7. Surfacing the advisory findings
 
-Advisory findings (worthiness verdicts and the structural a11y floor below) NEVER interrupt mid-implementation. There are no mid-flow prompts. They surface only where attention already is: the end-of-task summary, before commit (no-orchestrator path), and the orchestrator's `SUMMARY.md` plus the pre-merge summary (orchestrated path). This is the SAME end-of-task summary the determinism roll-up and the worthiness verdicts already render into; the surfacing rules here describe how that one summary presents the findings, not a second summary.
-
-#### Structural a11y floor (judge-independent non-triviality)
-
-Run the structural a11y floor over each changed emergent-surface test file that calls an a11y helper (`expectNoA11yViolations` / `runAxe`):
-
-```
-node .gaia/scripts/a11y-structural/check-a11y-triviality.mjs <repo-relative-test-path>
-```
-
-It emits `{file, verdict: "trivial" | "non-trivial" | "not-a11y", findings}`. A `trivial` verdict flags a vacuous a11y test as an advisory **non-triviality fix**, on a static-AST shape alone: the render passes no props (only defaults), or the rendered markup carries no interactive or landmark node while the component's stories declare interactive variants. This is the judge-independent producer of the non-triviality signal; the worthiness evaluator's matching `fix` is corroborating evidence, never the pass condition. When the floor says `trivial` and the evaluator says `keep`, the floor wins and the disagreement is surfaced. A render-only axe pass stays a complete a11y test for a component with no interactive behavior (a Spinner, a static badge); the floor only flags it when the shape or the stories show unexercised behavior. The floor is ADVISORY: it adds a `fix` finding to the summary, it never blocks a commit. Route a `trivial` finding into the worthiness ledger as a `fix` with the structural reason as its artifact.
+Advisory findings (the worthiness verdicts) NEVER interrupt mid-implementation. There are no mid-flow prompts. They surface only where attention already is: the end-of-task summary, before commit (no-orchestrator path), and the orchestrator's `SUMMARY.md` plus the pre-merge summary (orchestrated path). This is the SAME end-of-task summary the determinism roll-up and the worthiness verdicts already render into; the surfacing rules here describe how that one summary presents the findings, not a second summary.
 
 #### Two tiers, capped
 

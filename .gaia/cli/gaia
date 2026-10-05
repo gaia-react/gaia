@@ -18237,7 +18237,8 @@ var BUILTIN_DESCRIPTOR = {
       ".playwright/**/*.spec.ts",
       ".playwright/**/*.spec.tsx",
       ".playwright/**/*.test.ts",
-      ".playwright/**/*.test.tsx"
+      ".playwright/**/*.test.tsx",
+      "app/**/*.stories.tsx"
     ],
     preCommitSource: ["app/**", "test/**", ".storybook/**", ".playwright/**"],
     selfHealRefuse: [
@@ -23866,6 +23867,7 @@ var APP_SEGMENT = "app";
 var COMPONENTS_SEGMENT = "components";
 var PAGES_SEGMENT = "pages";
 var UI_SEGMENT = "ui";
+var NO_STORY_MESSAGE = "--no-story is not supported: the story is the component's test (render, play and accessibility check), so a component cannot be scaffolded without one.";
 var NAME_FORMS_MESSAGE = "use kebab-case (price-tag) or PascalCase (PriceBadge)";
 var kebabToPascal = (kebab) => kebab.split("-").map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`).join("");
 var toKebabCase = (value) => (value.match(KEBAB_WORD_PATTERN) ?? []).join("-").toLowerCase();
@@ -23900,7 +23902,6 @@ var HELP_TEXT27 = `Usage: gaia scaffold component <name> [flags]
 
   <name>              kebab-case (price-tag) or PascalCase (PriceBadge); the
                       folder is the kebab form of the PascalCase export name
-  --no-story          Skip the index.stories.tsx file
   --parent <dir>      Existing parent dir under app/components/ or app/pages/<path>
                       (default: app/components/), relative to the frontend
                       package. components/ui is refused: shadcn owns it.
@@ -23947,8 +23948,7 @@ var parseProps = (raw) => {
       json: false,
       name: "",
       parent: "",
-      props,
-      story: true
+      props
     },
     ok: true
   };
@@ -23971,8 +23971,7 @@ var applyToken2 = (argv, index, state) => {
     return { message: "unexpected end of arguments", ok: false };
   }
   if (token === "--no-story") {
-    state.story = false;
-    return { consumed: 0 };
+    return { message: NO_STORY_MESSAGE, ok: false };
   }
   if (token === "--json") {
     state.json = true;
@@ -24004,8 +24003,7 @@ var parseFlags7 = (argv) => {
     json: false,
     name: void 0,
     parent: COMPONENTS_DEFAULT_PARENT,
-    props: [],
-    story: true
+    props: []
   };
   for (let index = 0; index < argv.length; index += 1) {
     const result = applyToken2(argv, index, state);
@@ -24015,7 +24013,7 @@ var parseFlags7 = (argv) => {
       return result;
     }
   }
-  const { json: json3, name, parent, props, story } = state;
+  const { json: json3, name, parent, props } = state;
   if (name === void 0) {
     return { message: "component name is required", ok: false };
   }
@@ -24037,8 +24035,7 @@ var parseFlags7 = (argv) => {
       json: json3,
       name,
       parent,
-      props,
-      story
+      props
     },
     ok: true
   };
@@ -24065,35 +24062,14 @@ var buildPropertyAttribute = (property) => {
   return `${property.name}={{} as ${type2}}`;
 };
 var buildPropertyAttributes = (props) => props.map(buildPropertyAttribute).join(" ");
-var buildRenderJsx = (componentName, props, withStory) => {
-  if (withStory || props.length === 0) return `<${componentName} />`;
-  return `<${componentName} ${buildPropertyAttributes(props)} />`;
-};
-var buildStoryDefault = (componentName, props) => {
+var buildStoryExport = (exportName, componentName, props) => {
   if (props.length === 0) {
-    return `export const Default: StoryFn = () => <${componentName} />;`;
+    return `export const ${exportName}: StoryFn = () => <${componentName} />;`;
   }
   return [
-    "export const Default: StoryFn = () => (",
+    `export const ${exportName}: StoryFn = () => (`,
     `  <${componentName} ${buildPropertyAttributes(props)} />`,
     ");"
-  ].join("\n");
-};
-var buildTestImports = (componentName, withStory) => {
-  if (withStory) {
-    return [
-      "import {composeStory} from '@storybook/react-vite';",
-      "import {describe, expect, test} from 'vitest';",
-      "import {render} from 'test/rtl';",
-      "import Meta, {Default} from './index.stories';",
-      "",
-      `const ${componentName} = composeStory(Default, Meta);`
-    ].join("\n");
-  }
-  return [
-    "import {describe, expect, test} from 'vitest';",
-    "import {render} from 'test/rtl';",
-    `import ${componentName} from '..';`
   ].join("\n");
 };
 var buildStoryTitle = (parent, folder) => [...parent.split("/").slice(1), folder].map(kebabToPascal).join("/");
@@ -24139,18 +24115,6 @@ var renderComponentFile = (options) => {
     propsTypeBlock
   });
 };
-var renderTestFile = (options) => {
-  const { componentName, props, templatesRoot, withStory } = options;
-  const templatePath = path31.join(
-    templatesRoot,
-    `${TEMPLATES_DIR}/index.test.tsx.tmpl`
-  );
-  return renderTemplate(templatePath, {
-    Name: componentName,
-    renderJsx: buildRenderJsx(componentName, props, withStory),
-    testImports: buildTestImports(componentName, withStory)
-  });
-};
 var renderStoryFile = (options) => {
   const { componentName, folder, parent, props, templatesRoot } = options;
   const templatePath = path31.join(
@@ -24159,7 +24123,8 @@ var renderStoryFile = (options) => {
   );
   return renderTemplate(templatePath, {
     Name: componentName,
-    storyDefault: buildStoryDefault(componentName, props),
+    storyDefault: buildStoryExport("Default", componentName, props),
+    storyRenders: buildStoryExport("Renders", componentName, props),
     storyTitle: buildStoryTitle(parent, folder)
   });
 };
@@ -24237,7 +24202,6 @@ var run27 = (argv, options = {}) => {
   const componentDir = path31.join(parentAbs, folder);
   const indexPath = path31.join(componentDir, "index.tsx");
   const testsDir = path31.join(componentDir, "tests");
-  const testPath = path31.join(testsDir, "index.test.tsx");
   const storyPath = path31.join(testsDir, "index.stories.tsx");
   const templatesRoot = resolveTemplatesRoot();
   const result = { edited: [], skipped: [], written: [] };
@@ -24246,15 +24210,11 @@ var run27 = (argv, options = {}) => {
     folder,
     parent,
     props: flags.props,
-    templatesRoot,
-    withStory: flags.story
+    templatesRoot
   };
   try {
     writeOne(indexPath, renderComponentFile(renderOptions), result);
-    writeOne(testPath, renderTestFile(renderOptions), result);
-    if (flags.story) {
-      writeOne(storyPath, renderStoryFile(renderOptions), result);
-    }
+    writeOne(storyPath, renderStoryFile(renderOptions), result);
   } catch (error51) {
     structuredError({
       code: "write_failed",
@@ -24629,7 +24589,6 @@ var templatePaths = () => {
     locale: path33.join(dir, "locale.ts.tmpl"),
     pageIndex: path33.join(dir, "page.index.tsx.tmpl"),
     pageStories: path33.join(dir, "page.stories.tsx.tmpl"),
-    pageTest: path33.join(dir, "page.test.tsx.tmpl"),
     route: path33.join(dir, "route.tsx.tmpl")
   };
 };
@@ -24764,12 +24723,6 @@ var emitRouteFiles = (args) => {
   writeFile({
     absPath: path33.join(pageDir, "page.tsx"),
     contents: renderTemplate(tmpls.pageIndex, pageVars),
-    dryRun,
-    result
-  });
-  writeFile({
-    absPath: path33.join(pageDir, "tests", "page.test.tsx"),
-    contents: renderTemplate(tmpls.pageTest, pageVars),
     dryRun,
     result
   });
@@ -30303,25 +30256,18 @@ var GROUP_RULES = [
   },
   {
     exactNames: [
+      "@vitest/browser-playwright",
       "@vitest/coverage-v8",
       "@vitest/eslint-plugin",
       "@vitest/ui",
-      "vitest"
+      "vitest",
+      "vitest-browser-react"
     ],
     group: "vitest"
   },
   {
-    exactNames: ["@playwright-testing-library/test", "@playwright/test"],
+    exactNames: ["@playwright/test", "playwright"],
     group: "playwright"
-  },
-  {
-    exactNames: [
-      "@testing-library/dom",
-      "@testing-library/jest-dom",
-      "@testing-library/react",
-      "@testing-library/user-event"
-    ],
-    group: "testing-library"
   },
   // No `typescript` rule here on purpose; see the header's resolution rules.
   {

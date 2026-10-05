@@ -1,21 +1,42 @@
 import {describe, expect, test} from 'vitest';
+import {readFileSync} from 'node:fs';
+import path from 'node:path';
 
-// Runs in the project default (happy-dom) environment, where `window.process`
-// IS Node's `process` rather than the `{env: {}}` object
-// `.storybook/preview-head.html` seeds in a real browser. `test/setup.ts` loads
-// `.storybook/preview` as the global setup file, so every module that preview
-// imports runs once per test file before any assertion here. A preview module
-// that *assigns* to `window.process.env` therefore replaces the worker's real
-// environment for the whole suite, silently dropping every variable it does not
-// name. `PATH` is the witness: always present in a real environment, and never
-// a key a preview shim has any reason to inline.
+// Runs in the node project and pins that its worker keeps the real environment.
+// A setup file that loads `.storybook/preview`, or a DOM emulation environment
+// on the project, lets a preview module that assigns to `window.process.env`
+// replace the worker's environment for the whole suite, silently dropping every
+// variable it does not name. `PATH` is the witness: always present in a real
+// environment, and never a key a preview shim has any reason to inline.
 
-describe('storybook preview env', () => {
-  test('the preview does not replace the worker process.env', () => {
-    expect(window.process).toBe(process);
+describe('node project environment', () => {
+  test('the worker keeps its real process.env', () => {
     expect(
       process.env.PATH,
       'PATH is absent, so something replaced process.env rather than adding to it'
     ).toBeTruthy();
+  });
+
+  test('no DOM is emulated in the node project', () => {
+    expect(
+      globalThis.window,
+      'window exists, so a DOM emulation was added to the node project; component and DOM tests belong in the browser or storybook project'
+    ).toBeUndefined();
+    expect(
+      globalThis.document,
+      'document exists, so a DOM emulation was added to the node project; component and DOM tests belong in the browser or storybook project'
+    ).toBeUndefined();
+  });
+
+  test('the node setup file does not load the storybook preview', () => {
+    const setupSource = readFileSync(
+      path.resolve(import.meta.dirname, 'setup.ts'),
+      'utf8'
+    );
+
+    expect(
+      setupSource,
+      'test/setup.ts imports from .storybook, which runs preview modules in every node test file and can replace process.env'
+    ).not.toMatch(/\.storybook/);
   });
 });

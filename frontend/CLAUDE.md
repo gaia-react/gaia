@@ -10,6 +10,10 @@ The React app: routes, pages, components, services, tests, Storybook, Playwright
 - Paths in prose inside these rules and skills (`app/`, `test/`, `.playwright/`, `.storybook/`, `public/`, config files) are relative to `frontend/`. Shell commands are written to run from the repo root, so they carry the `frontend/` prefix or use the root `pnpm` proxies.
 - `.claude/`, `.gaia/`, and `wiki/` paths are repo-root paths; the frontend's own units appear as `frontend/.claude/...`.
 
+## Tests and prerequisites
+
+Components and pages are tested by their Storybook stories (play functions, run by `@storybook/addon-vitest`), hooks with `vitest-browser-react`, and pure and server code in the `node` Vitest project. Stories and hook tests run in headless Chromium, so run `pnpm install:browsers` once after `pnpm install`; without it Vitest fails with a missing-browser error. The rules are in `frontend/.claude/rules/storybook.md` and the `tdd-react` skill.
+
 ## Running the gate
 
 `pnpm <script>` from `frontend/` equals `pnpm -C frontend <script>` from the repo root, and the root `package.json` proxies every frontend script, so `pnpm typecheck`, `pnpm lint`, `pnpm test`, and `pnpm pw` work from either directory. The Quality Gate steps live in `wiki/decisions/Quality Gate.md`.

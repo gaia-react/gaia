@@ -24,5 +24,5 @@ This section owns the layout rule. Every other rule, skill, agent and wiki page 
 
 ## Test Driven Development
 
-- Use Vitest to test individual functions and components work in isolation
+- Components and pages are tested by their Storybook stories (play functions run by Vitest in headless Chromium), hooks with `vitest-browser-react`, and pure and server code in the `node` Vitest project; the rules are in `storybook.md` and the `tdd-react` skill
 - Use Playwright to test user flows required by the feature specifications

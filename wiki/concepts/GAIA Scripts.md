@@ -138,7 +138,6 @@ The root holds the shell layer; each subdirectory holds one thing that is not sh
 
 | Directory | What is in it |
 |---|---|
-| `a11y-structural/` | The Node helper that decides whether an accessibility assertion is structurally trivial. |
 | `audit-ledger/` | The Node writer that appends a worthiness verdict to the audit ledger. |
 | `classifier/` | The Node helper that classifies a test as deterministic or not. |
 | `lib/` | Shell that is sourced by a root script rather than run: the Serena language helper. |

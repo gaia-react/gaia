@@ -175,11 +175,6 @@ const ROUTER_RUNTIME_HOOKS = new Set([
   'useRevalidator',
 ]);
 
-// a11y helper call names. A static-markup a11y check is environment- and
-// render-dependent, so these names are members of the emergent-signal set
-// regardless of whether the file renders a component.
-const A11Y_HELPER_NAMES = new Set(['expectNoA11yViolations', 'runAxe']);
-
 const reasons = [];
 
 const addReason = (reason) => {
@@ -189,6 +184,8 @@ const addReason = (reason) => {
 };
 
 // --- Condition 1: path scoping + hook/non-hook discriminator ------------------
+
+const STORY_FILE_PATTERN = /\.stories\.tsx?$/;
 
 const inCandidatePath = () =>
   strictCandidatePatterns.some((pattern) => pattern.test(filePath));
@@ -352,13 +349,11 @@ const checkHookSurface = () => {
 
   const visit = (node) => {
     if (ts.isCallExpression(node)) {
-      // Bare identifier call: useNavigate(), matchMedia(), runAxe().
+      // Bare identifier call: useNavigate(), matchMedia().
       if (ts.isIdentifier(node.expression)) {
         const name = node.expression.text;
         if (ROUTER_RUNTIME_HOOKS.has(name)) {
           flag(`hook reads react-router runtime hook ${name}()`);
-        } else if (A11Y_HELPER_NAMES.has(name)) {
-          flag(`a11y helper ${name}() is an emergent signal`);
         } else if (DOM_LAYOUT_NAMES.has(name)) {
           flag(`hook constructs DOM-layout/observer API ${name}`);
         }
@@ -499,31 +494,20 @@ const checkAsyncIoExport = () => {
   return !emergent;
 };
 
-// a11y helpers anywhere in a non-hook file are an emergent signal too: a
-// static-markup a11y test under app/components/**/*.ts must not leak strict.
-const checkA11ySignal = () => {
-  let emergent = false;
-  const visit = (node) => {
-    if (
-      ts.isCallExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      A11Y_HELPER_NAMES.has(node.expression.text)
-    ) {
-      emergent = true;
-      addReason(`a11y helper ${node.expression.text}() is an emergent signal`);
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(sourceFile);
-  return !emergent;
-};
-
 // --- Classify -----------------------------------------------------------------
 
 // Returns the classification rather than emitting it, so the single stdout
 // write happens once at the tail. Each arm's checks run for their addReason
 // side effects, so `reasons` is only complete once this returns.
 const classify = () => {
+  // A story file is a rendered, browser-bound test whatever its path: it is
+  // emergent before path scoping and before any AST check, so a story under a
+  // strict-candidate folder never reaches the RED gate.
+  if (STORY_FILE_PATTERN.test(filePath)) {
+    addReason('story file: a *.stories.tsx is emergent regardless of path');
+    return 'emergent';
+  }
+
   if (!inCandidatePath()) {
     addReason(`path not in ${strictCandidateGlobs.join(', ')}`);
     return 'emergent';
@@ -536,20 +520,18 @@ const classify = () => {
   const cond2 = checkNonDeterminism();
 
   if (hook) {
-    // HOOK path: condition 3 (whole-hook). Conditions 2 and the a11y signal still
-    // apply; conditions 4 (public async I/O export) is folded into the hook
-    // surface judgement (a hook is not an I/O service export).
+    // HOOK path: condition 3 (whole-hook). Condition 2 still applies; condition
+    // 4 (public async I/O export) is folded into the hook surface judgement (a
+    // hook is not an I/O service export).
     const cond3 = checkHookSurface();
-    const a11yOk = checkA11ySignal();
-    return cond2 && cond3 && a11yOk ? 'strict' : 'emergent';
+    return cond2 && cond3 ? 'strict' : 'emergent';
   }
 
-  // NON-HOOK path: conditions 2 and 4, plus the a11y signal. Condition 3 is
-  // skipped for non-hook files.
+  // NON-HOOK path: conditions 2 and 4. Condition 3 is skipped for non-hook
+  // files.
   const cond4 = checkAsyncIoExport();
-  const a11yOk = checkA11ySignal();
 
-  return cond2 && cond4 && a11yOk ? 'strict' : 'emergent';
+  return cond2 && cond4 ? 'strict' : 'emergent';
 };
 
 const classification = classify();

@@ -130,8 +130,9 @@ jobs:
         name: Setup Node and install
         uses: ./.github/actions/gaia-setup-node
       # The preview must publish no environment values, and until now nothing on
-      # the build path said so. `frontend/test/preview-env.test.ts` pins the Vitest worker;
-      # the Storybook build is a separate Vite pipeline that suite never touches,
+      # the build path said so. `frontend/test/preview-env.test.ts` pins that the Vitest node
+      # project keeps its real environment, emulates no DOM and loads no preview;
+      # the Storybook build is a separate Vite pipeline no Vitest suite guards,
       # so a substitution re-added to `frontend/.storybook/main.ts`, `frontend/.storybook/vite.config.ts`,
       # a third config or a plugin would bake values into a public artifact with
       # nothing failing. Build with sentinel values in the environment and fail if

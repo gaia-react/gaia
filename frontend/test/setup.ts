@@ -1,8 +1,6 @@
-import type {Preview} from '@storybook/react-vite';
-import {setProjectAnnotations} from '@storybook/react-vite';
+import {afterEach} from 'vitest';
 import path from 'node:path';
-import * as globalStorybookConfig from '../.storybook/preview';
-import '@testing-library/jest-dom/vitest';
+import {resetTestData} from './mocks/database';
 // eslint-disable-next-line no-restricted-imports -- this is the global Vitest setupFile (vitest.config.ts setupFiles); the single sanctioned place to start the MSW server harness for the whole suite, not a consumer test reaching into server surface
 import './test.server';
 
@@ -26,4 +24,4 @@ process.env.npm_package_version ??= '0.0.0';
 process.env.SESSION_SECRET ??= 'test-secret';
 process.env.SITE_URL ??= 'http://localhost:3000';
 
-setProjectAnnotations(globalStorybookConfig as Preview);
+afterEach(resetTestData);

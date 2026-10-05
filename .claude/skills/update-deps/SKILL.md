@@ -109,10 +109,9 @@ update together**, so a group moves as one unit (and snoozes as one unit).
 | `tailwindcss`     | `tailwindcss`, `@tailwindcss/vite`, `@tailwindcss/typography`, `prettier-plugin-tailwindcss`                                             |
 | `shadcn`          | `shadcn`, `@base-ui/react`, `class-variance-authority`, `lucide-react`, `tw-animate-css`                                                 |
 | `storybook`       | `storybook`, `@storybook/*`, `eslint-plugin-storybook`, `msw-storybook-addon`, `storybook-react-i18next`, `@vueless/storybook-dark-mode` |
-| `vitest`          | `vitest`, `@vitest/coverage-v8`, `@vitest/ui`, `@vitest/eslint-plugin`                                                                   |
-| `playwright`      | `@playwright/test`, `@playwright-testing-library/test`                                                                                   |
+| `vitest`          | `vitest`, `@vitest/browser-playwright`, `@vitest/coverage-v8`, `@vitest/ui`, `@vitest/eslint-plugin`, `vitest-browser-react`             |
+| `playwright`      | `@playwright/test`, `playwright`                                                                                                         |
 | `eslint`          | `eslint`, `@eslint/js`, `@eslint/compat`, `eslint-config-*`, `eslint-plugin-*` (9.x cap applies)                                         |
-| `testing-library` | `@testing-library/dom`, `@testing-library/react`, `@testing-library/jest-dom`, `@testing-library/user-event`                             |
 | `i18next`         | `i18next`, `react-i18next`, `remix-i18next`, `i18next-browser-languagedetector`                                                          |
 | `msw`             | `msw`, `msw-storybook-addon`                                                                                                             |
 | `vite`            | `vite`, `@vitejs/plugin-react`                                                                                                           |

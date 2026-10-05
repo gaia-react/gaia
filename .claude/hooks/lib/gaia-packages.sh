@@ -89,7 +89,8 @@ _gaia_packages_builtin_descriptor() {
       ".playwright/**/*.spec.ts",
       ".playwright/**/*.spec.tsx",
       ".playwright/**/*.test.ts",
-      ".playwright/**/*.test.tsx"
+      ".playwright/**/*.test.tsx",
+      "app/**/*.stories.tsx"
     ],
     "selfHealRefuse": [
       ".claude/**",

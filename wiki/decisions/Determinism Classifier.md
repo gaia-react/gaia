@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-06-23
 created: 2026-06-23
-updated: 2026-10-03
+updated: 2026-10-05
 tags: [decision, tdd, hooks, quality, classifier]
 ---
 
@@ -56,9 +56,9 @@ The strict/emergent split for DOM APIs is an enumerable allowlist, not an infera
 
 The allowlist is a constant in the classifier with a version marker (`DOM_ALLOWLIST_VERSION`). The marker bumps whenever an entry is added or moved between buckets, so a consumer can pin against a known allowlist. A DOM-host receiver (`navigator`, `document`, `window`, `globalThis`, `screen`) calling a method absent from the allowlist is treated as an unknown DOM API and classifies the hook EMERGENT.
 
-## a11y helpers are an emergent signal
+## Story files are emergent
 
-The a11y-helper call names `expectNoA11yViolations` and `runAxe` (from `frontend/test/a11y.ts`) are members of the emergent-signal set. A static-markup a11y check is environment- and render-dependent, so a file calling either helper classifies EMERGENT regardless of whether it renders a component.
+A path ending `.stories.tsx` or `.stories.ts` classifies EMERGENT before any path scoping or AST check, with the reason `story file: a *.stories.tsx is emergent regardless of path`. A story renders in a real browser and carries its own play function, so it is never a deterministic subject, and a story outside the package descriptor's globs still lands on the worthiness-gated surface. See [[Stories as Tests]].
 
 ## File-granularity limitation
 

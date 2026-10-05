@@ -4,16 +4,25 @@ import type {
   LoaderFunctionArgs,
 } from 'react-router';
 import {createRoutesStub} from 'react-router';
-import type {PartialStoryFn} from 'storybook/internal/types';
+import type {ReactRenderer} from '@storybook/react-vite';
+import type {
+  DecoratorFunction,
+  PartialStoryFn,
+  StoryContext,
+} from 'storybook/internal/types';
 import {addons} from 'storybook/preview-api';
 import {ACTION_PATHS} from '~/action-paths';
 
-const methods = ['DELETE', 'GET', 'PATCH', 'POST', 'PUT'];
+const methods = ['DELETE', 'GET', 'PATCH', 'POST', 'PUT'] as const;
 type Action = ActionFunction | SimpleAction | string;
 type Method = (typeof methods)[number];
 
 type ReactRouterDecoratorOptions = {
   action?: Action;
+  /** Per-path action. Overrides the no-op ACTION_PATHS entry for the same path; adds a route for a path not in ACTION_PATHS. */
+  actions?: Record<string, ActionFunction>;
+  /** Each path renders `Navigated to {path}` inside a main landmark, so a play can assert arrival by visible text. */
+  destinations?: string[];
   loader?: (args: LoaderFunctionArgs) => Promise<unknown>;
   path?: string;
   routes?: Routes;
@@ -24,6 +33,9 @@ type Routes = {path: string; storyId: string}[];
 type SimpleAction = Partial<Record<Method, string>>;
 
 const channel = addons.getChannel();
+
+const isMethod = (key: string): key is Method =>
+  (methods as readonly string[]).includes(key);
 
 const getAction = (action?: Action) => {
   if (!action) {
@@ -63,11 +75,13 @@ const getAction = (action?: Action) => {
   // Intermediate - Assign different storyIds to different methods
   if (
     typeof action === 'object' &&
-    Object.keys(action).some((key) => methods.includes(key))
+    Object.keys(action).some((key) => isMethod(key))
   ) {
     return ({request}: ActionFunctionArgs) => {
-      if (action[request.method]) {
-        channel.emit('selectStory', {storyId: action[request.method]});
+      const {method} = request;
+
+      if (isMethod(method) && action[method]) {
+        channel.emit('selectStory', {storyId: action[method]});
       }
 
       return null;
@@ -78,8 +92,22 @@ const getAction = (action?: Action) => {
 };
 
 const decorator =
-  (options?: ReactRouterDecoratorOptions) => (Story: PartialStoryFn) => {
-    const {action, path = '/', routes = [], ...rest} = options ?? {};
+  (
+    options?:
+      | ((context: StoryContext) => ReactRouterDecoratorOptions)
+      | ReactRouterDecoratorOptions
+  ): DecoratorFunction<ReactRenderer> =>
+  (Story: PartialStoryFn, context: StoryContext) => {
+    const resolvedOptions =
+      typeof options === 'function' ? options(context) : options;
+    const {
+      action,
+      actions = {},
+      destinations = [],
+      path = '/',
+      routes = [],
+      ...rest
+    } = resolvedOptions ?? {};
 
     const reactRouterStub = createRoutesStub([
       {
@@ -108,9 +136,23 @@ const decorator =
       // Dropping that module breaks every story using this decorator at import,
       // which is the loud direction to fail in next to an entry that silently
       // stops matching.
-      ...Object.values(ACTION_PATHS).map((actionPath) => ({
-        action: () => {},
+      ...Object.values(ACTION_PATHS)
+        .filter((actionPath) => !(actionPath in actions))
+        .map((actionPath) => ({
+          action: () => {},
+          path: actionPath,
+        })),
+      ...Object.entries(actions).map(([actionPath, pathAction]) => ({
+        action: pathAction,
         path: actionPath,
+      })),
+      ...destinations.map((destination) => ({
+        Component: () => (
+          <main>
+            <p>Navigated to {destination}</p>
+          </main>
+        ),
+        path: destination,
       })),
     ]);
 

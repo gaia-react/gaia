@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import {RouterContextProvider} from 'react-router';
 import {redirectWithSuccess, setToastCookieOptions} from 'remix-toast';
 import {describe, expect, test} from 'vitest';

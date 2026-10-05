@@ -73,7 +73,22 @@ Reads the file from disk (or stdin with `--stdin`) and prints one JSON object
 per discovered `test(...)`/`it(...)` call, newline-delimited:
 `{"fullName":"…","signal":"sha256:…","kind":"runtime"|"type-only"}`. Exit `0`
 on success (no output when no tests are found); non-zero with a one-line stderr
-message on a parse failure.
+message on a failure. The exit codes are listed in the helper's header.
+
+**Story mode.** A path ending `.stories.tsx` or `.stories.ts` is read as a CSF
+story file, whose play functions `@storybook/addon-vitest` runs as tests. The
+helper prints one `{"fullName","signal","kind":"runtime"}` line per story that
+has an effective play function and keeps the `test` tag, in export order, and
+nothing for a render-only story, a story tagged `!test`, or the default export.
+`fullName` is the name addon-vitest gives the test (Storybook's start-cased
+export name, or the story's string-literal `name`), with no meta title or
+describe prefix. `signal` covers the story's declaration and its top-level
+assignments, the resolved play function (shared, factory-built, spread or
+inherited from the meta), and the meta object, so editing a shared play or the
+meta rotates every story it reaches. A story shape whose play the helper cannot
+resolve exits `7` with an `unsupported story shape` stderr line and empty
+stdout, never an empty success. The supported shapes and the refusal list live
+in the header of `extract-story-signals.mjs`.
 
 `fullName` is the enclosing describe titles (outermost first) plus the test
 title, single-space-joined. `signal` is `sha256:` plus the lowercase-hex

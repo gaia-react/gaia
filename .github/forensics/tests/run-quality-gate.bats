@@ -42,6 +42,7 @@ case "$step" in
   install)   exit_var="PNPM_INSTALL_EXIT";   stdout_var="PNPM_INSTALL_STDOUT" ;;
   typecheck) exit_var="PNPM_TYPECHECK_EXIT"; stdout_var="PNPM_TYPECHECK_STDOUT" ;;
   lint)      exit_var="PNPM_LINT_EXIT";      stdout_var="PNPM_LINT_STDOUT" ;;
+  -C)        exit_var="PNPM_BROWSERS_EXIT";   stdout_var="PNPM_BROWSERS_STDOUT" ;;
   test)      exit_var="PNPM_TEST_EXIT";      stdout_var="PNPM_TEST_STDOUT" ;;
   knip)      exit_var="PNPM_KNIP_EXIT";      stdout_var="PNPM_KNIP_STDOUT" ;;
   *)         echo "shim: unknown subcommand: $step" >&2; exit 99 ;;
@@ -131,6 +132,18 @@ pnpm_log_count() {
   [ "$test_line" -lt "$knip_line" ]
 }
 
+@test "all-green: the Chromium install runs once, before test" {
+  run "$RUNNER" "$SUMMARY"
+  [ "$status" -eq 0 ]
+  grep -qF '"browsers"' "$SUMMARY"
+  [ "$(grep -cE '^pnpm -C frontend exec playwright install .*chromium' "$PNPM_LOG")" = "1" ]
+  browsers_line=$(grep -nE '^pnpm -C frontend exec playwright install' "$PNPM_LOG" | head -1 | cut -d: -f1)
+  lint_line=$(grep -nE '^pnpm lint( |$)' "$PNPM_LOG" | head -1 | cut -d: -f1)
+  test_line=$(grep -nE '^pnpm test( |$)' "$PNPM_LOG" | head -1 | cut -d: -f1)
+  [ "$lint_line" -lt "$browsers_line" ]
+  [ "$browsers_line" -lt "$test_line" ]
+}
+
 @test "all-green: install uses --frozen-lockfile" {
   run "$RUNNER" "$SUMMARY"
   [ "$status" -eq 0 ]
@@ -178,6 +191,17 @@ pnpm_log_count() {
   [ "$(pnpm_log_count test)" = "0" ]
   [ "$(pnpm_log_count knip)" = "0" ]
   grep -qF '"failed_step": "lint"' "$SUMMARY"
+}
+
+@test "fail at the Chromium install: summary names browsers and test never runs" {
+  PNPM_BROWSERS_STDOUT="Failed to download Chromium" PNPM_BROWSERS_EXIT=1 run "$RUNNER" "$SUMMARY"
+  [ "$status" -eq 1 ]
+  [ "$(pnpm_log_count lint)" = "1" ]
+  grep -qE '^pnpm -C frontend exec playwright install' "$PNPM_LOG"
+  [ "$(pnpm_log_count test)" = "0" ]
+  [ "$(pnpm_log_count knip)" = "0" ]
+  grep -qF '"failed_step": "browsers"' "$SUMMARY"
+  grep -qF 'Failed to download Chromium' "$SUMMARY"
 }
 
 @test "fail at test: knip never runs" {

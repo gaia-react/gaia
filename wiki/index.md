@@ -80,7 +80,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[pnpm-audit]]: dependency-CVE advisory oracle (`pnpm audit --json`); read-only, advisory, baseline-scoped.
 - [[pnpm-overrides]]: applying `overrides`/security-floor changes needs `pnpm dedupe`; `pnpm install` short-circuits "Already up to date".
 - [[Vitest]]
-- [[React Testing Library]]
+- [[React Testing Library]]: superseded; GAIA ships no React Testing Library, see [[Stories as Tests]].
 - [[Playwright]]
 - [[playwright-cli]]: global `@playwright/cli` install, the scoped `npx` fallback, the deprecated unscoped package trap, and which invocation wins over the vendored skill's own advice.
 - [[Chromatic]]
@@ -96,7 +96,8 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[TypeScript 7 Readiness]]: tsconfig pre-adopts the TS7 strict baseline; the 7.1 upgrade is a dep swap gated on typescript-eslint's programmatic API.
 - [[Thin Routes]]
 - [[Co-located Tests Folder]]
-- [[composeStory Pattern]]
+- [[composeStory Pattern]]: superseded by [[Stories as Tests]]; keeps the stub-over-mock reasoning.
+- [[Stories as Tests]]: a story with a `play` is the component test, run by Vitest in headless Chromium; the three Vitest projects, what counts as a test to the harness, the CSF shapes and the exit-7 refusal, and the `languages` prop and router stub conventions.
 - [[Dark Mode Modernization]]
 - [[Content Security Policy]]: per-request nonce CSP; Report-Only pending an upstream React Router fix; documents the `unsafe-inline` and no-`report-uri` trade-offs.
 - [[Dispatched-Check Rollup via Polling]]: in-loop pollers stamp dispatched-workflow jobs via the Checks API so they land in `statusCheckRollup`; documents why a `workflow_run` listener is not viable under `GITHUB_TOKEN`.
@@ -122,7 +123,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Claude Integration Fitness]]: check taxonomy + F-to-A+ grading + triage/heal protocol run by `/gaia-fitness`.
 - [[TDD RED Verification]]: mechanical enforcement that a new test was observed failing before commit; RED-observation ledger + two hooks.
 - [[Determinism Classifier]]: per-file AST signal labelling a source file strict (RED-gated) or emergent (advisory audit); versioned DOM-API allowlist, file-granular.
-- [[Worthiness Audit]]: advisory two-axis (honesty + worthiness) review of emergent-surface tests; fresh-context reviewer proposes keep/fix/delete, deletes human-gated, audit ledger sibling to the RED ledger; judge-independent structural a11y floor for the non-triviality signal; two-tier end-of-task surfacing.
+- [[Worthiness Audit]]: advisory two-axis (honesty + worthiness) review of emergent-surface tests; fresh-context reviewer proposes keep/fix/delete, deletes human-gated, audit ledger sibling to the RED ledger; stories audited as emergent tests; two-tier end-of-task surfacing.
 - [[Worthiness Presence Gate]]: merge-time `gh pr merge` hook requiring each changed emergent test to carry a worthiness-ledger line matching its current content; presence + signal match only (never the verdict), scoped to the PR's changed emergent tests, fail-open.
 <!-- gaia:maintainer-only:start -->
 - [[Dependabot as a Data Source]]: Dependabot alerts feed `/update-deps`, which resolves advisories through the local quality gate; GAIA renders no Dependabot config and keeps automated security fixes off.

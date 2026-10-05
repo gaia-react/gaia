@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-04-20
 created: 2026-04-20
-updated: 2026-10-04
+updated: 2026-10-05
 tags: [decision, routing, architecture]
 ---
 
@@ -15,7 +15,7 @@ Route files (`frontend/app/routes/**`) contain only loader, action, meta, and a 
 ## Rationale
 
 - Easy to scan a route file and see what data flows in/out
-- Page components are easy to test in isolation (composeStory + Storybook stories)
+- Page components are easy to test in isolation (Storybook stories with play functions)
 - Sub-components can live next to the page that owns them; no cross-imports through routes
 - Route group prefixes organize the routes; see [[Routing]] for the naming convention
 

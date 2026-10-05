@@ -4,7 +4,7 @@ status: active
 package: '@playwright/test'
 role: e2e-testing
 created: 2026-04-20
-updated: 2026-10-03
+updated: 2026-10-05
 tags: [dependency, testing, e2e]
 ---
 
@@ -17,6 +17,10 @@ End-to-end testing. Tests live in `frontend/.playwright/e2e/*.spec.ts`. Config i
 E2E tests run against this tree's `pnpm dev` server, on the port `bash .gaia/scripts/ports.sh` prints (5173 in the main checkout). Playwright refuses to reuse a server on that port that is not this tree's own, and an unprovisioned linked worktree refuses to run (see [[Worktrees]]). MSW's browser service worker is active in dev, so tests exercise the full React Router loader/action stack with MSW intercepting API calls; no separate mock server required.
 
 Tests that mutate MSW in-memory state call `resetTestData()` from `frontend/test/mocks/database.ts` in `test.afterEach` to restore seed data between tests.
+
+## Relationship to the story tests
+
+Component and page behavior is tested by story play functions under Vitest ([[Stories as Tests]]), not by Playwright. Playwright keeps user flows against the running app and the story scan, which axe-checks every story in light and dark at merge time. Vitest's addon-a11y covers the light theme only, so `pnpm pw` is the dark-theme check to run on any theme or token change.
 
 ## Hydration helper
 
@@ -137,11 +141,11 @@ When a project requires authentication, use a global setup file (`auth.setup.ts`
 ```
 pnpm pw                # headless run
 pnpm pw-ui             # interactive UI mode
-pnpm install:browsers  # provision browsers + OS deps (run once locally)
+pnpm install:browsers  # provision every browser + OS deps (run once locally; Vitest's browser projects need Chromium from it)
 ```
 
 ## Companion packages
 
-- `@playwright-testing-library/test`
+- `@vitest/browser-playwright`: Vitest's browser provider reuses the Playwright browsers `pnpm install:browsers` provisions, so the `browser` and `storybook` Vitest projects run in the same Chromium ([[Stories as Tests]])
 - Playwright lint rules come from `eslint-plugin-playwright`, supplied transitively by the shared `@gaia-react/lint` config (spread as `...lint.playwright` in `frontend/eslint.config.mjs`) rather than declared directly here.
 - `pnpm install:browsers` runs `playwright install --with-deps` to provision browsers; local developers run it on demand and CI runs it in a dedicated workflow step
