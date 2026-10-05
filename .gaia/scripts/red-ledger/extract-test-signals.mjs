@@ -435,6 +435,13 @@ function visit(node, ancestors, unmatchable) {
       return;
     }
     if (blockKind === 'describe') {
+      // Playwright's untitled test.describe(() => {...}) groups tests without
+      // adding a title, so its children keep the enclosing names.
+      const firstArgument = node.arguments[0];
+      if (firstArgument && ts.isFunctionLike(firstArgument)) {
+        ts.forEachChild(node, (child) => visit(child, ancestors, unmatchable));
+        return;
+      }
       const title = unmatchable ? null : titleOf(node);
       const nextAncestors =
         title !== null ? [...ancestors, title] : ancestors;

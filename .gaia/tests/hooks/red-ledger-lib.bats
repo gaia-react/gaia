@@ -74,10 +74,10 @@ run_library() {
   [[ "$output" == *'"fullName":"outer inner does a thing"'* ]]
 }
 
-@test "helper treats Playwright test.describe and its modifiers as describes, and records nothing for test.describe.configure" {
+@test "helper treats Playwright test.describe and its modifiers as describes, adds no title for an untitled one, and records nothing for test.describe.configure" {
   run_helper "$FIXTURE_RELATIVE_DIRECTORY/playwright-describe.spec.ts"
   [ "$status" -eq 0 ]
-  [ "$(printf '%s\n' "$output" | jq -r .fullName)" = "outer inner does a thing" ]
+  [ "$(printf '%s\n' "$output" | jq -r .fullName)" = "$(printf '%s\n' 'outer inner does a thing' 'runs in an untitled group')" ]
 }
 
 # --- signal helper: distinct tests, distinct signals ---

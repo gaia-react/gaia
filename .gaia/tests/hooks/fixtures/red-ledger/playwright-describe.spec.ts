@@ -9,3 +9,9 @@ test.describe('outer', () => {
     });
   });
 });
+
+test.describe(() => {
+  test('runs in an untitled group', () => {
+    expect(true).toBe(true);
+  });
+});
