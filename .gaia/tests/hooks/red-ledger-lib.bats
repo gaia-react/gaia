@@ -38,7 +38,9 @@ setup() {
   PLAIN_TEST_PATTERN="^[[:space:]]*(test|it)(\.(only|skip|todo|fails|concurrent|sequential))*\([[:space:]]*['\"]"
   # Inside a `.each`/`.for` describe or one with a non-literal title the helper
   # records nothing by design, so a floor counted over such a file would demand
-  # records the helper must not emit.
+  # records the helper must not emit. The second arm also catches the
+  # `describe.each(table)` spelling; the first is there for the tagged-template
+  # one. Over-matching only drops a file from the floor, the safe direction.
   UNRECORDED_SUBTREE_PATTERN="describe\.(each|for)|describe(\.[a-z]+)*\([[:space:]]*[^'\"[:space:]]"
 }
 
