@@ -11,23 +11,23 @@ describe('Checkbox', () => {
     expect(screen.getByRole('checkbox', {name: 'Accept'})).toHaveClass('mt-2');
   });
 
-  test('applies a passed className to the root next to a label', () => {
+  test('takes its accessible name from an associated Label', () => {
     render(
       <>
-        <Checkbox className="mt-2" id="acceptPlain" />
+        <Checkbox id="acceptPlain" />
         <Label htmlFor="acceptPlain">Accept</Label>
       </>
     );
-    expect(screen.getByRole('checkbox', {name: 'Accept'})).toHaveClass('mt-2');
+    expect(screen.getByRole('checkbox')).toHaveAccessibleName('Accept');
   });
 
-  test('applies a passed className to the root beside an associated field label', () => {
+  test('takes its accessible name from a FieldLabel in a horizontal Field', () => {
     render(
       <Field orientation="horizontal">
-        <Checkbox className="mt-2" id="accept" />
+        <Checkbox id="accept" />
         <FieldLabel htmlFor="accept">Accept</FieldLabel>
       </Field>
     );
-    expect(screen.getByRole('checkbox', {name: 'Accept'})).toHaveClass('mt-2');
+    expect(screen.getByRole('checkbox')).toHaveAccessibleName('Accept');
   });
 });
