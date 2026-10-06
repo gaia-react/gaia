@@ -240,8 +240,8 @@ check_labels() {
   # Footprint is optional here for a different reason than difficulty is. Every
   # filing route this recipe governs emits one, but nothing downstream depends
   # on the value: the drain re-derives spec-versus-implement from the cited code
-  # and grades narrow-versus-wide itself, so an absent class costs one line of
-  # `why` output and never a misroute. Demanding presence would demand a value
+  # and grades narrow-versus-wide itself, so an absent class never misroutes
+  # anything. Demanding presence would demand a value
   # no decision reads, and it would make every human-filed issue a finding.
   label_count="$(count_namespace_labels "$labels" 'footprint:')"
   if [ "$label_count" -gt 1 ]; then
