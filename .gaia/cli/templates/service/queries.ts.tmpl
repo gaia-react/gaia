@@ -1,0 +1,31 @@
+import {queryOptions} from '@tanstack/react-query';
+import {getAll{{Plural}}, get{{Singular}}ById} from './requests';
+
+const {{NAME_UPPER}}_ROOT_KEY = ['{{name}}'] as const;
+
+export const {{singular}}Keys = {
+  all: {{NAME_UPPER}}_ROOT_KEY,
+  detail: (id: string) => [...{{NAME_UPPER}}_ROOT_KEY, 'detail', id] as const,
+  list: () => [...{{NAME_UPPER}}_ROOT_KEY, 'list'] as const,
+};
+
+// `explicit-module-boundary-types` covers app/services/**, and the type
+// queryOptions infers (its query key tagged with the data type) has no short
+// spelling, so each export names it through the builder it returns.
+const listOptions = () =>
+  queryOptions({
+    queryFn: async ({signal}) => getAll{{Plural}}(signal),
+    queryKey: {{singular}}Keys.list(),
+  });
+
+const detailOptions = (id: string) =>
+  queryOptions({
+    queryFn: async ({signal}) => get{{Singular}}ById(id, signal),
+    queryKey: {{singular}}Keys.detail(id),
+  });
+
+export const {{plural}}Query = (): ReturnType<typeof listOptions> =>
+  listOptions();
+
+export const {{singular}}Query = (id: string): ReturnType<typeof detailOptions> =>
+  detailOptions(id);

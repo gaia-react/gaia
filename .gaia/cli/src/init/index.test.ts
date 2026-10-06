@@ -125,6 +125,7 @@ describe('gaia init router target guard', () => {
     const steps = [
       'strip-branding',
       'configure-i18n',
+      'configure-data-layer',
       'rename',
       'wire-statusline',
       'bootstrap-env',
@@ -176,6 +177,17 @@ describe('gaia init router target guard', () => {
     expect(exitCode).toBe(EXIT_CODES.OK);
     expect(stdio.outputs.join('')).toContain('Usage: gaia init <subcommand>');
     expect(stdio.errors).toStrictEqual([]);
+  });
+
+  test('lists configure-data-layer in the router help and dispatches it', async () => {
+    await run([], {cwd: sandbox.root});
+    expect(stdio.outputs.join('')).toContain('configure-data-layer');
+
+    makeScaffold(sandbox.root);
+    const exitCode = await run(['configure-data-layer'], {cwd: sandbox.root});
+
+    expect(exitCode).toBe(EXIT_CODES.UNKNOWN_SUBCOMMAND);
+    expect(stdio.errors.join('')).toContain('at least one of --casing');
   });
 
   test('leaves a per-step help request unguarded', async () => {

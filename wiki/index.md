@@ -138,6 +138,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Design System]]
 - [[Component Testing]]
 - [[API Service Pattern]]
+- [[Data Loading]]: server loader vs `clientLoader` vs `clientLoader` + TanStack Query, the service and QueryClient wiring, security and cost gaps, and turning Query on later.
 - [[Accessibility]]
 - [[ESLint Fixes]]
 - [[Forensics]]: read-only bug-report bridge with redaction and classification

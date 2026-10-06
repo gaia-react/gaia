@@ -9,22 +9,49 @@
  * Groups are `_public` or `_session`. The group names only the route file
  * prefix; the page tree has no group segment.
  *
+ * `--data <server|client|query>` binds the route to a scaffolded service and
+ * emits one of the three data-loading wirings, each with a page that reads the
+ * data, and a page story that serves it through MSW. Every route module, data
+ * or not, renders its page in one line: data hooks, the document title, and
+ * meta live in the page, which never imports from `app/routes` (the lint
+ * boundary forbids it, type-only imports included), so the loader-data type
+ * lives in the page folder's `types.ts`.
+ *
  * Templates and the shared scaffold primitives live alongside under
  * `templates/route/` and `template.ts` / `fs.ts` / `barrel.ts`.
  */
-import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
-import {atomicWriteFileSync} from '../util/atomic-write.js';
-import {writeFileIfAbsent} from './fs.js';
+import {hasTanstackQuery, QUERY_ON_INIT_COMMAND} from './data-layer.js';
+import {writeAndRecordWith} from './fs.js';
+import {resolveLayer} from './layer.js';
 import {resolveScaffoldTarget} from './resolve-target.js';
+import {buildDataPageVars} from './route-data-page.js';
+import {buildDataStoryVars} from './route-data-story.js';
+import {
+  buildDataLocaleVars,
+  buildDataRouteVars,
+  buildFallbackVars,
+  buildLoaderDataVars,
+  resolveDataRouteNames,
+} from './route-data.js';
+import type {
+  DataRouteContext,
+  DataRouteFlags,
+  DataRouteNames,
+} from './route-data.js';
+import {writeLocaleFiles} from './route-locale.js';
+import {deriveRouteCalls, readServiceBinding} from './route-service.js';
+import type {DataVariant, RouteShape} from './route-service.js';
 import {renderTemplate} from './template.js';
 import type {TemplateVars} from './template.js';
 import type {ScaffoldResult} from './types.js';
 
 const VALID_GROUPS = new Set(['_public', '_session']);
+const DATA_VARIANTS: readonly DataVariant[] = ['server', 'client', 'query'];
+const ROUTE_SHAPES: readonly RouteShape[] = ['list', 'detail'];
 
 /** Folder names the page layout reserves for its own subfolders. */
 const RESERVED_PAGE_NAME_LIST = ['assets', 'hooks', 'state', 'tests', 'utils'];
@@ -35,11 +62,15 @@ const KEBAB_PATTERN = /^[a-z\d]+(?:-[a-z\d]+)*$/u;
 
 type ParsedFlags = {
   action: boolean;
+  data: null | string;
   dryRun: boolean;
   group: null | string;
   i18n: boolean;
   json: boolean;
+  layer: null | string;
   loader: boolean;
+  service: null | string;
+  shape: null | string;
 };
 
 /** Options for `run`, mirroring the other scaffolders so tests can inject a root. */
@@ -51,8 +82,16 @@ type RunOptions = {
 const HELP_TEXT = `Usage: gaia scaffold route <name> --group <_public|_session> [flags]
 
   --group     required, _public or _session
-  --loader    emit a loader stub
-  --action    emit an action stub
+  --data      bind a service: server (loader), client (clientLoader +
+              HydrateFallback), or query (clientLoader + TanStack Query);
+              needs --service and --shape
+  --service   the service folder under app/services/<layer>/ to bind
+  --shape     list (app/routes/<group>.<name>.tsx) or detail
+              (app/routes/<group>.<name>_.$id.tsx)
+  --layer     the domain-layer folder under app/services/, when there are several
+  --loader    emit a title and meta loader (not with --data)
+  --action    emit an action stub; with --data, a create (list) or update
+              (detail) action validated by the service's input schema
   --i18n      emit a locale file and wire the locale barrel
   --dry-run   print what would be written without touching the filesystem
   --json      print ScaffoldResult as JSON
@@ -72,24 +111,39 @@ const userError = (message: string, subcommand = 'scaffold route'): number => {
   return EXIT_CODES.UNKNOWN_SUBCOMMAND;
 };
 
+const VALUE_FLAGS = {
+  '--data': 'data',
+  '--group': 'group',
+  '--layer': 'layer',
+  '--service': 'service',
+  '--shape': 'shape',
+} as const;
+
+const isValueFlag = (flag: string): flag is keyof typeof VALUE_FLAGS =>
+  Object.hasOwn(VALUE_FLAGS, flag);
+
 const parseFlags = (rest: readonly string[]): null | ParsedFlags => {
   const flags: ParsedFlags = {
     action: false,
+    data: null,
     dryRun: false,
     group: null,
     i18n: false,
     json: false,
+    layer: null,
     loader: false,
+    service: null,
+    shape: null,
   };
 
   for (let index = 0; index < rest.length; index += 1) {
-    const flag = rest[index];
+    const flag = rest[index] ?? '';
 
-    if (flag === '--group') {
+    if (isValueFlag(flag)) {
       const value = rest.at(index + 1);
 
       if (value === undefined) return null;
-      flags.group = value;
+      flags[VALUE_FLAGS[flag]] = value;
       index += 1;
     } else if (flag === '--loader') {
       flags.loader = true;
@@ -109,266 +163,32 @@ const parseFlags = (rest: readonly string[]): null | ParsedFlags => {
   return flags;
 };
 
-/** kebab → PascalCase. `user-settings` → `UserSettings`. */
-const toPascalCase = (kebab: string): string =>
-  kebab
-    .split('-')
-    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
-    .join('');
-
-/** kebab → camelCase. `user-settings` → `userSettings`. */
-const toCamelCase = (kebab: string): string => {
-  const parts = kebab.split('-');
-  const [first, ...rest] = parts;
-
-  return [
-    first,
-    ...rest.map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`),
-  ].join('');
-};
-
 const templateDir = (): string => {
   const here = fileURLToPath(import.meta.url);
 
   return path.join(path.dirname(here), 'templates', 'route');
 };
 
-type LocaleBarrelInsertResult = 'inserted' | 'missing' | 'present';
+/** Absolute path of a template under `templates/route/`. */
+const routeTemplate = (fileName: string): string =>
+  path.join(templateDir(), fileName);
 
-// Adjacent `\s*` groups either side of the optional `;?` collapse into an
-// ambiguous overlapping-quantifier shape once the semicolon is absent
-// (sonarjs/super-linear-regex); folding whitespace-or-semicolon into one
-// character class removes the ambiguity.
-const CLOSE_BRACE_PATTERN = /^\s*\}[\s;]*$/u;
+type ResolvedNames = Pick<
+  DataRouteNames,
+  'i18nKey' | 'pageName' | 'routeFile' | 'routeName'
+>;
 
-// Finds where a new `import <name> from '...'` line belongs, alphabetically,
-// among the barrel's existing top-of-file import lines.
-const findImportInsertIndex = (
-  lines: readonly string[],
-  importName: string
-): number => {
-  const importLines: number[] = [];
-
-  for (const [idx, line] of lines.entries()) {
-    if (/^import\s/u.test(line)) importLines.push(idx);
-  }
-
-  for (const idx of importLines) {
-    const existing = lines[idx];
-
-    if (existing !== undefined) {
-      const match = /^import\s+(\w+)\s+from/u.exec(existing);
-
-      if (match?.[1] !== undefined && importName.localeCompare(match[1]) < 0) {
-        return idx;
-      }
-    }
-  }
-
-  return importLines.length === 0 ? 0 : (importLines.at(-1) ?? 0) + 1;
-};
-
-type ExportBlockBounds = {closeIdx: number; openIndex: number};
-
-// Locates the `export default { ... }` block: the line declaring it and its
-// closing brace.
-const locateExportDefaultBlock = (
-  lines: readonly string[]
-): ExportBlockBounds | null => {
-  const openIndex = lines.findIndex((line) =>
-    /export\s+default\s+\{/u.test(line)
-  );
-  const closeIdx = lines.findIndex(
-    (line, idx) => idx > openIndex && CLOSE_BRACE_PATTERN.test(line)
-  );
-
-  if (openIndex === -1 || closeIdx === -1) return null;
-
-  return {closeIdx, openIndex};
-};
-
-type ExportEntry = {indent: string; key: string; lineIdx: number};
-
-const EXPORT_ENTRY_PATTERN = /^(\s+)(\w+),?\s*$/u;
-
-// Reads the existing `key,` entries inside an `export default { ... }` block
-// so a new one can be inserted alphabetically with matching indentation.
-const collectExportEntries = (
-  lines: readonly string[],
-  bounds: ExportBlockBounds
-): ExportEntry[] => {
-  const entries: ExportEntry[] = [];
-
-  for (let idx = bounds.openIndex + 1; idx < bounds.closeIdx; idx += 1) {
-    const line = lines[idx];
-
-    if (line !== undefined) {
-      const match = EXPORT_ENTRY_PATTERN.exec(line);
-
-      if (match !== null) {
-        const [, indent, key] = match;
-
-        if (indent !== undefined && key !== undefined) {
-          entries.push({indent, key, lineIdx: idx});
-        }
-      }
-    }
-  }
-
-  return entries;
-};
-
-type InsertExportEntryArgs = {
-  bounds: ExportBlockBounds;
-  entries: readonly ExportEntry[];
-  importName: string;
-};
-
-// Splices a new `key,` entry into the export block, alphabetically among
-// `entries`, mutating `lines` in place.
-const insertExportEntry = (
-  lines: string[],
-  args: InsertExportEntryArgs
-): void => {
-  const {bounds, entries, importName} = args;
-  const indent = entries[0]?.indent ?? '  ';
-  const newEntryLine = `${indent}${importName},`;
-
-  if (entries.length === 0) {
-    lines.splice(bounds.openIndex + 1, 0, newEntryLine);
-
-    return;
-  }
-
-  for (const entry of entries) {
-    if (importName.localeCompare(entry.key) < 0) {
-      lines.splice(entry.lineIdx, 0, newEntryLine);
-
-      return;
-    }
-  }
-
-  const lastEntry = entries.at(-1);
-  const lastLine =
-    lastEntry === undefined ? undefined : lines[lastEntry.lineIdx];
-
-  if (lastEntry === undefined || lastLine === undefined)
-    throw new Error(
-      'insertExportEntry: the export block has no source line for its last entry; refusing to report a skipped registration as done'
-    );
-
-  // Ensure the last entry has a trailing comma so insertion is clean.
-  if (!lastLine.endsWith(',')) {
-    lines[lastEntry.lineIdx] = `${lastLine},`;
-  }
-
-  lines.splice(lastEntry.lineIdx + 1, 0, newEntryLine);
-};
-
-type InsertIntoLocaleBarrelArgs = {
-  barrelPath: string;
-  dryRun: boolean;
-  importName: string;
-  moduleName: string;
-};
-
-/**
- * Insert an `import <name> from './<Folder>';` line and a corresponding
- * entry in the `export default { ... }` block, both alphabetically.
- *
- * The pages locale barrel uses a different shape than the generic
- * `insertIntoBarrel` helper handles (it's import-then-default-export, not
- * `export * from`), so this is local logic.
- */
-const insertIntoLocaleBarrel = (
-  args: InsertIntoLocaleBarrelArgs
-): LocaleBarrelInsertResult => {
-  const {barrelPath, dryRun, importName, moduleName} = args;
-
-  if (!existsSync(barrelPath)) return 'missing';
-  const original = readFileSync(barrelPath, 'utf8');
-  const importLine = `import ${importName} from './${moduleName}';`;
-
-  if (original.includes(importLine)) return 'present';
-
-  const lines = original.split('\n');
-
-  lines.splice(findImportInsertIndex(lines, importName), 0, importLine);
-
-  const bounds = locateExportDefaultBlock(lines);
-
-  if (bounds === null) {
-    // Couldn't structurally locate the export block; bail without writing.
-    return 'missing';
-  }
-
-  insertExportEntry(lines, {
-    bounds,
-    entries: collectExportEntries(lines, bounds),
-    importName,
-  });
-
-  const next = lines.join('\n');
-
-  // Diff-safety net: the splice logic above is regex-driven and can
-  // mis-target a barrel whose shape drifted from the expected
-  // import-then-default-export form. Before writing, prove the result
-  // actually contains both the new import line and a matching entry in
-  // the default-export block. A non-matching edit fails loudly here
-  // instead of silently corrupting the barrel.
-  const entryAdded = new RegExp(String.raw`^\s+${importName},?\s*$`, 'mu').test(
-    next
-  );
-
-  if (!next.includes(importLine) || !entryAdded) {
-    throw new Error(
-      `locale barrel edit did not apply cleanly to ${barrelPath}: ` +
-        `expected import "${importName}" and a matching default-export entry. ` +
-        'Add the entries by hand or fix the barrel shape.'
-    );
-  }
-
-  if (!dryRun) atomicWriteFileSync(barrelPath, next);
-
-  return 'inserted';
-};
-
-type TemplatePaths = {
-  locale: string;
-  pageIndex: string;
-  pageStories: string;
-  route: string;
-};
-
-const templatePaths = (): TemplatePaths => {
-  const dir = templateDir();
-
-  return {
-    locale: path.join(dir, 'locale.ts.tmpl'),
-    pageIndex: path.join(dir, 'page.index.tsx.tmpl'),
-    pageStories: path.join(dir, 'page.stories.tsx.tmpl'),
-    route: path.join(dir, 'route.tsx.tmpl'),
-  };
-};
-
-type ResolvedNames = {
-  i18nKey: string;
-  pageName: string;
-  routeFile: string;
-  routeName: string;
-};
-
+// The legacy route names are the list route's: page folder, component, and the
+// route's import use the `<Pascal>Page` convention (e.g. `IndexPage`), and the
+// route component stays `<Pascal>Route`.
 const resolveNames = (kebabName: string, group: string): ResolvedNames => {
-  const pascal = toPascalCase(kebabName);
+  const {i18nKey, pageName, routeFile, routeName} = resolveDataRouteNames(
+    kebabName,
+    group,
+    'list'
+  );
 
-  return {
-    i18nKey: toCamelCase(kebabName),
-    // Page folder, component, and the route's import use the `<Pascal>Page`
-    // convention (e.g. `IndexPage`); the route component stays `<Pascal>Route`.
-    pageName: `${pascal}Page`,
-    routeFile: `${group}.${kebabName}`,
-    routeName: pascal,
-  };
+  return {i18nKey, pageName, routeFile, routeName};
 };
 
 type BuildRouteVarsArgs = {
@@ -380,9 +200,8 @@ type BuildRouteVarsArgs = {
 const buildRouteVars = (args: BuildRouteVarsArgs): TemplateVars => {
   const {flags, name, names} = args;
   // Only --i18n writes the `pages` locale keys, so a loader that looks them up
-  // without it fails typecheck against the typed i18next resources
-  // (gaia-react/gaia#2349). The literal loader takes no args, so it needs no
-  // `Route` type either.
+  // without it fails typecheck against the typed i18next resources. The
+  // literal loader takes no args, so it needs no `Route` type either.
   const hasLoaderI18n = flags.loader && flags.i18n;
 
   return {
@@ -392,30 +211,11 @@ const buildRouteVars = (args: BuildRouteVarsArgs): TemplateVars => {
     hasLoaderNoI18n: flags.loader && !flags.i18n,
     i18nKey: names.i18nKey,
     needsRouteType: hasLoaderI18n || flags.action,
-    noLoader: !flags.loader,
     pageName: names.pageName,
     routeFile: names.routeFile,
     routeName: names.routeName,
     routeSlug: name,
   };
-};
-
-type WriteFileArgs = {
-  absPath: string;
-  contents: string;
-  dryRun: boolean;
-  result: ScaffoldResult;
-};
-
-const writeFile = (args: WriteFileArgs): void => {
-  const {absPath, contents, dryRun, result} = args;
-  const {written} = writeFileIfAbsent(absPath, contents, {dryRun});
-
-  if (written) {
-    result.written.push(absPath);
-  } else {
-    result.skipped.push(absPath);
-  }
 };
 
 const padLabel = (label: string): string => label.padEnd(11);
@@ -442,80 +242,26 @@ const printJson = (result: ScaffoldResult): void => {
   process.stdout.write(`${JSON.stringify(result)}\n`);
 };
 
-type WriteLocaleFilesArgs = {
-  dryRun: boolean;
-  name: string;
-  names: ResolvedNames;
-  result: ScaffoldResult;
-  root: string;
-  tmpls: TemplatePaths;
+type TemplateWrite = {
+  absPath: string;
+  template: string;
+  vars: TemplateVars;
 };
 
-// Extracted out of `run` (kept its cognitive complexity under the frozen
-// limit): emits the locale file and wires it into the sibling barrel.
-// Returns an exit code on failure, `null` on success.
-const writeLocaleFiles = (args: WriteLocaleFilesArgs): null | number => {
-  const {dryRun, name, names, result, root, tmpls} = args;
-
-  // Locales are flat files keyed by the kebab route name
-  // (app/languages/en/pages/<kebab>.ts), wired into the sibling
-  // index.ts barrel by `import <i18nKey> from './<kebab>'`.
-  const localeFile = path.join(
-    root,
-    'app',
-    'languages',
-    'en',
-    'pages',
-    `${name}.ts`
-  );
-  const localeVars: TemplateVars = {
-    i18nKey: names.i18nKey,
-    pageName: names.pageName,
-    routeName: name,
-  };
-  writeFile({
-    absPath: localeFile,
-    contents: renderTemplate(tmpls.locale, localeVars),
-    dryRun,
-    result,
-  });
-
-  const localeBarrel = path.join(
-    root,
-    'app',
-    'languages',
-    'en',
-    'pages',
-    'index.ts'
-  );
-  const importName = names.i18nKey;
-  const status = insertIntoLocaleBarrel({
-    barrelPath: localeBarrel,
-    dryRun,
-    importName,
-    moduleName: name,
-  });
-
-  if (status === 'inserted') {
-    result.edited.push(localeBarrel);
-
-    return null;
+/** Renders each template and writes it, in order, recording the results. */
+const writeTemplates = (
+  writes: readonly TemplateWrite[],
+  dryRun: boolean,
+  result: ScaffoldResult
+): void => {
+  for (const {absPath, template, vars} of writes) {
+    writeAndRecordWith({
+      absPath,
+      contents: renderTemplate(routeTemplate(template), vars),
+      dryRun,
+      result,
+    });
   }
-
-  if (status === 'present') {
-    result.skipped.push(localeBarrel);
-
-    return null;
-  }
-
-  // 'missing': the locale file was emitted but the barrel could not be
-  // located, so the page's translations are not wired. Fail loudly with
-  // an actionable message rather than reporting a misleading success.
-  return userError(
-    `locale barrel not found at ${localeBarrel}; the locale file was ` +
-      'written but its import was not wired. Run from the repo root, or ' +
-      `add "import ${importName} from './${name}';" to the barrel by hand.`
-  );
 };
 
 type EmitRouteFilesArgs = {
@@ -526,58 +272,315 @@ type EmitRouteFilesArgs = {
   root: string;
 };
 
-/** Write the route, page, and optional locale files; a number is a failure exit. */
-const emitRouteFiles = (args: EmitRouteFilesArgs): null | number => {
+/** Write the route, page, and optional locale files; a string is the failure message. */
+const emitRouteFiles = (args: EmitRouteFilesArgs): null | string => {
   const {flags, name, names, result, root} = args;
-  const {dryRun, i18n} = flags;
+  const {dryRun, i18n, loader} = flags;
   const {i18nKey, pageName, routeFile, routeName} = names;
-  const tmpls = templatePaths();
-  const routeVars = buildRouteVars({flags, name, names});
-
-  const routeAbs = path.join(root, 'app', 'routes', `${routeFile}.tsx`);
-  writeFile({
-    absPath: routeAbs,
-    contents: renderTemplate(tmpls.route, routeVars),
-    dryRun,
-    result,
-  });
-
   const pageDir = path.join(root, 'app', 'pages', name);
   const pageVars: TemplateVars = {
     hasI18n: i18n,
+    hasImports: i18n || loader,
+    hasLoader: loader,
+    headingText: i18n ? "{t('title')}" : pageName,
     i18nKey,
-    noI18n: !i18n,
+    noLoader: !loader,
     pageName,
     routeName,
+    routeSlug: name,
   };
 
-  writeFile({
-    absPath: path.join(pageDir, 'page.tsx'),
-    contents: renderTemplate(tmpls.pageIndex, pageVars),
+  writeTemplates(
+    [
+      {
+        absPath: path.join(root, 'app', 'routes', `${routeFile}.tsx`),
+        template: 'route.tsx.tmpl',
+        vars: buildRouteVars({flags, name, names}),
+      },
+      {
+        absPath: path.join(pageDir, 'page.tsx'),
+        template: 'page.index.tsx.tmpl',
+        vars: pageVars,
+      },
+      {
+        absPath: path.join(pageDir, 'tests', 'page.stories.tsx'),
+        template: 'page.stories.tsx.tmpl',
+        vars: pageVars,
+      },
+      ...(loader ?
+        [
+          {
+            absPath: path.join(pageDir, 'types.ts'),
+            template: 'types.loader.ts.tmpl',
+            vars: {},
+          },
+        ]
+      : []),
+    ],
     dryRun,
-    result,
-  });
-  writeFile({
-    absPath: path.join(pageDir, 'tests', 'page.stories.tsx'),
-    contents: renderTemplate(tmpls.pageStories, pageVars),
+    result
+  );
+
+  if (!i18n) return null;
+
+  return writeLocaleFiles({
+    contents: renderTemplate(routeTemplate('locale.ts.tmpl'), {
+      i18nKey,
+      pageName,
+      routeName: name,
+    }),
     dryRun,
+    importName: i18nKey,
+    moduleName: name,
     result,
+    root,
   });
+};
 
-  if (i18n) {
-    const failure = writeLocaleFiles({
-      dryRun,
-      name,
-      names,
-      result,
-      root,
-      tmpls,
-    });
+type EmitDataRouteFilesArgs = {
+  context: DataRouteContext;
+  dryRun: boolean;
+  result: ScaffoldResult;
+  root: string;
+};
 
-    if (failure !== null) return failure;
+/** Write a data route's files; a string is the failure message. */
+const emitDataRouteFiles = (args: EmitDataRouteFilesArgs): null | string => {
+  const {context, dryRun, result, root} = args;
+  const {data, i18n} = context.flags;
+  const {names} = context;
+  const pageDir = path.join(root, 'app', 'pages', ...names.pagePath.split('/'));
+
+  const fallbackDir = path.join(pageDir, 'hydrate-fallback');
+
+  writeTemplates(
+    [
+      {
+        absPath: path.join(root, 'app', 'routes', `${names.routeFile}.tsx`),
+        template: `route.${data}.tsx.tmpl`,
+        vars: buildDataRouteVars(context),
+      },
+      {
+        absPath: path.join(pageDir, 'page.tsx'),
+        template: 'page.data.tsx.tmpl',
+        vars: buildDataPageVars(context),
+      },
+      ...(data === 'query' ?
+        []
+      : [
+          {
+            absPath: path.join(pageDir, 'types.ts'),
+            template: 'types.data.ts.tmpl',
+            vars: buildLoaderDataVars(context),
+          },
+        ]),
+      ...(data === 'server' ?
+        []
+      : [
+          {
+            absPath: path.join(fallbackDir, 'index.tsx'),
+            template: 'hydrate-fallback.tsx.tmpl',
+            vars: buildFallbackVars(context),
+          },
+          {
+            absPath: path.join(fallbackDir, 'tests', 'index.stories.tsx'),
+            template: 'hydrate-fallback.stories.tsx.tmpl',
+            vars: buildFallbackVars(context),
+          },
+        ]),
+      {
+        absPath: path.join(pageDir, 'tests', 'page.stories.tsx'),
+        template: 'page.data.stories.tsx.tmpl',
+        vars: buildDataStoryVars(context),
+      },
+    ],
+    dryRun,
+    result
+  );
+
+  if (!i18n) return null;
+
+  return writeLocaleFiles({
+    contents: renderTemplate(
+      routeTemplate('locale.data.ts.tmpl'),
+      buildDataLocaleVars(context)
+    ),
+    dryRun,
+    importName: names.i18nKey,
+    moduleName: names.localeModule,
+    result,
+    root,
+  });
+};
+
+type DataSelection = {
+  data: DataVariant;
+  layer: string | undefined;
+  service: string;
+  shape: RouteShape;
+};
+
+const isOneOf = <Value extends string>(
+  allowed: readonly Value[],
+  value: string
+): value is Value => (allowed as readonly string[]).includes(value);
+
+const LOADER_WITH_DATA_MESSAGE =
+  '--loader does not combine with --data: a clientLoader route has no ' +
+  'server loader and renders its title and meta from HydrateFallback and ' +
+  "the page, and a server data route's page renders them";
+
+/**
+ * The flag-only half of the data binding checks, run before anything reads
+ * the filesystem. `selection` is null for a route with no `--data`.
+ */
+const selectData = (
+  flags: ParsedFlags
+): {error: string} | {selection: DataSelection | null} => {
+  const {data, layer, loader, service, shape} = flags;
+
+  if (data === null) {
+    return service === null && shape === null && layer === null ?
+        {selection: null}
+      : {
+          error:
+            '--service, --shape, and --layer bind a data route; pass --data <server|client|query> with them',
+        };
   }
 
+  if (service === null || shape === null) {
+    return {
+      error: '--data needs --service <name> and --shape <list|detail>',
+    };
+  }
+
+  if (loader) return {error: LOADER_WITH_DATA_MESSAGE};
+
+  if (!isOneOf(DATA_VARIANTS, data)) {
+    return {
+      error: `--data must be one of: ${DATA_VARIANTS.join(', ')} (got "${data}")`,
+    };
+  }
+
+  if (!isOneOf(ROUTE_SHAPES, shape)) {
+    return {
+      error: `--shape must be one of: ${ROUTE_SHAPES.join(', ')} (got "${shape}")`,
+    };
+  }
+
+  if (!KEBAB_PATTERN.test(service)) {
+    return {
+      error: `--service must name a kebab-case service folder: got "${service}"`,
+    };
+  }
+
+  return {selection: {data, layer: layer ?? undefined, service, shape}};
+};
+
+type PrepareDataRouteArgs = {
+  flags: ParsedFlags;
+  group: string;
+  name: string;
+  packageDir: string;
+  selection: DataSelection;
+};
+
+/** The filesystem half of the data binding checks; nothing is written yet. */
+const prepareDataRoute = (
+  args: PrepareDataRouteArgs
+): DataRouteContext | {error: string} => {
+  const {flags, group, name, packageDir, selection} = args;
+
+  if (selection.data === 'query' && !hasTanstackQuery(packageDir)) {
+    return {
+      error: `--data query needs TanStack Query, which this project does not install; turn it on with \`${QUERY_ON_INIT_COMMAND}\` and run pnpm install`,
+    };
+  }
+
+  const resolved = resolveLayer(packageDir, selection.layer);
+
+  if ('error' in resolved) return resolved;
+
+  const binding = readServiceBinding({
+    data: selection.data,
+    hasAction: flags.action,
+    layer: resolved.layer,
+    packageDir,
+    service: selection.service,
+    shape: selection.shape,
+  });
+
+  if ('error' in binding) return binding;
+
+  const dataFlags: DataRouteFlags = {
+    action: flags.action,
+    data: selection.data,
+    i18n: flags.i18n,
+    shape: selection.shape,
+  };
+
+  return {
+    binding,
+    calls: deriveRouteCalls(selection.shape, binding.derived),
+    flags: dataFlags,
+    names: resolveDataRouteNames(name, group, selection.shape),
+    slug: name,
+  };
+};
+
+/** Name and group checks shared by both paths; a string is the failure message. */
+const validateNameAndGroup = (
+  name: string,
+  group: null | string
+): null | string => {
+  if (!KEBAB_PATTERN.test(name)) {
+    return `route name must be kebab-case (lowercase letters, digits, hyphens): got "${name}"`;
+  }
+
+  if (RESERVED_PAGE_NAMES.has(name)) {
+    return `route name "${name}" is reserved: page folders use it for their own subfolders (reserved: ${RESERVED_PAGE_NAME_LIST.join(', ')})`;
+  }
+
+  if (group === null) return '--group is required (one of: _public, _session)';
+
+  if (!VALID_GROUPS.has(group)) return invalidGroupMessage(group);
+
   return null;
+};
+
+type EmitArgs = {
+  flags: ParsedFlags;
+  group: string;
+  name: string;
+  root: string;
+  selection: DataSelection | null;
+};
+
+/** Resolves the data binding when there is one, then writes; a string is the failure message. */
+const emit = (args: EmitArgs, result: ScaffoldResult): null | string => {
+  const {flags, group, name, root, selection} = args;
+
+  if (selection === null) {
+    return emitRouteFiles({
+      flags,
+      name,
+      names: resolveNames(name, group),
+      result,
+      root,
+    });
+  }
+
+  const context = prepareDataRoute({
+    flags,
+    group,
+    name,
+    packageDir: root,
+    selection,
+  });
+
+  if ('error' in context) return context.error;
+
+  return emitDataRouteFiles({context, dryRun: flags.dryRun, result, root});
 };
 
 /**
@@ -602,25 +605,14 @@ export const run = (
     return userError('invalid or unknown flag (see --help)');
   }
 
-  if (!KEBAB_PATTERN.test(name)) {
-    return userError(
-      `route name must be kebab-case (lowercase letters, digits, hyphens): got "${name}"`
-    );
-  }
+  const invalid = validateNameAndGroup(name, flags.group);
 
-  if (RESERVED_PAGE_NAMES.has(name)) {
-    return userError(
-      `route name "${name}" is reserved: page folders use it for their own subfolders (reserved: ${RESERVED_PAGE_NAME_LIST.join(', ')})`
-    );
-  }
+  if (invalid !== null) return userError(invalid);
 
-  if (flags.group === null) {
-    return userError('--group is required (one of: _public, _session)');
-  }
+  const group = flags.group ?? '';
+  const dataSelection = selectData(flags);
 
-  if (!VALID_GROUPS.has(flags.group)) {
-    return userError(invalidGroupMessage(flags.group));
-  }
+  if ('error' in dataSelection) return userError(dataSelection.error);
 
   // Output paths resolve from the frontend package root, which the registry
   // names relative to the working tree root, so the command writes the same
@@ -633,21 +625,27 @@ export const run = (
   );
 
   if (target === undefined) return EXIT_CODES.CONFIG_INVALID;
-  const root = target.packageDir;
-  const {dryRun, group, json} = flags;
-  const names = resolveNames(name, group);
   const result: ScaffoldResult = {edited: [], skipped: [], written: []};
 
   try {
-    const failure = emitRouteFiles({flags, name, names, result, root});
+    const failure = emit(
+      {
+        flags,
+        group,
+        name,
+        root: target.packageDir,
+        selection: dataSelection.selection,
+      },
+      result
+    );
 
-    if (failure !== null) return failure;
+    if (failure !== null) return userError(failure);
   } catch (error) {
     return userError(error instanceof Error ? error.message : String(error));
   }
 
-  if (json) printJson(result);
-  else printHumanReadable(result, dryRun);
+  if (flags.json) printJson(result);
+  else printHumanReadable(result, flags.dryRun);
 
   return EXIT_CODES.OK;
 };

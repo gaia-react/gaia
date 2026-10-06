@@ -10,7 +10,7 @@ tags: [decision, routing, architecture]
 
 # Decision: Thin Routes, Fat Pages
 
-Route files (`frontend/app/routes/**`) contain only loader, action, meta, and a one-line render of a page component. All UI lives in a folder under `frontend/app/pages/` derived from the route path (layout owned by `frontend/.claude/rules/coding-guidelines-react.md`).
+Route files (`frontend/app/routes/**`) contain only data exports and a one-line render of a page component: `loader`, `clientLoader`, `action`, `clientAction`, `HydrateFallback`, and `meta`. No hooks live in a route module. All UI, and every hook, lives in a folder under `frontend/app/pages/` derived from the route path (layout owned by `frontend/.claude/rules/coding-guidelines-react.md`). The page types its loader data with `LoaderData` from its own folder's `types.ts` and never imports from a route (the lint boundary forbids it). Which loader to export is the decision in [[Data Loading]].
 
 ## Rationale
 
@@ -25,7 +25,7 @@ Set `title`/`description` in the loader via `getInstance(context).t(...)`. Rende
 
 ## Actions
 
-Route action endpoints read `formData` and validate with a Zod schema's `safeParse`, returning `data(null, {status: 400})` (or a flattened-error payload) on failure. Conform's `parseWithZod` wires client-side validation in the `Form` components, not the server action endpoints.
+Scaffolded route actions and client actions validate with `parseWithZod` from `@conform-to/zod/v4` against the service's input schema and pass only `submission.value` to the request function; the failure branch returns `submission.reply()`. Simple no-UI endpoints (`actions.*`, `resources.*`) may validate a bare `FormData` with a Zod schema directly. See [[Form Submit Flow]].
 
 ## Enforcement
 

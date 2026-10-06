@@ -3,8 +3,8 @@ import {{{NAME_UPPER}}_URLS} from '~/services/{{layer}}/{{name}}/urls';
 import {url} from '../url';
 import {{{plural}}} from './data';
 
-export default http.delete(url({{NAME_UPPER}}_URLS.{{plural}}Id), async ({params}) => {
-  const data = await {{plural}}.delete((q) => q.where({id: String(params.id)}));
+export default http.delete(url({{NAME_UPPER}}_URLS.{{plural}}Id), ({params}) => {
+  const data = {{plural}}.delete((q) => q.where({id: String(params.id)}));
 
   return HttpResponse.json({data});
 });

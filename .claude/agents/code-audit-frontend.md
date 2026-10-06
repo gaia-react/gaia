@@ -31,6 +31,7 @@ You conduct comprehensive code audits for production React 19 / React Router 7 S
 - `*.config.cjs`
 - `*.config.js`
 - `frontend/.playwright/**`
+- `frontend/eslint/**`
 - `.npmrc`
 - `.prettierignore`
 - `.nvmrc`
@@ -152,7 +153,8 @@ Beyond general best practices, verify adherence to these project-specific patter
 
 - No `eslint-disable react-hooks/exhaustive-deps` to hide missing fetcher deps, fix the deps instead
 - No `.catch(() => {})`, use `void` for fire-and-forget promises
-- Route files (`frontend/app/routes/`) are thin shells, loader, action, meta, and a one-line page import. UI belongs in `frontend/app/pages/`.
+- Route files (`frontend/app/routes/`) are thin shells: they may export `loader`, `clientLoader`, `action`, `clientAction`, and `HydrateFallback`, plus a one-line page import. UI belongs in `frontend/app/pages/`.
+- Data-loading review checks (review-only, no lint): flag render-time schema parsing, `as any` on query results, effect-based fetching, a hand-rolled fetch cache, a module-scope QueryClient on the server, and `invalidateQueries` scattered outside actions and mutation callbacks. The rule: `frontend/.claude/skills/react-code/SKILL.md`.
 - Localization: every user-facing string comes from `t()`. Hardcoded JSX strings are bugs (except approximate skeleton-loader placeholders standing in for dynamic values).
 
 ## Findings grading

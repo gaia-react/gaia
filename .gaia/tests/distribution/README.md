@@ -13,7 +13,7 @@ Maintainer-only validation of the post-scrub GAIA tarball. Excluded from the rel
 
 ## Layout
 
-`run-all.sh` is the driver, `lib/` holds its helpers (`lib.sh`, `build-staging.sh`), and each numbered `*.sh` at the root is one scenario whose header comment states what it asserts.
+`run-all.sh` is the driver, `lib/` holds its helpers, and each numbered `*.sh` at the root is one scenario whose header comment states what it asserts. `fixtures/` holds files a scenario copies into its staged tree; each fixture folder's README says which scenario uses it.
 
 ## Running
 

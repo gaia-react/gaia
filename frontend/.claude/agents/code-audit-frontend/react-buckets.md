@@ -49,9 +49,10 @@ Component extraction:
 
 **From `frontend/.claude/rules/routes.md`:**
 
-- Route files (`app/routes/`) must be thin: only loader/action, meta (via loader), Zod schemas, and rendering the page component. No UI code, hooks, state, or sub-components.
+- Route files (`app/routes/`) must be thin: only the exports `loader`, `clientLoader`, `action`, `clientAction`, and `HydrateFallback`, meta (via loader), Zod schemas, and rendering the page component. No UI code, hooks, state, or sub-components.
 - Page components live at `app/pages/<route path>/page.tsx` (layout rule: `frontend/.claude/rules/coding-guidelines-react.md`)
-- Loader data: use `useLoaderData<typeof loader>()` (import the `loader` type from the route file) or `useLoaderData<LoaderData>()` (import `LoaderData` from a sibling `types.ts`). Never define the type inline in the page component file.
+- Loader data: use `useLoaderData<LoaderData>()` with `LoaderData` imported from a sibling `types.ts` (a page never imports from `app/routes/**`). Never define the type inline in the page component file.
+- Data-loading review checks (review-only, no lint): flag render-time schema parsing, `as any` on query results, effect-based fetching, a hand-rolled fetch cache, a module-scope QueryClient on the server, and `invalidateQueries` scattered outside actions and mutation callbacks. The rule: `frontend/.claude/skills/react-code/SKILL.md`.
 - Meta tags: set in the loader via server-side i18n (`getInstance(context)`), then render them in the route component or pass them to the page component, which renders them (the legal pages do this)
 - Route files are flat dot-delimited files discovered by `@react-router/fs-routes`; group prefixes and their meanings are owned by `wiki/modules/Routing.md`. `actions.*` / `resources.*` files are no-UI data-endpoint routes with no page component: the lint carve-out only lets UI layers import their typed action/loader exports, and the no-UI-code rule above still applies to them.
 

@@ -1,0 +1,29 @@
+{{importLines}}
+
+// Fills the browser's query cache before the page renders, so the page's
+// suspense query reads cached data instead of suspending. The server renders
+// HydrateFallback in this route's place.
+{{loaderSignature}}
+  await getQueryClient().query({{queryCall}});
+};
+
+export const HydrateFallback = () => <{{fallbackName}} />;
+{{#hasAction}}
+{{actionSignature}}
+  const submission = parseWithZod(await request.formData(), {
+    schema: {{inputSchema}},
+  });
+
+  if (submission.status !== 'success') return submission.reply();
+
+  await {{mutationCall}};
+  // Marks every cached query of this service stale, so the redirect target
+  // refetches instead of rendering what it cached before the write.
+  await getQueryClient().invalidateQueries({queryKey: {{keysName}}.all});
+
+  return redirect('/{{routeSlug}}');
+};
+{{/hasAction}}
+const {{routeName}}Route = () => <{{pageName}} />;
+
+export default {{routeName}}Route;

@@ -21,6 +21,6 @@ Two setups share the handler set from `frontend/test/mocks`:
 
 ## Companion packages
 
-`@msw/data` (in-memory DB), `frontend/public/mockServiceWorker.js` (worker via `msw.workerDirectory` in `package.json`). `msw-storybook-addon` is installed but deliberately unused; stories seed from `@msw/data` directly. See [[Storybook Stories]] for rationale.
+`@msw/data` (in-memory DB), `frontend/public/mockServiceWorker.js` (worker via `msw.workerDirectory` in `package.json`). `msw-storybook-addon` is wired into Storybook: stories supply handlers through `parameters.msw.handlers`. See [[Storybook Stories]].
 
 See [[MSW Handlers]] for handler structure.

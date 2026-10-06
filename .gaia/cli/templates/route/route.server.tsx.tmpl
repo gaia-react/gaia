@@ -1,0 +1,21 @@
+{{importLines}}
+
+{{loaderSignature}}
+  {{dataKey}}: await {{getterCall}},
+});
+{{#hasAction}}
+{{actionSignature}}
+  const submission = parseWithZod(await request.formData(), {
+    schema: {{inputSchema}},
+  });
+
+  if (submission.status !== 'success') return submission.reply();
+
+  await {{mutationCall}};
+
+  return redirect('/{{routeSlug}}');
+};
+{{/hasAction}}
+const {{routeName}}Route = () => <{{pageName}} />;
+
+export default {{routeName}}Route;

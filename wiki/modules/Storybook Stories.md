@@ -32,7 +32,7 @@ Interactive sessions skip the Chromatic decorator: `WrapDecorator → ToastDecor
 
 ## Stubs
 
-`frontend/test/stubs/` provides story-level decorators (`stubs.state()`, `stubs.reactRouter()`). Apply as `[stubs.state(), stubs.reactRouter()]` when both are needed. See `frontend/.claude/rules/storybook.md` for full stub options (`action`, `loader`, `path`, `routes`, `actions`, `destinations`).
+`frontend/test/stubs/` provides story-level decorators (`stubs.state()`, `stubs.reactRouter()`). Apply as `[stubs.state(), stubs.reactRouter()]` when both are needed. `stubs.reactRouter` binds one route, and its `route` option accepts the client-side exports (`clientLoader`, `clientAction`, `HydrateFallback`) as well as `loader` and `action`. See `frontend/.claude/rules/storybook.md` for the full option list.
 
 ## Dark-mode handling
 
@@ -44,8 +44,10 @@ Chromatic loads only the preview iframe, so the toolbar toggle never fires there
 
 `storybook-react-i18next` is wired to the project's own `~/i18n` config. Toolbar exposes the configured locales. Inside story functions, call `useTranslation()` normally; no extra setup. Per-locale content variation (e.g. stress-testing long CJK strings) is handled inside the story by reading `i18n.language`.
 
-## Test data: no MSW addon
+## Test data: MSW
 
-`msw-storybook-addon` ships in devDependencies but is **not wired into Storybook config**; stories do no API-level mocking. Pull seed data from the `@msw/data` collections in `frontend/test/mocks/database` directly. See `frontend/.claude/rules/storybook.md` for the usage pattern. The unused addon is a removal candidate.
+`msw-storybook-addon` is wired: `.storybook/main.ts` registers the addon and serves `public/` as a static directory (so built Storybook and Chromatic find `mockServiceWorker.js`), and `.storybook/preview.ts` registers `mswLoader()` from `msw-storybook-addon/csf3`. A story supplies handlers through `parameters.msw.handlers`. Handlers read a mutation body with `request.json()`. Seed data comes from the `@msw/data` collections in `frontend/test/mocks/database`. See `frontend/.claude/rules/storybook.md` for the usage pattern and [[MSW Handlers]] for the handler structure.
+
+When TanStack Query is on, a Storybook decorator (`.storybook/decorators/QueryClientDecorator.tsx`) gives each story a fresh QueryClient. See [[Data Loading]].
 
 For the current `frontend/.storybook/` file inventory, query Serena (`.claude/rules/code-search.md`).

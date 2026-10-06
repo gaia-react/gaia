@@ -2,6 +2,7 @@ import type {
   ActionFunction,
   ActionFunctionArgs,
   LoaderFunctionArgs,
+  RouteObject,
 } from 'react-router';
 import {createRoutesStub} from 'react-router';
 import type {ReactRenderer} from '@storybook/react-vite';
@@ -23,10 +24,28 @@ type ReactRouterDecoratorOptions = {
   actions?: Record<string, ActionFunction>;
   /** Each path renders `Navigated to {path}` inside a main landmark, so a play can assert arrival by visible text. */
   destinations?: string[];
+  /** The URL the stub starts at; defaults to `path`, so a param route can declare `/items/:id` and start at `/items/1`. */
+  initialEntry?: string;
   loader?: (args: LoaderFunctionArgs) => Promise<unknown>;
   path?: string;
+  /** Binds a route module's data functions. `clientLoader` and `clientAction` run as the stub route's `loader` and `action`. */
+  route?: RouteBinding;
   routes?: Routes;
 };
+
+type RouteBinding = {
+  action?: RouteDataFunction;
+  clientAction?: RouteDataFunction;
+  clientLoader?: RouteDataFunction;
+  HydrateFallback?: RouteObject['HydrateFallback'];
+  loader?: RouteDataFunction;
+};
+
+// A route module types its data functions with its generated args (typed
+// params, a clientLoader's `serverLoader`), which the stub route's generic args
+// do not satisfy, so a binding typed as `RouteObject['loader']` rejects every
+// route with a param or a client function. The stub only forwards them.
+type RouteDataFunction = (args: never) => unknown;
 
 type Routes = {path: string; storyId: string}[];
 
@@ -91,6 +110,35 @@ const getAction = (action?: Action) => {
   return undefined;
 };
 
+const bindRoute = (
+  route: RouteBinding,
+  topLevel: Pick<ReactRouterDecoratorOptions, 'action' | 'loader'>
+): Pick<RouteObject, 'action' | 'HydrateFallback' | 'loader'> => {
+  if (topLevel.loader ?? topLevel.action) {
+    throw new Error(
+      'stubs.reactRouter: `route` cannot be combined with the top-level `loader` or `action` option; pass them inside `route`.'
+    );
+  }
+
+  if (route.loader && route.clientLoader) {
+    throw new Error(
+      'stubs.reactRouter: `route.loader` and `route.clientLoader` are both set; a route module exports one or the other.'
+    );
+  }
+
+  if (route.action && route.clientAction) {
+    throw new Error(
+      'stubs.reactRouter: `route.action` and `route.clientAction` are both set; a route module exports one or the other.'
+    );
+  }
+
+  return {
+    action: (route.action ?? route.clientAction) as RouteObject['action'],
+    HydrateFallback: route.HydrateFallback,
+    loader: (route.loader ?? route.clientLoader) as RouteObject['loader'],
+  };
+};
+
 const decorator =
   (
     options?:
@@ -104,16 +152,23 @@ const decorator =
       action,
       actions = {},
       destinations = [],
+      initialEntry,
       path = '/',
+      route: routeModule,
       routes = [],
       ...rest
     } = resolvedOptions ?? {};
+    const routeBinding =
+      routeModule ?
+        bindRoute(routeModule, {action, loader: rest.loader})
+      : undefined;
 
     const reactRouterStub = createRoutesStub([
       {
         action: getAction(action),
         Component: () => <Story />,
         ...rest,
+        ...routeBinding,
         path,
       },
       // loading different routes will select different stories
@@ -156,7 +211,7 @@ const decorator =
       })),
     ]);
 
-    return reactRouterStub({initialEntries: [path]});
+    return reactRouterStub({initialEntries: [initialEntry ?? path]});
   };
 
 export default decorator;

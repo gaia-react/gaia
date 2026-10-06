@@ -5,29 +5,40 @@
  * (`app/services/<layer>/<name>/`) with parsers, types, requests, urls, and a
  * barrel, and when `--mocks` is passed, the matching MSW mock collection
  * under `test/mocks/<name>/` plus an alphabetical insert into
- * `test/mocks/database.ts`.
+ * `test/mocks/database.ts`. When TanStack Query is installed and the service
+ * has a `get` endpoint, it also emits `queries.ts` (key factory plus
+ * `queryOptions`).
  *
  * Contract notes:
  *   - `<layer>` is the domain-layer folder under `app/services/`: `--layer`
  *     when passed, else the single directory there other than `api`. The
  *     template ships it as `gaia` and adopters rename it, so it is never
  *     hardcoded.
- *   - The task spec deliberately makes each service self-contained (its own
- *     `urls.ts` and `index.ts`); we do NOT touch the historical root
- *     `<layer>/urls.ts` or `<layer>/index.server.ts`.
- *   - `requests.server.ts` is preserved as the request-functions filename so
- *     the project's server-only convention (enforced by Vite) keeps holding.
+ *   - Each service is self-contained (its own `urls.ts` and `index.ts`); we do
+ *     NOT touch the root `<layer>/urls.ts`.
+ *   - `queries.ts` is not exported from the service barrel; routes import it
+ *     by path so server-only code never pulls in the Query runtime.
+ *   - `--queries-only` writes just `queries.ts` into an existing service
+ *     folder, for a service scaffolded before Query was turned on. It refuses
+ *     when Query is not installed or `requests.ts` lacks the two getters
+ *     `queries.ts` calls.
  *   - Endpoint flag drives which request functions, mock files, and the
  *     handlers-array order. The set is closed: get/post/put/delete only.
  */
-import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
+import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {lookupOwn} from '../util/argv.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
-import {ensureDir, writeFileIfAbsent} from './fs.js';
+import {
+  hasTanstackQuery,
+  missingQueryGetters,
+  QUERY_ON_INIT_COMMAND,
+} from './data-layer.js';
+import {ensureDir, writeAndRecord} from './fs.js';
+import {resolveLayer} from './layer.js';
 import {resolveScaffoldTarget} from './resolve-target.js';
 import {renderTemplate} from './template.js';
 import type {TemplateVars} from './template.js';
@@ -50,6 +61,7 @@ type ParsedArgs = {
   layer: string | undefined;
   mocks: boolean;
   name: string;
+  queriesOnly: boolean;
 };
 
 type SchemaField = {
@@ -68,6 +80,9 @@ const HELP_TEXT = `Usage: gaia scaffold service <name> --endpoints "get,post,put
   --layer <folder>                   domain-layer folder under app/services/; required only
                                       when more than one folder besides api exists there
   --mocks                            also emit MSW mock collection under test/mocks/<name>/
+  --queries-only                     write only queries.ts into an existing service folder
+                                      (needs TanStack Query installed; replaces --endpoints
+                                      and --schema, which are refused alongside it)
   --json                             emit ScaffoldResult JSON on stdout
 `;
 
@@ -89,11 +104,17 @@ type FlagMap = {
   layer?: string;
   mocks: boolean;
   positional: string[];
+  queriesOnly: boolean;
   schema?: string;
 };
 
 const parseFlags = (argv: readonly string[]): FlagMap => {
-  const result: FlagMap = {json: false, mocks: false, positional: []};
+  const result: FlagMap = {
+    json: false,
+    mocks: false,
+    positional: [],
+    queriesOnly: false,
+  };
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -103,6 +124,8 @@ const parseFlags = (argv: readonly string[]): FlagMap => {
         result.mocks = true;
       } else if (arg === '--json') {
         result.json = true;
+      } else if (arg === '--queries-only') {
+        result.queriesOnly = true;
       } else if (arg === '--endpoints') {
         result.endpoints = argv[index + 1];
         index += 1;
@@ -239,6 +262,35 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | {error: string} => {
     };
   }
 
+  if (
+    flags.layer !== undefined &&
+    (!LAYER_PATTERN.test(flags.layer) || flags.layer === 'api')
+  ) {
+    return {
+      error: `--layer must name one domain-layer folder under app/services/ (not api); got: ${flags.layer}`,
+    };
+  }
+
+  if (flags.queriesOnly) {
+    if (flags.endpoints !== undefined || flags.schema !== undefined) {
+      return {
+        error: '--queries-only does not take --endpoints or --schema',
+      };
+    }
+
+    if (flags.mocks) return {error: '--queries-only does not take --mocks'};
+
+    return {
+      endpoints: new Set(),
+      fields: [],
+      json: flags.json,
+      layer: flags.layer,
+      mocks: false,
+      name,
+      queriesOnly: true,
+    };
+  }
+
   if (flags.endpoints === undefined || flags.endpoints.length === 0) {
     return {error: '--endpoints is required'};
   }
@@ -263,15 +315,6 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | {error: string} => {
     };
   }
 
-  if (
-    flags.layer !== undefined &&
-    (!LAYER_PATTERN.test(flags.layer) || flags.layer === 'api')
-  ) {
-    return {
-      error: `--layer must name one domain-layer folder under app/services/ (not api); got: ${flags.layer}`,
-    };
-  }
-
   return {
     endpoints: new Set(endpoints),
     fields,
@@ -279,6 +322,7 @@ const parseArgs = (argv: readonly string[]): ParsedArgs | {error: string} => {
     layer: flags.layer,
     mocks: flags.mocks,
     name,
+    queriesOnly: false,
   };
 };
 
@@ -299,7 +343,8 @@ type DerivedNames = {
   singular: string;
 };
 
-const toPascal = (kebab: string): string =>
+/** kebab → PascalCase. `user-settings` → `UserSettings`. */
+export const toPascal = (kebab: string): string =>
   kebab
     .split('-')
     .flatMap((part) =>
@@ -307,7 +352,8 @@ const toPascal = (kebab: string): string =>
     )
     .join('');
 
-const toCamel = (kebab: string): string => {
+/** kebab → camelCase. `user-settings` → `userSettings`. */
+export const toCamel = (kebab: string): string => {
   const pascal = toPascal(kebab);
 
   return pascal.charAt(0).toLowerCase() + pascal.slice(1);
@@ -345,7 +391,7 @@ const singularize = (kebab: string): string => {
   return kebab;
 };
 
-const deriveNames = (name: string): DerivedNames => {
+export const deriveNames = (name: string): DerivedNames => {
   const singularKebab = singularize(name);
 
   return {
@@ -360,7 +406,8 @@ const deriveNames = (name: string): DerivedNames => {
 
 // Field rendering
 
-const camelToSnake = (camel: string): string =>
+/** A camelCase field name as the snake_case key the server sees on the wire. */
+export const camelToSnake = (camel: string): string =>
   camel.replaceAll(/[A-Z]/gu, (match) => `_${match.toLowerCase()}`);
 
 const renderClientFields = (fields: SchemaField[]): string[] =>
@@ -453,6 +500,23 @@ const insertImportAlphabetically = (
   );
 };
 
+// A `resetTestData` arrow whose block body is empty (`=> {}`) or holds only
+// `await resetX();` statements, the shape a hand-registered collection takes.
+const SEQUENTIAL_RESET_BODY =
+  /(resetTestData = async \(\): Promise<void> =>\s*)\{((?:\s*await reset\w+\(\);)*\s*)\}/u;
+
+// Rewrite that body as one `Promise.all([...])` so the insert below has a
+// region to extend. Any other body is left alone and the safety net reports it.
+const normalizeResetBody = (source: string): string =>
+  source.replace(
+    SEQUENTIAL_RESET_BODY,
+    (_whole, head: string, body: string) => {
+      const calls = body.match(/reset\w+\(\)/gu) ?? [];
+
+      return `${head}{\n  await Promise.all([${calls.join(', ')}]);\n}`;
+    }
+  );
+
 const insertResetCallAlphabetically = (
   source: string,
   derived: DerivedNames
@@ -539,7 +603,7 @@ const applyDatabaseEdits = (args: ApplyDatabaseEditsArgs): string => {
   next = insertImportAlphabetically(next, importLine);
 
   if (!next.includes(resetCall)) {
-    next = insertResetCallAlphabetically(next, derived);
+    next = insertResetCallAlphabetically(normalizeResetBody(next), derived);
   }
   next = insertCollectionExportAlphabetically(next, derived);
 
@@ -571,7 +635,7 @@ const applyDatabaseEdits = (args: ApplyDatabaseEditsArgs): string => {
 };
 
 /**
- * Insert a new collection registration into `test/mocks/database.ts`,
+ * Compute the new collection registration for `test/mocks/database.ts`,
  * preserving alphabetical order of registered collections.
  *
  * The barrel has three load-bearing regions we mutate:
@@ -579,18 +643,25 @@ const applyDatabaseEdits = (args: ApplyDatabaseEditsArgs): string => {
  *   2. The `Promise.all([...])` argument list inside `resetTestData`.
  *   3. The `default` export object that maps `{<name>}`.
  *
- * Idempotent: if the new entries already exist verbatim, returns
- * `{written: false}`.
+ * Returns `undefined` when the barrel is absent, else its path and the new
+ * text (`next` is `undefined` when it already registers the collection). Throws when the
+ * edit cannot apply. Planned before any scaffold file is written, so a barrel
+ * the edit cannot apply to leaves the tree untouched.
  */
-const updateDatabaseBarrel = (
-  databasePath: string,
+type DatabaseBarrelPlan = {next: string | undefined; path: string};
+
+const planDatabaseBarrel = (
+  repoRoot: string,
   derived: DerivedNames
-): {written: boolean} => {
+): DatabaseBarrelPlan | undefined => {
+  const databasePath = path.join(repoRoot, 'test', 'mocks', 'database.ts');
+
+  if (!existsSync(databasePath)) return undefined;
   const raw = readFileSync(databasePath, 'utf8');
   const importLine = `import {${derived.plural}, reset${derived.Plural}} from './${derived.name}/data';`;
   const resetCall = `reset${derived.Plural}()`;
 
-  if (raw.includes(importLine)) return {written: false};
+  if (raw.includes(importLine)) return {next: undefined, path: databasePath};
 
   const next = applyDatabaseEdits({
     derived,
@@ -599,51 +670,7 @@ const updateDatabaseBarrel = (
     source: raw,
   });
 
-  if (next === raw) return {written: false};
-  atomicWriteFileSync(databasePath, next);
-
-  return {written: true};
-};
-
-// Domain-layer resolution
-
-/**
- * The folder under `app/services/` holding the domain layer. The template
- * ships it as `gaia` and adopters rename it to their company or API name, so
- * it is discovered: `--layer` when passed, else the single directory there
- * other than the `api` wrapper. Zero or several candidates is an error naming
- * them, never a guess.
- */
-const resolveLayer = (
-  repoRoot: string,
-  requested: string | undefined
-): {error: string} | {layer: string} => {
-  const servicesDir = path.join(repoRoot, 'app', 'services');
-
-  if (requested !== undefined) {
-    const requestedDir = path.join(servicesDir, requested);
-
-    return existsSync(requestedDir) && statSync(requestedDir).isDirectory() ?
-        {layer: requested}
-      : {error: `--layer folder not found: app/services/${requested}/`};
-  }
-
-  const candidates =
-    existsSync(servicesDir) ?
-      readdirSync(servicesDir, {withFileTypes: true})
-        .filter((entry) => entry.isDirectory() && entry.name !== 'api')
-        .map((entry) => entry.name)
-        .toSorted((a, b) => a.localeCompare(b))
-    : [];
-  const [only] = candidates;
-
-  if (candidates.length === 1 && only !== undefined) return {layer: only};
-
-  const found = candidates.length === 0 ? 'none' : candidates.join(', ');
-
-  return {
-    error: `cannot pick the domain-layer folder under app/services/ (found: ${found}); pass --layer <folder>`,
-  };
+  return {next: next === raw ? undefined : next, path: databasePath};
 };
 
 // Emit
@@ -667,18 +694,56 @@ const renderServiceTemplate = (
   vars: TemplateVars
 ): string => renderTemplate(path.join(TEMPLATES_DIR, templateName), vars);
 
-const writeRendered = (
-  absPath: string,
-  contents: string,
+const baseTemplateVars = (derived: DerivedNames): TemplateVars => ({
+  name: derived.name,
+  NAME_UPPER: derived.NAME_UPPER,
+  Plural: derived.Plural,
+  plural: derived.plural,
+  Singular: derived.Singular,
+  singular: derived.singular,
+});
+
+const writeQueries = (
+  serviceDir: string,
+  baseVars: TemplateVars,
   result: ScaffoldResult
 ): void => {
-  const {written} = writeFileIfAbsent(absPath, contents);
+  writeAndRecord(
+    path.join(serviceDir, 'queries.ts'),
+    renderServiceTemplate('service/queries.ts.tmpl', baseVars),
+    result
+  );
+};
 
-  if (written) {
-    result.written.push(absPath);
-  } else {
-    result.skipped.push(absPath);
-  }
+const composeRequestsImports = (
+  derived: DerivedNames,
+  endpoints: ReadonlySet<Endpoint>
+): string => {
+  const hasSchemaCall =
+    endpoints.has('get') || endpoints.has('post') || endpoints.has('put');
+  const hasInput = endpoints.has('post') || endpoints.has('put');
+  const typeNames = [
+    derived.Singular,
+    ...(hasInput ? [`${derived.Singular}Input`] : []),
+    ...(endpoints.has('get') ? [derived.Plural] : []),
+  ];
+  const parserNames = [
+    ...(endpoints.has('get') ? [`${derived.plural}Schema`] : []),
+    ...(hasSchemaCall ? [`${derived.singular}Schema`] : []),
+  ];
+
+  return [
+    hasSchemaCall ?
+      "import {api, envelope} from '../api';"
+    : "import {api} from '../api';",
+    ...(parserNames.length > 0 ?
+      [`import {${parserNames.join(', ')}} from './parsers';`]
+    : []),
+    ...(hasSchemaCall ?
+      [`import type {${typeNames.join(', ')}} from './types';`]
+    : []),
+    `import {${derived.NAME_UPPER}_URLS} from './urls';`,
+  ].join('\n');
 };
 
 const emitServiceFiles = (
@@ -695,23 +760,22 @@ const emitServiceFiles = (
   );
   ensureDir(serviceDir);
 
-  const baseVars: TemplateVars = {
-    name: derived.name,
-    NAME_UPPER: derived.NAME_UPPER,
-    Plural: derived.Plural,
-    plural: derived.plural,
-    Singular: derived.Singular,
-    singular: derived.singular,
-  };
+  const baseVars = baseTemplateVars(derived);
 
+  // Server-owned fields stay out of the input a form submits.
+  const hasId = fields.some((field) => field.name === 'id');
   const parsersBody = renderServiceTemplate('service/parsers.ts.tmpl', {
     ...baseVars,
     fields: renderClientFields(fields),
+    inputSchemaExpression:
+      hasId ?
+        `${derived.singular}Schema.omit({id: true})`
+      : `${derived.singular}Schema`,
   });
-  writeRendered(path.join(serviceDir, 'parsers.ts'), parsersBody, result);
+  writeAndRecord(path.join(serviceDir, 'parsers.ts'), parsersBody, result);
 
   const typesBody = renderServiceTemplate('service/types.ts.tmpl', baseVars);
-  writeRendered(path.join(serviceDir, 'types.ts'), typesBody, result);
+  writeAndRecord(path.join(serviceDir, 'types.ts'), typesBody, result);
 
   const requestsBody = renderServiceTemplate('service/requests.ts.tmpl', {
     ...baseVars,
@@ -719,39 +783,40 @@ const emitServiceFiles = (
     hasGet: endpoints.has('get'),
     hasPost: endpoints.has('post'),
     hasPut: endpoints.has('put'),
+    importLines: composeRequestsImports(derived, endpoints),
   });
-  writeRendered(path.join(serviceDir, 'requests.ts'), requestsBody, result);
+  writeAndRecord(path.join(serviceDir, 'requests.ts'), requestsBody, result);
 
   const urlsBody = renderServiceTemplate('service/urls.ts.tmpl', baseVars);
-  writeRendered(path.join(serviceDir, 'urls.ts'), urlsBody, result);
+  writeAndRecord(path.join(serviceDir, 'urls.ts'), urlsBody, result);
 
   const indexBody = renderServiceTemplate('service/index.ts.tmpl', baseVars);
-  writeRendered(path.join(serviceDir, 'index.ts'), indexBody, result);
+  writeAndRecord(path.join(serviceDir, 'index.ts'), indexBody, result);
+
+  if (endpoints.has('get') && hasTanstackQuery(repoRoot)) {
+    writeQueries(serviceDir, baseVars, result);
+  }
 };
 
-const emitMockFiles = (context: EmitContext, result: ScaffoldResult): void => {
+const emitMockFiles = (
+  context: EmitContext,
+  databaseBarrel: DatabaseBarrelPlan | undefined,
+  result: ScaffoldResult
+): void => {
   const {derived, endpoints, fields, layer, repoRoot} = context;
   const mockDir = path.join(repoRoot, 'test', 'mocks', derived.name);
   ensureDir(mockDir);
 
-  const baseVars: TemplateVars = {
-    layer,
-    name: derived.name,
-    NAME_UPPER: derived.NAME_UPPER,
-    Plural: derived.Plural,
-    plural: derived.plural,
-    Singular: derived.Singular,
-    singular: derived.singular,
-  };
+  const baseVars: TemplateVars = {...baseTemplateVars(derived), layer};
 
   const dataBody = renderServiceTemplate('service/mock.data.ts.tmpl', {
     ...baseVars,
     serverFields: renderServerFields(fields),
   });
-  writeRendered(path.join(mockDir, 'data.ts'), dataBody, result);
+  writeAndRecord(path.join(mockDir, 'data.ts'), dataBody, result);
 
   if (endpoints.has('get')) {
-    writeRendered(
+    writeAndRecord(
       path.join(mockDir, 'get.ts'),
       renderServiceTemplate('service/mock.get.ts.tmpl', baseVars),
       result
@@ -759,7 +824,7 @@ const emitMockFiles = (context: EmitContext, result: ScaffoldResult): void => {
   }
 
   if (endpoints.has('post')) {
-    writeRendered(
+    writeAndRecord(
       path.join(mockDir, 'post.ts'),
       renderServiceTemplate('service/mock.post.ts.tmpl', baseVars),
       result
@@ -767,7 +832,7 @@ const emitMockFiles = (context: EmitContext, result: ScaffoldResult): void => {
   }
 
   if (endpoints.has('put')) {
-    writeRendered(
+    writeAndRecord(
       path.join(mockDir, 'put.ts'),
       renderServiceTemplate('service/mock.put.ts.tmpl', baseVars),
       result
@@ -775,7 +840,7 @@ const emitMockFiles = (context: EmitContext, result: ScaffoldResult): void => {
   }
 
   if (endpoints.has('delete')) {
-    writeRendered(
+    writeAndRecord(
       path.join(mockDir, 'delete.ts'),
       renderServiceTemplate('service/mock.delete.ts.tmpl', baseVars),
       result
@@ -786,17 +851,52 @@ const emitMockFiles = (context: EmitContext, result: ScaffoldResult): void => {
     ...baseVars,
     ...composeMockBarrel(endpoints),
   });
-  writeRendered(path.join(mockDir, 'index.ts'), barrelBody, result);
+  writeAndRecord(path.join(mockDir, 'index.ts'), barrelBody, result);
 
   // Edit the database barrel; only when --mocks, otherwise no edit.
-  const databasePath = path.join(repoRoot, 'test', 'mocks', 'database.ts');
+  if (databaseBarrel === undefined) return;
 
-  if (existsSync(databasePath)) {
-    const {written} = updateDatabaseBarrel(databasePath, derived);
-
-    if (written) result.edited.push(databasePath);
-    else result.skipped.push(databasePath);
+  if (databaseBarrel.next === undefined) {
+    result.skipped.push(databaseBarrel.path);
+  } else {
+    atomicWriteFileSync(databaseBarrel.path, databaseBarrel.next);
+    result.edited.push(databaseBarrel.path);
   }
+};
+
+const emitQueriesOnly = (
+  context: EmitContext,
+  result: ScaffoldResult
+): string | undefined => {
+  const {derived, layer, repoRoot} = context;
+
+  if (!hasTanstackQuery(repoRoot)) {
+    return `TanStack Query is not installed; run \`${QUERY_ON_INIT_COMMAND}\` first`;
+  }
+
+  const serviceDir = path.join(
+    repoRoot,
+    'app',
+    'services',
+    layer,
+    derived.name
+  );
+  const requestsPath = path.join(serviceDir, 'requests.ts');
+
+  if (!existsSync(requestsPath)) {
+    return `service folder not found or has no requests.ts: app/services/${layer}/${derived.name}/`;
+  }
+
+  const requests = readFileSync(requestsPath, 'utf8');
+  const missing = missingQueryGetters(requests, derived);
+
+  if (missing.length > 0) {
+    return `requests.ts must export ${missing.join(' and ')} for queries.ts to call`;
+  }
+
+  writeQueries(serviceDir, baseTemplateVars(derived), result);
+
+  return undefined;
 };
 
 const printResult = (result: ScaffoldResult, json: boolean): void => {
@@ -858,8 +958,18 @@ export const run = (
   };
 
   try {
-    emitServiceFiles(context, result);
-    if (parsed.mocks) emitMockFiles(context, result);
+    if (parsed.queriesOnly) {
+      const refusal = emitQueriesOnly(context, result);
+
+      if (refusal !== undefined) return userError(refusal, 'scaffold service');
+    } else {
+      const databaseBarrel =
+        parsed.mocks ?
+          planDatabaseBarrel(repoRoot, context.derived)
+        : undefined;
+      emitServiceFiles(context, result);
+      if (parsed.mocks) emitMockFiles(context, databaseBarrel, result);
+    }
   } catch (error) {
     structuredError({
       code: 'scaffold_failed',

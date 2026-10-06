@@ -1,4 +1,5 @@
 import type {Preview} from '@storybook/react-vite';
+import {mswLoader} from 'msw-storybook-addon/csf3';
 import {themes} from 'storybook/theming';
 import a11y from './a11y';
 import {decorators} from './chromatic';
@@ -25,6 +26,7 @@ const preview: Preview = {
     // the dark mode into a second light snapshot.
     theme: 'light',
   },
+  loaders: [mswLoader()],
   parameters: {
     a11y,
     chromatic: {modes: allModes},

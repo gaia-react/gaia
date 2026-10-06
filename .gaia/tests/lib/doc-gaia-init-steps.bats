@@ -3,7 +3,7 @@
 # Doc-conformance suite for /gaia-init (.claude/commands/gaia-init.md): the
 # command asks no CI-intent or wiki-mode question, writes the project settings
 # through `gaia init write-project-config`, and its resume step list names the
-# same seven steps, in the same order, as the CLI's STEP_ORDER.
+# same steps, in the same order, as the CLI's STEP_ORDER.
 #
 # Forbidden tokens that the repo-wide absence guard also forbids are built at
 # runtime, so this file never carries the literal. Each absence check is proven
@@ -14,7 +14,7 @@ setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   INIT_MD="$REPO_ROOT/.claude/commands/gaia-init.md"
   STATE_TS="$REPO_ROOT/.gaia/cli/src/init/util/state.ts"
-  FROZEN_STEPS="strip-branding configure-i18n rename wire-statusline bootstrap-env write-project-config finalize"
+  FROZEN_STEPS="strip-branding configure-i18n configure-data-layer rename wire-statusline bootstrap-env write-project-config finalize"
 }
 
 # Fixed-string forbidden tokens, one per line. The runtime-built ones are the
@@ -101,9 +101,9 @@ state_steps() {
   [ "$status" -ne 0 ]
 }
 
-@test "the resume list names exactly the seven steps, 1-indexed, in order" {
+@test "the resume list names exactly the frozen steps, 1-indexed, in order" {
   [ "$(resume_steps "$INIT_MD")" = "$FROZEN_STEPS" ]
-  [ "$(resume_indices "$INIT_MD")" = "1 2 3 4 5 6 7" ]
+  [ "$(resume_indices "$INIT_MD")" = "1 2 3 4 5 6 7 8" ]
 }
 
 @test "the resume list agrees with STEP_ORDER in state.ts" {
@@ -112,10 +112,68 @@ state_steps() {
 
 @test "the resume check fails on a reordered scratch copy" {
   local scratch="$BATS_TEST_TMPDIR/gaia-init.scratch.md"
-  sed -E 's/5=bootstrap-env, 6=write-project-config/5=write-project-config, 6=bootstrap-env/' "$INIT_MD" >"$scratch"
+  sed -E 's/6=bootstrap-env, 7=write-project-config/6=write-project-config, 7=bootstrap-env/' "$INIT_MD" >"$scratch"
   [ "$(resume_steps "$scratch")" != "$FROZEN_STEPS" ]
 }
 
 @test "the adoption ping passes no --ci field" {
   grep -qF '.gaia/cli/gaia ping --event init --mode "$MODE" --i18n "$I18N_COUNT" || true' "$INIT_MD"
+}
+
+# Print Step 2 (from its heading to the Step 3 heading) of the file given as $1.
+step_two() {
+  awk '/^## Step 2:/{on=1} /^## Step 3:/{on=0} on' "$1"
+}
+
+# Print each data-layer anchor missing from the file given as $1, one per line.
+data_layer_gaps() {
+  local file="$1" label
+  for label in 'snake_case (Recommended)' 'camelCase' \
+    'SDK client such as Supabase or Firebase' 'Not sure' \
+    'Add TanStack Query for client-owned data?' 'No (Recommended)'; do
+    step_two "$file" | grep -qF -- "$label" || printf 'option: %s\n' "$label"
+  done
+  grep -qF '| Backend casing            | `snake_case`' "$file" || echo 'safe-default row: casing'
+  grep -qF '| TanStack Query            | `No`' "$file" || echo 'safe-default row: query'
+  grep -qF '> | Backend casing ' "$file" || echo 'automatic row: casing'
+  grep -qF '> | TanStack Query ' "$file" || echo 'automatic row: query'
+  grep -qF -- '- Backend casing (Step 2)' "$file" || echo 'automatic bullet: casing'
+  grep -qF -- '- TanStack Query (Step 2)' "$file" || echo 'automatic bullet: query'
+  grep -qE 'gaia init configure-data-layer --casing <CASING> --query <QUERY>' "$file" ||
+    echo 'step 3 line'
+  return 0
+}
+
+@test "gaia-init.md carries the data-layer questions, tier rows, defaults, and Step 3 call" {
+  run data_layer_gaps "$INIT_MD"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "the data-layer check flags each anchor deleted from a scratch copy" {
+  local pattern scratch
+  for pattern in 'snake_case (Recommended)' 'Not sure' 'No (Recommended)' \
+    '| Backend casing            | `snake_case`' '| TanStack Query            | `No`' \
+    '> | Backend casing ' '> | TanStack Query ' '- Backend casing (Step 2)' \
+    '- TanStack Query (Step 2)' 'configure-data-layer --casing'; do
+    scratch="$BATS_TEST_TMPDIR/gaia-init.scratch.md"
+    grep -vF -- "$pattern" "$INIT_MD" >"$scratch"
+    run data_layer_gaps "$scratch"
+    [ -n "$output" ] || {
+      printf 'deleting %s was not flagged\n' "$pattern" >&2
+      return 1
+    }
+  done
+}
+
+@test "Step 2 asks no rendering-mode question" {
+  run bash -c "awk '/^## Step 2:/{on=1} /^## Step 3:/{on=0} on' '$INIT_MD' | grep -E 'SSR|SPA|prerender'"
+  [ "$status" -ne 0 ]
+}
+
+@test "the rendering-mode check fails when a rendering question is added to a scratch Step 2" {
+  local scratch="$BATS_TEST_TMPDIR/gaia-init.scratch.md"
+  sed 's/^### Q7, TanStack Query (asked alone)/Pick SSR or SPA.\n&/' "$INIT_MD" >"$scratch"
+  run bash -c "awk '/^## Step 2:/{on=1} /^## Step 3:/{on=0} on' '$scratch' | grep -E 'SSR|SPA|prerender'"
+  [ "$status" -eq 0 ]
 }

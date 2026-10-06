@@ -28,15 +28,13 @@ export const action = async ({request}: Route.ActionArgs) => {
     return data({result: submission.reply()});
   }
 
-  // Use submission.value for typed data
-  await fetch('/api/users', {
-    body: JSON.stringify(submission.value),
-    headers: {'Content-Type': 'application/json'},
-    method: 'POST',
-  });
+  // Pass only submission.value to the service's request function
+  await createUser(submission.value);
   return redirect('/users');
 };
 ```
+
+An action validates with `parseWithZod` (from `@conform-to/zod/v4`) against the same input schema the service's mutation takes, and passes only `submission.value` to the request function; ids come from route params.
 
 ### 3. Page component with `useForm`
 

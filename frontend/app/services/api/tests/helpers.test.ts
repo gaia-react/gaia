@@ -1,29 +1,32 @@
-import {HTTPError} from 'ky';
+import {HTTPError, SchemaValidationError} from 'ky';
 import {describe, expect, test} from 'vitest';
 import type {ZodError} from 'zod';
 import {z} from 'zod';
 import {attempt} from '../helpers';
 
 describe('attempt', () => {
-  test('success — resolves to [undefined, result]', async () => {
-    const result = await attempt(async () => 'ok');
+  test('success: resolves to [undefined, result]', async () => {
+    const attemptOutcome = await attempt(async () => 'ok');
 
-    expect(result).toEqual([undefined, 'ok']);
+    expect(attemptOutcome).toEqual([undefined, 'ok']);
   });
 
-  test('HTTPError — resolves to [{status, statusText}, undefined]', async () => {
+  test('HTTPError: resolves to [{status, statusText}, undefined]', async () => {
     const response = new Response('', {status: 404, statusText: 'Not Found'});
     const request = new Request('https://example.test');
     const httpError = new HTTPError(response, request, {} as never);
 
-    const result = await attempt(async () => {
+    const attemptOutcome = await attempt(async () => {
       throw httpError;
     });
 
-    expect(result).toEqual([{status: 404, statusText: 'Not Found'}, undefined]);
+    expect(attemptOutcome).toEqual([
+      {status: 404, statusText: 'Not Found'},
+      undefined,
+    ]);
   });
 
-  test('ZodError — resolves to [{status: 500, statusText: error.message}, undefined]', async () => {
+  test('ZodError: resolves to [{status: 500, statusText: error.message}, undefined]', async () => {
     let zodError: ZodError;
 
     try {
@@ -32,17 +35,32 @@ describe('attempt', () => {
       zodError = error as ZodError;
     }
 
-    const result = await attempt(async () => {
+    const attemptOutcome = await attempt(async () => {
       throw zodError!;
     });
 
-    expect(result).toEqual([
+    expect(attemptOutcome).toEqual([
       {status: 500, statusText: zodError!.message},
       undefined,
     ]);
   });
 
-  test('plain Error — rejects (re-thrown)', async () => {
+  test('SchemaValidationError: resolves to a constant statusText with no issues in it', async () => {
+    const schemaError = new SchemaValidationError([
+      {message: 'secret detail', path: ['a']},
+    ]);
+
+    const attemptOutcome = await attempt(async () => {
+      throw schemaError;
+    });
+
+    expect(attemptOutcome).toEqual([
+      {status: 500, statusText: 'Response failed schema validation'},
+      undefined,
+    ]);
+  });
+
+  test('plain Error: rejects (re-thrown)', async () => {
     await expect(
       attempt(async () => {
         throw new Error('boom');
@@ -50,12 +68,12 @@ describe('attempt', () => {
     ).rejects.toThrow('boom');
   });
 
-  test('unknown non-Error throw — resolves to [{status: 500, statusText: "Unknown error"}, undefined]', async () => {
-    const result = await attempt(async () => {
+  test('unknown non-Error throw: resolves to [{status: 500, statusText: "Unknown error"}, undefined]', async () => {
+    const attemptOutcome = await attempt(async () => {
       throw 'something unexpected';
     });
 
-    expect(result).toEqual([
+    expect(attemptOutcome).toEqual([
       {status: 500, statusText: 'Unknown error'},
       undefined,
     ]);

@@ -1,77 +1,15 @@
 import {afterEach, beforeEach, describe, expect, test} from 'vitest';
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
-import {writeFrontendRegistry} from '../util/package-fixture.js';
+import {
+  captureStderr,
+  captureStdout,
+  expectNoRouteImports,
+  ONE_LINE_RENDER,
+  setupSandbox,
+} from './route-fixture.js';
+import type {Sandbox} from './route-fixture.js';
 import {run} from './route.js';
-
-/**
- * The route handler resolves output paths from an injectable `cwd` (default
- * `process.cwd()`) and reads its templates from the module location. We point
- * `cwd` at a fresh temp dir so the scaffolded `app/` tree lands in isolation,
- * and let the real shipped templates render unchanged.
- */
-type Sandbox = {
-  cleanup: () => void;
-  fakeRoot: string;
-};
-
-const setupSandbox = (): Sandbox => {
-  const fakeRoot = mkdtempSync(path.join(tmpdir(), 'gaia-route-'));
-  writeFrontendRegistry(fakeRoot);
-
-  return {
-    cleanup: () => {
-      rmSync(fakeRoot, {force: true, recursive: true});
-    },
-    fakeRoot,
-  };
-};
-
-const captureStdout = (): {restore: () => string} => {
-  const chunks: string[] = [];
-  const original = process.stdout.write.bind(process.stdout);
-
-  process.stdout.write = (chunk: unknown): boolean => {
-    chunks.push(typeof chunk === 'string' ? chunk : String(chunk));
-
-    return true;
-  };
-
-  return {
-    restore: (): string => {
-      process.stdout.write = original;
-
-      return chunks.join('');
-    },
-  };
-};
-
-const captureStderr = (): {restore: () => string} => {
-  const chunks: string[] = [];
-  const original = process.stderr.write.bind(process.stderr);
-
-  process.stderr.write = (chunk: unknown): boolean => {
-    chunks.push(typeof chunk === 'string' ? chunk : String(chunk));
-
-    return true;
-  };
-
-  return {
-    restore: (): string => {
-      process.stderr.write = original;
-
-      return chunks.join('');
-    },
-  };
-};
 
 const seedLocaleBarrel = (fakeRoot: string, body: string): string => {
   const dir = path.join(fakeRoot, 'app', 'languages', 'en', 'pages');
@@ -86,7 +24,7 @@ describe('scaffold route: argument validation', () => {
   let sandbox: Sandbox;
 
   beforeEach(() => {
-    sandbox = setupSandbox();
+    sandbox = setupSandbox('gaia-route-');
   });
 
   afterEach(() => {
@@ -95,7 +33,7 @@ describe('scaffold route: argument validation', () => {
 
   test('rejects missing --group', () => {
     const stderr = captureStderr();
-    const exit = run(['dashboard'], {cwd: sandbox.fakeRoot});
+    const exit = run(['dashboard'], {cwd: sandbox.root});
     const out = stderr.restore();
 
     expect(exit).toBe(1);
@@ -107,7 +45,7 @@ describe('scaffold route: argument validation', () => {
   test('rejects invalid --group value', () => {
     const stderr = captureStderr();
     const exit = run(['dashboard', '--group', '_admin'], {
-      cwd: sandbox.fakeRoot,
+      cwd: sandbox.root,
     });
     const out = stderr.restore();
 
@@ -118,7 +56,7 @@ describe('scaffold route: argument validation', () => {
   test('rejects the retired trailing-+ group spelling', () => {
     const stderr = captureStderr();
     const exit = run(['dashboard', '--group', '_session+'], {
-      cwd: sandbox.fakeRoot,
+      cwd: sandbox.root,
     });
     const out = stderr.restore();
 
@@ -129,13 +67,13 @@ describe('scaffold route: argument validation', () => {
     expect(out).not.toContain('_session+');
 
     const routeFile = path.join(
-      sandbox.fakeRoot,
+      sandbox.root,
       'app',
       'routes',
       '_session.dashboard.tsx'
     );
     const routeFolder = path.join(
-      sandbox.fakeRoot,
+      sandbox.root,
       'app',
       'routes',
       '_session+',
@@ -148,7 +86,7 @@ describe('scaffold route: argument validation', () => {
   test('rejects non-kebab name', () => {
     const stderr = captureStderr();
     const exit = run(['Dashboard', '--group', '_session'], {
-      cwd: sandbox.fakeRoot,
+      cwd: sandbox.root,
     });
     const out = stderr.restore();
 
@@ -159,7 +97,7 @@ describe('scaffold route: argument validation', () => {
   test('rejects unknown flag', () => {
     const stderr = captureStderr();
     const exit = run(['dashboard', '--group', '_session', '--bogus'], {
-      cwd: sandbox.fakeRoot,
+      cwd: sandbox.root,
     });
     const out = stderr.restore();
 
@@ -171,18 +109,18 @@ describe('scaffold route: argument validation', () => {
     'rejects the reserved page-folder name %s and writes nothing',
     (name) => {
       const stderr = captureStderr();
-      const exit = run([name, '--group', '_public'], {cwd: sandbox.fakeRoot});
+      const exit = run([name, '--group', '_public'], {cwd: sandbox.root});
       const out = stderr.restore();
 
       expect(exit).toBe(1);
       expect(out).toContain('reserved');
-      expect(existsSync(path.join(sandbox.fakeRoot, 'app'))).toBe(false);
+      expect(existsSync(path.join(sandbox.root, 'app'))).toBe(false);
     }
   );
 
   test('prints help when invoked with no args', () => {
     const stdout = captureStdout();
-    const exit = run([], {cwd: sandbox.fakeRoot});
+    const exit = run([], {cwd: sandbox.root});
     stdout.restore();
 
     expect(exit).toBe(1);
@@ -193,7 +131,7 @@ describe('scaffold route: base emission (_session)', () => {
   let sandbox: Sandbox;
 
   beforeEach(() => {
-    sandbox = setupSandbox();
+    sandbox = setupSandbox('gaia-route-');
   });
 
   afterEach(() => {
@@ -203,27 +141,27 @@ describe('scaffold route: base emission (_session)', () => {
   test('emits route file, page index, and story with no test file', () => {
     const stdout = captureStdout();
     const exit = run(['dashboard', '--group', '_session'], {
-      cwd: sandbox.fakeRoot,
+      cwd: sandbox.root,
     });
     stdout.restore();
 
     expect(exit).toBe(0);
 
     const routeFile = path.join(
-      sandbox.fakeRoot,
+      sandbox.root,
       'app',
       'routes',
       '_session.dashboard.tsx'
     );
     const pageIndex = path.join(
-      sandbox.fakeRoot,
+      sandbox.root,
       'app',
       'pages',
       'dashboard',
       'page.tsx'
     );
     const pageTest = path.join(
-      sandbox.fakeRoot,
+      sandbox.root,
       'app',
       'pages',
       'dashboard',
@@ -231,7 +169,7 @@ describe('scaffold route: base emission (_session)', () => {
       'page.test.tsx'
     );
     const pageStories = path.join(
-      sandbox.fakeRoot,
+      sandbox.root,
       'app',
       'pages',
       'dashboard',
@@ -249,8 +187,15 @@ describe('scaffold route: base emission (_session)', () => {
       "import DashboardPage from '~/pages/dashboard/page'"
     );
     expect(routeBody).toContain('const DashboardRoute');
+    expect(routeBody).toMatch(ONE_LINE_RENDER);
     expect(routeBody).not.toContain('export const loader');
     expect(routeBody).not.toContain('export const action');
+    expect(
+      existsSync(
+        path.join(sandbox.root, 'app', 'pages', 'dashboard', 'types.ts')
+      )
+    ).toBe(false);
+    expectNoRouteImports(path.join(sandbox.root, 'app', 'pages', 'dashboard'));
 
     const pageBody = readFileSync(pageIndex, 'utf8');
     expect(pageBody).not.toMatch(/\bFC\b/);
@@ -265,14 +210,14 @@ describe('scaffold route: base emission (_session)', () => {
   test('hyphenated names map to a kebab page folder', () => {
     const stdout = captureStdout();
     const exit = run(['user-settings', '--group', '_session'], {
-      cwd: sandbox.fakeRoot,
+      cwd: sandbox.root,
     });
     stdout.restore();
 
     expect(exit).toBe(0);
 
     const pageIndex = path.join(
-      sandbox.fakeRoot,
+      sandbox.root,
       'app',
       'pages',
       'user-settings',
@@ -281,7 +226,7 @@ describe('scaffold route: base emission (_session)', () => {
     expect(existsSync(pageIndex)).toBe(true);
 
     const routeFile = path.join(
-      sandbox.fakeRoot,
+      sandbox.root,
       'app',
       'routes',
       '_session.user-settings.tsx'
@@ -296,21 +241,21 @@ describe('scaffold route: base emission (_session)', () => {
   test('_public group writes the same page folder, with no group segment', () => {
     const stdout = captureStdout();
     const exit = run(['marketing', '--group', '_public'], {
-      cwd: sandbox.fakeRoot,
+      cwd: sandbox.root,
     });
     stdout.restore();
 
     expect(exit).toBe(0);
 
     const pageIndex = path.join(
-      sandbox.fakeRoot,
+      sandbox.root,
       'app',
       'pages',
       'marketing',
       'page.tsx'
     );
     const routeFile = path.join(
-      sandbox.fakeRoot,
+      sandbox.root,
       'app',
       'routes',
       '_public.marketing.tsx'
@@ -324,42 +269,66 @@ describe('scaffold route: flag combos', () => {
   let sandbox: Sandbox;
 
   beforeEach(() => {
-    sandbox = setupSandbox();
+    sandbox = setupSandbox('gaia-route-');
   });
 
   afterEach(() => {
     sandbox.cleanup();
   });
 
-  // gaia-react/gaia#2349: without --i18n no `pages` locale keys exist, so a
-  // loader that looks them up fails the typed i18next resources at typecheck.
+  // Without --i18n no `pages` locale keys exist, so a loader that looks them
+  // up fails the typed i18next resources at typecheck.
   test('--loader without --i18n emits a loader with no i18next lookup', () => {
     const stdout = captureStdout();
     run(['dashboard', '--group', '_session', '--loader'], {
-      cwd: sandbox.fakeRoot,
+      cwd: sandbox.root,
     });
     stdout.restore();
 
     const routeFile = path.join(
-      sandbox.fakeRoot,
+      sandbox.root,
       'app',
       'routes',
       '_session.dashboard.tsx'
     );
     const body = readFileSync(routeFile, 'utf8');
     expect(body).toContain('export const loader');
-    expect(body).toContain('useLoaderData');
+    expect(body).not.toContain('useLoaderData');
+    expect(body).toMatch(ONE_LINE_RENDER);
+    expect(body).toContain(
+      "import type {LoaderData} from '~/pages/dashboard/types'"
+    );
     expect(body).toContain("title: 'DashboardPage'");
     expect(body).toContain("description: 'Description of the dashboard page'");
     expect(body).not.toContain('i18next');
     expect(body).not.toContain('getInstance');
     expect(body).not.toContain('RouterContextProvider');
     expect(body).not.toContain('./+types/');
+
+    // The page renders the document head from the loader data, typed by the
+    // page folder's own `types.ts`, never by importing the route module.
+    const pageDir = path.join(sandbox.root, 'app', 'pages', 'dashboard');
+    const page = readFileSync(path.join(pageDir, 'page.tsx'), 'utf8');
+    expect(page).toContain('useLoaderData<LoaderData>()');
+    expect(page).toContain('<title>{title}</title>');
+    expect(page).toContain('<meta content={description} name="description" />');
+    expect(page).toContain("import type {LoaderData} from './types'");
+    expect(readFileSync(path.join(pageDir, 'types.ts'), 'utf8')).toContain(
+      'export type LoaderData'
+    );
+    expectNoRouteImports(pageDir);
+
+    const story = readFileSync(
+      path.join(pageDir, 'tests', 'page.stories.tsx'),
+      'utf8'
+    );
+    expect(story).toContain('stubs.reactRouter({');
+    expect(story).toContain('loader: async () => ({');
   });
 
   test('--loader with --i18n emits a loader reading the pages locale', () => {
     seedLocaleBarrel(
-      sandbox.fakeRoot,
+      sandbox.root,
       [
         "import index from './_index';",
         '',
@@ -374,7 +343,7 @@ describe('scaffold route: flag combos', () => {
     const exit = run(
       ['dashboard', '--group', '_session', '--loader', '--i18n'],
       {
-        cwd: sandbox.fakeRoot,
+        cwd: sandbox.root,
       }
     );
     stdout.restore();
@@ -382,7 +351,7 @@ describe('scaffold route: flag combos', () => {
     expect(exit).toBe(0);
 
     const routeFile = path.join(
-      sandbox.fakeRoot,
+      sandbox.root,
       'app',
       'routes',
       '_session.dashboard.tsx'
@@ -398,12 +367,12 @@ describe('scaffold route: flag combos', () => {
   test('--action emits action export', () => {
     const stdout = captureStdout();
     run(['dashboard', '--group', '_session', '--action'], {
-      cwd: sandbox.fakeRoot,
+      cwd: sandbox.root,
     });
     stdout.restore();
 
     const routeFile = path.join(
-      sandbox.fakeRoot,
+      sandbox.root,
       'app',
       'routes',
       '_session.dashboard.tsx'
@@ -418,12 +387,12 @@ describe('scaffold route: flag combos', () => {
   test('--loader and --action together', () => {
     const stdout = captureStdout();
     run(['dashboard', '--group', '_session', '--loader', '--action'], {
-      cwd: sandbox.fakeRoot,
+      cwd: sandbox.root,
     });
     stdout.restore();
 
     const routeFile = path.join(
-      sandbox.fakeRoot,
+      sandbox.root,
       'app',
       'routes',
       '_session.dashboard.tsx'
@@ -437,7 +406,7 @@ describe('scaffold route: flag combos', () => {
 
   test('--i18n with existing barrel inserts alphabetically', () => {
     const barrelPath = seedLocaleBarrel(
-      sandbox.fakeRoot,
+      sandbox.root,
       [
         "import index from './_index';",
         "import legal from './legal';",
@@ -452,14 +421,14 @@ describe('scaffold route: flag combos', () => {
 
     const stdout = captureStdout();
     const exit = run(['dashboard', '--group', '_session', '--i18n'], {
-      cwd: sandbox.fakeRoot,
+      cwd: sandbox.root,
     });
     stdout.restore();
 
     expect(exit).toBe(0);
 
     const localeFile = path.join(
-      sandbox.fakeRoot,
+      sandbox.root,
       'app',
       'languages',
       'en',
@@ -493,7 +462,7 @@ describe('scaffold route: flag combos', () => {
     );
 
     const pageBody = readFileSync(
-      path.join(sandbox.fakeRoot, 'app', 'pages', 'dashboard', 'page.tsx'),
+      path.join(sandbox.root, 'app', 'pages', 'dashboard', 'page.tsx'),
       'utf8'
     );
     expect(pageBody).toContain(
@@ -505,7 +474,7 @@ describe('scaffold route: flag combos', () => {
     // No barrel seeded: the locale file is written but cannot be wired.
     const stderr = captureStderr();
     const exit = run(['dashboard', '--group', '_session', '--i18n'], {
-      cwd: sandbox.fakeRoot,
+      cwd: sandbox.root,
     });
     const out = stderr.restore();
 
@@ -516,7 +485,7 @@ describe('scaffold route: flag combos', () => {
   test('--json emits a single ScaffoldResult JSON line', () => {
     const stdout = captureStdout();
     const exit = run(['dashboard', '--group', '_session', '--json'], {
-      cwd: sandbox.fakeRoot,
+      cwd: sandbox.root,
     });
     const out = stdout.restore();
 
@@ -533,7 +502,7 @@ describe('scaffold route: --dry-run', () => {
   let sandbox: Sandbox;
 
   beforeEach(() => {
-    sandbox = setupSandbox();
+    sandbox = setupSandbox('gaia-route-');
   });
 
   afterEach(() => {
@@ -543,7 +512,7 @@ describe('scaffold route: --dry-run', () => {
   test('reports would-be writes without touching the filesystem', () => {
     const stdout = captureStdout();
     const exit = run(['dashboard', '--group', '_session', '--dry-run'], {
-      cwd: sandbox.fakeRoot,
+      cwd: sandbox.root,
     });
     const out = stdout.restore();
 
@@ -552,13 +521,13 @@ describe('scaffold route: --dry-run', () => {
     expect(out).toContain('would write');
 
     const routeFile = path.join(
-      sandbox.fakeRoot,
+      sandbox.root,
       'app',
       'routes',
       '_session.dashboard.tsx'
     );
     const pageIndex = path.join(
-      sandbox.fakeRoot,
+      sandbox.root,
       'app',
       'pages',
       'dashboard',
@@ -577,12 +546,12 @@ describe('scaffold route: --dry-run', () => {
       '};',
       '',
     ].join('\n');
-    const barrelPath = seedLocaleBarrel(sandbox.fakeRoot, barrelBody);
+    const barrelPath = seedLocaleBarrel(sandbox.root, barrelBody);
 
     const stdout = captureStdout();
     const exit = run(
       ['dashboard', '--group', '_session', '--i18n', '--dry-run', '--json'],
-      {cwd: sandbox.fakeRoot}
+      {cwd: sandbox.root}
     );
     const out = stdout.restore();
 
@@ -600,7 +569,7 @@ describe('scaffold route: --dry-run', () => {
     expect(
       existsSync(
         path.join(
-          sandbox.fakeRoot,
+          sandbox.root,
           'app',
           'languages',
           'en',
@@ -616,7 +585,7 @@ describe('scaffold route: idempotency', () => {
   let sandbox: Sandbox;
 
   beforeEach(() => {
-    sandbox = setupSandbox();
+    sandbox = setupSandbox('gaia-route-');
   });
 
   afterEach(() => {
@@ -626,13 +595,13 @@ describe('scaffold route: idempotency', () => {
   test('second invocation with same args is a no-op (no throws, files unchanged)', () => {
     const stdout1 = captureStdout();
     const exit1 = run(['dashboard', '--group', '_session'], {
-      cwd: sandbox.fakeRoot,
+      cwd: sandbox.root,
     });
     stdout1.restore();
     expect(exit1).toBe(0);
 
     const routeFile = path.join(
-      sandbox.fakeRoot,
+      sandbox.root,
       'app',
       'routes',
       '_session.dashboard.tsx'
@@ -641,7 +610,7 @@ describe('scaffold route: idempotency', () => {
 
     const stdout2 = captureStdout();
     const exit2 = run(['dashboard', '--group', '_session'], {
-      cwd: sandbox.fakeRoot,
+      cwd: sandbox.root,
     });
     stdout2.restore();
 
@@ -652,7 +621,7 @@ describe('scaffold route: idempotency', () => {
 
   test('barrel insert is idempotent on re-run', () => {
     const barrelPath = seedLocaleBarrel(
-      sandbox.fakeRoot,
+      sandbox.root,
       [
         "import index from './_index';",
         '',
@@ -665,7 +634,7 @@ describe('scaffold route: idempotency', () => {
 
     const stdout1 = captureStdout();
     run(['dashboard', '--group', '_session', '--i18n'], {
-      cwd: sandbox.fakeRoot,
+      cwd: sandbox.root,
     });
     stdout1.restore();
 
@@ -673,7 +642,7 @@ describe('scaffold route: idempotency', () => {
 
     const stdout2 = captureStdout();
     run(['dashboard', '--group', '_session', '--i18n'], {
-      cwd: sandbox.fakeRoot,
+      cwd: sandbox.root,
     });
     stdout2.restore();
 
@@ -689,7 +658,7 @@ describe('scaffold route: barrel alphabetical insert correctness', () => {
   let sandbox: Sandbox;
 
   beforeEach(() => {
-    sandbox = setupSandbox();
+    sandbox = setupSandbox('gaia-route-');
   });
 
   afterEach(() => {
@@ -698,7 +667,7 @@ describe('scaffold route: barrel alphabetical insert correctness', () => {
 
   test('inserts before lex-larger first import (new entry at top of imports)', () => {
     const barrelPath = seedLocaleBarrel(
-      sandbox.fakeRoot,
+      sandbox.root,
       [
         "import legal from './legal';",
         '',
@@ -710,7 +679,7 @@ describe('scaffold route: barrel alphabetical insert correctness', () => {
     );
 
     const stdout = captureStdout();
-    run(['admin', '--group', '_session', '--i18n'], {cwd: sandbox.fakeRoot});
+    run(['admin', '--group', '_session', '--i18n'], {cwd: sandbox.root});
     stdout.restore();
 
     const after = readFileSync(barrelPath, 'utf8');
@@ -725,7 +694,7 @@ describe('scaffold route: barrel alphabetical insert correctness', () => {
 
   test('appends after lex-smaller last import (new entry at bottom of imports)', () => {
     const barrelPath = seedLocaleBarrel(
-      sandbox.fakeRoot,
+      sandbox.root,
       [
         "import admin from './admin';",
         "import legal from './legal';",
@@ -739,7 +708,7 @@ describe('scaffold route: barrel alphabetical insert correctness', () => {
     );
 
     const stdout = captureStdout();
-    run(['zone', '--group', '_session', '--i18n'], {cwd: sandbox.fakeRoot});
+    run(['zone', '--group', '_session', '--i18n'], {cwd: sandbox.root});
     stdout.restore();
 
     const after = readFileSync(barrelPath, 'utf8');

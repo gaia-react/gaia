@@ -40,9 +40,9 @@ Slash-separated PascalCase display segments of the path under `app/`, with no la
 
 ## Decorator order
 
-Apply stubs outermost → innermost: `state` then `reactRouter`. Only include stubs the component actually needs (`stubs.state()` only when the component reads from `~/state`). Import from `test/stubs`.
+Apply stubs outermost → innermost: `state` then `reactRouter`. The global Query decorator (present only after Query is on) sits outside both, so each story gets a fresh client. Only include stubs the component actually needs (`stubs.state()` only when the component reads from `~/state`). Import from `test/stubs`.
 
-`stubs.reactRouter()` options: `path` (default `/`), `loader`, `action` (string storyId, `Record<Method, storyId>`, or full `ActionFunction`), `routes` (`{path, storyId}[]`, navigates to a story when the path loads), `actions` (`Record<path, ActionFunction>`, a per-path action that overrides the no-op entry for that path) and `destinations` (`string[]`, each path renders `Navigated to <path>` in a `main` so a play can assert arrival by text). Pass a function of the story context (`stubs.reactRouter(({args}) => ({...}))`) to read `fn()` spies from args. `actions` keys must differ from `path`: the main route matches first, so an action keyed to it never fires; observe a form posting to its own route through `action`.
+`stubs.reactRouter()` options: `path` (default `/`), `initialEntry` (the URL the stub starts at, defaults to `path`; a param route uses `path: '/items/:id'` with `initialEntry: '/items/1'`), `route` (`{action, clientAction, clientLoader, HydrateFallback, loader}`; the stub maps the client functions onto the stub route and refuses a server and client function of the same kind), `loader`, `action` (string storyId, `Record<Method, storyId>`, or full `ActionFunction`), `routes` (`{path, storyId}[]`, navigates to a story when the path loads), `actions` (`Record<path, ActionFunction>`, a per-path action that overrides the no-op entry for that path) and `destinations` (`string[]`, each path renders `Navigated to <path>` in a `main` so a play can assert arrival by text). Pass a function of the story context (`stubs.reactRouter(({args}) => ({...}))`) to read `fn()` spies from args. `actions` keys must differ from `path`: the main route matches first, so an action keyed to it never fires; observe a form posting to its own route through `action`.
 
 A story file has exactly one `stubs.reactRouter` decorator, at meta level, because a nested Router throws. Vary the router per story through the function form, never a second decorator.
 
@@ -96,7 +96,7 @@ i18n is global, no setup needed. Use `useTranslation()` inside the story functio
 
 ## Test data
 
-GAIA's Storybook config does not wire `msw-storybook-addon`. Pull seed data from the `@msw/data` collections via `test/mocks/database`. Reads on a `Collection` are sync, so stories can call them inline:
+`msw-storybook-addon` is wired in `.storybook/preview.ts`; a story supplies request handlers through `parameters.msw.handlers`. `@msw/data` collections from `test/mocks/database` stay usable for seed data. Reads on a `Collection` are sync, so stories can call them inline:
 
 ```tsx
 import database from 'test/mocks/database';

@@ -128,13 +128,14 @@ const resolveTemplatesDirectory = (): string => {
   return path.join(path.dirname(here), TEMPLATES_DIRECTORY_NAME);
 };
 
+/** Absolute path of a template under the scaffold templates directory. */
+export const templatePath = (name: string): string =>
+  path.join(resolveTemplatesDirectory(), name);
+
 /**
  * Resolve a template path under the scaffold templates directory, then read
  * its contents. Always reads from disk; the four scaffolder tasks are
  * responsible for shipping the template files.
  */
-export const loadTemplate = (name: string): string => {
-  const fullPath = path.join(resolveTemplatesDirectory(), name);
-
-  return readFileSync(fullPath, 'utf8');
-};
+export const loadTemplate = (name: string): string =>
+  readFileSync(templatePath(name), 'utf8');

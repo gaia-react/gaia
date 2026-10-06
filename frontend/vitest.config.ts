@@ -60,7 +60,7 @@ export default defineConfig({
         'app/{languages,routes,sessions.server,state,types}/**/*',
         'app/{entry.client,entry.server,env.server,i18n,i18next.server,root}.*',
         'app/services/api/{index,uris}.ts',
-        'app/services/api/**/{parsers,requests,requests.server,state,types}.*',
+        'app/services/**/{parsers,queries,requests,state,types,urls}.*',
         'app/utils/http.server.ts',
         'app/**/{state,tests}/*',
         'docs/**',
@@ -108,11 +108,19 @@ export default defineConfig({
       {
         // Vite discovers these while the first story loads, and the re-bundle it
         // triggers reloads the page under every other story on a cold cache.
+        // No stock story imports the service layer (`ky`, `query-string`), so
+        // without them the first story of a newly scaffolded service triggers
+        // the same reload against an already warm cache.
         optimizeDeps: {
           include: [
             '@vueless/storybook-dark-mode',
             'chromatic/isChromatic',
             'i18next',
+            'ky',
+            'msw-storybook-addon',
+            'msw-storybook-addon/csf3',
+            'msw/browser',
+            'query-string',
             'storybook/theming',
           ],
         },

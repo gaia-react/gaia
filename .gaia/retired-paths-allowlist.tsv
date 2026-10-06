@@ -54,3 +54,13 @@
 .gaia/cli/src/scaffold/service.ts	app/services/	Package-relative paths resolved against the package directory from the registry.
 .gaia/cli/src/scaffold/service.ts	test/mocks/	Package-relative paths resolved against the package directory from the registry.
 .gaia/cli/src/scaffold/templates/route/page.stories.tsx.tmpl	'test/stubs'	Import specifier resolved by the generated package's tsconfig paths, not a root file path.
+.gaia/cli/src/scaffold/layer.ts	app/services/	Package-relative paths resolved against the package directory from the registry.
+.gaia/cli/src/init/configure-data-layer.ts	app/	Package-relative paths joined to the package directory from the registry.
+.gaia/cli/src/init/configure-data-layer.ts	.storybook/	Package-relative paths joined to the package directory from the registry.
+.gaia/cli/src/init/configure-data-layer.ts	vite.config.ts	Package-relative paths joined to the package directory from the registry.
+.gaia/cli/src/init/configure-data-layer.ts	vitest.config.ts	Package-relative paths joined to the package directory from the registry.
+.gaia/cli/src/scaffold/route-data-story.ts	'test/mocks/url'	Import specifier resolved by the generated package's tsconfig paths, not a root file path.
+.gaia/cli/src/scaffold/route-data-story.ts	'test/stubs'	Import specifier resolved by the generated package's tsconfig paths, not a root file path.
+.gaia/cli/src/scaffold/route-service.ts	app/services/	Package-relative paths resolved against the package directory from the registry.
+.gaia/cli/src/scaffold/route.ts	app/services/	Help text naming package-relative paths resolved against the package directory from the registry.
+.gaia/cli/src/scaffold/route.ts	app/routes/	Help text naming package-relative paths resolved against the package directory from the registry.

@@ -66,11 +66,11 @@ See the `api-service` rule (`frontend/.claude/rules/api-service.md`) for the ful
 
 Each resource owns its `@msw/data` `Collection` in `frontend/test/mocks/{resource}/data.ts`. `frontend/test/mocks/database.ts` re-exports those collections and aggregates each domain's `reset*()` into one `resetTestData()`.
 
-Reads on a `Collection` are sync (`findFirst`, `findMany`); mutations are async (`await create()`, `await update()`, `await delete()`, `await deleteMany()`). The query API is predicate-based:
+Reads and removals on a `Collection` are sync (`findFirst`, `findMany`, `delete`, `deleteMany`, `clear`); only `create`, `createMany`, `update`, and `updateMany` are async, and awaiting a sync call fails the `await-thenable` lint rule. The query API is predicate-based:
 
 ```ts
 things.findFirst((q) => q.where({id: 'abc'}));
-things.findMany(undefined); // all
+things.findMany(); // all
 await things.update((q) => q.where({id: 'abc'}), {
   data(t) {
     t.name = 'new';
@@ -87,7 +87,7 @@ await things.update((q) => q.where({id: 'abc'}), {
 afterEach(resetTestData);
 ```
 
-Stories and browser-project tests run neither the MSW node server nor this reset. They read seed data from the `@msw/data` collections directly, so they treat those collections as read-only.
+Stories and browser-project tests run neither the MSW node server nor this reset. Stories mock the API through the wired `msw-storybook-addon`: a story passes handlers in `parameters.msw.handlers`, and a handler that serves a mutation reads the typed JSON body with `request.json()` (never `formData`) and answers `{data}`. Stories read seed data from the `@msw/data` collections directly, so they treat those collections as read-only.
 
 > [!warning] `resetHandlers` ≠ `resetTestData`
 > `frontend/test/test.server.ts` calls `server.resetHandlers()` in its own `afterEach`; this resets runtime handler overrides but **not** the database. The database reset is the separate `resetTestData()` wired into `frontend/test/setup.ts`.

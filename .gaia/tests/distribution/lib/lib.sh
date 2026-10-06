@@ -17,6 +17,7 @@
 #   capture_cli_stderr PATH    - declares PATH as this scenario's stderr capture file
 #   run_cli CMD [ARG...]       - runs CMD with stderr captured; stdout passes through
 #   fail_with_stderr MSG       - reports the captured stderr, then fails and exits 1
+#   install_chromium ROOT      - installs the tree's own Playwright Chromium
 
 # Resolve once; export so all functions can reference.
 PROJECT_ROOT="$(git rev-parse --show-toplevel)"
@@ -112,4 +113,15 @@ fail_with_stderr() {
   fi
   fail "$1"
   exit 1
+}
+
+# The tree's own Playwright, so the browser always matches the lockfile. CI
+# runners also need the OS libraries (`--with-deps`); a local run skips them
+# to avoid a sudo prompt.
+install_chromium() {
+  if [ -n "${CI:-}" ]; then
+    pnpm -C "$1/frontend" exec playwright install --with-deps chromium
+  else
+    pnpm -C "$1/frontend" exec playwright install chromium
+  fi
 }

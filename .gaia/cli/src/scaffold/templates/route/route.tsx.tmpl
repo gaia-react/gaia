@@ -1,18 +1,19 @@
-{{#hasLoaderI18n}}import type {RouterContextProvider} from 'react-router';
-{{/hasLoaderI18n}}{{#hasLoader}}import {useLoaderData} from 'react-router';
-{{/hasLoader}}{{#hasLoaderI18n}}import {getInstance} from '~/middleware/i18next';
+{{#hasLoaderI18n}}import {getInstance} from '~/middleware/i18next';
 {{/hasLoaderI18n}}import {{pageName}} from '~/pages/{{routeSlug}}/page';
-{{#needsRouteType}}import type {Route} from './+types/{{routeFile}}';
+{{#hasLoader}}import type {LoaderData} from '~/pages/{{routeSlug}}/types';
+{{/hasLoader}}{{#needsRouteType}}import type {Route} from './+types/{{routeFile}}';
 {{/needsRouteType}}
-{{#hasLoaderI18n}}export const loader = async ({context}: Route.LoaderArgs) => {
-  const i18next = getInstance(context as RouterContextProvider);
+{{#hasLoaderI18n}}export const loader = async ({
+  context,
+}: Route.LoaderArgs): Promise<LoaderData> => {
+  const i18next = getInstance(context);
   const title = i18next.t('{{i18nKey}}.meta.title', {ns: 'pages'});
   const description = i18next.t('{{i18nKey}}.meta.description', {ns: 'pages'});
 
   return {description, title};
 };
 
-{{/hasLoaderI18n}}{{#hasLoaderNoI18n}}export const loader = () => ({
+{{/hasLoaderI18n}}{{#hasLoaderNoI18n}}export const loader = (): LoaderData => ({
   description: 'Description of the {{routeSlug}} page',
   title: '{{pageName}}',
 });
@@ -24,17 +25,6 @@
   return {result: 'success'} as const;
 };
 
-{{/hasAction}}const {{routeName}}Route = () => {
-{{#hasLoader}}  const {description, title} = useLoaderData<typeof loader>();
-
-  return (
-    <>
-      <title>{title}</title>
-      <meta content={description} name="description" />
-      <{{pageName}} />
-    </>
-  );
-{{/hasLoader}}{{#noLoader}}  return <{{pageName}} />;
-{{/noLoader}}};
+{{/hasAction}}const {{routeName}}Route = () => <{{pageName}} />;
 
 export default {{routeName}}Route;

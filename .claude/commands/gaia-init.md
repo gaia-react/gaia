@@ -57,6 +57,8 @@ Every gate is one of two tiers. The tier is fixed here, do not reclassify by jud
 
 | Gate                      | Default on non-response        | Where  |
 | ------------------------- | ------------------------------ | ------ |
+| Backend casing            | `snake_case`                   | Step 2 |
+| TanStack Query            | `No`                           | Step 2 |
 | Sandbox recommendation    | `false` (don't recommend)      | Step 9 |
 | Team git isolation policy | flag omitted (key stays unset) | Step 9 |
 
@@ -92,6 +94,8 @@ When the user chose Automatic, first detect the project folder name (`basename "
 > | Project title             | {title-cased folder name}                                                               | Yes, re-run rename                                         |
 > | Slug                      | {folder name}                                                                           | Yes, re-run rename                                         |
 > | CODEOWNERS handle         | {gh-detected handle when available, else `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder} | Placeholder: one-line edit required. Detected handle: none |
+> | Backend casing            | snake_case                                                                              | Yes, rerun `gaia init configure-data-layer --casing`       |
+> | TanStack Query            | No                                                                                      | Yes, rerun `gaia init configure-data-layer --query true`   |
 > | Sandbox recommendation    | Not recommended                                                                         | Yes, reconfigure                                           |
 > | Team git isolation policy | Left unset, `/setup-gaia` asks later                                                    | Yes, reconfigure                                           |
 
@@ -105,6 +109,8 @@ Then apply the defaults and proceed without stopping (the user chose Automatic; 
 - CODEOWNERS (Q3): the gh-detected handle when available; otherwise the `REPLACE-WITH-YOUR-GITHUB-HANDLE` placeholder, flagged as a required Step 11 follow-up. Never a guessed or git-derived handle.
 - Project title (Q4): title-cased folder name.
 - kebab slug (Q5): folder name.
+- Backend casing (Step 2): `snake_case` (`CASING=snake`).
+- TanStack Query (Step 2): `No` (`QUERY=false`).
 - Sandbox recommendation (Step 9): not recommended (`false`).
 - Team git isolation policy (Step 9): omitted (the key stays unset).
 
@@ -195,7 +201,7 @@ basename "$(git rev-parse --show-toplevel)"
 
 Use this as the slug default. Derive the title default by replacing hyphens and underscores with spaces and applying title case (e.g. `my-cool-app` → `My Cool App`).
 
-Ask the two language questions one at a time (Q2 interpolates Q1's answer), then batch the three project-identity questions.
+Ask the two language questions one at a time (Q2 interpolates Q1's answer), then batch the three project-identity questions, then ask the two data-layer questions one at a time.
 
 ### Q1, Primary app language (asked alone)
 
@@ -258,6 +264,34 @@ These three go together as a group. Ask them in a single AskUserQuestion call:
 
 **kebab-case slug** derived from the title (default: folder name from above)
 
+### Q6, Backend casing (asked alone)
+
+_Non-response: SAFE-DEFAULT. Re-ask once, then `snake_case` (`CASING=snake`). Automatic mode: `snake_case`._
+
+Ask this as its own AskUserQuestion:
+
+> How does your backend name JSON fields?
+>
+> - snake_case (Recommended): the services layer converts between snake_case on the wire and camelCase in code.
+> - camelCase: the backend already sends camelCase, so the conversion is turned off.
+> - SDK client such as Supabase or Firebase: an SDK owns the requests; the Ky layer and its conversion stay as they are, and a domain backed by an SDK wraps the SDK in its request functions.
+> - Not sure: treated like snake_case, change it later.
+
+Map the answer to `CASING`: `snake_case` is `snake`, `camelCase` is `camel`, `SDK client such as Supabase or Firebase` is `sdk`, `Not sure` is `unsure`. Only `camel` changes a file; the SDK answer is not persisted anywhere.
+
+### Q7, TanStack Query (asked alone)
+
+_Non-response: SAFE-DEFAULT. Re-ask once, then `No` (`QUERY=false`). Automatic mode: `No`._
+
+Ask this as its own AskUserQuestion:
+
+> Add TanStack Query for client-owned data?
+>
+> - No (Recommended): route loaders own the data; nothing extra is installed.
+> - Yes: pins TanStack Query and wires its provider and Storybook decorator. You can also add it later with `gaia init configure-data-layer --query true`.
+
+Map the answer to `QUERY`: `No` is `false`, `Yes` is `true`. Step 2 asks no rendering-mode question.
+
 ## Step 3: Run the init CLI
 
 The deterministic surface lives behind `gaia init`. Each subcommand is idempotent and records its own state in `.gaia/init-state.json`, so a failed step can be resumed via `gaia init resume`.
@@ -269,9 +303,12 @@ Run sequentially, stopping at the first non-zero exit:
 ```bash
 .gaia/cli/gaia init strip-branding --title "<Project Title>"
 .gaia/cli/gaia init configure-i18n --locales "<comma-separated locale list>" --strip <STRIP_I18N>
+.gaia/cli/gaia init configure-data-layer --casing <CASING> --query <QUERY>
 .gaia/cli/gaia init rename --title "<Project Title>" --kebab "<kebab-slug>"
 .gaia/cli/gaia init wire-statusline --mode project
 ```
+
+`configure-data-layer` prints one JSON line on stdout, `{"changed": [...], "next": [...]}`. Run every command the `next` list names (with Query on that is `pnpm install`) before continuing.
 
 If any of these exit non-zero, surface the structured error verbatim (the CLI prints a JSON line to stderr) and stop. The user can re-run the failing command manually after addressing the cause, then resume with `.gaia/cli/gaia init resume`, completed steps are skipped automatically.
 
@@ -644,4 +681,4 @@ If any `gaia init <step>` invocation exits non-zero, the structured-error JSON o
 .gaia/cli/gaia init resume
 ```
 
-Resume reads `.gaia/init-state.json`, skips already-complete steps, and replays remaining steps using the saved arguments. Use `--from-step <N>` to force restart from a specific step (1-indexed: 1=strip-branding, 2=configure-i18n, 3=rename, 4=wire-statusline, 5=bootstrap-env, 6=write-project-config, 7=finalize).
+Resume reads `.gaia/init-state.json`, skips already-complete steps, and replays remaining steps using the saved arguments. Use `--from-step <N>` to force restart from a specific step (1-indexed: 1=strip-branding, 2=configure-i18n, 3=configure-data-layer, 4=rename, 5=wire-statusline, 6=bootstrap-env, 7=write-project-config, 8=finalize).

@@ -48,6 +48,8 @@ auditors:
       # The Playwright suite is executed test code and the sibling of test/**,
       # which this member already owns. It dispatched nobody until now.
       - "frontend/.playwright/**"
+      # Local ESLint rules the eslint config loads: lint config in code form.
+      - "frontend/eslint/**"
       # Root tooling that decides what runs: the registry and install policy,
       # what the pre-commit gate formats and lints, what the image builds and
       # the build context it sees, the environment contract, and the Node

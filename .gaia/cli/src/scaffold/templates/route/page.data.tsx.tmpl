@@ -1,0 +1,15 @@
+{{importLines}}
+
+{{checkboxHelper}}const {{pageName}} = () => {
+{{hookLines}}
+  return (
+    <>
+      <title>{{titleText}}</title>
+{{metaLine}}      <section className="flex flex-col gap-6 p-4">
+        <h1 className="text-2xl font-semibold">{{titleText}}</h1>
+{{dataMarkup}}{{formMarkup}}      </section>
+    </>
+  );
+};
+
+export default {{pageName}};
