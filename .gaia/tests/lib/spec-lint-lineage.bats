@@ -7,7 +7,6 @@
 REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
 LINT="$REPO_ROOT/.specify/extensions/gaia/lib/lint.sh"
 TEMPLATE="$REPO_ROOT/.specify/extensions/gaia/templates/spec-template.md"
-PRESET_TEMPLATE="$REPO_ROOT/.specify/presets/gaia/templates/spec-template.md"
 SPEC_MD="$REPO_ROOT/.claude/skills/gaia/references/spec.md"
 
 # Filled SPEC from the template with the given frontmatter line(s) in place of
@@ -33,10 +32,8 @@ extract_lineage_fence() {
   ' "$1"
 }
 
-@test "both templates are byte-identical and carry the lineage line" {
-  diff "$TEMPLATE" "$PRESET_TEMPLATE"
+@test "the template carries the lineage line" {
   grep -q '^lineage: \[\]$' "$TEMPLATE"
-  grep -q '^lineage: \[\]$' "$PRESET_TEMPLATE"
 }
 
 @test "filled template with lineage: [] lints clean" {

@@ -30512,7 +30512,6 @@ var STATE_DIRECTORY_RELATIVE = path42.join(".gaia", "local");
 var SETUP_STEPS = [
   "install-tools",
   "install-plugins",
-  "init-speckit",
   "chmod-statusline",
   "bootstrap-env"
 ];

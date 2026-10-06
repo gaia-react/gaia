@@ -17,7 +17,7 @@ tags: [decision, distribution, maintainer, cli, shell]
 
 ## The question
 
-Can the roughly 109 shipped `.sh` files (hooks, `.gaia/scripts`, spec-kit lib, CI helpers, statusline) fold into the single `.gaia/cli/gaia` Node binary, or into a separate shell binary, so that `/update-gaia` diffs get simpler and `.gaia/manifest.json` gets smaller? Pushback was invited if this misreads the CLI-versus-`.sh` split. It does.
+Can the roughly 109 shipped `.sh` files (hooks, `.gaia/scripts`, spec-lifecycle lib, CI helpers, statusline) fold into the single `.gaia/cli/gaia` Node binary, or into a separate shell binary, so that `/update-gaia` diffs get simpler and `.gaia/manifest.json` gets smaller? Pushback was invited if this misreads the CLI-versus-`.sh` split. It does.
 
 ## Why both premises fail
 
@@ -31,7 +31,7 @@ Can the roughly 109 shipped `.sh` files (hooks, `.gaia/scripts`, spec-kit lib, C
 - **Hot guards fire 21 times per Bash tool call.** `.claude/settings.json` runs 15 PreToolUse hooks on the `Bash` matcher plus 6 PostToolUse hooks, all invoked by path, on every Bash tool call. The bundled Node binary cold-starts at about 50 ms measured, versus a few ms for bash. Routing those through the binary adds on the order of one second of latency per Bash command. The guards already fast-path in pure bash and reach for heavier logic only on rare branches (for example `worthiness-presence-check.sh` exits early for any non-`gh pr merge` command).
 - **A Node-binary hook cannot fail-open.** Bash guards defensively skip when node is unavailable (`command -v node || exit 0`). Folded into the `#!/usr/bin/env node` binary, an unresolved node either fails closed (breaking every tool call) or the safety guard silently disappears. Both are worse than the bash skip.
 - **Sourced libs export functions, not commands.** The `lib/` scripts (`.claude/hooks/lib/*`, `with-ledger-lock.sh`, `title-normalize.sh`) are sourced (`. lib.sh`), so they are categorically not subcommands.
-- **Cross-directory ledger mutex.** `with-ledger-lock.sh` is sourced by both spec-kit lib scripts and `.gaia/scripts` (token-tally, ledger migration), all contending on one lock over `ledger.json`. A partial fold races a Node process against a bash process on the same lock across the macOS-mkdir and Linux-flock split. A blanket move is blocked unless the whole consumer group co-moves.
+- **Cross-directory ledger mutex.** `with-ledger-lock.sh` is sourced by both the spec-lifecycle lib scripts and `.gaia/scripts` (token-tally, ledger migration), all contending on one lock over `ledger.json`. A partial fold races a Node process against a bash process on the same lock across the macOS-mkdir and Linux-flock split. A blanket move is blocked unless the whole consumer group co-moves.
 - **Statusline latency budget.** `gaia-statusline.sh` renders on a tight budget that Node cold-start blows.
 - **Shared-class call sites.** `.claude/settings.json` and `.github/workflows/tests.yml` are both manifest class `shared`. Rewriting either to call the binary writes a `.gaia-merge/` conflict for every customizing adopter, the exact per-adopter merge cost the premise wants to remove.
 - **Binary-to-`.sh` reverse edges.** The binary already spawns `token-tally.sh` (via `gaia wiki chain`) and writes a `gaia-statusline.sh` invocation into settings during init, so no `.sh` reachable from `.gaia/cli/src` is a fold candidate regardless of its class.
@@ -52,7 +52,7 @@ Keep all shipped `.sh` as path-invoked files. Fold none into the Node binary; bu
 
 ## The one parked option (opportunistic, not scheduled)
 
-If the spec-kit area is already being refactored for other reasons, the roughly one dozen genuinely self-contained spec-kit executable lib leaves (`lint.sh`, `uat-write.sh`, `version-check.sh`, the archive and reconcile leaves) may consolidate into a `gaia spec <sub>` family, motivated purely by code locality, not manifest size. Book these costs up front:
+If the spec-lifecycle area is already being refactored for other reasons, the roughly one dozen genuinely self-contained scripts under `.specify/extensions/gaia/lib/` (`lint.sh`, `uat-write.sh`, the archive and reconcile leaves) may consolidate into a `gaia spec <sub>` family, motivated purely by code locality, not manifest size. Book these costs up front:
 
 - delete and re-author the release-excluded bats suites into Vitest, accepting loss of bash-native mutex and concurrency coverage;
 - respect the `with-ledger-lock` co-move constraint (the allocator and ledger-update scripts cannot move unless their `.gaia/scripts` consumers move too);

@@ -260,7 +260,7 @@ write_payload() {
 
 @test "jq absent: block-audit-loop-write refuses a write under the loop state" {
   local json
-  json=$(write_payload ".gaia/local/protected/audit-loop/feature.json")
+  json=$(write_payload ".gaia/local/protected/audit-loop/state.json")
   without_jq block-audit-loop-write.sh "$json"
   assert_blocked_by_exit
 }

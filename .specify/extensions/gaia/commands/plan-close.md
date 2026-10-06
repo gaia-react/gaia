@@ -1,17 +1,16 @@
 ---
-name: speckit-gaia-plan-close
 description: Close a plan after implementation+merge. Offers wiki-promote for the plan's consolidated SUMMARY.md, cold-consolidates an out-of-band merge, then early-reaps the local plan folder once cost is represented in cost.jsonl.
 ---
 
 # Plan Close, Lifecycle
+
+**Status:** no automatic trigger. Run it by hand: read this file and follow it with the plan id.
 
 Closes a spec-less `PLAN-NNN` after its implementing PR has merged. Mirrors `spec-close`, with one difference: a plan has no authoring-time `wiki_promote_default` decision, so this command makes the promotion ask itself. Three responsibilities:
 
 1. **Drain a deferred wiki-promote**, if a prior run of this command accepted the promotion offer but the PR had not yet merged.
 2. **Offer wiki-promote**, a human ask, gated (no size heuristic, no default-on).
 3. **Cold-consolidate and reap the local plan folder**, once the wiki side is settled (or declined) and the ledger records the merge.
-
-Invokable manually as `/speckit-gaia-plan-close [PLAN-NNN]`. Nothing auto-triggers it today; a plan reaches this command only by explicit invocation.
 
 ## Step 1: Resolve target plan
 
@@ -38,7 +37,7 @@ Test for `.gaia/local/cache/wiki-promote/<plan_id>.json`.
 
 1. Read the cache. Run `gh pr list --head "$branch" --state merged --json number,mergedAt,url,body --limit 1`.
 2. If still unmerged: report `<plan_id>: PR for branch <branch> not yet merged. Re-run after merge.` and exit. Do not delete the cache. Do not proceed to Step 4, the plan is not closed yet.
-3. If merged: re-invoke `/speckit-gaia-wiki-promote` by calling the Skill tool to run that command with the plan ID as its argument, and include the exact literal string `drained: true` in the invoking message. Wiki-promote's Step 3 detects the merged PR, runs Steps 4-7, and deletes the cache. **Wiki-promote's Step 8 chain-back is suppressed by that literal token** (this command handles the ledger reconcile and reap itself, in Step 4 below), emit it verbatim, see wiki-promote Step 8 for the guard.
+3. If merged: read `.specify/extensions/gaia/commands/wiki-promote.md` and follow it, with the plan id and the exact literal string `drained: true` stated in the instruction. Wiki-promote's Step 3 detects the merged PR, runs Steps 4-7, and deletes the cache. **Wiki-promote's Step 8 chain-back is suppressed by that literal token** (this command handles the ledger reconcile and reap itself, in Step 4 below), emit it verbatim, see wiki-promote Step 8 for the guard.
 
 **If no cache exists**, there is nothing to drain (never offered, offered-and-declined on a prior run, or this is the first run): proceed to Step 3.
 
@@ -56,10 +55,10 @@ Present the promotion offer via `AskUserQuestion`:
 
 No default-on and no size heuristic, every plan close asks.
 
-**On accept:** invoke `/speckit-gaia-wiki-promote` by calling the Skill tool to run that command with `<plan_id>` as its argument, including the exact literal string `drained: true` in the invoking message (this command always handles the ledger reconcile and reap itself in Step 4, so wiki-promote's Step 8 chain-back is suppressed here too, the same guard as Step 2's drain).
+**On accept:** read `.specify/extensions/gaia/commands/wiki-promote.md` and follow it, with `<plan_id>` and the exact literal string `drained: true` stated in the instruction (this command always handles the ledger reconcile and reap itself in Step 4, so wiki-promote's Step 8 chain-back is suppressed here too, the same guard as Step 2's drain).
 
 - If wiki-promote completes a full run (PR already merged): pages are written and committed; proceed to Step 4 in this same run.
-- If wiki-promote defers (PR not yet merged): it writes the drain cache and exits. Report `<plan_id>: promotion accepted; awaiting PR merge for branch <branch>. Re-run /speckit-gaia-plan-close <plan_id> after merge.` and exit. Do not proceed to Step 4, the plan is not closed yet.
+- If wiki-promote defers (PR not yet merged): it writes the drain cache and exits. Report `<plan_id>: promotion accepted; awaiting PR merge for branch <branch>. Re-run `.specify/extensions/gaia/commands/plan-close.md` with `<plan_id>` after merge.` and exit. Do not proceed to Step 4, the plan is not closed yet.
 
 **On decline:** no wiki page is written. The plan counts as **drained**, there is nothing left pending; proceed directly to Step 4.
 

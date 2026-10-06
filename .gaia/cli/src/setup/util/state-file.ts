@@ -2,7 +2,7 @@
  * Shared IO + schema for `.gaia/local/setup-state.json`.
  *
  * Every clone needs to run a one-shot per-machine setup (install React
- * Doctor, Playwright CLI, Serena MCP, plugins, init spec-kit, chmod the
+ * Doctor, Playwright CLI, Serena MCP, plugins, chmod the
  * statusline). The slash command `/setup-gaia` orchestrates the steps;
  * this state file records progress so a partial run can resume
  * idempotently.
@@ -33,7 +33,6 @@ export const STATE_DIRECTORY_RELATIVE = path.join('.gaia', 'local');
 export const SETUP_STEPS = [
   'install-tools',
   'install-plugins',
-  'init-speckit',
   'chmod-statusline',
   'bootstrap-env',
 ] as const;

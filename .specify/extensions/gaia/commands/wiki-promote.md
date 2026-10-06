@@ -1,17 +1,18 @@
 ---
-name: speckit-gaia-wiki-promote
 description: Promote merged SPEC or plan content into the GAIA wiki.
 ---
 
-# Wiki Promote, `after_implement` hook
+# Wiki Promote
 
-Fires automatically on `/speckit-implement` completion for the spec arm (`SPEC-NNN`); also invokable directly with a `PLAN-NNN` id for the plan arm (from `plan-close`, on an accepted promotion offer). Reads the consolidated `SUMMARY.md`, detects whether the implementing PR has merged, and either promotes content into `wiki/` or persists a defer flag.
+**Status:** no automatic trigger. Run it by hand: read this file and follow it with the SPEC or plan id.
+
+Takes a `SPEC-NNN` id for the spec arm, or a `PLAN-NNN` id for the plan arm (from `plan-close`, on an accepted promotion offer). Reads the consolidated `SUMMARY.md`, detects whether the implementing PR has merged, and either promotes content into `wiki/` or persists a defer flag.
 
 ## Step 1 - Resolve the source
 
-The hook fires on `/speckit-implement` completion for the spec arm. The agent has the SPEC ID in conversation context (the implementer agent referenced it). For the plan arm, the caller (`plan-close`) passes the `PLAN-NNN` id directly as the invocation argument.
+For the spec arm, the person running this runbook supplies the SPEC id. For the plan arm, the caller (`plan-close`) passes the `PLAN-NNN` id directly as the invocation argument.
 
-Identify the id from the running conversation or invocation argument. If ambiguous on the spec arm, fall back to the most-recently-modified `.gaia/local/specs/SPEC-*/SUMMARY.md` (or `SPEC.md` under the legacy fallback below), deriving the SPEC ID from the parent folder name (excluding `-revised-contracts` and `-refit-decision` suffixes).
+Identify the id from the invocation argument or the person's instruction. If ambiguous on the spec arm, fall back to the most-recently-modified `.gaia/local/specs/SPEC-*/SUMMARY.md` (or `SPEC.md` under the legacy fallback below), deriving the SPEC ID from the parent folder name (excluding `-revised-contracts` and `-refit-decision` suffixes).
 
 Resolve the source path by id shape:
 
@@ -67,7 +68,7 @@ If `$pr_json` is `[]` (no merged PR for this branch):
 
    (Cache directory creation: `mkdir -p .gaia/local/cache/wiki-promote/`. The `.gaia/local/` line in `.gitignore` covers this path.)
 
-2. Exit with: `wiki-promote: <id> deferred, awaiting PR merge for branch <current_branch>. Drain via /speckit-gaia-spec-close or /speckit-gaia-plan-close (matching the id shape) after merge.`
+2. Exit with: `wiki-promote: <id> deferred, awaiting PR merge for branch <current_branch>. Drain by reading `.specify/extensions/gaia/commands/spec-close.md` (or `plan-close.md`, matching the id shape) and following it after merge.`
 
 If `$pr_json` contains a merged PR:
 
@@ -297,7 +298,7 @@ Emit a structured payload to stdout (the next agent reads it as conversation con
 }
 ```
 
-Then invoke `/gaia-wiki sync` by calling the Skill tool (skill `gaia-wiki`, args `sync`), do not merely print the line below; it states the intent, it is not the call:
+Then run `/gaia-wiki sync`; do not merely print the line below, it states the intent, it is not the run:
 
 > Invoking `/gaia-wiki sync` to handle the branch-aware commit step for these pages.
 
@@ -321,21 +322,21 @@ Wiki promote complete for <id>.
 
 If any pages were skipped due to hand-edit detection, include a one-line note:
 
-`Hand-edited skips can be resolved by re-running /speckit-gaia-spec-close <id> --force (or /speckit-gaia-plan-close for a PLAN-NNN id; TBD; for now resolve manually).`
+`Hand-edited skips can be resolved by reading `.specify/extensions/gaia/commands/spec-close.md` (or `plan-close.md` for a PLAN-NNN id) and following it with `--force` (TBD; for now resolve manually).`
 
 ## Step 8 - Chain to close (immediate-merge path only)
 
 This step fires only when Step 3 found a merged PR and Steps 4–7 ran full. On the deferred path, Step 3 exits before reaching here. On the silent-skip path (`wiki_promote_default: no`) and the preview path (`--preview`), Step 2 exits before reaching here. So an unconditional invoke at this step is safe, the only way to land here is the immediate-merge full-run.
 
-**Suppression guard.** If wiki-promote was re-fired from `/speckit-gaia-spec-close`'s or `/speckit-gaia-plan-close`'s Step 2 drain (deferred path), the closer passes the literal flag `drained: true` in the invocation that triggered this run. Skip this step **only when** the invoking message contains the exact string `drained: true`, match the literal token; do not infer "drained" from the surrounding conversation or from the fact that a cache was cleared. When `drained: true` is present, the closer is the parent and will handle disposition itself once wiki-promote returns; skip Step 8.
+**Suppression guard.** If wiki-promote was re-run from `spec-close.md`'s or `plan-close.md`'s Step 2 drain (deferred path), the closer passes the literal flag `drained: true` in the instruction that triggered this run. Skip this step **only when** the instruction contains the exact string `drained: true`, match the literal token; do not infer "drained" from the surrounding conversation or from the fact that a cache was cleared. When `drained: true` is present, the closer is the parent and will handle disposition itself once wiki-promote returns; skip Step 8.
 
-Otherwise, route by id shape and invoke the matching closer directly by calling the Skill tool, the lines below state the intent, they are not a substitute for the call:
+Otherwise, route by id shape and run the matching closer directly, the lines below state the intent, they are not a substitute for the run:
 
-- `SPEC-NNN` → invoke `/speckit-gaia-spec-close <id>`.
-- `PLAN-NNN` → invoke `/speckit-gaia-plan-close <id>`.
+- `SPEC-NNN` → read `.specify/extensions/gaia/commands/spec-close.md` and follow it, with `<id>`.
+- `PLAN-NNN` → read `.specify/extensions/gaia/commands/plan-close.md` and follow it, with `<id>`.
 
-> Invoking the closer matching this id. wiki-promote completed inline; the cache is already cleared. The closer will skip drain and go straight to the disposition prompt.
+> Running the closer matching this id. wiki-promote completed inline; the cache is already cleared. The closer will skip drain and go straight to the disposition prompt.
 
 This presents the user with the close flow's disposition prompt. The wiki content is already committed (Step 6's wiki-sync handoff); the disposition only affects `.gaia/local/specs/<id>/` (spec arm) or `.gaia/local/plans/<id>/` (plan arm).
 
-If the closer fails or refuses, exit with the warning `wiki-promote: pages staged and committed; close chain failed. Run /speckit-gaia-spec-close <id> or /speckit-gaia-plan-close <id> manually to dispose of the artifact.` Do NOT retry the chain, the wiki side is already settled.
+If the closer fails or refuses, exit with the warning `wiki-promote: pages staged and committed; close chain failed. Read `.specify/extensions/gaia/commands/spec-close.md` or `plan-close.md` and follow it with `<id>` manually to dispose of the artifact.` Do NOT retry the chain, the wiki side is already settled.

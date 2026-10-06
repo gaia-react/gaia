@@ -44,7 +44,6 @@ GAIA ships clean. `/gaia-init` does the last-mile setup:
 - **Installs dependencies.** Bootstraps pnpm via `corepack`, runs `pnpm install`.
 - **Configures i18n.** Prompts for your language set, scaffolds the matching language files, updates the component and Storybook wiring.
 - **Installs Claude skills, plugins, and MCP servers.** [React Doctor](https://github.com/millionco/react-doctor), [Playwright CLI](https://github.com/microsoft/playwright-cli), `typescript-lsp`, [`claude-obsidian`](https://github.com/AgriciDaniel/claude-obsidian), and [Serena](https://github.com/oraios/serena) (LSP-backed symbol search and editing).
-- **Initializes [spec-kit](https://github.com/github/spec-kit)** with the bundled GAIA extension and preset, so `/gaia-spec` and the spec-kit lifecycle hooks (constitution check, self-review, immutability lint, Playwright UAT auto-write, wiki-promote) are wired before your first feature.
 
 You end up with a clean app shell and a fully-configured Claude workflow.
 
@@ -68,7 +67,7 @@ Most setups treat Claude as a tool you hold: bolt a `CLAUDE.md` onto the root an
 - **Best practices baked in, debt blocked at the source.** Rules encode the conventions directly instead of hoping Claude infers them from whatever's already in the repo, and block debt-accumulating patterns from being written at all: untyped exports, untested components, hardcoded strings, a11y gaps.
 - **Consistently clean code.** 1,450 lint rules, strict TypeScript, Prettier, and Knip enforce style, correctness, and dead-code detection on every file Claude touches. No negotiation, no drift.
 - **Bundled skills wired in for write-time quality.** `typescript`, `react-code`, `tailwind`, `tdd`, `playwright-cli`, `skeleton-loaders`, `eslint-fixes`, and `a11y-fixes` load on demand when Claude edits matching files or a tool reports a fixable violation. The `tdd` skill drives a red-green-refactor loop tailored for Vitest, Storybook play functions, and MSW.
-- **Specs that turn into tests, automatically.** `/gaia-spec` authors an immutable SPEC artifact through Socratic discovery. Before any source code is written, the SPEC's UATs render as red-state Playwright e2e specs. The implementer's first job is turning red green. The PO writes acceptance criteria in plain English, and the test harness is generated.
+- **Specs that turn into tests.** `/gaia-spec` authors an immutable SPEC artifact through Socratic discovery. The SPEC's UATs are written before any source code, and the uat-write runbook renders them as red-state Playwright e2e specs when you run it by hand. The implementer's first job is turning red green. The PO writes acceptance criteria in plain English, and the test harness is generated from them.
 - **Code-review audit before every merge.** A manager agent scans the branch diff for security (XSS, SSRF, IDOR, secret exposure, timing attacks, dependency vulns), performance, architecture, code smells, and antipatterns. Three specialists (React Patterns & Accessibility, TypeScript & Architecture, Translation) run in parallel alongside `react-doctor` and `knip` (whose output is advisory and never blocks), with extension files in `.claude/agents/code-review-audit/` injecting library-specific rules at runtime. Findings are tiered **Critical**, **Important**, and **Suggestions**. The merge blocks until no Critical or Important issues remain. Runs locally.
 - **Quality gate before commit.** Typecheck, lint, tests, and build must all pass. Not "mostly clean." Actually clean.
 - **Guardrails against destructive moves.** A filesystem deny list blocks reads of `.env`, `**/secrets/*`, `**/*credential*`, `**/*.pem`, and `**/*.key`. A tool allow list scopes Bash and Edit surfaces. Pre-tool-use hooks reject dangerous commands at the source: destructive git on `main`, `eslint.config` edits, `rm -rf`, and writes to env/secret/lockfile files. All in `.claude/hooks/`, wired through `.claude/settings.json`.
@@ -121,7 +120,7 @@ GAIA ships a complete, opinionated Claude Code workflow. Everything is wired in 
 <table>
 <thead><tr><th nowrap>Command</th><th>What it does</th></tr></thead>
 <tbody>
-<tr><td><code>/gaia-spec</code></td><td>Author an immutable SPEC through Socratic discovery: two-gate ceremony, self-review pass, Playwright UATs auto-generated before implementation begins. Hands off to <code>/gaia-plan</code></td></tr>
+<tr><td><code>/gaia-spec</code></td><td>Author an immutable SPEC through Socratic discovery: two-gate ceremony, self-review pass, UATs written into the SPEC before implementation begins, renderable to red-state Playwright specs by running the uat-write runbook by hand. Hands off to <code>/gaia-plan</code></td></tr>
 <tr><td><code>/gaia-plan</code></td><td>Plan a complex feature. Claude structures the work, you approve, then an orchestrator drives focused subagents through execution</td></tr>
 <tr><td><code>/gaia-handoff</code></td><td>Generate a comprehensive session handoff document so you can clear context with confidence that nothing gets lost</td></tr>
 <tr><td><code>/gaia-pickup</code></td><td>Restore context from a handoff and continue work</td></tr>

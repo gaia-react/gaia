@@ -50,7 +50,7 @@ Default-deny. Any path in neither list below is denylisted by default; allowlist
 | `.claude/commands/`         | Slash command definitions.                       |
 | `.claude/agents/`           | Sub-agent definitions.                           |
 | `.gaia/statusline/`         | Statusline scripts.                              |
-| `.specify/extensions/gaia/` | GAIA spec-kit extension, excluding `templates/`. |
+| `.specify/extensions/gaia/` | GAIA's spec-lifecycle scripts and runbooks, excluding `templates/`. |
 | `.gaia/manifest.json`       | Distribution manifest.                           |
 
 ### Denylist (never modify)
@@ -61,8 +61,8 @@ Default-deny. Any path in neither list below is denylisted by default; allowlist
 | `wiki/`                               | Knowledge base; human-curated.                                          |
 | `studio/`                             | Private strategy vault; human-curated.                                  |
 | `website/`                            | Marketing/docs site; human-curated.                                     |
-| `.specify/specs/`                     | spec-kit specs.                                                         |
-| `.specify/memory/`                    | spec-kit memory.                                                        |
+| `.specify/specs/`                     | Denied defensively: a project migrated from an older GAIA may still hold a leftover spec-kit specs tree. |
+| `.specify/memory/`                    | Denied defensively: a project migrated from an older GAIA may still hold a leftover spec-kit memory tree. |
 | `.gaia/local/specs/`                  | GAIA spec artifacts.                                                    |
 | `.specify/extensions/gaia/templates/` | Template literals; mutating these affects every adopter.                |
 | `.github/workflows/`                  | Workflow files; covers self-modification of the triage workflow itself. |

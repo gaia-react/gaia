@@ -1,16 +1,15 @@
 ---
-name: speckit-gaia-spec-close
 description: Close a SPEC after implementation+merge. Optional drain of deferred wiki-promote, cold-consolidates an out-of-band merge into SUMMARY.md, then early-reaps the local SPEC folder once cost is represented in cost.jsonl.
 ---
 
 # Spec Close, Lifecycle
 
+**Status:** no automatic trigger. Run it by hand: read this file and follow it with the SPEC id. A person also reaches it from `wiki-promote` Step 8 when they run wiki-promote by hand on the immediate-merge path; the deferred path and retroactive cleanup use the same manual run.
+
 Closes a SPEC after its implementing PR has merged. Two responsibilities:
 
-1. **Drain a deferred wiki-promote**, if `/speckit-implement` saw the PR unmerged and cached a defer flag.
+1. **Drain a deferred wiki-promote**, if a wiki-promote run saw the PR unmerged and cached a defer flag.
 2. **Cold-consolidate and reap the local SPEC folder**, once the wiki side is settled and the ledger records the merge.
-
-Auto-triggered from `wiki-promote` Step 8 on the immediate-merge path. Also invokable manually as `/speckit-gaia-spec-close [SPEC-NNN]` for the deferred path or for retroactive cleanup.
 
 ## Step 1: Resolve target SPEC
 
@@ -37,7 +36,7 @@ Test for `.gaia/local/cache/wiki-promote/<spec_id>.json`.
 
 1. Read the cache. Run `gh pr list --head "$branch" --state merged --json number,mergedAt,url,body --limit 1`.
 2. If still unmerged: report `<spec_id>: PR for branch <branch> not yet merged. Re-run after merge.` and exit. Do not delete the cache. Do not proceed to disposition, the SPEC is not closed yet.
-3. If merged: re-invoke `/speckit-gaia-wiki-promote` by calling the Skill tool to run that command with the SPEC ID as its argument, and include the exact literal string `drained: true` in the invoking message. Wiki-promote's Step 3 detects the merged PR, runs Steps 4–7, and deletes the cache. **Wiki-promote's Step 8 chain is suppressed in this drain context** to avoid re-entering spec-close: its Step 8 suppression guard matches that literal `drained: true` token in the invocation, so emit it verbatim, not a paraphrase, and do not rely on the surrounding conversation to convey it (see wiki-promote Step 8 for the guard).
+3. If merged: read `.specify/extensions/gaia/commands/wiki-promote.md` and follow it, with the SPEC id and the exact literal string `drained: true` stated in the instruction. Wiki-promote's Step 3 detects the merged PR, runs Steps 4–7, and deletes the cache. **Wiki-promote's Step 8 chain is suppressed in this drain context** to avoid re-entering spec-close: its Step 8 suppression guard matches that literal `drained: true` token in the instruction, so emit it verbatim, not a paraphrase, and do not rely on the surrounding conversation to convey it (see wiki-promote Step 8 for the guard).
 
 **If no cache exists** (immediate-merge or never-promoted path): skip drain. Proceed to Step 3.
 
@@ -104,7 +103,7 @@ If wiki content was promoted, also surface: `Run /gaia-wiki consolidate periodic
 
 ## Notes
 
-- **This flow does NOT re-summarize into the wiki.** `wiki-promote` (the `after_implement` hook) already wrote `wiki/<domain>/<slug>.md` pages with `promoted_from: <spec_id>` provenance at implement time. Re-summarizing here would duplicate. To consolidate redundant or superseded wiki pages across SPECs, run `/gaia-wiki consolidate`.
+- **This flow does NOT re-summarize into the wiki.** `wiki-promote` already wrote `wiki/<domain>/<slug>.md` pages with `promoted_from: <spec_id>` provenance when it was run. Re-summarizing here would duplicate. To consolidate redundant or superseded wiki pages across SPECs, run `/gaia-wiki consolidate`.
 - This command never touches `wiki/`. The wiki-promote → wiki-sync chain owns wiki writes.
 - Deletion is local-only: `.gaia/local/` is gitignored, so the SPEC folder is not recoverable from git history once deleted. The durable record is `cost.jsonl`, the `specs`/`plans` ledgers, and the merged PR.
 - The chain from wiki-promote Step 8 fires only on the immediate-merge path. The deferred-drain path runs spec-close once and does not re-enter via the chain (see Step 2's `drained: true` guard).

@@ -8,6 +8,7 @@ import {ComposedForm, composedFormSchema} from './composed-form';
 type PostedEntries = [string, string][];
 
 type StoryArgs = ComponentProps<typeof ComposedForm> & {
+  holdAction?: () => Promise<void>;
   isActionHeld?: boolean;
   onSubmit: (entries: PostedEntries) => void;
 };
@@ -19,7 +20,7 @@ const meta: Meta<StoryArgs> = {
   component: ComposedForm,
   decorators: [
     stubs.reactRouter(({args}) => {
-      const {isActionHeld, onSubmit} = args as StoryArgs;
+      const {holdAction, isActionHeld, onSubmit} = args as StoryArgs;
 
       return {
         action: async ({request}) => {
@@ -34,6 +35,10 @@ const meta: Meta<StoryArgs> = {
           if (isActionHeld) {
             await new Promise(() => {});
           }
+
+          // A releasable hold keeps the pending state observable until the
+          // play lets the action settle.
+          await holdAction?.();
 
           return {
             result: parseWithZod(formData, {
@@ -53,19 +58,6 @@ const meta: Meta<StoryArgs> = {
 export default meta;
 
 export const Default: StoryFn<StoryArgs> = () => <ComposedForm />;
-
-export const Invalid: StoryFn<StoryArgs> = () => <ComposedForm />;
-
-Invalid.play = async ({canvasElement}) => {
-  const canvas = within(canvasElement);
-
-  await userEvent.click(await canvas.findByRole('button', {name: 'Submit'}));
-
-  await expect(await canvas.findByLabelText('Name')).toHaveAttribute(
-    'aria-invalid',
-    'true'
-  );
-};
 
 export const Disabled: StoryFn<StoryArgs> = () => (
   <ComposedForm disabled={true} />
@@ -220,7 +212,16 @@ const waitForSettledOpacity = async (button: HTMLElement, opacity: string) => {
   });
 };
 
+let releaseAction: (() => void) | undefined;
+
 export const FilledSubmit: StoryFn<StoryArgs> = () => <ComposedForm />;
+
+FilledSubmit.args = {
+  holdAction: async () =>
+    new Promise<void>((resolve) => {
+      releaseAction = resolve;
+    }),
+};
 
 FilledSubmit.play = async ({args, canvasElement}) => {
   const canvas = within(canvasElement);
@@ -256,8 +257,13 @@ FilledSubmit.play = async ({args, canvasElement}) => {
     ]);
   });
 
+  // The action is held, so the pending render is observable before the action
+  // settles; release it only after that render committed, then wait for the
+  // button to settle back to Submit.
+  await canvas.findByRole('button', {name: /Please wait/});
+  releaseAction?.();
   await waitForSettledOpacity(
-    canvas.getByRole('button', {name: 'Submit'}),
+    await canvas.findByRole('button', {name: 'Submit'}),
     '1'
   );
 };

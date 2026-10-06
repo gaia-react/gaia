@@ -805,7 +805,7 @@ This failure mode belongs to `gh` below 2.99.0. When `gh pr merge` exits non-zer
 gh pr view <N> --json state
 ```
 
-If `state == "MERGED"`, do NOT retry the merge. Treat it as merged, run any post-merge steps (wiki-sync, spec-close, etc.), and clean up through [[#Cleanup under worktree isolation]] above rather than the feature-branch sequence. Retrying compounds the problem and can produce a duplicate squash on a non-existent branch.
+If `state == "MERGED"`, do NOT retry the merge. Treat it as merged, run any post-merge steps (wiki-sync, etc.), and clean up through [[#Cleanup under worktree isolation]] above rather than the feature-branch sequence. Retrying compounds the problem and can produce a duplicate squash on a non-existent branch.
 
 **With `--auto`, the exit status depends on the merge state at call time**, so it is not a property of the isolation mode alone. When GitHub queues the merge behind remaining checks, `gh` deletes neither branch and exits 0, and the repository's own head-branch deletion setting is then the only thing that removes the remote branch once the merge lands. When the pull request is immediately mergeable, `gh` merges on the spot and takes the same local delete path a plain merge takes, so a worktree run on a `gh` below 2.99.0 sees the failure above. Neither case revises what the poll reports.
 
