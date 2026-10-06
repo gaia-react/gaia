@@ -54,8 +54,8 @@ done
 [ "$(json_get "$QUERY_ON_JSON" "parsed.next.includes('pnpm install')")" = "true" ] \
   || { fail "configure-data-layer --query true did not list pnpm install in next (got: $QUERY_ON_JSON)"; exit 1; }
 
-log "pnpm install (non-frozen: the lockfile gains TanStack Query)"
-run_logged "pnpm install" "$WORK/install.log" pnpm -C "$SCAFFOLD" install
+log "pnpm install (--no-frozen-lockfile: CI defaults to frozen, and the lockfile gains TanStack Query)"
+run_logged "pnpm install" "$WORK/install.log" pnpm -C "$SCAFFOLD" install --no-frozen-lockfile
 
 QUERY_VERSION="$(node -e '
   const manifest = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
