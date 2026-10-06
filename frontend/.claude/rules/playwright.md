@@ -66,9 +66,10 @@ E2E tests run against this tree's `pnpm dev` server, on the port
 `bash .gaia/scripts/ports.sh` prints (5173 in the main checkout). Playwright
 refuses to reuse a server on that port that is not this tree's own. A second
 `webServer` serves the built `storybook-static` on this tree's Storybook port for
-the story scan (see Accessibility scans). MSW browser
-worker is active in dev, so tests exercise the real route/loader/action stack with MSW
-intercepting API calls. No separate mock server is needed for e2e.
+the story scan (see Accessibility scans). With
+`MSW_ENABLED=true` the dev server mocks both browser and SSR requests (wiring in
+`wiki/dependencies/MSW.md`), so tests exercise the real route/loader/action stack
+with MSW intercepting API calls. No separate mock server is needed for e2e.
 
 For tests that mutate MSW in-memory data, call `resetTestData()` in
 `test.afterEach` to restore seed state:

@@ -14,7 +14,7 @@ End-to-end testing. Tests live in `frontend/.playwright/e2e/*.spec.ts`. Config i
 
 ## Architecture
 
-E2E tests run against this tree's `pnpm dev` server, on the port `bash .gaia/scripts/ports.sh` prints (5173 in the main checkout). Playwright refuses to reuse a server on that port that is not this tree's own, and an unprovisioned linked worktree refuses to run (see [[Worktrees]]). MSW's browser service worker is active in dev, so tests exercise the full React Router loader/action stack with MSW intercepting API calls; no separate mock server required.
+E2E tests run against this tree's `pnpm dev` server, on the port `bash .gaia/scripts/ports.sh` prints (5173 in the main checkout). Playwright refuses to reuse a server on that port that is not this tree's own, and an unprovisioned linked worktree refuses to run (see [[Worktrees]]). With `MSW_ENABLED=true` the dev server mocks both browser and SSR requests, so tests exercise the full React Router loader/action stack with MSW intercepting API calls (see [[MSW]]); no separate mock server required.
 
 Tests that mutate MSW in-memory state call `resetTestData()` from `frontend/test/mocks/database.ts` in `test.afterEach` to restore seed data between tests.
 
