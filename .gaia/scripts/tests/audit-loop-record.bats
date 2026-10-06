@@ -71,9 +71,13 @@ outside_equal() {
   original_start="$(byte_offset "$1" "$START")"
   result_start="$(byte_offset "$2" "$START")"
   [ "$original_start" = "$result_start" ] || return 1
-  head -c "$original_start" "$1" > "$TEMPORARY_DIRECTORY/o.pre"
-  head -c "$result_start" "$2" > "$TEMPORARY_DIRECTORY/r.pre"
-  cmp -s "$TEMPORARY_DIRECTORY/o.pre" "$TEMPORARY_DIRECTORY/r.pre" || return 1
+  # BSD head rejects `-c 0`, and both starts are equal here, so a section at
+  # byte 0 has no prefix to compare.
+  if [ "$original_start" -gt 0 ]; then
+    head -c "$original_start" "$1" > "$TEMPORARY_DIRECTORY/o.pre"
+    head -c "$result_start" "$2" > "$TEMPORARY_DIRECTORY/r.pre"
+    cmp -s "$TEMPORARY_DIRECTORY/o.pre" "$TEMPORARY_DIRECTORY/r.pre" || return 1
+  fi
   original_end="$(byte_offset "$1" "$END")"
   result_end="$(byte_offset "$2" "$END")"
   tail -c "+$(( original_end + ${#END} + 1 ))" "$1" > "$TEMPORARY_DIRECTORY/o.post"
@@ -150,6 +154,17 @@ record_offline() {
   record_offline "$TEMPORARY_DIRECTORY/once.md" "$TEMPORARY_DIRECTORY/twice.md"
   [ "$status" -eq 0 ]
   cmp -s "$TEMPORARY_DIRECTORY/once.md" "$TEMPORARY_DIRECTORY/twice.md"
+}
+
+@test "offline: a section starting on line 1 is replaced, the trailing bytes kept" {
+  values 2 '{"code-audit-frontend":2}' 0
+  printf '%s\nold\n%s\n\nafter line\n' "$START" "$END" > "$TEMPORARY_DIRECTORY/in.md"
+  record_offline "$TEMPORARY_DIRECTORY/in.md" "$TEMPORARY_DIRECTORY/out.md"
+  [ "$status" -eq 0 ]
+  [ "$(sed -n 1p "$TEMPORARY_DIRECTORY/out.md")" = "$START" ]
+  outside_equal "$TEMPORARY_DIRECTORY/in.md" "$TEMPORARY_DIRECTORY/out.md"
+  parse_section "$TEMPORARY_DIRECTORY/out.md" > "$TEMPORARY_DIRECTORY/parsed"
+  [ "$(cat "$TEMPORARY_DIRECTORY/parsed")" = "2 0 code-audit-frontend=2" ]
 }
 
 @test "offline: a hand-edited higher count or garbage text is replaced by the computed one" {

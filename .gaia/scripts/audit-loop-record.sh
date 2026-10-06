@@ -228,12 +228,15 @@ fi
 
 # ---------------------------------------------------------------------------
 # Splice. head -n and tail -n keep the outside bytes exactly, including a
-# missing final newline.
+# missing final newline. BSD head rejects `-n 0` as an illegal line count, so
+# a section starting on line 1 skips head rather than asking it for nothing.
 # ---------------------------------------------------------------------------
 
 if [ "$START_MARKER_COUNT" -eq 1 ]; then
   {
-    head -n "$(( START_MARKER_LINE - 1 ))" "$WORK/body.md"
+    if [ "$START_MARKER_LINE" -gt 1 ]; then
+      head -n "$(( START_MARKER_LINE - 1 ))" "$WORK/body.md"
+    fi
     cat "$WORK/section.md"
     tail -n "+$(( END_MARKER_LINE + 1 ))" "$WORK/body.md"
   } > "$WORK/body.new"

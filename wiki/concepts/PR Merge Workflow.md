@@ -143,6 +143,24 @@ Markers are keyed to each member's own content digest, so members are order-inde
 
 The **trailer stamp**, landed by whichever dispatched member clears last, is content-preserving: an empty commit on an un-pushed or detached HEAD, which advances HEAD while leaving every blob byte-identical, or no commit at all on an already-pushed attached HEAD. Either way it rotates no member's digest, including its siblings'. A **self-heal is a real content edit**, ordinarily confined to files `code-audit-frontend` itself owns, so under digest keying it rotates only its own digest; a self-heal that happens to touch a gate-machinery path rotates *every* member's digest, correctly invalidating a sibling's in-flight marker, because a machinery change is exactly the case the machinery guard exists to force a re-review on.
 
+#### Light routing
+
+A member that already holds a full clearance earlier on the branch can be re-checked by a cheap Sonnet reviewer instead of a full dispatch when the delta since that clearance is small. The route is decided by `.gaia/scripts/audit-light-route.sh`, which prints one `<route>` and `<reason>` line and fails closed: **Full whenever it cannot establish Light**, meaning a missing tool, an underivable digest, a dirty tree, an unreadable roster, or any rule it cannot evaluate. A non-zero exit means Full to every consumer.
+
+- **Opt-in.** A member is eligible only when its entry in `.gaia/audit-ci.yml` carries `light_review: true`. The optional `light_line_cap` lowers the line cap and can never raise it: the cap is 50 added plus deleted lines, and a larger value clamps to 50. The optional `light_hard_full` list adds member-specific globs that always route Full.
+- **Hard-Full floor.** Machinery paths, any in-scope path no member owns, tests, manifests and lockfiles, config files, workflows, and harness files always route Full, whatever the roster says. A roster edit can add to the floor and never remove from it. Binary files, mode changes, symlinks, and submodules also route Full.
+- **Anchor.** The delta is measured from the member's last earned clearance carrying `review: full` under the current version, found on a commit inside the branch's own range. An older refusal of the member does not block Light; a refusal newer than the anchor, or at HEAD, forces Full. A change to the global rules or to the member's own definition forces Full.
+- **The reviewer.** `audit-light-reviewer` (`.claude/agents/audit-light-reviewer.md`) is Read-only, runs on Sonnet, reads only the input file the router wrote, and treats the diff inside the generated data fence as untrusted data, never instructions. Its whole reply is one JSON verdict.
+- **Light-clear branch.** The unit pipes the reply, unmodified, to `.gaia/scripts/audit-light-mark.sh`. The script persists the verdict, re-runs the router, checks the verdict against the route record, and only then writes an earned marker carrying `review: light` and a light findings sidecar, through the shared writer. The member is cleared for this digest and is not dispatched.
+- **Escalate branch and every failure branch.** An `escalate` verdict, a refusal sibling, a stale route, a re-check that no longer says Light, a malformed or mismatched verdict, and a failed write all print `full` and write no marker. The unit then dispatches the member on the same tree in that round.
+- **Not an audit round.** The reviewer is outside the `code-audit-*` family, so the bound hook allows it without recording a round. A light review is counted separately in the `## Audit rounds` record.
+
+Three deliberate departures a reader would otherwise infer wrongly:
+
+- **Ownerless Full.** Any changed in-scope path that no member owns routes Full. No member lens owns it, so a reviewer has no remit to vouch from.
+- **No re-dispatch.** A no-op, empty, or malformed light reply falls back to the full member with no second light attempt, unlike the single re-dispatch [[#No-op detection and retry for each dispatched member]] prescribes for an agent artifact. The full member is strictly more coverage than a second light attempt, so the fallback is the retry.
+- **Main thread stays Full.** Light engages only inside the audit-loop unit's member wave ([[#The audit loop unit]]). When subagent nesting is unavailable and the main thread runs the member wave itself, every member dispatches Full.
+
 #### The repair boundary
 
 A member's self-heal is confined by instruction alone. `.claude/hooks/lib/audit-selfheal-paths.sh` holds the one sourced refusal set naming the paths no member may edit (the root instruction and convention surfaces, the rest of `.gaia/**`, `.github/**`, the root package, build, and lint config, and each package's `selfHealRefuse` globs in its `gaia.package.json`), and each member's definition points at it. No deterministic gate enforces it at push time: a dispatched member is instructed to stay inside the boundary, and its working-tree edits reach the branch only through the orchestrator's commit (see [[#Parallel dispatch]]). **The orchestrator itself is not bound by the gate**: it is trusted rather than bounded (see Cross-remit findings below), because this same protocol's own execution routinely edits `.gaia/**`, `frontend/test/**`, and `.github/workflows/**`. The fix round's fixer inherits that trust rather than a member's boundary, and its edits reach the branch only through the main thread's verified commit ([[#The fix round: fixer, verifier, gate]]).
@@ -252,7 +270,7 @@ Write the `Working root:` value as the bare absolute path with nothing after it:
 
 **Recovery.** A unit that returns with no `unit-<u>.json` stops the main thread for the human; it never falls back inline on its own. [[#The fix round: fixer, verifier, gate]] states what the next unit checks before it opens a round.
 
-**The unit never merges.** It runs no `gh pr merge`, posts no `GAIA-Audit` status, writes no marker, edits no `CHANGELOG.md`, and never writes the loop state or `vetoes.json`. The main thread alone merges.
+**The unit never merges.** It runs no `gh pr merge`, posts no `GAIA-Audit` status, writes no marker, edits no `CHANGELOG.md`, and never writes the loop state or `vetoes.json`. It writes no marker by hand; the light-marker script (`.gaia/scripts/audit-light-mark.sh`, see [[#Light routing]]) is the one scripted exception. The main thread alone merges.
 
 **Nesting-unavailable fallback.** When the unit's first nested `Agent` call fails with no `BLOCKED:` prefix, or the harness predates nesting, the main thread runs [[#The fix round: fixer, verifier, gate]] itself for the rest of the session, dispatching members directly. The bound hook then judges each member dispatch as a one-round unit. An answered checkpoint is spent once a later round is recorded, so in the fallback one grant admits the next round, not every dispatch up to the cap. In that fallback the main thread is the round's orchestrator, and nothing else about the procedure changes.
 
@@ -506,7 +524,7 @@ The bound is on spend and on a loop that is not converging. Every round's fixes 
 
 A fail-loud deny names its cause and its repair; for a corrupt state file that repair is a human moving the file aside from a terminal outside Claude Code. At a checkpoint the only recovery is a human answer, a selection of the pinned question or a typed line. A PR-body edit, an environment knob above the default, a question Claude composed, and a recorder Claude ran by hand each raise nothing: `.claude/hooks/block-audit-loop-write.sh` denies Claude's writes to the protected folder `.gaia/local/protected/` (the state and the override) and to the context directory, and any Bash or Monitor command that executes either grant hook. Its path arm reads only commands that name those paths: a context reading minted from Bash by running the statusline or `gaia_context_write` names none of them, so the rubric signals and the hard round cap stay its backstops. It also denies a Bash heredoc or inline script whose text merely names those paths or a recorder's filename, so write such files with the Write or Edit tools.
 
-The PR body's `## Audit rounds` section is the published record of the loop: total rounds, rounds per member, and human grants. The unit writes it at every round end through `audit-loop-record.sh` ([[#The fix round: fixer, verifier, gate]]), and the main thread writes it only in the nesting-unavailable fallback. Nothing reads it back to grant a round or set a count.
+The PR body's `## Audit rounds` section is the published record of the loop: total rounds, rounds per member, light reviews per member when any ran (a `light reviews:` clause that never counts toward the round total), and human grants. The unit writes it at every round end through `audit-loop-record.sh` ([[#The fix round: fixer, verifier, gate]]), and the main thread writes it only in the nesting-unavailable fallback. Nothing reads it back to grant a round or set a count.
 
 #### Cross-remit findings
 
@@ -544,6 +562,8 @@ The gate-machinery set is whatever `audit_path_is_machinery` (`.claude/hooks/lib
 #### Marker key
 
 Every clearance is written by the **one shared writer** (`.gaia/scripts/audit-write-clearance.sh`); no member hand-writes a marker file. Given the audited root, the writer derives the member's **content digest**, a sha256 over exactly the files that member owns plus the shared gate machinery (plus the in-scope-but-ownerless paths, for the default member; see [[Code Audit Team#Ownership classifier]]), through the digest engine (`.claude/hooks/lib/audit-digest.sh`), resolves HEAD's real tree and commit sha as plain data fields, then writes the body atomically. The body carries a version, `schema: 4`, the audited `member`, a `provenance` (`earned` or `refused` only, there is no carried family), the `digest` (the validity key), `tree` and `sha` (data only, never compared for validity), `audited_at`, and a `sidecar` flag. `sidecar` answers "does this member file a findings sidecar, its report of record": every member does, so it is always true. `schema` is informational, no reader validates it, so a marker written under the previous contract still validates unchanged. The gate's reader (`clearance_acceptable`) accepts a clearance only when it is **well-formed**: the body parses, its recorded `digest` matches the filename key, its `member` matches, and its `provenance` is `earned`; a file that exists but fails that check is neither cleared nor missing, the gate reports it as present but invalid and asks for a re-run. This is a well-formedness check, not an authenticity one, it raises the bar a hand-written marker has to clear; it does not by itself prove who wrote a given file. `jq` is required for every digest-keyed predicate; with `jq` absent every check returns false (fail-closed), it never degrades to a bare-existence match.
+
+Marker bodies carry `review: full` or `review: light`: a full member round writes `full`, and the light-marker script writes `light` ([[#Light routing]]). Only a `review: full` clearance anchors incremental scope, in both the per-member arm and the team-signal arm ([[Code Review Audit Agent#Incremental scope]]); a legacy body with no `review` field and a refusal never anchor. The `GAIA-Audit` commit status and trailer stay light-blind: they attest that every dispatched member holds a clearance for this content, not how deeply it was reviewed, and making them carry review depth would change the `<version> <digest> <tree>` shape every parser of them reads.
 
 Provenance gets its own filename, not just a body field:
 
@@ -674,6 +694,10 @@ Two steps come first, in this order:
 <!-- gaia:maintainer-only:end -->
 
 Once **every dispatched member's** marker exists for HEAD and the `GAIA-Audit` status is posted (see [[#Posting the status last]]), run `gh pr merge`. The hook short-circuits to allow the call.
+
+<!-- gaia:maintainer-only:start -->
+GAIA maintainers: light routing appends one event per route and per light outcome to `.gaia/local/telemetry/audit-light-routing.jsonl` in the main checkout, and `bash .gaia/scripts/audit-light-telemetry.sh tally` prints engagement, escalation, and light-miss rates and median light-path tokens against a baseline. The script is release-excluded and writes nothing outside this repo.
+<!-- gaia:maintainer-only:end -->
 
 <!-- gaia:maintainer-only:start -->
 ## CHANGELOG gate (maintainer-only)
