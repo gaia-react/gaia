@@ -283,9 +283,12 @@ tally_value() {
   write_light_route_record
   mkdir -p "$TELEMETRY_DIRECTORY"
   chmod 0555 "$TELEMETRY_DIRECTORY"
-  route_stdout="$(run_route 2>/dev/null)"; route_status=$?
-  outcome_stdout="$(run_outcome --verdict clear 2>/dev/null)"; outcome_status=$?
-  member_result_stdout="$(run_member_result 2>/dev/null)"; member_result_status=$?
+  route_status=0
+  route_stdout="$(run_route 2>/dev/null)" || route_status=$?
+  outcome_status=0
+  outcome_stdout="$(run_outcome --verdict clear 2>/dev/null)" || outcome_status=$?
+  member_result_status=0
+  member_result_stdout="$(run_member_result 2>/dev/null)" || member_result_status=$?
   [ "$route_status" -eq 0 ]
   [ "$outcome_status" -eq 0 ]
   [ "$member_result_status" -eq 0 ]

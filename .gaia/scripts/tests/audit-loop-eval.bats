@@ -579,6 +579,63 @@ brief_check() {
   [ "$output" = '{"total":3,"members":{"code-audit-frontend":3,"code-audit-maintainer-shell":2},"grants":1}' ]
 }
 
+# light_ledger_path: the sandbox ledger of light reviews for the fixture branch.
+light_ledger_path() {
+  printf '%s/.gaia/local/audit/light/%s.reviews.jsonl\n' "$ALF_ROOT" "$(gaia_branch_slug "$ALF_ROOT")"
+}
+
+# write_light_ledger <member>...: one ledger line per argument, the verdict cycling clear, escalate, failed.
+write_light_ledger() {
+  local ledger_path verdicts member index=0
+  ledger_path="$(light_ledger_path)"
+  mkdir -p "$(dirname "$ledger_path")"
+  : >"$ledger_path"
+  verdicts=(clear escalate failed)
+  for member in "$@"; do
+    printf '{"member":"%s","digest":"%s","tree":"%s","verdict":"%s","at":"2026-01-01T00:00:00Z"}\n' \
+      "$member" "$(printf 'a%.0s' $(seq 1 64))" "$ALF_TREE" "${verdicts[$((index % 3))]}" >>"$ledger_path"
+    index=$((index + 1))
+  done
+}
+
+@test "record-values: light reviews are counted per member from the ledger and never enter total" {
+  cli_copy
+  alf_fill f.txt 12 feature
+  alf_commit "round 1"
+  alf_add_round '["code-audit-frontend"]'
+  write_light_ledger code-audit-frontend code-audit-maintainer-shell code-audit-frontend
+  run "$CLI/audit-loop-eval.sh" record-values --root "$ALF_ROOT"
+  [ "$status" -eq 0 ]
+  [ "$output" = '{"total":1,"members":{"code-audit-frontend":1},"grants":0,"light":{"code-audit-frontend":2,"code-audit-maintainer-shell":1}}' ]
+}
+
+@test "record-values: an absent ledger, an empty one and an unreadable one yield no light key" {
+  cli_copy
+  alf_fill f.txt 12 feature
+  alf_commit "round 1"
+  alf_add_round '["code-audit-frontend"]'
+  run "$CLI/audit-loop-eval.sh" record-values --root "$ALF_ROOT"
+  [ "$status" -eq 0 ]
+  [ "$output" = '{"total":1,"members":{"code-audit-frontend":1},"grants":0}' ]
+  write_light_ledger
+  run "$CLI/audit-loop-eval.sh" record-values --root "$ALF_ROOT"
+  [ "$output" = '{"total":1,"members":{"code-audit-frontend":1},"grants":0}' ]
+  printf 'not json\n' >"$(light_ledger_path)"
+  run "$CLI/audit-loop-eval.sh" record-values --root "$ALF_ROOT"
+  [ "$status" -eq 0 ]
+  [ "$output" = '{"total":1,"members":{"code-audit-frontend":1},"grants":0}' ]
+}
+
+@test "record-values: a ledger with no loop state keeps the early return without a light key" {
+  cli_copy
+  write_light_ledger code-audit-frontend code-audit-frontend
+  [ -f "$(light_ledger_path)" ]
+  [ ! -f "$ALF_STATE" ]
+  run "$CLI/audit-loop-eval.sh" record-values --root "$ALF_ROOT"
+  [ "$status" -eq 0 ]
+  [ "$output" = '{"total":0,"members":{},"grants":0}' ]
+}
+
 @test "exit codes: detached is 4, corrupt state is 5, missing jq is 6, each with one diagnostic line" {
   cli_copy
   alf_sequence 2

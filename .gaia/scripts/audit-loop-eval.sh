@@ -27,6 +27,9 @@
 # unit-window prints `<unit> <start_round> <through_round> <closing>` for the
 # latest unit; closing is `true` when an accept admitted it, so its one round
 # is the closing round and audit-loop-unit runs no fixer in it.
+# record-values adds an optional `light` object of per-member light review
+# counts, read from the branch's light-review ledger; it is left out when the
+# ledger is absent, unreadable or empty, and `total` never includes it.
 # Exit 0 ok, 2 usage or no recorded round (unit-window: no unit;
 # pinned-question: no pending pinned question), 4 detached HEAD, 5 corrupt
 # state, an unreadable vetoes.json, or a branch that is not keyable, 6 jq or
@@ -554,7 +557,7 @@ _gaia_loop_usage() {
 }
 
 _gaia_loop_cli() {
-  local subcommand="${1-}" root="" round="" branch_key main file state exit_status used subcommand_output
+  local subcommand="${1-}" root="" round="" branch_key main file state exit_status used subcommand_output light_ledger light_counts
   [ $# -gt 0 ] && shift
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -589,6 +592,9 @@ _gaia_loop_cli() {
       case "$subcommand" in
         current-round) printf '0\n'; return 0 ;;
         next-unit) printf '1 1\n'; return 0 ;;
+        # No `light` key here by design: a light review needs an earlier full
+        # clearance, and every full clearance in a unit comes from a member
+        # round the bound hook recorded, which creates the state file.
         record-values) printf '{"total":0,"members":{},"grants":0}\n'; return 0 ;;
       esac
       printf 'audit-loop-eval: no recorded round for %s\n' "$branch_key" >&2
@@ -618,10 +624,23 @@ _gaia_loop_cli() {
       return 0
       ;;
     record-values)
-      printf '%s' "$state" | jq -c '{total: (.history.rounds | length),
+      subcommand_output="$(printf '%s' "$state" | jq -c '{total: (.history.rounds | length),
         members: (reduce .history.rounds[] as $round_entry ({}; reduce ($round_entry.members[]) as $member (.; .[$member] += [$round_entry.tree]))
                   | map_values(unique | length) | to_entries | sort_by(.key) | from_entries),
-        grants: ([.allowance.answers[] | select(.kind == "grant")] | length)}'
+        grants: ([.allowance.answers[] | select(.kind == "grant")] | length)}')" || return 1
+      # Light reviews are counted from their own ledger and never enter
+      # `total`; an absent or unreadable ledger leaves the key out.
+      light_ledger="$root/.gaia/local/audit/light/$(gaia_branch_slug "$root" 2>/dev/null).reviews.jsonl"
+      light_counts=''
+      if [ -f "$light_ledger" ] && [ -r "$light_ledger" ]; then
+        light_counts="$(jq -cs 'map(select(type == "object" and (.member | type) == "string") | .member)
+          | reduce .[] as $member ({}; .[$member] += 1) | to_entries | sort_by(.key) | from_entries' "$light_ledger" 2>/dev/null)" || light_counts=''
+      fi
+      if [ -n "$light_counts" ] && [ "$light_counts" != '{}' ]; then
+        printf '%s' "$subcommand_output" | jq -c --argjson light "$light_counts" '. + {light: $light}'
+      else
+        printf '%s\n' "$subcommand_output"
+      fi
       return 0
       ;;
     brief) _gaia_loop_brief "$root" "$main" "$state"; return $? ;;

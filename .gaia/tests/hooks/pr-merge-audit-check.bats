@@ -175,15 +175,17 @@ member_digest_for() {
 # MEMBER's own content digest at ROOT's current HEAD (schema 3). The
 # root-parameterized twin of write_marker, built on member_digest_at.
 #   write_marker_at "$LINKED_WORKTREE" "code-audit-frontend"
+#   write_marker_at "$ROOT" "code-audit-frontend" light   (optional review field)
 write_marker_at() {
-  local root="$1" member="$2" digest sha tree infix sidecar
+  local root="$1" member="$2" review="${3:-}" digest sha tree infix sidecar review_field=""
+  [ -z "$review" ] || review_field="$(printf '"review":"%s",' "$review")"
   digest="$(member_digest_at "$root" "$member")"
   sha=$(git -C "$root" rev-parse HEAD)
   tree=$(git -C "$root" rev-parse "HEAD^{tree}")
   if [ "$member" = "code-audit-frontend" ]; then infix=""; sidecar="true"; else infix=".$member"; sidecar="false"; fi
   mkdir -p "$root/.gaia/local/audit"
-  printf '{"version":"1.4.0","schema":3,"member":"%s","provenance":"earned","digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":%s}\n' \
-    "$member" "$digest" "$tree" "$sha" "$sidecar" \
+  printf '{"version":"1.4.0","schema":3,"member":"%s","provenance":"earned",%s"digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":%s}\n' \
+    "$member" "$review_field" "$digest" "$tree" "$sha" "$sidecar" \
     > "$root/.gaia/local/audit/${digest}${infix}.ok"
 }
 
@@ -779,6 +781,40 @@ assert_not_in_set() {
   run_merge_hook
   assert_denied_by_json
   grep -qF "code-audit-maintainer-shell: REFUSED" <<< "$output" || return 1
+}
+
+# ---------------------------------------------------------------------------
+# The gate is light-blind: an earned marker carrying `review: light` clears a
+# member exactly like a full one, keyed on the same digest, and a refusal still
+# outranks it.
+# ---------------------------------------------------------------------------
+
+@test "light marker: an earned review-light marker at the current digest allows the merge" {
+  commit_files "frontend/app/x.ts" "export const x = 1"
+  write_marker_at "$REPO" "code-audit-frontend" light
+  grep -qF '"review":"light"' "$REPO"/.gaia/local/audit/*.ok
+
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  [[ "$output" != *'"permissionDecision": "deny"'* ]]
+}
+
+@test "light marker: a light marker at a stale digest denies the merge" {
+  commit_files "frontend/app/x.ts" "export const x = 1"
+  write_marker_at "$REPO" "code-audit-frontend" light
+  commit_files "frontend/app/y.ts" "export const y = 2"
+
+  run_merge_hook
+  assert_denied_by_json
+}
+
+@test "light marker: a refusal at the same digest as a light earned marker denies" {
+  commit_files "frontend/app/x.ts" "export const x = 1"
+  write_marker_at "$REPO" "code-audit-frontend" light
+  write_refused "code-audit-frontend"
+
+  run_merge_hook
+  assert_denied_by_json
 }
 
 # ---------------------------------------------------------------------------

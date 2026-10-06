@@ -138,14 +138,16 @@ EOF
   [ -z "$unmatched" ] || { printf 'global rule not machinery:%s\n' "$unmatched" >&2; return 1; }
 }
 
-# The router, the light-marker script and the reviewer definition decide
-# whether a clearance is believed, so a change to any of them resets every
-# member's anchor. Asserted per path, with a sibling that must stay out.
+# The router with its helper library, the light-marker script and the reviewer
+# definition decide whether a clearance is believed, so a change to any of them
+# resets every member's anchor. Asserted per path, with a sibling that must
+# stay out.
 
 @test "each light-review file is a global rule and is also machinery" {
   . "$REPO_ROOT/.claude/hooks/lib/audit-machinery.sh"
   for light_path in \
     .gaia/scripts/audit-light-route.sh \
+    .claude/hooks/lib/audit-light-route-lib.sh \
     .gaia/scripts/audit-light-mark.sh \
     .claude/agents/audit-light-reviewer.md; do
     audit_path_is_global_rule "$light_path" || { echo "not a global rule: $light_path" >&2; return 1; }
@@ -164,6 +166,8 @@ EOF
   run audit_path_is_global_rule ".gaia/scripts/audit-light-route.sh.bak"
   [ "$status" -ne 0 ]
   run audit_path_is_global_rule ".gaia/scripts/audit-light-telemetry.sh"
+  [ "$status" -ne 0 ]
+  run audit_path_is_global_rule ".claude/hooks/lib/audit-light-route-lib.sh.bak"
   [ "$status" -ne 0 ]
   run audit_path_is_global_rule ".claude/agents/audit-light-reviewer.md.orig"
   [ "$status" -ne 0 ]

@@ -857,7 +857,7 @@ fork_mutant() {
 }
 
 @test "UAT-010 mutation: without the refusal call the fork dispatch is allowed, so the denial test can fail" {
-  fork_mutant 's/if fork_reason=\$\(gaia_cross_repo_deny_reason/if false && fork_reason=\$(gaia_cross_repo_deny_reason/'
+  fork_mutant 's/(prechecked=1.*?)if fork_reason=\$\(gaia_cross_repo_deny_reason/$1if false \&\& fork_reason=\$(gaia_cross_repo_deny_reason/s'
   printf '{"number":34,"state":"OPEN"}\n' >"$GH_STUB_STATE_DIRECTORY/branch.json"
   printf 'true\n' >"$GH_STUB_STATE_DIRECTORY/cross-repository"
   dispatch
@@ -866,11 +866,144 @@ fork_mutant() {
 }
 
 @test "UAT-010 mutation: treating an unanswerable gh as allow lets the dispatch through, so the fail-closed test can fail" {
-  fork_mutant 's/finish_deny "\$fork_reason"/case "\$fork_reason" in *"cannot tell"*) ;; *) finish_deny "\$fork_reason" ;; esac/'
+  fork_mutant 's/(prechecked=1.*?)finish_deny "\$fork_reason"/$1case "\$fork_reason" in *"cannot tell"*) ;; *) finish_deny "\$fork_reason" ;; esac/s'
   printf 'fail\n' >"$GH_STUB_STATE_DIRECTORY/cross-repository"
   dispatch
   assert_allowed
   [ "$(nrounds)" -eq 1 ]
+}
+
+# --- the light reviewer -----------------------------------------------------------
+#
+# A light review is checked (audited root, dirty checkout, fork) but never
+# counted: it opens no round and never touches the state file.
+
+LIGHT_MEMBER=audit-light-reviewer
+
+# light_payload_in_unit: a light dispatch carrying the caller fields a unit's dispatch has.
+light_dispatch_in_unit() {
+  run_payload "$(payload "$LIGHT_MEMBER" "$SID" "${1:-$ALF_ROOT}" "$ALF_ROOT" '{"agent_id":"agent-7","agent_type":"audit-loop-unit"}')"
+}
+
+@test "light: a dispatch on a new tree inside a unit is allowed and leaves the state file byte-identical, and a member right after still records its round" {
+  alf_sequence 6 5
+  new_tree
+  cp "$ALF_STATE" "$BATS_TEST_TMPDIR/state-before.json"
+  light_dispatch_in_unit
+  assert_allowed
+  cmp -s "$BATS_TEST_TMPDIR/state-before.json" "$ALF_STATE"
+  [ "$(nrounds)" -eq 2 ]
+  dispatch "$FRONTEND_MEMBER"
+  assert_allowed
+  [ "$(nrounds)" -eq 3 ]
+  [ "$(state_field '.history.rounds[2].members | join(",")')" = "$FRONTEND_MEMBER" ]
+}
+
+@test "light: a dispatch that is the first on a branch creates no state file" {
+  light_dispatch_in_unit
+  assert_allowed
+  [ ! -e "$ALF_STATE" ]
+  [ ! -e "$ALF_ROOT/.gaia/local/protected/audit-loop" ]
+}
+
+@test "light: a dispatch past a recorded checkpoint is allowed and records nothing" {
+  alf_sequence 6 5 4 3 2
+  new_tree
+  dispatch "$FRONTEND_MEMBER" session-b
+  assert_denied
+  new_tree
+  cp "$ALF_STATE" "$BATS_TEST_TMPDIR/state-before.json"
+  light_dispatch_in_unit
+  assert_allowed
+  cmp -s "$BATS_TEST_TMPDIR/state-before.json" "$ALF_STATE"
+  [ "$(nrounds)" -eq 5 ]
+}
+
+@test "light: a dispatch on a dirty audited checkout is denied, staged edits included" {
+  alf_sequence 6 5
+  new_tree
+  printf 'edit\n' >>"$ALF_ROOT/base.txt"
+  light_dispatch_in_unit
+  assert_denied
+  reason | grep -qF -- "uncommitted tracked changes"
+  reason | grep -qF -- "Commit the round first"
+  git -C "$ALF_ROOT" add base.txt
+  light_dispatch_in_unit
+  assert_denied
+  git -C "$ALF_ROOT" reset -q base.txt
+  git -C "$ALF_ROOT" checkout -q -- base.txt
+  light_dispatch_in_unit
+  assert_allowed
+}
+
+@test "light: untracked files do not block a dispatch" {
+  printf 'x\n' >"$ALF_ROOT/untracked.txt"
+  light_dispatch_in_unit
+  assert_allowed
+}
+
+@test "light: a named Working root that does not resolve is denied naming it" {
+  local missing="$BATS_TEST_TMPDIR/no-such-checkout"
+  light_dispatch_in_unit "$missing"
+  assert_denied
+  reason | grep -qF -- "Working root: $missing"
+}
+
+@test "light: a dispatch with no Working root and no absolute cwd is denied" {
+  run_payload "$(jq -n -c --arg member "$LIGHT_MEMBER" '{session_id: "s", hook_event_name: "PreToolUse", tool_name: "Agent", cwd: "relative",
+    tool_input: {subagent_type: $member, prompt: "Review the change."}}')"
+  assert_denied
+  reason | grep -qF -- "cannot resolve the audited checkout"
+}
+
+@test "light: a dispatch for a fork pull request is denied with the refusal" {
+  local message
+  printf '{"number":34,"state":"OPEN"}\n' >"$GH_STUB_STATE_DIRECTORY/branch.json"
+  printf 'true\n' >"$GH_STUB_STATE_DIRECTORY/cross-repository"
+  light_dispatch_in_unit
+  assert_denied
+  message="$(bash -c '. "$1"; printf "%s" "$GAIA_CROSS_REPO_REFUSAL_MESSAGE"' _ "$REPO_ROOT/.claude/hooks/lib/cross-repo-refusal.sh")"
+  reason | grep -qF -- "$message"
+  [ ! -f "$ALF_STATE" ]
+}
+
+@test "light: a dispatch is denied, naming the gh failure, when gh cannot say whether the pull request is a fork" {
+  printf 'fail\n' >"$GH_STUB_STATE_DIRECTORY/cross-repository"
+  light_dispatch_in_unit
+  assert_denied
+  reason | grep -qF -- 'cannot tell whether the pull request'
+  reason | grep -qF -- 'HTTP 502: Bad Gateway'
+}
+
+@test "light: a same-repo pull request is allowed" {
+  printf '{"number":34,"state":"OPEN"}\n' >"$GH_STUB_STATE_DIRECTORY/branch.json"
+  printf 'false\n' >"$GH_STUB_STATE_DIRECTORY/cross-repository"
+  light_dispatch_in_unit
+  assert_allowed
+}
+
+@test "light mutation: without the scope line the light dispatch is ignored, so the dirty and fork denials can fail" {
+  fork_mutant 's/^  audit-light-reviewer\) kind=light ;;\n//m'
+  printf 'edit\n' >>"$ALF_ROOT/base.txt"
+  printf 'true\n' >"$GH_STUB_STATE_DIRECTORY/cross-repository"
+  printf '{"number":34,"state":"OPEN"}\n' >"$GH_STUB_STATE_DIRECTORY/branch.json"
+  light_dispatch_in_unit
+  assert_allowed
+}
+
+@test "light mutation: without the light arm's fork refusal a fork pull request is let through, so the fork denial can fail" {
+  fork_mutant 's/(kind" = light \]; then.*?)if fork_reason=\$\(gaia_cross_repo_deny_reason/$1if false \&\& fork_reason=\$(gaia_cross_repo_deny_reason/s'
+  printf '{"number":34,"state":"OPEN"}\n' >"$GH_STUB_STATE_DIRECTORY/branch.json"
+  printf 'true\n' >"$GH_STUB_STATE_DIRECTORY/cross-repository"
+  light_dispatch_in_unit
+  assert_allowed
+}
+
+@test "light mutation: without the light arm's dirty check an edited checkout is let through, so the dirty denial can fail" {
+  fork_mutant 's/(kind" = light \]; then\n    dirty_exit_status=0\n)    _gaia_loop_git[^\n]*\n/$1/'
+  printf 'edit\n' >>"$ALF_ROOT/base.txt"
+  light_dispatch_in_unit
+  assert_allowed
 }
 
 # --- the unit gate ----------------------------------------------------------------

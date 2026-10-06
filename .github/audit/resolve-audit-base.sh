@@ -143,8 +143,11 @@
 #
 # Per-member anchor: what a clearance proves, and what it does not
 #   A candidate is a per-member anchor when the member holds an earned
-#   clearance whose recorded TREE equals the candidate's tree and whose
-#   recorded version equals the current one. The tree rather than the commit
+#   clearance carrying `review: full` whose recorded TREE equals the
+#   candidate's tree and whose recorded version equals the current one. A
+#   `review: light` marker, and a marker whose body lacks the field, is never
+#   an anchor: it was written from a delta or before the field existed, and a
+#   later full review must start from the last full clearance. The tree rather than the commit
 #   sha is the matching field because the clean-round stamp amends HEAD,
 #   rewriting the sha a moments-old clearance recorded while preserving the
 #   tree; matching on the sha would lose the anchor on exactly the rounds
@@ -165,7 +168,29 @@
 #   anyone who can write the store can already write the working tree.
 #   Repairing either property is a human's decision, not this file's.
 #
+# Team-signal arm and review depth, --member form only
+#   The trailer and the status are light-blind by design: they attest that no
+#   dispatched member is pending, not how deep any review was. So the --member
+#   form anchors on a whole-team signal S only when the local marker store
+#   positively verifies depth for EVERY member, scanned across the whole
+#   roster and not only the resolving member: (a) no candidate in range may
+#   carry a tree holding any member's non-full earned marker (light, or a body
+#   without the field, at any version), and (b) some member's earned
+#   `review: full` marker must record S's tree. Either failing disables the
+#   arm for the run and logs why; the walk still continues, so the per-member
+#   arm can win on an older full clearance of the resolving member, and with
+#   none in range the answer is no-anchor, the full-branch base.
+#   Documented boundary and its cost: the store is gitignored, so CI and a
+#   fresh clone have no markers, (b) is never met, and the arm refuses there.
+#   A --member resolution from such a run scopes the whole branch rather than
+#   the delta since the last team signal: wider (more tokens), never narrower.
+#   CI-side marker validation is out of scope. Line 3 and the argument-less
+#   form are unaffected: they still carry the whole-team floor and only KEY
+#   artifacts, so none of them scopes a member's review.
+#
 # Refusal precedence, and why the floor still runs past a refusal
+#   Only a marker carrying `review: full` anchors, so a light marker neither
+#   anchors nor stands in for the refusal check below.
 #   If any candidate in range carries a tree the member REFUSED, the
 #   per-member arm is disabled for the whole run, not merely at that
 #   candidate: the member must be able neither to anchor on content it
@@ -194,10 +219,12 @@
 #   audit-clearance.sh is the deliberate exception. Its absence is the same
 #   condition as an empty clearance store, which is every
 #   continuous-integration run: the store is gitignored and never uploaded
-#   between runs. There the floor is sound and both tiers stay evaluable, so
-#   resolution falls back to the whole-team signal rather than degrading.
-#   Widening to full scope on that input would punish the normal CI path for
-#   a broken-checkout symptom. Do not "fix" this into uniformity.
+#   between runs. Both tiers stay evaluable there, so it does not take the
+#   degraded arm (which would emit a reason of its own). In the argument-less
+#   form the whole-team signal still anchors; in the --member form the
+#   team-signal arm refuses for want of verifiable review depth and the answer
+#   is no-anchor (see the team-signal section above). Do not "fix" this into
+#   uniformity.
 #
 # Why bound the walk to merge-base..HEAD
 #   The base must be one of THIS PR's commits (or the divergence point as
@@ -488,9 +515,21 @@ fi
 # reader loaded.
 # -----------------------------------------------------------------------------
 
+# scan_field <clearance_scan line> <n> prints the n-th tab-separated field.
+# `cut` rather than `read` under a tab IFS: tab is IFS whitespace, so `read`
+# collapses the empty version or sha an old body can record and shifts every
+# later field, the review column included.
+scan_field() {
+  printf '%s\n' "$1" | cut -f"$2"
+}
+
 member_arm="false"
 earned_trees=""
 refused_trees=""
+non_full_trees=""
+non_full_owners=""
+full_trees=""
+team_arm_refusal=""
 
 if [ "$member_form" = "true" ] && command -v clearance_scan >/dev/null 2>&1; then
   # An unreadable / empty store is not a degradation: it is the ordinary CI
@@ -503,9 +542,18 @@ if [ "$member_form" = "true" ] && command -v clearance_scan >/dev/null 2>&1; the
   # empty-guard to the fields it records, so an empty recorded value must
   # never match an empty candidate value.
   if [ -n "$earned_scan" ]; then
-    while IFS="$TAB" read -r recorded_tree recorded_version _; do
+    while IFS= read -r scan_line; do
+      [ -n "$scan_line" ] || continue
+      recorded_tree="$(scan_field "$scan_line" 1)"
+      recorded_version="$(scan_field "$scan_line" 2)"
+      recorded_review="$(scan_field "$scan_line" 4)"
       [ -n "$recorded_tree" ] || continue
       [ "$recorded_version" = "$current_version" ] || continue
+      # Only a `review: full` marker anchors. A light clearance was written by
+      # a reviewer that read a delta, so a later full review must start from
+      # the last full one; a body lacking the field (a legacy marker) is not
+      # full either.
+      [ "$recorded_review" = "full" ] || continue
       earned_trees="${earned_trees}${recorded_tree}
 "
     done <<EOF
@@ -546,6 +594,74 @@ if [ "$member_arm" = "true" ] && [ -n "$refused_trees" ]; then
 fi
 
 # -----------------------------------------------------------------------------
+# Team-arm review-depth check, --member form only. The trailer and the status
+# are light-blind by design: they attest that every dispatched member holds a
+# clearance, not how deep any review was, so only the local marker store can say
+# whether a signal stands on full reviews. The scan therefore covers EVERY
+# roster member's earned markers, not only the resolving member's.
+#   (a) any candidate in range whose tree carries a non-full earned marker of
+#       any member (light, or a body lacking the field, at any version)
+#       disables the team arm for the run;
+#   (b) at the signal commit itself, some member's earned `review: full` marker
+#       must record that commit's tree (checked in the walk).
+# An empty store (CI, a fresh clone), an absent clearance reader, an unreadable
+# roster, and a marker the reader cannot parse all leave (b) unmet, so the arm
+# refuses to anchor: it cannot verify, and the cost of refusing is scope width
+# (the full-branch base), never narrower scope.
+# -----------------------------------------------------------------------------
+
+if [ "$member_form" = "true" ]; then
+  if ! command -v clearance_scan >/dev/null 2>&1; then
+    team_arm_refusal="the clearance reader is unavailable, so review depth at the whole-team signal cannot be verified"
+  else
+    roster_members="$(audit_roster_member_names "${repo_root}/.gaia/audit-ci.yml" 2>/dev/null || true)"
+    if [ -z "$roster_members" ]; then
+      team_arm_refusal="the audit roster is unreadable, so review depth at the whole-team signal cannot be verified"
+    else
+      roster_members="${roster_members}
+${member}"
+      while IFS= read -r roster_member; do
+        [ -n "$roster_member" ] || continue
+        roster_scan="$(clearance_scan "$repo_root" "$roster_member" earned 2>/dev/null || true)"
+        [ -n "$roster_scan" ] || continue
+        while IFS= read -r scan_line; do
+          [ -n "$scan_line" ] || continue
+          recorded_tree="$(scan_field "$scan_line" 1)"
+          [ -n "$recorded_tree" ] || continue
+          if [ "$(scan_field "$scan_line" 4)" = "full" ]; then
+            full_trees="${full_trees}${recorded_tree}
+"
+          else
+            non_full_trees="${non_full_trees}${recorded_tree}
+"
+            non_full_owners="${non_full_owners}${recorded_tree}${TAB}${roster_member}
+"
+          fi
+        done <<EOF
+$roster_scan
+EOF
+      done <<EOF
+$roster_members
+EOF
+      if [ -n "$non_full_trees" ]; then
+        for sha in $candidates; do
+          candidate_tree="$(git -C "$repo_root" rev-parse "${sha}^{tree}" 2>/dev/null || true)"
+          [ -n "$candidate_tree" ] || continue
+          if grep -qxF -- "$candidate_tree" <<<"$non_full_trees"; then
+            non_full_owner="$(grep -F -- "${candidate_tree}${TAB}" <<<"$non_full_owners" | head -n 1 | cut -f2 || true)"
+            team_arm_refusal="${non_full_owner:-a member} holds a non-full clearance at ${sha}, so the whole-team signal may stand on content no full review read"
+            break
+          fi
+        done
+      fi
+    fi
+  fi
+  if [ -n "$team_arm_refusal" ]; then
+    echo "resolve-audit-base: ${team_arm_refusal}; whole-team anchoring disabled for ${member} this run." >&2
+  fi
+fi
+
+# -----------------------------------------------------------------------------
 # One walk, two arms, newest wins. Per candidate the per-member arm is tested
 # first, so a member clearance and a whole-team signal on the SAME commit
 # resolve as the former; across candidates the newer of the two wins, which is
@@ -571,24 +687,46 @@ for sha in $candidates; do
     fi
   fi
 
-  trailer_version="$(trailer_version_for "$sha")"
-  if [ -n "$trailer_version" ] && [ "$trailer_version" = "$current_version" ]; then
-    team_anchor="$sha"
-  else
-    status_version="$(status_version_for "$sha")"
-    if [ -n "$status_version" ] && [ "$status_version" = "$current_version" ]; then
+  # Only the first (newest) signal is the shared floor. Once it is found a
+  # later signal is never read: the walk only continues for the member arm.
+  if [ -z "$team_anchor" ]; then
+    trailer_version="$(trailer_version_for "$sha")"
+    if [ -n "$trailer_version" ] && [ "$trailer_version" = "$current_version" ]; then
       team_anchor="$sha"
+    else
+      status_version="$(status_version_for "$sha")"
+      if [ -n "$status_version" ] && [ "$status_version" = "$current_version" ]; then
+        team_anchor="$sha"
+      fi
+    fi
+
+    # Check (b): a member's earned full marker must record the signal's tree.
+    # The shared floor keeps this signal either way, so line 3 of the member
+    # form still equals the argument-less answer.
+    if [ -n "$team_anchor" ] && [ "$member_form" = "true" ] && [ -z "$team_arm_refusal" ]; then
+      signal_tree="$(git -C "$repo_root" rev-parse "${team_anchor}^{tree}" 2>/dev/null || true)"
+      if [ -z "$signal_tree" ] || ! grep -qxF -- "$signal_tree" <<<"$full_trees"; then
+        team_arm_refusal="no member holds a full-review clearance at the whole-team signal ${team_anchor}, so its review depth is unverifiable"
+        echo "resolve-audit-base: ${team_arm_refusal}; whole-team anchoring disabled for ${member} this run." >&2
+      fi
     fi
   fi
 
   # The team arm is the floor for BOTH forms, so the walk runs until it finds
-  # one (or exhausts the range) even when the member arm already won.
+  # one (or exhausts the range) even when the member arm already won. When the
+  # member form refuses the team arm, only the member arm can still win, so
+  # the walk goes on past the signal for an older full clearance of the member.
   if [ -n "$team_anchor" ]; then
-    if [ -z "$winner" ]; then
-      winner="$sha"
-      winner_reason="team-signal"
+    if [ -z "$team_arm_refusal" ]; then
+      if [ -z "$winner" ]; then
+        winner="$sha"
+        winner_reason="team-signal"
+      fi
+      break
     fi
-    break
+    if [ -n "$winner" ] || [ "$member_arm" != "true" ]; then
+      break
+    fi
   fi
 done
 
