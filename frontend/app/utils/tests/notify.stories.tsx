@@ -122,6 +122,15 @@ export const DescriptionOnlyPromoted: StoryObj<typeof meta> = {
     notify.warning({description: 'only a description'});
 
     await expectToast(canvasElement, 'only a description');
+
+    const toastElement = getToastElement(canvasElement, 'only a description');
+
+    await expect(
+      toastElement.querySelector('[data-slot="toast-title"]')
+    ).toHaveTextContent('only a description');
+    await expect(
+      toastElement.querySelector('[data-slot="toast-description"]')
+    ).toBeNull();
   },
 };
 
@@ -195,9 +204,23 @@ export const RoleTokensNoRawPalette: StoryObj<typeof meta> = {
       notify[type](`${type} token message`);
 
       await expectToast(canvasElement, `${type} token message`);
-      await expect(
-        getToastElement(canvasElement, `${type} token message`).className
-      ).not.toMatch(RAW_PALETTE);
+
+      // The per-type color classes sit on descendants (the icon, the title),
+      // not the root. getAttribute, because an SVG's className is an
+      // SVGAnimatedString rather than a string.
+      const toastElement = getToastElement(
+        canvasElement,
+        `${type} token message`
+      );
+
+      const classes = [
+        toastElement,
+        ...toastElement.querySelectorAll('[class]'),
+      ]
+        .map((element) => element.getAttribute('class'))
+        .join(' ');
+
+      await expect(classes).not.toMatch(RAW_PALETTE);
     }
   },
 };
