@@ -1,0 +1,20 @@
+reconcile	0	no
+archive-merged	0	no
+archive-abandoned	0	no
+abandon-empty	0	no
+allocator-in-progress	0	no
+effect	in-progress	SPEC-002
+allocator-next	0	no
+effect	allocated	SPEC-005
+lock-acquire	0	no
+lock-status	0	no
+effect	lock-status	dormant
+lock-release	0	no
+title-normalize	0	no
+effect	intent	A signed-in reader can pin a saved article so it stays at the top of their reading list across devices.
+ledger-update	0	no
+lint	0	no
+effect	reconcile-row	merged
+effect	saved-row	ready
+effect	ghost-row	abandoned
+effect	lint	{"ok":true,"findings":[]}
