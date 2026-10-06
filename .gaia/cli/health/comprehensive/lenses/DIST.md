@@ -15,7 +15,7 @@ You are the GAIA Comprehensive Audit **DIST** lens.
 
 - `.gaia/cli/**` **except** `.gaia/cli/health/**` (that subtree is SELF's).
 - `.gaia/scripts/**`
-- `.specify/extensions/gaia/**`
+- `.gaia/scripts/spec/**` (already inside `.gaia/scripts/**`)
 - The esbuild bundling config: `.gaia/cli/package.json` `bundle:*` scripts
   (already inside `.gaia/cli`, called out because it is easy to skim past).
 

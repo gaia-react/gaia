@@ -581,7 +581,7 @@ prefix_conforms() {
 
 # ========== 10. creation sites mint through the library ==========
 
-# literal_hits <repo>: every tracked line under .claude and .specify that
+# literal_hits <repo>: every tracked line under .claude and .gaia/scripts/spec that
 # hands git or the harness a hand-spelled GAIA branch name. One definition, so
 # the guard and its can-fail twin below read exactly the same patterns.
 literal_hits() {
@@ -590,7 +590,7 @@ literal_hits() {
     -e "(checkout -b|switch -c|branch -[mM]|worktree add( [^ ]+)* -[bB]) +\"?${kinds}" \
     -e 'BRANCH="(debt|plan|chore|release)/' \
     -e "EnterWorktree\\(\\{ *name: *\"${kinds}" \
-    -- .claude .specify ':!**/*.bats' || true
+    -- .claude .gaia/scripts/spec ':!**/*.bats' || true
 }
 
 @test "no instruction surface spells a GAIA branch literal for git to create" {
@@ -838,9 +838,9 @@ validate_in() {
 # ========== 12. every `name <kind>` call mints ==========
 
 # name_call_kinds <repo>: every kind named by a tracked `branch-name-lib.sh name
-# <kind>` call under .claude and .specify, one per line, bats files excluded.
+# <kind>` call under .claude and .gaia/scripts/spec, one per line, bats files excluded.
 name_call_kinds() {
-  git -C "$1" grep -hoE 'branch-name-lib\.sh name [a-z]+' -- .claude .specify ':!**/*.bats' \
+  git -C "$1" grep -hoE 'branch-name-lib\.sh name [a-z]+' -- .claude .gaia/scripts/spec ':!**/*.bats' \
     | awk '{ print $3 }' | LC_ALL=C sort -u || true
 }
 

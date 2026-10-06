@@ -11,8 +11,8 @@
 
 setup() {
   HELPERS="$BATS_TEST_DIRNAME/helpers"
-  ALLOCATOR=".specify/extensions/gaia/lib/spec-allocator.sh"
-  LEDGER_UPDATE=".specify/extensions/gaia/lib/ledger-update.sh"
+  ALLOCATOR=".gaia/scripts/spec/spec-allocator.sh"
+  LEDGER_UPDATE=".gaia/scripts/spec/ledger-update.sh"
 }
 
 teardown() {
@@ -188,7 +188,7 @@ EOF
   before="$(jq -r '[.specs[].id] | length' "$REPO/.gaia/local/specs/ledger.json")"
   run bash -c "
     export GAIA_LEDGER_LOCK_FORCE_FALLBACK=1
-    . '$REPO/.specify/extensions/gaia/lib/with-ledger-lock.sh'
+    . '$REPO/.gaia/scripts/spec/with-ledger-lock.sh'
     ( with_ledger_lock '$REPO/.gaia/local/specs' sleep 4 ) &
     holder=\$!
     for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do

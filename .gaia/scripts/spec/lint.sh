@@ -142,7 +142,7 @@ required_keys=(
   updated
 )
 
-for required_key in "${required_keys[@]}"; do
+for required_key in ${required_keys[@]+"${required_keys[@]}"}; do
   if ! has_frontmatter_key "$required_key"; then
     add_finding "missing_field" "Required frontmatter field missing: $required_key" "frontmatter.$required_key"
   fi
@@ -199,7 +199,7 @@ fi
 # --- Lineage check (optional key): every entry must be a parent ref ---
 # Regexes are a copy of the research/init, issue, spec, and plan rows of the ref
 # grammar defined in .gaia/scripts/usage-lib.sh; keep them matching that file.
-# This file stays self-contained under .specify/, so it does not source the lib.
+# This file stays self-contained, so it does not source the lib.
 # A SPEC's parent is never a branch, PR, session, or command, so only these kinds.
 if has_frontmatter_key lineage; then
   lineage_regex_slug='^(research|init):[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'
@@ -244,7 +244,7 @@ placeholder_patterns=(
   '<TBD>'
   'FIXME'
 )
-for placeholder_pattern in "${placeholder_patterns[@]}"; do
+for placeholder_pattern in ${placeholder_patterns[@]+"${placeholder_patterns[@]}"}; do
   if grep -nE "$placeholder_pattern" "$spec_file" > /dev/null; then
     first_hit=$(grep -nE "$placeholder_pattern" "$spec_file" | head -n 1 | cut -d: -f1)
     add_finding "placeholder" "Placeholder text matching '$placeholder_pattern' detected" "line:$first_hit"
@@ -284,7 +284,7 @@ fi
 
 # Join findings with commas.
 joined=""
-for finding in "${findings[@]}"; do
+for finding in ${findings[@]+"${findings[@]}"}; do
   if [ -z "$joined" ]; then
     joined="$finding"
   else

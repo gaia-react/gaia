@@ -20070,8 +20070,7 @@ var SCAN_GLOBS = [
   ".gaia/scripts",
   ".claude/hooks",
   ".github/actions",
-  ".github/audit",
-  ".specify/extensions/gaia/lib"
+  ".github/audit"
 ];
 
 // src/release/runtime-deps.ts
@@ -20105,7 +20104,7 @@ var RUNTIME_PREFIXES = [
   ".claude/agent-memory",
   ".claude/audit"
 ];
-var PATH_PREFIXES = [".gaia/", ".claude/", ".specify/", ".github/"];
+var PATH_PREFIXES = [".gaia/", ".claude/", ".github/"];
 var PROSE_PATH_ALLOWLIST = /* @__PURE__ */ new Set([
   ".claude/agents/code-audit-frontend/cn.md",
   ".claude/agents/code-audit-frontend/conform.md",

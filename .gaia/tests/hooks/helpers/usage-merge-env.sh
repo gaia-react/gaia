@@ -39,7 +39,7 @@ build_repo() {
   mkdir -p "$REPO" "$PROJECTS_DIRECTORY/$(encode_project_path "$REPO")"
   git -C "$REPO" init -q -b main
   git -C "$REPO" -c commit.gpgsign=false commit -q --allow-empty -m init
-  mkdir -p "$REPO/.claude/hooks/lib" "$REPO/.gaia/scripts" "$REPO/.specify/extensions/gaia/lib" "$TELEMETRY_DIRECTORY"
+  mkdir -p "$REPO/.claude/hooks/lib" "$REPO/.gaia/scripts" "$REPO/.gaia/scripts/spec" "$TELEMETRY_DIRECTORY"
   local copied_file
   cp "$SOURCE_ROOT/.claude/hooks/token-rollup-merge.sh" "$REPO/.claude/hooks/"
   for copied_file in verb-arming.sh verb-arming-walk.sh repo-scope.sh gaia-active-plan.sh; do
@@ -51,7 +51,7 @@ build_repo() {
     "$SOURCE_ROOT"/.gaia/scripts/branch-name-lib.sh "$SOURCE_ROOT"/.gaia/scripts/token-rollup.sh; do
     cp "$copied_file" "$REPO/.gaia/scripts/"
   done
-  cp "$SOURCE_ROOT/.specify/extensions/gaia/lib/with-ledger-lock.sh" "$REPO/.specify/extensions/gaia/lib/"
+  cp "$SOURCE_ROOT/.gaia/scripts/spec/with-ledger-lock.sh" "$REPO/.gaia/scripts/spec/"
   cat >"$REPO/.gaia/scripts/token-rates.json" <<'EOF'
 {
   "cache_multipliers": { "read": 0.1, "write_5m": 1.25, "write_1h": 2.0 },

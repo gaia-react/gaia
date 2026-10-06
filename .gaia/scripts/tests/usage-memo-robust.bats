@@ -400,7 +400,7 @@ differs() { if cmp -s "$1" "$2"; then return 1; fi; return 0; }
   mutate "$MUTANT_TREE/$LIBRARY" 'gaia_usage_memo_save() {' '_gaia_usage_memo_save_inner() {'
   printf '%s\n' \
     'gaia_usage_memo_save() {' \
-    "  . \"$MUTANT_TREE/.specify/extensions/gaia/lib/with-ledger-lock.sh\"" \
+    "  . \"$MUTANT_TREE/.gaia/scripts/spec/with-ledger-lock.sh\"" \
     '  with_ledger_lock "${1%/*}" _gaia_usage_memo_save_inner "$1"' \
     '}' >>"$MUTANT_TREE/$LIBRARY"
   rm -f "$MEMO"

@@ -2450,7 +2450,7 @@ describe('shipped absolute-paths check', () => {
 
   test('allows the elided /Users/.../ placeholder', () => {
     sandbox.writeStaged(
-      '.specify/extensions/gaia/lib/spec-session-lock.sh',
+      '.gaia/scripts/spec/spec-session-lock.sh',
       '#   level 1: /bin/zsh -c source /Users/.../.claude/shell-snapshots/snap\n'
     );
 
@@ -2460,9 +2460,9 @@ describe('shipped absolute-paths check', () => {
 
   test('still flags a real machine path on its own line', () => {
     sandbox.writeStaged(
-      '.specify/extensions/gaia/lib/spec-session-lock.sh',
+      '.gaia/scripts/spec/spec-session-lock.sh',
       '#   level 1: /bin/zsh -c source /Users/.../.claude/shell-snapshots/snap\n' +
-        'LOCK_DIR="/Users/steven/Development/gaia/.specify/locks"\n'
+        'LOCK_DIR="/Users/steven/Development/gaia/.gaia/local/locks"\n'
     );
 
     expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(1);

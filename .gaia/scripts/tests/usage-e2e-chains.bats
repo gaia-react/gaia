@@ -37,8 +37,8 @@ cost_row() {
   mkdir -p "${spec%/*}"
   sed -e "s/SPEC-NNN/$id/g" -e 's/UAT-NNN/UAT-001/g' \
     -e 's/^lineage: \[\]$/lineage: [research:topic-a-2026-10-01]/' \
-    "$REPO/.specify/extensions/gaia/templates/spec-template.md" >"$spec"
-  run bash "$REPO/.specify/extensions/gaia/lib/lint.sh" "$spec"
+    "$REPO/.claude/skills/gaia/references/spec/spec-template.md" >"$spec"
+  run bash "$REPO/.gaia/scripts/spec/lint.sh" "$spec"
   [ "$status" -eq 0 ]
   [ "$output" = '{"ok":true,"findings":[]}' ]
 
@@ -90,7 +90,7 @@ parity() {
   references_file="$TEMPORARY_DIRECTORY/refs.txt"
   corpus >"$references_file"
   awk -v references_file="$references_file" '/^lineage: \[\]$/ { print "lineage:"; while ((getline reference_line < references_file) > 0) print "  - " reference_line; next } { print }' \
-    "$REPO/.specify/extensions/gaia/templates/spec-template.md" | sed -e 's/SPEC-NNN/SPEC-001/g' -e 's/UAT-NNN/UAT-001/g' >"$spec"
+    "$REPO/.claude/skills/gaia/references/spec/spec-template.md" | sed -e 's/SPEC-NNN/SPEC-001/g' -e 's/UAT-NNN/UAT-001/g' >"$spec"
   lint_bad="$(bash "$lint" "$spec" | jq -r '.findings[] | select(.code == "invalid_lineage") | .message | capture("'"'"'(?<reference>.*)'"'"'$").reference')"
   # shellcheck source=/dev/null
   . "$REPO/.gaia/scripts/usage-lib.sh"
@@ -109,14 +109,14 @@ parity() {
   for key_prefix in research init issue spec plan; do
     [ "$(corpus | grep -c "^$key_prefix:")" -ge 4 ]
   done
-  run parity "$REPO/.specify/extensions/gaia/lib/lint.sh"
+  run parity "$REPO/.gaia/scripts/spec/lint.sh"
   [ "$status" -eq 0 ] || { printf '%s\n' "$output" >&2; return 1; }
 }
 
 @test "guards-must-fail (grammar parity): a lint.sh copy that loosens the SPEC digits is reported with the offending ref" {
   local mutant_script="$TEMPORARY_DIRECTORY/lint-mutant.sh"
-  sed 's/\^spec:SPEC-\[0-9\]{3,}\$/^spec:SPEC-[0-9]{2,}$/' "$REPO/.specify/extensions/gaia/lib/lint.sh" >"$mutant_script"
-  if cmp -s "$mutant_script" "$REPO/.specify/extensions/gaia/lib/lint.sh"; then echo "mutation did not apply" >&2; return 1; fi
+  sed 's/\^spec:SPEC-\[0-9\]{3,}\$/^spec:SPEC-[0-9]{2,}$/' "$REPO/.gaia/scripts/spec/lint.sh" >"$mutant_script"
+  if cmp -s "$mutant_script" "$REPO/.gaia/scripts/spec/lint.sh"; then echo "mutation did not apply" >&2; return 1; fi
   run parity "$mutant_script"
   [ "$status" -eq 1 ]
   grep -qF 'MISMATCH spec:SPEC-01 lint-accepts=yes lib-accepts=no' <<<"$output"

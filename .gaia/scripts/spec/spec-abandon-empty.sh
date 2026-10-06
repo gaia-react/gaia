@@ -39,8 +39,8 @@ fi
 repo_root="${1%/}"
 cache_directory="${repo_root}/.gaia/local/cache"
 _library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
-. "${_library_directory}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
+# shellcheck source=../ledger-path-lib.sh
+. "${_library_directory}/../ledger-path-lib.sh" 2>/dev/null || true
 
 GUARD_AGE_SECONDS=86400
 

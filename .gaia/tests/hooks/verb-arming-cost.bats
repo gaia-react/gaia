@@ -525,7 +525,7 @@ CEILING_USAGE_MERGE_MS=4000
 
 @test "cost: the merge hook with the usage block live stays inside the cap plus headroom when gh cannot answer" {
   local copied_file
-  mkdir -p "$REPO/.claude/hooks/lib" "$REPO/.gaia/scripts" "$REPO/.specify/extensions/gaia/lib"
+  mkdir -p "$REPO/.claude/hooks/lib" "$REPO/.gaia/scripts" "$REPO/.gaia/scripts/spec"
   cp "$HOOKS_DIRECTORY/token-rollup-merge.sh" "$REPO/.claude/hooks/"
   for copied_file in verb-arming.sh verb-arming-walk.sh repo-scope.sh gaia-active-plan.sh; do
     cp "$HOOKS_DIRECTORY/lib/$copied_file" "$REPO/.claude/hooks/lib/"
@@ -536,7 +536,7 @@ CEILING_USAGE_MERGE_MS=4000
     "$HOOKS_DIRECTORY"/../../.gaia/scripts/branch-name-lib.sh "$HOOKS_DIRECTORY"/../../.gaia/scripts/token-rollup.sh; do
     cp "$copied_file" "$REPO/.gaia/scripts/"
   done
-  cp "$HOOKS_DIRECTORY/../../.specify/extensions/gaia/lib/with-ledger-lock.sh" "$REPO/.specify/extensions/gaia/lib/"
+  cp "$HOOKS_DIRECTORY/../../.gaia/scripts/spec/with-ledger-lock.sh" "$REPO/.gaia/scripts/spec/"
   printf '#!/usr/bin/env bash\nexit 1\n' >"$GH_BIN/gh"
   chmod +x "$GH_BIN/gh"
 

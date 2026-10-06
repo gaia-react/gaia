@@ -146,7 +146,7 @@ List every dead reference (one per line). Do not truncate: the count is small en
 
 ## Step 4: GAIA check #13: UAT/SPEC narrative-ref drift
 
-Detects narrative `UAT-NNN` and concrete maintainer `SPEC-NNN` references that crept into instruction files (`.claude/skills/`, `.claude/commands/`, `.claude/agents/`, `.claude/rules/`, `.claude/hooks/`) and shipped extension surfaces (`.specify/extensions/gaia/{README.md, commands, lib, rules, templates}`). The rule rationale + structural-vs-narrative triage lives in `.claude/rules/working-doc-ids.md`.
+Detects narrative `UAT-NNN` and concrete maintainer `SPEC-NNN` references that crept into instruction files (`.claude/skills/`, `.claude/commands/`, `.claude/agents/`, `.claude/rules/`, `.claude/hooks/`) and the spec-lifecycle scripts (`.gaia/scripts/spec/`). The rule rationale + structural-vs-narrative triage lives in `.claude/rules/working-doc-ids.md`.
 
 <!-- gaia:maintainer-only:start -->
 Both scans deliberately exclude `.gaia/tests/`: it is release-excluded maintainer-only test infrastructure that never reaches an adopter, so its UAT/SEC/TST test labels are legitimate SPEC-conformance traceability, not shipped-surface drift. Do not re-add `.gaia/tests/` to either grep.
@@ -160,16 +160,12 @@ Two scans, run from the repo root:
 # UAT-NNN narrative-ref candidates
 grep -rEn "UAT-[0-9]{3}" \
   .claude/skills/ .claude/commands/ .claude/agents/ .claude/rules/ .claude/hooks/ \
-  .specify/extensions/gaia/README.md .specify/extensions/gaia/commands/ \
-  .specify/extensions/gaia/lib/ .specify/extensions/gaia/rules/ \
-  .specify/extensions/gaia/templates/
+  .gaia/scripts/spec/
 
 # Concrete maintainer SPEC IDs
 grep -rEn "\bSPEC-[0-9]{3,}\b" \
   .claude/skills/ .claude/commands/ .claude/agents/ .claude/rules/ .claude/hooks/ \
-  .specify/extensions/gaia/README.md .specify/extensions/gaia/commands/ \
-  .specify/extensions/gaia/lib/ .specify/extensions/gaia/rules/ \
-  .specify/extensions/gaia/templates/
+  .gaia/scripts/spec/
 ```
 
 ### 4b. Triage and append
@@ -192,10 +188,10 @@ Otherwise:
 ```markdown
 ## #13: UAT/SPEC narrative-ref drift
 
-⚠ {N} narrative ref(s) found in instruction files / shipped extension surfaces:
+⚠ {N} narrative ref(s) found in instruction files / spec-lifecycle scripts:
 
 - `.claude/skills/foo/SKILL.md:42` → `(UAT-012)` parenthetical in section header
-- `.specify/extensions/gaia/commands/bar.md:88` → `operate under SPEC-001's scope_boundaries` prose
+- `.claude/skills/gaia/references/spec/bar.md:88` → `operate under SPEC-001's scope_boundaries` prose
 ```
 
 List every narrative finding (one per line). Structural matches are not listed: they are the regex's false positives by design.

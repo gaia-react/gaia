@@ -122,7 +122,7 @@ write_readme_with_spec() {
 # source/exec calls resolve exactly as they do in production. Sets $REPO.
 build_full_repo() {
   REPO="$("$HELPERS/tmp-git-repo.sh")"
-  mkdir -p "$REPO/.claude/hooks/lib" "$REPO/.gaia/scripts" "$REPO/.specify/extensions/gaia/lib"
+  mkdir -p "$REPO/.claude/hooks/lib" "$REPO/.gaia/scripts" "$REPO/.gaia/scripts/spec"
   cp "$REPO_ROOT/.claude/hooks/token-tally-review.sh" "$REPO/.claude/hooks/token-tally-review.sh"
   chmod +x "$REPO/.claude/hooks/token-tally-review.sh"
   cp "$REPO_ROOT/.claude/hooks/lib/gaia-active-plan.sh" "$REPO/.claude/hooks/lib/gaia-active-plan.sh"
@@ -138,7 +138,7 @@ build_full_repo() {
   cp "$REPO_ROOT/.gaia/scripts/ledger-path-lib.sh" "$REPO/.gaia/scripts/ledger-path-lib.sh"
   cp "$REPO_ROOT/.gaia/scripts/main-root-lib.sh" "$REPO/.gaia/scripts/main-root-lib.sh"
   cp "$REPO_ROOT/.gaia/scripts/audit-window-lib.sh" "$REPO/.gaia/scripts/audit-window-lib.sh"
-  cp "$REPO_ROOT/.specify/extensions/gaia/lib/with-ledger-lock.sh" "$REPO/.specify/extensions/gaia/lib/with-ledger-lock.sh"
+  cp "$REPO_ROOT/.gaia/scripts/spec/with-ledger-lock.sh" "$REPO/.gaia/scripts/spec/with-ledger-lock.sh"
 }
 
 ledger_path() {

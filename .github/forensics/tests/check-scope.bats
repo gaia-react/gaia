@@ -52,9 +52,9 @@ setup() {
   [ "$output" = '{"ok":true,"allowed":[".gaia/statusline/render.sh"],"denied":[]}' ]
 }
 
-@test "allowlist: .specify/extensions/gaia/ (non-templates path)" {
-  run "$SCRIPT" .specify/extensions/gaia/scripts/foo.sh
-  [ "$output" = '{"ok":true,"allowed":[".specify/extensions/gaia/scripts/foo.sh"],"denied":[]}' ]
+@test "allowlist: .gaia/scripts/spec/" {
+  run "$SCRIPT" .gaia/scripts/spec/foo.sh
+  [ "$output" = '{"ok":true,"allowed":[".gaia/scripts/spec/foo.sh"],"denied":[]}' ]
 }
 
 @test "allowlist: .gaia/manifest.json (exact file)" {
@@ -111,9 +111,9 @@ setup() {
 
 # --- allowlist subtraction (UAT-007 edge case) -----------------------------
 
-@test "subtraction: .specify/extensions/gaia/templates/ overrides parent allowlist" {
-  run "$SCRIPT" .specify/extensions/gaia/templates/foo.md
-  [ "$output" = '{"ok":false,"allowed":[],"denied":[{"path":".specify/extensions/gaia/templates/foo.md","reason":"denylist"}]}' ]
+@test "subtraction: a file-level deny under .claude/skills/ overrides the parent allowlist" {
+  run "$SCRIPT" .claude/skills/gaia/references/spec/spec-template.md
+  [ "$output" = '{"ok":false,"allowed":[],"denied":[{"path":".claude/skills/gaia/references/spec/spec-template.md","reason":"denylist"}]}' ]
 }
 
 # --- default-deny (UAT-014) ------------------------------------------------

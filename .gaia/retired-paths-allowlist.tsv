@@ -64,3 +64,4 @@
 .gaia/cli/src/scaffold/route-service.ts	app/services/	Package-relative paths resolved against the package directory from the registry.
 .gaia/cli/src/scaffold/route.ts	app/services/	Help text naming package-relative paths resolved against the package directory from the registry.
 .gaia/cli/src/scaffold/route.ts	app/routes/	Help text naming package-relative paths resolved against the package directory from the registry.
+.gaia/scripts/spec/uat-write.sh	.playwright/e2e	Package-relative e2e directory name joined to the package path from the registry, not a root path.

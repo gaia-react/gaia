@@ -190,10 +190,9 @@ EOF
 # the changed one.
 scratch_repo() {
   SCRATCH_REPO="$BATS_TEST_TMPDIR/repo"
-  mkdir -p "$SCRATCH_REPO/.gaia" "$SCRATCH_REPO/.specify/extensions/gaia"
+  mkdir -p "$SCRATCH_REPO/.gaia"
   cp -R "$SOURCE_ROOT/.gaia/scripts" "$SCRATCH_REPO/.gaia/scripts"
   rm -rf "$SCRATCH_REPO/.gaia/scripts/tests"
-  cp -R "$SOURCE_ROOT/.specify/extensions/gaia/lib" "$SCRATCH_REPO/.specify/extensions/gaia/lib"
   git -C "$SCRATCH_REPO" init -q
   git -C "$SCRATCH_REPO" add -A
   git -C "$SCRATCH_REPO" -c user.name=gaia-test -c user.email=gaia-test@example.com -c commit.gpgsign=false commit -q -m scratch

@@ -32,10 +32,10 @@ fi
 
 repo_root="$1"
 _library_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
-. "${_library_directory}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
-# shellcheck source=../../../../.gaia/scripts/branch-name-lib.sh
-. "${_library_directory}/../../../../.gaia/scripts/branch-name-lib.sh" 2>/dev/null || true
+# shellcheck source=../ledger-path-lib.sh
+. "${_library_directory}/../ledger-path-lib.sh" 2>/dev/null || true
+# shellcheck source=../branch-name-lib.sh
+. "${_library_directory}/../branch-name-lib.sh" 2>/dev/null || true
 # Without the branch-naming library no merged PR can be matched to a SPEC.
 type gaia_branch_spec_number >/dev/null 2>&1 || exit 0
 

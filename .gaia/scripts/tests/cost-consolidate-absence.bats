@@ -56,7 +56,7 @@ setup() {
 }
 
 @test "UAT-007: cost-consolidate.sh no longer exists" {
-  [ ! -f "$REPO_ROOT/.specify/extensions/gaia/lib/cost-consolidate.sh" ]
+  [ ! -f "$REPO_ROOT/.gaia/scripts/spec/cost-consolidate.sh" ]
 }
 
 @test "UAT-007: git grep for cost-consolidate is empty across the whole tracked tree" {

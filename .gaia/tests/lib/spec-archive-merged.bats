@@ -30,7 +30,7 @@
 
 setup() {
   HELPERS="$BATS_TEST_DIRNAME/helpers"
-  ARCHIVE=".specify/extensions/gaia/lib/spec-archive-merged.sh"
+  ARCHIVE=".gaia/scripts/spec/spec-archive-merged.sh"
   SPECS=".gaia/local/specs"
   COST_LEDGER=".gaia/local/telemetry/cost.jsonl"
   # --seed-merged-folder stamps a fixed merged_at ("2026-01-02T00:00:00Z")
@@ -161,7 +161,7 @@ _clear_merged_at() {
 
 @test "3: spec-close flips the ledger before delegating to the single-id sweep" {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME" && git rev-parse --show-toplevel)"
-  SPEC_CLOSE="$REPO_ROOT/.specify/extensions/gaia/commands/spec-close.md"
+  SPEC_CLOSE="$REPO_ROOT/.claude/skills/gaia/references/spec/spec-close.md"
   [ -f "$SPEC_CLOSE" ]
 
   flip_line="$(grep -n 'ledger-update.sh' "$SPEC_CLOSE" | head -1 | cut -d: -f1)"
