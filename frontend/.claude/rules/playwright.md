@@ -109,7 +109,7 @@ GAIA's `playwright.config.ts` ships these defaults:
 
 - `fullyParallel: true`, all specs run in parallel by default.
 - CI: `workers: '100%'` (one per core), `retries: 2`, `forbidOnly: true`.
-- Locally: unlimited workers, no retries, multi-browser opt-in via `TEST_ALL_BROWSERS`.
+- Locally: Playwright default workers (half the cores), no retries, multi-browser opt-in via `TEST_ALL_BROWSERS`.
 - Primary browser: Chromium only by default. Other browsers (webkit, firefox, mobile) guarded behind `TEST_ALL_BROWSERS` flag.
 
 ## Traces and screenshots

@@ -190,17 +190,19 @@ test.describe('storybook a11y', () => {
       await expect(page.locator('.sb-errordisplay')).toBeHidden();
       await expectStoryHasContent(page, story.id);
       await expectTheme(page, storyScanTheme);
-      await saveScreenshot(page, testInfo, `${story.id}-${storyScanTheme}`);
-      await expectNoSeriousA11yViolations(page, testInfo, {
-        label: storyScanTheme,
-      });
 
+      // Before the screenshot and axe scan: a notify toast dismisses after 5s.
       for (const {type} of notifyTypes) {
         await expectToastIconContrast(page, testInfo, {
           theme: storyScanTheme,
           type,
         });
       }
+
+      await saveScreenshot(page, testInfo, `${story.id}-${storyScanTheme}`);
+      await expectNoSeriousA11yViolations(page, testInfo, {
+        label: storyScanTheme,
+      });
     });
   }
 
