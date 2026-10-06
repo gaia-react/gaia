@@ -15,7 +15,8 @@
 # reader and writer of it.
 #
 # Usage:
-#   audit-scope-digest.sh --capture --root <path> --member <name> --base <key-base> [--help|-h]
+#   audit-scope-digest.sh --capture [--recapture] [--base-reason <token>] [--base-overridden]
+#                         --root <path> --member <name> --base <key-base> [--help|-h]
 #   audit-scope-digest.sh --read    --root <path> --member <name> --base <key-base>
 #   audit-scope-digest.sh --release --root <path> --member <name> --base <key-base>
 #
@@ -24,7 +25,11 @@
 #              underivable digest or an unwritable scope file: prints nothing
 #              on stdout, a diagnostic on stderr, exits non-zero. Fail loud
 #              here -- the member must learn at capture time, not at write
-#              time, that its clearance will refuse.
+#              time, that its clearance will refuse. `--base-reason` records
+#              the scope resolver's reason token for the round and
+#              `--base-overridden` records that the caller overrode the review
+#              base instead of taking the resolved one; both are valid only
+#              with --capture, and the clearance writer reads them back.
 #   --read     Prints the stored 64-hex digest and exits 0. Absent,
 #              unreadable, unparseable, or non-64-hex: prints nothing, exits
 #              non-zero. Fails closed to empty rather than to a placeholder,
@@ -48,7 +53,7 @@
 # filename would collide across concurrent branches cut from the same base.
 #
 # Body: {"schema":1,"member":"...","scope_digest":"<64-hex>","head":"...",
-# "captured_at":"..."}. JSON rather than a bare digest so a truncated write
+# "captured_at":"...","base_reason":"<token or empty>","base_overridden":false}. JSON rather than a bare digest so a truncated write
 # fails to parse instead of silently reading as a short digest.
 #
 # `--capture` is idempotent per audit key, member, AND REVIEW -- it returns an
@@ -108,7 +113,7 @@ fi
 
 usage() {
   cat >&2 <<'EOF'
-usage: audit-scope-digest.sh --capture [--recapture] --root <path> --member <name> --base <key-base> [--help|-h]
+usage: audit-scope-digest.sh --capture [--recapture] [--base-reason <token>] [--base-overridden] --root <path> --member <name> --base <key-base> [--help|-h]
        audit-scope-digest.sh --read    --root <path> --member <name> --base <key-base>
        audit-scope-digest.sh --release --root <path> --member <name> --base <key-base>
 
@@ -119,6 +124,10 @@ usage: audit-scope-digest.sh --capture [--recapture] --root <path> --member <nam
                audit key and member instead of returning it unchanged. For a
                caller that legitimately changed the content its review ends on
                (CI's self-heal commit), never to refresh a stale-looking value.
+  --base-reason      valid only with --capture; the resolver's reason token for
+                     the round, stored in the capture.
+  --base-overridden  valid only with --capture; marks the round's review base as
+                     caller-overridden, stored in the capture.
 EOF
 }
 
@@ -131,6 +140,9 @@ ROOT=""
 MEMBER=""
 BASE=""
 RECAPTURE=0
+BASE_REASON=""
+BASE_OVERRIDDEN=false
+CAPTURE_ONLY_OPTION=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -148,6 +160,16 @@ while [ "$#" -gt 0 ]; do
       ;;
     --recapture)
       RECAPTURE=1
+      shift
+      ;;
+    --base-reason)
+      BASE_REASON="${2:-}"
+      CAPTURE_ONLY_OPTION="--base-reason"
+      shift 2 2>/dev/null || shift
+      ;;
+    --base-overridden)
+      BASE_OVERRIDDEN=true
+      CAPTURE_ONLY_OPTION="--base-overridden"
       shift
       ;;
     --root)
@@ -185,6 +207,12 @@ esac
 
 if [ "$RECAPTURE" -eq 1 ] && [ "$MODE" != "capture" ]; then
   emit_error "--recapture is valid only with --capture"
+  usage
+  exit 2
+fi
+
+if [ -n "$CAPTURE_ONLY_OPTION" ] && [ "$MODE" != "capture" ]; then
+  emit_error "${CAPTURE_ONLY_OPTION} is valid only with --capture"
   usage
   exit 2
 fi
@@ -381,8 +409,11 @@ jq -cn \
   --arg scope_digest "$digest" \
   --arg head "$head_sha" \
   --arg captured_at "$captured_at" \
+  --arg base_reason "$BASE_REASON" \
+  --argjson base_overridden "$BASE_OVERRIDDEN" \
   '{schema: $schema, member: $member, scope_digest: $scope_digest,
-    head: $head, captured_at: $captured_at}' \
+    head: $head, captured_at: $captured_at,
+    base_reason: $base_reason, base_overridden: $base_overridden}' \
   >"$temporary_file" || {
   rm -f "$temporary_file"
   emit_error "cannot build the scope body"

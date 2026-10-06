@@ -518,3 +518,90 @@ write_with_review_base() {
   leftover="$(find "$AUDIT_DIRECTORY" -name '*.findings.json' 2>/dev/null || true)"
   [ -z "$leftover" ]
 }
+
+# entry_id and resolutions: the accounting fields for a still-open re-run
+# ledger entry. Both are additive and optional; a rejected value writes nothing.
+
+write_with_resolutions() {
+  local findings="$1" resolutions="$2"
+  shift 2
+  printf '%s' "$resolutions" > "$BATS_TEST_TMPDIR/resolutions.json"
+  printf '%s' "$findings" | bash "$WRITER" --root "$ROOT" --member "$MEMBER" --base "$BASE" \
+    --findings - --resolutions "$BATS_TEST_TMPDIR/resolutions.json" "$@"
+}
+
+no_findings_sidecar_written() {
+  leftover="$(find "$AUDIT_DIRECTORY" -name '*.findings.json' 2>/dev/null || true)"
+  [ -z "$leftover" ]
+}
+
+@test "entry_id: a finding carrying it is written verbatim, one without has no entry_id key" {
+  with_id="$(complete_finding | jq -c '. + {entry_id: "r1-1"}')"
+  write "[$with_id,$(complete_finding)]" >/dev/null
+  [ "$(jq -r '.findings[0].entry_id' "$EXPECTED")" = "r1-1" ]
+  [ "$(jq -r '.findings[1] | has("entry_id")' "$EXPECTED")" = "false" ]
+}
+
+@test "entry_id: empty, numeric, and null each exit 2 naming the index and write no sidecar" {
+  for bad in '""' '7' 'null'; do
+    entry="$(complete_finding | jq -c --argjson bad "$bad" '. + {entry_id: $bad}')"
+    run write "[$(complete_finding),$entry]"
+    [ "$status" -eq 2 ]
+    grep -qF "findings[1]" <<<"$output" || return 1
+    grep -qF "entry_id" <<<"$output" || return 1
+    no_findings_sidecar_written || return 1
+  done
+}
+
+@test "resolutions: two valid records are written verbatim under resolutions" {
+  records='[{"entry_id":"r1-1","rationale":"fixed at HEAD"},{"entry_id":"r1-2","rationale":"operator accepted"}]'
+  run write_with_resolutions "[$(complete_finding)]" "$records"
+  [ "$status" -eq 0 ]
+  [ "$(jq -c '.resolutions' "$EXPECTED")" = "$records" ]
+}
+
+@test "resolutions: an empty array is written as []" {
+  run write_with_resolutions "[]" "[]"
+  [ "$status" -eq 0 ]
+  [ "$(jq -c '.resolutions' "$EXPECTED")" = "[]" ]
+}
+
+@test "resolutions: absent the flag the sidecar has no resolutions key" {
+  write "[$(complete_finding)]" >/dev/null
+  [ "$(jq -r 'has("resolutions")' "$EXPECTED")" = "false" ]
+}
+
+@test "resolutions: a whitespace-only rationale exits 2 naming resolutions[1] and writes no sidecar" {
+  records='[{"entry_id":"r1-1","rationale":"fixed"},{"entry_id":"r1-2","rationale":"   "}]'
+  run write_with_resolutions "[$(complete_finding)]" "$records"
+  [ "$status" -eq 2 ]
+  grep -qF "resolutions[1]" <<<"$output"
+  no_findings_sidecar_written
+}
+
+@test "resolutions: a record missing entry_id exits 2 and writes no sidecar" {
+  run write_with_resolutions "[$(complete_finding)]" '[{"rationale":"fixed"}]'
+  [ "$status" -eq 2 ]
+  grep -qF "resolutions[0]" <<<"$output"
+  no_findings_sidecar_written
+}
+
+@test "resolutions: a non-array input exits 2 and writes no sidecar" {
+  run write_with_resolutions "[$(complete_finding)]" '{"entry_id":"r1-1","rationale":"x"}'
+  [ "$status" -eq 2 ]
+  no_findings_sidecar_written
+}
+
+@test "resolutions: --findings - together with --resolutions - exits 2 and writes no sidecar" {
+  run bash -c 'printf "%s" "[]" | bash "$1" --root "$2" --member "$3" --base "$4" --findings - --resolutions -' \
+    _ "$WRITER" "$ROOT" "$MEMBER" "$BASE"
+  [ "$status" -eq 2 ]
+  grep -qF "cannot both read stdin" <<<"$output"
+  no_findings_sidecar_written
+}
+
+@test "review_base: a member-refusal reason and the anchor tree are stored verbatim" {
+  write_with_review_base "[$(complete_finding)]" --review-base deadbeef --base-reason member-refusal --anchor-tree treesha >/dev/null
+  [ "$(jq -r '.review_base.reason' "$EXPECTED")" = "member-refusal" ]
+  [ "$(jq -r '.review_base.anchor_tree' "$EXPECTED")" = "treesha" ]
+}

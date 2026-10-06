@@ -1,0 +1,25 @@
+# Recorded from the resolver before the per-member refusal anchor existed.
+# Format: <fixture> <form> <line> <value>. Values are labels, never raw shas.
+refusal-only argless 1 main-ref
+refusal-only member 1 main-ref
+refusal-only member 2 no-anchor
+refusal-only member 3 main-ref
+refusal-only member 4 empty
+team-older-than-refusal argless 1 T
+team-older-than-refusal member 1 T
+team-older-than-refusal member 2 team-signal
+team-older-than-refusal member 3 T
+team-older-than-refusal member 4 empty
+machinery-after-team argless 1 main-ref
+machinery-after-team member 1 T
+machinery-after-team member 2 team-signal
+machinery-after-team member 3 main-ref
+machinery-after-team member 4 empty
+clearance-both-rules member 1 main-ref
+clearance-both-rules member 2 rules-reset-member
+clearance-degraded member 1 main-ref
+clearance-degraded member 2 degraded
+clearance-degraded argless 1 main-ref
+clearance-no-version member 1 main-ref
+clearance-no-version member 2 no-version
+clearance-no-version argless 1 main-ref

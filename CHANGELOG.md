@@ -116,6 +116,7 @@ On GAIA 1.6.1? Choose Abort, then paste the prompt from https://gaiareact.com/mi
 
 ### Changed
 
+- A fix-loop re-audit after a Code Audit Team member refused now reviews only what changed since that refusal plus the member's own open findings, instead of the whole branch. Every clearance write must account for each of the member's open findings, re-reported or resolved with a reason, or the writer refuses it (exit 3) with nothing published (#2552)
 - The Playwright story scan now axe-checks each story in dark only, since the Vitest storybook project already checks every story in light with addon-a11y at a stricter threshold, and Playwright on CI runs one worker per core instead of one. Together they cut the CI Playwright step by roughly two-thirds (#2524)
 - A story that weakens its accessibility check (setting it to `'todo'` or `'off'`, disabling it or its rules, or narrowing what axe scans) now fails the test run unless its opt-out is recorded with a reason in `frontend/test/story-a11y-opt-out.test.tsx`, because Vitest's addon-a11y is the only light-theme check a story gets. The addon-a11y settings move to `frontend/.storybook/a11y.ts`, and the Playwright story scan no longer writes screenshots or uploads them from CI (#2526)
 - The audit loop's round-10 cap no longer ends the loop. Past it, each unit of up to three rounds asks the human first: a grant runs a whole unit, and an accept runs its one closing round. Before, a grant at the cap was refused, and an accept was recorded but never ran, so the same checkpoint was asked again (#2502).

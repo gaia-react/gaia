@@ -17,8 +17,8 @@ bats_require_minimum_version 1.5.0
 #   --member <name> FOUR stdout lines: the per-member review base, the reason
 #                   token, the shared pull-request-wide base (byte-identical
 #                   to what the argument-less form prints on the same
-#                   fixture), and the recorded tree of the clearance that
-#                   anchored the answer.
+#                   fixture), and the recorded tree of the clearance or
+#                   refusal that anchored the answer.
 #
 # The base is gated by VERSION MATCH ALONE on both anchor arms: the
 # trailer/status is the three-field C3 form
@@ -43,7 +43,7 @@ bats_require_minimum_version 1.5.0
 # return different statuses per commit.
 #
 # Reason-token reachability lives in its own section at the foot of the file:
-# one test per token in the closed set of eight.
+# one test per token in the closed set.
 #
 
 setup() {
@@ -91,6 +91,16 @@ setup() {
   # The team-signal arm scans every roster member's markers, so the roster is
   # provisioned too (uncommitted, like the libs).
   cp "$REPO_ROOT/.gaia/audit-ci.yml" "$SANDBOX/.gaia/audit-ci.yml"
+
+  # The refusal link locates the re-run ledger through the key library; its
+  # absence fails only that link, so one test removes it.
+  mkdir -p "$SANDBOX/.gaia/scripts"
+  cp "$REPO_ROOT/.gaia/scripts/audit-key-lib.sh" "$SANDBOX/.gaia/scripts/audit-key-lib.sh"
+
+  # Local and CI runs exercise one path: the refusal link reads the ledger only
+  # outside GitHub Actions, and the fallback ref reads GITHUB_BASE_REF only
+  # inside it. A test that needs either sets it itself.
+  unset GITHUB_ACTIONS CI GITHUB_BASE_REF
 
   # The trailer/status digest field (C3 field 2) is never compared by this
   # script (only the version, field 1, gates the base), so every fixture
@@ -253,8 +263,14 @@ main_sha() {
 # matched on the tree and never on the sha.
 #   $5 review (full|light|none; default full; an earned marker only: `none`
 #      strips the field the way a legacy body lacks it)
+#   $6 review coverage (proven|none|mismatch; default proven; a refusal only):
+#      `proven` records review_coverage.scope_digest equal to the record's own
+#      digest, the proof a refusal anchor needs; `none` omits the object and
+#      `mismatch` records a different digest. record_digest reads the digest
+#      back from the printed path.
 write_clearance() {
   local member="$1" provenance="$2" tree="$3" version="$4" review="${5:-full}"
+  local coverage="${6:-proven}" coverage_field=""
   local extension digest name directory review_field="" existing_count
   directory="$SANDBOX/.gaia/local/audit"
   mkdir -p "$directory"
@@ -272,10 +288,21 @@ write_clearance() {
   if [ "$provenance" = "earned" ] && [ "$review" != "none" ]; then
     review_field="$(printf '"review":"%s",' "$review")"
   fi
-  printf '{"version":"%s","schema":4,"member":"%s","provenance":"%s",%s"digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-01-01T00:00:00Z"}\n' \
-    "$version" "$member" "$provenance" "$review_field" "$digest" "$tree" "$(sha_of HEAD)" \
+  if [ "$provenance" = "refused" ]; then
+    case "$coverage" in
+      proven) coverage_field="$(printf '"review_coverage":{"scope_digest":"%s"},' "$digest")" ;;
+      mismatch) coverage_field="$(printf '"review_coverage":{"scope_digest":"%064d"},' 99)" ;;
+    esac
+  fi
+  printf '{"version":"%s","schema":4,"member":"%s","provenance":"%s",%s%s"digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-01-01T00:00:00Z"}\n' \
+    "$version" "$member" "$provenance" "$review_field" "$coverage_field" "$digest" "$tree" "$(sha_of HEAD)" \
     > "$directory/$name"
   printf '%s\n' "$directory/$name"
+}
+
+# The digest a record carries, read from its body.
+record_digest() {
+  jq -r .digest "$1"
 }
 
 # Record that a full review stands at <sha>'s tree: the verification the
@@ -1018,28 +1045,553 @@ assert_global_reset_for() {
 }
 
 # -----------------------------------------------------------------------------
-# Refusal precedence. A member can neither anchor on content it refused nor
-# anchor past that refusal, so the refusal is a whole-range pre-scan rather
-# than a per-candidate test: the walk meets the newer earned clearance first.
+# Refusals. The newest member signal wins the member arm, a refusal winning a
+# same-tree tie, and a refusal anchors (member-refusal) only when the re-run
+# ledger links it: per-member provenance naming this refusal's digest, tree and
+# the current version, at least one open entry for the member, a ledger for
+# this branch and key base, and a review-coverage proof on the refusal record.
+# Any failed link falls back to the whole-team anchor or to no-anchor, never to
+# degraded, and names its cause on a line carrying "refused content".
 # -----------------------------------------------------------------------------
 
-@test "a refusal in range disables the member arm entirely" {
+# The ledger path the resolver derives: the audit key built from the merge-base
+# of the argument-less resolution (line 3) and HEAD, through the sandbox's own
+# key library. Computed at the fixture's final HEAD, since line 3 depends on it.
+sandbox_ledger_path() {
+  local key_reference key_base key
+  key_reference="$( cd "$SANDBOX" && "$SCRIPT" 2>/dev/null )"
+  key_base="$(git -C "$SANDBOX" merge-base "$key_reference" HEAD)"
+  key="$( . "$SANDBOX/.gaia/scripts/audit-key-lib.sh" && gaia_audit_key "$key_base" "$SANDBOX" )"
+  [ -n "$key" ] || return 1
+  printf '%s\n' "$SANDBOX/.gaia/local/audit/${key}.rerun.json"
+}
+
+# write_ledger <member> <refusal-digest> <refusal-tree> <version> [<entries-json>]
+# Writes a schema-1 re-run ledger at the derived key whose provenance for
+# <member> names that refusal, and prints its path. The default entries hold one
+# open finding for <member>.
+write_ledger() {
+  local member="$1" refusal_digest="$2" refusal_tree="$3" version="$4" entries="${5:-}"
+  local ledger_path key_reference key_base
+  ledger_path="$(sandbox_ledger_path)" || return 1
+  key_reference="$( cd "$SANDBOX" && "$SCRIPT" 2>/dev/null )"
+  key_base="$(git -C "$SANDBOX" merge-base "$key_reference" HEAD)"
+  if [ -z "$entries" ]; then
+    entries="$(jq -n --arg member "$member" \
+      '[{member: $member, entry_id: "r1-1", finding_class: "example-class", severity: "important",
+         path: "a.txt", line: 1, title: "an open finding", first_seen_round: 1, escalated: false}]')"
+  fi
+  mkdir -p "$SANDBOX/.gaia/local/audit"
+  jq -n \
+    --arg branch "$(git -C "$SANDBOX" branch --show-current)" \
+    --arg base "$key_base" \
+    --arg head "$(sha_of HEAD)" \
+    --arg member "$member" \
+    --arg digest "$refusal_digest" \
+    --arg tree "$refusal_tree" \
+    --arg version "$version" \
+    --argjson entries "$entries" \
+    '{schema: 1, base_sha: $base, branch: $branch, round: 1, head_sha: $head,
+      updated_at: "2026-01-01T00:00:00Z", remaining: $entries, fixed_last_round: [],
+      notes: "",
+      member_provenance: {($member): {refusal_digest: $digest, refusal_tree: $tree,
+                                      refusal_sha: $head, version: $version}}}' \
+    > "$ledger_path"
+  printf '%s\n' "$ledger_path"
+}
+
+# edit_ledger <path> <jq filter>: rewrite the ledger in place through <filter>.
+edit_ledger() {
+  jq "$2" "$1" > "$1.edited"
+  mv "$1.edited" "$1"
+}
+
+# write_twin <record path> <provenance> [<tree>]: a record of the same member
+# and digest under the other provenance, optionally recording another tree.
+write_twin() {
+  local source="$1" provenance="$2" tree="${3:-}" extension
+  case "$provenance" in
+    earned) extension="ok" ;;
+    *) extension="refused" ;;
+  esac
+  jq --arg provenance "$provenance" --arg tree "$tree" \
+    '.provenance = $provenance
+      | (if $tree != "" then .tree = $tree else . end)
+      | (if $provenance == "earned" then .review = "full" | del(.review_coverage) else . end)' \
+    "$source" > "${source%.*}.${extension}"
+}
+
+# refuse_head [<coverage>]: record a current-version refusal of the default
+# member at HEAD's tree. Sets REFUSED_SHA, REFUSED_TREE, REFUSAL_RECORD and
+# REFUSAL_DIGEST (globals, so not callable from a command substitution).
+refuse_head() {
+  REFUSED_SHA="$(sha_of HEAD)"
+  REFUSED_TREE="$(tree_of HEAD)"
+  REFUSAL_RECORD="$(write_clearance "$DEFAULT_MEMBER" refused "$REFUSED_TREE" 1.2.3 full "${1:-proven}")"
+  REFUSAL_DIGEST="$(record_digest "$REFUSAL_RECORD")"
+}
+
+# link_refusal: write the ledger linking the refusal refuse_head recorded, at
+# the fixture's current HEAD. Sets LEDGER.
+link_refusal() {
+  LEDGER="$(write_ledger "$DEFAULT_MEMBER" "$REFUSAL_DIGEST" "$REFUSED_TREE" 1.2.3)"
+  [ -f "$LEDGER" ]
+}
+
+# The basic linked shape: refusal at A with a valid link, HEAD on a fixer
+# commit B. $1 is the refusal's review coverage (see write_clearance).
+build_linked_refusal() {
+  add_commit a
+  refuse_head "${1:-proven}"
+  add_commit b
+  link_refusal
+}
+
+# golden_value <fixture> <form> <line>: the value the characterization golden
+# recorded, so a fallback is compared with the pre-change resolver itself.
+golden_value() {
+  awk -v fixture="$1" -v form="$2" -v line="$3" \
+    '$1 == fixture && $2 == form && $3 == line { print $4; exit }' \
+    "$THIS_DIRECTORY/fixtures/resolve-audit-base-characterization.golden"
+}
+
+# The member form's line <n>, rendered the way the golden records a ref.
+rendered_member_line() {
+  local value
+  value="$(sed -n "${1}p" "$MEMBER_OUTPUT_FILE")"
+  if [ "$value" = "main" ]; then
+    printf '%s\n' "main-ref"
+  else
+    printf '%s\n' "$value"
+  fi
+}
+
+# assert_member_lines_match_golden <fixture>: lines 1-2 equal the golden's.
+assert_member_lines_match_golden() {
+  local expected_base expected_reason
+  expected_base="$(golden_value "$1" member 1)"
+  expected_reason="$(golden_value "$1" member 2)"
+  [ -n "$expected_base" ] || return 1
+  [ -n "$expected_reason" ] || return 1
+  [ "$(rendered_member_line 1)" = "$expected_base" ] || return 1
+  [ "$(rendered_member_line 2)" = "$expected_reason" ] || return 1
+  return 0
+}
+
+assert_refusal_anchor() {
+  [ "$status" -eq 0 ] || return 1
+  [ "$(member_line_count)" -eq 4 ] || return 1
+  [ "$(member_base)" = "$REFUSED_SHA" ] || return 1
+  [ "$(member_reason)" = "member-refusal" ] || return 1
+  [ "$(member_anchor_tree)" = "$REFUSED_TREE" ] || return 1
+  return 0
+}
+
+# assert_refusal_fallback <cause>: the refusal did not link, the answer is the
+# pre-change resolver's for a lone refusal, and stderr names <cause> on the
+# line that carries "refused content".
+assert_refusal_fallback() {
+  local cause="$1" refusal_line
+  [ "$status" -eq 0 ] || return 1
+  [ "$(member_line_count)" -eq 4 ] || return 1
+  [ "$(member_base)" = "main" ] || return 1
+  [ "$(member_base)" != "$REFUSED_SHA" ] || return 1
+  [ "$(member_reason)" = "no-anchor" ] || return 1
+  [ -z "$(member_anchor_tree)" ] || return 1
+  assert_member_lines_match_golden refusal-only || return 1
+  refusal_line="$(grep -F "refused content" <<<"$stderr" || true)"
+  [ -n "$refusal_line" ] || return 1
+  grep -qF -- "$cause" <<<"$refusal_line" || return 1
+  grep -qF "reason=degraded" <<<"$stderr" && return 1
+  return 0
+}
+
+@test "refusal anchor: a linked refusal anchors the member at the refused commit" {
+  require_jq
+  build_linked_refusal
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  assert_refusal_anchor
+  # Line 3 and the argument-less form are the pre-change resolver's answer.
+  [ "$(rendered_member_line 3)" = "$(golden_value refusal-only member 3)" ]
+  run --separate-stderr run_in_sandbox
+  [ "$status" -eq 0 ]
+  [ "$output" = "main" ]
+  [ "$(golden_value refusal-only argless 1)" = "main-ref" ]
+}
+
+@test "refusal link: an absent ledger falls back" {
+  require_jq
+  build_linked_refusal
+  rm -f "$LEDGER"
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  assert_refusal_fallback "the re-run ledger is absent"
+}
+
+@test "refusal link: a ledger that is not valid JSON falls back" {
+  require_jq
+  build_linked_refusal
+  printf 'not json at all\n' > "$LEDGER"
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  assert_refusal_fallback "the re-run ledger does not parse"
+}
+
+@test "refusal link: a ledger with no open entry for the member falls back" {
+  require_jq
+  build_linked_refusal
+  edit_ledger "$LEDGER" '.remaining = []'
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  assert_refusal_fallback "holds no open entry for ${DEFAULT_MEMBER}"
+}
+
+@test "refusal link: a ledger whose entries all belong to another member falls back" {
+  require_jq
+  build_linked_refusal
+  edit_ledger "$LEDGER" ".remaining |= map(.member = \"${OTHER_MEMBER}\")"
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  assert_refusal_fallback "holds no open entry for ${DEFAULT_MEMBER}"
+}
+
+@test "refusal link: provenance naming an older refusal of the member falls back" {
+  require_jq
+  add_commit o
+  older_tree="$(tree_of HEAD)"
+  older_record="$(write_clearance "$DEFAULT_MEMBER" refused "$older_tree" 1.2.3)"
+  add_commit a
+  refuse_head
+  add_commit b
+  LEDGER="$(write_ledger "$DEFAULT_MEMBER" "$(record_digest "$older_record")" "$older_tree" 1.2.3)"
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  assert_refusal_fallback "names a different refusal of ${DEFAULT_MEMBER}"
+}
+
+@test "refusal link: provenance naming the refusal's digest with another tree falls back" {
+  require_jq
+  build_linked_refusal
+  edit_ledger "$LEDGER" ".member_provenance[\"${DEFAULT_MEMBER}\"].refusal_tree = \"$(printf '%040d' 5)\""
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  assert_refusal_fallback "records a different tree for this refusal"
+}
+
+@test "refusal link: a ledger with no member provenance at all falls back" {
+  require_jq
+  build_linked_refusal
+  edit_ledger "$LEDGER" 'del(.member_provenance)'
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  assert_refusal_fallback "holds no provenance for ${DEFAULT_MEMBER}"
+}
+
+@test "refusal link: a jq that cannot run falls back" {
+  require_jq
+  build_linked_refusal
+  # A failing jq shadows the real one, the shim shape the clearance writer's
+  # suite uses; git, awk and sed still resolve behind it.
+  shim="$BATS_TEST_TMPDIR/shim-nojq"
+  mkdir -p "$shim"
+  printf '#!/bin/sh\nexit 1\n' > "$shim/jq"
+  chmod +x "$shim/jq"
+  export PATH="$shim:$PATH"
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  assert_refusal_fallback "jq is unavailable"
+}
+
+@test "refusal link: an absent key library falls back without degrading" {
+  require_jq
+  build_linked_refusal
+  rm -f "$SANDBOX/.gaia/scripts/audit-key-lib.sh"
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  assert_refusal_fallback "audit key library"
+  [ "$(member_reason)" != "degraded" ]
+}
+
+@test "refusal link: a ledger recorded for another branch falls back" {
+  require_jq
+  build_linked_refusal
+  edit_ledger "$LEDGER" '.branch = "another-branch"'
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  assert_refusal_fallback "stale re-run ledger"
+}
+
+@test "refusal link: a ledger recorded against another base falls back" {
+  require_jq
+  build_linked_refusal
+  edit_ledger "$LEDGER" ".base_sha = \"$(printf '%040d' 3)\""
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  assert_refusal_fallback "stale re-run ledger"
+}
+
+@test "refusal link: a refusal with no review-coverage proof falls back" {
+  require_jq
+  build_linked_refusal none
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  assert_refusal_fallback "no review-coverage proof"
+}
+
+@test "refusal link: a review-coverage proof naming another digest falls back" {
+  require_jq
+  build_linked_refusal mismatch
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  assert_refusal_fallback "no review-coverage proof"
+}
+
+@test "refusal link: the ledger is never read under GitHub Actions" {
+  require_jq
+  build_linked_refusal
+  export GITHUB_ACTIONS=true
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  assert_refusal_fallback "never read under GitHub Actions"
+}
+
+@test "refusal link: CI=true outside GitHub Actions still reads the ledger" {
+  require_jq
+  build_linked_refusal
+  export CI=true
+  unset GITHUB_ACTIONS
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  assert_refusal_anchor
+}
+
+@test "refusal anchor: a linked refusal newer than an earned clearance anchors at the refusal" {
+  require_jq
+  add_commit c
+  earned_tree="$(tree_of HEAD)"
+  write_clearance "$DEFAULT_MEMBER" earned "$earned_tree" 1.2.3 full >/dev/null
+  add_commit a
+  refuse_head
+  add_commit b
+  link_refusal
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  assert_refusal_anchor
+  [ "$(member_anchor_tree)" != "$earned_tree" ]
+}
+
+@test "refusal anchor: the member's own agent definition changing resets it" {
+  require_jq
+  add_commit a
+  refuse_head
+  commit_append ".claude/agents/${DEFAULT_MEMBER}.md"
+  link_refusal
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_base)" = "main" ]
+  [ "$(member_base)" != "$REFUSED_SHA" ]
+  [ "$(member_reason)" = "rules-reset-member" ]
+}
+
+@test "refusal anchor: a global rules path changing resets it" {
+  require_jq
+  add_commit a
+  refuse_head
+  commit_append ".claude/rules/quality-gate.md"
+  link_refusal
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_base)" = "main" ]
+  [ "$(member_base)" != "$REFUSED_SHA" ]
+  [ "$(member_reason)" = "rules-reset-global" ]
+}
+
+@test "refusal anchor: both rule tiers changing resolve as the golden recorded for a clearance" {
+  require_jq
+  add_commit a
+  refuse_head
+  commit_append ".claude/agents/${DEFAULT_MEMBER}.md"
+  commit_append ".claude/rules/quality-gate.md"
+  add_commit b
+  link_refusal
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_base)" != "$REFUSED_SHA" ]
+  assert_member_lines_match_golden clearance-both-rules
+}
+
+@test "refusal anchor: a missing predicate lib degrades as the golden recorded for a clearance" {
+  require_jq
+  build_linked_refusal
+  rm -f "$SANDBOX/.claude/hooks/lib/audit-scope.sh"
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_base)" != "$REFUSED_SHA" ]
+  assert_member_lines_match_golden clearance-degraded
+}
+
+@test "refusal anchor: a missing version file resolves as the golden recorded for a clearance" {
+  require_jq
+  build_linked_refusal
+  rm -f "$SANDBOX/.gaia/VERSION"
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_base)" != "$REFUSED_SHA" ]
+  assert_member_lines_match_golden clearance-no-version
+}
+
+@test "refusal link: a refusal recorded under another version never anchors and blocks an older clearance" {
+  require_jq
+  add_commit c
+  earned_sha="$(sha_of HEAD)"
+  write_clearance "$DEFAULT_MEMBER" earned "$(tree_of HEAD)" 1.2.3 full >/dev/null
+  add_commit a
+  REFUSED_SHA="$(sha_of HEAD)"
+  REFUSED_TREE="$(tree_of HEAD)"
+  REFUSAL_RECORD="$(write_clearance "$DEFAULT_MEMBER" refused "$REFUSED_TREE" 0.9.9)"
+  REFUSAL_DIGEST="$(record_digest "$REFUSAL_RECORD")"
+  add_commit b
+  link_refusal
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  assert_refusal_fallback "version mismatch"
+  [ "$(member_base)" != "$earned_sha" ]
+}
+
+@test "refusal precedence: an earned clearance newer than the refusal anchors" {
   require_jq
   add_commit a
   refused_sha="$(sha_of HEAD)"
   write_clearance "$DEFAULT_MEMBER" refused "$(tree_of HEAD)" 1.2.3 >/dev/null
   add_commit b
   earned_sha="$(sha_of HEAD)"
-  write_clearance "$DEFAULT_MEMBER" earned "$(tree_of HEAD)" 1.2.3 >/dev/null
+  earned_tree="$(tree_of HEAD)"
+  write_clearance "$DEFAULT_MEMBER" earned "$earned_tree" 1.2.3 >/dev/null
   add_commit c
 
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
-  [ "$(member_base)" = "main" ]
+  [ "$(member_base)" = "$earned_sha" ]
   [ "$(member_base)" != "$refused_sha" ]
+  [ "$(member_reason)" = "member-clearance" ]
+  [ "$(member_anchor_tree)" = "$earned_tree" ]
+}
+
+@test "refusal precedence: an older earned clearance never anchors past an unlinked refusal" {
+  require_jq
+  add_commit c
+  earned_sha="$(sha_of HEAD)"
+  write_clearance "$DEFAULT_MEMBER" earned "$(tree_of HEAD)" 1.2.3 full >/dev/null
+  add_commit a
+  refuse_head
+  add_commit b
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  assert_refusal_fallback "the re-run ledger is absent"
+  [ "$(member_base)" != "$earned_sha" ]
+
+  link_refusal
+  edit_ledger "$LEDGER" 'del(.member_provenance)'
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  assert_refusal_fallback "holds no provenance for ${DEFAULT_MEMBER}"
+  [ "$(member_base)" != "$earned_sha" ]
+}
+
+@test "refusal precedence: a refusal and an earned record at the same tree resolve as the refusal" {
+  require_jq
+  add_commit a
+  refuse_head
+  write_twin "$REFUSAL_RECORD" earned
+  [ -f "${REFUSAL_RECORD%.*}.ok" ]
+  add_commit b
+  link_refusal
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  assert_refusal_anchor
+}
+
+@test "refusal link: a team signal older than the refusal is the fallback, and the link beats it" {
+  require_jq
+  add_commit t
+  team_anchor_sha="$(stamp_anchor)"
+  add_commit a
+  refuse_head
+  add_commit b
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_base)" = "$team_anchor_sha" ]
+  [ "$(member_reason)" = "team-signal" ]
+  grep -qF "refused content at ${REFUSED_SHA}" <<<"$stderr"
+
+  link_refusal
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  assert_refusal_anchor
+  [ "$(member_shared_base)" = "$team_anchor_sha" ]
+}
+
+@test "refusal anchor: merely-shared machinery after the anchor resets line 3 and never line 1" {
+  require_jq
+  add_commit t
+  stamp_anchor >/dev/null
+  add_commit a
+  refuse_head
+  add_machinery_commit
+  add_commit b
+  run --separate-stderr run_in_sandbox
+  [ "$status" -eq 0 ]
+  argless_without_link="$output"
+  link_refusal
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  assert_refusal_anchor
+  [ "$(member_shared_base)" = "main" ]
+  run --separate-stderr run_in_sandbox
+  [ "$status" -eq 0 ]
+  [ "$output" = "main" ]
+  [ "$output" = "$argless_without_link" ]
+}
+
+@test "refusal precedence: a refusal at HEAD disables the member arm" {
+  require_jq
+  add_commit c
+  earned_sha="$(sha_of HEAD)"
+  write_clearance "$DEFAULT_MEMBER" earned "$(tree_of HEAD)" 1.2.3 full >/dev/null
+  add_commit h
+  refuse_head
+  link_refusal
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_base)" = "main" ]
   [ "$(member_base)" != "$earned_sha" ]
   [ "$(member_reason)" = "no-anchor" ]
-  grep -qF "refused content" <<<"$stderr"
+  grep -qF "refused content at HEAD" <<<"$stderr"
+}
+
+@test "refusal precedence: an earned clearance beside a live refusal for its own digest is no anchor" {
+  require_jq
+  add_commit c
+  earned_sha="$(sha_of HEAD)"
+  earned_record="$(write_clearance "$DEFAULT_MEMBER" earned "$(tree_of HEAD)" 1.2.3 full)"
+  write_twin "$earned_record" refused "$(printf '%040d' 8)"
+  [ -f "${earned_record%.*}.refused" ]
+  add_commit d
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_base)" = "main" ]
+  [ "$(member_base)" != "$earned_sha" ]
+  [ "$(member_reason)" = "no-anchor" ]
+}
+
+@test "refusal link: a co-member advancing the ledger's head and round leaves the link intact" {
+  require_jq
+  build_linked_refusal
+  edit_ledger "$LEDGER" "
+    .head_sha = \"$(printf '%040d' 4)\"
+    | .round = 5
+    | .remaining += [{member: \"${OTHER_MEMBER}\", entry_id: \"r5-1\", finding_class: \"other-class\",
+                      path: \"b.txt\", line: 2, title: \"another member's finding\"}]
+    | .member_provenance[\"${OTHER_MEMBER}\"] = {refusal_digest: \"$(printf '%064d' 77)\",
+                                                refusal_tree: \"$(printf '%040d' 6)\",
+                                                refusal_sha: \"$(printf '%040d' 4)\",
+                                                version: \"1.2.3\"}"
+
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  assert_refusal_anchor
 }
 
 # The whole-team floor is deliberately NOT disabled by a refusal, and this
@@ -1594,6 +2146,228 @@ assert_degraded_with_unparseable() {
 }
 
 # -----------------------------------------------------------------------------
+# Characterization of the resolver outputs that a per-member anchor change must
+# leave alone, compared against a golden recorded from the resolver before that
+# change. The golden holds labels, never raw shas or trees (those differ on
+# every run): a commit label the fixture assigns, `tree:<label>`, `main-ref`, a
+# reason token, or `empty`.
+# -----------------------------------------------------------------------------
+
+CHARACTERIZATION_REASON_TOKENS=" no-anchor team-signal machinery-reset rules-reset-member rules-reset-global degraded no-version member-clearance "
+
+characterization_golden_path() {
+  printf '%s\n' "$THIS_DIRECTORY/fixtures/resolve-audit-base-characterization.golden"
+}
+
+# The forms a fixture captures: `argless` is line 1 of the argument-less form,
+# `member4` all four --member lines, `member2` the first two.
+characterization_forms() {
+  case "$1" in
+    refusal-only|team-older-than-refusal|machinery-after-team) printf '%s\n' "argless member4" ;;
+    clearance-both-rules) printf '%s\n' "member2" ;;
+    clearance-degraded|clearance-no-version) printf '%s\n' "member2 argless" ;;
+    *) return 1 ;;
+  esac
+}
+
+# Fixture names, derived from the builder functions below so a builder added
+# without a golden record (or the reverse) is caught by the set-equality test.
+characterization_fixture_names() {
+  declare -F | awk '{ print $3 }' | grep '^characterization_build_' | sed 's/^characterization_build_//'
+}
+
+# Record <label> for the sha and tree of <ref>.
+characterization_label() {
+  printf '%s\t%s\n' "$(sha_of "$2")" "$1" >> "$CHARACTERIZATION_LABELS"
+  printf '%s\t%s\n' "$(tree_of "$2")" "tree:$1" >> "$CHARACTERIZATION_LABELS"
+}
+
+characterization_render_value() {
+  local value="$1" label
+  if [ -z "$value" ]; then
+    printf '%s\n' "empty"
+    return 0
+  fi
+  if [ "$value" = "main" ]; then
+    printf '%s\n' "main-ref"
+    return 0
+  fi
+  case "$CHARACTERIZATION_REASON_TOKENS" in
+    *" ${value} "*) printf '%s\n' "$value"; return 0 ;;
+  esac
+  label="$(awk -F '\t' -v value="$value" '$1 == value { print $2; exit }' "$CHARACTERIZATION_LABELS")"
+  if [ -n "$label" ]; then
+    printf '%s\n' "$label"
+  else
+    printf 'unlabelled:%s\n' "$value"
+  fi
+}
+
+characterization_build_refusal-only() {
+  add_commit a
+  characterization_label A HEAD
+  write_clearance "$DEFAULT_MEMBER" refused "$(tree_of HEAD)" 1.2.3 >/dev/null
+  add_commit b
+  characterization_label B HEAD
+}
+
+characterization_build_team-older-than-refusal() {
+  add_commit t
+  stamp_anchor >/dev/null
+  characterization_label T HEAD
+  add_commit a
+  characterization_label A HEAD
+  write_clearance "$DEFAULT_MEMBER" refused "$(tree_of HEAD)" 1.2.3 >/dev/null
+  add_commit b
+  characterization_label B HEAD
+}
+
+characterization_build_machinery-after-team() {
+  add_commit t
+  stamp_anchor >/dev/null
+  characterization_label T HEAD
+  add_commit a
+  characterization_label A HEAD
+  write_clearance "$DEFAULT_MEMBER" refused "$(tree_of HEAD)" 1.2.3 >/dev/null
+  add_machinery_commit
+  add_commit b
+  characterization_label B HEAD
+}
+
+characterization_build_clearance-both-rules() {
+  add_commit a
+  characterization_label A HEAD
+  write_clearance "$DEFAULT_MEMBER" earned "$(tree_of HEAD)" 1.2.3 full >/dev/null
+  mkdir -p "$SANDBOX/.claude/agents" "$SANDBOX/.claude/rules"
+  echo "agent" > "$SANDBOX/.claude/agents/code-audit-frontend.md"
+  echo "gate rule" > "$SANDBOX/.claude/rules/quality-gate.md"
+  git -C "$SANDBOX" add .claude/agents/code-audit-frontend.md .claude/rules/quality-gate.md
+  git -C "$SANDBOX" commit --quiet -m "agent definition and global rules"
+  add_commit b
+  characterization_label B HEAD
+}
+
+characterization_build_clearance-degraded() {
+  add_commit a
+  characterization_label A HEAD
+  write_clearance "$DEFAULT_MEMBER" earned "$(tree_of HEAD)" 1.2.3 full >/dev/null
+  add_commit b
+  characterization_label B HEAD
+  rm -f "$SANDBOX/.claude/hooks/lib/audit-scope.sh"
+}
+
+characterization_build_clearance-no-version() {
+  add_commit a
+  characterization_label A HEAD
+  write_clearance "$DEFAULT_MEMBER" earned "$(tree_of HEAD)" 1.2.3 full >/dev/null
+  add_commit b
+  characterization_label B HEAD
+  rm -f "$SANDBOX/.gaia/VERSION"
+}
+
+# Build <fixture> in the sandbox, run the forms it captures, and print the
+# rendered records in golden format.
+characterization_render() {
+  local fixture="$1" form line_number value
+  CHARACTERIZATION_LABELS="$BATS_TEST_TMPDIR/characterization-labels"
+  : > "$CHARACTERIZATION_LABELS"
+  "characterization_build_${fixture}" || return 1
+  for form in $(characterization_forms "$fixture"); do
+    case "$form" in
+      argless)
+        value="$( cd "$SANDBOX" && "$SCRIPT" 2>/dev/null )" || return 1
+        printf '%s argless 1 %s\n' "$fixture" "$(characterization_render_value "$value")"
+        ;;
+      member4|member2)
+        run_member "$DEFAULT_MEMBER" 2>/dev/null || return 1
+        for line_number in 1 2 3 4; do
+          [ "$line_number" -le "${form#member}" ] || continue
+          value="$(sed -n "${line_number}p" "$MEMBER_OUTPUT_FILE")"
+          printf '%s member %s %s\n' "$fixture" "$line_number" "$(characterization_render_value "$value")"
+        done
+        ;;
+    esac
+  done
+}
+
+# Compare the rendered records for <fixture> with the golden's lines for it.
+# $2 overrides the golden path. A fixture the golden has no line for fails
+# rather than comparing empty to empty; the rendered text goes to stderr so a
+# golden can be regenerated from a failing run against an unchanged resolver.
+characterization_matches_golden() {
+  local fixture="$1" golden="${2:-$(characterization_golden_path)}" actual expected
+  actual="$(characterization_render "$fixture")" || return 1
+  expected="$(grep -E "^${fixture} " "$golden" || true)"
+  if [ -z "$expected" ]; then
+    printf 'golden has no record for fixture %s; actual:\n%s\n' "$fixture" "$actual" >&2
+    return 1
+  fi
+  if [ "$actual" != "$expected" ]; then
+    printf 'fixture %s differs from the golden.\nexpected:\n%s\nactual:\n%s\n' "$fixture" "$expected" "$actual" >&2
+    return 1
+  fi
+  return 0
+}
+
+# Assert the golden holds <count> records for <fixture>.
+assert_characterization_count() {
+  local fixture="$1" count="$2"
+  [ "$(grep -cE "^${fixture} " "$(characterization_golden_path)")" -eq "$count" ]
+}
+
+@test "characterization: refusal-only fixture matches the golden" {
+  require_jq
+  characterization_matches_golden refusal-only
+  assert_characterization_count refusal-only 5
+}
+
+@test "characterization: team-older-than-refusal fixture matches the golden" {
+  require_jq
+  characterization_matches_golden team-older-than-refusal
+  assert_characterization_count team-older-than-refusal 5
+}
+
+@test "characterization: machinery-after-team fixture matches the golden" {
+  require_jq
+  characterization_matches_golden machinery-after-team
+  assert_characterization_count machinery-after-team 5
+}
+
+@test "characterization: clearance-both-rules fixture matches the golden" {
+  require_jq
+  characterization_matches_golden clearance-both-rules
+  assert_characterization_count clearance-both-rules 2
+}
+
+@test "characterization: clearance-degraded fixture matches the golden" {
+  require_jq
+  characterization_matches_golden clearance-degraded
+  assert_characterization_count clearance-degraded 3
+}
+
+@test "characterization: clearance-no-version fixture matches the golden" {
+  require_jq
+  characterization_matches_golden clearance-no-version
+  assert_characterization_count clearance-no-version 3
+}
+
+@test "characterization: the comparison fails on a deliberately wrong expected line" {
+  require_jq
+  wrong_golden="$BATS_TEST_TMPDIR/wrong.golden"
+  sed 's/^refusal-only member 2 .*/refusal-only member 2 team-signal/' "$(characterization_golden_path)" > "$wrong_golden"
+  grep -qxF "refusal-only member 2 team-signal" "$wrong_golden"
+  characterization_matches_golden refusal-only "$wrong_golden" 2>/dev/null && return 1
+  true
+}
+
+@test "characterization: the golden's fixture set equals the suite's fixture set" {
+  golden_names="$(grep -v '^#' "$(characterization_golden_path)" | awk 'NF { print $1 }' | sort -u)"
+  suite_names="$(characterization_fixture_names | sort -u)"
+  [ -n "$suite_names" ]
+  [ "$golden_names" = "$suite_names" ]
+}
+
+# -----------------------------------------------------------------------------
 # Argument handling. A mis-invocation cannot be trusted to be a member call
 # site, so it degrades to the argument-less full-scope shape -- and still
 # exits 0, because a non-zero exit degrades the agent call sites to an EMPTY
@@ -1636,10 +2410,10 @@ assert_degraded_with_unparseable() {
 }
 
 # =============================================================================
-# Reason-token reachability: the closed set is eight tokens, and each one must
-# be emitted on at least one input. The tests above assert richer behavior on
-# these same paths; this section exists so the set is enumerated in one place
-# and a ninth token cannot be introduced unnoticed.
+# Reason-token reachability: each token of the closed set the resolver's header
+# lists must be emitted on at least one input. The tests above assert richer
+# behavior on these same paths; this section exists so the set is enumerated in
+# one place and a new token cannot be introduced unnoticed.
 # =============================================================================
 
 @test "reason token: member-clearance" {
@@ -1651,6 +2425,17 @@ assert_degraded_with_unparseable() {
   run --separate-stderr run_member "$DEFAULT_MEMBER"
   [ "$status" -eq 0 ]
   [ "$(member_reason)" = "member-clearance" ]
+}
+
+@test "reason token: member-refusal" {
+  require_jq
+  build_linked_refusal
+  run --separate-stderr run_member "$DEFAULT_MEMBER"
+  [ "$status" -eq 0 ]
+  [ "$(member_reason)" = "member-refusal" ]
+  [ "$(member_base)" = "$REFUSED_SHA" ]
+  [ "$(member_anchor_tree)" = "$REFUSED_TREE" ]
+  grep -qF "member=${DEFAULT_MEMBER} base=${REFUSED_SHA} reason=member-refusal anchor_tree=${REFUSED_TREE}" <<<"$stderr"
 }
 
 @test "reason token: team-signal" {

@@ -434,6 +434,18 @@ _noop_write_findings() {
   [ "$output" = "real" ]
 }
 
+@test "audit-team-member: a sidecar carrying entry_id and resolutions is still REAL" {
+  digest="$(_noop_digest)"
+  marker="$BATS_TEST_TMPDIR/${digest}.ok"
+  findings="$BATS_TEST_TMPDIR/base.code-audit-frontend.findings.json"
+  _noop_write_clearance "$marker" "$digest" earned
+  _noop_write_findings "$findings" '{"schema":1,"member":"code-audit-frontend","findings":[{"finding_class":"holistic/swallowed-error","severity":"warning","path":"a.sh","line":3,"entry_id":"r1-1","area_tags":["."]}],"resolutions":[{"entry_id":"r1-2","rationale":"fixed at HEAD"}]}'
+  run "$SCRIPT" --shape audit-team-member --path "$FIXTURES_DIRECTORY/shared/reminder-echo.txt" \
+    --marker "$marker" --findings "$findings"
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
+
 @test "audit-team-member: LOST REPORT, EARNED marker + ABSENT findings sidecar is NO-OP" {
   digest="$(_noop_digest)"
   marker="$BATS_TEST_TMPDIR/${digest}.ok"

@@ -717,3 +717,32 @@ write_sidecar_with_review_base() {
   [ "$status" -eq 0 ]
   [ "$output" = "findings: declined: no sidecars" ]
 }
+
+# entry_id and resolutions are accounting fields for the clearance writer; the
+# projection keeps only finding_class, severity, and area_tags.
+
+@test "entry_id and resolutions never reach the rendered block" {
+  jq -cn '{schema:1, member:"code-audit-frontend",
+    findings:[{finding_class:"holistic/swallowed-error", severity:"warning", area_tags:["app/services"], entry_id:"r1-1"}],
+    resolutions:[{entry_id:"r1-2", rationale:"fixed at HEAD"}]}' \
+    > "$AUDIT_DIRECTORY/${AUDIT_KEY}.code-audit-frontend.findings.json"
+  stub_gh '[]'
+  run run_script
+  [ "$status" -eq 0 ]
+  payload="$(extract_payload)"
+  [ "$(jq '.findings | length' <<<"$payload")" = "1" ]
+  [ "$(jq -r '.findings[0] | has("entry_id")' <<<"$payload")" = "false" ]
+  [ "$(jq -r '[.. | objects | select(has("resolutions"))] | length' <<<"$payload")" = "0" ]
+  grep -qF "r1-2" <<<"$payload" && return 1
+  grep -qF "r1-1" <<<"$payload" && return 1
+  true
+}
+
+@test "a member-refusal review_base reason renders as review_bases[].reason" {
+  write_sidecar_with_review_base code-audit-frontend '[]' '{"sha":"aaa111","reason":"member-refusal","anchor_tree":"treeA"}'
+  stub_gh '[]'
+  run run_script
+  [ "$status" -eq 0 ]
+  payload="$(extract_payload)"
+  [ "$(jq -r '.review_bases[0].reason' <<<"$payload")" = "member-refusal" ]
+}

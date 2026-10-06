@@ -343,6 +343,59 @@ stored_head_for() {
   printf '%s\n' "$output" | grep -qF -- "--recapture is valid only with --capture"
 }
 
+@test "--capture --base-reason records the reason and base_overridden false" {
+  run "$SCRIPT" --capture --base-reason member-refusal --root "$ROOT" --member "$MEMBER" --base "$BASE"
+  [ "$status" -eq 0 ]
+  scope_file="$(scope_file_for "$ROOT" "$BASE" "$MEMBER")"
+  [ "$(jq -r '.base_reason' "$scope_file")" = "member-refusal" ]
+  [ "$(jq -r '.base_overridden' "$scope_file")" = "false" ]
+  [ "$(jq -r '.schema' "$scope_file")" = "1" ]
+}
+
+@test "--capture --base-overridden records base_overridden true" {
+  run "$SCRIPT" --capture --base-overridden --root "$ROOT" --member "$MEMBER" --base "$BASE"
+  [ "$status" -eq 0 ]
+  scope_file="$(scope_file_for "$ROOT" "$BASE" "$MEMBER")"
+  [ "$(jq -r '.base_overridden' "$scope_file")" = "true" ]
+}
+
+@test "--capture with neither option records an empty base_reason and base_overridden false" {
+  run "$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE"
+  [ "$status" -eq 0 ]
+  scope_file="$(scope_file_for "$ROOT" "$BASE" "$MEMBER")"
+  [ "$(jq -r '.base_reason | type' "$scope_file")" = "string" ]
+  [ "$(jq -r '.base_reason' "$scope_file")" = "" ]
+  [ "$(jq -r '.base_overridden' "$scope_file")" = "false" ]
+}
+
+@test "a second --capture with a different --base-reason leaves the unspent capture's fields unchanged" {
+  "$SCRIPT" --capture --base-reason member-refusal --root "$ROOT" --member "$MEMBER" --base "$BASE" >/dev/null
+  scope_file="$(scope_file_for "$ROOT" "$BASE" "$MEMBER")"
+  before="$(cat "$scope_file")"
+  run "$SCRIPT" --capture --base-reason team-signal --base-overridden --root "$ROOT" --member "$MEMBER" --base "$BASE"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$scope_file")" = "$before" ]
+  [ "$(jq -r '.base_reason' "$scope_file")" = "member-refusal" ]
+  [ "$(jq -r '.base_overridden' "$scope_file")" = "false" ]
+}
+
+@test "--base-reason is rejected on --read and --base-overridden on --release, creating or changing no scope file" {
+  scope_file="$(scope_file_for "$ROOT" "$BASE" "$MEMBER")"
+  [ ! -e "$scope_file" ]
+  run "$SCRIPT" --read --base-reason x --root "$ROOT" --member "$MEMBER" --base "$BASE"
+  [ "$status" -eq 2 ]
+  printf '%s\n' "$output" | grep -qF -- "--base-reason is valid only with --capture"
+  [ ! -e "$scope_file" ]
+
+  "$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE" >/dev/null
+  before="$(cat "$scope_file")"
+  run "$SCRIPT" --release --base-overridden --root "$ROOT" --member "$MEMBER" --base "$BASE"
+  [ "$status" -eq 2 ]
+  printf '%s\n' "$output" | grep -qF -- "--base-overridden is valid only with --capture"
+  [ -f "$scope_file" ]
+  [ "$(cat "$scope_file")" = "$before" ]
+}
+
 @test "a detached HEAD resolves no key, and GAIA_AUDIT_KEY_BRANCH supplies the missing half" {
   git -C "$ROOT" checkout --quiet --detach HEAD
 

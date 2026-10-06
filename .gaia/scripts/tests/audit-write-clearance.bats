@@ -29,6 +29,10 @@ setup() {
   [ -x "$WRITER" ] || skip "audit-write-clearance.sh not executable"
   [ -f "$DIGEST_LIBRARY" ] || skip "audit-digest.sh not present"
   command -v jq >/dev/null 2>&1 || skip "jq not available"
+  # The open-finding accounting is skipped when GITHUB_ACTIONS is true, so a
+  # runner's value would leave every accounting arm below unexercised in CI.
+  # The CI arms set it per invocation.
+  unset GITHUB_ACTIONS
 
   ROOT="$BATS_TEST_TMPDIR/root"
   mkdir -p "$ROOT/.gaia"
@@ -749,14 +753,69 @@ ledger_setup() {
   LEDGER="$AUDIT_DIRECTORY/${LEDGER_BASE_SHA}.fix%2Fledger.rerun.json"
 }
 
-# write_sidecar_for <member> <line> [<severity>]: a complete one-finding sidecar.
-write_sidecar_for() {
-  local member="$1" line="$2" severity="${3:-warning}"
+# finding_json <line> [<severity>] [<entry_id>] [<finding_class>]: one complete
+# finding object. A non-empty entry_id makes it a re-report of that open entry.
+finding_json() {
+  jq -cn --argjson line "$1" --arg severity "${2:-warning}" --arg entry_id "${3:-}" \
+    --arg finding_class "${4:-holistic/secret-exposure}" '
+    {finding_class: $finding_class, severity: $severity,
+     path: ".claude/hooks/block-secrets-write.sh", line: $line,
+     title: "the path arm admits arbitrary trailing text",
+     failure_mode: "a separator after the closing brace unbounds the tail over the secret character set",
+     verified_by: "ran the hook at base and at HEAD: base denies, HEAD allows",
+     suggested_fix: "bound each trailing segment"}
+    + (if $entry_id != "" then {entry_id: $entry_id} else {} end)'
+}
+
+# write_findings_sidecar <member> <findings-array> [<resolutions-array>]: the
+# member's sidecar at the ledger key, through the real findings writer.
+write_findings_sidecar() {
+  local member="$1" findings="$2" resolutions="${3:-}"
   local writer="$THIS_DIRECTORY/../audit-write-findings.sh"
   [ -x "$writer" ] || skip "audit-write-findings.sh not executable"
-  printf '[{"finding_class":"holistic/secret-exposure","severity":"%s","path":".claude/hooks/block-secrets-write.sh","line":%s,"title":"the path arm admits arbitrary trailing text","failure_mode":"a separator after the closing brace unbounds the tail over the secret character set","verified_by":"ran the hook at base and at HEAD: base denies, HEAD allows","suggested_fix":"bound each trailing segment"}]' \
-    "$severity" "$line" \
-    | bash "$writer" --root "$ROOT" --member "$member" --base "$LEDGER_BASE_SHA" --findings - >/dev/null
+  if [ -n "$resolutions" ]; then
+    printf '%s' "$resolutions" > "$BATS_TEST_TMPDIR/resolutions.json"
+    printf '%s' "$findings" | bash "$writer" --root "$ROOT" --member "$member" --base "$LEDGER_BASE_SHA" \
+      --findings - --resolutions "$BATS_TEST_TMPDIR/resolutions.json" >/dev/null
+  else
+    printf '%s' "$findings" | bash "$writer" --root "$ROOT" --member "$member" --base "$LEDGER_BASE_SHA" \
+      --findings - >/dev/null
+  fi
+}
+
+# write_sidecar_for <member> <line> [<severity>] [<entry_id>]: a complete
+# one-finding sidecar; with an entry_id it re-reports that open entry.
+write_sidecar_for() {
+  write_findings_sidecar "$1" "[$(finding_json "$2" "${3:-warning}" "${4:-}")]"
+}
+
+# open_entry_id <member> [<index>]: the entry_id of that member's open ledger
+# entry at that position, failing when there is none.
+open_entry_id() {
+  local entry_identifier
+  entry_identifier="$(jq -r --arg member "$1" --argjson index "${2:-0}" \
+    '[.remaining[] | select(.member == $member)][$index].entry_id // empty' "$LEDGER")"
+  [ -n "$entry_identifier" ] || return 1
+  printf '%s\n' "$entry_identifier"
+}
+
+# rereport_all_open <member>: a sidecar re-reporting every open entry of the
+# member by its entry_id, the way a member whose findings all still stand does.
+rereport_all_open() {
+  local findings
+  findings="$(jq -c --arg member "$1" '[.remaining[] | select(.member == $member)
+    | {finding_class, path, line, title, failure_mode, verified_by, suggested_fix, entry_id,
+       severity: ({"critical":"error","important":"warning","suggestion":"suggestion"}[.severity] // "warning")}]' "$LEDGER")"
+  write_findings_sidecar "$1" "$findings"
+}
+
+# resolve_all_open <member> [<rationale>]: a sidecar with no findings that
+# resolves every open entry of the member.
+resolve_all_open() {
+  local resolutions
+  resolutions="$(jq -c --arg member "$1" --arg rationale "${2:-bounded the trailing segment}" \
+    '[.remaining[] | select(.member == $member) | {entry_id, rationale: $rationale}]' "$LEDGER")"
+  write_findings_sidecar "$1" '[]' "$resolutions"
 }
 
 @test "ledger: a refusal with --base writes the carry-forward ledger from the findings sidecar" {
@@ -796,11 +855,11 @@ write_sidecar_for() {
   bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
   [ "$(jq -r '.remaining[0].severity' "$LEDGER")" = "critical" ]
 
-  write_sidecar_for "$member" 113 warning
+  write_sidecar_for "$member" 113 warning "$(open_entry_id "$member")"
   bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
   [ "$(jq -r '.remaining[0].severity' "$LEDGER")" = "important" ]
 
-  write_sidecar_for "$member" 113 suggestion
+  write_sidecar_for "$member" 113 suggestion "$(open_entry_id "$member")"
   bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
   [ "$(jq -r '.remaining[0].severity' "$LEDGER")" = "suggestion" ]
 }
@@ -810,26 +869,55 @@ write_sidecar_for() {
   member="code-audit-maintainer-shell"
   write_sidecar_for "$member" 113
   bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
+  rereport_all_open "$member"
   bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
+  rereport_all_open "$member"
   bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
   [ "$(jq -r .round "$LEDGER")" = "3" ]
   # The finding has been open since round 1 and says so.
   [ "$(jq -r '.remaining[0].first_seen_round' "$LEDGER")" = "1" ]
+  [ "$(jq -r '.remaining[0].entry_id' "$LEDGER")" = "r1-1" ]
 }
 
-@test "ledger: a finding the sidecar no longer names is closed, not carried forever" {
+@test "ledger: an open finding the sidecar omits refuses the write with exit 3, never closes silently" {
   ledger_setup
   member="code-audit-maintainer-shell"
   write_sidecar_for "$member" 113
   bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
   [ "$(jq '.remaining | length' "$LEDGER")" = "1" ]
-  # Round two: the member still refuses, but on a different finding.
+  open_identifier="$(open_entry_id "$member")"
+  [ -n "$open_identifier" ]
+  cp "$LEDGER" "$BATS_TEST_TMPDIR/ledger.before"
+  # Round two: the member still refuses, but its report names only a different
+  # finding and says nothing about the open one.
   write_sidecar_for "$member" 59
+  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA"
+  [ "$status" -eq 3 ]
+  grep -qF -- "   ${open_identifier}  " <<<"$output" || return 1
+  cmp "$LEDGER" "$BATS_TEST_TMPDIR/ledger.before"
+}
+
+@test "ledger: a resolved open finding closes into fixed_last_round with its resolution" {
+  ledger_setup
+  member="code-audit-maintainer-shell"
+  write_sidecar_for "$member" 113
+  bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
+  open_identifier="$(open_entry_id "$member")"
+  [ -n "$open_identifier" ]
+  # Round two: the member still refuses on a different finding, and accounts
+  # for the open one with a resolution.
+  write_findings_sidecar "$member" "[$(finding_json 59)]" \
+    "[{\"entry_id\":\"${open_identifier}\",\"rationale\":\"bounded the trailing segment\"}]"
   bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
   [ "$(jq '.remaining | length' "$LEDGER")" = "1" ]
   [ "$(jq -r '.remaining[0].line' "$LEDGER")" = "59" ]
-  # A new finding starts its own clock.
+  # A new finding starts its own clock, under an id of its own round.
   [ "$(jq -r '.remaining[0].first_seen_round' "$LEDGER")" = "2" ]
+  [ "$(jq -r '.remaining[0].entry_id' "$LEDGER")" = "r2-1" ]
+  [ "$(jq '.fixed_last_round | length' "$LEDGER")" = "1" ]
+  [ "$(jq -r '.fixed_last_round[0].entry_id' "$LEDGER")" = "$open_identifier" ]
+  [ "$(jq -r '.fixed_last_round[0].resolution' "$LEDGER")" = "bounded the trailing segment" ]
+  [ "$(jq -r '.fixed_last_round[0].line' "$LEDGER")" = "113" ]
 }
 
 @test "ledger: one member's write never touches a co-dispatched member's entries" {
@@ -854,6 +942,9 @@ write_sidecar_for() {
   # retiring its entries beneath a live refusal would claim a repair no commit
   # made. Superseding removes the refusal first, which is what legitimately ends
   # the loop. The plain-earned case is pinned by its own test below.
+  open_identifier="$(open_entry_id code-audit-maintainer-shell)"
+  [ -n "$open_identifier" ]
+  resolve_all_open code-audit-maintainer-shell "operator accepted the tradeoff"
   bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance earned --base "$LEDGER_BASE_SHA" \
     --supersede-refusal "operator accepted the tradeoff" >/dev/null
   [ -f "$LEDGER" ]
@@ -863,6 +954,11 @@ write_sidecar_for() {
   [ "$(jq -r '.fixed_last_round[0].member' "$LEDGER")" = "code-audit-maintainer-shell" ]
   [ "$(jq -r '.fixed_last_round[0].line' "$LEDGER")" = "113" ]
   [ "$(jq -r '.fixed_last_round[0].fixed_in_sha' "$LEDGER")" = "$LEDGER_HEAD_SHA" ]
+  [ "$(jq -r '.fixed_last_round[0].entry_id' "$LEDGER")" = "$open_identifier" ]
+  [ "$(jq -r '.fixed_last_round[0].resolution' "$LEDGER")" = "operator accepted the tradeoff" ]
+  # The retired member leaves no provenance to anchor on; the other keeps its own.
+  [ "$(jq -r '.member_provenance | has("code-audit-maintainer-shell")' "$LEDGER")" = "false" ]
+  [ "$(jq -r '.member_provenance | has("code-audit-maintainer-node")' "$LEDGER")" = "true" ]
 }
 
 @test "ledger: the file is removed only once NO member has anything left" {
@@ -872,9 +968,11 @@ write_sidecar_for() {
   write_sidecar_for code-audit-maintainer-node 7
   bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-node --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
 
+  resolve_all_open code-audit-maintainer-shell
   bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance earned --base "$LEDGER_BASE_SHA" \
     --supersede-refusal "operator accepted the tradeoff" >/dev/null
   [ -f "$LEDGER" ]
+  resolve_all_open code-audit-maintainer-node
   bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-node --provenance earned --base "$LEDGER_BASE_SHA" \
     --supersede-refusal "operator accepted the tradeoff" >/dev/null
   [ -f "$LEDGER" ] && return 1
@@ -892,6 +990,9 @@ write_sidecar_for() {
   # blocked on this finding. Retiring it here would stamp fixed_in_sha on a
   # repair no commit made and then delete the only briefing that can clear the
   # block, which is the exact opaque-refusal state this channel exists to end.
+  # The member re-reports the finding, so the write is accounted and reaches
+  # the retirement gate this test is about.
+  rereport_all_open "$member"
   digest="$(member_digest "$ROOT" "$member")"
   bash "$WRITER" --root "$ROOT" --member "$member" --provenance earned --base "$LEDGER_BASE_SHA" --scope-digest "$digest" >/dev/null
 
@@ -921,6 +1022,7 @@ write_sidecar_for() {
   [ -f "$AUDIT_DIRECTORY/${old_digest}.code-audit-maintainer-shell.refused" ]
   [ -f "$AUDIT_DIRECTORY/${new_digest}.code-audit-maintainer-shell.refused" ] && return 1
 
+  resolve_all_open code-audit-maintainer-shell
   bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-shell --provenance earned --base "$LEDGER_BASE_SHA" --scope-digest "$new_digest" >/dev/null
 
   [ -f "$LEDGER" ]
@@ -934,19 +1036,22 @@ write_sidecar_for() {
   ledger_setup
   member="code-audit-maintainer-shell"
   # Two distinct defects on one line, same finding_class: the findings writer
-  # permits this, and the carry-forward lookup must match one prior entry per
-  # finding rather than binding a generator that re-emits the body per match.
+  # permits this, and the carry-forward must match one prior entry per finding
+  # (by entry_id) rather than binding a generator that re-emits the body per match.
   printf '[{"finding_class":"holistic/unclassified","severity":"warning","path":".gaia/scripts/a.sh","line":42,"title":"first defect","failure_mode":"the guard admits an empty value","verified_by":"ran it at base and at HEAD","suggested_fix":"reject an empty value"},{"finding_class":"holistic/unclassified","severity":"warning","path":".gaia/scripts/a.sh","line":42,"title":"second defect","failure_mode":"the same line also swallows stderr","verified_by":"stubbed the program to exit non-zero","suggested_fix":"check the status"}]' \
     | bash "$THIS_DIRECTORY/../audit-write-findings.sh" --root "$ROOT" --member "$member" --base "$LEDGER_BASE_SHA" --findings - >/dev/null
 
   bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
   [ "$(jq '.remaining | length' "$LEDGER")" = "2" ]
+  rereport_all_open "$member"
   bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
   [ "$(jq '.remaining | length' "$LEDGER")" = "2" ]
+  rereport_all_open "$member"
   bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
   [ "$(jq '.remaining | length' "$LEDGER")" = "2" ]
-  # Both have been open since round 1 and say so.
+  # Both have been open since round 1 and say so, each under its own id.
   [ "$(jq -c '[.remaining[].first_seen_round] | sort' "$LEDGER")" = "[1,1]" ]
+  [ "$(jq -c '[.remaining[].entry_id] | sort' "$LEDGER")" = '["r1-1","r1-2"]' ]
 }
 
 @test "ledger: a stale ledger (different base) is replaced, never extended" {
@@ -1015,6 +1120,402 @@ write_sidecar_for() {
   # program error into "there was nothing to write". The status is checked now.
   grep -qF 'cannot build the carry-forward ledger' "$WRITER"
   grep -qF 'cannot update the carry-forward ledger' "$WRITER"
+}
+
+# -----------------------------------------------------------------------------
+# Open-finding accounting
+#
+# A member anchored on its own refusal reviews only the fixer's delta, which is
+# sound only if no later write can drop a finding that refusal left open. Every
+# write for a member with open ledger entries must re-report each one by its
+# entry_id or resolve it with a rationale, checked before anything publishes,
+# and an exit 3 leaves every artifact as it was.
+#
+# Every fixture keeps capture, sidecar, and ledger on one key: the sandbox has
+# no hook libraries, so the writer's resolver degrades to `main`, and the
+# derived key base is `git merge-base main HEAD`, which ledger_setup makes
+# equal to LEDGER_BASE_SHA. A fixture that lost that equality would find no
+# ledger and pass every accounting arm vacuously, so the fixture asserts it.
+# -----------------------------------------------------------------------------
+
+ACCOUNTING_MEMBER="code-audit-maintainer-shell"
+SIBLING_MEMBER="code-audit-maintainer-node"
+
+# capture_scope <member> [<extra capture flags>...]: this member's scope
+# capture at the ledger key, through the real capture script.
+capture_scope() {
+  local member="$1"
+  shift
+  bash "$THIS_DIRECTORY/../audit-scope-digest.sh" --capture --recapture "$@" \
+    --root "$ROOT" --member "$member" --base "$LEDGER_BASE_SHA" >/dev/null
+}
+
+# rotate_member_digest: a fixer commit that rotates every member's digest.
+rotate_member_digest() {
+  printf '%s\n' "${1:-1.6.2}" > "$ROOT/.gaia/VERSION"
+  git -C "$ROOT" add .gaia/VERSION
+  git -C "$ROOT" commit --quiet -m "fixer: ${1:-1.6.2}"
+}
+
+# accounting_fixture: the member refuses at A with two open entries (FIRST_ID,
+# SECOND_ID) beside a sibling's own open entry; a fixer commit B rotates the
+# member's digest (B_DIGEST); the round at B is captured on member-refusal.
+accounting_fixture() {
+  ledger_setup
+  [ "$(git -C "$ROOT" merge-base main HEAD)" = "$LEDGER_BASE_SHA" ]
+  member="$ACCOUNTING_MEMBER"
+  write_findings_sidecar "$member" \
+    "[$(finding_json 113 error),$(finding_json 59 warning "" holistic/swallowed-error)]"
+  bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
+  write_sidecar_for "$SIBLING_MEMBER" 7
+  bash "$WRITER" --root "$ROOT" --member "$SIBLING_MEMBER" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
+  FIRST_ID="$(open_entry_id "$member" 0)"
+  SECOND_ID="$(open_entry_id "$member" 1)"
+  [ -n "$FIRST_ID" ]
+  [ -n "$SECOND_ID" ]
+  [ "$FIRST_ID" != "$SECOND_ID" ]
+  A_DIGEST="$(member_digest "$ROOT" "$member")"
+  rotate_member_digest
+  B_DIGEST="$(member_digest "$ROOT" "$member")"
+  [ "$A_DIGEST" != "$B_DIGEST" ]
+  capture_scope "$member" --base-reason member-refusal
+  [ "$(jq -r .base_reason "$AUDIT_DIRECTORY/${LEDGER_BASE_SHA}.fix%2Fledger.${member}.scope.json")" = "member-refusal" ]
+  SIDECAR_PATH="$AUDIT_DIRECTORY/${LEDGER_BASE_SHA}.fix%2Fledger.${member}.findings.json"
+}
+
+# resolution_json <entry_id>...: a resolutions array with one record per id.
+resolution_json() {
+  local entry_identifier first=1
+  printf '['
+  for entry_identifier in "$@"; do
+    [ "$first" -eq 1 ] || printf ','
+    first=0
+    jq -cn --arg entry_id "$entry_identifier" '{entry_id: $entry_id, rationale: "bounded the trailing segment"}'
+  done
+  printf ']'
+}
+
+# snapshot_ledger: a copy of the ledger to compare bytes against afterwards.
+snapshot_ledger() {
+  cp "$LEDGER" "$BATS_TEST_TMPDIR/ledger.before"
+}
+
+@test "accounting: an earned write that omits an open finding exits 3 and publishes nothing" {
+  accounting_fixture
+  write_findings_sidecar "$member" '[]' "$(resolution_json "$FIRST_ID")"
+  snapshot_ledger
+
+  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance earned \
+    --base "$LEDGER_BASE_SHA" --scope-digest "$B_DIGEST"
+  [ "$status" -eq 3 ]
+  [ -f "$AUDIT_DIRECTORY/${B_DIGEST}.${member}.ok" ] && return 1
+  cmp "$LEDGER" "$BATS_TEST_TMPDIR/ledger.before"
+  # The omitted entry is named; the accounted one never is.
+  grep -qF -- "   ${SECOND_ID}  " <<<"$output" || return 1
+  grep -qF -- "   ${FIRST_ID}  " <<<"$output" && return 1
+  grep -qF "Recovery:" <<<"$output" || return 1
+  grep -qF -- "--resolutions" <<<"$output" || return 1
+  grep -qF ".claude/hooks/lib/audit-member-protocol.md" <<<"$output" || return 1
+
+  # Control: accounting for the omitted entry is all it takes.
+  write_findings_sidecar "$member" '[]' "$(resolution_json "$FIRST_ID" "$SECOND_ID")"
+  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance earned \
+    --base "$LEDGER_BASE_SHA" --scope-digest "$B_DIGEST"
+  [ "$status" -eq 0 ]
+  [ -f "$AUDIT_DIRECTORY/${B_DIGEST}.${member}.ok" ]
+}
+
+@test "accounting: an earned write resolving every open entry retires them with their ids and rationale" {
+  accounting_fixture
+  [ "$(jq -r --arg member "$member" '.member_provenance | has($member)' "$LEDGER")" = "true" ]
+  write_findings_sidecar "$member" '[]' "$(resolution_json "$FIRST_ID" "$SECOND_ID")"
+
+  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance earned \
+    --base "$LEDGER_BASE_SHA" --scope-digest "$B_DIGEST"
+  [ "$status" -eq 0 ]
+  [ -f "$AUDIT_DIRECTORY/${B_DIGEST}.${member}.ok" ]
+  [ "$(jq --arg member "$member" '[.remaining[] | select(.member == $member)] | length' "$LEDGER")" = "0" ]
+  [ "$(jq -c --arg member "$member" '[.fixed_last_round[] | select(.member == $member) | .entry_id] | sort' "$LEDGER")" \
+    = "$(jq -cn --arg first "$FIRST_ID" --arg second "$SECOND_ID" '[$first, $second] | sort')" ]
+  [ "$(jq -r --arg member "$member" '[.fixed_last_round[] | select(.member == $member) | .resolution] | unique | .[]' "$LEDGER")" \
+    = "bounded the trailing segment" ]
+  [ "$(jq -r --arg member "$member" '.member_provenance | has($member)' "$LEDGER")" = "false" ]
+}
+
+@test "accounting: a refused write that drops an open finding exits 3; re-reporting it carries its id" {
+  ledger_setup
+  member="$ACCOUNTING_MEMBER"
+  write_sidecar_for "$member" 113
+  bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
+  open_identifier="$(open_entry_id "$member")"
+  [ -n "$open_identifier" ]
+  rotate_member_digest
+  b_digest="$(member_digest "$ROOT" "$member")"
+  b_tree="$(git -C "$ROOT" rev-parse 'HEAD^{tree}')"
+  b_sha="$(git -C "$ROOT" rev-parse HEAD)"
+
+  # The round at B finds a new defect and says nothing about the open one.
+  write_findings_sidecar "$member" "[$(finding_json 40 warning "" holistic/swallowed-error)]"
+  snapshot_ledger
+  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA"
+  [ "$status" -eq 3 ]
+  [ -f "$AUDIT_DIRECTORY/${b_digest}.${member}.refused" ] && return 1
+  cmp "$LEDGER" "$BATS_TEST_TMPDIR/ledger.before"
+  grep -qF -- "   ${open_identifier}  " <<<"$output" || return 1
+
+  # Control: the open finding re-reported by its id at a shifted line, plus the new one.
+  write_findings_sidecar "$member" \
+    "[$(finding_json 120 warning "$open_identifier"),$(finding_json 40 warning "" holistic/swallowed-error)]"
+  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA"
+  [ "$status" -eq 0 ]
+  [ -f "$AUDIT_DIRECTORY/${b_digest}.${member}.refused" ]
+  carried="$(jq -c --arg member "$member" --arg id "$open_identifier" \
+    '.remaining[] | select(.member == $member and .entry_id == $id)' "$LEDGER")"
+  [ "$(jq -r .line <<<"$carried")" = "120" ]
+  [ "$(jq -r .first_seen_round <<<"$carried")" = "1" ]
+  new_identifier="$(jq -r --arg member "$member" --arg id "$open_identifier" \
+    '.remaining[] | select(.member == $member and .entry_id != $id) | .entry_id' "$LEDGER")"
+  [ "$new_identifier" = "r2-1" ]
+  [ "$(jq --arg member "$member" '[.remaining[] | select(.member == $member)] | length' "$LEDGER")" = "2" ]
+  provenance="$(jq -c --arg member "$member" '.member_provenance[$member]' "$LEDGER")"
+  [ "$(jq -r .refusal_digest <<<"$provenance")" = "$b_digest" ]
+  [ "$(jq -r .refusal_tree <<<"$provenance")" = "$b_tree" ]
+  [ "$(jq -r .refusal_sha <<<"$provenance")" = "$b_sha" ]
+  [ "$(jq -r .version <<<"$provenance")" = "1.6.2" ]
+}
+
+@test "accounting: omitting --base and the sidecar's review flags never skips the check" {
+  accounting_fixture
+  # The sidecar is written without --review-base/--base-reason, and the earned
+  # write carries no --base: only its --scope-digest.
+  write_findings_sidecar "$member" '[]' "$(resolution_json "$FIRST_ID")"
+  [ "$(jq -r 'has("review_base")' "$SIDECAR_PATH")" = "false" ]
+  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance earned --scope-digest "$B_DIGEST"
+  [ "$status" -ne 0 ]
+  [ -f "$AUDIT_DIRECTORY/${B_DIGEST}.${member}.ok" ] && return 1
+  grep -qF -- "   ${SECOND_ID}  " <<<"$output" || return 1
+}
+
+@test "accounting: a round captured on member-refusal with no readable ledger exits 3, never an empty open set" {
+  accounting_fixture
+  write_findings_sidecar "$member" '[]' "$(resolution_json "$FIRST_ID" "$SECOND_ID")"
+
+  rm -f "$LEDGER"
+  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance earned \
+    --base "$LEDGER_BASE_SHA" --scope-digest "$B_DIGEST"
+  [ "$status" -eq 3 ]
+  [ -f "$AUDIT_DIRECTORY/${B_DIGEST}.${member}.ok" ] && return 1
+  grep -qF -- "audit-scope-digest.sh --release" <<<"$output" || return 1
+  grep -qF "re-run the scope resolver" <<<"$output" || return 1
+
+  printf 'not json {' > "$LEDGER"
+  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance earned \
+    --base "$LEDGER_BASE_SHA" --scope-digest "$B_DIGEST"
+  [ "$status" -eq 3 ]
+  [ -f "$AUDIT_DIRECTORY/${B_DIGEST}.${member}.ok" ] && return 1
+  grep -qF -- "audit-scope-digest.sh --release" <<<"$output" || return 1
+}
+
+@test "accounting: a resolution whose rationale is blank leaves its entry unaccounted" {
+  accounting_fixture
+  # Hand-written: the findings writer itself rejects a blank rationale.
+  jq -cn --arg member "$member" --arg first "$FIRST_ID" --arg second "$SECOND_ID" \
+    '{schema: 1, member: $member, findings: [],
+      resolutions: [{entry_id: $first, rationale: "bounded the trailing segment"},
+                    {entry_id: $second, rationale: "   "}]}' > "$SIDECAR_PATH"
+  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance earned \
+    --base "$LEDGER_BASE_SHA" --scope-digest "$B_DIGEST"
+  [ "$status" -eq 3 ]
+  [ -f "$AUDIT_DIRECTORY/${B_DIGEST}.${member}.ok" ] && return 1
+  grep -qF -- "   ${SECOND_ID}  " <<<"$output" || return 1
+  grep -qF -- "   ${FIRST_ID}  " <<<"$output" && return 1
+  true
+}
+
+@test "accounting: open entries with no sidecar refuse both a refused and an earned write" {
+  accounting_fixture
+  rm -f "$SIDECAR_PATH"
+  snapshot_ledger
+
+  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA"
+  [ "$status" -eq 3 ]
+  [ -f "$AUDIT_DIRECTORY/${B_DIGEST}.${member}.refused" ] && return 1
+  grep -qF "no readable findings sidecar" <<<"$output" || return 1
+
+  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance earned \
+    --base "$LEDGER_BASE_SHA" --scope-digest "$B_DIGEST"
+  [ "$status" -eq 3 ]
+  [ -f "$AUDIT_DIRECTORY/${B_DIGEST}.${member}.ok" ] && return 1
+  cmp "$LEDGER" "$BATS_TEST_TMPDIR/ledger.before"
+}
+
+@test "accounting: a sibling's later refusal leaves this member's entries and provenance byte-identical" {
+  accounting_fixture
+  projection() {
+    jq -S --arg member "$member" \
+      '{remaining: [.remaining[] | select(.member == $member)], provenance: .member_provenance[$member]}' "$LEDGER"
+  }
+  before="$(projection)"
+  [ "$(jq '.remaining | length' <<<"$before")" = "2" ]
+  [ "$(jq -r '.provenance.refusal_digest' <<<"$before")" = "$A_DIGEST" ]
+
+  rotate_member_digest 1.6.3
+  rereport_all_open "$SIBLING_MEMBER"
+  bash "$WRITER" --root "$ROOT" --member "$SIBLING_MEMBER" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
+  [ "$(jq -r .round "$LEDGER")" = "3" ]
+  [ "$(projection)" = "$before" ]
+}
+
+@test "accounting: a refusal records its review coverage only when its own capture matches it" {
+  ledger_setup
+  member="$ACCOUNTING_MEMBER"
+  digest="$(member_digest "$ROOT" "$member")"
+
+  # A capture of the write-time digest, on the resolved base.
+  capture_scope "$member"
+  written_path="$(bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused)"
+  [ "$(jq -r '.review_coverage.scope_digest' "$written_path")" = "$digest" ]
+  [ "$(jq -r .digest "$written_path")" = "$digest" ]
+
+  # A capture on a caller-overridden base proves nothing about the resolved one.
+  capture_scope "$member" --base-overridden
+  written_path="$(bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused)"
+  [ "$(jq -r 'has("review_coverage")' "$written_path")" = "false" ]
+
+  # A capture taken before a commit that rotated the digest covers other content.
+  capture_scope "$member"
+  rotate_member_digest
+  written_path="$(bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused)"
+  [ "$(jq -r .digest "$written_path")" != "$digest" ]
+  [ "$(jq -r 'has("review_coverage")' "$written_path")" = "false" ]
+
+  # No capture at all.
+  rm -f "$AUDIT_DIRECTORY/${LEDGER_BASE_SHA}.fix%2Fledger.${member}.scope.json"
+  rotate_member_digest 1.6.3
+  written_path="$(bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused)"
+  [ "$(jq -r 'has("review_coverage")' "$written_path")" = "false" ]
+}
+
+@test "accounting: a member with nothing open publishes as before beside another member's entries" {
+  ledger_setup
+  write_sidecar_for "$SIBLING_MEMBER" 7
+  bash "$WRITER" --root "$ROOT" --member "$SIBLING_MEMBER" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
+  [ "$(jq '.remaining | length' "$LEDGER")" = "1" ]
+  member="$ACCOUNTING_MEMBER"
+  digest="$(member_digest "$ROOT" "$member")"
+  # No sidecar for this member at all: nothing of its own is open.
+  [ -f "$AUDIT_DIRECTORY/${LEDGER_BASE_SHA}.fix%2Fledger.${member}.findings.json" ] && return 1
+  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance earned \
+    --base "$LEDGER_BASE_SHA" --scope-digest "$digest"
+  [ "$status" -eq 0 ]
+  [ -f "$AUDIT_DIRECTORY/${digest}.${member}.ok" ]
+  [ "$(jq '.remaining | length' "$LEDGER")" = "1" ]
+}
+
+@test "accounting: only GITHUB_ACTIONS=true skips the check; CI alone does not" {
+  accounting_fixture
+  write_findings_sidecar "$member" '[]' "$(resolution_json "$FIRST_ID")"
+
+  run env -u GITHUB_ACTIONS CI=true bash "$WRITER" --root "$ROOT" --member "$member" \
+    --provenance earned --scope-digest "$B_DIGEST"
+  [ "$status" -eq 3 ]
+  [ -f "$AUDIT_DIRECTORY/${B_DIGEST}.${member}.ok" ] && return 1
+
+  run env GITHUB_ACTIONS=true bash "$WRITER" --root "$ROOT" --member "$member" \
+    --provenance earned --scope-digest "$B_DIGEST"
+  [ "$status" -eq 0 ]
+  [ -f "$AUDIT_DIRECTORY/${B_DIGEST}.${member}.ok" ]
+}
+
+@test "accounting: a --base that differs from the derived key base still keys everything to the derived one" {
+  ledger_setup
+  member="$ACCOUNTING_MEMBER"
+  # A commit on the feature branch after the fork point: not the merge-base.
+  offset_base="$LEDGER_HEAD_SHA"
+  [ "$offset_base" != "$LEDGER_BASE_SHA" ]
+  [ "$(git -C "$ROOT" merge-base main HEAD)" = "$LEDGER_BASE_SHA" ]
+  offset_ledger="$AUDIT_DIRECTORY/${offset_base}.fix%2Fledger.rerun.json"
+
+  capture_scope "$member"
+  write_sidecar_for "$member" 113
+  bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$offset_base" >/dev/null
+  [ -f "$LEDGER" ]
+  [ -f "$offset_ledger" ] && return 1
+  [ "$(jq -r .base_sha "$LEDGER")" = "$LEDGER_BASE_SHA" ]
+  open_identifier="$(open_entry_id "$member")"
+  [ -n "$open_identifier" ]
+
+  # The next write finds the open set at the derived key and refuses to drop it.
+  write_sidecar_for "$member" 59
+  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$offset_base"
+  [ "$status" -eq 3 ]
+  grep -qF -- "   ${open_identifier}  " <<<"$output" || return 1
+
+  write_findings_sidecar "$member" "[$(finding_json 113 warning "$open_identifier"),$(finding_json 59)]"
+  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$offset_base"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .base_sha "$LEDGER")" = "$LEDGER_BASE_SHA" ]
+  [ "$(jq -r .round "$LEDGER")" = "2" ]
+  [ -f "$offset_ledger" ] && return 1
+  true
+}
+
+@test "accounting: a write with no --base still reads the open set at the derived key" {
+  ledger_setup
+  member="$ACCOUNTING_MEMBER"
+  write_findings_sidecar "$member" "[$(finding_json 113 error),$(finding_json 59)]"
+  bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
+  first_identifier="$(open_entry_id "$member" 0)"
+  second_identifier="$(open_entry_id "$member" 1)"
+  [ -n "$first_identifier" ]
+  [ -n "$second_identifier" ]
+  snapshot_ledger
+
+  write_findings_sidecar "$member" '[]' "$(resolution_json "$first_identifier")"
+  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused
+  [ "$status" -eq 3 ]
+  grep -qF -- "   ${second_identifier}  " <<<"$output" || return 1
+
+  write_findings_sidecar "$member" '[]' "$(resolution_json "$first_identifier" "$second_identifier")"
+  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused
+  [ "$status" -eq 0 ]
+  # --base is what arms the ledger write, so the ledger is untouched.
+  cmp "$LEDGER" "$BATS_TEST_TMPDIR/ledger.before"
+}
+
+@test "accounting: a supersede that drops an open finding exits 3 and leaves the refusal in place" {
+  ledger_setup
+  member="$ACCOUNTING_MEMBER"
+  digest="$(member_digest "$ROOT" "$member")"
+  write_findings_sidecar "$member" "[$(finding_json 113 error),$(finding_json 59)]"
+  bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA" >/dev/null
+  refused="$AUDIT_DIRECTORY/${digest}.${member}.refused"
+  [ -f "$refused" ]
+  first_identifier="$(open_entry_id "$member" 0)"
+  second_identifier="$(open_entry_id "$member" 1)"
+  [ -n "$first_identifier" ]
+  [ -n "$second_identifier" ]
+  write_findings_sidecar "$member" '[]' "$(resolution_json "$first_identifier")"
+  snapshot_ledger
+
+  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance earned --base "$LEDGER_BASE_SHA" \
+    --supersede-refusal "operator accepted the tradeoff"
+  [ "$status" -eq 3 ]
+  grep -qF -- "   ${second_identifier}  " <<<"$output" || return 1
+  [ -f "$refused" ]
+  [ -f "$AUDIT_DIRECTORY/${digest}.${member}.ok" ] && return 1
+  cmp "$LEDGER" "$BATS_TEST_TMPDIR/ledger.before"
+}
+
+@test "accounting: a refused write in a member-refusal round with no ledger exits 3" {
+  accounting_fixture
+  write_findings_sidecar "$member" "[$(finding_json 113 error "$FIRST_ID"),$(finding_json 59 warning "$SECOND_ID")]"
+  rm -f "$LEDGER"
+  run bash "$WRITER" --root "$ROOT" --member "$member" --provenance refused --base "$LEDGER_BASE_SHA"
+  [ "$status" -eq 3 ]
+  [ -f "$AUDIT_DIRECTORY/${B_DIGEST}.${member}.refused" ] && return 1
+  grep -qF -- "audit-scope-digest.sh --release" <<<"$output" || return 1
+  grep -qF "re-run the scope resolver" <<<"$output" || return 1
 }
 
 # -----------------------------------------------------------------------------

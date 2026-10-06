@@ -32,7 +32,10 @@
 #                     unresolvable membership base is not a reason to stop.
 #   --base-override   Use <ref> as the review base in place of the resolver's
 #                     first line. KEY_REF, BASE_REASON and ANCHOR_TREE still
-#                     come from the resolver, which made that decision.
+#                     come from the resolver, which made that decision. The
+#                     capture records BASE_REASON and that the base was
+#                     overridden, so the clearance writer can tell a resolved
+#                     base from a caller-chosen one.
 #   --eligibility     Also resolve the default member's waive-eligibility set:
 #                     the whole-PR fork point against the branch the pull
 #                     request merges into (ELIG_BASE) and every path it
@@ -321,7 +324,9 @@ fi
 # The capture runs last, after the scope it pins is resolved. A second capture
 # in the same review returns the first value (audit-scope-digest.sh owns that),
 # so re-running this script mid-review changes nothing.
-D_SCOPE="$("$root/.gaia/scripts/audit-scope-digest.sh" --capture --root "$root" --member "$member" --base "$KEY_BASE")" || D_SCOPE=""
+capture_options=(--base-reason "$BASE_REASON")
+[ -z "$base_override" ] || capture_options+=(--base-overridden)
+D_SCOPE="$("$root/.gaia/scripts/audit-scope-digest.sh" --capture "${capture_options[@]}" --root "$root" --member "$member" --base "$KEY_BASE")" || D_SCOPE=""
 [ -n "$D_SCOPE" ] || printf 'could not capture a scope digest; a gating member'"'"'s earned clearance write will refuse without one\n' >&2
 printf 'D_SCOPE=%s\n' "$D_SCOPE"
 
