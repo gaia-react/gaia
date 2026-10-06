@@ -39,6 +39,9 @@ setup() {
   [ -x "$CLASSIFIER" ] || skip "audit-noop-detect.sh not executable"
   [ -f "$DIGEST_LIBRARY" ] || skip "audit-digest.sh not present"
   command -v jq >/dev/null 2>&1 || skip "jq required"
+  # The writer's open-finding accounting is skipped when GITHUB_ACTIONS is
+  # true; unset it so a runner exercises the same path a local run does.
+  unset GITHUB_ACTIONS
 
   MEMBER="code-audit-maintainer-shell"
 
@@ -105,6 +108,28 @@ stage_refusal() {
 JSON
   bash "$CLEARANCE_WRITER" \
     --root "$ROOT" --member "$MEMBER" --provenance refused --base "$BASE" >/dev/null
+}
+
+# stage_rerefusal: the next round of the same refusal. Every finding still
+# stands, so the member re-reports each open ledger entry by its entry_id,
+# which is what the writer's open-finding accounting requires of it.
+stage_rerefusal() {
+  jq -c --arg member "$MEMBER" '[.remaining[] | select(.member == $member)
+    | {finding_class, path, line, title, failure_mode, verified_by, suggested_fix, entry_id,
+       severity: ({"critical":"error","important":"warning","suggestion":"suggestion"}[.severity] // "warning")}]' "$LEDGER" \
+    | bash "$FINDINGS_WRITER" --root "$ROOT" --member "$MEMBER" --base "$BASE" --findings - >/dev/null
+  bash "$CLEARANCE_WRITER" \
+    --root "$ROOT" --member "$MEMBER" --provenance refused --base "$BASE" >/dev/null
+}
+
+# write_resolving_sidecar <rationale>: a sidecar with no findings that resolves
+# every open ledger entry of the member with the given rationale.
+write_resolving_sidecar() {
+  jq -c --arg member "$MEMBER" --arg rationale "$1" \
+    '[.remaining[] | select(.member == $member) | {entry_id, rationale: $rationale}]' "$LEDGER" \
+    > "$BATS_TEST_TMPDIR/resolutions.json"
+  bash "$FINDINGS_WRITER" --root "$ROOT" --member "$MEMBER" --base "$BASE" \
+    --findings - --resolutions "$BATS_TEST_TMPDIR/resolutions.json" >/dev/null <<<'[]'
 }
 
 # classify: the no-op classifier, exactly as the workflow page calls it.
@@ -245,8 +270,9 @@ JSON
 @test "a second round of the same refusal accumulates rather than resetting" {
   stage_refusal
   [ "$(jq -r .round "$LEDGER")" = "1" ]
-  stage_refusal
+  stage_rerefusal
   [ "$(jq -r .round "$LEDGER")" = "2" ]
+  [ "$(jq '.remaining | length' "$LEDGER")" = "2" ]
   # A finding open since round 1 says so, which is how an operator sees that
   # re-dispatching changed nothing.
   [ "$(jq -r '.remaining[0].first_seen_round' "$LEDGER")" = "1" ]
@@ -257,8 +283,9 @@ JSON
 
 @test "a plain earned write never clears the refusal: the classifier still says refused" {
   stage_refusal
-  bash "$FINDINGS_WRITER" --root "$ROOT" --member "$MEMBER" --base "$BASE" \
-    --findings - >/dev/null <<<'[]'
+  # The re-run accounts for both open findings, so the write is not refused
+  # for dropping one; what is left to decide is the refusal itself.
+  write_resolving_sidecar "operator believes these are fixed"
   bash "$CLEARANCE_WRITER" --root "$ROOT" --member "$MEMBER" \
     --provenance earned --base "$BASE" --scope-digest "$DIGEST" >/dev/null
   # Both markers sit on disk. The anti-gaming invariant is that a bare re-run
@@ -275,9 +302,9 @@ JSON
   stage_refusal
   [ -f "$LEDGER" ]
   # The other legitimate exit, for content that did not move: the member
-  # re-audits, finds the blocker acknowledged, and says so in writing.
-  bash "$FINDINGS_WRITER" --root "$ROOT" --member "$MEMBER" --base "$BASE" \
-    --findings - >/dev/null <<<'[]'
+  # re-audits, finds the blocker acknowledged, and says so in writing, for each
+  # open finding as well as for the refusal.
+  write_resolving_sidecar "operator acknowledged the unaddressed Important with a stated reason"
   bash "$CLEARANCE_WRITER" --root "$ROOT" --member "$MEMBER" \
     --provenance earned --base "$BASE" \
     --supersede-refusal "operator acknowledged the unaddressed Important with a stated reason" >/dev/null

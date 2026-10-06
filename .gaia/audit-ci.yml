@@ -211,6 +211,10 @@ auditors:
       - ".gaia/scripts/tests/fixtures/**/*.jq"
       - ".gaia/scripts/tests/fixtures/**/*.sed"
       - ".gaia/scripts/tests/fixtures/**/SHA256SUMS"
+      # The resolver's recorded characterization: the bats suite compares the
+      # live resolver against it, so an edited golden would quietly bless a
+      # changed answer. Granted for the same reason as the fixtures above.
+      - ".github/audit/tests/fixtures/**/*.golden"
       # The allowlist a removal guard reads: widening it quietly re-admits a
       # removed surface, so it dispatches the reviewer who owns that suite.
       - ".gaia/tests/fixtures/**/*.allowlist"
