@@ -38,7 +38,7 @@ import {
   QUERY_ON_INIT_COMMAND,
 } from './data-layer.js';
 import {ensureDir, writeAndRecord} from './fs.js';
-import {resolveLayer} from './layer.js';
+import {isSnakeCaseLayer, resolveLayer} from './layer.js';
 import {resolveScaffoldTarget} from './resolve-target.js';
 import {renderTemplate} from './template.js';
 import type {TemplateVars} from './template.js';
@@ -413,13 +413,14 @@ export const camelToSnake = (camel: string): string =>
 const renderClientFields = (fields: SchemaField[]): string[] =>
   fields.map(({name, zodExpression}) => `  ${name}: ${zodExpression},`);
 
-const renderServerFields = (fields: SchemaField[]): string[] =>
-  fields.map(({name, zodExpression}) => {
-    const snake = camelToSnake(name);
-    const key = snake === name ? name : snake;
-
-    return `  ${key}: ${zodExpression},`;
-  });
+const renderServerFields = (
+  fields: SchemaField[],
+  isSnakeCaseWire: boolean
+): string[] =>
+  fields.map(
+    ({name, zodExpression}) =>
+      `  ${isSnakeCaseWire ? camelToSnake(name) : name}: ${zodExpression},`
+  );
 
 // Mock barrel composition
 
@@ -679,6 +680,7 @@ type EmitContext = {
   derived: DerivedNames;
   endpoints: ReadonlySet<Endpoint>;
   fields: SchemaField[];
+  isSnakeCaseWire: boolean;
   layer: string;
   mocks: boolean;
   repoRoot: string;
@@ -803,7 +805,8 @@ const emitMockFiles = (
   databaseBarrel: DatabaseBarrelPlan | undefined,
   result: ScaffoldResult
 ): void => {
-  const {derived, endpoints, fields, layer, repoRoot} = context;
+  const {derived, endpoints, fields, isSnakeCaseWire, layer, repoRoot} =
+    context;
   const mockDir = path.join(repoRoot, 'test', 'mocks', derived.name);
   ensureDir(mockDir);
 
@@ -811,7 +814,7 @@ const emitMockFiles = (
 
   const dataBody = renderServiceTemplate('service/mock.data.ts.tmpl', {
     ...baseVars,
-    serverFields: renderServerFields(fields),
+    serverFields: renderServerFields(fields, isSnakeCaseWire),
   });
   writeAndRecord(path.join(mockDir, 'data.ts'), dataBody, result);
 
@@ -952,6 +955,7 @@ export const run = (
     derived: deriveNames(parsed.name),
     endpoints: parsed.endpoints,
     fields: parsed.fields,
+    isSnakeCaseWire: isSnakeCaseLayer(repoRoot, resolved.layer),
     layer: resolved.layer,
     mocks: parsed.mocks,
     repoRoot,

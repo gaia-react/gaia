@@ -23,7 +23,7 @@ describe('create', () => {
     process.env.API_URL = ORIGIN_A;
     server.use(
       http.get(`${ORIGIN_A}/items`, () =>
-        HttpResponse.json({data: {display_name: 'x'}})
+        HttpResponse.json({data: {displayName: 'x'}})
       )
     );
 
@@ -78,7 +78,7 @@ describe('create', () => {
     ).resolves.toBeUndefined();
   });
 
-  test('converts a JSON body to snake_case and the response to camelCase', async () => {
+  test('isSnakeCaseEnabled converts a JSON body to snake_case and the response to camelCase', async () => {
     process.env.API_URL = ORIGIN_A;
     let received: unknown;
     server.use(
@@ -89,7 +89,7 @@ describe('create', () => {
       })
     );
 
-    const request = create();
+    const request = create({isSnakeCaseEnabled: true});
     const parsedEnvelope = await request('items', {
       json: {displayName: 'x'},
       method: 'post',
@@ -100,7 +100,7 @@ describe('create', () => {
     expect(parsedEnvelope.data.displayName).toBe('x');
   });
 
-  test('useSnakeCase false leaves the body and response keys unchanged', async () => {
+  test('leaves the body and response keys unchanged by default', async () => {
     process.env.API_URL = ORIGIN_A;
     let received: unknown;
     server.use(
@@ -111,7 +111,7 @@ describe('create', () => {
       })
     );
 
-    const request = create({useSnakeCase: false});
+    const request = create();
     const parsedEnvelope = await request('items', {
       json: {displayName: 'x'},
       method: 'post',
@@ -128,12 +128,12 @@ describe('create', () => {
       http.get(`${ORIGIN_A}/items`, ({request}) => {
         observed.push(request.url);
 
-        return HttpResponse.json({data: {display_name: 'a'}});
+        return HttpResponse.json({data: {displayName: 'a'}});
       }),
       http.get(`${ORIGIN_B}/items`, ({request}) => {
         observed.push(request.url);
 
-        return HttpResponse.json({data: {display_name: 'b'}});
+        return HttpResponse.json({data: {displayName: 'b'}});
       })
     );
 
@@ -155,12 +155,12 @@ describe('create', () => {
       http.get(`${ORIGIN_A}/items`, ({request}) => {
         observed.push(request.url);
 
-        return HttpResponse.json({data: {display_name: 'a'}});
+        return HttpResponse.json({data: {displayName: 'a'}});
       }),
       http.get(`${ORIGIN_B}/items`, ({request}) => {
         observed.push(request.url);
 
-        return HttpResponse.json({data: {display_name: 'b'}});
+        return HttpResponse.json({data: {displayName: 'b'}});
       })
     );
     process.env.API_URL = ORIGIN_A;

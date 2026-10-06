@@ -175,14 +175,14 @@ export const itemQuery = (id: string) =>
 `;
 
 type ServiceFixtureOptions = {
-  /** Writes `useSnakeCase: false` into the layer's `api.ts`. */
-  camelCaseWire?: boolean;
   /** `parsers.ts` contents; omitted writes the items schema above. */
   parsers?: string;
   /** Writes `queries.ts` into the service folder. */
   queries?: boolean;
   /** Declares `@tanstack/react-query` in `package.json`. */
   query?: boolean;
+  /** Writes `isSnakeCaseEnabled: true` into the layer's `api.ts`. */
+  snakeCaseWire?: boolean;
 };
 
 /** Writes `app/services/gaia/items/` and the package manifest under `packageDir`. */
@@ -197,7 +197,7 @@ export const writeItemsService = (
   mkdirSync(path.join(packageDir, 'app', 'services', 'api'), {recursive: true});
   writeFileSync(
     path.join(layerDir, 'api.ts'),
-    `export const api = create(${options.camelCaseWire === true ? '{useSnakeCase: false}' : ''});\n`
+    `export const api = create(${options.snakeCaseWire === true ? '{isSnakeCaseEnabled: true}' : ''});\n`
   );
   writeFileSync(
     path.join(serviceDir, 'parsers.ts'),

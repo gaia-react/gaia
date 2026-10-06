@@ -21,9 +21,9 @@ When `@tanstack/react-query` is installed and the service has `get`, the scaffol
 
 ## A new API domain
 
-A backend with its own base URL or casing needs its own `create()` instance. Ask the backend's casing first (snake_case or camelCase). Then create `app/services/<new-layer>/api.ts` modelled on the shipped layer's `api.ts`, passing `create({useSnakeCase: false})` for a camelCase backend, and scaffold with `--layer <new-layer>`.
+A backend with its own base URL or casing needs its own `create()` instance. Ask the backend's casing first (camelCase or snake_case). Then create `app/services/<new-layer>/api.ts` modelled on the shipped layer's `api.ts`, passing `create({isSnakeCaseEnabled: true})` for a snake_case backend, and scaffold with `--layer <new-layer>`; the scaffolder reads that flag to pick the mock data's key casing.
 
-For an SDK-client backend (Supabase, Firebase), the casing answer given at init changes nothing and is not recorded anywhere. The Ky layer stays in place for any REST domain. An SDK-backed domain's request functions wrap the SDK's calls instead of `api`, and the data-loading rule applies unchanged.
+For an SDK-client backend (Supabase, Firebase), the Ky layer stays in place for any REST domain. An SDK-backed domain's request functions wrap the SDK's calls instead of `api`, and the data-loading rule applies unchanged.
 
 The `clientLoader` and Query variants suit unauthenticated or cookie-authenticated APIs; a token or secret never goes into the root-loader `ENV`.
 

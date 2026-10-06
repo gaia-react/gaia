@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # 20-data-layer-query-off.sh
 #
-# Adopter-flow regression for the Automatic-defaults data layer (snake_case,
+# Adopter-flow regression for the Automatic-defaults data layer (camelCase,
 # no TanStack Query) in a staged release tree:
 #
 #   1. Runs `/gaia-init` Step 3's CLI sequence as `.claude/commands/gaia-init.md`
 #      writes it, through `configure-data-layer`, with the placeholders filled
 #      from that page's Automatic defaults. `configure-data-layer` reports no
 #      change and leaves every file under `frontend/` byte-identical; the domain
-#      layer's `create()` keeps no `useSnakeCase`; no Query dependency appears
+#      layer's `create()` keeps no `isSnakeCaseEnabled`; no Query dependency appears
 #      (UAT-003, UAT-017).
 #   2. A frozen install, then typecheck, lint, test:ci, and build on the
 #      untouched Automatic tree (UAT-017).
@@ -42,7 +42,7 @@ INIT_COMMAND_DOC="$SCAFFOLD/.claude/commands/gaia-init.md"
 # --- 1. Step 3, sourced from the shipped command doc -------------------------
 
 # The Automatic apply-defaults bullets name each Step 3 variable they set
-# (`STRIP_I18N=false`, `CASING=snake`, `QUERY=false`).
+# (`STRIP_I18N=false`, `CASING=camel`, `QUERY=false`).
 automatic_default() {
   local value
   value="$(grep -oE "\`$1=[a-z]+\`" "$INIT_COMMAND_DOC" | head -n 1 | sed -E "s/^\`$1=([a-z]+)\`$/\\1/")"
@@ -53,8 +53,8 @@ automatic_default() {
 STRIP_I18N="$(automatic_default STRIP_I18N)"
 CASING="$(automatic_default CASING)"
 QUERY="$(automatic_default QUERY)"
-[ "$CASING" = "snake" ] && [ "$QUERY" = "false" ] \
-  || { fail "gaia-init.md Automatic defaults are CASING=$CASING QUERY=$QUERY, expected snake and false"; exit 1; }
+[ "$CASING" = "camel" ] && [ "$QUERY" = "false" ] \
+  || { fail "gaia-init.md Automatic defaults are CASING=$CASING QUERY=$QUERY, expected camel and false"; exit 1; }
 
 # Step 3's command block: the first fenced bash block under "## Step 3".
 awk '
@@ -100,8 +100,8 @@ done < "$WORK/step3-filled.txt"
 [ "$(json_get "$DATA_LAYER_JSON" "parsed.changed.length")" = "0" ] \
   || { fail "configure-data-layer with the Automatic defaults changed files (got: $DATA_LAYER_JSON)"; exit 1; }
 assert_frontend_unchanged "configure-data-layer with the Automatic defaults" "$WORK/before-data-layer.sha256"
-if grep -q 'useSnakeCase' "$FRONTEND/app/services/gaia/api.ts"; then
-  fail "the Automatic tree's create() call carries a useSnakeCase argument"
+if grep -q 'isSnakeCaseEnabled' "$FRONTEND/app/services/gaia/api.ts"; then
+  fail "the Automatic tree's create() call carries an isSnakeCaseEnabled argument"
   exit 1
 fi
 if grep -q '@tanstack/react-query' "$FRONTEND/package.json"; then

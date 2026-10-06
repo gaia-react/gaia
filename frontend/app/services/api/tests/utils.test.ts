@@ -26,7 +26,10 @@ describe('api utils', () => {
       someNumber: 5,
     };
     expect(
-      appendSearchParams('api/test', {searchParams, useSnakeCase: true})
+      appendSearchParams('api/test', {
+        isSnakeCaseEnabled: true,
+        searchParams,
+      })
     ).toEqual('api/test?animal=dog,cat,fish&hello_world=foobar&some_number=5');
   });
 
@@ -40,7 +43,6 @@ describe('api utils', () => {
       appendSearchParams('api?test=0', {
         arrayFormat: 'bracket',
         searchParams,
-        useSnakeCase: false,
       })
     ).toEqual(
       'api?test=0&animal[]=dog&animal[]=cat&animal[]=fish&helloWorld=foobar&someNumber=5'
@@ -107,6 +109,7 @@ describe('api utils', () => {
   test('getUri should return the uri with all options', () => {
     expect(
       getUri('api/test/:id/:action?name=foo', {
+        isSnakeCaseEnabled: true,
         pathParams: {action: 'edit', id: 3},
         searchParams: {
           animal: ['dog', 'cat', 'fish'],

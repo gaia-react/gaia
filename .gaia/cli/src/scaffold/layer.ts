@@ -2,7 +2,7 @@
  * Domain-layer folder resolution, shared by the scaffolders that write into
  * or read from `app/services/<layer>/`.
  */
-import {existsSync, readdirSync, statSync} from 'node:fs';
+import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
 
 /** Names of the directories directly under `dir`, sorted; empty when `dir` is absent. */
@@ -13,6 +13,29 @@ export const listSubdirectories = (dir: string): string[] =>
       .map((entry) => entry.name)
       .toSorted((a, b) => a.localeCompare(b))
   : [];
+
+/**
+ * The `isSnakeCaseEnabled` property in a layer's `create()` call, with its
+ * value in group 1. The `configure-data-layer` init step writes the flag and
+ * the scaffolders read it, so both sides share this one pattern.
+ */
+export const SNAKE_CASE_FLAG = /isSnakeCaseEnabled\s*:\s*([^,}\s]+)/u;
+
+/**
+ * Whether the layer's request factory opts into snake_case wire conversion;
+ * an absent `api.ts` reads as the camelCase default.
+ */
+export const isSnakeCaseLayer = (
+  packageDir: string,
+  layer: string
+): boolean => {
+  const api = path.join(packageDir, 'app', 'services', layer, 'api.ts');
+
+  return (
+    existsSync(api) &&
+    SNAKE_CASE_FLAG.exec(readFileSync(api, 'utf8'))?.[1] === 'true'
+  );
+};
 
 /**
  * The folder under `app/services/` holding the domain layer. The template

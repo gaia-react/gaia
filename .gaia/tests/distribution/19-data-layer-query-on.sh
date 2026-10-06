@@ -6,8 +6,9 @@
 # every Query-on and generated-code behavior is proven here, in a staged
 # release tree, by the adopter's own gate:
 #
-#   1. `gaia init configure-data-layer --casing snake --query true` writes the
-#      pinned dependency and the runtime files, and leaves `app/root.tsx` and
+#   1. `gaia init configure-data-layer --casing snake --query true` opts the
+#      domain layer into snake_case, writes the pinned dependency and the
+#      runtime files, and leaves `app/root.tsx` and
 #      `react-router.config.ts` byte-identical (UAT-002, UAT-003).
 #   2. A non-frozen `pnpm install` (the lockfile gains Query), then two reruns
 #      (`--query true`, `--query false`) change nothing: every file under
@@ -47,10 +48,12 @@ ROUTER_CONFIG_HASH="$(hash_file "$FRONTEND/react-router.config.ts")"
 ROOT_HASH="$(hash_file "$FRONTEND/app/root.tsx")"
 
 QUERY_ON_JSON="$(gaia_json "query on" init configure-data-layer --casing snake --query true)"
-for expected_path in frontend/package.json frontend/app/query-client.ts frontend/app/state/index.tsx; do
+for expected_path in frontend/package.json frontend/app/query-client.ts frontend/app/state/index.tsx frontend/app/services/gaia/api.ts; do
   [ "$(json_get "$QUERY_ON_JSON" "parsed.changed.includes('$expected_path')")" = "true" ] \
-    || { fail "configure-data-layer --query true did not list $expected_path in changed (got: $QUERY_ON_JSON)"; exit 1; }
+    || { fail "configure-data-layer --casing snake --query true did not list $expected_path in changed (got: $QUERY_ON_JSON)"; exit 1; }
 done
+grep -q 'isSnakeCaseEnabled: true' "$FRONTEND/app/services/gaia/api.ts" \
+  || { fail "configure-data-layer --casing snake did not set isSnakeCaseEnabled: true in app/services/gaia/api.ts"; exit 1; }
 [ "$(json_get "$QUERY_ON_JSON" "parsed.next.includes('pnpm install')")" = "true" ] \
   || { fail "configure-data-layer --query true did not list pnpm install in next (got: $QUERY_ON_JSON)"; exit 1; }
 

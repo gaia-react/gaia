@@ -10,6 +10,7 @@
  */
 import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
+import {isSnakeCaseLayer} from './layer.js';
 import {deriveNames} from './service.js';
 
 export type DataVariant = 'client' | 'query' | 'server';
@@ -37,7 +38,7 @@ export type ServiceBinding = {
   inputFields: ServiceField[];
   layer: string;
   name: string;
-  /** False when the layer's `api.ts` turns the snake_case conversion off. */
+  /** True when the layer's `api.ts` sets `isSnakeCaseEnabled: true`. */
   snakeCaseWire: boolean;
 };
 
@@ -232,15 +233,6 @@ const checkServiceExports = ({
   return null;
 };
 
-/** Whether the layer's request factory keeps its default snake_case wire conversion. */
-const readSnakeCaseWire = (packageDir: string, layer: string): boolean => {
-  const api = readOptional(
-    path.join(packageDir, 'app', 'services', layer, 'api.ts')
-  );
-
-  return api === null || !/useSnakeCase:\s*false/u.test(api);
-};
-
 /**
  * Reads and checks the bound service. Returns the binding, or the refusal
  * message naming the file and what it lacks.
@@ -295,6 +287,6 @@ export const readServiceBinding = (
     inputFields,
     layer: args.layer,
     name: args.service,
-    snakeCaseWire: readSnakeCaseWire(args.packageDir, args.layer),
+    snakeCaseWire: isSnakeCaseLayer(args.packageDir, args.layer),
   };
 };

@@ -8,7 +8,7 @@
 #
 #   gaia init strip-branding   --title "Test Project"
 #   gaia init configure-i18n   --locales "en,es" --strip false
-#   gaia init configure-data-layer --casing snake --query false
+#   gaia init configure-data-layer --casing camel --query false
 #   gaia init rename           --title "Test Project" --kebab "test-project"
 #   gaia init wire-statusline  --mode project
 #   gaia init finalize
@@ -33,7 +33,7 @@
 #   configure-data-layer
 #                   Prints one JSON line on stdout (the one step exempt from
 #                   the no-stdout contract) whose `changed` list is empty;
-#                   the domain layer's create() keeps no useSnakeCase
+#                   the domain layer's create() keeps no isSnakeCaseEnabled
 #                   argument and frontend/package.json gains no TanStack
 #                   Query dependency.
 #
@@ -163,19 +163,19 @@ grep -q "LANGUAGES = \['en', 'es'\]" "$LANGUAGES_INDEX" \
 grep -q "fallbackLng: 'en'" "$SCAFFOLD/frontend/app/i18n.ts" \
   || { fail "configure-i18n did not set fallbackLng: 'en' in frontend/app/i18n.ts"; exit 1; }
 
-# Step 3; configure-data-layer, with the Automatic defaults (snake_case,
+# Step 3; configure-data-layer, with the Automatic defaults (camelCase,
 # no TanStack Query). Additive: with these answers nothing changes.
 DATA_LAYER_JSON="$(run_step_json "configure-data-layer" \
-  init configure-data-layer --casing snake --query false)"
+  init configure-data-layer --casing camel --query false)"
 DATA_LAYER_CHANGED="$(printf '%s' "$DATA_LAYER_JSON" | node -e '
   const parsed_output = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
   process.stdout.write(String((parsed_output.changed || ["<missing>"]).length));
 ' 2>/dev/null)" \
   || { fail "configure-data-layer stdout is not one JSON line (got: $DATA_LAYER_JSON)"; exit 1; }
 [ "$DATA_LAYER_CHANGED" = "0" ] \
-  || { fail "configure-data-layer --casing snake --query false changed files (got: $DATA_LAYER_JSON)"; exit 1; }
-if grep -q 'useSnakeCase' "$SCAFFOLD/frontend/app/services/gaia/api.ts"; then
-  fail "configure-data-layer --casing snake left a useSnakeCase argument in frontend/app/services/gaia/api.ts"
+  || { fail "configure-data-layer --casing camel --query false changed files (got: $DATA_LAYER_JSON)"; exit 1; }
+if grep -q 'isSnakeCaseEnabled' "$SCAFFOLD/frontend/app/services/gaia/api.ts"; then
+  fail "configure-data-layer --casing camel left an isSnakeCaseEnabled argument in frontend/app/services/gaia/api.ts"
   exit 1
 fi
 if grep -q '@tanstack/react-query' "$SCAFFOLD/frontend/package.json"; then

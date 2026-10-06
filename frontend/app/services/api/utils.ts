@@ -34,10 +34,10 @@ const responseToCamelCase = async ({response}: AfterResponseState) => {
 };
 
 export const getHooks = (
-  useSnakeCase?: boolean,
+  isSnakeCaseEnabled?: boolean,
   hooks?: Hooks
 ): Hooks | undefined =>
-  useSnakeCase ?
+  isSnakeCaseEnabled ?
     {
       ...hooks,
       afterResponse: [responseToCamelCase, ...(hooks?.afterResponse ?? [])],
@@ -49,14 +49,14 @@ export const appendSearchParams = (
   uri: string,
   options?: {
     arrayFormat?: NonNullable<StringifyOptions['arrayFormat']>;
+    isSnakeCaseEnabled?: boolean;
     searchParams?: Record<string, unknown>;
-    useSnakeCase?: boolean;
   }
 ): string => {
   const {
     arrayFormat = 'comma',
+    isSnakeCaseEnabled = false,
     searchParams,
-    useSnakeCase = true,
   } = options ?? {};
 
   if (!searchParams) {
@@ -64,7 +64,7 @@ export const appendSearchParams = (
   }
 
   const casedParams =
-    useSnakeCase ?
+    isSnakeCaseEnabled ?
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (toSnakeCase<any>(searchParams) as Record<string, unknown>)
     : searchParams;
@@ -114,9 +114,9 @@ export const getUri = (
     ...options
   }: {
     arrayFormat?: NonNullable<StringifyOptions['arrayFormat']>;
+    isSnakeCaseEnabled?: boolean;
     pathParams?: Record<string, number | string>;
     searchParams?: Record<string, unknown>;
-    useSnakeCase?: boolean;
   } = {}
 ): string => appendSearchParams(setPathParams(uri, pathParams), options);
 

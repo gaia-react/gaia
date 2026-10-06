@@ -201,8 +201,8 @@ describe.each(CASES)('scaffold route --data: $data $shape', (dataCase) => {
     expect(story).toContain('.play = async');
     expect(story).toContain('submittedBody = await request.json();');
     expect(story).toContain("await canvas.findByText('Navigated to /items')");
-    // The wire carries snake_case keys, which the play checks the handler got.
-    expect(story).toContain("display_name: 'Display name 2',");
+    // The wire carries the camelCase default keys, which the play checks the handler got.
+    expect(story).toContain("displayName: 'Display name 2',");
   });
 
   if (dataCase.data === 'query') {
@@ -280,8 +280,8 @@ describe('scaffold route --data: other flag combinations', () => {
     );
   });
 
-  test('the layer turning snake_case off puts camelCase keys in the story', () => {
-    writeItemsService(sandbox.root, {camelCaseWire: true});
+  test('the layer opting into snake_case puts snake_case keys in the story', () => {
+    writeItemsService(sandbox.root, {snakeCaseWire: true});
 
     const result = scaffold(sandbox.root, [
       'items',
@@ -308,8 +308,8 @@ describe('scaffold route --data: other flag combinations', () => {
       'page.stories.tsx'
     );
 
-    expect(story).toContain("displayName: 'Display name 2',");
-    expect(story).not.toContain('display_name');
+    expect(story).toContain("display_name: 'Display name 2',");
+    expect(story).not.toContain("displayName: 'Display name 2',");
   });
 
   test('--i18n on a detail route writes its own locale file and key', () => {

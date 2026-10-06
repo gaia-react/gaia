@@ -13,14 +13,13 @@ export type RequestFunction = {
 
 type CreateOptions = Omit<Options, 'prefix'> & {
   arrayFormat?: NonNullable<StringifyOptions['arrayFormat']>;
-  /** Base URL; resolved per request from getBaseUrl() when omitted. */
-  prefix?: string;
   /**
    * Converts incoming response keys to camelCase and outgoing JSON bodies and
-   * search params to snake_case. Defaults to true; pass false when the API
-   * already speaks camelCase.
+   * search params to snake_case, for an API that speaks snake_case.
    */
-  useSnakeCase?: boolean;
+  isSnakeCaseEnabled?: boolean;
+  /** Base URL; resolved per request from getBaseUrl() when omitted. */
+  prefix?: string;
 };
 
 type RequestOptions = Options & {
@@ -33,12 +32,12 @@ type RequestOptions = Options & {
 export const create = ({
   arrayFormat = 'comma',
   hooks,
+  isSnakeCaseEnabled = false,
   prefix,
-  useSnakeCase = true,
   ...apiOptions
 }: CreateOptions = {}): RequestFunction => {
   const kyInstance = ky.create({
-    hooks: getHooks(useSnakeCase, hooks),
+    hooks: getHooks(isSnakeCaseEnabled, hooks),
     ...apiOptions,
   });
 
@@ -54,7 +53,12 @@ export const create = ({
     }: RequestOptions & {schema?: StandardSchemaV1} = {}
   ): Promise<unknown> => {
     const response = kyInstance(
-      getUri(uri, {arrayFormat, pathParams, searchParams, useSnakeCase}),
+      getUri(uri, {
+        arrayFormat,
+        isSnakeCaseEnabled,
+        pathParams,
+        searchParams,
+      }),
       {
         ...options,
         headers: buildRequestHeaders(options.headers, token, language),
