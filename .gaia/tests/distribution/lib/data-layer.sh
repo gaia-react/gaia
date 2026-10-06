@@ -13,6 +13,10 @@
 #   gaia_json LABEL ARGS...     - runs the staged CLI from SCAFFOLD, prints stdout
 #   run_pnpm_steps LOG_PREFIX DESCRIPTION STEP...
 #                               - runs each `pnpm STEP` in SCAFFOLD with logging
+#   run_test_ci_with_report LOG_PREFIX DESCRIPTION REPORT
+#                               - runs `pnpm test:ci` in SCAFFOLD like
+#                                 run_pnpm_steps, also writing a Vitest JSON
+#                                 report to REPORT
 #   assert_scaffold_refused LABEL LEAKED... -- GAIA_ARGS...
 #                               - fails unless the CLI refuses, with stderr, and
 #                                 none of the LEAKED paths exist afterwards
@@ -20,10 +24,10 @@
 #                               - fails if hash_frontend differs from BEFORE_FILE
 #   json_get JSON EXPRESSION    - evaluates a JS expression over `parsed` (the
 #                                 parsed JSON) and prints the result
-#   assert_stories_collect FRONTEND WORK STORY...
-#                               - runs the storybook project over each STORY
-#                                 (frontend-relative) and fails unless every
-#                                 one contributes at least one passing test
+#   assert_stories_collect REPORT STORY...
+#                               - fails unless every STORY (frontend-relative)
+#                                 contributes at least one passing test to the
+#                                 Vitest JSON REPORT
 
 # GNU coreutils names it sha256sum; macOS ships shasum. An array, not a
 # function, because xargs runs a command and cannot reach a shell function.
@@ -73,13 +77,12 @@ json_get() {
 }
 
 # A story file the storybook project fails to collect still lets test:ci pass,
-# and test:ci's reporter names no files, so existence is no evidence it ran.
+# and test:ci's default reporter names no files, so existence is no evidence it
+# ran. Read the JSON report test:ci wrote rather than paying a second
+# storybook-project run (Chromium startup plus the story suite) for it.
 assert_stories_collect() {
-  local frontend="$1" work="$2"
-  shift 2
-  run_logged "storybook story count" "$work/story-count.log" \
-    pnpm -C "$frontend" exec vitest --run --project storybook \
-    --reporter=json --outputFile="$work/story-count.json" "$@"
+  local report="$1"
+  shift
   local story collected
   for story in "$@"; do
     collected="$(node -e '
@@ -87,7 +90,7 @@ assert_stories_collect() {
       const match = report.testResults.find((result) => result.name.endsWith(process.argv[2]));
       const passed = match ? match.assertionResults.filter((test) => test.status === "passed") : [];
       process.stdout.write(String(passed.length));
-    ' "$work/story-count.json" "$story")"
+    ' "$report" "$story")"
     [ "$collected" -gt 0 ] \
       || { fail "storybook project collected no passing tests from $story"; exit 1; }
   done
@@ -128,6 +131,17 @@ run_pnpm_steps() {
     log "pnpm $step$where"
     run_logged "pnpm $step$where" "$WORK/$log_prefix$step.log" pnpm -C "$SCAFFOLD" "$step"
   done
+}
+
+# The root and frontend test:ci scripts each forward trailing arguments, so
+# they reach Vitest. Naming `default` keeps the log the same as a plain run;
+# the json reporter alone would replace it.
+run_test_ci_with_report() {
+  local log_prefix="$1" description="$2" report="$3" where
+  where="${description:+ ($description)}"
+  log "pnpm test:ci$where"
+  run_logged "pnpm test:ci$where" "$WORK/${log_prefix}test:ci.log" \
+    pnpm -C "$SCAFFOLD" test:ci --reporter=default --reporter=json --outputFile.json="$report"
 }
 
 assert_scaffold_refused() {
