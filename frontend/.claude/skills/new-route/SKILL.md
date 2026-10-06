@@ -22,7 +22,7 @@ The scaffold writes `app/routes/<group>.<name>.tsx` plus `app/pages/<name>/page.
 Bind a service with `--data <server|client|query> --service <name> --shape <list|detail>`. The rule for choosing a variant lives in `frontend/.claude/skills/react-code/SKILL.md`; the default is `server`.
 
 - `server`: a server `loader`, read with `useLoaderData`.
-- `client`: a `clientLoader` and a `HydrateFallback`. The server renders only the `HydrateFallback`, so the first load shows an empty page and the page's metadata appears after hydration.
+- `client`: a `clientLoader` and a `HydrateFallback`. The server renders only the `HydrateFallback`, so the first load shows its skeleton until the JavaScript loads and the `clientLoader` resolves, and the document's title and meta tags are the ones the `HydrateFallback` renders, never values from the loaded data.
 - `query`: a `clientLoader` that primes the Query cache and a `HydrateFallback`, with the page reading `useSuspenseQuery`. Needs Query installed and the service's `queries.ts`; the same first-load and metadata cost as `client` applies.
 
 `--shape list` writes the list route, and `--shape detail` writes the detail route (`app/pages/<name>/id/`); run both with the same name for the pair. A scaffolded page story drives MSW handlers through `stubs.reactRouter`.

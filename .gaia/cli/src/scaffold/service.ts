@@ -500,6 +500,23 @@ const insertImportAlphabetically = (
   );
 };
 
+// A `resetTestData` arrow whose block body is empty (`=> {}`) or holds only
+// `await resetX();` statements, the shape a hand-registered collection takes.
+const SEQUENTIAL_RESET_BODY =
+  /(resetTestData = async \(\): Promise<void> =>\s*)\{((?:\s*await reset\w+\(\);)*\s*)\}/u;
+
+// Rewrite that body as one `Promise.all([...])` so the insert below has a
+// region to extend. Any other body is left alone and the safety net reports it.
+const normalizeResetBody = (source: string): string =>
+  source.replace(
+    SEQUENTIAL_RESET_BODY,
+    (_whole, head: string, body: string) => {
+      const calls = body.match(/reset\w+\(\)/gu) ?? [];
+
+      return `${head}{\n  await Promise.all([${calls.join(', ')}]);\n}`;
+    }
+  );
+
 const insertResetCallAlphabetically = (
   source: string,
   derived: DerivedNames
@@ -586,7 +603,7 @@ const applyDatabaseEdits = (args: ApplyDatabaseEditsArgs): string => {
   next = insertImportAlphabetically(next, importLine);
 
   if (!next.includes(resetCall)) {
-    next = insertResetCallAlphabetically(next, derived);
+    next = insertResetCallAlphabetically(normalizeResetBody(next), derived);
   }
   next = insertCollectionExportAlphabetically(next, derived);
 
@@ -618,7 +635,7 @@ const applyDatabaseEdits = (args: ApplyDatabaseEditsArgs): string => {
 };
 
 /**
- * Insert a new collection registration into `test/mocks/database.ts`,
+ * Compute the new collection registration for `test/mocks/database.ts`,
  * preserving alphabetical order of registered collections.
  *
  * The barrel has three load-bearing regions we mutate:
@@ -626,18 +643,25 @@ const applyDatabaseEdits = (args: ApplyDatabaseEditsArgs): string => {
  *   2. The `Promise.all([...])` argument list inside `resetTestData`.
  *   3. The `default` export object that maps `{<name>}`.
  *
- * Idempotent: if the new entries already exist verbatim, returns
- * `{written: false}`.
+ * Returns `undefined` when the barrel is absent, else its path and the new
+ * text (`next` is `undefined` when it already registers the collection). Throws when the
+ * edit cannot apply. Planned before any scaffold file is written, so a barrel
+ * the edit cannot apply to leaves the tree untouched.
  */
-const updateDatabaseBarrel = (
-  databasePath: string,
+type DatabaseBarrelPlan = {next: string | undefined; path: string};
+
+const planDatabaseBarrel = (
+  repoRoot: string,
   derived: DerivedNames
-): {written: boolean} => {
+): DatabaseBarrelPlan | undefined => {
+  const databasePath = path.join(repoRoot, 'test', 'mocks', 'database.ts');
+
+  if (!existsSync(databasePath)) return undefined;
   const raw = readFileSync(databasePath, 'utf8');
   const importLine = `import {${derived.plural}, reset${derived.Plural}} from './${derived.name}/data';`;
   const resetCall = `reset${derived.Plural}()`;
 
-  if (raw.includes(importLine)) return {written: false};
+  if (raw.includes(importLine)) return {next: undefined, path: databasePath};
 
   const next = applyDatabaseEdits({
     derived,
@@ -646,10 +670,7 @@ const updateDatabaseBarrel = (
     source: raw,
   });
 
-  if (next === raw) return {written: false};
-  atomicWriteFileSync(databasePath, next);
-
-  return {written: true};
+  return {next: next === raw ? undefined : next, path: databasePath};
 };
 
 // Emit
@@ -777,7 +798,11 @@ const emitServiceFiles = (
   }
 };
 
-const emitMockFiles = (context: EmitContext, result: ScaffoldResult): void => {
+const emitMockFiles = (
+  context: EmitContext,
+  databaseBarrel: DatabaseBarrelPlan | undefined,
+  result: ScaffoldResult
+): void => {
   const {derived, endpoints, fields, layer, repoRoot} = context;
   const mockDir = path.join(repoRoot, 'test', 'mocks', derived.name);
   ensureDir(mockDir);
@@ -829,13 +854,13 @@ const emitMockFiles = (context: EmitContext, result: ScaffoldResult): void => {
   writeAndRecord(path.join(mockDir, 'index.ts'), barrelBody, result);
 
   // Edit the database barrel; only when --mocks, otherwise no edit.
-  const databasePath = path.join(repoRoot, 'test', 'mocks', 'database.ts');
+  if (databaseBarrel === undefined) return;
 
-  if (existsSync(databasePath)) {
-    const {written} = updateDatabaseBarrel(databasePath, derived);
-
-    if (written) result.edited.push(databasePath);
-    else result.skipped.push(databasePath);
+  if (databaseBarrel.next === undefined) {
+    result.skipped.push(databaseBarrel.path);
+  } else {
+    atomicWriteFileSync(databaseBarrel.path, databaseBarrel.next);
+    result.edited.push(databaseBarrel.path);
   }
 };
 
@@ -938,8 +963,12 @@ export const run = (
 
       if (refusal !== undefined) return userError(refusal, 'scaffold service');
     } else {
+      const databaseBarrel =
+        parsed.mocks ?
+          planDatabaseBarrel(repoRoot, context.derived)
+        : undefined;
       emitServiceFiles(context, result);
-      if (parsed.mocks) emitMockFiles(context, result);
+      if (parsed.mocks) emitMockFiles(context, databaseBarrel, result);
     }
   } catch (error) {
     structuredError({

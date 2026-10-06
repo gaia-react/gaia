@@ -1,6 +1,6 @@
 # Data-layer fixtures
 
-Maintainer test infrastructure for the TanStack Query runtime, never shipped. A distribution scenario copies these into a staged tree's `frontend/` after the Query runtime is installed there (the `@tanstack/react-query` dependency, `app/query-client.ts`, `app/state/query-provider.tsx` wrapped around `{children}` in `app/state/index.tsx`, and the Storybook `QueryClientDecorator`), then runs them. Every file is lint- and typecheck-clean in that tree as written.
+Maintainer test infrastructure for the API data layer, never shipped. `19-data-layer-query-on.sh` copies the SSR, query-client, service, flow, and story-isolation fixtures into a staged tree's `frontend/` after the Query runtime is installed there (the `@tanstack/react-query` dependency, `app/query-client.ts`, `app/state/query-provider.tsx` wrapped around `{children}` in `app/state/index.tsx`, and the Storybook `QueryClientDecorator`) and the `items` service (`--schema "id:string,displayName:string" --mocks`) and its Query list and detail routes are scaffolded, then runs them. `20-data-layer-query-off.sh` copies the lint probes, one at a time, into a tree without Query. Every fixture except the lint probes is lint- and typecheck-clean in its tree as written; the probes exist to fail lint.
 
 | Fixture | Destination under `frontend/` | Asserts |
 | --- | --- | --- |
@@ -13,6 +13,14 @@ Maintainer test infrastructure for the TanStack Query runtime, never shipped. A 
 | `ssr/check-ssr-isolation.mjs` | Run in place with `node`, after `pnpm build` | See below. |
 | `query-client/query-client.test.ts` | `test/query-client.test.ts` (node project) | Two `getQueryClient()` calls on the server return distinct clients. |
 | `query-client/query-client.browser.test.tsx` | `test/query-client.browser.test.tsx` (browser project) | Two `getQueryClient()` calls in the browser return the same client, and after `setBrowserQueryClient(x)` the next call returns `x`. |
+| `service/items-service.test.ts` | `test/items-service.test.ts` (node project) | Through the scaffolded `items` service: a 200 body violating the schema resolves `attempt` to a 500 with a non-empty `statusText`; a plain `Error` inside `attempt` rejects; `createItem({displayName})` sends `display_name` and returns `displayName`; a request starts with the server `API_URL`; `cancelQueries` on the detail key aborts the in-flight request the handler sees. |
+| `service/items-base-url.test.tsx` | `test/items-base-url.test.tsx` (browser project) | `getAllItems()` requests start with the `API_URL` injected on `window.process`. |
+| `flow/items-flow.test.tsx` | `test/items-flow.test.tsx` (browser project) | Mounts the scaffolded `_public.items` and `_public.items_.$id` route modules in `createRoutesStub` under a fresh per-test QueryClient and the `test/worker.ts` worker (`onUnhandledRequest: 'error'`, scaffolded `items` handlers), walks list, detail, rename, and the redirect back, and asserts the per-endpoint GET counts at each step. Runs twice in one file, so a client shared across tests fails the second run's first list count. |
+| `story-isolation/item-names/index.tsx` | `app/components/item-names/index.tsx` | Renders `useQuery(itemsQuery())` names. |
+| `story-isolation/item-names/tests/handler-a-first.stories.tsx`, `handler-b-first.stories.tsx` | `app/components/item-names/tests/` | Two stories per file with different `parameters.msw.handlers` for the same query key, in opposite orders; each play asserts only its own handler's data, so a QueryClient shared across stories fails the second story of either file. |
+| `lint-probes/imperative-query-probe.ts` | `app/imperative-query-probe.ts`, removed after the run | Four imperative fetches through local stand-ins; each must fail `local/no-imperative-query-fetch` naming `queryClient.query`. |
+| `lint-probes/restricted-properties-probe.ts` | `app/restricted-properties-probe.ts`, removed after the run | `Math.pow` must still fail the inherited `no-restricted-properties` entry. |
+| `lint-probes/restricted-syntax-probe.tsx` | `app/restricted-syntax-probe.tsx`, removed after the run | A ternary rendering `null` must still fail the `@gaia-react/lint` `no-restricted-syntax` selector. |
 
 ## The SSR check
 

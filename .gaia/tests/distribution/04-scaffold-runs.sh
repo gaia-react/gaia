@@ -45,16 +45,9 @@ fi
 # lockfile) before `test:ci`. CI runners also need the OS libraries
 # (`--with-deps`); a local run skips them to avoid a sudo prompt.
 log "playwright install chromium"
-install_chromium() {
-  if [ -n "${CI:-}" ]; then
-    pnpm -C frontend exec playwright install --with-deps chromium
-  else
-    pnpm -C frontend exec playwright install chromium
-  fi
-}
-if ! install_chromium >/dev/null 2>&1; then
+if ! install_chromium "$STAGING" >/dev/null 2>&1; then
   log "playwright install failed; rerunning with output:"
-  install_chromium || true
+  install_chromium "$STAGING" || true
   fail "playwright install chromium failed in staged scaffold"
   exit 1
 fi

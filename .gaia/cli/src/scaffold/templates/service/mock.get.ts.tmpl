@@ -4,7 +4,7 @@ import {url} from '../url';
 import {{{plural}}} from './data';
 
 const list = http.get(url({{NAME_UPPER}}_URLS.{{plural}}), () => {
-  const data = {{plural}}.findMany(undefined);
+  const data = {{plural}}.findMany();
 
   return HttpResponse.json({data});
 });

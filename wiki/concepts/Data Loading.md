@@ -8,7 +8,7 @@ tags: [concept, services, routing, data-loading]
 
 # Data Loading
 
-How a route gets its data, and how the data layer behind it is wired. The rule text lives in `frontend/.claude/skills/react-code/SKILL.md`; this page explains the decision logic and shows short excerpts. The scaffold templates under `.gaia/cli/src/scaffold/templates/` (`route/`, `service/`, `data-layer/`) are the authoritative code, so a full listing is never repeated here.
+How a route gets its data, and how the data layer behind it is wired. The rule text lives in `frontend/.claude/skills/react-code/SKILL.md`; this page explains the decision logic and shows short excerpts. The scaffold templates under `.gaia/cli/templates/` (`route/`, `service/`, `data-layer/`) are the authoritative code, so a full listing is never repeated here.
 
 Related: [[API Service Pattern]], [[Services]], [[Thin Routes]], [[Routing]], [[Ky]], [[State]], [[Stories as Tests]], [[MSW Handlers]]
 
@@ -27,7 +27,11 @@ Related: [[API Service Pattern]], [[Services]], [[Thin Routes]], [[Routing]], [[
 The default for first-paint, public, and SEO content. The server runs the loader, renders the page with the data, and ships finished HTML. Nothing waits on JavaScript to show content.
 
 ```tsx
-export const loader = async (): Promise<LoaderData> => getAllItems();
+export const loader = async ({
+  request,
+}: Route.LoaderArgs): Promise<LoaderData> => ({
+  items: await getAllItems(request.signal),
+});
 ```
 
 Scaffold: `gaia scaffold route items --group _public --data server --service items --shape list`.
@@ -39,9 +43,16 @@ A route that exports `clientLoader` and no `loader` renders only `HydrateFallbac
 Use it for authenticated or personalized data that gains nothing from server rendering.
 
 ```tsx
-export const clientLoader = async (): Promise<LoaderData> => getAllItems();
-export const HydrateFallback = () => <ItemsSkeleton />;
+export const clientLoader = async ({
+  request,
+}: Route.ClientLoaderArgs): Promise<LoaderData> => ({
+  items: await getAllItems(request.signal),
+});
+
+export const HydrateFallback = () => <ItemsHydrateFallback />;
 ```
+
+The scaffold writes the fallback as a skeleton component in the page folder (`app/pages/<name>/hydrate-fallback/`), carrying the page's title and description.
 
 Scaffold: `--data client`. A route that also takes `--action` keeps a server `action`.
 
@@ -67,7 +78,7 @@ The imperative methods `ensureQueryData`, `fetchQuery`, and `prefetchQuery` (and
 - `queries.ts` holds a key factory (`all`, `list`, `detail`) and `queryOptions` for the list and by-id reads. It exists only when Query is installed.
 - `gaia scaffold service <name> --queries-only [--layer <folder>]` writes just `queries.ts` into an existing service folder, for a service created before Query was on. It refuses when Query is not installed, the folder is missing, or `requests.ts` has no list getter and by-id getter.
 
-The templates are `.gaia/cli/src/scaffold/templates/service/requests.ts.tmpl` and `queries.ts.tmpl`.
+The templates are `.gaia/cli/templates/service/requests.ts.tmpl` and `queries.ts.tmpl`.
 
 ## QueryClient scope
 

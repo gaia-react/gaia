@@ -19068,6 +19068,16 @@ var insertImportAlphabetically = (source, importLine) => {
     "\n"
   );
 };
+var SEQUENTIAL_RESET_BODY = /(resetTestData = async \(\): Promise<void> =>\s*)\{((?:\s*await reset\w+\(\);)*\s*)\}/u;
+var normalizeResetBody = (source) => source.replace(
+  SEQUENTIAL_RESET_BODY,
+  (_whole, head, body) => {
+    const calls = body.match(/reset\w+\(\)/gu) ?? [];
+    return `${head}{
+  await Promise.all([${calls.join(", ")}]);
+}`;
+  }
+);
 var insertResetCallAlphabetically = (source, derived) => {
   const pattern = /Promise\.all\(\[([^\]]*)\]\)/u;
   const match = pattern.exec(source);
@@ -19119,7 +19129,7 @@ var applyDatabaseEdits = (args) => {
   let next = source;
   next = insertImportAlphabetically(next, importLine);
   if (!next.includes(resetCall)) {
-    next = insertResetCallAlphabetically(next, derived);
+    next = insertResetCallAlphabetically(normalizeResetBody(next), derived);
   }
   next = insertCollectionExportAlphabetically(next, derived);
   const collectionEntry = new RegExp(
@@ -19133,20 +19143,20 @@ var applyDatabaseEdits = (args) => {
   }
   return next;
 };
-var updateDatabaseBarrel = (databasePath, derived) => {
+var planDatabaseBarrel = (repoRoot, derived) => {
+  const databasePath = path14.join(repoRoot, "test", "mocks", "database.ts");
+  if (!existsSync7(databasePath)) return void 0;
   const raw = readFileSync10(databasePath, "utf8");
   const importLine = `import {${derived.plural}, reset${derived.Plural}} from './${derived.name}/data';`;
   const resetCall = `reset${derived.Plural}()`;
-  if (raw.includes(importLine)) return { written: false };
+  if (raw.includes(importLine)) return { next: void 0, path: databasePath };
   const next = applyDatabaseEdits({
     derived,
     importLine,
     resetCall,
     source: raw
   });
-  if (next === raw) return { written: false };
-  atomicWriteFileSync(databasePath, next);
-  return { written: true };
+  return { next: next === raw ? void 0 : next, path: databasePath };
 };
 var TEMPLATES_DIR = path14.join(
   path14.dirname(fileURLToPath2(import.meta.url)),
@@ -19224,7 +19234,7 @@ var emitServiceFiles = (context, result) => {
     writeQueries(serviceDir, baseVars, result);
   }
 };
-var emitMockFiles = (context, result) => {
+var emitMockFiles = (context, databaseBarrel, result) => {
   const { derived, endpoints, fields, layer, repoRoot } = context;
   const mockDir = path14.join(repoRoot, "test", "mocks", derived.name);
   ensureDir(mockDir);
@@ -19267,11 +19277,12 @@ var emitMockFiles = (context, result) => {
     ...composeMockBarrel(endpoints)
   });
   writeAndRecord(path14.join(mockDir, "index.ts"), barrelBody, result);
-  const databasePath = path14.join(repoRoot, "test", "mocks", "database.ts");
-  if (existsSync7(databasePath)) {
-    const { written } = updateDatabaseBarrel(databasePath, derived);
-    if (written) result.edited.push(databasePath);
-    else result.skipped.push(databasePath);
+  if (databaseBarrel === void 0) return;
+  if (databaseBarrel.next === void 0) {
+    result.skipped.push(databaseBarrel.path);
+  } else {
+    atomicWriteFileSync(databaseBarrel.path, databaseBarrel.next);
+    result.edited.push(databaseBarrel.path);
   }
 };
 var emitQueriesOnly = (context, result) => {
@@ -19344,8 +19355,9 @@ var run7 = (argv, options = {}) => {
       const refusal = emitQueriesOnly(context, result);
       if (refusal !== void 0) return userError(refusal, "scaffold service");
     } else {
+      const databaseBarrel = parsed.mocks ? planDatabaseBarrel(repoRoot, context.derived) : void 0;
       emitServiceFiles(context, result);
-      if (parsed.mocks) emitMockFiles(context, result);
+      if (parsed.mocks) emitMockFiles(context, databaseBarrel, result);
     }
   } catch (error51) {
     structuredError({
@@ -37870,7 +37882,7 @@ var HELP_TEXT71 = `Usage: gaia <subcommand> [args]
   harden-tally
   update merge-workspace|merge-audit-ci|merge-region|regen-regions
   update-deps run|decline|global-tools|advisories|advisory-landed|dismiss-alert|write-security-cache|check-security-override
-  init strip-branding|configure-i18n|rename|wire-statusline|bootstrap-env|write-project-config|finalize|resume
+  init strip-branding|configure-i18n|configure-data-layer|rename|wire-statusline|bootstrap-env|write-project-config|finalize|resume
   setup status|mark-step|finalize
   setup-ci detect-remote|warn-existing-tools|check-admin|enable-delete-branch|write-isolation-policy|configure-dependabot-alerts
   sandbox detect|apply|record|status

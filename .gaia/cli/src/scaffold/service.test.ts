@@ -35,9 +35,7 @@ const seedDatabase = (root: string): string => {
     [
       '// Barrel for `@msw/data` collections.',
       '',
-      'export const resetTestData = async (): Promise<void> => {',
-      '  await Promise.all([]);',
-      '};',
+      'export const resetTestData = async (): Promise<void> => {};',
       '',
       'export default {} as Record<string, never>;',
       '',
@@ -430,6 +428,57 @@ describe('gaia scaffold service', () => {
     // The barrel must be left untouched; no partial write.
     const after = read(databasePath);
     expect(after).not.toContain('mangoes');
+    // The barrel edit is planned before anything is written, so the refusal
+    // leaves no service or mock files behind either.
+    expect(
+      existsSync(path.join(sandbox.dir, 'app', 'services', 'gaia', 'mangoes'))
+    ).toBe(false);
+    expect(existsSync(path.join(sandbox.dir, 'test', 'mocks', 'mangoes'))).toBe(
+      false
+    );
+  });
+
+  test('stock empty barrel gains a Promise.all with the new reset call', () => {
+    const databasePath = path.join(sandbox.dir, 'test', 'mocks', 'database.ts');
+
+    expect(scaffoldItems(sandbox.dir, ['--mocks'])).toBe(EXIT_CODES.OK);
+
+    const after = read(databasePath);
+    expect(after).toContain(
+      'export const resetTestData = async (): Promise<void> => {\n  await Promise.all([resetItems()]);\n};'
+    );
+    expect(after).toContain('export default {items};');
+  });
+
+  test('hand-registered sequential resets fold into one Promise.all', () => {
+    const databasePath = path.join(sandbox.dir, 'test', 'mocks', 'database.ts');
+    writeFileSync(
+      databasePath,
+      [
+        "import {apples, resetApples} from './apples/data';",
+        '',
+        'export const resetTestData = async (): Promise<void> => {',
+        '  await resetApples();',
+        '};',
+        '',
+        'export default {apples};',
+        '',
+      ].join('\n'),
+      'utf8'
+    );
+
+    const code = run(
+      ['mangoes', '--endpoints', 'get', '--schema', 'id:string', '--mocks'],
+      {cwd: sandbox.dir}
+    );
+    expect(code).toBe(EXIT_CODES.OK);
+
+    const after = read(databasePath);
+    expect(after).toContain(
+      'await Promise.all([resetApples(), resetMangoes()]);'
+    );
+    expect(after).not.toContain('await resetApples();');
+    expect(after).toContain('export default {apples, mangoes};');
   });
 
   test('--json emits a single ScaffoldResult JSON line', () => {
@@ -765,6 +814,26 @@ describe('gaia scaffold service', () => {
       expect(put).toContain('request.json()');
       expect(put).not.toContain('formData');
     });
+
+    // `@msw/data`'s `delete`, `deleteMany`, and `findMany` are synchronous,
+    // so awaiting them fails `await-thenable` in the adopter's lint, as do a
+    // sequential await loop and a redundant `undefined` argument.
+    test('mock data, get, and delete call the collection the way its types allow', () => {
+      scaffoldItems(sandbox.dir, ['--mocks']);
+      const mockDir = path.join(sandbox.dir, 'test', 'mocks', 'items');
+      const data = read(path.join(mockDir, 'data.ts'));
+      const get = read(path.join(mockDir, 'get.ts'));
+      const del = read(path.join(mockDir, 'delete.ts'));
+
+      expect(data).toContain('items.clear();');
+      expect(data).toContain(
+        'await Promise.all(seed.map(async (record) => items.create(record)));'
+      );
+      expect(data).not.toMatch(/for \(|await items\.delete/u);
+      expect(get).toContain('items.findMany()');
+      expect(del).toContain('const data = items.delete(');
+      expect(del).not.toContain('async');
+    });
   });
 
   describe('TanStack Query', () => {
@@ -777,9 +846,19 @@ describe('gaia scaffold service', () => {
       expect(queries).toContain('all: ITEMS_ROOT_KEY');
       expect(queries).toContain('detail: (id: string)');
       expect(queries).toContain(
-        'queryFn: ({signal}) => getItemById(id, signal)'
+        'queryFn: async ({signal}) => getItemById(id, signal)'
       );
-      expect(queries).toContain('queryFn: ({signal}) => getAllItems(signal)');
+      expect(queries).toContain(
+        'queryFn: async ({signal}) => getAllItems(signal)'
+      );
+      // Every exported factory names its return type, which
+      // `explicit-module-boundary-types` requires under app/services/**.
+      expect(queries).toContain(
+        'export const itemsQuery = (): ReturnType<typeof listOptions> =>'
+      );
+      expect(queries).toContain(
+        'export const itemQuery = (id: string): ReturnType<typeof detailOptions> =>'
+      );
       expect(read(path.join(itemsDir(sandbox.dir), 'index.ts'))).not.toContain(
         'queries'
       );

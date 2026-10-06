@@ -9,14 +9,23 @@ export const {{singular}}Keys = {
   list: () => [...{{NAME_UPPER}}_ROOT_KEY, 'list'] as const,
 };
 
-export const {{plural}}Query = () =>
+// `explicit-module-boundary-types` covers app/services/**, and the type
+// queryOptions infers (its query key tagged with the data type) has no short
+// spelling, so each export names it through the builder it returns.
+const listOptions = () =>
   queryOptions({
-    queryFn: ({signal}) => getAll{{Plural}}(signal),
+    queryFn: async ({signal}) => getAll{{Plural}}(signal),
     queryKey: {{singular}}Keys.list(),
   });
 
-export const {{singular}}Query = (id: string) =>
+const detailOptions = (id: string) =>
   queryOptions({
-    queryFn: ({signal}) => get{{Singular}}ById(id, signal),
+    queryFn: async ({signal}) => get{{Singular}}ById(id, signal),
     queryKey: {{singular}}Keys.detail(id),
   });
+
+export const {{plural}}Query = (): ReturnType<typeof listOptions> =>
+  listOptions();
+
+export const {{singular}}Query = (id: string): ReturnType<typeof detailOptions> =>
+  detailOptions(id);
