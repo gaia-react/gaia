@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # 04-scaffold-runs.sh
+# distribution-runner: exclusive
 #
 # Extracts the staged tarball into a tmp dir, runs `pnpm install` and
 # the project's own quality gate. End-to-end smoke that the scaffold
