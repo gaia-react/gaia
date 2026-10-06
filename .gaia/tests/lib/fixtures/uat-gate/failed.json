@@ -1,0 +1,146 @@
+{
+  "config": {
+    "argv": [
+      "/usr/bin/node",
+      "/work/node_modules/.pnpm/playwright@1.63.0/node_modules/playwright/cli.js",
+      "test",
+      "-c",
+      "/work/pw.config.ts",
+      "checkout",
+      "--reporter=json"
+    ],
+    "configFile": "/work/pw.config.ts",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "id": "",
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "name": "",
+        "outputDir": "/work/frontend/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "testDir": "/work/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.spec.ts"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "quiet": false,
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "reporter": [
+      [
+        "json"
+      ]
+    ],
+    "rootDir": "/work/e2e",
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.63.0",
+    "webServer": null,
+    "workers": 1
+  },
+  "errors": [],
+  "stats": {
+    "duration": 269.06100000000004,
+    "expected": 0,
+    "flaky": 0,
+    "skipped": 0,
+    "startTime": "2026-10-06T23:21:56.845Z",
+    "unexpected": 1
+  },
+  "suites": [
+    {
+      "column": 0,
+      "file": "checkout/guest-checkout-confirms-order.spec.ts",
+      "line": 0,
+      "specs": [
+        {
+          "column": 1,
+          "file": "checkout/guest-checkout-confirms-order.spec.ts",
+          "id": "e351f5ef809c937ccb24-58769be3133f973355bf",
+          "line": 2,
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "contentType": "text/markdown",
+                      "name": "error-context",
+                      "path": "/work/frontend/test-results/checkout-guest-checkout-co-d7cd2-page-shows-the-order-number/error-context.md"
+                    }
+                  ],
+                  "duration": 3,
+                  "error": {
+                    "location": {
+                      "column": 78,
+                      "file": "/work/e2e/checkout/guest-checkout-confirms-order.spec.ts",
+                      "line": 2
+                    },
+                    "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m2\u001b[39m\nReceived: \u001b[31m1\u001b[39m",
+                    "snippet": "  1 | import {expect, test} from '@playwright/test';\n> 2 | test('the confirmation page shows the order number', async () => { expect(1).toBe(2); });\n    |                                                                              ^\n  3 |",
+                    "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m2\u001b[39m\nReceived: \u001b[31m1\u001b[39m\n    at /work/e2e/checkout/guest-checkout-confirms-order.spec.ts:2:78"
+                  },
+                  "errorLocation": {
+                    "column": 78,
+                    "file": "/work/e2e/checkout/guest-checkout-confirms-order.spec.ts",
+                    "line": 2
+                  },
+                  "errors": [
+                    {
+                      "location": {
+                        "column": 78,
+                        "file": "/work/e2e/checkout/guest-checkout-confirms-order.spec.ts",
+                        "line": 2
+                      },
+                      "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m2\u001b[39m\nReceived: \u001b[31m1\u001b[39m\n\n  1 | import {expect, test} from '@playwright/test';\n> 2 | test('the confirmation page shows the order number', async () => { expect(1).toBe(2); });\n    |                                                                              ^\n  3 |\n    at /work/e2e/checkout/guest-checkout-confirms-order.spec.ts:2:78"
+                    }
+                  ],
+                  "parallelIndex": 0,
+                  "retry": 0,
+                  "startTime": "2026-10-06T23:21:57.087Z",
+                  "status": "failed",
+                  "stderr": [],
+                  "stdout": [],
+                  "workerIndex": 0
+                }
+              ],
+              "status": "unexpected",
+              "timeout": 30000
+            }
+          ],
+          "title": "the confirmation page shows the order number"
+        }
+      ],
+      "title": "checkout/guest-checkout-confirms-order.spec.ts"
+    }
+  ]
+}
